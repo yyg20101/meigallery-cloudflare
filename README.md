@@ -10,3 +10,4 @@ Responsive Chinese gallery platform for curated photo and video content, designe
 - `docs/UI_DESIGN.md`: Initial UI design brief.
 - `docs/DEPLOYMENT.md`: Cloudflare deployment and plan notes.
 - `docs/SKILLS_HELPERS.md`: Suggested skill helpers for future work.
+- `docs/SOURCE_SITE_AUDIT.md`: Public audit notes from the current `zuole.me` WordPress site.

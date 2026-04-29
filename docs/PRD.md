@@ -11,10 +11,11 @@
 **Success Criteria**
 
 - 首发版本桌面端和移动端核心页面 Lighthouse Performance >= 85。
-- 在 100,000 条图库记录规模内，组合标签搜索 P95 响应时间 <= 500 ms。
+- 在 100,000 条图库记录规模内，组合标签搜索 P95 响应时间 <= 500 ms；MVP 必须至少覆盖旧站 607 篇公开文章规模。
 - 100 个图库目录的合法导入包，批量导入成功率 >= 98%。
 - 图片原图、完整视频等受保护媒体的服务端权限校验覆盖率为 100%。
 - 管理员完成“上传导入包 -> 校验 -> 草稿预览 -> 发布”的标准流程耗时 <= 3 分钟，不包含视频转码等待时间。
+- 旧站导入后，100% 内容进入草稿或待审核状态，不允许未经审核直接发布。
 
 ## 2. User Experience & Functionality
 
@@ -29,12 +30,23 @@
 ### Information Architecture
 
 - 前台首页：推荐图库、最新图库、热门标签、视频专区、会员入口。
-- 图库列表页：按地区、性格、风格、职业、场景、内容类型等筛选。
+- 图库列表页：按地区、地区组、身份、性格、风格、职业、场景、内容类型等筛选。
 - 标签结果页：展示单个标签或组合标签下的图库。
 - 搜索页：支持关键词、标签、多条件组合。
 - 图库详情页：标题、说明、标签、图片、视频、权限提示、相关推荐。
 - 用户中心：账号信息、会员等级、有效期、站长联系方式。
 - 管理后台：首页概览、图库管理、媒体管理、标签管理、会员管理、导入任务、系统设置、审计日志。
+
+### Legacy Site Requirements
+
+现有 `zuole.me` 为 WordPress 站点，公开 API 显示文章 607 篇、分类 54 个、标签 11 个。新系统需要支持从旧站迁移：
+
+- 文章迁移为图库。
+- WordPress 分类迁移为地区体系，至少包含国内、海外、港澳台、城市/国家。
+- WordPress 标签迁移为结构化标签，至少支持身份、风格、场景、内容类型。
+- WordPress 正文中的图片和视频迁移为媒体资源。
+- 旧 URL 保留为 `legacy_url`，用于后台审计和 SEO 跳转。
+- 敏感或不符合“面向所有人”定位的分类、标签、标题、正文必须进入待审核队列。
 
 ### User Stories
 
@@ -53,7 +65,7 @@ As a 用户, I want to 按地区、性格、风格等标签组合筛选 so that 
 
 Acceptance Criteria:
 
-- 支持标签类型：地区、性格、风格、职业、发型、服饰、场景、内容类型。
+- 支持标签类型：地区范围、地区组、城市/国家、身份、性格、风格、职业、发型、服饰、场景、内容类型。
 - 支持组合筛选，例如“广东 + 甜美 + 视频”。
 - 搜索结果页展示当前筛选条件，并支持单独移除某个条件。
 - 无结果时展示相近标签或热门标签。
@@ -120,6 +132,19 @@ Acceptance Criteria:
 - 联系方式至少支持自由文本，可填写微信、Telegram、邮箱或自定义说明。
 - 配置变更写入审计日志。
 
+**Story 9: 旧站迁移**
+As a 管理员, I want to 从 WordPress 旧站导入公开文章和媒体 so that 我可以把现有资源迁移到新系统并重新审核。
+
+Acceptance Criteria:
+
+- 支持输入旧站 REST API 地址或上传 WordPress 导出 XML。
+- 导入任务记录旧 `post_id`、旧 URL、旧标题、旧分类、旧标签、旧媒体 URL。
+- 正文 HTML 自动解析为图片、视频和文本说明。
+- 旧站分类按映射表转为地区标签。
+- 旧站标签按映射表转为身份、风格、场景等标签类型。
+- 含敏感词、缺少媒体、媒体下载失败或授权状态未知的内容进入待审核。
+- 导入内容默认草稿，不允许直接公开发布。
+
 ### Non-Goals
 
 - MVP 不实现在线支付。
@@ -178,6 +203,8 @@ Evaluation Strategy:
 - `import_jobs`：导入状态、源文件、总数、成功数、失败数、错误报告。
 - `admin_audit_logs`：管理员操作审计。
 - `site_settings`：站点配置、联系方式、SEO 默认值。
+- `legacy_import_sources`：旧站来源、类型、API 地址、导入配置。
+- `legacy_import_items`：旧 post ID、旧 URL、映射图库、导入状态、审核状态。
 
 ### Batch Import Specification
 
@@ -232,10 +259,38 @@ Validation Rules:
 - 未存在标签可自动创建，但标签类型必须合法。
 - `status=published` 需要管理员具备直接发布权限；否则强制导入为草稿。
 
+### WordPress Migration Specification
+
+旧站迁移支持两种来源：
+
+- WordPress REST API：`/wp-json/wp/v2/posts`、`categories`、`tags`、`media`。
+- WordPress XML export：用于 REST API 不完整或需要离线迁移时。
+
+迁移字段映射：
+
+- `post.id` -> `legacy_import_items.legacy_post_id`
+- `post.link` -> `galleries.legacy_url`
+- `post.slug` -> `galleries.legacy_slug`
+- `post.title.rendered` -> `galleries.title`
+- `post.excerpt.rendered` -> `galleries.summary`
+- `post.content.rendered` -> `galleries.body_md` 和 `media_assets`
+- `post.categories` -> 地区标签映射
+- `post.tags` -> 普通标签映射
+
+迁移处理规则：
+
+- WordPress HTML 中的 `<img>` 解析为图片资源。
+- WordPress HTML 中的 `<video>` 解析为视频资源。
+- 远程图片迁移到 R2。
+- 远程视频迁移到 Stream。
+- 旧站公开 URL 生成 SEO redirect 记录。
+- 旧站敏感分类名不直接作为新站前台标签展示，必须通过映射表重命名。
+
 ### Security & Privacy
 
 - 内容必须为合法、授权、全龄可展示的写真、时尚、生活、艺术类素材。
 - 禁止发布未成年人、非自愿、偷拍、泄露隐私、露骨色情、侵权内容。
+- 旧站导入内容必须经过合规审核；含敏感交易、暗示性服务、年龄风险或授权不明的文案不得直接发布。
 - R2 私有资源不得公开列目录。
 - 受保护图片和完整视频必须经服务端校验后签发短期访问地址。
 - 后台接口必须做角色校验和审计记录。
@@ -252,6 +307,7 @@ MVP:
 - 管理员手动发放会员等级和有效期。
 - 后台图库、标签、媒体、站点设置管理。
 - zip 批量导入。
+- WordPress 旧站导入和迁移预览。
 - 受保护图片和视频访问控制。
 - 基础审计日志。
 

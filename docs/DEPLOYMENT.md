@@ -152,7 +152,20 @@ MVP 内测期:
 - WAF 和基本 rate limiting 已启用。
 - 登录、搜索、详情、媒体权限、导入流程通过验收。
 
-## 9. 参考资料
+## 9. 旧站迁移部署计划
+
+迁移 `https://zuole.me/` 时建议分阶段进行：
+
+1. 新系统先部署到临时域名，例如 `preview.zuole.me` 或 Cloudflare Pages 预览域名。
+2. 使用 WordPress REST API 读取公开文章、分类、标签和媒体 URL。
+3. 将图片迁移到 R2，将视频迁移到 Stream。
+4. 所有迁移内容先进入草稿或待审核。
+5. 完成分类和标签清洗后再批量发布。
+6. 为旧文章 URL 生成跳转映射。
+7. 正式切换域名时，将 `zuole.me` DNS 指向 Cloudflare Pages。
+8. 保留旧 WordPress 站点只读备份，至少覆盖一个完整审核周期。
+
+## 10. 参考资料
 
 - Cloudflare Pages: https://developers.cloudflare.com/pages/
 - Pages Git integration: https://developers.cloudflare.com/pages/configuration/git-integration/
