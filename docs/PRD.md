@@ -1,250 +1,185 @@
-# MeiGallery Cloudflare PRD
+# MeiGallery Cloudflare 产品需求文档
 
 ## 1. Executive Summary
 
 **Problem Statement**  
-The product needs a responsive Chinese gallery website that can present curated image and video content, support structured discovery through categories and tags, and provide controlled access to premium media without online payments.
+需要建设一个中文响应式图库平台，用于展示经过授权的写真、时尚、生活、艺术类图片和视频内容。平台需要支持标签化浏览、搜索、登录、会员等级解锁、后台发布和批量导入，同时保证媒体访问控制和内容合规。
 
 **Proposed Solution**  
-Build a Cloudflare-based front and back office platform. The public site supports browsing, login, tag search, gallery details, and membership-gated media. The admin console supports content publishing, tag management, batch imports, manual membership grants, validity periods, and audit logs.
+基于 Cloudflare Pages、Workers、D1、R2、Stream、Turnstile 建设前后台一体平台。前台提供桌面端和手机端浏览体验，后台提供图库管理、标签管理、批量导入、会员等级发放、有效期管理、资源权限控制和审计记录。
 
 **Success Criteria**
 
-- Desktop and mobile key pages reach Lighthouse Performance >= 85 before production launch.
-- Combined tag search returns results within 500 ms for 100,000 gallery records under normal load.
-- Batch import succeeds for >= 98% of valid galleries in a 100-gallery package.
-- Protected video and image access has 100% server-side membership validation coverage.
-- An administrator can import, review, and publish a valid gallery package within 3 minutes after upload processing completes.
+- 首发版本桌面端和移动端核心页面 Lighthouse Performance >= 85。
+- 在 100,000 条图库记录规模内，组合标签搜索 P95 响应时间 <= 500 ms。
+- 100 个图库目录的合法导入包，批量导入成功率 >= 98%。
+- 图片原图、完整视频等受保护媒体的服务端权限校验覆盖率为 100%。
+- 管理员完成“上传导入包 -> 校验 -> 草稿预览 -> 发布”的标准流程耗时 <= 3 分钟，不包含视频转码等待时间。
 
 ## 2. User Experience & Functionality
 
 ### User Personas
 
-- Visitor: Browses public galleries, searches by tags, views open images and previews.
-- Registered User: Logs in, views more free content, checks membership status, and contacts the site owner.
-- Member: Unlocks additional images or full videos according to membership level and validity period.
-- Administrator: Publishes content, imports media packages, manages tags, and manually grants membership levels.
-- Site Owner: Controls contact information, membership policy, content compliance, and operational metrics.
+- 访客：浏览公开图库、查看公开图片、观看试看视频、按标签筛选内容。
+- 注册用户：登录后查看更多免费内容、查看会员状态、获取站长联系方式。
+- 会员用户：按照会员等级和有效期解锁更多图片、高清视频或完整视频。
+- 管理员：发布图库、批量导入资源、管理标签、发放会员等级、处理内容上下架。
+- 站长：配置联系方式、制定会员等级、查看运营数据、把控合规和内容质量。
+
+### Information Architecture
+
+- 前台首页：推荐图库、最新图库、热门标签、视频专区、会员入口。
+- 图库列表页：按地区、性格、风格、职业、场景、内容类型等筛选。
+- 标签结果页：展示单个标签或组合标签下的图库。
+- 搜索页：支持关键词、标签、多条件组合。
+- 图库详情页：标题、说明、标签、图片、视频、权限提示、相关推荐。
+- 用户中心：账号信息、会员等级、有效期、站长联系方式。
+- 管理后台：首页概览、图库管理、媒体管理、标签管理、会员管理、导入任务、系统设置、审计日志。
 
 ### User Stories
 
-**Story 1: Browse Gallery Content**  
-As a visitor, I want to browse curated galleries on desktop and mobile so that I can quickly discover interesting public content.
+**Story 1: 浏览图库**
+As a 访客, I want to 在桌面端和手机端浏览图库 so that 我可以快速发现公开内容。
 
 Acceptance Criteria:
 
-- Homepage shows latest galleries, recommended galleries, popular tags, and video entries.
-- Layout adapts to desktop, tablet, and mobile screens.
-- Gallery cards show cover image, title, key tags, and membership requirement.
-- Public content can be viewed without login.
+- 首页展示最新图库、推荐图库、热门标签和视频入口。
+- 图库卡片展示封面、标题、主要标签、内容类型、是否需要会员。
+- 移动端首屏不出现横向滚动，图片布局自适应。
+- 公开内容无需登录即可查看。
 
-**Story 2: Search and Filter by Tags**  
-As a user, I want to filter galleries by tags such as region and personality so that I can find content matching my preferences.
-
-Acceptance Criteria:
-
-- Search supports tag types including region, personality, style, occupation, hair, clothing, scene, and media type.
-- Users can combine multiple tags in one query.
-- Search results show active filters and allow removing individual filters.
-- Empty results provide related tag suggestions.
-
-**Story 3: View Gallery Details**  
-As a user, I want to open a gallery detail page so that I can read its description and view available photos or videos.
+**Story 2: 标签筛选与搜索**
+As a 用户, I want to 按地区、性格、风格等标签组合筛选 so that 我可以找到符合偏好的内容。
 
 Acceptance Criteria:
 
-- Detail page shows title, description, tags, cover, image list, video preview, publish time, and related galleries.
-- Locked media is visibly marked with the required membership level.
-- Unauthorized users see a login or contact-site-owner prompt instead of protected media URLs.
-- Related galleries are based on shared tags.
+- 支持标签类型：地区、性格、风格、职业、发型、服饰、场景、内容类型。
+- 支持组合筛选，例如“广东 + 甜美 + 视频”。
+- 搜索结果页展示当前筛选条件，并支持单独移除某个条件。
+- 无结果时展示相近标签或热门标签。
+- 标签 URL 可分享，例如 `/tags/region/guangdong` 或 `/search?tags=guangdong,sweet,video`。
 
-**Story 4: Login and Membership Status**  
-As a registered user, I want to log in and view my membership level so that I understand what content I can unlock.
-
-Acceptance Criteria:
-
-- Login and registration forms include bot protection.
-- Account page shows current membership level, start time, expiration time, and site owner contact information.
-- Expired memberships automatically lose premium access.
-- Users cannot change their own membership level.
-
-**Story 5: Manual Membership Grant**  
-As an administrator, I want to assign membership levels and validity periods so that users can unlock premium content after contacting the site owner.
+**Story 3: 查看图库详情**
+As a 用户, I want to 查看图库详情 so that 我可以阅读说明、浏览图片和观看视频。
 
 Acceptance Criteria:
 
-- Admin can search users by account, nickname, or contact field.
-- Admin can assign level, start time, end time, and internal note.
-- Each change writes an audit log with admin ID, user ID, old value, new value, and timestamp.
-- Membership level takes effect immediately after saving.
+- 详情页展示标题、简介、正文、标签、发布时间、封面、图片列表、视频区域、相关推荐。
+- 公开视频可试看，完整视频根据会员等级解锁。
+- 未授权用户不能在 HTML、API 响应或播放器配置中拿到受保护资源的真实访问地址。
+- 锁定内容展示所需等级和联系站长入口。
+- 相关推荐基于共享标签生成。
 
-**Story 6: Admin Content Publishing**  
-As an administrator, I want to create and edit galleries so that only approved content appears on the public site.
-
-Acceptance Criteria:
-
-- Admin can create draft galleries with title, description, tags, cover, images, videos, status, and required level.
-- Admin can preview draft content before publishing.
-- Admin can publish, unpublish, archive, or edit galleries.
-- Public users cannot upload or publish content.
-
-**Story 7: Batch Import**  
-As an administrator, I want to upload a local package containing copy, images, and videos so that I can publish many galleries efficiently.
+**Story 4: 登录和会员状态**
+As a 注册用户, I want to 登录并查看会员状态 so that 我知道自己能解锁哪些内容。
 
 Acceptance Criteria:
 
-- Admin can upload a zip package following the import specification.
-- System validates required files, allowed file types, duplicate folders, and manifest fields.
-- Valid galleries are imported as drafts by default.
-- Failed gallery folders show row-level errors without blocking other valid galleries.
-- Import history shows status, totals, success count, failure count, and error report.
+- 登录和注册表单接入 Turnstile。
+- 用户中心展示当前等级、开始时间、到期时间、权益说明和站长联系方式。
+- 会员到期后自动失去对应权限。
+- 用户不能自行修改会员等级和有效期。
+
+**Story 5: 手动发放会员等级**
+As a 管理员, I want to 给用户设置会员等级和有效期 so that 用户联系站长后可以获得对应权限。
+
+Acceptance Criteria:
+
+- 管理员可按邮箱、昵称、用户 ID 搜索用户。
+- 管理员可设置等级、开始时间、结束时间、内部备注。
+- 保存后立即生效。
+- 每次变更写入审计日志，记录管理员、目标用户、变更前后值和时间。
+
+**Story 6: 后台发布图库**
+As a 管理员, I want to 创建、编辑、预览、发布图库 so that 只有审核后的内容出现在前台。
+
+Acceptance Criteria:
+
+- 管理员可编辑标题、摘要、正文、封面、图片、视频、标签、所需等级、发布状态。
+- 支持草稿、已发布、已下架、归档状态。
+- 发布前可预览前台详情页效果。
+- 普通用户没有上传、编辑、发布入口。
+
+**Story 7: 批量导入内容**
+As a 管理员, I want to 上传包含文案、图片、视频的本地导入包 so that 我可以高效创建多个图库草稿。
+
+Acceptance Criteria:
+
+- 支持上传 zip 导入包。
+- 系统校验目录结构、必填文件、CSV 字段、文件类型、重复 slug、资源大小。
+- 合法图库默认导入为草稿。
+- 单个图库失败不影响其他图库继续导入。
+- 导入结果展示总数、成功数、失败数、错误报告下载入口。
+
+**Story 8: 内容和系统设置**
+As a 站长, I want to 配置联系方式、默认会员等级和站点基础信息 so that 运营信息可以独立维护。
+
+Acceptance Criteria:
+
+- 后台可配置站点名称、SEO 默认标题、联系方式、会员说明。
+- 联系方式至少支持自由文本，可填写微信、Telegram、邮箱或自定义说明。
+- 配置变更写入审计日志。
 
 ### Non-Goals
 
-- No online payment in the initial version.
-- No public user uploads or creator accounts.
-- No comments, private messages, or social feed.
-- No crawler-based content collection.
-- No multilingual experience in the initial version.
-- No AI automation in the initial release.
+- MVP 不实现在线支付。
+- MVP 不开放普通用户上传或投稿。
+- MVP 不做评论、私信、关注、动态流。
+- MVP 不做爬虫采集。
+- MVP 不做多语言。
+- MVP 不让 AI 自动发布内容。
 
 ## 3. AI System Requirements
 
-AI is not required for the initial release.
+MVP 不需要 AI。
 
-Future optional AI capabilities:
+后续可选 AI 能力：
 
-- Auto-suggest tags from image metadata and gallery copy.
-- Generate draft summaries from administrator-provided content.
-- Assist content moderation by flagging possible copyright, privacy, or policy risks.
-- Recommend similar galleries based on tags and user behavior.
+- 自动建议标签：根据正文和媒体元数据推荐地区、风格、场景等标签。
+- 自动摘要：根据管理员提供的正文生成短摘要。
+- 内容风险辅助检查：提示疑似版权、隐私、未成年人、露骨内容等风险。
+- 相似图库推荐：基于标签、行为和媒体特征推荐内容。
 
-Evaluation Strategy for future AI:
+Evaluation Strategy:
 
-- Tag suggestion precision@10 >= 85% on a manually reviewed validation set.
-- Moderation assistant false-negative rate must be reviewed before any automated workflow is allowed.
-- AI output must remain advisory; administrators make final publishing decisions.
+- 自动标签 Precision@10 >= 85%，使用人工标注样本验证。
+- 内容风险辅助检查必须由管理员复核，不允许自动发布或自动下架。
+- AI 生成内容必须保留人工编辑入口和变更记录。
 
 ## 4. Technical Specifications
 
 ### Architecture Overview
 
-- Cloudflare Pages hosts the responsive frontend and admin frontend.
-- Cloudflare Workers or Pages Functions expose API endpoints for auth, galleries, search, media access, imports, and admin operations.
-- Cloudflare D1 stores structured data such as users, memberships, galleries, tags, assets, import jobs, and audit logs.
-- Cloudflare R2 stores imported zip packages, private image originals, generated thumbnails, and import error reports.
-- Cloudflare Stream stores, encodes, and serves video assets with access control.
-- Cloudflare Turnstile protects login, registration, and sensitive forms.
-- Cloudflare WAF and rate limiting protect public and admin endpoints.
+- 前端：Cloudflare Pages，承载前台和后台管理界面。
+- API：Cloudflare Workers 或 Pages Functions，提供认证、图库、搜索、导入、媒体授权、后台管理接口。
+- 数据库：Cloudflare D1，存储用户、会员、图库、标签、媒体、导入任务、审计日志。
+- 对象存储：Cloudflare R2，存储导入包、图片原图、缩略图、导入错误报告。
+- 视频：Cloudflare Stream，负责视频上传、转码、播放和受限访问。
+- 安全：Cloudflare Turnstile、WAF、Rate Limiting、签名访问、服务端权限校验。
 
 ### Integration Points
 
-- Auth: Email/password or magic link login, with role-based access for administrators.
-- D1: Relational records for domain data and queryable tag search.
-- R2: Object storage for image assets and import packages.
-- Stream: Video upload, preview playback, full video playback, and signed access.
-- Turnstile: Bot protection for public forms and admin login.
-- Contact: Configurable site owner contact methods displayed to registered users.
+- Auth：邮箱密码或 magic link，管理员角色独立授权。
+- D1：结构化数据、搜索过滤、会员有效期判断。
+- R2：私有图片和导入文件存储。
+- Stream：试看视频、完整视频、签名播放。
+- Turnstile：登录、注册、后台登录、批量导入表单防护。
+- GitHub：代码仓库关联 Cloudflare Pages，推送 main 自动生产部署，PR 自动预览部署。
 
-### Suggested Data Model
+### Data Model Summary
 
-`users`
-
-- `id`
-- `email`
-- `nickname`
-- `password_hash`
-- `role`
-- `status`
-- `created_at`
-- `updated_at`
-
-`membership_levels`
-
-- `id`
-- `code`
-- `name`
-- `rank`
-- `description`
-- `created_at`
-
-`user_memberships`
-
-- `id`
-- `user_id`
-- `level_id`
-- `starts_at`
-- `expires_at`
-- `admin_note`
-- `created_by`
-- `created_at`
-
-`galleries`
-
-- `id`
-- `title`
-- `slug`
-- `summary`
-- `body_md`
-- `cover_asset_id`
-- `required_level_id`
-- `status`
-- `published_at`
-- `created_at`
-- `updated_at`
-
-`media_assets`
-
-- `id`
-- `gallery_id`
-- `type`
-- `storage_provider`
-- `r2_key`
-- `stream_uid`
-- `access_level_id`
-- `sort_order`
-- `created_at`
-
-`tags`
-
-- `id`
-- `type`
-- `name`
-- `slug`
-- `created_at`
-
-`gallery_tags`
-
-- `gallery_id`
-- `tag_id`
-
-`import_jobs`
-
-- `id`
-- `status`
-- `source_r2_key`
-- `total_count`
-- `success_count`
-- `failure_count`
-- `error_report_r2_key`
-- `created_by`
-- `created_at`
-- `completed_at`
-
-`admin_audit_logs`
-
-- `id`
-- `admin_id`
-- `action`
-- `target_type`
-- `target_id`
-- `before_json`
-- `after_json`
-- `created_at`
+- `users`：账号、昵称、密码哈希、角色、状态。
+- `membership_levels`：等级 code、名称、排序、说明。
+- `user_memberships`：用户、等级、生效时间、到期时间、备注、创建管理员。
+- `galleries`：标题、slug、摘要、正文、封面、状态、所需等级、发布时间。
+- `media_assets`：图库、媒体类型、存储服务、R2 key、Stream UID、访问等级、排序。
+- `tags`：标签类型、名称、slug。
+- `gallery_tags`：图库标签关联。
+- `import_jobs`：导入状态、源文件、总数、成功数、失败数、错误报告。
+- `admin_audit_logs`：管理员操作审计。
+- `site_settings`：站点配置、联系方式、SEO 默认值。
 
 ### Batch Import Specification
-
-Default package:
 
 ```text
 gallery-import.zip
@@ -269,9 +204,9 @@ gallery-import.zip
 `manifest.csv`:
 
 ```csv
-folder,title,region,personality,style,tags,required_level,status
-gallery-001,夏日写真,广东,甜美,清新,"长发,户外,视频",vip,draft
-gallery-002,城市街拍,上海,高冷,都市,"短发,街拍",free,published
+folder,title,slug,region,personality,style,tags,required_level,status
+gallery-001,夏日写真,summer-portrait-001,广东,甜美,清新,"长发,户外,视频",vip,draft
+gallery-002,城市街拍,city-snap-002,上海,高冷,都市,"短发,街拍",free,draft
 ```
 
 `content.md`:
@@ -286,28 +221,25 @@ gallery-002,城市街拍,上海,高冷,都市,"短发,街拍",free,published
 - 风格：清新
 ```
 
-Validation rules:
+Validation Rules:
 
-- `manifest.csv`, `content.md`, and `cover.jpg` are required.
-- Each gallery folder must include at least one image.
-- Supported image formats: jpg, jpeg, png, webp.
-- Supported video format for import: mp4.
-- `videos/preview.mp4` is optional and may be available to public users.
-- `videos/full.mp4` is optional and must respect gallery or asset-level membership requirements.
-- Unknown tags are created automatically after validation.
-- Invalid rows produce error messages with folder and field names.
-- Import defaults to draft unless `status=published` is explicitly allowed by admin permission.
+- `manifest.csv`、`content.md`、`cover.jpg` 必填。
+- 每个图库目录至少包含一张图片。
+- 图片格式支持 jpg、jpeg、png、webp。
+- 视频导入格式首期支持 mp4。
+- `videos/preview.mp4` 可选，默认可公开视频。
+- `videos/full.mp4` 可选，默认按图库等级或资源等级保护。
+- 未存在标签可自动创建，但标签类型必须合法。
+- `status=published` 需要管理员具备直接发布权限；否则强制导入为草稿。
 
 ### Security & Privacy
 
-- Content must only include lawful, authorized, all-audience model, portrait, lifestyle, fashion, or art material.
-- The platform must not publish underage, non-consensual, private, leaked, explicit, or copyright-infringing content.
-- Protected R2 objects must not be publicly listable.
-- Full video playback requires server-side membership validation and signed access.
-- Admin routes require role-based authorization.
-- Sensitive admin actions require audit logs.
-- Login, registration, and admin forms use Turnstile and rate limiting.
-- Public search endpoints must limit query complexity and request rate.
+- 内容必须为合法、授权、全龄可展示的写真、时尚、生活、艺术类素材。
+- 禁止发布未成年人、非自愿、偷拍、泄露隐私、露骨色情、侵权内容。
+- R2 私有资源不得公开列目录。
+- 受保护图片和完整视频必须经服务端校验后签发短期访问地址。
+- 后台接口必须做角色校验和审计记录。
+- 登录、注册、后台敏感操作必须有 Turnstile 和速率限制。
 
 ## 5. Risks & Roadmap
 
@@ -315,41 +247,41 @@ Validation rules:
 
 MVP:
 
-- Responsive public gallery pages.
-- Login and membership status.
-- Manual admin membership grants with expiration.
-- Gallery, tag, and media management.
-- Batch import from local zip package.
-- Protected image and video access.
-- Basic audit logs.
+- 响应式前台：首页、列表、搜索、详情、用户中心。
+- 登录、注册、会员状态。
+- 管理员手动发放会员等级和有效期。
+- 后台图库、标签、媒体、站点设置管理。
+- zip 批量导入。
+- 受保护图片和视频访问控制。
+- 基础审计日志。
 
 v1.1:
 
-- Favorites and browsing history.
-- SEO metadata management.
-- Import validation preview before processing.
-- Operational dashboard for views, plays, searches, and membership conversions.
-- Better related-gallery recommendations.
+- 收藏、浏览历史。
+- SEO 元信息管理。
+- 导入前预览和二次确认。
+- 运营看板：浏览量、播放量、搜索词、会员转化线索。
+- 标签合并和标签别名。
 
 v2.0:
 
-- AI-assisted tagging and summaries.
-- AI-assisted content risk review.
-- Advanced analytics and A/B testing.
-- Multi-language support if needed.
+- AI 辅助标签和摘要。
+- AI 辅助内容风险检查。
+- 高级推荐。
+- 多语言。
 
 ### Technical Risks
 
-- Video storage and bandwidth costs can grow quickly; monitor Stream usage from the start.
-- Large imports may exceed synchronous request limits; design import processing as asynchronous jobs.
-- Tag taxonomy can become inconsistent; admin UI needs controlled tag types and merge tools.
-- Media protection must be enforced at the API and storage layer, not only through hidden frontend UI.
-- Compliance risk is high for people-focused media; authorization records and review workflows should be preserved.
+- 视频存储和播放成本可能快速增长，需要从 MVP 起记录 Stream 用量。
+- 大导入包可能超过同步请求能力，应设计为异步导入任务。
+- 标签体系容易失控，需要后台限制标签类型并提供合并工具。
+- 媒体防盗链不能只靠前端隐藏，必须由 API 和存储层共同控制。
+- 人像类内容存在合规风险，需要保存授权来源和审核记录。
 
 ### Open Questions
 
-- Which login method should be used first: email/password or magic link?
-- What exact membership levels should launch: free, vip, svip, or a custom set?
-- Which site owner contact methods should be displayed: email, Telegram, WeChat, WhatsApp, or a custom contact page?
-- Should image thumbnails be generated during import or lazily on first request?
-- Should published imports be allowed, or should all imported content require manual review first?
+- 首期登录方式选邮箱密码还是 magic link？
+- 初始会员等级是否采用 free、vip、svip？
+- 站长联系方式展示微信、Telegram、邮箱，还是自定义富文本？
+- 缩略图在导入时生成，还是首次访问时生成？
+- 导入包是否允许直接发布，还是全部强制进入草稿审核？
