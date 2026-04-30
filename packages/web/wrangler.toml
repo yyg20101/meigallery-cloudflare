@@ -11,9 +11,13 @@ directory = ".output/public"
 NUXT_PUBLIC_APP_ENV = "production"
 NUXT_PUBLIC_API_BASE_URL = "https://api.meigallery.com"
 
-# 本地开发覆盖
+# ─── 开发环境 ───
 [env.dev]
 name = "meigallery-web-dev"
+
+[env.dev.assets]
+directory = ".output/public"
+
 [env.dev.vars]
 NUXT_PUBLIC_APP_ENV = "development"
-NUXT_PUBLIC_API_BASE_URL = "http://localhost:8787"
+NUXT_PUBLIC_API_BASE_URL = "https://meigallery-api-dev.<你的子域>.workers.dev"

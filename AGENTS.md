@@ -107,6 +107,38 @@ gallery-001,夏日写真,summer-portrait-001,广东,甜美,清新,"长发,户外
 - 原始媒体存储在私有 bucket 或受保护服务中，公开变体通过显式 URL 分发。
 - 为权限校验、导入解析、会员到期和搜索过滤编写重点测试。
 
+## Git 分支策略
+
+详细规范见 `docs/GIT_WORKFLOW.md`。核心要点：
+
+| 分支 | 用途 | 部署方式 |
+|------|------|----------|
+| `main` | 生产分支 | GitHub Actions 自动部署 |
+| `dev` | 开发主线 | 手动 `./scripts/deploy.sh dev` |
+| `feature/*` | 功能分支（从 dev 创建） | 无部署 |
+| `fix/*` | 修复分支 | 无部署 |
+
+规则：
+- **禁止直接推送 main**，必须通过 PR 从 dev/release/fix 分支合入。
+- 日常开发在 `dev` 分支进行，功能分支从 `dev` 拉出。
+- 发布上线：从 `dev` 创建 `release/vX.Y.Z` 分支 → 验证 → PR 合入 `main` → 打 tag。
+- 紧急修复：从 `main` 创建 `fix/urgent-xxx` → PR 合入 `main` → 合并回 `dev`。
+- Commit message 格式：`类型: 简要描述`（中文），类型包括 feat/fix/refactor/test/docs/deploy/style/chore。
+
+## 部署流程
+
+| 环境 | 触发 | Worker 名称 |
+|------|------|-------------|
+| 生产 | 推送 `main`（GitHub Actions） | `meigallery-api` / `meigallery-web` |
+| 开发 | 手动 `./scripts/deploy.sh dev` | `meigallery-api-dev` / `meigallery-web-dev` |
+| 本地 | `pnpm dev` | localhost:8787 / localhost:3000 |
+
+CI/CD 配置位于 `.github/workflows/`：
+- `ci.yml`：PR 和 dev 推送触发，运行测试 + 构建验证
+- `deploy-production.yml`：main 推送触发，执行 D1 迁移 + 部署双 Worker
+
+首次部署前需执行 `./scripts/setup.sh` 创建 Cloudflare 资源。
+
 ## 任务完成流程
 
 每完成一个任务阶段，必须按以下顺序执行：
@@ -114,7 +146,7 @@ gallery-001,夏日写真,summer-portrait-001,广东,甜美,清新,"长发,户外
 1. **更新进度**：标记当前任务为已完成，记录产出物。
 2. **验证构建**：运行 `pnpm --filter @meigallery/api exec tsc --noEmit` 和 `pnpm --filter @meigallery/web exec nuxt build` 确认无阻断性错误。
 3. **提交代码**：`git add -A && git commit -m "..."` ，commit message 使用中文，格式为 `类型: 简要描述`。
-4. **推送远端**：`git push` 至 `origin/main`。
+4. **推送远端**：`git push`。在 `dev` 分支开发时推送到 `origin/dev`，上线通过 PR 合入 `main`。
 
 不得跳过任何步骤，不得积压多个任务后再统一提交。
 
@@ -126,8 +158,8 @@ gallery-001,夏日写真,summer-portrait-001,广东,甜美,清新,"长发,户外
 - 组件预览：**Histoire**
 - 包管理器：pnpm（workspace monorepo）
 - 本地开发：`pnpm dev`（同时启动 web:3000 和 api:8787）
-- 数据库迁移：D1 migrations，放在 `packages/api/db/migrations/`
-- 部署：`wrangler deploy`（两个 Worker 各自独立部署），CI 通过 Workers Builds
+- 数据库迁移：D1 migrations，放在 `packages/api/migrations/`
+- 部署：`wrangler deploy`（两个 Worker 各自独立部署），CI 通过 GitHub Actions
 - 环境变量：`SESSION_SECRET`、`TURNSTILE_SECRET_KEY`、`STREAM_ACCOUNT_ID`、`STREAM_API_TOKEN`、`NUXT_PUBLIC_API_BASE_URL`
 
 ## 关键参考文档
@@ -138,6 +170,7 @@ gallery-001,夏日写真,summer-portrait-001,广东,甜美,清新,"长发,户外
 | `docs/TECHNICAL_SPEC.md` | API 路由、权限模型、模块划分、迁移流程 |
 | `docs/UI_DESIGN.md` | UI 设计初稿 |
 | `docs/DEPLOYMENT.md` | Cloudflare 部署方案、环境变量、域名结构 |
+| `docs/GIT_WORKFLOW.md` | Git 分支策略、Commit 规范、版本号规范 |
 | `docs/SOURCE_SITE_AUDIT.md` | 旧站 `zuole.me` WordPress 审计记录 |
 
 生成实现代码前，必须先阅读本文件和 `docs/TECHNICAL_SPEC.md`。

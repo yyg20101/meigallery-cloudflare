@@ -16,7 +16,7 @@ migrations_dir = "migrations"
 binding = "R2"
 bucket_name = "meigallery-media"
 
-# 环境变量（非敏感）
+# 环境变量（非敏感）— 生产默认值
 [vars]
 APP_ENV = "production"
 CORS_ORIGIN = "https://meigallery.com"
@@ -27,9 +27,19 @@ CORS_ORIGIN = "https://meigallery.com"
 # wrangler secret put STREAM_ACCOUNT_ID
 # wrangler secret put STREAM_API_TOKEN
 
-# 本地开发覆盖
+# ─── 开发环境 ───
 [env.dev]
 name = "meigallery-api-dev"
+
+[[env.dev.d1_databases]]
+binding = "DB"
+database_name = "meigallery-db-dev"
+database_id = "local-placeholder"  # 替换为 dev 环境的 D1 ID
+
+[[env.dev.r2_buckets]]
+binding = "R2"
+bucket_name = "meigallery-media-dev"
+
 [env.dev.vars]
 APP_ENV = "development"
-CORS_ORIGIN = "http://localhost:3000"
+CORS_ORIGIN = "https://meigallery-web-dev.<你的子域>.workers.dev"
