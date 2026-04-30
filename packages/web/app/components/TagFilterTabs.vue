@@ -79,10 +79,10 @@ const selectedTagNames = computed(() => {
       <span
         v-for="st in selectedTagNames"
         :key="st.slug"
-        class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full text-xs flex items-center gap-1"
+        class="bg-gray-200 text-gray-800 px-2 py-0.5 rounded-full text-xs flex items-center gap-1"
       >
         {{ st.name }}
-        <button class="hover:text-blue-900" @click="emit('toggle', st.slug)">✕</button>
+        <button class="hover:text-gray-900" @click="emit('toggle', st.slug)">✕</button>
       </span>
       <button class="text-xs text-gray-400 hover:text-gray-600 ml-auto" @click="emit('clear')">清除全部</button>
     </div>

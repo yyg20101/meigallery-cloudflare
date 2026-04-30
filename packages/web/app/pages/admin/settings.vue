@@ -62,7 +62,7 @@ async function toggleEmailVerification() {
     })
     emailVerificationEnabled.value = newVal
   } catch (e: any) {
-    alert(e?.data?.message || '操作失败')
+    useToast().add({ title: e?.data?.message || '操作失败', color: 'error' })
   } finally {
     toggleLoading.value = false
   }

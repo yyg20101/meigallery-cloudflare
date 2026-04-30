@@ -111,32 +111,53 @@ async function resetPassword() {
 const roleLoading = ref(false)
 const statusLoading = ref(false)
 
+const toast = useToast()
+
+// 确认弹窗状态
+const showConfirmModal = ref(false)
+const confirmMessage = ref('')
+const confirmCallback = ref<(() => Promise<void>) | null>(null)
+
+function requestConfirm(msg: string, cb: () => Promise<void>) {
+  confirmMessage.value = msg
+  confirmCallback.value = cb
+  showConfirmModal.value = true
+}
+
+async function doConfirm() {
+  showConfirmModal.value = false
+  if (confirmCallback.value) await confirmCallback.value()
+}
+
 async function changeRole(newRole: string) {
-  if (!confirm(`确认将角色修改为「${newRole === 'admin' ? '管理员' : '用户'}」？`)) return
-  roleLoading.value = true
-  try {
-    await api(`/api/admin/users/${userId}/role`, { method: 'PATCH', body: { role: newRole } })
-    refresh()
-  } catch (e: any) {
-    alert(e?.data?.message || '操作失败')
-  } finally {
-    roleLoading.value = false
-  }
+  requestConfirm(`确认将角色修改为「${newRole === 'admin' ? '管理员' : '用户'}」？`, async () => {
+    roleLoading.value = true
+    try {
+      await api(`/api/admin/users/${userId}/role`, { method: 'PATCH', body: { role: newRole } })
+      refresh()
+    } catch (e: any) {
+      toast.add({ title: e?.data?.message || '操作失败', color: 'error' })
+    } finally {
+      roleLoading.value = false
+    }
+  })
 }
 
 async function toggleStatus() {
   const newStatus = userData.value?.status === 'active' ? 'banned' : 'active'
   const label = newStatus === 'banned' ? '封禁' : '解封'
-  if (!confirm(`确认${label}该用户？${newStatus === 'banned' ? '用户所有会话将被清除。' : ''}`)) return
-  statusLoading.value = true
-  try {
-    await api(`/api/admin/users/${userId}/status`, { method: 'PATCH', body: { status: newStatus } })
-    refresh()
-  } catch (e: any) {
-    alert(e?.data?.message || '操作失败')
-  } finally {
-    statusLoading.value = false
-  }
+  const extra = newStatus === 'banned' ? '用户所有会话将被清除。' : ''
+  requestConfirm(`确认${label}该用户？${extra}`, async () => {
+    statusLoading.value = true
+    try {
+      await api(`/api/admin/users/${userId}/status`, { method: 'PATCH', body: { status: newStatus } })
+      refresh()
+    } catch (e: any) {
+      toast.add({ title: e?.data?.message || '操作失败', color: 'error' })
+    } finally {
+      statusLoading.value = false
+    }
+  })
 }
 
 // ============ 发放会员 ============
@@ -378,4 +399,16 @@ function formatDate(dateStr: string | undefined): string {
       </div>
     </div>
   </div>
+
+  <!-- 确认弹窗 -->
+  <UModal v-model="showConfirmModal">
+    <div class="p-6">
+      <h3 class="text-base font-semibold text-gray-900 mb-3">确认操作</h3>
+      <p class="text-sm text-gray-600 mb-4">{{ confirmMessage }}</p>
+      <div class="flex gap-3">
+        <button class="rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700" @click="doConfirm">确认</button>
+        <button class="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" @click="showConfirmModal = false">取消</button>
+      </div>
+    </div>
+  </UModal>
 </template>

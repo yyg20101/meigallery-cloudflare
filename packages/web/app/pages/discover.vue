@@ -186,8 +186,15 @@ const sortOptions = [
     </div>
 
     <!-- 初始加载中 -->
-    <div v-if="isInitialLoading" class="py-20 text-center text-gray-400">
-      加载中...
+    <div v-if="isInitialLoading" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 lg:gap-3">
+      <div v-for="i in 12" :key="i">
+        <div class="aspect-[3/4] bg-gray-200 animate-pulse rounded-md" />
+        <div class="mt-2 h-4 w-3/4 bg-gray-200 animate-pulse rounded" />
+        <div class="mt-1 flex gap-1">
+          <div class="h-4 w-10 bg-gray-200 animate-pulse rounded-full" />
+          <div class="h-4 w-10 bg-gray-200 animate-pulse rounded-full" />
+        </div>
+      </div>
     </div>
 
     <!-- 空结果 -->

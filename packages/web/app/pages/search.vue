@@ -143,10 +143,10 @@ useSeoMeta({
     <!-- 当前筛选条件 -->
     <div v-if="selectedTags.length > 0 || keyword" class="mb-4 flex flex-wrap items-center gap-2">
       <span class="text-sm text-gray-500">当前筛选：</span>
-      <span v-if="keyword" class="rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700">
+      <span v-if="keyword" class="rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-800">
         关键词: {{ keyword }}
       </span>
-      <span v-for="slug in selectedTags" :key="slug" class="rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700">
+      <span v-for="slug in selectedTags" :key="slug" class="rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-800">
         {{ slug }}
         <button class="ml-1" @click="toggleTag(slug)">&times;</button>
       </span>
@@ -158,7 +158,7 @@ useSeoMeta({
       <button
         v-for="tag in relatedTags"
         :key="tag.id"
-        class="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs cursor-pointer hover:bg-blue-100 transition-colors"
+        class="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-xs cursor-pointer hover:bg-gray-200 transition-colors"
         @click="goToTag(tag.slug)"
       >
         {{ tag.name }}
@@ -198,7 +198,7 @@ useSeoMeta({
         <button
           v-for="tag in popularTags"
           :key="tag.id"
-          class="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs cursor-pointer hover:bg-blue-100 transition-colors"
+          class="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-xs cursor-pointer hover:bg-gray-200 transition-colors"
           @click="goToTag(tag.slug)"
         >
           {{ tag.name }}

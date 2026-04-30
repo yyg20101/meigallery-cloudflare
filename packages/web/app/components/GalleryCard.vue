@@ -26,16 +26,16 @@ const levelBadge = computed(() => {
 </script>
 
 <template>
-  <NuxtLink :to="`/gallery/${gallery.slug}`" class="group block overflow-hidden rounded-md bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
-    <div class="aspect-video overflow-hidden bg-gray-100 relative">
-      <img
+  <NuxtLink :to="`/gallery/${gallery.slug}`" class="group block overflow-hidden rounded-md bg-white shadow-sm transition-all duration-200 hover:-translate-y-[2px] hover:shadow-lg">
+    <div class="relative overflow-hidden">
+      <LazyImage
         v-if="gallery.coverUrl"
         :src="gallery.coverUrl"
         :alt="gallery.title"
-        class="h-full w-full object-cover transition-transform group-hover:scale-105"
-        loading="lazy"
+        aspect-ratio="16/9"
+        class="transition-transform group-hover:scale-105"
       />
-      <div v-else class="flex h-full items-center justify-center text-gray-400">
+      <div v-else class="flex aspect-video items-center justify-center bg-gray-100 text-gray-400">
         <span class="text-sm">暂无封面</span>
       </div>
       <!-- VIP 角标 -->
