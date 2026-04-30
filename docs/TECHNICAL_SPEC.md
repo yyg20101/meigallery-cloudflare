@@ -28,7 +28,7 @@
 
 ## 4. API 分组
 
-Public API:
+公开 API：
 
 - `GET /api/galleries`
 - `GET /api/galleries/:slug`
@@ -40,7 +40,7 @@ Public API:
 - `GET /api/me`
 - `GET /api/media/:assetId/access`
 
-Admin API:
+管理员 API：
 
 - `GET /api/admin/dashboard`
 - `GET /api/admin/galleries`
@@ -66,14 +66,14 @@ Admin API:
 
 ## 5. 权限模型
 
-User roles:
+用户角色：
 
 - `visitor`：未登录用户，逻辑角色。
 - `user`：普通注册用户。
 - `admin`：管理员，可管理内容和会员。
 - `owner`：站长，可管理系统设置和高级权限。
 
-Membership:
+会员等级：
 
 - 使用 `membership_levels.rank` 判断访问能力。
 - `free` rank = 0。
@@ -81,7 +81,7 @@ Membership:
 - `svip` rank = 20。
 - 业务逻辑不要硬编码等级名，必须比较 rank 或权限配置。
 
-Media access:
+媒体访问控制：
 
 - 公开缩略图可直接 CDN 缓存。
 - 公开试看视频可直接播放或短期签名播放。

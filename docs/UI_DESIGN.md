@@ -69,26 +69,26 @@
 
 ## 4. 组件清单
 
-- GalleryCard
-- TagChip
-- FilterBar
-- SearchInput
-- MediaLock
-- VideoPreview
-- MembershipBadge
-- AdminDataTable
-- ImportUploader
-- ImportJobStatus
-- LegacyImportWizard
-- LegacyContentReview
-- MembershipEditor
-- AuditLogTable
+- GalleryCard — 图库卡片
+- TagChip — 标签标记
+- FilterBar — 筛选栏
+- SearchInput — 搜索输入框
+- MediaLock — 媒体锁定提示
+- VideoPreview — 视频预览
+- MembershipBadge — 会员等级标识
+- AdminDataTable — 后台数据表格
+- ImportUploader — 导入上传器
+- ImportJobStatus — 导入任务状态
+- LegacyImportWizard — 旧站导入向导
+- LegacyContentReview — 旧站内容审核
+- MembershipEditor — 会员编辑器
+- AuditLogTable — 审计日志表格
 
 ## 5. 响应式断点
 
-- Mobile: 360 px - 767 px。
-- Tablet: 768 px - 1023 px。
-- Desktop: >= 1024 px。
+- 手机端：360 px - 767 px。
+- 平板端：768 px - 1023 px。
+- 桌面端：>= 1024 px。
 
 ## 6. 可访问性要求
 
