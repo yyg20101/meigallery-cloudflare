@@ -20,26 +20,26 @@ const PAGE_SIZE = 24
 // 响应式状态
 const selectedSlugs = ref<string[]>([])
 const sortBy = ref<'latest' | 'hot' | 'random'>('latest')
-const currentPage = ref(1)
 
 // 从 URL 初始化状态
 function syncFromRoute() {
   const q = route.query
   selectedSlugs.value = q.tag ? String(q.tag).split(',').filter(Boolean) : []
   sortBy.value = (['latest', 'hot', 'random'].includes(String(q.sort)) ? String(q.sort) : 'latest') as typeof sortBy.value
-  currentPage.value = Number(q.page) || 1
 }
 syncFromRoute()
 
 // 监听路由变化（浏览器前进后退）
-watch(() => route.query, syncFromRoute)
+watch(() => route.query, () => {
+  syncFromRoute()
+  resetAndFetch()
+})
 
-// 同步状态到 URL
+// 同步状态到 URL（不带 page）
 function updateQuery() {
   const query: Record<string, string> = {}
   if (selectedSlugs.value.length) query.tag = selectedSlugs.value.join(',')
   if (sortBy.value !== 'latest') query.sort = sortBy.value
-  if (currentPage.value > 1) query.page = String(currentPage.value)
   router.push({ path: '/discover', query })
 }
 
@@ -50,24 +50,16 @@ function toggleTag(slug: string) {
   } else {
     selectedSlugs.value.push(slug)
   }
-  currentPage.value = 1
   updateQuery()
 }
 
 function clearTags() {
   selectedSlugs.value = []
-  currentPage.value = 1
   updateQuery()
 }
 
 function setSort(val: 'latest' | 'hot' | 'random') {
   sortBy.value = val
-  currentPage.value = 1
-  updateQuery()
-}
-
-function goToPage(page: number) {
-  currentPage.value = page
   updateQuery()
 }
 
@@ -80,41 +72,82 @@ const { data: tagsData } = await useAsyncData('discover-tags', () =>
 
 const tags = computed(() => tagsData.value?.data ?? {})
 
-const { data: galleriesData, status } = await useAsyncData(
+// 无限滚动状态
+const galleries = ref<GallerySummary[]>([])
+const total = ref(0)
+const currentPage = ref(1)
+const isLoading = ref(false)
+const isInitialLoading = ref(true)
+const hasMore = computed(() => galleries.value.length < total.value)
+
+// 首次加载（SSR 兼容）
+const { data: initialData } = await useAsyncData(
   'discover-galleries',
   () =>
     api<{ data: GallerySummary[]; total: number }>('/api/galleries', {
       query: {
         pageSize: PAGE_SIZE,
-        page: currentPage.value,
+        page: 1,
         tag: selectedSlugs.value.length ? selectedSlugs.value.join(',') : undefined,
         sort: sortBy.value,
       },
     }),
-  { watch: [selectedSlugs, currentPage, sortBy] },
+  { watch: [selectedSlugs, sortBy] },
 )
 
-const galleries = computed(() => galleriesData.value?.data ?? [])
-const total = computed(() => galleriesData.value?.total ?? 0)
-const totalPages = computed(() => Math.ceil(total.value / PAGE_SIZE))
-
-// 分页页码列表
-const pageNumbers = computed(() => {
-  const pages: (number | '...')[] = []
-  const tp = totalPages.value
-  const cp = currentPage.value
-  if (tp <= 7) {
-    for (let i = 1; i <= tp; i++) pages.push(i)
-  } else {
-    pages.push(1)
-    if (cp > 3) pages.push('...')
-    const start = Math.max(2, cp - 1)
-    const end = Math.min(tp - 1, cp + 1)
-    for (let i = start; i <= end; i++) pages.push(i)
-    if (cp < tp - 2) pages.push('...')
-    pages.push(tp)
+watch(initialData, (val) => {
+  if (val) {
+    galleries.value = val.data
+    total.value = val.total
+    currentPage.value = 1
+    isInitialLoading.value = false
   }
-  return pages
+}, { immediate: true })
+
+// 重置并重新加载
+function resetAndFetch() {
+  currentPage.value = 1
+  galleries.value = []
+  isInitialLoading.value = true
+}
+
+// 加载更多
+async function loadMore() {
+  if (isLoading.value || !hasMore.value) return
+  isLoading.value = true
+  try {
+    const nextPage = currentPage.value + 1
+    const data = await api<{ data: GallerySummary[]; total: number }>('/api/galleries', {
+      query: {
+        pageSize: PAGE_SIZE,
+        page: nextPage,
+        tag: selectedSlugs.value.length ? selectedSlugs.value.join(',') : undefined,
+        sort: sortBy.value,
+      },
+    })
+    galleries.value.push(...data.data)
+    total.value = data.total
+    currentPage.value = nextPage
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// IntersectionObserver 哨兵
+const sentinel = ref<HTMLElement | null>(null)
+
+onMounted(() => {
+  if (!sentinel.value) return
+  const observer = new IntersectionObserver(
+    (entries) => {
+      if (entries[0].isIntersecting && hasMore.value && !isLoading.value) {
+        loadMore()
+      }
+    },
+    { rootMargin: '200px' },
+  )
+  observer.observe(sentinel.value)
+  onUnmounted(() => observer.disconnect())
 })
 
 const sortOptions = [
@@ -152,8 +185,8 @@ const sortOptions = [
       </div>
     </div>
 
-    <!-- 加载中 -->
-    <div v-if="status === 'pending'" class="py-20 text-center text-gray-400">
+    <!-- 初始加载中 -->
+    <div v-if="isInitialLoading" class="py-20 text-center text-gray-400">
       加载中...
     </div>
 
@@ -169,36 +202,22 @@ const sortOptions = [
       </button>
     </div>
 
-    <!-- 图库网格 -->
+    <!-- 图库网格 + 无限滚动 -->
     <template v-else>
       <GalleryGrid :galleries="galleries" />
 
-      <!-- 分页 -->
-      <nav v-if="totalPages > 1" class="flex items-center justify-center gap-1 mt-8">
-        <button
-          v-for="p in pageNumbers"
-          :key="p"
-          :disabled="p === '...'"
-          class="min-w-[36px] h-9 px-2 text-sm rounded-md transition-colors"
-          :class="
-            p === '...'
-              ? 'cursor-default text-gray-400'
-              : p === currentPage
-                ? 'bg-gray-900 text-white font-medium'
-                : 'text-gray-700 hover:bg-gray-100'
-          "
-          @click="p !== '...' && goToPage(p)"
-        >
-          {{ p }}
-        </button>
-        <button
-          v-if="currentPage < totalPages"
-          class="min-w-[36px] h-9 px-2 text-sm rounded-md text-gray-700 hover:bg-gray-100"
-          @click="goToPage(currentPage + 1)"
-        >
-          →
-        </button>
-      </nav>
+      <!-- 加载更多指示 -->
+      <div v-if="isLoading" class="py-8 text-center text-gray-400">
+        加载中...
+      </div>
+
+      <!-- 无限滚动哨兵 -->
+      <div v-if="hasMore" ref="sentinel" class="h-px" />
+
+      <!-- 全部加载完毕 -->
+      <div v-if="!hasMore && galleries.length > 0" class="py-8 text-center text-sm text-gray-400">
+        已加载全部 {{ total }} 个图库
+      </div>
     </template>
   </div>
 </template>

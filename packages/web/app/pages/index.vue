@@ -16,9 +16,11 @@ interface TagGroup {
   [type: string]: Array<{ id: string; name: string; slug: string }>
 }
 
+const PAGE_SIZE = 12
+
 // 获取图库数据
 const { data: galleriesData } = await useAsyncData('home-galleries', () =>
-  api<{ data: GallerySummary[]; total: number }>('/api/galleries', { query: { pageSize: '12' } }),
+  api<{ data: GallerySummary[]; total: number }>('/api/galleries', { query: { pageSize: String(PAGE_SIZE) } }),
 )
 
 // 获取标签
@@ -26,13 +28,33 @@ const { data: tagsData } = await useAsyncData('home-tags', () =>
   api<{ data: TagGroup }>('/api/tags'),
 )
 
-const allGalleries = computed(() => galleriesData.value?.data ?? [])
+// 无限加载状态
+const allGalleries = ref<GallerySummary[]>(galleriesData.value?.data ?? [])
+const totalGalleries = computed(() => galleriesData.value?.total ?? 0)
+const currentPage = ref(1)
+const loadingMore = ref(false)
+const hasMore = computed(() => allGalleries.value.length < totalGalleries.value)
+
+async function loadMore() {
+  if (loadingMore.value || !hasMore.value) return
+  loadingMore.value = true
+  try {
+    const nextPage = currentPage.value + 1
+    const data = await api<{ data: GallerySummary[]; total: number }>('/api/galleries', {
+      query: { pageSize: String(PAGE_SIZE), page: String(nextPage) },
+    })
+    allGalleries.value.push(...data.data)
+    currentPage.value = nextPage
+  } finally {
+    loadingMore.value = false
+  }
+}
 
 // 精选专题：前 3 条
 const featured = computed(() => allGalleries.value.slice(0, 3))
 
-// 最新图库：第 4-11 条（8 条）
-const latest = computed(() => allGalleries.value.slice(3, 11))
+// 最新图库：第 4 条起
+const latest = computed(() => allGalleries.value.slice(3))
 
 // 视频专区：筛选包含视频标签的图库，最多显示 3 条
 const videoGalleries = computed(() =>
@@ -51,6 +73,23 @@ const hotTags = computed(() => {
     }
   }
   return all.slice(0, 15)
+})
+
+// 无限滚动哨兵
+const sentinel = ref<HTMLElement | null>(null)
+
+onMounted(() => {
+  if (!sentinel.value) return
+  const observer = new IntersectionObserver(
+    (entries) => {
+      if (entries[0].isIntersecting && hasMore.value && !loadingMore.value) {
+        loadMore()
+      }
+    },
+    { rootMargin: '200px' },
+  )
+  observer.observe(sentinel.value)
+  onUnmounted(() => observer.disconnect())
 })
 
 useSeoMeta({
@@ -82,6 +121,12 @@ useSeoMeta({
       <GalleryGrid :galleries="latest" />
       <div v-if="latest.length === 0" class="py-20 text-center text-gray-400">
         暂无图库内容
+      </div>
+      <!-- 加载更多 -->
+      <div v-if="loadingMore" class="py-6 text-center text-gray-400 text-sm">加载中...</div>
+      <div v-if="hasMore" ref="sentinel" class="h-px" />
+      <div v-if="!hasMore && allGalleries.length > PAGE_SIZE" class="py-6 text-center text-sm text-gray-400">
+        已展示全部图库
       </div>
     </section>
 
