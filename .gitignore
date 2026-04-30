@@ -39,3 +39,4 @@ coverage/
 
 # pnpm lockfile 在各子包的 node_modules
 packages/*/node_modules/
+.superpowers/
