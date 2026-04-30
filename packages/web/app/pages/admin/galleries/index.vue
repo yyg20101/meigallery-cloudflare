@@ -64,6 +64,10 @@ const levelLabels: Record<number, string> = {
   20: 'SVIP',
 }
 
+function formatDate(d: string) {
+  return d?.replace('T', ' ').substring(0, 16) ?? '-'
+}
+
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 function onSearchInput() {
   if (searchTimer) clearTimeout(searchTimer)
@@ -435,7 +439,7 @@ async function unpublishGallery(id: string) {
             <td class="px-4 py-3">
               <span class="text-xs">{{ levelLabels[g.required_level_rank] ?? `Lv.${g.required_level_rank}` }}</span>
             </td>
-            <td class="px-4 py-3 text-gray-500">{{ g.updated_at?.split('T')[0] }}</td>
+            <td class="px-4 py-3 text-gray-500">{{ formatDate(g.updated_at) }}</td>
             <td class="px-4 py-3 text-right space-x-2">
               <NuxtLink :to="`/admin/galleries/${g.id}`" class="text-xs text-blue-600 hover:underline">编辑</NuxtLink>
               <button v-if="g.status === 'draft'" class="text-xs text-green-600 hover:underline" @click="publishGallery(g.id)">发布</button>
