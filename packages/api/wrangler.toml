@@ -21,10 +21,19 @@ migrations_dir = "migrations"
 binding = "R2"
 bucket_name = "meigallery-media"
 
+# Email Service（发送事务性邮件）
+[[send_email]]
+name = "EMAIL"
+
+# Cron Trigger（定时任务）
+[triggers]
+crons = ["0 0 * * *"]  # 每天 UTC 00:00（北京时间 08:00）
+
 # 环境变量（非敏感）— 生产默认值
 [vars]
 APP_ENV = "production"
 CORS_ORIGIN = "https://616618.xyz"
+EMAIL_FROM = "noreply@616618.xyz"
 
 # 敏感变量需通过 wrangler secret put 设置：
 # wrangler secret put SESSION_SECRET
@@ -48,3 +57,4 @@ bucket_name = "meigallery-media-dev"
 [env.dev.vars]
 APP_ENV = "development"
 CORS_ORIGIN = "*"  # 部署后替换为实际 workers.dev URL
+EMAIL_FROM = "noreply@616618.xyz"

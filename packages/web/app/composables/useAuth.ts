@@ -1,6 +1,6 @@
 /**
  * 认证 composable
- * 管理用户状态、登录、注册、登出
+ * 管理用户状态、登录、注册、登出、验证码、密码重置
  */
 export function useAuth() {
   const { api } = useApi()
@@ -46,13 +46,30 @@ export function useAuth() {
     return result
   }
 
-  async function register(email: string, password: string, nickname?: string, turnstileToken?: string) {
+  /** 发送验证码 */
+  async function sendCode(email: string, purpose: 'register' | 'password_reset', turnstileToken?: string) {
+    return await api<{ message: string; cooldown: number }>('/api/auth/send-code', {
+      method: 'POST',
+      body: { email, purpose, turnstileToken },
+    })
+  }
+
+  /** 注册（含验证码） */
+  async function register(email: string, password: string, nickname?: string, code?: string, turnstileToken?: string) {
     const result = await api<UserInfo>('/api/auth/register', {
       method: 'POST',
-      body: { email, password, nickname, turnstileToken },
+      body: { email, password, nickname, code, turnstileToken },
     })
     user.value = result
     return result
+  }
+
+  /** 密码重置 */
+  async function resetPassword(email: string, code: string, newPassword: string) {
+    return await api<{ message: string }>('/api/auth/reset-password', {
+      method: 'POST',
+      body: { email, code, newPassword },
+    })
   }
 
   async function logout() {
@@ -64,5 +81,9 @@ export function useAuth() {
     }
   }
 
-  return { user, isLoggedIn, isAdmin, isOwner, membershipRank, membershipLevel, membershipExpiry, fetchUser, login, register, logout }
+  return {
+    user, isLoggedIn, isAdmin, isOwner,
+    membershipRank, membershipLevel, membershipExpiry,
+    fetchUser, login, sendCode, register, resetPassword, logout,
+  }
 }

@@ -1,53 +1,47 @@
 <script setup lang="ts">
-const { register, sendCode, isLoggedIn } = useAuth()
+const { sendCode, resetPassword } = useAuth()
 const router = useRouter()
 const config = useRuntimeConfig()
 
 // 表单数据
-const nickname = ref('')
 const email = ref('')
-const password = ref('')
-const confirmPassword = ref('')
 const verificationCode = ref('')
+const newPassword = ref('')
+const confirmPassword = ref('')
 const error = ref('')
+const success = ref('')
 const loading = ref(false)
 const codeSending = ref(false)
 const turnstileToken = ref('')
 const turnstileExpired = ref(false)
 
-// 步骤控制：1=填写信息 2=输入验证码
+// 步骤控制：1=输入邮箱 2=输入验证码+新密码 3=完成
 const step = ref(1)
 
-// 验证码冷却倒计时
+// 冷却倒计时
 const cooldown = ref(0)
 let cooldownTimer: ReturnType<typeof setInterval> | null = null
 
 const turnstileSiteKey = computed(() => config.public.turnstileSiteKey as string)
 const hasTurnstile = computed(() => !!turnstileSiteKey.value)
 
-// Turnstile 验证通过前禁止提交
 const canSubmit = computed(() => {
   if (!hasTurnstile.value) return true
   return !!turnstileToken.value && !turnstileExpired.value
 })
 
-if (isLoggedIn.value) {
-  router.replace('/')
-}
-
-// Turnstile 回调
 onMounted(() => {
   if (!hasTurnstile.value) return
 
-  ;(window as any).onTurnstileRegisterSuccess = (token: string) => {
+  ;(window as any).onTurnstileResetSuccess = (token: string) => {
     turnstileToken.value = token
     turnstileExpired.value = false
   }
-  ;(window as any).onTurnstileRegisterExpired = () => {
+  ;(window as any).onTurnstileResetExpired = () => {
     turnstileToken.value = ''
     turnstileExpired.value = true
   }
-  ;(window as any).onTurnstileRegisterError = () => {
+  ;(window as any).onTurnstileResetError = () => {
     turnstileToken.value = ''
     error.value = '人机验证加载失败，请刷新页面重试'
   }
@@ -76,31 +70,16 @@ function startCooldown(seconds: number) {
   }, 1000)
 }
 
-function resetTurnstile() {
-  if (hasTurnstile.value && typeof (window as any).turnstile?.reset === 'function') {
-    ;(window as any).turnstile.reset('#turnstile-register')
-    turnstileToken.value = ''
-  }
-}
-
-/** 第一步：验证表单并发送验证码 */
+/** 第一步：发送验证码 */
 async function onSendCode() {
   error.value = ''
 
-  if (!email.value || !password.value || !confirmPassword.value) {
-    error.value = '请填写所有必填项'
+  if (!email.value) {
+    error.value = '请输入邮箱'
     return
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value)) {
     error.value = '邮箱格式无效'
-    return
-  }
-  if (password.value !== confirmPassword.value) {
-    error.value = '两次输入的密码不一致'
-    return
-  }
-  if (password.value.length < 8) {
-    error.value = '密码长度至少 8 位'
     return
   }
   if (hasTurnstile.value && !turnstileToken.value) {
@@ -112,30 +91,26 @@ async function onSendCode() {
   try {
     const result = await sendCode(
       email.value,
-      'register',
+      'password_reset',
       hasTurnstile.value ? turnstileToken.value : undefined,
     )
     startCooldown(result.cooldown || 60)
     step.value = 2
   } catch (e: any) {
     const msg = e?.data ? (() => { try { return JSON.parse(e.data)?.message } catch { return null } })() : null
-    error.value = msg || e?.message || '发送验证码失败，请重试'
-    resetTurnstile()
+    error.value = msg || '发送失败，请重试'
   } finally {
     codeSending.value = false
   }
 }
 
-/** 重新发送验证码（在第二步） */
+/** 重新发送验证码 */
 async function onResendCode() {
   if (cooldown.value > 0) return
   error.value = ''
   codeSending.value = true
   try {
-    // 重新发送需要重置 Turnstile
-    resetTurnstile()
-    // 简化处理：不要求重新过 Turnstile（已在第一步验证过）
-    const result = await sendCode(email.value, 'register')
+    const result = await sendCode(email.value, 'password_reset')
     startCooldown(result.cooldown || 60)
   } catch (e: any) {
     const msg = e?.data ? (() => { try { return JSON.parse(e.data)?.message } catch { return null } })() : null
@@ -145,41 +120,37 @@ async function onResendCode() {
   }
 }
 
-/** 第二步：提交验证码完成注册 */
-async function onSubmit() {
+/** 第二步：重置密码 */
+async function onResetPassword() {
   error.value = ''
 
   if (!verificationCode.value || verificationCode.value.length !== 6) {
     error.value = '请输入 6 位验证码'
     return
   }
+  if (!newPassword.value || newPassword.value.length < 8) {
+    error.value = '新密码长度至少 8 位'
+    return
+  }
+  if (newPassword.value !== confirmPassword.value) {
+    error.value = '两次输入的密码不一致'
+    return
+  }
 
   loading.value = true
   try {
-    await register(
-      email.value,
-      password.value,
-      nickname.value || undefined,
-      verificationCode.value,
-      hasTurnstile.value ? turnstileToken.value : undefined,
-    )
-    router.push('/')
+    await resetPassword(email.value, verificationCode.value, newPassword.value)
+    step.value = 3
+    success.value = '密码重置成功，请使用新密码登录'
   } catch (e: any) {
     const msg = e?.data ? (() => { try { return JSON.parse(e.data)?.message } catch { return null } })() : null
-    error.value = msg || e?.message || '注册失败，请重试'
+    error.value = msg || '重置失败，请重试'
   } finally {
     loading.value = false
   }
 }
 
-/** 返回第一步 */
-function backToStep1() {
-  step.value = 1
-  verificationCode.value = ''
-  error.value = ''
-}
-
-useSeoMeta({ title: '注册 - MeiGallery', robots: 'noindex' })
+useSeoMeta({ title: '忘记密码 - MeiGallery', robots: 'noindex' })
 
 definePageMeta({ layout: 'default' })
 </script>
@@ -187,28 +158,16 @@ definePageMeta({ layout: 'default' })
 <template>
   <div class="-mt-14 min-h-screen flex items-center justify-center bg-gray-50 px-4">
     <div class="w-full max-w-sm bg-white rounded-2xl shadow-sm p-8">
-      <!-- Logo & Slogan -->
+      <!-- Logo -->
       <h1 class="text-2xl font-bold text-center">MeiGallery</h1>
-      <p class="text-sm text-gray-400 text-center mt-1 mb-8">创建账号，解锁更多内容</p>
+      <p class="text-sm text-gray-400 text-center mt-1 mb-8">重置你的密码</p>
 
-      <!-- Error -->
+      <!-- Error / Success -->
       <div v-if="error" class="text-red-500 text-sm text-center mb-4">{{ error }}</div>
+      <div v-if="success" class="text-green-600 text-sm text-center mb-4">{{ success }}</div>
 
-      <!-- ========== 第一步：填写信息 ========== -->
+      <!-- ========== 第一步：输入邮箱 ========== -->
       <form v-if="step === 1" class="space-y-4" @submit.prevent="onSendCode">
-        <!-- 昵称 -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">昵称</label>
-          <input
-            v-model="nickname"
-            type="text"
-            autocomplete="nickname"
-            class="border border-gray-200 rounded-lg px-4 py-2.5 w-full text-sm focus:ring-2 focus:ring-gray-900 focus:border-transparent outline-none"
-            placeholder="你的昵称（可选）"
-          />
-        </div>
-
-        <!-- 邮箱 -->
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">邮箱</label>
           <input
@@ -220,39 +179,15 @@ definePageMeta({ layout: 'default' })
           />
         </div>
 
-        <!-- 密码 -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">密码</label>
-          <input
-            v-model="password"
-            type="password"
-            autocomplete="new-password"
-            class="border border-gray-200 rounded-lg px-4 py-2.5 w-full text-sm focus:ring-2 focus:ring-gray-900 focus:border-transparent outline-none"
-            placeholder="至少 8 位"
-          />
-        </div>
-
-        <!-- 确认密码 -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">确认密码</label>
-          <input
-            v-model="confirmPassword"
-            type="password"
-            autocomplete="new-password"
-            class="border border-gray-200 rounded-lg px-4 py-2.5 w-full text-sm focus:ring-2 focus:ring-gray-900 focus:border-transparent outline-none"
-            placeholder="再次输入密码"
-          />
-        </div>
-
-        <!-- Turnstile 人机验证 -->
+        <!-- Turnstile -->
         <div v-if="hasTurnstile" class="flex justify-center">
           <div
-            id="turnstile-register"
+            id="turnstile-reset"
             class="cf-turnstile"
             :data-sitekey="turnstileSiteKey"
-            data-callback="onTurnstileRegisterSuccess"
-            data-expired-callback="onTurnstileRegisterExpired"
-            data-error-callback="onTurnstileRegisterError"
+            data-callback="onTurnstileResetSuccess"
+            data-expired-callback="onTurnstileResetExpired"
+            data-error-callback="onTurnstileResetError"
             data-theme="light"
             data-language="zh-cn"
           />
@@ -262,12 +197,10 @@ definePageMeta({ layout: 'default' })
           <span class="text-xs text-gray-400">开发模式 · 人机验证已跳过</span>
         </div>
 
-        <!-- 过期提示 -->
         <p v-if="turnstileExpired" class="text-xs text-amber-600 text-center">
           验证已过期，请重新完成人机验证
         </p>
 
-        <!-- 发送验证码按钮 -->
         <button
           type="submit"
           :disabled="codeSending || !canSubmit"
@@ -277,13 +210,13 @@ definePageMeta({ layout: 'default' })
         </button>
       </form>
 
-      <!-- ========== 第二步：输入验证码 ========== -->
-      <form v-else class="space-y-4" @submit.prevent="onSubmit">
+      <!-- ========== 第二步：输入验证码和新密码 ========== -->
+      <form v-else-if="step === 2" class="space-y-4" @submit.prevent="onResetPassword">
         <div class="bg-gray-50 rounded-lg p-3 text-sm text-gray-600 text-center">
           验证码已发送至 <span class="font-medium text-gray-900">{{ email }}</span>
         </div>
 
-        <!-- 验证码输入 -->
+        <!-- 验证码 -->
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">验证码</label>
           <input
@@ -318,28 +251,64 @@ definePageMeta({ layout: 'default' })
           </button>
         </div>
 
-        <!-- 注册按钮 -->
+        <!-- 新密码 -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">新密码</label>
+          <input
+            v-model="newPassword"
+            type="password"
+            autocomplete="new-password"
+            class="border border-gray-200 rounded-lg px-4 py-2.5 w-full text-sm focus:ring-2 focus:ring-gray-900 focus:border-transparent outline-none"
+            placeholder="至少 8 位"
+          />
+        </div>
+
+        <!-- 确认新密码 -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">确认新密码</label>
+          <input
+            v-model="confirmPassword"
+            type="password"
+            autocomplete="new-password"
+            class="border border-gray-200 rounded-lg px-4 py-2.5 w-full text-sm focus:ring-2 focus:ring-gray-900 focus:border-transparent outline-none"
+            placeholder="再次输入新密码"
+          />
+        </div>
+
         <button
           type="submit"
-          :disabled="loading || verificationCode.length !== 6"
+          :disabled="loading"
           class="w-full bg-gray-900 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {{ loading ? '注册中...' : '完成注册' }}
+          {{ loading ? '重置中...' : '重置密码' }}
         </button>
 
-        <!-- 返回上一步 -->
         <button
           type="button"
           class="w-full text-sm text-gray-500 hover:text-gray-700"
-          @click="backToStep1"
+          @click="step = 1; error = ''"
         >
-          返回修改信息
+          返回修改邮箱
         </button>
       </form>
 
+      <!-- ========== 第三步：成功 ========== -->
+      <div v-else class="text-center space-y-4">
+        <div class="w-16 h-16 mx-auto bg-green-50 rounded-full flex items-center justify-center">
+          <svg class="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+        </div>
+        <p class="text-gray-700">密码重置成功</p>
+        <button
+          class="w-full bg-gray-900 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-gray-800"
+          @click="router.push('/login')"
+        >
+          前往登录
+        </button>
+      </div>
+
       <!-- 底部链接 -->
       <p class="text-center text-sm text-gray-500 mt-4">
-        已有账号？
+        想起密码了？
         <NuxtLink to="/login" class="font-medium text-gray-900">立即登录</NuxtLink>
       </p>
     </div>

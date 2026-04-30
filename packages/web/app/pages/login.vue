@@ -109,7 +109,7 @@ definePageMeta({ layout: 'default' })
         <div>
           <label class="flex justify-between text-sm font-medium text-gray-700 mb-1">
             <span>密码</span>
-            <a href="#" class="text-xs text-gray-400">忘记密码？</a>
+            <NuxtLink to="/forgot-password" class="text-xs text-gray-400 hover:text-gray-600">忘记密码？</NuxtLink>
           </label>
           <input
             v-model="password"
