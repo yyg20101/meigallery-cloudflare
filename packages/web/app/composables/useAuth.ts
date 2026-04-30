@@ -8,7 +8,9 @@ export function useAuth() {
   interface UserInfo {
     id: string
     email: string
+    username: string | null
     nickname: string | null
+    avatarKey: string | null
     role: string
     status: string
     membershipRank: number
@@ -37,13 +39,22 @@ export function useAuth() {
     }
   }
 
-  async function login(email: string, password: string, turnstileToken?: string) {
+  /**
+   * 登录（支持用户名或邮箱）
+   * @param identifier 用户名或邮箱
+   */
+  async function login(identifier: string, password: string, turnstileToken?: string) {
     const result = await api<UserInfo>('/api/auth/login', {
       method: 'POST',
-      body: { email, password, turnstileToken },
+      body: { identifier, password, turnstileToken },
     })
     user.value = result
     return result
+  }
+
+  /** 检查用户名可用性 */
+  async function checkUsername(username: string) {
+    return await api<{ available: boolean; error?: string }>(`/api/auth/check-username/${encodeURIComponent(username)}`)
   }
 
   /** 发送验证码 */
@@ -54,11 +65,18 @@ export function useAuth() {
     })
   }
 
-  /** 注册（含验证码） */
-  async function register(email: string, password: string, nickname?: string, code?: string, turnstileToken?: string) {
+  /** 注册（含用户名，验证码可选——取决于后端开关） */
+  async function register(params: {
+    email: string
+    password: string
+    username: string
+    nickname?: string
+    code?: string
+    turnstileToken?: string
+  }) {
     const result = await api<UserInfo>('/api/auth/register', {
       method: 'POST',
-      body: { email, password, nickname, code, turnstileToken },
+      body: params,
     })
     user.value = result
     return result
@@ -84,6 +102,6 @@ export function useAuth() {
   return {
     user, isLoggedIn, isAdmin, isOwner,
     membershipRank, membershipLevel, membershipExpiry,
-    fetchUser, login, sendCode, register, resetPassword, logout,
+    fetchUser, login, checkUsername, sendCode, register, resetPassword, logout,
   }
 }

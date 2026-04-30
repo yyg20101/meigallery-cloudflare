@@ -12,9 +12,9 @@ meRoutes.get('/', requireAuth, async (c) => {
   const db = c.env.DB
 
   const user = await db
-    .prepare('SELECT id, email, nickname, role, status FROM users WHERE id = ?')
+    .prepare('SELECT id, email, username, nickname, avatar_key, role, status FROM users WHERE id = ?')
     .bind(userId)
-    .first<{ id: string; email: string; nickname: string | null; role: string; status: string }>()
+    .first<{ id: string; email: string; username: string | null; nickname: string | null; avatar_key: string | null; role: string; status: string }>()
 
   if (!user) {
     return c.json({ statusCode: 404, message: '用户不存在' }, 404)
@@ -34,7 +34,9 @@ meRoutes.get('/', requireAuth, async (c) => {
   return c.json({
     id: user.id,
     email: user.email,
+    username: user.username,
     nickname: user.nickname,
+    avatarKey: user.avatar_key,
     role: user.role,
     status: user.status,
     membershipRank: membership?.max_rank ?? 0,

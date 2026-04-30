@@ -4,6 +4,7 @@ import { hashPassword, verifyPassword } from '../utils/password'
 import { createSession, destroyAllUserSessions } from '../utils/session'
 import { generateId } from '../utils/db'
 import { sendRegistrationCode, sendPasswordResetCode } from '../services/email'
+import { validateUsername } from '@meigallery/shared/utils'
 
 export const authRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -16,7 +17,6 @@ const CODE_TTL_MS = 10 * 60 * 1000     // 10 分钟
 const CODE_COOLDOWN_MS = 60 * 1000      // 60 秒冷却
 const MAX_ATTEMPTS = 3                   // 最多错误次数
 
-/** 生成 6 位数字验证码 */
 function generateVerificationCode(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(4))
   const num = (bytes[0]! << 24 | bytes[1]! << 16 | bytes[2]! << 8 | bytes[3]!) >>> 0
@@ -24,10 +24,55 @@ function generateVerificationCode(): string {
 }
 
 // ============================================================
+// 辅助函数：获取邮箱验证开关
+// ============================================================
+
+async function isEmailVerificationEnabled(db: D1Database): Promise<boolean> {
+  const row = await db
+    .prepare("SELECT value FROM site_settings WHERE key = 'email_verification_enabled'")
+    .first<{ value: string }>()
+  if (!row) return false
+  try {
+    return JSON.parse(row.value) === true || JSON.parse(row.value) === 'true'
+  } catch {
+    return false
+  }
+}
+
+// ============================================================
+// GET /api/auth/check-username/:username - 检查用户名可用性
+// ============================================================
+
+authRoutes.get('/check-username/:username', async (c) => {
+  const username = c.req.param('username').toLowerCase()
+
+  const result = validateUsername(username)
+  if (!result.valid) {
+    return c.json({ available: false, error: result.error })
+  }
+
+  const db = c.env.DB
+  const existing = await db
+    .prepare('SELECT id FROM users WHERE username = ?')
+    .bind(username)
+    .first()
+
+  return c.json({ available: !existing })
+})
+
+// ============================================================
 // POST /api/auth/send-code - 发送验证码
 // ============================================================
 
 authRoutes.post('/send-code', async (c) => {
+  const db = c.env.DB
+
+  // 检查邮箱验证是否开启
+  const verificationEnabled = await isEmailVerificationEnabled(db)
+  if (!verificationEnabled) {
+    return c.json({ statusCode: 400, message: '邮箱验证未开启' }, 400)
+  }
+
   const body = await c.req.json<{
     email?: string
     purpose?: string
@@ -59,8 +104,6 @@ authRoutes.post('/send-code', async (c) => {
     }
   }
 
-  const db = c.env.DB
-
   // 注册场景：检查邮箱是否已注册
   if (purpose === 'register') {
     const existing = await db
@@ -72,19 +115,18 @@ authRoutes.post('/send-code', async (c) => {
     }
   }
 
-  // 密码重置场景：检查邮箱是否存在（不暴露，静默返回成功）
+  // 密码重置场景：不暴露用户是否存在
   if (purpose === 'password_reset') {
     const existing = await db
       .prepare('SELECT id FROM users WHERE email = ?')
       .bind(email)
       .first()
     if (!existing) {
-      // 不暴露用户不存在，返回成功假象
       return c.json({ message: '验证码已发送', cooldown: CODE_COOLDOWN_MS / 1000 })
     }
   }
 
-  // 冷却检查：60 秒内不可重发
+  // 冷却检查
   const recentCode = await db
     .prepare(
       `SELECT id FROM email_verification_codes
@@ -103,7 +145,7 @@ authRoutes.post('/send-code', async (c) => {
   const id = generateId('evc')
   const expiresAt = new Date(Date.now() + CODE_TTL_MS).toISOString()
 
-  // 作废同邮箱同用途的旧验证码
+  // 作废旧验证码
   await db
     .prepare(
       `UPDATE email_verification_codes SET used = 1
@@ -112,7 +154,6 @@ authRoutes.post('/send-code', async (c) => {
     .bind(email, purpose)
     .run()
 
-  // 存入新验证码
   await db
     .prepare(
       `INSERT INTO email_verification_codes (id, email, code, purpose, expires_at)
@@ -137,25 +178,22 @@ authRoutes.post('/send-code', async (c) => {
 })
 
 // ============================================================
-// POST /api/auth/register - 用户注册（含验证码校验）
+// POST /api/auth/register - 用户注册
 // ============================================================
 
 authRoutes.post('/register', async (c) => {
   const body = await c.req.json<{
     email?: string
     password?: string
+    username?: string
     nickname?: string
     code?: string
     turnstileToken?: string
   }>()
 
   // 参数校验
-  if (!body.email || !body.password) {
-    return c.json({ statusCode: 400, message: '邮箱和密码为必填' }, 400)
-  }
-
-  if (!body.code) {
-    return c.json({ statusCode: 400, message: '验证码为必填' }, 400)
+  if (!body.email || !body.password || !body.username) {
+    return c.json({ statusCode: 400, message: '邮箱、密码和用户名为必填' }, 400)
   }
 
   const email = body.email.trim().toLowerCase()
@@ -165,6 +203,13 @@ authRoutes.post('/register', async (c) => {
 
   if (body.password.length < 8) {
     return c.json({ statusCode: 400, message: '密码长度至少 8 位' }, 400)
+  }
+
+  // 用户名校验
+  const username = body.username.toLowerCase()
+  const usernameResult = validateUsername(username)
+  if (!usernameResult.valid) {
+    return c.json({ statusCode: 400, message: usernameResult.error }, 400)
   }
 
   // Turnstile 验证
@@ -180,32 +225,50 @@ authRoutes.post('/register', async (c) => {
 
   const db = c.env.DB
 
-  // 校验验证码
-  const codeValid = await verifyCode(db, email, body.code, 'register')
-  if (!codeValid.success) {
-    return c.json({ statusCode: 400, message: codeValid.error }, 400)
+  // 检查邮箱验证开关
+  const verificationEnabled = await isEmailVerificationEnabled(db)
+
+  // 邮箱验证开启时需要验证码
+  let emailVerified = 0
+  if (verificationEnabled) {
+    if (!body.code) {
+      return c.json({ statusCode: 400, message: '验证码为必填' }, 400)
+    }
+    const codeValid = await verifyCode(db, email, body.code, 'register')
+    if (!codeValid.success) {
+      return c.json({ statusCode: 400, message: codeValid.error }, 400)
+    }
+    emailVerified = 1
   }
 
-  // 检查邮箱是否已注册
-  const existing = await db
+  // 检查邮箱唯一性
+  const existingEmail = await db
     .prepare('SELECT id FROM users WHERE email = ?')
     .bind(email)
     .first()
-
-  if (existing) {
+  if (existingEmail) {
     return c.json({ statusCode: 409, message: '该邮箱已注册' }, 409)
   }
 
-  // 创建用户（已验证邮箱）
+  // 检查用户名唯一性
+  const existingUsername = await db
+    .prepare('SELECT id FROM users WHERE username = ?')
+    .bind(username)
+    .first()
+  if (existingUsername) {
+    return c.json({ statusCode: 409, message: '该用户名已被使用' }, 409)
+  }
+
+  // 创建用户
   const userId = generateId('usr')
   const passwordHash = await hashPassword(body.password)
 
   await db
     .prepare(
-      `INSERT INTO users (id, email, nickname, password_hash, role, status, email_verified)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO users (id, email, username, nickname, password_hash, role, status, email_verified)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .bind(userId, email, body.nickname?.trim() || null, passwordHash, 'user', 'active', 1)
+    .bind(userId, email, username, body.nickname?.trim() || null, passwordHash, 'user', 'active', emailVerified)
     .run()
 
   // 创建会话
@@ -214,6 +277,7 @@ authRoutes.post('/register', async (c) => {
   return c.json({
     id: userId,
     email,
+    username,
     nickname: body.nickname?.trim() || null,
     role: 'user',
     status: 'active',
@@ -245,13 +309,11 @@ authRoutes.post('/reset-password', async (c) => {
 
   const db = c.env.DB
 
-  // 校验验证码
   const codeValid = await verifyCode(db, email, body.code, 'password_reset')
   if (!codeValid.success) {
     return c.json({ statusCode: 400, message: codeValid.error }, 400)
   }
 
-  // 查找用户
   const user = await db
     .prepare('SELECT id FROM users WHERE email = ?')
     .bind(email)
@@ -261,35 +323,34 @@ authRoutes.post('/reset-password', async (c) => {
     return c.json({ statusCode: 404, message: '用户不存在' }, 404)
   }
 
-  // 更新密码
   const passwordHash = await hashPassword(body.newPassword)
   await db
     .prepare('UPDATE users SET password_hash = ?, updated_at = datetime(\'now\') WHERE id = ?')
     .bind(passwordHash, user.id)
     .run()
 
-  // 清除所有已有 session
   await destroyAllUserSessions(db, user.id)
 
   return c.json({ message: '密码重置成功，请重新登录' })
 })
 
 // ============================================================
-// POST /api/auth/login - 用户登录
+// POST /api/auth/login - 用户登录（支持用户名或邮箱）
 // ============================================================
 
 authRoutes.post('/login', async (c) => {
   const body = await c.req.json<{
-    email?: string
+    identifier?: string  // 用户名或邮箱
+    email?: string       // 兼容旧字段
     password?: string
     turnstileToken?: string
   }>()
 
-  if (!body.email || !body.password) {
-    return c.json({ statusCode: 400, message: '邮箱和密码为必填' }, 400)
+  // 兼容：优先使用 identifier，回退到 email
+  const rawIdentifier = (body.identifier || body.email || '').trim()
+  if (!rawIdentifier || !body.password) {
+    return c.json({ statusCode: 400, message: '用户名/邮箱和密码为必填' }, 400)
   }
-
-  const email = body.email.trim().toLowerCase()
 
   // Turnstile 验证
   if (c.env.TURNSTILE_SECRET_KEY) {
@@ -304,38 +365,35 @@ authRoutes.post('/login', async (c) => {
 
   const db = c.env.DB
 
-  // 查找用户
-  const user = await db
-    .prepare('SELECT id, email, nickname, password_hash, role, status FROM users WHERE email = ?')
-    .bind(email)
-    .first<{
-      id: string
-      email: string
-      nickname: string | null
-      password_hash: string
-      role: string
-      status: string
-    }>()
+  // 判断输入是邮箱还是用户名
+  const isEmail = rawIdentifier.includes('@')
+  const identifier = rawIdentifier.toLowerCase()
+
+  const user = isEmail
+    ? await db
+        .prepare('SELECT id, email, username, nickname, password_hash, role, status FROM users WHERE email = ?')
+        .bind(identifier)
+        .first<{ id: string; email: string; username: string | null; nickname: string | null; password_hash: string; role: string; status: string }>()
+    : await db
+        .prepare('SELECT id, email, username, nickname, password_hash, role, status FROM users WHERE username = ?')
+        .bind(identifier)
+        .first<{ id: string; email: string; username: string | null; nickname: string | null; password_hash: string; role: string; status: string }>()
 
   if (!user) {
-    return c.json({ statusCode: 401, message: '邮箱或密码错误' }, 401)
+    return c.json({ statusCode: 401, message: '用户名/邮箱或密码错误' }, 401)
   }
 
-  // 检查用户状态
   if (user.status !== 'active') {
     return c.json({ statusCode: 403, message: '账号已被禁用' }, 403)
   }
 
-  // 验证密码
   const valid = await verifyPassword(body.password, user.password_hash)
   if (!valid) {
-    return c.json({ statusCode: 401, message: '邮箱或密码错误' }, 401)
+    return c.json({ statusCode: 401, message: '用户名/邮箱或密码错误' }, 401)
   }
 
-  // 创建会话
   await createSession(c, user.id)
 
-  // 查询会员等级
   const membership = await db
     .prepare(`
       SELECT MAX(ml.rank) as max_rank, MAX(um.expires_at) as max_expiry
@@ -349,6 +407,7 @@ authRoutes.post('/login', async (c) => {
   return c.json({
     id: user.id,
     email: user.email,
+    username: user.username,
     nickname: user.nickname,
     role: user.role,
     status: user.status,
@@ -381,10 +440,6 @@ async function verifyTurnstile(secretKey: string, token: string): Promise<boolea
   return result.success
 }
 
-/**
- * 验证邮箱验证码
- * 成功后标记为已使用，失败则增加尝试次数
- */
 async function verifyCode(
   db: D1Database,
   email: string,
@@ -404,19 +459,16 @@ async function verifyCode(
     return { success: false, error: '验证码不存在或已失效，请重新发送' }
   }
 
-  // 检查过期
   if (new Date(record.expires_at) < new Date()) {
     await db.prepare('UPDATE email_verification_codes SET used = 1 WHERE id = ?').bind(record.id).run()
     return { success: false, error: '验证码已过期，请重新发送' }
   }
 
-  // 检查尝试次数
   if (record.attempts >= MAX_ATTEMPTS) {
     await db.prepare('UPDATE email_verification_codes SET used = 1 WHERE id = ?').bind(record.id).run()
     return { success: false, error: '验证码错误次数过多，请重新发送' }
   }
 
-  // 校验验证码
   if (record.code !== code) {
     await db
       .prepare('UPDATE email_verification_codes SET attempts = attempts + 1 WHERE id = ?')
@@ -426,7 +478,6 @@ async function verifyCode(
     return { success: false, error: `验证码错误，还可尝试 ${remaining} 次` }
   }
 
-  // 成功：标记已使用
   await db.prepare('UPDATE email_verification_codes SET used = 1 WHERE id = ?').bind(record.id).run()
   return { success: true }
 }

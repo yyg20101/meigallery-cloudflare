@@ -4,7 +4,7 @@ const route = useRoute()
 const router = useRouter()
 const config = useRuntimeConfig()
 
-const email = ref('')
+const identifier = ref('')
 const password = ref('')
 const error = ref('')
 const loading = ref(false)
@@ -53,8 +53,8 @@ onMounted(() => {
 
 async function onSubmit() {
   error.value = ''
-  if (!email.value || !password.value) {
-    error.value = '请填写邮箱和密码'
+  if (!identifier.value || !password.value) {
+    error.value = '请填写用户名/邮箱和密码'
     return
   }
   if (hasTurnstile.value && !turnstileToken.value) {
@@ -63,7 +63,7 @@ async function onSubmit() {
   }
   loading.value = true
   try {
-    await login(email.value, password.value, hasTurnstile.value ? turnstileToken.value : undefined)
+    await login(identifier.value, password.value, hasTurnstile.value ? turnstileToken.value : undefined)
     navigateTo((route.query.redirect as string) || '/')
   } catch (e: any) {
     error.value = e?.data?.message || e?.message || '登录失败，请重试'
@@ -93,15 +93,15 @@ definePageMeta({ layout: 'default' })
       <div v-if="error" class="text-red-500 text-sm text-center mb-4">{{ error }}</div>
 
       <form class="space-y-4" @submit.prevent="onSubmit">
-        <!-- 邮箱 -->
+        <!-- 用户名 / 邮箱 -->
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">邮箱</label>
+          <label class="block text-sm font-medium text-gray-700 mb-1">用户名 / 邮箱</label>
           <input
-            v-model="email"
-            type="email"
-            autocomplete="email"
+            v-model="identifier"
+            type="text"
+            autocomplete="username"
             class="border border-gray-200 rounded-lg px-4 py-2.5 w-full text-sm focus:ring-2 focus:ring-gray-900 focus:border-transparent outline-none"
-            placeholder="your@email.com"
+            placeholder="输入用户名或邮箱"
           />
         </div>
 
