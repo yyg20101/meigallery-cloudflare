@@ -12,11 +12,13 @@ export const searchRoutes = new Hono<{ Bindings: Bindings; Variables: Variables 
  *   tag: 标签 slug（逗号分隔，AND 关系）
  *   page: 页码
  *   pageSize: 每页数量
+ *   sort: 排序（newest / hot / random，默认 newest）
  */
 searchRoutes.get('/', cacheControl(30), async (c) => {
   const db = c.env.DB
   const keyword = c.req.query('q')?.trim() || ''
   const tagSlugs = c.req.query('tag')?.split(',').filter(Boolean) || []
+  const sort = c.req.query('sort') || 'newest'
   const page = Math.max(1, parseInt(c.req.query('page') || '1', 10))
   const pageSize = Math.min(
     PAGINATION.MAX_PAGE_SIZE,
@@ -71,6 +73,20 @@ searchRoutes.get('/', cacheControl(30), async (c) => {
   const total = countResult?.total ?? 0
 
   // 数据查询
+  // 排序
+  let orderClause: string
+  switch (sort) {
+    case 'random':
+      orderClause = 'ORDER BY RANDOM()'
+      break
+    case 'hot':
+      // 暂无阅读量统计，降级为最新
+      orderClause = 'ORDER BY g.published_at DESC'
+      break
+    default: // newest / relevance
+      orderClause = 'ORDER BY g.published_at DESC'
+  }
+
   const dataParams = [...params]
   if (tagSlugs.length > 1) dataParams.push(tagSlugs.length)
   dataParams.push(pageSize, offset)
@@ -83,7 +99,7 @@ searchRoutes.get('/', cacheControl(30), async (c) => {
       ${fromClause}
       WHERE ${whereClause}
       ${havingClause}
-      ORDER BY g.published_at DESC
+      ${orderClause}
       LIMIT ? OFFSET ?
     `
   } else {
@@ -92,7 +108,7 @@ searchRoutes.get('/', cacheControl(30), async (c) => {
              g.required_level_rank, g.published_at
       ${fromClause}
       WHERE ${whereClause}
-      ORDER BY g.published_at DESC
+      ${orderClause}
       LIMIT ? OFFSET ?
     `
   }
