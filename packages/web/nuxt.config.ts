@@ -6,9 +6,9 @@ export default defineNuxtConfig({
 
   srcDir: 'app/',
 
-  // Nitro 服务端引擎：部署为 Cloudflare Worker（非 Pages）
+  // Nitro 服务端引擎：部署为 Cloudflare Worker（ES Module 格式，支持 nodejs_compat）
   nitro: {
-    preset: 'cloudflare',
+    preset: 'cloudflare-module',
   },
 
   // 路由规则：管理后台使用 CSR
