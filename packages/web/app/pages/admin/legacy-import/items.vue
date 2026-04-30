@@ -152,32 +152,32 @@ onMounted(() => {
             <td colspan="6" class="px-4 py-8 text-center text-gray-500">暂无数据</td>
           </tr>
           <tr v-for="item in items" :key="item.id" class="hover:bg-gray-50">
-            <td class="px-4 py-3 max-w-[200px] truncate">{{ item.legacyTitle }}</td>
+            <td class="px-4 py-3 max-w-[200px] truncate">{{ item.legacy_title }}</td>
             <td class="px-4 py-3 max-w-[200px] truncate">
-              <a :href="item.legacyUrl" target="_blank" class="text-blue-600 hover:underline">{{ item.legacyUrl }}</a>
+              <a :href="item.legacy_url" target="_blank" class="text-blue-600 hover:underline">{{ item.legacy_url }}</a>
             </td>
             <td class="px-4 py-3">
-              <span :class="`rounded-full px-2 py-0.5 text-xs font-medium bg-${statusColor[item.status] ?? 'gray'}-100 text-${statusColor[item.status] ?? 'gray'}-800`">
+              <span :class="['rounded-full px-2 py-0.5 text-xs font-medium', statusColor[item.status] === 'green' ? 'bg-green-100 text-green-800' : statusColor[item.status] === 'red' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800']">
                 {{ statusLabel[item.status] ?? item.status }}
               </span>
             </td>
             <td class="px-4 py-3">
-              <span :class="`rounded-full px-2 py-0.5 text-xs font-medium bg-${reviewColor[item.reviewStatus] ?? 'gray'}-100 text-${reviewColor[item.reviewStatus] ?? 'gray'}-800`">
-                {{ reviewLabel[item.reviewStatus] ?? item.reviewStatus }}
+              <span :class="['rounded-full px-2 py-0.5 text-xs font-medium', reviewColor[item.review_status] === 'green' ? 'bg-green-100 text-green-800' : reviewColor[item.review_status] === 'red' ? 'bg-red-100 text-red-800' : reviewColor[item.review_status] === 'yellow' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800']">
+                {{ reviewLabel[item.review_status] ?? item.review_status }}
               </span>
             </td>
-            <td class="px-4 py-3 font-mono text-xs">{{ item.galleryId ?? '-' }}</td>
+            <td class="px-4 py-3 font-mono text-xs">{{ item.gallery_id ?? '-' }}</td>
             <td class="px-4 py-3">
               <div class="flex gap-2">
                 <button
-                  v-if="item.reviewStatus !== 'approved'"
+                  v-if="item.review_status !== 'approved'"
                   class="rounded-lg bg-green-600 px-3 py-1 text-xs text-white hover:bg-green-700"
                   @click="review(item.id, 'approved')"
                 >
                   通过
                 </button>
                 <button
-                  v-if="item.reviewStatus !== 'rejected'"
+                  v-if="item.review_status !== 'rejected'"
                   class="rounded-lg bg-red-600 px-3 py-1 text-xs text-white hover:bg-red-700"
                   @click="review(item.id, 'rejected')"
                 >
