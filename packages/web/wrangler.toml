@@ -7,6 +7,12 @@ compatibility_flags = ["nodejs_compat"]
 [assets]
 directory = ".output/public"
 
+# Service Binding：SSR 期间通过 Service Binding 直连 API Worker
+# 避免同账户 *.workers.dev 域名互访限制（error 1042）
+[[services]]
+binding = "API_SERVICE"
+service = "meigallery-api"
+
 [vars]
 NUXT_PUBLIC_APP_ENV = "production"
 NUXT_PUBLIC_API_BASE_URL = "https://meigallery-api.250770503.workers.dev"
@@ -20,6 +26,11 @@ name = "meigallery-web-dev"
 
 [env.dev.assets]
 directory = ".output/public"
+
+# Service Binding（开发环境指向 dev API Worker）
+[[env.dev.services]]
+binding = "API_SERVICE"
+service = "meigallery-api-dev"
 
 [env.dev.vars]
 NUXT_PUBLIC_APP_ENV = "development"

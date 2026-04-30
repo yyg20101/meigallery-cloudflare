@@ -1,10 +1,84 @@
 /**
  * 统一 API 客户端
- * 封装 $fetch 调用 API Worker，自动携带 cookie
+ * 封装对 API Worker 的调用，自动处理 SSR / CSR 差异和认证 cookie
+ *
+ * SSR（Cloudflare）：通过 useRequestEvent() 获取 Service Binding，直连 API Worker（零网络开销）
+ * SSR（本地开发）：$fetch 直接请求 localhost:8787
+ * CSR（浏览器）：$fetch 直连 API Worker 完整 URL
+ *
+ * 解决 Cloudflare 同账户 *.workers.dev 域名互访限制（error 1042）
  */
 export function useApi() {
   const config = useRuntimeConfig()
-  const baseURL = config.public.apiBaseUrl as string
+  const clientBaseURL = config.public.apiBaseUrl as string
+
+  /**
+   * 构建带查询字符串的完整路径
+   */
+  function buildFullPath(path: string, query?: Record<string, string | number | undefined>): string {
+    if (!query) return path
+    const params = new URLSearchParams()
+    for (const [k, v] of Object.entries(query)) {
+      if (v !== undefined && v !== '') params.set(k, String(v))
+    }
+    const qs = params.toString()
+    return qs ? `${path}?${qs}` : path
+  }
+
+  /**
+   * SSR 专用：通过 Service Binding 直连 API Worker
+   * 从原始请求事件获取 Cloudflare env，避免 localCall 合成事件无 env 的问题
+   */
+  async function ssrFetch<T>(fullPath: string, options?: {
+    method?: string
+    body?: unknown
+  }): Promise<T> {
+    const event = useRequestEvent()
+    const apiBinding = (event?.context as Record<string, any>)?.cloudflare?.env?.API_SERVICE
+
+    if (apiBinding) {
+      // Cloudflare Workers 环境：Service Binding 直连（域名仅占位，路由取决于路径）
+      const init: RequestInit = {
+        method: options?.method || 'GET',
+      }
+      if (options?.body) {
+        (init as any).headers = { 'Content-Type': 'application/json' }
+        init.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body)
+      }
+      // 转发原始请求的 cookie（用于认证场景）
+      const reqHeaders = useRequestHeaders(['cookie'])
+      if (reqHeaders.cookie) {
+        (init as any).headers = { ...(init.headers as Record<string, string> || {}), cookie: reqHeaders.cookie }
+      }
+
+      const response = await apiBinding.fetch(
+        new Request(`https://api.internal${fullPath}`, init),
+      )
+
+      if (!response.ok) {
+        // 模拟 $fetch 的行为：非 2xx 抛出错误
+        const errorBody = await response.text().catch(() => '')
+        const err = new Error(`[${init.method}] "${fullPath}": ${response.status} ${response.statusText}`)
+        ;(err as any).statusCode = response.status
+        ;(err as any).statusMessage = response.statusText
+        ;(err as any).data = errorBody
+        throw err
+      }
+
+      return response.json() as Promise<T>
+    }
+
+    // 本地开发回退：直接 HTTP 请求 API 开发服务器（无 Worker-to-Worker 限制）
+    const apiBaseUrl = config.public.apiBaseUrl as string
+    const fetchOpts: Record<string, unknown> = {
+      method: options?.method || 'GET',
+    }
+    if (options?.body) {
+      fetchOpts.headers = { 'Content-Type': 'application/json' }
+      fetchOpts.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body)
+    }
+    return $fetch<T>(`${apiBaseUrl}${fullPath}`, fetchOpts as any)
+  }
 
   async function api<T = unknown>(
     path: string,
@@ -14,28 +88,24 @@ export function useApi() {
       query?: Record<string, string | number | undefined>
     },
   ): Promise<T> {
+    const fullPath = buildFullPath(path, options?.query)
+
+    // SSR: 使用 Service Binding 或本地开发回退
+    if (import.meta.server) {
+      return ssrFetch<T>(fullPath, options)
+    }
+
+    // CSR: 浏览器直连 API Worker
     const fetchOptions: Record<string, unknown> = {
       method: options?.method || 'GET',
       credentials: 'include',
     }
-
     if (options?.body) {
       fetchOptions.headers = { 'Content-Type': 'application/json' }
       fetchOptions.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body)
     }
-
-    if (options?.query) {
-      const params = new URLSearchParams()
-      for (const [k, v] of Object.entries(options.query)) {
-        if (v !== undefined && v !== '') params.set(k, String(v))
-      }
-      const qs = params.toString()
-      const url = qs ? `${baseURL}${path}?${qs}` : `${baseURL}${path}`
-      return $fetch<T>(url, fetchOptions as any)
-    }
-
-    return $fetch<T>(`${baseURL}${path}`, fetchOptions as any)
+    return $fetch<T>(`${clientBaseURL}${fullPath}`, fetchOptions as any)
   }
 
-  return { api, baseURL }
+  return { api, baseURL: clientBaseURL }
 }
