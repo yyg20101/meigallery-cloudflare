@@ -19,7 +19,7 @@ bucket_name = "meigallery-media"
 # 环境变量（非敏感）— 生产默认值
 [vars]
 APP_ENV = "production"
-CORS_ORIGIN = "https://meigallery-web.250770503.workers.dev"
+CORS_ORIGIN = "https://616618.xyz"
 
 # 敏感变量需通过 wrangler secret put 设置：
 # wrangler secret put SESSION_SECRET
