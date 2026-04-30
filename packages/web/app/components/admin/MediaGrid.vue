@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 媒体网格管理组件
- * 显示图库关联的所有图片/视频，支持设为封面、VIP 等级修改、删除
+ * 显示图库关联的所有图片/视频，支持拖拽排序、设为封面、VIP 等级修改、删除
  */
 
 export interface MediaAsset {
@@ -30,6 +30,7 @@ const emit = defineEmits<{
   setCover: [assetId: string]
   delete: [assetId: string]
   updateRank: [assetId: string, rank: number]
+  reorder: [order: Array<{ assetId: string; sortOrder: number }>]
 }>()
 
 const { baseURL } = useApi()
@@ -43,6 +44,74 @@ const levelOptions = [
   { label: 'VIP', value: 10 },
   { label: 'SVIP', value: 20 },
 ]
+
+// ============================================================
+// 拖拽排序
+// ============================================================
+
+const dragSourceId = ref<string | null>(null)
+const dragOverId = ref<string | null>(null)
+const isDragging = ref(false)
+
+function onDragStart(event: DragEvent, asset: MediaAsset) {
+  if (!event.dataTransfer) return
+  dragSourceId.value = asset.id
+  isDragging.value = true
+  event.dataTransfer.effectAllowed = 'move'
+  event.dataTransfer.setData('text/plain', asset.id)
+  // 让拖拽元素半透明
+  const el = event.target as HTMLElement
+  requestAnimationFrame(() => {
+    el.style.opacity = '0.4'
+  })
+}
+
+function onDragEnd(event: DragEvent) {
+  const el = event.target as HTMLElement
+  el.style.opacity = ''
+  dragSourceId.value = null
+  dragOverId.value = null
+  isDragging.value = false
+}
+
+function onDragOver(event: DragEvent, asset: MediaAsset) {
+  event.preventDefault()
+  if (!event.dataTransfer) return
+  event.dataTransfer.dropEffect = 'move'
+  dragOverId.value = asset.id
+}
+
+function onDragLeave(_event: DragEvent, asset: MediaAsset) {
+  if (dragOverId.value === asset.id) {
+    dragOverId.value = null
+  }
+}
+
+function onDrop(event: DragEvent, targetAsset: MediaAsset) {
+  event.preventDefault()
+  dragOverId.value = null
+
+  const sourceId = dragSourceId.value
+  if (!sourceId || sourceId === targetAsset.id) return
+
+  // 计算新排序
+  const items = [...props.assets]
+  const sourceIdx = items.findIndex(a => a.id === sourceId)
+  const targetIdx = items.findIndex(a => a.id === targetAsset.id)
+  if (sourceIdx < 0 || targetIdx < 0) return
+
+  // 从原位置移除，插入到目标位置
+  const [moved] = items.splice(sourceIdx, 1)
+  items.splice(targetIdx, 0, moved!)
+
+  // 生成新的排序数据
+  const order = items.map((item, idx) => ({
+    assetId: item.id,
+    sortOrder: idx,
+  }))
+
+  emit('reorder', order)
+}
 
 function isCover(asset: MediaAsset): boolean {
   return !!(props.coverKey && asset.r2Key && props.coverKey === asset.r2Key)
@@ -87,13 +156,29 @@ function onRankChange(assetId: string, event: Event) {
       <span class="text-sm text-gray-400">加载中...</span>
     </div>
 
+    <!-- 排序提示 -->
+    <div v-if="assets.length > 1 && !loading" class="mb-2 text-xs text-gray-400">
+      拖拽图片可调整排序
+    </div>
+
     <!-- 网格 -->
-    <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+    <div v-else-if="!loading && assets.length === 0" />
+    <div v-if="assets.length > 0 && !loading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
       <div
         v-for="asset in assets"
         :key="asset.id"
-        class="group relative rounded-lg border bg-white overflow-hidden"
-        :class="isCover(asset) ? 'border-blue-400 ring-2 ring-blue-200' : 'border-gray-200'"
+        draggable="true"
+        class="group relative rounded-lg border bg-white overflow-hidden transition-all duration-150 cursor-grab active:cursor-grabbing"
+        :class="[
+          isCover(asset) ? 'border-blue-400 ring-2 ring-blue-200' : 'border-gray-200',
+          dragOverId === asset.id && dragSourceId !== asset.id ? 'ring-2 ring-indigo-400 scale-105' : '',
+          dragSourceId === asset.id ? 'opacity-40' : '',
+        ]"
+        @dragstart="onDragStart($event, asset)"
+        @dragend="onDragEnd"
+        @dragover="onDragOver($event, asset)"
+        @dragleave="onDragLeave($event, asset)"
+        @drop="onDrop($event, asset)"
       >
         <!-- 缩略图 -->
         <div class="aspect-[4/3] bg-gray-100 relative">

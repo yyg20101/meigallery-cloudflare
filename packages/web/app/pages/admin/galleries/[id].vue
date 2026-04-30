@@ -192,6 +192,38 @@ async function onUpdateRank(assetId: string, rank: number) {
   }
 }
 
+// 拖拽排序
+const reorderLoading = ref(false)
+
+async function onReorder(order: Array<{ assetId: string; sortOrder: number }>) {
+  // 先乐观更新本地排序
+  const orderMap = new Map(order.map((o) => [o.assetId, o.sortOrder]))
+  mediaAssets.value = [...mediaAssets.value].sort((a, b) => {
+    const orderA = orderMap.get(a.id) ?? a.sortOrder
+    const orderB = orderMap.get(b.id) ?? b.sortOrder
+    return orderA - orderB
+  })
+  // 更新本地 sortOrder 值
+  mediaAssets.value.forEach((asset, idx) => {
+    asset.sortOrder = idx
+  })
+
+  // 调用 API 持久化
+  reorderLoading.value = true
+  try {
+    await api(`/api/admin/galleries/${galleryId}/media/reorder`, {
+      method: 'POST',
+      body: { order },
+    })
+  } catch (e: any) {
+    error.value = e?.data?.message || e?.message || '排序保存失败'
+    // 回滚：重新加载
+    await loadMedia()
+  } finally {
+    reorderLoading.value = false
+  }
+}
+
 // 计算统计
 const imageCount = computed(() => mediaAssets.value.filter((a) => a.type === 'image').length)
 const videoCount = computed(() => mediaAssets.value.filter((a) => a.type === 'video').length)
@@ -362,6 +394,7 @@ const videoCount = computed(() => mediaAssets.value.filter((a) => a.type === 'vi
           @set-cover="onSetCover"
           @delete="onDeleteMedia"
           @update-rank="onUpdateRank"
+          @reorder="onReorder"
         />
       </div>
     </div>
