@@ -5,7 +5,7 @@ import { writeAuditLog } from '../../utils/permission'
 import { PAGINATION } from '@meigallery/shared/constants'
 import { fetchAllPosts, fetchAllCategories, fetchAllTags } from '../../services/wp-fetcher'
 import { processPosts, writeMigrationItem } from '../../services/wp-migration'
-import { downloadGalleryMedia } from '../../services/media-downloader'
+import { downloadGalleryMedia, downloadImageToR2 } from '../../services/media-downloader'
 
 export const adminLegacyImportRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -317,55 +317,81 @@ adminLegacyImportRoutes.post('/jobs/:id/execute', async (c) => {
 })
 
 /**
- * POST /jobs/:id/download-media — 下载迁移任务中所有待处理媒体
- * 遍历该任务关联的所有图库，下载图片到 R2，视频到 Stream
+ * POST /download-pending — 批量下载待处理媒体（不依赖 job_id）
+ * 供本地迁移脚本循环调用
+ * query: ?limit=10 （每次处理的数量，默认 10）
+ * 图片并行下载（5 并发），视频跳过（需要配置 Stream）
  */
-adminLegacyImportRoutes.post('/jobs/:id/download-media', async (c) => {
+adminLegacyImportRoutes.post('/download-pending', async (c) => {
   const db = c.env.DB
-  const jobId = c.req.param('id')
   const adminId = c.get('userId')!
+  const limit = Math.min(50, Math.max(1, parseInt(c.req.query('limit') || '10', 10)))
 
-  // 获取该任务关联的所有 gallery_id
-  const items = await db
-    .prepare("SELECT DISTINCT gallery_id FROM legacy_import_items WHERE job_id = ? AND status = 'imported'")
-    .bind(jobId)
-    .all<{ gallery_id: string | null }>()
-
-  const galleryIds = items.results.map(i => i.gallery_id).filter(Boolean) as string[]
-
-  if (galleryIds.length === 0) {
-    return c.json({ error: '无可下载的图库' }, 400)
-  }
-
-  let totalDownloaded = 0
-  let totalFailed = 0
-  const allErrors: string[] = []
-
-  for (const galleryId of galleryIds) {
-    const result = await downloadGalleryMedia(
-      db,
-      c.env.R2,
-      c.env.STREAM_ACCOUNT_ID,
-      c.env.STREAM_API_TOKEN,
-      galleryId,
+  // 只获取图片类型（视频需要 Stream 配置，单独处理）
+  const assets = await db
+    .prepare(
+      `SELECT id, gallery_id, type, r2_key FROM media_assets
+       WHERE upload_status = 'pending' AND r2_key IS NOT NULL AND type = 'image'
+       ORDER BY created_at ASC LIMIT ?`,
     )
-    totalDownloaded += result.downloaded
-    totalFailed += result.failed
-    allErrors.push(...result.errors)
+    .bind(limit)
+    .all<{ id: string; gallery_id: string; type: string; r2_key: string }>()
+
+  if (assets.results.length === 0) {
+    return c.json({ remaining: 0, downloaded: 0, failed: 0, done: true })
   }
 
-  await writeAuditLog(db, {
-    adminId,
-    action: 'download_legacy_media',
-    targetType: 'import_job',
-    targetId: jobId,
-    afterValue: { galleries: galleryIds.length, downloaded: totalDownloaded, failed: totalFailed },
-  })
+  // 查询总剩余数量
+  const countResult = await db
+    .prepare("SELECT COUNT(*) as cnt FROM media_assets WHERE upload_status = 'pending' AND type = 'image'")
+    .first<{ cnt: number }>()
+
+  let downloaded = 0
+  let failed = 0
+  const errors: string[] = []
+
+  // 并行下载（5 并发）
+  const CONCURRENCY = 5
+  for (let i = 0; i < assets.results.length; i += CONCURRENCY) {
+    const batch = assets.results.slice(i, i + CONCURRENCY)
+    const results = await Promise.allSettled(
+      batch.map(async (asset) => {
+        const result = await downloadImageToR2(c.env.R2, asset.r2_key, asset.gallery_id, asset.id)
+        if (result.success && result.r2Key) {
+          await db
+            .prepare("UPDATE media_assets SET r2_key = ?, upload_status = 'completed' WHERE id = ?")
+            .bind(result.r2Key, asset.id)
+            .run()
+          return { success: true }
+        } else {
+          await db
+            .prepare("UPDATE media_assets SET upload_status = 'failed' WHERE id = ?")
+            .bind(asset.id)
+            .run()
+          return { success: false, error: `${asset.id}: ${result.error}` }
+        }
+      })
+    )
+
+    for (const r of results) {
+      if (r.status === 'fulfilled' && r.value.success) {
+        downloaded++
+      } else {
+        failed++
+        if (r.status === 'fulfilled' && r.value.error) {
+          errors.push(r.value.error)
+        } else if (r.status === 'rejected') {
+          errors.push(r.reason?.message || '未知错误')
+        }
+      }
+    }
+  }
 
   return c.json({
-    galleries: galleryIds.length,
-    downloaded: totalDownloaded,
-    failed: totalFailed,
-    errors: allErrors.length > 0 ? allErrors.slice(0, 100) : undefined,
+    remaining: (countResult?.cnt ?? 0) - downloaded - failed,
+    downloaded,
+    failed,
+    done: false,
+    errors: errors.length > 0 ? errors.slice(0, 10) : undefined,
   })
 })

@@ -18,6 +18,20 @@ export interface MappingResult {
 }
 
 /**
+ * 需要清洗替换的旧站标签（与新站定位不符）
+ * key: 旧站标签名, value: 替换后的名称（null 表示不迁移）
+ */
+const SENSITIVE_TAG_REPLACEMENT: Record<string, string | null> = {
+  'sm': null,              // 不迁移
+  'sm/猎奇': null,        // 不迁移
+  '包养': '长期合作',     // 替换为中性描述
+  '伴游': '旅拍',         // 替换为中性描述
+  '包养 伴游': '旅拍',   // 替换为中性描述
+  '萝莉': '甜美',         // 替换为中性描述
+  '联系方式': null,        // 不迁移（系统功能，非内容标签）
+}
+
+/**
  * 需要审核的旧站标签关键词（与新站定位不符）
  */
 const REVIEW_KEYWORDS = [
@@ -105,20 +119,46 @@ export function mapWpTags(wpTags: WpTag[], postTagIds: number[]): MappingResult 
     const wpTag = wpTags.find(t => t.id === tagId)
     if (!wpTag) continue
 
-    // 检查是否包含需要审核的关键词
-    const needsReview = REVIEW_KEYWORDS.some(kw =>
-      wpTag.name.toLowerCase().includes(kw.toLowerCase())
-    )
-    if (needsReview) {
-      reviewFlags.push(`标签"${wpTag.name}"与新站定位不符，需审核`)
+    // 处理敏感标签：替换或跳过
+    const replacement = SENSITIVE_TAG_REPLACEMENT[wpTag.name]
+    if (replacement === null) {
+      // 标记为不迁移
+      reviewFlags.push(`标签"${wpTag.name}"已跳过（不符合新站定位）`)
+      continue
+    }
+
+    const finalName = replacement || wpTag.name
+
+    // "制服-反差" 拆分为两个标签
+    if (finalName === '制服-反差') {
+      tags.push({
+        type: 'style',
+        name: '制服',
+        slug: generateSlug('制服'),
+        wpId: tagId,
+        wpSource: 'tag',
+      })
+      tags.push({
+        type: 'style',
+        name: '反差',
+        slug: generateSlug('反差'),
+        wpId: tagId,
+        wpSource: 'tag',
+      })
+      continue
+    }
+
+    // 检查是否包含需要审核的关键词（替换后仍需标记原始来源）
+    if (replacement) {
+      reviewFlags.push(`标签"${wpTag.name}"已替换为"${replacement}"`)
     }
 
     // 映射标签类型
-    const tagType = inferTagType(wpTag.name)
+    const tagType = inferTagType(finalName)
     tags.push({
       type: tagType,
-      name: wpTag.name,
-      slug: generateSlug(wpTag.name),
+      name: finalName,
+      slug: generateSlug(finalName),
       wpId: tagId,
       wpSource: 'tag',
     })
