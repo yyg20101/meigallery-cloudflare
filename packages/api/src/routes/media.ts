@@ -7,6 +7,33 @@ import { R2_KEY_PREFIX, SIGNED_URL_TTL } from '@meigallery/shared/constants'
 export const mediaRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
 /**
+ * GET /api/media/public/* - 公开 R2 对象访问（头像等）
+ * 仅允许 avatars/ 前缀
+ */
+mediaRoutes.get('/public/*', async (c) => {
+  const path = c.req.path.replace('/api/media/public/', '')
+
+  // 白名单前缀，仅允许公开访问特定目录
+  const allowedPrefixes = ['avatars/']
+  const isAllowed = allowedPrefixes.some(prefix => path.startsWith(prefix))
+  if (!isAllowed) {
+    return c.json({ statusCode: 403, message: '不允许访问该路径' }, 403)
+  }
+
+  const object = await c.env.R2.get(path)
+  if (!object) {
+    return c.json({ statusCode: 404, message: '文件不存在' }, 404)
+  }
+
+  const headers = new Headers()
+  headers.set('Content-Type', object.httpMetadata?.contentType || 'application/octet-stream')
+  headers.set('Cache-Control', 'public, max-age=86400')
+  headers.set('ETag', object.httpEtag)
+
+  return new Response(object.body, { headers })
+})
+
+/**
  * GET /api/media/cover/:galleryId - 图库封面图
  * 公开接口，直接返回 R2 对象
  */

@@ -99,6 +99,17 @@ export async function destroyAllUserSessions(db: D1Database, userId: string): Pr
   await db.prepare('DELETE FROM sessions WHERE user_id = ?').bind(userId).run()
 }
 
+/**
+ * 清理用户其他会话，保留当前 session（用于用户自行修改密码）
+ */
+export async function destroyOtherSessions(db: D1Database, userId: string, currentToken: string): Promise<void> {
+  const currentHash = await hashToken(currentToken)
+  await db
+    .prepare('DELETE FROM sessions WHERE user_id = ? AND token_hash != ?')
+    .bind(userId, currentHash)
+    .run()
+}
+
 // === 内部工具函数 ===
 
 function generateSessionToken(): string {

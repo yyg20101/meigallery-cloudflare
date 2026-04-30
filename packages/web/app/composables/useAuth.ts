@@ -13,8 +13,11 @@ export function useAuth() {
     avatarKey: string | null
     role: string
     status: string
+    notificationEnabled: boolean
+    createdAt: string
     membershipRank: number
     membershipExpiry: string | null
+    membershipName: string | null
   }
 
   const user = useState<UserInfo | null>('auth-user', () => null)
