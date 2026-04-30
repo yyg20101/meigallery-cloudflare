@@ -2,10 +2,7 @@
 const route = useRoute()
 const { api } = useApi()
 const { isLoggedIn, membershipRank } = useAuth()
-const { fetchSettings, contactWechat, contactTelegram, contactEmail, contactNote } = useSiteSettings()
 
-// 获取站点联系方式
-await fetchSettings()
 
 interface GalleryTag {
   id: string
@@ -242,13 +239,7 @@ useSeoMeta({
           </div>
 
           <!-- 联系站长 -->
-          <ContactCard
-            v-if="contactWechat || contactTelegram || contactEmail"
-            :wechat="contactWechat"
-            :telegram="contactTelegram"
-            :email="contactEmail"
-            :custom-note="contactNote"
-          />
+          <ContactPanel />
 
           <!-- 相关推荐 -->
           <RelatedGalleries v-if="relatedGalleries.length > 0" :galleries="relatedGalleries" />
