@@ -144,7 +144,7 @@ useSeoMeta({
         <header class="mb-6">
           <h1 class="text-2xl font-bold text-gray-900">{{ gallery.title }}</h1>
           <div class="mt-3 flex flex-wrap items-center gap-2">
-            <TagChip v-for="tag in gallery.tags" :key="tag.id" :tag="tag" />
+            <TagChip v-for="tag in gallery.tags" :key="tag.id" :tag="tag" linkable />
             <MembershipBadge v-if="gallery.requiredLevelRank > 0" :rank="gallery.requiredLevelRank" />
           </div>
           <p class="mt-2 text-xs text-gray-400">

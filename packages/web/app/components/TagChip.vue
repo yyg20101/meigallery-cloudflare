@@ -4,13 +4,26 @@ interface TagChipProps {
   size?: 'sm' | 'md'
   removable?: boolean
   selected?: boolean
+  linkable?: boolean
 }
-withDefaults(defineProps<TagChipProps>(), { size: 'md', removable: false, selected: false })
+withDefaults(defineProps<TagChipProps>(), { size: 'md', removable: false, selected: false, linkable: false })
 const emit = defineEmits<{ remove: [] }>()
 </script>
 
 <template>
+  <NuxtLink
+    v-if="linkable"
+    :to="`/discover?tag=${tag.slug}`"
+    :class="[
+      'inline-flex items-center rounded-[14px] transition-colors cursor-pointer',
+      selected ? 'bg-[#111] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200',
+      size === 'sm' ? 'px-2 py-0.5 text-[10px]' : 'px-3 py-1 text-[10px]',
+    ]"
+  >
+    {{ tag.name }}
+  </NuxtLink>
   <span
+    v-else
     :class="[
       'inline-flex items-center rounded-[14px] transition-colors cursor-pointer',
       selected ? 'bg-[#111] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200',
