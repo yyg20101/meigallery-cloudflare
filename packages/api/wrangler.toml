@@ -8,7 +8,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "meigallery-db"
-database_id = ""
+database_id = ""  # 部署前需填入实际 ID，执行: wrangler d1 create meigallery-db
 migrations_dir = "db/migrations"
 
 # R2 存储桶
@@ -16,6 +16,20 @@ migrations_dir = "db/migrations"
 binding = "R2"
 bucket_name = "meigallery-media"
 
-# 环境变量
+# 环境变量（非敏感）
 [vars]
 APP_ENV = "production"
+CORS_ORIGIN = "https://meigallery.com"
+
+# 敏感变量需通过 wrangler secret put 设置：
+# wrangler secret put SESSION_SECRET
+# wrangler secret put TURNSTILE_SECRET_KEY
+# wrangler secret put STREAM_ACCOUNT_ID
+# wrangler secret put STREAM_API_TOKEN
+
+# 本地开发覆盖
+[env.dev]
+name = "meigallery-api-dev"
+[env.dev.vars]
+APP_ENV = "development"
+CORS_ORIGIN = "http://localhost:3000"
