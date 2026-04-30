@@ -2,11 +2,16 @@
 const { login, isLoggedIn } = useAuth()
 const route = useRoute()
 const router = useRouter()
+const config = useRuntimeConfig()
 
 const email = ref('')
 const password = ref('')
 const error = ref('')
 const loading = ref(false)
+const turnstileToken = ref('')
+
+const turnstileSiteKey = computed(() => config.public.turnstileSiteKey as string)
+const hasTurnstile = computed(() => !!turnstileSiteKey.value)
 
 if (isLoggedIn.value) {
   router.replace('/')
@@ -20,7 +25,7 @@ async function onSubmit() {
   }
   loading.value = true
   try {
-    await login(email.value, password.value)
+    await login(email.value, password.value, hasTurnstile.value ? turnstileToken.value : undefined)
     navigateTo((route.query.redirect as string) || '/')
   } catch (e: any) {
     error.value = e?.data?.message || e?.message || '登录失败，请重试'
@@ -72,11 +77,14 @@ definePageMeta({ layout: 'default' })
           />
         </div>
 
-        <!-- Turnstile 占位 -->
-        <div class="bg-gray-50 border border-gray-200 rounded-lg p-3 flex items-center gap-2 mb-4">
-          <div class="w-5 h-5 border-2 border-gray-300 rounded" />
-          <span class="text-sm text-gray-600">人机验证</span>
-          <span class="ml-auto text-xs text-gray-400">Cloudflare Turnstile</span>
+        <!-- Turnstile 人机验证 -->
+        <div v-if="hasTurnstile" class="mb-4">
+          <!-- 真实 Turnstile widget 挂载点 -->
+          <div id="turnstile-login" class="cf-turnstile" :data-sitekey="turnstileSiteKey" data-callback="onTurnstileLogin" />
+        </div>
+        <div v-else class="bg-gray-50 border border-gray-200 rounded-lg p-3 flex items-center gap-2 mb-4">
+          <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+          <span class="text-xs text-gray-400">开发模式 · 人机验证已跳过</span>
         </div>
 
         <!-- 登录按钮 -->

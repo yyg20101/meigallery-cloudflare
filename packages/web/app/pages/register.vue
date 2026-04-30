@@ -1,6 +1,7 @@
 <script setup lang="ts">
 const { register, isLoggedIn } = useAuth()
 const router = useRouter()
+const config = useRuntimeConfig()
 
 const nickname = ref('')
 const email = ref('')
@@ -8,6 +9,10 @@ const password = ref('')
 const confirmPassword = ref('')
 const error = ref('')
 const loading = ref(false)
+const turnstileToken = ref('')
+
+const turnstileSiteKey = computed(() => config.public.turnstileSiteKey as string)
+const hasTurnstile = computed(() => !!turnstileSiteKey.value)
 
 if (isLoggedIn.value) {
   router.replace('/')
@@ -29,7 +34,7 @@ async function onSubmit() {
   }
   loading.value = true
   try {
-    await register(email.value, password.value, nickname.value || undefined)
+    await register(email.value, password.value, nickname.value || undefined, hasTurnstile.value ? turnstileToken.value : undefined)
     router.push('/')
   } catch (e: any) {
     error.value = e?.data?.message || e?.message || '注册失败，请重试'
@@ -102,11 +107,13 @@ definePageMeta({ layout: 'default' })
           />
         </div>
 
-        <!-- Turnstile 占位 -->
-        <div class="bg-gray-50 border border-gray-200 rounded-lg p-3 flex items-center gap-2 mb-4">
-          <div class="w-5 h-5 border-2 border-gray-300 rounded" />
-          <span class="text-sm text-gray-600">人机验证</span>
-          <span class="ml-auto text-xs text-gray-400">Cloudflare Turnstile</span>
+        <!-- Turnstile 人机验证 -->
+        <div v-if="hasTurnstile" class="mb-4">
+          <div id="turnstile-register" class="cf-turnstile" :data-sitekey="turnstileSiteKey" data-callback="onTurnstileRegister" />
+        </div>
+        <div v-else class="bg-gray-50 border border-gray-200 rounded-lg p-3 flex items-center gap-2 mb-4">
+          <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+          <span class="text-xs text-gray-400">开发模式 · 人机验证已跳过</span>
         </div>
 
         <!-- 注册按钮 -->

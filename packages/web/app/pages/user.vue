@@ -2,6 +2,10 @@
 definePageMeta({ middleware: 'auth' })
 
 const { isLoggedIn, user, membershipRank, membershipLevel, membershipExpiry, logout } = useAuth()
+const { fetchSettings, contactWechat, contactTelegram, contactEmail, contactNote } = useSiteSettings()
+
+// 获取站点设置（联系方式）
+await fetchSettings()
 
 useSeoMeta({ title: '个人中心 - MeiGallery', robots: 'noindex' })
 
@@ -84,10 +88,11 @@ async function handleLogout() {
 
       <!-- 联系站长 -->
       <ContactCard
-        wechat="mei_gallery"
-        telegram="@meigallery"
-        email="hi@meigallery.com"
-        custom-note="升级会员或有任何问题，请通过以上方式联系站长"
+        v-if="contactWechat || contactTelegram || contactEmail"
+        :wechat="contactWechat"
+        :telegram="contactTelegram"
+        :email="contactEmail"
+        :custom-note="contactNote || '升级会员或有任何问题，请通过以上方式联系站长'"
         class="mb-3"
       />
 

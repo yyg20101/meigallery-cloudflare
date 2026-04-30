@@ -10,6 +10,9 @@ directory = ".output/public"
 [vars]
 NUXT_PUBLIC_APP_ENV = "production"
 NUXT_PUBLIC_API_BASE_URL = "https://meigallery-api.250770503.workers.dev"
+# Turnstile site key（公开值，在 Cloudflare Dashboard 创建 Turnstile widget 后填入）
+# 留空则前端跳过人机验证
+NUXT_PUBLIC_TURNSTILE_SITE_KEY = ""
 
 # ─── 开发环境 ───
 [env.dev]
@@ -21,3 +24,4 @@ directory = ".output/public"
 [env.dev.vars]
 NUXT_PUBLIC_APP_ENV = "development"
 NUXT_PUBLIC_API_BASE_URL = "https://meigallery-api-dev.workers.dev"  # 部署后替换为实际 URL
+NUXT_PUBLIC_TURNSTILE_SITE_KEY = ""
