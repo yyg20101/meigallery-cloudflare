@@ -7,9 +7,9 @@ const label = computed(() => {
   return ''
 })
 const colorClass = computed(() => {
-  if (props.rank >= 20) return 'bg-amber-100 text-amber-800'
-  if (props.rank >= 10) return 'bg-blue-100 text-blue-800'
-  return ''
+  if (props.rank >= 20) return 'bg-violet-600 text-white'
+  if (props.rank >= 10) return 'bg-amber-500 text-white'
+  return 'bg-gray-100 text-gray-600'
 })
 </script>
 

@@ -130,7 +130,7 @@ useSeoMeta({
       <!-- 左栏：主内容 -->
       <main class="lg:flex-[3] min-w-0">
         <!-- 封面大图 -->
-        <div class="aspect-video rounded-xl overflow-hidden bg-gray-100 mb-6">
+        <div class="aspect-video rounded-md overflow-hidden bg-gray-100 mb-6">
           <img
             v-if="gallery.coverUrl"
             :src="gallery.coverUrl"

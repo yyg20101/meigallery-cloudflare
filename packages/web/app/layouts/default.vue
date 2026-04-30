@@ -26,7 +26,7 @@ function isActive(to: string) {
 <template>
   <div class="min-h-screen flex flex-col bg-white">
     <!-- 桌面端顶部导航 -->
-    <header class="hidden sm:block sticky top-0 z-40 bg-white border-b border-gray-100">
+    <header class="hidden lg:block sticky top-0 z-40 bg-white border-b border-gray-100">
       <nav class="mx-auto max-w-7xl px-6 lg:px-8">
         <div class="flex h-14 items-center justify-between">
           <!-- 左侧 Logo -->
@@ -72,7 +72,7 @@ function isActive(to: string) {
     </header>
 
     <!-- 移动端顶部栏 -->
-    <header class="sm:hidden sticky top-0 z-40 bg-white border-b border-gray-100">
+    <header class="lg:hidden sticky top-0 z-40 bg-white border-b border-gray-100">
       <div class="flex h-12 items-center justify-between px-4">
         <NuxtLink to="/" class="text-lg font-bold text-gray-900">MeiGallery</NuxtLink>
         <div class="flex items-center gap-3">
@@ -89,17 +89,17 @@ function isActive(to: string) {
     </header>
 
     <!-- 主内容 -->
-    <main class="flex-1 pb-16 sm:pb-0">
+    <main class="flex-1 pb-16 lg:pb-0">
       <slot />
     </main>
 
     <!-- 桌面端底部 copyright -->
-    <footer class="hidden sm:block">
+    <footer class="hidden lg:block">
       <p class="text-xs text-gray-400 text-center py-4">&copy; {{ new Date().getFullYear() }} MeiGallery</p>
     </footer>
 
     <!-- 移动端底部 Tab Bar -->
-    <nav class="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-100">
+    <nav class="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-100">
       <div class="flex justify-around items-center h-14">
         <!-- 首页 -->
         <NuxtLink to="/" class="flex flex-col items-center gap-0.5" :class="isActive('/') ? 'text-gray-900' : 'text-gray-400'">

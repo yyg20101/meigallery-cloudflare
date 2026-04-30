@@ -11,6 +11,11 @@ export default defineNuxtConfig({
     preset: 'cloudflare-module',
   },
 
+  // 页面过渡动画
+  app: {
+    pageTransition: { name: 'page', mode: 'out-in' },
+  },
+
   // 路由规则：管理后台使用 CSR
   routeRules: {
     '/admin/**': { ssr: false },

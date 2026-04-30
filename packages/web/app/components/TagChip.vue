@@ -3,16 +3,18 @@ interface TagChipProps {
   tag: { name: string; slug: string; type?: string }
   size?: 'sm' | 'md'
   removable?: boolean
+  selected?: boolean
 }
-withDefaults(defineProps<TagChipProps>(), { size: 'md', removable: false })
+withDefaults(defineProps<TagChipProps>(), { size: 'md', removable: false, selected: false })
 const emit = defineEmits<{ remove: [] }>()
 </script>
 
 <template>
   <span
     :class="[
-      'inline-flex items-center rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors cursor-pointer',
-      size === 'sm' ? 'px-2 py-0.5 text-xs' : 'px-3 py-1 text-sm',
+      'inline-flex items-center rounded-[14px] transition-colors cursor-pointer',
+      selected ? 'bg-[#111] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200',
+      size === 'sm' ? 'px-2 py-0.5 text-[10px]' : 'px-3 py-1 text-[10px]',
     ]"
   >
     {{ tag.name }}

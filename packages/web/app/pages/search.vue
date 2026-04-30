@@ -183,7 +183,7 @@ useSeoMeta({
     </div>
 
     <!-- 结果网格 -->
-    <div v-if="galleries.length > 0" class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+    <div v-if="galleries.length > 0" class="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
       <GalleryCard v-for="g in galleries" :key="g.id" :gallery="g" />
     </div>
 

@@ -59,20 +59,32 @@ useSeoMeta({
 </script>
 
 <template>
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-20 sm:pb-6">
+  <div class="max-w-7xl mx-auto px-4 lg:px-6 py-6 pb-20 lg:pb-6">
     <!-- 精选专题 -->
-    <section class="mb-10">
+    <section class="mb-5">
       <div class="flex items-center justify-between mb-4">
-        <h2 class="text-lg font-semibold text-gray-900">精选专题</h2>
+        <h2 class="text-[13px] font-semibold text-gray-900">精选专题</h2>
         <NuxtLink to="/discover" class="text-sm text-gray-400 hover:text-gray-600">查看全部 →</NuxtLink>
       </div>
       <HomeFeatured :galleries="featured" />
     </section>
 
-    <!-- 热门标签 -->
-    <section v-if="hotTags.length > 0" class="mb-10">
+    <!-- 最新图库 -->
+    <section class="mb-5">
       <div class="flex items-center justify-between mb-4">
-        <h2 class="text-lg font-semibold text-gray-900">热门标签</h2>
+        <h2 class="text-[13px] font-semibold text-gray-900">最新图库</h2>
+        <NuxtLink to="/discover" class="text-sm text-gray-400 hover:text-gray-600">查看全部 →</NuxtLink>
+      </div>
+      <GalleryGrid :galleries="latest" />
+      <div v-if="latest.length === 0" class="py-20 text-center text-gray-400">
+        暂无图库内容
+      </div>
+    </section>
+
+    <!-- 热门标签 -->
+    <section v-if="hotTags.length > 0" class="mb-5">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-[13px] font-semibold text-gray-900">热门标签</h2>
       </div>
       <div class="flex flex-wrap gap-2">
         <NuxtLink
@@ -85,22 +97,10 @@ useSeoMeta({
       </div>
     </section>
 
-    <!-- 最新图库 -->
-    <section class="mb-10">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-lg font-semibold text-gray-900">最新图库</h2>
-        <NuxtLink to="/discover" class="text-sm text-gray-400 hover:text-gray-600">查看全部 →</NuxtLink>
-      </div>
-      <GalleryGrid :galleries="latest" />
-      <div v-if="latest.length === 0" class="py-20 text-center text-gray-400">
-        暂无图库内容
-      </div>
-    </section>
-
     <!-- 视频专区 -->
-    <section v-if="videoGalleries.length > 0" class="mb-10">
+    <section v-if="videoGalleries.length > 0" class="mb-5">
       <div class="flex items-center justify-between mb-4">
-        <h2 class="text-lg font-semibold text-gray-900">视频专区</h2>
+        <h2 class="text-[13px] font-semibold text-gray-900">视频专区</h2>
         <NuxtLink to="/discover?tag=video" class="text-sm text-gray-400 hover:text-gray-600">查看全部 →</NuxtLink>
       </div>
       <HomeVideoZone :galleries="videoGalleries" />
