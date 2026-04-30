@@ -19,6 +19,7 @@ const form = reactive({
   membership_description: '',
 })
 const emailVerificationEnabled = ref(false)
+const videoEnabledToggle = ref(false)
 const loading = ref(false)
 const message = ref('')
 
@@ -34,6 +35,9 @@ if (settings.value?.data) {
     }
     if (key === 'email_verification_enabled') {
       emailVerificationEnabled.value = val.value === true || val.value === 'true'
+    }
+    if (key === 'video_enabled') {
+      videoEnabledToggle.value = val.value === true || val.value === 'true'
     }
   }
 }
@@ -65,6 +69,23 @@ async function toggleEmailVerification() {
     useToast().add({ title: e?.data?.message || '操作失败', color: 'error' })
   } finally {
     toggleLoading.value = false
+  }
+}
+
+const videoToggleLoading = ref(false)
+async function toggleVideo() {
+  videoToggleLoading.value = true
+  try {
+    const newVal = !videoEnabledToggle.value
+    await api('/api/admin/settings', {
+      method: 'PATCH',
+      body: { video_enabled: newVal },
+    })
+    videoEnabledToggle.value = newVal
+  } catch (e: any) {
+    useToast().add({ title: e?.data?.message || '操作失败', color: 'error' })
+  } finally {
+    videoToggleLoading.value = false
   }
 }
 </script>
@@ -153,6 +174,28 @@ async function toggleEmailVerification() {
               <span
                 class="inline-block h-4 w-4 rounded-full bg-white transition-transform"
                 :class="emailVerificationEnabled ? 'translate-x-6' : 'translate-x-1'"
+              />
+            </button>
+          </div>
+        </div>
+
+        <!-- 视频功能开关 -->
+        <div class="rounded-lg border border-gray-200 p-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium text-gray-700">视频功能</p>
+              <p class="text-xs text-gray-500 mt-0.5">开启后前台显示视频专区和播放器（需先接入 Cloudflare Stream）</p>
+            </div>
+            <button
+              type="button"
+              :disabled="videoToggleLoading"
+              class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50"
+              :class="videoEnabledToggle ? 'bg-blue-600' : 'bg-gray-300'"
+              @click="toggleVideo"
+            >
+              <span
+                class="inline-block h-4 w-4 rounded-full bg-white transition-transform"
+                :class="videoEnabledToggle ? 'translate-x-6' : 'translate-x-1'"
               />
             </button>
           </div>

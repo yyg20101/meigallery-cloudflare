@@ -363,9 +363,9 @@ Response 200:
 
 | 阶段 | 内容 | 预计工作量 | 前置条件 |
 |------|------|-----------|---------|
-| **Phase 1** | Bug 修复（5 个 Bug） | 1-2 小时 | 无 |
-| **Phase 2A** | 图片上传 + 封面设置 + 媒体列表 | 3-4 小时 | Phase 1 |
-| **Phase 2B** | 视频上传 + Stream 集成 | 2-3 小时 | Phase 2A + Stream API token 就绪 |
+| **Phase 1** | Bug 修复（5 个 Bug）✅ 已完成 | 1-2 小时 | 无 |
+| **Phase 2A** | 图片上传 + 封面设置 + 媒体列表（图库创建已改为两步流程：基本信息→媒体上传） | 3-4 小时 | Phase 1 |
+| **Phase 2B** | 视频上传 + Stream 集成（⚠️ Cloudflare Stream 当前未接入） | 2-3 小时 | Phase 2A + Stream API token 就绪 |
 | **Phase 2C** | 单张 VIP 配置 + 排序 + 删除 | 1-2 小时 | Phase 2A |
 | **Phase 3** | WordPress 图片迁移到 R2 | 1-2 小时 | Phase 1 |
 

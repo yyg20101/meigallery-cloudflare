@@ -93,6 +93,8 @@ Content-Type: application/json
 
 ### 2.3 功能 B：邮箱验证系统
 
+> ⚠️ Cloudflare Email Service 需要 Workers Paid 计划（$5/月），当前 `email_verification_enabled` 默认为 `false`
+
 #### 用户故事
 
 | # | 故事 | 验收标准 |

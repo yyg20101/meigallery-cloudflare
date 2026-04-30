@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const { isLoggedIn, isAdmin, user, logout } = useAuth()
-const { siteName, footerText } = useSiteSettings()
+const { siteName, footerText, videoEnabled } = useSiteSettings()
 const route = useRoute()
 
 const searchQuery = ref('')
@@ -11,12 +11,17 @@ function onSearch() {
   }
 }
 
-const navLinks = [
-  { label: '首页', to: '/' },
-  { label: '发现', to: '/discover' },
-  { label: '标签', to: '/tags' },
-  { label: '视频', to: '/search?type=video' },
-]
+const navLinks = computed(() => {
+  const links = [
+    { label: '首页', to: '/' },
+    { label: '发现', to: '/discover' },
+    { label: '标签', to: '/tags' },
+  ]
+  if (videoEnabled.value) {
+    links.push({ label: '视频', to: '/search?type=video' })
+  }
+  return links
+})
 
 function isActive(to: string) {
   if (to === '/') return route.path === '/'

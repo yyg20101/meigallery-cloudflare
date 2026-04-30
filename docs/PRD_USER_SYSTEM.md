@@ -153,7 +153,7 @@ ORDER BY created_at DESC LIMIT 50;
 
 -- 最近登录（session 记录）
 SELECT id, created_at FROM sessions
-WHERE user_id = ? ORDER BY created_at DESC LIMIT 20;
+WHERE user_id = ? ORDER BY created_at DESC LIMIT 20;  -- user_id 为 INTEGER 类型
 ```
 
 ### 2.5 功能 D：个人设置页
@@ -254,7 +254,7 @@ VALUES ('email_verification_enabled', '"false"', datetime('now'));
 
 | 列 | 类型 | 说明 | 来源 |
 |----|------|------|------|
-| id | TEXT PK | | 0001 |
+| id | INTEGER PK AUTOINCREMENT | （通过 migration 0007 从 TEXT 迁移） | 0001/0007 |
 | email | TEXT NOT NULL UNIQUE | | 0001 |
 | **username** | TEXT UNIQUE | 英文+数字，3-20 字符 | **0006 新增** |
 | nickname | TEXT | 保留兼容，但新用户不再使用 | 0001 |

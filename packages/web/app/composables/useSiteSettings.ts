@@ -17,6 +17,7 @@ export function useSiteSettings() {
     footer_text?: string
     membership_description?: string
     email_verification_enabled?: string | boolean
+    video_enabled?: string | boolean
   }
 
   const settings = useState<SiteSettings>('site-settings', () => ({}))
@@ -43,6 +44,10 @@ export function useSiteSettings() {
   const ogImage = computed(() => settings.value.og_image || '')
   const footerText = computed(() => settings.value.footer_text || `© ${new Date().getFullYear()} ${siteName.value}`)
   const membershipDescription = computed(() => settings.value.membership_description || '')
+  const videoEnabled = computed(() => {
+    const v = settings.value.video_enabled
+    return v === true || v === 'true'
+  })
 
   return {
     settings,
@@ -56,5 +61,6 @@ export function useSiteSettings() {
     ogImage,
     footerText,
     membershipDescription,
+    videoEnabled,
   }
 }

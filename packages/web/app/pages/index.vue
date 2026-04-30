@@ -1,5 +1,6 @@
 <script setup lang="ts">
 const { api } = useApi()
+const { videoEnabled } = useSiteSettings()
 
 interface GallerySummary {
   id: string
@@ -165,7 +166,7 @@ useSeoMeta({
     </section>
 
     <!-- 视频专区 -->
-    <section v-if="videoGalleries.length > 0" class="mb-5">
+    <section v-if="videoEnabled && videoGalleries.length > 0" class="mb-5">
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-[13px] font-semibold text-gray-900">视频专区</h2>
         <NuxtLink to="/discover?tag=video" class="text-sm text-gray-400 hover:text-gray-600">查看全部 →</NuxtLink>

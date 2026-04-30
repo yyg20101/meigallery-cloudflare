@@ -2,6 +2,7 @@
 const route = useRoute()
 const { api } = useApi()
 const { isLoggedIn, membershipRank } = useAuth()
+const { videoEnabled } = useSiteSettings()
 
 
 interface GalleryTag {
@@ -218,7 +219,7 @@ useSeoMeta({
         </section>
 
         <!-- 视频区 -->
-        <section v-if="videos.length > 0" class="mb-6">
+        <section v-if="videoEnabled && videos.length > 0" class="mb-6">
           <h2 class="text-lg font-semibold text-gray-900 mb-4">视频</h2>
           <div class="space-y-4">
             <!-- 预览视频 -->
