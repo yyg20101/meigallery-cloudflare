@@ -31,6 +31,9 @@ export default defineNuxtConfig({
     },
   },
 
+  // 全局 CSS（Tailwind v4 + Nuxt UI）
+  css: ['~/assets/css/main.css'],
+
   // 模块
   modules: [
     '@nuxt/ui',
