@@ -63,3 +63,6 @@ export const RATE_LIMITS = {
   ADMIN_API: { requests: 120, window: 60 },  // 120 次/分钟/session
   MEDIA_SIGN: { requests: 30, window: 60 },  // 30 次/分钟/user
 } as const
+
+export { CONTACT_PLATFORMS, CONTACT_PLATFORM_KEYS, generateContactLink } from './contact-platforms'
+export type { ContactPlatformConfig } from './contact-platforms'

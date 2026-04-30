@@ -31,7 +31,7 @@ const tagTypeLabels: Record<string, string> = {
         :class="[
           'rounded-full px-3 py-1 text-xs transition-colors',
           selectedTags.includes(tag.slug)
-            ? 'bg-blue-600 text-white'
+            ? 'bg-[#111111] text-white'
             : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
         ]"
         @click="emit('toggle', tag.slug)"
@@ -41,7 +41,7 @@ const tagTypeLabels: Record<string, string> = {
     </div>
     <button
       v-if="selectedTags.length > 0"
-      class="text-xs text-blue-600 hover:underline"
+      class="text-xs text-gray-500 hover:text-[#111] hover:underline"
       @click="emit('clear')"
     >
       清除全部筛选

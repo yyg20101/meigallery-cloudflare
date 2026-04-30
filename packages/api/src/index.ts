@@ -8,6 +8,7 @@ import { tagRoutes } from './routes/tags'
 import { searchRoutes } from './routes/search'
 import { mediaRoutes } from './routes/media'
 import { meRoutes } from './routes/me'
+import { contactMethodRoutes } from './routes/contact-methods'
 import { adminRoutes } from './routes/admin'
 import { healthRoutes } from './routes/health'
 import { authMiddleware } from './middleware/auth'
@@ -45,11 +46,11 @@ app.route('/api/tags', tagRoutes)
 app.route('/api/search', searchRoutes)
 app.route('/api/media', mediaRoutes)
 app.route('/api/me', meRoutes)
+app.route('/api/contact-methods', contactMethodRoutes)
 // 公开站点信息（不需要登录）
 app.get('/api/settings/public', async (c) => {
   const db = c.env.DB
-  const keys = ['site_name', 'seo_title', 'membership_description',
-                'contact_wechat', 'contact_telegram', 'contact_email', 'contact_custom_note']
+  const keys = ['site_name', 'seo_title', 'membership_description']
   const placeholders = keys.map(() => '?').join(',')
   const result = await db
     .prepare(`SELECT key, value FROM site_settings WHERE key IN (${placeholders})`)

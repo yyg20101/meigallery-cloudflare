@@ -8,7 +8,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "meigallery-db"
-database_id = "local-placeholder"  # 部署前替换为实际 ID，执行: wrangler d1 create meigallery-db
+database_id = "714929cb-003b-4cb1-bd9f-545fa1895e8c"
 migrations_dir = "migrations"
 
 # R2 存储桶
@@ -19,7 +19,7 @@ bucket_name = "meigallery-media"
 # 环境变量（非敏感）— 生产默认值
 [vars]
 APP_ENV = "production"
-CORS_ORIGIN = "https://meigallery.com"
+CORS_ORIGIN = "https://616618.xyz"
 
 # 敏感变量需通过 wrangler secret put 设置：
 # wrangler secret put SESSION_SECRET
@@ -34,7 +34,7 @@ name = "meigallery-api-dev"
 [[env.dev.d1_databases]]
 binding = "DB"
 database_name = "meigallery-db-dev"
-database_id = "local-placeholder"  # 替换为 dev 环境的 D1 ID
+database_id = "65419d75-0b2e-40b6-b077-6e13616f2d18"  # dev 环境
 
 [[env.dev.r2_buckets]]
 binding = "R2"
@@ -42,4 +42,4 @@ bucket_name = "meigallery-media-dev"
 
 [env.dev.vars]
 APP_ENV = "development"
-CORS_ORIGIN = "https://meigallery-web-dev.<你的子域>.workers.dev"
+CORS_ORIGIN = "*"  # 部署后替换为实际 workers.dev URL

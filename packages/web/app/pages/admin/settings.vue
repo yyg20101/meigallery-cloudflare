@@ -8,10 +8,7 @@ const form = reactive({
   site_name: '',
   seo_title: '',
   membership_description: '',
-  contact_wechat: '',
-  contact_telegram: '',
-  contact_email: '',
-  contact_custom_note: '',
+
 })
 const loading = ref(false)
 const message = ref('')
@@ -65,24 +62,9 @@ async function onSave() {
         <textarea v-model="form.membership_description" rows="3" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
       </div>
 
-      <hr class="border-gray-200" />
-      <h2 class="text-base font-semibold text-gray-900">联系方式</h2>
-
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">微信号</label>
-        <input v-model="form.contact_wechat" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Telegram</label>
-        <input v-model="form.contact_telegram" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">邮箱</label>
-        <input v-model="form.contact_email" type="email" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">自定义说明</label>
-        <textarea v-model="form.contact_custom_note" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+      <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
+        联系方式已迁移到独立管理页面。
+        <NuxtLink to="/admin/contact-methods" class="text-blue-600 hover:underline font-medium ml-1">前往管理联系方式 →</NuxtLink>
       </div>
 
       <div v-if="message" class="text-sm" :class="message.includes('失败') ? 'text-red-600' : 'text-green-600'">{{ message }}</div>

@@ -21,6 +21,13 @@ export function useAuth() {
   const isAdmin = computed(() => user.value?.role === 'admin' || user.value?.role === 'owner')
   const isOwner = computed(() => user.value?.role === 'owner')
   const membershipRank = computed(() => user.value?.membershipRank ?? 0)
+  const membershipLevel = computed(() => {
+    const rank = membershipRank.value
+    if (rank >= 20) return 'svip'
+    if (rank >= 10) return 'vip'
+    return 'free'
+  })
+  const membershipExpiry = computed(() => user.value?.membershipExpiry ?? null)
 
   async function fetchUser() {
     try {
@@ -57,5 +64,5 @@ export function useAuth() {
     }
   }
 
-  return { user, isLoggedIn, isAdmin, isOwner, membershipRank, fetchUser, login, register, logout }
+  return { user, isLoggedIn, isAdmin, isOwner, membershipRank, membershipLevel, membershipExpiry, fetchUser, login, register, logout }
 }

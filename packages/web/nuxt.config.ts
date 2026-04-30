@@ -6,9 +6,14 @@ export default defineNuxtConfig({
 
   srcDir: 'app/',
 
-  // Nitro 服务端引擎：部署为 Cloudflare Worker（非 Pages）
+  // Nitro 服务端引擎：部署为 Cloudflare Worker（ES Module 格式，支持 nodejs_compat）
   nitro: {
-    preset: 'cloudflare',
+    preset: 'cloudflare-module',
+  },
+
+  // 页面过渡动画
+  app: {
+    pageTransition: { name: 'page', mode: 'out-in' },
   },
 
   // 路由规则：管理后台使用 CSR
@@ -25,6 +30,9 @@ export default defineNuxtConfig({
       siteUrl: 'http://localhost:3000',
     },
   },
+
+  // 全局 CSS（Tailwind v4 + Nuxt UI）
+  css: ['~/assets/css/main.css'],
 
   // 模块
   modules: [

@@ -7,6 +7,7 @@ import { adminImportRoutes } from './import-jobs'
 import { adminAuditLogRoutes as adminAuditRoutes } from './audit-logs'
 import { adminSettingsRoutes } from './settings'
 import { adminLegacyImportRoutes } from './legacy-import'
+import { adminContactMethodRoutes } from './contact-methods'
 
 export const adminRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -44,3 +45,4 @@ adminRoutes.route('/import-jobs', adminImportRoutes)
 adminRoutes.route('/audit-logs', adminAuditRoutes)
 adminRoutes.route('/settings', adminSettingsRoutes)
 adminRoutes.route('/legacy-import', adminLegacyImportRoutes)
+adminRoutes.route('/contact-methods', adminContactMethodRoutes)

@@ -122,3 +122,5 @@ export interface ApiError {
   message: string
   detail?: string
 }
+
+export type { ContactMethod, ContactMethodAdmin } from './contact'
