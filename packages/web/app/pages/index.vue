@@ -34,8 +34,12 @@ const featured = computed(() => allGalleries.value.slice(0, 3))
 // 最新图库：第 4-11 条（8 条）
 const latest = computed(() => allGalleries.value.slice(3, 11))
 
-// 视频专区：最后 3 条
-const videoGalleries = computed(() => allGalleries.value.slice(-3))
+// 视频专区：筛选包含视频标签的图库，最多显示 3 条
+const videoGalleries = computed(() =>
+  allGalleries.value
+    .filter(g => g.tags.some(t => t.slug === 'video' || t.name === '视频'))
+    .slice(0, 3),
+)
 
 // 热门标签：每类取前几个，总共最多 15 个
 const hotTags = computed(() => {

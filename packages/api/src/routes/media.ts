@@ -50,6 +50,11 @@ mediaRoutes.get('/cover/:galleryId', async (c) => {
     return c.json({ statusCode: 404, message: '封面不存在' }, 404)
   }
 
+  // 外部 URL（迁移数据）直接 302 重定向
+  if (gallery.cover_key.startsWith('http')) {
+    return c.redirect(gallery.cover_key, 302)
+  }
+
   const object = await c.env.R2.get(gallery.cover_key)
   if (!object) {
     return c.json({ statusCode: 404, message: '封面文件不存在' }, 404)

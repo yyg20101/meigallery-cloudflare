@@ -332,12 +332,12 @@ adminGalleryRoutes.get('/:id', async (c) => {
   const db = c.env.DB
   const id = c.req.param('id')
 
-  const gallery = await db
+  const row = await db
     .prepare('SELECT * FROM galleries WHERE id = ?')
     .bind(id)
-    .first()
+    .first<Record<string, unknown>>()
 
-  if (!gallery) {
+  if (!row) {
     return c.json({ error: '图库不存在' }, 404)
   }
 
@@ -350,7 +350,24 @@ adminGalleryRoutes.get('/:id', async (c) => {
     .bind(id)
     .all()
 
-  return c.json({ data: { ...gallery, tags: tags.results } })
+  // 将 snake_case 字段映射为 camelCase，前端依赖 camelCase 键名
+  const gallery = {
+    id: row.id,
+    title: row.title,
+    slug: row.slug,
+    summary: row.summary,
+    bodyMd: row.body_md,
+    coverKey: row.cover_key,
+    status: row.status,
+    requiredLevelRank: row.required_level_rank,
+    publishedAt: row.published_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    viewCount: row.view_count,
+    tags: tags.results,
+  }
+
+  return c.json({ data: gallery })
 })
 
 /**

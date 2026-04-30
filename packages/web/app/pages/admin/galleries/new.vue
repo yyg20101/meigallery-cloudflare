@@ -16,15 +16,16 @@ const form = reactive({
 })
 const error = ref('')
 const loading = ref(false)
+const slugManuallyEdited = ref(false)
 
 // 获取标签供选择
 const { data: tagsData } = await useAsyncData('admin-all-tags', () =>
   api<{ data: Array<{ id: string; type: string; name: string; slug: string; gallery_count: number }> }>('/api/admin/tags'),
 )
 
-// 自动生成 slug
+// 自动生成 slug（仅在用户未手动编辑 slug 时）
 watch(() => form.title, (val) => {
-  if (!form.slug || form.slug === slugify(form.title)) {
+  if (!slugManuallyEdited.value) {
     form.slug = slugify(val)
   }
 })
@@ -73,7 +74,7 @@ async function onSubmit() {
       </div>
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Slug *</label>
-        <input v-model="form.slug" type="text" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" />
+        <input v-model="form.slug" type="text" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" @input="slugManuallyEdited = true" />
       </div>
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">摘要</label>

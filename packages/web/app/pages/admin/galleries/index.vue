@@ -77,47 +77,53 @@ function onSearchInput() {
 // 选择逻辑
 // ============================================================
 
-const selectedIds = ref<Set<string>>(new Set())
+const selectedIds = ref<string[]>([])
 const selectAllMatching = ref(false) // 全选所有匹配项（不仅当前页）
 
 const pageIds = computed(() => galleries.value.map((g) => g.id))
 const isAllPageSelected = computed(() =>
-  pageIds.value.length > 0 && pageIds.value.every((id) => selectedIds.value.has(id)),
+  pageIds.value.length > 0 && pageIds.value.every((id) => selectedIds.value.includes(id)),
 )
 
 function toggleSelectAll() {
   if (isAllPageSelected.value) {
     // 取消本页全选
-    pageIds.value.forEach((id) => selectedIds.value.delete(id))
+    const pageSet = new Set(pageIds.value)
+    selectedIds.value = selectedIds.value.filter((id) => !pageSet.has(id))
     selectAllMatching.value = false
   } else {
-    // 全选本页
-    pageIds.value.forEach((id) => selectedIds.value.add(id))
+    // 全选本页（去重合并）
+    const existing = new Set(selectedIds.value)
+    const toAdd = pageIds.value.filter((id) => !existing.has(id))
+    selectedIds.value = [...selectedIds.value, ...toAdd]
   }
 }
 
 function toggleSelectItem(id: string) {
-  if (selectedIds.value.has(id)) {
-    selectedIds.value.delete(id)
+  const idx = selectedIds.value.indexOf(id)
+  if (idx >= 0) {
+    selectedIds.value = selectedIds.value.filter((v) => v !== id)
     selectAllMatching.value = false
   } else {
-    selectedIds.value.add(id)
+    selectedIds.value = [...selectedIds.value, id]
   }
 }
 
 function selectAllMatchingGalleries() {
   selectAllMatching.value = true
-  // 同时选中当前页
-  pageIds.value.forEach((id) => selectedIds.value.add(id))
+  // 同时选中当前页（去重合并）
+  const existing = new Set(selectedIds.value)
+  const toAdd = pageIds.value.filter((id) => !existing.has(id))
+  selectedIds.value = [...selectedIds.value, ...toAdd]
 }
 
 function clearSelection() {
-  selectedIds.value.clear()
+  selectedIds.value = []
   selectAllMatching.value = false
 }
 
 const selectedCount = computed(() =>
-  selectAllMatching.value ? total.value : selectedIds.value.size,
+  selectAllMatching.value ? total.value : selectedIds.value.length,
 )
 
 // 页面切换 / 筛选变化时清空选择
@@ -256,7 +262,7 @@ async function executeBatch() {
         search: search.value || undefined,
       }
     } else {
-      payload.galleryIds = Array.from(selectedIds.value)
+      payload.galleryIds = [...selectedIds.value]
     }
 
     if (confirmAction.value === 'set_level') {
@@ -396,7 +402,7 @@ async function unpublishGallery(id: string) {
               <input
                 type="checkbox"
                 :checked="isAllPageSelected"
-                :indeterminate="selectedIds.size > 0 && !isAllPageSelected"
+                :indeterminate="selectedIds.length > 0 && !isAllPageSelected"
                 class="rounded border-gray-300"
                 @change="toggleSelectAll"
               />
@@ -409,11 +415,11 @@ async function unpublishGallery(id: string) {
           </tr>
         </thead>
         <tbody class="divide-y">
-          <tr v-for="g in galleries" :key="g.id" class="hover:bg-gray-50" :class="{ 'bg-blue-50/50': selectedIds.has(g.id) }">
+          <tr v-for="g in galleries" :key="g.id" class="hover:bg-gray-50" :class="{ 'bg-blue-50/50': selectedIds.includes(g.id) }">
             <td class="px-3 py-3">
               <input
                 type="checkbox"
-                :checked="selectedIds.has(g.id)"
+                :checked="selectedIds.includes(g.id)"
                 class="rounded border-gray-300"
                 @change="toggleSelectItem(g.id)"
               />
