@@ -32,13 +32,16 @@ authRoutes.post('/register', async (c) => {
   }
 
   // Turnstile 验证（生产环境）
-  if (c.env.TURNSTILE_SECRET_KEY && body.turnstileToken) {
+  // 当配置了 TURNSTILE_SECRET_KEY 时，token 为必填，防止客户端绕过验证
+  if (c.env.TURNSTILE_SECRET_KEY) {
+    if (!body.turnstileToken) {
+      return c.json({ statusCode: 400, message: '请完成人机验证' }, 400)
+    }
     const verified = await verifyTurnstile(c.env.TURNSTILE_SECRET_KEY, body.turnstileToken)
     if (!verified) {
       return c.json({ statusCode: 400, message: '人机验证失败，请重试' }, 400)
     }
   }
-
   const db = c.env.DB
 
   // 检查邮箱是否已注册
@@ -91,7 +94,11 @@ authRoutes.post('/login', async (c) => {
   const email = body.email.trim().toLowerCase()
 
   // Turnstile 验证
-  if (c.env.TURNSTILE_SECRET_KEY && body.turnstileToken) {
+  // 当配置了 TURNSTILE_SECRET_KEY 时，token 为必填，防止客户端绕过验证
+  if (c.env.TURNSTILE_SECRET_KEY) {
+    if (!body.turnstileToken) {
+      return c.json({ statusCode: 400, message: '请完成人机验证' }, 400)
+    }
     const verified = await verifyTurnstile(c.env.TURNSTILE_SECRET_KEY, body.turnstileToken)
     if (!verified) {
       return c.json({ statusCode: 400, message: '人机验证失败，请重试' }, 400)
