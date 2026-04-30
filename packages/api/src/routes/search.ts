@@ -80,8 +80,7 @@ searchRoutes.get('/', cacheControl(30), async (c) => {
       orderClause = 'ORDER BY RANDOM()'
       break
     case 'hot':
-      // 暂无阅读量统计，降级为最新
-      orderClause = 'ORDER BY g.published_at DESC'
+      orderClause = 'ORDER BY g.view_count DESC, g.published_at DESC'
       break
     default: // newest / relevance
       orderClause = 'ORDER BY g.published_at DESC'

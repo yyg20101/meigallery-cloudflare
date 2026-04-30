@@ -64,8 +64,7 @@ galleryRoutes.get('/', cacheControl(60), async (c) => {
       orderClause = ' ORDER BY RANDOM()'
       break
     case 'hot':
-      // 暂无阅读量统计，降级为最新发布
-      orderClause = ' ORDER BY g.published_at DESC'
+      orderClause = ' ORDER BY g.view_count DESC, g.published_at DESC'
       break
     default: // newest / latest
       orderClause = ' ORDER BY g.published_at DESC'
@@ -165,6 +164,14 @@ galleryRoutes.get('/:slug', cacheControl(120), async (c) => {
   if (!gallery) {
     return c.json({ statusCode: 404, message: '图库不存在' }, 404)
   }
+
+  // 异步递增浏览量（不阻塞响应）
+  c.executionCtx.waitUntil(
+    db.prepare('UPDATE galleries SET view_count = view_count + 1 WHERE id = ?')
+      .bind(gallery.id)
+      .run()
+      .catch(() => {}),
+  )
 
   // 查询标签
   const tags = await db
