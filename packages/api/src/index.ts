@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
+import { secureHeaders } from 'hono/secure-headers'
 import type { CloudflareEnv } from '@meigallery/shared'
 import { authRoutes } from './routes/auth'
 import { galleryRoutes } from './routes/galleries'
@@ -12,6 +13,7 @@ import { contactMethodRoutes } from './routes/contact-methods'
 import { adminRoutes } from './routes/admin'
 import { healthRoutes } from './routes/health'
 import { authMiddleware } from './middleware/auth'
+import { rateLimiter } from './middleware/rate-limit'
 
 /** Hono 应用绑定类型 */
 export type Bindings = CloudflareEnv & {
@@ -32,10 +34,23 @@ const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
 // 全局中间件
 app.use('*', logger())
-app.use('*', cors({
-  origin: (origin) => origin, // 开发阶段允许所有来源，生产环境需限制
-  credentials: true,
+app.use('*', secureHeaders({
+  crossOriginEmbedderPolicy: false, // 图片嵌入需要
+  xFrameOptions: 'DENY',
 }))
+app.use('*', cors({
+  origin: (origin, c) => {
+    const allowed = c.env.CORS_ORIGIN || '*'
+    if (allowed === '*') return origin
+    return origin === allowed ? origin : ''
+  },
+  credentials: true,
+  allowHeaders: ['Content-Type', 'Authorization'],
+  allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  maxAge: 86400,
+}))
+// 登录/注册接口速率限制：每 IP 每分钟 10 次
+app.use('/api/auth/*', rateLimiter({ limit: 10, windowMs: 60_000 }))
 app.use('*', authMiddleware)
 
 // 路由挂载
