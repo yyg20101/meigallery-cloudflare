@@ -74,6 +74,23 @@ const fullVideos = computed(() =>
   videos.value.filter(v => v.role === 'full' || (v.requiredRank > 0 && v.role !== 'preview')),
 )
 
+// 图片查看器状态
+const viewerOpen = ref(false)
+const viewerStartIndex = ref(0)
+
+const viewerImages = computed(() =>
+  publicImages.value.map(img => ({
+    id: img.id,
+    url: img.thumbnailUrl || img.url || '',
+    alt: gallery.value?.title || '',
+  })),
+)
+
+function openViewer(index: number) {
+  viewerStartIndex.value = index
+  viewerOpen.value = true
+}
+
 // 面包屑
 const regionTag = computed(() => gallery.value?.tags.find(t => t.type === 'region' || t.type === 'region_group' || t.type === 'city'))
 const breadcrumbs = computed(() => [
@@ -166,14 +183,15 @@ useSeoMeta({
         <section v-if="publicImages.length > 0" class="mb-6">
           <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
             <div
-              v-for="img in publicImages"
+              v-for="(img, idx) in publicImages"
               :key="img.id"
-              class="aspect-[3/4] rounded-lg overflow-hidden bg-gray-100"
+              class="aspect-[3/4] rounded-lg overflow-hidden bg-gray-100 cursor-pointer"
+              @click="openViewer(idx)"
             >
               <img
                 :src="img.thumbnailUrl || img.url"
                 :alt="gallery.title"
-                class="h-full w-full object-cover"
+                class="h-full w-full object-cover transition-transform hover:scale-105"
                 loading="lazy"
               />
             </div>
@@ -246,5 +264,13 @@ useSeoMeta({
         </div>
       </aside>
     </div>
+
+    <!-- 图片查看器 -->
+    <ImageViewer
+      v-if="viewerOpen"
+      :images="viewerImages"
+      :start-index="viewerStartIndex"
+      @close="viewerOpen = false"
+    />
   </div>
 </template>
