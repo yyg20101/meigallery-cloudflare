@@ -107,6 +107,17 @@ gallery-001,夏日写真,summer-portrait-001,广东,甜美,清新,"长发,户外
 - 原始媒体存储在私有 bucket 或受保护服务中，公开变体通过显式 URL 分发。
 - 为权限校验、导入解析、会员到期和搜索过滤编写重点测试。
 
+## 任务完成流程
+
+每完成一个任务阶段，必须按以下顺序执行：
+
+1. **更新进度**：标记当前任务为已完成，记录产出物。
+2. **验证构建**：运行 `pnpm --filter @meigallery/api exec tsc --noEmit` 和 `pnpm --filter @meigallery/web exec nuxt build` 确认无阻断性错误。
+3. **提交代码**：`git add -A && git commit -m "..."` ，commit message 使用中文，格式为 `类型: 简要描述`。
+4. **推送远端**：`git push` 至 `origin/main`。
+
+不得跳过任何步骤，不得积压多个任务后再统一提交。
+
 ## 实现启动时的预期工具
 
 - 前端框架：**Nuxt 3**（Nitro preset `cloudflare`）
