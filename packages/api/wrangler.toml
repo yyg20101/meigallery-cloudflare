@@ -8,8 +8,8 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "meigallery-db"
-database_id = ""  # 部署前需填入实际 ID，执行: wrangler d1 create meigallery-db
-migrations_dir = "db/migrations"
+database_id = "local-placeholder"  # 部署前替换为实际 ID，执行: wrangler d1 create meigallery-db
+migrations_dir = "migrations"
 
 # R2 存储桶
 [[r2_buckets]]
