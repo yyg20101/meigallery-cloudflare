@@ -25,7 +25,7 @@ const currentPage = ref(1)
 // 从 URL 初始化状态
 function syncFromRoute() {
   const q = route.query
-  selectedSlugs.value = q.tags ? String(q.tags).split(',').filter(Boolean) : []
+  selectedSlugs.value = q.tag ? String(q.tag).split(',').filter(Boolean) : []
   sortBy.value = (['latest', 'hot', 'random'].includes(String(q.sort)) ? String(q.sort) : 'latest') as typeof sortBy.value
   currentPage.value = Number(q.page) || 1
 }
@@ -37,7 +37,7 @@ watch(() => route.query, syncFromRoute)
 // 同步状态到 URL
 function updateQuery() {
   const query: Record<string, string> = {}
-  if (selectedSlugs.value.length) query.tags = selectedSlugs.value.join(',')
+  if (selectedSlugs.value.length) query.tag = selectedSlugs.value.join(',')
   if (sortBy.value !== 'latest') query.sort = sortBy.value
   if (currentPage.value > 1) query.page = String(currentPage.value)
   router.push({ path: '/discover', query })
@@ -72,8 +72,10 @@ function goToPage(page: number) {
 }
 
 // 数据获取
+const { api } = useApi()
+
 const { data: tagsData } = await useAsyncData('discover-tags', () =>
-  $fetch<{ data: Record<string, TagInfo[]> }>('/api/tags'),
+  api<{ data: Record<string, TagInfo[]> }>('/api/tags'),
 )
 
 const tags = computed(() => tagsData.value?.data ?? {})
@@ -81,8 +83,8 @@ const tags = computed(() => tagsData.value?.data ?? {})
 const { data: galleriesData, status } = await useAsyncData(
   'discover-galleries',
   () =>
-    $fetch<{ data: GallerySummary[]; total: number }>('/api/galleries', {
-      params: {
+    api<{ data: GallerySummary[]; total: number }>('/api/galleries', {
+      query: {
         pageSize: PAGE_SIZE,
         page: currentPage.value,
         tag: selectedSlugs.value.length ? selectedSlugs.value.join(',') : undefined,

@@ -93,7 +93,10 @@ galleryRoutes.get('/', cacheControl(60), async (c) => {
     title: g.title,
     slug: g.slug,
     summary: g.summary,
-    coverUrl: g.cover_key ? `/api/media/cover/${g.id}` : null,
+    // 外部 URL 直通（兼容测试数据和迁移内容），R2 key 走内部代理
+    coverUrl: g.cover_key
+      ? g.cover_key.startsWith('http') ? g.cover_key : `/api/media/cover/${g.id}`
+      : null,
     requiredLevelRank: g.required_level_rank,
     publishedAt: g.published_at,
     tags: tagsMap[g.id] || [],
@@ -163,7 +166,10 @@ galleryRoutes.get('/:slug', cacheControl(120), async (c) => {
     slug: gallery.slug,
     summary: gallery.summary,
     bodyMd: gallery.body_md,
-    coverUrl: gallery.cover_key ? `/api/media/cover/${gallery.id}` : null,
+    // 外部 URL 直通，R2 key 走内部代理
+    coverUrl: gallery.cover_key
+      ? gallery.cover_key.startsWith('http') ? gallery.cover_key : `/api/media/cover/${gallery.id}`
+      : null,
     status: gallery.status,
     requiredLevelRank: gallery.required_level_rank,
     publishedAt: gallery.published_at,

@@ -17,7 +17,6 @@ const currentRank = computed(() => membershipRank.value ?? 0)
 
 async function handleLogout() {
   await logout()
-  navigateTo('/')
 }
 </script>
 

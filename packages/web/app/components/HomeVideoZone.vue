@@ -13,10 +13,6 @@ defineProps<{
 
 <template>
   <div class="bg-gray-900 rounded-xl p-4">
-    <div class="flex justify-between items-center mb-3">
-      <span class="text-white font-semibold">视频专区</span>
-      <NuxtLink to="/videos" class="text-gray-400 text-xs">查看全部 →</NuxtLink>
-    </div>
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
       <NuxtLink
         v-for="g in galleries"

@@ -137,7 +137,9 @@ searchRoutes.get('/', cacheControl(30), async (c) => {
     title: g.title,
     slug: g.slug,
     summary: g.summary,
-    coverUrl: g.cover_key ? `/api/media/cover/${g.id}` : null,
+    coverUrl: g.cover_key
+      ? g.cover_key.startsWith('http') ? g.cover_key : `/api/media/cover/${g.id}`
+      : null,
     requiredLevelRank: g.required_level_rank,
     publishedAt: g.published_at,
     tags: tagsMap[g.id] || [],

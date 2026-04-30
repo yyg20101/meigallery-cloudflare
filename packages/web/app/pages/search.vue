@@ -101,7 +101,7 @@ function updateUrl() {
 }
 
 function goToTag(slug: string) {
-  navigateTo('/discover?tags=' + slug)
+  navigateTo('/discover?tag=' + slug)
 }
 
 const searchQuery = computed(() => route.query.q as string || '')

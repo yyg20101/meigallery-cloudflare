@@ -13,6 +13,16 @@ const turnstileToken = ref('')
 const turnstileSiteKey = computed(() => config.public.turnstileSiteKey as string)
 const hasTurnstile = computed(() => !!turnstileSiteKey.value)
 
+// Turnstile 回调：挂载到 window 以供 Turnstile widget 调用
+if (import.meta.client && hasTurnstile.value) {
+  useHead({
+    script: [{ src: 'https://challenges.cloudflare.com/turnstile/v0/api.js', async: true }],
+  })
+  ;(window as any).onTurnstileLogin = (token: string) => {
+    turnstileToken.value = token
+  }
+}
+
 if (isLoggedIn.value) {
   router.replace('/')
 }

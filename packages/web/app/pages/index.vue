@@ -80,7 +80,7 @@ useSeoMeta({
           :key="tag.slug"
           :to="`/discover?tag=${tag.slug}`"
         >
-          <TagChip>{{ tag.name }}</TagChip>
+          <TagChip :tag="tag" />
         </NuxtLink>
       </div>
     </section>
@@ -101,6 +101,7 @@ useSeoMeta({
     <section v-if="videoGalleries.length > 0" class="mb-10">
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-lg font-semibold text-gray-900">视频专区</h2>
+        <NuxtLink to="/discover?tag=video" class="text-sm text-gray-400 hover:text-gray-600">查看全部 →</NuxtLink>
       </div>
       <HomeVideoZone :galleries="videoGalleries" />
     </section>
