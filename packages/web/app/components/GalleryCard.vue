@@ -28,7 +28,7 @@ const levelBadge = computed(() => {
 <template>
   <NuxtLink :to="`/gallery/${gallery.slug}`" class="group block overflow-hidden rounded-md bg-white shadow-sm transition-all duration-200 hover:-translate-y-[2px] hover:shadow-lg">
     <div class="relative overflow-hidden">
-      <LazyImage
+      <FadeImage
         v-if="gallery.coverUrl"
         :src="gallery.coverUrl"
         :alt="gallery.title"
