@@ -16,26 +16,37 @@ interface TagGroup {
   [type: string]: Array<{ id: string; name: string; slug: string }>
 }
 
-// 获取最新图库
+// 获取图库数据
 const { data: galleriesData } = await useAsyncData('home-galleries', () =>
-  api<{ data: GallerySummary[]; total: number }>('/api/galleries', { query: { pageSize: '24' } }),
+  api<{ data: GallerySummary[]; total: number }>('/api/galleries', { query: { pageSize: '12' } }),
 )
 
-// 获取标签（用于热门标签展示）
+// 获取标签
 const { data: tagsData } = await useAsyncData('home-tags', () =>
   api<{ data: TagGroup }>('/api/tags'),
 )
 
-const galleries = computed(() => galleriesData.value?.data ?? [])
+const allGalleries = computed(() => galleriesData.value?.data ?? [])
+
+// 精选专题：前 3 条
+const featured = computed(() => allGalleries.value.slice(0, 3))
+
+// 最新图库：第 4-11 条（8 条）
+const latest = computed(() => allGalleries.value.slice(3, 11))
+
+// 视频专区：最后 3 条
+const videoGalleries = computed(() => allGalleries.value.slice(-3))
+
+// 热门标签：每类取前几个，总共最多 15 个
 const hotTags = computed(() => {
   if (!tagsData.value?.data) return []
   const all: Array<{ id: string; name: string; slug: string; type: string }> = []
   for (const [type, items] of Object.entries(tagsData.value.data)) {
-    for (const item of items.slice(0, 5)) {
+    for (const item of items.slice(0, 4)) {
       all.push({ ...item, type })
     }
   }
-  return all.slice(0, 20)
+  return all.slice(0, 15)
 })
 
 useSeoMeta({
@@ -48,31 +59,50 @@ useSeoMeta({
 </script>
 
 <template>
-  <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 pb-20 sm:pb-6">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-20 sm:pb-6">
+    <!-- 精选专题 -->
+    <section class="mb-10">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-gray-900">精选专题</h2>
+        <NuxtLink to="/discover" class="text-sm text-gray-400 hover:text-gray-600">查看全部 →</NuxtLink>
+      </div>
+      <HomeFeatured :galleries="featured" />
+    </section>
+
     <!-- 热门标签 -->
-    <section v-if="hotTags.length > 0" class="mb-8">
-      <h2 class="text-lg font-semibold text-gray-900 mb-3">热门标签</h2>
+    <section v-if="hotTags.length > 0" class="mb-10">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-gray-900">热门标签</h2>
+      </div>
       <div class="flex flex-wrap gap-2">
         <NuxtLink
           v-for="tag in hotTags"
           :key="tag.slug"
-          :to="`/search?tag=${tag.slug}`"
-          class="rounded-full bg-gray-100 px-3 py-1 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+          :to="`/discover?tag=${tag.slug}`"
         >
-          {{ tag.name }}
+          <TagChip>{{ tag.name }}</TagChip>
         </NuxtLink>
       </div>
     </section>
 
     <!-- 最新图库 -->
-    <section>
-      <h2 class="text-lg font-semibold text-gray-900 mb-4">最新图库</h2>
-      <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-        <GalleryCard v-for="g in galleries" :key="g.id" :gallery="g" />
+    <section class="mb-10">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-gray-900">最新图库</h2>
+        <NuxtLink to="/discover" class="text-sm text-gray-400 hover:text-gray-600">查看全部 →</NuxtLink>
       </div>
-      <div v-if="galleries.length === 0" class="py-20 text-center text-gray-400">
+      <GalleryGrid :galleries="latest" />
+      <div v-if="latest.length === 0" class="py-20 text-center text-gray-400">
         暂无图库内容
       </div>
+    </section>
+
+    <!-- 视频专区 -->
+    <section v-if="videoGalleries.length > 0" class="mb-10">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-gray-900">视频专区</h2>
+      </div>
+      <HomeVideoZone :galleries="videoGalleries" />
     </section>
   </div>
 </template>
