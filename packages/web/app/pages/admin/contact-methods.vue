@@ -257,7 +257,7 @@ async function onQrDelete(id: string) {
   </div>
 
   <!-- 删除确认弹窗 -->
-  <UModal v-model="showDeleteConfirm">
+  <UModal v-model:open="showDeleteConfirm">
     <div class="p-6">
       <h3 class="text-base font-semibold text-gray-900 mb-3">确认删除</h3>
       <p class="text-sm text-gray-600 mb-4">确认删除此联系方式？</p>

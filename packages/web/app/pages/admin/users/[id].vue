@@ -401,7 +401,7 @@ function formatDate(dateStr: string | undefined): string {
   </div>
 
   <!-- 确认弹窗 -->
-  <UModal v-model="showConfirmModal">
+  <UModal v-model:open="showConfirmModal">
     <div class="p-6">
       <h3 class="text-base font-semibold text-gray-900 mb-3">确认操作</h3>
       <p class="text-sm text-gray-600 mb-4">{{ confirmMessage }}</p>

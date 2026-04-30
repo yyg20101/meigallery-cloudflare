@@ -152,7 +152,7 @@ const tagTypes = [
     </div>
 
     <!-- 编辑弹窗 -->
-    <UModal v-model="showEdit">
+    <UModal v-model:open="showEdit">
       <div class="p-6">
         <h3 class="text-base font-semibold text-gray-900 mb-4">编辑标签</h3>
         <div class="space-y-3">
@@ -174,7 +174,7 @@ const tagTypes = [
     </UModal>
 
     <!-- 删除确认弹窗 -->
-    <UModal v-model="showDeleteConfirm">
+    <UModal v-model:open="showDeleteConfirm">
       <div class="p-6">
         <h3 class="text-base font-semibold text-gray-900 mb-3">确认删除</h3>
         <p class="text-sm text-gray-600 mb-4">确认删除该标签？此操作不可撤销。</p>
