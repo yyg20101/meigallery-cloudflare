@@ -23,5 +23,5 @@ directory = ".output/public"
 
 [env.dev.vars]
 NUXT_PUBLIC_APP_ENV = "development"
-NUXT_PUBLIC_API_BASE_URL = "https://meigallery-api-dev.workers.dev"  # 部署后替换为实际 URL
+NUXT_PUBLIC_API_BASE_URL = "https://meigallery-api-dev.250770503.workers.dev"
 NUXT_PUBLIC_TURNSTILE_SITE_KEY = ""
