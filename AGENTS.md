@@ -14,7 +14,10 @@
 
 ## 项目状态
 
-预实现阶段。仓库目前仅包含规划文档，没有源代码或构建工具。前端框架已确定为 **Nuxt 3**。
+脚手架已完成。仓库为 **pnpm monorepo**，前后端分离：
+- `packages/web`：Nuxt 3 前端，部署为 Cloudflare Worker（preset `cloudflare`）。
+- `packages/api`：Hono 后端 API，部署为独立 Cloudflare Worker。
+- `packages/shared`：共享类型和常量。
 
 ## 项目目标
 
@@ -32,13 +35,15 @@
 
 所有组件必须基于 Cloudflare，除非明确要求不得引入非 Cloudflare 基础设施：
 
-- 前端：Cloudflare Pages。
-- API：Cloudflare Workers 或 Pages Functions。
+- 前端：Cloudflare Workers（Nuxt 3，preset `cloudflare`，含 Workers Assets 静态资源托管）。
+- API：Cloudflare Workers（Hono 框架，独立 Worker）。
 - 数据库：Cloudflare D1。
 - 图片和导入包存储：Cloudflare R2。
 - 视频上传、编码、播放和访问控制：Cloudflare Stream。
 - 人机验证：Cloudflare Turnstile。
 - 安全控制：Cloudflare WAF、速率限制、签名 URL 和服务端权限校验。
+
+注意：**不使用 Cloudflare Pages**，所有部署均通过 Workers + Workers Assets。Cloudflare 官方已推荐从 Pages 迁移到 Workers（Workers 功能集更完整：支持 Durable Objects、Cron Triggers、Rate Limiting binding、Logpush 等）。
 
 添加 Cloudflare 配置时，务必核对当前官方文档，不要依赖过时的数字限制、价格或 API 细节。
 
@@ -104,12 +109,15 @@ gallery-001,夏日写真,summer-portrait-001,广东,甜美,清新,"长发,户外
 
 ## 实现启动时的预期工具
 
-- 前端框架：**Nuxt 3**（Nitro preset `cloudflare-pages`）
-- 包管理器：pnpm
-- 本地开发：`npx nuxt dev`（Nitro 自动绑定 D1/R2 本地模拟）或 `npx wrangler pages dev`
-- 数据库迁移：D1 migrations，放在 `db/` 或 `server/database/migrations/`
-- 部署：GitHub → Cloudflare Pages Git 集成，生产分支 `main`
-- 环境变量：`APP_ENV`、`SESSION_SECRET`、`TURNSTILE_SECRET_KEY`、`R2_BUCKET_NAME`、`STREAM_ACCOUNT_ID`、`STREAM_API_TOKEN`
+- 前端框架：**Nuxt 3**（Nitro preset `cloudflare`）
+- 后端框架：**Hono**（Cloudflare Workers 原生）
+- UI 框架：前台 **Tailwind CSS** + 自定义组件，后台 **Nuxt UI v3**
+- 组件预览：**Histoire**
+- 包管理器：pnpm（workspace monorepo）
+- 本地开发：`pnpm dev`（同时启动 web:3000 和 api:8787）
+- 数据库迁移：D1 migrations，放在 `packages/api/db/migrations/`
+- 部署：`wrangler deploy`（两个 Worker 各自独立部署），CI 通过 Workers Builds
+- 环境变量：`SESSION_SECRET`、`TURNSTILE_SECRET_KEY`、`STREAM_ACCOUNT_ID`、`STREAM_API_TOKEN`、`NUXT_PUBLIC_API_BASE_URL`
 
 ## 关键参考文档
 

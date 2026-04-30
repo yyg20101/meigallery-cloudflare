@@ -10,39 +10,41 @@
 
 ## 2. 技术栈
 
-- 前端框架：**Nuxt 3**（Vue 3 全栈框架，通过 Nitro 引擎原生支持 Cloudflare Pages 部署）。
-- 服务端引擎：Nitro（preset: `cloudflare-pages`），同时承载 SSR 和 API 路由。
-- UI 层：Vue 3 + Composition API。
-- API 运行时：Nuxt Server Routes（基于 Nitro，部署为 Cloudflare Pages Functions）。
-- 数据库：Cloudflare D1（SQLite 兼容，通过 Nitro bindings 访问）。
-- 对象存储：Cloudflare R2（通过 Nitro bindings 访问）。
+- 前端框架：**Nuxt 3**（Vue 3 全栈框架，Nitro preset `cloudflare`，部署为 Cloudflare Worker）。
+- 后端框架：**Hono**（部署为独立 Cloudflare Worker，纯 API 服务）。
+- UI 层：Vue 3 + Composition API + Tailwind CSS（前台）+ Nuxt UI v3（后台）。
+- 数据库：Cloudflare D1（SQLite 兼容，通过 Worker bindings 访问）。
+- 对象存储：Cloudflare R2（通过 Worker bindings 访问）。
 - 视频：Cloudflare Stream（REST API 调用）。
 - 人机验证：Cloudflare Turnstile。
-- CI/CD：GitHub + Cloudflare Pages Git integration，`main` 分支自动生产部署。
-- 包管理器：pnpm（Cloudflare Pages 原生支持）。
+- CI/CD：GitHub + Workers Builds，`main` 分支自动生产部署。
+- 包管理器：pnpm（workspace monorepo）。
+- 组件预览：Histoire。
+
+### 架构决策
+
+**前后端分离**：前端（`packages/web`）和后端（`packages/api`）各为独立 Worker，通过 HTTP 通信。这允许前后端并行开发，各自独立部署。
+
+**Workers 而非 Pages**：Cloudflare 官方已推荐从 Pages 迁移到 Workers。Workers 功能集更完整（Durable Objects、Cron Triggers、Rate Limiting binding、Logpush、Gradual Deployments 等）。
 
 ### 选型依据
 
-| 需求 | Nuxt 3 满足方式 |
-|------|----------------|
-| SEO（图库详情页需要被搜索引擎索引） | SSR / SSG 混合渲染，逐页可配 |
-| Cloudflare Pages 部署 | Nitro preset `cloudflare-pages` 原生输出 |
-| 前后台共享认证 | Server Routes 统一处理 session |
-| API 路由 | `server/api/` 目录自动注册为 API 端点 |
-| 管理后台 SPA | `pages/admin/` 设为 CSR 模式（`ssr: false`） |
-| D1/R2 绑定 | Nitro 通过 `event.context.cloudflare.env` 访问 bindings |
-| 图片优化 | `nuxt/image` 模块 + 自定义 R2 provider |
+| 需求 | 满足方式 |
+|------|----------|
+| SEO（图库详情页需要被搜索引擎索引） | Nuxt 3 SSR，preset `cloudflare` |
+| 前后端分离并行开发 | 独立 Worker：web + api |
+| 后台 SPA | Nuxt `routeRules: { '/admin/**': { ssr: false } }` |
+| API 类型安全 | Hono + `@meigallery/shared` 共享类型包 |
+| D1/R2 绑定 | Hono 通过 `c.env.DB` / `c.env.R2` 访问 |
+| 图片优化 | 自定义缩略图生成 Worker + R2 缓存 |
 
-## 3. 应用模块
+## 3. 应用模块（monorepo 结构）
 
-| 模块 | 职责 |
-|------|------|
-| `public-web` | 首页、列表页、搜索页、详情页、登录注册、用户中心 |
-| `admin-web` | 后台首页、图库管理、标签管理、会员管理、导入任务、系统设置、审计日志 |
-| `api` | 认证、图库 CRUD、搜索、媒体授权、后台管理、导入处理 |
-| `db` | D1 schema、migration、seed |
-| `media` | R2 对象 key 规范、缩略图生成、Stream UID 映射、签名访问 |
-| `migration` | WordPress REST/XML 导入、媒体抓取、字段映射、审核队列 |
+| 包 | 路径 | 职责 |
+|------|------|------|
+| `@meigallery/web` | `packages/web/` | Nuxt 3 前端 Worker：首页、列表、搜索、详情、登录注册、用户中心、管理后台 UI |
+| `@meigallery/api` | `packages/api/` | Hono API Worker：认证、图库 CRUD、搜索、媒体授权、后台管理、导入处理 |
+| `@meigallery/shared` | `packages/shared/` | 共享类型定义、常量（会员 rank、标签类型、R2 key 前缀等） |
 
 ## 4. 认证模块
 

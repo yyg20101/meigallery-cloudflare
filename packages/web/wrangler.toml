@@ -1,0 +1,12 @@
+# MeiGallery 前端 Worker
+name = "meigallery-web"
+main = ".output/server/index.mjs"
+compatibility_date = "2024-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = ".output/public"
+
+[vars]
+NUXT_PUBLIC_APP_ENV = "production"
+NUXT_PUBLIC_API_BASE_URL = "https://api.meigallery.com"
