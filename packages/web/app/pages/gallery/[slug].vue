@@ -54,6 +54,17 @@ if (error.value || !gallery.value) {
   throw createError({ statusCode: 404, message: '图库不存在' })
 }
 
+// SEO / OG meta
+useSeoMeta({
+  title: `${gallery.value.title} - MeiGallery`,
+  description: gallery.value.summary || `${gallery.value.title} - 精选写真图库`,
+  ogTitle: gallery.value.title,
+  ogDescription: gallery.value.summary || `${gallery.value.title} - 精选写真图库`,
+  ogImage: gallery.value.coverUrl || undefined,
+  ogType: 'article',
+  twitterCard: 'summary_large_image',
+})
+
 // 计算媒体分类
 const images = computed(() =>
   gallery.value?.mediaAssets.filter(m => m.type === 'image').sort((a, b) => a.sortOrder - b.sortOrder) ?? [],
