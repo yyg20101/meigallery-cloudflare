@@ -28,7 +28,7 @@ export type Bindings = CloudflareEnv & {
 
 /** 应用级变量 */
 export type Variables = {
-  userId: string | null
+  userId: number | null
   userRole: string | null
 }
 
@@ -124,7 +124,7 @@ async function handleScheduled(env: Bindings): Promise<void> {
         WHERE um.expiry_notified = 0
           AND ml.rank > 0
           AND datetime('now') >= datetime(um.expires_at, '-3 days')
-          AND datetime('now') < um.expires_at
+          AND datetime('now') < datetime(um.expires_at)
           AND u.email_verified = 1
           AND u.notification_enabled = 1
       `)

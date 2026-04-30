@@ -6,7 +6,7 @@ export function useAuth() {
   const { api } = useApi()
 
   interface UserInfo {
-    id: string
+    id: number
     email: string
     username: string | null
     nickname: string | null

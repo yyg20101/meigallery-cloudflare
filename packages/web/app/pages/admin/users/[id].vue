@@ -6,7 +6,7 @@ const { api } = useApi()
 const userId = route.params.id as string
 
 interface UserDetail {
-  id: string; email: string; username: string | null; nickname: string | null
+  id: number; email: string; username: string | null; nickname: string | null
   avatarKey: string | null; role: string; status: string
   emailVerified: boolean; notificationEnabled: boolean
   created_at: string; updated_at: string

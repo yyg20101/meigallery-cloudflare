@@ -162,7 +162,7 @@ async function executeBatchAction(
   action: BatchAction,
   galleryIds: string[],
   params: BatchRequest['params'],
-  _adminId: string,
+  _adminId: number,
 ): Promise<{ success: number; failed: number; errors: Array<{ galleryId: string; error: string }> }> {
   const errors: Array<{ galleryId: string; error: string }> = []
   const now = new Date().toISOString()

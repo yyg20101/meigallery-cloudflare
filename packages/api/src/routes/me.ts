@@ -18,7 +18,7 @@ meRoutes.get('/', requireAuth, async (c) => {
     .prepare('SELECT id, email, username, nickname, avatar_key, role, status, notification_enabled, created_at FROM users WHERE id = ?')
     .bind(userId)
     .first<{
-      id: string; email: string; username: string | null; nickname: string | null
+      id: number; email: string; username: string | null; nickname: string | null
       avatar_key: string | null; role: string; status: string
       notification_enabled: number; created_at: string
     }>()

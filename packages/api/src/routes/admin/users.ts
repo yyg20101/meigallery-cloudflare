@@ -59,11 +59,11 @@ adminUserRoutes.get('/', async (c) => {
       LIMIT ? OFFSET ?
     `)
     .bind(...params, pageSize, offset)
-    .all<{ id: string; email: string; username: string | null; nickname: string | null; role: string; status: string; created_at: string }>()
+    .all<{ id: number; email: string; username: string | null; nickname: string | null; role: string; status: string; created_at: string }>()
 
   // 批量查询有效会员
   const userIds = users.results.map(u => u.id)
-  let membershipsMap: Record<string, { rank: number; expiresAt: string }> = {}
+  let membershipsMap: Record<number, { rank: number; expiresAt: string }> = {}
 
   if (userIds.length > 0) {
     const placeholders = userIds.map(() => '?').join(',')
@@ -77,7 +77,7 @@ adminUserRoutes.get('/', async (c) => {
         GROUP BY um.user_id
       `)
       .bind(...userIds)
-      .all<{ user_id: string; max_rank: number; max_expiry: string }>()
+      .all<{ user_id: number; max_rank: number; max_expiry: string }>()
 
     for (const m of memberships.results) {
       membershipsMap[m.user_id] = { rank: m.max_rank, expiresAt: m.max_expiry }
@@ -103,14 +103,15 @@ adminUserRoutes.get('/', async (c) => {
  * GET /:id - 用户详情（含会员历史）
  */
 adminUserRoutes.get('/:id', async (c) => {
-  const id = c.req.param('id')
+  const id = Number(c.req.param('id'))
+  if (isNaN(id)) return c.json({ statusCode: 400, message: '无效的用户 ID' }, 400)
   const db = c.env.DB
 
   const user = await db
     .prepare('SELECT id, email, username, nickname, avatar_key, role, status, email_verified, notification_enabled, created_at, updated_at FROM users WHERE id = ?')
     .bind(id)
     .first<{
-      id: string; email: string; username: string | null; nickname: string | null; avatar_key: string | null
+      id: number; email: string; username: string | null; nickname: string | null; avatar_key: string | null
       role: string; status: string; email_verified: number; notification_enabled: number
       created_at: string; updated_at: string
     }>()
@@ -146,7 +147,8 @@ adminUserRoutes.get('/:id', async (c) => {
  * Body: { username?, email? }
  */
 adminUserRoutes.patch('/:id', async (c) => {
-  const userId = c.req.param('id')
+  const userId = Number(c.req.param('id'))
+  if (isNaN(userId)) return c.json({ statusCode: 400, message: '无效的用户 ID' }, 400)
   const adminId = c.get('userId')!
   const db = c.env.DB
 
@@ -155,7 +157,7 @@ adminUserRoutes.patch('/:id', async (c) => {
   const user = await db
     .prepare('SELECT id, email, username, role FROM users WHERE id = ?')
     .bind(userId)
-    .first<{ id: string; email: string; username: string | null; role: string }>()
+    .first<{ id: number; email: string; username: string | null; role: string }>()
 
   if (!user) {
     return c.json({ statusCode: 404, message: '用户不存在' }, 404)
@@ -220,7 +222,7 @@ adminUserRoutes.patch('/:id', async (c) => {
     adminId,
     action: 'edit_user',
     targetType: 'user',
-    targetId: userId,
+    targetId: String(userId),
     beforeValue,
     afterValue,
   })
@@ -233,7 +235,8 @@ adminUserRoutes.patch('/:id', async (c) => {
  * Body: { newPassword: string }
  */
 adminUserRoutes.post('/:id/reset-password', async (c) => {
-  const userId = c.req.param('id')
+  const userId = Number(c.req.param('id'))
+  if (isNaN(userId)) return c.json({ statusCode: 400, message: '无效的用户 ID' }, 400)
   const adminId = c.get('userId')!
   const db = c.env.DB
 
@@ -246,7 +249,7 @@ adminUserRoutes.post('/:id/reset-password', async (c) => {
   const user = await db
     .prepare('SELECT id, role FROM users WHERE id = ?')
     .bind(userId)
-    .first<{ id: string; role: string }>()
+    .first<{ id: number; role: string }>()
 
   if (!user) {
     return c.json({ statusCode: 404, message: '用户不存在' }, 404)
@@ -269,7 +272,7 @@ adminUserRoutes.post('/:id/reset-password', async (c) => {
     adminId,
     action: 'reset_password',
     targetType: 'user',
-    targetId: userId,
+    targetId: String(userId),
   })
 
   return c.json({ message: '密码已重置，用户所有会话已清除' })
@@ -280,7 +283,8 @@ adminUserRoutes.post('/:id/reset-password', async (c) => {
  * 查询审计日志 + 最近 session
  */
 adminUserRoutes.get('/:id/activity', async (c) => {
-  const userId = c.req.param('id')
+  const userId = Number(c.req.param('id'))
+  if (isNaN(userId)) return c.json({ statusCode: 400, message: '无效的用户 ID' }, 400)
   const db = c.env.DB
 
   // 验证用户存在
@@ -299,9 +303,9 @@ adminUserRoutes.get('/:id/activity', async (c) => {
       ORDER BY created_at DESC
       LIMIT 50
     `)
-    .bind(userId, userId)
+    .bind(String(userId), String(userId))
     .all<{
-      id: string; admin_id: string; action: string; target_type: string; target_id: string | null
+      id: string; admin_id: number; action: string; target_type: string; target_id: string | null
       before_value: string | null; after_value: string | null; created_at: string
     }>()
 
@@ -339,7 +343,8 @@ adminUserRoutes.get('/:id/activity', async (c) => {
  * Body: { levelId, startsAt?, expiresAt, note? }
  */
 adminUserRoutes.post('/:id/memberships', async (c) => {
-  const userId = c.req.param('id')
+  const userId = Number(c.req.param('id'))
+  if (isNaN(userId)) return c.json({ statusCode: 400, message: '无效的用户 ID' }, 400)
   const adminId = c.get('userId')!
   const db = c.env.DB
 
@@ -410,7 +415,8 @@ adminUserRoutes.post('/:id/memberships', async (c) => {
  * Body: { role: 'user' | 'admin' }
  */
 adminUserRoutes.patch('/:id/role', requireOwner, async (c) => {
-  const userId = c.req.param('id')
+  const userId = Number(c.req.param('id'))
+  if (isNaN(userId)) return c.json({ statusCode: 400, message: '无效的用户 ID' }, 400)
   const adminId = c.get('userId')!
   const db = c.env.DB
 
@@ -423,7 +429,7 @@ adminUserRoutes.patch('/:id/role', requireOwner, async (c) => {
   const user = await db
     .prepare('SELECT id, role FROM users WHERE id = ?')
     .bind(userId)
-    .first<{ id: string; role: string }>()
+    .first<{ id: number; role: string }>()
 
   if (!user) {
     return c.json({ statusCode: 404, message: '用户不存在' }, 404)
@@ -439,7 +445,7 @@ adminUserRoutes.patch('/:id/role', requireOwner, async (c) => {
     adminId,
     action: 'change_role',
     targetType: 'user',
-    targetId: userId,
+    targetId: String(userId),
     beforeValue: { role: user.role },
     afterValue: { role: body.role },
   })
@@ -452,7 +458,8 @@ adminUserRoutes.patch('/:id/role', requireOwner, async (c) => {
  * Body: { status: 'active' | 'banned' }
  */
 adminUserRoutes.patch('/:id/status', async (c) => {
-  const userId = c.req.param('id')
+  const userId = Number(c.req.param('id'))
+  if (isNaN(userId)) return c.json({ statusCode: 400, message: '无效的用户 ID' }, 400)
   const adminId = c.get('userId')!
   const db = c.env.DB
 
@@ -465,7 +472,7 @@ adminUserRoutes.patch('/:id/status', async (c) => {
   const user = await db
     .prepare('SELECT id, role, status FROM users WHERE id = ?')
     .bind(userId)
-    .first<{ id: string; role: string; status: string }>()
+    .first<{ id: number; role: string; status: string }>()
 
   if (!user) {
     return c.json({ statusCode: 404, message: '用户不存在' }, 404)
@@ -486,7 +493,7 @@ adminUserRoutes.patch('/:id/status', async (c) => {
     adminId,
     action: 'change_status',
     targetType: 'user',
-    targetId: userId,
+    targetId: String(userId),
     beforeValue: { status: user.status },
     afterValue: { status: body.status },
   })

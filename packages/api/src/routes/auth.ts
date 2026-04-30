@@ -259,17 +259,17 @@ authRoutes.post('/register', async (c) => {
     return c.json({ statusCode: 409, message: '该用户名已被使用' }, 409)
   }
 
-  // 创建用户
-  const userId = generateId('usr')
+  // 创建用户（自增 ID）
   const passwordHash = await hashPassword(body.password)
 
-  await db
+  const insertResult = await db
     .prepare(
-      `INSERT INTO users (id, email, username, nickname, password_hash, role, status, email_verified)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO users (email, username, nickname, password_hash, role, status, email_verified)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     )
-    .bind(userId, email, username, body.nickname?.trim() || null, passwordHash, 'user', 'active', emailVerified)
+    .bind(email, username, body.nickname?.trim() || null, passwordHash, 'user', 'active', emailVerified)
     .run()
+  const userId = insertResult.meta.last_row_id
 
   // 创建会话
   await createSession(c, userId)
@@ -317,7 +317,7 @@ authRoutes.post('/reset-password', async (c) => {
   const user = await db
     .prepare('SELECT id FROM users WHERE email = ?')
     .bind(email)
-    .first<{ id: string }>()
+    .first<{ id: number }>()
 
   if (!user) {
     return c.json({ statusCode: 404, message: '用户不存在' }, 404)
@@ -373,11 +373,11 @@ authRoutes.post('/login', async (c) => {
     ? await db
         .prepare('SELECT id, email, username, nickname, password_hash, role, status FROM users WHERE email = ?')
         .bind(identifier)
-        .first<{ id: string; email: string; username: string | null; nickname: string | null; password_hash: string; role: string; status: string }>()
+        .first<{ id: number; email: string; username: string | null; nickname: string | null; password_hash: string; role: string; status: string }>()
     : await db
         .prepare('SELECT id, email, username, nickname, password_hash, role, status FROM users WHERE username = ?')
         .bind(identifier)
-        .first<{ id: string; email: string; username: string | null; nickname: string | null; password_hash: string; role: string; status: string }>()
+        .first<{ id: number; email: string; username: string | null; nickname: string | null; password_hash: string; role: string; status: string }>()
 
   if (!user) {
     return c.json({ statusCode: 401, message: '用户名/邮箱或密码错误' }, 401)

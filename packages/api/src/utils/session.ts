@@ -12,7 +12,7 @@ type AppContext = Context<{ Bindings: Bindings; Variables: Variables }>
  * 创建会话
  * 生成 token，哈希后存入 D1，设置 cookie
  */
-export async function createSession(c: AppContext, userId: string): Promise<void> {
+export async function createSession(c: AppContext, userId: number): Promise<void> {
   const db = c.env.DB
   const token = generateSessionToken()
   const tokenHash = await hashToken(token)
@@ -37,7 +37,7 @@ export async function createSession(c: AppContext, userId: string): Promise<void
  * 验证会话，返回 user_id 或 null
  * 同时实现滑动续期
  */
-export async function validateSession(c: AppContext): Promise<{ userId: string; role: string } | null> {
+export async function validateSession(c: AppContext): Promise<{ userId: number; role: string } | null> {
   const token = getCookie(c, SESSION_COOKIE)
   if (!token) return null
 
@@ -52,7 +52,7 @@ export async function validateSession(c: AppContext): Promise<{ userId: string; 
       WHERE s.token_hash = ?
     `)
     .bind(tokenHash)
-    .first<{ session_id: string; user_id: string; expires_at: string; role: string; status: string }>()
+    .first<{ session_id: string; user_id: number; expires_at: string; role: string; status: string }>()
 
   if (!session) return null
 
@@ -95,14 +95,14 @@ export async function destroySession(c: AppContext): Promise<void> {
 /**
  * 清理用户所有会话（用于密码修改等场景）
  */
-export async function destroyAllUserSessions(db: D1Database, userId: string): Promise<void> {
+export async function destroyAllUserSessions(db: D1Database, userId: number): Promise<void> {
   await db.prepare('DELETE FROM sessions WHERE user_id = ?').bind(userId).run()
 }
 
 /**
  * 清理用户其他会话，保留当前 session（用于用户自行修改密码）
  */
-export async function destroyOtherSessions(db: D1Database, userId: string, currentToken: string): Promise<void> {
+export async function destroyOtherSessions(db: D1Database, userId: number, currentToken: string): Promise<void> {
   const currentHash = await hashToken(currentToken)
   await db
     .prepare('DELETE FROM sessions WHERE user_id = ? AND token_hash != ?')

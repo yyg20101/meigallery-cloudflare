@@ -4,7 +4,7 @@ import { generateId } from './db'
 /**
  * 获取用户当前有效的最高会员 rank
  */
-export async function getUserEffectiveRank(db: D1Database, userId: string): Promise<number> {
+export async function getUserEffectiveRank(db: D1Database, userId: number): Promise<number> {
   const result = await db
     .prepare(`
       SELECT MAX(ml.rank) as max_rank
@@ -24,7 +24,7 @@ export async function getUserEffectiveRank(db: D1Database, userId: string): Prom
  */
 export async function checkMediaAccess(
   db: D1Database,
-  userId: string,
+  userId: number,
   requiredRank: number,
 ): Promise<boolean> {
   if (requiredRank <= 0) return true
@@ -38,7 +38,7 @@ export async function checkMediaAccess(
 export async function writeAuditLog(
   db: D1Database,
   params: {
-    adminId: string
+    adminId: number
     action: string
     targetType: string
     targetId?: string
