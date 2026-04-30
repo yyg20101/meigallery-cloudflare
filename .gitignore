@@ -1,0 +1,38 @@
+# 依赖
+node_modules/
+
+# Nuxt 构建产物
+.nuxt/
+.output/
+dist/
+
+# 环境变量
+.env
+.env.*
+!.env.example
+
+# Wrangler
+.wrangler/
+.dev.vars
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# 测试覆盖率
+coverage/
+
+# TypeScript 缓存
+*.tsbuildinfo

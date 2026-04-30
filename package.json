@@ -1,0 +1,31 @@
+{
+  "name": "meigallery-cloudflare",
+  "version": "0.1.0",
+  "private": true,
+  "description": "中文响应式图库平台 - Cloudflare 全栈部署",
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "typecheck": "nuxt typecheck",
+    "db:migrate:local": "wrangler d1 migrations apply meigallery-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply meigallery-db --remote"
+  },
+  "dependencies": {
+    "nuxt": "^3.14.0",
+    "vue": "^3.5.0",
+    "vue-router": "^4.4.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241106.0",
+    "@nuxt/devtools": "^1.6.0",
+    "typescript": "^5.6.0",
+    "wrangler": "^3.91.0"
+  },
+  "packageManager": "pnpm@9.14.2",
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
