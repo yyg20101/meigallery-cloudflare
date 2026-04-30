@@ -4,7 +4,7 @@ import type { Bindings, Variables } from '../index'
 import { generateId } from './db'
 
 const SESSION_COOKIE = 'mei_session'
-const SESSION_TTL_DAYS = 7
+const SESSION_TTL_DAYS = 30
 
 type AppContext = Context<{ Bindings: Bindings; Variables: Variables }>
 
@@ -67,12 +67,20 @@ export async function validateSession(c: AppContext): Promise<{ userId: number; 
   // 检查用户状态
   if (session.status !== 'active') return null
 
-  // 滑动续期：如果距过期不足一半时间，延长有效期
+  // 滑动续期：如果距过期不足一半时间，延长 D1 有效期并刷新浏览器 cookie
   const expiresAt = new Date(session.expires_at)
   const halfLife = (SESSION_TTL_DAYS * 24 * 60 * 60 * 1000) / 2
   if (expiresAt.getTime() - Date.now() < halfLife) {
     const newExpiry = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString()
     await db.prepare('UPDATE sessions SET expires_at = ? WHERE id = ?').bind(newExpiry, session.session_id).run()
+    // 同步刷新浏览器 cookie 的 maxAge，避免 D1 续期但 cookie 已过期的不一致
+    setCookie(c, SESSION_COOKIE, token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'Lax',
+      path: '/',
+      maxAge: SESSION_TTL_DAYS * 24 * 60 * 60,
+    })
   }
 
   return { userId: session.user_id, role: session.role }
