@@ -4,8 +4,7 @@
 
 ## 文档索引
 
-- `AGENT.md`：项目开发指南，供编码代理和贡献者参考。
-- `AGENTS.md`：OpenCode 会话快速上手指南。
+- `AGENTS.md`：项目开发指南，供编码代理和贡献者参考。
 - `docs/PRD.md`：产品需求文档。
 - `docs/TECHNICAL_SPEC.md`：技术设计初稿。
 - `docs/UI_DESIGN.md`：UI 设计初稿。
