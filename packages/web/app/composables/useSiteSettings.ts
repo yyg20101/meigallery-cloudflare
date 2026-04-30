@@ -8,8 +8,15 @@ export function useSiteSettings() {
 
   interface SiteSettings {
     site_name?: string
+    site_description?: string
+    site_icon?: string
     seo_title?: string
+    og_title?: string
+    og_description?: string
+    og_image?: string
+    footer_text?: string
     membership_description?: string
+    email_verification_enabled?: string | boolean
   }
 
   const settings = useState<SiteSettings>('site-settings', () => ({}))
@@ -28,14 +35,26 @@ export function useSiteSettings() {
   }
 
   const siteName = computed(() => settings.value.site_name || 'MeiGallery')
-  const seoTitle = computed(() => settings.value.seo_title || '')
+  const siteDescription = computed(() => settings.value.site_description || '')
+  const siteIcon = computed(() => settings.value.site_icon || '')
+  const seoTitle = computed(() => settings.value.seo_title || siteName.value)
+  const ogTitle = computed(() => settings.value.og_title || seoTitle.value)
+  const ogDescription = computed(() => settings.value.og_description || siteDescription.value)
+  const ogImage = computed(() => settings.value.og_image || '')
+  const footerText = computed(() => settings.value.footer_text || `© ${new Date().getFullYear()} ${siteName.value}`)
   const membershipDescription = computed(() => settings.value.membership_description || '')
 
   return {
     settings,
     fetchSettings,
     siteName,
+    siteDescription,
+    siteIcon,
     seoTitle,
+    ogTitle,
+    ogDescription,
+    ogImage,
+    footerText,
     membershipDescription,
   }
 }

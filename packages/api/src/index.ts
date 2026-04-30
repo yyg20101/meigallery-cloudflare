@@ -68,7 +68,11 @@ app.route('/api/contact-methods', contactMethodRoutes)
 // 公开站点信息（不需要登录）
 app.get('/api/settings/public', async (c) => {
   const db = c.env.DB
-  const keys = ['site_name', 'seo_title', 'membership_description', 'email_verification_enabled']
+  const keys = [
+    'site_name', 'seo_title', 'site_description', 'site_icon',
+    'og_title', 'og_description', 'og_image',
+    'footer_text', 'membership_description', 'email_verification_enabled',
+  ]
   const placeholders = keys.map(() => '?').join(',')
   const result = await db
     .prepare(`SELECT key, value FROM site_settings WHERE key IN (${placeholders})`)

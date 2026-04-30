@@ -1,5 +1,6 @@
 <script setup lang="ts">
 const { isLoggedIn, isAdmin, user, logout } = useAuth()
+const { siteName, footerText } = useSiteSettings()
 const route = useRoute()
 
 const searchQuery = ref('')
@@ -30,7 +31,7 @@ function isActive(to: string) {
       <nav class="mx-auto max-w-7xl px-6 lg:px-8">
         <div class="flex h-14 items-center justify-between">
           <!-- 左侧 Logo -->
-          <NuxtLink to="/" class="text-lg font-bold text-gray-900 tracking-tight">MeiGallery</NuxtLink>
+          <NuxtLink to="/" class="text-lg font-bold text-gray-900 tracking-tight">{{ siteName }}</NuxtLink>
 
           <!-- 中间导航 -->
           <div class="flex items-center gap-6">
@@ -74,7 +75,7 @@ function isActive(to: string) {
     <!-- 移动端顶部栏 -->
     <header class="lg:hidden sticky top-0 z-40 bg-white border-b border-gray-100">
       <div class="flex h-12 items-center justify-between px-4">
-        <NuxtLink to="/" class="text-lg font-bold text-gray-900">MeiGallery</NuxtLink>
+        <NuxtLink to="/" class="text-lg font-bold text-gray-900">{{ siteName }}</NuxtLink>
         <div class="flex items-center gap-3">
           <!-- 搜索图标 -->
           <NuxtLink to="/search" class="text-gray-600">
@@ -95,7 +96,7 @@ function isActive(to: string) {
 
     <!-- 桌面端底部 copyright -->
     <footer class="hidden lg:block">
-      <p class="text-xs text-gray-400 text-center py-4">&copy; {{ new Date().getFullYear() }} MeiGallery</p>
+      <p class="text-xs text-gray-400 text-center py-4">{{ footerText }}</p>
     </footer>
 
     <!-- 移动端底部 Tab Bar -->
