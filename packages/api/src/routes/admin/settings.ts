@@ -5,10 +5,7 @@ import { writeAuditLog } from '../../utils/permission'
 
 export const adminSettingsRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
-const ALLOWED_KEYS = [
-  'site_name', 'seo_title', 'membership_description',
-  'contact_wechat', 'contact_telegram', 'contact_email', 'contact_custom_note',
-]
+const ALLOWED_KEYS = ['site_name', 'seo_title', 'membership_description']
 
 adminSettingsRoutes.get('/', requireOwner, async (c) => {
   const db = c.env.DB
