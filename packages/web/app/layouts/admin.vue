@@ -28,6 +28,9 @@
         <NuxtLink to="/admin/audit-logs" class="block px-6 py-3 text-sm hover:bg-gray-800 hover:text-white">
           审计日志
         </NuxtLink>
+        <NuxtLink to="/admin/settings" class="block px-6 py-3 text-sm hover:bg-gray-800 hover:text-white">
+          站点设置
+        </NuxtLink>
       </nav>
       <div class="py-4 border-t border-gray-700">
         <NuxtLink to="/" class="block px-6 py-3 text-sm hover:bg-gray-800 hover:text-white">

@@ -28,19 +28,13 @@ export default defineNuxtConfig({
 
   // 模块
   modules: [
-    '@nuxtjs/tailwindcss',
+    '@nuxt/ui',
   ],
 
   // TypeScript
   typescript: {
     strict: true,
     typeCheck: false,
-  },
-
-  // Tailwind CSS
-  tailwindcss: {
-    cssPath: '~/assets/css/tailwind.css',
-    configPath: 'tailwind.config.ts',
   },
 
   // Vite

@@ -1,70 +1,27 @@
 <script setup lang="ts">
 import type { NuxtError } from '#app'
 
-const props = defineProps<{
-  error: NuxtError
-}>()
+defineProps<{ error: NuxtError }>()
 
 const handleError = () => clearError({ redirect: '/' })
-
-const statusMessage = computed(() => {
-  switch (props.error.statusCode) {
-    case 404:
-      return '页面不存在'
-    case 403:
-      return '没有访问权限'
-    case 500:
-      return '服务器错误'
-    default:
-      return '出了点问题'
-  }
-})
 </script>
 
 <template>
-  <div class="error-page">
-    <h1>{{ error.statusCode }}</h1>
-    <p>{{ statusMessage }}</p>
-    <button @click="handleError">
-      返回首页
-    </button>
+  <div class="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+    <div class="text-center max-w-md">
+      <p class="text-6xl font-bold text-gray-300">{{ error.statusCode }}</p>
+      <h1 class="mt-4 text-xl font-semibold text-gray-900">
+        {{ error.statusCode === 404 ? '页面不存在' : '出了点问题' }}
+      </h1>
+      <p class="mt-2 text-sm text-gray-500">
+        {{ error.statusCode === 404 ? '您访问的页面不存在或已被移除' : error.message || '服务器遇到了错误，请稍后重试' }}
+      </p>
+      <button
+        class="mt-6 rounded-lg bg-blue-600 px-6 py-2.5 text-sm text-white hover:bg-blue-700"
+        @click="handleError"
+      >
+        返回首页
+      </button>
+    </div>
   </div>
 </template>
-
-<style scoped>
-.error-page {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  text-align: center;
-  font-family: system-ui, sans-serif;
-}
-
-.error-page h1 {
-  font-size: 4rem;
-  margin-bottom: 0.5rem;
-  color: #333;
-}
-
-.error-page p {
-  font-size: 1.25rem;
-  color: #666;
-  margin-bottom: 2rem;
-}
-
-.error-page button {
-  padding: 0.75rem 1.5rem;
-  background: #333;
-  color: #fff;
-  border: none;
-  border-radius: 0.5rem;
-  cursor: pointer;
-  font-size: 1rem;
-}
-
-.error-page button:hover {
-  background: #555;
-}
-</style>

@@ -1,61 +1,61 @@
-import type { UserInfo } from '@meigallery/shared'
-
 /**
- * 认证状态 composable
- * 通过 API Worker 获取用户信息和执行认证操作
+ * 认证 composable
+ * 管理用户状态、登录、注册、登出
  */
 export function useAuth() {
-  const config = useRuntimeConfig()
-  const apiBase = config.public.apiBaseUrl
+  const { api } = useApi()
 
-  const user = useState<UserInfo | null>('auth:user', () => null)
-  const loading = useState<boolean>('auth:loading', () => false)
+  interface UserInfo {
+    id: string
+    email: string
+    nickname: string | null
+    role: string
+    status: string
+    membershipRank: number
+    membershipExpiry: string | null
+  }
+
+  const user = useState<UserInfo | null>('auth-user', () => null)
+
+  const isLoggedIn = computed(() => !!user.value)
+  const isAdmin = computed(() => user.value?.role === 'admin' || user.value?.role === 'owner')
+  const isOwner = computed(() => user.value?.role === 'owner')
+  const membershipRank = computed(() => user.value?.membershipRank ?? 0)
 
   async function fetchUser() {
     try {
-      loading.value = true
-      const data = await $fetch<UserInfo>(`${apiBase}/api/me`, {
-        credentials: 'include',
-      })
-      user.value = data
+      user.value = await api<UserInfo>('/api/me')
     } catch {
       user.value = null
-    } finally {
-      loading.value = false
     }
   }
 
-  async function login(email: string, password: string, turnstileToken: string) {
-    const data = await $fetch<UserInfo>(`${apiBase}/api/auth/login`, {
+  async function login(email: string, password: string, turnstileToken?: string) {
+    const result = await api<UserInfo>('/api/auth/login', {
       method: 'POST',
       body: { email, password, turnstileToken },
-      credentials: 'include',
     })
-    user.value = data
-    return data
+    user.value = result
+    return result
+  }
+
+  async function register(email: string, password: string, nickname?: string, turnstileToken?: string) {
+    const result = await api<UserInfo>('/api/auth/register', {
+      method: 'POST',
+      body: { email, password, nickname, turnstileToken },
+    })
+    user.value = result
+    return result
   }
 
   async function logout() {
-    await $fetch(`${apiBase}/api/auth/logout`, {
-      method: 'POST',
-      credentials: 'include',
-    })
-    user.value = null
-    await navigateTo('/')
+    try {
+      await api('/api/auth/logout', { method: 'POST' })
+    } finally {
+      user.value = null
+      navigateTo('/')
+    }
   }
 
-  const isLoggedIn = computed(() => !!user.value)
-  const isAdmin = computed(() => !!user.value && ['admin', 'owner'].includes(user.value.role))
-  const isOwner = computed(() => !!user.value && user.value.role === 'owner')
-
-  return {
-    user: readonly(user),
-    loading: readonly(loading),
-    isLoggedIn,
-    isAdmin,
-    isOwner,
-    fetchUser,
-    login,
-    logout,
-  }
+  return { user, isLoggedIn, isAdmin, isOwner, membershipRank, fetchUser, login, register, logout }
 }

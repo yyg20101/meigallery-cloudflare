@@ -1,20 +1,18 @@
 import { createMiddleware } from 'hono/factory'
 import type { Bindings, Variables } from '../index'
+import { validateSession } from '../utils/session'
 
 /**
  * 认证中间件：解析 session，设置 userId 和 userRole
- * 不强制要求登录，仅提取用户信息
+ * 不强制登录，仅提取用户信息供后续中间件使用
  */
 export const authMiddleware = createMiddleware<{
   Bindings: Bindings
   Variables: Variables
 }>(async (c, next) => {
-  // TODO: 实现 session 解析
-  // 1. 读取 cookie 中的 session token
-  // 2. 验证签名
-  // 3. 设置 c.set('userId', ...) 和 c.set('userRole', ...)
-  c.set('userId', null)
-  c.set('userRole', null)
+  const session = await validateSession(c)
+  c.set('userId', session?.userId ?? null)
+  c.set('userRole', session?.role ?? null)
   await next()
 })
 

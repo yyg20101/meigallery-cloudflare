@@ -1,0 +1,20 @@
+<script setup lang="ts">
+const props = defineProps<{ rank: number }>()
+
+const label = computed(() => {
+  if (props.rank >= 20) return 'SVIP'
+  if (props.rank >= 10) return 'VIP'
+  return ''
+})
+const colorClass = computed(() => {
+  if (props.rank >= 20) return 'bg-amber-100 text-amber-800'
+  if (props.rank >= 10) return 'bg-blue-100 text-blue-800'
+  return ''
+})
+</script>
+
+<template>
+  <span v-if="label" :class="['inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium', colorClass]">
+    {{ label }}
+  </span>
+</template>
