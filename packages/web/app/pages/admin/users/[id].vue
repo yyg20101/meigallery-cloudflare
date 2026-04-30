@@ -402,13 +402,15 @@ function formatDate(dateStr: string | undefined): string {
 
   <!-- 确认弹窗 -->
   <UModal v-model:open="showConfirmModal">
-    <div class="p-6">
-      <h3 class="text-base font-semibold text-gray-900 mb-3">确认操作</h3>
-      <p class="text-sm text-gray-600 mb-4">{{ confirmMessage }}</p>
-      <div class="flex gap-3">
-        <button class="rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700" @click="doConfirm">确认</button>
-        <button class="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" @click="showConfirmModal = false">取消</button>
+    <template #content>
+      <div class="p-6">
+        <h3 class="text-base font-semibold text-gray-900 mb-3">确认操作</h3>
+        <p class="text-sm text-gray-600 mb-4">{{ confirmMessage }}</p>
+        <div class="flex gap-3">
+          <button class="rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700" @click="doConfirm">确认</button>
+          <button class="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" @click="showConfirmModal = false">取消</button>
+        </div>
       </div>
-    </div>
+    </template>
   </UModal>
 </template>

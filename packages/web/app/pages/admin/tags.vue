@@ -153,36 +153,40 @@ const tagTypes = [
 
     <!-- 编辑弹窗 -->
     <UModal v-model:open="showEdit">
-      <div class="p-6">
-        <h3 class="text-base font-semibold text-gray-900 mb-4">编辑标签</h3>
-        <div class="space-y-3">
-          <div>
-            <label class="block text-sm text-gray-600 mb-1">名称</label>
-            <input v-model="editForm.name" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label class="block text-sm text-gray-600 mb-1">Slug</label>
-            <input v-model="editForm.slug" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" />
-          </div>
-          <p v-if="editError" class="text-sm text-red-600">{{ editError }}</p>
-          <div class="flex gap-3 pt-2">
-            <button class="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700" @click="saveEdit">保存</button>
-            <button class="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" @click="showEdit = false">取消</button>
+      <template #content>
+        <div class="p-6">
+          <h3 class="text-base font-semibold text-gray-900 mb-4">编辑标签</h3>
+          <div class="space-y-3">
+            <div>
+              <label class="block text-sm text-gray-600 mb-1">名称</label>
+              <input v-model="editForm.name" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label class="block text-sm text-gray-600 mb-1">Slug</label>
+              <input v-model="editForm.slug" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" />
+            </div>
+            <p v-if="editError" class="text-sm text-red-600">{{ editError }}</p>
+            <div class="flex gap-3 pt-2">
+              <button class="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700" @click="saveEdit">保存</button>
+              <button class="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" @click="showEdit = false">取消</button>
+            </div>
           </div>
         </div>
-      </div>
+      </template>
     </UModal>
 
     <!-- 删除确认弹窗 -->
     <UModal v-model:open="showDeleteConfirm">
-      <div class="p-6">
-        <h3 class="text-base font-semibold text-gray-900 mb-3">确认删除</h3>
-        <p class="text-sm text-gray-600 mb-4">确认删除该标签？此操作不可撤销。</p>
-        <div class="flex gap-3">
-          <button class="rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700" @click="doDelete">确认删除</button>
-          <button class="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" @click="showDeleteConfirm = false">取消</button>
+      <template #content>
+        <div class="p-6">
+          <h3 class="text-base font-semibold text-gray-900 mb-3">确认删除</h3>
+          <p class="text-sm text-gray-600 mb-4">确认删除该标签？此操作不可撤销。</p>
+          <div class="flex gap-3">
+            <button class="rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700" @click="doDelete">确认删除</button>
+            <button class="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" @click="showDeleteConfirm = false">取消</button>
+          </div>
         </div>
-      </div>
+      </template>
     </UModal>
   </div>
 </template>

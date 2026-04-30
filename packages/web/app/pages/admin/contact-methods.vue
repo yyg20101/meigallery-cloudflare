@@ -68,20 +68,24 @@ function startEdit(item: ContactMethod) {
 }
 
 async function onSubmit() {
-  const body = {
-    platform: form.platform,
-    label: form.label,
-    value: form.value,
-    linkUrl: form.linkUrl || undefined,
-    enabled: form.enabled,
+  try {
+    const body = {
+      platform: form.platform,
+      label: form.label,
+      value: form.value,
+      linkUrl: form.linkUrl || undefined,
+      enabled: form.enabled,
+    }
+    if (editingId.value) {
+      await api(`/api/admin/contact-methods/${editingId.value}`, { method: 'PUT', body })
+    } else {
+      await api('/api/admin/contact-methods', { method: 'POST', body })
+    }
+    resetForm()
+    await refresh()
+  } catch (e: any) {
+    useToast().add({ title: e?.data?.message || '操作失败', color: 'error' })
   }
-  if (editingId.value) {
-    await api(`/api/admin/contact-methods/${editingId.value}`, { method: 'PUT', body })
-  } else {
-    await api('/api/admin/contact-methods', { method: 'POST', body })
-  }
-  resetForm()
-  await refresh()
 }
 
 const showDeleteConfirm = ref(false)
@@ -254,17 +258,19 @@ async function onQrDelete(id: string) {
         </tbody>
       </table>
     </div>
-  </div>
 
-  <!-- 删除确认弹窗 -->
-  <UModal v-model:open="showDeleteConfirm">
-    <div class="p-6">
-      <h3 class="text-base font-semibold text-gray-900 mb-3">确认删除</h3>
-      <p class="text-sm text-gray-600 mb-4">确认删除此联系方式？</p>
-      <div class="flex gap-3">
-        <button class="rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700" @click="doDelete">确认删除</button>
-        <button class="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" @click="showDeleteConfirm = false">取消</button>
-      </div>
-    </div>
-  </UModal>
+    <!-- 删除确认弹窗 -->
+    <UModal v-model:open="showDeleteConfirm">
+      <template #content>
+        <div class="p-6">
+          <h3 class="text-base font-semibold text-gray-900 mb-3">确认删除</h3>
+          <p class="text-sm text-gray-600 mb-4">确认删除此联系方式？</p>
+          <div class="flex gap-3">
+            <button class="rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700" @click="doDelete">确认删除</button>
+            <button class="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" @click="showDeleteConfirm = false">取消</button>
+          </div>
+        </div>
+      </template>
+    </UModal>
+  </div>
 </template>
