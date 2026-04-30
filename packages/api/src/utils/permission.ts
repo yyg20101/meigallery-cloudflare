@@ -11,7 +11,7 @@ export async function getUserEffectiveRank(db: D1Database, userId: string): Prom
       FROM user_memberships um
       JOIN membership_levels ml ON um.level_id = ml.id
       WHERE um.user_id = ?
-        AND datetime('now') BETWEEN um.starts_at AND um.expires_at
+        AND datetime('now') BETWEEN datetime(um.starts_at) AND datetime(um.expires_at)
     `)
     .bind(userId)
     .first<{ max_rank: number | null }>()

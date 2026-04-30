@@ -73,7 +73,7 @@ adminUserRoutes.get('/', async (c) => {
         FROM user_memberships um
         JOIN membership_levels ml ON um.level_id = ml.id
         WHERE um.user_id IN (${placeholders})
-          AND datetime('now') BETWEEN um.starts_at AND um.expires_at
+          AND datetime('now') BETWEEN datetime(um.starts_at) AND datetime(um.expires_at)
         GROUP BY um.user_id
       `)
       .bind(...userIds)
@@ -368,11 +368,14 @@ adminUserRoutes.post('/:id/memberships', async (c) => {
   }
 
   const id = generateId('mem')
-  const startsAt = body.startsAt || new Date().toISOString()
+  // 统一使用 SQLite datetime 格式（YYYY-MM-DD HH:MM:SS），避免 ISO 8601 的 T/Z 与 datetime('now') 字典序不兼容
+  const toSqliteDatetime = (iso: string) => iso.replace('T', ' ').replace(/\.\d{3}Z$/, '').replace(/Z$/, '')
+  const startsAt = toSqliteDatetime(body.startsAt || new Date().toISOString())
+  const expiresAt = toSqliteDatetime(body.expiresAt)
 
   await db
     .prepare('INSERT INTO user_memberships (id, user_id, level_id, starts_at, expires_at, granted_by, note) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .bind(id, userId, body.levelId, startsAt, body.expiresAt, adminId, body.note?.trim() || null)
+    .bind(id, userId, body.levelId, startsAt, expiresAt, adminId, body.note?.trim() || null)
     .run()
 
   await writeAuditLog(db, {
@@ -385,7 +388,7 @@ adminUserRoutes.post('/:id/memberships', async (c) => {
       levelName: level.name,
       rank: level.rank,
       startsAt,
-      expiresAt: body.expiresAt,
+      expiresAt,
       note: body.note,
     },
   })
@@ -397,7 +400,7 @@ adminUserRoutes.post('/:id/memberships', async (c) => {
     levelName: level.name,
     rank: level.rank,
     startsAt,
-    expiresAt: body.expiresAt,
+    expiresAt,
     note: body.note?.trim() || null,
   }, 201)
 })

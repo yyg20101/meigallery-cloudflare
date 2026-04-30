@@ -25,7 +25,7 @@ adminRoutes.get('/dashboard', async (c) => {
       SELECT COUNT(DISTINCT um.user_id) as count
       FROM user_memberships um
       JOIN membership_levels ml ON um.level_id = ml.id
-      WHERE ml.rank > 0 AND datetime('now') BETWEEN um.starts_at AND um.expires_at
+      WHERE ml.rank > 0 AND datetime('now') BETWEEN datetime(um.starts_at) AND datetime(um.expires_at)
     `).first<{ count: number }>(),
     db.prepare("SELECT COUNT(*) as count FROM import_jobs WHERE status = 'processing'").first<{ count: number }>(),
   ])

@@ -399,7 +399,7 @@ authRoutes.post('/login', async (c) => {
       SELECT MAX(ml.rank) as max_rank, MAX(um.expires_at) as max_expiry
       FROM user_memberships um
       JOIN membership_levels ml ON um.level_id = ml.id
-      WHERE um.user_id = ? AND datetime('now') BETWEEN um.starts_at AND um.expires_at
+      WHERE um.user_id = ? AND datetime('now') BETWEEN datetime(um.starts_at) AND datetime(um.expires_at)
     `)
     .bind(user.id)
     .first<{ max_rank: number | null; max_expiry: string | null }>()
