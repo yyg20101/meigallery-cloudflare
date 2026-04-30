@@ -4,6 +4,11 @@ main = "src/index.ts"
 compatibility_date = "2024-11-01"
 compatibility_flags = ["nodejs_compat"]
 
+# 自定义域名（Cloudflare Workers Custom Domains）
+routes = [
+  { pattern = "api.616618.xyz", custom_domain = true }
+]
+
 # D1 数据库
 [[d1_databases]]
 binding = "DB"
