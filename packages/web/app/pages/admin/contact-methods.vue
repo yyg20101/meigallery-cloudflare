@@ -73,7 +73,7 @@ async function onSubmit() {
       platform: form.platform,
       label: form.label,
       value: form.value,
-      linkUrl: form.linkUrl || undefined,
+      linkUrl: form.linkUrl || null,
       enabled: form.enabled,
     }
     if (editingId.value) {
@@ -160,24 +160,35 @@ async function onQrDelete(id: string) {
       <form class="space-y-4" @submit.prevent="onSubmit">
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">平台</label>
+            <label class="block text-sm font-medium text-gray-700 mb-1">平台 <span class="text-red-500">*</span></label>
             <select v-model="form.platform" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
               <option v-for="opt in platformOptions" :key="opt.key" :value="opt.key">{{ opt.name }}</option>
             </select>
           </div>
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">标签</label>
-            <input v-model="form.label" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" :placeholder="'如：客服' + currentPlatformConfig.name" />
+            <label class="block text-sm font-medium text-gray-700 mb-1">标签 <span class="text-red-500">*</span></label>
+            <input v-model="form.label" required class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" :placeholder="'如：客服' + currentPlatformConfig.name" />
           </div>
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">联系值</label>
-          <input v-model="form.value" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" :placeholder="currentPlatformConfig.placeholder" />
+          <label class="block text-sm font-medium text-gray-700 mb-1">联系值 <span class="text-red-500">*</span></label>
+          <input v-model="form.value" required class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" :placeholder="currentPlatformConfig.placeholder" />
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">跳转链接（可选）</label>
-          <input v-model="form.linkUrl" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="留空使用自动生成链接" />
-          <p v-if="autoLink && !form.linkUrl" class="mt-1 text-xs text-gray-500">自动生成：{{ autoLink }}</p>
+          <div class="flex gap-2">
+            <input v-model="form.linkUrl" class="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="留空则不可点击跳转" />
+            <button
+              v-if="autoLink && !form.linkUrl"
+              type="button"
+              class="shrink-0 rounded-lg border border-gray-300 px-3 py-2 text-xs text-blue-600 hover:bg-blue-50"
+              @click="form.linkUrl = autoLink"
+            >
+              填充自动链接
+            </button>
+          </div>
+          <p v-if="autoLink" class="mt-1 text-xs text-gray-400">可用自动链接：{{ autoLink }}</p>
+          <p class="mt-0.5 text-xs text-gray-400">不填写则前台联系方式仅展示，不可点击跳转</p>
         </div>
         <div class="flex items-center gap-2">
           <input id="form-enabled" v-model="form.enabled" type="checkbox" class="rounded" />
