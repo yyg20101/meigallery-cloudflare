@@ -42,22 +42,3 @@ IMAGE_RESIZING_ENABLED = "false"
 # wrangler secret put TURNSTILE_SECRET_KEY
 # wrangler secret put STREAM_ACCOUNT_ID
 # wrangler secret put STREAM_API_TOKEN
-
-# ─── 开发环境 ───
-[env.dev]
-name = "meigallery-api-dev"
-
-[[env.dev.d1_databases]]
-binding = "DB"
-database_name = "meigallery-db-dev"
-database_id = "65419d75-0b2e-40b6-b077-6e13616f2d18"  # dev 环境
-
-[[env.dev.r2_buckets]]
-binding = "R2"
-bucket_name = "meigallery-media-dev"
-
-[env.dev.vars]
-APP_ENV = "development"
-CORS_ORIGIN = "*"  # 部署后替换为实际 workers.dev URL
-EMAIL_FROM = "noreply@616618.xyz"
-IMAGE_RESIZING_ENABLED = "false"
