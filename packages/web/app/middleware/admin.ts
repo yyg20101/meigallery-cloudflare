@@ -1,11 +1,22 @@
-/**
- * 管理员中间件：要求用户为 admin 或 owner 角色
- * 用法：definePageMeta({ middleware: ['auth', 'admin'] })
- */
-export default defineNuxtRouteMiddleware(async (_to, _from) => {
-  // TODO: 实现管理员权限检查
-  // const { user } = useAuth()
-  // if (!user.value || !['admin', 'owner'].includes(user.value.role)) {
-  //   return navigateTo('/')
-  // }
+export default defineNuxtRouteMiddleware(async (to) => {
+  const { isLoggedIn, isAdmin, fetchUser } = useAuth()
+
+  // 首次加载尝试获取用户
+  if (!isLoggedIn.value) {
+    try {
+      await fetchUser()
+    } catch {
+      // 忽略错误
+    }
+  }
+
+  // 未登录跳转登录
+  if (!isLoggedIn.value) {
+    return navigateTo(`/login?redirect=${encodeURIComponent(to.fullPath)}`)
+  }
+
+  // 非管理员跳转首页
+  if (!isAdmin.value) {
+    return navigateTo('/')
+  }
 })
