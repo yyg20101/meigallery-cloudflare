@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { Bindings, Variables } from '../index'
 import { requireAuth } from '../middleware/auth'
 import { getUserEffectiveRank, checkMediaAccess } from '../utils/permission'
-import { R2_KEY_PREFIX, SIGNED_URL_TTL } from '@meigallery/shared/constants'
+import { SIGNED_URL_TTL } from '@meigallery/shared/constants'
 
 export const mediaRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -71,11 +71,14 @@ mediaRoutes.get('/cover/:galleryId', async (c) => {
 /**
  * GET /api/media/:assetId/thumbnail - 缩略图
  * 公开接口，支持宽度参数 ?w=480
- * 先检查缓存的缩略图，没有则返回原图（实际缩略图生成由 Image Resizing 或首次请求时缓存）
+ *
+ * 策略：
+ * - IMAGE_RESIZING_ENABLED=true（Pro 计划）：从 R2 取原图，通过 cf.image 实时缩放
+ * - IMAGE_RESIZING_ENABLED=false（Free 计划）：直接返回原图，由浏览器/CDN 缓存
  */
 mediaRoutes.get('/:assetId/thumbnail', async (c) => {
   const assetId = c.req.param('assetId')
-  const width = parseInt(c.req.query('w') || '480', 10)
+  const width = Math.min(Math.max(parseInt(c.req.query('w') || '480', 10), 64), 1920)
   const db = c.env.DB
 
   const asset = await db
@@ -92,24 +95,53 @@ mediaRoutes.get('/:assetId/thumbnail', async (c) => {
     return c.json({ statusCode: 404, message: '资源不存在' }, 404)
   }
 
-  // 缩略图是公开的低分辨率版本（不受 required_rank 限制）
-  const thumbnailKey = `${R2_KEY_PREFIX.THUMBNAILS}/${assetId}_w${width}`
-
-  // 先尝试获取已缓存的缩略图
-  let object = await c.env.R2.get(thumbnailKey)
-
-  if (!object) {
-    // 缩略图不存在，返回原图（生产环境应集成 Image Resizing）
-    // 仅在 required_rank = 0 时返回原图作为 fallback
-    if (asset.required_rank > 0) {
-      // 受保护图片不提供 fallback 缩略图
-      return c.json({ statusCode: 403, message: '需要登录查看' }, 403)
-    }
-    if (asset.r2_key) {
-      object = await c.env.R2.get(asset.r2_key)
-    }
+  // 受保护图片不提供公开缩略图
+  if (asset.required_rank > 0) {
+    return c.json({ statusCode: 403, message: '需要登录查看' }, 403)
   }
 
+  if (!asset.r2_key) {
+    return c.json({ statusCode: 404, message: '文件不存在' }, 404)
+  }
+
+  const imageResizingEnabled = c.env.IMAGE_RESIZING_ENABLED === 'true'
+
+  if (imageResizingEnabled) {
+    // Pro 计划：通过内部 URL 自请求 + cf.image 实时缩放
+    // 构造指向原图的内部请求（同 Worker）
+    const originUrl = new URL(c.req.url)
+    originUrl.pathname = `/api/media/raw/${assetId}`
+
+    const resized = await fetch(originUrl.toString(), {
+      cf: {
+        image: {
+          width,
+          fit: 'scale-down' as const,
+          quality: 80,
+          format: 'webp' as const,
+        },
+      },
+    })
+
+    if (!resized.ok) {
+      // Image Resizing 失败，fallback 到原图
+      const object = await c.env.R2.get(asset.r2_key)
+      if (!object) return c.json({ statusCode: 404, message: '文件不存在' }, 404)
+
+      const headers = new Headers()
+      headers.set('Content-Type', object.httpMetadata?.contentType || 'image/jpeg')
+      headers.set('Cache-Control', 'public, max-age=604800')
+      headers.set('ETag', object.httpEtag)
+      return new Response(object.body, { headers })
+    }
+
+    const headers = new Headers(resized.headers)
+    headers.set('Cache-Control', 'public, max-age=604800')
+    return new Response(resized.body, { headers })
+  }
+
+  // Free 计划 fallback：直接返回原图
+  const object = await c.env.R2.get(asset.r2_key)
   if (!object) {
     return c.json({ statusCode: 404, message: '文件不存在' }, 404)
   }
@@ -120,6 +152,39 @@ mediaRoutes.get('/:assetId/thumbnail', async (c) => {
   headers.set('ETag', object.httpEtag)
 
   return new Response(object.body, { headers })
+})
+
+/**
+ * GET /api/media/raw/:assetId - 原图内部端点（供 Image Resizing 使用）
+ * 不对外暴露，仅用于 cf.image 的 origin fetch
+ */
+mediaRoutes.get('/raw/:assetId', async (c) => {
+  const assetId = c.req.param('assetId')
+  const db = c.env.DB
+
+  const asset = await db
+    .prepare(`
+      SELECT ma.r2_key, ma.required_rank, g.status
+      FROM media_assets ma
+      JOIN galleries g ON ma.gallery_id = g.id
+      WHERE ma.id = ? AND ma.upload_status = 'completed'
+    `)
+    .bind(assetId)
+    .first<{ r2_key: string | null; required_rank: number; status: string }>()
+
+  if (!asset || asset.status !== 'published' || asset.required_rank > 0 || !asset.r2_key) {
+    return new Response(null, { status: 404 })
+  }
+
+  const object = await c.env.R2.get(asset.r2_key)
+  if (!object) return new Response(null, { status: 404 })
+
+  return new Response(object.body, {
+    headers: {
+      'Content-Type': object.httpMetadata?.contentType || 'image/jpeg',
+      'Cache-Control': 'public, max-age=86400',
+    },
+  })
 })
 
 /**

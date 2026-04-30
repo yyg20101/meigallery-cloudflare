@@ -24,6 +24,7 @@ export type Bindings = CloudflareEnv & {
   STREAM_API_TOKEN: string
   EMAIL_FROM: string
   EMAIL: SendEmail
+  IMAGE_RESIZING_ENABLED: string // "true" | "false"
 }
 
 /** 应用级变量 */
