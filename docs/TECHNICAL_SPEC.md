@@ -10,13 +10,28 @@
 
 ## 2. 技术栈
 
-- 前端框架：待选定（React 或 Vue，优先选择与 Cloudflare Pages 深度集成的全栈框架，如 Remix、Nuxt、Astro）。
-- API 运行时：Cloudflare Workers 或 Pages Functions。
-- 数据库：Cloudflare D1（SQLite 兼容）。
-- 对象存储：Cloudflare R2。
-- 视频：Cloudflare Stream。
+- 前端框架：**Nuxt 3**（Vue 3 全栈框架，通过 Nitro 引擎原生支持 Cloudflare Pages 部署）。
+- 服务端引擎：Nitro（preset: `cloudflare-pages`），同时承载 SSR 和 API 路由。
+- UI 层：Vue 3 + Composition API。
+- API 运行时：Nuxt Server Routes（基于 Nitro，部署为 Cloudflare Pages Functions）。
+- 数据库：Cloudflare D1（SQLite 兼容，通过 Nitro bindings 访问）。
+- 对象存储：Cloudflare R2（通过 Nitro bindings 访问）。
+- 视频：Cloudflare Stream（REST API 调用）。
 - 人机验证：Cloudflare Turnstile。
 - CI/CD：GitHub + Cloudflare Pages Git integration，`main` 分支自动生产部署。
+- 包管理器：pnpm（Cloudflare Pages 原生支持）。
+
+### 选型依据
+
+| 需求 | Nuxt 3 满足方式 |
+|------|----------------|
+| SEO（图库详情页需要被搜索引擎索引） | SSR / SSG 混合渲染，逐页可配 |
+| Cloudflare Pages 部署 | Nitro preset `cloudflare-pages` 原生输出 |
+| 前后台共享认证 | Server Routes 统一处理 session |
+| API 路由 | `server/api/` 目录自动注册为 API 端点 |
+| 管理后台 SPA | `pages/admin/` 设为 CSR 模式（`ssr: false`） |
+| D1/R2 绑定 | Nitro 通过 `event.context.cloudflare.env` 访问 bindings |
+| 图片优化 | `nuxt/image` 模块 + 自定义 R2 provider |
 
 ## 3. 应用模块
 

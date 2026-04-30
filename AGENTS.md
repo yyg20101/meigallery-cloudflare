@@ -14,7 +14,7 @@
 
 ## 项目状态
 
-预实现阶段。仓库目前仅包含规划文档，没有源代码、package.json 或构建工具。前端框架尚未选定（技术规格中列出 React 或 Vue 为候选，但未做最终决定）。
+预实现阶段。仓库目前仅包含规划文档，没有源代码或构建工具。前端框架已确定为 **Nuxt 3**。
 
 ## 项目目标
 
@@ -104,9 +104,10 @@ gallery-001,夏日写真,summer-portrait-001,广东,甜美,清新,"长发,户外
 
 ## 实现启动时的预期工具
 
-- 包管理器：未选定（优先选择与 Cloudflare Pages 配合最佳的方案）
-- 本地开发：Wrangler CLI（`npx wrangler dev` 或框架 dev server）
-- 数据库迁移：D1 migrations，放在 `db/` 或类似目录
+- 前端框架：**Nuxt 3**（Nitro preset `cloudflare-pages`）
+- 包管理器：pnpm
+- 本地开发：`npx nuxt dev`（Nitro 自动绑定 D1/R2 本地模拟）或 `npx wrangler pages dev`
+- 数据库迁移：D1 migrations，放在 `db/` 或 `server/database/migrations/`
 - 部署：GitHub → Cloudflare Pages Git 集成，生产分支 `main`
 - 环境变量：`APP_ENV`、`SESSION_SECRET`、`TURNSTILE_SECRET_KEY`、`R2_BUCKET_NAME`、`STREAM_ACCOUNT_ID`、`STREAM_API_TOKEN`
 
