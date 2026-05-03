@@ -268,9 +268,6 @@ useSeoMeta({
             </NuxtLink>
           </div>
 
-          <!-- 联系站长 -->
-          <ContactPanel />
-
           <!-- 相关推荐 -->
           <RelatedGalleries v-if="relatedGalleries.length > 0" :galleries="relatedGalleries" />
         </div>

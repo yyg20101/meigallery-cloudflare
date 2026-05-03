@@ -99,6 +99,9 @@ function isActive(to: string) {
       <slot />
     </main>
 
+    <!-- 全局联系方式 -->
+    <ContactPanel class="mx-4 mb-20 mt-8 lg:mx-auto lg:mb-0 lg:max-w-7xl" />
+
     <!-- 桌面端底部 copyright -->
     <footer class="hidden lg:block">
       <p class="text-xs text-gray-400 text-center py-4">{{ footerText }}</p>

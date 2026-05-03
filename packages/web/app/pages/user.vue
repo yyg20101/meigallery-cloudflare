@@ -82,9 +82,6 @@ async function handleLogout() {
         </div>
       </div>
 
-      <!-- 联系站长 -->
-      <ContactPanel class="mb-3" />
-
       <!-- 功能入口 -->
       <div class="bg-white rounded-xl divide-y divide-gray-100 mb-3">
         <div class="flex items-center justify-between px-6 py-4">
