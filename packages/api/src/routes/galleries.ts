@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { Bindings, Variables } from '../index'
 import { PAGINATION } from '@meigallery/shared/constants'
 import { cacheControl } from '../middleware/cache'
+import { getPublicGalleryOrderClause, isGalleryLikedByUser } from '../utils/gallery-interactions'
 
 export const galleryRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -12,7 +13,7 @@ export const galleryRoutes = new Hono<{ Bindings: Bindings; Variables: Variables
  *   pageSize: 每页数量（默认 20，最大 100）
  *   tag: 标签 slug（可多个，逗号分隔）
  *   search: 关键词搜索（标题和摘要模糊匹配）
- *   sort: 排序方式（newest / oldest / random，默认 newest）
+ *   sort: 排序方式（newest / oldest / random / hot，默认 newest）
  */
 galleryRoutes.get('/', cacheControl(60), async (c) => {
   const db = c.env.DB
@@ -29,7 +30,8 @@ galleryRoutes.get('/', cacheControl(60), async (c) => {
   let countQuery = 'SELECT COUNT(DISTINCT g.id) as total FROM galleries g'
   let dataQuery = `
     SELECT DISTINCT g.id, g.title, g.slug, g.summary, g.cover_key,
-           g.required_level_rank, g.published_at
+           g.required_level_rank, g.published_at, g.view_count, g.like_count,
+           (COALESCE(g.view_count, 0) + COALESCE(g.like_count, 0) * 5) as hot_score
     FROM galleries g
   `
   let whereClause = ' WHERE g.status = ?'
@@ -55,20 +57,7 @@ galleryRoutes.get('/', cacheControl(60), async (c) => {
   countQuery += whereClause
 
   // 排序
-  let orderClause: string
-  switch (sort) {
-    case 'oldest':
-      orderClause = ' ORDER BY g.published_at ASC'
-      break
-    case 'random':
-      orderClause = ' ORDER BY RANDOM()'
-      break
-    case 'hot':
-      orderClause = ' ORDER BY g.view_count DESC, g.published_at DESC'
-      break
-    default: // newest / latest
-      orderClause = ' ORDER BY g.published_at DESC'
-  }
+  const orderClause = getPublicGalleryOrderClause(sort)
 
   dataQuery += whereClause + orderClause + ' LIMIT ? OFFSET ?'
 
@@ -91,6 +80,9 @@ galleryRoutes.get('/', cacheControl(60), async (c) => {
       cover_key: string | null
       required_level_rank: number
       published_at: string | null
+      view_count: number
+      like_count: number
+      hot_score: number
     }>()
 
   // 批量查询标签
@@ -126,6 +118,8 @@ galleryRoutes.get('/', cacheControl(60), async (c) => {
       : null,
     requiredLevelRank: g.required_level_rank,
     publishedAt: g.published_at,
+    viewCount: g.view_count,
+    likeCount: g.like_count,
     tags: tagsMap[g.id] || [],
   }))
 
@@ -133,16 +127,93 @@ galleryRoutes.get('/', cacheControl(60), async (c) => {
 })
 
 /**
+ * POST /api/galleries/:id/like - 点赞图库
+ */
+galleryRoutes.post('/:id/like', async (c) => {
+  const userId = c.get('userId')
+  if (!userId) {
+    return c.json({ statusCode: 401, message: '请先登录后再点赞' }, 401)
+  }
+
+  const galleryId = c.req.param('id')
+  const db = c.env.DB
+
+  const gallery = await db
+    .prepare(`SELECT id, like_count FROM galleries WHERE id = ? AND status = 'published'`)
+    .bind(galleryId)
+    .first<{ id: string; like_count: number }>()
+
+  if (!gallery) {
+    return c.json({ statusCode: 404, message: '图库不存在' }, 404)
+  }
+
+  const createdAt = new Date().toISOString()
+  await db.batch([
+    db
+      .prepare(`INSERT OR IGNORE INTO gallery_likes (id, gallery_id, user_id, created_at) VALUES (?, ?, ?, ?)`)
+      .bind(crypto.randomUUID(), gallery.id, userId, createdAt),
+    db
+      .prepare('UPDATE galleries SET like_count = (SELECT COUNT(*) FROM gallery_likes WHERE gallery_id = ?) WHERE id = ?')
+      .bind(gallery.id, gallery.id),
+  ])
+
+  const latest = await db
+    .prepare('SELECT like_count FROM galleries WHERE id = ?')
+    .bind(gallery.id)
+    .first<{ like_count: number }>()
+
+  return c.json({ likeCount: latest?.like_count ?? gallery.like_count, likedByMe: true })
+})
+
+/**
+ * DELETE /api/galleries/:id/like - 取消点赞图库
+ */
+galleryRoutes.delete('/:id/like', async (c) => {
+  const userId = c.get('userId')
+  if (!userId) {
+    return c.json({ statusCode: 401, message: '请先登录后再操作' }, 401)
+  }
+
+  const galleryId = c.req.param('id')
+  const db = c.env.DB
+
+  const gallery = await db
+    .prepare(`SELECT id, like_count FROM galleries WHERE id = ? AND status = 'published'`)
+    .bind(galleryId)
+    .first<{ id: string; like_count: number }>()
+
+  if (!gallery) {
+    return c.json({ statusCode: 404, message: '图库不存在' }, 404)
+  }
+
+  await db.batch([
+    db
+      .prepare('DELETE FROM gallery_likes WHERE gallery_id = ? AND user_id = ?')
+      .bind(gallery.id, userId),
+    db
+      .prepare('UPDATE galleries SET like_count = (SELECT COUNT(*) FROM gallery_likes WHERE gallery_id = ?) WHERE id = ?')
+      .bind(gallery.id, gallery.id),
+  ])
+
+  const latest = await db
+    .prepare('SELECT like_count FROM galleries WHERE id = ?')
+    .bind(gallery.id)
+    .first<{ like_count: number }>()
+
+  return c.json({ likeCount: latest?.like_count ?? gallery.like_count, likedByMe: false })
+})
+
+/**
  * GET /api/galleries/:slug - 图库详情
  */
-galleryRoutes.get('/:slug', cacheControl(120), async (c) => {
+galleryRoutes.get('/:slug', async (c) => {
   const slug = c.req.param('slug')
   const db = c.env.DB
 
   const gallery = await db
     .prepare(`
       SELECT id, title, slug, summary, body_md, cover_key, status,
-             required_level_rank, published_at, created_at, updated_at
+             required_level_rank, published_at, view_count, like_count, created_at, updated_at
       FROM galleries
       WHERE slug = ? AND status = 'published'
     `)
@@ -157,6 +228,8 @@ galleryRoutes.get('/:slug', cacheControl(120), async (c) => {
       status: string
       required_level_rank: number
       published_at: string | null
+      view_count: number
+      like_count: number
       created_at: string
       updated_at: string
     }>()
@@ -164,14 +237,6 @@ galleryRoutes.get('/:slug', cacheControl(120), async (c) => {
   if (!gallery) {
     return c.json({ statusCode: 404, message: '图库不存在' }, 404)
   }
-
-  // 异步递增浏览量（不阻塞响应）
-  c.executionCtx.waitUntil(
-    db.prepare('UPDATE galleries SET view_count = view_count + 1 WHERE id = ?')
-      .bind(gallery.id)
-      .run()
-      .catch(() => {}),
-  )
 
   // 查询标签
   const tags = await db
@@ -195,6 +260,18 @@ galleryRoutes.get('/:slug', cacheControl(120), async (c) => {
     .bind(gallery.id)
     .all<{ id: string; type: string; role: string; sort_order: number; required_rank: number }>()
 
+  const likedByMe = await isGalleryLikedByUser(db, gallery.id, c.get('userId'))
+
+  c.header('Cache-Control', 'private, no-store')
+
+  // 异步递增浏览量（不阻塞响应）
+  c.executionCtx.waitUntil(
+    db.prepare('UPDATE galleries SET view_count = view_count + 1 WHERE id = ?')
+      .bind(gallery.id)
+      .run()
+      .catch(() => {}),
+  )
+
   return c.json({
     id: gallery.id,
     title: gallery.title,
@@ -208,6 +285,9 @@ galleryRoutes.get('/:slug', cacheControl(120), async (c) => {
     status: gallery.status,
     requiredLevelRank: gallery.required_level_rank,
     publishedAt: gallery.published_at,
+    viewCount: gallery.view_count,
+    likeCount: gallery.like_count,
+    likedByMe,
     createdAt: gallery.created_at,
     updatedAt: gallery.updated_at,
     tags: tags.results,

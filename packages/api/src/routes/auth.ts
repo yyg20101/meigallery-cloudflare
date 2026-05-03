@@ -212,8 +212,13 @@ authRoutes.post('/register', async (c) => {
     return c.json({ statusCode: 400, message: usernameResult.error }, 400)
   }
 
-  // Turnstile 验证
-  if (c.env.TURNSTILE_SECRET_KEY) {
+  const db = c.env.DB
+
+  // 检查邮箱验证开关
+  const verificationEnabled = await isEmailVerificationEnabled(db)
+
+  // 邮箱验证码流程已在 send-code 完成人机验证；直接注册仍必须验证。
+  if (!verificationEnabled && c.env.TURNSTILE_SECRET_KEY) {
     if (!body.turnstileToken) {
       return c.json({ statusCode: 400, message: '请完成人机验证' }, 400)
     }
@@ -222,11 +227,6 @@ authRoutes.post('/register', async (c) => {
       return c.json({ statusCode: 400, message: '人机验证失败，请重试' }, 400)
     }
   }
-
-  const db = c.env.DB
-
-  // 检查邮箱验证开关
-  const verificationEnabled = await isEmailVerificationEnabled(db)
 
   // 邮箱验证开启时需要验证码
   let emailVerified = 0
@@ -436,7 +436,10 @@ async function verifyTurnstile(secretKey: string, token: string): Promise<boolea
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ secret: secretKey, response: token }),
   })
-  const result = await response.json() as { success: boolean }
+  const result = await response.json() as { success: boolean; 'error-codes'?: string[] }
+  if (!result.success) {
+    console.warn('Turnstile 验证失败:', result['error-codes'] ?? [])
+  }
   return result.success
 }
 

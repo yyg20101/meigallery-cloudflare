@@ -21,6 +21,8 @@ interface GallerySummary {
   requiredLevelRank: number
   publishedAt: string | null
   tags: Array<{ id: string; type: string; name: string; slug: string }>
+  viewCount?: number
+  likeCount?: number
 }
 
 interface TagGroup {
@@ -32,6 +34,10 @@ const PAGE_SIZE = 12
 // 获取图库数据
 const { data: galleriesData } = await useAsyncData('home-galleries', () =>
   api<{ data: GallerySummary[]; total: number }>('/api/galleries', { query: { pageSize: String(PAGE_SIZE) } }),
+)
+
+const { data: hotGalleriesData } = await useAsyncData('home-hot-galleries', () =>
+  api<{ data: GallerySummary[]; total: number }>('/api/galleries', { query: { pageSize: '9', sort: 'hot' } }),
 )
 
 // 获取标签
@@ -64,18 +70,57 @@ async function loadMore() {
 // 顶部轮播：前 6 条，避免首屏浪费并展示更多内容
 const heroGalleries = computed(() => allGalleries.value.slice(0, 6))
 
-// 精选专题：接在轮播之后，避免和顶部重复
-const featured = computed(() => allGalleries.value.slice(6, 9))
+function galleryKey(gallery: GallerySummary) {
+  return gallery.id || gallery.slug
+}
 
-// 最新图库：第 10 条起
-const latest = computed(() => allGalleries.value.slice(9))
+function appendUniqueGalleries(source: GallerySummary[], target: GallerySummary[], excludedKeys: Set<string>, limit: number) {
+  const pickedKeys = new Set(target.map(galleryKey))
+
+  for (const gallery of source) {
+    const key = galleryKey(gallery)
+    if (excludedKeys.has(key) || pickedKeys.has(key)) continue
+
+    target.push(gallery)
+    pickedKeys.add(key)
+    if (target.length >= limit) break
+  }
+
+  return target
+}
+
+// 热门推荐：优先使用热度排序，失败时回退到首屏后段内容，不影响无限加载分页。
+const featured = computed(() => {
+  const heroKeys = new Set(heroGalleries.value.map(galleryKey))
+  const picked = appendUniqueGalleries(hotGalleriesData.value?.data ?? [], [], heroKeys, 3)
+
+  if (picked.length < 3) {
+    appendUniqueGalleries(allGalleries.value, picked, heroKeys, 3)
+  }
+
+  return picked
+})
 
 // 视频专区：筛选包含视频标签的图库，最多显示 3 条
-const videoGalleries = computed(() =>
-  allGalleries.value
+const videoGalleries = computed(() => {
+  const displayedKeys = new Set([...heroGalleries.value, ...featured.value].map(galleryKey))
+
+  return allGalleries.value
+    .filter(g => !displayedKeys.has(galleryKey(g)))
     .filter(g => g.tags.some(t => t.slug === 'video' || t.name === '视频'))
-    .slice(0, 3),
-)
+    .slice(0, 3)
+})
+
+// 最新图库：按 hero → featured → video → latest 顺序排除，避免同屏重复。
+const latest = computed(() => {
+  const displayedGalleries = [...heroGalleries.value, ...featured.value]
+  if (videoEnabled.value && videoGalleries.value.length > 0) {
+    displayedGalleries.push(...videoGalleries.value)
+  }
+
+  const displayedKeys = new Set(displayedGalleries.map(galleryKey))
+  return allGalleries.value.filter(gallery => !displayedKeys.has(galleryKey(gallery)))
+})
 
 const regionGuideItems = computed(() => {
   if (!tagsData.value?.data) return []
@@ -135,7 +180,7 @@ useSeoMeta({
     </section>
 
     <section class="mt-8 lg:mt-10">
-      <EditorialSectionHeading eyebrow="Featured" title="精选专题" description="以封面质感和人物气质为主线，进入本周推荐内容。" action-label="查看全部" action-to="/discover" />
+      <EditorialSectionHeading eyebrow="人气热榜" title="热门推荐" description="按访问与点赞热度生成的人气内容。" action-label="查看全部" action-to="/discover?sort=hot" />
       <template v-if="galleriesData">
         <HomeFeatured v-if="featured.length > 0" :galleries="featured" />
         <div v-else class="rounded-[1.5rem] border border-orange-100 bg-white/80 py-14 text-center text-gray-400">暂无更多精选内容</div>
@@ -146,7 +191,7 @@ useSeoMeta({
     </section>
 
     <section class="mt-8 lg:mt-10">
-      <EditorialSectionHeading eyebrow="New Arrival" title="最新图库" description="持续更新授权写真、时尚、生活与艺术类图库。" action-label="查看全部" action-to="/discover" />
+      <EditorialSectionHeading eyebrow="最新上新" title="最新图库" description="持续更新授权写真、时尚、生活与艺术类图库。" action-label="查看全部" action-to="/discover" />
       <template v-if="galleriesData">
         <GalleryGrid :galleries="latest" variant="magazine" />
         <div v-if="latest.length === 0" class="rounded-[1.5rem] border border-orange-100 bg-white/80 py-20 text-center text-gray-400">暂无更多最新内容</div>
@@ -157,7 +202,7 @@ useSeoMeta({
     </section>
 
     <section v-if="hotTags.length > 0 || !tagsData" class="mt-8 lg:mt-10">
-      <EditorialSectionHeading eyebrow="Style Tags" title="风格标签" description="用标签补充筛选人物气质、服饰、场景和内容类型。" />
+      <EditorialSectionHeading eyebrow="风格标签" title="风格标签" description="用标签补充筛选人物气质、服饰、场景和内容类型。" />
       <div v-if="tagsData" class="flex flex-wrap gap-2">
         <NuxtLink v-for="tag in hotTags" :key="tag.slug" :to="{ path: '/discover', query: { tag: tag.slug } }">
           <TagChip :tag="tag" />
@@ -169,7 +214,7 @@ useSeoMeta({
     </section>
 
     <section v-if="videoEnabled && videoGalleries.length > 0" class="mt-8 lg:mt-10">
-      <EditorialSectionHeading eyebrow="Video" title="视频专区" description="视频功能开启后展示可浏览的视频内容。" action-label="查看视频" action-to="/discover?tag=video" />
+      <EditorialSectionHeading eyebrow="视频专区" title="视频专区" description="视频功能开启后展示可浏览的视频内容。" action-label="查看视频" action-to="/discover?tag=video" />
       <HomeVideoZone :galleries="videoGalleries" />
     </section>
   </div>

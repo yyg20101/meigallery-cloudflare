@@ -38,6 +38,9 @@ interface GalleryDetail {
   updatedAt: string
   tags: GalleryTag[]
   mediaAssets: MediaAsset[]
+  viewCount?: number
+  likeCount?: number
+  likedByMe?: boolean
 }
 
 interface GallerySummary {
@@ -47,6 +50,13 @@ interface GallerySummary {
   coverUrl: string | null
   requiredLevelRank: number
   tags: GalleryTag[]
+  viewCount?: number
+  likeCount?: number
+}
+
+interface LikeResult {
+  likeCount: number
+  likedByMe: boolean
 }
 
 const { data: gallery, error } = await useAsyncData(`gallery-${route.params.slug}`, () =>
@@ -56,17 +66,6 @@ const { data: gallery, error } = await useAsyncData(`gallery-${route.params.slug
 if (error.value || !gallery.value) {
   throw createError({ statusCode: 404, message: '图库不存在' })
 }
-
-// SEO / OG meta
-useSeoMeta({
-  title: `${gallery.value.title} - MeiGallery`,
-  description: gallery.value.summary || `${gallery.value.title} - 精选写真图库`,
-  ogTitle: gallery.value.title,
-  ogDescription: gallery.value.summary || `${gallery.value.title} - 精选写真图库`,
-  ogImage: gallery.value.coverUrl || undefined,
-  ogType: 'article',
-  twitterCard: 'summary_large_image',
-})
 
 // 计算媒体分类
 const images = computed(() =>
@@ -136,6 +135,51 @@ const formattedDate = computed(() => {
 
 const supportTags = computed(() => gallery.value ? getSupportTags(gallery.value.tags, 8) : [])
 
+const showLoginPrompt = ref(false)
+const liking = ref(false)
+const likedByMe = ref(gallery.value?.likedByMe ?? false)
+const likeCount = ref(gallery.value?.likeCount ?? 0)
+const likeError = ref('')
+
+watch(
+  () => [gallery.value?.id, gallery.value?.likedByMe, gallery.value?.likeCount] as const,
+  ([, nextLikedByMe, nextLikeCount]) => {
+    if (liking.value) return
+
+    likedByMe.value = nextLikedByMe ?? false
+    likeCount.value = nextLikeCount ?? 0
+  },
+  { immediate: true },
+)
+
+function isUnauthorizedError(error: unknown) {
+  if (!error || typeof error !== 'object') return false
+
+  const fetchError = error as { status?: number; statusCode?: number; response?: { status?: number } }
+  return fetchError.status === 401 || fetchError.statusCode === 401 || fetchError.response?.status === 401
+}
+
+async function toggleLike() {
+  if (!gallery.value || liking.value) return
+
+  liking.value = true
+  likeError.value = ''
+  const nextLiked = !likedByMe.value
+  try {
+    const result = await api<LikeResult>(`/api/galleries/${gallery.value.id}/like`, { method: nextLiked ? 'POST' : 'DELETE' })
+    likedByMe.value = result.likedByMe
+    likeCount.value = result.likeCount
+  } catch (error) {
+    if (isUnauthorizedError(error)) {
+      showLoginPrompt.value = true
+    } else {
+      likeError.value = '点赞操作失败，请稍后再试'
+    }
+  } finally {
+    liking.value = false
+  }
+}
+
 // 锁定提示文案
 const lockMessage = computed(() => {
   const count = lockedImages.value.length
@@ -146,11 +190,12 @@ const lockMessage = computed(() => {
 
 useSeoMeta({
   title: () => gallery.value ? `${gallery.value.title} - MeiGallery` : 'MeiGallery',
-  description: () => gallery.value?.summary || '',
+  description: () => gallery.value?.summary || (gallery.value ? `${gallery.value.title} - 精选写真图库` : ''),
   ogTitle: () => gallery.value?.title || 'MeiGallery',
-  ogDescription: () => gallery.value?.summary || '',
-  ogImage: () => gallery.value?.coverUrl || '',
+  ogDescription: () => gallery.value?.summary || (gallery.value ? `${gallery.value.title} - 精选写真图库` : ''),
+  ogImage: () => gallery.value?.coverUrl || undefined,
   ogType: 'article',
+  twitterCard: 'summary_large_image',
 })
 </script>
 
@@ -168,7 +213,7 @@ useSeoMeta({
         </div>
       </div>
       <div class="relative flex flex-col justify-end p-6 lg:p-8">
-        <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#bfa46a]">Gallery Detail</p>
+        <p class="text-[10px] font-semibold tracking-[0.24em] text-[#bfa46a]">图库详情</p>
         <h1 class="mt-4 hidden text-4xl font-semibold tracking-[-0.055em] text-gray-950 lg:block">{{ gallery.title }}</h1>
         <div class="mt-4 flex flex-wrap items-center gap-2">
           <NuxtLink v-if="primaryRegion" :to="{ path: '/discover', query: { tag: primaryRegion.slug } }" class="rounded-full bg-gray-950 px-3 py-1 text-xs font-medium text-[#d6c39a]">{{ primaryRegion.name }}</NuxtLink>
@@ -176,6 +221,11 @@ useSeoMeta({
           <MembershipBadge v-if="gallery.requiredLevelRank > 0" :rank="gallery.requiredLevelRank" />
         </div>
         <p class="mt-4 text-xs text-gray-400">{{ formattedDate }}<span v-if="images.length"> · {{ images.length }}张图片</span><span v-if="videos.length"> · {{ videos.length }}个视频</span></p>
+        <div class="mt-5 flex flex-wrap items-center gap-3">
+          <GalleryHeatMeta :view-count="gallery.viewCount" :like-count="likeCount" />
+          <GalleryLikeButton :liked="likedByMe" :loading="liking" :like-count="likeCount" @click="toggleLike" />
+        </div>
+        <p v-if="likeError" class="mt-2 text-xs text-red-500">{{ likeError }}</p>
         <p v-if="gallery.summary" class="mt-5 text-sm leading-7 text-gray-600">{{ gallery.summary }}</p>
       </div>
     </section>
@@ -187,10 +237,12 @@ useSeoMeta({
         <!-- 公开图片区 -->
         <section v-if="publicImages.length > 0" class="mb-6">
           <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <div
+            <button
               v-for="(img, idx) in publicImages"
               :key="img.id"
+              type="button"
               class="aspect-[3/4] cursor-pointer overflow-hidden rounded-[1.25rem] bg-gray-100 shadow-sm shadow-orange-950/5 ring-1 ring-white/80"
+              :aria-label="`查看图片 ${idx + 1}`"
               @click="openViewer(idx)"
             >
               <img
@@ -199,7 +251,7 @@ useSeoMeta({
                 class="h-full w-full object-cover transition-transform hover:scale-105"
                 loading="lazy"
               />
-            </div>
+            </button>
           </div>
         </section>
 
@@ -251,7 +303,7 @@ useSeoMeta({
         <div class="lg:sticky lg:top-24 space-y-4">
           <!-- 会员引导卡 -->
           <div class="overflow-hidden rounded-[1.5rem] border border-[#eadfd2] bg-[#fffbf7] p-5 shadow-sm shadow-orange-950/5">
-            <p class="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#bfa46a]">Membership</p>
+            <p class="text-[10px] font-semibold tracking-[0.2em] text-[#bfa46a]">会员权益</p>
             <h3 class="mt-2 text-base font-semibold text-gray-950">解锁完整内容</h3>
             <p class="mt-2 text-xs leading-5 text-gray-600">成为会员即可查看高清图片、完整图库和受保护内容。</p>
             <NuxtLink
@@ -275,5 +327,7 @@ useSeoMeta({
       :start-index="viewerStartIndex"
       @close="viewerOpen = false"
     />
+
+    <LoginPromptModal :open="showLoginPrompt" @close="showLoginPrompt = false" />
   </div>
 </template>
