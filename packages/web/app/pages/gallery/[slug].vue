@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { getPrimaryRegion, getSupportTags } from '~/utils/galleryPresentation'
+
 const route = useRoute()
 const { api } = useApi()
 const { isLoggedIn, membershipRank } = useAuth()
@@ -131,6 +133,9 @@ const formattedDate = computed(() => {
   return d ? d.split('T')[0] : ''
 })
 
+const primaryRegion = computed(() => gallery.value ? getPrimaryRegion(gallery.value.tags) : null)
+const supportTags = computed(() => gallery.value ? getSupportTags(gallery.value.tags, 8) : [])
+
 // 锁定提示文案
 const lockMessage = computed(() => {
   const count = lockedImages.value.length
@@ -151,53 +156,41 @@ useSeoMeta({
 
 <template>
   <div v-if="gallery" class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-    <!-- 面包屑 -->
     <BreadcrumbNav :items="breadcrumbs" class="mb-4" />
+
+    <section class="mb-8 overflow-hidden rounded-[2rem] border border-white/80 bg-[#fffbf7] shadow-2xl shadow-orange-950/8 lg:grid lg:grid-cols-[1.2fr_0.8fr]">
+      <div class="relative aspect-[4/5] overflow-hidden bg-gradient-to-br from-orange-50 to-stone-100 lg:aspect-auto lg:min-h-[34rem]">
+        <img v-if="gallery.coverUrl" :src="gallery.coverUrl" :alt="gallery.title" class="h-full w-full object-cover" />
+        <div v-else class="h-full w-full bg-gradient-to-br from-[#f8e7dc] to-[#fff7ed]" />
+        <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-gray-950/70 to-transparent p-5 text-white lg:hidden">
+          <p v-if="primaryRegion" class="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#d6c39a]">{{ primaryRegion.name }}</p>
+          <h1 class="mt-2 text-2xl font-semibold tracking-tight">{{ gallery.title }}</h1>
+        </div>
+      </div>
+      <div class="relative flex flex-col justify-end p-6 lg:p-8">
+        <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#bfa46a]">Gallery Detail</p>
+        <h1 class="mt-4 hidden text-4xl font-semibold tracking-[-0.055em] text-gray-950 lg:block">{{ gallery.title }}</h1>
+        <div class="mt-4 flex flex-wrap items-center gap-2">
+          <NuxtLink v-if="primaryRegion" :to="{ path: '/discover', query: { tag: primaryRegion.slug } }" class="rounded-full bg-gray-950 px-3 py-1 text-xs font-medium text-[#d6c39a]">{{ primaryRegion.name }}</NuxtLink>
+          <TagChip v-for="tag in supportTags" :key="tag.id" :tag="tag" linkable />
+          <MembershipBadge v-if="gallery.requiredLevelRank > 0" :rank="gallery.requiredLevelRank" />
+        </div>
+        <p class="mt-4 text-xs text-gray-400">{{ formattedDate }}<span v-if="images.length"> · {{ images.length }}张图片</span><span v-if="videos.length"> · {{ videos.length }}个视频</span></p>
+        <p v-if="gallery.summary" class="mt-5 text-sm leading-7 text-gray-600">{{ gallery.summary }}</p>
+      </div>
+    </section>
 
     <!-- 双栏布局 -->
     <div class="lg:flex lg:gap-8">
       <!-- 左栏：主内容 -->
       <main class="lg:flex-[3] min-w-0">
-        <!-- 封面大图 -->
-        <div class="aspect-video rounded-md overflow-hidden bg-gray-100 mb-6">
-          <img
-            v-if="gallery.coverUrl"
-            :src="gallery.coverUrl"
-            :alt="gallery.title"
-            class="h-full w-full object-cover"
-          />
-          <div v-else class="h-full w-full bg-gradient-to-br from-gray-200 to-gray-300" />
-        </div>
-
-        <!-- 标题区 -->
-        <header class="mb-6">
-          <h1 class="text-2xl font-bold text-gray-900">{{ gallery.title }}</h1>
-          <div class="mt-3 flex flex-wrap items-center gap-2">
-            <TagChip v-for="tag in gallery.tags" :key="tag.id" :tag="tag" linkable />
-            <MembershipBadge v-if="gallery.requiredLevelRank > 0" :rank="gallery.requiredLevelRank" />
-          </div>
-          <p class="mt-2 text-xs text-gray-400">
-            {{ formattedDate }}
-            <span v-if="images.length"> · {{ images.length }}张图片</span>
-            <span v-if="videos.length"> · {{ videos.length }}个视频</span>
-          </p>
-        </header>
-
-        <!-- 摘要 -->
-        <p
-          v-if="gallery.summary"
-          class="text-gray-600 text-sm leading-relaxed border-b border-gray-100 pb-4 mb-6"
-        >
-          {{ gallery.summary }}
-        </p>
-
         <!-- 公开图片区 -->
         <section v-if="publicImages.length > 0" class="mb-6">
-          <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <div
               v-for="(img, idx) in publicImages"
               :key="img.id"
-              class="aspect-[3/4] rounded-lg overflow-hidden bg-gray-100 cursor-pointer"
+              class="aspect-[3/4] cursor-pointer overflow-hidden rounded-[1.25rem] bg-gray-100 shadow-sm shadow-orange-950/5 ring-1 ring-white/80"
               @click="openViewer(idx)"
             >
               <img
@@ -257,12 +250,13 @@ useSeoMeta({
       <aside class="mt-8 lg:mt-0 lg:flex-1 lg:min-w-[220px]">
         <div class="lg:sticky lg:top-24 space-y-4">
           <!-- 会员引导卡 -->
-          <div class="bg-amber-50 border border-amber-200 rounded-xl p-4">
-            <h3 class="font-semibold text-amber-900 text-sm">解锁全部内容</h3>
-            <p class="mt-1 text-xs text-amber-700">成为会员即可查看所有高清图片和完整视频</p>
+          <div class="overflow-hidden rounded-[1.5rem] border border-[#eadfd2] bg-[#fffbf7] p-5 shadow-sm shadow-orange-950/5">
+            <p class="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#bfa46a]">Membership</p>
+            <h3 class="mt-2 text-base font-semibold text-gray-950">解锁完整内容</h3>
+            <p class="mt-2 text-xs leading-5 text-gray-600">成为会员即可查看高清图片、完整图库和受保护内容。</p>
             <NuxtLink
               :to="isLoggedIn ? '/user' : '/login'"
-              class="mt-3 block w-full text-center rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600 transition-colors"
+              class="mt-4 block rounded-full bg-gray-950 px-4 py-2.5 text-center text-sm font-medium text-[#d6c39a] transition-all hover:-translate-y-0.5 hover:bg-black"
             >
               {{ isLoggedIn ? '查看会员权益' : '登录 / 注册' }}
             </NuxtLink>

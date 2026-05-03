@@ -11,14 +11,14 @@ defineProps<{ galleries: RelatedGallery[]; layout?: 'list' | 'grid' }>()
 
 <template>
   <div>
-    <h4 class="font-semibold text-sm mb-3">相关推荐</h4>
+    <h4 class="mb-3 text-sm font-semibold text-gray-950">相关推荐</h4>
     <!-- 网格布局（移动端） -->
     <div v-if="layout === 'grid'" class="grid grid-cols-2 gap-3">
       <NuxtLink
         v-for="g in galleries"
         :key="g.id"
         :to="`/gallery/${g.slug}`"
-        class="block rounded-md overflow-hidden bg-gray-100"
+        class="block overflow-hidden rounded-[1.25rem] border border-white/80 bg-[#fffbf7] shadow-sm shadow-orange-950/5"
       >
         <div class="aspect-[4/3] overflow-hidden">
           <img v-if="g.coverUrl" :src="g.coverUrl" :alt="g.title" class="w-full h-full object-cover" loading="lazy" />
@@ -36,9 +36,9 @@ defineProps<{ galleries: RelatedGallery[]; layout?: 'list' | 'grid' }>()
         v-for="g in galleries"
         :key="g.id"
         :to="`/gallery/${g.slug}`"
-        class="flex gap-3 items-center mb-3"
+        class="mb-3 flex items-center gap-3 rounded-[1.25rem] border border-white/80 bg-[#fffbf7] p-2 shadow-sm shadow-orange-950/5"
       >
-        <div class="w-16 h-12 rounded-md bg-gray-200 overflow-hidden flex-shrink-0">
+        <div class="w-16 h-12 flex-shrink-0 overflow-hidden rounded-[0.9rem] bg-gray-200">
           <img v-if="g.coverUrl" :src="g.coverUrl" :alt="g.title" class="w-full h-full object-cover" loading="lazy" />
         </div>
         <div>
