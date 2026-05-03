@@ -150,7 +150,7 @@ export function mapWpTags(wpTags: WpTag[], postTagIds: number[]): MappingResult 
 
     // 检查是否包含需要审核的关键词（替换后仍需标记原始来源）
     if (replacement) {
-      reviewFlags.push(`标签"${wpTag.name}"已替换为"${replacement}"`)
+      reviewFlags.push(`标签"${wpTag.name}"已替换为"${replacement}"，需审核`)
     }
 
     // 映射标签类型
