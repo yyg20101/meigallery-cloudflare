@@ -23,16 +23,16 @@ function onError() {
 </script>
 
 <template>
-  <div class="relative overflow-hidden bg-gray-200" :style="{ aspectRatio: props.aspectRatio }">
+  <div class="relative overflow-hidden bg-gradient-to-br from-orange-50 via-gray-100 to-stone-100" :style="{ aspectRatio: props.aspectRatio }">
     <!-- 骨架占位 -->
-    <div v-if="!loaded && !error" class="absolute inset-0 animate-pulse bg-gray-200" />
+    <div v-if="!loaded && !error" class="absolute inset-0 animate-pulse bg-[linear-gradient(110deg,#f6f1ec_8%,#fff_18%,#eee7df_33%)] bg-[length:200%_100%]" />
     <!-- 图片 -->
     <img
       v-if="!error"
       :src="props.src"
       :alt="props.alt"
       loading="lazy"
-      class="h-full w-full object-cover transition-opacity duration-300"
+      class="h-full w-full object-cover transition-all duration-500 ease-out"
       :class="[loaded ? 'opacity-100' : 'opacity-0', props.class]"
       @load="onLoad"
       @error="onError"
