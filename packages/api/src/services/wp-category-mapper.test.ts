@@ -70,10 +70,13 @@ describe('mapWpTags', () => {
     expect(result.reviewFlags).toHaveLength(0)
   })
 
-  it('映射制服标签为 style 类型', () => {
+  it('将复合制服标签拆分为两个 style 标签', () => {
     const result = mapWpTags(mockTags, [78])
-    expect(result.tags).toHaveLength(1)
+    expect(result.tags).toHaveLength(2)
     expect(result.tags[0]!.type).toBe('style')
+    expect(result.tags[0]!.name).toBe('制服')
+    expect(result.tags[1]!.type).toBe('style')
+    expect(result.tags[1]!.name).toBe('反差')
   })
 
   it('标记需审核的标签', () => {
