@@ -113,7 +113,12 @@ const videoGalleries = computed(() => {
 
 // 最新图库：按 hero → featured → video → latest 顺序排除，避免同屏重复。
 const latest = computed(() => {
-  const displayedKeys = new Set([...heroGalleries.value, ...featured.value, ...videoGalleries.value].map(galleryKey))
+  const displayedGalleries = [...heroGalleries.value, ...featured.value]
+  if (videoEnabled.value && videoGalleries.value.length > 0) {
+    displayedGalleries.push(...videoGalleries.value)
+  }
+
+  const displayedKeys = new Set(displayedGalleries.map(galleryKey))
   return allGalleries.value.filter(gallery => !displayedKeys.has(galleryKey(gallery)))
 })
 
