@@ -31,7 +31,7 @@ defineProps<{
         class="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.035]"
       />
       <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-      <div class="absolute left-4 top-4 rounded-full bg-black/72 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#d6c39a] ring-1 ring-[#d6c39a]/40 backdrop-blur">No.01 Hot</div>
+      <div class="absolute left-4 top-4 rounded-full bg-black/72 px-3 py-1 text-[10px] font-semibold tracking-[0.18em] text-[#d6c39a] ring-1 ring-[#d6c39a]/40 backdrop-blur">热榜 01</div>
       <div class="absolute inset-x-0 bottom-0 p-5 lg:p-6">
         <p class="max-w-xl text-lg font-semibold tracking-tight text-white lg:text-2xl">{{ galleries[0].title }}</p>
         <p class="mt-2 line-clamp-1 text-xs text-white/78">{{ galleries[0].tags.map(t => t.name).join(' · ') }}</p>
@@ -52,7 +52,7 @@ defineProps<{
         class="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.035]"
       />
       <div class="absolute inset-0 bg-gradient-to-t from-black/65 via-black/10 to-transparent" />
-      <div class="absolute left-4 top-4 rounded-full bg-black/72 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#d6c39a] ring-1 ring-[#d6c39a]/40 backdrop-blur">No.02 Hot</div>
+      <div class="absolute left-4 top-4 rounded-full bg-black/72 px-3 py-1 text-[10px] font-semibold tracking-[0.18em] text-[#d6c39a] ring-1 ring-[#d6c39a]/40 backdrop-blur">热榜 02</div>
       <div class="absolute inset-x-0 bottom-0 p-4">
         <p class="line-clamp-1 text-sm font-semibold text-white">{{ galleries[1].title }}</p>
         <GalleryHeatMeta class="mt-3" tone="dark" :view-count="galleries[1].viewCount" :like-count="galleries[1].likeCount" />
@@ -72,7 +72,7 @@ defineProps<{
         class="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.035]"
       />
       <div class="absolute inset-0 bg-gradient-to-t from-black/65 via-black/10 to-transparent" />
-      <div class="absolute left-4 top-4 rounded-full bg-black/72 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#d6c39a] ring-1 ring-[#d6c39a]/40 backdrop-blur">No.03 Hot</div>
+      <div class="absolute left-4 top-4 rounded-full bg-black/72 px-3 py-1 text-[10px] font-semibold tracking-[0.18em] text-[#d6c39a] ring-1 ring-[#d6c39a]/40 backdrop-blur">热榜 03</div>
       <div class="absolute inset-x-0 bottom-0 p-4">
         <p class="line-clamp-1 text-sm font-semibold text-white">{{ galleries[2].title }}</p>
         <GalleryHeatMeta class="mt-3" tone="dark" :view-count="galleries[2].viewCount" :like-count="galleries[2].likeCount" />
@@ -93,7 +93,7 @@ defineProps<{
           class="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
         />
         <div class="absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-transparent" />
-        <div class="absolute left-3 top-3 rounded-full bg-black/72 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#d6c39a] ring-1 ring-[#d6c39a]/40 backdrop-blur">No.02 Hot</div>
+        <div class="absolute left-3 top-3 rounded-full bg-black/72 px-3 py-1 text-[10px] font-semibold tracking-[0.18em] text-[#d6c39a] ring-1 ring-[#d6c39a]/40 backdrop-blur">热榜 02</div>
         <div class="absolute inset-x-0 bottom-0 p-4">
           <p class="line-clamp-1 text-sm font-semibold text-white">{{ galleries[1].title }}</p>
           <GalleryHeatMeta class="mt-3" tone="dark" :view-count="galleries[1].viewCount" :like-count="galleries[1].likeCount" />
@@ -112,7 +112,7 @@ defineProps<{
           class="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
         />
         <div class="absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-transparent" />
-        <div class="absolute left-3 top-3 rounded-full bg-black/72 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#d6c39a] ring-1 ring-[#d6c39a]/40 backdrop-blur">No.03 Hot</div>
+        <div class="absolute left-3 top-3 rounded-full bg-black/72 px-3 py-1 text-[10px] font-semibold tracking-[0.18em] text-[#d6c39a] ring-1 ring-[#d6c39a]/40 backdrop-blur">热榜 03</div>
         <div class="absolute inset-x-0 bottom-0 p-4">
           <p class="line-clamp-1 text-sm font-semibold text-white">{{ galleries[2].title }}</p>
           <GalleryHeatMeta class="mt-3" tone="dark" :view-count="galleries[2].viewCount" :like-count="galleries[2].likeCount" />

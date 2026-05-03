@@ -54,6 +54,11 @@ interface GallerySummary {
   likeCount?: number
 }
 
+interface LikeResult {
+  likeCount: number
+  likedByMe: boolean
+}
+
 const { data: gallery, error } = await useAsyncData(`gallery-${route.params.slug}`, () =>
   api<GalleryDetail>(`/api/galleries/${route.params.slug}`),
 )
@@ -146,20 +151,26 @@ const liking = ref(false)
 const likedByMe = ref(gallery.value?.likedByMe ?? false)
 const likeCount = ref(gallery.value?.likeCount ?? 0)
 
-async function toggleLike() {
-  if (!isLoggedIn.value) {
-    showLoginPrompt.value = true
-    return
-  }
+function isUnauthorizedError(error: unknown) {
+  if (!error || typeof error !== 'object') return false
 
+  const fetchError = error as { status?: number; statusCode?: number; response?: { status?: number } }
+  return fetchError.status === 401 || fetchError.statusCode === 401 || fetchError.response?.status === 401
+}
+
+async function toggleLike() {
   if (!gallery.value || liking.value) return
 
   liking.value = true
   const nextLiked = !likedByMe.value
   try {
-    await api(`/api/galleries/${gallery.value.id}/like`, { method: nextLiked ? 'POST' : 'DELETE' })
-    likedByMe.value = nextLiked
-    likeCount.value = Math.max(0, likeCount.value + (nextLiked ? 1 : -1))
+    const result = await api<LikeResult>(`/api/galleries/${gallery.value.id}/like`, { method: nextLiked ? 'POST' : 'DELETE' })
+    likedByMe.value = result.likedByMe
+    likeCount.value = result.likeCount
+  } catch (error) {
+    if (isUnauthorizedError(error)) {
+      showLoginPrompt.value = true
+    }
   } finally {
     liking.value = false
   }

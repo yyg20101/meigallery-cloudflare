@@ -141,7 +141,7 @@ useSeoMeta({
     </section>
 
     <section class="mt-8 lg:mt-10">
-      <EditorialSectionHeading eyebrow="Hot Ranking" title="热门推荐" description="按访问与点赞热度生成的人气内容。" action-label="查看全部" action-to="/discover?sort=hot" />
+      <EditorialSectionHeading eyebrow="人气热榜" title="热门推荐" description="按访问与点赞热度生成的人气内容。" action-label="查看全部" action-to="/discover?sort=hot" />
       <template v-if="galleriesData">
         <HomeFeatured v-if="featured.length > 0" :galleries="featured" />
         <div v-else class="rounded-[1.5rem] border border-orange-100 bg-white/80 py-14 text-center text-gray-400">暂无更多精选内容</div>
