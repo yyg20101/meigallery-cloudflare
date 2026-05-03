@@ -15,7 +15,7 @@ defineProps<{
       <h2 class="mt-1 text-xl font-semibold tracking-tight text-gray-950 lg:text-2xl">{{ title }}</h2>
       <p v-if="description" class="mt-1 max-w-2xl text-sm leading-6 text-gray-500">{{ description }}</p>
     </div>
-    <NuxtLink v-if="actionLabel && actionTo" :to="actionTo" class="hidden rounded-full border border-[#eadfd2] bg-white px-4 py-2 text-sm text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#d6c39a] hover:text-gray-950 sm:inline-flex">
+    <NuxtLink v-if="actionLabel && actionTo" :to="actionTo" class="inline-flex shrink-0 rounded-full border border-[#eadfd2] bg-white px-4 py-2 text-sm text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#d6c39a] hover:text-gray-950">
       {{ actionLabel }}
     </NuxtLink>
   </div>

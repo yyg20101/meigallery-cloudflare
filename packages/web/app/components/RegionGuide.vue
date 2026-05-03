@@ -19,7 +19,7 @@ defineProps<{
     <NuxtLink
       v-for="region in regions"
       :key="region.slug"
-      :to="`/discover?tag=${region.slug}`"
+      :to="{ path: '/discover', query: { tag: region.slug } }"
       class="group relative overflow-hidden rounded-[1.5rem] border border-[#f0e4d8] bg-white/85 p-4 shadow-sm shadow-orange-950/5 transition-all hover:-translate-y-1 hover:border-[#d6c39a] hover:shadow-xl hover:shadow-orange-950/10"
     >
       <span class="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#bfa46a]">{{ region.label }}</span>

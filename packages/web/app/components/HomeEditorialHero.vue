@@ -18,6 +18,10 @@ const props = defineProps<{
   gallery: HeroGallery | null
 }>()
 
+const safeCtaUrl = computed(() => {
+  const value = props.ctaUrl.trim()
+  return value.startsWith('/') && !value.startsWith('//') ? value : '/discover'
+})
 const region = computed(() => props.gallery ? getPrimaryRegion(props.gallery.tags) : null)
 const supportTags = computed(() => props.gallery ? getSupportTags(props.gallery.tags, 3) : [])
 </script>
@@ -32,10 +36,10 @@ const supportTags = computed(() => props.gallery ? getSupportTags(props.gallery.
       <h1 class="mt-4 max-w-2xl text-4xl font-semibold leading-[0.95] tracking-[-0.065em] text-gray-950 lg:text-6xl">{{ title }}</h1>
       <p class="mt-5 max-w-xl text-sm leading-7 text-gray-600 lg:text-base">{{ subtitle }}</p>
       <div class="mt-6 flex flex-wrap gap-2">
-        <NuxtLink :to="ctaUrl" class="rounded-full bg-gray-950 px-5 py-3 text-sm font-medium text-[#d6c39a] shadow-lg shadow-gray-900/15 transition-all hover:-translate-y-0.5 hover:bg-black">
+        <NuxtLink :to="safeCtaUrl" class="rounded-full bg-gray-950 px-5 py-3 text-sm font-medium text-[#d6c39a] shadow-lg shadow-gray-900/15 transition-all hover:-translate-y-0.5 hover:bg-black">
           {{ ctaLabel }}
         </NuxtLink>
-        <NuxtLink v-if="region" :to="`/discover?tag=${region.slug}`" class="rounded-full border border-[#eadfd2] bg-white/80 px-5 py-3 text-sm font-medium text-gray-700 transition-all hover:-translate-y-0.5 hover:border-[#d6c39a] hover:text-gray-950">
+        <NuxtLink v-if="region" :to="{ path: '/discover', query: { tag: region.slug } }" class="rounded-full border border-[#eadfd2] bg-white/80 px-5 py-3 text-sm font-medium text-gray-700 transition-all hover:-translate-y-0.5 hover:border-[#d6c39a] hover:text-gray-950">
           {{ region.name }}精选
         </NuxtLink>
       </div>
