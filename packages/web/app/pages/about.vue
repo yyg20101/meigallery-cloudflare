@@ -80,7 +80,7 @@ useHead(() => ({
 
 <template>
   <div class="mx-auto max-w-4xl px-4 py-10 lg:px-8 lg:py-16">
-    <div class="relative overflow-hidden rounded-[2rem] border border-orange-100 bg-[#fffbf7] px-6 py-10 shadow-sm lg:px-12 lg:py-14">
+    <div class="relative overflow-hidden rounded-[2rem] border border-white/80 bg-[#fffbf7] px-6 py-10 shadow-2xl shadow-orange-950/8 lg:px-12 lg:py-14">
       <div class="absolute -right-20 -top-24 h-64 w-64 rounded-full bg-orange-100/70 blur-3xl" />
       <div class="absolute -bottom-24 -left-20 h-56 w-56 rounded-full bg-stone-100 blur-3xl" />
       <div class="relative">
@@ -92,7 +92,7 @@ useHead(() => ({
       </div>
     </div>
 
-    <article class="about-content mt-8 rounded-[1.5rem] border border-gray-100 bg-white px-6 py-8 shadow-sm lg:px-10 lg:py-10" v-html="renderedContent" />
+    <article class="about-content mt-8 rounded-[1.5rem] border border-[#f0e4d8] bg-white/90 px-6 py-8 shadow-sm shadow-orange-950/5 lg:px-10 lg:py-10" v-html="renderedContent" />
   </div>
 </template>
 

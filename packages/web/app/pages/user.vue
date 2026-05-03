@@ -21,11 +21,11 @@ async function handleLogout() {
 </script>
 
 <template>
-  <div class="max-w-lg mx-auto px-4 py-6 pb-20 sm:pb-6">
+  <div class="mx-auto max-w-3xl px-4 py-6 pb-24 sm:pb-8">
     <!-- 已登录 -->
     <template v-if="isLoggedIn && user">
       <!-- 用户信息区 -->
-      <div class="bg-white rounded-xl p-6 mb-3">
+      <div class="mb-4 overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/86 p-6 shadow-sm shadow-orange-950/5">
         <div class="flex items-center gap-4">
           <div class="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center text-xl text-gray-500 font-semibold shrink-0">
             {{ user.nickname?.charAt(0) || user.email?.charAt(0) || '?' }}
@@ -41,7 +41,7 @@ async function handleLogout() {
       <MembershipCard :level="levelName" :rank="currentRank" :expires-at="membershipExpiry" class="mb-3" />
 
       <!-- 权益对比 -->
-      <div class="bg-white rounded-xl p-6 mb-3">
+      <div class="mb-4 rounded-[1.5rem] border border-[#f0e4d8] bg-[#fffbf7] p-6 shadow-sm shadow-orange-950/5">
         <h3 class="text-base font-semibold text-gray-900 mb-4">会员权益</h3>
         <div class="grid grid-cols-3 gap-3 text-center text-sm">
           <!-- 免费列 -->
@@ -83,7 +83,7 @@ async function handleLogout() {
       </div>
 
       <!-- 功能入口 -->
-      <div class="bg-white rounded-xl divide-y divide-gray-100 mb-3">
+      <div class="mb-4 overflow-hidden rounded-[1.5rem] border border-gray-100 bg-white/90 shadow-sm shadow-orange-950/5">
         <div class="flex items-center justify-between px-6 py-4">
           <span class="text-sm text-gray-700">浏览历史</span>
           <span class="text-xs text-gray-400">即将推出</span>

@@ -83,11 +83,12 @@ definePageMeta({ layout: 'default' })
 </script>
 
 <template>
-  <div class="-mt-14 min-h-screen flex items-center justify-center bg-gray-50 px-4">
-    <div class="w-full max-w-sm bg-white rounded-2xl shadow-sm p-8">
+  <div class="mx-auto flex min-h-[calc(100vh-8rem)] max-w-md items-center px-4 py-10">
+    <div class="w-full overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 p-6 shadow-2xl shadow-orange-950/8 ring-1 ring-[#f8e7dc]/70">
       <!-- Logo & Slogan -->
-      <h1 class="text-2xl font-bold text-center">MeiGallery</h1>
-      <p class="text-sm text-gray-400 text-center mt-1 mb-8">发现优质写真 · 时尚 · 生活 · 艺术</p>
+      <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#bfa46a]">MeiGallery</p>
+      <h1 class="mt-3 text-2xl font-semibold tracking-tight text-gray-950">登录 MeiGallery</h1>
+      <p class="mb-8 mt-2 text-sm text-gray-500">登录后查看会员状态和受保护内容。</p>
 
       <!-- Error -->
       <div v-if="error" class="text-red-500 text-sm text-center mb-4">{{ error }}</div>
@@ -147,7 +148,7 @@ definePageMeta({ layout: 'default' })
         <button
           type="submit"
           :disabled="loading || !canSubmit"
-          class="w-full bg-gray-900 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          class="w-full rounded-full bg-gray-950 py-2.5 text-sm font-medium text-[#d6c39a] transition-colors hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
         >
           {{ loading ? '登录中...' : '登录' }}
         </button>
