@@ -161,14 +161,6 @@ galleryRoutes.get('/:slug', async (c) => {
     return c.json({ statusCode: 404, message: '图库不存在' }, 404)
   }
 
-  // 异步递增浏览量（不阻塞响应）
-  c.executionCtx.waitUntil(
-    db.prepare('UPDATE galleries SET view_count = view_count + 1 WHERE id = ?')
-      .bind(gallery.id)
-      .run()
-      .catch(() => {}),
-  )
-
   // 查询标签
   const tags = await db
     .prepare(`
@@ -194,6 +186,14 @@ galleryRoutes.get('/:slug', async (c) => {
   const likedByMe = await isGalleryLikedByUser(db, gallery.id, c.get('userId'))
 
   c.header('Cache-Control', 'private, no-store')
+
+  // 异步递增浏览量（不阻塞响应）
+  c.executionCtx.waitUntil(
+    db.prepare('UPDATE galleries SET view_count = view_count + 1 WHERE id = ?')
+      .bind(gallery.id)
+      .run()
+      .catch(() => {}),
+  )
 
   return c.json({
     id: gallery.id,
