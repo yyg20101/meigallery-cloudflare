@@ -1,14 +1,14 @@
 # 生产环境部署
-# 触发：推送到 main 分支（通常由 PR 合入触发）
-name: 部署生产环境
+# 说明：使用新文件名让 GitHub Actions 重新注册生产部署 workflow。
+name: 生产环境部署
 
 on:
   push:
     branches: [main]
 
 concurrency:
-  group: deploy-production
-  cancel-in-progress: false  # 生产部署不取消进行中的任务
+  group: production-deploy
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -36,21 +36,18 @@ jobs:
       - name: 构建前端
         run: pnpm --filter @meigallery/web build
 
-      # D1 迁移
       - name: 执行 D1 数据库迁移
         run: pnpm --filter @meigallery/api exec wrangler d1 migrations apply meigallery-db --remote
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      # 部署 API Worker
       - name: 部署 API Worker
         run: pnpm --filter @meigallery/api exec wrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      # 部署 Web Worker
       - name: 部署 Web Worker
         run: pnpm --filter @meigallery/web exec wrangler deploy
         env:

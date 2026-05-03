@@ -2,53 +2,37 @@
 const { login, isLoggedIn } = useAuth()
 const route = useRoute()
 const router = useRouter()
-const config = useRuntimeConfig()
 
 const identifier = ref('')
 const password = ref('')
 const error = ref('')
 const loading = ref(false)
-const turnstileToken = ref('')
-const turnstileExpired = ref(false)
 
-const turnstileSiteKey = computed(() => config.public.turnstileSiteKey as string)
-const hasTurnstile = computed(() => !!turnstileSiteKey.value)
-
-// Turnstile 验证通过前禁止提交
-const canSubmit = computed(() => {
-  if (!hasTurnstile.value) return true
-  return !!turnstileToken.value && !turnstileExpired.value
+const {
+  turnstileToken,
+  turnstileExpired,
+  hasTurnstile,
+  canSubmit,
+  mountTurnstile,
+  resetTurnstile,
+  cleanupTurnstile,
+} = useTurnstile({
+  containerId: 'turnstile-login',
+  onError: (message) => {
+    error.value = message
+  },
 })
 
 if (isLoggedIn.value) {
   router.replace('/')
 }
 
-// Turnstile 回调
 onMounted(() => {
-  if (!hasTurnstile.value) return
+  void mountTurnstile()
+})
 
-  // 全局回调函数
-  ;(window as any).onTurnstileLoginSuccess = (token: string) => {
-    turnstileToken.value = token
-    turnstileExpired.value = false
-  }
-  ;(window as any).onTurnstileLoginExpired = () => {
-    turnstileToken.value = ''
-    turnstileExpired.value = true
-  }
-  ;(window as any).onTurnstileLoginError = () => {
-    turnstileToken.value = ''
-    error.value = '人机验证加载失败，请刷新页面重试'
-  }
-
-  // 动态加载 Turnstile 脚本（仅加载一次）
-  if (!document.querySelector('script[src*="challenges.cloudflare.com"]')) {
-    const script = document.createElement('script')
-    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js'
-    script.async = true
-    document.head.appendChild(script)
-  }
+onUnmounted(() => {
+  cleanupTurnstile()
 })
 
 async function onSubmit() {
@@ -67,11 +51,7 @@ async function onSubmit() {
     navigateTo((route.query.redirect as string) || '/')
   } catch (e: any) {
     error.value = e?.data?.message || e?.message || '登录失败，请重试'
-    // 验证失败后重置 Turnstile，让用户重新验证
-    if (hasTurnstile.value && typeof (window as any).turnstile?.reset === 'function') {
-      ;(window as any).turnstile.reset('#turnstile-login')
-      turnstileToken.value = ''
-    }
+    resetTurnstile()
   } finally {
     loading.value = false
   }
@@ -123,16 +103,7 @@ definePageMeta({ layout: 'default' })
 
         <!-- Turnstile 人机验证 -->
         <div v-if="hasTurnstile" class="flex justify-center">
-          <div
-            id="turnstile-login"
-            class="cf-turnstile"
-            :data-sitekey="turnstileSiteKey"
-            data-callback="onTurnstileLoginSuccess"
-            data-expired-callback="onTurnstileLoginExpired"
-            data-error-callback="onTurnstileLoginError"
-            data-theme="light"
-            data-language="zh-cn"
-          />
+          <div id="turnstile-login" />
         </div>
         <div v-else class="bg-gray-50 border border-gray-200 rounded-lg p-3 flex items-center gap-2">
           <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>

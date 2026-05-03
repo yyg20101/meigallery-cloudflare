@@ -4,7 +4,6 @@ import { validateUsername } from '@meigallery/shared/utils'
 const { register, sendCode, checkUsername, isLoggedIn } = useAuth()
 const { api } = useApi()
 const router = useRouter()
-const config = useRuntimeConfig()
 
 // 表单数据
 const username = ref('')
@@ -15,8 +14,21 @@ const verificationCode = ref('')
 const error = ref('')
 const loading = ref(false)
 const codeSending = ref(false)
-const turnstileToken = ref('')
-const turnstileExpired = ref(false)
+
+const {
+  turnstileToken,
+  turnstileExpired,
+  hasTurnstile,
+  canSubmit,
+  mountTurnstile,
+  resetTurnstile,
+  cleanupTurnstile,
+} = useTurnstile({
+  containerId: 'turnstile-register',
+  onError: (message) => {
+    error.value = message
+  },
+})
 
 // 用户名实时校验
 const usernameError = ref('')
@@ -33,15 +45,6 @@ const step = ref(1)
 const cooldown = ref(0)
 let cooldownTimer: ReturnType<typeof setInterval> | null = null
 
-const turnstileSiteKey = computed(() => config.public.turnstileSiteKey as string)
-const hasTurnstile = computed(() => !!turnstileSiteKey.value)
-
-// Turnstile 验证通过前禁止提交
-const canSubmit = computed(() => {
-  if (!hasTurnstile.value) return true
-  return !!turnstileToken.value && !turnstileExpired.value
-})
-
 if (isLoggedIn.value) {
   router.replace('/')
 }
@@ -56,34 +59,14 @@ onMounted(async () => {
   }
 })
 
-// Turnstile 回调
 onMounted(() => {
-  if (!hasTurnstile.value) return
-
-  ;(window as any).onTurnstileRegisterSuccess = (token: string) => {
-    turnstileToken.value = token
-    turnstileExpired.value = false
-  }
-  ;(window as any).onTurnstileRegisterExpired = () => {
-    turnstileToken.value = ''
-    turnstileExpired.value = true
-  }
-  ;(window as any).onTurnstileRegisterError = () => {
-    turnstileToken.value = ''
-    error.value = '人机验证加载失败，请刷新页面重试'
-  }
-
-  if (!document.querySelector('script[src*="challenges.cloudflare.com"]')) {
-    const script = document.createElement('script')
-    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js'
-    script.async = true
-    document.head.appendChild(script)
-  }
+  void mountTurnstile()
 })
 
 onUnmounted(() => {
   if (cooldownTimer) clearInterval(cooldownTimer)
   if (usernameDebounce) clearTimeout(usernameDebounce)
+  cleanupTurnstile()
 })
 
 // 用户名输入实时校验（防抖 500ms）
@@ -123,13 +106,6 @@ function startCooldown(seconds: number) {
       cooldownTimer = null
     }
   }, 1000)
-}
-
-function resetTurnstile() {
-  if (hasTurnstile.value && typeof (window as any).turnstile?.reset === 'function') {
-    ;(window as any).turnstile.reset('#turnstile-register')
-    turnstileToken.value = ''
-  }
 }
 
 /** 基础表单校验 */
@@ -219,10 +195,20 @@ async function onDirectRegister() {
 async function onResendCode() {
   if (cooldown.value > 0) return
   error.value = ''
+  if (hasTurnstile.value) {
+    step.value = 1
+    resetTurnstile()
+    await nextTick()
+    await mountTurnstile()
+    error.value = '请重新完成人机验证后发送验证码'
+    return
+  }
   codeSending.value = true
   try {
-    resetTurnstile()
-    const result = await sendCode(email.value, 'register')
+    const result = await sendCode(
+      email.value,
+      'register',
+    )
     startCooldown(result.cooldown || 60)
   } catch (e: any) {
     const msg = e?.data ? (() => { try { return JSON.parse(e.data)?.message } catch { return null } })() : null
@@ -254,6 +240,7 @@ async function onSubmitWithCode() {
   } catch (e: any) {
     const msg = e?.data ? (() => { try { return JSON.parse(e.data)?.message } catch { return null } })() : null
     error.value = msg || e?.message || '注册失败，请重试'
+    resetTurnstile()
   } finally {
     loading.value = false
   }
@@ -264,6 +251,8 @@ function backToStep1() {
   step.value = 1
   verificationCode.value = ''
   error.value = ''
+  resetTurnstile()
+  void mountTurnstile()
 }
 
 useSeoMeta({ title: '注册 - MeiGallery', robots: 'noindex' })
@@ -346,16 +335,7 @@ definePageMeta({ layout: 'default' })
 
         <!-- Turnstile 人机验证 -->
         <div v-if="hasTurnstile" class="flex justify-center">
-          <div
-            id="turnstile-register"
-            class="cf-turnstile"
-            :data-sitekey="turnstileSiteKey"
-            data-callback="onTurnstileRegisterSuccess"
-            data-expired-callback="onTurnstileRegisterExpired"
-            data-error-callback="onTurnstileRegisterError"
-            data-theme="light"
-            data-language="zh-cn"
-          />
+          <div id="turnstile-register" />
         </div>
         <div v-else class="bg-gray-50 border border-gray-200 rounded-lg p-3 flex items-center gap-2">
           <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>

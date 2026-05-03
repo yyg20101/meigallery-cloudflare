@@ -1,7 +1,6 @@
 <script setup lang="ts">
 const { sendCode, resetPassword } = useAuth()
 const router = useRouter()
-const config = useRuntimeConfig()
 
 // 表单数据
 const email = ref('')
@@ -12,8 +11,21 @@ const error = ref('')
 const success = ref('')
 const loading = ref(false)
 const codeSending = ref(false)
-const turnstileToken = ref('')
-const turnstileExpired = ref(false)
+
+const {
+  turnstileToken,
+  turnstileExpired,
+  hasTurnstile,
+  canSubmit,
+  mountTurnstile,
+  resetTurnstile,
+  cleanupTurnstile,
+} = useTurnstile({
+  containerId: 'turnstile-reset',
+  onError: (message) => {
+    error.value = message
+  },
+})
 
 // 步骤控制：1=输入邮箱 2=输入验证码+新密码 3=完成
 const step = ref(1)
@@ -22,40 +34,13 @@ const step = ref(1)
 const cooldown = ref(0)
 let cooldownTimer: ReturnType<typeof setInterval> | null = null
 
-const turnstileSiteKey = computed(() => config.public.turnstileSiteKey as string)
-const hasTurnstile = computed(() => !!turnstileSiteKey.value)
-
-const canSubmit = computed(() => {
-  if (!hasTurnstile.value) return true
-  return !!turnstileToken.value && !turnstileExpired.value
-})
-
 onMounted(() => {
-  if (!hasTurnstile.value) return
-
-  ;(window as any).onTurnstileResetSuccess = (token: string) => {
-    turnstileToken.value = token
-    turnstileExpired.value = false
-  }
-  ;(window as any).onTurnstileResetExpired = () => {
-    turnstileToken.value = ''
-    turnstileExpired.value = true
-  }
-  ;(window as any).onTurnstileResetError = () => {
-    turnstileToken.value = ''
-    error.value = '人机验证加载失败，请刷新页面重试'
-  }
-
-  if (!document.querySelector('script[src*="challenges.cloudflare.com"]')) {
-    const script = document.createElement('script')
-    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js'
-    script.async = true
-    document.head.appendChild(script)
-  }
+  void mountTurnstile()
 })
 
 onUnmounted(() => {
   if (cooldownTimer) clearInterval(cooldownTimer)
+  cleanupTurnstile()
 })
 
 function startCooldown(seconds: number) {
@@ -99,6 +84,7 @@ async function onSendCode() {
   } catch (e: any) {
     const msg = e?.data ? (() => { try { return JSON.parse(e.data)?.message } catch { return null } })() : null
     error.value = msg || '发送失败，请重试'
+    resetTurnstile()
   } finally {
     codeSending.value = false
   }
@@ -108,9 +94,20 @@ async function onSendCode() {
 async function onResendCode() {
   if (cooldown.value > 0) return
   error.value = ''
+  if (hasTurnstile.value) {
+    step.value = 1
+    resetTurnstile()
+    await nextTick()
+    await mountTurnstile()
+    error.value = '请重新完成人机验证后发送验证码'
+    return
+  }
   codeSending.value = true
   try {
-    const result = await sendCode(email.value, 'password_reset')
+    const result = await sendCode(
+      email.value,
+      'password_reset',
+    )
     startCooldown(result.cooldown || 60)
   } catch (e: any) {
     const msg = e?.data ? (() => { try { return JSON.parse(e.data)?.message } catch { return null } })() : null
@@ -182,16 +179,7 @@ definePageMeta({ layout: 'default' })
 
         <!-- Turnstile -->
         <div v-if="hasTurnstile" class="flex justify-center">
-          <div
-            id="turnstile-reset"
-            class="cf-turnstile"
-            :data-sitekey="turnstileSiteKey"
-            data-callback="onTurnstileResetSuccess"
-            data-expired-callback="onTurnstileResetExpired"
-            data-error-callback="onTurnstileResetError"
-            data-theme="light"
-            data-language="zh-cn"
-          />
+          <div id="turnstile-reset" />
         </div>
         <div v-else class="bg-gray-50 border border-gray-200 rounded-lg p-3 flex items-center gap-2">
           <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
