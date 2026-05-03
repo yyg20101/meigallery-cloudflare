@@ -105,12 +105,13 @@ function openViewer(index: number) {
   viewerOpen.value = true
 }
 
+const primaryRegion = computed(() => gallery.value ? getPrimaryRegion(gallery.value.tags) : null)
+
 // 面包屑
-const regionTag = computed(() => gallery.value?.tags.find(t => t.type === 'region' || t.type === 'region_group' || t.type === 'city'))
 const breadcrumbs = computed(() => [
   { label: '首页', to: '/' },
-  regionTag.value
-    ? { label: regionTag.value.name, to: `/discover?tag=${regionTag.value.slug}` }
+  primaryRegion.value
+    ? { label: primaryRegion.value.name, to: `/discover?tag=${encodeURIComponent(primaryRegion.value.slug)}` }
     : { label: '图库', to: '/discover' },
   { label: gallery.value?.title || '' },
 ])
@@ -120,7 +121,7 @@ const firstTag = computed(() => gallery.value?.tags[0])
 const { data: relatedData } = await useAsyncData(
   `related-${route.params.slug}`,
   () => firstTag.value
-    ? api<{ data: GallerySummary[] }>(`/api/galleries?tag=${firstTag.value.slug}&pageSize=4`)
+    ? api<{ data: GallerySummary[] }>('/api/galleries', { query: { tag: firstTag.value.slug, pageSize: '4' } })
     : Promise.resolve({ data: [] as GallerySummary[] }),
 )
 const relatedGalleries = computed(() =>
@@ -133,7 +134,6 @@ const formattedDate = computed(() => {
   return d ? d.split('T')[0] : ''
 })
 
-const primaryRegion = computed(() => gallery.value ? getPrimaryRegion(gallery.value.tags) : null)
 const supportTags = computed(() => gallery.value ? getSupportTags(gallery.value.tags, 8) : [])
 
 // 锁定提示文案
