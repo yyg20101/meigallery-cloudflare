@@ -72,7 +72,7 @@ adminContactMethodRoutes.post('/', requireOwner, async (c) => {
     return c.json({ statusCode: 400, message: `不支持的平台: ${body.platform}` }, 400)
   }
 
-  const linkUrl = body.linkUrl !== undefined ? body.linkUrl : generateContactLink(body.platform, body.value)
+  const linkUrl = body.linkUrl || null
   const enabled = body.enabled !== undefined ? body.enabled : true
 
   // 获取最大 sort_order
@@ -149,12 +149,10 @@ adminContactMethodRoutes.put('/:id', requireOwner, async (c) => {
   const newEnabled = body.enabled !== undefined ? body.enabled : current.enabled === 1
   const newSortOrder = body.sortOrder !== undefined ? body.sortOrder : current.sort_order
 
-  // 如果 value 或 platform 变了且未显式设置 linkUrl，自动重新生成
+  // linkUrl: 显式传入则使用（含 null/空字符串 → null），否则保留原值
   let newLinkUrl: string | null
   if (body.linkUrl !== undefined) {
-    newLinkUrl = body.linkUrl
-  } else if (body.value !== undefined || body.platform !== undefined) {
-    newLinkUrl = generateContactLink(newPlatform, newValue)
+    newLinkUrl = body.linkUrl || null
   } else {
     newLinkUrl = current.link_url
   }

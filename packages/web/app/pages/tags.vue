@@ -41,7 +41,7 @@ useSeoMeta({
             v-for="tag in items"
             :key="tag.slug"
             :to="`/search?tag=${tag.slug}`"
-            class="rounded-full bg-gray-100 px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+            class="rounded-full bg-gray-100 px-4 py-2 text-sm text-gray-700 hover:bg-gray-200 hover:text-gray-900 transition-colors"
           >
             {{ tag.name }}
           </NuxtLink>

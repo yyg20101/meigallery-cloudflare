@@ -25,20 +25,3 @@ NUXT_PUBLIC_API_BASE_URL = "https://api.616618.xyz"
 # Turnstile site key（公开值，在 Cloudflare Dashboard 创建 Turnstile widget 后填入）
 # 留空则前端跳过人机验证
 NUXT_PUBLIC_TURNSTILE_SITE_KEY = "0x4AAAAAADGbuWKJvOkDMRWU"
-
-# ─── 开发环境 ───
-[env.dev]
-name = "meigallery-web-dev"
-
-[env.dev.assets]
-directory = ".output/public"
-
-# Service Binding（开发环境指向 dev API Worker）
-[[env.dev.services]]
-binding = "API_SERVICE"
-service = "meigallery-api-dev"
-
-[env.dev.vars]
-NUXT_PUBLIC_APP_ENV = "development"
-NUXT_PUBLIC_API_BASE_URL = "https://meigallery-api-dev.250770503.workers.dev"
-NUXT_PUBLIC_TURNSTILE_SITE_KEY = ""

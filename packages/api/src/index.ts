@@ -10,6 +10,7 @@ import { searchRoutes } from './routes/search'
 import { mediaRoutes } from './routes/media'
 import { meRoutes } from './routes/me'
 import { contactMethodRoutes } from './routes/contact-methods'
+import { PUBLIC_SETTING_KEYS } from './utils/site-settings'
 import { adminRoutes } from './routes/admin'
 import { healthRoutes } from './routes/health'
 import { authMiddleware } from './middleware/auth'
@@ -22,11 +23,14 @@ export type Bindings = CloudflareEnv & {
   TURNSTILE_SECRET_KEY: string
   STREAM_ACCOUNT_ID: string
   STREAM_API_TOKEN: string
+  EMAIL_FROM: string
+  EMAIL: SendEmail
+  IMAGE_RESIZING_ENABLED: string // "true" | "false"
 }
 
 /** 应用级变量 */
 export type Variables = {
-  userId: string | null
+  userId: number | null
   userRole: string | null
 }
 
@@ -65,7 +69,7 @@ app.route('/api/contact-methods', contactMethodRoutes)
 // 公开站点信息（不需要登录）
 app.get('/api/settings/public', async (c) => {
   const db = c.env.DB
-  const keys = ['site_name', 'seo_title', 'membership_description']
+  const keys = [...PUBLIC_SETTING_KEYS]
   const placeholders = keys.map(() => '?').join(',')
   const result = await db
     .prepare(`SELECT key, value FROM site_settings WHERE key IN (${placeholders})`)
@@ -95,4 +99,64 @@ app.onError((err, c) => {
   )
 })
 
-export default app
+// ============================================================
+// Scheduled Handler（Cron Trigger）
+// 每天 UTC 00:00（北京时间 08:00）执行
+// ============================================================
+
+async function handleScheduled(env: Bindings): Promise<void> {
+  const db = env.DB
+
+  // 1. 清理过期验证码（超过 1 小时的记录）
+  const cleaned = await db
+    .prepare(`DELETE FROM email_verification_codes WHERE expires_at < datetime('now', '-1 hour')`)
+    .run()
+  console.log(`[cron] 清理过期验证码: ${cleaned.meta?.changes ?? 0} 条`)
+
+  // 2. 发送会员到期提醒（到期前 3 天，未发送过提醒）
+  try {
+    const { sendMembershipExpiryReminder } = await import('./services/email')
+
+    const expiring = await db
+      .prepare(`
+        SELECT um.id as membership_id, u.email, u.notification_enabled, ml.name as level_name, um.expires_at
+        FROM user_memberships um
+        JOIN users u ON um.user_id = u.id
+        JOIN membership_levels ml ON um.level_id = ml.id
+        WHERE um.expiry_notified = 0
+          AND ml.rank > 0
+          AND datetime('now') >= datetime(um.expires_at, '-3 days')
+          AND datetime('now') < datetime(um.expires_at)
+          AND u.email_verified = 1
+          AND u.notification_enabled = 1
+      `)
+      .all<{
+        membership_id: string
+        email: string
+        notification_enabled: number
+        level_name: string
+        expires_at: string
+      }>()
+
+    for (const row of expiring.results) {
+      try {
+        await sendMembershipExpiryReminder(env, row.email, row.level_name, row.expires_at)
+        await db.prepare('UPDATE user_memberships SET expiry_notified = 1 WHERE id = ?').bind(row.membership_id).run()
+        console.log(`[cron] 发送到期提醒: ${row.email} (${row.level_name})`)
+      } catch (e) {
+        console.error(`[cron] 发送到期提醒失败: ${row.email}`, e)
+      }
+    }
+
+    console.log(`[cron] 到期提醒: ${expiring.results.length} 个待处理`)
+  } catch (e) {
+    console.error('[cron] 到期提醒任务失败:', e)
+  }
+}
+
+export default {
+  fetch: app.fetch,
+  scheduled: async (event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) => {
+    ctx.waitUntil(handleScheduled(env))
+  },
+}

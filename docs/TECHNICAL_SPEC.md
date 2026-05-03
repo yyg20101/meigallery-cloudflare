@@ -12,12 +12,12 @@
 
 - 前端框架：**Nuxt 3**（Vue 3 全栈框架，Nitro preset `cloudflare`，部署为 Cloudflare Worker）。
 - 后端框架：**Hono**（部署为独立 Cloudflare Worker，纯 API 服务）。
-- UI 层：Vue 3 + Composition API + Tailwind CSS（前台）+ Nuxt UI v3（后台）。
+- UI 层：Vue 3 + Composition API + Tailwind CSS v4（前台）+ Nuxt UI v3（后台）。
 - 数据库：Cloudflare D1（SQLite 兼容，通过 Worker bindings 访问）。
 - 对象存储：Cloudflare R2（通过 Worker bindings 访问）。
-- 视频：Cloudflare Stream（REST API 调用）。
+- 视频：Cloudflare Stream（REST API 调用）。**当前状态：未接入**，Stream secrets 为占位符，729 个视频待处理。
 - 人机验证：Cloudflare Turnstile。
-- CI/CD：GitHub + Workers Builds，`main` 分支自动生产部署。
+- CI/CD：**手动部署**：GitHub Actions 无配额，使用 `pnpm --filter @meigallery/api exec wrangler deploy` 和 `pnpm --filter @meigallery/web exec wrangler deploy`。
 - 包管理器：pnpm（workspace monorepo）。
 - 组件预览：Histoire。
 
@@ -36,7 +36,7 @@
 | 后台 SPA | Nuxt `routeRules: { '/admin/**': { ssr: false } }` |
 | API 类型安全 | Hono + `@meigallery/shared` 共享类型包 |
 | D1/R2 绑定 | Hono 通过 `c.env.DB` / `c.env.R2` 访问 |
-| 图片优化 | 自定义缩略图生成 Worker + R2 缓存 |
+| 图片优化 | 自定义缩略图生成 Worker + R2 缓存（Image Resizing 需要 Pro 计划 $20/月，当前 Free 计划通过 `IMAGE_RESIZING_ENABLED=false` 回退到原始图片） |
 
 ## 3. 应用模块（monorepo 结构）
 
@@ -60,7 +60,7 @@
 
 - 使用 HttpOnly + Secure + SameSite=Lax 的 cookie 存储 session token。
 - session token 由服务端签发，使用 `SESSION_SECRET` 签名。
-- 会话有效期 7 天，滑动续期（每次活跃请求更新过期时间）。
+- 会话有效期 30 天，滑动续期：剩余不足 15 天时自动续期 30 天并同步刷新 cookie。
 - 登出时服务端销毁 session 记录。
 
 ### Turnstile 集成
@@ -218,7 +218,7 @@
 
 ```sql
 CREATE TABLE users (
-  id TEXT PRIMARY KEY,
+  id INTEGER PRIMARY KEY AUTOINCREMENT, -- 通过 migration 0007 从 TEXT UUID 迁移为自增整数
   email TEXT NOT NULL UNIQUE,
   nickname TEXT,
   password_hash TEXT NOT NULL,
@@ -509,13 +509,22 @@ queued → processing → completed
 
 | 资源类型 | 缓存策略 | TTL |
 |----------|----------|-----|
-| 前台静态资源 | Cloudflare Pages 自动缓存 | 长期（hash 文件名） |
+| 前台静态资源 | Workers Assets 自动缓存 | 长期（hash 文件名） |
 | 首页和列表页数据 | 短缓存，发布后失效 | 60 秒 |
 | 标签列表 | 短缓存 | 300 秒 |
 | 公开缩略图 | R2 公开访问 + CDN 缓存 | 7 天（文件名含 hash） |
 | 受保护媒体 | 不缓存，短期签名 URL | 不适用 |
 
-## 12. 测试范围
+## 12. 已实现功能补充
+
+- **图库创建两步流程**：第一步填写基本信息（标题、slug、描述、标签、等级），第二步上传媒体文件（封面、图片、视频）。
+- **站点设置扩展**：新增 SEO/OG/页脚字段（`seo_description`、`og_image_url`、`footer_text`、`footer_links`），通过 migration 0009 添加。
+- **无限滚动**：首页和发现页使用 IntersectionObserver 实现无限滚动加载。
+- **浏览量统计**：galleries 表新增 `view_count` 字段（migration 0008），使用 `waitUntil` 异步增量更新，不阻塞请求。
+- **生产域名**：Web 站点 `616618.xyz`，API 服务 `api.616618.xyz`。
+- **Dev 环境 Worker**：**已删除**，需要时重新创建。
+
+## 13. 测试范围
 
 ### 单元测试（必须覆盖）
 

@@ -7,12 +7,41 @@
     "Microsoft YaHei", sans-serif;
 }
 
+:root {
+  --mg-ink: #111111;
+  --mg-pearl: #fffbf7;
+  --mg-cream: #fff7ed;
+  --mg-blush: #f8e7dc;
+  --mg-gold: #bfa46a;
+}
+
+body {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(248, 231, 220, 0.55), transparent 30rem),
+    linear-gradient(180deg, #fffbf7 0%, #ffffff 18rem, #ffffff 100%);
+}
+
+::selection {
+  background: rgba(191, 164, 106, 0.28);
+  color: var(--mg-ink);
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
 /* 页面过渡动画 */
 .page-enter-active,
 .page-leave-active {
-  transition: opacity 200ms ease;
+  transition: opacity 220ms ease, transform 220ms ease;
 }
 .page-enter-from,
 .page-leave-to {
   opacity: 0;
+  transform: translateY(4px);
 }

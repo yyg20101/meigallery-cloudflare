@@ -4,7 +4,7 @@ const route = useRoute()
 const router = useRouter()
 const config = useRuntimeConfig()
 
-const email = ref('')
+const identifier = ref('')
 const password = ref('')
 const error = ref('')
 const loading = ref(false)
@@ -53,8 +53,8 @@ onMounted(() => {
 
 async function onSubmit() {
   error.value = ''
-  if (!email.value || !password.value) {
-    error.value = '请填写邮箱和密码'
+  if (!identifier.value || !password.value) {
+    error.value = '请填写用户名/邮箱和密码'
     return
   }
   if (hasTurnstile.value && !turnstileToken.value) {
@@ -63,7 +63,7 @@ async function onSubmit() {
   }
   loading.value = true
   try {
-    await login(email.value, password.value, hasTurnstile.value ? turnstileToken.value : undefined)
+    await login(identifier.value, password.value, hasTurnstile.value ? turnstileToken.value : undefined)
     navigateTo((route.query.redirect as string) || '/')
   } catch (e: any) {
     error.value = e?.data?.message || e?.message || '登录失败，请重试'
@@ -83,25 +83,26 @@ definePageMeta({ layout: 'default' })
 </script>
 
 <template>
-  <div class="-mt-14 min-h-screen flex items-center justify-center bg-gray-50 px-4">
-    <div class="w-full max-w-sm bg-white rounded-2xl shadow-sm p-8">
+  <div class="mx-auto flex min-h-[calc(100vh-8rem)] max-w-md items-center px-4 py-10">
+    <div class="w-full overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 p-6 shadow-2xl shadow-orange-950/8 ring-1 ring-[#f8e7dc]/70">
       <!-- Logo & Slogan -->
-      <h1 class="text-2xl font-bold text-center">MeiGallery</h1>
-      <p class="text-sm text-gray-400 text-center mt-1 mb-8">发现优质写真 · 时尚 · 生活 · 艺术</p>
+      <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#bfa46a]">MeiGallery</p>
+      <h1 class="mt-3 text-2xl font-semibold tracking-tight text-gray-950">登录 MeiGallery</h1>
+      <p class="mb-8 mt-2 text-sm text-gray-500">登录后查看会员状态和受保护内容。</p>
 
       <!-- Error -->
       <div v-if="error" class="text-red-500 text-sm text-center mb-4">{{ error }}</div>
 
       <form class="space-y-4" @submit.prevent="onSubmit">
-        <!-- 邮箱 -->
+        <!-- 用户名 / 邮箱 -->
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">邮箱</label>
+          <label class="block text-sm font-medium text-gray-700 mb-1">用户名 / 邮箱</label>
           <input
-            v-model="email"
-            type="email"
-            autocomplete="email"
+            v-model="identifier"
+            type="text"
+            autocomplete="username"
             class="border border-gray-200 rounded-lg px-4 py-2.5 w-full text-sm focus:ring-2 focus:ring-gray-900 focus:border-transparent outline-none"
-            placeholder="your@email.com"
+            placeholder="输入用户名或邮箱"
           />
         </div>
 
@@ -109,7 +110,7 @@ definePageMeta({ layout: 'default' })
         <div>
           <label class="flex justify-between text-sm font-medium text-gray-700 mb-1">
             <span>密码</span>
-            <a href="#" class="text-xs text-gray-400">忘记密码？</a>
+            <NuxtLink to="/forgot-password" class="text-xs text-gray-400 hover:text-gray-600">忘记密码？</NuxtLink>
           </label>
           <input
             v-model="password"
@@ -147,7 +148,7 @@ definePageMeta({ layout: 'default' })
         <button
           type="submit"
           :disabled="loading || !canSubmit"
-          class="w-full bg-gray-900 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          class="w-full rounded-full bg-gray-950 py-2.5 text-sm font-medium text-[#d6c39a] transition-colors hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
         >
           {{ loading ? '登录中...' : '登录' }}
         </button>

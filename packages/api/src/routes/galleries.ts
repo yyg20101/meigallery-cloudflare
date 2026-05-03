@@ -11,7 +11,8 @@ export const galleryRoutes = new Hono<{ Bindings: Bindings; Variables: Variables
  *   page: 页码（默认 1）
  *   pageSize: 每页数量（默认 20，最大 100）
  *   tag: 标签 slug（可多个，逗号分隔）
- *   status: 仅返回 published（公开 API 强制）
+ *   search: 关键词搜索（标题和摘要模糊匹配）
+ *   sort: 排序方式（newest / oldest / random，默认 newest）
  */
 galleryRoutes.get('/', cacheControl(60), async (c) => {
   const db = c.env.DB
@@ -21,6 +22,8 @@ galleryRoutes.get('/', cacheControl(60), async (c) => {
     Math.max(1, parseInt(c.req.query('pageSize') || String(PAGINATION.DEFAULT_PAGE_SIZE), 10)),
   )
   const tagSlugs = c.req.query('tag')?.split(',').filter(Boolean) || []
+  const search = c.req.query('search')?.trim() || ''
+  const sort = c.req.query('sort') || 'newest'
   const offset = (page - 1) * pageSize
 
   let countQuery = 'SELECT COUNT(DISTINCT g.id) as total FROM galleries g'
@@ -42,8 +45,32 @@ galleryRoutes.get('/', cacheControl(60), async (c) => {
     params.push(...tagSlugs)
   }
 
+  // 关键词搜索（标题 + 摘要模糊匹配）
+  if (search) {
+    const keyword = `%${search}%`
+    whereClause += ` AND (g.title LIKE ? OR g.summary LIKE ?)`
+    params.push(keyword, keyword)
+  }
+
   countQuery += whereClause
-  dataQuery += whereClause + ' ORDER BY g.published_at DESC LIMIT ? OFFSET ?'
+
+  // 排序
+  let orderClause: string
+  switch (sort) {
+    case 'oldest':
+      orderClause = ' ORDER BY g.published_at ASC'
+      break
+    case 'random':
+      orderClause = ' ORDER BY RANDOM()'
+      break
+    case 'hot':
+      orderClause = ' ORDER BY g.view_count DESC, g.published_at DESC'
+      break
+    default: // newest / latest
+      orderClause = ' ORDER BY g.published_at DESC'
+  }
+
+  dataQuery += whereClause + orderClause + ' LIMIT ? OFFSET ?'
 
   // 查询总数
   const countResult = await db
@@ -137,6 +164,14 @@ galleryRoutes.get('/:slug', cacheControl(120), async (c) => {
   if (!gallery) {
     return c.json({ statusCode: 404, message: '图库不存在' }, 404)
   }
+
+  // 异步递增浏览量（不阻塞响应）
+  c.executionCtx.waitUntil(
+    db.prepare('UPDATE galleries SET view_count = view_count + 1 WHERE id = ?')
+      .bind(gallery.id)
+      .run()
+      .catch(() => {}),
+  )
 
   // 查询标签
   const tags = await db

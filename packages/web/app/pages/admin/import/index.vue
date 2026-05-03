@@ -26,7 +26,7 @@ async function createJob() {
     })
     navigateTo(`/admin/import/${result.id}`)
   } catch (e: any) {
-    alert(e?.data?.message || '创建失败')
+    useToast().add({ title: e?.data?.message || '创建失败', color: 'error' })
   } finally {
     creating.value = false
   }

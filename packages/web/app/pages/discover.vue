@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { GallerySummary } from '@meigallery/shared'
+import { collectRegionGuideItems } from '~/utils/galleryPresentation'
 
 interface TagInfo {
   slug: string
@@ -20,26 +21,26 @@ const PAGE_SIZE = 24
 // 响应式状态
 const selectedSlugs = ref<string[]>([])
 const sortBy = ref<'latest' | 'hot' | 'random'>('latest')
-const currentPage = ref(1)
 
 // 从 URL 初始化状态
 function syncFromRoute() {
   const q = route.query
   selectedSlugs.value = q.tag ? String(q.tag).split(',').filter(Boolean) : []
   sortBy.value = (['latest', 'hot', 'random'].includes(String(q.sort)) ? String(q.sort) : 'latest') as typeof sortBy.value
-  currentPage.value = Number(q.page) || 1
 }
 syncFromRoute()
 
 // 监听路由变化（浏览器前进后退）
-watch(() => route.query, syncFromRoute)
+watch(() => route.query, () => {
+  syncFromRoute()
+  resetAndFetch()
+})
 
-// 同步状态到 URL
+// 同步状态到 URL（不带 page）
 function updateQuery() {
   const query: Record<string, string> = {}
   if (selectedSlugs.value.length) query.tag = selectedSlugs.value.join(',')
   if (sortBy.value !== 'latest') query.sort = sortBy.value
-  if (currentPage.value > 1) query.page = String(currentPage.value)
   router.push({ path: '/discover', query })
 }
 
@@ -50,24 +51,16 @@ function toggleTag(slug: string) {
   } else {
     selectedSlugs.value.push(slug)
   }
-  currentPage.value = 1
   updateQuery()
 }
 
 function clearTags() {
   selectedSlugs.value = []
-  currentPage.value = 1
   updateQuery()
 }
 
 function setSort(val: 'latest' | 'hot' | 'random') {
   sortBy.value = val
-  currentPage.value = 1
-  updateQuery()
-}
-
-function goToPage(page: number) {
-  currentPage.value = page
   updateQuery()
 }
 
@@ -79,43 +72,90 @@ const { data: tagsData } = await useAsyncData('discover-tags', () =>
 )
 
 const tags = computed(() => tagsData.value?.data ?? {})
+const regionGuideItems = computed(() => collectRegionGuideItems(tags.value, [], 4))
 
-const { data: galleriesData, status } = await useAsyncData(
+// 无限滚动状态
+const galleries = ref<GallerySummary[]>([])
+const total = ref(0)
+const currentPage = ref(1)
+const isLoading = ref(false)
+const isInitialLoading = ref(true)
+const hasMore = computed(() => galleries.value.length < total.value)
+
+// 首次加载（SSR 兼容）
+const { data: initialData } = await useAsyncData(
   'discover-galleries',
   () =>
     api<{ data: GallerySummary[]; total: number }>('/api/galleries', {
       query: {
         pageSize: PAGE_SIZE,
-        page: currentPage.value,
+        page: 1,
         tag: selectedSlugs.value.length ? selectedSlugs.value.join(',') : undefined,
         sort: sortBy.value,
       },
     }),
-  { watch: [selectedSlugs, currentPage, sortBy] },
+  { watch: [selectedSlugs, sortBy] },
 )
 
-const galleries = computed(() => galleriesData.value?.data ?? [])
-const total = computed(() => galleriesData.value?.total ?? 0)
-const totalPages = computed(() => Math.ceil(total.value / PAGE_SIZE))
-
-// 分页页码列表
-const pageNumbers = computed(() => {
-  const pages: (number | '...')[] = []
-  const tp = totalPages.value
-  const cp = currentPage.value
-  if (tp <= 7) {
-    for (let i = 1; i <= tp; i++) pages.push(i)
-  } else {
-    pages.push(1)
-    if (cp > 3) pages.push('...')
-    const start = Math.max(2, cp - 1)
-    const end = Math.min(tp - 1, cp + 1)
-    for (let i = start; i <= end; i++) pages.push(i)
-    if (cp < tp - 2) pages.push('...')
-    pages.push(tp)
+watch(initialData, (val) => {
+  if (val) {
+    galleries.value = val.data
+    total.value = val.total
+    currentPage.value = 1
+    isInitialLoading.value = false
   }
-  return pages
+}, { immediate: true })
+
+// 重置并重新加载
+function resetAndFetch() {
+  currentPage.value = 1
+  galleries.value = []
+  isInitialLoading.value = true
+}
+
+// 加载更多
+async function loadMore() {
+  if (isLoading.value || !hasMore.value) return
+  isLoading.value = true
+  try {
+    const nextPage = currentPage.value + 1
+    const data = await api<{ data: GallerySummary[]; total: number }>('/api/galleries', {
+      query: {
+        pageSize: PAGE_SIZE,
+        page: nextPage,
+        tag: selectedSlugs.value.length ? selectedSlugs.value.join(',') : undefined,
+        sort: sortBy.value,
+      },
+    })
+    galleries.value.push(...data.data)
+    total.value = data.total
+    currentPage.value = nextPage
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// IntersectionObserver 哨兵
+const sentinel = ref<HTMLElement | null>(null)
+let observer: IntersectionObserver | null = null
+
+onMounted(() => {
+  observer = new IntersectionObserver(
+    (entries) => {
+      if (entries[0].isIntersecting && hasMore.value && !isLoading.value) {
+        loadMore()
+      }
+    },
+    { rootMargin: '200px' },
+  )
+
+  watch(sentinel, (el, oldEl) => {
+    if (oldEl) observer?.unobserve(oldEl)
+    if (el) observer?.observe(el)
+  }, { immediate: true, flush: 'post' })
 })
+
+onUnmounted(() => observer?.disconnect())
 
 const sortOptions = [
   { value: 'latest' as const, label: '最新' },
@@ -125,26 +165,29 @@ const sortOptions = [
 </script>
 
 <template>
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-20 sm:pb-6">
-    <!-- 标签筛选 -->
-    <div class="sticky top-0 z-10 bg-white border-b border-gray-200 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 py-4">
-      <TagFilterTabs
-        :tags="tags"
-        :selected-slugs="selectedSlugs"
-        @toggle="toggleTag"
-        @clear="clearTags"
-      />
+  <div class="mx-auto max-w-7xl px-4 py-5 pb-24 sm:px-6 lg:px-8 lg:py-8">
+    <section class="mb-6 rounded-[2rem] border border-white/80 bg-[#fffbf7] px-5 py-7 shadow-xl shadow-orange-950/6 lg:px-8">
+      <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#bfa46a]">Discover</p>
+      <h1 class="mt-3 text-3xl font-semibold tracking-[-0.05em] text-gray-950 lg:text-5xl">按地区和风格发现图库</h1>
+      <p class="mt-3 max-w-2xl text-sm leading-7 text-gray-600">地区是浏览主线，标签用于细化人物气质、场景和内容类型。</p>
+    </section>
+
+    <section v-if="regionGuideItems.length" class="mb-6">
+      <RegionGuide :regions="regionGuideItems" compact />
+    </section>
+
+    <div class="sticky top-14 z-10 -mx-4 border-y border-white/70 bg-[#fffbf7]/88 px-4 py-3 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:top-20 lg:-mx-8 lg:px-8">
+      <TagFilterTabs :tags="tags" :selected-slugs="selectedSlugs" @toggle="toggleTag" @clear="clearTags" />
     </div>
 
-    <!-- 结果统计 + 排序 -->
-    <div class="flex items-center justify-between py-4">
+    <div class="my-5 flex items-center justify-between gap-3">
       <span class="text-sm text-gray-600">共 {{ total }} 个图库</span>
-      <div class="flex items-center gap-1 rounded-lg bg-gray-100 p-1">
+      <div class="flex items-center gap-1 rounded-full border border-[#f0e4d8] bg-white p-1 shadow-sm">
         <button
           v-for="opt in sortOptions"
           :key="opt.value"
-          class="px-3 py-1 text-sm rounded-md transition-colors"
-          :class="sortBy === opt.value ? 'bg-white text-gray-900 shadow-sm font-medium' : 'text-gray-600 hover:text-gray-900'"
+          class="rounded-full px-3 py-1.5 text-sm transition-all"
+          :class="sortBy === opt.value ? 'bg-gray-950 text-white shadow-sm' : 'text-gray-600 hover:bg-orange-50 hover:text-gray-950'"
           @click="setSort(opt.value)"
         >
           {{ opt.label }}
@@ -152,53 +195,40 @@ const sortOptions = [
       </div>
     </div>
 
-    <!-- 加载中 -->
-    <div v-if="status === 'pending'" class="py-20 text-center text-gray-400">
-      加载中...
+    <div v-if="isInitialLoading" class="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 lg:gap-4">
+      <div v-for="i in 12" :key="i">
+        <div class="aspect-[3/4] animate-pulse rounded-[1.25rem] bg-orange-50" />
+        <div class="mt-2 h-4 w-3/4 animate-pulse rounded bg-orange-50" />
+        <div class="mt-1 flex gap-1">
+          <div class="h-4 w-10 animate-pulse rounded-full bg-orange-50" />
+          <div class="h-4 w-10 animate-pulse rounded-full bg-orange-50" />
+        </div>
+      </div>
     </div>
 
-    <!-- 空结果 -->
-    <div v-else-if="galleries.length === 0" class="py-20 text-center">
-      <p class="text-gray-500 mb-4">没有找到符合条件的图库</p>
+    <div v-else-if="galleries.length === 0" class="rounded-[1.5rem] border border-[#f0e4d8] bg-white/86 py-20 text-center shadow-sm shadow-orange-950/5">
+      <p class="mb-4 text-gray-500">没有找到符合条件的图库</p>
       <button
         v-if="selectedSlugs.length"
-        class="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
+        class="rounded-full bg-gray-950 px-4 py-2 text-sm text-[#d6c39a] transition-all hover:-translate-y-0.5 hover:bg-black"
         @click="clearTags"
       >
         清除筛选
       </button>
     </div>
 
-    <!-- 图库网格 -->
     <template v-else>
-      <GalleryGrid :galleries="galleries" />
+      <GalleryGrid :galleries="galleries" variant="magazine" />
 
-      <!-- 分页 -->
-      <nav v-if="totalPages > 1" class="flex items-center justify-center gap-1 mt-8">
-        <button
-          v-for="p in pageNumbers"
-          :key="p"
-          :disabled="p === '...'"
-          class="min-w-[36px] h-9 px-2 text-sm rounded-md transition-colors"
-          :class="
-            p === '...'
-              ? 'cursor-default text-gray-400'
-              : p === currentPage
-                ? 'bg-gray-900 text-white font-medium'
-                : 'text-gray-700 hover:bg-gray-100'
-          "
-          @click="p !== '...' && goToPage(p)"
-        >
-          {{ p }}
-        </button>
-        <button
-          v-if="currentPage < totalPages"
-          class="min-w-[36px] h-9 px-2 text-sm rounded-md text-gray-700 hover:bg-gray-100"
-          @click="goToPage(currentPage + 1)"
-        >
-          →
-        </button>
-      </nav>
+      <div v-if="isLoading" class="py-8 text-center text-gray-400">
+        加载中...
+      </div>
+
+      <div v-if="hasMore" ref="sentinel" class="h-px" />
+
+      <div v-if="!hasMore && galleries.length > 0" class="py-8 text-center text-sm text-gray-400">
+        已加载全部 {{ total }} 个图库
+      </div>
     </template>
   </div>
 </template>

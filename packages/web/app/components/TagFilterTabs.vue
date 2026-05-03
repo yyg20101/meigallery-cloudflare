@@ -25,7 +25,15 @@ const typeLabels: Record<string, string> = {
   content_type: '内容类型',
 }
 
-const typeKeys = computed(() => Object.keys(props.tags).filter(k => props.tags[k]?.length > 0))
+const priorityTypes = ['region_scope', 'region_group', 'city_country', 'region', 'city']
+const typeKeys = computed(() => {
+  const keys = Object.keys(props.tags).filter(k => props.tags[k]?.length > 0)
+  return keys.sort((a, b) => {
+    const ai = priorityTypes.includes(a) ? priorityTypes.indexOf(a) : 100
+    const bi = priorityTypes.includes(b) ? priorityTypes.indexOf(b) : 100
+    return ai - bi
+  })
+})
 const activeType = ref(typeKeys.value[0] || '')
 
 watch(typeKeys, (keys) => {
@@ -46,45 +54,42 @@ const selectedTagNames = computed(() => {
 </script>
 
 <template>
-  <div>
-    <!-- 类型 Tab 行 -->
-    <div class="flex gap-4 text-sm border-b border-gray-100 pb-2 mb-3 overflow-x-auto">
+  <div class="rounded-[1.5rem] border border-[#f0e4d8] bg-white/86 p-4 shadow-sm shadow-orange-950/5 backdrop-blur">
+    <div class="flex gap-2 overflow-x-auto border-b border-[#f0e4d8] pb-3 text-sm scrollbar-hide">
       <button
         v-for="key in typeKeys"
         :key="key"
-        class="whitespace-nowrap"
-        :class="activeType === key ? 'text-gray-900 font-semibold' : 'text-gray-400 hover:text-gray-600'"
+        class="whitespace-nowrap rounded-full px-3 py-1.5 transition-all"
+        :class="activeType === key ? 'bg-gray-950 text-white shadow-sm' : 'text-gray-500 hover:bg-orange-50 hover:text-gray-950'"
         @click="activeType = key"
       >
         {{ typeLabels[key] || key }}
       </button>
     </div>
 
-    <!-- 子标签 pill 行 -->
-    <div class="flex flex-wrap gap-2">
+    <div class="mt-3 flex flex-wrap gap-2">
       <button
         v-for="tag in activeTags"
         :key="tag.id"
-        class="px-3 py-1 rounded-full text-xs transition-colors"
-        :class="selectedSlugs.includes(tag.slug) ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+        class="rounded-full border px-3 py-1 text-xs transition-all"
+        :class="selectedSlugs.includes(tag.slug) ? 'border-gray-950 bg-gray-950 text-white' : 'border-transparent bg-[#f8e7dc]/55 text-gray-700 hover:border-[#e8d5c5] hover:bg-[#fff7ed]'"
         @click="emit('toggle', tag.slug)"
       >
         {{ tag.name }}
       </button>
     </div>
 
-    <!-- 已选标签展示行 -->
-    <div v-if="selectedSlugs.length > 0" class="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100">
-      <span class="text-gray-400 text-xs">筛选：</span>
+    <div v-if="selectedSlugs.length > 0" class="mt-3 flex flex-wrap items-center gap-2 border-t border-[#f0e4d8] pt-3">
+      <span class="text-xs text-gray-400">筛选：</span>
       <span
         v-for="st in selectedTagNames"
         :key="st.slug"
-        class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full text-xs flex items-center gap-1"
+        class="flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-xs text-gray-800 ring-1 ring-[#eadfd2]"
       >
         {{ st.name }}
-        <button class="hover:text-blue-900" @click="emit('toggle', st.slug)">✕</button>
+        <button class="hover:text-gray-950" @click="emit('toggle', st.slug)">✕</button>
       </span>
-      <button class="text-xs text-gray-400 hover:text-gray-600 ml-auto" @click="emit('clear')">清除全部</button>
+      <button class="ml-auto text-xs text-gray-400 hover:text-gray-700" @click="emit('clear')">清除全部</button>
     </div>
   </div>
 </template>

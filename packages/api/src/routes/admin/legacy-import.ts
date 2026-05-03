@@ -395,3 +395,154 @@ adminLegacyImportRoutes.post('/download-pending', async (c) => {
     errors: errors.length > 0 ? errors.slice(0, 10) : undefined,
   })
 })
+
+// ============================================================
+// 迁移辅助工具
+// ============================================================
+
+/**
+ * GET /migrate/status — 迁移资源状态概览
+ * 返回图片/视频各状态数量 + 无封面图库数量
+ */
+adminLegacyImportRoutes.get('/migrate/status', async (c) => {
+  const db = c.env.DB
+
+  const [mediaStats, coverStats, totalGalleries] = await Promise.all([
+    db
+      .prepare(`
+        SELECT type, upload_status, COUNT(*) as cnt
+        FROM media_assets
+        GROUP BY type, upload_status
+      `)
+      .all<{ type: string; upload_status: string; cnt: number }>(),
+    db
+      .prepare('SELECT COUNT(*) as cnt FROM galleries WHERE cover_key IS NULL')
+      .first<{ cnt: number }>(),
+    db
+      .prepare('SELECT COUNT(*) as cnt FROM galleries')
+      .first<{ cnt: number }>(),
+  ])
+
+  // 整理统计
+  const stats: Record<string, Record<string, number>> = {}
+  for (const row of mediaStats.results) {
+    if (!stats[row.type]) stats[row.type] = {}
+    stats[row.type]![row.upload_status] = row.cnt
+  }
+
+  return c.json({
+    media: stats,
+    galleries: {
+      total: totalGalleries?.cnt ?? 0,
+      withoutCover: coverStats?.cnt ?? 0,
+    },
+  })
+})
+
+/**
+ * POST /migrate/retry-failed — 重置失败的图片为 pending，可被 download-pending 重新处理
+ * 前提：失败图片的 r2_key 仍保留原始外部 URL
+ */
+adminLegacyImportRoutes.post('/migrate/retry-failed', async (c) => {
+  const db = c.env.DB
+  const adminId = c.get('userId')!
+
+  // 确认失败图片的 r2_key 仍是外部 URL
+  const failedCount = await db
+    .prepare("SELECT COUNT(*) as cnt FROM media_assets WHERE upload_status = 'failed' AND type = 'image'")
+    .first<{ cnt: number }>()
+
+  if (!failedCount?.cnt) {
+    return c.json({ message: '无失败图片', reset: 0 })
+  }
+
+  // 重置为 pending
+  const result = await db
+    .prepare("UPDATE media_assets SET upload_status = 'pending' WHERE upload_status = 'failed' AND type = 'image'")
+    .run()
+
+  await writeAuditLog(db, {
+    adminId,
+    action: 'retry_failed_media',
+    targetType: 'media_asset',
+    afterValue: { resetCount: result.meta?.changes ?? 0 },
+  })
+
+  return c.json({
+    message: `已重置 ${result.meta?.changes ?? 0} 张失败图片为待下载状态`,
+    reset: result.meta?.changes ?? 0,
+  })
+})
+
+/**
+ * POST /migrate/set-covers — 批量为无封面图库设置封面
+ * 每个图库取 sort_order 最小的已完成图片作为封面
+ * query: ?limit=100 （每次处理数量，默认 100）
+ */
+adminLegacyImportRoutes.post('/migrate/set-covers', async (c) => {
+  const db = c.env.DB
+  const adminId = c.get('userId')!
+  const limit = Math.min(500, Math.max(1, parseInt(c.req.query('limit') || '100', 10)))
+
+  // 找出无封面的图库
+  const galleries = await db
+    .prepare(`
+      SELECT id FROM galleries
+      WHERE cover_key IS NULL
+      LIMIT ?
+    `)
+    .bind(limit)
+    .all<{ id: string }>()
+
+  if (galleries.results.length === 0) {
+    const remaining = await db
+      .prepare('SELECT COUNT(*) as cnt FROM galleries WHERE cover_key IS NULL')
+      .first<{ cnt: number }>()
+    return c.json({ updated: 0, remaining: remaining?.cnt ?? 0, done: true })
+  }
+
+  let updated = 0
+  let skipped = 0
+
+  for (const gallery of galleries.results) {
+    // 取该图库的第一张已完成的图片
+    const firstImage = await db
+      .prepare(`
+        SELECT r2_key FROM media_assets
+        WHERE gallery_id = ? AND type = 'image' AND upload_status = 'completed'
+          AND r2_key IS NOT NULL AND r2_key NOT LIKE 'http%'
+        ORDER BY sort_order ASC, created_at ASC
+        LIMIT 1
+      `)
+      .bind(gallery.id)
+      .first<{ r2_key: string }>()
+
+    if (firstImage?.r2_key) {
+      await db
+        .prepare("UPDATE galleries SET cover_key = ?, updated_at = datetime('now') WHERE id = ?")
+        .bind(firstImage.r2_key, gallery.id)
+        .run()
+      updated++
+    } else {
+      skipped++ // 该图库没有已完成的 R2 图片
+    }
+  }
+
+  const remaining = await db
+    .prepare('SELECT COUNT(*) as cnt FROM galleries WHERE cover_key IS NULL')
+    .first<{ cnt: number }>()
+
+  await writeAuditLog(db, {
+    adminId,
+    action: 'batch_set_covers',
+    targetType: 'gallery',
+    afterValue: { updated, skipped, remaining: remaining?.cnt ?? 0 },
+  })
+
+  return c.json({
+    updated,
+    skipped,
+    remaining: remaining?.cnt ?? 0,
+    done: (remaining?.cnt ?? 0) === 0,
+  })
+})

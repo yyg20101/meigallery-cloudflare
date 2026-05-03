@@ -2,10 +2,11 @@ import { Hono } from 'hono'
 import type { Bindings, Variables } from '../../index'
 import { requireOwner } from '../../middleware/auth'
 import { writeAuditLog } from '../../utils/permission'
+import { ADMIN_SETTING_KEYS } from '../../utils/site-settings'
 
 export const adminSettingsRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
-const ALLOWED_KEYS = ['site_name', 'seo_title', 'membership_description']
+const ALLOWED_KEYS: ReadonlyArray<string> = ADMIN_SETTING_KEYS
 
 adminSettingsRoutes.get('/', requireOwner, async (c) => {
   const db = c.env.DB

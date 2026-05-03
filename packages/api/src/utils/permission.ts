@@ -4,14 +4,14 @@ import { generateId } from './db'
 /**
  * 获取用户当前有效的最高会员 rank
  */
-export async function getUserEffectiveRank(db: D1Database, userId: string): Promise<number> {
+export async function getUserEffectiveRank(db: D1Database, userId: number): Promise<number> {
   const result = await db
     .prepare(`
       SELECT MAX(ml.rank) as max_rank
       FROM user_memberships um
       JOIN membership_levels ml ON um.level_id = ml.id
       WHERE um.user_id = ?
-        AND datetime('now') BETWEEN um.starts_at AND um.expires_at
+        AND datetime('now') BETWEEN datetime(um.starts_at) AND datetime(um.expires_at)
     `)
     .bind(userId)
     .first<{ max_rank: number | null }>()
@@ -24,7 +24,7 @@ export async function getUserEffectiveRank(db: D1Database, userId: string): Prom
  */
 export async function checkMediaAccess(
   db: D1Database,
-  userId: string,
+  userId: number,
   requiredRank: number,
 ): Promise<boolean> {
   if (requiredRank <= 0) return true
@@ -38,7 +38,7 @@ export async function checkMediaAccess(
 export async function writeAuditLog(
   db: D1Database,
   params: {
-    adminId: string
+    adminId: number
     action: string
     targetType: string
     targetId?: string

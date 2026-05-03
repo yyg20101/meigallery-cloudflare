@@ -8,9 +8,9 @@ const props = defineProps<{
 }>()
 
 const bgClass = computed(() => {
-  if (props.rank >= 20) return 'bg-gradient-to-br from-purple-500 to-purple-700'
-  if (props.rank >= 10) return 'bg-gradient-to-br from-amber-400 to-yellow-600'
-  return 'bg-gradient-to-br from-gray-400 to-gray-600'
+  if (props.rank >= 20) return 'bg-[radial-gradient(circle_at_18%_0%,rgba(255,255,255,0.28),transparent_30%),linear-gradient(135deg,#5b21b6,#111827)]'
+  if (props.rank >= 10) return 'bg-[radial-gradient(circle_at_18%_0%,rgba(255,247,237,0.42),transparent_30%),linear-gradient(135deg,#111827,#bfa46a)]'
+  return 'bg-[radial-gradient(circle_at_18%_0%,rgba(255,255,255,0.35),transparent_30%),linear-gradient(135deg,#374151,#111827)]'
 })
 
 const formattedDate = computed(() => {
@@ -26,17 +26,17 @@ const benefitText = computed(() => {
 </script>
 
 <template>
-  <div :class="[bgClass, 'rounded-xl p-4 relative overflow-hidden text-white']">
+  <div :class="[bgClass, 'relative overflow-hidden rounded-[1.5rem] p-5 text-white shadow-xl shadow-gray-900/12']">
     <!-- 装饰圆 -->
-    <div class="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-white/10" />
+    <div class="absolute -right-8 -top-8 h-28 w-28 rounded-full bg-white/10 blur-sm" />
 
     <div class="flex justify-between items-start relative">
       <div>
-        <p class="text-xs text-white/70">当前等级</p>
-        <p class="text-2xl font-bold">{{ level }}</p>
+        <p class="text-xs uppercase tracking-[0.18em] text-white/62">当前等级</p>
+        <p class="mt-1 text-2xl font-semibold tracking-tight">{{ level }}</p>
       </div>
       <div class="text-right">
-        <p class="text-xs text-white/70">有效期至</p>
+        <p class="text-xs text-white/62">有效期至</p>
         <p class="font-semibold">{{ formattedDate }}</p>
       </div>
     </div>

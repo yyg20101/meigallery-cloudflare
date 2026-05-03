@@ -15,8 +15,8 @@
 
 ## 2. 域名结构
 
-- `meigallery.com` → Web Worker（前台 + 后台管理）
-- `api.meigallery.com` → API Worker
+- `616618.xyz` → Web Worker（前台 + 后台管理）
+- `api.616618.xyz` → API Worker
 
 配置步骤：
 
@@ -41,20 +41,20 @@ cd packages/api && wrangler d1 migrations apply meigallery-db --remote
 pnpm --filter @meigallery/web exec nuxt build
 
 # 3. 部署 API Worker
-cd packages/api && wrangler deploy
+pnpm --filter @meigallery/api exec wrangler deploy
 
 # 4. 部署 Web Worker
-cd packages/web && wrangler deploy
+pnpm --filter @meigallery/web exec wrangler deploy
 ```
 
 ## 4. CI/CD
 
-推荐使用 Workers Builds（Cloudflare 原生 CI）：
+**手动部署**：GitHub Actions 无配额，生产部署通过手动执行 wrangler deploy。
 
-1. 在 Cloudflare Dashboard 关联 GitHub 仓库 `yyg20101/meigallery-cloudflare`。
-2. 设置生产分支为 `main`。
-3. 推送到 `main` 自动触发生产部署。
-4. 两个 Worker 各自独立部署。
+```bash
+pnpm --filter @meigallery/api exec wrangler deploy
+pnpm --filter @meigallery/web exec wrangler deploy
+```
 
 ## 5. 环境变量
 
@@ -64,8 +64,8 @@ cd packages/web && wrangler deploy
 | `TURNSTILE_SECRET_KEY` | API Worker secret | Turnstile 验证密钥 |
 | `STREAM_ACCOUNT_ID` | API Worker secret | Cloudflare Stream 账户 ID |
 | `STREAM_API_TOKEN` | API Worker secret | Stream API 令牌 |
-| `CORS_ORIGIN` | API Worker vars | 前端域名（如 `https://meigallery.com`） |
-| `NUXT_PUBLIC_API_BASE_URL` | Web Worker vars | API 地址（如 `https://api.meigallery.com`） |
+| `CORS_ORIGIN` | API Worker vars | 前端域名（如 `https://616618.xyz`） |
+| `NUXT_PUBLIC_API_BASE_URL` | Web Worker vars | API 地址（如 `https://api.616618.xyz`） |
 
 设置 secret：
 
@@ -78,6 +78,17 @@ wrangler secret put STREAM_API_TOKEN
 ```
 
 ## 6. Cloudflare 产品绑定
+
+### Zone/Account 信息
+
+- Account ID: `32b73e607476d0224c7ca40d28be1120`
+- Zone ID: `2f7f49183fa463345e09432719af2c7d`（616618.xyz，Free 计划）
+- D1 Database ID: `714929cb-003b-4cb1-bd9f-545fa1895e8c`
+- R2 Bucket: `meigallery-media`
+
+### Dev 环境
+
+- `meigallery-api-dev` / `meigallery-web-dev`：**已删除，需要时重新创建**。
 
 Workers：
 
@@ -94,7 +105,7 @@ R2：
 - 存储导入包、图片原图、缩略图、错误报告。
 - 私有 bucket 存储受保护图片。
 
-Stream：
+Stream（**当前状态：未接入**，secrets 为占位符）：
 
 - 存储和分发视频。
 - 区分试看视频和完整视频。
@@ -103,6 +114,10 @@ Stream：
 Turnstile：
 
 - 登录、注册、后台登录、导入操作保护。
+
+Email：
+
+- Cloudflare Email Service 需要 Workers Paid 计划（$5/月），`email_verification_enabled` 默认为 `false`。
 
 ## 7. 全球 CDN 加速
 
@@ -125,11 +140,11 @@ Turnstile：
 ## 9. 上线检查清单
 
 - [ ] 域名 DNS 已接入 Cloudflare
-- [ ] `meigallery-web` Worker 已部署并绑定 `meigallery.com`
-- [ ] `meigallery-api` Worker 已部署并绑定 `api.meigallery.com`
+- [ ] `meigallery-web` Worker 已部署并绑定 `616618.xyz`
+- [ ] `meigallery-api` Worker 已部署并绑定 `api.616618.xyz`
 - [ ] D1 数据库 `meigallery-db` 已创建，migrations 已执行
 - [ ] R2 bucket `meigallery-media` 已创建并设置私有访问策略
-- [ ] Stream 上传和播放流程验证通过
+- [ ] Stream 上传和播放流程验证通过（当前未接入）
 - [ ] 所有 Worker secrets 已配置（SESSION_SECRET、TURNSTILE_SECRET_KEY、STREAM_ACCOUNT_ID、STREAM_API_TOKEN）
 - [ ] CORS_ORIGIN 和 NUXT_PUBLIC_API_BASE_URL 已设置
 - [ ] Turnstile site key 已在前端配置

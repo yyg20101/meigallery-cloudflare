@@ -68,25 +68,37 @@ function startEdit(item: ContactMethod) {
 }
 
 async function onSubmit() {
-  const body = {
-    platform: form.platform,
-    label: form.label,
-    value: form.value,
-    linkUrl: form.linkUrl || undefined,
-    enabled: form.enabled,
+  try {
+    const body = {
+      platform: form.platform,
+      label: form.label,
+      value: form.value,
+      linkUrl: form.linkUrl || null,
+      enabled: form.enabled,
+    }
+    if (editingId.value) {
+      await api(`/api/admin/contact-methods/${editingId.value}`, { method: 'PUT', body })
+    } else {
+      await api('/api/admin/contact-methods', { method: 'POST', body })
+    }
+    resetForm()
+    await refresh()
+  } catch (e: any) {
+    useToast().add({ title: e?.data?.message || '操作失败', color: 'error' })
   }
-  if (editingId.value) {
-    await api(`/api/admin/contact-methods/${editingId.value}`, { method: 'PUT', body })
-  } else {
-    await api('/api/admin/contact-methods', { method: 'POST', body })
-  }
-  resetForm()
-  await refresh()
 }
 
-async function onDelete(id: string) {
-  if (!confirm('确认删除此联系方式？')) return
-  await api(`/api/admin/contact-methods/${id}`, { method: 'DELETE' })
+const showDeleteConfirm = ref(false)
+const deleteTargetId = ref('')
+
+function onDelete(id: string) {
+  deleteTargetId.value = id
+  showDeleteConfirm.value = true
+}
+
+async function doDelete() {
+  await api(`/api/admin/contact-methods/${deleteTargetId.value}`, { method: 'DELETE' })
+  showDeleteConfirm.value = false
   await refresh()
 }
 
@@ -148,24 +160,35 @@ async function onQrDelete(id: string) {
       <form class="space-y-4" @submit.prevent="onSubmit">
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">平台</label>
+            <label class="block text-sm font-medium text-gray-700 mb-1">平台 <span class="text-red-500">*</span></label>
             <select v-model="form.platform" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
               <option v-for="opt in platformOptions" :key="opt.key" :value="opt.key">{{ opt.name }}</option>
             </select>
           </div>
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">标签</label>
-            <input v-model="form.label" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" :placeholder="'如：客服' + currentPlatformConfig.name" />
+            <label class="block text-sm font-medium text-gray-700 mb-1">标签 <span class="text-red-500">*</span></label>
+            <input v-model="form.label" required class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" :placeholder="'如：客服' + currentPlatformConfig.name" />
           </div>
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">联系值</label>
-          <input v-model="form.value" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" :placeholder="currentPlatformConfig.placeholder" />
+          <label class="block text-sm font-medium text-gray-700 mb-1">联系值 <span class="text-red-500">*</span></label>
+          <input v-model="form.value" required class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" :placeholder="currentPlatformConfig.placeholder" />
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">跳转链接（可选）</label>
-          <input v-model="form.linkUrl" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="留空使用自动生成链接" />
-          <p v-if="autoLink && !form.linkUrl" class="mt-1 text-xs text-gray-500">自动生成：{{ autoLink }}</p>
+          <div class="flex gap-2">
+            <input v-model="form.linkUrl" class="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="留空则不可点击跳转" />
+            <button
+              v-if="autoLink && !form.linkUrl"
+              type="button"
+              class="shrink-0 rounded-lg border border-gray-300 px-3 py-2 text-xs text-blue-600 hover:bg-blue-50"
+              @click="form.linkUrl = autoLink"
+            >
+              填充自动链接
+            </button>
+          </div>
+          <p v-if="autoLink" class="mt-1 text-xs text-gray-400">可用自动链接：{{ autoLink }}</p>
+          <p class="mt-0.5 text-xs text-gray-400">不填写则前台联系方式仅展示，不可点击跳转</p>
         </div>
         <div class="flex items-center gap-2">
           <input id="form-enabled" v-model="form.enabled" type="checkbox" class="rounded" />
@@ -246,5 +269,19 @@ async function onQrDelete(id: string) {
         </tbody>
       </table>
     </div>
+
+    <!-- 删除确认弹窗 -->
+    <UModal v-model:open="showDeleteConfirm">
+      <template #content>
+        <div class="p-6">
+          <h3 class="text-base font-semibold text-gray-900 mb-3">确认删除</h3>
+          <p class="text-sm text-gray-600 mb-4">确认删除此联系方式？</p>
+          <div class="flex gap-3">
+            <button class="rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700" @click="doDelete">确认删除</button>
+            <button class="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" @click="showDeleteConfirm = false">取消</button>
+          </div>
+        </div>
+      </template>
+    </UModal>
   </div>
 </template>

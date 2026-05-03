@@ -34,7 +34,7 @@ const processResult = ref<ProcessResult | null>(null)
 
 async function processJob() {
   if (!manifestText.value.trim()) {
-    alert('请粘贴 manifest CSV 内容')
+    useToast().add({ title: '请粘贴 manifest CSV 内容', color: 'warning' })
     return
   }
 
@@ -67,7 +67,7 @@ async function processJob() {
     processResult.value = result
     refresh()
   } catch (e: any) {
-    alert(e?.data?.message || '处理失败')
+    useToast().add({ title: e?.data?.message || '处理失败', color: 'error' })
   } finally {
     processing.value = false
   }

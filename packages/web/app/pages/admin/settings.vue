@@ -5,11 +5,30 @@ const { api } = useApi()
 const { isOwner } = useAuth()
 
 const form = reactive({
+  // 基础信息
   site_name: '',
+  site_description: '',
+  site_icon: '',
+  footer_text: '',
+  // SEO / OG
   seo_title: '',
+  og_title: '',
+  og_description: '',
+  og_image: '',
+  // 其他
   membership_description: '',
-
+  home_hero_title: '',
+  home_hero_subtitle: '',
+  home_hero_cta_label: '',
+  home_hero_cta_url: '',
+  home_featured_region_slugs: '',
+  home_hot_tag_limit: '',
+  about_title: '',
+  about_summary: '',
+  about_content: '',
 })
+const emailVerificationEnabled = ref(false)
+const videoEnabledToggle = ref(false)
 const loading = ref(false)
 const message = ref('')
 
@@ -22,6 +41,12 @@ if (settings.value?.data) {
   for (const [key, val] of Object.entries(settings.value.data)) {
     if (key in form) {
       (form as any)[key] = val.value || ''
+    }
+    if (key === 'email_verification_enabled') {
+      emailVerificationEnabled.value = val.value === true || val.value === 'true'
+    }
+    if (key === 'video_enabled') {
+      videoEnabledToggle.value = val.value === true || val.value === 'true'
     }
   }
 }
@@ -38,6 +63,40 @@ async function onSave() {
     loading.value = false
   }
 }
+
+const toggleLoading = ref(false)
+async function toggleEmailVerification() {
+  toggleLoading.value = true
+  try {
+    const newVal = !emailVerificationEnabled.value
+    await api('/api/admin/settings', {
+      method: 'PATCH',
+      body: { email_verification_enabled: newVal },
+    })
+    emailVerificationEnabled.value = newVal
+  } catch (e: any) {
+    useToast().add({ title: e?.data?.message || '操作失败', color: 'error' })
+  } finally {
+    toggleLoading.value = false
+  }
+}
+
+const videoToggleLoading = ref(false)
+async function toggleVideo() {
+  videoToggleLoading.value = true
+  try {
+    const newVal = !videoEnabledToggle.value
+    await api('/api/admin/settings', {
+      method: 'PATCH',
+      body: { video_enabled: newVal },
+    })
+    videoEnabledToggle.value = newVal
+  } catch (e: any) {
+    useToast().add({ title: e?.data?.message || '操作失败', color: 'error' })
+  } finally {
+    videoToggleLoading.value = false
+  }
+}
 </script>
 
 <template>
@@ -48,24 +107,168 @@ async function onSave() {
       仅站长可修改站点设置
     </div>
 
-    <form v-else class="space-y-5" @submit.prevent="onSave">
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">站点名称</label>
-        <input v-model="form.site_name" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">SEO 标题</label>
-        <input v-model="form.seo_title" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">会员说明</label>
-        <textarea v-model="form.membership_description" rows="3" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-      </div>
+    <form v-else class="space-y-8" @submit.prevent="onSave">
+      <!-- 基础信息 -->
+      <fieldset class="space-y-4">
+        <legend class="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-2 w-full">基础信息</legend>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">站点名称</label>
+          <input v-model="form.site_name" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="MeiGallery" />
+          <p class="text-xs text-gray-400 mt-1">显示在导航栏、页脚和浏览器标签页</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">站点描述</label>
+          <textarea v-model="form.site_description" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="精选写真、时尚、生活、艺术类图库平台" />
+          <p class="text-xs text-gray-400 mt-1">用于 meta description 和默认 OG 描述</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">站点图标 URL</label>
+          <input v-model="form.site_icon" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="https://example.com/icon.png" />
+          <p class="text-xs text-gray-400 mt-1">favicon 和 apple-touch-icon 地址（留空使用默认）</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">页脚文案</label>
+          <input v-model="form.footer_text" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="© 2026 MeiGallery. All rights reserved." />
+          <p class="text-xs text-gray-400 mt-1">页面底部的版权或自定义文字</p>
+        </div>
+      </fieldset>
 
-      <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
-        联系方式已迁移到独立管理页面。
-        <NuxtLink to="/admin/contact-methods" class="text-blue-600 hover:underline font-medium ml-1">前往管理联系方式 →</NuxtLink>
-      </div>
+      <!-- SEO / OG 社交分享 -->
+      <fieldset class="space-y-4">
+        <legend class="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-2 w-full">SEO / 社交分享</legend>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">SEO 标题</label>
+          <input v-model="form.seo_title" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="MeiGallery - 精选写真图库" />
+          <p class="text-xs text-gray-400 mt-1">搜索引擎显示的页面标题（title 标签）</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">OG 标题</label>
+          <input v-model="form.og_title" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="留空则使用 SEO 标题" />
+          <p class="text-xs text-gray-400 mt-1">社交平台（微信、微博等）分享时显示的标题</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">OG 描述</label>
+          <textarea v-model="form.og_description" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="留空则使用站点描述" />
+          <p class="text-xs text-gray-400 mt-1">社交平台分享时显示的描述文字</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">OG 封面图 URL</label>
+          <input v-model="form.og_image" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="https://example.com/og-cover.jpg" />
+          <p class="text-xs text-gray-400 mt-1">社交平台分享时显示的封面图片（推荐 1200x630）</p>
+        </div>
+      </fieldset>
+
+      <!-- 其他设置 -->
+      <fieldset class="space-y-4">
+        <legend class="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-2 w-full">其他设置</legend>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">会员说明</label>
+          <textarea v-model="form.membership_description" rows="3" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="会员等级权益说明..." />
+        </div>
+      </fieldset>
+
+      <fieldset class="space-y-4">
+        <legend class="w-full border-b border-gray-200 pb-2 text-sm font-semibold text-gray-900">首页视觉配置</legend>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-gray-700">首页主标题</label>
+          <input v-model="form.home_hero_title" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="精选写真，按地区发现" />
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-gray-700">首页副标题</label>
+          <textarea v-model="form.home_hero_subtitle" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="用于首页首屏说明" />
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="mb-1 block text-sm font-medium text-gray-700">CTA 文案</label>
+            <input v-model="form.home_hero_cta_label" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="浏览精选图库" />
+          </div>
+          <div>
+            <label class="mb-1 block text-sm font-medium text-gray-700">CTA 链接</label>
+            <input v-model="form.home_hero_cta_url" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="/discover" />
+          </div>
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-gray-700">主推地区 slugs</label>
+          <input v-model="form.home_featured_region_slugs" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="canada,domestic,toronto,vancouver" />
+          <p class="mt-1 text-xs text-gray-400">英文逗号分隔；前台会优先展示这些地区标签。</p>
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-gray-700">首页热门标签数量</label>
+          <input v-model="form.home_hot_tag_limit" type="number" min="1" max="30" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="15" />
+        </div>
+      </fieldset>
+
+      <!-- 关于我们 -->
+      <fieldset class="space-y-4">
+        <legend class="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-2 w-full">关于我们页面</legend>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">页面标题</label>
+          <input v-model="form.about_title" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="关于我们" />
+          <p class="text-xs text-gray-400 mt-1">显示在 /about 页面主标题和 SEO 标题中</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">页面摘要</label>
+          <textarea v-model="form.about_summary" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="用于页面首屏说明和 meta description" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">正文 Markdown</label>
+          <textarea
+            v-model="form.about_content"
+            rows="10"
+            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono leading-6"
+            placeholder="## 关于 MeiGallery&#10;&#10;这里填写关于我们页面正文，支持标题、列表、链接、加粗等 Markdown 语法。"
+          />
+          <p class="text-xs text-gray-400 mt-1">支持基础 Markdown：标题、段落、列表、加粗、链接。前台会安全渲染，不执行 HTML。</p>
+        </div>
+      </fieldset>
+
+      <!-- 功能开关 -->
+      <fieldset class="space-y-4">
+        <legend class="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-2 w-full">功能开关</legend>
+        <!-- 邮箱验证开关 -->
+        <div class="rounded-lg border border-gray-200 p-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium text-gray-700">邮箱验证</p>
+              <p class="text-xs text-gray-500 mt-0.5">开启后注册和修改邮箱需要验证码（需 Workers Paid 计划）</p>
+            </div>
+            <button
+              type="button"
+              :disabled="toggleLoading"
+              class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50"
+              :class="emailVerificationEnabled ? 'bg-blue-600' : 'bg-gray-300'"
+              @click="toggleEmailVerification"
+            >
+              <span
+                class="inline-block h-4 w-4 rounded-full bg-white transition-transform"
+                :class="emailVerificationEnabled ? 'translate-x-6' : 'translate-x-1'"
+              />
+            </button>
+          </div>
+        </div>
+
+        <!-- 视频功能开关 -->
+        <div class="rounded-lg border border-gray-200 p-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium text-gray-700">视频功能</p>
+              <p class="text-xs text-gray-500 mt-0.5">开启后前台显示视频专区和播放器（需先接入 Cloudflare Stream）</p>
+            </div>
+            <button
+              type="button"
+              :disabled="videoToggleLoading"
+              class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50"
+              :class="videoEnabledToggle ? 'bg-blue-600' : 'bg-gray-300'"
+              @click="toggleVideo"
+            >
+              <span
+                class="inline-block h-4 w-4 rounded-full bg-white transition-transform"
+                :class="videoEnabledToggle ? 'translate-x-6' : 'translate-x-1'"
+              />
+            </button>
+          </div>
+        </div>
+      </fieldset>
 
       <div v-if="message" class="text-sm" :class="message.includes('失败') ? 'text-red-600' : 'text-green-600'">{{ message }}</div>
 

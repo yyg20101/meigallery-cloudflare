@@ -4,7 +4,7 @@ import type { Bindings, Variables } from '../index'
 import { generateId } from './db'
 
 const SESSION_COOKIE = 'mei_session'
-const SESSION_TTL_DAYS = 7
+const SESSION_TTL_DAYS = 30
 
 type AppContext = Context<{ Bindings: Bindings; Variables: Variables }>
 
@@ -12,7 +12,7 @@ type AppContext = Context<{ Bindings: Bindings; Variables: Variables }>
  * 创建会话
  * 生成 token，哈希后存入 D1，设置 cookie
  */
-export async function createSession(c: AppContext, userId: string): Promise<void> {
+export async function createSession(c: AppContext, userId: number): Promise<void> {
   const db = c.env.DB
   const token = generateSessionToken()
   const tokenHash = await hashToken(token)
@@ -37,7 +37,7 @@ export async function createSession(c: AppContext, userId: string): Promise<void
  * 验证会话，返回 user_id 或 null
  * 同时实现滑动续期
  */
-export async function validateSession(c: AppContext): Promise<{ userId: string; role: string } | null> {
+export async function validateSession(c: AppContext): Promise<{ userId: number; role: string } | null> {
   const token = getCookie(c, SESSION_COOKIE)
   if (!token) return null
 
@@ -52,7 +52,7 @@ export async function validateSession(c: AppContext): Promise<{ userId: string; 
       WHERE s.token_hash = ?
     `)
     .bind(tokenHash)
-    .first<{ session_id: string; user_id: string; expires_at: string; role: string; status: string }>()
+    .first<{ session_id: string; user_id: number; expires_at: string; role: string; status: string }>()
 
   if (!session) return null
 
@@ -67,12 +67,20 @@ export async function validateSession(c: AppContext): Promise<{ userId: string; 
   // 检查用户状态
   if (session.status !== 'active') return null
 
-  // 滑动续期：如果距过期不足一半时间，延长有效期
+  // 滑动续期：如果距过期不足一半时间，延长 D1 有效期并刷新浏览器 cookie
   const expiresAt = new Date(session.expires_at)
   const halfLife = (SESSION_TTL_DAYS * 24 * 60 * 60 * 1000) / 2
   if (expiresAt.getTime() - Date.now() < halfLife) {
     const newExpiry = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString()
     await db.prepare('UPDATE sessions SET expires_at = ? WHERE id = ?').bind(newExpiry, session.session_id).run()
+    // 同步刷新浏览器 cookie 的 maxAge，避免 D1 续期但 cookie 已过期的不一致
+    setCookie(c, SESSION_COOKIE, token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'Lax',
+      path: '/',
+      maxAge: SESSION_TTL_DAYS * 24 * 60 * 60,
+    })
   }
 
   return { userId: session.user_id, role: session.role }
@@ -95,8 +103,19 @@ export async function destroySession(c: AppContext): Promise<void> {
 /**
  * 清理用户所有会话（用于密码修改等场景）
  */
-export async function destroyAllUserSessions(db: D1Database, userId: string): Promise<void> {
+export async function destroyAllUserSessions(db: D1Database, userId: number): Promise<void> {
   await db.prepare('DELETE FROM sessions WHERE user_id = ?').bind(userId).run()
+}
+
+/**
+ * 清理用户其他会话，保留当前 session（用于用户自行修改密码）
+ */
+export async function destroyOtherSessions(db: D1Database, userId: number, currentToken: string): Promise<void> {
+  const currentHash = await hashToken(currentToken)
+  await db
+    .prepare('DELETE FROM sessions WHERE user_id = ? AND token_hash != ?')
+    .bind(userId, currentHash)
+    .run()
 }
 
 // === 内部工具函数 ===

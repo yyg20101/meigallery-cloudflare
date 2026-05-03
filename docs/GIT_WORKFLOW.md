@@ -92,8 +92,8 @@ main (生产)
 
 | 环境 | 触发方式 | 分支 | Worker 名称 |
 |------|----------|------|-------------|
-| 生产（production） | GitHub Actions（推送 main 或 tag） | `main` | `meigallery-api` / `meigallery-web` |
-| 开发（dev） | 手动执行 `./scripts/deploy.sh dev` | `dev` | `meigallery-api-dev` / `meigallery-web-dev` |
+| 生产（production） | 手动 `wrangler deploy` | `main` | `meigallery-api` / `meigallery-web` |
+| 开发（dev） | **已删除** | `dev` | `meigallery-api-dev` / `meigallery-web-dev` |
 | 本地（local） | `pnpm dev` | 任意 | localhost:8787 / localhost:3000 |
 
 ## 代码审查

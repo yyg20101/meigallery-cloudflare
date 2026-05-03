@@ -60,7 +60,7 @@ export type TagType =
 
 /** 用户信息（客户端可见） */
 export interface UserInfo {
-  id: string
+  id: number
   email: string
   nickname: string | null
   role: UserRole

@@ -21,30 +21,24 @@ migrations_dir = "migrations"
 binding = "R2"
 bucket_name = "meigallery-media"
 
+# Email Service（发送事务性邮件）
+[[send_email]]
+name = "EMAIL"
+
+# Cron Trigger（定时任务）
+[triggers]
+crons = ["0 0 * * *"]  # 每天 UTC 00:00（北京时间 08:00）
+
 # 环境变量（非敏感）— 生产默认值
 [vars]
 APP_ENV = "production"
 CORS_ORIGIN = "https://616618.xyz"
+EMAIL_FROM = "noreply@616618.xyz"
+# 升级到 Pro 计划后改为 "true" 启用 Image Resizing
+IMAGE_RESIZING_ENABLED = "false"
 
 # 敏感变量需通过 wrangler secret put 设置：
 # wrangler secret put SESSION_SECRET
 # wrangler secret put TURNSTILE_SECRET_KEY
 # wrangler secret put STREAM_ACCOUNT_ID
 # wrangler secret put STREAM_API_TOKEN
-
-# ─── 开发环境 ───
-[env.dev]
-name = "meigallery-api-dev"
-
-[[env.dev.d1_databases]]
-binding = "DB"
-database_name = "meigallery-db-dev"
-database_id = "65419d75-0b2e-40b6-b077-6e13616f2d18"  # dev 环境
-
-[[env.dev.r2_buckets]]
-binding = "R2"
-bucket_name = "meigallery-media-dev"
-
-[env.dev.vars]
-APP_ENV = "development"
-CORS_ORIGIN = "*"  # 部署后替换为实际 workers.dev URL
