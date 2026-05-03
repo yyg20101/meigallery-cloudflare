@@ -5,6 +5,7 @@ import { generateId } from './db'
 
 const SESSION_COOKIE = 'mei_session'
 const SESSION_TTL_DAYS = 30
+const PRODUCTION_COOKIE_DOMAIN = '.616618.xyz'
 
 type AppContext = Context<{ Bindings: Bindings; Variables: Variables }>
 
@@ -29,6 +30,7 @@ export async function createSession(c: AppContext, userId: number): Promise<void
     secure: true,
     sameSite: 'Lax',
     path: '/',
+    domain: getSessionCookieDomain(c),
     maxAge: SESSION_TTL_DAYS * 24 * 60 * 60,
   })
 }
@@ -60,7 +62,7 @@ export async function validateSession(c: AppContext): Promise<{ userId: number; 
   if (new Date(session.expires_at) < new Date()) {
     // 清理过期 session
     await db.prepare('DELETE FROM sessions WHERE id = ?').bind(session.session_id).run()
-    deleteCookie(c, SESSION_COOKIE, { path: '/' })
+    deleteSessionCookie(c)
     return null
   }
 
@@ -79,6 +81,7 @@ export async function validateSession(c: AppContext): Promise<{ userId: number; 
       secure: true,
       sameSite: 'Lax',
       path: '/',
+      domain: getSessionCookieDomain(c),
       maxAge: SESSION_TTL_DAYS * 24 * 60 * 60,
     })
   }
@@ -97,7 +100,7 @@ export async function destroySession(c: AppContext): Promise<void> {
   const tokenHash = await hashToken(token)
 
   await db.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(tokenHash).run()
-  deleteCookie(c, SESSION_COOKIE, { path: '/' })
+  deleteSessionCookie(c)
 }
 
 /**
@@ -130,4 +133,15 @@ async function hashToken(token: string): Promise<string> {
   const data = encoder.encode(token)
   const hash = await crypto.subtle.digest('SHA-256', data)
   return Array.from(new Uint8Array(hash), b => b.toString(16).padStart(2, '0')).join('')
+}
+
+function getSessionCookieDomain(c: AppContext): string | undefined {
+  return c.env.APP_ENV === 'production' ? PRODUCTION_COOKIE_DOMAIN : undefined
+}
+
+function deleteSessionCookie(c: AppContext): void {
+  deleteCookie(c, SESSION_COOKIE, {
+    path: '/',
+    domain: getSessionCookieDomain(c),
+  })
 }
