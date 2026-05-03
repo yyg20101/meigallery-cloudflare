@@ -10,6 +10,7 @@ import { searchRoutes } from './routes/search'
 import { mediaRoutes } from './routes/media'
 import { meRoutes } from './routes/me'
 import { contactMethodRoutes } from './routes/contact-methods'
+import { PUBLIC_SETTING_KEYS } from './utils/site-settings'
 import { adminRoutes } from './routes/admin'
 import { healthRoutes } from './routes/health'
 import { authMiddleware } from './middleware/auth'
@@ -68,12 +69,7 @@ app.route('/api/contact-methods', contactMethodRoutes)
 // 公开站点信息（不需要登录）
 app.get('/api/settings/public', async (c) => {
   const db = c.env.DB
-  const keys = [
-    'site_name', 'seo_title', 'site_description', 'site_icon',
-    'og_title', 'og_description', 'og_image',
-    'footer_text', 'membership_description', 'email_verification_enabled',
-    'video_enabled',
-  ]
+  const keys = [...PUBLIC_SETTING_KEYS]
   const placeholders = keys.map(() => '?').join(',')
   const result = await db
     .prepare(`SELECT key, value FROM site_settings WHERE key IN (${placeholders})`)

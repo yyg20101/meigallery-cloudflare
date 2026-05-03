@@ -17,6 +17,9 @@ const form = reactive({
   og_image: '',
   // 其他
   membership_description: '',
+  about_title: '',
+  about_summary: '',
+  about_content: '',
 })
 const emailVerificationEnabled = ref(false)
 const videoEnabledToggle = ref(false)
@@ -156,7 +159,35 @@ async function toggleVideo() {
           <label class="block text-sm font-medium text-gray-700 mb-1">会员说明</label>
           <textarea v-model="form.membership_description" rows="3" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="会员等级权益说明..." />
         </div>
+      </fieldset>
 
+      <!-- 关于我们 -->
+      <fieldset class="space-y-4">
+        <legend class="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-2 w-full">关于我们页面</legend>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">页面标题</label>
+          <input v-model="form.about_title" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="关于我们" />
+          <p class="text-xs text-gray-400 mt-1">显示在 /about 页面主标题和 SEO 标题中</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">页面摘要</label>
+          <textarea v-model="form.about_summary" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="用于页面首屏说明和 meta description" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">正文 Markdown</label>
+          <textarea
+            v-model="form.about_content"
+            rows="10"
+            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono leading-6"
+            placeholder="## 关于 MeiGallery&#10;&#10;这里填写关于我们页面正文，支持标题、列表、链接、加粗等 Markdown 语法。"
+          />
+          <p class="text-xs text-gray-400 mt-1">支持基础 Markdown：标题、段落、列表、加粗、链接。前台会安全渲染，不执行 HTML。</p>
+        </div>
+      </fieldset>
+
+      <!-- 功能开关 -->
+      <fieldset class="space-y-4">
+        <legend class="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-2 w-full">功能开关</legend>
         <!-- 邮箱验证开关 -->
         <div class="rounded-lg border border-gray-200 p-4">
           <div class="flex items-center justify-between">

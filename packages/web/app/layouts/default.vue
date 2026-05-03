@@ -16,6 +16,7 @@ const navLinks = computed(() => {
     { label: '首页', to: '/' },
     { label: '发现', to: '/discover' },
     { label: '标签', to: '/tags' },
+    { label: '关于', to: '/about' },
   ]
   if (videoEnabled.value) {
     links.push({ label: '视频', to: '/search?type=video' })

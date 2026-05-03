@@ -18,6 +18,9 @@ export function useSiteSettings() {
     membership_description?: string
     email_verification_enabled?: string | boolean
     video_enabled?: string | boolean
+    about_title?: string
+    about_summary?: string
+    about_content?: string
   }
 
   const settings = useState<SiteSettings>('site-settings', () => ({}))
@@ -44,6 +47,9 @@ export function useSiteSettings() {
   const ogImage = computed(() => settings.value.og_image || '')
   const footerText = computed(() => settings.value.footer_text || `© ${new Date().getFullYear()} ${siteName.value}`)
   const membershipDescription = computed(() => settings.value.membership_description || '')
+  const aboutTitle = computed(() => settings.value.about_title || '关于我们')
+  const aboutSummary = computed(() => settings.value.about_summary || '')
+  const aboutContent = computed(() => settings.value.about_content || '')
   const videoEnabled = computed(() => {
     const v = settings.value.video_enabled
     return v === true || v === 'true'
@@ -61,6 +67,9 @@ export function useSiteSettings() {
     ogImage,
     footerText,
     membershipDescription,
+    aboutTitle,
+    aboutSummary,
+    aboutContent,
     videoEnabled,
   }
 }

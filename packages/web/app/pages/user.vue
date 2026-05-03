@@ -92,6 +92,10 @@ async function handleLogout() {
           <span class="text-sm text-gray-700">我的收藏</span>
           <span class="text-xs text-gray-400">即将推出</span>
         </div>
+        <NuxtLink to="/about" class="flex items-center justify-between px-6 py-4">
+          <span class="text-sm text-gray-700">关于我们</span>
+          <span class="text-xs text-gray-400">查看</span>
+        </NuxtLink>
         <button class="w-full flex items-center justify-between px-6 py-4" @click="handleLogout">
           <span class="text-sm text-red-500">退出登录</span>
         </button>
