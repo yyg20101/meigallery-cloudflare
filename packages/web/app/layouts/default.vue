@@ -100,7 +100,7 @@ function isActive(to: string) {
     </main>
 
     <!-- 全局联系方式 -->
-    <ContactPanel class="mx-4 mb-20 mt-8 lg:mx-auto lg:mb-0 lg:max-w-7xl" />
+    <ContactPanel />
 
     <!-- 桌面端底部 copyright -->
     <footer class="hidden lg:block">

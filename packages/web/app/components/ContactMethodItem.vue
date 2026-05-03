@@ -62,7 +62,7 @@ function copyValue() {
       </div>
     </component>
 
-    <!-- 二维码弹出层（桌面悬浮 + 移动端内联） -->
+    <!-- 二维码弹出层 -->
     <Transition
       enter-active-class="transition duration-150 ease-out"
       enter-from-class="opacity-0 scale-95"
@@ -73,8 +73,7 @@ function copyValue() {
     >
       <div
         v-if="hasQr && showQrCode"
-        class="md:absolute md:bottom-full md:left-1/2 md:-translate-x-1/2 md:mb-2 md:z-50
-               mt-2 md:mt-0 bg-white rounded-xl shadow-lg border border-gray-100 p-3 flex flex-col items-center"
+        class="mt-2 flex flex-col items-center rounded-xl border border-gray-100 bg-white p-3 shadow-lg"
         @mouseenter="isHovering = true"
         @mouseleave="isHovering = false"
       >
@@ -93,8 +92,6 @@ function copyValue() {
         >
           点击跳转 →
         </a>
-        <!-- 小三角箭头（桌面） -->
-        <div class="hidden md:block absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-r border-b border-gray-100 rotate-45" />
       </div>
     </Transition>
   </div>
