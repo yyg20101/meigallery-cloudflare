@@ -1,6 +1,16 @@
 <script setup lang="ts">
+import { collectRegionGuideItems } from '~/utils/galleryPresentation'
+
 const { api } = useApi()
-const { videoEnabled } = useSiteSettings()
+const {
+  videoEnabled,
+  homeHeroTitle,
+  homeHeroSubtitle,
+  homeHeroCtaLabel,
+  homeHeroCtaUrl,
+  homeFeaturedRegionSlugs,
+  homeHotTagLimit,
+} = useSiteSettings()
 
 interface GallerySummary {
   id: string
@@ -64,16 +74,21 @@ const videoGalleries = computed(() =>
     .slice(0, 3),
 )
 
-// 热门标签：每类取前几个，总共最多 15 个
+const regionGuideItems = computed(() => {
+  if (!tagsData.value?.data) return []
+  return collectRegionGuideItems(tagsData.value.data, homeFeaturedRegionSlugs.value, 4)
+})
+
 const hotTags = computed(() => {
   if (!tagsData.value?.data) return []
   const all: Array<{ id: string; name: string; slug: string; type: string }> = []
   for (const [type, items] of Object.entries(tagsData.value.data)) {
+    if (['region', 'region_scope', 'region_group', 'city', 'city_country'].includes(type)) continue
     for (const item of items.slice(0, 4)) {
       all.push({ ...item, type })
     }
   }
-  return all.slice(0, 15)
+  return all.slice(0, homeHotTagLimit.value)
 })
 
 // 无限滚动哨兵
@@ -103,74 +118,54 @@ useSeoMeta({
 </script>
 
 <template>
-  <div class="max-w-7xl mx-auto px-4 lg:px-6 py-6 pb-20 lg:pb-6">
-    <!-- 精选专题 -->
-    <section class="mb-5">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-[13px] font-semibold text-gray-900">精选专题</h2>
-        <NuxtLink to="/discover" class="text-sm text-gray-400 hover:text-gray-600">查看全部 →</NuxtLink>
-      </div>
+  <div class="mx-auto max-w-7xl px-4 py-5 pb-24 lg:px-6 lg:py-8">
+    <HomeEditorialHero
+      :title="homeHeroTitle"
+      :subtitle="homeHeroSubtitle"
+      :cta-label="homeHeroCtaLabel"
+      :cta-url="homeHeroCtaUrl"
+      :gallery="featured[0] || null"
+    />
+
+    <section v-if="regionGuideItems.length > 0" class="mt-6 lg:mt-8">
+      <RegionGuide :regions="regionGuideItems" />
+    </section>
+
+    <section class="mt-8 lg:mt-10">
+      <EditorialSectionHeading eyebrow="Featured" title="精选专题" description="以封面质感和人物气质为主线，进入本周推荐内容。" action-label="查看全部" action-to="/discover" />
       <template v-if="galleriesData">
         <HomeFeatured :galleries="featured" />
       </template>
-      <div v-else class="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <div v-for="i in 3" :key="i" class="aspect-video bg-gray-200 animate-pulse rounded-md" />
+      <div v-else class="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div v-for="i in 3" :key="i" class="aspect-video animate-pulse rounded-[1.5rem] bg-orange-50" />
       </div>
     </section>
 
-    <!-- 最新图库 -->
-    <section class="mb-5">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-[13px] font-semibold text-gray-900">最新图库</h2>
-        <NuxtLink to="/discover" class="text-sm text-gray-400 hover:text-gray-600">查看全部 →</NuxtLink>
-      </div>
+    <section class="mt-8 lg:mt-10">
+      <EditorialSectionHeading eyebrow="New Arrival" title="最新图库" description="持续更新授权写真、时尚、生活与艺术类图库。" action-label="查看全部" action-to="/discover" />
       <template v-if="galleriesData">
-        <GalleryGrid :galleries="latest" />
-        <div v-if="latest.length === 0" class="py-20 text-center text-gray-400">
-          暂无图库内容
-        </div>
-        <!-- 加载更多 -->
-        <div v-if="loadingMore" class="py-6 text-center text-gray-400 text-sm">加载中...</div>
+        <GalleryGrid :galleries="latest" variant="magazine" />
+        <div v-if="latest.length === 0" class="rounded-[1.5rem] border border-orange-100 bg-white/80 py-20 text-center text-gray-400">暂无图库内容</div>
+        <div v-if="loadingMore" class="py-6 text-center text-sm text-gray-400">加载中...</div>
         <div v-if="hasMore" ref="sentinel" class="h-px" />
-        <div v-if="!hasMore && allGalleries.length > PAGE_SIZE" class="py-6 text-center text-sm text-gray-400">
-          已展示全部图库
-        </div>
+        <div v-if="!hasMore && allGalleries.length > PAGE_SIZE" class="py-6 text-center text-sm text-gray-400">已展示全部图库</div>
       </template>
-      <div v-else class="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div v-for="i in 8" :key="i">
-          <div class="aspect-[3/4] bg-gray-200 animate-pulse rounded-md" />
-          <div class="mt-2 h-4 w-3/4 bg-gray-200 animate-pulse rounded" />
-        </div>
-      </div>
     </section>
 
-    <!-- 热门标签 -->
-    <section v-if="hotTags.length > 0 || !tagsData" class="mb-5">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-[13px] font-semibold text-gray-900">热门标签</h2>
+    <section v-if="hotTags.length > 0 || !tagsData" class="mt-8 lg:mt-10">
+      <EditorialSectionHeading eyebrow="Style Tags" title="风格标签" description="用标签补充筛选人物气质、服饰、场景和内容类型。" />
+      <div v-if="tagsData" class="flex flex-wrap gap-2">
+        <NuxtLink v-for="tag in hotTags" :key="tag.slug" :to="{ path: '/discover', query: { tag: tag.slug } }">
+          <TagChip :tag="tag" />
+        </NuxtLink>
       </div>
-      <template v-if="tagsData">
-        <div class="flex flex-wrap gap-2">
-          <NuxtLink
-            v-for="tag in hotTags"
-            :key="tag.slug"
-            :to="`/discover?tag=${tag.slug}`"
-          >
-            <TagChip :tag="tag" />
-          </NuxtLink>
-        </div>
-      </template>
       <div v-else class="flex flex-wrap gap-2">
-        <div v-for="i in 8" :key="i" class="h-6 w-14 bg-gray-200 animate-pulse rounded-full" />
+        <div v-for="i in 8" :key="i" class="h-6 w-14 animate-pulse rounded-full bg-orange-50" />
       </div>
     </section>
 
-    <!-- 视频专区 -->
-    <section v-if="videoEnabled && videoGalleries.length > 0" class="mb-5">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-[13px] font-semibold text-gray-900">视频专区</h2>
-        <NuxtLink to="/discover?tag=video" class="text-sm text-gray-400 hover:text-gray-600">查看全部 →</NuxtLink>
-      </div>
+    <section v-if="videoEnabled && videoGalleries.length > 0" class="mt-8 lg:mt-10">
+      <EditorialSectionHeading eyebrow="Video" title="视频专区" description="视频功能开启后展示可浏览的视频内容。" action-label="查看视频" action-to="/discover?tag=video" />
       <HomeVideoZone :galleries="videoGalleries" />
     </section>
   </div>

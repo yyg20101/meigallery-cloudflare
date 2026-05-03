@@ -12,13 +12,13 @@ defineProps<{
 </script>
 
 <template>
-  <div class="overflow-hidden rounded-[1.75rem] bg-[radial-gradient(circle_at_15%_0%,rgba(214,195,154,0.22),transparent_28%),linear-gradient(135deg,#09090b,#18181b)] p-4 shadow-2xl shadow-gray-900/12 ring-1 ring-white/10">
+  <div class="overflow-hidden rounded-[1.75rem] bg-[radial-gradient(circle_at_15%_0%,rgba(214,195,154,0.22),transparent_28%),linear-gradient(135deg,#09090b,#18181b)] p-5 shadow-2xl shadow-gray-900/12 ring-1 ring-white/10">
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
       <NuxtLink
         v-for="g in galleries"
         :key="g.id"
         :to="`/gallery/${g.slug}`"
-        class="group relative aspect-video overflow-hidden rounded-2xl bg-gray-800 ring-1 ring-white/10 transition-all duration-300 hover:-translate-y-1 hover:ring-[#d6c39a]/60"
+        class="group relative aspect-video overflow-hidden rounded-[1.25rem] bg-gray-800 ring-1 ring-white/10 transition-all duration-300 hover:-translate-y-1 hover:ring-[#d6c39a]/60"
       >
         <img
           v-if="g.coverUrl"
