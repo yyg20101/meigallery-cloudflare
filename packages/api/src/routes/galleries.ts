@@ -127,6 +127,83 @@ galleryRoutes.get('/', cacheControl(60), async (c) => {
 })
 
 /**
+ * POST /api/galleries/:id/like - 点赞图库
+ */
+galleryRoutes.post('/:id/like', async (c) => {
+  const userId = c.get('userId')
+  if (!userId) {
+    return c.json({ statusCode: 401, message: '请先登录后再点赞' }, 401)
+  }
+
+  const galleryId = c.req.param('id')
+  const db = c.env.DB
+
+  const gallery = await db
+    .prepare(`SELECT id, like_count FROM galleries WHERE id = ? AND status = 'published'`)
+    .bind(galleryId)
+    .first<{ id: string; like_count: number }>()
+
+  if (!gallery) {
+    return c.json({ statusCode: 404, message: '图库不存在' }, 404)
+  }
+
+  const createdAt = new Date().toISOString()
+  const insertResult = await db
+    .prepare(`INSERT OR IGNORE INTO gallery_likes (id, gallery_id, user_id, created_at) VALUES (?, ?, ?, ?)`)
+    .bind(crypto.randomUUID(), gallery.id, userId, createdAt)
+    .run()
+
+  if ((insertResult.meta?.changes ?? 0) > 0) {
+    await db.prepare('UPDATE galleries SET like_count = like_count + 1 WHERE id = ?').bind(gallery.id).run()
+  }
+
+  const latest = await db
+    .prepare('SELECT like_count FROM galleries WHERE id = ?')
+    .bind(gallery.id)
+    .first<{ like_count: number }>()
+
+  return c.json({ likeCount: latest?.like_count ?? gallery.like_count, likedByMe: true })
+})
+
+/**
+ * DELETE /api/galleries/:id/like - 取消点赞图库
+ */
+galleryRoutes.delete('/:id/like', async (c) => {
+  const userId = c.get('userId')
+  if (!userId) {
+    return c.json({ statusCode: 401, message: '请先登录后再操作' }, 401)
+  }
+
+  const galleryId = c.req.param('id')
+  const db = c.env.DB
+
+  const gallery = await db
+    .prepare(`SELECT id, like_count FROM galleries WHERE id = ? AND status = 'published'`)
+    .bind(galleryId)
+    .first<{ id: string; like_count: number }>()
+
+  if (!gallery) {
+    return c.json({ statusCode: 404, message: '图库不存在' }, 404)
+  }
+
+  const deleteResult = await db
+    .prepare('DELETE FROM gallery_likes WHERE gallery_id = ? AND user_id = ?')
+    .bind(gallery.id, userId)
+    .run()
+
+  if ((deleteResult.meta?.changes ?? 0) > 0) {
+    await db.prepare('UPDATE galleries SET like_count = MAX(like_count - 1, 0) WHERE id = ?').bind(gallery.id).run()
+  }
+
+  const latest = await db
+    .prepare('SELECT like_count FROM galleries WHERE id = ?')
+    .bind(gallery.id)
+    .first<{ like_count: number }>()
+
+  return c.json({ likeCount: latest?.like_count ?? gallery.like_count, likedByMe: false })
+})
+
+/**
  * GET /api/galleries/:slug - 图库详情
  */
 galleryRoutes.get('/:slug', async (c) => {

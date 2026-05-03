@@ -55,6 +55,8 @@ app.use('*', cors({
 }))
 // 登录/注册接口速率限制：每 IP 每分钟 10 次
 app.use('/api/auth/*', rateLimiter({ limit: 10, windowMs: 60_000 }))
+// 图库互动接口速率限制：每 IP 每分钟 60 次
+app.use('/api/galleries/*/like', rateLimiter({ limit: 60, windowMs: 60_000 }))
 app.use('*', authMiddleware)
 
 // 路由挂载
