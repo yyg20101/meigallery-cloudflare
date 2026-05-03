@@ -38,6 +38,9 @@ interface GalleryDetail {
   updatedAt: string
   tags: GalleryTag[]
   mediaAssets: MediaAsset[]
+  viewCount?: number
+  likeCount?: number
+  likedByMe?: boolean
 }
 
 interface GallerySummary {
@@ -47,6 +50,8 @@ interface GallerySummary {
   coverUrl: string | null
   requiredLevelRank: number
   tags: GalleryTag[]
+  viewCount?: number
+  likeCount?: number
 }
 
 const { data: gallery, error } = await useAsyncData(`gallery-${route.params.slug}`, () =>
@@ -136,6 +141,30 @@ const formattedDate = computed(() => {
 
 const supportTags = computed(() => gallery.value ? getSupportTags(gallery.value.tags, 8) : [])
 
+const showLoginPrompt = ref(false)
+const liking = ref(false)
+const likedByMe = ref(gallery.value?.likedByMe ?? false)
+const likeCount = ref(gallery.value?.likeCount ?? 0)
+
+async function toggleLike() {
+  if (!isLoggedIn.value) {
+    showLoginPrompt.value = true
+    return
+  }
+
+  if (!gallery.value || liking.value) return
+
+  liking.value = true
+  const nextLiked = !likedByMe.value
+  try {
+    await api(`/api/galleries/${gallery.value.id}/like`, { method: nextLiked ? 'POST' : 'DELETE' })
+    likedByMe.value = nextLiked
+    likeCount.value = Math.max(0, likeCount.value + (nextLiked ? 1 : -1))
+  } finally {
+    liking.value = false
+  }
+}
+
 // 锁定提示文案
 const lockMessage = computed(() => {
   const count = lockedImages.value.length
@@ -176,6 +205,10 @@ useSeoMeta({
           <MembershipBadge v-if="gallery.requiredLevelRank > 0" :rank="gallery.requiredLevelRank" />
         </div>
         <p class="mt-4 text-xs text-gray-400">{{ formattedDate }}<span v-if="images.length"> · {{ images.length }}张图片</span><span v-if="videos.length"> · {{ videos.length }}个视频</span></p>
+        <div class="mt-5 flex flex-wrap items-center gap-3">
+          <GalleryHeatMeta :view-count="gallery.viewCount" :like-count="likeCount" />
+          <GalleryLikeButton :liked="likedByMe" :loading="liking" :like-count="likeCount" @click="toggleLike" />
+        </div>
         <p v-if="gallery.summary" class="mt-5 text-sm leading-7 text-gray-600">{{ gallery.summary }}</p>
       </div>
     </section>
@@ -275,5 +308,7 @@ useSeoMeta({
       :start-index="viewerStartIndex"
       @close="viewerOpen = false"
     />
+
+    <LoginPromptModal :open="showLoginPrompt" @close="showLoginPrompt = false" />
   </div>
 </template>

@@ -11,6 +11,8 @@ interface Gallery {
   requiredLevelRank: number
   publishedAt: string | null
   mediaAssets?: Array<{ type: string }>
+  viewCount?: number
+  likeCount?: number
 }
 const props = defineProps<{ gallery: Gallery }>()
 
@@ -58,6 +60,7 @@ const supportTags = computed(() => getSupportTags(props.gallery.tags, 2))
       <div class="mt-2 flex flex-wrap gap-1.5">
         <TagChip v-for="tag in supportTags" :key="tag.slug" :tag="tag" size="sm" />
       </div>
+      <GalleryHeatMeta class="mt-3" :view-count="gallery.viewCount" :like-count="gallery.likeCount" />
     </div>
   </NuxtLink>
 </template>

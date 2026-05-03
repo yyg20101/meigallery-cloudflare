@@ -21,6 +21,8 @@ interface GallerySummary {
   requiredLevelRank: number
   publishedAt: string | null
   tags: Array<{ id: string; type: string; name: string; slug: string }>
+  viewCount?: number
+  likeCount?: number
 }
 
 interface TagGroup {
@@ -32,6 +34,10 @@ const PAGE_SIZE = 12
 // 获取图库数据
 const { data: galleriesData } = await useAsyncData('home-galleries', () =>
   api<{ data: GallerySummary[]; total: number }>('/api/galleries', { query: { pageSize: String(PAGE_SIZE) } }),
+)
+
+const { data: hotGalleriesData } = await useAsyncData('home-hot-galleries', () =>
+  api<{ data: GallerySummary[]; total: number }>('/api/galleries', { query: { pageSize: '3', sort: 'hot' } }),
 )
 
 // 获取标签
@@ -64,8 +70,8 @@ async function loadMore() {
 // 顶部轮播：前 6 条，避免首屏浪费并展示更多内容
 const heroGalleries = computed(() => allGalleries.value.slice(0, 6))
 
-// 精选专题：接在轮播之后，避免和顶部重复
-const featured = computed(() => allGalleries.value.slice(6, 9))
+// 热门推荐：优先使用热度排序，失败时回退到首屏后段内容，不影响无限加载分页。
+const featured = computed(() => hotGalleriesData.value?.data ?? allGalleries.value.slice(6, 9))
 
 // 最新图库：第 10 条起
 const latest = computed(() => allGalleries.value.slice(9))
@@ -135,7 +141,7 @@ useSeoMeta({
     </section>
 
     <section class="mt-8 lg:mt-10">
-      <EditorialSectionHeading eyebrow="Featured" title="精选专题" description="以封面质感和人物气质为主线，进入本周推荐内容。" action-label="查看全部" action-to="/discover" />
+      <EditorialSectionHeading eyebrow="Hot Ranking" title="热门推荐" description="按访问与点赞热度生成的人气内容。" action-label="查看全部" action-to="/discover?sort=hot" />
       <template v-if="galleriesData">
         <HomeFeatured v-if="featured.length > 0" :galleries="featured" />
         <div v-else class="rounded-[1.5rem] border border-orange-100 bg-white/80 py-14 text-center text-gray-400">暂无更多精选内容</div>
