@@ -25,6 +25,8 @@ export async function createSession(c: AppContext, userId: number): Promise<void
     .bind(id, userId, tokenHash, expiresAt)
     .run()
 
+  // 清理旧版仅绑定 api.616618.xyz 的同名 cookie，避免浏览器同时发送两个 mei_session。
+  deleteHostOnlySessionCookie(c)
   setCookie(c, SESSION_COOKIE, token, {
     httpOnly: true,
     secure: true,
@@ -62,7 +64,7 @@ export async function validateSession(c: AppContext): Promise<{ userId: number; 
   if (new Date(session.expires_at) < new Date()) {
     // 清理过期 session
     await db.prepare('DELETE FROM sessions WHERE id = ?').bind(session.session_id).run()
-    deleteSessionCookie(c)
+    deleteSessionCookies(c)
     return null
   }
 
@@ -76,6 +78,7 @@ export async function validateSession(c: AppContext): Promise<{ userId: number; 
     const newExpiry = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString()
     await db.prepare('UPDATE sessions SET expires_at = ? WHERE id = ?').bind(newExpiry, session.session_id).run()
     // 同步刷新浏览器 cookie 的 maxAge，避免 D1 续期但 cookie 已过期的不一致
+    deleteHostOnlySessionCookie(c)
     setCookie(c, SESSION_COOKIE, token, {
       httpOnly: true,
       secure: true,
@@ -100,7 +103,7 @@ export async function destroySession(c: AppContext): Promise<void> {
   const tokenHash = await hashToken(token)
 
   await db.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(tokenHash).run()
-  deleteSessionCookie(c)
+  deleteSessionCookies(c)
 }
 
 /**
@@ -139,7 +142,12 @@ function getSessionCookieDomain(c: AppContext): string | undefined {
   return c.env.APP_ENV === 'production' ? PRODUCTION_COOKIE_DOMAIN : undefined
 }
 
-function deleteSessionCookie(c: AppContext): void {
+function deleteHostOnlySessionCookie(c: AppContext): void {
+  deleteCookie(c, SESSION_COOKIE, { path: '/' })
+}
+
+function deleteSessionCookies(c: AppContext): void {
+  deleteHostOnlySessionCookie(c)
   deleteCookie(c, SESSION_COOKIE, {
     path: '/',
     domain: getSessionCookieDomain(c),
