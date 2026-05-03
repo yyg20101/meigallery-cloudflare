@@ -12,5 +12,4 @@ CREATE TABLE IF NOT EXISTS gallery_likes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_galleries_like_count ON galleries(like_count);
-CREATE INDEX IF NOT EXISTS idx_gallery_likes_gallery_id ON gallery_likes(gallery_id);
 CREATE INDEX IF NOT EXISTS idx_gallery_likes_user_id ON gallery_likes(user_id);

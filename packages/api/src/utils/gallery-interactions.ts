@@ -13,6 +13,7 @@ export function getPublicGalleryOrderClause(sort: string): string {
     case 'random':
       return ' ORDER BY RANDOM()'
     case 'hot':
+      // 调用方查询需要提供 hot_score alias。
       return ' ORDER BY hot_score DESC, g.published_at DESC'
     default:
       return ' ORDER BY g.published_at DESC'
