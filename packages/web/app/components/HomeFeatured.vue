@@ -15,12 +15,12 @@ defineProps<{
 
 <template>
   <!-- 移动端：横向滚动；桌面端：1大2小不对称布局 -->
-  <div class="flex snap-x snap-mandatory gap-3 overflow-x-auto scrollbar-hide lg:overflow-x-visible lg:snap-none">
+  <div class="flex snap-x snap-mandatory gap-3 overflow-x-auto scrollbar-hide lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(16rem,1fr)] lg:overflow-x-visible lg:snap-none">
     <!-- 大图 -->
     <NuxtLink
       v-if="galleries[0]"
       :to="`/gallery/${galleries[0].slug}`"
-      class="group relative h-[260px] min-w-[78vw] snap-start overflow-hidden rounded-[2rem] bg-gradient-to-br from-[#fff7ed] to-[#e8d5c5] shadow-xl shadow-orange-950/10 ring-1 ring-white/80 transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-orange-950/15 lg:h-[390px] lg:min-w-0 lg:flex-[2]"
+      class="group relative h-[260px] min-w-[78vw] snap-start overflow-hidden rounded-[2rem] bg-gradient-to-br from-[#fff7ed] to-[#e8d5c5] shadow-xl shadow-orange-950/10 ring-1 ring-white/80 transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-orange-950/15 lg:h-[390px] lg:min-w-0"
     >
       <img
         v-if="galleries[0].coverUrl"
@@ -73,7 +73,7 @@ defineProps<{
     </NuxtLink>
 
     <!-- 右侧两个小图（仅桌面端显示） -->
-    <div class="hidden flex-1 flex-col gap-3 lg:flex">
+    <div class="hidden min-w-0 flex-col gap-3 lg:flex">
       <NuxtLink
         v-if="galleries[1]"
         :to="`/gallery/${galleries[1].slug}`"
