@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { getPrimaryRegion, getSupportTags } from '~/utils/galleryPresentation'
 
 interface Gallery {
   id: string
   title: string
   slug: string
   coverUrl: string | null
-  tags: Array<{ name: string; slug: string; type?: string }>
+  tags: Array<{ id?: string; name: string; slug: string; type: string }>
   requiredLevelRank: number
   publishedAt: string | null
   mediaAssets?: Array<{ type: string }>
@@ -23,6 +24,9 @@ const levelBadge = computed(() => {
   if (props.gallery.requiredLevelRank >= 10) return { label: 'VIP', cls: 'bg-[#111] text-[#d6c39a] ring-[#d6c39a]/50' }
   return null
 })
+
+const primaryRegion = computed(() => getPrimaryRegion(props.gallery.tags))
+const supportTags = computed(() => getSupportTags(props.gallery.tags, 2))
 </script>
 
 <template>
@@ -49,9 +53,10 @@ const levelBadge = computed(() => {
       </span>
     </div>
     <div class="p-3.5">
+      <p v-if="primaryRegion" class="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#bfa46a]">{{ primaryRegion.name }}</p>
       <h3 class="line-clamp-1 text-[12px] font-semibold tracking-tight text-gray-950 transition-colors group-hover:text-black">{{ gallery.title }}</h3>
       <div class="mt-2 flex flex-wrap gap-1.5">
-        <TagChip v-for="tag in gallery.tags.slice(0, 3)" :key="tag.slug" :tag="tag" size="sm" />
+        <TagChip v-for="tag in supportTags" :key="tag.slug" :tag="tag" size="sm" />
       </div>
     </div>
   </NuxtLink>
