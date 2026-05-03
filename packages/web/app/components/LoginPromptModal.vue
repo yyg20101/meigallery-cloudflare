@@ -10,6 +10,7 @@ const emit = defineEmits<{
 }>()
 
 const titleId = 'login-prompt-title'
+const descriptionId = 'login-prompt-description'
 const modalRef = ref<HTMLElement | null>(null)
 const previouslyFocusedElement = ref<HTMLElement | null>(null)
 
@@ -65,6 +66,7 @@ function handleKeydown(event: KeyboardEvent) {
 
   const firstElement = focusableElements[0]
   const lastElement = focusableElements[focusableElements.length - 1]
+  if (!firstElement || !lastElement) return
 
   if (event.shiftKey && document.activeElement === firstElement) {
     event.preventDefault()
@@ -114,8 +116,9 @@ onBeforeUnmount(() => {
         role="dialog"
         aria-modal="true"
         :aria-labelledby="titleId"
+        :aria-describedby="descriptionId"
         tabindex="-1"
-        class="relative w-full max-w-[min(92vw,26rem)] overflow-hidden rounded-[1.75rem] border border-white/70 bg-[#fffaf4] p-5 text-stone-950 shadow-2xl shadow-black/25 ring-1 ring-[#e8d5c5] outline-none sm:p-6"
+        class="relative max-h-[calc(100vh-2rem)] w-full max-w-[min(92vw,26rem)] overflow-y-auto overflow-x-hidden rounded-[1.75rem] border border-white/70 bg-[#fffaf4] p-5 text-stone-950 shadow-2xl shadow-black/25 ring-1 ring-[#e8d5c5] outline-none sm:p-6"
         @keydown="handleKeydown"
       >
         <div class="pointer-events-none absolute -right-12 -top-16 h-36 w-36 rounded-full bg-[#ead7b7]/70 blur-3xl" />
@@ -133,7 +136,7 @@ onBeforeUnmount(() => {
         <div class="relative pr-12">
           <p class="mb-2 text-[10px] font-semibold tracking-[0.24em] text-[#b99a5f]">登录提示</p>
           <h2 :id="titleId" class="text-xl font-semibold tracking-tight text-stone-950">登录后即可点赞</h2>
-          <p class="mt-3 text-sm leading-6 text-stone-600">
+          <p :id="descriptionId" class="mt-3 text-sm leading-6 text-stone-600">
             登录账号后可为喜欢的图库点赞，并保留你的互动记录。注册只需邮箱即可开始浏览更多会员内容。
           </p>
         </div>

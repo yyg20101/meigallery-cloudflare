@@ -23,7 +23,7 @@ const labelClass = computed(() => props.tone === 'dark' ? 'text-stone-400' : 'te
 const dividerClass = computed(() => props.tone === 'dark' ? 'bg-white/14' : 'bg-[#e8d5c5]')
 
 function formatCount(count?: number | null) {
-  const value = count ?? 0
+  const value = Math.max(0, count ?? 0)
 
   if (value < 10000) return String(value)
 

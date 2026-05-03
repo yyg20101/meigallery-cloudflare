@@ -31,7 +31,7 @@ const buttonClass = computed(() => {
     :disabled="loading"
     @click="$emit('click')"
   >
-    <span class="truncate">{{ liked ? '已点赞' : '点赞' }}</span>
+    <span class="truncate">{{ loading ? '处理中' : liked ? '已点赞' : '点赞' }}</span>
     <span class="rounded-full px-2 py-0.5 text-xs tabular-nums" :class="liked ? 'bg-white/10 text-[#d6c39a]' : 'bg-stone-100 text-stone-700'">
       {{ likeCount }}
     </span>
