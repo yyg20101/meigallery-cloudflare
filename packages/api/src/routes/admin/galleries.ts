@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { Bindings, Variables } from '../../index'
 import { generateId } from '../../utils/db'
+import { getAdminGalleryOrderClause } from '../../utils/gallery-interactions'
 import { writeAuditLog } from '../../utils/permission'
 import { PAGINATION } from '@meigallery/shared/constants'
 
@@ -278,6 +279,8 @@ adminGalleryRoutes.get('/', async (c) => {
   const status = c.req.query('status')
   const search = c.req.query('search')
   const tag = c.req.query('tag')
+  const sort = c.req.query('sort') || 'created_desc'
+  const orderClause = getAdminGalleryOrderClause(sort)
   const offset = (page - 1) * pageSize
 
   const conditions: string[] = []
@@ -311,9 +314,9 @@ adminGalleryRoutes.get('/', async (c) => {
 
   const rows = await db
     .prepare(
-      `SELECT DISTINCT g.id, g.title, g.slug, g.status, g.required_level_rank, g.cover_key, g.published_at, g.created_at, g.updated_at
+      `SELECT DISTINCT g.id, g.title, g.slug, g.status, g.required_level_rank, g.cover_key, g.published_at, g.created_at, g.updated_at, g.view_count, g.like_count
        FROM galleries g ${joinClause} ${whereClause}
-       ORDER BY g.created_at DESC
+       ${orderClause}
        LIMIT ? OFFSET ?`,
     )
     .bind(...bindValues, pageSize, offset)

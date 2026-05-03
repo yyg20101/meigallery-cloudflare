@@ -10,12 +10,14 @@ const route = useRoute()
 
 const page = ref(parseInt((route.query.page as string) || '1', 10))
 const status = ref((route.query.status as string) || '')
+const sort = ref((route.query.sort as string) || 'created_desc')
 const search = ref('')
 const searchInput = ref('')
 
 interface AdminGallery {
   id: string; title: string; slug: string; status: string
   required_level_rank: number; published_at: string | null; created_at: string; updated_at: string
+  view_count: number; like_count: number
 }
 
 interface GalleryListResponse {
@@ -29,10 +31,11 @@ const { data, refresh } = await useAsyncData('admin-galleries', () =>
       page: String(page.value),
       pageSize: '20',
       status: status.value || undefined,
+      sort: sort.value,
       search: search.value || undefined,
     },
   }),
-  { watch: [page, status, search] },
+  { watch: [page, status, sort, search] },
 )
 
 const galleries = computed(() => data.value?.data ?? [])
@@ -44,6 +47,12 @@ const statusOptions = [
   { label: '草稿', value: 'draft' },
   { label: '已发布', value: 'published' },
   { label: '已归档', value: 'archived' },
+]
+
+const sortOptions = [
+  { label: '最新创建', value: 'created_desc' },
+  { label: '访问最多', value: 'view_desc' },
+  { label: '点赞最多', value: 'like_desc' },
 ]
 
 const statusColors: Record<string, string> = {
@@ -131,7 +140,7 @@ const selectedCount = computed(() =>
 )
 
 // 页面切换 / 筛选变化时清空选择
-watch([page, status, search], () => {
+watch([page, status, sort, search], () => {
   clearSelection()
 })
 
@@ -325,6 +334,9 @@ async function unpublishGallery(id: string) {
       <select v-model="status" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm" @change="page = 1">
         <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
       </select>
+      <select v-model="sort" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm" @change="page = 1">
+        <option v-for="opt in sortOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+      </select>
       <input
         v-model="searchInput"
         type="text"
@@ -414,6 +426,8 @@ async function unpublishGallery(id: string) {
             <th class="px-4 py-3 text-left font-medium text-gray-600">标题</th>
             <th class="px-4 py-3 text-left font-medium text-gray-600">状态</th>
             <th class="px-4 py-3 text-left font-medium text-gray-600">等级</th>
+            <th class="px-4 py-3 text-right font-medium text-gray-600">访问</th>
+            <th class="px-4 py-3 text-right font-medium text-gray-600">点赞</th>
             <th class="px-4 py-3 text-left font-medium text-gray-600">更新时间</th>
             <th class="px-4 py-3 text-right font-medium text-gray-600">操作</th>
           </tr>
@@ -439,6 +453,8 @@ async function unpublishGallery(id: string) {
             <td class="px-4 py-3">
               <span class="text-xs">{{ levelLabels[g.required_level_rank] ?? `Lv.${g.required_level_rank}` }}</span>
             </td>
+            <td class="px-4 py-3 text-right tabular-nums text-gray-600">{{ g.view_count ?? 0 }}</td>
+            <td class="px-4 py-3 text-right tabular-nums text-gray-600">{{ g.like_count ?? 0 }}</td>
             <td class="px-4 py-3 text-gray-500">{{ formatDate(g.updated_at) }}</td>
             <td class="px-4 py-3 text-right space-x-2">
               <NuxtLink :to="`/admin/galleries/${g.id}`" class="text-xs text-blue-600 hover:underline">编辑</NuxtLink>
@@ -447,7 +463,7 @@ async function unpublishGallery(id: string) {
             </td>
           </tr>
           <tr v-if="galleries.length === 0">
-            <td colspan="6" class="px-4 py-8 text-center text-gray-400">暂无图库</td>
+            <td colspan="8" class="px-4 py-8 text-center text-gray-400">暂无图库</td>
           </tr>
         </tbody>
       </table>
