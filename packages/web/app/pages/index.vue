@@ -61,11 +61,14 @@ async function loadMore() {
   }
 }
 
-// 精选专题：前 3 条
-const featured = computed(() => allGalleries.value.slice(0, 3))
+// 顶部轮播：前 6 条，避免首屏浪费并展示更多内容
+const heroGalleries = computed(() => allGalleries.value.slice(0, 6))
 
-// 最新图库：第 4 条起
-const latest = computed(() => allGalleries.value.slice(3))
+// 精选专题：接在轮播之后，避免和顶部重复
+const featured = computed(() => allGalleries.value.slice(6, 9))
+
+// 最新图库：第 10 条起
+const latest = computed(() => allGalleries.value.slice(9))
 
 // 视频专区：筛选包含视频标签的图库，最多显示 3 条
 const videoGalleries = computed(() =>
@@ -124,7 +127,7 @@ useSeoMeta({
       :subtitle="homeHeroSubtitle"
       :cta-label="homeHeroCtaLabel"
       :cta-url="homeHeroCtaUrl"
-      :gallery="featured[0] || null"
+      :galleries="heroGalleries"
     />
 
     <section v-if="regionGuideItems.length > 0" class="mt-6 lg:mt-8">
@@ -134,7 +137,8 @@ useSeoMeta({
     <section class="mt-8 lg:mt-10">
       <EditorialSectionHeading eyebrow="Featured" title="精选专题" description="以封面质感和人物气质为主线，进入本周推荐内容。" action-label="查看全部" action-to="/discover" />
       <template v-if="galleriesData">
-        <HomeFeatured :galleries="featured" />
+        <HomeFeatured v-if="featured.length > 0" :galleries="featured" />
+        <div v-else class="rounded-[1.5rem] border border-orange-100 bg-white/80 py-14 text-center text-gray-400">暂无更多精选内容</div>
       </template>
       <div v-else class="grid grid-cols-1 gap-3 md:grid-cols-3">
         <div v-for="i in 3" :key="i" class="aspect-video animate-pulse rounded-[1.5rem] bg-orange-50" />
@@ -145,7 +149,7 @@ useSeoMeta({
       <EditorialSectionHeading eyebrow="New Arrival" title="最新图库" description="持续更新授权写真、时尚、生活与艺术类图库。" action-label="查看全部" action-to="/discover" />
       <template v-if="galleriesData">
         <GalleryGrid :galleries="latest" variant="magazine" />
-        <div v-if="latest.length === 0" class="rounded-[1.5rem] border border-orange-100 bg-white/80 py-20 text-center text-gray-400">暂无图库内容</div>
+        <div v-if="latest.length === 0" class="rounded-[1.5rem] border border-orange-100 bg-white/80 py-20 text-center text-gray-400">暂无更多最新内容</div>
         <div v-if="loadingMore" class="py-6 text-center text-sm text-gray-400">加载中...</div>
         <div v-if="hasMore" ref="sentinel" class="h-px" />
         <div v-if="!hasMore && allGalleries.length > PAGE_SIZE" class="py-6 text-center text-sm text-gray-400">已展示全部图库</div>
