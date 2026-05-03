@@ -21,6 +21,12 @@ export function useSiteSettings() {
     about_title?: string
     about_summary?: string
     about_content?: string
+    home_hero_title?: string
+    home_hero_subtitle?: string
+    home_hero_cta_label?: string
+    home_hero_cta_url?: string
+    home_featured_region_slugs?: string
+    home_hot_tag_limit?: string | number
   }
 
   const settings = useState<SiteSettings>('site-settings', () => ({}))
@@ -50,6 +56,15 @@ export function useSiteSettings() {
   const aboutTitle = computed(() => settings.value.about_title || '关于我们')
   const aboutSummary = computed(() => settings.value.about_summary || '')
   const aboutContent = computed(() => settings.value.about_content || '')
+  const homeHeroTitle = computed(() => settings.value.home_hero_title || '精选写真，按地区发现')
+  const homeHeroSubtitle = computed(() => settings.value.home_hero_subtitle || '以授权写真、时尚、生活与艺术类内容为核心，按地区和标签探索精选图库。')
+  const homeHeroCtaLabel = computed(() => settings.value.home_hero_cta_label || '浏览精选图库')
+  const homeHeroCtaUrl = computed(() => settings.value.home_hero_cta_url || '/discover')
+  const homeFeaturedRegionSlugs = computed(() => String(settings.value.home_featured_region_slugs || '').split(',').map(s => s.trim()).filter(Boolean))
+  const homeHotTagLimit = computed(() => {
+    const value = Number(settings.value.home_hot_tag_limit || 15)
+    return Number.isFinite(value) && value > 0 ? Math.min(value, 30) : 15
+  })
   const videoEnabled = computed(() => {
     const v = settings.value.video_enabled
     return v === true || v === 'true'
@@ -70,6 +85,12 @@ export function useSiteSettings() {
     aboutTitle,
     aboutSummary,
     aboutContent,
+    homeHeroTitle,
+    homeHeroSubtitle,
+    homeHeroCtaLabel,
+    homeHeroCtaUrl,
+    homeFeaturedRegionSlugs,
+    homeHotTagLimit,
     videoEnabled,
   }
 }

@@ -17,6 +17,12 @@ const form = reactive({
   og_image: '',
   // 其他
   membership_description: '',
+  home_hero_title: '',
+  home_hero_subtitle: '',
+  home_hero_cta_label: '',
+  home_hero_cta_url: '',
+  home_featured_region_slugs: '',
+  home_hot_tag_limit: '',
   about_title: '',
   about_summary: '',
   about_content: '',
@@ -158,6 +164,37 @@ async function toggleVideo() {
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">会员说明</label>
           <textarea v-model="form.membership_description" rows="3" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="会员等级权益说明..." />
+        </div>
+      </fieldset>
+
+      <fieldset class="space-y-4">
+        <legend class="w-full border-b border-gray-200 pb-2 text-sm font-semibold text-gray-900">首页视觉配置</legend>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-gray-700">首页主标题</label>
+          <input v-model="form.home_hero_title" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="精选写真，按地区发现" />
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-gray-700">首页副标题</label>
+          <textarea v-model="form.home_hero_subtitle" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="用于首页首屏说明" />
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="mb-1 block text-sm font-medium text-gray-700">CTA 文案</label>
+            <input v-model="form.home_hero_cta_label" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="浏览精选图库" />
+          </div>
+          <div>
+            <label class="mb-1 block text-sm font-medium text-gray-700">CTA 链接</label>
+            <input v-model="form.home_hero_cta_url" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="/discover" />
+          </div>
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-gray-700">主推地区 slugs</label>
+          <input v-model="form.home_featured_region_slugs" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="canada,domestic,toronto,vancouver" />
+          <p class="mt-1 text-xs text-gray-400">英文逗号分隔；前台会优先展示这些地区标签。</p>
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-gray-700">首页热门标签数量</label>
+          <input v-model="form.home_hot_tag_limit" type="number" min="1" max="30" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="15" />
         </div>
       </fieldset>
 

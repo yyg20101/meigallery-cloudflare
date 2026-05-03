@@ -10,4 +10,20 @@ describe('site settings keys', () => {
       expect(PUBLIC_SETTING_KEYS).toContain(key)
     }
   })
+
+  it('allows homepage editorial settings in admin and public settings', () => {
+    const homepageKeys = [
+      'home_hero_title',
+      'home_hero_subtitle',
+      'home_hero_cta_label',
+      'home_hero_cta_url',
+      'home_featured_region_slugs',
+      'home_hot_tag_limit',
+    ]
+
+    for (const key of homepageKeys) {
+      expect(ADMIN_SETTING_KEYS).toContain(key)
+      expect(PUBLIC_SETTING_KEYS).toContain(key)
+    }
+  })
 })
