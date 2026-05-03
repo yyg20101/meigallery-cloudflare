@@ -101,7 +101,7 @@ function updateUrl() {
 }
 
 function goToTag(slug: string) {
-  navigateTo('/discover?tag=' + slug)
+  navigateTo({ path: '/discover', query: { tag: slug } })
 }
 
 const searchQuery = computed(() => route.query.q as string || '')
@@ -112,113 +112,66 @@ useSeoMeta({
 </script>
 
 <template>
-  <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 pb-20 sm:pb-6">
-    <!-- 搜索栏 -->
-    <div class="mb-6 max-w-2xl mx-auto">
-      <div class="relative">
-        <input
-          :value="keyword"
-          type="text"
-          class="w-full text-lg py-3 px-5 pr-12 border border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-900 focus:border-transparent outline-none"
-          placeholder="搜索写真、标签、关键词..."
-          @input="keyword = ($event.target as HTMLInputElement).value"
-          @keydown.enter="onSearch(keyword)"
-        />
-        <button
-          class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-          @click="onSearch(keyword)"
-        >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
+  <div class="mx-auto max-w-7xl px-4 py-5 pb-24 sm:px-6 lg:px-8 lg:py-8">
+    <section class="mb-6 rounded-[2rem] border border-white/80 bg-[#fffbf7] px-5 py-7 shadow-xl shadow-orange-950/6 lg:px-8">
+      <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#bfa46a]">Search</p>
+      <h1 class="mt-3 text-3xl font-semibold tracking-[-0.05em] text-gray-950 lg:text-5xl">搜索写真、地区和标签</h1>
+      <div class="relative mt-6 max-w-3xl">
+        <input :value="keyword" type="text" class="w-full rounded-full border border-[#eadfd2] bg-white px-5 py-4 pr-14 text-base text-gray-900 shadow-sm outline-none transition-all placeholder:text-gray-400 focus:border-[#d6c39a] focus:ring-4 focus:ring-[#f8e7dc]/70" placeholder="输入地区、风格、标题关键词..." @input="keyword = ($event.target as HTMLInputElement).value" @keydown.enter="onSearch(keyword)" />
+        <button class="absolute right-2 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-gray-950 text-[#d6c39a] transition-all hover:-translate-y-[52%] hover:bg-black" @click="onSearch(keyword)">
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
         </button>
       </div>
-    </div>
+    </section>
 
-    <!-- 筛选栏 -->
     <div v-if="tagsData?.data" class="mb-6">
       <FilterBar :tags="tagsData.data" :selected-tags="selectedTags" @toggle="toggleTag" @clear="clearTags" />
     </div>
 
-    <!-- 当前筛选条件 -->
     <div v-if="selectedTags.length > 0 || keyword" class="mb-4 flex flex-wrap items-center gap-2">
       <span class="text-sm text-gray-500">当前筛选：</span>
-      <span v-if="keyword" class="rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-800">
-        关键词: {{ keyword }}
-      </span>
-      <span v-for="slug in selectedTags" :key="slug" class="rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-800">
+      <span v-if="keyword" class="rounded-full border border-[#eadfd2] bg-white px-3 py-1 text-xs text-gray-800">关键词：{{ keyword }}</span>
+      <span v-for="slug in selectedTags" :key="slug" class="rounded-full border border-[#eadfd2] bg-white px-3 py-1 text-xs text-gray-800">
         {{ slug }}
-        <button class="ml-1" @click="toggleTag(slug)">&times;</button>
+        <button class="ml-1 text-gray-400 hover:text-gray-700" @click="toggleTag(slug)">&times;</button>
       </span>
     </div>
 
-    <!-- 相关标签推荐 -->
-    <div v-if="relatedTags.length > 0" class="flex flex-wrap gap-2 mb-4">
-      <span class="text-sm text-gray-500 mr-1">相关标签：</span>
-      <button
-        v-for="tag in relatedTags"
-        :key="tag.id"
-        class="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-xs cursor-pointer hover:bg-gray-200 transition-colors"
-        @click="goToTag(tag.slug)"
-      >
+    <div v-if="relatedTags.length > 0" class="mb-5 flex flex-wrap items-center gap-2">
+      <span class="mr-1 text-sm text-gray-500">相关标签：</span>
+      <button v-for="tag in relatedTags" :key="tag.id" class="rounded-full border border-transparent bg-[#f8e7dc]/55 px-3 py-1 text-xs text-gray-700 transition-all hover:border-[#e8d5c5] hover:bg-[#fff7ed] hover:text-gray-950" @click="goToTag(tag.slug)">
         {{ tag.name }}
       </button>
     </div>
 
-    <!-- 排序 + 结果统计 -->
-    <div class="mb-4 flex items-center justify-between">
+    <div class="mb-5 flex items-center justify-between gap-3">
       <p class="text-sm text-gray-500">共 {{ total }} 个结果</p>
-      <div class="flex items-center gap-2 text-sm">
-        <span class="text-gray-500">排序：</span>
-        <select
-          v-model="sort"
-          class="border border-gray-200 rounded-lg px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-gray-900"
-          @change="page = 1; updateUrl()"
-        >
-          <option value="relevance">综合</option>
-          <option value="newest">最新</option>
-          <option value="popular">最热</option>
-        </select>
-      </div>
+      <select v-model="sort" class="rounded-full border border-[#eadfd2] bg-white px-3 py-2 text-sm outline-none focus:border-[#d6c39a] focus:ring-4 focus:ring-[#f8e7dc]/70" @change="page = 1; updateUrl()">
+        <option value="relevance">综合</option>
+        <option value="newest">最新</option>
+        <option value="popular">最热</option>
+      </select>
     </div>
 
-    <!-- 结果网格 -->
-    <div v-if="galleries.length > 0" class="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
+    <div v-if="galleries.length > 0" class="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 lg:gap-4">
       <GalleryCard v-for="g in galleries" :key="g.id" :gallery="g" />
     </div>
 
-    <!-- 无结果状态 -->
-    <div v-if="galleries.length === 0" class="py-20 text-center">
-      <svg class="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-      </svg>
-      <p class="text-gray-500 text-lg mb-2">没有找到相关内容</p>
-      <p class="text-gray-400 text-sm mb-6">试试其他关键词或浏览热门标签</p>
+    <div v-if="galleries.length === 0" class="rounded-[1.5rem] border border-[#f0e4d8] bg-white/86 py-20 text-center shadow-sm shadow-orange-950/5">
+      <svg class="mx-auto mb-4 h-16 w-16 text-[#e8d5c5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+      <p class="mb-2 text-lg text-gray-600">没有找到相关内容</p>
+      <p class="mb-6 text-sm text-gray-400">试试其他关键词或浏览热门标签</p>
       <div class="flex flex-wrap justify-center gap-2">
-        <button
-          v-for="tag in popularTags"
-          :key="tag.id"
-          class="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-xs cursor-pointer hover:bg-gray-200 transition-colors"
-          @click="goToTag(tag.slug)"
-        >
+        <button v-for="tag in popularTags" :key="tag.id" class="rounded-full border border-transparent bg-[#f8e7dc]/55 px-3 py-1 text-xs text-gray-700 transition-all hover:border-[#e8d5c5] hover:bg-[#fff7ed] hover:text-gray-950" @click="goToTag(tag.slug)">
           {{ tag.name }}
         </button>
       </div>
     </div>
 
-    <!-- 分页 -->
     <div v-if="totalPages > 1" class="mt-8 flex justify-center gap-2">
-      <button
-        :disabled="page <= 1"
-        class="rounded px-3 py-1 text-sm border disabled:opacity-50"
-        @click="page--; updateUrl()"
-      >上一页</button>
-      <span class="px-3 py-1 text-sm text-gray-600">{{ page }} / {{ totalPages }}</span>
-      <button
-        :disabled="page >= totalPages"
-        class="rounded px-3 py-1 text-sm border disabled:opacity-50"
-        @click="page++; updateUrl()"
-      >下一页</button>
+      <button :disabled="page <= 1" class="rounded-full border border-[#eadfd2] bg-white px-4 py-2 text-sm disabled:opacity-50" @click="page--; updateUrl()">上一页</button>
+      <span class="px-3 py-2 text-sm text-gray-600">{{ page }} / {{ totalPages }}</span>
+      <button :disabled="page >= totalPages" class="rounded-full border border-[#eadfd2] bg-white px-4 py-2 text-sm disabled:opacity-50" @click="page++; updateUrl()">下一页</button>
     </div>
   </div>
 </template>
