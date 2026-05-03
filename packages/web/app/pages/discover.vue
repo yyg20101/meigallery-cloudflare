@@ -137,10 +137,10 @@ async function loadMore() {
 
 // IntersectionObserver 哨兵
 const sentinel = ref<HTMLElement | null>(null)
+let observer: IntersectionObserver | null = null
 
 onMounted(() => {
-  if (!sentinel.value) return
-  const observer = new IntersectionObserver(
+  observer = new IntersectionObserver(
     (entries) => {
       if (entries[0].isIntersecting && hasMore.value && !isLoading.value) {
         loadMore()
@@ -148,9 +148,14 @@ onMounted(() => {
     },
     { rootMargin: '200px' },
   )
-  observer.observe(sentinel.value)
-  onUnmounted(() => observer.disconnect())
+
+  watch(sentinel, (el, oldEl) => {
+    if (oldEl) observer?.unobserve(oldEl)
+    if (el) observer?.observe(el)
+  }, { immediate: true, flush: 'post' })
 })
+
+onUnmounted(() => observer?.disconnect())
 
 const sortOptions = [
   { value: 'latest' as const, label: '最新' },

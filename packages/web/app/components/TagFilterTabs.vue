@@ -79,7 +79,7 @@ const selectedTagNames = computed(() => {
       </button>
     </div>
 
-    <div v-if="selectedSlugs.length > 0" class="mt-3 flex items-center gap-2 border-t border-[#f0e4d8] pt-3">
+    <div v-if="selectedSlugs.length > 0" class="mt-3 flex flex-wrap items-center gap-2 border-t border-[#f0e4d8] pt-3">
       <span class="text-xs text-gray-400">筛选：</span>
       <span
         v-for="st in selectedTagNames"

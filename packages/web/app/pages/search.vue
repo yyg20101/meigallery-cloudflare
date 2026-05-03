@@ -118,7 +118,7 @@ useSeoMeta({
       <h1 class="mt-3 text-3xl font-semibold tracking-[-0.05em] text-gray-950 lg:text-5xl">搜索写真、地区和标签</h1>
       <div class="relative mt-6 max-w-3xl">
         <input :value="keyword" type="text" class="w-full rounded-full border border-[#eadfd2] bg-white px-5 py-4 pr-14 text-base text-gray-900 shadow-sm outline-none transition-all placeholder:text-gray-400 focus:border-[#d6c39a] focus:ring-4 focus:ring-[#f8e7dc]/70" placeholder="输入地区、风格、标题关键词..." @input="keyword = ($event.target as HTMLInputElement).value" @keydown.enter="onSearch(keyword)" />
-        <button class="absolute right-2 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-gray-950 text-[#d6c39a] transition-all hover:-translate-y-[52%] hover:bg-black" @click="onSearch(keyword)">
+        <button aria-label="搜索" class="absolute right-2 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-gray-950 text-[#d6c39a] transition-all hover:-translate-y-[52%] hover:bg-black" @click="onSearch(keyword)">
           <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
         </button>
       </div>
@@ -149,7 +149,7 @@ useSeoMeta({
       <select v-model="sort" class="rounded-full border border-[#eadfd2] bg-white px-3 py-2 text-sm outline-none focus:border-[#d6c39a] focus:ring-4 focus:ring-[#f8e7dc]/70" @change="page = 1; updateUrl()">
         <option value="relevance">综合</option>
         <option value="newest">最新</option>
-        <option value="popular">最热</option>
+        <option value="hot">最热</option>
       </select>
     </div>
 
