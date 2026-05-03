@@ -101,12 +101,6 @@ const featured = computed(() => {
   return picked
 })
 
-// 最新图库：排除首屏已展示内容，避免同屏重复。
-const latest = computed(() => {
-  const displayedKeys = new Set([...heroGalleries.value, ...featured.value].map(galleryKey))
-  return allGalleries.value.filter(gallery => !displayedKeys.has(galleryKey(gallery)))
-})
-
 // 视频专区：筛选包含视频标签的图库，最多显示 3 条
 const videoGalleries = computed(() => {
   const displayedKeys = new Set([...heroGalleries.value, ...featured.value].map(galleryKey))
@@ -115,6 +109,12 @@ const videoGalleries = computed(() => {
     .filter(g => !displayedKeys.has(galleryKey(g)))
     .filter(g => g.tags.some(t => t.slug === 'video' || t.name === '视频'))
     .slice(0, 3)
+})
+
+// 最新图库：按 hero → featured → video → latest 顺序排除，避免同屏重复。
+const latest = computed(() => {
+  const displayedKeys = new Set([...heroGalleries.value, ...featured.value, ...videoGalleries.value].map(galleryKey))
+  return allGalleries.value.filter(gallery => !displayedKeys.has(galleryKey(gallery)))
 })
 
 const regionGuideItems = computed(() => {
