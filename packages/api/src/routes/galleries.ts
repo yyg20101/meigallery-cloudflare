@@ -129,7 +129,7 @@ galleryRoutes.get('/', cacheControl(60), async (c) => {
 /**
  * GET /api/galleries/:slug - 图库详情
  */
-galleryRoutes.get('/:slug', cacheControl(120), async (c) => {
+galleryRoutes.get('/:slug', async (c) => {
   const slug = c.req.param('slug')
   const db = c.env.DB
 
@@ -192,6 +192,8 @@ galleryRoutes.get('/:slug', cacheControl(120), async (c) => {
     .all<{ id: string; type: string; role: string; sort_order: number; required_rank: number }>()
 
   const likedByMe = await isGalleryLikedByUser(db, gallery.id, c.get('userId'))
+
+  c.header('Cache-Control', 'private, no-store')
 
   return c.json({
     id: gallery.id,
