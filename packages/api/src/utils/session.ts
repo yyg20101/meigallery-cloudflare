@@ -1,12 +1,21 @@
 import type { Context } from 'hono'
-import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
+import { setCookie, deleteCookie } from 'hono/cookie'
 import type { Bindings, Variables } from '../index'
 import { generateId } from './db'
 
 const SESSION_COOKIE = 'mei_session'
 const SESSION_TTL_DAYS = 30
+const PRODUCTION_COOKIE_DOMAIN = '.616618.xyz'
 
 type AppContext = Context<{ Bindings: Bindings; Variables: Variables }>
+
+type SessionRow = {
+  session_id: string
+  user_id: number
+  expires_at: string
+  role: string
+  status: string
+}
 
 /**
  * 创建会话
@@ -24,11 +33,14 @@ export async function createSession(c: AppContext, userId: number): Promise<void
     .bind(id, userId, tokenHash, expiresAt)
     .run()
 
+  // 清理旧版仅绑定 api.616618.xyz 的同名 cookie，避免浏览器同时发送两个 mei_session。
+  deleteHostOnlySessionCookie(c)
   setCookie(c, SESSION_COOKIE, token, {
     httpOnly: true,
     secure: true,
     sameSite: 'Lax',
     path: '/',
+    domain: getSessionCookieDomain(c),
     maxAge: SESSION_TTL_DAYS * 24 * 60 * 60,
   })
 }
@@ -38,66 +50,74 @@ export async function createSession(c: AppContext, userId: number): Promise<void
  * 同时实现滑动续期
  */
 export async function validateSession(c: AppContext): Promise<{ userId: number; role: string } | null> {
-  const token = getCookie(c, SESSION_COOKIE)
-  if (!token) return null
+  const tokens = getSessionTokens(c)
+  if (tokens.length === 0) return null
 
   const db = c.env.DB
-  const tokenHash = await hashToken(token)
 
-  const session = await db
-    .prepare(`
-      SELECT s.id as session_id, s.user_id, s.expires_at, u.role, u.status
-      FROM sessions s
-      JOIN users u ON s.user_id = u.id
-      WHERE s.token_hash = ?
-    `)
-    .bind(tokenHash)
-    .first<{ session_id: string; user_id: number; expires_at: string; role: string; status: string }>()
+  for (const token of tokens) {
+    const tokenHash = await hashToken(token)
 
-  if (!session) return null
+    const session = await db
+      .prepare(`
+        SELECT s.id as session_id, s.user_id, s.expires_at, u.role, u.status
+        FROM sessions s
+        JOIN users u ON s.user_id = u.id
+        WHERE s.token_hash = ?
+      `)
+      .bind(tokenHash)
+      .first<SessionRow>()
 
-  // 检查过期
-  if (new Date(session.expires_at) < new Date()) {
-    // 清理过期 session
-    await db.prepare('DELETE FROM sessions WHERE id = ?').bind(session.session_id).run()
-    deleteCookie(c, SESSION_COOKIE, { path: '/' })
-    return null
+    if (!session) continue
+
+    // 检查过期
+    if (new Date(session.expires_at) < new Date()) {
+      // 清理过期 session
+      await db.prepare('DELETE FROM sessions WHERE id = ?').bind(session.session_id).run()
+      continue
+    }
+
+    // 检查用户状态
+    if (session.status !== 'active') return null
+
+    // 滑动续期：如果距过期不足一半时间，延长 D1 有效期并刷新浏览器 cookie
+    const expiresAt = new Date(session.expires_at)
+    const halfLife = (SESSION_TTL_DAYS * 24 * 60 * 60 * 1000) / 2
+    if (expiresAt.getTime() - Date.now() < halfLife) {
+      const newExpiry = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString()
+      await db.prepare('UPDATE sessions SET expires_at = ? WHERE id = ?').bind(newExpiry, session.session_id).run()
+      // 同步刷新浏览器 cookie 的 maxAge，避免 D1 续期但 cookie 已过期的不一致
+      deleteHostOnlySessionCookie(c)
+      setCookie(c, SESSION_COOKIE, token, {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'Lax',
+        path: '/',
+        domain: getSessionCookieDomain(c),
+        maxAge: SESSION_TTL_DAYS * 24 * 60 * 60,
+      })
+    }
+
+    return { userId: session.user_id, role: session.role }
   }
 
-  // 检查用户状态
-  if (session.status !== 'active') return null
-
-  // 滑动续期：如果距过期不足一半时间，延长 D1 有效期并刷新浏览器 cookie
-  const expiresAt = new Date(session.expires_at)
-  const halfLife = (SESSION_TTL_DAYS * 24 * 60 * 60 * 1000) / 2
-  if (expiresAt.getTime() - Date.now() < halfLife) {
-    const newExpiry = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString()
-    await db.prepare('UPDATE sessions SET expires_at = ? WHERE id = ?').bind(newExpiry, session.session_id).run()
-    // 同步刷新浏览器 cookie 的 maxAge，避免 D1 续期但 cookie 已过期的不一致
-    setCookie(c, SESSION_COOKIE, token, {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'Lax',
-      path: '/',
-      maxAge: SESSION_TTL_DAYS * 24 * 60 * 60,
-    })
-  }
-
-  return { userId: session.user_id, role: session.role }
+  deleteSessionCookies(c)
+  return null
 }
 
 /**
  * 销毁会话
  */
 export async function destroySession(c: AppContext): Promise<void> {
-  const token = getCookie(c, SESSION_COOKIE)
-  if (!token) return
+  const tokens = getSessionTokens(c)
+  if (tokens.length === 0) return
 
   const db = c.env.DB
-  const tokenHash = await hashToken(token)
-
-  await db.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(tokenHash).run()
-  deleteCookie(c, SESSION_COOKIE, { path: '/' })
+  for (const token of tokens) {
+    const tokenHash = await hashToken(token)
+    await db.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(tokenHash).run()
+  }
+  deleteSessionCookies(c)
 }
 
 /**
@@ -130,4 +150,34 @@ async function hashToken(token: string): Promise<string> {
   const data = encoder.encode(token)
   const hash = await crypto.subtle.digest('SHA-256', data)
   return Array.from(new Uint8Array(hash), b => b.toString(16).padStart(2, '0')).join('')
+}
+
+function getSessionCookieDomain(c: AppContext): string | undefined {
+  return c.env.APP_ENV === 'production' ? PRODUCTION_COOKIE_DOMAIN : undefined
+}
+
+function getSessionTokens(c: AppContext): string[] {
+  const cookie = c.req.raw.headers.get('Cookie')
+  if (!cookie) return []
+
+  const tokens: string[] = []
+  for (const part of cookie.split(';')) {
+    const [rawName, ...rawValue] = part.split('=')
+    if (rawName?.trim() !== SESSION_COOKIE) continue
+    const value = rawValue.join('=').trim()
+    if (value) tokens.push(value)
+  }
+  return [...new Set(tokens)]
+}
+
+function deleteHostOnlySessionCookie(c: AppContext): void {
+  deleteCookie(c, SESSION_COOKIE, { path: '/' })
+}
+
+function deleteSessionCookies(c: AppContext): void {
+  deleteHostOnlySessionCookie(c)
+  deleteCookie(c, SESSION_COOKIE, {
+    path: '/',
+    domain: getSessionCookieDomain(c),
+  })
 }

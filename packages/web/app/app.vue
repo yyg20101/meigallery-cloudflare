@@ -1,8 +1,11 @@
 <script setup lang="ts">
 const { fetchSettings, seoTitle, siteDescription, ogTitle, ogDescription, ogImage, siteIcon } = useSiteSettings()
+const { fetchUser } = useAuth()
 
 // 加载站点设置（SSR + 客户端均执行一次）
 await fetchSettings()
+// 刷新公开页面时也恢复登录态，避免仅受保护路由才读取会话。
+await fetchUser()
 
 // 全局 SEO meta（子页面可覆盖）
 useHead(() => ({
