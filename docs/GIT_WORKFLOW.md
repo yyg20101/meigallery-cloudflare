@@ -4,8 +4,8 @@
 
 | 分支 | 用途 | 保护规则 | 部署目标 |
 |------|------|----------|----------|
-| `main` | 生产分支 | 必须通过 PR 合入，禁止直接推送 | 自动部署到生产环境 |
-| `dev` | 开发主线 | 允许直接推送，推荐 PR | 手动部署到开发环境 |
+| `main` | 生产分支 | 必须通过 PR 合入，禁止直接推送 | 本地手动部署到生产环境 |
+| `dev` | 开发主线 | 允许直接推送，推荐 PR | 本地手动部署到 Workers dev 子域 |
 | `feature/*` | 功能分支 | 无保护 | 无自动部署 |
 | `fix/*` | 修复分支 | 无保护 | 无自动部署 |
 | `release/*` | 发布分支 | 临时创建 | 手动部署验证 |
@@ -23,8 +23,16 @@ main (生产)
 
 1. 从 `dev` 创建功能分支：`git checkout -b feature/xxx dev`
 2. 在功能分支上开发和提交
-3. 完成后合并回 `dev`：`git checkout dev && git merge feature/xxx`
-4. 删除已合并的功能分支
+3. 需要联调或验收时，先部署到 Workers dev 子域，使用真实数据验证但不影响生产主域
+4. 完成后合并回 `dev`：`git checkout dev && git merge feature/xxx`
+5. 删除已合并的功能分支
+
+### 上线后开发测试
+
+- 已正式上线后，未完成或未验收功能不得直接部署到 `616618.xyz` / `api.616618.xyz`。
+- 开发测试使用 `meigallery-web-dev` / `meigallery-api-dev` Worker 和 Workers dev 子域。
+- Dev 环境允许读取正式 D1/R2 数据以复现真实内容，但后台写操作必须谨慎执行，并保留审计日志。
+- Dev 页面必须带测试环境标识，并避免被生产页面、公开导航、sitemap 或搜索引擎收录。
 
 ### 发布上线
 
@@ -93,7 +101,7 @@ main (生产)
 | 环境 | 触发方式 | 分支 | Worker 名称 |
 |------|----------|------|-------------|
 | 生产（production） | 手动 `wrangler deploy` | `main` | `meigallery-api` / `meigallery-web` |
-| 开发（dev） | **已删除** | `dev` | `meigallery-api-dev` / `meigallery-web-dev` |
+| 开发（dev） | 手动 `wrangler deploy --env dev` 或 dev 专用配置 | `dev` / `feature/*` | `meigallery-api-dev` / `meigallery-web-dev` |
 | 本地（local） | `pnpm dev` | 任意 | localhost:8787 / localhost:3000 |
 
 ## 代码审查

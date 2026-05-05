@@ -17,6 +17,7 @@
 
 - `616618.xyz` → Web Worker（前台 + 后台管理）
 - `api.616618.xyz` → API Worker
+- Dev 测试入口使用 Workers dev 子域，例如 `meigallery-web-dev.<workers-subdomain>.workers.dev` 和 `meigallery-api-dev.<workers-subdomain>.workers.dev`，不绑定生产主域。
 
 配置步骤：
 
@@ -49,7 +50,7 @@ pnpm --filter @meigallery/web exec wrangler deploy
 
 ## 4. CI/CD
 
-**手动部署**：GitHub Actions 无配额，生产部署通过手动执行 wrangler deploy。
+**手动部署**：生产部署通过本地手动执行 wrangler deploy。GitHub Actions 不负责生产部署，避免合入分支后自动影响线上用户。
 
 ```bash
 pnpm --filter @meigallery/api exec wrangler deploy
@@ -88,7 +89,10 @@ wrangler secret put STREAM_API_TOKEN
 
 ### Dev 环境
 
-- `meigallery-api-dev` / `meigallery-web-dev`：**已删除，需要时重新创建**。
+- `meigallery-api-dev` / `meigallery-web-dev`：用于正式上线后的开发测试环境。
+- Dev Worker 使用 Workers dev 子域访问，不接入 `616618.xyz` 主域，不进入 sitemap、导航或公开链接。
+- Dev 环境可以连接正式 D1/R2 数据以使用真实内容验证 UI，但后台写操作必须限定管理员账号、保留审计日志并显式标记为测试操作。
+- Dev 页面必须带测试环境标识，并建议设置 `X-Robots-Tag: noindex, nofollow` 或等价 meta，避免搜索引擎收录。
 
 Workers：
 
