@@ -17,7 +17,6 @@ import { adminRoutes } from './routes/admin'
 import { healthRoutes } from './routes/health'
 import { authMiddleware } from './middleware/auth'
 import { rateLimiter } from './middleware/rate-limit'
-import { shouldBlockDevWrite } from './utils/dev-write-guard'
 
 /** Hono 应用绑定类型 */
 export type Bindings = CloudflareEnv & {
@@ -31,7 +30,6 @@ export type Bindings = CloudflareEnv & {
   IMAGE_RESIZING_ENABLED: string // "true" | "false"
   IMPORT_TOKEN_DAILY_LIMIT?: string
   TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT?: string
-  DEV_WRITE_ENABLED?: string
 }
 
 /** 应用级变量 */
@@ -60,9 +58,6 @@ app.use('*', cors({
   maxAge: 86400,
 }))
 app.use('*', async (c, next) => {
-  if (shouldBlockDevWrite(c.env.APP_ENV, c.env.DEV_WRITE_ENABLED, c.req.method)) {
-    return c.json({ statusCode: 403, message: '开发环境默认只读。绑定独立 dev D1/R2 后才可启用写入。' }, 403)
-  }
   await next()
   if (c.env.APP_ENV !== 'production') {
     c.header('X-Robots-Tag', 'noindex, nofollow')
