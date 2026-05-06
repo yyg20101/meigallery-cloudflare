@@ -19,13 +19,17 @@ const form = reactive({
   membership_description: '',
   home_hero_title: '',
   home_hero_subtitle: '',
-  home_hero_cta_label: '',
-  home_hero_cta_url: '',
   home_featured_region_slugs: '',
   home_hot_tag_limit: '',
-  about_title: '',
-  about_summary: '',
-  about_content: '',
+  rules_entry_title: '',
+  rules_entry_summary: '',
+  rules_entry_icon: 'letter',
+  rules_entry_enabled: 'true',
+  rules_modal_content: '',
+  rules_page_title: '',
+  rules_page_summary: '',
+  rules_page_content: '',
+  rules_page_url: '/rules',
 })
 const emailVerificationEnabled = ref(false)
 const videoEnabledToggle = ref(false)
@@ -177,16 +181,6 @@ async function toggleVideo() {
           <label class="mb-1 block text-sm font-medium text-gray-700">首页副标题</label>
           <textarea v-model="form.home_hero_subtitle" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="用于首页首屏说明" />
         </div>
-        <div class="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label class="mb-1 block text-sm font-medium text-gray-700">CTA 文案</label>
-            <input v-model="form.home_hero_cta_label" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="浏览精选图库" />
-          </div>
-          <div>
-            <label class="mb-1 block text-sm font-medium text-gray-700">CTA 链接</label>
-            <input v-model="form.home_hero_cta_url" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="/discover" />
-          </div>
-        </div>
         <div>
           <label class="mb-1 block text-sm font-medium text-gray-700">主推地区 slugs</label>
           <input v-model="form.home_featured_region_slugs" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="canada,domestic,toronto,vancouver" />
@@ -198,27 +192,53 @@ async function toggleVideo() {
         </div>
       </fieldset>
 
-      <!-- 关于我们 -->
+      <!-- 规则与引导 -->
       <fieldset class="space-y-4">
-        <legend class="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-2 w-full">关于我们页面</legend>
+        <legend class="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-2 w-full">规则与引导</legend>
+        <label class="flex items-center gap-2 text-sm text-gray-700">
+          <input v-model="form.rules_entry_enabled" type="checkbox" true-value="true" false-value="false" />
+          开启右下角规则入口
+        </label>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">页面标题</label>
-          <input v-model="form.about_title" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="关于我们" />
-          <p class="text-xs text-gray-400 mt-1">显示在 /about 页面主标题和 SEO 标题中</p>
+          <label class="block text-sm font-medium text-gray-700 mb-1">悬浮入口标题</label>
+          <input v-model="form.rules_entry_title" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="入站规则" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">页面摘要</label>
-          <textarea v-model="form.about_summary" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="用于页面首屏说明和 meta description" />
+          <label class="block text-sm font-medium text-gray-700 mb-1">悬浮入口说明</label>
+          <textarea v-model="form.rules_entry_summary" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="查看内容规则、会员说明和联系前须知。" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">正文 Markdown</label>
+          <label class="block text-sm font-medium text-gray-700 mb-1">入口图标</label>
+          <input v-model="form.rules_entry_icon" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="letter" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">弹窗 Markdown 摘要</label>
+          <textarea v-model="form.rules_modal_content" rows="8" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono leading-6" placeholder="## 入站规则&#10;&#10;- 本站仅展示合法授权内容" />
+          <p class="text-xs text-gray-400 mt-1">支持标题、列表、加粗、https 链接。</p>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">规则页标题</label>
+            <input v-model="form.rules_page_title" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="入站规则" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">规则页链接</label>
+            <input v-model="form.rules_page_url" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="/rules" />
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">规则页摘要</label>
+          <textarea v-model="form.rules_page_summary" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="了解 MeiGallery 的内容边界、会员访问和联系方式说明。" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">规则页 Markdown 正文</label>
           <textarea
-            v-model="form.about_content"
+            v-model="form.rules_page_content"
             rows="10"
             class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono leading-6"
-            placeholder="## 关于 MeiGallery&#10;&#10;这里填写关于我们页面正文，支持标题、列表、链接、加粗等 Markdown 语法。"
+            placeholder="## 内容边界&#10;&#10;这里填写完整规则正文。"
           />
-          <p class="text-xs text-gray-400 mt-1">支持基础 Markdown：标题、段落、列表、加粗、链接。前台会安全渲染，不执行 HTML。</p>
+          <p class="text-xs text-gray-400 mt-1">支持标题、列表、加粗、https 链接。前台会安全渲染，不执行 HTML。</p>
         </div>
       </fieldset>
 

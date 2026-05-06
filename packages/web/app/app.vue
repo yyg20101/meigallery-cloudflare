@@ -1,6 +1,8 @@
 <script setup lang="ts">
 const { fetchSettings, seoTitle, siteDescription, ogTitle, ogDescription, ogImage, siteIcon } = useSiteSettings()
 const { fetchUser } = useAuth()
+const config = useRuntimeConfig()
+const isDevEnvironment = computed(() => config.public.appEnv !== 'production')
 
 // 加载站点设置（SSR + 客户端均执行一次）
 await fetchSettings()
@@ -10,6 +12,9 @@ await fetchUser()
 // 全局 SEO meta（子页面可覆盖）
 useHead(() => ({
   title: seoTitle.value,
+  meta: isDevEnvironment.value
+    ? [{ name: 'robots', content: 'noindex, nofollow' }]
+    : [],
   link: siteIcon.value
     ? [
         { rel: 'icon', href: siteIcon.value },

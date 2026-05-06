@@ -2,6 +2,8 @@
 const { isLoggedIn, isAdmin, user, logout } = useAuth()
 const { siteName, footerText, videoEnabled } = useSiteSettings()
 const route = useRoute()
+const config = useRuntimeConfig()
+const isDevEnvironment = computed(() => config.public.appEnv !== 'production')
 
 const searchQuery = ref('')
 
@@ -16,7 +18,6 @@ const navLinks = computed(() => {
     { label: '首页', to: '/' },
     { label: '发现', to: '/discover' },
     { label: '标签', to: '/tags' },
-    { label: '关于', to: '/about' },
   ]
   if (videoEnabled.value) {
     links.push({ label: '视频', to: '/search?type=video' })
@@ -32,6 +33,10 @@ function isActive(to: string) {
 
 <template>
   <div class="min-h-screen flex flex-col bg-transparent text-gray-950">
+    <div v-if="isDevEnvironment" class="fixed right-3 top-16 z-[60] rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800 shadow-sm lg:top-20">
+      DEV 测试环境
+    </div>
+
     <!-- 桌面端顶部导航 -->
     <header class="hidden lg:block sticky top-0 z-40 border-b border-white/60 bg-white/78 backdrop-blur-xl shadow-[0_1px_0_rgba(255,255,255,0.75)]">
       <nav class="mx-auto max-w-7xl px-6 lg:px-8">

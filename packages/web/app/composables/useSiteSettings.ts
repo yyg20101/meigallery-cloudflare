@@ -18,15 +18,19 @@ export function useSiteSettings() {
     membership_description?: string
     email_verification_enabled?: string | boolean
     video_enabled?: string | boolean
-    about_title?: string
-    about_summary?: string
-    about_content?: string
     home_hero_title?: string
     home_hero_subtitle?: string
-    home_hero_cta_label?: string
-    home_hero_cta_url?: string
     home_featured_region_slugs?: string
     home_hot_tag_limit?: string | number
+    rules_entry_enabled?: string | boolean
+    rules_entry_title?: string
+    rules_entry_summary?: string
+    rules_entry_icon?: string
+    rules_modal_content?: string
+    rules_page_title?: string
+    rules_page_summary?: string
+    rules_page_content?: string
+    rules_page_url?: string
   }
 
   const settings = useState<SiteSettings>('site-settings', () => ({}))
@@ -53,13 +57,8 @@ export function useSiteSettings() {
   const ogImage = computed(() => settings.value.og_image || '')
   const footerText = computed(() => settings.value.footer_text || `© ${new Date().getFullYear()} ${siteName.value}`)
   const membershipDescription = computed(() => settings.value.membership_description || '')
-  const aboutTitle = computed(() => settings.value.about_title || '关于我们')
-  const aboutSummary = computed(() => settings.value.about_summary || '')
-  const aboutContent = computed(() => settings.value.about_content || '')
   const homeHeroTitle = computed(() => settings.value.home_hero_title || '精选写真，按地区发现')
   const homeHeroSubtitle = computed(() => settings.value.home_hero_subtitle || '以授权写真、时尚、生活与艺术类内容为核心，按地区和标签探索精选图库。')
-  const homeHeroCtaLabel = computed(() => settings.value.home_hero_cta_label || '浏览精选图库')
-  const homeHeroCtaUrl = computed(() => settings.value.home_hero_cta_url || '/discover')
   const homeFeaturedRegionSlugs = computed(() => String(settings.value.home_featured_region_slugs || '').split(',').map(s => s.trim()).filter(Boolean))
   const homeHotTagLimit = computed(() => {
     const value = Number(settings.value.home_hot_tag_limit || 15)
@@ -69,6 +68,18 @@ export function useSiteSettings() {
     const v = settings.value.video_enabled
     return v === true || v === 'true'
   })
+  const rulesEntryEnabled = computed(() => {
+    const value = settings.value.rules_entry_enabled
+    return value === true || value === 'true'
+  })
+  const rulesEntryTitle = computed(() => settings.value.rules_entry_title || '入站规则')
+  const rulesEntrySummary = computed(() => settings.value.rules_entry_summary || '查看内容规则、会员说明和联系前须知。')
+  const rulesEntryIcon = computed(() => settings.value.rules_entry_icon || 'letter')
+  const rulesModalContent = computed(() => settings.value.rules_modal_content || '')
+  const rulesPageTitle = computed(() => settings.value.rules_page_title || '入站规则')
+  const rulesPageSummary = computed(() => settings.value.rules_page_summary || '')
+  const rulesPageContent = computed(() => settings.value.rules_page_content || rulesModalContent.value)
+  const rulesPageUrl = computed(() => settings.value.rules_page_url || '/rules')
 
   return {
     settings,
@@ -82,15 +93,19 @@ export function useSiteSettings() {
     ogImage,
     footerText,
     membershipDescription,
-    aboutTitle,
-    aboutSummary,
-    aboutContent,
     homeHeroTitle,
     homeHeroSubtitle,
-    homeHeroCtaLabel,
-    homeHeroCtaUrl,
     homeFeaturedRegionSlugs,
     homeHotTagLimit,
     videoEnabled,
+    rulesEntryEnabled,
+    rulesEntryTitle,
+    rulesEntrySummary,
+    rulesEntryIcon,
+    rulesModalContent,
+    rulesPageTitle,
+    rulesPageSummary,
+    rulesPageContent,
+    rulesPageUrl,
   }
 }

@@ -25,6 +25,7 @@ const navItems = [
   { to: '/admin/users', label: '会员管理', icon: 'users' },
   { to: '/admin/import', label: '导入任务', icon: 'upload' },
   { to: '/admin/legacy-import', label: '旧站迁移', icon: 'refresh' },
+  { to: '/admin/testimonials', label: '真实案例', icon: 'message' },
   { to: '/admin/settings', label: '站点设置', icon: 'gear' },
   { to: '/admin/contact-methods', label: '联系方式', icon: 'message' },
   { to: '/admin/audit-logs', label: '审计日志', icon: 'clipboard' },

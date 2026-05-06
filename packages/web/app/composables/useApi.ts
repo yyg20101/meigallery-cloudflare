@@ -29,6 +29,10 @@ export function useApi() {
    * SSR 专用：通过 Service Binding 直连 API Worker
    * 从原始请求事件获取 Cloudflare env，避免 localCall 合成事件无 env 的问题
    */
+  function isFormDataBody(body: unknown): body is FormData {
+    return typeof FormData !== 'undefined' && body instanceof FormData
+  }
+
   async function ssrFetch<T>(fullPath: string, options?: {
     method?: string
     body?: unknown
@@ -41,7 +45,9 @@ export function useApi() {
       const init: RequestInit = {
         method: options?.method || 'GET',
       }
-      if (options?.body) {
+      if (isFormDataBody(options?.body)) {
+        init.body = options.body
+      } else if (options?.body) {
         (init as any).headers = { 'Content-Type': 'application/json' }
         init.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body)
       }
@@ -73,7 +79,9 @@ export function useApi() {
     const fetchOpts: Record<string, unknown> = {
       method: options?.method || 'GET',
     }
-    if (options?.body) {
+    if (isFormDataBody(options?.body)) {
+      fetchOpts.body = options.body
+    } else if (options?.body) {
       fetchOpts.headers = { 'Content-Type': 'application/json' }
       fetchOpts.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body)
     }
@@ -100,7 +108,9 @@ export function useApi() {
       method: options?.method || 'GET',
       credentials: 'include',
     }
-    if (options?.body) {
+    if (isFormDataBody(options?.body)) {
+      fetchOptions.body = options.body
+    } else if (options?.body) {
       fetchOptions.headers = { 'Content-Type': 'application/json' }
       fetchOptions.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body)
     }

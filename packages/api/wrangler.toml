@@ -42,3 +42,31 @@ IMAGE_RESIZING_ENABLED = "false"
 # wrangler secret put TURNSTILE_SECRET_KEY
 # wrangler secret put STREAM_ACCOUNT_ID
 # wrangler secret put STREAM_API_TOKEN
+
+[env.dev]
+name = "meigallery-api-dev"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[env.dev.d1_databases]]
+binding = "DB"
+database_name = "meigallery-db"
+database_id = "714929cb-003b-4cb1-bd9f-545fa1895e8c"
+migrations_dir = "migrations"
+
+[[env.dev.r2_buckets]]
+binding = "R2"
+bucket_name = "meigallery-media"
+
+[[env.dev.send_email]]
+name = "EMAIL"
+
+[env.dev.triggers]
+crons = []
+
+[env.dev.vars]
+APP_ENV = "dev"
+CORS_ORIGIN = "*"
+EMAIL_FROM = "noreply@616618.xyz"
+IMAGE_RESIZING_ENABLED = "false"

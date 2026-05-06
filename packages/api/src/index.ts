@@ -10,6 +10,7 @@ import { searchRoutes } from './routes/search'
 import { mediaRoutes } from './routes/media'
 import { meRoutes } from './routes/me'
 import { contactMethodRoutes } from './routes/contact-methods'
+import { testimonialCaseRoutes } from './routes/testimonial-cases'
 import { PUBLIC_SETTING_KEYS } from './utils/site-settings'
 import { adminRoutes } from './routes/admin'
 import { healthRoutes } from './routes/health'
@@ -53,6 +54,12 @@ app.use('*', cors({
   allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   maxAge: 86400,
 }))
+app.use('*', async (c, next) => {
+  await next()
+  if (c.env.APP_ENV !== 'production') {
+    c.header('X-Robots-Tag', 'noindex, nofollow')
+  }
+})
 // 登录/注册接口速率限制：每 IP 每分钟 10 次
 app.use('/api/auth/*', rateLimiter({ limit: 10, windowMs: 60_000 }))
 // 图库互动接口速率限制：每 IP 每分钟 60 次
@@ -68,6 +75,7 @@ app.route('/api/search', searchRoutes)
 app.route('/api/media', mediaRoutes)
 app.route('/api/me', meRoutes)
 app.route('/api/contact-methods', contactMethodRoutes)
+app.route('/api/testimonial-cases', testimonialCaseRoutes)
 // 公开站点信息（不需要登录）
 app.get('/api/settings/public', async (c) => {
   const db = c.env.DB
