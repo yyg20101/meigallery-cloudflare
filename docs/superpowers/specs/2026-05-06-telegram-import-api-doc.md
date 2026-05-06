@@ -13,6 +13,7 @@
 
 - `POST /api/imports/telegram-file-id`：提交导入请求。
 - `GET /api/imports/:importId`：查询导入状态。
+- `POST /api/imports/:importId/retry`：重试失败导入。
 
 **认证**
 
@@ -40,10 +41,12 @@ Content-Type: application/json
 | `pending_media_fetch` | 已接收请求，等待异步任务拉取媒体 |
 | `fetching_media` | 正在调用 Telegram API 下载并保存文件 |
 | `draft_created` | 草稿和媒体均创建成功 |
-| `failed` | 导入失败，未创建可用草稿 |
+| `failed` | 导入失败，未创建可用草稿；可调用 retry 接口重试 |
 | `duplicate` | 相同 token/source/externalMessageId 已导入 |
 
 Bot 端应在提交成功后轮询 `GET /api/imports/:importId`，直到状态进入 `draft_created` 或 `failed`。
+
+`failed` 的含义是没有可用草稿：`targetId` 为 `null`，MeiGallery 不会保留可发布的图库/真实案例草稿，也不会保留目标媒体记录。状态响应里的文件级结果只用于排查本次尝试，不代表这些图片已可用。
 
 ## 3. 限制
 
@@ -320,10 +323,66 @@ API 使用 `token + source + externalMessageId` 做幂等判断。
 }
 ```
 
+duplicate 响应中的 `importId` 是原导入记录 ID。Bot 应继续使用该 `importId` 查询状态：
+
+```bash
+curl "https://api.616618.xyz/api/imports/eir_abc123" \
+  -H "Authorization: Bearer mgi_xxx"
+```
+
 Bot 端建议：
 - 每条 Telegram 消息或 media group 固定生成一个 `externalMessageId`。
 - 网络超时后可以用同一个 `externalMessageId` 重试。
+- 异步处理进入 `failed` 后，优先调用 `POST /api/imports/:importId/retry`，不要重新提交同一个 metadata。
 - 如果确实需要把同一 Telegram 消息重新导入为新草稿，应使用新的 `externalMessageId`，例如追加 `:retry-1`。
+
+### 7.1 重试失败导入
+
+只有 `failed` 状态可以重试。`pending_media_fetch`、`fetching_media`、`draft_created` 和 `duplicate` 都不允许重试。
+
+```bash
+curl -X POST "https://api.616618.xyz/api/imports/eir_abc123/retry" \
+  -H "Authorization: Bearer mgi_xxx"
+```
+
+成功响应：
+
+```json
+{
+  "importId": "eir_abc123",
+  "type": "gallery",
+  "status": "pending_media_fetch",
+  "retryCount": 1,
+  "message": "导入重试已开始"
+}
+```
+
+不允许重试响应：
+
+```json
+{
+  "statusCode": 409,
+  "code": "IMPORT_RETRY_NOT_ALLOWED",
+  "message": "当前导入状态不允许重试"
+}
+```
+
+如果失败导入仍有待清理资源，API 会拒绝重试：
+
+```json
+{
+  "statusCode": 409,
+  "code": "IMPORT_RETRY_CLEANUP_REQUIRED",
+  "message": "失败导入仍有待清理资源，暂不能重试"
+}
+```
+
+Bot 端建议：
+- 只有状态查询返回 `failed` 后才调用 retry。
+- retry 成功后继续轮询 `GET /api/imports/:importId`。
+- retry 不会创建新的 `externalMessageId`，也不会创建新的 `importId`。
+- 如果返回 `IMPORT_RETRY_CLEANUP_REQUIRED`，不要自动重试，标记为人工处理。
+- 如果 retry 多次仍失败，应标记为人工处理，不要无限重试。
 
 ## 8. 错误响应
 
@@ -352,11 +411,13 @@ Bot 端建议：
 | 403 | `SOURCE_BOT_NOT_ALLOWED` | sourceBotKey 不允许 | 停止重试，调整 token 允许列表 |
 | 400 | `VALIDATION_ERROR` | metadata、telegram 或 files 不合法 | 修正字段后重试 |
 | 409 | `SLUG_CONFLICT` | slug 已存在 | 换 slug 后重试 |
+| 409 | `IMPORT_RETRY_NOT_ALLOWED` | 当前导入状态不允许重试 | 仅在 `failed` 状态调用 retry |
+| 409 | `IMPORT_RETRY_CLEANUP_REQUIRED` | 失败导入仍有待清理资源 | 停止自动重试，人工处理 |
 | 429 | `RATE_LIMITED` | 触发速率限制 | 延迟后重试 |
 | 429 | `DAILY_IMPORT_LIMIT_EXCEEDED` | token 达到每日导入上限 | 次日重试或联系站长 |
 | 500 | `IMPORT_ACCEPT_FAILED` | 导入记录写入失败 | 使用同一 `externalMessageId` 重试 |
 
-异步阶段的 Telegram 下载失败不会通过提交接口直接返回；Bot 应通过状态查询读取 `failed` 状态和文件级错误。
+异步阶段的 Telegram 下载失败不会通过提交接口直接返回；Bot 应通过状态查询读取 `failed` 状态和文件级错误，然后调用 `POST /api/imports/:importId/retry` 发起重试。
 
 ## 9. Node.js Bot 示例
 
@@ -419,6 +480,18 @@ async function pollImport(importId: string) {
   }
   throw new Error(`导入超时: ${importId}`)
 }
+
+async function retryImport(importId: string) {
+  const response = await fetch(`https://api.616618.xyz/api/imports/${importId}/retry`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${process.env.MEIGALLERY_IMPORT_TOKEN}` },
+  })
+  const result = await response.json()
+  if (!response.ok) {
+    throw new Error(`${result.code || response.status}: ${result.message || '导入重试失败'}`)
+  }
+  return result as { importId: string; status: string; retryCount: number }
+}
 ```
 
 ## 10. Bot 端实现建议
@@ -430,7 +503,9 @@ async function pollImport(importId: string) {
 - Bot 保存 `externalMessageId -> importId/status` 映射，便于后续排查。
 - Bot 遇到 `401`、`403`、`409` 不应无限重试。
 - Bot 遇到 `429` 应指数退避，至少等待 30 秒后重试。
-- Bot 遇到网络超时或 `500` 可用同一 `externalMessageId` 重试。
+- Bot 遇到提交接口网络超时或 `500` 可用同一 `externalMessageId` 重试。
+- Bot 查询到 `failed` 后应调用 `POST /api/imports/:importId/retry`，不要重新提交同一个导入请求。
+- Bot 收到 duplicate 时，应使用响应里的 `importId` 查询原导入状态。
 - Bot 提交成功后应轮询状态；如果超过 3 分钟仍未完成，应标记为待人工查看。
 
 ## 11. 上线前自测清单
@@ -438,7 +513,9 @@ async function pollImport(importId: string) {
 - 使用 dev Base URL 完成一次图库 file_id 导入。
 - 使用 dev Base URL 完成一次真实案例 file_id 导入。
 - 轮询状态直到 `draft_created`。
+- 构造一次失败导入并调用 `POST /api/imports/:importId/retry`，确认状态回到 `pending_media_fetch`。
 - 重复提交同一个 `externalMessageId`，确认返回 `duplicate`。
+- 使用 duplicate 响应的 `importId` 查询状态，确认可读取原导入记录。
 - 禁用 token 后请求，确认返回 `403`。
 - 使用未授权 `sourceBotKey` 请求，确认返回 `403 SOURCE_BOT_NOT_ALLOWED`。
 - 提交 GIF MIME 声明，确认返回 `400 VALIDATION_ERROR`。

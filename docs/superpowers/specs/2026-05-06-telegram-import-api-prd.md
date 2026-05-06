@@ -41,7 +41,10 @@
 - API accepts `application/json` with `metadata`、`telegram` and `files` sections.
 - API requires `Authorization: Bearer <import_token>`.
 - API rejects missing token, invalid token, disabled token, and expired token with `401` or `403`.
+- MeiGallery must support secure `sourceBotKey -> Telegram Bot Token` configuration through Worker secrets or Cloudflare Secrets Store.
 - API validates `sourceBotKey` against an allowlist configured on the Import Token or server settings.
+- Import Token must be able to restrict which `sourceBotKey` values it can use.
+- Admin UI, public API, worker logs, audit logs and import records must never display Telegram Bot Token plaintext, prefix, suffix, or Telegram download URL.
 - API creates an external import record immediately and returns `pending_media_fetch`.
 - API processes media asynchronously and transitions status through `fetching_media` to `draft_created`、`partial_failed` or `failed`.
 - API always creates imported content as `draft`.
@@ -51,7 +54,11 @@
 - Testimonial import requires 2-9 Telegram image references in one import request.
 - Token permissions distinguish at least `gallery:create` and `testimonial:create`.
 - Duplicate `externalMessageId` from the same token must not create duplicate content.
+- Duplicate responses must return the original `importId`; Bot can continue querying that `importId` through `GET /api/imports/:importId`.
 - Bot can query import status by `importId`.
+- Bot can retry a failed import with `POST /api/imports/:importId/retry` using the same Import Token.
+- Retry is only allowed when the import status is `failed`; retrying `pending_media_fetch`、`fetching_media`、`draft_created` or `duplicate` must return a clear `409` error.
+- `failed` status means no usable target draft exists: `targetId` must be `null`, target draft rows must not remain, target media rows must not remain, and any R2 objects uploaded during the failed attempt must be deleted or marked for cleanup before retry is accepted.
 - All successful and failed import attempts write audit logs.
 
 **Non-Goals**
@@ -78,7 +85,10 @@
 - 验证字段映射准确率达到 100%，包括标题、slug、标签、会员等级、摘要、正文、媒体顺序。
 - 验证错误样例能返回明确错误，例如缺少标题、slug 冲突、图片数量不足、文件类型不支持、token 无效、sourceBotKey 不允许。
 - 验证重复提交相同 `externalMessageId` 不会创建重复图库或真实案例。
+- 验证 duplicate 响应里的 `importId` 可继续通过 `GET /api/imports/:importId` 查询原导入状态。
 - 验证异步状态最终能从 `pending_media_fetch` 进入 `draft_created` 或明确失败状态。
+- 验证 `failed` 导入可通过 `POST /api/imports/:importId/retry` 回到 `pending_media_fetch` 并重新处理。
+- 验证 `failed` 状态没有残留目标草稿、目标媒体记录或可访问 R2 对象。
 
 ## 4. Technical Specifications
 
@@ -101,6 +111,11 @@ MeiGallery API Worker
   -> 创建图库或真实案例草稿
   -> 写入 external import record 和 audit log
 
+Telegram Bot / Ops Hub
+  -> 发现状态为 failed
+  -> POST /api/imports/:importId/retry
+  -> MeiGallery 复用原导入记录重新拉取文件
+
 MeiGallery 后台
   -> 管理员查看导入记录和失败原因
   -> 管理员审核草稿
@@ -112,10 +127,11 @@ MeiGallery 后台
 
 - 新增 API：`POST /api/imports/telegram-file-id`
 - 新增 API：`GET /api/imports/:importId`
+- 新增 API：`POST /api/imports/:importId/retry`
 - 新增后台 API：管理 Import Token，包括创建、禁用、查看最近使用时间和允许的 `sourceBotKey`。
 - 新增后台 API：查看外部导入记录、失败原因和目标资源链接。
 - 新增 D1 表：`import_api_tokens`，保存 token hash、名称、权限、状态、过期时间、允许的 `sourceBotKey`。
-- 新增 D1 表：`external_import_records`，保存 token id、source、externalMessageId、Telegram 来源信息、target type、target id、状态。
+- 新增 D1 表：`external_import_records`，保存 token id、source、externalMessageId、Telegram 来源信息、target type、target id、状态、重试次数。
 - 新增 D1 表：`external_import_files`，保存 Telegram `file_id`、`file_unique_id`、声明 MIME、排序、拉取状态和 R2 key。
 - 新增 Worker secret：按环境配置 `TELEGRAM_BOT_TOKEN_<SOURCE_BOT_KEY>` 或使用 Cloudflare Secrets Store 保存 Bot Token。
 - 复用 R2：图库图片存入 `originals/{galleryId}/{assetId}.{ext}`。
@@ -172,8 +188,8 @@ MeiGallery 后台
 
 **Phased Rollout**
 
-- MVP：`file_id` JSON 导入 API、Import Token、sourceBotKey secret 映射、图库/真实案例草稿创建、R2 保存、幂等、防重复、状态查询、审计日志。
-- v1.1：后台增加“外部导入记录”列表，展示成功/失败详情和重试入口。
+- MVP：`file_id` JSON 导入 API、Import Token、sourceBotKey secret 映射、图库/真实案例草稿创建、R2 保存、幂等、防重复、状态查询、失败重试、审计日志。
+- v1.1：后台增加“外部导入记录”列表，展示成功/失败详情和后台重试入口。
 - v2.0：官方 Telegram Bot webhook、caption 规则解析、AI 辅助字段建议、视频接入 Cloudflare Stream。
 
 **Technical Risks**
