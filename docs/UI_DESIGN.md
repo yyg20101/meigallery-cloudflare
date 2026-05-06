@@ -473,6 +473,8 @@
 
 ## 14. 线框图索引
 
+首页真实案例、标签导航和悬浮入口的开发细节以 `docs/superpowers/specs/2026-05-06-homepage-trust-navigation-ui-implementation-notes.md` 为补充依据。该文件锁定字体策略、URL 参数、轮播状态、空态、后台上传排序和响应式验收点。
+
 所有线框图位于 `.superpowers/brainstorm/` 目录（不纳入版本管理）：
 
 1. `01-homepage-layout.html` — 首页布局（桌面+移动）
