@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { Bindings, Variables } from '../../index'
 import { requireOwner } from '../../middleware/auth'
+import { normalizeBooleanSetting, normalizeFacebookPixelId } from '../../utils/facebook-pixel-settings'
 import { writeAuditLog } from '../../utils/permission'
 import { ADMIN_SETTING_KEYS } from '../../utils/site-settings'
 
@@ -24,7 +25,22 @@ adminSettingsRoutes.get('/', requireOwner, async (c) => {
 adminSettingsRoutes.patch('/', requireOwner, async (c) => {
   const adminId = c.get('userId')!
   const db = c.env.DB
-  const body = await c.req.json<Record<string, string>>()
+  const rawBody = await c.req.json<Record<string, unknown>>()
+  const body: Record<string, unknown> = { ...rawBody }
+
+  if ('facebook_pixel_id' in body) {
+    try {
+      body.facebook_pixel_id = normalizeFacebookPixelId(body.facebook_pixel_id)
+    } catch (error) {
+      return c.json({ statusCode: 400, message: error instanceof Error ? error.message : 'Facebook Pixel ID 无效' }, 400)
+    }
+  }
+  if ('facebook_pixel_enabled' in body) {
+    body.facebook_pixel_enabled = normalizeBooleanSetting(body.facebook_pixel_enabled)
+  }
+  if ('facebook_pixel_debug_enabled' in body) {
+    body.facebook_pixel_debug_enabled = normalizeBooleanSetting(body.facebook_pixel_debug_enabled)
+  }
 
   const keys = Object.keys(body).filter(k => ALLOWED_KEYS.includes(k))
   if (keys.length === 0) {
@@ -37,7 +53,7 @@ adminSettingsRoutes.patch('/', requireOwner, async (c) => {
     .prepare(`SELECT key, value FROM site_settings WHERE key IN (${placeholders})`)
     .bind(...keys)
     .all<{ key: string; value: string }>()
-  const oldMap: Record<string, string> = {}
+  const oldMap: Record<string, unknown> = {}
   for (const row of oldValues.results) {
     oldMap[row.key] = JSON.parse(row.value)
   }
@@ -49,7 +65,7 @@ adminSettingsRoutes.patch('/', requireOwner, async (c) => {
       .run()
   }
 
-  const newMap: Record<string, string> = {}
+  const newMap: Record<string, unknown> = {}
   for (const key of keys) {
     newMap[key] = body[key]!
   }

@@ -2,6 +2,7 @@
 const { login, isLoggedIn } = useAuth()
 const route = useRoute()
 const router = useRouter()
+const { trackLoginCompleted } = useFacebookPixel()
 
 const identifier = ref('')
 const password = ref('')
@@ -48,6 +49,7 @@ async function onSubmit() {
   loading.value = true
   try {
     await login(identifier.value, password.value, hasTurnstile.value ? turnstileToken.value : undefined)
+    trackLoginCompleted()
     navigateTo((route.query.redirect as string) || '/')
   } catch (e: any) {
     error.value = e?.data?.message || e?.message || '登录失败，请重试'

@@ -4,6 +4,7 @@ import type { ContactMethod } from '@meigallery/shared'
 const props = defineProps<{
   method: ContactMethod
 }>()
+const emit = defineEmits<{ activate: [methodType: string] }>()
 
 const showQr = ref(false)
 const isHovering = ref(false)
@@ -31,6 +32,7 @@ async function copyValue() {
 }
 
 function activate() {
+  emit('activate', props.method.platform)
   if (hasQr.value) {
     toggleQr()
     return

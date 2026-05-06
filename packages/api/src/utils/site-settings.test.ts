@@ -43,4 +43,17 @@ describe('site settings keys', () => {
       expect(PUBLIC_SETTING_KEYS).toContain(key)
     }
   })
+
+  it('allows Facebook Pixel settings in admin and public settings', () => {
+    const pixelKeys = [
+      'facebook_pixel_enabled',
+      'facebook_pixel_id',
+      'facebook_pixel_debug_enabled',
+    ]
+
+    for (const key of pixelKeys) {
+      expect(ADMIN_SETTING_KEYS).toContain(key)
+      expect(PUBLIC_SETTING_KEYS).toContain(key)
+    }
+  })
 })

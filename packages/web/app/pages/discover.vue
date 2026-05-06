@@ -15,6 +15,7 @@ useSeoMeta({
 
 const route = useRoute()
 const router = useRouter()
+const { trackFilterSelected } = useFacebookPixel()
 
 const PAGE_SIZE = 24
 
@@ -52,6 +53,7 @@ function toggleTag(slug: string) {
     selectedSlugs.value.push(slug)
   }
   updateQuery()
+  trackFilterSelected({ tagSlug: slug, tagType: findTagType(slug), location: 'discover_filter' })
 }
 
 function clearTags() {
@@ -73,6 +75,13 @@ const { data: tagsData } = await useAsyncData('discover-tags', () =>
 
 const tags = computed(() => tagsData.value?.data ?? {})
 const regionGuideItems = computed(() => collectRegionGuideItems(tags.value, [], 4))
+
+function findTagType(slug: string) {
+  for (const [type, items] of Object.entries(tags.value)) {
+    if (items.some(tag => tag.slug === slug)) return type
+  }
+  return 'unknown'
+}
 
 // 无限滚动状态
 const galleries = ref<GallerySummary[]>([])

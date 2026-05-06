@@ -18,6 +18,9 @@ export function useSiteSettings() {
     membership_description?: string
     email_verification_enabled?: string | boolean
     video_enabled?: string | boolean
+    facebook_pixel_enabled?: string | boolean
+    facebook_pixel_id?: string
+    facebook_pixel_debug_enabled?: string | boolean
     home_hero_title?: string
     home_hero_subtitle?: string
     home_featured_region_slugs?: string
@@ -68,6 +71,15 @@ export function useSiteSettings() {
     const v = settings.value.video_enabled
     return v === true || v === 'true'
   })
+  const facebookPixelEnabled = computed(() => {
+    const v = settings.value.facebook_pixel_enabled
+    return v === true || v === 'true'
+  })
+  const facebookPixelId = computed(() => String(settings.value.facebook_pixel_id || '').trim())
+  const facebookPixelDebugEnabled = computed(() => {
+    const v = settings.value.facebook_pixel_debug_enabled
+    return v === true || v === 'true'
+  })
   const rulesEntryEnabled = computed(() => {
     const value = settings.value.rules_entry_enabled
     return value === true || value === 'true'
@@ -98,6 +110,9 @@ export function useSiteSettings() {
     homeFeaturedRegionSlugs,
     homeHotTagLimit,
     videoEnabled,
+    facebookPixelEnabled,
+    facebookPixelId,
+    facebookPixelDebugEnabled,
     rulesEntryEnabled,
     rulesEntryTitle,
     rulesEntrySummary,

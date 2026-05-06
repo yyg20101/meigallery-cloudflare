@@ -5,6 +5,7 @@ const route = useRoute()
 const { api } = useApi()
 const { isLoggedIn, membershipRank } = useAuth()
 const { videoEnabled } = useSiteSettings()
+const { trackViewContent } = useFacebookPixel()
 
 
 interface GalleryTag {
@@ -151,6 +152,16 @@ watch(
   },
   { immediate: true },
 )
+
+onMounted(() => {
+  if (!gallery.value || gallery.value.status !== 'published') return
+  trackViewContent({
+    id: gallery.value.id,
+    title: gallery.value.title,
+    requiredRank: gallery.value.requiredLevelRank,
+    tags: gallery.value.tags.map(tag => tag.slug),
+  })
+})
 
 function isUnauthorizedError(error: unknown) {
   if (!error || typeof error !== 'object') return false

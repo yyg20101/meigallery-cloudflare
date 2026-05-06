@@ -9,6 +9,7 @@ const {
   rulesModalContent,
   rulesPageUrl,
 } = useSiteSettings()
+const { trackLeadOnce } = useFacebookPixel()
 
 await fetchContactMethods()
 
@@ -21,6 +22,13 @@ const renderedRules = computed(() => renderSafeMarkdown(rulesModalContent.value 
 function toggleOpen() {
   contactOpen.value = !contactOpen.value
   if (contactOpen.value) rulesOpen.value = false
+  if (contactOpen.value) {
+    trackLeadOnce({ location: 'floating_contact_panel', methodType: 'panel_open' })
+  }
+}
+
+function trackContactMethod(methodType: string) {
+  trackLeadOnce({ location: 'floating_contact_panel', methodType })
 }
 
 function toggleRules() {
@@ -112,6 +120,7 @@ function toggleRules() {
             v-for="method in contactMethods"
             :key="method.id"
             :method="method"
+            @activate="trackContactMethod"
           />
         </div>
 
