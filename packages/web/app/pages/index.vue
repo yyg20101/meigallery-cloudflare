@@ -4,7 +4,6 @@ const {
   videoEnabled,
   homeHeroTitle,
   homeHeroSubtitle,
-  homeHotTagLimit,
 } = useSiteSettings()
 
 interface GallerySummary {
@@ -20,10 +19,6 @@ interface GallerySummary {
   likeCount?: number
 }
 
-interface TagGroup {
-  [type: string]: Array<{ id: string; name: string; slug: string }>
-}
-
 interface TestimonialSummary {
   id: string
   title: string
@@ -34,7 +29,8 @@ interface TestimonialSummary {
   publishedAt: string | null
 }
 
-const PAGE_SIZE = 12
+const PAGE_SIZE = 32
+const LATEST_DISPLAY_LIMIT = 20
 
 // 获取图库数据
 const { data: galleriesData } = await useAsyncData('home-galleries', () =>
@@ -43,11 +39,6 @@ const { data: galleriesData } = await useAsyncData('home-galleries', () =>
 
 const { data: hotGalleriesData } = await useAsyncData('home-hot-galleries', () =>
   api<{ data: GallerySummary[]; total: number }>('/api/galleries', { query: { pageSize: '9', sort: 'hot' } }),
-)
-
-// 获取标签
-const { data: tagsData } = await useAsyncData('home-tags', () =>
-  api<{ data: TagGroup }>('/api/tags'),
 )
 
 const { data: testimonialsData } = await useAsyncData('home-testimonials', () =>
@@ -111,21 +102,6 @@ const latest = computed(() => {
   return allGalleries.value.filter(gallery => !displayedKeys.has(galleryKey(gallery)))
 })
 
-function flattenTags(types: string[], limit: number) {
-  if (!tagsData.value?.data) return []
-  const result: Array<{ id: string; name: string; slug: string; type: string }> = []
-  for (const type of types) {
-    for (const item of tagsData.value.data[type] || []) {
-      result.push({ ...item, type })
-      if (result.length >= limit) return result
-    }
-  }
-  return result
-}
-
-const cityTags = computed(() => flattenTags(['city', 'city_country'], 8))
-const regionTags = computed(() => flattenTags(['region_scope', 'region_group'], 8))
-const styleTags = computed(() => flattenTags(['style', 'personality', 'scene'], homeHotTagLimit.value))
 const testimonials = computed(() => testimonialsData.value?.data ?? [])
 
 useSeoMeta({
@@ -145,10 +121,6 @@ useSeoMeta({
       :galleries="heroGalleries"
     />
 
-    <section class="mt-6 lg:mt-8">
-      <HomeTagNavigator :cities="cityTags" :regions="regionTags" :styles="styleTags" />
-    </section>
-
     <section class="mt-8 lg:mt-10">
       <TestimonialCarousel :cases="testimonials" />
     </section>
@@ -167,7 +139,7 @@ useSeoMeta({
     <section class="mt-8 lg:mt-10">
       <EditorialSectionHeading eyebrow="最新上新" title="最新图库" description="持续更新授权写真、时尚、生活与艺术类图库。" action-label="查看全部" action-to="/discover" />
       <template v-if="galleriesData">
-        <GalleryGrid :galleries="latest.slice(0, 12)" variant="magazine" />
+        <GalleryGrid :galleries="latest.slice(0, LATEST_DISPLAY_LIMIT)" variant="magazine" />
         <div v-if="latest.length === 0" class="rounded-[1.5rem] border border-orange-100 bg-white/80 py-20 text-center text-gray-400">暂无更多最新内容</div>
         <div class="mt-6 text-center">
           <NuxtLink to="/discover" class="inline-flex rounded-full bg-gray-950 px-5 py-3 text-sm font-medium text-white shadow-sm shadow-gray-900/15 transition-all hover:-translate-y-0.5 hover:bg-gray-800">
