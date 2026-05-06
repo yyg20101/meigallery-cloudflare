@@ -31,6 +31,8 @@ name = "meigallery-web-dev"
 main = ".output/server/index.mjs"
 compatibility_date = "2024-11-01"
 compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+routes = []
 
 [env.dev.assets]
 directory = ".output/public"
@@ -41,4 +43,5 @@ service = "meigallery-api-dev"
 
 [env.dev.vars]
 NUXT_PUBLIC_APP_ENV = "dev"
+NUXT_PUBLIC_API_BASE_URL = "https://meigallery-api-dev.250770503.workers.dev"
 NUXT_PUBLIC_TURNSTILE_SITE_KEY = "0x4AAAAAADGbuWKJvOkDMRWU"
