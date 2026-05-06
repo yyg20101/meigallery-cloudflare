@@ -1,6 +1,6 @@
-# Telegram 导入 API 对接文档
+# Telegram file_id 导入 API 对接文档
 
-本文档面向自定义 Telegram Bot 开发者，说明如何把 Telegram 消息解析为结构化字段，并通过 MeiGallery 导入 API 创建图库或真实案例草稿。
+本文档面向自定义 Telegram Bot / Ops Hub 开发者，说明如何把 Telegram 消息解析为结构化字段，并通过 MeiGallery `file_id` 异步导入 API 创建图库或真实案例草稿。
 
 ## 1. 接入概览
 
@@ -9,9 +9,10 @@
 - 生产：`https://api.616618.xyz`
 - Dev：`https://meigallery-api-dev.250770503.workers.dev`
 
-**Endpoint**
+**Endpoints**
 
-- `POST /api/imports/telegram`
+- `POST /api/imports/telegram-file-id`：提交导入请求。
+- `GET /api/imports/:importId`：查询导入状态。
 
 **认证**
 
@@ -21,50 +22,74 @@ Authorization: Bearer mgi_xxx
 
 **Content-Type**
 
-使用 `multipart/form-data`。不要手动拼接 boundary，交给 HTTP 客户端自动生成。
-
-**请求字段**
-
-- `metadata`：JSON 字符串，必填。
-- `files`：图片文件，可重复出现，必填。
+```http
+Content-Type: application/json
+```
 
 **结果**
 
-- API 只创建草稿。
-- API 不发布图库或真实案例。
-- API 不保存 Telegram Bot Token。
-- API 不接受 Telegram `file_id`，Bot 必须先下载文件，再 multipart 上传。
+- API 接收请求后返回 `pending_media_fetch`。
+- MeiGallery 异步拉取 Telegram 文件并保存到 R2。
+- API 只创建草稿，不发布图库或真实案例。
+- Bot 不需要下载图片，也不需要 multipart 上传。
 
-## 2. 限制
+## 2. 状态流
+
+| 状态 | 含义 |
+|------|------|
+| `pending_media_fetch` | 已接收请求，等待异步任务拉取媒体 |
+| `fetching_media` | 正在调用 Telegram API 下载并保存文件 |
+| `draft_created` | 草稿和媒体均创建成功 |
+| `failed` | 导入失败，未创建可用草稿 |
+| `duplicate` | 相同 token/source/externalMessageId 已导入 |
+
+Bot 端应在提交成功后轮询 `GET /api/imports/:importId`，直到状态进入 `draft_created` 或 `failed`。
+
+## 3. 限制
 
 | 项目 | 限制 |
 |------|------|
-| 图片 MIME | `image/jpeg`、`image/png`、`image/webp` |
-| 单张图片大小 | 最大 10MB |
-| 图库图片数量 | 1-30 张 |
-| 真实案例图片数量 | 2-9 张 |
+| 支持文件来源 | Telegram `file_id` |
+| 图片 MIME 声明 | `image/jpeg`、`image/png`、`image/webp` |
+| 单张图片真实大小 | 最大 10MB，由 MeiGallery 拉取后校验 |
+| 图库图片数量 | 1-30 个 file_id |
+| 真实案例图片数量 | 2-9 个 file_id |
 | metadata 大小 | 最大 20KB |
-| 默认总请求体安全上限 | 80MB |
 | 创建状态 | 固定 `draft` |
 
-Cloudflare 账户层也有请求体大小限制。当前官方文档显示 Free/Pro 为 100MB，Business 为 200MB，Enterprise 默认为 500MB。Bot 应避免一次上传接近上限的大量原图；如果总大小接近 80MB，建议压缩图片或拆分为多次导入。
+视频文件首期不支持。Bot 不应提交 `video/mp4` 或 Telegram video/document 视频引用。
 
-## 3. 图库导入
+## 4. 图库导入
 
-### 3.1 Metadata Schema
+### 4.1 Request Schema
 
 ```ts
-type GalleryImportMetadata = {
-  type: 'gallery'
-  source: 'telegram'
-  externalMessageId: string
-  title: string
-  slug: string
-  summary?: string
-  bodyMd?: string
-  requiredLevelRank?: 0 | 10 | 20
-  tags?: string[]
-  coverFileName?: string
+type GalleryFileIdImportRequest = {
+  metadata: {
+    type: 'gallery'
+    source: 'telegram'
+    externalMessageId: string
+    title: string
+    slug: string
+    summary?: string
+    bodyMd?: string
+    requiredLevelRank?: 0 | 10 | 20
+    tags?: string[]
+  }
+  telegram: {
+    sourceBotKey: string
+    sourceChatId: string
+    sourceMessageId: string
+    mediaGroupId?: string
+  }
+  files: Array<{
+    fileId: string
+    fileUniqueId?: string
+    filename?: string
+    mimeType: 'image/jpeg' | 'image/png' | 'image/webp'
+    sortOrder: number
+    isCover?: boolean
+  }>
 }
 ```
 
@@ -72,110 +97,213 @@ type GalleryImportMetadata = {
 
 | 字段 | 必填 | 说明 |
 |------|------|------|
-| `type` | 是 | 固定 `gallery` |
-| `source` | 是 | 固定 `telegram` |
-| `externalMessageId` | 是 | Telegram 来源消息唯一键，建议 `${chatId}:${messageId}` |
-| `title` | 是 | 图库标题，1-80 字 |
-| `slug` | 是 | 小写字母、数字、短横线，3-120 字符 |
-| `summary` | 否 | 摘要，最多 160 字 |
-| `bodyMd` | 否 | Markdown 正文，最多 5000 字 |
-| `requiredLevelRank` | 否 | `0` 免费、`10` VIP、`20` SVIP，默认 `0` |
-| `tags` | 否 | 标签名称数组，最多 30 个 |
-| `coverFileName` | 否 | 封面文件名，必须匹配上传文件名；不传则默认第一张 |
+| `metadata.type` | 是 | 固定 `gallery` |
+| `metadata.source` | 是 | 固定 `telegram` |
+| `metadata.externalMessageId` | 是 | Telegram 来源消息唯一键，建议 `${chatId}:${messageId}` |
+| `metadata.title` | 是 | 图库标题，1-80 字 |
+| `metadata.slug` | 是 | 小写字母、数字、短横线，3-120 字符 |
+| `metadata.requiredLevelRank` | 否 | `0` 免费、`10` VIP、`20` SVIP，默认 `0` |
+| `telegram.sourceBotKey` | 是 | MeiGallery 预配置的 Bot key，例如 `ops_gallery_bot` |
+| `telegram.sourceChatId` | 是 | Telegram chat id，字符串形式 |
+| `telegram.sourceMessageId` | 是 | Telegram message id，字符串形式 |
+| `telegram.mediaGroupId` | 否 | Telegram media group id |
+| `files[].fileId` | 是 | Telegram `file_id` |
+| `files[].fileUniqueId` | 否 | Telegram `file_unique_id`，建议传入用于追踪 |
+| `files[].mimeType` | 是 | Bot 侧声明的 MIME，MeiGallery 下载后会再次校验 |
+| `files[].sortOrder` | 是 | 图片排序，从 0 开始 |
+| `files[].isCover` | 否 | 第一张 `true` 图片作为封面；未传则第一张为封面 |
 
-### 3.2 curl 示例
+### 4.2 curl 示例
 
 ```bash
-curl -X POST "https://api.616618.xyz/api/imports/telegram" \
+curl -X POST "https://api.616618.xyz/api/imports/telegram-file-id" \
   -H "Authorization: Bearer mgi_xxx" \
-  -F 'metadata={"type":"gallery","source":"telegram","externalMessageId":"-1001234567890:456","title":"加拿大-多伦多 172D Lina","slug":"toronto-lina-001","summary":"一句话摘要","bodyMd":"正文 Markdown","requiredLevelRank":10,"tags":["加拿大","多伦多","留学生","旅拍"],"coverFileName":"001.jpg"};type=application/json' \
-  -F "files=@./001.jpg;type=image/jpeg" \
-  -F "files=@./002.jpg;type=image/jpeg"
+  -H "Content-Type: application/json" \
+  --data '{
+    "metadata": {
+      "type": "gallery",
+      "source": "telegram",
+      "externalMessageId": "-1001234567890:456",
+      "title": "加拿大-多伦多 172D Lina",
+      "slug": "toronto-lina-001",
+      "summary": "一句话摘要",
+      "bodyMd": "正文 Markdown",
+      "requiredLevelRank": 10,
+      "tags": ["加拿大", "多伦多", "留学生", "旅拍"]
+    },
+    "telegram": {
+      "sourceBotKey": "ops_gallery_bot",
+      "sourceChatId": "-1001234567890",
+      "sourceMessageId": "456",
+      "mediaGroupId": "123456"
+    },
+    "files": [
+      {
+        "fileId": "AgACAg...",
+        "fileUniqueId": "AQAD...",
+        "filename": "001.jpg",
+        "mimeType": "image/jpeg",
+        "sortOrder": 0,
+        "isCover": true
+      }
+    ]
+  }'
 ```
 
-### 3.3 成功响应
+### 4.3 接收成功响应
 
 ```json
 {
   "importId": "eir_abc123",
   "type": "gallery",
-  "targetId": "gal_abc123",
-  "status": "draft",
-  "uploadedCount": 2,
-  "failedCount": 0,
-  "files": [
-    { "filename": "001.jpg", "id": "ma_001", "sortOrder": 0 },
-    { "filename": "002.jpg", "id": "ma_002", "sortOrder": 1 }
-  ]
+  "status": "pending_media_fetch",
+  "receivedFileCount": 1
 }
 ```
 
-## 4. 真实案例导入
+## 5. 真实案例导入
 
-### 4.1 Metadata Schema
+### 5.1 Request Schema
 
 ```ts
-type TestimonialImportMetadata = {
-  type: 'testimonial_case'
-  source: 'telegram'
-  externalMessageId: string
-  title: string
-  slug: string
-  summary?: string
-  bodyMd?: string
-  featured?: boolean
-  sortOrder?: number
-  seoTitle?: string
-  seoDescription?: string
+type TestimonialFileIdImportRequest = {
+  metadata: {
+    type: 'testimonial_case'
+    source: 'telegram'
+    externalMessageId: string
+    title: string
+    slug: string
+    summary?: string
+    bodyMd?: string
+    featured?: boolean
+    sortOrder?: number
+    seoTitle?: string
+    seoDescription?: string
+  }
+  telegram: {
+    sourceBotKey: string
+    sourceChatId: string
+    sourceMessageId: string
+    mediaGroupId?: string
+  }
+  files: Array<{
+    fileId: string
+    fileUniqueId?: string
+    filename?: string
+    mimeType: 'image/jpeg' | 'image/png' | 'image/webp'
+    sortOrder: number
+  }>
 }
 ```
 
-字段说明：
+真实案例必须提交 2-9 个图片 `file_id`。Bot 需要确保图片已授权且已脱敏；API 只做格式、数量和下载后校验，不替代人工审核。
 
-| 字段 | 必填 | 说明 |
-|------|------|------|
-| `type` | 是 | 固定 `testimonial_case` |
-| `source` | 是 | 固定 `telegram` |
-| `externalMessageId` | 是 | Telegram 来源消息唯一键，建议 `${chatId}:${messageId}` |
-| `title` | 是 | 案例标题，1-80 字 |
-| `slug` | 是 | 小写字母、数字、短横线，3-120 字符 |
-| `summary` | 否 | 摘要，最多 160 字 |
-| `bodyMd` | 否 | Markdown 正文，最多 5000 字 |
-| `featured` | 否 | 是否首页精选，默认 `true`；草稿不会公开展示 |
-| `sortOrder` | 否 | 后台排序，默认 `0` |
-| `seoTitle` | 否 | SEO 标题 |
-| `seoDescription` | 否 | SEO 描述 |
-
-真实案例必须上传 2-9 张图片。Bot 需要确保图片已授权且已脱敏；API 只做格式和数量校验，不替代人工审核。
-
-### 4.2 curl 示例
+### 5.2 curl 示例
 
 ```bash
-curl -X POST "https://api.616618.xyz/api/imports/telegram" \
+curl -X POST "https://api.616618.xyz/api/imports/telegram-file-id" \
   -H "Authorization: Bearer mgi_xxx" \
-  -F 'metadata={"type":"testimonial_case","source":"telegram","externalMessageId":"-1001234567890:789","title":"会员反馈 2026-05-06","slug":"member-feedback-2026-05-06","summary":"已授权、已脱敏的反馈摘要。","bodyMd":"## 反馈说明\n\n正文已脱敏。","featured":true,"sortOrder":0};type=application/json' \
-  -F "files=@./feedback-1.jpg;type=image/jpeg" \
-  -F "files=@./feedback-2.jpg;type=image/jpeg"
+  -H "Content-Type: application/json" \
+  --data '{
+    "metadata": {
+      "type": "testimonial_case",
+      "source": "telegram",
+      "externalMessageId": "-1001234567890:789",
+      "title": "会员反馈 2026-05-06",
+      "slug": "member-feedback-2026-05-06",
+      "summary": "已授权、已脱敏的反馈摘要。",
+      "bodyMd": "## 反馈说明\n\n正文已脱敏。",
+      "featured": true,
+      "sortOrder": 0
+    },
+    "telegram": {
+      "sourceBotKey": "ops_gallery_bot",
+      "sourceChatId": "-1001234567890",
+      "sourceMessageId": "789",
+      "mediaGroupId": "987654"
+    },
+    "files": [
+      {
+        "fileId": "AgACAgFeedback1...",
+        "fileUniqueId": "AQADFeedback1...",
+        "filename": "feedback-1.jpg",
+        "mimeType": "image/jpeg",
+        "sortOrder": 0
+      },
+      {
+        "fileId": "AgACAgFeedback2...",
+        "fileUniqueId": "AQADFeedback2...",
+        "filename": "feedback-2.jpg",
+        "mimeType": "image/jpeg",
+        "sortOrder": 1
+      }
+    ]
+  }'
 ```
 
-### 4.3 成功响应
+## 6. 状态查询
+
+```bash
+curl "https://api.616618.xyz/api/imports/eir_abc123" \
+  -H "Authorization: Bearer mgi_xxx"
+```
+
+处理中响应：
 
 ```json
 {
-  "importId": "eir_def456",
-  "type": "testimonial_case",
-  "targetId": "tc_def456",
-  "status": "draft",
-  "uploadedCount": 2,
+  "importId": "eir_abc123",
+  "type": "gallery",
+  "status": "fetching_media",
+  "targetId": null,
+  "fileCount": 2,
+  "fetchedCount": 1,
   "failedCount": 0,
   "files": [
-    { "filename": "feedback-1.jpg", "id": "tci_001", "sortOrder": 0 },
-    { "filename": "feedback-2.jpg", "id": "tci_002", "sortOrder": 1 }
+    { "filename": "001.jpg", "status": "completed", "sortOrder": 0 },
+    { "filename": "002.jpg", "status": "fetching", "sortOrder": 1 }
   ]
 }
 ```
 
-## 5. 幂等与重试
+完成响应：
+
+```json
+{
+  "importId": "eir_abc123",
+  "type": "gallery",
+  "status": "draft_created",
+  "targetId": "gal_abc123",
+  "fileCount": 2,
+  "fetchedCount": 2,
+  "failedCount": 0,
+  "files": [
+    { "filename": "001.jpg", "status": "completed", "sortOrder": 0 },
+    { "filename": "002.jpg", "status": "completed", "sortOrder": 1 }
+  ]
+}
+```
+
+失败响应：
+
+```json
+{
+  "importId": "eir_abc123",
+  "type": "gallery",
+  "status": "failed",
+  "targetId": null,
+  "fileCount": 2,
+  "fetchedCount": 1,
+  "failedCount": 1,
+  "message": "部分 Telegram 文件拉取失败",
+  "files": [
+    { "filename": "001.jpg", "status": "completed", "sortOrder": 0 },
+    { "filename": "002.jpg", "status": "failed", "sortOrder": 1, "error": "Telegram getFile failed" }
+  ]
+}
+```
+
+## 7. 幂等与重试
 
 API 使用 `token + source + externalMessageId` 做幂等判断。
 
@@ -187,18 +315,19 @@ API 使用 `token + source + externalMessageId` 做幂等判断。
   "type": "gallery",
   "targetId": "gal_abc123",
   "status": "duplicate",
+  "currentStatus": "draft_created",
   "message": "该 Telegram 消息已导入"
 }
 ```
 
 Bot 端建议：
-- 每条 Telegram 消息固定生成一个 `externalMessageId`。
+- 每条 Telegram 消息或 media group 固定生成一个 `externalMessageId`。
 - 网络超时后可以用同一个 `externalMessageId` 重试。
 - 如果确实需要把同一 Telegram 消息重新导入为新草稿，应使用新的 `externalMessageId`，例如追加 `:retry-1`。
 
-## 6. 错误响应
+## 8. 错误响应
 
-### 6.1 错误格式
+### 8.1 错误格式
 
 ```json
 {
@@ -211,7 +340,7 @@ Bot 端建议：
 }
 ```
 
-### 6.2 常见错误码
+### 8.2 常见错误码
 
 | HTTP | code | 说明 | Bot 处理建议 |
 |------|------|------|-------------|
@@ -220,86 +349,99 @@ Bot 端建议：
 | 403 | `IMPORT_TOKEN_DISABLED` | token 已禁用 | 停止重试，联系站长 |
 | 403 | `IMPORT_TOKEN_EXPIRED` | token 已过期 | 停止重试，申请新 token |
 | 403 | `IMPORT_PERMISSION_DENIED` | token 缺少权限 | 停止重试，调整 token 权限 |
-| 400 | `VALIDATION_ERROR` | metadata 或文件不合法 | 修正字段后重试 |
+| 403 | `SOURCE_BOT_NOT_ALLOWED` | sourceBotKey 不允许 | 停止重试，调整 token 允许列表 |
+| 400 | `VALIDATION_ERROR` | metadata、telegram 或 files 不合法 | 修正字段后重试 |
 | 409 | `SLUG_CONFLICT` | slug 已存在 | 换 slug 后重试 |
-| 413 | `REQUEST_TOO_LARGE` | 请求体超过应用层或 Cloudflare 限制 | 压缩图片或减少文件数 |
 | 429 | `RATE_LIMITED` | 触发速率限制 | 延迟后重试 |
 | 429 | `DAILY_IMPORT_LIMIT_EXCEEDED` | token 达到每日导入上限 | 次日重试或联系站长 |
-| 500 | `IMPORT_WRITE_FAILED` | 服务端写入失败 | 使用同一 `externalMessageId` 重试 |
+| 500 | `IMPORT_ACCEPT_FAILED` | 导入记录写入失败 | 使用同一 `externalMessageId` 重试 |
 
-## 7. Node.js Bot 示例
+异步阶段的 Telegram 下载失败不会通过提交接口直接返回；Bot 应通过状态查询读取 `failed` 状态和文件级错误。
 
-以下示例展示 Bot 已经把 Telegram 图片下载到本地路径后的上传方式。
+## 9. Node.js Bot 示例
 
 ```ts
-import { createReadStream } from 'node:fs'
-import FormData from 'form-data'
-import fetch from 'node-fetch'
-
-type ImportFile = {
-  path: string
-  filename: string
-  contentType: 'image/jpeg' | 'image/png' | 'image/webp'
+type TelegramFileRef = {
+  fileId: string
+  fileUniqueId?: string
+  filename?: string
+  mimeType: 'image/jpeg' | 'image/png' | 'image/webp'
+  sortOrder: number
+  isCover?: boolean
 }
 
-async function importGallery(files: ImportFile[]) {
-  const metadata = {
-    type: 'gallery',
-    source: 'telegram',
-    externalMessageId: '-1001234567890:456',
-    title: '加拿大-多伦多 172D Lina',
-    slug: 'toronto-lina-001',
-    summary: '一句话摘要',
-    bodyMd: '正文 Markdown',
-    requiredLevelRank: 10,
-    tags: ['加拿大', '多伦多', '留学生', '旅拍'],
-    coverFileName: files[0]?.filename,
+async function submitGalleryImport(files: TelegramFileRef[]) {
+  const body = {
+    metadata: {
+      type: 'gallery',
+      source: 'telegram',
+      externalMessageId: '-1001234567890:456',
+      title: '加拿大-多伦多 172D Lina',
+      slug: 'toronto-lina-001',
+      summary: '一句话摘要',
+      bodyMd: '正文 Markdown',
+      requiredLevelRank: 10,
+      tags: ['加拿大', '多伦多', '留学生', '旅拍'],
+    },
+    telegram: {
+      sourceBotKey: 'ops_gallery_bot',
+      sourceChatId: '-1001234567890',
+      sourceMessageId: '456',
+      mediaGroupId: '123456',
+    },
+    files,
   }
 
-  const form = new FormData()
-  form.append('metadata', JSON.stringify(metadata), { contentType: 'application/json' })
-  for (const file of files) {
-    form.append('files', createReadStream(file.path), {
-      filename: file.filename,
-      contentType: file.contentType,
-    })
-  }
-
-  const response = await fetch('https://api.616618.xyz/api/imports/telegram', {
+  const response = await fetch('https://api.616618.xyz/api/imports/telegram-file-id', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.MEIGALLERY_IMPORT_TOKEN}`,
-      ...form.getHeaders(),
+      'Content-Type': 'application/json',
     },
-    body: form as any,
+    body: JSON.stringify(body),
   })
 
   const result = await response.json()
   if (!response.ok) {
-    throw new Error(`${result.code || response.status}: ${result.message || '导入失败'}`)
+    throw new Error(`${result.code || response.status}: ${result.message || '导入提交失败'}`)
   }
-  return result
+  return result as { importId: string; status: string }
+}
+
+async function pollImport(importId: string) {
+  for (let i = 0; i < 30; i++) {
+    const response = await fetch(`https://api.616618.xyz/api/imports/${importId}`, {
+      headers: { Authorization: `Bearer ${process.env.MEIGALLERY_IMPORT_TOKEN}` },
+    })
+    const result = await response.json()
+    if (result.status === 'draft_created' || result.status === 'failed') return result
+    await new Promise(resolve => setTimeout(resolve, 5000))
+  }
+  throw new Error(`导入超时: ${importId}`)
 }
 ```
 
-## 8. Bot 端实现建议
+## 10. Bot 端实现建议
 
 - Bot 只处理指定 chat、指定 topic 或指定管理员转发的消息，避免误导入。
-- Bot 下载 Telegram 文件后先检查 MIME 和大小，减少无效 API 请求。
-- Bot 对图片按 Telegram media group 顺序排序，再按顺序 append `files`。
+- Bot 对 Telegram media group 先聚合完整，再提交一次导入请求。
+- Bot 对图片按 Telegram media group 顺序排序，并生成连续 `sortOrder`。
 - Bot 生成 slug 时只使用小写字母、数字和短横线。
-- Bot 保存 `externalMessageId -> importId/targetId` 映射，便于后续排查。
+- Bot 保存 `externalMessageId -> importId/status` 映射，便于后续排查。
 - Bot 遇到 `401`、`403`、`409` 不应无限重试。
 - Bot 遇到 `429` 应指数退避，至少等待 30 秒后重试。
 - Bot 遇到网络超时或 `500` 可用同一 `externalMessageId` 重试。
+- Bot 提交成功后应轮询状态；如果超过 3 分钟仍未完成，应标记为待人工查看。
 
-## 9. 上线前自测清单
+## 11. 上线前自测清单
 
-- 使用 dev Base URL 完成一次图库导入。
-- 使用 dev Base URL 完成一次真实案例导入。
+- 使用 dev Base URL 完成一次图库 file_id 导入。
+- 使用 dev Base URL 完成一次真实案例 file_id 导入。
+- 轮询状态直到 `draft_created`。
 - 重复提交同一个 `externalMessageId`，确认返回 `duplicate`。
 - 禁用 token 后请求，确认返回 `403`。
-- 上传不支持的 GIF，确认返回 `400 VALIDATION_ERROR`。
-- 上传超过 80MB 总大小的请求，确认返回 `413 REQUEST_TOO_LARGE`。
+- 使用未授权 `sourceBotKey` 请求，确认返回 `403 SOURCE_BOT_NOT_ALLOWED`。
+- 提交 GIF MIME 声明，确认返回 `400 VALIDATION_ERROR`。
+- 提交视频 MIME 声明，确认返回 `400 VALIDATION_ERROR`。
 - 登录后台确认导入内容均为草稿。
-- 登录后台确认审计日志能看到导入来源和 token id。
+- 登录后台确认审计日志能看到导入来源、sourceBotKey 和 token id。
