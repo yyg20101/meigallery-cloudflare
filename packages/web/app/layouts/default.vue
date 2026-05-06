@@ -97,11 +97,11 @@ function isActive(to: string) {
         </NuxtLink>
         <div class="flex items-center gap-3">
           <!-- 搜索图标 -->
-          <NuxtLink to="/search" class="rounded-full bg-white/80 p-2 text-gray-600 shadow-sm ring-1 ring-gray-100">
+          <NuxtLink to="/search" class="rounded-full bg-white/80 p-2 text-gray-600 shadow-sm ring-1 ring-gray-100" aria-label="打开搜索页">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.35-4.35"/></svg>
           </NuxtLink>
           <!-- 用户头像 -->
-          <NuxtLink :to="isLoggedIn ? '/user' : '/login'" class="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-orange-50 to-gray-100 text-gray-600 shadow-sm ring-1 ring-white">
+          <NuxtLink :to="isLoggedIn ? '/user' : '/login'" class="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-orange-50 to-gray-100 text-gray-600 shadow-sm ring-1 ring-white" :aria-label="isLoggedIn ? '打开个人中心' : '登录账号'">
             <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM12 14a7 7 0 0 0-7 7h14a7 7 0 0 0-7-7Z"/></svg>
           </NuxtLink>
         </div>

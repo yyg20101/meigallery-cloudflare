@@ -22,6 +22,7 @@ const { data, refresh } = await useAsyncData('admin-import-api-tokens', () =>
 
 const items = computed(() => data.value?.data ?? [])
 const creating = ref(false)
+const editingId = ref('')
 const createdToken = ref('')
 const form = reactive({
   name: '',
@@ -29,6 +30,7 @@ const form = reactive({
   expiresAt: '',
   galleryCreate: true,
   testimonialCreate: false,
+  status: 'active' as 'active' | 'disabled',
 })
 
 function parseJsonArray(value: string) {
@@ -64,23 +66,48 @@ async function createToken() {
       form.testimonialCreate ? 'testimonial:create' : '',
     ].filter(Boolean)
     const allowedSourceBotKeys = form.allowedSourceBotKeys.split(',').map(key => key.trim()).filter(Boolean)
-    const result = await api<{ token: string; message: string }>('/api/admin/import-api-tokens', {
-      method: 'POST',
-      body: {
-        name: form.name,
-        permissions,
-        allowedSourceBotKeys,
-        expiresAt: form.expiresAt || null,
-      },
-    })
-    createdToken.value = result.token
-    form.name = ''
+    const body = {
+      name: form.name,
+      permissions,
+      allowedSourceBotKeys,
+      expiresAt: form.expiresAt || null,
+      status: form.status,
+    }
+    if (editingId.value) {
+      await api(`/api/admin/import-api-tokens/${editingId.value}`, { method: 'PATCH', body })
+    } else {
+      const result = await api<{ token: string; message: string }>('/api/admin/import-api-tokens', { method: 'POST', body })
+      createdToken.value = result.token
+    }
+    resetForm()
     await refresh()
   } catch (error: any) {
     useToast().add({ title: error?.data?.message || '创建 Import Token 失败', color: 'error' })
   } finally {
     creating.value = false
   }
+}
+
+function resetForm() {
+  editingId.value = ''
+  form.name = ''
+  form.allowedSourceBotKeys = 'ops_gallery_bot'
+  form.expiresAt = ''
+  form.galleryCreate = true
+  form.testimonialCreate = false
+  form.status = 'active'
+}
+
+function startEdit(item: ImportApiTokenRow) {
+  createdToken.value = ''
+  editingId.value = item.id
+  const permissions = parseJsonArray(item.permissions)
+  form.name = item.name
+  form.allowedSourceBotKeys = parseJsonArray(item.allowed_source_bot_keys).join(',')
+  form.expiresAt = item.expires_at ? item.expires_at.slice(0, 16) : ''
+  form.galleryCreate = permissions.includes('gallery:create')
+  form.testimonialCreate = permissions.includes('testimonial:create')
+  form.status = item.status
 }
 
 async function disableToken(id: string) {
@@ -103,7 +130,7 @@ async function disableToken(id: string) {
     <div v-if="!isOwner" class="mb-6 rounded-lg bg-yellow-50 p-4 text-sm text-yellow-800">仅站长可管理 Import Token。</div>
 
     <section v-if="isOwner" class="mb-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-      <h2 class="text-base font-semibold text-gray-900">创建 Token</h2>
+      <h2 class="text-base font-semibold text-gray-900">{{ editingId ? '编辑 Token' : '创建 Token' }}</h2>
       <form class="mt-4 grid gap-4 lg:grid-cols-2" @submit.prevent="createToken">
         <div>
           <label class="mb-1 block text-sm font-medium text-gray-700">名称</label>
@@ -125,8 +152,16 @@ async function disableToken(id: string) {
             <label class="inline-flex items-center gap-2"><input v-model="form.testimonialCreate" type="checkbox" />真实案例草稿</label>
           </div>
         </div>
+        <div v-if="editingId">
+          <label class="mb-1 block text-sm font-medium text-gray-700">状态</label>
+          <select v-model="form.status" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            <option value="active">启用</option>
+            <option value="disabled">禁用</option>
+          </select>
+        </div>
         <div class="lg:col-span-2">
-          <button :disabled="creating" class="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50">{{ creating ? '创建中...' : '创建 Token' }}</button>
+          <button :disabled="creating" class="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50">{{ creating ? '保存中...' : (editingId ? '保存 Token' : '创建 Token') }}</button>
+          <button v-if="editingId" type="button" class="ml-3 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" @click="resetForm">取消编辑</button>
         </div>
       </form>
     </section>
@@ -149,7 +184,10 @@ async function disableToken(id: string) {
             <td class="px-4 py-3"><span :class="['rounded-full px-2 py-0.5 text-xs font-medium', tokenStatusClass(item.status)]">{{ item.status === 'active' ? '启用' : '禁用' }}</span></td>
             <td class="px-4 py-3 text-gray-500">{{ formatDateTime(item.last_used_at) }}</td>
             <td class="px-4 py-3 text-gray-500">{{ formatDateTime(item.expires_at) }}</td>
-            <td class="px-4 py-3 text-right"><button v-if="item.status === 'active'" class="text-xs text-red-600 hover:underline" @click="disableToken(item.id)">禁用</button></td>
+            <td class="px-4 py-3 text-right">
+              <button class="mr-3 text-xs text-blue-600 hover:underline" @click="startEdit(item)">编辑</button>
+              <button v-if="item.status === 'active'" class="text-xs text-red-600 hover:underline" @click="disableToken(item.id)">禁用</button>
+            </td>
           </tr>
           <tr v-if="items.length === 0"><td colspan="7" class="px-4 py-10 text-center text-gray-400">暂无 Import Token</td></tr>
         </tbody>

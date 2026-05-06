@@ -31,6 +31,20 @@ function trackContactMethod(methodType: string) {
   trackLeadOnce({ location: 'floating_contact_panel', methodType })
 }
 
+function openContactPanel() {
+  contactOpen.value = true
+  rulesOpen.value = false
+  trackLeadOnce({ location: 'floating_contact_panel', methodType: 'panel_open' })
+}
+
+onMounted(() => {
+  window.addEventListener('meigallery:open-contact-panel', openContactPanel)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('meigallery:open-contact-panel', openContactPanel)
+})
+
 function toggleRules() {
   rulesOpen.value = !rulesOpen.value
   if (rulesOpen.value) contactOpen.value = false

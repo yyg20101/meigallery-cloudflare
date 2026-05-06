@@ -1,6 +1,9 @@
 import { generateId } from '../utils/db'
 import { ImportError } from '../utils/import-errors'
+import { hasImportPermission, isSourceBotAllowed } from '../utils/import-token'
 import type { TelegramImportPayload } from '../utils/import-validation'
+import { importPermissionForType } from '../utils/import-validation'
+import { writeAuditLog } from '../utils/permission'
 import { fetchTelegramImageFile, getExtensionForMime } from './telegram-file-fetcher'
 
 export type ExternalImportStatus = 'pending_media_fetch' | 'fetching_media' | 'draft_created' | 'partial_failed' | 'failed'
@@ -23,6 +26,12 @@ export type CreateImportResult = {
   targetId?: string | null
   receivedFileCount?: number
   message?: string
+}
+
+export type RetryImportToken = {
+  id: string
+  permissions: string
+  allowedSourceBotKeys: string
 }
 
 export async function createExternalImportRecord(
@@ -130,11 +139,14 @@ export async function getExternalImportStatus(db: D1Database, importId: string, 
   }
 }
 
-export async function resetFailedImportForRetry(db: D1Database, importId: string, tokenId: string) {
-  const record = await db.prepare('SELECT id, target_type, target_id, status, retry_count FROM external_import_records WHERE id = ? AND token_id = ?')
-    .bind(importId, tokenId)
-    .first<{ id: string; target_type: string; target_id: string | null; status: string; retry_count: number }>()
+export async function resetFailedImportForRetry(db: D1Database, importId: string, token: RetryImportToken) {
+  const record = await db.prepare('SELECT id, target_type, target_id, status, retry_count, source_bot_key FROM external_import_records WHERE id = ? AND token_id = ?')
+    .bind(importId, token.id)
+    .first<{ id: string; target_type: TargetType; target_id: string | null; status: string; retry_count: number; source_bot_key: string }>()
   if (!record) throw new ImportError('IMPORT_NOT_FOUND', '导入记录不存在', 404)
+  const permission = importPermissionForType(record.target_type)
+  if (!hasImportPermission(token.permissions, permission)) throw new ImportError('IMPORT_PERMISSION_DENIED', 'Import Token 权限不足', 403)
+  if (!isSourceBotAllowed(token.allowedSourceBotKeys, record.source_bot_key)) throw new ImportError('IMPORT_SOURCE_BOT_NOT_ALLOWED', 'sourceBotKey 不在允许列表中', 403)
   if (record.status !== 'failed') throw new ImportError('IMPORT_RETRY_NOT_ALLOWED', '当前导入状态不允许重试', 409)
   if (record.target_id) throw new ImportError('IMPORT_RETRY_CLEANUP_REQUIRED', '失败导入仍有待清理资源，暂不能重试', 409)
 
@@ -162,9 +174,14 @@ export async function resetFailedImportForRetry(db: D1Database, importId: string
 }
 
 export async function processTelegramFileIdImport(db: D1Database, r2: R2Bucket, env: Record<string, string | undefined>, importId: string): Promise<void> {
-  const record = await db.prepare('SELECT * FROM external_import_records WHERE id = ?')
+  const record = await db.prepare(`
+    SELECT eir.*, iat.created_by as token_created_by
+    FROM external_import_records eir
+    JOIN import_api_tokens iat ON eir.token_id = iat.id
+    WHERE eir.id = ?
+  `)
     .bind(importId)
-    .first<{ id: string; source_bot_key: string; target_type: TargetType; metadata_json: string }>()
+    .first<{ id: string; source_bot_key: string; target_type: TargetType; metadata_json: string; file_count: number; token_created_by: number }>()
   if (!record) return
 
   await db.prepare("UPDATE external_import_records SET status = 'fetching_media' WHERE id = ? AND status = 'pending_media_fetch'").bind(importId).run()
@@ -204,6 +221,13 @@ export async function processTelegramFileIdImport(db: D1Database, r2: R2Bucket, 
       SET status = 'draft_created', target_id = ?, fetched_count = ?, failed_count = 0, completed_at = datetime('now')
       WHERE id = ?
     `).bind(targetId, fetchedFiles.length, importId).run()
+    await writeAuditLog(db, {
+      adminId: record.token_created_by,
+      action: record.target_type === 'gallery' ? 'telegram_import.create_gallery' : 'telegram_import.create_testimonial_case',
+      targetType: 'external_import_record',
+      targetId: importId,
+      afterValue: { importId, targetType: record.target_type, targetId, fetchedCount: fetchedFiles.length },
+    })
   } catch (error) {
     await cleanupFailedImport(db, r2, importId, uploadedKeys, record.target_type, targetId)
     const message = error instanceof Error ? error.message : '导入处理失败'
@@ -212,6 +236,13 @@ export async function processTelegramFileIdImport(db: D1Database, r2: R2Bucket, 
       SET status = 'failed', target_id = NULL, failed_count = file_count, error_json = ?, completed_at = datetime('now')
       WHERE id = ?
     `).bind(JSON.stringify({ message }), importId).run()
+    await writeAuditLog(db, {
+      adminId: record.token_created_by,
+      action: 'telegram_import.failed',
+      targetType: 'external_import_record',
+      targetId: importId,
+      afterValue: { importId, targetType: record.target_type, message },
+    })
   }
 }
 

@@ -23,7 +23,7 @@ function createDb(tokenHash: string) {
         async first<T>() {
           if (sql.includes('FROM import_api_tokens')) {
             if (params[0] !== tokenHash) return null as T
-            return { id: 'iat_1', permissions: '["gallery:create","testimonial:create"]', allowed_source_bot_keys: '["ops_gallery_bot"]', status: 'active', expires_at: null } as T
+            return { id: 'iat_1', created_by: 1, permissions: '["gallery:create","testimonial:create"]', allowed_source_bot_keys: '["ops_gallery_bot"]', status: 'active', expires_at: null } as T
           }
           if (sql.includes('FROM external_import_records') && sql.includes("source = 'telegram'")) return null as T
           if (sql.includes('FROM external_import_records') && sql.includes('WHERE id = ? AND token_id = ?')) return records[String(params[0])] as T
@@ -65,5 +65,17 @@ describe('Telegram 导入 API', () => {
     expect(res.status).toBe(202)
     expect(body.status).toBe('pending_media_fetch')
     expect(body.importId).toMatch(/^eir_/)
+  })
+
+  it('rejects non-json import requests', async () => {
+    const token = 'mgi_valid_token'
+    const res = await createApp().request('/api/imports/telegram-file-id', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload),
+    }, { DB: createDb(await hashImportToken(token)) } as unknown as Bindings)
+
+    expect(res.status).toBe(415)
+    expect((await res.json()).code).toBe('IMPORT_VALIDATION_FAILED')
   })
 })

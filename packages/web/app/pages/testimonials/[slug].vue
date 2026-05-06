@@ -1,6 +1,7 @@
 <script setup lang="ts">
 const route = useRoute()
 const { api } = useApi()
+const { trackLeadOnce } = useFacebookPixel()
 
 interface TestimonialDetail {
   id: string
@@ -31,6 +32,11 @@ useSeoMeta({
   ogDescription: () => item.value?.summary || '查看已授权、已脱敏的真实案例。',
   ogImage: () => item.value?.images[0]?.url || undefined,
 })
+
+function openContactPanel() {
+  trackLeadOnce({ location: 'testimonial_detail_cta', methodType: 'contact_owner' })
+  window.dispatchEvent(new CustomEvent('meigallery:open-contact-panel'))
+}
 </script>
 
 <template>
@@ -50,6 +56,7 @@ useSeoMeta({
         <div class="mt-6 flex flex-wrap gap-3">
           <NuxtLink to="/testimonials" class="rounded-full border border-[#eadfd2] bg-white px-4 py-2 text-sm text-gray-700 transition-all hover:-translate-y-0.5 hover:border-[#d6c39a] hover:text-gray-950">返回案例列表</NuxtLink>
           <NuxtLink to="/discover" class="rounded-full bg-gray-950 px-4 py-2 text-sm font-medium text-[#d6c39a] transition-all hover:-translate-y-0.5 hover:bg-black">查看更多图库</NuxtLink>
+          <button type="button" class="rounded-full border border-gray-950 bg-white px-4 py-2 text-sm font-medium text-gray-950 transition-all hover:-translate-y-0.5 hover:bg-gray-950 hover:text-[#d6c39a]" @click="openContactPanel">联系站长</button>
         </div>
       </div>
     </section>

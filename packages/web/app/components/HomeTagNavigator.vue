@@ -6,12 +6,17 @@ const props = defineProps<{
   regions: HomeTag[]
   styles: HomeTag[]
 }>()
+const { trackFilterSelected } = useFacebookPixel()
 
 const groups = computed(() => [
   { key: 'cities', title: '热门城市', description: '优先进入具体城市与地区内容。', items: props.cities },
   { key: 'regions', title: '地区组', description: '按国内外、地区范围快速浏览。', items: props.regions },
   { key: 'styles', title: '风格偏好', description: '用气质、场景和风格继续细分。', items: props.styles },
 ].filter(group => group.items.length > 0))
+
+function trackTagClick(tag: HomeTag) {
+  trackFilterSelected({ tagSlug: tag.slug, tagType: tag.type, location: 'home_tag_navigator' })
+}
 </script>
 
 <template>
@@ -27,7 +32,8 @@ const groups = computed(() => [
             v-for="tag in group.items"
             :key="tag.slug"
             :to="{ path: '/discover', query: { tag: tag.slug } }"
-            class="shrink-0 rounded-full border border-[#f0e4d8] bg-[#fffbf7] px-3 py-2 text-sm text-gray-700 transition-all hover:-translate-y-0.5 hover:border-[#d6c39a] hover:bg-gray-950 hover:text-white"
+            class="flex min-h-11 shrink-0 items-center rounded-full border border-[#f0e4d8] bg-[#fffbf7] px-3 py-2 text-sm text-gray-700 transition-all hover:-translate-y-0.5 hover:border-[#d6c39a] hover:bg-gray-950 hover:text-white"
+            @click="trackTagClick(tag)"
           >
             {{ tag.name }}
           </NuxtLink>

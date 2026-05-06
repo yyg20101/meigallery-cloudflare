@@ -4,11 +4,13 @@ import { createExternalImportRecord, getExternalImportStatus, processTelegramFil
 import { ImportError, importErrorBody } from '../utils/import-errors'
 import { hashImportToken, hasImportPermission, isImportTokenExpired, isSourceBotAllowed } from '../utils/import-token'
 import { importPermissionForType, validateTelegramImportPayload } from '../utils/import-validation'
+import { writeAuditLog } from '../utils/permission'
 
 export const importRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
 type ImportTokenRow = {
   id: string
+  created_by: number
   permissions: string
   allowed_source_bot_keys: string
   status: 'active' | 'disabled'
@@ -23,7 +25,7 @@ async function requireImportToken(c: { req: { header: (name: string) => string |
   if (!rawToken) throw new ImportError('IMPORT_TOKEN_MISSING', '缺少 Import Token', 401)
 
   const tokenHash = await hashImportToken(rawToken)
-  const row = await c.env.DB.prepare('SELECT id, permissions, allowed_source_bot_keys, status, expires_at FROM import_api_tokens WHERE token_hash = ?')
+  const row = await c.env.DB.prepare('SELECT id, created_by, permissions, allowed_source_bot_keys, status, expires_at FROM import_api_tokens WHERE token_hash = ?')
     .bind(tokenHash)
     .first<ImportTokenRow>()
   if (!row) throw new ImportError('IMPORT_TOKEN_INVALID', 'Import Token 无效', 401)
@@ -32,6 +34,10 @@ async function requireImportToken(c: { req: { header: (name: string) => string |
 
   await c.env.DB.prepare("UPDATE import_api_tokens SET last_used_at = datetime('now'), updated_at = datetime('now') WHERE id = ?").bind(row.id).run()
   return row
+}
+
+function isJsonRequest(c: { req: { header: (name: string) => string | undefined } }) {
+  return (c.req.header('Content-Type') || '').toLowerCase().split(';')[0]?.trim() === 'application/json'
 }
 
 function clientIp(c: { req: { header: (name: string) => string | undefined } }) {
@@ -54,12 +60,20 @@ function scheduleImport(c: { executionCtx: ExecutionContext }, task: Promise<voi
 importRoutes.post('/telegram-file-id', async (c) => {
   try {
     const token = await requireImportToken(c)
+    if (!isJsonRequest(c)) throw new ImportError('IMPORT_VALIDATION_FAILED', 'Content-Type 必须为 application/json', 415)
     const payload = validateTelegramImportPayload(await c.req.json())
     const permission = importPermissionForType(payload.metadata.type)
     if (!hasImportPermission(token.permissions, permission)) throw new ImportError('IMPORT_PERMISSION_DENIED', 'Import Token 权限不足', 403)
     if (!isSourceBotAllowed(token.allowed_source_bot_keys, payload.telegram.sourceBotKey)) throw new ImportError('IMPORT_SOURCE_BOT_NOT_ALLOWED', 'sourceBotKey 不在允许列表中', 403)
 
     const result = await createExternalImportRecord(c.env.DB, token.id, payload, clientIp(c), c.req.header('User-Agent') || null)
+    await writeAuditLog(c.env.DB, {
+      adminId: token.created_by,
+      action: 'telegram_import.accepted',
+      targetType: 'external_import_record',
+      targetId: result.importId,
+      afterValue: { importId: result.importId, targetType: result.type, status: result.status, receivedFileCount: result.receivedFileCount ?? null },
+    })
     if (result.status !== 'duplicate') scheduleImport(c, processTelegramFileIdImport(c.env.DB, c.env.R2, c.env as unknown as Record<string, string | undefined>, result.importId))
     return c.json(result, result.status === 'duplicate' ? 200 : 202)
   } catch (error) {
@@ -81,7 +95,18 @@ importRoutes.get('/:importId', async (c) => {
 importRoutes.post('/:importId/retry', async (c) => {
   try {
     const token = await requireImportToken(c)
-    const result = await resetFailedImportForRetry(c.env.DB, c.req.param('importId'), token.id)
+    const result = await resetFailedImportForRetry(c.env.DB, c.req.param('importId'), {
+      id: token.id,
+      permissions: token.permissions,
+      allowedSourceBotKeys: token.allowed_source_bot_keys,
+    })
+    await writeAuditLog(c.env.DB, {
+      adminId: token.created_by,
+      action: 'telegram_import.retry',
+      targetType: 'external_import_record',
+      targetId: result.importId,
+      afterValue: { importId: result.importId, targetType: result.type, status: result.status, retryCount: result.retryCount },
+    })
     scheduleImport(c, processTelegramFileIdImport(c.env.DB, c.env.R2, c.env as unknown as Record<string, string | undefined>, result.importId))
     return c.json(result, 202)
   } catch (error) {

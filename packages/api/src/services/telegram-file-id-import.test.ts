@@ -95,9 +95,37 @@ describe('telegram file_id import service', () => {
     const created = await createExternalImportRecord(db as unknown as D1Database, 'iat_1', payload, null, null)
     db.records[created.importId].status = 'failed'
 
-    const retry = await resetFailedImportForRetry(db as unknown as D1Database, created.importId, 'iat_1')
+    const retry = await resetFailedImportForRetry(db as unknown as D1Database, created.importId, {
+      id: 'iat_1',
+      permissions: '["gallery:create"]',
+      allowedSourceBotKeys: '["ops_gallery_bot"]',
+    })
 
     expect(retry.status).toBe('pending_media_fetch')
     expect(db.records[created.importId].status).toBe('pending_media_fetch')
+  })
+
+  it('rechecks token permissions before retrying failed imports', async () => {
+    const db = createDb()
+    const created = await createExternalImportRecord(db as unknown as D1Database, 'iat_1', payload, null, null)
+    db.records[created.importId].status = 'failed'
+
+    await expect(resetFailedImportForRetry(db as unknown as D1Database, created.importId, {
+      id: 'iat_1',
+      permissions: '["testimonial:create"]',
+      allowedSourceBotKeys: '["ops_gallery_bot"]',
+    })).rejects.toMatchObject({ code: 'IMPORT_PERMISSION_DENIED' })
+  })
+
+  it('rechecks sourceBotKey allowlist before retrying failed imports', async () => {
+    const db = createDb()
+    const created = await createExternalImportRecord(db as unknown as D1Database, 'iat_1', payload, null, null)
+    db.records[created.importId].status = 'failed'
+
+    await expect(resetFailedImportForRetry(db as unknown as D1Database, created.importId, {
+      id: 'iat_1',
+      permissions: '["gallery:create"]',
+      allowedSourceBotKeys: '["other_bot"]',
+    })).rejects.toMatchObject({ code: 'IMPORT_SOURCE_BOT_NOT_ALLOWED' })
   })
 })

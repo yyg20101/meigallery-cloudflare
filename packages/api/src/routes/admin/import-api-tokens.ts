@@ -25,6 +25,11 @@ function validateSourceBotKeys(keys: string[]) {
   return keys.every(key => /^[a-z0-9_]{3,64}$/.test(key))
 }
 
+function sanitizeTokenAuditValue(value: Record<string, unknown>) {
+  const { token_hash: _tokenHash, ...safeValue } = value
+  return safeValue
+}
+
 adminImportApiTokenRoutes.get('/', async (c) => {
   const rows = await c.env.DB.prepare(`
     SELECT id, name, permissions, allowed_source_bot_keys, status, expires_at, last_used_at, created_at, updated_at
@@ -87,7 +92,14 @@ adminImportApiTokenRoutes.patch('/:id', async (c) => {
     id,
   ).run()
 
-  await writeAuditLog(c.env.DB, { adminId: ownerId, action: 'import_token.update', targetType: 'import_api_token', targetId: id, beforeValue: before, afterValue: { ...body, permissions, allowedSourceBotKeys } })
+  await writeAuditLog(c.env.DB, {
+    adminId: ownerId,
+    action: 'import_token.update',
+    targetType: 'import_api_token',
+    targetId: id,
+    beforeValue: sanitizeTokenAuditValue(before),
+    afterValue: { ...body, permissions, allowedSourceBotKeys },
+  })
   return c.json({ message: 'Import Token 已更新' })
 })
 

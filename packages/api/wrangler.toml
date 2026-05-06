@@ -36,6 +36,7 @@ CORS_ORIGIN = "https://616618.xyz"
 EMAIL_FROM = "noreply@616618.xyz"
 # 升级到 Pro 计划后改为 "true" 启用 Image Resizing
 IMAGE_RESIZING_ENABLED = "false"
+DEV_WRITE_ENABLED = "true"
 
 # 敏感变量需通过 wrangler secret put 设置：
 # wrangler secret put SESSION_SECRET
@@ -72,3 +73,6 @@ APP_ENV = "dev"
 CORS_ORIGIN = "*"
 EMAIL_FROM = "noreply@616618.xyz"
 IMAGE_RESIZING_ENABLED = "false"
+# dev 当前可读取生产 D1/R2，但默认禁止写入，避免测试污染生产数据。
+# 只有绑定独立 dev D1/R2 后才允许改为 "true"。
+DEV_WRITE_ENABLED = "false"

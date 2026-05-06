@@ -18,7 +18,7 @@ export type ImportErrorCode =
   | 'IMPORT_TARGET_SLUG_CONFLICT'
   | 'IMPORT_PROCESS_FAILED'
 
-export type ImportErrorStatus = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 502
+export type ImportErrorStatus = 400 | 401 | 403 | 404 | 409 | 415 | 429 | 500 | 502
 
 export class ImportError extends Error {
   constructor(

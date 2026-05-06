@@ -57,14 +57,38 @@ function formatBytes(value: number | null) {
   return `${(value / 1024 / 1024).toFixed(1)} MB`
 }
 
-function parseJson(value: string | null) {
-  if (!value) return null
-  try {
-    return JSON.stringify(JSON.parse(value), null, 2)
-  } catch {
-    return value
-  }
+function maskIdentifier(value: string | null) {
+  if (!value) return '-'
+  if (value.length <= 6) return '已记录（脱敏）'
+  return `${value.slice(0, 3)}***${value.slice(-3)}`
 }
+
+const metadataSummary = computed(() => {
+  if (!record.value?.metadata_json) return null
+  try {
+    const metadata = JSON.parse(record.value.metadata_json) as Record<string, unknown>
+    return {
+      type: metadata.type,
+      title: metadata.title,
+      slug: metadata.slug,
+      requiredLevelRank: metadata.requiredLevelRank,
+      status: metadata.status,
+      tagCount: Array.isArray(metadata.tags) ? metadata.tags.length : 0,
+    }
+  } catch {
+    return null
+  }
+})
+
+const errorSummary = computed(() => {
+  if (!record.value?.error_json) return null
+  try {
+    const error = JSON.parse(record.value.error_json) as Record<string, unknown>
+    return { message: error.message || '导入失败' }
+  } catch {
+    return { message: '导入失败' }
+  }
+})
 
 function statusClass(value: string) {
   if (value === 'draft_created' || value === 'completed') return 'bg-green-50 text-green-700'
@@ -98,7 +122,7 @@ const targetLink = computed(() => {
           <div><dt class="text-gray-500">导入 ID</dt><dd class="mt-1 font-mono text-xs text-gray-900">{{ record.id }}</dd></div>
           <div><dt class="text-gray-500">外部消息 ID</dt><dd class="mt-1 font-mono text-xs text-gray-900">{{ record.external_message_id }}</dd></div>
           <div><dt class="text-gray-500">sourceBotKey</dt><dd class="mt-1 font-mono text-xs text-gray-900">{{ record.source_bot_key }}</dd></div>
-          <div><dt class="text-gray-500">Telegram 来源</dt><dd class="mt-1 font-mono text-xs text-gray-900">chat {{ record.source_chat_id }} / message {{ record.source_message_id }}</dd></div>
+          <div><dt class="text-gray-500">Telegram 来源</dt><dd class="mt-1 font-mono text-xs text-gray-900">chat {{ maskIdentifier(record.source_chat_id) }} / message {{ maskIdentifier(record.source_message_id) }}</dd></div>
           <div><dt class="text-gray-500">目标</dt><dd class="mt-1 text-gray-900">{{ record.target_type }} <NuxtLink v-if="targetLink" :to="targetLink" class="ml-2 text-blue-600 hover:underline">打开草稿</NuxtLink><span v-else class="ml-2 text-gray-400">尚未创建</span></dd></div>
           <div><dt class="text-gray-500">文件进度</dt><dd class="mt-1 text-gray-900">{{ record.fetched_count }} / {{ record.file_count }}，失败 {{ record.failed_count }}，重试 {{ record.retry_count }}</dd></div>
           <div><dt class="text-gray-500">创建时间</dt><dd class="mt-1 text-gray-900">{{ formatDateTime(record.created_at) }}</dd></div>
@@ -116,7 +140,7 @@ const targetLink = computed(() => {
             <tbody class="divide-y divide-gray-100">
               <tr v-for="file in record.files" :key="file.id">
                 <td class="px-4 py-3">{{ file.sort_order }}<span v-if="file.is_cover" class="ml-1 rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-700">封面</span></td>
-                <td class="px-4 py-3"><div class="text-gray-900">{{ file.filename || '-' }}</div><div class="font-mono text-xs text-gray-400">{{ file.telegram_file_unique_id || '-' }}</div></td>
+                <td class="px-4 py-3"><div class="text-gray-900">{{ file.filename || '-' }}</div><div class="font-mono text-xs text-gray-400">{{ maskIdentifier(file.telegram_file_unique_id) }}</div></td>
                 <td class="px-4 py-3 text-gray-600">{{ file.actual_mime_type || file.declared_mime_type || '-' }}</td>
                 <td class="px-4 py-3 text-gray-600">{{ formatBytes(file.file_size) }}</td>
                 <td class="px-4 py-3"><span :class="['rounded-full px-2 py-0.5 text-xs font-medium', statusClass(file.status)]">{{ file.status }}</span></td>
@@ -130,12 +154,19 @@ const targetLink = computed(() => {
 
       <section class="grid gap-6 lg:grid-cols-2">
         <div class="rounded-xl border border-gray-200 bg-white p-5">
-          <h2 class="text-base font-semibold text-gray-900">metadata_json</h2>
-          <pre class="mt-4 max-h-96 overflow-auto rounded-lg bg-gray-950 p-4 text-xs text-gray-100">{{ parseJson(record.metadata_json) }}</pre>
+          <h2 class="text-base font-semibold text-gray-900">元数据摘要</h2>
+          <dl v-if="metadataSummary" class="mt-4 space-y-2 text-sm">
+            <div class="flex justify-between gap-4"><dt class="text-gray-500">类型</dt><dd class="text-gray-900">{{ metadataSummary.type }}</dd></div>
+            <div class="flex justify-between gap-4"><dt class="text-gray-500">标题</dt><dd class="text-right text-gray-900">{{ metadataSummary.title }}</dd></div>
+            <div class="flex justify-between gap-4"><dt class="text-gray-500">Slug</dt><dd class="font-mono text-xs text-gray-900">{{ metadataSummary.slug }}</dd></div>
+            <div class="flex justify-between gap-4"><dt class="text-gray-500">会员 rank</dt><dd class="text-gray-900">{{ metadataSummary.requiredLevelRank ?? 0 }}</dd></div>
+            <div class="flex justify-between gap-4"><dt class="text-gray-500">标签数量</dt><dd class="text-gray-900">{{ metadataSummary.tagCount }}</dd></div>
+          </dl>
+          <p v-else class="mt-4 text-sm text-gray-400">元数据无法解析</p>
         </div>
         <div class="rounded-xl border border-gray-200 bg-white p-5">
-          <h2 class="text-base font-semibold text-gray-900">error_json</h2>
-          <pre class="mt-4 max-h-96 overflow-auto rounded-lg bg-gray-950 p-4 text-xs text-gray-100">{{ parseJson(record.error_json) || '无' }}</pre>
+          <h2 class="text-base font-semibold text-gray-900">错误摘要</h2>
+          <p class="mt-4 rounded-lg bg-gray-50 p-4 text-sm text-gray-700">{{ errorSummary?.message || '无' }}</p>
         </div>
       </section>
     </div>

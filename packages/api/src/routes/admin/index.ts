@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import type { Bindings, Variables } from '../../index'
+import { requireAdmin } from '../../middleware/auth'
 import { adminGalleryRoutes } from './galleries'
 import { adminTagRoutes } from './tags'
 import { adminUserRoutes } from './users'
@@ -15,8 +16,7 @@ import { adminExternalImportRecordRoutes } from './external-import-records'
 
 export const adminRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
-// TODO: 添加管理员认证中间件
-// adminRoutes.use('*', adminAuthMiddleware)
+adminRoutes.use('*', requireAdmin)
 
 adminRoutes.get('/dashboard', async (c) => {
   const db = c.env.DB

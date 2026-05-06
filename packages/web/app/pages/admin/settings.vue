@@ -293,6 +293,9 @@ async function toggleVideo() {
             </div>
             <button
               type="button"
+              role="switch"
+              aria-label="切换邮箱验证功能"
+              :aria-checked="emailVerificationEnabled"
               :disabled="toggleLoading"
               class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50"
               :class="emailVerificationEnabled ? 'bg-blue-600' : 'bg-gray-300'"
@@ -315,6 +318,9 @@ async function toggleVideo() {
             </div>
             <button
               type="button"
+              role="switch"
+              aria-label="切换视频功能"
+              :aria-checked="videoEnabledToggle"
               :disabled="videoToggleLoading"
               class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50"
               :class="videoEnabledToggle ? 'bg-blue-600' : 'bg-gray-300'"
