@@ -11,6 +11,7 @@ import { mediaRoutes } from './routes/media'
 import { meRoutes } from './routes/me'
 import { contactMethodRoutes } from './routes/contact-methods'
 import { testimonialCaseRoutes } from './routes/testimonial-cases'
+import { importRoutes } from './routes/imports'
 import { PUBLIC_SETTING_KEYS } from './utils/site-settings'
 import { adminRoutes } from './routes/admin'
 import { healthRoutes } from './routes/health'
@@ -27,6 +28,8 @@ export type Bindings = CloudflareEnv & {
   EMAIL_FROM: string
   EMAIL: SendEmail
   IMAGE_RESIZING_ENABLED: string // "true" | "false"
+  IMPORT_TOKEN_DAILY_LIMIT?: string
+  TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT?: string
 }
 
 /** 应用级变量 */
@@ -64,6 +67,8 @@ app.use('*', async (c, next) => {
 app.use('/api/auth/*', rateLimiter({ limit: 10, windowMs: 60_000 }))
 // 图库互动接口速率限制：每 IP 每分钟 60 次
 app.use('/api/galleries/*/like', rateLimiter({ limit: 60, windowMs: 60_000 }))
+// 外部导入接口速率限制：每 IP 每分钟 120 次
+app.use('/api/imports/*', rateLimiter({ limit: 120, windowMs: 60_000 }))
 app.use('*', authMiddleware)
 
 // 路由挂载
@@ -76,6 +81,7 @@ app.route('/api/media', mediaRoutes)
 app.route('/api/me', meRoutes)
 app.route('/api/contact-methods', contactMethodRoutes)
 app.route('/api/testimonial-cases', testimonialCaseRoutes)
+app.route('/api/imports', importRoutes)
 // 公开站点信息（不需要登录）
 app.get('/api/settings/public', async (c) => {
   const db = c.env.DB

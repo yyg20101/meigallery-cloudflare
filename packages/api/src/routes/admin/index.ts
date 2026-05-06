@@ -10,6 +10,8 @@ import { adminLegacyImportRoutes } from './legacy-import'
 import { adminContactMethodRoutes } from './contact-methods'
 import { adminMediaRoutes } from './media'
 import { adminTestimonialCaseRoutes } from './testimonial-cases'
+import { adminImportApiTokenRoutes } from './import-api-tokens'
+import { adminExternalImportRecordRoutes } from './external-import-records'
 
 export const adminRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -49,4 +51,6 @@ adminRoutes.route('/settings', adminSettingsRoutes)
 adminRoutes.route('/legacy-import', adminLegacyImportRoutes)
 adminRoutes.route('/contact-methods', adminContactMethodRoutes)
 adminRoutes.route('/testimonial-cases', adminTestimonialCaseRoutes)
+adminRoutes.route('/import-api-tokens', adminImportApiTokenRoutes)
+adminRoutes.route('/external-import-records', adminExternalImportRecordRoutes)
 adminRoutes.route('/', adminMediaRoutes)
