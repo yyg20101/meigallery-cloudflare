@@ -25,6 +25,13 @@ function validateSourceBotKeys(keys: string[]) {
   return keys.every(key => /^[a-z0-9_]{3,64}$/.test(key))
 }
 
+function normalizeExpiresAt(expiresAt: unknown) {
+  if (!expiresAt) return null
+  if (typeof expiresAt !== 'string') return undefined
+  if (Number.isNaN(new Date(expiresAt).getTime())) return undefined
+  return expiresAt
+}
+
 function sanitizeTokenAuditValue(value: Record<string, unknown>) {
   const { token_hash: _tokenHash, ...safeValue } = value
   return safeValue
@@ -49,20 +56,22 @@ adminImportApiTokenRoutes.post('/', async (c) => {
 
   const allowedSourceBotKeys = body.allowedSourceBotKeys ?? []
   if (!validateSourceBotKeys(allowedSourceBotKeys)) return c.json({ statusCode: 400, message: 'sourceBotKey 只能包含小写字母、数字和下划线' }, 400)
+  const expiresAt = normalizeExpiresAt(body.expiresAt)
+  if (expiresAt === undefined) return c.json({ statusCode: 400, message: '过期时间格式不正确' }, 400)
 
   const token = createImportToken()
   const id = generateId('iat')
   await c.env.DB.prepare(`
     INSERT INTO import_api_tokens (id, name, token_hash, permissions, allowed_source_bot_keys, expires_at, created_by)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).bind(id, body.name.trim(), await hashImportToken(token), JSON.stringify(permissions), JSON.stringify(allowedSourceBotKeys), body.expiresAt ?? null, ownerId).run()
+  `).bind(id, body.name.trim(), await hashImportToken(token), JSON.stringify(permissions), JSON.stringify(allowedSourceBotKeys), expiresAt, ownerId).run()
 
   await writeAuditLog(c.env.DB, {
     adminId: ownerId,
     action: 'import_token.create',
     targetType: 'import_api_token',
     targetId: id,
-    afterValue: { name: body.name.trim(), permissions, allowedSourceBotKeys, expiresAt: body.expiresAt ?? null },
+    afterValue: { name: body.name.trim(), permissions, allowedSourceBotKeys, expiresAt },
   })
   return c.json({ id, token, message: 'Import Token 已创建，请立即保存，刷新后无法再次查看' }, 201)
 })
@@ -78,6 +87,8 @@ adminImportApiTokenRoutes.patch('/:id', async (c) => {
   if (permissions.length === 0) return c.json({ statusCode: 400, message: '至少选择一个导入权限' }, 400)
   const allowedSourceBotKeys = body.allowedSourceBotKeys === undefined ? JSON.parse(String(before.allowed_source_bot_keys)) as string[] : body.allowedSourceBotKeys
   if (!validateSourceBotKeys(allowedSourceBotKeys)) return c.json({ statusCode: 400, message: 'sourceBotKey 只能包含小写字母、数字和下划线' }, 400)
+  const expiresAt = body.expiresAt === undefined ? before.expires_at : normalizeExpiresAt(body.expiresAt)
+  if (expiresAt === undefined) return c.json({ statusCode: 400, message: '过期时间格式不正确' }, 400)
 
   await c.env.DB.prepare(`
     UPDATE import_api_tokens
@@ -88,7 +99,7 @@ adminImportApiTokenRoutes.patch('/:id', async (c) => {
     JSON.stringify(permissions),
     JSON.stringify(allowedSourceBotKeys),
     body.status ?? before.status,
-    body.expiresAt === undefined ? before.expires_at : body.expiresAt,
+    expiresAt,
     id,
   ).run()
 
@@ -98,7 +109,7 @@ adminImportApiTokenRoutes.patch('/:id', async (c) => {
     targetType: 'import_api_token',
     targetId: id,
     beforeValue: sanitizeTokenAuditValue(before),
-    afterValue: { ...body, permissions, allowedSourceBotKeys },
+    afterValue: { ...body, permissions, allowedSourceBotKeys, expiresAt },
   })
   return c.json({ message: 'Import Token 已更新' })
 })

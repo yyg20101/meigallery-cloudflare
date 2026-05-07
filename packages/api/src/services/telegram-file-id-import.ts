@@ -100,7 +100,7 @@ export async function createExternalImportRecord(
 
 export async function getExternalImportStatus(db: D1Database, importId: string, tokenId: string) {
   const record = await db.prepare(`
-    SELECT id, target_type, status, target_id, file_count, fetched_count, failed_count, retry_count, created_at, completed_at
+    SELECT id, target_type, status, target_id, file_count, fetched_count, failed_count, retry_count, error_json, created_at, completed_at
     FROM external_import_records
     WHERE id = ? AND token_id = ?
   `).bind(importId, tokenId).first<{
@@ -112,6 +112,7 @@ export async function getExternalImportStatus(db: D1Database, importId: string, 
     fetched_count: number
     failed_count: number
     retry_count: number
+    error_json: string | null
     created_at: string
     completed_at: string | null
   }>()
@@ -124,6 +125,7 @@ export async function getExternalImportStatus(db: D1Database, importId: string, 
     ORDER BY sort_order ASC
   `).bind(importId).all<{ filename: string | null; status: string; sort_order: number; error_message: string | null }>()
 
+  const error = parseImportErrorJson(record.error_json)
   return {
     importId: record.id,
     type: record.target_type,
@@ -133,6 +135,7 @@ export async function getExternalImportStatus(db: D1Database, importId: string, 
     fetchedCount: record.fetched_count,
     failedCount: record.failed_count,
     retryCount: record.retry_count,
+    ...(error ? { error, message: error.message } : {}),
     files: files.results.map(file => ({ filename: file.filename, status: file.status, sortOrder: file.sort_order, errorMessage: file.error_message })),
     createdAt: record.created_at,
     completedAt: record.completed_at,
@@ -192,12 +195,14 @@ export async function processTelegramFileIdImport(db: D1Database, r2: R2Bucket, 
 
   const uploadedKeys: string[] = []
   let targetId: string | null = null
+  let currentFileId: string | null = null
   try {
     const metadata = JSON.parse(record.metadata_json) as TelegramImportPayload['metadata']
     targetId = record.target_type === 'gallery' ? generateId('gal') : generateId('tc')
     const fetchedFiles: FetchedImportFile[] = []
 
     for (const file of files.results) {
+      currentFileId = file.id
       await db.prepare("UPDATE external_import_files SET status = 'fetching', updated_at = datetime('now') WHERE id = ?").bind(file.id).run()
       const fetched = await fetchTelegramImageFile(env, record.source_bot_key, file.telegram_file_id)
       const extension = getExtensionForMime(fetched.mimeType)
@@ -211,6 +216,8 @@ export async function processTelegramFileIdImport(db: D1Database, r2: R2Bucket, 
         SET status = 'completed', actual_mime_type = ?, file_size = ?, r2_key = ?, target_file_id = ?, updated_at = datetime('now')
         WHERE id = ?
       `).bind(fetched.mimeType, fetched.fileSize, r2Key, targetFileId, file.id).run()
+      await db.prepare('UPDATE external_import_records SET fetched_count = ? WHERE id = ?').bind(fetchedFiles.length, importId).run()
+      currentFileId = null
     }
 
     if (record.target_type === 'gallery') await createImportedGallery(db, targetId, metadata, fetchedFiles)
@@ -230,12 +237,20 @@ export async function processTelegramFileIdImport(db: D1Database, r2: R2Bucket, 
     })
   } catch (error) {
     await cleanupFailedImport(db, r2, importId, uploadedKeys, record.target_type, targetId)
+    if (currentFileId) {
+      const fileMessage = error instanceof Error ? error.message : '导入处理失败'
+      await db.prepare("UPDATE external_import_files SET status = 'failed', error_message = ?, updated_at = datetime('now') WHERE id = ?").bind(fileMessage, currentFileId).run()
+    }
     const message = error instanceof Error ? error.message : '导入处理失败'
+    const code = error instanceof ImportError ? error.code : 'IMPORT_PROCESS_FAILED'
     await db.prepare(`
       UPDATE external_import_records
-      SET status = 'failed', target_id = NULL, failed_count = file_count, error_json = ?, completed_at = datetime('now')
+      SET status = 'failed', target_id = NULL,
+          fetched_count = (SELECT COUNT(*) FROM external_import_files WHERE import_id = ? AND status = 'completed'),
+          failed_count = (SELECT COUNT(*) FROM external_import_files WHERE import_id = ? AND status = 'failed'),
+          error_json = ?, completed_at = datetime('now')
       WHERE id = ?
-    `).bind(JSON.stringify({ message }), importId).run()
+    `).bind(importId, importId, JSON.stringify({ code, message }), importId).run()
     await writeAuditLog(db, {
       adminId: record.token_created_by,
       action: 'telegram_import.failed',
@@ -243,6 +258,19 @@ export async function processTelegramFileIdImport(db: D1Database, r2: R2Bucket, 
       targetId: importId,
       afterValue: { importId, targetType: record.target_type, message },
     })
+  }
+}
+
+function parseImportErrorJson(value: string | null) {
+  if (!value) return null
+  try {
+    const parsed = JSON.parse(value) as { code?: unknown; message?: unknown }
+    return {
+      code: typeof parsed.code === 'string' ? parsed.code : 'IMPORT_PROCESS_FAILED',
+      message: typeof parsed.message === 'string' ? parsed.message : '导入处理失败',
+    }
+  } catch {
+    return { code: 'IMPORT_PROCESS_FAILED', message: '导入处理失败' }
   }
 }
 

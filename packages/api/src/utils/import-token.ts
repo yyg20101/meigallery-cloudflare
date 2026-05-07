@@ -32,5 +32,8 @@ export function isSourceBotAllowed(allowedSourceBotKeysJson: string, sourceBotKe
 }
 
 export function isImportTokenExpired(expiresAt: string | null, now = new Date()): boolean {
-  return Boolean(expiresAt && new Date(expiresAt).getTime() <= now.getTime())
+  if (!expiresAt) return false
+  const expiresAtTime = new Date(expiresAt).getTime()
+  if (Number.isNaN(expiresAtTime)) return true
+  return expiresAtTime <= now.getTime()
 }

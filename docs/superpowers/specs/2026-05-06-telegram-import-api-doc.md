@@ -7,7 +7,6 @@
 **Base URL**
 
 - 生产：`https://api.616618.xyz`
-- Dev：`https://meigallery-api-dev.250770503.workers.dev`
 
 **Endpoints**
 
@@ -298,10 +297,15 @@ curl "https://api.616618.xyz/api/imports/eir_abc123" \
   "fileCount": 2,
   "fetchedCount": 1,
   "failedCount": 1,
-  "message": "部分 Telegram 文件拉取失败",
+  "retryCount": 0,
+  "message": "Telegram getFile 调用失败",
+  "error": {
+    "code": "TELEGRAM_GET_FILE_FAILED",
+    "message": "Telegram getFile 调用失败"
+  },
   "files": [
     { "filename": "001.jpg", "status": "completed", "sortOrder": 0 },
-    { "filename": "002.jpg", "status": "failed", "sortOrder": 1, "error": "Telegram getFile failed" }
+    { "filename": "002.jpg", "status": "failed", "sortOrder": 1, "errorMessage": "Telegram getFile 调用失败" }
   ]
 }
 ```
@@ -391,11 +395,8 @@ Bot 端建议：
 ```json
 {
   "statusCode": 400,
-  "code": "VALIDATION_ERROR",
-  "message": "metadata.title 为必填项",
-  "details": [
-    { "field": "metadata.title", "message": "标题为必填项" }
-  ]
+  "code": "IMPORT_VALIDATION_FAILED",
+  "message": "标题为必填且不能超过 80 字"
 }
 ```
 
@@ -408,14 +409,19 @@ Bot 端建议：
 | 403 | `IMPORT_TOKEN_DISABLED` | token 已禁用 | 停止重试，联系站长 |
 | 403 | `IMPORT_TOKEN_EXPIRED` | token 已过期 | 停止重试，申请新 token |
 | 403 | `IMPORT_PERMISSION_DENIED` | token 缺少权限 | 停止重试，调整 token 权限 |
-| 403 | `SOURCE_BOT_NOT_ALLOWED` | sourceBotKey 不允许 | 停止重试，调整 token 允许列表 |
-| 400 | `VALIDATION_ERROR` | metadata、telegram 或 files 不合法 | 修正字段后重试 |
-| 409 | `SLUG_CONFLICT` | slug 已存在 | 换 slug 后重试 |
+| 403 | `IMPORT_SOURCE_BOT_NOT_ALLOWED` | sourceBotKey 不允许 | 停止重试，调整 token 允许列表 |
+| 400 | `IMPORT_VALIDATION_FAILED` | metadata、telegram 或 files 不合法 | 修正字段后重试 |
+| 409 | `IMPORT_TARGET_SLUG_CONFLICT` | slug 已存在；通过状态查询的 `error.code` 返回 | 换 slug 后使用新的 `externalMessageId` 重新提交 |
 | 409 | `IMPORT_RETRY_NOT_ALLOWED` | 当前导入状态不允许重试 | 仅在 `failed` 状态调用 retry |
 | 409 | `IMPORT_RETRY_CLEANUP_REQUIRED` | 失败导入仍有待清理资源 | 停止自动重试，人工处理 |
-| 429 | `RATE_LIMITED` | 触发速率限制 | 延迟后重试 |
-| 429 | `DAILY_IMPORT_LIMIT_EXCEEDED` | token 达到每日导入上限 | 次日重试或联系站长 |
-| 500 | `IMPORT_ACCEPT_FAILED` | 导入记录写入失败 | 使用同一 `externalMessageId` 重试 |
+| 500 | `IMPORT_PROCESS_FAILED` | 导入处理失败 | 使用同一 `externalMessageId` 查询状态或人工处理 |
+| 500 | `TELEGRAM_BOT_TOKEN_MISSING` | MeiGallery 未配置对应 sourceBotKey 的 Bot Token | 停止重试，联系站长配置 Worker secret |
+| 502 | `TELEGRAM_GET_FILE_FAILED` | Telegram getFile 调用失败 | 可在 `failed` 后调用 retry |
+| 502 | `TELEGRAM_DOWNLOAD_FAILED` | Telegram 文件下载失败 | 可在 `failed` 后调用 retry |
+| 400 | `TELEGRAM_FILE_TOO_LARGE` | Telegram 文件超过 10MB | 停止自动重试，压缩或替换图片 |
+| 400 | `TELEGRAM_FILE_TYPE_UNSUPPORTED` | 下载后的真实 MIME 不支持 | 停止自动重试，替换图片 |
+
+当前版本未实现按 token 的每日额度限制；Bot 端仍应自行做指数退避，避免网络异常时循环提交。
 
 异步阶段的 Telegram 下载失败不会通过提交接口直接返回；Bot 应通过状态查询读取 `failed` 状态和文件级错误，然后调用 `POST /api/imports/:importId/retry` 发起重试。
 
@@ -510,15 +516,15 @@ async function retryImport(importId: string) {
 
 ## 11. 上线前自测清单
 
-- 使用 dev Base URL 完成一次图库 file_id 导入。
-- 使用 dev Base URL 完成一次真实案例 file_id 导入。
+- 使用生产 Base URL 和测试 Token 完成一次图库 file_id 导入。
+- 使用生产 Base URL 和测试 Token 完成一次真实案例 file_id 导入。
 - 轮询状态直到 `draft_created`。
 - 构造一次失败导入并调用 `POST /api/imports/:importId/retry`，确认状态回到 `pending_media_fetch`。
 - 重复提交同一个 `externalMessageId`，确认返回 `duplicate`。
 - 使用 duplicate 响应的 `importId` 查询状态，确认可读取原导入记录。
 - 禁用 token 后请求，确认返回 `403`。
-- 使用未授权 `sourceBotKey` 请求，确认返回 `403 SOURCE_BOT_NOT_ALLOWED`。
-- 提交 GIF MIME 声明，确认返回 `400 VALIDATION_ERROR`。
-- 提交视频 MIME 声明，确认返回 `400 VALIDATION_ERROR`。
+- 使用未授权 `sourceBotKey` 请求，确认返回 `403 IMPORT_SOURCE_BOT_NOT_ALLOWED`。
+- 提交 GIF MIME 声明，确认返回 `400 IMPORT_VALIDATION_FAILED`。
+- 提交视频 MIME 声明，确认返回 `400 IMPORT_VALIDATION_FAILED`。
 - 登录后台确认导入内容均为草稿。
 - 登录后台确认审计日志能看到导入来源、sourceBotKey 和 token id。

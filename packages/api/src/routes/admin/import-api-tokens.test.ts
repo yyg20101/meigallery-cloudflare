@@ -68,6 +68,28 @@ describe('后台 Import Token API', () => {
     expect(body.token).toMatch(/^mgi_/)
   })
 
+  it('rejects invalid expiresAt values', async () => {
+    const res = await app('owner').request('/api/admin/import-api-tokens', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Ops Bot', permissions: ['gallery:create'], allowedSourceBotKeys: ['ops_gallery_bot'], expiresAt: 'not-a-date' }),
+    }, { DB: createDb() } as unknown as Bindings)
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).message).toContain('过期时间格式不正确')
+  })
+
+  it('rejects non-string expiresAt values', async () => {
+    const res = await app('owner').request('/api/admin/import-api-tokens', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Ops Bot', permissions: ['gallery:create'], allowedSourceBotKeys: ['ops_gallery_bot'], expiresAt: 123 }),
+    }, { DB: createDb() } as unknown as Bindings)
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).message).toContain('过期时间格式不正确')
+  })
+
   it('does not write token hash to audit log when updating tokens', async () => {
     const db = createDb()
     const res = await app('owner').request('/api/admin/import-api-tokens/iat_1', {
