@@ -7,6 +7,7 @@ const loading = ref(false)
 const uploadLoading = ref(false)
 const message = ref('')
 const files = ref<FileList | null>(null)
+const imageInput = ref<HTMLInputElement | null>(null)
 
 interface AdminCaseDetail {
   id: string
@@ -46,6 +47,21 @@ const imageCountValid = computed(() => {
   return count >= 2 && count <= 9
 })
 
+const selectedFileSummary = computed(() => {
+  const selected = Array.from(files.value || [])
+  if (selected.length === 0) return '尚未选择图片'
+  const names = selected.slice(0, 2).map(file => file.name).join('、')
+  return selected.length === 1 ? `已选择：${names}` : `已选择 ${selected.length} 张：${names}${selected.length > 2 ? ' 等' : ''}`
+})
+
+function onFilesChange(event: Event) {
+  files.value = (event.target as HTMLInputElement).files
+}
+
+function openImagePicker() {
+  imageInput.value?.click()
+}
+
 async function onSave() {
   loading.value = true
   message.value = ''
@@ -69,6 +85,7 @@ async function onUpload() {
     for (const file of Array.from(files.value)) body.append('files', file)
     await api(`/api/admin/testimonial-cases/${route.params.id}/images`, { method: 'POST', body })
     files.value = null
+    if (imageInput.value) imageInput.value.value = ''
     await refresh()
   } catch (e: any) {
     message.value = e?.data?.message || '上传失败'
@@ -116,8 +133,14 @@ async function deleteImage(imageId: string) {
       <div class="rounded-lg border border-gray-200 bg-white p-5">
         <h2 class="text-base font-semibold text-gray-900">图片管理</h2>
         <p class="mt-1 text-xs text-gray-500">仅上传已授权、已脱敏图片；每个案例 2-9 张。</p>
-        <input type="file" multiple accept="image/jpeg,image/png,image/webp" class="mt-4 block w-full text-sm" @change="files = ($event.target as HTMLInputElement).files" />
-        <button :disabled="uploadLoading || !files?.length" class="mt-3 rounded-lg bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50" @click="onUpload">{{ uploadLoading ? '上传中...' : '上传图片' }}</button>
+        <div class="mt-4 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-3">
+          <input ref="imageInput" type="file" multiple accept="image/jpeg,image/png,image/webp" class="hidden" @change="onFilesChange" />
+          <button type="button" class="inline-flex items-center justify-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-gray-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900" @click="openImagePicker">
+            选择图片文件
+          </button>
+          <p class="mt-2 break-all text-xs text-gray-600">{{ selectedFileSummary }}</p>
+        </div>
+        <button :disabled="uploadLoading || !files?.length" class="mt-3 w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50" @click="onUpload">{{ uploadLoading ? '上传中...' : '上传图片' }}</button>
       </div>
       <div class="space-y-3">
         <div v-for="(image, index) in data?.images || []" :key="image.id" class="overflow-hidden rounded-lg border border-gray-200 bg-white">

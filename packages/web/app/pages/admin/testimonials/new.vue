@@ -5,6 +5,7 @@ const { api } = useApi()
 const loading = ref(false)
 const message = ref('')
 const files = ref<FileList | null>(null)
+const imageInput = ref<HTMLInputElement | null>(null)
 const form = reactive({
   title: '',
   slug: '',
@@ -15,6 +16,21 @@ const form = reactive({
   seoTitle: '',
   seoDescription: '',
 })
+
+const selectedFileSummary = computed(() => {
+  const selected = Array.from(files.value || [])
+  if (selected.length === 0) return '尚未选择图片'
+  const names = selected.slice(0, 2).map(file => file.name).join('、')
+  return selected.length === 1 ? `已选择：${names}` : `已选择 ${selected.length} 张：${names}${selected.length > 2 ? ' 等' : ''}`
+})
+
+function onFilesChange(event: Event) {
+  files.value = (event.target as HTMLInputElement).files
+}
+
+function openImagePicker() {
+  imageInput.value?.click()
+}
 
 function createFormData() {
   const body = new FormData()
@@ -65,7 +81,11 @@ async function onSubmit() {
       <div><label class="mb-1 block text-sm font-medium text-gray-700">SEO 描述</label><textarea v-model="form.seoDescription" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></div>
       <div class="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4">
         <label class="mb-1 block text-sm font-medium text-gray-700">案例图片</label>
-        <input type="file" multiple accept="image/jpeg,image/png,image/webp" class="block w-full text-sm" @change="files = ($event.target as HTMLInputElement).files" />
+        <input ref="imageInput" type="file" multiple accept="image/jpeg,image/png,image/webp" class="hidden" @change="onFilesChange" />
+        <button type="button" class="mt-2 inline-flex items-center justify-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-gray-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900" @click="openImagePicker">
+          选择图片文件
+        </button>
+        <p class="mt-2 break-all text-xs text-gray-600">{{ selectedFileSummary }}</p>
         <p class="mt-2 text-xs text-gray-500">可在创建草稿时上传 1-9 张已授权、已脱敏图片；也可以创建后继续在编辑页补充。</p>
       </div>
       <p v-if="message" class="text-sm text-red-600">{{ message }}</p>
