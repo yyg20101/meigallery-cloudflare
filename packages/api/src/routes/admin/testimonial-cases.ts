@@ -28,6 +28,10 @@ type CaseBody = {
   seoDescription?: string
 }
 
+type UploadFailure = { statusCode: number; message: string; status: 400 }
+type UploadedTestimonialImage = { id: string; url: string; sortOrder: number }
+type UploadResult = { ok: true; uploaded: UploadedTestimonialImage[] } | { ok: false; error: UploadFailure }
+
 function validateCaseBody(body: CaseBody): string | null {
   if (!body.title || body.title.trim().length > 80) return '标题为必填且不能超过 80 字'
   if (!body.slug || !isValidSlug(body.slug)) return 'slug 只能包含小写字母、数字和短横线'
@@ -35,6 +39,65 @@ function validateCaseBody(body: CaseBody): string | null {
   if (body.bodyMd && body.bodyMd.length > 5000) return '正文不能超过 5000 字'
   if (body.status && !['draft', 'published'].includes(body.status)) return '状态不合法'
   return null
+}
+
+function isMultipartRequest(contentType: string | undefined): boolean {
+  return (contentType || '').toLowerCase().includes('multipart/form-data')
+}
+
+function formString(formData: FormData, key: string): string | undefined {
+  const value = formData.get(key)
+  return typeof value === 'string' ? value : undefined
+}
+
+function formBoolean(formData: FormData, key: string): boolean | undefined {
+  const value = formString(formData, key)
+  if (value === undefined || value === '') return undefined
+  return value === 'true' || value === '1'
+}
+
+function formNumber(formData: FormData, key: string): number | undefined {
+  const value = formString(formData, key)
+  if (value === undefined || value === '') return undefined
+  const number = Number(value)
+  return Number.isFinite(number) ? number : undefined
+}
+
+function caseBodyFromFormData(formData: FormData): CaseBody {
+  return {
+    title: formString(formData, 'title'),
+    slug: formString(formData, 'slug'),
+    summary: formString(formData, 'summary'),
+    bodyMd: formString(formData, 'bodyMd'),
+    status: formString(formData, 'status') as CaseBody['status'],
+    featured: formBoolean(formData, 'featured'),
+    sortOrder: formNumber(formData, 'sortOrder'),
+    seoTitle: formString(formData, 'seoTitle'),
+    seoDescription: formString(formData, 'seoDescription'),
+  }
+}
+
+async function uploadTestimonialImages(db: D1Database, r2: R2Bucket, caseId: string, files: File[], startOrder: number): Promise<UploadResult> {
+  let nextOrder = startOrder
+  const uploaded: UploadedTestimonialImage[] = []
+
+  for (const file of files) {
+    if (!isAllowedImageType(file.type)) return { ok: false, error: { statusCode: 400, message: `不支持的文件格式: ${file.type}`, status: 400 } }
+    if (file.size > 10 * 1024 * 1024) return { ok: false, error: { statusCode: 400, message: '单张图片最大 10MB', status: 400 } }
+
+    const imageId = generateId('tci')
+    const ext = getR2Extension(file.name, file.type)
+    const r2Key = `testimonials/${caseId}/${imageId}.${ext}`
+    await r2.put(r2Key, await file.arrayBuffer(), { httpMetadata: { contentType: file.type } })
+    await db.prepare(`
+      INSERT INTO testimonial_case_images (id, case_id, r2_key, alt_text, mime_type, file_size, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).bind(imageId, caseId, r2Key, file.name, file.type, file.size, nextOrder).run()
+    uploaded.push({ id: imageId, url: getPublicImageUrl(imageId), sortOrder: nextOrder })
+    nextOrder += 1
+  }
+
+  return { ok: true, uploaded }
 }
 
 adminTestimonialCaseRoutes.get('/', async (c) => {
@@ -147,9 +210,13 @@ adminTestimonialCaseRoutes.get('/:id', async (c) => {
 adminTestimonialCaseRoutes.post('/', async (c) => {
   const db = c.env.DB
   const adminId = c.get('userId')!
-  const body = await c.req.json<CaseBody>()
+  const isMultipart = isMultipartRequest(c.req.header('Content-Type'))
+  const formData = isMultipart ? await c.req.formData() : null
+  const files = formData?.getAll('files') as unknown as File[] | undefined
+  const body = formData ? caseBodyFromFormData(formData) : await c.req.json<CaseBody>()
   const error = validateCaseBody(body)
   if (error) return c.json({ statusCode: 400, message: error }, 400)
+  if (files && files.length > 9) return c.json({ statusCode: 400, message: '每个真实案例最多 9 张图片' }, 400)
 
   const id = generateId('tc')
   const status = body.status || 'draft'
@@ -179,15 +246,20 @@ adminTestimonialCaseRoutes.post('/', async (c) => {
     publishedAt,
   ).run()
 
+  const uploadResult: UploadResult = files && files.length > 0
+    ? await uploadTestimonialImages(db, c.env.R2, id, files, 0)
+    : { ok: true, uploaded: [] }
+  if (!uploadResult.ok) return c.json({ statusCode: uploadResult.error.statusCode, message: uploadResult.error.message }, uploadResult.error.status)
+
   await writeAuditLog(db, {
     adminId,
     action: 'create_testimonial_case',
     targetType: 'testimonial_case',
     targetId: id,
-    afterValue: { title: body.title, slug: body.slug, status },
+    afterValue: { title: body.title, slug: body.slug, status, uploadedCount: uploadResult.uploaded.length },
   })
 
-  return c.json({ id, message: '真实案例已创建' }, 201)
+  return c.json({ id, message: '真实案例已创建', uploaded: uploadResult.uploaded }, 201)
 })
 
 adminTestimonialCaseRoutes.patch('/:id', async (c) => {
@@ -293,34 +365,18 @@ adminTestimonialCaseRoutes.post('/:id/images', async (c) => {
   }
 
   const maxOrder = await db.prepare('SELECT MAX(sort_order) as max_order FROM testimonial_case_images WHERE case_id = ?').bind(caseId).first<{ max_order: number | null }>()
-  let nextOrder = (maxOrder?.max_order ?? -1) + 1
-  const uploaded: Array<{ id: string; url: string; sortOrder: number }> = []
-
-  for (const file of files) {
-    if (!isAllowedImageType(file.type)) return c.json({ statusCode: 400, message: `不支持的文件格式: ${file.type}` }, 400)
-    if (file.size > 10 * 1024 * 1024) return c.json({ statusCode: 400, message: '单张图片最大 10MB' }, 400)
-
-    const imageId = generateId('tci')
-    const ext = getR2Extension(file.name, file.type)
-    const r2Key = `testimonials/${caseId}/${imageId}.${ext}`
-    await r2.put(r2Key, await file.arrayBuffer(), { httpMetadata: { contentType: file.type } })
-    await db.prepare(`
-      INSERT INTO testimonial_case_images (id, case_id, r2_key, alt_text, mime_type, file_size, sort_order)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).bind(imageId, caseId, r2Key, file.name, file.type, file.size, nextOrder).run()
-    uploaded.push({ id: imageId, url: getPublicImageUrl(imageId), sortOrder: nextOrder })
-    nextOrder += 1
-  }
+  const uploadResult = await uploadTestimonialImages(db, r2, caseId, files, (maxOrder?.max_order ?? -1) + 1)
+  if (!uploadResult.ok) return c.json({ statusCode: uploadResult.error.statusCode, message: uploadResult.error.message }, uploadResult.error.status)
 
   await writeAuditLog(db, {
     adminId,
     action: 'upload_testimonial_images',
     targetType: 'testimonial_case',
     targetId: caseId,
-    afterValue: { uploadedCount: uploaded.length },
+    afterValue: { uploadedCount: uploadResult.uploaded.length },
   })
 
-  return c.json({ uploaded }, 201)
+  return c.json({ uploaded: uploadResult.uploaded }, 201)
 })
 
 adminTestimonialCaseRoutes.patch('/:id/images/order', async (c) => {

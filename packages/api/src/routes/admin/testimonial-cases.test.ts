@@ -76,6 +76,43 @@ describe('后台真实案例 API', () => {
     expect(executedSql.some(sql => sql.includes('INSERT INTO admin_audit_logs'))).toBe(true)
   })
 
+  it('创建真实案例时支持同时上传图片', async () => {
+    const app = createApp()
+    const executedSql: string[] = []
+    const putKeys: string[] = []
+    const env = {
+      DB: createDb({
+        first: (sql) => {
+          if (sql.includes('SELECT MAX(sort_order) as max_order')) return { max_order: null }
+          return null
+        },
+        run: (sql) => {
+          executedSql.push(sql)
+          return { success: true }
+        },
+      }),
+      R2: {
+        put: async (key: string) => {
+          putKeys.push(key)
+        },
+      },
+    } as unknown as Bindings
+    const form = new FormData()
+    form.set('title', '授权反馈案例')
+    form.set('slug', 'member-feedback-001')
+    form.set('featured', 'true')
+    form.append('files', new File([new Uint8Array([1, 2, 3])], 'feedback.jpg', { type: 'image/jpeg' }))
+
+    const res = await app.request('/api/admin/testimonial-cases', { method: 'POST', body: form }, env)
+    const body = await res.json()
+
+    expect(res.status).toBe(201)
+    expect(body.uploaded).toHaveLength(1)
+    expect(putKeys[0]).toContain(`testimonials/${body.id}/`)
+    expect(executedSql.some(sql => sql.includes('INSERT INTO testimonial_cases'))).toBe(true)
+    expect(executedSql.some(sql => sql.includes('INSERT INTO testimonial_case_images'))).toBe(true)
+  })
+
   it('返回后台案例详情和公开图片 URL', async () => {
     const app = createApp()
     const env = {

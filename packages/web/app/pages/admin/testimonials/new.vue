@@ -4,6 +4,7 @@ definePageMeta({ layout: 'admin' })
 const { api } = useApi()
 const loading = ref(false)
 const message = ref('')
+const files = ref<FileList | null>(null)
 const form = reactive({
   title: '',
   slug: '',
@@ -15,11 +16,28 @@ const form = reactive({
   seoDescription: '',
 })
 
+function createFormData() {
+  const body = new FormData()
+  body.set('title', form.title)
+  body.set('slug', form.slug)
+  body.set('summary', form.summary)
+  body.set('bodyMd', form.bodyMd)
+  body.set('featured', String(form.featured))
+  body.set('sortOrder', String(form.sortOrder))
+  body.set('seoTitle', form.seoTitle)
+  body.set('seoDescription', form.seoDescription)
+  for (const file of Array.from(files.value || [])) body.append('files', file)
+  return body
+}
+
 async function onSubmit() {
   loading.value = true
   message.value = ''
   try {
-    const result = await api<{ id: string }>('/api/admin/testimonial-cases', { method: 'POST', body: form })
+    const result = await api<{ id: string }>('/api/admin/testimonial-cases', {
+      method: 'POST',
+      body: files.value?.length ? createFormData() : form,
+    })
     await navigateTo(`/admin/testimonials/${result.id}`)
   } catch (e: any) {
     message.value = e?.data?.message || '创建失败'
@@ -45,6 +63,11 @@ async function onSubmit() {
       </div>
       <div><label class="mb-1 block text-sm font-medium text-gray-700">SEO 标题</label><input v-model="form.seoTitle" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></div>
       <div><label class="mb-1 block text-sm font-medium text-gray-700">SEO 描述</label><textarea v-model="form.seoDescription" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></div>
+      <div class="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4">
+        <label class="mb-1 block text-sm font-medium text-gray-700">案例图片</label>
+        <input type="file" multiple accept="image/jpeg,image/png,image/webp" class="block w-full text-sm" @change="files = ($event.target as HTMLInputElement).files" />
+        <p class="mt-2 text-xs text-gray-500">可在创建草稿时上传 1-9 张已授权、已脱敏图片；也可以创建后继续在编辑页补充。</p>
+      </div>
       <p v-if="message" class="text-sm text-red-600">{{ message }}</p>
       <button :disabled="loading" class="rounded-lg bg-blue-600 px-5 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50">{{ loading ? '创建中...' : '创建草稿' }}</button>
     </form>
