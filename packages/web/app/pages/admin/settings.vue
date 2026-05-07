@@ -3,6 +3,7 @@ definePageMeta({ layout: 'admin' })
 
 const { api } = useApi()
 const { isOwner } = useAuth()
+const { settings: publicSettings } = useSiteSettings()
 
 const form = reactive({
   // 基础信息
@@ -37,7 +38,9 @@ const videoEnabledToggle = ref(false)
 const facebookPixelEnabled = ref(false)
 const facebookPixelDebugEnabled = ref(false)
 const loading = ref(false)
+const iconUploadLoading = ref(false)
 const message = ref('')
+const siteIconInput = ref<HTMLInputElement | null>(null)
 
 // 加载现有设置
 const { data: settings } = await useAsyncData('admin-settings', () =>
@@ -81,6 +84,30 @@ async function onSave() {
     message.value = e?.data?.message || '保存失败'
   } finally {
     loading.value = false
+  }
+}
+
+function openSiteIconPicker() {
+  siteIconInput.value?.click()
+}
+
+async function onSiteIconSelected(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  iconUploadLoading.value = true
+  message.value = ''
+  try {
+    const body = new FormData()
+    body.set('file', file)
+    const result = await api<{ iconUrl: string }>('/api/admin/settings/site-icon', { method: 'POST', body })
+    form.site_icon = result.iconUrl
+    publicSettings.value = { ...publicSettings.value, site_icon: result.iconUrl }
+    message.value = '站点图标已上传并同步 favicon'
+  } catch (e: any) {
+    message.value = e?.data?.message || '站点图标上传失败'
+  } finally {
+    iconUploadLoading.value = false
+    if (siteIconInput.value) siteIconInput.value.value = ''
   }
 }
 
@@ -144,7 +171,17 @@ async function toggleVideo() {
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">站点图标 URL</label>
           <input v-model="form.site_icon" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="https://example.com/icon.png" />
-          <p class="text-xs text-gray-400 mt-1">favicon 和 apple-touch-icon 地址（留空使用默认）</p>
+          <div class="mt-3 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-3">
+            <input ref="siteIconInput" type="file" accept="image/png,image/jpeg,image/webp,image/x-icon" class="hidden" @change="onSiteIconSelected" />
+            <div class="flex flex-wrap items-center gap-3">
+              <button type="button" :disabled="iconUploadLoading" class="inline-flex items-center justify-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50" @click="openSiteIconPicker">
+                {{ iconUploadLoading ? '上传中...' : '上传站点图标' }}
+              </button>
+              <img v-if="form.site_icon" :src="form.site_icon" alt="当前站点图标预览" class="h-10 w-10 rounded-lg border border-gray-200 bg-white object-contain p-1" />
+            </div>
+            <p class="mt-2 text-xs text-gray-500">支持 PNG、JPEG、WebP、ICO，最大 1MB；上传后会自动写入 URL，并同步用于 favicon 和 apple-touch-icon。</p>
+          </div>
+          <p class="text-xs text-gray-400 mt-1">也可以继续手动填写外部 URL；留空使用默认 favicon。</p>
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">页脚文案</label>

@@ -14,7 +14,7 @@ mediaRoutes.get('/public/*', async (c) => {
   const path = c.req.path.replace('/api/media/public/', '')
 
   // 白名单前缀，仅允许公开访问特定目录
-  const allowedPrefixes = ['avatars/']
+  const allowedPrefixes = ['avatars/', 'site/']
   const isAllowed = allowedPrefixes.some(prefix => path.startsWith(prefix))
   if (!isAllowed) {
     return c.json({ statusCode: 403, message: '不允许访问该路径' }, 403)

@@ -18,6 +18,7 @@ useHead(() => ({
   link: siteIcon.value
     ? [
         { rel: 'icon', href: siteIcon.value },
+        { rel: 'shortcut icon', href: siteIcon.value },
         { rel: 'apple-touch-icon', href: siteIcon.value },
       ]
     : [],

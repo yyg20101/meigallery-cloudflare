@@ -2,12 +2,26 @@ import { Hono } from 'hono'
 import type { Bindings, Variables } from '../../index'
 import { requireOwner } from '../../middleware/auth'
 import { normalizeBooleanSetting, normalizeFacebookPixelId } from '../../utils/facebook-pixel-settings'
+import { generateId } from '../../utils/db'
 import { writeAuditLog } from '../../utils/permission'
 import { ADMIN_SETTING_KEYS } from '../../utils/site-settings'
 
 export const adminSettingsRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
 const ALLOWED_KEYS: ReadonlyArray<string> = ADMIN_SETTING_KEYS
+const SITE_ICON_TYPES: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+  'image/x-icon': 'ico',
+  'image/vnd.microsoft.icon': 'ico',
+}
+
+function publicMediaPathToR2Key(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  if (!value.startsWith('/api/media/public/site/')) return null
+  return value.replace('/api/media/public/', '')
+}
 
 adminSettingsRoutes.get('/', requireOwner, async (c) => {
   const db = c.env.DB
@@ -79,4 +93,43 @@ adminSettingsRoutes.patch('/', requireOwner, async (c) => {
   })
 
   return c.json({ message: '设置已更新', updated: keys })
+})
+
+adminSettingsRoutes.post('/site-icon', requireOwner, async (c) => {
+  const adminId = c.get('userId')!
+  const db = c.env.DB
+  const formData = await c.req.formData()
+  const file = formData.get('file') as File | null
+
+  if (!file) return c.json({ statusCode: 400, message: '请上传文件（字段名: file）' }, 400)
+  const ext = SITE_ICON_TYPES[file.type]
+  if (!ext) return c.json({ statusCode: 400, message: '仅支持 PNG、JPEG、WebP、ICO 格式' }, 400)
+  if (file.size > 1024 * 1024) return c.json({ statusCode: 400, message: '站点图标不能超过 1MB' }, 400)
+
+  const before = await db.prepare("SELECT value FROM site_settings WHERE key = 'site_icon'").first<{ value: string }>()
+  const beforeValue = before ? JSON.parse(before.value) : ''
+  const oldKey = publicMediaPathToR2Key(beforeValue)
+  const key = `site/site-icon-${generateId('asset')}.${ext}`
+  const iconUrl = `/api/media/public/${key}`
+
+  await c.env.R2.put(key, await file.arrayBuffer(), {
+    httpMetadata: { contentType: file.type },
+  })
+  if (oldKey && oldKey !== key) await c.env.R2.delete(oldKey)
+
+  await db
+    .prepare("UPDATE site_settings SET value = ?, updated_at = datetime('now') WHERE key = ?")
+    .bind(JSON.stringify(iconUrl), 'site_icon')
+    .run()
+
+  await writeAuditLog(db, {
+    adminId,
+    action: 'settings_site_icon_upload',
+    targetType: 'settings',
+    targetId: 'site_icon',
+    beforeValue: { site_icon: beforeValue },
+    afterValue: { site_icon: iconUrl },
+  })
+
+  return c.json({ message: '站点图标已上传', iconUrl })
 })
