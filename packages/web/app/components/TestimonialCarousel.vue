@@ -155,7 +155,7 @@ onUnmounted(() => {
   >
     <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_6%,rgba(214,195,154,0.18),transparent_32%),linear-gradient(180deg,rgba(255,251,247,0.68),transparent_45%)]" />
     <div class="relative">
-    <EditorialSectionHeading eyebrow="Testimonials" title="真实案例" description="展示已授权、已脱敏的用户反馈与站点体验案例。" action-label="查看全部案例" action-to="/testimonials" />
+    <EditorialSectionHeading eyebrow="Case Stories" title="真实案例" description="展示已授权、已脱敏的用户反馈与站点体验案例。" action-label="查看全部案例" action-to="/cases" />
     <div v-if="activeCase" class="mt-5 lg:grid lg:gap-4 lg:items-stretch" :class="visibleCases.length > 1 ? 'lg:grid-cols-[minmax(0,1fr)_18rem]' : ''">
       <div v-if="visibleCases.length > 1" class="lg:hidden">
         <div
@@ -167,7 +167,7 @@ onUnmounted(() => {
           <NuxtLink
             v-for="item in visibleCases"
             :key="item.id"
-            :to="`/testimonials/${item.slug}`"
+            :to="`/cases/${item.slug}`"
             class="group relative h-[20.5rem] w-[82vw] max-w-[22rem] shrink-0 snap-center overflow-hidden rounded-[1.6rem] border border-[#f0e4d8] bg-gray-950 shadow-lg shadow-orange-950/10"
           >
             <img v-if="item.coverImageUrl" :src="item.coverImageUrl" :alt="item.title" class="absolute inset-0 h-full w-full object-cover opacity-95 transition-transform duration-[1200ms] ease-out group-hover:scale-[1.03]" loading="lazy" />
@@ -185,7 +185,7 @@ onUnmounted(() => {
 
       <NuxtLink
         :key="activeCase.id"
-        :to="`/testimonials/${activeCase.slug}`"
+        :to="`/cases/${activeCase.slug}`"
         class="group relative min-h-[20.5rem] overflow-hidden rounded-[1.75rem] border border-[#f0e4d8] bg-gray-950 shadow-lg shadow-orange-950/10 lg:min-h-[25rem]"
         :class="visibleCases.length > 1 ? 'hidden lg:block' : 'block'"
       >
