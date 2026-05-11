@@ -53,10 +53,12 @@ function openContactPanel() {
         <h1 class="mt-4 text-3xl font-semibold tracking-[-0.05em] text-gray-950 lg:text-5xl">{{ item.title }}</h1>
         <p class="mt-4 text-xs text-gray-400"><span v-if="formattedDate">{{ formattedDate }} · </span>{{ item.images.length }} 张图片</p>
         <p v-if="item.summary" class="mt-5 text-sm leading-7 text-gray-600">{{ item.summary }}</p>
-        <div class="mt-6 flex flex-wrap gap-3">
-          <NuxtLink to="/testimonials" class="rounded-full border border-[#eadfd2] bg-white px-4 py-2 text-sm text-gray-700 transition-all hover:-translate-y-0.5 hover:border-[#d6c39a] hover:text-gray-950">返回案例列表</NuxtLink>
-          <NuxtLink to="/discover" class="rounded-full bg-gray-950 px-4 py-2 text-sm font-medium text-[#d6c39a] transition-all hover:-translate-y-0.5 hover:bg-black">查看更多图库</NuxtLink>
-          <button type="button" class="rounded-full border border-gray-950 bg-white px-4 py-2 text-sm font-medium text-gray-950 transition-all hover:-translate-y-0.5 hover:bg-gray-950 hover:text-[#d6c39a]" @click="openContactPanel">联系站长</button>
+        <div class="mt-7 rounded-[1.5rem] border border-[#eadfd2] bg-white/72 p-3 shadow-sm shadow-orange-950/5 backdrop-blur">
+          <NuxtLink to="/testimonials" class="inline-flex text-sm font-medium text-gray-500 underline decoration-[#d6c39a] underline-offset-4 transition-colors hover:text-gray-950">返回案例列表</NuxtLink>
+          <div class="mt-3 grid gap-2 sm:grid-cols-2">
+            <NuxtLink to="/discover" class="inline-flex min-h-11 items-center justify-center rounded-full bg-gray-950 px-5 py-2.5 text-sm font-medium text-[#d6c39a] shadow-sm shadow-gray-950/20 transition-all hover:-translate-y-0.5 hover:bg-black">查看更多图库</NuxtLink>
+            <button type="button" class="inline-flex min-h-11 items-center justify-center rounded-full border border-gray-950 bg-white px-5 py-2.5 text-sm font-medium text-gray-950 transition-all hover:-translate-y-0.5 hover:bg-gray-950 hover:text-[#d6c39a]" @click="openContactPanel">联系站长</button>
+          </div>
         </div>
       </div>
     </section>
