@@ -15,6 +15,7 @@ const activeIndex = ref(0)
 const isPaused = ref(false)
 const prefersReducedMotion = ref(false)
 const mobileRail = ref<HTMLElement | null>(null)
+const isSyncingMobileRail = ref(false)
 const visibleCases = computed(() => props.cases.slice(0, 6))
 const activeCase = computed(() => visibleCases.value[activeIndex.value] || visibleCases.value[0] || null)
 const previewCases = computed(() => {
@@ -27,6 +28,7 @@ const previewCases = computed(() => {
 
 let carouselTimer: ReturnType<typeof setInterval> | null = null
 let reducedMotionQuery: MediaQueryList | null = null
+let mobileRailSyncTimer: ReturnType<typeof setTimeout> | null = null
 
 function goToSlide(index: number) {
   activeIndex.value = index
@@ -37,14 +39,20 @@ function syncMobileRail() {
   const target = rail?.children.item(activeIndex.value)
   if (!(target instanceof HTMLElement)) return
 
+  isSyncingMobileRail.value = true
+  if (mobileRailSyncTimer) clearTimeout(mobileRailSyncTimer)
   target.scrollIntoView({
     block: 'nearest',
     inline: 'center',
     behavior: prefersReducedMotion.value ? 'auto' : 'smooth',
   })
+  mobileRailSyncTimer = setTimeout(() => {
+    isSyncingMobileRail.value = false
+  }, prefersReducedMotion.value ? 0 : 520)
 }
 
 function handleMobileRailScroll() {
+  if (isSyncingMobileRail.value) return
   const rail = mobileRail.value
   if (!rail) return
 
@@ -132,18 +140,21 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopCarousel()
+  if (mobileRailSyncTimer) clearTimeout(mobileRailSyncTimer)
   reducedMotionQuery?.removeEventListener('change', updateReducedMotionPreference)
 })
 </script>
 
 <template>
   <section
-    class="overflow-hidden rounded-[2rem] border border-[#f0e4d8] bg-white p-4 shadow-xl shadow-orange-950/6 lg:p-6"
+    class="relative overflow-hidden rounded-[2rem] border border-[#f0e4d8] bg-white p-4 shadow-xl shadow-orange-950/6 lg:p-6"
     @mouseenter="pauseCarousel"
     @mouseleave="resumeCarousel"
     @focusin="pauseCarousel"
     @focusout="handleFocusOut"
   >
+    <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_6%,rgba(214,195,154,0.18),transparent_32%),linear-gradient(180deg,rgba(255,251,247,0.68),transparent_45%)]" />
+    <div class="relative">
     <EditorialSectionHeading eyebrow="Testimonials" title="真实案例" description="展示已授权、已脱敏的用户反馈与站点体验案例。" action-label="查看全部案例" action-to="/testimonials" />
     <div v-if="activeCase" class="mt-5 lg:grid lg:gap-4 lg:items-stretch" :class="visibleCases.length > 1 ? 'lg:grid-cols-[minmax(0,1fr)_18rem]' : ''">
       <div v-if="visibleCases.length > 1" class="lg:hidden">
@@ -175,7 +186,7 @@ onUnmounted(() => {
       <NuxtLink
         :key="activeCase.id"
         :to="`/testimonials/${activeCase.slug}`"
-        class="group relative min-h-[20.5rem] overflow-hidden rounded-[1.75rem] border border-[#f0e4d8] bg-gray-950 shadow-lg shadow-orange-950/10 lg:min-h-[24rem]"
+        class="group relative min-h-[20.5rem] overflow-hidden rounded-[1.75rem] border border-[#f0e4d8] bg-gray-950 shadow-lg shadow-orange-950/10 lg:min-h-[25rem]"
         :class="visibleCases.length > 1 ? 'hidden lg:block' : 'block'"
       >
         <img v-if="activeCase.coverImageUrl" :src="activeCase.coverImageUrl" :alt="activeCase.title" class="absolute inset-0 h-full w-full object-cover opacity-95 transition-transform duration-[1400ms] ease-out motion-safe:animate-[fade-in_0.55s_ease-out] group-hover:scale-[1.03]" loading="lazy" />
@@ -189,14 +200,14 @@ onUnmounted(() => {
         </div>
       </NuxtLink>
 
-      <div v-if="visibleCases.length > 1" data-testid="desktop-testimonial-preview-panel" class="hidden flex-col justify-between gap-4 rounded-[1.75rem] border border-[#f0e4d8] bg-[#fffbf7] p-3 lg:flex">
+      <div v-if="visibleCases.length > 1" data-testid="desktop-testimonial-preview-panel" class="hidden flex-col justify-between gap-4 rounded-[1.75rem] border border-[#f0e4d8] bg-[#fffbf7]/92 p-3 shadow-inner shadow-white/70 lg:flex">
         <div v-if="previewCases.length" class="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
           <button
             v-for="entry in previewCases"
             :key="entry.item.id"
             type="button"
             class="group grid grid-cols-[5.5rem_minmax(0,1fr)] gap-3 rounded-[1.1rem] border bg-white p-2 text-left shadow-sm shadow-orange-950/5 transition-all hover:-translate-y-0.5 hover:border-[#d6c39a]"
-            :class="entry.index === activeIndex ? 'border-[#d6c39a]' : 'border-[#f0e4d8]'"
+            :class="entry.index === activeIndex ? 'border-[#d6c39a] ring-2 ring-[#d6c39a]/20' : 'border-[#f0e4d8]'"
             @click="goToSlide(entry.index)"
           >
             <div class="aspect-[4/3] overflow-hidden rounded-[0.85rem] bg-orange-50">
@@ -253,6 +264,7 @@ onUnmounted(() => {
       <h3 class="text-lg font-semibold tracking-tight text-gray-950">真实案例整理中</h3>
       <p class="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-500">我们正在整理已授权、已脱敏的用户反馈。你可以先浏览最新图库，或联系站长了解会员规则。</p>
       <NuxtLink to="/discover" class="mt-5 inline-flex rounded-full bg-gray-950 px-5 py-2.5 text-sm font-medium text-white transition-all hover:-translate-y-0.5 hover:bg-gray-800">浏览最新图库</NuxtLink>
+    </div>
     </div>
   </section>
 </template>
