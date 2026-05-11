@@ -45,6 +45,10 @@ const { data: testimonialsData } = await useAsyncData('home-testimonials', () =>
   api<{ data: TestimonialSummary[] }>('/api/testimonial-cases', { query: { featured: 'true', pageSize: '6' } }),
 )
 
+const { data: fallbackTestimonialsData } = await useAsyncData('home-testimonials-fallback', () =>
+  api<{ data: TestimonialSummary[] }>('/api/testimonial-cases', { query: { pageSize: '6' } }),
+)
+
 const allGalleries = computed(() => galleriesData.value?.data ?? [])
 
 // 顶部轮播：前 6 条，避免首屏浪费并展示更多内容
@@ -102,7 +106,10 @@ const latest = computed(() => {
   return allGalleries.value.filter(gallery => !displayedKeys.has(galleryKey(gallery)))
 })
 
-const testimonials = computed(() => testimonialsData.value?.data ?? [])
+const testimonials = computed(() => {
+  const featuredTestimonials = testimonialsData.value?.data ?? []
+  return featuredTestimonials.length >= 2 ? featuredTestimonials : (fallbackTestimonialsData.value?.data ?? featuredTestimonials)
+})
 
 useSeoMeta({
   title: 'MeiGallery - 精选写真图库',
