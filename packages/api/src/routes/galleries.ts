@@ -1,10 +1,64 @@
 import { Hono } from 'hono'
+import { getCookie, setCookie } from 'hono/cookie'
+import type { Context } from 'hono'
 import type { Bindings, Variables } from '../index'
 import { PAGINATION } from '@meigallery/shared/constants'
 import { cacheControl } from '../middleware/cache'
 import { getPublicGalleryOrderClause, isGalleryLikedByUser } from '../utils/gallery-interactions'
 
 export const galleryRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
+
+type GalleryContext = Context<{ Bindings: Bindings; Variables: Variables }>
+
+const VIEW_COUNT_TTL_SECONDS = 60 * 60
+const VIEW_COUNT_CLEANUP_INTERVAL_MS = 60_000
+const recentViewCounts = new Map<string, number>()
+let lastViewCountCleanup = Date.now()
+
+function clientIp(c: { req: { header: (name: string) => string | undefined } }) {
+  return c.req.header('CF-Connecting-IP') || c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
+}
+
+function cleanupRecentViewCounts(now: number) {
+  if (now - lastViewCountCleanup < VIEW_COUNT_CLEANUP_INTERVAL_MS) return
+  lastViewCountCleanup = now
+  for (const [key, expiresAt] of recentViewCounts.entries()) {
+    if (expiresAt <= now) recentViewCounts.delete(key)
+  }
+}
+
+function safeCookieNameForGallery(galleryId: string) {
+  return `mei_gallery_view_${galleryId.replace(/[^A-Za-z0-9_-]/g, '_')}`
+}
+
+function setViewCountCookie(c: GalleryContext, cookieName: string) {
+  setCookie(c, cookieName, '1', {
+    path: '/',
+    maxAge: VIEW_COUNT_TTL_SECONDS,
+    httpOnly: true,
+    sameSite: 'Lax',
+    secure: c.env.APP_ENV === 'production',
+  })
+}
+
+function shouldRecordGalleryView(c: GalleryContext, galleryId: string) {
+  const cookieName = safeCookieNameForGallery(galleryId)
+  if (getCookie(c, cookieName) === '1') return false
+
+  const now = Date.now()
+  cleanupRecentViewCounts(now)
+
+  const key = `${clientIp(c)}:${galleryId}`
+  const recentExpiresAt = recentViewCounts.get(key) ?? 0
+  if (recentExpiresAt > now) {
+    setViewCountCookie(c, cookieName)
+    return false
+  }
+
+  recentViewCounts.set(key, now + VIEW_COUNT_TTL_SECONDS * 1000)
+  setViewCountCookie(c, cookieName)
+  return true
+}
 
 /**
  * GET /api/galleries - 图库列表
@@ -264,13 +318,15 @@ galleryRoutes.get('/:slug', async (c) => {
 
   c.header('Cache-Control', 'private, no-store')
 
-  // 异步递增浏览量（不阻塞响应）
-  c.executionCtx.waitUntil(
-    db.prepare('UPDATE galleries SET view_count = view_count + 1 WHERE id = ?')
-      .bind(gallery.id)
-      .run()
-      .catch(() => {}),
-  )
+  if (shouldRecordGalleryView(c, gallery.id)) {
+    // 异步递增浏览量（不阻塞响应），并对同一访客短时间重复访问做应用层去重。
+    c.executionCtx.waitUntil(
+      db.prepare('UPDATE galleries SET view_count = view_count + 1 WHERE id = ?')
+        .bind(gallery.id)
+        .run()
+        .catch(() => {}),
+    )
+  }
 
   return c.json({
     id: gallery.id,

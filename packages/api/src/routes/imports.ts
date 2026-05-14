@@ -15,7 +15,10 @@ type ImportTokenRow = {
   allowed_source_bot_keys: string
   status: 'active' | 'disabled'
   expires_at: string | null
+  last_used_at: string | null
 }
+
+const IMPORT_TOKEN_TOUCH_INTERVAL_MS = 10 * 60 * 1000
 
 async function requireImportToken(c: { req: { header: (name: string) => string | undefined }; env: Bindings }) {
   const authorization = c.req.header('Authorization') || ''
@@ -25,14 +28,17 @@ async function requireImportToken(c: { req: { header: (name: string) => string |
   if (!rawToken) throw new ImportError('IMPORT_TOKEN_MISSING', '缺少 Import Token', 401)
 
   const tokenHash = await hashImportToken(rawToken)
-  const row = await c.env.DB.prepare('SELECT id, created_by, permissions, allowed_source_bot_keys, status, expires_at FROM import_api_tokens WHERE token_hash = ?')
+  const row = await c.env.DB.prepare('SELECT id, created_by, permissions, allowed_source_bot_keys, status, expires_at, last_used_at FROM import_api_tokens WHERE token_hash = ?')
     .bind(tokenHash)
     .first<ImportTokenRow>()
   if (!row) throw new ImportError('IMPORT_TOKEN_INVALID', 'Import Token 无效', 401)
   if (row.status !== 'active') throw new ImportError('IMPORT_TOKEN_DISABLED', 'Import Token 已禁用', 403)
   if (isImportTokenExpired(row.expires_at)) throw new ImportError('IMPORT_TOKEN_EXPIRED', 'Import Token 已过期', 403)
 
-  await c.env.DB.prepare("UPDATE import_api_tokens SET last_used_at = datetime('now'), updated_at = datetime('now') WHERE id = ?").bind(row.id).run()
+  const lastUsedAt = row.last_used_at ? new Date(row.last_used_at).getTime() : 0
+  if (!lastUsedAt || Number.isNaN(lastUsedAt) || Date.now() - lastUsedAt >= IMPORT_TOKEN_TOUCH_INTERVAL_MS) {
+    await c.env.DB.prepare("UPDATE import_api_tokens SET last_used_at = datetime('now'), updated_at = datetime('now') WHERE id = ?").bind(row.id).run()
+  }
   return row
 }
 
@@ -57,6 +63,11 @@ function scheduleImport(c: { executionCtx: ExecutionContext }, task: Promise<voi
   }
 }
 
+function getImportTokenDailyLimit(value: string | undefined) {
+  const parsed = Number.parseInt(value || '', 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 100
+}
+
 importRoutes.post('/telegram-file-id', async (c) => {
   try {
     const token = await requireImportToken(c)
@@ -66,7 +77,9 @@ importRoutes.post('/telegram-file-id', async (c) => {
     if (!hasImportPermission(token.permissions, permission)) throw new ImportError('IMPORT_PERMISSION_DENIED', 'Import Token 权限不足', 403)
     if (!isSourceBotAllowed(token.allowed_source_bot_keys, payload.telegram.sourceBotKey)) throw new ImportError('IMPORT_SOURCE_BOT_NOT_ALLOWED', 'sourceBotKey 不在允许列表中', 403)
 
-    const result = await createExternalImportRecord(c.env.DB, token.id, payload, clientIp(c), c.req.header('User-Agent') || null)
+    const result = await createExternalImportRecord(c.env.DB, token.id, payload, clientIp(c), c.req.header('User-Agent') || null, {
+      dailyLimit: getImportTokenDailyLimit(c.env.IMPORT_TOKEN_DAILY_LIMIT),
+    })
     await writeAuditLog(c.env.DB, {
       adminId: token.created_by,
       action: 'telegram_import.accepted',

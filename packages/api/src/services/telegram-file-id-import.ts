@@ -40,6 +40,7 @@ export async function createExternalImportRecord(
   payload: TelegramImportPayload,
   requestIp: string | null,
   userAgent: string | null,
+  options: { dailyLimit?: number } = {},
 ): Promise<CreateImportResult> {
   const existing = await db.prepare(`
     SELECT id, target_type, target_id, status
@@ -56,6 +57,16 @@ export async function createExternalImportRecord(
       currentStatus: existing.status,
       message: '该 Telegram 消息已导入',
     }
+  }
+
+  const dailyLimit = options.dailyLimit ?? 100
+  const usage = await db.prepare(`
+    SELECT COUNT(*) as count
+    FROM external_import_records
+    WHERE token_id = ? AND created_at >= datetime('now', 'start of day')
+  `).bind(tokenId).first<{ count: number }>()
+  if ((usage?.count ?? 0) >= dailyLimit) {
+    throw new ImportError('IMPORT_DAILY_LIMIT_EXCEEDED', `Import Token 今日导入次数已达上限（${dailyLimit} 次）`, 429)
   }
 
   const importId = generateId('eir')
