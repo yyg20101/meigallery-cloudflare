@@ -23,14 +23,8 @@ fi
 
 echo "=== MeiGallery 部署 (环境: $ENV) ==="
 
-# 检查 wrangler 是否可用
-if ! command -v wrangler &> /dev/null; then
-  echo "错误: 未找到 wrangler CLI，请先安装: npm install -g wrangler"
-  exit 1
-fi
-
 # 检查是否已登录
-if ! wrangler whoami &> /dev/null; then
+if ! pnpm --filter @meigallery/api exec wrangler whoami &> /dev/null; then
   echo "错误: 未登录 Cloudflare，请先执行: wrangler login"
   exit 1
 fi
@@ -59,9 +53,7 @@ pnpm --filter @meigallery/api test
 
 echo ""
 echo "--- 步骤 2/6: API Worker 构建预检 ---"
-cd packages/api
-wrangler deploy $ENV_FLAG --dry-run --outdir=dist
-cd ../..
+pnpm --filter @meigallery/api exec wrangler deploy $ENV_FLAG --dry-run --outdir=dist
 
 echo ""
 echo "--- 步骤 3/6: 构建前端 ---"
@@ -76,21 +68,15 @@ if [ "$IS_PRODUCTION" = "true" ] && [ -f "packages/api/migrations/0017_cases_cle
   echo "如果 0017 已确认执行完成，或已完成 R2 复制验证并准备执行迁移，可显式设置 ALLOW_CASES_CLEANUP_MIGRATION=true 绕过。"
   exit 1
 fi
-cd packages/api
-wrangler d1 migrations apply "$D1_DB" $ENV_FLAG --remote
-cd ../..
+pnpm --filter @meigallery/api exec wrangler d1 migrations apply "$D1_DB" $ENV_FLAG --remote
 
 echo ""
 echo "--- 步骤 5/6: 部署 API Worker ---"
-cd packages/api
-wrangler deploy $ENV_FLAG
-cd ../..
+pnpm --filter @meigallery/api exec wrangler deploy $ENV_FLAG
 
 echo ""
 echo "--- 步骤 6/6: 部署 Web Worker ---"
-cd packages/web
-wrangler deploy $ENV_FLAG
-cd ../..
+pnpm --filter @meigallery/web exec wrangler deploy $ENV_FLAG
 
 echo ""
 echo "=== 部署完成 ==="
