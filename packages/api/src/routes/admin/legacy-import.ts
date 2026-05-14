@@ -6,6 +6,7 @@ import { PAGINATION } from '@meigallery/shared/constants'
 import { fetchAllPosts, fetchAllCategories, fetchAllTags } from '../../services/wp-fetcher'
 import { processPosts, writeMigrationItem } from '../../services/wp-migration'
 import { downloadGalleryMedia, downloadImageToR2 } from '../../services/media-downloader'
+import { assertSafeExternalUrl } from '../../utils/external-url'
 
 export const adminLegacyImportRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -20,6 +21,14 @@ adminLegacyImportRoutes.post('/sources', async (c) => {
     tagMapping?: Record<string, string>
   }>()
 
+  let safeBaseUrl: string
+  try {
+    safeBaseUrl = assertSafeExternalUrl(body.baseUrl)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '来源地址不安全'
+    return c.json({ error: message }, 400)
+  }
+
   const id = generateId('lsrc')
   await db
     .prepare(
@@ -29,7 +38,7 @@ adminLegacyImportRoutes.post('/sources', async (c) => {
     .bind(
       id,
       body.name,
-      body.baseUrl,
+      safeBaseUrl,
       body.mode,
       body.categoryMapping ? JSON.stringify(body.categoryMapping) : null,
       body.tagMapping ? JSON.stringify(body.tagMapping) : null,

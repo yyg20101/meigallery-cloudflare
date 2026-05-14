@@ -3,7 +3,7 @@ set -euo pipefail
 
 # MeiGallery 一键部署脚本
 # 用法: ./scripts/deploy.sh [dev|production]
-# dev 环境手动部署，production 通常由 GitHub Actions 自动触发
+# dev 和 production 均为手动部署；GitHub Actions 当前只做 CI 验证
 
 ENV="${1:-production}"
 echo "=== MeiGallery 部署 (环境: $ENV) ==="
@@ -70,10 +70,7 @@ if [ "$ENV" = "dev" ]; then
   echo "前端: https://meigallery-web-dev.<你的子域>.workers.dev"
   echo "API:  https://meigallery-api-dev.<你的子域>.workers.dev"
 else
-  echo "前端: https://meigallery-web.<你的子域>.workers.dev"
-  echo "API:  https://meigallery-api.<你的子域>.workers.dev"
-  echo ""
-  echo "绑定自定义域名后："
-  echo "前端: https://meigallery.com"
-  echo "API:  https://api.meigallery.com"
+  echo "前端: https://616618.xyz"
+  echo "前端: https://www.616618.xyz"
+  echo "API:  https://api.616618.xyz"
 fi

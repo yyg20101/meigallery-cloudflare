@@ -48,9 +48,13 @@ app.use('*', secureHeaders({
 }))
 app.use('*', cors({
   origin: (origin, c) => {
-    const allowed = c.env.CORS_ORIGIN || '*'
-    if (allowed === '*') return origin
-    return origin === allowed ? origin : ''
+    if (!origin) return ''
+    const allowed = (c.env.CORS_ORIGIN || '')
+      .split(',')
+      .map((item: string) => item.trim())
+      .filter(Boolean)
+    if (allowed.length === 0) return c.env.APP_ENV === 'production' ? '' : origin
+    return allowed.includes(origin) ? origin : ''
   },
   credentials: true,
   allowHeaders: ['Content-Type', 'Authorization'],

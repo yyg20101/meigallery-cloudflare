@@ -49,6 +49,7 @@ create_resources() {
   echo "  wrangler secret put TURNSTILE_SECRET_KEY ${env_flag}"
   echo "  wrangler secret put STREAM_ACCOUNT_ID ${env_flag}"
   echo "  wrangler secret put STREAM_API_TOKEN ${env_flag}"
+  echo "  wrangler secret put TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT ${env_flag}"
   echo ""
 }
 
@@ -75,5 +76,4 @@ echo ""
 
 echo "--- 完成后 ---"
 echo "开发环境: ./scripts/deploy.sh dev"
-echo "生产环境: 推送代码到 main 分支（GitHub Actions 自动部署）"
-echo "手动生产: ./scripts/deploy.sh production"
+echo "生产环境: ./scripts/deploy.sh production（当前仓库不启用 GitHub Actions 自动生产部署）"
