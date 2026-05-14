@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { Bindings, Variables } from '../../index'
 import { requireAdmin } from '../../middleware/auth'
 import { generateId } from '../../utils/db'
+import { parsePositiveIntParam } from '../../utils/pagination'
 import { writeAuditLog } from '../../utils/permission'
 import {
   assertPublishableImageCount,
@@ -10,11 +11,11 @@ import {
   isAllowedImageType,
   isValidSlug,
   normalizeSortOrder,
-} from '../../utils/testimonial-cases'
+} from '../../utils/cases'
 
-export const adminTestimonialCaseRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
+export const adminCaseRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
-adminTestimonialCaseRoutes.use('*', requireAdmin)
+adminCaseRoutes.use('*', requireAdmin)
 
 type CaseBody = {
   title?: string
@@ -29,8 +30,8 @@ type CaseBody = {
 }
 
 type UploadFailure = { statusCode: number; message: string; status: 400 }
-type UploadedTestimonialImage = { id: string; url: string; sortOrder: number }
-type UploadResult = { ok: true; uploaded: UploadedTestimonialImage[] } | { ok: false; error: UploadFailure }
+type UploadedCaseImage = { id: string; url: string; sortOrder: number }
+type UploadResult = { ok: true; uploaded: UploadedCaseImage[] } | { ok: false; error: UploadFailure }
 
 function validateCaseBody(body: CaseBody): string | null {
   if (!body.title || body.title.trim().length > 80) return '标题为必填且不能超过 80 字'
@@ -77,9 +78,9 @@ function caseBodyFromFormData(formData: FormData): CaseBody {
   }
 }
 
-async function uploadTestimonialImages(db: D1Database, r2: R2Bucket, caseId: string, files: File[], startOrder: number): Promise<UploadResult> {
+async function uploadCaseImages(db: D1Database, r2: R2Bucket, caseId: string, files: File[], startOrder: number): Promise<UploadResult> {
   let nextOrder = startOrder
-  const uploaded: UploadedTestimonialImage[] = []
+  const uploaded: UploadedCaseImage[] = []
 
   for (const file of files) {
     if (!isAllowedImageType(file.type)) return { ok: false, error: { statusCode: 400, message: `不支持的文件格式: ${file.type}`, status: 400 } }
@@ -87,10 +88,10 @@ async function uploadTestimonialImages(db: D1Database, r2: R2Bucket, caseId: str
 
     const imageId = generateId('tci')
     const ext = getR2Extension(file.name, file.type)
-    const r2Key = `testimonials/${caseId}/${imageId}.${ext}`
+    const r2Key = `cases/${caseId}/${imageId}.${ext}`
     await r2.put(r2Key, await file.arrayBuffer(), { httpMetadata: { contentType: file.type } })
     await db.prepare(`
-      INSERT INTO testimonial_case_images (id, case_id, r2_key, alt_text, mime_type, file_size, sort_order)
+      INSERT INTO case_images (id, case_id, r2_key, alt_text, mime_type, file_size, sort_order)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).bind(imageId, caseId, r2Key, file.name, file.type, file.size, nextOrder).run()
     uploaded.push({ id: imageId, url: getPublicImageUrl(imageId), sortOrder: nextOrder })
@@ -100,34 +101,34 @@ async function uploadTestimonialImages(db: D1Database, r2: R2Bucket, caseId: str
   return { ok: true, uploaded }
 }
 
-adminTestimonialCaseRoutes.get('/', async (c) => {
+adminCaseRoutes.get('/', async (c) => {
   const db = c.env.DB
-  const page = Math.max(1, Number.parseInt(c.req.query('page') || '1', 10))
-  const pageSize = Math.min(50, Math.max(1, Number.parseInt(c.req.query('pageSize') || '20', 10)))
+  const page = parsePositiveIntParam(c.req.query('page'), 1)
+  const pageSize = parsePositiveIntParam(c.req.query('pageSize'), 20, 50)
   const status = c.req.query('status')
   const offset = (page - 1) * pageSize
   const params: unknown[] = []
   let whereClause = ''
 
   if (status === 'draft' || status === 'published') {
-    whereClause = ' WHERE tc.status = ?'
+    whereClause = ' WHERE c.status = ?'
     params.push(status)
   }
 
   const total = await db
-    .prepare(`SELECT COUNT(*) as total FROM testimonial_cases tc${whereClause}`)
+    .prepare(`SELECT COUNT(*) as total FROM cases c${whereClause}`)
     .bind(...params)
     .first<{ total: number }>()
 
   const rows = await db
     .prepare(`
-      SELECT tc.id, tc.title, tc.slug, tc.status, tc.featured, tc.sort_order,
-             tc.published_at, tc.updated_at, COUNT(tci.id) as image_count
-      FROM testimonial_cases tc
-      LEFT JOIN testimonial_case_images tci ON tci.case_id = tc.id
+      SELECT c.id, c.title, c.slug, c.status, c.featured, c.sort_order,
+             c.published_at, c.updated_at, COUNT(ci.id) as image_count
+      FROM cases c
+      LEFT JOIN case_images ci ON ci.case_id = c.id
       ${whereClause}
-      GROUP BY tc.id
-      ORDER BY tc.sort_order ASC, tc.updated_at DESC
+      GROUP BY c.id
+      ORDER BY c.sort_order ASC, c.updated_at DESC
       LIMIT ? OFFSET ?
     `)
     .bind(...params, pageSize, offset)
@@ -161,10 +162,10 @@ adminTestimonialCaseRoutes.get('/', async (c) => {
   })
 })
 
-adminTestimonialCaseRoutes.get('/:id', async (c) => {
+adminCaseRoutes.get('/:id', async (c) => {
   const db = c.env.DB
   const id = c.req.param('id')
-  const row = await db.prepare('SELECT * FROM testimonial_cases WHERE id = ?').bind(id).first<{
+  const row = await db.prepare('SELECT * FROM cases WHERE id = ?').bind(id).first<{
     id: string
     title: string
     slug: string
@@ -181,7 +182,7 @@ adminTestimonialCaseRoutes.get('/:id', async (c) => {
   if (!row) return c.json({ statusCode: 404, message: '真实案例不存在' }, 404)
 
   const images = await db
-    .prepare('SELECT id, alt_text, sort_order FROM testimonial_case_images WHERE case_id = ? ORDER BY sort_order ASC, created_at ASC')
+    .prepare('SELECT id, alt_text, sort_order FROM case_images WHERE case_id = ? ORDER BY sort_order ASC, created_at ASC')
     .bind(id)
     .all<{ id: string; alt_text: string | null; sort_order: number }>()
 
@@ -207,7 +208,7 @@ adminTestimonialCaseRoutes.get('/:id', async (c) => {
   })
 })
 
-adminTestimonialCaseRoutes.post('/', async (c) => {
+adminCaseRoutes.post('/', async (c) => {
   const db = c.env.DB
   const adminId = c.get('userId')!
   const isMultipart = isMultipartRequest(c.req.header('Content-Type'))
@@ -227,7 +228,7 @@ adminTestimonialCaseRoutes.post('/', async (c) => {
   }
 
   await db.prepare(`
-    INSERT INTO testimonial_cases
+    INSERT INTO cases
       (id, title, slug, summary, body_md, status, featured, sort_order, seo_title, seo_description, created_by, updated_by, published_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
@@ -247,14 +248,14 @@ adminTestimonialCaseRoutes.post('/', async (c) => {
   ).run()
 
   const uploadResult: UploadResult = files && files.length > 0
-    ? await uploadTestimonialImages(db, c.env.R2, id, files, 0)
+    ? await uploadCaseImages(db, c.env.R2, id, files, 0)
     : { ok: true, uploaded: [] }
   if (!uploadResult.ok) return c.json({ statusCode: uploadResult.error.statusCode, message: uploadResult.error.message }, uploadResult.error.status)
 
   await writeAuditLog(db, {
     adminId,
-    action: 'create_testimonial_case',
-    targetType: 'testimonial_case',
+    action: 'create_case',
+    targetType: 'case',
     targetId: id,
     afterValue: { title: body.title, slug: body.slug, status, uploadedCount: uploadResult.uploaded.length },
   })
@@ -262,7 +263,7 @@ adminTestimonialCaseRoutes.post('/', async (c) => {
   return c.json({ id, message: '真实案例已创建', uploaded: uploadResult.uploaded }, 201)
 })
 
-adminTestimonialCaseRoutes.patch('/:id', async (c) => {
+adminCaseRoutes.patch('/:id', async (c) => {
   const db = c.env.DB
   const adminId = c.get('userId')!
   const id = c.req.param('id')
@@ -270,12 +271,12 @@ adminTestimonialCaseRoutes.patch('/:id', async (c) => {
   const error = validateCaseBody(body)
   if (error) return c.json({ statusCode: 400, message: error }, 400)
 
-  const before = await db.prepare('SELECT * FROM testimonial_cases WHERE id = ?').bind(id).first<Record<string, unknown>>()
+  const before = await db.prepare('SELECT * FROM cases WHERE id = ?').bind(id).first<Record<string, unknown>>()
   if (!before) return c.json({ statusCode: 404, message: '真实案例不存在' }, 404)
 
   if (body.status === 'published') {
     const imageCount = await db
-      .prepare('SELECT COUNT(*) as count FROM testimonial_case_images WHERE case_id = ?')
+      .prepare('SELECT COUNT(*) as count FROM case_images WHERE case_id = ?')
       .bind(id)
       .first<{ count: number }>()
     try {
@@ -287,7 +288,7 @@ adminTestimonialCaseRoutes.patch('/:id', async (c) => {
 
   const publishedAt = body.status === 'published' && !before.published_at ? new Date().toISOString() : before.published_at
   await db.prepare(`
-    UPDATE testimonial_cases
+    UPDATE cases
     SET title = ?, slug = ?, summary = ?, body_md = ?, status = ?, featured = ?, sort_order = ?,
         seo_title = ?, seo_description = ?, updated_by = ?, published_at = ?, updated_at = datetime('now')
     WHERE id = ?
@@ -308,8 +309,8 @@ adminTestimonialCaseRoutes.patch('/:id', async (c) => {
 
   await writeAuditLog(db, {
     adminId,
-    action: 'update_testimonial_case',
-    targetType: 'testimonial_case',
+    action: 'update_case',
+    targetType: 'case',
     targetId: id,
     beforeValue: before,
     afterValue: body,
@@ -318,27 +319,27 @@ adminTestimonialCaseRoutes.patch('/:id', async (c) => {
   return c.json({ message: '真实案例已更新' })
 })
 
-adminTestimonialCaseRoutes.delete('/:id', async (c) => {
+adminCaseRoutes.delete('/:id', async (c) => {
   const db = c.env.DB
   const adminId = c.get('userId')!
   const id = c.req.param('id')
-  const before = await db.prepare('SELECT * FROM testimonial_cases WHERE id = ?').bind(id).first<Record<string, unknown>>()
+  const before = await db.prepare('SELECT * FROM cases WHERE id = ?').bind(id).first<Record<string, unknown>>()
   if (!before) return c.json({ statusCode: 404, message: '真实案例不存在' }, 404)
 
   const images = await db
-    .prepare('SELECT id, r2_key FROM testimonial_case_images WHERE case_id = ?')
+    .prepare('SELECT id, r2_key FROM case_images WHERE case_id = ?')
     .bind(id)
     .all<{ id: string; r2_key: string }>()
 
   for (const image of images.results) {
     await c.env.R2.delete(image.r2_key)
   }
-  await db.prepare('DELETE FROM testimonial_cases WHERE id = ?').bind(id).run()
+  await db.prepare('DELETE FROM cases WHERE id = ?').bind(id).run()
 
   await writeAuditLog(db, {
     adminId,
-    action: 'delete_testimonial_case',
-    targetType: 'testimonial_case',
+    action: 'delete_case',
+    targetType: 'case',
     targetId: id,
     beforeValue: before,
     afterValue: { deletedImages: images.results.length },
@@ -347,7 +348,7 @@ adminTestimonialCaseRoutes.delete('/:id', async (c) => {
   return c.json({ message: '真实案例已删除' })
 })
 
-adminTestimonialCaseRoutes.post('/:id/images', async (c) => {
+adminCaseRoutes.post('/:id/images', async (c) => {
   const db = c.env.DB
   const r2 = c.env.R2
   const adminId = c.get('userId')!
@@ -355,23 +356,23 @@ adminTestimonialCaseRoutes.post('/:id/images', async (c) => {
   const formData = await c.req.formData()
   const files = formData.getAll('files') as unknown as File[]
 
-  const caseRow = await db.prepare('SELECT id FROM testimonial_cases WHERE id = ?').bind(caseId).first<{ id: string }>()
+  const caseRow = await db.prepare('SELECT id FROM cases WHERE id = ?').bind(caseId).first<{ id: string }>()
   if (!caseRow) return c.json({ statusCode: 404, message: '真实案例不存在' }, 404)
   if (files.length === 0) return c.json({ statusCode: 400, message: '请选择至少一张图片' }, 400)
 
-  const current = await db.prepare('SELECT COUNT(*) as count FROM testimonial_case_images WHERE case_id = ?').bind(caseId).first<{ count: number }>()
+  const current = await db.prepare('SELECT COUNT(*) as count FROM case_images WHERE case_id = ?').bind(caseId).first<{ count: number }>()
   if ((current?.count ?? 0) + files.length > 9) {
     return c.json({ statusCode: 400, message: '每个真实案例最多 9 张图片' }, 400)
   }
 
-  const maxOrder = await db.prepare('SELECT MAX(sort_order) as max_order FROM testimonial_case_images WHERE case_id = ?').bind(caseId).first<{ max_order: number | null }>()
-  const uploadResult = await uploadTestimonialImages(db, r2, caseId, files, (maxOrder?.max_order ?? -1) + 1)
+  const maxOrder = await db.prepare('SELECT MAX(sort_order) as max_order FROM case_images WHERE case_id = ?').bind(caseId).first<{ max_order: number | null }>()
+  const uploadResult = await uploadCaseImages(db, r2, caseId, files, (maxOrder?.max_order ?? -1) + 1)
   if (!uploadResult.ok) return c.json({ statusCode: uploadResult.error.statusCode, message: uploadResult.error.message }, uploadResult.error.status)
 
   await writeAuditLog(db, {
     adminId,
-    action: 'upload_testimonial_images',
-    targetType: 'testimonial_case',
+    action: 'upload_case_images',
+    targetType: 'case',
     targetId: caseId,
     afterValue: { uploadedCount: uploadResult.uploaded.length },
   })
@@ -379,7 +380,7 @@ adminTestimonialCaseRoutes.post('/:id/images', async (c) => {
   return c.json({ uploaded: uploadResult.uploaded }, 201)
 })
 
-adminTestimonialCaseRoutes.patch('/:id/images/order', async (c) => {
+adminCaseRoutes.patch('/:id/images/order', async (c) => {
   const db = c.env.DB
   const adminId = c.get('userId')!
   const caseId = c.req.param('id')
@@ -387,13 +388,13 @@ adminTestimonialCaseRoutes.patch('/:id/images/order', async (c) => {
   if (!Array.isArray(body.imageIds)) return c.json({ statusCode: 400, message: 'imageIds 为必填数组' }, 400)
 
   for (const [index, imageId] of body.imageIds.entries()) {
-    await db.prepare('UPDATE testimonial_case_images SET sort_order = ? WHERE id = ? AND case_id = ?').bind(index, imageId, caseId).run()
+    await db.prepare('UPDATE case_images SET sort_order = ? WHERE id = ? AND case_id = ?').bind(index, imageId, caseId).run()
   }
 
   await writeAuditLog(db, {
     adminId,
-    action: 'sort_testimonial_images',
-    targetType: 'testimonial_case',
+    action: 'sort_case_images',
+    targetType: 'case',
     targetId: caseId,
     afterValue: { imageIds: body.imageIds },
   })
@@ -401,20 +402,20 @@ adminTestimonialCaseRoutes.patch('/:id/images/order', async (c) => {
   return c.json({ message: '图片排序已保存' })
 })
 
-adminTestimonialCaseRoutes.delete('/:id/images/:imageId', async (c) => {
+adminCaseRoutes.delete('/:id/images/:imageId', async (c) => {
   const db = c.env.DB
   const adminId = c.get('userId')!
   const caseId = c.req.param('id')
   const imageId = c.req.param('imageId')
-  const image = await db.prepare('SELECT r2_key FROM testimonial_case_images WHERE id = ? AND case_id = ?').bind(imageId, caseId).first<{ r2_key: string }>()
+  const image = await db.prepare('SELECT r2_key FROM case_images WHERE id = ? AND case_id = ?').bind(imageId, caseId).first<{ r2_key: string }>()
   if (!image) return c.json({ statusCode: 404, message: '图片不存在' }, 404)
 
   await c.env.R2.delete(image.r2_key)
-  await db.prepare('DELETE FROM testimonial_case_images WHERE id = ? AND case_id = ?').bind(imageId, caseId).run()
+  await db.prepare('DELETE FROM case_images WHERE id = ? AND case_id = ?').bind(imageId, caseId).run()
   await writeAuditLog(db, {
     adminId,
-    action: 'delete_testimonial_image',
-    targetType: 'testimonial_case',
+    action: 'delete_case_image',
+    targetType: 'case',
     targetId: caseId,
     beforeValue: { imageId, r2Key: image.r2_key },
   })

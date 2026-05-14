@@ -73,30 +73,31 @@ mediaRoutes.get('/cover/:galleryId', async (c) => {
  * 公开接口，支持宽度参数 ?w=480
  *
  * 策略：
- * - IMAGE_RESIZING_ENABLED=true（Pro 计划）：从 R2 取原图，通过 cf.image 实时缩放
- * - IMAGE_RESIZING_ENABLED=false（Free 计划）：直接返回原图，由浏览器/CDN 缓存
+ * - IMAGE_RESIZING_ENABLED=true：通过 Cloudflare Images Transformations 实时缩放
+ * - 首期固定只生成 480px 单规格，避免 Free unique transformations 被多规格消耗
+ * - 未启用或转换失败：直接返回原图，由浏览器/CDN 缓存
  */
 mediaRoutes.get('/:assetId/thumbnail', async (c) => {
   const assetId = c.req.param('assetId')
-  const width = Math.min(Math.max(parseInt(c.req.query('w') || '480', 10), 64), 1920)
+  const thumbnailWidth = 480
   const db = c.env.DB
 
   const asset = await db
     .prepare(`
-      SELECT ma.r2_key, ma.type, ma.required_rank, g.status
+      SELECT ma.r2_key, ma.type, ma.required_rank, g.required_level_rank, g.status
       FROM media_assets ma
       JOIN galleries g ON ma.gallery_id = g.id
       WHERE ma.id = ? AND ma.upload_status = 'completed'
     `)
     .bind(assetId)
-    .first<{ r2_key: string | null; type: string; required_rank: number; status: string }>()
+    .first<{ r2_key: string | null; type: string; required_rank: number; required_level_rank: number; status: string }>()
 
   if (!asset || asset.type !== 'image' || asset.status !== 'published') {
     return c.json({ statusCode: 404, message: '资源不存在' }, 404)
   }
 
-  // 受保护图片不提供公开缩略图
-  if (asset.required_rank > 0) {
+  // 受保护图片不提供公开缩略图；同时遵守图库级会员要求。
+  if (Math.max(asset.required_rank, asset.required_level_rank) > 0) {
     return c.json({ statusCode: 403, message: '需要登录查看' }, 403)
   }
 
@@ -106,52 +107,50 @@ mediaRoutes.get('/:assetId/thumbnail', async (c) => {
 
   const imageResizingEnabled = c.env.IMAGE_RESIZING_ENABLED === 'true'
 
+  const fallbackOriginal = async () => {
+    const object = await c.env.R2.get(asset.r2_key!)
+    if (!object) return c.json({ statusCode: 404, message: '文件不存在' }, 404)
+
+    const headers = new Headers()
+    headers.set('Content-Type', object.httpMetadata?.contentType || 'image/jpeg')
+    headers.set('Cache-Control', 'public, max-age=604800')
+    headers.set('ETag', object.httpEtag)
+
+    return new Response(object.body, { headers })
+  }
+
   if (imageResizingEnabled) {
-    // Pro 计划：通过内部 URL 自请求 + cf.image 实时缩放
-    // 构造指向原图的内部请求（同 Worker）
+    // Cloudflare Images Transformations：通过内部 URL 自请求 + cf.image 实时缩放。
     const originUrl = new URL(c.req.url)
     originUrl.pathname = `/api/media/raw/${assetId}`
+    originUrl.search = ''
 
-    const resized = await fetch(originUrl.toString(), {
-      cf: {
-        image: {
-          width,
-          fit: 'scale-down' as const,
-          quality: 80,
-          format: 'webp' as const,
+    try {
+      const resized = await fetch(originUrl.toString(), {
+        cf: {
+          image: {
+            width: thumbnailWidth,
+            fit: 'scale-down' as const,
+            quality: 80,
+            format: 'webp' as const,
+          },
         },
-      },
-    })
+      })
 
-    if (!resized.ok) {
-      // Image Resizing 失败，fallback 到原图
-      const object = await c.env.R2.get(asset.r2_key)
-      if (!object) return c.json({ statusCode: 404, message: '文件不存在' }, 404)
+      if (!resized.ok) {
+        return fallbackOriginal()
+      }
 
-      const headers = new Headers()
-      headers.set('Content-Type', object.httpMetadata?.contentType || 'image/jpeg')
+      const headers = new Headers(resized.headers)
       headers.set('Cache-Control', 'public, max-age=604800')
-      headers.set('ETag', object.httpEtag)
-      return new Response(object.body, { headers })
+      return new Response(resized.body, { headers })
+    } catch {
+      return fallbackOriginal()
     }
-
-    const headers = new Headers(resized.headers)
-    headers.set('Cache-Control', 'public, max-age=604800')
-    return new Response(resized.body, { headers })
   }
 
   // Free 计划 fallback：直接返回原图
-  const object = await c.env.R2.get(asset.r2_key)
-  if (!object) {
-    return c.json({ statusCode: 404, message: '文件不存在' }, 404)
-  }
-
-  const headers = new Headers()
-  headers.set('Content-Type', object.httpMetadata?.contentType || 'image/jpeg')
-  headers.set('Cache-Control', 'public, max-age=604800') // 缓存 7 天
-  headers.set('ETag', object.httpEtag)
-
-  return new Response(object.body, { headers })
+  return fallbackOriginal()
 })
 
 /**
@@ -164,15 +163,15 @@ mediaRoutes.get('/raw/:assetId', async (c) => {
 
   const asset = await db
     .prepare(`
-      SELECT ma.r2_key, ma.required_rank, g.status
+      SELECT ma.r2_key, ma.required_rank, g.required_level_rank, g.status
       FROM media_assets ma
       JOIN galleries g ON ma.gallery_id = g.id
       WHERE ma.id = ? AND ma.upload_status = 'completed'
     `)
     .bind(assetId)
-    .first<{ r2_key: string | null; required_rank: number; status: string }>()
+    .first<{ r2_key: string | null; required_rank: number; required_level_rank: number; status: string }>()
 
-  if (!asset || asset.status !== 'published' || asset.required_rank > 0 || !asset.r2_key) {
+  if (!asset || asset.status !== 'published' || Math.max(asset.required_rank, asset.required_level_rank) > 0 || !asset.r2_key) {
     return new Response(null, { status: 404 })
   }
 

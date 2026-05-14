@@ -25,7 +25,7 @@ const basePayload = {
 }
 
 describe('validateTelegramImportPayload', () => {
-  it('normalizes a valid gallery import payload', () => {
+  it('标准化有效图库导入 payload', () => {
     const result = validateTelegramImportPayload(basePayload)
 
     expect(result.metadata.type).toBe('gallery')
@@ -33,16 +33,25 @@ describe('validateTelegramImportPayload', () => {
     expect(result.files[0].isCover).toBe(true)
   })
 
-  it('requires 2-9 images for testimonial_case', () => {
+  it('案例导入需要 2-9 张图片', () => {
     const result = () => validateTelegramImportPayload({
       ...basePayload,
-      metadata: { ...basePayload.metadata, type: 'testimonial_case', requiredLevelRank: undefined },
+      metadata: { ...basePayload.metadata, type: 'case', requiredLevelRank: undefined },
     })
 
-    expect(result).toThrow('真实案例导入需要 2-9 张图片')
+    expect(result).toThrow('案例导入需要 2-9 张图片')
   })
 
-  it('rejects unsupported file MIME declarations', () => {
+  it('拒绝旧 testimonial_case 导入类型', () => {
+    const result = () => validateTelegramImportPayload({
+      ...basePayload,
+      metadata: { ...basePayload.metadata, type: 'testimonial_case' },
+    })
+
+    expect(result).toThrow('metadata.type 必须是 gallery 或 case')
+  })
+
+  it('拒绝不支持的文件 MIME 声明', () => {
     const result = () => validateTelegramImportPayload({
       ...basePayload,
       files: [{ ...basePayload.files[0], mimeType: 'video/mp4' }],
@@ -51,7 +60,7 @@ describe('validateTelegramImportPayload', () => {
     expect(result).toThrow('仅支持 JPEG、PNG、WebP 图片')
   })
 
-  it('rejects duplicate sortOrder values', () => {
+  it('拒绝重复 sortOrder', () => {
     const result = () => validateTelegramImportPayload({
       ...basePayload,
       files: [basePayload.files[0], { ...basePayload.files[0], fileId: 'AgACAg2' }],
@@ -60,7 +69,7 @@ describe('validateTelegramImportPayload', () => {
     expect(result).toThrow('文件 sortOrder 不能重复')
   })
 
-  it('rejects invalid sourceBotKey characters', () => {
+  it('拒绝非法 sourceBotKey 字符', () => {
     const result = () => validateTelegramImportPayload({
       ...basePayload,
       telegram: { ...basePayload.telegram, sourceBotKey: 'Ops-Gallery-Bot' },

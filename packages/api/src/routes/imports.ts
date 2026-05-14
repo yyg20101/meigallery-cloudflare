@@ -87,7 +87,9 @@ importRoutes.post('/telegram-file-id', async (c) => {
       targetId: result.importId,
       afterValue: { importId: result.importId, targetType: result.type, status: result.status, receivedFileCount: result.receivedFileCount ?? null },
     })
-    if (result.status !== 'duplicate') scheduleImport(c, processTelegramFileIdImport(c.env.DB, c.env.R2, c.env as unknown as Record<string, string | undefined>, result.importId))
+    if (result.status !== 'duplicate' || result.currentStatus === 'pending_media_fetch') {
+      scheduleImport(c, processTelegramFileIdImport(c.env.DB, c.env.R2, c.env as unknown as Record<string, string | undefined>, result.importId))
+    }
     return c.json(result, result.status === 'duplicate' ? 200 : 202)
   } catch (error) {
     const result = handleImportError(error, '导入请求处理失败')

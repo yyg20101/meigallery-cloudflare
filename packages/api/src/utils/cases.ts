@@ -22,15 +22,15 @@ export function normalizeSortOrder(value: unknown): number {
 export function getPublicOrderClause(sort: string): string {
   switch (sort) {
     case 'newest':
-      return ' ORDER BY tc.published_at DESC, tc.sort_order ASC'
+      return ' ORDER BY c.published_at DESC, c.sort_order ASC'
     case 'sort':
     default:
-      return ' ORDER BY tc.sort_order ASC, tc.published_at DESC'
+      return ' ORDER BY c.sort_order ASC, c.published_at DESC'
   }
 }
 
 export function getPublicImageUrl(imageId: string): string {
-  return `/api/testimonial-cases/images/${imageId}`
+  return `/api/cases/images/${imageId}`
 }
 
 export function getR2Extension(fileName: string, mimeType: string): string {

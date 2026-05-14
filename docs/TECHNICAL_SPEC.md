@@ -36,7 +36,7 @@
 | 后台 SPA | Nuxt `routeRules: { '/admin/**': { ssr: false } }` |
 | API 类型安全 | Hono + `@meigallery/shared` 共享类型包 |
 | D1/R2 绑定 | Hono 通过 `c.env.DB` / `c.env.R2` 访问 |
-| 图片优化 | 自定义缩略图生成 Worker + R2 缓存（Image Resizing 需要 Pro 计划 $20/月，当前 Free 计划通过 `IMAGE_RESIZING_ENABLED=false` 回退到原始图片） |
+| 图片优化 | Cloudflare Images Free Transformations + R2 优先处理公开缩略图，首期固定 `w=480` 单规格；每月 5,000 unique transformations，未启用、转换失败或超限时回退原图响应 |
 
 ## 3. 应用模块（monorepo 结构）
 
@@ -127,16 +127,16 @@
 ```text
 请求流程：
 1. 前端请求 /api/media/:assetId/thumbnail?w=480
-2. Worker 检查 R2 缓存：thumbnails/{assetId}/w480.webp
-3. 若存在 → 302 跳转到 R2 公开 URL（或直接代理）
-4. 若不存在 → 从 R2 读取原图 → 缩放为 480px 宽 webp → 存入 R2 → 返回
-5. 生成失败 → 返回原图缩放的降级响应，后台记录失败日志
+2. Worker 校验请求宽度，仅允许当前公开规格 `w=480`
+3. `IMAGE_RESIZING_ENABLED=true` 时优先通过 Cloudflare Images Transformations 读取 R2 原图并转换
+4. Transformations 未启用、失败或 Free unique transformations 超限时回退返回原图
+5. 返回公共缓存响应，保持业务可用，后续按监控结果决定是否扩展规格
 ```
 
 缩略图规格：
 - 列表页：宽 480px，webp 格式
-- 详情页：宽 800px，webp 格式
-- 存储路径：`thumbnails/{assetId}/w{width}.webp`
+- 详情页：首期复用 480px 规格，避免多规格消耗 Free unique transformations
+- 存储路径：原图仍存放在 R2，Transformations 不迁移到 Cloudflare Images 存储
 
 ### 受保护图片访问
 
@@ -179,6 +179,9 @@
 | GET | `/api/galleries/:slug` | 图库详情 |
 | GET | `/api/tags` | 标签列表，按类型分组 |
 | GET | `/api/search` | 组合搜索（标签 + 关键词） |
+| GET | `/api/cases` | 真实案例列表 |
+| GET | `/api/cases/:slug` | 真实案例详情 |
+| GET | `/api/cases/images/:imageId` | 真实案例公开图片 |
 | POST | `/api/auth/register` | 注册（需 Turnstile） |
 | POST | `/api/auth/login` | 登录（需 Turnstile） |
 | POST | `/api/auth/logout` | 登出 |
@@ -196,6 +199,13 @@
 | PATCH | `/api/admin/galleries/:id` | 编辑图库 | admin+ |
 | POST | `/api/admin/galleries/:id/publish` | 发布图库 | admin+ |
 | POST | `/api/admin/galleries/:id/unpublish` | 下架图库 | admin+ |
+| GET | `/api/admin/cases` | 真实案例列表（含草稿） | admin+ |
+| POST | `/api/admin/cases` | 创建真实案例草稿 | admin+ |
+| GET | `/api/admin/cases/:id` | 真实案例详情 | admin+ |
+| PATCH | `/api/admin/cases/:id` | 编辑真实案例 | admin+ |
+| POST | `/api/admin/cases/:id/images` | 上传真实案例图片 | admin+ |
+| DELETE | `/api/admin/cases/:id/images/:imageId` | 删除真实案例图片 | admin+ |
+| POST | `/api/admin/cases/:id/publish` | 发布真实案例 | admin+ |
 | GET | `/api/admin/tags` | 标签管理列表 | admin+ |
 | POST | `/api/admin/tags` | 创建标签 | admin+ |
 | PATCH | `/api/admin/tags/:id` | 编辑标签 | admin+ |
@@ -470,6 +480,13 @@ queued → processing → completed
 
 - 同时进行的导入任务 <= 3。
 - 新任务提交时检查当前 `processing` 状态任务数，超限返回 429。
+
+### Telegram 外部导入
+
+- Telegram 文件 ID 导入使用 `/api/imports/telegram-file-id`，请求必须携带有效 Import Token。
+- 导入类型仅允许 `gallery` 和 `case`，真实案例使用 `case`。
+- Import Token 权限使用 `gallery:create` 和 `case:create`，真实案例不再使用旧权限名。
+- `case` 导入写入 `cases` / `case_images`，R2 key 使用 `cases/{caseId}/{imageId}.{ext}`。
 
 ## 10. WordPress 迁移流程
 

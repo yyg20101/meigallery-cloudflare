@@ -1,7 +1,7 @@
 <script setup lang="ts">
 const { api } = useApi()
 
-interface TestimonialSummary {
+interface CaseSummary {
   id: string
   title: string
   slug: string
@@ -12,7 +12,7 @@ interface TestimonialSummary {
 }
 
 const { data } = await useAsyncData('cases-list', () =>
-  api<{ data: TestimonialSummary[]; total: number }>('/api/testimonial-cases', { query: { pageSize: '12' } }),
+  api<{ data: CaseSummary[]; total: number }>('/api/cases', { query: { pageSize: '12' } }),
 )
 
 const cases = computed(() => data.value?.data ?? [])
@@ -32,7 +32,7 @@ useSeoMeta({
     </section>
 
     <div v-if="cases.length" class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      <TestimonialCard v-for="item in cases" :key="item.id" :item="item" />
+      <CaseCard v-for="item in cases" :key="item.id" :item="item" />
     </div>
 
     <div v-else class="mt-6 rounded-[1.5rem] border border-[#f0e4d8] bg-white/90 px-5 py-16 text-center shadow-sm shadow-orange-950/5">

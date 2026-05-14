@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { Bindings, Variables } from '../index'
 import { hashImportToken } from '../utils/import-token'
 import { importRoutes } from './imports'
@@ -10,7 +10,7 @@ function createApp() {
   return app
 }
 
-function createDb(tokenHash: string, options: { importsToday?: number; lastUsedAt?: string | null } = {}) {
+function createDb(tokenHash: string, options: { importsToday?: number; lastUsedAt?: string | null; existingRecord?: Record<string, unknown> } = {}) {
   const records: Record<string, Record<string, unknown>> = {}
   let createdRecords = 0
   let tokenTouchUpdates = 0
@@ -31,10 +31,10 @@ function createDb(tokenHash: string, options: { importsToday?: number; lastUsedA
         async first<T>() {
           if (sql.includes('FROM import_api_tokens')) {
             if (params[0] !== tokenHash) return null as T
-            return { id: 'iat_1', created_by: 1, permissions: '["gallery:create","testimonial:create"]', allowed_source_bot_keys: '["ops_gallery_bot"]', status: 'active', expires_at: null, last_used_at: options.lastUsedAt ?? null } as T
+            return { id: 'iat_1', created_by: 1, permissions: '["gallery:create","case:create"]', allowed_source_bot_keys: '["ops_gallery_bot"]', status: 'active', expires_at: null, last_used_at: options.lastUsedAt ?? null } as T
           }
           if (sql.includes('COUNT(*) as count') && sql.includes('FROM external_import_records')) return { count: options.importsToday ?? 0 } as T
-          if (sql.includes('FROM external_import_records') && sql.includes("source = 'telegram'")) return null as T
+          if (sql.includes('FROM external_import_records') && sql.includes("source = 'telegram'")) return (options.existingRecord ?? null) as T
           if (sql.includes('FROM external_import_records') && sql.includes('WHERE id = ? AND token_id = ?')) return records[String(params[0])] as T
           return null as T
         },
@@ -59,14 +59,14 @@ const payload = {
 }
 
 describe('Telegram 导入 API', () => {
-  it('requires bearer import token', async () => {
+  it('要求 bearer import token', async () => {
     const res = await createApp().request('/api/imports/telegram-file-id', { method: 'POST', body: JSON.stringify(payload) }, { DB: createDb('') } as unknown as Bindings)
 
     expect(res.status).toBe(401)
     expect((await res.json()).code).toBe('IMPORT_TOKEN_MISSING')
   })
 
-  it('accepts valid token and returns pending_media_fetch', async () => {
+  it('接受有效 token 并返回 pending_media_fetch', async () => {
     const token = 'mgi_valid_token'
     const res = await createApp().request('/api/imports/telegram-file-id', {
       method: 'POST',
@@ -80,7 +80,28 @@ describe('Telegram 导入 API', () => {
     expect(body.importId).toMatch(/^eir_/)
   })
 
-  it('rejects non-json import requests', async () => {
+  it('重复 pending 导入会重新调度异步处理', async () => {
+    const token = 'mgi_valid_token'
+    const waitUntil = vi.fn()
+    const res = await createApp().request('/api/imports/telegram-file-id', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }, {
+      DB: createDb(await hashImportToken(token), {
+        existingRecord: { id: 'eir_existing', target_type: 'gallery', target_id: null, status: 'pending_media_fetch' },
+      }),
+      R2: { put: async () => null, delete: async () => null },
+    } as unknown as Bindings, { waitUntil } as unknown as ExecutionContext)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.status).toBe('duplicate')
+    expect(body.currentStatus).toBe('pending_media_fetch')
+    expect(waitUntil).toHaveBeenCalledTimes(1)
+  })
+
+  it('拒绝非 JSON 导入请求', async () => {
     const token = 'mgi_valid_token'
     const res = await createApp().request('/api/imports/telegram-file-id', {
       method: 'POST',
@@ -105,6 +126,22 @@ describe('Telegram 导入 API', () => {
     expect(res.status).toBe(429)
     expect(body.code).toBe('IMPORT_DAILY_LIMIT_EXCEEDED')
     expect(db.createdRecords).toBe(0)
+  })
+
+  it('拒绝旧 testimonial_case 导入类型', async () => {
+    const token = 'mgi_valid_token'
+    const res = await createApp().request('/api/imports/telegram-file-id', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...payload,
+        metadata: { ...payload.metadata, type: 'testimonial_case' },
+      }),
+    }, { DB: createDb(await hashImportToken(token)) } as unknown as Bindings)
+    const body = await res.json()
+
+    expect(res.status).toBe(400)
+    expect(body.message).toBe('metadata.type 必须是 gallery 或 case')
   })
 
   it('token 最近已使用时不重复写 last_used_at', async () => {

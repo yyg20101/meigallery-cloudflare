@@ -32,19 +32,27 @@
 ./scripts/setup.sh
 
 # 部署
+# 重要警告：生产环境中，当待发布包含 0017_cases_cleanup.sql 时，禁止直接运行一键部署。
+# 必须先完成本地或 CI 构建预检，再按“R2 Cases 对象迁移”专项顺序完成
+# dry-run、复制和目标对象验证，然后才执行 D1 remote migration 和部署。
 ./scripts/deploy.sh
 
 # 或手动步骤：
-# 1. D1 迁移
-cd packages/api && wrangler d1 migrations apply meigallery-db --remote
+# 1. API Worker 构建预检，不部署
+pnpm --filter @meigallery/api exec wrangler deploy --dry-run --outdir=dist
 
 # 2. 构建前端
 pnpm --filter @meigallery/web exec nuxt build
 
-# 3. 部署 API Worker
+# 3. D1 迁移
+# 重要警告：如果待执行 migrations 包含 0017_cases_cleanup.sql，必须先完成：
+# 构建预检 -> R2 Cases dry-run -> R2 复制和目标对象验证，再执行此 D1 remote migration。
+pnpm --filter @meigallery/api exec wrangler d1 migrations apply meigallery-db --remote
+
+# 4. 部署 API Worker
 pnpm --filter @meigallery/api exec wrangler deploy
 
-# 4. 部署 Web Worker
+# 5. 部署 Web Worker
 pnpm --filter @meigallery/web exec wrangler deploy
 ```
 
@@ -66,6 +74,7 @@ pnpm --filter @meigallery/web exec wrangler deploy
 | `STREAM_ACCOUNT_ID` | API Worker secret | Cloudflare Stream 账户 ID |
 | `STREAM_API_TOKEN` | API Worker secret | Stream API 令牌 |
 | `CORS_ORIGIN` | API Worker vars | 前端域名（如 `https://616618.xyz`） |
+| `IMAGE_RESIZING_ENABLED` | API Worker vars | 是否启用 Cloudflare Images Transformations；启用前需在 Dashboard 打开 Images > Transformations |
 | `NUXT_PUBLIC_API_BASE_URL` | Web Worker vars | API 地址（如 `https://api.616618.xyz`） |
 
 设置 secret：
@@ -127,6 +136,8 @@ Email：
 
 - 静态资源由 Workers Assets 自动分发到全球边缘节点。
 - 公共缩略图使用长缓存，文件名带 hash。
+- `IMAGE_RESIZING_ENABLED=true` 时公共缩略图优先使用 Cloudflare Images Transformations，首期固定只请求 `w=480` 单规格，避免 Free 每月 5,000 unique transformations 被多规格消耗。
+- Transformations 未启用、失败或返回 Free 超限错误（例如 9422）时，API 会回退返回原图，并继续设置 `Cache-Control: public, max-age=604800` 保持业务可用。
 - API 默认不做长缓存，只缓存公开且稳定的数据。
 - 受保护媒体不放入公共缓存。
 
@@ -169,7 +180,55 @@ Email：
 7. 正式切换域名时，将 `zuole.me` DNS 指向 Cloudflare Workers 自定义域名。
 8. 保留旧 WordPress 站点只读备份，至少覆盖一个完整审核周期。
 
-## 11. 参考资料
+## 11. R2 Cases 对象迁移
+
+`0017_cases_cleanup.sql` 会将真实案例表从 `testimonial_*` 切换为 `cases` / `case_images`，并将数据库中的 R2 key 从 `testimonials/...` 改为 `cases/...`。生产执行时必须先迁移 R2 对象，再执行 D1 迁移，避免数据库切表后引用不存在的对象。
+
+执行前确认 Cloudflare Images Transformations 已按当前设计启用或已有等价降级策略，避免迁移后图片访问链路出现缩略图生成差异。
+
+生产顺序：
+
+```bash
+# 1. 先完成本地或 CI 构建预检，不修改远程 D1 或 R2
+pnpm --filter @meigallery/api exec wrangler deploy --dry-run --outdir=dist
+pnpm --filter @meigallery/web exec nuxt build
+
+# 2. 查看将复制和将删除的映射，不修改 R2 或 D1
+node scripts/migrate-cases-r2.mjs --dry-run --remote
+
+# 3. 复制 testimonials/ 对象到 cases/，并通过 sha256 验证新旧对象内容一致
+node scripts/migrate-cases-r2.mjs --remote
+
+# 4. 再执行 D1 远程迁移；脚本不会自动执行 migration
+pnpm --filter @meigallery/api exec wrangler d1 migrations apply meigallery-db --remote
+
+# 如需改用一键部署脚本在生产环境执行包含 0017 的迁移，必须先完成 R2 dry-run、复制和验证，
+# 再显式设置以下环境变量解除 production-only 保护。
+ALLOW_CASES_CLEANUP_MIGRATION=true ./scripts/deploy.sh
+
+# 5. 部署 API 和 Web Worker，并完成 smoke 测试
+pnpm --filter @meigallery/api exec wrangler deploy
+pnpm --filter @meigallery/web exec wrangler deploy
+
+# 6. smoke 通过后，显式删除旧 testimonials/ 对象
+node scripts/migrate-cases-r2.mjs --remote --delete-old --confirm-delete-old=testimonials-to-cases
+```
+
+脚本说明：
+
+- 默认 R2 bucket 为 `meigallery-media`，可用 `R2_BUCKET` 覆盖。
+- 默认 D1 database 为 `meigallery-db`，可用 `D1_DATABASE` 覆盖。
+- `--remote` 表示查询远程 D1；不带时查询本地 D1。
+- `--dry-run` 只打印 `testimonials/... -> cases/...` 映射和将删除的旧 key，不会写入 R2 或 D1。
+- 正式复制时脚本会先 `r2 object get` 到临时文件，再 `r2 object put` 到新 key，并再次 `r2 object get` 目标 key；随后比较新旧临时文件 sha256，确保复制后内容一致。
+- `--delete-old` 只删除旧 `testimonials/` 对象，必须同时带 `--remote` 和 `--confirm-delete-old=testimonials-to-cases`，并且必须在复制、验证、D1 migration、部署和 smoke 测试后执行；脚本不会自动执行 D1 migration。
+- 删除阶段会先完整遍历所有映射，分别读取旧 `testimonials/...` 和新 `cases/...` 对象并比较 sha256；全部一致后才第二轮删除旧对象。如果旧对象不存在但新对象存在，会打印“跳过：旧对象不存在，可能是迁移后新增对象”，不失败也不删除；如果旧对象存在但新对象不存在或 hash 不一致，会中止并以非 0 状态退出，不删除任何旧对象。
+- 映射清单合并 `testimonial_case_images.r2_key` 与 `external_import_files.r2_key` 两个来源，并按旧 `testimonials/...` key 去重。
+- D1 已切表后的删除阶段会合并 `case_images.r2_key` 与 `external_import_files.r2_key` 中的 `cases/...` key，并反推旧 `testimonials/...` key。
+- `scripts/deploy.sh` 会先完成 API dry-run 和 Web build，再进入 D1 migration 阶段；生产环境检测到 `packages/api/migrations/0017_cases_cleanup.sql` 且未设置 `ALLOW_CASES_CLEANUP_MIGRATION=true` 时会在 D1 migration 前中止，防止误跑一键部署导致 D1 先于 R2 迁移。如果 0017 已确认执行完成，或已完成 R2 复制验证并准备执行迁移，可显式设置该环境变量绕过。
+- 如果本地 D1 已执行 `0017_cases_cleanup.sql`，旧表 `testimonial_case_images` 可能已不存在；此时本地 dry-run 提示旧表不存在属于预期，不代表脚本实现失败。
+
+## 12. 参考资料
 
 - Cloudflare Workers: https://developers.cloudflare.com/workers/
 - Workers Assets: https://developers.cloudflare.com/workers/frameworks/

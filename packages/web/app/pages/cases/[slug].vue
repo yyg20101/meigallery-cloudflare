@@ -3,7 +3,7 @@ const route = useRoute()
 const { api } = useApi()
 const { trackLeadOnce } = useFacebookPixel()
 
-interface TestimonialDetail {
+interface CaseDetail {
   id: string
   title: string
   slug: string
@@ -16,7 +16,7 @@ interface TestimonialDetail {
 }
 
 const { data: item, error } = await useAsyncData(`case-${route.params.slug}`, () =>
-  api<TestimonialDetail>(`/api/testimonial-cases/${route.params.slug}`),
+  api<CaseDetail>(`/api/cases/${route.params.slug}`),
 )
 
 if (error.value || !item.value) {
@@ -45,7 +45,7 @@ function openContactPanel() {
   <div v-if="item" class="mx-auto max-w-7xl px-4 py-6 pb-24 sm:px-6 lg:px-8 lg:py-10">
     <BreadcrumbNav :items="[{ label: '首页', to: '/' }, { label: '真实案例', to: '/cases' }, { label: item.title }]" class="mb-4" />
 
-    <section data-testid="testimonial-detail-hero" class="relative overflow-hidden rounded-[2rem] border border-[#efe4d8] bg-[#fffbf7] shadow-[0_24px_80px_rgba(124,45,18,0.09)] lg:grid lg:grid-cols-[1fr_26rem]">
+    <section data-testid="case-detail-hero" class="relative overflow-hidden rounded-[2rem] border border-[#efe4d8] bg-[#fffbf7] shadow-[0_24px_80px_rgba(124,45,18,0.09)] lg:grid lg:grid-cols-[1fr_26rem]">
       <div class="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_12%_12%,rgba(214,195,154,0.20),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.72),transparent_46%)]" />
       <div class="relative p-3 sm:p-4 lg:p-5">
         <div class="relative aspect-[4/3] overflow-hidden rounded-[1.55rem] bg-orange-50 shadow-inner shadow-orange-950/8 lg:h-full lg:max-h-[34rem] lg:min-h-[28rem] lg:aspect-auto">
@@ -101,7 +101,7 @@ function openContactPanel() {
         </div>
         <p class="text-xs text-gray-400">封面已单独展示，下方从第 2 张开始</p>
       </div>
-      <TestimonialGallery :images="galleryImages" />
+      <CaseGallery :images="galleryImages" />
     </section>
 
     <section v-else class="mt-6 rounded-[1.5rem] border border-[#f0e4d8] bg-white/90 px-5 py-8 text-center text-sm text-gray-500 shadow-sm shadow-orange-950/5">

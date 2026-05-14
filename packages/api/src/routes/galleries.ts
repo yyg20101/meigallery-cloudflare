@@ -5,6 +5,7 @@ import type { Bindings, Variables } from '../index'
 import { PAGINATION } from '@meigallery/shared/constants'
 import { cacheControl } from '../middleware/cache'
 import { getPublicGalleryOrderClause, isGalleryLikedByUser } from '../utils/gallery-interactions'
+import { parsePositiveIntParam } from '../utils/pagination'
 
 export const galleryRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -67,21 +68,17 @@ function shouldRecordGalleryView(c: GalleryContext, galleryId: string) {
  *   pageSize: 每页数量（默认 20，最大 100）
  *   tag: 标签 slug（可多个，逗号分隔）
  *   search: 关键词搜索（标题和摘要模糊匹配）
- *   sort: 排序方式（newest / oldest / random / hot，默认 newest）
+ *   sort: 排序方式（newest / oldest / hot，默认 newest）
  */
 galleryRoutes.get('/', cacheControl(60), async (c) => {
   const db = c.env.DB
-  const page = Math.max(1, parseInt(c.req.query('page') || '1', 10))
-  const pageSize = Math.min(
-    PAGINATION.MAX_PAGE_SIZE,
-    Math.max(1, parseInt(c.req.query('pageSize') || String(PAGINATION.DEFAULT_PAGE_SIZE), 10)),
-  )
+  const page = parsePositiveIntParam(c.req.query('page'), 1)
+  const pageSize = parsePositiveIntParam(c.req.query('pageSize'), PAGINATION.DEFAULT_PAGE_SIZE, PAGINATION.MAX_PAGE_SIZE)
   const tagSlugs = c.req.query('tag')?.split(',').filter(Boolean) || []
   const search = c.req.query('search')?.trim() || ''
   const sort = c.req.query('sort') || 'newest'
   const offset = (page - 1) * pageSize
 
-  let countQuery = 'SELECT COUNT(DISTINCT g.id) as total FROM galleries g'
   let dataQuery = `
     SELECT DISTINCT g.id, g.title, g.slug, g.summary, g.cover_key,
            g.required_level_rank, g.published_at, g.view_count, g.like_count,
@@ -95,7 +92,6 @@ galleryRoutes.get('/', cacheControl(60), async (c) => {
   if (tagSlugs.length > 0) {
     const placeholders = tagSlugs.map(() => '?').join(',')
     const joinClause = ` JOIN gallery_tags gt ON g.id = gt.gallery_id JOIN tags t ON gt.tag_id = t.id`
-    countQuery += joinClause
     dataQuery += joinClause
     whereClause += ` AND t.slug IN (${placeholders})`
     params.push(...tagSlugs)
@@ -108,24 +104,26 @@ galleryRoutes.get('/', cacheControl(60), async (c) => {
     params.push(keyword, keyword)
   }
 
-  countQuery += whereClause
+  const isComplexQuery = tagSlugs.length > 0 || Boolean(search)
 
   // 排序
   const orderClause = getPublicGalleryOrderClause(sort)
 
   dataQuery += whereClause + orderClause + ' LIMIT ? OFFSET ?'
 
-  // 查询总数
-  const countResult = await db
-    .prepare(countQuery)
-    .bind(...params)
-    .first<{ total: number }>()
-  const total = countResult?.total ?? 0
+  let exactTotal: number | null = null
+  if (!isComplexQuery) {
+    const countResult = await db
+      .prepare('SELECT COUNT(*) as total FROM galleries g WHERE g.status = ?')
+      .bind('published')
+      .first<{ total: number }>()
+    exactTotal = countResult?.total ?? 0
+  }
 
   // 查询数据
   const galleries = await db
     .prepare(dataQuery)
-    .bind(...params, pageSize, offset)
+    .bind(...params, pageSize + 1, offset)
     .all<{
       id: string
       title: string
@@ -138,9 +136,12 @@ galleryRoutes.get('/', cacheControl(60), async (c) => {
       like_count: number
       hot_score: number
     }>()
+  const hasMore = galleries.results.length > pageSize
+  const pageRows = galleries.results.slice(0, pageSize)
+  const total = exactTotal ?? offset + pageRows.length + (hasMore ? 1 : 0)
 
   // 批量查询标签
-  const galleryIds = galleries.results.map(g => g.id)
+  const galleryIds = pageRows.map(g => g.id)
   let tagsMap: Record<string, Array<{ id: string; type: string; name: string; slug: string }>> = {}
 
   if (galleryIds.length > 0) {
@@ -161,7 +162,7 @@ galleryRoutes.get('/', cacheControl(60), async (c) => {
     }
   }
 
-  const data = galleries.results.map(g => ({
+  const data = pageRows.map(g => ({
     id: g.id,
     title: g.title,
     slug: g.slug,
@@ -177,7 +178,7 @@ galleryRoutes.get('/', cacheControl(60), async (c) => {
     tags: tagsMap[g.id] || [],
   }))
 
-  return c.json({ data, total, page, pageSize })
+  return c.json({ data, total, page, pageSize, hasMore })
 })
 
 /**

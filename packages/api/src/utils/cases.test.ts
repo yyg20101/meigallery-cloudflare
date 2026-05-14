@@ -6,7 +6,7 @@ import {
   isAllowedImageType,
   isValidSlug,
   normalizeSortOrder,
-} from './testimonial-cases'
+} from './cases'
 
 describe('真实案例工具', () => {
   it('slug 只允许小写字母、数字和短横线', () => {
@@ -36,12 +36,12 @@ describe('真实案例工具', () => {
   })
 
   it('公开排序使用白名单', () => {
-    expect(getPublicOrderClause('sort')).toBe(' ORDER BY tc.sort_order ASC, tc.published_at DESC')
-    expect(getPublicOrderClause('newest')).toBe(' ORDER BY tc.published_at DESC, tc.sort_order ASC')
-    expect(getPublicOrderClause('bad')).toBe(' ORDER BY tc.sort_order ASC, tc.published_at DESC')
+    expect(getPublicOrderClause('sort')).toBe(' ORDER BY c.sort_order ASC, c.published_at DESC')
+    expect(getPublicOrderClause('newest')).toBe(' ORDER BY c.published_at DESC, c.sort_order ASC')
+    expect(getPublicOrderClause('bad')).toBe(' ORDER BY c.sort_order ASC, c.published_at DESC')
   })
 
   it('公开图片 URL 不包含 R2 key', () => {
-    expect(getPublicImageUrl('tci_123')).toBe('/api/testimonial-cases/images/tci_123')
+    expect(getPublicImageUrl('tci_123')).toBe('/api/cases/images/tci_123')
   })
 })

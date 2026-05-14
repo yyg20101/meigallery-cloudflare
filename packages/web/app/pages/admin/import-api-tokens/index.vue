@@ -29,7 +29,7 @@ const form = reactive({
   allowedSourceBotKeys: 'ops_gallery_bot',
   expiresAt: '',
   galleryCreate: true,
-  testimonialCreate: false,
+  caseCreate: false,
   status: 'active' as 'active' | 'disabled',
 })
 
@@ -49,7 +49,7 @@ function formatDateTime(value: string | null) {
 
 function permissionLabel(permission: string) {
   if (permission === 'gallery:create') return '图库草稿'
-  if (permission === 'testimonial:create') return '真实案例草稿'
+  if (permission === 'case:create') return '真实案例草稿'
   return permission
 }
 
@@ -63,7 +63,7 @@ async function createToken() {
   try {
     const permissions = [
       form.galleryCreate ? 'gallery:create' : '',
-      form.testimonialCreate ? 'testimonial:create' : '',
+      form.caseCreate ? 'case:create' : '',
     ].filter(Boolean)
     const allowedSourceBotKeys = form.allowedSourceBotKeys.split(',').map(key => key.trim()).filter(Boolean)
     const body = {
@@ -94,7 +94,7 @@ function resetForm() {
   form.allowedSourceBotKeys = 'ops_gallery_bot'
   form.expiresAt = ''
   form.galleryCreate = true
-  form.testimonialCreate = false
+  form.caseCreate = false
   form.status = 'active'
 }
 
@@ -106,7 +106,7 @@ function startEdit(item: ImportApiTokenRow) {
   form.allowedSourceBotKeys = parseJsonArray(item.allowed_source_bot_keys).join(',')
   form.expiresAt = item.expires_at ? item.expires_at.slice(0, 16) : ''
   form.galleryCreate = permissions.includes('gallery:create')
-  form.testimonialCreate = permissions.includes('testimonial:create')
+  form.caseCreate = permissions.includes('case:create')
   form.status = item.status
 }
 
@@ -149,7 +149,7 @@ async function disableToken(id: string) {
           <span class="mb-2 block text-sm font-medium text-gray-700">权限</span>
           <div class="flex flex-wrap gap-3 text-sm text-gray-700">
             <label class="inline-flex items-center gap-2"><input v-model="form.galleryCreate" type="checkbox" />图库草稿</label>
-            <label class="inline-flex items-center gap-2"><input v-model="form.testimonialCreate" type="checkbox" />真实案例草稿</label>
+            <label class="inline-flex items-center gap-2"><input v-model="form.caseCreate" type="checkbox" />真实案例草稿</label>
           </div>
         </div>
         <div v-if="editingId">

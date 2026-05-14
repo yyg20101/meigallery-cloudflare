@@ -18,7 +18,7 @@ type TokenBody = {
 }
 
 function normalizePermissions(permissions: string[] | undefined) {
-  return [...new Set((permissions ?? []).filter(permission => permission === 'gallery:create' || permission === 'testimonial:create'))]
+  return [...new Set((permissions ?? []).filter(permission => permission === 'gallery:create' || permission === 'case:create'))]
 }
 
 function validateSourceBotKeys(keys: string[]) {

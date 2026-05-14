@@ -1,11 +1,11 @@
 import { Hono } from 'hono'
 import { describe, expect, it } from 'vitest'
 import type { Bindings, Variables } from '../index'
-import { testimonialCaseRoutes } from './testimonial-cases'
+import { caseRoutes } from './cases'
 
 function createApp() {
   const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
-  app.route('/api/testimonial-cases', testimonialCaseRoutes)
+  app.route('/api/cases', caseRoutes)
   return app
 }
 
@@ -42,18 +42,43 @@ describe('公开真实案例 API', () => {
       }),
     } as unknown as Bindings
 
-    const res = await app.request('/api/testimonial-cases', {}, env)
+    const res = await app.request('/api/cases', {}, env)
     const body = await res.json()
 
     expect(res.status).toBe(200)
     expect(body).toEqual({ data: [], total: 0, page: 1, pageSize: 12 })
   })
 
+  it('无效分页参数回退默认值且不会向 SQL 绑定 NaN', async () => {
+    const app = createApp()
+    const binds: unknown[][] = []
+    const env = {
+      DB: createDb({
+        first: (_sql, params) => {
+          binds.push(params)
+          return { total: 0 }
+        },
+        all: (_sql, params) => {
+          binds.push(params)
+          return []
+        },
+      }),
+    } as unknown as Bindings
+
+    const res = await app.request('/api/cases?page=abc&pageSize=abc', {}, env)
+    const body = await res.json<{ page: number; pageSize: number }>()
+
+    expect(res.status).toBe(200)
+    expect(body.page).toBe(1)
+    expect(body.pageSize).toBe(12)
+    expect(binds.flat().some(value => typeof value === 'number' && Number.isNaN(value))).toBe(false)
+  })
+
   it('详情只返回公开图片 URL，不泄露 R2 key', async () => {
     const app = createApp()
     const env = {
       DB: createDb({
-        first: sql => sql.includes('FROM testimonial_cases')
+        first: sql => sql.includes('FROM cases')
           ? {
               id: 'tc_1',
               title: '授权反馈案例',
@@ -66,19 +91,19 @@ describe('公开真实案例 API', () => {
             }
           : null,
         all: () => [
-          { id: 'tci_1', alt_text: '授权反馈案例 1', sort_order: 0, r2_key: 'testimonials/tc_1/tci_1.jpg' },
+          { id: 'tci_1', alt_text: '授权反馈案例 1', sort_order: 0, r2_key: 'cases/tc_1/tci_1.jpg' },
         ],
       }),
     } as unknown as Bindings
 
-    const res = await app.request('/api/testimonial-cases/member-feedback-001', {}, env)
+    const res = await app.request('/api/cases/member-feedback-001', {}, env)
     const body = await res.json()
 
     expect(res.status).toBe(200)
     expect(body.images).toEqual([
-      { id: 'tci_1', url: '/api/testimonial-cases/images/tci_1', alt: '授权反馈案例 1', sortOrder: 0 },
+      { id: 'tci_1', url: '/api/cases/images/tci_1', alt: '授权反馈案例 1', sortOrder: 0 },
     ])
-    expect(JSON.stringify(body)).not.toContain('testimonials/tc_1/tci_1.jpg')
+    expect(JSON.stringify(body)).not.toContain('cases/tc_1/tci_1.jpg')
   })
 
   it('草稿或不存在的案例详情返回 404', async () => {
@@ -87,7 +112,7 @@ describe('公开真实案例 API', () => {
       DB: createDb({ first: () => null }),
     } as unknown as Bindings
 
-    const res = await app.request('/api/testimonial-cases/draft-case', {}, env)
+    const res = await app.request('/api/cases/draft-case', {}, env)
     const body = await res.json()
 
     expect(res.status).toBe(404)
@@ -98,17 +123,17 @@ describe('公开真实案例 API', () => {
     const app = createApp()
     const env = {
       DB: createDb({
-        first: () => ({ r2_key: 'testimonials/tc_1/tci_1.jpg', mime_type: 'image/jpeg' }),
+        first: () => ({ r2_key: 'cases/tc_1/tci_1.jpg', mime_type: 'image/jpeg' }),
       }),
       R2: {
         async get(key: string) {
-          expect(key).toBe('testimonials/tc_1/tci_1.jpg')
+          expect(key).toBe('cases/tc_1/tci_1.jpg')
           return { body: new Response('image-bytes').body }
         },
       },
     } as unknown as Bindings
 
-    const res = await app.request('/api/testimonial-cases/images/tci_1', {}, env)
+    const res = await app.request('/api/cases/images/tci_1', {}, env)
 
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toContain('image/jpeg')

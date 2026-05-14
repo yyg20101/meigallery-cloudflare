@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { describe, expect, it } from 'vitest'
 import type { Bindings, Variables } from '../../index'
-import { adminTestimonialCaseRoutes } from './testimonial-cases'
+import { adminCaseRoutes } from './cases'
 
 function createApp(role: string | null = 'owner') {
   const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
@@ -10,7 +10,7 @@ function createApp(role: string | null = 'owner') {
     c.set('userRole', role)
     await next()
   })
-  app.route('/api/admin/testimonial-cases', adminTestimonialCaseRoutes)
+  app.route('/api/admin/cases', adminCaseRoutes)
   return app
 }
 
@@ -46,9 +46,34 @@ describe('后台真实案例 API', () => {
     const app = createApp(null)
     const env = { DB: createDb({}) } as unknown as Bindings
 
-    const res = await app.request('/api/admin/testimonial-cases', {}, env)
+    const res = await app.request('/api/admin/cases', {}, env)
 
     expect(res.status).toBe(403)
+  })
+
+  it('无效分页参数回退默认值且不会向 SQL 绑定 NaN', async () => {
+    const app = createApp()
+    const binds: unknown[][] = []
+    const env = {
+      DB: createDb({
+        first: (_sql, params) => {
+          binds.push(params)
+          return { total: 0 }
+        },
+        all: (_sql, params) => {
+          binds.push(params)
+          return []
+        },
+      }),
+    } as unknown as Bindings
+
+    const res = await app.request('/api/admin/cases?page=abc&pageSize=abc', {}, env)
+    const body = await res.json<{ page: number; pageSize: number }>()
+
+    expect(res.status).toBe(200)
+    expect(body.page).toBe(1)
+    expect(body.pageSize).toBe(20)
+    expect(binds.flat().some(value => typeof value === 'number' && Number.isNaN(value))).toBe(false)
   })
 
   it('创建真实案例草稿并写入审计日志', async () => {
@@ -63,7 +88,7 @@ describe('后台真实案例 API', () => {
       }),
     } as unknown as Bindings
 
-    const res = await app.request('/api/admin/testimonial-cases', {
+    const res = await app.request('/api/admin/cases', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: '授权反馈案例', slug: 'member-feedback-001', status: 'draft' }),
@@ -72,7 +97,7 @@ describe('后台真实案例 API', () => {
 
     expect(res.status).toBe(201)
     expect(body.id).toMatch(/^tc_/)
-    expect(executedSql.some(sql => sql.includes('INSERT INTO testimonial_cases'))).toBe(true)
+    expect(executedSql.some(sql => sql.includes('INSERT INTO cases'))).toBe(true)
     expect(executedSql.some(sql => sql.includes('INSERT INTO admin_audit_logs'))).toBe(true)
   })
 
@@ -103,21 +128,21 @@ describe('后台真实案例 API', () => {
     form.set('featured', 'true')
     form.append('files', new File([new Uint8Array([1, 2, 3])], 'feedback.jpg', { type: 'image/jpeg' }))
 
-    const res = await app.request('/api/admin/testimonial-cases', { method: 'POST', body: form }, env)
+    const res = await app.request('/api/admin/cases', { method: 'POST', body: form }, env)
     const body = await res.json()
 
     expect(res.status).toBe(201)
     expect(body.uploaded).toHaveLength(1)
-    expect(putKeys[0]).toContain(`testimonials/${body.id}/`)
-    expect(executedSql.some(sql => sql.includes('INSERT INTO testimonial_cases'))).toBe(true)
-    expect(executedSql.some(sql => sql.includes('INSERT INTO testimonial_case_images'))).toBe(true)
+    expect(putKeys[0]).toContain(`cases/${body.id}/`)
+    expect(executedSql.some(sql => sql.includes('INSERT INTO cases'))).toBe(true)
+    expect(executedSql.some(sql => sql.includes('INSERT INTO case_images'))).toBe(true)
   })
 
   it('返回后台案例详情和公开图片 URL', async () => {
     const app = createApp()
     const env = {
       DB: createDb({
-        first: sql => sql.includes('SELECT * FROM testimonial_cases')
+        first: sql => sql.includes('SELECT * FROM cases')
           ? {
               id: 'tc_1',
               title: '授权反馈案例',
@@ -137,20 +162,20 @@ describe('后台真实案例 API', () => {
       }),
     } as unknown as Bindings
 
-    const res = await app.request('/api/admin/testimonial-cases/tc_1', {}, env)
+    const res = await app.request('/api/admin/cases/tc_1', {}, env)
     const body = await res.json()
 
     expect(res.status).toBe(200)
     expect(body.id).toBe('tc_1')
     expect(body.featured).toBe(true)
-    expect(body.images).toEqual([{ id: 'tci_1', url: '/api/testimonial-cases/images/tci_1', alt: '图片 1', sortOrder: 0 }])
+    expect(body.images).toEqual([{ id: 'tci_1', url: '/api/cases/images/tci_1', alt: '图片 1', sortOrder: 0 }])
   })
 
   it('禁止新建案例时直接发布', async () => {
     const app = createApp()
     const env = { DB: createDb({}) } as unknown as Bindings
 
-    const res = await app.request('/api/admin/testimonial-cases', {
+    const res = await app.request('/api/admin/cases', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: '授权反馈案例', slug: 'member-feedback-001', status: 'published' }),
@@ -166,14 +191,14 @@ describe('后台真实案例 API', () => {
     const env = {
       DB: createDb({
         first: (sql) => {
-          if (sql.includes('SELECT * FROM testimonial_cases')) return { id: 'tc_1', published_at: null }
-          if (sql.includes('COUNT(*) as count FROM testimonial_case_images')) return { count: 1 }
+          if (sql.includes('SELECT * FROM cases')) return { id: 'tc_1', published_at: null }
+          if (sql.includes('COUNT(*) as count FROM case_images')) return { count: 1 }
           return null
         },
       }),
     } as unknown as Bindings
 
-    const res = await app.request('/api/admin/testimonial-cases/tc_1', {
+    const res = await app.request('/api/admin/cases/tc_1', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: '授权反馈案例', slug: 'member-feedback-001', status: 'published' }),

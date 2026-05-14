@@ -27,7 +27,7 @@ const navItems = [
   { to: '/admin/import-api-tokens', label: '导入 Token', icon: 'key' },
   { to: '/admin/external-import-records', label: '外部导入', icon: 'clipboard' },
   { to: '/admin/legacy-import', label: '旧站迁移', icon: 'refresh' },
-  { to: '/admin/testimonials', label: '真实案例', icon: 'message' },
+  { to: '/admin/cases', label: '真实案例', icon: 'message' },
   { to: '/admin/settings', label: '站点设置', icon: 'gear' },
   { to: '/admin/contact-methods', label: '联系方式', icon: 'message' },
   { to: '/admin/audit-logs', label: '审计日志', icon: 'clipboard' },

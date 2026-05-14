@@ -19,7 +19,7 @@ interface GallerySummary {
   likeCount?: number
 }
 
-interface TestimonialSummary {
+interface CaseSummary {
   id: string
   title: string
   slug: string
@@ -30,28 +30,20 @@ interface TestimonialSummary {
 }
 
 const PAGE_SIZE = 32
-const LATEST_DISPLAY_LIMIT = 20
+const GALLERY_DISPLAY_LIMIT = 20
 
-// 获取图库数据
+// 获取综合热度排序的首页图库数据，供首屏各模块切分复用，避免额外图库请求。
 const { data: galleriesData } = await useAsyncData('home-galleries', () =>
-  api<{ data: GallerySummary[]; total: number }>('/api/galleries', { query: { pageSize: String(PAGE_SIZE) } }),
+  api<{ data: GallerySummary[]; total: number }>('/api/galleries', { query: { pageSize: String(PAGE_SIZE), sort: 'hot' } }),
 )
 
-const { data: hotGalleriesData } = await useAsyncData('home-hot-galleries', () =>
-  api<{ data: GallerySummary[]; total: number }>('/api/galleries', { query: { pageSize: '9', sort: 'hot' } }),
-)
-
-const { data: testimonialsData } = await useAsyncData('home-testimonials', () =>
-  api<{ data: TestimonialSummary[] }>('/api/testimonial-cases', { query: { featured: 'true', pageSize: '6' } }),
-)
-
-const { data: fallbackTestimonialsData } = await useAsyncData('home-testimonials-fallback', () =>
-  api<{ data: TestimonialSummary[] }>('/api/testimonial-cases', { query: { pageSize: '6' } }),
+const { data: casesData } = await useAsyncData('home-cases', () =>
+  api<{ data: CaseSummary[] }>('/api/cases', { query: { featured: 'true', pageSize: '6' } }),
 )
 
 const allGalleries = computed(() => galleriesData.value?.data ?? [])
 
-// 顶部轮播：前 6 条，避免首屏浪费并展示更多内容
+// 顶部轮播：取综合热度前 6 条，避免首屏浪费并展示更多内容。
 const heroGalleries = computed(() => allGalleries.value.slice(0, 6))
 
 function galleryKey(gallery: GallerySummary) {
@@ -73,16 +65,10 @@ function appendUniqueGalleries(source: GallerySummary[], target: GallerySummary[
   return target
 }
 
-// 热门推荐：优先使用热度排序，失败时回退到首屏后段内容，不影响无限加载分页。
+// 热门推荐：复用 hot 主请求，排除已在轮播展示的内容。
 const featured = computed(() => {
   const heroKeys = new Set(heroGalleries.value.map(galleryKey))
-  const picked = appendUniqueGalleries(hotGalleriesData.value?.data ?? [], [], heroKeys, 3)
-
-  if (picked.length < 3) {
-    appendUniqueGalleries(allGalleries.value, picked, heroKeys, 3)
-  }
-
-  return picked
+  return appendUniqueGalleries(allGalleries.value, [], heroKeys, 3)
 })
 
 // 视频专区：筛选包含视频标签的图库，最多显示 3 条
@@ -95,8 +81,8 @@ const videoGalleries = computed(() => {
     .slice(0, 3)
 })
 
-// 最新图库：按 hero → featured → video → latest 顺序排除，避免同屏重复。
-const latest = computed(() => {
+// 精选图库：按 hero → featured → video → galleryHighlights 顺序排除，避免同屏重复。
+const galleryHighlights = computed(() => {
   const displayedGalleries = [...heroGalleries.value, ...featured.value]
   if (videoEnabled.value && videoGalleries.value.length > 0) {
     displayedGalleries.push(...videoGalleries.value)
@@ -106,9 +92,8 @@ const latest = computed(() => {
   return allGalleries.value.filter(gallery => !displayedKeys.has(galleryKey(gallery)))
 })
 
-const testimonials = computed(() => {
-  const featuredTestimonials = testimonialsData.value?.data ?? []
-  return featuredTestimonials.length >= 2 ? featuredTestimonials : (fallbackTestimonialsData.value?.data ?? featuredTestimonials)
+const cases = computed(() => {
+  return casesData.value?.data ?? []
 })
 
 useSeoMeta({
@@ -129,7 +114,7 @@ useSeoMeta({
     />
 
     <section class="mt-8 lg:mt-10">
-      <TestimonialCarousel :cases="testimonials" />
+      <CaseCarousel :cases="cases" />
     </section>
 
     <section class="mt-8 lg:mt-10">
@@ -144,10 +129,10 @@ useSeoMeta({
     </section>
 
     <section class="mt-8 lg:mt-10">
-      <EditorialSectionHeading eyebrow="最新上新" title="最新图库" description="持续更新授权写真、时尚、生活与艺术类图库。" action-label="查看全部" action-to="/discover" />
+      <EditorialSectionHeading eyebrow="精选内容" title="精选图库" description="按访问、互动与发布时间综合推荐授权写真、时尚、生活与艺术类图库。" action-label="查看全部" action-to="/discover" />
       <template v-if="galleriesData">
-        <GalleryGrid :galleries="latest.slice(0, LATEST_DISPLAY_LIMIT)" variant="magazine" />
-        <div v-if="latest.length === 0" class="rounded-[1.5rem] border border-orange-100 bg-white/80 py-20 text-center text-gray-400">暂无更多最新内容</div>
+        <GalleryGrid :galleries="galleryHighlights.slice(0, GALLERY_DISPLAY_LIMIT)" variant="magazine" />
+        <div v-if="galleryHighlights.length === 0" class="rounded-[1.5rem] border border-orange-100 bg-white/80 py-20 text-center text-gray-400">暂无更多精选内容</div>
         <div class="mt-6 text-center">
           <NuxtLink to="/discover" class="inline-flex rounded-full bg-gray-950 px-5 py-3 text-sm font-medium text-white shadow-sm shadow-gray-900/15 transition-all hover:-translate-y-0.5 hover:bg-gray-800">
             查看更多图库

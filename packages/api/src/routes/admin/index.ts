@@ -10,7 +10,7 @@ import { adminSettingsRoutes } from './settings'
 import { adminLegacyImportRoutes } from './legacy-import'
 import { adminContactMethodRoutes } from './contact-methods'
 import { adminMediaRoutes } from './media'
-import { adminTestimonialCaseRoutes } from './testimonial-cases'
+import { adminCaseRoutes } from './cases'
 import { adminImportApiTokenRoutes } from './import-api-tokens'
 import { adminExternalImportRecordRoutes } from './external-import-records'
 
@@ -50,7 +50,7 @@ adminRoutes.route('/audit-logs', adminAuditRoutes)
 adminRoutes.route('/settings', adminSettingsRoutes)
 adminRoutes.route('/legacy-import', adminLegacyImportRoutes)
 adminRoutes.route('/contact-methods', adminContactMethodRoutes)
-adminRoutes.route('/testimonial-cases', adminTestimonialCaseRoutes)
+adminRoutes.route('/cases', adminCaseRoutes)
 adminRoutes.route('/import-api-tokens', adminImportApiTokenRoutes)
 adminRoutes.route('/external-import-records', adminExternalImportRecordRoutes)
 adminRoutes.route('/', adminMediaRoutes)

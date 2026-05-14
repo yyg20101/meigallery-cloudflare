@@ -1,5 +1,5 @@
 <script setup lang="ts">
-interface TestimonialSummary {
+interface CaseSummary {
   id: string
   title: string
   slug: string
@@ -9,7 +9,7 @@ interface TestimonialSummary {
   publishedAt: string | null
 }
 
-const props = defineProps<{ cases: TestimonialSummary[] }>()
+const props = defineProps<{ cases: CaseSummary[] }>()
 
 const activeIndex = ref(0)
 const isPaused = ref(false)
@@ -160,7 +160,7 @@ onUnmounted(() => {
       <div v-if="visibleCases.length > 1" class="lg:hidden">
         <div
           ref="mobileRail"
-          data-testid="mobile-testimonial-rail"
+          data-testid="mobile-case-rail"
           class="-mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth px-1 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           @scroll.passive="handleMobileRailScroll"
         >
@@ -200,7 +200,7 @@ onUnmounted(() => {
         </div>
       </NuxtLink>
 
-      <div v-if="visibleCases.length > 1" data-testid="desktop-testimonial-preview-panel" class="hidden flex-col justify-between gap-4 rounded-[1.75rem] border border-[#f0e4d8] bg-[#fffbf7]/92 p-3 shadow-inner shadow-white/70 lg:flex">
+      <div v-if="visibleCases.length > 1" data-testid="desktop-case-preview-panel" class="hidden flex-col justify-between gap-4 rounded-[1.75rem] border border-[#f0e4d8] bg-[#fffbf7]/92 p-3 shadow-inner shadow-white/70 lg:flex">
         <div v-if="previewCases.length" class="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
           <button
             v-for="entry in previewCases"

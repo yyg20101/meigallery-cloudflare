@@ -1,4 +1,4 @@
-export type ImportPermission = 'gallery:create' | 'testimonial:create'
+export type ImportPermission = 'gallery:create' | 'case:create'
 
 export function createImportToken(): string {
   const bytes = new Uint8Array(32)

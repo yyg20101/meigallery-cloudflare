@@ -23,8 +23,8 @@ interface AdminCaseDetail {
   images: Array<{ id: string; url: string; alt: string; sortOrder: number }>
 }
 
-const { data, refresh } = await useAsyncData(`admin-testimonial-${route.params.id}`, () =>
-  api<AdminCaseDetail>(`/api/admin/testimonial-cases/${route.params.id}`),
+const { data, refresh } = await useAsyncData(`admin-case-${route.params.id}`, () =>
+  api<AdminCaseDetail>(`/api/admin/cases/${route.params.id}`),
 )
 
 const form = reactive({ title: '', slug: '', summary: '', bodyMd: '', status: 'draft' as 'draft' | 'published', featured: true, sortOrder: 0, seoTitle: '', seoDescription: '' })
@@ -66,7 +66,7 @@ async function onSave() {
   loading.value = true
   message.value = ''
   try {
-    await api(`/api/admin/testimonial-cases/${route.params.id}`, { method: 'PATCH', body: form })
+    await api(`/api/admin/cases/${route.params.id}`, { method: 'PATCH', body: form })
     message.value = '已保存'
     await refresh()
   } catch (e: any) {
@@ -83,7 +83,7 @@ async function onUpload() {
   try {
     const body = new FormData()
     for (const file of Array.from(files.value)) body.append('files', file)
-    await api(`/api/admin/testimonial-cases/${route.params.id}/images`, { method: 'POST', body })
+    await api(`/api/admin/cases/${route.params.id}/images`, { method: 'POST', body })
     files.value = null
     if (imageInput.value) imageInput.value.value = ''
     await refresh()
@@ -103,13 +103,13 @@ async function moveImage(index: number, direction: -1 | 1) {
   if (!current || !next) return
   images[index] = next
   images[nextIndex] = current
-  await api(`/api/admin/testimonial-cases/${route.params.id}/images/order`, { method: 'PATCH', body: { imageIds: images.map(image => image.id) } })
+  await api(`/api/admin/cases/${route.params.id}/images/order`, { method: 'PATCH', body: { imageIds: images.map(image => image.id) } })
   await refresh()
 }
 
 async function deleteImage(imageId: string) {
   if (!confirm('确认删除这张图片？')) return
-  await api(`/api/admin/testimonial-cases/${route.params.id}/images/${imageId}`, { method: 'DELETE' })
+  await api(`/api/admin/cases/${route.params.id}/images/${imageId}`, { method: 'DELETE' })
   await refresh()
 }
 </script>
@@ -117,7 +117,7 @@ async function deleteImage(imageId: string) {
 <template>
   <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
     <form class="space-y-5 rounded-lg border border-gray-200 bg-white p-6" @submit.prevent="onSave">
-      <div class="flex items-center justify-between gap-4"><h1 class="text-xl font-bold text-gray-900">编辑真实案例</h1><NuxtLink to="/admin/testimonials" class="text-sm text-blue-600 hover:underline">返回列表</NuxtLink></div>
+      <div class="flex items-center justify-between gap-4"><h1 class="text-xl font-bold text-gray-900">编辑真实案例</h1><NuxtLink to="/admin/cases" class="text-sm text-blue-600 hover:underline">返回列表</NuxtLink></div>
       <div class="grid gap-4 sm:grid-cols-2"><div><label class="mb-1 block text-sm font-medium text-gray-700">标题</label><input v-model="form.title" required class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></div><div><label class="mb-1 block text-sm font-medium text-gray-700">Slug</label><input v-model="form.slug" required class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></div></div>
       <div><label class="mb-1 block text-sm font-medium text-gray-700">摘要</label><textarea v-model="form.summary" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></div>
       <div><label class="mb-1 block text-sm font-medium text-gray-700">正文 Markdown</label><textarea v-model="form.bodyMd" rows="8" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono leading-6" /></div>

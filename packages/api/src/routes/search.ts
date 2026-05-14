@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { Bindings, Variables } from '../index'
 import { PAGINATION } from '@meigallery/shared/constants'
 import { cacheControl } from '../middleware/cache'
+import { parsePositiveIntParam } from '../utils/pagination'
 
 export const searchRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -12,19 +13,17 @@ export const searchRoutes = new Hono<{ Bindings: Bindings; Variables: Variables 
  *   tag: 标签 slug（逗号分隔，AND 关系）
  *   page: 页码
  *   pageSize: 每页数量
- *   sort: 排序（newest / hot / random，默认 newest）
+ *   sort: 排序（newest / hot，默认 newest）
  */
 searchRoutes.get('/', cacheControl(30), async (c) => {
   const db = c.env.DB
   const keyword = c.req.query('q')?.trim() || ''
   const tagSlugs = c.req.query('tag')?.split(',').filter(Boolean) || []
   const sort = c.req.query('sort') || 'newest'
-  const page = Math.max(1, parseInt(c.req.query('page') || '1', 10))
-  const pageSize = Math.min(
-    PAGINATION.MAX_PAGE_SIZE,
-    Math.max(1, parseInt(c.req.query('pageSize') || String(PAGINATION.DEFAULT_PAGE_SIZE), 10)),
-  )
+  const page = parsePositiveIntParam(c.req.query('page'), 1)
+  const pageSize = parsePositiveIntParam(c.req.query('pageSize'), PAGINATION.DEFAULT_PAGE_SIZE, PAGINATION.MAX_PAGE_SIZE)
   const offset = (page - 1) * pageSize
+  const isComplexQuery = tagSlugs.length > 0 || Boolean(keyword)
 
   // 构建查询
   let fromClause = 'FROM galleries g'
@@ -55,32 +54,25 @@ searchRoutes.get('/', cacheControl(30), async (c) => {
     havingClause = ' GROUP BY g.id'
   }
 
-  // 总数查询
-  const countParams = [...params]
-  if (tagSlugs.length > 1) countParams.push(tagSlugs.length)
-
-  let countQuery: string
-  if (havingClause) {
-    countQuery = `SELECT COUNT(*) as total FROM (SELECT g.id ${fromClause} WHERE ${whereClause}${havingClause})`
-  } else {
-    countQuery = `SELECT COUNT(DISTINCT g.id) as total ${fromClause} WHERE ${whereClause}`
+  let exactTotal: number | null = null
+  if (!isComplexQuery) {
+    const countResult = await db
+      .prepare('SELECT COUNT(*) as total FROM galleries g WHERE g.status = ?')
+      .bind('published')
+      .first<{ total: number }>()
+    exactTotal = countResult?.total ?? 0
   }
-
-  const countResult = await db
-    .prepare(countQuery)
-    .bind(...countParams)
-    .first<{ total: number }>()
-  const total = countResult?.total ?? 0
 
   // 数据查询
   // 排序
   let orderClause: string
   switch (sort) {
-    case 'random':
-      orderClause = 'ORDER BY RANDOM()'
-      break
     case 'hot':
       orderClause = 'ORDER BY g.view_count DESC, g.published_at DESC'
+      break
+    case 'random':
+      // 兼容旧 random 参数：不再提供随机排序，统一降级为最新排序。
+      orderClause = 'ORDER BY g.published_at DESC'
       break
     default: // newest / relevance
       orderClause = 'ORDER BY g.published_at DESC'
@@ -88,7 +80,7 @@ searchRoutes.get('/', cacheControl(30), async (c) => {
 
   const dataParams = [...params]
   if (tagSlugs.length > 1) dataParams.push(tagSlugs.length)
-  dataParams.push(pageSize, offset)
+  dataParams.push(pageSize + 1, offset)
 
   let dataQuery: string
   if (havingClause) {
@@ -126,7 +118,11 @@ searchRoutes.get('/', cacheControl(30), async (c) => {
     }>()
 
   // 批量查询标签
-  const galleryIds = galleries.results.map(g => g.id)
+  const hasMore = galleries.results.length > pageSize
+  const pageRows = galleries.results.slice(0, pageSize)
+  const total = exactTotal ?? offset + pageRows.length + (hasMore ? 1 : 0)
+
+  const galleryIds = pageRows.map(g => g.id)
   let tagsMap: Record<string, Array<{ id: string; type: string; name: string; slug: string }>> = {}
 
   if (galleryIds.length > 0) {
@@ -147,7 +143,7 @@ searchRoutes.get('/', cacheControl(30), async (c) => {
     }
   }
 
-  const data = galleries.results.map(g => ({
+  const data = pageRows.map(g => ({
     id: g.id,
     title: g.title,
     slug: g.slug,
@@ -160,5 +156,5 @@ searchRoutes.get('/', cacheControl(30), async (c) => {
     tags: tagsMap[g.id] || [],
   }))
 
-  return c.json({ data, total, page, pageSize })
+  return c.json({ data, total, page, pageSize, hasMore })
 })

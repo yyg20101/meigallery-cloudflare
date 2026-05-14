@@ -100,7 +100,7 @@ function statusClass(value: string) {
 const targetLink = computed(() => {
   if (!record.value?.target_id) return ''
   if (record.value.target_type === 'gallery') return `/admin/galleries/${record.value.target_id}`
-  if (record.value.target_type === 'testimonial_case') return `/admin/testimonials/${record.value.target_id}`
+  if (record.value.target_type === 'case') return `/admin/cases/${record.value.target_id}`
   return ''
 })
 </script>

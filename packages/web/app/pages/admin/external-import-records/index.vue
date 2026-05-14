@@ -39,7 +39,7 @@ const statusOptions = [
 const targetTypeOptions = [
   { value: '', label: '全部目标' },
   { value: 'gallery', label: '图库' },
-  { value: 'testimonial_case', label: '真实案例' },
+  { value: 'case', label: '案例' },
 ]
 
 function statusLabel(value: string) {

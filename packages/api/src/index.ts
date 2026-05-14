@@ -10,7 +10,7 @@ import { searchRoutes } from './routes/search'
 import { mediaRoutes } from './routes/media'
 import { meRoutes } from './routes/me'
 import { contactMethodRoutes } from './routes/contact-methods'
-import { testimonialCaseRoutes } from './routes/testimonial-cases'
+import { caseRoutes } from './routes/cases'
 import { importRoutes } from './routes/imports'
 import { PUBLIC_SETTING_KEYS } from './utils/site-settings'
 import { adminRoutes } from './routes/admin'
@@ -84,7 +84,7 @@ app.route('/api/search', searchRoutes)
 app.route('/api/media', mediaRoutes)
 app.route('/api/me', meRoutes)
 app.route('/api/contact-methods', contactMethodRoutes)
-app.route('/api/testimonial-cases', testimonialCaseRoutes)
+app.route('/api/cases', caseRoutes)
 app.route('/api/imports', importRoutes)
 // 公开站点信息（不需要登录）
 app.get('/api/settings/public', async (c) => {

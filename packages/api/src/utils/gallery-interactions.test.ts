@@ -19,10 +19,11 @@ describe('图库互动工具', () => {
     expect(clampCount(12)).toBe(12)
   })
 
-  it('公开图库排序使用白名单', () => {
+  it('公开图库排序使用白名单，旧 random 参数降级为最新排序', () => {
     expect(getPublicGalleryOrderClause('hot')).toBe(' ORDER BY hot_score DESC, g.published_at DESC')
     expect(getPublicGalleryOrderClause('oldest')).toBe(' ORDER BY g.published_at ASC')
-    expect(getPublicGalleryOrderClause('random')).toBe(' ORDER BY RANDOM()')
+    expect(getPublicGalleryOrderClause('random')).toBe(' ORDER BY g.published_at DESC')
+    expect(getPublicGalleryOrderClause('random')).not.toContain('RANDOM()')
     expect(getPublicGalleryOrderClause('bad-input')).toBe(' ORDER BY g.published_at DESC')
   })
 

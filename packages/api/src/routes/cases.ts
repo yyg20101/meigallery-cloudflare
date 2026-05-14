@@ -1,43 +1,44 @@
 import { Hono } from 'hono'
 import type { Bindings, Variables } from '../index'
 import { cacheControl } from '../middleware/cache'
-import { getPublicImageUrl, getPublicOrderClause } from '../utils/testimonial-cases'
+import { getPublicImageUrl, getPublicOrderClause } from '../utils/cases'
+import { parsePositiveIntParam } from '../utils/pagination'
 
-export const testimonialCaseRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
+export const caseRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
-testimonialCaseRoutes.get('/', cacheControl(120), async (c) => {
+caseRoutes.get('/', cacheControl(120), async (c) => {
   const db = c.env.DB
-  const page = Math.max(1, Number.parseInt(c.req.query('page') || '1', 10))
-  const pageSize = Math.min(50, Math.max(1, Number.parseInt(c.req.query('pageSize') || '12', 10)))
+  const page = parsePositiveIntParam(c.req.query('page'), 1)
+  const pageSize = parsePositiveIntParam(c.req.query('pageSize'), 12, 50)
   const featuredOnly = c.req.query('featured') === 'true'
   const offset = (page - 1) * pageSize
   const params: unknown[] = ['published']
-  let whereClause = ' WHERE tc.status = ?'
+  let whereClause = ' WHERE c.status = ?'
 
   if (featuredOnly) {
-    whereClause += ' AND tc.featured = 1'
+    whereClause += ' AND c.featured = 1'
   }
 
   const totalRow = await db
-    .prepare(`SELECT COUNT(*) as total FROM testimonial_cases tc${whereClause}`)
+    .prepare(`SELECT COUNT(*) as total FROM cases c${whereClause}`)
     .bind(...params)
     .first<{ total: number }>()
 
   const rows = await db
     .prepare(`
-      SELECT tc.id, tc.title, tc.slug, tc.summary, tc.published_at,
-             COUNT(tci.id) as image_count,
+      SELECT c.id, c.title, c.slug, c.summary, c.published_at,
+             COUNT(ci.id) as image_count,
              first_image.id as cover_image_id
-      FROM testimonial_cases tc
-      LEFT JOIN testimonial_case_images tci ON tci.case_id = tc.id
-      LEFT JOIN testimonial_case_images first_image ON first_image.id = (
-        SELECT id FROM testimonial_case_images
-        WHERE case_id = tc.id
+      FROM cases c
+      LEFT JOIN case_images ci ON ci.case_id = c.id
+      LEFT JOIN case_images first_image ON first_image.id = (
+        SELECT id FROM case_images
+        WHERE case_id = c.id
         ORDER BY sort_order ASC, created_at ASC
         LIMIT 1
       )
       ${whereClause}
-      GROUP BY tc.id
+      GROUP BY c.id
       ${getPublicOrderClause(c.req.query('sort') || 'sort')}
       LIMIT ? OFFSET ?
     `)
@@ -68,14 +69,14 @@ testimonialCaseRoutes.get('/', cacheControl(120), async (c) => {
   })
 })
 
-testimonialCaseRoutes.get('/images/:imageId', cacheControl(86400), async (c) => {
+caseRoutes.get('/images/:imageId', cacheControl(86400), async (c) => {
   const imageId = c.req.param('imageId')
   const row = await c.env.DB
     .prepare(`
-      SELECT tci.r2_key, tci.mime_type
-      FROM testimonial_case_images tci
-      JOIN testimonial_cases tc ON tc.id = tci.case_id
-      WHERE tci.id = ? AND tc.status = 'published'
+      SELECT ci.r2_key, ci.mime_type
+      FROM case_images ci
+      JOIN cases c ON c.id = ci.case_id
+      WHERE ci.id = ? AND c.status = 'published'
     `)
     .bind(imageId)
     .first<{ r2_key: string; mime_type: string }>()
@@ -90,13 +91,13 @@ testimonialCaseRoutes.get('/images/:imageId', cacheControl(86400), async (c) => 
   return c.body(object.body)
 })
 
-testimonialCaseRoutes.get('/:slug', cacheControl(120), async (c) => {
+caseRoutes.get('/:slug', cacheControl(120), async (c) => {
   const slug = c.req.param('slug')
   const db = c.env.DB
   const row = await db
     .prepare(`
       SELECT id, title, slug, summary, body_md, seo_title, seo_description, published_at
-      FROM testimonial_cases
+      FROM cases
       WHERE slug = ? AND status = 'published'
     `)
     .bind(slug)
@@ -116,7 +117,7 @@ testimonialCaseRoutes.get('/:slug', cacheControl(120), async (c) => {
   const images = await db
     .prepare(`
       SELECT id, alt_text, sort_order
-      FROM testimonial_case_images
+      FROM case_images
       WHERE case_id = ?
       ORDER BY sort_order ASC, created_at ASC
     `)

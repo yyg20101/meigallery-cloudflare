@@ -1,7 +1,7 @@
 import type { ImportPermission } from './import-token'
 import { ImportError } from './import-errors'
 
-export type TelegramImportType = 'gallery' | 'testimonial_case'
+export type TelegramImportType = 'gallery' | 'case'
 export type AllowedImportMimeType = 'image/jpeg' | 'image/png' | 'image/webp'
 
 export type TelegramImportPayload = {
@@ -50,7 +50,7 @@ export function validateTelegramImportPayload(input: unknown): TelegramImportPay
   if (!Array.isArray(body.files)) fail('files 为必填数组')
 
   const metadata = body.metadata
-  if (!['gallery', 'testimonial_case'].includes(metadata.type)) fail('metadata.type 必须是 gallery 或 testimonial_case')
+  if (!['gallery', 'case'].includes(metadata.type)) fail('metadata.type 必须是 gallery 或 case')
   if (metadata.source !== 'telegram') fail('metadata.source 必须是 telegram')
   if (!metadata.externalMessageId || metadata.externalMessageId.length > 160) fail('externalMessageId 为必填且不能超过 160 字符')
   if (!metadata.title || metadata.title.trim().length > 80) fail('标题为必填且不能超过 80 字')
@@ -66,7 +66,7 @@ export function validateTelegramImportPayload(input: unknown): TelegramImportPay
   if (!telegram.sourceMessageId) fail('sourceMessageId 为必填')
 
   if (metadata.type === 'gallery' && (body.files.length < 1 || body.files.length > 30)) fail('图库导入需要 1-30 张图片')
-  if (metadata.type === 'testimonial_case' && (body.files.length < 2 || body.files.length > 9)) fail('真实案例导入需要 2-9 张图片')
+  if (metadata.type === 'case' && (body.files.length < 2 || body.files.length > 9)) fail('案例导入需要 2-9 张图片')
 
   const sortOrders = new Set<number>()
   for (const file of body.files) {
@@ -93,5 +93,5 @@ export function validateTelegramImportPayload(input: unknown): TelegramImportPay
 }
 
 export function importPermissionForType(type: TelegramImportType): ImportPermission {
-  return type === 'gallery' ? 'gallery:create' : 'testimonial:create'
+  return type === 'gallery' ? 'gallery:create' : 'case:create'
 }

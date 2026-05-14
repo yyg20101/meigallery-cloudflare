@@ -50,11 +50,11 @@ async function onSubmit() {
   loading.value = true
   message.value = ''
   try {
-    const result = await api<{ id: string }>('/api/admin/testimonial-cases', {
+    const result = await api<{ id: string }>('/api/admin/cases', {
       method: 'POST',
       body: files.value?.length ? createFormData() : form,
     })
-    await navigateTo(`/admin/testimonials/${result.id}`)
+    await navigateTo(`/admin/cases/${result.id}`)
   } catch (e: any) {
     message.value = e?.data?.message || '创建失败'
   } finally {

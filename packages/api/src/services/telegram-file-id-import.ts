@@ -18,6 +18,8 @@ type FetchedImportFile = {
   isCover: boolean
 }
 
+type CleanupResult = { dbCleaned: boolean; r2CleanupError?: string; dbCleanupError?: string }
+
 export type CreateImportResult = {
   importId: string
   type: TargetType
@@ -198,7 +200,8 @@ export async function processTelegramFileIdImport(db: D1Database, r2: R2Bucket, 
     .first<{ id: string; source_bot_key: string; target_type: TargetType; metadata_json: string; file_count: number; token_created_by: number }>()
   if (!record) return
 
-  await db.prepare("UPDATE external_import_records SET status = 'fetching_media' WHERE id = ? AND status = 'pending_media_fetch'").bind(importId).run()
+  const claim = await db.prepare("UPDATE external_import_records SET status = 'fetching_media' WHERE id = ? AND status = 'pending_media_fetch'").bind(importId).run() as { meta?: { changes?: number } }
+  if ((claim.meta?.changes ?? 0) === 0) return
 
   const files = await db.prepare('SELECT * FROM external_import_files WHERE import_id = ? ORDER BY sort_order ASC')
     .bind(importId)
@@ -218,7 +221,7 @@ export async function processTelegramFileIdImport(db: D1Database, r2: R2Bucket, 
       const fetched = await fetchTelegramImageFile(env, record.source_bot_key, file.telegram_file_id)
       const extension = getExtensionForMime(fetched.mimeType)
       const targetFileId = record.target_type === 'gallery' ? generateId('med') : generateId('tci')
-      const r2Key = record.target_type === 'gallery' ? `originals/${targetId}/${targetFileId}.${extension}` : `testimonials/${targetId}/${targetFileId}.${extension}`
+      const r2Key = record.target_type === 'gallery' ? `originals/${targetId}/${targetFileId}.${extension}` : `cases/${targetId}/${targetFileId}.${extension}`
       await r2.put(r2Key, fetched.bytes, { httpMetadata: { contentType: fetched.mimeType } })
       uploadedKeys.push(r2Key)
       fetchedFiles.push({ fileId: targetFileId, mimeType: fetched.mimeType, fileSize: fetched.fileSize, r2Key, sortOrder: file.sort_order, isCover: Boolean(file.is_cover) })
@@ -232,7 +235,7 @@ export async function processTelegramFileIdImport(db: D1Database, r2: R2Bucket, 
     }
 
     if (record.target_type === 'gallery') await createImportedGallery(db, targetId, metadata, fetchedFiles)
-    else await createImportedTestimonialCase(db, targetId, metadata, fetchedFiles)
+    else await createImportedCase(db, targetId, metadata, fetchedFiles, record.token_created_by)
 
     await db.prepare(`
       UPDATE external_import_records
@@ -241,27 +244,28 @@ export async function processTelegramFileIdImport(db: D1Database, r2: R2Bucket, 
     `).bind(targetId, fetchedFiles.length, importId).run()
     await writeAuditLog(db, {
       adminId: record.token_created_by,
-      action: record.target_type === 'gallery' ? 'telegram_import.create_gallery' : 'telegram_import.create_testimonial_case',
+      action: record.target_type === 'gallery' ? 'telegram_import.create_gallery' : 'telegram_import.create_case',
       targetType: 'external_import_record',
       targetId: importId,
       afterValue: { importId, targetType: record.target_type, targetId, fetchedCount: fetchedFiles.length },
     })
   } catch (error) {
-    await cleanupFailedImport(db, r2, importId, uploadedKeys, record.target_type, targetId)
+    const cleanupResult = await cleanupFailedImport(db, r2, importId, uploadedKeys, record.target_type, targetId)
     if (currentFileId) {
       const fileMessage = error instanceof Error ? error.message : '导入处理失败'
       await db.prepare("UPDATE external_import_files SET status = 'failed', error_message = ?, updated_at = datetime('now') WHERE id = ?").bind(fileMessage, currentFileId).run()
     }
     const message = error instanceof Error ? error.message : '导入处理失败'
     const code = error instanceof ImportError ? error.code : 'IMPORT_PROCESS_FAILED'
+    const cleanupWarning = [cleanupResult.r2CleanupError, cleanupResult.dbCleanupError].filter(Boolean).join('; ') || undefined
     await db.prepare(`
       UPDATE external_import_records
-      SET status = 'failed', target_id = NULL,
+      SET status = 'failed', target_id = ?,
           fetched_count = (SELECT COUNT(*) FROM external_import_files WHERE import_id = ? AND status = 'completed'),
           failed_count = (SELECT COUNT(*) FROM external_import_files WHERE import_id = ? AND status = 'failed'),
           error_json = ?, completed_at = datetime('now')
       WHERE id = ?
-    `).bind(importId, importId, JSON.stringify({ code, message }), importId).run()
+    `).bind(cleanupResult.dbCleaned ? null : targetId, importId, importId, JSON.stringify({ code, message, ...(cleanupWarning ? { cleanupWarning } : {}) }), importId).run()
     await writeAuditLog(db, {
       adminId: record.token_created_by,
       action: 'telegram_import.failed',
@@ -314,38 +318,55 @@ async function createImportedGallery(db: D1Database, galleryId: string, metadata
   }
 }
 
-async function createImportedTestimonialCase(db: D1Database, caseId: string, metadata: TelegramImportPayload['metadata'], files: FetchedImportFile[]) {
-  const existing = await db.prepare('SELECT id FROM testimonial_cases WHERE slug = ?').bind(metadata.slug).first<{ id: string }>()
+async function createImportedCase(db: D1Database, caseId: string, metadata: TelegramImportPayload['metadata'], files: FetchedImportFile[], creatorId: number) {
+  const existing = await db.prepare('SELECT id FROM cases WHERE slug = ?').bind(metadata.slug).first<{ id: string }>()
   if (existing) throw new ImportError('IMPORT_TARGET_SLUG_CONFLICT', '真实案例 slug 已存在', 409)
 
   await db.prepare(`
-    INSERT INTO testimonial_cases
+    INSERT INTO cases
       (id, title, slug, summary, body_md, status, featured, sort_order, seo_title, seo_description, created_by, updated_by)
-    VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, 1, 1)
-  `).bind(caseId, metadata.title, metadata.slug, metadata.summary ?? null, metadata.bodyMd ?? null, metadata.featured === false ? 0 : 1, metadata.sortOrder ?? 0, metadata.seoTitle ?? null, metadata.seoDescription ?? null).run()
+    VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?)
+  `).bind(caseId, metadata.title, metadata.slug, metadata.summary ?? null, metadata.bodyMd ?? null, metadata.featured === false ? 0 : 1, metadata.sortOrder ?? 0, metadata.seoTitle ?? null, metadata.seoDescription ?? null, creatorId, creatorId).run()
 
   for (const file of files) {
     await db.prepare(`
-      INSERT INTO testimonial_case_images (id, case_id, r2_key, alt_text, mime_type, file_size, sort_order)
+      INSERT INTO case_images (id, case_id, r2_key, alt_text, mime_type, file_size, sort_order)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).bind(file.fileId, caseId, file.r2Key, `${metadata.title} 图片`, file.mimeType, file.fileSize, file.sortOrder).run()
   }
 }
 
-async function cleanupFailedImport(db: D1Database, r2: R2Bucket, importId: string, uploadedKeys: string[], targetType: TargetType, targetId: string | null) {
+async function cleanupFailedImport(db: D1Database, r2: R2Bucket, importId: string, uploadedKeys: string[], targetType: TargetType, targetId: string | null): Promise<CleanupResult> {
   const keys = new Set(uploadedKeys)
   const fileRows = await db.prepare('SELECT target_file_id, r2_key FROM external_import_files WHERE import_id = ?').bind(importId).all<{ target_file_id: string | null; r2_key: string | null }>()
   for (const row of fileRows.results) if (row.r2_key) keys.add(row.r2_key)
-  if (keys.size > 0) await r2.delete([...keys])
-  if (targetId) {
-    if (targetType === 'gallery') {
-      await db.prepare('DELETE FROM gallery_tags WHERE gallery_id = ?').bind(targetId).run()
-      await db.prepare('DELETE FROM media_assets WHERE gallery_id = ?').bind(targetId).run()
-      await db.prepare('DELETE FROM galleries WHERE id = ?').bind(targetId).run()
-    } else {
-      await db.prepare('DELETE FROM testimonial_case_images WHERE case_id = ?').bind(targetId).run()
-      await db.prepare('DELETE FROM testimonial_cases WHERE id = ?').bind(targetId).run()
+
+  let r2CleanupError: string | undefined
+  if (keys.size > 0) {
+    try {
+      await r2.delete([...keys])
+    } catch (error) {
+      r2CleanupError = error instanceof Error ? error.message : 'R2 清理失败'
+      console.error('Telegram 导入 R2 清理失败:', error)
     }
   }
-  await db.prepare("UPDATE external_import_files SET r2_key = NULL, target_file_id = NULL WHERE import_id = ?").bind(importId).run()
+
+  try {
+    if (targetId) {
+      if (targetType === 'gallery') {
+        await db.prepare('DELETE FROM gallery_tags WHERE gallery_id = ?').bind(targetId).run()
+        await db.prepare('DELETE FROM media_assets WHERE gallery_id = ?').bind(targetId).run()
+        await db.prepare('DELETE FROM galleries WHERE id = ?').bind(targetId).run()
+      } else {
+        await db.prepare('DELETE FROM case_images WHERE case_id = ?').bind(targetId).run()
+        await db.prepare('DELETE FROM cases WHERE id = ?').bind(targetId).run()
+      }
+    }
+    await db.prepare("UPDATE external_import_files SET r2_key = NULL, target_file_id = NULL WHERE import_id = ?").bind(importId).run()
+    return { dbCleaned: true, ...(r2CleanupError ? { r2CleanupError } : {}) }
+  } catch (error) {
+    const dbCleanupError = error instanceof Error ? error.message : 'D1 清理失败'
+    console.error('Telegram 导入 D1 清理失败:', error)
+    return { dbCleaned: false, ...(r2CleanupError ? { r2CleanupError } : {}), dbCleanupError }
+  }
 }
