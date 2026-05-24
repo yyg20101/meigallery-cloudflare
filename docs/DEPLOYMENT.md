@@ -6,11 +6,11 @@
 
 | 组件 | 服务 | 说明 |
 |------|------|------|
-| 前端 | `meigallery-web` Worker | Nuxt 3 + Workers Assets 静态资源托管 |
+| 前端 | `meigallery-web` Worker | Nuxt 4 + Nitro `cloudflare-module` + Workers Assets 静态资源托管 |
 | API | `meigallery-api` Worker | Hono 框架，独立 Worker |
 | 数据库 | D1（`meigallery-db`） | 结构化数据存储 |
 | 存储 | R2（`meigallery-media`） | 图片、导入包、缩略图 |
-| 视频 | Cloudflare Stream | 视频上传、编码、播放、访问控制 |
+| 视频 | Cloudflare Stream | 当前未接入；作为后续视频上传、编码、播放和访问控制目标 |
 | 人机验证 | Turnstile | 登录、注册等关键操作保护 |
 
 ## 2. 域名结构

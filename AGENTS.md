@@ -15,7 +15,7 @@
 ## 项目状态
 
 脚手架已完成。仓库为 **pnpm monorepo**，前后端分离：
-- `packages/web`：Nuxt 3 前端，部署为 Cloudflare Worker（preset `cloudflare`）。
+- `packages/web`：Nuxt 4 前端，部署为 Cloudflare Worker（Nitro preset `cloudflare-module`）。
 - `packages/api`：Hono 后端 API，部署为独立 Cloudflare Worker。
 - `packages/shared`：共享类型和常量。
 
@@ -35,7 +35,7 @@
 
 所有组件必须基于 Cloudflare，除非明确要求不得引入非 Cloudflare 基础设施：
 
-- 前端：Cloudflare Workers（Nuxt 3，preset `cloudflare`，含 Workers Assets 静态资源托管）。
+- 前端：Cloudflare Workers（Nuxt 4，Nitro preset `cloudflare-module`，含 Workers Assets 静态资源托管）。
 - API：Cloudflare Workers（Hono 框架，独立 Worker）。
 - 数据库：Cloudflare D1。
 - 图片和导入包存储：Cloudflare R2。
@@ -43,7 +43,7 @@
 - 人机验证：Cloudflare Turnstile。
 - 安全控制：Cloudflare WAF、速率限制、签名 URL 和服务端权限校验。
 
-注意：**不使用 Cloudflare Pages**，所有部署均通过 Workers + Workers Assets。Cloudflare 官方已推荐从 Pages 迁移到 Workers（Workers 功能集更完整：支持 Durable Objects、Cron Triggers、Rate Limiting binding、Logpush 等）。
+注意：**不使用 Cloudflare Pages**，所有部署均通过 Workers + Workers Assets。当前项目决策是把 Web 和 API 都作为独立 Worker 维护，避免 Pages 与 Workers 双平台状态分叉。
 
 添加 Cloudflare 配置时，务必核对当前官方文档，不要依赖过时的数字限制、价格或 API 细节。
 
@@ -152,10 +152,10 @@ CI 配置位于 `.github/workflows/`：
 
 ## 实现启动时的预期工具
 
-- 前端框架：**Nuxt 3**（Nitro preset `cloudflare`）
+- 前端框架：**Nuxt 4**（Nitro preset `cloudflare-module`）
 - 后端框架：**Hono**（Cloudflare Workers 原生）
-- UI 框架：前台 **Tailwind CSS** + 自定义组件，后台 **Nuxt UI v3**
-- 组件预览：**Histoire**
+- UI 框架：前台 **Tailwind CSS v4** + 自定义组件，后台 **Nuxt UI v4**
+- 组件预览：当前未配置 Histoire；如后续接入需同步更新依赖和脚本
 - 包管理器：pnpm（workspace monorepo）；本机若没有裸 `pnpm` 命令，统一使用 `corepack pnpm`
 - 本地开发：`corepack pnpm dev`（同时启动 web:3000 和 api:8787）
 - 数据库迁移：D1 migrations，放在 `packages/api/migrations/`

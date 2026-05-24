@@ -4,6 +4,14 @@
 
 本文档是当前实现和部署状态的索引。若历史计划或早期 PRD 与本文冲突，以本文、`AGENTS.md`、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md`、`docs/GIT_WORKFLOW.md` 为准。
 
+## 技术栈现状
+
+- Monorepo：pnpm workspace，包为 `@meigallery/web`、`@meigallery/api`、`@meigallery/shared`。
+- 前端：`packages/web` 当前依赖 `nuxt@4.4.4`、`@nuxt/ui@4.7.1`、`tailwindcss@4.2.4`，Nitro preset 为 `cloudflare-module`。
+- 后端：`packages/api` 使用 Hono，入口为 `packages/api/src/index.ts`，通过 Cloudflare Worker bindings 访问 D1/R2/Email。
+- 共享包：`packages/shared` 提供共享类型、会员 rank、标签类型、联系方式平台和用户名工具。
+- 组件预览：仓库当前没有 Histoire 依赖或配置；历史文档中的 Histoire 是规划项。
+
 ## 运行时和部署
 
 - 运行平台：仅使用 Cloudflare Workers + Workers Assets，不使用 Cloudflare Pages。
@@ -16,6 +24,13 @@
 - 视频：Cloudflare Stream 仍未接入，相关 secrets 为占位符，视频能力按规划保留。
 - 生产部署：PR 合入 `main` 后手动执行 `./scripts/deploy.sh production` 或等价 wrangler 命令。
 - CI：`.github/workflows/ci.yml` 只做 PR/dev 推送的测试、类型检查和构建验证，不自动部署生产。
+
+## 功能实现现状
+
+- 已实现：公开图库/标签/搜索/真实案例、登录注册、用户名登录、邮箱验证开关、用户中心、个人设置、后台图库/标签/用户/设置/审计、图库批量操作、图片上传、封面设置、单媒体 rank 配置、WordPress 迁移辅助、Telegram `gallery` / `case` 外部导入、Facebook Pixel 设置。
+- 部分实现：zip 导入任务有 API 和后台入口，但当前重点实现和测试集中在解析/校验与任务记录；大文件异步完整处理仍需按后续阶段继续收敛。
+- 未接入：Cloudflare Stream 生产视频上传、编码和播放链路；相关字段、secret、媒体签名逻辑保留为规划能力。
+- 已完成迁移口径：真实案例当前统一为 `cases` / `case_images`、`/cases`、`/api/cases`、`case:create`；旧 `testimonial_*` 仅存在于历史文档、迁移脚本说明或兼容拒绝测试中。
 
 ## Git 状态
 
@@ -34,6 +49,7 @@
 
 ## 文档说明
 
-- `AGENTS.md`、本文档、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md`、`docs/GIT_WORKFLOW.md` 为当前实现和部署状态文档。
-- `docs/PRD*.md` 与 `docs/UI_DESIGN.md` 保留产品需求、路线图和设计约束，可能包含尚未接入的规划能力；遇到运行状态冲突时，以本文档和技术/部署文档为准。
-- `docs/plans/**` 与 `docs/superpowers/**` 为历史计划、规格和实现记录，可能包含旧命名或已变更的路径，不代表当前生产状态。
+- 当前状态权威文档：`AGENTS.md`、本文档、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md`、`docs/GIT_WORKFLOW.md`。
+- 产品和设计文档：`docs/PRD*.md` 与 `docs/UI_DESIGN.md` 保留产品需求、路线图和设计约束；其中标注为草案、规划或后续阶段的内容不代表当前生产状态。
+- 代码库分析文档：`docs/codebase/*.md` 记录从代码和配置验证出的栈、结构、架构、约定、集成、测试和风险。
+- 历史归档：`docs/plans/**` 与 `docs/superpowers/**` 为历史计划、规格和实现记录，可能包含 Nuxt 3、`testimonial_*`、旧路由或旧权限名，不代表当前生产状态。

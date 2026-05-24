@@ -10,28 +10,28 @@
 
 ## 2. 技术栈
 
-- 前端框架：**Nuxt 3**（Vue 3 全栈框架，Nitro preset `cloudflare`，部署为 Cloudflare Worker）。
+- 前端框架：**Nuxt 4**（Vue 3 全栈框架，Nitro preset `cloudflare-module`，部署为 Cloudflare Worker）。
 - 后端框架：**Hono**（部署为独立 Cloudflare Worker，纯 API 服务）。
-- UI 层：Vue 3 + Composition API + Tailwind CSS v4（前台）+ Nuxt UI v3（后台）。
+- UI 层：Vue 3 + Composition API + Tailwind CSS v4（前台）+ Nuxt UI v4（后台）。
 - 数据库：Cloudflare D1（SQLite 兼容，通过 Worker bindings 访问）。
 - 对象存储：Cloudflare R2（通过 Worker bindings 访问）。
 - 视频：Cloudflare Stream（REST API 调用）。**当前状态：未接入**，Stream secrets 为占位符，729 个视频待处理。
 - 人机验证：Cloudflare Turnstile。
 - CI/CD：**手动部署**：GitHub Actions 只做验证，生产使用 `corepack pnpm --filter @meigallery/api exec wrangler deploy --env=""` 和 `corepack pnpm --filter @meigallery/web exec wrangler deploy --env=""`。
 - 包管理器：pnpm（workspace monorepo）。
-- 组件预览：Histoire。
+- 组件预览：当前未配置 Histoire；历史文档中提到的 Histoire 属于规划项。
 
 ### 架构决策
 
 **前后端分离**：前端（`packages/web`）和后端（`packages/api`）各为独立 Worker，通过 HTTP 通信。这允许前后端并行开发，各自独立部署。
 
-**Workers 而非 Pages**：Cloudflare 官方已推荐从 Pages 迁移到 Workers。Workers 功能集更完整（Durable Objects、Cron Triggers、Rate Limiting binding、Logpush、Gradual Deployments 等）。
+**Workers 而非 Pages**：当前项目统一使用 Workers + Workers Assets，Web 和 API 都通过 Wrangler Worker 配置部署，避免 Pages 与 Workers 双平台状态分叉。
 
 ### 选型依据
 
 | 需求 | 满足方式 |
 |------|----------|
-| SEO（图库详情页需要被搜索引擎索引） | Nuxt 3 SSR，preset `cloudflare` |
+| SEO（图库详情页需要被搜索引擎索引） | Nuxt SSR，Nitro preset `cloudflare-module` |
 | 前后端分离并行开发 | 独立 Worker：web + api |
 | 后台 SPA | Nuxt `routeRules: { '/admin/**': { ssr: false } }` |
 | API 类型安全 | Hono + `@meigallery/shared` 共享类型包 |
@@ -42,7 +42,7 @@
 
 | 包 | 路径 | 职责 |
 |------|------|------|
-| `@meigallery/web` | `packages/web/` | Nuxt 3 前端 Worker：首页、列表、搜索、详情、登录注册、用户中心、管理后台 UI |
+| `@meigallery/web` | `packages/web/` | Nuxt 4 前端 Worker：首页、列表、搜索、详情、登录注册、用户中心、管理后台 UI |
 | `@meigallery/api` | `packages/api/` | Hono API Worker：认证、图库 CRUD、搜索、媒体授权、后台管理、导入处理 |
 | `@meigallery/shared` | `packages/shared/` | 共享类型定义、常量（会员 rank、标签类型、R2 key 前缀等） |
 
