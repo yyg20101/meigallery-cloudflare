@@ -27,6 +27,8 @@
 
 ## 3. 部署命令
 
+本项目使用 pnpm workspace，推荐通过 `corepack pnpm` 调用仓库锁定的 pnpm 版本；`scripts/deploy.sh` 会自动检测裸 `pnpm`，不存在时回退到 `corepack pnpm`。
+
 ```bash
 # 首次初始化
 ./scripts/setup.sh
@@ -39,30 +41,30 @@
 
 # 或手动步骤：
 # 1. API Worker 构建预检，不部署
-pnpm --filter @meigallery/api exec wrangler deploy --dry-run --outdir=dist
+corepack pnpm --filter @meigallery/api exec wrangler deploy --env="" --dry-run --outdir=dist
 
 # 2. 构建前端
-pnpm --filter @meigallery/web exec nuxt build
+corepack pnpm --filter @meigallery/web exec nuxt build
 
 # 3. D1 迁移
 # 重要警告：如果待执行 migrations 包含 0017_cases_cleanup.sql，必须先完成：
 # 构建预检 -> R2 Cases dry-run -> R2 复制和目标对象验证，再执行此 D1 remote migration。
-pnpm --filter @meigallery/api exec wrangler d1 migrations apply meigallery-db --remote
+corepack pnpm --filter @meigallery/api exec wrangler d1 migrations apply meigallery-db --env="" --remote
 
 # 4. 部署 API Worker
-pnpm --filter @meigallery/api exec wrangler deploy
+corepack pnpm --filter @meigallery/api exec wrangler deploy --env=""
 
 # 5. 部署 Web Worker
-pnpm --filter @meigallery/web exec wrangler deploy
+corepack pnpm --filter @meigallery/web exec wrangler deploy --env=""
 ```
 
 ## 4. CI/CD
 
-**手动部署**：生产部署通过本地手动执行 wrangler deploy。GitHub Actions 不负责生产部署，避免合入分支后自动影响线上用户。
+**手动部署**：生产部署通过本地手动执行 wrangler deploy，且显式传入 `--env=""` 选择 wrangler 顶层生产配置。GitHub Actions 不负责生产部署，避免合入分支后自动影响线上用户。
 
 ```bash
-pnpm --filter @meigallery/api exec wrangler deploy
-pnpm --filter @meigallery/web exec wrangler deploy
+corepack pnpm --filter @meigallery/api exec wrangler deploy --env=""
+corepack pnpm --filter @meigallery/web exec wrangler deploy --env=""
 ```
 
 ## 5. 环境变量
@@ -80,11 +82,10 @@ pnpm --filter @meigallery/web exec wrangler deploy
 设置 secret：
 
 ```bash
-cd packages/api
-wrangler secret put SESSION_SECRET
-wrangler secret put TURNSTILE_SECRET_KEY
-wrangler secret put STREAM_ACCOUNT_ID
-wrangler secret put STREAM_API_TOKEN
+corepack pnpm --filter @meigallery/api exec wrangler secret put SESSION_SECRET
+corepack pnpm --filter @meigallery/api exec wrangler secret put TURNSTILE_SECRET_KEY
+corepack pnpm --filter @meigallery/api exec wrangler secret put STREAM_ACCOUNT_ID
+corepack pnpm --filter @meigallery/api exec wrangler secret put STREAM_API_TOKEN
 ```
 
 ## 6. Cloudflare 产品绑定
@@ -130,7 +131,7 @@ Turnstile：
 
 Email：
 
-- Cloudflare Email Service 需要 Workers Paid 计划（$5/月），`email_verification_enabled` 默认为 `false`。
+- Cloudflare Email Service 使用前需按 Cloudflare 官方文档和 Dashboard 当前状态确认可用计划、发信额度和费用；当前 `email_verification_enabled` 默认为 `false`。
 
 ## 7. 全球 CDN 加速
 
@@ -143,12 +144,12 @@ Email：
 
 ## 8. 套餐建议
 
-| 产品 | 免费/包含量 | 主要超额计费 | 对本项目的影响 |
-|------|-------------|--------------|----------------|
-| Workers | Free 计划每日 10 万请求 | Paid 计划按请求量计费 | 内测后建议升级 Workers Paid |
-| D1 | Free 下有每日读写限制和 5 GB 总存储 | Workers Paid 包含更高月度读写量 | 正式运营建议 Paid |
-| R2 Standard | 每月 10 GB-month 免费，公网 egress 免费 | 存储、写请求、读请求按量计费 | 缩略图读请求需要监控 |
-| Stream | Starter bundle 从 $5/月起 | 按视频存储分钟、分发分钟扩展 | 视频是成本重点，MVP 应限制体量 |
+| 产品 | 当前策略 | 对本项目的影响 |
+|------|----------|----------------|
+| Workers | 生产上线前按官方 pricing 确认当前计划、请求量和是否需要 Paid | 内测后需要监控请求量、CPU 时间和构建部署限制 |
+| D1 | 按官方 D1 limits 和 pricing 确认读写量、存储和备份策略 | 图库搜索、会员校验和后台列表是重点监控项 |
+| R2 Standard | 按官方 R2 pricing 确认存储、读写请求和对象生命周期策略 | 图片原图、缩略图和导入包会持续增加存储与请求量 |
+| Stream | 接入前按官方 Stream pricing 确认存储分钟、分发分钟和 signed URL 能力 | 视频是成本重点，MVP 应限制体量 |
 
 注意：Cloudflare 套餐、限制和价格会变化。每次上线或采购前都要以 Cloudflare 官方 pricing 和 docs 为准。
 
@@ -190,8 +191,8 @@ Email：
 
 ```bash
 # 1. 先完成本地或 CI 构建预检，不修改远程 D1 或 R2
-pnpm --filter @meigallery/api exec wrangler deploy --dry-run --outdir=dist
-pnpm --filter @meigallery/web exec nuxt build
+corepack pnpm --filter @meigallery/api exec wrangler deploy --env="" --dry-run --outdir=dist
+corepack pnpm --filter @meigallery/web exec nuxt build
 
 # 2. 查看将复制和将删除的映射，不修改 R2 或 D1
 node scripts/migrate-cases-r2.mjs --dry-run --remote
@@ -200,15 +201,15 @@ node scripts/migrate-cases-r2.mjs --dry-run --remote
 node scripts/migrate-cases-r2.mjs --remote
 
 # 4. 再执行 D1 远程迁移；脚本不会自动执行 migration
-pnpm --filter @meigallery/api exec wrangler d1 migrations apply meigallery-db --remote
+corepack pnpm --filter @meigallery/api exec wrangler d1 migrations apply meigallery-db --env="" --remote
 
 # 如需改用一键部署脚本在生产环境执行包含 0017 的迁移，必须先完成 R2 dry-run、复制和验证，
 # 再显式设置以下环境变量解除 production-only 保护。
 ALLOW_CASES_CLEANUP_MIGRATION=true ./scripts/deploy.sh
 
 # 5. 部署 API 和 Web Worker，并完成 smoke 测试
-pnpm --filter @meigallery/api exec wrangler deploy
-pnpm --filter @meigallery/web exec wrangler deploy
+corepack pnpm --filter @meigallery/api exec wrangler deploy --env=""
+corepack pnpm --filter @meigallery/web exec wrangler deploy --env=""
 
 # 6. smoke 通过后，显式删除旧 testimonials/ 对象
 node scripts/migrate-cases-r2.mjs --remote --delete-old --confirm-delete-old=testimonials-to-cases

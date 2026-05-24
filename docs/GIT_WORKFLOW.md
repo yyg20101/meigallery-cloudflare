@@ -100,9 +100,9 @@ main (生产)
 
 | 环境 | 触发方式 | 分支 | Worker 名称 |
 |------|----------|------|-------------|
-| 生产（production） | 手动 `wrangler deploy` | `main` | `meigallery-api` / `meigallery-web` |
-| 开发（dev） | 手动 `wrangler deploy --env dev` 或 dev 专用配置 | `dev` / `feature/*` | `meigallery-api-dev` / `meigallery-web-dev` |
-| 本地（local） | `pnpm dev` | 任意 | localhost:8787 / localhost:3000 |
+| 生产（production） | 手动 `corepack pnpm --filter ... exec wrangler deploy --env=""` | `main` | `meigallery-api` / `meigallery-web` |
+| 开发（dev） | 手动 `./scripts/deploy.sh dev` 或 dev 专用配置 | `dev` / `feature/*` | `meigallery-api-dev` / `meigallery-web-dev` |
+| 本地（local） | `corepack pnpm dev` | 任意 | localhost:8787 / localhost:3000 |
 
 ## 代码审查
 

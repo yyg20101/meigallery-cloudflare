@@ -65,8 +65,8 @@ EMAIL_FROM = "noreply@616618.xyz"
 IMAGE_RESIZING_ENABLED = "false"
 
 # 敏感变量需通过 wrangler secret put 设置：
-# wrangler secret put SESSION_SECRET
-# wrangler secret put TURNSTILE_SECRET_KEY
-# wrangler secret put STREAM_ACCOUNT_ID
-# wrangler secret put STREAM_API_TOKEN
-# wrangler secret put TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT
+# corepack pnpm --filter @meigallery/api exec wrangler secret put SESSION_SECRET
+# corepack pnpm --filter @meigallery/api exec wrangler secret put TURNSTILE_SECRET_KEY
+# corepack pnpm --filter @meigallery/api exec wrangler secret put STREAM_ACCOUNT_ID
+# corepack pnpm --filter @meigallery/api exec wrangler secret put STREAM_API_TOKEN
+# corepack pnpm --filter @meigallery/api exec wrangler secret put TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT

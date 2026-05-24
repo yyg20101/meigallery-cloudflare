@@ -5,7 +5,9 @@
  * Worker 端点: POST /api/admin/legacy-import/download-pending?limit=N
  * 每次处理 N 个待上传媒体，循环直到全部完成
  * 
- * 用法: node scripts/migrate-media.mjs [--batch=10] [--env=dev|production]
+ * 用法:
+ *   MEIGALLERY_ADMIN_EMAIL=... MEIGALLERY_ADMIN_PASSWORD=... node scripts/migrate-media.mjs [--batch=10] [--env=dev|production]
+ *   MEIGALLERY_SESSION_COOKIE='mei_session=...' node scripts/migrate-media.mjs [--batch=10] [--env=dev|production]
  */
 
 const API_BASE = {
@@ -18,6 +20,9 @@ const args = process.argv.slice(2)
 const batchSize = parseInt(args.find(a => a.startsWith('--batch='))?.split('=')[1] || '10', 10)
 const env = args.find(a => a.startsWith('--env='))?.split('=')[1] || 'production'
 const apiBase = API_BASE[env] || API_BASE.production
+const adminEmail = process.env.MEIGALLERY_ADMIN_EMAIL
+const adminPassword = process.env.MEIGALLERY_ADMIN_PASSWORD
+const providedSessionCookie = process.env.MEIGALLERY_SESSION_COOKIE
 
 console.log(`🖼️  媒体下载 → R2`)
 console.log(`   API: ${apiBase}`)
@@ -26,13 +31,23 @@ console.log('='.repeat(60))
 
 // 登录获取 session cookie
 async function login() {
+  if (providedSessionCookie) {
+    return providedSessionCookie.startsWith('mei_session=')
+      ? providedSessionCookie
+      : `mei_session=${providedSessionCookie}`
+  }
+
+  if (!adminEmail || !adminPassword) {
+    throw new Error('缺少管理员凭据：请设置 MEIGALLERY_ADMIN_EMAIL 和 MEIGALLERY_ADMIN_PASSWORD，或直接设置 MEIGALLERY_SESSION_COOKIE')
+  }
+
   console.log('\n🔐 登录管理员账户...')
   const resp = await fetch(`${apiBase}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      email: 'admin@616618.xyz',
-      password: 'IwaVYlIyvNWicwx6',
+      email: adminEmail,
+      password: adminPassword,
     }),
     redirect: 'manual',
   })

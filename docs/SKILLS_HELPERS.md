@@ -3,7 +3,7 @@
 ## 1. 使用原则
 
 - 需求、范围、验收标准：使用 `prd`。
-- Cloudflare 架构、部署、D1/R2/Stream/Pages：使用 `cloudflare:cloudflare`，必要时追加 `cloudflare:wrangler`、`cloudflare:workers-best-practices`、`cloudflare:web-perf`。
+- Cloudflare 架构、部署、Workers、D1/R2/Stream：使用 `cloudflare:cloudflare`，必要时追加 `cloudflare:wrangler`、`cloudflare:workers-best-practices`、`cloudflare:web-perf`。
 - 寻找新技能：使用 `find-skills`，优先查找高安装量、可信来源、活跃维护的技能。
 - UI、可访问性、测试、代码审查使用专门技能，避免一个助手承担所有判断。
 
@@ -53,7 +53,7 @@ Cloudflare 和部署:
 
 阶段 2：技术落地
 
-- 使用 `cloudflare:wrangler` 配置 Pages、Workers、D1、R2。
+- 使用 `cloudflare:wrangler` 配置 Workers、Workers Assets、D1、R2。
 - 使用 `api-design-principles` 定义 API。
 - 使用 `auth-implementation-patterns` 设计登录和权限。
 

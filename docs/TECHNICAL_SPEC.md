@@ -17,7 +17,7 @@
 - 对象存储：Cloudflare R2（通过 Worker bindings 访问）。
 - 视频：Cloudflare Stream（REST API 调用）。**当前状态：未接入**，Stream secrets 为占位符，729 个视频待处理。
 - 人机验证：Cloudflare Turnstile。
-- CI/CD：**手动部署**：GitHub Actions 无配额，使用 `pnpm --filter @meigallery/api exec wrangler deploy` 和 `pnpm --filter @meigallery/web exec wrangler deploy`。
+- CI/CD：**手动部署**：GitHub Actions 只做验证，生产使用 `corepack pnpm --filter @meigallery/api exec wrangler deploy --env=""` 和 `corepack pnpm --filter @meigallery/web exec wrangler deploy --env=""`。
 - 包管理器：pnpm（workspace monorepo）。
 - 组件预览：Histoire。
 
@@ -224,16 +224,22 @@
 
 ## 8. D1 数据库 Schema
 
+以下为当前核心表摘要，完整结构以 `packages/api/migrations/` 中已应用到 `0019_seed_member_activity.sql` 的迁移为准。
+
 ### users
 
 ```sql
 CREATE TABLE users (
   id INTEGER PRIMARY KEY AUTOINCREMENT, -- 通过 migration 0007 从 TEXT UUID 迁移为自增整数
   email TEXT NOT NULL UNIQUE,
+  username TEXT UNIQUE,
   nickname TEXT,
   password_hash TEXT NOT NULL,
+  avatar_key TEXT,
   role TEXT NOT NULL DEFAULT 'user', -- visitor/user/admin/owner
   status TEXT NOT NULL DEFAULT 'active', -- active/disabled
+  email_verified INTEGER NOT NULL DEFAULT 0,
+  notification_enabled INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -263,12 +269,13 @@ INSERT INTO membership_levels (id, code, name, rank) VALUES
 ```sql
 CREATE TABLE user_memberships (
   id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL REFERENCES users(id),
+  user_id INTEGER NOT NULL REFERENCES users(id),
   level_id TEXT NOT NULL REFERENCES membership_levels(id),
   starts_at TEXT NOT NULL,
   expires_at TEXT NOT NULL,
   note TEXT,
-  granted_by TEXT NOT NULL REFERENCES users(id),
+  granted_by INTEGER NOT NULL REFERENCES users(id),
+  expiry_notified INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -288,6 +295,8 @@ CREATE TABLE galleries (
   cover_key TEXT, -- R2 对象 key
   status TEXT NOT NULL DEFAULT 'draft', -- draft/published/unpublished/archived
   required_level_rank INTEGER NOT NULL DEFAULT 0,
+  view_count INTEGER NOT NULL DEFAULT 0,
+  like_count INTEGER NOT NULL DEFAULT 0,
   published_at TEXT,
   legacy_url TEXT,
   legacy_slug TEXT,
@@ -346,6 +355,18 @@ CREATE TABLE gallery_tags (
 CREATE INDEX idx_gallery_tags_tag ON gallery_tags(tag_id);
 ```
 
+### gallery_likes
+
+```sql
+CREATE TABLE gallery_likes (
+  id TEXT PRIMARY KEY,
+  gallery_id TEXT NOT NULL REFERENCES galleries(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (gallery_id, user_id)
+);
+```
+
 ### import_jobs
 
 ```sql
@@ -358,9 +379,62 @@ CREATE TABLE import_jobs (
   success_count INTEGER NOT NULL DEFAULT 0,
   failure_count INTEGER NOT NULL DEFAULT 0,
   error_report_key TEXT, -- R2 key
-  created_by TEXT NOT NULL REFERENCES users(id),
+  created_by INTEGER NOT NULL REFERENCES users(id),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   completed_at TEXT
+);
+```
+
+### import_api_tokens / external_import_records / external_import_files
+
+```sql
+CREATE TABLE import_api_tokens (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  permissions TEXT NOT NULL, -- JSON: gallery:create / case:create
+  allowed_source_bot_keys TEXT NOT NULL DEFAULT '[]',
+  status TEXT NOT NULL DEFAULT 'active',
+  expires_at TEXT,
+  created_by INTEGER NOT NULL REFERENCES users(id),
+  last_used_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE external_import_records (
+  id TEXT PRIMARY KEY,
+  source TEXT NOT NULL DEFAULT 'telegram',
+  external_message_id TEXT NOT NULL,
+  token_id TEXT NOT NULL REFERENCES import_api_tokens(id),
+  source_bot_key TEXT NOT NULL,
+  target_type TEXT NOT NULL, -- gallery/case
+  target_id TEXT,
+  status TEXT NOT NULL DEFAULT 'pending_media_fetch',
+  metadata_json TEXT NOT NULL,
+  file_count INTEGER NOT NULL DEFAULT 0,
+  fetched_count INTEGER NOT NULL DEFAULT 0,
+  failed_count INTEGER NOT NULL DEFAULT 0,
+  retry_count INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  completed_at TEXT
+);
+
+CREATE TABLE external_import_files (
+  id TEXT PRIMARY KEY,
+  import_id TEXT NOT NULL REFERENCES external_import_records(id) ON DELETE CASCADE,
+  telegram_file_id TEXT NOT NULL,
+  filename TEXT,
+  actual_mime_type TEXT,
+  file_size INTEGER,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  is_cover INTEGER NOT NULL DEFAULT 0,
+  r2_key TEXT,
+  target_file_id TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  error_message TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 ```
 
@@ -369,9 +443,9 @@ CREATE TABLE import_jobs (
 ```sql
 CREATE TABLE admin_audit_logs (
   id TEXT PRIMARY KEY,
-  admin_id TEXT NOT NULL REFERENCES users(id),
+  admin_id INTEGER NOT NULL REFERENCES users(id),
   action TEXT NOT NULL, -- create/update/delete/publish/unpublish/grant_membership/import/settings_change
-  target_type TEXT NOT NULL, -- gallery/tag/user/membership/import_job/settings
+  target_type TEXT NOT NULL, -- gallery/case/tag/user/membership/import_job/import_api_token/settings
   target_id TEXT,
   before_value TEXT, -- JSON
   after_value TEXT, -- JSON
@@ -395,11 +469,64 @@ CREATE TABLE site_settings (
 INSERT INTO site_settings (key, value) VALUES
   ('site_name', '"MeiGallery"'),
   ('seo_title', '"MeiGallery - 精选写真图库"'),
+  ('seo_description', '""'),
   ('membership_description', '""'),
-  ('contact_wechat', '""'),
-  ('contact_telegram', '""'),
-  ('contact_email', '""'),
-  ('contact_custom_note', '""');
+  ('email_verification_enabled', '"false"'),
+  ('video_enabled', '"false"'),
+  ('og_image_url', '""'),
+  ('footer_text', '""'),
+  ('footer_links', '"[]"');
+```
+
+### contact_methods
+
+```sql
+CREATE TABLE contact_methods (
+  id TEXT PRIMARY KEY,
+  platform TEXT NOT NULL,
+  label TEXT NOT NULL,
+  value TEXT NOT NULL,
+  qr_image_key TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+```
+
+### cases / case_images
+
+```sql
+CREATE TABLE cases (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  slug TEXT NOT NULL UNIQUE,
+  summary TEXT,
+  body_md TEXT,
+  status TEXT NOT NULL DEFAULT 'draft', -- draft/published
+  featured INTEGER NOT NULL DEFAULT 1,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  seo_title TEXT,
+  seo_description TEXT,
+  created_by INTEGER NOT NULL REFERENCES users(id),
+  updated_by INTEGER REFERENCES users(id),
+  published_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE case_images (
+  id TEXT PRIMARY KEY,
+  case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+  r2_key TEXT NOT NULL,
+  alt_text TEXT,
+  mime_type TEXT NOT NULL,
+  file_size INTEGER NOT NULL DEFAULT 0,
+  width INTEGER,
+  height INTEGER,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 ```
 
 ### legacy_import_sources
@@ -538,8 +665,11 @@ queued → processing → completed
 - **站点设置扩展**：新增 SEO/OG/页脚字段（`seo_description`、`og_image_url`、`footer_text`、`footer_links`），通过 migration 0009 添加。
 - **无限滚动**：首页和发现页使用 IntersectionObserver 实现无限滚动加载。
 - **浏览量统计**：galleries 表新增 `view_count` 字段（migration 0008），使用 `waitUntil` 异步增量更新，不阻塞请求。
+- **图库互动**：galleries 表新增 `like_count`，`gallery_likes` 记录用户点赞关系（migration 0013）。
+- **真实案例命名**：当前使用 `cases` / `case_images`、公开路由 `/cases`、后台路由 `/admin/cases`，旧 `testimonial_*` 命名已通过 migration 0017 清理。
+- **Telegram 外部导入**：当前导入类型为 `gallery` / `case`，权限为 `gallery:create` / `case:create`，不再接受旧 `testimonial_case`。
 - **生产域名**：Web 站点 `616618.xyz`，API 服务 `api.616618.xyz`。
-- **Dev 环境 Worker**：**已删除**，需要时重新创建。
+- **Dev 环境 Worker**：当前配置为 `meigallery-web-dev` / `meigallery-api-dev`，仅使用 Workers dev 子域，不绑定生产域名。
 
 ## 13. 测试范围
 

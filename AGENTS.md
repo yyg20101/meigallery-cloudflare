@@ -39,7 +39,7 @@
 - API：Cloudflare Workers（Hono 框架，独立 Worker）。
 - 数据库：Cloudflare D1。
 - 图片和导入包存储：Cloudflare R2。
-- 视频上传、编码、播放和访问控制：Cloudflare Stream。
+- 视频上传、编码、播放和访问控制：Cloudflare Stream（当前未接入，相关配置为规划能力）。
 - 人机验证：Cloudflare Turnstile。
 - 安全控制：Cloudflare WAF、速率限制、签名 URL 和服务端权限校验。
 
@@ -113,7 +113,7 @@ gallery-001,夏日写真,summer-portrait-001,广东,甜美,清新,"长发,户外
 
 | 分支 | 用途 | 部署方式 |
 |------|------|----------|
-| `main` | 生产分支 | GitHub Actions 自动部署 |
+| `main` | 生产分支 | PR 合入后手动部署生产 |
 | `dev` | 开发主线 | 手动 `./scripts/deploy.sh dev` |
 | `feature/*` | 功能分支（从 dev 创建） | 无部署 |
 | `fix/*` | 修复分支 | 无部署 |
@@ -129,13 +129,13 @@ gallery-001,夏日写真,summer-portrait-001,广东,甜美,清新,"长发,户外
 
 | 环境 | 触发 | Worker 名称 |
 |------|------|-------------|
-| 生产 | 推送 `main`（GitHub Actions） | `meigallery-api` / `meigallery-web` |
+| 生产 | 手动 `./scripts/deploy.sh production` 或等价 wrangler 命令 | `meigallery-api` / `meigallery-web` |
 | 开发 | 手动 `./scripts/deploy.sh dev` | `meigallery-api-dev` / `meigallery-web-dev` |
-| 本地 | `pnpm dev` | localhost:8787 / localhost:3000 |
+| 本地 | `corepack pnpm dev` | localhost:8787 / localhost:3000 |
 
-CI/CD 配置位于 `.github/workflows/`：
-- `ci.yml`：PR 和 dev 推送触发，运行测试 + 构建验证
-- `deploy-production.yml`：main 推送触发，执行 D1 迁移 + 部署双 Worker
+CI 配置位于 `.github/workflows/`：
+- `ci.yml`：PR 和 dev 推送触发，运行测试 + 类型检查 + 构建验证
+- 当前没有生产自动部署 workflow；GitHub Actions 不负责生产部署，避免合入 `main` 后自动影响线上用户。
 
 首次部署前需执行 `./scripts/setup.sh` 创建 Cloudflare 资源。
 
@@ -144,7 +144,7 @@ CI/CD 配置位于 `.github/workflows/`：
 每完成一个任务阶段，必须按以下顺序执行：
 
 1. **更新进度**：标记当前任务为已完成，记录产出物。
-2. **验证构建**：运行 `pnpm --filter @meigallery/api exec tsc --noEmit` 和 `pnpm --filter @meigallery/web exec nuxt build` 确认无阻断性错误。
+2. **验证构建**：运行 `corepack pnpm --filter @meigallery/api exec tsc --noEmit` 和 `corepack pnpm --filter @meigallery/web exec nuxt build` 确认无阻断性错误。
 3. **提交代码**：`git add -A && git commit -m "..."` ，commit message 使用中文，格式为 `类型: 简要描述`。
 4. **推送远端**：`git push`。在 `dev` 分支开发时推送到 `origin/dev`，上线通过 PR 合入 `main`。
 
@@ -156,16 +156,17 @@ CI/CD 配置位于 `.github/workflows/`：
 - 后端框架：**Hono**（Cloudflare Workers 原生）
 - UI 框架：前台 **Tailwind CSS** + 自定义组件，后台 **Nuxt UI v3**
 - 组件预览：**Histoire**
-- 包管理器：pnpm（workspace monorepo）
-- 本地开发：`pnpm dev`（同时启动 web:3000 和 api:8787）
+- 包管理器：pnpm（workspace monorepo）；本机若没有裸 `pnpm` 命令，统一使用 `corepack pnpm`
+- 本地开发：`corepack pnpm dev`（同时启动 web:3000 和 api:8787）
 - 数据库迁移：D1 migrations，放在 `packages/api/migrations/`
-- 部署：`wrangler deploy`（两个 Worker 各自独立部署），CI 通过 GitHub Actions
+- 部署：生产顶层环境显式使用 `corepack pnpm --filter ... exec wrangler deploy --env=""`（两个 Worker 各自独立部署），CI 仅通过 GitHub Actions 做验证
 - 环境变量：`SESSION_SECRET`、`TURNSTILE_SECRET_KEY`、`STREAM_ACCOUNT_ID`、`STREAM_API_TOKEN`、`NUXT_PUBLIC_API_BASE_URL`
 
 ## 关键参考文档
 
 | 文件 | 内容 |
 |------|------|
+| `docs/PROJECT_STATUS.md` | 当前实现、部署、分支和真实案例路径状态索引 |
 | `docs/PRD.md` | 产品需求文档 |
 | `docs/TECHNICAL_SPEC.md` | API 路由、权限模型、模块划分、迁移流程 |
 | `docs/UI_DESIGN.md` | UI 设计初稿 |

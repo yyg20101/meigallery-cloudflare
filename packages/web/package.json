@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "nuxt dev",
     "build": "nuxt build",
-    "deploy": "wrangler deploy",
+    "deploy": "wrangler deploy --env=\"\"",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "typecheck": "nuxt typecheck"
