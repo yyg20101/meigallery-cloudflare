@@ -7,6 +7,9 @@
  * 2. node scripts/migrate-cases-r2.mjs --remote
  * 3. 执行 D1 remote migration 0017_cases_cleanup.sql
  * 4. 部署和 smoke 后执行 node scripts/migrate-cases-r2.mjs --remote --delete-old --confirm-delete-old=testimonials-to-cases
+ *
+ * 如果 D1 migration 已先执行，普通复制模式会从 case_images / external_import_files 的 cases/
+ * key 反推旧 testimonials/ key，并补齐目标 R2 对象。
  */
 
 import { execFileSync } from 'node:child_process'
@@ -36,25 +39,25 @@ const OLD_PREFIX = 'testimonials/'
 const NEW_PREFIX = 'cases/'
 
 const TESTIMONIAL_IMAGES_SQL = `
-SELECT id, r2_key FROM testimonial_case_images
+SELECT id, r2_key, mime_type FROM testimonial_case_images
 WHERE substr(r2_key, 1, length('testimonials/')) = 'testimonials/'
 ORDER BY case_id, sort_order;
 `
 
 const EXTERNAL_IMPORT_TESTIMONIALS_SQL = `
-SELECT id, r2_key FROM external_import_files
+SELECT id, r2_key, COALESCE(actual_mime_type, declared_mime_type) AS mime_type FROM external_import_files
 WHERE substr(r2_key, 1, length('testimonials/')) = 'testimonials/'
 ORDER BY import_id, sort_order;
 `
 
 const CASE_IMAGES_SQL = `
-SELECT id, r2_key FROM case_images
+SELECT id, r2_key, mime_type FROM case_images
 WHERE substr(r2_key, 1, length('cases/')) = 'cases/'
 ORDER BY case_id, sort_order;
 `
 
 const EXTERNAL_IMPORT_CASES_SQL = `
-SELECT id, r2_key FROM external_import_files
+SELECT id, r2_key, COALESCE(actual_mime_type, declared_mime_type) AS mime_type FROM external_import_files
 WHERE substr(r2_key, 1, length('cases/')) = 'cases/'
 ORDER BY import_id, sort_order;
 `
@@ -64,7 +67,7 @@ function showHelp() {
 
 选项:
   --dry-run     只打印将复制和将删除的映射，不修改 R2 或 D1
-  --remote      D1 查询使用远程数据库；不带则使用本地 D1
+  --remote      D1 查询和 R2 对象操作使用远程资源；不带则使用本地 D1/R2
   --delete-old  删除旧 testimonials/ 对象；仅在复制、验证、D1 migration、部署和 smoke 后使用
   --confirm-delete-old=testimonials-to-cases
                 删除旧对象的二次确认令牌，必须与 --delete-old 一起使用
@@ -101,12 +104,45 @@ if (args.has('--help')) {
   process.exit(0)
 }
 
+function wait(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+
+function stripAnsi(value) {
+  return String(value || '').replace(/\x1B\[[0-9;]*m/g, '')
+}
+
+function firstUsefulLine(error) {
+  const text = stripAnsi(`${error.stderr || ''}\n${error.stdout || ''}\n${error.message || ''}`)
+  return text.split('\n').map(line => line.trim()).find(line => line && line !== '{' && line !== '}') || error.message
+}
+
+function isExpectedSqlShapeError(error) {
+  const text = stripAnsi(`${error.stderr || ''}\n${error.stdout || ''}\n${error.message || ''}`).toLowerCase()
+  return text.includes('no such table:')
+}
+
 function runWrangler(wranglerArgs, options = {}) {
-  const commandArgs = ['--filter', '@meigallery/api', 'exec', 'wrangler', ...wranglerArgs]
-  return execFileSync('pnpm', commandArgs, {
-    encoding: 'utf8',
-    stdio: options.stdio || ['ignore', 'pipe', 'pipe'],
-  })
+  const commandArgs = ['pnpm', '--filter', '@meigallery/api', 'exec', 'wrangler', ...wranglerArgs]
+  const retries = options.retries || 1
+  let lastError
+
+  for (let attempt = 1; attempt <= retries; attempt += 1) {
+    try {
+      return execFileSync('corepack', commandArgs, {
+        encoding: 'utf8',
+        stdio: options.stdio || ['ignore', 'pipe', 'pipe'],
+      })
+    } catch (error) {
+      lastError = error
+      if (isExpectedSqlShapeError(error)) break
+      if (attempt >= retries) break
+      console.warn(`Wrangler 命令失败，准备重试 ${attempt + 1}/${retries}：${firstUsefulLine(error)}`)
+      wait(attempt * 1500)
+    }
+  }
+
+  throw lastError
 }
 
 function parseD1Rows(output) {
@@ -119,10 +155,12 @@ function parseD1Rows(output) {
   }
 
   const data = JSON.parse(trimmed.slice(jsonStart))
-  const result = Array.isArray(data) ? data[0]?.result : data.result
+  const firstResult = Array.isArray(data) ? data[0] : data
+  const result = firstResult?.result
 
   if (Array.isArray(result?.results)) return result.results
   if (Array.isArray(result)) return result
+  if (Array.isArray(firstResult?.results)) return firstResult.results
   if (Array.isArray(data?.results)) return data.results
 
   return []
@@ -138,7 +176,7 @@ function queryRows(sql, label) {
   if (remote) d1Args.push('--remote')
 
   try {
-    return parseD1Rows(runWrangler(d1Args))
+    return parseD1Rows(runWrangler(d1Args, { retries: 2 }))
   } catch (error) {
     if (isMissingTableError(error)) {
       console.log(`提示：${label} 不存在，当前数据库可能已经执行过 0017 迁移。`)
@@ -156,6 +194,7 @@ function buildMappingsFromRows(rows, direction) {
         id: row.id,
         oldKey: key,
         newKey: `${NEW_PREFIX}${key.slice(OLD_PREFIX.length)}`,
+        mimeType: row.mime_type,
       }
     }
 
@@ -163,6 +202,7 @@ function buildMappingsFromRows(rows, direction) {
       id: row.id,
       oldKey: `${OLD_PREFIX}${key.slice(NEW_PREFIX.length)}`,
       newKey: key,
+      mimeType: row.mime_type,
     }
   })
 }
@@ -185,12 +225,19 @@ function loadMappings() {
     ...buildMappingsFromRows(externalImportTestimonialsRows, 'legacy'),
   ])
 
-  if (legacyMappings.length > 0 || !deleteOld) return legacyMappings
+  if (legacyMappings.length > 0 && !deleteOld) return legacyMappings
 
-  console.log('提示：删除阶段未从旧 testimonials/ key 找到映射，将从 cases/ key 反推旧 testimonials/ key。')
+  if (legacyMappings.length === 0 && !deleteOld) {
+    console.log('提示：未从旧 testimonials/ key 找到映射，当前数据库可能已执行 0017 迁移。')
+    console.log('将从 cases/ key 反推旧 testimonials/ key，用于补齐目标 R2 对象。')
+  } else if (deleteOld) {
+    console.log('提示：删除阶段会同时读取旧 testimonials/ key 和新 cases/ key，合并生成待删除映射。')
+  }
+
   const caseImageRows = queryRows(CASE_IMAGES_SQL, '新表 case_images')
   const externalImportCasesRows = queryRows(EXTERNAL_IMPORT_CASES_SQL, '表 external_import_files')
   return dedupeMappings([
+    ...legacyMappings,
     ...buildMappingsFromRows(caseImageRows, 'cases'),
     ...buildMappingsFromRows(externalImportCasesRows, 'cases'),
   ])
@@ -201,7 +248,8 @@ function objectPath(key) {
 }
 
 function getObject(key, filePath) {
-  runWrangler(['r2', 'object', 'get', objectPath(key), '--file', filePath])
+  const locationArgs = remote ? ['--remote'] : []
+  runWrangler(['r2', 'object', 'get', objectPath(key), ...locationArgs, '--file', filePath], { retries: 3 })
 }
 
 function isR2ObjectMissingError(error) {
@@ -209,15 +257,37 @@ function isR2ObjectMissingError(error) {
   return text.includes('nosuchkey')
     || text.includes('not found')
     || text.includes('object not found')
+    || text.includes('specified key does not exist')
     || text.includes('404')
 }
 
-function putObject(key, filePath) {
-  runWrangler(['r2', 'object', 'put', objectPath(key), '--file', filePath])
+function inferContentType(key) {
+  const lowerKey = key.toLowerCase()
+  if (lowerKey.endsWith('.png')) return 'image/png'
+  if (lowerKey.endsWith('.webp')) return 'image/webp'
+  return 'image/jpeg'
+}
+
+function putObject(mapping, filePath) {
+  const locationArgs = remote ? ['--remote'] : []
+  const contentType = mapping.mimeType || inferContentType(mapping.newKey)
+  runWrangler([
+    'r2',
+    'object',
+    'put',
+    objectPath(mapping.newKey),
+    ...locationArgs,
+    '--file',
+    filePath,
+    '--content-type',
+    contentType,
+    '--force',
+  ], { retries: 3 })
 }
 
 function deleteObject(key) {
-  runWrangler(['r2', 'object', 'delete', objectPath(key)])
+  const locationArgs = remote ? ['--remote'] : []
+  runWrangler(['r2', 'object', 'delete', objectPath(key), ...locationArgs, '--force'], { retries: 3 })
 }
 
 function sha256(filePath) {
@@ -242,7 +312,7 @@ function copyAndVerify(mappings) {
 
       console.log(`[${index + 1}/${mappings.length}] 复制 ${mapping.oldKey} -> ${mapping.newKey}`)
       getObject(mapping.oldKey, sourceFile)
-      putObject(mapping.newKey, sourceFile)
+      putObject(mapping, sourceFile)
       getObject(mapping.newKey, verifyFile)
 
       const oldHash = sha256(sourceFile)

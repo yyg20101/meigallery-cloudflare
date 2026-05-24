@@ -62,11 +62,15 @@ pnpm --filter @meigallery/web build
 echo ""
 echo "--- 步骤 4/6: 执行 D1 数据库迁移 ---"
 if [ "$IS_PRODUCTION" = "true" ] && [ -f "packages/api/migrations/0017_cases_cleanup.sql" ] && [ "${ALLOW_CASES_CLEANUP_MIGRATION:-}" != "true" ]; then
-  echo "错误: 检测到 packages/api/migrations/0017_cases_cleanup.sql。"
-  echo "此迁移会将真实案例 R2 key 从 testimonials/ 切换到 cases/。"
-  echo "请先执行 R2 Cases dry-run、复制和目标对象验证，再执行 D1 migration。"
-  echo "如果 0017 已确认执行完成，或已完成 R2 复制验证并准备执行迁移，可显式设置 ALLOW_CASES_CLEANUP_MIGRATION=true 绕过。"
-  exit 1
+  UNAPPLIED_MIGRATIONS="$(pnpm --filter @meigallery/api exec wrangler d1 migrations list "$D1_DB" $ENV_FLAG --remote 2>&1)"
+  if [[ "$UNAPPLIED_MIGRATIONS" == *"0017_cases_cleanup"* ]]; then
+    echo "错误: 0017_cases_cleanup.sql 仍在待执行迁移列表中。"
+    echo "此迁移会将真实案例 R2 key 从 testimonials/ 切换到 cases/。"
+    echo "请先执行 R2 Cases dry-run、复制和目标对象验证，再执行 D1 migration。"
+    echo "如果已完成 R2 复制验证并准备执行迁移，可显式设置 ALLOW_CASES_CLEANUP_MIGRATION=true 绕过。"
+    exit 1
+  fi
+  echo "0017_cases_cleanup.sql 已应用或不在待执行列表中，继续生产迁移检查。"
 fi
 pnpm --filter @meigallery/api exec wrangler d1 migrations apply "$D1_DB" $ENV_FLAG --remote
 

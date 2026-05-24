@@ -218,14 +218,14 @@ node scripts/migrate-cases-r2.mjs --remote --delete-old --confirm-delete-old=tes
 
 - 默认 R2 bucket 为 `meigallery-media`，可用 `R2_BUCKET` 覆盖。
 - 默认 D1 database 为 `meigallery-db`，可用 `D1_DATABASE` 覆盖。
-- `--remote` 表示查询远程 D1；不带时查询本地 D1。
+- `--remote` 表示查询远程 D1，并对远程 R2 执行 `get` / `put` / `delete`；不带时使用本地 D1/R2。
 - `--dry-run` 只打印 `testimonials/... -> cases/...` 映射和将删除的旧 key，不会写入 R2 或 D1。
-- 正式复制时脚本会先 `r2 object get` 到临时文件，再 `r2 object put` 到新 key，并再次 `r2 object get` 目标 key；随后比较新旧临时文件 sha256，确保复制后内容一致。
+- 正式复制时脚本会先 `r2 object get` 到临时文件，再带原始 MIME 类型 `r2 object put` 到新 key，并再次 `r2 object get` 目标 key；随后比较新旧临时文件 sha256，确保复制后内容一致。R2 操作会对临时网络错误自动重试。
 - `--delete-old` 只删除旧 `testimonials/` 对象，必须同时带 `--remote` 和 `--confirm-delete-old=testimonials-to-cases`，并且必须在复制、验证、D1 migration、部署和 smoke 测试后执行；脚本不会自动执行 D1 migration。
 - 删除阶段会先完整遍历所有映射，分别读取旧 `testimonials/...` 和新 `cases/...` 对象并比较 sha256；全部一致后才第二轮删除旧对象。如果旧对象不存在但新对象存在，会打印“跳过：旧对象不存在，可能是迁移后新增对象”，不失败也不删除；如果旧对象存在但新对象不存在或 hash 不一致，会中止并以非 0 状态退出，不删除任何旧对象。
 - 映射清单合并 `testimonial_case_images.r2_key` 与 `external_import_files.r2_key` 两个来源，并按旧 `testimonials/...` key 去重。
-- D1 已切表后的删除阶段会合并 `case_images.r2_key` 与 `external_import_files.r2_key` 中的 `cases/...` key，并反推旧 `testimonials/...` key。
-- `scripts/deploy.sh` 会先完成 API dry-run 和 Web build，再进入 D1 migration 阶段；生产环境检测到 `packages/api/migrations/0017_cases_cleanup.sql` 且未设置 `ALLOW_CASES_CLEANUP_MIGRATION=true` 时会在 D1 migration 前中止，防止误跑一键部署导致 D1 先于 R2 迁移。如果 0017 已确认执行完成，或已完成 R2 复制验证并准备执行迁移，可显式设置该环境变量绕过。
+- D1 已切表后，如果旧 `testimonial_case_images` 表已不存在，普通复制模式会合并 `case_images.r2_key` 与 `external_import_files.r2_key` 中的 `cases/...` key，并反推旧 `testimonials/...` key，用于补齐目标 R2 对象；删除阶段也使用同一映射来源。
+- `scripts/deploy.sh` 会先完成 API dry-run 和 Web build，再进入 D1 migration 阶段；生产环境如果发现 `0017_cases_cleanup.sql` 仍在待执行迁移列表中，且未设置 `ALLOW_CASES_CLEANUP_MIGRATION=true`，会在 D1 migration 前中止，防止误跑一键部署导致 D1 先于 R2 迁移。0017 已应用或不在待执行列表时不会继续拦截后续生产部署。
 - 如果本地 D1 已执行 `0017_cases_cleanup.sql`，旧表 `testimonial_case_images` 可能已不存在；此时本地 dry-run 提示旧表不存在属于预期，不代表脚本实现失败。
 
 ## 12. 参考资料
