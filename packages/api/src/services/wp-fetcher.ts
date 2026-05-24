@@ -3,6 +3,8 @@
  * 支持分页遍历所有文章、分类和标签
  */
 
+import { createSafeExternalUrl, safeExternalFetch } from '../utils/external-url'
+
 export interface WpPost {
   id: number
   date: string
@@ -52,9 +54,9 @@ export async function fetchAllPosts(options: WpFetcherOptions): Promise<{
   let totalPosts = 0
 
   while (page <= totalPages && page <= maxPages) {
-    const url = `${options.baseUrl}/wp-json/wp/v2/posts?per_page=${perPage}&page=${page}&_fields=id,date,slug,link,title,content,featured_media,categories,tags`
+    const url = createSafeExternalUrl(options.baseUrl, `/wp-json/wp/v2/posts?per_page=${perPage}&page=${page}&_fields=id,date,slug,link,title,content,featured_media,categories,tags`)
 
-    const response = await fetch(url)
+    const response = await safeExternalFetch(url)
     if (!response.ok) {
       if (response.status === 400 && page > 1) break // 超出最后一页
       throw new Error(`WP API 请求失败: ${response.status} ${response.statusText}`)
@@ -80,8 +82,8 @@ export async function fetchAllCategories(baseUrl: string): Promise<WpCategory[]>
   let hasMore = true
 
   while (hasMore) {
-    const url = `${baseUrl}/wp-json/wp/v2/categories?per_page=100&page=${page}&_fields=id,name,slug,parent,count`
-    const response = await fetch(url)
+    const url = createSafeExternalUrl(baseUrl, `/wp-json/wp/v2/categories?per_page=100&page=${page}&_fields=id,name,slug,parent,count`)
+    const response = await safeExternalFetch(url)
     if (!response.ok) break
 
     const categories = await response.json() as WpCategory[]
@@ -105,8 +107,8 @@ export async function fetchAllTags(baseUrl: string): Promise<WpTag[]> {
   let hasMore = true
 
   while (hasMore) {
-    const url = `${baseUrl}/wp-json/wp/v2/tags?per_page=100&page=${page}&_fields=id,name,slug,count`
-    const response = await fetch(url)
+    const url = createSafeExternalUrl(baseUrl, `/wp-json/wp/v2/tags?per_page=100&page=${page}&_fields=id,name,slug,count`)
+    const response = await safeExternalFetch(url)
     if (!response.ok) break
 
     const tags = await response.json() as WpTag[]
@@ -125,8 +127,8 @@ export async function fetchAllTags(baseUrl: string): Promise<WpTag[]> {
  * 拉取单篇文章
  */
 export async function fetchPost(baseUrl: string, postId: number): Promise<WpPost | null> {
-  const url = `${baseUrl}/wp-json/wp/v2/posts/${postId}?_fields=id,date,slug,link,title,content,featured_media,categories,tags`
-  const response = await fetch(url)
+  const url = createSafeExternalUrl(baseUrl, `/wp-json/wp/v2/posts/${postId}?_fields=id,date,slug,link,title,content,featured_media,categories,tags`)
+  const response = await safeExternalFetch(url)
   if (!response.ok) return null
   return await response.json() as WpPost
 }

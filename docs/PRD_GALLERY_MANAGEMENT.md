@@ -352,7 +352,7 @@ Response 200:
 - 上传文件严格校验 MIME type（不信任前端 Content-Type）
 - 图片大小限制 10MB，视频 200MB
 - R2 key 不允许 `..` 路径遍历
-- 视频上传使用 Stream 直传 URL，不经过 API Worker（避免 100MB Worker 内存限制）
+- 视频上传使用 Stream 直传 URL，不经过 API Worker；上线前按 Cloudflare Workers 当前限制确认请求体和内存边界。
 - 所有媒体修改操作写审计日志
 
 ---
@@ -377,19 +377,19 @@ Response 200:
 
 | 风险 | 影响 | 缓解措施 |
 |------|------|----------|
-| Worker 内存限制（128MB） | 大文件上传可能 OOM | 图片限 10MB，视频用 Stream 直传绕过 Worker |
+| Worker 运行时限制 | 大文件上传可能 OOM 或被请求体限制拦截 | 图片限 10MB，视频用 Stream 直传绕过 Worker；上线前按 Cloudflare 官方 limits 复核 |
 | Stream API token 未就绪 | 视频上传功能无法测试 | Phase 2B 独立，不阻塞图片功能 |
 | WordPress 外部 URL 失效 | 迁移图片下载失败 | 已有 2831 completed 记录说明大部分已下载，对失败的记录日志并跳过 |
-| R2 免费计额度（10GB 存储 / 月 10M 请求） | 大量图片可能超限 | 监控用量，必要时升级 R2 付费计划 |
-| Cloudflare Workers 请求体限制（100MB free / 500MB paid） | 大视频上传被拒 | 视频必须走 Stream 直传，不经过 Worker |
+| R2 用量增长 | 大量图片可能带来存储和请求成本 | 监控用量，上线前按 Cloudflare 官方 pricing 复核并决定是否升级 |
+| Cloudflare Workers 请求体限制 | 大视频上传被拒 | 视频必须走 Stream 直传，不经过 Worker；具体限制以上线前官方文档为准 |
 
 ### 4.3 依赖项
 
 | 依赖 | 状态 | 影响 |
 |------|------|------|
-| D1 migration 0006 | 待执行 | 需先在 dev/prod 数据库执行 |
+| D1 migrations | 已维护到 `0019_seed_member_activity.sql` | 部署前需按环境执行所有未应用 migration |
 | Cloudflare Stream API token | 占位符 | Phase 2B 视频上传功能 |
-| Workers Paid plan ($5/月) | 未升级 | 邮箱验证、更大请求体限制 |
+| Workers/Email 计划要求 | 待按官方当前状态确认 | 邮箱验证、更大请求体或其他运行时限制 |
 
 ---
 

@@ -17,6 +17,7 @@
 
 - `616618.xyz` → Web Worker（前台 + 后台管理）
 - `api.616618.xyz` → API Worker
+- Dev 测试入口使用 Workers dev 子域，例如 `meigallery-web-dev.<workers-subdomain>.workers.dev` 和 `meigallery-api-dev.<workers-subdomain>.workers.dev`，不绑定生产主域。
 
 配置步骤：
 
@@ -26,34 +27,44 @@
 
 ## 3. 部署命令
 
+本项目使用 pnpm workspace，推荐通过 `corepack pnpm` 调用仓库锁定的 pnpm 版本；`scripts/deploy.sh` 会自动检测裸 `pnpm`，不存在时回退到 `corepack pnpm`。
+
 ```bash
 # 首次初始化
 ./scripts/setup.sh
 
 # 部署
+# 重要警告：生产环境中，当待发布包含 0017_cases_cleanup.sql 时，禁止直接运行一键部署。
+# 必须先完成本地或 CI 构建预检，再按“R2 Cases 对象迁移”专项顺序完成
+# dry-run、复制和目标对象验证，然后才执行 D1 remote migration 和部署。
 ./scripts/deploy.sh
 
 # 或手动步骤：
-# 1. D1 迁移
-cd packages/api && wrangler d1 migrations apply meigallery-db --remote
+# 1. API Worker 构建预检，不部署
+corepack pnpm --filter @meigallery/api exec wrangler deploy --env="" --dry-run --outdir=dist
 
 # 2. 构建前端
-pnpm --filter @meigallery/web exec nuxt build
+corepack pnpm --filter @meigallery/web exec nuxt build
 
-# 3. 部署 API Worker
-pnpm --filter @meigallery/api exec wrangler deploy
+# 3. D1 迁移
+# 重要警告：如果待执行 migrations 包含 0017_cases_cleanup.sql，必须先完成：
+# 构建预检 -> R2 Cases dry-run -> R2 复制和目标对象验证，再执行此 D1 remote migration。
+corepack pnpm --filter @meigallery/api exec wrangler d1 migrations apply meigallery-db --env="" --remote
 
-# 4. 部署 Web Worker
-pnpm --filter @meigallery/web exec wrangler deploy
+# 4. 部署 API Worker
+corepack pnpm --filter @meigallery/api exec wrangler deploy --env=""
+
+# 5. 部署 Web Worker
+corepack pnpm --filter @meigallery/web exec wrangler deploy --env=""
 ```
 
 ## 4. CI/CD
 
-**手动部署**：GitHub Actions 无配额，生产部署通过手动执行 wrangler deploy。
+**手动部署**：生产部署通过本地手动执行 wrangler deploy，且显式传入 `--env=""` 选择 wrangler 顶层生产配置。GitHub Actions 不负责生产部署，避免合入分支后自动影响线上用户。
 
 ```bash
-pnpm --filter @meigallery/api exec wrangler deploy
-pnpm --filter @meigallery/web exec wrangler deploy
+corepack pnpm --filter @meigallery/api exec wrangler deploy --env=""
+corepack pnpm --filter @meigallery/web exec wrangler deploy --env=""
 ```
 
 ## 5. 环境变量
@@ -65,16 +76,16 @@ pnpm --filter @meigallery/web exec wrangler deploy
 | `STREAM_ACCOUNT_ID` | API Worker secret | Cloudflare Stream 账户 ID |
 | `STREAM_API_TOKEN` | API Worker secret | Stream API 令牌 |
 | `CORS_ORIGIN` | API Worker vars | 前端域名（如 `https://616618.xyz`） |
+| `IMAGE_RESIZING_ENABLED` | API Worker vars | 是否启用 Cloudflare Images Transformations；启用前需在 Dashboard 打开 Images > Transformations |
 | `NUXT_PUBLIC_API_BASE_URL` | Web Worker vars | API 地址（如 `https://api.616618.xyz`） |
 
 设置 secret：
 
 ```bash
-cd packages/api
-wrangler secret put SESSION_SECRET
-wrangler secret put TURNSTILE_SECRET_KEY
-wrangler secret put STREAM_ACCOUNT_ID
-wrangler secret put STREAM_API_TOKEN
+corepack pnpm --filter @meigallery/api exec wrangler secret put SESSION_SECRET
+corepack pnpm --filter @meigallery/api exec wrangler secret put TURNSTILE_SECRET_KEY
+corepack pnpm --filter @meigallery/api exec wrangler secret put STREAM_ACCOUNT_ID
+corepack pnpm --filter @meigallery/api exec wrangler secret put STREAM_API_TOKEN
 ```
 
 ## 6. Cloudflare 产品绑定
@@ -88,7 +99,10 @@ wrangler secret put STREAM_API_TOKEN
 
 ### Dev 环境
 
-- `meigallery-api-dev` / `meigallery-web-dev`：**已删除，需要时重新创建**。
+- `meigallery-api-dev` / `meigallery-web-dev`：用于正式上线后的开发测试环境。
+- Dev Worker 使用 Workers dev 子域访问，不接入 `616618.xyz` 主域，不进入 sitemap、导航或公开链接。
+- Dev 环境可以连接正式 D1/R2 数据以使用真实内容验证 UI，但后台写操作必须限定管理员账号、保留审计日志并显式标记为测试操作。
+- Dev 页面必须带测试环境标识，并建议设置 `X-Robots-Tag: noindex, nofollow` 或等价 meta，避免搜索引擎收录。
 
 Workers：
 
@@ -117,23 +131,25 @@ Turnstile：
 
 Email：
 
-- Cloudflare Email Service 需要 Workers Paid 计划（$5/月），`email_verification_enabled` 默认为 `false`。
+- Cloudflare Email Service 使用前需按 Cloudflare 官方文档和 Dashboard 当前状态确认可用计划、发信额度和费用；当前 `email_verification_enabled` 默认为 `false`。
 
 ## 7. 全球 CDN 加速
 
 - 静态资源由 Workers Assets 自动分发到全球边缘节点。
 - 公共缩略图使用长缓存，文件名带 hash。
+- `IMAGE_RESIZING_ENABLED=true` 时公共缩略图优先使用 Cloudflare Images Transformations，首期固定只请求 `w=480` 单规格，避免 Free 每月 5,000 unique transformations 被多规格消耗。
+- Transformations 未启用、失败或返回 Free 超限错误（例如 9422）时，API 会回退返回原图，并继续设置 `Cache-Control: public, max-age=604800` 保持业务可用。
 - API 默认不做长缓存，只缓存公开且稳定的数据。
 - 受保护媒体不放入公共缓存。
 
 ## 8. 套餐建议
 
-| 产品 | 免费/包含量 | 主要超额计费 | 对本项目的影响 |
-|------|-------------|--------------|----------------|
-| Workers | Free 计划每日 10 万请求 | Paid 计划按请求量计费 | 内测后建议升级 Workers Paid |
-| D1 | Free 下有每日读写限制和 5 GB 总存储 | Workers Paid 包含更高月度读写量 | 正式运营建议 Paid |
-| R2 Standard | 每月 10 GB-month 免费，公网 egress 免费 | 存储、写请求、读请求按量计费 | 缩略图读请求需要监控 |
-| Stream | Starter bundle 从 $5/月起 | 按视频存储分钟、分发分钟扩展 | 视频是成本重点，MVP 应限制体量 |
+| 产品 | 当前策略 | 对本项目的影响 |
+|------|----------|----------------|
+| Workers | 生产上线前按官方 pricing 确认当前计划、请求量和是否需要 Paid | 内测后需要监控请求量、CPU 时间和构建部署限制 |
+| D1 | 按官方 D1 limits 和 pricing 确认读写量、存储和备份策略 | 图库搜索、会员校验和后台列表是重点监控项 |
+| R2 Standard | 按官方 R2 pricing 确认存储、读写请求和对象生命周期策略 | 图片原图、缩略图和导入包会持续增加存储与请求量 |
+| Stream | 接入前按官方 Stream pricing 确认存储分钟、分发分钟和 signed URL 能力 | 视频是成本重点，MVP 应限制体量 |
 
 注意：Cloudflare 套餐、限制和价格会变化。每次上线或采购前都要以 Cloudflare 官方 pricing 和 docs 为准。
 
@@ -165,7 +181,55 @@ Email：
 7. 正式切换域名时，将 `zuole.me` DNS 指向 Cloudflare Workers 自定义域名。
 8. 保留旧 WordPress 站点只读备份，至少覆盖一个完整审核周期。
 
-## 11. 参考资料
+## 11. R2 Cases 对象迁移
+
+`0017_cases_cleanup.sql` 会将真实案例表从 `testimonial_*` 切换为 `cases` / `case_images`，并将数据库中的 R2 key 从 `testimonials/...` 改为 `cases/...`。生产执行时必须先迁移 R2 对象，再执行 D1 迁移，避免数据库切表后引用不存在的对象。
+
+执行前确认 Cloudflare Images Transformations 已按当前设计启用或已有等价降级策略，避免迁移后图片访问链路出现缩略图生成差异。
+
+生产顺序：
+
+```bash
+# 1. 先完成本地或 CI 构建预检，不修改远程 D1 或 R2
+corepack pnpm --filter @meigallery/api exec wrangler deploy --env="" --dry-run --outdir=dist
+corepack pnpm --filter @meigallery/web exec nuxt build
+
+# 2. 查看将复制和将删除的映射，不修改 R2 或 D1
+node scripts/migrate-cases-r2.mjs --dry-run --remote
+
+# 3. 复制 testimonials/ 对象到 cases/，并通过 sha256 验证新旧对象内容一致
+node scripts/migrate-cases-r2.mjs --remote
+
+# 4. 再执行 D1 远程迁移；脚本不会自动执行 migration
+corepack pnpm --filter @meigallery/api exec wrangler d1 migrations apply meigallery-db --env="" --remote
+
+# 如需改用一键部署脚本在生产环境执行包含 0017 的迁移，必须先完成 R2 dry-run、复制和验证，
+# 再显式设置以下环境变量解除 production-only 保护。
+ALLOW_CASES_CLEANUP_MIGRATION=true ./scripts/deploy.sh
+
+# 5. 部署 API 和 Web Worker，并完成 smoke 测试
+corepack pnpm --filter @meigallery/api exec wrangler deploy --env=""
+corepack pnpm --filter @meigallery/web exec wrangler deploy --env=""
+
+# 6. smoke 通过后，显式删除旧 testimonials/ 对象
+node scripts/migrate-cases-r2.mjs --remote --delete-old --confirm-delete-old=testimonials-to-cases
+```
+
+脚本说明：
+
+- 默认 R2 bucket 为 `meigallery-media`，可用 `R2_BUCKET` 覆盖。
+- 默认 D1 database 为 `meigallery-db`，可用 `D1_DATABASE` 覆盖。
+- `--remote` 表示查询远程 D1，并对远程 R2 执行 `get` / `put` / `delete`；不带时使用本地 D1/R2。
+- `--dry-run` 只打印 `testimonials/... -> cases/...` 映射和将删除的旧 key，不会写入 R2 或 D1。
+- 正式复制时脚本会先 `r2 object get` 到临时文件，再带原始 MIME 类型 `r2 object put` 到新 key，并再次 `r2 object get` 目标 key；随后比较新旧临时文件 sha256，确保复制后内容一致。R2 操作会对临时网络错误自动重试。
+- `--delete-old` 只删除旧 `testimonials/` 对象，必须同时带 `--remote` 和 `--confirm-delete-old=testimonials-to-cases`，并且必须在复制、验证、D1 migration、部署和 smoke 测试后执行；脚本不会自动执行 D1 migration。
+- 删除阶段会先完整遍历所有映射，分别读取旧 `testimonials/...` 和新 `cases/...` 对象并比较 sha256；全部一致后才第二轮删除旧对象。如果旧对象不存在但新对象存在，会打印“跳过：旧对象不存在，可能是迁移后新增对象”，不失败也不删除；如果旧对象存在但新对象不存在或 hash 不一致，会中止并以非 0 状态退出，不删除任何旧对象。
+- 映射清单合并 `testimonial_case_images.r2_key` 与 `external_import_files.r2_key` 两个来源，并按旧 `testimonials/...` key 去重。
+- D1 已切表后，如果旧 `testimonial_case_images` 表已不存在，普通复制模式会合并 `case_images.r2_key` 与 `external_import_files.r2_key` 中的 `cases/...` key，并反推旧 `testimonials/...` key，用于补齐目标 R2 对象；删除阶段也使用同一映射来源。
+- `scripts/deploy.sh` 会先完成 API dry-run 和 Web build，再进入 D1 migration 阶段；生产环境如果发现 `0017_cases_cleanup.sql` 仍在待执行迁移列表中，且未设置 `ALLOW_CASES_CLEANUP_MIGRATION=true`，会在 D1 migration 前中止，防止误跑一键部署导致 D1 先于 R2 迁移。0017 已应用或不在待执行列表时不会继续拦截后续生产部署。
+- 如果本地 D1 已执行 `0017_cases_cleanup.sql`，旧表 `testimonial_case_images` 可能已不存在；此时本地 dry-run 提示旧表不存在属于预期，不代表脚本实现失败。
+
+## 12. 参考资料
 
 - Cloudflare Workers: https://developers.cloudflare.com/workers/
 - Workers Assets: https://developers.cloudflare.com/workers/frameworks/

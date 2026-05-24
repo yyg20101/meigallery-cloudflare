@@ -269,6 +269,118 @@ VALUES
   ('ma_010_v2', 'gal_010', 'video', 'r2', 'videos/gal010-full.mp4', 'full', 11, 20, 'completed', '2026-04-19T13:00:00Z'),
   ('ma_015_v1', 'gal_015', 'video', 'r2', 'videos/gal015-preview.mp4', 'preview', 10, 0, 'completed', '2026-04-14T15:00:00Z');
 
+-- ===== 初始人气数据与社区用户 =====
+-- 保留真实更高浏览量；点赞数通过 gallery_likes 关系回填，避免只有孤立数字。
+UPDATE galleries
+SET
+  view_count = MAX(COALESCE(view_count, 0), CASE id
+    WHEN 'gal_001' THEN 16880
+    WHEN 'gal_002' THEN 14320
+    WHEN 'gal_003' THEN 12860
+    WHEN 'gal_004' THEN 11240
+    WHEN 'gal_005' THEN 9860
+    WHEN 'gal_006' THEN 8320
+    WHEN 'gal_007' THEN 7240
+    WHEN 'gal_008' THEN 6180
+    WHEN 'gal_009' THEN 5420
+    WHEN 'gal_010' THEN 4860
+    WHEN 'gal_011' THEN 3920
+    WHEN 'gal_012' THEN 3180
+    WHEN 'gal_013' THEN 2860
+    WHEN 'gal_014' THEN 2410
+    WHEN 'gal_015' THEN 2180
+    WHEN 'gal_016' THEN 1760
+    ELSE COALESCE(view_count, 0)
+  END),
+  updated_at = datetime('now')
+WHERE id IN (
+  'gal_001', 'gal_002', 'gal_003', 'gal_004',
+  'gal_005', 'gal_006', 'gal_007', 'gal_008',
+  'gal_009', 'gal_010', 'gal_011', 'gal_012',
+  'gal_013', 'gal_014', 'gal_015', 'gal_016'
+);
+
+WITH RECURSIVE seed_user_numbers(n) AS (
+  SELECT 1
+  UNION ALL
+  SELECT n + 1 FROM seed_user_numbers WHERE n < 360
+)
+INSERT OR IGNORE INTO users (
+  email,
+  username,
+  nickname,
+  password_hash,
+  role,
+  status,
+  email_verified,
+  notification_enabled,
+  created_at,
+  updated_at
+)
+SELECT
+  printf('seed-user-%03d@users.616618.xyz', n),
+  printf('seeduser%03d', n),
+  '社区用户' || printf('%03d', n),
+  '$pbkdf2$100000$fD8J7MDYSn/4WjVs0y3kgA==$NehcVwZ56tXlUYdC4dAmxc9iwfFqp0l3WvfgZ2mG1pY=',
+  'user',
+  'active',
+  1,
+  0,
+  datetime('now', printf('-%d days', 180 - (n % 120))),
+  datetime('now', printf('-%d days', 180 - (n % 120)))
+FROM seed_user_numbers;
+
+WITH
+target_galleries(gallery_id, target_like_count) AS (
+  VALUES
+    ('gal_001', 326),
+    ('gal_002', 284),
+    ('gal_003', 241),
+    ('gal_004', 219),
+    ('gal_005', 186),
+    ('gal_006', 158),
+    ('gal_007', 132),
+    ('gal_008', 117),
+    ('gal_009', 96),
+    ('gal_010', 82),
+    ('gal_011', 64),
+    ('gal_012', 48),
+    ('gal_013', 42),
+    ('gal_014', 36),
+    ('gal_015', 31),
+    ('gal_016', 24)
+),
+seed_users AS (
+  SELECT
+    id,
+    CAST(substr(username, length('seeduser') + 1) AS INTEGER) AS seed_no
+  FROM users
+  WHERE username BETWEEN 'seeduser001' AND 'seeduser360'
+)
+INSERT OR IGNORE INTO gallery_likes (id, gallery_id, user_id, created_at)
+SELECT
+  'seed_like_' || target_galleries.gallery_id || '_' || printf('%03d', seed_users.seed_no),
+  target_galleries.gallery_id,
+  seed_users.id,
+  datetime('now', printf('-%d minutes', seed_users.seed_no))
+FROM target_galleries
+JOIN seed_users ON seed_users.seed_no <= target_galleries.target_like_count;
+
+UPDATE galleries
+SET
+  like_count = (
+    SELECT COUNT(*)
+    FROM gallery_likes
+    WHERE gallery_likes.gallery_id = galleries.id
+  ),
+  updated_at = datetime('now')
+WHERE id IN (
+  'gal_001', 'gal_002', 'gal_003', 'gal_004',
+  'gal_005', 'gal_006', 'gal_007', 'gal_008',
+  'gal_009', 'gal_010', 'gal_011', 'gal_012',
+  'gal_013', 'gal_014', 'gal_015', 'gal_016'
+);
+
 -- ===== 测试用户 =====
 -- 密码: test123456（PBKDF2 哈希需要在运行时生成，这里用占位符）
 -- 管理员用户通过 API 创建更安全

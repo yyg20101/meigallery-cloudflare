@@ -4,6 +4,7 @@ import { validateUsername } from '@meigallery/shared/utils'
 const { register, sendCode, checkUsername, isLoggedIn } = useAuth()
 const { api } = useApi()
 const router = useRouter()
+const { trackCompleteRegistration } = useFacebookPixel()
 
 // 表单数据
 const username = ref('')
@@ -181,6 +182,7 @@ async function onDirectRegister() {
       username: username.value,
       turnstileToken: hasTurnstile.value ? turnstileToken.value : undefined,
     })
+    trackCompleteRegistration()
     router.push('/')
   } catch (e: any) {
     const msg = e?.data ? (() => { try { return JSON.parse(e.data)?.message } catch { return null } })() : null
@@ -236,6 +238,7 @@ async function onSubmitWithCode() {
       code: verificationCode.value,
       turnstileToken: hasTurnstile.value ? turnstileToken.value : undefined,
     })
+    trackCompleteRegistration()
     router.push('/')
   } catch (e: any) {
     const msg = e?.data ? (() => { try { return JSON.parse(e.data)?.message } catch { return null } })() : null

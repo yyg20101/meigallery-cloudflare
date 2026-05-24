@@ -2,6 +2,7 @@
 const route = useRoute()
 const router = useRouter()
 const { api } = useApi()
+const { trackSearch, trackFilterSelected } = useFacebookPixel()
 
 interface GallerySummary {
   id: string; title: string; slug: string; summary: string | null
@@ -41,6 +42,30 @@ const { data: searchResult, refresh } = await useAsyncData(
 const galleries = computed(() => searchResult.value?.data ?? [])
 const total = computed(() => searchResult.value?.total ?? 0)
 const totalPages = computed(() => Math.ceil(total.value / 24))
+const lastTrackedSearchKey = ref('')
+
+function findTagType(slug: string) {
+  const groups = tagsData.value?.data || {}
+  for (const [type, items] of Object.entries(groups)) {
+    if (items.some(tag => tag.slug === slug)) return type
+  }
+  return 'unknown'
+}
+
+function getSearchTrackingKey() {
+  return [keyword.value.trim(), selectedTags.value.slice().sort().join(','), sort.value].join('|')
+}
+
+watch(searchResult, (result) => {
+  if (!result || (!keyword.value.trim() && selectedTags.value.length === 0)) return
+  const key = getSearchTrackingKey()
+  if (lastTrackedSearchKey.value === key) return
+  lastTrackedSearchKey.value = key
+  trackSearch({
+    searchString: `has_query=${keyword.value.trim() ? 'true' : 'false'} tag_count=${selectedTags.value.length} sort=${sort.value}`,
+    resultCount: result.total,
+  })
+}, { immediate: true })
 
 // 相关标签推荐：根据搜索词匹配
 const relatedTags = computed(() => {
@@ -75,6 +100,7 @@ function toggleTag(slug: string) {
   }
   page.value = 1
   updateUrl()
+  trackFilterSelected({ tagSlug: slug, tagType: findTagType(slug), location: 'search_filter' })
 }
 
 function clearTags() {
@@ -101,6 +127,7 @@ function updateUrl() {
 }
 
 function goToTag(slug: string) {
+  trackFilterSelected({ tagSlug: slug, tagType: findTagType(slug), location: 'search_related_tag' })
   navigateTo({ path: '/discover', query: { tag: slug } })
 }
 

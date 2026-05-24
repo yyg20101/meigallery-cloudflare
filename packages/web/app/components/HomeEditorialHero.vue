@@ -13,18 +13,12 @@ interface HeroGallery {
 const props = defineProps<{
   title: string
   subtitle: string
-  ctaLabel: string
-  ctaUrl: string
   galleries: HeroGallery[]
 }>()
 
 const activeIndex = ref(0)
 const isPaused = ref(false)
 const prefersReducedMotion = ref(false)
-const safeCtaUrl = computed(() => {
-  const value = props.ctaUrl.trim()
-  return value.startsWith('/') && !value.startsWith('//') ? value : '/discover'
-})
 const visibleGalleries = computed(() => props.galleries.filter(g => Boolean(g.coverUrl)).slice(0, 6))
 const activeGallery = computed(() => visibleGalleries.value[activeIndex.value] || visibleGalleries.value[0] || null)
 const region = computed(() => activeGallery.value ? getPrimaryRegion(activeGallery.value.tags) : null)
@@ -137,14 +131,6 @@ onUnmounted(() => {
         <p class="text-[10px] font-semibold uppercase tracking-[0.28em] text-[#d6c39a]">Selected Portrait Carousel</p>
         <h1 class="mt-4 max-w-2xl text-4xl font-semibold leading-[0.92] tracking-[-0.07em] text-white drop-shadow-xl lg:text-6xl">{{ title }}</h1>
         <p class="mt-5 max-w-xl text-sm leading-7 text-white/74 lg:text-base">{{ subtitle }}</p>
-        <div class="mt-6 flex flex-wrap gap-2">
-          <NuxtLink :to="safeCtaUrl" class="rounded-full bg-[#fffbf7] px-5 py-3 text-sm font-medium text-gray-950 shadow-lg shadow-black/20 transition-all hover:-translate-y-0.5 hover:bg-white">
-            {{ ctaLabel }}
-          </NuxtLink>
-          <NuxtLink v-if="region" :to="{ path: '/discover', query: { tag: region.slug } }" class="rounded-full border border-white/18 bg-white/12 px-5 py-3 text-sm font-medium text-white backdrop-blur transition-all hover:-translate-y-0.5 hover:border-[#d6c39a] hover:bg-white/18">
-            {{ region.name }}精选
-          </NuxtLink>
-        </div>
       </div>
 
       <div v-if="activeGallery" class="mt-8 grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-end">

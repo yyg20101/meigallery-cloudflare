@@ -10,6 +10,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@meigallery/shared/constants': resolve(__dirname, '../shared/src/constants/index.ts'),
+      '@meigallery/shared/utils': resolve(__dirname, '../shared/src/utils/index.ts'),
       '@meigallery/shared': resolve(__dirname, '../shared/src/types/index.ts'),
     },
   },

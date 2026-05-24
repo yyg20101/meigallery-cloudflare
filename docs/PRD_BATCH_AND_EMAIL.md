@@ -93,7 +93,7 @@ Content-Type: application/json
 
 ### 2.3 功能 B：邮箱验证系统
 
-> ⚠️ Cloudflare Email Service 需要 Workers Paid 计划（$5/月），当前 `email_verification_enabled` 默认为 `false`
+> 注意：Cloudflare Email Service 使用前需按官方文档和 Dashboard 当前状态确认可用计划、发信额度和费用；当前 `email_verification_enabled` 默认为 `false`。
 
 #### 用户故事
 
@@ -217,7 +217,7 @@ Cron Trigger（每天 UTC 08:00）
 
 ### 3.2 Cloudflare Email Service 集成
 
-**前置条件**：需升级到 Workers Paid 计划（$5/月，含 3000 封邮件/月）。
+**前置条件**：需先确认 Cloudflare Email Service 当前可用计划、发信额度、费用和 DNS 要求。
 
 **wrangler.toml 配置**（API Worker）：
 ```toml
@@ -290,7 +290,7 @@ crons = ["0 0 * * *"]  # 每天 UTC 00:00（北京时间 08:00）
 | 风险 | 影响 | 缓解措施 |
 |------|------|----------|
 | Cloudflare Email Service 仍为 Beta | API 可能变更 | 封装发送逻辑为独立 service，便于切换 |
-| Workers Paid 计划升级 | 需要 $5/月开支 | Phase 1 不依赖邮件，可先完成；Phase 2 开始前升级 |
+| Workers/Email 计划要求 | 可能需要升级或启用额外服务 | Phase 1 不依赖邮件，可先完成；Phase 2 开始前按官方 pricing 和 Dashboard 当前状态确认 |
 | D1 批量操作性能 | 大批量 UPDATE 可能超时 | 分批执行，每批 100 条 |
 | 邮件送达率 | 验证码邮件进垃圾箱 | 配置 SPF/DKIM/DMARC；使用 noreply@ 发件地址 |
 | 验证码暴力破解 | 攻击者穷举 6 位数字（100 万种组合） | 3 次错误作废 + IP 速率限制 + Turnstile |
@@ -298,4 +298,4 @@ crons = ["0 0 * * *"]  # 每天 UTC 00:00（北京时间 08:00）
 ### 4.3 依赖项
 
 - **Phase 1**：无外部依赖，当前架构即可实现
-- **Phase 2-3**：需要 Workers Paid 计划 + Cloudflare Email Service 配置 + DNS 记录
+- **Phase 2-3**：需要确认 Cloudflare Email Service 当前计划要求、完成 Email Service 配置和 DNS 记录

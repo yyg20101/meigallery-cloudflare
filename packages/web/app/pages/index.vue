@@ -1,15 +1,9 @@
 <script setup lang="ts">
-import { collectRegionGuideItems } from '~/utils/galleryPresentation'
-
 const { api } = useApi()
 const {
   videoEnabled,
   homeHeroTitle,
   homeHeroSubtitle,
-  homeHeroCtaLabel,
-  homeHeroCtaUrl,
-  homeFeaturedRegionSlugs,
-  homeHotTagLimit,
 } = useSiteSettings()
 
 interface GallerySummary {
@@ -25,49 +19,31 @@ interface GallerySummary {
   likeCount?: number
 }
 
-interface TagGroup {
-  [type: string]: Array<{ id: string; name: string; slug: string }>
+interface CaseSummary {
+  id: string
+  title: string
+  slug: string
+  summary: string | null
+  imageCount: number
+  coverImageUrl: string | null
+  publishedAt: string | null
 }
 
-const PAGE_SIZE = 12
+const PAGE_SIZE = 32
+const GALLERY_DISPLAY_LIMIT = 20
 
-// 获取图库数据
+// 获取综合热度排序的首页图库数据，供首屏各模块切分复用，避免额外图库请求。
 const { data: galleriesData } = await useAsyncData('home-galleries', () =>
-  api<{ data: GallerySummary[]; total: number }>('/api/galleries', { query: { pageSize: String(PAGE_SIZE) } }),
+  api<{ data: GallerySummary[]; total: number }>('/api/galleries', { query: { pageSize: String(PAGE_SIZE), sort: 'hot' } }),
 )
 
-const { data: hotGalleriesData } = await useAsyncData('home-hot-galleries', () =>
-  api<{ data: GallerySummary[]; total: number }>('/api/galleries', { query: { pageSize: '9', sort: 'hot' } }),
+const { data: casesData } = await useAsyncData('home-cases', () =>
+  api<{ data: CaseSummary[] }>('/api/cases', { query: { featured: 'true', pageSize: '6' } }),
 )
 
-// 获取标签
-const { data: tagsData } = await useAsyncData('home-tags', () =>
-  api<{ data: TagGroup }>('/api/tags'),
-)
+const allGalleries = computed(() => galleriesData.value?.data ?? [])
 
-// 无限加载状态
-const allGalleries = ref<GallerySummary[]>(galleriesData.value?.data ?? [])
-const totalGalleries = computed(() => galleriesData.value?.total ?? 0)
-const currentPage = ref(1)
-const loadingMore = ref(false)
-const hasMore = computed(() => allGalleries.value.length < totalGalleries.value)
-
-async function loadMore() {
-  if (loadingMore.value || !hasMore.value) return
-  loadingMore.value = true
-  try {
-    const nextPage = currentPage.value + 1
-    const data = await api<{ data: GallerySummary[]; total: number }>('/api/galleries', {
-      query: { pageSize: String(PAGE_SIZE), page: String(nextPage) },
-    })
-    allGalleries.value.push(...data.data)
-    currentPage.value = nextPage
-  } finally {
-    loadingMore.value = false
-  }
-}
-
-// 顶部轮播：前 6 条，避免首屏浪费并展示更多内容
+// 顶部轮播：取综合热度前 6 条，避免首屏浪费并展示更多内容。
 const heroGalleries = computed(() => allGalleries.value.slice(0, 6))
 
 function galleryKey(gallery: GallerySummary) {
@@ -89,16 +65,10 @@ function appendUniqueGalleries(source: GallerySummary[], target: GallerySummary[
   return target
 }
 
-// 热门推荐：优先使用热度排序，失败时回退到首屏后段内容，不影响无限加载分页。
+// 热门推荐：复用 hot 主请求，排除已在轮播展示的内容。
 const featured = computed(() => {
   const heroKeys = new Set(heroGalleries.value.map(galleryKey))
-  const picked = appendUniqueGalleries(hotGalleriesData.value?.data ?? [], [], heroKeys, 3)
-
-  if (picked.length < 3) {
-    appendUniqueGalleries(allGalleries.value, picked, heroKeys, 3)
-  }
-
-  return picked
+  return appendUniqueGalleries(allGalleries.value, [], heroKeys, 3)
 })
 
 // 视频专区：筛选包含视频标签的图库，最多显示 3 条
@@ -111,8 +81,8 @@ const videoGalleries = computed(() => {
     .slice(0, 3)
 })
 
-// 最新图库：按 hero → featured → video → latest 顺序排除，避免同屏重复。
-const latest = computed(() => {
+// 精选图库：按 hero → featured → video → galleryHighlights 顺序排除，避免同屏重复。
+const galleryHighlights = computed(() => {
   const displayedGalleries = [...heroGalleries.value, ...featured.value]
   if (videoEnabled.value && videoGalleries.value.length > 0) {
     displayedGalleries.push(...videoGalleries.value)
@@ -122,38 +92,8 @@ const latest = computed(() => {
   return allGalleries.value.filter(gallery => !displayedKeys.has(galleryKey(gallery)))
 })
 
-const regionGuideItems = computed(() => {
-  if (!tagsData.value?.data) return []
-  return collectRegionGuideItems(tagsData.value.data, homeFeaturedRegionSlugs.value, 4)
-})
-
-const hotTags = computed(() => {
-  if (!tagsData.value?.data) return []
-  const all: Array<{ id: string; name: string; slug: string; type: string }> = []
-  for (const [type, items] of Object.entries(tagsData.value.data)) {
-    if (['region', 'region_scope', 'region_group', 'city', 'city_country'].includes(type)) continue
-    for (const item of items.slice(0, 4)) {
-      all.push({ ...item, type })
-    }
-  }
-  return all.slice(0, homeHotTagLimit.value)
-})
-
-// 无限滚动哨兵
-const sentinel = ref<HTMLElement | null>(null)
-
-onMounted(() => {
-  if (!sentinel.value) return
-  const observer = new IntersectionObserver(
-    (entries) => {
-      if (entries[0].isIntersecting && hasMore.value && !loadingMore.value) {
-        loadMore()
-      }
-    },
-    { rootMargin: '200px' },
-  )
-  observer.observe(sentinel.value)
-  onUnmounted(() => observer.disconnect())
+const cases = computed(() => {
+  return casesData.value?.data ?? []
 })
 
 useSeoMeta({
@@ -170,13 +110,11 @@ useSeoMeta({
     <HomeEditorialHero
       :title="homeHeroTitle"
       :subtitle="homeHeroSubtitle"
-      :cta-label="homeHeroCtaLabel"
-      :cta-url="homeHeroCtaUrl"
       :galleries="heroGalleries"
     />
 
-    <section v-if="regionGuideItems.length > 0" class="mt-6 lg:mt-8">
-      <RegionGuide :regions="regionGuideItems" />
+    <section class="mt-8 lg:mt-10">
+      <CaseCarousel :cases="cases" />
     </section>
 
     <section class="mt-8 lg:mt-10">
@@ -191,26 +129,16 @@ useSeoMeta({
     </section>
 
     <section class="mt-8 lg:mt-10">
-      <EditorialSectionHeading eyebrow="最新上新" title="最新图库" description="持续更新授权写真、时尚、生活与艺术类图库。" action-label="查看全部" action-to="/discover" />
+      <EditorialSectionHeading eyebrow="精选内容" title="精选图库" description="按访问、互动与发布时间综合推荐授权写真、时尚、生活与艺术类图库。" action-label="查看全部" action-to="/discover" />
       <template v-if="galleriesData">
-        <GalleryGrid :galleries="latest" variant="magazine" />
-        <div v-if="latest.length === 0" class="rounded-[1.5rem] border border-orange-100 bg-white/80 py-20 text-center text-gray-400">暂无更多最新内容</div>
-        <div v-if="loadingMore" class="py-6 text-center text-sm text-gray-400">加载中...</div>
-        <div v-if="hasMore" ref="sentinel" class="h-px" />
-        <div v-if="!hasMore && allGalleries.length > PAGE_SIZE" class="py-6 text-center text-sm text-gray-400">已展示全部图库</div>
+        <GalleryGrid :galleries="galleryHighlights.slice(0, GALLERY_DISPLAY_LIMIT)" variant="magazine" />
+        <div v-if="galleryHighlights.length === 0" class="rounded-[1.5rem] border border-orange-100 bg-white/80 py-20 text-center text-gray-400">暂无更多精选内容</div>
+        <div class="mt-6 text-center">
+          <NuxtLink to="/discover" class="inline-flex rounded-full bg-gray-950 px-5 py-3 text-sm font-medium text-white shadow-sm shadow-gray-900/15 transition-all hover:-translate-y-0.5 hover:bg-gray-800">
+            查看更多图库
+          </NuxtLink>
+        </div>
       </template>
-    </section>
-
-    <section v-if="hotTags.length > 0 || !tagsData" class="mt-8 lg:mt-10">
-      <EditorialSectionHeading eyebrow="风格标签" title="风格标签" description="用标签补充筛选人物气质、服饰、场景和内容类型。" />
-      <div v-if="tagsData" class="flex flex-wrap gap-2">
-        <NuxtLink v-for="tag in hotTags" :key="tag.slug" :to="{ path: '/discover', query: { tag: tag.slug } }">
-          <TagChip :tag="tag" />
-        </NuxtLink>
-      </div>
-      <div v-else class="flex flex-wrap gap-2">
-        <div v-for="i in 8" :key="i" class="h-6 w-14 animate-pulse rounded-full bg-orange-50" />
-      </div>
     </section>
 
     <section v-if="videoEnabled && videoGalleries.length > 0" class="mt-8 lg:mt-10">

@@ -13,6 +13,8 @@ dist/
 
 # Wrangler
 .wrangler/
+.wrangler-*/
+packages/*/.wrangler-*/
 .dev.vars
 
 # IDE

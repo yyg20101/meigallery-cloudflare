@@ -17,6 +17,13 @@ const CODE_TTL_MS = 10 * 60 * 1000     // 10 分钟
 const CODE_COOLDOWN_MS = 60 * 1000      // 60 秒冷却
 const MAX_ATTEMPTS = 3                   // 最多错误次数
 
+function requireProductionTurnstile(env: Bindings) {
+  if (env.APP_ENV === 'production' && !env.TURNSTILE_SECRET_KEY) {
+    return { statusCode: 503, message: '人机验证配置缺失，请联系站点管理员' }
+  }
+  return null
+}
+
 function generateVerificationCode(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(4))
   const num = (bytes[0]! << 24 | bytes[1]! << 16 | bytes[2]! << 8 | bytes[3]!) >>> 0
@@ -66,6 +73,9 @@ authRoutes.get('/check-username/:username', async (c) => {
 
 authRoutes.post('/send-code', async (c) => {
   const db = c.env.DB
+
+  const turnstileConfigError = requireProductionTurnstile(c.env)
+  if (turnstileConfigError) return c.json(turnstileConfigError, 503)
 
   // 检查邮箱验证是否开启
   const verificationEnabled = await isEmailVerificationEnabled(db)
@@ -182,6 +192,9 @@ authRoutes.post('/send-code', async (c) => {
 // ============================================================
 
 authRoutes.post('/register', async (c) => {
+  const turnstileConfigError = requireProductionTurnstile(c.env)
+  if (turnstileConfigError) return c.json(turnstileConfigError, 503)
+
   const body = await c.req.json<{
     email?: string
     password?: string
@@ -339,6 +352,9 @@ authRoutes.post('/reset-password', async (c) => {
 // ============================================================
 
 authRoutes.post('/login', async (c) => {
+  const turnstileConfigError = requireProductionTurnstile(c.env)
+  if (turnstileConfigError) return c.json(turnstileConfigError, 503)
+
   const body = await c.req.json<{
     identifier?: string  // 用户名或邮箱
     email?: string       // 兼容旧字段

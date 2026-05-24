@@ -3,6 +3,7 @@ definePageMeta({ layout: 'admin' })
 
 const { api } = useApi()
 const { isOwner } = useAuth()
+const { settings: publicSettings } = useSiteSettings()
 
 const form = reactive({
   // 基础信息
@@ -19,18 +20,27 @@ const form = reactive({
   membership_description: '',
   home_hero_title: '',
   home_hero_subtitle: '',
-  home_hero_cta_label: '',
-  home_hero_cta_url: '',
   home_featured_region_slugs: '',
   home_hot_tag_limit: '',
-  about_title: '',
-  about_summary: '',
-  about_content: '',
+  facebook_pixel_id: '',
+  rules_entry_title: '',
+  rules_entry_summary: '',
+  rules_entry_icon: 'letter',
+  rules_entry_enabled: 'true',
+  rules_modal_content: '',
+  rules_page_title: '',
+  rules_page_summary: '',
+  rules_page_content: '',
+  rules_page_url: '/rules',
 })
 const emailVerificationEnabled = ref(false)
 const videoEnabledToggle = ref(false)
+const facebookPixelEnabled = ref(false)
+const facebookPixelDebugEnabled = ref(false)
 const loading = ref(false)
+const iconUploadLoading = ref(false)
 const message = ref('')
+const siteIconInput = ref<HTMLInputElement | null>(null)
 
 // 加载现有设置
 const { data: settings } = await useAsyncData('admin-settings', () =>
@@ -48,6 +58,12 @@ if (settings.value?.data) {
     if (key === 'video_enabled') {
       videoEnabledToggle.value = val.value === true || val.value === 'true'
     }
+    if (key === 'facebook_pixel_enabled') {
+      facebookPixelEnabled.value = val.value === true || val.value === 'true'
+    }
+    if (key === 'facebook_pixel_debug_enabled') {
+      facebookPixelDebugEnabled.value = val.value === true || val.value === 'true'
+    }
   }
 }
 
@@ -55,12 +71,43 @@ async function onSave() {
   loading.value = true
   message.value = ''
   try {
-    await api('/api/admin/settings', { method: 'PATCH', body: { ...form } })
+    await api('/api/admin/settings', {
+      method: 'PATCH',
+      body: {
+        ...form,
+        facebook_pixel_enabled: facebookPixelEnabled.value,
+        facebook_pixel_debug_enabled: facebookPixelDebugEnabled.value,
+      },
+    })
     message.value = '设置已保存'
   } catch (e: any) {
     message.value = e?.data?.message || '保存失败'
   } finally {
     loading.value = false
+  }
+}
+
+function openSiteIconPicker() {
+  siteIconInput.value?.click()
+}
+
+async function onSiteIconSelected(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  iconUploadLoading.value = true
+  message.value = ''
+  try {
+    const body = new FormData()
+    body.set('file', file)
+    const result = await api<{ iconUrl: string }>('/api/admin/settings/site-icon', { method: 'POST', body })
+    form.site_icon = result.iconUrl
+    publicSettings.value = { ...publicSettings.value, site_icon: result.iconUrl }
+    message.value = '站点图标已上传并同步 favicon'
+  } catch (e: any) {
+    message.value = e?.data?.message || '站点图标上传失败'
+  } finally {
+    iconUploadLoading.value = false
+    if (siteIconInput.value) siteIconInput.value.value = ''
   }
 }
 
@@ -124,7 +171,17 @@ async function toggleVideo() {
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">站点图标 URL</label>
           <input v-model="form.site_icon" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="https://example.com/icon.png" />
-          <p class="text-xs text-gray-400 mt-1">favicon 和 apple-touch-icon 地址（留空使用默认）</p>
+          <div class="mt-3 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-3">
+            <input ref="siteIconInput" type="file" accept="image/png,image/jpeg,image/webp,image/x-icon" class="hidden" @change="onSiteIconSelected" />
+            <div class="flex flex-wrap items-center gap-3">
+              <button type="button" :disabled="iconUploadLoading" class="inline-flex items-center justify-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50" @click="openSiteIconPicker">
+                {{ iconUploadLoading ? '上传中...' : '上传站点图标' }}
+              </button>
+              <img v-if="form.site_icon" :src="form.site_icon" alt="当前站点图标预览" class="h-10 w-10 rounded-lg border border-gray-200 bg-white object-contain p-1" />
+            </div>
+            <p class="mt-2 text-xs text-gray-500">支持 PNG、JPEG、WebP、ICO，最大 1MB；上传后会自动写入 URL，并同步用于 favicon 和 apple-touch-icon。</p>
+          </div>
+          <p class="text-xs text-gray-400 mt-1">也可以继续手动填写外部 URL；留空使用默认 favicon。</p>
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">页脚文案</label>
@@ -177,16 +234,6 @@ async function toggleVideo() {
           <label class="mb-1 block text-sm font-medium text-gray-700">首页副标题</label>
           <textarea v-model="form.home_hero_subtitle" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="用于首页首屏说明" />
         </div>
-        <div class="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label class="mb-1 block text-sm font-medium text-gray-700">CTA 文案</label>
-            <input v-model="form.home_hero_cta_label" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="浏览精选图库" />
-          </div>
-          <div>
-            <label class="mb-1 block text-sm font-medium text-gray-700">CTA 链接</label>
-            <input v-model="form.home_hero_cta_url" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="/discover" />
-          </div>
-        </div>
         <div>
           <label class="mb-1 block text-sm font-medium text-gray-700">主推地区 slugs</label>
           <input v-model="form.home_featured_region_slugs" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="canada,domestic,toronto,vancouver" />
@@ -198,28 +245,77 @@ async function toggleVideo() {
         </div>
       </fieldset>
 
-      <!-- 关于我们 -->
+      <!-- 规则与引导 -->
       <fieldset class="space-y-4">
-        <legend class="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-2 w-full">关于我们页面</legend>
+        <legend class="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-2 w-full">规则与引导</legend>
+        <label class="flex items-center gap-2 text-sm text-gray-700">
+          <input v-model="form.rules_entry_enabled" type="checkbox" true-value="true" false-value="false" />
+          开启右下角规则入口
+        </label>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">页面标题</label>
-          <input v-model="form.about_title" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="关于我们" />
-          <p class="text-xs text-gray-400 mt-1">显示在 /about 页面主标题和 SEO 标题中</p>
+          <label class="block text-sm font-medium text-gray-700 mb-1">悬浮入口标题</label>
+          <input v-model="form.rules_entry_title" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="入站规则" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">页面摘要</label>
-          <textarea v-model="form.about_summary" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="用于页面首屏说明和 meta description" />
+          <label class="block text-sm font-medium text-gray-700 mb-1">悬浮入口说明</label>
+          <textarea v-model="form.rules_entry_summary" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="查看内容规则、会员说明和联系前须知。" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">正文 Markdown</label>
+          <label class="block text-sm font-medium text-gray-700 mb-1">入口图标</label>
+          <input v-model="form.rules_entry_icon" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="letter" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">弹窗 Markdown 摘要</label>
+          <textarea v-model="form.rules_modal_content" rows="8" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono leading-6" placeholder="## 入站规则&#10;&#10;- 本站仅展示合法授权内容" />
+          <p class="text-xs text-gray-400 mt-1">支持标题、列表、加粗、https 链接。</p>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">规则页标题</label>
+            <input v-model="form.rules_page_title" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="入站规则" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">规则页链接</label>
+            <input v-model="form.rules_page_url" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="/rules" />
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">规则页摘要</label>
+          <textarea v-model="form.rules_page_summary" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="了解 MeiGallery 的内容边界、会员访问和联系方式说明。" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">规则页 Markdown 正文</label>
           <textarea
-            v-model="form.about_content"
+            v-model="form.rules_page_content"
             rows="10"
             class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono leading-6"
-            placeholder="## 关于 MeiGallery&#10;&#10;这里填写关于我们页面正文，支持标题、列表、链接、加粗等 Markdown 语法。"
+            placeholder="## 内容边界&#10;&#10;这里填写完整规则正文。"
           />
-          <p class="text-xs text-gray-400 mt-1">支持基础 Markdown：标题、段落、列表、加粗、链接。前台会安全渲染，不执行 HTML。</p>
+          <p class="text-xs text-gray-400 mt-1">支持标题、列表、加粗、https 链接。前台会安全渲染，不执行 HTML。</p>
         </div>
+      </fieldset>
+
+      <fieldset class="space-y-4">
+        <legend class="w-full border-b border-gray-200 pb-2 text-sm font-semibold text-gray-900">Facebook 广告归因</legend>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-gray-700">Meta Pixel ID</label>
+          <input v-model="form.facebook_pixel_id" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="例如 123456789012345" />
+          <p class="mt-1 text-xs text-gray-400">只填写数字 Pixel ID；留空或关闭开关时前台不会加载 Facebook Pixel。</p>
+        </div>
+        <label class="flex items-start gap-3 rounded-lg border border-gray-200 p-4">
+          <input v-model="facebookPixelEnabled" type="checkbox" class="mt-1 h-4 w-4 rounded border-gray-300" />
+          <span>
+            <span class="block text-sm font-medium text-gray-700">启用生产 Pixel</span>
+            <span class="mt-0.5 block text-xs text-gray-500">仅生产环境会读取后台 Pixel ID；dev 默认强制禁用正式 Pixel。</span>
+          </span>
+        </label>
+        <label class="flex items-start gap-3 rounded-lg border border-gray-200 p-4">
+          <input v-model="facebookPixelDebugEnabled" type="checkbox" class="mt-1 h-4 w-4 rounded border-gray-300" />
+          <span>
+            <span class="block text-sm font-medium text-gray-700">输出调试日志</span>
+            <span class="mt-0.5 block text-xs text-gray-500">仅在浏览器控制台输出已脱敏事件；dev 加载测试 Pixel 仍需环境变量显式允许。</span>
+          </span>
+        </label>
       </fieldset>
 
       <!-- 功能开关 -->
@@ -234,6 +330,9 @@ async function toggleVideo() {
             </div>
             <button
               type="button"
+              role="switch"
+              aria-label="切换邮箱验证功能"
+              :aria-checked="emailVerificationEnabled"
               :disabled="toggleLoading"
               class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50"
               :class="emailVerificationEnabled ? 'bg-blue-600' : 'bg-gray-300'"
@@ -256,6 +355,9 @@ async function toggleVideo() {
             </div>
             <button
               type="button"
+              role="switch"
+              aria-label="切换视频功能"
+              :aria-checked="videoEnabledToggle"
               :disabled="videoToggleLoading"
               class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50"
               :class="videoEnabledToggle ? 'bg-blue-600' : 'bg-gray-300'"

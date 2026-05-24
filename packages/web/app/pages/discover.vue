@@ -8,6 +8,12 @@ interface TagInfo {
   count: number
 }
 
+interface GalleryListResponse {
+  data: GallerySummary[]
+  total: number
+  hasMore?: boolean
+}
+
 useSeoMeta({
   title: '发现图库 - MeiGallery',
   description: '浏览和筛选精选图库内容',
@@ -15,18 +21,19 @@ useSeoMeta({
 
 const route = useRoute()
 const router = useRouter()
+const { trackFilterSelected } = useFacebookPixel()
 
 const PAGE_SIZE = 24
 
 // 响应式状态
 const selectedSlugs = ref<string[]>([])
-const sortBy = ref<'latest' | 'hot' | 'random'>('latest')
+const sortBy = ref<'latest' | 'hot'>('latest')
 
 // 从 URL 初始化状态
 function syncFromRoute() {
   const q = route.query
   selectedSlugs.value = q.tag ? String(q.tag).split(',').filter(Boolean) : []
-  sortBy.value = (['latest', 'hot', 'random'].includes(String(q.sort)) ? String(q.sort) : 'latest') as typeof sortBy.value
+  sortBy.value = (['latest', 'hot'].includes(String(q.sort)) ? String(q.sort) : 'latest') as typeof sortBy.value
 }
 syncFromRoute()
 
@@ -52,6 +59,7 @@ function toggleTag(slug: string) {
     selectedSlugs.value.push(slug)
   }
   updateQuery()
+  trackFilterSelected({ tagSlug: slug, tagType: findTagType(slug), location: 'discover_filter' })
 }
 
 function clearTags() {
@@ -59,7 +67,7 @@ function clearTags() {
   updateQuery()
 }
 
-function setSort(val: 'latest' | 'hot' | 'random') {
+function setSort(val: 'latest' | 'hot') {
   sortBy.value = val
   updateQuery()
 }
@@ -74,19 +82,27 @@ const { data: tagsData } = await useAsyncData('discover-tags', () =>
 const tags = computed(() => tagsData.value?.data ?? {})
 const regionGuideItems = computed(() => collectRegionGuideItems(tags.value, [], 4))
 
+function findTagType(slug: string) {
+  for (const [type, items] of Object.entries(tags.value)) {
+    if (items.some(tag => tag.slug === slug)) return type
+  }
+  return 'unknown'
+}
+
 // 无限滚动状态
 const galleries = ref<GallerySummary[]>([])
 const total = ref(0)
 const currentPage = ref(1)
 const isLoading = ref(false)
 const isInitialLoading = ref(true)
-const hasMore = computed(() => galleries.value.length < total.value)
+const hasMoreFromApi = ref<boolean | null>(null)
+const hasMore = computed(() => hasMoreFromApi.value ?? galleries.value.length < total.value)
 
 // 首次加载（SSR 兼容）
 const { data: initialData } = await useAsyncData(
   'discover-galleries',
   () =>
-    api<{ data: GallerySummary[]; total: number }>('/api/galleries', {
+    api<GalleryListResponse>('/api/galleries', {
       query: {
         pageSize: PAGE_SIZE,
         page: 1,
@@ -101,6 +117,7 @@ watch(initialData, (val) => {
   if (val) {
     galleries.value = val.data
     total.value = val.total
+    hasMoreFromApi.value = val.hasMore ?? null
     currentPage.value = 1
     isInitialLoading.value = false
   }
@@ -110,6 +127,7 @@ watch(initialData, (val) => {
 function resetAndFetch() {
   currentPage.value = 1
   galleries.value = []
+  hasMoreFromApi.value = null
   isInitialLoading.value = true
 }
 
@@ -119,7 +137,7 @@ async function loadMore() {
   isLoading.value = true
   try {
     const nextPage = currentPage.value + 1
-    const data = await api<{ data: GallerySummary[]; total: number }>('/api/galleries', {
+    const data = await api<GalleryListResponse>('/api/galleries', {
       query: {
         pageSize: PAGE_SIZE,
         page: nextPage,
@@ -129,6 +147,7 @@ async function loadMore() {
     })
     galleries.value.push(...data.data)
     total.value = data.total
+    hasMoreFromApi.value = data.hasMore ?? null
     currentPage.value = nextPage
   } finally {
     isLoading.value = false
@@ -160,7 +179,6 @@ onUnmounted(() => observer?.disconnect())
 const sortOptions = [
   { value: 'latest' as const, label: '最新' },
   { value: 'hot' as const, label: '最热' },
-  { value: 'random' as const, label: '随机' },
 ]
 </script>
 

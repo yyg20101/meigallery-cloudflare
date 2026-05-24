@@ -6,7 +6,7 @@
 需要建设一个中文响应式图库平台，用于展示经过授权的写真、时尚、生活、艺术类图片和视频内容。平台需要支持标签化浏览、搜索、登录、会员等级解锁、后台发布和批量导入，同时保证媒体访问控制和内容合规。
 
 **解决方案**  
-基于 Cloudflare Workers、D1、R2、Stream、Turnstile 建设前后台一体平台。前台提供桌面端和手机端浏览体验，后台提供图库管理、标签管理、批量导入、会员等级发放、有效期管理、资源权限控制和审计记录。
+基于 Cloudflare Workers、D1、R2、Stream、Turnstile 建设前后台一体平台。前台提供桌面端和手机端浏览体验，后台提供图库管理、标签管理、批量导入、会员等级发放、有效期管理、资源权限控制和审计记录。当前生产环境已启用 Workers、D1、R2 和 Turnstile；Stream 视频能力仍为规划能力，尚未接入。
 
 **成功指标**
 
@@ -181,7 +181,7 @@ MVP 不需要 AI。
 - API：Cloudflare Workers（Hono 框架，独立 Worker），提供认证、图库、搜索、导入、媒体授权、后台管理接口。
 - 数据库：Cloudflare D1，存储用户、会员、图库、标签、媒体、导入任务、审计日志。
 - 对象存储：Cloudflare R2，存储导入包、图片原图、缩略图、导入错误报告。
-- 视频：Cloudflare Stream，负责视频上传、转码、播放和受限访问。
+- 视频：Cloudflare Stream，负责视频上传、转码、播放和受限访问；当前未接入，视频相关功能后续启用。
 - 安全：Cloudflare Turnstile、WAF、Rate Limiting、签名访问、服务端权限校验。
 
 ### 集成点
@@ -189,9 +189,9 @@ MVP 不需要 AI。
 - 认证：邮箱 + 密码登录，bcrypt/argon2 哈希存储，管理员角色独立授权。
 - D1：结构化数据、搜索过滤、会员有效期判断。
 - R2：私有图片和导入文件存储。
-- Stream：试看视频、完整视频、签名播放。
+- Stream：试看视频、完整视频、签名播放；当前未接入，生产环境暂不提供视频播放链路。
 - Turnstile：登录、注册、后台登录、批量导入表单防护。
-- GitHub：代码仓库关联 Cloudflare Workers，手动 wrangler deploy 生产部署。
+- GitHub：代码仓库关联 Cloudflare Workers，生产使用手动 wrangler deploy，并显式传入 `--env=""` 选择顶层生产配置。
 
 ### 数据模型摘要
 

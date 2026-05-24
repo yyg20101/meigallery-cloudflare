@@ -4,6 +4,7 @@
  */
 
 import { R2_KEY_PREFIX } from '@meigallery/shared/constants'
+import { assertSafeExternalUrl, safeExternalFetch } from '../utils/external-url'
 
 export interface DownloadResult {
   assetId: string
@@ -23,7 +24,7 @@ export async function downloadImageToR2(
   assetId: string,
 ): Promise<DownloadResult> {
   try {
-    const response = await fetch(sourceUrl)
+    const response = await safeExternalFetch(sourceUrl)
     if (!response.ok) {
       return { assetId, success: false, error: `HTTP ${response.status}` }
     }
@@ -67,7 +68,7 @@ export async function uploadVideoToStream(
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          url: sourceUrl,
+          url: assertSafeExternalUrl(sourceUrl),
           meta: { name: assetId },
           requireSignedURLs: true,
         }),

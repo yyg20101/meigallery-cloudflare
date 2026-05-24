@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import type { Bindings, Variables } from '../../index'
+import { requireAdmin } from '../../middleware/auth'
 import { adminGalleryRoutes } from './galleries'
 import { adminTagRoutes } from './tags'
 import { adminUserRoutes } from './users'
@@ -9,11 +10,13 @@ import { adminSettingsRoutes } from './settings'
 import { adminLegacyImportRoutes } from './legacy-import'
 import { adminContactMethodRoutes } from './contact-methods'
 import { adminMediaRoutes } from './media'
+import { adminCaseRoutes } from './cases'
+import { adminImportApiTokenRoutes } from './import-api-tokens'
+import { adminExternalImportRecordRoutes } from './external-import-records'
 
 export const adminRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
-// TODO: 添加管理员认证中间件
-// adminRoutes.use('*', adminAuthMiddleware)
+adminRoutes.use('*', requireAdmin)
 
 adminRoutes.get('/dashboard', async (c) => {
   const db = c.env.DB
@@ -47,4 +50,7 @@ adminRoutes.route('/audit-logs', adminAuditRoutes)
 adminRoutes.route('/settings', adminSettingsRoutes)
 adminRoutes.route('/legacy-import', adminLegacyImportRoutes)
 adminRoutes.route('/contact-methods', adminContactMethodRoutes)
+adminRoutes.route('/cases', adminCaseRoutes)
+adminRoutes.route('/import-api-tokens', adminImportApiTokenRoutes)
+adminRoutes.route('/external-import-records', adminExternalImportRecordRoutes)
 adminRoutes.route('/', adminMediaRoutes)
