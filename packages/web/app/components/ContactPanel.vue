@@ -139,7 +139,7 @@ function toggleRules() {
         </div>
 
         <div class="border-t border-orange-100 bg-gradient-to-r from-[#fffbf7] to-white px-5 py-3 text-xs leading-5 text-gray-500">
-          未配置跳转链接时，点击联系方式会复制联系值；二维码可点击展开查看。
+          支持官方跳转的平台会直接打开；无法生成跳转时，点击会复制联系值。
         </div>
       </div>
     </Transition>

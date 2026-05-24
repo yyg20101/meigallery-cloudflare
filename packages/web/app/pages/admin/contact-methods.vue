@@ -41,6 +41,8 @@ const platformOptions = Object.entries(CONTACT_PLATFORMS).map(([key, cfg]) => ({
 
 const currentPlatformConfig = computed(() => CONTACT_PLATFORMS[form.platform])
 const autoLink = computed(() => generateContactLink(form.platform, form.value))
+const canAutoLink = computed(() => currentPlatformConfig.value?.supportsLink && !!currentPlatformConfig.value?.linkTemplate)
+const linkHint = computed(() => currentPlatformConfig.value?.linkHint || '该平台无法自动判断跳转能力，前台会优先复制联系值。')
 
 function resetForm() {
   form.platform = 'wechat'
@@ -177,7 +179,7 @@ async function onQrDelete(id: string) {
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">跳转链接（可选）</label>
           <div class="flex gap-2">
-            <input v-model="form.linkUrl" class="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="留空则不可点击跳转" />
+            <input v-model="form.linkUrl" class="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="可手动填写完整 URL；留空时按平台自动判断" />
             <button
               v-if="autoLink && !form.linkUrl"
               type="button"
@@ -187,8 +189,10 @@ async function onQrDelete(id: string) {
               填充自动链接
             </button>
           </div>
-          <p v-if="autoLink" class="mt-1 text-xs text-gray-400">可用自动链接：{{ autoLink }}</p>
-          <p class="mt-0.5 text-xs text-gray-400">不填写则前台联系方式仅展示，不可点击跳转</p>
+          <p class="mt-1 text-xs text-gray-500">{{ linkHint }}</p>
+          <p v-if="autoLink" class="mt-0.5 break-all text-xs text-gray-400">可用自动链接：{{ autoLink }}</p>
+          <p v-else-if="canAutoLink" class="mt-0.5 text-xs text-gray-400">填写有效联系值后，前台会自动生成跳转链接。</p>
+          <p v-else class="mt-0.5 text-xs text-gray-400">未手动填写链接时，前台点击默认复制联系值。</p>
         </div>
         <div class="flex items-center gap-2">
           <input id="form-enabled" v-model="form.enabled" type="checkbox" class="rounded" />
