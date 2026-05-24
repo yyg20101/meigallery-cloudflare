@@ -3,10 +3,10 @@ import { describe, expect, it } from 'vitest'
 import type { Bindings, Variables } from '../index'
 import { galleryRoutes } from './galleries'
 
-function createApp() {
+function createApp(userId: number | null = null) {
   const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
   app.use('*', async (c, next) => {
-    c.set('userId', null)
+    c.set('userId', userId)
     c.set('userRole', null)
     await next()
   })
@@ -195,6 +195,48 @@ describe('公开图库 API', () => {
     expect(body.pageSize).toBe(20)
     expect(binds.flat().some(value => typeof value === 'number' && Number.isNaN(value))).toBe(false)
   })
+
+  it('新增点赞只在现有 like_count 上递增，保留初始人气基线', async () => {
+    const app = createApp(12)
+    const { db, preparedSqls } = createLikeDb({ initialLikeCount: 80, insertChanges: 1 })
+    const env = { DB: db } as unknown as Bindings
+    const { ctx } = createExecutionContext()
+
+    const res = await app.fetch(new Request('https://api.test/api/galleries/gal_1/like', { method: 'POST' }), env, ctx)
+    const body = await res.json<{ likeCount: number; likedByMe: boolean }>()
+
+    expect(res.status).toBe(200)
+    expect(body).toEqual({ likeCount: 81, likedByMe: true })
+    expect(preparedSqls).toContain('UPDATE galleries SET like_count = like_count + 1 WHERE id = ?')
+    expect(preparedSqls.some(sql => sql.includes('SELECT COUNT(*) FROM gallery_likes'))).toBe(false)
+  })
+
+  it('重复点赞不会重复增加 like_count', async () => {
+    const app = createApp(12)
+    const { db, preparedSqls } = createLikeDb({ initialLikeCount: 80, insertChanges: 0 })
+    const env = { DB: db } as unknown as Bindings
+    const { ctx } = createExecutionContext()
+
+    const res = await app.fetch(new Request('https://api.test/api/galleries/gal_1/like', { method: 'POST' }), env, ctx)
+    const body = await res.json<{ likeCount: number; likedByMe: boolean }>()
+
+    expect(res.status).toBe(200)
+    expect(body).toEqual({ likeCount: 80, likedByMe: true })
+    expect(preparedSqls).not.toContain('UPDATE galleries SET like_count = like_count + 1 WHERE id = ?')
+  })
+
+  it('取消点赞只在删除关系成功时递减且不会小于 0', async () => {
+    const app = createApp(12)
+    const { db } = createLikeDb({ initialLikeCount: 0, deleteChanges: 1 })
+    const env = { DB: db } as unknown as Bindings
+    const { ctx } = createExecutionContext()
+
+    const res = await app.fetch(new Request('https://api.test/api/galleries/gal_1/like', { method: 'DELETE' }), env, ctx)
+    const body = await res.json<{ likeCount: number; likedByMe: boolean }>()
+
+    expect(res.status).toBe(200)
+    expect(body).toEqual({ likeCount: 0, likedByMe: false })
+  })
 })
 
 function galleryRow(id: string) {
@@ -210,4 +252,62 @@ function galleryRow(id: string) {
     like_count: 0,
     hot_score: 0,
   }
+}
+
+function createLikeDb(options: {
+  initialLikeCount: number
+  insertChanges?: number
+  deleteChanges?: number
+}) {
+  let likeCount = options.initialLikeCount
+  const preparedSqls: string[] = []
+
+  const db = {
+    prepare(sql: string) {
+      preparedSqls.push(sql)
+      const statement = {
+        bind() {
+          return this
+        },
+        async first<T>() {
+          if (sql.includes('SELECT id, like_count FROM galleries')) {
+            return { id: 'gal_1', like_count: likeCount } as T
+          }
+
+          if (sql.includes('SELECT like_count FROM galleries WHERE id = ?')) {
+            return { like_count: likeCount } as T
+          }
+
+          return null as T
+        },
+        async all<T>() {
+          return { results: [] as T[] }
+        },
+        async run() {
+          if (sql.includes('INSERT OR IGNORE INTO gallery_likes')) {
+            return { success: true, meta: { changes: options.insertChanges ?? 0 } }
+          }
+
+          if (sql === 'UPDATE galleries SET like_count = like_count + 1 WHERE id = ?') {
+            likeCount += 1
+            return { success: true, meta: { changes: 1 } }
+          }
+
+          if (sql.includes('DELETE FROM gallery_likes')) {
+            return { success: true, meta: { changes: options.deleteChanges ?? 0 } }
+          }
+
+          if (sql === 'UPDATE galleries SET like_count = CASE WHEN like_count > 0 THEN like_count - 1 ELSE 0 END WHERE id = ?') {
+            likeCount = Math.max(0, likeCount - 1)
+            return { success: true, meta: { changes: 1 } }
+          }
+
+          return { success: true, meta: { changes: 0 } }
+        },
+      }
+      return statement
+    },
+  }
+
+  return { db, preparedSqls }
 }

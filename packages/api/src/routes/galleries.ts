@@ -11,6 +11,10 @@ export const galleryRoutes = new Hono<{ Bindings: Bindings; Variables: Variables
 
 type GalleryContext = Context<{ Bindings: Bindings; Variables: Variables }>
 
+function mutationChanged(result: { meta?: { changes?: number } }) {
+  return (result.meta?.changes ?? 0) > 0
+}
+
 const VIEW_COUNT_TTL_SECONDS = 60 * 60
 const VIEW_COUNT_CLEANUP_INTERVAL_MS = 60_000
 const recentViewCounts = new Map<string, number>()
@@ -203,14 +207,17 @@ galleryRoutes.post('/:id/like', async (c) => {
   }
 
   const createdAt = new Date().toISOString()
-  await db.batch([
-    db
-      .prepare(`INSERT OR IGNORE INTO gallery_likes (id, gallery_id, user_id, created_at) VALUES (?, ?, ?, ?)`)
-      .bind(crypto.randomUUID(), gallery.id, userId, createdAt),
-    db
-      .prepare('UPDATE galleries SET like_count = (SELECT COUNT(*) FROM gallery_likes WHERE gallery_id = ?) WHERE id = ?')
-      .bind(gallery.id, gallery.id),
-  ])
+  const likeResult = await db
+    .prepare(`INSERT OR IGNORE INTO gallery_likes (id, gallery_id, user_id, created_at) VALUES (?, ?, ?, ?)`)
+    .bind(crypto.randomUUID(), gallery.id, userId, createdAt)
+    .run()
+
+  if (mutationChanged(likeResult)) {
+    await db
+      .prepare('UPDATE galleries SET like_count = like_count + 1 WHERE id = ?')
+      .bind(gallery.id)
+      .run()
+  }
 
   const latest = await db
     .prepare('SELECT like_count FROM galleries WHERE id = ?')
@@ -241,14 +248,17 @@ galleryRoutes.delete('/:id/like', async (c) => {
     return c.json({ statusCode: 404, message: '图库不存在' }, 404)
   }
 
-  await db.batch([
-    db
-      .prepare('DELETE FROM gallery_likes WHERE gallery_id = ? AND user_id = ?')
-      .bind(gallery.id, userId),
-    db
-      .prepare('UPDATE galleries SET like_count = (SELECT COUNT(*) FROM gallery_likes WHERE gallery_id = ?) WHERE id = ?')
-      .bind(gallery.id, gallery.id),
-  ])
+  const unlikeResult = await db
+    .prepare('DELETE FROM gallery_likes WHERE gallery_id = ? AND user_id = ?')
+    .bind(gallery.id, userId)
+    .run()
+
+  if (mutationChanged(unlikeResult)) {
+    await db
+      .prepare('UPDATE galleries SET like_count = CASE WHEN like_count > 0 THEN like_count - 1 ELSE 0 END WHERE id = ?')
+      .bind(gallery.id)
+      .run()
+  }
 
   const latest = await db
     .prepare('SELECT like_count FROM galleries WHERE id = ?')

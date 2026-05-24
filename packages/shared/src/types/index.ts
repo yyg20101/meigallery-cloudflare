@@ -78,6 +78,8 @@ export interface GallerySummary {
   coverUrl: string | null
   requiredLevelRank: number
   publishedAt: string | null
+  viewCount?: number
+  likeCount?: number
   tags: TagInfo[]
 }
 

@@ -269,6 +269,56 @@ VALUES
   ('ma_010_v2', 'gal_010', 'video', 'r2', 'videos/gal010-full.mp4', 'full', 11, 20, 'completed', '2026-04-19T13:00:00Z'),
   ('ma_015_v1', 'gal_015', 'video', 'r2', 'videos/gal015-preview.mp4', 'preview', 10, 0, 'completed', '2026-04-14T15:00:00Z');
 
+-- ===== 初始人气数据 =====
+-- 保留真实更高计数，只给演示内容补足热榜和卡片展示所需的初始热度。
+UPDATE galleries
+SET
+  view_count = MAX(COALESCE(view_count, 0), CASE id
+    WHEN 'gal_001' THEN 16880
+    WHEN 'gal_002' THEN 14320
+    WHEN 'gal_003' THEN 12860
+    WHEN 'gal_004' THEN 11240
+    WHEN 'gal_005' THEN 9860
+    WHEN 'gal_006' THEN 8320
+    WHEN 'gal_007' THEN 7240
+    WHEN 'gal_008' THEN 6180
+    WHEN 'gal_009' THEN 5420
+    WHEN 'gal_010' THEN 4860
+    WHEN 'gal_011' THEN 3920
+    WHEN 'gal_012' THEN 3180
+    WHEN 'gal_013' THEN 2860
+    WHEN 'gal_014' THEN 2410
+    WHEN 'gal_015' THEN 2180
+    WHEN 'gal_016' THEN 1760
+    ELSE COALESCE(view_count, 0)
+  END),
+  like_count = MAX(COALESCE(like_count, 0), CASE id
+    WHEN 'gal_001' THEN 326
+    WHEN 'gal_002' THEN 284
+    WHEN 'gal_003' THEN 241
+    WHEN 'gal_004' THEN 219
+    WHEN 'gal_005' THEN 186
+    WHEN 'gal_006' THEN 158
+    WHEN 'gal_007' THEN 132
+    WHEN 'gal_008' THEN 117
+    WHEN 'gal_009' THEN 96
+    WHEN 'gal_010' THEN 82
+    WHEN 'gal_011' THEN 64
+    WHEN 'gal_012' THEN 48
+    WHEN 'gal_013' THEN 42
+    WHEN 'gal_014' THEN 36
+    WHEN 'gal_015' THEN 31
+    WHEN 'gal_016' THEN 24
+    ELSE COALESCE(like_count, 0)
+  END),
+  updated_at = datetime('now')
+WHERE id IN (
+  'gal_001', 'gal_002', 'gal_003', 'gal_004',
+  'gal_005', 'gal_006', 'gal_007', 'gal_008',
+  'gal_009', 'gal_010', 'gal_011', 'gal_012',
+  'gal_013', 'gal_014', 'gal_015', 'gal_016'
+);
+
 -- ===== 测试用户 =====
 -- 密码: test123456（PBKDF2 哈希需要在运行时生成，这里用占位符）
 -- 管理员用户通过 API 创建更安全
