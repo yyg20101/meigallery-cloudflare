@@ -145,3 +145,5 @@ WordPress 迁移已完成：
 - 53 个标签 + 2081 个图库标签关系
 - 606 个旧 URL 重定向规则
 - 729 个视频因 Stream 未接入暂跳过
+
+当前状态补充（2026-05-24）：旧站迁移结果已纳入当前项目状态索引；生产运行仍以 `docs/PROJECT_STATUS.md`、`docs/TECHNICAL_SPEC.md` 和 `docs/DEPLOYMENT.md` 为准。

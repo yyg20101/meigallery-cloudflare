@@ -177,7 +177,7 @@ MVP 不需要 AI。
 
 ### 架构概览
 
-- 前端：Cloudflare Workers（Nuxt 3，preset `cloudflare`，含 Workers Assets 静态资源托管），承载前台和后台管理界面。
+- 前端：Cloudflare Workers（当前实现为 Nuxt 4，Nitro preset `cloudflare-module`，含 Workers Assets 静态资源托管），承载前台和后台管理界面。
 - API：Cloudflare Workers（Hono 框架，独立 Worker），提供认证、图库、搜索、导入、媒体授权、后台管理接口。
 - 数据库：Cloudflare D1，存储用户、会员、图库、标签、媒体、导入任务、审计日志。
 - 对象存储：Cloudflare R2，存储导入包、图片原图、缩略图、导入错误报告。
@@ -310,7 +310,7 @@ gallery-002,城市街拍,city-snap-002,上海,高冷,都市,"短发,街拍",free
 | 单个导入包内图库数 | 200 | 避免单次导入过大阻塞处理 |
 | 单个图库图片数 | 100 | 前台展示和加载性能约束 |
 | 单个图库视频数 | 5 | preview + full 为主 |
-| 缩略图尺寸 | 宽 480px / 800px | 首次访问按需生成，R2 缓存 |
+| 缩略图尺寸 | 当前固定宽 480px | 使用 Cloudflare Images Transformations 时仅启用单规格；失败或未启用时回退原图 |
 
 ### 系统限制
 
@@ -379,7 +379,7 @@ MVP：
 - 后台图库、标签、媒体、站点设置管理。
 - zip 批量导入。
 - WordPress 旧站导入和迁移预览。
-- 受保护图片和视频访问控制。
+- 受保护图片访问控制；视频访问控制保留设计，待 Stream 接入后完整启用。
 - 基础审计日志。
 
 v1.1：
@@ -409,9 +409,9 @@ v2.0：
 | 缩略图按需生成首次慢 | 首屏体验差 | Worker 生成后存入 R2 缓存；列表页预加载 |
 | D1 单库写入瓶颈 | 并发导入冲突 | 限制同时导入任务数 <= 3；批量写入分段提交 |
 
-生产域名：616618.xyz / api.616618.xyz
+当前生产域名：616618.xyz / api.616618.xyz。
 
-WordPress 迁移已完成：606 图库 + 2811 图片 + 53 标签
+当前 WordPress 迁移状态：606 图库 + 2811 图片 + 53 标签已迁入；729 个视频因 Cloudflare Stream 未接入暂跳过。
 
 ### 已确定决策
 
