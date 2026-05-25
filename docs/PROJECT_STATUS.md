@@ -58,5 +58,6 @@
 
 - 当前状态权威文档：`AGENTS.md`、本文档、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md`、`docs/GIT_WORKFLOW.md`。
 - 产品和设计文档：`docs/PRD*.md`、`docs/PRD_QUALITY_REVIEW.md` 与 `docs/UI_DESIGN.md` 保留产品需求、路线图、验收口径和设计约束；其中标注为草案、规划或后续阶段的内容不代表当前生产状态。
+- 代码与文档 review 问题台账：`docs/CODE_AND_DOC_REVIEW_ISSUES.md` 记录全项目代码、配置和文档审查发现的问题、影响和修复方案。
 - 代码库分析文档：`docs/codebase/*.md` 记录从代码和配置验证出的栈、结构、架构、约定、集成、测试和风险。
 - 历史归档：`docs/plans/**` 与 `docs/superpowers/**` 为历史计划、规格和实现记录，可能包含 Nuxt 3、`testimonial_*`、旧路由或旧权限名，不代表当前生产状态。
