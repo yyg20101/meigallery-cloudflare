@@ -3,11 +3,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Bindings, Variables } from '../index'
 import { mediaRoutes } from './media'
 
-function createApp() {
+function createApp(options: { userId?: number | null; userRole?: string | null } = {}) {
   const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
   app.use('*', async (c, next) => {
-    c.set('userId', null)
-    c.set('userRole', null)
+    c.set('userId', options.userId ?? null)
+    c.set('userRole', options.userRole ?? null)
     await next()
   })
   app.route('/api/media', mediaRoutes)
@@ -178,5 +178,21 @@ describe('公开媒体访问', () => {
     expect(res.headers.get('Content-Type')).toBe('image/jpeg')
     expect(res.headers.get('Cache-Control')).toBe('public, max-age=604800')
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('受保护媒体访问', () => {
+  it('图片访问接口校验后代理返回 R2 内容，不返回原始 URL', async () => {
+    const app = createApp({ userId: 1, userRole: 'admin' })
+    const env = createThumbnailEnv({ imageResizingEnabled: 'false', requiredRank: 10 })
+
+    const res = await app.request('/api/media/asset-1/access', {}, env)
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Content-Type')).toBe('image/jpeg')
+    expect(res.headers.get('Cache-Control')).toBe('private, max-age=600')
+
+    const body = new Uint8Array(await res.arrayBuffer())
+    expect(Array.from(body)).toEqual([1, 2, 3])
   })
 })

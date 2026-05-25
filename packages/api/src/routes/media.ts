@@ -1,8 +1,8 @@
 import { Hono } from 'hono'
 import type { Bindings, Variables } from '../index'
 import { requireAuth } from '../middleware/auth'
-import { getUserEffectiveRank, checkMediaAccess } from '../utils/permission'
-import { SIGNED_URL_TTL } from '@meigallery/shared/constants'
+import { checkMediaAccess } from '../utils/permission'
+import { MEDIA_ACCESS_TTL } from '@meigallery/shared/constants'
 
 export const mediaRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -187,9 +187,9 @@ mediaRoutes.get('/raw/:assetId', async (c) => {
 })
 
 /**
- * GET /api/media/:assetId/access - 受保护媒体访问签名
- * 需要登录，验证会员等级后返回临时访问 URL
- * - 图片：返回 R2 预签名 URL 或直接 stream
+ * GET /api/media/:assetId/access - 受保护媒体访问接口
+ * 需要登录，验证会员等级后返回媒体内容或播放凭证
+ * - 图片：Worker 代理返回 R2 对象内容，不暴露 R2 原始地址
  * - 视频：返回 Cloudflare Stream 签名 token
  */
 mediaRoutes.get('/:assetId/access', requireAuth, async (c) => {
@@ -240,7 +240,7 @@ mediaRoutes.get('/:assetId/access', requireAuth, async (c) => {
 
   // 根据媒体类型返回不同的访问凭证
   if (asset.type === 'image' && asset.r2_key) {
-    // 图片：直接通过此接口代理返回
+    // 图片：服务端校验通过后代理返回 R2 对象。
     const object = await c.env.R2.get(asset.r2_key)
     if (!object) {
       return c.json({ statusCode: 404, message: '文件不存在' }, 404)
@@ -248,7 +248,7 @@ mediaRoutes.get('/:assetId/access', requireAuth, async (c) => {
 
     const headers = new Headers()
     headers.set('Content-Type', object.httpMetadata?.contentType || 'image/jpeg')
-    headers.set('Cache-Control', 'private, max-age=600')
+    headers.set('Cache-Control', `private, max-age=${MEDIA_ACCESS_TTL.PROTECTED_IMAGE_CACHE}`)
 
     return new Response(object.body, { headers })
   }
@@ -259,14 +259,14 @@ mediaRoutes.get('/:assetId/access', requireAuth, async (c) => {
       c.env.STREAM_ACCOUNT_ID,
       c.env.STREAM_API_TOKEN,
       asset.stream_uid,
-      SIGNED_URL_TTL.VIDEO,
+      MEDIA_ACCESS_TTL.STREAM_TOKEN,
     )
 
     return c.json({
       type: 'video',
       streamUid: asset.stream_uid,
       token: signedToken,
-      expiresIn: SIGNED_URL_TTL.VIDEO,
+      expiresIn: MEDIA_ACCESS_TTL.STREAM_TOKEN,
     })
   }
 
@@ -277,7 +277,7 @@ mediaRoutes.get('/:assetId/access', requireAuth, async (c) => {
 
 /**
  * 生成 Cloudflare Stream 签名 token
- * 使用 Stream API 创建临时签名 URL
+ * 使用 Stream API 创建临时播放 token
  */
 async function generateStreamSignedToken(
   accountId: string,

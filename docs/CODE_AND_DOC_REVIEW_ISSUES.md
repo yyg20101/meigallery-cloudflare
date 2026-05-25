@@ -17,7 +17,7 @@
 | P1-03 | P1 | 密码哈希实现与 PRD/技术文档不一致 | 已完成 | 已确认 PBKDF2 为当前 Workers 正式策略；文档已同步参数、版本化格式和重新哈希触发条件；校验已改为固定轮次字节比较并补测试 | 后续如提高迭代次数或切换算法，按哈希格式前缀做兼容迁移 |
 | P2-01 | P2 | Worker 配置缺少生产可观测性，compatibility_date 偏旧 | 已完成 | 已按 Wrangler 4.86.0 schema 为 API/Web 生产和 dev 配置 Workers Logs，并将 Worker `compatibility_date` 与 Web `compatibilityDate` 更新到 2026-05-26；部署文档已记录更新和验证流程 | 后续每次更新兼容日期前先查阅 Cloudflare 官方 compatibility dates / flags 文档并完成 dry-run |
 | P2-02 | P2 | zip 批量导入文档明显超前于当前实现 | 已完成 | 已将 PRD 和技术设计拆分为当前任务记录/manifest 解析/JSON `galleries` 处理能力，以及后续 R2 直传异步 zip 导入设计 | 后续实现完整 zip 导入时，先补 R2 上传入口、异步处理器、重试策略和验收测试 |
-| P2-03 | P2 | 媒体访问文档写 R2 presigned URL，但代码实际为 Worker 代理 | 待处理 | 已纳入整改计划 Phase 4 | 更新技术设计并调整误导性命名或注释 |
+| P2-03 | P2 | 媒体访问文档写 R2 presigned URL，但代码实际为 Worker 代理 | 已完成 | 已统一为 Worker 代理受保护图片响应；技术设计、PRD、部署限流命名、常量和路由注释已同步，并补充媒体访问测试 | 后续如改为 R2 presigned URL，需单独补签名实现、撤销策略和权限回归测试 |
 | P2-04 | P2 | 前端自动化测试缺失 | 待处理 | 已纳入整改计划 Phase 4 | 接入 Playwright smoke 和多视口断言 |
 | P2-05 | P2 | dev 环境复用正式 D1/R2 数据 | 待处理 | 已纳入整改计划 Phase 4 | 拆分 dev 资源或增加正式数据风险标识 |
 | P2-06 | P2 | 文档中的 Turnstile 覆盖范围与当前实现不一致 | 待处理 | 已纳入整改计划 Phase 4 | 统一后台登录和敏感操作校验口径 |
@@ -81,7 +81,7 @@
 
 - 已完成（2026-05-26）。
 - 登录/注册应用内兜底限流已从 10 次/分钟/IP 对齐为 5 次/分钟/IP。
-- 应用内兜底限流已覆盖公开 JSON API、管理员 API、媒体访问签名和外部导入 API。
+- 应用内兜底限流已覆盖公开 JSON API、管理员 API、媒体访问接口和外部导入 API。
 - `docs/TECHNICAL_SPEC.md` 已明确应用内内存限流不提供生产全局强一致，生产强限流由 Cloudflare WAF / Rate Limiting Rules 承担。
 - `docs/DEPLOYMENT.md` 已补充生产 WAF Rate Limiting Rules 配置表和 Free 计划规则数量不足时的最低保护口径。
 - 已新增 `packages/api/src/middleware/rate-limit.test.ts` 覆盖限流桶隔离、用户级限流和 session 级限流。
@@ -95,7 +95,7 @@
 **影响**
 
 - 多 isolate、跨边缘节点、重启或扩缩容后限流计数不一致。
-- 登录、注册、媒体访问签名和管理员 API 的生产防护弱于文档承诺。
+- 登录、注册、媒体访问接口和管理员 API 的生产防护弱于文档承诺。
 - 安全验收容易产生误判。
 
 **修复方案**
@@ -103,7 +103,7 @@
 1. 生产环境使用 Cloudflare WAF / Rate Limiting Rules 承担边缘限流。
 2. 如需应用内强一致计数，引入 Durable Object、D1 计数表或 Cloudflare Turnstile/WAF 组合策略。
 3. 统一 `RATE_LIMITS` 常量、`index.ts` 实际值和技术文档。
-4. 补充测试：登录暴力尝试、媒体访问签名、管理员 API、公开 API。
+4. 补充测试：登录暴力尝试、媒体访问接口、管理员 API、公开 API。
 
 ### P1-03 密码哈希实现与 PRD/技术文档不一致
 
@@ -201,6 +201,16 @@
 
 ### P2-03 媒体访问文档写 R2 presigned URL，但代码实际为 Worker 代理
 
+**状态**
+
+- 已完成（2026-05-26）。
+- `docs/TECHNICAL_SPEC.md` 已明确受保护图片由 Worker 在服务端校验后代理返回 R2 对象，响应使用 `Cache-Control: private, max-age=600`。
+- `docs/PRD.md` 已将媒体访问和防盗链风险说明从“签名 URL”调整为“Worker 代理受保护图片响应；Stream 接入后视频使用 signed token”。
+- `packages/shared/src/constants/index.ts` 已将 `SIGNED_URL_TTL` 调整为 `MEDIA_ACCESS_TTL`，避免把图片代理私有缓存误称为签名 URL。
+- `packages/api/src/index.ts` 和 `docs/DEPLOYMENT.md` 已将限流对象从“媒体访问签名”统一为“媒体访问接口”。
+- `packages/api/src/routes/media.test.ts` 已补充受保护图片代理测试，断言不会返回原始 URL。
+- 本阶段验证已通过：`corepack pnpm --filter @meigallery/api test -- media.test.ts rate-limit.test.ts`、`corepack pnpm --filter @meigallery/api exec tsc --noEmit`、`corepack pnpm --filter @meigallery/web exec nuxt build`。
+
 **证据**
 
 - `docs/TECHNICAL_SPEC.md` 写受保护图片通过后签发 R2 presigned URL。
@@ -214,9 +224,9 @@
 
 **修复方案**
 
-1. 如果继续 Worker 代理流，更新 `TECHNICAL_SPEC.md`，明确“不暴露 R2 原始地址，服务端代理返回短缓存响应”。
-2. 如果必须 presigned URL，补真正签名实现、TTL、撤销策略和 referer/cookie 无关的权限测试。
-3. 将 `SIGNED_URL_TTL.IMAGE` 命名改为更贴近实现的 `PROTECTED_IMAGE_CACHE_TTL` 或类似名称。
+1. 已继续采用 Worker 代理流，并更新 `TECHNICAL_SPEC.md`，明确“不暴露 R2 原始地址，服务端代理返回短缓存响应”。
+2. 已将图片缓存 TTL 和 Stream token TTL 统一收敛到 `MEDIA_ACCESS_TTL`，避免复用签名 URL 命名。
+3. 已补充受保护图片代理测试；如果后续必须改为 R2 presigned URL，需要单独补真正签名实现、TTL、撤销策略和 referer/cookie 无关的权限测试。
 
 ### P2-04 前端自动化测试缺失
 
@@ -426,7 +436,7 @@
 
 1. 修复 Web typecheck，并把 Web typecheck 加入 CI。
 2. 统一安全文档和实现：速率限制、密码哈希、Turnstile 覆盖范围。
-3. 明确媒体访问模式：Worker 代理或 R2 短期签名 URL。
+3. 明确媒体访问模式：Worker 代理受保护图片响应；Stream 接入后视频使用 signed token。
 4. 将 zip 导入文档拆成“当前实现”和“后续完整异步导入”。
 5. 增加 Worker observability 和 compatibility date 更新流程。
 6. 接入前端 Playwright smoke 和 lint/coverage。

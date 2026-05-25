@@ -43,10 +43,10 @@ export const R2_KEY_PREFIX = {
   IMPORTS: 'imports',
 } as const
 
-/** 签名 URL 有效期（秒） */
-export const SIGNED_URL_TTL = {
-  IMAGE: 600,      // 10 分钟
-  VIDEO: 14400,    // 4 小时
+/** 受保护媒体访问响应/凭证 TTL（秒） */
+export const MEDIA_ACCESS_TTL = {
+  PROTECTED_IMAGE_CACHE: 600, // Worker 代理图片响应私有缓存 10 分钟
+  STREAM_TOKEN: 14400,        // Stream signed token 4 小时
 } as const
 
 /** 分页默认值 */
@@ -61,7 +61,7 @@ export const RATE_LIMITS = {
   AUTH: { requests: 5, window: 60 },         // 5 次/分钟/IP
   PUBLIC_API: { requests: 60, window: 60 },  // 60 次/分钟/IP
   ADMIN_API: { requests: 120, window: 60 },  // 120 次/分钟/session
-  MEDIA_SIGN: { requests: 30, window: 60 },  // 30 次/分钟/user
+  MEDIA_ACCESS: { requests: 30, window: 60 }, // 30 次/分钟/user
   EXTERNAL_IMPORT: { requests: 120, window: 60 }, // 120 次/分钟/IP
 } as const
 

@@ -83,15 +83,15 @@
 
 当前实现分两层：
 
-- 应用内兜底限流：API Worker 使用 isolate 内存滑动窗口计数器，覆盖登录/注册、公开 JSON API、管理员 API、媒体访问签名和外部导入接口。该层在多 isolate、跨边缘节点或 Worker 重启后不保证全局强一致，只作为代码级兜底和本地验证能力。
-- 生产边缘强限流：生产环境必须在 Cloudflare WAF / Rate Limiting Rules 中配置对应规则。Cloudflare 规则需按表达式、计数特征、周期、请求数、缓解时长和动作创建；规则数量和可选周期受当前 WAF 计划影响。若当前计划无法完整表达下表所有规则，必须优先保护登录/注册和媒体访问签名，并在上线风险说明中记录差异。
+- 应用内兜底限流：API Worker 使用 isolate 内存滑动窗口计数器，覆盖登录/注册、公开 JSON API、管理员 API、媒体访问接口和外部导入接口。该层在多 isolate、跨边缘节点或 Worker 重启后不保证全局强一致，只作为代码级兜底和本地验证能力。
+- 生产边缘强限流：生产环境必须在 Cloudflare WAF / Rate Limiting Rules 中配置对应规则。Cloudflare 规则需按表达式、计数特征、周期、请求数、缓解时长和动作创建；规则数量和可选周期受当前 WAF 计划影响。若当前计划无法完整表达下表所有规则，必须优先保护登录/注册和媒体访问接口，并在上线风险说明中记录差异。
 
 | 操作 | 限制 |
 |------|------|
 | 登录/注册 | 5 次/分钟/IP |
 | 公开 API | 60 次/分钟/IP |
 | 管理员 API | 120 次/分钟/session |
-| 媒体访问签名 | 30 次/分钟/user |
+| 媒体访问接口 | 30 次/分钟/user |
 | 外部导入 API | 120 次/分钟/IP |
 
 ## 5. 权限模型
@@ -155,8 +155,9 @@
 1. 前端请求 /api/media/:assetId/access
 2. Worker 校验 session → 获取用户会员 rank
 3. 比较 rank >= media_asset.required_rank
-4. 通过 → 签发 R2 presigned URL（有效期 10 分钟）
-5. 拒绝 → 返回 403 和所需等级信息
+4. 通过 → Worker 从私有 R2 读取对象并代理返回响应体，不暴露 R2 原始地址
+5. 响应使用 Cache-Control: private, max-age=600，允许用户端私有短缓存
+6. 拒绝 → 返回 403 和所需等级信息
 ```
 
 ### 受保护视频访问
@@ -197,7 +198,7 @@
 | POST | `/api/auth/login` | 登录（需 Turnstile） |
 | POST | `/api/auth/logout` | 登出 |
 | GET | `/api/me` | 当前用户信息和会员状态 |
-| GET | `/api/media/:assetId/access` | 媒体访问签名（需登录） |
+| GET | `/api/media/:assetId/access` | 媒体访问接口（需登录；图片代理响应，视频返回 Stream token） |
 | GET | `/api/media/:assetId/thumbnail` | 缩略图（公开） |
 
 ### 管理员 API
@@ -698,7 +699,8 @@ queued → processing → completed
 | 首页和列表页数据 | 短缓存，发布后失效 | 60 秒 |
 | 标签列表 | 短缓存 | 300 秒 |
 | 公开缩略图 | R2 公开访问 + CDN 缓存 | 7 天（文件名含 hash） |
-| 受保护媒体 | 不缓存，短期签名 URL | 不适用 |
+| 受保护图片 | Worker 代理返回，用户端私有短缓存 | 600 秒 |
+| 受保护视频 | Stream 接入后返回 signed token | 4 小时 |
 
 ## 12. 已实现功能补充
 

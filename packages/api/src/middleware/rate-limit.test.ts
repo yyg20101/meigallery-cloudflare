@@ -27,7 +27,7 @@ describe('速率限制中间件', () => {
       c.set('userId', c.req.param('user'))
       await next()
     })
-    app.use('/media/*', rateLimiter({ name: 'media-sign', keyBy: 'user', limit: 1, windowMs: 60_000 }))
+    app.use('/media/*', rateLimiter({ name: 'media-access', keyBy: 'user', limit: 1, windowMs: 60_000 }))
     app.get('/media/:user/access', c => c.text('ok'))
 
     expect((await app.request('/media/1/access')).status).toBe(200)

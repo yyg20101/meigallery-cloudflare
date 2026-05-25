@@ -74,7 +74,7 @@ const rateLimitWindowMs = (seconds: number) => seconds * 1000
 const authRateLimit = RATE_LIMITS.AUTH
 const publicApiRateLimit = RATE_LIMITS.PUBLIC_API
 const adminApiRateLimit = RATE_LIMITS.ADMIN_API
-const mediaSignRateLimit = RATE_LIMITS.MEDIA_SIGN
+const mediaAccessRateLimit = RATE_LIMITS.MEDIA_ACCESS
 const externalImportRateLimit = RATE_LIMITS.EXTERNAL_IMPORT
 
 // 登录/注册接口速率限制兜底：每 IP 每分钟 5 次
@@ -123,12 +123,12 @@ app.use('/api/admin/*', rateLimiter({
   windowMs: rateLimitWindowMs(adminApiRateLimit.window),
 }))
 
-// 受保护媒体访问签名兜底：每 user 每分钟 30 次
+// 受保护媒体访问接口兜底：每 user 每分钟 30 次
 app.use('/api/media/*/access', rateLimiter({
-  name: 'media-sign',
+  name: 'media-access',
   keyBy: 'user',
-  limit: mediaSignRateLimit.requests,
-  windowMs: rateLimitWindowMs(mediaSignRateLimit.window),
+  limit: mediaAccessRateLimit.requests,
+  windowMs: rateLimitWindowMs(mediaAccessRateLimit.window),
 }))
 
 // 路由挂载

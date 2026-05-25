@@ -54,8 +54,9 @@
 - `P1-03 密码哈希实现与 PRD/技术文档不一致` 已完成：当前正式策略为 Workers 原生 Web Crypto PBKDF2，文档已同步参数和升级口径，密码校验已改为固定轮次字节比较并补测试。
 - `P2-01 Worker 配置缺少生产可观测性，compatibility_date 偏旧` 已完成：API/Web 已启用 Workers Logs，生产和 dev 配置均显式设置 observability，Worker `compatibility_date` 与 Web `compatibilityDate` 已更新到 `2026-05-26`，部署文档已记录更新和 dry-run 验证流程。
 - `P2-02 zip 批量导入文档明显超前于当前实现` 已完成：PRD 和技术设计已拆分当前任务记录、manifest 解析、JSON `galleries` 处理能力，以及后续 R2 直传异步 zip 导入设计。
+- `P2-03 媒体访问文档写 R2 presigned URL，但代码实际为 Worker 代理` 已完成：受保护图片访问已统一为服务端权限校验后 Worker 代理返回 R2 对象，文档、常量、路由注释和测试均已同步。
 - `corepack pnpm --filter @meigallery/web typecheck` 当前通过，但仍打印 `vue-router/volar/sfc-route-blocks` package export 非阻断警告，后续依赖升级阶段继续跟踪。
-- P1 当前已全部处理完毕；下一批 P2 待处理项为受保护图片访问文档与实际 Worker 代理实现对齐。
+- P1 当前已全部处理完毕；下一批 P2 待处理项为前端 Playwright smoke、多视口断言和 UI 回归自动化。
 
 ## Git 状态
 
