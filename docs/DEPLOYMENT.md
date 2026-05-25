@@ -133,6 +133,27 @@ Email：
 
 - Cloudflare Email Service 使用前需按 Cloudflare 官方文档和 Dashboard 当前状态确认可用计划、发信额度和费用；当前 `email_verification_enabled` 默认为 `false`。
 
+### 生产速率限制
+
+API Worker 已内置应用内兜底限流，但该实现使用 Worker isolate 内存计数，不保证跨边缘节点、跨 isolate 或重启后的全局一致性。生产环境必须额外配置 Cloudflare WAF / Rate Limiting Rules 作为边缘强防护。
+
+建议生产规则：
+
+| 规则 | 匹配表达式示例 | 计数特征 | 阈值 | 动作 |
+|------|----------------|----------|------|------|
+| 登录/注册 | `http.host eq "api.616618.xyz" and http.request.uri.path matches "^/api/auth/(login|register)$"` | IP | 5 次 / 60 秒 | Managed Challenge 或 Block |
+| 公开 JSON API | `http.host eq "api.616618.xyz" and http.request.uri.path matches "^/api/(galleries|tags|search|cases|contact-methods)(/.*)?$"` | IP | 60 次 / 60 秒 | Managed Challenge 或 Block |
+| 管理员 API | `http.host eq "api.616618.xyz" and http.request.uri.path starts_with "/api/admin/"` | session cookie 或 IP | 120 次 / 60 秒 | Managed Challenge 或 Block |
+| 媒体访问签名 | `http.host eq "api.616618.xyz" and http.request.uri.path matches "^/api/media/[^/]+/access$"` | session cookie 或 IP | 30 次 / 60 秒 | Managed Challenge 或 Block |
+| 外部导入 API | `http.host eq "api.616618.xyz" and http.request.uri.path starts_with "/api/imports/"` | IP | 120 次 / 60 秒 | Block |
+
+配置要求：
+
+- 先使用 Log 或 Managed Challenge 验证阈值，再切换到 Block。
+- 规则的 Period、Requests、Characteristics、Mitigation timeout 和 Action 必须按 Dashboard 当前可用选项配置；不同 Cloudflare WAF 计划可用规则数和周期不同。
+- 当前 Zone 为 Free 计划时，若规则数量不足以完整覆盖上表，至少启用登录/注册规则，并保留代码内兜底限流；媒体访问签名和管理员 API 需在上线风险清单中标注。
+- 如果后续需要强一致的用户级或 session 级应用限流，可评估 Cloudflare Workers Rate Limiting binding、Durable Objects 或 D1 计数表；Workers Rate Limiting binding 仍按 Cloudflare location 本地生效，不应被描述为全球强一致。
+
 ## 7. 全球 CDN 加速
 
 - 静态资源由 Workers Assets 自动分发到全球边缘节点。

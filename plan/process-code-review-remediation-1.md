@@ -51,10 +51,10 @@ tags: [process, remediation, quality, ci, security]
 
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
-| TASK-009 | 对齐 `packages/shared/src/constants/index.ts`、`packages/api/src/index.ts` 和 `docs/TECHNICAL_SPEC.md` 中登录/注册限流值。 |  |  |
-| TASK-010 | 明确应用内内存限流仅作为本地和单 isolate 保护，生产强限流由 Cloudflare WAF / Rate Limiting Rules 承担。 |  |  |
-| TASK-011 | 补充登录/注册、媒体访问签名、管理员 API 和公开 API 的限流测试或配置验收说明。 |  |  |
-| TASK-012 | 更新 `docs/DEPLOYMENT.md` 的生产限流配置步骤和回滚说明。 |  |  |
+| TASK-009 | 对齐 `packages/shared/src/constants/index.ts`、`packages/api/src/index.ts` 和 `docs/TECHNICAL_SPEC.md` 中登录/注册限流值。 | ✅ | 2026-05-26 |
+| TASK-010 | 明确应用内内存限流仅作为本地和单 isolate 保护，生产强限流由 Cloudflare WAF / Rate Limiting Rules 承担。 | ✅ | 2026-05-26 |
+| TASK-011 | 补充登录/注册、媒体访问签名、管理员 API 和公开 API 的限流测试或配置验收说明。 | ✅ | 2026-05-26 |
+| TASK-012 | 更新 `docs/DEPLOYMENT.md` 的生产限流配置步骤和回滚说明。 | ✅ | 2026-05-26 |
 
 ### Implementation Phase 3
 

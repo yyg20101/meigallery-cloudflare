@@ -50,8 +50,9 @@
 
 - 当前整改执行计划见 `plan/process-code-review-remediation-1.md`。
 - `P1-01 Web 类型检查失败且 CI 未覆盖` 已完成：shared 不再暴露 Worker binding 类型给 Web，前端严格类型错误已修复，CI 已新增 Web typecheck。
+- `P1-02 生产速率限制与文档承诺不一致` 已完成：API 内置兜底限流已对齐常量和技术文档，部署文档已补生产 Cloudflare WAF / Rate Limiting Rules 配置口径。
 - `corepack pnpm --filter @meigallery/web typecheck` 当前通过，但仍打印 `vue-router/volar/sfc-route-blocks` package export 非阻断警告，后续依赖升级阶段继续跟踪。
-- 下一批 P1 待处理项为生产速率限制一致性和密码哈希策略一致性。
+- 下一批 P1 待处理项为密码哈希策略一致性。
 
 ## Git 状态
 

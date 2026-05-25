@@ -13,7 +13,7 @@
 | 编号 | 优先级 | 问题 | 状态 | 当前进度 | 下一步 |
 |------|--------|------|------|----------|--------|
 | P1-01 | P1 | Web 类型检查失败且 CI 未覆盖 | 已完成 | 已修复 shared 类型边界和前端严格类型错误；CI 已增加 Web typecheck；本地 Web typecheck 通过，仍有 Nuxt/Volar 非阻断警告 | 跟踪 `vue-router/volar/sfc-route-blocks` package export 警告，后续在依赖升级阶段处理 |
-| P1-02 | P1 | 生产速率限制与文档承诺不一致 | 待处理 | 已纳入整改计划 Phase 2 | 对齐限流常量、代码和文档，补生产 Cloudflare 限流配置说明 |
+| P1-02 | P1 | 生产速率限制与文档承诺不一致 | 已完成 | 已对齐限流常量、API 挂载点和技术文档；已补应用内兜底限流测试和生产 WAF 配置说明 | 上线前按 Cloudflare Dashboard 当前计划确认 WAF Rate Limiting Rules 可用数量和周期 |
 | P1-03 | P1 | 密码哈希实现与 PRD/技术文档不一致 | 待处理 | 已纳入整改计划 Phase 3 | 明确 PBKDF2 当前策略，补 timing-safe 比较和测试 |
 | P2-01 | P2 | Worker 配置缺少生产可观测性，compatibility_date 偏旧 | 待处理 | 已纳入整改计划 Phase 4 | 核对当前 Wrangler schema 后补 observability 配置 |
 | P2-02 | P2 | zip 批量导入文档明显超前于当前实现 | 待处理 | 已纳入整改计划 Phase 4 | 拆分当前实现和后续完整异步导入设计 |
@@ -76,6 +76,15 @@
 4. 在 CI 增加 `corepack pnpm --filter @meigallery/web typecheck`。
 
 ### P1-02 生产速率限制与文档承诺不一致
+
+**状态**
+
+- 已完成（2026-05-26）。
+- 登录/注册应用内兜底限流已从 10 次/分钟/IP 对齐为 5 次/分钟/IP。
+- 应用内兜底限流已覆盖公开 JSON API、管理员 API、媒体访问签名和外部导入 API。
+- `docs/TECHNICAL_SPEC.md` 已明确应用内内存限流不提供生产全局强一致，生产强限流由 Cloudflare WAF / Rate Limiting Rules 承担。
+- `docs/DEPLOYMENT.md` 已补充生产 WAF Rate Limiting Rules 配置表和 Free 计划规则数量不足时的最低保护口径。
+- 已新增 `packages/api/src/middleware/rate-limit.test.ts` 覆盖限流桶隔离、用户级限流和 session 级限流。
 
 **证据**
 

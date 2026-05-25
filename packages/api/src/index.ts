@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { secureHeaders } from 'hono/secure-headers'
+import { RATE_LIMITS } from '@meigallery/shared/constants'
 import { authRoutes } from './routes/auth'
 import { galleryRoutes } from './routes/galleries'
 import { tagRoutes } from './routes/tags'
@@ -68,13 +69,67 @@ app.use('*', async (c, next) => {
     c.header('X-Robots-Tag', 'noindex, nofollow')
   }
 })
-// 登录/注册接口速率限制：每 IP 每分钟 10 次
-app.use('/api/auth/*', rateLimiter({ limit: 10, windowMs: 60_000 }))
-// 图库互动接口速率限制：每 IP 每分钟 60 次
-app.use('/api/galleries/*/like', rateLimiter({ limit: 60, windowMs: 60_000 }))
-// 外部导入接口速率限制：每 IP 每分钟 120 次
-app.use('/api/imports/*', rateLimiter({ limit: 120, windowMs: 60_000 }))
+const rateLimitWindowMs = (seconds: number) => seconds * 1000
+
+const authRateLimit = RATE_LIMITS.AUTH
+const publicApiRateLimit = RATE_LIMITS.PUBLIC_API
+const adminApiRateLimit = RATE_LIMITS.ADMIN_API
+const mediaSignRateLimit = RATE_LIMITS.MEDIA_SIGN
+const externalImportRateLimit = RATE_LIMITS.EXTERNAL_IMPORT
+
+// 登录/注册接口速率限制兜底：每 IP 每分钟 5 次
+app.use('/api/auth/*', rateLimiter({
+  name: 'auth',
+  keyBy: 'ip',
+  limit: authRateLimit.requests,
+  windowMs: rateLimitWindowMs(authRateLimit.window),
+}))
+
+// 公开 API 速率限制兜底：每 IP 每分钟 60 次
+for (const path of [
+  '/api/galleries',
+  '/api/galleries/*',
+  '/api/tags',
+  '/api/tags/*',
+  '/api/search',
+  '/api/search/*',
+  '/api/cases',
+  '/api/cases/*',
+  '/api/contact-methods',
+  '/api/contact-methods/*',
+]) {
+  app.use(path, rateLimiter({
+    name: 'public-api',
+    keyBy: 'ip',
+    limit: publicApiRateLimit.requests,
+    windowMs: rateLimitWindowMs(publicApiRateLimit.window),
+  }))
+}
+
+// 外部导入接口速率限制兜底：每 IP 每分钟 120 次
+app.use('/api/imports/*', rateLimiter({
+  name: 'external-import',
+  keyBy: 'ip',
+  limit: externalImportRateLimit.requests,
+  windowMs: rateLimitWindowMs(externalImportRateLimit.window),
+}))
 app.use('*', authMiddleware)
+
+// 管理员 API 速率限制兜底：每 session 每分钟 120 次
+app.use('/api/admin/*', rateLimiter({
+  name: 'admin-api',
+  keyBy: 'session',
+  limit: adminApiRateLimit.requests,
+  windowMs: rateLimitWindowMs(adminApiRateLimit.window),
+}))
+
+// 受保护媒体访问签名兜底：每 user 每分钟 30 次
+app.use('/api/media/*/access', rateLimiter({
+  name: 'media-sign',
+  keyBy: 'user',
+  limit: mediaSignRateLimit.requests,
+  windowMs: rateLimitWindowMs(mediaSignRateLimit.window),
+}))
 
 // 路由挂载
 app.route('/api/health', healthRoutes)
