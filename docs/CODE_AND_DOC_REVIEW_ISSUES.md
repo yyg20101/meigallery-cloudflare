@@ -14,7 +14,7 @@
 |------|--------|------|------|----------|--------|
 | P1-01 | P1 | Web 类型检查失败且 CI 未覆盖 | 已完成 | 已修复 shared 类型边界和前端严格类型错误；CI 已增加 Web typecheck；本地 Web typecheck 通过，仍有 Nuxt/Volar 非阻断警告 | 跟踪 `vue-router/volar/sfc-route-blocks` package export 警告，后续在依赖升级阶段处理 |
 | P1-02 | P1 | 生产速率限制与文档承诺不一致 | 已完成 | 已对齐限流常量、API 挂载点和技术文档；已补应用内兜底限流测试和生产 WAF 配置说明 | 上线前按 Cloudflare Dashboard 当前计划确认 WAF Rate Limiting Rules 可用数量和周期 |
-| P1-03 | P1 | 密码哈希实现与 PRD/技术文档不一致 | 待处理 | 已纳入整改计划 Phase 3 | 明确 PBKDF2 当前策略，补 timing-safe 比较和测试 |
+| P1-03 | P1 | 密码哈希实现与 PRD/技术文档不一致 | 已完成 | 已确认 PBKDF2 为当前 Workers 正式策略；文档已同步参数、版本化格式和重新哈希触发条件；校验已改为固定轮次字节比较并补测试 | 后续如提高迭代次数或切换算法，按哈希格式前缀做兼容迁移 |
 | P2-01 | P2 | Worker 配置缺少生产可观测性，compatibility_date 偏旧 | 待处理 | 已纳入整改计划 Phase 4 | 核对当前 Wrangler schema 后补 observability 配置 |
 | P2-02 | P2 | zip 批量导入文档明显超前于当前实现 | 待处理 | 已纳入整改计划 Phase 4 | 拆分当前实现和后续完整异步导入设计 |
 | P2-03 | P2 | 媒体访问文档写 R2 presigned URL，但代码实际为 Worker 代理 | 待处理 | 已纳入整改计划 Phase 4 | 更新技术设计并调整误导性命名或注释 |
@@ -107,24 +107,32 @@
 
 ### P1-03 密码哈希实现与 PRD/技术文档不一致
 
+**状态**
+
+- 已完成（2026-05-26）。
+- 当前正式密码策略为 Cloudflare Workers 原生 Web Crypto PBKDF2。
+- `docs/PRD.md` 和 `docs/TECHNICAL_SPEC.md` 已删除 bcrypt/argon2 当前态表述，并补充 PBKDF2 参数、格式前缀、升级和重新哈希口径。
+- `verifyPassword` 已从普通字符串比较改为固定轮次字节比较。
+- `packages/api/src/utils/password.test.ts` 已覆盖错误密码、非法格式、错误迭代次数、坏 base64、不同 salt 和 hash 长度不一致路径。
+
 **证据**
 
 - `packages/api/src/utils/password.ts` 当前使用 Web Crypto PBKDF2。
-- `docs/PRD.md` 和 `docs/TECHNICAL_SPEC.md` 写的是 bcrypt 或 argon2。
-- `verifyPassword` 使用普通字符串比较 `computedHash === expectedHash`。
+- `packages/api/src/utils/password.ts` 当前哈希格式为 `$pbkdf2$iterations$salt_base64$hash_base64`。
+- `packages/api/src/utils/password.test.ts` 覆盖密码哈希与验证路径。
 
 **影响**
 
-- 安全设计与实现不一致，后续审计或交接容易误判。
-- 如果团队预期是 argon2/bcrypt，需要迁移策略和兼容验证。
-- 普通字符串比较不是理想的 timing-safe 比较。
+- 整改前安全设计与实现不一致，后续审计或交接容易误判。
+- 整改前如果团队预期是 argon2/bcrypt，需要迁移策略和兼容验证。
+- 整改前普通字符串比较不是理想的 timing-safe 比较。
 
 **修复方案**
 
-1. 确定最终密码策略：Workers 兼容 argon2/bcrypt，或正式接受 PBKDF2。
-2. 若继续 PBKDF2，文档改为 PBKDF2，并明确迭代次数、salt、版本化格式和升级策略。
-3. 为密码校验实现 timing-safe 比较。
-4. 补充旧 hash 兼容和重新哈希迁移测试。
+1. 已确定当前正式接受 PBKDF2，使用 Web Crypto 原生能力。
+2. 已将文档改为 PBKDF2，并明确迭代次数、salt、版本化格式和升级策略。
+3. 已为密码校验实现固定轮次字节比较。
+4. 已补充非法格式、错误密码、不同 salt 和 hash 长度不一致测试；后续算法切换时再补旧 hash 兼容迁移测试。
 
 ## 3. P2 问题
 

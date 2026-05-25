@@ -50,9 +50,20 @@ export async function verifyPassword(password: string, storedHash: string): Prom
     return false
   }
 
+  if (!/^\d+$/.test(parts[2]!)) {
+    return false
+  }
+
   const iterations = parseInt(parts[2]!, 10)
-  const salt = Uint8Array.from(atob(parts[3]!), c => c.charCodeAt(0))
-  const expectedHash = parts[4]!
+  if (!Number.isInteger(iterations) || iterations <= 0) {
+    return false
+  }
+
+  const salt = base64ToBytes(parts[3]!)
+  const expectedHash = base64ToBytes(parts[4]!)
+  if (!salt || !expectedHash || salt.length === 0 || expectedHash.length === 0) {
+    return false
+  }
 
   const encoder = new TextEncoder()
   const keyMaterial = await crypto.subtle.importKey(
@@ -74,6 +85,26 @@ export async function verifyPassword(password: string, storedHash: string): Prom
     KEY_LENGTH * 8,
   )
 
-  const computedHash = btoa(String.fromCharCode(...new Uint8Array(derivedBits)))
-  return computedHash === expectedHash
+  return timingSafeEqual(new Uint8Array(derivedBits), expectedHash)
+}
+
+function base64ToBytes(value: string): Uint8Array | null {
+  try {
+    const decoded = atob(value)
+    return Uint8Array.from(decoded, c => c.charCodeAt(0))
+  }
+  catch {
+    return null
+  }
+}
+
+function timingSafeEqual(actual: Uint8Array, expected: Uint8Array): boolean {
+  let diff = actual.length ^ expected.length
+  const maxLength = Math.max(actual.length, expected.length)
+
+  for (let index = 0; index < maxLength; index += 1) {
+    diff |= (actual[index] ?? 0) ^ (expected[index] ?? 0)
+  }
+
+  return diff === 0
 }

@@ -62,10 +62,10 @@ tags: [process, remediation, quality, ci, security]
 
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
-| TASK-013 | 确认 Workers 当前使用 PBKDF2 作为正式策略，并在 `docs/PRD.md` 与 `docs/TECHNICAL_SPEC.md` 中删除 bcrypt/argon2 当前态表述。 |  |  |
-| TASK-014 | 在 `packages/api/src/utils/password.ts` 中实现 timing-safe hash 比较。 |  |  |
-| TASK-015 | 补充 `packages/api/src/utils/password.test.ts`，覆盖无效格式、错误密码、不同 salt、timing-safe 比较长度不一致路径。 |  |  |
-| TASK-016 | 记录后续密码算法版本化升级策略和重新哈希触发条件。 |  |  |
+| TASK-013 | 确认 Workers 当前使用 PBKDF2 作为正式策略，并在 `docs/PRD.md` 与 `docs/TECHNICAL_SPEC.md` 中删除 bcrypt/argon2 当前态表述。 | ✅ | 2026-05-26 |
+| TASK-014 | 在 `packages/api/src/utils/password.ts` 中实现 timing-safe hash 比较。 | ✅ | 2026-05-26 |
+| TASK-015 | 补充 `packages/api/src/utils/password.test.ts`，覆盖无效格式、错误密码、不同 salt、timing-safe 比较长度不一致路径。 | ✅ | 2026-05-26 |
+| TASK-016 | 记录后续密码算法版本化升级策略和重新哈希触发条件。 | ✅ | 2026-05-26 |
 
 ### Implementation Phase 4
 

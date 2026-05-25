@@ -54,7 +54,12 @@
 
 ### 密码存储
 
-使用 bcrypt 或 argon2 哈希，不存储明文密码。salt 自动生成，不复用。
+当前实现使用 Cloudflare Workers 原生 Web Crypto PBKDF2，不存储明文密码。salt 自动生成且不复用。
+
+- 哈希格式：`$pbkdf2$iterations$salt_base64$hash_base64`。
+- 当前参数：PBKDF2-HMAC-SHA-256，100000 次迭代，16 字节随机 salt，32 字节派生 key。
+- 校验时使用固定轮次字节比较，不使用普通字符串短路比较。
+- 后续如提高迭代次数或切换算法，保留格式前缀作为版本识别；用户成功登录、重置密码或修改密码时可触发重新哈希。
 
 ### 会话管理
 
