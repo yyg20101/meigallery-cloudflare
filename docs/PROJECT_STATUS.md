@@ -1,6 +1,6 @@
 # 项目当前状态
 
-更新时间：2026-05-24
+更新时间：2026-05-26
 
 本文档是当前实现和部署状态的索引。若历史计划或早期 PRD 与本文冲突，以本文、`AGENTS.md`、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md`、`docs/GIT_WORKFLOW.md` 为准。
 
@@ -32,6 +32,13 @@
 - 未接入：Cloudflare Stream 生产视频上传、编码和播放链路；相关字段、secret、媒体签名逻辑保留为规划能力。
 - 已完成迁移口径：真实案例当前统一为 `cases` / `case_images`、`/cases`、`/api/cases`、`case:create`；旧 `testimonial_*` 仅存在于历史文档、迁移脚本说明或兼容拒绝测试中。
 
+## PRD 质量状态
+
+- 当前 PRD 质量审阅和整改索引见 `docs/PRD_QUALITY_REVIEW.md`。
+- 当前可验收能力、部分实现能力和规划能力必须按 `docs/PRD_QUALITY_REVIEW.md` 的需求状态矩阵区分，不得把历史 PRD 中的规划项当作上线阻断项。
+- Cloudflare Stream、Email Service、zip 大文件异步导入、旧站内容审核状态机属于需要单独补齐验收标准的重点区域。
+- 后续新增或修改 PRD 时，必须为成功指标补充测试环境、数据规模、采样方法和失败路径。
+
 ## Git 状态
 
 - `main`：生产分支，必须通过 PR 合入，禁止直接推送。
@@ -50,6 +57,6 @@
 ## 文档说明
 
 - 当前状态权威文档：`AGENTS.md`、本文档、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md`、`docs/GIT_WORKFLOW.md`。
-- 产品和设计文档：`docs/PRD*.md` 与 `docs/UI_DESIGN.md` 保留产品需求、路线图和设计约束；其中标注为草案、规划或后续阶段的内容不代表当前生产状态。
+- 产品和设计文档：`docs/PRD*.md`、`docs/PRD_QUALITY_REVIEW.md` 与 `docs/UI_DESIGN.md` 保留产品需求、路线图、验收口径和设计约束；其中标注为草案、规划或后续阶段的内容不代表当前生产状态。
 - 代码库分析文档：`docs/codebase/*.md` 记录从代码和配置验证出的栈、结构、架构、约定、集成、测试和风险。
 - 历史归档：`docs/plans/**` 与 `docs/superpowers/**` 为历史计划、规格和实现记录，可能包含 Nuxt 3、`testimonial_*`、旧路由或旧权限名，不代表当前生产状态。
