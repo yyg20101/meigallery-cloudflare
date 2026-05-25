@@ -16,7 +16,7 @@
 | P1-02 | P1 | 生产速率限制与文档承诺不一致 | 已完成 | 已对齐限流常量、API 挂载点和技术文档；已补应用内兜底限流测试和生产 WAF 配置说明 | 上线前按 Cloudflare Dashboard 当前计划确认 WAF Rate Limiting Rules 可用数量和周期 |
 | P1-03 | P1 | 密码哈希实现与 PRD/技术文档不一致 | 已完成 | 已确认 PBKDF2 为当前 Workers 正式策略；文档已同步参数、版本化格式和重新哈希触发条件；校验已改为固定轮次字节比较并补测试 | 后续如提高迭代次数或切换算法，按哈希格式前缀做兼容迁移 |
 | P2-01 | P2 | Worker 配置缺少生产可观测性，compatibility_date 偏旧 | 已完成 | 已按 Wrangler 4.86.0 schema 为 API/Web 生产和 dev 配置 Workers Logs，并将 Worker `compatibility_date` 与 Web `compatibilityDate` 更新到 2026-05-26；部署文档已记录更新和验证流程 | 后续每次更新兼容日期前先查阅 Cloudflare 官方 compatibility dates / flags 文档并完成 dry-run |
-| P2-02 | P2 | zip 批量导入文档明显超前于当前实现 | 待处理 | 已纳入整改计划 Phase 4 | 拆分当前实现和后续完整异步导入设计 |
+| P2-02 | P2 | zip 批量导入文档明显超前于当前实现 | 已完成 | 已将 PRD 和技术设计拆分为当前任务记录/manifest 解析/JSON `galleries` 处理能力，以及后续 R2 直传异步 zip 导入设计 | 后续实现完整 zip 导入时，先补 R2 上传入口、异步处理器、重试策略和验收测试 |
 | P2-03 | P2 | 媒体访问文档写 R2 presigned URL，但代码实际为 Worker 代理 | 待处理 | 已纳入整改计划 Phase 4 | 更新技术设计并调整误导性命名或注释 |
 | P2-04 | P2 | 前端自动化测试缺失 | 待处理 | 已纳入整改计划 Phase 4 | 接入 Playwright smoke 和多视口断言 |
 | P2-05 | P2 | dev 环境复用正式 D1/R2 数据 | 待处理 | 已纳入整改计划 Phase 4 | 拆分 dev 资源或增加正式数据风险标识 |
@@ -173,23 +173,31 @@
 
 ### P2-02 zip 批量导入文档明显超前于当前实现
 
+**状态**
+
+- 已完成（2026-05-26）。
+- `docs/PRD.md` 已明确当前批量导入验收范围为 manifest CSV 解析工具、后台导入任务记录、JSON `galleries` 处理入口、结构化错误返回和错误 CSV。
+- `docs/PRD.md` 已将 zip 上传、R2 源文件保存、解压、目录结构校验、媒体上传、失败项重试和完整异步导入成功率标记为后续能力。
+- `docs/TECHNICAL_SPEC.md` 已拆分“当前实现范围”和“后续完整 zip 异步流程”。
+- 后续完整 zip 导入设计已明确 API 不直接承载大文件请求体，应通过 R2 直传源文件，并由 Queues、Workflows 或分片任务异步处理。
+
 **证据**
 
-- `docs/PRD.md` 和 `docs/TECHNICAL_SPEC.md` 描述 2GB zip、大文件异步、媒体上传、错误报告、失败重试等完整链路。
+- 整改前 `docs/PRD.md` 和 `docs/TECHNICAL_SPEC.md` 描述 2GB zip、大文件异步、媒体上传、错误报告、失败重试等完整链路。
 - `packages/api/src/routes/admin/import-jobs.ts` 当前主要创建任务，并通过 JSON `galleries` 数据处理，不是真正的 zip 上传、解压和异步处理入口。
 - `docs/PROJECT_STATUS.md` 已标注 zip 导入为部分实现。
 
 **影响**
 
-- 使用者可能误以为已经支持完整大文件 zip 导入。
+- 整改前使用者可能误以为已经支持完整大文件 zip 导入。
 - 2GB zip 与 Worker 请求体、CPU、内存限制存在天然冲突，必须异步化和分阶段上传。
 
 **修复方案**
 
-1. 在 PRD 和技术规格中统一标注当前范围：解析、校验、任务记录、结构化错误。
-2. 完整 zip 导入改为 R2 直传源文件，API 只创建任务和签发上传入口。
-3. 使用 Queues、Workflows 或分片任务处理解压、校验、媒体写入和错误报告。
-4. 为单包图库数、单文件大小、失败重试和错误报告建立可测验收标准。
+1. 已在 PRD 和技术规格中统一标注当前范围：manifest CSV 解析、任务记录、JSON `galleries` 处理、结构化错误和错误 CSV。
+2. 已将完整 zip 导入改为后续 R2 直传源文件设计，API 只创建任务和签发上传入口。
+3. 已记录后续使用 Queues、Workflows 或分片任务处理解压、校验、媒体写入和错误报告。
+4. 已将单包图库数、zip 大小、目录结构校验、失败重试和错误报告归入后续完整 zip 导入验收范围。
 
 ### P2-03 媒体访问文档写 R2 presigned URL，但代码实际为 Worker 代理
 

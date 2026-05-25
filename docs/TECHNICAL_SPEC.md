@@ -5,7 +5,7 @@
 - 使用 Cloudflare 作为唯一部署和运行平台。
 - 前台和后台共用同一套认证、权限、媒体访问控制能力。
 - 所有受保护媒体都必须经过服务端授权，前端不持有真实资源地址。
-- 批量导入以异步任务设计，避免大文件和视频处理阻塞请求。
+- 批量导入当前实现为任务记录 + 已解析 JSON 数据处理；完整 zip 大文件导入按后续异步任务设计，避免大文件和视频处理阻塞请求。
 - 会员等级使用 rank 数值比较，业务逻辑不硬编码等级名称。
 
 ## 2. 技术栈
@@ -177,7 +177,7 @@
 | 图片原图 | `originals/{galleryId}/{assetId}.{ext}` | 私有，Worker 代理 |
 | 缩略图 | `thumbnails/{assetId}/w{width}.webp` | 公开或短缓存 |
 | 封面图 | `covers/{galleryId}/cover.{ext}` | 公开 CDN |
-| 导入包 | `imports/{jobId}/source.zip` | 私有 |
+| 导入包 | `imports/{jobId}/source.zip` | 私有，后续完整 zip 导入能力使用 |
 | 错误报告 | `imports/{jobId}/errors.csv` | 私有，管理员下载 |
 
 ## 7. API 路由
@@ -587,6 +587,33 @@ CREATE TABLE legacy_url_redirects (
 
 ## 9. 批量导入流程
 
+### 当前实现范围
+
+当前后台导入接口提供任务记录和已解析数据处理能力，不直接接收、保存或解压 zip 文件。
+
+```text
+1. 管理员创建导入任务：POST /api/admin/import-jobs
+2. API 检查 processing 状态任务数，超过 3 个返回 429
+3. API 创建 import_jobs 记录，type = zip，status = queued
+4. 管理员或后台工具提交已解析后的 JSON galleries 数据：POST /api/admin/import-jobs/:id/process
+5. API 将任务置为 processing
+6. API 逐条处理 galleries：
+   - 校验 title、slug
+   - 校验 slug 唯一性
+   - Admin 强制 draft；Owner 可将 manifest 中的 published 写入发布状态
+   - 创建 galleries、gallery_tags、media_assets 记录
+   - 未存在标签按当前实现自动创建
+7. 单个图库失败时记录错误，继续处理下一个
+8. 如有失败项，生成 imports/{jobId}/errors.csv 写入 R2
+9. 更新 import_jobs 的 success_count、failure_count、total_count、error_report_key 和 completed_at
+```
+
+当前辅助解析能力：
+
+- `packages/api/src/utils/import-parser.ts` 可解析 `manifest.csv` 文本。
+- 当前解析校验覆盖必填列 `folder`、`title`、`slug`，以及 `slug` 格式、`required_level`、`status`。
+- 当前不会在 API 内部解压 zip，也不会在 API 内部校验 zip 目录中的 `content.md`、`cover.jpg` 或图片文件存在性。
+
 ### 状态机
 
 ```text
@@ -596,28 +623,31 @@ queued → processing → completed
 
 图库级别状态：`pending → success / failed / partial`
 
-### 详细流程
+### 后续完整 zip 异步流程
 
-1. 管理员上传 zip（最大 2 GB）。
-2. API 校验文件大小，存入 R2 `imports/{jobId}/source.zip`。
-3. 创建 `import_jobs` 记录，状态为 `queued`。
-4. Worker 异步处理：
+完整 zip 导入不是当前上线阻断项。后续实现时，API 不直接承载大文件请求体，应使用 R2 直传和异步处理：
+
+1. 管理员创建导入任务。
+2. API 签发 R2 上传入口或等价的受控上传流程。
+3. 管理员将 zip 源文件上传到 R2 `imports/{jobId}/source.zip`。
+4. API 记录 source key，将任务状态置为 `queued`。
+5. 后台异步处理器（Queues、Workflows 或分片任务）处理：
    - 解压 zip，读取 `manifest.csv`。
    - 校验图库数不超过 200。
    - 逐个图库目录校验：`content.md` 存在、`cover.jpg` 存在、至少一张图片。
-   - 校验通过 → 上传图片到 R2、视频到 Stream。
+   - 校验通过后写入图片到 R2；视频在 Stream 接入后上传到 Stream。
    - 创建 gallery 和 media_assets 记录。
    - 处理标签：已存在则关联，不存在且类型合法则自动创建。
    - 状态判定：Admin 强制 `draft`；Owner 可按 manifest 中的 `status` 设置。
-5. 单个图库失败时记录错误，继续处理下一个。
-6. 全部完成后更新 `import_jobs`（success_count、failure_count）。
-7. 生成错误报告 CSV 存入 R2。
-8. 管理员查看草稿 → 预览 → 发布。
+6. 单个图库失败时记录错误，继续处理下一个。
+7. 全部完成后更新 `import_jobs`（success_count、failure_count）。
+8. 生成错误报告 CSV 存入 R2。
+9. 管理员查看草稿 → 预览 → 发布。
 
 ### 并发控制
 
-- 同时进行的导入任务 <= 3。
-- 新任务提交时检查当前 `processing` 状态任务数，超限返回 429。
+- 当前实现：新任务提交时检查 `processing` 状态任务数，超过 3 个返回 429。
+- 后续完整 zip 异步导入：异步处理器继续沿用同时处理任务数 <= 3 的约束，并按 Cloudflare Queues / Workflows / 分片任务的实际能力设计重试和超时策略。
 
 ### Telegram 外部导入
 
@@ -688,14 +718,16 @@ queued → processing → completed
 
 - 权限校验：不同 rank 访问不同等级媒体。
 - 会员有效期：过期后立即失效。
-- 导入校验：合法包、缺失文件、重复 slug、非法标签类型、部分失败。
+- 导入校验当前范围：manifest CSV 解析、必填字段、slug 格式、required_level/status 枚举、重复 slug、部分失败。
+- 后续完整 zip 导入校验：合法包、缺失 `content.md`、缺失 `cover.jpg`、缺失图片、非法文件类型、资源大小限制。
 - 标签搜索：单标签、多标签组合、空结果。
 - 密码哈希与验证。
 - Turnstile token 校验。
 
 ### 集成测试
 
-- 完整导入流程：上传 → 校验 → 草稿生成 → 发布。
+- 当前导入流程：创建任务 → 提交已解析 JSON → 校验 → 草稿生成 → 错误报告。
+- 后续完整 zip 导入流程：R2 直传 zip → 异步解压校验 → 草稿生成 → 预览发布。
 - 完整迁移流程：拉取 → 解析 → 入库 → 审核。
 - 媒体签名流程：请求 → 校验 → 签发 → 过期。
 - 审计日志：admin 操作后检查日志记录。
