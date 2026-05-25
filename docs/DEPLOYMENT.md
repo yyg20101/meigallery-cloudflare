@@ -154,6 +154,27 @@ API Worker 已内置应用内兜底限流，但该实现使用 Worker isolate �
 - 当前 Zone 为 Free 计划时，若规则数量不足以完整覆盖上表，至少启用登录/注册规则，并保留代码内兜底限流；媒体访问签名和管理员 API 需在上线风险清单中标注。
 - 如果后续需要强一致的用户级或 session 级应用限流，可评估 Cloudflare Workers Rate Limiting binding、Durable Objects 或 D1 计数表；Workers Rate Limiting binding 仍按 Cloudflare location 本地生效，不应被描述为全球强一致。
 
+### Workers Logs 与兼容日期
+
+`packages/api/wrangler.toml` 和 `packages/web/wrangler.toml` 已显式启用 Workers Logs：
+
+```toml
+[observability]
+enabled = true
+head_sampling_rate = 1
+```
+
+`env.dev` 使用 `[env.dev.observability]` 单独配置，避免环境覆盖后丢失日志采集。`head_sampling_rate = 1` 表示当前阶段保留 100% 请求日志；生产流量升高后可按 Cloudflare Workers Logs 当前额度、保留期和费用调整采样率。
+
+兼容日期更新流程：
+
+1. 上线前查阅 Cloudflare Workers compatibility dates / flags 官方文档和当前 Wrangler config schema。
+2. 将 API/Web 的 `wrangler.toml` `compatibility_date` 和 Web 的 `nuxt.config.ts` `compatibilityDate` 同步更新到本次验证日期。
+3. 运行 `corepack pnpm --filter @meigallery/api exec wrangler deploy --dry-run --env=""` 和 `corepack pnpm --filter @meigallery/web exec wrangler deploy --dry-run --env=""` 验证生产配置。
+4. 如改动会影响 dev，同时运行 `--env=dev` dry-run。
+5. 完成 API 类型检查、Web 构建和核心测试后，再执行真实部署。
+6. 部署后在 Cloudflare Dashboard 的 Workers Observability / Logs 中确认 API 与 Web 均有请求日志；日志内容不得包含 token、cookie、Telegram Bot Token、R2 私有 key 或用户密码。
+
 ## 7. 全球 CDN 加速
 
 - 静态资源由 Workers Assets 自动分发到全球边缘节点。

@@ -15,7 +15,7 @@
 | P1-01 | P1 | Web 类型检查失败且 CI 未覆盖 | 已完成 | 已修复 shared 类型边界和前端严格类型错误；CI 已增加 Web typecheck；本地 Web typecheck 通过，仍有 Nuxt/Volar 非阻断警告 | 跟踪 `vue-router/volar/sfc-route-blocks` package export 警告，后续在依赖升级阶段处理 |
 | P1-02 | P1 | 生产速率限制与文档承诺不一致 | 已完成 | 已对齐限流常量、API 挂载点和技术文档；已补应用内兜底限流测试和生产 WAF 配置说明 | 上线前按 Cloudflare Dashboard 当前计划确认 WAF Rate Limiting Rules 可用数量和周期 |
 | P1-03 | P1 | 密码哈希实现与 PRD/技术文档不一致 | 已完成 | 已确认 PBKDF2 为当前 Workers 正式策略；文档已同步参数、版本化格式和重新哈希触发条件；校验已改为固定轮次字节比较并补测试 | 后续如提高迭代次数或切换算法，按哈希格式前缀做兼容迁移 |
-| P2-01 | P2 | Worker 配置缺少生产可观测性，compatibility_date 偏旧 | 待处理 | 已纳入整改计划 Phase 4 | 核对当前 Wrangler schema 后补 observability 配置 |
+| P2-01 | P2 | Worker 配置缺少生产可观测性，compatibility_date 偏旧 | 已完成 | 已按 Wrangler 4.86.0 schema 为 API/Web 生产和 dev 配置 Workers Logs，并将 Worker `compatibility_date` 与 Web `compatibilityDate` 更新到 2026-05-26；部署文档已记录更新和验证流程 | 后续每次更新兼容日期前先查阅 Cloudflare 官方 compatibility dates / flags 文档并完成 dry-run |
 | P2-02 | P2 | zip 批量导入文档明显超前于当前实现 | 待处理 | 已纳入整改计划 Phase 4 | 拆分当前实现和后续完整异步导入设计 |
 | P2-03 | P2 | 媒体访问文档写 R2 presigned URL，但代码实际为 Worker 代理 | 待处理 | 已纳入整改计划 Phase 4 | 更新技术设计并调整误导性命名或注释 |
 | P2-04 | P2 | 前端自动化测试缺失 | 待处理 | 已纳入整改计划 Phase 4 | 接入 Playwright smoke 和多视口断言 |
@@ -138,21 +138,33 @@
 
 ### P2-01 Worker 配置缺少生产可观测性，compatibility_date 偏旧
 
+**状态**
+
+- 已完成（2026-05-26）。
+- `packages/api/wrangler.toml` 和 `packages/web/wrangler.toml` 的 `compatibility_date` 已更新为 `2026-05-26`。
+- `packages/web/nuxt.config.ts` 的 `compatibilityDate` 已同步更新为 `2026-05-26`，确保 Nitro `cloudflare-module` 构建产物使用同一兼容日期。
+- API/Web 的生产配置均已启用 `[observability] enabled = true` 和 `head_sampling_rate = 1`。
+- API/Web 的 dev 环境均已通过 `[env.dev.observability]` 显式启用 Workers Logs。
+- `docs/DEPLOYMENT.md` 已补充 Workers Logs、采样率、日志敏感信息约束和 compatibility date 更新流程。
+- 已用 Wrangler 4.86.0 schema 与 `wrangler deploy --dry-run` 校验 API/Web 的 production/dev 配置，并用 Web 构建确认 Nitro 输出兼容日期。
+
 **证据**
 
-- `packages/api/wrangler.toml` 和 `packages/web/wrangler.toml` 的 `compatibility_date` 为 `2024-11-01`。
-- 两个 Worker 配置均未设置 observability / Workers Logs。
+- 整改前 `packages/api/wrangler.toml` 和 `packages/web/wrangler.toml` 的 `compatibility_date` 为 `2024-11-01`。
+- 整改前 `packages/web/nuxt.config.ts` 的 `compatibilityDate` 为 `2024-11-01`。
+- 整改前两个 Worker 配置均未设置 observability / Workers Logs。
+- Wrangler 4.86.0 本地 schema 支持 `observability.enabled`、`observability.head_sampling_rate` 和环境级 `env.*.observability`。
 
 **影响**
 
-- 生产运行时问题定位依赖 `console` 和 Dashboard 手动排查。
-- 兼容日期长期不更新会累积运行时行为差异和升级风险。
+- 整改前生产运行时问题定位依赖 `console` 和 Dashboard 手动排查。
+- 整改前兼容日期长期不更新会累积运行时行为差异和升级风险。
 
 **修复方案**
 
-1. 按当前 Wrangler schema 增加 Worker observability 配置。
-2. 制定按版本或按月更新 `compatibility_date` 的回归流程。
-3. 将关键错误日志结构化，避免泄露 token、cookie、Telegram Bot Token、R2 私有 key。
+1. 已按当前 Wrangler schema 增加 Worker observability 配置。
+2. 已在部署文档中制定 compatibility date 更新和 dry-run 回归流程。
+3. 已记录日志敏感信息约束；后续新增结构化日志时不得泄露 token、cookie、Telegram Bot Token、R2 私有 key 或用户密码。
 
 参考：
 
