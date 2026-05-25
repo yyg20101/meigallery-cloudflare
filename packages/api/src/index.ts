@@ -2,7 +2,6 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { secureHeaders } from 'hono/secure-headers'
-import type { CloudflareEnv } from '@meigallery/shared'
 import { authRoutes } from './routes/auth'
 import { galleryRoutes } from './routes/galleries'
 import { tagRoutes } from './routes/tags'
@@ -19,7 +18,9 @@ import { authMiddleware } from './middleware/auth'
 import { rateLimiter } from './middleware/rate-limit'
 
 /** Hono 应用绑定类型 */
-export type Bindings = CloudflareEnv & {
+export type Bindings = {
+  DB: D1Database
+  R2: R2Bucket
   APP_ENV: string
   SESSION_SECRET: string
   TURNSTILE_SECRET_KEY: string

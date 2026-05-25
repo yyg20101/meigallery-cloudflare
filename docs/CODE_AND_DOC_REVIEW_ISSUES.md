@@ -4,6 +4,32 @@
 
 本文记录 2026-05-26 对整个项目代码、配置和文档进行 review 后发现的问题、影响范围和修复方案。本文是整改台账，不替代 `docs/PROJECT_STATUS.md`、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md` 和 `docs/PRD_QUALITY_REVIEW.md` 的当前状态说明。
 
+当前整改执行计划见 `plan/process-code-review-remediation-1.md`。
+
+## 0. 修复状态总览
+
+更新时间：2026-05-26
+
+| 编号 | 优先级 | 问题 | 状态 | 当前进度 | 下一步 |
+|------|--------|------|------|----------|--------|
+| P1-01 | P1 | Web 类型检查失败且 CI 未覆盖 | 已完成 | 已修复 shared 类型边界和前端严格类型错误；CI 已增加 Web typecheck；本地 Web typecheck 通过，仍有 Nuxt/Volar 非阻断警告 | 跟踪 `vue-router/volar/sfc-route-blocks` package export 警告，后续在依赖升级阶段处理 |
+| P1-02 | P1 | 生产速率限制与文档承诺不一致 | 待处理 | 已纳入整改计划 Phase 2 | 对齐限流常量、代码和文档，补生产 Cloudflare 限流配置说明 |
+| P1-03 | P1 | 密码哈希实现与 PRD/技术文档不一致 | 待处理 | 已纳入整改计划 Phase 3 | 明确 PBKDF2 当前策略，补 timing-safe 比较和测试 |
+| P2-01 | P2 | Worker 配置缺少生产可观测性，compatibility_date 偏旧 | 待处理 | 已纳入整改计划 Phase 4 | 核对当前 Wrangler schema 后补 observability 配置 |
+| P2-02 | P2 | zip 批量导入文档明显超前于当前实现 | 待处理 | 已纳入整改计划 Phase 4 | 拆分当前实现和后续完整异步导入设计 |
+| P2-03 | P2 | 媒体访问文档写 R2 presigned URL，但代码实际为 Worker 代理 | 待处理 | 已纳入整改计划 Phase 4 | 更新技术设计并调整误导性命名或注释 |
+| P2-04 | P2 | 前端自动化测试缺失 | 待处理 | 已纳入整改计划 Phase 4 | 接入 Playwright smoke 和多视口断言 |
+| P2-05 | P2 | dev 环境复用正式 D1/R2 数据 | 待处理 | 已纳入整改计划 Phase 4 | 拆分 dev 资源或增加正式数据风险标识 |
+| P2-06 | P2 | 文档中的 Turnstile 覆盖范围与当前实现不一致 | 待处理 | 已纳入整改计划 Phase 4 | 统一后台登录和敏感操作校验口径 |
+| P2-07 | P2 | 审计日志覆盖整体较好，但旧站迁移批量入口仍需补齐确认 | 待处理 | 已纳入整改计划 Phase 4 | 建立后台写操作审计覆盖矩阵 |
+| P2-08 | P2 | 公开 API、错误响应和前端错误处理格式不统一 | 待处理 | 已纳入整改计划 Phase 4 | 定义统一错误响应 helper |
+| P3-01 | P3 | 文档中规划态、当前态和历史态混写 | 待处理 | 已纳入整改计划 Phase 5 | 为主要 PRD 和技术文档增加状态标签 |
+| P3-02 | P3 | 文档中的文件大小和上传限制不统一 | 待处理 | 已纳入整改计划 Phase 5 | 统一图片上传限制或明确入口差异 |
+| P3-03 | P3 | 缺少 lint / format 配置和 CI 约束 | 待处理 | 已纳入整改计划 Phase 5 | 接入 ESLint / 格式化策略 |
+| P3-04 | P3 | 覆盖率未知 | 待处理 | 已纳入整改计划 Phase 5 | 增加 Vitest coverage 配置 |
+| P3-05 | P3 | 后端路由文件过大，业务逻辑集中在路由层 | 待处理 | 已纳入整改计划 Phase 5 | 分阶段抽取 service/helper |
+| P3-06 | P3 | Stream 字段和签名逻辑存在，但生产视频链路未接入 | 待处理 | 已纳入整改计划 Phase 5 | Stream 接入前保持 UI 隐藏或维护态，并补 API 配置错误 |
+
 ## 1. 验证结果
 
 | 验证项 | 命令 | 结果 |
@@ -13,11 +39,19 @@
 | Web 构建 | `corepack pnpm --filter @meigallery/web exec nuxt build` | 通过，有 Nuxt/Tailwind sourcemap 警告 |
 | API dry-run 构建 | `corepack pnpm --filter @meigallery/api build` | 通过，Wrangler 可识别 D1/R2/Email 绑定 |
 | Shared 类型检查 | `corepack pnpm --filter @meigallery/shared exec tsc --noEmit` | 通过 |
-| Web 类型检查 | `corepack pnpm --filter @meigallery/web typecheck` | 失败 |
+| Web 类型检查 | `corepack pnpm --filter @meigallery/web typecheck` | 通过，有 `vue-router/volar/sfc-route-blocks` package export 非阻断警告 |
 
 ## 2. P1 问题
 
 ### P1-01 Web 类型检查失败且 CI 未覆盖
+
+**状态**
+
+- 已完成（2026-05-26）。
+- shared 包不再从前后端共享出口暴露 `D1Database` / `R2Bucket`。
+- 已修复 `TagFilterTabs.vue`、`admin/contact-methods.vue`、`admin/settings.vue`、`discover.vue` 的严格类型错误。
+- `.github/workflows/ci.yml` 已新增 Web 类型检查。
+- `corepack pnpm --filter @meigallery/web typecheck` 当前退出码为 0；仍打印 `vue-router/volar/sfc-route-blocks` package export 警告，未阻断类型检查。
 
 **证据**
 
@@ -363,6 +397,6 @@
 
 ## 6. 当前未处理事项
 
-- 本文只记录问题和方案，尚未修改代码实现。
-- `docs/UI_DESIGN.md`、`docs/UI_QUALITY_REVIEW.md` 和 `docs/ui/` 当前已有未提交变更，本文未覆盖或回退这些用户侧改动。
-- Web typecheck 的完整失败输出保留在本次 review 记录中；后续修复时应重新运行命令确认。
+- P1-01 已完成并进入提交验证流程。
+- P1-02、P1-03 仍为下一批 P1 待处理问题。
+- Web typecheck 仍打印 `vue-router/volar/sfc-route-blocks` package export 非阻断警告；后续依赖升级时需确认 Nuxt、Vue、vue-router 和 Vue language tooling 的版本组合。

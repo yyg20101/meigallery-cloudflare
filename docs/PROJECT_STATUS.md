@@ -46,6 +46,13 @@
 - Stream 接入前，视频入口、视频专区、视频角标和播放器均按规划能力处理，不作为当前上线阻断项。
 - 线框图留存规则见 `docs/ui/wireframes/README.md`，后续关键线框图需导出到该目录或以截图、PDF、HTML 快照形式保存。
 
+## 代码质量整改状态
+
+- 当前整改执行计划见 `plan/process-code-review-remediation-1.md`。
+- `P1-01 Web 类型检查失败且 CI 未覆盖` 已完成：shared 不再暴露 Worker binding 类型给 Web，前端严格类型错误已修复，CI 已新增 Web typecheck。
+- `corepack pnpm --filter @meigallery/web typecheck` 当前通过，但仍打印 `vue-router/volar/sfc-route-blocks` package export 非阻断警告，后续依赖升级阶段继续跟踪。
+- 下一批 P1 待处理项为生产速率限制一致性和密码哈希策略一致性。
+
 ## Git 状态
 
 - `main`：生产分支，必须通过 PR 合入，禁止直接推送。

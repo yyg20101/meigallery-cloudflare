@@ -39,7 +39,8 @@ const form = reactive({
 
 const platformOptions = Object.entries(CONTACT_PLATFORMS).map(([key, cfg]) => ({ key, name: cfg.name }))
 
-const currentPlatformConfig = computed(() => CONTACT_PLATFORMS[form.platform])
+const fallbackPlatformConfig = CONTACT_PLATFORMS.wechat!
+const currentPlatformConfig = computed(() => CONTACT_PLATFORMS[form.platform] ?? fallbackPlatformConfig)
 const autoLink = computed(() => generateContactLink(form.platform, form.value))
 const canAutoLink = computed(() => currentPlatformConfig.value?.supportsLink && !!currentPlatformConfig.value?.linkTemplate)
 const linkHint = computed(() => currentPlatformConfig.value?.linkHint || '该平台无法自动判断跳转能力，前台会优先复制联系值。')
@@ -113,7 +114,11 @@ async function onMove(index: number, direction: -1 | 1) {
   const list = [...items.value]
   const target = index + direction
   if (target < 0 || target >= list.length) return
-  ;[list[index], list[target]] = [list[target], list[index]]
+  const currentItem = list[index]
+  const targetItem = list[target]
+  if (!currentItem || !targetItem) return
+  list[index] = targetItem
+  list[target] = currentItem
   await api('/api/admin/contact-methods/reorder', { method: 'PATCH', body: { ids: list.map(i => i.id) } })
   await refresh()
 }

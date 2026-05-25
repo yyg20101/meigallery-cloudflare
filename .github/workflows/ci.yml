@@ -32,6 +32,9 @@ jobs:
       - name: API 类型检查
         run: pnpm --filter @meigallery/api exec tsc --noEmit
 
+      - name: Web 类型检查
+        run: pnpm --filter @meigallery/web typecheck
+
       - name: API 单元测试
         run: pnpm --filter @meigallery/api test
 

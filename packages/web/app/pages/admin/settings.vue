@@ -47,22 +47,26 @@ const { data: settings } = await useAsyncData('admin-settings', () =>
   api<{ data: Record<string, { value: string; updatedAt: string }> }>('/api/admin/settings'),
 )
 
+function parseBooleanSetting(value: string) {
+  return value === 'true'
+}
+
 if (settings.value?.data) {
   for (const [key, val] of Object.entries(settings.value.data)) {
     if (key in form) {
       (form as any)[key] = val.value || ''
     }
     if (key === 'email_verification_enabled') {
-      emailVerificationEnabled.value = val.value === true || val.value === 'true'
+      emailVerificationEnabled.value = parseBooleanSetting(val.value)
     }
     if (key === 'video_enabled') {
-      videoEnabledToggle.value = val.value === true || val.value === 'true'
+      videoEnabledToggle.value = parseBooleanSetting(val.value)
     }
     if (key === 'facebook_pixel_enabled') {
-      facebookPixelEnabled.value = val.value === true || val.value === 'true'
+      facebookPixelEnabled.value = parseBooleanSetting(val.value)
     }
     if (key === 'facebook_pixel_debug_enabled') {
-      facebookPixelDebugEnabled.value = val.value === true || val.value === 'true'
+      facebookPixelDebugEnabled.value = parseBooleanSetting(val.value)
     }
   }
 }
