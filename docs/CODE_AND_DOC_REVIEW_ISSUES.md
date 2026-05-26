@@ -18,7 +18,7 @@
 | P2-01 | P2 | Worker 配置缺少生产可观测性，compatibility_date 偏旧 | 已完成 | 已按 Wrangler 4.86.0 schema 为 API/Web 生产和 dev 配置 Workers Logs，并将 Worker `compatibility_date` 与 Web `compatibilityDate` 更新到 2026-05-26；部署文档已记录更新和验证流程 | 后续每次更新兼容日期前先查阅 Cloudflare 官方 compatibility dates / flags 文档并完成 dry-run |
 | P2-02 | P2 | zip 批量导入文档明显超前于当前实现 | 已完成 | 已将 PRD 和技术设计拆分为当前任务记录/manifest 解析/JSON `galleries` 处理能力，以及后续 R2 直传异步 zip 导入设计 | 后续实现完整 zip 导入时，先补 R2 上传入口、异步处理器、重试策略和验收测试 |
 | P2-03 | P2 | 媒体访问文档写 R2 presigned URL，但代码实际为 Worker 代理 | 已完成 | 已统一为 Worker 代理受保护图片响应；技术设计、PRD、部署限流命名、常量和路由注释已同步，并补充媒体访问测试 | 后续如改为 R2 presigned URL，需单独补签名实现、撤销策略和权限回归测试 |
-| P2-04 | P2 | 前端自动化测试缺失 | 待处理 | 已纳入整改计划 Phase 4 | 接入 Playwright smoke 和多视口断言 |
+| P2-04 | P2 | 前端自动化测试缺失 | 已完成 | 已接入 Playwright smoke，覆盖首页、搜索、图库详情、登录、用户中心和后台首页的 360/768/1024/1440 视口；CI 已增加浏览器安装和 smoke 步骤 | 后续补 Vitest component 测试覆盖核心组件状态 |
 | P2-05 | P2 | dev 环境复用正式 D1/R2 数据 | 待处理 | 已纳入整改计划 Phase 4 | 拆分 dev 资源或增加正式数据风险标识 |
 | P2-06 | P2 | 文档中的 Turnstile 覆盖范围与当前实现不一致 | 待处理 | 已纳入整改计划 Phase 4 | 统一后台登录和敏感操作校验口径 |
 | P2-07 | P2 | 审计日志覆盖整体较好，但旧站迁移批量入口仍需补齐确认 | 待处理 | 已纳入整改计划 Phase 4 | 建立后台写操作审计覆盖矩阵 |
@@ -40,6 +40,7 @@
 | API dry-run 构建 | `corepack pnpm --filter @meigallery/api build` | 通过，Wrangler 可识别 D1/R2/Email 绑定 |
 | Shared 类型检查 | `corepack pnpm --filter @meigallery/shared exec tsc --noEmit` | 通过 |
 | Web 类型检查 | `corepack pnpm --filter @meigallery/web typecheck` | 通过，有 `vue-router/volar/sfc-route-blocks` package export 非阻断警告 |
+| Web Playwright smoke | `corepack pnpm --filter @meigallery/web test:e2e` | 通过，6 个核心页面 × 4 个视口，共 24 个用例 |
 
 ## 2. P1 问题
 
@@ -230,6 +231,17 @@
 
 ### P2-04 前端自动化测试缺失
 
+**状态**
+
+- 已完成（2026-05-26）。
+- `packages/web` 已新增 Playwright 配置和 `test:e2e` 脚本。
+- 已新增本地 mock API，覆盖 smoke 所需的公开设置、登录态、图库、搜索、案例、联系方式和后台概览数据，避免测试依赖线上 API、真实 D1/R2 或外部图片。
+- smoke 已覆盖 `/`、`/search?q=夏日`、`/gallery/summer-portrait`、`/login`、`/user`、`/admin`，并在 360px、768px、1024px、1440px 视口执行。
+- smoke 断言核心标题可见、页面无横向溢出，且页面正文不泄露 `originals/` 或 `imports/` 私有对象 key。
+- `NUXT_PUBLIC_APP_ENV=test` 时，SSR 请求显式走 mock API，生产和 dev 的 Cloudflare Service Binding 逻辑保持不变。
+- `.github/workflows/ci.yml` 已新增 Playwright Chromium 安装和 Web smoke 步骤。
+- 本阶段验证已通过：`corepack pnpm --filter @meigallery/web test:e2e`（24 个用例）、`corepack pnpm --filter @meigallery/web typecheck`、`corepack pnpm --filter @meigallery/api exec tsc --noEmit`、`corepack pnpm --filter @meigallery/web exec nuxt build`。
+
 **证据**
 
 - `packages/web` 未发现前端单测、组件测试或 Playwright E2E 配置。
@@ -242,10 +254,10 @@
 
 **修复方案**
 
-1. 先接入 Playwright smoke：`/`、`/search`、图库详情、登录、用户中心、后台首页。
-2. 覆盖 360px、768px、1024px、1440px 视口。
-3. 增加断言：无横向滚动、锁定内容不含私有 R2 key、核心按钮可见、后台表格可扫读。
-4. 再补 Vitest component 测试覆盖核心组件状态。
+1. 已接入 Playwright smoke：`/`、`/search`、图库详情、登录、用户中心、后台首页。
+2. 已覆盖 360px、768px、1024px、1440px 视口。
+3. 已增加断言：核心标题可见、无横向滚动、页面正文不含私有 R2 key 前缀。
+4. 后续再补 Vitest component 测试覆盖核心组件状态。
 
 ### P2-05 dev 环境复用正式 D1/R2 数据
 

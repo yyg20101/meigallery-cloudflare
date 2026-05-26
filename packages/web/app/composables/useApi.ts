@@ -39,8 +39,9 @@ export function useApi() {
   }): Promise<T> {
     const event = useRequestEvent()
     const apiBinding = (event?.context as Record<string, any>)?.cloudflare?.env?.API_SERVICE
+    const isTestEnvironment = config.public.appEnv === 'test'
 
-    if (apiBinding) {
+    if (apiBinding && !isTestEnvironment) {
       // Cloudflare Workers 环境：Service Binding 直连（域名仅占位，路由取决于路径）
       const init: RequestInit = {
         method: options?.method || 'GET',

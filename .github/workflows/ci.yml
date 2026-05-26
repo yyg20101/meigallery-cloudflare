@@ -38,6 +38,12 @@ jobs:
       - name: API 单元测试
         run: pnpm --filter @meigallery/api test
 
+      - name: 安装 Playwright 浏览器
+        run: pnpm --filter @meigallery/web exec playwright install --with-deps chromium
+
+      - name: Web Playwright smoke
+        run: pnpm --filter @meigallery/web test:e2e
+
   build:
     name: 构建验证
     runs-on: ubuntu-latest

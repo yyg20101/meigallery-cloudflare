@@ -76,7 +76,7 @@ tags: [process, remediation, quality, ci, security]
 | TASK-017 | P2-01：按当前 Wrangler schema 为 `packages/api/wrangler.toml` 和 `packages/web/wrangler.toml` 增加 observability 配置，并记录 compatibility date 更新流程。 | ✅ | 2026-05-26 |
 | TASK-018 | P2-02：将 zip 批量导入文档拆为当前 JSON/校验任务实现和后续完整 R2 直传异步导入设计。 | ✅ | 2026-05-26 |
 | TASK-019 | P2-03：明确受保护图片当前采用 Worker 代理流，更新 `docs/TECHNICAL_SPEC.md` 并调整误导性命名或注释。 | ✅ | 2026-05-26 |
-| TASK-020 | P2-04：接入 Playwright smoke，覆盖 `/`、`/search`、图库详情、登录、用户中心和后台首页的多视口检查。 |  |  |
+| TASK-020 | P2-04：接入 Playwright smoke，覆盖 `/`、`/search`、图库详情、登录、用户中心和后台首页的多视口检查。 | ✅ | 2026-05-26 |
 | TASK-021 | P2-05：拆分 dev D1/R2 资源，或在 dev 后台增加正式数据风险标识和二次确认。 |  |  |
 | TASK-022 | P2-06：统一 Turnstile 覆盖范围文档和实现，明确后台复用普通登录或新增敏感操作校验。 |  |  |
 | TASK-023 | P2-07：建立后台写操作审计覆盖矩阵，并补旧站迁移入口测试。 |  |  |

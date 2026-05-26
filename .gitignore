@@ -35,6 +35,8 @@ pnpm-debug.log*
 
 # 测试覆盖率
 coverage/
+packages/*/test-results/
+packages/*/playwright-report/
 
 # TypeScript 缓存
 *.tsbuildinfo
