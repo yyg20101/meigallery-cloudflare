@@ -5,7 +5,7 @@ import { writeAuditLog } from '../../utils/permission'
 import { PAGINATION } from '@meigallery/shared/constants'
 import { fetchAllPosts, fetchAllCategories, fetchAllTags } from '../../services/wp-fetcher'
 import { processPosts, writeMigrationItem } from '../../services/wp-migration'
-import { downloadGalleryMedia, downloadImageToR2 } from '../../services/media-downloader'
+import { downloadImageToR2 } from '../../services/media-downloader'
 import { assertSafeExternalUrl } from '../../utils/external-url'
 
 export const adminLegacyImportRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
@@ -347,6 +347,12 @@ adminLegacyImportRoutes.post('/download-pending', async (c) => {
     .all<{ id: string; gallery_id: string; type: string; r2_key: string }>()
 
   if (assets.results.length === 0) {
+    await writeAuditLog(db, {
+      adminId,
+      action: 'legacy_media_download_pending',
+      targetType: 'media_asset',
+      afterValue: { limit, selectedCount: 0, downloaded: 0, failed: 0, remaining: 0, done: true },
+    })
     return c.json({ remaining: 0, downloaded: 0, failed: 0, done: true })
   }
 
@@ -396,8 +402,25 @@ adminLegacyImportRoutes.post('/download-pending', async (c) => {
     }
   }
 
+  const remaining = Math.max((countResult?.cnt ?? 0) - downloaded - failed, 0)
+
+  await writeAuditLog(db, {
+    adminId,
+    action: 'legacy_media_download_pending',
+    targetType: 'media_asset',
+    afterValue: {
+      limit,
+      selectedCount: assets.results.length,
+      downloaded,
+      failed,
+      remaining,
+      done: false,
+      errorCount: errors.length,
+    },
+  })
+
   return c.json({
-    remaining: (countResult?.cnt ?? 0) - downloaded - failed,
+    remaining,
     downloaded,
     failed,
     done: false,

@@ -230,11 +230,15 @@
 | GET | `/api/admin/audit-logs` | 审计日志 | admin（仅自己）/ owner（全部） |
 | GET | `/api/admin/settings` | 站点设置 | owner |
 | PATCH | `/api/admin/settings` | 修改站点设置 | owner |
-| POST | `/api/admin/legacy-import-sources` | 创建旧站来源 | admin+ |
-| POST | `/api/admin/legacy-import-jobs` | 启动旧站迁移 | admin+ |
-| GET | `/api/admin/legacy-import-jobs/:id` | 迁移任务详情 | admin+ |
-| GET | `/api/admin/legacy-import-items` | 迁移条目列表 | admin+ |
-| PATCH | `/api/admin/legacy-import-items/:id/review` | 审核迁移条目 | admin+ |
+| POST | `/api/admin/legacy-import/sources` | 创建旧站来源 | admin+ |
+| POST | `/api/admin/legacy-import/jobs` | 启动旧站迁移 | admin+ |
+| GET | `/api/admin/legacy-import/jobs/:id` | 迁移任务详情 | admin+ |
+| POST | `/api/admin/legacy-import/jobs/:id/execute` | 执行旧站迁移 | admin+ |
+| GET | `/api/admin/legacy-import/items` | 迁移条目列表 | admin+ |
+| PATCH | `/api/admin/legacy-import/items/:id/review` | 审核迁移条目 | admin+ |
+| POST | `/api/admin/legacy-import/download-pending` | 批量下载旧站待处理图片 | admin+ |
+| POST | `/api/admin/legacy-import/migrate/retry-failed` | 重置旧站下载失败图片 | admin+ |
+| POST | `/api/admin/legacy-import/migrate/set-covers` | 批量设置旧站迁移图库封面 | admin+ |
 
 ## 8. D1 数据库 Schema
 
@@ -458,8 +462,8 @@ CREATE TABLE external_import_files (
 CREATE TABLE admin_audit_logs (
   id TEXT PRIMARY KEY,
   admin_id INTEGER NOT NULL REFERENCES users(id),
-  action TEXT NOT NULL, -- create/update/delete/publish/unpublish/grant_membership/import/settings_change
-  target_type TEXT NOT NULL, -- gallery/case/tag/user/membership/import_job/import_api_token/settings
+  action TEXT NOT NULL, -- gallery.create / process_import / legacy_media_download_pending / settings_change 等
+  target_type TEXT NOT NULL, -- gallery/case/tag/user/media_asset/import_job/import_api_token/settings 等
   target_id TEXT,
   before_value TEXT, -- JSON
   after_value TEXT, -- JSON
@@ -469,6 +473,8 @@ CREATE TABLE admin_audit_logs (
 CREATE INDEX idx_audit_logs_admin ON admin_audit_logs(admin_id);
 CREATE INDEX idx_audit_logs_time ON admin_audit_logs(created_at);
 ```
+
+当前后台写操作审计覆盖矩阵维护在 `docs/CODE_AND_DOC_REVIEW_ISSUES.md` 的 P2-07 小节；新增 `POST` / `PUT` / `PATCH` / `DELETE` 管理端路由时必须同步补充 `writeAuditLog` 和测试断言。
 
 ### site_settings
 
@@ -734,7 +740,7 @@ queued → processing → completed
 - 后续完整 zip 导入流程：R2 直传 zip → 异步解压校验 → 草稿生成 → 预览发布。
 - 完整迁移流程：拉取 → 解析 → 入库 → 审核。
 - 媒体签名流程：请求 → 校验 → 签发 → 过期。
-- 审计日志：admin 操作后检查日志记录。
+- 审计日志：admin 写操作后检查日志记录；重点覆盖导入任务处理结果、旧站迁移批量入口、会员发放、媒体变更和站点设置。
 
 ### 端到端测试
 

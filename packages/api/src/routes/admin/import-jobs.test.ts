@@ -42,6 +42,17 @@ function createDb() {
   }
 }
 
+function auditPayloads(db: ReturnType<typeof createDb>) {
+  return db.executed
+    .filter(item => item.sql.includes('INSERT INTO admin_audit_logs'))
+    .map(item => ({
+      action: item.params[2],
+      targetType: item.params[3],
+      targetId: item.params[4],
+      afterValue: item.params[6] ? JSON.parse(item.params[6] as string) as Record<string, unknown> : null,
+    }))
+}
+
 describe('后台导入任务 Turnstile 防护', () => {
   it('配置 Turnstile 后，创建导入任务缺少 token 时不写入任务', async () => {
     const db = createDb()
@@ -73,5 +84,38 @@ describe('后台导入任务 Turnstile 防护', () => {
     expect(res.status).toBe(400)
     expect(body.message).toBe('请完成人机验证')
     expect(db.executed.some(item => item.sql.includes("SET status = 'processing'"))).toBe(false)
+  })
+})
+
+describe('后台导入任务审计', () => {
+  it('处理导入任务完成后写入最终结果审计', async () => {
+    const db = createDb()
+    const res = await createApp().request('/api/admin/import-jobs/imp_1/process', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        galleries: [
+          { folder: 'gallery-001', title: '测试图库', slug: 'test-gallery', status: 'draft' },
+        ],
+      }),
+    }, { DB: db } as unknown as Bindings)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.status).toBe('completed')
+
+    const audit = auditPayloads(db).find(item => item.action === 'process_import')
+    expect(audit).toMatchObject({
+      action: 'process_import',
+      targetType: 'import_job',
+      targetId: 'imp_1',
+    })
+    expect(audit?.afterValue).toMatchObject({
+      status: 'completed',
+      totalCount: 1,
+      successCount: 1,
+      failureCount: 0,
+      errorReportKey: null,
+    })
   })
 })

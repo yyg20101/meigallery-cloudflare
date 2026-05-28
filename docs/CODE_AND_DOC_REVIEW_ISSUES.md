@@ -21,7 +21,7 @@
 | P2-04 | P2 | 前端自动化测试缺失 | 已完成 | 已接入 Playwright smoke，覆盖首页、搜索、图库详情、登录、用户中心和后台首页的 360/768/1024/1440 视口；CI 已增加浏览器安装和 smoke 步骤 | 后续补 Vitest component 测试覆盖核心组件状态 |
 | P2-05 | P2 | dev 环境复用正式 D1/R2 数据 | 已完成 | 已在 dev 后台增加正式数据风险标识，并对管理端写请求统一弹出二次确认 | 后续如需要更强隔离，可再拆分 `meigallery-db-dev` 和 `meigallery-media-dev` |
 | P2-06 | P2 | 文档中的 Turnstile 覆盖范围与当前实现不一致 | 已完成 | 已抽取统一 Turnstile 校验工具，明确后台复用普通登录入口，并为后台导入任务创建/处理补充 Turnstile 校验 | 后续如新增高风险后台操作，按单独验收清单决定是否接入 Turnstile |
-| P2-07 | P2 | 审计日志覆盖整体较好，但旧站迁移批量入口仍需补齐确认 | 待处理 | 已纳入整改计划 Phase 4 | 建立后台写操作审计覆盖矩阵 |
+| P2-07 | P2 | 审计日志覆盖整体较好，但旧站迁移批量入口仍需补齐确认 | 已完成 | 已建立后台写操作审计覆盖矩阵，并为旧站迁移 `/download-pending` 补齐审计日志和测试 | 后续新增后台写入口时同步更新矩阵并补审计断言 |
 | P2-08 | P2 | 公开 API、错误响应和前端错误处理格式不统一 | 待处理 | 已纳入整改计划 Phase 4 | 定义统一错误响应 helper |
 | P3-01 | P3 | 文档中规划态、当前态和历史态混写 | 待处理 | 已纳入整改计划 Phase 5 | 为主要 PRD 和技术文档增加状态标签 |
 | P3-02 | P3 | 文档中的文件大小和上传限制不统一 | 待处理 | 已纳入整改计划 Phase 5 | 统一图片上传限制或明确入口差异 |
@@ -317,10 +317,69 @@
 
 ### P2-07 审计日志覆盖整体较好，但旧站迁移批量入口仍需补齐确认
 
+**状态**
+
+- 已完成（2026-05-29）。
+- 已为当前所有后台 `POST` / `PUT` / `PATCH` / `DELETE` 写入口建立审计覆盖矩阵。
+- `packages/api/src/routes/admin/legacy-import.ts` 的 `/download-pending` 已补充 `legacy_media_download_pending` 审计日志，记录 `limit`、本次选择数量、成功/失败数量、剩余数量、错误数量和是否空跑完成。
+- `packages/api/src/routes/admin/legacy-import.test.ts` 已覆盖旧站迁移批量下载入口：有待下载图片时写入结果审计，无待下载图片时也写入空跑审计。
+- `packages/api/src/routes/admin/import-jobs.ts` 的 `/api/admin/import-jobs/:id/process` 已补充 `process_import` 完成态审计，记录任务状态、总数、成功/失败数量和错误报告 key。
+
 **证据**
 
 - 大多数后台写操作已调用 `writeAuditLog`。
-- `packages/api/src/routes/admin/legacy-import.ts` 中仍存在批量下载、迁移相关入口，需要逐项确认审计记录和字段完整性。
+- 整改前 `packages/api/src/routes/admin/legacy-import.ts` 中 `/download-pending` 会更新 `media_assets` 下载状态，但未写入审计日志。
+- 整改后 `packages/api/src/routes/admin/legacy-import.ts` 中旧站来源、任务、条目审核、执行、批量下载、失败重试和批量封面设置入口均已写入审计日志。
+
+**后台写操作审计覆盖矩阵**
+
+| 模块 | 写入口 | 审计 action | 主要审计字段 | 测试覆盖 |
+|------|--------|-------------|--------------|----------|
+| 图库 | `POST /api/admin/galleries/batch` | `gallery.batch_*` | 操作、筛选条件、参数、成功/失败数量 | 待补专项测试 |
+| 图库 | `POST /api/admin/galleries` | `gallery.create` | 标题、slug、状态 | 待补专项测试 |
+| 图库 | `PATCH /api/admin/galleries/:id` | `gallery.update` | 变更前图库、提交字段 | 待补专项测试 |
+| 图库 | `POST /api/admin/galleries/:id/publish` | `gallery.publish` | 变更前后状态 | 待补专项测试 |
+| 图库 | `POST /api/admin/galleries/:id/unpublish` | `gallery.unpublish` | 变更前后状态 | 待补专项测试 |
+| 图库 | `DELETE /api/admin/galleries/:id` | `gallery.archive` | 变更前后状态 | 待补专项测试 |
+| 媒体 | `POST /api/admin/galleries/:galleryId/media/upload` | `upload_media` | 上传成功/失败数量 | 待补专项测试 |
+| 媒体 | `PATCH /api/admin/galleries/:galleryId/cover` | `set_cover` | 变更前后封面 key | 待补专项测试 |
+| 媒体 | `POST /api/admin/galleries/:galleryId/media/reorder` | `reorder_media` | 排序数量 | 待补专项测试 |
+| 媒体 | `PATCH /api/admin/media/:assetId` | `update_media` | 变更前媒体 rank/排序/角色、提交字段 | 待补专项测试 |
+| 媒体 | `DELETE /api/admin/media/:assetId` | `delete_media` | 图库、媒体类型、R2 key | 待补专项测试 |
+| 真实案例 | `POST /api/admin/cases` | `create_case` | 标题、slug、状态、上传数量 | 已有 `cases.test.ts` 覆盖核心行为 |
+| 真实案例 | `PATCH /api/admin/cases/:id` | `update_case` | 变更前案例、提交字段 | 已有 `cases.test.ts` 覆盖核心行为 |
+| 真实案例 | `DELETE /api/admin/cases/:id` | `delete_case` | 变更前案例、删除图片数量 | 已有 `cases.test.ts` 覆盖核心行为 |
+| 真实案例 | `POST /api/admin/cases/:id/images` | `upload_case_images` | 上传图片数量 | 已有 `cases.test.ts` 覆盖核心行为 |
+| 真实案例 | `PATCH /api/admin/cases/:id/images/order` | `sort_case_images` | 图片 ID 顺序 | 已有 `cases.test.ts` 覆盖核心行为 |
+| 真实案例 | `DELETE /api/admin/cases/:id/images/:imageId` | `delete_case_image` | 图片 ID、R2 key | 已有 `cases.test.ts` 覆盖核心行为 |
+| 标签 | `POST /api/admin/tags` | `create_tag` | 类型、名称、slug | 待补专项测试 |
+| 标签 | `PATCH /api/admin/tags/:id` | `update_tag` | 变更前后标签 | 待补专项测试 |
+| 标签 | `DELETE /api/admin/tags/:id` | `delete_tag` | 删除前标签 | 待补专项测试 |
+| 用户 | `PATCH /api/admin/users/:id` | `edit_user` | 用户名/邮箱变更前后值 | 待补专项测试 |
+| 用户 | `POST /api/admin/users/:id/reset-password` | `reset_password` | 目标用户 ID，不记录密码 | 待补专项测试 |
+| 用户 | `POST /api/admin/users/:id/memberships` | `grant_membership` | 用户、等级、rank、有效期、备注 | 待补专项测试 |
+| 用户 | `PATCH /api/admin/users/:id/role` | `change_role` | 变更前后角色 | 待补专项测试 |
+| 用户 | `PATCH /api/admin/users/:id/status` | `change_status` | 变更前后状态 | 待补专项测试 |
+| 导入任务 | `POST /api/admin/import-jobs` | `create_import` | 总数、来源说明 | 已有 `import-jobs.test.ts` 覆盖 Turnstile 防护 |
+| 导入任务 | `POST /api/admin/import-jobs/:id/process` | `process_import` | 任务状态、总数、成功/失败数量、错误报告 key | 已有 `import-jobs.test.ts` 覆盖 Turnstile 防护和完成态审计 |
+| 旧站迁移 | `POST /api/admin/legacy-import/sources` | `create_legacy_source` | 来源记录 | 待补专项测试 |
+| 旧站迁移 | `POST /api/admin/legacy-import/jobs` | `create_legacy_import_job` | 来源 ID、说明 | 待补专项测试 |
+| 旧站迁移 | `PATCH /api/admin/legacy-import/items/:id/review` | `review_legacy_import_item` | 审核状态和备注 | 待补专项测试 |
+| 旧站迁移 | `POST /api/admin/legacy-import/jobs/:id/execute` | `execute_legacy_import` | 拉取、处理、跳过、成功、失败数量 | 待补专项测试 |
+| 旧站迁移 | `POST /api/admin/legacy-import/download-pending` | `legacy_media_download_pending` | limit、选择数量、成功/失败数量、剩余数量、错误数量 | 已有 `legacy-import.test.ts` 覆盖 |
+| 旧站迁移 | `POST /api/admin/legacy-import/migrate/retry-failed` | `retry_failed_media` | 重置数量 | 待补专项测试 |
+| 旧站迁移 | `POST /api/admin/legacy-import/migrate/set-covers` | `batch_set_covers` | 更新、跳过、剩余数量 | 待补专项测试 |
+| 联系方式 | `POST /api/admin/contact-methods` | `contact_method_create` | 平台、标签、值、链接、启用状态 | 待补专项测试 |
+| 联系方式 | `PUT /api/admin/contact-methods/:id` | `contact_method_update` | 变更前后联系方式 | 待补专项测试 |
+| 联系方式 | `DELETE /api/admin/contact-methods/:id` | `contact_method_delete` | 删除前联系方式 | 待补专项测试 |
+| 联系方式 | `PATCH /api/admin/contact-methods/reorder` | `contact_method_reorder` | ID 顺序 | 待补专项测试 |
+| 联系方式 | `POST /api/admin/contact-methods/:id/qrcode` | `contact_method_qrcode_upload` | 二维码 key | 待补专项测试 |
+| 联系方式 | `DELETE /api/admin/contact-methods/:id/qrcode` | `contact_method_qrcode_delete` | 删除前二维码 key | 待补专项测试 |
+| 设置 | `PATCH /api/admin/settings` | `settings_change` | 变更前后设置值 | 待补专项测试 |
+| 设置 | `POST /api/admin/settings/site-icon` | `settings_site_icon_upload` | 变更前后站点图标 | 已有 `settings.test.ts` 覆盖 |
+| 外部导入 Token | `POST /api/admin/import-api-tokens` | `import_token.create` | 名称、权限、来源 bot、过期时间，不记录 token 明文 | 已有 `import-api-tokens.test.ts` 覆盖敏感信息不入审计 |
+| 外部导入 Token | `PATCH /api/admin/import-api-tokens/:id` | `import_token.update` | 变更前后脱敏字段 | 已有 `import-api-tokens.test.ts` 覆盖 token hash 不入审计 |
+| 外部导入 Token | `DELETE /api/admin/import-api-tokens/:id` | `import_token.disable` | Token ID | 已有 `import-api-tokens.test.ts` 覆盖角色限制 |
 
 **影响**
 
@@ -329,9 +388,10 @@
 
 **修复方案**
 
-1. 为所有 `POST`、`PATCH`、`PUT`、`DELETE` 后台路由建立审计覆盖矩阵。
-2. 审计日志记录影响对象数量、筛选条件、执行结果、失败数量和错误报告 key。
-3. 对旧站迁移相关入口补充单元测试，断言写入 `admin_audit_logs`。
+1. 已为所有 `POST`、`PATCH`、`PUT`、`DELETE` 后台路由建立审计覆盖矩阵。
+2. 已为旧站迁移批量下载入口记录影响对象数量、筛选条件、执行结果和失败数量。
+3. 已补充旧站迁移批量下载入口单元测试，断言写入 `admin_audit_logs`。
+4. 后续 P3 服务化阶段逐步为矩阵中“待补专项测试”的入口加审计断言。
 
 ### P2-08 公开 API、错误响应和前端错误处理格式不统一
 

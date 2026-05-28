@@ -287,6 +287,20 @@ adminImportRoutes.post('/:id/process', async (c) => {
     .bind(finalStatus, successCount, failureCount, body.galleries.length, errorReportKey, jobId)
     .run()
 
+  await writeAuditLog(db, {
+    adminId,
+    action: 'process_import',
+    targetType: 'import_job',
+    targetId: jobId,
+    afterValue: {
+      status: finalStatus,
+      totalCount: body.galleries.length,
+      successCount,
+      failureCount,
+      errorReportKey,
+    },
+  })
+
   return c.json({
     id: jobId,
     status: finalStatus,
