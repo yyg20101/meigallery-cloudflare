@@ -26,7 +26,7 @@
 | P3-01 | P3 | 文档中规划态、当前态和历史态混写 | 待处理 | 已纳入整改计划 Phase 5 | 为主要 PRD 和技术文档增加状态标签 |
 | P3-02 | P3 | 文档中的文件大小和上传限制不统一 | 已完成 | 已将当前图库/真实案例/Telegram 图片统一为 10MB，并明确头像、二维码和站点图标的独立上限 | 后续如提高上限需重新评估 Worker 请求体、内存和 R2/Stream 上传策略 |
 | P3-03 | P3 | 缺少 lint / format 配置和 CI 约束 | 待处理 | 已纳入整改计划 Phase 5 | 接入 ESLint / 格式化策略 |
-| P3-04 | P3 | 覆盖率未知 | 待处理 | 已纳入整改计划 Phase 5 | 增加 Vitest coverage 配置 |
+| P3-04 | P3 | 覆盖率未知 | 已完成 | API 已接入 Vitest v8 coverage，核心安全/导入模块设置基线阈值并在 CI 上传报告 | 后续逐步扩大到路由 service 和前端组件测试 |
 | P3-05 | P3 | 后端路由文件过大，业务逻辑集中在路由层 | 待处理 | 已纳入整改计划 Phase 5 | 分阶段抽取 service/helper |
 | P3-06 | P3 | Stream 字段和签名逻辑存在，但生产视频链路未接入 | 已完成 | UI 默认由 `video_enabled=false` 隐藏视频入口；API 在 Stream secrets 缺失时返回 503 `STREAM_NOT_CONFIGURED` | Stream 正式接入需单独 PRD 和验收 |
 
@@ -486,21 +486,29 @@
 
 ### P3-04 覆盖率未知
 
+**状态**
+
+- 已完成（2026-05-29）。
+- `packages/api` 已新增 `test:coverage` 命令，使用 Vitest v8 provider。
+- `packages/api/vitest.config.ts` 已先对密码、session、权限、会员、导入校验、Import Token、统一错误响应和鉴权/限流中间件统计覆盖率。
+- 当前基线：statements 75.75%、branches 74.61%、functions 80.35%、lines 81.37%；配置阈值为 statements 70%、branches 65%、functions 75%、lines 75%。
+- CI 已新增 API 覆盖率步骤，并上传 `packages/api/coverage/` artifact。
+
 **证据**
 
-- Vitest 未配置 coverage 命令和阈值。
-- `docs/codebase/TESTING.md` 已标注覆盖率为 `[TODO]`。
+- 整改前 Vitest 未配置 coverage 命令和阈值。
+- 整改前 `docs/codebase/TESTING.md` 标注覆盖率为 `[TODO]`。
 
 **影响**
 
-- 无法量化权限校验、导入解析、会员过期、搜索过滤等重点测试覆盖。
+- 整改前无法量化权限校验、导入解析、会员过期、搜索过滤等重点测试覆盖。
 - 后续重构大型路由时风险难以评估。
 
 **修复方案**
 
-1. 增加 Vitest coverage provider。
-2. 先对核心安全模块设置较低阈值并逐步提高。
-3. 覆盖率报告纳入 CI artifact。
+1. 已增加 Vitest v8 coverage provider。
+2. 已先对核心安全和导入模块设置基线阈值，后续逐步提高。
+3. 已将覆盖率报告纳入 CI artifact。
 
 ### P3-05 后端路由文件过大，业务逻辑集中在路由层
 

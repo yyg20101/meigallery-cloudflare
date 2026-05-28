@@ -61,9 +61,10 @@
 - `P2-07 审计日志覆盖整体较好，但旧站迁移批量入口仍需补齐确认` 已完成：已建立后台写操作审计覆盖矩阵，旧站迁移批量下载入口和导入任务处理完成态已补审计日志与单元测试。
 - `P2-08 公开 API、错误响应和前端错误处理格式不统一` 已完成：API 已新增统一错误 helper，后台图库/媒体/旧站迁移、鉴权、限流、全局 404/500 和外部导入错误均输出 `{ statusCode, message, code?, detail? }`。
 - `P3-02 文档中的文件大小和上传限制不统一` 已完成：当前内容图片上传口径统一为 10MB；头像 2MB、联系方式二维码 2MB、站点图标 1MB 按独立入口限制记录。
+- `P3-04 覆盖率未知` 已完成首轮收敛：API 已接入 Vitest v8 coverage，核心安全/导入模块设置基线阈值，CI 上传覆盖率 artifact。
 - `P3-06 Stream 字段和签名逻辑存在，但生产视频链路未接入` 已完成收敛：Stream 接入前 UI 继续默认隐藏视频入口，API 缺少 Stream secrets 时返回 503 `STREAM_NOT_CONFIGURED`，不触发未配置的签名请求。
 - `corepack pnpm --filter @meigallery/web typecheck` 当前通过，但仍打印 `vue-router/volar/sfc-route-blocks` package export 非阻断警告，后续依赖升级阶段继续跟踪。
-- P1/P2 当前已全部处理完毕；下一批待处理项为 P3-01 状态标签、P3-03 lint/format、P3-04 coverage 和 P3-05 路由服务化。
+- P1/P2 当前已全部处理完毕；下一批待处理项为 P3-01 状态标签、P3-03 lint/format 和 P3-05 路由服务化。
 
 ## Git 状态
 

@@ -9,13 +9,14 @@
 
 ```bash
 corepack pnpm --filter @meigallery/api test
+corepack pnpm --filter @meigallery/api test:coverage
 corepack pnpm --filter @meigallery/api test -- src/utils/import-validation.test.ts
 corepack pnpm --filter @meigallery/api exec tsc --noEmit
 corepack pnpm --filter @meigallery/web test:e2e
 corepack pnpm --filter @meigallery/web exec nuxt build
 ```
 
-未发现覆盖率命令、覆盖率阈值或前端组件测试配置。
+API coverage 当前使用 Vitest v8 provider，报告目录为 `packages/api/coverage/`。前端组件测试配置仍未发现。
 
 ## 2. 测试布局
 
@@ -47,14 +48,15 @@ corepack pnpm --filter @meigallery/web exec nuxt build
 
 - 当前测试文件数：33 个 API `*.test.ts` 文件，1 个 Web Playwright smoke spec。
 - 扫描输出显示生产代码无 TODO/FIXME/HACK。
-- CI 会运行 API 类型检查、Web 类型检查、API 单元测试、Web Playwright smoke、Web build、API dry-run build。
-- 覆盖率：`[TODO]`，未配置报告和阈值。
+- CI 会运行 API 类型检查、Web 类型检查、API 单元测试、API coverage、Web Playwright smoke、Web build、API dry-run build。
+- 覆盖率：API 已配置核心安全/导入模块 coverage 基线，当前阈值为 statements 70%、branches 65%、functions 75%、lines 75%；HTML 和 JSON summary 报告输出到 `packages/api/coverage/` 并由 CI 上传 artifact。
 - 已知缺口：前端组件测试仍缺；Cloudflare D1/R2/Email/Workers 真实远程链路无自动化集成测试；Stream 规划能力未有端到端测试。
 
 ## 6. 证据
 
 - `packages/api/vitest.config.ts`
 - `packages/api/package.json`
+- `pnpm-lock.yaml`
 - `.github/workflows/ci.yml`
 - `packages/api/src/utils/import-validation.test.ts`
 - `packages/api/src/services/telegram-file-fetcher.test.ts`

@@ -91,7 +91,7 @@ tags: [process, remediation, quality, ci, security]
 | TASK-025 | P3-01：为主要 PRD 和技术文档段落增加当前状态标签。 |  |  |
 | TASK-026 | P3-02：统一图片上传限制为当前 10MB，或明确不同入口差异。 | ✅ | 2026-05-29 |
 | TASK-027 | P3-03：接入 ESLint / 格式化策略，并以渐进方式加入 CI。 |  |  |
-| TASK-028 | P3-04：为 Vitest 增加 coverage provider、核心模块阈值和 CI artifact。 |  |  |
+| TASK-028 | P3-04：为 Vitest 增加 coverage provider、核心模块阈值和 CI artifact。 | ✅ | 2026-05-29 |
 | TASK-029 | P3-05：逐步把大型后端路由中的业务流程抽到 service/helper。 |  |  |
 | TASK-030 | P3-06：在 Stream 接入前保持 UI 隐藏或维护态，并让 API 在缺少 Stream secrets 时返回明确配置错误。 | ✅ | 2026-05-29 |
 
