@@ -18,6 +18,7 @@ export default defineConfig({
         'src/utils/import-validation.ts',
         'src/utils/import-token.ts',
         'src/utils/api-error.ts',
+        'src/services/email-verification.ts',
         'src/middleware/auth.ts',
         'src/middleware/rate-limit.ts',
       ],

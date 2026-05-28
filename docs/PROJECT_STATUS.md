@@ -63,9 +63,10 @@
 - `P3-01 文档中规划态、当前态和历史态混写` 已完成：PRD 和技术设计文档已增加统一状态标签说明，并对主要章节标注当前实现、部分实现、后续规划或历史参考。
 - `P3-02 文档中的文件大小和上传限制不统一` 已完成：当前内容图片上传口径统一为 10MB；头像 2MB、联系方式二维码 2MB、站点图标 1MB 按独立入口限制记录。
 - `P3-04 覆盖率未知` 已完成首轮收敛：API 已接入 Vitest v8 coverage，核心安全/导入模块设置基线阈值，CI 上传覆盖率 artifact。
+- `P3-05 后端路由文件过大，业务逻辑集中在路由层` 已完成首轮服务化：认证路由中的邮箱验证码业务已抽到 `services/email-verification.ts` 并补 service 单测，后续继续拆图库、用户和媒体路由。
 - `P3-06 Stream 字段和签名逻辑存在，但生产视频链路未接入` 已完成收敛：Stream 接入前 UI 继续默认隐藏视频入口，API 缺少 Stream secrets 时返回 503 `STREAM_NOT_CONFIGURED`，不触发未配置的签名请求。
 - `corepack pnpm --filter @meigallery/web typecheck` 当前通过，但仍打印 `vue-router/volar/sfc-route-blocks` package export 非阻断警告，后续依赖升级阶段继续跟踪。
-- P1/P2 当前已全部处理完毕；下一批待处理项为 P3-03 lint/format 和 P3-05 路由服务化。
+- P1/P2 当前已全部处理完毕；下一批待处理项为 P3-03 lint/format。
 
 ## Git 状态
 
