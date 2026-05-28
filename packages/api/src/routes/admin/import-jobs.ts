@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { Bindings, Variables } from '../../index'
 import { generateId } from '../../utils/db'
 import { writeAuditLog } from '../../utils/permission'
+import { validateTurnstile } from '../../utils/turnstile'
 import { PAGINATION, R2_KEY_PREFIX } from '@meigallery/shared/constants'
 
 export const adminImportRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
@@ -72,7 +73,11 @@ adminImportRoutes.post('/', async (c) => {
   const body = await c.req.json<{
     totalCount?: number
     sourceDescription?: string
+    turnstileToken?: string
   }>()
+
+  const turnstileError = await validateTurnstile(c.env, body.turnstileToken)
+  if (turnstileError) return c.json(turnstileError.body, turnstileError.status)
 
   const jobId = generateId('imp')
 
@@ -114,9 +119,6 @@ adminImportRoutes.post('/:id/process', async (c) => {
     return c.json({ statusCode: 400, message: '任务不存在或状态不允许处理' }, 400)
   }
 
-  // 标记为 processing
-  await db.prepare("UPDATE import_jobs SET status = 'processing' WHERE id = ?").bind(jobId).run()
-
   const body = await c.req.json<{
     galleries: Array<{
       folder: string
@@ -134,7 +136,14 @@ adminImportRoutes.post('/:id/process', async (c) => {
       imageKeys?: string[]
       videoKeys?: Array<{ key: string; role: string; streamUid?: string }>
     }>
+    turnstileToken?: string
   }>()
+
+  const turnstileError = await validateTurnstile(c.env, body.turnstileToken)
+  if (turnstileError) return c.json(turnstileError.body, turnstileError.status)
+
+  // 请求和人机验证通过后再标记 processing，避免失败请求卡住任务。
+  await db.prepare("UPDATE import_jobs SET status = 'processing' WHERE id = ?").bind(jobId).run()
 
   const errors: Array<{ folder: string; error: string }> = []
   let successCount = 0

@@ -5,6 +5,7 @@ import { createSession, destroyAllUserSessions } from '../utils/session'
 import { generateId } from '../utils/db'
 import { sendRegistrationCode, sendPasswordResetCode } from '../services/email'
 import { validateUsername } from '@meigallery/shared/utils'
+import { getTurnstileConfigError, validateTurnstile } from '../utils/turnstile'
 
 export const authRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -16,13 +17,6 @@ const CODE_LENGTH = 6
 const CODE_TTL_MS = 10 * 60 * 1000     // 10 分钟
 const CODE_COOLDOWN_MS = 60 * 1000      // 60 秒冷却
 const MAX_ATTEMPTS = 3                   // 最多错误次数
-
-function requireProductionTurnstile(env: Bindings) {
-  if (env.APP_ENV === 'production' && !env.TURNSTILE_SECRET_KEY) {
-    return { statusCode: 503, message: '人机验证配置缺失，请联系站点管理员' }
-  }
-  return null
-}
 
 function generateVerificationCode(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(4))
@@ -73,9 +67,8 @@ authRoutes.get('/check-username/:username', async (c) => {
 
 authRoutes.post('/send-code', async (c) => {
   const db = c.env.DB
-
-  const turnstileConfigError = requireProductionTurnstile(c.env)
-  if (turnstileConfigError) return c.json(turnstileConfigError, 503)
+  const turnstileConfigError = getTurnstileConfigError(c.env)
+  if (turnstileConfigError) return c.json(turnstileConfigError.body, turnstileConfigError.status)
 
   // 检查邮箱验证是否开启
   const verificationEnabled = await isEmailVerificationEnabled(db)
@@ -103,16 +96,8 @@ authRoutes.post('/send-code', async (c) => {
     return c.json({ statusCode: 400, message: 'purpose 必须为 register 或 password_reset' }, 400)
   }
 
-  // Turnstile 验证
-  if (c.env.TURNSTILE_SECRET_KEY) {
-    if (!body.turnstileToken) {
-      return c.json({ statusCode: 400, message: '请完成人机验证' }, 400)
-    }
-    const verified = await verifyTurnstile(c.env.TURNSTILE_SECRET_KEY, body.turnstileToken)
-    if (!verified) {
-      return c.json({ statusCode: 400, message: '人机验证失败，请重试' }, 400)
-    }
-  }
+  const turnstileError = await validateTurnstile(c.env, body.turnstileToken)
+  if (turnstileError) return c.json(turnstileError.body, turnstileError.status)
 
   // 注册场景：检查邮箱是否已注册
   if (purpose === 'register') {
@@ -192,8 +177,8 @@ authRoutes.post('/send-code', async (c) => {
 // ============================================================
 
 authRoutes.post('/register', async (c) => {
-  const turnstileConfigError = requireProductionTurnstile(c.env)
-  if (turnstileConfigError) return c.json(turnstileConfigError, 503)
+  const turnstileConfigError = getTurnstileConfigError(c.env)
+  if (turnstileConfigError) return c.json(turnstileConfigError.body, turnstileConfigError.status)
 
   const body = await c.req.json<{
     email?: string
@@ -231,14 +216,9 @@ authRoutes.post('/register', async (c) => {
   const verificationEnabled = await isEmailVerificationEnabled(db)
 
   // 邮箱验证码流程已在 send-code 完成人机验证；直接注册仍必须验证。
-  if (!verificationEnabled && c.env.TURNSTILE_SECRET_KEY) {
-    if (!body.turnstileToken) {
-      return c.json({ statusCode: 400, message: '请完成人机验证' }, 400)
-    }
-    const verified = await verifyTurnstile(c.env.TURNSTILE_SECRET_KEY, body.turnstileToken)
-    if (!verified) {
-      return c.json({ statusCode: 400, message: '人机验证失败，请重试' }, 400)
-    }
+  if (!verificationEnabled) {
+    const turnstileError = await validateTurnstile(c.env, body.turnstileToken)
+    if (turnstileError) return c.json(turnstileError.body, turnstileError.status)
   }
 
   // 邮箱验证开启时需要验证码
@@ -352,8 +332,8 @@ authRoutes.post('/reset-password', async (c) => {
 // ============================================================
 
 authRoutes.post('/login', async (c) => {
-  const turnstileConfigError = requireProductionTurnstile(c.env)
-  if (turnstileConfigError) return c.json(turnstileConfigError, 503)
+  const turnstileConfigError = getTurnstileConfigError(c.env)
+  if (turnstileConfigError) return c.json(turnstileConfigError.body, turnstileConfigError.status)
 
   const body = await c.req.json<{
     identifier?: string  // 用户名或邮箱
@@ -368,16 +348,8 @@ authRoutes.post('/login', async (c) => {
     return c.json({ statusCode: 400, message: '用户名/邮箱和密码为必填' }, 400)
   }
 
-  // Turnstile 验证
-  if (c.env.TURNSTILE_SECRET_KEY) {
-    if (!body.turnstileToken) {
-      return c.json({ statusCode: 400, message: '请完成人机验证' }, 400)
-    }
-    const verified = await verifyTurnstile(c.env.TURNSTILE_SECRET_KEY, body.turnstileToken)
-    if (!verified) {
-      return c.json({ statusCode: 400, message: '人机验证失败，请重试' }, 400)
-    }
-  }
+  const turnstileError = await validateTurnstile(c.env, body.turnstileToken)
+  if (turnstileError) return c.json(turnstileError.body, turnstileError.status)
 
   const db = c.env.DB
 
@@ -445,19 +417,6 @@ authRoutes.post('/logout', async (c) => {
 // ============================================================
 // 内部工具函数
 // ============================================================
-
-async function verifyTurnstile(secretKey: string, token: string): Promise<boolean> {
-  const response = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ secret: secretKey, response: token }),
-  })
-  const result = await response.json() as { success: boolean; 'error-codes'?: string[] }
-  if (!result.success) {
-    console.warn('Turnstile 验证失败:', result['error-codes'] ?? [])
-  }
-  return result.success
-}
 
 async function verifyCode(
   db: D1Database,

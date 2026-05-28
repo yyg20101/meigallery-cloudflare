@@ -2,6 +2,17 @@
 definePageMeta({ layout: 'admin' })
 
 const { api } = useApi()
+const {
+  turnstileToken,
+  turnstileExpired,
+  hasTurnstile,
+  mountTurnstile,
+  resetTurnstile,
+  cleanupTurnstile,
+} = useTurnstile({
+  containerId: 'turnstile-admin-import-create',
+  onError: message => useToast().add({ title: message, color: 'error' }),
+})
 
 interface ImportJob {
   id: string; type: string; status: string; total_count: number
@@ -15,18 +26,36 @@ const { data, refresh } = await useAsyncData('admin-imports', () =>
 
 const jobs = computed(() => data.value?.data ?? [])
 
+onMounted(() => {
+  void mountTurnstile()
+})
+
+onUnmounted(() => {
+  cleanupTurnstile()
+})
+
 // 创建新任务
 const creating = ref(false)
 async function createJob() {
+  if (hasTurnstile.value && !turnstileToken.value) {
+    useToast().add({ title: '请先完成人机验证', color: 'warning' })
+    return
+  }
+
   creating.value = true
   try {
     const result = await api<{ id: string }>('/api/admin/import-jobs', {
       method: 'POST',
-      body: { totalCount: 0, sourceDescription: '手动创建' },
+      body: {
+        totalCount: 0,
+        sourceDescription: '手动创建',
+        turnstileToken: hasTurnstile.value ? turnstileToken.value : undefined,
+      },
     })
     navigateTo(`/admin/import/${result.id}`)
   } catch (e: any) {
     useToast().add({ title: e?.data?.message || '创建失败', color: 'error' })
+    resetTurnstile()
   } finally {
     creating.value = false
   }
@@ -51,6 +80,13 @@ const statusColors: Record<string, string> = {
       >
         创建导入任务
       </button>
+    </div>
+    <div v-if="hasTurnstile" class="mb-4 rounded-lg border border-gray-200 bg-white p-4">
+      <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <p class="text-sm text-gray-600">创建导入任务前需完成安全验证。</p>
+        <div id="turnstile-admin-import-create" />
+      </div>
+      <p v-if="turnstileExpired" class="mt-2 text-xs text-amber-600">验证已过期，请重新完成验证。</p>
     </div>
 
     <div class="overflow-x-auto rounded-lg border border-gray-200 bg-white">

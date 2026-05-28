@@ -73,9 +73,10 @@
 以下操作必须验证 Turnstile token：
 
 - 登录
-- 注册
-- 后台登录
-- 批量导入上传
+- 注册；邮箱验证码开启时，由发送验证码接口完成验证，注册提交验证码。
+- 发送邮箱验证码。
+- 后台登录复用普通登录入口，因此通过登录接口完成验证。
+- 后台导入任务创建和处理。
 
 服务端使用 `TURNSTILE_SECRET_KEY` 调用 Cloudflare siteverify API 校验 token。
 
@@ -223,8 +224,9 @@
 | PATCH | `/api/admin/tags/:id` | 编辑标签 | admin+ |
 | GET | `/api/admin/users` | 用户列表和搜索 | admin+ |
 | POST | `/api/admin/users/:id/memberships` | 发放会员等级 | admin+ |
-| POST | `/api/admin/import-jobs` | 创建导入任务 | admin+ |
+| POST | `/api/admin/import-jobs` | 创建导入任务（需 Turnstile） | admin+ |
 | GET | `/api/admin/import-jobs/:id` | 导入任务详情和进度 | admin+ |
+| POST | `/api/admin/import-jobs/:id/process` | 处理导入任务（需 Turnstile） | admin+ |
 | GET | `/api/admin/audit-logs` | 审计日志 | admin（仅自己）/ owner（全部） |
 | GET | `/api/admin/settings` | 站点设置 | owner |
 | PATCH | `/api/admin/settings` | 修改站点设置 | owner |
@@ -724,7 +726,7 @@ queued → processing → completed
 - 后续完整 zip 导入校验：合法包、缺失 `content.md`、缺失 `cover.jpg`、缺失图片、非法文件类型、资源大小限制。
 - 标签搜索：单标签、多标签组合、空结果。
 - 密码哈希与验证。
-- Turnstile token 校验。
+- Turnstile token 校验：登录、发送验证码、无邮箱验证码注册、后台导入任务创建和处理。
 
 ### 集成测试
 
