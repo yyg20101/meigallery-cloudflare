@@ -102,6 +102,7 @@ corepack pnpm --filter @meigallery/api exec wrangler secret put STREAM_API_TOKEN
 - `meigallery-api-dev` / `meigallery-web-dev`：用于正式上线后的开发测试环境。
 - Dev Worker 使用 Workers dev 子域访问，不接入 `616618.xyz` 主域，不进入 sitemap、导航或公开链接。
 - Dev 环境可以连接正式 D1/R2 数据以使用真实内容验证 UI，但后台写操作必须限定管理员账号、保留审计日志并显式标记为测试操作。
+- Web 后台在 `NUXT_PUBLIC_APP_ENV=dev` 时显示正式数据风险标识，并对 `/api/admin/*` 的 `POST` / `PUT` / `PATCH` / `DELETE` 请求统一弹出二次确认；如需更强隔离，后续应拆出独立 `meigallery-db-dev` 和 `meigallery-media-dev` 并切换 `env.dev` binding。
 - Dev 页面必须带测试环境标识，并建议设置 `X-Robots-Tag: noindex, nofollow` 或等价 meta，避免搜索引擎收录。
 
 Workers：

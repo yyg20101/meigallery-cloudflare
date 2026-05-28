@@ -15,6 +15,10 @@ test.describe('核心页面 smoke', () => {
       await page.goto(smokePage.path)
 
       await expect(page.getByRole('heading', { name: smokePage.heading }).first()).toBeVisible()
+      if (smokePage.path === '/admin') {
+        await expect(page.getByText('DEV 测试环境：')).toBeVisible()
+        await expect(page.getByText('当前后台连接正式 D1/R2 数据')).toBeVisible()
+      }
       await expect(page.locator('body')).not.toContainText('originals/')
       await expect(page.locator('body')).not.toContainText('imports/')
 

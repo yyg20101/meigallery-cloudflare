@@ -1,6 +1,6 @@
 # 代码与文档 Review 问题台账
 
-更新时间：2026-05-26
+更新时间：2026-05-29
 
 本文记录 2026-05-26 对整个项目代码、配置和文档进行 review 后发现的问题、影响范围和修复方案。本文是整改台账，不替代 `docs/PROJECT_STATUS.md`、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md` 和 `docs/PRD_QUALITY_REVIEW.md` 的当前状态说明。
 
@@ -8,7 +8,7 @@
 
 ## 0. 修复状态总览
 
-更新时间：2026-05-26
+更新时间：2026-05-29
 
 | 编号 | 优先级 | 问题 | 状态 | 当前进度 | 下一步 |
 |------|--------|------|------|----------|--------|
@@ -19,7 +19,7 @@
 | P2-02 | P2 | zip 批量导入文档明显超前于当前实现 | 已完成 | 已将 PRD 和技术设计拆分为当前任务记录/manifest 解析/JSON `galleries` 处理能力，以及后续 R2 直传异步 zip 导入设计 | 后续实现完整 zip 导入时，先补 R2 上传入口、异步处理器、重试策略和验收测试 |
 | P2-03 | P2 | 媒体访问文档写 R2 presigned URL，但代码实际为 Worker 代理 | 已完成 | 已统一为 Worker 代理受保护图片响应；技术设计、PRD、部署限流命名、常量和路由注释已同步，并补充媒体访问测试 | 后续如改为 R2 presigned URL，需单独补签名实现、撤销策略和权限回归测试 |
 | P2-04 | P2 | 前端自动化测试缺失 | 已完成 | 已接入 Playwright smoke，覆盖首页、搜索、图库详情、登录、用户中心和后台首页的 360/768/1024/1440 视口；CI 已增加浏览器安装和 smoke 步骤 | 后续补 Vitest component 测试覆盖核心组件状态 |
-| P2-05 | P2 | dev 环境复用正式 D1/R2 数据 | 待处理 | 已纳入整改计划 Phase 4 | 拆分 dev 资源或增加正式数据风险标识 |
+| P2-05 | P2 | dev 环境复用正式 D1/R2 数据 | 已完成 | 已在 dev 后台增加正式数据风险标识，并对管理端写请求统一弹出二次确认 | 后续如需要更强隔离，可再拆分 `meigallery-db-dev` 和 `meigallery-media-dev` |
 | P2-06 | P2 | 文档中的 Turnstile 覆盖范围与当前实现不一致 | 待处理 | 已纳入整改计划 Phase 4 | 统一后台登录和敏感操作校验口径 |
 | P2-07 | P2 | 审计日志覆盖整体较好，但旧站迁移批量入口仍需补齐确认 | 待处理 | 已纳入整改计划 Phase 4 | 建立后台写操作审计覆盖矩阵 |
 | P2-08 | P2 | 公开 API、错误响应和前端错误处理格式不统一 | 待处理 | 已纳入整改计划 Phase 4 | 定义统一错误响应 helper |
@@ -261,10 +261,19 @@
 
 ### P2-05 dev 环境复用正式 D1/R2 数据
 
+**状态**
+
+- 已完成（2026-05-29）。
+- `packages/web/app/layouts/admin.vue` 已在 `NUXT_PUBLIC_APP_ENV=dev` 时显示后台常驻风险提示，明确 dev 后台连接正式 D1/R2 数据，发布、导入、上传、会员和设置修改会影响真实内容。
+- `packages/web/app/composables/useApi.ts` 已对 dev 环境中的 `/api/admin/*` 写请求（`POST` / `PUT` / `PATCH` / `DELETE`）统一弹出二次确认；取消后不会发起 API 请求。
+- 真实资源拆分仍可作为后续运维增强，但当前整改目标中的“正式数据风险标识和二次确认”已落地。
+
 **证据**
 
 - `packages/api/wrangler.toml` 的 dev 环境使用同一个 `meigallery-db` 和 `meigallery-media`。
 - `docs/DEPLOYMENT.md` 明确 dev 可以连接正式 D1/R2 数据。
+- `packages/web/app/layouts/admin.vue` 提供 dev 后台风险标识。
+- `packages/web/app/composables/useApi.ts` 对 dev 管理端写请求执行二次确认。
 
 **影响**
 
@@ -273,10 +282,9 @@
 
 **修复方案**
 
-1. 优先拆出 `meigallery-db-dev` 和 `meigallery-media-dev`。
-2. 如短期继续复用生产资源，必须固定测试账号、测试标签和测试内容前缀。
-3. Dev 后台页面加明显环境标识，写操作二次确认中提示“连接正式数据”。
-4. 每次 dev 写操作必须可通过审计日志追踪。
+1. 已在 dev 后台页面加明显环境标识，写操作二次确认中提示“连接正式数据”。
+2. 每次 dev 写操作仍通过现有后台 API 写入审计日志。
+3. 如后续需要更强隔离，再拆出 `meigallery-db-dev` 和 `meigallery-media-dev`，并将 `wrangler.toml` 的 `env.dev` binding 切换到独立资源。
 
 ### P2-06 文档中的 Turnstile 覆盖范围与当前实现不一致
 

@@ -41,6 +41,7 @@ export default defineNuxtConfig({
       siteUrl: 'http://localhost:3000',
       facebookPixelAllowDev: 'false',
       facebookPixelDevId: '',
+      devAdminDataWarning: 'false',
     },
   },
 

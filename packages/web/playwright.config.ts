@@ -1,8 +1,10 @@
 import { defineConfig, devices } from '@playwright/test'
 
-const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:3000'
-const apiURL = process.env.PLAYWRIGHT_API_URL || 'http://127.0.0.1:8787'
+const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:3100'
+const apiURL = process.env.PLAYWRIGHT_API_URL || 'http://127.0.0.1:8788'
+const parsedBaseURL = new URL(baseURL)
 const parsedApiURL = new URL(apiURL)
+const reuseServer = process.env.PLAYWRIGHT_REUSE_SERVER === 'true' && !process.env.CI
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -23,22 +25,24 @@ export default defineConfig({
     {
       command: 'node tests/e2e/mock-api.mjs',
       url: `${apiURL}/api/health`,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: reuseServer,
       timeout: 60_000,
       env: {
         PLAYWRIGHT_MOCK_API_HOST: parsedApiURL.hostname,
         PLAYWRIGHT_MOCK_API_PORT: parsedApiURL.port || (parsedApiURL.protocol === 'https:' ? '443' : '80'),
+        PLAYWRIGHT_ALLOWED_ORIGIN: baseURL,
       },
     },
     {
-      command: `NUXT_PUBLIC_API_BASE_URL=${apiURL} NUXT_PUBLIC_APP_ENV=test NUXT_PUBLIC_SITE_URL=${baseURL} corepack pnpm exec nuxt dev --host 127.0.0.1 --port 3000`,
+      command: `NUXT_PUBLIC_API_BASE_URL=${apiURL} NUXT_PUBLIC_APP_ENV=test NUXT_PUBLIC_SITE_URL=${baseURL} NUXT_PUBLIC_DEV_ADMIN_DATA_WARNING=true corepack pnpm exec nuxt dev --host ${parsedBaseURL.hostname} --port ${parsedBaseURL.port || (parsedBaseURL.protocol === 'https:' ? '443' : '80')}`,
       url: baseURL,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: reuseServer,
       timeout: 120_000,
       env: {
         NUXT_PUBLIC_API_BASE_URL: apiURL,
         NUXT_PUBLIC_APP_ENV: 'test',
         NUXT_PUBLIC_SITE_URL: baseURL,
+        NUXT_PUBLIC_DEV_ADMIN_DATA_WARNING: 'true',
       },
     },
   ],

@@ -4,7 +4,7 @@
 
 | 严重度 | 关注点 | 证据 | 影响 | 建议动作 |
 |--------|--------|------|------|----------|
-| 高 | Dev 环境复用正式 D1/R2 数据 | `docs/DEPLOYMENT.md`、`packages/api/wrangler.toml` | dev 后台写操作可能修改真实内容 | 为 dev 写操作建立固定测试账号、测试数据标记和操作审计检查；评估是否拆分 dev D1/R2 |
+| 中 | Dev 环境复用正式 D1/R2 数据 | `docs/DEPLOYMENT.md`、`packages/api/wrangler.toml`、`packages/web/app/layouts/admin.vue`、`packages/web/app/composables/useApi.ts` | dev 后台写操作可能修改真实内容；当前已有后台风险标识和写操作二次确认降低误操作概率 | 为 dev 写操作建立固定测试账号和测试数据标记；如需更强隔离再拆分 dev D1/R2 |
 | 高 | 受保护媒体和视频能力必须持续避免前端信任 | `packages/api/src/routes/media.ts`、`docs/PROJECT_STATUS.md` | 权限绕过会导致资源泄露；Stream 未接入时更容易出现文档/UI误导 | 保持服务端 rank 校验为唯一依据；Stream 接入前为视频 UI 保持关闭或显式规划状态 |
 | 中 | 多个路由文件超过 400 行 | `admin/galleries.ts` 624 行、`auth.ts` 502 行、`admin/users.ts` 502 行、`admin/media.ts` 430 行 | 后续改动容易引入回归 | 把批量操作、媒体上传、用户活动查询等抽成 service/helper 并保持测试 |
 | 中 | 前端组件测试仍缺 | `packages/web` 已有 Playwright smoke，但未发现 Vitest 组件测试 | 复杂组件状态和局部交互仍主要依赖页面级 smoke 与人工检查 | 在 Playwright smoke 基础上补 Vitest component 测试覆盖锁定态、上传态、筛选态和后台表单 |
@@ -50,7 +50,7 @@
 
 ## 6. `[ASK USER]` 问题
 
-1. [ASK USER] dev 环境是否要继续复用正式 D1/R2，还是拆出独立 dev 数据库和 bucket？
+1. [RESOLVED] dev 环境复用正式 D1/R2 的代码侧误操作防护已完成；是否拆出独立 dev 数据库和 bucket 留作后续运维增强。
 2. [RESOLVED] 前端自动化测试已先接入 Playwright smoke；后续再补 Vitest 组件测试。
 3. [ASK USER] Cloudflare Stream 接入的优先级是否仍低于图片/图库/案例运营能力？
 4. [ASK USER] 是否要在 CI 中加入 lint/format 和 coverage 阈值，作为合入 `main` 的必要条件？

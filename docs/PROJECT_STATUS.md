@@ -1,6 +1,6 @@
 # 项目当前状态
 
-更新时间：2026-05-26
+更新时间：2026-05-29
 
 本文档是当前实现和部署状态的索引。若历史计划或早期 PRD 与本文冲突，以本文、`AGENTS.md`、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md`、`docs/GIT_WORKFLOW.md` 为准。
 
@@ -56,8 +56,9 @@
 - `P2-02 zip 批量导入文档明显超前于当前实现` 已完成：PRD 和技术设计已拆分当前任务记录、manifest 解析、JSON `galleries` 处理能力，以及后续 R2 直传异步 zip 导入设计。
 - `P2-03 媒体访问文档写 R2 presigned URL，但代码实际为 Worker 代理` 已完成：受保护图片访问已统一为服务端权限校验后 Worker 代理返回 R2 对象，文档、常量、路由注释和测试均已同步。
 - `P2-04 前端自动化测试缺失` 已完成：Web 已接入 Playwright smoke，使用本地 mock API 覆盖首页、搜索、图库详情、登录、用户中心和后台首页，并在 360/768/1024/1440 视口检查核心渲染、私有 key 不泄露和横向溢出。
+- `P2-05 dev 环境复用正式 D1/R2 数据` 已完成代码侧防护：dev 后台显示正式数据风险标识，管理端写请求统一弹出二次确认；后续如需更强隔离再拆分独立 dev D1/R2 资源。
 - `corepack pnpm --filter @meigallery/web typecheck` 当前通过，但仍打印 `vue-router/volar/sfc-route-blocks` package export 非阻断警告，后续依赖升级阶段继续跟踪。
-- P1 当前已全部处理完毕；下一批 P2 待处理项为 dev D1/R2 资源复用风险处理。
+- P1 当前已全部处理完毕；下一批 P2 待处理项为 Turnstile 覆盖范围、审计覆盖矩阵和统一错误响应。
 
 ## Git 状态
 

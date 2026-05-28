@@ -2,6 +2,7 @@ import { createServer } from 'node:http'
 
 const port = Number(process.env.PLAYWRIGHT_MOCK_API_PORT || 8787)
 const host = process.env.PLAYWRIGHT_MOCK_API_HOST || '127.0.0.1'
+const allowedOrigin = process.env.PLAYWRIGHT_ALLOWED_ORIGIN || 'http://127.0.0.1:3000'
 
 const imageDataUrl = 'data:image/svg+xml;utf8,' + encodeURIComponent(`
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800">
@@ -107,7 +108,7 @@ const user = {
 function json(res, data, status = 200) {
   const body = JSON.stringify(data)
   res.writeHead(status, {
-    'Access-Control-Allow-Origin': 'http://127.0.0.1:3000',
+    'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Headers': 'content-type',
     'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
@@ -171,7 +172,7 @@ function handleApi(req, res) {
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
-      'Access-Control-Allow-Origin': 'http://127.0.0.1:3000',
+      'Access-Control-Allow-Origin': allowedOrigin,
       'Access-Control-Allow-Credentials': 'true',
       'Access-Control-Allow-Headers': 'content-type',
       'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
