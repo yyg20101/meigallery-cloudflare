@@ -24,7 +24,7 @@
 | P2-07 | P2 | 审计日志覆盖整体较好，但旧站迁移批量入口仍需补齐确认 | 已完成 | 已建立后台写操作审计覆盖矩阵，并为旧站迁移 `/download-pending` 补齐审计日志和测试 | 后续新增后台写入口时同步更新矩阵并补审计断言 |
 | P2-08 | P2 | 公开 API、错误响应和前端错误处理格式不统一 | 已完成 | 已定义统一错误响应 helper，并替换后台图库、媒体、旧站迁移、鉴权、限流和全局 404/500 中的散落 `{ error }` 响应 | 后续新接口统一使用 `{ statusCode, message, code?, detail? }` |
 | P3-01 | P3 | 文档中规划态、当前态和历史态混写 | 待处理 | 已纳入整改计划 Phase 5 | 为主要 PRD 和技术文档增加状态标签 |
-| P3-02 | P3 | 文档中的文件大小和上传限制不统一 | 待处理 | 已纳入整改计划 Phase 5 | 统一图片上传限制或明确入口差异 |
+| P3-02 | P3 | 文档中的文件大小和上传限制不统一 | 已完成 | 已将当前图库/真实案例/Telegram 图片统一为 10MB，并明确头像、二维码和站点图标的独立上限 | 后续如提高上限需重新评估 Worker 请求体、内存和 R2/Stream 上传策略 |
 | P3-03 | P3 | 缺少 lint / format 配置和 CI 约束 | 待处理 | 已纳入整改计划 Phase 5 | 接入 ESLint / 格式化策略 |
 | P3-04 | P3 | 覆盖率未知 | 待处理 | 已纳入整改计划 Phase 5 | 增加 Vitest coverage 配置 |
 | P3-05 | P3 | 后端路由文件过大，业务逻辑集中在路由层 | 待处理 | 已纳入整改计划 Phase 5 | 分阶段抽取 service/helper |
@@ -442,11 +442,18 @@
 
 ### P3-02 文档中的文件大小和上传限制不统一
 
+**状态**
+
+- 已完成（2026-05-29）。
+- `docs/PRD.md` 已从旧的单张图片 20MB 口径改为当前实现口径：图库图片、真实案例图片和 Telegram 外部导入图片均为 10MB。
+- `docs/TECHNICAL_SPEC.md` 已新增上传限制验收表，明确头像 2MB、联系方式二维码 2MB、站点图标 1MB 为不同入口的独立上限。
+- 代码侧已保持一致：后台图库图片、真实案例图片和 Telegram 外部导入图片均按 10MB 校验。
+
 **证据**
 
-- `docs/PRD.md` 写单张图片 MVP 上限 20MB。
-- 后台媒体上传和真实案例图片上传代码限制为 10MB。
-- Telegram 导入图片限制为 10MB。
+- 整改前 `docs/PRD.md` 写单张图片 MVP 上限 20MB。
+- `packages/api/src/routes/admin/media.ts`、`packages/api/src/routes/admin/cases.ts` 和 `packages/api/src/services/telegram-file-fetcher.ts` 均限制当前内容图片为 10MB。
+- `packages/api/src/routes/me.ts`、`packages/api/src/routes/admin/contact-methods.ts`、`packages/api/src/routes/admin/settings.ts` 分别限制头像 2MB、联系方式二维码 2MB、站点图标 1MB。
 
 **影响**
 
@@ -455,9 +462,9 @@
 
 **修复方案**
 
-1. 统一当前图片上限为 10MB，或明确不同入口的上限差异。
-2. 更新 PRD、图库管理 PRD、UI 文案和测试。
-3. 如提高到 20MB，需重新评估 Worker 内存、请求体和 R2 上传策略。
+1. 已统一当前内容图片上限为 10MB。
+2. 已更新 PRD 和技术设计中的上传限制口径；图库管理 PRD、后台上传组件和 API 代码原本已为 10MB，无需改动。
+3. 如后续提高到 20MB，需重新评估 Worker 内存、请求体和 R2/Stream 上传策略。
 
 ### P3-03 缺少 lint / format 配置和 CI 约束
 
