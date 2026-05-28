@@ -21,7 +21,7 @@
 - 数据库：Cloudflare D1 `meigallery-db`。
 - D1 migrations：仓库当前维护到 `0019_seed_member_activity.sql`；部署前需按目标环境执行所有未应用迁移。
 - 对象存储：Cloudflare R2 `meigallery-media`。
-- 视频：Cloudflare Stream 仍未接入，相关 secrets 为占位符，视频能力按规划保留。
+- 视频：Cloudflare Stream 仍未接入，相关 secrets 为占位符，视频能力按规划保留；API 在缺少 Stream secrets 时返回 503 `STREAM_NOT_CONFIGURED`。
 - 生产部署：PR 合入 `main` 后手动执行 `./scripts/deploy.sh production` 或等价 wrangler 命令。
 - CI：`.github/workflows/ci.yml` 只做 PR/dev 推送的测试、类型检查和构建验证，不自动部署生产。
 
@@ -61,8 +61,9 @@
 - `P2-07 审计日志覆盖整体较好，但旧站迁移批量入口仍需补齐确认` 已完成：已建立后台写操作审计覆盖矩阵，旧站迁移批量下载入口和导入任务处理完成态已补审计日志与单元测试。
 - `P2-08 公开 API、错误响应和前端错误处理格式不统一` 已完成：API 已新增统一错误 helper，后台图库/媒体/旧站迁移、鉴权、限流、全局 404/500 和外部导入错误均输出 `{ statusCode, message, code?, detail? }`。
 - `P3-02 文档中的文件大小和上传限制不统一` 已完成：当前内容图片上传口径统一为 10MB；头像 2MB、联系方式二维码 2MB、站点图标 1MB 按独立入口限制记录。
+- `P3-06 Stream 字段和签名逻辑存在，但生产视频链路未接入` 已完成收敛：Stream 接入前 UI 继续默认隐藏视频入口，API 缺少 Stream secrets 时返回 503 `STREAM_NOT_CONFIGURED`，不触发未配置的签名请求。
 - `corepack pnpm --filter @meigallery/web typecheck` 当前通过，但仍打印 `vue-router/volar/sfc-route-blocks` package export 非阻断警告，后续依赖升级阶段继续跟踪。
-- P1/P2 当前已全部处理完毕；下一批待处理项为 P3-01 状态标签、P3-03 lint/format、P3-04 coverage、P3-05 路由服务化和 P3-06 Stream 配置错误收敛。
+- P1/P2 当前已全部处理完毕；下一批待处理项为 P3-01 状态标签、P3-03 lint/format、P3-04 coverage 和 P3-05 路由服务化。
 
 ## Git 状态
 

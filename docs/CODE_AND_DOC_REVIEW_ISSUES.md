@@ -28,7 +28,7 @@
 | P3-03 | P3 | 缺少 lint / format 配置和 CI 约束 | 待处理 | 已纳入整改计划 Phase 5 | 接入 ESLint / 格式化策略 |
 | P3-04 | P3 | 覆盖率未知 | 待处理 | 已纳入整改计划 Phase 5 | 增加 Vitest coverage 配置 |
 | P3-05 | P3 | 后端路由文件过大，业务逻辑集中在路由层 | 待处理 | 已纳入整改计划 Phase 5 | 分阶段抽取 service/helper |
-| P3-06 | P3 | Stream 字段和签名逻辑存在，但生产视频链路未接入 | 待处理 | 已纳入整改计划 Phase 5 | Stream 接入前保持 UI 隐藏或维护态，并补 API 配置错误 |
+| P3-06 | P3 | Stream 字段和签名逻辑存在，但生产视频链路未接入 | 已完成 | UI 默认由 `video_enabled=false` 隐藏视频入口；API 在 Stream secrets 缺失时返回 503 `STREAM_NOT_CONFIGURED` | Stream 正式接入需单独 PRD 和验收 |
 
 ## 1. 验证结果
 
@@ -522,6 +522,13 @@
 
 ### P3-06 Stream 字段和签名逻辑存在，但生产视频链路未接入
 
+**状态**
+
+- 已完成（2026-05-29）。
+- 当前 `site_settings.video_enabled` 默认值为 `false`，前台视频区域继续作为规划能力隐藏。
+- `packages/api/src/routes/media.ts` 已在调用 Cloudflare Stream 签名接口前检查 `STREAM_ACCOUNT_ID` 和 `STREAM_API_TOKEN`；缺失时返回统一错误体 `503 STREAM_NOT_CONFIGURED`，不发起外部签名请求。
+- `packages/api/src/routes/media.test.ts` 已补充 Stream 未配置回归测试。
+
 **证据**
 
 - `.env.example`、`packages/api/src/routes/media.ts` 和文档中存在 Stream 配置与 token 逻辑。
@@ -534,9 +541,9 @@
 
 **修复方案**
 
-1. Stream 接入前，UI 保持隐藏或维护态。
-2. API 对 Stream secrets 缺失时返回明确配置错误，避免 500。
-3. Stream 接入需单独 PRD，覆盖上传、编码、signed token、播放、成本监控和回滚。
+1. 已确认 Stream 接入前，UI 继续由 `video_enabled=false` 默认隐藏，后台设置页保留“需先接入 Cloudflare Stream”的提示。
+2. 已让 API 对 Stream secrets 缺失返回明确配置错误，避免进入全局 500。
+3. Stream 接入仍需单独 PRD，覆盖上传、编码、signed token、播放、成本监控和回滚。
 
 ## 5. 后续整改顺序建议
 

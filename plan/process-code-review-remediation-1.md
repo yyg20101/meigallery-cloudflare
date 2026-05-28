@@ -93,7 +93,7 @@ tags: [process, remediation, quality, ci, security]
 | TASK-027 | P3-03：接入 ESLint / 格式化策略，并以渐进方式加入 CI。 |  |  |
 | TASK-028 | P3-04：为 Vitest 增加 coverage provider、核心模块阈值和 CI artifact。 |  |  |
 | TASK-029 | P3-05：逐步把大型后端路由中的业务流程抽到 service/helper。 |  |  |
-| TASK-030 | P3-06：在 Stream 接入前保持 UI 隐藏或维护态，并让 API 在缺少 Stream secrets 时返回明确配置错误。 |  |  |
+| TASK-030 | P3-06：在 Stream 接入前保持 UI 隐藏或维护态，并让 API 在缺少 Stream secrets 时返回明确配置错误。 | ✅ | 2026-05-29 |
 
 ## 3. Alternatives
 

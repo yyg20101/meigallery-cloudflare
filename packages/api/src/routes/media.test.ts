@@ -18,6 +18,11 @@ function createThumbnailEnv(options: {
   imageResizingEnabled: 'true' | 'false'
   requiredRank?: number
   galleryRequiredRank?: number
+  assetType?: 'image' | 'video'
+  streamUid?: string | null
+  r2Key?: string | null
+  streamAccountId?: string
+  streamApiToken?: string
   r2Get?: ReturnType<typeof vi.fn>
 }) {
   const r2Get = options.r2Get ?? vi.fn(async () => ({
@@ -28,12 +33,17 @@ function createThumbnailEnv(options: {
 
   return {
     IMAGE_RESIZING_ENABLED: options.imageResizingEnabled,
+    STREAM_ACCOUNT_ID: options.streamAccountId,
+    STREAM_API_TOKEN: options.streamApiToken,
     DB: {
       prepare: () => ({
         bind: () => ({
           first: async () => ({
-            r2_key: 'originals/gallery-1/asset-1.jpg',
-            type: 'image',
+            id: 'asset-1',
+            role: 'gallery',
+            r2_key: options.r2Key === undefined ? 'originals/gallery-1/asset-1.jpg' : options.r2Key,
+            stream_uid: options.streamUid === undefined ? null : options.streamUid,
+            type: options.assetType ?? 'image',
             required_rank: options.requiredRank ?? 0,
             required_level_rank: options.galleryRequiredRank ?? 0,
             status: 'published',
@@ -194,5 +204,29 @@ describe('受保护媒体访问', () => {
 
     const body = new Uint8Array(await res.arrayBuffer())
     expect(Array.from(body)).toEqual([1, 2, 3])
+  })
+
+  it('Stream 未配置时返回明确错误且不调用外部签名接口', async () => {
+    const app = createApp({ userId: 1, userRole: 'admin' })
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    const env = createThumbnailEnv({
+      imageResizingEnabled: 'false',
+      assetType: 'video',
+      r2Key: null,
+      streamUid: 'stream-video-1',
+      streamAccountId: '',
+      streamApiToken: '',
+    })
+
+    const res = await app.request('/api/media/asset-1/access', {}, env)
+    const body = await res.json()
+
+    expect(res.status).toBe(503)
+    expect(body).toMatchObject({
+      statusCode: 503,
+      message: '视频服务暂未配置，请联系站点管理员',
+      code: 'STREAM_NOT_CONFIGURED',
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })

@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { Bindings, Variables } from '../index'
 import { requireAuth } from '../middleware/auth'
+import { errorJson } from '../utils/api-error'
 import { checkMediaAccess } from '../utils/permission'
 import { MEDIA_ACCESS_TTL } from '@meigallery/shared/constants'
 
@@ -254,6 +255,12 @@ mediaRoutes.get('/:assetId/access', requireAuth, async (c) => {
   }
 
   if (asset.type === 'video' && asset.stream_uid) {
+    if (!c.env.STREAM_ACCOUNT_ID?.trim() || !c.env.STREAM_API_TOKEN?.trim()) {
+      return errorJson(c, 503, '视频服务暂未配置，请联系站点管理员', {
+        code: 'STREAM_NOT_CONFIGURED',
+      })
+    }
+
     // 视频：生成 Cloudflare Stream 签名 token
     const signedToken = await generateStreamSignedToken(
       c.env.STREAM_ACCOUNT_ID,

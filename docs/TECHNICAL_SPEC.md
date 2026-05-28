@@ -172,6 +172,8 @@
 6. 拒绝 → 返回 403
 ```
 
+当前 Cloudflare Stream 生产链路仍未接入。API 在生成 signed token 前会检查 `STREAM_ACCOUNT_ID` 和 `STREAM_API_TOKEN`，任一缺失时返回 503 和错误码 `STREAM_NOT_CONFIGURED`，不尝试调用 Stream API；前台视频入口默认由 `video_enabled=false` 隐藏。
+
 ### R2 对象 key 规范
 
 | 用途 | key 格式 | 访问方式 |
@@ -723,7 +725,7 @@ queued → processing → completed
 | 标签列表 | 短缓存 | 300 秒 |
 | 公开缩略图 | R2 公开访问 + CDN 缓存 | 7 天（文件名含 hash） |
 | 受保护图片 | Worker 代理返回，用户端私有短缓存 | 600 秒 |
-| 受保护视频 | Stream 接入后返回 signed token | 4 小时 |
+| 受保护视频 | Stream 接入后返回 signed token；未配置 Stream secrets 时返回 `STREAM_NOT_CONFIGURED` | 4 小时 |
 
 ## 12. 已实现功能补充
 
