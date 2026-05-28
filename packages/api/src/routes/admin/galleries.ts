@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import type { Bindings, Variables } from '../../index'
+import { errorJson } from '../../utils/api-error'
 import { generateId } from '../../utils/db'
 import { getAdminGalleryOrderClause } from '../../utils/gallery-interactions'
 import { writeAuditLog } from '../../utils/permission'
@@ -52,24 +53,24 @@ adminGalleryRoutes.post('/batch', async (c) => {
   // 参数校验
   const validActions: BatchAction[] = ['publish', 'unpublish', 'delete', 'set_level', 'add_tags', 'remove_tags']
   if (!body.action || !validActions.includes(body.action)) {
-    return c.json({ error: `action 必须为: ${validActions.join(', ')}` }, 400)
+    return errorJson(c, 400, `action 必须为: ${validActions.join(', ')}`)
   }
 
   // 删除操作需要 Owner 角色
   if (body.action === 'delete' && userRole !== 'owner') {
-    return c.json({ error: '批量删除需要 Owner 权限' }, 403)
+    return errorJson(c, 403, '批量删除需要 Owner 权限')
   }
 
   // set_level 需要 requiredLevelRank 参数
   if (body.action === 'set_level') {
     if (body.params?.requiredLevelRank === undefined || typeof body.params.requiredLevelRank !== 'number') {
-      return c.json({ error: 'set_level 操作需要 params.requiredLevelRank（数字）' }, 400)
+      return errorJson(c, 400, 'set_level 操作需要 params.requiredLevelRank（数字）')
     }
   }
 
   // add_tags / remove_tags 需要 tagIds 参数
   if ((body.action === 'add_tags' || body.action === 'remove_tags') && (!body.params?.tagIds || body.params.tagIds.length === 0)) {
-    return c.json({ error: `${body.action} 操作需要 params.tagIds（非空数组）` }, 400)
+    return errorJson(c, 400, `${body.action} 操作需要 params.tagIds（非空数组）`)
   }
 
   // 解析目标图库 ID 列表
@@ -81,7 +82,7 @@ adminGalleryRoutes.post('/batch', async (c) => {
   } else if (body.galleryIds && body.galleryIds.length > 0) {
     galleryIds = body.galleryIds
   } else {
-    return c.json({ error: '请提供 galleryIds 列表或 selectAll + filter 条件' }, 400)
+    return errorJson(c, 400, '请提供 galleryIds 列表或 selectAll + filter 条件')
   }
 
   if (galleryIds.length === 0) {
@@ -341,7 +342,7 @@ adminGalleryRoutes.get('/:id', async (c) => {
     .first<Record<string, unknown>>()
 
   if (!row) {
-    return c.json({ error: '图库不存在' }, 404)
+    return errorJson(c, 404, '图库不存在')
   }
 
   const tags = await db
@@ -392,7 +393,7 @@ adminGalleryRoutes.post('/', async (c) => {
   }>()
 
   if (!body.title || !body.slug) {
-    return c.json({ error: 'title 和 slug 为必填项' }, 400)
+    return errorJson(c, 400, 'title 和 slug 为必填项')
   }
 
   // slug 唯一性校验
@@ -402,7 +403,7 @@ adminGalleryRoutes.post('/', async (c) => {
     .first()
 
   if (existing) {
-    return c.json({ error: 'slug 已存在' }, 409)
+    return errorJson(c, 409, 'slug 已存在')
   }
 
   // Owner 可发布，Admin 强制 draft
@@ -465,7 +466,7 @@ adminGalleryRoutes.patch('/:id', async (c) => {
 
   const gallery = await db.prepare('SELECT * FROM galleries WHERE id = ?').bind(id).first()
   if (!gallery) {
-    return c.json({ error: '图库不存在' }, 404)
+    return errorJson(c, 404, '图库不存在')
   }
 
   const body = await c.req.json<{
@@ -484,7 +485,7 @@ adminGalleryRoutes.patch('/:id', async (c) => {
       .bind(body.slug, id)
       .first()
     if (existing) {
-      return c.json({ error: 'slug 已存在' }, 409)
+      return errorJson(c, 409, 'slug 已存在')
     }
   }
 
@@ -540,7 +541,7 @@ adminGalleryRoutes.post('/:id/publish', async (c) => {
 
   const gallery = await db.prepare('SELECT id, status FROM galleries WHERE id = ?').bind(id).first()
   if (!gallery) {
-    return c.json({ error: '图库不存在' }, 404)
+    return errorJson(c, 404, '图库不存在')
   }
 
   const now = new Date().toISOString()
@@ -571,7 +572,7 @@ adminGalleryRoutes.post('/:id/unpublish', async (c) => {
 
   const gallery = await db.prepare('SELECT id, status FROM galleries WHERE id = ?').bind(id).first()
   if (!gallery) {
-    return c.json({ error: '图库不存在' }, 404)
+    return errorJson(c, 404, '图库不存在')
   }
 
   const now = new Date().toISOString()
@@ -602,7 +603,7 @@ adminGalleryRoutes.delete('/:id', async (c) => {
 
   const gallery = await db.prepare('SELECT id, status FROM galleries WHERE id = ?').bind(id).first()
   if (!gallery) {
-    return c.json({ error: '图库不存在' }, 404)
+    return errorJson(c, 404, '图库不存在')
   }
 
   const now = new Date().toISOString()

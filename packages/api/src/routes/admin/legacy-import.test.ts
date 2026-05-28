@@ -44,6 +44,27 @@ function createDb(assets: Array<{ id: string; gallery_id: string; type: string; 
   }
 }
 
+function createSourceDb() {
+  return {
+    prepare() {
+      return {
+        bind() {
+          return this
+        },
+        async first<T>() {
+          return null as T
+        },
+        async all<T>() {
+          return { results: [] as T[] }
+        },
+        async run() {
+          return { success: true }
+        },
+      }
+    },
+  }
+}
+
 function auditPayloads(db: ReturnType<typeof createDb>) {
   return db.executed
     .filter(item => item.sql.includes('INSERT INTO admin_audit_logs'))
@@ -119,5 +140,23 @@ describe('旧站迁移批量入口审计', () => {
       remaining: 0,
       done: true,
     })
+  })
+})
+
+describe('旧站迁移错误响应', () => {
+  it('创建来源地址不安全时返回统一错误体', async () => {
+    const res = await createApp().request('/api/admin/legacy-import/sources', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: '本机', baseUrl: 'http://localhost/wp-json', mode: 'rest_api' }),
+    }, { DB: createSourceDb() } as unknown as Bindings)
+    const body = await res.json()
+
+    expect(res.status).toBe(400)
+    expect(body).toEqual({
+      statusCode: 400,
+      message: '仅允许 HTTPS 外部地址',
+    })
+    expect(body.error).toBeUndefined()
   })
 })

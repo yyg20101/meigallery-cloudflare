@@ -80,7 +80,7 @@ tags: [process, remediation, quality, ci, security]
 | TASK-021 | P2-05：拆分 dev D1/R2 资源，或在 dev 后台增加正式数据风险标识和二次确认。 | ✅ | 2026-05-29 |
 | TASK-022 | P2-06：统一 Turnstile 覆盖范围文档和实现，明确后台复用普通登录或新增敏感操作校验。 | ✅ | 2026-05-29 |
 | TASK-023 | P2-07：建立后台写操作审计覆盖矩阵，并补旧站迁移入口测试。 | ✅ | 2026-05-29 |
-| TASK-024 | P2-08：定义统一 API 错误响应 helper，并逐步替换散落的 `{ error }` 响应。 |  |  |
+| TASK-024 | P2-08：定义统一 API 错误响应 helper，并逐步替换散落的 `{ error }` 响应。 | ✅ | 2026-05-29 |
 
 ### Implementation Phase 5
 

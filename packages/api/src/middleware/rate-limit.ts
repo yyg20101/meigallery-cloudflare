@@ -4,6 +4,7 @@
  * 注意：Workers 每个 isolate 独立，分布式场景下不严格精确；生产强限流必须使用 Cloudflare WAF / Rate Limiting Rules。
  */
 import type { Context, MiddlewareHandler } from 'hono'
+import { errorJson } from '../utils/api-error'
 
 type RateLimitKeyBy = 'ip' | 'user' | 'session'
 
@@ -60,10 +61,7 @@ export function rateLimiter(options: RateLimitOptions): MiddlewareHandler {
       c.header('Retry-After', String(Math.ceil(windowMs / 1000)))
       c.header('X-RateLimit-Limit', String(limit))
       c.header('X-RateLimit-Remaining', '0')
-      return c.json(
-        { statusCode: 429, message: '请求过于频繁，请稍后再试' },
-        429,
-      )
+      return errorJson(c, 429, '请求过于频繁，请稍后再试', { code: 'RATE_LIMITED' })
     }
 
     // 记录本次请求

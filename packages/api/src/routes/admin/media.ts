@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { Bindings, Variables } from '../../index'
 import { requireAdmin } from '../../middleware/auth'
+import { errorJson } from '../../utils/api-error'
 import { writeAuditLog } from '../../utils/permission'
 import { generateId } from '../../utils/db'
 
@@ -24,7 +25,7 @@ adminMediaRoutes.get('/galleries/:galleryId/media', async (c) => {
     .prepare('SELECT id FROM galleries WHERE id = ?')
     .bind(galleryId)
     .first()
-  if (!gallery) return c.json({ error: '图库不存在' }, 404)
+  if (!gallery) return errorJson(c, 404, '图库不存在')
 
   const assets = await db
     .prepare(`
@@ -87,14 +88,14 @@ adminMediaRoutes.post('/galleries/:galleryId/media/upload', async (c) => {
     .prepare('SELECT id FROM galleries WHERE id = ?')
     .bind(galleryId)
     .first()
-  if (!gallery) return c.json({ error: '图库不存在' }, 404)
+  if (!gallery) return errorJson(c, 404, '图库不存在')
 
   const formData = await c.req.formData()
   // Workers FormData 类型定义较严格，实际运行时 getAll 返回 File 对象
   const files = formData.getAll('files') as unknown as File[]
 
   if (files.length === 0) {
-    return c.json({ error: '请选择至少一个文件' }, 400)
+    return errorJson(c, 400, '请选择至少一个文件')
   }
 
   const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
@@ -196,7 +197,7 @@ adminMediaRoutes.patch('/galleries/:galleryId/cover', async (c) => {
     .prepare('SELECT id, cover_key FROM galleries WHERE id = ?')
     .bind(galleryId)
     .first<{ id: string; cover_key: string | null }>()
-  if (!gallery) return c.json({ error: '图库不存在' }, 404)
+  if (!gallery) return errorJson(c, 404, '图库不存在')
 
   const contentType = c.req.header('content-type') || ''
 
@@ -206,14 +207,14 @@ adminMediaRoutes.patch('/galleries/:galleryId/cover', async (c) => {
     // 直接上传封面图
     const formData = await c.req.formData()
     const file = formData.get('file') as unknown as File | null
-    if (!file) return c.json({ error: '请选择封面文件' }, 400)
+    if (!file) return errorJson(c, 400, '请选择封面文件')
 
     const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
     if (!ALLOWED_TYPES.includes(file.type)) {
-      return c.json({ error: `不支持的文件格式: ${file.type}` }, 400)
+      return errorJson(c, 400, `不支持的文件格式: ${file.type}`)
     }
     if (file.size > 10 * 1024 * 1024) {
-      return c.json({ error: '文件过大，最大 10MB' }, 400)
+      return errorJson(c, 400, '文件过大，最大 10MB')
     }
 
     const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg'
@@ -226,13 +227,13 @@ adminMediaRoutes.patch('/galleries/:galleryId/cover', async (c) => {
   } else {
     // 从已有媒体选择封面
     const body = await c.req.json<{ assetId: string }>()
-    if (!body.assetId) return c.json({ error: 'assetId 为必填' }, 400)
+    if (!body.assetId) return errorJson(c, 400, 'assetId 为必填')
 
     const asset = await db
       .prepare('SELECT r2_key FROM media_assets WHERE id = ? AND gallery_id = ?')
       .bind(body.assetId, galleryId)
       .first<{ r2_key: string | null }>()
-    if (!asset?.r2_key) return c.json({ error: '媒体资源不存在或无 R2 文件' }, 404)
+    if (!asset?.r2_key) return errorJson(c, 404, '媒体资源不存在或无 R2 文件')
 
     newCoverKey = asset.r2_key
   }
@@ -267,7 +268,7 @@ adminMediaRoutes.post('/galleries/:galleryId/media/reorder', async (c) => {
 
   const body = await c.req.json<{ order: Array<{ assetId: string; sortOrder: number }> }>()
   if (!body.order || body.order.length === 0) {
-    return c.json({ error: '排序数据为空' }, 400)
+    return errorJson(c, 400, '排序数据为空')
   }
 
   // 批量更新 sort_order
@@ -319,14 +320,14 @@ adminMediaRoutes.patch('/media/:assetId', async (c) => {
       sort_order: number
       role: string
     }>()
-  if (!asset) return c.json({ error: '媒体资源不存在' }, 404)
+  if (!asset) return errorJson(c, 404, '媒体资源不存在')
 
   const updates: string[] = []
   const values: unknown[] = []
 
   if (body.requiredRank !== undefined) {
     if (![0, 10, 20].includes(body.requiredRank)) {
-      return c.json({ error: '无效的会员等级，允许值: 0, 10, 20' }, 400)
+      return errorJson(c, 400, '无效的会员等级，允许值: 0, 10, 20')
     }
     updates.push('required_rank = ?')
     values.push(body.requiredRank)
@@ -337,13 +338,13 @@ adminMediaRoutes.patch('/media/:assetId', async (c) => {
   }
   if (body.role !== undefined) {
     if (!['content', 'cover', 'preview', 'full'].includes(body.role)) {
-      return c.json({ error: '无效的角色' }, 400)
+      return errorJson(c, 400, '无效的角色')
     }
     updates.push('role = ?')
     values.push(body.role)
   }
 
-  if (updates.length === 0) return c.json({ error: '无修改内容' }, 400)
+  if (updates.length === 0) return errorJson(c, 400, '无修改内容')
 
   values.push(assetId)
   await db
@@ -387,7 +388,7 @@ adminMediaRoutes.delete('/media/:assetId', async (c) => {
       stream_uid: string | null
       type: string
     }>()
-  if (!asset) return c.json({ error: '媒体资源不存在' }, 404)
+  if (!asset) return errorJson(c, 404, '媒体资源不存在')
 
   // 删除 R2 对象（外部 URL 不删除）
   if (asset.r2_key && !asset.r2_key.startsWith('http')) {

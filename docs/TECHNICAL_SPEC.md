@@ -184,6 +184,21 @@
 
 ## 7. API 路由
 
+### 错误响应
+
+所有 JSON 错误响应统一使用以下结构：
+
+```ts
+{
+  statusCode: number
+  message: string
+  code?: string
+  detail?: unknown
+}
+```
+
+API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `errorJson` 生成错误体。业务错误码放在 `code` 字段，例如 `AUTH_REQUIRED`、`RATE_LIMITED`、`IMPORT_TOKEN_MISSING`；前端只展示人类可读的 `message`，不得再依赖历史 `{ error }` 字段。
+
 ### 公开 API
 
 | 方法 | 路径 | 说明 |

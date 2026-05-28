@@ -22,7 +22,7 @@
 | P2-05 | P2 | dev 环境复用正式 D1/R2 数据 | 已完成 | 已在 dev 后台增加正式数据风险标识，并对管理端写请求统一弹出二次确认 | 后续如需要更强隔离，可再拆分 `meigallery-db-dev` 和 `meigallery-media-dev` |
 | P2-06 | P2 | 文档中的 Turnstile 覆盖范围与当前实现不一致 | 已完成 | 已抽取统一 Turnstile 校验工具，明确后台复用普通登录入口，并为后台导入任务创建/处理补充 Turnstile 校验 | 后续如新增高风险后台操作，按单独验收清单决定是否接入 Turnstile |
 | P2-07 | P2 | 审计日志覆盖整体较好，但旧站迁移批量入口仍需补齐确认 | 已完成 | 已建立后台写操作审计覆盖矩阵，并为旧站迁移 `/download-pending` 补齐审计日志和测试 | 后续新增后台写入口时同步更新矩阵并补审计断言 |
-| P2-08 | P2 | 公开 API、错误响应和前端错误处理格式不统一 | 待处理 | 已纳入整改计划 Phase 4 | 定义统一错误响应 helper |
+| P2-08 | P2 | 公开 API、错误响应和前端错误处理格式不统一 | 已完成 | 已定义统一错误响应 helper，并替换后台图库、媒体、旧站迁移、鉴权、限流和全局 404/500 中的散落 `{ error }` 响应 | 后续新接口统一使用 `{ statusCode, message, code?, detail? }` |
 | P3-01 | P3 | 文档中规划态、当前态和历史态混写 | 待处理 | 已纳入整改计划 Phase 5 | 为主要 PRD 和技术文档增加状态标签 |
 | P3-02 | P3 | 文档中的文件大小和上传限制不统一 | 待处理 | 已纳入整改计划 Phase 5 | 统一图片上传限制或明确入口差异 |
 | P3-03 | P3 | 缺少 lint / format 配置和 CI 约束 | 待处理 | 已纳入整改计划 Phase 5 | 接入 ESLint / 格式化策略 |
@@ -395,6 +395,15 @@
 
 ### P2-08 公开 API、错误响应和前端错误处理格式不统一
 
+**状态**
+
+- 已完成（2026-05-29）。
+- 新增 `packages/api/src/utils/api-error.ts`，统一错误响应体为 `{ statusCode, message, code?, detail? }`。
+- `packages/api/src/index.ts`、`packages/api/src/middleware/auth.ts`、`packages/api/src/middleware/rate-limit.ts` 已复用 `errorJson` 输出全局 404/500、鉴权失败和限流错误。
+- `packages/api/src/routes/admin/galleries.ts`、`packages/api/src/routes/admin/media.ts`、`packages/api/src/routes/admin/legacy-import.ts` 已从 `{ error }` 收敛到统一错误体。
+- `packages/api/src/utils/import-errors.ts` 已复用 `apiError`，保留外部导入 API 的业务 `code` 字段。
+- `packages/api/src/utils/api-error.test.ts`、`rate-limit.test.ts`、`admin/index.test.ts`、`legacy-import.test.ts` 已覆盖 helper、限流、鉴权和旧站迁移错误响应。
+
 **证据**
 
 - API 同时使用 `{ error }` 和 `{ statusCode, message }`。
@@ -407,9 +416,9 @@
 
 **修复方案**
 
-1. 定义统一错误响应：`{ statusCode, message, code?, detail? }`。
-2. 新增错误 helper，逐步替换散落的 `{ error }`。
-3. 前端 `useApi` 统一解析错误体，避免页面重复处理。
+1. 已定义统一错误响应：`{ statusCode, message, code?, detail? }`。
+2. 已新增错误 helper，并替换当前路由、中间件和全局错误处理中散落的 `{ error }` 响应。
+3. 当前前端页面仍可通过既有 `$fetch`/`useApi` 的 `e.data.message` 读取错误文案；后续新增页面不得再依赖 `e.data.error`。
 
 ## 4. P3 问题
 

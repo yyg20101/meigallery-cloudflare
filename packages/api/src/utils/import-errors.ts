@@ -1,3 +1,5 @@
+import { apiError } from './api-error'
+
 export type ImportErrorCode =
   | 'IMPORT_TOKEN_MISSING'
   | 'IMPORT_TOKEN_INVALID'
@@ -32,9 +34,5 @@ export class ImportError extends Error {
 }
 
 export function importErrorBody(error: ImportError) {
-  return {
-    statusCode: error.status,
-    code: error.code,
-    message: error.message,
-  }
+  return apiError(error.status, error.message, { code: error.code })
 }

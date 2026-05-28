@@ -17,7 +17,13 @@ describe('速率限制中间件', () => {
     const headers = { 'cf-connecting-ip': '203.0.113.10' }
 
     expect((await app.request('/auth/login', { headers })).status).toBe(200)
-    expect((await app.request('/auth/login', { headers })).status).toBe(429)
+    const limited = await app.request('/auth/login', { headers })
+    expect(limited.status).toBe(429)
+    expect(await limited.json()).toMatchObject({
+      statusCode: 429,
+      message: '请求过于频繁，请稍后再试',
+      code: 'RATE_LIMITED',
+    })
     expect((await app.request('/public/galleries', { headers })).status).toBe(200)
   })
 

@@ -17,6 +17,7 @@ import { adminRoutes } from './routes/admin'
 import { healthRoutes } from './routes/health'
 import { authMiddleware } from './middleware/auth'
 import { rateLimiter } from './middleware/rate-limit'
+import { errorJson } from './utils/api-error'
 
 /** Hono 应用绑定类型 */
 export type Bindings = {
@@ -163,16 +164,13 @@ app.route('/api/admin', adminRoutes)
 
 // 404 fallback
 app.notFound((c) => {
-  return c.json({ statusCode: 404, message: '接口不存在' }, 404)
+  return errorJson(c, 404, '接口不存在', { code: 'NOT_FOUND' })
 })
 
 // 全局错误处理
 app.onError((err, c) => {
   console.error('未处理异常:', err)
-  return c.json(
-    { statusCode: 500, message: '服务器内部错误' },
-    500,
-  )
+  return errorJson(c, 500, '服务器内部错误', { code: 'INTERNAL_ERROR' })
 })
 
 // ============================================================
