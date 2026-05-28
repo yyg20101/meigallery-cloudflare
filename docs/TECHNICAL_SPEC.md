@@ -1,6 +1,15 @@
 # 技术设计文档
 
-## 1. 技术目标
+## 0. 状态标签说明
+
+本文使用以下状态标签区分当前代码事实、部分实现、后续设计和历史迁移背景：
+
+- `[当前实现]`：仓库已有代码、配置、迁移或测试支撑。
+- `[部分实现]`：已有数据结构、入口或辅助能力，但端到端流程仍未完整接入。
+- `[后续规划]`：需要单独设计、实现和验收的目标态能力。
+- `[历史参考]`：旧站、旧命名或迁移背景，不代表新增功能入口。
+
+## 1. 技术目标 `[当前实现 / 后续规划]`
 
 - 使用 Cloudflare 作为唯一部署和运行平台。
 - 前台和后台共用同一套认证、权限、媒体访问控制能力。
@@ -8,7 +17,7 @@
 - 批量导入当前实现为任务记录 + 已解析 JSON 数据处理；完整 zip 大文件导入按后续异步任务设计，避免大文件和视频处理阻塞请求。
 - 会员等级使用 rank 数值比较，业务逻辑不硬编码等级名称。
 
-## 2. 技术栈
+## 2. 技术栈 `[当前实现 / 后续规划]`
 
 - 前端框架：**Nuxt 4**（Vue 3 全栈框架，Nitro preset `cloudflare-module`，部署为 Cloudflare Worker）。
 - 后端框架：**Hono**（部署为独立 Cloudflare Worker，纯 API 服务）。
@@ -21,13 +30,13 @@
 - 包管理器：pnpm（workspace monorepo）。
 - 组件预览：当前未配置 Histoire；历史文档中提到的 Histoire 属于规划项。
 
-### 架构决策
+### 架构决策 `[当前决策]`
 
 **前后端分离**：前端（`packages/web`）和后端（`packages/api`）各为独立 Worker，通过 HTTP 通信。这允许前后端并行开发，各自独立部署。
 
 **Workers 而非 Pages**：当前项目统一使用 Workers + Workers Assets，Web 和 API 都通过 Wrangler Worker 配置部署，避免 Pages 与 Workers 双平台状态分叉。
 
-### 选型依据
+### 选型依据 `[当前实现]`
 
 | 需求 | 满足方式 |
 |------|----------|
@@ -38,7 +47,7 @@
 | D1/R2 绑定 | Hono 通过 `c.env.DB` / `c.env.R2` 访问 |
 | 图片优化 | Cloudflare Images Free Transformations + R2 优先处理公开缩略图，首期固定 `w=480` 单规格；每月 5,000 unique transformations，未启用、转换失败或超限时回退原图响应 |
 
-## 3. 应用模块（monorepo 结构）
+## 3. 应用模块（monorepo 结构） `[当前实现]`
 
 | 包 | 路径 | 职责 |
 |------|------|------|
@@ -46,13 +55,13 @@
 | `@meigallery/api` | `packages/api/` | Hono API Worker：认证、图库 CRUD、搜索、媒体授权、后台管理、导入处理 |
 | `@meigallery/shared` | `packages/shared/` | 共享类型定义、常量（会员 rank、标签类型、R2 key 前缀等） |
 
-## 4. 认证模块
+## 4. 认证模块 `[当前实现]`
 
-### 登录方式
+### 登录方式 `[当前实现 / 后续规划]`
 
 邮箱 + 密码（首期唯一方式，后续可扩展 Magic Link）。
 
-### 密码存储
+### 密码存储 `[当前实现]`
 
 当前实现使用 Cloudflare Workers 原生 Web Crypto PBKDF2，不存储明文密码。salt 自动生成且不复用。
 
@@ -61,14 +70,14 @@
 - 校验时使用固定轮次字节比较，不使用普通字符串短路比较。
 - 后续如提高迭代次数或切换算法，保留格式前缀作为版本识别；用户成功登录、重置密码或修改密码时可触发重新哈希。
 
-### 会话管理
+### 会话管理 `[当前实现]`
 
 - 使用 HttpOnly + Secure + SameSite=Lax 的 cookie 存储 session token。
 - session token 由服务端签发，使用 `SESSION_SECRET` 签名。
 - 会话有效期 30 天，滑动续期：剩余不足 15 天时自动续期 30 天并同步刷新 cookie。
 - 登出时服务端销毁 session 记录。
 
-### Turnstile 集成
+### Turnstile 集成 `[当前实现]`
 
 以下操作必须验证 Turnstile token：
 
@@ -80,7 +89,7 @@
 
 服务端使用 `TURNSTILE_SECRET_KEY` 调用 Cloudflare siteverify API 校验 token。
 
-### 速率限制
+### 速率限制 `[当前实现 / 外部配置]`
 
 当前实现分两层：
 
@@ -95,9 +104,9 @@
 | 媒体访问接口 | 30 次/分钟/user |
 | 外部导入 API | 120 次/分钟/IP |
 
-## 5. 权限模型
+## 5. 权限模型 `[当前实现]`
 
-### 用户角色
+### 用户角色 `[当前实现]`
 
 | 角色 | 权限范围 |
 |------|----------|
@@ -106,7 +115,7 @@
 | `admin` | 管理图库、标签、会员发放、批量导入；导入强制为草稿 |
 | `owner` | admin 全部权限 + 系统设置 + 导入可直接发布 + 管理员账号管理 |
 
-### Owner 与 Admin 权限差异
+### Owner 与 Admin 权限差异 `[当前实现]`
 
 | 操作 | Admin | Owner |
 |------|-------|-------|
@@ -115,7 +124,7 @@
 | 管理其他管理员账号 | 不可 | 可 |
 | 查看审计日志 | 仅自己操作 | 全部 |
 
-### 会员等级
+### 会员等级 `[当前实现]`
 
 | 等级 | rank | 说明 |
 |------|------|------|
@@ -125,16 +134,16 @@
 
 等级判断逻辑：`user_membership.rank >= gallery.required_level_rank`。
 
-### 会员有效期
+### 会员有效期 `[当前实现]`
 
 - `user_memberships` 记录包含 `starts_at` 和 `expires_at`。
 - 每次资源请求校验：`NOW() BETWEEN starts_at AND expires_at`。
 - 过期后等同 free 权限，不删除历史记录。
 - 同一用户可有多条会员记录（如续费），取最高有效 rank。
 
-## 6. 媒体访问控制
+## 6. 媒体访问控制 `[当前实现 / 后续规划]`
 
-### 缩略图按需生成
+### 缩略图按需生成 `[当前实现]`
 
 ```text
 请求流程：
@@ -150,7 +159,7 @@
 - 详情页：首期复用 480px 规格，避免多规格消耗 Free unique transformations
 - 存储路径：原图仍存放在 R2，Transformations 不迁移到 Cloudflare Images 存储
 
-### 受保护图片访问
+### 受保护图片访问 `[当前实现]`
 
 ```text
 1. 前端请求 /api/media/:assetId/access
@@ -161,7 +170,7 @@
 6. 拒绝 → 返回 403 和所需等级信息
 ```
 
-### 受保护视频访问
+### 受保护视频访问 `[部分实现 / 后续规划]`
 
 ```text
 1. 前端请求 /api/media/:assetId/access?type=video
@@ -174,7 +183,7 @@
 
 当前 Cloudflare Stream 生产链路仍未接入。API 在生成 signed token 前会检查 `STREAM_ACCOUNT_ID` 和 `STREAM_API_TOKEN`，任一缺失时返回 503 和错误码 `STREAM_NOT_CONFIGURED`，不尝试调用 Stream API；前台视频入口默认由 `video_enabled=false` 隐藏。
 
-### R2 对象 key 规范
+### R2 对象 key 规范 `[当前实现 / 后续规划]`
 
 | 用途 | key 格式 | 访问方式 |
 |------|----------|----------|
@@ -184,9 +193,9 @@
 | 导入包 | `imports/{jobId}/source.zip` | 私有，后续完整 zip 导入能力使用 |
 | 错误报告 | `imports/{jobId}/errors.csv` | 私有，管理员下载 |
 
-## 7. API 路由
+## 7. API 路由 `[当前实现 / 部分实现]`
 
-### 错误响应
+### 错误响应 `[当前实现]`
 
 所有 JSON 错误响应统一使用以下结构：
 
@@ -201,7 +210,7 @@
 
 API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `errorJson` 生成错误体。业务错误码放在 `code` 字段，例如 `AUTH_REQUIRED`、`RATE_LIMITED`、`IMPORT_TOKEN_MISSING`；前端只展示人类可读的 `message`，不得再依赖历史 `{ error }` 字段。
 
-### 公开 API
+### 公开 API `[当前实现]`
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -219,7 +228,7 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/media/:assetId/access` | 媒体访问接口（需登录；图片代理响应，视频返回 Stream token） |
 | GET | `/api/media/:assetId/thumbnail` | 缩略图（公开） |
 
-### 管理员 API
+### 管理员 API `[当前实现 / 部分实现]`
 
 | 方法 | 路径 | 说明 | 角色 |
 |------|------|------|------|
@@ -257,7 +266,7 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | POST | `/api/admin/legacy-import/migrate/retry-failed` | 重置旧站下载失败图片 | admin+ |
 | POST | `/api/admin/legacy-import/migrate/set-covers` | 批量设置旧站迁移图库封面 | admin+ |
 
-## 8. D1 数据库 Schema
+## 8. D1 数据库 Schema `[当前实现]`
 
 以下为当前核心表摘要，完整结构以 `packages/api/migrations/` 中已应用到 `0019_seed_member_activity.sql` 的迁移为准。
 
@@ -611,9 +620,9 @@ CREATE TABLE legacy_url_redirects (
 );
 ```
 
-## 9. 批量导入流程
+## 9. 批量导入流程 `[部分实现 / 后续规划]`
 
-### 当前实现范围
+### 当前实现范围 `[当前实现]`
 
 当前后台导入接口提供任务记录和已解析数据处理能力，不直接接收、保存或解压 zip 文件。
 
@@ -640,7 +649,7 @@ CREATE TABLE legacy_url_redirects (
 - 当前解析校验覆盖必填列 `folder`、`title`、`slug`，以及 `slug` 格式、`required_level`、`status`。
 - 当前不会在 API 内部解压 zip，也不会在 API 内部校验 zip 目录中的 `content.md`、`cover.jpg` 或图片文件存在性。
 
-### 状态机
+### 状态机 `[当前实现]`
 
 ```text
 queued → processing → completed
@@ -649,7 +658,7 @@ queued → processing → completed
 
 图库级别状态：`pending → success / failed / partial`
 
-### 后续完整 zip 异步流程
+### 后续完整 zip 异步流程 `[后续规划]`
 
 完整 zip 导入不是当前上线阻断项。后续实现时，API 不直接承载大文件请求体，应使用 R2 直传和异步处理：
 
@@ -670,23 +679,23 @@ queued → processing → completed
 8. 生成错误报告 CSV 存入 R2。
 9. 管理员查看草稿 → 预览 → 发布。
 
-### 并发控制
+### 并发控制 `[当前实现 / 后续规划]`
 
 - 当前实现：新任务提交时检查 `processing` 状态任务数，超过 3 个返回 429。
 - 后续完整 zip 异步导入：异步处理器继续沿用同时处理任务数 <= 3 的约束，并按 Cloudflare Queues / Workflows / 分片任务的实际能力设计重试和超时策略。
 
-### Telegram 外部导入
+### Telegram 外部导入 `[当前实现]`
 
 - Telegram 文件 ID 导入使用 `/api/imports/telegram-file-id`，请求必须携带有效 Import Token。
 - 导入类型仅允许 `gallery` 和 `case`，真实案例使用 `case`。
 - Import Token 权限使用 `gallery:create` 和 `case:create`，真实案例不再使用旧权限名。
 - `case` 导入写入 `cases` / `case_images`，R2 key 使用 `cases/{caseId}/{imageId}.{ext}`。
 
-## 10. WordPress 迁移流程
+## 10. WordPress 迁移流程 `[部分实现 / 历史参考 / 后续规划]`
 
 旧站 `zuole.me` 当前可通过 WordPress REST API 获取公开数据。
 
-### 迁移步骤
+### 迁移步骤 `[部分实现 / 后续规划]`
 
 1. 创建来源：记录旧站 base URL、导入模式、分类映射、标签映射。
 2. 拉取元数据：读取文章总数、分类、标签、sitemap。
@@ -698,7 +707,7 @@ queued → processing → completed
 8. 草稿生成：创建图库草稿并记录旧 URL。
 9. SEO 映射：生成旧 URL → 新图库 URL 的 redirect 记录。
 
-### 正文解析要求
+### 正文解析要求 `[当前实现 / 部分实现]`
 
 - 支持 WordPress block HTML（`<figure class="wp-block-image">`、`<figure class="wp-block-video">`）。
 - 保留原始 HTML 快照用于审计。
@@ -706,7 +715,7 @@ queued → processing → completed
 - `<img>` 提取为 `media_assets`（type=image）。
 - `<video>` 提取为 `media_assets`（type=video）。
 
-### 审核机制
+### 审核机制 `[部分实现 / 后续规划]`
 
 触发待审核的条件：
 - 标题或正文包含敏感词（需维护敏感词列表）。
@@ -716,7 +725,7 @@ queued → processing → completed
 
 审核操作：通过 / 退回 / 修改标签 / 修改标题 / 删除敏感文案。
 
-## 11. 缓存策略
+## 11. 缓存策略 `[当前实现 / 后续规划]`
 
 | 资源类型 | 缓存策略 | TTL |
 |----------|----------|-----|
@@ -727,7 +736,7 @@ queued → processing → completed
 | 受保护图片 | Worker 代理返回，用户端私有短缓存 | 600 秒 |
 | 受保护视频 | Stream 接入后返回 signed token；未配置 Stream secrets 时返回 `STREAM_NOT_CONFIGURED` | 4 小时 |
 
-## 12. 已实现功能补充
+## 12. 已实现功能补充 `[当前实现]`
 
 - **图库创建两步流程**：第一步填写基本信息（标题、slug、描述、标签、等级），第二步上传媒体文件（封面、图片、视频）。
 - **站点设置扩展**：新增 SEO/OG/页脚字段（`seo_description`、`og_image_url`、`footer_text`、`footer_links`），通过 migration 0009 添加。
@@ -739,9 +748,9 @@ queued → processing → completed
 - **生产域名**：Web 站点 `616618.xyz`，API 服务 `api.616618.xyz`。
 - **Dev 环境 Worker**：当前配置为 `meigallery-web-dev` / `meigallery-api-dev`，仅使用 Workers dev 子域，不绑定生产域名。
 
-## 13. 测试范围
+## 13. 测试范围 `[当前实现 / 后续规划]`
 
-### 单元测试（必须覆盖）
+### 单元测试（必须覆盖） `[当前实现 / 后续规划]`
 
 - 权限校验：不同 rank 访问不同等级媒体。
 - 会员有效期：过期后立即失效。
@@ -751,7 +760,7 @@ queued → processing → completed
 - 密码哈希与验证。
 - Turnstile token 校验：登录、发送验证码、无邮箱验证码注册、后台导入任务创建和处理。
 
-### 上传限制验收
+### 上传限制验收 `[当前实现]`
 
 | 入口 | 当前上限 | 格式 | 证据 |
 |------|----------|------|------|
@@ -762,7 +771,7 @@ queued → processing → completed
 | 联系方式二维码 | 2MB/张 | PNG/JPEG/WebP | `packages/api/src/routes/admin/contact-methods.ts` |
 | 站点图标 | 1MB/张 | PNG/JPEG/WebP/ICO | `packages/api/src/routes/admin/settings.ts` |
 
-### 集成测试
+### 集成测试 `[部分实现 / 后续规划]`
 
 - 当前导入流程：创建任务 → 提交已解析 JSON → 校验 → 草稿生成 → 错误报告。
 - 后续完整 zip 导入流程：R2 直传 zip → 异步解压校验 → 草稿生成 → 预览发布。
@@ -770,7 +779,7 @@ queued → processing → completed
 - 媒体签名流程：请求 → 校验 → 签发 → 过期。
 - 审计日志：admin 写操作后检查日志记录；重点覆盖导入任务处理结果、旧站迁移批量入口、会员发放、媒体变更和站点设置。
 
-### 端到端测试
+### 端到端测试 `[当前实现 / 后续规划]`
 
 - WordPress 迁移：分类映射、标签映射、图片解析、视频解析、媒体下载失败、敏感词触发审核。
 - 响应式：移动端、平板端、桌面端关键页面布局。
