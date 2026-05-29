@@ -203,7 +203,7 @@ adminImportRoutes.post('/:id/process', async (c) => {
       }
 
       for (const tagSlug of tagSlugs) {
-        const slug = tagSlug.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5\-]/g, '-')
+        const slug = tagSlug.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5-]/g, '-')
         let tag = await db
           .prepare('SELECT id FROM tags WHERE slug = ?')
           .bind(slug)

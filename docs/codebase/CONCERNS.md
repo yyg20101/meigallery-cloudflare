@@ -8,7 +8,7 @@
 | 高 | 受保护媒体和视频能力必须持续避免前端信任 | `packages/api/src/routes/media.ts`、`docs/PROJECT_STATUS.md` | 权限绕过会导致资源泄露；Stream 未接入时更容易出现文档/UI误导 | 保持服务端 rank 校验为唯一依据；Stream 接入前为视频 UI 保持关闭或显式规划状态 |
 | 中 | 多个路由文件超过 400 行 | `admin/galleries.ts` 624 行、`auth.ts` 502 行、`admin/users.ts` 502 行、`admin/media.ts` 430 行 | 后续改动容易引入回归 | 把批量操作、媒体上传、用户活动查询等抽成 service/helper 并保持测试 |
 | 中 | 前端组件测试仍缺 | `packages/web` 已有 Playwright smoke，但未发现 Vitest 组件测试 | 复杂组件状态和局部交互仍主要依赖页面级 smoke 与人工检查 | 在 Playwright smoke 基础上补 Vitest component 测试覆盖锁定态、上传态、筛选态和后台表单 |
-| 低 | lint/format 仍处渐进基线 | 已有 `eslint.config.mjs` 和 `.editorconfig`，当前 `pnpm lint` 仍保留 warning | 历史 warning 清理前，风格问题仍可能继续累积 | 分阶段清理 warning；再决定是否接入 Prettier 或更严格 Vue 格式规则 |
+| 低 | format 策略仍较轻量 | 已有 `eslint.config.mjs` 和 `.editorconfig`，当前 `pnpm lint` 以零 warning 通过；未接入 Prettier | `.editorconfig` 只约束基础格式，复杂 Vue 模板排版仍依赖人工维护 | 后续按团队偏好决定是否接入 Prettier 或更严格 Vue 格式规则 |
 | 低 | Cloudflare Stream secrets 和字段存在但生产未接入 | `.env.example`、`packages/api/src/routes/media.ts`、`docs/PROJECT_STATUS.md` | 误以为视频链路已可用 | 文档继续标注未接入；接入时补完整上传、转码、播放、成本测试 |
 
 ## 2. 技术债

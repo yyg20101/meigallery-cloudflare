@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { Bindings, Variables } from '../../index'
 import { requireOwner } from '../../middleware/auth'
 import { writeAuditLog } from '../../utils/permission'
-import { CONTACT_PLATFORMS, generateContactLink } from '@meigallery/shared/constants'
+import { CONTACT_PLATFORMS } from '@meigallery/shared/constants'
 
 export const adminContactMethodRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 

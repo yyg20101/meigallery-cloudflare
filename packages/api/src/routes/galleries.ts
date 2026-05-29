@@ -146,7 +146,7 @@ galleryRoutes.get('/', cacheControl(60), async (c) => {
 
   // 批量查询标签
   const galleryIds = pageRows.map(g => g.id)
-  let tagsMap: Record<string, Array<{ id: string; type: string; name: string; slug: string }>> = {}
+  const tagsMap: Record<string, Array<{ id: string; type: string; name: string; slug: string }>> = {}
 
   if (galleryIds.length > 0) {
     const tagPlaceholders = galleryIds.map(() => '?').join(',')

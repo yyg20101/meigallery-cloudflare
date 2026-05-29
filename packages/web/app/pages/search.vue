@@ -25,7 +25,7 @@ const { data: tagsData } = await useAsyncData('search-tags', () =>
   api<{ data: TagGroup }>('/api/tags'),
 )
 
-const { data: searchResult, refresh } = await useAsyncData(
+const { data: searchResult } = await useAsyncData(
   'search-results',
   () => api<{ data: GallerySummary[]; total: number; page: number; pageSize: number }>('/api/search', {
     query: {

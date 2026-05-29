@@ -20,7 +20,7 @@ interface ImportJob {
   creator_email: string; created_at: string; completed_at: string | null
 }
 
-const { data, refresh } = await useAsyncData('admin-imports', () =>
+const { data } = await useAsyncData('admin-imports', () =>
   api<{ data: ImportJob[]; total: number }>('/api/admin/import-jobs'),
 )
 

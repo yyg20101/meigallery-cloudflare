@@ -5,8 +5,6 @@ definePageMeta({ layout: 'admin' })
 
 const route = useRoute()
 const { api, baseURL } = useApi()
-const router = useRouter()
-const { isOwner } = useAuth()
 
 const galleryId = route.params.id as string
 

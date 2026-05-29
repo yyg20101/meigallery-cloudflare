@@ -48,7 +48,7 @@ export function processPosts(
   for (const post of posts) {
     // 生成 slug（解码 URL 编码的中文 slug）
     const decodedSlug = decodeURIComponent(post.slug).toLowerCase()
-    const cleanSlug = decodedSlug.replace(/[^a-z0-9\u4e00-\u9fa5\-]/g, '-').replace(/-{2,}/g, '-').replace(/^-|-$/g, '')
+    const cleanSlug = decodedSlug.replace(/[^a-z0-9\u4e00-\u9fa5-]/g, '-').replace(/-{2,}/g, '-').replace(/^-|-$/g, '')
 
     // 检查 slug 重复
     if (existingSlugs.has(cleanSlug)) {

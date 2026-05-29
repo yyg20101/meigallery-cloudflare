@@ -27,7 +27,7 @@ searchRoutes.get('/', cacheControl(30), async (c) => {
 
   // 构建查询
   let fromClause = 'FROM galleries g'
-  let whereConditions = ['g.status = ?']
+  const whereConditions = ['g.status = ?']
   const params: unknown[] = ['published']
 
   // 标签筛选（AND 关系：要求包含所有指定标签）
@@ -123,7 +123,7 @@ searchRoutes.get('/', cacheControl(30), async (c) => {
   const total = exactTotal ?? offset + pageRows.length + (hasMore ? 1 : 0)
 
   const galleryIds = pageRows.map(g => g.id)
-  let tagsMap: Record<string, Array<{ id: string; type: string; name: string; slug: string }>> = {}
+  const tagsMap: Record<string, Array<{ id: string; type: string; name: string; slug: string }>> = {}
 
   if (galleryIds.length > 0) {
     const tagPlaceholders = galleryIds.map(() => '?').join(',')

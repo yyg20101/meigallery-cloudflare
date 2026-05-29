@@ -15,7 +15,7 @@
 
 - Formatter：根目录 `.editorconfig` 统一 UTF-8、LF、2 空格缩进、末尾换行和默认去除行尾空格；当前未接入 Prettier。
 - Linter：根目录 `eslint.config.mjs` 使用 ESLint flat config，覆盖 `packages/**/*.{ts,js,mjs,vue}`。
-- 当前 lint 为渐进基线：错误阻断 CI，历史未使用变量、可改 `const` 和部分正则转义清理先保留为 warning。
+- 当前 lint 为零 warning 基线：`pnpm lint` 使用 `--max-warnings=0`，错误和 warning 均阻断 CI。
 - TypeScript：API/shared 使用 `tsc --noEmit`；Web package 提供 `nuxt typecheck`，但 `nuxt.config.ts` 中 `typescript.typeCheck` 为 `false`。
 - 运行命令：
 

@@ -4,7 +4,7 @@ import type { Bindings, Variables } from '../index'
 export const healthRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
 healthRoutes.get('/', async (c) => {
-  let dbStatus = 'unknown'
+  let dbStatus: 'ok' | 'error' | 'unavailable'
 
   try {
     const result = await c.env.DB.prepare('SELECT 1 as ok').first<{ ok: number }>()

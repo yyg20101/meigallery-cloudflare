@@ -123,9 +123,6 @@ async function onMove(index: number, direction: -1 | 1) {
   await refresh()
 }
 
-// QR Code upload
-const fileInputRefs = ref<Record<string, HTMLInputElement | null>>({})
-
 function triggerUpload(id: string) {
   const el = document.getElementById(`qr-input-${id}`) as HTMLInputElement | null
   el?.click()

@@ -26,7 +26,7 @@ adminUserRoutes.get('/', async (c) => {
   const filterRole = c.req.query('role')
   const filterStatus = c.req.query('status')
 
-  let whereConditions: string[] = []
+  const whereConditions: string[] = []
   const params: unknown[] = []
 
   if (keyword) {
@@ -63,7 +63,7 @@ adminUserRoutes.get('/', async (c) => {
 
   // 批量查询有效会员
   const userIds = users.results.map(u => u.id)
-  let membershipsMap: Record<number, { rank: number; expiresAt: string }> = {}
+  const membershipsMap: Record<number, { rank: number; expiresAt: string }> = {}
 
   if (userIds.length > 0) {
     const placeholders = userIds.map(() => '?').join(',')

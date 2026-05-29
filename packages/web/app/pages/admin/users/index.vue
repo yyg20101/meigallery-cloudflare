@@ -14,7 +14,7 @@ interface AdminUser {
   membershipRank: number; membershipExpiry: string | null
 }
 
-const { data, refresh } = await useAsyncData('admin-users', () =>
+const { data } = await useAsyncData('admin-users', () =>
   api<{ data: AdminUser[]; total: number }>('/api/admin/users', {
     query: {
       page: String(page.value),

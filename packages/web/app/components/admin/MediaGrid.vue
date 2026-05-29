@@ -35,7 +35,6 @@ const emit = defineEmits<{
 
 const { baseURL } = useApi()
 
-const deletingId = ref<string | null>(null)
 const showDeleteConfirm = ref(false)
 const deleteTargetId = ref<string | null>(null)
 

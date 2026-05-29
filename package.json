@@ -13,7 +13,7 @@
     "deploy": "pnpm -r deploy",
     "deploy:web": "pnpm --filter @meigallery/web deploy",
     "deploy:api": "pnpm --filter @meigallery/api deploy",
-    "lint": "eslint \"packages/**/*.{ts,js,mjs,vue}\"",
+    "lint": "eslint \"packages/**/*.{ts,js,mjs,vue}\" --max-warnings=0",
     "typecheck": "pnpm -r typecheck",
     "db:migrate:local": "pnpm --filter @meigallery/api db:migrate:local",
     "db:migrate:remote": "pnpm --filter @meigallery/api db:migrate:remote"
