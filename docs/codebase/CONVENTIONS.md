@@ -46,7 +46,7 @@ corepack pnpm --filter @meigallery/api test
 - 测试文件与源码同目录，命名为 `*.test.ts`。
 - API 测试使用 Vitest `describe` / `it` / `expect`，部分测试构造 mock D1/R2/env。
 - 纯工具和路由均有测试样例；前端目前没有对应测试框架。
-- API coverage 已配置核心安全/导入模块基线阈值；前端组件测试仍未配置。
+- API coverage 已配置核心安全/导入模块基线阈值；Web 组件测试使用 Vitest + Vue Test Utils + happy-dom。
 
 ## 6. 证据
 

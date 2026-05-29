@@ -16,7 +16,7 @@ corepack pnpm --filter @meigallery/web test:e2e
 corepack pnpm --filter @meigallery/web exec nuxt build
 ```
 
-API coverage 当前使用 Vitest v8 provider，报告目录为 `packages/api/coverage/`。前端组件测试配置仍未发现。
+API coverage 当前使用 Vitest v8 provider，报告目录为 `packages/api/coverage/`。Web 已接入 Vitest + Vue Test Utils + happy-dom 组件测试基线。
 
 ## 2. 测试布局
 
@@ -24,7 +24,7 @@ API coverage 当前使用 Vitest v8 provider，报告目录为 `packages/api/cov
 - Vitest include：`src/**/*.test.ts`。
 - API 测试分布在 `middleware`、`routes`、`routes/admin`、`services`、`utils`。
 - Web Playwright 配置位于 `packages/web/playwright.config.ts`，用例位于 `packages/web/tests/e2e/`。
-- Web 目录当前未发现 `*.test.ts` 或 Vitest 前端组件测试配置。
+- Web 目录已存在 `packages/web/vitest.config.ts` 和 `packages/web/app/components/MembershipBadge.test.ts`，当前覆盖会员徽章的免费/VIP/SVIP 展示状态。
 
 ## 3. 测试范围矩阵
 
@@ -33,7 +33,7 @@ API coverage 当前使用 Vitest v8 provider，报告目录为 `packages/api/cov
 | 单元测试 | 是 | 密码、session、权限、会员、导入校验、URL 安全、Pixel 设置、WordPress 解析 | `packages/api/src/utils/*.test.ts`、`packages/api/src/services/*.test.ts` |
 | 路由级测试 | 是 | 公开图库/搜索/媒体/案例、后台设置/案例/Import Token/外部导入 | `packages/api/src/routes/**/*.test.ts` |
 | 集成测试 | 部分 | 使用 mock D1/R2/env 验证路由和服务流程 | 没有真实 Cloudflare 远程集成测试 |
-| 前端组件测试 | 否 | `[TODO]` | 当前先以 Playwright smoke 覆盖页面级回归 |
+| 前端组件测试 | 是 | `corepack pnpm --filter @meigallery/web test:unit` | 当前基线覆盖 `MembershipBadge`，后续扩展复杂组件状态 |
 | E2E | 是 | 首页、搜索、图库详情、登录、用户中心、后台首页 | Playwright smoke 覆盖 360/768/1024/1440 视口、横向溢出和私有 key 泄露断言 |
 
 ## 4. Mock 和隔离策略
@@ -50,7 +50,7 @@ API coverage 当前使用 Vitest v8 provider，报告目录为 `packages/api/cov
 - 扫描输出显示生产代码无 TODO/FIXME/HACK。
 - CI 会运行 API 类型检查、Web 类型检查、API 单元测试、API coverage、Web Playwright smoke、Web build、API dry-run build。
 - 覆盖率：API 已配置核心安全/导入模块 coverage 基线，当前阈值为 statements 70%、branches 65%、functions 75%、lines 75%；HTML 和 JSON summary 报告输出到 `packages/api/coverage/` 并由 CI 上传 artifact。
-- 已知缺口：前端组件测试仍缺；Cloudflare D1/R2/Email/Workers 真实远程链路无自动化集成测试；Stream 规划能力未有端到端测试。
+- 已知缺口：前端组件测试覆盖仍少；Cloudflare D1/R2/Email/Workers 真实远程链路无自动化集成测试；Stream 规划能力未有端到端测试。
 
 ## 6. 证据
 

@@ -38,6 +38,9 @@ jobs:
       - name: Web 类型检查
         run: pnpm --filter @meigallery/web typecheck
 
+      - name: Web 组件测试
+        run: pnpm --filter @meigallery/web test:unit
+
       - name: API 单元测试
         run: pnpm --filter @meigallery/api test
 
