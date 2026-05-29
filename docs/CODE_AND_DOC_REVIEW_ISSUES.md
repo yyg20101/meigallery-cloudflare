@@ -27,7 +27,7 @@
 | P3-02 | P3 | 文档中的文件大小和上传限制不统一 | 已完成 | 已将当前图库/真实案例/Telegram 图片统一为 10MB，并明确头像、二维码和站点图标的独立上限 | 后续如提高上限需重新评估 Worker 请求体、内存和 R2/Stream 上传策略 |
 | P3-03 | P3 | 缺少 lint / format 配置和 CI 约束 | 已完成 | 已接入根级 ESLint flat config、`.editorconfig`、`pnpm lint` 和 CI lint 步骤；当前 `pnpm lint` 以 `--max-warnings=0` 零 warning 通过 | 后续按需接入 Prettier 或更严格 Vue 格式规则 |
 | P3-04 | P3 | 覆盖率未知 | 已完成 | API 已接入 Vitest v8 coverage，核心安全/导入模块设置基线阈值并在 CI 上传报告 | 后续逐步扩大到路由 service 和前端组件测试 |
-| P3-05 | P3 | 后端路由文件过大，业务逻辑集中在路由层 | 已完成首轮 | 已将认证路由中的邮箱验证码业务抽到 service 并补单测；coverage 已纳入该 service | 后续继续分阶段抽取图库、用户和媒体路由 |
+| P3-05 | P3 | 后端路由文件过大，业务逻辑集中在路由层 | 持续收敛 | 已将认证路由中的邮箱验证码业务和后台用户列表查询抽到 service 并补单测；coverage 已纳入邮箱验证码 service | 后续继续分阶段抽取图库、媒体和用户写操作 |
 | P3-06 | P3 | Stream 字段和签名逻辑存在，但生产视频链路未接入 | 已完成 | UI 默认由 `video_enabled=false` 隐藏视频入口；API 在 Stream secrets 缺失时返回 503 `STREAM_NOT_CONFIGURED` | Stream 正式接入需单独 PRD 和验收 |
 
 ## 1. 验证结果

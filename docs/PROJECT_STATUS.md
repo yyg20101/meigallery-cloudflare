@@ -64,7 +64,7 @@
 - `P3-02 文档中的文件大小和上传限制不统一` 已完成：当前内容图片上传口径统一为 10MB；头像 2MB、联系方式二维码 2MB、站点图标 1MB 按独立入口限制记录。
 - `P3-03 缺少 lint / format 配置和 CI 约束` 已完成：根级 ESLint flat config、`.editorconfig`、`pnpm lint` 和 CI lint 步骤已接入，当前 lint 以 `--max-warnings=0` 零 warning 通过。
 - `P3-04 覆盖率未知` 已完成首轮收敛：API 已接入 Vitest v8 coverage，核心安全/导入模块设置基线阈值，CI 上传覆盖率 artifact。
-- `P3-05 后端路由文件过大，业务逻辑集中在路由层` 已完成首轮服务化：认证路由中的邮箱验证码业务已抽到 `services/email-verification.ts` 并补 service 单测，后续继续拆图库、用户和媒体路由。
+- `P3-05 后端路由文件过大，业务逻辑集中在路由层` 持续收敛中：认证路由中的邮箱验证码业务已抽到 `services/email-verification.ts`，后台用户列表查询已抽到 `services/admin-users.ts`，均已补 service 单测；后续继续拆图库、媒体和用户写操作。
 - `P3-06 Stream 字段和签名逻辑存在，但生产视频链路未接入` 已完成收敛：Stream 接入前 UI 继续默认隐藏视频入口，API 缺少 Stream secrets 时返回 503 `STREAM_NOT_CONFIGURED`，不触发未配置的签名请求。
 - `corepack pnpm --filter @meigallery/web typecheck` 当前通过，但仍打印 `vue-router/volar/sfc-route-blocks` package export 非阻断警告，后续依赖升级阶段继续跟踪。
 - P1/P2/P3 当前台账项已全部完成或完成首轮收敛；后续工作以继续路由服务化、补前端组件测试和按需收紧格式规则为主。

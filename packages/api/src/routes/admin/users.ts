@@ -5,8 +5,8 @@ import { writeAuditLog } from '../../utils/permission'
 import { requireOwner } from '../../middleware/auth'
 import { hashPassword } from '../../utils/password'
 import { destroyAllUserSessions } from '../../utils/session'
+import { listAdminUsers } from '../../services/admin-users'
 import { validateUsername } from '@meigallery/shared/utils'
-import { PAGINATION } from '@meigallery/shared/constants'
 
 export const adminUserRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -15,88 +15,15 @@ export const adminUserRoutes = new Hono<{ Bindings: Bindings; Variables: Variabl
  * 查询参数：page, pageSize, q(搜索邮箱/用户名/昵称), role?, status?
  */
 adminUserRoutes.get('/', async (c) => {
-  const db = c.env.DB
-  const page = Math.max(1, parseInt(c.req.query('page') || '1', 10))
-  const pageSize = Math.min(
-    PAGINATION.MAX_PAGE_SIZE,
-    Math.max(1, parseInt(c.req.query('pageSize') || String(PAGINATION.DEFAULT_PAGE_SIZE), 10)),
-  )
-  const offset = (page - 1) * pageSize
-  const keyword = c.req.query('q')?.trim()
-  const filterRole = c.req.query('role')
-  const filterStatus = c.req.query('status')
+  const result = await listAdminUsers(c.env.DB, {
+    page: c.req.query('page'),
+    pageSize: c.req.query('pageSize'),
+    keyword: c.req.query('q'),
+    role: c.req.query('role'),
+    status: c.req.query('status'),
+  })
 
-  const whereConditions: string[] = []
-  const params: unknown[] = []
-
-  if (keyword) {
-    whereConditions.push('(u.email LIKE ? OR u.username LIKE ? OR u.nickname LIKE ?)')
-    params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`)
-  }
-  if (filterRole) {
-    whereConditions.push('u.role = ?')
-    params.push(filterRole)
-  }
-  if (filterStatus) {
-    whereConditions.push('u.status = ?')
-    params.push(filterStatus)
-  }
-
-  const whereClause = whereConditions.length > 0 ? 'WHERE ' + whereConditions.join(' AND ') : ''
-
-  const countResult = await db
-    .prepare(`SELECT COUNT(*) as total FROM users u ${whereClause}`)
-    .bind(...params)
-    .first<{ total: number }>()
-  const total = countResult?.total ?? 0
-
-  const users = await db
-    .prepare(`
-      SELECT u.id, u.email, u.username, u.nickname, u.role, u.status, u.created_at
-      FROM users u
-      ${whereClause}
-      ORDER BY u.created_at DESC
-      LIMIT ? OFFSET ?
-    `)
-    .bind(...params, pageSize, offset)
-    .all<{ id: number; email: string; username: string | null; nickname: string | null; role: string; status: string; created_at: string }>()
-
-  // 批量查询有效会员
-  const userIds = users.results.map(u => u.id)
-  const membershipsMap: Record<number, { rank: number; expiresAt: string }> = {}
-
-  if (userIds.length > 0) {
-    const placeholders = userIds.map(() => '?').join(',')
-    const memberships = await db
-      .prepare(`
-        SELECT um.user_id, MAX(ml.rank) as max_rank, MAX(um.expires_at) as max_expiry
-        FROM user_memberships um
-        JOIN membership_levels ml ON um.level_id = ml.id
-        WHERE um.user_id IN (${placeholders})
-          AND datetime('now') BETWEEN datetime(um.starts_at) AND datetime(um.expires_at)
-        GROUP BY um.user_id
-      `)
-      .bind(...userIds)
-      .all<{ user_id: number; max_rank: number; max_expiry: string }>()
-
-    for (const m of memberships.results) {
-      membershipsMap[m.user_id] = { rank: m.max_rank, expiresAt: m.max_expiry }
-    }
-  }
-
-  const data = users.results.map(u => ({
-    id: u.id,
-    email: u.email,
-    username: u.username,
-    nickname: u.nickname,
-    role: u.role,
-    status: u.status,
-    createdAt: u.created_at,
-    membershipRank: membershipsMap[u.id]?.rank ?? 0,
-    membershipExpiry: membershipsMap[u.id]?.expiresAt ?? null,
-  }))
-
-  return c.json({ data, total, page, pageSize })
+  return c.json(result)
 })
 
 /**
