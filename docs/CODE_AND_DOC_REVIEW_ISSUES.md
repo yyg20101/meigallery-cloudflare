@@ -18,7 +18,7 @@
 | P2-01 | P2 | Worker 配置缺少生产可观测性，compatibility_date 偏旧 | 已完成 | 已按 Wrangler 4.86.0 schema 为 API/Web 生产和 dev 配置 Workers Logs，并将 Worker `compatibility_date` 与 Web `compatibilityDate` 更新到 2026-05-26；部署文档已记录更新和验证流程 | 后续每次更新兼容日期前先查阅 Cloudflare 官方 compatibility dates / flags 文档并完成 dry-run |
 | P2-02 | P2 | zip 批量导入文档明显超前于当前实现 | 已完成 | 已将 PRD 和技术设计拆分为当前任务记录/manifest 解析/JSON `galleries` 处理能力，以及后续 R2 直传异步 zip 导入设计 | 后续实现完整 zip 导入时，先补 R2 上传入口、异步处理器、重试策略和验收测试 |
 | P2-03 | P2 | 媒体访问文档写 R2 presigned URL，但代码实际为 Worker 代理 | 已完成 | 已统一为 Worker 代理受保护图片响应；技术设计、PRD、部署限流命名、常量和路由注释已同步，并补充媒体访问测试 | 后续如改为 R2 presigned URL，需单独补签名实现、撤销策略和权限回归测试 |
-| P2-04 | P2 | 前端自动化测试缺失 | 已完成 | 已接入 Playwright smoke 和 Web Vitest 组件测试基线；smoke 覆盖核心页面与多视口，组件测试当前覆盖 `MembershipBadge` | 后续继续扩展锁定态、上传态、筛选态和后台表单组件测试 |
+| P2-04 | P2 | 前端自动化测试缺失 | 已完成 | 已接入 Playwright smoke 和 Web Vitest 组件测试；smoke 覆盖核心页面与多视口，组件测试当前覆盖 `MembershipBadge`、`MediaLock`、`SearchInput`、`TagChip` | 后续继续扩展上传态、筛选态和后台表单组件测试 |
 | P2-05 | P2 | dev 环境复用正式 D1/R2 数据 | 已完成 | 已在 dev 后台增加正式数据风险标识，并对管理端写请求统一弹出二次确认 | 后续如需要更强隔离，可再拆分 `meigallery-db-dev` 和 `meigallery-media-dev` |
 | P2-06 | P2 | 文档中的 Turnstile 覆盖范围与当前实现不一致 | 已完成 | 已抽取统一 Turnstile 校验工具，明确后台复用普通登录入口，并为后台导入任务创建/处理补充 Turnstile 校验 | 后续如新增高风险后台操作，按单独验收清单决定是否接入 Turnstile |
 | P2-07 | P2 | 审计日志覆盖整体较好，但旧站迁移批量入口仍需补齐确认 | 已完成 | 已建立后台写操作审计覆盖矩阵，并为旧站迁移 `/download-pending` 补齐审计日志和测试 | 后续新增后台写入口时同步更新矩阵并补审计断言 |
@@ -257,7 +257,7 @@
 1. 已接入 Playwright smoke：`/`、`/search`、图库详情、登录、用户中心、后台首页。
 2. 已覆盖 360px、768px、1024px、1440px 视口。
 3. 已增加断言：核心标题可见、无横向滚动、页面正文不含私有 R2 key 前缀。
-4. 已补 Web Vitest 组件测试基线；后续继续扩展核心组件状态覆盖。
+4. 已补 Web Vitest 组件测试，覆盖 `MembershipBadge`、`MediaLock`、`SearchInput`、`TagChip` 的 13 个组件状态断言；后续继续扩展复杂后台组件覆盖。
 
 ### P2-05 dev 环境复用正式 D1/R2 数据
 

@@ -7,7 +7,7 @@
 | 中 | Dev 环境复用正式 D1/R2 数据 | `docs/DEPLOYMENT.md`、`packages/api/wrangler.toml`、`packages/web/app/layouts/admin.vue`、`packages/web/app/composables/useApi.ts` | dev 后台写操作可能修改真实内容；当前已有后台风险标识和写操作二次确认降低误操作概率 | 为 dev 写操作建立固定测试账号和测试数据标记；如需更强隔离再拆分 dev D1/R2 |
 | 高 | 受保护媒体和视频能力必须持续避免前端信任 | `packages/api/src/routes/media.ts`、`docs/PROJECT_STATUS.md` | 权限绕过会导致资源泄露；Stream 未接入时更容易出现文档/UI误导 | 保持服务端 rank 校验为唯一依据；Stream 接入前为视频 UI 保持关闭或显式规划状态 |
 | 中 | 多个路由文件仍偏大 | `admin/galleries.ts` 624 行、`admin/users.ts` 约 420 行、`admin/media.ts` 430 行 | 后续改动容易引入回归 | 继续把批量操作、媒体上传、用户写操作和活动查询抽成 service/helper 并保持测试 |
-| 中 | 前端组件测试覆盖仍少 | `packages/web` 已有 Playwright smoke 和 Vitest 组件测试基线，当前组件测试覆盖 `MembershipBadge` | 复杂组件状态和局部交互仍主要依赖页面级 smoke 与人工检查 | 继续补 Vitest 组件测试覆盖锁定态、上传态、筛选态和后台表单 |
+| 中 | 前端复杂组件测试覆盖仍少 | `packages/web` 已有 Playwright smoke 和 Vitest 组件测试，当前覆盖 `MembershipBadge`、`MediaLock`、`SearchInput`、`TagChip` | 后台表单、上传态和复杂筛选状态仍主要依赖页面级 smoke 与人工检查 | 继续补 Vitest 组件测试覆盖上传态、筛选态和后台表单 |
 | 低 | format 策略仍较轻量 | 已有 `eslint.config.mjs` 和 `.editorconfig`，当前 `pnpm lint` 以零 warning 通过；未接入 Prettier | `.editorconfig` 只约束基础格式，复杂 Vue 模板排版仍依赖人工维护 | 后续按团队偏好决定是否接入 Prettier 或更严格 Vue 格式规则 |
 | 低 | Cloudflare Stream secrets 和字段存在但生产未接入 | `.env.example`、`packages/api/src/routes/media.ts`、`docs/PROJECT_STATUS.md` | 误以为视频链路已可用 | 文档继续标注未接入；接入时补完整上传、转码、播放、成本测试 |
 
@@ -16,7 +16,7 @@
 | 债务 | 原因 | 位置 | 忽略风险 | 建议修复 |
 |------|------|------|----------|----------|
 | 路由承载过多业务逻辑 | Hono 路由快速迭代形成 | `packages/api/src/routes/admin/galleries.ts`、`packages/api/src/routes/admin/users.ts`、`packages/api/src/routes/admin/media.ts` | 难复用、难局部测试 | 已抽出邮箱验证码和后台用户列表 service；继续拆图库、媒体和用户写操作 |
-| 前端组件测试覆盖不足 | 项目优先完成 MVP 功能和 Workers 部署 | `packages/web/` | 局部组件状态回归发现晚 | 已补关键 Playwright smoke 和首个组件测试，后续扩展核心组件覆盖 |
+| 前端复杂组件测试覆盖不足 | 项目优先完成 MVP 功能和 Workers 部署 | `packages/web/` | 局部组件状态回归发现晚 | 已补关键 Playwright smoke 和 4 个基础组件测试，后续扩展后台复杂组件覆盖 |
 | 统一错误响应不完全一致 | 历史阶段混合 `{ error }` 和 `{ statusCode, message }` | `packages/api/src/routes/**/*.ts` | 前端错误处理要兼容多种格式 | 新增 API 错误响应约定并逐步收敛 |
 | 覆盖率仍需扩大 | 当前 coverage 先覆盖核心安全/导入模块，Web 组件测试刚建立基线 | `packages/api/vitest.config.ts`、`packages/web/vitest.config.ts` | 路由服务化和复杂前端组件仍有盲区 | 继续扩大 service 覆盖范围，扩展核心前端组件测试 |
 

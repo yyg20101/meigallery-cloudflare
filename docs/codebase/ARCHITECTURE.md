@@ -56,7 +56,7 @@
 - API 路由文件中存在多个超过 400 行的文件，例如 `admin/galleries.ts`、`auth.ts`、`admin/users.ts`、`admin/media.ts`；继续增长会提高修改风险。
 - Dev 环境配置复用正式 D1/R2 资源，便于真实数据验收，但后台写操作可能影响正式数据。
 - Cloudflare Stream 相关字段和签名逻辑存在，但生产视频上传/编码链路未接入；文档和 UI 需要持续避免暗示视频已完整可用。
-- 当前已有 Web Playwright smoke 覆盖核心页面和多视口响应式，并建立 Vitest 组件测试基线；复杂组件局部状态仍需要继续扩展组件测试覆盖。
+- 当前已有 Web Playwright smoke 覆盖核心页面和多视口响应式，并扩展了 Vitest 组件测试；后台复杂组件局部状态仍需要继续补充测试覆盖。
 
 ## 6. 证据
 
