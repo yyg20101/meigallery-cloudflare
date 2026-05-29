@@ -29,6 +29,9 @@ jobs:
       - name: 安装依赖
         run: pnpm install --frozen-lockfile
 
+      - name: Lint
+        run: pnpm lint
+
       - name: API 类型检查
         run: pnpm --filter @meigallery/api exec tsc --noEmit
 

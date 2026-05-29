@@ -8,7 +8,7 @@
 | 高 | 受保护媒体和视频能力必须持续避免前端信任 | `packages/api/src/routes/media.ts`、`docs/PROJECT_STATUS.md` | 权限绕过会导致资源泄露；Stream 未接入时更容易出现文档/UI误导 | 保持服务端 rank 校验为唯一依据；Stream 接入前为视频 UI 保持关闭或显式规划状态 |
 | 中 | 多个路由文件超过 400 行 | `admin/galleries.ts` 624 行、`auth.ts` 502 行、`admin/users.ts` 502 行、`admin/media.ts` 430 行 | 后续改动容易引入回归 | 把批量操作、媒体上传、用户活动查询等抽成 service/helper 并保持测试 |
 | 中 | 前端组件测试仍缺 | `packages/web` 已有 Playwright smoke，但未发现 Vitest 组件测试 | 复杂组件状态和局部交互仍主要依赖页面级 smoke 与人工检查 | 在 Playwright smoke 基础上补 Vitest component 测试覆盖锁定态、上传态、筛选态和后台表单 |
-| 中 | 缺少 lint/format 配置 | 未发现 `.eslintrc`、`eslint.config.*`、`.prettierrc` 或 `prettier.config.*` | 风格漂移和低级错误更难在 CI 提前发现 | 增加 ESLint/Prettier 或 Nuxt 推荐 lint，并纳入 CI |
+| 低 | lint/format 仍处渐进基线 | 已有 `eslint.config.mjs` 和 `.editorconfig`，当前 `pnpm lint` 仍保留 warning | 历史 warning 清理前，风格问题仍可能继续累积 | 分阶段清理 warning；再决定是否接入 Prettier 或更严格 Vue 格式规则 |
 | 低 | Cloudflare Stream secrets 和字段存在但生产未接入 | `.env.example`、`packages/api/src/routes/media.ts`、`docs/PROJECT_STATUS.md` | 误以为视频链路已可用 | 文档继续标注未接入；接入时补完整上传、转码、播放、成本测试 |
 
 ## 2. 技术债
@@ -18,7 +18,7 @@
 | 路由承载过多业务逻辑 | Hono 路由快速迭代形成 | `packages/api/src/routes/admin/galleries.ts`、`packages/api/src/routes/auth.ts` | 难复用、难局部测试 | 将复杂流程抽到 `services`，路由保留参数校验和响应映射 |
 | 前端组件测试空缺 | 项目优先完成 MVP 功能和 Workers 部署 | `packages/web/` | 局部组件状态回归发现晚 | 已补关键 Playwright smoke，后续补组件测试 |
 | 统一错误响应不完全一致 | 历史阶段混合 `{ error }` 和 `{ statusCode, message }` | `packages/api/src/routes/**/*.ts` | 前端错误处理要兼容多种格式 | 新增 API 错误响应约定并逐步收敛 |
-| 覆盖率未知 | Vitest 未配置 coverage | `packages/api/vitest.config.ts` | 无法量化测试缺口 | 加 coverage provider 和阶段性阈值 |
+| 覆盖率仍需扩大 | 当前 coverage 先覆盖核心安全/导入模块 | `packages/api/vitest.config.ts` | 路由服务化和前端组件仍有盲区 | 继续扩大 service 覆盖范围，补前端组件测试 |
 
 ## 3. 安全关注
 
@@ -53,12 +53,14 @@
 1. [RESOLVED] dev 环境复用正式 D1/R2 的代码侧误操作防护已完成；是否拆出独立 dev 数据库和 bucket 留作后续运维增强。
 2. [RESOLVED] 前端自动化测试已先接入 Playwright smoke；后续再补 Vitest 组件测试。
 3. [ASK USER] Cloudflare Stream 接入的优先级是否仍低于图片/图库/案例运营能力？
-4. [ASK USER] 是否要在 CI 中加入 lint/format 和 coverage 阈值，作为合入 `main` 的必要条件？
+4. [RESOLVED] CI 已加入 lint 和 API coverage 阈值；format 目前用 `.editorconfig` 作为轻量基线，暂未引入 Prettier。
 
 ## 7. 证据
 
 - `package.json`
 - `.github/workflows/ci.yml`
+- `eslint.config.mjs`
+- `.editorconfig`
 - `packages/api/src/routes/admin/galleries.ts`
 - `packages/api/src/routes/auth.ts`
 - `packages/api/src/routes/media.ts`

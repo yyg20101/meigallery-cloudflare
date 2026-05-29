@@ -13,12 +13,19 @@
     "deploy": "pnpm -r deploy",
     "deploy:web": "pnpm --filter @meigallery/web deploy",
     "deploy:api": "pnpm --filter @meigallery/api deploy",
+    "lint": "eslint \"packages/**/*.{ts,js,mjs,vue}\"",
     "typecheck": "pnpm -r typecheck",
     "db:migrate:local": "pnpm --filter @meigallery/api db:migrate:local",
     "db:migrate:remote": "pnpm --filter @meigallery/api db:migrate:remote"
   },
   "devDependencies": {
-    "typescript": "^5.6.0"
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.4.0",
+    "eslint-plugin-vue": "^10.9.1",
+    "globals": "^17.6.0",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.60.0",
+    "vue-eslint-parser": "^10.4.0"
   },
   "packageManager": "pnpm@9.14.2",
   "engines": {
