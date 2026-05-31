@@ -30,10 +30,10 @@ API coverage 当前使用 Vitest v8 provider，报告目录为 `packages/api/cov
 
 | 范围 | 是否覆盖 | 典型目标 | 备注 |
 |------|----------|----------|------|
-| 单元测试 | 是 | 密码、session、权限、会员、导入校验、URL 安全、Pixel 设置、WordPress 解析 | `packages/api/src/utils/*.test.ts`、`packages/api/src/services/*.test.ts` |
+| 单元测试 | 是 | 密码、session、权限、会员、导入校验、URL 安全、Pixel 设置、WordPress 解析 | `packages/api/src/utils/*.test.ts`、`packages/api/src/services/*.test.ts`；公开设置和首页广告 URL 覆盖显式解析、危险协议、空白和编码控制字符边界 |
 | 路由级测试 | 是 | 公开图库/搜索/媒体/案例、后台设置/案例/Import Token/外部导入 | `packages/api/src/routes/**/*.test.ts` |
 | 集成测试 | 部分 | 使用 mock D1/R2/env 验证路由和服务流程 | 没有真实 Cloudflare 远程集成测试 |
-| 前端组件测试 | 是 | `corepack pnpm --filter @meigallery/web test:unit` | 当前覆盖 `MembershipBadge`、`MediaLock`、`SearchInput`、`TagChip`、`HomeAdBand`、`ContactMethodItem`、`safeMarkdown`，其中 `safeMarkdown` 覆盖链接文案转义、危险协议和编码控制字符边界；后续扩展复杂组件状态 |
+| 前端组件测试 | 是 | `corepack pnpm --filter @meigallery/web test:unit` | 当前覆盖 `MembershipBadge`、`MediaLock`、`SearchInput`、`TagChip`、`HomeAdBand`、`ContactMethodItem`、`safeMarkdown`，其中 `HomeAdBand` 和 `safeMarkdown` 覆盖链接文案转义、危险协议和编码控制字符边界；后续扩展复杂组件状态 |
 | E2E | 是 | 首页、搜索、图库详情、登录、用户中心、后台首页 | Playwright smoke 覆盖 360/768/1024/1440 视口、横向溢出和私有 key 泄露断言 |
 
 ## 4. Mock 和隔离策略

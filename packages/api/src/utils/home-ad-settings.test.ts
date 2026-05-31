@@ -9,9 +9,10 @@ describe('首页广告设置校验', () => {
   })
 
   it('允许站内相对路径和 https 外链', () => {
-    expect(normalizeHomeAdUrl('/discover?sort=hot')).toBe('/discover?sort=hot')
+    expect(normalizeHomeAdUrl('/discover?sort=hot#top')).toBe('/discover?sort=hot#top')
     expect(normalizeHomeAdUrl(' /cases ')).toBe('/cases')
     expect(normalizeHomeAdUrl('https://example.com/campaign')).toBe('https://example.com/campaign')
+    expect(normalizeHomeAdUrl('HTTPS://example.com/campaign?next="x"')).toBe('https://example.com/campaign?next=%22x%22')
   })
 
   it('拒绝危险或不明确的广告链接', () => {
@@ -22,6 +23,8 @@ describe('首页广告设置校验', () => {
       '//example.com',
       '/\\example.com',
       'https://example.com/a b',
+      'https://example.com/%0Ajavascript:alert(1)',
+      '/discover%20next',
       '/discover\n?sort=hot',
     ]
 
