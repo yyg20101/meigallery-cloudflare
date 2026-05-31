@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { MediaAsset } from '~/components/admin/MediaGrid.vue'
+import { resolveCoverPreviewUrl } from '~/utils/mediaUrlSecurity'
 
 definePageMeta({ layout: 'admin' })
 
@@ -135,10 +136,7 @@ function onMediaUploaded() {
 const coverKey = computed(() => gallery.value?.data.coverKey ?? null)
 
 function getCoverPreviewUrl(): string | null {
-  const key = coverKey.value
-  if (!key) return null
-  if (key.startsWith('http')) return key
-  return `${baseURL}/api/media/cover/${galleryId}`
+  return resolveCoverPreviewUrl(coverKey.value, galleryId, baseURL)
 }
 
 const coverSettingLoading = ref(false)

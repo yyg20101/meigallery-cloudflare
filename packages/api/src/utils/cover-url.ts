@@ -1,19 +1,19 @@
 import { assertSafeExternalUrl } from './external-url'
 
-export function isExternalCoverKey(value: unknown) {
-  const coverKey = String(value ?? '').trim()
-  if (!coverKey) return false
+export function isExternalMediaKey(value: unknown) {
+  const mediaKey = String(value ?? '').trim()
+  if (!mediaKey) return false
 
   try {
-    const protocol = new URL(coverKey).protocol.toLowerCase()
+    const protocol = new URL(mediaKey).protocol.toLowerCase()
     return protocol === 'http:' || protocol === 'https:'
   } catch {
-    return /^https?:/i.test(coverKey)
+    return /^https?:/i.test(mediaKey)
   }
 }
 
-export function safeExternalCoverUrl(value: unknown) {
-  if (!isExternalCoverKey(value)) return null
+export function safeExternalMediaUrl(value: unknown) {
+  if (!isExternalMediaKey(value)) return null
 
   try {
     return assertSafeExternalUrl(String(value ?? '').trim())
@@ -22,13 +22,24 @@ export function safeExternalCoverUrl(value: unknown) {
   }
 }
 
-export function resolvePublicCoverUrl(galleryId: string, coverKey: string | null | undefined) {
-  const value = String(coverKey ?? '').trim()
+export const isExternalCoverKey = isExternalMediaKey
+export const safeExternalCoverUrl = safeExternalMediaUrl
+
+function resolveProxyMediaUrl(proxyPath: string, mediaKey: string | null | undefined) {
+  const value = String(mediaKey ?? '').trim()
   if (!value) return null
 
-  const externalUrl = safeExternalCoverUrl(value)
+  const externalUrl = safeExternalMediaUrl(value)
   if (externalUrl) return externalUrl
-  if (isExternalCoverKey(value)) return null
+  if (isExternalMediaKey(value)) return null
 
-  return `/api/media/cover/${galleryId}`
+  return proxyPath
+}
+
+export function resolvePublicCoverUrl(galleryId: string, coverKey: string | null | undefined) {
+  return resolveProxyMediaUrl(`/api/media/cover/${galleryId}`, coverKey)
+}
+
+export function resolveAdminMediaThumbnailUrl(assetId: string, mediaKey: string | null | undefined) {
+  return resolveProxyMediaUrl(`/api/media/${assetId}/thumbnail`, mediaKey)
 }

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { resolveMediaDisplayUrl } from '~/utils/mediaUrlSecurity'
+
 /**
  * 媒体网格管理组件
  * 显示图库关联的所有图片/视频，支持拖拽排序、设为封面、VIP 等级修改、删除
@@ -117,11 +119,7 @@ function isCover(asset: MediaAsset): boolean {
 }
 
 function getImageUrl(asset: MediaAsset): string {
-  if (!asset.thumbnailUrl) return ''
-  // 外部 URL 直通
-  if (asset.thumbnailUrl.startsWith('http')) return asset.thumbnailUrl
-  // 内部 URL 拼接 baseURL
-  return `${baseURL}${asset.thumbnailUrl}`
+  return resolveMediaDisplayUrl(asset.thumbnailUrl, baseURL)
 }
 
 function confirmDelete(assetId: string) {
@@ -182,7 +180,7 @@ function onRankChange(assetId: string, event: Event) {
         <!-- 缩略图 -->
         <div class="aspect-[4/3] bg-gray-100 relative">
           <img
-            v-if="asset.thumbnailUrl"
+            v-if="getImageUrl(asset)"
             :src="getImageUrl(asset)"
             :alt="`图片 ${asset.sortOrder + 1}`"
             class="w-full h-full object-cover"

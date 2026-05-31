@@ -1,12 +1,21 @@
 import { describe, expect, it } from 'vitest'
-import { isExternalCoverKey, resolvePublicCoverUrl, safeExternalCoverUrl } from './cover-url'
+import {
+  isExternalCoverKey,
+  isExternalMediaKey,
+  resolveAdminMediaThumbnailUrl,
+  resolvePublicCoverUrl,
+  safeExternalCoverUrl,
+  safeExternalMediaUrl,
+} from './cover-url'
 
 describe('公开封面 URL 解析', () => {
   it('安全 HTTPS 外链会归一化后返回', () => {
     const value = ' HTTPS://example.com/cover.jpg?next="x" '
 
     expect(isExternalCoverKey(value)).toBe(true)
+    expect(isExternalMediaKey(value)).toBe(true)
     expect(safeExternalCoverUrl(value)).toBe('https://example.com/cover.jpg?next=%22x%22')
+    expect(safeExternalMediaUrl(value)).toBe('https://example.com/cover.jpg?next=%22x%22')
     expect(resolvePublicCoverUrl('gallery-1', value)).toBe('https://example.com/cover.jpg?next=%22x%22')
   })
 
@@ -20,6 +29,7 @@ describe('公开封面 URL 解析', () => {
       expect(isExternalCoverKey(value)).toBe(true)
       expect(safeExternalCoverUrl(value)).toBeNull()
       expect(resolvePublicCoverUrl('gallery-1', value)).toBeNull()
+      expect(resolveAdminMediaThumbnailUrl('asset-1', value)).toBeNull()
     }
   })
 
@@ -27,6 +37,7 @@ describe('公开封面 URL 解析', () => {
     expect(isExternalCoverKey('covers/gallery-1/cover.jpg')).toBe(false)
     expect(safeExternalCoverUrl('covers/gallery-1/cover.jpg')).toBeNull()
     expect(resolvePublicCoverUrl('gallery-1', 'covers/gallery-1/cover.jpg')).toBe('/api/media/cover/gallery-1')
+    expect(resolveAdminMediaThumbnailUrl('asset-1', 'originals/gallery-1/asset-1.jpg')).toBe('/api/media/asset-1/thumbnail')
   })
 
   it('空封面值返回 null', () => {

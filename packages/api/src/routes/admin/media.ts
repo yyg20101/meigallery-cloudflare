@@ -2,6 +2,12 @@ import { Hono } from 'hono'
 import type { Bindings, Variables } from '../../index'
 import { requireAdmin } from '../../middleware/auth'
 import { errorJson } from '../../utils/api-error'
+import {
+  isExternalMediaKey,
+  resolveAdminMediaThumbnailUrl,
+  resolvePublicCoverUrl,
+  safeExternalMediaUrl,
+} from '../../utils/cover-url'
 import { writeAuditLog } from '../../utils/permission'
 import { generateId } from '../../utils/db'
 
@@ -62,12 +68,10 @@ adminMediaRoutes.get('/galleries/:galleryId/media', async (c) => {
     sortOrder: a.sort_order,
     uploadStatus: a.upload_status,
     createdAt: a.created_at,
-    // 缩略图 URL：R2 图片走代理，外部 URL 直通
+    // 缩略图 URL：R2 图片走代理，历史外链只允许安全 HTTPS 公开地址。
     thumbnailUrl:
       a.type === 'image' && a.r2_key
-        ? a.r2_key.startsWith('http')
-          ? a.r2_key
-          : `/api/media/${a.id}/thumbnail`
+        ? resolveAdminMediaThumbnailUrl(a.id, a.r2_key)
         : null,
   }))
 
@@ -234,6 +238,9 @@ adminMediaRoutes.patch('/galleries/:galleryId/cover', async (c) => {
       .bind(body.assetId, galleryId)
       .first<{ r2_key: string | null }>()
     if (!asset?.r2_key) return errorJson(c, 404, '媒体资源不存在或无 R2 文件')
+    if (isExternalMediaKey(asset.r2_key) && !safeExternalMediaUrl(asset.r2_key)) {
+      return errorJson(c, 400, '媒体资源地址不安全，不能设为封面')
+    }
 
     newCoverKey = asset.r2_key
   }
@@ -254,7 +261,7 @@ adminMediaRoutes.patch('/galleries/:galleryId/cover', async (c) => {
 
   return c.json({
     coverKey: newCoverKey,
-    coverUrl: newCoverKey.startsWith('http') ? newCoverKey : `/api/media/cover/${galleryId}`,
+    coverUrl: resolvePublicCoverUrl(galleryId, newCoverKey),
   })
 })
 
@@ -391,7 +398,7 @@ adminMediaRoutes.delete('/media/:assetId', async (c) => {
   if (!asset) return errorJson(c, 404, '媒体资源不存在')
 
   // 删除 R2 对象（外部 URL 不删除）
-  if (asset.r2_key && !asset.r2_key.startsWith('http')) {
+  if (asset.r2_key && !isExternalMediaKey(asset.r2_key)) {
     try {
       await r2.delete(asset.r2_key)
     } catch {
