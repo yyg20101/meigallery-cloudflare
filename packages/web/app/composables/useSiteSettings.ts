@@ -25,6 +25,13 @@ export function useSiteSettings() {
     home_hero_subtitle?: string
     home_featured_region_slugs?: string
     home_hot_tag_limit?: string | number
+    home_ad_enabled?: string | boolean
+    home_ad_eyebrow?: string
+    home_ad_title?: string
+    home_ad_summary?: string
+    home_ad_cta_label?: string
+    home_ad_url?: string
+    home_ad_sponsor?: string
     rules_entry_enabled?: string | boolean
     rules_entry_title?: string
     rules_entry_summary?: string
@@ -67,6 +74,16 @@ export function useSiteSettings() {
     const value = Number(settings.value.home_hot_tag_limit || 15)
     return Number.isFinite(value) && value > 0 ? Math.min(value, 30) : 15
   })
+  const homeAdEnabled = computed(() => {
+    const value = settings.value.home_ad_enabled
+    return value === true || value === 'true'
+  })
+  const homeAdEyebrow = computed(() => settings.value.home_ad_eyebrow || '本周推荐')
+  const homeAdTitle = computed(() => settings.value.home_ad_title || '会员季精选内容')
+  const homeAdSummary = computed(() => settings.value.home_ad_summary || '探索本周精选图库、真实案例和会员可访问内容。')
+  const homeAdCtaLabel = computed(() => settings.value.home_ad_cta_label || '查看推荐')
+  const homeAdUrl = computed(() => settings.value.home_ad_url || '/discover?sort=hot')
+  const homeAdSponsor = computed(() => settings.value.home_ad_sponsor || 'MeiGallery 运营推荐')
   const videoEnabled = computed(() => {
     const v = settings.value.video_enabled
     return v === true || v === 'true'
@@ -109,6 +126,13 @@ export function useSiteSettings() {
     homeHeroSubtitle,
     homeFeaturedRegionSlugs,
     homeHotTagLimit,
+    homeAdEnabled,
+    homeAdEyebrow,
+    homeAdTitle,
+    homeAdSummary,
+    homeAdCtaLabel,
+    homeAdUrl,
+    homeAdSponsor,
     videoEnabled,
     facebookPixelEnabled,
     facebookPixelId,

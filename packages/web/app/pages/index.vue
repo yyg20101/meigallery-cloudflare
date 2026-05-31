@@ -4,6 +4,13 @@ const {
   videoEnabled,
   homeHeroTitle,
   homeHeroSubtitle,
+  homeAdEnabled,
+  homeAdEyebrow,
+  homeAdTitle,
+  homeAdSummary,
+  homeAdCtaLabel,
+  homeAdUrl,
+  homeAdSponsor,
 } = useSiteSettings()
 
 interface GallerySummary {
@@ -111,6 +118,17 @@ useSeoMeta({
       :title="homeHeroTitle"
       :subtitle="homeHeroSubtitle"
       :galleries="heroGalleries"
+    />
+
+    <HomeAdBand
+      class="mt-6 lg:mt-8"
+      :enabled="homeAdEnabled"
+      :eyebrow="homeAdEyebrow"
+      :title="homeAdTitle"
+      :summary="homeAdSummary"
+      :cta-label="homeAdCtaLabel"
+      :url="homeAdUrl"
+      :sponsor="homeAdSponsor"
     />
 
     <section class="mt-8 lg:mt-10">

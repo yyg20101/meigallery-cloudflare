@@ -3,6 +3,7 @@ import type { Bindings, Variables } from '../../index'
 import { requireOwner } from '../../middleware/auth'
 import { normalizeBooleanSetting, normalizeFacebookPixelId } from '../../utils/facebook-pixel-settings'
 import { generateId } from '../../utils/db'
+import { normalizeHomeAdUrl } from '../../utils/home-ad-settings'
 import { writeAuditLog } from '../../utils/permission'
 import { ADMIN_SETTING_KEYS } from '../../utils/site-settings'
 
@@ -54,6 +55,16 @@ adminSettingsRoutes.patch('/', requireOwner, async (c) => {
   }
   if ('facebook_pixel_debug_enabled' in body) {
     body.facebook_pixel_debug_enabled = normalizeBooleanSetting(body.facebook_pixel_debug_enabled)
+  }
+  if ('home_ad_enabled' in body) {
+    body.home_ad_enabled = normalizeBooleanSetting(body.home_ad_enabled)
+  }
+  if ('home_ad_url' in body) {
+    try {
+      body.home_ad_url = normalizeHomeAdUrl(body.home_ad_url)
+    } catch (error) {
+      return c.json({ statusCode: 400, message: error instanceof Error ? error.message : '首页广告链接无效' }, 400)
+    }
   }
 
   const keys = Object.keys(body).filter(k => ALLOWED_KEYS.includes(k))

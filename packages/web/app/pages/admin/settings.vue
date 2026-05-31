@@ -22,6 +22,12 @@ const form = reactive({
   home_hero_subtitle: '',
   home_featured_region_slugs: '',
   home_hot_tag_limit: '',
+  home_ad_eyebrow: '',
+  home_ad_title: '',
+  home_ad_summary: '',
+  home_ad_cta_label: '',
+  home_ad_url: '',
+  home_ad_sponsor: '',
   facebook_pixel_id: '',
   rules_entry_title: '',
   rules_entry_summary: '',
@@ -37,6 +43,7 @@ const emailVerificationEnabled = ref(false)
 const videoEnabledToggle = ref(false)
 const facebookPixelEnabled = ref(false)
 const facebookPixelDebugEnabled = ref(false)
+const homeAdEnabled = ref(false)
 const loading = ref(false)
 const iconUploadLoading = ref(false)
 const message = ref('')
@@ -47,8 +54,8 @@ const { data: settings } = await useAsyncData('admin-settings', () =>
   api<{ data: Record<string, { value: string; updatedAt: string }> }>('/api/admin/settings'),
 )
 
-function parseBooleanSetting(value: string) {
-  return value === 'true'
+function parseBooleanSetting(value: unknown) {
+  return value === true || value === 'true'
 }
 
 if (settings.value?.data) {
@@ -68,6 +75,9 @@ if (settings.value?.data) {
     if (key === 'facebook_pixel_debug_enabled') {
       facebookPixelDebugEnabled.value = parseBooleanSetting(val.value)
     }
+    if (key === 'home_ad_enabled') {
+      homeAdEnabled.value = parseBooleanSetting(val.value)
+    }
   }
 }
 
@@ -81,6 +91,7 @@ async function onSave() {
         ...form,
         facebook_pixel_enabled: facebookPixelEnabled.value,
         facebook_pixel_debug_enabled: facebookPixelDebugEnabled.value,
+        home_ad_enabled: homeAdEnabled.value,
       },
     })
     message.value = '设置已保存'
@@ -246,6 +257,43 @@ async function toggleVideo() {
         <div>
           <label class="mb-1 block text-sm font-medium text-gray-700">首页热门标签数量</label>
           <input v-model="form.home_hot_tag_limit" type="number" min="1" max="30" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="15" />
+        </div>
+        <div class="rounded-xl border border-[#eadfd2] bg-[#fffbf7] p-4">
+          <label class="flex items-start gap-3">
+            <input v-model="homeAdEnabled" type="checkbox" class="mt-1 h-4 w-4 rounded border-gray-300" />
+            <span>
+              <span class="block text-sm font-medium text-gray-800">启用首页广告位</span>
+              <span class="mt-0.5 block text-xs leading-5 text-gray-500">展示在首页首屏轮播下方；链接只允许站内相对路径或 https 外链。</span>
+            </span>
+          </label>
+          <div class="mt-4 grid gap-4 sm:grid-cols-2">
+            <div>
+              <label class="mb-1 block text-sm font-medium text-gray-700">广告眉标</label>
+              <input v-model="form.home_ad_eyebrow" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="本周推荐" />
+            </div>
+            <div>
+              <label class="mb-1 block text-sm font-medium text-gray-700">赞助/来源说明</label>
+              <input v-model="form.home_ad_sponsor" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="MeiGallery 运营推荐" />
+            </div>
+          </div>
+          <div class="mt-4">
+            <label class="mb-1 block text-sm font-medium text-gray-700">广告标题</label>
+            <input v-model="form.home_ad_title" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="会员季精选内容" />
+          </div>
+          <div class="mt-4">
+            <label class="mb-1 block text-sm font-medium text-gray-700">广告摘要</label>
+            <textarea v-model="form.home_ad_summary" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="探索本周精选图库、真实案例和会员可访问内容。" />
+          </div>
+          <div class="mt-4 grid gap-4 sm:grid-cols-[minmax(0,1fr)_10rem]">
+            <div>
+              <label class="mb-1 block text-sm font-medium text-gray-700">跳转链接</label>
+              <input v-model="form.home_ad_url" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="/discover?sort=hot" />
+            </div>
+            <div>
+              <label class="mb-1 block text-sm font-medium text-gray-700">按钮文案</label>
+              <input v-model="form.home_ad_cta_label" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="查看推荐" />
+            </div>
+          </div>
         </div>
       </fieldset>
 

@@ -42,6 +42,68 @@ function createDb(handlers: {
 }
 
 describe('后台站点设置 API', () => {
+  it('站长更新首页广告链接时会写入归一化值和审计日志', async () => {
+    const executed: Array<{ sql: string; params: unknown[] }> = []
+    const app = createApp()
+    const env = {
+      DB: createDb({
+        all: (sql) => {
+          if (sql.includes('SELECT key, value FROM site_settings')) {
+            return [
+              { key: 'home_ad_enabled', value: JSON.stringify(false) },
+              { key: 'home_ad_url', value: JSON.stringify('') },
+            ]
+          }
+          return []
+        },
+        run: (sql, params) => {
+          executed.push({ sql, params })
+          return { success: true }
+        },
+      }),
+    } as unknown as Bindings
+
+    const res = await app.request('/api/admin/settings', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        home_ad_enabled: 'true',
+        home_ad_url: ' /discover?sort=hot ',
+      }),
+    }, env)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.updated).toEqual(['home_ad_enabled', 'home_ad_url'])
+    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[0] === 'true' && item.params[1] === 'home_ad_enabled')).toBe(true)
+    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[0] === '"/discover?sort=hot"' && item.params[1] === 'home_ad_url')).toBe(true)
+    expect(executed.some(item => item.sql.includes('INSERT INTO admin_audit_logs'))).toBe(true)
+  })
+
+  it('拒绝不安全的首页广告链接', async () => {
+    const executed: Array<{ sql: string; params: unknown[] }> = []
+    const app = createApp()
+    const env = {
+      DB: createDb({
+        run: (sql, params) => {
+          executed.push({ sql, params })
+          return { success: true }
+        },
+      }),
+    } as unknown as Bindings
+
+    const res = await app.request('/api/admin/settings', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ home_ad_url: 'javascript:alert(1)' }),
+    }, env)
+    const body = await res.json()
+
+    expect(res.status).toBe(400)
+    expect(body.message).toContain('首页广告链接')
+    expect(executed).toHaveLength(0)
+  })
+
   it('站长可以上传站点图标并同步写入 site_icon 设置', async () => {
     const putKeys: string[] = []
     const executed: Array<{ sql: string; params: unknown[] }> = []

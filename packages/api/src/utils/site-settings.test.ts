@@ -44,6 +44,23 @@ describe('site settings keys', () => {
     }
   })
 
+  it('allows homepage ad settings in admin and public settings', () => {
+    const homeAdKeys = [
+      'home_ad_enabled',
+      'home_ad_eyebrow',
+      'home_ad_title',
+      'home_ad_summary',
+      'home_ad_cta_label',
+      'home_ad_url',
+      'home_ad_sponsor',
+    ]
+
+    for (const key of homeAdKeys) {
+      expect(ADMIN_SETTING_KEYS).toContain(key)
+      expect(PUBLIC_SETTING_KEYS).toContain(key)
+    }
+  })
+
   it('allows Facebook Pixel settings in admin and public settings', () => {
     const pixelKeys = [
       'facebook_pixel_enabled',
