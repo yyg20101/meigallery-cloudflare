@@ -28,6 +28,14 @@ export function normalizePublicSettingUrl(value: unknown, fieldLabel: string) {
   throw new Error(`${fieldLabel}只允许站内相对路径或 https 链接`)
 }
 
+export function safePublicSettingUrl(value: unknown, fieldLabel: string) {
+  try {
+    return normalizePublicSettingUrl(value, fieldLabel)
+  } catch {
+    return ''
+  }
+}
+
 export function normalizeInternalPathSetting(value: unknown, fieldLabel: string) {
   const url = String(value ?? '').trim()
   if (!url) return ''
@@ -42,6 +50,14 @@ export function normalizeInternalPathSetting(value: unknown, fieldLabel: string)
     return `${parsed.pathname}${parsed.search}${parsed.hash}`
   } catch {
     throw new Error(`${fieldLabel}格式无效`)
+  }
+}
+
+export function safeInternalPathSetting(value: unknown, fieldLabel: string) {
+  try {
+    return normalizeInternalPathSetting(value, fieldLabel)
+  } catch {
+    return ''
   }
 }
 

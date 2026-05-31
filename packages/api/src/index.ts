@@ -13,6 +13,7 @@ import { contactMethodRoutes } from './routes/contact-methods'
 import { caseRoutes } from './routes/cases'
 import { importRoutes } from './routes/imports'
 import { PUBLIC_SETTING_KEYS } from './utils/site-settings'
+import { sanitizePublicSiteSetting } from './utils/public-site-settings'
 import { adminRoutes } from './routes/admin'
 import { healthRoutes } from './routes/health'
 import { authMiddleware } from './middleware/auth'
@@ -98,6 +99,7 @@ for (const path of [
   '/api/cases/*',
   '/api/contact-methods',
   '/api/contact-methods/*',
+  '/api/settings/public',
 ]) {
   app.use(path, rateLimiter({
     name: 'public-api',
@@ -153,9 +155,9 @@ app.get('/api/settings/public', async (c) => {
     .bind(...keys)
     .all<{ key: string; value: string }>()
 
-  const settings: Record<string, string> = {}
+  const settings: Record<string, unknown> = {}
   for (const row of result.results) {
-    settings[row.key] = JSON.parse(row.value)
+    settings[row.key] = sanitizePublicSiteSetting(row.key, JSON.parse(row.value))
   }
   return c.json(settings)
 })

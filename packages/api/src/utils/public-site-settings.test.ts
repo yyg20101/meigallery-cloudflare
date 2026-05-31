@@ -1,0 +1,30 @@
+import { describe, expect, it } from 'vitest'
+import { sanitizePublicSiteSetting } from './public-site-settings'
+
+describe('公开站点设置安全读取', () => {
+  it('清空历史危险 URL 设置', () => {
+    expect(sanitizePublicSiteSetting('site_icon', 'javascript:alert(1)')).toBe('')
+    expect(sanitizePublicSiteSetting('og_image', 'http://example.com/og.jpg')).toBe('')
+    expect(sanitizePublicSiteSetting('home_ad_url', 'https://example.com/%0Ajavascript:alert(1)')).toBe('')
+    expect(sanitizePublicSiteSetting('rules_page_url', 'https://example.com/rules')).toBe('')
+  })
+
+  it('归一化允许的 URL 设置', () => {
+    expect(sanitizePublicSiteSetting('site_icon', ' /api/media/public/site/icon.png ')).toBe('/api/media/public/site/icon.png')
+    expect(sanitizePublicSiteSetting('og_image', 'HTTPS://example.com/og.jpg?next="x"')).toBe('https://example.com/og.jpg?next=%22x%22')
+    expect(sanitizePublicSiteSetting('home_ad_url', ' /discover?sort=hot#top ')).toBe('/discover?sort=hot#top')
+    expect(sanitizePublicSiteSetting('rules_page_url', ' /rules?from=entry ')).toBe('/rules?from=entry')
+  })
+
+  it('归一化公开布尔和 Pixel 设置', () => {
+    expect(sanitizePublicSiteSetting('home_ad_enabled', 'true')).toBe(true)
+    expect(sanitizePublicSiteSetting('facebook_pixel_enabled', 'false')).toBe(false)
+    expect(sanitizePublicSiteSetting('facebook_pixel_id', ' 1234567890 ')).toBe('1234567890')
+    expect(sanitizePublicSiteSetting('facebook_pixel_id', 'fbq("track")')).toBe('')
+  })
+
+  it('保留非安全敏感设置原值', () => {
+    expect(sanitizePublicSiteSetting('site_name', 'MeiGallery')).toBe('MeiGallery')
+    expect(sanitizePublicSiteSetting('home_hot_tag_limit', 12)).toBe(12)
+  })
+})
