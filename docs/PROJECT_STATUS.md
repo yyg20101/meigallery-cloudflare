@@ -67,7 +67,7 @@
 - `P3-05 后端路由文件过大，业务逻辑集中在路由层` 持续收敛中：认证路由中的邮箱验证码业务已抽到 `services/email-verification.ts`，后台用户列表查询已抽到 `services/admin-users.ts`，均已补 service 单测；后续继续拆图库、媒体和用户写操作。
 - `P3-06 Stream 字段和签名逻辑存在，但生产视频链路未接入` 已完成收敛：Stream 接入前 UI 继续默认隐藏视频入口，API 缺少 Stream secrets 时返回 503 `STREAM_NOT_CONFIGURED`，不触发未配置的签名请求。
 - `corepack pnpm --filter @meigallery/web typecheck` 当前通过，但仍打印 `vue-router/volar/sfc-route-blocks` package export 非阻断警告，后续依赖升级阶段继续跟踪。
-- P1/P2/P3 当前台账项已全部完成或完成首轮收敛；持续增强已推进 lint 零 warning、后台用户列表服务化和 Web 组件测试扩展，后续工作以继续路由服务化、扩展后台复杂组件测试和按需收紧格式规则为主。
+- P1/P2/P3 当前台账项已全部完成或完成首轮收敛；持续增强已推进 lint 零 warning、后台用户列表服务化、Web 组件测试扩展和公开封面外链安全收敛，后续工作以继续路由服务化、扩展后台复杂组件测试和按需收紧格式规则为主。
 
 ## Git 状态
 

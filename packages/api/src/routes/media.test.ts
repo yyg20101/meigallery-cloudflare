@@ -55,6 +55,23 @@ function createThumbnailEnv(options: {
   } as unknown as Bindings
 }
 
+function createCoverEnv(coverKey: string | null, r2Get: ReturnType<typeof vi.fn> = vi.fn(async () => ({
+  body: new Blob([new Uint8Array([1, 2, 3])]).stream(),
+  httpMetadata: { contentType: 'image/jpeg' },
+  httpEtag: 'cover-etag',
+}))) {
+  return {
+    DB: {
+      prepare: () => ({
+        bind: () => ({
+          first: async () => ({ cover_key: coverKey }),
+        }),
+      }),
+    },
+    R2: { get: r2Get },
+  } as unknown as Bindings
+}
+
 afterEach(() => {
   vi.restoreAllMocks()
 })
@@ -188,6 +205,52 @@ describe('公开媒体访问', () => {
     expect(res.headers.get('Content-Type')).toBe('image/jpeg')
     expect(res.headers.get('Cache-Control')).toBe('public, max-age=604800')
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('外部封面只重定向到安全 HTTPS 公开地址', async () => {
+    const app = createApp()
+    const res = await app.request(
+      '/api/media/cover/gallery-1',
+      {},
+      createCoverEnv('HTTPS://example.com/cover.jpg?next="x"'),
+    )
+
+    expect(res.status).toBe(302)
+    expect(res.headers.get('Location')).toBe('https://example.com/cover.jpg?next=%22x%22')
+  })
+
+  it('外部封面拒绝 http 和内部地址', async () => {
+    const app = createApp()
+
+    for (const coverKey of [
+      'http://example.com/cover.jpg',
+      'https://localhost/cover.jpg',
+      'https://127.0.0.1/cover.jpg',
+      'https://192.168.1.10/cover.jpg',
+    ]) {
+      const res = await app.request('/api/media/cover/gallery-1', {}, createCoverEnv(coverKey))
+      const body = await res.json()
+
+      expect(res.status).toBe(404)
+      expect(body.message).toBe('封面不存在')
+    }
+  })
+
+  it('R2 封面继续从私有对象代理返回', async () => {
+    const app = createApp()
+    const r2Get = vi.fn(async () => ({
+      body: new Blob([new Uint8Array([4, 5, 6])]).stream(),
+      httpMetadata: { contentType: 'image/webp' },
+      httpEtag: 'cover-etag',
+    }))
+
+    const res = await app.request('/api/media/cover/gallery-1', {}, createCoverEnv('covers/gallery-1/cover.webp', r2Get))
+    const body = new Uint8Array(await res.arrayBuffer())
+
+    expect(res.status).toBe(200)
+    expect(r2Get).toHaveBeenCalledWith('covers/gallery-1/cover.webp')
+    expect(res.headers.get('Content-Type')).toBe('image/webp')
+    expect(Array.from(body)).toEqual([4, 5, 6])
   })
 })
 

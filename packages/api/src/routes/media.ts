@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { Bindings, Variables } from '../index'
 import { requireAuth } from '../middleware/auth'
 import { errorJson } from '../utils/api-error'
+import { isExternalCoverKey, safeExternalCoverUrl } from '../utils/cover-url'
 import { checkMediaAccess } from '../utils/permission'
 import { MEDIA_ACCESS_TTL } from '@meigallery/shared/constants'
 
@@ -51,9 +52,13 @@ mediaRoutes.get('/cover/:galleryId', async (c) => {
     return c.json({ statusCode: 404, message: '封面不存在' }, 404)
   }
 
-  // 外部 URL（迁移数据）直接 302 重定向
-  if (gallery.cover_key.startsWith('http')) {
-    return c.redirect(gallery.cover_key, 302)
+  // 外部 URL（迁移数据）仅允许安全 HTTPS 公开地址，避免公开接口跳转到 http、localhost 或私网地址。
+  if (isExternalCoverKey(gallery.cover_key)) {
+    const safeUrl = safeExternalCoverUrl(gallery.cover_key)
+    if (!safeUrl) {
+      return c.json({ statusCode: 404, message: '封面不存在' }, 404)
+    }
+    return c.redirect(safeUrl, 302)
   }
 
   const object = await c.env.R2.get(gallery.cover_key)
