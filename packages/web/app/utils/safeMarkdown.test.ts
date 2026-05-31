@@ -7,9 +7,9 @@ describe('safeMarkdown', () => {
   })
 
   it('只把 https Markdown 链接渲染为安全外链', () => {
-    const html = renderInlineMarkdown('[规则](https://example.com/rules)')
+    const html = renderInlineMarkdown('[规则](https://example.com/rules?next="x")')
 
-    expect(html).toBe('<a href="https://example.com/rules" target="_blank" rel="noopener noreferrer">规则</a>')
+    expect(html).toBe('<a href="https://example.com/rules?next=%22x%22" target="_blank" rel="noopener noreferrer">规则</a>')
   })
 
   it('不把 http 或 javascript Markdown 链接渲染为可点击链接', () => {
@@ -17,6 +17,20 @@ describe('safeMarkdown', () => {
 
     expect(html).toContain('[旧链接](http://example.com)')
     expect(html).toContain('[危险](javascript:alert(1))')
+    expect(html).not.toContain('<a href=')
+  })
+
+  it('转义 Markdown 链接文案并保留加粗语法', () => {
+    const html = renderInlineMarkdown('[**规则** <img src=x>](https://example.com/rules)')
+
+    expect(html).toBe('<a href="https://example.com/rules" target="_blank" rel="noopener noreferrer"><strong>规则</strong> &lt;img src=x&gt;</a>')
+  })
+
+  it('拒绝包含空白或控制字符的 Markdown 链接', () => {
+    const html = renderInlineMarkdown('[规则](https://example.com/a%0Ajavascript:alert(1)) [空白](https://example.com/a b)')
+
+    expect(html).toContain('[规则](https://example.com/a%0Ajavascript:alert(1))')
+    expect(html).toContain('[空白](https://example.com/a b)')
     expect(html).not.toContain('<a href=')
   })
 
