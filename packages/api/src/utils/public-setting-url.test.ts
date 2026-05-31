@@ -32,6 +32,22 @@ describe('公开站点设置 URL 校验', () => {
     }
   })
 
+  it('公开 URL 拒绝本机和私网地址', () => {
+    const blocked = [
+      'https://localhost/icon.png',
+      'https://preview.local/icon.png',
+      'https://127.0.0.1/icon.png',
+      'https://10.0.0.1/icon.png',
+      'https://172.16.0.1/icon.png',
+      'https://192.168.1.10/icon.png',
+      'https://169.254.169.254/latest/meta-data',
+    ]
+
+    for (const url of blocked) {
+      expect(() => normalizePublicSettingUrl(url, '站点图标 URL')).toThrow(/本机|私网|内部/)
+    }
+  })
+
   it('站内路径设置只允许明确相对路径', () => {
     expect(normalizeInternalPathSetting('/rules', '规则页链接')).toBe('/rules')
     expect(normalizeInternalPathSetting(' /rules?from=entry ', '规则页链接')).toBe('/rules?from=entry')

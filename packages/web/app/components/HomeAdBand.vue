@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { normalizePublicSettingUrl } from '~/utils/siteSettingsSecurity'
+
 const props = defineProps<{
   enabled: boolean
   eyebrow?: string
@@ -10,45 +12,11 @@ const props = defineProps<{
 }>()
 
 function normalizeAdUrl(url?: string) {
-  const value = (url || '').trim()
-  if (!value || hasWhitespaceOrControlCharacter(value) || hasEncodedWhitespaceOrControlCharacter(value)) {
-    return '/discover?sort=hot'
-  }
-
-  if (value.startsWith('/')) {
-    if (value.startsWith('//') || value.startsWith('/\\')) return '/discover?sort=hot'
-    try {
-      const parsed = new URL(value, 'https://meigallery.local')
-      return `${parsed.pathname}${parsed.search}${parsed.hash}`
-    } catch {
-      return '/discover?sort=hot'
-    }
-  }
-
-  try {
-    const parsed = new URL(value)
-    if (parsed.protocol === 'https:') return parsed.toString()
-  } catch {
-    return '/discover?sort=hot'
-  }
-
-  return '/discover?sort=hot'
+  return normalizePublicSettingUrl(url) || '/discover?sort=hot'
 }
 
 const safeUrl = computed(() => normalizeAdUrl(props.url))
 const isExternalUrl = computed(() => safeUrl.value.startsWith('https://'))
-
-function hasEncodedWhitespaceOrControlCharacter(value: string) {
-  return /%(?:0[0-9a-f]|1[0-9a-f]|20|7f)/i.test(value)
-}
-
-function hasWhitespaceOrControlCharacter(value: string) {
-  for (const char of value) {
-    const code = char.charCodeAt(0)
-    if (code <= 0x20 || code === 0x7f) return true
-  }
-  return false
-}
 </script>
 
 <template>

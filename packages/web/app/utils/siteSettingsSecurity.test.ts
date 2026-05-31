@@ -20,6 +20,20 @@ describe('siteSettingsSecurity', () => {
     }
   })
 
+  it('公开 URL 拒绝本机和私网地址', () => {
+    for (const url of [
+      'https://localhost/og.jpg',
+      'https://127.0.0.1/og.jpg',
+      'https://10.0.0.1/og.jpg',
+      'https://172.31.255.1/og.jpg',
+      'https://192.168.1.10/og.jpg',
+      'https://169.254.169.254/latest/meta-data',
+      'https://preview.local/og.jpg',
+    ]) {
+      expect(normalizePublicSettingUrl(url)).toBe('')
+    }
+  })
+
   it('站内路径只允许明确相对路径', () => {
     expect(normalizeInternalPath(' /rules?from=entry#top ')).toBe('/rules?from=entry#top')
     expect(normalizeInternalPath('https://example.com/rules')).toBe('')

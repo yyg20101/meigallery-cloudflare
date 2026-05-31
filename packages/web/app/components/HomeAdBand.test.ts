@@ -50,6 +50,27 @@ describe('HomeAdBand', () => {
     expect(link.attributes('rel')).toBe('noopener noreferrer')
   })
 
+  it('本机和私网外链回退到站内推荐页', () => {
+    for (const url of [
+      'https://localhost/campaign',
+      'https://127.0.0.1/campaign',
+      'https://192.168.1.10/campaign',
+      'https://preview.local/campaign',
+    ]) {
+      const wrapper = mount(HomeAdBand, {
+        props: {
+          enabled: true,
+          title: '赞助推荐',
+          url,
+        },
+        global: { stubs: { NuxtLink: nuxtLinkStub } },
+      })
+
+      expect(wrapper.find('a').attributes('href')).toBe('/discover?sort=hot')
+      expect(wrapper.find('a').attributes('target')).toBeUndefined()
+    }
+  })
+
   it('异常链接回退到安全站内链接', () => {
     const wrapper = mount(HomeAdBand, {
       props: {

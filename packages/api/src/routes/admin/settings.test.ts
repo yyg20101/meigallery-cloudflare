@@ -151,6 +151,8 @@ describe('后台站点设置 API', () => {
     const cases = [
       { site_icon: 'javascript:alert(1)' },
       { og_image: 'http://example.com/og.jpg' },
+      { site_icon: 'https://localhost/icon.png' },
+      { og_image: 'https://192.168.1.10/og.jpg' },
       { rules_page_url: 'https://example.com/rules' },
     ]
 
