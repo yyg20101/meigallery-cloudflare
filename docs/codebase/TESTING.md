@@ -24,7 +24,7 @@ API coverage 当前使用 Vitest v8 provider，报告目录为 `packages/api/cov
 - Vitest include：`src/**/*.test.ts`。
 - API 测试分布在 `middleware`、`routes`、`routes/admin`、`services`、`utils`。
 - Web Playwright 配置位于 `packages/web/playwright.config.ts`，用例位于 `packages/web/tests/e2e/`。
-- Web 目录已存在 `packages/web/vitest.config.ts` 和组件测试文件，当前覆盖会员徽章、媒体锁定提示、搜索输入、标签 Chip 和首页广告位的基础状态。
+- Web 目录已存在 `packages/web/vitest.config.ts` 和组件/工具测试文件，当前覆盖会员徽章、媒体锁定提示、搜索输入、标签 Chip、首页广告位和安全 Markdown 渲染的基础状态。
 
 ## 3. 测试范围矩阵
 
@@ -33,7 +33,7 @@ API coverage 当前使用 Vitest v8 provider，报告目录为 `packages/api/cov
 | 单元测试 | 是 | 密码、session、权限、会员、导入校验、URL 安全、Pixel 设置、WordPress 解析 | `packages/api/src/utils/*.test.ts`、`packages/api/src/services/*.test.ts` |
 | 路由级测试 | 是 | 公开图库/搜索/媒体/案例、后台设置/案例/Import Token/外部导入 | `packages/api/src/routes/**/*.test.ts` |
 | 集成测试 | 部分 | 使用 mock D1/R2/env 验证路由和服务流程 | 没有真实 Cloudflare 远程集成测试 |
-| 前端组件测试 | 是 | `corepack pnpm --filter @meigallery/web test:unit` | 当前覆盖 `MembershipBadge`、`MediaLock`、`SearchInput`、`TagChip`、`HomeAdBand`，后续扩展复杂组件状态 |
+| 前端组件测试 | 是 | `corepack pnpm --filter @meigallery/web test:unit` | 当前覆盖 `MembershipBadge`、`MediaLock`、`SearchInput`、`TagChip`、`HomeAdBand`、`safeMarkdown`，后续扩展复杂组件状态 |
 | E2E | 是 | 首页、搜索、图库详情、登录、用户中心、后台首页 | Playwright smoke 覆盖 360/768/1024/1440 视口、横向溢出和私有 key 泄露断言 |
 
 ## 4. Mock 和隔离策略
@@ -46,7 +46,7 @@ API coverage 当前使用 Vitest v8 provider，报告目录为 `packages/api/cov
 
 ## 5. 覆盖和质量信号
 
-- 当前测试文件数：39 个 API `*.test.ts` 文件、5 个 Web 组件 `*.test.ts` 文件、1 个 Web Playwright smoke spec。
+- 当前测试文件数：39 个 API `*.test.ts` 文件、6 个 Web `*.test.ts` 文件、1 个 Web Playwright smoke spec。
 - 扫描输出显示生产代码无 TODO/FIXME/HACK。
 - CI 会运行 API 类型检查、Web 类型检查、API 单元测试、API coverage、Web Playwright smoke、Web build、API dry-run build。
 - 覆盖率：API 已配置核心安全/导入模块 coverage 基线，当前阈值为 statements 70%、branches 65%、functions 75%、lines 75%；HTML 和 JSON summary 报告输出到 `packages/api/coverage/` 并由 CI 上传 artifact。

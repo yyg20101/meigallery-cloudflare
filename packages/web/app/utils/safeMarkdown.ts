@@ -10,7 +10,7 @@ export function escapeHtml(input: string) {
 export function renderInlineMarkdown(input: string) {
   return escapeHtml(input)
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\[(.+?)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+    .replace(/\[(.+?)\]\((https:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
 }
 
 export function renderSafeMarkdown(markdown: string) {
