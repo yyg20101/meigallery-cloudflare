@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { Bindings, Variables } from '../../index'
 import { requireOwner } from '../../middleware/auth'
+import { normalizeContactLinkUrl } from '../../utils/contact-link-url'
 import { writeAuditLog } from '../../utils/permission'
 import { CONTACT_PLATFORMS } from '@meigallery/shared/constants'
 
@@ -72,7 +73,12 @@ adminContactMethodRoutes.post('/', requireOwner, async (c) => {
     return c.json({ statusCode: 400, message: `不支持的平台: ${body.platform}` }, 400)
   }
 
-  const linkUrl = body.linkUrl || null
+  let linkUrl: string | null
+  try {
+    linkUrl = normalizeContactLinkUrl(body.linkUrl)
+  } catch (error) {
+    return c.json({ statusCode: 400, message: error instanceof Error ? error.message : '联系方式跳转链接无效' }, 400)
+  }
   const enabled = body.enabled !== undefined ? body.enabled : true
 
   // 获取最大 sort_order
@@ -152,7 +158,11 @@ adminContactMethodRoutes.put('/:id', requireOwner, async (c) => {
   // linkUrl: 显式传入则使用（含 null/空字符串 → null），否则保留原值
   let newLinkUrl: string | null
   if (body.linkUrl !== undefined) {
-    newLinkUrl = body.linkUrl || null
+    try {
+      newLinkUrl = normalizeContactLinkUrl(body.linkUrl)
+    } catch (error) {
+      return c.json({ statusCode: 400, message: error instanceof Error ? error.message : '联系方式跳转链接无效' }, 400)
+    }
   } else {
     newLinkUrl = current.link_url
   }

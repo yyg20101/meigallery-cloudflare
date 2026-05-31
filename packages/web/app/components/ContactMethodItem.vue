@@ -16,7 +16,17 @@ const copyFailed = ref(false)
 const showQrCode = computed(() => isHovering.value || showQr.value)
 
 const actionHref = computed(() => props.method.linkUrl || generateContactLink(props.method.platform, props.method.value))
-const hasLink = computed(() => !!actionHref.value)
+const safeActionHref = computed(() => {
+  const href = actionHref.value?.trim()
+  if (!href || /[\s\x00-\x1F\x7F]/.test(href)) return null
+  try {
+    const url = new URL(href)
+    return ['https:', 'mailto:', 'tel:', 'tg:', 'line:', 'whatsapp:'].includes(url.protocol) ? href : null
+  } catch {
+    return null
+  }
+})
+const hasLink = computed(() => !!safeActionHref.value)
 const hasQr = computed(() => !!props.method.qrCodeUrl)
 
 function toggleQr() {
@@ -50,8 +60,8 @@ async function copyValue() {
 
 function activate() {
   emit('activate', props.method.platform)
-  if (actionHref.value) {
-    window.open(actionHref.value, '_blank', 'noopener,noreferrer')
+  if (safeActionHref.value) {
+    window.open(safeActionHref.value, '_blank', 'noopener,noreferrer')
     return
   }
   copyValue()
@@ -136,7 +146,7 @@ function activate() {
         <p class="mt-2 text-xs text-gray-500">扫码添加</p>
         <a
           v-if="hasLink"
-          :href="actionHref || undefined"
+          :href="safeActionHref || undefined"
           target="_blank"
           rel="noopener noreferrer"
           class="mt-1 text-xs text-gray-800 underline decoration-[#d6c39a] underline-offset-4 hover:text-black"
