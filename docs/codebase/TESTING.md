@@ -30,7 +30,7 @@ API coverage 当前使用 Vitest v8 provider，报告目录为 `packages/api/cov
 
 | 范围 | 是否覆盖 | 典型目标 | 备注 |
 |------|----------|----------|------|
-| 单元测试 | 是 | 密码、session、权限、会员、导入校验、URL 安全、Pixel 设置、WordPress 解析 | `packages/api/src/utils/*.test.ts`、`packages/api/src/services/*.test.ts`；公开设置、首页广告、公开封面和后台媒体 URL 覆盖显式解析、危险协议、空白、编码控制字符和历史脏数据读取边界 |
+| 单元测试 | 是 | 密码、session、权限、会员、导入校验、URL 安全、邮件模板、Pixel 设置、WordPress 解析 | `packages/api/src/utils/*.test.ts`、`packages/api/src/services/*.test.ts`；公开设置、首页广告、公开封面、后台媒体 URL 和邮件模板覆盖显式解析、危险协议、HTML 转义、空白、编码控制字符和历史脏数据读取边界 |
 | 路由级测试 | 是 | 公开图库/搜索/媒体/案例/站点设置、后台设置/媒体/案例/Import Token/外部导入 | `packages/api/src/routes/**/*.test.ts`；媒体、图库、搜索和后台媒体测试覆盖封面/缩略图外链重定向或下发时的 HTTPS 归一化与内部地址拦截 |
 | 集成测试 | 部分 | 使用 mock D1/R2/env 验证路由和服务流程 | 没有真实 Cloudflare 远程集成测试 |
 | 前端组件测试 | 是 | `corepack pnpm --filter @meigallery/web test:unit` | 当前覆盖 `MembershipBadge`、`MediaLock`、`SearchInput`、`TagChip`、`HomeAdBand`、`ContactMethodItem`、`safeMarkdown`、`siteSettingsSecurity`、`mediaUrlSecurity`，其中 `HomeAdBand`、`safeMarkdown`、`siteSettingsSecurity` 和 `mediaUrlSecurity` 覆盖链接文案转义、危险协议、内部地址和编码控制字符边界；后续扩展复杂组件状态 |
@@ -46,7 +46,7 @@ API coverage 当前使用 Vitest v8 provider，报告目录为 `packages/api/cov
 
 ## 5. 覆盖和质量信号
 
-- 当前测试文件数：46 个 API `*.test.ts` 文件、9 个 Web `*.test.ts` 文件、1 个 Web Playwright smoke spec。
+- 当前测试文件数：47 个 API `*.test.ts` 文件、9 个 Web `*.test.ts` 文件、1 个 Web Playwright smoke spec。
 - 扫描输出显示生产代码无 TODO/FIXME/HACK。
 - CI 会运行 API 类型检查、Web 类型检查、API 单元测试、API coverage、Web Playwright smoke、Web build、API dry-run build。
 - 覆盖率：API 已配置核心安全/导入模块 coverage 基线，当前阈值为 statements 70%、branches 65%、functions 75%、lines 75%；HTML 和 JSON summary 报告输出到 `packages/api/coverage/` 并由 CI 上传 artifact。
