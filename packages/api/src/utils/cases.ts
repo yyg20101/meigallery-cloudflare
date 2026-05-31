@@ -33,10 +33,18 @@ export function getPublicImageUrl(imageId: string): string {
   return `/api/cases/images/${imageId}`
 }
 
+export function isExpectedCaseImageKey(r2Key: string, caseId: string, imageId: string): boolean {
+  return new RegExp(`^cases/${escapeRegExp(caseId)}/${escapeRegExp(imageId)}\\.(?:jpe?g|png|webp)$`, 'i').test(r2Key)
+}
+
 export function getR2Extension(fileName: string, mimeType: string): string {
   const ext = fileName.split('.').pop()?.toLowerCase()
   if (ext === 'jpg' || ext === 'jpeg' || ext === 'png' || ext === 'webp') return ext
   if (mimeType === 'image/png') return 'png'
   if (mimeType === 'image/webp') return 'webp'
   return 'jpg'
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }

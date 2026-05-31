@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { Bindings, Variables } from '../index'
 import { cacheControl } from '../middleware/cache'
-import { getPublicImageUrl, getPublicOrderClause } from '../utils/cases'
+import { getPublicImageUrl, getPublicOrderClause, isExpectedCaseImageKey } from '../utils/cases'
 import { parsePositiveIntParam } from '../utils/pagination'
 
 export const caseRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
@@ -73,15 +73,18 @@ caseRoutes.get('/images/:imageId', cacheControl(86400), async (c) => {
   const imageId = c.req.param('imageId')
   const row = await c.env.DB
     .prepare(`
-      SELECT ci.r2_key, ci.mime_type
+      SELECT ci.case_id, ci.r2_key, ci.mime_type
       FROM case_images ci
       JOIN cases c ON c.id = ci.case_id
       WHERE ci.id = ? AND c.status = 'published'
     `)
     .bind(imageId)
-    .first<{ r2_key: string; mime_type: string }>()
+    .first<{ case_id: string; r2_key: string; mime_type: string }>()
 
   if (!row) return c.json({ statusCode: 404, message: '图片不存在' }, 404)
+  if (!isExpectedCaseImageKey(row.r2_key, row.case_id, imageId)) {
+    return c.json({ statusCode: 404, message: '图片配置异常' }, 404)
+  }
 
   const object = await c.env.R2.get(row.r2_key)
   if (!object) return c.json({ statusCode: 404, message: '图片文件不存在' }, 404)
