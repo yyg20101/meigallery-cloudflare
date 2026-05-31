@@ -46,7 +46,7 @@ API coverage 当前使用 Vitest v8 provider，报告目录为 `packages/api/cov
 
 ## 5. 覆盖和质量信号
 
-- 当前测试文件数：41 个 API `*.test.ts` 文件、7 个 Web `*.test.ts` 文件、1 个 Web Playwright smoke spec。
+- 当前测试文件数：42 个 API `*.test.ts` 文件、7 个 Web `*.test.ts` 文件、1 个 Web Playwright smoke spec。
 - 扫描输出显示生产代码无 TODO/FIXME/HACK。
 - CI 会运行 API 类型检查、Web 类型检查、API 单元测试、API coverage、Web Playwright smoke、Web build、API dry-run build。
 - 覆盖率：API 已配置核心安全/导入模块 coverage 基线，当前阈值为 statements 70%、branches 65%、functions 75%、lines 75%；HTML 和 JSON summary 报告输出到 `packages/api/coverage/` 并由 CI 上传 artifact。

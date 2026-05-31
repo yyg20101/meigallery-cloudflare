@@ -21,6 +21,14 @@ export function normalizeContactLinkUrl(value: unknown) {
   return url
 }
 
+export function safeContactLinkUrl(value: unknown) {
+  try {
+    return normalizeContactLinkUrl(value)
+  } catch {
+    return null
+  }
+}
+
 function hasWhitespaceOrControlCharacter(value: string) {
   for (const char of value) {
     const code = char.charCodeAt(0)

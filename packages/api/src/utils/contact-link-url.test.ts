@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeContactLinkUrl } from './contact-link-url'
+import { normalizeContactLinkUrl, safeContactLinkUrl } from './contact-link-url'
 
 describe('联系方式跳转链接校验', () => {
   it('允许空链接表示前台复制联系值', () => {
@@ -30,5 +30,11 @@ describe('联系方式跳转链接校验', () => {
     for (const url of blocked) {
       expect(() => normalizeContactLinkUrl(url)).toThrow('联系方式跳转链接')
     }
+  })
+
+  it('安全读取历史链接时丢弃危险值', () => {
+    expect(safeContactLinkUrl('https://t.me/meigallery')).toBe('https://t.me/meigallery')
+    expect(safeContactLinkUrl('javascript:alert(1)')).toBeNull()
+    expect(safeContactLinkUrl('http://example.com')).toBeNull()
   })
 })
