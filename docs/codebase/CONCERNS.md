@@ -26,7 +26,7 @@
 |------|------------|------|----------|------|
 | 媒体访问控制错误导致对象泄露 | A01 Broken Access Control | `packages/api/src/routes/media.ts` | 服务端 session 和 rank 校验、R2 私有对象 | 需要持续补 E2E/集成测试覆盖过期会员、低 rank、外部 URL 分支 |
 | SSRF/内部地址访问 | A10 SSRF | `packages/api/src/utils/external-url.ts` | `assertSafeExternalUrl` 拒绝 localhost/私网 IP | 其他直接 fetch 外部 URL 的代码需保持同样约束 |
-| 首页广告链接被配置为危险协议 | A03 Injection / A05 Security Misconfiguration | `packages/api/src/utils/home-ad-settings.ts`、`packages/web/app/components/HomeAdBand.vue` | 仅允许站内相对路径或 `https://`，前端纯文本渲染，外链使用 `noopener noreferrer` | 后续若接入第三方广告脚本，需单独做隐私、CSP 和追踪合规评审 |
+| 公开站点设置 URL 被配置为危险协议 | A03 Injection / A05 Security Misconfiguration | `packages/api/src/utils/public-setting-url.ts`、`packages/api/src/routes/admin/settings.ts`、`packages/web/app/components/HomeAdBand.vue` | 广告、站点图标、OG 封面仅允许站内相对路径或 `https://`；规则页只允许站内相对路径；前端纯文本渲染，外链使用 `noopener noreferrer` | 后续若接入第三方广告脚本，需单独做隐私、CSP 和追踪合规评审 |
 | Import Token 泄露 | A07 Identification and Authentication Failures | `packages/api/src/routes/imports.ts`、`packages/api/src/utils/import-token.ts` | token hash 存储、权限和 sourceBotKey 校验、过期检查 | secret 轮换和撤销流程需文档化 |
 | 邮箱/Turnstile 配置缺失 | A05 Security Misconfiguration | `packages/api/src/routes/auth.ts` | production 缺 Turnstile secret 时返回 503 | Email Service 配置、发信域和告警仍需上线检查 |
 

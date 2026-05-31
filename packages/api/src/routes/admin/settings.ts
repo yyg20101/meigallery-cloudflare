@@ -5,11 +5,16 @@ import { normalizeBooleanSetting, normalizeFacebookPixelId } from '../../utils/f
 import { generateId } from '../../utils/db'
 import { normalizeHomeAdUrl } from '../../utils/home-ad-settings'
 import { writeAuditLog } from '../../utils/permission'
+import { normalizeInternalPathSetting, normalizePublicSettingUrl } from '../../utils/public-setting-url'
 import { ADMIN_SETTING_KEYS } from '../../utils/site-settings'
 
 export const adminSettingsRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
 const ALLOWED_KEYS: ReadonlyArray<string> = ADMIN_SETTING_KEYS
+const PUBLIC_URL_FIELDS: Record<string, string> = {
+  site_icon: '站点图标 URL',
+  og_image: 'OG 封面图 URL',
+}
 const SITE_ICON_TYPES: Record<string, string> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
@@ -64,6 +69,21 @@ adminSettingsRoutes.patch('/', requireOwner, async (c) => {
       body.home_ad_url = normalizeHomeAdUrl(body.home_ad_url)
     } catch (error) {
       return c.json({ statusCode: 400, message: error instanceof Error ? error.message : '首页广告链接无效' }, 400)
+    }
+  }
+  if ('rules_page_url' in body) {
+    try {
+      body.rules_page_url = normalizeInternalPathSetting(body.rules_page_url, '规则页链接')
+    } catch (error) {
+      return c.json({ statusCode: 400, message: error instanceof Error ? error.message : '规则页链接无效' }, 400)
+    }
+  }
+  for (const [key, label] of Object.entries(PUBLIC_URL_FIELDS)) {
+    if (!(key in body)) continue
+    try {
+      body[key] = normalizePublicSettingUrl(body[key], label)
+    } catch (error) {
+      return c.json({ statusCode: 400, message: error instanceof Error ? error.message : `${label}无效` }, 400)
     }
   }
 

@@ -154,7 +154,7 @@ onMounted(() => {
           <tr v-for="item in items" :key="item.id" class="hover:bg-gray-50">
             <td class="px-4 py-3 max-w-[200px] truncate">{{ item.legacy_title }}</td>
             <td class="px-4 py-3 max-w-[200px] truncate">
-              <a :href="item.legacy_url" target="_blank" class="text-blue-600 hover:underline">{{ item.legacy_url }}</a>
+              <a :href="item.legacy_url" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">{{ item.legacy_url }}</a>
             </td>
             <td class="px-4 py-3">
               <span :class="['rounded-full px-2 py-0.5 text-xs font-medium', statusColor[item.status] === 'green' ? 'bg-green-100 text-green-800' : statusColor[item.status] === 'red' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800']">

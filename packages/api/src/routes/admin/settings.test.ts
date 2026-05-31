@@ -104,6 +104,69 @@ describe('后台站点设置 API', () => {
     expect(executed).toHaveLength(0)
   })
 
+  it('归一化公开图片设置和规则页路径', async () => {
+    const executed: Array<{ sql: string; params: unknown[] }> = []
+    const app = createApp()
+    const env = {
+      DB: createDb({
+        all: (sql) => {
+          if (sql.includes('SELECT key, value FROM site_settings')) {
+            return [
+              { key: 'site_icon', value: JSON.stringify('') },
+              { key: 'og_image', value: JSON.stringify('') },
+              { key: 'rules_page_url', value: JSON.stringify('/rules') },
+            ]
+          }
+          return []
+        },
+        run: (sql, params) => {
+          executed.push({ sql, params })
+          return { success: true }
+        },
+      }),
+    } as unknown as Bindings
+
+    const res = await app.request('/api/admin/settings', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        site_icon: ' /api/media/public/site/icon.png ',
+        og_image: ' https://example.com/og.jpg ',
+        rules_page_url: ' /rules?from=entry ',
+      }),
+    }, env)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.updated).toEqual(['site_icon', 'og_image', 'rules_page_url'])
+    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[0] === '"/api/media/public/site/icon.png"' && item.params[1] === 'site_icon')).toBe(true)
+    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[0] === '"https://example.com/og.jpg"' && item.params[1] === 'og_image')).toBe(true)
+    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[0] === '"/rules?from=entry"' && item.params[1] === 'rules_page_url')).toBe(true)
+    expect(executed.some(item => item.sql.includes('INSERT INTO admin_audit_logs'))).toBe(true)
+  })
+
+  it('拒绝危险的公开图片设置和规则页路径', async () => {
+    const app = createApp()
+    const env = { DB: createDb({}) } as unknown as Bindings
+    const cases = [
+      { site_icon: 'javascript:alert(1)' },
+      { og_image: 'http://example.com/og.jpg' },
+      { rules_page_url: 'https://example.com/rules' },
+    ]
+
+    for (const payload of cases) {
+      const res = await app.request('/api/admin/settings', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      }, env)
+      const body = await res.json()
+
+      expect(res.status).toBe(400)
+      expect(body.message).toMatch(/URL|链接/)
+    }
+  })
+
   it('站长可以上传站点图标并同步写入 site_icon 设置', async () => {
     const putKeys: string[] = []
     const executed: Array<{ sql: string; params: unknown[] }> = []
