@@ -131,6 +131,13 @@ function publicSettings() {
     facebook_pixel_enabled: 'false',
     home_hero_title: '精选写真，按地区发现',
     home_hero_subtitle: '测试环境中的授权内容展示。',
+    home_ad_enabled: 'true',
+    home_ad_eyebrow: '本周推荐',
+    home_ad_title: '会员季精选内容',
+    home_ad_summary: '探索本周精选图库、真实案例和会员可访问内容。',
+    home_ad_cta_label: '查看推荐',
+    home_ad_url: '/discover?sort=hot',
+    home_ad_sponsor: 'MeiGallery 运营推荐',
     rules_entry_enabled: 'false',
   }
 }

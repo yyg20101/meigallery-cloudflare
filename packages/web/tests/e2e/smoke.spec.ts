@@ -19,6 +19,11 @@ test.describe('核心页面 smoke', () => {
         await expect(page.getByText('DEV 测试环境：')).toBeVisible()
         await expect(page.getByText('当前后台连接正式 D1/R2 数据')).toBeVisible()
       }
+      if (smokePage.path === '/') {
+        const homeAd = page.getByRole('region', { name: '首页广告推荐' })
+        await expect(homeAd.getByText('会员季精选内容')).toBeVisible()
+        await expect(homeAd.getByRole('link', { name: '查看推荐' })).toHaveAttribute('href', '/discover?sort=hot')
+      }
       await expect(page.locator('body')).not.toContainText('originals/')
       await expect(page.locator('body')).not.toContainText('imports/')
 
