@@ -34,6 +34,21 @@ describe('safeMarkdown', () => {
     expect(html).not.toContain('<a href=')
   })
 
+  it('拒绝指向本机或私网地址的 Markdown 链接', () => {
+    const html = renderInlineMarkdown([
+      '[本机](https://localhost/rules)',
+      '[回环](https://127.0.0.1/rules)',
+      '[私网](https://192.168.1.10/rules)',
+      '[本地域](https://example.local/rules)',
+    ].join(' '))
+
+    expect(html).toContain('[本机](https://localhost/rules)')
+    expect(html).toContain('[回环](https://127.0.0.1/rules)')
+    expect(html).toContain('[私网](https://192.168.1.10/rules)')
+    expect(html).toContain('[本地域](https://example.local/rules)')
+    expect(html).not.toContain('<a href=')
+  })
+
   it('渲染安全的标题、列表和加粗语法', () => {
     const html = renderSafeMarkdown('## 入站规则\n\n- **仅限授权内容**\n- [完整规则](https://example.com/rules)')
 

@@ -7,6 +7,8 @@ export function escapeHtml(input: string) {
     .replace(/'/g, '&#39;')
 }
 
+const BLOCKED_HOSTS = new Set(['localhost', 'localhost.localdomain'])
+
 export function renderInlineMarkdown(input: string) {
   const linkPattern = /\[([^\]\n]+)\]\(([^)\s]+)\)/g
   let output = ''
@@ -46,7 +48,23 @@ function normalizeMarkdownLink(value: string) {
   }
 
   if (url.protocol !== 'https:') return null
+  const hostname = url.hostname.toLowerCase()
+  if (BLOCKED_HOSTS.has(hostname) || hostname.endsWith('.localhost') || hostname.endsWith('.local')) return null
+  if (hostname.includes(':') || isPrivateIpv4(hostname)) return null
+
   return url.toString()
+}
+
+function isPrivateIpv4(hostname: string) {
+  const parts = hostname.split('.').map(part => Number.parseInt(part, 10))
+  if (parts.length !== 4 || parts.some(part => Number.isNaN(part) || part < 0 || part > 255)) return false
+  const [a, b] = parts as [number, number, number, number]
+  return a === 10
+    || a === 127
+    || (a === 169 && b === 254)
+    || (a === 172 && b >= 16 && b <= 31)
+    || (a === 192 && b === 168)
+    || a === 0
 }
 
 function hasEncodedWhitespaceOrControlCharacter(value: string) {
