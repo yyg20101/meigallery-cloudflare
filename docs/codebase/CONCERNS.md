@@ -15,7 +15,7 @@
 
 | 债务 | 原因 | 位置 | 忽略风险 | 建议修复 |
 |------|------|------|----------|----------|
-| 路由承载过多业务逻辑 | Hono 路由快速迭代形成 | `packages/api/src/routes/admin/galleries.ts`、`packages/api/src/routes/admin/users.ts`、`packages/api/src/routes/admin/media.ts` | 难复用、难局部测试 | 已抽出邮箱验证码和后台用户列表 service；继续拆图库、媒体和用户写操作 |
+| 路由承载过多业务逻辑 | Hono 路由快速迭代形成 | `packages/api/src/routes/admin/*.ts` | 难复用、难局部测试 | 已抽出邮箱验证码、后台图库、后台媒体和后台用户管理 service；继续关注其他后台复杂路由 |
 | 前端复杂组件测试覆盖不足 | 项目优先完成 MVP 功能和 Workers 部署 | `packages/web/` | 局部组件状态回归发现晚 | 已补关键 Playwright smoke 和 4 个基础组件测试，后续扩展后台复杂组件覆盖 |
 | 统一错误响应不完全一致 | 历史阶段混合 `{ error }` 和 `{ statusCode, message }` | `packages/api/src/routes/**/*.ts` | 前端错误处理要兼容多种格式 | 新增 API 错误响应约定并逐步收敛 |
 | 覆盖率仍需扩大 | 当前 coverage 先覆盖核心安全/导入模块，Web 组件测试刚建立基线 | `packages/api/vitest.config.ts`、`packages/web/vitest.config.ts` | 路由服务化和复杂前端组件仍有盲区 | 继续扩大 service 覆盖范围，扩展核心前端组件测试 |

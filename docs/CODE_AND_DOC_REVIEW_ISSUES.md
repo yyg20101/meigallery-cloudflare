@@ -27,7 +27,7 @@
 | P3-02 | P3 | 文档中的文件大小和上传限制不统一 | 已完成 | 已将当前图库/真实案例/Telegram 图片统一为 10MB，并明确头像、二维码和站点图标的独立上限 | 后续如提高上限需重新评估 Worker 请求体、内存和 R2/Stream 上传策略 |
 | P3-03 | P3 | 缺少 lint / format 配置和 CI 约束 | 已完成 | 已接入根级 ESLint flat config、`.editorconfig`、`pnpm lint` 和 CI lint 步骤；当前 `pnpm lint` 以 `--max-warnings=0` 零 warning 通过 | 后续按需接入 Prettier 或更严格 Vue 格式规则 |
 | P3-04 | P3 | 覆盖率未知 | 已完成 | API 已接入 Vitest v8 coverage，核心安全/导入模块设置基线阈值并在 CI 上传报告；Web 已接入 Vitest 组件测试基线 | 后续逐步扩大到更多路由 service 和核心前端组件 |
-| P3-05 | P3 | 后端路由文件过大，业务逻辑集中在路由层 | 持续收敛 | 已将认证路由中的邮箱验证码业务和后台用户列表查询抽到 service 并补单测；coverage 已纳入邮箱验证码 service | 后续继续分阶段抽取图库、媒体和用户写操作 |
+| P3-05 | P3 | 后端路由文件过大，业务逻辑集中在路由层 | 持续收敛 | 已将认证路由中的邮箱验证码业务、后台用户列表与写操作、后台图库管理和后台媒体管理抽到 service 并补单测；coverage 已纳入邮箱验证码 service | 后续继续分阶段抽取其他后台复杂路由 |
 | P3-06 | P3 | Stream 字段和签名逻辑存在，但生产视频链路未接入 | 已完成 | UI 默认由 `video_enabled=false` 隐藏视频入口；API 在 Stream secrets 缺失时返回 503 `STREAM_NOT_CONFIGURED` | Stream 正式接入需单独 PRD 和验收 |
 
 ## 1. 验证结果
@@ -528,14 +528,17 @@
 
 **状态**
 
-- 已完成首轮（2026-05-29）。
+- 已完成首轮（2026-05-29），持续收敛中。
 - 已新增 `packages/api/src/services/email-verification.ts`，把验证码生成、邮箱验证开关读取、冷却检查、验证码创建和验证码校验从 `packages/api/src/routes/auth.ts` 抽离。
 - 已新增 `packages/api/src/services/email-verification.test.ts`，覆盖开关解析、验证码生成、冷却检查、过期、次数过多、错误次数递增和成功核销。
+- 已新增 `packages/api/src/services/admin-galleries.ts`，承接后台图库列表、详情、创建、更新、发布、下架、归档和批量操作。
+- 已新增 `packages/api/src/services/admin-media.ts`，承接后台媒体列表、上传、封面设置、排序、属性更新和删除，并集中校验媒体 R2 key 所属关系。
+- 已扩展 `packages/api/src/services/admin-users.ts`，承接后台用户详情、活动日志、资料修改、密码重置、会员发放、角色修改和状态修改。
 - `packages/api/vitest.config.ts` 已将该 service 纳入核心 coverage 范围；当前核心 coverage 提升到 statements 78.14%、branches 75.82%、functions 81.96%、lines 83.74%。
 
 **证据**
 
-- `packages/api/src/routes/admin/galleries.ts`、`auth.ts`、`admin/users.ts`、`admin/media.ts` 均超过或接近 400 行。
+- `auth.ts`、`admin/galleries.ts`、`admin/users.ts`、`admin/media.ts` 已完成主要业务下沉；仍需继续关注其他后台复杂路由。
 - 批量操作、媒体上传、用户活动查询、认证流程等业务逻辑直接写在路由中。
 
 **影响**
@@ -545,7 +548,7 @@
 
 **修复方案**
 
-1. 已先将验证码流程抽到 service；后续继续将批量图库操作、媒体上传、会员发放等流程抽到 service/helper。
+1. 已先将验证码流程、批量图库操作、媒体管理和用户写操作抽到 service；后续继续将其他后台复杂流程抽到 service/helper。
 2. 路由层继续保留参数校验、权限中间件和响应映射。
 3. 每次抽取保持现有路由测试全绿，并增加 service 单测。
 

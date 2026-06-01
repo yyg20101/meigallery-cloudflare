@@ -64,10 +64,10 @@
 - `P3-02 文档中的文件大小和上传限制不统一` 已完成：当前内容图片上传口径统一为 10MB；头像 2MB、联系方式二维码 2MB、站点图标 1MB 按独立入口限制记录。
 - `P3-03 缺少 lint / format 配置和 CI 约束` 已完成：根级 ESLint flat config、`.editorconfig`、`pnpm lint` 和 CI lint 步骤已接入，当前 lint 以 `--max-warnings=0` 零 warning 通过。
 - `P3-04 覆盖率未知` 已完成首轮收敛：API 已接入 Vitest v8 coverage，核心安全/导入模块设置基线阈值，CI 上传覆盖率 artifact。
-- `P3-05 后端路由文件过大，业务逻辑集中在路由层` 持续收敛中：认证路由中的邮箱验证码业务已抽到 `services/email-verification.ts`，后台用户列表查询已抽到 `services/admin-users.ts`，后台图库列表/详情/创建/更新/发布/下架/归档/批量操作已抽到 `services/admin-galleries.ts`，均已补 service 单测；后续继续拆媒体和用户写操作。
+- `P3-05 后端路由文件过大，业务逻辑集中在路由层` 持续收敛中：认证路由中的邮箱验证码业务已抽到 `services/email-verification.ts`，后台用户列表查询已抽到 `services/admin-users.ts`，后台图库列表/详情/创建/更新/发布/下架/归档/批量操作已抽到 `services/admin-galleries.ts`，后台媒体列表/上传/封面/排序/更新/删除已抽到 `services/admin-media.ts`，均已补 service 单测；后续继续拆用户写操作。
 - `P3-06 Stream 字段和签名逻辑存在，但生产视频链路未接入` 已完成收敛：Stream 接入前 UI 继续默认隐藏视频入口，API 缺少 Stream secrets 时返回 503 `STREAM_NOT_CONFIGURED`，不触发未配置的签名请求。
 - `corepack pnpm --filter @meigallery/web typecheck` 当前通过，但仍打印 `vue-router/volar/sfc-route-blocks` package export 非阻断警告，后续依赖升级阶段继续跟踪。
-- P1/P2/P3 当前台账项已全部完成或完成首轮收敛；持续增强已推进 lint 零 warning、后台用户列表服务化、后台图库服务化、Web 组件测试扩展、公开封面外链安全、后台媒体外链展示安全、邮件模板注入防护、规则 Markdown 链接安全、站点设置公开 URL 内部地址拦截、首页广告位链接与排期安全收敛、真实案例图片 R2 key 所属校验、联系方式链接/二维码安全收敛、后台联系方式二维码预览安全兜底、图库媒体 R2 key 所属校验、后台旧站迁移外链安全兜底、导入错误报告 R2 key 所属校验和 Import Token 禁用审计收敛，后续工作以继续路由服务化、扩展后台复杂组件测试和按需收紧格式规则为主。
+- P1/P2/P3 当前台账项已全部完成或完成首轮收敛；持续增强已推进 lint 零 warning、后台用户列表服务化、后台图库服务化、后台媒体服务化、Web 组件测试扩展、公开封面外链安全、后台媒体外链展示安全、邮件模板注入防护、规则 Markdown 链接安全、站点设置公开 URL 内部地址拦截、首页广告位链接与排期安全收敛、真实案例图片 R2 key 所属校验、联系方式链接/二维码安全收敛、后台联系方式二维码预览安全兜底、图库媒体 R2 key 所属校验、后台旧站迁移外链安全兜底、导入错误报告 R2 key 所属校验和 Import Token 禁用审计收敛，后续工作以继续路由服务化、扩展后台复杂组件测试和按需收紧格式规则为主。
 
 ## Git 状态
 
