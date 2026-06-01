@@ -152,14 +152,26 @@ test.describe('核心页面 smoke', () => {
   test('后台更新站点 SEO 后首页立即读取新标题', async ({ page }) => {
     await page.goto('/admin/settings')
 
+    const publicSeoSync = page.getByRole('region', { name: '前台同步状态' })
+    await expect(publicSeoSync.getByRole('heading', { name: '前台同步状态' })).toBeVisible()
+    await expect(publicSeoSync.getByText('公开 SEO 标题')).toBeVisible()
+    await expect(publicSeoSync.getByText('测试站点标题 - 首页 SEO')).toBeVisible()
+
     await page.getByLabel('站点名称').fill('运营新站名')
     await page.getByLabel('站点描述').fill('后台保存后的新站点描述')
     await page.getByLabel('SEO 标题').fill('运营新标题 - 首页')
     await page.getByLabel('OG 标题').fill('运营新 OG 标题')
     await page.getByLabel('OG 描述').fill('运营新 OG 描述')
+
+    await expect(publicSeoSync.getByText('待同步', { exact: true })).toBeVisible()
+    await expect(publicSeoSync.getByText('前台公开读取值与当前表单不一致，保存后会重新校验公开设置。')).toBeVisible()
+
     await page.getByRole('button', { name: '保存设置' }).click()
 
-    await expect(page.getByText('设置已保存')).toBeVisible()
+    await expect(page.getByText('设置已保存，前台公开 SEO 已同步')).toBeVisible()
+    await expect(publicSeoSync.getByText('已同步', { exact: true })).toBeVisible()
+    await expect(publicSeoSync.getByText('运营新标题 - 首页')).toBeVisible()
+    await expect(publicSeoSync.getByText('后台保存后的新站点描述')).toBeVisible()
     await page.goto('/')
 
     await expect(page).toHaveTitle('运营新标题 - 首页')
