@@ -50,6 +50,21 @@ describe('HomeAdBand', () => {
     expect(link.attributes('rel')).toBe('noopener noreferrer')
   })
 
+  it('展示默认文案和赞助来源说明', () => {
+    const wrapper = mount(HomeAdBand, {
+      props: {
+        enabled: true,
+        sponsor: '运营精选',
+      },
+      global: { stubs: { NuxtLink: nuxtLinkStub } },
+    })
+
+    expect(wrapper.text()).toContain('本周推荐')
+    expect(wrapper.text()).toContain('会员季精选内容')
+    expect(wrapper.text()).toContain('运营精选')
+    expect(wrapper.find('a').text()).toBe('查看推荐')
+  })
+
   it('本机和私网外链回退到站内推荐页', () => {
     for (const url of [
       'https://localhost/campaign',
