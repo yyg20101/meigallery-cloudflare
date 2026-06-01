@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isScheduledSiteFeatureActive, normalizeBooleanSetting, normalizeHomeAdText, normalizeInternalPath, normalizePublicSettingUrl, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId } from './siteSettingsSecurity'
+import { getHomeAdTextPreviewWarnings, isScheduledSiteFeatureActive, normalizeBooleanSetting, normalizeHomeAdText, normalizeInternalPath, normalizePublicSettingUrl, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId } from './siteSettingsSecurity'
 
 describe('siteSettingsSecurity', () => {
   it('公开 URL 只允许站内路径和 https 链接', () => {
@@ -58,6 +58,20 @@ describe('siteSettingsSecurity', () => {
     expect(normalizeHomeAdText('home_ad_cta_label', 'x'.repeat(13))).toBe('')
     expect(normalizeHomeAdText('home_ad_sponsor', 'x'.repeat(31))).toBe('')
     expect(normalizeHomeAdText('home_ad_title', '会员\u0001精选')).toBe('')
+  })
+
+  it('生成首页广告文案安全提示', () => {
+    expect(getHomeAdTextPreviewWarnings({
+      home_ad_eyebrow: '  本周   推荐  ',
+      home_ad_title: 'x'.repeat(41),
+      home_ad_summary: '会员\u0001精选',
+      home_ad_cta_label: '',
+      home_ad_sponsor: 'x'.repeat(31),
+    })).toEqual([
+      '广告标题已按安全规则清空',
+      '广告摘要已按安全规则清空',
+      '赞助/来源说明已按安全规则清空',
+    ])
   })
 
   it('归一化站点设置时间并判断定时功能状态', () => {

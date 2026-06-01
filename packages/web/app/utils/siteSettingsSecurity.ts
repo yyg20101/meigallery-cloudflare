@@ -6,6 +6,13 @@ const HOME_AD_TEXT_LIMITS: Record<string, number> = {
   home_ad_cta_label: 12,
   home_ad_sponsor: 30,
 }
+const HOME_AD_TEXT_WARNING_LABELS: Record<string, string> = {
+  home_ad_eyebrow: '广告眉标',
+  home_ad_title: '广告标题',
+  home_ad_summary: '广告摘要',
+  home_ad_cta_label: '按钮文案',
+  home_ad_sponsor: '赞助/来源说明',
+}
 
 export function normalizePublicSettingUrl(value: unknown) {
   const url = String(value ?? '').trim()
@@ -67,6 +74,15 @@ export function normalizeHomeAdText(key: string, value: unknown): string {
 
 export function safeHomeAdText(key: string, value: unknown) {
   return normalizeHomeAdText(key, value) || ''
+}
+
+export function getHomeAdTextPreviewWarnings(values: Record<string, unknown>) {
+  const warnings: string[] = []
+  for (const [key, label] of Object.entries(HOME_AD_TEXT_WARNING_LABELS)) {
+    const raw = String(values[key] ?? '').trim()
+    if (raw && !safeHomeAdText(key, raw)) warnings.push(`${label}已按安全规则清空`)
+  }
+  return warnings
 }
 
 export function normalizeBooleanSetting(value: unknown) {
