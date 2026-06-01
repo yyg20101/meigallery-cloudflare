@@ -424,7 +424,7 @@ async function toggleVideo() {
             <div class="mt-4 space-y-2 text-xs leading-5">
               <p :class="unsafeHomeAdUrl ? 'text-amber-700' : 'text-gray-500'">
                 链接：{{ safeHomeAdPreviewUrl }}
-                <span v-if="unsafeHomeAdUrl" class="ml-2 font-medium">原始链接不安全，已回退到推荐页</span>
+                <span v-if="unsafeHomeAdUrl" role="status" aria-live="polite" class="ml-2 font-medium">原始链接不安全，已回退到推荐页</span>
               </p>
               <p v-if="homeAdPreviewWarnings.length > 0" role="status" aria-live="polite" class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-700">
                 <span class="font-medium">预览已安全收紧：</span>

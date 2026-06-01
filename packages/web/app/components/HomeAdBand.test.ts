@@ -48,6 +48,7 @@ describe('HomeAdBand', () => {
     expect(link.attributes('href')).toBe('https://example.com/campaign?next=%22x%22')
     expect(link.attributes('target')).toBe('_blank')
     expect(link.attributes('rel')).toBe('noopener noreferrer')
+    expect(link.attributes('referrerpolicy')).toBe('no-referrer')
   })
 
   it('展示默认文案和赞助来源说明', () => {
