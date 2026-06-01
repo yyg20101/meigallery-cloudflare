@@ -122,7 +122,15 @@ describe('HomeAdBand', () => {
     for (const url of [
       'https://localhost/campaign',
       'https://127.0.0.1/campaign',
+      'https://127.1/campaign',
+      'https://2130706433/campaign',
+      'https://0x7f000001/campaign',
+      'https://0177.0.0.1/campaign',
       'https://192.168.1.10/campaign',
+      'https://0xc0a8010a/campaign',
+      'https://[::1]/campaign',
+      'https://[fc00::1]/campaign',
+      'https://[2001:db8::1]/campaign',
       'https://preview.local/campaign',
     ]) {
       const wrapper = mount(HomeAdBand, {

@@ -48,9 +48,14 @@ describe('siteSettingsSecurity', () => {
       'https://localhost./og.jpg',
       'https://localhost%2e/og.jpg',
       'https://127.0.0.1/og.jpg',
+      'https://127.1/og.jpg',
+      'https://2130706433/og.jpg',
+      'https://0x7f000001/og.jpg',
+      'https://0177.0.0.1/og.jpg',
       'https://10.0.0.1/og.jpg',
       'https://172.31.255.1/og.jpg',
       'https://192.168.1.10/og.jpg',
+      'https://0xc0a8010a/og.jpg',
       'https://169.254.169.254/latest/meta-data',
       'https://100.64.0.1/og.jpg',
       'https://192.0.2.10/og.jpg',
@@ -62,6 +67,9 @@ describe('siteSettingsSecurity', () => {
       'https://255.255.255.255/og.jpg',
       'https://preview.local/og.jpg',
       'https://preview.local./og.jpg',
+      'https://[::1]/og.jpg',
+      'https://[fc00::1]/og.jpg',
+      'https://[2001:db8::1]/og.jpg',
     ]) {
       expect(normalizePublicSettingUrl(url)).toBe('')
     }
@@ -83,6 +91,13 @@ describe('siteSettingsSecurity', () => {
       '/_nuxt/entry.js',
       '/cdn-cgi/trace',
       'https://localhost./campaign',
+      'https://2130706433/campaign',
+      'https://0x7f000001/campaign',
+      'https://0177.0.0.1/campaign',
+      'https://127.1/campaign',
+      'https://[::1]/campaign',
+      'https://[fc00::1]/campaign',
+      'https://[2001:db8::1]/campaign',
       'https://preview.local./campaign',
       'javascript:alert(1)',
     ]) {

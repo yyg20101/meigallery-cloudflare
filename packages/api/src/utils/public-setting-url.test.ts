@@ -62,9 +62,14 @@ describe('公开站点设置 URL 校验', () => {
       'https://preview.local/icon.png',
       'https://preview.local./icon.png',
       'https://127.0.0.1/icon.png',
+      'https://127.1/icon.png',
+      'https://2130706433/icon.png',
+      'https://0x7f000001/icon.png',
+      'https://0177.0.0.1/icon.png',
       'https://10.0.0.1/icon.png',
       'https://172.16.0.1/icon.png',
       'https://192.168.1.10/icon.png',
+      'https://0xc0a8010a/icon.png',
       'https://169.254.169.254/latest/meta-data',
       'https://100.64.0.1/icon.png',
       'https://192.0.2.10/icon.png',
@@ -74,6 +79,9 @@ describe('公开站点设置 URL 校验', () => {
       'https://224.0.0.1/icon.png',
       'https://240.0.0.1/icon.png',
       'https://255.255.255.255/icon.png',
+      'https://[::1]/icon.png',
+      'https://[fc00::1]/icon.png',
+      'https://[2001:db8::1]/icon.png',
     ]
 
     for (const url of blocked) {
