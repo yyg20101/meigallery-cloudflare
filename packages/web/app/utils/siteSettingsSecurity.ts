@@ -52,6 +52,36 @@ export function normalizeBooleanSetting(value: unknown) {
   return value === true || value === 'true'
 }
 
+export function normalizeSiteSettingDateTime(value: unknown) {
+  if (typeof value !== 'string') return ''
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+
+  const date = new Date(trimmed)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toISOString()
+}
+
+export function isScheduledSiteFeatureActive(
+  enabled: unknown,
+  startsAt: unknown,
+  endsAt: unknown,
+  now = new Date(),
+) {
+  if (!normalizeBooleanSetting(enabled)) return false
+
+  const normalizedStartsAt = normalizeSiteSettingDateTime(startsAt)
+  const normalizedEndsAt = normalizeSiteSettingDateTime(endsAt)
+  const start = normalizedStartsAt ? new Date(normalizedStartsAt) : null
+  const end = normalizedEndsAt ? new Date(normalizedEndsAt) : null
+
+  if (startsAt && !normalizedStartsAt) return false
+  if (endsAt && !normalizedEndsAt) return false
+  if (start && now < start) return false
+  if (end && now >= end) return false
+  return true
+}
+
 function hasEncodedWhitespaceOrControlCharacter(value: string) {
   return /%(?:0[0-9a-f]|1[0-9a-f]|20|7f)/i.test(value)
 }

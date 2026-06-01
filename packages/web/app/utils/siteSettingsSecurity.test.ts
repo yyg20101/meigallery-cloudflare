@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeBooleanSetting, normalizeInternalPath, normalizePublicSettingUrl, normalizeSiteSettingPixelId } from './siteSettingsSecurity'
+import { isScheduledSiteFeatureActive, normalizeBooleanSetting, normalizeInternalPath, normalizePublicSettingUrl, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId } from './siteSettingsSecurity'
 
 describe('siteSettingsSecurity', () => {
   it('公开 URL 只允许站内路径和 https 链接', () => {
@@ -47,5 +47,17 @@ describe('siteSettingsSecurity', () => {
     expect(normalizeBooleanSetting(true)).toBe(true)
     expect(normalizeBooleanSetting('true')).toBe(true)
     expect(normalizeBooleanSetting('TRUE')).toBe(false)
+  })
+
+  it('归一化站点设置时间并判断定时功能状态', () => {
+    expect(normalizeSiteSettingDateTime('2026-06-01T08:30:00+08:00')).toBe('2026-06-01T00:30:00.000Z')
+    expect(normalizeSiteSettingDateTime('')).toBe('')
+    expect(normalizeSiteSettingDateTime('not-a-date')).toBe('')
+
+    const now = new Date('2026-06-01T12:00:00.000Z')
+    expect(isScheduledSiteFeatureActive(true, '2026-06-01T11:00:00.000Z', '2026-06-01T13:00:00.000Z', now)).toBe(true)
+    expect(isScheduledSiteFeatureActive(true, '2026-06-01T13:00:00.000Z', '', now)).toBe(false)
+    expect(isScheduledSiteFeatureActive(true, '', '2026-06-01T12:00:00.000Z', now)).toBe(false)
+    expect(isScheduledSiteFeatureActive(false, '', '', now)).toBe(false)
   })
 })

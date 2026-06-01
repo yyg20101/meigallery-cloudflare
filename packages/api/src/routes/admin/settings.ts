@@ -3,6 +3,7 @@ import type { Bindings, Variables } from '../../index'
 import { requireOwner } from '../../middleware/auth'
 import { normalizeBooleanSetting, normalizeFacebookPixelId } from '../../utils/facebook-pixel-settings'
 import { generateId } from '../../utils/db'
+import { normalizeHomeAdScheduleRange } from '../../utils/home-ad-schedule'
 import { normalizeHomeAdUrl } from '../../utils/home-ad-settings'
 import { writeAuditLog } from '../../utils/permission'
 import { normalizeInternalPathSetting, normalizePublicSettingUrl } from '../../utils/public-setting-url'
@@ -71,6 +72,7 @@ adminSettingsRoutes.patch('/', requireOwner, async (c) => {
       return c.json({ statusCode: 400, message: error instanceof Error ? error.message : '首页广告链接无效' }, 400)
     }
   }
+  const hasHomeAdScheduleChange = 'home_ad_starts_at' in body || 'home_ad_ends_at' in body
   if ('rules_page_url' in body) {
     try {
       body.rules_page_url = normalizeInternalPathSetting(body.rules_page_url, '规则页链接')
@@ -93,14 +95,38 @@ adminSettingsRoutes.patch('/', requireOwner, async (c) => {
   }
 
   // 读取旧值
-  const placeholders = keys.map(() => '?').join(',')
+  const lookupKeys = new Set(keys)
+  if (hasHomeAdScheduleChange) {
+    lookupKeys.add('home_ad_starts_at')
+    lookupKeys.add('home_ad_ends_at')
+  }
+
+  const placeholders = Array.from(lookupKeys).map(() => '?').join(',')
   const oldValues = await db
     .prepare(`SELECT key, value FROM site_settings WHERE key IN (${placeholders})`)
-    .bind(...keys)
+    .bind(...lookupKeys)
     .all<{ key: string; value: string }>()
-  const oldMap: Record<string, unknown> = {}
+  const currentMap: Record<string, unknown> = {}
   for (const row of oldValues.results) {
-    oldMap[row.key] = JSON.parse(row.value)
+    currentMap[row.key] = JSON.parse(row.value)
+  }
+
+  if (hasHomeAdScheduleChange) {
+    try {
+      const range = normalizeHomeAdScheduleRange(
+        'home_ad_starts_at' in body ? body.home_ad_starts_at : currentMap.home_ad_starts_at,
+        'home_ad_ends_at' in body ? body.home_ad_ends_at : currentMap.home_ad_ends_at,
+      )
+      if ('home_ad_starts_at' in body) body.home_ad_starts_at = range.startsAt
+      if ('home_ad_ends_at' in body) body.home_ad_ends_at = range.endsAt
+    } catch (error) {
+      return c.json({ statusCode: 400, message: error instanceof Error ? error.message : '首页广告排期无效' }, 400)
+    }
+  }
+
+  const oldMap: Record<string, unknown> = {}
+  for (const key of keys) {
+    oldMap[key] = currentMap[key]
   }
 
   for (const key of keys) {

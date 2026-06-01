@@ -53,6 +53,8 @@ describe('site settings keys', () => {
       'home_ad_cta_label',
       'home_ad_url',
       'home_ad_sponsor',
+      'home_ad_starts_at',
+      'home_ad_ends_at',
     ]
 
     for (const key of homeAdKeys) {

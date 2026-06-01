@@ -4,13 +4,13 @@ const {
   videoEnabled,
   homeHeroTitle,
   homeHeroSubtitle,
-  homeAdEnabled,
   homeAdEyebrow,
   homeAdTitle,
   homeAdSummary,
   homeAdCtaLabel,
   homeAdUrl,
   homeAdSponsor,
+  homeAdActive,
 } = useSiteSettings()
 
 interface GallerySummary {
@@ -121,8 +121,9 @@ useSeoMeta({
     />
 
     <HomeAdBand
+      v-if="homeAdActive"
       class="mt-6 lg:mt-8"
-      :enabled="homeAdEnabled"
+      :enabled="homeAdActive"
       :eyebrow="homeAdEyebrow"
       :title="homeAdTitle"
       :summary="homeAdSummary"

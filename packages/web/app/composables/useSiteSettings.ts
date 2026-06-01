@@ -3,7 +3,7 @@
  * 从 /api/settings/public 获取站点配置
  * 数据全局缓存，避免重复请求
  */
-import { normalizeBooleanSetting, normalizeInternalPath, normalizePublicSettingUrl, normalizeSiteSettingPixelId } from '~/utils/siteSettingsSecurity'
+import { isScheduledSiteFeatureActive, normalizeBooleanSetting, normalizeInternalPath, normalizePublicSettingUrl, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId } from '~/utils/siteSettingsSecurity'
 
 export function useSiteSettings() {
   const { api } = useApi()
@@ -34,6 +34,8 @@ export function useSiteSettings() {
     home_ad_cta_label?: string
     home_ad_url?: string
     home_ad_sponsor?: string
+    home_ad_starts_at?: string
+    home_ad_ends_at?: string
     rules_entry_enabled?: string | boolean
     rules_entry_title?: string
     rules_entry_summary?: string
@@ -85,6 +87,11 @@ export function useSiteSettings() {
   const homeAdCtaLabel = computed(() => settings.value.home_ad_cta_label || '查看推荐')
   const homeAdUrl = computed(() => normalizePublicSettingUrl(settings.value.home_ad_url) || '/discover?sort=hot')
   const homeAdSponsor = computed(() => settings.value.home_ad_sponsor || 'MeiGallery 运营推荐')
+  const homeAdStartsAt = computed(() => normalizeSiteSettingDateTime(settings.value.home_ad_starts_at))
+  const homeAdEndsAt = computed(() => normalizeSiteSettingDateTime(settings.value.home_ad_ends_at))
+  const homeAdActive = computed(() => {
+    return isScheduledSiteFeatureActive(settings.value.home_ad_enabled, settings.value.home_ad_starts_at, settings.value.home_ad_ends_at)
+  })
   const videoEnabled = computed(() => {
     return normalizeBooleanSetting(settings.value.video_enabled)
   })
@@ -130,6 +137,9 @@ export function useSiteSettings() {
     homeAdCtaLabel,
     homeAdUrl,
     homeAdSponsor,
+    homeAdStartsAt,
+    homeAdEndsAt,
+    homeAdActive,
     videoEnabled,
     facebookPixelEnabled,
     facebookPixelId,

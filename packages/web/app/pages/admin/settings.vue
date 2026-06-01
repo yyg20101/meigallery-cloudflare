@@ -30,6 +30,8 @@ const form = reactive({
   home_ad_cta_label: '',
   home_ad_url: '',
   home_ad_sponsor: '',
+  home_ad_starts_at: '',
+  home_ad_ends_at: '',
   facebook_pixel_id: '',
   rules_entry_title: '',
   rules_entry_summary: '',
@@ -61,10 +63,54 @@ function parseBooleanSetting(value: unknown) {
   return value === true || value === 'true'
 }
 
+function toDatetimeLocalValue(value: unknown) {
+  if (typeof value !== 'string') return ''
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  const date = new Date(trimmed)
+  if (Number.isNaN(date.getTime())) return ''
+
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+  return localDate.toISOString().slice(0, 16)
+}
+
 if (settings.value?.data) {
   for (const [key, val] of Object.entries(settings.value.data)) {
     if (key in form) {
-      (form as any)[key] = val.value || ''
+      const value = key === 'home_ad_starts_at' || key === 'home_ad_ends_at'
+        ? toDatetimeLocalValue(val.value)
+        : val.value || ''
+      if (key === 'site_name') form.site_name = value
+      else if (key === 'site_description') form.site_description = value
+      else if (key === 'site_icon') form.site_icon = value
+      else if (key === 'footer_text') form.footer_text = value
+      else if (key === 'seo_title') form.seo_title = value
+      else if (key === 'og_title') form.og_title = value
+      else if (key === 'og_description') form.og_description = value
+      else if (key === 'og_image') form.og_image = value
+      else if (key === 'membership_description') form.membership_description = value
+      else if (key === 'home_hero_title') form.home_hero_title = value
+      else if (key === 'home_hero_subtitle') form.home_hero_subtitle = value
+      else if (key === 'home_featured_region_slugs') form.home_featured_region_slugs = value
+      else if (key === 'home_hot_tag_limit') form.home_hot_tag_limit = value
+      else if (key === 'home_ad_eyebrow') form.home_ad_eyebrow = value
+      else if (key === 'home_ad_title') form.home_ad_title = value
+      else if (key === 'home_ad_summary') form.home_ad_summary = value
+      else if (key === 'home_ad_cta_label') form.home_ad_cta_label = value
+      else if (key === 'home_ad_url') form.home_ad_url = value
+      else if (key === 'home_ad_sponsor') form.home_ad_sponsor = value
+      else if (key === 'home_ad_starts_at') form.home_ad_starts_at = value
+      else if (key === 'home_ad_ends_at') form.home_ad_ends_at = value
+      else if (key === 'facebook_pixel_id') form.facebook_pixel_id = value
+      else if (key === 'rules_entry_title') form.rules_entry_title = value
+      else if (key === 'rules_entry_summary') form.rules_entry_summary = value
+      else if (key === 'rules_entry_icon') form.rules_entry_icon = value
+      else if (key === 'rules_entry_enabled') form.rules_entry_enabled = value
+      else if (key === 'rules_modal_content') form.rules_modal_content = value
+      else if (key === 'rules_page_title') form.rules_page_title = value
+      else if (key === 'rules_page_summary') form.rules_page_summary = value
+      else if (key === 'rules_page_content') form.rules_page_content = value
+      else if (key === 'rules_page_url') form.rules_page_url = value
     }
     if (key === 'email_verification_enabled') {
       emailVerificationEnabled.value = parseBooleanSetting(val.value)
@@ -88,10 +134,19 @@ async function onSave() {
   loading.value = true
   message.value = ''
   try {
+    const normalizeScheduleInput = (value: string) => {
+      const trimmed = value.trim()
+      if (!trimmed) return ''
+      const parsed = new Date(trimmed)
+      return Number.isNaN(parsed.getTime()) ? trimmed : parsed.toISOString()
+    }
+
     await api('/api/admin/settings', {
       method: 'PATCH',
       body: {
         ...form,
+        home_ad_starts_at: normalizeScheduleInput(form.home_ad_starts_at),
+        home_ad_ends_at: normalizeScheduleInput(form.home_ad_ends_at),
         facebook_pixel_enabled: facebookPixelEnabled.value,
         facebook_pixel_debug_enabled: facebookPixelDebugEnabled.value,
         home_ad_enabled: homeAdEnabled.value,
@@ -297,6 +352,26 @@ async function toggleVideo() {
               <input v-model="form.home_ad_cta_label" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="查看推荐" />
             </div>
           </div>
+          <div class="mt-4 grid gap-4 sm:grid-cols-2">
+            <div>
+              <label class="mb-1 block text-sm font-medium text-gray-700">开始时间</label>
+              <input v-model="form.home_ad_starts_at" type="datetime-local" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <p class="mt-1 text-xs text-gray-400">留空表示立即开始；提交后会转成 UTC ISO 时间。</p>
+            </div>
+            <div>
+              <label class="mb-1 block text-sm font-medium text-gray-700">结束时间</label>
+              <input v-model="form.home_ad_ends_at" type="datetime-local" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <p class="mt-1 text-xs text-gray-400">留空表示不限制结束时间；结束时间必须晚于开始时间。</p>
+            </div>
+          </div>
+          <p class="mt-4 text-xs text-gray-500">
+            当前状态：
+            <span :class="homeAdEnabled ? 'text-green-600' : 'text-gray-500'">{{ homeAdEnabled ? '已启用' : '已关闭' }}</span>
+            <span class="mx-2 text-gray-300">|</span>
+            <span class="text-gray-500">{{ form.home_ad_starts_at || '未设置开始时间' }}</span>
+            <span class="mx-2 text-gray-300">→</span>
+            <span class="text-gray-500">{{ form.home_ad_ends_at || '未设置结束时间' }}</span>
+          </p>
         </div>
       </fieldset>
 

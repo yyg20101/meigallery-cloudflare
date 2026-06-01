@@ -23,6 +23,11 @@ describe('公开站点设置安全读取', () => {
     expect(sanitizePublicSiteSetting('facebook_pixel_id', 'fbq("track")')).toBe('')
   })
 
+  it('归一化首页广告排期并清空历史异常时间', () => {
+    expect(sanitizePublicSiteSetting('home_ad_starts_at', '2026-06-01T08:30:00+08:00')).toBe('2026-06-01T00:30:00.000Z')
+    expect(sanitizePublicSiteSetting('home_ad_ends_at', 'not-a-date')).toBe('')
+  })
+
   it('保留非安全敏感设置原值', () => {
     expect(sanitizePublicSiteSetting('site_name', 'MeiGallery')).toBe('MeiGallery')
     expect(sanitizePublicSiteSetting('home_hot_tag_limit', 12)).toBe(12)

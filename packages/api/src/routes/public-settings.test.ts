@@ -28,6 +28,8 @@ describe('公开站点设置 API', () => {
         { key: 'rules_page_url', value: 'https://example.com/rules' },
         { key: 'facebook_pixel_id', value: 'fbq("track")' },
         { key: 'home_ad_enabled', value: 'true' },
+        { key: 'home_ad_starts_at', value: '2026-06-01T08:30:00+08:00' },
+        { key: 'home_ad_ends_at', value: 'not-a-date' },
       ]),
     } as unknown as Bindings
 
@@ -41,5 +43,7 @@ describe('公开站点设置 API', () => {
     expect(body.rules_page_url).toBe('')
     expect(body.facebook_pixel_id).toBe('')
     expect(body.home_ad_enabled).toBe(true)
+    expect(body.home_ad_starts_at).toBe('2026-06-01T00:30:00.000Z')
+    expect(body.home_ad_ends_at).toBe('')
   })
 })

@@ -104,6 +104,101 @@ describe('后台站点设置 API', () => {
     expect(executed).toHaveLength(0)
   })
 
+  it('站长更新首页广告排期时会写入 ISO 时间并记录审计日志', async () => {
+    const executed: Array<{ sql: string; params: unknown[] }> = []
+    const app = createApp()
+    const env = {
+      DB: createDb({
+        all: (sql) => {
+          if (sql.includes('SELECT key, value FROM site_settings')) {
+            return [
+              { key: 'home_ad_starts_at', value: JSON.stringify('') },
+              { key: 'home_ad_ends_at', value: JSON.stringify('') },
+            ]
+          }
+          return []
+        },
+        run: (sql, params) => {
+          executed.push({ sql, params })
+          return { success: true }
+        },
+      }),
+    } as unknown as Bindings
+
+    const res = await app.request('/api/admin/settings', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        home_ad_starts_at: '2026-06-01T08:00:00+08:00',
+        home_ad_ends_at: '2026-06-02T08:00:00+08:00',
+      }),
+    }, env)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.updated).toEqual(['home_ad_starts_at', 'home_ad_ends_at'])
+    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[0] === '"2026-06-01T00:00:00.000Z"' && item.params[1] === 'home_ad_starts_at')).toBe(true)
+    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[0] === '"2026-06-02T00:00:00.000Z"' && item.params[1] === 'home_ad_ends_at')).toBe(true)
+    expect(executed.some(item => item.sql.includes('INSERT INTO admin_audit_logs'))).toBe(true)
+  })
+
+  it('拒绝无效或倒置的首页广告排期', async () => {
+    const app = createApp()
+    const env = { DB: createDb({}) } as unknown as Bindings
+    const cases = [
+      { home_ad_starts_at: 'not-a-date' },
+      {
+        home_ad_starts_at: '2026-06-02T08:00:00+08:00',
+        home_ad_ends_at: '2026-06-01T08:00:00+08:00',
+      },
+    ]
+
+    for (const payload of cases) {
+      const res = await app.request('/api/admin/settings', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      }, env)
+      const body = await res.json()
+
+      expect(res.status).toBe(400)
+      expect(body.message).toMatch(/首页广告/)
+    }
+  })
+
+  it('只更新单个广告排期字段时会结合已有值校验顺序', async () => {
+    const executed: Array<{ sql: string; params: unknown[] }> = []
+    const app = createApp()
+    const env = {
+      DB: createDb({
+        all: (sql) => {
+          if (sql.includes('SELECT key, value FROM site_settings')) {
+            return [
+              { key: 'home_ad_starts_at', value: JSON.stringify('2026-06-02T00:00:00.000Z') },
+              { key: 'home_ad_ends_at', value: JSON.stringify('') },
+            ]
+          }
+          return []
+        },
+        run: (sql, params) => {
+          executed.push({ sql, params })
+          return { success: true }
+        },
+      }),
+    } as unknown as Bindings
+
+    const res = await app.request('/api/admin/settings', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ home_ad_ends_at: '2026-06-01T00:00:00.000Z' }),
+    }, env)
+    const body = await res.json()
+
+    expect(res.status).toBe(400)
+    expect(body.message).toContain('首页广告结束时间必须晚于开始时间')
+    expect(executed).toHaveLength(0)
+  })
+
   it('归一化公开图片设置和规则页路径', async () => {
     const executed: Array<{ sql: string; params: unknown[] }> = []
     const app = createApp()
