@@ -35,7 +35,7 @@ export function normalizePublicSettingUrl(value: unknown, fieldLabel: string) {
     throw new Error(`${fieldLabel}不允许包含用户名或密码`)
   }
 
-  const hostname = parsed.hostname.toLowerCase()
+  const hostname = normalizeHostname(parsed.hostname)
   if (BLOCKED_HOSTS.has(hostname) || hostname.endsWith('.localhost') || hostname.endsWith('.local')) {
     throw new Error(`${fieldLabel}不允许使用本机或内部域名`)
   }
@@ -96,6 +96,10 @@ function hasWhitespaceOrControlCharacter(value: string) {
 
 function hasBackslashOrEncodedBackslash(value: string) {
   return value.includes('\\') || /%5c/i.test(value)
+}
+
+function normalizeHostname(hostname: string) {
+  return hostname.toLowerCase().replace(/\.+$/, '')
 }
 
 function isPrivateIpv4(hostname: string) {

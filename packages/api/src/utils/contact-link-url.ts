@@ -19,7 +19,7 @@ export function normalizeContactLinkUrl(value: unknown) {
     throw new Error('联系方式跳转链接只允许 https、mailto、tel 或受支持的客户端协议')
   }
   if (parsed.protocol === 'https:') {
-    const hostname = parsed.hostname.toLowerCase()
+    const hostname = normalizeHostname(parsed.hostname)
     if (BLOCKED_HOSTS.has(hostname) || hostname.endsWith('.localhost') || hostname.endsWith('.local')) {
       throw new Error('联系方式跳转链接不允许使用本机或内部域名')
     }
@@ -49,6 +49,10 @@ function hasWhitespaceOrControlCharacter(value: string) {
 
 function hasEncodedWhitespaceOrControlCharacter(value: string) {
   return /%(?:0[0-9a-f]|1[0-9a-f]|20|7f)/i.test(value)
+}
+
+function normalizeHostname(hostname: string) {
+  return hostname.toLowerCase().replace(/\.+$/, '')
 }
 
 function isPrivateIpv4(hostname: string) {

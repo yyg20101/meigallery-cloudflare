@@ -39,10 +39,14 @@ export function normalizeContactQrCodeUrl(value: unknown) {
 }
 
 function isPublicHostname(hostname: string) {
-  const normalized = hostname.toLowerCase()
+  const normalized = normalizeHostname(hostname)
   if (BLOCKED_HOSTS.has(normalized) || normalized.endsWith('.localhost') || normalized.endsWith('.local')) return false
   if (normalized.includes(':') || isPrivateIpv4(normalized)) return false
   return true
+}
+
+function normalizeHostname(hostname: string) {
+  return hostname.toLowerCase().replace(/\.+$/, '')
 }
 
 function hasEncodedWhitespaceOrControlCharacter(value: string) {

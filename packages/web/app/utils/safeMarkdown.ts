@@ -48,11 +48,15 @@ function normalizeMarkdownLink(value: string) {
   }
 
   if (url.protocol !== 'https:') return null
-  const hostname = url.hostname.toLowerCase()
+  const hostname = normalizeHostname(url.hostname)
   if (BLOCKED_HOSTS.has(hostname) || hostname.endsWith('.localhost') || hostname.endsWith('.local')) return null
   if (hostname.includes(':') || isPrivateIpv4(hostname)) return null
 
   return url.toString()
+}
+
+function normalizeHostname(hostname: string) {
+  return hostname.toLowerCase().replace(/\.+$/, '')
 }
 
 function isPrivateIpv4(hostname: string) {

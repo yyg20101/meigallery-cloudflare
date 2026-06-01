@@ -18,7 +18,7 @@ export function normalizeMediaUrl(value: unknown) {
     const parsed = new URL(url)
     if (parsed.protocol !== 'https:') return ''
 
-    const hostname = parsed.hostname.toLowerCase()
+    const hostname = normalizeHostname(parsed.hostname)
     if (BLOCKED_HOSTS.has(hostname) || hostname.endsWith('.localhost') || hostname.endsWith('.local')) return ''
     if (hostname.includes(':') || isPrivateIpv4(hostname)) return ''
 
@@ -64,6 +64,10 @@ function hasWhitespaceOrControlCharacter(value: string) {
     if (code <= 0x20 || code === 0x7f) return true
   }
   return false
+}
+
+function normalizeHostname(hostname: string) {
+  return hostname.toLowerCase().replace(/\.+$/, '')
 }
 
 function isPrivateIpv4(hostname: string) {

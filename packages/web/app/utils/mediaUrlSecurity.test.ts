@@ -13,8 +13,11 @@ describe('mediaUrlSecurity', () => {
     for (const value of [
       'http://example.com/source.jpg',
       'https://localhost/source.jpg',
+      'https://localhost./source.jpg',
+      'https://localhost%2e/source.jpg',
       'https://127.0.0.1/source.jpg',
       'https://192.168.1.10/source.jpg',
+      'https://preview.local./source.jpg',
       'https://example.com/source%20bad.jpg',
       'https://example.com/%0Asource.jpg',
       '/api/media/asset-1/thumb%20bad',
@@ -30,6 +33,7 @@ describe('mediaUrlSecurity', () => {
     expect(resolveCoverPreviewUrl('HTTPS://example.com/cover.jpg?next="x"', 'gal_1', 'https://api.test')).toBe('https://example.com/cover.jpg?next=%22x%22')
     expect(resolveCoverPreviewUrl('covers/gal_1/cover.jpg', 'gal_1', 'https://api.test')).toBe('https://api.test/api/media/cover/gal_1')
     expect(resolveCoverPreviewUrl('http://example.com/cover.jpg', 'gal_1', 'https://api.test')).toBeNull()
+    expect(resolveCoverPreviewUrl('https://localhost./cover.jpg', 'gal_1', 'https://api.test')).toBeNull()
     expect(resolveCoverPreviewUrl('https://127.0.0.1/cover.jpg', 'gal_1', 'https://api.test')).toBeNull()
   })
 })

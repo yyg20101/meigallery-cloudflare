@@ -9,6 +9,8 @@ describe('公开站点设置安全读取', () => {
     expect(sanitizePublicSiteSetting('home_ad_url', '/admin/settings')).toBe('')
     expect(sanitizePublicSiteSetting('home_ad_url', '/api/media/public/site/icon.png')).toBe('')
     expect(sanitizePublicSiteSetting('rules_page_url', 'https://example.com/rules')).toBe('')
+    expect(sanitizePublicSiteSetting('site_icon', 'https://localhost./icon.png')).toBe('')
+    expect(sanitizePublicSiteSetting('home_ad_url', 'https://preview.local./campaign')).toBe('')
     expect(sanitizePublicSiteSetting('site_icon', 'https://example.com\\icon.png')).toBe('')
     expect(sanitizePublicSiteSetting('og_image', 'https://example.com/%5Cog.jpg')).toBe('')
     expect(sanitizePublicSiteSetting('home_ad_url', 'https:\\\\example.com\\campaign')).toBe('')

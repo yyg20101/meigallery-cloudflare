@@ -50,7 +50,10 @@ describe('公开站点设置 URL 校验', () => {
   it('公开 URL 拒绝本机和私网地址', () => {
     const blocked = [
       'https://localhost/icon.png',
+      'https://localhost./icon.png',
+      'https://localhost%2e/icon.png',
       'https://preview.local/icon.png',
+      'https://preview.local./icon.png',
       'https://127.0.0.1/icon.png',
       'https://10.0.0.1/icon.png',
       'https://172.16.0.1/icon.png',

@@ -22,7 +22,7 @@ export function assertSafeExternalUrl(input: string): string {
 
   if (url.protocol !== 'https:') throw new Error('仅允许 HTTPS 外部地址')
 
-  const hostname = url.hostname.toLowerCase()
+  const hostname = normalizeHostname(url.hostname)
   if (BLOCKED_HOSTS.has(hostname) || hostname.endsWith('.localhost') || hostname.endsWith('.local')) {
     throw new Error('不允许访问本机或内部域名')
   }
@@ -44,4 +44,8 @@ export function safeExternalFetch(input: string, init?: RequestInit): Promise<Re
     ...init,
     redirect: 'manual',
   })
+}
+
+function normalizeHostname(hostname: string) {
+  return hostname.toLowerCase().replace(/\.+$/, '')
 }

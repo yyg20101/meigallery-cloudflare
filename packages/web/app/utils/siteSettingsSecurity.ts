@@ -46,7 +46,7 @@ export function normalizePublicSettingUrl(value: unknown) {
     if (parsed.protocol !== 'https:') return ''
     if (parsed.username || parsed.password) return ''
 
-    const hostname = parsed.hostname.toLowerCase()
+    const hostname = normalizeHostname(parsed.hostname)
     if (BLOCKED_HOSTS.has(hostname) || hostname.endsWith('.localhost') || hostname.endsWith('.local')) return ''
     if (hostname.includes(':') || isPrivateIpv4(hostname)) return ''
 
@@ -161,6 +161,10 @@ function hasControlCharacter(value: string) {
 
 function hasBackslashOrEncodedBackslash(value: string) {
   return value.includes('\\') || /%5c/i.test(value)
+}
+
+function normalizeHostname(hostname: string) {
+  return hostname.toLowerCase().replace(/\.+$/, '')
 }
 
 function isAllowedHomeAdInternalPath(url: string) {

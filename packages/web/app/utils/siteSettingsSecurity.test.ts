@@ -38,12 +38,15 @@ describe('siteSettingsSecurity', () => {
   it('公开 URL 拒绝本机和私网地址', () => {
     for (const url of [
       'https://localhost/og.jpg',
+      'https://localhost./og.jpg',
+      'https://localhost%2e/og.jpg',
       'https://127.0.0.1/og.jpg',
       'https://10.0.0.1/og.jpg',
       'https://172.31.255.1/og.jpg',
       'https://192.168.1.10/og.jpg',
       'https://169.254.169.254/latest/meta-data',
       'https://preview.local/og.jpg',
+      'https://preview.local./og.jpg',
     ]) {
       expect(normalizePublicSettingUrl(url)).toBe('')
     }
@@ -64,6 +67,8 @@ describe('siteSettingsSecurity', () => {
       '/api/media/public/site/icon.png',
       '/_nuxt/entry.js',
       '/cdn-cgi/trace',
+      'https://localhost./campaign',
+      'https://preview.local./campaign',
       'javascript:alert(1)',
     ]) {
       expect(normalizeHomeAdUrl(url)).toBe('')
