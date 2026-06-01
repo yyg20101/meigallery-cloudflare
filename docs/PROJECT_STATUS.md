@@ -73,6 +73,7 @@
 - 规则 Markdown 外链持续增强：规则页和悬浮规则面板渲染的外链已统一输出 `noopener noreferrer nofollow` 与 `referrerpolicy="no-referrer"`，并拒绝带用户名/密码或反斜杠歧义的 URL。
 - 联系方式链接持续增强：前台联系方式跳转和二维码弹层外链已拒绝带凭据、反斜杠歧义 URL，并统一输出 `noopener noreferrer nofollow` 与 `referrerpolicy="no-referrer"`。
 - 后台安全外链持续增强：后台旧站迁移等共用外链展示已统一输出 `noopener noreferrer nofollow` 与 `referrerpolicy="no-referrer"`，媒体 URL 清洗同步拒绝带凭据和反斜杠歧义地址。
+- 图片类站点设置持续增强：`site_icon` 和 `og_image` 已从普通公开 URL 中拆分为图片类公开设置 URL，仅允许安全 HTTPS 图片地址或 `/api/media/public/site/` 站点公开媒体路径，避免 favicon/OG 图加载普通页面或非站点公开媒体路径。
 
 ## Git 状态
 

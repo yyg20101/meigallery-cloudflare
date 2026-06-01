@@ -54,6 +54,21 @@ export function safePublicSettingUrl(value: unknown, fieldLabel: string) {
   }
 }
 
+export function normalizePublicImageSettingUrl(value: unknown, fieldLabel: string) {
+  const url = normalizePublicSettingUrl(value, fieldLabel)
+  if (!url || url.startsWith('https://')) return url
+  if (url.startsWith('/api/media/public/site/')) return url
+  throw new Error(`${fieldLabel}只允许站点公开媒体路径或 https 链接`)
+}
+
+export function safePublicImageSettingUrl(value: unknown, fieldLabel: string) {
+  try {
+    return normalizePublicImageSettingUrl(value, fieldLabel)
+  } catch {
+    return ''
+  }
+}
+
 export function normalizeInternalPathSetting(value: unknown, fieldLabel: string) {
   const url = String(value ?? '').trim()
   if (!url) return ''

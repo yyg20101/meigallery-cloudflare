@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { getHomeAdTextPreviewWarnings, isScheduledSiteFeatureActive, normalizeHomeAdUrl, normalizePublicSettingUrl, safeHomeAdText } from '~/utils/siteSettingsSecurity'
+import { getHomeAdTextPreviewWarnings, isScheduledSiteFeatureActive, normalizeHomeAdUrl, normalizePublicImageSettingUrl, safeHomeAdText } from '~/utils/siteSettingsSecurity'
 
 definePageMeta({ layout: 'admin' })
 
@@ -52,7 +52,7 @@ const loading = ref(false)
 const iconUploadLoading = ref(false)
 const message = ref('')
 const siteIconInput = ref<HTMLInputElement | null>(null)
-const safeSiteIconPreview = computed(() => normalizePublicSettingUrl(form.site_icon))
+const safeSiteIconPreview = computed(() => normalizePublicImageSettingUrl(form.site_icon))
 const safeHomeAdPreviewUrl = computed(() => normalizeHomeAdUrl(form.home_ad_url) || '/discover?sort=hot')
 const unsafeHomeAdUrl = computed(() => Boolean(form.home_ad_url.trim()) && !normalizeHomeAdUrl(form.home_ad_url))
 const safeHomeAdPreviewText = computed(() => ({

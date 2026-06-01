@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeInternalPathSetting, normalizePublicSettingUrl } from './public-setting-url'
+import { normalizeInternalPathSetting, normalizePublicImageSettingUrl, normalizePublicSettingUrl } from './public-setting-url'
 
 describe('公开站点设置 URL 校验', () => {
   it('允许空 URL 表示不配置', () => {
@@ -13,6 +13,13 @@ describe('公开站点设置 URL 校验', () => {
     expect(normalizePublicSettingUrl('/discover?sort=hot#top', '站点图标 URL')).toBe('/discover?sort=hot#top')
     expect(normalizePublicSettingUrl(' https://example.com/og.jpg ', 'OG 封面图 URL')).toBe('https://example.com/og.jpg')
     expect(normalizePublicSettingUrl('HTTPS://example.com/og.jpg?next="x"', 'OG 封面图 URL')).toBe('https://example.com/og.jpg?next=%22x%22')
+  })
+
+  it('公开图片 URL 只允许站点公开媒体路径和安全 https 链接', () => {
+    expect(normalizePublicImageSettingUrl('/api/media/public/site/icon.png', '站点图标 URL')).toBe('/api/media/public/site/icon.png')
+    expect(normalizePublicImageSettingUrl('HTTPS://example.com/og.jpg?next="x"', 'OG 封面图 URL')).toBe('https://example.com/og.jpg?next=%22x%22')
+    expect(() => normalizePublicImageSettingUrl('/discover?sort=hot#top', '站点图标 URL')).toThrow('站点图标 URL只允许站点公开媒体路径或 https 链接')
+    expect(() => normalizePublicImageSettingUrl('/api/media/public/avatars/user.png', 'OG 封面图 URL')).toThrow('OG 封面图 URL只允许站点公开媒体路径或 https 链接')
   })
 
   it('公开 URL 拒绝危险协议和不明确路径', () => {

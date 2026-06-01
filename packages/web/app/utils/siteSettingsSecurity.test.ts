@@ -1,10 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { getHomeAdTextPreviewWarnings, isScheduledSiteFeatureActive, normalizeBooleanSetting, normalizeFeaturedRegionSlugs, normalizeHomeAdText, normalizeHomeAdUrl, normalizeHomeHotTagLimit, normalizeInternalPath, normalizePublicSettingUrl, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId, safeRulesMarkdown, safeSiteText } from './siteSettingsSecurity'
+import { getHomeAdTextPreviewWarnings, isScheduledSiteFeatureActive, normalizeBooleanSetting, normalizeFeaturedRegionSlugs, normalizeHomeAdText, normalizeHomeAdUrl, normalizeHomeHotTagLimit, normalizeInternalPath, normalizePublicImageSettingUrl, normalizePublicSettingUrl, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId, safeRulesMarkdown, safeSiteText } from './siteSettingsSecurity'
 
 describe('siteSettingsSecurity', () => {
   it('公开 URL 只允许站内路径和 https 链接', () => {
     expect(normalizePublicSettingUrl(' /api/media/public/site/icon.png ')).toBe('/api/media/public/site/icon.png')
     expect(normalizePublicSettingUrl('HTTPS://example.com/og.jpg?next="x"')).toBe('https://example.com/og.jpg?next=%22x%22')
+  })
+
+  it('公开图片 URL 只允许站点公开媒体路径和 https 链接', () => {
+    expect(normalizePublicImageSettingUrl(' /api/media/public/site/icon.png ')).toBe('/api/media/public/site/icon.png')
+    expect(normalizePublicImageSettingUrl('HTTPS://example.com/og.jpg?next="x"')).toBe('https://example.com/og.jpg?next=%22x%22')
+    expect(normalizePublicImageSettingUrl('/discover?sort=hot')).toBe('')
+    expect(normalizePublicImageSettingUrl('/api/media/public/avatars/user.png')).toBe('')
   })
 
   it('公开 URL 拒绝危险协议、协议相对链接和控制字符', () => {

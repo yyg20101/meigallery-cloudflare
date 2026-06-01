@@ -13,6 +13,8 @@ describe('公开站点设置安全读取', () => {
     expect(sanitizePublicSiteSetting('home_ad_url', 'https://preview.local./campaign')).toBe('')
     expect(sanitizePublicSiteSetting('site_icon', 'https://example.com\\icon.png')).toBe('')
     expect(sanitizePublicSiteSetting('og_image', 'https://example.com/%5Cog.jpg')).toBe('')
+    expect(sanitizePublicSiteSetting('site_icon', '/discover?sort=hot')).toBe('')
+    expect(sanitizePublicSiteSetting('og_image', '/api/media/public/avatars/user.png')).toBe('')
     expect(sanitizePublicSiteSetting('home_ad_url', 'https:\\\\example.com\\campaign')).toBe('')
     expect(sanitizePublicSiteSetting('rules_page_url', '/rules%5Cnext')).toBe('')
   })

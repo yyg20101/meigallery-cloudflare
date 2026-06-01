@@ -83,6 +83,12 @@ export function normalizeHomeAdUrl(value: unknown) {
   return isAllowedHomeAdInternalPath(url) ? url : ''
 }
 
+export function normalizePublicImageSettingUrl(value: unknown) {
+  const url = normalizePublicSettingUrl(value)
+  if (!url || url.startsWith('https://')) return url
+  return url.startsWith('/api/media/public/site/') ? url : ''
+}
+
 export function normalizeInternalPath(value: unknown) {
   const url = String(value ?? '').trim()
   if (!url || hasWhitespaceOrControlCharacter(url) || hasEncodedWhitespaceOrControlCharacter(url) || hasBackslashOrEncodedBackslash(url)) return ''

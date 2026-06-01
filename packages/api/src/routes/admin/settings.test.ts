@@ -506,6 +506,8 @@ describe('后台站点设置 API', () => {
       { og_image: 'https://192.168.1.10/og.jpg' },
       { site_icon: 'https://example.com\\icon.png' },
       { og_image: 'https://example.com/%5Cog.jpg' },
+      { site_icon: '/discover?sort=hot' },
+      { og_image: '/api/media/public/avatars/user.png' },
       { rules_page_url: 'https://example.com/rules' },
       { rules_page_url: '/rules%5Cnext' },
     ]

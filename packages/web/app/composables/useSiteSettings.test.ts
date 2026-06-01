@@ -70,4 +70,28 @@ describe('useSiteSettings', () => {
     await expect(siteSettings.fetchSettings({ force: true })).rejects.toThrow('公开站点设置刷新失败')
     expect(siteSettings.seoTitle.value).toBe('旧标题')
   })
+
+  it('图片类公开设置只暴露站点公开媒体路径和安全 https 链接', async () => {
+    resetState()
+    apiMock
+      .mockResolvedValueOnce({
+        site_icon: '/discover?sort=hot',
+        og_image: '/api/media/public/avatars/user.png',
+      })
+      .mockResolvedValueOnce({
+        site_icon: '/api/media/public/site/icon.png',
+        og_image: 'HTTPS://example.com/og.jpg?next="x"',
+      })
+
+    const siteSettings = useSiteSettings()
+    await siteSettings.fetchSettings()
+
+    expect(siteSettings.siteIcon.value).toBe('')
+    expect(siteSettings.ogImage.value).toBe('')
+
+    await siteSettings.fetchSettings({ force: true })
+
+    expect(siteSettings.siteIcon.value).toBe('/api/media/public/site/icon.png')
+    expect(siteSettings.ogImage.value).toBe('https://example.com/og.jpg?next=%22x%22')
+  })
 })

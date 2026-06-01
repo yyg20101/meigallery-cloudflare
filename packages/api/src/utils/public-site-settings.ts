@@ -1,7 +1,7 @@
 import { normalizeBooleanSetting, normalizeFacebookPixelId } from './facebook-pixel-settings'
 import { normalizeHomeAdScheduleValue } from './home-ad-schedule'
 import { normalizeHomeAdUrl, safeHomeAdText } from './home-ad-settings'
-import { safeInternalPathSetting, safePublicSettingUrl } from './public-setting-url'
+import { safeInternalPathSetting, safePublicImageSettingUrl } from './public-setting-url'
 import { safeFeaturedRegionSlugs, safeHomeHotTagLimit, safeRulesMarkdown } from './site-content-settings'
 import { isSiteTextSettingKey, safeSiteTextSetting } from './site-text-settings'
 
@@ -32,7 +32,7 @@ export function sanitizePublicSiteSetting(key: string, value: unknown) {
   }
 
   const publicUrlLabel = PUBLIC_URL_FIELDS[key]
-  if (publicUrlLabel) return safePublicSettingUrl(value, publicUrlLabel)
+  if (publicUrlLabel) return safePublicImageSettingUrl(value, publicUrlLabel)
 
   const internalPathLabel = INTERNAL_PATH_FIELDS[key]
   if (internalPathLabel) return safeInternalPathSetting(value, internalPathLabel)
