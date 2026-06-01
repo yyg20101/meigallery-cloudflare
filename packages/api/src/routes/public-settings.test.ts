@@ -42,6 +42,7 @@ describe('公开站点设置 API', () => {
     const body = await res.json()
 
     expect(res.status).toBe(200)
+    expect(res.headers.get('Cache-Control')).toBe('no-store')
     expect(body.site_icon).toBe('')
     expect(body.og_image).toBe('')
     expect(body.home_ad_url).toBe('')

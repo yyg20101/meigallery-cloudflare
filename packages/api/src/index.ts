@@ -159,6 +159,7 @@ app.get('/api/settings/public', async (c) => {
   for (const row of result.results) {
     settings[row.key] = sanitizePublicSiteSetting(row.key, JSON.parse(row.value))
   }
+  c.header('Cache-Control', 'no-store')
   return c.json(settings)
 })
 
