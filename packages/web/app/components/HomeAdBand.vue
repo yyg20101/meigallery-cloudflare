@@ -33,8 +33,8 @@ const isExternalUrl = computed(() => safeUrl.value.startsWith('https://'))
           </span>
           <span v-if="sponsor" class="text-xs text-stone-500">{{ sponsor }}</span>
         </div>
-        <h2 class="mt-3 text-xl font-semibold leading-tight text-stone-950 lg:text-2xl">{{ title || '会员季精选内容' }}</h2>
-        <p class="mt-2 max-w-2xl text-sm leading-6 text-stone-600">{{ summary || '探索本周精选图库、真实案例和会员可访问内容。' }}</p>
+        <h2 class="mt-3 line-clamp-2 text-xl font-semibold leading-tight text-stone-950 lg:text-2xl">{{ title || '会员季精选内容' }}</h2>
+        <p class="mt-2 max-w-2xl text-sm leading-6 text-stone-600 line-clamp-3">{{ summary || '探索本周精选图库、真实案例和会员可访问内容。' }}</p>
       </div>
 
       <a

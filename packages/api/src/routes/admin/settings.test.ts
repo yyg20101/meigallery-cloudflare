@@ -104,6 +104,64 @@ describe('后台站点设置 API', () => {
     expect(executed).toHaveLength(0)
   })
 
+  it('站长更新首页广告文案时会归一化空白并限制长度', async () => {
+    const executed: Array<{ sql: string; params: unknown[] }> = []
+    const app = createApp()
+    const env = {
+      DB: createDb({
+        all: (sql) => {
+          if (sql.includes('SELECT key, value FROM site_settings')) {
+            return [
+              { key: 'home_ad_title', value: JSON.stringify('旧标题') },
+              { key: 'home_ad_summary', value: JSON.stringify('旧摘要') },
+            ]
+          }
+          return []
+        },
+        run: (sql, params) => {
+          executed.push({ sql, params })
+          return { success: true }
+        },
+      }),
+    } as unknown as Bindings
+
+    const res = await app.request('/api/admin/settings', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        home_ad_title: '  会员季   精选内容  ',
+        home_ad_summary: '精选图库与真实案例',
+      }),
+    }, env)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.updated).toEqual(['home_ad_title', 'home_ad_summary'])
+    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[0] === '"会员季 精选内容"' && item.params[1] === 'home_ad_title')).toBe(true)
+    expect(executed.some(item => item.sql.includes('INSERT INTO admin_audit_logs'))).toBe(true)
+  })
+
+  it('拒绝过长或包含控制字符的首页广告文案', async () => {
+    const app = createApp()
+    const env = { DB: createDb({}) } as unknown as Bindings
+
+    for (const payload of [
+      { home_ad_title: 'x'.repeat(41) },
+      { home_ad_summary: 'x'.repeat(121) },
+      { home_ad_cta_label: '查看\u0001推荐' },
+    ]) {
+      const res = await app.request('/api/admin/settings', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      }, env)
+      const body = await res.json()
+
+      expect(res.status).toBe(400)
+      expect(body.message).toMatch(/首页广告/)
+    }
+  })
+
   it('站长更新首页广告排期时会写入 ISO 时间并记录审计日志', async () => {
     const executed: Array<{ sql: string; params: unknown[] }> = []
     const app = createApp()

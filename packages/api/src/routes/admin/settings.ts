@@ -4,7 +4,7 @@ import { requireOwner } from '../../middleware/auth'
 import { normalizeBooleanSetting, normalizeFacebookPixelId } from '../../utils/facebook-pixel-settings'
 import { generateId } from '../../utils/db'
 import { normalizeHomeAdScheduleRange } from '../../utils/home-ad-schedule'
-import { normalizeHomeAdUrl } from '../../utils/home-ad-settings'
+import { isHomeAdTextKey, normalizeHomeAdText, normalizeHomeAdUrl } from '../../utils/home-ad-settings'
 import { writeAuditLog } from '../../utils/permission'
 import { normalizeInternalPathSetting, normalizePublicSettingUrl } from '../../utils/public-setting-url'
 import { ADMIN_SETTING_KEYS } from '../../utils/site-settings'
@@ -70,6 +70,14 @@ adminSettingsRoutes.patch('/', requireOwner, async (c) => {
       body.home_ad_url = normalizeHomeAdUrl(body.home_ad_url)
     } catch (error) {
       return c.json({ statusCode: 400, message: error instanceof Error ? error.message : '首页广告链接无效' }, 400)
+    }
+  }
+  for (const key of Object.keys(body)) {
+    if (!isHomeAdTextKey(key)) continue
+    try {
+      body[key] = normalizeHomeAdText(key, body[key])
+    } catch (error) {
+      return c.json({ statusCode: 400, message: error instanceof Error ? error.message : '首页广告文案无效' }, 400)
     }
   }
   const hasHomeAdScheduleChange = 'home_ad_starts_at' in body || 'home_ad_ends_at' in body

@@ -341,20 +341,20 @@ async function toggleVideo() {
               <div class="mt-4 grid gap-4 sm:grid-cols-2">
                 <div>
                   <label class="mb-1 block text-sm font-medium text-gray-700">广告眉标</label>
-                  <input v-model="form.home_ad_eyebrow" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="本周推荐" />
+                  <input v-model="form.home_ad_eyebrow" maxlength="12" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="本周推荐" />
                 </div>
                 <div>
                   <label class="mb-1 block text-sm font-medium text-gray-700">赞助/来源说明</label>
-                  <input v-model="form.home_ad_sponsor" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="MeiGallery 运营推荐" />
+                  <input v-model="form.home_ad_sponsor" maxlength="30" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="MeiGallery 运营推荐" />
                 </div>
               </div>
               <div class="mt-4">
                 <label class="mb-1 block text-sm font-medium text-gray-700">广告标题</label>
-                <input v-model="form.home_ad_title" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="会员季精选内容" />
+                <input v-model="form.home_ad_title" maxlength="40" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="会员季精选内容" />
               </div>
               <div class="mt-4">
                 <label class="mb-1 block text-sm font-medium text-gray-700">广告摘要</label>
-                <textarea v-model="form.home_ad_summary" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="探索本周精选图库、真实案例和会员可访问内容。" />
+                <textarea v-model="form.home_ad_summary" rows="2" maxlength="120" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="探索本周精选图库、真实案例和会员可访问内容。" />
               </div>
               <div class="mt-4 grid gap-4 sm:grid-cols-[minmax(0,1fr)_10rem]">
                 <div>
@@ -363,7 +363,7 @@ async function toggleVideo() {
                 </div>
                 <div>
                   <label class="mb-1 block text-sm font-medium text-gray-700">按钮文案</label>
-                  <input v-model="form.home_ad_cta_label" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="查看推荐" />
+                  <input v-model="form.home_ad_cta_label" maxlength="12" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="查看推荐" />
                 </div>
               </div>
               <div class="mt-4 grid gap-4 sm:grid-cols-2">
