@@ -86,6 +86,7 @@
 - CI 运行时持续增强：GitHub Actions 已在 workflow 顶层启用 `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true`，提前验证 checkout、setup-node、upload-artifact 和 pnpm action 在 Node 24 action runtime 下的兼容性；项目命令自身仍由 `setup-node` 固定使用 Node 20。
 - 首页广告位外链透明度增强：前台广告 CTA 和后台实时预览已在离站提示中展示清洗后的目标域名，并将域名写入外链按钮无障碍名称，避免泛化按钮文案掩盖实际跳转目标。
 - 首页广告位长域名响应式增强：前台广告离站提示、赞助来源和后台预览链接已允许长域名/长 URL 断行，Playwright smoke 使用长外链域名覆盖四个视口，避免安全提示本身造成横向溢出。
+- 前端 API 错误解析持续增强：新增统一错误消息解析工具，注册、忘记密码和后台图库批量操作已移除内联 `JSON.parse(e.data)`，统一优先展示标准错误体 `message` 并兼容历史 `error` 字段。
 
 ## Git 状态
 

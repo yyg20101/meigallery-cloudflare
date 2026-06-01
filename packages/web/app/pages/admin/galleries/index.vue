@@ -300,7 +300,7 @@ async function executeBatch() {
     clearSelection()
     refresh()
   } catch (e: any) {
-    showToast(e?.data ? JSON.parse(e.data)?.error ?? '操作失败' : '操作失败', 'error')
+    showToast(resolveApiErrorMessage(e, '操作失败'), 'error')
   } finally {
     batchLoading.value = false
     confirmAction.value = null
