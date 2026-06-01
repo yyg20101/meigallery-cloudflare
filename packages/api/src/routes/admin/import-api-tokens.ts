@@ -117,7 +117,17 @@ adminImportApiTokenRoutes.patch('/:id', async (c) => {
 adminImportApiTokenRoutes.delete('/:id', async (c) => {
   const ownerId = c.get('userId')!
   const id = c.req.param('id')
+  const before = await c.env.DB.prepare('SELECT * FROM import_api_tokens WHERE id = ?').bind(id).first<Record<string, unknown>>()
+  if (!before) return c.json({ statusCode: 404, message: 'Import Token 不存在' }, 404)
+
   await c.env.DB.prepare("UPDATE import_api_tokens SET status = 'disabled', updated_at = datetime('now') WHERE id = ?").bind(id).run()
-  await writeAuditLog(c.env.DB, { adminId: ownerId, action: 'import_token.disable', targetType: 'import_api_token', targetId: id })
+  await writeAuditLog(c.env.DB, {
+    adminId: ownerId,
+    action: 'import_token.disable',
+    targetType: 'import_api_token',
+    targetId: id,
+    beforeValue: sanitizeTokenAuditValue(before),
+    afterValue: { status: 'disabled' },
+  })
   return c.json({ message: 'Import Token 已禁用' })
 })
