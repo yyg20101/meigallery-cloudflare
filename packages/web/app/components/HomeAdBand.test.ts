@@ -66,6 +66,27 @@ describe('HomeAdBand', () => {
     expect(wrapper.find('a').text()).toBe('查看推荐')
   })
 
+  it('组件边界会清洗异常广告文案并回退默认值', () => {
+    const unsafeSponsor = 'x'.repeat(31)
+    const wrapper = mount(HomeAdBand, {
+      props: {
+        enabled: true,
+        eyebrow: '  本周   推荐  ',
+        title: 'x'.repeat(41),
+        summary: '会员\u0001精选',
+        ctaLabel: '查看\u0001推荐',
+        sponsor: unsafeSponsor,
+      },
+      global: { stubs: { NuxtLink: nuxtLinkStub } },
+    })
+
+    expect(wrapper.text()).toContain('本周 推荐')
+    expect(wrapper.text()).toContain('会员季精选内容')
+    expect(wrapper.text()).toContain('探索本周精选图库、真实案例和会员可访问内容。')
+    expect(wrapper.text()).not.toContain(unsafeSponsor)
+    expect(wrapper.find('a').text()).toBe('查看推荐')
+  })
+
   it('本机和私网外链回退到站内推荐页', () => {
     for (const url of [
       'https://localhost/campaign',

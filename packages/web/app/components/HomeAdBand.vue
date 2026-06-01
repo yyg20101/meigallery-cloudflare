@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { normalizeHomeAdUrl } from '~/utils/siteSettingsSecurity'
+import { normalizeHomeAdUrl, safeHomeAdText } from '~/utils/siteSettingsSecurity'
 
 const props = defineProps<{
   enabled: boolean
@@ -17,6 +17,11 @@ function normalizeAdUrl(url?: string) {
 
 const safeUrl = computed(() => normalizeAdUrl(props.url))
 const isExternalUrl = computed(() => safeUrl.value.startsWith('https://'))
+const safeEyebrow = computed(() => safeHomeAdText('home_ad_eyebrow', props.eyebrow) || '本周推荐')
+const safeTitle = computed(() => safeHomeAdText('home_ad_title', props.title) || '会员季精选内容')
+const safeSummary = computed(() => safeHomeAdText('home_ad_summary', props.summary) || '探索本周精选图库、真实案例和会员可访问内容。')
+const safeCtaLabel = computed(() => safeHomeAdText('home_ad_cta_label', props.ctaLabel) || '查看推荐')
+const safeSponsor = computed(() => safeHomeAdText('home_ad_sponsor', props.sponsor))
 </script>
 
 <template>
@@ -30,12 +35,12 @@ const isExternalUrl = computed(() => safeUrl.value.startsWith('https://'))
       <div class="min-w-0">
         <div class="flex flex-wrap items-center gap-2">
           <span class="rounded-full border border-[#d6c39a]/70 bg-white/75 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#81662c]">
-            {{ eyebrow || '本周推荐' }}
+            {{ safeEyebrow }}
           </span>
-          <span v-if="sponsor" class="text-xs text-stone-500">{{ sponsor }}</span>
+          <span v-if="safeSponsor" class="text-xs text-stone-500">{{ safeSponsor }}</span>
         </div>
-        <h2 class="mt-3 line-clamp-2 break-words text-xl font-semibold leading-tight text-stone-950 lg:text-2xl">{{ title || '会员季精选内容' }}</h2>
-        <p class="mt-2 max-w-2xl break-words text-sm leading-6 text-stone-600 line-clamp-3">{{ summary || '探索本周精选图库、真实案例和会员可访问内容。' }}</p>
+        <h2 class="mt-3 line-clamp-2 break-words text-xl font-semibold leading-tight text-stone-950 lg:text-2xl">{{ safeTitle }}</h2>
+        <p class="mt-2 max-w-2xl break-words text-sm leading-6 text-stone-600 line-clamp-3">{{ safeSummary }}</p>
       </div>
 
       <a
@@ -46,14 +51,14 @@ const isExternalUrl = computed(() => safeUrl.value.startsWith('https://'))
         referrerpolicy="no-referrer"
         class="inline-flex min-h-11 max-w-full shrink-0 items-center justify-center rounded-full bg-stone-950 px-5 py-2.5 text-center text-sm font-medium leading-tight whitespace-normal break-words text-white shadow-sm shadow-stone-900/15 transition-all hover:-translate-y-0.5 hover:bg-stone-800"
       >
-        {{ ctaLabel || '查看推荐' }}
+        {{ safeCtaLabel }}
       </a>
       <NuxtLink
         v-else
         :to="safeUrl"
         class="inline-flex min-h-11 max-w-full shrink-0 items-center justify-center rounded-full bg-stone-950 px-5 py-2.5 text-center text-sm font-medium leading-tight whitespace-normal break-words text-white shadow-sm shadow-stone-900/15 transition-all hover:-translate-y-0.5 hover:bg-stone-800"
       >
-        {{ ctaLabel || '查看推荐' }}
+        {{ safeCtaLabel }}
       </NuxtLink>
     </div>
   </section>
