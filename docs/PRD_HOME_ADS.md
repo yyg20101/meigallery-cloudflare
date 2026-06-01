@@ -8,7 +8,7 @@
   - 站长可在后台设置页完成启用、停用、文案更新和开始/结束时间设置，保存后公开设置接口返回归一化值。
   - 首页广告位关闭、未到开始时间或已到结束时间时不渲染任何占位，生效时在 360px、768px、1024px、1440px 视口下不遮挡首屏内容。
   - 广告链接只允许显式解析通过的公开前台相对路径或 `https://` 外链；拒绝 `javascript:`、`data:`、`http://`、协议相对链接、空白控制字符、编码控制字符、反斜杠路径、后台/API/资源路径和包含用户名或密码的链接。
-  - 外链在新窗口打开，并使用 `rel="noopener noreferrer"` 和 `referrerpolicy="no-referrer"`。
+  - 外链在新窗口打开，并使用 `rel="noopener noreferrer nofollow sponsored"` 和 `referrerpolicy="no-referrer"`；前台广告位需要向用户提示该 CTA 为外部链接且不会发送来源页信息。
   - 后台广告设置写操作进入 `admin_audit_logs` 审计日志。
 
 ## 2. 用户体验与功能
@@ -58,7 +58,7 @@
 - **安全与隐私**：
   - 广告链接只允许显式解析通过的公开前台相对路径或 `https://`，并拒绝空白控制字符、编码控制字符、反斜杠路径、后台/API/资源路径和包含用户名或密码的链接。
   - 排期字段只接受可解析时间并统一为 ISO 字符串；历史异常排期不会触发广告展示。
-  - 外链使用新窗口并加 `noopener noreferrer` 和 `referrerpolicy="no-referrer"`。
+  - 外链使用新窗口并加 `noopener noreferrer nofollow sponsored` 和 `referrerpolicy="no-referrer"`，同时展示离站提示，避免访客误以为赞助链接仍是站内页面。
   - 文案按 Vue 默认转义纯文本渲染，不执行 HTML。
   - 后台写操作继续要求 Owner 权限并记录审计日志。
 

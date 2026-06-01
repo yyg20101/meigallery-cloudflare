@@ -17,6 +17,7 @@ function normalizeAdUrl(url?: string) {
 
 const safeUrl = computed(() => normalizeAdUrl(props.url))
 const isExternalUrl = computed(() => safeUrl.value.startsWith('https://'))
+const ctaSecurityLabel = computed(() => isExternalUrl.value ? '外部链接' : '站内推荐')
 const safeEyebrow = computed(() => safeHomeAdText('home_ad_eyebrow', props.eyebrow) || '本周推荐')
 const safeTitle = computed(() => safeHomeAdText('home_ad_title', props.title) || '会员季精选内容')
 const safeSummary = computed(() => safeHomeAdText('home_ad_summary', props.summary) || '探索本周精选图库、真实案例和会员可访问内容。')
@@ -47,11 +48,16 @@ const safeSponsor = computed(() => safeHomeAdText('home_ad_sponsor', props.spons
         v-if="isExternalUrl"
         :href="safeUrl"
         target="_blank"
-        rel="noopener noreferrer"
+        rel="noopener noreferrer nofollow sponsored"
         referrerpolicy="no-referrer"
-        class="inline-flex min-h-11 max-w-full shrink-0 items-center justify-center rounded-full bg-stone-950 px-5 py-2.5 text-center text-sm font-medium leading-tight whitespace-normal break-words text-white shadow-sm shadow-stone-900/15 transition-all hover:-translate-y-0.5 hover:bg-stone-800"
+        :aria-label="`${safeCtaLabel}，外部链接`"
+        class="group/cta inline-flex min-h-11 max-w-full shrink-0 items-center justify-center gap-2 rounded-full bg-stone-950 px-5 py-2.5 text-center text-sm font-medium leading-tight whitespace-normal break-words text-white shadow-sm shadow-stone-900/15 transition-all hover:-translate-y-0.5 hover:bg-stone-800"
       >
-        {{ safeCtaLabel }}
+        <span>{{ safeCtaLabel }}</span>
+        <svg aria-hidden="true" class="h-3.5 w-3.5 shrink-0 transition-transform group-hover/cta:-translate-y-0.5 group-hover/cta:translate-x-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M7 17 17 7" />
+          <path d="M9 7h8v8" />
+        </svg>
       </a>
       <NuxtLink
         v-else
@@ -61,5 +67,11 @@ const safeSponsor = computed(() => safeHomeAdText('home_ad_sponsor', props.spons
         {{ safeCtaLabel }}
       </NuxtLink>
     </div>
+
+    <p class="relative border-t border-[#e5d5c4]/70 bg-white/45 px-5 py-2 text-[11px] font-medium text-stone-500 lg:px-7">
+      {{ ctaSecurityLabel }}
+      <span v-if="isExternalUrl" class="mx-1 text-stone-300">/</span>
+      <span v-if="isExternalUrl">不发送来源页信息</span>
+    </p>
   </section>
 </template>

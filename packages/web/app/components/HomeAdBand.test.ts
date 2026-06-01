@@ -47,8 +47,11 @@ describe('HomeAdBand', () => {
     const link = wrapper.find('a')
     expect(link.attributes('href')).toBe('https://example.com/campaign?next=%22x%22')
     expect(link.attributes('target')).toBe('_blank')
-    expect(link.attributes('rel')).toBe('noopener noreferrer')
+    expect(link.attributes('rel')).toBe('noopener noreferrer nofollow sponsored')
     expect(link.attributes('referrerpolicy')).toBe('no-referrer')
+    expect(link.attributes('aria-label')).toBe('查看推荐，外部链接')
+    expect(wrapper.text()).toContain('外部链接')
+    expect(wrapper.text()).toContain('不发送来源页信息')
   })
 
   it('展示默认文案和赞助来源说明', () => {
@@ -63,6 +66,7 @@ describe('HomeAdBand', () => {
     expect(wrapper.text()).toContain('本周推荐')
     expect(wrapper.text()).toContain('会员季精选内容')
     expect(wrapper.text()).toContain('运营精选')
+    expect(wrapper.text()).toContain('站内推荐')
     expect(wrapper.find('a').text()).toBe('查看推荐')
   })
 
