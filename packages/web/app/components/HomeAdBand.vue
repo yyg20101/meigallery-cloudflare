@@ -14,6 +14,7 @@ const props = defineProps<{
 }>()
 
 const externalNoteId = `${useId()}-home-ad-external-note`
+const internalNoteId = `${useId()}-home-ad-internal-note`
 
 function normalizeAdUrl(url?: string) {
   return normalizeHomeAdUrl(url) || '/discover?sort=hot'
@@ -31,11 +32,33 @@ const externalHostname = computed(() => {
   }
 })
 const ctaSecurityLabel = computed(() => isExternalUrl.value ? '外部链接' : '站内推荐')
+const internalPathLabel = computed(() => isExternalUrl.value ? '' : safeUrl.value)
+const internalDestinationLabel = computed(() => {
+  if (isExternalUrl.value) return ''
+  return resolveInternalDestinationLabel(safeUrl.value)
+})
 const safeEyebrow = computed(() => safeHomeAdText('home_ad_eyebrow', props.eyebrow) || '本周推荐')
 const safeTitle = computed(() => safeHomeAdText('home_ad_title', props.title) || '会员季精选内容')
 const safeSummary = computed(() => safeHomeAdText('home_ad_summary', props.summary) || '探索本周精选图库、真实案例和会员可访问内容。')
 const safeCtaLabel = computed(() => safeHomeAdText('home_ad_cta_label', props.ctaLabel) || '查看推荐')
 const safeSponsor = computed(() => safeHomeAdText('home_ad_sponsor', props.sponsor))
+
+function resolveInternalDestinationLabel(url: string) {
+  const pathname = new URL(url, 'https://meigallery.local').pathname
+  if (pathname === '/') return '首页'
+  if (pathname === '/discover') return '探索页'
+  if (pathname === '/search') return '搜索页'
+  if (pathname === '/gallery' || pathname.startsWith('/gallery/')) return '图库页'
+  if (pathname === '/cases' || pathname.startsWith('/cases/')) return '真实案例页'
+  if (pathname === '/tags' || pathname.startsWith('/tags/')) return '标签页'
+  if (pathname === '/rules') return '规则页'
+  if (pathname === '/login') return '登录页'
+  if (pathname === '/register') return '注册页'
+  if (pathname === '/user') return '个人中心'
+  if (pathname === '/settings') return '个人设置'
+  if (pathname === '/forgot-password') return '找回密码'
+  return '站内页面'
+}
 </script>
 
 <template>
@@ -63,7 +86,10 @@ const safeSponsor = computed(() => safeHomeAdText('home_ad_sponsor', props.spons
       <span
         v-if="preview"
         aria-disabled="true"
-        :aria-describedby="isExternalUrl ? externalNoteId : undefined"
+        :aria-describedby="isExternalUrl ? externalNoteId : internalNoteId"
+        :aria-label="isExternalUrl
+          ? `${safeCtaLabel}，外部链接${externalHostname ? `，目标域名 ${externalHostname}` : ''}`
+          : `${safeCtaLabel}，站内推荐，目标页面 ${internalDestinationLabel}，路径 ${internalPathLabel}`"
         class="inline-flex min-h-11 max-w-full shrink-0 cursor-default items-center justify-center gap-2 rounded-full bg-stone-950 px-5 py-2.5 text-center text-sm font-medium leading-tight whitespace-normal break-words text-white shadow-sm shadow-stone-900/15"
       >
         <span>{{ safeCtaLabel }}</span>
@@ -91,14 +117,18 @@ const safeSponsor = computed(() => safeHomeAdText('home_ad_sponsor', props.spons
       <NuxtLink
         v-else
         :to="safeUrl"
+        :aria-describedby="internalNoteId"
+        :aria-label="`${safeCtaLabel}，站内推荐，目标页面 ${internalDestinationLabel}，路径 ${internalPathLabel}`"
         class="inline-flex min-h-11 max-w-full shrink-0 items-center justify-center rounded-full bg-stone-950 px-5 py-2.5 text-center text-sm font-medium leading-tight whitespace-normal break-words text-white shadow-sm shadow-stone-900/15 transition-all hover:-translate-y-0.5 hover:bg-stone-800"
       >
         {{ safeCtaLabel }}
       </NuxtLink>
     </div>
 
-    <p :id="isExternalUrl ? externalNoteId : undefined" class="relative border-t border-[#e5d5c4]/70 bg-white/45 px-5 py-2 text-[11px] font-medium break-words text-stone-500 lg:px-7">
+    <p :id="isExternalUrl ? externalNoteId : internalNoteId" class="relative border-t border-[#e5d5c4]/70 bg-white/45 px-5 py-2 text-[11px] font-medium break-words text-stone-500 lg:px-7">
       {{ ctaSecurityLabel }}
+      <span v-if="!isExternalUrl" class="mx-1 text-stone-300">/</span>
+      <span v-if="!isExternalUrl">目标页面 {{ internalDestinationLabel }}</span>
       <span v-if="isExternalUrl" class="mx-1 text-stone-300">/</span>
       <span v-if="isExternalUrl && externalHostname">目标域名 {{ externalHostname }}</span>
       <span v-if="isExternalUrl && externalHostname" class="mx-1 text-stone-300">/</span>

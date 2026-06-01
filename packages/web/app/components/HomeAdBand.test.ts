@@ -29,9 +29,14 @@ describe('HomeAdBand', () => {
       global: { stubs: { NuxtLink: nuxtLinkStub } },
     })
 
+    const note = wrapper.find('[id$="-home-ad-internal-note"]')
     expect(wrapper.text()).toContain('会员季精选内容')
     expect(wrapper.find('a').attributes('href')).toBe('/discover?sort=hot#top')
     expect(wrapper.find('a').attributes('target')).toBeUndefined()
+    expect(wrapper.find('a').attributes('aria-label')).toBe('查看推荐，站内推荐，目标页面 探索页，路径 /discover?sort=hot#top')
+    expect(wrapper.find('a').attributes('aria-describedby')).toBe(note.attributes('id'))
+    expect(wrapper.text()).toContain('站内推荐')
+    expect(wrapper.text()).toContain('目标页面 探索页')
   })
 
   it('https 外链使用新窗口和安全 rel', () => {
@@ -95,8 +100,9 @@ describe('HomeAdBand', () => {
     expect(wrapper.text()).toContain('运营精选')
     expect(wrapper.text()).toContain('站内推荐')
     expect(wrapper.find('a').text()).toBe('查看推荐')
-    expect(wrapper.find('a').attributes('aria-describedby')).toBeUndefined()
-    expect(wrapper.find('[id$="-home-ad-external-note"]').exists()).toBe(false)
+    expect(wrapper.find('a').attributes('aria-label')).toBe('查看推荐，站内推荐，目标页面 探索页，路径 /discover?sort=hot')
+    expect(wrapper.find('a').attributes('aria-describedby')).toBe(wrapper.find('[id$="-home-ad-internal-note"]').attributes('id'))
+    expect(wrapper.find('[id$="-home-ad-internal-note"]').text()).toContain('目标页面 探索页')
   })
 
   it('组件边界会清洗异常广告文案并回退默认值', () => {
