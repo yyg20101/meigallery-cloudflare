@@ -71,7 +71,7 @@ async function executeJob(jobId: string) {
     executeResult.value = res
     await fetchJobs()
   } catch (e: any) {
-    useToast().add({ title: e?.data?.error || '执行失败', color: 'error' })
+    useToast().add({ title: e?.data?.message || e?.message || '执行失败', color: 'error' })
   } finally {
     executingJobId.value = null
   }
@@ -85,7 +85,7 @@ async function downloadMedia(jobId: string) {
     downloadResult.value = res
     await fetchJobs()
   } catch (e: any) {
-    useToast().add({ title: e?.data?.error || '下载失败', color: 'error' })
+    useToast().add({ title: e?.data?.message || e?.message || '下载失败', color: 'error' })
   } finally {
     downloadingJobId.value = null
   }
