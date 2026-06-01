@@ -242,16 +242,13 @@ async function onQrDelete(id: string) {
             <td class="px-4 py-3">{{ item.label }}</td>
             <td class="px-4 py-3 text-gray-600">{{ item.value }}</td>
             <td class="px-4 py-3">
-              <div class="flex items-center gap-2">
-                <img v-if="item.qrCodeUrl" :src="item.qrCodeUrl" class="w-10 h-10 rounded object-cover" />
-                <button class="text-xs text-blue-600 hover:underline" @click="triggerUpload(item.id)">
-                  {{ item.qrCodeUrl ? '更换' : '上传' }}
-                </button>
-                <button v-if="item.qrCodeUrl" class="text-xs text-red-600 hover:underline" @click="onQrDelete(item.id)">
-                  删除
-                </button>
-                <input :id="`qr-input-${item.id}`" type="file" accept="image/png,image/jpeg,image/webp" class="hidden" @change="(e) => onQrUpload(e, item.id)" />
-              </div>
+              <AdminContactQrCodeCell
+                :contact-id="item.id"
+                :qr-code-url="item.qrCodeUrl"
+                @upload="triggerUpload"
+                @remove="onQrDelete"
+              />
+              <input :id="`qr-input-${item.id}`" type="file" accept="image/png,image/jpeg,image/webp" class="hidden" @change="(e) => onQrUpload(e, item.id)" />
             </td>
             <td class="px-4 py-3">
               <button
