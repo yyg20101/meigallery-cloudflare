@@ -3,9 +3,10 @@ const BLOCKED_HOSTS = new Set(['localhost', 'localhost.localdomain'])
 export function normalizeMediaUrl(value: unknown) {
   const url = String(value ?? '').trim()
   if (!url || hasWhitespaceOrControlCharacter(url) || hasEncodedWhitespaceOrControlCharacter(url)) return ''
+  if (hasBackslashOrEncodedBackslash(url)) return ''
 
   if (url.startsWith('/')) {
-    if (url.startsWith('//') || url.startsWith('/\\')) return ''
+    if (url.startsWith('//')) return ''
     try {
       const parsed = new URL(url, 'https://meigallery.local')
       return `${parsed.pathname}${parsed.search}${parsed.hash}`
@@ -17,6 +18,7 @@ export function normalizeMediaUrl(value: unknown) {
   try {
     const parsed = new URL(url)
     if (parsed.protocol !== 'https:') return ''
+    if (parsed.username || parsed.password) return ''
 
     const hostname = normalizeHostname(parsed.hostname)
     if (BLOCKED_HOSTS.has(hostname) || hostname.endsWith('.localhost') || hostname.endsWith('.local')) return ''
@@ -64,6 +66,10 @@ function hasWhitespaceOrControlCharacter(value: string) {
     if (code <= 0x20 || code === 0x7f) return true
   }
   return false
+}
+
+function hasBackslashOrEncodedBackslash(value: string) {
+  return value.includes('\\') || /%5c/i.test(value)
 }
 
 function normalizeHostname(hostname: string) {

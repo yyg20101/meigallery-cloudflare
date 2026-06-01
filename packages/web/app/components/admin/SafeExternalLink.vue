@@ -21,7 +21,8 @@ const displayText = computed(() => String(props.href ?? '').trim() || '-')
     v-if="safeHref"
     :href="safeHref"
     target="_blank"
-    rel="noopener noreferrer"
+    rel="noopener noreferrer nofollow"
+    referrerpolicy="no-referrer"
     class="break-all text-blue-600 hover:underline"
   >
     <slot>{{ displayText }}</slot>

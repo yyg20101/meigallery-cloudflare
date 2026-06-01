@@ -20,7 +20,11 @@ describe('mediaUrlSecurity', () => {
       'https://preview.local./source.jpg',
       'https://example.com/source%20bad.jpg',
       'https://example.com/%0Asource.jpg',
+      'https://user:pass@example.com/source.jpg',
+      'https://example.com\\@evil.test/source.jpg',
+      'https://example.com/%5Csource.jpg',
       '/api/media/asset-1/thumb%20bad',
+      '/api/media/asset-1/%5Cthumb.jpg',
       '//example.com/source.jpg',
       '/\\example.com/source.jpg',
     ]) {

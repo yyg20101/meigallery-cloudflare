@@ -72,6 +72,7 @@
 - 首页广告位外链持续增强：前台 CTA 已补离站可感知名称、离站/隐私提示，并将广告外链 `rel` 扩展为 `noopener noreferrer nofollow sponsored`；Playwright smoke 已覆盖最终浏览器 DOM 中的外链安全属性、`no-referrer` 和离站提示。
 - 规则 Markdown 外链持续增强：规则页和悬浮规则面板渲染的外链已统一输出 `noopener noreferrer nofollow` 与 `referrerpolicy="no-referrer"`，并拒绝带用户名/密码或反斜杠歧义的 URL。
 - 联系方式链接持续增强：前台联系方式跳转和二维码弹层外链已拒绝带凭据、反斜杠歧义 URL，并统一输出 `noopener noreferrer nofollow` 与 `referrerpolicy="no-referrer"`。
+- 后台安全外链持续增强：后台旧站迁移等共用外链展示已统一输出 `noopener noreferrer nofollow` 与 `referrerpolicy="no-referrer"`，媒体 URL 清洗同步拒绝带凭据和反斜杠歧义地址。
 
 ## Git 状态
 
