@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import app from '../index'
 import type { Bindings } from '../index'
 
-function createDb(rows: Array<{ key: string; value: unknown }>) {
+type SettingRow = { key: string; value: unknown } | { key: string; rawValue: string }
+
+function createDb(rows: SettingRow[]) {
   return {
     prepare() {
       return {
@@ -10,7 +12,12 @@ function createDb(rows: Array<{ key: string; value: unknown }>) {
           return this
         },
         async all<T>() {
-          return { results: rows.map(row => ({ key: row.key, value: JSON.stringify(row.value) })) as T[] }
+          return {
+            results: rows.map((row) => {
+              const value = 'rawValue' in row ? row.rawValue : JSON.stringify(row.value)
+              return { key: row.key, value }
+            }) as T[],
+          }
         },
       }
     },
@@ -56,5 +63,27 @@ describe('公开站点设置 API', () => {
     expect(body.home_ad_sponsor).toBe('')
     expect(body.home_ad_starts_at).toBe('2026-06-01T00:30:00.000Z')
     expect(body.home_ad_ends_at).toBe('')
+  })
+
+  it('单条历史损坏 JSON 不影响公开设置整体响应', async () => {
+    const env = {
+      APP_ENV: 'production',
+      DB: createDb([
+        { key: 'site_name', value: '测试图库' },
+        { key: 'site_description', value: '后台保存后的站点描述' },
+        { key: 'seo_title', rawValue: '{"broken"' },
+        { key: 'home_ad_title', rawValue: '会员精选' },
+      ]),
+    } as unknown as Bindings
+
+    const res = await app.fetch(new Request('https://api.test/api/settings/public'), env, {} as ExecutionContext)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Cache-Control')).toBe('no-store')
+    expect(body.site_name).toBe('测试图库')
+    expect(body.site_description).toBe('后台保存后的站点描述')
+    expect(body.seo_title).toBe('')
+    expect(body.home_ad_title).toBe('')
   })
 })
