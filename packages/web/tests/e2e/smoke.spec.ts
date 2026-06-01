@@ -2,10 +2,10 @@ import { expect, test } from '@playwright/test'
 
 const smokePages = [
   { path: '/', heading: /精选写真/ },
-  { path: '/search?q=夏日', heading: /搜索写真/ },
-  { path: '/gallery/summer-portrait', heading: /夏日授权写真/ },
-  { path: '/login', heading: /登录 MeiGallery/ },
-  { path: '/user', heading: /会员权益/ },
+  { path: '/search?q=夏日', heading: /搜索写真/, title: '搜索: 夏日 - 测试图库站' },
+  { path: '/gallery/summer-portrait', heading: /夏日授权写真/, title: '夏日授权写真 - 测试图库站' },
+  { path: '/login', heading: /登录 测试图库站/, title: '登录 - 测试图库站' },
+  { path: '/user', heading: /会员权益/, title: '个人中心 - 测试图库站' },
   { path: '/admin', heading: /数据概览/ },
 ]
 
@@ -15,9 +15,15 @@ test.describe('核心页面 smoke', () => {
       await page.goto(smokePage.path)
 
       await expect(page.getByRole('heading', { name: smokePage.heading }).first()).toBeVisible()
+      if (smokePage.title) {
+        await expect(page).toHaveTitle(smokePage.title)
+      }
       if (smokePage.path === '/admin') {
         await expect(page.getByText('DEV 测试环境：')).toBeVisible()
         await expect(page.getByText('当前后台连接正式 D1/R2 数据')).toBeVisible()
+        if ((page.viewportSize()?.width ?? 0) >= 1024) {
+          await expect(page.getByText('测试图库站 管理')).toBeVisible()
+        }
       }
       if (smokePage.path === '/') {
         await expect(page).toHaveTitle('测试站点标题 - 首页 SEO')

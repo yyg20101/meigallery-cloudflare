@@ -1,6 +1,7 @@
 <script setup lang="ts">
 const { sendCode, resetPassword } = useAuth()
 const router = useRouter()
+const { siteName } = useSiteSettings()
 
 // 表单数据
 const email = ref('')
@@ -147,7 +148,7 @@ async function onResetPassword() {
   }
 }
 
-useSeoMeta({ title: '忘记密码 - MeiGallery', robots: 'noindex' })
+useSeoMeta({ title: () => `忘记密码 - ${siteName.value}`, robots: 'noindex' })
 
 definePageMeta({ layout: 'default' })
 </script>
@@ -156,7 +157,7 @@ definePageMeta({ layout: 'default' })
   <div class="mx-auto flex min-h-[calc(100vh-8rem)] max-w-md items-center px-4 py-10">
     <div class="w-full overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 p-6 shadow-2xl shadow-orange-950/8 ring-1 ring-[#f8e7dc]/70">
       <!-- Logo -->
-      <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#bfa46a]">MeiGallery</p>
+      <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#bfa46a]">{{ siteName }}</p>
       <h1 class="mt-3 text-2xl font-semibold tracking-tight text-gray-950">找回密码</h1>
       <p class="mb-8 mt-2 text-sm text-gray-500">输入注册邮箱后继续完成密码重置流程。</p>
 

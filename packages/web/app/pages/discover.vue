@@ -8,8 +8,10 @@ interface GalleryListResponse {
   hasMore?: boolean
 }
 
+const { siteName } = useSiteSettings()
+
 useSeoMeta({
-  title: '发现图库 - MeiGallery',
+  title: () => `发现图库 - ${siteName.value}`,
   description: '浏览和筛选精选图库内容',
 })
 

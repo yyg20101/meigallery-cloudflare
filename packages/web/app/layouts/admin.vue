@@ -1,6 +1,7 @@
 <script setup lang="ts">
 const route = useRoute()
 const { user, logout } = useAuth()
+const { siteName } = useSiteSettings()
 const config = useRuntimeConfig()
 
 const sidebarCollapsed = ref(false)
@@ -64,7 +65,7 @@ async function handleLogout() {
     >
       <div class="p-4 border-b border-gray-700 flex items-center justify-between">
         <NuxtLink v-if="!sidebarCollapsed" to="/admin" class="text-white text-sm font-bold truncate">
-          MeiGallery 管理
+          {{ siteName }} 管理
         </NuxtLink>
         <button class="text-gray-400 hover:text-white p-1" :aria-label="sidebarCollapsed ? '展开后台侧栏' : '折叠后台侧栏'" @click="sidebarCollapsed = !sidebarCollapsed">
           <svg v-if="sidebarCollapsed" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>

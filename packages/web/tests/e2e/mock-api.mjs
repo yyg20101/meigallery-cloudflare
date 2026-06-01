@@ -124,7 +124,7 @@ function notFound(res) {
 
 function publicSettings() {
   return {
-    site_name: 'MeiGallery',
+    site_name: '测试图库站',
     site_description: 'Playwright smoke 测试站点',
     seo_title: '测试站点标题 - 首页 SEO',
     og_title: '测试站点 OG 标题',

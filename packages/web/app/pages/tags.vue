@@ -8,6 +8,7 @@ interface TagGroup {
 const { data: tagsData } = await useAsyncData('all-tags', () =>
   api<{ data: TagGroup }>('/api/tags'),
 )
+const { siteName } = useSiteSettings()
 
 const tagTypeLabels: Record<string, string> = {
   region_scope: '地区范围',
@@ -24,7 +25,7 @@ const tagTypeLabels: Record<string, string> = {
 }
 
 useSeoMeta({
-  title: '标签浏览 - MeiGallery',
+  title: () => `标签浏览 - ${siteName.value}`,
   description: '按地区、风格、场景等分类浏览精选图库内容',
 })
 </script>

@@ -2,6 +2,7 @@
 const route = useRoute()
 const { api } = useApi()
 const { trackLeadOnce } = useFacebookPixel()
+const { siteName } = useSiteSettings()
 
 interface CaseDetail {
   id: string
@@ -28,7 +29,7 @@ const coverImage = computed(() => item.value?.images[0] || null)
 const galleryImages = computed(() => item.value?.images.slice(1) ?? [])
 
 useSeoMeta({
-  title: () => item.value?.seoTitle || (item.value ? `${item.value.title} - 真实案例 - MeiGallery` : '真实案例 - MeiGallery'),
+  title: () => item.value?.seoTitle || (item.value ? `${item.value.title} - 真实案例 - ${siteName.value}` : `真实案例 - ${siteName.value}`),
   description: () => item.value?.seoDescription || item.value?.summary || '查看已授权、已脱敏的真实案例。',
   ogTitle: () => item.value?.title || '真实案例',
   ogDescription: () => item.value?.summary || '查看已授权、已脱敏的真实案例。',
