@@ -174,8 +174,12 @@ async function onSave() {
         home_ad_enabled: homeAdEnabled.value,
       },
     })
-    await fetchSettings({ force: true })
-    message.value = '设置已保存'
+    try {
+      await fetchSettings({ force: true })
+      message.value = '设置已保存'
+    } catch {
+      message.value = '设置已保存，但前台公开设置刷新失败，请刷新页面确认'
+    }
   } catch (e: any) {
     message.value = e?.data?.message || '保存失败'
   } finally {
