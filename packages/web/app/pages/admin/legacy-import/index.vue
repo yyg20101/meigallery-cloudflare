@@ -110,6 +110,10 @@ function getSourceName(sourceKey: string): string {
   return s?.name ?? sourceKey?.slice(0, 12) ?? '-'
 }
 
+function getSourceBaseUrl(source: any): string | null {
+  return source?.base_url ?? source?.baseUrl ?? null
+}
+
 const statusLabel: Record<string, string> = {
   pending: '等待中',
   queued: '排队中',
@@ -171,7 +175,9 @@ onMounted(() => {
       <div v-else class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <div v-for="source in sources" :key="source.id" class="rounded-lg border border-gray-200 bg-white p-4">
           <div class="mb-1 font-medium text-gray-900">{{ source.name }}</div>
-          <div class="mb-2 text-xs text-gray-500 truncate">{{ source.baseUrl }}</div>
+          <div class="mb-2 text-xs">
+            <AdminSafeExternalLink :href="getSourceBaseUrl(source)" />
+          </div>
           <span class="rounded-full px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-800">{{ source.mode === 'rest_api' ? 'REST API' : 'XML' }}</span>
         </div>
       </div>
