@@ -16,14 +16,22 @@
 1. 在管理后台图库列表页增加批量选择和批量操作功能（发布、下架、删除、设置会员等级、打标签）。
 2. 基于 Cloudflare Email Service 构建邮箱验证系统，覆盖注册验证码、密码重置、会员到期提醒和新图库通知四个场景。
 
-当前实现备注：后台图库批量 `publish` / `unpublish` / `delete` / `set_level` / `add_tags` / `remove_tags` 已实现；邮箱验证码、密码重置、会员到期提醒和 Email binding 已实现基础链路，`email_verification_enabled` 默认关闭，新图库通知仍按后续阶段处理。
+当前实现备注：后台图库批量 `publish` / `unpublish` / `delete` / `set_level` / `add_tags` / `remove_tags` 已实现；邮箱验证码、密码重置、会员到期提醒和 Email binding 已实现基础链路，`email_verification_enabled` 默认关闭，新图库通知仍按后续阶段处理。默认关闭状态下，邮件送达率不作为当前上线阻断指标。
 
 ### 成功指标
+
+当前可验收指标：
 
 | 指标 | 目标 |
 |------|------|
 | 批量操作 — 606 图库全量发布耗时 | < 2 分钟（含全选+确认） |
 | 批量操作 — 单次操作最大图库数 | >= 100 |
+| 邮箱验证关闭时注册可用率 | 不因 Email Service 未配置阻断注册 |
+
+Email Service 启用后验收指标：
+
+| 指标 | 目标 |
+|------|------|
 | 邮箱验证码送达率 | >= 95%（30 秒内到达） |
 | 注册转化率（输入验证码后完成注册） | >= 80% |
 | 垃圾注册降低比例 | >= 90%（对比上线前） |
@@ -47,7 +55,7 @@
 |---|------|----------|
 | A1 | 作为管理员，我想全选/勾选多个图库，然后一键发布，以便快速上线迁移内容 | - 列表每行有 checkbox；支持全选当前页 / 全选所有匹配项<br>- 工具栏显示已选数量<br>- 点击"批量发布"后二次确认弹窗<br>- 执行后显示成功/失败数量，失败项有原因 |
 | A2 | 作为管理员，我想批量下架已发布的图库 | - 同 A1 选择机制<br>- 状态从 published 改为 draft<br>- 写审计日志 |
-| A3 | 作为管理员，我想批量删除图库及其关联的媒体和标签 | - 二次确认弹窗，显示"将删除 N 个图库及其所有图片"<br>- 删除 galleries + gallery_tags + media_assets 记录<br>- R2 中对应的图片对象一并删除<br>- 写审计日志 |
+| A3 | 作为 Owner，我想批量删除图库及其关联的媒体和标签 | - Admin 触发删除时返回 403 或隐藏入口<br>- Owner 执行前显示二次确认弹窗，显示"将删除 N 个图库及其所有图片"<br>- 删除 galleries + gallery_tags + media_assets 记录<br>- R2 中对应的图片对象一并删除<br>- 写审计日志 |
 | A4 | 作为管理员，我想批量设置图库所需会员等级 | - 选择目标等级（免费/VIP/SVIP）<br>- 更新所有选中图库的 required_level_rank |
 | A5 | 作为管理员，我想给选中图库批量添加或移除标签 | - 弹出标签选择器，支持搜索现有标签<br>- 两种模式：添加标签 / 移除标签<br>- 执行后写审计日志 |
 
@@ -96,6 +104,18 @@ Content-Type: application/json
 ### 2.3 功能 B：邮箱验证系统
 
 > 注意：Cloudflare Email Service 使用前需按官方文档和 Dashboard 当前状态确认可用计划、发信额度和费用；当前 `email_verification_enabled` 默认为 `false`。
+
+默认关闭状态验收：
+
+- `email_verification_enabled=false` 时，注册不要求验证码，不调用 Email Service。
+- Email Service 未配置时，登录、注册、密码登录、用户中心和后台主流程不受影响。
+- 前端不得展示必须收信才能完成注册的阻断流程。
+
+开启状态验收：
+
+- `email_verification_enabled=true` 时，注册和密码重置走验证码流程。
+- 验证码 10 分钟有效，3 次错误后作废。
+- 送达率、30 秒到达率和垃圾注册降低比例只在 Email Service、DNS 和发件域名配置完成后验收。
 
 #### 用户故事
 
@@ -178,7 +198,7 @@ POST /api/auth/reset-password
 
 - 不实现邮件营销/群发系统
 - 不实现 Magic Link 登录
-- 不实现邮箱变更功能（首期）
+- 本 PRD 首期不实现邮箱变更功能；后续已由 `docs/PRD_USER_SYSTEM.md` 管理，当前实现状态以 `docs/PROJECT_STATUS.md` 为准。
 - 批量操作不支持跨页拖拽排序
 - 不实现邮件模板可视化编辑器（代码中硬编码模板）
 

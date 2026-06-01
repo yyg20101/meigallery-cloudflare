@@ -1,5 +1,6 @@
 import { createMiddleware } from 'hono/factory'
 import type { Bindings, Variables } from '../index'
+import { errorJson } from '../utils/api-error'
 import { validateSession } from '../utils/session'
 
 /**
@@ -25,7 +26,7 @@ export const requireAuth = createMiddleware<{
 }>(async (c, next) => {
   const userId = c.get('userId')
   if (!userId) {
-    return c.json({ statusCode: 401, message: '请先登录' }, 401)
+    return errorJson(c, 401, '请先登录', { code: 'AUTH_REQUIRED' })
   }
   await next()
 })
@@ -39,7 +40,7 @@ export const requireAdmin = createMiddleware<{
 }>(async (c, next) => {
   const userRole = c.get('userRole')
   if (!userRole || !['admin', 'owner'].includes(userRole)) {
-    return c.json({ statusCode: 403, message: '需要管理员权限' }, 403)
+    return errorJson(c, 403, '需要管理员权限', { code: 'ADMIN_REQUIRED' })
   }
   await next()
 })
@@ -53,7 +54,7 @@ export const requireOwner = createMiddleware<{
 }>(async (c, next) => {
   const userRole = c.get('userRole')
   if (userRole !== 'owner') {
-    return c.json({ statusCode: 403, message: '需要站长权限' }, 403)
+    return errorJson(c, 403, '需要站长权限', { code: 'OWNER_REQUIRED' })
   }
   await next()
 })

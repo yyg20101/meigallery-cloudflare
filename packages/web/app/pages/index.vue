@@ -2,8 +2,19 @@
 const { api } = useApi()
 const {
   videoEnabled,
+  seoTitle,
+  siteDescription,
+  ogTitle,
+  ogDescription,
   homeHeroTitle,
   homeHeroSubtitle,
+  homeAdEyebrow,
+  homeAdTitle,
+  homeAdSummary,
+  homeAdCtaLabel,
+  homeAdUrl,
+  homeAdSponsor,
+  homeAdActive,
 } = useSiteSettings()
 
 interface GallerySummary {
@@ -97,10 +108,10 @@ const cases = computed(() => {
 })
 
 useSeoMeta({
-  title: 'MeiGallery - 精选写真图库',
-  description: '精选写真、时尚、生活、艺术类图片和视频，覆盖国内外多城市地区',
-  ogTitle: 'MeiGallery - 精选写真图库',
-  ogDescription: '精选写真、时尚、生活、艺术类图片和视频',
+  title: () => seoTitle.value,
+  description: () => siteDescription.value || homeHeroSubtitle.value,
+  ogTitle: () => ogTitle.value,
+  ogDescription: () => ogDescription.value || siteDescription.value || homeHeroSubtitle.value,
   ogType: 'website',
 })
 </script>
@@ -111,6 +122,18 @@ useSeoMeta({
       :title="homeHeroTitle"
       :subtitle="homeHeroSubtitle"
       :galleries="heroGalleries"
+    />
+
+    <HomeAdBand
+      v-if="homeAdActive"
+      class="mt-6 lg:mt-8"
+      :enabled="homeAdActive"
+      :eyebrow="homeAdEyebrow"
+      :title="homeAdTitle"
+      :summary="homeAdSummary"
+      :cta-label="homeAdCtaLabel"
+      :url="homeAdUrl"
+      :sponsor="homeAdSponsor"
     />
 
     <section class="mt-8 lg:mt-10">

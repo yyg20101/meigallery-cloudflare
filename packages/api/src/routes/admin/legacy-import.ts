@@ -1,11 +1,12 @@
 import { Hono } from 'hono'
 import type { Bindings, Variables } from '../../index'
+import { errorJson } from '../../utils/api-error'
 import { generateId } from '../../utils/db'
 import { writeAuditLog } from '../../utils/permission'
 import { PAGINATION } from '@meigallery/shared/constants'
 import { fetchAllPosts, fetchAllCategories, fetchAllTags } from '../../services/wp-fetcher'
 import { processPosts, writeMigrationItem } from '../../services/wp-migration'
-import { downloadGalleryMedia, downloadImageToR2 } from '../../services/media-downloader'
+import { downloadImageToR2 } from '../../services/media-downloader'
 import { assertSafeExternalUrl } from '../../utils/external-url'
 
 export const adminLegacyImportRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
@@ -26,7 +27,7 @@ adminLegacyImportRoutes.post('/sources', async (c) => {
     safeBaseUrl = assertSafeExternalUrl(body.baseUrl)
   } catch (error) {
     const message = error instanceof Error ? error.message : '来源地址不安全'
-    return c.json({ error: message }, 400)
+    return errorJson(c, 400, message)
   }
 
   const id = generateId('lsrc')
@@ -79,7 +80,7 @@ adminLegacyImportRoutes.post('/jobs', async (c) => {
     .bind(body.sourceId)
     .first()
   if (!source) {
-    return c.json({ error: '来源不存在' }, 404)
+    return errorJson(c, 404, '来源不存在')
   }
 
   const id = generateId('job')
@@ -110,7 +111,7 @@ adminLegacyImportRoutes.get('/jobs/:id', async (c) => {
 
   const job = await db.prepare('SELECT * FROM import_jobs WHERE id = ?').bind(id).first()
   if (!job) {
-    return c.json({ error: '任务不存在' }, 404)
+    return errorJson(c, 404, '任务不存在')
   }
 
   const stats = await db
@@ -191,7 +192,7 @@ adminLegacyImportRoutes.patch('/items/:id/review', async (c) => {
     review_status: string
   }>()
   if (!item) {
-    return c.json({ error: '条目不存在' }, 404)
+    return errorJson(c, 404, '条目不存在')
   }
 
   const flags = body.note ? JSON.stringify({ note: body.note }) : null
@@ -235,9 +236,9 @@ adminLegacyImportRoutes.post('/jobs/:id/execute', async (c) => {
     .bind(jobId)
     .first<{ id: string; status: string; source_key: string }>()
 
-  if (!job) return c.json({ error: '任务不存在' }, 404)
+  if (!job) return errorJson(c, 404, '任务不存在')
   if (job.status !== 'pending' && job.status !== 'queued') {
-    return c.json({ error: '任务状态不允许执行' }, 400)
+    return errorJson(c, 400, '任务状态不允许执行')
   }
 
   const source = await db
@@ -245,7 +246,7 @@ adminLegacyImportRoutes.post('/jobs/:id/execute', async (c) => {
     .bind(job.source_key)
     .first<{ id: string; base_url: string; mode: string }>()
 
-  if (!source) return c.json({ error: '来源不存在' }, 404)
+  if (!source) return errorJson(c, 404, '来源不存在')
 
   // 标记 processing
   await db.prepare("UPDATE import_jobs SET status = 'processing' WHERE id = ?").bind(jobId).run()
@@ -321,7 +322,7 @@ adminLegacyImportRoutes.post('/jobs/:id/execute', async (c) => {
       .prepare("UPDATE import_jobs SET status = 'failed', completed_at = datetime('now') WHERE id = ?")
       .bind(jobId)
       .run()
-    return c.json({ error: `迁移执行失败: ${message}` }, 500)
+    return errorJson(c, 500, `迁移执行失败: ${message}`)
   }
 })
 
@@ -347,6 +348,12 @@ adminLegacyImportRoutes.post('/download-pending', async (c) => {
     .all<{ id: string; gallery_id: string; type: string; r2_key: string }>()
 
   if (assets.results.length === 0) {
+    await writeAuditLog(db, {
+      adminId,
+      action: 'legacy_media_download_pending',
+      targetType: 'media_asset',
+      afterValue: { limit, selectedCount: 0, downloaded: 0, failed: 0, remaining: 0, done: true },
+    })
     return c.json({ remaining: 0, downloaded: 0, failed: 0, done: true })
   }
 
@@ -396,8 +403,25 @@ adminLegacyImportRoutes.post('/download-pending', async (c) => {
     }
   }
 
+  const remaining = Math.max((countResult?.cnt ?? 0) - downloaded - failed, 0)
+
+  await writeAuditLog(db, {
+    adminId,
+    action: 'legacy_media_download_pending',
+    targetType: 'media_asset',
+    afterValue: {
+      limit,
+      selectedCount: assets.results.length,
+      downloaded,
+      failed,
+      remaining,
+      done: false,
+      errorCount: errors.length,
+    },
+  })
+
   return c.json({
-    remaining: (countResult?.cnt ?? 0) - downloaded - failed,
+    remaining,
     downloaded,
     failed,
     done: false,

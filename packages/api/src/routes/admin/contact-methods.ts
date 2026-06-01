@@ -1,8 +1,10 @@
 import { Hono } from 'hono'
 import type { Bindings, Variables } from '../../index'
 import { requireOwner } from '../../middleware/auth'
+import { normalizeContactLinkUrl } from '../../utils/contact-link-url'
+import { isExpectedContactQrCodeKey } from '../../utils/contact-qrcode'
 import { writeAuditLog } from '../../utils/permission'
-import { CONTACT_PLATFORMS, generateContactLink } from '@meigallery/shared/constants'
+import { CONTACT_PLATFORMS } from '@meigallery/shared/constants'
 
 export const adminContactMethodRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -72,7 +74,12 @@ adminContactMethodRoutes.post('/', requireOwner, async (c) => {
     return c.json({ statusCode: 400, message: `不支持的平台: ${body.platform}` }, 400)
   }
 
-  const linkUrl = body.linkUrl || null
+  let linkUrl: string | null
+  try {
+    linkUrl = normalizeContactLinkUrl(body.linkUrl)
+  } catch (error) {
+    return c.json({ statusCode: 400, message: error instanceof Error ? error.message : '联系方式跳转链接无效' }, 400)
+  }
   const enabled = body.enabled !== undefined ? body.enabled : true
 
   // 获取最大 sort_order
@@ -152,7 +159,11 @@ adminContactMethodRoutes.put('/:id', requireOwner, async (c) => {
   // linkUrl: 显式传入则使用（含 null/空字符串 → null），否则保留原值
   let newLinkUrl: string | null
   if (body.linkUrl !== undefined) {
-    newLinkUrl = body.linkUrl || null
+    try {
+      newLinkUrl = normalizeContactLinkUrl(body.linkUrl)
+    } catch (error) {
+      return c.json({ statusCode: 400, message: error instanceof Error ? error.message : '联系方式跳转链接无效' }, 400)
+    }
   } else {
     newLinkUrl = current.link_url
   }
@@ -199,6 +210,9 @@ adminContactMethodRoutes.delete('/:id', requireOwner, async (c) => {
 
   // 删除 R2 二维码
   if (current.qr_code_key) {
+    if (!isExpectedContactQrCodeKey(current.qr_code_key, id)) {
+      return c.json({ statusCode: 409, message: '二维码 R2 key 与当前联系方式不匹配，请先人工核查' }, 409)
+    }
     await r2.delete(current.qr_code_key)
   }
 
@@ -281,6 +295,9 @@ adminContactMethodRoutes.post('/:id/qrcode', requireOwner, async (c) => {
 
   // 删除旧文件
   if (current.qr_code_key) {
+    if (!isExpectedContactQrCodeKey(current.qr_code_key, id)) {
+      return c.json({ statusCode: 409, message: '二维码 R2 key 与当前联系方式不匹配，请先人工核查' }, 409)
+    }
     await r2.delete(current.qr_code_key)
   }
 
@@ -328,6 +345,10 @@ adminContactMethodRoutes.delete('/:id/qrcode', requireOwner, async (c) => {
 
   if (!current.qr_code_key) {
     return c.json({ statusCode: 404, message: '该联系方式没有二维码' }, 404)
+  }
+
+  if (!isExpectedContactQrCodeKey(current.qr_code_key, id)) {
+    return c.json({ statusCode: 409, message: '二维码 R2 key 与当前联系方式不匹配，请先人工核查' }, 409)
   }
 
   await r2.delete(current.qr_code_key)

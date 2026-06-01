@@ -29,11 +29,37 @@ jobs:
       - name: 安装依赖
         run: pnpm install --frozen-lockfile
 
+      - name: Lint
+        run: pnpm lint
+
       - name: API 类型检查
         run: pnpm --filter @meigallery/api exec tsc --noEmit
 
+      - name: Web 类型检查
+        run: pnpm --filter @meigallery/web typecheck
+
+      - name: Web 组件测试
+        run: pnpm --filter @meigallery/web test:unit
+
       - name: API 单元测试
         run: pnpm --filter @meigallery/api test
+
+      - name: API 覆盖率
+        run: pnpm --filter @meigallery/api test:coverage
+
+      - name: 上传 API 覆盖率报告
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: api-coverage
+          path: packages/api/coverage/
+          if-no-files-found: ignore
+
+      - name: 安装 Playwright 浏览器
+        run: pnpm --filter @meigallery/web exec playwright install --with-deps chromium
+
+      - name: Web Playwright smoke
+        run: pnpm --filter @meigallery/web test:e2e
 
   build:
     name: 构建验证

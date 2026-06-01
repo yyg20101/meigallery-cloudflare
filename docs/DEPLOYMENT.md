@@ -56,6 +56,9 @@ corepack pnpm --filter @meigallery/api exec wrangler deploy --env=""
 
 # 5. 部署 Web Worker
 corepack pnpm --filter @meigallery/web exec wrangler deploy --env=""
+
+# 6. 部署后 SEO 校验
+corepack pnpm verify:seo:production
 ```
 
 ## 4. CI/CD
@@ -65,7 +68,10 @@ corepack pnpm --filter @meigallery/web exec wrangler deploy --env=""
 ```bash
 corepack pnpm --filter @meigallery/api exec wrangler deploy --env=""
 corepack pnpm --filter @meigallery/web exec wrangler deploy --env=""
+corepack pnpm verify:seo:production
 ```
+
+部署后 SEO 校验会读取 `/api/settings/public`，并检查 `616618.xyz` 与 `www.616618.xyz` 首页 SSR 原始 HTML 的 `<title>`、description 和 OG 信息是否与后台站点设置一致。若 API 已返回新设置但首页 `<head>` 仍显示旧默认值，说明 Web Worker 未部署到最新版本或边缘仍在返回旧 HTML，必须在上线验收中阻断。
 
 ## 5. 环境变量
 
@@ -102,12 +108,13 @@ corepack pnpm --filter @meigallery/api exec wrangler secret put STREAM_API_TOKEN
 - `meigallery-api-dev` / `meigallery-web-dev`：用于正式上线后的开发测试环境。
 - Dev Worker 使用 Workers dev 子域访问，不接入 `616618.xyz` 主域，不进入 sitemap、导航或公开链接。
 - Dev 环境可以连接正式 D1/R2 数据以使用真实内容验证 UI，但后台写操作必须限定管理员账号、保留审计日志并显式标记为测试操作。
+- Web 后台在 `NUXT_PUBLIC_APP_ENV=dev` 时显示正式数据风险标识，并对 `/api/admin/*` 的 `POST` / `PUT` / `PATCH` / `DELETE` 请求统一弹出二次确认；如需更强隔离，后续应拆出独立 `meigallery-db-dev` 和 `meigallery-media-dev` 并切换 `env.dev` binding。
 - Dev 页面必须带测试环境标识，并建议设置 `X-Robots-Tag: noindex, nofollow` 或等价 meta，避免搜索引擎收录。
 
 Workers：
 
 - `meigallery-web`：承载前台页面和后台管理界面，静态资源通过 Workers Assets 分发。
-- `meigallery-api`：提供 API，校验登录、会员等级、媒体权限，生成 R2 或 Stream 的短期访问凭证。
+- `meigallery-api`：提供 API，校验登录、会员等级、媒体权限；受保护图片由 Worker 代理返回，Stream 接入后视频使用 signed token。
 
 D1：
 
@@ -127,11 +134,54 @@ Stream（**当前状态：未接入**，secrets 为占位符）：
 
 Turnstile：
 
-- 登录、注册、后台登录、导入操作保护。
+- 登录、注册/验证码发送和后台导入任务创建/处理保护。
+- 后台没有独立登录端点，管理员进入后台前复用普通登录入口的 Turnstile 校验。
 
 Email：
 
 - Cloudflare Email Service 使用前需按 Cloudflare 官方文档和 Dashboard 当前状态确认可用计划、发信额度和费用；当前 `email_verification_enabled` 默认为 `false`。
+
+### 生产速率限制
+
+API Worker 已内置应用内兜底限流，但该实现使用 Worker isolate 内存计数，不保证跨边缘节点、跨 isolate 或重启后的全局一致性。生产环境必须额外配置 Cloudflare WAF / Rate Limiting Rules 作为边缘强防护。
+
+建议生产规则：
+
+| 规则 | 匹配表达式示例 | 计数特征 | 阈值 | 动作 |
+|------|----------------|----------|------|------|
+| 登录/注册 | `http.host eq "api.616618.xyz" and http.request.uri.path matches "^/api/auth/(login|register)$"` | IP | 5 次 / 60 秒 | Managed Challenge 或 Block |
+| 公开 JSON API | `http.host eq "api.616618.xyz" and http.request.uri.path matches "^/api/(galleries|tags|search|cases|contact-methods)(/.*)?$"` | IP | 60 次 / 60 秒 | Managed Challenge 或 Block |
+| 管理员 API | `http.host eq "api.616618.xyz" and http.request.uri.path starts_with "/api/admin/"` | session cookie 或 IP | 120 次 / 60 秒 | Managed Challenge 或 Block |
+| 媒体访问接口 | `http.host eq "api.616618.xyz" and http.request.uri.path matches "^/api/media/[^/]+/access$"` | session cookie 或 IP | 30 次 / 60 秒 | Managed Challenge 或 Block |
+| 外部导入 API | `http.host eq "api.616618.xyz" and http.request.uri.path starts_with "/api/imports/"` | IP | 120 次 / 60 秒 | Block |
+
+配置要求：
+
+- 先使用 Log 或 Managed Challenge 验证阈值，再切换到 Block。
+- 规则的 Period、Requests、Characteristics、Mitigation timeout 和 Action 必须按 Dashboard 当前可用选项配置；不同 Cloudflare WAF 计划可用规则数和周期不同。
+- 当前 Zone 为 Free 计划时，若规则数量不足以完整覆盖上表，至少启用登录/注册规则，并保留代码内兜底限流；媒体访问接口和管理员 API 需在上线风险清单中标注。
+- 如果后续需要强一致的用户级或 session 级应用限流，可评估 Cloudflare Workers Rate Limiting binding、Durable Objects 或 D1 计数表；Workers Rate Limiting binding 仍按 Cloudflare location 本地生效，不应被描述为全球强一致。
+
+### Workers Logs 与兼容日期
+
+`packages/api/wrangler.toml` 和 `packages/web/wrangler.toml` 已显式启用 Workers Logs：
+
+```toml
+[observability]
+enabled = true
+head_sampling_rate = 1
+```
+
+`env.dev` 使用 `[env.dev.observability]` 单独配置，避免环境覆盖后丢失日志采集。`head_sampling_rate = 1` 表示当前阶段保留 100% 请求日志；生产流量升高后可按 Cloudflare Workers Logs 当前额度、保留期和费用调整采样率。
+
+兼容日期更新流程：
+
+1. 上线前查阅 Cloudflare Workers compatibility dates / flags 官方文档和当前 Wrangler config schema。
+2. 将 API/Web 的 `wrangler.toml` `compatibility_date` 和 Web 的 `nuxt.config.ts` `compatibilityDate` 同步更新到本次验证日期。
+3. 运行 `corepack pnpm --filter @meigallery/api exec wrangler deploy --dry-run --env=""` 和 `corepack pnpm --filter @meigallery/web exec wrangler deploy --dry-run --env=""` 验证生产配置。
+4. 如改动会影响 dev，同时运行 `--env=dev` dry-run。
+5. 完成 API 类型检查、Web 构建和核心测试后，再执行真实部署。
+6. 部署后在 Cloudflare Dashboard 的 Workers Observability / Logs 中确认 API 与 Web 均有请求日志；日志内容不得包含 token、cookie、Telegram Bot Token、R2 私有 key 或用户密码。
 
 ## 7. 全球 CDN 加速
 
@@ -167,6 +217,7 @@ Email：
 - [ ] 后台管理员账号已创建
 - [ ] WAF 和基本 rate limiting 已启用
 - [ ] 登录、搜索、详情、媒体权限、导入流程通过验收
+- [ ] `corepack pnpm verify:seo:production` 通过，首页 `<head>` 与后台站点设置一致
 
 ## 10. 旧站迁移部署计划
 

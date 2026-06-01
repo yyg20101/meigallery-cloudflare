@@ -5,6 +5,7 @@ definePageMeta({ layout: 'default', middleware: 'auth' })
 
 const { user, fetchUser, checkUsername } = useAuth()
 const { api } = useApi()
+const { siteName } = useSiteSettings()
 
 // ============ 用户名修改 ============
 const usernameEdit = ref(false)
@@ -213,7 +214,7 @@ onUnmounted(() => {
   if (usernameDebounce) clearTimeout(usernameDebounce)
 })
 
-useSeoMeta({ title: '个人设置 - MeiGallery', robots: 'noindex' })
+useSeoMeta({ title: () => `个人设置 - ${siteName.value}`, robots: 'noindex' })
 </script>
 
 <template>

@@ -27,7 +27,7 @@ const typeLabels: Record<string, string> = {
 
 const priorityTypes = ['region_scope', 'region_group', 'city_country', 'region', 'city']
 const typeKeys = computed(() => {
-  const keys = Object.keys(props.tags).filter(k => props.tags[k]?.length > 0)
+  const keys = Object.keys(props.tags).filter(k => (props.tags[k]?.length ?? 0) > 0)
   return keys.sort((a, b) => {
     const ai = priorityTypes.includes(a) ? priorityTypes.indexOf(a) : 100
     const bi = priorityTypes.includes(b) ? priorityTypes.indexOf(b) : 100
@@ -38,7 +38,10 @@ const activeType = ref(typeKeys.value[0] || '')
 
 watch(typeKeys, (keys) => {
   if (!keys.includes(activeType.value) && keys.length > 0) {
-    activeType.value = keys[0]
+    const nextType = keys[0]
+    if (nextType) {
+      activeType.value = nextType
+    }
   }
 })
 

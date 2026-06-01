@@ -3,6 +3,7 @@ const route = useRoute()
 const router = useRouter()
 const { api } = useApi()
 const { trackSearch, trackFilterSelected } = useFacebookPixel()
+const { siteName } = useSiteSettings()
 
 interface GallerySummary {
   id: string; title: string; slug: string; summary: string | null
@@ -25,7 +26,7 @@ const { data: tagsData } = await useAsyncData('search-tags', () =>
   api<{ data: TagGroup }>('/api/tags'),
 )
 
-const { data: searchResult, refresh } = await useAsyncData(
+const { data: searchResult } = await useAsyncData(
   'search-results',
   () => api<{ data: GallerySummary[]; total: number; page: number; pageSize: number }>('/api/search', {
     query: {
@@ -133,7 +134,7 @@ function goToTag(slug: string) {
 
 const searchQuery = computed(() => route.query.q as string || '')
 useSeoMeta({
-  title: () => searchQuery.value ? `搜索: ${searchQuery.value} - MeiGallery` : '搜索 - MeiGallery',
+  title: () => searchQuery.value ? `搜索: ${searchQuery.value} - ${siteName.value}` : `搜索 - ${siteName.value}`,
   robots: 'noindex',
 })
 </script>

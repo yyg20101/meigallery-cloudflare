@@ -14,7 +14,7 @@ function createApp(userId: number | null = null) {
   return app
 }
 
-function createDb() {
+function createDb(options: { coverKey?: string | null } = {}) {
   let viewUpdates = 0
   return {
     get viewUpdates() {
@@ -33,7 +33,7 @@ function createDb() {
               slug: 'sample-gallery',
               summary: '摘要',
               body_md: '正文',
-              cover_key: null,
+              cover_key: options.coverKey === undefined ? null : options.coverKey,
               status: 'published',
               required_level_rank: 0,
               published_at: '2026-05-01T00:00:00.000Z',
@@ -92,6 +92,84 @@ describe('公开图库 API', () => {
 
     expect(second.status).toBe(200)
     expect(db.viewUpdates).toBe(1)
+  })
+
+  it('详情封面会归一化安全 HTTPS 外链', async () => {
+    const app = createApp()
+    const db = createDb({ coverKey: 'HTTPS://example.com/cover.jpg?next="x"' })
+    const env = { DB: db } as unknown as Bindings
+    const { ctx, pending } = createExecutionContext()
+
+    const res = await app.fetch(new Request('https://api.test/api/galleries/sample-gallery'), env, ctx)
+    await Promise.all(pending.splice(0))
+    const body = await res.json<{ coverUrl: string | null }>()
+
+    expect(res.status).toBe(200)
+    expect(body.coverUrl).toBe('https://example.com/cover.jpg?next=%22x%22')
+  })
+
+  it('详情封面不会下发不安全外链', async () => {
+    const app = createApp()
+
+    for (const coverKey of [
+      'http://example.com/cover.jpg',
+      'https://localhost/cover.jpg',
+      'https://127.0.0.1/cover.jpg',
+    ]) {
+      const db = createDb({ coverKey })
+      const env = { DB: db } as unknown as Bindings
+      const { ctx, pending } = createExecutionContext()
+
+      const res = await app.fetch(new Request('https://api.test/api/galleries/sample-gallery'), env, ctx)
+      await Promise.all(pending.splice(0))
+      const body = await res.json<{ coverUrl: string | null }>()
+
+      expect(res.status).toBe(200)
+      expect(body.coverUrl).toBeNull()
+    }
+  })
+
+  it('列表封面只下发安全 HTTPS 外链或内部代理', async () => {
+    const app = createApp()
+    const db = {
+      prepare(sql: string) {
+        return {
+          bind() {
+            return this
+          },
+          async first<T>() {
+            return { total: 4 } as T
+          },
+          async all<T>() {
+            if (sql.includes('SELECT DISTINCT g.id')) {
+              return {
+                results: [
+                  { ...galleryRow('safe'), cover_key: 'HTTPS://example.com/cover.jpg?next="x"' },
+                  { ...galleryRow('unsafe'), cover_key: 'http://example.com/cover.jpg' },
+                  { ...galleryRow('local'), cover_key: 'https://127.0.0.1/cover.jpg' },
+                  { ...galleryRow('r2'), cover_key: 'covers/r2/cover.jpg' },
+                ],
+              } as { results: T[] }
+            }
+
+            return { results: [] as T[] }
+          },
+        }
+      },
+    }
+    const env = { DB: db } as unknown as Bindings
+    const { ctx } = createExecutionContext()
+
+    const res = await app.fetch(new Request('https://api.test/api/galleries?pageSize=4'), env, ctx)
+    const body = await res.json<{ data: Array<{ id: string; coverUrl: string | null }> }>()
+
+    expect(res.status).toBe(200)
+    expect(body.data).toEqual([
+      expect.objectContaining({ id: 'safe', coverUrl: 'https://example.com/cover.jpg?next=%22x%22' }),
+      expect.objectContaining({ id: 'unsafe', coverUrl: null }),
+      expect.objectContaining({ id: 'local', coverUrl: null }),
+      expect.objectContaining({ id: 'r2', coverUrl: '/api/media/cover/r2' }),
+    ])
   })
 
   it('复杂标签筛选使用额外一行判断 hasMore 且不执行精确去重计数', async () => {

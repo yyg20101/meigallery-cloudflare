@@ -1,5 +1,7 @@
 import { Hono } from 'hono'
 import type { Bindings, Variables } from '../index'
+import { safeContactLinkUrl } from '../utils/contact-link-url'
+import { isExpectedContactQrCodeKey } from '../utils/contact-qrcode'
 import { generateContactLink } from '@meigallery/shared/constants'
 
 export const contactMethodRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
@@ -33,7 +35,7 @@ contactMethodRoutes.get('/', async (c) => {
     platform: row.platform,
     label: row.label,
     value: row.value,
-    linkUrl: row.link_url || generateContactLink(row.platform, row.value),
+    linkUrl: safeContactLinkUrl(row.link_url) || generateContactLink(row.platform, row.value),
     qrCodeUrl: row.qr_code_key ? `${apiBase}/api/contact-methods/${row.id}/qrcode` : null,
     sortOrder: row.sort_order,
   }))
@@ -57,6 +59,9 @@ contactMethodRoutes.get('/:id/qrcode', async (c) => {
 
   if (!row?.qr_code_key) {
     return c.json({ statusCode: 404, message: '二维码不存在' }, 404)
+  }
+  if (!isExpectedContactQrCodeKey(row.qr_code_key, id)) {
+    return c.json({ statusCode: 404, message: '二维码配置异常' }, 404)
   }
 
   const object = await r2.get(row.qr_code_key)

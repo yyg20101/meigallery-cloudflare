@@ -16,8 +16,10 @@ function app(role: string | null) {
 
 function createDb() {
   const auditRows: Array<{ beforeValue: string | null; afterValue: string | null }> = []
+  const executed: Array<{ sql: string; params: unknown[] }> = []
   return {
     auditRows,
+    executed,
     prepare(sql: string) {
       const params: unknown[] = []
       return {
@@ -28,6 +30,7 @@ function createDb() {
         all: async () => ({ results: [] }),
         async first() {
           if (sql.includes('SELECT * FROM import_api_tokens')) {
+            if (params[0] === 'missing') return null
             return {
               id: params[0],
               name: '旧 Token',
@@ -41,6 +44,7 @@ function createDb() {
           return null
         },
         async run() {
+          executed.push({ sql, params: [...params] })
           if (sql.includes('INSERT INTO admin_audit_logs')) {
             auditRows.push({ beforeValue: params[5] as string | null, afterValue: params[6] as string | null })
           }
@@ -52,12 +56,12 @@ function createDb() {
 }
 
 describe('后台 Import Token API', () => {
-  it('requires owner role', async () => {
+  it('要求 owner 角色', async () => {
     const res = await app('admin').request('/api/admin/import-api-tokens', {}, { DB: createDb() } as unknown as Bindings)
     expect(res.status).toBe(403)
   })
 
-  it('returns plaintext token only on create response', async () => {
+  it('仅在创建响应中返回明文 token', async () => {
     const res = await app('owner').request('/api/admin/import-api-tokens', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -68,7 +72,7 @@ describe('后台 Import Token API', () => {
     expect(body.token).toMatch(/^mgi_/)
   })
 
-  it('rejects invalid expiresAt values', async () => {
+  it('拒绝无效的 expiresAt 值', async () => {
     const res = await app('owner').request('/api/admin/import-api-tokens', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -79,7 +83,7 @@ describe('后台 Import Token API', () => {
     expect((await res.json()).message).toContain('过期时间格式不正确')
   })
 
-  it('rejects non-string expiresAt values', async () => {
+  it('拒绝非字符串的 expiresAt 值', async () => {
     const res = await app('owner').request('/api/admin/import-api-tokens', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -90,7 +94,7 @@ describe('后台 Import Token API', () => {
     expect((await res.json()).message).toContain('过期时间格式不正确')
   })
 
-  it('does not write token hash to audit log when updating tokens', async () => {
+  it('更新时不将 token hash 写入审计日志', async () => {
     const db = createDb()
     const res = await app('owner').request('/api/admin/import-api-tokens/iat_1', {
       method: 'PATCH',
@@ -100,5 +104,26 @@ describe('后台 Import Token API', () => {
 
     expect(res.status).toBe(200)
     expect(JSON.stringify(db.auditRows)).not.toContain('secret_hash_should_not_be_logged')
+  })
+
+  it('禁用已有 token 时写入脱敏审计信息', async () => {
+    const db = createDb()
+    const res = await app('owner').request('/api/admin/import-api-tokens/iat_1', { method: 'DELETE' }, { DB: db } as unknown as Bindings)
+
+    expect(res.status).toBe(200)
+    expect(db.executed.some(item => item.sql.includes("UPDATE import_api_tokens SET status = 'disabled'"))).toBe(true)
+    expect(JSON.stringify(db.auditRows)).not.toContain('secret_hash_should_not_be_logged')
+    expect(db.auditRows[0]?.afterValue).toBe(JSON.stringify({ status: 'disabled' }))
+  })
+
+  it('禁用不存在的 token 时不写审计也不更新记录', async () => {
+    const db = createDb()
+    const res = await app('owner').request('/api/admin/import-api-tokens/missing', { method: 'DELETE' }, { DB: db } as unknown as Bindings)
+    const body = await res.json()
+
+    expect(res.status).toBe(404)
+    expect(body.message).toBe('Import Token 不存在')
+    expect(db.executed.some(item => item.sql.includes("UPDATE import_api_tokens SET status = 'disabled'"))).toBe(false)
+    expect(db.auditRows).toHaveLength(0)
   })
 })

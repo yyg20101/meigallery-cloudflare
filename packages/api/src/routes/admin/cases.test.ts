@@ -208,4 +208,24 @@ describe('后台真实案例 API', () => {
     expect(res.status).toBe(400)
     expect(body.message).toBe('真实案例发布需要 2-9 张图片')
   })
+
+  it('删除单张图片前校验 R2 key 必须匹配当前案例和图片', async () => {
+    const app = createApp()
+    const env = {
+      DB: createDb({
+        first: () => ({ r2_key: 'cases/tc_2/tci_1.jpg' }),
+      }),
+      R2: {
+        async delete() {
+          throw new Error('不应删除不匹配的 R2 key')
+        },
+      },
+    } as unknown as Bindings
+
+    const res = await app.request('/api/admin/cases/tc_1/images/tci_1', { method: 'DELETE' }, env)
+    const body = await res.json()
+
+    expect(res.status).toBe(409)
+    expect(body.message).toBe('图片 R2 key 与当前案例不匹配，请先人工核查')
+  })
 })

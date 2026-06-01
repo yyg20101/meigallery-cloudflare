@@ -2,9 +2,10 @@
 definePageMeta({ middleware: 'auth' })
 
 const { isLoggedIn, user, membershipRank, membershipLevel, membershipExpiry, logout } = useAuth()
+const { siteName } = useSiteSettings()
 
 
-useSeoMeta({ title: '个人中心 - MeiGallery', robots: 'noindex' })
+useSeoMeta({ title: () => `个人中心 - ${siteName.value}`, robots: 'noindex' })
 
 const levelName = computed(() => {
   if (membershipLevel?.value) return membershipLevel.value === 'svip' ? 'SVIP' : membershipLevel.value === 'vip' ? 'VIP' : '免费'

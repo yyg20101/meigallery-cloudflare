@@ -13,12 +13,14 @@
 
 ## 2. 格式化和 lint
 
-- Formatter：未发现 Prettier 配置，当前为 `[TODO]`。
-- Linter：未发现 ESLint 配置，当前为 `[TODO]`。
+- Formatter：根目录 `.editorconfig` 统一 UTF-8、LF、2 空格缩进、末尾换行和默认去除行尾空格；当前未接入 Prettier。
+- Linter：根目录 `eslint.config.mjs` 使用 ESLint flat config，覆盖 `packages/**/*.{ts,js,mjs,vue}`。
+- 当前 lint 为零 warning 基线：`pnpm lint` 使用 `--max-warnings=0`，错误和 warning 均阻断 CI。
 - TypeScript：API/shared 使用 `tsc --noEmit`；Web package 提供 `nuxt typecheck`，但 `nuxt.config.ts` 中 `typescript.typeCheck` 为 `false`。
 - 运行命令：
 
 ```bash
+corepack pnpm lint
 corepack pnpm --filter @meigallery/api exec tsc --noEmit
 corepack pnpm --filter @meigallery/web exec nuxt build
 corepack pnpm --filter @meigallery/api test
@@ -44,7 +46,7 @@ corepack pnpm --filter @meigallery/api test
 - 测试文件与源码同目录，命名为 `*.test.ts`。
 - API 测试使用 Vitest `describe` / `it` / `expect`，部分测试构造 mock D1/R2/env。
 - 纯工具和路由均有测试样例；前端目前没有对应测试框架。
-- 覆盖率阈值未配置，当前为 `[TODO]`。
+- API coverage 已配置核心安全/导入模块基线阈值；Web 组件测试使用 Vitest + Vue Test Utils + happy-dom。
 
 ## 6. 证据
 
@@ -55,4 +57,6 @@ corepack pnpm --filter @meigallery/api test
 - `packages/shared/src/constants/index.ts`
 - `packages/web/nuxt.config.ts`
 - `package.json`
+- `eslint.config.mjs`
+- `.editorconfig`
 - `packages/api/vitest.config.ts`

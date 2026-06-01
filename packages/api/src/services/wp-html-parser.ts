@@ -67,7 +67,7 @@ export function parseWpContent(html: string): ParsedContent {
   }
 
   // 去除图片和视频块后提取文本
-  let textHtml = html
+  const textHtml = html
     .replace(/<figure[^>]*class="[^"]*wp-block-image[^"]*"[^>]*>.*?<\/figure>/gi, '')
     .replace(/<figure[^>]*class="[^"]*wp-block-video[^"]*"[^>]*>.*?<\/figure>/gi, '')
 

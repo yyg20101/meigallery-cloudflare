@@ -60,7 +60,7 @@ adminTagRoutes.post('/', async (c) => {
   }
 
   const slug = body.slug.trim().toLowerCase()
-  if (!/^[a-z0-9\-]+$/.test(slug)) {
+  if (!/^[a-z0-9-]+$/.test(slug)) {
     return c.json({ statusCode: 400, message: 'slug 只允许小写字母、数字和连字符' }, 400)
   }
 
@@ -131,7 +131,7 @@ adminTagRoutes.patch('/:id', async (c) => {
 
   if (body.slug !== undefined) {
     const newSlug = body.slug.trim().toLowerCase()
-    if (!/^[a-z0-9\-]+$/.test(newSlug)) {
+    if (!/^[a-z0-9-]+$/.test(newSlug)) {
       return c.json({ statusCode: 400, message: 'slug 只允许小写字母、数字和连字符' }, 400)
     }
     if (newSlug !== existing.slug) {

@@ -1,4 +1,3 @@
-import type { Bindings } from '../index'
 import { generateId } from './db'
 
 /**

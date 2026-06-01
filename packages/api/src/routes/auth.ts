@@ -2,49 +2,19 @@ import { Hono } from 'hono'
 import type { Bindings, Variables } from '../index'
 import { hashPassword, verifyPassword } from '../utils/password'
 import { createSession, destroyAllUserSessions } from '../utils/session'
-import { generateId } from '../utils/db'
 import { sendRegistrationCode, sendPasswordResetCode } from '../services/email'
+import {
+  VERIFICATION_CODE_COOLDOWN_MS,
+  createVerificationCode,
+  hasRecentVerificationCode,
+  isEmailVerificationEnabled,
+  verifyCode,
+  type VerificationCodePurpose,
+} from '../services/email-verification'
 import { validateUsername } from '@meigallery/shared/utils'
+import { getTurnstileConfigError, validateTurnstile } from '../utils/turnstile'
 
 export const authRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
-
-// ============================================================
-// 验证码配置
-// ============================================================
-
-const CODE_LENGTH = 6
-const CODE_TTL_MS = 10 * 60 * 1000     // 10 分钟
-const CODE_COOLDOWN_MS = 60 * 1000      // 60 秒冷却
-const MAX_ATTEMPTS = 3                   // 最多错误次数
-
-function requireProductionTurnstile(env: Bindings) {
-  if (env.APP_ENV === 'production' && !env.TURNSTILE_SECRET_KEY) {
-    return { statusCode: 503, message: '人机验证配置缺失，请联系站点管理员' }
-  }
-  return null
-}
-
-function generateVerificationCode(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(4))
-  const num = (bytes[0]! << 24 | bytes[1]! << 16 | bytes[2]! << 8 | bytes[3]!) >>> 0
-  return String(num % 1_000_000).padStart(CODE_LENGTH, '0')
-}
-
-// ============================================================
-// 辅助函数：获取邮箱验证开关
-// ============================================================
-
-async function isEmailVerificationEnabled(db: D1Database): Promise<boolean> {
-  const row = await db
-    .prepare("SELECT value FROM site_settings WHERE key = 'email_verification_enabled'")
-    .first<{ value: string }>()
-  if (!row) return false
-  try {
-    return JSON.parse(row.value) === true || JSON.parse(row.value) === 'true'
-  } catch {
-    return false
-  }
-}
 
 // ============================================================
 // GET /api/auth/check-username/:username - 检查用户名可用性
@@ -73,9 +43,8 @@ authRoutes.get('/check-username/:username', async (c) => {
 
 authRoutes.post('/send-code', async (c) => {
   const db = c.env.DB
-
-  const turnstileConfigError = requireProductionTurnstile(c.env)
-  if (turnstileConfigError) return c.json(turnstileConfigError, 503)
+  const turnstileConfigError = getTurnstileConfigError(c.env)
+  if (turnstileConfigError) return c.json(turnstileConfigError.body, turnstileConfigError.status)
 
   // 检查邮箱验证是否开启
   const verificationEnabled = await isEmailVerificationEnabled(db)
@@ -98,21 +67,13 @@ authRoutes.post('/send-code', async (c) => {
     return c.json({ statusCode: 400, message: '邮箱格式无效' }, 400)
   }
 
-  const purpose = body.purpose
+  const purpose = body.purpose as VerificationCodePurpose
   if (purpose !== 'register' && purpose !== 'password_reset') {
     return c.json({ statusCode: 400, message: 'purpose 必须为 register 或 password_reset' }, 400)
   }
 
-  // Turnstile 验证
-  if (c.env.TURNSTILE_SECRET_KEY) {
-    if (!body.turnstileToken) {
-      return c.json({ statusCode: 400, message: '请完成人机验证' }, 400)
-    }
-    const verified = await verifyTurnstile(c.env.TURNSTILE_SECRET_KEY, body.turnstileToken)
-    if (!verified) {
-      return c.json({ statusCode: 400, message: '人机验证失败，请重试' }, 400)
-    }
-  }
+  const turnstileError = await validateTurnstile(c.env, body.turnstileToken)
+  if (turnstileError) return c.json(turnstileError.body, turnstileError.status)
 
   // 注册场景：检查邮箱是否已注册
   if (purpose === 'register') {
@@ -132,45 +93,17 @@ authRoutes.post('/send-code', async (c) => {
       .bind(email)
       .first()
     if (!existing) {
-      return c.json({ message: '验证码已发送', cooldown: CODE_COOLDOWN_MS / 1000 })
+      return c.json({ message: '验证码已发送', cooldown: VERIFICATION_CODE_COOLDOWN_MS / 1000 })
     }
   }
 
   // 冷却检查
-  const recentCode = await db
-    .prepare(
-      `SELECT id FROM email_verification_codes
-       WHERE email = ? AND purpose = ? AND created_at > datetime('now', '-60 seconds')
-       LIMIT 1`,
-    )
-    .bind(email, purpose)
-    .first()
-
-  if (recentCode) {
+  if (await hasRecentVerificationCode(db, email, purpose)) {
     return c.json({ statusCode: 429, message: '请等待 60 秒后重试' }, 429)
   }
 
   // 生成验证码
-  const code = generateVerificationCode()
-  const id = generateId('evc')
-  const expiresAt = new Date(Date.now() + CODE_TTL_MS).toISOString()
-
-  // 作废旧验证码
-  await db
-    .prepare(
-      `UPDATE email_verification_codes SET used = 1
-       WHERE email = ? AND purpose = ? AND used = 0`,
-    )
-    .bind(email, purpose)
-    .run()
-
-  await db
-    .prepare(
-      `INSERT INTO email_verification_codes (id, email, code, purpose, expires_at)
-       VALUES (?, ?, ?, ?, ?)`,
-    )
-    .bind(id, email, code, purpose, expiresAt)
-    .run()
+  const code = await createVerificationCode(db, email, purpose)
 
   // 发送邮件
   try {
@@ -184,7 +117,7 @@ authRoutes.post('/send-code', async (c) => {
     return c.json({ statusCode: 500, message: '邮件发送失败，请稍后重试' }, 500)
   }
 
-  return c.json({ message: '验证码已发送', cooldown: CODE_COOLDOWN_MS / 1000 })
+  return c.json({ message: '验证码已发送', cooldown: VERIFICATION_CODE_COOLDOWN_MS / 1000 })
 })
 
 // ============================================================
@@ -192,8 +125,8 @@ authRoutes.post('/send-code', async (c) => {
 // ============================================================
 
 authRoutes.post('/register', async (c) => {
-  const turnstileConfigError = requireProductionTurnstile(c.env)
-  if (turnstileConfigError) return c.json(turnstileConfigError, 503)
+  const turnstileConfigError = getTurnstileConfigError(c.env)
+  if (turnstileConfigError) return c.json(turnstileConfigError.body, turnstileConfigError.status)
 
   const body = await c.req.json<{
     email?: string
@@ -231,14 +164,9 @@ authRoutes.post('/register', async (c) => {
   const verificationEnabled = await isEmailVerificationEnabled(db)
 
   // 邮箱验证码流程已在 send-code 完成人机验证；直接注册仍必须验证。
-  if (!verificationEnabled && c.env.TURNSTILE_SECRET_KEY) {
-    if (!body.turnstileToken) {
-      return c.json({ statusCode: 400, message: '请完成人机验证' }, 400)
-    }
-    const verified = await verifyTurnstile(c.env.TURNSTILE_SECRET_KEY, body.turnstileToken)
-    if (!verified) {
-      return c.json({ statusCode: 400, message: '人机验证失败，请重试' }, 400)
-    }
+  if (!verificationEnabled) {
+    const turnstileError = await validateTurnstile(c.env, body.turnstileToken)
+    if (turnstileError) return c.json(turnstileError.body, turnstileError.status)
   }
 
   // 邮箱验证开启时需要验证码
@@ -352,8 +280,8 @@ authRoutes.post('/reset-password', async (c) => {
 // ============================================================
 
 authRoutes.post('/login', async (c) => {
-  const turnstileConfigError = requireProductionTurnstile(c.env)
-  if (turnstileConfigError) return c.json(turnstileConfigError, 503)
+  const turnstileConfigError = getTurnstileConfigError(c.env)
+  if (turnstileConfigError) return c.json(turnstileConfigError.body, turnstileConfigError.status)
 
   const body = await c.req.json<{
     identifier?: string  // 用户名或邮箱
@@ -368,16 +296,8 @@ authRoutes.post('/login', async (c) => {
     return c.json({ statusCode: 400, message: '用户名/邮箱和密码为必填' }, 400)
   }
 
-  // Turnstile 验证
-  if (c.env.TURNSTILE_SECRET_KEY) {
-    if (!body.turnstileToken) {
-      return c.json({ statusCode: 400, message: '请完成人机验证' }, 400)
-    }
-    const verified = await verifyTurnstile(c.env.TURNSTILE_SECRET_KEY, body.turnstileToken)
-    if (!verified) {
-      return c.json({ statusCode: 400, message: '人机验证失败，请重试' }, 400)
-    }
-  }
+  const turnstileError = await validateTurnstile(c.env, body.turnstileToken)
+  if (turnstileError) return c.json(turnstileError.body, turnstileError.status)
 
   const db = c.env.DB
 
@@ -441,62 +361,3 @@ authRoutes.post('/logout', async (c) => {
   await destroySession(c)
   return c.json({ message: '已登出' })
 })
-
-// ============================================================
-// 内部工具函数
-// ============================================================
-
-async function verifyTurnstile(secretKey: string, token: string): Promise<boolean> {
-  const response = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ secret: secretKey, response: token }),
-  })
-  const result = await response.json() as { success: boolean; 'error-codes'?: string[] }
-  if (!result.success) {
-    console.warn('Turnstile 验证失败:', result['error-codes'] ?? [])
-  }
-  return result.success
-}
-
-async function verifyCode(
-  db: D1Database,
-  email: string,
-  code: string,
-  purpose: string,
-): Promise<{ success: true } | { success: false; error: string }> {
-  const record = await db
-    .prepare(
-      `SELECT id, code, attempts, expires_at FROM email_verification_codes
-       WHERE email = ? AND purpose = ? AND used = 0
-       ORDER BY created_at DESC LIMIT 1`,
-    )
-    .bind(email, purpose)
-    .first<{ id: string; code: string; attempts: number; expires_at: string }>()
-
-  if (!record) {
-    return { success: false, error: '验证码不存在或已失效，请重新发送' }
-  }
-
-  if (new Date(record.expires_at) < new Date()) {
-    await db.prepare('UPDATE email_verification_codes SET used = 1 WHERE id = ?').bind(record.id).run()
-    return { success: false, error: '验证码已过期，请重新发送' }
-  }
-
-  if (record.attempts >= MAX_ATTEMPTS) {
-    await db.prepare('UPDATE email_verification_codes SET used = 1 WHERE id = ?').bind(record.id).run()
-    return { success: false, error: '验证码错误次数过多，请重新发送' }
-  }
-
-  if (record.code !== code) {
-    await db
-      .prepare('UPDATE email_verification_codes SET attempts = attempts + 1 WHERE id = ?')
-      .bind(record.id)
-      .run()
-    const remaining = MAX_ATTEMPTS - record.attempts - 1
-    return { success: false, error: `验证码错误，还可尝试 ${remaining} 次` }
-  }
-
-  await db.prepare('UPDATE email_verification_codes SET used = 1 WHERE id = ?').bind(record.id).run()
-  return { success: true }
-}

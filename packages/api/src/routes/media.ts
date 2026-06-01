@@ -1,8 +1,11 @@
 import { Hono } from 'hono'
 import type { Bindings, Variables } from '../index'
 import { requireAuth } from '../middleware/auth'
-import { getUserEffectiveRank, checkMediaAccess } from '../utils/permission'
-import { SIGNED_URL_TTL } from '@meigallery/shared/constants'
+import { errorJson } from '../utils/api-error'
+import { isExternalCoverKey, safeExternalCoverUrl } from '../utils/cover-url'
+import { isExpectedGalleryCoverKey, isExpectedGalleryMediaKey } from '../utils/media-keys'
+import { checkMediaAccess } from '../utils/permission'
+import { MEDIA_ACCESS_TTL } from '@meigallery/shared/constants'
 
 export const mediaRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -50,9 +53,17 @@ mediaRoutes.get('/cover/:galleryId', async (c) => {
     return c.json({ statusCode: 404, message: '封面不存在' }, 404)
   }
 
-  // 外部 URL（迁移数据）直接 302 重定向
-  if (gallery.cover_key.startsWith('http')) {
-    return c.redirect(gallery.cover_key, 302)
+  // 外部 URL（迁移数据）仅允许安全 HTTPS 公开地址，避免公开接口跳转到 http、localhost 或私网地址。
+  if (isExternalCoverKey(gallery.cover_key)) {
+    const safeUrl = safeExternalCoverUrl(gallery.cover_key)
+    if (!safeUrl) {
+      return c.json({ statusCode: 404, message: '封面不存在' }, 404)
+    }
+    return c.redirect(safeUrl, 302)
+  }
+
+  if (!isExpectedGalleryCoverKey(gallery.cover_key, galleryId)) {
+    return c.json({ statusCode: 404, message: '封面不存在' }, 404)
   }
 
   const object = await c.env.R2.get(gallery.cover_key)
@@ -84,13 +95,13 @@ mediaRoutes.get('/:assetId/thumbnail', async (c) => {
 
   const asset = await db
     .prepare(`
-      SELECT ma.r2_key, ma.type, ma.required_rank, g.required_level_rank, g.status
+      SELECT ma.gallery_id, ma.r2_key, ma.type, ma.required_rank, g.required_level_rank, g.status
       FROM media_assets ma
       JOIN galleries g ON ma.gallery_id = g.id
       WHERE ma.id = ? AND ma.upload_status = 'completed'
     `)
     .bind(assetId)
-    .first<{ r2_key: string | null; type: string; required_rank: number; required_level_rank: number; status: string }>()
+    .first<{ gallery_id: string; r2_key: string | null; type: string; required_rank: number; required_level_rank: number; status: string }>()
 
   if (!asset || asset.type !== 'image' || asset.status !== 'published') {
     return c.json({ statusCode: 404, message: '资源不存在' }, 404)
@@ -102,6 +113,9 @@ mediaRoutes.get('/:assetId/thumbnail', async (c) => {
   }
 
   if (!asset.r2_key) {
+    return c.json({ statusCode: 404, message: '文件不存在' }, 404)
+  }
+  if (!isExpectedGalleryMediaKey(asset.r2_key, asset.gallery_id, assetId)) {
     return c.json({ statusCode: 404, message: '文件不存在' }, 404)
   }
 
@@ -163,15 +177,18 @@ mediaRoutes.get('/raw/:assetId', async (c) => {
 
   const asset = await db
     .prepare(`
-      SELECT ma.r2_key, ma.required_rank, g.required_level_rank, g.status
+      SELECT ma.gallery_id, ma.r2_key, ma.required_rank, g.required_level_rank, g.status
       FROM media_assets ma
       JOIN galleries g ON ma.gallery_id = g.id
       WHERE ma.id = ? AND ma.upload_status = 'completed'
     `)
     .bind(assetId)
-    .first<{ r2_key: string | null; required_rank: number; required_level_rank: number; status: string }>()
+    .first<{ gallery_id: string; r2_key: string | null; required_rank: number; required_level_rank: number; status: string }>()
 
   if (!asset || asset.status !== 'published' || Math.max(asset.required_rank, asset.required_level_rank) > 0 || !asset.r2_key) {
+    return new Response(null, { status: 404 })
+  }
+  if (!isExpectedGalleryMediaKey(asset.r2_key, asset.gallery_id, assetId)) {
     return new Response(null, { status: 404 })
   }
 
@@ -187,9 +204,9 @@ mediaRoutes.get('/raw/:assetId', async (c) => {
 })
 
 /**
- * GET /api/media/:assetId/access - 受保护媒体访问签名
- * 需要登录，验证会员等级后返回临时访问 URL
- * - 图片：返回 R2 预签名 URL 或直接 stream
+ * GET /api/media/:assetId/access - 受保护媒体访问接口
+ * 需要登录，验证会员等级后返回媒体内容或播放凭证
+ * - 图片：Worker 代理返回 R2 对象内容，不暴露 R2 原始地址
  * - 视频：返回 Cloudflare Stream 签名 token
  */
 mediaRoutes.get('/:assetId/access', requireAuth, async (c) => {
@@ -200,7 +217,7 @@ mediaRoutes.get('/:assetId/access', requireAuth, async (c) => {
 
   const asset = await db
     .prepare(`
-      SELECT ma.id, ma.type, ma.role, ma.r2_key, ma.stream_uid,
+      SELECT ma.id, ma.gallery_id, ma.type, ma.role, ma.r2_key, ma.stream_uid,
              ma.required_rank, g.status, g.required_level_rank
       FROM media_assets ma
       JOIN galleries g ON ma.gallery_id = g.id
@@ -209,6 +226,7 @@ mediaRoutes.get('/:assetId/access', requireAuth, async (c) => {
     .bind(assetId)
     .first<{
       id: string
+      gallery_id: string
       type: string
       role: string
       r2_key: string | null
@@ -240,7 +258,11 @@ mediaRoutes.get('/:assetId/access', requireAuth, async (c) => {
 
   // 根据媒体类型返回不同的访问凭证
   if (asset.type === 'image' && asset.r2_key) {
-    // 图片：直接通过此接口代理返回
+    if (!isExpectedGalleryMediaKey(asset.r2_key, asset.gallery_id, assetId)) {
+      return c.json({ statusCode: 404, message: '媒体文件配置异常' }, 404)
+    }
+
+    // 图片：服务端校验通过后代理返回 R2 对象。
     const object = await c.env.R2.get(asset.r2_key)
     if (!object) {
       return c.json({ statusCode: 404, message: '文件不存在' }, 404)
@@ -248,25 +270,31 @@ mediaRoutes.get('/:assetId/access', requireAuth, async (c) => {
 
     const headers = new Headers()
     headers.set('Content-Type', object.httpMetadata?.contentType || 'image/jpeg')
-    headers.set('Cache-Control', 'private, max-age=600')
+    headers.set('Cache-Control', `private, max-age=${MEDIA_ACCESS_TTL.PROTECTED_IMAGE_CACHE}`)
 
     return new Response(object.body, { headers })
   }
 
   if (asset.type === 'video' && asset.stream_uid) {
+    if (!c.env.STREAM_ACCOUNT_ID?.trim() || !c.env.STREAM_API_TOKEN?.trim()) {
+      return errorJson(c, 503, '视频服务暂未配置，请联系站点管理员', {
+        code: 'STREAM_NOT_CONFIGURED',
+      })
+    }
+
     // 视频：生成 Cloudflare Stream 签名 token
     const signedToken = await generateStreamSignedToken(
       c.env.STREAM_ACCOUNT_ID,
       c.env.STREAM_API_TOKEN,
       asset.stream_uid,
-      SIGNED_URL_TTL.VIDEO,
+      MEDIA_ACCESS_TTL.STREAM_TOKEN,
     )
 
     return c.json({
       type: 'video',
       streamUid: asset.stream_uid,
       token: signedToken,
-      expiresIn: SIGNED_URL_TTL.VIDEO,
+      expiresIn: MEDIA_ACCESS_TTL.STREAM_TOKEN,
     })
   }
 
@@ -277,7 +305,7 @@ mediaRoutes.get('/:assetId/access', requireAuth, async (c) => {
 
 /**
  * 生成 Cloudflare Stream 签名 token
- * 使用 Stream API 创建临时签名 URL
+ * 使用 Stream API 创建临时播放 token
  */
 async function generateStreamSignedToken(
   accountId: string,

@@ -7,6 +7,7 @@
 - `AGENTS.md`：项目开发指南，供编码代理和贡献者参考。
 - `docs/PRD.md`：产品需求文档。
 - `docs/PROJECT_STATUS.md`：当前实现、部署、分支和文档状态索引。
+- `docs/CODE_AND_DOC_REVIEW_ISSUES.md`：代码与文档 review 问题台账和修复方案。
 - `docs/TECHNICAL_SPEC.md`：当前技术设计和实现状态。
 - `docs/UI_DESIGN.md`：UI 设计初稿。
 - `docs/DEPLOYMENT.md`：Cloudflare 部署与套餐说明。

@@ -4,7 +4,7 @@ import { getPrimaryRegion, getSupportTags } from '~/utils/galleryPresentation'
 const route = useRoute()
 const { api } = useApi()
 const { isLoggedIn, membershipRank } = useAuth()
-const { videoEnabled } = useSiteSettings()
+const { siteName, videoEnabled } = useSiteSettings()
 const { trackViewContent } = useFacebookPixel()
 
 
@@ -200,9 +200,9 @@ const lockMessage = computed(() => {
 })
 
 useSeoMeta({
-  title: () => gallery.value ? `${gallery.value.title} - MeiGallery` : 'MeiGallery',
+  title: () => gallery.value ? `${gallery.value.title} - ${siteName.value}` : siteName.value,
   description: () => gallery.value?.summary || (gallery.value ? `${gallery.value.title} - 精选写真图库` : ''),
-  ogTitle: () => gallery.value?.title || 'MeiGallery',
+  ogTitle: () => gallery.value?.title || siteName.value,
   ogDescription: () => gallery.value?.summary || (gallery.value ? `${gallery.value.title} - 精选写真图库` : ''),
   ogImage: () => gallery.value?.coverUrl || undefined,
   ogType: 'article',

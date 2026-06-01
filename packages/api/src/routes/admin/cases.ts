@@ -9,6 +9,7 @@ import {
   getPublicImageUrl,
   getR2Extension,
   isAllowedImageType,
+  isExpectedCaseImageKey,
   isValidSlug,
   normalizeSortOrder,
 } from '../../utils/cases'
@@ -332,6 +333,7 @@ adminCaseRoutes.delete('/:id', async (c) => {
     .all<{ id: string; r2_key: string }>()
 
   for (const image of images.results) {
+    if (!isExpectedCaseImageKey(image.r2_key, id, image.id)) continue
     await c.env.R2.delete(image.r2_key)
   }
   await db.prepare('DELETE FROM cases WHERE id = ?').bind(id).run()
@@ -409,6 +411,9 @@ adminCaseRoutes.delete('/:id/images/:imageId', async (c) => {
   const imageId = c.req.param('imageId')
   const image = await db.prepare('SELECT r2_key FROM case_images WHERE id = ? AND case_id = ?').bind(imageId, caseId).first<{ r2_key: string }>()
   if (!image) return c.json({ statusCode: 404, message: '图片不存在' }, 404)
+  if (!isExpectedCaseImageKey(image.r2_key, caseId, imageId)) {
+    return c.json({ statusCode: 409, message: '图片 R2 key 与当前案例不匹配，请先人工核查' }, 409)
+  }
 
   await c.env.R2.delete(image.r2_key)
   await db.prepare('DELETE FROM case_images WHERE id = ? AND case_id = ?').bind(imageId, caseId).run()

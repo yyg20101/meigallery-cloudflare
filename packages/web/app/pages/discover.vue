@@ -1,12 +1,6 @@
 <script setup lang="ts">
-import type { GallerySummary } from '@meigallery/shared'
+import type { GallerySummary, TagInfo as SharedTagInfo } from '@meigallery/shared'
 import { collectRegionGuideItems } from '~/utils/galleryPresentation'
-
-interface TagInfo {
-  slug: string
-  name: string
-  count: number
-}
 
 interface GalleryListResponse {
   data: GallerySummary[]
@@ -14,8 +8,10 @@ interface GalleryListResponse {
   hasMore?: boolean
 }
 
+const { siteName } = useSiteSettings()
+
 useSeoMeta({
-  title: '发现图库 - MeiGallery',
+  title: () => `发现图库 - ${siteName.value}`,
   description: '浏览和筛选精选图库内容',
 })
 
@@ -76,7 +72,7 @@ function setSort(val: 'latest' | 'hot') {
 const { api } = useApi()
 
 const { data: tagsData } = await useAsyncData('discover-tags', () =>
-  api<{ data: Record<string, TagInfo[]> }>('/api/tags'),
+  api<{ data: Record<string, SharedTagInfo[]> }>('/api/tags'),
 )
 
 const tags = computed(() => tagsData.value?.data ?? {})
@@ -161,7 +157,8 @@ let observer: IntersectionObserver | null = null
 onMounted(() => {
   observer = new IntersectionObserver(
     (entries) => {
-      if (entries[0].isIntersecting && hasMore.value && !isLoading.value) {
+      const entry = entries[0]
+      if (entry?.isIntersecting && hasMore.value && !isLoading.value) {
         loadMore()
       }
     },

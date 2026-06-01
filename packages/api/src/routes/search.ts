@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { Bindings, Variables } from '../index'
 import { PAGINATION } from '@meigallery/shared/constants'
 import { cacheControl } from '../middleware/cache'
+import { resolvePublicCoverUrl } from '../utils/cover-url'
 import { parsePositiveIntParam } from '../utils/pagination'
 
 export const searchRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
@@ -27,7 +28,7 @@ searchRoutes.get('/', cacheControl(30), async (c) => {
 
   // 构建查询
   let fromClause = 'FROM galleries g'
-  let whereConditions = ['g.status = ?']
+  const whereConditions = ['g.status = ?']
   const params: unknown[] = ['published']
 
   // 标签筛选（AND 关系：要求包含所有指定标签）
@@ -123,7 +124,7 @@ searchRoutes.get('/', cacheControl(30), async (c) => {
   const total = exactTotal ?? offset + pageRows.length + (hasMore ? 1 : 0)
 
   const galleryIds = pageRows.map(g => g.id)
-  let tagsMap: Record<string, Array<{ id: string; type: string; name: string; slug: string }>> = {}
+  const tagsMap: Record<string, Array<{ id: string; type: string; name: string; slug: string }>> = {}
 
   if (galleryIds.length > 0) {
     const tagPlaceholders = galleryIds.map(() => '?').join(',')
@@ -148,9 +149,7 @@ searchRoutes.get('/', cacheControl(30), async (c) => {
     title: g.title,
     slug: g.slug,
     summary: g.summary,
-    coverUrl: g.cover_key
-      ? g.cover_key.startsWith('http') ? g.cover_key : `/api/media/cover/${g.id}`
-      : null,
+    coverUrl: resolvePublicCoverUrl(g.id, g.cover_key),
     requiredLevelRank: g.required_level_rank,
     publishedAt: g.published_at,
     tags: tagsMap[g.id] || [],

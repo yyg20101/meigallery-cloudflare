@@ -23,8 +23,14 @@ const db = {
 describe('后台父路由鉴权', () => {
   it('拒绝未登录用户访问后台概览', async () => {
     const res = await createApp(null).request('/api/admin/dashboard', {}, { DB: db } as unknown as Bindings)
+    const body = await res.json()
 
     expect(res.status).toBe(403)
+    expect(body).toMatchObject({
+      statusCode: 403,
+      message: '需要管理员权限',
+      code: 'ADMIN_REQUIRED',
+    })
   })
 
   it('允许管理员访问后台概览', async () => {

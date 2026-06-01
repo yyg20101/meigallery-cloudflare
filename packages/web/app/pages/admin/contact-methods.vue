@@ -39,7 +39,8 @@ const form = reactive({
 
 const platformOptions = Object.entries(CONTACT_PLATFORMS).map(([key, cfg]) => ({ key, name: cfg.name }))
 
-const currentPlatformConfig = computed(() => CONTACT_PLATFORMS[form.platform])
+const fallbackPlatformConfig = CONTACT_PLATFORMS.wechat!
+const currentPlatformConfig = computed(() => CONTACT_PLATFORMS[form.platform] ?? fallbackPlatformConfig)
 const autoLink = computed(() => generateContactLink(form.platform, form.value))
 const canAutoLink = computed(() => currentPlatformConfig.value?.supportsLink && !!currentPlatformConfig.value?.linkTemplate)
 const linkHint = computed(() => currentPlatformConfig.value?.linkHint || '该平台无法自动判断跳转能力，前台会优先复制联系值。')
@@ -113,13 +114,14 @@ async function onMove(index: number, direction: -1 | 1) {
   const list = [...items.value]
   const target = index + direction
   if (target < 0 || target >= list.length) return
-  ;[list[index], list[target]] = [list[target], list[index]]
+  const currentItem = list[index]
+  const targetItem = list[target]
+  if (!currentItem || !targetItem) return
+  list[index] = targetItem
+  list[target] = currentItem
   await api('/api/admin/contact-methods/reorder', { method: 'PATCH', body: { ids: list.map(i => i.id) } })
   await refresh()
 }
-
-// QR Code upload
-const fileInputRefs = ref<Record<string, HTMLInputElement | null>>({})
 
 function triggerUpload(id: string) {
   const el = document.getElementById(`qr-input-${id}`) as HTMLInputElement | null
@@ -240,16 +242,13 @@ async function onQrDelete(id: string) {
             <td class="px-4 py-3">{{ item.label }}</td>
             <td class="px-4 py-3 text-gray-600">{{ item.value }}</td>
             <td class="px-4 py-3">
-              <div class="flex items-center gap-2">
-                <img v-if="item.qrCodeUrl" :src="item.qrCodeUrl" class="w-10 h-10 rounded object-cover" />
-                <button class="text-xs text-blue-600 hover:underline" @click="triggerUpload(item.id)">
-                  {{ item.qrCodeUrl ? '更换' : '上传' }}
-                </button>
-                <button v-if="item.qrCodeUrl" class="text-xs text-red-600 hover:underline" @click="onQrDelete(item.id)">
-                  删除
-                </button>
-                <input :id="`qr-input-${item.id}`" type="file" accept="image/png,image/jpeg,image/webp" class="hidden" @change="(e) => onQrUpload(e, item.id)" />
-              </div>
+              <AdminContactQrCodeCell
+                :contact-id="item.id"
+                :qr-code-url="item.qrCodeUrl"
+                @upload="triggerUpload"
+                @remove="onQrDelete"
+              />
+              <input :id="`qr-input-${item.id}`" type="file" accept="image/png,image/jpeg,image/webp" class="hidden" @change="(e) => onQrUpload(e, item.id)" />
             </td>
             <td class="px-4 py-3">
               <button

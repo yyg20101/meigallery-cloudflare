@@ -4,6 +4,7 @@ import type { Context } from 'hono'
 import type { Bindings, Variables } from '../index'
 import { PAGINATION } from '@meigallery/shared/constants'
 import { cacheControl } from '../middleware/cache'
+import { resolvePublicCoverUrl } from '../utils/cover-url'
 import { getPublicGalleryOrderClause, isGalleryLikedByUser } from '../utils/gallery-interactions'
 import { parsePositiveIntParam } from '../utils/pagination'
 
@@ -146,7 +147,7 @@ galleryRoutes.get('/', cacheControl(60), async (c) => {
 
   // 批量查询标签
   const galleryIds = pageRows.map(g => g.id)
-  let tagsMap: Record<string, Array<{ id: string; type: string; name: string; slug: string }>> = {}
+  const tagsMap: Record<string, Array<{ id: string; type: string; name: string; slug: string }>> = {}
 
   if (galleryIds.length > 0) {
     const tagPlaceholders = galleryIds.map(() => '?').join(',')
@@ -171,10 +172,7 @@ galleryRoutes.get('/', cacheControl(60), async (c) => {
     title: g.title,
     slug: g.slug,
     summary: g.summary,
-    // 外部 URL 直通（兼容测试数据和迁移内容），R2 key 走内部代理
-    coverUrl: g.cover_key
-      ? g.cover_key.startsWith('http') ? g.cover_key : `/api/media/cover/${g.id}`
-      : null,
+    coverUrl: resolvePublicCoverUrl(g.id, g.cover_key),
     requiredLevelRank: g.required_level_rank,
     publishedAt: g.published_at,
     viewCount: g.view_count,
@@ -345,10 +343,7 @@ galleryRoutes.get('/:slug', async (c) => {
     slug: gallery.slug,
     summary: gallery.summary,
     bodyMd: gallery.body_md,
-    // 外部 URL 直通，R2 key 走内部代理
-    coverUrl: gallery.cover_key
-      ? gallery.cover_key.startsWith('http') ? gallery.cover_key : `/api/media/cover/${gallery.id}`
-      : null,
+    coverUrl: resolvePublicCoverUrl(gallery.id, gallery.cover_key),
     status: gallery.status,
     requiredLevelRank: gallery.required_level_rank,
     publishedAt: gallery.published_at,

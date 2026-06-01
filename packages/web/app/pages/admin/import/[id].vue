@@ -4,6 +4,17 @@ definePageMeta({ layout: 'admin' })
 const route = useRoute()
 const { api, baseURL } = useApi()
 const jobId = route.params.id as string
+const {
+  turnstileToken,
+  turnstileExpired,
+  hasTurnstile,
+  mountTurnstile,
+  resetTurnstile,
+  cleanupTurnstile,
+} = useTurnstile({
+  containerId: 'turnstile-admin-import-process',
+  onError: message => useToast().add({ title: message, color: 'error' }),
+})
 
 interface ImportJobDetail {
   id: string
@@ -32,9 +43,21 @@ interface ProcessResult {
 }
 const processResult = ref<ProcessResult | null>(null)
 
+onMounted(() => {
+  void mountTurnstile()
+})
+
+onUnmounted(() => {
+  cleanupTurnstile()
+})
+
 async function processJob() {
   if (!manifestText.value.trim()) {
     useToast().add({ title: '请粘贴 manifest CSV 内容', color: 'warning' })
+    return
+  }
+  if (hasTurnstile.value && !turnstileToken.value) {
+    useToast().add({ title: '请先完成人机验证', color: 'warning' })
     return
   }
 
@@ -62,12 +85,19 @@ async function processJob() {
 
     const result = await api<ProcessResult>(
       `/api/admin/import-jobs/${jobId}/process`,
-      { method: 'POST', body: { galleries } },
+      {
+        method: 'POST',
+        body: {
+          galleries,
+          turnstileToken: hasTurnstile.value ? turnstileToken.value : undefined,
+        },
+      },
     )
     processResult.value = result
     refresh()
   } catch (e: any) {
     useToast().add({ title: e?.data?.message || '处理失败', color: 'error' })
+    resetTurnstile()
   } finally {
     processing.value = false
   }
@@ -135,6 +165,13 @@ const statusColors: Record<string, string> = {
           class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
           placeholder="folder,title,slug,region,personality,style,tags,required_level,status&#10;gallery-001,夏日写真,summer-portrait-001,广东,甜美,清新,&quot;长发,户外&quot;,vip,draft"
         />
+        <div v-if="hasTurnstile" class="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+          <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p class="text-sm text-gray-600">开始处理导入任务前需完成安全验证。</p>
+            <div id="turnstile-admin-import-process" />
+          </div>
+          <p v-if="turnstileExpired" class="mt-2 text-xs text-amber-600">验证已过期，请重新完成验证。</p>
+        </div>
         <button
           :disabled="processing"
           class="mt-3 rounded-lg bg-green-600 px-6 py-2 text-sm text-white hover:bg-green-700 disabled:opacity-50"

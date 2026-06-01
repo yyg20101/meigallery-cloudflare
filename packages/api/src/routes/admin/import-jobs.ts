@@ -1,7 +1,9 @@
 import { Hono } from 'hono'
 import type { Bindings, Variables } from '../../index'
 import { generateId } from '../../utils/db'
+import { isExpectedImportErrorReportKey } from '../../utils/import-report-key'
 import { writeAuditLog } from '../../utils/permission'
+import { validateTurnstile } from '../../utils/turnstile'
 import { PAGINATION, R2_KEY_PREFIX } from '@meigallery/shared/constants'
 
 export const adminImportRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
@@ -72,7 +74,11 @@ adminImportRoutes.post('/', async (c) => {
   const body = await c.req.json<{
     totalCount?: number
     sourceDescription?: string
+    turnstileToken?: string
   }>()
+
+  const turnstileError = await validateTurnstile(c.env, body.turnstileToken)
+  if (turnstileError) return c.json(turnstileError.body, turnstileError.status)
 
   const jobId = generateId('imp')
 
@@ -114,9 +120,6 @@ adminImportRoutes.post('/:id/process', async (c) => {
     return c.json({ statusCode: 400, message: '任务不存在或状态不允许处理' }, 400)
   }
 
-  // 标记为 processing
-  await db.prepare("UPDATE import_jobs SET status = 'processing' WHERE id = ?").bind(jobId).run()
-
   const body = await c.req.json<{
     galleries: Array<{
       folder: string
@@ -134,7 +137,14 @@ adminImportRoutes.post('/:id/process', async (c) => {
       imageKeys?: string[]
       videoKeys?: Array<{ key: string; role: string; streamUid?: string }>
     }>
+    turnstileToken?: string
   }>()
+
+  const turnstileError = await validateTurnstile(c.env, body.turnstileToken)
+  if (turnstileError) return c.json(turnstileError.body, turnstileError.status)
+
+  // 请求和人机验证通过后再标记 processing，避免失败请求卡住任务。
+  await db.prepare("UPDATE import_jobs SET status = 'processing' WHERE id = ?").bind(jobId).run()
 
   const errors: Array<{ folder: string; error: string }> = []
   let successCount = 0
@@ -194,7 +204,7 @@ adminImportRoutes.post('/:id/process', async (c) => {
       }
 
       for (const tagSlug of tagSlugs) {
-        const slug = tagSlug.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5\-]/g, '-')
+        const slug = tagSlug.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5-]/g, '-')
         let tag = await db
           .prepare('SELECT id FROM tags WHERE slug = ?')
           .bind(slug)
@@ -278,6 +288,20 @@ adminImportRoutes.post('/:id/process', async (c) => {
     .bind(finalStatus, successCount, failureCount, body.galleries.length, errorReportKey, jobId)
     .run()
 
+  await writeAuditLog(db, {
+    adminId,
+    action: 'process_import',
+    targetType: 'import_job',
+    targetId: jobId,
+    afterValue: {
+      status: finalStatus,
+      totalCount: body.galleries.length,
+      successCount,
+      failureCount,
+      errorReportKey,
+    },
+  })
+
   return c.json({
     id: jobId,
     status: finalStatus,
@@ -302,6 +326,9 @@ adminImportRoutes.get('/:id/errors', async (c) => {
 
   if (!job?.error_report_key) {
     return c.json({ statusCode: 404, message: '错误报告不存在' }, 404)
+  }
+  if (!isExpectedImportErrorReportKey(job.error_report_key, jobId)) {
+    return c.json({ statusCode: 404, message: '错误报告配置异常' }, 404)
   }
 
   const object = await c.env.R2.get(job.error_report_key)

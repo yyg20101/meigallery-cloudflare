@@ -56,7 +56,7 @@
 - API 路由文件中存在多个超过 400 行的文件，例如 `admin/galleries.ts`、`auth.ts`、`admin/users.ts`、`admin/media.ts`；继续增长会提高修改风险。
 - Dev 环境配置复用正式 D1/R2 资源，便于真实数据验收，但后台写操作可能影响正式数据。
 - Cloudflare Stream 相关字段和签名逻辑存在，但生产视频上传/编码链路未接入；文档和 UI 需要持续避免暗示视频已完整可用。
-- 当前没有前端自动化测试或 E2E 测试，Nuxt 页面回归主要依赖 build 和人工/浏览器验收。
+- 当前已有 Web Playwright smoke 覆盖核心页面和多视口响应式，并扩展了 Vitest 组件测试；后台复杂组件局部状态仍需要继续补充测试覆盖。
 
 ## 6. 证据
 

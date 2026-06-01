@@ -4,6 +4,7 @@ import {
   getPublicImageUrl,
   getPublicOrderClause,
   isAllowedImageType,
+  isExpectedCaseImageKey,
   isValidSlug,
   normalizeSortOrder,
 } from './cases'
@@ -43,5 +44,15 @@ describe('真实案例工具', () => {
 
   it('公开图片 URL 不包含 R2 key', () => {
     expect(getPublicImageUrl('tci_123')).toBe('/api/cases/images/tci_123')
+  })
+
+  it('校验真实案例图片 R2 key 必须属于当前案例和图片', () => {
+    expect(isExpectedCaseImageKey('cases/tc_1/tci_1.jpg', 'tc_1', 'tci_1')).toBe(true)
+    expect(isExpectedCaseImageKey('cases/tc_1/tci_1.jpeg', 'tc_1', 'tci_1')).toBe(true)
+    expect(isExpectedCaseImageKey('cases/tc_1/tci_1.webp', 'tc_1', 'tci_1')).toBe(true)
+    expect(isExpectedCaseImageKey('cases/tc_2/tci_1.jpg', 'tc_1', 'tci_1')).toBe(false)
+    expect(isExpectedCaseImageKey('cases/tc_1/tci_2.jpg', 'tc_1', 'tci_1')).toBe(false)
+    expect(isExpectedCaseImageKey('originals/tc_1/tci_1.jpg', 'tc_1', 'tci_1')).toBe(false)
+    expect(isExpectedCaseImageKey('cases/tc_1/tci_1.svg', 'tc_1', 'tci_1')).toBe(false)
   })
 })

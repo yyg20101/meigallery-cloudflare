@@ -11,6 +11,8 @@
 export function useApi() {
   const config = useRuntimeConfig()
   const clientBaseURL = config.public.apiBaseUrl as string
+  const appEnv = String(config.public.appEnv || 'development')
+  const mutatingMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 
   /**
    * 构建带查询字符串的完整路径
@@ -33,14 +35,38 @@ export function useApi() {
     return typeof FormData !== 'undefined' && body instanceof FormData
   }
 
+  function shouldConfirmDevAdminWrite(path: string, method: string): boolean {
+    return import.meta.client
+      && appEnv === 'dev'
+      && path.startsWith('/api/admin/')
+      && mutatingMethods.has(method.toUpperCase())
+  }
+
+  function confirmDevAdminWrite(path: string, method: string): void {
+    if (!shouldConfirmDevAdminWrite(path, method)) return
+
+    const confirmed = window.confirm([
+      '当前 DEV 后台连接正式 D1/R2 数据。',
+      `即将执行 ${method.toUpperCase()} ${path}，可能修改真实内容、会员或媒体文件，并会写入审计日志。`,
+      '确认继续执行？',
+    ].join('\n\n'))
+
+    if (!confirmed) {
+      const error = new Error('已取消 DEV 后台写操作')
+      ;(error as any).statusCode = 499
+      throw error
+    }
+  }
+
   async function ssrFetch<T>(fullPath: string, options?: {
     method?: string
     body?: unknown
   }): Promise<T> {
     const event = useRequestEvent()
     const apiBinding = (event?.context as Record<string, any>)?.cloudflare?.env?.API_SERVICE
+    const isTestEnvironment = config.public.appEnv === 'test'
 
-    if (apiBinding) {
+    if (apiBinding && !isTestEnvironment) {
       // Cloudflare Workers 环境：Service Binding 直连（域名仅占位，路由取决于路径）
       const init: RequestInit = {
         method: options?.method || 'GET',
@@ -96,6 +122,9 @@ export function useApi() {
       query?: Record<string, string | number | undefined>
     },
   ): Promise<T> {
+    const method = options?.method || 'GET'
+    confirmDevAdminWrite(path, method)
+
     const fullPath = buildFullPath(path, options?.query)
 
     // SSR: 使用 Service Binding 或本地开发回退
@@ -105,7 +134,7 @@ export function useApi() {
 
     // CSR: 浏览器直连 API Worker
     const fetchOptions: Record<string, unknown> = {
-      method: options?.method || 'GET',
+      method,
       credentials: 'include',
     }
     if (isFormDataBody(options?.body)) {

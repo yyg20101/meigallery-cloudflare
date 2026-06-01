@@ -9,13 +9,13 @@ function createApp() {
   return app
 }
 
-function galleryRow(id: string) {
+function galleryRow(id: string, coverKey: string | null = null) {
   return {
     id,
     title: `图库 ${id}`,
     slug: id,
     summary: null,
-    cover_key: null,
+    cover_key: coverKey,
     required_level_rank: 0,
     published_at: '2026-05-01T00:00:00.000Z',
   }
@@ -105,6 +105,47 @@ describe('搜索 API', () => {
     expect(preparedSqls.some(sql => /COUNT\s*\(\s*DISTINCT/i.test(sql))).toBe(false)
     expect(binds).toContainEqual(['published', 'fresh', 3, 0])
     expect(binds).toContainEqual(['gal_1', 'gal_2'])
+  })
+
+  it('搜索结果不会下发不安全封面外链', async () => {
+    const app = createApp()
+    const db = {
+      prepare(sql: string) {
+        return {
+          bind() {
+            return this
+          },
+          async first<T>() {
+            return { total: 4 } as T
+          },
+          async all<T>() {
+            if (sql.includes('FROM galleries g')) {
+              return {
+                results: [
+                  galleryRow('safe', 'HTTPS://example.com/cover.jpg?next="x"'),
+                  galleryRow('unsafe', 'http://example.com/cover.jpg'),
+                  galleryRow('local', 'https://localhost/cover.jpg'),
+                  galleryRow('r2', 'covers/r2/cover.jpg'),
+                ],
+              } as { results: T[] }
+            }
+
+            return { results: [] as T[] }
+          },
+        }
+      },
+    }
+
+    const res = await app.request('/api/search?pageSize=4', {}, { DB: db } as unknown as Bindings)
+    const body = await res.json<{ data: Array<{ id: string; coverUrl: string | null }> }>()
+
+    expect(res.status).toBe(200)
+    expect(body.data).toEqual([
+      expect.objectContaining({ id: 'safe', coverUrl: 'https://example.com/cover.jpg?next=%22x%22' }),
+      expect.objectContaining({ id: 'unsafe', coverUrl: null }),
+      expect.objectContaining({ id: 'local', coverUrl: null }),
+      expect.objectContaining({ id: 'r2', coverUrl: '/api/media/cover/r2' }),
+    ])
   })
 
   it('无效或非正数分页参数回退默认值且不会向 SQL 绑定 NaN', async () => {

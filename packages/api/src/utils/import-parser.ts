@@ -66,7 +66,7 @@ export function parseManifestCsv(csvText: string): ParseResult {
     }
 
     // 校验 slug 格式（仅允许小写字母、数字、中文、连字符）
-    if (!/^[a-z0-9\u4e00-\u9fa5\-]+$/.test(record['slug'])) {
+    if (!/^[a-z0-9\u4e00-\u9fa5-]+$/.test(record['slug'])) {
       errors.push({ line: i + 1, error: `slug 格式无效: "${record['slug']}"` })
       continue
     }

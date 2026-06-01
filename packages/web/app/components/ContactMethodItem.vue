@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ContactMethod } from '@meigallery/shared'
 import { generateContactLink } from '@meigallery/shared/constants'
+import { normalizeContactActionUrl, normalizeContactQrCodeUrl } from '~/utils/contactUrlSecurity'
 
 const props = defineProps<{
   method: ContactMethod
@@ -16,8 +17,10 @@ const copyFailed = ref(false)
 const showQrCode = computed(() => isHovering.value || showQr.value)
 
 const actionHref = computed(() => props.method.linkUrl || generateContactLink(props.method.platform, props.method.value))
-const hasLink = computed(() => !!actionHref.value)
-const hasQr = computed(() => !!props.method.qrCodeUrl)
+const safeActionHref = computed(() => normalizeContactActionUrl(actionHref.value))
+const hasLink = computed(() => !!safeActionHref.value)
+const safeQrCodeUrl = computed(() => normalizeContactQrCodeUrl(props.method.qrCodeUrl))
+const hasQr = computed(() => !!safeQrCodeUrl.value)
 
 function toggleQr() {
   showQr.value = !showQr.value
@@ -50,8 +53,8 @@ async function copyValue() {
 
 function activate() {
   emit('activate', props.method.platform)
-  if (actionHref.value) {
-    window.open(actionHref.value, '_blank', 'noopener,noreferrer')
+  if (safeActionHref.value) {
+    window.open(safeActionHref.value, '_blank', 'noopener,noreferrer')
     return
   }
   copyValue()
@@ -129,14 +132,14 @@ function activate() {
         @mouseleave="isHovering = false"
       >
         <img
-          :src="method.qrCodeUrl!"
+          :src="safeQrCodeUrl!"
           :alt="`${method.label} 二维码`"
           class="h-40 w-40 rounded-xl object-cover ring-1 ring-white"
         />
         <p class="mt-2 text-xs text-gray-500">扫码添加</p>
         <a
           v-if="hasLink"
-          :href="actionHref || undefined"
+          :href="safeActionHref || undefined"
           target="_blank"
           rel="noopener noreferrer"
           class="mt-1 text-xs text-gray-800 underline decoration-[#d6c39a] underline-offset-4 hover:text-black"

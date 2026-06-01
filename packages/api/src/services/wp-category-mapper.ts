@@ -32,13 +32,6 @@ const SENSITIVE_TAG_REPLACEMENT: Record<string, string | null> = {
 }
 
 /**
- * 需要审核的旧站标签关键词（与新站定位不符）
- */
-const REVIEW_KEYWORDS = [
-  'sm', '猎奇', '包养', '伴游', '萝莉', '联系方式',
-]
-
-/**
  * 顶层分类 → region_scope 映射
  */
 const REGION_SCOPE_MAP: Record<number, string> = {
@@ -188,8 +181,8 @@ function inferTagType(name: string): string {
 export function generateSlug(text: string): string {
   return text
     .toLowerCase()
-    .replace(/[\s\/]+/g, '-')
-    .replace(/[^a-z0-9\u4e00-\u9fa5\-]/g, '')
+    .replace(/[\s/]+/g, '-')
+    .replace(/[^a-z0-9\u4e00-\u9fa5-]/g, '')
     .replace(/-{2,}/g, '-')
     .replace(/^-|-$/g, '')
 }

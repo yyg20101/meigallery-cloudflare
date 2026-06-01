@@ -54,19 +54,19 @@ else
 fi
 
 echo ""
-echo "--- 步骤 1/6: 运行测试 ---"
+echo "--- 步骤 1/7: 运行测试 ---"
 "${PNPM[@]}" --filter @meigallery/api test
 
 echo ""
-echo "--- 步骤 2/6: API Worker 构建预检 ---"
+echo "--- 步骤 2/7: API Worker 构建预检 ---"
 "${PNPM[@]}" --filter @meigallery/api exec wrangler deploy "${ENV_ARGS[@]}" --dry-run --outdir=dist
 
 echo ""
-echo "--- 步骤 3/6: 构建前端 ---"
+echo "--- 步骤 3/7: 构建前端 ---"
 "${PNPM[@]}" --filter @meigallery/web build
 
 echo ""
-echo "--- 步骤 4/6: 执行 D1 数据库迁移 ---"
+echo "--- 步骤 4/7: 执行 D1 数据库迁移 ---"
 if [ "$IS_PRODUCTION" = "true" ] && [ -f "packages/api/migrations/0017_cases_cleanup.sql" ] && [ "${ALLOW_CASES_CLEANUP_MIGRATION:-}" != "true" ]; then
   UNAPPLIED_MIGRATIONS="$("${PNPM[@]}" --filter @meigallery/api exec wrangler d1 migrations list "$D1_DB" "${ENV_ARGS[@]}" --remote 2>&1)"
   if [[ "$UNAPPLIED_MIGRATIONS" == *"0017_cases_cleanup"* ]]; then
@@ -81,12 +81,20 @@ fi
 "${PNPM[@]}" --filter @meigallery/api exec wrangler d1 migrations apply "$D1_DB" "${ENV_ARGS[@]}" --remote
 
 echo ""
-echo "--- 步骤 5/6: 部署 API Worker ---"
+echo "--- 步骤 5/7: 部署 API Worker ---"
 "${PNPM[@]}" --filter @meigallery/api exec wrangler deploy "${ENV_ARGS[@]}"
 
 echo ""
-echo "--- 步骤 6/6: 部署 Web Worker ---"
+echo "--- 步骤 6/7: 部署 Web Worker ---"
 "${PNPM[@]}" --filter @meigallery/web exec wrangler deploy "${ENV_ARGS[@]}"
+
+echo ""
+echo "--- 步骤 7/7: 部署后 SEO 校验 ---"
+if [ "$IS_PRODUCTION" = "true" ]; then
+  node scripts/verify-production-seo.mjs
+else
+  echo "开发环境使用 Workers dev 子域，跳过生产 SEO 校验。"
+fi
 
 echo ""
 echo "=== 部署完成 ==="

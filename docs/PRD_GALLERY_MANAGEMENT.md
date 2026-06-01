@@ -12,29 +12,37 @@
 
 1. **编辑页空白（Bug）**：管理员 `GET /api/admin/galleries/:id` 返回 snake_case 字段（`body_md`、`required_level_rank`），但前端编辑页 `[id].vue` 用 camelCase 读取（`bodyMd`、`requiredLevelRank`），导致所有字段为 `undefined`，页面显示空白。
 2. **发布后首页无图片（Bug）**：WordPress 迁移的 606 个图库中有 2831 张图片，其中已完成下载到 R2 的图片通过 `/api/media/cover/:galleryId` 代理访问，但 `media.ts` 的 cover 接口要求 `status = 'published'`，而图库发布流程可能存在 cover_key 缺失或状态不匹配的问题。此外，前台 `gallery.coverUrl` 对外部 URL 和 R2 key 的拼接逻辑需要覆盖所有场景。
-3. **媒体上传功能缺失（Feature）**：后台编辑页无图片上传、视频上传、封面设置功能。管理员创建图库后无法添加任何媒体资源，整个内容发布流程中断。
-4. **VIP 权限配置缺失（Feature）**：虽然数据库 `media_assets.required_rank` 字段存在，但后台无 UI 让管理员逐张设置图片/视频的可见等级。批量操作中也缺少针对单个媒体的权限配置。
+3. **媒体上传功能缺失（Feature）**：后台编辑页原本无图片上传、视频上传、封面设置功能。当前已落地图片/R2 媒体管理，视频上传仍随 Stream 接入后启用。
+4. **VIP 权限配置缺失（Feature）**：虽然数据库 `media_assets.required_rank` 字段存在，但后台原本无 UI 让管理员逐张设置媒体可见等级。当前图片媒体已可配置；视频媒体随 Stream 接入后复用同一 rank 规则。
 
 ### 解决方案
 
 分三期实施：
 
 - **Phase 1（Bug 修复）**：修复编辑页 snake_case 映射、cover 接口逻辑、前台图片加载、批量操作 Set 响应性 bug、首页视频专区逻辑。
-- **Phase 2（媒体上传）**：图库编辑页内新增图片上传（R2）、视频上传（Stream）、封面设置、媒体排序/删除、单张 VIP 等级配置 UI。
+- **Phase 2（媒体上传）**：图库编辑页内新增图片上传（R2）、封面设置、媒体排序/删除、单张 VIP 等级配置 UI；视频上传（Stream）作为 Phase 2B 规划能力。
 - **Phase 3（迁移资源补全）**：批量将 WordPress 外部 URL 图片下载到 R2，替换外部依赖。
 
-当前实现备注：图片上传、封面设置、媒体列表、排序、删除和单媒体 `required_rank` 配置已在后台媒体路由落地；Cloudflare Stream 视频上传仍未接入。
+当前实现备注：图片上传、封面设置、媒体列表、排序、删除和单媒体 `required_rank` 配置已在后台媒体路由落地；Cloudflare Stream 视频上传仍未接入。当前可验收范围以图片/R2 媒体管理为主，视频 Phase 2B 属于规划能力，验收口径见 `docs/PRD_QUALITY_REVIEW.md`。
 
 ### 成功指标
+
+当前可验收指标：
 
 | 指标 | 目标 |
 |------|------|
 | 编辑页正确渲染率 | 100%（所有字段正确显示） |
 | 发布图库首页封面加载成功率 | >= 95%（R2 图片） |
 | 图片上传成功率 | >= 98%（单张 <= 10MB） |
-| 视频上传到 Stream 编码完成率 | >= 95% |
-| 管理员完成"创建→上传→配置VIP→发布"全流程时间 | <= 10 分钟（含 10 张图） |
+| 管理员完成"创建→上传图片→配置VIP→发布"全流程时间 | <= 10 分钟（含 10 张图） |
 | 批量操作 checkbox 正确响应 | 100%（无 Set 响应性 bug） |
+
+后续 Stream 接入指标：
+
+| 指标 | 目标 |
+|------|------|
+| 视频上传到 Stream 编码完成率 | >= 95% |
+| Stream 视频管理状态同步准确率 | 100%（上传中、处理中、完成、失败） |
 
 ---
 
@@ -44,8 +52,8 @@
 
 | 角色 | 本 PRD 中的操作 |
 |------|-----------------|
-| 管理员（Owner/Admin） | 创建/编辑图库、上传图片视频、设置 VIP 等级、发布 |
-| 普通用户 | 浏览前台图库、查看有权限的图片/视频 |
+| 管理员（Owner/Admin） | 创建/编辑图库、上传图片、设置 VIP 等级、发布；视频上传随 Stream 接入后启用 |
+| 普通用户 | 浏览前台图库、查看有权限的图片；视频查看随 Stream 接入后启用 |
 
 ### 2.2 Phase 1：Bug 修复
 
@@ -91,7 +99,7 @@ API 返回: { body_md, required_level_rank, cover_key, ... }
 
 | # | 用户故事 | 验收标准 |
 |---|----------|----------|
-| D1 | 作为用户，首页视频专区展示真正包含视频的图库 | - API 提供 `hasVideo` 筛选参数或前端过滤带视频资源的图库<br>- 无视频图库时隐藏视频专区 |
+| D1 | 作为用户，首页视频专区只在存在可播放视频时展示 | - Stream 未接入或无可播放视频时隐藏视频专区<br>- Stream 接入后，API 提供 `hasVideo` 筛选参数或前端过滤带视频资源的图库 |
 
 #### Bug E：创建图库 slug 自动覆盖
 
@@ -110,10 +118,10 @@ API 返回: { body_md, required_level_rank, cover_key, ... }
 | # | 用户故事 | 验收标准 |
 |---|----------|----------|
 | F1 | 作为管理员，我在编辑页上传图片 | - 拖拽或点击选择区域，支持多选<br>- 格式：JPG/PNG/WebP，单张 <= 10MB<br>- 上传到 R2，key 格式 `originals/{galleryId}/{assetId}.{ext}`<br>- 上传进度条，支持并发 3 张<br>- 上传完成后自动创建 `media_assets` 记录<br>- 图片列表实时刷新 |
-| F2 | 作为管理员，我在编辑页上传视频 | - 选择本地视频文件（MP4/WebM/MOV），单文件 <= 200MB<br>- 上传到 Cloudflare Stream（通过 API 代理 TUS 上传或直接创建链接）<br>- 显示上传进度和编码状态<br>- 编码完成后自动关联 `stream_uid` 到 `media_assets`<br>- 标记 role 为 `preview` 或 `full` |
+| F2 | 作为管理员，我在编辑页上传视频（规划：Phase 2B） | - Stream API token、上传方式和费用确认后启用<br>- 选择本地视频文件（MP4/WebM/MOV），单文件 <= 200MB<br>- 上传到 Cloudflare Stream（通过 direct upload 或 TUS）<br>- 显示上传进度和编码状态<br>- 编码完成后自动关联 `stream_uid` 到 `media_assets`<br>- 标记 role 为 `preview` 或 `full` |
 | F3 | 作为管理员，我设置封面图 | - 从已上传的图片中选择作为封面<br>- 或单独上传封面图<br>- 更新 `galleries.cover_key`<br>- 编辑页顶部显示当前封面预览 |
-| F4 | 作为管理员，我管理已有媒体 | - 查看所有关联的图片和视频列表<br>- 拖拽排序（更新 `sort_order`）<br>- 删除单个媒体（同时清理 R2/Stream）<br>- 查看每张图片的上传状态和尺寸信息 |
-| F5 | 作为管理员，我为单张图片/视频设置 VIP 等级 | - 每张图片/视频旁边有等级下拉框（免费/VIP/SVIP）<br>- 修改即时保存（PATCH `/api/admin/media/:assetId`）<br>- 图库整体等级作为默认值，单张可覆盖为更高等级<br>- 前台展示时，低于等级要求的媒体显示模糊遮罩+锁定图标 |
+| F4 | 作为管理员，我管理已有媒体 | - 当前查看所有关联图片列表<br>- 拖拽排序（更新 `sort_order`）<br>- 删除单个图片媒体（同时清理 R2）<br>- 查看每张图片的上传状态和尺寸信息<br>- Stream 接入后扩展到视频列表和 Stream 对象清理 |
+| F5 | 作为管理员，我为单张媒体设置 VIP 等级 | - 每张图片旁边有等级下拉框（免费/VIP/SVIP）<br>- 修改即时保存（PATCH `/api/admin/media/:assetId`）<br>- 图库整体等级作为默认值，单张可覆盖为更高等级<br>- 前台展示时，低于等级要求的媒体显示模糊遮罩+锁定图标<br>- Stream 接入后同一规则适用于视频 |
 
 #### 媒体管理 UI 布局
 
@@ -127,7 +135,7 @@ API 返回: { body_md, required_level_rank, cover_key, ... }
 │   ├── 拖拽上传区
 │   ├── 图片网格（排序、VIP 等级下拉、删除按钮）
 │   └── 上传进度列表
-├── 视频管理区域
+├── 视频管理区域（Stream 接入前隐藏或显示未接入提示）
 │   ├── 上传视频按钮
 │   ├── 视频列表（预览/完整标记、VIP 等级、编码状态）
 │   └── 上传/编码进度
@@ -139,7 +147,7 @@ API 返回: { body_md, required_level_rank, cover_key, ... }
 | 接口 | 方法 | 说明 |
 |------|------|------|
 | `POST /api/admin/galleries/:id/media/upload` | POST | **新增** — 图片上传（multipart/form-data，支持批量） |
-| `POST /api/admin/galleries/:id/media/video` | POST | **新增** — 视频上传初始化（返回 Stream 直传 URL 或代理上传） |
+| `POST /api/admin/galleries/:id/media/video` | POST | **规划** — 视频上传初始化（返回 Stream 直传 URL） |
 | `GET /api/admin/galleries/:id/media` | GET | **新增** — 获取图库所有媒体资源列表（含状态） |
 | `PATCH /api/admin/media/:assetId` | PATCH | **新增** — 修改单个媒体属性（sort_order, required_rank, role） |
 | `DELETE /api/admin/media/:assetId` | DELETE | **新增** — 删除单个媒体（R2 + DB） |
@@ -160,7 +168,9 @@ API 返回: { body_md, required_level_rank, cover_key, ... }
   6. 返回 { assetId, r2Key, thumbnailUrl }
 ```
 
-#### 视频上传流程
+#### 视频上传流程（规划：Phase 2B）
+
+当前 Cloudflare Stream 未接入，本流程不作为当前上线验收项。启用前必须确认 Stream API token、费用、上传方式、回调或轮询策略。
 
 ```
 前端：选择视频文件 → 校验格式/大小 → POST /api/admin/galleries/:id/media/video
@@ -185,11 +195,11 @@ API 返回: { body_md, required_level_rank, cover_key, ... }
 
 ### 2.5 非目标（Not Goals）
 
-- 不实现 Image Resizing 集成（首期用原图作为缩略图降级，后续迭代）
+- 本 PRD 原始范围不覆盖 Cloudflare Images Transformations；当前缩略图方案已由 `docs/TECHNICAL_SPEC.md` 管理。
 - 不实现视频在线裁剪/编辑
 - 不实现图片批量水印
 - 不实现 CDN 缓存清除（Cloudflare 自动管理）
-- 不实现前台视频播放器（本 PRD 仅解决后台上传，前台播放器属于独立 PRD）
+- 不实现前台视频播放器；播放器、签名播放和会员校验需随 Stream 接入单独验收。
 - 不实现图片 AI 审核（超出范围）
 
 ---
@@ -291,7 +301,7 @@ Response 201:
 }
 ```
 
-#### 视频上传初始化接口
+#### 视频上传初始化接口（规划：Phase 2B）
 
 ```
 POST /api/admin/galleries/:galleryId/media/video
@@ -352,9 +362,9 @@ Response 200:
 
 - 所有 `/api/admin/` 接口要求已认证的 admin 或 owner 角色
 - 上传文件严格校验 MIME type（不信任前端 Content-Type）
-- 图片大小限制 10MB，视频 200MB
+- 图片大小限制 10MB；视频 200MB 为 Stream 接入后的规划限制
 - R2 key 不允许 `..` 路径遍历
-- 视频上传使用 Stream 直传 URL，不经过 API Worker；上线前按 Cloudflare Workers 当前限制确认请求体和内存边界。
+- 视频上传接入后必须使用 Stream 直传 URL，不经过 API Worker；上线前按 Cloudflare Workers 当前限制确认请求体和内存边界。
 - 所有媒体修改操作写审计日志
 
 ---
@@ -407,7 +417,7 @@ Response 200:
 | `packages/web/app/pages/admin/galleries/index.vue` | 1 | 修复 Set 响应性 |
 | `packages/web/app/pages/admin/galleries/[id].vue` | 1+2 | 修复字段映射 + 新增媒体管理 UI |
 | `packages/web/app/pages/admin/galleries/new.vue` | 1 | 修复 slug 自动覆盖 |
-| `packages/web/app/pages/index.vue` | 1 | 修复视频专区逻辑 |
+| `packages/web/app/pages/index.vue` | 1 | 修复视频专区逻辑：无可播放视频时隐藏 |
 
 ### 5.2 新增文件
 

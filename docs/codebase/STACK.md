@@ -32,8 +32,9 @@
 | Wrangler | Worker 构建、D1 migration、部署 | `packages/api/package.json`、`packages/web/package.json`、`scripts/deploy.sh` |
 | GitHub Actions | PR/dev 验证，不部署生产 | `.github/workflows/ci.yml` |
 | Nuxt CLI | Web build、dev、typecheck | `packages/web/package.json` |
+| ESLint | packages 源码 lint 零 warning 基线 | `package.json`、`eslint.config.mjs`、`.github/workflows/ci.yml` |
 
-未发现仓库根目录 ESLint、Prettier 或 Histoire 配置；当前组件预览和统一 lint 仍为 `[TODO]`。
+未发现仓库根目录 Prettier 或 Histoire 配置；当前组件预览仍为 `[TODO]`。
 
 ## 4. 关键命令
 

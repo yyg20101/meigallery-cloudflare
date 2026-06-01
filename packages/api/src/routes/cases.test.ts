@@ -123,7 +123,7 @@ describe('公开真实案例 API', () => {
     const app = createApp()
     const env = {
       DB: createDb({
-        first: () => ({ r2_key: 'cases/tc_1/tci_1.jpg', mime_type: 'image/jpeg' }),
+        first: () => ({ case_id: 'tc_1', r2_key: 'cases/tc_1/tci_1.jpg', mime_type: 'image/jpeg' }),
       }),
       R2: {
         async get(key: string) {
@@ -138,5 +138,25 @@ describe('公开真实案例 API', () => {
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toContain('image/jpeg')
     expect(await res.text()).toBe('image-bytes')
+  })
+
+  it('图片代理拒绝与当前案例或图片不匹配的 R2 key', async () => {
+    const app = createApp()
+    const env = {
+      DB: createDb({
+        first: () => ({ case_id: 'tc_1', r2_key: 'cases/tc_2/tci_1.jpg', mime_type: 'image/jpeg' }),
+      }),
+      R2: {
+        async get() {
+          throw new Error('不应读取不匹配的 R2 key')
+        },
+      },
+    } as unknown as Bindings
+
+    const res = await app.request('/api/cases/images/tci_1', {}, env)
+    const body = await res.json()
+
+    expect(res.status).toBe(404)
+    expect(body.message).toBe('图片配置异常')
   })
 })

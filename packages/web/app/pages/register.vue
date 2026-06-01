@@ -5,6 +5,7 @@ const { register, sendCode, checkUsername, isLoggedIn } = useAuth()
 const { api } = useApi()
 const router = useRouter()
 const { trackCompleteRegistration } = useFacebookPixel()
+const { siteName } = useSiteSettings()
 
 // 表单数据
 const username = ref('')
@@ -258,7 +259,7 @@ function backToStep1() {
   void mountTurnstile()
 }
 
-useSeoMeta({ title: '注册 - MeiGallery', robots: 'noindex' })
+useSeoMeta({ title: () => `注册 - ${siteName.value}`, robots: 'noindex' })
 
 definePageMeta({ layout: 'default' })
 </script>
@@ -267,7 +268,7 @@ definePageMeta({ layout: 'default' })
   <div class="mx-auto flex min-h-[calc(100vh-8rem)] max-w-md items-center px-4 py-10">
     <div class="w-full overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 p-6 shadow-2xl shadow-orange-950/8 ring-1 ring-[#f8e7dc]/70">
       <!-- Logo & Slogan -->
-      <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#bfa46a]">MeiGallery</p>
+      <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#bfa46a]">{{ siteName }}</p>
       <h1 class="mt-3 text-2xl font-semibold tracking-tight text-gray-950">注册账号</h1>
       <p class="mb-8 mt-2 text-sm text-gray-500">创建账号后可查看免费内容和会员状态。</p>
 

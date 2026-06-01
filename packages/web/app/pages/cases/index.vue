@@ -1,5 +1,6 @@
 <script setup lang="ts">
 const { api } = useApi()
+const { siteName } = useSiteSettings()
 
 interface CaseSummary {
   id: string
@@ -18,7 +19,7 @@ const { data } = await useAsyncData('cases-list', () =>
 const cases = computed(() => data.value?.data ?? [])
 
 useSeoMeta({
-  title: '真实案例 - MeiGallery',
+  title: () => `真实案例 - ${siteName.value}`,
   description: '查看已授权、已脱敏的用户反馈和真实案例。',
 })
 </script>

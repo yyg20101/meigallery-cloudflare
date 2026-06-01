@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { secureHeaders } from 'hono/secure-headers'
-import type { CloudflareEnv } from '@meigallery/shared'
+import { RATE_LIMITS } from '@meigallery/shared/constants'
 import { authRoutes } from './routes/auth'
 import { galleryRoutes } from './routes/galleries'
 import { tagRoutes } from './routes/tags'
@@ -13,13 +13,18 @@ import { contactMethodRoutes } from './routes/contact-methods'
 import { caseRoutes } from './routes/cases'
 import { importRoutes } from './routes/imports'
 import { PUBLIC_SETTING_KEYS } from './utils/site-settings'
+import { sanitizePublicSiteSetting } from './utils/public-site-settings'
 import { adminRoutes } from './routes/admin'
 import { healthRoutes } from './routes/health'
 import { authMiddleware } from './middleware/auth'
 import { rateLimiter } from './middleware/rate-limit'
+import { errorJson } from './utils/api-error'
+import { parseStoredSettingValue } from './utils/stored-setting-value'
 
 /** Hono 应用绑定类型 */
-export type Bindings = CloudflareEnv & {
+export type Bindings = {
+  DB: D1Database
+  R2: R2Bucket
   APP_ENV: string
   SESSION_SECRET: string
   TURNSTILE_SECRET_KEY: string
@@ -67,13 +72,68 @@ app.use('*', async (c, next) => {
     c.header('X-Robots-Tag', 'noindex, nofollow')
   }
 })
-// 登录/注册接口速率限制：每 IP 每分钟 10 次
-app.use('/api/auth/*', rateLimiter({ limit: 10, windowMs: 60_000 }))
-// 图库互动接口速率限制：每 IP 每分钟 60 次
-app.use('/api/galleries/*/like', rateLimiter({ limit: 60, windowMs: 60_000 }))
-// 外部导入接口速率限制：每 IP 每分钟 120 次
-app.use('/api/imports/*', rateLimiter({ limit: 120, windowMs: 60_000 }))
+const rateLimitWindowMs = (seconds: number) => seconds * 1000
+
+const authRateLimit = RATE_LIMITS.AUTH
+const publicApiRateLimit = RATE_LIMITS.PUBLIC_API
+const adminApiRateLimit = RATE_LIMITS.ADMIN_API
+const mediaAccessRateLimit = RATE_LIMITS.MEDIA_ACCESS
+const externalImportRateLimit = RATE_LIMITS.EXTERNAL_IMPORT
+
+// 登录/注册接口速率限制兜底：每 IP 每分钟 5 次
+app.use('/api/auth/*', rateLimiter({
+  name: 'auth',
+  keyBy: 'ip',
+  limit: authRateLimit.requests,
+  windowMs: rateLimitWindowMs(authRateLimit.window),
+}))
+
+// 公开 API 速率限制兜底：每 IP 每分钟 60 次
+for (const path of [
+  '/api/galleries',
+  '/api/galleries/*',
+  '/api/tags',
+  '/api/tags/*',
+  '/api/search',
+  '/api/search/*',
+  '/api/cases',
+  '/api/cases/*',
+  '/api/contact-methods',
+  '/api/contact-methods/*',
+  '/api/settings/public',
+]) {
+  app.use(path, rateLimiter({
+    name: 'public-api',
+    keyBy: 'ip',
+    limit: publicApiRateLimit.requests,
+    windowMs: rateLimitWindowMs(publicApiRateLimit.window),
+  }))
+}
+
+// 外部导入接口速率限制兜底：每 IP 每分钟 120 次
+app.use('/api/imports/*', rateLimiter({
+  name: 'external-import',
+  keyBy: 'ip',
+  limit: externalImportRateLimit.requests,
+  windowMs: rateLimitWindowMs(externalImportRateLimit.window),
+}))
 app.use('*', authMiddleware)
+
+// 管理员 API 速率限制兜底：每 session 每分钟 120 次
+app.use('/api/admin/*', rateLimiter({
+  name: 'admin-api',
+  keyBy: 'session',
+  limit: adminApiRateLimit.requests,
+  windowMs: rateLimitWindowMs(adminApiRateLimit.window),
+}))
+
+// 受保护媒体访问接口兜底：每 user 每分钟 30 次
+app.use('/api/media/*/access', rateLimiter({
+  name: 'media-access',
+  keyBy: 'user',
+  limit: mediaAccessRateLimit.requests,
+  windowMs: rateLimitWindowMs(mediaAccessRateLimit.window),
+}))
 
 // 路由挂载
 app.route('/api/health', healthRoutes)
@@ -96,10 +156,11 @@ app.get('/api/settings/public', async (c) => {
     .bind(...keys)
     .all<{ key: string; value: string }>()
 
-  const settings: Record<string, string> = {}
+  const settings: Record<string, unknown> = {}
   for (const row of result.results) {
-    settings[row.key] = JSON.parse(row.value)
+    settings[row.key] = sanitizePublicSiteSetting(row.key, parseStoredSettingValue(row.value))
   }
+  c.header('Cache-Control', 'no-store')
   return c.json(settings)
 })
 
@@ -107,16 +168,13 @@ app.route('/api/admin', adminRoutes)
 
 // 404 fallback
 app.notFound((c) => {
-  return c.json({ statusCode: 404, message: '接口不存在' }, 404)
+  return errorJson(c, 404, '接口不存在', { code: 'NOT_FOUND' })
 })
 
 // 全局错误处理
 app.onError((err, c) => {
   console.error('未处理异常:', err)
-  return c.json(
-    { statusCode: 500, message: '服务器内部错误' },
-    500,
-  )
+  return errorJson(c, 500, '服务器内部错误', { code: 'INTERNAL_ERROR' })
 })
 
 // ============================================================

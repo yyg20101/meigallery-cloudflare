@@ -12,6 +12,9 @@ describe('外部 URL 安全校验', () => {
 
   it('拒绝 localhost 和私网 IP', () => {
     expect(() => assertSafeExternalUrl('https://localhost/wp-json')).toThrow('不允许访问本机或内部域名')
+    expect(() => assertSafeExternalUrl('https://localhost./wp-json')).toThrow('不允许访问本机或内部域名')
+    expect(() => assertSafeExternalUrl('https://localhost%2e/wp-json')).toThrow('不允许访问本机或内部域名')
+    expect(() => assertSafeExternalUrl('https://preview.local./wp-json')).toThrow('不允许访问本机或内部域名')
     expect(() => assertSafeExternalUrl('https://127.0.0.1/wp-json')).toThrow('不允许访问本机或私网 IP')
     expect(() => assertSafeExternalUrl('https://10.0.0.1/image.jpg')).toThrow('不允许访问本机或私网 IP')
     expect(() => assertSafeExternalUrl('https://192.168.1.10/image.jpg')).toThrow('不允许访问本机或私网 IP')
