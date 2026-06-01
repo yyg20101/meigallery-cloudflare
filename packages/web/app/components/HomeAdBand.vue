@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed, useId } from 'vue'
 import { normalizeHomeAdUrl, safeHomeAdText } from '~/utils/siteSettingsSecurity'
 
 const props = defineProps<{
@@ -10,6 +11,8 @@ const props = defineProps<{
   url?: string
   sponsor?: string
 }>()
+
+const externalNoteId = `${useId()}-home-ad-external-note`
 
 function normalizeAdUrl(url?: string) {
   return normalizeHomeAdUrl(url) || '/discover?sort=hot'
@@ -35,6 +38,9 @@ const safeSponsor = computed(() => safeHomeAdText('home_ad_sponsor', props.spons
     <div class="relative grid gap-5 px-5 py-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center lg:px-7">
       <div class="min-w-0">
         <div class="flex flex-wrap items-center gap-2">
+          <span class="rounded-full border border-stone-900 bg-stone-950 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-white">
+            推广
+          </span>
           <span class="rounded-full border border-[#d6c39a]/70 bg-white/75 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#81662c]">
             {{ safeEyebrow }}
           </span>
@@ -50,6 +56,7 @@ const safeSponsor = computed(() => safeHomeAdText('home_ad_sponsor', props.spons
         target="_blank"
         rel="noopener noreferrer nofollow sponsored"
         referrerpolicy="no-referrer"
+        :aria-describedby="externalNoteId"
         :aria-label="`${safeCtaLabel}，外部链接`"
         class="group/cta inline-flex min-h-11 max-w-full shrink-0 items-center justify-center gap-2 rounded-full bg-stone-950 px-5 py-2.5 text-center text-sm font-medium leading-tight whitespace-normal break-words text-white shadow-sm shadow-stone-900/15 transition-all hover:-translate-y-0.5 hover:bg-stone-800"
       >
@@ -68,7 +75,7 @@ const safeSponsor = computed(() => safeHomeAdText('home_ad_sponsor', props.spons
       </NuxtLink>
     </div>
 
-    <p class="relative border-t border-[#e5d5c4]/70 bg-white/45 px-5 py-2 text-[11px] font-medium text-stone-500 lg:px-7">
+    <p :id="isExternalUrl ? externalNoteId : undefined" class="relative border-t border-[#e5d5c4]/70 bg-white/45 px-5 py-2 text-[11px] font-medium text-stone-500 lg:px-7">
       {{ ctaSecurityLabel }}
       <span v-if="isExternalUrl" class="mx-1 text-stone-300">/</span>
       <span v-if="isExternalUrl">不发送来源页信息</span>

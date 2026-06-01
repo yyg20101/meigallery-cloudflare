@@ -45,16 +45,18 @@ describe('HomeAdBand', () => {
     })
 
     const link = wrapper.find('a')
+    const note = wrapper.find('[id$="-home-ad-external-note"]')
     expect(link.attributes('href')).toBe('https://example.com/campaign?next=%22x%22')
     expect(link.attributes('target')).toBe('_blank')
     expect(link.attributes('rel')).toBe('noopener noreferrer nofollow sponsored')
     expect(link.attributes('referrerpolicy')).toBe('no-referrer')
     expect(link.attributes('aria-label')).toBe('查看推荐，外部链接')
+    expect(link.attributes('aria-describedby')).toBe(note.attributes('id'))
     expect(wrapper.text()).toContain('外部链接')
     expect(wrapper.text()).toContain('不发送来源页信息')
   })
 
-  it('展示默认文案和赞助来源说明', () => {
+  it('展示默认文案、推广标识和赞助来源说明', () => {
     const wrapper = mount(HomeAdBand, {
       props: {
         enabled: true,
@@ -64,10 +66,13 @@ describe('HomeAdBand', () => {
     })
 
     expect(wrapper.text()).toContain('本周推荐')
+    expect(wrapper.text()).toContain('推广')
     expect(wrapper.text()).toContain('会员季精选内容')
     expect(wrapper.text()).toContain('运营精选')
     expect(wrapper.text()).toContain('站内推荐')
     expect(wrapper.find('a').text()).toBe('查看推荐')
+    expect(wrapper.find('a').attributes('aria-describedby')).toBeUndefined()
+    expect(wrapper.find('[id$="-home-ad-external-note"]').exists()).toBe(false)
   })
 
   it('组件边界会清洗异常广告文案并回退默认值', () => {

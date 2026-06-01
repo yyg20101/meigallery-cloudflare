@@ -49,8 +49,10 @@ test.describe('核心页面 smoke', () => {
         await expect(page.locator('meta[property="og:title"]')).toHaveAttribute('content', '测试站点 OG 标题')
         await expect(page.locator('meta[property="og:description"]')).toHaveAttribute('content', '测试站点 OG 描述')
         const homeAd = page.getByRole('region', { name: '首页广告推荐' })
+        await expect(homeAd.getByText('推广')).toBeVisible()
         await expect(homeAd.getByText('会员季精选内容精选内容精选内容')).toBeVisible()
         await expect(homeAd.getByRole('link', { name: '查看推荐' })).toHaveAttribute('href', '/discover?sort=hot')
+        await expect(homeAd.getByRole('link', { name: '查看推荐' })).not.toHaveAttribute('aria-describedby', /home-ad-external-note$/)
         await expect(homeAd.locator('h2')).toBeVisible()
         await expect(homeAd.locator('h2')).toHaveCSS('overflow-wrap', 'break-word')
         await expect(homeAd.locator('p').first()).toHaveCSS('overflow-wrap', 'break-word')
@@ -104,8 +106,12 @@ test.describe('核心页面 smoke', () => {
     await expect(externalCta).toHaveAttribute('rel', /(^| )nofollow( |$)/)
     await expect(externalCta).toHaveAttribute('rel', /(^| )sponsored( |$)/)
     await expect(externalCta).toHaveAttribute('referrerpolicy', 'no-referrer')
+    await expect(externalCta).toHaveAttribute('aria-describedby', /home-ad-external-note$/)
     await expect(homeAd.getByText('外部链接')).toBeVisible()
     await expect(homeAd.getByText('不发送来源页信息')).toBeVisible()
+    const describedBy = await externalCta.getAttribute('aria-describedby')
+    expect(describedBy).toBeTruthy()
+    await expect(homeAd.locator(`[id="${describedBy}"]`)).toContainText('不发送来源页信息')
   })
 
   test('后台更新站点 SEO 后首页立即读取新标题', async ({ page }) => {
