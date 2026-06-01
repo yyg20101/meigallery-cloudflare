@@ -50,9 +50,10 @@ describe('HomeAdBand', () => {
     expect(link.attributes('target')).toBe('_blank')
     expect(link.attributes('rel')).toBe('noopener noreferrer nofollow sponsored')
     expect(link.attributes('referrerpolicy')).toBe('no-referrer')
-    expect(link.attributes('aria-label')).toBe('查看推荐，外部链接')
+    expect(link.attributes('aria-label')).toBe('查看推荐，外部链接，目标域名 example.com')
     expect(link.attributes('aria-describedby')).toBe(note.attributes('id'))
     expect(wrapper.text()).toContain('外部链接')
+    expect(wrapper.text()).toContain('目标域名 example.com')
     expect(wrapper.text()).toContain('不发送来源页信息')
   })
 
@@ -75,6 +76,7 @@ describe('HomeAdBand', () => {
     expect(cta.attributes('href')).toBeUndefined()
     expect(cta.attributes('aria-describedby')).toBe(note.attributes('id'))
     expect(wrapper.text()).toContain('外部链接')
+    expect(wrapper.text()).toContain('目标域名 example.com')
     expect(wrapper.text()).toContain('不发送来源页信息')
   })
 

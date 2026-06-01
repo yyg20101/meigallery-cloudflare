@@ -21,6 +21,15 @@ function normalizeAdUrl(url?: string) {
 
 const safeUrl = computed(() => normalizeAdUrl(props.url))
 const isExternalUrl = computed(() => safeUrl.value.startsWith('https://'))
+const externalHostname = computed(() => {
+  if (!isExternalUrl.value) return ''
+
+  try {
+    return new URL(safeUrl.value).hostname.toLowerCase().replace(/\.+$/, '')
+  } catch {
+    return ''
+  }
+})
 const ctaSecurityLabel = computed(() => isExternalUrl.value ? '外部链接' : '站内推荐')
 const safeEyebrow = computed(() => safeHomeAdText('home_ad_eyebrow', props.eyebrow) || '本周推荐')
 const safeTitle = computed(() => safeHomeAdText('home_ad_title', props.title) || '会员季精选内容')
@@ -70,7 +79,7 @@ const safeSponsor = computed(() => safeHomeAdText('home_ad_sponsor', props.spons
         rel="noopener noreferrer nofollow sponsored"
         referrerpolicy="no-referrer"
         :aria-describedby="externalNoteId"
-        :aria-label="`${safeCtaLabel}，外部链接`"
+        :aria-label="`${safeCtaLabel}，外部链接${externalHostname ? `，目标域名 ${externalHostname}` : ''}`"
         class="group/cta inline-flex min-h-11 max-w-full shrink-0 items-center justify-center gap-2 rounded-full bg-stone-950 px-5 py-2.5 text-center text-sm font-medium leading-tight whitespace-normal break-words text-white shadow-sm shadow-stone-900/15 transition-all hover:-translate-y-0.5 hover:bg-stone-800"
       >
         <span>{{ safeCtaLabel }}</span>
@@ -91,6 +100,8 @@ const safeSponsor = computed(() => safeHomeAdText('home_ad_sponsor', props.spons
     <p :id="isExternalUrl ? externalNoteId : undefined" class="relative border-t border-[#e5d5c4]/70 bg-white/45 px-5 py-2 text-[11px] font-medium text-stone-500 lg:px-7">
       {{ ctaSecurityLabel }}
       <span v-if="isExternalUrl" class="mx-1 text-stone-300">/</span>
+      <span v-if="isExternalUrl && externalHostname">目标域名 {{ externalHostname }}</span>
+      <span v-if="isExternalUrl && externalHostname" class="mx-1 text-stone-300">/</span>
       <span v-if="isExternalUrl">不发送来源页信息</span>
     </p>
   </section>

@@ -95,7 +95,7 @@ test.describe('核心页面 smoke', () => {
     await page.goto('/')
 
     const homeAd = page.getByRole('region', { name: '首页广告推荐' })
-    const externalCta = homeAd.getByRole('link', { name: '查看赞助，外部链接' })
+    const externalCta = homeAd.getByRole('link', { name: '查看赞助，外部链接，目标域名 example.com' })
 
     await expect(homeAd).toBeVisible()
     await expect(externalCta).toBeVisible()
@@ -108,9 +108,11 @@ test.describe('核心页面 smoke', () => {
     await expect(externalCta).toHaveAttribute('referrerpolicy', 'no-referrer')
     await expect(externalCta).toHaveAttribute('aria-describedby', /home-ad-external-note$/)
     await expect(homeAd.getByText('外部链接')).toBeVisible()
+    await expect(homeAd.getByText('目标域名 example.com')).toBeVisible()
     await expect(homeAd.getByText('不发送来源页信息')).toBeVisible()
     const describedBy = await externalCta.getAttribute('aria-describedby')
     expect(describedBy).toBeTruthy()
+    await expect(homeAd.locator(`[id="${describedBy}"]`)).toContainText('目标域名 example.com')
     await expect(homeAd.locator(`[id="${describedBy}"]`)).toContainText('不发送来源页信息')
   })
 
@@ -127,6 +129,7 @@ test.describe('核心页面 smoke', () => {
     await expect(previewCta).toContainText('查看赞助')
     await expect(previewCta).toHaveAttribute('aria-describedby', /home-ad-external-note$/)
     await expect(preview.getByText('外部链接')).toBeVisible()
+    await expect(preview.getByText('目标域名 example.com')).toBeVisible()
     await expect(preview.getByText('不发送来源页信息')).toBeVisible()
     await expect(preview.locator('a[href="https://example.com/sponsor-campaign"]')).toHaveCount(0)
   })
