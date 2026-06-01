@@ -32,6 +32,9 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: 脚本测试
+        run: pnpm test:scripts
+
       - name: API 类型检查
         run: pnpm --filter @meigallery/api exec tsc --noEmit
 

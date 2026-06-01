@@ -69,6 +69,8 @@ corepack pnpm verify:seo:production
 corepack pnpm --filter @meigallery/api exec wrangler deploy --env=""
 corepack pnpm --filter @meigallery/web exec wrangler deploy --env=""
 corepack pnpm verify:seo:production
+# 已知生产站点名称和 SEO 标题时，建议显式写入期望值，避免 API 与 Web 同时回退默认标题仍误判通过。
+corepack pnpm verify:seo:production -- --expect-site-name 星耀传媒 --expect-title 星耀传媒 --expect-description "用专业服务点亮每一次相遇."
 ```
 
 部署后 SEO 校验会读取 `/api/settings/public`，并检查 `616618.xyz` 与 `www.616618.xyz` 首页 SSR 原始 HTML 的 `<title>`、description 和 OG 信息是否与后台站点设置一致。若 API 已返回新设置但首页 `<head>` 仍显示旧默认值，说明 Web Worker 未部署到最新版本或边缘仍在返回旧 HTML，必须在上线验收中阻断。若 `/api/settings/public` 本身未返回后台保存的新值，优先确认 API Worker 已部署包含站点设置 upsert 的版本，并检查 `site_settings` 缺失行是否已由后台保存动作补齐。

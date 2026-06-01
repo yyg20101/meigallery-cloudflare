@@ -1,45 +1,67 @@
 #!/usr/bin/env node
 
+import { pathToFileURL } from 'node:url'
+
 const DEFAULT_API_URL = 'https://api.616618.xyz'
 const DEFAULT_WEB_URLS = ['https://616618.xyz', 'https://www.616618.xyz']
+const OLD_DEFAULT_SITE_NAME = 'MeiGallery'
 const OLD_DEFAULT_TITLE = 'MeiGallery - 精选写真图库'
 
-try {
-  const args = parseArgs(process.argv.slice(2))
+if (isCliEntry()) {
+  try {
+    await main()
+  } catch (error) {
+    console.error(`生产首页 SEO 校验异常：${error instanceof Error ? error.message : String(error)}`)
+    process.exit(1)
+  }
+}
+
+export async function main(argv = process.argv.slice(2), env = process.env) {
+  const args = parseArgs(argv)
 
   if (args.help) {
     printHelp()
-    process.exit(0)
+    return
   }
 
-  const apiUrl = normalizeBaseUrl(args.api || process.env.SEO_VERIFY_API_URL || DEFAULT_API_URL)
-  const retries = numberOption(args.retries || process.env.SEO_VERIFY_RETRIES, 3, '重试次数')
-  const retryDelayMs = numberOption(args.retryDelayMs || process.env.SEO_VERIFY_RETRY_DELAY_MS, 5000, '重试间隔')
-  const webUrls = resolveWebUrls(args.web)
+  const apiUrl = normalizeBaseUrl(args.api || env.SEO_VERIFY_API_URL || DEFAULT_API_URL)
+  const retries = numberOption(args.retries || env.SEO_VERIFY_RETRIES, 3, '重试次数')
+  const retryDelayMs = numberOption(args.retryDelayMs || env.SEO_VERIFY_RETRY_DELAY_MS, 5000, '重试间隔')
+  const allowDefaultSeo = args.allowDefaultSeo || booleanOption(env.SEO_VERIFY_ALLOW_DEFAULT_SEO)
+  const expectations = {
+    title: args.expectTitle || env.SEO_VERIFY_EXPECT_TITLE || '',
+    siteName: args.expectSiteName || env.SEO_VERIFY_EXPECT_SITE_NAME || '',
+    description: args.expectDescription || env.SEO_VERIFY_EXPECT_DESCRIPTION || '',
+  }
+  const webUrls = resolveWebUrls(args.web, env)
   const settings = await fetchJson(`${apiUrl}/api/settings/public`)
   const expected = expectedSeo(settings)
-  const failures = await verifyWithRetry(webUrls, expected, retries, retryDelayMs)
+  const failures = [
+    ...validateExpectedSeo(settings, expected, expectations, { allowDefaultSeo }),
+    ...await verifyWithRetry(webUrls, expected, retries, retryDelayMs),
+  ]
 
   if (failures.length > 0) {
     console.error('生产首页 SEO 校验失败：')
     for (const failure of failures) console.error(`- ${failure}`)
     console.error('')
-    console.error('提示：若 /api/settings/public 已是新值但首页 <head> 仍为旧值，请确认 Web Worker 已部署到最新版本。')
+    console.error('提示：若 /api/settings/public 未返回后台新值，请确认 API Worker 已部署包含站点设置 upsert 的版本，并在后台重新保存站点设置；若 API 已是新值但首页 <head> 仍为旧值，请确认 Web Worker 已部署到最新版本。')
     process.exit(1)
   }
 
   console.log('生产首页 SEO 校验通过：')
   console.log(`- API: ${apiUrl}/api/settings/public`)
   for (const webUrl of webUrls) console.log(`- Web: ${webUrl}/`)
-} catch (error) {
-  console.error(`生产首页 SEO 校验异常：${error instanceof Error ? error.message : String(error)}`)
-  process.exit(1)
 }
 
-function resolveWebUrls(argWebUrls) {
+function isCliEntry() {
+  return process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
+}
+
+function resolveWebUrls(argWebUrls, env = process.env) {
   const webUrls = (argWebUrls.length > 0
     ? argWebUrls
-    : String(process.env.SEO_VERIFY_WEB_URLS || '')
+    : String(env.SEO_VERIFY_WEB_URLS || '')
         .split(',')
         .map(url => url.trim())
         .filter(Boolean)
@@ -50,11 +72,23 @@ function resolveWebUrls(argWebUrls) {
 }
 
 function parseArgs(argv) {
-  const parsed = { api: '', web: [], retries: '', retryDelayMs: '', help: false }
+  const parsed = {
+    api: '',
+    web: [],
+    retries: '',
+    retryDelayMs: '',
+    expectTitle: '',
+    expectSiteName: '',
+    expectDescription: '',
+    allowDefaultSeo: false,
+    help: false,
+  }
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]
-    if (arg === '--help' || arg === '-h') {
+    if (arg === '--') {
+      continue
+    } else if (arg === '--help' || arg === '-h') {
       parsed.help = true
     } else if (arg === '--api') {
       parsed.api = requiredValue(argv, index, '--api')
@@ -68,6 +102,17 @@ function parseArgs(argv) {
     } else if (arg === '--retry-delay-ms') {
       parsed.retryDelayMs = requiredValue(argv, index, '--retry-delay-ms')
       index += 1
+    } else if (arg === '--expect-title') {
+      parsed.expectTitle = requiredValue(argv, index, '--expect-title')
+      index += 1
+    } else if (arg === '--expect-site-name') {
+      parsed.expectSiteName = requiredValue(argv, index, '--expect-site-name')
+      index += 1
+    } else if (arg === '--expect-description') {
+      parsed.expectDescription = requiredValue(argv, index, '--expect-description')
+      index += 1
+    } else if (arg === '--allow-default-seo') {
+      parsed.allowDefaultSeo = true
     } else {
       throw new Error(`未知参数：${arg}`)
     }
@@ -88,12 +133,17 @@ function printHelp() {
   node scripts/verify-production-seo.mjs
   node scripts/verify-production-seo.mjs --api https://api.example.com --web https://example.com --web https://www.example.com
   node scripts/verify-production-seo.mjs --retries 6 --retry-delay-ms 10000
+  node scripts/verify-production-seo.mjs --expect-site-name 星耀传媒 --expect-title 星耀传媒
 
 环境变量：
   SEO_VERIFY_API_URL   API Worker 地址，默认 ${DEFAULT_API_URL}
   SEO_VERIFY_WEB_URLS  逗号分隔的 Web 地址，默认 ${DEFAULT_WEB_URLS.join(',')}
   SEO_VERIFY_RETRIES   失败后重试次数，默认 3
   SEO_VERIFY_RETRY_DELAY_MS  重试间隔毫秒，默认 5000
+  SEO_VERIFY_EXPECT_SITE_NAME  期望公开设置中的站点名称
+  SEO_VERIFY_EXPECT_TITLE      期望首页 SEO 标题
+  SEO_VERIFY_EXPECT_DESCRIPTION  期望首页 description
+  SEO_VERIFY_ALLOW_DEFAULT_SEO   允许生产仍使用脚手架默认 SEO，默认不允许
 `.trim())
 }
 
@@ -102,6 +152,10 @@ function numberOption(value, fallback, label) {
   const number = Number(value)
   if (!Number.isInteger(number) || number < 0) throw new Error(`${label}必须是非负整数`)
   return number
+}
+
+function booleanOption(value) {
+  return value === '1' || value === 'true' || value === 'yes'
 }
 
 function normalizeBaseUrl(url) {
@@ -203,6 +257,37 @@ function compareSeo(webUrl, expected, actual) {
   return failures
 }
 
+function validateExpectedSeo(settings, expected, expectations, options) {
+  const failures = []
+  const siteName = text(settings.site_name)
+  const seoTitle = text(settings.seo_title)
+  const siteDescription = text(settings.site_description)
+
+  if (!options.allowDefaultSeo) {
+    if (siteName === OLD_DEFAULT_SITE_NAME) {
+      failures.push(`API /api/settings/public 的 site_name 仍为脚手架默认值 "${OLD_DEFAULT_SITE_NAME}"`)
+    }
+    if (seoTitle === OLD_DEFAULT_TITLE || expected.title === OLD_DEFAULT_TITLE) {
+      failures.push(`API /api/settings/public 的 SEO 标题仍为脚手架默认值 "${OLD_DEFAULT_TITLE}"`)
+    }
+  }
+
+  compareExpectedSetting(failures, 'API /api/settings/public 的 site_name', expectations.siteName, siteName)
+  compareExpectedSetting(failures, 'API /api/settings/public 解析后的首页 title', expectations.title, expected.title)
+  compareExpectedSetting(failures, 'API /api/settings/public 解析后的首页 description', expectations.description, expected.description)
+
+  if (expectations.description && siteDescription !== expectations.description) {
+    failures.push(`API /api/settings/public 的 site_description 不一致，期望 "${expectations.description}"，实际 "${siteDescription}"`)
+  }
+
+  return failures
+}
+
+function compareExpectedSetting(failures, label, expected, actual) {
+  if (!expected || expected === actual) return
+  failures.push(`${label} 不一致，期望 "${expected}"，实际 "${actual}"`)
+}
+
 function compareField(failures, webUrl, field, expected, actual) {
   if (expected === actual) return
   failures.push(`${webUrl}/ ${field} 不一致，期望 "${expected}"，实际 "${actual}"`)
@@ -244,4 +329,13 @@ function decodeHtml(value) {
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
+}
+
+export {
+  compareSeo,
+  expectedSeo,
+  extractSeo,
+  parseArgs,
+  resolveWebUrls,
+  validateExpectedSeo,
 }

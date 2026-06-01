@@ -76,6 +76,7 @@
 - 图片类站点设置持续增强：`site_icon` 和 `og_image` 已从普通公开 URL 中拆分为图片类公开设置 URL，仅允许安全 HTTPS 图片地址或 `/api/media/public/site/` 站点公开媒体路径，避免 favicon/OG 图加载普通页面或非站点公开媒体路径。
 - 非公网 IPv4 外链持续增强：旧站导入下载、公开站点设置、联系方式链接、前端媒体预览和规则 Markdown 外链已从传统 localhost/私网拦截扩展到运营商共享地址、文档/测试地址、链路本地、组播和保留 IPv4 段，避免外链配置指向非普通公网目标。
 - 站点 SEO 保存持续增强：后台站点设置写入已改为 upsert，缺失 `site_settings` 行时也会自动补齐，避免后台显示保存成功但公开 SEO 仍回退默认标题。
+- 生产 SEO 校验持续增强：`verify:seo:production` 已新增 API 侧默认 SEO 防回归和显式期望值校验，CI 已接入脚本测试，避免公开设置与首页同时回退到 `MeiGallery - 精选写真图库` 时误判通过。
 
 ## Git 状态
 
