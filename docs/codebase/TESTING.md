@@ -30,10 +30,10 @@ API coverage 当前使用 Vitest v8 provider，报告目录为 `packages/api/cov
 
 | 范围 | 是否覆盖 | 典型目标 | 备注 |
 |------|----------|----------|------|
-| 单元测试 | 是 | 密码、session、权限、会员、导入校验、URL 安全、邮件模板、Pixel 设置、WordPress 解析 | `packages/api/src/utils/*.test.ts`、`packages/api/src/services/*.test.ts`；公开设置、首页广告、公开封面、后台媒体 URL 和邮件模板覆盖显式解析、危险协议、HTML 转义、空白、编码控制字符、本机/私网地址和历史脏数据读取边界 |
+| 单元测试 | 是 | 密码、session、权限、会员、导入校验、URL 安全、邮件模板、Pixel 设置、WordPress 解析 | `packages/api/src/utils/*.test.ts`、`packages/api/src/services/*.test.ts`；公开设置、首页广告、公开封面、后台媒体 URL 和邮件模板覆盖显式解析、危险协议、HTML 转义、空白、编码控制字符、本机/非公网地址和历史脏数据读取边界 |
 | 路由级测试 | 是 | 公开图库/搜索/媒体/案例/站点设置、后台设置/媒体/案例/联系方式/Import Token/外部导入 | `packages/api/src/routes/**/*.test.ts`；媒体、图库、搜索和后台媒体测试覆盖封面/缩略图外链重定向或下发时的 HTTPS 归一化与内部地址拦截；图库媒体、真实案例图片和导入错误报告代理/下载覆盖 R2 key 所属关系校验；Import Token 测试覆盖权限、过期时间、审计脱敏和禁用不存在 token 不写审计；联系方式公开读取、后台写入和二维码代理覆盖危险链接、内部地址和二维码 key 所属关系 |
 | 集成测试 | 部分 | 使用 mock D1/R2/env 验证路由和服务流程 | 没有真实 Cloudflare 远程集成测试 |
-| 前端组件测试 | 是 | `corepack pnpm --filter @meigallery/web test:unit` | 当前覆盖 `MembershipBadge`、`MediaLock`、`SearchInput`、`TagChip`、`HomeAdBand`、`ContactMethodItem`、`AdminContactQrCodeCell`、`AdminSafeExternalLink`、`safeMarkdown`、`siteSettingsSecurity`、`mediaUrlSecurity`、`contactUrlSecurity`，其中 `HomeAdBand`、`ContactMethodItem`、`AdminContactQrCodeCell`、`AdminSafeExternalLink`、`safeMarkdown`、`siteSettingsSecurity`、`mediaUrlSecurity` 和 `contactUrlSecurity` 覆盖链接文案转义、危险协议、本机/内部地址和编码控制字符边界；后续扩展复杂组件状态 |
+| 前端组件测试 | 是 | `corepack pnpm --filter @meigallery/web test:unit` | 当前覆盖 `MembershipBadge`、`MediaLock`、`SearchInput`、`TagChip`、`HomeAdBand`、`ContactMethodItem`、`AdminContactQrCodeCell`、`AdminSafeExternalLink`、`safeMarkdown`、`siteSettingsSecurity`、`mediaUrlSecurity`、`contactUrlSecurity`，其中 `HomeAdBand`、`ContactMethodItem`、`AdminContactQrCodeCell`、`AdminSafeExternalLink`、`safeMarkdown`、`siteSettingsSecurity`、`mediaUrlSecurity` 和 `contactUrlSecurity` 覆盖链接文案转义、危险协议、本机/内部/非公网地址和编码控制字符边界；后续扩展复杂组件状态 |
 | E2E | 是 | 首页、搜索、图库详情、登录、用户中心、后台首页 | Playwright smoke 覆盖 360/768/1024/1440 视口、横向溢出和私有 key 泄露断言 |
 
 ## 4. Mock 和隔离策略

@@ -53,7 +53,7 @@ mediaRoutes.get('/cover/:galleryId', async (c) => {
     return c.json({ statusCode: 404, message: '封面不存在' }, 404)
   }
 
-  // 外部 URL（迁移数据）仅允许安全 HTTPS 公开地址，避免公开接口跳转到 http、localhost 或私网地址。
+  // 外部 URL（迁移数据）仅允许安全 HTTPS 公开地址，避免公开接口跳转到 http、localhost 或非公网地址。
   if (isExternalCoverKey(gallery.cover_key)) {
     const safeUrl = safeExternalCoverUrl(gallery.cover_key)
     if (!safeUrl) {

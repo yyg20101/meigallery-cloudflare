@@ -20,12 +20,13 @@ describe('SafeExternalLink', () => {
     expect(link.text()).toBe('HTTPS://example.com/source?next="x"')
   })
 
-  it('拒绝 http、本机、私网和歧义外链', () => {
+  it('拒绝 http、本机、非公网 IP 和歧义外链', () => {
     for (const href of [
       'http://example.com/source',
       'https://localhost/source',
       'https://127.0.0.1/source',
       'https://192.168.1.10/source',
+      'https://198.51.100.10/source',
       'https://legacy.local/source',
       'https://user:pass@example.com/source',
       'https://example.com\\@evil.test/source',

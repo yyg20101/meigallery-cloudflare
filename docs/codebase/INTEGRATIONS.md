@@ -37,7 +37,7 @@
 - Telegram 导入使用 `waitUntil` 异步处理；失败时更新 `external_import_records`、清理 R2/DB，并记录审计日志。
 - R2 cases 迁移脚本复制后用 sha256 验证，删除旧对象前再次比对。
 - 媒体缩略图在 Images Transformations 失败或未启用时回退原图。
-- WordPress 外部 URL 访问通过 `assertSafeExternalUrl` 防止访问 localhost/私网地址。
+- WordPress 外部 URL 访问通过 `assertSafeExternalUrl` 防止访问 localhost/非公网地址。
 - 普通 fetch 调用没有统一 timeout/circuit breaker；网络失败主要靠局部错误处理。
 
 ## 5. 可观测性

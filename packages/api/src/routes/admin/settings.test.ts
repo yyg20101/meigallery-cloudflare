@@ -504,6 +504,7 @@ describe('后台站点设置 API', () => {
       { og_image: 'http://example.com/og.jpg' },
       { site_icon: 'https://localhost/icon.png' },
       { og_image: 'https://192.168.1.10/og.jpg' },
+      { og_image: 'https://198.51.100.10/og.jpg' },
       { site_icon: 'https://example.com\\icon.png' },
       { og_image: 'https://example.com/%5Cog.jpg' },
       { site_icon: '/discover?sort=hot' },

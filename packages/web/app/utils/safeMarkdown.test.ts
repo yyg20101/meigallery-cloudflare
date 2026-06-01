@@ -34,13 +34,17 @@ describe('safeMarkdown', () => {
     expect(html).not.toContain('<a href=')
   })
 
-  it('拒绝指向本机或私网地址的 Markdown 链接', () => {
+  it('拒绝指向本机或非公网 IPv4 地址的 Markdown 链接', () => {
     const html = renderInlineMarkdown([
       '[本机](https://localhost/rules)',
       '[尾点本机](https://localhost./rules)',
       '[编码尾点本机](https://localhost%2e/rules)',
       '[回环](https://127.0.0.1/rules)',
       '[私网](https://192.168.1.10/rules)',
+      '[共享地址](https://100.64.0.1/rules)',
+      '[测试地址](https://198.51.100.10/rules)',
+      '[文档地址](https://203.0.113.10/rules)',
+      '[保留地址](https://240.0.0.1/rules)',
       '[本地域](https://example.local/rules)',
       '[尾点本地域](https://example.local./rules)',
     ].join(' '))
@@ -50,6 +54,10 @@ describe('safeMarkdown', () => {
     expect(html).toContain('[编码尾点本机](https://localhost%2e/rules)')
     expect(html).toContain('[回环](https://127.0.0.1/rules)')
     expect(html).toContain('[私网](https://192.168.1.10/rules)')
+    expect(html).toContain('[共享地址](https://100.64.0.1/rules)')
+    expect(html).toContain('[测试地址](https://198.51.100.10/rules)')
+    expect(html).toContain('[文档地址](https://203.0.113.10/rules)')
+    expect(html).toContain('[保留地址](https://240.0.0.1/rules)')
     expect(html).toContain('[本地域](https://example.local/rules)')
     expect(html).toContain('[尾点本地域](https://example.local./rules)')
     expect(html).not.toContain('<a href=')

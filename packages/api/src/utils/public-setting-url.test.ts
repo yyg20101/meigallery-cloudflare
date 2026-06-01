@@ -54,7 +54,7 @@ describe('公开站点设置 URL 校验', () => {
     }
   })
 
-  it('公开 URL 拒绝本机和私网地址', () => {
+  it('公开 URL 拒绝本机和非公网 IPv4 地址', () => {
     const blocked = [
       'https://localhost/icon.png',
       'https://localhost./icon.png',
@@ -66,10 +66,18 @@ describe('公开站点设置 URL 校验', () => {
       'https://172.16.0.1/icon.png',
       'https://192.168.1.10/icon.png',
       'https://169.254.169.254/latest/meta-data',
+      'https://100.64.0.1/icon.png',
+      'https://192.0.2.10/icon.png',
+      'https://198.18.0.1/icon.png',
+      'https://198.51.100.10/icon.png',
+      'https://203.0.113.10/icon.png',
+      'https://224.0.0.1/icon.png',
+      'https://240.0.0.1/icon.png',
+      'https://255.255.255.255/icon.png',
     ]
 
     for (const url of blocked) {
-      expect(() => normalizePublicSettingUrl(url, '站点图标 URL')).toThrow(/本机|私网|内部/)
+      expect(() => normalizePublicSettingUrl(url, '站点图标 URL')).toThrow(/本机|非公网|内部/)
     }
   })
 

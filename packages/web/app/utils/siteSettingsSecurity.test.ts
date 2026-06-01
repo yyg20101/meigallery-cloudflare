@@ -42,7 +42,7 @@ describe('siteSettingsSecurity', () => {
     }
   })
 
-  it('公开 URL 拒绝本机和私网地址', () => {
+  it('公开 URL 拒绝本机和非公网 IPv4 地址', () => {
     for (const url of [
       'https://localhost/og.jpg',
       'https://localhost./og.jpg',
@@ -52,6 +52,14 @@ describe('siteSettingsSecurity', () => {
       'https://172.31.255.1/og.jpg',
       'https://192.168.1.10/og.jpg',
       'https://169.254.169.254/latest/meta-data',
+      'https://100.64.0.1/og.jpg',
+      'https://192.0.2.10/og.jpg',
+      'https://198.18.0.1/og.jpg',
+      'https://198.51.100.10/og.jpg',
+      'https://203.0.113.10/og.jpg',
+      'https://224.0.0.1/og.jpg',
+      'https://240.0.0.1/og.jpg',
+      'https://255.255.255.255/og.jpg',
       'https://preview.local/og.jpg',
       'https://preview.local./og.jpg',
     ]) {

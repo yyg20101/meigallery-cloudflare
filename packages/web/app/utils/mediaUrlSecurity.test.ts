@@ -9,7 +9,7 @@ describe('mediaUrlSecurity', () => {
     expect(resolveMediaDisplayUrl('HTTPS://example.com/source.jpg', 'https://api.test')).toBe('https://example.com/source.jpg')
   })
 
-  it('媒体 URL 拒绝 http、本机和私网地址', () => {
+  it('媒体 URL 拒绝 http、本机和非公网 IPv4 地址', () => {
     for (const value of [
       'http://example.com/source.jpg',
       'https://localhost/source.jpg',
@@ -17,6 +17,14 @@ describe('mediaUrlSecurity', () => {
       'https://localhost%2e/source.jpg',
       'https://127.0.0.1/source.jpg',
       'https://192.168.1.10/source.jpg',
+      'https://100.64.0.1/source.jpg',
+      'https://192.0.2.10/source.jpg',
+      'https://198.18.0.1/source.jpg',
+      'https://198.51.100.10/source.jpg',
+      'https://203.0.113.10/source.jpg',
+      'https://224.0.0.1/source.jpg',
+      'https://240.0.0.1/source.jpg',
+      'https://255.255.255.255/source.jpg',
       'https://preview.local./source.jpg',
       'https://example.com/source%20bad.jpg',
       'https://example.com/%0Asource.jpg',
@@ -39,5 +47,6 @@ describe('mediaUrlSecurity', () => {
     expect(resolveCoverPreviewUrl('http://example.com/cover.jpg', 'gal_1', 'https://api.test')).toBeNull()
     expect(resolveCoverPreviewUrl('https://localhost./cover.jpg', 'gal_1', 'https://api.test')).toBeNull()
     expect(resolveCoverPreviewUrl('https://127.0.0.1/cover.jpg', 'gal_1', 'https://api.test')).toBeNull()
+    expect(resolveCoverPreviewUrl('https://198.51.100.10/cover.jpg', 'gal_1', 'https://api.test')).toBeNull()
   })
 })
