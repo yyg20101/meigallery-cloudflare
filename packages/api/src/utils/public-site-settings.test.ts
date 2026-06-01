@@ -28,6 +28,14 @@ describe('公开站点设置安全读取', () => {
     expect(sanitizePublicSiteSetting('home_ad_ends_at', 'not-a-date')).toBe('')
   })
 
+  it('归一化首页广告文案并清空历史异常文案', () => {
+    expect(sanitizePublicSiteSetting('home_ad_title', '  会员季   精选内容  ')).toBe('会员季 精选内容')
+    expect(sanitizePublicSiteSetting('home_ad_eyebrow', 'x'.repeat(13))).toBe('')
+    expect(sanitizePublicSiteSetting('home_ad_summary', 'x'.repeat(121))).toBe('')
+    expect(sanitizePublicSiteSetting('home_ad_cta_label', '查看\u0001推荐')).toBe('')
+    expect(sanitizePublicSiteSetting('home_ad_sponsor', 'x'.repeat(31))).toBe('')
+  })
+
   it('保留非安全敏感设置原值', () => {
     expect(sanitizePublicSiteSetting('site_name', 'MeiGallery')).toBe('MeiGallery')
     expect(sanitizePublicSiteSetting('home_hot_tag_limit', 12)).toBe(12)

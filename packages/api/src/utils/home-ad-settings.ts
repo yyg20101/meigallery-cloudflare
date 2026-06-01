@@ -27,6 +27,14 @@ export function normalizeHomeAdText(key: string, value: unknown) {
   return text
 }
 
+export function safeHomeAdText(key: string, value: unknown) {
+  try {
+    return normalizeHomeAdText(key, value)
+  } catch {
+    return ''
+  }
+}
+
 export function isHomeAdTextKey(key: string) {
   return key in HOME_AD_TEXT_LIMITS
 }

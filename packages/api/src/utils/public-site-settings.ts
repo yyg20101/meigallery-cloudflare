@@ -1,6 +1,6 @@
 import { normalizeBooleanSetting, normalizeFacebookPixelId } from './facebook-pixel-settings'
 import { normalizeHomeAdScheduleValue } from './home-ad-schedule'
-import { normalizeHomeAdUrl } from './home-ad-settings'
+import { normalizeHomeAdUrl, safeHomeAdText } from './home-ad-settings'
 import { safeInternalPathSetting, safePublicSettingUrl } from './public-setting-url'
 
 const PUBLIC_URL_FIELDS: Record<string, string> = {
@@ -19,6 +19,10 @@ export function sanitizePublicSiteSetting(key: string, value: unknown) {
     } catch {
       return ''
     }
+  }
+
+  if (key === 'home_ad_eyebrow' || key === 'home_ad_title' || key === 'home_ad_summary' || key === 'home_ad_cta_label' || key === 'home_ad_sponsor') {
+    return safeHomeAdText(key, value)
   }
 
   if (key === 'home_ad_starts_at' || key === 'home_ad_ends_at') {
