@@ -1,4 +1,5 @@
 import { generateId } from '../utils/db'
+import { parseStoredSettingValue } from '../utils/stored-setting-value'
 
 export const VERIFICATION_CODE_TTL_MS = 10 * 60 * 1000
 export const VERIFICATION_CODE_COOLDOWN_MS = 60 * 1000
@@ -21,12 +22,8 @@ export async function isEmailVerificationEnabled(db: D1Database): Promise<boolea
     .prepare("SELECT value FROM site_settings WHERE key = 'email_verification_enabled'")
     .first<{ value: string }>()
   if (!row) return false
-  try {
-    const value = JSON.parse(row.value)
-    return value === true || value === 'true'
-  } catch {
-    return false
-  }
+  const value = parseStoredSettingValue(row.value)
+  return value === true || value === 'true'
 }
 
 export async function hasRecentVerificationCode(

@@ -3,6 +3,7 @@ import type { Bindings, Variables } from '../index'
 import { requireAuth } from '../middleware/auth'
 import { hashPassword, verifyPassword } from '../utils/password'
 import { destroyOtherSessions } from '../utils/session'
+import { parseStoredSettingValue } from '../utils/stored-setting-value'
 import { validateUsername } from '@meigallery/shared/utils'
 
 export const meRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
@@ -259,7 +260,8 @@ meRoutes.patch('/email', requireAuth, async (c) => {
   const settingRow = await db
     .prepare("SELECT value FROM site_settings WHERE key = 'email_verification_enabled'")
     .first<{ value: string }>()
-  const verificationEnabled = settingRow ? (JSON.parse(settingRow.value) === true || JSON.parse(settingRow.value) === 'true') : false
+  const verificationSetting = settingRow ? parseStoredSettingValue(settingRow.value) : false
+  const verificationEnabled = verificationSetting === true || verificationSetting === 'true'
 
   if (verificationEnabled) {
     // 需要验证码
