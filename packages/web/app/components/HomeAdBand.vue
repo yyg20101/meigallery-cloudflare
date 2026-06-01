@@ -54,7 +54,7 @@ const safeSponsor = computed(() => safeHomeAdText('home_ad_sponsor', props.spons
           <span class="rounded-full border border-[#d6c39a]/70 bg-white/75 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#81662c]">
             {{ safeEyebrow }}
           </span>
-          <span v-if="safeSponsor" class="text-xs text-stone-500">{{ safeSponsor }}</span>
+          <span v-if="safeSponsor" class="min-w-0 break-words text-xs text-stone-500">{{ safeSponsor }}</span>
         </div>
         <h2 class="mt-3 line-clamp-2 break-words text-xl font-semibold leading-tight text-stone-950 lg:text-2xl">{{ safeTitle }}</h2>
         <p class="mt-2 max-w-2xl break-words text-sm leading-6 text-stone-600 line-clamp-3">{{ safeSummary }}</p>
@@ -97,7 +97,7 @@ const safeSponsor = computed(() => safeHomeAdText('home_ad_sponsor', props.spons
       </NuxtLink>
     </div>
 
-    <p :id="isExternalUrl ? externalNoteId : undefined" class="relative border-t border-[#e5d5c4]/70 bg-white/45 px-5 py-2 text-[11px] font-medium text-stone-500 lg:px-7">
+    <p :id="isExternalUrl ? externalNoteId : undefined" class="relative border-t border-[#e5d5c4]/70 bg-white/45 px-5 py-2 text-[11px] font-medium break-words text-stone-500 lg:px-7">
       {{ ctaSecurityLabel }}
       <span v-if="isExternalUrl" class="mx-1 text-stone-300">/</span>
       <span v-if="isExternalUrl && externalHostname">目标域名 {{ externalHostname }}</span>

@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test'
 
 const apiURL = process.env.PLAYWRIGHT_API_URL || 'http://127.0.0.1:8788'
+const longAdHostname = 'verylongsponsoredcampaignlandingdestination.example.com'
+const longAdUrl = `https://${longAdHostname}/sponsor-campaign`
 
 const smokePages = [
   { path: '/', heading: /精选写真/ },
@@ -86,7 +88,7 @@ test.describe('核心页面 smoke', () => {
   test('首页广告外链输出安全属性和离站提示', async ({ request, page }) => {
     await request.patch(`${apiURL}/api/admin/settings`, {
       data: {
-        home_ad_url: 'https://example.com/sponsor-campaign',
+        home_ad_url: longAdUrl,
         home_ad_cta_label: '查看赞助',
         home_ad_sponsor: '外部赞助推荐',
       },
@@ -95,11 +97,11 @@ test.describe('核心页面 smoke', () => {
     await page.goto('/')
 
     const homeAd = page.getByRole('region', { name: '首页广告推荐' })
-    const externalCta = homeAd.getByRole('link', { name: '查看赞助，外部链接，目标域名 example.com' })
+    const externalCta = homeAd.getByRole('link', { name: `查看赞助，外部链接，目标域名 ${longAdHostname}` })
 
     await expect(homeAd).toBeVisible()
     await expect(externalCta).toBeVisible()
-    await expect(externalCta).toHaveAttribute('href', 'https://example.com/sponsor-campaign')
+    await expect(externalCta).toHaveAttribute('href', longAdUrl)
     await expect(externalCta).toHaveAttribute('target', '_blank')
     await expect(externalCta).toHaveAttribute('rel', /(^| )noopener( |$)/)
     await expect(externalCta).toHaveAttribute('rel', /(^| )noreferrer( |$)/)
@@ -108,18 +110,25 @@ test.describe('核心页面 smoke', () => {
     await expect(externalCta).toHaveAttribute('referrerpolicy', 'no-referrer')
     await expect(externalCta).toHaveAttribute('aria-describedby', /home-ad-external-note$/)
     await expect(homeAd.getByText('外部链接')).toBeVisible()
-    await expect(homeAd.getByText('目标域名 example.com')).toBeVisible()
+    await expect(homeAd.getByText(`目标域名 ${longAdHostname}`)).toBeVisible()
     await expect(homeAd.getByText('不发送来源页信息')).toBeVisible()
     const describedBy = await externalCta.getAttribute('aria-describedby')
     expect(describedBy).toBeTruthy()
-    await expect(homeAd.locator(`[id="${describedBy}"]`)).toContainText('目标域名 example.com')
+    await expect(homeAd.locator(`[id="${describedBy}"]`)).toContainText(`目标域名 ${longAdHostname}`)
     await expect(homeAd.locator(`[id="${describedBy}"]`)).toContainText('不发送来源页信息')
+    await expect(homeAd.locator(`[id="${describedBy}"]`)).toHaveCSS('overflow-wrap', 'break-word')
+
+    const hasHorizontalOverflow = await page.evaluate(() => {
+      const doc = document.documentElement
+      return doc.scrollWidth > doc.clientWidth + 1
+    })
+    expect(hasHorizontalOverflow).toBe(false)
   })
 
   test('后台广告预览不渲染可跳转链接', async ({ page }) => {
     await page.goto('/admin/settings')
 
-    await page.locator('input[placeholder="/discover?sort=hot"]').fill('https://example.com/sponsor-campaign')
+    await page.locator('input[placeholder="/discover?sort=hot"]').fill(longAdUrl)
     await page.locator('input[placeholder="查看推荐"]').fill('查看赞助')
 
     const preview = page.getByRole('region', { name: '首页广告推荐' })
@@ -129,9 +138,15 @@ test.describe('核心页面 smoke', () => {
     await expect(previewCta).toContainText('查看赞助')
     await expect(previewCta).toHaveAttribute('aria-describedby', /home-ad-external-note$/)
     await expect(preview.getByText('外部链接')).toBeVisible()
-    await expect(preview.getByText('目标域名 example.com')).toBeVisible()
+    await expect(preview.getByText(`目标域名 ${longAdHostname}`)).toBeVisible()
     await expect(preview.getByText('不发送来源页信息')).toBeVisible()
-    await expect(preview.locator('a[href="https://example.com/sponsor-campaign"]')).toHaveCount(0)
+    await expect(preview.locator(`a[href="${longAdUrl}"]`)).toHaveCount(0)
+
+    const hasHorizontalOverflow = await page.evaluate(() => {
+      const doc = document.documentElement
+      return doc.scrollWidth > doc.clientWidth + 1
+    })
+    expect(hasHorizontalOverflow).toBe(false)
   })
 
   test('后台更新站点 SEO 后首页立即读取新标题', async ({ page }) => {

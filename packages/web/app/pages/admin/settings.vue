@@ -434,7 +434,7 @@ async function toggleVideo() {
               广告位已关闭，保存后首页不展示。
             </div>
             <div class="mt-4 space-y-2 text-xs leading-5">
-              <p :class="unsafeHomeAdUrl ? 'text-amber-700' : 'text-gray-500'">
+              <p class="break-words" :class="unsafeHomeAdUrl ? 'text-amber-700' : 'text-gray-500'">
                 链接：{{ safeHomeAdPreviewUrl }}
                 <span v-if="unsafeHomeAdUrl" role="status" aria-live="polite" class="ml-2 font-medium">原始链接不安全，已回退到推荐页</span>
               </p>
