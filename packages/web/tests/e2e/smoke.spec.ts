@@ -10,6 +10,18 @@ const smokePages = [
 ]
 
 test.describe('核心页面 smoke', () => {
+  test('首页 SSR 原始 HTML 的 SEO 读取公开站点设置', async ({ request }) => {
+    const response = await request.get('/')
+    const html = await response.text()
+
+    expect(response.ok()).toBe(true)
+    expect(html).toContain('<title>测试站点标题 - 首页 SEO</title>')
+    expect(html).toContain('<meta name="description" content="Playwright smoke 测试站点">')
+    expect(html).toContain('<meta property="og:title" content="测试站点 OG 标题">')
+    expect(html).toContain('<meta property="og:description" content="测试站点 OG 描述">')
+    expect(html).not.toContain('<title>MeiGallery - 精选写真图库</title>')
+  })
+
   for (const smokePage of smokePages) {
     test(`${smokePage.path} 可渲染且无横向溢出`, async ({ page }) => {
       await page.goto(smokePage.path)
