@@ -31,6 +31,7 @@ export function normalizePublicSettingUrl(value: unknown) {
   try {
     const parsed = new URL(url)
     if (parsed.protocol !== 'https:') return ''
+    if (parsed.username || parsed.password) return ''
 
     const hostname = parsed.hostname.toLowerCase()
     if (BLOCKED_HOSTS.has(hostname) || hostname.endsWith('.localhost') || hostname.endsWith('.local')) return ''

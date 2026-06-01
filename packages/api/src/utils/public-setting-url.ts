@@ -28,6 +28,9 @@ export function normalizePublicSettingUrl(value: unknown, fieldLabel: string) {
   if (parsed.protocol !== 'https:') {
     throw new Error(`${fieldLabel}只允许站内相对路径或 https 链接`)
   }
+  if (parsed.username || parsed.password) {
+    throw new Error(`${fieldLabel}不允许包含用户名或密码`)
+  }
 
   const hostname = parsed.hostname.toLowerCase()
   if (BLOCKED_HOSTS.has(hostname) || hostname.endsWith('.localhost') || hostname.endsWith('.local')) {

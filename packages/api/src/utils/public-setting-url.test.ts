@@ -32,6 +32,16 @@ describe('公开站点设置 URL 校验', () => {
     }
   })
 
+  it('公开 URL 拒绝包含用户名或密码的 https 链接', () => {
+    for (const url of [
+      'https://user@example.com/og.jpg',
+      'https://user:pass@example.com/og.jpg',
+      'https://%E7%94%A8%E6%88%B7@example.com/og.jpg',
+    ]) {
+      expect(() => normalizePublicSettingUrl(url, 'OG 封面图 URL')).toThrow('OG 封面图 URL不允许包含用户名或密码')
+    }
+  })
+
   it('公开 URL 拒绝本机和私网地址', () => {
     const blocked = [
       'https://localhost/icon.png',

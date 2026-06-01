@@ -87,6 +87,25 @@ describe('HomeAdBand', () => {
     }
   })
 
+  it('包含用户名或密码的外链回退到站内推荐页', () => {
+    for (const url of [
+      'https://user@example.com/campaign',
+      'https://user:pass@example.com/campaign',
+    ]) {
+      const wrapper = mount(HomeAdBand, {
+        props: {
+          enabled: true,
+          title: '赞助推荐',
+          url,
+        },
+        global: { stubs: { NuxtLink: nuxtLinkStub } },
+      })
+
+      expect(wrapper.find('a').attributes('href')).toBe('/discover?sort=hot')
+      expect(wrapper.find('a').attributes('target')).toBeUndefined()
+    }
+  })
+
   it('异常链接回退到安全站内链接', () => {
     const wrapper = mount(HomeAdBand, {
       props: {
