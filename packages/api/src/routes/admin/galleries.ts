@@ -1,8 +1,10 @@
 import { Hono } from 'hono'
 import type { Bindings, Variables } from '../../index'
 import { errorJson } from '../../utils/api-error'
+import { isExternalMediaKey } from '../../utils/cover-url'
 import { generateId } from '../../utils/db'
 import { getAdminGalleryOrderClause } from '../../utils/gallery-interactions'
+import { isExpectedGalleryMediaKey } from '../../utils/media-keys'
 import { writeAuditLog } from '../../utils/permission'
 import { PAGINATION } from '@meigallery/shared/constants'
 
@@ -191,9 +193,9 @@ async function executeBatchAction(
       case 'delete': {
         // 1. 查询关联的 R2 key，用于后续清理存储
         const mediaRows = await db
-          .prepare(`SELECT r2_key FROM media_assets WHERE gallery_id IN (${placeholders}) AND r2_key IS NOT NULL`)
+          .prepare(`SELECT id, gallery_id, r2_key FROM media_assets WHERE gallery_id IN (${placeholders}) AND r2_key IS NOT NULL`)
           .bind(...galleryIds)
-          .all<{ r2_key: string }>()
+          .all<{ id: string; gallery_id: string; r2_key: string }>()
 
         // 2. 删除数据库记录（gallery_tags → media_assets → galleries）
         const stmts: D1PreparedStatement[] = [
@@ -204,7 +206,9 @@ async function executeBatchAction(
         await db.batch(stmts)
 
         // 3. 异步清理 R2 对象（不阻塞响应，失败不影响结果）
-        const r2Keys = mediaRows.results.map((r) => r.r2_key)
+        const r2Keys = mediaRows.results
+          .filter(r => !isExternalMediaKey(r.r2_key) && isExpectedGalleryMediaKey(r.r2_key, r.gallery_id, r.id))
+          .map(r => r.r2_key)
         if (r2Keys.length > 0) {
           // R2 delete 支持最多 1000 个 key
           for (let j = 0; j < r2Keys.length; j += 1000) {

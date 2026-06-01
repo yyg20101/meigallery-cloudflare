@@ -8,6 +8,7 @@ import {
   resolvePublicCoverUrl,
   safeExternalMediaUrl,
 } from '../../utils/cover-url'
+import { isExpectedGalleryMediaKey } from '../../utils/media-keys'
 import { writeAuditLog } from '../../utils/permission'
 import { generateId } from '../../utils/db'
 
@@ -234,12 +235,15 @@ adminMediaRoutes.patch('/galleries/:galleryId/cover', async (c) => {
     if (!body.assetId) return errorJson(c, 400, 'assetId 为必填')
 
     const asset = await db
-      .prepare('SELECT r2_key FROM media_assets WHERE id = ? AND gallery_id = ?')
+      .prepare('SELECT id, gallery_id, r2_key FROM media_assets WHERE id = ? AND gallery_id = ?')
       .bind(body.assetId, galleryId)
-      .first<{ r2_key: string | null }>()
+      .first<{ id: string; gallery_id: string; r2_key: string | null }>()
     if (!asset?.r2_key) return errorJson(c, 404, '媒体资源不存在或无 R2 文件')
     if (isExternalMediaKey(asset.r2_key) && !safeExternalMediaUrl(asset.r2_key)) {
       return errorJson(c, 400, '媒体资源地址不安全，不能设为封面')
+    }
+    if (!isExternalMediaKey(asset.r2_key) && !isExpectedGalleryMediaKey(asset.r2_key, asset.gallery_id, asset.id)) {
+      return errorJson(c, 409, '媒体 R2 key 与当前图库/媒体不匹配，请先人工核查')
     }
 
     newCoverKey = asset.r2_key
@@ -399,6 +403,9 @@ adminMediaRoutes.delete('/media/:assetId', async (c) => {
 
   // 删除 R2 对象（外部 URL 不删除）
   if (asset.r2_key && !isExternalMediaKey(asset.r2_key)) {
+    if (!isExpectedGalleryMediaKey(asset.r2_key, asset.gallery_id, asset.id)) {
+      return errorJson(c, 409, '媒体 R2 key 与当前图库/媒体不匹配，请先人工核查')
+    }
     try {
       await r2.delete(asset.r2_key)
     } catch {

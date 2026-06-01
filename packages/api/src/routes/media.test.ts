@@ -40,6 +40,7 @@ function createThumbnailEnv(options: {
         bind: () => ({
           first: async () => ({
             id: 'asset-1',
+            gallery_id: 'gallery-1',
             role: 'gallery',
             r2_key: options.r2Key === undefined ? 'originals/gallery-1/asset-1.jpg' : options.r2Key,
             stream_uid: options.streamUid === undefined ? null : options.streamUid,
@@ -252,6 +253,34 @@ describe('公开媒体访问', () => {
     expect(res.headers.get('Content-Type')).toBe('image/webp')
     expect(Array.from(body)).toEqual([4, 5, 6])
   })
+
+  it('R2 封面 key 不属于当前图库时不读取对象', async () => {
+    const app = createApp()
+    const r2Get = vi.fn()
+
+    const res = await app.request('/api/media/cover/gallery-1', {}, createCoverEnv('covers/gallery-2/cover.webp', r2Get))
+    const body = await res.json()
+
+    expect(res.status).toBe(404)
+    expect(body.message).toBe('封面不存在')
+    expect(r2Get).not.toHaveBeenCalled()
+  })
+
+  it('缩略图 key 不属于当前图库和媒体时不读取 R2', async () => {
+    const app = createApp()
+    const r2Get = vi.fn()
+
+    const res = await app.request(
+      '/api/media/asset-1/thumbnail?w=480',
+      {},
+      createThumbnailEnv({ imageResizingEnabled: 'false', r2Key: 'originals/gallery-2/asset-1.jpg', r2Get }),
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(404)
+    expect(body.message).toBe('文件不存在')
+    expect(r2Get).not.toHaveBeenCalled()
+  })
 })
 
 describe('受保护媒体访问', () => {
@@ -267,6 +296,19 @@ describe('受保护媒体访问', () => {
 
     const body = new Uint8Array(await res.arrayBuffer())
     expect(Array.from(body)).toEqual([1, 2, 3])
+  })
+
+  it('图片访问接口拒绝不属于当前图库和媒体的 R2 key', async () => {
+    const app = createApp({ userId: 1, userRole: 'admin' })
+    const r2Get = vi.fn()
+    const env = createThumbnailEnv({ imageResizingEnabled: 'false', requiredRank: 10, r2Key: 'originals/gallery-2/asset-1.jpg', r2Get })
+
+    const res = await app.request('/api/media/asset-1/access', {}, env)
+    const body = await res.json()
+
+    expect(res.status).toBe(404)
+    expect(body.message).toBe('媒体文件配置异常')
+    expect(r2Get).not.toHaveBeenCalled()
   })
 
   it('Stream 未配置时返回明确错误且不调用外部签名接口', async () => {

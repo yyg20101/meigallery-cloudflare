@@ -85,7 +85,7 @@ describe('后台媒体管理 API', () => {
       DB: createDb({
         first: (sql) => {
           if (sql.includes('SELECT id, cover_key FROM galleries')) return { id: 'gal_1', cover_key: null }
-          if (sql.includes('SELECT r2_key FROM media_assets')) return { r2_key: 'http://example.com/source.jpg' }
+          if (sql.includes('SELECT id, gallery_id, r2_key FROM media_assets')) return { id: 'asset_1', gallery_id: 'gal_1', r2_key: 'http://example.com/source.jpg' }
           return null
         },
         run: (sql) => {
@@ -107,6 +107,35 @@ describe('后台媒体管理 API', () => {
     expect(executed).toHaveLength(0)
   })
 
+  it('设置封面时拒绝不属于当前图库和媒体的 R2 key', async () => {
+    const app = createApp()
+    const executed: string[] = []
+    const env = {
+      DB: createDb({
+        first: (sql) => {
+          if (sql.includes('SELECT id, cover_key FROM galleries')) return { id: 'gal_1', cover_key: null }
+          if (sql.includes('SELECT id, gallery_id, r2_key FROM media_assets')) return { id: 'asset_1', gallery_id: 'gal_1', r2_key: 'originals/gal_2/asset_1.jpg' }
+          return null
+        },
+        run: (sql) => {
+          executed.push(sql)
+          return { success: true }
+        },
+      }),
+    } as unknown as Bindings
+
+    const res = await app.request('/api/admin/galleries/gal_1/cover', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ assetId: 'asset_1' }),
+    }, env)
+    const body = await res.json()
+
+    expect(res.status).toBe(409)
+    expect(body.message).toBe('媒体 R2 key 与当前图库/媒体不匹配，请先人工核查')
+    expect(executed).toHaveLength(0)
+  })
+
   it('设置封面时返回归一化安全外链', async () => {
     const app = createApp()
     const executed: Array<{ sql: string; params: unknown[] }> = []
@@ -114,7 +143,7 @@ describe('后台媒体管理 API', () => {
       DB: createDb({
         first: (sql) => {
           if (sql.includes('SELECT id, cover_key FROM galleries')) return { id: 'gal_1', cover_key: null }
-          if (sql.includes('SELECT r2_key FROM media_assets')) return { r2_key: 'HTTPS://example.com/source.jpg?next="x"' }
+          if (sql.includes('SELECT id, gallery_id, r2_key FROM media_assets')) return { id: 'asset_1', gallery_id: 'gal_1', r2_key: 'HTTPS://example.com/source.jpg?next="x"' }
           return null
         },
         run: (sql, params) => {
@@ -157,6 +186,29 @@ describe('后台媒体管理 API', () => {
     const res = await app.request('/api/admin/media/asset_1', { method: 'DELETE' }, env)
 
     expect(res.status).toBe(200)
+    expect(r2Delete).not.toHaveBeenCalled()
+  })
+
+  it('删除媒体时拒绝删除不属于当前图库和媒体的 R2 key', async () => {
+    const app = createApp()
+    const r2Delete = vi.fn()
+    const env = {
+      DB: createDb({
+        first: (sql) => {
+          if (sql.includes('SELECT id, gallery_id, r2_key')) {
+            return { id: 'asset_1', gallery_id: 'gal_1', r2_key: 'originals/gal_2/asset_1.jpg', stream_uid: null, type: 'image' }
+          }
+          return null
+        },
+      }),
+      R2: { delete: r2Delete },
+    } as unknown as Bindings
+
+    const res = await app.request('/api/admin/media/asset_1', { method: 'DELETE' }, env)
+    const body = await res.json()
+
+    expect(res.status).toBe(409)
+    expect(body.message).toBe('媒体 R2 key 与当前图库/媒体不匹配，请先人工核查')
     expect(r2Delete).not.toHaveBeenCalled()
   })
 })
