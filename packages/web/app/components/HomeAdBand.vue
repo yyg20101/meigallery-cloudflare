@@ -21,9 +21,10 @@ const isExternalUrl = computed(() => safeUrl.value.startsWith('https://'))
 
 <template>
   <section v-if="enabled" aria-label="首页广告推荐" class="relative overflow-hidden rounded-[1.25rem] border border-[#e5d5c4] bg-[#fffaf3] shadow-lg shadow-stone-900/8">
-    <div class="absolute inset-0 bg-[linear-gradient(118deg,rgba(255,255,255,0.94),rgba(250,235,220,0.78)_54%,rgba(180,145,92,0.14))]" />
-    <div class="absolute -right-16 top-1/2 h-36 w-36 -translate-y-1/2 rounded-full border border-[#d0b27a]/30" />
-    <div class="absolute bottom-0 right-0 h-full w-2/5 bg-[repeating-linear-gradient(135deg,rgba(143,116,53,0.16)_0,rgba(143,116,53,0.16)_1px,transparent_1px,transparent_12px)] opacity-80" />
+    <div class="pointer-events-none absolute inset-0 bg-[linear-gradient(118deg,rgba(255,255,255,0.94),rgba(250,235,220,0.78)_54%,rgba(180,145,92,0.14))]" />
+    <div class="pointer-events-none absolute inset-x-5 top-5 h-px bg-gradient-to-r from-transparent via-[#d0b27a]/35 to-transparent" />
+    <div class="pointer-events-none absolute inset-y-5 left-5 w-px bg-gradient-to-b from-transparent via-[#d0b27a]/24 to-transparent" />
+    <div class="pointer-events-none absolute inset-0 bg-[repeating-linear-gradient(135deg,rgba(143,116,53,0.16)_0,rgba(143,116,53,0.16)_1px,transparent_1px,transparent_12px)] opacity-80 [mask-image:linear-gradient(180deg,transparent,black_18%,black_82%,transparent)]" />
 
     <div class="relative grid gap-5 px-5 py-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center lg:px-7">
       <div class="min-w-0">
@@ -42,6 +43,7 @@ const isExternalUrl = computed(() => safeUrl.value.startsWith('https://'))
         :href="safeUrl"
         target="_blank"
         rel="noopener noreferrer"
+        referrerpolicy="no-referrer"
         class="inline-flex min-h-11 max-w-full shrink-0 items-center justify-center rounded-full bg-stone-950 px-5 py-2.5 text-center text-sm font-medium leading-tight whitespace-normal break-words text-white shadow-sm shadow-stone-900/15 transition-all hover:-translate-y-0.5 hover:bg-stone-800"
       >
         {{ ctaLabel || '查看推荐' }}
