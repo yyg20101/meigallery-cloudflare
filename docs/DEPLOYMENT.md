@@ -56,6 +56,9 @@ corepack pnpm --filter @meigallery/api exec wrangler deploy --env=""
 
 # 5. 部署 Web Worker
 corepack pnpm --filter @meigallery/web exec wrangler deploy --env=""
+
+# 6. 部署后 SEO 校验
+corepack pnpm verify:seo:production
 ```
 
 ## 4. CI/CD
@@ -65,7 +68,10 @@ corepack pnpm --filter @meigallery/web exec wrangler deploy --env=""
 ```bash
 corepack pnpm --filter @meigallery/api exec wrangler deploy --env=""
 corepack pnpm --filter @meigallery/web exec wrangler deploy --env=""
+corepack pnpm verify:seo:production
 ```
+
+部署后 SEO 校验会读取 `/api/settings/public`，并检查 `616618.xyz` 与 `www.616618.xyz` 首页 SSR 原始 HTML 的 `<title>`、description 和 OG 信息是否与后台站点设置一致。若 API 已返回新设置但首页 `<head>` 仍显示旧默认值，说明 Web Worker 未部署到最新版本或边缘仍在返回旧 HTML，必须在上线验收中阻断。
 
 ## 5. 环境变量
 
@@ -211,6 +217,7 @@ head_sampling_rate = 1
 - [ ] 后台管理员账号已创建
 - [ ] WAF 和基本 rate limiting 已启用
 - [ ] 登录、搜索、详情、媒体权限、导入流程通过验收
+- [ ] `corepack pnpm verify:seo:production` 通过，首页 `<head>` 与后台站点设置一致
 
 ## 10. 旧站迁移部署计划
 
