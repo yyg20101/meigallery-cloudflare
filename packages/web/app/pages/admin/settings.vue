@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { isScheduledSiteFeatureActive, normalizePublicSettingUrl } from '~/utils/siteSettingsSecurity'
+import { isScheduledSiteFeatureActive, normalizePublicSettingUrl, safeHomeAdText } from '~/utils/siteSettingsSecurity'
 
 definePageMeta({ layout: 'admin' })
 
@@ -55,6 +55,13 @@ const siteIconInput = ref<HTMLInputElement | null>(null)
 const safeSiteIconPreview = computed(() => normalizePublicSettingUrl(form.site_icon))
 const safeHomeAdPreviewUrl = computed(() => normalizePublicSettingUrl(form.home_ad_url) || '/discover?sort=hot')
 const unsafeHomeAdUrl = computed(() => Boolean(form.home_ad_url.trim()) && !normalizePublicSettingUrl(form.home_ad_url))
+const safeHomeAdPreviewText = computed(() => ({
+  eyebrow: safeHomeAdText('home_ad_eyebrow', form.home_ad_eyebrow),
+  title: safeHomeAdText('home_ad_title', form.home_ad_title),
+  summary: safeHomeAdText('home_ad_summary', form.home_ad_summary),
+  ctaLabel: safeHomeAdText('home_ad_cta_label', form.home_ad_cta_label),
+  sponsor: safeHomeAdText('home_ad_sponsor', form.home_ad_sponsor),
+}))
 const homeAdPreviewActive = computed(() => isScheduledSiteFeatureActive(
   homeAdEnabled.value,
   form.home_ad_starts_at,
@@ -400,12 +407,12 @@ async function toggleVideo() {
             <div v-if="homeAdEnabled" class="mt-4">
               <HomeAdBand
                 :enabled="homeAdEnabled"
-                :eyebrow="form.home_ad_eyebrow"
-                :title="form.home_ad_title"
-                :summary="form.home_ad_summary"
-                :cta-label="form.home_ad_cta_label"
+                :eyebrow="safeHomeAdPreviewText.eyebrow"
+                :title="safeHomeAdPreviewText.title"
+                :summary="safeHomeAdPreviewText.summary"
+                :cta-label="safeHomeAdPreviewText.ctaLabel"
                 :url="safeHomeAdPreviewUrl"
-                :sponsor="form.home_ad_sponsor"
+                :sponsor="safeHomeAdPreviewText.sponsor"
               />
             </div>
             <div v-else class="mt-4 rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-5 py-10 text-center text-sm text-gray-500">
@@ -423,7 +430,7 @@ async function toggleVideo() {
                 <span>{{ form.home_ad_ends_at || '长期展示' }}</span>
               </p>
               <p class="text-gray-500">
-                说明：预览使用当前输入值，保存前不会触发线上设置变更。
+                说明：预览使用公开读取侧同款清洗规则，保存前不会触发线上设置变更。
               </p>
             </div>
           </aside>

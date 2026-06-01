@@ -1,4 +1,11 @@
 const BLOCKED_HOSTS = new Set(['localhost', 'localhost.localdomain'])
+const HOME_AD_TEXT_LIMITS: Record<string, number> = {
+  home_ad_eyebrow: 12,
+  home_ad_title: 40,
+  home_ad_summary: 120,
+  home_ad_cta_label: 12,
+  home_ad_sponsor: 30,
+}
 
 export function normalizePublicSettingUrl(value: unknown) {
   const url = String(value ?? '').trim()
@@ -48,6 +55,20 @@ export function normalizeSiteSettingPixelId(value: unknown) {
   return /^\d{5,30}$/.test(pixelId) ? pixelId : ''
 }
 
+export function normalizeHomeAdText(key: string, value: unknown): string {
+  const limit = HOME_AD_TEXT_LIMITS[key]
+  if (!limit) return String(value ?? '')
+  if (value === null || value === undefined) return ''
+
+  const text = String(value).trim().replace(/\s+/g, ' ')
+  if (hasControlCharacter(text) || text.length > limit) return ''
+  return text
+}
+
+export function safeHomeAdText(key: string, value: unknown) {
+  return normalizeHomeAdText(key, value) || ''
+}
+
 export function normalizeBooleanSetting(value: unknown) {
   return value === true || value === 'true'
 }
@@ -90,6 +111,14 @@ function hasWhitespaceOrControlCharacter(value: string) {
   for (const char of value) {
     const code = char.charCodeAt(0)
     if (code <= 0x20 || code === 0x7f) return true
+  }
+  return false
+}
+
+function hasControlCharacter(value: string) {
+  for (const char of value) {
+    const code = char.charCodeAt(0)
+    if (code < 0x20 || code === 0x7f) return true
   }
   return false
 }

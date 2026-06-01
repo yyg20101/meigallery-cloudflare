@@ -21,8 +21,11 @@ test.describe('核心页面 smoke', () => {
       }
       if (smokePage.path === '/') {
         const homeAd = page.getByRole('region', { name: '首页广告推荐' })
-        await expect(homeAd.getByText('会员季精选内容')).toBeVisible()
+        await expect(homeAd.getByText('会员季精选内容精选内容精选内容')).toBeVisible()
         await expect(homeAd.getByRole('link', { name: '查看推荐' })).toHaveAttribute('href', '/discover?sort=hot')
+        await expect(homeAd.locator('h2')).toBeVisible()
+        await expect(homeAd.locator('h2')).toHaveCSS('overflow-wrap', 'break-word')
+        await expect(homeAd.locator('p').first()).toHaveCSS('overflow-wrap', 'break-word')
       }
       await expect(page.locator('body')).not.toContainText('originals/')
       await expect(page.locator('body')).not.toContainText('imports/')
@@ -34,4 +37,19 @@ test.describe('核心页面 smoke', () => {
       expect(hasHorizontalOverflow).toBe(false)
     })
   }
+
+  test('首页广告位在当前断点下不溢出', async ({ page }) => {
+    await page.goto('/')
+    const homeAd = page.getByRole('region', { name: '首页广告推荐' })
+
+    await expect(homeAd).toBeVisible()
+    await expect(homeAd.locator('h2')).toBeVisible()
+    await expect(homeAd.locator('a')).toBeVisible()
+
+    const overflow = await homeAd.evaluate((element) => {
+      const rect = element.getBoundingClientRect()
+      return rect.right > window.innerWidth + 1 || rect.left < -1
+    })
+    expect(overflow).toBe(false)
+  })
 })

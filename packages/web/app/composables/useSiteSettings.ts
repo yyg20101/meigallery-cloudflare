@@ -3,7 +3,7 @@
  * 从 /api/settings/public 获取站点配置
  * 数据全局缓存，避免重复请求
  */
-import { isScheduledSiteFeatureActive, normalizeBooleanSetting, normalizeInternalPath, normalizePublicSettingUrl, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId } from '~/utils/siteSettingsSecurity'
+import { isScheduledSiteFeatureActive, normalizeBooleanSetting, normalizeInternalPath, normalizePublicSettingUrl, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId, safeHomeAdText } from '~/utils/siteSettingsSecurity'
 
 export function useSiteSettings() {
   const { api } = useApi()
@@ -81,12 +81,12 @@ export function useSiteSettings() {
   const homeAdEnabled = computed(() => {
     return normalizeBooleanSetting(settings.value.home_ad_enabled)
   })
-  const homeAdEyebrow = computed(() => settings.value.home_ad_eyebrow || '本周推荐')
-  const homeAdTitle = computed(() => settings.value.home_ad_title || '会员季精选内容')
-  const homeAdSummary = computed(() => settings.value.home_ad_summary || '探索本周精选图库、真实案例和会员可访问内容。')
-  const homeAdCtaLabel = computed(() => settings.value.home_ad_cta_label || '查看推荐')
+  const homeAdEyebrow = computed(() => safeHomeAdText('home_ad_eyebrow', settings.value.home_ad_eyebrow) || '本周推荐')
+  const homeAdTitle = computed(() => safeHomeAdText('home_ad_title', settings.value.home_ad_title) || '会员季精选内容')
+  const homeAdSummary = computed(() => safeHomeAdText('home_ad_summary', settings.value.home_ad_summary) || '探索本周精选图库、真实案例和会员可访问内容。')
+  const homeAdCtaLabel = computed(() => safeHomeAdText('home_ad_cta_label', settings.value.home_ad_cta_label) || '查看推荐')
   const homeAdUrl = computed(() => normalizePublicSettingUrl(settings.value.home_ad_url) || '/discover?sort=hot')
-  const homeAdSponsor = computed(() => settings.value.home_ad_sponsor || 'MeiGallery 运营推荐')
+  const homeAdSponsor = computed(() => safeHomeAdText('home_ad_sponsor', settings.value.home_ad_sponsor) || 'MeiGallery 运营推荐')
   const homeAdStartsAt = computed(() => normalizeSiteSettingDateTime(settings.value.home_ad_starts_at))
   const homeAdEndsAt = computed(() => normalizeSiteSettingDateTime(settings.value.home_ad_ends_at))
   const homeAdActive = computed(() => {

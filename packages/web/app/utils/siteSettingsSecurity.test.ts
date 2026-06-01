@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isScheduledSiteFeatureActive, normalizeBooleanSetting, normalizeInternalPath, normalizePublicSettingUrl, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId } from './siteSettingsSecurity'
+import { isScheduledSiteFeatureActive, normalizeBooleanSetting, normalizeHomeAdText, normalizeInternalPath, normalizePublicSettingUrl, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId } from './siteSettingsSecurity'
 
 describe('siteSettingsSecurity', () => {
   it('公开 URL 只允许站内路径和 https 链接', () => {
@@ -47,6 +47,17 @@ describe('siteSettingsSecurity', () => {
     expect(normalizeBooleanSetting(true)).toBe(true)
     expect(normalizeBooleanSetting('true')).toBe(true)
     expect(normalizeBooleanSetting('TRUE')).toBe(false)
+  })
+
+  it('归一化首页广告文案并拒绝超长或控制字符', () => {
+    expect(normalizeHomeAdText('home_ad_title', '  会员季   精选内容  ')).toBe('会员季 精选内容')
+    expect(normalizeHomeAdText('home_ad_sponsor', null)).toBe('')
+    expect(normalizeHomeAdText('home_ad_eyebrow', '超过十二个字符的广告活动眉标')).toBe('')
+    expect(normalizeHomeAdText('home_ad_title', 'x'.repeat(41))).toBe('')
+    expect(normalizeHomeAdText('home_ad_summary', 'x'.repeat(121))).toBe('')
+    expect(normalizeHomeAdText('home_ad_cta_label', 'x'.repeat(13))).toBe('')
+    expect(normalizeHomeAdText('home_ad_sponsor', 'x'.repeat(31))).toBe('')
+    expect(normalizeHomeAdText('home_ad_title', '会员\u0001精选')).toBe('')
   })
 
   it('归一化站点设置时间并判断定时功能状态', () => {

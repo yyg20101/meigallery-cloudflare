@@ -33,8 +33,8 @@ const isExternalUrl = computed(() => safeUrl.value.startsWith('https://'))
           </span>
           <span v-if="sponsor" class="text-xs text-stone-500">{{ sponsor }}</span>
         </div>
-        <h2 class="mt-3 line-clamp-2 text-xl font-semibold leading-tight text-stone-950 lg:text-2xl">{{ title || '会员季精选内容' }}</h2>
-        <p class="mt-2 max-w-2xl text-sm leading-6 text-stone-600 line-clamp-3">{{ summary || '探索本周精选图库、真实案例和会员可访问内容。' }}</p>
+        <h2 class="mt-3 line-clamp-2 break-words text-xl font-semibold leading-tight text-stone-950 lg:text-2xl">{{ title || '会员季精选内容' }}</h2>
+        <p class="mt-2 max-w-2xl break-words text-sm leading-6 text-stone-600 line-clamp-3">{{ summary || '探索本周精选图库、真实案例和会员可访问内容。' }}</p>
       </div>
 
       <a
@@ -42,14 +42,14 @@ const isExternalUrl = computed(() => safeUrl.value.startsWith('https://'))
         :href="safeUrl"
         target="_blank"
         rel="noopener noreferrer"
-        class="inline-flex min-h-11 shrink-0 items-center justify-center rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-white shadow-sm shadow-stone-900/15 transition-all hover:-translate-y-0.5 hover:bg-stone-800"
+        class="inline-flex min-h-11 max-w-full shrink-0 items-center justify-center rounded-full bg-stone-950 px-5 py-2.5 text-center text-sm font-medium leading-tight whitespace-normal break-words text-white shadow-sm shadow-stone-900/15 transition-all hover:-translate-y-0.5 hover:bg-stone-800"
       >
         {{ ctaLabel || '查看推荐' }}
       </a>
       <NuxtLink
         v-else
         :to="safeUrl"
-        class="inline-flex min-h-11 shrink-0 items-center justify-center rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-white shadow-sm shadow-stone-900/15 transition-all hover:-translate-y-0.5 hover:bg-stone-800"
+        class="inline-flex min-h-11 max-w-full shrink-0 items-center justify-center rounded-full bg-stone-950 px-5 py-2.5 text-center text-sm font-medium leading-tight whitespace-normal break-words text-white shadow-sm shadow-stone-900/15 transition-all hover:-translate-y-0.5 hover:bg-stone-800"
       >
         {{ ctaLabel || '查看推荐' }}
       </NuxtLink>
