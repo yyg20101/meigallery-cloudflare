@@ -421,6 +421,7 @@ async function toggleVideo() {
             <div v-if="homeAdEnabled" class="mt-4">
               <HomeAdBand
                 :enabled="homeAdEnabled"
+                preview
                 :eyebrow="safeHomeAdPreviewText.eyebrow"
                 :title="safeHomeAdPreviewText.title"
                 :summary="safeHomeAdPreviewText.summary"

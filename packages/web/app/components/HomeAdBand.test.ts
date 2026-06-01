@@ -56,6 +56,28 @@ describe('HomeAdBand', () => {
     expect(wrapper.text()).toContain('不发送来源页信息')
   })
 
+  it('预览模式保留外链提示但不渲染可跳转链接', () => {
+    const wrapper = mount(HomeAdBand, {
+      props: {
+        enabled: true,
+        preview: true,
+        title: '赞助推荐',
+        ctaLabel: '查看赞助',
+        url: 'https://example.com/campaign',
+      },
+      global: { stubs: { NuxtLink: nuxtLinkStub } },
+    })
+
+    const cta = wrapper.find('[aria-disabled="true"]')
+    const note = wrapper.find('[id$="-home-ad-external-note"]')
+    expect(wrapper.find('a').exists()).toBe(false)
+    expect(cta.text()).toContain('查看赞助')
+    expect(cta.attributes('href')).toBeUndefined()
+    expect(cta.attributes('aria-describedby')).toBe(note.attributes('id'))
+    expect(wrapper.text()).toContain('外部链接')
+    expect(wrapper.text()).toContain('不发送来源页信息')
+  })
+
   it('展示默认文案、推广标识和赞助来源说明', () => {
     const wrapper = mount(HomeAdBand, {
       props: {

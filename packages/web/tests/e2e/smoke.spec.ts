@@ -114,6 +114,23 @@ test.describe('核心页面 smoke', () => {
     await expect(homeAd.locator(`[id="${describedBy}"]`)).toContainText('不发送来源页信息')
   })
 
+  test('后台广告预览不渲染可跳转链接', async ({ page }) => {
+    await page.goto('/admin/settings')
+
+    await page.locator('input[placeholder="/discover?sort=hot"]').fill('https://example.com/sponsor-campaign')
+    await page.locator('input[placeholder="查看推荐"]').fill('查看赞助')
+
+    const preview = page.getByRole('region', { name: '首页广告推荐' })
+    const previewCta = preview.locator('[aria-disabled="true"]')
+
+    await expect(preview).toBeVisible()
+    await expect(previewCta).toContainText('查看赞助')
+    await expect(previewCta).toHaveAttribute('aria-describedby', /home-ad-external-note$/)
+    await expect(preview.getByText('外部链接')).toBeVisible()
+    await expect(preview.getByText('不发送来源页信息')).toBeVisible()
+    await expect(preview.locator('a[href="https://example.com/sponsor-campaign"]')).toHaveCount(0)
+  })
+
   test('后台更新站点 SEO 后首页立即读取新标题', async ({ page }) => {
     await page.goto('/admin/settings')
 

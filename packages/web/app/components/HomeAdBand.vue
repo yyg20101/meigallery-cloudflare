@@ -10,6 +10,7 @@ const props = defineProps<{
   ctaLabel?: string
   url?: string
   sponsor?: string
+  preview?: boolean
 }>()
 
 const externalNoteId = `${useId()}-home-ad-external-note`
@@ -50,8 +51,20 @@ const safeSponsor = computed(() => safeHomeAdText('home_ad_sponsor', props.spons
         <p class="mt-2 max-w-2xl break-words text-sm leading-6 text-stone-600 line-clamp-3">{{ safeSummary }}</p>
       </div>
 
+      <span
+        v-if="preview"
+        aria-disabled="true"
+        :aria-describedby="isExternalUrl ? externalNoteId : undefined"
+        class="inline-flex min-h-11 max-w-full shrink-0 cursor-default items-center justify-center gap-2 rounded-full bg-stone-950 px-5 py-2.5 text-center text-sm font-medium leading-tight whitespace-normal break-words text-white shadow-sm shadow-stone-900/15"
+      >
+        <span>{{ safeCtaLabel }}</span>
+        <svg v-if="isExternalUrl" aria-hidden="true" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M7 17 17 7" />
+          <path d="M9 7h8v8" />
+        </svg>
+      </span>
       <a
-        v-if="isExternalUrl"
+        v-else-if="isExternalUrl"
         :href="safeUrl"
         target="_blank"
         rel="noopener noreferrer nofollow sponsored"
