@@ -92,15 +92,22 @@ describe('后台站点设置 API', () => {
       }),
     } as unknown as Bindings
 
-    const res = await app.request('/api/admin/settings', {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ home_ad_url: 'javascript:alert(1)' }),
-    }, env)
-    const body = await res.json()
+    for (const homeAdUrl of [
+      'javascript:alert(1)',
+      'https:\\\\example.com\\campaign',
+      'https://example.com\\campaign',
+      '/discover%5Cnext',
+    ]) {
+      const res = await app.request('/api/admin/settings', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ home_ad_url: homeAdUrl }),
+      }, env)
+      const body = await res.json()
 
-    expect(res.status).toBe(400)
-    expect(body.message).toContain('首页广告链接')
+      expect(res.status).toBe(400)
+      expect(body.message).toContain('首页广告链接')
+    }
     expect(executed).toHaveLength(0)
   })
 
@@ -306,7 +313,10 @@ describe('后台站点设置 API', () => {
       { og_image: 'http://example.com/og.jpg' },
       { site_icon: 'https://localhost/icon.png' },
       { og_image: 'https://192.168.1.10/og.jpg' },
+      { site_icon: 'https://example.com\\icon.png' },
+      { og_image: 'https://example.com/%5Cog.jpg' },
       { rules_page_url: 'https://example.com/rules' },
+      { rules_page_url: '/rules%5Cnext' },
     ]
 
     for (const payload of cases) {

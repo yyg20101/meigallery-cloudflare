@@ -22,8 +22,13 @@ describe('公开站点设置 URL 校验', () => {
       'http://example.com/a.png',
       '//example.com/a.png',
       '/\\example.com/a.png',
+      '/discover\\next',
+      '/discover%5Cnext',
       '/a b.png',
       '/discover%20next',
+      'https:\\\\example.com\\a.png',
+      'https://example.com\\a.png',
+      'https://example.com/%5Ca.png',
       'https://example.com/%0Ajavascript:alert(1)',
     ]
 
@@ -65,5 +70,7 @@ describe('公开站点设置 URL 校验', () => {
     expect(() => normalizeInternalPathSetting('//example.com/rules', '规则页链接')).toThrow('规则页链接只允许站内相对路径')
     expect(() => normalizeInternalPathSetting('/rules next', '规则页链接')).toThrow('规则页链接不能包含空白或控制字符')
     expect(() => normalizeInternalPathSetting('/rules%20next', '规则页链接')).toThrow('规则页链接不能包含空白或控制字符')
+    expect(() => normalizeInternalPathSetting('/rules\\next', '规则页链接')).toThrow('规则页链接不能包含反斜杠')
+    expect(() => normalizeInternalPathSetting('/rules%5Cnext', '规则页链接')).toThrow('规则页链接不能包含反斜杠')
   })
 })

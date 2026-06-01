@@ -23,9 +23,9 @@ describe('公开站点设置 API', () => {
       APP_ENV: 'production',
       DB: createDb([
         { key: 'site_icon', value: 'javascript:alert(1)' },
-        { key: 'og_image', value: 'http://example.com/og.jpg' },
-        { key: 'home_ad_url', value: 'https://example.com/%0Ajavascript:alert(1)' },
-        { key: 'rules_page_url', value: 'https://example.com/rules' },
+        { key: 'og_image', value: 'https://example.com/%5Cog.jpg' },
+        { key: 'home_ad_url', value: 'https:\\\\example.com\\campaign' },
+        { key: 'rules_page_url', value: '/rules%5Cnext' },
         { key: 'facebook_pixel_id', value: 'fbq("track")' },
         { key: 'home_ad_enabled', value: 'true' },
         { key: 'home_ad_eyebrow', value: '  本周   推荐  ' },

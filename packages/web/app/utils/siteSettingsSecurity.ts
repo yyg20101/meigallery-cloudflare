@@ -16,7 +16,7 @@ const HOME_AD_TEXT_WARNING_LABELS: Record<string, string> = {
 
 export function normalizePublicSettingUrl(value: unknown) {
   const url = String(value ?? '').trim()
-  if (!url || hasWhitespaceOrControlCharacter(url) || hasEncodedWhitespaceOrControlCharacter(url)) return ''
+  if (!url || hasWhitespaceOrControlCharacter(url) || hasEncodedWhitespaceOrControlCharacter(url) || hasBackslashOrEncodedBackslash(url)) return ''
 
   if (url.startsWith('/')) {
     if (url.startsWith('//') || url.startsWith('/\\')) return ''
@@ -47,7 +47,7 @@ export function normalizePublicSettingUrl(value: unknown) {
 
 export function normalizeInternalPath(value: unknown) {
   const url = String(value ?? '').trim()
-  if (!url || hasWhitespaceOrControlCharacter(url) || hasEncodedWhitespaceOrControlCharacter(url)) return ''
+  if (!url || hasWhitespaceOrControlCharacter(url) || hasEncodedWhitespaceOrControlCharacter(url) || hasBackslashOrEncodedBackslash(url)) return ''
   if (!url.startsWith('/') || url.startsWith('//') || url.startsWith('/\\')) return ''
 
   try {
@@ -138,6 +138,10 @@ function hasControlCharacter(value: string) {
     if (code < 0x20 || code === 0x7f) return true
   }
   return false
+}
+
+function hasBackslashOrEncodedBackslash(value: string) {
+  return value.includes('\\') || /%5c/i.test(value)
 }
 
 function isPrivateIpv4(hostname: string) {

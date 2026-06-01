@@ -6,6 +6,9 @@ export function normalizePublicSettingUrl(value: unknown, fieldLabel: string) {
   if (hasWhitespaceOrControlCharacter(url) || hasEncodedWhitespaceOrControlCharacter(url)) {
     throw new Error(`${fieldLabel}不能包含空白或控制字符`)
   }
+  if (hasBackslashOrEncodedBackslash(url)) {
+    throw new Error(`${fieldLabel}不能包含反斜杠`)
+  }
 
   if (url.startsWith('/')) {
     if (url.startsWith('//') || url.startsWith('/\\')) {
@@ -57,6 +60,9 @@ export function normalizeInternalPathSetting(value: unknown, fieldLabel: string)
   if (hasWhitespaceOrControlCharacter(url) || hasEncodedWhitespaceOrControlCharacter(url)) {
     throw new Error(`${fieldLabel}不能包含空白或控制字符`)
   }
+  if (hasBackslashOrEncodedBackslash(url)) {
+    throw new Error(`${fieldLabel}不能包含反斜杠`)
+  }
   if (!url.startsWith('/') || url.startsWith('//') || url.startsWith('/\\')) {
     throw new Error(`${fieldLabel}只允许站内相对路径`)
   }
@@ -86,6 +92,10 @@ function hasWhitespaceOrControlCharacter(value: string) {
     if (code <= 0x20 || code === 0x7f) return true
   }
   return false
+}
+
+function hasBackslashOrEncodedBackslash(value: string) {
+  return value.includes('\\') || /%5c/i.test(value)
 }
 
 function isPrivateIpv4(hostname: string) {

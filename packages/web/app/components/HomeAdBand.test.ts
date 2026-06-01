@@ -135,4 +135,20 @@ describe('HomeAdBand', () => {
       expect(wrapper.find('a').attributes('target')).toBeUndefined()
     }
   })
+
+  it('包含反斜杠的链接回退到安全站内链接', () => {
+    for (const url of ['https:\\\\example.com\\campaign', 'https://example.com\\campaign', '/discover\\next', '/discover%5Cnext']) {
+      const wrapper = mount(HomeAdBand, {
+        props: {
+          enabled: true,
+          title: '赞助推荐',
+          url,
+        },
+        global: { stubs: { NuxtLink: nuxtLinkStub } },
+      })
+
+      expect(wrapper.find('a').attributes('href')).toBe('/discover?sort=hot')
+      expect(wrapper.find('a').attributes('target')).toBeUndefined()
+    }
+  })
 })

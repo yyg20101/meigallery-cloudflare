@@ -13,7 +13,12 @@ describe('siteSettingsSecurity', () => {
       'http://example.com/og.jpg',
       '//example.com/og.jpg',
       '/\\example.com/og.jpg',
+      '/discover\\next',
+      '/discover%5Cnext',
       '/api/media/public/site/icon%20bad.png',
+      'https:\\\\example.com\\og.jpg',
+      'https://example.com\\og.jpg',
+      'https://example.com/%5Cog.jpg',
       'https://example.com/%0Ajavascript:alert(1)',
     ]) {
       expect(normalizePublicSettingUrl(url)).toBe('')
@@ -49,6 +54,8 @@ describe('siteSettingsSecurity', () => {
     expect(normalizeInternalPath('https://example.com/rules')).toBe('')
     expect(normalizeInternalPath('//example.com/rules')).toBe('')
     expect(normalizeInternalPath('/rules%20next')).toBe('')
+    expect(normalizeInternalPath('/rules\\next')).toBe('')
+    expect(normalizeInternalPath('/rules%5Cnext')).toBe('')
   })
 
   it('归一化公开 Pixel ID 和布尔设置', () => {

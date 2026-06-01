@@ -7,6 +7,10 @@ describe('公开站点设置安全读取', () => {
     expect(sanitizePublicSiteSetting('og_image', 'http://example.com/og.jpg')).toBe('')
     expect(sanitizePublicSiteSetting('home_ad_url', 'https://example.com/%0Ajavascript:alert(1)')).toBe('')
     expect(sanitizePublicSiteSetting('rules_page_url', 'https://example.com/rules')).toBe('')
+    expect(sanitizePublicSiteSetting('site_icon', 'https://example.com\\icon.png')).toBe('')
+    expect(sanitizePublicSiteSetting('og_image', 'https://example.com/%5Cog.jpg')).toBe('')
+    expect(sanitizePublicSiteSetting('home_ad_url', 'https:\\\\example.com\\campaign')).toBe('')
+    expect(sanitizePublicSiteSetting('rules_page_url', '/rules%5Cnext')).toBe('')
   })
 
   it('归一化允许的 URL 设置', () => {
