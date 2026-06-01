@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+const apiURL = process.env.PLAYWRIGHT_API_URL || 'http://127.0.0.1:8788'
+
 const smokePages = [
   { path: '/', heading: /精选写真/ },
   { path: '/search?q=夏日', heading: /搜索写真/, title: '搜索: 夏日 - 测试图库站' },
@@ -10,6 +12,10 @@ const smokePages = [
 ]
 
 test.describe('核心页面 smoke', () => {
+  test.beforeEach(async ({ request }) => {
+    await request.post(`${apiURL}/api/test/reset`)
+  })
+
   test('首页 SSR 原始 HTML 的 SEO 读取公开站点设置', async ({ request }) => {
     const response = await request.get('/')
     const html = await response.text()

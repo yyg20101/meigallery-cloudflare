@@ -128,6 +128,13 @@ const defaultPublicSettings = {
 
 const mutablePublicSettings = { ...defaultPublicSettings }
 
+function resetPublicSettings() {
+  for (const key of Object.keys(mutablePublicSettings)) {
+    delete mutablePublicSettings[key]
+  }
+  Object.assign(mutablePublicSettings, defaultPublicSettings)
+}
+
 function json(res, data, status = 200) {
   const body = JSON.stringify(data)
   res.writeHead(status, {
@@ -209,6 +216,10 @@ function handleApi(req, res) {
   }
 
   if (url.pathname === '/api/health') return json(res, { ok: true })
+  if (url.pathname === '/api/test/reset' && req.method === 'POST') {
+    resetPublicSettings()
+    return json(res, { ok: true })
+  }
   if (url.pathname === '/api/settings/public') return json(res, publicSettings())
   if (url.pathname === '/api/me') return json(res, user)
   if (url.pathname === '/api/contact-methods') return json(res, { data: [] })
