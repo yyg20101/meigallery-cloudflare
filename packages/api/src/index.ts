@@ -19,6 +19,7 @@ import { healthRoutes } from './routes/health'
 import { authMiddleware } from './middleware/auth'
 import { rateLimiter } from './middleware/rate-limit'
 import { errorJson } from './utils/api-error'
+import { parseStoredSettingValue } from './utils/stored-setting-value'
 
 /** Hono 应用绑定类型 */
 export type Bindings = {
@@ -78,14 +79,6 @@ const publicApiRateLimit = RATE_LIMITS.PUBLIC_API
 const adminApiRateLimit = RATE_LIMITS.ADMIN_API
 const mediaAccessRateLimit = RATE_LIMITS.MEDIA_ACCESS
 const externalImportRateLimit = RATE_LIMITS.EXTERNAL_IMPORT
-
-function parseStoredSettingValue(value: string): unknown {
-  try {
-    return JSON.parse(value)
-  } catch {
-    return undefined
-  }
-}
 
 // 登录/注册接口速率限制兜底：每 IP 每分钟 5 次
 app.use('/api/auth/*', rateLimiter({

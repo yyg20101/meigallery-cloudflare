@@ -42,6 +42,32 @@ function createDb(handlers: {
 }
 
 describe('后台站点设置 API', () => {
+  it('站长读取设置时单条历史损坏 JSON 不阻断页面打开', async () => {
+    const app = createApp()
+    const env = {
+      DB: createDb({
+        all: (sql) => {
+          if (sql.includes('SELECT key, value, updated_at FROM site_settings')) {
+            return [
+              { key: 'site_name', value: JSON.stringify('测试图库'), updated_at: '2026-06-02 00:00:00' },
+              { key: 'seo_title', value: '{"broken"', updated_at: '2026-06-02 00:00:00' },
+              { key: 'home_ad_enabled', value: 'true', updated_at: '2026-06-02 00:00:00' },
+            ]
+          }
+          return []
+        },
+      }),
+    } as unknown as Bindings
+
+    const res = await app.request('/api/admin/settings', {}, env)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.data.site_name.value).toBe('测试图库')
+    expect(body.data.seo_title.value).toBe('')
+    expect(body.data.home_ad_enabled.value).toBe(true)
+  })
+
   it('站长更新首页广告链接时会写入归一化值和审计日志', async () => {
     const executed: Array<{ sql: string; params: unknown[] }> = []
     const app = createApp()
@@ -187,6 +213,41 @@ describe('后台站点设置 API', () => {
     expect(res.status).toBe(200)
     expect(body.updated).toEqual(['site_name', 'seo_title', 'home_hero_title'])
     expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[0] === '"测试 图库站"' && item.params[1] === 'site_name')).toBe(true)
+    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[0] === '"测试站点 - 精选图库"' && item.params[1] === 'seo_title')).toBe(true)
+    expect(executed.some(item => item.sql.includes('INSERT INTO admin_audit_logs'))).toBe(true)
+  })
+
+  it('站长保存 SEO 时历史损坏旧值不会阻断覆盖修复', async () => {
+    const executed: Array<{ sql: string; params: unknown[] }> = []
+    const app = createApp()
+    const env = {
+      DB: createDb({
+        all: (sql) => {
+          if (sql.includes('SELECT key, value FROM site_settings')) {
+            return [
+              { key: 'seo_title', value: '{"broken"' },
+            ]
+          }
+          return []
+        },
+        run: (sql, params) => {
+          executed.push({ sql, params })
+          return { success: true }
+        },
+      }),
+    } as unknown as Bindings
+
+    const res = await app.request('/api/admin/settings', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        seo_title: '  测试站点   -   精选图库  ',
+      }),
+    }, env)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.updated).toEqual(['seo_title'])
     expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[0] === '"测试站点 - 精选图库"' && item.params[1] === 'seo_title')).toBe(true)
     expect(executed.some(item => item.sql.includes('INSERT INTO admin_audit_logs'))).toBe(true)
   })
@@ -492,6 +553,45 @@ describe('后台站点设置 API', () => {
     expect(res.status).toBe(200)
     expect(body.iconUrl).toMatch(/^\/api\/media\/public\/site\/site-icon-/)
     expect(putKeys[0]).toMatch(/^site\/site-icon-/)
+    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[1] === 'site_icon')).toBe(true)
+    expect(executed.some(item => item.sql.includes('INSERT INTO admin_audit_logs'))).toBe(true)
+  })
+
+  it('站点图标历史旧值损坏时仍可上传新图标', async () => {
+    const putKeys: string[] = []
+    const deletedKeys: string[] = []
+    const executed: Array<{ sql: string; params: unknown[] }> = []
+    const app = createApp()
+    const env = {
+      DB: createDb({
+        first: (sql) => {
+          if (sql.includes("WHERE key = 'site_icon'")) return { value: '{"broken"' }
+          return null
+        },
+        run: (sql, params) => {
+          executed.push({ sql, params })
+          return { success: true }
+        },
+      }),
+      R2: {
+        put: async (key: string) => {
+          putKeys.push(key)
+        },
+        delete: async (key: string) => {
+          deletedKeys.push(key)
+        },
+      },
+    } as unknown as Bindings
+    const form = new FormData()
+    form.set('file', new File([new Uint8Array([1, 2, 3])], 'brand.png', { type: 'image/png' }))
+
+    const res = await app.request('/api/admin/settings/site-icon', { method: 'POST', body: form }, env)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.iconUrl).toMatch(/^\/api\/media\/public\/site\/site-icon-/)
+    expect(putKeys[0]).toMatch(/^site\/site-icon-/)
+    expect(deletedKeys).toHaveLength(0)
     expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[1] === 'site_icon')).toBe(true)
     expect(executed.some(item => item.sql.includes('INSERT INTO admin_audit_logs'))).toBe(true)
   })

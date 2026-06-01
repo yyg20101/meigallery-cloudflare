@@ -78,11 +78,17 @@ const homeAdScheduleStatus = computed(() => {
 
 // 加载现有设置
 const { data: settings } = await useAsyncData('admin-settings', () =>
-  api<{ data: Record<string, { value: string; updatedAt: string }> }>('/api/admin/settings'),
+  api<{ data: Record<string, { value: unknown; updatedAt: string }> }>('/api/admin/settings'),
 )
 
 function parseBooleanSetting(value: unknown) {
   return value === true || value === 'true'
+}
+
+function toFormStringSetting(value: unknown) {
+  if (typeof value === 'string') return value
+  if (value === null || value === undefined) return ''
+  return String(value)
 }
 
 function toDatetimeLocalValue(value: unknown) {
@@ -101,7 +107,7 @@ if (settings.value?.data) {
     if (key in form) {
       const value = key === 'home_ad_starts_at' || key === 'home_ad_ends_at'
         ? toDatetimeLocalValue(val.value)
-        : val.value || ''
+        : toFormStringSetting(val.value)
       if (key === 'site_name') form.site_name = value
       else if (key === 'site_description') form.site_description = value
       else if (key === 'site_icon') form.site_icon = value

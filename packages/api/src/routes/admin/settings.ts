@@ -10,6 +10,7 @@ import { normalizeInternalPathSetting, normalizePublicSettingUrl } from '../../u
 import { ADMIN_SETTING_KEYS } from '../../utils/site-settings'
 import { normalizeFeaturedRegionSlugs, normalizeHomeHotTagLimit, normalizeRulesMarkdown } from '../../utils/site-content-settings'
 import { isSiteTextSettingKey, normalizeSiteTextSetting } from '../../utils/site-text-settings'
+import { parseStoredSettingValue } from '../../utils/stored-setting-value'
 
 export const adminSettingsRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -38,9 +39,9 @@ adminSettingsRoutes.get('/', requireOwner, async (c) => {
     .prepare('SELECT key, value, updated_at FROM site_settings ORDER BY key')
     .all<{ key: string; value: string; updated_at: string }>()
 
-  const settings: Record<string, { value: string; updatedAt: string }> = {}
+  const settings: Record<string, { value: unknown; updatedAt: string }> = {}
   for (const row of result.results) {
-    settings[row.key] = { value: JSON.parse(row.value), updatedAt: row.updated_at }
+    settings[row.key] = { value: parseStoredSettingValue(row.value, ''), updatedAt: row.updated_at }
   }
   return c.json({ data: settings })
 })
@@ -148,7 +149,7 @@ adminSettingsRoutes.patch('/', requireOwner, async (c) => {
     .all<{ key: string; value: string }>()
   const currentMap: Record<string, unknown> = {}
   for (const row of oldValues.results) {
-    currentMap[row.key] = JSON.parse(row.value)
+    currentMap[row.key] = parseStoredSettingValue(row.value)
   }
 
   if (hasHomeAdScheduleChange) {
@@ -204,7 +205,7 @@ adminSettingsRoutes.post('/site-icon', requireOwner, async (c) => {
   if (file.size > 1024 * 1024) return c.json({ statusCode: 400, message: '站点图标不能超过 1MB' }, 400)
 
   const before = await db.prepare("SELECT value FROM site_settings WHERE key = 'site_icon'").first<{ value: string }>()
-  const beforeValue = before ? JSON.parse(before.value) : ''
+  const beforeValue = before ? parseStoredSettingValue(before.value, '') : ''
   const oldKey = publicMediaPathToR2Key(beforeValue)
   const key = `site/site-icon-${generateId('asset')}.${ext}`
   const iconUrl = `/api/media/public/${key}`
