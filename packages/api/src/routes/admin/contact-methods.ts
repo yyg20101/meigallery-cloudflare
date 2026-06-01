@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { Bindings, Variables } from '../../index'
 import { requireOwner } from '../../middleware/auth'
 import { normalizeContactLinkUrl } from '../../utils/contact-link-url'
+import { isExpectedContactQrCodeKey } from '../../utils/contact-qrcode'
 import { writeAuditLog } from '../../utils/permission'
 import { CONTACT_PLATFORMS } from '@meigallery/shared/constants'
 
@@ -209,6 +210,9 @@ adminContactMethodRoutes.delete('/:id', requireOwner, async (c) => {
 
   // 删除 R2 二维码
   if (current.qr_code_key) {
+    if (!isExpectedContactQrCodeKey(current.qr_code_key, id)) {
+      return c.json({ statusCode: 409, message: '二维码 R2 key 与当前联系方式不匹配，请先人工核查' }, 409)
+    }
     await r2.delete(current.qr_code_key)
   }
 
@@ -291,6 +295,9 @@ adminContactMethodRoutes.post('/:id/qrcode', requireOwner, async (c) => {
 
   // 删除旧文件
   if (current.qr_code_key) {
+    if (!isExpectedContactQrCodeKey(current.qr_code_key, id)) {
+      return c.json({ statusCode: 409, message: '二维码 R2 key 与当前联系方式不匹配，请先人工核查' }, 409)
+    }
     await r2.delete(current.qr_code_key)
   }
 
@@ -338,6 +345,10 @@ adminContactMethodRoutes.delete('/:id/qrcode', requireOwner, async (c) => {
 
   if (!current.qr_code_key) {
     return c.json({ statusCode: 404, message: '该联系方式没有二维码' }, 404)
+  }
+
+  if (!isExpectedContactQrCodeKey(current.qr_code_key, id)) {
+    return c.json({ statusCode: 409, message: '二维码 R2 key 与当前联系方式不匹配，请先人工核查' }, 409)
   }
 
   await r2.delete(current.qr_code_key)

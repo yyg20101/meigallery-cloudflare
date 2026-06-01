@@ -6,7 +6,7 @@ const platformIconStub = {
   template: '<span />',
 }
 
-function mountItem(linkUrl: string | null) {
+function mountItem(linkUrl: string | null, qrCodeUrl: string | null = null) {
   return mount(ContactMethodItem, {
     props: {
       method: {
@@ -15,7 +15,7 @@ function mountItem(linkUrl: string | null) {
         label: '站长',
         value: 'meigallery',
         linkUrl,
-        qrCodeUrl: null,
+        qrCodeUrl,
         sortOrder: 0,
       },
     },
@@ -48,5 +48,28 @@ describe('ContactMethodItem', () => {
     expect(open).not.toHaveBeenCalled()
     expect(writeText).toHaveBeenCalledWith('meigallery')
     open.mockRestore()
+  })
+
+  it('内部地址链接不会被当作外链打开', async () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    })
+    const wrapper = mountItem('https://127.0.0.1/contact')
+
+    await wrapper.get('[role="button"]').trigger('click')
+
+    expect(open).not.toHaveBeenCalled()
+    expect(writeText).toHaveBeenCalledWith('meigallery')
+    open.mockRestore()
+  })
+
+  it('不渲染不安全的二维码图片 URL', async () => {
+    const wrapper = mountItem('https://example.com/contact', 'https://127.0.0.1/qrcode.png')
+
+    expect(wrapper.find('button[aria-label="展开二维码"]').exists()).toBe(false)
+    expect(wrapper.find('img').exists()).toBe(false)
   })
 })

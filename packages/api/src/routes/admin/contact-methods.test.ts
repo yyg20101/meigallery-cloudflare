@@ -100,6 +100,55 @@ describe('后台联系方式 API', () => {
     expect(executed).toHaveLength(0)
   })
 
+  it('创建联系方式时拒绝内部地址跳转链接', async () => {
+    const executed: Array<{ sql: string; params: unknown[] }> = []
+    const app = createApp()
+    const env = {
+      DB: createDb({
+        run: (sql, params) => {
+          executed.push({ sql, params })
+          return { success: true }
+        },
+      }),
+    } as unknown as Bindings
+
+    const res = await app.request('/api/admin/contact-methods', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        platform: 'telegram',
+        label: 'Telegram',
+        value: '@meigallery',
+        linkUrl: 'https://localhost/contact',
+      }),
+    }, env)
+    const body = await res.json()
+
+    expect(res.status).toBe(400)
+    expect(body.message).toContain('联系方式跳转链接')
+    expect(executed).toHaveLength(0)
+  })
+
+  it('删除二维码前校验 R2 key 必须匹配当前联系方式', async () => {
+    const app = createApp()
+    const env = {
+      DB: createDb({
+        first: () => ({ id: 'contact-1', qr_code_key: 'qrcodes/contact-2.png' }),
+      }),
+      R2: {
+        async delete() {
+          throw new Error('不应删除不匹配的二维码 key')
+        },
+      },
+    } as unknown as Bindings
+
+    const res = await app.request('/api/admin/contact-methods/contact-1/qrcode', { method: 'DELETE' }, env)
+    const body = await res.json()
+
+    expect(res.status).toBe(409)
+    expect(body.message).toBe('二维码 R2 key 与当前联系方式不匹配，请先人工核查')
+  })
+
   it('更新联系方式时校验手动跳转链接', async () => {
     const executed: Array<{ sql: string; params: unknown[] }> = []
     const app = createApp()

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ContactMethod } from '@meigallery/shared'
 import { generateContactLink } from '@meigallery/shared/constants'
+import { normalizeContactActionUrl, normalizeContactQrCodeUrl } from '~/utils/contactUrlSecurity'
 
 const props = defineProps<{
   method: ContactMethod
@@ -16,18 +17,10 @@ const copyFailed = ref(false)
 const showQrCode = computed(() => isHovering.value || showQr.value)
 
 const actionHref = computed(() => props.method.linkUrl || generateContactLink(props.method.platform, props.method.value))
-const safeActionHref = computed(() => {
-  const href = actionHref.value?.trim()
-  if (!href || /[\s\x00-\x1F\x7F]/.test(href)) return null
-  try {
-    const url = new URL(href)
-    return ['https:', 'mailto:', 'tel:', 'tg:', 'line:', 'whatsapp:'].includes(url.protocol) ? href : null
-  } catch {
-    return null
-  }
-})
+const safeActionHref = computed(() => normalizeContactActionUrl(actionHref.value))
 const hasLink = computed(() => !!safeActionHref.value)
-const hasQr = computed(() => !!props.method.qrCodeUrl)
+const safeQrCodeUrl = computed(() => normalizeContactQrCodeUrl(props.method.qrCodeUrl))
+const hasQr = computed(() => !!safeQrCodeUrl.value)
 
 function toggleQr() {
   showQr.value = !showQr.value
@@ -139,7 +132,7 @@ function activate() {
         @mouseleave="isHovering = false"
       >
         <img
-          :src="method.qrCodeUrl!"
+          :src="safeQrCodeUrl!"
           :alt="`${method.label} 二维码`"
           class="h-40 w-40 rounded-xl object-cover ring-1 ring-white"
         />

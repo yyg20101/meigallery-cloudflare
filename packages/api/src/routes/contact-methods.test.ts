@@ -9,7 +9,7 @@ function createApp() {
   return app
 }
 
-function createDb(rows: unknown[]) {
+function createDb(rows: unknown[], firstRow: unknown = null) {
   return {
     prepare() {
       return {
@@ -20,7 +20,7 @@ function createDb(rows: unknown[]) {
           return this
         },
         async first<T>() {
-          return null as T | null
+          return firstRow as T | null
         },
       }
     },
@@ -72,5 +72,46 @@ describe('公开联系方式 API', () => {
 
     expect(res.status).toBe(200)
     expect(body.data[0].linkUrl).toBeNull()
+  })
+
+  it('丢弃历史内部地址 link_url 并回退到平台自动链接', async () => {
+    const app = createApp()
+    const env = {
+      DB: createDb([
+        {
+          id: 'contact-1',
+          platform: 'telegram',
+          label: 'Telegram',
+          value: '@meigallery',
+          link_url: 'https://127.0.0.1/contact',
+          qr_code_key: null,
+          sort_order: 0,
+        },
+      ]),
+    } as unknown as Bindings
+
+    const res = await app.request('/api/contact-methods', {}, env)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.data[0].linkUrl).toBe('https://t.me/meigallery')
+  })
+
+  it('二维码代理拒绝不属于当前联系方式的 R2 key', async () => {
+    const app = createApp()
+    const env = {
+      DB: createDb([], { qr_code_key: 'qrcodes/contact-2.png' }),
+      R2: {
+        async get() {
+          throw new Error('不应读取不匹配的二维码 key')
+        },
+      },
+    } as unknown as Bindings
+
+    const res = await app.request('/api/contact-methods/contact-1/qrcode', {}, env)
+    const body = await res.json()
+
+    expect(res.status).toBe(404)
+    expect(body.message).toBe('二维码配置异常')
   })
 })
