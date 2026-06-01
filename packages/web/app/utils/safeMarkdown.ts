@@ -21,7 +21,7 @@ export function renderInlineMarkdown(input: string) {
     const label = match[1]!
     const href = normalizeMarkdownLink(match[2]!)
     if (href) {
-      output += `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${renderStrongText(label)}</a>`
+      output += `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer nofollow" referrerpolicy="no-referrer">${renderStrongText(label)}</a>`
     } else {
       output += renderStrongText(match[0])
     }
@@ -39,6 +39,7 @@ function renderStrongText(input: string) {
 
 function normalizeMarkdownLink(value: string) {
   if (hasWhitespaceOrControlCharacter(value) || hasEncodedWhitespaceOrControlCharacter(value)) return null
+  if (hasBackslashOrEncodedBackslash(value)) return null
 
   let url: URL
   try {
@@ -48,6 +49,7 @@ function normalizeMarkdownLink(value: string) {
   }
 
   if (url.protocol !== 'https:') return null
+  if (url.username || url.password) return null
   const hostname = normalizeHostname(url.hostname)
   if (BLOCKED_HOSTS.has(hostname) || hostname.endsWith('.localhost') || hostname.endsWith('.local')) return null
   if (hostname.includes(':') || isPrivateIpv4(hostname)) return null
@@ -81,6 +83,10 @@ function hasWhitespaceOrControlCharacter(value: string) {
     if (code <= 0x20 || code === 0x7f) return true
   }
   return false
+}
+
+function hasBackslashOrEncodedBackslash(value: string) {
+  return value.includes('\\') || /%5c/i.test(value)
 }
 
 export function renderSafeMarkdown(markdown: string) {

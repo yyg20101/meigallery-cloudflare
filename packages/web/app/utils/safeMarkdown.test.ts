@@ -9,7 +9,7 @@ describe('safeMarkdown', () => {
   it('只把 https Markdown 链接渲染为安全外链', () => {
     const html = renderInlineMarkdown('[规则](https://example.com/rules?next="x")')
 
-    expect(html).toBe('<a href="https://example.com/rules?next=%22x%22" target="_blank" rel="noopener noreferrer">规则</a>')
+    expect(html).toBe('<a href="https://example.com/rules?next=%22x%22" target="_blank" rel="noopener noreferrer nofollow" referrerpolicy="no-referrer">规则</a>')
   })
 
   it('不把 http 或 javascript Markdown 链接渲染为可点击链接', () => {
@@ -23,7 +23,7 @@ describe('safeMarkdown', () => {
   it('转义 Markdown 链接文案并保留加粗语法', () => {
     const html = renderInlineMarkdown('[**规则** <img src=x>](https://example.com/rules)')
 
-    expect(html).toBe('<a href="https://example.com/rules" target="_blank" rel="noopener noreferrer"><strong>规则</strong> &lt;img src=x&gt;</a>')
+    expect(html).toBe('<a href="https://example.com/rules" target="_blank" rel="noopener noreferrer nofollow" referrerpolicy="no-referrer"><strong>规则</strong> &lt;img src=x&gt;</a>')
   })
 
   it('拒绝包含空白或控制字符的 Markdown 链接', () => {
@@ -55,11 +55,24 @@ describe('safeMarkdown', () => {
     expect(html).not.toContain('<a href=')
   })
 
+  it('拒绝带凭据或反斜杠歧义的 Markdown 链接', () => {
+    const html = renderInlineMarkdown([
+      '[凭据](https://user:pass@example.com/rules)',
+      '[反斜杠](https://example.com\\@evil.test/rules)',
+      '[编码反斜杠](https://example.com/%5Crules)',
+    ].join(' '))
+
+    expect(html).toContain('[凭据](https://user:pass@example.com/rules)')
+    expect(html).toContain('[反斜杠](https://example.com\\@evil.test/rules)')
+    expect(html).toContain('[编码反斜杠](https://example.com/%5Crules)')
+    expect(html).not.toContain('<a href=')
+  })
+
   it('渲染安全的标题、列表和加粗语法', () => {
     const html = renderSafeMarkdown('## 入站规则\n\n- **仅限授权内容**\n- [完整规则](https://example.com/rules)')
 
     expect(html).toContain('<h2>入站规则</h2>')
     expect(html).toContain('<li><strong>仅限授权内容</strong></li>')
-    expect(html).toContain('<a href="https://example.com/rules" target="_blank" rel="noopener noreferrer">完整规则</a>')
+    expect(html).toContain('<a href="https://example.com/rules" target="_blank" rel="noopener noreferrer nofollow" referrerpolicy="no-referrer">完整规则</a>')
   })
 })
