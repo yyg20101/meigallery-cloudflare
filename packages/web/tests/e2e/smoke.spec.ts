@@ -21,6 +21,9 @@ test.describe('核心页面 smoke', () => {
       }
       if (smokePage.path === '/') {
         await expect(page).toHaveTitle('测试站点标题 - 首页 SEO')
+        await expect(page.locator('meta[name="description"]')).toHaveAttribute('content', 'Playwright smoke 测试站点')
+        await expect(page.locator('meta[property="og:title"]')).toHaveAttribute('content', '测试站点 OG 标题')
+        await expect(page.locator('meta[property="og:description"]')).toHaveAttribute('content', '测试站点 OG 描述')
         const homeAd = page.getByRole('region', { name: '首页广告推荐' })
         await expect(homeAd.getByText('会员季精选内容精选内容精选内容')).toBeVisible()
         await expect(homeAd.getByRole('link', { name: '查看推荐' })).toHaveAttribute('href', '/discover?sort=hot')
