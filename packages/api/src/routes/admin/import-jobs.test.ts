@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { Bindings, Variables } from '../../index'
 import { adminImportRoutes } from './import-jobs'
 
@@ -36,6 +36,26 @@ function createDb() {
         async run() {
           executed.push({ sql, params: [...params] })
           return { success: true }
+        },
+      }
+    },
+  }
+}
+
+function createErrorReportDb(errorReportKey: string | null) {
+  return {
+    prepare(sql: string) {
+      const params: unknown[] = []
+      return {
+        bind(...values: unknown[]) {
+          params.push(...values)
+          return this
+        },
+        async first<T>() {
+          if (sql.includes('SELECT error_report_key FROM import_jobs')) {
+            return { error_report_key: errorReportKey } as T
+          }
+          return null as T
         },
       }
     },
@@ -117,5 +137,35 @@ describe('后台导入任务审计', () => {
       failureCount: 0,
       errorReportKey: null,
     })
+  })
+})
+
+describe('后台导入任务错误报告下载', () => {
+  it('拒绝读取不属于当前任务的错误报告 R2 key', async () => {
+    const r2Get = vi.fn()
+    const res = await createApp().request('/api/admin/import-jobs/imp_1/errors', {}, {
+      DB: createErrorReportDb('imports/imp_2/errors.csv'),
+      R2: { get: r2Get },
+    } as unknown as Bindings)
+    const body = await res.json()
+
+    expect(res.status).toBe(404)
+    expect(body.message).toBe('错误报告配置异常')
+    expect(r2Get).not.toHaveBeenCalled()
+  })
+
+  it('读取当前任务的错误报告 R2 key', async () => {
+    const r2Get = vi.fn(async () => ({
+      body: new Blob(['folder,error\n"gallery-001","slug 已存在"']).stream(),
+    }))
+    const res = await createApp().request('/api/admin/import-jobs/imp_1/errors', {}, {
+      DB: createErrorReportDb('imports/imp_1/errors.csv'),
+      R2: { get: r2Get },
+    } as unknown as Bindings)
+
+    expect(res.status).toBe(200)
+    expect(r2Get).toHaveBeenCalledWith('imports/imp_1/errors.csv')
+    expect(res.headers.get('Content-Type')).toBe('text/csv; charset=utf-8')
+    expect(res.headers.get('Content-Disposition')).toBe('attachment; filename="import-errors-imp_1.csv"')
   })
 })

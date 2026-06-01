@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { Bindings, Variables } from '../../index'
 import { generateId } from '../../utils/db'
+import { isExpectedImportErrorReportKey } from '../../utils/import-report-key'
 import { writeAuditLog } from '../../utils/permission'
 import { validateTurnstile } from '../../utils/turnstile'
 import { PAGINATION, R2_KEY_PREFIX } from '@meigallery/shared/constants'
@@ -325,6 +326,9 @@ adminImportRoutes.get('/:id/errors', async (c) => {
 
   if (!job?.error_report_key) {
     return c.json({ statusCode: 404, message: '错误报告不存在' }, 404)
+  }
+  if (!isExpectedImportErrorReportKey(job.error_report_key, jobId)) {
+    return c.json({ statusCode: 404, message: '错误报告配置异常' }, 404)
   }
 
   const object = await c.env.R2.get(job.error_report_key)
