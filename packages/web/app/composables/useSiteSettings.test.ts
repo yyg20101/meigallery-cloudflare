@@ -17,16 +17,25 @@ function resetState() {
 }
 
 describe('useSiteSettings', () => {
-  it('首次加载失败时保留默认值并标记已加载', async () => {
+  it('首次加载失败时保留默认值并允许下次普通请求重试', async () => {
     resetState()
-    apiMock.mockRejectedValueOnce(new Error('network'))
+    apiMock
+      .mockRejectedValueOnce(new Error('network'))
+      .mockResolvedValueOnce({ site_name: '测试站', seo_title: '测试 SEO' })
 
     const siteSettings = useSiteSettings()
-    const settings = await siteSettings.fetchSettings()
+    const firstSettings = await siteSettings.fetchSettings()
 
-    expect(settings).toEqual({})
+    expect(firstSettings).toEqual({})
     expect(siteSettings.siteName.value).toBe('MeiGallery')
     expect(apiMock).toHaveBeenCalledTimes(1)
+
+    const secondSettings = await siteSettings.fetchSettings()
+
+    expect(secondSettings).toEqual({ site_name: '测试站', seo_title: '测试 SEO' })
+    expect(apiMock).toHaveBeenCalledTimes(2)
+    expect(siteSettings.siteName.value).toBe('测试站')
+    expect(siteSettings.seoTitle.value).toBe('测试 SEO')
   })
 
   it('已加载后默认复用缓存，强制刷新会重新请求并更新 SEO', async () => {

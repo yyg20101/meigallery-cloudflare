@@ -57,7 +57,6 @@ export function useSiteSettings() {
       settings.value = data
       loaded.value = true
     } catch {
-      loaded.value = true
       if (options.force) throw new Error('公开站点设置刷新失败')
     }
     return settings.value
