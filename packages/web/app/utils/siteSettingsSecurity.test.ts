@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getHomeAdTextPreviewWarnings, isScheduledSiteFeatureActive, normalizeBooleanSetting, normalizeHomeAdText, normalizeInternalPath, normalizePublicSettingUrl, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId } from './siteSettingsSecurity'
+import { getHomeAdTextPreviewWarnings, isScheduledSiteFeatureActive, normalizeBooleanSetting, normalizeHomeAdText, normalizeHomeAdUrl, normalizeInternalPath, normalizePublicSettingUrl, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId } from './siteSettingsSecurity'
 
 describe('siteSettingsSecurity', () => {
   it('公开 URL 只允许站内路径和 https 链接', () => {
@@ -46,6 +46,27 @@ describe('siteSettingsSecurity', () => {
       'https://preview.local/og.jpg',
     ]) {
       expect(normalizePublicSettingUrl(url)).toBe('')
+    }
+  })
+
+  it('首页广告 URL 只允许公开前台路径或 https 外链', () => {
+    expect(normalizeHomeAdUrl('/')).toBe('/')
+    expect(normalizeHomeAdUrl(' /discover?sort=hot#top ')).toBe('/discover?sort=hot#top')
+    expect(normalizeHomeAdUrl('/gallery/summer-portrait')).toBe('/gallery/summer-portrait')
+    expect(normalizeHomeAdUrl('/cases/spring-lookbook')).toBe('/cases/spring-lookbook')
+    expect(normalizeHomeAdUrl('/search?q=夏日')).toBe('/search?q=%E5%A4%8F%E6%97%A5')
+    expect(normalizeHomeAdUrl('HTTPS://example.com/campaign?next="x"')).toBe('https://example.com/campaign?next=%22x%22')
+
+    for (const url of [
+      '/admin',
+      '/admin/settings',
+      '/api/settings/public',
+      '/api/media/public/site/icon.png',
+      '/_nuxt/entry.js',
+      '/cdn-cgi/trace',
+      'javascript:alert(1)',
+    ]) {
+      expect(normalizeHomeAdUrl(url)).toBe('')
     }
   })
 

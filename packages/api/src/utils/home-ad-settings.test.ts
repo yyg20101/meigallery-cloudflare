@@ -9,8 +9,12 @@ describe('首页广告设置校验', () => {
   })
 
   it('允许站内相对路径和 https 外链', () => {
+    expect(normalizeHomeAdUrl('/')).toBe('/')
     expect(normalizeHomeAdUrl('/discover?sort=hot#top')).toBe('/discover?sort=hot#top')
     expect(normalizeHomeAdUrl(' /cases ')).toBe('/cases')
+    expect(normalizeHomeAdUrl('/gallery/summer-portrait')).toBe('/gallery/summer-portrait')
+    expect(normalizeHomeAdUrl('/search?q=夏日')).toBe('/search?q=%E5%A4%8F%E6%97%A5')
+    expect(normalizeHomeAdUrl('/rules?from=ad')).toBe('/rules?from=ad')
     expect(normalizeHomeAdUrl('https://example.com/campaign')).toBe('https://example.com/campaign')
     expect(normalizeHomeAdUrl('HTTPS://example.com/campaign?next="x"')).toBe('https://example.com/campaign?next=%22x%22')
   })
@@ -26,6 +30,12 @@ describe('首页广告设置校验', () => {
       'https://preview.local/campaign',
       '//example.com',
       '/\\example.com',
+      '/admin',
+      '/admin/settings',
+      '/api/settings/public',
+      '/api/media/public/site/icon.png',
+      '/_nuxt/entry.js',
+      '/cdn-cgi/trace',
       'https://example.com/a b',
       'https://example.com/%0Ajavascript:alert(1)',
       '/discover%20next',

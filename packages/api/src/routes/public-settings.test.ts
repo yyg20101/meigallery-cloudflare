@@ -24,7 +24,7 @@ describe('公开站点设置 API', () => {
       DB: createDb([
         { key: 'site_icon', value: 'javascript:alert(1)' },
         { key: 'og_image', value: 'https://example.com/%5Cog.jpg' },
-        { key: 'home_ad_url', value: 'https:\\\\example.com\\campaign' },
+        { key: 'home_ad_url', value: '/api/media/public/site/icon.png' },
         { key: 'rules_page_url', value: '/rules%5Cnext' },
         { key: 'facebook_pixel_id', value: 'fbq("track")' },
         { key: 'home_ad_enabled', value: 'true' },

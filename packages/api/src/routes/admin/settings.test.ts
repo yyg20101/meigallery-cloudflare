@@ -94,6 +94,9 @@ describe('后台站点设置 API', () => {
 
     for (const homeAdUrl of [
       'javascript:alert(1)',
+      '/admin/settings',
+      '/api/settings/public',
+      '/api/media/public/site/icon.png',
       'https:\\\\example.com\\campaign',
       'https://example.com\\campaign',
       '/discover%5Cnext',

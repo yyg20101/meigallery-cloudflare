@@ -7,7 +7,7 @@
 - **成功标准**：
   - 站长可在后台设置页完成启用、停用、文案更新和开始/结束时间设置，保存后公开设置接口返回归一化值。
   - 首页广告位关闭、未到开始时间或已到结束时间时不渲染任何占位，生效时在 360px、768px、1024px、1440px 视口下不遮挡首屏内容。
-  - 广告链接只允许显式解析通过的站内相对路径或 `https://` 外链；拒绝 `javascript:`、`data:`、`http://`、协议相对链接、空白控制字符、编码控制字符、反斜杠路径和包含用户名或密码的链接。
+  - 广告链接只允许显式解析通过的公开前台相对路径或 `https://` 外链；拒绝 `javascript:`、`data:`、`http://`、协议相对链接、空白控制字符、编码控制字符、反斜杠路径、后台/API/资源路径和包含用户名或密码的链接。
   - 外链在新窗口打开，并使用 `rel="noopener noreferrer"` 和 `referrerpolicy="no-referrer"`。
   - 后台广告设置写操作进入 `admin_audit_logs` 审计日志。
 
@@ -28,6 +28,7 @@
   - 广告位默认关闭，迁移默认写入运营推荐文案但不展示。
   - 公开设置接口只返回白名单中的广告字段。
   - 首页按 `home_ad_enabled`、`home_ad_starts_at`、`home_ad_ends_at` 共同判断是否渲染广告位。
+  - 首页 SEO 标题、描述和 OG 信息必须读取后台站点设置；后台修改后首页不得继续覆盖为硬编码默认标题。
   - 首页组件不使用 HTML 注入，仅渲染纯文本。
   - 单元测试覆盖广告设置 key、链接校验、排期归一化、后台保存、公开读取清洗和前端链接渲染。
 
@@ -45,7 +46,7 @@
 - **架构概览**：
   - D1 migration 写入 `home_ad_*` 站点设置，排期字段为 `home_ad_starts_at` 和 `home_ad_ends_at`。
   - API 通过 `ADMIN_SETTING_KEYS` 控制后台可写字段，通过 `PUBLIC_SETTING_KEYS` 控制公开字段。
-  - 后台 `PATCH /api/admin/settings` 对 `home_ad_enabled` 归一化为 boolean，对 `home_ad_url` 做白名单校验，对排期字段做 ISO 归一化和先后顺序校验。
+  - 后台 `PATCH /api/admin/settings` 对 `home_ad_enabled` 归一化为 boolean，对 `home_ad_url` 做公开前台路径和 `https://` 外链白名单校验，对排期字段做 ISO 归一化和先后顺序校验。
   - 公开设置读取会清空历史危险 URL、异常 Pixel ID 和异常排期值。
   - Web `useSiteSettings()` 提供 computed 字段，首页仅在广告处于有效时间窗内时把设置传给 `HomeAdBand`。
 
@@ -55,7 +56,7 @@
   - Web：首页 `/`、后台 `/admin/settings`。
 
 - **安全与隐私**：
-  - 广告链接只允许显式解析通过的站内相对路径或 `https://`，并拒绝空白控制字符、编码控制字符、反斜杠路径和包含用户名或密码的链接。
+  - 广告链接只允许显式解析通过的公开前台相对路径或 `https://`，并拒绝空白控制字符、编码控制字符、反斜杠路径、后台/API/资源路径和包含用户名或密码的链接。
   - 排期字段只接受可解析时间并统一为 ISO 字符串；历史异常排期不会触发广告展示。
   - 外链使用新窗口并加 `noopener noreferrer` 和 `referrerpolicy="no-referrer"`。
   - 文案按 Vue 默认转义纯文本渲染，不执行 HTML。

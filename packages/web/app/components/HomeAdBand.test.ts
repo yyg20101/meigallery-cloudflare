@@ -151,4 +151,20 @@ describe('HomeAdBand', () => {
       expect(wrapper.find('a').attributes('target')).toBeUndefined()
     }
   })
+
+  it('内部后台或 API 路径回退到安全站内链接', () => {
+    for (const url of ['/admin/settings', '/api/settings/public', '/api/media/public/site/icon.png', '/_nuxt/entry.js']) {
+      const wrapper = mount(HomeAdBand, {
+        props: {
+          enabled: true,
+          title: '赞助推荐',
+          url,
+        },
+        global: { stubs: { NuxtLink: nuxtLinkStub } },
+      })
+
+      expect(wrapper.find('a').attributes('href')).toBe('/discover?sort=hot')
+      expect(wrapper.find('a').attributes('target')).toBeUndefined()
+    }
+  })
 })

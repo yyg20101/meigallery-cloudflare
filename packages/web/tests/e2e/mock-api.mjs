@@ -126,6 +126,9 @@ function publicSettings() {
   return {
     site_name: 'MeiGallery',
     site_description: 'Playwright smoke 测试站点',
+    seo_title: '测试站点标题 - 首页 SEO',
+    og_title: '测试站点 OG 标题',
+    og_description: '测试站点 OG 描述',
     footer_text: '测试环境',
     video_enabled: 'false',
     facebook_pixel_enabled: 'false',

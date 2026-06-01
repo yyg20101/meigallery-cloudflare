@@ -7,9 +7,28 @@ const HOME_AD_TEXT_LIMITS: Record<string, { label: string; maxLength: number }> 
   home_ad_cta_label: { label: '首页广告按钮文案', maxLength: 12 },
   home_ad_sponsor: { label: '首页广告来源说明', maxLength: 30 },
 }
+const HOME_AD_ALLOWED_INTERNAL_PATH_PREFIXES = [
+  '/discover',
+  '/search',
+  '/gallery',
+  '/cases',
+  '/tags',
+  '/rules',
+  '/login',
+  '/register',
+  '/user',
+  '/settings',
+  '/forgot-password',
+]
 
 export function normalizeHomeAdUrl(value: unknown) {
-  return normalizePublicSettingUrl(value, '首页广告链接')
+  const url = normalizePublicSettingUrl(value, '首页广告链接')
+  if (!url || url.startsWith('https://')) return url
+
+  if (!isAllowedHomeAdInternalPath(url)) {
+    throw new Error('首页广告链接只允许跳转到公开前台页面或 https 外链')
+  }
+  return url
 }
 
 export function normalizeHomeAdText(key: string, value: unknown) {
@@ -45,4 +64,13 @@ function hasControlCharacter(value: string) {
     if (code < 0x20 || code === 0x7f) return true
   }
   return false
+}
+
+function isAllowedHomeAdInternalPath(url: string) {
+  const pathname = new URL(url, 'https://meigallery.local').pathname
+  if (pathname === '/') return true
+
+  return HOME_AD_ALLOWED_INTERNAL_PATH_PREFIXES.some((prefix) => {
+    return pathname === prefix || pathname.startsWith(`${prefix}/`)
+  })
 }

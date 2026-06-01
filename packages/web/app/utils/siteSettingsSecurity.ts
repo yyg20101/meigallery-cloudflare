@@ -13,6 +13,19 @@ const HOME_AD_TEXT_WARNING_LABELS: Record<string, string> = {
   home_ad_cta_label: '按钮文案',
   home_ad_sponsor: '赞助/来源说明',
 }
+const HOME_AD_ALLOWED_INTERNAL_PATH_PREFIXES = [
+  '/discover',
+  '/search',
+  '/gallery',
+  '/cases',
+  '/tags',
+  '/rules',
+  '/login',
+  '/register',
+  '/user',
+  '/settings',
+  '/forgot-password',
+]
 
 export function normalizePublicSettingUrl(value: unknown) {
   const url = String(value ?? '').trim()
@@ -43,6 +56,12 @@ export function normalizePublicSettingUrl(value: unknown) {
   }
 
   return ''
+}
+
+export function normalizeHomeAdUrl(value: unknown) {
+  const url = normalizePublicSettingUrl(value)
+  if (!url || url.startsWith('https://')) return url
+  return isAllowedHomeAdInternalPath(url) ? url : ''
 }
 
 export function normalizeInternalPath(value: unknown) {
@@ -142,6 +161,15 @@ function hasControlCharacter(value: string) {
 
 function hasBackslashOrEncodedBackslash(value: string) {
   return value.includes('\\') || /%5c/i.test(value)
+}
+
+function isAllowedHomeAdInternalPath(url: string) {
+  const pathname = new URL(url, 'https://meigallery.local').pathname
+  if (pathname === '/') return true
+
+  return HOME_AD_ALLOWED_INTERNAL_PATH_PREFIXES.some((prefix) => {
+    return pathname === prefix || pathname.startsWith(`${prefix}/`)
+  })
 }
 
 function isPrivateIpv4(hostname: string) {

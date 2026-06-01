@@ -2,6 +2,10 @@
 const { api } = useApi()
 const {
   videoEnabled,
+  seoTitle,
+  siteDescription,
+  ogTitle,
+  ogDescription,
   homeHeroTitle,
   homeHeroSubtitle,
   homeAdEyebrow,
@@ -104,10 +108,10 @@ const cases = computed(() => {
 })
 
 useSeoMeta({
-  title: 'MeiGallery - 精选写真图库',
-  description: '精选写真、时尚、生活、艺术类图片和视频，覆盖国内外多城市地区',
-  ogTitle: 'MeiGallery - 精选写真图库',
-  ogDescription: '精选写真、时尚、生活、艺术类图片和视频',
+  title: () => seoTitle.value,
+  description: () => siteDescription.value || homeHeroSubtitle.value,
+  ogTitle: () => ogTitle.value,
+  ogDescription: () => ogDescription.value || siteDescription.value || homeHeroSubtitle.value,
   ogType: 'website',
 })
 </script>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { normalizePublicSettingUrl } from '~/utils/siteSettingsSecurity'
+import { normalizeHomeAdUrl } from '~/utils/siteSettingsSecurity'
 
 const props = defineProps<{
   enabled: boolean
@@ -12,7 +12,7 @@ const props = defineProps<{
 }>()
 
 function normalizeAdUrl(url?: string) {
-  return normalizePublicSettingUrl(url) || '/discover?sort=hot'
+  return normalizeHomeAdUrl(url) || '/discover?sort=hot'
 }
 
 const safeUrl = computed(() => normalizeAdUrl(props.url))
