@@ -81,6 +81,33 @@ test.describe('核心页面 smoke', () => {
     expect(overflow).toBe(false)
   })
 
+  test('首页广告外链输出安全属性和离站提示', async ({ request, page }) => {
+    await request.patch(`${apiURL}/api/admin/settings`, {
+      data: {
+        home_ad_url: 'https://example.com/sponsor-campaign',
+        home_ad_cta_label: '查看赞助',
+        home_ad_sponsor: '外部赞助推荐',
+      },
+    })
+
+    await page.goto('/')
+
+    const homeAd = page.getByRole('region', { name: '首页广告推荐' })
+    const externalCta = homeAd.getByRole('link', { name: '查看赞助，外部链接' })
+
+    await expect(homeAd).toBeVisible()
+    await expect(externalCta).toBeVisible()
+    await expect(externalCta).toHaveAttribute('href', 'https://example.com/sponsor-campaign')
+    await expect(externalCta).toHaveAttribute('target', '_blank')
+    await expect(externalCta).toHaveAttribute('rel', /(^| )noopener( |$)/)
+    await expect(externalCta).toHaveAttribute('rel', /(^| )noreferrer( |$)/)
+    await expect(externalCta).toHaveAttribute('rel', /(^| )nofollow( |$)/)
+    await expect(externalCta).toHaveAttribute('rel', /(^| )sponsored( |$)/)
+    await expect(externalCta).toHaveAttribute('referrerpolicy', 'no-referrer')
+    await expect(homeAd.getByText('外部链接')).toBeVisible()
+    await expect(homeAd.getByText('不发送来源页信息')).toBeVisible()
+  })
+
   test('后台更新站点 SEO 后首页立即读取新标题', async ({ page }) => {
     await page.goto('/admin/settings')
 
