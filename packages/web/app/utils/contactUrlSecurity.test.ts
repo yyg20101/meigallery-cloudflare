@@ -22,6 +22,9 @@ describe('contactUrlSecurity', () => {
       'https://preview.local./contact',
       'https://example.com/a b',
       'https://example.com/%0Acontact',
+      'https://user:pass@example.com/contact',
+      'https://example.com\\@evil.test/contact',
+      'https://example.com/%5Ccontact',
       'mailto:hello@example.com%0Abcc:evil@example.com',
     ]) {
       expect(normalizeContactActionUrl(url)).toBeNull()
@@ -41,6 +44,10 @@ describe('contactUrlSecurity', () => {
       'https://example.local/qr.png',
       'https://example.local./qr.png',
       '/api/contact-methods/contact-1/qr%20bad',
+      '/api/contact-methods/contact-1/%5Cqr.png',
+      'https://user:pass@example.com/qr.png',
+      'https://example.com\\@evil.test/qr.png',
+      'https://example.com/%5Cqr.png',
       '//example.com/qr.png',
     ]) {
       expect(normalizeContactQrCodeUrl(url)).toBeNull()

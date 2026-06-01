@@ -71,6 +71,7 @@
 - 发布 PR #8 的 Playwright smoke 已补 mock API 站点设置重置入口，避免后台 SEO 保存测试污染后续断点的首页 SSR SEO 基线；由于 smoke 四个 viewport 共用同一个 mock API 可变状态，Playwright 当前固定单 worker 串行执行，避免跨 viewport 的 reset / PATCH 竞争。
 - 首页广告位外链持续增强：前台 CTA 已补离站可感知名称、离站/隐私提示，并将广告外链 `rel` 扩展为 `noopener noreferrer nofollow sponsored`；Playwright smoke 已覆盖最终浏览器 DOM 中的外链安全属性、`no-referrer` 和离站提示。
 - 规则 Markdown 外链持续增强：规则页和悬浮规则面板渲染的外链已统一输出 `noopener noreferrer nofollow` 与 `referrerpolicy="no-referrer"`，并拒绝带用户名/密码或反斜杠歧义的 URL。
+- 联系方式链接持续增强：前台联系方式跳转和二维码弹层外链已拒绝带凭据、反斜杠歧义 URL，并统一输出 `noopener noreferrer nofollow` 与 `referrerpolicy="no-referrer"`。
 
 ## Git 状态
 

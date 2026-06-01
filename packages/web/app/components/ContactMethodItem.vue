@@ -141,7 +141,8 @@ function activate() {
           v-if="hasLink"
           :href="safeActionHref || undefined"
           target="_blank"
-          rel="noopener noreferrer"
+          rel="noopener noreferrer nofollow"
+          referrerpolicy="no-referrer"
           class="mt-1 text-xs text-gray-800 underline decoration-[#d6c39a] underline-offset-4 hover:text-black"
         >
           点击跳转 →

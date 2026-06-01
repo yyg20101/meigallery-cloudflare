@@ -72,4 +72,16 @@ describe('ContactMethodItem', () => {
     expect(wrapper.find('button[aria-label="展开二维码"]').exists()).toBe(false)
     expect(wrapper.find('img').exists()).toBe(false)
   })
+
+  it('二维码弹层跳转链接输出隐私和 nofollow 属性', async () => {
+    const wrapper = mountItem('https://example.com/contact', '/api/contact-methods/contact-1/qrcode')
+
+    await wrapper.get('button[aria-label="展开二维码"]').trigger('click')
+
+    const link = wrapper.get('a')
+    expect(link.attributes('href')).toBe('https://example.com/contact')
+    expect(link.attributes('target')).toBe('_blank')
+    expect(link.attributes('rel')).toBe('noopener noreferrer nofollow')
+    expect(link.attributes('referrerpolicy')).toBe('no-referrer')
+  })
 })

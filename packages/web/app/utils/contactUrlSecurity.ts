@@ -4,11 +4,15 @@ const BLOCKED_HOSTS = new Set(['localhost', 'localhost.localdomain'])
 export function normalizeContactActionUrl(value: unknown) {
   const url = String(value ?? '').trim()
   if (!url || hasWhitespaceOrControlCharacter(url) || hasEncodedWhitespaceOrControlCharacter(url)) return null
+  if (hasBackslashOrEncodedBackslash(url)) return null
 
   try {
     const parsed = new URL(url)
     if (!ALLOWED_PROTOCOLS.has(parsed.protocol)) return null
-    if (parsed.protocol === 'https:' && !isPublicHostname(parsed.hostname)) return null
+    if (parsed.protocol === 'https:') {
+      if (parsed.username || parsed.password || !isPublicHostname(parsed.hostname)) return null
+      return parsed.toString()
+    }
     return url
   } catch {
     return null
@@ -18,9 +22,10 @@ export function normalizeContactActionUrl(value: unknown) {
 export function normalizeContactQrCodeUrl(value: unknown) {
   const url = String(value ?? '').trim()
   if (!url || hasWhitespaceOrControlCharacter(url) || hasEncodedWhitespaceOrControlCharacter(url)) return null
+  if (hasBackslashOrEncodedBackslash(url)) return null
 
   if (url.startsWith('/')) {
-    if (url.startsWith('//') || url.startsWith('/\\')) return null
+    if (url.startsWith('//')) return null
     try {
       const parsed = new URL(url, 'https://meigallery.local')
       return `${parsed.pathname}${parsed.search}${parsed.hash}`
@@ -31,6 +36,7 @@ export function normalizeContactQrCodeUrl(value: unknown) {
 
   try {
     const parsed = new URL(url)
+    if (parsed.username || parsed.password) return null
     if (parsed.protocol !== 'https:' || !isPublicHostname(parsed.hostname)) return null
     return parsed.toString()
   } catch {
@@ -59,6 +65,10 @@ function hasWhitespaceOrControlCharacter(value: string) {
     if (code <= 0x20 || code === 0x7f) return true
   }
   return false
+}
+
+function hasBackslashOrEncodedBackslash(value: string) {
+  return value.includes('\\') || /%5c/i.test(value)
 }
 
 function isPrivateIpv4(hostname: string) {
