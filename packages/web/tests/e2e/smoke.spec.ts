@@ -62,4 +62,24 @@ test.describe('核心页面 smoke', () => {
     })
     expect(overflow).toBe(false)
   })
+
+  test('后台更新站点 SEO 后首页立即读取新标题', async ({ page }) => {
+    await page.goto('/admin/settings')
+
+    await page.getByLabel('站点名称').fill('运营新站名')
+    await page.getByLabel('站点描述').fill('后台保存后的新站点描述')
+    await page.getByLabel('SEO 标题').fill('运营新标题 - 首页')
+    await page.getByLabel('OG 标题').fill('运营新 OG 标题')
+    await page.getByLabel('OG 描述').fill('运营新 OG 描述')
+    await page.getByRole('button', { name: '保存设置' }).click()
+
+    await expect(page.getByText('设置已保存')).toBeVisible()
+    await page.goto('/')
+
+    await expect(page).toHaveTitle('运营新标题 - 首页')
+    await expect(page.locator('meta[name="description"]')).toHaveAttribute('content', '后台保存后的新站点描述')
+    await expect(page.locator('meta[property="og:title"]')).toHaveAttribute('content', '运营新 OG 标题')
+    await expect(page.locator('meta[property="og:description"]')).toHaveAttribute('content', '运营新 OG 描述')
+    await expect(page).not.toHaveTitle('MeiGallery - 精选写真图库')
+  })
 })

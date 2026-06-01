@@ -50,8 +50,8 @@ export function useSiteSettings() {
   const settings = useState<SiteSettings>('site-settings', () => ({}))
   const loaded = useState<boolean>('site-settings-loaded', () => false)
 
-  async function fetchSettings() {
-    if (loaded.value) return settings.value
+  async function fetchSettings(options: { force?: boolean } = {}) {
+    if (loaded.value && !options.force) return settings.value
     try {
       const data = await api<SiteSettings>('/api/settings/public')
       settings.value = data

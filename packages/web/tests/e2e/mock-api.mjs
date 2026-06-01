@@ -105,13 +105,36 @@ const user = {
   membershipName: 'SVIP',
 }
 
+const defaultPublicSettings = {
+  site_name: '测试图库站',
+  site_description: 'Playwright smoke 测试站点',
+  seo_title: '测试站点标题 - 首页 SEO',
+  og_title: '测试站点 OG 标题',
+  og_description: '测试站点 OG 描述',
+  footer_text: '测试环境',
+  video_enabled: 'false',
+  facebook_pixel_enabled: 'false',
+  home_hero_title: '精选写真，按地区发现',
+  home_hero_subtitle: '测试环境中的授权内容展示。',
+  home_ad_enabled: 'true',
+  home_ad_eyebrow: '本周推荐',
+  home_ad_title: '会员季精选内容精选内容精选内容',
+  home_ad_summary: '探索本周精选图库、真实案例和会员可访问内容，保持文案可读、不过度堆叠并适配多断点预览。',
+  home_ad_cta_label: '查看推荐',
+  home_ad_url: '/discover?sort=hot',
+  home_ad_sponsor: 'MeiGallery 运营推荐',
+  rules_entry_enabled: 'false',
+}
+
+const mutablePublicSettings = { ...defaultPublicSettings }
+
 function json(res, data, status = 200) {
   const body = JSON.stringify(data)
   res.writeHead(status, {
     'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Headers': 'content-type',
-    'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
+    'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': Buffer.byteLength(body),
   })
@@ -123,26 +146,20 @@ function notFound(res) {
 }
 
 function publicSettings() {
-  return {
-    site_name: '测试图库站',
-    site_description: 'Playwright smoke 测试站点',
-    seo_title: '测试站点标题 - 首页 SEO',
-    og_title: '测试站点 OG 标题',
-    og_description: '测试站点 OG 描述',
-    footer_text: '测试环境',
-    video_enabled: 'false',
-    facebook_pixel_enabled: 'false',
-    home_hero_title: '精选写真，按地区发现',
-    home_hero_subtitle: '测试环境中的授权内容展示。',
-    home_ad_enabled: 'true',
-    home_ad_eyebrow: '本周推荐',
-    home_ad_title: '会员季精选内容精选内容精选内容',
-    home_ad_summary: '探索本周精选图库、真实案例和会员可访问内容，保持文案可读、不过度堆叠并适配多断点预览。',
-    home_ad_cta_label: '查看推荐',
-    home_ad_url: '/discover?sort=hot',
-    home_ad_sponsor: 'MeiGallery 运营推荐',
-    rules_entry_enabled: 'false',
-  }
+  return { ...mutablePublicSettings }
+}
+
+function adminSettings() {
+  const now = new Date('2026-06-01T00:00:00.000Z').toISOString()
+  return Object.fromEntries(Object.entries(mutablePublicSettings).map(([key, value]) => [key, { value, updatedAt: now }]))
+}
+
+async function readJsonBody(req) {
+  const chunks = []
+  for await (const chunk of req) chunks.push(chunk)
+  const raw = Buffer.concat(chunks).toString('utf8')
+  if (!raw) return {}
+  return JSON.parse(raw)
 }
 
 function galleryDetail(slug) {
@@ -185,7 +202,7 @@ function handleApi(req, res) {
       'Access-Control-Allow-Origin': allowedOrigin,
       'Access-Control-Allow-Credentials': 'true',
       'Access-Control-Allow-Headers': 'content-type',
-      'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
+      'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
     })
     res.end()
     return
@@ -233,6 +250,18 @@ function handleApi(req, res) {
       draftGalleries: 1,
       failedImports: 0,
     })
+  }
+  if (url.pathname === '/api/admin/settings') {
+    if (req.method === 'GET') return json(res, { data: adminSettings() })
+    if (req.method === 'PATCH') {
+      readJsonBody(req)
+        .then((body) => {
+          Object.assign(mutablePublicSettings, body)
+          json(res, { message: '设置已更新', updated: Object.keys(body) })
+        })
+        .catch(() => json(res, { statusCode: 400, message: '测试设置请求无效' }, 400))
+      return
+    }
   }
   if (url.pathname === '/api/admin/galleries') {
     return json(res, {

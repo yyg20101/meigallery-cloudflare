@@ -5,7 +5,7 @@ definePageMeta({ layout: 'admin' })
 
 const { api } = useApi()
 const { isOwner } = useAuth()
-const { settings: publicSettings } = useSiteSettings()
+const { fetchSettings, settings: publicSettings } = useSiteSettings()
 
 const form = reactive({
   // 基础信息
@@ -174,6 +174,7 @@ async function onSave() {
         home_ad_enabled: homeAdEnabled.value,
       },
     })
+    await fetchSettings({ force: true })
     message.value = '设置已保存'
   } catch (e: any) {
     message.value = e?.data?.message || '保存失败'
@@ -254,13 +255,13 @@ async function toggleVideo() {
       <fieldset class="space-y-4">
         <legend class="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-2 w-full">基础信息</legend>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">站点名称</label>
-          <input v-model="form.site_name" maxlength="40" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="MeiGallery" />
+          <label for="site-name" class="block text-sm font-medium text-gray-700 mb-1">站点名称</label>
+          <input id="site-name" v-model="form.site_name" maxlength="40" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="MeiGallery" />
           <p class="text-xs text-gray-400 mt-1">显示在导航栏、页脚和浏览器标签页</p>
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">站点描述</label>
-          <textarea v-model="form.site_description" rows="2" maxlength="180" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="精选写真、时尚、生活、艺术类图库平台" />
+          <label for="site-description" class="block text-sm font-medium text-gray-700 mb-1">站点描述</label>
+          <textarea id="site-description" v-model="form.site_description" rows="2" maxlength="180" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="精选写真、时尚、生活、艺术类图库平台" />
           <p class="text-xs text-gray-400 mt-1">用于 meta description 和默认 OG 描述</p>
         </div>
         <div>
@@ -289,18 +290,18 @@ async function toggleVideo() {
       <fieldset class="space-y-4">
         <legend class="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-2 w-full">SEO / 社交分享</legend>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">SEO 标题</label>
-          <input v-model="form.seo_title" maxlength="80" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="MeiGallery - 精选写真图库" />
+          <label for="seo-title" class="block text-sm font-medium text-gray-700 mb-1">SEO 标题</label>
+          <input id="seo-title" v-model="form.seo_title" maxlength="80" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="MeiGallery - 精选写真图库" />
           <p class="text-xs text-gray-400 mt-1">搜索引擎显示的页面标题（title 标签）</p>
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">OG 标题</label>
-          <input v-model="form.og_title" maxlength="80" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="留空则使用 SEO 标题" />
+          <label for="og-title" class="block text-sm font-medium text-gray-700 mb-1">OG 标题</label>
+          <input id="og-title" v-model="form.og_title" maxlength="80" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="留空则使用 SEO 标题" />
           <p class="text-xs text-gray-400 mt-1">社交平台（微信、微博等）分享时显示的标题</p>
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">OG 描述</label>
-          <textarea v-model="form.og_description" rows="2" maxlength="220" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="留空则使用站点描述" />
+          <label for="og-description" class="block text-sm font-medium text-gray-700 mb-1">OG 描述</label>
+          <textarea id="og-description" v-model="form.og_description" rows="2" maxlength="220" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="留空则使用站点描述" />
           <p class="text-xs text-gray-400 mt-1">社交平台分享时显示的描述文字</p>
         </div>
         <div>
