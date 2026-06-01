@@ -2,6 +2,7 @@ import { normalizeBooleanSetting, normalizeFacebookPixelId } from './facebook-pi
 import { normalizeHomeAdScheduleValue } from './home-ad-schedule'
 import { normalizeHomeAdUrl, safeHomeAdText } from './home-ad-settings'
 import { safeInternalPathSetting, safePublicSettingUrl } from './public-setting-url'
+import { safeFeaturedRegionSlugs, safeHomeHotTagLimit, safeRulesMarkdown } from './site-content-settings'
 import { isSiteTextSettingKey, safeSiteTextSetting } from './site-text-settings'
 
 const PUBLIC_URL_FIELDS: Record<string, string> = {
@@ -35,6 +36,10 @@ export function sanitizePublicSiteSetting(key: string, value: unknown) {
 
   const internalPathLabel = INTERNAL_PATH_FIELDS[key]
   if (internalPathLabel) return safeInternalPathSetting(value, internalPathLabel)
+
+  if (key === 'home_hot_tag_limit') return safeHomeHotTagLimit(value)
+  if (key === 'home_featured_region_slugs') return safeFeaturedRegionSlugs(value)
+  if (key === 'rules_modal_content' || key === 'rules_page_content') return safeRulesMarkdown(value)
 
   if (isSiteTextSettingKey(key)) {
     return safeSiteTextSetting(key, value)

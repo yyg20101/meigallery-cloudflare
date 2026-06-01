@@ -8,6 +8,7 @@ import { isHomeAdTextKey, normalizeHomeAdText, normalizeHomeAdUrl } from '../../
 import { writeAuditLog } from '../../utils/permission'
 import { normalizeInternalPathSetting, normalizePublicSettingUrl } from '../../utils/public-setting-url'
 import { ADMIN_SETTING_KEYS } from '../../utils/site-settings'
+import { normalizeFeaturedRegionSlugs, normalizeHomeHotTagLimit, normalizeRulesMarkdown } from '../../utils/site-content-settings'
 import { isSiteTextSettingKey, normalizeSiteTextSetting } from '../../utils/site-text-settings'
 
 export const adminSettingsRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
@@ -65,6 +66,28 @@ adminSettingsRoutes.patch('/', requireOwner, async (c) => {
   }
   if ('home_ad_enabled' in body) {
     body.home_ad_enabled = normalizeBooleanSetting(body.home_ad_enabled)
+  }
+  if ('home_hot_tag_limit' in body) {
+    try {
+      body.home_hot_tag_limit = normalizeHomeHotTagLimit(body.home_hot_tag_limit)
+    } catch (error) {
+      return c.json({ statusCode: 400, message: error instanceof Error ? error.message : '首页热门标签数量无效' }, 400)
+    }
+  }
+  if ('home_featured_region_slugs' in body) {
+    try {
+      body.home_featured_region_slugs = normalizeFeaturedRegionSlugs(body.home_featured_region_slugs)
+    } catch (error) {
+      return c.json({ statusCode: 400, message: error instanceof Error ? error.message : '主推地区配置无效' }, 400)
+    }
+  }
+  for (const [key, label] of Object.entries({ rules_modal_content: '弹窗 Markdown 摘要', rules_page_content: '规则页 Markdown 正文' })) {
+    if (!(key in body)) continue
+    try {
+      body[key] = normalizeRulesMarkdown(body[key], label)
+    } catch (error) {
+      return c.json({ statusCode: 400, message: error instanceof Error ? error.message : `${label}无效` }, 400)
+    }
   }
   for (const key of Object.keys(body)) {
     if (!isSiteTextSettingKey(key)) continue

@@ -42,6 +42,9 @@ const SITE_TEXT_LIMITS: Record<string, { maxLength: number; pattern?: RegExp }> 
   rules_page_title: { maxLength: 40 },
   rules_page_summary: { maxLength: 180 },
 }
+const MAX_FEATURED_REGION_SLUGS = 12
+const MAX_RULES_MARKDOWN_LENGTH = 8000
+const SLUG_PATTERN = /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/i
 
 export function normalizePublicSettingUrl(value: unknown) {
   const url = String(value ?? '').trim()
@@ -108,6 +111,44 @@ export function safeSiteText(key: string, value: unknown): string {
   const text = raw.trim().replace(/\s+/g, ' ')
   if (text.length > config.maxLength) return ''
   if (text && config.pattern && !config.pattern.test(text)) return ''
+  return text
+}
+
+export function normalizeHomeHotTagLimit(value: unknown) {
+  const raw = String(value ?? '').trim()
+  if (!raw) return 15
+  if (!/^\d+$/.test(raw)) return 15
+
+  const limit = Number(raw)
+  return Number.isInteger(limit) && limit > 0 ? Math.min(limit, 30) : 15
+}
+
+export function normalizeFeaturedRegionSlugs(value: unknown) {
+  const raw = String(value ?? '').trim()
+  if (!raw) return []
+
+  const slugs = raw
+    .split(',')
+    .map(slug => slug.trim())
+    .filter(Boolean)
+  if (slugs.length > MAX_FEATURED_REGION_SLUGS) return []
+
+  const normalizedSlugs: string[] = []
+  const seen = new Set<string>()
+  for (const slug of slugs) {
+    if (!SLUG_PATTERN.test(slug)) return []
+    const normalized = slug.toLowerCase()
+    if (seen.has(normalized)) continue
+    normalizedSlugs.push(normalized)
+    seen.add(normalized)
+  }
+  return normalizedSlugs
+}
+
+export function safeRulesMarkdown(value: unknown) {
+  if (value === null || value === undefined) return ''
+  const text = String(value).replace(/\r\n/g, '\n').trim()
+  if (hasDisallowedControlCharacter(text) || text.length > MAX_RULES_MARKDOWN_LENGTH) return ''
   return text
 }
 

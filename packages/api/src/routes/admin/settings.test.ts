@@ -191,6 +191,71 @@ describe('后台站点设置 API', () => {
     expect(executed.some(item => item.sql.includes('INSERT INTO admin_audit_logs'))).toBe(true)
   })
 
+  it('站长更新首页内容配置时会归一化数量、slug 和规则 Markdown', async () => {
+    const executed: Array<{ sql: string; params: unknown[] }> = []
+    const app = createApp()
+    const env = {
+      DB: createDb({
+        all: (sql) => {
+          if (sql.includes('SELECT key, value FROM site_settings')) {
+            return [
+              { key: 'home_hot_tag_limit', value: JSON.stringify('15') },
+              { key: 'home_featured_region_slugs', value: JSON.stringify('') },
+              { key: 'rules_page_content', value: JSON.stringify('旧规则') },
+            ]
+          }
+          return []
+        },
+        run: (sql, params) => {
+          executed.push({ sql, params })
+          return { success: true }
+        },
+      }),
+    } as unknown as Bindings
+
+    const res = await app.request('/api/admin/settings', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        home_hot_tag_limit: ' 12 ',
+        home_featured_region_slugs: ' Canada,domestic,canada,toronto-city ',
+        rules_page_content: '## 规则\r\n\r\n- 仅限授权内容',
+      }),
+    }, env)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.updated).toEqual(['home_hot_tag_limit', 'home_featured_region_slugs', 'rules_page_content'])
+    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[0] === '"12"' && item.params[1] === 'home_hot_tag_limit')).toBe(true)
+    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[0] === '"canada,domestic,toronto-city"' && item.params[1] === 'home_featured_region_slugs')).toBe(true)
+    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[0] === '"## 规则\\n\\n- 仅限授权内容"' && item.params[1] === 'rules_page_content')).toBe(true)
+    expect(executed.some(item => item.sql.includes('INSERT INTO admin_audit_logs'))).toBe(true)
+  })
+
+  it('拒绝异常首页内容配置', async () => {
+    const app = createApp()
+    const env = { DB: createDb({}) } as unknown as Bindings
+
+    for (const payload of [
+      { home_hot_tag_limit: '31' },
+      { home_hot_tag_limit: '1.5' },
+      { home_featured_region_slugs: 'canada,../admin' },
+      { home_featured_region_slugs: Array.from({ length: 13 }, (_, index) => `tag-${index}`).join(',') },
+      { rules_modal_content: '规则\u0001内容' },
+      { rules_page_content: 'x'.repeat(8001) },
+    ]) {
+      const res = await app.request('/api/admin/settings', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      }, env)
+      const body = await res.json()
+
+      expect(res.status).toBe(400)
+      expect(body.message).toMatch(/首页热门标签数量|主推地区|Markdown/)
+    }
+  })
+
   it('拒绝过长或包含控制字符的 SEO 和首页短文案', async () => {
     const app = createApp()
     const env = { DB: createDb({}) } as unknown as Bindings

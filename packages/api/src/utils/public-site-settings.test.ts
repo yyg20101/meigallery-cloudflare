@@ -54,7 +54,12 @@ describe('公开站点设置安全读取', () => {
     expect(sanitizePublicSiteSetting('rules_page_title', '入站规则')).toBe('入站规则')
   })
 
-  it('保留非安全敏感设置原值', () => {
-    expect(sanitizePublicSiteSetting('home_hot_tag_limit', 12)).toBe(12)
+  it('归一化首页内容配置并清空历史异常内容', () => {
+    expect(sanitizePublicSiteSetting('home_hot_tag_limit', 12)).toBe('12')
+    expect(sanitizePublicSiteSetting('home_hot_tag_limit', '31')).toBe('15')
+    expect(sanitizePublicSiteSetting('home_featured_region_slugs', ' Canada,domestic,canada ')).toBe('canada,domestic')
+    expect(sanitizePublicSiteSetting('home_featured_region_slugs', 'canada,../admin')).toBe('')
+    expect(sanitizePublicSiteSetting('rules_page_content', '## 规则\r\n\r\n- 内容')).toBe('## 规则\n\n- 内容')
+    expect(sanitizePublicSiteSetting('rules_modal_content', '规则\u0001内容')).toBe('')
   })
 })

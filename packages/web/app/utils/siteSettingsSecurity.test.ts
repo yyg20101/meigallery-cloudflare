@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getHomeAdTextPreviewWarnings, isScheduledSiteFeatureActive, normalizeBooleanSetting, normalizeHomeAdText, normalizeHomeAdUrl, normalizeInternalPath, normalizePublicSettingUrl, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId, safeSiteText } from './siteSettingsSecurity'
+import { getHomeAdTextPreviewWarnings, isScheduledSiteFeatureActive, normalizeBooleanSetting, normalizeFeaturedRegionSlugs, normalizeHomeAdText, normalizeHomeAdUrl, normalizeHomeHotTagLimit, normalizeInternalPath, normalizePublicSettingUrl, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId, safeRulesMarkdown, safeSiteText } from './siteSettingsSecurity'
 
 describe('siteSettingsSecurity', () => {
   it('公开 URL 只允许站内路径和 https 链接', () => {
@@ -99,6 +99,21 @@ describe('siteSettingsSecurity', () => {
     expect(safeSiteText('rules_entry_summary', '入口\u0001说明')).toBe('')
     expect(safeSiteText('rules_entry_icon', '<svg>')).toBe('')
     expect(safeSiteText('rules_page_title', '入站规则')).toBe('入站规则')
+  })
+
+  it('归一化首页内容配置并拒绝异常历史值', () => {
+    expect(normalizeHomeHotTagLimit('')).toBe(15)
+    expect(normalizeHomeHotTagLimit('12')).toBe(12)
+    expect(normalizeHomeHotTagLimit('31')).toBe(30)
+    expect(normalizeHomeHotTagLimit('abc')).toBe(15)
+
+    expect(normalizeFeaturedRegionSlugs(' Canada,domestic,canada,toronto-city ')).toEqual(['canada', 'domestic', 'toronto-city'])
+    expect(normalizeFeaturedRegionSlugs('canada,../admin')).toEqual([])
+    expect(normalizeFeaturedRegionSlugs(Array.from({ length: 13 }, (_, index) => `tag-${index}`).join(','))).toEqual([])
+
+    expect(safeRulesMarkdown('## 规则\r\n\r\n- 内容')).toBe('## 规则\n\n- 内容')
+    expect(safeRulesMarkdown('规则\u0001内容')).toBe('')
+    expect(safeRulesMarkdown('x'.repeat(8001))).toBe('')
   })
 
   it('归一化首页广告文案并拒绝超长或控制字符', () => {
