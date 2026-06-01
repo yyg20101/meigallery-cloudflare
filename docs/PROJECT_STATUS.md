@@ -80,6 +80,7 @@
 - 首页广告位语义持续增强：前台广告组件已补“推广”标识，外链 CTA 通过 `aria-describedby` 关联离站和不发送来源页提示；组件测试与 Playwright smoke 同步覆盖站内/外链差异，避免安全提示仅停留在视觉文本。
 - 后台广告预览持续增强：站点设置页的首页广告实时预览已使用不可跳转预览模式，保留前台同款广告视觉和外链安全提示，但不渲染可点击链接，避免运营编辑配置时误点离开后台。
 - 公开 URL 混淆地址回归增强：公开站点设置 URL、首页广告 URL 和广告组件边界测试已覆盖十进制、十六进制、八进制、短写 IPv4 与 IPv6 地址写法，确保浏览器归一化后的本机/非公网地址不会被误放行。
+- CI 运行时持续增强：GitHub Actions 已在 workflow 顶层启用 `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true`，提前验证 checkout、setup-node、upload-artifact 和 pnpm action 在 Node 24 action runtime 下的兼容性；项目命令自身仍由 `setup-node` 固定使用 Node 20。
 
 ## Git 状态
 
