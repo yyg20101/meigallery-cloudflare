@@ -227,7 +227,7 @@ async function onSave() {
       message.value = '设置已保存，但前台公开设置刷新失败，请刷新页面确认'
     }
   } catch (e: any) {
-    message.value = e?.data?.message || '保存失败'
+    message.value = resolveApiErrorMessage(e, '保存失败')
   } finally {
     loading.value = false
   }
@@ -250,7 +250,7 @@ async function onSiteIconSelected(event: Event) {
     publicSettings.value = { ...publicSettings.value, site_icon: result.iconUrl }
     message.value = '站点图标已上传并同步 favicon'
   } catch (e: any) {
-    message.value = e?.data?.message || '站点图标上传失败'
+    message.value = resolveApiErrorMessage(e, '站点图标上传失败')
   } finally {
     iconUploadLoading.value = false
     if (siteIconInput.value) siteIconInput.value.value = ''
@@ -268,7 +268,7 @@ async function toggleEmailVerification() {
     })
     emailVerificationEnabled.value = newVal
   } catch (e: any) {
-    useToast().add({ title: e?.data?.message || '操作失败', color: 'error' })
+    useToast().add({ title: resolveApiErrorMessage(e, '操作失败'), color: 'error' })
   } finally {
     toggleLoading.value = false
   }
@@ -285,7 +285,7 @@ async function toggleVideo() {
     })
     videoEnabledToggle.value = newVal
   } catch (e: any) {
-    useToast().add({ title: e?.data?.message || '操作失败', color: 'error' })
+    useToast().add({ title: resolveApiErrorMessage(e, '操作失败'), color: 'error' })
   } finally {
     videoToggleLoading.value = false
   }

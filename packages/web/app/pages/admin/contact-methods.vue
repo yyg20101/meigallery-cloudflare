@@ -87,7 +87,7 @@ async function onSubmit() {
     resetForm()
     await refresh()
   } catch (e: any) {
-    useToast().add({ title: e?.data?.message || '操作失败', color: 'error' })
+    useToast().add({ title: resolveApiErrorMessage(e, '操作失败'), color: 'error' })
   }
 }
 

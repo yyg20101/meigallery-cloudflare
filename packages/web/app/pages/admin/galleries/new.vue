@@ -103,7 +103,7 @@ async function onSubmit() {
       coverKey: null,
     }
   } catch (e: any) {
-    error.value = e?.data?.message || '创建失败'
+    error.value = resolveApiErrorMessage(e, '创建失败')
   } finally {
     loading.value = false
   }
@@ -157,7 +157,7 @@ async function onSetCover(assetId: string) {
     )
     coverKey.value = detail.data?.coverKey ?? null
   } catch (e: any) {
-    error.value = e?.data?.message || e?.message || '设置封面失败'
+    error.value = resolveApiErrorMessage(e, '设置封面失败')
   } finally {
     coverSettingLoading.value = false
   }
@@ -173,7 +173,7 @@ async function onDeleteMedia(assetId: string) {
     }
     await loadMedia()
   } catch (e: any) {
-    error.value = e?.data?.message || e?.message || '删除失败'
+    error.value = resolveApiErrorMessage(e, '删除失败')
   }
 }
 
@@ -188,7 +188,7 @@ async function onUpdateRank(assetId: string, rank: number) {
       mediaAssets.value[idx] = { ...mediaAssets.value[idx]!, requiredRank: rank }
     }
   } catch (e: any) {
-    error.value = e?.data?.message || e?.message || '修改等级失败'
+    error.value = resolveApiErrorMessage(e, '修改等级失败')
   }
 }
 
@@ -209,7 +209,7 @@ async function onReorder(order: Array<{ assetId: string; sortOrder: number }>) {
       body: { order },
     })
   } catch (e: any) {
-    error.value = e?.data?.message || e?.message || '排序保存失败'
+    error.value = resolveApiErrorMessage(e, '排序保存失败')
     await loadMedia()
   }
 }

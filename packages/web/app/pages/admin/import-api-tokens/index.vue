@@ -82,7 +82,7 @@ async function createToken() {
     resetForm()
     await refresh()
   } catch (error: any) {
-    useToast().add({ title: error?.data?.message || '创建 Import Token 失败', color: 'error' })
+    useToast().add({ title: resolveApiErrorMessage(error, '创建 Import Token 失败'), color: 'error' })
   } finally {
     creating.value = false
   }

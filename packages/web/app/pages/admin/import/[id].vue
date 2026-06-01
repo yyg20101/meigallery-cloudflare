@@ -96,7 +96,7 @@ async function processJob() {
     processResult.value = result
     refresh()
   } catch (e: any) {
-    useToast().add({ title: e?.data?.message || '处理失败', color: 'error' })
+    useToast().add({ title: resolveApiErrorMessage(e, '处理失败'), color: 'error' })
     resetTurnstile()
   } finally {
     processing.value = false

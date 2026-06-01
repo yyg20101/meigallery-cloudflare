@@ -56,7 +56,7 @@ async function onSubmit() {
     })
     await navigateTo(`/admin/cases/${result.id}`)
   } catch (e: any) {
-    message.value = e?.data?.message || '创建失败'
+    message.value = resolveApiErrorMessage(e, '创建失败')
   } finally {
     loading.value = false
   }

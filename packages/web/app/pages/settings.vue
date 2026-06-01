@@ -67,7 +67,7 @@ async function saveUsername() {
     await fetchUser()
     setTimeout(() => { usernameSuccess.value = false }, 3000)
   } catch (e: any) {
-    usernameError.value = e?.data?.message || '保存失败'
+    usernameError.value = resolveApiErrorMessage(e, '保存失败')
   } finally {
     usernameLoading.value = false
   }
@@ -108,7 +108,7 @@ async function changePassword() {
     passwordForm.confirmPassword = ''
     setTimeout(() => { passwordSuccess.value = false }, 3000)
   } catch (e: any) {
-    passwordError.value = e?.data?.message || '修改失败'
+    passwordError.value = resolveApiErrorMessage(e, '修改失败')
   } finally {
     passwordLoading.value = false
   }
@@ -140,7 +140,7 @@ async function onAvatarChange(event: Event) {
     await api('/api/me/avatar', { method: 'POST', body: formData })
     await fetchUser()
   } catch (e: any) {
-    avatarError.value = e?.data?.message || '上传失败'
+    avatarError.value = resolveApiErrorMessage(e, '上传失败')
   } finally {
     avatarLoading.value = false
     input.value = '' // 重置 input
@@ -188,7 +188,7 @@ async function changeEmail() {
     await fetchUser()
     setTimeout(() => { emailSuccess.value = false }, 3000)
   } catch (e: any) {
-    emailError.value = e?.data?.message || '修改失败'
+    emailError.value = resolveApiErrorMessage(e, '修改失败')
   } finally {
     emailLoading.value = false
   }

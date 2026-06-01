@@ -47,7 +47,7 @@ async function createTag() {
     toast.add({ title: '标签已创建', color: 'success' })
     fetchTags()
   } catch (e: any) {
-    createError.value = e?.data?.message || '创建失败'
+    createError.value = resolveApiErrorMessage(e, '创建失败')
   }
 }
 
@@ -76,7 +76,7 @@ async function saveEdit() {
     toast.add({ title: '标签已更新', color: 'success' })
     fetchTags()
   } catch (e: any) {
-    editError.value = e?.data?.message || '更新失败'
+    editError.value = resolveApiErrorMessage(e, '更新失败')
   }
 }
 

@@ -53,7 +53,7 @@ async function onSubmit() {
     trackLoginCompleted()
     navigateTo((route.query.redirect as string) || '/')
   } catch (e: any) {
-    error.value = e?.data?.message || e?.message || '登录失败，请重试'
+    error.value = resolveApiErrorMessage(e, '登录失败，请重试')
     resetTurnstile()
   } finally {
     loading.value = false

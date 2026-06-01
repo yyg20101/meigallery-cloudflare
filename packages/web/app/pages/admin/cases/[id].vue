@@ -70,7 +70,7 @@ async function onSave() {
     message.value = '已保存'
     await refresh()
   } catch (e: any) {
-    message.value = e?.data?.message || '保存失败'
+    message.value = resolveApiErrorMessage(e, '保存失败')
   } finally {
     loading.value = false
   }
@@ -88,7 +88,7 @@ async function onUpload() {
     if (imageInput.value) imageInput.value.value = ''
     await refresh()
   } catch (e: any) {
-    message.value = e?.data?.message || '上传失败'
+    message.value = resolveApiErrorMessage(e, '上传失败')
   } finally {
     uploadLoading.value = false
   }
