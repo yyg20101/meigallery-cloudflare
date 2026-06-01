@@ -255,12 +255,12 @@ async function toggleVideo() {
         <legend class="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-2 w-full">基础信息</legend>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">站点名称</label>
-          <input v-model="form.site_name" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="MeiGallery" />
+          <input v-model="form.site_name" maxlength="40" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="MeiGallery" />
           <p class="text-xs text-gray-400 mt-1">显示在导航栏、页脚和浏览器标签页</p>
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">站点描述</label>
-          <textarea v-model="form.site_description" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="精选写真、时尚、生活、艺术类图库平台" />
+          <textarea v-model="form.site_description" rows="2" maxlength="180" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="精选写真、时尚、生活、艺术类图库平台" />
           <p class="text-xs text-gray-400 mt-1">用于 meta description 和默认 OG 描述</p>
         </div>
         <div>
@@ -280,7 +280,7 @@ async function toggleVideo() {
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">页脚文案</label>
-          <input v-model="form.footer_text" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="© 2026 MeiGallery. All rights reserved." />
+          <input v-model="form.footer_text" maxlength="120" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="© 2026 MeiGallery. All rights reserved." />
           <p class="text-xs text-gray-400 mt-1">页面底部的版权或自定义文字</p>
         </div>
       </fieldset>
@@ -290,17 +290,17 @@ async function toggleVideo() {
         <legend class="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-2 w-full">SEO / 社交分享</legend>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">SEO 标题</label>
-          <input v-model="form.seo_title" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="MeiGallery - 精选写真图库" />
+          <input v-model="form.seo_title" maxlength="80" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="MeiGallery - 精选写真图库" />
           <p class="text-xs text-gray-400 mt-1">搜索引擎显示的页面标题（title 标签）</p>
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">OG 标题</label>
-          <input v-model="form.og_title" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="留空则使用 SEO 标题" />
+          <input v-model="form.og_title" maxlength="80" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="留空则使用 SEO 标题" />
           <p class="text-xs text-gray-400 mt-1">社交平台（微信、微博等）分享时显示的标题</p>
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">OG 描述</label>
-          <textarea v-model="form.og_description" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="留空则使用站点描述" />
+          <textarea v-model="form.og_description" rows="2" maxlength="220" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="留空则使用站点描述" />
           <p class="text-xs text-gray-400 mt-1">社交平台分享时显示的描述文字</p>
         </div>
         <div>
@@ -315,7 +315,7 @@ async function toggleVideo() {
         <legend class="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-2 w-full">其他设置</legend>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">会员说明</label>
-          <textarea v-model="form.membership_description" rows="3" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="会员等级权益说明..." />
+          <textarea v-model="form.membership_description" rows="3" maxlength="300" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="会员等级权益说明..." />
         </div>
       </fieldset>
 
@@ -325,11 +325,11 @@ async function toggleVideo() {
           <div class="space-y-4">
             <div>
               <label class="mb-1 block text-sm font-medium text-gray-700">首页主标题</label>
-              <input v-model="form.home_hero_title" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="精选写真，按地区发现" />
+              <input v-model="form.home_hero_title" maxlength="40" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="精选写真，按地区发现" />
             </div>
             <div>
               <label class="mb-1 block text-sm font-medium text-gray-700">首页副标题</label>
-              <textarea v-model="form.home_hero_subtitle" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="用于首页首屏说明" />
+              <textarea v-model="form.home_hero_subtitle" rows="2" maxlength="180" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="用于首页首屏说明" />
             </div>
             <div>
               <label class="mb-1 block text-sm font-medium text-gray-700">主推地区 slugs</label>
@@ -453,15 +453,15 @@ async function toggleVideo() {
         </label>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">悬浮入口标题</label>
-          <input v-model="form.rules_entry_title" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="入站规则" />
+          <input v-model="form.rules_entry_title" maxlength="20" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="入站规则" />
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">悬浮入口说明</label>
-          <textarea v-model="form.rules_entry_summary" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="查看内容规则、会员说明和联系前须知。" />
+          <textarea v-model="form.rules_entry_summary" rows="2" maxlength="120" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="查看内容规则、会员说明和联系前须知。" />
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">入口图标</label>
-          <input v-model="form.rules_entry_icon" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="letter" />
+          <input v-model="form.rules_entry_icon" maxlength="32" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="letter" />
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">弹窗 Markdown 摘要</label>
@@ -471,7 +471,7 @@ async function toggleVideo() {
         <div class="grid gap-4 sm:grid-cols-2">
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">规则页标题</label>
-            <input v-model="form.rules_page_title" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="入站规则" />
+            <input v-model="form.rules_page_title" maxlength="40" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="入站规则" />
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">规则页链接</label>
@@ -480,7 +480,7 @@ async function toggleVideo() {
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">规则页摘要</label>
-          <textarea v-model="form.rules_page_summary" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="了解 MeiGallery 的内容边界、会员访问和联系方式说明。" />
+          <textarea v-model="form.rules_page_summary" rows="2" maxlength="180" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="了解 MeiGallery 的内容边界、会员访问和联系方式说明。" />
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">规则页 Markdown 正文</label>

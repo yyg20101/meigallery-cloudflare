@@ -151,6 +151,68 @@ describe('后台站点设置 API', () => {
     expect(executed.some(item => item.sql.includes('INSERT INTO admin_audit_logs'))).toBe(true)
   })
 
+  it('站长更新 SEO 和首页短文案时会归一化空白并记录审计日志', async () => {
+    const executed: Array<{ sql: string; params: unknown[] }> = []
+    const app = createApp()
+    const env = {
+      DB: createDb({
+        all: (sql) => {
+          if (sql.includes('SELECT key, value FROM site_settings')) {
+            return [
+              { key: 'site_name', value: JSON.stringify('旧站名') },
+              { key: 'seo_title', value: JSON.stringify('旧标题') },
+              { key: 'home_hero_title', value: JSON.stringify('旧首页标题') },
+            ]
+          }
+          return []
+        },
+        run: (sql, params) => {
+          executed.push({ sql, params })
+          return { success: true }
+        },
+      }),
+    } as unknown as Bindings
+
+    const res = await app.request('/api/admin/settings', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        site_name: '  测试   图库站  ',
+        seo_title: '  测试站点   -   精选图库  ',
+        home_hero_title: '首页精选',
+      }),
+    }, env)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.updated).toEqual(['site_name', 'seo_title', 'home_hero_title'])
+    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[0] === '"测试 图库站"' && item.params[1] === 'site_name')).toBe(true)
+    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[0] === '"测试站点 - 精选图库"' && item.params[1] === 'seo_title')).toBe(true)
+    expect(executed.some(item => item.sql.includes('INSERT INTO admin_audit_logs'))).toBe(true)
+  })
+
+  it('拒绝过长或包含控制字符的 SEO 和首页短文案', async () => {
+    const app = createApp()
+    const env = { DB: createDb({}) } as unknown as Bindings
+
+    for (const payload of [
+      { site_name: '测试\u0001图库' },
+      { seo_title: 'x'.repeat(81) },
+      { home_hero_subtitle: 'x'.repeat(181) },
+      { rules_entry_icon: '<svg>' },
+    ]) {
+      const res = await app.request('/api/admin/settings', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      }, env)
+      const body = await res.json()
+
+      expect(res.status).toBe(400)
+      expect(body.message).toMatch(/站点名称|SEO 标题|首页副标题|规则入口图标/)
+    }
+  })
+
   it('拒绝过长或包含控制字符的首页广告文案', async () => {
     const app = createApp()
     const env = { DB: createDb({}) } as unknown as Bindings

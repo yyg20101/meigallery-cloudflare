@@ -3,7 +3,7 @@
  * 从 /api/settings/public 获取站点配置
  * 数据全局缓存，避免重复请求
  */
-import { isScheduledSiteFeatureActive, normalizeBooleanSetting, normalizeHomeAdUrl, normalizeInternalPath, normalizePublicSettingUrl, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId, safeHomeAdText } from '~/utils/siteSettingsSecurity'
+import { isScheduledSiteFeatureActive, normalizeBooleanSetting, normalizeHomeAdUrl, normalizeInternalPath, normalizePublicSettingUrl, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId, safeHomeAdText, safeSiteText } from '~/utils/siteSettingsSecurity'
 
 export function useSiteSettings() {
   const { api } = useApi()
@@ -62,17 +62,17 @@ export function useSiteSettings() {
     return settings.value
   }
 
-  const siteName = computed(() => settings.value.site_name || 'MeiGallery')
-  const siteDescription = computed(() => settings.value.site_description || '')
+  const siteName = computed(() => safeSiteText('site_name', settings.value.site_name) || 'MeiGallery')
+  const siteDescription = computed(() => safeSiteText('site_description', settings.value.site_description))
   const siteIcon = computed(() => normalizePublicSettingUrl(settings.value.site_icon))
-  const seoTitle = computed(() => settings.value.seo_title || siteName.value)
-  const ogTitle = computed(() => settings.value.og_title || seoTitle.value)
-  const ogDescription = computed(() => settings.value.og_description || siteDescription.value)
+  const seoTitle = computed(() => safeSiteText('seo_title', settings.value.seo_title) || siteName.value)
+  const ogTitle = computed(() => safeSiteText('og_title', settings.value.og_title) || seoTitle.value)
+  const ogDescription = computed(() => safeSiteText('og_description', settings.value.og_description) || siteDescription.value)
   const ogImage = computed(() => normalizePublicSettingUrl(settings.value.og_image))
-  const footerText = computed(() => settings.value.footer_text || `© ${new Date().getFullYear()} ${siteName.value}`)
-  const membershipDescription = computed(() => settings.value.membership_description || '')
-  const homeHeroTitle = computed(() => settings.value.home_hero_title || '精选写真，按地区发现')
-  const homeHeroSubtitle = computed(() => settings.value.home_hero_subtitle || '以授权写真、时尚、生活与艺术类内容为核心，按地区和标签探索精选图库。')
+  const footerText = computed(() => safeSiteText('footer_text', settings.value.footer_text) || `© ${new Date().getFullYear()} ${siteName.value}`)
+  const membershipDescription = computed(() => safeSiteText('membership_description', settings.value.membership_description))
+  const homeHeroTitle = computed(() => safeSiteText('home_hero_title', settings.value.home_hero_title) || '精选写真，按地区发现')
+  const homeHeroSubtitle = computed(() => safeSiteText('home_hero_subtitle', settings.value.home_hero_subtitle) || '以授权写真、时尚、生活与艺术类内容为核心，按地区和标签探索精选图库。')
   const homeFeaturedRegionSlugs = computed(() => String(settings.value.home_featured_region_slugs || '').split(',').map(s => s.trim()).filter(Boolean))
   const homeHotTagLimit = computed(() => {
     const value = Number(settings.value.home_hot_tag_limit || 15)
@@ -105,12 +105,12 @@ export function useSiteSettings() {
   const rulesEntryEnabled = computed(() => {
     return normalizeBooleanSetting(settings.value.rules_entry_enabled)
   })
-  const rulesEntryTitle = computed(() => settings.value.rules_entry_title || '入站规则')
-  const rulesEntrySummary = computed(() => settings.value.rules_entry_summary || '查看内容规则、会员说明和联系前须知。')
-  const rulesEntryIcon = computed(() => settings.value.rules_entry_icon || 'letter')
+  const rulesEntryTitle = computed(() => safeSiteText('rules_entry_title', settings.value.rules_entry_title) || '入站规则')
+  const rulesEntrySummary = computed(() => safeSiteText('rules_entry_summary', settings.value.rules_entry_summary) || '查看内容规则、会员说明和联系前须知。')
+  const rulesEntryIcon = computed(() => safeSiteText('rules_entry_icon', settings.value.rules_entry_icon) || 'letter')
   const rulesModalContent = computed(() => settings.value.rules_modal_content || '')
-  const rulesPageTitle = computed(() => settings.value.rules_page_title || '入站规则')
-  const rulesPageSummary = computed(() => settings.value.rules_page_summary || '')
+  const rulesPageTitle = computed(() => safeSiteText('rules_page_title', settings.value.rules_page_title) || '入站规则')
+  const rulesPageSummary = computed(() => safeSiteText('rules_page_summary', settings.value.rules_page_summary))
   const rulesPageContent = computed(() => settings.value.rules_page_content || rulesModalContent.value)
   const rulesPageUrl = computed(() => normalizeInternalPath(settings.value.rules_page_url) || '/rules')
 

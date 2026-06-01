@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getHomeAdTextPreviewWarnings, isScheduledSiteFeatureActive, normalizeBooleanSetting, normalizeHomeAdText, normalizeHomeAdUrl, normalizeInternalPath, normalizePublicSettingUrl, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId } from './siteSettingsSecurity'
+import { getHomeAdTextPreviewWarnings, isScheduledSiteFeatureActive, normalizeBooleanSetting, normalizeHomeAdText, normalizeHomeAdUrl, normalizeInternalPath, normalizePublicSettingUrl, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId, safeSiteText } from './siteSettingsSecurity'
 
 describe('siteSettingsSecurity', () => {
   it('公开 URL 只允许站内路径和 https 链接', () => {
@@ -90,6 +90,15 @@ describe('siteSettingsSecurity', () => {
     expect(normalizeBooleanSetting(true)).toBe(true)
     expect(normalizeBooleanSetting('true')).toBe(true)
     expect(normalizeBooleanSetting('TRUE')).toBe(false)
+  })
+
+  it('归一化 SEO 和前台短文案并拒绝异常文本', () => {
+    expect(safeSiteText('site_name', '  测试   图库站  ')).toBe('测试 图库站')
+    expect(safeSiteText('seo_title', 'x'.repeat(81))).toBe('')
+    expect(safeSiteText('home_hero_subtitle', 'x'.repeat(181))).toBe('')
+    expect(safeSiteText('rules_entry_summary', '入口\u0001说明')).toBe('')
+    expect(safeSiteText('rules_entry_icon', '<svg>')).toBe('')
+    expect(safeSiteText('rules_page_title', '入站规则')).toBe('入站规则')
   })
 
   it('归一化首页广告文案并拒绝超长或控制字符', () => {

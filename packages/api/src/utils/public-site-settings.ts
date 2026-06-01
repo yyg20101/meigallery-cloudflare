@@ -2,6 +2,7 @@ import { normalizeBooleanSetting, normalizeFacebookPixelId } from './facebook-pi
 import { normalizeHomeAdScheduleValue } from './home-ad-schedule'
 import { normalizeHomeAdUrl, safeHomeAdText } from './home-ad-settings'
 import { safeInternalPathSetting, safePublicSettingUrl } from './public-setting-url'
+import { isSiteTextSettingKey, safeSiteTextSetting } from './site-text-settings'
 
 const PUBLIC_URL_FIELDS: Record<string, string> = {
   site_icon: '站点图标 URL',
@@ -34,6 +35,10 @@ export function sanitizePublicSiteSetting(key: string, value: unknown) {
 
   const internalPathLabel = INTERNAL_PATH_FIELDS[key]
   if (internalPathLabel) return safeInternalPathSetting(value, internalPathLabel)
+
+  if (isSiteTextSettingKey(key)) {
+    return safeSiteTextSetting(key, value)
+  }
 
   if (key === 'facebook_pixel_id') {
     try {

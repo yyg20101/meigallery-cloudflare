@@ -8,6 +8,7 @@ import { isHomeAdTextKey, normalizeHomeAdText, normalizeHomeAdUrl } from '../../
 import { writeAuditLog } from '../../utils/permission'
 import { normalizeInternalPathSetting, normalizePublicSettingUrl } from '../../utils/public-setting-url'
 import { ADMIN_SETTING_KEYS } from '../../utils/site-settings'
+import { isSiteTextSettingKey, normalizeSiteTextSetting } from '../../utils/site-text-settings'
 
 export const adminSettingsRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -64,6 +65,14 @@ adminSettingsRoutes.patch('/', requireOwner, async (c) => {
   }
   if ('home_ad_enabled' in body) {
     body.home_ad_enabled = normalizeBooleanSetting(body.home_ad_enabled)
+  }
+  for (const key of Object.keys(body)) {
+    if (!isSiteTextSettingKey(key)) continue
+    try {
+      body[key] = normalizeSiteTextSetting(key, body[key])
+    } catch (error) {
+      return c.json({ statusCode: 400, message: error instanceof Error ? error.message : '站点文案无效' }, 400)
+    }
   }
   if ('home_ad_url' in body) {
     try {

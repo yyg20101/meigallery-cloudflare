@@ -26,6 +26,22 @@ const HOME_AD_ALLOWED_INTERNAL_PATH_PREFIXES = [
   '/settings',
   '/forgot-password',
 ]
+const SITE_TEXT_LIMITS: Record<string, { maxLength: number; pattern?: RegExp }> = {
+  site_name: { maxLength: 40 },
+  site_description: { maxLength: 180 },
+  seo_title: { maxLength: 80 },
+  og_title: { maxLength: 80 },
+  og_description: { maxLength: 220 },
+  footer_text: { maxLength: 120 },
+  membership_description: { maxLength: 300 },
+  home_hero_title: { maxLength: 40 },
+  home_hero_subtitle: { maxLength: 180 },
+  rules_entry_title: { maxLength: 20 },
+  rules_entry_summary: { maxLength: 120 },
+  rules_entry_icon: { maxLength: 32, pattern: /^[a-z0-9_-]+$/i },
+  rules_page_title: { maxLength: 40 },
+  rules_page_summary: { maxLength: 180 },
+}
 
 export function normalizePublicSettingUrl(value: unknown) {
   const url = String(value ?? '').trim()
@@ -80,6 +96,19 @@ export function normalizeInternalPath(value: unknown) {
 export function normalizeSiteSettingPixelId(value: unknown) {
   const pixelId = String(value ?? '').trim()
   return /^\d{5,30}$/.test(pixelId) ? pixelId : ''
+}
+
+export function safeSiteText(key: string, value: unknown): string {
+  const config = SITE_TEXT_LIMITS[key]
+  if (!config || value === null || value === undefined) return ''
+
+  const raw = String(value)
+  if (hasDisallowedControlCharacter(raw)) return ''
+
+  const text = raw.trim().replace(/\s+/g, ' ')
+  if (text.length > config.maxLength) return ''
+  if (text && config.pattern && !config.pattern.test(text)) return ''
+  return text
 }
 
 export function normalizeHomeAdText(key: string, value: unknown): string {
@@ -155,6 +184,15 @@ function hasControlCharacter(value: string) {
   for (const char of value) {
     const code = char.charCodeAt(0)
     if (code < 0x20 || code === 0x7f) return true
+  }
+  return false
+}
+
+function hasDisallowedControlCharacter(value: string) {
+  for (const char of value) {
+    const code = char.charCodeAt(0)
+    if (code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d) return true
+    if (code === 0x7f) return true
   }
   return false
 }
