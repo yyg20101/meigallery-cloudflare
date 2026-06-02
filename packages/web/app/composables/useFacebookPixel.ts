@@ -1,4 +1,4 @@
-import { isAdminPath, sanitizeAnalyticsText } from '~/utils/facebookPixel'
+import { hasSensitiveAnalyticsUrl, isAdminPath, sanitizeAnalyticsText } from '~/utils/facebookPixel'
 
 type PixelEventParams = Record<string, string | number | boolean | string[] | number[] | null | undefined>
 type FacebookQueueFunction = ((...args: unknown[]) => void) & {
@@ -29,20 +29,37 @@ function logEvent(eventName: string, params?: PixelEventParams) {
 }
 
 function callFbq(...args: unknown[]) {
-  if (!import.meta.client || !initialized.value || !window.fbq) return
+  if (!import.meta.client || !initialized.value || !window.fbq) return false
   window.fbq(...args)
+  return true
 }
 
 export function useFacebookPixel() {
   const route = useRoute()
 
-  function callFbqForCurrentRoute(...args: unknown[]) {
-    if (isAdminPath(route.path)) return
-    callFbq(...args)
+  function getPathname(fullPath: string) {
+    try {
+      return new URL(fullPath, 'https://meigallery.local').pathname
+    } catch {
+      return fullPath.split(/[?#]/)[0] || fullPath
+    }
   }
 
-  function initFacebookPixel(pixelId: string, debugEnabled = false) {
-    if (!import.meta.client || initialized.value || !pixelId || !hasTrackingConsent() || isAdminPath(route.path)) return
+  function isTrackingBlocked(fullPath: string) {
+    return isAdminPath(getPathname(fullPath)) || hasSensitiveAnalyticsUrl(fullPath)
+  }
+
+  function callFbqForPath(fullPath: string, ...args: unknown[]) {
+    if (isTrackingBlocked(fullPath)) return false
+    return callFbq(...args)
+  }
+
+  function callFbqForCurrentRoute(...args: unknown[]) {
+    return callFbqForPath(route.fullPath, ...args)
+  }
+
+  function initFacebookPixel(pixelId: string, debugEnabled = false, fullPath = route.fullPath) {
+    if (!import.meta.client || initialized.value || !pixelId || !hasTrackingConsent() || isTrackingBlocked(fullPath)) return
     debug.value = debugEnabled
 
     if (!window.fbq) {
@@ -71,11 +88,11 @@ export function useFacebookPixel() {
   }
 
   function trackPageView(fullPath: string) {
-    if (!import.meta.client || isAdminPath(fullPath.split('?')[0] || fullPath)) return
+    if (!import.meta.client || isTrackingBlocked(fullPath)) return
     if (lastTrackedPagePath.value === fullPath) return
     lastTrackedPagePath.value = fullPath
-    callFbqForCurrentRoute('track', 'PageView')
-    logEvent('PageView', { full_path: fullPath })
+    const sent = callFbqForPath(fullPath, 'track', 'PageView')
+    if (sent) logEvent('PageView', { full_path: fullPath })
   }
 
   function trackViewContent(params: { id: string; title: string; requiredRank: number; tags: string[] }) {
@@ -86,8 +103,8 @@ export function useFacebookPixel() {
       required_rank: params.requiredRank,
       tags: params.tags.slice(0, 8),
     }
-    callFbqForCurrentRoute('track', 'ViewContent', payload)
-    logEvent('ViewContent', payload)
+    const sent = callFbqForCurrentRoute('track', 'ViewContent', payload)
+    if (sent) logEvent('ViewContent', payload)
   }
 
   function trackSearch(params: { searchString: string; resultCount: number }) {
@@ -95,34 +112,35 @@ export function useFacebookPixel() {
       search_string: sanitizeAnalyticsText(params.searchString, 80),
       result_count: params.resultCount,
     }
-    callFbqForCurrentRoute('track', 'Search', payload)
-    logEvent('Search', payload)
+    const sent = callFbqForCurrentRoute('track', 'Search', payload)
+    if (sent) logEvent('Search', payload)
   }
 
   function trackLeadOnce(params: { location: string; methodType: string }) {
     if (leadTracked.value) return
-    leadTracked.value = true
     const payload = { location: params.location, method_type: sanitizeAnalyticsText(params.methodType, 40) }
-    callFbqForCurrentRoute('track', 'Lead', payload)
+    const sent = callFbqForCurrentRoute('track', 'Lead', payload)
+    if (!sent) return
+    leadTracked.value = true
     logEvent('Lead', payload)
   }
 
   function trackCompleteRegistration() {
     const payload = { method: 'email' }
-    callFbqForCurrentRoute('track', 'CompleteRegistration', payload)
-    logEvent('CompleteRegistration', payload)
+    const sent = callFbqForCurrentRoute('track', 'CompleteRegistration', payload)
+    if (sent) logEvent('CompleteRegistration', payload)
   }
 
   function trackLoginCompleted() {
     const payload = { method: 'email' }
-    callFbqForCurrentRoute('trackCustom', 'login_completed', payload)
-    logEvent('login_completed', payload)
+    const sent = callFbqForCurrentRoute('trackCustom', 'login_completed', payload)
+    if (sent) logEvent('login_completed', payload)
   }
 
   function trackFilterSelected(params: { tagSlug: string; tagType: string; location: string }) {
     const payload = { tag_slug: params.tagSlug, tag_type: params.tagType, location: params.location }
-    callFbqForCurrentRoute('trackCustom', 'filter_selected', payload)
-    logEvent('filter_selected', payload)
+    const sent = callFbqForCurrentRoute('trackCustom', 'filter_selected', payload)
+    if (sent) logEvent('filter_selected', payload)
   }
 
   return {

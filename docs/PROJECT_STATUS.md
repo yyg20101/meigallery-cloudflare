@@ -92,6 +92,7 @@
 - 首页广告位站内跳转透明度增强：站内广告 CTA 已补目标页面提示和包含精确路径的无障碍名称，前台 smoke 与组件测试覆盖站内/外链两类提示，避免外链有安全说明而站内跳转去向不明确。
 - 公开 URL 凭证参数持续增强：站点图标、OG 封面图、首页广告链接和规则页链接已拒绝 `token`、`api_key`、`signature`、`access_token` 等凭证类 URL 参数，覆盖 query 与 hash 片段，API 写入、公开读取和前端预览同款兜底。
 - 首页广告跳转参数持续增强：站内广告链接中的 `redirect`、`next`、`return_to` 等跳转目标已限制为公开前台路径，拒绝空目标、后台/API/资源路径、外站和嵌套危险跳转；登录页成功后的 `redirect` 参数已增加站内安全兜底，并保留后台正常登录回跳。
+- Facebook Pixel 隐私持续增强：前端埋点在当前 URL query 或 hash 含 `token`、`api_key`、`signature`、`access_token` 等凭证类参数时会跳过 Pixel 初始化和事件上报，埋点文本清洗同步覆盖凭证参数，避免敏感 URL 被第三方脚本带出。
 
 ## Git 状态
 
