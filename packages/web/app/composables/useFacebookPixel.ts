@@ -1,4 +1,4 @@
-import { hasSensitiveAnalyticsUrl, isAdminPath, sanitizeAnalyticsText } from '~/utils/facebookPixel'
+import { createFacebookPixelScript, hasSensitiveAnalyticsUrl, isAdminPath, sanitizeAnalyticsText } from '~/utils/facebookPixel'
 
 type PixelEventParams = Record<string, string | number | boolean | string[] | number[] | null | undefined>
 type FacebookQueueFunction = ((...args: unknown[]) => void) & {
@@ -76,10 +76,7 @@ export function useFacebookPixel() {
       fbq.queue = []
       fbq.loaded = true
       fbq.version = '2.0'
-      const script = document.createElement('script')
-      script.async = true
-      script.src = 'https://connect.facebook.net/en_US/fbevents.js'
-      document.head.appendChild(script)
+      document.head.appendChild(createFacebookPixelScript(document))
     }
 
     window.fbq('init', pixelId)

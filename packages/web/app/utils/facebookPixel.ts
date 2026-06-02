@@ -12,6 +12,8 @@ interface PixelSiteSettings {
   debugEnabled: boolean
 }
 
+export const FACEBOOK_PIXEL_SCRIPT_SRC = 'https://connect.facebook.net/en_US/fbevents.js'
+
 const BLOCKED_ANALYTICS_PARAM_NAMES = new Set([
   'accesstoken',
   'apikey',
@@ -83,6 +85,14 @@ export function hasSensitiveAnalyticsUrl(value: unknown, depth = 0) {
     if (isBlockedAnalyticsParamName(name)) return true
   }
   return false
+}
+
+export function createFacebookPixelScript(documentRef: Document = document) {
+  const script = documentRef.createElement('script')
+  script.async = true
+  script.referrerPolicy = 'no-referrer'
+  script.src = FACEBOOK_PIXEL_SCRIPT_SRC
+  return script
 }
 
 export function resolveFacebookPixelConfig(settings: PixelSiteSettings, runtimeConfig: PixelRuntimeConfig) {

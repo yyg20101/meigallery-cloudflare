@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hasSensitiveAnalyticsUrl, sanitizeAnalyticsText } from './facebookPixel'
+import { createFacebookPixelScript, FACEBOOK_PIXEL_SCRIPT_SRC, hasSensitiveAnalyticsUrl, sanitizeAnalyticsText } from './facebookPixel'
 
 describe('facebookPixel 安全工具', () => {
   it('识别 query 和 hash 中的凭证类参数', () => {
@@ -38,5 +38,13 @@ describe('facebookPixel 安全工具', () => {
     expect(sanitizeAnalyticsText('查看 https://example.com/rules?token=abc')).toBe('查看 [redacted_url]')
     expect(sanitizeAnalyticsText('搜索 api_key=abc&style=summer signature=xyz')).toBe('搜索 api_key=[redacted_credential]&style=summer signature=[redacted_credential]')
     expect(sanitizeAnalyticsText('授权 x-amz-signature=abc access-token=xyz')).toBe('授权 x-amz-signature=[redacted_credential] access-token=[redacted_credential]')
+  })
+
+  it('Pixel 脚本加载不发送来源页信息', () => {
+    const script = createFacebookPixelScript()
+
+    expect(script.async).toBe(true)
+    expect(script.src).toBe(FACEBOOK_PIXEL_SCRIPT_SRC)
+    expect(script.referrerPolicy).toBe('no-referrer')
   })
 })
