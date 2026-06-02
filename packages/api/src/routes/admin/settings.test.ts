@@ -141,6 +141,12 @@ describe('后台站点设置 API', () => {
       '/discover#token=abc',
       'https://example.com/campaign?api_key=abc',
       'https://example.com/campaign#/callback?access_token=abc',
+      '/login?redirect=',
+      '/login?redirect=/admin',
+      '/login?redirect=/api/settings/public',
+      '/login?redirect=https%3A%2F%2Fevil.example%2Fcampaign',
+      '/register?next=//evil.example/campaign',
+      '/login?redirect=%2Flogin%3Fredirect%3D%2Fadmin',
     ]) {
       const res = await app.request('/api/admin/settings', {
         method: 'PATCH',

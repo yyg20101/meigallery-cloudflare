@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { normalizeLoginRedirect } from '~/utils/loginRedirectSecurity'
+
 const { login, isLoggedIn } = useAuth()
 const route = useRoute()
 const router = useRouter()
@@ -51,7 +53,7 @@ async function onSubmit() {
   try {
     await login(identifier.value, password.value, hasTurnstile.value ? turnstileToken.value : undefined)
     trackLoginCompleted()
-    navigateTo((route.query.redirect as string) || '/')
+    navigateTo(normalizeLoginRedirect(route.query.redirect))
   } catch (e: any) {
     error.value = resolveApiErrorMessage(e, '登录失败，请重试')
     resetTurnstile()

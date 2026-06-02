@@ -15,6 +15,8 @@ describe('首页广告设置校验', () => {
     expect(normalizeHomeAdUrl('/gallery/summer-portrait')).toBe('/gallery/summer-portrait')
     expect(normalizeHomeAdUrl('/search?q=夏日')).toBe('/search?q=%E5%A4%8F%E6%97%A5')
     expect(normalizeHomeAdUrl('/rules?from=ad')).toBe('/rules?from=ad')
+    expect(normalizeHomeAdUrl('/login?redirect=/user')).toBe('/login?redirect=/user')
+    expect(normalizeHomeAdUrl('/login?redirect=%2Fgallery%2Fsummer-portrait')).toBe('/login?redirect=%2Fgallery%2Fsummer-portrait')
     expect(normalizeHomeAdUrl('/discover#top')).toBe('/discover#top')
     expect(normalizeHomeAdUrl('https://example.com/campaign')).toBe('https://example.com/campaign')
     expect(normalizeHomeAdUrl('HTTPS://example.com/campaign?next="x"')).toBe('https://example.com/campaign?next=%22x%22')
@@ -56,6 +58,12 @@ describe('首页广告设置校验', () => {
       '/discover%20next',
       '/discover?token=abc',
       '/discover#api-key=abc',
+      '/login?redirect=',
+      '/login?redirect=/admin',
+      '/login?redirect=/api/settings/public',
+      '/login?redirect=https%3A%2F%2Fevil.example%2Fcampaign',
+      '/register?next=//evil.example/campaign',
+      '/login?redirect=%2Flogin%3Fredirect%3D%2Fadmin',
       '/search?access-token=abc',
       '/search#access-token=abc',
       '/discover\n?sort=hot',

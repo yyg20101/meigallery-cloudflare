@@ -107,6 +107,8 @@ describe('siteSettingsSecurity', () => {
     expect(normalizeHomeAdUrl('/gallery/summer-portrait')).toBe('/gallery/summer-portrait')
     expect(normalizeHomeAdUrl('/cases/spring-lookbook')).toBe('/cases/spring-lookbook')
     expect(normalizeHomeAdUrl('/search?q=夏日')).toBe('/search?q=%E5%A4%8F%E6%97%A5')
+    expect(normalizeHomeAdUrl('/login?redirect=/user')).toBe('/login?redirect=/user')
+    expect(normalizeHomeAdUrl('/login?redirect=%2Fgallery%2Fsummer-portrait')).toBe('/login?redirect=%2Fgallery%2Fsummer-portrait')
     expect(normalizeHomeAdUrl('/discover#top')).toBe('/discover#top')
     expect(normalizeHomeAdUrl('HTTPS://example.com/campaign?next="x"')).toBe('https://example.com/campaign?next=%22x%22')
     expect(normalizeHomeAdUrl('https://example.com/campaign?utm_source=home')).toBe('https://example.com/campaign?utm_source=home')
@@ -134,6 +136,12 @@ describe('siteSettingsSecurity', () => {
       'https://example.com/campaign#/callback?access_token=abc',
       '/discover?token=abc',
       '/discover#api-key=abc',
+      '/login?redirect=',
+      '/login?redirect=/admin',
+      '/login?redirect=/api/settings/public',
+      '/login?redirect=https%3A%2F%2Fevil.example%2Fcampaign',
+      '/register?next=//evil.example/campaign',
+      '/login?redirect=%2Flogin%3Fredirect%3D%2Fadmin',
       '/search?access-token=abc',
       '/search#access-token=abc',
       'javascript:alert(1)',

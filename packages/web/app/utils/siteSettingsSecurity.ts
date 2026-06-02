@@ -54,6 +54,14 @@ const HOME_AD_ALLOWED_INTERNAL_PATH_PREFIXES = [
   '/settings',
   '/forgot-password',
 ]
+const HOME_AD_REDIRECT_PARAM_NAMES = new Set([
+  'callback',
+  'continue',
+  'next',
+  'redirect',
+  'returnto',
+  'returnurl',
+])
 const SITE_TEXT_LIMITS: Record<string, { maxLength: number; pattern?: RegExp }> = {
   site_name: { maxLength: 40 },
   site_description: { maxLength: 180 },
@@ -110,7 +118,7 @@ export function normalizePublicSettingUrl(value: unknown) {
 export function normalizeHomeAdUrl(value: unknown) {
   const url = normalizePublicSettingUrl(value)
   if (!url || url.startsWith('https://')) return url
-  return isAllowedHomeAdInternalPath(url) ? url : ''
+  return isAllowedHomeAdInternalPath(url) && hasAllowedHomeAdRedirectParams(url, 0) ? url : ''
 }
 
 export function normalizePublicImageSettingUrl(value: unknown) {
@@ -330,6 +338,20 @@ function isAllowedHomeAdInternalPath(url: string) {
   return HOME_AD_ALLOWED_INTERNAL_PATH_PREFIXES.some((prefix) => {
     return pathname === prefix || pathname.startsWith(`${prefix}/`)
   })
+}
+
+function hasAllowedHomeAdRedirectParams(url: string, depth: number) {
+  if (depth > 3) return false
+
+  const parsed = new URL(url, 'https://meigallery.local')
+  for (const [name, target] of parsed.searchParams.entries()) {
+    if (!HOME_AD_REDIRECT_PARAM_NAMES.has(normalizeUrlParamName(name))) continue
+
+    const normalizedTarget = normalizePublicSettingUrl(target)
+    if (!normalizedTarget || normalizedTarget.startsWith('https://') || !isAllowedHomeAdInternalPath(normalizedTarget)) return false
+    if (!hasAllowedHomeAdRedirectParams(normalizedTarget, depth + 1)) return false
+  }
+  return true
 }
 
 function isNonPublicIpv4(hostname: string) {
