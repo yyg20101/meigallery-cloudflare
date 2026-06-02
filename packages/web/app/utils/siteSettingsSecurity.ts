@@ -1,4 +1,32 @@
 const BLOCKED_HOSTS = new Set(['localhost', 'localhost.localdomain'])
+const BLOCKED_CREDENTIAL_QUERY_NAMES = new Set([
+  'accesstoken',
+  'apikey',
+  'authtoken',
+  'bearer',
+  'clientsecret',
+  'cookie',
+  'credential',
+  'credentials',
+  'idtoken',
+  'jwt',
+  'keypairid',
+  'password',
+  'passwd',
+  'pwd',
+  'refreshtoken',
+  'secret',
+  'securitytoken',
+  'session',
+  'sessionid',
+  'sig',
+  'signature',
+  'signed',
+  'token',
+  'xamzcredential',
+  'xamzsecuritytoken',
+  'xamzsignature',
+])
 const HOME_AD_TEXT_LIMITS: Record<string, number> = {
   home_ad_eyebrow: 12,
   home_ad_title: 40,
@@ -54,6 +82,7 @@ export function normalizePublicSettingUrl(value: unknown) {
     if (url.startsWith('//') || url.startsWith('/\\')) return ''
     try {
       const parsed = new URL(url, 'https://meigallery.local')
+      if (hasCredentialQueryParam(parsed)) return ''
       return `${parsed.pathname}${parsed.search}${parsed.hash}`
     } catch {
       return ''
@@ -68,6 +97,7 @@ export function normalizePublicSettingUrl(value: unknown) {
     const hostname = normalizeHostname(parsed.hostname)
     if (BLOCKED_HOSTS.has(hostname) || hostname.endsWith('.localhost') || hostname.endsWith('.local')) return ''
     if (hostname.includes(':') || isNonPublicIpv4(hostname)) return ''
+    if (hasCredentialQueryParam(parsed)) return ''
 
     return parsed.toString()
   } catch {
@@ -96,6 +126,7 @@ export function normalizeInternalPath(value: unknown) {
 
   try {
     const parsed = new URL(url, 'https://meigallery.local')
+    if (hasCredentialQueryParam(parsed)) return ''
     return `${parsed.pathname}${parsed.search}${parsed.hash}`
   } catch {
     return ''
@@ -250,6 +281,17 @@ function hasBackslashOrEncodedBackslash(value: string) {
 
 function normalizeHostname(hostname: string) {
   return hostname.toLowerCase().replace(/\.+$/, '')
+}
+
+function hasCredentialQueryParam(url: URL) {
+  for (const name of url.searchParams.keys()) {
+    if (BLOCKED_CREDENTIAL_QUERY_NAMES.has(normalizeQueryParamName(name))) return true
+  }
+  return false
+}
+
+function normalizeQueryParamName(name: string) {
+  return name.toLowerCase().replace(/[-_]/g, '')
 }
 
 function isAllowedHomeAdInternalPath(url: string) {

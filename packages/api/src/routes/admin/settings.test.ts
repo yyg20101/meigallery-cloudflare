@@ -137,6 +137,8 @@ describe('后台站点设置 API', () => {
       'https:\\\\example.com\\campaign',
       'https://example.com\\campaign',
       '/discover%5Cnext',
+      '/discover?token=abc',
+      'https://example.com/campaign?api_key=abc',
     ]) {
       const res = await app.request('/api/admin/settings', {
         method: 'PATCH',
@@ -557,12 +559,14 @@ describe('后台站点设置 API', () => {
       { site_icon: 'https://localhost/icon.png' },
       { og_image: 'https://192.168.1.10/og.jpg' },
       { og_image: 'https://198.51.100.10/og.jpg' },
+      { og_image: 'https://example.com/og.jpg?signature=abc' },
       { site_icon: 'https://example.com\\icon.png' },
       { og_image: 'https://example.com/%5Cog.jpg' },
       { site_icon: '/discover?sort=hot' },
       { og_image: '/api/media/public/avatars/user.png' },
       { rules_page_url: 'https://example.com/rules' },
       { rules_page_url: '/rules%5Cnext' },
+      { rules_page_url: '/rules?access_token=abc' },
     ]
 
     for (const payload of cases) {

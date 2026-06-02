@@ -1,4 +1,32 @@
 const BLOCKED_HOSTS = new Set(['localhost', 'localhost.localdomain'])
+const BLOCKED_CREDENTIAL_QUERY_NAMES = new Set([
+  'accesstoken',
+  'apikey',
+  'authtoken',
+  'bearer',
+  'clientsecret',
+  'cookie',
+  'credential',
+  'credentials',
+  'idtoken',
+  'jwt',
+  'keypairid',
+  'password',
+  'passwd',
+  'pwd',
+  'refreshtoken',
+  'secret',
+  'securitytoken',
+  'session',
+  'sessionid',
+  'sig',
+  'signature',
+  'signed',
+  'token',
+  'xamzcredential',
+  'xamzsecuritytoken',
+  'xamzsignature',
+])
 
 export function normalizePublicSettingUrl(value: unknown, fieldLabel: string) {
   const url = String(value ?? '').trim()
@@ -14,12 +42,14 @@ export function normalizePublicSettingUrl(value: unknown, fieldLabel: string) {
     if (url.startsWith('//') || url.startsWith('/\\')) {
       throw new Error(`${fieldLabel}只允许站内相对路径或 https 链接`)
     }
+    let parsed: URL
     try {
-      const parsed = new URL(url, 'https://meigallery.local')
-      return `${parsed.pathname}${parsed.search}${parsed.hash}`
+      parsed = new URL(url, 'https://meigallery.local')
     } catch {
       throw new Error(`${fieldLabel}格式无效`)
     }
+    assertNoCredentialQueryParams(parsed, fieldLabel)
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`
   }
 
   let parsed: URL
@@ -42,6 +72,7 @@ export function normalizePublicSettingUrl(value: unknown, fieldLabel: string) {
   if (hostname.includes(':') || isNonPublicIpv4(hostname)) {
     throw new Error(`${fieldLabel}不允许使用本机或非公网 IP`)
   }
+  assertNoCredentialQueryParams(parsed, fieldLabel)
 
   return parsed.toString()
 }
@@ -81,12 +112,14 @@ export function normalizeInternalPathSetting(value: unknown, fieldLabel: string)
   if (!url.startsWith('/') || url.startsWith('//') || url.startsWith('/\\')) {
     throw new Error(`${fieldLabel}只允许站内相对路径`)
   }
+  let parsed: URL
   try {
-    const parsed = new URL(url, 'https://meigallery.local')
-    return `${parsed.pathname}${parsed.search}${parsed.hash}`
+    parsed = new URL(url, 'https://meigallery.local')
   } catch {
     throw new Error(`${fieldLabel}格式无效`)
   }
+  assertNoCredentialQueryParams(parsed, fieldLabel)
+  return `${parsed.pathname}${parsed.search}${parsed.hash}`
 }
 
 export function safeInternalPathSetting(value: unknown, fieldLabel: string) {
@@ -115,6 +148,18 @@ function hasBackslashOrEncodedBackslash(value: string) {
 
 function normalizeHostname(hostname: string) {
   return hostname.toLowerCase().replace(/\.+$/, '')
+}
+
+function assertNoCredentialQueryParams(url: URL, fieldLabel: string) {
+  for (const name of url.searchParams.keys()) {
+    if (BLOCKED_CREDENTIAL_QUERY_NAMES.has(normalizeQueryParamName(name))) {
+      throw new Error(`${fieldLabel}不能包含凭证类查询参数`)
+    }
+  }
+}
+
+function normalizeQueryParamName(name: string) {
+  return name.toLowerCase().replace(/[-_]/g, '')
 }
 
 function isNonPublicIpv4(hostname: string) {

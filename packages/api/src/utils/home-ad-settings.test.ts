@@ -17,6 +17,7 @@ describe('首页广告设置校验', () => {
     expect(normalizeHomeAdUrl('/rules?from=ad')).toBe('/rules?from=ad')
     expect(normalizeHomeAdUrl('https://example.com/campaign')).toBe('https://example.com/campaign')
     expect(normalizeHomeAdUrl('HTTPS://example.com/campaign?next="x"')).toBe('https://example.com/campaign?next=%22x%22')
+    expect(normalizeHomeAdUrl('https://example.com/campaign?utm_source=home')).toBe('https://example.com/campaign?utm_source=home')
   })
 
   it('拒绝危险或不明确的广告链接', () => {
@@ -46,7 +47,11 @@ describe('首页广告设置校验', () => {
       '/cdn-cgi/trace',
       'https://example.com/a b',
       'https://example.com/%0Ajavascript:alert(1)',
+      'https://example.com/campaign?api_key=abc',
+      'https://example.com/campaign?signature=abc',
       '/discover%20next',
+      '/discover?token=abc',
+      '/search?access-token=abc',
       '/discover\n?sort=hot',
     ]
 

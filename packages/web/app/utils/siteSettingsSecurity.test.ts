@@ -5,11 +5,30 @@ describe('siteSettingsSecurity', () => {
   it('公开 URL 只允许站内路径和 https 链接', () => {
     expect(normalizePublicSettingUrl(' /api/media/public/site/icon.png ')).toBe('/api/media/public/site/icon.png')
     expect(normalizePublicSettingUrl('HTTPS://example.com/og.jpg?next="x"')).toBe('https://example.com/og.jpg?next=%22x%22')
+    expect(normalizePublicSettingUrl('/discover?sort=hot&key=style#top')).toBe('/discover?sort=hot&key=style#top')
+    expect(normalizePublicSettingUrl('https://example.com/og.jpg?utm_source=home')).toBe('https://example.com/og.jpg?utm_source=home')
+  })
+
+  it('公开 URL 拒绝凭证类查询参数', () => {
+    for (const url of [
+      'https://example.com/og.jpg?token=abc',
+      'https://example.com/og.jpg?ACCESS_TOKEN=abc',
+      'https://example.com/og.jpg?api-key=abc',
+      'https://example.com/og.jpg?client_secret=abc',
+      'https://example.com/og.jpg?x-amz-signature=abc',
+      'https://example.com/og.jpg?Key-Pair-Id=abc',
+      '/discover?auth_token=abc',
+      '/search?session_id=abc',
+    ]) {
+      expect(normalizePublicSettingUrl(url)).toBe('')
+    }
   })
 
   it('公开图片 URL 只允许站点公开媒体路径和 https 链接', () => {
     expect(normalizePublicImageSettingUrl(' /api/media/public/site/icon.png ')).toBe('/api/media/public/site/icon.png')
     expect(normalizePublicImageSettingUrl('HTTPS://example.com/og.jpg?next="x"')).toBe('https://example.com/og.jpg?next=%22x%22')
+    expect(normalizePublicImageSettingUrl('https://example.com/og.jpg?utm_source=home')).toBe('https://example.com/og.jpg?utm_source=home')
+    expect(normalizePublicImageSettingUrl('https://example.com/og.jpg?signature=abc')).toBe('')
     expect(normalizePublicImageSettingUrl('/discover?sort=hot')).toBe('')
     expect(normalizePublicImageSettingUrl('/api/media/public/avatars/user.png')).toBe('')
   })
@@ -82,6 +101,7 @@ describe('siteSettingsSecurity', () => {
     expect(normalizeHomeAdUrl('/cases/spring-lookbook')).toBe('/cases/spring-lookbook')
     expect(normalizeHomeAdUrl('/search?q=夏日')).toBe('/search?q=%E5%A4%8F%E6%97%A5')
     expect(normalizeHomeAdUrl('HTTPS://example.com/campaign?next="x"')).toBe('https://example.com/campaign?next=%22x%22')
+    expect(normalizeHomeAdUrl('https://example.com/campaign?utm_source=home')).toBe('https://example.com/campaign?utm_source=home')
 
     for (const url of [
       '/admin',
@@ -99,6 +119,10 @@ describe('siteSettingsSecurity', () => {
       'https://[fc00::1]/campaign',
       'https://[2001:db8::1]/campaign',
       'https://preview.local./campaign',
+      'https://example.com/campaign?api_key=abc',
+      'https://example.com/campaign?signature=abc',
+      '/discover?token=abc',
+      '/search?access-token=abc',
       'javascript:alert(1)',
     ]) {
       expect(normalizeHomeAdUrl(url)).toBe('')
@@ -109,6 +133,7 @@ describe('siteSettingsSecurity', () => {
     expect(normalizeInternalPath(' /rules?from=entry#top ')).toBe('/rules?from=entry#top')
     expect(normalizeInternalPath('https://example.com/rules')).toBe('')
     expect(normalizeInternalPath('//example.com/rules')).toBe('')
+    expect(normalizeInternalPath('/rules?access_token=abc')).toBe('')
     expect(normalizeInternalPath('/rules%20next')).toBe('')
     expect(normalizeInternalPath('/rules\\next')).toBe('')
     expect(normalizeInternalPath('/rules%5Cnext')).toBe('')

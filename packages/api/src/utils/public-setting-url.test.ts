@@ -13,6 +13,25 @@ describe('公开站点设置 URL 校验', () => {
     expect(normalizePublicSettingUrl('/discover?sort=hot#top', '站点图标 URL')).toBe('/discover?sort=hot#top')
     expect(normalizePublicSettingUrl(' https://example.com/og.jpg ', 'OG 封面图 URL')).toBe('https://example.com/og.jpg')
     expect(normalizePublicSettingUrl('HTTPS://example.com/og.jpg?next="x"', 'OG 封面图 URL')).toBe('https://example.com/og.jpg?next=%22x%22')
+    expect(normalizePublicSettingUrl('https://example.com/og.jpg?utm_source=ad', 'OG 封面图 URL')).toBe('https://example.com/og.jpg?utm_source=ad')
+    expect(normalizePublicSettingUrl('/discover?sort=hot&key=style#top', '首页广告链接')).toBe('/discover?sort=hot&key=style#top')
+  })
+
+  it('公开 URL 拒绝凭证类查询参数', () => {
+    const blocked = [
+      'https://example.com/og.jpg?token=abc',
+      'https://example.com/og.jpg?ACCESS_TOKEN=abc',
+      'https://example.com/og.jpg?api-key=abc',
+      'https://example.com/og.jpg?client_secret=abc',
+      'https://example.com/og.jpg?x-amz-signature=abc',
+      'https://example.com/og.jpg?Key-Pair-Id=abc',
+      '/discover?auth_token=abc',
+      '/search?session_id=abc',
+    ]
+
+    for (const url of blocked) {
+      expect(() => normalizePublicSettingUrl(url, '首页广告链接')).toThrow('首页广告链接不能包含凭证类查询参数')
+    }
   })
 
   it('公开图片 URL 只允许站点公开媒体路径和安全 https 链接', () => {
@@ -94,6 +113,7 @@ describe('公开站点设置 URL 校验', () => {
     expect(normalizeInternalPathSetting(' /rules?from=entry ', '规则页链接')).toBe('/rules?from=entry')
     expect(() => normalizeInternalPathSetting('https://example.com/rules', '规则页链接')).toThrow('规则页链接只允许站内相对路径')
     expect(() => normalizeInternalPathSetting('//example.com/rules', '规则页链接')).toThrow('规则页链接只允许站内相对路径')
+    expect(() => normalizeInternalPathSetting('/rules?access_token=abc', '规则页链接')).toThrow('规则页链接不能包含凭证类查询参数')
     expect(() => normalizeInternalPathSetting('/rules next', '规则页链接')).toThrow('规则页链接不能包含空白或控制字符')
     expect(() => normalizeInternalPathSetting('/rules%20next', '规则页链接')).toThrow('规则页链接不能包含空白或控制字符')
     expect(() => normalizeInternalPathSetting('/rules\\next', '规则页链接')).toThrow('规则页链接不能包含反斜杠')
