@@ -1,5 +1,5 @@
 const BLOCKED_HOSTS = new Set(['localhost', 'localhost.localdomain'])
-const BLOCKED_CREDENTIAL_QUERY_NAMES = new Set([
+const BLOCKED_CREDENTIAL_PARAM_NAMES = new Set([
   'accesstoken',
   'apikey',
   'authtoken',
@@ -82,7 +82,7 @@ export function normalizePublicSettingUrl(value: unknown) {
     if (url.startsWith('//') || url.startsWith('/\\')) return ''
     try {
       const parsed = new URL(url, 'https://meigallery.local')
-      if (hasCredentialQueryParam(parsed)) return ''
+      if (hasCredentialUrlParam(parsed)) return ''
       return `${parsed.pathname}${parsed.search}${parsed.hash}`
     } catch {
       return ''
@@ -97,7 +97,7 @@ export function normalizePublicSettingUrl(value: unknown) {
     const hostname = normalizeHostname(parsed.hostname)
     if (BLOCKED_HOSTS.has(hostname) || hostname.endsWith('.localhost') || hostname.endsWith('.local')) return ''
     if (hostname.includes(':') || isNonPublicIpv4(hostname)) return ''
-    if (hasCredentialQueryParam(parsed)) return ''
+    if (hasCredentialUrlParam(parsed)) return ''
 
     return parsed.toString()
   } catch {
@@ -126,7 +126,7 @@ export function normalizeInternalPath(value: unknown) {
 
   try {
     const parsed = new URL(url, 'https://meigallery.local')
-    if (hasCredentialQueryParam(parsed)) return ''
+    if (hasCredentialUrlParam(parsed)) return ''
     return `${parsed.pathname}${parsed.search}${parsed.hash}`
   } catch {
     return ''
@@ -283,15 +283,44 @@ function normalizeHostname(hostname: string) {
   return hostname.toLowerCase().replace(/\.+$/, '')
 }
 
-function hasCredentialQueryParam(url: URL) {
+function hasCredentialUrlParam(url: URL) {
   for (const name of url.searchParams.keys()) {
-    if (BLOCKED_CREDENTIAL_QUERY_NAMES.has(normalizeQueryParamName(name))) return true
+    if (isBlockedCredentialParamName(name)) return true
+  }
+  for (const name of getFragmentParamNames(url.hash)) {
+    if (isBlockedCredentialParamName(name)) return true
   }
   return false
 }
 
-function normalizeQueryParamName(name: string) {
+function isBlockedCredentialParamName(name: string) {
+  return BLOCKED_CREDENTIAL_PARAM_NAMES.has(normalizeUrlParamName(name))
+}
+
+function normalizeUrlParamName(name: string) {
   return name.toLowerCase().replace(/[-_]/g, '')
+}
+
+function getFragmentParamNames(hash: string) {
+  const fragment = hash.startsWith('#') ? hash.slice(1) : hash
+  if (!fragment) return []
+
+  const variants = new Set([fragment, safeDecodeURIComponent(fragment)])
+  const names: string[] = []
+  for (const variant of variants) {
+    for (const match of variant.matchAll(/(?:^|[?#&;])([^=&#?;/]+)=/g)) {
+      names.push(match[1] ?? '')
+    }
+  }
+  return names
+}
+
+function safeDecodeURIComponent(value: string) {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
 }
 
 function isAllowedHomeAdInternalPath(url: string) {

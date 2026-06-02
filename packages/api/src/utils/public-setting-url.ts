@@ -1,5 +1,5 @@
 const BLOCKED_HOSTS = new Set(['localhost', 'localhost.localdomain'])
-const BLOCKED_CREDENTIAL_QUERY_NAMES = new Set([
+const BLOCKED_CREDENTIAL_PARAM_NAMES = new Set([
   'accesstoken',
   'apikey',
   'authtoken',
@@ -48,7 +48,7 @@ export function normalizePublicSettingUrl(value: unknown, fieldLabel: string) {
     } catch {
       throw new Error(`${fieldLabel}格式无效`)
     }
-    assertNoCredentialQueryParams(parsed, fieldLabel)
+    assertNoCredentialUrlParams(parsed, fieldLabel)
     return `${parsed.pathname}${parsed.search}${parsed.hash}`
   }
 
@@ -72,7 +72,7 @@ export function normalizePublicSettingUrl(value: unknown, fieldLabel: string) {
   if (hostname.includes(':') || isNonPublicIpv4(hostname)) {
     throw new Error(`${fieldLabel}不允许使用本机或非公网 IP`)
   }
-  assertNoCredentialQueryParams(parsed, fieldLabel)
+  assertNoCredentialUrlParams(parsed, fieldLabel)
 
   return parsed.toString()
 }
@@ -118,7 +118,7 @@ export function normalizeInternalPathSetting(value: unknown, fieldLabel: string)
   } catch {
     throw new Error(`${fieldLabel}格式无效`)
   }
-  assertNoCredentialQueryParams(parsed, fieldLabel)
+  assertNoCredentialUrlParams(parsed, fieldLabel)
   return `${parsed.pathname}${parsed.search}${parsed.hash}`
 }
 
@@ -150,16 +150,47 @@ function normalizeHostname(hostname: string) {
   return hostname.toLowerCase().replace(/\.+$/, '')
 }
 
-function assertNoCredentialQueryParams(url: URL, fieldLabel: string) {
+function assertNoCredentialUrlParams(url: URL, fieldLabel: string) {
   for (const name of url.searchParams.keys()) {
-    if (BLOCKED_CREDENTIAL_QUERY_NAMES.has(normalizeQueryParamName(name))) {
-      throw new Error(`${fieldLabel}不能包含凭证类查询参数`)
+    if (isBlockedCredentialParamName(name)) {
+      throw new Error(`${fieldLabel}不能包含凭证类 URL 参数`)
+    }
+  }
+  for (const name of getFragmentParamNames(url.hash)) {
+    if (isBlockedCredentialParamName(name)) {
+      throw new Error(`${fieldLabel}不能包含凭证类 URL 参数`)
     }
   }
 }
 
-function normalizeQueryParamName(name: string) {
+function isBlockedCredentialParamName(name: string) {
+  return BLOCKED_CREDENTIAL_PARAM_NAMES.has(normalizeUrlParamName(name))
+}
+
+function normalizeUrlParamName(name: string) {
   return name.toLowerCase().replace(/[-_]/g, '')
+}
+
+function getFragmentParamNames(hash: string) {
+  const fragment = hash.startsWith('#') ? hash.slice(1) : hash
+  if (!fragment) return []
+
+  const variants = new Set([fragment, safeDecodeURIComponent(fragment)])
+  const names: string[] = []
+  for (const variant of variants) {
+    for (const match of variant.matchAll(/(?:^|[?#&;])([^=&#?;/]+)=/g)) {
+      names.push(match[1] ?? '')
+    }
+  }
+  return names
+}
+
+function safeDecodeURIComponent(value: string) {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
 }
 
 function isNonPublicIpv4(hostname: string) {

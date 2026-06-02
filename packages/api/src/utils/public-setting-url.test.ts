@@ -15,9 +15,10 @@ describe('公开站点设置 URL 校验', () => {
     expect(normalizePublicSettingUrl('HTTPS://example.com/og.jpg?next="x"', 'OG 封面图 URL')).toBe('https://example.com/og.jpg?next=%22x%22')
     expect(normalizePublicSettingUrl('https://example.com/og.jpg?utm_source=ad', 'OG 封面图 URL')).toBe('https://example.com/og.jpg?utm_source=ad')
     expect(normalizePublicSettingUrl('/discover?sort=hot&key=style#top', '首页广告链接')).toBe('/discover?sort=hot&key=style#top')
+    expect(normalizePublicSettingUrl('https://example.com/og.jpg#preview', 'OG 封面图 URL')).toBe('https://example.com/og.jpg#preview')
   })
 
-  it('公开 URL 拒绝凭证类查询参数', () => {
+  it('公开 URL 拒绝凭证类 URL 参数', () => {
     const blocked = [
       'https://example.com/og.jpg?token=abc',
       'https://example.com/og.jpg?ACCESS_TOKEN=abc',
@@ -27,10 +28,15 @@ describe('公开站点设置 URL 校验', () => {
       'https://example.com/og.jpg?Key-Pair-Id=abc',
       '/discover?auth_token=abc',
       '/search?session_id=abc',
+      'https://example.com/og.jpg#token=abc',
+      'https://example.com/og.jpg#/callback?access_token=abc',
+      'https://example.com/og.jpg#state=ok&signature=abc',
+      'https://example.com/og.jpg#access_token%3Dabc',
+      '/discover#api-key=abc',
     ]
 
     for (const url of blocked) {
-      expect(() => normalizePublicSettingUrl(url, '首页广告链接')).toThrow('首页广告链接不能包含凭证类查询参数')
+      expect(() => normalizePublicSettingUrl(url, '首页广告链接')).toThrow('首页广告链接不能包含凭证类 URL 参数')
     }
   })
 
@@ -111,9 +117,11 @@ describe('公开站点设置 URL 校验', () => {
   it('站内路径设置只允许明确相对路径', () => {
     expect(normalizeInternalPathSetting('/rules', '规则页链接')).toBe('/rules')
     expect(normalizeInternalPathSetting(' /rules?from=entry ', '规则页链接')).toBe('/rules?from=entry')
+    expect(normalizeInternalPathSetting(' /rules#top ', '规则页链接')).toBe('/rules#top')
     expect(() => normalizeInternalPathSetting('https://example.com/rules', '规则页链接')).toThrow('规则页链接只允许站内相对路径')
     expect(() => normalizeInternalPathSetting('//example.com/rules', '规则页链接')).toThrow('规则页链接只允许站内相对路径')
-    expect(() => normalizeInternalPathSetting('/rules?access_token=abc', '规则页链接')).toThrow('规则页链接不能包含凭证类查询参数')
+    expect(() => normalizeInternalPathSetting('/rules?access_token=abc', '规则页链接')).toThrow('规则页链接不能包含凭证类 URL 参数')
+    expect(() => normalizeInternalPathSetting('/rules#access_token=abc', '规则页链接')).toThrow('规则页链接不能包含凭证类 URL 参数')
     expect(() => normalizeInternalPathSetting('/rules next', '规则页链接')).toThrow('规则页链接不能包含空白或控制字符')
     expect(() => normalizeInternalPathSetting('/rules%20next', '规则页链接')).toThrow('规则页链接不能包含空白或控制字符')
     expect(() => normalizeInternalPathSetting('/rules\\next', '规则页链接')).toThrow('规则页链接不能包含反斜杠')

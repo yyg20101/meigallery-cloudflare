@@ -14,13 +14,17 @@ describe('公开站点设置安全读取', () => {
     expect(sanitizePublicSiteSetting('site_icon', 'https://example.com\\icon.png')).toBe('')
     expect(sanitizePublicSiteSetting('og_image', 'https://example.com/%5Cog.jpg')).toBe('')
     expect(sanitizePublicSiteSetting('og_image', 'https://example.com/og.jpg?signature=abc')).toBe('')
+    expect(sanitizePublicSiteSetting('og_image', 'https://example.com/og.jpg#signature=abc')).toBe('')
     expect(sanitizePublicSiteSetting('site_icon', '/discover?sort=hot')).toBe('')
     expect(sanitizePublicSiteSetting('og_image', '/api/media/public/avatars/user.png')).toBe('')
     expect(sanitizePublicSiteSetting('home_ad_url', 'https:\\\\example.com\\campaign')).toBe('')
     expect(sanitizePublicSiteSetting('home_ad_url', '/discover?token=abc')).toBe('')
+    expect(sanitizePublicSiteSetting('home_ad_url', '/discover#token=abc')).toBe('')
     expect(sanitizePublicSiteSetting('home_ad_url', 'https://example.com/campaign?api_key=abc')).toBe('')
+    expect(sanitizePublicSiteSetting('home_ad_url', 'https://example.com/campaign#/callback?access_token=abc')).toBe('')
     expect(sanitizePublicSiteSetting('rules_page_url', '/rules%5Cnext')).toBe('')
     expect(sanitizePublicSiteSetting('rules_page_url', '/rules?access_token=abc')).toBe('')
+    expect(sanitizePublicSiteSetting('rules_page_url', '/rules#access_token=abc')).toBe('')
   })
 
   it('归一化允许的 URL 设置', () => {
@@ -28,8 +32,10 @@ describe('公开站点设置安全读取', () => {
     expect(sanitizePublicSiteSetting('og_image', 'HTTPS://example.com/og.jpg?next="x"')).toBe('https://example.com/og.jpg?next=%22x%22')
     expect(sanitizePublicSiteSetting('home_ad_url', ' /discover?sort=hot#top ')).toBe('/discover?sort=hot#top')
     expect(sanitizePublicSiteSetting('home_ad_url', 'https://example.com/campaign?utm_source=home')).toBe('https://example.com/campaign?utm_source=home')
+    expect(sanitizePublicSiteSetting('home_ad_url', 'https://example.com/campaign#details')).toBe('https://example.com/campaign#details')
     expect(sanitizePublicSiteSetting('home_ad_url', '/gallery/summer-portrait')).toBe('/gallery/summer-portrait')
     expect(sanitizePublicSiteSetting('rules_page_url', ' /rules?from=entry ')).toBe('/rules?from=entry')
+    expect(sanitizePublicSiteSetting('rules_page_url', ' /rules#top ')).toBe('/rules#top')
   })
 
   it('归一化公开布尔和 Pixel 设置', () => {
