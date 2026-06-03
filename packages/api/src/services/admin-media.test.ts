@@ -80,7 +80,7 @@ describe('后台媒体服务', () => {
       expect.objectContaining({ id: 'safe', thumbnailUrl: 'https://example.com/source.jpg?next=%22x%22' }),
       expect.objectContaining({ id: 'unsafe', thumbnailUrl: null }),
       expect.objectContaining({ id: 'local', thumbnailUrl: null }),
-      expect.objectContaining({ id: 'r2', thumbnailUrl: '/api/media/r2/thumbnail' }),
+      expect.objectContaining({ id: 'r2', thumbnailUrl: '/api/admin/media/r2/thumbnail' }),
       expect.objectContaining({ id: 'video', thumbnailUrl: null }),
     ])
   })

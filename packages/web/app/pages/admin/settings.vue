@@ -341,7 +341,7 @@ async function toggleVideo() {
         <legend class="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-2 w-full">SEO / 社交分享</legend>
         <div>
           <label for="seo-title" class="block text-sm font-medium text-gray-700 mb-1">SEO 标题</label>
-          <input id="seo-title" v-model="form.seo_title" maxlength="80" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="MeiGallery - 精选写真图库" />
+          <input id="seo-title" v-model="form.seo_title" maxlength="80" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="例如：站点名称 - 精选图库" />
           <p class="text-xs text-gray-400 mt-1">搜索引擎显示的页面标题（title 标签）</p>
         </div>
         <div>

@@ -197,7 +197,7 @@ export async function uploadAdminGalleryMedia(
       uploaded.push({
         assetId,
         r2Key,
-        thumbnailUrl: `/api/media/${assetId}/thumbnail`,
+        thumbnailUrl: `/api/admin/media/${assetId}/thumbnail`,
         sortOrder: nextOrder,
       })
       nextOrder++

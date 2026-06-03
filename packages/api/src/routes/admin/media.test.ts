@@ -73,9 +73,73 @@ describe('后台媒体管理 API', () => {
       expect.objectContaining({ id: 'safe', thumbnailUrl: 'https://example.com/source.jpg?next=%22x%22' }),
       expect.objectContaining({ id: 'unsafe', thumbnailUrl: null }),
       expect.objectContaining({ id: 'local', thumbnailUrl: null }),
-      expect.objectContaining({ id: 'r2', thumbnailUrl: '/api/media/r2/thumbnail' }),
+      expect.objectContaining({ id: 'r2', thumbnailUrl: '/api/admin/media/r2/thumbnail' }),
       expect.objectContaining({ id: 'video', thumbnailUrl: null }),
     ])
+  })
+
+  it('管理员封面预览接口可显示草稿图库封面', async () => {
+    const app = createApp()
+    const bodyBytes = new TextEncoder().encode('cover-bytes')
+    const env = {
+      DB: createDb({
+        first: (sql) => {
+          if (sql.includes('SELECT cover_key FROM galleries')) return { cover_key: 'covers/gal_1/cover.jpg' }
+          return null
+        },
+      }),
+      R2: {
+        async get(key: string) {
+          if (key !== 'covers/gal_1/cover.jpg') return null
+          return {
+            body: bodyBytes,
+            httpMetadata: { contentType: 'image/jpeg' },
+            httpEtag: 'etag-cover',
+          } as unknown as R2ObjectBody
+        },
+      },
+    } as unknown as Bindings
+
+    const res = await app.request('/api/admin/galleries/gal_1/cover', {}, env)
+    const text = await res.text()
+
+    expect(res.status).toBe(200)
+    expect(text).toBe('cover-bytes')
+    expect(res.headers.get('Cache-Control')).toBe('private, max-age=600')
+    expect(res.headers.get('Content-Type')).toBe('image/jpeg')
+  })
+
+  it('管理员缩略图接口可显示草稿图库图片', async () => {
+    const app = createApp()
+    const bodyBytes = new TextEncoder().encode('image-bytes')
+    const env = {
+      DB: createDb({
+        first: (sql) => {
+          if (sql.includes('FROM media_assets')) {
+            return { gallery_id: 'gal_1', r2_key: 'originals/gal_1/asset-1.jpg', type: 'image', upload_status: 'completed' }
+          }
+          return null
+        },
+      }),
+      R2: {
+        async get(key: string) {
+          if (key !== 'originals/gal_1/asset-1.jpg') return null
+          return {
+            body: bodyBytes,
+            httpMetadata: { contentType: 'image/jpeg' },
+            httpEtag: 'etag-1',
+          } as unknown as R2ObjectBody
+        },
+      },
+    } as unknown as Bindings
+
+    const res = await app.request('/api/admin/media/asset-1/thumbnail', {}, env)
+    const text = await res.text()
+
+    expect(res.status).toBe(200)
+    expect(text).toBe('image-bytes')
+    expect(res.headers.get('Cache-Control')).toBe('private, max-age=600')
+    expect(res.headers.get('Content-Type')).toBe('image/jpeg')
   })
 
   it('设置封面时拒绝不安全外部媒体地址', async () => {

@@ -41,5 +41,5 @@ export function resolvePublicCoverUrl(galleryId: string, coverKey: string | null
 }
 
 export function resolveAdminMediaThumbnailUrl(assetId: string, mediaKey: string | null | undefined) {
-  return resolveProxyMediaUrl(`/api/media/${assetId}/thumbnail`, mediaKey)
+  return resolveProxyMediaUrl(`/api/admin/media/${assetId}/thumbnail`, mediaKey)
 }

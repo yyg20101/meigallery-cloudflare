@@ -47,6 +47,17 @@ export function resolveCoverPreviewUrl(coverKey: unknown, galleryId: string | nu
   return `${baseURL}/api/media/cover/${galleryId}`
 }
 
+export function resolveAdminCoverPreviewUrl(coverKey: unknown, galleryId: string | null | undefined, baseURL: string) {
+  const key = String(coverKey ?? '').trim()
+  if (!key || !galleryId) return null
+
+  const externalUrl = normalizeMediaUrl(key)
+  if (externalUrl && !externalUrl.startsWith('/')) return externalUrl
+  if (isExternalMediaLike(key)) return null
+
+  return `${baseURL}/api/admin/galleries/${galleryId}/cover`
+}
+
 function isExternalMediaLike(value: string) {
   try {
     const protocol = new URL(value).protocol.toLowerCase()

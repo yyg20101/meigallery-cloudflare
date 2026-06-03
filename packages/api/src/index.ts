@@ -13,7 +13,7 @@ import { contactMethodRoutes } from './routes/contact-methods'
 import { caseRoutes } from './routes/cases'
 import { importRoutes } from './routes/imports'
 import { PUBLIC_SETTING_KEYS } from './utils/site-settings'
-import { sanitizePublicSiteSetting } from './utils/public-site-settings'
+import { sanitizePublicSiteSetting, sanitizePublicSiteSettings } from './utils/public-site-settings'
 import { adminRoutes } from './routes/admin'
 import { healthRoutes } from './routes/health'
 import { authMiddleware } from './middleware/auth'
@@ -161,7 +161,7 @@ app.get('/api/settings/public', async (c) => {
     settings[row.key] = sanitizePublicSiteSetting(row.key, parseStoredSettingValue(row.value))
   }
   c.header('Cache-Control', 'no-store')
-  return c.json(settings)
+  return c.json(sanitizePublicSiteSettings(settings))
 })
 
 app.route('/api/admin', adminRoutes)

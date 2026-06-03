@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeMediaUrl, resolveCoverPreviewUrl, resolveMediaDisplayUrl } from './mediaUrlSecurity'
+import { normalizeMediaUrl, resolveAdminCoverPreviewUrl, resolveCoverPreviewUrl, resolveMediaDisplayUrl } from './mediaUrlSecurity'
 
 describe('mediaUrlSecurity', () => {
   it('媒体 URL 只允许站内路径和安全 HTTPS 外链', () => {
@@ -48,5 +48,6 @@ describe('mediaUrlSecurity', () => {
     expect(resolveCoverPreviewUrl('https://localhost./cover.jpg', 'gal_1', 'https://api.test')).toBeNull()
     expect(resolveCoverPreviewUrl('https://127.0.0.1/cover.jpg', 'gal_1', 'https://api.test')).toBeNull()
     expect(resolveCoverPreviewUrl('https://198.51.100.10/cover.jpg', 'gal_1', 'https://api.test')).toBeNull()
+    expect(resolveAdminCoverPreviewUrl('covers/gal_1/cover.jpg', 'gal_1', 'https://api.test')).toBe('https://api.test/api/admin/galleries/gal_1/cover')
   })
 })

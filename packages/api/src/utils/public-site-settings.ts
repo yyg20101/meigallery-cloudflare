@@ -14,6 +14,8 @@ const INTERNAL_PATH_FIELDS: Record<string, string> = {
   rules_page_url: '规则页链接',
 }
 
+export const LEGACY_DEFAULT_SEO_TITLE = 'MeiGallery - 精选写真图库'
+
 export function sanitizePublicSiteSetting(key: string, value: unknown) {
   if (key === 'home_ad_url') {
     try {
@@ -58,4 +60,12 @@ export function sanitizePublicSiteSetting(key: string, value: unknown) {
   }
 
   return value
+}
+
+export function sanitizePublicSiteSettings(settings: Record<string, unknown>) {
+  const sanitized = { ...settings }
+  if (sanitized.seo_title === LEGACY_DEFAULT_SEO_TITLE) {
+    sanitized.seo_title = ''
+  }
+  return sanitized
 }

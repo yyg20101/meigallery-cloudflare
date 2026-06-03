@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { sanitizePublicSiteSetting } from './public-site-settings'
+import { LEGACY_DEFAULT_SEO_TITLE, sanitizePublicSiteSetting, sanitizePublicSiteSettings } from './public-site-settings'
 
 describe('公开站点设置安全读取', () => {
   it('清空历史危险 URL 设置', () => {
@@ -71,6 +71,24 @@ describe('公开站点设置安全读取', () => {
     expect(sanitizePublicSiteSetting('rules_entry_summary', '入口\u0001说明')).toBe('')
     expect(sanitizePublicSiteSetting('rules_entry_icon', '<svg>')).toBe('')
     expect(sanitizePublicSiteSetting('rules_page_title', '入站规则')).toBe('入站规则')
+  })
+
+  it('清空公开响应中的历史默认 SEO 标题并保留自定义标题', () => {
+    const legacySettings = {
+      site_name: '星耀传媒',
+      seo_title: LEGACY_DEFAULT_SEO_TITLE,
+    }
+    const customSettings = {
+      site_name: '星耀传媒',
+      seo_title: '星耀传媒 - 官方图库',
+    }
+
+    expect(sanitizePublicSiteSettings(legacySettings)).toEqual({
+      site_name: '星耀传媒',
+      seo_title: '',
+    })
+    expect(sanitizePublicSiteSettings(customSettings)).toEqual(customSettings)
+    expect(legacySettings.seo_title).toBe(LEGACY_DEFAULT_SEO_TITLE)
   })
 
   it('归一化首页内容配置并清空历史异常内容', () => {
