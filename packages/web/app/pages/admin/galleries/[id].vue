@@ -325,6 +325,7 @@ const videoCount = computed(() => mediaAssets.value.filter((a) => a.type === 'vi
               :src="getCoverPreviewUrl()!"
               alt="封面预览"
               class="w-full aspect-[4/3] object-cover"
+              referrerpolicy="no-referrer"
             />
           </div>
           <div v-else class="rounded-lg bg-gray-100 aspect-[4/3] flex items-center justify-center mb-2">

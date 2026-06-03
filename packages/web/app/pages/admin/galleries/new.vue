@@ -398,7 +398,7 @@ function goToEdit() {
           <div class="rounded-lg border border-gray-200 bg-white p-4">
             <h2 class="text-sm font-semibold text-gray-700 mb-3">封面</h2>
             <div v-if="getCoverPreviewUrl()" class="rounded-lg overflow-hidden bg-gray-100 mb-2">
-              <img :src="getCoverPreviewUrl()!" alt="封面预览" class="w-full aspect-[4/3] object-cover" />
+              <img :src="getCoverPreviewUrl()!" alt="封面预览" class="w-full aspect-[4/3] object-cover" referrerpolicy="no-referrer" />
             </div>
             <div v-else class="rounded-lg bg-gray-100 aspect-[4/3] flex items-center justify-center mb-2">
               <span class="text-sm text-gray-400">暂无封面</span>

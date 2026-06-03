@@ -185,6 +185,7 @@ function onRankChange(assetId: string, event: Event) {
             :alt="`图片 ${asset.sortOrder + 1}`"
             class="w-full h-full object-cover"
             loading="lazy"
+            referrerpolicy="no-referrer"
           />
           <div v-else class="flex items-center justify-center h-full text-gray-300">
             <svg class="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
