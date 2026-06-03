@@ -98,6 +98,7 @@
 - 首页广告跳转参数持续增强：站内广告链接中的 `redirect`、`next`、`return_to` 等跳转目标已限制为公开前台路径，拒绝空目标、后台/API/资源路径、外站和嵌套危险跳转；登录页成功后的 `redirect` 参数已增加站内安全兜底，并保留后台正常登录回跳。
 - Facebook Pixel 隐私持续增强：前端埋点在当前 URL query 或 hash 含 `token`、`api_key`、`signature`、`access_token` 等凭证类参数时会跳过 Pixel 初始化和事件上报，埋点文本清洗同步覆盖凭证参数，避免敏感 URL 被第三方脚本带出。
 - Facebook Pixel 脚本加载隐私增强：前端加载 `fbevents.js` 时已统一设置 `referrerPolicy="no-referrer"`，减少第三方脚本请求携带当前页面 URL 的风险；工具测试覆盖脚本地址、异步加载和来源页策略。
+- Web Worker 安全响应头增强：前端 Worker 已通过 Nuxt routeRules 为全站响应补充 `X-Frame-Options: DENY`、`X-Content-Type-Options: nosniff`、`Referrer-Policy: strict-origin-when-cross-origin` 和收紧的 `Permissions-Policy`，降低页面被嵌入、MIME 嗅探、来源页过度泄露和无关浏览器能力调用风险。
 
 ## Git 状态
 
