@@ -1,5 +1,5 @@
 import { normalizeBooleanSetting, normalizeFacebookPixelId } from './facebook-pixel-settings'
-import { normalizeHomeAdScheduleValue } from './home-ad-schedule'
+import { isHomeAdActive, normalizeHomeAdScheduleValue } from './home-ad-schedule'
 import { normalizeHomeAdUrl, safeHomeAdText } from './home-ad-settings'
 import { safeInternalPathSetting, safePublicImageSettingUrl } from './public-setting-url'
 import { safeFeaturedRegionSlugs, safeHomeHotTagLimit, safeRulesMarkdown } from './site-content-settings'
@@ -62,10 +62,16 @@ export function sanitizePublicSiteSetting(key: string, value: unknown) {
   return value
 }
 
-export function sanitizePublicSiteSettings(settings: Record<string, unknown>) {
+export function sanitizePublicSiteSettings(settings: Record<string, unknown>, now = new Date()) {
   const sanitized = { ...settings }
   if (sanitized.seo_title === LEGACY_DEFAULT_SEO_TITLE) {
     sanitized.seo_title = ''
   }
+  sanitized.home_ad_active = isHomeAdActive(
+    sanitized.home_ad_enabled,
+    sanitized.home_ad_starts_at,
+    sanitized.home_ad_ends_at,
+    now,
+  )
   return sanitized
 }

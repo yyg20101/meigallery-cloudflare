@@ -86,9 +86,35 @@ describe('公开站点设置安全读取', () => {
     expect(sanitizePublicSiteSettings(legacySettings)).toEqual({
       site_name: '星耀传媒',
       seo_title: '',
+      home_ad_active: false,
     })
-    expect(sanitizePublicSiteSettings(customSettings)).toEqual(customSettings)
+    expect(sanitizePublicSiteSettings(customSettings)).toEqual({
+      ...customSettings,
+      home_ad_active: false,
+    })
     expect(legacySettings.seo_title).toBe(LEGACY_DEFAULT_SEO_TITLE)
+  })
+
+  it('公开响应派生首页广告当前展示状态', () => {
+    const now = new Date('2026-06-01T12:00:00.000Z')
+
+    expect(sanitizePublicSiteSettings({
+      home_ad_enabled: true,
+      home_ad_starts_at: '2026-06-01T11:00:00.000Z',
+      home_ad_ends_at: '2026-06-01T13:00:00.000Z',
+    }, now).home_ad_active).toBe(true)
+
+    expect(sanitizePublicSiteSettings({
+      home_ad_enabled: true,
+      home_ad_starts_at: '2026-06-01T13:00:00.000Z',
+      home_ad_ends_at: '',
+    }, now).home_ad_active).toBe(false)
+
+    expect(sanitizePublicSiteSettings({
+      home_ad_enabled: false,
+      home_ad_starts_at: '',
+      home_ad_ends_at: '',
+    }, now).home_ad_active).toBe(false)
   })
 
   it('归一化首页内容配置并清空历史异常内容', () => {

@@ -28,6 +28,7 @@ export function useSiteSettings() {
     home_featured_region_slugs?: string
     home_hot_tag_limit?: string | number
     home_ad_enabled?: string | boolean
+    home_ad_active?: boolean
     home_ad_eyebrow?: string
     home_ad_title?: string
     home_ad_summary?: string
@@ -87,6 +88,7 @@ export function useSiteSettings() {
   const homeAdStartsAt = computed(() => normalizeSiteSettingDateTime(settings.value.home_ad_starts_at))
   const homeAdEndsAt = computed(() => normalizeSiteSettingDateTime(settings.value.home_ad_ends_at))
   const homeAdActive = computed(() => {
+    if (typeof settings.value.home_ad_active === 'boolean') return settings.value.home_ad_active
     return isScheduledSiteFeatureActive(settings.value.home_ad_enabled, settings.value.home_ad_starts_at, settings.value.home_ad_ends_at)
   })
   const videoEnabled = computed(() => {

@@ -94,4 +94,29 @@ describe('useSiteSettings', () => {
     expect(siteSettings.siteIcon.value).toBe('/api/media/public/site/icon.png')
     expect(siteSettings.ogImage.value).toBe('https://example.com/og.jpg?next=%22x%22')
   })
+
+  it('优先使用公开 API 派生的首页广告展示状态，并保留旧响应兜底计算', async () => {
+    resetState()
+    apiMock
+      .mockResolvedValueOnce({
+        home_ad_enabled: true,
+        home_ad_active: false,
+        home_ad_starts_at: '2000-01-01T00:00:00.000Z',
+        home_ad_ends_at: '2099-01-01T00:00:00.000Z',
+      })
+      .mockResolvedValueOnce({
+        home_ad_enabled: true,
+        home_ad_starts_at: '2000-01-01T00:00:00.000Z',
+        home_ad_ends_at: '2099-01-01T00:00:00.000Z',
+      })
+
+    const siteSettings = useSiteSettings()
+    await siteSettings.fetchSettings()
+
+    expect(siteSettings.homeAdActive.value).toBe(false)
+
+    await siteSettings.fetchSettings({ force: true })
+
+    expect(siteSettings.homeAdActive.value).toBe(true)
+  })
 })
