@@ -134,6 +134,7 @@ function activate() {
         <img
           :src="safeQrCodeUrl!"
           :alt="`${method.label} 二维码`"
+          referrerpolicy="no-referrer"
           class="h-40 w-40 rounded-xl object-cover ring-1 ring-white"
         />
         <p class="mt-2 text-xs text-gray-500">扫码添加</p>
