@@ -12,6 +12,11 @@
  * 在 CSR 期间使用完整 API URL，浏览器直连 API Worker，不经过此代理。
  */
 
+import {
+  filterApiProxyRequestHeaders,
+  shouldForwardApiProxyResponseHeader,
+} from '../../app/utils/apiProxyHeaders'
+
 interface CloudflareEnv {
   API_SERVICE?: {
     fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>
@@ -25,16 +30,7 @@ export default defineEventHandler(async (event) => {
   // 构建目标 URL
   const path = event.path // 完整路径，如 /api/galleries/summer-fresh-guangzhou?page=1
   const method = event.method
-  const headers = getRequestHeaders(event)
-
-  // 移除 hop-by-hop 头和 host
-  const forwardHeaders: Record<string, string> = {}
-  for (const [key, value] of Object.entries(headers)) {
-    const k = key.toLowerCase()
-    if (value && !['host', 'connection', 'keep-alive', 'transfer-encoding', 'content-length'].includes(k)) {
-      forwardHeaders[key] = value
-    }
-  }
+  const forwardHeaders = filterApiProxyRequestHeaders(getRequestHeaders(event))
 
   // 读取请求体（仅 POST/PUT/PATCH/DELETE）
   let body: string | undefined
@@ -68,10 +64,9 @@ export default defineEventHandler(async (event) => {
   // 转发响应状态
   setResponseStatus(event, response.status, response.statusText)
 
-  // 转发响应头（跳过 hop-by-hop 头）
+  // 转发响应头（仅保留前端确实需要感知的业务头）
   response.headers.forEach((value, key) => {
-    const k = key.toLowerCase()
-    if (!['content-encoding', 'transfer-encoding', 'content-length', 'connection'].includes(k)) {
+    if (shouldForwardApiProxyResponseHeader(key)) {
       setResponseHeader(event, key, value)
     }
   })

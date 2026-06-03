@@ -1,6 +1,6 @@
 # 项目当前状态
 
-更新时间：2026-06-03
+更新时间：2026-06-04
 
 本文档是当前实现和部署状态的索引。若历史计划或早期 PRD 与本文冲突，以本文、`AGENTS.md`、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md`、`docs/GIT_WORKFLOW.md` 为准。
 
@@ -100,6 +100,7 @@
 - Facebook Pixel 隐私持续增强：前端埋点在当前 URL query 或 hash 含 `token`、`api_key`、`signature`、`access_token` 等凭证类参数时会跳过 Pixel 初始化和事件上报，埋点文本清洗同步覆盖凭证参数，避免敏感 URL 被第三方脚本带出。
 - Facebook Pixel 脚本加载隐私增强：前端加载 `fbevents.js` 时已统一设置 `referrerPolicy="no-referrer"`，减少第三方脚本请求携带当前页面 URL 的风险；工具测试覆盖脚本地址、异步加载和来源页策略。
 - Web Worker 安全响应头增强：前端 Worker 已通过 Nuxt routeRules 为全站响应补充 `X-Frame-Options: DENY`、`X-Content-Type-Options: nosniff`、`Referrer-Policy: strict-origin-when-cross-origin` 和收紧的 `Permissions-Policy`，降低页面被嵌入、MIME 嗅探、来源页过度泄露和无关浏览器能力调用风险。
+- Web SSR API 代理头部安全增强：`/api/**` 代理请求头已改为显式白名单，仅转发认证、内容协商和限流识别需要的头；API 响应头也只透传登录、限流、缓存、下载和跳转相关业务头，避免 `Origin`、`Referer`、`Sec-*`、`Server`、压缩和连接类头在 Web Worker 与 API Worker 之间不必要穿透。
 
 ## Git 状态
 
