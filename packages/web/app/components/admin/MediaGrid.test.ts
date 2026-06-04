@@ -7,9 +7,7 @@ describe('MediaGrid', () => {
     vi.unstubAllGlobals()
   })
 
-  it('后台媒体预览图片不发送来源页', () => {
-    vi.stubGlobal('useApi', () => ({ baseURL: 'https://api.example.com' }))
-
+  it('后台媒体预览图片走同源代理且不发送来源页', () => {
     const wrapper = mount(MediaGrid, {
       props: {
         galleryId: 'gallery-1',
@@ -35,7 +33,7 @@ describe('MediaGrid', () => {
     })
 
     const img = wrapper.get('img')
-    expect(img.attributes('src')).toBe('https://api.example.com/api/admin/media/asset-1/thumbnail')
+    expect(img.attributes('src')).toBe('/api/admin/media/asset-1/thumbnail')
     expect(img.attributes('referrerpolicy')).toBe('no-referrer')
   })
 })

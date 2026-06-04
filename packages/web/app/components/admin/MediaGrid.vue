@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { resolveMediaDisplayUrl } from '~/utils/mediaUrlSecurity'
+import { resolveAdminMediaDisplayUrl } from '~/utils/mediaUrlSecurity'
 
 /**
  * 媒体网格管理组件
@@ -34,8 +34,6 @@ const emit = defineEmits<{
   updateRank: [assetId: string, rank: number]
   reorder: [order: Array<{ assetId: string; sortOrder: number }>]
 }>()
-
-const { baseURL } = useApi()
 
 const showDeleteConfirm = ref(false)
 const deleteTargetId = ref<string | null>(null)
@@ -119,7 +117,7 @@ function isCover(asset: MediaAsset): boolean {
 }
 
 function getImageUrl(asset: MediaAsset): string {
-  return resolveMediaDisplayUrl(asset.thumbnailUrl, baseURL)
+  return resolveAdminMediaDisplayUrl(asset.thumbnailUrl)
 }
 
 function confirmDelete(assetId: string) {
