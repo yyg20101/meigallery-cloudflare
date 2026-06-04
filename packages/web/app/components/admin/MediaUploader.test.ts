@@ -11,6 +11,15 @@ function mountUploader() {
   })
 }
 
+async function selectFiles(wrapper: ReturnType<typeof mountUploader>, files: File[]) {
+  const input = wrapper.get('input[type="file"]').element as HTMLInputElement
+  Object.defineProperty(input, 'files', {
+    configurable: true,
+    value: files,
+  })
+  await wrapper.get('input[type="file"]').trigger('change')
+}
+
 describe('MediaUploader', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
@@ -25,14 +34,9 @@ describe('MediaUploader', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
     const wrapper = mountUploader()
-    const input = wrapper.get('input[type="file"]').element as HTMLInputElement
     const file = new File(['image'], 'cover.jpg', { type: 'image/jpeg' })
 
-    Object.defineProperty(input, 'files', {
-      configurable: true,
-      value: [file],
-    })
-    await wrapper.get('input[type="file"]').trigger('change')
+    await selectFiles(wrapper, [file])
     await flushPromises()
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -43,6 +47,37 @@ describe('MediaUploader', () => {
       }),
     )
     expect(wrapper.text()).toContain(message)
+    expect(wrapper.emitted('uploaded')).toBeUndefined()
+  })
+
+  it('上传失败时兼容历史错误体 error 字段', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: vi.fn().mockResolvedValue({ error: '旧格式上传错误' }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const wrapper = mountUploader()
+    const file = new File(['image'], 'cover.jpg', { type: 'image/jpeg' })
+
+    await selectFiles(wrapper, [file])
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('旧格式上传错误')
+    expect(wrapper.emitted('uploaded')).toBeUndefined()
+  })
+
+  it('本地拒绝不支持格式且不会发起上传请求', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const wrapper = mountUploader()
+    const file = new File(['image'], 'cover.gif', { type: 'image/gif' })
+
+    await selectFiles(wrapper, [file])
+    await flushPromises()
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('不支持的格式: .gif')
     expect(wrapper.emitted('uploaded')).toBeUndefined()
   })
 })
