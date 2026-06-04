@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { resolveApiErrorMessage } from '~/utils/apiErrorMessage'
+
 /**
  * 图片拖拽上传组件
  * 支持拖拽/点击选择，逐张上传（最多 3 并发），实时显示进度
@@ -74,15 +76,6 @@ function onFileSelect(e: Event) {
 // 并发上传控制
 let activeUploads = 0
 
-function resolveUploadErrorMessage(errorBody: unknown, status: number) {
-  if (errorBody && typeof errorBody === 'object') {
-    const body = errorBody as { message?: unknown; error?: unknown }
-    if (typeof body.message === 'string' && body.message.trim()) return body.message
-    if (typeof body.error === 'string' && body.error.trim()) return body.error
-  }
-  return `HTTP ${status}`
-}
-
 async function processQueue() {
   while (activeUploads < MAX_CONCURRENT) {
     const next = queue.value.find(item => item.status === 'pending')
@@ -107,7 +100,7 @@ async function processQueue() {
 
       if (!response.ok) {
         const err = await response.json().catch(() => ({ message: '上传失败' }))
-        throw new Error(resolveUploadErrorMessage(err, response.status))
+        throw new Error(resolveApiErrorMessage({ data: err }, `HTTP ${response.status}`))
       }
 
       const result = await response.json() as {
