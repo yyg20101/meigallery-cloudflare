@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { resolveAdminImportErrorReportUrl } from '~/utils/adminDownloadSecurity'
+import { parseAdminImportManifestCsv } from '~/utils/adminImportManifest'
 
 definePageMeta({ layout: 'admin' })
 
@@ -66,32 +67,18 @@ async function processJob() {
 
   processing.value = true
   try {
-    // 简易 CSV 解析
-    const lines = manifestText.value.trim().split('\n')
-    const headers = lines[0]!.split(',').map(h => h.trim())
-    const galleries = lines.slice(1).map(line => {
-      const values = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''))
-      const entry: Record<string, string> = {}
-      headers.forEach((h, i) => { entry[h] = values[i] || '' })
-      return {
-        folder: entry['folder'] || '',
-        title: entry['title'] || '',
-        slug: entry['slug'] || '',
-        region: entry['region'] || undefined,
-        personality: entry['personality'] || undefined,
-        style: entry['style'] || undefined,
-        tags: entry['tags'] || undefined,
-        requiredLevel: entry['required_level'] || 'free',
-        status: entry['status'] || 'draft',
-      }
-    })
+    const parsedManifest = parseAdminImportManifestCsv(manifestText.value)
+    if (parsedManifest.errors.length > 0) {
+      useToast().add({ title: parsedManifest.errors[0], color: 'error' })
+      return
+    }
 
     const result = await api<ProcessResult>(
       `/api/admin/import-jobs/${jobId}/process`,
       {
         method: 'POST',
         body: {
-          galleries,
+          galleries: parsedManifest.galleries,
           turnstileToken: hasTurnstile.value ? turnstileToken.value : undefined,
         },
       },
