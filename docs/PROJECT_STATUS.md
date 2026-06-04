@@ -101,6 +101,7 @@
 - Facebook Pixel 脚本加载隐私增强：前端加载 `fbevents.js` 时已统一设置 `referrerPolicy="no-referrer"`，减少第三方脚本请求携带当前页面 URL 的风险；工具测试覆盖脚本地址、异步加载和来源页策略。
 - Web Worker 安全响应头增强：前端 Worker 已通过 Nuxt routeRules 为全站响应补充 `X-Frame-Options: DENY`、`X-Content-Type-Options: nosniff`、`Referrer-Policy: strict-origin-when-cross-origin` 和收紧的 `Permissions-Policy`，降低页面被嵌入、MIME 嗅探、来源页过度泄露和无关浏览器能力调用风险。
 - Web SSR API 代理头部安全增强：`/api/**` 代理请求头已改为显式白名单，仅转发认证、内容协商和限流识别需要的头；API 响应头也只透传登录、限流、缓存、下载和跳转相关业务头，避免 `Origin`、`Referer`、`Sec-*`、`Server`、压缩和连接类头在 Web Worker 与 API Worker 之间不必要穿透。
+- Web 图片来源页保护增强：公开图库、真实案例、首页媒体、用户头像、联系方式二维码和后台预览类 `<img>` 已统一设置 `referrerpolicy="no-referrer"`，避免图片请求携带当前页面路径；新增 Vue 模板静态回归测试，后续新增图片标签缺少该策略会直接失败。
 
 ## Git 状态
 

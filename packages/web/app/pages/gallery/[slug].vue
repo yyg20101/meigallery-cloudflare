@@ -216,7 +216,7 @@ useSeoMeta({
 
     <section class="mb-8 overflow-hidden rounded-[2rem] border border-white/80 bg-[#fffbf7] shadow-2xl shadow-orange-950/8 lg:grid lg:grid-cols-[1.2fr_0.8fr]">
       <div class="relative aspect-[4/5] overflow-hidden bg-gradient-to-br from-orange-50 to-stone-100 lg:aspect-auto lg:min-h-[34rem]">
-        <img v-if="gallery.coverUrl" :src="gallery.coverUrl" :alt="gallery.title" class="h-full w-full object-cover" />
+        <img v-if="gallery.coverUrl" :src="gallery.coverUrl" :alt="gallery.title" class="h-full w-full object-cover" referrerpolicy="no-referrer" />
         <div v-else class="h-full w-full bg-gradient-to-br from-[#f8e7dc] to-[#fff7ed]" />
         <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-gray-950/70 to-transparent p-5 text-white lg:hidden">
           <p v-if="primaryRegion" class="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#d6c39a]">{{ primaryRegion.name }}</p>
@@ -261,6 +261,7 @@ useSeoMeta({
                 :alt="gallery.title"
                 class="h-full w-full object-cover transition-transform hover:scale-105"
                 loading="lazy"
+                referrerpolicy="no-referrer"
               />
             </button>
           </div>

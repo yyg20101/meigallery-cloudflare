@@ -22,6 +22,7 @@ const hasQrCode = computed(() => !!props.qrCodeUrl)
       :src="safeQrCodeUrl"
       alt="联系方式二维码预览"
       class="h-10 w-10 rounded object-cover"
+      referrerpolicy="no-referrer"
     />
     <span
       v-else-if="hasQrCode"

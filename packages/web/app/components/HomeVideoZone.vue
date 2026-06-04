@@ -24,6 +24,7 @@ defineProps<{
           v-if="g.coverUrl"
           :src="g.coverUrl"
           :alt="g.title"
+          referrerpolicy="no-referrer"
           class="absolute inset-0 h-full w-full object-cover opacity-88 transition-transform duration-700 group-hover:scale-[1.04] group-hover:opacity-100"
         />
         <!-- 播放按钮 -->

@@ -323,7 +323,7 @@ async function toggleVideo() {
               <button type="button" :disabled="iconUploadLoading" class="inline-flex items-center justify-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50" @click="openSiteIconPicker">
                 {{ iconUploadLoading ? '上传中...' : '上传站点图标' }}
               </button>
-              <img v-if="safeSiteIconPreview" :src="safeSiteIconPreview" alt="当前站点图标预览" class="h-10 w-10 rounded-lg border border-gray-200 bg-white object-contain p-1" />
+              <img v-if="safeSiteIconPreview" :src="safeSiteIconPreview" alt="当前站点图标预览" class="h-10 w-10 rounded-lg border border-gray-200 bg-white object-contain p-1" referrerpolicy="no-referrer" />
             </div>
             <p class="mt-2 text-xs text-gray-500">支持 PNG、JPEG、WebP、ICO，最大 1MB；上传后会自动写入 URL，并同步用于 favicon 和 apple-touch-icon。</p>
           </div>

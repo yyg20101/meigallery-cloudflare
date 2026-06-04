@@ -126,6 +126,7 @@ onUnmounted(() => {
           :key="currentImage.id"
           :src="currentImage.url"
           :alt="currentImage.alt || ''"
+          referrerpolicy="no-referrer"
           class="max-w-full max-h-full object-contain select-none transition-opacity duration-200"
           :class="imageLoading ? 'opacity-0' : 'opacity-100'"
           draggable="false"

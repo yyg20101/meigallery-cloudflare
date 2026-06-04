@@ -170,7 +170,7 @@ onUnmounted(() => {
             :to="`/cases/${item.slug}`"
             class="group relative h-[20.5rem] w-[82vw] max-w-[22rem] shrink-0 snap-center overflow-hidden rounded-[1.6rem] border border-[#f0e4d8] bg-gray-950 shadow-lg shadow-orange-950/10"
           >
-            <img v-if="item.coverImageUrl" :src="item.coverImageUrl" :alt="item.title" class="absolute inset-0 h-full w-full object-cover opacity-95 transition-transform duration-[1200ms] ease-out group-hover:scale-[1.03]" loading="lazy" />
+            <img v-if="item.coverImageUrl" :src="item.coverImageUrl" :alt="item.title" class="absolute inset-0 h-full w-full object-cover opacity-95 transition-transform duration-[1200ms] ease-out group-hover:scale-[1.03]" loading="lazy" referrerpolicy="no-referrer" />
             <div v-else class="absolute inset-0 bg-gradient-to-br from-[#fff7ed] to-[#f8e7dc]" />
             <div class="absolute inset-0 bg-[linear-gradient(180deg,rgba(12,10,8,0.10),rgba(12,10,8,0.20)_40%,rgba(12,10,8,0.86)),radial-gradient(circle_at_18%_16%,rgba(255,251,247,0.26),transparent_30%)]" />
             <div class="absolute left-3 top-3 rounded-full border border-white/20 bg-black/28 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#f0dca7] backdrop-blur">Case · {{ item.imageCount }} 张</div>
@@ -189,7 +189,7 @@ onUnmounted(() => {
         class="group relative min-h-[20.5rem] overflow-hidden rounded-[1.75rem] border border-[#f0e4d8] bg-gray-950 shadow-lg shadow-orange-950/10 lg:min-h-[25rem]"
         :class="visibleCases.length > 1 ? 'hidden lg:block' : 'block'"
       >
-        <img v-if="activeCase.coverImageUrl" :src="activeCase.coverImageUrl" :alt="activeCase.title" class="absolute inset-0 h-full w-full object-cover opacity-95 transition-transform duration-[1400ms] ease-out motion-safe:animate-[fade-in_0.55s_ease-out] group-hover:scale-[1.03]" loading="lazy" />
+        <img v-if="activeCase.coverImageUrl" :src="activeCase.coverImageUrl" :alt="activeCase.title" class="absolute inset-0 h-full w-full object-cover opacity-95 transition-transform duration-[1400ms] ease-out motion-safe:animate-[fade-in_0.55s_ease-out] group-hover:scale-[1.03]" loading="lazy" referrerpolicy="no-referrer" />
         <div v-else class="absolute inset-0 bg-gradient-to-br from-[#fff7ed] to-[#f8e7dc]" />
         <div class="absolute inset-0 bg-[linear-gradient(90deg,rgba(12,10,8,0.78),rgba(12,10,8,0.34)_58%,rgba(12,10,8,0.12)),radial-gradient(circle_at_20%_16%,rgba(255,251,247,0.28),transparent_28%)]" />
         <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/82 via-black/34 to-transparent p-5 text-white sm:p-6">
@@ -211,7 +211,7 @@ onUnmounted(() => {
             @click="goToSlide(entry.index)"
           >
             <div class="aspect-[4/3] overflow-hidden rounded-[0.85rem] bg-orange-50">
-              <img v-if="entry.item.coverImageUrl" :src="entry.item.coverImageUrl" :alt="entry.item.title" class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" />
+              <img v-if="entry.item.coverImageUrl" :src="entry.item.coverImageUrl" :alt="entry.item.title" class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" referrerpolicy="no-referrer" />
               <div v-else class="h-full bg-gradient-to-br from-[#fff7ed] to-[#f8e7dc]" />
             </div>
             <div class="min-w-0 py-1">

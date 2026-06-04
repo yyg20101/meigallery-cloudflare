@@ -50,7 +50,7 @@ function openContactPanel() {
       <div class="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_12%_12%,rgba(214,195,154,0.20),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.72),transparent_46%)]" />
       <div class="relative p-3 sm:p-4 lg:p-5">
         <div class="relative aspect-[4/3] overflow-hidden rounded-[1.55rem] bg-orange-50 shadow-inner shadow-orange-950/8 lg:h-full lg:max-h-[34rem] lg:min-h-[28rem] lg:aspect-auto">
-          <img v-if="coverImage" :src="coverImage.url" :alt="coverImage.alt" class="h-full w-full object-cover" fetchpriority="high" />
+          <img v-if="coverImage" :src="coverImage.url" :alt="coverImage.alt" class="h-full w-full object-cover" fetchpriority="high" referrerpolicy="no-referrer" />
           <div v-else class="flex h-full items-center justify-center bg-gradient-to-br from-[#fff7ed] to-[#f8e7dc] text-sm text-gray-400">图片整理中</div>
           <div class="absolute inset-0 bg-[linear-gradient(180deg,rgba(17,17,17,0.02),rgba(17,17,17,0.34))]" />
           <div class="absolute bottom-4 left-4 rounded-full border border-white/20 bg-black/34 px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#f0dca7] backdrop-blur">Cover Story</div>

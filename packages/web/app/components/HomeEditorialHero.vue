@@ -119,6 +119,7 @@ onUnmounted(() => {
         :key="activeGallery.slug"
         :src="activeGallery.coverUrl"
         alt=""
+        referrerpolicy="no-referrer"
         class="absolute inset-0 h-full w-full object-cover opacity-96 transition-transform duration-[1600ms] ease-out motion-safe:animate-[fade-in_0.8s_ease-out]"
       />
       <div v-else class="absolute inset-0 bg-gradient-to-br from-[#f8e7dc] to-[#2b211b]" />
@@ -151,7 +152,7 @@ onUnmounted(() => {
             class="group relative h-32 overflow-hidden rounded-[1.25rem] border border-white/18 bg-white/10 text-left shadow-xl shadow-black/20 ring-1 ring-white/8 transition-all hover:-translate-y-1 hover:border-[#d6c39a]"
             @click="goToSlide(item.index)"
           >
-            <img v-if="item.gallery.coverUrl" :src="item.gallery.coverUrl" :alt="item.gallery.title" class="h-full w-full object-cover opacity-82 transition-transform duration-500 group-hover:scale-105 group-hover:opacity-100" />
+            <img v-if="item.gallery.coverUrl" :src="item.gallery.coverUrl" :alt="item.gallery.title" class="h-full w-full object-cover opacity-82 transition-transform duration-500 group-hover:scale-105 group-hover:opacity-100" referrerpolicy="no-referrer" />
             <span class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 text-[11px] font-medium leading-4 text-white">{{ item.gallery.title }}</span>
           </button>
         </div>
