@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeMediaUrl, resolveAdminCoverPreviewUrl, resolveCoverPreviewUrl, resolveMediaDisplayUrl } from './mediaUrlSecurity'
+import { normalizeMediaUrl, resolveAdminCoverPreviewUrl, resolveAdminMediaDisplayUrl, resolveCoverPreviewUrl, resolveMediaDisplayUrl } from './mediaUrlSecurity'
 
 describe('mediaUrlSecurity', () => {
   it('媒体 URL 只允许站内路径和安全 HTTPS 外链', () => {
@@ -48,6 +48,13 @@ describe('mediaUrlSecurity', () => {
     expect(resolveCoverPreviewUrl('https://localhost./cover.jpg', 'gal_1', 'https://api.test')).toBeNull()
     expect(resolveCoverPreviewUrl('https://127.0.0.1/cover.jpg', 'gal_1', 'https://api.test')).toBeNull()
     expect(resolveCoverPreviewUrl('https://198.51.100.10/cover.jpg', 'gal_1', 'https://api.test')).toBeNull()
-    expect(resolveAdminCoverPreviewUrl('covers/gal_1/cover.jpg', 'gal_1', 'https://api.test')).toBe('https://api.test/api/admin/galleries/gal_1/cover')
+    expect(resolveAdminCoverPreviewUrl('covers/gal_1/cover.jpg', 'gal_1', 'https://api.test')).toBe('/api/admin/galleries/gal_1/cover')
+  })
+
+  it('后台媒体预览内部路径保持同源代理，避免跨 API 子域加载图片', () => {
+    expect(resolveAdminMediaDisplayUrl('/api/admin/media/asset-1/thumbnail')).toBe('/api/admin/media/asset-1/thumbnail')
+    expect(resolveAdminCoverPreviewUrl('originals/gal_1/asset-1.jpg', 'gal_1', 'https://api.test')).toBe('/api/admin/galleries/gal_1/cover')
+    expect(resolveAdminMediaDisplayUrl('HTTPS://example.com/source.jpg?next="x"')).toBe('https://example.com/source.jpg?next=%22x%22')
+    expect(resolveAdminMediaDisplayUrl('https://127.0.0.1/source.jpg')).toBe('')
   })
 })

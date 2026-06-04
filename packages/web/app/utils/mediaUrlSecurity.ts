@@ -36,6 +36,10 @@ export function resolveMediaDisplayUrl(value: unknown, baseURL: string) {
   return url.startsWith('/') ? `${baseURL}${url}` : url
 }
 
+export function resolveAdminMediaDisplayUrl(value: unknown) {
+  return normalizeMediaUrl(value)
+}
+
 export function resolveCoverPreviewUrl(coverKey: unknown, galleryId: string | null | undefined, baseURL: string) {
   const key = String(coverKey ?? '').trim()
   if (!key || !galleryId) return null
@@ -47,7 +51,7 @@ export function resolveCoverPreviewUrl(coverKey: unknown, galleryId: string | nu
   return `${baseURL}/api/media/cover/${galleryId}`
 }
 
-export function resolveAdminCoverPreviewUrl(coverKey: unknown, galleryId: string | null | undefined, baseURL: string) {
+export function resolveAdminCoverPreviewUrl(coverKey: unknown, galleryId: string | null | undefined, _baseURL?: string) {
   const key = String(coverKey ?? '').trim()
   if (!key || !galleryId) return null
 
@@ -55,7 +59,7 @@ export function resolveAdminCoverPreviewUrl(coverKey: unknown, galleryId: string
   if (externalUrl && !externalUrl.startsWith('/')) return externalUrl
   if (isExternalMediaLike(key)) return null
 
-  return `${baseURL}/api/admin/galleries/${galleryId}/cover`
+  return `/api/admin/galleries/${galleryId}/cover`
 }
 
 function isExternalMediaLike(value: string) {
