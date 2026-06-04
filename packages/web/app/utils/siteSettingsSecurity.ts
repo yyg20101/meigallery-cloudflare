@@ -1,4 +1,32 @@
 const BLOCKED_HOSTS = new Set(['localhost', 'localhost.localdomain'])
+const BLOCKED_CREDENTIAL_PARAM_NAMES = new Set([
+  'accesstoken',
+  'apikey',
+  'authtoken',
+  'bearer',
+  'clientsecret',
+  'cookie',
+  'credential',
+  'credentials',
+  'idtoken',
+  'jwt',
+  'keypairid',
+  'password',
+  'passwd',
+  'pwd',
+  'refreshtoken',
+  'secret',
+  'securitytoken',
+  'session',
+  'sessionid',
+  'sig',
+  'signature',
+  'signed',
+  'token',
+  'xamzcredential',
+  'xamzsecuritytoken',
+  'xamzsignature',
+])
 const HOME_AD_TEXT_LIMITS: Record<string, number> = {
   home_ad_eyebrow: 12,
   home_ad_title: 40,
@@ -26,6 +54,14 @@ const HOME_AD_ALLOWED_INTERNAL_PATH_PREFIXES = [
   '/settings',
   '/forgot-password',
 ]
+const HOME_AD_REDIRECT_PARAM_NAMES = new Set([
+  'callback',
+  'continue',
+  'next',
+  'redirect',
+  'returnto',
+  'returnurl',
+])
 const SITE_TEXT_LIMITS: Record<string, { maxLength: number; pattern?: RegExp }> = {
   site_name: { maxLength: 40 },
   site_description: { maxLength: 180 },
@@ -54,6 +90,7 @@ export function normalizePublicSettingUrl(value: unknown) {
     if (url.startsWith('//') || url.startsWith('/\\')) return ''
     try {
       const parsed = new URL(url, 'https://meigallery.local')
+      if (hasCredentialUrlParam(parsed)) return ''
       return `${parsed.pathname}${parsed.search}${parsed.hash}`
     } catch {
       return ''
@@ -67,7 +104,8 @@ export function normalizePublicSettingUrl(value: unknown) {
 
     const hostname = normalizeHostname(parsed.hostname)
     if (BLOCKED_HOSTS.has(hostname) || hostname.endsWith('.localhost') || hostname.endsWith('.local')) return ''
-    if (hostname.includes(':') || isPrivateIpv4(hostname)) return ''
+    if (hostname.includes(':') || isNonPublicIpv4(hostname)) return ''
+    if (hasCredentialUrlParam(parsed)) return ''
 
     return parsed.toString()
   } catch {
@@ -80,7 +118,13 @@ export function normalizePublicSettingUrl(value: unknown) {
 export function normalizeHomeAdUrl(value: unknown) {
   const url = normalizePublicSettingUrl(value)
   if (!url || url.startsWith('https://')) return url
-  return isAllowedHomeAdInternalPath(url) ? url : ''
+  return isAllowedHomeAdInternalPath(url) && hasAllowedHomeAdRedirectParams(url, 0) ? url : ''
+}
+
+export function normalizePublicImageSettingUrl(value: unknown) {
+  const url = normalizePublicSettingUrl(value)
+  if (!url || url.startsWith('https://')) return url
+  return url.startsWith('/api/media/public/site/') ? url : ''
 }
 
 export function normalizeInternalPath(value: unknown) {
@@ -90,6 +134,7 @@ export function normalizeInternalPath(value: unknown) {
 
   try {
     const parsed = new URL(url, 'https://meigallery.local')
+    if (hasCredentialUrlParam(parsed)) return ''
     return `${parsed.pathname}${parsed.search}${parsed.hash}`
   } catch {
     return ''
@@ -246,6 +291,46 @@ function normalizeHostname(hostname: string) {
   return hostname.toLowerCase().replace(/\.+$/, '')
 }
 
+function hasCredentialUrlParam(url: URL) {
+  for (const name of url.searchParams.keys()) {
+    if (isBlockedCredentialParamName(name)) return true
+  }
+  for (const name of getFragmentParamNames(url.hash)) {
+    if (isBlockedCredentialParamName(name)) return true
+  }
+  return false
+}
+
+function isBlockedCredentialParamName(name: string) {
+  return BLOCKED_CREDENTIAL_PARAM_NAMES.has(normalizeUrlParamName(name))
+}
+
+function normalizeUrlParamName(name: string) {
+  return name.toLowerCase().replace(/[-_]/g, '')
+}
+
+function getFragmentParamNames(hash: string) {
+  const fragment = hash.startsWith('#') ? hash.slice(1) : hash
+  if (!fragment) return []
+
+  const variants = new Set([fragment, safeDecodeURIComponent(fragment)])
+  const names: string[] = []
+  for (const variant of variants) {
+    for (const match of variant.matchAll(/(?:^|[?#&;])([^=&#?;/]+)=/g)) {
+      names.push(match[1] ?? '')
+    }
+  }
+  return names
+}
+
+function safeDecodeURIComponent(value: string) {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
 function isAllowedHomeAdInternalPath(url: string) {
   const pathname = new URL(url, 'https://meigallery.local').pathname
   if (pathname === '/') return true
@@ -255,14 +340,38 @@ function isAllowedHomeAdInternalPath(url: string) {
   })
 }
 
-function isPrivateIpv4(hostname: string) {
-  const parts = hostname.split('.').map(part => Number.parseInt(part, 10))
-  if (parts.length !== 4 || parts.some(part => Number.isNaN(part) || part < 0 || part > 255)) return false
-  const [a, b] = parts as [number, number, number, number]
+function hasAllowedHomeAdRedirectParams(url: string, depth: number) {
+  if (depth > 3) return false
+
+  const parsed = new URL(url, 'https://meigallery.local')
+  for (const [name, target] of parsed.searchParams.entries()) {
+    if (!HOME_AD_REDIRECT_PARAM_NAMES.has(normalizeUrlParamName(name))) continue
+
+    const normalizedTarget = normalizePublicSettingUrl(target)
+    if (!normalizedTarget || normalizedTarget.startsWith('https://') || !isAllowedHomeAdInternalPath(normalizedTarget)) return false
+    if (!hasAllowedHomeAdRedirectParams(normalizedTarget, depth + 1)) return false
+  }
+  return true
+}
+
+function isNonPublicIpv4(hostname: string) {
+  const rawParts = hostname.split('.')
+  if (rawParts.length !== 4 || rawParts.some(part => !/^\d+$/.test(part))) return false
+  const parts = rawParts.map(part => Number.parseInt(part, 10))
+  if (parts.some(part => Number.isNaN(part) || part < 0 || part > 255)) return false
+  const [a, b, c] = parts as [number, number, number, number]
   return a === 10
+    || (a === 100 && b >= 64 && b <= 127)
     || a === 127
     || (a === 169 && b === 254)
     || (a === 172 && b >= 16 && b <= 31)
+    || (a === 192 && b === 0 && c === 0)
+    || (a === 192 && b === 0 && c === 2)
+    || (a === 192 && b === 88 && c === 99)
     || (a === 192 && b === 168)
+    || (a === 198 && (b === 18 || b === 19))
+    || (a === 198 && b === 51 && c === 100)
+    || (a === 203 && b === 0 && c === 113)
+    || a >= 224
     || a === 0
 }

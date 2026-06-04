@@ -12,6 +12,10 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # 提前使用 Node 24 运行 GitHub JavaScript actions；项目构建运行时仍由 setup-node 控制。
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
   test:
     name: 测试 + 类型检查
@@ -31,6 +35,9 @@ jobs:
 
       - name: Lint
         run: pnpm lint
+
+      - name: 脚本测试
+        run: pnpm test:scripts
 
       - name: API 类型检查
         run: pnpm --filter @meigallery/api exec tsc --noEmit

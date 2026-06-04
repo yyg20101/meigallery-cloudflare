@@ -71,7 +71,7 @@ async function executeJob(jobId: string) {
     executeResult.value = res
     await fetchJobs()
   } catch (e: any) {
-    useToast().add({ title: e?.data?.error || '执行失败', color: 'error' })
+    useToast().add({ title: resolveApiErrorMessage(e, '执行失败'), color: 'error' })
   } finally {
     executingJobId.value = null
   }
@@ -85,7 +85,7 @@ async function downloadMedia(jobId: string) {
     downloadResult.value = res
     await fetchJobs()
   } catch (e: any) {
-    useToast().add({ title: e?.data?.error || '下载失败', color: 'error' })
+    useToast().add({ title: resolveApiErrorMessage(e, '下载失败'), color: 'error' })
   } finally {
     downloadingJobId.value = null
   }
@@ -108,6 +108,10 @@ async function fetchJobs() {
 function getSourceName(sourceKey: string): string {
   const s = sources.value.find(s => s.id === sourceKey)
   return s?.name ?? sourceKey?.slice(0, 12) ?? '-'
+}
+
+function getSourceBaseUrl(source: any): string | null {
+  return source?.base_url ?? source?.baseUrl ?? null
 }
 
 const statusLabel: Record<string, string> = {
@@ -171,7 +175,9 @@ onMounted(() => {
       <div v-else class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <div v-for="source in sources" :key="source.id" class="rounded-lg border border-gray-200 bg-white p-4">
           <div class="mb-1 font-medium text-gray-900">{{ source.name }}</div>
-          <div class="mb-2 text-xs text-gray-500 truncate">{{ source.baseUrl }}</div>
+          <div class="mb-2 text-xs">
+            <AdminSafeExternalLink :href="getSourceBaseUrl(source)" />
+          </div>
           <span class="rounded-full px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-800">{{ source.mode === 'rest_api' ? 'REST API' : 'XML' }}</span>
         </div>
       </div>

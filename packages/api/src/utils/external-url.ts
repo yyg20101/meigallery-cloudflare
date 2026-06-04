@@ -1,14 +1,24 @@
 const BLOCKED_HOSTS = new Set(['localhost', 'localhost.localdomain'])
 
-function isPrivateIpv4(hostname: string) {
-  const parts = hostname.split('.').map(part => Number.parseInt(part, 10))
-  if (parts.length !== 4 || parts.some(part => Number.isNaN(part) || part < 0 || part > 255)) return false
-  const [a, b] = parts as [number, number, number, number]
+function isNonPublicIpv4(hostname: string) {
+  const rawParts = hostname.split('.')
+  if (rawParts.length !== 4 || rawParts.some(part => !/^\d+$/.test(part))) return false
+  const parts = rawParts.map(part => Number.parseInt(part, 10))
+  if (parts.some(part => Number.isNaN(part) || part < 0 || part > 255)) return false
+  const [a, b, c] = parts as [number, number, number, number]
   return a === 10
+    || (a === 100 && b >= 64 && b <= 127)
     || a === 127
     || (a === 169 && b === 254)
     || (a === 172 && b >= 16 && b <= 31)
+    || (a === 192 && b === 0 && c === 0)
+    || (a === 192 && b === 0 && c === 2)
+    || (a === 192 && b === 88 && c === 99)
     || (a === 192 && b === 168)
+    || (a === 198 && (b === 18 || b === 19))
+    || (a === 198 && b === 51 && c === 100)
+    || (a === 203 && b === 0 && c === 113)
+    || a >= 224
     || a === 0
 }
 
@@ -27,8 +37,8 @@ export function assertSafeExternalUrl(input: string): string {
     throw new Error('不允许访问本机或内部域名')
   }
 
-  if (hostname.includes(':') || isPrivateIpv4(hostname)) {
-    throw new Error('不允许访问本机或私网 IP')
+  if (hostname.includes(':') || isNonPublicIpv4(hostname)) {
+    throw new Error('不允许访问本机或非公网 IP')
   }
 
   return url.toString()

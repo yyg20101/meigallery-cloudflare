@@ -29,9 +29,14 @@ describe('HomeAdBand', () => {
       global: { stubs: { NuxtLink: nuxtLinkStub } },
     })
 
+    const note = wrapper.find('[id$="-home-ad-internal-note"]')
     expect(wrapper.text()).toContain('会员季精选内容')
     expect(wrapper.find('a').attributes('href')).toBe('/discover?sort=hot#top')
     expect(wrapper.find('a').attributes('target')).toBeUndefined()
+    expect(wrapper.find('a').attributes('aria-label')).toBe('查看推荐，站内推荐，目标页面 探索页，路径 /discover?sort=hot#top')
+    expect(wrapper.find('a').attributes('aria-describedby')).toBe(note.attributes('id'))
+    expect(wrapper.text()).toContain('站内推荐')
+    expect(wrapper.text()).toContain('目标页面 探索页')
   })
 
   it('https 外链使用新窗口和安全 rel', () => {
@@ -45,13 +50,42 @@ describe('HomeAdBand', () => {
     })
 
     const link = wrapper.find('a')
+    const note = wrapper.find('[id$="-home-ad-external-note"]')
     expect(link.attributes('href')).toBe('https://example.com/campaign?next=%22x%22')
     expect(link.attributes('target')).toBe('_blank')
-    expect(link.attributes('rel')).toBe('noopener noreferrer')
+    expect(link.attributes('rel')).toBe('noopener noreferrer nofollow sponsored')
     expect(link.attributes('referrerpolicy')).toBe('no-referrer')
+    expect(link.attributes('aria-label')).toBe('查看推荐，外部链接，目标域名 example.com')
+    expect(link.attributes('aria-describedby')).toBe(note.attributes('id'))
+    expect(wrapper.text()).toContain('外部链接')
+    expect(wrapper.text()).toContain('目标域名 example.com')
+    expect(wrapper.text()).toContain('不发送来源页信息')
   })
 
-  it('展示默认文案和赞助来源说明', () => {
+  it('预览模式保留外链提示但不渲染可跳转链接', () => {
+    const wrapper = mount(HomeAdBand, {
+      props: {
+        enabled: true,
+        preview: true,
+        title: '赞助推荐',
+        ctaLabel: '查看赞助',
+        url: 'https://example.com/campaign',
+      },
+      global: { stubs: { NuxtLink: nuxtLinkStub } },
+    })
+
+    const cta = wrapper.find('[aria-disabled="true"]')
+    const note = wrapper.find('[id$="-home-ad-external-note"]')
+    expect(wrapper.find('a').exists()).toBe(false)
+    expect(cta.text()).toContain('查看赞助')
+    expect(cta.attributes('href')).toBeUndefined()
+    expect(cta.attributes('aria-describedby')).toBe(note.attributes('id'))
+    expect(wrapper.text()).toContain('外部链接')
+    expect(wrapper.text()).toContain('目标域名 example.com')
+    expect(wrapper.text()).toContain('不发送来源页信息')
+  })
+
+  it('展示默认文案、推广标识和赞助来源说明', () => {
     const wrapper = mount(HomeAdBand, {
       props: {
         enabled: true,
@@ -61,9 +95,14 @@ describe('HomeAdBand', () => {
     })
 
     expect(wrapper.text()).toContain('本周推荐')
+    expect(wrapper.text()).toContain('推广')
     expect(wrapper.text()).toContain('会员季精选内容')
     expect(wrapper.text()).toContain('运营精选')
+    expect(wrapper.text()).toContain('站内推荐')
     expect(wrapper.find('a').text()).toBe('查看推荐')
+    expect(wrapper.find('a').attributes('aria-label')).toBe('查看推荐，站内推荐，目标页面 探索页，路径 /discover?sort=hot')
+    expect(wrapper.find('a').attributes('aria-describedby')).toBe(wrapper.find('[id$="-home-ad-internal-note"]').attributes('id'))
+    expect(wrapper.find('[id$="-home-ad-internal-note"]').text()).toContain('目标页面 探索页')
   })
 
   it('组件边界会清洗异常广告文案并回退默认值', () => {
@@ -91,7 +130,15 @@ describe('HomeAdBand', () => {
     for (const url of [
       'https://localhost/campaign',
       'https://127.0.0.1/campaign',
+      'https://127.1/campaign',
+      'https://2130706433/campaign',
+      'https://0x7f000001/campaign',
+      'https://0177.0.0.1/campaign',
       'https://192.168.1.10/campaign',
+      'https://0xc0a8010a/campaign',
+      'https://[::1]/campaign',
+      'https://[fc00::1]/campaign',
+      'https://[2001:db8::1]/campaign',
       'https://preview.local/campaign',
     ]) {
       const wrapper = mount(HomeAdBand, {

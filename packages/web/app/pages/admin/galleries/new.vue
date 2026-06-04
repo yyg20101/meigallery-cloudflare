@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { MediaAsset } from '~/components/admin/MediaGrid.vue'
-import { resolveCoverPreviewUrl } from '~/utils/mediaUrlSecurity'
+import { resolveAdminCoverPreviewUrl } from '~/utils/mediaUrlSecurity'
 
 definePageMeta({ layout: 'admin' })
 
@@ -103,7 +103,7 @@ async function onSubmit() {
       coverKey: null,
     }
   } catch (e: any) {
-    error.value = e?.data?.message || '创建失败'
+    error.value = resolveApiErrorMessage(e, '创建失败')
   } finally {
     loading.value = false
   }
@@ -140,7 +140,7 @@ const coverKey = ref<string | null>(null)
 const coverSettingLoading = ref(false)
 
 function getCoverPreviewUrl(): string | null {
-  return resolveCoverPreviewUrl(coverKey.value, createdGalleryId.value, baseURL)
+  return resolveAdminCoverPreviewUrl(coverKey.value, createdGalleryId.value, baseURL)
 }
 
 async function onSetCover(assetId: string) {
@@ -157,7 +157,7 @@ async function onSetCover(assetId: string) {
     )
     coverKey.value = detail.data?.coverKey ?? null
   } catch (e: any) {
-    error.value = e?.data?.message || e?.message || '设置封面失败'
+    error.value = resolveApiErrorMessage(e, '设置封面失败')
   } finally {
     coverSettingLoading.value = false
   }
@@ -173,7 +173,7 @@ async function onDeleteMedia(assetId: string) {
     }
     await loadMedia()
   } catch (e: any) {
-    error.value = e?.data?.message || e?.message || '删除失败'
+    error.value = resolveApiErrorMessage(e, '删除失败')
   }
 }
 
@@ -188,7 +188,7 @@ async function onUpdateRank(assetId: string, rank: number) {
       mediaAssets.value[idx] = { ...mediaAssets.value[idx]!, requiredRank: rank }
     }
   } catch (e: any) {
-    error.value = e?.data?.message || e?.message || '修改等级失败'
+    error.value = resolveApiErrorMessage(e, '修改等级失败')
   }
 }
 
@@ -209,7 +209,7 @@ async function onReorder(order: Array<{ assetId: string; sortOrder: number }>) {
       body: { order },
     })
   } catch (e: any) {
-    error.value = e?.data?.message || e?.message || '排序保存失败'
+    error.value = resolveApiErrorMessage(e, '排序保存失败')
     await loadMedia()
   }
 }
@@ -398,7 +398,7 @@ function goToEdit() {
           <div class="rounded-lg border border-gray-200 bg-white p-4">
             <h2 class="text-sm font-semibold text-gray-700 mb-3">封面</h2>
             <div v-if="getCoverPreviewUrl()" class="rounded-lg overflow-hidden bg-gray-100 mb-2">
-              <img :src="getCoverPreviewUrl()!" alt="封面预览" class="w-full aspect-[4/3] object-cover" />
+              <img :src="getCoverPreviewUrl()!" alt="封面预览" class="w-full aspect-[4/3] object-cover" referrerpolicy="no-referrer" />
             </div>
             <div v-else class="rounded-lg bg-gray-100 aspect-[4/3] flex items-center justify-center mb-2">
               <span class="text-sm text-gray-400">暂无封面</span>

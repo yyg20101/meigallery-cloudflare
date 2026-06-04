@@ -20,6 +20,14 @@ const HOME_AD_ALLOWED_INTERNAL_PATH_PREFIXES = [
   '/settings',
   '/forgot-password',
 ]
+const HOME_AD_REDIRECT_PARAM_NAMES = new Set([
+  'callback',
+  'continue',
+  'next',
+  'redirect',
+  'returnto',
+  'returnurl',
+])
 
 export function normalizeHomeAdUrl(value: unknown) {
   const url = normalizePublicSettingUrl(value, '首页广告链接')
@@ -28,6 +36,7 @@ export function normalizeHomeAdUrl(value: unknown) {
   if (!isAllowedHomeAdInternalPath(url)) {
     throw new Error('首页广告链接只允许跳转到公开前台页面或 https 外链')
   }
+  assertAllowedHomeAdRedirectParams(url, 0)
   return url
 }
 
@@ -73,4 +82,30 @@ function isAllowedHomeAdInternalPath(url: string) {
   return HOME_AD_ALLOWED_INTERNAL_PATH_PREFIXES.some((prefix) => {
     return pathname === prefix || pathname.startsWith(`${prefix}/`)
   })
+}
+
+function assertAllowedHomeAdRedirectParams(url: string, depth: number) {
+  if (depth > 3) {
+    throw new Error('首页广告链接跳转目标只允许公开前台页面')
+  }
+
+  const parsed = new URL(url, 'https://meigallery.local')
+  for (const [name, target] of parsed.searchParams.entries()) {
+    if (!HOME_AD_REDIRECT_PARAM_NAMES.has(normalizeParamName(name))) continue
+
+    let normalizedTarget: string
+    try {
+      normalizedTarget = normalizePublicSettingUrl(target, '首页广告跳转目标')
+    } catch {
+      throw new Error('首页广告链接跳转目标只允许公开前台页面')
+    }
+    if (!normalizedTarget || normalizedTarget.startsWith('https://') || !isAllowedHomeAdInternalPath(normalizedTarget)) {
+      throw new Error('首页广告链接跳转目标只允许公开前台页面')
+    }
+    assertAllowedHomeAdRedirectParams(normalizedTarget, depth + 1)
+  }
+}
+
+function normalizeParamName(name: string) {
+  return name.toLowerCase().replace(/[-_]/g, '')
 }

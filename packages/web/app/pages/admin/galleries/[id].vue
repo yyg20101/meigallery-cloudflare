@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { MediaAsset } from '~/components/admin/MediaGrid.vue'
-import { resolveCoverPreviewUrl } from '~/utils/mediaUrlSecurity'
+import { resolveAdminCoverPreviewUrl } from '~/utils/mediaUrlSecurity'
 
 definePageMeta({ layout: 'admin' })
 
@@ -75,7 +75,7 @@ async function onSubmit() {
     saveSuccess.value = true
     setTimeout(() => { saveSuccess.value = false }, 3000)
   } catch (e: any) {
-    error.value = e?.data?.message || e?.message || '保存失败'
+    error.value = resolveApiErrorMessage(e, '保存失败')
   } finally {
     loading.value = false
   }
@@ -94,7 +94,7 @@ async function togglePublish() {
     await api(`/api/admin/galleries/${galleryId}/${action}`, { method: 'POST' })
     await refreshGallery()
   } catch (e: any) {
-    error.value = e?.data?.message || e?.message || '操作失败'
+    error.value = resolveApiErrorMessage(e, '操作失败')
   } finally {
     publishLoading.value = false
   }
@@ -136,7 +136,7 @@ function onMediaUploaded() {
 const coverKey = computed(() => gallery.value?.data.coverKey ?? null)
 
 function getCoverPreviewUrl(): string | null {
-  return resolveCoverPreviewUrl(coverKey.value, galleryId, baseURL)
+  return resolveAdminCoverPreviewUrl(coverKey.value, galleryId, baseURL)
 }
 
 const coverSettingLoading = ref(false)
@@ -150,7 +150,7 @@ async function onSetCover(assetId: string) {
     })
     await refreshGallery()
   } catch (e: any) {
-    error.value = e?.data?.message || e?.message || '设置封面失败'
+    error.value = resolveApiErrorMessage(e, '设置封面失败')
   } finally {
     coverSettingLoading.value = false
   }
@@ -167,7 +167,7 @@ async function onDeleteMedia(assetId: string) {
     }
     await loadMedia()
   } catch (e: any) {
-    error.value = e?.data?.message || e?.message || '删除失败'
+    error.value = resolveApiErrorMessage(e, '删除失败')
   }
 }
 
@@ -184,7 +184,7 @@ async function onUpdateRank(assetId: string, rank: number) {
       mediaAssets.value[idx] = { ...mediaAssets.value[idx]!, requiredRank: rank }
     }
   } catch (e: any) {
-    error.value = e?.data?.message || e?.message || '修改等级失败'
+    error.value = resolveApiErrorMessage(e, '修改等级失败')
   }
 }
 
@@ -212,7 +212,7 @@ async function onReorder(order: Array<{ assetId: string; sortOrder: number }>) {
       body: { order },
     })
   } catch (e: any) {
-    error.value = e?.data?.message || e?.message || '排序保存失败'
+    error.value = resolveApiErrorMessage(e, '排序保存失败')
     // 回滚：重新加载
     await loadMedia()
   } finally {
@@ -325,6 +325,7 @@ const videoCount = computed(() => mediaAssets.value.filter((a) => a.type === 'vi
               :src="getCoverPreviewUrl()!"
               alt="封面预览"
               class="w-full aspect-[4/3] object-cover"
+              referrerpolicy="no-referrer"
             />
           </div>
           <div v-else class="rounded-lg bg-gray-100 aspect-[4/3] flex items-center justify-center mb-2">

@@ -67,7 +67,7 @@ async function saveUsername() {
     await fetchUser()
     setTimeout(() => { usernameSuccess.value = false }, 3000)
   } catch (e: any) {
-    usernameError.value = e?.data?.message || '保存失败'
+    usernameError.value = resolveApiErrorMessage(e, '保存失败')
   } finally {
     usernameLoading.value = false
   }
@@ -108,7 +108,7 @@ async function changePassword() {
     passwordForm.confirmPassword = ''
     setTimeout(() => { passwordSuccess.value = false }, 3000)
   } catch (e: any) {
-    passwordError.value = e?.data?.message || '修改失败'
+    passwordError.value = resolveApiErrorMessage(e, '修改失败')
   } finally {
     passwordLoading.value = false
   }
@@ -140,7 +140,7 @@ async function onAvatarChange(event: Event) {
     await api('/api/me/avatar', { method: 'POST', body: formData })
     await fetchUser()
   } catch (e: any) {
-    avatarError.value = e?.data?.message || '上传失败'
+    avatarError.value = resolveApiErrorMessage(e, '上传失败')
   } finally {
     avatarLoading.value = false
     input.value = '' // 重置 input
@@ -188,7 +188,7 @@ async function changeEmail() {
     await fetchUser()
     setTimeout(() => { emailSuccess.value = false }, 3000)
   } catch (e: any) {
-    emailError.value = e?.data?.message || '修改失败'
+    emailError.value = resolveApiErrorMessage(e, '修改失败')
   } finally {
     emailLoading.value = false
   }
@@ -231,7 +231,7 @@ useSeoMeta({ title: () => `个人设置 - ${siteName.value}`, robots: 'noindex' 
               class="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden cursor-pointer"
               @click="($refs.avatarInput as HTMLInputElement)?.click()"
             >
-              <img v-if="avatarUrl" :src="avatarUrl" class="w-full h-full object-cover" alt="头像" />
+              <img v-if="avatarUrl" :src="avatarUrl" class="w-full h-full object-cover" alt="头像" referrerpolicy="no-referrer" />
               <span v-else class="text-3xl text-gray-400">{{ (user.username || user.email)?.[0]?.toUpperCase() }}</span>
               <div class="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                 <span class="text-white text-xs">{{ avatarLoading ? '上传中...' : '更换' }}</span>

@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest'
 import type { Bindings, Variables } from '../../index'
 import { adminSettingsRoutes } from './settings'
 
+type ExecutedSql = Array<{ sql: string; params: unknown[] }>
+
 function createApp(role: string | null = 'owner') {
   const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
   app.use('*', async (c, next) => {
@@ -41,6 +43,15 @@ function createDb(handlers: {
   }
 }
 
+function hasSettingWrite(executed: ExecutedSql, key: string, jsonValue?: string) {
+  return executed.some(item =>
+    item.sql.includes('INSERT INTO site_settings')
+    && item.sql.includes('ON CONFLICT(key) DO UPDATE')
+    && item.params[0] === key
+    && (jsonValue === undefined || item.params[1] === jsonValue),
+  )
+}
+
 describe('后台站点设置 API', () => {
   it('站长读取设置时单条历史损坏 JSON 不阻断页面打开', async () => {
     const app = createApp()
@@ -69,7 +80,7 @@ describe('后台站点设置 API', () => {
   })
 
   it('站长更新首页广告链接时会写入归一化值和审计日志', async () => {
-    const executed: Array<{ sql: string; params: unknown[] }> = []
+    const executed: ExecutedSql = []
     const app = createApp()
     const env = {
       DB: createDb({
@@ -101,13 +112,13 @@ describe('后台站点设置 API', () => {
 
     expect(res.status).toBe(200)
     expect(body.updated).toEqual(['home_ad_enabled', 'home_ad_url'])
-    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[0] === 'true' && item.params[1] === 'home_ad_enabled')).toBe(true)
-    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[0] === '"/discover?sort=hot"' && item.params[1] === 'home_ad_url')).toBe(true)
+    expect(hasSettingWrite(executed, 'home_ad_enabled', 'true')).toBe(true)
+    expect(hasSettingWrite(executed, 'home_ad_url', '"/discover?sort=hot"')).toBe(true)
     expect(executed.some(item => item.sql.includes('INSERT INTO admin_audit_logs'))).toBe(true)
   })
 
   it('拒绝不安全的首页广告链接', async () => {
-    const executed: Array<{ sql: string; params: unknown[] }> = []
+    const executed: ExecutedSql = []
     const app = createApp()
     const env = {
       DB: createDb({
@@ -126,6 +137,16 @@ describe('后台站点设置 API', () => {
       'https:\\\\example.com\\campaign',
       'https://example.com\\campaign',
       '/discover%5Cnext',
+      '/discover?token=abc',
+      '/discover#token=abc',
+      'https://example.com/campaign?api_key=abc',
+      'https://example.com/campaign#/callback?access_token=abc',
+      '/login?redirect=',
+      '/login?redirect=/admin',
+      '/login?redirect=/api/settings/public',
+      '/login?redirect=https%3A%2F%2Fevil.example%2Fcampaign',
+      '/register?next=//evil.example/campaign',
+      '/login?redirect=%2Flogin%3Fredirect%3D%2Fadmin',
     ]) {
       const res = await app.request('/api/admin/settings', {
         method: 'PATCH',
@@ -141,7 +162,7 @@ describe('后台站点设置 API', () => {
   })
 
   it('站长更新首页广告文案时会归一化空白并限制长度', async () => {
-    const executed: Array<{ sql: string; params: unknown[] }> = []
+    const executed: ExecutedSql = []
     const app = createApp()
     const env = {
       DB: createDb({
@@ -173,12 +194,12 @@ describe('后台站点设置 API', () => {
 
     expect(res.status).toBe(200)
     expect(body.updated).toEqual(['home_ad_title', 'home_ad_summary'])
-    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[0] === '"会员季 精选内容"' && item.params[1] === 'home_ad_title')).toBe(true)
+    expect(hasSettingWrite(executed, 'home_ad_title', '"会员季 精选内容"')).toBe(true)
     expect(executed.some(item => item.sql.includes('INSERT INTO admin_audit_logs'))).toBe(true)
   })
 
   it('站长更新 SEO 和首页短文案时会归一化空白并记录审计日志', async () => {
-    const executed: Array<{ sql: string; params: unknown[] }> = []
+    const executed: ExecutedSql = []
     const app = createApp()
     const env = {
       DB: createDb({
@@ -212,13 +233,13 @@ describe('后台站点设置 API', () => {
 
     expect(res.status).toBe(200)
     expect(body.updated).toEqual(['site_name', 'seo_title', 'home_hero_title'])
-    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[0] === '"测试 图库站"' && item.params[1] === 'site_name')).toBe(true)
-    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[0] === '"测试站点 - 精选图库"' && item.params[1] === 'seo_title')).toBe(true)
+    expect(hasSettingWrite(executed, 'site_name', '"测试 图库站"')).toBe(true)
+    expect(hasSettingWrite(executed, 'seo_title', '"测试站点 - 精选图库"')).toBe(true)
     expect(executed.some(item => item.sql.includes('INSERT INTO admin_audit_logs'))).toBe(true)
   })
 
   it('站长保存 SEO 时历史损坏旧值不会阻断覆盖修复', async () => {
-    const executed: Array<{ sql: string; params: unknown[] }> = []
+    const executed: ExecutedSql = []
     const app = createApp()
     const env = {
       DB: createDb({
@@ -248,12 +269,53 @@ describe('后台站点设置 API', () => {
 
     expect(res.status).toBe(200)
     expect(body.updated).toEqual(['seo_title'])
-    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[0] === '"测试站点 - 精选图库"' && item.params[1] === 'seo_title')).toBe(true)
+    expect(hasSettingWrite(executed, 'seo_title', '"测试站点 - 精选图库"')).toBe(true)
     expect(executed.some(item => item.sql.includes('INSERT INTO admin_audit_logs'))).toBe(true)
   })
 
+  it('站长保存 SEO 时缺失设置行会自动补齐', async () => {
+    const executed: ExecutedSql = []
+    const app = createApp()
+    const env = {
+      DB: createDb({
+        all: (sql) => {
+          if (sql.includes('SELECT key, value FROM site_settings')) return []
+          return []
+        },
+        run: (sql, params) => {
+          executed.push({ sql, params })
+          return { success: true }
+        },
+      }),
+    } as unknown as Bindings
+
+    const res = await app.request('/api/admin/settings', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        site_name: '  星耀   传媒  ',
+        seo_title: '  星耀传媒  ',
+        site_description: '  用专业服务   点亮每一次相遇.  ',
+      }),
+    }, env)
+    const body = await res.json()
+    const auditLog = executed.find(item => item.sql.includes('INSERT INTO admin_audit_logs'))
+
+    expect(res.status).toBe(200)
+    expect(body.updated).toEqual(['site_name', 'seo_title', 'site_description'])
+    expect(hasSettingWrite(executed, 'site_name', '"星耀 传媒"')).toBe(true)
+    expect(hasSettingWrite(executed, 'seo_title', '"星耀传媒"')).toBe(true)
+    expect(hasSettingWrite(executed, 'site_description', '"用专业服务 点亮每一次相遇."')).toBe(true)
+    expect(auditLog?.params[5]).toBe('{}')
+    expect(auditLog?.params[6]).toBe(JSON.stringify({
+      site_name: '星耀 传媒',
+      seo_title: '星耀传媒',
+      site_description: '用专业服务 点亮每一次相遇.',
+    }))
+  })
+
   it('站长更新首页内容配置时会归一化数量、slug 和规则 Markdown', async () => {
-    const executed: Array<{ sql: string; params: unknown[] }> = []
+    const executed: ExecutedSql = []
     const app = createApp()
     const env = {
       DB: createDb({
@@ -287,9 +349,9 @@ describe('后台站点设置 API', () => {
 
     expect(res.status).toBe(200)
     expect(body.updated).toEqual(['home_hot_tag_limit', 'home_featured_region_slugs', 'rules_page_content'])
-    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[0] === '"12"' && item.params[1] === 'home_hot_tag_limit')).toBe(true)
-    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[0] === '"canada,domestic,toronto-city"' && item.params[1] === 'home_featured_region_slugs')).toBe(true)
-    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[0] === '"## 规则\\n\\n- 仅限授权内容"' && item.params[1] === 'rules_page_content')).toBe(true)
+    expect(hasSettingWrite(executed, 'home_hot_tag_limit', '"12"')).toBe(true)
+    expect(hasSettingWrite(executed, 'home_featured_region_slugs', '"canada,domestic,toronto-city"')).toBe(true)
+    expect(hasSettingWrite(executed, 'rules_page_content', '"## 规则\\n\\n- 仅限授权内容"')).toBe(true)
     expect(executed.some(item => item.sql.includes('INSERT INTO admin_audit_logs'))).toBe(true)
   })
 
@@ -361,7 +423,7 @@ describe('后台站点设置 API', () => {
   })
 
   it('站长更新首页广告排期时会写入 ISO 时间并记录审计日志', async () => {
-    const executed: Array<{ sql: string; params: unknown[] }> = []
+    const executed: ExecutedSql = []
     const app = createApp()
     const env = {
       DB: createDb({
@@ -393,8 +455,8 @@ describe('后台站点设置 API', () => {
 
     expect(res.status).toBe(200)
     expect(body.updated).toEqual(['home_ad_starts_at', 'home_ad_ends_at'])
-    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[0] === '"2026-06-01T00:00:00.000Z"' && item.params[1] === 'home_ad_starts_at')).toBe(true)
-    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[0] === '"2026-06-02T00:00:00.000Z"' && item.params[1] === 'home_ad_ends_at')).toBe(true)
+    expect(hasSettingWrite(executed, 'home_ad_starts_at', '"2026-06-01T00:00:00.000Z"')).toBe(true)
+    expect(hasSettingWrite(executed, 'home_ad_ends_at', '"2026-06-02T00:00:00.000Z"')).toBe(true)
     expect(executed.some(item => item.sql.includes('INSERT INTO admin_audit_logs'))).toBe(true)
   })
 
@@ -423,7 +485,7 @@ describe('后台站点设置 API', () => {
   })
 
   it('只更新单个广告排期字段时会结合已有值校验顺序', async () => {
-    const executed: Array<{ sql: string; params: unknown[] }> = []
+    const executed: ExecutedSql = []
     const app = createApp()
     const env = {
       DB: createDb({
@@ -456,7 +518,7 @@ describe('后台站点设置 API', () => {
   })
 
   it('归一化公开图片设置和规则页路径', async () => {
-    const executed: Array<{ sql: string; params: unknown[] }> = []
+    const executed: ExecutedSql = []
     const app = createApp()
     const env = {
       DB: createDb({
@@ -490,9 +552,9 @@ describe('后台站点设置 API', () => {
 
     expect(res.status).toBe(200)
     expect(body.updated).toEqual(['site_icon', 'og_image', 'rules_page_url'])
-    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[0] === '"/api/media/public/site/icon.png"' && item.params[1] === 'site_icon')).toBe(true)
-    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[0] === '"https://example.com/og.jpg"' && item.params[1] === 'og_image')).toBe(true)
-    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[0] === '"/rules?from=entry"' && item.params[1] === 'rules_page_url')).toBe(true)
+    expect(hasSettingWrite(executed, 'site_icon', '"/api/media/public/site/icon.png"')).toBe(true)
+    expect(hasSettingWrite(executed, 'og_image', '"https://example.com/og.jpg"')).toBe(true)
+    expect(hasSettingWrite(executed, 'rules_page_url', '"/rules?from=entry"')).toBe(true)
     expect(executed.some(item => item.sql.includes('INSERT INTO admin_audit_logs'))).toBe(true)
   })
 
@@ -504,10 +566,17 @@ describe('后台站点设置 API', () => {
       { og_image: 'http://example.com/og.jpg' },
       { site_icon: 'https://localhost/icon.png' },
       { og_image: 'https://192.168.1.10/og.jpg' },
+      { og_image: 'https://198.51.100.10/og.jpg' },
+      { og_image: 'https://example.com/og.jpg?signature=abc' },
+      { og_image: 'https://example.com/og.jpg#signature=abc' },
       { site_icon: 'https://example.com\\icon.png' },
       { og_image: 'https://example.com/%5Cog.jpg' },
+      { site_icon: '/discover?sort=hot' },
+      { og_image: '/api/media/public/avatars/user.png' },
       { rules_page_url: 'https://example.com/rules' },
       { rules_page_url: '/rules%5Cnext' },
+      { rules_page_url: '/rules?access_token=abc' },
+      { rules_page_url: '/rules#access_token=abc' },
     ]
 
     for (const payload of cases) {
@@ -525,7 +594,7 @@ describe('后台站点设置 API', () => {
 
   it('站长可以上传站点图标并同步写入 site_icon 设置', async () => {
     const putKeys: string[] = []
-    const executed: Array<{ sql: string; params: unknown[] }> = []
+    const executed: ExecutedSql = []
     const app = createApp()
     const env = {
       DB: createDb({
@@ -553,14 +622,14 @@ describe('后台站点设置 API', () => {
     expect(res.status).toBe(200)
     expect(body.iconUrl).toMatch(/^\/api\/media\/public\/site\/site-icon-/)
     expect(putKeys[0]).toMatch(/^site\/site-icon-/)
-    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[1] === 'site_icon')).toBe(true)
+    expect(hasSettingWrite(executed, 'site_icon')).toBe(true)
     expect(executed.some(item => item.sql.includes('INSERT INTO admin_audit_logs'))).toBe(true)
   })
 
   it('站点图标历史旧值损坏时仍可上传新图标', async () => {
     const putKeys: string[] = []
     const deletedKeys: string[] = []
-    const executed: Array<{ sql: string; params: unknown[] }> = []
+    const executed: ExecutedSql = []
     const app = createApp()
     const env = {
       DB: createDb({
@@ -592,7 +661,7 @@ describe('后台站点设置 API', () => {
     expect(body.iconUrl).toMatch(/^\/api\/media\/public\/site\/site-icon-/)
     expect(putKeys[0]).toMatch(/^site\/site-icon-/)
     expect(deletedKeys).toHaveLength(0)
-    expect(executed.some(item => item.sql.includes('UPDATE site_settings') && item.params[1] === 'site_icon')).toBe(true)
+    expect(hasSettingWrite(executed, 'site_icon')).toBe(true)
     expect(executed.some(item => item.sql.includes('INSERT INTO admin_audit_logs'))).toBe(true)
   })
 })

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { getHomeAdTextPreviewWarnings, isScheduledSiteFeatureActive, normalizeHomeAdUrl, normalizePublicSettingUrl, safeHomeAdText } from '~/utils/siteSettingsSecurity'
+import { getHomeAdTextPreviewWarnings, isScheduledSiteFeatureActive, normalizeHomeAdUrl, normalizePublicImageSettingUrl, safeHomeAdText, safeSiteText } from '~/utils/siteSettingsSecurity'
 
 definePageMeta({ layout: 'admin' })
 
@@ -52,7 +52,8 @@ const loading = ref(false)
 const iconUploadLoading = ref(false)
 const message = ref('')
 const siteIconInput = ref<HTMLInputElement | null>(null)
-const safeSiteIconPreview = computed(() => normalizePublicSettingUrl(form.site_icon))
+const messageIsError = computed(() => message.value.includes('失败') || message.value.includes('不一致'))
+const safeSiteIconPreview = computed(() => normalizePublicImageSettingUrl(form.site_icon))
 const safeHomeAdPreviewUrl = computed(() => normalizeHomeAdUrl(form.home_ad_url) || '/discover?sort=hot')
 const unsafeHomeAdUrl = computed(() => Boolean(form.home_ad_url.trim()) && !normalizeHomeAdUrl(form.home_ad_url))
 const safeHomeAdPreviewText = computed(() => ({
@@ -74,6 +75,43 @@ const homeAdScheduleStatus = computed(() => {
   if (!homeAdEnabled.value) return { label: '已关闭', class: 'text-gray-500' }
   if (!homeAdPreviewActive.value) return { label: '当前未展示', class: 'text-amber-600' }
   return { label: '当前展示中', class: 'text-green-600' }
+})
+
+function resolveSeoSnapshot(source: Record<string, unknown>) {
+  const siteName = safeSiteText('site_name', source.site_name) || 'MeiGallery'
+  const description = safeSiteText('site_description', source.site_description)
+  const seoTitle = safeSiteText('seo_title', source.seo_title) || siteName
+  const ogTitle = safeSiteText('og_title', source.og_title) || seoTitle
+  const ogDescription = safeSiteText('og_description', source.og_description) || description
+
+  return { siteName, description, seoTitle, ogTitle, ogDescription }
+}
+
+const formSeoSnapshot = computed(() => resolveSeoSnapshot(form))
+const publicSeoSnapshot = computed(() => resolveSeoSnapshot(publicSettings.value as Record<string, unknown>))
+const publicSeoMatchesForm = computed(() => {
+  const formSnapshot = formSeoSnapshot.value
+  const publicSnapshot = publicSeoSnapshot.value
+  return formSnapshot.siteName === publicSnapshot.siteName
+    && formSnapshot.description === publicSnapshot.description
+    && formSnapshot.seoTitle === publicSnapshot.seoTitle
+    && formSnapshot.ogTitle === publicSnapshot.ogTitle
+    && formSnapshot.ogDescription === publicSnapshot.ogDescription
+})
+const publicSeoStatus = computed(() => {
+  if (publicSeoMatchesForm.value) {
+    return {
+      label: '已同步',
+      message: '前台已同步：SEO 标题、站点描述与公开读取一致',
+      class: 'border-green-200 bg-green-50 text-green-700',
+    }
+  }
+
+  return {
+    label: '待同步',
+    message: '前台公开读取值与当前表单不一致，保存后会重新校验公开设置。',
+    class: 'border-amber-200 bg-amber-50 text-amber-700',
+  }
 })
 
 // 加载现有设置
@@ -182,12 +220,14 @@ async function onSave() {
     })
     try {
       await fetchSettings({ force: true })
-      message.value = '设置已保存'
+      message.value = publicSeoMatchesForm.value
+        ? '设置已保存，前台公开 SEO 已同步'
+        : '设置已保存，但前台公开 SEO 与当前表单不一致，请刷新页面确认'
     } catch {
       message.value = '设置已保存，但前台公开设置刷新失败，请刷新页面确认'
     }
   } catch (e: any) {
-    message.value = e?.data?.message || '保存失败'
+    message.value = resolveApiErrorMessage(e, '保存失败')
   } finally {
     loading.value = false
   }
@@ -210,7 +250,7 @@ async function onSiteIconSelected(event: Event) {
     publicSettings.value = { ...publicSettings.value, site_icon: result.iconUrl }
     message.value = '站点图标已上传并同步 favicon'
   } catch (e: any) {
-    message.value = e?.data?.message || '站点图标上传失败'
+    message.value = resolveApiErrorMessage(e, '站点图标上传失败')
   } finally {
     iconUploadLoading.value = false
     if (siteIconInput.value) siteIconInput.value.value = ''
@@ -228,7 +268,7 @@ async function toggleEmailVerification() {
     })
     emailVerificationEnabled.value = newVal
   } catch (e: any) {
-    useToast().add({ title: e?.data?.message || '操作失败', color: 'error' })
+    useToast().add({ title: resolveApiErrorMessage(e, '操作失败'), color: 'error' })
   } finally {
     toggleLoading.value = false
   }
@@ -245,7 +285,7 @@ async function toggleVideo() {
     })
     videoEnabledToggle.value = newVal
   } catch (e: any) {
-    useToast().add({ title: e?.data?.message || '操作失败', color: 'error' })
+    useToast().add({ title: resolveApiErrorMessage(e, '操作失败'), color: 'error' })
   } finally {
     videoToggleLoading.value = false
   }
@@ -283,7 +323,7 @@ async function toggleVideo() {
               <button type="button" :disabled="iconUploadLoading" class="inline-flex items-center justify-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50" @click="openSiteIconPicker">
                 {{ iconUploadLoading ? '上传中...' : '上传站点图标' }}
               </button>
-              <img v-if="safeSiteIconPreview" :src="safeSiteIconPreview" alt="当前站点图标预览" class="h-10 w-10 rounded-lg border border-gray-200 bg-white object-contain p-1" />
+              <img v-if="safeSiteIconPreview" :src="safeSiteIconPreview" alt="当前站点图标预览" class="h-10 w-10 rounded-lg border border-gray-200 bg-white object-contain p-1" referrerpolicy="no-referrer" />
             </div>
             <p class="mt-2 text-xs text-gray-500">支持 PNG、JPEG、WebP、ICO，最大 1MB；上传后会自动写入 URL，并同步用于 favicon 和 apple-touch-icon。</p>
           </div>
@@ -301,7 +341,7 @@ async function toggleVideo() {
         <legend class="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-2 w-full">SEO / 社交分享</legend>
         <div>
           <label for="seo-title" class="block text-sm font-medium text-gray-700 mb-1">SEO 标题</label>
-          <input id="seo-title" v-model="form.seo_title" maxlength="80" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="MeiGallery - 精选写真图库" />
+          <input id="seo-title" v-model="form.seo_title" maxlength="80" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="例如：站点名称 - 精选图库" />
           <p class="text-xs text-gray-400 mt-1">搜索引擎显示的页面标题（title 标签）</p>
         </div>
         <div>
@@ -319,6 +359,35 @@ async function toggleVideo() {
           <input v-model="form.og_image" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="https://example.com/og-cover.jpg" />
           <p class="text-xs text-gray-400 mt-1">社交平台分享时显示的封面图片（推荐 1200x630）</p>
         </div>
+
+        <section aria-labelledby="public-seo-sync-title" aria-label="前台同步状态" class="rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 id="public-seo-sync-title" class="text-sm font-semibold text-gray-900">前台同步状态</h2>
+              <p class="mt-1 text-xs text-gray-500">显示首页公开读取到的 SEO 值，保存后会立即刷新校验。</p>
+            </div>
+            <span class="rounded-full border px-3 py-1 text-xs font-medium" :class="publicSeoStatus.class">{{ publicSeoStatus.label }}</span>
+          </div>
+          <p class="mt-3 text-sm" :class="publicSeoStatus.class">{{ publicSeoStatus.message }}</p>
+          <dl class="mt-4 grid gap-3 text-xs sm:grid-cols-2">
+            <div class="rounded-lg border border-white bg-white px-3 py-2">
+              <dt class="font-medium text-gray-500">公开站点名称</dt>
+              <dd class="mt-1 break-words text-gray-900">{{ publicSeoSnapshot.siteName }}</dd>
+            </div>
+            <div class="rounded-lg border border-white bg-white px-3 py-2">
+              <dt class="font-medium text-gray-500">公开 SEO 标题</dt>
+              <dd class="mt-1 break-words text-gray-900">{{ publicSeoSnapshot.seoTitle }}</dd>
+            </div>
+            <div class="rounded-lg border border-white bg-white px-3 py-2">
+              <dt class="font-medium text-gray-500">公开站点描述</dt>
+              <dd class="mt-1 break-words text-gray-900">{{ publicSeoSnapshot.description || '未设置' }}</dd>
+            </div>
+            <div class="rounded-lg border border-white bg-white px-3 py-2">
+              <dt class="font-medium text-gray-500">公开 OG 标题 / 描述</dt>
+              <dd class="mt-1 break-words text-gray-900">{{ publicSeoSnapshot.ogTitle }} / {{ publicSeoSnapshot.ogDescription || '未设置' }}</dd>
+            </div>
+          </dl>
+        </section>
       </fieldset>
 
       <!-- 其他设置 -->
@@ -421,6 +490,7 @@ async function toggleVideo() {
             <div v-if="homeAdEnabled" class="mt-4">
               <HomeAdBand
                 :enabled="homeAdEnabled"
+                preview
                 :eyebrow="safeHomeAdPreviewText.eyebrow"
                 :title="safeHomeAdPreviewText.title"
                 :summary="safeHomeAdPreviewText.summary"
@@ -433,7 +503,7 @@ async function toggleVideo() {
               广告位已关闭，保存后首页不展示。
             </div>
             <div class="mt-4 space-y-2 text-xs leading-5">
-              <p :class="unsafeHomeAdUrl ? 'text-amber-700' : 'text-gray-500'">
+              <p class="break-words" :class="unsafeHomeAdUrl ? 'text-amber-700' : 'text-gray-500'">
                 链接：{{ safeHomeAdPreviewUrl }}
                 <span v-if="unsafeHomeAdUrl" role="status" aria-live="polite" class="ml-2 font-medium">原始链接不安全，已回退到推荐页</span>
               </p>
@@ -582,7 +652,7 @@ async function toggleVideo() {
         </div>
       </fieldset>
 
-      <div v-if="message" class="text-sm" :class="message.includes('失败') ? 'text-red-600' : 'text-green-600'">{{ message }}</div>
+      <div v-if="message" class="text-sm" :class="messageIsError ? 'text-red-600' : 'text-green-600'">{{ message }}</div>
 
       <button type="submit" :disabled="loading" class="rounded-lg bg-blue-600 px-6 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50">
         {{ loading ? '保存中...' : '保存设置' }}

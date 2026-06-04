@@ -3,7 +3,7 @@
  * 从 /api/settings/public 获取站点配置
  * 数据全局缓存，避免重复请求
  */
-import { isScheduledSiteFeatureActive, normalizeBooleanSetting, normalizeFeaturedRegionSlugs, normalizeHomeAdUrl, normalizeHomeHotTagLimit, normalizeInternalPath, normalizePublicSettingUrl, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId, safeHomeAdText, safeRulesMarkdown, safeSiteText } from '~/utils/siteSettingsSecurity'
+import { isScheduledSiteFeatureActive, normalizeBooleanSetting, normalizeFeaturedRegionSlugs, normalizeHomeAdUrl, normalizeHomeHotTagLimit, normalizeInternalPath, normalizePublicImageSettingUrl, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId, safeHomeAdText, safeRulesMarkdown, safeSiteText } from '~/utils/siteSettingsSecurity'
 
 export function useSiteSettings() {
   const { api } = useApi()
@@ -28,6 +28,7 @@ export function useSiteSettings() {
     home_featured_region_slugs?: string
     home_hot_tag_limit?: string | number
     home_ad_enabled?: string | boolean
+    home_ad_active?: boolean
     home_ad_eyebrow?: string
     home_ad_title?: string
     home_ad_summary?: string
@@ -64,11 +65,11 @@ export function useSiteSettings() {
 
   const siteName = computed(() => safeSiteText('site_name', settings.value.site_name) || 'MeiGallery')
   const siteDescription = computed(() => safeSiteText('site_description', settings.value.site_description))
-  const siteIcon = computed(() => normalizePublicSettingUrl(settings.value.site_icon))
+  const siteIcon = computed(() => normalizePublicImageSettingUrl(settings.value.site_icon))
   const seoTitle = computed(() => safeSiteText('seo_title', settings.value.seo_title) || siteName.value)
   const ogTitle = computed(() => safeSiteText('og_title', settings.value.og_title) || seoTitle.value)
   const ogDescription = computed(() => safeSiteText('og_description', settings.value.og_description) || siteDescription.value)
-  const ogImage = computed(() => normalizePublicSettingUrl(settings.value.og_image))
+  const ogImage = computed(() => normalizePublicImageSettingUrl(settings.value.og_image))
   const footerText = computed(() => safeSiteText('footer_text', settings.value.footer_text) || `© ${new Date().getFullYear()} ${siteName.value}`)
   const membershipDescription = computed(() => safeSiteText('membership_description', settings.value.membership_description))
   const homeHeroTitle = computed(() => safeSiteText('home_hero_title', settings.value.home_hero_title) || '精选写真，按地区发现')
@@ -87,6 +88,7 @@ export function useSiteSettings() {
   const homeAdStartsAt = computed(() => normalizeSiteSettingDateTime(settings.value.home_ad_starts_at))
   const homeAdEndsAt = computed(() => normalizeSiteSettingDateTime(settings.value.home_ad_ends_at))
   const homeAdActive = computed(() => {
+    if (typeof settings.value.home_ad_active === 'boolean') return settings.value.home_ad_active
     return isScheduledSiteFeatureActive(settings.value.home_ad_enabled, settings.value.home_ad_starts_at, settings.value.home_ad_ends_at)
   })
   const videoEnabled = computed(() => {

@@ -67,7 +67,7 @@ async function saveUserInfo() {
     refresh()
     setTimeout(() => { editSuccess.value = false }, 3000)
   } catch (e: any) {
-    editError.value = e?.data?.message || '保存失败'
+    editError.value = resolveApiErrorMessage(e, '保存失败')
   } finally {
     editLoading.value = false
   }
@@ -101,7 +101,7 @@ async function resetPassword() {
     resetForm.confirmPassword = ''
     setTimeout(() => { resetSuccess.value = false }, 3000)
   } catch (e: any) {
-    resetError.value = e?.data?.message || '重置失败'
+    resetError.value = resolveApiErrorMessage(e, '重置失败')
   } finally {
     resetLoading.value = false
   }
@@ -136,7 +136,7 @@ async function changeRole(newRole: string) {
       await api(`/api/admin/users/${userId}/role`, { method: 'PATCH', body: { role: newRole } })
       refresh()
     } catch (e: any) {
-      toast.add({ title: e?.data?.message || '操作失败', color: 'error' })
+      toast.add({ title: resolveApiErrorMessage(e, '操作失败'), color: 'error' })
     } finally {
       roleLoading.value = false
     }
@@ -153,7 +153,7 @@ async function toggleStatus() {
       await api(`/api/admin/users/${userId}/status`, { method: 'PATCH', body: { status: newStatus } })
       refresh()
     } catch (e: any) {
-      toast.add({ title: e?.data?.message || '操作失败', color: 'error' })
+      toast.add({ title: resolveApiErrorMessage(e, '操作失败'), color: 'error' })
     } finally {
       statusLoading.value = false
     }
@@ -183,7 +183,7 @@ async function grantMembership() {
     grantForm.expiresAt = ''
     refresh()
   } catch (e: any) {
-    grantError.value = e?.data?.message || '发放失败'
+    grantError.value = resolveApiErrorMessage(e, '发放失败')
   }
 }
 

@@ -13,6 +13,8 @@ export default defineConfig({
     timeout: 8_000,
   },
   fullyParallel: false,
+  // smoke 测试共用一个 mock API 状态；串行执行可避免跨 viewport 的 reset / PATCH 互相抢状态。
+  workers: 1,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: {

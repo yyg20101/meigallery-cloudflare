@@ -70,7 +70,7 @@ async function onSave() {
     message.value = '已保存'
     await refresh()
   } catch (e: any) {
-    message.value = e?.data?.message || '保存失败'
+    message.value = resolveApiErrorMessage(e, '保存失败')
   } finally {
     loading.value = false
   }
@@ -88,7 +88,7 @@ async function onUpload() {
     if (imageInput.value) imageInput.value.value = ''
     await refresh()
   } catch (e: any) {
-    message.value = e?.data?.message || '上传失败'
+    message.value = resolveApiErrorMessage(e, '上传失败')
   } finally {
     uploadLoading.value = false
   }
@@ -144,7 +144,7 @@ async function deleteImage(imageId: string) {
       </div>
       <div class="space-y-3">
         <div v-for="(image, index) in data?.images || []" :key="image.id" class="overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <img :src="image.url" :alt="image.alt" class="aspect-[4/3] w-full object-cover" />
+          <img :src="image.url" :alt="image.alt" class="aspect-[4/3] w-full object-cover" referrerpolicy="no-referrer" />
           <div class="flex items-center justify-between gap-2 p-3 text-xs"><span class="text-gray-500">排序 {{ index + 1 }}</span><div class="flex gap-2"><button class="text-gray-500 hover:text-gray-900" @click="moveImage(index, -1)">上移</button><button class="text-gray-500 hover:text-gray-900" @click="moveImage(index, 1)">下移</button><button class="text-red-600 hover:underline" @click="deleteImage(image.id)">删除</button></div></div>
         </div>
       </div>

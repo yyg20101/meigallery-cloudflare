@@ -134,6 +134,7 @@ function activate() {
         <img
           :src="safeQrCodeUrl!"
           :alt="`${method.label} 二维码`"
+          referrerpolicy="no-referrer"
           class="h-40 w-40 rounded-xl object-cover ring-1 ring-white"
         />
         <p class="mt-2 text-xs text-gray-500">扫码添加</p>
@@ -141,7 +142,8 @@ function activate() {
           v-if="hasLink"
           :href="safeActionHref || undefined"
           target="_blank"
-          rel="noopener noreferrer"
+          rel="noopener noreferrer nofollow"
+          referrerpolicy="no-referrer"
           class="mt-1 text-xs text-gray-800 underline decoration-[#d6c39a] underline-offset-4 hover:text-black"
         >
           点击跳转 →

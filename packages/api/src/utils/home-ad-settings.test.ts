@@ -15,8 +15,13 @@ describe('首页广告设置校验', () => {
     expect(normalizeHomeAdUrl('/gallery/summer-portrait')).toBe('/gallery/summer-portrait')
     expect(normalizeHomeAdUrl('/search?q=夏日')).toBe('/search?q=%E5%A4%8F%E6%97%A5')
     expect(normalizeHomeAdUrl('/rules?from=ad')).toBe('/rules?from=ad')
+    expect(normalizeHomeAdUrl('/login?redirect=/user')).toBe('/login?redirect=/user')
+    expect(normalizeHomeAdUrl('/login?redirect=%2Fgallery%2Fsummer-portrait')).toBe('/login?redirect=%2Fgallery%2Fsummer-portrait')
+    expect(normalizeHomeAdUrl('/discover#top')).toBe('/discover#top')
     expect(normalizeHomeAdUrl('https://example.com/campaign')).toBe('https://example.com/campaign')
     expect(normalizeHomeAdUrl('HTTPS://example.com/campaign?next="x"')).toBe('https://example.com/campaign?next=%22x%22')
+    expect(normalizeHomeAdUrl('https://example.com/campaign?utm_source=home')).toBe('https://example.com/campaign?utm_source=home')
+    expect(normalizeHomeAdUrl('https://example.com/campaign#details')).toBe('https://example.com/campaign#details')
   })
 
   it('拒绝危险或不明确的广告链接', () => {
@@ -26,7 +31,15 @@ describe('首页广告设置校验', () => {
       'http://example.com',
       'https://localhost/campaign',
       'https://127.0.0.1/campaign',
+      'https://127.1/campaign',
+      'https://2130706433/campaign',
+      'https://0x7f000001/campaign',
+      'https://0177.0.0.1/campaign',
       'https://192.168.1.10/campaign',
+      'https://0xc0a8010a/campaign',
+      'https://[::1]/campaign',
+      'https://[fc00::1]/campaign',
+      'https://[2001:db8::1]/campaign',
       'https://preview.local/campaign',
       '//example.com',
       '/\\example.com',
@@ -38,7 +51,21 @@ describe('首页广告设置校验', () => {
       '/cdn-cgi/trace',
       'https://example.com/a b',
       'https://example.com/%0Ajavascript:alert(1)',
+      'https://example.com/campaign?api_key=abc',
+      'https://example.com/campaign?signature=abc',
+      'https://example.com/campaign#token=abc',
+      'https://example.com/campaign#/callback?access_token=abc',
       '/discover%20next',
+      '/discover?token=abc',
+      '/discover#api-key=abc',
+      '/login?redirect=',
+      '/login?redirect=/admin',
+      '/login?redirect=/api/settings/public',
+      '/login?redirect=https%3A%2F%2Fevil.example%2Fcampaign',
+      '/register?next=//evil.example/campaign',
+      '/login?redirect=%2Flogin%3Fredirect%3D%2Fadmin',
+      '/search?access-token=abc',
+      '/search#access-token=abc',
       '/discover\n?sort=hot',
     ]
 

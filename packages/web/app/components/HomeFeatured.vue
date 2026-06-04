@@ -28,6 +28,7 @@ defineProps<{
         v-if="galleries[0].coverUrl"
         :src="galleries[0].coverUrl"
         :alt="galleries[0].title"
+        referrerpolicy="no-referrer"
         class="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.035]"
       />
       <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
@@ -49,6 +50,7 @@ defineProps<{
         v-if="galleries[1].coverUrl"
         :src="galleries[1].coverUrl"
         :alt="galleries[1].title"
+        referrerpolicy="no-referrer"
         class="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.035]"
       />
       <div class="absolute inset-0 bg-gradient-to-t from-black/65 via-black/10 to-transparent" />
@@ -69,6 +71,7 @@ defineProps<{
         v-if="galleries[2].coverUrl"
         :src="galleries[2].coverUrl"
         :alt="galleries[2].title"
+        referrerpolicy="no-referrer"
         class="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.035]"
       />
       <div class="absolute inset-0 bg-gradient-to-t from-black/65 via-black/10 to-transparent" />
@@ -90,6 +93,7 @@ defineProps<{
           v-if="galleries[1].coverUrl"
           :src="galleries[1].coverUrl"
           :alt="galleries[1].title"
+          referrerpolicy="no-referrer"
           class="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
         />
         <div class="absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-transparent" />
@@ -109,6 +113,7 @@ defineProps<{
           v-if="galleries[2].coverUrl"
           :src="galleries[2].coverUrl"
           :alt="galleries[2].title"
+          referrerpolicy="no-referrer"
           class="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
         />
         <div class="absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-transparent" />

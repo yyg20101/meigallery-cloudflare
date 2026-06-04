@@ -15,7 +15,7 @@ defineProps<{
 <template>
   <NuxtLink :to="`/cases/${item.slug}`" class="group block overflow-hidden rounded-[1.5rem] border border-[#f0e4d8] bg-white shadow-sm shadow-orange-950/5 transition-all hover:-translate-y-1 hover:shadow-xl hover:shadow-orange-950/10">
     <div class="aspect-[4/3] overflow-hidden bg-orange-50">
-      <img v-if="item.coverImageUrl" :src="item.coverImageUrl" :alt="item.title" class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" />
+      <img v-if="item.coverImageUrl" :src="item.coverImageUrl" :alt="item.title" class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" referrerpolicy="no-referrer" />
       <div v-else class="flex h-full items-center justify-center bg-gradient-to-br from-[#fff7ed] to-[#f8e7dc] text-xs text-gray-400">图片整理中</div>
     </div>
     <div class="p-4">

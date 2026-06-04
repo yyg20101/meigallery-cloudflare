@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { sanitizePublicSiteSetting } from './public-site-settings'
+import { LEGACY_DEFAULT_SEO_TITLE, sanitizePublicSiteSetting, sanitizePublicSiteSettings } from './public-site-settings'
 
 describe('公开站点设置安全读取', () => {
   it('清空历史危险 URL 设置', () => {
@@ -13,16 +13,35 @@ describe('公开站点设置安全读取', () => {
     expect(sanitizePublicSiteSetting('home_ad_url', 'https://preview.local./campaign')).toBe('')
     expect(sanitizePublicSiteSetting('site_icon', 'https://example.com\\icon.png')).toBe('')
     expect(sanitizePublicSiteSetting('og_image', 'https://example.com/%5Cog.jpg')).toBe('')
+    expect(sanitizePublicSiteSetting('og_image', 'https://example.com/og.jpg?signature=abc')).toBe('')
+    expect(sanitizePublicSiteSetting('og_image', 'https://example.com/og.jpg#signature=abc')).toBe('')
+    expect(sanitizePublicSiteSetting('site_icon', '/discover?sort=hot')).toBe('')
+    expect(sanitizePublicSiteSetting('og_image', '/api/media/public/avatars/user.png')).toBe('')
     expect(sanitizePublicSiteSetting('home_ad_url', 'https:\\\\example.com\\campaign')).toBe('')
+    expect(sanitizePublicSiteSetting('home_ad_url', '/discover?token=abc')).toBe('')
+    expect(sanitizePublicSiteSetting('home_ad_url', '/discover#token=abc')).toBe('')
+    expect(sanitizePublicSiteSetting('home_ad_url', 'https://example.com/campaign?api_key=abc')).toBe('')
+    expect(sanitizePublicSiteSetting('home_ad_url', 'https://example.com/campaign#/callback?access_token=abc')).toBe('')
+    expect(sanitizePublicSiteSetting('home_ad_url', '/login?redirect=')).toBe('')
+    expect(sanitizePublicSiteSetting('home_ad_url', '/login?redirect=/admin')).toBe('')
+    expect(sanitizePublicSiteSetting('home_ad_url', '/login?redirect=/api/settings/public')).toBe('')
+    expect(sanitizePublicSiteSetting('home_ad_url', '/login?redirect=https%3A%2F%2Fevil.example%2Fcampaign')).toBe('')
+    expect(sanitizePublicSiteSetting('home_ad_url', '/login?redirect=%2Flogin%3Fredirect%3D%2Fadmin')).toBe('')
     expect(sanitizePublicSiteSetting('rules_page_url', '/rules%5Cnext')).toBe('')
+    expect(sanitizePublicSiteSetting('rules_page_url', '/rules?access_token=abc')).toBe('')
+    expect(sanitizePublicSiteSetting('rules_page_url', '/rules#access_token=abc')).toBe('')
   })
 
   it('归一化允许的 URL 设置', () => {
     expect(sanitizePublicSiteSetting('site_icon', ' /api/media/public/site/icon.png ')).toBe('/api/media/public/site/icon.png')
     expect(sanitizePublicSiteSetting('og_image', 'HTTPS://example.com/og.jpg?next="x"')).toBe('https://example.com/og.jpg?next=%22x%22')
     expect(sanitizePublicSiteSetting('home_ad_url', ' /discover?sort=hot#top ')).toBe('/discover?sort=hot#top')
+    expect(sanitizePublicSiteSetting('home_ad_url', 'https://example.com/campaign?utm_source=home')).toBe('https://example.com/campaign?utm_source=home')
+    expect(sanitizePublicSiteSetting('home_ad_url', 'https://example.com/campaign#details')).toBe('https://example.com/campaign#details')
+    expect(sanitizePublicSiteSetting('home_ad_url', '/login?redirect=/user')).toBe('/login?redirect=/user')
     expect(sanitizePublicSiteSetting('home_ad_url', '/gallery/summer-portrait')).toBe('/gallery/summer-portrait')
     expect(sanitizePublicSiteSetting('rules_page_url', ' /rules?from=entry ')).toBe('/rules?from=entry')
+    expect(sanitizePublicSiteSetting('rules_page_url', ' /rules#top ')).toBe('/rules#top')
   })
 
   it('归一化公开布尔和 Pixel 设置', () => {
@@ -52,6 +71,50 @@ describe('公开站点设置安全读取', () => {
     expect(sanitizePublicSiteSetting('rules_entry_summary', '入口\u0001说明')).toBe('')
     expect(sanitizePublicSiteSetting('rules_entry_icon', '<svg>')).toBe('')
     expect(sanitizePublicSiteSetting('rules_page_title', '入站规则')).toBe('入站规则')
+  })
+
+  it('清空公开响应中的历史默认 SEO 标题并保留自定义标题', () => {
+    const legacySettings = {
+      site_name: '星耀传媒',
+      seo_title: LEGACY_DEFAULT_SEO_TITLE,
+    }
+    const customSettings = {
+      site_name: '星耀传媒',
+      seo_title: '星耀传媒 - 官方图库',
+    }
+
+    expect(sanitizePublicSiteSettings(legacySettings)).toEqual({
+      site_name: '星耀传媒',
+      seo_title: '',
+      home_ad_active: false,
+    })
+    expect(sanitizePublicSiteSettings(customSettings)).toEqual({
+      ...customSettings,
+      home_ad_active: false,
+    })
+    expect(legacySettings.seo_title).toBe(LEGACY_DEFAULT_SEO_TITLE)
+  })
+
+  it('公开响应派生首页广告当前展示状态', () => {
+    const now = new Date('2026-06-01T12:00:00.000Z')
+
+    expect(sanitizePublicSiteSettings({
+      home_ad_enabled: true,
+      home_ad_starts_at: '2026-06-01T11:00:00.000Z',
+      home_ad_ends_at: '2026-06-01T13:00:00.000Z',
+    }, now).home_ad_active).toBe(true)
+
+    expect(sanitizePublicSiteSettings({
+      home_ad_enabled: true,
+      home_ad_starts_at: '2026-06-01T13:00:00.000Z',
+      home_ad_ends_at: '',
+    }, now).home_ad_active).toBe(false)
+
+    expect(sanitizePublicSiteSettings({
+      home_ad_enabled: false,
+      home_ad_starts_at: '',
+      home_ad_ends_at: '',
+    }, now).home_ad_active).toBe(false)
   })
 
   it('归一化首页内容配置并清空历史异常内容', () => {

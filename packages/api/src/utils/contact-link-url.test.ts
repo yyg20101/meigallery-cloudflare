@@ -17,7 +17,7 @@ describe('联系方式跳转链接校验', () => {
     expect(normalizeContactLinkUrl('whatsapp://send?phone=8613800138000')).toBe('whatsapp://send?phone=8613800138000')
   })
 
-  it('拒绝脚本协议、明文 http、内部地址和空白控制字符', () => {
+  it('拒绝脚本协议、明文 http、内部地址、非公网 IP 和空白控制字符', () => {
     const blocked = [
       'javascript:alert(1)',
       'data:text/html,hello',
@@ -27,6 +27,11 @@ describe('联系方式跳转链接校验', () => {
       'https://localhost%2e/contact',
       'https://127.0.0.1/contact',
       'https://192.168.1.10/contact',
+      'https://100.64.0.1/contact',
+      'https://198.18.0.1/contact',
+      'https://198.51.100.10/contact',
+      'https://203.0.113.10/contact',
+      'https://240.0.0.1/contact',
       'https://example.local/contact',
       'https://example.local./contact',
       '//example.com/contact',
@@ -46,5 +51,6 @@ describe('联系方式跳转链接校验', () => {
     expect(safeContactLinkUrl('javascript:alert(1)')).toBeNull()
     expect(safeContactLinkUrl('http://example.com')).toBeNull()
     expect(safeContactLinkUrl('https://127.0.0.1/contact')).toBeNull()
+    expect(safeContactLinkUrl('https://198.51.100.10/contact')).toBeNull()
   })
 })

@@ -3,9 +3,10 @@ const BLOCKED_HOSTS = new Set(['localhost', 'localhost.localdomain'])
 export function normalizeMediaUrl(value: unknown) {
   const url = String(value ?? '').trim()
   if (!url || hasWhitespaceOrControlCharacter(url) || hasEncodedWhitespaceOrControlCharacter(url)) return ''
+  if (hasBackslashOrEncodedBackslash(url)) return ''
 
   if (url.startsWith('/')) {
-    if (url.startsWith('//') || url.startsWith('/\\')) return ''
+    if (url.startsWith('//')) return ''
     try {
       const parsed = new URL(url, 'https://meigallery.local')
       return `${parsed.pathname}${parsed.search}${parsed.hash}`
@@ -17,10 +18,11 @@ export function normalizeMediaUrl(value: unknown) {
   try {
     const parsed = new URL(url)
     if (parsed.protocol !== 'https:') return ''
+    if (parsed.username || parsed.password) return ''
 
     const hostname = normalizeHostname(parsed.hostname)
     if (BLOCKED_HOSTS.has(hostname) || hostname.endsWith('.localhost') || hostname.endsWith('.local')) return ''
-    if (hostname.includes(':') || isPrivateIpv4(hostname)) return ''
+    if (hostname.includes(':') || isNonPublicIpv4(hostname)) return ''
 
     return parsed.toString()
   } catch {
@@ -45,6 +47,17 @@ export function resolveCoverPreviewUrl(coverKey: unknown, galleryId: string | nu
   return `${baseURL}/api/media/cover/${galleryId}`
 }
 
+export function resolveAdminCoverPreviewUrl(coverKey: unknown, galleryId: string | null | undefined, baseURL: string) {
+  const key = String(coverKey ?? '').trim()
+  if (!key || !galleryId) return null
+
+  const externalUrl = normalizeMediaUrl(key)
+  if (externalUrl && !externalUrl.startsWith('/')) return externalUrl
+  if (isExternalMediaLike(key)) return null
+
+  return `${baseURL}/api/admin/galleries/${galleryId}/cover`
+}
+
 function isExternalMediaLike(value: string) {
   try {
     const protocol = new URL(value).protocol.toLowerCase()
@@ -66,18 +79,32 @@ function hasWhitespaceOrControlCharacter(value: string) {
   return false
 }
 
+function hasBackslashOrEncodedBackslash(value: string) {
+  return value.includes('\\') || /%5c/i.test(value)
+}
+
 function normalizeHostname(hostname: string) {
   return hostname.toLowerCase().replace(/\.+$/, '')
 }
 
-function isPrivateIpv4(hostname: string) {
-  const parts = hostname.split('.').map(part => Number.parseInt(part, 10))
-  if (parts.length !== 4 || parts.some(part => Number.isNaN(part) || part < 0 || part > 255)) return false
-  const [a, b] = parts as [number, number, number, number]
+function isNonPublicIpv4(hostname: string) {
+  const rawParts = hostname.split('.')
+  if (rawParts.length !== 4 || rawParts.some(part => !/^\d+$/.test(part))) return false
+  const parts = rawParts.map(part => Number.parseInt(part, 10))
+  if (parts.some(part => Number.isNaN(part) || part < 0 || part > 255)) return false
+  const [a, b, c] = parts as [number, number, number, number]
   return a === 10
+    || (a === 100 && b >= 64 && b <= 127)
     || a === 127
     || (a === 169 && b === 254)
     || (a === 172 && b >= 16 && b <= 31)
+    || (a === 192 && b === 0 && c === 0)
+    || (a === 192 && b === 0 && c === 2)
+    || (a === 192 && b === 88 && c === 99)
     || (a === 192 && b === 168)
+    || (a === 198 && (b === 18 || b === 19))
+    || (a === 198 && b === 51 && c === 100)
+    || (a === 203 && b === 0 && c === 113)
+    || a >= 224
     || a === 0
 }

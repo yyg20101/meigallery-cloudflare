@@ -26,7 +26,7 @@ const viewerImages = computed(() => props.images.map(image => ({ id: image.id, u
         :aria-label="`查看案例图片 ${index + 1}`"
         @click="openViewer(index)"
       >
-        <img :src="image.url" :alt="image.alt" class="aspect-[4/3] h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" :loading="index === 0 ? 'eager' : 'lazy'" />
+        <img :src="image.url" :alt="image.alt" class="aspect-[4/3] h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" :loading="index === 0 ? 'eager' : 'lazy'" referrerpolicy="no-referrer" />
         <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/28 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
         <span class="absolute bottom-3 left-3 rounded-full bg-white/88 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-950 opacity-0 shadow-sm shadow-gray-950/10 backdrop-blur transition-opacity duration-300 group-hover:opacity-100">{{ String(index + 2).padStart(2, '0') }}</span>
       </button>

@@ -9,7 +9,7 @@ describe('contactUrlSecurity', () => {
     expect(normalizeContactActionUrl('tg://resolve?domain=meigallery')).toBe('tg://resolve?domain=meigallery')
   })
 
-  it('联系方式跳转链接拒绝危险协议和内部地址', () => {
+  it('联系方式跳转链接拒绝危险协议、内部地址和非公网 IP', () => {
     for (const url of [
       'javascript:alert(1)',
       'http://example.com',
@@ -18,10 +18,18 @@ describe('contactUrlSecurity', () => {
       'https://localhost%2e/contact',
       'https://127.0.0.1/contact',
       'https://192.168.1.10/contact',
+      'https://100.64.0.1/contact',
+      'https://198.18.0.1/contact',
+      'https://198.51.100.10/contact',
+      'https://203.0.113.10/contact',
+      'https://240.0.0.1/contact',
       'https://preview.local/contact',
       'https://preview.local./contact',
       'https://example.com/a b',
       'https://example.com/%0Acontact',
+      'https://user:pass@example.com/contact',
+      'https://example.com\\@evil.test/contact',
+      'https://example.com/%5Ccontact',
       'mailto:hello@example.com%0Abcc:evil@example.com',
     ]) {
       expect(normalizeContactActionUrl(url)).toBeNull()
@@ -38,9 +46,15 @@ describe('contactUrlSecurity', () => {
       'https://localhost/qr.png',
       'https://localhost./qr.png',
       'https://127.0.0.1/qr.png',
+      'https://198.51.100.10/qr.png',
+      'https://240.0.0.1/qr.png',
       'https://example.local/qr.png',
       'https://example.local./qr.png',
       '/api/contact-methods/contact-1/qr%20bad',
+      '/api/contact-methods/contact-1/%5Cqr.png',
+      'https://user:pass@example.com/qr.png',
+      'https://example.com\\@evil.test/qr.png',
+      'https://example.com/%5Cqr.png',
       '//example.com/qr.png',
     ]) {
       expect(normalizeContactQrCodeUrl(url)).toBeNull()

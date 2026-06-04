@@ -83,8 +83,7 @@ async function onSendCode() {
     startCooldown(result.cooldown || 60)
     step.value = 2
   } catch (e: any) {
-    const msg = e?.data ? (() => { try { return JSON.parse(e.data)?.message } catch { return null } })() : null
-    error.value = msg || '发送失败，请重试'
+    error.value = resolveApiErrorMessage(e, '发送失败，请重试')
     resetTurnstile()
   } finally {
     codeSending.value = false
@@ -111,8 +110,7 @@ async function onResendCode() {
     )
     startCooldown(result.cooldown || 60)
   } catch (e: any) {
-    const msg = e?.data ? (() => { try { return JSON.parse(e.data)?.message } catch { return null } })() : null
-    error.value = msg || '重新发送失败'
+    error.value = resolveApiErrorMessage(e, '重新发送失败')
   } finally {
     codeSending.value = false
   }
@@ -141,8 +139,7 @@ async function onResetPassword() {
     step.value = 3
     success.value = '密码重置成功，请使用新密码登录'
   } catch (e: any) {
-    const msg = e?.data ? (() => { try { return JSON.parse(e.data)?.message } catch { return null } })() : null
-    error.value = msg || '重置失败，请重试'
+    error.value = resolveApiErrorMessage(e, '重置失败，请重试')
   } finally {
     loading.value = false
   }

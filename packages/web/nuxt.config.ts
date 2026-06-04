@@ -1,4 +1,6 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
+import { WEB_SECURITY_HEADERS } from './app/utils/securityHeaders'
+
 export default defineNuxtConfig({
   compatibilityDate: '2026-05-26',
 
@@ -29,7 +31,8 @@ export default defineNuxtConfig({
 
   // 路由规则：管理后台使用 CSR
   routeRules: {
-    '/admin/**': { ssr: false },
+    '/**': { headers: WEB_SECURITY_HEADERS },
+    '/admin/**': { ssr: false, headers: WEB_SECURITY_HEADERS },
   },
 
   // 运行时配置

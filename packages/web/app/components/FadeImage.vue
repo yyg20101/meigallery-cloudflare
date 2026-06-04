@@ -32,6 +32,7 @@ function onError() {
       :src="props.src"
       :alt="props.alt"
       loading="lazy"
+      referrerpolicy="no-referrer"
       class="h-full w-full object-cover transition-all duration-500 ease-out"
       :class="[loaded ? 'opacity-100' : 'opacity-0', props.class]"
       @load="onLoad"

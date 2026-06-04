@@ -16,6 +16,7 @@ describe('ContactQrCodeCell', () => {
     const wrapper = mountCell('/api/contact-methods/contact-1/qrcode')
 
     expect(wrapper.get('img').attributes('src')).toBe('/api/contact-methods/contact-1/qrcode')
+    expect(wrapper.get('img').attributes('referrerpolicy')).toBe('no-referrer')
 
     const buttons = wrapper.findAll('button')
     await buttons[0]!.trigger('click')

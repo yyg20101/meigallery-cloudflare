@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test'
 
 const apiURL = process.env.PLAYWRIGHT_API_URL || 'http://127.0.0.1:8788'
+const longAdHostname = 'verylongsponsoredcampaignlandingdestination.example.com'
+const longAdUrl = `https://${longAdHostname}/sponsor-campaign`
 
 const smokePages = [
   { path: '/', heading: /精选写真/ },
@@ -49,8 +51,13 @@ test.describe('核心页面 smoke', () => {
         await expect(page.locator('meta[property="og:title"]')).toHaveAttribute('content', '测试站点 OG 标题')
         await expect(page.locator('meta[property="og:description"]')).toHaveAttribute('content', '测试站点 OG 描述')
         const homeAd = page.getByRole('region', { name: '首页广告推荐' })
+        await expect(homeAd.getByText('推广')).toBeVisible()
         await expect(homeAd.getByText('会员季精选内容精选内容精选内容')).toBeVisible()
-        await expect(homeAd.getByRole('link', { name: '查看推荐' })).toHaveAttribute('href', '/discover?sort=hot')
+        const internalCta = homeAd.getByRole('link', { name: '查看推荐，站内推荐，目标页面 探索页，路径 /discover?sort=hot' })
+        await expect(internalCta).toHaveAttribute('href', '/discover?sort=hot')
+        await expect(internalCta).toHaveAttribute('aria-describedby', /home-ad-internal-note$/)
+        await expect(homeAd.getByText('站内推荐')).toBeVisible()
+        await expect(homeAd.getByText('目标页面 探索页')).toBeVisible()
         await expect(homeAd.locator('h2')).toBeVisible()
         await expect(homeAd.locator('h2')).toHaveCSS('overflow-wrap', 'break-word')
         await expect(homeAd.locator('p').first()).toHaveCSS('overflow-wrap', 'break-word')
@@ -81,17 +88,93 @@ test.describe('核心页面 smoke', () => {
     expect(overflow).toBe(false)
   })
 
+  test('首页广告外链输出安全属性和离站提示', async ({ request, page }) => {
+    await request.patch(`${apiURL}/api/admin/settings`, {
+      data: {
+        home_ad_url: longAdUrl,
+        home_ad_cta_label: '查看赞助',
+        home_ad_sponsor: '外部赞助推荐',
+      },
+    })
+
+    await page.goto('/')
+
+    const homeAd = page.getByRole('region', { name: '首页广告推荐' })
+    const externalCta = homeAd.getByRole('link', { name: `查看赞助，外部链接，目标域名 ${longAdHostname}` })
+
+    await expect(homeAd).toBeVisible()
+    await expect(externalCta).toBeVisible()
+    await expect(externalCta).toHaveAttribute('href', longAdUrl)
+    await expect(externalCta).toHaveAttribute('target', '_blank')
+    await expect(externalCta).toHaveAttribute('rel', /(^| )noopener( |$)/)
+    await expect(externalCta).toHaveAttribute('rel', /(^| )noreferrer( |$)/)
+    await expect(externalCta).toHaveAttribute('rel', /(^| )nofollow( |$)/)
+    await expect(externalCta).toHaveAttribute('rel', /(^| )sponsored( |$)/)
+    await expect(externalCta).toHaveAttribute('referrerpolicy', 'no-referrer')
+    await expect(externalCta).toHaveAttribute('aria-describedby', /home-ad-external-note$/)
+    await expect(homeAd.getByText('外部链接')).toBeVisible()
+    await expect(homeAd.getByText(`目标域名 ${longAdHostname}`)).toBeVisible()
+    await expect(homeAd.getByText('不发送来源页信息')).toBeVisible()
+    const describedBy = await externalCta.getAttribute('aria-describedby')
+    expect(describedBy).toBeTruthy()
+    await expect(homeAd.locator(`[id="${describedBy}"]`)).toContainText(`目标域名 ${longAdHostname}`)
+    await expect(homeAd.locator(`[id="${describedBy}"]`)).toContainText('不发送来源页信息')
+    await expect(homeAd.locator(`[id="${describedBy}"]`)).toHaveCSS('overflow-wrap', 'break-word')
+
+    const hasHorizontalOverflow = await page.evaluate(() => {
+      const doc = document.documentElement
+      return doc.scrollWidth > doc.clientWidth + 1
+    })
+    expect(hasHorizontalOverflow).toBe(false)
+  })
+
+  test('后台广告预览不渲染可跳转链接', async ({ page }) => {
+    await page.goto('/admin/settings')
+
+    await page.locator('input[placeholder="/discover?sort=hot"]').fill(longAdUrl)
+    await page.locator('input[placeholder="查看推荐"]').fill('查看赞助')
+
+    const preview = page.getByRole('region', { name: '首页广告推荐' })
+    const previewCta = preview.locator('[aria-disabled="true"]')
+
+    await expect(preview).toBeVisible()
+    await expect(previewCta).toContainText('查看赞助')
+    await expect(previewCta).toHaveAttribute('aria-describedby', /home-ad-external-note$/)
+    await expect(preview.getByText('外部链接')).toBeVisible()
+    await expect(preview.getByText(`目标域名 ${longAdHostname}`)).toBeVisible()
+    await expect(preview.getByText('不发送来源页信息')).toBeVisible()
+    await expect(preview.locator(`a[href="${longAdUrl}"]`)).toHaveCount(0)
+
+    const hasHorizontalOverflow = await page.evaluate(() => {
+      const doc = document.documentElement
+      return doc.scrollWidth > doc.clientWidth + 1
+    })
+    expect(hasHorizontalOverflow).toBe(false)
+  })
+
   test('后台更新站点 SEO 后首页立即读取新标题', async ({ page }) => {
     await page.goto('/admin/settings')
+
+    const publicSeoSync = page.getByRole('region', { name: '前台同步状态' })
+    await expect(publicSeoSync.getByRole('heading', { name: '前台同步状态' })).toBeVisible()
+    await expect(publicSeoSync.getByText('公开 SEO 标题')).toBeVisible()
+    await expect(publicSeoSync.getByText('测试站点标题 - 首页 SEO')).toBeVisible()
 
     await page.getByLabel('站点名称').fill('运营新站名')
     await page.getByLabel('站点描述').fill('后台保存后的新站点描述')
     await page.getByLabel('SEO 标题').fill('运营新标题 - 首页')
     await page.getByLabel('OG 标题').fill('运营新 OG 标题')
     await page.getByLabel('OG 描述').fill('运营新 OG 描述')
+
+    await expect(publicSeoSync.getByText('待同步', { exact: true })).toBeVisible()
+    await expect(publicSeoSync.getByText('前台公开读取值与当前表单不一致，保存后会重新校验公开设置。')).toBeVisible()
+
     await page.getByRole('button', { name: '保存设置' }).click()
 
-    await expect(page.getByText('设置已保存')).toBeVisible()
+    await expect(page.getByText('设置已保存，前台公开 SEO 已同步')).toBeVisible()
+    await expect(publicSeoSync.getByText('已同步', { exact: true })).toBeVisible()
+    await expect(publicSeoSync.getByText('运营新标题 - 首页')).toBeVisible()
+    await expect(publicSeoSync.getByText('后台保存后的新站点描述')).toBeVisible()
     await page.goto('/')
 
     await expect(page).toHaveTitle('运营新标题 - 首页')

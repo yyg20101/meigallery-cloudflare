@@ -54,7 +54,7 @@ async function createJob() {
     })
     navigateTo(`/admin/import/${result.id}`)
   } catch (e: any) {
-    useToast().add({ title: e?.data?.message || '创建失败', color: 'error' })
+    useToast().add({ title: resolveApiErrorMessage(e, '创建失败'), color: 'error' })
     resetTurnstile()
   } finally {
     creating.value = false

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { resolveAdminImportErrorReportUrl } from '~/utils/adminDownloadSecurity'
+import { parseAdminImportManifestCsv } from '~/utils/adminImportManifest'
+
 definePageMeta({ layout: 'admin' })
 
 const route = useRoute()
@@ -42,6 +45,7 @@ interface ProcessResult {
   errors?: Array<{ folder: string; error: string }>
 }
 const processResult = ref<ProcessResult | null>(null)
+const errorReportUrl = computed(() => resolveAdminImportErrorReportUrl(job.value?.id ?? jobId, baseURL))
 
 onMounted(() => {
   void mountTurnstile()
@@ -63,32 +67,18 @@ async function processJob() {
 
   processing.value = true
   try {
-    // 简易 CSV 解析
-    const lines = manifestText.value.trim().split('\n')
-    const headers = lines[0]!.split(',').map(h => h.trim())
-    const galleries = lines.slice(1).map(line => {
-      const values = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''))
-      const entry: Record<string, string> = {}
-      headers.forEach((h, i) => { entry[h] = values[i] || '' })
-      return {
-        folder: entry['folder'] || '',
-        title: entry['title'] || '',
-        slug: entry['slug'] || '',
-        region: entry['region'] || undefined,
-        personality: entry['personality'] || undefined,
-        style: entry['style'] || undefined,
-        tags: entry['tags'] || undefined,
-        requiredLevel: entry['required_level'] || 'free',
-        status: entry['status'] || 'draft',
-      }
-    })
+    const parsedManifest = parseAdminImportManifestCsv(manifestText.value)
+    if (parsedManifest.errors.length > 0) {
+      useToast().add({ title: parsedManifest.errors[0], color: 'error' })
+      return
+    }
 
     const result = await api<ProcessResult>(
       `/api/admin/import-jobs/${jobId}/process`,
       {
         method: 'POST',
         body: {
-          galleries,
+          galleries: parsedManifest.galleries,
           turnstileToken: hasTurnstile.value ? turnstileToken.value : undefined,
         },
       },
@@ -96,7 +86,7 @@ async function processJob() {
     processResult.value = result
     refresh()
   } catch (e: any) {
-    useToast().add({ title: e?.data?.message || '处理失败', color: 'error' })
+    useToast().add({ title: resolveApiErrorMessage(e, '处理失败'), color: 'error' })
     resetTurnstile()
   } finally {
     processing.value = false
@@ -201,10 +191,11 @@ const statusColors: Record<string, string> = {
       </div>
 
       <!-- 错误报告下载 -->
-      <div v-if="job.error_report_key" class="rounded-lg bg-white p-4 border border-gray-200">
+      <div v-if="job.error_report_key && errorReportUrl" class="rounded-lg bg-white p-4 border border-gray-200">
         <a
-          :href="`${baseURL}/api/admin/import-jobs/${jobId}/errors`"
+          :href="errorReportUrl"
           class="inline-flex items-center gap-2 text-sm text-blue-600 hover:underline"
+          referrerpolicy="no-referrer"
           download
         >
           下载错误报告 CSV

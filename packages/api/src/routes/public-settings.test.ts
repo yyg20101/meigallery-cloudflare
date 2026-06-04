@@ -86,4 +86,66 @@ describe('公开站点设置 API', () => {
     expect(body.seo_title).toBe('')
     expect(body.home_ad_title).toBe('')
   })
+
+  it('清空历史默认 SEO 标题，避免前台继续显示脚手架标题', async () => {
+    const env = {
+      APP_ENV: 'production',
+      DB: createDb([
+        { key: 'site_name', value: '星耀传媒' },
+        { key: 'seo_title', value: 'MeiGallery - 精选写真图库' },
+      ]),
+    } as unknown as Bindings
+
+    const res = await app.fetch(new Request('https://api.test/api/settings/public'), env, {} as ExecutionContext)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.site_name).toBe('星耀传媒')
+    expect(body.seo_title).toBe('')
+  })
+
+  it('保留后台显式保存的自定义 SEO 标题', async () => {
+    const env = {
+      APP_ENV: 'production',
+      DB: createDb([
+        { key: 'site_name', value: '星耀传媒' },
+        { key: 'seo_title', value: '星耀传媒 - 官方图库' },
+      ]),
+    } as unknown as Bindings
+
+    const res = await app.fetch(new Request('https://api.test/api/settings/public'), env, {} as ExecutionContext)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.seo_title).toBe('星耀传媒 - 官方图库')
+  })
+
+  it('返回服务端派生的首页广告展示状态', async () => {
+    const activeEnv = {
+      APP_ENV: 'production',
+      DB: createDb([
+        { key: 'home_ad_enabled', value: 'true' },
+        { key: 'home_ad_starts_at', value: '2000-01-01T00:00:00.000Z' },
+        { key: 'home_ad_ends_at', value: '2099-01-01T00:00:00.000Z' },
+      ]),
+    } as unknown as Bindings
+    const inactiveEnv = {
+      APP_ENV: 'production',
+      DB: createDb([
+        { key: 'home_ad_enabled', value: 'true' },
+        { key: 'home_ad_starts_at', value: '2000-01-01T00:00:00.000Z' },
+        { key: 'home_ad_ends_at', value: '2000-01-02T00:00:00.000Z' },
+      ]),
+    } as unknown as Bindings
+
+    const activeRes = await app.fetch(new Request('https://api.test/api/settings/public'), activeEnv, {} as ExecutionContext)
+    const activeBody = await activeRes.json()
+    const inactiveRes = await app.fetch(new Request('https://api.test/api/settings/public'), inactiveEnv, {} as ExecutionContext)
+    const inactiveBody = await inactiveRes.json()
+
+    expect(activeRes.status).toBe(200)
+    expect(activeBody.home_ad_active).toBe(true)
+    expect(inactiveRes.status).toBe(200)
+    expect(inactiveBody.home_ad_active).toBe(false)
+  })
 })

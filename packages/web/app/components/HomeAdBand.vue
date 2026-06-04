@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed, useId } from 'vue'
 import { normalizeHomeAdUrl, safeHomeAdText } from '~/utils/siteSettingsSecurity'
 
 const props = defineProps<{
@@ -9,7 +10,11 @@ const props = defineProps<{
   ctaLabel?: string
   url?: string
   sponsor?: string
+  preview?: boolean
 }>()
+
+const externalNoteId = `${useId()}-home-ad-external-note`
+const internalNoteId = `${useId()}-home-ad-internal-note`
 
 function normalizeAdUrl(url?: string) {
   return normalizeHomeAdUrl(url) || '/discover?sort=hot'
@@ -17,11 +22,43 @@ function normalizeAdUrl(url?: string) {
 
 const safeUrl = computed(() => normalizeAdUrl(props.url))
 const isExternalUrl = computed(() => safeUrl.value.startsWith('https://'))
+const externalHostname = computed(() => {
+  if (!isExternalUrl.value) return ''
+
+  try {
+    return new URL(safeUrl.value).hostname.toLowerCase().replace(/\.+$/, '')
+  } catch {
+    return ''
+  }
+})
+const ctaSecurityLabel = computed(() => isExternalUrl.value ? '外部链接' : '站内推荐')
+const internalPathLabel = computed(() => isExternalUrl.value ? '' : safeUrl.value)
+const internalDestinationLabel = computed(() => {
+  if (isExternalUrl.value) return ''
+  return resolveInternalDestinationLabel(safeUrl.value)
+})
 const safeEyebrow = computed(() => safeHomeAdText('home_ad_eyebrow', props.eyebrow) || '本周推荐')
 const safeTitle = computed(() => safeHomeAdText('home_ad_title', props.title) || '会员季精选内容')
 const safeSummary = computed(() => safeHomeAdText('home_ad_summary', props.summary) || '探索本周精选图库、真实案例和会员可访问内容。')
 const safeCtaLabel = computed(() => safeHomeAdText('home_ad_cta_label', props.ctaLabel) || '查看推荐')
 const safeSponsor = computed(() => safeHomeAdText('home_ad_sponsor', props.sponsor))
+
+function resolveInternalDestinationLabel(url: string) {
+  const pathname = new URL(url, 'https://meigallery.local').pathname
+  if (pathname === '/') return '首页'
+  if (pathname === '/discover') return '探索页'
+  if (pathname === '/search') return '搜索页'
+  if (pathname === '/gallery' || pathname.startsWith('/gallery/')) return '图库页'
+  if (pathname === '/cases' || pathname.startsWith('/cases/')) return '真实案例页'
+  if (pathname === '/tags' || pathname.startsWith('/tags/')) return '标签页'
+  if (pathname === '/rules') return '规则页'
+  if (pathname === '/login') return '登录页'
+  if (pathname === '/register') return '注册页'
+  if (pathname === '/user') return '个人中心'
+  if (pathname === '/settings') return '个人设置'
+  if (pathname === '/forgot-password') return '找回密码'
+  return '站内页面'
+}
 </script>
 
 <template>
@@ -34,32 +71,68 @@ const safeSponsor = computed(() => safeHomeAdText('home_ad_sponsor', props.spons
     <div class="relative grid gap-5 px-5 py-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center lg:px-7">
       <div class="min-w-0">
         <div class="flex flex-wrap items-center gap-2">
+          <span class="rounded-full border border-stone-900 bg-stone-950 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-white">
+            推广
+          </span>
           <span class="rounded-full border border-[#d6c39a]/70 bg-white/75 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#81662c]">
             {{ safeEyebrow }}
           </span>
-          <span v-if="safeSponsor" class="text-xs text-stone-500">{{ safeSponsor }}</span>
+          <span v-if="safeSponsor" class="min-w-0 break-words text-xs text-stone-500">{{ safeSponsor }}</span>
         </div>
         <h2 class="mt-3 line-clamp-2 break-words text-xl font-semibold leading-tight text-stone-950 lg:text-2xl">{{ safeTitle }}</h2>
         <p class="mt-2 max-w-2xl break-words text-sm leading-6 text-stone-600 line-clamp-3">{{ safeSummary }}</p>
       </div>
 
+      <span
+        v-if="preview"
+        aria-disabled="true"
+        :aria-describedby="isExternalUrl ? externalNoteId : internalNoteId"
+        :aria-label="isExternalUrl
+          ? `${safeCtaLabel}，外部链接${externalHostname ? `，目标域名 ${externalHostname}` : ''}`
+          : `${safeCtaLabel}，站内推荐，目标页面 ${internalDestinationLabel}，路径 ${internalPathLabel}`"
+        class="inline-flex min-h-11 max-w-full shrink-0 cursor-default items-center justify-center gap-2 rounded-full bg-stone-950 px-5 py-2.5 text-center text-sm font-medium leading-tight whitespace-normal break-words text-white shadow-sm shadow-stone-900/15"
+      >
+        <span>{{ safeCtaLabel }}</span>
+        <svg v-if="isExternalUrl" aria-hidden="true" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M7 17 17 7" />
+          <path d="M9 7h8v8" />
+        </svg>
+      </span>
       <a
-        v-if="isExternalUrl"
+        v-else-if="isExternalUrl"
         :href="safeUrl"
         target="_blank"
-        rel="noopener noreferrer"
+        rel="noopener noreferrer nofollow sponsored"
         referrerpolicy="no-referrer"
-        class="inline-flex min-h-11 max-w-full shrink-0 items-center justify-center rounded-full bg-stone-950 px-5 py-2.5 text-center text-sm font-medium leading-tight whitespace-normal break-words text-white shadow-sm shadow-stone-900/15 transition-all hover:-translate-y-0.5 hover:bg-stone-800"
+        :aria-describedby="externalNoteId"
+        :aria-label="`${safeCtaLabel}，外部链接${externalHostname ? `，目标域名 ${externalHostname}` : ''}`"
+        class="group/cta inline-flex min-h-11 max-w-full shrink-0 items-center justify-center gap-2 rounded-full bg-stone-950 px-5 py-2.5 text-center text-sm font-medium leading-tight whitespace-normal break-words text-white shadow-sm shadow-stone-900/15 transition-all hover:-translate-y-0.5 hover:bg-stone-800"
       >
-        {{ safeCtaLabel }}
+        <span>{{ safeCtaLabel }}</span>
+        <svg aria-hidden="true" class="h-3.5 w-3.5 shrink-0 transition-transform group-hover/cta:-translate-y-0.5 group-hover/cta:translate-x-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M7 17 17 7" />
+          <path d="M9 7h8v8" />
+        </svg>
       </a>
       <NuxtLink
         v-else
         :to="safeUrl"
+        :aria-describedby="internalNoteId"
+        :aria-label="`${safeCtaLabel}，站内推荐，目标页面 ${internalDestinationLabel}，路径 ${internalPathLabel}`"
         class="inline-flex min-h-11 max-w-full shrink-0 items-center justify-center rounded-full bg-stone-950 px-5 py-2.5 text-center text-sm font-medium leading-tight whitespace-normal break-words text-white shadow-sm shadow-stone-900/15 transition-all hover:-translate-y-0.5 hover:bg-stone-800"
       >
         {{ safeCtaLabel }}
       </NuxtLink>
     </div>
+
+    <p :id="isExternalUrl ? externalNoteId : internalNoteId" class="relative border-t border-[#e5d5c4]/70 bg-white/45 px-5 py-2 text-[11px] font-medium break-words text-stone-500 lg:px-7">
+      {{ ctaSecurityLabel }}
+      <span v-if="!isExternalUrl" class="mx-1 text-stone-300">/</span>
+      <span v-if="!isExternalUrl">目标页面 {{ internalDestinationLabel }}</span>
+      <span v-if="isExternalUrl" class="mx-1 text-stone-300">/</span>
+      <span v-if="isExternalUrl && externalHostname">目标域名 {{ externalHostname }}</span>
+      <span v-if="isExternalUrl && externalHostname" class="mx-1 text-stone-300">/</span>
+      <span v-if="isExternalUrl">不发送来源页信息</span>
+    </p>
   </section>
 </template>

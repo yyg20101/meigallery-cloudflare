@@ -1,7 +1,7 @@
 import { normalizeBooleanSetting, normalizeFacebookPixelId } from './facebook-pixel-settings'
-import { normalizeHomeAdScheduleValue } from './home-ad-schedule'
+import { isHomeAdActive, normalizeHomeAdScheduleValue } from './home-ad-schedule'
 import { normalizeHomeAdUrl, safeHomeAdText } from './home-ad-settings'
-import { safeInternalPathSetting, safePublicSettingUrl } from './public-setting-url'
+import { safeInternalPathSetting, safePublicImageSettingUrl } from './public-setting-url'
 import { safeFeaturedRegionSlugs, safeHomeHotTagLimit, safeRulesMarkdown } from './site-content-settings'
 import { isSiteTextSettingKey, safeSiteTextSetting } from './site-text-settings'
 
@@ -13,6 +13,8 @@ const PUBLIC_URL_FIELDS: Record<string, string> = {
 const INTERNAL_PATH_FIELDS: Record<string, string> = {
   rules_page_url: '规则页链接',
 }
+
+export const LEGACY_DEFAULT_SEO_TITLE = 'MeiGallery - 精选写真图库'
 
 export function sanitizePublicSiteSetting(key: string, value: unknown) {
   if (key === 'home_ad_url') {
@@ -32,7 +34,7 @@ export function sanitizePublicSiteSetting(key: string, value: unknown) {
   }
 
   const publicUrlLabel = PUBLIC_URL_FIELDS[key]
-  if (publicUrlLabel) return safePublicSettingUrl(value, publicUrlLabel)
+  if (publicUrlLabel) return safePublicImageSettingUrl(value, publicUrlLabel)
 
   const internalPathLabel = INTERNAL_PATH_FIELDS[key]
   if (internalPathLabel) return safeInternalPathSetting(value, internalPathLabel)
@@ -58,4 +60,18 @@ export function sanitizePublicSiteSetting(key: string, value: unknown) {
   }
 
   return value
+}
+
+export function sanitizePublicSiteSettings(settings: Record<string, unknown>, now = new Date()) {
+  const sanitized = { ...settings }
+  if (sanitized.seo_title === LEGACY_DEFAULT_SEO_TITLE) {
+    sanitized.seo_title = ''
+  }
+  sanitized.home_ad_active = isHomeAdActive(
+    sanitized.home_ad_enabled,
+    sanitized.home_ad_starts_at,
+    sanitized.home_ad_ends_at,
+    now,
+  )
+  return sanitized
 }

@@ -6,7 +6,7 @@ import { generateId } from '../../utils/db'
 import { normalizeHomeAdScheduleRange } from '../../utils/home-ad-schedule'
 import { isHomeAdTextKey, normalizeHomeAdText, normalizeHomeAdUrl } from '../../utils/home-ad-settings'
 import { writeAuditLog } from '../../utils/permission'
-import { normalizeInternalPathSetting, normalizePublicSettingUrl } from '../../utils/public-setting-url'
+import { normalizeInternalPathSetting, normalizePublicImageSettingUrl } from '../../utils/public-setting-url'
 import { ADMIN_SETTING_KEYS } from '../../utils/site-settings'
 import { normalizeFeaturedRegionSlugs, normalizeHomeHotTagLimit, normalizeRulesMarkdown } from '../../utils/site-content-settings'
 import { isSiteTextSettingKey, normalizeSiteTextSetting } from '../../utils/site-text-settings'
@@ -124,7 +124,7 @@ adminSettingsRoutes.patch('/', requireOwner, async (c) => {
   for (const [key, label] of Object.entries(PUBLIC_URL_FIELDS)) {
     if (!(key in body)) continue
     try {
-      body[key] = normalizePublicSettingUrl(body[key], label)
+      body[key] = normalizePublicImageSettingUrl(body[key], label)
     } catch (error) {
       return c.json({ statusCode: 400, message: error instanceof Error ? error.message : `${label}无效` }, 400)
     }
@@ -172,8 +172,14 @@ adminSettingsRoutes.patch('/', requireOwner, async (c) => {
 
   for (const key of keys) {
     await db
-      .prepare("UPDATE site_settings SET value = ?, updated_at = datetime('now') WHERE key = ?")
-      .bind(JSON.stringify(body[key]), key)
+      .prepare(`
+        INSERT INTO site_settings (key, value, updated_at)
+        VALUES (?, ?, datetime('now'))
+        ON CONFLICT(key) DO UPDATE SET
+          value = excluded.value,
+          updated_at = excluded.updated_at
+      `)
+      .bind(key, JSON.stringify(body[key]))
       .run()
   }
 
@@ -216,8 +222,14 @@ adminSettingsRoutes.post('/site-icon', requireOwner, async (c) => {
   if (oldKey && oldKey !== key) await c.env.R2.delete(oldKey)
 
   await db
-    .prepare("UPDATE site_settings SET value = ?, updated_at = datetime('now') WHERE key = ?")
-    .bind(JSON.stringify(iconUrl), 'site_icon')
+    .prepare(`
+      INSERT INTO site_settings (key, value, updated_at)
+      VALUES (?, ?, datetime('now'))
+      ON CONFLICT(key) DO UPDATE SET
+        value = excluded.value,
+        updated_at = excluded.updated_at
+    `)
+    .bind('site_icon', JSON.stringify(iconUrl))
     .run()
 
   await writeAuditLog(db, {

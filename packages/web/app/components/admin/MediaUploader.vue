@@ -74,6 +74,15 @@ function onFileSelect(e: Event) {
 // 并发上传控制
 let activeUploads = 0
 
+function resolveUploadErrorMessage(errorBody: unknown, status: number) {
+  if (errorBody && typeof errorBody === 'object') {
+    const body = errorBody as { message?: unknown; error?: unknown }
+    if (typeof body.message === 'string' && body.message.trim()) return body.message
+    if (typeof body.error === 'string' && body.error.trim()) return body.error
+  }
+  return `HTTP ${status}`
+}
+
 async function processQueue() {
   while (activeUploads < MAX_CONCURRENT) {
     const next = queue.value.find(item => item.status === 'pending')
@@ -97,8 +106,8 @@ async function processQueue() {
       )
 
       if (!response.ok) {
-        const err = await response.json().catch(() => ({ error: '上传失败' }))
-        throw new Error((err as any).error || `HTTP ${response.status}`)
+        const err = await response.json().catch(() => ({ message: '上传失败' }))
+        throw new Error(resolveUploadErrorMessage(err, response.status))
       }
 
       const result = await response.json() as {

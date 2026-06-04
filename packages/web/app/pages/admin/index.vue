@@ -121,7 +121,7 @@ const statusLabels: Record<string, { text: string; cls: string }> = {
             <tr v-for="g in recentGalleries" :key="g.id" class="hover:bg-gray-50">
               <td class="px-4 py-2">
                 <div class="w-10 h-10 rounded bg-gray-200 overflow-hidden">
-                  <img v-if="g.cover_key" :src="`/api/media/cover/${g.id}`" class="w-full h-full object-cover" />
+                  <img v-if="g.cover_key" :src="`/api/media/cover/${g.id}`" class="w-full h-full object-cover" referrerpolicy="no-referrer" />
                 </div>
               </td>
               <td class="px-4 py-2 font-medium">{{ g.title }}</td>
