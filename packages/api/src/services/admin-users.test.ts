@@ -177,9 +177,82 @@ describe('后台用户服务', () => {
     const activity = await getAdminUserActivity(db as unknown as D1Database, 1)
     expect(activity.auditLogs).toHaveLength(1)
     expect(activity.recentSessions).toHaveLength(1)
+    expect(db.calls.find(call => call.sql.includes('FROM admin_audit_logs'))?.sql).toContain('json_valid(after_value)')
 
     const missingDb = createDb({ first: () => null })
     await expect(getAdminUserActivity(missingDb as unknown as D1Database, 1))
       .rejects.toMatchObject(new AdminUserError(404, '用户不存在'))
+  })
+
+  it('活动日志遇到历史损坏审计 JSON 时不会中断详情页', async () => {
+    const db = createDb({
+      first: () => ({ id: 1 }),
+      all: (sql) => {
+        if (sql.includes('FROM admin_audit_logs')) {
+          return [{
+            id: 'log_1',
+            admin_id: 1,
+            action: 'edit_user',
+            target_type: 'user',
+            target_id: '1',
+            before_value: '{"username":"old"}',
+            after_value: '{broken',
+            created_at: '2026-06-01T00:00:00Z',
+          }]
+        }
+        return []
+      },
+    })
+
+    const activity = await getAdminUserActivity(db as unknown as D1Database, 1)
+
+    expect(activity.auditLogs[0]?.beforeValue).toEqual({ username: 'old' })
+    expect(activity.auditLogs[0]?.afterValue).toEqual({ message: '历史审计内容格式异常' })
+  })
+
+  it('发放会员会校验日期格式和起止顺序', async () => {
+    const db = createDb()
+
+    await expect(grantAdminUserMembership(db as unknown as D1Database, 1, 1, {
+      levelId: 'level_1',
+      expiresAt: 'not-a-date',
+    })).rejects.toMatchObject(new AdminUserError(400, '会员到期时间格式无效'))
+
+    await expect(grantAdminUserMembership(db as unknown as D1Database, 1, 1, {
+      levelId: 'level_1',
+      startsAt: '2026-07-02T00:00:00Z',
+      expiresAt: '2026-07-01T00:00:00Z',
+    })).rejects.toMatchObject(new AdminUserError(400, '会员到期时间必须晚于开始时间'))
+
+    expect(db.calls).toHaveLength(0)
+  })
+
+  it('发放会员会写入规范化时间和清理后的审计备注', async () => {
+    const db = createDb({
+      first: (sql) => {
+        if (sql.includes('SELECT id FROM users WHERE id = ?')) return { id: 1 }
+        if (sql.includes('SELECT id, name, rank FROM membership_levels WHERE id = ?')) return { id: 'level_1', name: 'vip', rank: 10 }
+        return null
+      },
+    })
+
+    const result = await grantAdminUserMembership(db as unknown as D1Database, 7, 1, {
+      levelId: 'level_1',
+      startsAt: '2026-07-01T08:30:00+08:00',
+      expiresAt: '2026-08-01T08:30:00+08:00',
+      note: '  已线下确认  ',
+    })
+
+    expect(result.startsAt).toBe('2026-07-01 00:30:00')
+    expect(result.expiresAt).toBe('2026-08-01 00:30:00')
+    expect(result.note).toBe('已线下确认')
+
+    const insertCall = db.calls.find(call => call.sql.includes('INSERT INTO user_memberships'))
+    expect(insertCall?.params).toContain('2026-07-01 00:30:00')
+    expect(insertCall?.params).toContain('2026-08-01 00:30:00')
+    expect(insertCall?.params).toContain('已线下确认')
+
+    const auditCall = db.calls.find(call => call.sql.includes('INSERT INTO admin_audit_logs'))
+    expect(auditCall?.params[6]).toContain('"note":"已线下确认"')
   })
 })
