@@ -227,6 +227,7 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/me` | 当前用户信息和会员状态 |
 | GET | `/api/media/:assetId/access` | 媒体访问接口（需登录；图片代理响应，视频返回 Stream token） |
 | GET | `/api/media/:assetId/thumbnail` | 缩略图（公开） |
+| GET | `/api/settings/public` | 公开站点设置和过滤后的首页广告数组 `home_ads` |
 
 ### 管理员 API `[当前实现 / 部分实现]`
 
@@ -256,6 +257,13 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/admin/audit-logs` | 审计日志 | admin（仅自己）/ owner（全部） |
 | GET | `/api/admin/settings` | 站点设置 | owner |
 | PATCH | `/api/admin/settings` | 修改站点设置 | owner |
+| GET | `/api/admin/ads` | 首页广告位列表 | owner |
+| POST | `/api/admin/ads` | 创建首页广告位 | owner |
+| PUT | `/api/admin/ads/:id` | 更新首页广告位 | owner |
+| DELETE | `/api/admin/ads/:id` | 删除首页广告位 | owner |
+| PATCH | `/api/admin/ads/reorder` | 调整首页广告位顺序 | owner |
+| POST | `/api/admin/ads/:id/image` | 上传首页广告大图 | owner |
+| DELETE | `/api/admin/ads/:id/image` | 删除首页广告大图 | owner |
 | POST | `/api/admin/legacy-import/sources` | 创建旧站来源 | admin+ |
 | POST | `/api/admin/legacy-import/jobs` | 启动旧站迁移 | admin+ |
 | GET | `/api/admin/legacy-import/jobs/:id` | 迁移任务详情 | admin+ |
@@ -523,6 +531,33 @@ INSERT INTO site_settings (key, value) VALUES
   ('footer_text', '""'),
   ('footer_links', '"[]"');
 ```
+
+旧 `home_ad_*` 站点设置仍保留为公开读取兼容兜底；当前主要首页广告配置使用独立 `home_ads` 表和 `/api/admin/ads` 后台页面维护。
+
+### home_ads
+
+```sql
+CREATE TABLE home_ads (
+  id TEXT PRIMARY KEY,
+  placement TEXT NOT NULL DEFAULT 'home_after_hero',
+  eyebrow TEXT NOT NULL DEFAULT '',
+  title TEXT NOT NULL,
+  summary TEXT NOT NULL DEFAULT '',
+  cta_label TEXT NOT NULL DEFAULT '查看详情',
+  target_url TEXT NOT NULL DEFAULT '/discover?sort=hot',
+  sponsor TEXT NOT NULL DEFAULT '',
+  image_url TEXT NOT NULL DEFAULT '',
+  image_key TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  starts_at TEXT NOT NULL DEFAULT '',
+  ends_at TEXT NOT NULL DEFAULT '',
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+```
+
+首页广告位当前仅支持 `home_after_hero` 位置。公开读取会过滤停用、排期无效、标题异常或跳转链接不安全的广告；广告大图仅允许 `/api/media/public/home-ads/` 或安全 `https://` 图片地址。后台上传的大图存储在 R2 `home-ads/{adId}/{imageId}.{ext}`，删除前必须校验 key 属于当前广告。
 
 ### contact_methods
 

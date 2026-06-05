@@ -14,6 +14,7 @@ import { caseRoutes } from './routes/cases'
 import { importRoutes } from './routes/imports'
 import { PUBLIC_SETTING_KEYS } from './utils/site-settings'
 import { sanitizePublicSiteSetting, sanitizePublicSiteSettings } from './utils/public-site-settings'
+import { HOME_AD_PLACEMENT, type HomeAdRow, serializePublicHomeAd } from './utils/home-ads'
 import { adminRoutes } from './routes/admin'
 import { healthRoutes } from './routes/health'
 import { authMiddleware } from './middleware/auth'
@@ -151,15 +152,30 @@ app.get('/api/settings/public', async (c) => {
   const db = c.env.DB
   const keys = [...PUBLIC_SETTING_KEYS]
   const placeholders = keys.map(() => '?').join(',')
-  const result = await db
+  const [settingsResult, adsResult] = await Promise.all([
+    db
     .prepare(`SELECT key, value FROM site_settings WHERE key IN (${placeholders})`)
     .bind(...keys)
-    .all<{ key: string; value: string }>()
+      .all<{ key: string; value: string }>(),
+    db
+      .prepare(`
+        SELECT id, placement, eyebrow, title, summary, cta_label, target_url, sponsor,
+               image_url, image_key, enabled, starts_at, ends_at, sort_order, created_at, updated_at
+        FROM home_ads
+        WHERE placement = ?
+        ORDER BY sort_order ASC, created_at ASC
+      `)
+      .bind(HOME_AD_PLACEMENT)
+      .all<HomeAdRow>(),
+  ])
 
   const settings: Record<string, unknown> = {}
-  for (const row of result.results) {
+  for (const row of settingsResult.results) {
     settings[row.key] = sanitizePublicSiteSetting(row.key, parseStoredSettingValue(row.value))
   }
+  settings.home_ads = adsResult.results
+    .map(row => serializePublicHomeAd(row))
+    .filter((ad): ad is NonNullable<typeof ad> => Boolean(ad))
   c.header('Cache-Control', 'no-store')
   return c.json(sanitizePublicSiteSettings(settings))
 })

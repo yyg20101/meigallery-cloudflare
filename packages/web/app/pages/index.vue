@@ -8,13 +8,7 @@ const {
   ogDescription,
   homeHeroTitle,
   homeHeroSubtitle,
-  homeAdEyebrow,
-  homeAdTitle,
-  homeAdSummary,
-  homeAdCtaLabel,
-  homeAdUrl,
-  homeAdSponsor,
-  homeAdActive,
+  homeAds,
 } = useSiteSettings()
 
 interface GallerySummary {
@@ -125,15 +119,10 @@ useSeoMeta({
     />
 
     <HomeAdBand
-      v-if="homeAdActive"
+      v-if="homeAds.length > 0"
       class="mt-6 lg:mt-8"
-      :enabled="homeAdActive"
-      :eyebrow="homeAdEyebrow"
-      :title="homeAdTitle"
-      :summary="homeAdSummary"
-      :cta-label="homeAdCtaLabel"
-      :url="homeAdUrl"
-      :sponsor="homeAdSponsor"
+      :enabled="homeAds.length > 0"
+      :ads="homeAds"
     />
 
     <section class="mt-8 lg:mt-10">

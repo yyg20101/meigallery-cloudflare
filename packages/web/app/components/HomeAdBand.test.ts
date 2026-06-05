@@ -55,7 +55,7 @@ describe('HomeAdBand', () => {
     expect(link.attributes('target')).toBe('_blank')
     expect(link.attributes('rel')).toBe('noopener noreferrer nofollow sponsored')
     expect(link.attributes('referrerpolicy')).toBe('no-referrer')
-    expect(link.attributes('aria-label')).toBe('查看推荐，外部链接，目标域名 example.com')
+    expect(link.attributes('aria-label')).toBe('查看详情，外部链接，目标域名 example.com')
     expect(link.attributes('aria-describedby')).toBe(note.attributes('id'))
     expect(wrapper.text()).toContain('外部链接')
     expect(wrapper.text()).toContain('目标域名 example.com')
@@ -99,19 +99,19 @@ describe('HomeAdBand', () => {
     expect(wrapper.text()).toContain('会员季精选内容')
     expect(wrapper.text()).toContain('运营精选')
     expect(wrapper.text()).toContain('站内推荐')
-    expect(wrapper.find('a').text()).toBe('查看推荐')
-    expect(wrapper.find('a').attributes('aria-label')).toBe('查看推荐，站内推荐，目标页面 探索页，路径 /discover?sort=hot')
+    expect(wrapper.find('a').text()).toBe('查看详情')
+    expect(wrapper.find('a').attributes('aria-label')).toBe('查看详情，站内推荐，目标页面 探索页，路径 /discover?sort=hot')
     expect(wrapper.find('a').attributes('aria-describedby')).toBe(wrapper.find('[id$="-home-ad-internal-note"]').attributes('id'))
     expect(wrapper.find('[id$="-home-ad-internal-note"]').text()).toContain('目标页面 探索页')
   })
 
   it('组件边界会清洗异常广告文案并回退默认值', () => {
-    const unsafeSponsor = 'x'.repeat(31)
+    const unsafeSponsor = 'x'.repeat(41)
     const wrapper = mount(HomeAdBand, {
       props: {
         enabled: true,
         eyebrow: '  本周   推荐  ',
-        title: 'x'.repeat(41),
+        title: 'x'.repeat(65),
         summary: '会员\u0001精选',
         ctaLabel: '查看\u0001推荐',
         sponsor: unsafeSponsor,
@@ -123,7 +123,65 @@ describe('HomeAdBand', () => {
     expect(wrapper.text()).toContain('会员季精选内容')
     expect(wrapper.text()).toContain('探索本周精选图库、真实案例和会员可访问内容。')
     expect(wrapper.text()).not.toContain(unsafeSponsor)
-    expect(wrapper.find('a').text()).toBe('查看推荐')
+    expect(wrapper.find('a').text()).toBe('查看详情')
+  })
+
+  it('支持多广告圆点切换和广告大图安全渲染', async () => {
+    const wrapper = mount(HomeAdBand, {
+      props: {
+        enabled: true,
+        ads: [
+          {
+            id: 'ad-1',
+            eyebrow: '轮播一',
+            title: '第一条广告',
+            summary: '第一条摘要',
+            ctaLabel: '查看第一条',
+            targetUrl: '/discover?sort=hot',
+            imageUrl: '/api/media/public/home-ads/ad-1/cover.webp',
+          },
+          {
+            id: 'ad-2',
+            eyebrow: '轮播二',
+            title: '第二条广告',
+            summary: '第二条摘要',
+            ctaLabel: '查看第二条',
+            targetUrl: '/cases',
+            imageUrl: 'https://example.com/ad.webp',
+          },
+        ],
+      },
+      global: { stubs: { NuxtLink: nuxtLinkStub } },
+    })
+
+    expect(wrapper.text()).toContain('第一条广告')
+    const firstImg = wrapper.get('img')
+    expect(firstImg.attributes('src')).toBe('/api/media/public/home-ads/ad-1/cover.webp')
+    expect(firstImg.attributes('referrerpolicy')).toBe('no-referrer')
+
+    const dots = wrapper.findAll('button[aria-label^="切换到广告"]')
+    expect(dots).toHaveLength(2)
+    expect(dots[0]?.attributes('aria-current')).toBe('true')
+
+    await dots[1]?.trigger('click')
+
+    expect(wrapper.text()).toContain('第二条广告')
+    expect(wrapper.get('img').attributes('src')).toBe('https://example.com/ad.webp')
+    expect(wrapper.find('a').attributes('href')).toBe('/cases')
+  })
+
+  it('忽略不安全的大图 URL 并回退占位视觉', () => {
+    const wrapper = mount(HomeAdBand, {
+      props: {
+        enabled: true,
+        title: '赞助推荐',
+        imageUrl: '/api/media/public/site/icon.png',
+      },
+      global: { stubs: { NuxtLink: nuxtLinkStub } },
+    })
+
+    expect(wrapper.find('img').exists()).toBe(false)
+    expect(wrapper.text()).toContain('上传广告大图后')
   })
 
   it('本机和私网外链回退到站内推荐页', () => {

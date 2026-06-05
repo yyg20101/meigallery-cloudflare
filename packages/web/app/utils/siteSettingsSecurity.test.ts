@@ -197,21 +197,21 @@ describe('siteSettingsSecurity', () => {
   it('归一化首页广告文案并拒绝超长或控制字符', () => {
     expect(normalizeHomeAdText('home_ad_title', '  会员季   精选内容  ')).toBe('会员季 精选内容')
     expect(normalizeHomeAdText('home_ad_sponsor', null)).toBe('')
-    expect(normalizeHomeAdText('home_ad_eyebrow', '超过十二个字符的广告活动眉标')).toBe('')
-    expect(normalizeHomeAdText('home_ad_title', 'x'.repeat(41))).toBe('')
-    expect(normalizeHomeAdText('home_ad_summary', 'x'.repeat(121))).toBe('')
-    expect(normalizeHomeAdText('home_ad_cta_label', 'x'.repeat(13))).toBe('')
-    expect(normalizeHomeAdText('home_ad_sponsor', 'x'.repeat(31))).toBe('')
+    expect(normalizeHomeAdText('home_ad_eyebrow', 'x'.repeat(17))).toBe('')
+    expect(normalizeHomeAdText('home_ad_title', 'x'.repeat(65))).toBe('')
+    expect(normalizeHomeAdText('home_ad_summary', 'x'.repeat(181))).toBe('')
+    expect(normalizeHomeAdText('home_ad_cta_label', 'x'.repeat(17))).toBe('')
+    expect(normalizeHomeAdText('home_ad_sponsor', 'x'.repeat(41))).toBe('')
     expect(normalizeHomeAdText('home_ad_title', '会员\u0001精选')).toBe('')
   })
 
   it('生成首页广告文案安全提示', () => {
     expect(getHomeAdTextPreviewWarnings({
       home_ad_eyebrow: '  本周   推荐  ',
-      home_ad_title: 'x'.repeat(41),
+      home_ad_title: 'x'.repeat(65),
       home_ad_summary: '会员\u0001精选',
       home_ad_cta_label: '',
-      home_ad_sponsor: 'x'.repeat(31),
+      home_ad_sponsor: 'x'.repeat(41),
     })).toEqual([
       '广告标题已按安全规则清空',
       '广告摘要已按安全规则清空',

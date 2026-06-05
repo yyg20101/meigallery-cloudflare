@@ -119,4 +119,77 @@ describe('useSiteSettings', () => {
 
     expect(siteSettings.homeAdActive.value).toBe(true)
   })
+
+  it('优先使用公开 home_ads，多广告为空时才回退旧单广告配置', async () => {
+    resetState()
+    apiMock
+      .mockResolvedValueOnce({
+        home_ad_enabled: true,
+        home_ad_active: true,
+        home_ad_title: '旧单广告',
+        home_ad_url: '/discover?sort=old',
+        home_ads: [
+          {
+            id: 'ad-2',
+            title: '第二条',
+            targetUrl: '/cases',
+            ctaLabel: '看案例',
+            imageUrl: 'https://example.com/ad.webp',
+            sortOrder: 2,
+          },
+          {
+            id: 'ad-1',
+            eyebrow: '本周推荐',
+            title: '第一条',
+            summary: '精选内容',
+            targetUrl: '/discover?sort=hot',
+            sponsor: '运营精选',
+            imageUrl: '/api/media/public/home-ads/ad-1/cover.webp',
+            sortOrder: 1,
+          },
+          {
+            id: 'unsafe',
+            title: '危险广告',
+            targetUrl: 'javascript:alert(1)',
+            sortOrder: 0,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        home_ad_enabled: true,
+        home_ad_active: true,
+        home_ad_title: '旧单广告',
+        home_ad_summary: '旧摘要',
+        home_ad_cta_label: '查看旧广告',
+        home_ad_url: '/discover?sort=old',
+        home_ads: [],
+      })
+
+    const siteSettings = useSiteSettings()
+    await siteSettings.fetchSettings()
+
+    expect(siteSettings.homeAds.value.map(ad => ad.id)).toEqual(['ad-1', 'ad-2'])
+    expect(siteSettings.homeAds.value[0]).toMatchObject({
+      title: '第一条',
+      url: '/discover?sort=hot',
+      imageUrl: '/api/media/public/home-ads/ad-1/cover.webp',
+    })
+    expect(siteSettings.homeAds.value[1]).toMatchObject({
+      title: '第二条',
+      url: '/cases',
+      imageUrl: 'https://example.com/ad.webp',
+    })
+
+    await siteSettings.fetchSettings({ force: true })
+
+    expect(siteSettings.homeAds.value).toEqual([
+      expect.objectContaining({
+        id: 'legacy-home-ad',
+        title: '旧单广告',
+        summary: '旧摘要',
+        ctaLabel: '查看旧广告',
+        url: '/discover?sort=old',
+      }),
+    ])
+  })
 })

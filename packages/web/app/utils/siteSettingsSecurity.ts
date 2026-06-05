@@ -28,11 +28,11 @@ const BLOCKED_CREDENTIAL_PARAM_NAMES = new Set([
   'xamzsignature',
 ])
 const HOME_AD_TEXT_LIMITS: Record<string, number> = {
-  home_ad_eyebrow: 12,
-  home_ad_title: 40,
-  home_ad_summary: 120,
-  home_ad_cta_label: 12,
-  home_ad_sponsor: 30,
+  home_ad_eyebrow: 16,
+  home_ad_title: 64,
+  home_ad_summary: 180,
+  home_ad_cta_label: 16,
+  home_ad_sponsor: 40,
 }
 const HOME_AD_TEXT_WARNING_LABELS: Record<string, string> = {
   home_ad_eyebrow: '广告眉标',
@@ -125,6 +125,12 @@ export function normalizePublicImageSettingUrl(value: unknown) {
   const url = normalizePublicSettingUrl(value)
   if (!url || url.startsWith('https://')) return url
   return url.startsWith('/api/media/public/site/') ? url : ''
+}
+
+export function normalizeHomeAdImageUrl(value: unknown) {
+  const url = normalizePublicSettingUrl(value)
+  if (!url || url.startsWith('https://')) return url
+  return url.startsWith('/api/media/public/home-ads/') ? url : ''
 }
 
 export function normalizeInternalPath(value: unknown) {

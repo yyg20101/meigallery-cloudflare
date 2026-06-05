@@ -1,6 +1,6 @@
 # 项目当前状态
 
-更新时间：2026-06-04
+更新时间：2026-06-05
 
 本文档是当前实现和部署状态的索引。若历史计划或早期 PRD 与本文冲突，以本文、`AGENTS.md`、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md`、`docs/GIT_WORKFLOW.md` 为准。
 
@@ -19,7 +19,7 @@
 - API Worker：`meigallery-api`，生产域名 `api.616618.xyz`。
 - 开发 Worker：`meigallery-web-dev` / `meigallery-api-dev`，仅使用 Workers dev 子域，不绑定生产域名。
 - 数据库：Cloudflare D1 `meigallery-db`。
-- D1 migrations：仓库当前维护到 `0021_home_ad_schedule.sql`；部署前需按目标环境执行所有未应用迁移。
+- D1 migrations：仓库当前维护到 `0022_home_ads.sql`；部署前需按目标环境执行所有未应用迁移。
 - 对象存储：Cloudflare R2 `meigallery-media`。
 - 视频：Cloudflare Stream 仍未接入，相关 secrets 为占位符，视频能力按规划保留；API 在缺少 Stream secrets 时返回 503 `STREAM_NOT_CONFIGURED`。
 - 生产部署：PR 合入 `main` 后手动执行 `./scripts/deploy.sh production` 或等价 wrangler 命令。
@@ -27,7 +27,7 @@
 
 ## 功能实现现状
 
-- 已实现：公开图库/标签/搜索/真实案例、登录注册、用户名登录、邮箱验证开关、用户中心、个人设置、后台图库/标签/用户/设置/审计、首页广告位配置/排期/后台实时预览/文案长度约束、前后台同款广告位安全清洗、首页内容配置保存校验和公开读取兜底、图库批量操作、图片上传、封面设置、单媒体 rank 配置、WordPress 迁移辅助、Telegram `gallery` / `case` 外部导入、Facebook Pixel 设置。
+- 已实现：公开图库/标签/搜索/真实案例、登录注册、用户名登录、邮箱验证开关、用户中心、个人设置、后台图库/标签/用户/设置/审计、独立首页广告位管理、多广告排序、大图上传、首页广告轮播、广告排期与安全清洗、首页内容配置保存校验和公开读取兜底、右下角服务流程/消息悬浮入口强化、图库批量操作、图片上传、封面设置、单媒体 rank 配置、WordPress 迁移辅助、Telegram `gallery` / `case` 外部导入、Facebook Pixel 设置。
 - 部分实现：zip 导入任务有 API 和后台入口，但当前重点实现和测试集中在解析/校验与任务记录；大文件异步完整处理仍需按后续阶段继续收敛。
 - 未接入：Cloudflare Stream 生产视频上传、编码和播放链路；相关字段、secret、媒体签名逻辑保留为规划能力。
 - 已完成迁移口径：真实案例当前统一为 `cases` / `case_images`、`/cases`、`/api/cases`、`case:create`；旧 `testimonial_*` 仅存在于历史文档、迁移脚本说明或兼容拒绝测试中。
@@ -95,6 +95,9 @@
 - 前端错误提示持续增强：登录、个人设置、后台图库/真实案例/标签/用户/站点设置/导入/联系方式/Import Token 等页面已统一使用 `resolveApiErrorMessage`，避免标准错误体、历史 `error` 字段或字符串 JSON 错误在页面层被吞掉。
 - 首页广告位站内跳转透明度增强：站内广告 CTA 已补目标页面提示和包含精确路径的无障碍名称，前台 smoke 与组件测试覆盖站内/外链两类提示，避免外链有安全说明而站内跳转去向不明确。
 - 首页广告位公开状态增强：`/api/settings/public` 已新增只读派生字段 `home_ad_active`，由服务端基于广告开关与排期统一判断当前是否展示；前台优先使用该字段，旧公开响应继续保留本地排期计算兜底。
+- 首页广告位管理增强：后台已新增独立 `/admin/ads` 管理页和 `home_ads` D1 表，支持多个首页广告的新增、编辑、启停、排序、排期、大图上传/删除和 Owner 审计日志；站点设置页旧单广告配置已降级为兼容提示与入口跳转。
+- 首页广告位展示增强：`/api/settings/public` 已返回过滤后的 `home_ads` 数组，前台优先渲染安全、启用且排期有效的多广告大图轮播；旧 `home_ad_*` 配置仅在新广告为空时作为兼容兜底。
+- 右下角悬浮入口增强：前台联系面板已重做为“服务流程 / 有新消息”双 CTA，突出看规则、联系站长、开通访问流程，并保留联系弹层、规则弹层和线索埋点。
 - 公开 URL 凭证参数持续增强：站点图标、OG 封面图、首页广告链接和规则页链接已拒绝 `token`、`api_key`、`signature`、`access_token` 等凭证类 URL 参数，覆盖 query 与 hash 片段，API 写入、公开读取和前端预览同款兜底。
 - 首页广告跳转参数持续增强：站内广告链接中的 `redirect`、`next`、`return_to` 等跳转目标已限制为公开前台路径，拒绝空目标、后台/API/资源路径、外站和嵌套危险跳转；登录页成功后的 `redirect` 参数已增加站内安全兜底，并保留后台正常登录回跳。
 - Facebook Pixel 隐私持续增强：前端埋点在当前 URL query 或 hash 含 `token`、`api_key`、`signature`、`access_token` 等凭证类参数时会跳过 Pixel 初始化和事件上报，埋点文本清洗同步覆盖凭证参数，避免敏感 URL 被第三方脚本带出。
