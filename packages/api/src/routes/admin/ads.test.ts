@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { Bindings, Variables } from '../../index'
 import type { HomeAdRow } from '../../utils/home-ads'
 import { adminAdRoutes } from './ads'
@@ -181,6 +181,90 @@ describe('后台广告位 API', () => {
       expect.objectContaining({ params: [1, 'ad-1'] }),
     ])
     expect(executed.some(item => item.sql.includes('INSERT INTO admin_audit_logs') && item.params[2] === 'home_ad_reorder')).toBe(true)
+  })
+
+  it('上传广告大图时写入 R2、更新图片字段并记录审计日志', async () => {
+    const executed: ExecutedSql = []
+    const r2Put = vi.fn()
+    const app = createApp()
+    const env = {
+      DB: createDb({
+        first: () => adRow(),
+        run: (sql, params) => {
+          executed.push({ sql, params })
+          return { success: true }
+        },
+      }),
+      R2: { put: r2Put },
+    } as unknown as Bindings
+    const form = new FormData()
+    form.set('file', new File(['image'], 'hero.webp', { type: 'image/webp' }))
+
+    const res = await app.request('/api/admin/ads/ad-1/image', { method: 'POST', body: form }, env)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.imageUrl).toMatch(/^\/api\/media\/public\/home-ads\/ad-1\/image_/)
+    expect(body.imageKey).toMatch(/^home-ads\/ad-1\/image_.*\.webp$/)
+    expect(r2Put).toHaveBeenCalledWith(expect.stringMatching(/^home-ads\/ad-1\/image_.*\.webp$/), expect.any(ArrayBuffer), expect.objectContaining({
+      httpMetadata: { contentType: 'image/webp' },
+    }))
+    expect(executed.some(item =>
+      item.sql.includes('UPDATE home_ads SET image_key = ?, image_url = ?')
+      && String(item.params[0]).startsWith('home-ads/ad-1/')
+      && String(item.params[1]).startsWith('/api/media/public/home-ads/ad-1/'),
+    )).toBe(true)
+    expect(executed.some(item => item.sql.includes('INSERT INTO admin_audit_logs') && item.params[2] === 'home_ad_image_upload')).toBe(true)
+  })
+
+  it('上传新广告大图前会删除属于当前广告位的旧 R2 图片', async () => {
+    const deleted: string[] = []
+    const app = createApp()
+    const env = {
+      DB: createDb({
+        first: () => adRow({
+          image_key: 'home-ads/ad-1/old.webp',
+          image_url: '/api/media/public/home-ads/ad-1/old.webp',
+        }),
+      }),
+      R2: {
+        async delete(key: string) {
+          deleted.push(key)
+        },
+        async put() {},
+      },
+    } as unknown as Bindings
+    const form = new FormData()
+    form.set('file', new File(['image'], 'hero.jpg', { type: 'image/jpeg' }))
+
+    const res = await app.request('/api/admin/ads/ad-1/image', { method: 'POST', body: form }, env)
+
+    expect(res.status).toBe(200)
+    expect(deleted).toEqual(['home-ads/ad-1/old.webp'])
+  })
+
+  it('上传广告大图时拒绝不支持的格式和超过 3MB 的文件', async () => {
+    const r2Put = vi.fn()
+    const app = createApp()
+    const env = {
+      DB: createDb({
+        first: () => adRow(),
+      }),
+      R2: { put: r2Put },
+    } as unknown as Bindings
+    const invalidType = new FormData()
+    invalidType.set('file', new File(['gif'], 'hero.gif', { type: 'image/gif' }))
+    const oversized = new FormData()
+    oversized.set('file', new File([new Uint8Array(3 * 1024 * 1024 + 1)], 'hero.webp', { type: 'image/webp' }))
+
+    const typeRes = await app.request('/api/admin/ads/ad-1/image', { method: 'POST', body: invalidType }, env)
+    const sizeRes = await app.request('/api/admin/ads/ad-1/image', { method: 'POST', body: oversized }, env)
+
+    expect(typeRes.status).toBe(400)
+    expect((await typeRes.json()).message).toBe('仅支持 PNG、JPEG、WebP 格式')
+    expect(sizeRes.status).toBe(400)
+    expect((await sizeRes.json()).message).toBe('广告大图不能超过 3MB')
+    expect(r2Put).not.toHaveBeenCalled()
   })
 
   it('删除广告位前校验大图 R2 key 必须属于当前广告', async () => {

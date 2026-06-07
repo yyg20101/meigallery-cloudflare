@@ -124,6 +124,22 @@ describe('HomeAdBand', () => {
     expect(wrapper.text()).toContain('不发送来源页信息')
   })
 
+  it('预览模式允许本地 blob 大图用于实时查看效果', () => {
+    const wrapper = mount(HomeAdBand, {
+      props: {
+        enabled: true,
+        preview: true,
+        title: '本地预览广告',
+        imageUrl: 'blob:http://localhost/ad-preview',
+      },
+      global: { stubs: { NuxtLink: nuxtLinkStub } },
+    })
+
+    expect(wrapper.get('img').attributes('src')).toBe('blob:http://localhost/ad-preview')
+    expect(wrapper.get('img').attributes('referrerpolicy')).toBe('no-referrer')
+    expect(wrapper.find('a').exists()).toBe(false)
+  })
+
   it('展示默认文案、推广标识和赞助来源说明', () => {
     const wrapper = mount(HomeAdBand, {
       props: {

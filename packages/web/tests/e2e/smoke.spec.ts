@@ -88,6 +88,16 @@ test.describe('核心页面 smoke', () => {
     expect(overflow).toBe(false)
   })
 
+  test('首页广告默认站内链接可以真实跳转', async ({ page }) => {
+    await page.goto('/')
+    const homeAd = page.getByRole('region', { name: '首页广告推荐' })
+    const internalCta = homeAd.getByRole('link', { name: '查看推荐，站内推荐，目标页面 探索页，路径 /discover?sort=hot' })
+
+    await expect(internalCta).toHaveAttribute('href', '/discover?sort=hot')
+    await internalCta.click()
+    await expect(page).toHaveURL(/\/discover\?sort=hot$/)
+  })
+
   test('首页广告外链输出安全属性和离站提示', async ({ request, page }) => {
     await request.patch(`${apiURL}/api/admin/settings`, {
       data: {
@@ -131,13 +141,22 @@ test.describe('核心页面 smoke', () => {
   test('后台广告预览不渲染可跳转链接', async ({ page }) => {
     await page.goto('/admin/ads')
 
-    await page.locator('input[placeholder="/discover?sort=hot"]').fill(longAdUrl)
-    await page.locator('input[placeholder="查看详情"]').fill('查看赞助')
+    await page.getByRole('button', { name: '新增广告位' }).click()
+    const targetInput = page.locator('input[placeholder="/discover?sort=hot"]')
+    await expect(targetInput).toHaveValue('/discover?sort=hot')
 
     const preview = page.getByRole('region', { name: '首页广告推荐' })
     const previewCta = preview.locator('[aria-disabled="true"]')
 
     await expect(preview).toBeVisible()
+    await expect(previewCta).toHaveAttribute('aria-describedby', /home-ad-internal-note$/)
+    await expect(preview.getByText('站内推荐')).toBeVisible()
+    await expect(preview.getByText('目标页面 探索页')).toBeVisible()
+    await expect(preview.locator('a[href="/discover?sort=hot"]')).toHaveCount(0)
+
+    await targetInput.fill(longAdUrl)
+    await page.locator('input[placeholder="查看详情"]').fill('查看赞助')
+
     await expect(previewCta).toContainText('查看赞助')
     await expect(previewCta).toHaveAttribute('aria-describedby', /home-ad-external-note$/)
     await expect(preview.getByText('外部链接')).toBeVisible()
