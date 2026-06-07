@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Bindings } from '../index'
-import { AnalyticsIngestError, ingestAnalyticsBatch, normalizeSessionEndPayload, shouldSampleAnalyticsEvent } from './analytics-ingest'
+import { ingestAnalyticsBatch, normalizeSessionEndPayload, shouldSampleAnalyticsEvent } from './analytics-ingest'
 
 type Call = { sql: string; params: unknown[] }
 

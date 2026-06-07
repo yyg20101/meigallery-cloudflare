@@ -286,8 +286,8 @@ async function readAnalyticsSettings(db: AnalyticsDb): Promise<AnalyticsSettings
 
 function normalizeAnalyticsBatch(
   body: unknown,
-  settings: AnalyticsSettings,
-  context: AnalyticsIngestContext,
+  _settings: AnalyticsSettings,
+  _context: AnalyticsIngestContext,
 ): NormalizedAnalyticsBatch {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     throw new AnalyticsIngestError(400, 'ANALYTICS_BODY_INVALID', '分析上报内容必须是 JSON 对象')
@@ -388,7 +388,7 @@ function normalizeAnalyticsEvent(
   }
 }
 
-async function persistAcceptedEvent(
+async function _persistAcceptedEvent(
   db: AnalyticsDb,
   batch: NormalizedAnalyticsBatch,
   event: NormalizedAnalyticsEvent,
@@ -702,7 +702,6 @@ async function writeClickDailyBatch(
   for (const event of events) {
     if (!CLICK_EVENTS.has(event.eventName)) continue
     const elementId = stringProp(event.props.element_id) || event.eventName
-    const elementType = stringProp(event.props.element_type) || event.eventName
     const location = stringProp(event.props.location) || event.routeName
     const targetType = stringProp(event.props.target_type) || event.entityType
     const targetId = stringProp(event.props.target_id) || event.entityId
