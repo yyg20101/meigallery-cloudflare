@@ -4,7 +4,7 @@ version: 1.0
 date_created: 2026-06-07
 last_updated: 2026-06-07
 owner: MeiGallery
-status: 'Planned'
+status: 'In Progress'
 tags: [feature, analytics, cloudflare, d1, prd, cost]
 ---
 
@@ -63,14 +63,14 @@ tags: [feature, analytics, cloudflare, d1, prd, cost]
 
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
-| TASK-009 | 新增 `packages/api/migrations/0023_analytics_core.sql`，创建 `analytics_visitors`、`analytics_sessions`、`analytics_page_summaries`、`analytics_session_summaries`、`analytics_events` 和 `analytics_ingest_health_daily`。 | | |
-| TASK-010 | 在 `0023_analytics_core.sql` 增加 `site_settings` 默认键：`analytics_enabled=false`、`analytics_sample_rate=0.01`、`analytics_consent_mode=limited`，使用现有设置表 upsert 口径。 | | |
-| TASK-011 | 在 `0023_analytics_core.sql` 为 `analytics_events(event_name, occurred_at)`、`analytics_events(session_id, occurred_at)`、`analytics_events(entity_type, entity_id, occurred_at)`、`analytics_sessions(started_at, source_channel)`、`analytics_sessions(visitor_id, started_at)` 建索引。 | | |
-| TASK-012 | 新增 `packages/api/migrations/0024_invite_codes.sql`，创建 `invite_codes`、`invite_registrations`，并为 `invite_codes(status, expires_at)`、`invite_registrations(invite_code_id, registered_at)` 建索引。 | | |
-| TASK-013 | 新增 `packages/api/migrations/0025_analytics_aggregates.sql`，创建 `analytics_daily_sources`、`analytics_daily_pages`、`analytics_daily_events`、`analytics_path_edges`、`analytics_invite_daily`、`analytics_click_daily`，所有日报表以 `date` 加主要维度建立唯一索引用于幂等 upsert。 | | |
-| TASK-014 | 新增 `packages/api/migrations/0026_analytics_exports.sql`，创建 `analytics_export_jobs`，字段包含 `id`、`status`、`kind`、`range_from`、`range_to`、`r2_key`、`expires_at`、`created_by`、`created_at`、`error_message`。 | | |
-| TASK-015 | 更新 `docs/TECHNICAL_SPEC.md` 的数据表摘要，新增数据分析表状态为 `[后续规划]`，并明确当前生产能力在实现前仍未接入。 | | |
-| TASK-016 | 为四个迁移新增 schema 回归测试或 migration smoke，验证表、唯一索引、必需索引和默认设置键存在。 | | |
+| TASK-009 | 新增 `packages/api/migrations/0023_analytics_core.sql`，创建 `analytics_visitors`、`analytics_sessions`、`analytics_page_summaries`、`analytics_session_summaries`、`analytics_events` 和 `analytics_ingest_health_daily`。 | ✅ | 2026-06-07 |
+| TASK-010 | 在 `0023_analytics_core.sql` 增加 `site_settings` 默认键：`analytics_enabled=false`、`analytics_sample_rate=0.01`、`analytics_consent_mode=limited`，使用现有设置表 upsert 口径。 | ✅ | 2026-06-07 |
+| TASK-011 | 在 `0023_analytics_core.sql` 为 `analytics_events(event_name, occurred_at)`、`analytics_events(session_id, occurred_at)`、`analytics_events(entity_type, entity_id, occurred_at)`、`analytics_sessions(started_at, source_channel)`、`analytics_sessions(visitor_id, started_at)` 建索引。 | ✅ | 2026-06-07 |
+| TASK-012 | 新增 `packages/api/migrations/0024_invite_codes.sql`，创建 `invite_codes`、`invite_registrations`，并为 `invite_codes(status, expires_at)`、`invite_registrations(invite_code_id, registered_at)` 建索引。 | ✅ | 2026-06-07 |
+| TASK-013 | 新增 `packages/api/migrations/0025_analytics_aggregates.sql`，创建 `analytics_daily_sources`、`analytics_daily_pages`、`analytics_daily_events`、`analytics_path_edges`、`analytics_invite_daily`、`analytics_click_daily`，所有日报表以 `date` 加主要维度建立唯一索引用于幂等 upsert。 | ✅ | 2026-06-07 |
+| TASK-014 | 新增 `packages/api/migrations/0026_analytics_exports.sql`，创建 `analytics_export_jobs`，字段包含 `id`、`status`、`kind`、`range_from`、`range_to`、`r2_key`、`expires_at`、`created_by`、`created_at`、`error_message`。 | ✅ | 2026-06-07 |
+| TASK-015 | 更新 `docs/TECHNICAL_SPEC.md` 的数据表摘要，新增数据分析表状态为 `[部分实现]`，并明确当前生产能力在接口、SDK 和后台页面接入前仍未完整可用。 | ✅ | 2026-06-07 |
+| TASK-016 | 为四个迁移新增 schema 回归测试或 migration smoke，验证表、唯一索引、必需索引和默认设置键存在。 | ✅ | 2026-06-07 |
 
 ### Implementation Phase 2
 

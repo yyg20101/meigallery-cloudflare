@@ -276,7 +276,7 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 
 ## 8. D1 数据库 Schema `[当前实现]`
 
-以下为当前核心表摘要，完整结构以 `packages/api/migrations/` 中已应用到 `0019_seed_member_activity.sql` 的迁移为准。
+以下为当前核心表摘要，完整结构以 `packages/api/migrations/` 中的顺序迁移为准。数据分析相关表已通过 `0023` 到 `0026` 建立 schema，但采集 API、前端 SDK、聚合任务和后台分析页面仍属于后续接入阶段。
 
 ### users
 
@@ -533,6 +533,38 @@ INSERT INTO site_settings (key, value) VALUES
 ```
 
 旧 `home_ad_*` 站点设置仍保留为公开读取兼容兜底；当前主要首页广告配置使用独立 `home_ads` 表和 `/api/admin/ads` 后台页面维护。
+
+### 数据分析表 `[部分实现]`
+
+当前已通过 `0023_analytics_core.sql` 到 `0026_analytics_exports.sql` 建立数据分析 schema。此阶段只代表数据库结构、默认设置和索引已落地；在 `/api/analytics/*`、`/api/admin/analytics/*`、前端 SDK 和后台页面接入前，生产数据分析能力仍未完整启用。
+
+核心表分层：
+
+| 表 | 状态 | 用途 |
+|------|------|------|
+| `analytics_visitors` | `[部分实现]` | 匿名访客事实，不保存原始 IP 或完整 user agent；可在登录后绑定内部 `user_id`。 |
+| `analytics_sessions` | `[部分实现]` | session 入口、退出、来源、设备、国家和有效浏览摘要。 |
+| `analytics_page_summaries` | `[部分实现]` | session 内页面级摘要，用于页面时长、跳出、入口/退出和滚动深度统计。 |
+| `analytics_session_summaries` | `[部分实现]` | session 级摘要，用于默认后台报表避免扫描采样明细。 |
+| `analytics_events` | `[部分实现]` | 关键转化事件和 1%-5% 采样明细；不作为默认后台报表的全量事件仓库。 |
+| `analytics_ingest_health_daily` | `[部分实现]` | 每日 accepted/rejected/duplicate/sensitive blocked、采样、丢弃和 D1 预算估算。 |
+| `invite_codes` | `[部分实现]` | 后台邀请码定义，保存 `code_hash` 和 `display_code`，不保存可反推的完整明文码。 |
+| `invite_registrations` | `[部分实现]` | 邀请注册事实，关联 visitor、session、注册用户和首次会员发放回填。 |
+| `analytics_daily_sources` | `[部分实现]` | 按日期、来源渠道、来源名称和邀请码聚合访问、注册、联系和会员发放。 |
+| `analytics_daily_pages` | `[部分实现]` | 按日期、route、path 和业务实体聚合页面表现。 |
+| `analytics_daily_events` | `[部分实现]` | 按日期、事件名和实体聚合关键事件计数。 |
+| `analytics_path_edges` | `[部分实现]` | 按日期聚合 `from_route -> to_route` 路径边。 |
+| `analytics_invite_daily` | `[部分实现]` | 按日期和邀请码聚合落地、注册、联系和会员发放。 |
+| `analytics_click_daily` | `[部分实现]` | 按日期、元素和目标聚合 raw/effective/duplicate 点击。 |
+| `analytics_export_jobs` | `[部分实现]` | Owner-only CSV 导出任务元数据，导出文件后续写入 R2 并设置过期时间。 |
+
+成本与索引口径：
+
+- 默认后台 7/30/90 天报表读取日报聚合表和摘要表，禁止首页看板直接扫描 `analytics_events`。
+- `analytics_events` 只保留事件名、session 和实体三类必要组合索引：`(event_name, occurred_at)`、`(session_id, occurred_at)`、`(entity_type, entity_id, occurred_at)`。
+- 日报聚合表均以 `date` 加主要维度建立唯一索引，供 Cron 聚合任务幂等 upsert。
+- 不给 `event_props` 任意 JSON 字段建索引，避免高基数属性导致写放大和存储成本失控。
+- `site_settings` 已新增 `analytics_enabled=false`、`analytics_sample_rate=0.01`、`analytics_consent_mode=limited`，因此前端 SDK 后续接入时默认保持关闭态。
 
 ### home_ads
 
