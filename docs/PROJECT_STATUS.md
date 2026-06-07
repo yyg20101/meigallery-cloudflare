@@ -30,13 +30,13 @@
 - 已实现：公开图库/标签/搜索/真实案例、登录注册、用户名登录、邮箱验证开关、用户中心、个人设置、后台图库/标签/用户/设置/审计、独立首页广告位管理、多广告排序、大图上传、首页广告轮播、广告排期与安全清洗、首页内容配置保存校验和公开读取兜底、右下角服务流程/消息悬浮入口强化、图库批量操作、图片上传、封面设置、单媒体 rank 配置、WordPress 迁移辅助、Telegram `gallery` / `case` 外部导入、Facebook Pixel 设置。
 - 部分实现：zip 导入任务有 API 和后台入口，但当前重点实现和测试集中在解析/校验与任务记录；大文件异步完整处理仍需按后续阶段继续收敛。
 - 未接入：Cloudflare Stream 生产视频上传、编码和播放链路；相关字段、secret、媒体签名逻辑保留为规划能力。
-- 规划：站内一方数据分析能力已形成可落地需求方案，覆盖邀请注册、访问来源、访问链路、点击次数、点击频率、浏览时长、完整埋点字典、D1 迁移拆分、API 契约、前端 SDK、后台页面、测试矩阵，以及基于 Cloudflare D1 / Workers / Queues / Workers Analytics Engine 官方文档的性能和成本优化约束；当前代码仍只有图库浏览量、点赞计数、后台基础概览和 Facebook Pixel 辅助埋点，后续实现以 `docs/PRD_DATA_ANALYTICS.md` 为需求入口。
+- 规划：站内一方数据分析能力已形成可落地需求方案和实施计划，覆盖邀请注册、访问来源、访问链路、点击次数、点击频率、浏览时长、完整埋点字典、D1 迁移拆分、API 契约、前端 SDK、后台页面、测试矩阵，以及基于 Cloudflare D1 / Workers / Queues / Workers Analytics Engine 官方文档的性能和成本优化约束；当前代码仍只有图库浏览量、点赞计数、后台基础概览和 Facebook Pixel 辅助埋点，后续实现以 `docs/PRD_DATA_ANALYTICS.md` 为需求入口，以 `plan/feature-data-analytics-implementation-1.md` 为执行拆分，不代表已有生产能力。
 - 已完成迁移口径：真实案例当前统一为 `cases` / `case_images`、`/cases`、`/api/cases`、`case:create`；旧 `testimonial_*` 仅存在于历史文档、迁移脚本说明或兼容拒绝测试中。
 
 ## PRD 质量状态
 
 - 当前 PRD 质量审阅和整改索引见 `docs/PRD_QUALITY_REVIEW.md`。
-- 数据分析需求方案见 `docs/PRD_DATA_ANALYTICS.md`，当前已细化到工程落地规格、性能预算和成本护栏，但仍是后续实现草案，不代表已有生产能力。
+- 数据分析需求方案见 `docs/PRD_DATA_ANALYTICS.md`，实施计划见 `plan/feature-data-analytics-implementation-1.md`；当前已细化到工程落地规格、性能预算和成本护栏，但仍是后续实现草案，不代表已有生产能力。
 - 当前可验收能力、部分实现能力和规划能力必须按 `docs/PRD_QUALITY_REVIEW.md` 的需求状态矩阵区分，不得把历史 PRD 中的规划项当作上线阻断项。
 - Cloudflare Stream、Email Service、zip 大文件异步导入、旧站内容审核状态机属于需要单独补齐验收标准的重点区域。
 - 后续新增或修改 PRD 时，必须为成功指标补充测试环境、数据规模、采样方法和失败路径。
