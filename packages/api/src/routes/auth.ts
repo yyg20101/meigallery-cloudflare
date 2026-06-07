@@ -13,6 +13,7 @@ import {
 } from '../services/email-verification'
 import { validateUsername } from '@meigallery/shared/utils'
 import { getTurnstileConfigError, validateTurnstile } from '../utils/turnstile'
+import { consumeInviteCodeForRegistration } from '../services/invite-codes'
 
 export const authRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -134,6 +135,11 @@ authRoutes.post('/register', async (c) => {
     username?: string
     nickname?: string
     code?: string
+    inviteCode?: string
+    analyticsVisitorId?: string
+    analyticsSessionId?: string
+    sourceChannel?: string
+    landingPath?: string
     turnstileToken?: string
   }>()
 
@@ -211,6 +217,21 @@ authRoutes.post('/register', async (c) => {
     .bind(email, username, body.nickname?.trim() || null, passwordHash, 'user', 'active', emailVerified)
     .run()
   const userId = insertResult.meta.last_row_id
+
+  if (body.inviteCode) {
+    try {
+      await consumeInviteCodeForRegistration(db, {
+        code: body.inviteCode,
+        invitedUserId: userId,
+        visitorId: body.analyticsVisitorId,
+        sessionId: body.analyticsSessionId,
+        sourceChannel: body.sourceChannel,
+        landingPath: body.landingPath,
+      })
+    } catch (error) {
+      console.warn('邀请码注册绑定失败，已继续普通注册:', error)
+    }
+  }
 
   // 创建会话
   await createSession(c, userId)

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { getHomeAdTextPreviewWarnings, isScheduledSiteFeatureActive, normalizeHomeAdUrl, normalizePublicImageSettingUrl, safeHomeAdText, safeSiteText } from '~/utils/siteSettingsSecurity'
+import { normalizePublicImageSettingUrl, safeSiteText } from '~/utils/siteSettingsSecurity'
 
 definePageMeta({ layout: 'admin' })
 
@@ -54,28 +54,6 @@ const message = ref('')
 const siteIconInput = ref<HTMLInputElement | null>(null)
 const messageIsError = computed(() => message.value.includes('失败') || message.value.includes('不一致'))
 const safeSiteIconPreview = computed(() => normalizePublicImageSettingUrl(form.site_icon))
-const safeHomeAdPreviewUrl = computed(() => normalizeHomeAdUrl(form.home_ad_url) || '/discover?sort=hot')
-const unsafeHomeAdUrl = computed(() => Boolean(form.home_ad_url.trim()) && !normalizeHomeAdUrl(form.home_ad_url))
-const safeHomeAdPreviewText = computed(() => ({
-  eyebrow: safeHomeAdText('home_ad_eyebrow', form.home_ad_eyebrow),
-  title: safeHomeAdText('home_ad_title', form.home_ad_title),
-  summary: safeHomeAdText('home_ad_summary', form.home_ad_summary),
-  ctaLabel: safeHomeAdText('home_ad_cta_label', form.home_ad_cta_label),
-  sponsor: safeHomeAdText('home_ad_sponsor', form.home_ad_sponsor),
-}))
-const homeAdPreviewWarnings = computed(() => {
-  return getHomeAdTextPreviewWarnings(form)
-})
-const homeAdPreviewActive = computed(() => isScheduledSiteFeatureActive(
-  homeAdEnabled.value,
-  form.home_ad_starts_at,
-  form.home_ad_ends_at,
-))
-const homeAdScheduleStatus = computed(() => {
-  if (!homeAdEnabled.value) return { label: '已关闭', class: 'text-gray-500' }
-  if (!homeAdPreviewActive.value) return { label: '当前未展示', class: 'text-amber-600' }
-  return { label: '当前展示中', class: 'text-green-600' }
-})
 
 function resolveSeoSnapshot(source: Record<string, unknown>) {
   const siteName = safeSiteText('site_name', source.site_name) || 'MeiGallery'
@@ -401,127 +379,42 @@ async function toggleVideo() {
 
       <fieldset class="space-y-4">
         <legend class="w-full border-b border-gray-200 pb-2 text-sm font-semibold text-gray-900">首页视觉配置</legend>
-        <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
-          <div class="space-y-4">
-            <div>
-              <label class="mb-1 block text-sm font-medium text-gray-700">首页主标题</label>
-              <input v-model="form.home_hero_title" maxlength="40" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="精选写真，按地区发现" />
-            </div>
-            <div>
-              <label class="mb-1 block text-sm font-medium text-gray-700">首页副标题</label>
-              <textarea v-model="form.home_hero_subtitle" rows="2" maxlength="180" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="用于首页首屏说明" />
-            </div>
-            <div>
-              <label class="mb-1 block text-sm font-medium text-gray-700">主推地区 slugs</label>
-              <input v-model="form.home_featured_region_slugs" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="canada,domestic,toronto,vancouver" />
-              <p class="mt-1 text-xs text-gray-400">英文逗号分隔；前台会优先展示这些地区标签。</p>
-            </div>
-            <div>
-              <label class="mb-1 block text-sm font-medium text-gray-700">首页热门标签数量</label>
-              <input v-model="form.home_hot_tag_limit" type="number" min="1" max="30" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="15" />
-            </div>
-            <div class="rounded-xl border border-[#eadfd2] bg-[#fffbf7] p-4">
-              <label class="flex items-start gap-3">
-                <input v-model="homeAdEnabled" type="checkbox" class="mt-1 h-4 w-4 rounded border-gray-300" />
-                <span>
-                  <span class="block text-sm font-medium text-gray-800">启用首页广告位</span>
-                  <span class="mt-0.5 block text-xs leading-5 text-gray-500">展示在首页首屏轮播下方；链接只允许站内相对路径或 https 外链。</span>
-                </span>
-              </label>
-              <div class="mt-4 grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label class="mb-1 block text-sm font-medium text-gray-700">广告眉标</label>
-                  <input v-model="form.home_ad_eyebrow" maxlength="12" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="本周推荐" />
-                </div>
-                <div>
-                  <label class="mb-1 block text-sm font-medium text-gray-700">赞助/来源说明</label>
-                  <input v-model="form.home_ad_sponsor" maxlength="30" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="MeiGallery 运营推荐" />
-                </div>
-              </div>
-              <div class="mt-4">
-                <label class="mb-1 block text-sm font-medium text-gray-700">广告标题</label>
-                <input v-model="form.home_ad_title" maxlength="40" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="会员季精选内容" />
-              </div>
-              <div class="mt-4">
-                <label class="mb-1 block text-sm font-medium text-gray-700">广告摘要</label>
-                <textarea v-model="form.home_ad_summary" rows="2" maxlength="120" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="探索本周精选图库、真实案例和会员可访问内容。" />
-              </div>
-              <div class="mt-4 grid gap-4 sm:grid-cols-[minmax(0,1fr)_10rem]">
-                <div>
-                  <label class="mb-1 block text-sm font-medium text-gray-700">跳转链接</label>
-                  <input v-model="form.home_ad_url" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="/discover?sort=hot" />
-                </div>
-                <div>
-                  <label class="mb-1 block text-sm font-medium text-gray-700">按钮文案</label>
-                  <input v-model="form.home_ad_cta_label" maxlength="12" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="查看推荐" />
-                </div>
-              </div>
-              <div class="mt-4 grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label class="mb-1 block text-sm font-medium text-gray-700">开始时间</label>
-                  <input v-model="form.home_ad_starts_at" type="datetime-local" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-                  <p class="mt-1 text-xs text-gray-400">留空表示立即开始；提交后会转成 UTC ISO 时间。</p>
-                </div>
-                <div>
-                  <label class="mb-1 block text-sm font-medium text-gray-700">结束时间</label>
-                  <input v-model="form.home_ad_ends_at" type="datetime-local" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-                  <p class="mt-1 text-xs text-gray-400">留空表示不限制结束时间；结束时间必须晚于开始时间。</p>
-                </div>
-              </div>
-              <p class="mt-4 text-xs text-gray-500">
-                当前状态：
-                <span :class="homeAdEnabled ? 'text-green-600' : 'text-gray-500'">{{ homeAdEnabled ? '已启用' : '已关闭' }}</span>
-                <span class="mx-2 text-gray-300">|</span>
-                <span class="text-gray-500">{{ form.home_ad_starts_at || '未设置开始时间' }}</span>
-                <span class="mx-2 text-gray-300">→</span>
-                <span class="text-gray-500">{{ form.home_ad_ends_at || '未设置结束时间' }}</span>
-              </p>
-            </div>
+        <div class="space-y-4">
+          <div>
+            <label class="mb-1 block text-sm font-medium text-gray-700">首页主标题</label>
+            <input v-model="form.home_hero_title" maxlength="40" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="精选写真，按地区发现" />
+          </div>
+          <div>
+            <label class="mb-1 block text-sm font-medium text-gray-700">首页副标题</label>
+            <textarea v-model="form.home_hero_subtitle" rows="2" maxlength="180" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="用于首页首屏说明" />
+          </div>
+          <div>
+            <label class="mb-1 block text-sm font-medium text-gray-700">主推地区 slugs</label>
+            <input v-model="form.home_featured_region_slugs" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="canada,domestic,toronto,vancouver" />
+            <p class="mt-1 text-xs text-gray-400">英文逗号分隔；前台会优先展示这些地区标签。</p>
+          </div>
+          <div>
+            <label class="mb-1 block text-sm font-medium text-gray-700">首页热门标签数量</label>
+            <input v-model="form.home_hot_tag_limit" type="number" min="1" max="30" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="15" />
           </div>
 
-          <aside class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm shadow-gray-200/60">
-            <div class="flex items-start justify-between gap-3">
+          <section class="rounded-xl border border-[#eadfd2] bg-[#fffbf7] p-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">广告预览</p>
-                <h3 class="mt-1 text-sm font-semibold text-gray-900">首页广告位实时效果</h3>
+                <h2 class="text-sm font-semibold text-gray-950">首页广告已迁移到广告位管理</h2>
+                <p class="mt-1 text-xs leading-5 text-gray-500">新入口支持首页多广告、排序、排期和大图上传；旧单广告配置仅作为公开读取兼容兜底。</p>
               </div>
-              <span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-600">{{ homeAdScheduleStatus.label }}</span>
+              <NuxtLink
+                to="/admin/ads"
+                class="inline-flex items-center justify-center rounded-lg bg-gray-950 px-4 py-2 text-sm font-medium text-white transition hover:-translate-y-0.5 hover:bg-gray-800"
+              >
+                管理广告位
+              </NuxtLink>
             </div>
-            <div v-if="homeAdEnabled" class="mt-4">
-              <HomeAdBand
-                :enabled="homeAdEnabled"
-                preview
-                :eyebrow="safeHomeAdPreviewText.eyebrow"
-                :title="safeHomeAdPreviewText.title"
-                :summary="safeHomeAdPreviewText.summary"
-                :cta-label="safeHomeAdPreviewText.ctaLabel"
-                :url="safeHomeAdPreviewUrl"
-                :sponsor="safeHomeAdPreviewText.sponsor"
-              />
-            </div>
-            <div v-else class="mt-4 rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-5 py-10 text-center text-sm text-gray-500">
-              广告位已关闭，保存后首页不展示。
-            </div>
-            <div class="mt-4 space-y-2 text-xs leading-5">
-              <p class="break-words" :class="unsafeHomeAdUrl ? 'text-amber-700' : 'text-gray-500'">
-                链接：{{ safeHomeAdPreviewUrl }}
-                <span v-if="unsafeHomeAdUrl" role="status" aria-live="polite" class="ml-2 font-medium">原始链接不安全，已回退到推荐页</span>
-              </p>
-              <p v-if="homeAdPreviewWarnings.length > 0" role="status" aria-live="polite" class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-700">
-                <span class="font-medium">预览已安全收紧：</span>
-                <span>{{ homeAdPreviewWarnings.join('；') }}</span>
-              </p>
-              <p class="text-gray-500">
-                排期：
-                <span>{{ form.home_ad_starts_at || '立即开始' }}</span>
-                <span class="mx-1 text-gray-300">→</span>
-                <span>{{ form.home_ad_ends_at || '长期展示' }}</span>
-              </p>
-              <p class="text-gray-500">
-                说明：预览使用公开读取侧同款清洗规则，保存前不会触发线上设置变更。
-              </p>
-            </div>
-          </aside>
+            <p v-if="homeAdEnabled" class="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">
+              检测到旧首页广告开关仍为开启；当新广告位为空时，前台仍会使用旧配置兜底展示。
+            </p>
+          </section>
         </div>
       </fieldset>
 

@@ -1,6 +1,6 @@
 # 项目当前状态
 
-更新时间：2026-06-04
+更新时间：2026-06-07
 
 本文档是当前实现和部署状态的索引。若历史计划或早期 PRD 与本文冲突，以本文、`AGENTS.md`、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md`、`docs/GIT_WORKFLOW.md` 为准。
 
@@ -19,7 +19,7 @@
 - API Worker：`meigallery-api`，生产域名 `api.616618.xyz`。
 - 开发 Worker：`meigallery-web-dev` / `meigallery-api-dev`，仅使用 Workers dev 子域，不绑定生产域名。
 - 数据库：Cloudflare D1 `meigallery-db`。
-- D1 migrations：仓库当前维护到 `0021_home_ad_schedule.sql`；部署前需按目标环境执行所有未应用迁移。
+- D1 migrations：仓库当前维护到 `0026_analytics_exports.sql`；部署前需按目标环境执行所有未应用迁移。
 - 对象存储：Cloudflare R2 `meigallery-media`。
 - 视频：Cloudflare Stream 仍未接入，相关 secrets 为占位符，视频能力按规划保留；API 在缺少 Stream secrets 时返回 503 `STREAM_NOT_CONFIGURED`。
 - 生产部署：PR 合入 `main` 后手动执行 `./scripts/deploy.sh production` 或等价 wrangler 命令。
@@ -27,14 +27,16 @@
 
 ## 功能实现现状
 
-- 已实现：公开图库/标签/搜索/真实案例、登录注册、用户名登录、邮箱验证开关、用户中心、个人设置、后台图库/标签/用户/设置/审计、首页广告位配置/排期/后台实时预览/文案长度约束、前后台同款广告位安全清洗、首页内容配置保存校验和公开读取兜底、图库批量操作、图片上传、封面设置、单媒体 rank 配置、WordPress 迁移辅助、Telegram `gallery` / `case` 外部导入、Facebook Pixel 设置。
+- 已实现：公开图库/标签/搜索/真实案例、登录注册、用户名登录、邮箱验证开关、用户中心、个人设置、后台图库/标签/用户/设置/审计、独立首页广告位管理、多广告排序、大图上传、首页广告轮播、广告排期与安全清洗、首页内容配置保存校验和公开读取兜底、右下角服务流程/消息悬浮入口强化、图库批量操作、图片上传、封面设置、单媒体 rank 配置、WordPress 迁移辅助、Telegram `gallery` / `case` 外部导入、Facebook Pixel 设置。
 - 部分实现：zip 导入任务有 API 和后台入口，但当前重点实现和测试集中在解析/校验与任务记录；大文件异步完整处理仍需按后续阶段继续收敛。
 - 未接入：Cloudflare Stream 生产视频上传、编码和播放链路；相关字段、secret、媒体签名逻辑保留为规划能力。
+- 当前实现：站内一方数据分析能力已形成可落地需求方案、实施计划和后台数据大盘 UI 设计；当前已落地 Phase 0 基础契约、Phase 1 D1 schema、Phase 2 公开采集 API、Phase 3 邀请码转化闭环、Phase 4 Web 轻量 SDK、Phase 5 核心业务事件、Phase 6 API 侧聚合/报表能力、Phase 7 后台页面/导航和 Phase 8 验证/上线护栏。已覆盖共享分析类型/常量、事件 props 白名单、URL/referrer 清洗、来源归因、运营时区日期、D1 rows read/write 预算读取、公开分析开关读取，`analytics_*`、`invite_codes`、`invite_registrations`、聚合日报和导出任务迁移，`/api/analytics/events`、`/api/analytics/session/end`、关闭态 disabled 响应、IP/visitor/session 三维兜底限流、采集健康日报写入，`/api/invites/:code/status` 公开状态查询，`/api/admin/invite-codes` 后台管理、注册成功绑定邀请上下文，管理员首次发放 rank > 0 会员时回填邀请转化，Web 端 URL 预清洗、route 归一化、visitor/session 队列、`sendBeacon` 兜底、15 秒本地时长累计、注册邀请码校验、登录/注册关键事件、首页广告曝光/点击、图库卡片曝光/点击、图库详情浏览、图片查看器打开、会员 CTA、点赞成功、搜索/筛选/排序/加载更多、联系与规则入口事件，API Worker 侧可信 `media_access_granted` / `media_access_denied` 媒体授权事件，Cron 日报聚合与保留期清理，`/api/admin/analytics/*` 后台分析查询、owner-only session 脱敏明细和 owner-only CSV 导出到 R2。后台已新增 `/admin/analytics` 及来源、内容、链路、点击、时长、邀请、健康子页，`/admin/invite-codes` 跳转入口，统一时间范围、加载、错误、空数据、D1 usage 状态，owner-only 导出按钮，以及邀请码创建、禁用和创建后复制完整邀请链接。Phase 8 已补 Playwright smoke、mock API、10,000 sessions/day 写入成本 fixture、100,000 事件规模后台报表性能 fixture、部署上线顺序和回滚说明；采集开关默认关闭，生产启用必须按 D1 migrations -> API -> Web SDK -> 后台 -> Owner 开关顺序执行。
 - 已完成迁移口径：真实案例当前统一为 `cases` / `case_images`、`/cases`、`/api/cases`、`case:create`；旧 `testimonial_*` 仅存在于历史文档、迁移脚本说明或兼容拒绝测试中。
 
 ## PRD 质量状态
 
 - 当前 PRD 质量审阅和整改索引见 `docs/PRD_QUALITY_REVIEW.md`。
+- 数据分析需求方案见 `docs/PRD_DATA_ANALYTICS.md`，实施计划见 `plan/feature-data-analytics-implementation-1.md`；当前已实施到后台数据大盘、端到端 smoke、性能预算、成本护栏、上线顺序和回滚路径。Phase 9 的 Cloudflare Queues / Workers Analytics Engine 仍仅在阈值触发后评估。
 - 当前可验收能力、部分实现能力和规划能力必须按 `docs/PRD_QUALITY_REVIEW.md` 的需求状态矩阵区分，不得把历史 PRD 中的规划项当作上线阻断项。
 - Cloudflare Stream、Email Service、zip 大文件异步导入、旧站内容审核状态机属于需要单独补齐验收标准的重点区域。
 - 后续新增或修改 PRD 时，必须为成功指标补充测试环境、数据规模、采样方法和失败路径。
@@ -43,6 +45,7 @@
 
 - 当前 UI 质量审阅和页面/组件验收清单见 `docs/UI_QUALITY_REVIEW.md`。
 - `docs/UI_DESIGN.md` 已补充页面级完成定义、组件状态矩阵、响应式验收和可访问性检查方法。
+- 数据分析后台大盘设计见 `docs/UI_DATA_ANALYTICS_DASHBOARD.md`，已用于首版 `/admin/analytics`、来源、内容、链路、点击、时长、邀请和采集健康页面实现；当前已补分析链路 Playwright smoke 和性能成本 fixtures，后续可按运营反馈扩展图表形态与多视口专项截图验收。
 - Stream 接入前，视频入口、视频专区、视频角标和播放器均按规划能力处理，不作为当前上线阻断项。
 - 线框图留存规则见 `docs/ui/wireframes/README.md`，后续关键线框图需导出到该目录或以截图、PDF、HTML 快照形式保存。
 
@@ -64,10 +67,10 @@
 - `P3-02 文档中的文件大小和上传限制不统一` 已完成：当前内容图片上传口径统一为 10MB；头像 2MB、联系方式二维码 2MB、站点图标 1MB 按独立入口限制记录。
 - `P3-03 缺少 lint / format 配置和 CI 约束` 已完成：根级 ESLint flat config、`.editorconfig`、`pnpm lint` 和 CI lint 步骤已接入，当前 lint 以 `--max-warnings=0` 零 warning 通过。
 - `P3-04 覆盖率未知` 已完成首轮收敛：API 已接入 Vitest v8 coverage，核心安全/导入模块设置基线阈值，CI 上传覆盖率 artifact。
-- `P3-05 后端路由文件过大，业务逻辑集中在路由层` 持续收敛中：认证路由中的邮箱验证码业务已抽到 `services/email-verification.ts`，后台用户列表查询已抽到 `services/admin-users.ts`，后台图库列表/详情/创建/更新/发布/下架/归档/批量操作已抽到 `services/admin-galleries.ts`，后台媒体列表/上传/封面/排序/更新/删除已抽到 `services/admin-media.ts`，均已补 service 单测；后续继续拆用户写操作。
+- `P3-05 后端路由文件过大，业务逻辑集中在路由层` 持续收敛中：认证路由中的邮箱验证码业务已抽到 `services/email-verification.ts`，后台用户列表/详情/活动、资料修改、密码重置、会员发放、角色和状态修改已抽到 `services/admin-users.ts`，后台图库列表/详情/创建/更新/发布/下架/归档/批量操作已抽到 `services/admin-galleries.ts`，后台媒体列表/上传/封面/排序/更新/删除已抽到 `services/admin-media.ts`，均已补 service 单测；后续继续拆分仍集中在路由层的后台设置、标签、导入和审计日志能力。
 - `P3-06 Stream 字段和签名逻辑存在，但生产视频链路未接入` 已完成收敛：Stream 接入前 UI 继续默认隐藏视频入口，API 缺少 Stream secrets 时返回 503 `STREAM_NOT_CONFIGURED`，不触发未配置的签名请求。
 - `corepack pnpm --filter @meigallery/web typecheck` 当前通过，但仍打印 `vue-router/volar/sfc-route-blocks` package export 非阻断警告，后续依赖升级阶段继续跟踪。
-- P1/P2/P3 当前台账项已全部完成或完成首轮收敛；持续增强已推进 lint 零 warning、后台用户列表服务化、后台图库服务化、后台媒体服务化、Web 组件测试扩展、公开封面外链安全、后台媒体外链展示安全、邮件模板注入防护、规则 Markdown 链接安全、站点设置公开 URL 内部地址拦截、首页 SEO 读取后台站点设置、首页 SSR 原始 HTML 级 SEO 回归验收、生产部署后 SEO head 自动校验、后台保存站点 SEO 后即时刷新前台公开设置、后台强制刷新公开设置失败时提示当前会话可能仍为旧值、公开站点设置接口 no-store 避免 SEO/广告位配置旧值缓存、公开站点设置首次失败允许后续普通请求重试、公开站点设置单条历史损坏 JSON 容错、后台站点设置读取/保存历史损坏 JSON 容错、邮箱验证开关历史损坏 JSON 容错、首页广告位链接/排期/文案长度安全收敛、首页广告组件边界文案二次清洗、公开读取侧历史异常广告设置清洗、后台实时预览同款清洗、后台广告预览异常文案可感知提示、首页内容配置数量/slug/规则 Markdown 输入归一化和历史异常读取兜底、首页广告位四断点溢出验收、首页广告位含凭据 URL 拒绝、首页广告位反斜杠歧义 URL 拒绝、首页广告位后台/API/资源路径拒绝、真实案例图片 R2 key 所属校验、联系方式链接/二维码安全收敛、后台联系方式二维码预览安全兜底、图库媒体 R2 key 所属校验、后台旧站迁移外链安全兜底、导入错误报告 R2 key 所属校验和 Import Token 禁用审计收敛，后续工作以继续路由服务化、扩展后台复杂组件测试和按需收紧格式规则为主。
+- P1/P2/P3 当前台账项已全部完成或完成首轮收敛；持续增强已推进 lint 零 warning、后台用户服务化、后台图库服务化、后台媒体服务化、Web 组件测试扩展、公开封面外链安全、后台媒体外链展示安全、邮件模板注入防护、规则 Markdown 链接安全、站点设置公开 URL 内部地址拦截、首页 SEO 读取后台站点设置、首页 SSR 原始 HTML 级 SEO 回归验收、生产部署后 SEO head 自动校验、后台保存站点 SEO 后即时刷新前台公开设置、后台强制刷新公开设置失败时提示当前会话可能仍为旧值、公开站点设置接口 no-store 避免 SEO/广告位配置旧值缓存、公开站点设置首次失败允许后续普通请求重试、公开站点设置单条历史损坏 JSON 容错、后台站点设置读取/保存历史损坏 JSON 容错、邮箱验证开关历史损坏 JSON 容错、首页广告位链接/排期/文案长度安全收敛、首页广告组件边界文案二次清洗、公开读取侧历史异常广告设置清洗、后台实时预览同款清洗、后台广告预览异常文案可感知提示、首页内容配置数量/slug/规则 Markdown 输入归一化和历史异常读取兜底、首页广告位四断点溢出验收、首页广告位含凭据 URL 拒绝、首页广告位反斜杠歧义 URL 拒绝、首页广告位后台/API/资源路径拒绝、真实案例图片 R2 key 所属校验、联系方式链接/二维码安全收敛、后台联系方式二维码预览安全兜底、图库媒体 R2 key 所属校验、后台旧站迁移外链安全兜底、导入错误报告 R2 key 所属校验和 Import Token 禁用审计收敛，后续工作以继续路由服务化、扩展后台复杂组件测试和按需收紧格式规则为主。
 - 发布 PR #8 的 Playwright smoke 已补 mock API 站点设置重置入口，避免后台 SEO 保存测试污染后续断点的首页 SSR SEO 基线；由于 smoke 四个 viewport 共用同一个 mock API 可变状态，Playwright 当前固定单 worker 串行执行，避免跨 viewport 的 reset / PATCH 竞争。
 - 首页广告位外链持续增强：前台 CTA 已补离站可感知名称、离站/隐私提示，并将广告外链 `rel` 扩展为 `noopener noreferrer nofollow sponsored`；Playwright smoke 已覆盖最终浏览器 DOM 中的外链安全属性、`no-referrer` 和离站提示。
 - 规则 Markdown 外链持续增强：规则页和悬浮规则面板渲染的外链已统一输出 `noopener noreferrer nofollow` 与 `referrerpolicy="no-referrer"`，并拒绝带用户名/密码或反斜杠歧义的 URL。
@@ -95,6 +98,9 @@
 - 前端错误提示持续增强：登录、个人设置、后台图库/真实案例/标签/用户/站点设置/导入/联系方式/Import Token 等页面已统一使用 `resolveApiErrorMessage`，避免标准错误体、历史 `error` 字段或字符串 JSON 错误在页面层被吞掉。
 - 首页广告位站内跳转透明度增强：站内广告 CTA 已补目标页面提示和包含精确路径的无障碍名称，前台 smoke 与组件测试覆盖站内/外链两类提示，避免外链有安全说明而站内跳转去向不明确。
 - 首页广告位公开状态增强：`/api/settings/public` 已新增只读派生字段 `home_ad_active`，由服务端基于广告开关与排期统一判断当前是否展示；前台优先使用该字段，旧公开响应继续保留本地排期计算兜底。
+- 首页广告位管理增强：后台已新增独立 `/admin/ads` 管理页和 `home_ads` D1 表，支持多个首页广告的新增、编辑、启停、排序、排期、大图上传/删除和 Owner 审计日志；站点设置页旧单广告配置已降级为兼容提示与入口跳转。
+- 首页广告位展示增强：`/api/settings/public` 已返回过滤后的 `home_ads` 数组，前台优先渲染安全、启用且排期有效的多广告大图轮播；旧 `home_ad_*` 配置仅在新广告为空时作为兼容兜底。
+- 右下角悬浮入口增强：前台联系面板已重做为“服务流程 / 有新消息”双 CTA，突出看规则、联系站长、开通访问流程，并保留联系弹层、规则弹层和线索埋点。
 - 公开 URL 凭证参数持续增强：站点图标、OG 封面图、首页广告链接和规则页链接已拒绝 `token`、`api_key`、`signature`、`access_token` 等凭证类 URL 参数，覆盖 query 与 hash 片段，API 写入、公开读取和前端预览同款兜底。
 - 首页广告跳转参数持续增强：站内广告链接中的 `redirect`、`next`、`return_to` 等跳转目标已限制为公开前台路径，拒绝空目标、后台/API/资源路径、外站和嵌套危险跳转；登录页成功后的 `redirect` 参数已增加站内安全兜底，并保留后台正常登录回跳。
 - Facebook Pixel 隐私持续增强：前端埋点在当前 URL query 或 hash 含 `token`、`api_key`、`signature`、`access_token` 等凭证类参数时会跳过 Pixel 初始化和事件上报，埋点文本清洗同步覆盖凭证参数，避免敏感 URL 被第三方脚本带出。
@@ -125,7 +131,7 @@
 ## 文档说明
 
 - 当前状态权威文档：`AGENTS.md`、本文档、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md`、`docs/GIT_WORKFLOW.md`。
-- 产品和设计文档：`docs/PRD*.md`、`docs/PRD_QUALITY_REVIEW.md` 与 `docs/UI_DESIGN.md` 保留产品需求、路线图、验收口径和设计约束；其中标注为草案、规划或后续阶段的内容不代表当前生产状态。
+- 产品和设计文档：`docs/PRD*.md`、`docs/PRD_QUALITY_REVIEW.md` 与 `docs/UI_DESIGN.md` 保留产品需求、路线图、验收口径和设计约束；其中标注为草案、规划或后续阶段的内容不代表当前生产状态。数据分析专项需求以 `docs/PRD_DATA_ANALYTICS.md` 为入口。
 - 代码与文档 review 问题台账：`docs/CODE_AND_DOC_REVIEW_ISSUES.md` 记录全项目代码、配置和文档审查发现的问题、影响和修复方案。
 - 代码库分析文档：`docs/codebase/*.md` 记录从代码和配置验证出的栈、结构、架构、约定、集成、测试和风险。
 - 历史归档：`docs/plans/**` 与 `docs/superpowers/**` 为历史计划、规格和实现记录，可能包含 Nuxt 3、`testimonial_*`、旧路由或旧权限名，不代表当前生产状态。

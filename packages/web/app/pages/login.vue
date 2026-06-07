@@ -4,6 +4,7 @@ import { normalizeLoginRedirect } from '~/utils/loginRedirectSecurity'
 const { login, isLoggedIn } = useAuth()
 const route = useRoute()
 const router = useRouter()
+const analytics = useAnalytics()
 const { trackLoginCompleted } = useFacebookPixel()
 const { siteName } = useSiteSettings()
 
@@ -33,6 +34,10 @@ if (isLoggedIn.value) {
 
 onMounted(() => {
   void mountTurnstile()
+  analytics.track('login_start', {
+    props: { redirect_type: getRedirectType(route.query.redirect) },
+    entityType: 'auth',
+  })
 })
 
 onUnmounted(() => {
@@ -51,14 +56,63 @@ async function onSubmit() {
   }
   loading.value = true
   try {
+    analytics.track('login_submit', {
+      props: {
+        identifier_type: identifier.value.includes('@') ? 'email' : 'username',
+        redirect_type: getRedirectType(route.query.redirect),
+      },
+      entityType: 'auth',
+    })
     await login(identifier.value, password.value, hasTurnstile.value ? turnstileToken.value : undefined)
     trackLoginCompleted()
-    navigateTo(normalizeLoginRedirect(route.query.redirect))
+    const redirectPath = normalizeLoginRedirect(route.query.redirect)
+    analytics.track('login_success', {
+      props: { redirect_path_type: getRedirectPathType(redirectPath) },
+      entityType: 'auth',
+    })
+    navigateTo(redirectPath)
   } catch (e: any) {
+    analytics.track('login_failed', {
+      props: { failure_code: extractFailureCode(e) },
+      entityType: 'auth',
+    })
     error.value = resolveApiErrorMessage(e, '登录失败，请重试')
     resetTurnstile()
   } finally {
     loading.value = false
+  }
+}
+
+function getRedirectType(value: unknown) {
+  const raw = Array.isArray(value) ? value[0] : value
+  const path = String(raw ?? '').trim()
+  if (!path) return 'none'
+  if (path.startsWith('/admin')) return 'admin'
+  if (path.startsWith('/gallery')) return 'gallery'
+  if (path.startsWith('/user') || path.startsWith('/settings')) return 'account'
+  return 'internal'
+}
+
+function getRedirectPathType(path: string) {
+  if (path.startsWith('/admin')) return 'admin'
+  if (path.startsWith('/gallery')) return 'gallery'
+  if (path.startsWith('/user') || path.startsWith('/settings')) return 'account'
+  return path === '/' ? 'home' : 'internal'
+}
+
+function extractFailureCode(errorValue: unknown) {
+  const errorObject = errorValue as { data?: unknown; statusCode?: unknown }
+  const data = typeof errorObject?.data === 'string' ? safeJson(errorObject.data) : errorObject?.data
+  if (data && typeof data === 'object' && typeof (data as { code?: unknown }).code === 'string') return (data as { code: string }).code
+  if (typeof errorObject?.statusCode === 'number') return `HTTP_${errorObject.statusCode}`
+  return 'LOGIN_FAILED'
+}
+
+function safeJson(value: string) {
+  try {
+    return JSON.parse(value)
+  } catch {
+    return null
   }
 }
 

@@ -51,6 +51,16 @@ describe('公开站点设置安全读取', () => {
     expect(sanitizePublicSiteSetting('facebook_pixel_id', 'fbq("track")')).toBe('')
   })
 
+  it('归一化数据分析公开设置', () => {
+    expect(sanitizePublicSiteSetting('analytics_enabled', 'true')).toBe(true)
+    expect(sanitizePublicSiteSetting('analytics_enabled', 'false')).toBe(false)
+    expect(sanitizePublicSiteSetting('analytics_sample_rate', '0.03')).toBe(0.03)
+    expect(sanitizePublicSiteSetting('analytics_sample_rate', '0.9')).toBe(0.05)
+    expect(sanitizePublicSiteSetting('analytics_sample_rate', 'bad')).toBe(0.01)
+    expect(sanitizePublicSiteSetting('analytics_consent_mode', 'granted')).toBe('granted')
+    expect(sanitizePublicSiteSetting('analytics_consent_mode', 'bad')).toBe('limited')
+  })
+
   it('归一化首页广告排期并清空历史异常时间', () => {
     expect(sanitizePublicSiteSetting('home_ad_starts_at', '2026-06-01T08:30:00+08:00')).toBe('2026-06-01T00:30:00.000Z')
     expect(sanitizePublicSiteSetting('home_ad_ends_at', 'not-a-date')).toBe('')

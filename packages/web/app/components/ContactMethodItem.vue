@@ -6,7 +6,7 @@ import { normalizeContactActionUrl, normalizeContactQrCodeUrl } from '~/utils/co
 const props = defineProps<{
   method: ContactMethod
 }>()
-const emit = defineEmits<{ activate: [methodType: string] }>()
+const emit = defineEmits<{ activate: [methodType: string, actionType: string] }>()
 
 const showQr = ref(false)
 const isHovering = ref(false)
@@ -52,7 +52,7 @@ async function copyValue() {
 }
 
 function activate() {
-  emit('activate', props.method.platform)
+  emit('activate', props.method.platform, safeActionHref.value ? 'open_link' : 'copy')
   if (safeActionHref.value) {
     window.open(safeActionHref.value, '_blank', 'noopener,noreferrer')
     return

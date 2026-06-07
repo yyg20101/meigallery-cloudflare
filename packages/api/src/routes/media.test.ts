@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Bindings, Variables } from '../index'
 import { mediaRoutes } from './media'
 
+type DbCall = { sql: string; params: unknown[] }
+
 function createApp(options: { userId?: number | null; userRole?: string | null } = {}) {
   const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
   app.use('*', async (c, next) => {
@@ -54,6 +56,84 @@ function createThumbnailEnv(options: {
     },
     R2: { get: r2Get },
   } as unknown as Bindings
+}
+
+function createAccessEnv(options: {
+  requiredRank?: number
+  galleryRequiredRank?: number
+  userRank?: number
+  assetType?: 'image' | 'video'
+  streamUid?: string | null
+  r2Key?: string | null
+  streamAccountId?: string
+  streamApiToken?: string
+  r2Get?: ReturnType<typeof vi.fn>
+}) {
+  const calls: DbCall[] = []
+  const r2Get = options.r2Get ?? vi.fn(async () => ({
+    body: new Blob([new Uint8Array([1, 2, 3])]).stream(),
+    httpMetadata: { contentType: 'image/jpeg' },
+    httpEtag: 'origin-etag',
+  }))
+  const db = {
+    calls,
+    prepare(sql: string) {
+      const call: DbCall = { sql, params: [] }
+      return {
+        bind(...params: unknown[]) {
+          call.params = params
+          return this
+        },
+        async all<T>() {
+          if (sql.includes('FROM site_settings')) {
+            return {
+              results: [
+                { key: 'analytics_enabled', value: JSON.stringify(true) },
+                { key: 'analytics_sample_rate', value: JSON.stringify(0) },
+                { key: 'analytics_consent_mode', value: JSON.stringify('limited') },
+              ] as T[],
+            }
+          }
+          return { results: [] as T[] }
+        },
+        async first<T>() {
+          if (sql.includes('FROM analytics_events WHERE id = ?')) return null
+          if (sql.includes('MAX(ml.rank)')) {
+            return { max_rank: options.userRank ?? 0 } as T
+          }
+          if (sql.includes('FROM media_assets')) {
+            return {
+              id: 'asset-1',
+              gallery_id: 'gallery-1',
+              role: 'gallery',
+              r2_key: options.r2Key === undefined ? 'originals/gallery-1/asset-1.jpg' : options.r2Key,
+              stream_uid: options.streamUid === undefined ? null : options.streamUid,
+              type: options.assetType ?? 'image',
+              required_rank: options.requiredRank ?? 0,
+              required_level_rank: options.galleryRequiredRank ?? 0,
+              status: 'published',
+            } as T
+          }
+          return null
+        },
+        async run() {
+          calls.push(call)
+          return { meta: { changes: 1, rows_written: 1, rows_read: 0, duration: 1 } }
+        },
+      }
+    },
+  }
+
+  const env = {
+    APP_ENV: 'test',
+    IMAGE_RESIZING_ENABLED: 'false',
+    STREAM_ACCOUNT_ID: options.streamAccountId ?? '',
+    STREAM_API_TOKEN: options.streamApiToken ?? '',
+    DB: db,
+    R2: { get: r2Get },
+  } as unknown as Bindings
+
+  return { env, calls, r2Get }
 }
 
 function createCoverEnv(coverKey: string | null, r2Get: ReturnType<typeof vi.fn> = vi.fn(async () => ({
@@ -333,5 +413,67 @@ describe('受保护媒体访问', () => {
       code: 'STREAM_NOT_CONFIGURED',
     })
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('图片授权成功后异步写入服务端可信访问事件', async () => {
+    const app = createApp({ userId: 7, userRole: 'admin' })
+    const { env, calls } = createAccessEnv({ requiredRank: 10 })
+    const waitUntil = vi.fn()
+
+    const res = await app.fetch(new Request('https://api.test/api/media/asset-1/access', {
+      headers: {
+        'X-Analytics-Visitor-Id': 'visitor_abcdef',
+        'X-Analytics-Session-Id': 'session_abcdef',
+        'CF-IPCountry': 'CN',
+      },
+    }), env, { waitUntil } as unknown as ExecutionContext)
+    await Promise.all(waitUntil.mock.calls.map(([task]) => task as Promise<unknown>))
+
+    expect(res.status).toBe(200)
+    expect(waitUntil).toHaveBeenCalledTimes(1)
+    const rawInsert = calls.find(call => call.sql.includes('INSERT OR IGNORE INTO analytics_events'))
+    expect(rawInsert?.params[1]).toBe('media_access_granted')
+    expect(rawInsert?.params[3]).toBe('visitor_abcdef')
+    expect(rawInsert?.params[4]).toBe('session_abcdef')
+    expect(rawInsert?.params[5]).toBe(7)
+    expect(rawInsert?.params[15]).toBe('media')
+    expect(rawInsert?.params[16]).toBe('asset-1')
+    expect(JSON.parse(String(rawInsert?.params[17]))).toMatchObject({
+      gallery_id: 'gallery-1',
+      asset_id: 'asset-1',
+      required_rank: 10,
+    })
+  })
+
+  it('会员等级不足时写入拒绝事件且不泄露私有媒体信息', async () => {
+    const app = createApp({ userId: 7, userRole: 'user' })
+    const { env, calls, r2Get } = createAccessEnv({
+      requiredRank: 20,
+      userRank: 0,
+      r2Key: 'originals/gallery-1/asset-1.jpg',
+    })
+    const waitUntil = vi.fn()
+
+    const res = await app.fetch(new Request('https://api.test/api/media/asset-1/access', {
+      headers: {
+        'X-Analytics-Visitor-Id': 'visitor_abcdef',
+        'X-Analytics-Session-Id': 'session_abcdef',
+      },
+    }), env, { waitUntil } as unknown as ExecutionContext)
+    await Promise.all(waitUntil.mock.calls.map(([task]) => task as Promise<unknown>))
+
+    expect(res.status).toBe(403)
+    expect(r2Get).not.toHaveBeenCalled()
+    const rawInsert = calls.find(call => call.sql.includes('INSERT OR IGNORE INTO analytics_events'))
+    expect(rawInsert?.params[1]).toBe('media_access_denied')
+    const props = JSON.parse(String(rawInsert?.params[17]))
+    expect(props).toMatchObject({
+      gallery_id: 'gallery-1',
+      asset_id: 'asset-1',
+      required_rank: 20,
+      reason: 'rank_insufficient',
+    })
+    expect(JSON.stringify(rawInsert?.params)).not.toContain('originals/')
+    expect(JSON.stringify(rawInsert?.params)).not.toContain('STREAM')
   })
 })

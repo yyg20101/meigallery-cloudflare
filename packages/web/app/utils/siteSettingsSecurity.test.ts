@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getHomeAdTextPreviewWarnings, isScheduledSiteFeatureActive, normalizeBooleanSetting, normalizeFeaturedRegionSlugs, normalizeHomeAdText, normalizeHomeAdUrl, normalizeHomeHotTagLimit, normalizeInternalPath, normalizePublicImageSettingUrl, normalizePublicSettingUrl, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId, safeRulesMarkdown, safeSiteText } from './siteSettingsSecurity'
+import { getHomeAdTextPreviewWarnings, isScheduledSiteFeatureActive, normalizeAnalyticsConsentMode, normalizeAnalyticsSampleRate, normalizeBooleanSetting, normalizeFeaturedRegionSlugs, normalizeHomeAdText, normalizeHomeAdUrl, normalizeHomeHotTagLimit, normalizeInternalPath, normalizePublicImageSettingUrl, normalizePublicSettingUrl, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId, safeRulesMarkdown, safeSiteText } from './siteSettingsSecurity'
 
 describe('siteSettingsSecurity', () => {
   it('公开 URL 只允许站内路径和 https 链接', () => {
@@ -170,6 +170,17 @@ describe('siteSettingsSecurity', () => {
     expect(normalizeBooleanSetting('TRUE')).toBe(false)
   })
 
+  it('归一化数据分析设置', () => {
+    expect(normalizeAnalyticsSampleRate('')).toBe(0.01)
+    expect(normalizeAnalyticsSampleRate('0.03')).toBe(0.03)
+    expect(normalizeAnalyticsSampleRate('0.9')).toBe(0.05)
+    expect(normalizeAnalyticsSampleRate('bad')).toBe(0.01)
+    expect(normalizeAnalyticsConsentMode('granted')).toBe('granted')
+    expect(normalizeAnalyticsConsentMode('limited')).toBe('limited')
+    expect(normalizeAnalyticsConsentMode('denied')).toBe('denied')
+    expect(normalizeAnalyticsConsentMode('bad')).toBe('limited')
+  })
+
   it('归一化 SEO 和前台短文案并拒绝异常文本', () => {
     expect(safeSiteText('site_name', '  测试   图库站  ')).toBe('测试 图库站')
     expect(safeSiteText('seo_title', 'x'.repeat(81))).toBe('')
@@ -197,21 +208,21 @@ describe('siteSettingsSecurity', () => {
   it('归一化首页广告文案并拒绝超长或控制字符', () => {
     expect(normalizeHomeAdText('home_ad_title', '  会员季   精选内容  ')).toBe('会员季 精选内容')
     expect(normalizeHomeAdText('home_ad_sponsor', null)).toBe('')
-    expect(normalizeHomeAdText('home_ad_eyebrow', '超过十二个字符的广告活动眉标')).toBe('')
-    expect(normalizeHomeAdText('home_ad_title', 'x'.repeat(41))).toBe('')
-    expect(normalizeHomeAdText('home_ad_summary', 'x'.repeat(121))).toBe('')
-    expect(normalizeHomeAdText('home_ad_cta_label', 'x'.repeat(13))).toBe('')
-    expect(normalizeHomeAdText('home_ad_sponsor', 'x'.repeat(31))).toBe('')
+    expect(normalizeHomeAdText('home_ad_eyebrow', 'x'.repeat(17))).toBe('')
+    expect(normalizeHomeAdText('home_ad_title', 'x'.repeat(65))).toBe('')
+    expect(normalizeHomeAdText('home_ad_summary', 'x'.repeat(181))).toBe('')
+    expect(normalizeHomeAdText('home_ad_cta_label', 'x'.repeat(17))).toBe('')
+    expect(normalizeHomeAdText('home_ad_sponsor', 'x'.repeat(41))).toBe('')
     expect(normalizeHomeAdText('home_ad_title', '会员\u0001精选')).toBe('')
   })
 
   it('生成首页广告文案安全提示', () => {
     expect(getHomeAdTextPreviewWarnings({
       home_ad_eyebrow: '  本周   推荐  ',
-      home_ad_title: 'x'.repeat(41),
+      home_ad_title: 'x'.repeat(65),
       home_ad_summary: '会员\u0001精选',
       home_ad_cta_label: '',
-      home_ad_sponsor: 'x'.repeat(31),
+      home_ad_sponsor: 'x'.repeat(41),
     })).toEqual([
       '广告标题已按安全规则清空',
       '广告摘要已按安全规则清空',

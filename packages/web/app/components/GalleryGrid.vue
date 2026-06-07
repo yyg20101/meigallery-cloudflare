@@ -13,13 +13,21 @@ interface Gallery {
 withDefaults(defineProps<{
   galleries: Gallery[]
   variant?: 'default' | 'magazine'
+  listType?: string
 }>(), {
   variant: 'default',
+  listType: 'gallery_grid',
 })
 </script>
 
 <template>
   <div :class="variant === 'magazine' ? 'grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 lg:gap-4' : 'grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4 lg:gap-3'">
-    <GalleryCard v-for="g in galleries" :key="g.id" :gallery="g" />
+    <GalleryCard
+      v-for="(g, index) in galleries"
+      :key="g.id"
+      :gallery="g"
+      :list-type="listType"
+      :position="index + 1"
+    />
   </div>
 </template>

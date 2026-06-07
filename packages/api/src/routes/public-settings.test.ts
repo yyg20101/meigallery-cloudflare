@@ -3,15 +3,54 @@ import app from '../index'
 import type { Bindings } from '../index'
 
 type SettingRow = { key: string; value: unknown } | { key: string; rawValue: string }
+type HomeAdTestRow = {
+  id: string
+  placement?: string
+  eyebrow?: string
+  title: string
+  summary?: string
+  cta_label?: string
+  target_url?: string
+  sponsor?: string
+  image_url?: string
+  image_key?: string | null
+  enabled?: number
+  starts_at?: string
+  ends_at?: string
+  sort_order?: number
+  created_at?: string
+  updated_at?: string
+}
 
-function createDb(rows: SettingRow[]) {
+function createDb(rows: SettingRow[], homeAds: HomeAdTestRow[] = []) {
   return {
-    prepare() {
+    prepare(sql: string) {
       return {
         bind() {
           return this
         },
         async all<T>() {
+          if (sql.includes('FROM home_ads')) {
+            return {
+              results: homeAds.map(row => ({
+                placement: 'home_after_hero',
+                eyebrow: '',
+                summary: '',
+                cta_label: '查看详情',
+                target_url: '/discover?sort=hot',
+                sponsor: '',
+                image_url: '',
+                image_key: null,
+                enabled: 1,
+                starts_at: '',
+                ends_at: '',
+                sort_order: 0,
+                created_at: '2026-06-01T00:00:00.000Z',
+                updated_at: '2026-06-01T00:00:00.000Z',
+                ...row,
+              })) as T[],
+            }
+          }
           return {
             results: rows.map((row) => {
               const value = 'rawValue' in row ? row.rawValue : JSON.stringify(row.value)
@@ -147,5 +186,55 @@ describe('公开站点设置 API', () => {
     expect(activeBody.home_ad_active).toBe(true)
     expect(inactiveRes.status).toBe(200)
     expect(inactiveBody.home_ad_active).toBe(false)
+  })
+
+  it('返回过滤后的首页多广告配置', async () => {
+    const env = {
+      APP_ENV: 'production',
+      DB: createDb([], [
+        {
+          id: 'ad-1',
+          eyebrow: '  本周   推荐  ',
+          title: '会员季精选内容',
+          summary: '探索本周精选图库',
+          cta_label: '查看推荐',
+          target_url: '/discover?sort=hot',
+          sponsor: '运营精选',
+          image_url: '/api/media/public/home-ads/ad-1/cover.webp',
+          sort_order: 1,
+        },
+        {
+          id: 'ad-2',
+          title: '危险广告',
+          target_url: 'javascript:alert(1)',
+          sort_order: 2,
+        },
+        {
+          id: 'ad-3',
+          title: '已过期广告',
+          target_url: '/discover?sort=hot',
+          ends_at: '2000-01-01T00:00:00.000Z',
+          sort_order: 3,
+        },
+      ]),
+    } as unknown as Bindings
+
+    const res = await app.fetch(new Request('https://api.test/api/settings/public'), env, {} as ExecutionContext)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.home_ads).toEqual([
+      {
+        id: 'ad-1',
+        eyebrow: '本周 推荐',
+        title: '会员季精选内容',
+        summary: '探索本周精选图库',
+        ctaLabel: '查看推荐',
+        targetUrl: '/discover?sort=hot',
+        sponsor: '运营精选',
+        imageUrl: '/api/media/public/home-ads/ad-1/cover.webp',
+        sortOrder: 1,
+      },
+    ])
   })
 })

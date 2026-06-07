@@ -75,6 +75,34 @@ corepack pnpm verify:seo:production -- --expect-site-name 星耀传媒 --expect-
 
 部署后 SEO 校验会读取 `/api/settings/public`，并检查 `616618.xyz` 与 `www.616618.xyz` 首页 SSR 原始 HTML 的 `<title>`、description 和 OG 信息是否与后台站点设置一致。若 API 已返回新设置但首页 `<head>` 仍显示旧默认值，说明 Web Worker 未部署到最新版本或边缘仍在返回旧 HTML，必须在上线验收中阻断。若 `/api/settings/public` 本身未返回后台保存的新值，优先确认 API Worker 已部署包含站点设置 upsert 的版本，并检查 `site_settings` 缺失行是否已由后台保存动作补齐。
 
+### 数据分析上线顺序
+
+站内一方数据分析默认关闭，`site_settings.analytics_enabled=false` 时 Web SDK 不初始化 visitor/session，API 采集接口返回 disabled 且不写 D1。生产启用必须按以下顺序执行：
+
+1. 执行 D1 migrations，确保 `0023_analytics_core.sql` 到 `0026_analytics_exports.sql` 已应用到目标环境。
+2. 部署 API Worker，使 `/api/analytics/events`、`/api/analytics/session/end`、`/api/invites/:code/status`、`/api/admin/analytics/*` 和 `/api/admin/invite-codes` 先可用。
+3. 部署 Web Worker，此时公开设置仍关闭，前端 SDK 不应初始化或写本地存储。
+4. 登录后台确认 `/admin/analytics`、来源、内容、链路、点击、时长、邀请和健康页能加载空数据或聚合数据，并展示 D1 usage。
+5. Owner 在后台设置中打开 `analytics_enabled`，必要时调整 `analytics_sample_rate`，再观察采集健康日报、Worker Logs 和 D1 rows read/write。
+
+上线前必须通过以下验证：
+
+- API 性能成本 fixture：10,000 sessions/day、平均 3 PV/session、2 clicks/session 时 D1 rows written <= 80,000/day。
+- 后台报表 fixture：100,000 事件规模下总览、来源、页面、点击、时长和邀请 6 个接口 30 天范围 P95 <= 1 秒，且默认查询不扫描 `analytics_events`。
+- Playwright smoke：`首页 -> 搜索 -> 图库详情 -> 打开联系 -> 点击联系方式 -> 带 invite 注册页`，mock API 收到 page、click/contact、invite 和 register 事件，payload 不含 token、api key、联系值、私有 R2 key 或完整敏感 URL。
+
+### 数据分析回滚顺序
+
+数据分析异常时优先回滚开关，不优先回滚 schema：
+
+1. Owner 关闭 `analytics_enabled`。
+2. 确认新打开页面不初始化 Web SDK，不再创建 visitor/session 队列。
+3. 向 `/api/analytics/events` 发送旧页面缓存事件，确认 API 返回 `{ disabled: true }` 且 D1 rows written 不增加。
+4. 如需回滚 Web Worker，保留 API Worker 的采集接口兼容旧缓存页面；旧页面继续发送事件时只收到 disabled 响应。
+5. 如需回滚 API Worker，先确认 Web 已关闭采集并清空前端入口，再部署 API 旧版本；不要删除已经应用的 D1 migration，除非有单独的数据库回滚方案和备份。
+
+达到以下任一阈值时进入 Phase 9 规模增强评估，而不是临时放宽当前预算：采集接口 P95 > 300ms 且主要耗时来自 D1 写入；或 D1 rows written 超过 80,000/day 的 80% 连续 3 天。Phase 9 才评估 Cloudflare Queues 批处理和 Workers Analytics Engine；评估前必须重新核对 Cloudflare 官方 limits、pricing、batching、retry 和 retention 文档。
+
 ## 5. 环境变量
 
 | 变量 | 位置 | 说明 |
@@ -219,6 +247,8 @@ head_sampling_rate = 1
 - [ ] 后台管理员账号已创建
 - [ ] WAF 和基本 rate limiting 已启用
 - [ ] 登录、搜索、详情、媒体权限、导入流程通过验收
+- [ ] 数据分析 migrations、API、Web、后台页面和 Owner 开关顺序已完成；默认关闭态和回滚 disabled 响应已验证
+- [ ] 数据分析 Playwright smoke、10,000 sessions/day 写入成本 fixture 和 100,000 事件报表性能 fixture 已通过
 - [ ] `corepack pnpm verify:seo:production` 通过，首页 `<head>` 与后台站点设置一致
 
 ## 10. 旧站迁移部署计划
@@ -288,7 +318,12 @@ node scripts/migrate-cases-r2.mjs --remote --delete-old --confirm-delete-old=tes
 - Workers Assets: https://developers.cloudflare.com/workers/frameworks/
 - Workers Custom Domains: https://developers.cloudflare.com/workers/configuration/routing/custom-domains/
 - D1: https://developers.cloudflare.com/d1/
+- D1 pricing: https://developers.cloudflare.com/d1/platform/pricing/
+- D1 limits: https://developers.cloudflare.com/d1/platform/limits/
 - R2: https://developers.cloudflare.com/r2/
 - Stream: https://developers.cloudflare.com/stream/
 - Turnstile: https://developers.cloudflare.com/turnstile/
+- Cloudflare Queues batching / retries: https://developers.cloudflare.com/queues/configuration/batching-retries/
+- Workers Analytics Engine limits: https://developers.cloudflare.com/analytics/analytics-engine/limits/
+- Workers Analytics Engine pricing: https://developers.cloudflare.com/analytics/analytics-engine/pricing/
 - Cloudflare pricing: https://www.cloudflare.com/plans/

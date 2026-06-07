@@ -75,6 +75,11 @@ export function useAuth() {
     username: string
     nickname?: string
     code?: string
+    inviteCode?: string
+    analyticsVisitorId?: string
+    analyticsSessionId?: string
+    sourceChannel?: string
+    landingPath?: string
     turnstileToken?: string
   }) {
     const result = await api<UserInfo>('/api/auth/register', {

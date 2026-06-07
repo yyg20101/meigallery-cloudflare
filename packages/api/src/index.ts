@@ -12,14 +12,23 @@ import { meRoutes } from './routes/me'
 import { contactMethodRoutes } from './routes/contact-methods'
 import { caseRoutes } from './routes/cases'
 import { importRoutes } from './routes/imports'
+import { analyticsRoutes } from './routes/analytics'
+import { inviteRoutes } from './routes/invites'
 import { PUBLIC_SETTING_KEYS } from './utils/site-settings'
 import { sanitizePublicSiteSetting, sanitizePublicSiteSettings } from './utils/public-site-settings'
+import { HOME_AD_PLACEMENT, type HomeAdRow, serializePublicHomeAd } from './utils/home-ads'
 import { adminRoutes } from './routes/admin'
 import { healthRoutes } from './routes/health'
 import { authMiddleware } from './middleware/auth'
 import { rateLimiter } from './middleware/rate-limit'
 import { errorJson } from './utils/api-error'
 import { parseStoredSettingValue } from './utils/stored-setting-value'
+import {
+  aggregateAnalyticsDaily,
+  aggregateClickDaily,
+  aggregatePathEdges,
+  cleanupAnalyticsRetention,
+} from './services/analytics-aggregate'
 
 /** Hono 应用绑定类型 */
 export type Bindings = {
@@ -62,7 +71,7 @@ app.use('*', cors({
     return allowed.includes(origin) ? origin : ''
   },
   credentials: true,
-  allowHeaders: ['Content-Type', 'Authorization'],
+  allowHeaders: ['Content-Type', 'Authorization', 'X-Analytics-Visitor-Id', 'X-Analytics-Session-Id'],
   allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   maxAge: 86400,
 }))
@@ -79,6 +88,9 @@ const publicApiRateLimit = RATE_LIMITS.PUBLIC_API
 const adminApiRateLimit = RATE_LIMITS.ADMIN_API
 const mediaAccessRateLimit = RATE_LIMITS.MEDIA_ACCESS
 const externalImportRateLimit = RATE_LIMITS.EXTERNAL_IMPORT
+const analyticsIpRateLimit = RATE_LIMITS.ANALYTICS_IP
+const analyticsVisitorRateLimit = RATE_LIMITS.ANALYTICS_VISITOR
+const analyticsSessionRateLimit = RATE_LIMITS.ANALYTICS_SESSION
 
 // 登录/注册接口速率限制兜底：每 IP 每分钟 5 次
 app.use('/api/auth/*', rateLimiter({
@@ -100,6 +112,7 @@ for (const path of [
   '/api/cases/*',
   '/api/contact-methods',
   '/api/contact-methods/*',
+  '/api/invites/*',
   '/api/settings/public',
 ]) {
   app.use(path, rateLimiter({
@@ -116,6 +129,26 @@ app.use('/api/imports/*', rateLimiter({
   keyBy: 'ip',
   limit: externalImportRateLimit.requests,
   windowMs: rateLimitWindowMs(externalImportRateLimit.window),
+}))
+
+// 数据分析采集兜底限流：IP、匿名 visitor 和 session 三层保护
+app.use('/api/analytics/*', rateLimiter({
+  name: 'analytics-ip',
+  keyBy: 'ip',
+  limit: analyticsIpRateLimit.requests,
+  windowMs: rateLimitWindowMs(analyticsIpRateLimit.window),
+}))
+app.use('/api/analytics/*', rateLimiter({
+  name: 'analytics-visitor',
+  keyBy: 'analyticsVisitor',
+  limit: analyticsVisitorRateLimit.requests,
+  windowMs: rateLimitWindowMs(analyticsVisitorRateLimit.window),
+}))
+app.use('/api/analytics/*', rateLimiter({
+  name: 'analytics-session',
+  keyBy: 'analyticsSession',
+  limit: analyticsSessionRateLimit.requests,
+  windowMs: rateLimitWindowMs(analyticsSessionRateLimit.window),
 }))
 app.use('*', authMiddleware)
 
@@ -146,20 +179,37 @@ app.route('/api/me', meRoutes)
 app.route('/api/contact-methods', contactMethodRoutes)
 app.route('/api/cases', caseRoutes)
 app.route('/api/imports', importRoutes)
+app.route('/api/analytics', analyticsRoutes)
+app.route('/api/invites', inviteRoutes)
 // 公开站点信息（不需要登录）
 app.get('/api/settings/public', async (c) => {
   const db = c.env.DB
   const keys = [...PUBLIC_SETTING_KEYS]
   const placeholders = keys.map(() => '?').join(',')
-  const result = await db
+  const [settingsResult, adsResult] = await Promise.all([
+    db
     .prepare(`SELECT key, value FROM site_settings WHERE key IN (${placeholders})`)
     .bind(...keys)
-    .all<{ key: string; value: string }>()
+      .all<{ key: string; value: string }>(),
+    db
+      .prepare(`
+        SELECT id, placement, eyebrow, title, summary, cta_label, target_url, sponsor,
+               image_url, image_key, enabled, starts_at, ends_at, sort_order, created_at, updated_at
+        FROM home_ads
+        WHERE placement = ?
+        ORDER BY sort_order ASC, created_at ASC
+      `)
+      .bind(HOME_AD_PLACEMENT)
+      .all<HomeAdRow>(),
+  ])
 
   const settings: Record<string, unknown> = {}
-  for (const row of result.results) {
+  for (const row of settingsResult.results) {
     settings[row.key] = sanitizePublicSiteSetting(row.key, parseStoredSettingValue(row.value))
   }
+  settings.home_ads = adsResult.results
+    .map(row => serializePublicHomeAd(row))
+    .filter((ad): ad is NonNullable<typeof ad> => Boolean(ad))
   c.header('Cache-Control', 'no-store')
   return c.json(sanitizePublicSiteSettings(settings))
 })
@@ -230,6 +280,37 @@ async function handleScheduled(env: Bindings): Promise<void> {
   } catch (e) {
     console.error('[cron] 到期提醒任务失败:', e)
   }
+
+  // 3. 数据分析日报聚合与保留期清理。独立 try/catch，避免影响认证和会员提醒任务。
+  try {
+    const today = operationDate()
+    const yesterday = addDays(today, -1)
+    for (const date of [yesterday, today]) {
+      await aggregateAnalyticsDaily(db, date)
+      await aggregatePathEdges(db, date)
+      await aggregateClickDaily(db, date)
+      console.log(`[cron] 数据分析聚合完成: ${date}`)
+    }
+    const cleanup = await cleanupAnalyticsRetention(db)
+    console.log('[cron] 数据分析保留期清理完成:', cleanup.changes)
+  } catch (e) {
+    console.error('[cron] 数据分析聚合任务失败:', e)
+  }
+}
+
+function operationDate(now = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now)
+}
+
+function addDays(date: string, delta: number) {
+  const parsed = new Date(`${date}T00:00:00.000Z`)
+  parsed.setUTCDate(parsed.getUTCDate() + delta)
+  return parsed.toISOString().slice(0, 10)
 }
 
 export default {

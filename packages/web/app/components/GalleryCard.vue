@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { getPrimaryRegion, getSupportTags } from '~/utils/galleryPresentation'
 
 interface Gallery {
@@ -14,7 +14,20 @@ interface Gallery {
   viewCount?: number
   likeCount?: number
 }
-const props = defineProps<{ gallery: Gallery }>()
+const props = withDefaults(defineProps<{
+  gallery: Gallery
+  listType?: string
+  position?: number
+}>(), {
+  listType: 'gallery_grid',
+  position: 0,
+})
+
+const cardRef = ref<HTMLElement | { $el?: HTMLElement } | null>(null)
+const analytics = useAnalytics()
+let impressionObserver: IntersectionObserver | null = null
+let impressionTimer: ReturnType<typeof setTimeout> | null = null
+let impressionTracked = false
 
 const hasVideo = computed(() => {
   return props.gallery.tags.some(t => t.type === 'content_type' && t.slug === 'video') ||
@@ -29,10 +42,71 @@ const levelBadge = computed(() => {
 
 const primaryRegion = computed(() => getPrimaryRegion(props.gallery.tags))
 const supportTags = computed(() => getSupportTags(props.gallery.tags, 2))
+
+onMounted(() => {
+  setupImpressionObserver()
+})
+
+onUnmounted(() => {
+  impressionObserver?.disconnect()
+  if (impressionTimer) clearTimeout(impressionTimer)
+})
+
+function setupImpressionObserver() {
+  const el = getObservedElement()
+  if (typeof IntersectionObserver === 'undefined' || !el) return
+  impressionObserver = new IntersectionObserver((entries) => {
+    const entry = entries[0]
+    const visible = Boolean(entry?.isIntersecting && entry.intersectionRatio >= 0.5)
+    if (!visible) {
+      if (impressionTimer) clearTimeout(impressionTimer)
+      impressionTimer = null
+      return
+    }
+    scheduleImpression()
+  }, { threshold: [0, 0.5, 1] })
+  impressionObserver.observe(el)
+}
+
+function scheduleImpression() {
+  if (impressionTracked || impressionTimer) return
+  impressionTimer = setTimeout(() => {
+    if (impressionTracked) return
+    impressionTracked = true
+    analytics.track('gallery_card_impression', {
+      entityType: 'gallery',
+      entityId: props.gallery.id,
+      props: {
+        gallery_id: props.gallery.id,
+        list_type: props.listType,
+        position: props.position,
+      },
+    })
+  }, 1000)
+}
+
+function trackCardClick() {
+  analytics.track('gallery_card_click', {
+    entityType: 'gallery',
+    entityId: props.gallery.id,
+    flush: true,
+    props: {
+      gallery_id: props.gallery.id,
+      list_type: props.listType,
+      position: props.position,
+    },
+  })
+}
+
+function getObservedElement() {
+  const value = cardRef.value
+  if (value instanceof HTMLElement) return value
+  return value?.$el instanceof HTMLElement ? value.$el : null
+}
 </script>
 
 <template>
-  <NuxtLink :to="`/gallery/${gallery.slug}`" class="group block overflow-hidden rounded-2xl border border-white/70 bg-white/82 shadow-sm shadow-orange-950/5 ring-1 ring-gray-100/80 transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-orange-950/10 hover:ring-[#e8d5c5]">
+  <NuxtLink ref="cardRef" :to="`/gallery/${gallery.slug}`" class="group block overflow-hidden rounded-2xl border border-white/70 bg-white/82 shadow-sm shadow-orange-950/5 ring-1 ring-gray-100/80 transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-orange-950/10 hover:ring-[#e8d5c5]" @click="trackCardClick">
     <div class="relative overflow-hidden rounded-b-[1.25rem]">
       <FadeImage
         v-if="gallery.coverUrl"

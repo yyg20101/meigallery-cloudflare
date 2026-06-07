@@ -13,6 +13,9 @@ import { adminMediaRoutes } from './media'
 import { adminCaseRoutes } from './cases'
 import { adminImportApiTokenRoutes } from './import-api-tokens'
 import { adminExternalImportRecordRoutes } from './external-import-records'
+import { adminAdRoutes } from './ads'
+import { adminInviteCodeRoutes } from './invite-codes'
+import { adminAnalyticsRoutes } from './analytics'
 
 export const adminRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -51,6 +54,9 @@ adminRoutes.route('/settings', adminSettingsRoutes)
 adminRoutes.route('/legacy-import', adminLegacyImportRoutes)
 adminRoutes.route('/contact-methods', adminContactMethodRoutes)
 adminRoutes.route('/cases', adminCaseRoutes)
+adminRoutes.route('/ads', adminAdRoutes)
 adminRoutes.route('/import-api-tokens', adminImportApiTokenRoutes)
 adminRoutes.route('/external-import-records', adminExternalImportRecordRoutes)
+adminRoutes.route('/invite-codes', adminInviteCodeRoutes)
+adminRoutes.route('/analytics', adminAnalyticsRoutes)
 adminRoutes.route('/', adminMediaRoutes)

@@ -6,7 +6,7 @@
 import type { Context, MiddlewareHandler } from 'hono'
 import { errorJson } from '../utils/api-error'
 
-type RateLimitKeyBy = 'ip' | 'user' | 'session'
+type RateLimitKeyBy = 'ip' | 'user' | 'session' | 'analyticsVisitor' | 'analyticsSession'
 
 interface RateLimitOptions {
   /** 时间窗口内允许的最大请求数 */
@@ -92,6 +92,14 @@ async function resolveRateLimitKey(c: Context, keyBy: RateLimitKeyBy): Promise<s
     return userId ? `user:${userId}` : `ip:${getClientIp(c)}`
   }
 
+  if (keyBy === 'analyticsVisitor') {
+    return analyticsHeaderKey(c, 'x-analytics-visitor-id', 'visitor') || `ip:${getClientIp(c)}`
+  }
+
+  if (keyBy === 'analyticsSession') {
+    return analyticsHeaderKey(c, 'x-analytics-session-id', 'analytics-session') || `ip:${getClientIp(c)}`
+  }
+
   return `ip:${getClientIp(c)}`
 }
 
@@ -125,6 +133,12 @@ async function hashRateLimitValue(value: string): Promise<string> {
   const encoded = new TextEncoder().encode(value)
   const digest = await crypto.subtle.digest('SHA-256', encoded)
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('').slice(0, 24)
+}
+
+function analyticsHeaderKey(c: Context, headerName: string, prefix: string): string | null {
+  const value = c.req.header(headerName)
+  if (!value || !/^[A-Za-z0-9_-]{8,120}$/.test(value)) return null
+  return `${prefix}:${value.slice(0, 120)}`
 }
 
 export function resetRateLimitStoreForTest(): void {

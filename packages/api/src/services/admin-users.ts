@@ -4,6 +4,7 @@ import { generateId } from '../utils/db'
 import { writeAuditLog } from '../utils/permission'
 import { hashPassword } from '../utils/password'
 import { destroyAllUserSessions } from '../utils/session'
+import { recordFirstMembershipGrantConversion } from './invite-codes'
 
 export interface ListAdminUsersParams {
   page?: string | null
@@ -136,8 +137,33 @@ interface UserMembershipDetailRow {
   created_at: string
 }
 
-function toSqliteDatetime(iso: string) {
-  return iso.replace('T', ' ').replace(/\.\d{3}Z$/, '').replace(/Z$/, '')
+function toSqliteDatetime(date: Date) {
+  return date.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '').replace(/Z$/, '')
+}
+
+function parseMembershipDate(value: string | undefined, label: string): Date {
+  if (!value) {
+    throw new AdminUserError(400, `${label}为必填`)
+  }
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    throw new AdminUserError(400, `${label}格式无效`)
+  }
+  return parsed
+}
+
+function parseOptionalMembershipStartDate(value: string | undefined): Date {
+  if (value === undefined) return new Date()
+  return parseMembershipDate(value, '会员开始时间')
+}
+
+function parseAuditValue(value: string | null): unknown {
+  if (!value) return null
+  try {
+    return JSON.parse(value)
+  } catch {
+    return { message: '历史审计内容格式异常' }
+  }
 }
 
 function parsePage(value: string | null | undefined): number {
@@ -304,7 +330,10 @@ export async function getAdminUserActivity(db: D1Database, id: number): Promise<
       SELECT id, admin_id, action, target_type, target_id, before_value, after_value, created_at
       FROM admin_audit_logs
       WHERE (target_type = 'user' AND target_id = ?)
-         OR (target_type = 'user_membership' AND JSON_EXTRACT(after_value, '$.userId') = ?)
+         OR (
+           target_type = 'user_membership'
+           AND CAST(CASE WHEN json_valid(after_value) THEN JSON_EXTRACT(after_value, '$.userId') ELSE NULL END AS TEXT) = ?
+         )
       ORDER BY created_at DESC
       LIMIT 50
     `)
@@ -337,8 +366,8 @@ export async function getAdminUserActivity(db: D1Database, id: number): Promise<
       action: log.action,
       targetType: log.target_type,
       targetId: log.target_id,
-      beforeValue: log.before_value ? JSON.parse(log.before_value) : null,
-      afterValue: log.after_value ? JSON.parse(log.after_value) : null,
+      beforeValue: parseAuditValue(log.before_value),
+      afterValue: parseAuditValue(log.after_value),
       createdAt: log.created_at,
     })),
     recentSessions: sessions.results.map(session => ({
@@ -487,6 +516,15 @@ export async function grantAdminUserMembership(
     throw new AdminUserError(400, 'levelId 和 expiresAt 为必填')
   }
 
+  const startsAtDate = parseOptionalMembershipStartDate(body.startsAt)
+  const expiresAtDate = parseMembershipDate(body.expiresAt, '会员到期时间')
+  if (expiresAtDate.getTime() <= startsAtDate.getTime()) {
+    throw new AdminUserError(400, '会员到期时间必须晚于开始时间')
+  }
+  const startsAt = toSqliteDatetime(startsAtDate)
+  const expiresAt = toSqliteDatetime(expiresAtDate)
+  const note = body.note?.trim() || null
+
   const user = await db.prepare('SELECT id FROM users WHERE id = ?').bind(userId).first()
   if (!user) {
     throw new AdminUserError(404, '用户不存在')
@@ -501,12 +539,10 @@ export async function grantAdminUserMembership(
   }
 
   const id = generateId('mem')
-  const startsAt = toSqliteDatetime(body.startsAt || new Date().toISOString())
-  const expiresAt = toSqliteDatetime(body.expiresAt)
 
   await db
     .prepare('INSERT INTO user_memberships (id, user_id, level_id, starts_at, expires_at, granted_by, note) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .bind(id, userId, body.levelId, startsAt, expiresAt, adminId, body.note?.trim() || null)
+    .bind(id, userId, body.levelId, startsAt, expiresAt, adminId, note)
     .run()
 
   await writeAuditLog(db, {
@@ -520,8 +556,14 @@ export async function grantAdminUserMembership(
       rank: level.rank,
       startsAt,
       expiresAt,
-      note: body.note,
+      note,
     },
+  })
+
+  await recordFirstMembershipGrantConversion(db, {
+    invitedUserId: userId,
+    rank: level.rank,
+    grantedAt: startsAtDate.toISOString(),
   })
 
   return {
@@ -532,7 +574,7 @@ export async function grantAdminUserMembership(
     rank: level.rank,
     startsAt,
     expiresAt,
-    note: body.note?.trim() || null,
+    note,
   }
 }
 
