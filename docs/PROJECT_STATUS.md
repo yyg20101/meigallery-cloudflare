@@ -30,13 +30,13 @@
 - 已实现：公开图库/标签/搜索/真实案例、登录注册、用户名登录、邮箱验证开关、用户中心、个人设置、后台图库/标签/用户/设置/审计、独立首页广告位管理、多广告排序、大图上传、首页广告轮播、广告排期与安全清洗、首页内容配置保存校验和公开读取兜底、右下角服务流程/消息悬浮入口强化、图库批量操作、图片上传、封面设置、单媒体 rank 配置、WordPress 迁移辅助、Telegram `gallery` / `case` 外部导入、Facebook Pixel 设置。
 - 部分实现：zip 导入任务有 API 和后台入口，但当前重点实现和测试集中在解析/校验与任务记录；大文件异步完整处理仍需按后续阶段继续收敛。
 - 未接入：Cloudflare Stream 生产视频上传、编码和播放链路；相关字段、secret、媒体签名逻辑保留为规划能力。
-- 部分实现：站内一方数据分析能力已形成可落地需求方案、实施计划和后台数据大盘 UI 设计；当前已落地 Phase 0 基础契约、Phase 1 D1 schema、Phase 2 公开采集 API、Phase 3 邀请码转化闭环、Phase 4 Web 轻量 SDK、Phase 5 核心业务事件和 Phase 6 API 侧聚合/报表能力。已覆盖共享分析类型/常量、事件 props 白名单、URL/referrer 清洗、来源归因、运营时区日期、D1 rows read/write 预算读取、公开分析开关读取，`analytics_*`、`invite_codes`、`invite_registrations`、聚合日报和导出任务迁移，`/api/analytics/events`、`/api/analytics/session/end`、关闭态 disabled 响应、IP/visitor/session 三维兜底限流、采集健康日报写入，`/api/invites/:code/status` 公开状态查询，`/api/admin/invite-codes` 后台管理、注册成功绑定邀请上下文，管理员首次发放 rank > 0 会员时回填邀请转化，Web 端 URL 预清洗、route 归一化、visitor/session 队列、`sendBeacon` 兜底、15 秒本地时长累计、注册邀请码校验、登录/注册关键事件、首页广告曝光/点击、图库卡片曝光/点击、图库详情浏览、图片查看器打开、会员 CTA、点赞成功、搜索/筛选/排序/加载更多、联系与规则入口事件，API Worker 侧可信 `media_access_granted` / `media_access_denied` 媒体授权事件，Cron 日报聚合与保留期清理，`/api/admin/analytics/*` 后台分析查询、owner-only session 脱敏明细和 owner-only CSV 导出到 R2。后台数据大盘设计已细化到决策闭环、首屏优先级、指标定义、统一 API 响应外壳、响应式规则和 Cloudflare 成本护栏。后台大盘页面仍未实现；当前生产可见能力仍只有图库浏览量、点赞计数、后台基础概览和 Facebook Pixel 辅助埋点，后续实现以 `docs/PRD_DATA_ANALYTICS.md` 为需求入口，以 `plan/feature-data-analytics-implementation-1.md` 为执行拆分，以 `docs/UI_DATA_ANALYTICS_DASHBOARD.md` 为后台大盘体验设计。
+- 部分实现：站内一方数据分析能力已形成可落地需求方案、实施计划和后台数据大盘 UI 设计；当前已落地 Phase 0 基础契约、Phase 1 D1 schema、Phase 2 公开采集 API、Phase 3 邀请码转化闭环、Phase 4 Web 轻量 SDK、Phase 5 核心业务事件、Phase 6 API 侧聚合/报表能力和 Phase 7 后台页面/导航。已覆盖共享分析类型/常量、事件 props 白名单、URL/referrer 清洗、来源归因、运营时区日期、D1 rows read/write 预算读取、公开分析开关读取，`analytics_*`、`invite_codes`、`invite_registrations`、聚合日报和导出任务迁移，`/api/analytics/events`、`/api/analytics/session/end`、关闭态 disabled 响应、IP/visitor/session 三维兜底限流、采集健康日报写入，`/api/invites/:code/status` 公开状态查询，`/api/admin/invite-codes` 后台管理、注册成功绑定邀请上下文，管理员首次发放 rank > 0 会员时回填邀请转化，Web 端 URL 预清洗、route 归一化、visitor/session 队列、`sendBeacon` 兜底、15 秒本地时长累计、注册邀请码校验、登录/注册关键事件、首页广告曝光/点击、图库卡片曝光/点击、图库详情浏览、图片查看器打开、会员 CTA、点赞成功、搜索/筛选/排序/加载更多、联系与规则入口事件，API Worker 侧可信 `media_access_granted` / `media_access_denied` 媒体授权事件，Cron 日报聚合与保留期清理，`/api/admin/analytics/*` 后台分析查询、owner-only session 脱敏明细和 owner-only CSV 导出到 R2。后台已新增 `/admin/analytics` 及来源、内容、链路、点击、时长、邀请、健康子页，`/admin/invite-codes` 跳转入口，统一时间范围、加载、错误、空数据、D1 usage 状态，owner-only 导出按钮，以及邀请码创建、禁用和创建后复制完整邀请链接。Phase 8 端到端 smoke、性能成本 fixtures、部署/回滚文档仍未完成；采集开关默认关闭，生产完整能力需完成上线顺序后再开启。
 - 已完成迁移口径：真实案例当前统一为 `cases` / `case_images`、`/cases`、`/api/cases`、`case:create`；旧 `testimonial_*` 仅存在于历史文档、迁移脚本说明或兼容拒绝测试中。
 
 ## PRD 质量状态
 
 - 当前 PRD 质量审阅和整改索引见 `docs/PRD_QUALITY_REVIEW.md`。
-- 数据分析需求方案见 `docs/PRD_DATA_ANALYTICS.md`，实施计划见 `plan/feature-data-analytics-implementation-1.md`；当前已细化到工程落地规格、后台数据大盘设计、性能预算和成本护栏，但仍是后续实现草案，不代表已有生产能力。
+- 数据分析需求方案见 `docs/PRD_DATA_ANALYTICS.md`，实施计划见 `plan/feature-data-analytics-implementation-1.md`；当前已实施到后台数据大盘页面与导航，性能预算、成本护栏、上线顺序和回滚路径仍按 Phase 8 继续验证。
 - 当前可验收能力、部分实现能力和规划能力必须按 `docs/PRD_QUALITY_REVIEW.md` 的需求状态矩阵区分，不得把历史 PRD 中的规划项当作上线阻断项。
 - Cloudflare Stream、Email Service、zip 大文件异步导入、旧站内容审核状态机属于需要单独补齐验收标准的重点区域。
 - 后续新增或修改 PRD 时，必须为成功指标补充测试环境、数据规模、采样方法和失败路径。
@@ -45,7 +45,7 @@
 
 - 当前 UI 质量审阅和页面/组件验收清单见 `docs/UI_QUALITY_REVIEW.md`。
 - `docs/UI_DESIGN.md` 已补充页面级完成定义、组件状态矩阵、响应式验收和可访问性检查方法。
-- 数据分析后台大盘设计见 `docs/UI_DATA_ANALYTICS_DASHBOARD.md`，当前为后续实现草案，用于指导 `/admin/analytics`、来源、内容、链路、点击、时长、邀请和采集健康页面。
+- 数据分析后台大盘设计见 `docs/UI_DATA_ANALYTICS_DASHBOARD.md`，已用于首版 `/admin/analytics`、来源、内容、链路、点击、时长、邀请和采集健康页面实现；后续仍需补 Playwright 多视口 smoke 和性能成本 fixtures。
 - Stream 接入前，视频入口、视频专区、视频角标和播放器均按规划能力处理，不作为当前上线阻断项。
 - 线框图留存规则见 `docs/ui/wireframes/README.md`，后续关键线框图需导出到该目录或以截图、PDF、HTML 快照形式保存。
 

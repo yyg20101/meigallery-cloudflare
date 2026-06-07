@@ -293,7 +293,7 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 
 ## 8. D1 数据库 Schema `[当前实现]`
 
-以下为当前核心表摘要，完整结构以 `packages/api/migrations/` 中的顺序迁移为准。数据分析相关表已通过 `0023` 到 `0026` 建立 schema，并已接入公开采集 API、邀请码转化闭环、Web 轻量 SDK、核心业务埋点、Cron 聚合任务和后台分析 API；后台分析页面仍属于后续接入阶段。
+以下为当前核心表摘要，完整结构以 `packages/api/migrations/` 中的顺序迁移为准。数据分析相关表已通过 `0023` 到 `0026` 建立 schema，并已接入公开采集 API、邀请码转化闭环、Web 轻量 SDK、核心业务埋点、Cron 聚合任务、后台分析 API 和后台分析页面；端到端 smoke、性能成本 fixtures、上线顺序和回滚文档仍按后续阶段继续验证。
 
 ### users
 
@@ -553,7 +553,7 @@ INSERT INTO site_settings (key, value) VALUES
 
 ### 数据分析表 `[部分实现]`
 
-当前已通过 `0023_analytics_core.sql` 到 `0026_analytics_exports.sql` 建立数据分析 schema，并已接入 `/api/analytics/events`、`/api/analytics/session/end` 公开采集接口、邀请码转化闭环、Web 轻量 SDK、核心业务埋点、Cron 聚合任务和后台分析 API。采集接口默认受 `analytics_enabled=false` 保护，关闭时返回 disabled 且不写 D1；Web SDK 同样读取公开设置，关闭时不初始化 visitor/session，不写本地存储。当前前台已覆盖首页广告、图库卡片、图库详情、图片查看器、会员 CTA、点赞成功、搜索、筛选、排序、加载更多、联系面板和规则入口事件；媒体授权成功/拒绝由 API Worker 侧写入可信 `media_access_granted` / `media_access_denied`，不信任前端伪造授权结果。后台分析 API 默认读取聚合表和摘要表，并返回 D1 usage 供健康看板展示；单 session 明细和 CSV 导出为 owner-only 并写入审计日志。在后台页面接入前，生产数据分析能力仍未完整启用。
+当前已通过 `0023_analytics_core.sql` 到 `0026_analytics_exports.sql` 建立数据分析 schema，并已接入 `/api/analytics/events`、`/api/analytics/session/end` 公开采集接口、邀请码转化闭环、Web 轻量 SDK、核心业务埋点、Cron 聚合任务、后台分析 API 和后台分析页面。采集接口默认受 `analytics_enabled=false` 保护，关闭时返回 disabled 且不写 D1；Web SDK 同样读取公开设置，关闭时不初始化 visitor/session，不写本地存储。当前前台已覆盖首页广告、图库卡片、图库详情、图片查看器、会员 CTA、点赞成功、搜索、筛选、排序、加载更多、联系面板和规则入口事件；媒体授权成功/拒绝由 API Worker 侧写入可信 `media_access_granted` / `media_access_denied`，不信任前端伪造授权结果。后台分析 API 默认读取聚合表和摘要表，并返回 D1 usage 供健康看板展示；单 session 明细和 CSV 导出为 owner-only 并写入审计日志。后台已新增 `/admin/analytics` 总览、来源、内容、链路、点击、时长、邀请、健康页面和 `/admin/invite-codes` 跳转入口；生产完整启用前仍需完成 Phase 8 的 e2e、成本性能和回滚验证。
 
 核心表分层：
 
@@ -585,7 +585,7 @@ INSERT INTO site_settings (key, value) VALUES
 - `analytics_events` 只保留事件名、session 和实体三类必要组合索引：`(event_name, occurred_at)`、`(session_id, occurred_at)`、`(entity_type, entity_id, occurred_at)`。
 - 日报聚合表均以 `date` 加主要维度建立唯一索引，供 Cron 聚合任务幂等 upsert。
 - 不给 `event_props` 任意 JSON 字段建索引，避免高基数属性导致写放大和存储成本失控。
-- `site_settings` 已新增 `analytics_enabled=false`、`analytics_sample_rate=0.01`、`analytics_consent_mode=limited`，因此前端 SDK 后续接入时默认保持关闭态。
+- `site_settings` 已新增 `analytics_enabled=false`、`analytics_sample_rate=0.01`、`analytics_consent_mode=limited`，因此前端 SDK 默认保持关闭态，需由 Owner 按上线顺序显式开启。
 
 ### home_ads
 

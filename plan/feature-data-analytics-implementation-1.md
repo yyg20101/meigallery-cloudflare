@@ -153,15 +153,15 @@ tags: [feature, analytics, cloudflare, d1, prd, cost]
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
 | TASK-055A | 细化后台数据大盘设计文档，明确 MVP 决策闭环、首屏优先级、指标定义、统一 API 响应外壳、响应式规则和 Cloudflare 成本护栏。 | ✅ | 2026-06-07 |
-| TASK-056 | 修改 `packages/web/app/layouts/admin.vue`，新增“数据分析”和“邀请码”导航入口，非 owner 不显示导出和 session 明细入口。 | | |
-| TASK-057 | 新增 `packages/web/app/pages/admin/analytics/index.vue`，实现总览 KPI、7/30/90 天筛选、趋势表格、Top 来源、Top 页面、Top 点击和采集健康摘要。 | | |
-| TASK-058 | 新增 `packages/web/app/pages/admin/analytics/sources.vue`，展示来源渠道漏斗、UTM/referrer 表格和来源质量排序。 | | |
-| TASK-059 | 新增 `packages/web/app/pages/admin/analytics/paths.vue`，展示入口页、退出页、跳出页和 from_route -> to_route 路径边表格。 | | |
-| TASK-060 | 新增 `packages/web/app/pages/admin/analytics/clicks.vue`，展示元素点击排行、raw clicks、effective clicks、duplicate clicks 和点击频率异常提示。 | | |
-| TASK-061 | 新增 `packages/web/app/pages/admin/analytics/durations.vue`，展示页面平均/中位停留、有效浏览率、滚动深度和高跳出页面。 | | |
-| TASK-062 | 新增 `packages/web/app/pages/admin/analytics/invites.vue`，展示邀请码列表、落地量、注册数、会员发放数、转化率，并提供创建、禁用和复制链接操作。 | | |
-| TASK-063 | 新增 `packages/web/app/pages/admin/invite-codes.vue` 或把邀请码管理集成到 `analytics/invites.vue`，确保创建和禁用表单复用 `resolveApiErrorMessage` 并显示审计友好的操作结果。 | | |
-| TASK-064 | 为后台分析页面增加组件或页面测试，覆盖空数据文案“暂无数据，部署埋点后会在这里展示”、日期筛选、排序、owner-only 操作隐藏和错误提示。 | | |
+| TASK-056 | 修改 `packages/web/app/layouts/admin.vue`，新增“数据分析”和“邀请码”导航入口，非 owner 不显示导出和 session 明细入口。 | ✅ | 2026-06-07 |
+| TASK-057 | 新增 `packages/web/app/pages/admin/analytics/index.vue`，实现总览 KPI、7/30/90 天筛选、趋势表格、Top 来源、Top 页面、Top 点击和采集健康摘要。 | ✅ | 2026-06-07 |
+| TASK-058 | 新增 `packages/web/app/pages/admin/analytics/sources.vue`，展示来源渠道漏斗、UTM/referrer 表格和来源质量排序。 | ✅ | 2026-06-07 |
+| TASK-059 | 新增 `packages/web/app/pages/admin/analytics/paths.vue`，展示入口页、退出页、跳出页和 from_route -> to_route 路径边表格。 | ✅ | 2026-06-07 |
+| TASK-060 | 新增 `packages/web/app/pages/admin/analytics/clicks.vue`，展示元素点击排行、raw clicks、effective clicks、duplicate clicks 和点击频率异常提示。 | ✅ | 2026-06-07 |
+| TASK-061 | 新增 `packages/web/app/pages/admin/analytics/durations.vue`，展示页面平均/中位停留、有效浏览率、滚动深度和高跳出页面。 | ✅ | 2026-06-07 |
+| TASK-062 | 新增 `packages/web/app/pages/admin/analytics/invites.vue`，展示邀请码列表、落地量、注册数、会员发放数、转化率，并提供创建、禁用和复制链接操作。 | ✅ | 2026-06-07 |
+| TASK-063 | 新增 `packages/web/app/pages/admin/invite-codes.vue` 或把邀请码管理集成到 `analytics/invites.vue`，确保创建和禁用表单复用 `resolveApiErrorMessage` 并显示审计友好的操作结果。 | ✅ | 2026-06-07 |
+| TASK-064 | 为后台分析页面增加组件或页面测试，覆盖空数据文案“暂无数据，部署埋点后会在这里展示”、日期筛选、排序、owner-only 操作隐藏和错误提示。 | ✅ | 2026-06-07 |
 
 ### Implementation Phase 8
 
