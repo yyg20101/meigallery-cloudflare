@@ -4,15 +4,15 @@ version: 1.0
 date_created: 2026-06-07
 last_updated: 2026-06-07
 owner: MeiGallery
-status: 'In Progress'
+status: 'MVP 已实现，Phase 9 按阈值延后'
 tags: [feature, analytics, cloudflare, d1, prd, cost]
 ---
 
 # Introduction
 
-![Status: Planned](https://img.shields.io/badge/status-Planned-blue)
+![Status: MVP 已实现](https://img.shields.io/badge/status-MVP%20implemented-green)
 
-本计划把 `docs/PRD_DATA_ANALYTICS.md` 拆成可执行工程阶段，用于实现站内一方数据分析能力。目标是在 Cloudflare Workers + D1 + R2 现有架构内完成邀请注册、访问来源、访问链路、点击次数、点击频率和浏览时长统计，同时把 D1 rows read/write、Worker 请求耗时和后续 Queues / Workers Analytics Engine 引入条件纳入验收。
+本计划把 `docs/PRD_DATA_ANALYTICS.md` 拆成可执行工程阶段，用于实现站内一方数据分析能力。当前 Phase 0-8 已完成并验证，已在 Cloudflare Workers + D1 + R2 现有架构内覆盖邀请注册、访问来源、访问链路、点击次数、点击频率和浏览时长统计，同时把 D1 rows read/write、Worker 请求耗时和后续 Queues / Workers Analytics Engine 引入条件纳入验收。Phase 9 只在生产指标达到明确阈值后启动，不是当前默认上线依赖。
 
 ## 1. Requirements & Constraints
 
@@ -32,9 +32,9 @@ tags: [feature, analytics, cloudflare, d1, prd, cost]
 - **COS-001**: 默认不把 `gallery_card_impression`、`media_thumbnail_impression`、`engagement_ping`、滚动和曝光逐条写入 D1 原始表。
 - **COS-002**: D1 只保存事实层、摘要层、聚合层和 1%-5% 采样明细；采样明细默认保留 30 天，页面/session 摘要默认保留 90 天，聚合日报默认保留 13 个月。
 - **COS-003**: 不给 `event_props` 任意 JSON 字段建索引；只为报表查询路径建立必要组合索引，并在测试中记录 rows read/write。
-- **COS-004**: 首期不默认引入 Cloudflare Queues 和 Workers Analytics Engine；只有达到本计划 Phase 8 的阈值后再实施。
+- **COS-004**: 首期不默认引入 Cloudflare Queues 和 Workers Analytics Engine；只有达到 Phase 9 触发阈值后再实施。
 - **CON-001**: 项目继续只使用 Cloudflare Workers、Workers Assets、D1、R2、Turnstile、WAF / Rate Limiting Rules、Queues 和 Workers Analytics Engine，不引入非 Cloudflare 运行时或外部数据库。
-- **CON-002**: 当前代码事实仍只有图库浏览量、点赞、后台基础概览和 Facebook Pixel 辅助埋点；本计划为后续实现计划，不代表生产能力已存在。
+- **CON-002**: 当前代码事实已包含站内一方数据分析 MVP；生产启用仍必须保持 `analytics_enabled=false` 默认关闭，并按部署文档完成 migrations、API、Web、后台和 Owner 开关顺序。
 - **CON-003**: 数据库变更必须使用 `packages/api/migrations/` 下的顺序 migration，当前下一批建议从 `0023` 开始。
 - **CON-004**: 每个阶段完成后必须运行 `corepack pnpm --filter @meigallery/api exec tsc --noEmit` 和 `corepack pnpm --filter @meigallery/web exec nuxt build`。
 - **GUD-001**: API 路由保持薄层实现，事件清洗、归因、聚合和邀请码业务放入 `packages/api/src/services/**` 和 `packages/api/src/utils/**`，并补单元测试。
@@ -170,7 +170,7 @@ tags: [feature, analytics, cloudflare, d1, prd, cost]
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
 | TASK-065 | 扩展 `packages/web/tests/e2e/mock-api.mjs`，支持接收 `/api/analytics/events`、`/api/analytics/session/end`、`/api/invites/:code/status` 和后台分析 mock 响应。 | ✅ | 2026-06-07 |
-| TASK-066 | 新增 Playwright smoke：`首页 -> 搜索 -> 图库详情 -> 打开联系 -> 带 invite 注册页`，断言 mock API 收到 page、click、contact 和 invite 事件，且无敏感 URL。 | ✅ | 2026-06-07 |
+| TASK-066 | 新增 Playwright smoke：`首页 -> 搜索 -> 图库详情 -> 打开联系 -> 点击联系方式 -> 带 invite 注册页`，断言 mock API 收到 page、click/contact、invite 和 register 事件，且无敏感 URL 或联系值。 | ✅ | 2026-06-07 |
 | TASK-067 | 新增 API 性能成本 fixtures，模拟 10,000 sessions / 天、平均 3 page views / session、平均 2 clicks / session，断言 D1 rows written <= 80,000 / 天。 | ✅ | 2026-06-07 |
 | TASK-068 | 新增后台报表性能测试 fixtures，构造 100,000 条事件规模并断言总览、来源、页面、点击、时长、邀请 6 个接口在 30 天范围内 P95 <= 1 秒。 | ✅ | 2026-06-07 |
 | TASK-069 | 更新 `docs/PROJECT_STATUS.md`、`docs/TECHNICAL_SPEC.md` 和 `docs/DEPLOYMENT.md`，记录数据分析当前实现状态、开关默认关闭、迁移顺序、上线顺序和回滚策略。 | ✅ | 2026-06-07 |
