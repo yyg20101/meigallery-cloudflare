@@ -9,6 +9,7 @@ const gallery = {
   coverUrl: '/api/media/asset-1/thumbnail',
   summary: '授权写真内容',
   requiredLevelRank: 10,
+  publishedAt: '2026-06-07T10:00:00.000Z',
   tags: [
     { id: 'tag_1', name: '广东', slug: 'guangdong', type: 'region' },
   ],

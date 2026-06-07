@@ -33,8 +33,7 @@ describe('AnalyticsDataTable', () => {
     })
 
     await wrapper.get('button').trigger('click')
-    const firstRow = wrapper.findAll('tbody tr')[0]
-
+    const firstRow = wrapper.findAll('tbody tr')[0]!
     expect(firstRow.text()).toContain('B')
   })
 
