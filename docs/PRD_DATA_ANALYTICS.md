@@ -21,7 +21,7 @@
 
 ### Proposed Solution
 
-建设一套基于 Cloudflare Workers + D1 的站内一方数据分析系统：前端以轻量 SDK 采集匿名访客、会话、页面、点击、停留和转化事件；API 负责清洗、校验、入库和聚合；后台提供来源、链路、邀请、内容、点击、时长和转化看板。
+建设一套基于 Cloudflare Workers + D1 的站内一方数据分析系统：前端以轻量 SDK 采集匿名访客、会话、页面、点击、停留和转化事件；API 负责清洗、校验、批量归并和低成本入库；D1 默认只保存稳定事实、页面/session 汇总和日报聚合，高频原始事件按采样或后续 Workers Analytics Engine 处理；后台提供来源、链路、邀请、内容、点击、时长和转化看板。
 
 ### Success Criteria
 
@@ -29,7 +29,9 @@
 - 对同一匿名访客的同一会话能形成完整链路：入口来源 -> 落地页 -> 浏览页序列 -> 关键点击 -> 注册或联系。
 - 邀请注册链接注册转化率、注册后会员发放转化率、邀请人或邀请码贡献可以按日、按邀请码、按渠道统计。
 - 图库详情、广告位、联系入口和搜索筛选等核心事件的采集成功率在前端可执行环境中达到 95% 以上；离线、关闭页面和浏览器限制导致的失败单独计入丢失估算。
-- 后台聚合报表在 100,000 条事件规模内 P95 响应时间 <= 1 秒；原始事件查询默认限制在最近 90 天。
+- 后台聚合报表在 100,000 条事件规模内 P95 响应时间 <= 1 秒；摘要查询默认限制在最近 90 天，采样原始明细默认限制在最近 30 天。
+- 成本保护模式下，10,000 sessions / 天的浏览规模应控制在 80,000 D1 rows written / 天以内；普通浏览批次不得逐条写入曝光、点击心跳和滚动事件。
+- 后台默认报表只查询聚合表和摘要表，30 天范围内单接口 D1 rows read 目标 <= 10,000，90 天范围内单接口 D1 rows read 目标 <= 30,000，禁止在首页看板直接扫描 `analytics_events`。
 
 ## 2. User Experience & Functionality
 
@@ -135,21 +137,22 @@
 ```text
 浏览器
   -> 站内分析 SDK：生成 visitor_id/session_id，采集页面、点击、停留和转化事件
-  -> POST /api/analytics/events：批量上报，服务端清洗、校验、限流、写入 D1
-  -> D1 原始事件表：保存最近 90 天可排障事件
+  -> POST /api/analytics/events：批量上报，服务端清洗、校验、限流、归并
+  -> D1 事实与汇总层：稳定事实、页面摘要、session 摘要、日报聚合
+  -> D1 sampled raw：仅保存调试采样和关键转化明细，默认不存高频原始事件
   -> Cron 聚合任务：生成日报、页面、来源、路径、邀请和点击聚合表
   -> 后台分析 API：读取聚合表，必要时读取脱敏明细
   -> Nuxt 后台看板：展示来源、链路、邀请、内容、点击、时长和转化
 ```
 
-首期直接写入 D1，控制事件字段和采样，避免引入新的非 Cloudflare 基础设施。后续若事件量增长，可把事件接收拆为 Cloudflare Queues 缓冲，并把历史原始事件归档到 R2。
+首期直接写入 D1，但按成本保护模式执行：浏览类数据先写页面/session 摘要和日聚合，邀请、注册、登录、会员发放等转化事实保留明细。后续若事件量增长，可把事件接收拆为 Cloudflare Queues 缓冲；若确实需要高频、高基数原始分析，再评估 Workers Analytics Engine；历史导出和归档文件放入 R2。Cloudflare 官方文档依据和成本预算见本文第 8 节。
 
 ### Integration Points
 
 - Web 前端：新增 `useAnalytics` composable 和客户端插件，接入路由切换、点击代理、可见性、pagehide、注册、登录、联系、搜索、筛选、图库详情和广告组件。
 - API Worker：新增公开采集接口、管理员报表接口、邀请管理接口和 Cron 聚合任务。
-- D1：存储 visitor、session、event、invite 和聚合表。
-- R2：后续用于导出 CSV、归档过期原始事件和保存大查询报告文件。
+- D1：存储 visitor、session、邀请、转化事实、页面/session 摘要、采样原始事件和聚合表。
+- R2：后续用于导出 CSV、归档采样原始事件和保存大查询报告文件。
 - Turnstile：注册、登录仍走当前 Turnstile；事件采集接口不要求每次 Turnstile，但必须限流、校验事件 schema 和限制 payload。
 - 审计日志：邀请码创建、禁用、导出分析数据、查看单 session 明细等后台行为写入 `admin_audit_logs`。
 - Facebook Pixel：继续作为第三方营销辅助，只同步清洗后的标准转化事件，不替代站内一方分析。
@@ -215,6 +218,8 @@
 | value | INTEGER | 数值型指标，例如时长、滚动深度、次数 |
 | dedupe_key | TEXT | 聚合去重键，可为空 |
 
+说明：`analytics_events` 在 MVP 中不作为完整原始事件仓库。默认只保存关键转化事件、错误排障事件和 1%-5% 采样浏览事件；后台报表必须优先读取摘要表和聚合表，避免 D1 rows read/write 随曝光和心跳线性增长。
+
 #### invite_codes `[新增需求]`
 
 | 字段 | 类型 | 说明 |
@@ -271,7 +276,7 @@
 
 采集接口要求：
 
-- 单次最多 20 个事件，payload <= 32KB。
+- 单次最多 20 个事件，payload <= 16KB。
 - 只接受白名单事件名和白名单属性。
 - 服务端覆盖 `received_at`、登录 `user_id`、Cloudflare 国家和环境信息。
 - 对 visitor/session/event ID 做格式校验，event ID 唯一去重。
@@ -334,7 +339,7 @@
 | `session_end` | pagehide、超时或后端聚合兜底 | exit_path、active_seconds、page_view_count | session 时长、退出页 |
 | `page_view` | 首次进入和路由切换 | route_name、entity_type、entity_id、is_landing | PV、UV、入口页 |
 | `page_leave` | 离开页面或路由切换 | active_seconds、max_scroll_depth、is_bounce | 停留时长、跳出率 |
-| `engagement_ping` | 页面可见时每 15 秒 | active_seconds_delta | 有效浏览时长 |
+| `engagement_ping` | 页面可见时每 15 秒在前端本地累计，默认不单独发网络请求 | active_seconds_delta | 有效浏览时长 |
 | `scroll_depth` | 达到 25/50/75/90/100% | depth_percent | 阅读深度 |
 
 #### 来源与广告事件
@@ -497,14 +502,14 @@
 - 前端传入的 `user_id`、会员 rank、权限状态不可信，服务端必须从 session 和数据库派生。
 - 分析接口不能返回私有 R2 key、Stream token、session token、邮箱明文、验证码或联系值。
 - 管理员报表 admin+ 可访问；导出、单 session 明细和长期历史查询仅 owner。
-- 数据保留建议：原始事件 90 天，聚合日报 13 个月，导出文件 7 天自动删除。
+- 数据保留建议：采样原始明细 30 天，页面/session 摘要 90 天，聚合日报 13 个月，导出文件 7 天自动删除。
 - 若浏览器发送 Do Not Track 或站点后续提供隐私开关，`consent_state=limited` 时只保留必要聚合事件，不采集点击明细和时长心跳。
 
 ### Phased Rollout
 
 #### MVP：一方事件采集与基础看板
 
-- 新增 visitor、session、events、invite、daily aggregate 数据模型。
+- 新增 visitor、session、page/session summary、sampled events、invite、daily aggregate 数据模型。
 - 新增前端 `useAnalytics` 和批量上报。
 - 接入页面浏览、停留、滚动、搜索、筛选、图库详情、点赞、联系、注册、登录、广告点击和邀请注册事件。
 - 后台提供总览、来源、邀请、页面、点击和时长基础报表。
@@ -518,7 +523,7 @@
 #### v2.0：规模和运营洞察
 
 - 引入 Cloudflare Queues 缓冲事件写入。
-- 原始事件按月归档到 R2。
+- 采样明细和 owner 导出文件按需归档到 R2。
 - 增加投放活动对比、内容价值评分、留存分析和聚合趋势摘要。
 
 ### Technical Risks
@@ -558,7 +563,7 @@
 
 - 首期邀请码由 admin+ 创建，普通用户自助邀请放到后续增强。
 - 首期站内一方分析为主，Facebook Pixel 只保留第三方投放辅助，不作为后台报表数据源。
-- 原始事件保留 90 天，聚合数据保留 13 个月。
+- 采样原始明细保留 30 天，页面/session 摘要保留 90 天，聚合数据保留 13 个月。
 - 后台默认看聚合数据，Owner 才能查看脱敏 session 明细和导出。
 - 不建设实时秒级大屏，日报聚合和近实时基础查询足够支撑当前运营。
 
@@ -572,7 +577,7 @@
 
 | 迁移 | 内容 | 验收点 |
 |------|------|------|
-| `0023_analytics_core.sql` | `analytics_visitors`、`analytics_sessions`、`analytics_events`、核心索引 | 能插入匿名访客、session 和事件；事件 ID 唯一去重 |
+| `0023_analytics_core.sql` | `analytics_visitors`、`analytics_sessions`、`analytics_page_summaries`、`analytics_session_summaries`、`analytics_events` 采样表、核心索引 | 能插入匿名访客、session、页面摘要、session 摘要和采样事件；事件 ID 唯一去重 |
 | `0024_invite_codes.sql` | `invite_codes`、`invite_registrations`、邀请码索引 | 能创建、禁用、校验邀请码，并关联注册用户 |
 | `0025_analytics_aggregates.sql` | `analytics_daily_sources`、`analytics_daily_pages`、`analytics_daily_events`、`analytics_path_edges`、`analytics_invite_daily`、`analytics_click_daily` | Cron 或手动服务函数能写入日报聚合 |
 | `0026_analytics_exports.sql` | `analytics_export_jobs`，用于 owner 导出任务 | 导出任务可记录状态、R2 key、过期时间和创建人 |
@@ -596,7 +601,8 @@
 - `path` 只保存 pathname 和允许的公开筛选参数；`token`、`code`、`signature`、`access_token` 等参数必须移除。
 - `invite_codes.code_hash` 用服务端 secret 加 salt 后 hash；后台复制链接时只使用创建时返回的明文 code，列表页展示 `display_code`。
 - `analytics_events.user_id` 只允许服务端从 `mei_session` 解析得到；前端 payload 中出现 `user_id` 时忽略。
-- 原始事件只保留最近 90 天；删除任务应放进现有 scheduled handler，和验证码清理、会员提醒并列执行。
+- 普通浏览事件必须优先落到 `analytics_page_summaries`、`analytics_session_summaries` 和日报聚合；`gallery_card_impression`、`media_thumbnail_impression`、`engagement_ping` 不默认逐条写 `analytics_events`。
+- 采样明细保留最近 30 天，页面/session 摘要保留最近 90 天；删除任务应放进现有 scheduled handler，和验证码清理、会员提醒并列执行。
 
 ### 7.3 API 请求和响应契约
 
@@ -750,7 +756,7 @@
 | visitor | 120 次 / 分钟 |
 | session | 60 次 / 分钟 |
 | 单次事件数 | 20 |
-| 单次 body | 32KB |
+| 单次 body | 16KB |
 
 ### 7.5 前端 SDK 落地规格
 
@@ -768,6 +774,7 @@ SDK 行为要求：
 - 首次进入生成 `visitor_id`，保存在一方 cookie 或 localStorage；失效期 180 天，用户清理后重新生成。
 - session 默认 30 分钟无活动过期；路由切换不新建 session。
 - 队列最多保留 50 条事件；达到 20 条、每 10 秒、路由切换、`visibilitychange=hidden`、`pagehide` 时触发 flush。
+- 15 秒心跳只更新前端内存中的 active seconds，不单独入队；页面离开时发送 `page_leave` 或 `page_summary`。
 - `pagehide` 优先使用 `navigator.sendBeacon`；不支持时退化为 `$fetch`，失败事件保留到 localStorage 下次重试。
 - 当前 URL 或 referrer 含敏感凭证参数时，跳过该事件并记录本地 debug 日志，不把敏感值发给 API。
 - `consent_state=limited` 时只上报 `session_start`、`page_view` 和聚合必要字段，不上报点击明细、滚动深度和心跳。
@@ -822,7 +829,7 @@ SDK 行为要求：
 
 完成标准：
 
-- 本地访问首页、发现页、图库详情页后，D1 中出现 visitor、session 和 page/click 事件。
+- 本地访问首页、发现页、图库详情页后，D1 中出现 visitor、session、page summary、session summary 和点击聚合；采样开关打开时才出现 sampled raw 事件。
 - `corepack pnpm --filter @meigallery/api exec tsc --noEmit` 通过。
 - `corepack pnpm --filter @meigallery/web exec nuxt build` 通过。
 
@@ -900,3 +907,130 @@ SDK 行为要求：
 - `corepack pnpm --filter @meigallery/api exec tsc --noEmit` 通过。
 - `corepack pnpm --filter @meigallery/web exec nuxt build` 通过。
 - Playwright smoke 覆盖至少一条完整访问链路。
+
+## 8. Cloudflare 性能与成本优化
+
+### 8.1 官方文档依据
+
+本节基于 2026-06-07 查阅的 Cloudflare 官方文档形成，后续真正实现或变更 Cloudflare 配置前必须再次核对最新文档。
+
+| 主题 | 官方文档 | 对本项目的约束 |
+|------|------|------|
+| D1 价格 | [D1 Pricing](https://developers.cloudflare.com/d1/platform/pricing/) | D1 成本与 rows read、rows written 和 storage 直接相关；实现必须减少逐事件写入和后台扫描 |
+| D1 限制 | [D1 Limits](https://developers.cloudflare.com/d1/platform/limits/) | 单库容量、查询和 API 限制会影响原始事件保留策略；原始高频事件不应无限写 D1 |
+| D1 索引 | [Use indexes](https://developers.cloudflare.com/d1/best-practices/use-indexes/) | 索引能减少查询扫描，但会增加写入成本；只给报表查询路径建必要索引 |
+| Workers 限制 | [Workers Limits](https://developers.cloudflare.com/workers/platform/limits/) | 采集接口必须控制 CPU、subrequest、body 和批量大小；清洗逻辑不能复杂到拖慢请求 |
+| Queues 批处理 | [Batching, Retries and Delays](https://developers.cloudflare.com/queues/configuration/batching-retries/) | 当直接写 D1 影响延迟或 rows written 时，用 Queue 批处理降低同步压力 |
+| Workers Analytics Engine 价格 | [Analytics Engine Pricing](https://developers.cloudflare.com/analytics/analytics-engine/pricing/) | 高频、高基数原始分析可评估 WAE，但不能替代 D1 中的业务转化事实 |
+| Workers Analytics Engine 限制 | [Analytics Engine Limits](https://developers.cloudflare.com/analytics/analytics-engine/limits/) | 单次 Worker invocation 可写 data point 数量有限，blob 大小和保留期也有限，不能当长期明细库 |
+
+### 8.2 成本优化后的数据分层
+
+| 层级 | 存储 | 保存内容 | 默认保留期 | 用途 |
+|------|------|------|------|------|
+| 事实层 | D1 | 邀请码、注册成功、登录成功、会员发放转化、媒体授权结果 | 13 个月 | 业务口径和转化核算 |
+| 摘要层 | D1 | page summary、session summary、点击按批次归并结果 | 90 天 | 后台近 90 天报表和链路分析 |
+| 聚合层 | D1 | 日报来源、页面、事件、路径、邀请、点击聚合 | 13 个月 | 默认后台看板 |
+| 采样明细层 | D1 sampled raw | 1%-5% 浏览事件和错误排障事件 | 30 天 | 排障和指标校验 |
+| 高频分析层 | Workers Analytics Engine `[后续增强]` | 曝光、点击、滚动、心跳等高基数数据点 | 按 WAE 文档保留 | 大规模行为探索 |
+| 归档层 | R2 | owner 导出 CSV、月度归档文件 | 导出 7 天，归档按需 | 离线审计和备份 |
+
+默认实现只启用事实层、摘要层、聚合层和采样明细层。WAE 和 Queues 都不是 MVP 必选项，只有达到阈值后再引入。
+
+### 8.3 D1 rows read/write 预算
+
+#### Dev / Free 安全模式
+
+- 目标流量：<= 5,000 sessions / 天。
+- D1 rows written 目标：<= 40,000 / 天。
+- D1 rows read 目标：<= 80,000 / 天。
+- 采样明细比例：1%。
+- 后台报表默认范围：7 天，最多 30 天。
+
+#### Production Paid 基线模式
+
+- 目标流量：10,000 sessions / 天。
+- D1 rows written 目标：<= 80,000 / 天。
+- D1 rows read 目标：30 天默认看板 <= 10,000 / 接口；90 天报表 <= 30,000 / 接口。
+- 采样明细比例：1%-5%，由后台开关控制。
+- 原始采样明细保留：30 天。
+
+#### 写入预算估算
+
+| 数据 | 估算规则 | 10,000 sessions / 天写入预算 |
+|------|------|------|
+| visitor/session upsert | 每 session 1-2 行 | <= 20,000 rows |
+| page summary | 平均 3 页 / session | <= 30,000 rows |
+| session summary | 每 session 1 行 | <= 10,000 rows |
+| 点击批次归并 | 只记录有效点击和聚合增量 | <= 10,000 rows |
+| 转化事实 | 注册、邀请、登录、会员、媒体授权 | <= 5,000 rows |
+| 日报聚合 | 按维度 upsert | <= 5,000 rows |
+
+成本护栏：
+
+- 不允许每 15 秒心跳直接写 D1。
+- 不允许曝光事件默认逐条写 D1。
+- 不允许后台默认报表扫描采样明细表。
+- 不允许给 `event_props` 任意 JSON 字段建索引。
+- 每个采集请求普通浏览路径最多执行 3 类 D1 写入：visitor/session upsert、summary upsert、aggregate increment。
+
+### 8.4 查询性能要求
+
+- 后台总览、来源、页面、点击、时长和邀请报表必须优先查聚合表。
+- 明细查询必须显式选择 session ID、user ID、invite code 或 gallery ID，不提供无条件全量明细列表。
+- 30 天默认看板 P95 <= 1 秒；90 天报表 P95 <= 2 秒。
+- 聚合 SQL 必须有固定 fixtures 测试，验证 rows read 不随原始事件表线性增长。
+- 实现时需要读取 D1 `result.meta` 中的 rows read/write，单元测试或集成测试记录预算断言。
+- 对 `date`、`source_channel`、`route_name`、`entity_type/entity_id`、`invite_code_id`、`element_id` 建组合索引；不为高基数字符串全文字段建索引。
+
+### 8.5 何时引入 Queues
+
+首期可直接在采集 Worker 中同步写 D1，因为项目需要简单可部署。但出现任一条件时，必须把 `/api/analytics/events` 改成快速校验后入队，由 Queue consumer 批量写 D1：
+
+- 采集接口 P95 > 300ms 且主要耗时来自 D1 写入。
+- D1 rows written 超过 Production Paid 基线预算 80% 连续 3 天。
+- 单个请求中需要归并的事件维度超过 20 个。
+- 采集请求与管理员 API 争抢 D1 导致后台 P95 > 2 秒。
+
+Queue consumer 要求：
+
+- batch size 从 50 开始，最高不超过 Cloudflare 当前文档允许值。
+- batch timeout 从 5 秒开始，根据写入延迟调优。
+- consumer 内部按 date、route、element、invite 等维度归并后再写 D1。
+- 重试失败必须可观测，不能重复增加业务转化事实；所有聚合 upsert 要幂等。
+
+### 8.6 何时评估 Workers Analytics Engine
+
+Workers Analytics Engine 适合高频、高基数、探索性行为分析，但它不是事务数据库，也不应作为邀请注册、会员发放或权限相关事实的唯一来源。
+
+满足任一条件时进入 WAE 评估：
+
+- 需要保留 100% 曝光、滚动、点击高频明细，但 D1 rows written 成本不可接受。
+- 需要按大量高基数维度探索行为，例如 `gallery_id + tag + viewport + source + element`。
+- 报表只需要近 3 个月探索分析，不需要长期精确审计。
+- Owner 接受 WAE 的计费、保留期和查询方式约束。
+
+WAE 接入边界：
+
+- D1 继续保存业务事实和聚合口径。
+- WAE 只保存脱敏行为数据点，不保存 user email、联系值、session token、私有媒体 URL 或完整 referrer query。
+- 单次 Worker invocation 写入 WAE data point 数量必须低于 Cloudflare 当前限制；超出时采样或丢弃非关键事件。
+
+### 8.7 运营成本看板
+
+后台分析功能上线后，Owner 需要一个“数据采集健康”区域：
+
+- 最近 24 小时采集请求数、accepted、rejected、duplicate。
+- D1 rows read/write 估算和预算使用率。
+- 采样率、丢弃事件数、敏感 URL 拦截数。
+- Queue backlog 和失败数 `[后续增强]`。
+- WAE data points 写入量 `[后续增强]`。
+- 最近一次聚合任务耗时、成功状态和错误摘要。
+
+### 8.8 性能和成本验收补充
+
+- 使用 fixtures 模拟 10,000 sessions / 天、平均 3 page views / session、平均 2 clicks / session，验证 D1 rows written <= 80,000 / 天。
+- 总览、来源、页面、点击、时长、邀请 6 个后台接口在 30 天 fixtures 下 P95 <= 1 秒。
+- 关闭 `analytics_enabled` 后，Web 不初始化 SDK，API 返回 disabled 响应且不写 D1。
+- 打开采样 5% 后，采样明细表行数在误差范围内接近总浏览事件的 5%，且后台默认看板不读取采样明细表。
+- 构造 1,000 次重复点击，聚合结果必须区分 raw clicks、effective clicks 和 duplicate clicks，D1 写入不得达到 1,000 行。
