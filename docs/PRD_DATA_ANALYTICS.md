@@ -2,7 +2,7 @@
 
 ## 0. 文档状态
 
-- 状态：需求方案草案。
+- 状态：可落地需求方案草案。
 - 日期：2026-06-07。
 - 范围：邀请注册、访问来源、访问链路、点击次数、点击频率、浏览时长和配套埋点统计数据。
 - 实施方式：先建设站内一方数据分析能力，再按需把关键转化事件同步给 Facebook Pixel 等第三方投放工具。
@@ -561,3 +561,342 @@
 - 原始事件保留 90 天，聚合数据保留 13 个月。
 - 后台默认看聚合数据，Owner 才能查看脱敏 session 明细和导出。
 - 不建设实时秒级大屏，日报聚合和近实时基础查询足够支撑当前运营。
+
+## 7. 可落地实施规格
+
+本节把需求拆成后续开发可直接领取的工程规格。实现时仍应先建功能分支或在 `dev` 上小步提交，每个阶段按项目要求运行 API 类型检查和 Web 构建。
+
+### 7.1 推荐迁移拆分
+
+当前 D1 migrations 已维护到 `0022_home_ads.sql`。数据分析建议从 `0023` 开始拆成四个迁移，降低单次变更和回滚风险。
+
+| 迁移 | 内容 | 验收点 |
+|------|------|------|
+| `0023_analytics_core.sql` | `analytics_visitors`、`analytics_sessions`、`analytics_events`、核心索引 | 能插入匿名访客、session 和事件；事件 ID 唯一去重 |
+| `0024_invite_codes.sql` | `invite_codes`、`invite_registrations`、邀请码索引 | 能创建、禁用、校验邀请码，并关联注册用户 |
+| `0025_analytics_aggregates.sql` | `analytics_daily_sources`、`analytics_daily_pages`、`analytics_daily_events`、`analytics_path_edges`、`analytics_invite_daily`、`analytics_click_daily` | Cron 或手动服务函数能写入日报聚合 |
+| `0026_analytics_exports.sql` | `analytics_export_jobs`，用于 owner 导出任务 | 导出任务可记录状态、R2 key、过期时间和创建人 |
+
+核心索引要求：
+
+- `analytics_events(event_name, occurred_at)`：按事件和时间查询。
+- `analytics_events(session_id, occurred_at)`：重建会话链路。
+- `analytics_events(entity_type, entity_id, occurred_at)`：按图库、广告、标签等业务对象查询。
+- `analytics_sessions(started_at, source_channel)`：来源趋势。
+- `analytics_sessions(visitor_id, started_at)`：匿名访客 session。
+- `invite_codes(status, expires_at)`：邀请码校验。
+- `invite_registrations(invite_code_id, registered_at)`：邀请转化统计。
+- 所有日报聚合表以 `date` 加主要维度建立唯一索引，便于重复聚合时 upsert。
+
+### 7.2 D1 字段落地约束
+
+- 时间统一存 ISO 字符串，服务端写入使用 `new Date().toISOString()`；聚合日期使用站点运营时区 `Asia/Shanghai` 的自然日。
+- `visitor_id`、`session_id` 和 `event_id` 由前端生成 UUID，服务端校验格式；无效 ID 拒绝入库。
+- `event_props` 必须是服务端重建后的白名单 JSON，不能原样保存前端传入对象。
+- `path` 只保存 pathname 和允许的公开筛选参数；`token`、`code`、`signature`、`access_token` 等参数必须移除。
+- `invite_codes.code_hash` 用服务端 secret 加 salt 后 hash；后台复制链接时只使用创建时返回的明文 code，列表页展示 `display_code`。
+- `analytics_events.user_id` 只允许服务端从 `mei_session` 解析得到；前端 payload 中出现 `user_id` 时忽略。
+- 原始事件只保留最近 90 天；删除任务应放进现有 scheduled handler，和验证码清理、会员提醒并列执行。
+
+### 7.3 API 请求和响应契约
+
+#### `POST /api/analytics/events`
+
+请求体：
+
+```json
+{
+  "visitorId": "6f6f3f33-4f61-4f8b-bcf7-466f4e12b03a",
+  "sessionId": "8eec8d08-4ed4-42f5-9f7e-f59e005f1288",
+  "events": [
+    {
+      "eventId": "c0fc0486-f21e-4b35-8401-13de74c8df09",
+      "eventName": "page_view",
+      "occurredAt": "2026-06-07T10:30:00.000Z",
+      "routeName": "/gallery/:slug",
+      "path": "/gallery/summer-portrait-001",
+      "pageTitle": "夏日写真",
+      "entityType": "gallery",
+      "entityId": "gal_123",
+      "props": {
+        "required_rank": 10,
+        "tag_slugs": ["guangdong", "fresh"]
+      }
+    }
+  ]
+}
+```
+
+成功响应：
+
+```json
+{
+  "accepted": 1,
+  "rejected": 0,
+  "duplicate": 0
+}
+```
+
+部分失败响应仍返回 202，避免单个坏事件阻断整批：
+
+```json
+{
+  "accepted": 2,
+  "rejected": 1,
+  "duplicate": 0,
+  "errors": [
+    {
+      "eventId": "bad-id",
+      "code": "INVALID_EVENT_ID",
+      "message": "事件 ID 格式无效"
+    }
+  ]
+}
+```
+
+整体非法请求使用现有统一错误体 `{ statusCode, message, code?, detail? }`。
+
+服务端处理顺序：
+
+1. 执行采集接口限流。
+2. 校验 body 大小、事件数量和 ID 格式。
+3. 解析 session cookie，派生可信 `user_id`。
+4. 清洗 URL、referrer、page_title 和 props。
+5. upsert visitor 和 session。
+6. `INSERT OR IGNORE` 写入事件。
+7. 返回 accepted、rejected、duplicate 计数。
+
+#### `GET /api/invites/:code/status`
+
+成功响应：
+
+```json
+{
+  "valid": true,
+  "inviteCodeId": "inv_123",
+  "name": "六月 Telegram 活动",
+  "channel": "telegram",
+  "expiresAt": "2026-07-01T00:00:00.000Z"
+}
+```
+
+失败响应：
+
+```json
+{
+  "valid": false,
+  "reason": "EXPIRED"
+}
+```
+
+失败原因只允许：`NOT_FOUND`、`DISABLED`、`EXPIRED`、`USAGE_LIMIT_REACHED`。
+
+#### `GET /api/admin/analytics/overview`
+
+查询参数：
+
+| 参数 | 说明 | 默认 |
+|------|------|------|
+| from | 起始日期，`YYYY-MM-DD` | 最近 30 天 |
+| to | 结束日期，`YYYY-MM-DD` | 今天 |
+| sourceChannel | 来源渠道筛选 | 全部 |
+| inviteCodeId | 邀请码筛选 | 全部 |
+
+响应字段：
+
+| 字段 | 说明 |
+|------|------|
+| totals.visitors | 独立访客数 |
+| totals.sessions | session 数 |
+| totals.pageViews | PV |
+| totals.registrations | 注册数 |
+| totals.inviteRegistrations | 邀请注册数 |
+| totals.contactClicks | 联系点击数 |
+| totals.membershipGrants | 会员发放数 |
+| totals.avgActiveSeconds | 平均有效浏览秒数 |
+| trends | 按日趋势数组 |
+| topSources | 来源排行 |
+| topPages | 页面排行 |
+| topClicks | 点击排行 |
+
+### 7.4 后端模块拆分
+
+建议新增以下文件，保持当前“路由薄、service/util 可测试”的持续收敛方向：
+
+| 文件 | 职责 |
+|------|------|
+| `packages/api/src/routes/analytics.ts` | 公开事件采集和 session end |
+| `packages/api/src/routes/invites.ts` | 公开邀请码状态查询 |
+| `packages/api/src/routes/admin/analytics.ts` | 后台分析报表 |
+| `packages/api/src/routes/admin/invite-codes.ts` | 后台邀请码管理 |
+| `packages/api/src/services/analytics-ingest.ts` | 事件校验、清洗、入库 |
+| `packages/api/src/services/analytics-aggregate.ts` | 日报聚合、路径边、清理过期原始事件 |
+| `packages/api/src/services/invite-codes.ts` | 邀请码生成、hash、校验、使用次数 |
+| `packages/api/src/utils/analytics-events.ts` | 事件名、字段白名单、props schema |
+| `packages/api/src/utils/analytics-url.ts` | URL、referrer、UTM 和来源归因清洗 |
+| `packages/api/src/utils/analytics-time.ts` | 运营时区日期、时长截断、聚合窗口 |
+
+路由挂载建议：
+
+- 在 `packages/api/src/index.ts` 中把 `/api/analytics` 放在 auth middleware 之后，让服务端能读取当前用户 session；同时单独给 `/api/analytics/*` 加采集限流。
+- `/api/invites` 为公开 API，需放进公开 API 限流或独立邀请码限流。
+- `/api/admin/analytics` 和 `/api/admin/invite-codes` 挂到 `adminRoutes`，复用 `requireAdmin`，导出和单 session 明细额外校验 owner。
+
+采集限流建议：
+
+| 维度 | 限制 |
+|------|------|
+| IP | 120 次 / 分钟 |
+| visitor | 120 次 / 分钟 |
+| session | 60 次 / 分钟 |
+| 单次事件数 | 20 |
+| 单次 body | 32KB |
+
+### 7.5 前端 SDK 落地规格
+
+建议新增：
+
+| 文件 | 职责 |
+|------|------|
+| `packages/web/app/composables/useAnalytics.ts` | 暴露 `track`、`trackPageView`、`trackClick`、`flush`、`identifyUser` |
+| `packages/web/app/plugins/analytics.client.ts` | 初始化 visitor/session，监听 route、visibility、pagehide |
+| `packages/web/app/utils/analyticsSanitizer.ts` | URL、标题、props 本地预清洗 |
+| `packages/web/app/utils/analyticsRoute.ts` | route 归一化和 entity 识别 |
+
+SDK 行为要求：
+
+- 首次进入生成 `visitor_id`，保存在一方 cookie 或 localStorage；失效期 180 天，用户清理后重新生成。
+- session 默认 30 分钟无活动过期；路由切换不新建 session。
+- 队列最多保留 50 条事件；达到 20 条、每 10 秒、路由切换、`visibilitychange=hidden`、`pagehide` 时触发 flush。
+- `pagehide` 优先使用 `navigator.sendBeacon`；不支持时退化为 `$fetch`，失败事件保留到 localStorage 下次重试。
+- 当前 URL 或 referrer 含敏感凭证参数时，跳过该事件并记录本地 debug 日志，不把敏感值发给 API。
+- `consent_state=limited` 时只上报 `session_start`、`page_view` 和聚合必要字段，不上报点击明细、滚动深度和心跳。
+- SDK 不读取密码框、验证码、邮箱明文、联系值和任何表单正文。
+
+首期必须接入的页面和组件：
+
+| 位置 | 事件 |
+|------|------|
+| `app.vue` / 路由插件 | `session_start`、`page_view`、`page_leave`、`engagement_ping` |
+| `pages/index.vue` 和 `HomeAdBand.vue` | `home_ad_impression`、`home_ad_click` |
+| `GalleryCard.vue` / `GalleryGrid.vue` | `gallery_card_impression`、`gallery_card_click` |
+| `pages/gallery/[slug].vue` | `gallery_detail_view`、`media_viewer_open`、`membership_cta_click` |
+| `GalleryLikeButton.vue` 或详情页点赞逻辑 | `gallery_like_add`、`gallery_like_remove` |
+| `pages/search.vue` | `search_submit`、`search_results_view`、`search_no_results`、`filter_selected` |
+| `pages/discover.vue` | `filter_selected`、`filter_removed`、`sort_changed`、`load_more` |
+| `ContactPanel.vue` | `contact_panel_open`、`contact_method_click`、`rules_panel_open`、`rules_page_click` |
+| `pages/register.vue` | `invite_code_checked`、`register_start`、`register_submit`、`register_success`、`register_failed` |
+| `pages/login.vue` | `login_start`、`login_submit`、`login_success`、`login_failed` |
+
+### 7.6 后台页面落地规格
+
+后台页面建议新增到 `packages/web/app/pages/admin/analytics/`：
+
+| 页面 | 路径 | 数据源 |
+|------|------|------|
+| 总览 | `/admin/analytics` | `/api/admin/analytics/overview` |
+| 来源 | `/admin/analytics/sources` | `/api/admin/analytics/sources` |
+| 链路 | `/admin/analytics/paths` | `/api/admin/analytics/paths` |
+| 点击 | `/admin/analytics/clicks` | `/api/admin/analytics/clicks` |
+| 时长 | `/admin/analytics/durations` | `/api/admin/analytics/durations` |
+| 邀请 | `/admin/analytics/invites` | `/api/admin/analytics/invites`、`/api/admin/invite-codes` |
+
+后台 UI 要求：
+
+- 复用现有 admin layout，不做营销式 hero。
+- 默认时间范围为最近 30 天，提供 7 天、30 天、90 天快捷筛选。
+- 数据为空时显示“暂无数据，部署埋点后会在这里展示”，不显示技术异常。
+- 所有表格支持按核心指标排序；首期不要求复杂图表库，简单趋势卡片和表格即可。
+- Owner-only 操作在非 owner 角色下不渲染入口，API 仍需二次校验。
+
+### 7.7 分阶段交付清单
+
+#### 阶段 A：核心数据闭环
+
+产出物：
+
+- 迁移 `0023_analytics_core.sql`。
+- `POST /api/analytics/events`。
+- `useAnalytics`、`analytics.client.ts`。
+- 页面浏览、停留、路由切换和基础点击事件。
+
+完成标准：
+
+- 本地访问首页、发现页、图库详情页后，D1 中出现 visitor、session 和 page/click 事件。
+- `corepack pnpm --filter @meigallery/api exec tsc --noEmit` 通过。
+- `corepack pnpm --filter @meigallery/web exec nuxt build` 通过。
+
+#### 阶段 B：邀请注册闭环
+
+产出物：
+
+- 迁移 `0024_invite_codes.sql`。
+- 邀请码创建、禁用、状态查询。
+- 注册页读取 invite 参数并绑定注册成功事件。
+- 管理员会员发放后回填 `invite_registrations` 首次会员转化。
+
+完成标准：
+
+- 有效 invite 链接注册成功后能在后台邀请码详情看到注册数。
+- 无效、禁用、过期和超过次数的邀请码均有明确提示。
+- 会员发放后邀请转化指标更新。
+
+#### 阶段 C：日报聚合和后台基础看板
+
+产出物：
+
+- 迁移 `0025_analytics_aggregates.sql`。
+- `analytics-aggregate` service 和 scheduled handler 接入。
+- `/admin/analytics`、`/admin/analytics/sources`、`/admin/analytics/invites`。
+
+完成标准：
+
+- 固定 fixtures 聚合后，来源、页面、邀请、点击和时长指标与预期一致。
+- 后台 30 天默认报表能在 100,000 条事件 fixtures 下 P95 <= 1 秒。
+
+#### 阶段 D：链路、点击频率和导出
+
+产出物：
+
+- 路径边聚合、点击去重聚合。
+- `/admin/analytics/paths`、`/admin/analytics/clicks`、`/admin/analytics/durations`。
+- owner-only 导出任务和 R2 导出文件。
+
+完成标准：
+
+- 能展示 from_route -> to_route 的 TOP 路径边。
+- 点击报表能区分原始点击、有效点击和重复点击。
+- owner 导出生成 CSV，7 天后过期清理。
+
+### 7.8 测试矩阵
+
+| 层级 | 必测内容 | 建议文件 |
+|------|------|------|
+| API unit | 事件 schema、URL 清洗、来源归因、props 白名单、重复事件、限流 | `analytics-ingest.test.ts`、`analytics-url.test.ts` |
+| API unit | 邀请码 hash、状态校验、使用次数、过期、注册绑定 | `invite-codes.test.ts` |
+| API unit | 日报聚合、路径边、点击去重、时长截断 | `analytics-aggregate.test.ts` |
+| Web unit | visitor/session 生成、队列 flush、sendBeacon、敏感 URL 跳过、consent limited | `useAnalytics.test.ts` |
+| Web unit | route 归一化、entity 识别、props 本地清洗 | `analyticsRoute.test.ts`、`analyticsSanitizer.test.ts` |
+| Component unit | HomeAdBand、ContactPanel、GalleryCard 触发对应事件 | 现有组件测试扩展 |
+| Playwright smoke | 首页 -> 搜索 -> 图库详情 -> 联系 -> 注册 invite 链路 | `packages/web/tests/smoke` 扩展 |
+
+### 7.9 上线和回滚要求
+
+- 上线顺序必须是 D1 migrations -> API 采集接口 -> Web SDK 默认关闭 -> 后台报表 -> 打开采集开关。
+- 新增公开设置 `analytics_enabled`，默认 `false`；生产验证通过后由 Owner 在后台开启。
+- Web SDK 必须读取 `analytics_enabled`，关闭时不初始化 visitor/session，不发事件。
+- API 即使收到事件也要根据服务端开关决定是否入库；关闭时返回 `{ accepted: 0, rejected: 0, duplicate: 0, disabled: true }`。
+- 回滚 Web 代码时，API 采集接口保留兼容空响应，避免旧页面缓存继续发送事件导致 404 噪音。
+- 聚合任务失败不能影响现有验证码清理和会员到期提醒；scheduled handler 中每个任务独立 try/catch。
+
+### 7.10 开发完成定义
+
+数据分析 MVP 可认定为“可上线”必须同时满足：
+
+- 迁移、API、Web SDK、后台三类实现均完成并有测试覆盖。
+- 后台能看到最近 7/30/90 天的来源、页面、点击、时长和邀请核心指标。
+- 邀请注册到会员发放的链路可被统计。
+- 敏感 URL、原始 IP、完整 user agent、密码、验证码、session token 和私有媒体 URL 均无法进入分析表。
+- `corepack pnpm --filter @meigallery/api exec tsc --noEmit` 通过。
+- `corepack pnpm --filter @meigallery/web exec nuxt build` 通过。
+- Playwright smoke 覆盖至少一条完整访问链路。
