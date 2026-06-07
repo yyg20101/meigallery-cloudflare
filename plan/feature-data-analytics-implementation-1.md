@@ -93,12 +93,12 @@ tags: [feature, analytics, cloudflare, d1, prd, cost]
 
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
-| TASK-025 | 新增 `packages/api/src/services/invite-codes.ts`，实现 `createInviteCode`、`hashInviteCode`、`verifyInviteCodeStatus`、`consumeInviteCodeForRegistration`、`disableInviteCode` 和 `recordFirstMembershipGrantConversion`。 | | |
-| TASK-026 | 新增 `packages/api/src/routes/invites.ts`，实现 `GET /api/invites/:code/status`，只返回 `valid`、`inviteCodeId`、`name`、`channel`、`expiresAt` 或 `reason`，不返回 `code_hash`。 | | |
-| TASK-027 | 新增 `packages/api/src/routes/admin/invite-codes.ts`，实现 `GET /api/admin/invite-codes`、`POST /api/admin/invite-codes`、`PATCH /api/admin/invite-codes/:id`，复用 `requireAdmin` 并写入审计日志。 | | |
-| TASK-028 | 修改 `packages/api/src/routes/auth.ts` 注册成功流程：当请求包含有效 invite context 时，调用 `consumeInviteCodeForRegistration` 写入 `invite_registrations`，并保存 visitor/session/source/landing_path。 | | |
-| TASK-029 | 修改 `packages/api/src/services/admin-users.ts` 的会员发放流程：首次给邀请注册用户发放 rank > 0 时，调用 `recordFirstMembershipGrantConversion` 回填 `first_membership_granted_at` 和 `first_membership_rank`。 | | |
-| TASK-030 | 新增 `packages/api/src/services/invite-codes.test.ts` 和扩展 `packages/api/src/routes/auth-security.test.ts`、`packages/api/src/services/admin-users.test.ts`，覆盖有效、禁用、过期、次数耗尽、注册绑定和首次会员发放回填。 | | |
+| TASK-025 | 新增 `packages/api/src/services/invite-codes.ts`，实现 `createInviteCode`、`hashInviteCode`、`verifyInviteCodeStatus`、`consumeInviteCodeForRegistration`、`disableInviteCode` 和 `recordFirstMembershipGrantConversion`。 | ✅ | 2026-06-07 |
+| TASK-026 | 新增 `packages/api/src/routes/invites.ts`，实现 `GET /api/invites/:code/status`，只返回 `valid`、`inviteCodeId`、`name`、`channel`、`expiresAt` 或 `reason`，不返回 `code_hash`。 | ✅ | 2026-06-07 |
+| TASK-027 | 新增 `packages/api/src/routes/admin/invite-codes.ts`，实现 `GET /api/admin/invite-codes`、`POST /api/admin/invite-codes`、`PATCH /api/admin/invite-codes/:id`，复用 `requireAdmin` 并写入审计日志。 | ✅ | 2026-06-07 |
+| TASK-028 | 修改 `packages/api/src/routes/auth.ts` 注册成功流程：当请求包含有效 invite context 时，调用 `consumeInviteCodeForRegistration` 写入 `invite_registrations`，并保存 visitor/session/source/landing_path。 | ✅ | 2026-06-07 |
+| TASK-029 | 修改 `packages/api/src/services/admin-users.ts` 的会员发放流程：首次给邀请注册用户发放 rank > 0 时，调用 `recordFirstMembershipGrantConversion` 回填 `first_membership_granted_at` 和 `first_membership_rank`。 | ✅ | 2026-06-07 |
+| TASK-030 | 新增 `packages/api/src/services/invite-codes.test.ts` 和扩展 `packages/api/src/routes/auth-security.test.ts`、`packages/api/src/services/admin-users.test.ts`，覆盖有效、禁用、过期、次数耗尽、注册绑定和首次会员发放回填。 | ✅ | 2026-06-07 |
 
 ### Implementation Phase 4
 

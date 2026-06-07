@@ -4,6 +4,7 @@ import { generateId } from '../utils/db'
 import { writeAuditLog } from '../utils/permission'
 import { hashPassword } from '../utils/password'
 import { destroyAllUserSessions } from '../utils/session'
+import { recordFirstMembershipGrantConversion } from './invite-codes'
 
 export interface ListAdminUsersParams {
   page?: string | null
@@ -557,6 +558,12 @@ export async function grantAdminUserMembership(
       expiresAt,
       note,
     },
+  })
+
+  await recordFirstMembershipGrantConversion(db, {
+    invitedUserId: userId,
+    rank: level.rank,
+    grantedAt: startsAtDate.toISOString(),
   })
 
   return {

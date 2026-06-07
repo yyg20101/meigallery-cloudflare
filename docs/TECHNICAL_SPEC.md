@@ -229,6 +229,7 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/media/:assetId/thumbnail` | 缩略图（公开） |
 | POST | `/api/analytics/events` | 站内一方数据分析批量采集，默认受 `analytics_enabled` 关闭态保护 |
 | POST | `/api/analytics/session/end` | session 结束兜底采集，兼容 `sendBeacon` 简写 payload |
+| GET | `/api/invites/:code/status` | 公开校验邀请码状态，只返回可展示字段和失败原因，不泄露 `code_hash` |
 | GET | `/api/settings/public` | 公开站点设置和过滤后的首页广告数组 `home_ads` |
 
 ### 管理员 API `[当前实现 / 部分实现]`
@@ -266,6 +267,9 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | PATCH | `/api/admin/ads/reorder` | 调整首页广告位顺序 | owner |
 | POST | `/api/admin/ads/:id/image` | 上传首页广告大图 | owner |
 | DELETE | `/api/admin/ads/:id/image` | 删除首页广告大图 | owner |
+| GET | `/api/admin/invite-codes` | 邀请码列表 | admin+ |
+| POST | `/api/admin/invite-codes` | 创建邀请码，创建响应返回明文 code，审计日志不保存明文或 hash | admin+ |
+| PATCH | `/api/admin/invite-codes/:id` | 修改或禁用邀请码，写入审计日志 | admin+ |
 | POST | `/api/admin/legacy-import/sources` | 创建旧站来源 | admin+ |
 | POST | `/api/admin/legacy-import/jobs` | 启动旧站迁移 | admin+ |
 | GET | `/api/admin/legacy-import/jobs/:id` | 迁移任务详情 | admin+ |
@@ -278,7 +282,7 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 
 ## 8. D1 数据库 Schema `[当前实现]`
 
-以下为当前核心表摘要，完整结构以 `packages/api/migrations/` 中的顺序迁移为准。数据分析相关表已通过 `0023` 到 `0026` 建立 schema，但采集 API、前端 SDK、聚合任务和后台分析页面仍属于后续接入阶段。
+以下为当前核心表摘要，完整结构以 `packages/api/migrations/` 中的顺序迁移为准。数据分析相关表已通过 `0023` 到 `0026` 建立 schema，并已接入公开采集 API 与邀请码转化闭环；前端 SDK、业务埋点、聚合任务和后台分析页面仍属于后续接入阶段。
 
 ### users
 
@@ -538,7 +542,7 @@ INSERT INTO site_settings (key, value) VALUES
 
 ### 数据分析表 `[部分实现]`
 
-当前已通过 `0023_analytics_core.sql` 到 `0026_analytics_exports.sql` 建立数据分析 schema，并已接入 `/api/analytics/events` 与 `/api/analytics/session/end` 公开采集接口。采集接口默认受 `analytics_enabled=false` 保护，关闭时返回 disabled 且不写 D1；在前端 SDK、邀请注册闭环、聚合任务和后台页面接入前，生产数据分析能力仍未完整启用。
+当前已通过 `0023_analytics_core.sql` 到 `0026_analytics_exports.sql` 建立数据分析 schema，并已接入 `/api/analytics/events`、`/api/analytics/session/end` 公开采集接口和邀请码转化闭环。采集接口默认受 `analytics_enabled=false` 保护，关闭时返回 disabled 且不写 D1；在前端 SDK、业务埋点、聚合任务和后台页面接入前，生产数据分析能力仍未完整启用。
 
 核心表分层：
 
@@ -550,8 +554,8 @@ INSERT INTO site_settings (key, value) VALUES
 | `analytics_session_summaries` | `[部分实现]` | session 级摘要，用于默认后台报表避免扫描采样明细。 |
 | `analytics_events` | `[部分实现]` | 关键转化事件和 1%-5% 采样明细；不作为默认后台报表的全量事件仓库。 |
 | `analytics_ingest_health_daily` | `[部分实现]` | 每日 accepted/rejected/duplicate/sensitive blocked、采样、丢弃和 D1 预算估算。 |
-| `invite_codes` | `[部分实现]` | 后台邀请码定义，保存 `code_hash` 和 `display_code`，不保存可反推的完整明文码。 |
-| `invite_registrations` | `[部分实现]` | 邀请注册事实，关联 visitor、session、注册用户和首次会员发放回填。 |
+| `invite_codes` | `[当前实现]` | 后台邀请码定义，保存 `code_hash` 和 `display_code`，创建响应返回明文 code，创建/修改/禁用写入审计日志。 |
+| `invite_registrations` | `[当前实现]` | 邀请注册事实，关联 visitor、session、注册用户和首次会员发放回填；重复绑定不会重复增加 `used_count`。 |
 | `analytics_daily_sources` | `[部分实现]` | 按日期、来源渠道、来源名称和邀请码聚合访问、注册、联系和会员发放。 |
 | `analytics_daily_pages` | `[部分实现]` | 按日期、route、path 和业务实体聚合页面表现。 |
 | `analytics_daily_events` | `[部分实现]` | 按日期、事件名和实体聚合关键事件计数。 |

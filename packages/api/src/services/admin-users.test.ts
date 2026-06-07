@@ -254,5 +254,8 @@ describe('后台用户服务', () => {
 
     const auditCall = db.calls.find(call => call.sql.includes('INSERT INTO admin_audit_logs'))
     expect(auditCall?.params[6]).toContain('"note":"已线下确认"')
+
+    const inviteConversionCall = db.calls.find(call => call.sql.includes('UPDATE invite_registrations'))
+    expect(inviteConversionCall?.params).toEqual(['2026-07-01T00:30:00.000Z', 10, 1])
   })
 })

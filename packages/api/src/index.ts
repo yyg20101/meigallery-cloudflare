@@ -13,6 +13,7 @@ import { contactMethodRoutes } from './routes/contact-methods'
 import { caseRoutes } from './routes/cases'
 import { importRoutes } from './routes/imports'
 import { analyticsRoutes } from './routes/analytics'
+import { inviteRoutes } from './routes/invites'
 import { PUBLIC_SETTING_KEYS } from './utils/site-settings'
 import { sanitizePublicSiteSetting, sanitizePublicSiteSettings } from './utils/public-site-settings'
 import { HOME_AD_PLACEMENT, type HomeAdRow, serializePublicHomeAd } from './utils/home-ads'
@@ -105,6 +106,7 @@ for (const path of [
   '/api/cases/*',
   '/api/contact-methods',
   '/api/contact-methods/*',
+  '/api/invites/*',
   '/api/settings/public',
 ]) {
   app.use(path, rateLimiter({
@@ -172,6 +174,7 @@ app.route('/api/contact-methods', contactMethodRoutes)
 app.route('/api/cases', caseRoutes)
 app.route('/api/imports', importRoutes)
 app.route('/api/analytics', analyticsRoutes)
+app.route('/api/invites', inviteRoutes)
 // 公开站点信息（不需要登录）
 app.get('/api/settings/public', async (c) => {
   const db = c.env.DB
