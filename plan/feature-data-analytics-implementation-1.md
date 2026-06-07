@@ -106,15 +106,15 @@ tags: [feature, analytics, cloudflare, d1, prd, cost]
 
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
-| TASK-031 | 新增 `packages/web/app/utils/analyticsSanitizer.ts`，实现前端 URL、referrer、page title 和 props 预清洗，拒绝凭证参数、后台路径、API 路径、资源路径和私有媒体路径。 | | |
-| TASK-032 | 新增 `packages/web/app/utils/analyticsRoute.ts`，实现 route 归一化：`/gallery/:slug`、`/cases/:slug`、`/admin/**` 跳过、搜索和发现页保留安全公开筛选参数。 | | |
-| TASK-033 | 新增 `packages/web/app/composables/useAnalytics.ts`，暴露 `track`、`trackPageView`、`trackClick`、`trackPageLeave`、`flush`、`identifyUser` 和 `setConsentState`。 | | |
-| TASK-034 | 在 `useAnalytics.ts` 中实现队列策略：队列最多 50 条，达到 20 条、每 10 秒、路由切换、`visibilitychange=hidden`、`pagehide` 时 flush；15 秒心跳只累计 active seconds。 | | |
-| TASK-035 | 新增 `packages/web/app/plugins/analytics.client.ts`，读取公开设置中的 `analytics_enabled`；关闭时直接退出；开启时初始化 visitor cookie/localStorage、session、route watcher、visibility 和 pagehide。 | | |
-| TASK-036 | 在 `analytics.client.ts` 中优先使用 `navigator.sendBeacon` 发送 `page_leave` 和 `session_end`，失败事件保存到 localStorage 并在下次启动重试。 | | |
-| TASK-037 | 为 `analyticsSanitizer.ts`、`analyticsRoute.ts` 和 `useAnalytics.ts` 增加 Vitest 测试，覆盖 visitor/session 生成、过期、队列 flush、sendBeacon、敏感 URL 跳过、consent limited 和关闭开关。 | | |
-| TASK-038 | 修改 `packages/web/app/pages/register.vue`，读取 `invite` 参数，调用 `/api/invites/:code/status`，在注册成功和失败时触发对应事件；无效 invite 只提示不可用并允许普通注册。 | | |
-| TASK-039 | 修改 `packages/web/app/pages/login.vue`，接入 `login_start`、`login_submit`、`login_success`、`login_failed`，失败事件只保存错误码和 redirect 类型。 | | |
+| TASK-031 | 新增 `packages/web/app/utils/analyticsSanitizer.ts`，实现前端 URL、referrer、page title 和 props 预清洗，拒绝凭证参数、后台路径、API 路径、资源路径和私有媒体路径。 | ✅ | 2026-06-07 |
+| TASK-032 | 新增 `packages/web/app/utils/analyticsRoute.ts`，实现 route 归一化：`/gallery/:slug`、`/cases/:slug`、`/admin/**` 跳过、搜索和发现页保留安全公开筛选参数。 | ✅ | 2026-06-07 |
+| TASK-033 | 新增 `packages/web/app/composables/useAnalytics.ts`，暴露 `track`、`trackPageView`、`trackClick`、`trackPageLeave`、`flush`、`identifyUser` 和 `setConsentState`。 | ✅ | 2026-06-07 |
+| TASK-034 | 在 `useAnalytics.ts` 中实现队列策略：队列最多 50 条，达到 20 条、每 10 秒、路由切换、`visibilitychange=hidden`、`pagehide` 时 flush；15 秒心跳只累计 active seconds。 | ✅ | 2026-06-07 |
+| TASK-035 | 新增 `packages/web/app/plugins/analytics.client.ts`，读取公开设置中的 `analytics_enabled`；关闭时直接退出；开启时初始化 visitor cookie/localStorage、session、route watcher、visibility 和 pagehide。 | ✅ | 2026-06-07 |
+| TASK-036 | 在 `analytics.client.ts` 中优先使用 `navigator.sendBeacon` 发送 `page_leave` 和 `session_end`，失败事件保存到 localStorage 并在下次启动重试。 | ✅ | 2026-06-07 |
+| TASK-037 | 为 `analyticsSanitizer.ts`、`analyticsRoute.ts` 和 `useAnalytics.ts` 增加 Vitest 测试，覆盖 visitor/session 生成、过期、队列 flush、sendBeacon、敏感 URL 跳过、consent limited 和关闭开关。 | ✅ | 2026-06-07 |
+| TASK-038 | 修改 `packages/web/app/pages/register.vue`，读取 `invite` 参数，调用 `/api/invites/:code/status`，在注册成功和失败时触发对应事件；无效 invite 只提示不可用并允许普通注册。 | ✅ | 2026-06-07 |
+| TASK-039 | 修改 `packages/web/app/pages/login.vue`，接入 `login_start`、`login_submit`、`login_success`、`login_failed`，失败事件只保存错误码和 redirect 类型。 | ✅ | 2026-06-07 |
 
 ### Implementation Phase 5
 

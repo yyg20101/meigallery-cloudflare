@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { validateUsername } from '@meigallery/shared/utils'
+import type { InviteCodeStatusResponse } from '@meigallery/shared'
 
 const { register, sendCode, checkUsername, isLoggedIn } = useAuth()
 const { api } = useApi()
 const router = useRouter()
+const route = useRoute()
+const analytics = useAnalytics()
 const { trackCompleteRegistration } = useFacebookPixel()
 const { siteName } = useSiteSettings()
 
@@ -16,6 +19,8 @@ const verificationCode = ref('')
 const error = ref('')
 const loading = ref(false)
 const codeSending = ref(false)
+const inviteStatus = ref<InviteCodeStatusResponse | null>(null)
+const inviteChecking = ref(false)
 
 const {
   turnstileToken,
@@ -46,6 +51,16 @@ const step = ref(1)
 // 验证码冷却倒计时
 const cooldown = ref(0)
 let cooldownTimer: ReturnType<typeof setInterval> | null = null
+const inviteCode = computed(() => normalizeInviteCode(route.query.invite))
+const validInviteCodeId = computed(() => inviteStatus.value?.valid ? inviteStatus.value.inviteCodeId : '')
+const inviteNotice = computed(() => {
+  if (!inviteCode.value) return ''
+  if (inviteChecking.value) return '正在校验邀请码...'
+  if (inviteStatus.value?.valid) return `已识别邀请码：${inviteStatus.value.name}`
+  if (inviteStatus.value && !inviteStatus.value.valid) return inviteFailureText(inviteStatus.value.reason)
+  return ''
+})
+const inviteNoticeClass = computed(() => inviteStatus.value?.valid ? 'border-emerald-100 bg-emerald-50 text-emerald-700' : 'border-amber-100 bg-amber-50 text-amber-700')
 
 if (isLoggedIn.value) {
   router.replace('/')
@@ -63,6 +78,7 @@ onMounted(async () => {
 
 onMounted(() => {
   void mountTurnstile()
+  void checkInviteCode()
 })
 
 onUnmounted(() => {
@@ -176,15 +192,28 @@ async function onDirectRegister() {
 
   loading.value = true
   try {
+    trackRegisterSubmit()
     await register({
       email: email.value,
       password: password.value,
       username: username.value,
       turnstileToken: hasTurnstile.value ? turnstileToken.value : undefined,
+      ...buildInviteRegistrationContext(),
     })
     trackCompleteRegistration()
+    analytics.track('register_success', {
+      props: { invite_code_id: validInviteCodeId.value || undefined },
+      entityType: 'auth',
+    })
     router.push('/')
   } catch (e: any) {
+    analytics.track('register_failed', {
+      props: {
+        failure_code: extractFailureCode(e),
+        invite_code_id: validInviteCodeId.value || undefined,
+      },
+      entityType: 'auth',
+    })
     error.value = resolveApiErrorMessage(e, '注册失败，请重试')
     resetTurnstile()
   } finally {
@@ -229,16 +258,29 @@ async function onSubmitWithCode() {
 
   loading.value = true
   try {
+    trackRegisterSubmit()
     await register({
       email: email.value,
       password: password.value,
       username: username.value,
       code: verificationCode.value,
       turnstileToken: hasTurnstile.value ? turnstileToken.value : undefined,
+      ...buildInviteRegistrationContext(),
     })
     trackCompleteRegistration()
+    analytics.track('register_success', {
+      props: { invite_code_id: validInviteCodeId.value || undefined },
+      entityType: 'auth',
+    })
     router.push('/')
   } catch (e: any) {
+    analytics.track('register_failed', {
+      props: {
+        failure_code: extractFailureCode(e),
+        invite_code_id: validInviteCodeId.value || undefined,
+      },
+      entityType: 'auth',
+    })
     error.value = resolveApiErrorMessage(e, '注册失败，请重试')
     resetTurnstile()
   } finally {
@@ -253,6 +295,99 @@ function backToStep1() {
   error.value = ''
   resetTurnstile()
   void mountTurnstile()
+}
+
+async function checkInviteCode() {
+  if (!inviteCode.value) {
+    analytics.track('register_start', { entityType: 'auth' })
+    return
+  }
+
+  analytics.track('invite_landed', {
+    props: { invite_code: inviteCode.value },
+    entityType: 'invite',
+  })
+  inviteChecking.value = true
+  try {
+    const result = await api<InviteCodeStatusResponse>(`/api/invites/${encodeURIComponent(inviteCode.value)}/status`)
+    inviteStatus.value = result
+    analytics.track('invite_code_checked', {
+      props: {
+        invite_code_id: result.valid ? result.inviteCodeId : undefined,
+        invite_valid: result.valid,
+        failure_reason: result.valid ? undefined : result.reason,
+      },
+      entityType: 'invite',
+      entityId: result.valid ? result.inviteCodeId : undefined,
+    })
+    analytics.track('register_start', {
+      props: { invite_code_id: result.valid ? result.inviteCodeId : undefined, source_channel: result.valid ? 'invite' : undefined },
+      entityType: 'auth',
+    })
+  } catch {
+    inviteStatus.value = { valid: false, reason: 'NOT_FOUND' }
+    analytics.track('invite_code_checked', {
+      props: { invite_valid: false, failure_reason: 'NOT_FOUND' },
+      entityType: 'invite',
+    })
+    analytics.track('register_start', { entityType: 'auth' })
+  } finally {
+    inviteChecking.value = false
+  }
+}
+
+function buildInviteRegistrationContext() {
+  if (!inviteCode.value || !validInviteCodeId.value) return {}
+  const context = analytics.getContext()
+  return {
+    inviteCode: inviteCode.value,
+    analyticsVisitorId: context.visitorId || undefined,
+    analyticsSessionId: context.sessionId || undefined,
+    sourceChannel: 'invite',
+    landingPath: route.fullPath,
+  }
+}
+
+function trackRegisterSubmit() {
+  analytics.track('register_submit', {
+    props: {
+      invite_code_id: validInviteCodeId.value || undefined,
+      email_verification_enabled: emailVerificationEnabled.value,
+    },
+    entityType: 'auth',
+  })
+}
+
+function normalizeInviteCode(value: unknown) {
+  const raw = Array.isArray(value) ? value[0] : value
+  const normalized = String(raw ?? '').trim().toUpperCase()
+  return /^[A-Z0-9_-]{6,64}$/.test(normalized) ? normalized : ''
+}
+
+function inviteFailureText(reason: string) {
+  const labels: Record<string, string> = {
+    NOT_FOUND: '邀请码不可用，可继续普通注册',
+    DISABLED: '邀请码已停用，可继续普通注册',
+    EXPIRED: '邀请码已过期，可继续普通注册',
+    USAGE_LIMIT_REACHED: '邀请码次数已用完，可继续普通注册',
+  }
+  return labels[reason] || '邀请码不可用，可继续普通注册'
+}
+
+function extractFailureCode(errorValue: unknown) {
+  const errorObject = errorValue as { data?: unknown; statusCode?: unknown }
+  const data = typeof errorObject?.data === 'string' ? safeJson(errorObject.data) : errorObject?.data
+  if (data && typeof data === 'object' && typeof (data as { code?: unknown }).code === 'string') return (data as { code: string }).code
+  if (typeof errorObject?.statusCode === 'number') return `HTTP_${errorObject.statusCode}`
+  return 'REGISTER_FAILED'
+}
+
+function safeJson(value: string) {
+  try {
+    return JSON.parse(value)
+  } catch {
+    return null
+  }
 }
 
 useSeoMeta({ title: () => `注册 - ${siteName.value}`, robots: 'noindex' })
@@ -270,6 +405,9 @@ definePageMeta({ layout: 'default' })
 
       <!-- Error -->
       <div v-if="error" class="text-red-500 text-sm text-center mb-4">{{ error }}</div>
+      <div v-if="inviteNotice" :class="['mb-4 rounded-lg border px-3 py-2 text-center text-sm', inviteNoticeClass]">
+        {{ inviteNotice }}
+      </div>
 
       <!-- ========== 第一步：填写信息 ========== -->
       <form

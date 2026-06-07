@@ -282,7 +282,7 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 
 ## 8. D1 数据库 Schema `[当前实现]`
 
-以下为当前核心表摘要，完整结构以 `packages/api/migrations/` 中的顺序迁移为准。数据分析相关表已通过 `0023` 到 `0026` 建立 schema，并已接入公开采集 API 与邀请码转化闭环；前端 SDK、业务埋点、聚合任务和后台分析页面仍属于后续接入阶段。
+以下为当前核心表摘要，完整结构以 `packages/api/migrations/` 中的顺序迁移为准。数据分析相关表已通过 `0023` 到 `0026` 建立 schema，并已接入公开采集 API、邀请码转化闭环和 Web 轻量 SDK；图库、搜索、联系、广告等核心业务埋点、聚合任务和后台分析页面仍属于后续接入阶段。
 
 ### users
 
@@ -542,7 +542,7 @@ INSERT INTO site_settings (key, value) VALUES
 
 ### 数据分析表 `[部分实现]`
 
-当前已通过 `0023_analytics_core.sql` 到 `0026_analytics_exports.sql` 建立数据分析 schema，并已接入 `/api/analytics/events`、`/api/analytics/session/end` 公开采集接口和邀请码转化闭环。采集接口默认受 `analytics_enabled=false` 保护，关闭时返回 disabled 且不写 D1；在前端 SDK、业务埋点、聚合任务和后台页面接入前，生产数据分析能力仍未完整启用。
+当前已通过 `0023_analytics_core.sql` 到 `0026_analytics_exports.sql` 建立数据分析 schema，并已接入 `/api/analytics/events`、`/api/analytics/session/end` 公开采集接口、邀请码转化闭环和 Web 轻量 SDK。采集接口默认受 `analytics_enabled=false` 保护，关闭时返回 disabled 且不写 D1；Web SDK 同样读取公开设置，关闭时不初始化 visitor/session，不写本地存储。在图库、搜索、联系、广告等核心业务埋点、聚合任务和后台页面接入前，生产数据分析能力仍未完整启用。
 
 核心表分层：
 
@@ -568,6 +568,8 @@ INSERT INTO site_settings (key, value) VALUES
 
 - 默认后台 7/30/90 天报表读取日报聚合表和摘要表，禁止首页看板直接扫描 `analytics_events`。
 - 公开采集接口单批最多 20 个事件，payload 上限 16KB，并叠加 IP、visitor、session 三维应用内兜底限流。
+- Web SDK 队列最多保留 50 条事件，达到 20 条、10 秒定时、路由切换、`visibilitychange=hidden` 或 `pagehide` 时 flush；`pagehide` 优先使用 `sendBeacon`，失败事件保存在 localStorage 下次重试。
+- Web SDK 的 15 秒 heartbeat 只累计有效浏览时长，不单独发网络请求；`consent_state=limited` 时跳过非必要点击和曝光明细，保留注册、登录、邀请等关键转化事件。
 - `analytics_events` 只保留事件名、session 和实体三类必要组合索引：`(event_name, occurred_at)`、`(session_id, occurred_at)`、`(entity_type, entity_id, occurred_at)`。
 - 日报聚合表均以 `date` 加主要维度建立唯一索引，供 Cron 聚合任务幂等 upsert。
 - 不给 `event_props` 任意 JSON 字段建索引，避免高基数属性导致写放大和存储成本失控。
