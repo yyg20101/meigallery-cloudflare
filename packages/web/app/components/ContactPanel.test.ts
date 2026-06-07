@@ -10,7 +10,8 @@ const nuxtLinkStub = {
 
 const contactMethodItemStub = {
   props: ['method'],
-  template: '<div class="contact-method">{{ method.label }}</div>',
+  emits: ['activate'],
+  template: '<button class="contact-method" type="button" @click="$emit(\'activate\', method.platform, \'open_link\')">{{ method.label }}</button>',
 }
 
 async function mountPanel() {
@@ -26,6 +27,7 @@ async function mountPanel() {
     },
   ])
   const trackLeadOnce = vi.fn()
+  const track = vi.fn()
 
   vi.stubGlobal('useContactMethods', () => ({
     contactMethods,
@@ -40,6 +42,7 @@ async function mountPanel() {
     rulesPageUrl: ref('/rules'),
   }))
   vi.stubGlobal('useFacebookPixel', () => ({ trackLeadOnce }))
+  vi.stubGlobal('useAnalytics', () => ({ track }))
 
   const wrapper = mount({
     render: () => h(Suspense, null, { default: () => h(ContactPanel) }),
@@ -53,7 +56,7 @@ async function mountPanel() {
   })
 
   await flushPromises()
-  return { wrapper, trackLeadOnce }
+  return { wrapper, trackLeadOnce, track }
 }
 
 describe('ContactPanel', () => {
@@ -77,10 +80,13 @@ describe('ContactPanel', () => {
   })
 
   it('点击入口后展示对应弹层并记录联系线索', async () => {
-    const { wrapper, trackLeadOnce } = await mountPanel()
+    const { wrapper, trackLeadOnce, track } = await mountPanel()
 
     await wrapper.get('button[aria-label="打开服务流程"]').trigger('click')
     expect(wrapper.text()).toContain('查看完整规则')
+    expect(track).toHaveBeenCalledWith('rules_panel_open', expect.objectContaining({
+      props: { location: 'floating_rules_panel' },
+    }))
 
     await wrapper.get('button[aria-label="打开联系方式"]').trigger('click')
     expect(wrapper.text()).toContain('站长在线回复')
@@ -89,5 +95,25 @@ describe('ContactPanel', () => {
       location: 'floating_contact_panel',
       methodType: 'panel_open',
     })
+    expect(track).toHaveBeenCalledWith('contact_panel_open', expect.objectContaining({
+      props: { location: 'floating_contact_panel' },
+    }))
+  })
+
+  it('点击联系方式只记录平台和动作类型，不记录联系值', async () => {
+    const { wrapper, track } = await mountPanel()
+
+    await wrapper.get('button[aria-label="打开联系方式"]').trigger('click')
+    await wrapper.get('.contact-method').trigger('click')
+
+    expect(track).toHaveBeenCalledWith('contact_method_click', expect.objectContaining({
+      entityType: 'contact',
+      props: {
+        method_type: 'telegram',
+        action_type: 'open_link',
+        location: 'floating_contact_panel',
+      },
+    }))
+    expect(JSON.stringify(track.mock.calls)).not.toContain('@meigallery')
   })
 })

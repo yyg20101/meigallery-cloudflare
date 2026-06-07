@@ -30,6 +30,7 @@ describe('ContactMethodItem', () => {
 
     await wrapper.get('[role="button"]').trigger('click')
 
+    expect(wrapper.emitted('activate')?.[0]).toEqual(['custom', 'open_link'])
     expect(open).toHaveBeenCalledWith('https://example.com/contact', '_blank', 'noopener,noreferrer')
     open.mockRestore()
   })
@@ -45,6 +46,7 @@ describe('ContactMethodItem', () => {
 
     await wrapper.get('[role="button"]').trigger('click')
 
+    expect(wrapper.emitted('activate')?.[0]).toEqual(['custom', 'copy'])
     expect(open).not.toHaveBeenCalled()
     expect(writeText).toHaveBeenCalledWith('meigallery')
     open.mockRestore()

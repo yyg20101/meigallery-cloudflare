@@ -1,5 +1,5 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import HomeAdBand from './HomeAdBand.vue'
 
 const nuxtLinkStub = {
@@ -8,6 +8,17 @@ const nuxtLinkStub = {
 }
 
 describe('HomeAdBand', () => {
+  const track = vi.fn()
+
+  beforeEach(() => {
+    track.mockClear()
+    vi.stubGlobal('useAnalytics', () => ({ track }))
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
   it('关闭时不渲染广告位', () => {
     const wrapper = mount(HomeAdBand, {
       props: { enabled: false },
@@ -61,6 +72,34 @@ describe('HomeAdBand', () => {
     expect(wrapper.text()).toContain('目标域名 example.com')
     expect(wrapper.text()).toContain('不发送来源页信息')
   })
+
+  it('点击广告 CTA 只上报安全目标信息', async () => {
+    const wrapper = mount(HomeAdBand, {
+      props: {
+        enabled: true,
+        ads: [{
+          id: 'ad-safe-1',
+          title: '赞助推荐',
+          targetUrl: 'https://example.com/campaign?utm_source=secret',
+        }],
+      },
+      global: { stubs: { NuxtLink: nuxtLinkStub } },
+    })
+
+    await wrapper.get('a').trigger('click')
+
+    expect(track).toHaveBeenCalledWith('home_ad_click', expect.objectContaining({
+      entityType: 'ad',
+      entityId: 'ad-safe-1',
+      props: expect.objectContaining({
+        ad_id: 'ad-safe-1',
+        target_type: 'external',
+        target_path_or_host: 'example.com',
+      }),
+    }))
+    expect(JSON.stringify(track.mock.calls)).not.toContain('utm_source')
+  })
+
 
   it('预览模式保留外链提示但不渲染可跳转链接', () => {
     const wrapper = mount(HomeAdBand, {

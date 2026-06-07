@@ -6,6 +6,7 @@ const { api } = useApi()
 const { isLoggedIn, membershipRank } = useAuth()
 const { siteName, videoEnabled } = useSiteSettings()
 const { trackViewContent } = useFacebookPixel()
+const analytics = useAnalytics()
 
 
 interface GalleryTag {
@@ -101,6 +102,18 @@ const viewerImages = computed(() =>
 )
 
 function openViewer(index: number) {
+  const image = publicImages.value[index]
+  if (image && gallery.value) {
+    analytics.track('media_viewer_open', {
+      entityType: 'media',
+      entityId: image.id,
+      props: {
+        gallery_id: gallery.value.id,
+        asset_id: image.id,
+        index,
+      },
+    })
+  }
   viewerStartIndex.value = index
   viewerOpen.value = true
 }
@@ -161,6 +174,15 @@ onMounted(() => {
     requiredRank: gallery.value.requiredLevelRank,
     tags: gallery.value.tags.map(tag => tag.slug),
   })
+  analytics.track('gallery_detail_view', {
+    entityType: 'gallery',
+    entityId: gallery.value.id,
+    props: {
+      gallery_id: gallery.value.id,
+      required_rank: gallery.value.requiredLevelRank,
+      tag_slugs: gallery.value.tags.map(tag => tag.slug),
+    },
+  })
 })
 
 function isUnauthorizedError(error: unknown) {
@@ -180,6 +202,11 @@ async function toggleLike() {
     const result = await api<LikeResult>(`/api/galleries/${gallery.value.id}/like`, { method: nextLiked ? 'POST' : 'DELETE' })
     likedByMe.value = result.likedByMe
     likeCount.value = result.likeCount
+    analytics.track(result.likedByMe ? 'gallery_like_add' : 'gallery_like_remove', {
+      entityType: 'gallery',
+      entityId: gallery.value.id,
+      props: { gallery_id: gallery.value.id },
+    })
   } catch (error) {
     if (isUnauthorizedError(error)) {
       showLoginPrompt.value = true
@@ -198,6 +225,18 @@ const lockMessage = computed(() => {
   const levelName = rank >= 20 ? 'SVIP' : 'VIP'
   return `剩余 ${count} 张图片需要 ${levelName} 会员`
 })
+
+function trackMembershipCta(location: string, requiredRank?: number) {
+  if (!gallery.value) return
+  analytics.track('membership_cta_click', {
+    entityType: 'gallery',
+    entityId: gallery.value.id,
+    props: {
+      location,
+      required_rank: requiredRank ?? gallery.value.requiredLevelRank,
+    },
+  })
+}
 
 useSeoMeta({
   title: () => gallery.value ? `${gallery.value.title} - ${siteName.value}` : siteName.value,
@@ -272,6 +311,7 @@ useSeoMeta({
           <MediaLock
             :required-rank="gallery.requiredLevelRank"
             :message="lockMessage"
+            @membership-cta-click="trackMembershipCta('gallery_locked_images', gallery.requiredLevelRank)"
           />
         </section>
 
@@ -303,6 +343,7 @@ useSeoMeta({
                 <MediaLock
                   :required-rank="vid.requiredRank"
                   message="完整视频需要更高会员等级"
+                  @membership-cta-click="trackMembershipCta('gallery_locked_video', vid.requiredRank)"
                 />
               </template>
             </div>
@@ -321,6 +362,7 @@ useSeoMeta({
             <NuxtLink
               :to="isLoggedIn ? '/user' : '/login'"
               class="mt-4 block rounded-full bg-gray-950 px-4 py-2.5 text-center text-sm font-medium text-[#d6c39a] transition-all hover:-translate-y-0.5 hover:bg-black"
+              @click="trackMembershipCta('gallery_sidebar', gallery.requiredLevelRank)"
             >
               {{ isLoggedIn ? '查看会员权益' : '登录 / 注册' }}
             </NuxtLink>

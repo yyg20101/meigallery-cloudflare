@@ -10,6 +10,7 @@ const {
   rulesPageUrl,
 } = useSiteSettings()
 const { trackLeadOnce } = useFacebookPixel()
+const analytics = useAnalytics()
 
 await fetchContactMethods()
 
@@ -25,17 +26,27 @@ function toggleOpen() {
   if (contactOpen.value) rulesOpen.value = false
   if (contactOpen.value) {
     trackLeadOnce({ location: 'floating_contact_panel', methodType: 'panel_open' })
+    trackContactPanelOpen()
   }
 }
 
-function trackContactMethod(methodType: string) {
+function trackContactMethod(methodType: string, actionType = 'unknown') {
   trackLeadOnce({ location: 'floating_contact_panel', methodType })
+  analytics.track('contact_method_click', {
+    entityType: 'contact',
+    props: {
+      method_type: methodType,
+      action_type: actionType,
+      location: 'floating_contact_panel',
+    },
+  })
 }
 
 function openContactPanel() {
   contactOpen.value = true
   rulesOpen.value = false
   trackLeadOnce({ location: 'floating_contact_panel', methodType: 'panel_open' })
+  trackContactPanelOpen()
 }
 
 onMounted(() => {
@@ -49,6 +60,26 @@ onUnmounted(() => {
 function toggleRules() {
   rulesOpen.value = !rulesOpen.value
   if (rulesOpen.value) contactOpen.value = false
+  if (rulesOpen.value) {
+    analytics.track('rules_panel_open', {
+      entityType: 'page',
+      props: { location: 'floating_rules_panel' },
+    })
+  }
+}
+
+function trackContactPanelOpen() {
+  analytics.track('contact_panel_open', {
+    entityType: 'contact',
+    props: { location: 'floating_contact_panel' },
+  })
+}
+
+function trackRulesPageClick() {
+  analytics.track('rules_page_click', {
+    entityType: 'page',
+    props: { location: 'floating_rules_panel' },
+  })
 }
 </script>
 
@@ -97,7 +128,7 @@ function toggleRules() {
         </div>
         <div class="rules-content max-h-[42vh] overflow-y-auto px-5 pb-4 text-sm leading-6 text-gray-600" v-html="renderedRules" />
         <div class="border-t border-[#f0e5d6] bg-white/70 px-5 py-3">
-          <NuxtLink :to="rulesPageUrl" class="inline-flex items-center gap-1 text-xs font-medium text-gray-950 underline decoration-[#d6c39a] underline-offset-4">
+          <NuxtLink :to="rulesPageUrl" class="inline-flex items-center gap-1 text-xs font-medium text-gray-950 underline decoration-[#d6c39a] underline-offset-4" @click="trackRulesPageClick">
             查看完整规则
             <span aria-hidden="true">→</span>
           </NuxtLink>

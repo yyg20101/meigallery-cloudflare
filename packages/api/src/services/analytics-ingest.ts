@@ -174,6 +174,52 @@ export async function ingestAnalyticsBatch(
   return response
 }
 
+export async function recordTrustedAnalyticsEvent(
+  env: Pick<Bindings, 'DB' | 'APP_ENV'>,
+  input: {
+    eventName: AnalyticsEventName
+    userId: number | null
+    routeName: string
+    path: string
+    entityType: AnalyticsEntityType
+    entityId: string
+    props?: Record<string, AnalyticsPropValue>
+    visitorId?: string | null
+    sessionId?: string | null
+    now?: Date
+    country?: string | null
+  },
+) {
+  const now = input.now ?? new Date()
+  const visitorId = normalizeTrustedExternalId(input.visitorId) || `visitor_user_${input.userId ?? 'anonymous'}`
+  const sessionId = normalizeTrustedExternalId(input.sessionId) || `session_server_${input.userId ?? 'anonymous'}_${toOperationDateShanghai(now).replace(/-/g, '')}`
+  const eventId = `server_${input.eventName}_${simpleHash(`${input.entityId}:${now.getTime()}:${Math.random()}`)}`
+
+  return ingestAnalyticsBatch(env, {
+    body: {
+      visitorId,
+      sessionId,
+      events: [
+        {
+          eventId,
+          eventName: input.eventName,
+          occurredAt: now.toISOString(),
+          routeName: input.routeName,
+          path: input.path,
+          entityType: input.entityType,
+          entityId: input.entityId,
+          props: input.props ?? {},
+        },
+      ],
+    },
+    bodySizeBytes: 1024,
+    userId: input.userId,
+    now,
+    country: input.country,
+    appEnv: env.APP_ENV,
+  })
+}
+
 export function normalizeSessionEndPayload(body: unknown, now = new Date()): unknown {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return body
   const record = body as Record<string, unknown>
@@ -723,6 +769,11 @@ function normalizeExternalId(value: string, field: string) {
     throw new AnalyticsIngestError(400, 'ANALYTICS_ID_INVALID', `${field} 格式无效`)
   }
   return value
+}
+
+function normalizeTrustedExternalId(value: string | null | undefined) {
+  const normalized = String(value ?? '').trim()
+  return VISITOR_SESSION_ID_RE.test(normalized) ? normalized : ''
 }
 
 function normalizeEventId(value: string) {

@@ -143,7 +143,7 @@ useSeoMeta({
     <section class="mt-8 lg:mt-10">
       <EditorialSectionHeading eyebrow="精选内容" title="精选图库" description="按访问、互动与发布时间综合推荐授权写真、时尚、生活与艺术类图库。" action-label="查看全部" action-to="/discover" />
       <template v-if="galleriesData">
-        <GalleryGrid :galleries="galleryHighlights.slice(0, GALLERY_DISPLAY_LIMIT)" variant="magazine" />
+        <GalleryGrid :galleries="galleryHighlights.slice(0, GALLERY_DISPLAY_LIMIT)" variant="magazine" list-type="home_highlights" />
         <div v-if="galleryHighlights.length === 0" class="rounded-[1.5rem] border border-orange-100 bg-white/80 py-20 text-center text-gray-400">暂无更多精选内容</div>
         <div class="mt-6 text-center">
           <NuxtLink to="/discover" class="inline-flex rounded-full bg-gray-950 px-5 py-3 text-sm font-medium text-white shadow-sm shadow-gray-900/15 transition-all hover:-translate-y-0.5 hover:bg-gray-800">

@@ -43,4 +43,15 @@ describe('MediaLock', () => {
     expect(wrapper.find('a').attributes('href')).toBe('/user')
     expect(wrapper.find('a').text()).toBe('了解会员权益')
   })
+
+  it('点击会员权益入口时发出 CTA 事件', async () => {
+    const wrapper = mount(MediaLock, {
+      props: { requiredRank: 10 },
+      global: { stubs: { NuxtLink: nuxtLinkStub } },
+    })
+
+    await wrapper.get('a').trigger('click')
+
+    expect(wrapper.emitted('membershipCtaClick')).toHaveLength(1)
+  })
 })

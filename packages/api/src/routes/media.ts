@@ -1,6 +1,7 @@
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import type { Bindings, Variables } from '../index'
 import { requireAuth } from '../middleware/auth'
+import { recordTrustedAnalyticsEvent } from '../services/analytics-ingest'
 import { errorJson } from '../utils/api-error'
 import { isExternalCoverKey, safeExternalCoverUrl } from '../utils/cover-url'
 import { isExpectedGalleryCoverKey, isExpectedGalleryMediaKey } from '../utils/media-keys'
@@ -242,12 +243,13 @@ mediaRoutes.get('/:assetId/access', requireAuth, async (c) => {
 
   // 管理员角色跳过等级检查
   const isAdmin = userRole === 'admin' || userRole === 'owner'
+  const effectiveRank = Math.max(asset.required_rank, asset.required_level_rank)
 
   if (!isAdmin) {
     // 检查图库级别要求
-    const effectiveRank = Math.max(asset.required_rank, asset.required_level_rank)
     const hasAccess = await checkMediaAccess(db, userId, effectiveRank)
     if (!hasAccess) {
+      scheduleMediaAccessAnalytics(c, asset, 'media_access_denied', effectiveRank, 'rank_insufficient')
       return c.json({
         statusCode: 403,
         message: '会员等级不足，无法访问',
@@ -259,12 +261,14 @@ mediaRoutes.get('/:assetId/access', requireAuth, async (c) => {
   // 根据媒体类型返回不同的访问凭证
   if (asset.type === 'image' && asset.r2_key) {
     if (!isExpectedGalleryMediaKey(asset.r2_key, asset.gallery_id, assetId)) {
+      scheduleMediaAccessAnalytics(c, asset, 'media_access_denied', effectiveRank, 'media_config_error')
       return c.json({ statusCode: 404, message: '媒体文件配置异常' }, 404)
     }
 
     // 图片：服务端校验通过后代理返回 R2 对象。
     const object = await c.env.R2.get(asset.r2_key)
     if (!object) {
+      scheduleMediaAccessAnalytics(c, asset, 'media_access_denied', effectiveRank, 'file_missing')
       return c.json({ statusCode: 404, message: '文件不存在' }, 404)
     }
 
@@ -272,11 +276,13 @@ mediaRoutes.get('/:assetId/access', requireAuth, async (c) => {
     headers.set('Content-Type', object.httpMetadata?.contentType || 'image/jpeg')
     headers.set('Cache-Control', `private, max-age=${MEDIA_ACCESS_TTL.PROTECTED_IMAGE_CACHE}`)
 
+    scheduleMediaAccessAnalytics(c, asset, 'media_access_granted', effectiveRank)
     return new Response(object.body, { headers })
   }
 
   if (asset.type === 'video' && asset.stream_uid) {
     if (!c.env.STREAM_ACCOUNT_ID?.trim() || !c.env.STREAM_API_TOKEN?.trim()) {
+      scheduleMediaAccessAnalytics(c, asset, 'media_access_denied', effectiveRank, 'stream_not_configured')
       return errorJson(c, 503, '视频服务暂未配置，请联系站点管理员', {
         code: 'STREAM_NOT_CONFIGURED',
       })
@@ -290,6 +296,7 @@ mediaRoutes.get('/:assetId/access', requireAuth, async (c) => {
       MEDIA_ACCESS_TTL.STREAM_TOKEN,
     )
 
+    scheduleMediaAccessAnalytics(c, asset, 'media_access_granted', effectiveRank)
     return c.json({
       type: 'video',
       streamUid: asset.stream_uid,
@@ -298,6 +305,7 @@ mediaRoutes.get('/:assetId/access', requireAuth, async (c) => {
     })
   }
 
+  scheduleMediaAccessAnalytics(c, asset, 'media_access_denied', effectiveRank, 'media_config_error')
   return c.json({ statusCode: 404, message: '媒体文件配置异常' }, 404)
 })
 
@@ -334,4 +342,44 @@ async function generateStreamSignedToken(
   }
 
   return result.result.token
+}
+
+type MediaAccessContext = Context<{ Bindings: Bindings; Variables: Variables }>
+type MediaAccessAsset = {
+  id: string
+  gallery_id: string
+  required_rank: number
+  required_level_rank: number
+}
+
+function scheduleMediaAccessAnalytics(
+  c: MediaAccessContext,
+  asset: MediaAccessAsset,
+  eventName: 'media_access_granted' | 'media_access_denied',
+  effectiveRank: number,
+  reason?: string,
+) {
+  const task = recordTrustedAnalyticsEvent(c.env, {
+    eventName,
+    userId: c.get('userId') ?? null,
+    routeName: '/media/access',
+    path: `/gallery/${asset.gallery_id}`,
+    entityType: 'media',
+    entityId: asset.id,
+    visitorId: c.req.header('X-Analytics-Visitor-Id'),
+    sessionId: c.req.header('X-Analytics-Session-Id'),
+    country: c.req.header('CF-IPCountry'),
+    props: {
+      gallery_id: asset.gallery_id,
+      asset_id: asset.id,
+      required_rank: effectiveRank,
+      ...(reason ? { reason } : {}),
+    },
+  }).catch(() => undefined)
+
+  try {
+    c.executionCtx.waitUntil(task)
+  } catch {
+    void task
+  }
 }

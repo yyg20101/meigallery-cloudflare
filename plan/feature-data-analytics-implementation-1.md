@@ -122,15 +122,15 @@ tags: [feature, analytics, cloudflare, d1, prd, cost]
 
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
-| TASK-040 | 修改 `packages/web/app/pages/index.vue` 和 `packages/web/app/components/HomeAdBand.vue`，接入 `home_ad_impression`、`home_ad_click`，曝光必须使用 IntersectionObserver 且满足 50% 可见、持续 >= 1 秒。 | | |
-| TASK-041 | 修改 `packages/web/app/components/GalleryCard.vue` 和图库网格相关组件，接入 `gallery_card_impression`、`gallery_card_click`，props 只包含 `gallery_id`、`list_type`、`position`。 | | |
-| TASK-042 | 修改 `packages/web/app/pages/gallery/[slug].vue`，接入 `gallery_detail_view`、`media_viewer_open`、`membership_cta_click`、媒体访问成功和拒绝事件，不记录私有媒体 URL。 | | |
-| TASK-043 | 修改 `packages/web/app/components/GalleryLikeButton.vue` 或详情页点赞逻辑，接入 `gallery_like_add` 和 `gallery_like_remove`，只在 API 成功后上报。 | | |
-| TASK-044 | 修改 `packages/web/app/pages/search.vue`，接入 `search_submit`、`search_results_view`、`search_no_results`、`filter_selected`，不保存搜索关键词明文，只保存 `has_query`、`query_length`、`tag_count` 和 `sort`。 | | |
-| TASK-045 | 修改 `packages/web/app/pages/discover.vue`，接入 `filter_selected`、`filter_removed`、`sort_changed`、`load_more`。 | | |
-| TASK-046 | 修改 `packages/web/app/components/ContactPanel.vue` 和规则入口，接入 `contact_panel_open`、`contact_method_click`、`rules_panel_open`、`rules_page_click`、`membership_cta_click`，不保存联系值。 | | |
-| TASK-047 | 修改 `packages/api/src/routes/media.ts`，在媒体访问授权成功或拒绝时写入服务端可信 `media_access_granted` / `media_access_denied` 聚合事实，拒绝前端伪造授权结果。 | | |
-| TASK-048 | 扩展相关组件单元测试，验证核心点击事件只在用户动作或 API 成功后触发，且 payload 不包含敏感值、完整外链 query 或媒体私有地址。 | | |
+| TASK-040 | 修改 `packages/web/app/pages/index.vue` 和 `packages/web/app/components/HomeAdBand.vue`，接入 `home_ad_impression`、`home_ad_click`，曝光必须使用 IntersectionObserver 且满足 50% 可见、持续 >= 1 秒。 | ✅ | 2026-06-07 |
+| TASK-041 | 修改 `packages/web/app/components/GalleryCard.vue` 和图库网格相关组件，接入 `gallery_card_impression`、`gallery_card_click`，props 只包含 `gallery_id`、`list_type`、`position`。 | ✅ | 2026-06-07 |
+| TASK-042 | 修改 `packages/web/app/pages/gallery/[slug].vue`，接入 `gallery_detail_view`、`media_viewer_open`、`membership_cta_click`、媒体访问成功和拒绝事件，不记录私有媒体 URL。 | ✅ | 2026-06-07 |
+| TASK-043 | 修改 `packages/web/app/components/GalleryLikeButton.vue` 或详情页点赞逻辑，接入 `gallery_like_add` 和 `gallery_like_remove`，只在 API 成功后上报。 | ✅ | 2026-06-07 |
+| TASK-044 | 修改 `packages/web/app/pages/search.vue`，接入 `search_submit`、`search_results_view`、`search_no_results`、`filter_selected`，不保存搜索关键词明文，只保存 `has_query`、`query_length`、`tag_count` 和 `sort`。 | ✅ | 2026-06-07 |
+| TASK-045 | 修改 `packages/web/app/pages/discover.vue`，接入 `filter_selected`、`filter_removed`、`sort_changed`、`load_more`。 | ✅ | 2026-06-07 |
+| TASK-046 | 修改 `packages/web/app/components/ContactPanel.vue` 和规则入口，接入 `contact_panel_open`、`contact_method_click`、`rules_panel_open`、`rules_page_click`、`membership_cta_click`，不保存联系值。 | ✅ | 2026-06-07 |
+| TASK-047 | 修改 `packages/api/src/routes/media.ts`，在媒体访问授权成功或拒绝时写入服务端可信 `media_access_granted` / `media_access_denied` 聚合事实，拒绝前端伪造授权结果。 | ✅ | 2026-06-07 |
+| TASK-048 | 扩展相关组件单元测试，验证核心点击事件只在用户动作或 API 成功后触发，且 payload 不包含敏感值、完整外链 query 或媒体私有地址。 | ✅ | 2026-06-07 |
 
 ### Implementation Phase 6
 

@@ -30,7 +30,13 @@ const props = defineProps<{
 const externalNoteId = `${useId()}-home-ad-external-note`
 const internalNoteId = `${useId()}-home-ad-internal-note`
 const activeIndex = ref(0)
+const sectionRef = ref<HTMLElement | null>(null)
+const adVisible = ref(false)
+const analytics = useAnalytics()
 let carouselTimer: ReturnType<typeof setInterval> | null = null
+let impressionTimer: ReturnType<typeof setTimeout> | null = null
+let impressionObserver: IntersectionObserver | null = null
+const impressedAdKeys = new Set<string>()
 
 const adItems = computed(() => {
   const source = Array.isArray(props.ads) && props.ads.length > 0
@@ -81,14 +87,21 @@ const ctaAriaLabel = computed(() => {
 watch(() => adItems.value.length, () => {
   activeIndex.value = 0
   restartCarousel()
+  scheduleAdImpression()
+})
+
+watch([currentAd, adVisible], () => {
+  scheduleAdImpression()
 })
 
 onMounted(() => {
   restartCarousel()
+  setupImpressionObserver()
 })
 
 onUnmounted(() => {
   stopCarousel()
+  stopImpressionTracking()
 })
 
 function normalizeAdItem(ad: HomeAdItem, index: number) {
@@ -128,6 +141,65 @@ function goToAd(index: number) {
   activeIndex.value = (index + count) % count
 }
 
+function setupImpressionObserver() {
+  if (props.preview || typeof IntersectionObserver === 'undefined') return
+  const el = sectionRef.value
+  if (!el) return
+
+  impressionObserver = new IntersectionObserver((entries) => {
+    const entry = entries[0]
+    adVisible.value = Boolean(entry?.isIntersecting && entry.intersectionRatio >= 0.5)
+    scheduleAdImpression()
+  }, { threshold: [0, 0.5, 1] })
+  impressionObserver.observe(el)
+}
+
+function stopImpressionTracking() {
+  impressionObserver?.disconnect()
+  impressionObserver = null
+  clearImpressionTimer()
+}
+
+function clearImpressionTimer() {
+  if (!impressionTimer) return
+  clearTimeout(impressionTimer)
+  impressionTimer = null
+}
+
+function scheduleAdImpression() {
+  clearImpressionTimer()
+  if (props.preview || !adVisible.value || !currentAd.value) return
+  const key = `${currentAd.value.id}:${activeIndex.value}`
+  if (impressedAdKeys.has(key)) return
+
+  impressionTimer = setTimeout(() => {
+    if (!adVisible.value || !currentAd.value || impressedAdKeys.has(key)) return
+    impressedAdKeys.add(key)
+    analytics.track('home_ad_impression', {
+      entityType: 'ad',
+      entityId: currentAd.value.id,
+      props: {
+        ad_id: currentAd.value.id,
+        position: activeIndex.value + 1,
+        creative_type: currentAd.value.imageUrl ? 'image' : 'text',
+      },
+    })
+  }, 1000)
+}
+
+function trackAdClick() {
+  if (!currentAd.value) return
+  analytics.track('home_ad_click', {
+    entityType: 'ad',
+    entityId: currentAd.value.id,
+    props: {
+      ad_id: currentAd.value.id,
+      target_type: isExternalUrl.value ? 'external' : 'internal',
+      target_path_or_host: isExternalUrl.value ? externalHostname.value : safeUrl.value,
+    },
+  })
+}
+
 function resolveInternalDestinationLabel(url: string) {
   const pathname = new URL(url, 'https://meigallery.local').pathname
   if (pathname === '/') return '首页'
@@ -149,6 +221,7 @@ function resolveInternalDestinationLabel(url: string) {
 <template>
   <section
     v-if="enabled && currentAd"
+    ref="sectionRef"
     aria-label="首页广告推荐"
     class="relative overflow-hidden rounded-[1.5rem] border border-[#eadfd2] bg-[#111111] shadow-[0_24px_70px_rgba(17,24,39,0.18)]"
   >
@@ -205,6 +278,7 @@ function resolveInternalDestinationLabel(url: string) {
             :aria-describedby="externalNoteId"
             :aria-label="ctaAriaLabel"
             class="group/cta inline-flex min-h-11 max-w-full shrink-0 items-center justify-center gap-2 rounded-full bg-white px-5 py-2.5 text-center text-sm font-semibold leading-tight whitespace-normal break-words text-gray-950 shadow-sm shadow-black/20 transition-all hover:-translate-y-0.5 hover:bg-[#fff7ed]"
+            @click="trackAdClick"
           >
             <span>{{ currentAd.ctaLabel }}</span>
             <svg aria-hidden="true" class="h-3.5 w-3.5 shrink-0 transition-transform group-hover/cta:-translate-y-0.5 group-hover/cta:translate-x-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -218,6 +292,7 @@ function resolveInternalDestinationLabel(url: string) {
             :aria-describedby="internalNoteId"
             :aria-label="ctaAriaLabel"
             class="inline-flex min-h-11 max-w-full shrink-0 items-center justify-center rounded-full bg-white px-5 py-2.5 text-center text-sm font-semibold leading-tight whitespace-normal break-words text-gray-950 shadow-sm shadow-black/20 transition-all hover:-translate-y-0.5 hover:bg-[#fff7ed]"
+            @click="trackAdClick"
           >
             {{ currentAd.ctaLabel }}
           </NuxtLink>

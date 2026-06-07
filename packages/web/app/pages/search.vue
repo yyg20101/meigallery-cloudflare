@@ -2,6 +2,7 @@
 const route = useRoute()
 const router = useRouter()
 const { api } = useApi()
+const analytics = useAnalytics()
 const { trackSearch, trackFilterSelected } = useFacebookPixel()
 const { siteName } = useSiteSettings()
 
@@ -66,6 +67,12 @@ watch(searchResult, (result) => {
     searchString: `has_query=${keyword.value.trim() ? 'true' : 'false'} tag_count=${selectedTags.value.length} sort=${sort.value}`,
     resultCount: result.total,
   })
+  analytics.track(result.total > 0 ? 'search_results_view' : 'search_no_results', {
+    entityType: 'page',
+    props: result.total > 0
+      ? { result_count: result.total, page: result.page, sort: sort.value }
+      : { query_length: keyword.value.trim().length, tag_count: selectedTags.value.length },
+  })
 }, { immediate: true })
 
 // 相关标签推荐：根据搜索词匹配
@@ -94,6 +101,7 @@ const popularTags = computed(() => {
 
 function toggleTag(slug: string) {
   const idx = selectedTags.value.indexOf(slug)
+  const selected = idx < 0
   if (idx >= 0) {
     selectedTags.value.splice(idx, 1)
   } else {
@@ -102,6 +110,15 @@ function toggleTag(slug: string) {
   page.value = 1
   updateUrl()
   trackFilterSelected({ tagSlug: slug, tagType: findTagType(slug), location: 'search_filter' })
+  analytics.track(selected ? 'filter_selected' : 'filter_removed', {
+    entityType: 'tag',
+    entityId: slug,
+    props: {
+      tag_slug: slug,
+      tag_type: findTagType(slug),
+      location: 'search_filter',
+    },
+  })
 }
 
 function clearTags() {
@@ -113,6 +130,15 @@ function clearTags() {
 function onSearch(val: string) {
   keyword.value = val
   page.value = 1
+  analytics.track('search_submit', {
+    entityType: 'page',
+    props: {
+      has_query: Boolean(keyword.value.trim()),
+      query_length: keyword.value.trim().length,
+      tag_count: selectedTags.value.length,
+      sort: sort.value,
+    },
+  })
   updateUrl()
 }
 
@@ -129,7 +155,29 @@ function updateUrl() {
 
 function goToTag(slug: string) {
   trackFilterSelected({ tagSlug: slug, tagType: findTagType(slug), location: 'search_related_tag' })
+  analytics.track('filter_selected', {
+    entityType: 'tag',
+    entityId: slug,
+    props: {
+      tag_slug: slug,
+      tag_type: findTagType(slug),
+      location: 'search_related_tag',
+    },
+  })
   navigateTo({ path: '/discover', query: { tag: slug } })
+}
+
+function onSortChanged() {
+  const oldSort = String(route.query.sort || 'relevance')
+  page.value = 1
+  analytics.track('sort_changed', {
+    props: {
+      old_sort: oldSort,
+      new_sort: sort.value,
+      location: 'search_results',
+    },
+  })
+  updateUrl()
 }
 
 const searchQuery = computed(() => route.query.q as string || '')
@@ -174,7 +222,7 @@ useSeoMeta({
 
     <div class="mb-5 flex items-center justify-between gap-3">
       <p class="text-sm text-gray-500">共 {{ total }} 个结果</p>
-      <select v-model="sort" class="rounded-full border border-[#eadfd2] bg-white px-3 py-2 text-sm outline-none focus:border-[#d6c39a] focus:ring-4 focus:ring-[#f8e7dc]/70" @change="page = 1; updateUrl()">
+      <select v-model="sort" class="rounded-full border border-[#eadfd2] bg-white px-3 py-2 text-sm outline-none focus:border-[#d6c39a] focus:ring-4 focus:ring-[#f8e7dc]/70" @change="onSortChanged">
         <option value="relevance">综合</option>
         <option value="newest">最新</option>
         <option value="hot">最热</option>
@@ -182,7 +230,7 @@ useSeoMeta({
     </div>
 
     <div v-if="galleries.length > 0" class="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 lg:gap-4">
-      <GalleryCard v-for="g in galleries" :key="g.id" :gallery="g" />
+      <GalleryCard v-for="(g, index) in galleries" :key="g.id" :gallery="g" list-type="search_results" :position="index + 1" />
     </div>
 
     <div v-if="galleries.length === 0" class="rounded-[1.5rem] border border-[#f0e4d8] bg-white/86 py-20 text-center shadow-sm shadow-orange-950/5">

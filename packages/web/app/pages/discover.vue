@@ -17,6 +17,7 @@ useSeoMeta({
 
 const route = useRoute()
 const router = useRouter()
+const analytics = useAnalytics()
 const { trackFilterSelected } = useFacebookPixel()
 
 const PAGE_SIZE = 24
@@ -49,6 +50,7 @@ function updateQuery() {
 
 function toggleTag(slug: string) {
   const idx = selectedSlugs.value.indexOf(slug)
+  const selected = idx < 0
   if (idx >= 0) {
     selectedSlugs.value.splice(idx, 1)
   } else {
@@ -56,6 +58,15 @@ function toggleTag(slug: string) {
   }
   updateQuery()
   trackFilterSelected({ tagSlug: slug, tagType: findTagType(slug), location: 'discover_filter' })
+  analytics.track(selected ? 'filter_selected' : 'filter_removed', {
+    entityType: 'tag',
+    entityId: slug,
+    props: {
+      tag_slug: slug,
+      tag_type: findTagType(slug),
+      location: 'discover_filter',
+    },
+  })
 }
 
 function clearTags() {
@@ -64,7 +75,16 @@ function clearTags() {
 }
 
 function setSort(val: 'latest' | 'hot') {
+  const oldSort = sortBy.value
+  if (oldSort === val) return
   sortBy.value = val
+  analytics.track('sort_changed', {
+    props: {
+      old_sort: oldSort,
+      new_sort: val,
+      location: 'discover_toolbar',
+    },
+  })
   updateQuery()
 }
 
@@ -145,6 +165,12 @@ async function loadMore() {
     total.value = data.total
     hasMoreFromApi.value = data.hasMore ?? null
     currentPage.value = nextPage
+    analytics.track('load_more', {
+      props: {
+        page: nextPage,
+        result_count: data.data.length,
+      },
+    })
   } finally {
     isLoading.value = false
   }
@@ -233,7 +259,7 @@ const sortOptions = [
     </div>
 
     <template v-else>
-      <GalleryGrid :galleries="galleries" variant="magazine" />
+      <GalleryGrid :galleries="galleries" variant="magazine" list-type="discover_grid" />
 
       <div v-if="isLoading" class="py-8 text-center text-gray-400">
         加载中...
