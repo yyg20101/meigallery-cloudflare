@@ -1,5 +1,6 @@
 import type { AnalyticsSourceChannel } from '@meigallery/shared'
 import { hasSensitiveAnalyticsUrl, isAdminPath } from '~/utils/facebookPixel'
+import { sanitizeReferrer } from '~/utils/analyticsSanitizer'
 
 export default defineNuxtPlugin(async () => {
   const route = useRoute()
@@ -14,10 +15,12 @@ export default defineNuxtPlugin(async () => {
   await fetchSettings()
   if (!analyticsEnabled.value || isAdminPath(route.path) || hasSensitiveAnalyticsUrl(route.fullPath)) return
 
+  const initialSource = deriveInitialSource(route)
   analytics.initialize({
     enabled: analyticsEnabled.value,
     consentState: analyticsConsentMode.value,
-    sourceChannel: deriveInitialSourceChannel(route),
+    sourceChannel: initialSource.channel,
+    sourceContext: initialSource.context,
     route,
   })
   analytics.trackPageView(route)
@@ -49,9 +52,69 @@ export default defineNuxtPlugin(async () => {
   }, { passive: true })
 })
 
-function deriveInitialSourceChannel(route: ReturnType<typeof useRoute>): AnalyticsSourceChannel {
-  if (route.query.invite) return 'invite'
-  if (route.query.utm_source || route.query.utm_medium || route.query.utm_campaign) return 'ad'
-  if (import.meta.client && document.referrer) return 'referral'
+function deriveInitialSource(route: ReturnType<typeof useRoute>): {
+  channel: AnalyticsSourceChannel
+  context: {
+    referrer: string
+    referrerHost: string
+    utmSource: string
+    utmMedium: string
+    utmCampaign: string
+    trackingSourceSlug: string
+    sourceName: string
+  }
+} {
+  const trackingSourceSlug = queryValue(route.query.mg_source)
+  const utmSource = queryValue(route.query.utm_source)
+  const utmMedium = queryValue(route.query.utm_medium)
+  const utmCampaign = queryValue(route.query.utm_campaign)
+  const currentHost = import.meta.client ? window.location.host : ''
+  const referrer = import.meta.client ? sanitizeReferrer(document.referrer, currentHost) : { referrer: '', referrerHost: '' }
+  const channel = deriveInitialSourceChannel({
+    hasInvite: Boolean(route.query.invite),
+    hasTrackingSource: Boolean(trackingSourceSlug),
+    utmMedium,
+    hasUtm: Boolean(utmSource || utmMedium || utmCampaign),
+    hasReferrer: Boolean(referrer.referrerHost),
+  })
+  return {
+    channel,
+    context: {
+      referrer: referrer.referrer,
+      referrerHost: referrer.referrerHost,
+      utmSource,
+      utmMedium,
+      utmCampaign,
+      trackingSourceSlug,
+      sourceName: utmSource || trackingSourceSlug || referrer.referrerHost || channel,
+    },
+  }
+}
+
+function deriveInitialSourceChannel(input: {
+  hasInvite: boolean
+  hasTrackingSource: boolean
+  utmMedium: string
+  hasUtm: boolean
+  hasReferrer: boolean
+}): AnalyticsSourceChannel {
+  if (input.hasInvite) return 'invite'
+  if (input.hasTrackingSource || input.hasUtm) return channelFromUtmMedium(input.utmMedium)
+  if (input.hasReferrer) return 'referral'
   return 'direct'
+}
+
+function channelFromUtmMedium(value: string): AnalyticsSourceChannel {
+  const medium = value.trim().toLowerCase()
+  if (medium === 'ad' || medium === 'ads' || medium === 'paid' || medium === 'cpc') return 'ad'
+  if (medium === 'social' || medium === 'sns') return 'social'
+  if (medium === 'search' || medium === 'seo' || medium === 'organic_search') return 'search'
+  if (medium === 'direct') return 'direct'
+  if (medium === 'internal') return 'internal'
+  return 'referral'
+}
+
+function queryValue(value: unknown) {
+  const raw = Array.isArray(value) ? value[0] : value
+  return String(raw ?? '').trim().slice(0, 120)
 }

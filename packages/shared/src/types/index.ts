@@ -209,6 +209,10 @@ export interface AnalyticsEventPayload {
   pageTitle?: string
   referrer?: string
   referrerHost?: string
+  utmSource?: string
+  utmMedium?: string
+  utmCampaign?: string
+  trackingSourceSlug?: string
   sourceChannel?: AnalyticsSourceChannel
   deviceType?: AnalyticsDeviceType
   viewportWidth?: number

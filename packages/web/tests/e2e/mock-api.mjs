@@ -147,6 +147,7 @@ const analyticsBatches = []
 const sessionEndBatches = []
 const registrations = []
 let authenticated = true
+let adminAnalyticsEmpty = false
 
 function resetPublicSettings() {
   for (const key of Object.keys(mutablePublicSettings)) {
@@ -157,6 +158,7 @@ function resetPublicSettings() {
   sessionEndBatches.length = 0
   registrations.length = 0
   authenticated = true
+  adminAnalyticsEmpty = false
 }
 
 function json(res, data, status = 200) {
@@ -233,6 +235,54 @@ function analyticsRange(range) {
 function adminAnalyticsResponse(pathname, rangePreset) {
   const range = analyticsRange(rangePreset)
   const usage = { rowsRead: 120, rowsWritten: 0, durationMs: 12 }
+  if (adminAnalyticsEmpty) {
+    if (pathname.endsWith('/overview')) {
+      return {
+        range,
+        usage,
+        data: {
+          totals: {
+            visitor_count: 0,
+            session_count: 0,
+            page_view_count: 0,
+            gallery_detail_count: 0,
+            register_count: 0,
+            invite_register_count: 0,
+            contact_click_count: 0,
+            membership_grant_count: 0,
+            average_active_seconds: 0,
+          },
+          trend: [],
+          topSources: [],
+          topPages: [],
+          topClicks: [],
+          health: null,
+        },
+      }
+    }
+    if (pathname.endsWith('/health')) {
+      return {
+        range,
+        usage,
+        data: {
+          totals: {
+            accepted_count: 0,
+            rejected_count: 0,
+            duplicate_count: 0,
+            sensitive_blocked_count: 0,
+            sampled_count: 0,
+            dropped_count: 0,
+            estimated_rows_read: 0,
+            estimated_rows_written: 0,
+            max_duration_ms: 0,
+            last_ingested_at: null,
+          },
+          daily: [],
+        },
+      }
+    }
+    return { range, usage, data: [] }
+  }
   if (pathname.endsWith('/overview')) {
     return {
       range,
@@ -321,6 +371,15 @@ function handleApi(req, res) {
   if (url.pathname === '/api/test/reset' && req.method === 'POST') {
     resetPublicSettings()
     return json(res, { ok: true })
+  }
+  if (url.pathname === '/api/test/admin-analytics-empty' && req.method === 'PATCH') {
+    readJsonBody(req)
+      .then((body) => {
+        adminAnalyticsEmpty = Boolean(body?.enabled)
+        json(res, { ok: true, enabled: adminAnalyticsEmpty })
+      })
+      .catch(() => json(res, { statusCode: 400, message: '测试设置请求无效' }, 400))
+    return
   }
   if (url.pathname === '/api/test/analytics-events') {
     return json(res, {

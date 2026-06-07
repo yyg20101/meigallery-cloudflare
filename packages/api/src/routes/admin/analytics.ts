@@ -2,6 +2,7 @@ import { Hono, type Context } from 'hono'
 import type { AnalyticsRangeQuery } from '@meigallery/shared'
 import type { Bindings, Variables } from '../../index'
 import { createAnalyticsExportJob, readAnalyticsExportJob } from '../../services/analytics-export'
+import { listTrackingSourcesWithMetrics } from '../../services/tracking-sources'
 import { errorJson } from '../../utils/api-error'
 import { readD1UsageMeta, mergeD1Usage, type D1Usage } from '../../utils/analytics-cost'
 import { parseAnalyticsRange, type AnalyticsDateRange } from '../../utils/analytics-time'
@@ -25,6 +26,7 @@ adminAnalyticsRoutes.get('/overview', async (c) => {
         COALESCE(SUM(visitor_count), 0) AS visitor_count,
         COALESCE(SUM(session_count), 0) AS session_count,
         COALESCE(SUM(page_view_count), 0) AS page_view_count,
+        COALESCE(SUM(gallery_detail_count), 0) AS gallery_detail_count,
         COALESCE(SUM(register_count), 0) AS register_count,
         COALESCE(SUM(invite_register_count), 0) AS invite_register_count,
         COALESCE(SUM(contact_click_count), 0) AS contact_click_count,
@@ -120,7 +122,8 @@ adminAnalyticsRoutes.get('/sources', async (c) => {
   if (range instanceof Response) return range
 
   const { where, params } = analyticsWhere(c, range, 'ads')
-  const result = await queryAll(c.env.DB, `
+  const [result, trackingSources] = await Promise.all([
+    queryAll(c.env.DB, `
     SELECT source_channel, source_name, invite_code_id,
            SUM(visitor_count) AS visitor_count,
            SUM(session_count) AS session_count,
@@ -135,8 +138,10 @@ adminAnalyticsRoutes.get('/sources', async (c) => {
     WHERE ${where}
     GROUP BY source_channel, source_name, invite_code_id
     ORDER BY session_count DESC
-  `, params)
-  return c.json({ range, usage: result.usage, data: result.rows })
+  `, params),
+    listTrackingSourcesWithMetrics(c.env.DB, range),
+  ])
+  return c.json({ range, usage: result.usage, data: result.rows, trackingSources })
 })
 
 adminAnalyticsRoutes.get('/pages', async (c) => {

@@ -1,4 +1,13 @@
 <script setup lang="ts">
+import AnalyticsConversionFunnel from '~/components/admin/analytics/AnalyticsConversionFunnel.vue'
+import AnalyticsDataTable from '~/components/admin/analytics/AnalyticsDataTable.vue'
+import AnalyticsEmptyState from '~/components/admin/analytics/AnalyticsEmptyState.vue'
+import AnalyticsHealthStrip from '~/components/admin/analytics/AnalyticsHealthStrip.vue'
+import AnalyticsMetricCard from '~/components/admin/analytics/AnalyticsMetricCard.vue'
+import AnalyticsPageShell from '~/components/admin/analytics/AnalyticsPageShell.vue'
+import AnalyticsTopList from '~/components/admin/analytics/AnalyticsTopList.vue'
+import AnalyticsTrendPanel from '~/components/admin/analytics/AnalyticsTrendPanel.vue'
+
 definePageMeta({ layout: 'admin' })
 
 const { isOwner } = useAuth()
@@ -15,32 +24,98 @@ interface OverviewData {
 
 const analytics = useAdminAnalytics<OverviewData>('/api/admin/analytics/overview')
 
+const totals = computed(() => analytics.data.value?.totals ?? {})
+
+function totalNumber(key: string) {
+  return Number(totals.value[key] ?? 0)
+}
+
 const metrics = computed(() => {
-  const totals = analytics.data.value?.totals ?? {}
   return [
-    { label: '访客', value: formatAnalyticsNumber(totals.visitor_count), tone: 'blue' as const },
-    { label: 'Session', value: formatAnalyticsNumber(totals.session_count), tone: 'default' as const },
-    { label: 'PV', value: formatAnalyticsNumber(totals.page_view_count), tone: 'default' as const },
-    { label: '注册', value: formatAnalyticsNumber(totals.register_count), tone: 'green' as const },
-    { label: '邀请注册', value: formatAnalyticsNumber(totals.invite_register_count), tone: 'green' as const },
-    { label: '联系', value: formatAnalyticsNumber(totals.contact_click_count), tone: 'gold' as const },
-    { label: '会员发放', value: formatAnalyticsNumber(totals.membership_grant_count), tone: 'gold' as const },
-    { label: '平均时长', value: formatAnalyticsDuration(totals.average_active_seconds), tone: 'default' as const },
+    { label: '访客', value: formatAnalyticsNumber(totalNumber('visitor_count')), hint: '独立访客', tone: 'blue' as const },
+    { label: 'Session', value: formatAnalyticsNumber(totalNumber('session_count')), hint: '访问会话', tone: 'default' as const },
+    { label: 'PV', value: formatAnalyticsNumber(totalNumber('page_view_count')), hint: '页面浏览', tone: 'default' as const },
+    { label: '注册', value: formatAnalyticsNumber(totalNumber('register_count')), hint: '注册成功', tone: 'green' as const },
+    { label: '邀请注册', value: formatAnalyticsNumber(totalNumber('invite_register_count')), hint: '邀请码转化', tone: 'green' as const },
+    { label: '联系', value: formatAnalyticsNumber(totalNumber('contact_click_count')), hint: '联系点击', tone: 'gold' as const },
+    { label: '会员发放', value: formatAnalyticsNumber(totalNumber('membership_grant_count')), hint: '最终转化', tone: 'gold' as const },
+    { label: '平均时长', value: formatAnalyticsDuration(totalNumber('average_active_seconds')), hint: '每 session', tone: 'default' as const },
   ]
 })
 
 const funnel = computed(() => {
-  const totals = analytics.data.value?.totals ?? {}
-  const landing = Number(totals.session_count ?? 0)
+  const landing = totalNumber('session_count')
   return [
-    { label: '落地', value: landing, rate: '100%' },
-    { label: '详情', value: Number(totals.gallery_detail_count ?? 0), rate: formatAnalyticsPercent(totals.gallery_detail_count, landing) },
-    { label: '联系', value: Number(totals.contact_click_count ?? 0), rate: formatAnalyticsPercent(totals.contact_click_count, landing) },
-    { label: '注册', value: Number(totals.register_count ?? 0), rate: formatAnalyticsPercent(totals.register_count, landing) },
-    { label: '会员', value: Number(totals.membership_grant_count ?? 0), rate: formatAnalyticsPercent(totals.membership_grant_count, landing) },
+    { label: '落地', value: landing, rate: landing > 0 ? '100%' : '--', tone: 'blue' as const },
+    { label: '详情', value: totalNumber('gallery_detail_count'), rate: landing > 0 ? formatAnalyticsPercent(totalNumber('gallery_detail_count'), landing) : '--', tone: 'default' as const },
+    { label: '联系', value: totalNumber('contact_click_count'), rate: landing > 0 ? formatAnalyticsPercent(totalNumber('contact_click_count'), landing) : '--', tone: 'gold' as const },
+    { label: '注册', value: totalNumber('register_count'), rate: landing > 0 ? formatAnalyticsPercent(totalNumber('register_count'), landing) : '--', tone: 'green' as const },
+    { label: '会员', value: totalNumber('membership_grant_count'), rate: landing > 0 ? formatAnalyticsPercent(totalNumber('membership_grant_count'), landing) : '--', tone: 'gold' as const },
   ]
 })
 
+const hasActivity = computed(() => {
+  const data = analytics.data.value
+  if (!data) return false
+  const totalKeys = [
+    'visitor_count',
+    'session_count',
+    'page_view_count',
+    'register_count',
+    'invite_register_count',
+    'contact_click_count',
+    'membership_grant_count',
+    'gallery_detail_count',
+  ]
+  return totalKeys.some(key => totalNumber(key) > 0) ||
+    data.trend.length > 0 ||
+    data.topSources.length > 0 ||
+    data.topPages.length > 0 ||
+    data.topClicks.length > 0
+})
+
+const riskItems = computed(() => {
+  const data = analytics.data.value
+  if (!data) return []
+  const items: Array<{ title: string; description: string; tone: 'gray' | 'amber' | 'red' }> = []
+  const rejected = Number(data.health?.rejected_count ?? 0)
+  const duplicate = Number(data.health?.duplicate_count ?? 0)
+  if (!hasActivity.value) {
+    items.push({
+      title: '暂无运营数据',
+      description: '当前时间范围还没有访问、转化或聚合排行，先确认前台采集和聚合任务。',
+      tone: 'gray',
+    })
+  }
+  if (!data.health?.last_ingested_at) {
+    items.push({
+      title: '暂无最近采集时间',
+      description: '健康表还没有写入 last_ingested_at，可能是采集未开启或前台暂无访问。',
+      tone: 'amber',
+    })
+  }
+  if (rejected > 0) {
+    items.push({
+      title: '存在 rejected 事件',
+      description: `${formatAnalyticsNumber(rejected)} 条事件被拒绝，建议查看健康页排查 URL 或字段校验问题。`,
+      tone: 'red',
+    })
+  }
+  if (duplicate > 0) {
+    items.push({
+      title: '存在重复事件',
+      description: `${formatAnalyticsNumber(duplicate)} 条事件被识别为重复，建议观察是否有重复上报。`,
+      tone: 'amber',
+    })
+  }
+  return items
+})
+
+function riskClass(tone: string) {
+  if (tone === 'red') return 'border-red-100 bg-red-50 text-red-900'
+  if (tone === 'amber') return 'border-amber-100 bg-amber-50 text-amber-900'
+  return 'border-gray-200 bg-white text-gray-800'
+}
 </script>
 
 <template>
@@ -56,62 +131,93 @@ const funnel = computed(() => {
     @export="createExport('overview', analytics.range.value)"
   >
     <template v-if="analytics.data.value">
-      <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <AnalyticsHealthStrip :health="analytics.data.value.health" :usage="analytics.usage.value" to="/admin/analytics/health" />
+
+      <div class="grid grid-cols-2 gap-3 lg:grid-cols-4 2xl:grid-cols-8">
         <AnalyticsMetricCard
           v-for="metric in metrics"
           :key="metric.label"
           :label="metric.label"
           :value="metric.value"
+          :hint="metric.hint"
           :tone="metric.tone"
         />
       </div>
 
-      <div class="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
-        <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-          <div class="mb-4 flex items-center justify-between">
-            <h2 class="text-sm font-semibold text-gray-900">关键转化漏斗</h2>
-            <span class="text-xs text-gray-400">会员发放为最终转化</span>
-          </div>
-          <div class="space-y-3">
-            <div v-for="item in funnel" :key="item.label" class="grid grid-cols-[4rem_1fr_4rem] items-center gap-3 text-sm">
-              <span class="font-medium text-gray-600">{{ item.label }}</span>
-              <div class="h-2 overflow-hidden rounded-full bg-gray-100">
-                <div class="h-full rounded-full bg-amber-500" :style="{ width: item.rate }" />
-              </div>
-              <span class="text-right text-gray-500">{{ item.rate }}</span>
-            </div>
-          </div>
-        </div>
+      <AnalyticsEmptyState
+        v-if="!hasActivity"
+        title="暂无分析数据"
+        description="当前时间范围没有访问、转化或排行数据。先确认站点设置已开启 analytics_enabled，并访问前台产生首批事件。"
+        action-label="刷新数据"
+        secondary-label="查看采集健康"
+        secondary-to="/admin/analytics/health"
+        tone="blue"
+        @action="analytics.refresh"
+      />
 
-        <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-          <div class="mb-4 flex items-center justify-between">
-            <h2 class="text-sm font-semibold text-gray-900">采集健康</h2>
-            <NuxtLink to="/admin/analytics/health" class="text-xs text-blue-600 hover:underline">查看详情</NuxtLink>
-          </div>
-          <dl class="grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <dt class="text-xs text-gray-400">Accepted</dt>
-              <dd class="mt-1 font-semibold text-gray-900">{{ formatAnalyticsNumber(analytics.data.value.health?.accepted_count) }}</dd>
-            </div>
-            <div>
-              <dt class="text-xs text-gray-400">Rejected</dt>
-              <dd class="mt-1 font-semibold text-red-600">{{ formatAnalyticsNumber(analytics.data.value.health?.rejected_count) }}</dd>
-            </div>
-            <div>
-              <dt class="text-xs text-gray-400">Rows written</dt>
-              <dd class="mt-1 font-semibold text-gray-900">{{ formatAnalyticsNumber(analytics.data.value.health?.estimated_rows_written) }}</dd>
-            </div>
-            <div>
-              <dt class="text-xs text-gray-400">最近采集</dt>
-              <dd class="mt-1 font-semibold text-gray-900">{{ formatAnalyticsDateTime(analytics.data.value.health?.last_ingested_at) }}</dd>
-            </div>
-          </dl>
-        </div>
+      <div class="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(22rem,0.65fr)]">
+        <AnalyticsTrendPanel :rows="analytics.data.value.trend" />
+        <AnalyticsConversionFunnel :steps="funnel" />
       </div>
 
+      <div class="grid gap-5 xl:grid-cols-3">
+        <AnalyticsTopList
+          title="Top 来源"
+          description="优先观察带来注册和联系的来源"
+          :rows="analytics.data.value.topSources"
+          label-key="source_name"
+          meta-key="source_channel"
+          value-key="session_count"
+          value-label="Session"
+          to="/admin/analytics/sources"
+        />
+        <AnalyticsTopList
+          title="Top 页面"
+          description="最值得继续优化的内容入口"
+          :rows="analytics.data.value.topPages"
+          label-key="route_name"
+          meta-key="path"
+          value-key="page_view_count"
+          value-label="PV"
+          to="/admin/analytics/pages"
+        />
+        <AnalyticsTopList
+          title="Top 点击"
+          description="联系、广告和 CTA 的点击入口"
+          :rows="analytics.data.value.topClicks"
+          label-key="element_id"
+          meta-key="location"
+          value-key="raw_click_count"
+          value-label="点击"
+          to="/admin/analytics/clicks"
+        />
+      </div>
+
+      <section class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+        <div class="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h2 class="text-sm font-semibold text-gray-900">风险队列</h2>
+            <p class="mt-1 text-xs text-gray-500">只展示需要运营或技术处理的事项。</p>
+          </div>
+          <NuxtLink to="/admin/analytics/health" class="text-xs font-medium text-blue-600 hover:underline">查看健康</NuxtLink>
+        </div>
+        <div v-if="riskItems.length === 0" class="rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          当前范围暂无明显采集风险。
+        </div>
+        <div v-else class="grid gap-3 lg:grid-cols-2">
+          <div v-for="item in riskItems" :key="item.title" :class="['rounded-lg border px-4 py-3', riskClass(item.tone)]">
+            <p class="text-sm font-semibold">{{ item.title }}</p>
+            <p class="mt-1 text-xs leading-5 opacity-80">{{ item.description }}</p>
+          </div>
+        </div>
+      </section>
+
       <section>
-        <h2 class="mb-2 text-sm font-semibold text-gray-900">日趋势</h2>
+        <h2 class="mb-2 text-sm font-semibold text-gray-900">日趋势明细</h2>
         <AnalyticsDataTable
+          compact
+          empty-title="暂无日趋势"
+          empty-text="聚合任务生成日报后会显示每天的访问和转化数据。"
           :columns="[
             { key: 'date', label: '日期', sortable: true },
             { key: 'visitor_count', label: '访客', type: 'number', sortable: true },
@@ -124,43 +230,6 @@ const funnel = computed(() => {
           :rows="analytics.data.value.trend"
         />
       </section>
-
-      <div class="grid gap-5 xl:grid-cols-3">
-        <section>
-          <h2 class="mb-2 text-sm font-semibold text-gray-900">Top 来源</h2>
-          <AnalyticsDataTable
-            :columns="[
-              { key: 'source_channel', label: '渠道' },
-              { key: 'source_name', label: '来源' },
-              { key: 'session_count', label: 'Session', type: 'number', sortable: true },
-              { key: 'register_count', label: '注册', type: 'number', sortable: true },
-            ]"
-            :rows="analytics.data.value.topSources"
-          />
-        </section>
-        <section>
-          <h2 class="mb-2 text-sm font-semibold text-gray-900">Top 页面</h2>
-          <AnalyticsDataTable
-            :columns="[
-              { key: 'route_name', label: 'Route' },
-              { key: 'page_view_count', label: 'PV', type: 'number', sortable: true },
-              { key: 'active_seconds_total', label: '时长', type: 'duration', sortable: true },
-            ]"
-            :rows="analytics.data.value.topPages"
-          />
-        </section>
-        <section>
-          <h2 class="mb-2 text-sm font-semibold text-gray-900">Top 点击</h2>
-          <AnalyticsDataTable
-            :columns="[
-              { key: 'element_id', label: '元素' },
-              { key: 'location', label: '位置' },
-              { key: 'raw_click_count', label: '点击', type: 'number', sortable: true },
-            ]"
-            :rows="analytics.data.value.topClicks"
-          />
-        </section>
-      </div>
     </template>
   </AnalyticsPageShell>
 </template>

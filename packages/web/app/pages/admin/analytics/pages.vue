@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import AnalyticsDataTable from '~/components/admin/analytics/AnalyticsDataTable.vue'
+import AnalyticsPageShell from '~/components/admin/analytics/AnalyticsPageShell.vue'
+
 definePageMeta({ layout: 'admin' })
 const { isOwner } = useAuth()
 const analytics = useAdminAnalytics<Array<Record<string, unknown>>>('/api/admin/analytics/pages')
@@ -18,6 +21,10 @@ const createExport = useAnalyticsExport()
     @export="createExport('pages', analytics.range.value)"
   >
     <AnalyticsDataTable
+      empty-title="暂无内容数据"
+      empty-text="当前时间范围没有页面聚合。访问首页、搜索页、图库详情或真实案例后会生成页面价值数据。"
+      empty-action-label="查看总览"
+      empty-action-to="/admin/analytics"
       :columns="[
         { key: 'route_name', label: 'Route', sortable: true },
         { key: 'path', label: '路径' },

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import AnalyticsDataTable from '~/components/admin/analytics/AnalyticsDataTable.vue'
+import AnalyticsPageShell from '~/components/admin/analytics/AnalyticsPageShell.vue'
+
 definePageMeta({ layout: 'admin' })
 const { isOwner } = useAuth()
 const analytics = useAdminAnalytics<Array<Record<string, unknown>>>('/api/admin/analytics/clicks')
@@ -18,6 +21,10 @@ const createExport = useAnalyticsExport()
     @export="createExport('clicks', analytics.range.value)"
   >
     <AnalyticsDataTable
+      empty-title="暂无点击数据"
+      empty-text="当前时间范围没有关键点击聚合。广告、图库卡片、联系入口、规则入口和筛选操作会在这里汇总。"
+      empty-action-label="查看采集健康"
+      empty-action-to="/admin/analytics/health"
       :columns="[
         { key: 'element_id', label: '元素', sortable: true },
         { key: 'element_type', label: '类型' },

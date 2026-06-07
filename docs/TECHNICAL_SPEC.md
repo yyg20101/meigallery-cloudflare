@@ -270,8 +270,11 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/admin/invite-codes` | 邀请码列表 | admin+ |
 | POST | `/api/admin/invite-codes` | 创建邀请码，创建响应返回明文 code，审计日志不保存明文或 hash | admin+ |
 | PATCH | `/api/admin/invite-codes/:id` | 修改或禁用邀请码，写入审计日志 | admin+ |
+| GET | `/api/admin/tracking-sources` | 推广来源列表，返回可复制追踪链接 | admin+ |
+| POST | `/api/admin/tracking-sources` | 创建推广来源，写入审计日志 | admin+ |
+| PATCH | `/api/admin/tracking-sources/:id` | 修改或停用推广来源，写入审计日志 | admin+ |
 | GET | `/api/admin/analytics/overview` | 数据分析总览，读取聚合表和健康摘要 | admin+ |
-| GET | `/api/admin/analytics/sources` | 来源质量报表 | admin+ |
+| GET | `/api/admin/analytics/sources` | 来源质量报表，包含已创建推广来源表现 | admin+ |
 | GET | `/api/admin/analytics/pages` | 页面和内容表现报表 | admin+ |
 | GET | `/api/admin/analytics/paths` | 聚合访问路径边报表 | admin+ |
 | GET | `/api/admin/analytics/clicks` | 点击排行和重复点击报表 | admin+ |
@@ -293,7 +296,7 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 
 ## 8. D1 数据库 Schema `[当前实现]`
 
-以下为当前核心表摘要，完整结构以 `packages/api/migrations/` 中的顺序迁移为准。数据分析相关表已通过 `0023` 到 `0026` 建立 schema，并已接入公开采集 API、邀请码转化闭环、Web 轻量 SDK、核心业务埋点、Cron 聚合任务、后台分析 API、后台分析页面、端到端 smoke、性能成本 fixtures、上线顺序和回滚文档。Cloudflare Queues 与 Workers Analytics Engine 仍按 Phase 9 阈值触发后再评估，不是当前 MVP 默认依赖。
+以下为当前核心表摘要，完整结构以 `packages/api/migrations/` 中的顺序迁移为准。数据分析相关表已通过 `0023` 到 `0027` 建立 schema，并已接入公开采集 API、邀请码转化闭环、推广来源管理、Web 轻量 SDK、核心业务埋点、Cron 聚合任务、后台分析 API、后台分析页面、端到端 smoke、性能成本 fixtures、上线顺序和回滚文档。Cloudflare Queues 与 Workers Analytics Engine 仍按 Phase 9 阈值触发后再评估，不是当前 MVP 默认依赖。
 
 ### users
 

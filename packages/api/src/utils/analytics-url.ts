@@ -67,6 +67,7 @@ export interface SanitizedReferrer {
 
 export interface SourceAttributionInput {
   inviteCodeId?: string | null
+  trackingSourceSlug?: string | null
   utmSource?: string | null
   utmMedium?: string | null
   adId?: string | null
@@ -165,12 +166,14 @@ export function deriveSourceAttribution(input: SourceAttributionInput): SourceAt
   if (input.inviteCodeId) return { channel: 'invite', name: 'invite' }
   if (input.adId) return { channel: 'ad', name: 'ad' }
 
+  const trackingSourceSlug = normalizeAttributionName(input.trackingSourceSlug)
   const utmSource = normalizeAttributionName(input.utmSource)
-  if (utmSource) {
+  if (trackingSourceSlug || utmSource) {
     const medium = normalizeAttributionName(input.utmMedium)
+    const channel = sourceChannelFromUtmMedium(medium)
     return {
-      channel: medium === 'cpc' || medium === 'paid' || medium === 'ad' ? 'ad' : 'referral',
-      name: utmSource,
+      channel,
+      name: utmSource || trackingSourceSlug,
     }
   }
 
@@ -181,6 +184,15 @@ export function deriveSourceAttribution(input: SourceAttributionInput): SourceAt
   if (SEARCH_HOST_PATTERNS.some(pattern => referrerHost.includes(pattern))) return { channel: 'search', name: referrerHost }
   if (SOCIAL_HOST_PATTERNS.some(pattern => referrerHost.includes(pattern))) return { channel: 'social', name: referrerHost }
   return { channel: 'referral', name: referrerHost }
+}
+
+function sourceChannelFromUtmMedium(medium: string): AnalyticsSourceChannel {
+  if (medium === 'cpc' || medium === 'paid' || medium === 'ad' || medium === 'ads') return 'ad'
+  if (medium === 'social' || medium === 'sns') return 'social'
+  if (medium === 'search' || medium === 'organic_search' || medium === 'seo') return 'search'
+  if (medium === 'direct') return 'direct'
+  if (medium === 'internal') return 'internal'
+  return 'referral'
 }
 
 function tryParseUrl(value: string) {

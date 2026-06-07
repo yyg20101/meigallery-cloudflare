@@ -7,6 +7,7 @@
 - 范围：`/admin/analytics` 及其子页面的数据结构、布局、组件、交互状态、权限边界、验收标准和后续增强路线。
 - 前置文档：`docs/PRD_DATA_ANALYTICS.md`、`plan/feature-data-analytics-implementation-1.md`。
 - 当前说明：本文记录当前首版大盘的设计口径和后续增强方向；标注为后续增强的内容不代表当前生产能力。
+- 2026-06-08 更新：总览页已重做为工作台式大盘，补齐采集健康条、趋势面板、转化漏斗、Top 列表、风险队列和空数据状态；健康详情页不再在无日报时显示空白。
 
 本文使用以下状态标签：
 
@@ -231,11 +232,11 @@ Nuxt 后台页面
 - `[当前实现]` `AnalyticsPageShell`：标题、说明、tabs、时间范围、刷新、owner-only 导出和 usage 状态。
 - `[当前实现]` `AnalyticsMetricCard`：KPI 卡片。
 - `[当前实现]` `AnalyticsDataTable`：可排序分析表格。
-- `[当前实现]` 总览页内联关键转化漏斗和采集健康摘要。
-- `[新增设计]` `AnalyticsHealthStrip`：采集开关、最近聚合、accepted/rejected/duplicate、预算使用率。
-- `[新增设计]` `AnalyticsTrendPanel`：按日趋势，后续可用 SVG 折线或表格 + sparklines。
-- `[新增设计]` `AnalyticsConversionFunnel`：抽成共享组件，供总览、来源和邀请页复用。
-- `[新增设计]` `AnalyticsTopList`：来源、页面、点击元素排行。
+- `[当前实现]` `AnalyticsHealthStrip`：采集状态、最近采集、accepted/rejected/duplicate 和 rows written。
+- `[当前实现]` `AnalyticsTrendPanel`：按日展示访问与转化趋势，空数据时保持稳定空态。
+- `[当前实现]` `AnalyticsConversionFunnel`：抽成共享组件，供总览展示落地、详情、联系、注册和会员发放。
+- `[当前实现]` `AnalyticsTopList`：来源、页面、点击元素排行，空数据时展示排行空态。
+- `[当前实现]` 风险队列：显示暂无数据、无最近采集、rejected 和 duplicate 等需要处理的事项。
 
 #### `/admin/analytics/sources` 来源
 

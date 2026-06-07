@@ -56,6 +56,9 @@ interface NormalizedAnalyticsEvent {
   path: string
   pageTitle: string
   referrerHost: string
+  utmSource: string
+  utmMedium: string
+  utmCampaign: string
   sourceChannel: AnalyticsSourceChannel
   sourceName: string
   deviceType: AnalyticsDeviceType
@@ -341,11 +344,16 @@ function normalizeAnalyticsEvent(
   const sourceFromPayload = readOptionalString(raw, 'sourceChannel', 'source_channel')
   const props = sanitizeAnalyticsProps(eventNameValue, raw.props)
   const inviteCodeId = stringProp(props.invite_code_id)
+  const trackingSourceSlug = readOptionalString(raw, 'trackingSourceSlug', 'tracking_source_slug') || stringProp(props.tracking_source_slug)
+  const utmSource = readOptionalString(raw, 'utmSource', 'utm_source') || stringProp(props.utm_source)
+  const utmMedium = readOptionalString(raw, 'utmMedium', 'utm_medium') || stringProp(props.utm_medium)
+  const utmCampaign = readOptionalString(raw, 'utmCampaign', 'utm_campaign') || stringProp(props.utm_campaign)
   const sourceNameFromProps = stringProp(props.source_name)
   const derivedSource = deriveSourceAttribution({
     inviteCodeId,
-    utmSource: readOptionalString(raw, 'utmSource', 'utm_source'),
-    utmMedium: readOptionalString(raw, 'utmMedium', 'utm_medium'),
+    trackingSourceSlug,
+    utmSource,
+    utmMedium,
     adId: stringProp(props.ad_id),
     referrerHost,
     currentHost,
@@ -371,6 +379,9 @@ function normalizeAnalyticsEvent(
     path,
     pageTitle: truncateAnalyticsString(readOptionalString(raw, 'pageTitle', 'page_title') || '', 120),
     referrerHost: truncateAnalyticsString(referrerHost, 120),
+    utmSource: truncateAnalyticsString(utmSource, 120),
+    utmMedium: truncateAnalyticsString(utmMedium, 120),
+    utmCampaign: truncateAnalyticsString(utmCampaign, 120),
     sourceChannel,
     sourceName: truncateAnalyticsString(sourceNameFromProps || derivedSource.name, 120),
     deviceType,
@@ -423,10 +434,11 @@ async function _persistAcceptedEvent(
   await runAndTrack(db, response, `
     INSERT INTO analytics_sessions (
       id, visitor_id, user_id, started_at, ended_at, entry_path, exit_path,
-      source_channel, source_name, referrer_host, invite_code_id, device_type,
-      country, active_seconds, page_view_count, event_count, updated_at
+      source_channel, source_name, referrer_host, utm_source, utm_medium,
+      utm_campaign, invite_code_id, device_type, country, active_seconds,
+      page_view_count, event_count, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'))
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'))
     ON CONFLICT(id) DO UPDATE SET
       user_id = COALESCE(excluded.user_id, analytics_sessions.user_id),
       ended_at = COALESCE(excluded.ended_at, analytics_sessions.ended_at),
@@ -446,6 +458,9 @@ async function _persistAcceptedEvent(
     event.sourceChannel,
     event.sourceName,
     event.referrerHost,
+    event.utmSource,
+    event.utmMedium,
+    event.utmCampaign,
     stringProp(event.props.invite_code_id),
     event.deviceType,
     context.country || '',
@@ -538,10 +553,11 @@ async function persistAcceptedEvents(
   await runAndTrack(db, response, `
     INSERT INTO analytics_sessions (
       id, visitor_id, user_id, started_at, ended_at, entry_path, exit_path,
-      source_channel, source_name, referrer_host, invite_code_id, device_type,
-      country, active_seconds, page_view_count, event_count, updated_at
+      source_channel, source_name, referrer_host, utm_source, utm_medium,
+      utm_campaign, invite_code_id, device_type, country, active_seconds,
+      page_view_count, event_count, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(id) DO UPDATE SET
       user_id = COALESCE(excluded.user_id, analytics_sessions.user_id),
       ended_at = COALESCE(excluded.ended_at, analytics_sessions.ended_at),
@@ -561,6 +577,9 @@ async function persistAcceptedEvents(
     first.sourceChannel,
     first.sourceName,
     first.referrerHost,
+    first.utmSource,
+    first.utmMedium,
+    first.utmCampaign,
     stringProp(first.props.invite_code_id),
     first.deviceType,
     context.country || '',

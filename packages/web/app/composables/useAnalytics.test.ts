@@ -66,6 +66,46 @@ describe('useAnalytics', () => {
     }))
   })
 
+  it('会把初始化来源上下文自动附加到事件', async () => {
+    const analytics = useAnalytics()
+    analytics.initialize({
+      enabled: true,
+      consentState: 'granted',
+      sourceChannel: 'social',
+      sourceContext: {
+        referrer: 'https://t.me/channel',
+        referrerHost: 't.me',
+        utmSource: 'telegram-june',
+        utmMedium: 'social',
+        utmCampaign: 'telegram-june',
+        trackingSourceSlug: 'telegram-june',
+        sourceName: 'telegram-june',
+      },
+      route,
+    })
+    analytics.trackPageView(route)
+
+    await analytics.flush()
+
+    const body = apiMock.mock.calls[0]?.[1]?.body
+    expect(body.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        eventName: 'page_view',
+        referrerHost: 't.me',
+        utmSource: 'telegram-june',
+        utmMedium: 'social',
+        utmCampaign: 'telegram-june',
+        trackingSourceSlug: 'telegram-june',
+        sourceChannel: 'social',
+        props: expect.objectContaining({
+          source_name: 'telegram-june',
+          tracking_source_slug: 'telegram-june',
+          utm_source: 'telegram-june',
+        }),
+      }),
+    ]))
+  })
+
   it('limited consent 会跳过非必要点击和曝光事件', () => {
     const analytics = useAnalytics()
     analytics.initialize({ enabled: true, consentState: 'limited', route })

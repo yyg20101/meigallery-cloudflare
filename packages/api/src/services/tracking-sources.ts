@@ -1,0 +1,384 @@
+import type { AnalyticsSourceChannel } from '@meigallery/shared'
+import { generateId } from '../utils/db'
+import { sanitizeAnalyticsPath } from '../utils/analytics-url'
+
+type TrackingSourceDb = Pick<D1Database, 'prepare'>
+type TrackingSourceStatus = 'active' | 'disabled'
+type TrackingSourceChannel = Exclude<AnalyticsSourceChannel, 'invite'>
+
+export class TrackingSourceError extends Error {
+  constructor(
+    public readonly status: 400 | 404 | 409,
+    message: string,
+  ) {
+    super(message)
+    this.name = 'TrackingSourceError'
+  }
+}
+
+export interface CreateTrackingSourceInput {
+  name?: string
+  channel?: string
+  slug?: string
+  targetPath?: string
+  utmSource?: string
+  utmMedium?: string
+  utmCampaign?: string
+  note?: string | null
+  createdBy: number
+}
+
+export interface UpdateTrackingSourceInput {
+  name?: string
+  channel?: string
+  slug?: string
+  targetPath?: string
+  utmSource?: string
+  utmMedium?: string
+  utmCampaign?: string
+  status?: TrackingSourceStatus
+  note?: string | null
+}
+
+export interface TrackingSourceItem {
+  id: string
+  name: string
+  channel: TrackingSourceChannel
+  slug: string
+  targetPath: string
+  utmSource: string
+  utmMedium: string
+  utmCampaign: string
+  status: TrackingSourceStatus
+  note: string
+  createdBy: number
+  createdAt: string
+  updatedAt: string
+  trackingPath: string
+}
+
+export interface TrackingSourceMetricItem extends TrackingSourceItem {
+  visitorCount: number
+  sessionCount: number
+  pageViewCount: number
+  galleryDetailCount: number
+  contactClickCount: number
+  registerCount: number
+  membershipGrantCount: number
+  activeSecondsTotal: number
+}
+
+interface TrackingSourceRow {
+  id: string
+  name: string
+  channel: TrackingSourceChannel
+  slug: string
+  target_path: string
+  utm_source: string
+  utm_medium: string
+  utm_campaign: string
+  status: TrackingSourceStatus
+  note: string
+  created_by: number
+  created_at: string
+  updated_at: string
+}
+
+interface TrackingSourceMetricRow extends TrackingSourceRow {
+  visitor_count: number | null
+  session_count: number | null
+  page_view_count: number | null
+  gallery_detail_count: number | null
+  contact_click_count: number | null
+  register_count: number | null
+  membership_grant_count: number | null
+  active_seconds_total: number | null
+}
+
+const TRACKING_CHANNELS = new Set<TrackingSourceChannel>(['direct', 'search', 'social', 'referral', 'ad', 'internal', 'unknown'])
+const SLUG_RE = /^[a-z0-9][a-z0-9_-]{1,58}[a-z0-9]$/
+const UTM_RE = /^[a-z0-9][a-z0-9_.-]{0,79}$/
+
+export async function createTrackingSource(db: TrackingSourceDb, input: CreateTrackingSourceInput): Promise<TrackingSourceItem> {
+  const name = normalizeRequiredText(input.name, '来源名称', 80)
+  const channel = normalizeChannel(input.channel)
+  const slug = normalizeSlug(input.slug || name)
+  const targetPath = normalizeTargetPath(input.targetPath)
+  const utmSource = normalizeUtmValue(input.utmSource || slug, 'utm_source')
+  const utmMedium = normalizeUtmValue(input.utmMedium || defaultUtmMedium(channel), 'utm_medium')
+  const utmCampaign = normalizeOptionalUtmValue(input.utmCampaign || slug, 'utm_campaign')
+  const note = normalizeOptionalText(input.note, 500)
+
+  await assertUniqueTrackingSource(db, slug, utmSource)
+  const id = generateId('ats')
+  await db.prepare(`
+    INSERT INTO analytics_tracking_sources (
+      id, name, channel, slug, target_path, utm_source, utm_medium,
+      utm_campaign, note, created_by
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(id, name, channel, slug, targetPath, utmSource, utmMedium, utmCampaign, note, input.createdBy).run()
+
+  return {
+    id,
+    name,
+    channel,
+    slug,
+    targetPath,
+    utmSource,
+    utmMedium,
+    utmCampaign,
+    status: 'active',
+    note,
+    createdBy: input.createdBy,
+    createdAt: '',
+    updatedAt: '',
+    trackingPath: buildTrackingPath({ targetPath, slug, utmSource, utmMedium, utmCampaign }),
+  }
+}
+
+export async function listTrackingSources(db: TrackingSourceDb): Promise<TrackingSourceItem[]> {
+  const rows = await db.prepare(`
+    SELECT id, name, channel, slug, target_path, utm_source, utm_medium,
+           utm_campaign, status, note, created_by, created_at, updated_at
+    FROM analytics_tracking_sources
+    ORDER BY created_at DESC
+  `).all<TrackingSourceRow>()
+
+  return rows.results.map(serializeTrackingSource)
+}
+
+export async function listTrackingSourcesWithMetrics(
+  db: TrackingSourceDb,
+  range: { from: string; to: string },
+): Promise<TrackingSourceMetricItem[]> {
+  const rows = await db.prepare(`
+    SELECT
+      ats.id, ats.name, ats.channel, ats.slug, ats.target_path, ats.utm_source,
+      ats.utm_medium, ats.utm_campaign, ats.status, ats.note, ats.created_by,
+      ats.created_at, ats.updated_at,
+      COALESCE(SUM(ads.visitor_count), 0) AS visitor_count,
+      COALESCE(SUM(ads.session_count), 0) AS session_count,
+      COALESCE(SUM(ads.page_view_count), 0) AS page_view_count,
+      COALESCE(SUM(ads.gallery_detail_count), 0) AS gallery_detail_count,
+      COALESCE(SUM(ads.contact_click_count), 0) AS contact_click_count,
+      COALESCE(SUM(ads.register_count), 0) AS register_count,
+      COALESCE(SUM(ads.membership_grant_count), 0) AS membership_grant_count,
+      COALESCE(SUM(ads.active_seconds_total), 0) AS active_seconds_total
+    FROM analytics_tracking_sources ats
+    LEFT JOIN analytics_daily_sources ads
+      ON ads.date BETWEEN ? AND ?
+     AND ads.source_name = ats.utm_source
+    GROUP BY
+      ats.id, ats.name, ats.channel, ats.slug, ats.target_path, ats.utm_source,
+      ats.utm_medium, ats.utm_campaign, ats.status, ats.note, ats.created_by,
+      ats.created_at, ats.updated_at
+    ORDER BY session_count DESC, ats.created_at DESC
+  `).bind(range.from, range.to).all<TrackingSourceMetricRow>()
+
+  return rows.results.map(row => ({
+    ...serializeTrackingSource(row),
+    visitorCount: Number(row.visitor_count ?? 0),
+    sessionCount: Number(row.session_count ?? 0),
+    pageViewCount: Number(row.page_view_count ?? 0),
+    galleryDetailCount: Number(row.gallery_detail_count ?? 0),
+    contactClickCount: Number(row.contact_click_count ?? 0),
+    registerCount: Number(row.register_count ?? 0),
+    membershipGrantCount: Number(row.membership_grant_count ?? 0),
+    activeSecondsTotal: Number(row.active_seconds_total ?? 0),
+  }))
+}
+
+export async function updateTrackingSource(db: TrackingSourceDb, id: string, input: UpdateTrackingSourceInput) {
+  const before = await getTrackingSourceById(db, id)
+  const next = {
+    name: input.name === undefined ? before.name : normalizeRequiredText(input.name, '来源名称', 80),
+    channel: input.channel === undefined ? before.channel : normalizeChannel(input.channel),
+    slug: input.slug === undefined ? before.slug : normalizeSlug(input.slug),
+    targetPath: input.targetPath === undefined ? before.targetPath : normalizeTargetPath(input.targetPath),
+    utmSource: input.utmSource === undefined ? before.utmSource : normalizeUtmValue(input.utmSource, 'utm_source'),
+    utmMedium: input.utmMedium === undefined ? before.utmMedium : normalizeUtmValue(input.utmMedium, 'utm_medium'),
+    utmCampaign: input.utmCampaign === undefined ? before.utmCampaign : normalizeOptionalUtmValue(input.utmCampaign, 'utm_campaign'),
+    status: input.status ?? before.status,
+    note: input.note === undefined ? before.note : normalizeOptionalText(input.note, 500),
+  }
+  if (!['active', 'disabled'].includes(next.status)) throw new TrackingSourceError(400, '推广来源状态无效')
+  await assertUniqueTrackingSource(db, next.slug, next.utmSource, id)
+
+  await db.prepare(`
+    UPDATE analytics_tracking_sources
+    SET name = ?, channel = ?, slug = ?, target_path = ?, utm_source = ?,
+        utm_medium = ?, utm_campaign = ?, status = ?, note = ?,
+        updated_at = datetime('now')
+    WHERE id = ?
+  `).bind(
+    next.name,
+    next.channel,
+    next.slug,
+    next.targetPath,
+    next.utmSource,
+    next.utmMedium,
+    next.utmCampaign,
+    next.status,
+    next.note,
+    id,
+  ).run()
+
+  return {
+    before,
+    after: {
+      ...before,
+      ...next,
+      trackingPath: buildTrackingPath({
+        targetPath: next.targetPath,
+        slug: next.slug,
+        utmSource: next.utmSource,
+        utmMedium: next.utmMedium,
+        utmCampaign: next.utmCampaign,
+      }),
+    },
+  }
+}
+
+export function safeTrackingSourceAuditValue(source: Partial<TrackingSourceItem>) {
+  return {
+    id: source.id,
+    name: source.name,
+    channel: source.channel,
+    slug: source.slug,
+    targetPath: source.targetPath,
+    utmSource: source.utmSource,
+    utmMedium: source.utmMedium,
+    utmCampaign: source.utmCampaign,
+    status: source.status,
+    note: source.note,
+  }
+}
+
+function serializeTrackingSource(row: TrackingSourceRow): TrackingSourceItem {
+  return {
+    id: row.id,
+    name: row.name,
+    channel: row.channel,
+    slug: row.slug,
+    targetPath: row.target_path,
+    utmSource: row.utm_source,
+    utmMedium: row.utm_medium,
+    utmCampaign: row.utm_campaign,
+    status: row.status,
+    note: row.note,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    trackingPath: buildTrackingPath({
+      targetPath: row.target_path,
+      slug: row.slug,
+      utmSource: row.utm_source,
+      utmMedium: row.utm_medium,
+      utmCampaign: row.utm_campaign,
+    }),
+  }
+}
+
+async function getTrackingSourceById(db: TrackingSourceDb, id: string): Promise<TrackingSourceItem> {
+  const row = await db.prepare(`
+    SELECT id, name, channel, slug, target_path, utm_source, utm_medium,
+           utm_campaign, status, note, created_by, created_at, updated_at
+    FROM analytics_tracking_sources
+    WHERE id = ?
+  `).bind(id).first<TrackingSourceRow>()
+  if (!row) throw new TrackingSourceError(404, '推广来源不存在')
+  return serializeTrackingSource(row)
+}
+
+async function assertUniqueTrackingSource(db: TrackingSourceDb, slug: string, utmSource: string, excludeId?: string) {
+  const existing = await db.prepare(`
+    SELECT id, slug, utm_source
+    FROM analytics_tracking_sources
+    WHERE (slug = ? OR utm_source = ?)
+      AND (? IS NULL OR id != ?)
+    LIMIT 1
+  `).bind(slug, utmSource, excludeId ?? null, excludeId ?? null).first<{ id: string; slug: string; utm_source: string }>()
+  if (!existing) return
+  if (existing.slug === slug) throw new TrackingSourceError(409, '来源短标识已存在')
+  throw new TrackingSourceError(409, 'utm_source 已被其他推广来源使用')
+}
+
+function buildTrackingPath(input: {
+  targetPath: string
+  slug: string
+  utmSource: string
+  utmMedium: string
+  utmCampaign: string
+}) {
+  const url = new URL(input.targetPath, 'https://meigallery.local')
+  url.searchParams.set('mg_source', input.slug)
+  url.searchParams.set('utm_source', input.utmSource)
+  url.searchParams.set('utm_medium', input.utmMedium)
+  if (input.utmCampaign) url.searchParams.set('utm_campaign', input.utmCampaign)
+  return `${url.pathname}${url.search}`
+}
+
+function normalizeRequiredText(value: unknown, label: string, maxLength: number) {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim()
+  if (!text) throw new TrackingSourceError(400, `请填写${label}`)
+  if (text.length > maxLength) throw new TrackingSourceError(400, `${label}不能超过 ${maxLength} 个字符`)
+  return text
+}
+
+function normalizeOptionalText(value: unknown, maxLength: number) {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim()
+  if (!text) return ''
+  return text.slice(0, maxLength)
+}
+
+function normalizeSlug(value: unknown) {
+  const slug = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s.]+/g, '-')
+    .replace(/[^a-z0-9_-]/g, '')
+    .replace(/[-_]{2,}/g, '-')
+    .replace(/^[-_]+|[-_]+$/g, '')
+  if (!SLUG_RE.test(slug)) {
+    throw new TrackingSourceError(400, '来源短标识需为 3-60 位小写字母、数字、中划线或下划线')
+  }
+  return slug
+}
+
+function normalizeChannel(value: unknown): TrackingSourceChannel {
+  const raw = String(value ?? 'referral').trim().toLowerCase()
+  if (raw === 'invite') throw new TrackingSourceError(400, '推广来源不能使用 invite 渠道')
+  const channel = raw as TrackingSourceChannel
+  if (!TRACKING_CHANNELS.has(channel)) throw new TrackingSourceError(400, '推广来源渠道无效')
+  return channel
+}
+
+function normalizeTargetPath(value: unknown) {
+  const path = sanitizeAnalyticsPath(String(value ?? '').trim() || '/')
+  if (!path) throw new TrackingSourceError(400, '落地页路径无效')
+  return path
+}
+
+function normalizeUtmValue(value: unknown, label: string) {
+  const text = String(value ?? '').trim().toLowerCase().replace(/\s+/g, '-')
+  if (!UTM_RE.test(text)) {
+    throw new TrackingSourceError(400, `${label} 需为 1-80 位小写字母、数字、点、中划线或下划线`)
+  }
+  return text
+}
+
+function normalizeOptionalUtmValue(value: unknown, label: string) {
+  const text = String(value ?? '').trim()
+  if (!text) return ''
+  return normalizeUtmValue(text, label)
+}
+
+function defaultUtmMedium(channel: TrackingSourceChannel) {
+  if (channel === 'ad') return 'ad'
+  if (channel === 'search') return 'search'
+  if (channel === 'social') return 'social'
+  if (channel === 'direct') return 'direct'
+  if (channel === 'internal') return 'internal'
+  return 'referral'
+}
