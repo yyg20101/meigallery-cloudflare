@@ -1,6 +1,6 @@
 # UI 设计规范
 
-当前 UI 质量验收和状态矩阵见 `docs/UI_QUALITY_REVIEW.md`。若本文中的历史规划与当前实现状态冲突，以 `docs/PROJECT_STATUS.md`、`docs/PRD_QUALITY_REVIEW.md` 和 `docs/UI_QUALITY_REVIEW.md` 为准。
+当前 UI 质量验收和状态矩阵见 `docs/UI_QUALITY_REVIEW.md`。后台数据分析大盘专项设计见 `docs/UI_DATA_ANALYTICS_DASHBOARD.md`。若本文中的历史规划与当前实现状态冲突，以 `docs/PROJECT_STATUS.md`、`docs/PRD_QUALITY_REVIEW.md` 和 `docs/UI_QUALITY_REVIEW.md` 为准。
 
 ## 1. 设计目标
 

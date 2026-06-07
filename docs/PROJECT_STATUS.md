@@ -30,7 +30,7 @@
 - 已实现：公开图库/标签/搜索/真实案例、登录注册、用户名登录、邮箱验证开关、用户中心、个人设置、后台图库/标签/用户/设置/审计、独立首页广告位管理、多广告排序、大图上传、首页广告轮播、广告排期与安全清洗、首页内容配置保存校验和公开读取兜底、右下角服务流程/消息悬浮入口强化、图库批量操作、图片上传、封面设置、单媒体 rank 配置、WordPress 迁移辅助、Telegram `gallery` / `case` 外部导入、Facebook Pixel 设置。
 - 部分实现：zip 导入任务有 API 和后台入口，但当前重点实现和测试集中在解析/校验与任务记录；大文件异步完整处理仍需按后续阶段继续收敛。
 - 未接入：Cloudflare Stream 生产视频上传、编码和播放链路；相关字段、secret、媒体签名逻辑保留为规划能力。
-- 规划：站内一方数据分析能力已形成可落地需求方案和实施计划，覆盖邀请注册、访问来源、访问链路、点击次数、点击频率、浏览时长、完整埋点字典、D1 迁移拆分、API 契约、前端 SDK、后台页面、测试矩阵，以及基于 Cloudflare D1 / Workers / Queues / Workers Analytics Engine 官方文档的性能和成本优化约束；当前代码仍只有图库浏览量、点赞计数、后台基础概览和 Facebook Pixel 辅助埋点，后续实现以 `docs/PRD_DATA_ANALYTICS.md` 为需求入口，以 `plan/feature-data-analytics-implementation-1.md` 为执行拆分，不代表已有生产能力。
+- 规划：站内一方数据分析能力已形成可落地需求方案、实施计划和后台数据大盘 UI 设计，覆盖邀请注册、访问来源、访问链路、点击次数、点击频率、浏览时长、完整埋点字典、D1 迁移拆分、API 契约、前端 SDK、后台页面、测试矩阵，以及基于 Cloudflare D1 / Workers / Queues / Workers Analytics Engine 官方文档的性能和成本优化约束；当前代码仍只有图库浏览量、点赞计数、后台基础概览和 Facebook Pixel 辅助埋点，后续实现以 `docs/PRD_DATA_ANALYTICS.md` 为需求入口，以 `plan/feature-data-analytics-implementation-1.md` 为执行拆分，以 `docs/UI_DATA_ANALYTICS_DASHBOARD.md` 为后台大盘体验设计，不代表已有生产能力。
 - 已完成迁移口径：真实案例当前统一为 `cases` / `case_images`、`/cases`、`/api/cases`、`case:create`；旧 `testimonial_*` 仅存在于历史文档、迁移脚本说明或兼容拒绝测试中。
 
 ## PRD 质量状态
@@ -45,6 +45,7 @@
 
 - 当前 UI 质量审阅和页面/组件验收清单见 `docs/UI_QUALITY_REVIEW.md`。
 - `docs/UI_DESIGN.md` 已补充页面级完成定义、组件状态矩阵、响应式验收和可访问性检查方法。
+- 数据分析后台大盘设计见 `docs/UI_DATA_ANALYTICS_DASHBOARD.md`，当前为后续实现草案，用于指导 `/admin/analytics`、来源、内容、链路、点击、时长、邀请和采集健康页面。
 - Stream 接入前，视频入口、视频专区、视频角标和播放器均按规划能力处理，不作为当前上线阻断项。
 - 线框图留存规则见 `docs/ui/wireframes/README.md`，后续关键线框图需导出到该目录或以截图、PDF、HTML 快照形式保存。
 
