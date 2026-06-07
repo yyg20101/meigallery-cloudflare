@@ -78,14 +78,14 @@ tags: [feature, analytics, cloudflare, d1, prd, cost]
 
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
-| TASK-017 | 新增 `packages/api/src/services/analytics-ingest.ts`，实现 `ingestAnalyticsBatch(env, request, body)`，处理限流后校验、清洗、session 解析、visitor/session upsert、summary upsert、采样事件写入和计数响应。 | | |
-| TASK-018 | 在 `analytics-ingest.ts` 中实现事件去重：使用 `analytics_events.id` 的 `INSERT OR IGNORE` 处理采样明细和关键转化事件，返回 `duplicate` 计数。 | | |
-| TASK-019 | 在 `analytics-ingest.ts` 中实现浏览事件归并：`page_view`、`page_leave`、点击和时长更新 `analytics_page_summaries`、`analytics_session_summaries` 和当天聚合增量，不把心跳逐条写入原始表。 | | |
-| TASK-020 | 新增 `packages/api/src/routes/analytics.ts`，实现 `POST /api/analytics/events` 和 `POST /api/analytics/session/end`；关闭 `analytics_enabled` 时返回 `{ accepted: 0, rejected: 0, duplicate: 0, disabled: true }` 且不写 D1。 | | |
-| TASK-021 | 在 `packages/api/src/index.ts` 挂载 `/api/analytics` 路由，并为采集接口增加 IP、visitor、session 维度限流：IP 120 次/分钟、visitor 120 次/分钟、session 60 次/分钟。 | | |
-| TASK-022 | 在 `analytics-ingest.ts` 中写入 `analytics_ingest_health_daily`，记录 accepted、rejected、duplicate、sensitive_blocked、sampled、dropped、estimated_rows_read、estimated_rows_written 和最大处理耗时。 | | |
-| TASK-023 | 新增 `packages/api/src/services/analytics-ingest.test.ts`，覆盖非法 body、超过 20 事件、超过 16KB、敏感 URL、伪造 `user_id`、重复 event ID、采样关闭、采样 5%、关闭开关和部分失败 202 响应。 | | |
-| TASK-024 | 新增 `packages/api/src/routes/analytics.test.ts`，覆盖公开路由挂载、统一错误体、限流和 session end 的 `sendBeacon` 兼容请求。 | | |
+| TASK-017 | 新增 `packages/api/src/services/analytics-ingest.ts`，实现 `ingestAnalyticsBatch(env, request, body)`，处理限流后校验、清洗、session 解析、visitor/session upsert、summary upsert、采样事件写入和计数响应。 | ✅ | 2026-06-07 |
+| TASK-018 | 在 `analytics-ingest.ts` 中实现事件去重：使用 `analytics_events.id` 的 `INSERT OR IGNORE` 处理采样明细和关键转化事件，返回 `duplicate` 计数。 | ✅ | 2026-06-07 |
+| TASK-019 | 在 `analytics-ingest.ts` 中实现浏览事件归并：`page_view`、`page_leave`、点击和时长更新 `analytics_page_summaries`、`analytics_session_summaries` 和当天聚合增量，不把心跳逐条写入原始表。 | ✅ | 2026-06-07 |
+| TASK-020 | 新增 `packages/api/src/routes/analytics.ts`，实现 `POST /api/analytics/events` 和 `POST /api/analytics/session/end`；关闭 `analytics_enabled` 时返回 `{ accepted: 0, rejected: 0, duplicate: 0, disabled: true }` 且不写 D1。 | ✅ | 2026-06-07 |
+| TASK-021 | 在 `packages/api/src/index.ts` 挂载 `/api/analytics` 路由，并为采集接口增加 IP、visitor、session 维度限流：IP 120 次/分钟、visitor 120 次/分钟、session 60 次/分钟。 | ✅ | 2026-06-07 |
+| TASK-022 | 在 `analytics-ingest.ts` 中写入 `analytics_ingest_health_daily`，记录 accepted、rejected、duplicate、sensitive_blocked、sampled、dropped、estimated_rows_read、estimated_rows_written 和最大处理耗时。 | ✅ | 2026-06-07 |
+| TASK-023 | 新增 `packages/api/src/services/analytics-ingest.test.ts`，覆盖非法 body、超过 20 事件、超过 16KB、敏感 URL、伪造 `user_id`、重复 event ID、采样关闭、采样 5%、关闭开关和部分失败 202 响应。 | ✅ | 2026-06-07 |
+| TASK-024 | 新增 `packages/api/src/routes/analytics.test.ts`，覆盖公开路由挂载、统一错误体、限流和 session end 的 `sendBeacon` 兼容请求。 | ✅ | 2026-06-07 |
 
 ### Implementation Phase 3
 

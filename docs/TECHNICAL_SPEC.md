@@ -227,6 +227,8 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/me` | 当前用户信息和会员状态 |
 | GET | `/api/media/:assetId/access` | 媒体访问接口（需登录；图片代理响应，视频返回 Stream token） |
 | GET | `/api/media/:assetId/thumbnail` | 缩略图（公开） |
+| POST | `/api/analytics/events` | 站内一方数据分析批量采集，默认受 `analytics_enabled` 关闭态保护 |
+| POST | `/api/analytics/session/end` | session 结束兜底采集，兼容 `sendBeacon` 简写 payload |
 | GET | `/api/settings/public` | 公开站点设置和过滤后的首页广告数组 `home_ads` |
 
 ### 管理员 API `[当前实现 / 部分实现]`
@@ -536,7 +538,7 @@ INSERT INTO site_settings (key, value) VALUES
 
 ### 数据分析表 `[部分实现]`
 
-当前已通过 `0023_analytics_core.sql` 到 `0026_analytics_exports.sql` 建立数据分析 schema。此阶段只代表数据库结构、默认设置和索引已落地；在 `/api/analytics/*`、`/api/admin/analytics/*`、前端 SDK 和后台页面接入前，生产数据分析能力仍未完整启用。
+当前已通过 `0023_analytics_core.sql` 到 `0026_analytics_exports.sql` 建立数据分析 schema，并已接入 `/api/analytics/events` 与 `/api/analytics/session/end` 公开采集接口。采集接口默认受 `analytics_enabled=false` 保护，关闭时返回 disabled 且不写 D1；在前端 SDK、邀请注册闭环、聚合任务和后台页面接入前，生产数据分析能力仍未完整启用。
 
 核心表分层：
 
@@ -561,6 +563,7 @@ INSERT INTO site_settings (key, value) VALUES
 成本与索引口径：
 
 - 默认后台 7/30/90 天报表读取日报聚合表和摘要表，禁止首页看板直接扫描 `analytics_events`。
+- 公开采集接口单批最多 20 个事件，payload 上限 16KB，并叠加 IP、visitor、session 三维应用内兜底限流。
 - `analytics_events` 只保留事件名、session 和实体三类必要组合索引：`(event_name, occurred_at)`、`(session_id, occurred_at)`、`(entity_type, entity_id, occurred_at)`。
 - 日报聚合表均以 `date` 加主要维度建立唯一索引，供 Cron 聚合任务幂等 upsert。
 - 不给 `event_props` 任意 JSON 字段建索引，避免高基数属性导致写放大和存储成本失控。
