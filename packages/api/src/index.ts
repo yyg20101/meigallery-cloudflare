@@ -23,6 +23,12 @@ import { authMiddleware } from './middleware/auth'
 import { rateLimiter } from './middleware/rate-limit'
 import { errorJson } from './utils/api-error'
 import { parseStoredSettingValue } from './utils/stored-setting-value'
+import {
+  aggregateAnalyticsDaily,
+  aggregateClickDaily,
+  aggregatePathEdges,
+  cleanupAnalyticsRetention,
+} from './services/analytics-aggregate'
 
 /** Hono 应用绑定类型 */
 export type Bindings = {
@@ -274,6 +280,37 @@ async function handleScheduled(env: Bindings): Promise<void> {
   } catch (e) {
     console.error('[cron] 到期提醒任务失败:', e)
   }
+
+  // 3. 数据分析日报聚合与保留期清理。独立 try/catch，避免影响认证和会员提醒任务。
+  try {
+    const today = operationDate()
+    const yesterday = addDays(today, -1)
+    for (const date of [yesterday, today]) {
+      await aggregateAnalyticsDaily(db, date)
+      await aggregatePathEdges(db, date)
+      await aggregateClickDaily(db, date)
+      console.log(`[cron] 数据分析聚合完成: ${date}`)
+    }
+    const cleanup = await cleanupAnalyticsRetention(db)
+    console.log('[cron] 数据分析保留期清理完成:', cleanup.changes)
+  } catch (e) {
+    console.error('[cron] 数据分析聚合任务失败:', e)
+  }
+}
+
+function operationDate(now = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now)
+}
+
+function addDays(date: string, delta: number) {
+  const parsed = new Date(`${date}T00:00:00.000Z`)
+  parsed.setUTCDate(parsed.getUTCDate() + delta)
+  return parsed.toISOString().slice(0, 10)
 }
 
 export default {

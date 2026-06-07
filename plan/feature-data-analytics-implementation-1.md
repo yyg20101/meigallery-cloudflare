@@ -138,13 +138,13 @@ tags: [feature, analytics, cloudflare, d1, prd, cost]
 
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
-| TASK-049 | 新增 `packages/api/src/services/analytics-aggregate.ts`，实现 `aggregateAnalyticsDaily(date)`、`aggregatePathEdges(date)`、`aggregateClickDaily(date)`、`cleanupAnalyticsRetention(now)` 和幂等 upsert。 | | |
-| TASK-050 | 修改 `packages/api/src/index.ts` scheduled handler，把分析聚合和保留期清理作为独立 try/catch 任务接入，不能影响验证码清理和会员到期提醒。 | | |
-| TASK-051 | 新增 `packages/api/src/routes/admin/analytics.ts`，实现 `overview`、`sources`、`paths`、`pages`、`clicks`、`durations`、`invites`、`health` 和 owner-only `sessions/:id`。 | | |
-| TASK-052 | 所有 `packages/api/src/routes/admin/analytics.ts` 默认查询聚合表；session 明细必须要求显式 session ID，并只返回脱敏事件字段。 | | |
-| TASK-053 | 新增 `packages/api/src/services/analytics-export.ts`，实现 owner-only 导出任务创建、CSV 生成到 R2、7 天过期清理和状态查询。 | | |
-| TASK-054 | 新增 `packages/api/src/services/analytics-aggregate.test.ts`，使用固定 fixtures 验证来源、页面、路径边、点击去重、时长截断、邀请转化和保留期删除。 | | |
-| TASK-055 | 新增 `packages/api/src/routes/admin/analytics.test.ts`，覆盖 admin+ 访问、owner-only 限制、时间范围、空数据、rows read/write 预算记录和统一错误体。 | | |
+| TASK-049 | 新增 `packages/api/src/services/analytics-aggregate.ts`，实现 `aggregateAnalyticsDaily(date)`、`aggregatePathEdges(date)`、`aggregateClickDaily(date)`、`cleanupAnalyticsRetention(now)` 和幂等 upsert。 | ✅ | 2026-06-07 |
+| TASK-050 | 修改 `packages/api/src/index.ts` scheduled handler，把分析聚合和保留期清理作为独立 try/catch 任务接入，不能影响验证码清理和会员到期提醒。 | ✅ | 2026-06-07 |
+| TASK-051 | 新增 `packages/api/src/routes/admin/analytics.ts`，实现 `overview`、`sources`、`paths`、`pages`、`clicks`、`durations`、`invites`、`health` 和 owner-only `sessions/:id`。 | ✅ | 2026-06-07 |
+| TASK-052 | 所有 `packages/api/src/routes/admin/analytics.ts` 默认查询聚合表；session 明细必须要求显式 session ID，并只返回脱敏事件字段。 | ✅ | 2026-06-07 |
+| TASK-053 | 新增 `packages/api/src/services/analytics-export.ts`，实现 owner-only 导出任务创建、CSV 生成到 R2、7 天过期清理和状态查询。 | ✅ | 2026-06-07 |
+| TASK-054 | 新增 `packages/api/src/services/analytics-aggregate.test.ts`，使用固定 fixtures 验证来源、页面、路径边、点击去重、时长截断、邀请转化和保留期删除。 | ✅ | 2026-06-07 |
+| TASK-055 | 新增 `packages/api/src/routes/admin/analytics.test.ts`，覆盖 admin+ 访问、owner-only 限制、时间范围、空数据、rows read/write 预算记录和统一错误体。 | ✅ | 2026-06-07 |
 
 ### Implementation Phase 7
 

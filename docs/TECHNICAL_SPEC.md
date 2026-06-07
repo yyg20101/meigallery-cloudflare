@@ -270,6 +270,17 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/admin/invite-codes` | 邀请码列表 | admin+ |
 | POST | `/api/admin/invite-codes` | 创建邀请码，创建响应返回明文 code，审计日志不保存明文或 hash | admin+ |
 | PATCH | `/api/admin/invite-codes/:id` | 修改或禁用邀请码，写入审计日志 | admin+ |
+| GET | `/api/admin/analytics/overview` | 数据分析总览，读取聚合表和健康摘要 | admin+ |
+| GET | `/api/admin/analytics/sources` | 来源质量报表 | admin+ |
+| GET | `/api/admin/analytics/pages` | 页面和内容表现报表 | admin+ |
+| GET | `/api/admin/analytics/paths` | 聚合访问路径边报表 | admin+ |
+| GET | `/api/admin/analytics/clicks` | 点击排行和重复点击报表 | admin+ |
+| GET | `/api/admin/analytics/durations` | 页面有效时长和跳出报表 | admin+ |
+| GET | `/api/admin/analytics/invites` | 邀请码转化报表 | admin+ |
+| GET | `/api/admin/analytics/health` | 采集健康和 D1 预算摘要 | admin+ |
+| GET | `/api/admin/analytics/sessions/:id` | 单 session 脱敏事件明细，写审计日志 | owner |
+| POST | `/api/admin/analytics/exports` | 创建 CSV 导出任务并写入 R2，写审计日志 | owner |
+| GET | `/api/admin/analytics/exports/:id` | 查看导出任务状态 | owner |
 | POST | `/api/admin/legacy-import/sources` | 创建旧站来源 | admin+ |
 | POST | `/api/admin/legacy-import/jobs` | 启动旧站迁移 | admin+ |
 | GET | `/api/admin/legacy-import/jobs/:id` | 迁移任务详情 | admin+ |
@@ -282,7 +293,7 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 
 ## 8. D1 数据库 Schema `[当前实现]`
 
-以下为当前核心表摘要，完整结构以 `packages/api/migrations/` 中的顺序迁移为准。数据分析相关表已通过 `0023` 到 `0026` 建立 schema，并已接入公开采集 API、邀请码转化闭环、Web 轻量 SDK 和核心业务埋点；聚合任务、后台分析 API 和后台分析页面仍属于后续接入阶段。
+以下为当前核心表摘要，完整结构以 `packages/api/migrations/` 中的顺序迁移为准。数据分析相关表已通过 `0023` 到 `0026` 建立 schema，并已接入公开采集 API、邀请码转化闭环、Web 轻量 SDK、核心业务埋点、Cron 聚合任务和后台分析 API；后台分析页面仍属于后续接入阶段。
 
 ### users
 
@@ -542,7 +553,7 @@ INSERT INTO site_settings (key, value) VALUES
 
 ### 数据分析表 `[部分实现]`
 
-当前已通过 `0023_analytics_core.sql` 到 `0026_analytics_exports.sql` 建立数据分析 schema，并已接入 `/api/analytics/events`、`/api/analytics/session/end` 公开采集接口、邀请码转化闭环、Web 轻量 SDK 和核心业务埋点。采集接口默认受 `analytics_enabled=false` 保护，关闭时返回 disabled 且不写 D1；Web SDK 同样读取公开设置，关闭时不初始化 visitor/session，不写本地存储。当前前台已覆盖首页广告、图库卡片、图库详情、图片查看器、会员 CTA、点赞成功、搜索、筛选、排序、加载更多、联系面板和规则入口事件；媒体授权成功/拒绝由 API Worker 侧写入可信 `media_access_granted` / `media_access_denied`，不信任前端伪造授权结果。在聚合任务、后台分析 API 和后台页面接入前，生产数据分析能力仍未完整启用。
+当前已通过 `0023_analytics_core.sql` 到 `0026_analytics_exports.sql` 建立数据分析 schema，并已接入 `/api/analytics/events`、`/api/analytics/session/end` 公开采集接口、邀请码转化闭环、Web 轻量 SDK、核心业务埋点、Cron 聚合任务和后台分析 API。采集接口默认受 `analytics_enabled=false` 保护，关闭时返回 disabled 且不写 D1；Web SDK 同样读取公开设置，关闭时不初始化 visitor/session，不写本地存储。当前前台已覆盖首页广告、图库卡片、图库详情、图片查看器、会员 CTA、点赞成功、搜索、筛选、排序、加载更多、联系面板和规则入口事件；媒体授权成功/拒绝由 API Worker 侧写入可信 `media_access_granted` / `media_access_denied`，不信任前端伪造授权结果。后台分析 API 默认读取聚合表和摘要表，并返回 D1 usage 供健康看板展示；单 session 明细和 CSV 导出为 owner-only 并写入审计日志。在后台页面接入前，生产数据分析能力仍未完整启用。
 
 核心表分层：
 
@@ -562,11 +573,12 @@ INSERT INTO site_settings (key, value) VALUES
 | `analytics_path_edges` | `[部分实现]` | 按日期聚合 `from_route -> to_route` 路径边。 |
 | `analytics_invite_daily` | `[部分实现]` | 按日期和邀请码聚合落地、注册、联系和会员发放。 |
 | `analytics_click_daily` | `[部分实现]` | 按日期、元素和目标聚合 raw/effective/duplicate 点击。 |
-| `analytics_export_jobs` | `[部分实现]` | Owner-only CSV 导出任务元数据，导出文件后续写入 R2 并设置过期时间。 |
+| `analytics_export_jobs` | `[当前实现]` | Owner-only CSV 导出任务元数据，导出文件写入 R2 并设置过期时间。 |
 
 成本与索引口径：
 
 - 默认后台 7/30/90 天报表读取日报聚合表和摘要表，禁止首页看板直接扫描 `analytics_events`。
+- Cron 每天按运营自然日重建昨天和当天的来源、页面、事件、路径、邀请和点击聚合；聚合任务使用删除指定日期旧数据再插入的幂等口径。
 - 公开采集接口单批最多 20 个事件，payload 上限 16KB，并叠加 IP、visitor、session 三维应用内兜底限流。
 - Web SDK 队列最多保留 50 条事件，达到 20 条、10 秒定时、路由切换、`visibilitychange=hidden` 或 `pagehide` 时 flush；`pagehide` 优先使用 `sendBeacon`，失败事件保存在 localStorage 下次重试。
 - Web SDK 的 15 秒 heartbeat 只累计有效浏览时长，不单独发网络请求；`consent_state=limited` 时跳过非必要点击和曝光明细，保留注册、登录、邀请等关键转化事件。
