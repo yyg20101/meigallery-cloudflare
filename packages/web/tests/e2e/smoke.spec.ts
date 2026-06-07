@@ -129,10 +129,10 @@ test.describe('核心页面 smoke', () => {
   })
 
   test('后台广告预览不渲染可跳转链接', async ({ page }) => {
-    await page.goto('/admin/settings')
+    await page.goto('/admin/ads')
 
     await page.locator('input[placeholder="/discover?sort=hot"]').fill(longAdUrl)
-    await page.locator('input[placeholder="查看推荐"]').fill('查看赞助')
+    await page.locator('input[placeholder="查看详情"]').fill('查看赞助')
 
     const preview = page.getByRole('region', { name: '首页广告推荐' })
     const previewCta = preview.locator('[aria-disabled="true"]')
