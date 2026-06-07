@@ -2,15 +2,15 @@
 
 ## 0. 文档状态
 
-- 状态：可落地需求方案草案。
+- 状态：当前实现基线和后续增强需求。
 - 日期：2026-06-07。
 - 范围：邀请注册、访问来源、访问链路、点击次数、点击频率、浏览时长和配套埋点统计数据。
-- 实施方式：先建设站内一方数据分析能力，再按需把关键转化事件同步给 Facebook Pixel 等第三方投放工具。
+- 实施方式：已优先建设站内一方数据分析能力，再按需把关键转化事件同步给 Facebook Pixel 等第三方投放工具。
 
 本文使用以下状态标签：
 
 - `[当前实现]`：仓库已有代码、迁移或配置支持。
-- `[新增需求]`：本方案建议新增并纳入后续实现计划。
+- `[新增需求]`：本方案建议继续新增或细化的能力。
 - `[后续增强]`：MVP 后再做，避免首期复杂度过高。
 
 ## 1. Executive Summary
@@ -128,9 +128,12 @@
 
 - `[当前实现]` `galleries.view_count`：图库详情接口按 cookie + IP 短期去重后异步递增。
 - `[当前实现]` `galleries.like_count` 和 `gallery_likes`：登录用户可以点赞图库。
-- `[当前实现]` `/api/admin/dashboard`：后台只返回图库、发布图库、用户、活跃会员、处理中导入任务数量。
+- `[当前实现]` `/api/admin/dashboard`：后台基础概览继续展示内容、会员和导入待处理事项。
 - `[当前实现]` Facebook Pixel：前端可上报 `PageView`、`ViewContent`、`Search`、`Lead`、`CompleteRegistration`、`login_completed`、`filter_selected`，并已规避后台路径和敏感 URL。
-- `[当前缺口]` 没有站内一方 `visitor`、`session`、`event`、`source attribution`、`duration`、`invite` 和 `daily aggregate` 数据模型。
+- `[当前实现]` 站内一方分析：已建立 `analytics_visitors`、`analytics_sessions`、`analytics_events`、页面/session 摘要、日报聚合、邀请码、导出任务等 D1 schema。
+- `[当前实现]` 采集链路：已接入 `/api/analytics/events`、`/api/analytics/session/end`、Web 轻量 SDK、核心前台事件、邀请码转化闭环和 API 侧可信媒体授权事件。
+- `[当前实现]` 后台大盘：已新增 `/admin/analytics` 总览、来源、内容、链路、点击、时长、邀请和健康页面，默认读取聚合表和摘要表，owner-only 导出和单 session 明细由 API 二次校验。
+- `[后续增强]` 运营细化：自然周/月汇总、来源质量评分、页面详情抽屉、异常点击队列、更多图表形态和 Queue / Workers Analytics Engine 阈值评估。
 
 ### Architecture Overview
 
@@ -528,18 +531,21 @@ MVP 完成定义：
 
 ### Phased Rollout
 
-#### MVP：一方事件采集与基础看板
+#### MVP：一方事件采集与基础看板 `[当前实现]`
 
-- 新增 visitor、session、page/session summary、sampled events、invite、daily aggregate 数据模型。
-- 新增前端 `useAnalytics` 和批量上报。
-- 接入页面浏览、停留、滚动、搜索、筛选、图库详情、点赞、联系、注册、登录、广告点击和邀请注册事件。
-- 后台提供总览、来源、邀请、页面、点击和时长基础报表。
+- visitor、session、page/session summary、sampled events、invite、daily aggregate 数据模型。
+- 前端 `useAnalytics`、批量上报、`sendBeacon` 兜底和关闭态保护。
+- 页面浏览、停留、滚动、搜索、筛选、图库详情、点赞、联系、注册、登录、广告点击、邀请注册和 API 侧媒体授权事件。
+- 后台提供总览、来源、内容、链路、点击、时长、邀请和健康基础报表。
+- Owner-only CSV 导出、单 session 脱敏明细、D1 usage 状态和上线/回滚护栏。
 
-#### v1.1：链路和转化增强
+#### v1.1：运营判断增强 `[后续增强]`
 
-- 增加路径边聚合、关键漏斗、入口/退出分析。
-- 将会员发放与邀请注册、来源和内容访问关联。
-- 增加分析导出、Owner 单 session 脱敏明细和异常点击识别。
+- 增加自然周/月汇总、来源质量评分、关键漏斗可视化和入口/退出排查。
+- 内容页增加图库、标签和搜索结果页详情抽屉。
+- 点击页增加异常点击队列、元素类型筛选和重复点击修复建议。
+- 时长页增加 P50/P75、深度浏览率和高跳出页面排查列表。
+- 多视口截图验收与运营复盘模板。
 
 #### v2.0：规模和运营洞察
 

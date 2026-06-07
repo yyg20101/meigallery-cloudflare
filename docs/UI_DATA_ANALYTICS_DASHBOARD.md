@@ -2,14 +2,15 @@
 
 ## 0. 文档状态
 
-- 状态：后台数据分析大盘 UI / UX 设计草案。
+- 状态：后台数据分析大盘 UI / UX 设计基线，已用于当前 `/admin/analytics` 首版实现。
 - 日期：2026-06-07。
-- 范围：`/admin/analytics` 及其子页面的数据结构、布局、组件、交互状态、权限边界和验收标准。
+- 范围：`/admin/analytics` 及其子页面的数据结构、布局、组件、交互状态、权限边界、验收标准和后续增强路线。
 - 前置文档：`docs/PRD_DATA_ANALYTICS.md`、`plan/feature-data-analytics-implementation-1.md`。
-- 当前说明：本文是后续实现设计，不代表当前代码已有数据分析大盘生产能力。
+- 当前说明：本文记录当前首版大盘的设计口径和后续增强方向；标注为后续增强的内容不代表当前生产能力。
 
 本文使用以下状态标签：
 
+- `[当前实现]`：仓库已有代码、页面、API、迁移或测试支撑。
 - `[新增设计]`：建议纳入后续实现的 UI / UX 方案。
 - `[实现约束]`：实现时必须遵守的工程、安全、性能或成本边界。
 - `[后续增强]`：MVP 后再做，避免首期大盘复杂度过高。
@@ -56,16 +57,16 @@
 
 ### 2.2.1 设计假设与待确认问题
 
-为了先让实现可以推进，本文采用以下默认假设；后续如果运营侧反馈不同，可在实现前调整：
+为了让当前首版实现先形成可用运营闭环，本文采用以下默认假设；后续如果运营侧反馈不同，可在增强阶段调整：
 
-- 默认时间范围采用最近 30 天；Owner 可以切换 7 天、90 天，自定义范围最长 90 天。
+- `[当前实现]` 默认时间范围采用最近 30 天；Owner / Admin 可以切换 7 天、90 天。
 - 首期把“联系站长”和“注册成功”视为核心转化；在线支付未接入前，“会员发放”代表最终会员转化。
-- 后台大盘优先服务 Owner 和 Admin，不做公开运营展示页，也不做实时电视墙。
-- 图表保持轻量，MVP 使用 Nuxt UI 表格、紧凑 SVG sparkline、漏斗条和状态条；只有数据复杂度真实增加时再评估图表库。
+- `[当前实现]` 后台大盘优先服务 Owner 和 Admin，不做公开运营展示页，也不做实时电视墙。
+- `[当前实现]` 图表保持轻量，首版使用 Nuxt UI 风格表格、KPI 卡片、漏斗条和状态条；只有数据复杂度真实增加时再评估图表库。
 
 待确认问题：
 
-- Owner 是否需要按自然周/月查看汇总，还是 7/30/90 天滚动窗口已足够？
+- Owner 是否需要按自然周/月查看汇总，还是当前 7/30/90 天滚动窗口已足够？
 - 邀请码是否存在“归属到某个普通用户”的业务场景，还是首期都归属到活动/渠道？
 - 健康页的预算阈值是否按 Dev / Production 两套配置展示，还是只展示当前环境阈值？
 
@@ -73,16 +74,16 @@
 
 后台导航建议新增一个一级入口“数据分析”，其下使用页面内 tabs 或子路由：
 
-| 页面 | 路由 | 目标问题 | 默认数据源 |
-|------|------|------|------|
-| 总览 | `/admin/analytics` | 今天发生了什么，哪里需要处理 | `/api/admin/analytics/overview`、`/health` |
-| 来源 | `/admin/analytics/sources` | 用户从哪里来，哪个来源质量最高 | `/api/admin/analytics/sources` |
-| 内容 | `/admin/analytics/pages` | 哪些页面、图库和标签最有价值 | `/api/admin/analytics/pages` |
-| 链路 | `/admin/analytics/paths` | 用户从入口到联系/注册在哪一步流失 | `/api/admin/analytics/paths` |
-| 点击 | `/admin/analytics/clicks` | 哪些 CTA、广告、标签和联系入口被点击 | `/api/admin/analytics/clicks` |
-| 时长 | `/admin/analytics/durations` | 哪些内容停留久，哪些页面跳出高 | `/api/admin/analytics/durations` |
-| 邀请 | `/admin/analytics/invites` | 邀请码带来多少注册和会员发放 | `/api/admin/analytics/invites`、`/api/admin/invite-codes` |
-| 健康 | `/admin/analytics/health` | 采集、聚合、成本和采样是否正常 | `/api/admin/analytics/health` |
+| 页面 | 路由 | 当前状态 | 目标问题 | 默认数据源 |
+|------|------|------|------|------|
+| 总览 | `/admin/analytics` | `[当前实现]` | 今天发生了什么，哪里需要处理 | `/api/admin/analytics/overview` |
+| 来源 | `/admin/analytics/sources` | `[当前实现]` | 用户从哪里来，哪个来源质量最高 | `/api/admin/analytics/sources` |
+| 内容 | `/admin/analytics/pages` | `[当前实现]` | 哪些页面、图库和标签最有价值 | `/api/admin/analytics/pages` |
+| 链路 | `/admin/analytics/paths` | `[当前实现]` | 用户从入口到联系/注册在哪一步流失 | `/api/admin/analytics/paths` |
+| 点击 | `/admin/analytics/clicks` | `[当前实现]` | 哪些 CTA、广告、标签和联系入口被点击 | `/api/admin/analytics/clicks` |
+| 时长 | `/admin/analytics/durations` | `[当前实现]` | 哪些内容停留久，哪些页面跳出高 | `/api/admin/analytics/durations` |
+| 邀请 | `/admin/analytics/invites` | `[当前实现]` | 邀请码带来多少注册和会员发放 | `/api/admin/analytics/invites`、`/api/admin/invite-codes` |
+| 健康 | `/admin/analytics/health` | `[当前实现]` | 采集、聚合、成本和采样是否正常 | `/api/admin/analytics/health` |
 
 ### 2.4 Global Layout
 
@@ -227,11 +228,14 @@ Nuxt 后台页面
 
 核心组件：
 
-- `AnalyticsHealthStrip`：采集开关、最近聚合、accepted/rejected/duplicate、预算使用率。
-- `AnalyticsMetricGrid`：8 个 KPI 卡片。
-- `AnalyticsTrendPanel`：按日趋势，MVP 可用 SVG 折线或表格 + sparklines。
-- `AnalyticsConversionFunnel`：落地、详情、联系、注册、会员发放。
-- `AnalyticsTopList`：来源、页面、点击元素排行。
+- `[当前实现]` `AnalyticsPageShell`：标题、说明、tabs、时间范围、刷新、owner-only 导出和 usage 状态。
+- `[当前实现]` `AnalyticsMetricCard`：KPI 卡片。
+- `[当前实现]` `AnalyticsDataTable`：可排序分析表格。
+- `[当前实现]` 总览页内联关键转化漏斗和采集健康摘要。
+- `[新增设计]` `AnalyticsHealthStrip`：采集开关、最近聚合、accepted/rejected/duplicate、预算使用率。
+- `[新增设计]` `AnalyticsTrendPanel`：按日趋势，后续可用 SVG 折线或表格 + sparklines。
+- `[新增设计]` `AnalyticsConversionFunnel`：抽成共享组件，供总览、来源和邀请页复用。
+- `[新增设计]` `AnalyticsTopList`：来源、页面、点击元素排行。
 
 #### `/admin/analytics/sources` 来源
 
@@ -476,35 +480,41 @@ Nuxt 后台页面
 - [Cloudflare Queues Batching, Retries and Delays](https://developers.cloudflare.com/queues/configuration/batching-retries/)
 - [Cloudflare Workers Analytics Engine Limits](https://developers.cloudflare.com/analytics/analytics-engine/limits/)
 
-### 4.12 实现交接顺序
+### 4.12 实现交接与增强顺序
 
-为了避免 UI 先行后无法接数据，建议按以下顺序实施：
+当前首版已完成统一 shell、时间范围、导出、总览和七个子页面的基础表格型实现。后续增强按以下顺序推进，避免 UI 先行后无法接数据：
 
-1. `useAdminAnalytics`：统一 range/filter/query key、错误态和刷新逻辑。
-2. `AnalyticsPageShell`、`AnalyticsRangeControl`、`AnalyticsHealthStrip`：搭好共享框架。
-3. `/admin/analytics`：先接 overview mock，再接真实 API。
-4. `/admin/analytics/sources`、`/admin/analytics/pages`、`/admin/analytics/invites`：完成 MVP 三个业务判断页。
-5. `/admin/analytics/health`：补成本、采集、聚合状态和 owner-only 导出入口。
-6. v1.1 再接 `/paths`、`/clicks`、`/durations` 与 owner-only session 明细。
+1. `[当前实现]` `useAdminAnalytics`：统一 range、错误态、刷新逻辑和 usage 显示。
+2. `[当前实现]` `AnalyticsPageShell`：统一标题、tabs、7/30/90 天范围、刷新和 owner-only 导出。
+3. `[当前实现]` `/admin/analytics`：接入 overview API、8 个 KPI、漏斗、健康摘要、趋势表和 Top 列表。
+4. `[当前实现]` `/admin/analytics/sources`、`/pages`、`/paths`、`/clicks`、`/durations`、`/invites`、`/health`：完成基础表格型报表。
+5. `[新增设计]` 抽出 `AnalyticsHealthStrip`、`AnalyticsConversionFunnel`、`AnalyticsTrendPanel`，减少总览页内联 UI。
+6. `[后续增强]` 来源、内容、邀请页增加页面级 KPI 和详情抽屉；链路、点击、时长页增加异常提示和排查入口。
+7. `[后续增强]` owner-only session 脱敏明细、CSV 导出任务列表和多视口截图验收。
 
 ## 5. Risks & Roadmap
 
 ### 5.1 Phased Rollout
 
-#### MVP：总览、来源、内容、邀请、健康
+#### MVP：总览、来源、内容、链路、点击、时长、邀请、健康 `[当前实现]`
 
 - `/admin/analytics` 总览。
 - `/admin/analytics/sources` 来源质量。
 - `/admin/analytics/pages` 内容价值。
+- `/admin/analytics/paths` 路径边和典型链路。
+- `/admin/analytics/clicks` 点击频率和重复点击。
+- `/admin/analytics/durations` 时长、滚动和跳出。
 - `/admin/analytics/invites` 邀请效果与邀请码管理。
 - `/admin/analytics/health` 采集健康。
 - 空状态、采集关闭、聚合延迟、成本告警和权限状态。
 
-#### v1.1：链路、点击、时长细化
+#### v1.1：业务判断能力细化 `[后续增强]`
 
-- `/admin/analytics/paths` 路径边和典型漏斗。
-- `/admin/analytics/clicks` 点击频率、重复点击、异常点击。
-- `/admin/analytics/durations` 时长分布、跳出排查。
+- 来源页增加来源漏斗矩阵、来源质量评分和邀请码筛选。
+- 内容页增加图库/标签/搜索结果页分组、行详情抽屉和内容价值提示。
+- 链路页增加典型漏斗可视化、入口/退出/跳出三列表。
+- 点击页增加重复点击异常队列和元素类型筛选。
+- 时长页增加深度浏览率、P50/P75 和高跳出排查列表。
 - Owner-only session 明细抽屉。
 
 #### v2.0：规模与运营洞察
@@ -539,5 +549,6 @@ Nuxt 后台页面
 - `plan/feature-data-analytics-implementation-1.md`
 - `docs/UI_DESIGN.md`
 - `docs/UI_QUALITY_REVIEW.md`
+- `docs/ui/wireframes/2026-06-07-admin-analytics-dashboard-wireframe.md`
 - `docs/TECHNICAL_SPEC.md`
 - `docs/PROJECT_STATUS.md`
