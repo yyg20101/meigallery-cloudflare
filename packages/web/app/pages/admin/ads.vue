@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import type { ComponentPublicInstance } from 'vue'
+import {
+  HOME_AD_IMAGE_REQUIREMENTS,
+  formatHomeAdImageRequirement,
+  formatHomeAdImageSize,
+  validateHomeAdImageDimensions,
+  validateHomeAdImageFile,
+} from '~/utils/adminHomeAdImage'
 
 definePageMeta({ layout: 'admin' })
 
@@ -37,7 +43,17 @@ const saving = ref(false)
 const imageUploadingId = ref('')
 const deleteTarget = ref<AdminHomeAd | null>(null)
 const deleteModalOpen = ref(false)
-const imageInputs = reactive<Record<string, HTMLInputElement | null>>({})
+const localImageInput = ref<HTMLInputElement | null>(null)
+const pendingImageFile = ref<File | null>(null)
+const pendingImagePreviewUrl = ref('')
+const pendingImageError = ref('')
+const pendingImageMeta = ref<{
+  name: string
+  sizeLabel: string
+  width: number
+  height: number
+} | null>(null)
+const imageRequirementText = formatHomeAdImageRequirement()
 
 const form = reactive({
   eyebrow: '本周推荐',
@@ -53,7 +69,7 @@ const form = reactive({
 })
 
 const selectedAd = computed(() => ads.value.find(ad => ad.id === selectedId.value) ?? null)
-const selectedImageUrl = computed(() => selectedAd.value?.imageUrl ?? '')
+const selectedImageUrl = computed(() => selectedAd.value?.imageUrl || form.imageUrl || '')
 const selectedImageAlt = computed(() => selectedAd.value?.title || '广告大图')
 const previewAds = computed(() => {
   const draft = {
@@ -64,7 +80,7 @@ const previewAds = computed(() => {
     ctaLabel: form.ctaLabel || '查看详情',
     url: form.targetUrl || '/discover?sort=hot',
     sponsor: form.sponsor,
-    imageUrl: form.imageUrl,
+    imageUrl: pendingImagePreviewUrl.value || form.imageUrl,
   }
   return [draft]
 })
@@ -75,6 +91,7 @@ watch(ads, (items) => {
 }, { immediate: true })
 
 function resetForm() {
+  clearPendingImage()
   selectedId.value = ''
   form.eyebrow = '本周推荐'
   form.title = ''
@@ -89,6 +106,7 @@ function resetForm() {
 }
 
 function selectAd(ad: AdminHomeAd) {
+  clearPendingImage()
   selectedId.value = ad.id
   form.eyebrow = ad.eyebrow
   form.title = ad.title
@@ -117,15 +135,42 @@ async function saveAd() {
       startsAt: normalizeDatetimeInput(form.startsAt),
       endsAt: normalizeDatetimeInput(form.endsAt),
     }
-    if (selectedId.value) {
-      await api(`/api/admin/ads/${selectedId.value}`, { method: 'PUT', body })
-      toast.add({ title: '广告位已更新', color: 'success' })
+    const pendingFile = pendingImageFile.value
+    const wasCreating = !selectedId.value
+    let adId = selectedId.value
+
+    if (adId) {
+      await api(`/api/admin/ads/${adId}`, { method: 'PUT', body })
     } else {
       const result = await api<{ id: string }>('/api/admin/ads', { method: 'POST', body })
+      adId = result.id
       selectedId.value = result.id
-      toast.add({ title: '广告位已创建', color: 'success' })
     }
+
+    if (pendingFile) {
+      try {
+        const result = await uploadImageFile(adId, pendingFile)
+        form.imageUrl = result.imageUrl
+        clearPendingImage()
+      } catch (error) {
+        await refresh().catch(() => undefined)
+        toast.add({
+          title: wasCreating
+            ? '广告位已创建，但大图上传失败，请重试上传。'
+            : resolveApiErrorMessage(error, '广告位已保存，但大图上传失败，请重试上传。'),
+          color: 'error',
+        })
+        return
+      }
+    }
+
     await refresh()
+    toast.add({
+      title: pendingFile
+        ? (wasCreating ? '广告位已创建，大图已上传' : '广告位已更新，大图已上传')
+        : (wasCreating ? '广告位已创建' : '广告位已更新'),
+      color: 'success',
+    })
   } catch (error) {
     toast.add({ title: resolveApiErrorMessage(error, '广告位保存失败'), color: 'error' })
   } finally {
@@ -172,46 +217,86 @@ async function confirmDelete() {
   }
 }
 
-function triggerImageUpload(id: string) {
-  imageInputs[id]?.click()
-}
-
-function triggerSelectedImageUpload() {
-  if (!selectedId.value) return
-  triggerImageUpload(selectedId.value)
-}
-
-function setImageInput(id: string, el: Element | ComponentPublicInstance | null) {
-  imageInputs[id] = el as HTMLInputElement | null
-}
-
-function uploadSelectedImage(event: Event) {
-  if (!selectedAd.value) return
-  return uploadImage(event, selectedAd.value)
-}
-
 function deleteSelectedImage() {
   if (!selectedAd.value) return
   return deleteImage(selectedAd.value)
 }
 
-async function uploadImage(event: Event, ad: AdminHomeAd) {
+function openLocalImagePicker() {
+  localImageInput.value?.click()
+}
+
+async function handlePendingImageChange(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
+
+  pendingImageError.value = ''
+  const fileValidation = validateHomeAdImageFile(file)
+  if (!fileValidation.valid) {
+    clearPendingImage()
+    pendingImageError.value = fileValidation.message || '广告大图文件无效'
+    return
+  }
+
+  const objectUrl = URL.createObjectURL(file)
+  try {
+    const dimensions = await readImageDimensions(objectUrl)
+    const dimensionsValidation = validateHomeAdImageDimensions(dimensions.width, dimensions.height)
+    if (!dimensionsValidation.valid) {
+      URL.revokeObjectURL(objectUrl)
+      clearPendingImage()
+      pendingImageError.value = dimensionsValidation.message || '广告大图尺寸无效'
+      return
+    }
+
+    revokePendingImagePreview()
+    pendingImageFile.value = file
+    pendingImagePreviewUrl.value = objectUrl
+    pendingImageMeta.value = {
+      name: file.name,
+      sizeLabel: formatHomeAdImageSize(file.size),
+      width: dimensions.width,
+      height: dimensions.height,
+    }
+  } catch {
+    URL.revokeObjectURL(objectUrl)
+    clearPendingImage()
+    pendingImageError.value = '图片读取失败，请重新选择一张 PNG、JPEG 或 WebP 图片'
+  }
+}
+
+function clearPendingImage() {
+  revokePendingImagePreview()
+  pendingImageFile.value = null
+  pendingImageMeta.value = null
+  pendingImageError.value = ''
+  if (localImageInput.value) localImageInput.value.value = ''
+}
+
+function revokePendingImagePreview() {
+  if (!pendingImagePreviewUrl.value) return
+  URL.revokeObjectURL(pendingImagePreviewUrl.value)
+  pendingImagePreviewUrl.value = ''
+}
+
+function readImageDimensions(src: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight })
+    image.onerror = () => reject(new Error('图片无法读取'))
+    image.src = src
+  })
+}
+
+async function uploadImageFile(adId: string, file: File) {
   const body = new FormData()
   body.set('file', file)
-  imageUploadingId.value = ad.id
+  imageUploadingId.value = adId
   try {
-    const result = await api<{ imageUrl: string }>(`/api/admin/ads/${ad.id}/image`, { method: 'POST', body })
-    if (selectedId.value === ad.id) form.imageUrl = result.imageUrl
-    await refresh()
-    toast.add({ title: '广告大图已上传', color: 'success' })
-  } catch (error) {
-    toast.add({ title: resolveApiErrorMessage(error, '大图上传失败'), color: 'error' })
+    return await api<{ imageUrl: string; imageKey: string }>(`/api/admin/ads/${adId}/image`, { method: 'POST', body })
   } finally {
     imageUploadingId.value = ''
-    input.value = ''
   }
 }
 
@@ -225,6 +310,10 @@ async function deleteImage(ad: AdminHomeAd) {
     toast.add({ title: resolveApiErrorMessage(error, '大图删除失败'), color: 'error' })
   }
 }
+
+onBeforeUnmount(() => {
+  revokePendingImagePreview()
+})
 
 function normalizeDatetimeInput(value: string) {
   const trimmed = value.trim()
@@ -366,10 +455,74 @@ function toDatetimeLocalValue(value: string) {
             </div>
           </div>
 
+          <div class="mt-4 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4">
+            <input
+              ref="localImageInput"
+              type="file"
+              :accept="HOME_AD_IMAGE_REQUIREMENTS.accept"
+              class="hidden"
+              @change="handlePendingImageChange"
+            />
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <label class="block text-sm font-medium text-gray-700">广告大图</label>
+                <p class="mt-1 max-w-2xl text-xs leading-5 text-gray-500">{{ imageRequirementText }}</p>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  class="rounded-lg bg-gray-950 px-3 py-2 text-xs font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  :disabled="saving || Boolean(imageUploadingId)"
+                  @click="openLocalImagePicker"
+                >
+                  {{ pendingImageFile ? '重新选择图片' : '选择本地图片' }}
+                </button>
+                <button
+                  v-if="pendingImageFile"
+                  type="button"
+                  class="rounded-lg border border-gray-300 px-3 py-2 text-xs text-gray-700 hover:bg-white"
+                  :disabled="saving || Boolean(imageUploadingId)"
+                  @click="clearPendingImage"
+                >
+                  清除选择
+                </button>
+                <button
+                  v-if="selectedAd?.imageKey"
+                  type="button"
+                  class="rounded-lg border border-red-100 px-3 py-2 text-xs text-red-600 hover:bg-red-50"
+                  :disabled="saving || Boolean(imageUploadingId)"
+                  @click="deleteSelectedImage"
+                >
+                  删除已上传大图
+                </button>
+              </div>
+            </div>
+
+            <p v-if="pendingImageError" class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
+              {{ pendingImageError }}
+            </p>
+            <p v-else-if="pendingImageMeta" class="mt-3 rounded-lg bg-green-50 px-3 py-2 text-xs text-green-700">
+              已选择 {{ pendingImageMeta.name }} · {{ pendingImageMeta.width }}x{{ pendingImageMeta.height }}px · {{ pendingImageMeta.sizeLabel }}，保存后自动上传。
+            </p>
+
+            <div class="mt-3 aspect-[16/7] overflow-hidden rounded-xl bg-gray-100">
+              <img
+                v-if="pendingImagePreviewUrl || selectedImageUrl"
+                :src="pendingImagePreviewUrl || selectedImageUrl"
+                :alt="pendingImagePreviewUrl ? '待上传广告大图预览' : selectedImageAlt"
+                class="h-full w-full object-cover"
+                referrerpolicy="no-referrer"
+              />
+              <div v-else class="flex h-full items-center justify-center px-4 text-center text-sm text-gray-400">
+                选择本地图片后会先校验并实时预览；也可以在下方填写大图 URL。
+              </div>
+            </div>
+          </div>
+
           <div class="mt-4">
-            <label class="mb-1 block text-sm font-medium text-gray-700">大图 URL</label>
+            <label class="mb-1 block text-sm font-medium text-gray-700">大图 URL（备用）</label>
             <input v-model="form.imageUrl" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="/api/media/public/home-ads/... 或 https://example.com/ad.webp" />
-            <p class="mt-1 text-xs text-gray-400">上传大图会自动填充该地址；外链仅允许安全 https 公开图片地址。</p>
+            <p class="mt-1 text-xs text-gray-400">选择本地图片时预览优先显示待上传图片；清除选择后显示该 URL。外链仅允许安全 https 公开图片地址。</p>
           </div>
 
           <div class="mt-4 grid gap-4 md:grid-cols-2">
@@ -392,28 +545,6 @@ function toDatetimeLocalValue(value: string) {
             </button>
           </div>
         </form>
-
-        <div v-if="selectedAd" class="rounded-xl border border-gray-200 bg-white p-5">
-          <div class="mb-4 flex items-center justify-between gap-4">
-            <div>
-              <h2 class="text-base font-semibold text-gray-950">大图上传</h2>
-              <p class="mt-1 text-xs text-gray-500">支持 PNG、JPEG、WebP，单张不超过 3MB。</p>
-            </div>
-            <div class="flex gap-2">
-              <button type="button" class="rounded-lg border border-gray-300 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50" :disabled="imageUploadingId === selectedId" @click="triggerSelectedImageUpload">
-                {{ imageUploadingId === selectedId ? '上传中...' : '上传大图' }}
-              </button>
-              <button v-if="selectedAd.imageKey" type="button" class="rounded-lg border border-red-100 px-3 py-2 text-xs text-red-600 hover:bg-red-50" @click="deleteSelectedImage">
-                删除大图
-              </button>
-            </div>
-          </div>
-          <input :ref="(el) => selectedId && setImageInput(selectedId, el)" type="file" accept="image/png,image/jpeg,image/webp" class="hidden" @change="uploadSelectedImage" />
-          <div class="aspect-[16/7] overflow-hidden rounded-xl bg-gray-100">
-            <img v-if="selectedImageUrl" :src="selectedImageUrl" :alt="selectedImageAlt" class="h-full w-full object-cover" referrerpolicy="no-referrer" />
-            <div v-else class="flex h-full items-center justify-center text-sm text-gray-400">当前广告位还没有大图</div>
-          </div>
-        </div>
 
         <div class="rounded-xl border border-gray-200 bg-white p-5">
           <div class="mb-4">

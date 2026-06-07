@@ -116,9 +116,15 @@ function normalizeAdItem(ad: HomeAdItem, index: number) {
     summary: safeHomeAdText('home_ad_summary', ad.summary) || '探索本周精选图库、真实案例和会员可访问内容。',
     ctaLabel: safeHomeAdText('home_ad_cta_label', ad.ctaLabel) || '查看详情',
     sponsor: safeHomeAdText('home_ad_sponsor', ad.sponsor),
-    imageUrl: normalizeHomeAdImageUrl(ad.imageUrl),
+    imageUrl: normalizePreviewableHomeAdImageUrl(ad.imageUrl),
     url,
   }
+}
+
+function normalizePreviewableHomeAdImageUrl(value: unknown) {
+  const raw = String(value ?? '').trim()
+  if (props.preview && raw.startsWith('blob:')) return raw
+  return normalizeHomeAdImageUrl(raw)
 }
 
 function stopCarousel() {
