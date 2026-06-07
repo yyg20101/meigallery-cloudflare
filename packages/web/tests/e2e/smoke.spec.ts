@@ -203,6 +203,33 @@ test.describe('核心页面 smoke', () => {
     await expect(page).not.toHaveTitle('MeiGallery - 精选写真图库')
   })
 
+  test('后台数据分析空数据时保持大盘布局和健康详情', async ({ request, page }) => {
+    await request.patch(`${apiURL}/api/test/admin-analytics-empty`, { data: { enabled: true } })
+
+    await page.goto('/admin/analytics')
+    await expect(page.locator('main h1', { hasText: '数据分析' })).toBeVisible()
+    await expect(page.getByText('暂无分析数据')).toBeVisible()
+    await expect(page.getByText('暂无趋势数据')).toBeVisible()
+    await expect(page.getByText('暂无排行').first()).toBeVisible()
+
+    let hasHorizontalOverflow = await page.evaluate(() => {
+      const doc = document.documentElement
+      return doc.scrollWidth > doc.clientWidth + 1
+    })
+    expect(hasHorizontalOverflow).toBe(false)
+
+    await page.getByRole('link', { name: '查看采集健康' }).click()
+    await expect(page).toHaveURL(/\/admin\/analytics\/health/)
+    await expect(page.locator('main h1', { hasText: '采集健康' })).toBeVisible()
+    await expect(page.getByText('暂无采集健康记录')).toBeVisible()
+
+    hasHorizontalOverflow = await page.evaluate(() => {
+      const doc = document.documentElement
+      return doc.scrollWidth > doc.clientWidth + 1
+    })
+    expect(hasHorizontalOverflow).toBe(false)
+  })
+
   test('一方数据分析事件覆盖搜索、详情、联系和邀请注册链路', async ({ request, page }) => {
     await page.goto('/')
     await expect(page.getByRole('heading', { name: /精选写真/ }).first()).toBeVisible()

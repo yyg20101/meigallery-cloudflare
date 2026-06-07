@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import AnalyticsDataTable from '~/components/admin/analytics/AnalyticsDataTable.vue'
+import AnalyticsPageShell from '~/components/admin/analytics/AnalyticsPageShell.vue'
+
 definePageMeta({ layout: 'admin' })
 const { isOwner } = useAuth()
 const analytics = useAdminAnalytics<Array<Record<string, unknown>>>('/api/admin/analytics/paths')
@@ -18,6 +21,10 @@ const createExport = useAnalyticsExport()
     @export="createExport('paths', analytics.range.value)"
   >
     <AnalyticsDataTable
+      empty-title="暂无链路数据"
+      empty-text="当前时间范围没有页面跳转边。至少需要同一 session 内发生多次页面访问，才会形成链路聚合。"
+      empty-action-label="查看总览"
+      empty-action-to="/admin/analytics"
       :columns="[
         { key: 'from_route', label: 'From route', sortable: true },
         { key: 'to_route', label: 'To route', sortable: true },

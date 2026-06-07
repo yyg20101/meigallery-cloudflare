@@ -25,6 +25,7 @@ adminAnalyticsRoutes.get('/overview', async (c) => {
         COALESCE(SUM(visitor_count), 0) AS visitor_count,
         COALESCE(SUM(session_count), 0) AS session_count,
         COALESCE(SUM(page_view_count), 0) AS page_view_count,
+        COALESCE(SUM(gallery_detail_count), 0) AS gallery_detail_count,
         COALESCE(SUM(register_count), 0) AS register_count,
         COALESCE(SUM(invite_register_count), 0) AS invite_register_count,
         COALESCE(SUM(contact_click_count), 0) AS contact_click_count,

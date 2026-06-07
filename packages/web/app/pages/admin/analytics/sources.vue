@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import AnalyticsDataTable from '~/components/admin/analytics/AnalyticsDataTable.vue'
+import AnalyticsPageShell from '~/components/admin/analytics/AnalyticsPageShell.vue'
+
 definePageMeta({ layout: 'admin' })
 const { isOwner } = useAuth()
 const analytics = useAdminAnalytics<Array<Record<string, unknown>>>('/api/admin/analytics/sources')
@@ -18,6 +21,10 @@ const createExport = useAnalyticsExport()
     @export="createExport('sources', analytics.range.value)"
   >
     <AnalyticsDataTable
+      empty-title="暂无来源数据"
+      empty-text="当前时间范围没有来源聚合。产生前台访问后，系统会按邀请码、UTM、referrer 和直接访问归因。"
+      empty-action-label="查看采集健康"
+      empty-action-to="/admin/analytics/health"
       :columns="[
         { key: 'source_channel', label: '渠道', sortable: true },
         { key: 'source_name', label: '来源', sortable: true },

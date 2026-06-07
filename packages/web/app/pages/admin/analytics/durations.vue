@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import AnalyticsDataTable from '~/components/admin/analytics/AnalyticsDataTable.vue'
+import AnalyticsPageShell from '~/components/admin/analytics/AnalyticsPageShell.vue'
+
 definePageMeta({ layout: 'admin' })
 const { isOwner } = useAuth()
 const analytics = useAdminAnalytics<Array<Record<string, unknown>>>('/api/admin/analytics/durations')
@@ -18,6 +21,10 @@ const createExport = useAnalyticsExport()
     @export="createExport('durations', analytics.range.value)"
   >
     <AnalyticsDataTable
+      empty-title="暂无时长数据"
+      empty-text="当前时间范围没有页面停留聚合。页面可见时长、路由切换和 pagehide 事件上报后会在这里展示。"
+      empty-action-label="查看内容分析"
+      empty-action-to="/admin/analytics/pages"
       :columns="[
         { key: 'route_name', label: 'Route', sortable: true },
         { key: 'path', label: '路径' },

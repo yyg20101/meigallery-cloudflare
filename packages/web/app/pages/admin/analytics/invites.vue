@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import AnalyticsDataTable from '~/components/admin/analytics/AnalyticsDataTable.vue'
+import AnalyticsPageShell from '~/components/admin/analytics/AnalyticsPageShell.vue'
+
 definePageMeta({ layout: 'admin' })
 
 const { api } = useApi()
@@ -127,6 +130,10 @@ async function copyInviteLink(code: string) {
       <section class="space-y-3">
         <h2 class="text-sm font-semibold text-gray-900">邀请效果</h2>
         <AnalyticsDataTable
+          empty-title="暂无邀请转化"
+          empty-text="当前时间范围没有邀请码落地、注册或会员发放转化。创建邀请码并使用邀请链接访问后会生成数据。"
+          empty-action-label="查看采集健康"
+          empty-action-to="/admin/analytics/health"
           :columns="[
             { key: 'invite_code_id', label: '邀请码 ID', sortable: true },
             { key: 'invite_name', label: '名称', sortable: true },

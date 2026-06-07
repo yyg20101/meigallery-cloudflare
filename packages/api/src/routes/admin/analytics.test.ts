@@ -138,6 +138,7 @@ function createDb() {
               visitor_count: 2,
               session_count: 3,
               page_view_count: 9,
+              gallery_detail_count: 4,
               register_count: 1,
               invite_register_count: 1,
               contact_click_count: 1,
@@ -224,6 +225,7 @@ describe('后台数据分析 API', () => {
     expect(res.status).toBe(200)
     expect(body.range.days).toBe(7)
     expect(body.data.totals.average_active_seconds).toBe(30)
+    expect(body.data.totals.gallery_detail_count).toBe(4)
     expect(body.data.topSources[0].source_channel).toBe('invite')
     expect(body.usage.rowsRead).toBeGreaterThan(0)
     expect(db.calls.some(call => call.sql.includes('analytics_events'))).toBe(false)
