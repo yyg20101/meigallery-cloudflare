@@ -83,6 +83,11 @@ const SOURCE_CHANNEL_SET = new Set<string>(ANALYTICS_SOURCE_CHANNELS)
 const GLOBAL_PROP_KEYS = [
   'source_channel',
   'source_name',
+  'tracking_source_id',
+  'tracking_source_slug',
+  'utm_campaign',
+  'utm_medium',
+  'utm_source',
   'viewport_bucket',
 ] as const
 

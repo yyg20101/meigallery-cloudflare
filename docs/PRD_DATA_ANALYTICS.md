@@ -258,6 +258,24 @@
 | first_membership_granted_at | TEXT | 首次会员发放时间，可为空 |
 | first_membership_rank | INTEGER | 首次发放会员 rank，可为空 |
 
+#### analytics_tracking_sources `[当前实现]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | TEXT PK | 推广来源 ID |
+| name | TEXT | 后台来源名称 |
+| channel | TEXT | 来源渠道，复用分析来源渠道 |
+| slug | TEXT | 追踪链接短标识 |
+| target_path | TEXT | 站内落地页 |
+| utm_source | TEXT | 用于聚合关联的唯一 UTM source |
+| utm_medium | TEXT | UTM medium |
+| utm_campaign | TEXT | UTM campaign |
+| status | TEXT | active / disabled |
+| note | TEXT | 内部备注 |
+| created_by | INTEGER | 创建管理员 |
+
+推广来源用于回答“用户从哪里进入站点”；邀请码继续用于邀请注册和会员发放归因。两者分开建模，来源分析通过 `utm_source` / `source_name` 低成本关联到日报聚合，不额外扩大聚合表唯一维度。
+
 #### 聚合表 `[新增需求]`
 
 - `analytics_daily_sources`：按日期、渠道、来源、邀请码统计访客、session、页面、注册、联系、会员发放。
@@ -301,6 +319,9 @@
 | POST | `/api/admin/invite-codes` | 创建邀请码 | admin+ |
 | PATCH | `/api/admin/invite-codes/:id` | 修改或禁用邀请码 | admin+ |
 | GET | `/api/admin/invite-codes` | 邀请码列表 | admin+ |
+| GET | `/api/admin/tracking-sources` | 推广来源列表和追踪链接 | admin+ |
+| POST | `/api/admin/tracking-sources` | 创建推广来源 | admin+ |
+| PATCH | `/api/admin/tracking-sources/:id` | 修改或停用推广来源 | admin+ |
 | POST | `/api/admin/analytics/exports` | 创建导出任务 | owner |
 
 ### Event Dictionary

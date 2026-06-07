@@ -29,6 +29,7 @@ export function useAdminAnalytics<T>(endpoint: string, initialRange: AnalyticsRa
   const data = ref<T | null>(null)
   const responseRange = ref<AnalyticsApiResponse<T>['range'] | null>(null)
   const usage = ref<AnalyticsApiResponse<T>['usage'] | null>(null)
+  const extra = ref<Record<string, unknown>>({})
   const loading = ref(false)
   const error = ref('')
   const loadedAt = ref('')
@@ -43,6 +44,8 @@ export function useAdminAnalytics<T>(endpoint: string, initialRange: AnalyticsRa
       data.value = result.data
       responseRange.value = result.range ?? null
       usage.value = result.usage ?? null
+      const { data: _data, range: _range, usage: _usage, ...rest } = result as AnalyticsApiResponse<T> & Record<string, unknown>
+      extra.value = rest
       loadedAt.value = new Date().toISOString()
     } catch (err) {
       error.value = resolveApiErrorMessage(err, '分析数据加载失败')
@@ -63,6 +66,7 @@ export function useAdminAnalytics<T>(endpoint: string, initialRange: AnalyticsRa
     range,
     responseRange,
     usage,
+    extra,
     data,
     loading,
     error,

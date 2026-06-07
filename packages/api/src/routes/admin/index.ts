@@ -16,6 +16,7 @@ import { adminExternalImportRecordRoutes } from './external-import-records'
 import { adminAdRoutes } from './ads'
 import { adminInviteCodeRoutes } from './invite-codes'
 import { adminAnalyticsRoutes } from './analytics'
+import { adminTrackingSourceRoutes } from './tracking-sources'
 
 export const adminRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -58,5 +59,6 @@ adminRoutes.route('/ads', adminAdRoutes)
 adminRoutes.route('/import-api-tokens', adminImportApiTokenRoutes)
 adminRoutes.route('/external-import-records', adminExternalImportRecordRoutes)
 adminRoutes.route('/invite-codes', adminInviteCodeRoutes)
+adminRoutes.route('/tracking-sources', adminTrackingSourceRoutes)
 adminRoutes.route('/analytics', adminAnalyticsRoutes)
 adminRoutes.route('/', adminMediaRoutes)

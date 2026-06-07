@@ -1,6 +1,6 @@
 # 项目当前状态
 
-更新时间：2026-06-07
+更新时间：2026-06-08
 
 本文档是当前实现和部署状态的索引。若历史计划或早期 PRD 与本文冲突，以本文、`AGENTS.md`、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md`、`docs/GIT_WORKFLOW.md` 为准。
 
@@ -19,7 +19,7 @@
 - API Worker：`meigallery-api`，生产域名 `api.616618.xyz`。
 - 开发 Worker：`meigallery-web-dev` / `meigallery-api-dev`，仅使用 Workers dev 子域，不绑定生产域名。
 - 数据库：Cloudflare D1 `meigallery-db`。
-- D1 migrations：仓库当前维护到 `0026_analytics_exports.sql`；部署前需按目标环境执行所有未应用迁移。
+- D1 migrations：仓库当前维护到 `0027_analytics_tracking_sources.sql`；部署前需按目标环境执行所有未应用迁移。
 - 对象存储：Cloudflare R2 `meigallery-media`。
 - 视频：Cloudflare Stream 仍未接入，相关 secrets 为占位符，视频能力按规划保留；API 在缺少 Stream secrets 时返回 503 `STREAM_NOT_CONFIGURED`。
 - 生产部署：PR 合入 `main` 后手动执行 `./scripts/deploy.sh production` 或等价 wrangler 命令。
@@ -30,7 +30,7 @@
 - 已实现：公开图库/标签/搜索/真实案例、登录注册、用户名登录、邮箱验证开关、用户中心、个人设置、后台图库/标签/用户/设置/审计、独立首页广告位管理、多广告排序、大图上传、首页广告轮播、广告排期与安全清洗、首页内容配置保存校验和公开读取兜底、右下角服务流程/消息悬浮入口强化、图库批量操作、图片上传、封面设置、单媒体 rank 配置、WordPress 迁移辅助、Telegram `gallery` / `case` 外部导入、Facebook Pixel 设置。
 - 部分实现：zip 导入任务有 API 和后台入口，但当前重点实现和测试集中在解析/校验与任务记录；大文件异步完整处理仍需按后续阶段继续收敛。
 - 未接入：Cloudflare Stream 生产视频上传、编码和播放链路；相关字段、secret、媒体签名逻辑保留为规划能力。
-- 当前实现：站内一方数据分析能力已形成可落地需求方案、实施计划和后台数据大盘 UI 设计；当前已落地 Phase 0 基础契约、Phase 1 D1 schema、Phase 2 公开采集 API、Phase 3 邀请码转化闭环、Phase 4 Web 轻量 SDK、Phase 5 核心业务事件、Phase 6 API 侧聚合/报表能力、Phase 7 后台页面/导航和 Phase 8 验证/上线护栏。已覆盖共享分析类型/常量、事件 props 白名单、URL/referrer 清洗、来源归因、运营时区日期、D1 rows read/write 预算读取、公开分析开关读取，`analytics_*`、`invite_codes`、`invite_registrations`、聚合日报和导出任务迁移，`/api/analytics/events`、`/api/analytics/session/end`、关闭态 disabled 响应、IP/visitor/session 三维兜底限流、采集健康日报写入，`/api/invites/:code/status` 公开状态查询，`/api/admin/invite-codes` 后台管理、注册成功绑定邀请上下文，管理员首次发放 rank > 0 会员时回填邀请转化，Web 端 URL 预清洗、route 归一化、visitor/session 队列、`sendBeacon` 兜底、15 秒本地时长累计、注册邀请码校验、登录/注册关键事件、首页广告曝光/点击、图库卡片曝光/点击、图库详情浏览、图片查看器打开、会员 CTA、点赞成功、搜索/筛选/排序/加载更多、联系与规则入口事件，API Worker 侧可信 `media_access_granted` / `media_access_denied` 媒体授权事件，Cron 日报聚合与保留期清理，`/api/admin/analytics/*` 后台分析查询、owner-only session 脱敏明细和 owner-only CSV 导出到 R2。后台已新增 `/admin/analytics` 及来源、内容、链路、点击、时长、邀请、健康子页，`/admin/invite-codes` 跳转入口，统一时间范围、加载、错误、空数据、D1 usage 状态，owner-only 导出按钮，以及邀请码创建、禁用和创建后复制完整邀请链接。Phase 8 已补 Playwright smoke、mock API、10,000 sessions/day 写入成本 fixture、100,000 事件规模后台报表性能 fixture、部署上线顺序和回滚说明；采集开关默认关闭，生产启用必须按 D1 migrations -> API -> Web SDK -> 后台 -> Owner 开关顺序执行。
+- 当前实现：站内一方数据分析能力已形成可落地需求方案、实施计划和后台数据大盘 UI 设计；当前已落地 Phase 0 基础契约、Phase 1 D1 schema、Phase 2 公开采集 API、Phase 3 邀请码转化闭环、Phase 4 Web 轻量 SDK、Phase 5 核心业务事件、Phase 6 API 侧聚合/报表能力、Phase 7 后台页面/导航和 Phase 8 验证/上线护栏，并已补齐推广来源创建与追踪链接管理。已覆盖共享分析类型/常量、事件 props 白名单、URL/referrer 清洗、来源归因、运营时区日期、D1 rows read/write 预算读取、公开分析开关读取，`analytics_*`、`analytics_tracking_sources`、`invite_codes`、`invite_registrations`、聚合日报和导出任务迁移，`/api/analytics/events`、`/api/analytics/session/end`、关闭态 disabled 响应、IP/visitor/session 三维兜底限流、采集健康日报写入，`/api/invites/:code/status` 公开状态查询，`/api/admin/invite-codes` 后台管理、`/api/admin/tracking-sources` 推广来源管理、注册成功绑定邀请上下文，管理员首次发放 rank > 0 会员时回填邀请转化，Web 端 URL 预清洗、route 归一化、visitor/session 队列、UTM/referrer/`mg_source` 来源上下文、`sendBeacon` 兜底、15 秒本地时长累计、注册邀请码校验、登录/注册关键事件、首页广告曝光/点击、图库卡片曝光/点击、图库详情浏览、图片查看器打开、会员 CTA、点赞成功、搜索/筛选/排序/加载更多、联系与规则入口事件，API Worker 侧可信 `media_access_granted` / `media_access_denied` 媒体授权事件，Cron 日报聚合与保留期清理，`/api/admin/analytics/*` 后台分析查询、owner-only session 脱敏明细和 owner-only CSV 导出到 R2。后台已新增 `/admin/analytics` 及来源、内容、链路、点击、时长、邀请、健康子页，`/admin/invite-codes` 跳转入口，统一时间范围、加载、错误、空数据、D1 usage 状态，owner-only 导出按钮，以及邀请码创建、禁用和创建后复制完整邀请链接；来源页已支持创建推广来源、复制标准追踪链接、停用来源，并在来源报表中展示已创建来源表现。Phase 8 已补 Playwright smoke、mock API、10,000 sessions/day 写入成本 fixture、100,000 事件规模后台报表性能 fixture、部署上线顺序和回滚说明；采集开关默认关闭，生产启用必须按 D1 migrations -> API -> Web SDK -> 后台 -> Owner 开关顺序执行。
 - 已完成迁移口径：真实案例当前统一为 `cases` / `case_images`、`/cases`、`/api/cases`、`case:create`；旧 `testimonial_*` 仅存在于历史文档、迁移脚本说明或兼容拒绝测试中。
 
 ## PRD 质量状态

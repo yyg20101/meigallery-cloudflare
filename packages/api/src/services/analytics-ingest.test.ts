@@ -173,6 +173,30 @@ describe('analytics-ingest', () => {
     expect(JSON.stringify(rawInsert?.params)).not.toContain('999')
   })
 
+  it('识别推广来源 UTM 和 referrer 并写入 session 来源字段', async () => {
+    const db = createDb()
+    await ingestAnalyticsBatch(envFor(db), {
+      body: baseBatch({
+        trackingSourceSlug: 'telegram-june',
+        utmSource: 'telegram-june',
+        utmMedium: 'social',
+        utmCampaign: 'telegram-june',
+        referrer: 'https://t.me/channel/post',
+      }),
+      bodySizeBytes: 512,
+      userId: null,
+      currentHost: '616618.xyz',
+    })
+
+    const sessionInsert = db.calls.find(call => call.sql.includes('INSERT INTO analytics_sessions'))
+    expect(sessionInsert?.params[7]).toBe('social')
+    expect(sessionInsert?.params[8]).toBe('telegram-june')
+    expect(sessionInsert?.params[9]).toBe('t.me')
+    expect(sessionInsert?.params[10]).toBe('telegram-june')
+    expect(sessionInsert?.params[11]).toBe('social')
+    expect(sessionInsert?.params[12]).toBe('telegram-june')
+  })
+
   it('采样率为 0 时不写采样原始事件，关键转化事件仍写明细', async () => {
     const db = createDb({ sampleRate: 0 })
     await ingestAnalyticsBatch(envFor(db), {

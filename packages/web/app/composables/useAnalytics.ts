@@ -29,6 +29,7 @@ interface AnalyticsState {
   userId: number | null
   consentState: AnalyticsConsentState
   sourceChannel: AnalyticsSourceChannel
+  sourceContext: AnalyticsSourceContext
   queue: AnalyticsEventPayload[]
   pageViewCount: number
   currentRoute: { routeName: string; path: string } | null
@@ -42,9 +43,20 @@ interface AnalyticsInitOptions {
   enabled: boolean
   consentState?: AnalyticsConsentState | string
   sourceChannel?: AnalyticsSourceChannel | string
+  sourceContext?: Partial<AnalyticsSourceContext>
   api?: AnalyticsApi
   baseURL?: string
   route?: AnalyticsRouteLike
+}
+
+export interface AnalyticsSourceContext {
+  referrer: string
+  referrerHost: string
+  utmSource: string
+  utmMedium: string
+  utmCampaign: string
+  trackingSourceSlug: string
+  sourceName: string
 }
 
 interface TrackOptions {
@@ -111,6 +123,7 @@ export function useAnalytics() {
       sessionId: session || createAnalyticsId('session'),
       consentState: normalizeAnalyticsConsentState(options.consentState),
       sourceChannel: normalizeAnalyticsSourceChannel(options.sourceChannel),
+      sourceContext: normalizeSourceContext(options.sourceContext),
       lastActivityAt: now,
     }
     persistVisitorId(visitorId, now)
@@ -138,8 +151,12 @@ export function useAnalytics() {
       routeName: normalizedRoute.routeName,
       path: normalizedRoute.path,
       pageTitle: sanitizeAnalyticsTitle(document.title),
-      referrer: '',
-      referrerHost: '',
+      referrer: state.value.sourceContext.referrer,
+      referrerHost: state.value.sourceContext.referrerHost,
+      utmSource: state.value.sourceContext.utmSource,
+      utmMedium: state.value.sourceContext.utmMedium,
+      utmCampaign: state.value.sourceContext.utmCampaign,
+      trackingSourceSlug: state.value.sourceContext.trackingSourceSlug,
       sourceChannel: normalizeAnalyticsSourceChannel(options.sourceChannel ?? state.value.sourceChannel),
       deviceType: detectAnalyticsDeviceType(),
       viewportWidth: getViewportBucket(),
@@ -147,6 +164,7 @@ export function useAnalytics() {
       entityType: options.entityType ?? normalizedRoute.entityType,
       entityId: options.entityId ?? normalizedRoute.entityId,
       props: sanitizeAnalyticsProps({
+        ...sourceContextProps(state.value.sourceContext),
         ...options.props,
         viewport_bucket: getViewportBucket(),
       }),
@@ -269,6 +287,7 @@ export function useAnalytics() {
       visitorId: state.value.visitorId,
       sessionId: state.value.sessionId,
       consentState: state.value.consentState,
+      sourceContext: state.value.sourceContext,
     }
   }
 
@@ -311,6 +330,7 @@ function createInitialAnalyticsState(): AnalyticsState {
     userId: null,
     consentState: 'limited',
     sourceChannel: 'unknown',
+    sourceContext: normalizeSourceContext(),
     queue: [],
     pageViewCount: 0,
     currentRoute: null,
@@ -319,6 +339,32 @@ function createInitialAnalyticsState(): AnalyticsState {
     currentMaxScrollDepth: 0,
     lastActivityAt: 0,
   }
+}
+
+function normalizeSourceContext(input: Partial<AnalyticsSourceContext> = {}): AnalyticsSourceContext {
+  return {
+    referrer: normalizeContextText(input.referrer, 240),
+    referrerHost: normalizeContextText(input.referrerHost, 120),
+    utmSource: normalizeContextText(input.utmSource, 120).toLowerCase(),
+    utmMedium: normalizeContextText(input.utmMedium, 120).toLowerCase(),
+    utmCampaign: normalizeContextText(input.utmCampaign, 120).toLowerCase(),
+    trackingSourceSlug: normalizeContextText(input.trackingSourceSlug, 120).toLowerCase(),
+    sourceName: normalizeContextText(input.sourceName, 120).toLowerCase(),
+  }
+}
+
+function sourceContextProps(context: AnalyticsSourceContext): Record<string, AnalyticsPropValue | undefined> {
+  return {
+    source_name: context.sourceName || context.utmSource || context.trackingSourceSlug || undefined,
+    tracking_source_slug: context.trackingSourceSlug || undefined,
+    utm_source: context.utmSource || undefined,
+    utm_medium: context.utmMedium || undefined,
+    utm_campaign: context.utmCampaign || undefined,
+  }
+}
+
+function normalizeContextText(value: unknown, maxLength: number) {
+  return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, maxLength)
 }
 
 function ensureFlushTimer(flushCallback: () => void) {

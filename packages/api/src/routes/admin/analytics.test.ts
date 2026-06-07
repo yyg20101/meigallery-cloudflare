@@ -29,6 +29,34 @@ function createDb() {
         },
         async all<T>() {
           calls.push(call)
+          if (sql.includes('FROM analytics_tracking_sources')) {
+            return {
+              results: [{
+                id: 'ats_1',
+                name: 'Telegram 六月互推',
+                channel: 'social',
+                slug: 'telegram-june',
+                target_path: '/',
+                utm_source: 'telegram-june',
+                utm_medium: 'social',
+                utm_campaign: 'telegram-june',
+                status: 'active',
+                note: '',
+                created_by: 1,
+                created_at: '2026-06-07T00:00:00.000Z',
+                updated_at: '2026-06-07T00:00:00.000Z',
+                visitor_count: 2,
+                session_count: 3,
+                page_view_count: 9,
+                gallery_detail_count: 4,
+                contact_click_count: 1,
+                register_count: 1,
+                membership_grant_count: 0,
+                active_seconds_total: 90,
+              }] as T[],
+              meta: { rows_read: 1, rows_written: 0, duration: 1 },
+            }
+          }
           if (sql.includes('FROM analytics_events')) {
             return {
               results: [{
@@ -237,6 +265,18 @@ describe('后台数据分析 API', () => {
 
     expect(res.status).toBe(400)
     expect(body).toMatchObject({ code: 'ANALYTICS_RANGE_INVALID' })
+  })
+
+  it('来源分析返回已创建推广来源的表现', async () => {
+    const res = await createApp('admin').request('/api/admin/analytics/sources?range=7d', {}, { DB: createDb() } as unknown as Bindings)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.trackingSources[0]).toMatchObject({
+      name: 'Telegram 六月互推',
+      trackingPath: '/?mg_source=telegram-june&utm_source=telegram-june&utm_medium=social&utm_campaign=telegram-june',
+      sessionCount: 3,
+    })
   })
 
   it('普通 admin 不能查看单 session 明细', async () => {
