@@ -230,6 +230,18 @@ export function normalizeBooleanSetting(value: unknown) {
   return value === true || value === 'true'
 }
 
+export function normalizeAnalyticsSampleRate(value: unknown) {
+  if (value === null || value === undefined || value === '') return 0.01
+  const rate = Number(value)
+  if (!Number.isFinite(rate) || rate < 0) return 0.01
+  return Math.min(rate, 0.05)
+}
+
+export function normalizeAnalyticsConsentMode(value: unknown) {
+  const mode = String(value ?? 'limited').trim()
+  return mode === 'granted' || mode === 'limited' || mode === 'denied' ? mode : 'limited'
+}
+
 export function normalizeSiteSettingDateTime(value: unknown) {
   if (typeof value !== 'string') return ''
   const trimmed = value.trim()

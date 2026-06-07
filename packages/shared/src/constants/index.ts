@@ -63,6 +63,51 @@ export const RATE_LIMITS = {
   ADMIN_API: { requests: 120, window: 60 },  // 120 次/分钟/session
   MEDIA_ACCESS: { requests: 30, window: 60 }, // 30 次/分钟/user
   EXTERNAL_IMPORT: { requests: 120, window: 60 }, // 120 次/分钟/IP
+  ANALYTICS_IP: { requests: 120, window: 60 }, // 120 次/分钟/IP
+  ANALYTICS_VISITOR: { requests: 120, window: 60 }, // 120 次/分钟/visitor
+  ANALYTICS_SESSION: { requests: 60, window: 60 }, // 60 次/分钟/session
+} as const
+
+/** 数据分析采集限制 */
+export const ANALYTICS_LIMITS = {
+  BATCH_EVENT_LIMIT: 20,
+  BATCH_BODY_LIMIT_BYTES: 16 * 1024,
+  QUEUE_MAX_EVENTS: 50,
+  FLUSH_INTERVAL_SECONDS: 10,
+  HEARTBEAT_SECONDS: 15,
+  PAGE_ACTIVE_SECONDS_CAP: 30 * 60,
+  CUSTOM_RANGE_MAX_DAYS: 90,
+} as const
+
+/** 数据分析采样与保留期 */
+export const ANALYTICS_RETENTION = {
+  DEFAULT_SAMPLE_RATE: 0.01,
+  MAX_SAMPLE_RATE: 0.05,
+  SAMPLED_RAW_DAYS: 30,
+  SUMMARY_DAYS: 90,
+  AGGREGATE_DAYS: 395,
+  EXPORT_EXPIRES_DAYS: 7,
+  VISITOR_TTL_DAYS: 180,
+  SESSION_IDLE_MINUTES: 30,
+} as const
+
+/** 数据分析 D1 成本预算 */
+export const ANALYTICS_D1_BUDGET = {
+  DEV_DAILY_ROWS_WRITTEN: 40_000,
+  DEV_DAILY_ROWS_READ: 80_000,
+  PRODUCTION_DAILY_ROWS_WRITTEN: 80_000,
+  REPORT_30D_ROWS_READ: 10_000,
+  REPORT_90D_ROWS_READ: 30_000,
+  QUEUE_TRIGGER_WRITE_BUDGET_RATIO: 0.8,
+  INGEST_P95_QUEUE_TRIGGER_MS: 300,
+  ADMIN_REPORT_P95_TRIGGER_MS: 2000,
+} as const
+
+/** 数据分析默认设置值 */
+export const ANALYTICS_DEFAULT_SETTINGS = {
+  ENABLED: false,
+  SAMPLE_RATE: ANALYTICS_RETENTION.DEFAULT_SAMPLE_RATE,
+  CONSENT_MODE: 'limited',
 } as const
 
 export { CONTACT_PLATFORMS, CONTACT_PLATFORM_KEYS, canGenerateContactLink, generateContactLink } from './contact-platforms'

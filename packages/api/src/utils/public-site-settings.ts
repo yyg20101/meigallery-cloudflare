@@ -1,4 +1,5 @@
 import { normalizeBooleanSetting, normalizeFacebookPixelId } from './facebook-pixel-settings'
+import { normalizeAnalyticsConsentMode, safeAnalyticsSampleRate } from './analytics-settings'
 import { isHomeAdActive, normalizeHomeAdScheduleValue } from './home-ad-schedule'
 import { normalizeHomeAdUrl, safeHomeAdText } from './home-ad-settings'
 import { safeInternalPathSetting, safePublicImageSettingUrl } from './public-setting-url'
@@ -55,7 +56,10 @@ export function sanitizePublicSiteSetting(key: string, value: unknown) {
     }
   }
 
-  if (key === 'facebook_pixel_enabled' || key === 'facebook_pixel_debug_enabled' || key === 'home_ad_enabled') {
+  if (key === 'analytics_sample_rate') return safeAnalyticsSampleRate(value)
+  if (key === 'analytics_consent_mode') return normalizeAnalyticsConsentMode(value)
+
+  if (key === 'facebook_pixel_enabled' || key === 'facebook_pixel_debug_enabled' || key === 'home_ad_enabled' || key === 'analytics_enabled') {
     return normalizeBooleanSetting(value)
   }
 

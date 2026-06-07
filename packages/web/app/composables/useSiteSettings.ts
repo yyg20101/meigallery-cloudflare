@@ -3,7 +3,7 @@
  * 从 /api/settings/public 获取站点配置
  * 数据全局缓存，避免重复请求
  */
-import { isScheduledSiteFeatureActive, normalizeBooleanSetting, normalizeFeaturedRegionSlugs, normalizeHomeAdImageUrl, normalizeHomeAdUrl, normalizeHomeHotTagLimit, normalizeInternalPath, normalizePublicImageSettingUrl, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId, safeHomeAdText, safeRulesMarkdown, safeSiteText } from '~/utils/siteSettingsSecurity'
+import { isScheduledSiteFeatureActive, normalizeAnalyticsConsentMode, normalizeAnalyticsSampleRate, normalizeBooleanSetting, normalizeFeaturedRegionSlugs, normalizeHomeAdImageUrl, normalizeHomeAdUrl, normalizeHomeHotTagLimit, normalizeInternalPath, normalizePublicImageSettingUrl, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId, safeHomeAdText, safeRulesMarkdown, safeSiteText } from '~/utils/siteSettingsSecurity'
 
 export function useSiteSettings() {
   const { api } = useApi()
@@ -23,6 +23,9 @@ export function useSiteSettings() {
     facebook_pixel_enabled?: string | boolean
     facebook_pixel_id?: string
     facebook_pixel_debug_enabled?: string | boolean
+    analytics_enabled?: string | boolean
+    analytics_sample_rate?: string | number
+    analytics_consent_mode?: string
     home_hero_title?: string
     home_hero_subtitle?: string
     home_featured_region_slugs?: string
@@ -148,6 +151,15 @@ export function useSiteSettings() {
   const facebookPixelDebugEnabled = computed(() => {
     return normalizeBooleanSetting(settings.value.facebook_pixel_debug_enabled)
   })
+  const analyticsEnabled = computed(() => {
+    return normalizeBooleanSetting(settings.value.analytics_enabled)
+  })
+  const analyticsSampleRate = computed(() => {
+    return normalizeAnalyticsSampleRate(settings.value.analytics_sample_rate)
+  })
+  const analyticsConsentMode = computed(() => {
+    return normalizeAnalyticsConsentMode(settings.value.analytics_consent_mode)
+  })
   const rulesEntryEnabled = computed(() => {
     return normalizeBooleanSetting(settings.value.rules_entry_enabled)
   })
@@ -191,6 +203,9 @@ export function useSiteSettings() {
     facebookPixelEnabled,
     facebookPixelId,
     facebookPixelDebugEnabled,
+    analyticsEnabled,
+    analyticsSampleRate,
+    analyticsConsentMode,
     rulesEntryEnabled,
     rulesEntryTitle,
     rulesEntrySummary,

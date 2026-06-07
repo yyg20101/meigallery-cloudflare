@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { Bindings, Variables } from '../../index'
 import { requireOwner } from '../../middleware/auth'
+import { normalizeAnalyticsConsentMode, normalizeAnalyticsSampleRate } from '../../utils/analytics-settings'
 import { normalizeBooleanSetting, normalizeFacebookPixelId } from '../../utils/facebook-pixel-settings'
 import { generateId } from '../../utils/db'
 import { normalizeHomeAdScheduleRange } from '../../utils/home-ad-schedule'
@@ -64,6 +65,19 @@ adminSettingsRoutes.patch('/', requireOwner, async (c) => {
   }
   if ('facebook_pixel_debug_enabled' in body) {
     body.facebook_pixel_debug_enabled = normalizeBooleanSetting(body.facebook_pixel_debug_enabled)
+  }
+  if ('analytics_enabled' in body) {
+    body.analytics_enabled = normalizeBooleanSetting(body.analytics_enabled)
+  }
+  if ('analytics_sample_rate' in body) {
+    try {
+      body.analytics_sample_rate = normalizeAnalyticsSampleRate(body.analytics_sample_rate)
+    } catch (error) {
+      return c.json({ statusCode: 400, message: error instanceof Error ? error.message : '分析采样率无效' }, 400)
+    }
+  }
+  if ('analytics_consent_mode' in body) {
+    body.analytics_consent_mode = normalizeAnalyticsConsentMode(body.analytics_consent_mode)
   }
   if ('home_ad_enabled' in body) {
     body.home_ad_enabled = normalizeBooleanSetting(body.home_ad_enabled)

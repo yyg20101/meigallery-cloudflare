@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getHomeAdTextPreviewWarnings, isScheduledSiteFeatureActive, normalizeBooleanSetting, normalizeFeaturedRegionSlugs, normalizeHomeAdText, normalizeHomeAdUrl, normalizeHomeHotTagLimit, normalizeInternalPath, normalizePublicImageSettingUrl, normalizePublicSettingUrl, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId, safeRulesMarkdown, safeSiteText } from './siteSettingsSecurity'
+import { getHomeAdTextPreviewWarnings, isScheduledSiteFeatureActive, normalizeAnalyticsConsentMode, normalizeAnalyticsSampleRate, normalizeBooleanSetting, normalizeFeaturedRegionSlugs, normalizeHomeAdText, normalizeHomeAdUrl, normalizeHomeHotTagLimit, normalizeInternalPath, normalizePublicImageSettingUrl, normalizePublicSettingUrl, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId, safeRulesMarkdown, safeSiteText } from './siteSettingsSecurity'
 
 describe('siteSettingsSecurity', () => {
   it('公开 URL 只允许站内路径和 https 链接', () => {
@@ -168,6 +168,17 @@ describe('siteSettingsSecurity', () => {
     expect(normalizeBooleanSetting(true)).toBe(true)
     expect(normalizeBooleanSetting('true')).toBe(true)
     expect(normalizeBooleanSetting('TRUE')).toBe(false)
+  })
+
+  it('归一化数据分析设置', () => {
+    expect(normalizeAnalyticsSampleRate('')).toBe(0.01)
+    expect(normalizeAnalyticsSampleRate('0.03')).toBe(0.03)
+    expect(normalizeAnalyticsSampleRate('0.9')).toBe(0.05)
+    expect(normalizeAnalyticsSampleRate('bad')).toBe(0.01)
+    expect(normalizeAnalyticsConsentMode('granted')).toBe('granted')
+    expect(normalizeAnalyticsConsentMode('limited')).toBe('limited')
+    expect(normalizeAnalyticsConsentMode('denied')).toBe('denied')
+    expect(normalizeAnalyticsConsentMode('bad')).toBe('limited')
   })
 
   it('归一化 SEO 和前台短文案并拒绝异常文本', () => {

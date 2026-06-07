@@ -48,14 +48,14 @@ tags: [feature, analytics, cloudflare, d1, prd, cost]
 
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
-| TASK-001 | 在 `packages/shared/src/types/index.ts` 新增 `AnalyticsEventName`、`AnalyticsEntityType`、`AnalyticsSourceChannel`、`AnalyticsEventPayload`、`AnalyticsBatchResponse`、`InviteCodeStatus` 和 `AnalyticsRangeQuery` 类型，并保持 Web 可消费类型不依赖 Worker binding。 | | |
-| TASK-002 | 在 `packages/shared/src/constants/index.ts` 新增分析常量：`ANALYTICS_BATCH_EVENT_LIMIT = 20`、`ANALYTICS_BATCH_BODY_LIMIT_BYTES = 16384`、`ANALYTICS_DEFAULT_SAMPLE_RATE = 0.01`、`ANALYTICS_MAX_SAMPLE_RATE = 0.05`、`ANALYTICS_SESSION_IDLE_MINUTES = 30`、`ANALYTICS_VISITOR_TTL_DAYS = 180`。 | | |
-| TASK-003 | 在 `packages/api/src/utils/analytics-events.ts` 定义事件名白名单、公共字段白名单、每类事件的 props schema、字段最大长度和允许的 `entity_type`。 | | |
-| TASK-004 | 在 `packages/api/src/utils/analytics-url.ts` 实现 `sanitizeAnalyticsPath`、`sanitizeReferrer`、`deriveSourceAttribution`、`stripSensitiveParams` 和 `isSensitiveAnalyticsUrl`，复用现有 URL 安全工具的凭证参数、私网地址和反斜杠歧义拦截策略。 | | |
-| TASK-005 | 在 `packages/api/src/utils/analytics-time.ts` 实现 `toOperationDateShanghai`、`clampActiveSeconds`、`parseAnalyticsRange` 和 7/30/90 天范围校验。 | | |
-| TASK-006 | 在 `packages/api/src/utils/analytics-cost.ts` 实现 `readD1UsageMeta` 和 `assertD1Budget`，从 D1 `result.meta.rows_read`、`result.meta.rows_written` 和 `duration` 读取预算数据供测试和健康看板使用。 | | |
-| TASK-007 | 在 `packages/api/src/utils/public-site-settings.ts` 和 `packages/web/app/composables/useSiteSettings.ts` 增加只读公开字段 `analytics_enabled`、`analytics_sample_rate` 和 `analytics_consent_mode`，默认关闭采集。 | | |
-| TASK-008 | 为 `analytics-events.ts`、`analytics-url.ts`、`analytics-time.ts` 和公开设置解析新增单元测试，覆盖敏感 URL、凭证参数、route 清洗、时长截断和采样率上限。 | | |
+| TASK-001 | 在 `packages/shared/src/types/index.ts` 新增 `AnalyticsEventName`、`AnalyticsEntityType`、`AnalyticsSourceChannel`、`AnalyticsEventPayload`、`AnalyticsBatchResponse`、`InviteCodeStatus` 和 `AnalyticsRangeQuery` 类型，并保持 Web 可消费类型不依赖 Worker binding。 | ✅ | 2026-06-07 |
+| TASK-002 | 在 `packages/shared/src/constants/index.ts` 新增分析常量：`ANALYTICS_BATCH_EVENT_LIMIT = 20`、`ANALYTICS_BATCH_BODY_LIMIT_BYTES = 16384`、`ANALYTICS_DEFAULT_SAMPLE_RATE = 0.01`、`ANALYTICS_MAX_SAMPLE_RATE = 0.05`、`ANALYTICS_SESSION_IDLE_MINUTES = 30`、`ANALYTICS_VISITOR_TTL_DAYS = 180`。 | ✅ | 2026-06-07 |
+| TASK-003 | 在 `packages/api/src/utils/analytics-events.ts` 定义事件名白名单、公共字段白名单、每类事件的 props schema、字段最大长度和允许的 `entity_type`。 | ✅ | 2026-06-07 |
+| TASK-004 | 在 `packages/api/src/utils/analytics-url.ts` 实现 `sanitizeAnalyticsPath`、`sanitizeReferrer`、`deriveSourceAttribution`、`stripSensitiveParams` 和 `isSensitiveAnalyticsUrl`，复用现有 URL 安全工具的凭证参数、私网地址和反斜杠歧义拦截策略。 | ✅ | 2026-06-07 |
+| TASK-005 | 在 `packages/api/src/utils/analytics-time.ts` 实现 `toOperationDateShanghai`、`clampActiveSeconds`、`parseAnalyticsRange` 和 7/30/90 天范围校验。 | ✅ | 2026-06-07 |
+| TASK-006 | 在 `packages/api/src/utils/analytics-cost.ts` 实现 `readD1UsageMeta` 和 `assertD1Budget`，从 D1 `result.meta.rows_read`、`result.meta.rows_written` 和 `duration` 读取预算数据供测试和健康看板使用。 | ✅ | 2026-06-07 |
+| TASK-007 | 在 `packages/api/src/utils/public-site-settings.ts` 和 `packages/web/app/composables/useSiteSettings.ts` 增加只读公开字段 `analytics_enabled`、`analytics_sample_rate` 和 `analytics_consent_mode`，默认关闭采集。 | ✅ | 2026-06-07 |
+| TASK-008 | 为 `analytics-events.ts`、`analytics-url.ts`、`analytics-time.ts` 和公开设置解析新增单元测试，覆盖敏感 URL、凭证参数、route 清洗、时长截断和采样率上限。 | ✅ | 2026-06-07 |
 
 ### Implementation Phase 1
 

@@ -42,6 +42,89 @@ export type TagType =
   | 'scene'
   | 'content_type'
 
+/** 分析来源渠道 */
+export type AnalyticsSourceChannel =
+  | 'direct'
+  | 'search'
+  | 'social'
+  | 'referral'
+  | 'invite'
+  | 'ad'
+  | 'internal'
+  | 'unknown'
+
+/** 分析实体类型 */
+export type AnalyticsEntityType =
+  | 'gallery'
+  | 'tag'
+  | 'ad'
+  | 'contact'
+  | 'invite'
+  | 'auth'
+  | 'media'
+  | 'case'
+  | 'page'
+  | 'system'
+
+/** 分析授权/采集状态 */
+export type AnalyticsConsentState = 'granted' | 'limited' | 'denied'
+
+/** 分析设备类型 */
+export type AnalyticsDeviceType = 'desktop' | 'tablet' | 'mobile' | 'unknown'
+
+/** 分析事件名称 */
+export type AnalyticsEventName =
+  | 'session_start'
+  | 'session_end'
+  | 'page_view'
+  | 'page_leave'
+  | 'engagement_ping'
+  | 'scroll_depth'
+  | 'source_detected'
+  | 'home_ad_impression'
+  | 'home_ad_click'
+  | 'outbound_link_click'
+  | 'invite_landed'
+  | 'invite_code_checked'
+  | 'register_start'
+  | 'register_submit'
+  | 'register_success'
+  | 'register_failed'
+  | 'membership_granted_conversion'
+  | 'gallery_card_impression'
+  | 'gallery_card_click'
+  | 'gallery_detail_view'
+  | 'media_thumbnail_impression'
+  | 'media_viewer_open'
+  | 'media_access_request'
+  | 'media_access_granted'
+  | 'media_access_denied'
+  | 'gallery_like_add'
+  | 'gallery_like_remove'
+  | 'search_submit'
+  | 'search_results_view'
+  | 'search_no_results'
+  | 'filter_selected'
+  | 'filter_removed'
+  | 'sort_changed'
+  | 'load_more'
+  | 'contact_panel_open'
+  | 'contact_method_click'
+  | 'rules_panel_open'
+  | 'rules_page_click'
+  | 'membership_cta_click'
+  | 'login_start'
+  | 'login_submit'
+  | 'login_success'
+  | 'login_failed'
+  | 'logout_success'
+
+/** 邀请码状态 */
+export type InviteCodeStatus = 'active' | 'disabled' | 'expired'
+
+/** 邀请码公开校验失败原因 */
+export type InviteCodeFailureReason = 'NOT_FOUND' | 'DISABLED' | 'EXPIRED' | 'USAGE_LIMIT_REACHED'
+
 // ============================================================
 // API 响应类型（前后端共用）
 // ============================================================
@@ -112,5 +195,72 @@ export interface ApiError {
   message: string
   detail?: string
 }
+
+/** 分析事件属性值 */
+export type AnalyticsPropValue = string | number | boolean | null | string[]
+
+/** 前端批量上报的单个分析事件 */
+export interface AnalyticsEventPayload {
+  eventId: string
+  eventName: AnalyticsEventName
+  occurredAt: string
+  routeName: string
+  path: string
+  pageTitle?: string
+  referrer?: string
+  referrerHost?: string
+  sourceChannel?: AnalyticsSourceChannel
+  deviceType?: AnalyticsDeviceType
+  viewportWidth?: number
+  consentState?: AnalyticsConsentState
+  entityType?: AnalyticsEntityType
+  entityId?: string
+  props?: Record<string, AnalyticsPropValue>
+  value?: number
+}
+
+/** 分析批量上报请求 */
+export interface AnalyticsBatchRequest {
+  visitorId: string
+  sessionId: string
+  events: AnalyticsEventPayload[]
+}
+
+/** 分析批量上报响应 */
+export interface AnalyticsBatchResponse {
+  accepted: number
+  rejected: number
+  duplicate: number
+  disabled?: boolean
+  errors?: Array<{
+    eventId: string | null
+    code: string
+    message: string
+  }>
+}
+
+/** 后台分析日期范围查询 */
+export interface AnalyticsRangeQuery {
+  from?: string
+  to?: string
+  range?: '7d' | '30d' | '90d'
+  sourceChannel?: AnalyticsSourceChannel | 'all'
+  inviteCodeId?: string
+  deviceType?: AnalyticsDeviceType | 'all'
+}
+
+/** 邀请码公开状态响应 */
+export type InviteCodeStatusResponse =
+  | {
+      valid: true
+      inviteCodeId: string
+      name: string
+      channel: string
+      expiresAt: string | null
+    }
+  | {
+      valid: false
+      reason: InviteCodeFailureReason
+    }
 
 export type { ContactMethod, ContactMethodAdmin } from './contact'
