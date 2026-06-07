@@ -183,4 +183,65 @@ test.describe('核心页面 smoke', () => {
     await expect(page.locator('meta[property="og:description"]')).toHaveAttribute('content', '运营新 OG 描述')
     await expect(page).not.toHaveTitle('MeiGallery - 精选写真图库')
   })
+
+  test('一方数据分析事件覆盖搜索、详情、联系和邀请注册链路', async ({ request, page }) => {
+    await page.goto('/')
+    await expect(page.getByRole('heading', { name: /精选写真/ }).first()).toBeVisible()
+
+    await page.goto('/search')
+    await expect(page.getByRole('heading', { name: /搜索写真/ })).toBeVisible()
+    await page.getByRole('link', { name: /夏日授权写真/ }).first().click()
+    await expect(page.getByRole('heading', { name: '夏日授权写真' })).toBeVisible()
+
+    await page.getByRole('button', { name: '打开联系方式' }).click()
+    await expect(page.getByRole('heading', { name: '站长在线回复' })).toBeVisible()
+    await page.getByRole('button', { name: /Telegram/ }).click()
+    await expect.poll(async () => {
+      const response = await request.get(`${apiURL}/api/test/analytics-events`)
+      const body = await response.json()
+      return body.events.some((event: { eventName?: string }) => event.eventName === 'contact_method_click')
+    }, { timeout: 8_000 }).toBe(true)
+
+    await request.patch(`${apiURL}/api/test/auth`, { data: { authenticated: false } })
+    await page.goto('/register?invite=TESTCODE')
+    await expect(page.getByText('已识别邀请码：Playwright 邀请')).toBeVisible()
+    await page.getByPlaceholder('英文字母和数字，3-20 位').fill('inviteuser')
+    await page.getByPlaceholder('your@email.com').fill('inviteuser@example.test')
+    await page.getByPlaceholder('至少 8 位').fill('Password123')
+    await page.getByPlaceholder('再次输入密码').fill('Password123')
+    await page.getByRole('button', { name: '注册' }).click()
+    await expect(page).toHaveURL('/')
+
+    await expect.poll(async () => {
+      const response = await request.get(`${apiURL}/api/test/analytics-events`)
+      const body = await response.json()
+      return body.registrations.length
+    }, { timeout: 8_000 }).toBe(1)
+
+    const response = await request.get(`${apiURL}/api/test/analytics-events`)
+    const payload = await response.json()
+    expect(payload.registrations[0]).toMatchObject({ inviteCode: 'TESTCODE', sourceChannel: 'invite' })
+
+    const eventNames = payload.events.map((event: { eventName?: string }) => event.eventName)
+    expect(eventNames).toContain('page_view')
+    expect(eventNames).toContain('gallery_detail_view')
+    expect(eventNames).toContain('contact_panel_open')
+    expect(eventNames).toContain('contact_method_click')
+    expect(eventNames).toContain('invite_landed')
+    expect(eventNames).toContain('invite_code_checked')
+    expect(eventNames).toContain('register_success')
+    expect(payload.events.some((event: { eventName?: string; props?: { method_type?: string; action_type?: string } }) =>
+      event.eventName === 'contact_method_click' &&
+      event.props?.method_type === 'telegram' &&
+      ['open_link', 'copy'].includes(event.props?.action_type || ''),
+    )).toBe(true)
+
+    const serialized = JSON.stringify(payload)
+    expect(serialized).not.toContain('meigallery_admin')
+    expect(serialized).not.toContain('token=')
+    expect(serialized).not.toContain('api_key=')
+    expect(serialized).not.toContain('access_token=')
+    expect(serialized).not.toContain('originals/')
+    expect(serialized).not.toContain('imports/')
+  })
 })

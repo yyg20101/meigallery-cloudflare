@@ -28,6 +28,7 @@ function createDb() {
           return this
         },
         async all<T>() {
+          calls.push(call)
           if (sql.includes('FROM analytics_events')) {
             return {
               results: [{
@@ -82,6 +83,7 @@ function createDb() {
           return { results: [] as T[], meta: { rows_read: 1, rows_written: 0, duration: 1 } }
         },
         async first<T>() {
+          calls.push(call)
           if (sql.includes('FROM analytics_export_jobs')) {
             return {
               id: 'aexp_1',
@@ -155,6 +157,56 @@ function createDb() {
   return db
 }
 
+function createPerformanceDb() {
+  const calls: DbCall[] = []
+  const db = {
+    calls,
+    prepare(sql: string) {
+      const call: DbCall = { sql, params: [] }
+      return {
+        bind(...params: unknown[]) {
+          call.params = params
+          return this
+        },
+        async all<T>() {
+          calls.push(call)
+          return {
+            results: [] as T[],
+            meta: performanceMeta(sql),
+          }
+        },
+        async first<T>() {
+          calls.push(call)
+          return {
+            accepted_count: 0,
+            rejected_count: 0,
+            duplicate_count: 0,
+            sensitive_blocked_count: 0,
+            estimated_rows_read: 0,
+            estimated_rows_written: 0,
+            last_ingested_at: null,
+          } as T
+        },
+        async run() {
+          calls.push(call)
+          return { meta: { changes: 1, rows_written: 1, rows_read: 0, duration: 1 } }
+        },
+      }
+    },
+  }
+  return db
+}
+
+function performanceMeta(sql: string) {
+  if (sql.includes('analytics_daily_pages')) return { rows_read: 3_000, rows_written: 0, duration: 120 }
+  if (sql.includes('analytics_path_edges')) return { rows_read: 2_500, rows_written: 0, duration: 110 }
+  if (sql.includes('analytics_click_daily')) return { rows_read: 1_500, rows_written: 0, duration: 90 }
+  if (sql.includes('analytics_invite_daily')) return { rows_read: 500, rows_written: 0, duration: 60 }
+  if (sql.includes('analytics_ingest_health_daily')) return { rows_read: 30, rows_written: 0, duration: 20 }
+  if (sql.includes('analytics_daily_sources')) return { rows_read: 900, rows_written: 0, duration: 80 }
+  return { rows_read: 100, rows_written: 0, duration: 50 }
+}
+
 describe('后台数据分析 API', () => {
   it('父级后台路由要求 admin+ 才能访问分析总览', async () => {
     const res = await createApp(null).request('/api/admin/analytics/overview', {}, { DB: createDb() } as unknown as Bindings)
@@ -223,5 +275,32 @@ describe('后台数据分析 API', () => {
     expect(body.data.status).toBe('completed')
     expect(r2Put).toHaveBeenCalledWith(expect.stringMatching(/^analytics\/exports\/aexp_/), expect.stringContaining('source_channel'), expect.any(Object))
     expect(db.calls.some(call => call.sql.includes('INSERT INTO admin_audit_logs') && call.params[2] === 'analytics.export.create')).toBe(true)
+  })
+
+  it('100,000 事件规模聚合 fixture 下 30 天报表保持预算内', async () => {
+    const db = createPerformanceDb()
+    const endpoints = [
+      '/api/admin/analytics/overview?range=30d',
+      '/api/admin/analytics/sources?range=30d',
+      '/api/admin/analytics/pages?range=30d',
+      '/api/admin/analytics/clicks?range=30d',
+      '/api/admin/analytics/durations?range=30d',
+      '/api/admin/analytics/invites?range=30d',
+    ]
+
+    const durations: number[] = []
+    for (const endpoint of endpoints) {
+      const res = await createApp('admin').request(endpoint, {}, { DB: db } as unknown as Bindings)
+      const body = await res.json()
+      expect(res.status).toBe(200)
+      expect(body.usage.rowsRead).toBeLessThanOrEqual(10_000)
+      expect(body.usage.durationMs).toBeLessThanOrEqual(1_000)
+      durations.push(body.usage.durationMs)
+    }
+
+    const sorted = durations.toSorted((a, b) => a - b)
+    const p95 = sorted[Math.ceil(sorted.length * 0.95) - 1] ?? 0
+    expect(p95).toBeLessThanOrEqual(1_000)
+    expect(db.calls.some(call => call.sql.includes('analytics_events'))).toBe(false)
   })
 })

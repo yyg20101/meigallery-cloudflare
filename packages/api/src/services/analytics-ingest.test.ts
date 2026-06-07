@@ -234,4 +234,63 @@ describe('analytics-ingest', () => {
       ],
     })
   })
+
+  it('10,000 sessions / 天基线下 rows written 不超过 80,000', async () => {
+    const sessionCount = 10_000
+    const db = createDb({ sampleRate: 0 })
+    let rowsWritten = 0
+
+    for (let index = 0; index < sessionCount; index += 1) {
+      const sessionId = `session_perf_${index}`
+      const visitorId = `visitor_perf_${index}`
+      const result = await ingestAnalyticsBatch(envFor(db), {
+        body: {
+          visitorId,
+          sessionId,
+          events: [
+            perfEvent(index, 0, 'session_start', '/', 'home'),
+            perfEvent(index, 1, 'page_view', '/', 'home'),
+            perfEvent(index, 2, 'page_view', '/search', '/search'),
+            perfEvent(index, 3, 'page_view', '/gallery/demo', '/gallery/:slug', { entityType: 'gallery', entityId: 'gallery-1' }),
+            perfEvent(index, 4, 'membership_cta_click', '/gallery/demo', '/gallery/:slug', {
+              entityType: 'gallery',
+              entityId: 'gallery-1',
+              props: { element_id: 'membership_cta', element_type: 'button', location: 'gallery_detail', target_type: 'contact', target_id: 'floating_contact_panel' },
+            }),
+            perfEvent(index, 5, 'membership_cta_click', '/gallery/demo', '/gallery/:slug', {
+              entityType: 'gallery',
+              entityId: 'gallery-1',
+              props: { element_id: 'membership_cta', element_type: 'button', location: 'gallery_detail', target_type: 'contact', target_id: 'floating_contact_panel' },
+            }),
+          ],
+        },
+        bodySizeBytes: 2048,
+        userId: null,
+        currentHost: '616618.xyz',
+      })
+      rowsWritten += result.usage.rowsWritten
+    }
+
+    expect(rowsWritten).toBeLessThanOrEqual(80_000)
+  }, 20_000)
 })
+
+function perfEvent(
+  sessionIndex: number,
+  eventIndex: number,
+  eventName: string,
+  path: string,
+  routeName: string,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    eventId: `event_perf_${sessionIndex}_${eventIndex}`,
+    eventName,
+    occurredAt: `2026-06-07T10:${String(Math.floor(eventIndex / 2)).padStart(2, '0')}:00.000Z`,
+    routeName,
+    path,
+    pageTitle: '性能成本基线',
+    props: eventIndex === 1 ? { is_landing: true } : {},
+    ...overrides,
+  }
+}

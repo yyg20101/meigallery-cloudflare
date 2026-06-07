@@ -72,6 +72,11 @@ interface NormalizedAnalyticsEvent {
   sampled: boolean
 }
 
+interface AcceptedAnalyticsEvent {
+  event: NormalizedAnalyticsEvent
+  storedRaw: boolean
+}
+
 export class AnalyticsIngestError extends Error {
   constructor(
     public status: 400 | 413 | 415,
@@ -136,6 +141,7 @@ export async function ingestAnalyticsBatch(
     usage: emptyUsage(),
   }
   let sampledCount = 0
+  const acceptedEvents: AcceptedAnalyticsEvent[] = []
 
   for (const rawEvent of batch.events) {
     try {
@@ -148,7 +154,7 @@ export async function ingestAnalyticsBatch(
         continue
       }
 
-      await persistAcceptedEvent(env.DB, batch, event, context, storedRaw, response)
+      acceptedEvents.push({ event, storedRaw })
       if (event.sampled) sampledCount += 1
       response.accepted += 1
     } catch (error) {
@@ -156,6 +162,10 @@ export async function ingestAnalyticsBatch(
       const normalized = normalizeEventError(error, readOptionalString(rawEvent, 'eventId', 'event_id'))
       response.errors?.push(normalized)
     }
+  }
+
+  if (acceptedEvents.length > 0) {
+    await persistAcceptedEvents(env.DB, batch, acceptedEvents, context, response)
   }
 
   await writeIngestHealth(env.DB, {
@@ -483,6 +493,316 @@ async function persistAcceptedEvent(
     ])
     if ((result.meta?.changes ?? 1) === 0) response.duplicate += 1
   }
+}
+
+async function persistAcceptedEvents(
+  db: AnalyticsDb,
+  batch: NormalizedAnalyticsBatch,
+  accepted: AcceptedAnalyticsEvent[],
+  context: AnalyticsIngestContext,
+  response: AnalyticsBatchResponse & { usage: D1Usage },
+) {
+  const events = accepted.map(item => item.event)
+  const first = events[0]
+  const last = events[events.length - 1]
+  if (!first || !last) return
+
+  await runAndTrack(db, response, `
+    INSERT INTO analytics_visitors (
+      id, first_seen_at, last_seen_at, first_source_channel, first_source_name,
+      first_landing_path, first_invite_code_id, user_id, consent_state, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(id) DO UPDATE SET
+      last_seen_at = excluded.last_seen_at,
+      user_id = COALESCE(excluded.user_id, analytics_visitors.user_id),
+      consent_state = excluded.consent_state,
+      updated_at = datetime('now')
+  `, [
+    batch.visitorId,
+    first.occurredAt,
+    last.occurredAt,
+    first.sourceChannel,
+    first.sourceName,
+    first.path,
+    stringProp(first.props.invite_code_id),
+    context.userId,
+    last.consentState,
+  ])
+
+  const endedAt = lastSessionEndedAt(events)
+  const exitPath = endedAt ? last.path : ''
+  const activeSeconds = sumBy(events, event => event.activeSeconds)
+  const pageViewCount = events.filter(event => event.eventName === 'page_view').length
+
+  await runAndTrack(db, response, `
+    INSERT INTO analytics_sessions (
+      id, visitor_id, user_id, started_at, ended_at, entry_path, exit_path,
+      source_channel, source_name, referrer_host, invite_code_id, device_type,
+      country, active_seconds, page_view_count, event_count, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(id) DO UPDATE SET
+      user_id = COALESCE(excluded.user_id, analytics_sessions.user_id),
+      ended_at = COALESCE(excluded.ended_at, analytics_sessions.ended_at),
+      exit_path = CASE WHEN excluded.exit_path != '' THEN excluded.exit_path ELSE analytics_sessions.exit_path END,
+      active_seconds = analytics_sessions.active_seconds + excluded.active_seconds,
+      page_view_count = analytics_sessions.page_view_count + excluded.page_view_count,
+      event_count = analytics_sessions.event_count + excluded.event_count,
+      updated_at = datetime('now')
+  `, [
+    batch.sessionId,
+    batch.visitorId,
+    context.userId,
+    first.occurredAt,
+    endedAt,
+    first.path,
+    exitPath,
+    first.sourceChannel,
+    first.sourceName,
+    first.referrerHost,
+    stringProp(first.props.invite_code_id),
+    first.deviceType,
+    context.country || '',
+    activeSeconds,
+    pageViewCount,
+    events.length,
+  ])
+
+  await writeSessionSummaryBatch(db, batch, events, context, response)
+  await writePageSummaryBatch(db, batch, events, context, response)
+  await writeClickDailyBatch(db, events, response)
+  await writeRawEventsBatch(db, batch, accepted, context, response)
+}
+
+async function writeSessionSummaryBatch(
+  db: AnalyticsDb,
+  batch: NormalizedAnalyticsBatch,
+  events: NormalizedAnalyticsEvent[],
+  context: AnalyticsIngestContext,
+  response: AnalyticsBatchResponse & { usage: D1Usage },
+) {
+  const first = events[0]
+  const last = events[events.length - 1]
+  if (!first || !last) return
+
+  const endedAt = lastSessionEndedAt(events)
+  await runAndTrack(db, response, `
+    INSERT INTO analytics_session_summaries (
+      session_id, date, visitor_id, user_id, started_at, ended_at, source_channel,
+      source_name, invite_code_id, device_type, country, entry_path, exit_path,
+      page_view_count, active_seconds, click_count, contact_click_count,
+      register_success_count, membership_grant_count, is_bounce, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(session_id) DO UPDATE SET
+      user_id = COALESCE(excluded.user_id, analytics_session_summaries.user_id),
+      ended_at = COALESCE(excluded.ended_at, analytics_session_summaries.ended_at),
+      exit_path = CASE WHEN excluded.exit_path != '' THEN excluded.exit_path ELSE analytics_session_summaries.exit_path END,
+      page_view_count = analytics_session_summaries.page_view_count + excluded.page_view_count,
+      active_seconds = analytics_session_summaries.active_seconds + excluded.active_seconds,
+      click_count = analytics_session_summaries.click_count + excluded.click_count,
+      contact_click_count = analytics_session_summaries.contact_click_count + excluded.contact_click_count,
+      register_success_count = analytics_session_summaries.register_success_count + excluded.register_success_count,
+      membership_grant_count = analytics_session_summaries.membership_grant_count + excluded.membership_grant_count,
+      is_bounce = MAX(analytics_session_summaries.is_bounce, excluded.is_bounce),
+      updated_at = datetime('now')
+  `, [
+    batch.sessionId,
+    first.date,
+    batch.visitorId,
+    context.userId,
+    first.occurredAt,
+    endedAt,
+    first.sourceChannel,
+    first.sourceName,
+    stringProp(first.props.invite_code_id) || '',
+    first.deviceType,
+    context.country || '',
+    first.path,
+    endedAt ? last.path : '',
+    events.filter(event => event.eventName === 'page_view').length,
+    sumBy(events, event => event.activeSeconds),
+    events.filter(event => CLICK_EVENTS.has(event.eventName)).length,
+    events.filter(event => CONTACT_EVENTS.has(event.eventName)).length,
+    events.filter(event => event.eventName === 'register_success').length,
+    events.filter(event => event.eventName === 'membership_granted_conversion').length,
+    events.some(event => event.isBounce) ? 1 : 0,
+  ])
+}
+
+async function writePageSummaryBatch(
+  db: AnalyticsDb,
+  batch: NormalizedAnalyticsBatch,
+  events: NormalizedAnalyticsEvent[],
+  context: AnalyticsIngestContext,
+  response: AnalyticsBatchResponse & { usage: D1Usage },
+) {
+  const groups = new Map<string, NormalizedAnalyticsEvent[]>()
+  for (const event of events) {
+    if (event.eventName !== 'page_view' && event.eventName !== 'page_leave' && event.eventName !== 'scroll_depth') continue
+    const key = [event.routeName, event.path, event.entityType, event.entityId].join('\u001f')
+    const group = groups.get(key) ?? []
+    group.push(event)
+    groups.set(key, group)
+  }
+
+  for (const group of groups.values()) {
+    const first = group[0]
+    const last = group[group.length - 1]
+    if (!first || !last) continue
+
+    await runAndTrack(db, response, `
+      INSERT INTO analytics_page_summaries (
+        id, date, visitor_id, session_id, user_id, route_name, path, page_title,
+        entity_type, entity_id, first_viewed_at, last_left_at, page_view_count,
+        active_seconds, max_scroll_depth, is_entry, is_exit, is_bounce, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(session_id, route_name, path, entity_type, entity_id) DO UPDATE SET
+        user_id = COALESCE(excluded.user_id, analytics_page_summaries.user_id),
+        page_title = CASE WHEN excluded.page_title != '' THEN excluded.page_title ELSE analytics_page_summaries.page_title END,
+        last_left_at = COALESCE(excluded.last_left_at, analytics_page_summaries.last_left_at),
+        page_view_count = analytics_page_summaries.page_view_count + excluded.page_view_count,
+        active_seconds = analytics_page_summaries.active_seconds + excluded.active_seconds,
+        max_scroll_depth = MAX(analytics_page_summaries.max_scroll_depth, excluded.max_scroll_depth),
+        is_entry = MAX(analytics_page_summaries.is_entry, excluded.is_entry),
+        is_exit = MAX(analytics_page_summaries.is_exit, excluded.is_exit),
+        is_bounce = MAX(analytics_page_summaries.is_bounce, excluded.is_bounce),
+        updated_at = datetime('now')
+    `, [
+      `aps_${simpleHash(`${batch.sessionId}:${first.routeName}:${first.path}:${first.entityType}:${first.entityId}`)}`,
+      first.date,
+      batch.visitorId,
+      batch.sessionId,
+      context.userId,
+      first.routeName,
+      first.path,
+      last.pageTitle || first.pageTitle,
+      first.entityType,
+      first.entityId,
+      first.occurredAt,
+      lastPageLeftAt(group),
+      group.filter(event => event.eventName === 'page_view').length,
+      sumBy(group, event => event.activeSeconds),
+      maxBy(group, event => event.maxScrollDepth),
+      group.some(event => event.isEntry) ? 1 : 0,
+      group.some(event => event.eventName === 'page_leave') ? 1 : 0,
+      group.some(event => event.isBounce) ? 1 : 0,
+    ])
+  }
+}
+
+async function writeClickDailyBatch(
+  db: AnalyticsDb,
+  events: NormalizedAnalyticsEvent[],
+  response: AnalyticsBatchResponse & { usage: D1Usage },
+) {
+  const groups = new Map<string, { event: NormalizedAnalyticsEvent; count: number }>()
+  for (const event of events) {
+    if (!CLICK_EVENTS.has(event.eventName)) continue
+    const elementId = stringProp(event.props.element_id) || event.eventName
+    const elementType = stringProp(event.props.element_type) || event.eventName
+    const location = stringProp(event.props.location) || event.routeName
+    const targetType = stringProp(event.props.target_type) || event.entityType
+    const targetId = stringProp(event.props.target_id) || event.entityId
+    const key = [event.date, elementId, location, targetType, targetId].join('\u001f')
+    const group = groups.get(key) ?? { event, count: 0 }
+    group.count += 1
+    groups.set(key, group)
+  }
+
+  for (const { event, count } of groups.values()) {
+    await runAndTrack(db, response, `
+      INSERT INTO analytics_click_daily (
+        date, element_id, element_type, location, target_type, target_id,
+        raw_click_count, effective_click_count, duplicate_click_count,
+        visitor_count, session_count, user_count, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 1, 1, ?, datetime('now'))
+      ON CONFLICT(date, element_id, location, target_type, target_id) DO UPDATE SET
+        raw_click_count = analytics_click_daily.raw_click_count + excluded.raw_click_count,
+        effective_click_count = analytics_click_daily.effective_click_count + excluded.effective_click_count,
+        visitor_count = analytics_click_daily.visitor_count + 1,
+        session_count = analytics_click_daily.session_count + 1,
+        user_count = analytics_click_daily.user_count + excluded.user_count,
+        updated_at = datetime('now')
+    `, [
+      event.date,
+      stringProp(event.props.element_id) || event.eventName,
+      stringProp(event.props.element_type) || event.eventName,
+      stringProp(event.props.location) || event.routeName,
+      stringProp(event.props.target_type) || event.entityType,
+      stringProp(event.props.target_id) || event.entityId,
+      count,
+      count,
+      0,
+    ])
+  }
+}
+
+async function writeRawEventsBatch(
+  db: AnalyticsDb,
+  batch: NormalizedAnalyticsBatch,
+  accepted: AcceptedAnalyticsEvent[],
+  context: AnalyticsIngestContext,
+  response: AnalyticsBatchResponse & { usage: D1Usage },
+) {
+  for (const { event, storedRaw } of accepted) {
+    if (!storedRaw) continue
+    const result = await runAndTrack(db, response, `
+      INSERT OR IGNORE INTO analytics_events (
+        id, event_name, occurred_at, received_at, visitor_id, session_id, user_id,
+        route_name, path, page_title, referrer_host, source_channel, device_type,
+        country, app_env, consent_state, entity_type, entity_id, event_props,
+        value, dedupe_key, sampled
+      )
+      VALUES (?, ?, ?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      event.eventId,
+      event.eventName,
+      event.occurredAt,
+      batch.visitorId,
+      batch.sessionId,
+      context.userId,
+      event.routeName,
+      event.path,
+      event.pageTitle,
+      event.referrerHost,
+      event.sourceChannel,
+      event.deviceType,
+      context.country || '',
+      context.appEnv || 'production',
+      event.consentState,
+      event.entityType,
+      event.entityId,
+      JSON.stringify(event.props),
+      event.value,
+      event.dedupeKey,
+      event.sampled ? 1 : 0,
+    ])
+    if ((result.meta?.changes ?? 1) === 0) response.duplicate += 1
+  }
+}
+
+function lastSessionEndedAt(events: NormalizedAnalyticsEvent[]) {
+  return [...events].reverse()
+    .find(event => event.eventName === 'session_end' || event.eventName === 'page_leave')
+    ?.occurredAt ?? null
+}
+
+function lastPageLeftAt(events: NormalizedAnalyticsEvent[]) {
+  return [...events].reverse()
+    .find(event => event.eventName === 'page_leave')
+    ?.occurredAt ?? null
+}
+
+function sumBy(events: NormalizedAnalyticsEvent[], mapper: (event: NormalizedAnalyticsEvent) => number) {
+  return events.reduce((total, event) => total + mapper(event), 0)
+}
+
+function maxBy(events: NormalizedAnalyticsEvent[], mapper: (event: NormalizedAnalyticsEvent) => number) {
+  return events.reduce((max, event) => Math.max(max, mapper(event)), 0)
 }
 
 async function writeSessionSummary(

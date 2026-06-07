@@ -89,6 +89,7 @@ function trackCardClick() {
   analytics.track('gallery_card_click', {
     entityType: 'gallery',
     entityId: props.gallery.id,
+    flush: true,
     props: {
       gallery_id: props.gallery.id,
       list_type: props.listType,

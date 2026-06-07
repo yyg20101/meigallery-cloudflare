@@ -14,6 +14,7 @@ const analytics = useAnalytics()
 
 await fetchContactMethods()
 
+const mounted = ref(false)
 const contactOpen = ref(false)
 const rulesOpen = ref(false)
 const contactCount = computed(() => contactMethods.value.length)
@@ -34,6 +35,7 @@ function trackContactMethod(methodType: string, actionType = 'unknown') {
   trackLeadOnce({ location: 'floating_contact_panel', methodType })
   analytics.track('contact_method_click', {
     entityType: 'contact',
+    flush: true,
     props: {
       method_type: methodType,
       action_type: actionType,
@@ -50,6 +52,7 @@ function openContactPanel() {
 }
 
 onMounted(() => {
+  mounted.value = true
   window.addEventListener('meigallery:open-contact-panel', openContactPanel)
 })
 
@@ -71,6 +74,7 @@ function toggleRules() {
 function trackContactPanelOpen() {
   analytics.track('contact_panel_open', {
     entityType: 'contact',
+    flush: true,
     props: { location: 'floating_contact_panel' },
   })
 }
@@ -84,7 +88,7 @@ function trackRulesPageClick() {
 </script>
 
 <template>
-  <div v-if="hasContactMethods || rulesEntryEnabled" class="fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom))] right-4 z-50 flex w-[min(calc(100vw-2rem),24rem)] flex-col items-end lg:bottom-6 lg:right-6">
+  <div v-if="mounted && (hasContactMethods || rulesEntryEnabled)" class="fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom))] right-4 z-50 flex w-[min(calc(100vw-2rem),24rem)] flex-col items-end lg:bottom-6 lg:right-6">
     <Transition
       enter-active-class="transition duration-200 ease-out"
       enter-from-class="translate-y-3 opacity-0 scale-95"

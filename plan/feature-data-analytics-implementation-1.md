@@ -169,14 +169,14 @@ tags: [feature, analytics, cloudflare, d1, prd, cost]
 
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
-| TASK-065 | 扩展 `packages/web/tests/e2e/mock-api.mjs`，支持接收 `/api/analytics/events`、`/api/analytics/session/end`、`/api/invites/:code/status` 和后台分析 mock 响应。 | | |
-| TASK-066 | 新增 Playwright smoke：`首页 -> 搜索 -> 图库详情 -> 打开联系 -> 带 invite 注册页`，断言 mock API 收到 page、click、contact 和 invite 事件，且无敏感 URL。 | | |
-| TASK-067 | 新增 API 性能成本 fixtures，模拟 10,000 sessions / 天、平均 3 page views / session、平均 2 clicks / session，断言 D1 rows written <= 80,000 / 天。 | | |
-| TASK-068 | 新增后台报表性能测试 fixtures，构造 100,000 条事件规模并断言总览、来源、页面、点击、时长、邀请 6 个接口在 30 天范围内 P95 <= 1 秒。 | | |
-| TASK-069 | 更新 `docs/PROJECT_STATUS.md`、`docs/TECHNICAL_SPEC.md` 和 `docs/DEPLOYMENT.md`，记录数据分析当前实现状态、开关默认关闭、迁移顺序、上线顺序和回滚策略。 | | |
-| TASK-070 | 完成上线顺序验证：D1 migrations -> API 采集接口 -> Web SDK 默认关闭 -> 后台报表 -> Owner 打开 `analytics_enabled`。 | | |
-| TASK-071 | 完成回滚验证：关闭 `analytics_enabled` 后 Web 不初始化 SDK，API 返回 disabled 响应且不写 D1；回滚 Web 后 API 仍兼容旧页面缓存发送的事件。 | | |
-| TASK-072 | 运行 `corepack pnpm --filter @meigallery/api exec tsc --noEmit`、`corepack pnpm --filter @meigallery/web exec nuxt build`、相关 Vitest、Playwright smoke 和 `git diff --check`。 | | |
+| TASK-065 | 扩展 `packages/web/tests/e2e/mock-api.mjs`，支持接收 `/api/analytics/events`、`/api/analytics/session/end`、`/api/invites/:code/status` 和后台分析 mock 响应。 | ✅ | 2026-06-07 |
+| TASK-066 | 新增 Playwright smoke：`首页 -> 搜索 -> 图库详情 -> 打开联系 -> 带 invite 注册页`，断言 mock API 收到 page、click、contact 和 invite 事件，且无敏感 URL。 | ✅ | 2026-06-07 |
+| TASK-067 | 新增 API 性能成本 fixtures，模拟 10,000 sessions / 天、平均 3 page views / session、平均 2 clicks / session，断言 D1 rows written <= 80,000 / 天。 | ✅ | 2026-06-07 |
+| TASK-068 | 新增后台报表性能测试 fixtures，构造 100,000 条事件规模并断言总览、来源、页面、点击、时长、邀请 6 个接口在 30 天范围内 P95 <= 1 秒。 | ✅ | 2026-06-07 |
+| TASK-069 | 更新 `docs/PROJECT_STATUS.md`、`docs/TECHNICAL_SPEC.md` 和 `docs/DEPLOYMENT.md`，记录数据分析当前实现状态、开关默认关闭、迁移顺序、上线顺序和回滚策略。 | ✅ | 2026-06-07 |
+| TASK-070 | 完成上线顺序验证：D1 migrations -> API 采集接口 -> Web SDK 默认关闭 -> 后台报表 -> Owner 打开 `analytics_enabled`。 | ✅ | 2026-06-07 |
+| TASK-071 | 完成回滚验证：关闭 `analytics_enabled` 后 Web 不初始化 SDK，API 返回 disabled 响应且不写 D1；回滚 Web 后 API 仍兼容旧页面缓存发送的事件。 | ✅ | 2026-06-07 |
+| TASK-072 | 运行 `corepack pnpm --filter @meigallery/api exec tsc --noEmit`、`corepack pnpm --filter @meigallery/web exec nuxt build`、相关 Vitest、Playwright smoke 和 `git diff --check`。 | ✅ | 2026-06-07 |
 
 ### Implementation Phase 9
 

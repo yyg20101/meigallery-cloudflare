@@ -105,6 +105,19 @@ const user = {
   membershipName: 'SVIP',
 }
 
+const contactMethods = [
+  {
+    id: 'contact-1',
+    platform: 'telegram',
+    label: 'Telegram',
+    value: 'meigallery_admin',
+    linkUrl: null,
+    qrCodeUrl: null,
+    sortOrder: 1,
+    enabled: true,
+  },
+]
+
 const defaultPublicSettings = {
   site_name: '测试图库站',
   site_description: 'Playwright smoke 测试站点',
@@ -114,6 +127,9 @@ const defaultPublicSettings = {
   footer_text: '测试环境',
   video_enabled: 'false',
   facebook_pixel_enabled: 'false',
+  analytics_enabled: 'true',
+  analytics_sample_rate: '0',
+  analytics_consent_mode: 'granted',
   home_hero_title: '精选写真，按地区发现',
   home_hero_subtitle: '测试环境中的授权内容展示。',
   home_ad_enabled: 'true',
@@ -127,12 +143,20 @@ const defaultPublicSettings = {
 }
 
 const mutablePublicSettings = { ...defaultPublicSettings }
+const analyticsBatches = []
+const sessionEndBatches = []
+const registrations = []
+let authenticated = true
 
 function resetPublicSettings() {
   for (const key of Object.keys(mutablePublicSettings)) {
     delete mutablePublicSettings[key]
   }
   Object.assign(mutablePublicSettings, defaultPublicSettings)
+  analyticsBatches.length = 0
+  sessionEndBatches.length = 0
+  registrations.length = 0
+  authenticated = true
 }
 
 function json(res, data, status = 200) {
@@ -201,6 +225,84 @@ function galleryDetail(slug) {
   }
 }
 
+function analyticsRange(range) {
+  const days = range === '7d' ? 7 : range === '90d' ? 90 : 30
+  return { from: '2026-06-01', to: '2026-06-30', days }
+}
+
+function adminAnalyticsResponse(pathname, rangePreset) {
+  const range = analyticsRange(rangePreset)
+  const usage = { rowsRead: 120, rowsWritten: 0, durationMs: 12 }
+  if (pathname.endsWith('/overview')) {
+    return {
+      range,
+      usage,
+      data: {
+        totals: {
+          visitor_count: 18,
+          session_count: 22,
+          page_view_count: 64,
+          register_count: 3,
+          invite_register_count: 2,
+          contact_click_count: 4,
+          membership_grant_count: 1,
+          gallery_detail_count: 9,
+          average_active_seconds: 42,
+        },
+        trend: [{ date: '2026-06-07', visitor_count: 18, session_count: 22, page_view_count: 64, register_count: 3, contact_click_count: 4, membership_grant_count: 1 }],
+        topSources: [{ source_channel: 'invite', source_name: 'Playwright 邀请', session_count: 12, register_count: 2 }],
+        topPages: [{ route_name: '/gallery/:slug', path: '/gallery/summer-portrait', page_view_count: 9, active_seconds_total: 420 }],
+        topClicks: [{ element_id: 'contact_method_click', location: 'floating_contact_panel', raw_click_count: 4 }],
+        health: { accepted_count: 120, rejected_count: 0, estimated_rows_written: 240, last_ingested_at: '2026-06-07T10:00:00.000Z' },
+      },
+    }
+  }
+  if (pathname.endsWith('/health')) {
+    return {
+      range,
+      usage,
+      data: {
+        totals: { accepted_count: 120, rejected_count: 0, duplicate_count: 0, estimated_rows_written: 240 },
+        daily: [{ date: '2026-06-07', accepted_count: 120, rejected_count: 0, duplicate_count: 0, sensitive_blocked_count: 0, sampled_count: 0, estimated_rows_read: 12, estimated_rows_written: 240, max_duration_ms: 8, last_ingested_at: '2026-06-07T10:00:00.000Z' }],
+      },
+    }
+  }
+  if (pathname.endsWith('/invites')) {
+    return {
+      range,
+      usage,
+      data: [{ invite_code_id: 'inv_test', invite_name: 'Playwright 邀请', channel: 'test', status: 'active', landing_count: 5, visitor_count: 5, register_count: 2, contact_click_count: 1, membership_grant_count: 1 }],
+    }
+  }
+  return {
+    range,
+    usage,
+    data: [{
+      source_channel: 'invite',
+      source_name: 'Playwright 邀请',
+      route_name: '/gallery/:slug',
+      path: '/gallery/summer-portrait',
+      from_route: '/',
+      to_route: '/gallery/:slug',
+      element_id: 'contact_method_click',
+      element_type: 'button',
+      location: 'floating_contact_panel',
+      page_view_count: 9,
+      visitor_count: 5,
+      session_count: 5,
+      raw_click_count: 4,
+      effective_click_count: 4,
+      duplicate_click_count: 0,
+      active_seconds_total: 420,
+      average_active_seconds: 46,
+      bounce_rate: 0.1,
+      max_scroll_depth: 80,
+      transition_count: 6,
+      conversion_count: 2,
+    }],
+  }
+}
+
 function handleApi(req, res) {
   const url = new URL(req.url || '/', `http://${req.headers.host || `${host}:${port}`}`)
 
@@ -220,9 +322,82 @@ function handleApi(req, res) {
     resetPublicSettings()
     return json(res, { ok: true })
   }
+  if (url.pathname === '/api/test/analytics-events') {
+    return json(res, {
+      batches: analyticsBatches,
+      sessionEnds: sessionEndBatches,
+      registrations,
+      events: analyticsBatches.flatMap(batch => Array.isArray(batch.events) ? batch.events : []),
+    })
+  }
+  if (url.pathname === '/api/test/auth' && req.method === 'PATCH') {
+    readJsonBody(req)
+      .then((body) => {
+        authenticated = body.authenticated !== false
+        json(res, { ok: true, authenticated })
+      })
+      .catch(() => json(res, { statusCode: 400, message: '认证状态请求无效' }, 400))
+    return
+  }
   if (url.pathname === '/api/settings/public') return json(res, publicSettings())
-  if (url.pathname === '/api/me') return json(res, user)
-  if (url.pathname === '/api/contact-methods') return json(res, { data: [] })
+  if (url.pathname === '/api/me') {
+    return authenticated
+      ? json(res, user)
+      : json(res, { statusCode: 401, message: '未登录', code: 'AUTH_REQUIRED' }, 401)
+  }
+  if (url.pathname === '/api/contact-methods') return json(res, { data: contactMethods })
+  if (url.pathname.startsWith('/api/invites/') && url.pathname.endsWith('/status')) {
+    const code = decodeURIComponent(url.pathname.replace('/api/invites/', '').replace('/status', ''))
+    if (code === 'TESTCODE') {
+      return json(res, {
+        valid: true,
+        inviteCodeId: 'inv_test',
+        name: 'Playwright 邀请',
+        channel: 'test',
+        expiresAt: '2026-12-31T00:00:00.000Z',
+      })
+    }
+    return json(res, { valid: false, reason: 'NOT_FOUND' })
+  }
+  if (url.pathname === '/api/analytics/events' && req.method === 'POST') {
+    readJsonBody(req)
+      .then((body) => {
+        analyticsBatches.push(body)
+        json(res, { accepted: Array.isArray(body.events) ? body.events.length : 0, rejected: 0, duplicate: 0 })
+      })
+      .catch(() => json(res, { statusCode: 400, message: '分析事件请求无效' }, 400))
+    return
+  }
+  if (url.pathname === '/api/analytics/session/end' && req.method === 'POST') {
+    readJsonBody(req)
+      .then((body) => {
+        sessionEndBatches.push(body)
+        json(res, { accepted: 1, rejected: 0, duplicate: 0 })
+      })
+      .catch(() => json(res, { statusCode: 400, message: 'session end 请求无效' }, 400))
+    return
+  }
+  if (url.pathname.startsWith('/api/auth/check-username/')) {
+    return json(res, { available: true })
+  }
+  if (url.pathname === '/api/auth/register' && req.method === 'POST') {
+    readJsonBody(req)
+      .then((body) => {
+        registrations.push(body)
+        authenticated = true
+        json(res, {
+          ...user,
+          id: 22,
+          email: body.email || 'new-user@example.test',
+          username: body.username || 'newuser',
+          role: 'user',
+          membershipRank: 0,
+          membershipName: 'free',
+        })
+      })
+      .catch(() => json(res, { statusCode: 400, message: '注册请求无效' }, 400))
+    return
+  }
   if (url.pathname === '/api/cases') return json(res, { data: cases, total: cases.length })
   if (url.pathname === '/api/tags') {
     return json(res, {
@@ -260,6 +435,24 @@ function handleApi(req, res) {
       processingImports: 0,
       draftGalleries: 1,
       failedImports: 0,
+    })
+  }
+  if (url.pathname.startsWith('/api/admin/analytics/')) {
+    return json(res, adminAnalyticsResponse(url.pathname, url.searchParams.get('range') || '30d'))
+  }
+  if (url.pathname === '/api/admin/invite-codes') {
+    return json(res, {
+      data: [{
+        id: 'inv_test',
+        displayCode: 'TEST...',
+        name: 'Playwright 邀请',
+        channel: 'test',
+        status: 'active',
+        maxUses: 100,
+        usedCount: 1,
+        expiresAt: '2026-12-31T00:00:00.000Z',
+        note: '测试邀请码',
+      }],
     })
   }
   if (url.pathname === '/api/admin/settings') {
