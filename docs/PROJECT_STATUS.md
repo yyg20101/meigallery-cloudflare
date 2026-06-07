@@ -30,13 +30,13 @@
 - 已实现：公开图库/标签/搜索/真实案例、登录注册、用户名登录、邮箱验证开关、用户中心、个人设置、后台图库/标签/用户/设置/审计、独立首页广告位管理、多广告排序、大图上传、首页广告轮播、广告排期与安全清洗、首页内容配置保存校验和公开读取兜底、右下角服务流程/消息悬浮入口强化、图库批量操作、图片上传、封面设置、单媒体 rank 配置、WordPress 迁移辅助、Telegram `gallery` / `case` 外部导入、Facebook Pixel 设置。
 - 部分实现：zip 导入任务有 API 和后台入口，但当前重点实现和测试集中在解析/校验与任务记录；大文件异步完整处理仍需按后续阶段继续收敛。
 - 未接入：Cloudflare Stream 生产视频上传、编码和播放链路；相关字段、secret、媒体签名逻辑保留为规划能力。
-- 部分实现：站内一方数据分析能力已形成可落地需求方案、实施计划和后台数据大盘 UI 设计；当前已落地 Phase 0 基础契约、Phase 1 D1 schema、Phase 2 公开采集 API、Phase 3 邀请码转化闭环和 Phase 4 Web 轻量 SDK，包括共享分析类型/常量、事件 props 白名单、URL/referrer 清洗、来源归因、运营时区日期、D1 rows read/write 预算读取、公开分析开关读取，`analytics_*`、`invite_codes`、`invite_registrations`、聚合日报和导出任务迁移，`/api/analytics/events`、`/api/analytics/session/end`、关闭态 disabled 响应、IP/visitor/session 三维兜底限流、采集健康日报写入，`/api/invites/:code/status` 公开状态查询，`/api/admin/invite-codes` 后台管理、注册成功绑定邀请上下文，管理员首次发放 rank > 0 会员时回填邀请转化，Web 端 URL 预清洗、route 归一化、visitor/session 队列、`sendBeacon` 兜底、15 秒本地时长累计、注册邀请码校验和登录/注册关键事件。图库、搜索、筛选、联系、广告、点赞、媒体授权等前台业务埋点、聚合任务、后台分析 API 和后台大盘页面仍未实现；当前生产可见能力仍只有图库浏览量、点赞计数、后台基础概览和 Facebook Pixel 辅助埋点，后续实现以 `docs/PRD_DATA_ANALYTICS.md` 为需求入口，以 `plan/feature-data-analytics-implementation-1.md` 为执行拆分，以 `docs/UI_DATA_ANALYTICS_DASHBOARD.md` 为后台大盘体验设计。
+- 部分实现：站内一方数据分析能力已形成可落地需求方案、实施计划和后台数据大盘 UI 设计；当前已落地 Phase 0 基础契约、Phase 1 D1 schema、Phase 2 公开采集 API、Phase 3 邀请码转化闭环和 Phase 4 Web 轻量 SDK，包括共享分析类型/常量、事件 props 白名单、URL/referrer 清洗、来源归因、运营时区日期、D1 rows read/write 预算读取、公开分析开关读取，`analytics_*`、`invite_codes`、`invite_registrations`、聚合日报和导出任务迁移，`/api/analytics/events`、`/api/analytics/session/end`、关闭态 disabled 响应、IP/visitor/session 三维兜底限流、采集健康日报写入，`/api/invites/:code/status` 公开状态查询，`/api/admin/invite-codes` 后台管理、注册成功绑定邀请上下文，管理员首次发放 rank > 0 会员时回填邀请转化，Web 端 URL 预清洗、route 归一化、visitor/session 队列、`sendBeacon` 兜底、15 秒本地时长累计、注册邀请码校验和登录/注册关键事件。后台数据大盘设计已细化到决策闭环、首屏优先级、指标定义、统一 API 响应外壳、响应式规则和 Cloudflare 成本护栏。图库、搜索、筛选、联系、广告、点赞、媒体授权等前台业务埋点、聚合任务、后台分析 API 和后台大盘页面仍未实现；当前生产可见能力仍只有图库浏览量、点赞计数、后台基础概览和 Facebook Pixel 辅助埋点，后续实现以 `docs/PRD_DATA_ANALYTICS.md` 为需求入口，以 `plan/feature-data-analytics-implementation-1.md` 为执行拆分，以 `docs/UI_DATA_ANALYTICS_DASHBOARD.md` 为后台大盘体验设计。
 - 已完成迁移口径：真实案例当前统一为 `cases` / `case_images`、`/cases`、`/api/cases`、`case:create`；旧 `testimonial_*` 仅存在于历史文档、迁移脚本说明或兼容拒绝测试中。
 
 ## PRD 质量状态
 
 - 当前 PRD 质量审阅和整改索引见 `docs/PRD_QUALITY_REVIEW.md`。
-- 数据分析需求方案见 `docs/PRD_DATA_ANALYTICS.md`，实施计划见 `plan/feature-data-analytics-implementation-1.md`；当前已细化到工程落地规格、性能预算和成本护栏，但仍是后续实现草案，不代表已有生产能力。
+- 数据分析需求方案见 `docs/PRD_DATA_ANALYTICS.md`，实施计划见 `plan/feature-data-analytics-implementation-1.md`；当前已细化到工程落地规格、后台数据大盘设计、性能预算和成本护栏，但仍是后续实现草案，不代表已有生产能力。
 - 当前可验收能力、部分实现能力和规划能力必须按 `docs/PRD_QUALITY_REVIEW.md` 的需求状态矩阵区分，不得把历史 PRD 中的规划项当作上线阻断项。
 - Cloudflare Stream、Email Service、zip 大文件异步导入、旧站内容审核状态机属于需要单独补齐验收标准的重点区域。
 - 后续新增或修改 PRD 时，必须为成功指标补充测试环境、数据规模、采样方法和失败路径。

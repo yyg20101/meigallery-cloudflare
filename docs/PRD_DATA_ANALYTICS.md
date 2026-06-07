@@ -493,6 +493,27 @@
 - 邀请码详情：来源、落地页、注册用户、首次会员发放情况。
 - 支持禁用邀请码、复制链接和查看审计记录。
 
+### 后台数据大盘 MVP 决策闭环 `[新增需求]`
+
+后台数据大盘的 MVP 不以“页面数量”作为完成标准，而以 Owner / Admin 能否完成以下决策闭环作为交付边界：
+
+| 决策问题 | 默认页面 | 必须回答的指标 | 默认查询来源 |
+|------|------|------|------|
+| 今天流量和转化是否正常 | `/admin/analytics` | 访客、session、PV、注册、联系、会员发放、平均有效时长、采集健康 | 日报聚合 + session 摘要 |
+| 哪个来源值得继续投入 | `/admin/analytics/sources` | 来源访客、详情率、联系率、注册率、会员发放率、平均有效时长 | `analytics_daily_sources` |
+| 哪些内容更有价值 | `/admin/analytics/pages` | PV、UV、入口、退出、跳出、平均时长、注册贡献、联系贡献 | `analytics_daily_pages` |
+| 邀请活动是否有效 | `/admin/analytics/invites` | 邀请落地、邀请注册、会员发放、注册转化率、会员发放转化率 | `analytics_invite_daily` + `invite_registrations` |
+| 数据采集是否健康且成本可控 | `/admin/analytics/health` | accepted、rejected、duplicate、sensitive blocked、D1 rows read/write、采样率、聚合延迟 | `analytics_ingest_health_daily` + D1 `meta` |
+
+MVP 完成定义：
+
+- 默认时间范围为最近 30 天，并提供 7 天、30 天、90 天快捷筛选；超过 90 天只走 owner-only 导出或后续离线报表。
+- 首页总览首屏必须展示“转化漏斗”和“采集健康”，避免只有流量数字却无法判断质量。
+- 后台默认报表只读取聚合表和摘要表，不扫描 `analytics_events` 全量明细。
+- 普通 admin 只能看到聚合数据；owner-only 的导出、单 session 脱敏明细和成本深度操作必须由 API 二次校验。
+- 每个报表响应必须返回 `range`、`generatedAt`、`lastAggregatedAt`、`dataFreshness` 和 `cost`，前端据此展示聚合延迟、采集关闭和预算告警状态。
+- 30 天默认范围下，总览、来源、页面、点击、时长、邀请 6 个接口 P95 响应时间目标 <= 1 秒；90 天范围 P95 目标 <= 2 秒。
+
 ### Security & Privacy
 
 - 不保存原始 IP；如需反刷，只用服务端临时内存或短期 hash，并设置保留期。

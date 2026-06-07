@@ -54,6 +54,21 @@
 - `[新增设计]` 使用 Nuxt UI / Tailwind CSS v4 与现有后台布局风格，图标优先使用 Nuxt Icon / lucide 图标名。
 - `[实现约束]` 所有默认查询使用聚合表和摘要表；单 session 明细必须显式输入 session ID 且 owner-only。
 
+### 2.2.1 设计假设与待确认问题
+
+为了先让实现可以推进，本文采用以下默认假设；后续如果运营侧反馈不同，可在实现前调整：
+
+- 默认时间范围采用最近 30 天；Owner 可以切换 7 天、90 天，自定义范围最长 90 天。
+- 首期把“联系站长”和“注册成功”视为核心转化；在线支付未接入前，“会员发放”代表最终会员转化。
+- 后台大盘优先服务 Owner 和 Admin，不做公开运营展示页，也不做实时电视墙。
+- 图表保持轻量，MVP 使用 Nuxt UI 表格、紧凑 SVG sparkline、漏斗条和状态条；只有数据复杂度真实增加时再评估图表库。
+
+待确认问题：
+
+- Owner 是否需要按自然周/月查看汇总，还是 7/30/90 天滚动窗口已足够？
+- 邀请码是否存在“归属到某个普通用户”的业务场景，还是首期都归属到活动/渠道？
+- 健康页的预算阈值是否按 Dev / Production 两套配置展示，还是只展示当前环境阈值？
+
 ### 2.3 Information Architecture
 
 后台导航建议新增一个一级入口“数据分析”，其下使用页面内 tabs 或子路由：
@@ -93,6 +108,21 @@
 - 设备筛选：全部、desktop、tablet、mobile。
 - 邀请码筛选：全部、单邀请码。
 - 操作：刷新、导出 CSV(owner-only)、复制当前筛选链接。
+
+#### 2.4.1 首屏信息优先级
+
+`/admin/analytics` 首屏必须按“先判断异常，再判断增长，再进入明细”的顺序组织：
+
+| 优先级 | 区域 | 展示内容 | 设计要求 |
+|------|------|------|------|
+| P0 | 采集健康条 | 采集开关、最近聚合、rejected、duplicate、D1 预算 | 位于标题下方，异常时变为黄色/红色整行提示 |
+| P1 | KPI 8 宫格 | 访客、session、PV、注册、邀请注册、联系、会员发放、平均时长 | 每项包含环比和微趋势，文案不超过 8 个中文字符 |
+| P1 | 转化漏斗 | 落地 -> 详情 -> 联系/注册 -> 会员发放 | 使用细金色主线，突出会员转化，不做夸张大图形 |
+| P2 | 趋势面板 | 日趋势和上一周期对比 | 1440px 下和漏斗并排，1024px 以下堆叠 |
+| P2 | Top 三列表 | 来源、页面、点击 | 每表只展示 5 行，更多进入对应子页 |
+| P3 | 风险队列 | 采集关闭、聚合延迟、预算超阈值、重复点击异常 | 只展示需要处理的事项，无风险时折叠 |
+
+首屏文案应避免技术化字段名，例如展示“采集延迟 18 分钟”，而不是直接展示 `lastAggregatedAt` 字段。
 
 ### 2.5 User Stories
 
@@ -348,6 +378,114 @@ Nuxt 后台页面
 - 单 session 明细 owner-only，且只展示脱敏 event_name、route、entity、时间和白名单 props。
 - 导出 CSV owner-only，文件保存在 R2，默认 7 天过期。
 - 所有外链 host 只显示清洗后的 host；点击下载或外链时使用 `rel="noopener noreferrer nofollow"` 与 `referrerpolicy="no-referrer"`。
+
+### 4.9 指标定义合同
+
+后台所有页面必须使用同一套指标定义，避免不同页面同名指标口径不一致：
+
+| 指标 | 定义 | 展示位置 |
+|------|------|------|
+| 访客数 | `visitor_id` 去重数 | 总览、来源、内容 |
+| session 数 | `session_id` 去重数 | 总览、来源 |
+| PV | `page_view` 或页面摘要总数 | 总览、内容 |
+| 注册数 | `register_success` 去重用户数 | 总览、来源、邀请 |
+| 邀请注册数 | 带 `invite_code_id` 的注册成功用户数 | 总览、邀请 |
+| 联系点击数 | `contact_panel_open` 或 `contact_method_click` 独立 session 数 | 总览、来源、点击 |
+| 会员发放数 | 首次 rank > 0 的会员发放转化数 | 总览、来源、邀请 |
+| 注册率 | 注册数 / session 数 | 来源、邀请 |
+| 联系率 | 联系点击独立 session 数 / session 数 | 来源、点击 |
+| 会员发放率 | 会员发放数 / 注册数 | 总览、来源、邀请 |
+| 跳出率 | 仅 1 个 page view 且 active_seconds < 15 秒的 session / session 数 | 内容、时长 |
+| 平均有效时长 | active_seconds 总和 / page view 或 session 数 | 总览、内容、时长 |
+| 中位有效时长 | active_seconds P50 | 时长 |
+| 深度浏览率 | active_seconds >= 60 秒或 scroll_depth >= 75% 的页面访问 / 页面访问 | 内容、时长 |
+| 有效点击 | 去除 1 秒内同 visitor + element_id 重复点击后的点击数 | 点击 |
+| 重复点击率 | duplicate clicks / raw clicks | 点击、健康 |
+
+所有比率分母为 0 时展示 `--`，不展示 0% 误导运营判断。
+
+### 4.10 API 响应合同
+
+后台分析 API 建议统一返回以下外壳：
+
+```json
+{
+  "range": { "from": "2026-06-01", "to": "2026-06-07", "days": 7 },
+  "generatedAt": "2026-06-07T13:00:00.000Z",
+  "lastAggregatedAt": "2026-06-07T12:45:00.000Z",
+  "dataFreshness": "fresh",
+  "cost": {
+    "rowsRead": 1234,
+    "rowsWritten": 0,
+    "budgetPercent": 18,
+    "mode": "normal"
+  },
+  "filters": {
+    "sourceChannel": "all",
+    "deviceType": "all",
+    "inviteCodeId": ""
+  },
+  "data": {}
+}
+```
+
+字段约束：
+
+- `dataFreshness` 只允许 `fresh`、`delayed`、`disabled`、`empty`、`error`。
+- `cost.mode` 只允许 `normal`、`watch`、`limited`、`blocked`，前端据此渲染中性、黄色、红色状态。
+- `data` 由页面决定，但表格数据必须由 API 完成分页和排序，前端不拉全量后排序。
+- 所有响应都要保留 `range` 与 `lastAggregatedAt`，即使空数据也要返回，便于 UI 明确展示“暂无数据”而不是“查询失败”。
+
+`/api/admin/analytics/overview` 的 `data` 建议包含：
+
+| 字段 | 说明 |
+|------|------|
+| `totals` | 8 个首屏 KPI |
+| `trends` | 按日期的 visitors、sessions、registrations、contactClicks、membershipGrants |
+| `funnel` | landing、detail、contactOrRegister、membershipGrant 阶段数组 |
+| `topSources` | 来源排行前 5 |
+| `topPages` | 页面排行前 5 |
+| `topClicks` | 点击排行前 5 |
+| `risks` | 采集、聚合、成本、重复点击风险列表 |
+
+### 4.11 性能、成本与 Cloudflare 约束
+
+本设计延续 `docs/PRD_DATA_ANALYTICS.md` 第 8 节的 Cloudflare 成本策略。实现后台大盘时必须遵守：
+
+| 约束 | UI / API 设计动作 |
+|------|------|
+| D1 成本与 rows read / rows written 相关 | 所有报表响应暴露 `cost`，健康条显示预算百分比 |
+| D1 索引会降低扫描但增加写入成本 | 报表只依赖已规划组合索引，不为 `event_props` 任意字段建索引 |
+| Workers 请求受 CPU、body、subrequest 等限制 | 报表接口不做复杂实时重算，默认读取聚合表 |
+| Queues 适合后续批处理缓冲 | 健康页预留 Queue backlog / failures 区域，但 MVP 不显示空壳 |
+| Workers Analytics Engine 适合高频高基数探索 | 健康页预留 WAE data points 指标，MVP 不作为默认依赖 |
+
+默认预算：
+
+- 30 天总览、来源、内容、点击、时长、邀请接口 rows read 目标 <= 10,000 / 接口。
+- 90 天范围 rows read 目标 <= 30,000 / 接口。
+- 查询 P95：30 天 <= 1 秒，90 天 <= 2 秒。
+- 前端每页首屏最多并发 2 个分析请求：主数据 + 健康摘要；其余模块延迟加载或由主响应提供。
+- 移动端不默认渲染复杂趋势图，优先展示 KPI 和可折叠卡片，降低首屏 JS 与 DOM 负担。
+
+官方参考文档：
+
+- [Cloudflare D1 Pricing](https://developers.cloudflare.com/d1/platform/pricing/)
+- [Cloudflare D1 Limits](https://developers.cloudflare.com/d1/platform/limits/)
+- [Cloudflare Workers Limits](https://developers.cloudflare.com/workers/platform/limits/)
+- [Cloudflare Queues Batching, Retries and Delays](https://developers.cloudflare.com/queues/configuration/batching-retries/)
+- [Cloudflare Workers Analytics Engine Limits](https://developers.cloudflare.com/analytics/analytics-engine/limits/)
+
+### 4.12 实现交接顺序
+
+为了避免 UI 先行后无法接数据，建议按以下顺序实施：
+
+1. `useAdminAnalytics`：统一 range/filter/query key、错误态和刷新逻辑。
+2. `AnalyticsPageShell`、`AnalyticsRangeControl`、`AnalyticsHealthStrip`：搭好共享框架。
+3. `/admin/analytics`：先接 overview mock，再接真实 API。
+4. `/admin/analytics/sources`、`/admin/analytics/pages`、`/admin/analytics/invites`：完成 MVP 三个业务判断页。
+5. `/admin/analytics/health`：补成本、采集、聚合状态和 owner-only 导出入口。
+6. v1.1 再接 `/paths`、`/clicks`、`/durations` 与 owner-only session 明细。
 
 ## 5. Risks & Roadmap
 

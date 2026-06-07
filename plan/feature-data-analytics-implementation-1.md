@@ -152,6 +152,7 @@ tags: [feature, analytics, cloudflare, d1, prd, cost]
 
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
+| TASK-055A | 细化后台数据大盘设计文档，明确 MVP 决策闭环、首屏优先级、指标定义、统一 API 响应外壳、响应式规则和 Cloudflare 成本护栏。 | ✅ | 2026-06-07 |
 | TASK-056 | 修改 `packages/web/app/layouts/admin.vue`，新增“数据分析”和“邀请码”导航入口，非 owner 不显示导出和 session 明细入口。 | | |
 | TASK-057 | 新增 `packages/web/app/pages/admin/analytics/index.vue`，实现总览 KPI、7/30/90 天筛选、趋势表格、Top 来源、Top 页面、Top 点击和采集健康摘要。 | | |
 | TASK-058 | 新增 `packages/web/app/pages/admin/analytics/sources.vue`，展示来源渠道漏斗、UTM/referrer 表格和来源质量排序。 | | |
