@@ -35,11 +35,12 @@ describe('analytics-aggregate', () => {
 
     const result = await aggregateAnalyticsDaily(db as unknown as D1Database, '2026-06-07')
 
-    expect(result).toEqual({ date: '2026-06-07', steps: ['sources', 'pages', 'events', 'invites'] })
+    expect(result).toEqual({ date: '2026-06-07', steps: ['sources', 'pages', 'source-pages', 'events', 'invites'] })
     expect(db.calls.some(call => call.sql.includes('DELETE FROM analytics_daily_sources'))).toBe(true)
     expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_daily_sources'))).toBe(true)
     expect(db.calls.some(call => call.sql.includes('analytics_page_summaries'))).toBe(true)
     expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_daily_pages'))).toBe(true)
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_source_page_daily'))).toBe(true)
     expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_daily_events'))).toBe(true)
     expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_invite_daily'))).toBe(true)
     expect(db.calls.every(call => call.params.includes('2026-06-07'))).toBe(true)
@@ -80,6 +81,8 @@ describe('analytics-aggregate', () => {
     expect(db.calls.some(call => call.sql.includes('DELETE FROM analytics_session_summaries'))).toBe(true)
     expect(db.calls.some(call => call.sql.includes('id NOT IN (SELECT DISTINCT session_id FROM analytics_events)'))).toBe(true)
     expect(db.calls.some(call => call.sql.includes('DELETE FROM analytics_daily_sources'))).toBe(true)
+    expect(db.calls.some(call => call.sql.includes('DELETE FROM analytics_source_page_daily'))).toBe(true)
+    expect(db.calls.some(call => call.sql.includes('DELETE FROM analytics_source_click_daily'))).toBe(true)
     expect(db.calls.some(call => call.sql.includes('UPDATE analytics_export_jobs'))).toBe(true)
   })
 

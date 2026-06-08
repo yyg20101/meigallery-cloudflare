@@ -90,39 +90,41 @@ describe('后台推广来源 API', () => {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        name: 'Telegram 六月互推',
+        sourceLabel: 'Telegram 六月互推',
         channel: 'social',
-        slug: 'telegram-june',
         targetPath: '/',
       }),
     }, { DB: db } as unknown as Bindings)
     const body = await res.json()
+    const code = String(body.data.sourceCode)
 
     expect(res.status).toBe(201)
     expect(body.data).toMatchObject({
       name: 'Telegram 六月互推',
+      sourceLabel: 'Telegram 六月互推',
       channel: 'social',
-      slug: 'telegram-june',
-      trackingPath: '/?mg_source=telegram-june&utm_source=telegram-june&utm_medium=social&utm_campaign=telegram-june',
+      slug: code,
+      trackingPath: `/?mg_source=${code}&utm_source=${code}&utm_medium=social&utm_campaign=${code}`,
     })
+    expect(code).toMatch(/^social-[a-z0-9]{3,}$/)
     expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_tracking_sources'))).toBe(true)
     expect(db.calls.some(call => call.sql.includes('INSERT INTO admin_audit_logs') && call.params[2] === 'tracking_source.create')).toBe(true)
   })
 
-  it('重复短标识返回 409', async () => {
+  it('创建时不允许手动填写 code', async () => {
     const res = await createApp('admin').request('/api/admin/tracking-sources', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         name: '重复来源',
         channel: 'social',
-        slug: 'telegram-june',
+        sourceCode: 'telegram-june',
       }),
-    }, { DB: createDb({ duplicate: true }) } as unknown as Bindings)
+    }, { DB: createDb() } as unknown as Bindings)
     const body = await res.json()
 
-    expect(res.status).toBe(409)
-    expect(body.message).toBe('来源短标识已存在')
+    expect(res.status).toBe(400)
+    expect(body.message).toContain('来源 code 由后台自动生成')
   })
 
   it('可以停用推广来源并写审计日志', async () => {
@@ -138,5 +140,29 @@ describe('后台推广来源 API', () => {
     expect(body.data.status).toBe('disabled')
     expect(db.calls.some(call => call.sql.includes('UPDATE analytics_tracking_sources'))).toBe(true)
     expect(db.calls.some(call => call.sql.includes('INSERT INTO admin_audit_logs') && call.params[2] === 'tracking_source.disable')).toBe(true)
+  })
+
+  it('可以修改自定义文案但不能修改 code', async () => {
+    const db = createDb()
+    const updateRes = await createApp('admin').request('/api/admin/tracking-sources/ats_1', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sourceLabel: 'Telegram 七月互推', note: '更新展示文案' }),
+    }, { DB: db } as unknown as Bindings)
+    const updateBody = await updateRes.json()
+
+    expect(updateRes.status).toBe(200)
+    expect(updateBody.data.sourceLabel).toBe('Telegram 七月互推')
+    expect(updateBody.data.sourceCode).toBe('telegram-june')
+
+    const codeRes = await createApp('admin').request('/api/admin/tracking-sources/ats_1', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sourceCode: 'telegram-july' }),
+    }, { DB: createDb() } as unknown as Bindings)
+    const codeBody = await codeRes.json()
+
+    expect(codeRes.status).toBe(400)
+    expect(codeBody.message).toContain('来源 code 创建后不能修改')
   })
 })

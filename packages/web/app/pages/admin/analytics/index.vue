@@ -20,6 +20,15 @@ interface OverviewData {
   topPages: Array<Record<string, unknown>>
   topClicks: Array<Record<string, unknown>>
   health: Record<string, unknown> | null
+  funnel?: {
+    stages: Array<Record<string, unknown>>
+    dropOffs: Array<Record<string, unknown>>
+  }
+  diagnostics?: {
+    aggregateMissing?: boolean
+    acceptedCount?: number
+    aggregateTotal?: number
+  }
 }
 
 const analytics = useAdminAnalytics<OverviewData>('/api/admin/analytics/overview')
@@ -44,6 +53,17 @@ const metrics = computed(() => {
 })
 
 const funnel = computed(() => {
+  const apiFunnel = analytics.data.value?.funnel
+  if (apiFunnel?.stages?.length) {
+    return apiFunnel.stages.map((step, index) => ({
+      ...step,
+      label: String(step.label ?? ''),
+      value: Number(step.value ?? 0),
+      rateFromPrevious: Number(step.rateFromPrevious ?? 0),
+      rateFromEntry: Number(step.rateFromEntry ?? 0),
+      tone: (['blue', 'default', 'gold', 'green', 'red'][index] ?? 'default') as 'blue' | 'default' | 'gold' | 'green' | 'red',
+    }))
+  }
   const landing = totalNumber('session_count')
   return [
     { label: '落地', value: landing, rate: landing > 0 ? '100%' : '--', tone: 'blue' as const },
@@ -52,6 +72,15 @@ const funnel = computed(() => {
     { label: '注册', value: totalNumber('register_count'), rate: landing > 0 ? formatAnalyticsPercent(totalNumber('register_count'), landing) : '--', tone: 'green' as const },
     { label: '会员', value: totalNumber('membership_grant_count'), rate: landing > 0 ? formatAnalyticsPercent(totalNumber('membership_grant_count'), landing) : '--', tone: 'gold' as const },
   ]
+})
+
+const funnelDropOffs = computed(() => {
+  return (analytics.data.value?.funnel?.dropOffs ?? []).map(item => ({
+    fromLabel: String(item.fromLabel ?? ''),
+    toLabel: String(item.toLabel ?? ''),
+    lost: Number(item.lost ?? 0),
+    lossRate: Number(item.lossRate ?? 0),
+  }))
 })
 
 const hasActivity = computed(() => {
@@ -92,6 +121,13 @@ const riskItems = computed(() => {
       title: '暂无最近采集时间',
       description: '健康表还没有写入 last_ingested_at，可能是采集未开启或前台暂无访问。',
       tone: 'amber',
+    })
+  }
+  if (data.diagnostics?.aggregateMissing) {
+    items.push({
+      title: '日报聚合缺失',
+      description: `健康表已接收 ${formatAnalyticsNumber(data.diagnostics.acceptedCount)} 条事件，但当前范围聚合仍为 0，建议确认 API 已部署最新采集写入逻辑。`,
+      tone: 'red',
     })
   }
   if (rejected > 0) {
@@ -157,7 +193,7 @@ function riskClass(tone: string) {
 
       <div class="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(22rem,0.65fr)]">
         <AnalyticsTrendPanel :rows="analytics.data.value.trend" />
-        <AnalyticsConversionFunnel :steps="funnel" />
+        <AnalyticsConversionFunnel :steps="funnel" :drop-offs="funnelDropOffs" />
       </div>
 
       <div class="grid gap-5 xl:grid-cols-3">
@@ -165,8 +201,8 @@ function riskClass(tone: string) {
           title="Top 来源"
           description="优先观察带来注册和联系的来源"
           :rows="analytics.data.value.topSources"
-          label-key="source_name"
-          meta-key="source_channel"
+          label-key="source_label"
+          meta-key="source_channel_label"
           value-key="session_count"
           value-label="Session"
           to="/admin/analytics/sources"
@@ -175,7 +211,7 @@ function riskClass(tone: string) {
           title="Top 页面"
           description="最值得继续优化的内容入口"
           :rows="analytics.data.value.topPages"
-          label-key="route_name"
+          label-key="route_label"
           meta-key="path"
           value-key="page_view_count"
           value-label="PV"
@@ -185,8 +221,8 @@ function riskClass(tone: string) {
           title="Top 点击"
           description="联系、广告和 CTA 的点击入口"
           :rows="analytics.data.value.topClicks"
-          label-key="element_id"
-          meta-key="location"
+          label-key="element_label"
+          meta-key="location_label"
           value-key="raw_click_count"
           value-label="点击"
           to="/admin/analytics/clicks"

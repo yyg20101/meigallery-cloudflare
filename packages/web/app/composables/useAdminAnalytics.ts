@@ -1,7 +1,17 @@
 import type { AnalyticsRangeQuery } from '@meigallery/shared'
 
 export type AnalyticsRangePreset = NonNullable<AnalyticsRangeQuery['range']>
-export type AnalyticsExportKind = 'overview' | 'sources' | 'pages' | 'paths' | 'clicks' | 'durations' | 'invites' | 'sessions'
+export type AnalyticsExportKind =
+  | 'overview'
+  | 'sources'
+  | 'pages'
+  | 'paths'
+  | 'clicks'
+  | 'source-pages'
+  | 'source-clicks'
+  | 'durations'
+  | 'invites'
+  | 'sessions'
 
 export interface AnalyticsApiResponse<T> {
   range?: {
@@ -25,6 +35,7 @@ export const ANALYTICS_RANGE_OPTIONS: Array<{ label: string; value: AnalyticsRan
 
 export function useAdminAnalytics<T>(endpoint: string, initialRange: AnalyticsRangePreset = '30d') {
   const { api } = useApi()
+  const route = useRoute()
   const range = ref<AnalyticsRangePreset>(initialRange)
   const data = ref<T | null>(null)
   const responseRange = ref<AnalyticsApiResponse<T>['range'] | null>(null)
@@ -34,12 +45,21 @@ export function useAdminAnalytics<T>(endpoint: string, initialRange: AnalyticsRa
   const error = ref('')
   const loadedAt = ref('')
 
+  const routeFilters = computed(() => {
+    const filters: Record<string, string> = {}
+    for (const key of ['sourceChannel', 'sourceCode', 'sourceName', 'inviteCodeId', 'path']) {
+      const value = normalizeAnalyticsRouteQuery(route.query[key])
+      if (value) filters[key] = value
+    }
+    return filters
+  })
+
   async function refresh() {
     loading.value = true
     error.value = ''
     try {
       const result = await api<AnalyticsApiResponse<T>>(endpoint, {
-        query: { range: range.value },
+        query: { range: range.value, ...routeFilters.value },
       })
       data.value = result.data
       responseRange.value = result.range ?? null
@@ -58,6 +78,10 @@ export function useAdminAnalytics<T>(endpoint: string, initialRange: AnalyticsRa
     void refresh()
   })
 
+  watch(routeFilters, () => {
+    void refresh()
+  })
+
   onMounted(() => {
     void refresh()
   })
@@ -73,6 +97,12 @@ export function useAdminAnalytics<T>(endpoint: string, initialRange: AnalyticsRa
     loadedAt,
     refresh,
   }
+}
+
+function normalizeAnalyticsRouteQuery(value: unknown) {
+  const raw = Array.isArray(value) ? value[0] : value
+  const text = String(raw ?? '').trim()
+  return text && text !== 'all' ? text : ''
 }
 
 export function useAnalyticsExport() {

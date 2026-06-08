@@ -75,6 +75,50 @@ function createDb() {
               meta: { rows_read: 1, rows_written: 0, duration: 1 },
             }
           }
+          if (sql.includes('analytics_source_page_daily')) {
+            return {
+              results: [{
+                source_channel: 'social',
+                source_name: 'telegram-june',
+                tracking_source_label: 'Telegram 六月互推',
+                source_matched: 1,
+                invite_code_id: '',
+                route_name: '/gallery/:slug',
+                path: '/gallery/demo',
+                entity_type: 'gallery',
+                entity_id: 'gallery-1',
+                page_title: '夏日写真',
+                page_view_count: 5,
+                visitor_count: 2,
+                session_count: 3,
+                contact_click_count: 1,
+                register_count: 1,
+              }] as T[],
+              meta: { rows_read: 2, rows_written: 0, duration: 1 },
+            }
+          }
+          if (sql.includes('analytics_source_click_daily')) {
+            return {
+              results: [{
+                source_channel: 'social',
+                source_name: 'telegram-june',
+                tracking_source_label: 'Telegram 六月互推',
+                source_matched: 1,
+                invite_code_id: '',
+                element_id: 'contact_method_click',
+                element_type: 'button',
+                location: 'floating_contact_panel',
+                target_type: 'contact',
+                target_id: 'floating_contact_panel',
+                raw_click_count: 2,
+                effective_click_count: 2,
+                duplicate_click_count: 0,
+                visitor_count: 2,
+                session_count: 2,
+              }] as T[],
+              meta: { rows_read: 2, rows_written: 0, duration: 1 },
+            }
+          }
           if (sql.includes('analytics_daily_sources')) {
             return {
               results: [{
@@ -227,6 +271,8 @@ function createPerformanceDb() {
 }
 
 function performanceMeta(sql: string) {
+  if (sql.includes('analytics_source_page_daily')) return { rows_read: 3_000, rows_written: 0, duration: 120 }
+  if (sql.includes('analytics_source_click_daily')) return { rows_read: 1_500, rows_written: 0, duration: 90 }
   if (sql.includes('analytics_daily_pages')) return { rows_read: 3_000, rows_written: 0, duration: 120 }
   if (sql.includes('analytics_path_edges')) return { rows_read: 2_500, rows_written: 0, duration: 110 }
   if (sql.includes('analytics_click_daily')) return { rows_read: 1_500, rows_written: 0, duration: 90 }
@@ -255,6 +301,8 @@ describe('后台数据分析 API', () => {
     expect(body.data.totals.average_active_seconds).toBe(30)
     expect(body.data.totals.gallery_detail_count).toBe(4)
     expect(body.data.topSources[0].source_channel).toBe('invite')
+    expect(body.data.topClicks[0].element_label).toBe('联系方式')
+    expect(body.data.funnel.stages[0].label).toBe('Session')
     expect(body.usage.rowsRead).toBeGreaterThan(0)
     expect(db.calls.some(call => call.sql.includes('analytics_events'))).toBe(false)
   })
@@ -274,9 +322,50 @@ describe('后台数据分析 API', () => {
     expect(res.status).toBe(200)
     expect(body.trackingSources[0]).toMatchObject({
       name: 'Telegram 六月互推',
+      sourceLabel: 'Telegram 六月互推',
+      sourceCode: 'telegram-june',
       trackingPath: '/?mg_source=telegram-june&utm_source=telegram-june&utm_medium=social&utm_campaign=telegram-june',
       sessionCount: 3,
     })
+  })
+
+  it('来源页面和来源点击接口返回中文展示字段且不扫描原始事件', async () => {
+    const db = createDb()
+    const pagesRes = await createApp('admin').request('/api/admin/analytics/source-pages?range=7d&sourceCode=telegram-june', {}, { DB: db } as unknown as Bindings)
+    const pagesBody = await pagesRes.json()
+    const clicksRes = await createApp('admin').request('/api/admin/analytics/source-clicks?range=7d&sourceCode=telegram-june', {}, { DB: db } as unknown as Bindings)
+    const clicksBody = await clicksRes.json()
+
+    expect(pagesRes.status).toBe(200)
+    expect(pagesBody.data[0]).toMatchObject({
+      sourceLabel: 'Telegram 六月互推',
+      route_label: '夏日写真',
+    })
+    expect(clicksRes.status).toBe(200)
+    expect(clicksBody.data[0]).toMatchObject({
+      sourceLabel: 'Telegram 六月互推',
+      element_label: '联系方式',
+      location_label: '悬浮联系面板',
+    })
+    expect(db.calls.some(call => call.sql.includes('analytics_events'))).toBe(false)
+  })
+
+  it('漏斗接口读取聚合表并返回阶段转化', async () => {
+    const db = createDb()
+    const res = await createApp('admin').request('/api/admin/analytics/funnel?range=7d&sourceCode=telegram-june', {}, { DB: db } as unknown as Bindings)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.data.stages.map((stage: Record<string, unknown>) => stage.key)).toEqual([
+      'sessions',
+      'page_views',
+      'gallery_details',
+      'key_clicks',
+      'contacts_or_registers',
+      'membership_grants',
+    ])
+    expect(body.data.dropOffs.length).toBeGreaterThan(0)
+    expect(db.calls.some(call => call.sql.includes('analytics_events'))).toBe(false)
   })
 
   it('普通 admin 不能查看单 session 明细', async () => {
@@ -325,7 +414,10 @@ describe('后台数据分析 API', () => {
       '/api/admin/analytics/overview?range=30d',
       '/api/admin/analytics/sources?range=30d',
       '/api/admin/analytics/pages?range=30d',
+      '/api/admin/analytics/source-pages?range=30d',
       '/api/admin/analytics/clicks?range=30d',
+      '/api/admin/analytics/source-clicks?range=30d',
+      '/api/admin/analytics/funnel?range=30d',
       '/api/admin/analytics/durations?range=30d',
       '/api/admin/analytics/invites?range=30d',
     ]

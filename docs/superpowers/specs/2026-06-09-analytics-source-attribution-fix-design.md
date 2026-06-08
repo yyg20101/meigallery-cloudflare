@@ -13,7 +13,7 @@
 - 修复浏览、点击后后台大盘仍为 0 的问题。
 - 当访问存在来源时，页面访问、点击、注册、联系和会员转化都能归因到统一来源。
 - 后台继续使用 `analytics_tracking_sources` 管理推广来源，运营能用统一来源查看流量质量。
-- 来源创建必须包含稳定 `code` 和可编辑自定义文案：`code` 用于追踪链接与数据保存，自定义文案用于后台和页面展示。
+- 来源创建必须包含可编辑自定义文案；稳定 `code` 由后台自动生成，用于追踪链接与数据保存，自定义文案用于后台和页面展示。
 - 来源质量分析覆盖来源总览、各页面访问表现和所有点击事件表现。
 - 后台提供流量漏斗效果图，用于分析从访问到联系、注册、会员发放的转化表现。
 - 保持 Cloudflare D1 成本可控，不在常规后台查询中扫描大批原始事件。
@@ -72,6 +72,7 @@
 约束：
 
 - `sourceCode` 创建后不可修改，避免历史聚合数据失去稳定键。
+- `sourceCode` 由后台按渠道和短随机 ID 自动生成，后台创建表单不要求运营手动命名 code。
 - `sourceLabel` 支持修改，历史数据不用回写；报表展示时通过 `sourceCode` 关联当前文案。
 - 聚合表继续使用 `source_name` 这个历史列名时，列值语义调整为 `sourceCode`，不再保存可变展示文案。
 - API 返回来源数据时同时给出 `sourceCode` 和 `sourceLabel`，前端显示优先使用 `sourceLabel`，导出和排查保留 `sourceCode`。
@@ -194,7 +195,7 @@ date, source_channel, source_name, invite_code_id, element_id, location, target_
 
 `POST /api/admin/tracking-sources` 与 `PATCH /api/admin/tracking-sources/:id`：
 
-- 创建时必须提交 `sourceCode` 和 `sourceLabel`；兼容旧字段 `slug` 和 `name`。
+- 创建时必须提交 `sourceLabel`；`sourceCode` 由后台生成。创建接口收到 `sourceCode`、`slug` 或 `utmSource` 时返回 400，避免运营误以为需要手工命名 code。
 - `sourceCode` 创建后不可修改，更新接口收到 `sourceCode` 或 `slug` 变更时返回 400。
 - `sourceLabel` 支持修改，更新后所有后台报表展示当前文案。
 
@@ -281,7 +282,7 @@ date, source_channel, source_name, invite_code_id, element_id, location, target_
 
 - 展示来源总览和推广来源管理。
 - 增加入口跳转到来源页面排行和来源点击排行。
-- 来源创建表单包含 `code` 和自定义文案。`code` 创建后锁定，文案可修改。
+- 来源创建表单只要求选择渠道、填写自定义文案和落地页；`code` 创建后自动生成并锁定，文案可修改。
 - 来源列表中显示自定义文案、`code`、追踪链接、状态、session、PV、联系、注册、会员、有效停留。
 - 来源报表标题、筛选器和漏斗标题优先显示自定义文案，旁边保留 `code` 作为小号辅助信息。
 
@@ -329,7 +330,7 @@ Session        ████████████████████  1,2
 
 1. 新增 D1 migration，创建来源维度聚合表。
 2. 部署 API 修复，使新事件能写入日报和来源维度聚合，并让来源查询返回 `sourceCode/sourceLabel`。
-3. 部署 Web 后台诊断、来源维度视图和 code/自定义文案表单。
+3. 部署 Web 后台诊断、来源维度视图和自动生成 code 的自定义文案表单。
 4. 生产开启 `analytics_enabled = true`，保持当前 1% 原始事件采样。
 5. 用追踪链接访问首页、点击联系或 CTA，验证后台总览、来源、页面来源、点击来源和流量漏斗均有数据。
 
@@ -340,14 +341,14 @@ Session        ████████████████████  1,2
 - API unit：批量 `page_view`、`page_leave` 写入 `analytics_daily_pages` 和 `analytics_daily_sources`。
 - API unit：批量点击事件写入 `analytics_click_daily` 和 `analytics_source_click_daily`。
 - API unit：带 `mg_source` / UTM 的 session 内页面和点击都使用同一来源。
-- API unit：来源创建必须包含 `sourceCode` 和 `sourceLabel`；`sourceCode` 唯一且创建后不可修改，`sourceLabel` 可修改。
+- API unit：来源创建必须包含 `sourceLabel`；`sourceCode` 自动生成、唯一且创建后不可修改，`sourceLabel` 可修改。
 - API unit：来源聚合保存稳定 `sourceCode`，展示查询能解析当前 `sourceLabel`。
 - API unit：overview 在 health 有接收但日报为空时返回诊断字段。
 - API unit：source-pages 和 source-clicks 查询支持日期范围与来源筛选。
 - API unit：funnel 查询返回阶段值、阶段间转化率和主要流失点。
 - Web unit：后台总览渲染诊断提示。
 - Web unit：来源页能展示推广来源质量，并跳转来源页面/点击视图。
-- Web unit：来源创建表单展示 `code` 和自定义文案；编辑时只允许修改自定义文案等展示字段，不允许改 `code`。
+- Web unit：来源创建表单只填写自定义文案等运营字段；创建后展示自动生成的 `code`，编辑时只允许修改自定义文案等展示字段，不允许改 `code`。
 - Web unit：流量漏斗组件能渲染非 0 数据、空数据和来源筛选态。
 - 构建验证：`corepack pnpm --filter @meigallery/api exec tsc --noEmit`。
 - 构建验证：`corepack pnpm --filter @meigallery/web exec nuxt build`。
@@ -358,7 +359,7 @@ Session        ████████████████████  1,2
 - 访问普通页面后，后台总览 PV、Session 和有效时长不再全部为 0。
 - 点击广告、联系入口、会员 CTA 或图库卡片后，后台点击页能看到对应点击。
 - 使用推广来源追踪链接访问后，来源总览能显示该来源的 session、PV、联系、注册或会员转化。
-- 来源创建时必须填写 `code` 和自定义文案；`code` 写入数据和追踪链接，自定义文案用于页面展示且支持后续修改。
+- 来源创建时必须填写自定义文案，`code` 由后台自动生成并写入数据和追踪链接，自定义文案用于页面展示且支持后续修改。
 - 修改自定义文案后，历史来源报表和漏斗显示新文案，但底层数据仍按原 `code` 聚合。
 - 来源页面分析能回答“某来源访问了哪些页面，表现如何”。
 - 来源点击分析能回答“某来源触发了哪些点击，质量如何”。

@@ -12,8 +12,10 @@ const createExport = useAnalyticsExport()
 interface TrackingSourceMetric {
   id: string
   name: string
+  sourceLabel: string
   channel: string
   slug: string
+  sourceCode: string
   targetPath: string
   utmSource: string
   utmMedium: string
@@ -36,14 +38,18 @@ const trackingSources = computed(() => {
 const createOpen = ref(true)
 const creating = ref(false)
 const createError = ref('')
+const editingId = ref('')
+const savingId = ref('')
 const form = reactive({
-  name: '',
+  sourceLabel: '',
   channel: 'referral',
-  slug: '',
   targetPath: '/',
-  utmSource: '',
   utmMedium: 'referral',
   utmCampaign: '',
+  note: '',
+})
+const editForm = reactive({
+  sourceLabel: '',
   note: '',
 })
 
@@ -63,16 +69,10 @@ watch(() => form.channel, (channel) => {
   }
 })
 
-watch(() => form.slug, (slug, oldSlug) => {
-  if (!form.utmSource || form.utmSource === normalizeSlugForForm(oldSlug || '')) {
-    form.utmSource = normalizeSlugForForm(slug)
-  }
-})
-
 async function createTrackingSource() {
   createError.value = ''
-  if (!form.name.trim()) {
-    createError.value = '请填写来源名称'
+  if (!form.sourceLabel.trim()) {
+    createError.value = '请填写自定义文案'
     return
   }
   creating.value = true
@@ -80,11 +80,9 @@ async function createTrackingSource() {
     const result = await api<{ data: TrackingSourceMetric }>('/api/admin/tracking-sources', {
       method: 'POST',
       body: {
-        name: form.name,
+        sourceLabel: form.sourceLabel,
         channel: form.channel,
-        slug: form.slug || undefined,
         targetPath: form.targetPath,
-        utmSource: form.utmSource || undefined,
         utmMedium: form.utmMedium,
         utmCampaign: form.utmCampaign || undefined,
         note: form.note,
@@ -92,10 +90,8 @@ async function createTrackingSource() {
     })
     toast.add({ title: '推广来源已创建', color: 'success' })
     await copyTrackingLink(result.data)
-    form.name = ''
-    form.slug = ''
+    form.sourceLabel = ''
     form.targetPath = '/'
-    form.utmSource = ''
     form.utmCampaign = ''
     form.note = ''
     await analytics.refresh()
@@ -103,6 +99,42 @@ async function createTrackingSource() {
     createError.value = resolveApiErrorMessage(error, '推广来源创建失败')
   } finally {
     creating.value = false
+  }
+}
+
+function startEdit(item: TrackingSourceMetric) {
+  editingId.value = item.id
+  editForm.sourceLabel = item.sourceLabel || item.name
+  editForm.note = item.note || ''
+}
+
+function cancelEdit() {
+  editingId.value = ''
+  editForm.sourceLabel = ''
+  editForm.note = ''
+}
+
+async function saveTrackingSource(item: TrackingSourceMetric) {
+  if (!editForm.sourceLabel.trim()) {
+    toast.add({ title: '请填写自定义文案', color: 'error' })
+    return
+  }
+  savingId.value = item.id
+  try {
+    await api(`/api/admin/tracking-sources/${item.id}`, {
+      method: 'PATCH',
+      body: {
+        sourceLabel: editForm.sourceLabel,
+        note: editForm.note,
+      },
+    })
+    toast.add({ title: '来源文案已更新', color: 'success' })
+    cancelEdit()
+    await analytics.refresh()
+  } catch (error) {
+    toast.add({ title: resolveApiErrorMessage(error, '来源更新失败'), color: 'error' })
+  } finally {
+    savingId.value = ''
   }
 }
 
@@ -125,21 +157,20 @@ function fullTrackingLink(item: Pick<TrackingSourceMetric, 'trackingPath'>) {
   return `${window.location.origin}${item.trackingPath}`
 }
 
+function sourcePagesLink(item: TrackingSourceMetric) {
+  return `/admin/analytics/source-pages?sourceCode=${encodeURIComponent(item.sourceCode || item.slug)}`
+}
+
+function sourceClicksLink(item: TrackingSourceMetric) {
+  return `/admin/analytics/source-clicks?sourceCode=${encodeURIComponent(item.sourceCode || item.slug)}`
+}
+
 async function copyTrackingLink(item: Pick<TrackingSourceMetric, 'trackingPath'>) {
   if (!import.meta.client) return
   await navigator.clipboard?.writeText(fullTrackingLink(item))
   toast.add({ title: '追踪链接已复制', color: 'success' })
 }
 
-function normalizeSlugForForm(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[\s.]+/g, '-')
-    .replace(/[^a-z0-9_-]/g, '')
-    .replace(/[-_]{2,}/g, '-')
-    .replace(/^[-_]+|[-_]+$/g, '')
-}
 </script>
 
 <template>
@@ -166,8 +197,9 @@ function normalizeSlugForForm(value: string) {
           empty-action-label="查看采集健康"
           empty-action-to="/admin/analytics/health"
           :columns="[
-            { key: 'source_channel', label: '渠道', sortable: true },
-            { key: 'source_name', label: '来源', sortable: true },
+            { key: 'source_channel_label', label: '渠道', sortable: true },
+            { key: 'source_label', label: '来源', sortable: true },
+            { key: 'sourceCode', label: 'code', sortable: true },
             { key: 'invite_code_id', label: '邀请码' },
             { key: 'visitor_count', label: '访客', type: 'number', sortable: true },
             { key: 'session_count', label: 'Session', type: 'number', sortable: true },
@@ -195,14 +227,12 @@ function normalizeSlugForForm(value: string) {
           </div>
 
           <form v-if="createOpen" class="mt-4 space-y-3" @submit.prevent="createTrackingSource">
-            <input v-model="form.name" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="名称，例如 Telegram 六月互推" />
             <select v-model="form.channel" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
               <option v-for="option in channelOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
             </select>
-            <input v-model="form.slug" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" placeholder="短标识，例如 telegram-june" />
+            <input v-model="form.sourceLabel" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="自定义文案，例如 Telegram 六月互推" />
             <input v-model="form.targetPath" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" placeholder="落地页，例如 / 或 /discover" />
-            <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <input v-model="form.utmSource" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" placeholder="utm_source" />
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <input v-model="form.utmMedium" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" placeholder="utm_medium" />
               <input v-model="form.utmCampaign" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" placeholder="utm_campaign" />
             </div>
@@ -225,7 +255,8 @@ function normalizeSlugForForm(value: string) {
             <article v-for="item in trackingSources.slice(0, 10)" :key="item.id" class="px-4 py-3">
               <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0">
-                  <p class="truncate text-sm font-medium text-gray-900">{{ item.name }}</p>
+                  <p class="truncate text-sm font-medium text-gray-900">{{ item.sourceLabel || item.name }}</p>
+                  <p class="mt-1 font-mono text-xs text-gray-500">code: {{ item.sourceCode || item.slug }}</p>
                   <p class="mt-1 break-all font-mono text-xs text-gray-500">{{ item.trackingPath }}</p>
                 </div>
                 <span :class="['shrink-0 rounded-full px-2 py-0.5 text-xs', item.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500']">{{ item.status }}</span>
@@ -235,8 +266,23 @@ function normalizeSlugForForm(value: string) {
                 <span>联系 {{ formatAnalyticsNumber(item.contactClickCount) }}</span>
                 <span>注册 {{ formatAnalyticsNumber(item.registerCount) }}</span>
               </div>
+              <form v-if="editingId === item.id" class="mt-3 space-y-2 rounded-lg border border-gray-100 bg-gray-50 p-3" @submit.prevent="saveTrackingSource(item)">
+                <input v-model="editForm.sourceLabel" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="自定义文案" />
+                <textarea v-model="editForm.note" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="内部备注" />
+                <div class="flex gap-2">
+                  <button class="rounded-lg bg-gray-950 px-3 py-2 text-xs font-medium text-white disabled:opacity-60" type="submit" :disabled="savingId === item.id">
+                    {{ savingId === item.id ? '保存中...' : '保存' }}
+                  </button>
+                  <button class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700" type="button" @click="cancelEdit">
+                    取消
+                  </button>
+                </div>
+              </form>
               <div class="mt-3 flex flex-wrap gap-3 text-xs">
                 <button class="text-gray-900 hover:underline" type="button" @click="copyTrackingLink(item)">复制链接</button>
+                <button class="text-gray-900 hover:underline" type="button" @click="startEdit(item)">编辑文案</button>
+                <NuxtLink class="text-blue-600 hover:underline" :to="sourcePagesLink(item)">页面</NuxtLink>
+                <NuxtLink class="text-blue-600 hover:underline" :to="sourceClicksLink(item)">点击</NuxtLink>
                 <button v-if="item.status !== 'disabled'" class="text-red-600 hover:underline" type="button" @click="disableTrackingSource(item)">停用</button>
               </div>
             </article>
