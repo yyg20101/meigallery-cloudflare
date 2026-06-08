@@ -1,6 +1,6 @@
 # 项目当前状态
 
-更新时间：2026-06-08
+更新时间：2026-06-09
 
 本文档是当前实现和部署状态的索引。若历史计划或早期 PRD 与本文冲突，以本文、`AGENTS.md`、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md`、`docs/GIT_WORKFLOW.md` 为准。
 
@@ -37,6 +37,7 @@
 
 - 当前 PRD 质量审阅和整改索引见 `docs/PRD_QUALITY_REVIEW.md`。
 - 数据分析需求方案见 `docs/PRD_DATA_ANALYTICS.md`，实施计划见 `plan/feature-data-analytics-implementation-1.md`；当前已实施到后台数据大盘、端到端 smoke、性能预算、成本护栏、上线顺序和回滚路径。Phase 9 的 Cloudflare Queues / Workers Analytics Engine 仍仅在阈值触发后评估。
+- 数据分析来源归因与日报聚合修复设计见 `docs/superpowers/specs/2026-06-09-analytics-source-attribution-fix-design.md`：已确认采用会话首触来源归因，来源创建区分稳定 `code` 与可编辑自定义文案，补齐批量采集到日报聚合表的断点，新增页面/点击来源维度和流量漏斗效果图设计，后续实现需按该设计修复后台全 0 问题。
 - 当前可验收能力、部分实现能力和规划能力必须按 `docs/PRD_QUALITY_REVIEW.md` 的需求状态矩阵区分，不得把历史 PRD 中的规划项当作上线阻断项。
 - Cloudflare Stream、Email Service、zip 大文件异步导入、旧站内容审核状态机属于需要单独补齐验收标准的重点区域。
 - 后续新增或修改 PRD 时，必须为成功指标补充测试环境、数据规模、采样方法和失败路径。
