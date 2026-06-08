@@ -5,6 +5,7 @@ import { createAnalyticsExportJob, readAnalyticsExportJob } from '../../services
 import { listTrackingSourcesWithMetrics } from '../../services/tracking-sources'
 import { errorJson } from '../../utils/api-error'
 import { readD1UsageMeta, mergeD1Usage, type D1Usage } from '../../utils/analytics-cost'
+import { enrichAnalyticsDisplayRow } from '../../utils/analytics-display'
 import { parseAnalyticsRange, type AnalyticsDateRange } from '../../utils/analytics-time'
 import { writeAuditLog } from '../../utils/permission'
 
@@ -20,7 +21,7 @@ adminAnalyticsRoutes.get('/overview', async (c) => {
   const range = parseRangeOrError(c)
   if (range instanceof Response) return range
 
-  const [totals, trend, topSources, topPages, topClicks, health] = await Promise.all([
+  const [totals, trend, topSources, topPages, topClicks, clickTotals, health] = await Promise.all([
     queryFirst(c.env.DB, `
       SELECT
         COALESCE(SUM(visitor_count), 0) AS visitor_count,
@@ -50,14 +51,17 @@ adminAnalyticsRoutes.get('/overview', async (c) => {
       ORDER BY date ASC
     `, [range.from, range.to]),
     queryAll(c.env.DB, `
-      SELECT source_channel, source_name, invite_code_id,
+      SELECT ads.source_channel, ads.source_name, ads.invite_code_id,
+             COALESCE(ats.name, '') AS tracking_source_label,
+             CASE WHEN ats.id IS NULL THEN 0 ELSE 1 END AS source_matched,
              SUM(session_count) AS session_count,
              SUM(register_count) AS register_count,
              SUM(contact_click_count) AS contact_click_count,
              SUM(membership_grant_count) AS membership_grant_count
-      FROM analytics_daily_sources
-      WHERE date BETWEEN ? AND ?
-      GROUP BY source_channel, source_name, invite_code_id
+      FROM analytics_daily_sources ads
+      LEFT JOIN analytics_tracking_sources ats ON ats.slug = ads.source_name
+      WHERE ads.date BETWEEN ? AND ?
+      GROUP BY ads.source_channel, ads.source_name, ads.invite_code_id, ats.name, ats.id
       ORDER BY session_count DESC
       LIMIT 5
     `, [range.from, range.to]),
@@ -82,6 +86,11 @@ adminAnalyticsRoutes.get('/overview', async (c) => {
       LIMIT 5
     `, [range.from, range.to]),
     queryFirst(c.env.DB, `
+      SELECT COALESCE(SUM(effective_click_count), 0) AS key_click_count
+      FROM analytics_click_daily
+      WHERE date BETWEEN ? AND ?
+    `, [range.from, range.to]),
+    queryFirst(c.env.DB, `
       SELECT
         COALESCE(SUM(accepted_count), 0) AS accepted_count,
         COALESCE(SUM(rejected_count), 0) AS rejected_count,
@@ -95,24 +104,42 @@ adminAnalyticsRoutes.get('/overview', async (c) => {
     `, [range.from, range.to]),
   ])
 
-  const usage = mergeQueryUsage(totals, trend, topSources, topPages, topClicks, health)
+  const usage = mergeQueryUsage(totals, trend, topSources, topPages, topClicks, clickTotals, health)
   const totalRow = totals.rows[0] ?? {}
   const sessionCount = Number((totalRow as Record<string, unknown>).session_count ?? 0)
   const activeSeconds = Number((totalRow as Record<string, unknown>).active_seconds_total ?? 0)
+  const enrichedTotals = {
+    ...totalRow,
+    key_click_count: Number((clickTotals.rows[0] as Record<string, unknown> | undefined)?.key_click_count ?? 0),
+    average_active_seconds: sessionCount > 0 ? Math.round(activeSeconds / sessionCount) : 0,
+  }
+  const aggregateTotal = [
+    'session_count',
+    'page_view_count',
+    'register_count',
+    'contact_click_count',
+    'membership_grant_count',
+    'gallery_detail_count',
+  ].reduce((total, key) => total + Number((totalRow as Record<string, unknown>)[key] ?? 0), 0)
+  const healthRow = health.rows[0] as Record<string, unknown> | undefined
+  const acceptedCount = Number(healthRow?.accepted_count ?? 0)
 
   return c.json({
     range,
     usage,
     data: {
-      totals: {
-        ...totalRow,
-        average_active_seconds: sessionCount > 0 ? Math.round(activeSeconds / sessionCount) : 0,
-      },
+      totals: enrichedTotals,
       trend: trend.rows,
-      topSources: topSources.rows,
-      topPages: topPages.rows,
-      topClicks: topClicks.rows,
+      topSources: topSources.rows.map(enrichAnalyticsDisplayRow),
+      topPages: topPages.rows.map(enrichAnalyticsDisplayRow),
+      topClicks: topClicks.rows.map(enrichAnalyticsDisplayRow),
       health: health.rows[0] ?? null,
+      funnel: buildFunnel(enrichedTotals),
+      diagnostics: {
+        aggregateMissing: acceptedCount > 0 && aggregateTotal === 0,
+        acceptedCount,
+        aggregateTotal,
+      },
     },
   })
 })
@@ -121,10 +148,12 @@ adminAnalyticsRoutes.get('/sources', async (c) => {
   const range = parseRangeOrError(c)
   if (range instanceof Response) return range
 
-  const { where, params } = analyticsWhere(c, range, 'ads')
+  const { where, params } = analyticsWhere(c, range, 'ads', { sourceName: true })
   const [result, trackingSources] = await Promise.all([
     queryAll(c.env.DB, `
-    SELECT source_channel, source_name, invite_code_id,
+    SELECT ads.source_channel, ads.source_name, ads.invite_code_id,
+           COALESCE(ats.name, '') AS tracking_source_label,
+           CASE WHEN ats.id IS NULL THEN 0 ELSE 1 END AS source_matched,
            SUM(visitor_count) AS visitor_count,
            SUM(session_count) AS session_count,
            SUM(page_view_count) AS page_view_count,
@@ -135,13 +164,26 @@ adminAnalyticsRoutes.get('/sources', async (c) => {
            SUM(membership_grant_count) AS membership_grant_count,
            SUM(active_seconds_total) AS active_seconds_total
     FROM analytics_daily_sources ads
+    LEFT JOIN analytics_tracking_sources ats ON ats.slug = ads.source_name
     WHERE ${where}
-    GROUP BY source_channel, source_name, invite_code_id
+    GROUP BY ads.source_channel, ads.source_name, ads.invite_code_id, ats.name, ats.id
     ORDER BY session_count DESC
   `, params),
     listTrackingSourcesWithMetrics(c.env.DB, range),
   ])
-  return c.json({ range, usage: result.usage, data: result.rows, trackingSources })
+  const rows = result.rows.map(enrichAnalyticsDisplayRow)
+  const unmatchedSourceCount = rows.filter(row => {
+    const sourceName = String(row.source_name ?? '').trim()
+    const channel = String(row.source_channel ?? '').trim()
+    return sourceName && !row.source_matched && !['direct', 'invite', 'unknown'].includes(channel)
+  }).length
+  return c.json({
+    range,
+    usage: result.usage,
+    data: rows,
+    trackingSources,
+    diagnostics: { unmatchedSourceCount },
+  })
 })
 
 adminAnalyticsRoutes.get('/pages', async (c) => {
@@ -165,7 +207,7 @@ adminAnalyticsRoutes.get('/pages', async (c) => {
     GROUP BY route_name, path, entity_type, entity_id, page_title
     ORDER BY page_view_count DESC
   `, [range.from, range.to])
-  return c.json({ range, usage: result.usage, data: result.rows })
+  return c.json({ range, usage: result.usage, data: result.rows.map(enrichAnalyticsDisplayRow) })
 })
 
 adminAnalyticsRoutes.get('/paths', async (c) => {
@@ -183,7 +225,7 @@ adminAnalyticsRoutes.get('/paths', async (c) => {
     GROUP BY from_route, to_route, from_path, to_path
     ORDER BY transition_count DESC
   `, [range.from, range.to])
-  return c.json({ range, usage: result.usage, data: result.rows })
+  return c.json({ range, usage: result.usage, data: result.rows.map(enrichAnalyticsDisplayRow) })
 })
 
 adminAnalyticsRoutes.get('/clicks', async (c) => {
@@ -204,7 +246,141 @@ adminAnalyticsRoutes.get('/clicks', async (c) => {
     GROUP BY element_id, element_type, location, target_type, target_id
     ORDER BY raw_click_count DESC
   `, [range.from, range.to])
-  return c.json({ range, usage: result.usage, data: result.rows })
+  return c.json({ range, usage: result.usage, data: result.rows.map(enrichAnalyticsDisplayRow) })
+})
+
+adminAnalyticsRoutes.get('/source-pages', async (c) => {
+  const range = parseRangeOrError(c)
+  if (range instanceof Response) return range
+
+  const { where, params } = analyticsWhere(c, range, 'aspd', { sourceName: true, path: true })
+  const result = await queryAll(c.env.DB, `
+    SELECT aspd.source_channel, aspd.source_name, aspd.invite_code_id,
+           COALESCE(ats.name, '') AS tracking_source_label,
+           CASE WHEN ats.id IS NULL THEN 0 ELSE 1 END AS source_matched,
+           aspd.route_name, aspd.path, aspd.entity_type, aspd.entity_id, aspd.page_title,
+           SUM(aspd.page_view_count) AS page_view_count,
+           SUM(aspd.visitor_count) AS visitor_count,
+           SUM(aspd.session_count) AS session_count,
+           SUM(aspd.entry_count) AS entry_count,
+           SUM(aspd.exit_count) AS exit_count,
+           SUM(aspd.bounce_count) AS bounce_count,
+           SUM(aspd.active_seconds_total) AS active_seconds_total,
+           MAX(aspd.max_scroll_depth) AS max_scroll_depth,
+           SUM(aspd.register_count) AS register_count,
+           SUM(aspd.contact_click_count) AS contact_click_count
+    FROM analytics_source_page_daily aspd
+    LEFT JOIN analytics_tracking_sources ats ON ats.slug = aspd.source_name
+    WHERE ${where}
+    GROUP BY aspd.source_channel, aspd.source_name, aspd.invite_code_id,
+             ats.name, ats.id, aspd.route_name, aspd.path, aspd.entity_type,
+             aspd.entity_id, aspd.page_title
+    ORDER BY page_view_count DESC
+  `, params)
+  return c.json({ range, usage: result.usage, data: result.rows.map(enrichAnalyticsDisplayRow) })
+})
+
+adminAnalyticsRoutes.get('/source-clicks', async (c) => {
+  const range = parseRangeOrError(c)
+  if (range instanceof Response) return range
+
+  const { where, params } = analyticsWhere(c, range, 'ascd', { sourceName: true })
+  const result = await queryAll(c.env.DB, `
+    SELECT ascd.source_channel, ascd.source_name, ascd.invite_code_id,
+           COALESCE(ats.name, '') AS tracking_source_label,
+           CASE WHEN ats.id IS NULL THEN 0 ELSE 1 END AS source_matched,
+           ascd.element_id, ascd.element_type, ascd.location, ascd.target_type, ascd.target_id,
+           SUM(ascd.raw_click_count) AS raw_click_count,
+           SUM(ascd.effective_click_count) AS effective_click_count,
+           SUM(ascd.duplicate_click_count) AS duplicate_click_count,
+           SUM(ascd.visitor_count) AS visitor_count,
+           SUM(ascd.session_count) AS session_count,
+           SUM(ascd.user_count) AS user_count,
+           SUM(ascd.exposure_session_count) AS exposure_session_count
+    FROM analytics_source_click_daily ascd
+    LEFT JOIN analytics_tracking_sources ats ON ats.slug = ascd.source_name
+    WHERE ${where}
+    GROUP BY ascd.source_channel, ascd.source_name, ascd.invite_code_id,
+             ats.name, ats.id, ascd.element_id, ascd.element_type, ascd.location,
+             ascd.target_type, ascd.target_id
+    ORDER BY raw_click_count DESC
+  `, params)
+  return c.json({ range, usage: result.usage, data: result.rows.map(enrichAnalyticsDisplayRow) })
+})
+
+adminAnalyticsRoutes.get('/funnel', async (c) => {
+  const range = parseRangeOrError(c)
+  if (range instanceof Response) return range
+
+  const hasSourceFilters = hasAnalyticsSourceFilters(c)
+  const path = normalizedQueryValue(c.req.query('path'))
+
+  const sourceTotalsWhere = analyticsWhere(c, range, 'ads', { sourceName: true })
+  const sourceTotals = await queryFirst(c.env.DB, `
+    SELECT
+      COALESCE(SUM(session_count), 0) AS session_count,
+      COALESCE(SUM(page_view_count), 0) AS page_view_count,
+      COALESCE(SUM(gallery_detail_count), 0) AS gallery_detail_count,
+      COALESCE(SUM(contact_click_count), 0) AS contact_click_count,
+      COALESCE(SUM(register_count), 0) AS register_count,
+      COALESCE(SUM(membership_grant_count), 0) AS membership_grant_count
+    FROM analytics_daily_sources ads
+    WHERE ${sourceTotalsWhere.where}
+  `, sourceTotalsWhere.params)
+
+  const pageTotals = hasSourceFilters || path
+    ? await queryFirst(c.env.DB, `
+      SELECT
+        COALESCE(SUM(session_count), 0) AS filtered_session_count,
+        COALESCE(SUM(page_view_count), 0) AS filtered_page_view_count,
+        COALESCE(SUM(CASE WHEN entity_type = 'gallery' OR route_name = '/gallery/:slug' THEN page_view_count ELSE 0 END), 0) AS filtered_gallery_detail_count,
+        COALESCE(SUM(contact_click_count), 0) AS filtered_contact_click_count,
+        COALESCE(SUM(register_count), 0) AS filtered_register_count
+      FROM analytics_source_page_daily aspd
+      WHERE ${analyticsWhere(c, range, 'aspd', { sourceName: true, path: true }).where}
+    `, analyticsWhere(c, range, 'aspd', { sourceName: true, path: true }).params)
+    : await queryFirst(c.env.DB, `
+      SELECT
+        COALESCE(SUM(session_count), 0) AS filtered_session_count,
+        COALESCE(SUM(page_view_count), 0) AS filtered_page_view_count,
+        COALESCE(SUM(CASE WHEN entity_type = 'gallery' OR route_name = '/gallery/:slug' THEN page_view_count ELSE 0 END), 0) AS filtered_gallery_detail_count,
+        COALESCE(SUM(contact_click_count), 0) AS filtered_contact_click_count,
+        COALESCE(SUM(register_count), 0) AS filtered_register_count
+      FROM analytics_daily_pages adp
+      WHERE adp.date BETWEEN ? AND ?
+    `, [range.from, range.to])
+
+  const clickTotals = hasSourceFilters
+    ? await queryFirst(c.env.DB, `
+      SELECT COALESCE(SUM(effective_click_count), 0) AS key_click_count
+      FROM analytics_source_click_daily ascd
+      WHERE ${analyticsWhere(c, range, 'ascd', { sourceName: true }).where}
+    `, analyticsWhere(c, range, 'ascd', { sourceName: true }).params)
+    : await queryFirst(c.env.DB, `
+      SELECT COALESCE(SUM(effective_click_count), 0) AS key_click_count
+      FROM analytics_click_daily
+      WHERE date BETWEEN ? AND ?
+    `, [range.from, range.to])
+
+  const sourceRow = sourceTotals.rows[0] ?? {}
+  const pageRow = pageTotals.rows[0] ?? {}
+  const clickRow = clickTotals.rows[0] ?? {}
+  const data = buildFunnel({
+    session_count: path ? pageRow.filtered_session_count : sourceRow.session_count,
+    page_view_count: pageRow.filtered_page_view_count ?? sourceRow.page_view_count,
+    gallery_detail_count: pageRow.filtered_gallery_detail_count ?? sourceRow.gallery_detail_count,
+    key_click_count: clickRow.key_click_count,
+    contact_click_count: path ? pageRow.filtered_contact_click_count : sourceRow.contact_click_count,
+    register_count: path ? pageRow.filtered_register_count : sourceRow.register_count,
+    membership_grant_count: sourceRow.membership_grant_count,
+  })
+
+  return c.json({
+    range,
+    usage: mergeQueryUsage(sourceTotals, pageTotals, clickTotals),
+    data,
+    filters: await readFunnelFilters(c),
+  })
 })
 
 adminAnalyticsRoutes.get('/durations', async (c) => {
@@ -230,7 +406,7 @@ adminAnalyticsRoutes.get('/durations', async (c) => {
     GROUP BY route_name, path, entity_type, entity_id, page_title
     ORDER BY average_active_seconds DESC
   `, [range.from, range.to])
-  return c.json({ range, usage: result.usage, data: result.rows })
+  return c.json({ range, usage: result.usage, data: result.rows.map(enrichAnalyticsDisplayRow) })
 })
 
 adminAnalyticsRoutes.get('/invites', async (c) => {
@@ -336,9 +512,9 @@ adminAnalyticsRoutes.get('/sessions/:id', async (c) => {
   return c.json({
     usage: mergeQueryUsage(summary, events),
     data: {
-      summary: summary.rows[0] ?? null,
+      summary: summary.rows[0] ? enrichAnalyticsDisplayRow(summary.rows[0]) : null,
       events: events.rows.map(row => ({
-        ...row,
+        ...enrichAnalyticsDisplayRow(row),
         event_props: safeJsonObject(String((row as Record<string, unknown>).event_props ?? '{}')),
       })),
     },
@@ -405,22 +581,109 @@ function parseRangeOrError(c: AdminAnalyticsContext): AnalyticsDateRange | Respo
   }
 }
 
-function analyticsWhere(c: AdminAnalyticsContext, range: AnalyticsDateRange, alias: string) {
+function analyticsWhere(
+  c: AdminAnalyticsContext,
+  range: AnalyticsDateRange,
+  alias: string,
+  options: { sourceName?: boolean; path?: boolean } = {},
+) {
   const conditions = [`${alias}.date BETWEEN ? AND ?`]
   const params: unknown[] = [range.from, range.to]
   const sourceChannel = c.req.query('sourceChannel')
-  const inviteCodeId = c.req.query('inviteCodeId')
+  const inviteCodeId = normalizedQueryValue(c.req.query('inviteCodeId'))
+  const sourceCode = normalizedQueryValue(c.req.query('sourceCode')) || normalizedQueryValue(c.req.query('sourceName'))
+  const path = normalizedQueryValue(c.req.query('path'))
 
   if (sourceChannel && sourceChannel !== 'all') {
     conditions.push(`${alias}.source_channel = ?`)
     params.push(sourceChannel)
   }
+  if (options.sourceName && sourceCode) {
+    conditions.push(`${alias}.source_name = ?`)
+    params.push(sourceCode)
+  }
   if (inviteCodeId) {
     conditions.push(`${alias}.invite_code_id = ?`)
     params.push(inviteCodeId)
   }
+  if (options.path && path) {
+    conditions.push(`${alias}.path = ?`)
+    params.push(path)
+  }
 
   return { where: conditions.join(' AND '), params }
+}
+
+function normalizedQueryValue(value: string | undefined) {
+  const text = String(value ?? '').trim()
+  return text && text !== 'all' ? text : ''
+}
+
+function hasAnalyticsSourceFilters(c: AdminAnalyticsContext) {
+  return Boolean(
+    normalizedQueryValue(c.req.query('sourceChannel')) ||
+    normalizedQueryValue(c.req.query('sourceCode')) ||
+    normalizedQueryValue(c.req.query('sourceName')) ||
+    normalizedQueryValue(c.req.query('inviteCodeId')),
+  )
+}
+
+function buildFunnel(input: Record<string, unknown>) {
+  const contactOrRegisters = Number(input.contact_click_count ?? 0) + Number(input.register_count ?? 0)
+  const stages = [
+    { key: 'sessions', label: 'Session', value: Number(input.session_count ?? 0), detailTo: '/admin/analytics/sources' },
+    { key: 'page_views', label: '页面访问', value: Number(input.page_view_count ?? 0), detailTo: '/admin/analytics/source-pages' },
+    { key: 'gallery_details', label: '详情浏览', value: Number(input.gallery_detail_count ?? 0), detailTo: '/admin/analytics/pages' },
+    { key: 'key_clicks', label: '关键点击', value: Number(input.key_click_count ?? 0), detailTo: '/admin/analytics/source-clicks' },
+    { key: 'contacts_or_registers', label: '联系/注册', value: contactOrRegisters, detailTo: '/admin/analytics/sources' },
+    { key: 'membership_grants', label: '会员发放', value: Number(input.membership_grant_count ?? 0), detailTo: '/admin/memberships' },
+  ].map((stage, index, all) => {
+    const previous = index === 0 ? stage.value : all[index - 1]?.value ?? 0
+    const entry = all[0]?.value ?? 0
+    return {
+      ...stage,
+      rateFromPrevious: previous > 0 ? roundRate(stage.value / previous) : 0,
+      rateFromEntry: entry > 0 ? roundRate(stage.value / entry) : 0,
+    }
+  })
+
+  const dropOffs = stages.slice(1).map((stage, index) => {
+    const previous = stages[index]
+    const lost = Math.max(0, (previous?.value ?? 0) - stage.value)
+    return {
+      from: previous?.key ?? '',
+      fromLabel: previous?.label ?? '',
+      to: stage.key,
+      toLabel: stage.label,
+      lost,
+      lossRate: previous && previous.value > 0 ? roundRate(lost / previous.value) : 0,
+    }
+  }).sort((a, b) => b.lossRate - a.lossRate)
+
+  return { stages, dropOffs }
+}
+
+function roundRate(value: number) {
+  if (!Number.isFinite(value)) return 0
+  return Math.round(value * 10000) / 10000
+}
+
+async function readFunnelFilters(c: AdminAnalyticsContext) {
+  const sourceCode = normalizedQueryValue(c.req.query('sourceCode')) || normalizedQueryValue(c.req.query('sourceName'))
+  const sourceChannel = normalizedQueryValue(c.req.query('sourceChannel'))
+  const inviteCodeId = normalizedQueryValue(c.req.query('inviteCodeId'))
+  const path = normalizedQueryValue(c.req.query('path'))
+  const label = sourceCode
+    ? await c.env.DB.prepare('SELECT name FROM analytics_tracking_sources WHERE slug = ? LIMIT 1').bind(sourceCode).first<{ name: string }>()
+    : null
+  return {
+    sourceChannel,
+    sourceCode,
+    sourceName: sourceCode,
+    sourceLabel: label?.name ?? '',
+    inviteCodeId,
+    path,
+  }
 }
 
 async function queryAll<T extends Record<string, unknown>>(

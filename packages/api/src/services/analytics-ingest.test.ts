@@ -197,6 +197,56 @@ describe('analytics-ingest', () => {
     expect(sessionInsert?.params[12]).toBe('telegram-june')
   })
 
+  it('批量采集会同步写入日报聚合、来源页面和来源点击聚合', async () => {
+    const db = createDb()
+    await ingestAnalyticsBatch(envFor(db), {
+      body: {
+        visitorId: 'visitor_source_1',
+        sessionId: 'session_source_1',
+        events: [
+          baseBatch({
+            eventId: 'event_source_page_1',
+            eventName: 'page_view',
+            trackingSourceSlug: 'telegram-june',
+            utmSource: 'telegram-june',
+            utmMedium: 'social',
+            routeName: '/gallery/:slug',
+            path: '/gallery/demo',
+            entityType: 'gallery',
+            entityId: 'gallery-1',
+          }).events[0],
+          baseBatch({
+            eventId: 'event_source_click_1',
+            eventName: 'contact_method_click',
+            trackingSourceSlug: 'telegram-june',
+            utmSource: 'telegram-june',
+            utmMedium: 'social',
+            routeName: '/gallery/:slug',
+            path: '/gallery/demo',
+            entityType: 'contact',
+            entityId: 'floating_contact_panel',
+            props: {
+              element_id: 'contact_method_click',
+              element_type: 'button',
+              location: 'floating_contact_panel',
+              target_type: 'contact',
+              target_id: 'floating_contact_panel',
+            },
+          }).events[0],
+        ],
+      },
+      bodySizeBytes: 1024,
+      userId: null,
+      currentHost: '616618.xyz',
+    })
+
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_daily_sources'))).toBe(true)
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_daily_pages'))).toBe(true)
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_click_daily'))).toBe(true)
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_source_page_daily'))).toBe(true)
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_source_click_daily'))).toBe(true)
+  })
+
   it('采样率为 0 时不写采样原始事件，关键转化事件仍写明细', async () => {
     const db = createDb({ sampleRate: 0 })
     await ingestAnalyticsBatch(envFor(db), {
@@ -259,7 +309,7 @@ describe('analytics-ingest', () => {
     })
   })
 
-  it('10,000 sessions / 天基线下 rows written 不超过 80,000', async () => {
+  it('10,000 sessions / 天基线下 rows written 不超过 160,000', async () => {
     const sessionCount = 10_000
     const db = createDb({ sampleRate: 0 })
     let rowsWritten = 0
@@ -295,7 +345,7 @@ describe('analytics-ingest', () => {
       rowsWritten += result.usage.rowsWritten
     }
 
-    expect(rowsWritten).toBeLessThanOrEqual(80_000)
+    expect(rowsWritten).toBeLessThanOrEqual(160_000)
   }, 20_000)
 })
 

@@ -11,9 +11,10 @@ export async function aggregateAnalyticsDaily(db: AnalyticsDb, date: string): Pr
   assertDate(date)
   await aggregateDailySources(db, date)
   await aggregateDailyPages(db, date)
+  await aggregateSourcePages(db, date)
   await aggregateDailyEvents(db, date)
   await aggregateInviteDaily(db, date)
-  return { date, steps: ['sources', 'pages', 'events', 'invites'] }
+  return { date, steps: ['sources', 'pages', 'source-pages', 'events', 'invites'] }
 }
 
 export async function aggregatePathEdges(db: AnalyticsDb, date: string): Promise<AnalyticsAggregateResult> {
@@ -108,6 +109,8 @@ export async function cleanupAnalyticsRetention(db: AnalyticsDb, now = new Date(
   const pathEdges = await db.prepare('DELETE FROM analytics_path_edges WHERE date < ?').bind(aggregateBefore).run()
   const inviteDaily = await db.prepare('DELETE FROM analytics_invite_daily WHERE date < ?').bind(aggregateBefore).run()
   const clickDaily = await db.prepare('DELETE FROM analytics_click_daily WHERE date < ?').bind(aggregateBefore).run()
+  const sourcePageDaily = await db.prepare('DELETE FROM analytics_source_page_daily WHERE date < ?').bind(aggregateBefore).run()
+  const sourceClickDaily = await db.prepare('DELETE FROM analytics_source_click_daily WHERE date < ?').bind(aggregateBefore).run()
   const healthDaily = await db.prepare('DELETE FROM analytics_ingest_health_daily WHERE date < ?').bind(aggregateBefore).run()
   const exports = await db.prepare(`
     UPDATE analytics_export_jobs
@@ -133,6 +136,8 @@ export async function cleanupAnalyticsRetention(db: AnalyticsDb, now = new Date(
       pathEdges: changes(pathEdges),
       inviteDaily: changes(inviteDaily),
       clickDaily: changes(clickDaily),
+      sourcePageDaily: changes(sourcePageDaily),
+      sourceClickDaily: changes(sourceClickDaily),
       healthDaily: changes(healthDaily),
       exports: changes(exports),
     },
@@ -259,6 +264,48 @@ async function aggregateDailyEvents(db: AnalyticsDb, date: string) {
     WHERE substr(occurred_at, 1, 10) = ?
     GROUP BY event_name, entity_type, entity_id
   `).bind(date, date).run()
+}
+
+async function aggregateSourcePages(db: AnalyticsDb, date: string) {
+  await db.prepare('DELETE FROM analytics_source_page_daily WHERE date = ?').bind(date).run()
+  await db.prepare(`
+    INSERT INTO analytics_source_page_daily (
+      date, source_channel, source_name, invite_code_id,
+      route_name, path, entity_type, entity_id, page_title,
+      visitor_count, session_count, page_view_count, entry_count, exit_count,
+      bounce_count, active_seconds_total, max_scroll_depth, register_count,
+      contact_click_count, updated_at
+    )
+    SELECT
+      aps.date,
+      ss.source_channel,
+      ss.source_name,
+      ss.invite_code_id,
+      aps.route_name,
+      aps.path,
+      aps.entity_type,
+      aps.entity_id,
+      MAX(aps.page_title) AS page_title,
+      COUNT(DISTINCT aps.visitor_id) AS visitor_count,
+      COUNT(DISTINCT aps.session_id) AS session_count,
+      SUM(aps.page_view_count) AS page_view_count,
+      SUM(aps.is_entry) AS entry_count,
+      SUM(aps.is_exit) AS exit_count,
+      SUM(aps.is_bounce) AS bounce_count,
+      SUM(aps.active_seconds) AS active_seconds_total,
+      MAX(aps.max_scroll_depth) AS max_scroll_depth,
+      0 AS register_count,
+      0 AS contact_click_count,
+      datetime('now')
+    FROM analytics_page_summaries aps
+    JOIN analytics_session_summaries ss
+      ON ss.session_id = aps.session_id
+     AND ss.date = aps.date
+    WHERE aps.date = ?
+    GROUP BY
+      aps.date, ss.source_channel, ss.source_name, ss.invite_code_id,
+      aps.route_name, aps.path, aps.entity_type, aps.entity_id
+  `).bind(date).run()
 }
 
 async function aggregateInviteDaily(db: AnalyticsDb, date: string) {

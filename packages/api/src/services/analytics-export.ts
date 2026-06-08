@@ -10,6 +10,8 @@ export type AnalyticsExportKind =
   | 'pages'
   | 'paths'
   | 'clicks'
+  | 'source-pages'
+  | 'source-clicks'
   | 'durations'
   | 'invites'
   | 'sessions'
@@ -20,6 +22,8 @@ const EXPORT_KINDS = new Set<AnalyticsExportKind>([
   'pages',
   'paths',
   'clicks',
+  'source-pages',
+  'source-clicks',
   'durations',
   'invites',
   'sessions',
@@ -223,6 +227,47 @@ function exportSql(kind: AnalyticsExportKind) {
       ORDER BY raw_click_count DESC
     `
   }
+  if (kind === 'source-pages') {
+    return `
+      SELECT aspd.source_channel, aspd.source_name, COALESCE(ats.name, '') AS source_label,
+             aspd.invite_code_id, aspd.route_name, aspd.path, aspd.entity_type,
+             aspd.entity_id, aspd.page_title,
+             SUM(aspd.page_view_count) AS page_view_count,
+             SUM(aspd.visitor_count) AS visitor_count,
+             SUM(aspd.session_count) AS session_count,
+             SUM(aspd.entry_count) AS entry_count,
+             SUM(aspd.exit_count) AS exit_count,
+             SUM(aspd.bounce_count) AS bounce_count,
+             SUM(aspd.active_seconds_total) AS active_seconds_total,
+             MAX(aspd.max_scroll_depth) AS max_scroll_depth,
+             SUM(aspd.register_count) AS register_count,
+             SUM(aspd.contact_click_count) AS contact_click_count
+      FROM analytics_source_page_daily aspd
+      LEFT JOIN analytics_tracking_sources ats ON ats.slug = aspd.source_name
+      WHERE aspd.date BETWEEN ? AND ?
+      GROUP BY aspd.source_channel, aspd.source_name, ats.name, aspd.invite_code_id,
+               aspd.route_name, aspd.path, aspd.entity_type, aspd.entity_id, aspd.page_title
+      ORDER BY page_view_count DESC
+    `
+  }
+  if (kind === 'source-clicks') {
+    return `
+      SELECT ascd.source_channel, ascd.source_name, COALESCE(ats.name, '') AS source_label,
+             ascd.invite_code_id, ascd.element_id, ascd.element_type, ascd.location,
+             ascd.target_type, ascd.target_id,
+             SUM(ascd.raw_click_count) AS raw_click_count,
+             SUM(ascd.effective_click_count) AS effective_click_count,
+             SUM(ascd.duplicate_click_count) AS duplicate_click_count,
+             SUM(ascd.visitor_count) AS visitor_count,
+             SUM(ascd.session_count) AS session_count
+      FROM analytics_source_click_daily ascd
+      LEFT JOIN analytics_tracking_sources ats ON ats.slug = ascd.source_name
+      WHERE ascd.date BETWEEN ? AND ?
+      GROUP BY ascd.source_channel, ascd.source_name, ats.name, ascd.invite_code_id,
+               ascd.element_id, ascd.element_type, ascd.location, ascd.target_type, ascd.target_id
+      ORDER BY raw_click_count DESC
+    `
+  }
   if (kind === 'invites') {
     return `
       SELECT aid.invite_code_id, COALESCE(ic.name, '') AS invite_name,
@@ -296,6 +341,8 @@ function csvCell(value: unknown) {
 function defaultHeaders(kind: AnalyticsExportKind) {
   if (kind === 'paths') return ['from_route', 'to_route', 'transition_count']
   if (kind === 'clicks') return ['element_id', 'raw_click_count', 'effective_click_count']
+  if (kind === 'source-pages') return ['source_channel', 'source_name', 'route_name', 'page_view_count']
+  if (kind === 'source-clicks') return ['source_channel', 'source_name', 'element_id', 'raw_click_count']
   if (kind === 'invites') return ['invite_code_id', 'landing_count', 'register_count']
   if (kind === 'sessions') return ['session_id', 'date', 'source_channel']
   if (kind === 'pages' || kind === 'durations') return ['route_name', 'path', 'page_view_count']

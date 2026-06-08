@@ -26,7 +26,7 @@ const createExport = useAnalyticsExport()
       empty-action-label="查看内容分析"
       empty-action-to="/admin/analytics/pages"
       :columns="[
-        { key: 'route_name', label: 'Route', sortable: true },
+        { key: 'route_label', label: '页面', sortable: true },
         { key: 'path', label: '路径' },
         { key: 'page_view_count', label: 'PV', type: 'number', sortable: true },
         { key: 'session_count', label: 'Session', type: 'number', sortable: true },

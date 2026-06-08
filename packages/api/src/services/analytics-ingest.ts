@@ -473,6 +473,8 @@ async function _persistAcceptedEvent(
     await writePageSummary(db, batch, event, context, response)
   }
   await writeDailyAggregates(db, event, response)
+  await writeSourcePageDailyBatch(db, [event], response)
+  await writeSourceClickDailyBatch(db, [event], response)
 
   if (storedRaw) {
     const result = await runAndTrack(db, response, `
@@ -590,7 +592,12 @@ async function persistAcceptedEvents(
 
   await writeSessionSummaryBatch(db, batch, events, context, response)
   await writePageSummaryBatch(db, batch, events, context, response)
+  await writeDailyEventsBatch(db, events, response)
+  await writeDailySourcesBatch(db, events, response)
+  await writeDailyPagesBatch(db, events, response)
   await writeClickDailyBatch(db, events, response)
+  await writeSourcePageDailyBatch(db, events, response)
+  await writeSourceClickDailyBatch(db, events, response)
   await writeRawEventsBatch(db, batch, accepted, context, response)
 }
 
@@ -712,6 +719,150 @@ async function writePageSummaryBatch(
   }
 }
 
+async function writeDailyEventsBatch(
+  db: AnalyticsDb,
+  events: NormalizedAnalyticsEvent[],
+  response: AnalyticsBatchResponse & { usage: D1Usage },
+) {
+  const groups = new Map<string, { event: NormalizedAnalyticsEvent; count: number; valueTotal: number }>()
+  for (const event of events) {
+    const key = [event.date, event.eventName, event.entityType, event.entityId].join('\u001f')
+    const group = groups.get(key) ?? { event, count: 0, valueTotal: 0 }
+    group.count += 1
+    group.valueTotal += event.value ?? 0
+    groups.set(key, group)
+  }
+
+  for (const { event, count, valueTotal } of groups.values()) {
+    await runAndTrack(db, response, `
+      INSERT INTO analytics_daily_events (
+        date, event_name, entity_type, entity_id, event_count, visitor_count,
+        session_count, user_count, value_total, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, 1, 1, 0, ?, datetime('now'))
+      ON CONFLICT(date, event_name, entity_type, entity_id) DO UPDATE SET
+        event_count = analytics_daily_events.event_count + excluded.event_count,
+        value_total = analytics_daily_events.value_total + excluded.value_total,
+        updated_at = datetime('now')
+    `, [event.date, event.eventName, event.entityType, event.entityId, count, valueTotal])
+  }
+}
+
+async function writeDailySourcesBatch(
+  db: AnalyticsDb,
+  events: NormalizedAnalyticsEvent[],
+  response: AnalyticsBatchResponse & { usage: D1Usage },
+) {
+  const groups = new Map<string, { event: NormalizedAnalyticsEvent; events: NormalizedAnalyticsEvent[] }>()
+  for (const event of events) {
+    const key = [event.date, event.sourceChannel, event.sourceName, stringProp(event.props.invite_code_id) || ''].join('\u001f')
+    const group = groups.get(key) ?? { event, events: [] }
+    group.events.push(event)
+    groups.set(key, group)
+  }
+
+  for (const { event, events: groupEvents } of groups.values()) {
+    const sessionStarts = groupEvents.filter(item => item.eventName === 'session_start').length
+    const pageViews = groupEvents.filter(item => item.eventName === 'page_view').length
+    const galleryDetails = groupEvents.filter(item => item.eventName === 'gallery_detail_view' || item.routeName === '/gallery/:slug').length
+    const contactClicks = groupEvents.filter(item => CONTACT_EVENTS.has(item.eventName)).length
+    const registers = groupEvents.filter(item => item.eventName === 'register_success').length
+    const memberships = groupEvents.filter(item => item.eventName === 'membership_granted_conversion').length
+    await runAndTrack(db, response, `
+      INSERT INTO analytics_daily_sources (
+        date, source_channel, source_name, invite_code_id, visitor_count, session_count,
+        page_view_count, gallery_detail_count, contact_click_count, register_count,
+        invite_register_count, membership_grant_count, active_seconds_total, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(date, source_channel, source_name, invite_code_id) DO UPDATE SET
+        visitor_count = analytics_daily_sources.visitor_count + excluded.visitor_count,
+        session_count = analytics_daily_sources.session_count + excluded.session_count,
+        page_view_count = analytics_daily_sources.page_view_count + excluded.page_view_count,
+        gallery_detail_count = analytics_daily_sources.gallery_detail_count + excluded.gallery_detail_count,
+        contact_click_count = analytics_daily_sources.contact_click_count + excluded.contact_click_count,
+        register_count = analytics_daily_sources.register_count + excluded.register_count,
+        invite_register_count = analytics_daily_sources.invite_register_count + excluded.invite_register_count,
+        membership_grant_count = analytics_daily_sources.membership_grant_count + excluded.membership_grant_count,
+        active_seconds_total = analytics_daily_sources.active_seconds_total + excluded.active_seconds_total,
+        updated_at = datetime('now')
+    `, [
+      event.date,
+      event.sourceChannel,
+      event.sourceName,
+      stringProp(event.props.invite_code_id) || '',
+      sessionStarts,
+      sessionStarts,
+      pageViews,
+      galleryDetails,
+      contactClicks,
+      registers,
+      registers > 0 && stringProp(event.props.invite_code_id) ? registers : 0,
+      memberships,
+      sumBy(groupEvents, item => item.activeSeconds),
+    ])
+  }
+}
+
+async function writeDailyPagesBatch(
+  db: AnalyticsDb,
+  events: NormalizedAnalyticsEvent[],
+  response: AnalyticsBatchResponse & { usage: D1Usage },
+) {
+  const groups = new Map<string, NormalizedAnalyticsEvent[]>()
+  for (const event of events) {
+    const key = [event.date, event.routeName, event.path, event.entityType, event.entityId].join('\u001f')
+    const group = groups.get(key) ?? []
+    group.push(event)
+    groups.set(key, group)
+  }
+
+  for (const group of groups.values()) {
+    const first = group[0]
+    const last = group[group.length - 1]
+    if (!first || !last) continue
+    await runAndTrack(db, response, `
+      INSERT INTO analytics_daily_pages (
+        date, route_name, path, entity_type, entity_id, page_title, page_view_count,
+        visitor_count, session_count, entry_count, exit_count, bounce_count,
+        active_seconds_total, max_scroll_depth, register_count, contact_click_count,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(date, route_name, path, entity_type, entity_id) DO UPDATE SET
+        page_title = CASE WHEN excluded.page_title != '' THEN excluded.page_title ELSE analytics_daily_pages.page_title END,
+        page_view_count = analytics_daily_pages.page_view_count + excluded.page_view_count,
+        visitor_count = analytics_daily_pages.visitor_count + excluded.visitor_count,
+        session_count = analytics_daily_pages.session_count + excluded.session_count,
+        entry_count = analytics_daily_pages.entry_count + excluded.entry_count,
+        exit_count = analytics_daily_pages.exit_count + excluded.exit_count,
+        bounce_count = analytics_daily_pages.bounce_count + excluded.bounce_count,
+        active_seconds_total = analytics_daily_pages.active_seconds_total + excluded.active_seconds_total,
+        max_scroll_depth = MAX(analytics_daily_pages.max_scroll_depth, excluded.max_scroll_depth),
+        register_count = analytics_daily_pages.register_count + excluded.register_count,
+        contact_click_count = analytics_daily_pages.contact_click_count + excluded.contact_click_count,
+        updated_at = datetime('now')
+    `, [
+      first.date,
+      first.routeName,
+      first.path,
+      first.entityType,
+      first.entityId,
+      last.pageTitle || first.pageTitle,
+      group.filter(event => event.eventName === 'page_view').length,
+      group.some(event => event.eventName === 'page_view') ? 1 : 0,
+      group.some(event => event.eventName === 'page_view') ? 1 : 0,
+      group.some(event => event.isEntry) ? 1 : 0,
+      group.some(event => event.eventName === 'page_leave') ? 1 : 0,
+      group.some(event => event.isBounce) ? 1 : 0,
+      sumBy(group, event => event.activeSeconds),
+      maxBy(group, event => event.maxScrollDepth),
+      group.filter(event => event.eventName === 'register_success').length,
+      group.filter(event => CONTACT_EVENTS.has(event.eventName)).length,
+    ])
+  }
+}
+
 async function writeClickDailyBatch(
   db: AnalyticsDb,
   events: NormalizedAnalyticsEvent[],
@@ -755,6 +906,141 @@ async function writeClickDailyBatch(
       count,
       count,
       0,
+    ])
+  }
+}
+
+async function writeSourcePageDailyBatch(
+  db: AnalyticsDb,
+  events: NormalizedAnalyticsEvent[],
+  response: AnalyticsBatchResponse & { usage: D1Usage },
+) {
+  const groups = new Map<string, NormalizedAnalyticsEvent[]>()
+  for (const event of events) {
+    const inviteCodeId = stringProp(event.props.invite_code_id) || ''
+    if (!hasSourceDimensionAttribution(event, inviteCodeId)) continue
+    const key = [
+      event.date,
+      event.sourceChannel,
+      event.sourceName,
+      inviteCodeId,
+      event.routeName,
+      event.path,
+      event.entityType,
+      event.entityId,
+    ].join('\u001f')
+    const group = groups.get(key) ?? []
+    group.push(event)
+    groups.set(key, group)
+  }
+
+  for (const group of groups.values()) {
+    const first = group[0]
+    const last = group[group.length - 1]
+    if (!first || !last) continue
+    await runAndTrack(db, response, `
+      INSERT INTO analytics_source_page_daily (
+        date, source_channel, source_name, invite_code_id,
+        route_name, path, entity_type, entity_id, page_title,
+        visitor_count, session_count, page_view_count, entry_count, exit_count,
+        bounce_count, active_seconds_total, max_scroll_depth, register_count,
+        contact_click_count, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(date, source_channel, source_name, invite_code_id, route_name, path, entity_type, entity_id) DO UPDATE SET
+        page_title = CASE WHEN excluded.page_title != '' THEN excluded.page_title ELSE analytics_source_page_daily.page_title END,
+        visitor_count = analytics_source_page_daily.visitor_count + excluded.visitor_count,
+        session_count = analytics_source_page_daily.session_count + excluded.session_count,
+        page_view_count = analytics_source_page_daily.page_view_count + excluded.page_view_count,
+        entry_count = analytics_source_page_daily.entry_count + excluded.entry_count,
+        exit_count = analytics_source_page_daily.exit_count + excluded.exit_count,
+        bounce_count = analytics_source_page_daily.bounce_count + excluded.bounce_count,
+        active_seconds_total = analytics_source_page_daily.active_seconds_total + excluded.active_seconds_total,
+        max_scroll_depth = MAX(analytics_source_page_daily.max_scroll_depth, excluded.max_scroll_depth),
+        register_count = analytics_source_page_daily.register_count + excluded.register_count,
+        contact_click_count = analytics_source_page_daily.contact_click_count + excluded.contact_click_count,
+        updated_at = datetime('now')
+    `, [
+      first.date,
+      first.sourceChannel,
+      first.sourceName,
+      stringProp(first.props.invite_code_id) || '',
+      first.routeName,
+      first.path,
+      first.entityType,
+      first.entityId,
+      last.pageTitle || first.pageTitle,
+      group.some(event => event.eventName === 'page_view') ? 1 : 0,
+      group.some(event => event.eventName === 'page_view') ? 1 : 0,
+      group.filter(event => event.eventName === 'page_view').length,
+      group.some(event => event.isEntry) ? 1 : 0,
+      group.some(event => event.eventName === 'page_leave') ? 1 : 0,
+      group.some(event => event.isBounce) ? 1 : 0,
+      sumBy(group, event => event.activeSeconds),
+      maxBy(group, event => event.maxScrollDepth),
+      group.filter(event => event.eventName === 'register_success').length,
+      group.filter(event => CONTACT_EVENTS.has(event.eventName)).length,
+    ])
+  }
+}
+
+async function writeSourceClickDailyBatch(
+  db: AnalyticsDb,
+  events: NormalizedAnalyticsEvent[],
+  response: AnalyticsBatchResponse & { usage: D1Usage },
+) {
+  const groups = new Map<string, { event: NormalizedAnalyticsEvent; count: number }>()
+  for (const event of events) {
+    if (!CLICK_EVENTS.has(event.eventName)) continue
+    const elementId = stringProp(event.props.element_id) || event.eventName
+    const location = stringProp(event.props.location) || event.routeName
+    const targetType = stringProp(event.props.target_type) || event.entityType
+    const targetId = stringProp(event.props.target_id) || event.entityId
+    const inviteCodeId = stringProp(event.props.invite_code_id) || ''
+    if (!hasSourceDimensionAttribution(event, inviteCodeId)) continue
+    const key = [
+      event.date,
+      event.sourceChannel,
+      event.sourceName,
+      inviteCodeId,
+      elementId,
+      location,
+      targetType,
+      targetId,
+    ].join('\u001f')
+    const group = groups.get(key) ?? { event, count: 0 }
+    group.count += 1
+    groups.set(key, group)
+  }
+
+  for (const { event, count } of groups.values()) {
+    await runAndTrack(db, response, `
+      INSERT INTO analytics_source_click_daily (
+        date, source_channel, source_name, invite_code_id,
+        element_id, element_type, location, target_type, target_id,
+        raw_click_count, effective_click_count, duplicate_click_count,
+        visitor_count, session_count, user_count, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, 1, 0, datetime('now'))
+      ON CONFLICT(date, source_channel, source_name, invite_code_id, element_id, location, target_type, target_id) DO UPDATE SET
+        raw_click_count = analytics_source_click_daily.raw_click_count + excluded.raw_click_count,
+        effective_click_count = analytics_source_click_daily.effective_click_count + excluded.effective_click_count,
+        visitor_count = analytics_source_click_daily.visitor_count + 1,
+        session_count = analytics_source_click_daily.session_count + 1,
+        user_count = analytics_source_click_daily.user_count + excluded.user_count,
+        updated_at = datetime('now')
+    `, [
+      event.date,
+      event.sourceChannel,
+      event.sourceName,
+      stringProp(event.props.invite_code_id) || '',
+      stringProp(event.props.element_id) || event.eventName,
+      stringProp(event.props.element_type) || event.eventName,
+      stringProp(event.props.location) || event.routeName,
+      stringProp(event.props.target_type) || event.entityType,
+      stringProp(event.props.target_id) || event.entityId,
+      count,
+      count,
     ])
   }
 }
@@ -821,6 +1107,10 @@ function sumBy(events: NormalizedAnalyticsEvent[], mapper: (event: NormalizedAna
 
 function maxBy(events: NormalizedAnalyticsEvent[], mapper: (event: NormalizedAnalyticsEvent) => number) {
   return events.reduce((max, event) => Math.max(max, mapper(event)), 0)
+}
+
+function hasSourceDimensionAttribution(event: NormalizedAnalyticsEvent, inviteCodeId: string) {
+  return event.sourceChannel !== 'direct' || Boolean(inviteCodeId || (event.sourceName && event.sourceName !== 'direct'))
 }
 
 async function writeSessionSummary(

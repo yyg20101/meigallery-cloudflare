@@ -26,8 +26,8 @@ const createExport = useAnalyticsExport()
       empty-action-label="查看总览"
       empty-action-to="/admin/analytics"
       :columns="[
-        { key: 'from_route', label: 'From route', sortable: true },
-        { key: 'to_route', label: 'To route', sortable: true },
+        { key: 'from_route_label', label: '来源页面', sortable: true },
+        { key: 'to_route_label', label: '去向页面', sortable: true },
         { key: 'from_path', label: 'From path' },
         { key: 'to_path', label: 'To path' },
         { key: 'transition_count', label: '跳转', type: 'number', sortable: true },

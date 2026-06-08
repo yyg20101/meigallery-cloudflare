@@ -18,8 +18,10 @@ export class TrackingSourceError extends Error {
 
 export interface CreateTrackingSourceInput {
   name?: string
+  sourceLabel?: string
   channel?: string
   slug?: string
+  sourceCode?: string
   targetPath?: string
   utmSource?: string
   utmMedium?: string
@@ -30,8 +32,10 @@ export interface CreateTrackingSourceInput {
 
 export interface UpdateTrackingSourceInput {
   name?: string
+  sourceLabel?: string
   channel?: string
   slug?: string
+  sourceCode?: string
   targetPath?: string
   utmSource?: string
   utmMedium?: string
@@ -43,8 +47,10 @@ export interface UpdateTrackingSourceInput {
 export interface TrackingSourceItem {
   id: string
   name: string
+  sourceLabel: string
   channel: TrackingSourceChannel
   slug: string
+  sourceCode: string
   targetPath: string
   utmSource: string
   utmMedium: string
@@ -100,17 +106,23 @@ const SLUG_RE = /^[a-z0-9][a-z0-9_-]{1,58}[a-z0-9]$/
 const UTM_RE = /^[a-z0-9][a-z0-9_.-]{0,79}$/
 
 export async function createTrackingSource(db: TrackingSourceDb, input: CreateTrackingSourceInput): Promise<TrackingSourceItem> {
-  const name = normalizeRequiredText(input.name, '来源名称', 80)
+  const name = normalizeRequiredText(input.sourceLabel ?? input.name, '来源自定义文案', 80)
   const channel = normalizeChannel(input.channel)
-  const slug = normalizeSlug(input.slug || name)
+  const id = generateId('ats')
+  if (input.sourceCode !== undefined || input.slug !== undefined) {
+    throw new TrackingSourceError(400, '来源 code 由后台自动生成，创建时不需要填写')
+  }
+  if (input.utmSource !== undefined) {
+    throw new TrackingSourceError(400, 'utm_source 与自动生成的来源 code 绑定，创建时不需要填写')
+  }
+  const slug = generateTrackingSourceCode(channel, id)
   const targetPath = normalizeTargetPath(input.targetPath)
-  const utmSource = normalizeUtmValue(input.utmSource || slug, 'utm_source')
+  const utmSource = slug
   const utmMedium = normalizeUtmValue(input.utmMedium || defaultUtmMedium(channel), 'utm_medium')
   const utmCampaign = normalizeOptionalUtmValue(input.utmCampaign || slug, 'utm_campaign')
   const note = normalizeOptionalText(input.note, 500)
 
   await assertUniqueTrackingSource(db, slug, utmSource)
-  const id = generateId('ats')
   await db.prepare(`
     INSERT INTO analytics_tracking_sources (
       id, name, channel, slug, target_path, utm_source, utm_medium,
@@ -122,8 +134,10 @@ export async function createTrackingSource(db: TrackingSourceDb, input: CreateTr
   return {
     id,
     name,
+    sourceLabel: name,
     channel,
     slug,
+    sourceCode: slug,
     targetPath,
     utmSource,
     utmMedium,
@@ -191,12 +205,21 @@ export async function listTrackingSourcesWithMetrics(
 
 export async function updateTrackingSource(db: TrackingSourceDb, id: string, input: UpdateTrackingSourceInput) {
   const before = await getTrackingSourceById(db, id)
+  const requestedCode = input.sourceCode ?? input.slug
+  if (requestedCode !== undefined && normalizeSlug(requestedCode) !== before.slug) {
+    throw new TrackingSourceError(400, '来源 code 创建后不能修改；如需新 code，请创建新来源并停用旧来源')
+  }
+  if (input.utmSource !== undefined && normalizeUtmValue(input.utmSource, 'utm_source') !== before.utmSource) {
+    throw new TrackingSourceError(400, 'utm_source 与来源 code 绑定，创建后不能修改')
+  }
   const next = {
-    name: input.name === undefined ? before.name : normalizeRequiredText(input.name, '来源名称', 80),
+    name: input.sourceLabel === undefined && input.name === undefined
+      ? before.name
+      : normalizeRequiredText(input.sourceLabel ?? input.name, '来源自定义文案', 80),
     channel: input.channel === undefined ? before.channel : normalizeChannel(input.channel),
-    slug: input.slug === undefined ? before.slug : normalizeSlug(input.slug),
+    slug: before.slug,
     targetPath: input.targetPath === undefined ? before.targetPath : normalizeTargetPath(input.targetPath),
-    utmSource: input.utmSource === undefined ? before.utmSource : normalizeUtmValue(input.utmSource, 'utm_source'),
+    utmSource: before.utmSource,
     utmMedium: input.utmMedium === undefined ? before.utmMedium : normalizeUtmValue(input.utmMedium, 'utm_medium'),
     utmCampaign: input.utmCampaign === undefined ? before.utmCampaign : normalizeOptionalUtmValue(input.utmCampaign, 'utm_campaign'),
     status: input.status ?? before.status,
@@ -229,6 +252,8 @@ export async function updateTrackingSource(db: TrackingSourceDb, id: string, inp
     after: {
       ...before,
       ...next,
+      sourceLabel: next.name,
+      sourceCode: next.slug,
       trackingPath: buildTrackingPath({
         targetPath: next.targetPath,
         slug: next.slug,
@@ -244,8 +269,10 @@ export function safeTrackingSourceAuditValue(source: Partial<TrackingSourceItem>
   return {
     id: source.id,
     name: source.name,
+    sourceLabel: source.sourceLabel ?? source.name,
     channel: source.channel,
     slug: source.slug,
+    sourceCode: source.sourceCode ?? source.slug,
     targetPath: source.targetPath,
     utmSource: source.utmSource,
     utmMedium: source.utmMedium,
@@ -259,8 +286,10 @@ function serializeTrackingSource(row: TrackingSourceRow): TrackingSourceItem {
   return {
     id: row.id,
     name: row.name,
+    sourceLabel: row.name,
     channel: row.channel,
     slug: row.slug,
+    sourceCode: row.slug,
     targetPath: row.target_path,
     utmSource: row.utm_source,
     utmMedium: row.utm_medium,
@@ -341,9 +370,18 @@ function normalizeSlug(value: unknown) {
     .replace(/[-_]{2,}/g, '-')
     .replace(/^[-_]+|[-_]+$/g, '')
   if (!SLUG_RE.test(slug)) {
-    throw new TrackingSourceError(400, '来源短标识需为 3-60 位小写字母、数字、中划线或下划线')
+    throw new TrackingSourceError(400, '来源 code 需为 3-60 位小写字母、数字、中划线或下划线')
   }
   return slug
+}
+
+function generateTrackingSourceCode(channel: TrackingSourceChannel, id: string) {
+  const suffix = id
+    .replace(/^ats_/, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+    .slice(0, 14)
+  return normalizeSlug(`${channel}-${suffix}`)
 }
 
 function normalizeChannel(value: unknown): TrackingSourceChannel {

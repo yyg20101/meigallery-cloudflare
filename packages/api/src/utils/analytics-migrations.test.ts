@@ -77,4 +77,23 @@ describe('analytics migrations', () => {
     expect(sql).toContain('idx_analytics_export_jobs_status_expires')
     expect(sql).toContain('idx_analytics_export_jobs_created_by')
   })
+
+  it('0028 创建来源维度页面和点击聚合表', async () => {
+    const sql = await readMigration('0028_analytics_source_dimensions.sql')
+    for (const table of [
+      'analytics_source_page_daily',
+      'analytics_source_click_daily',
+    ]) {
+      expect(sql).toContain(`CREATE TABLE IF NOT EXISTS ${table}`)
+    }
+    for (const index of [
+      'idx_analytics_source_page_daily_unique',
+      'idx_analytics_source_click_daily_unique',
+      'idx_analytics_source_page_daily_source',
+      'idx_analytics_source_click_daily_source',
+    ]) {
+      expect(sql).toContain(index)
+    }
+    expect(sql).toContain('source_name TEXT NOT NULL DEFAULT')
+  })
 })
