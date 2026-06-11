@@ -12,23 +12,20 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  # 提前使用 Node 24 运行 GitHub JavaScript actions；项目构建运行时仍由 setup-node 控制。
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
-
 jobs:
   test:
     name: 测试 + 类型检查
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
-          cache: pnpm
+          package-manager-cache: false
+
+      - name: 启用 pnpm
+        run: corepack enable
 
       - name: 安装依赖
         run: pnpm install --frozen-lockfile
@@ -55,7 +52,7 @@ jobs:
         run: pnpm --filter @meigallery/api test:coverage
 
       - name: 上传 API 覆盖率报告
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: api-coverage
@@ -73,14 +70,15 @@ jobs:
     runs-on: ubuntu-latest
     needs: test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
-          cache: pnpm
+          package-manager-cache: false
+
+      - name: 启用 pnpm
+        run: corepack enable
 
       - name: 安装依赖
         run: pnpm install --frozen-lockfile
