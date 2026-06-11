@@ -9,7 +9,7 @@ const {
   rulesModalContent,
   rulesPageUrl,
 } = useSiteSettings()
-const { trackLeadOnce } = useFacebookPixel()
+const { trackContactClick } = useFacebookPixel()
 const analytics = useAnalytics()
 
 await fetchContactMethods()
@@ -26,13 +26,12 @@ function toggleOpen() {
   contactOpen.value = !contactOpen.value
   if (contactOpen.value) rulesOpen.value = false
   if (contactOpen.value) {
-    trackLeadOnce({ location: 'floating_contact_panel', methodType: 'panel_open' })
     trackContactPanelOpen()
   }
 }
 
 function trackContactMethod(methodType: string, actionType = 'unknown') {
-  trackLeadOnce({ location: 'floating_contact_panel', methodType })
+  trackContactClick({ location: 'floating_contact_panel', methodType, actionType })
   analytics.track('contact_method_click', {
     entityType: 'contact',
     flush: true,
@@ -47,7 +46,6 @@ function trackContactMethod(methodType: string, actionType = 'unknown') {
 function openContactPanel() {
   contactOpen.value = true
   rulesOpen.value = false
-  trackLeadOnce({ location: 'floating_contact_panel', methodType: 'panel_open' })
   trackContactPanelOpen()
 }
 

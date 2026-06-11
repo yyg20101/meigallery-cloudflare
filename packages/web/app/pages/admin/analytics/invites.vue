@@ -142,7 +142,7 @@ async function copyInviteLink(code: string) {
             { key: 'landing_count', label: '落地', type: 'number', sortable: true },
             { key: 'visitor_count', label: '访客', type: 'number', sortable: true },
             { key: 'register_count', label: '注册', type: 'number', sortable: true },
-            { key: 'contact_click_count', label: '联系', type: 'number', sortable: true },
+            { key: 'contact_click_count', label: '联系入口', type: 'number', sortable: true },
             { key: 'membership_grant_count', label: '会员', type: 'number', sortable: true },
           ]"
           :rows="analytics.data.value || []"

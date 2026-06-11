@@ -205,7 +205,7 @@ async function copyTrackingLink(item: Pick<TrackingSourceMetric, 'trackingPath'>
             { key: 'session_count', label: 'Session', type: 'number', sortable: true },
             { key: 'page_view_count', label: 'PV', type: 'number', sortable: true },
             { key: 'gallery_detail_count', label: '详情', type: 'number', sortable: true },
-            { key: 'contact_click_count', label: '联系', type: 'number', sortable: true },
+            { key: 'contact_click_count', label: '联系入口', type: 'number', sortable: true },
             { key: 'register_count', label: '注册', type: 'number', sortable: true },
             { key: 'membership_grant_count', label: '会员', type: 'number', sortable: true },
             { key: 'active_seconds_total', label: '有效时长', type: 'duration', sortable: true },
@@ -263,7 +263,7 @@ async function copyTrackingLink(item: Pick<TrackingSourceMetric, 'trackingPath'>
               </div>
               <div class="mt-3 grid grid-cols-3 gap-2 text-xs text-gray-500">
                 <span>Session {{ formatAnalyticsNumber(item.sessionCount) }}</span>
-                <span>联系 {{ formatAnalyticsNumber(item.contactClickCount) }}</span>
+                <span>联系入口 {{ formatAnalyticsNumber(item.contactClickCount) }}</span>
                 <span>注册 {{ formatAnalyticsNumber(item.registerCount) }}</span>
               </div>
               <form v-if="editingId === item.id" class="mt-3 space-y-2 rounded-lg border border-gray-100 bg-gray-50 p-3" @submit.prevent="saveTrackingSource(item)">
