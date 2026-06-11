@@ -208,6 +208,7 @@ test.describe('核心页面 smoke', () => {
 
     await page.goto('/admin/analytics')
     await expect(page.locator('main h1', { hasText: '数据分析' })).toBeVisible()
+    await expect(page.getByText('有效联系').first()).toBeVisible()
     await expect(page.getByText('暂无分析数据')).toBeVisible()
     await expect(page.getByText('暂无趋势数据')).toBeVisible()
     await expect(page.getByText('暂无排行').first()).toBeVisible()

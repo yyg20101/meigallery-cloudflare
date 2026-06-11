@@ -20,7 +20,7 @@ adminAnalyticsRoutes.get('/overview', async (c) => {
   const range = parseRangeOrError(c)
   if (range instanceof Response) return range
 
-  const [totals, trend, topSources, topPages, topClicks, health] = await Promise.all([
+  const [totals, contactClicks, trend, topSources, topPages, topClicks, health] = await Promise.all([
     queryFirst(c.env.DB, `
       SELECT
         COALESCE(SUM(visitor_count), 0) AS visitor_count,
@@ -35,20 +35,44 @@ adminAnalyticsRoutes.get('/overview', async (c) => {
       FROM analytics_daily_sources
       WHERE date BETWEEN ? AND ?
     `, [range.from, range.to]),
-    queryAll(c.env.DB, `
+    queryFirst(c.env.DB, `
       SELECT
-        date,
-        SUM(visitor_count) AS visitor_count,
-        SUM(session_count) AS session_count,
-        SUM(page_view_count) AS page_view_count,
-        SUM(register_count) AS register_count,
-        SUM(contact_click_count) AS contact_click_count,
-        SUM(membership_grant_count) AS membership_grant_count
-      FROM analytics_daily_sources
+        COALESCE(SUM(raw_click_count), 0) AS raw_contact_click_count,
+        COALESCE(SUM(effective_click_count), 0) AS effective_contact_click_count,
+        COALESCE(SUM(duplicate_click_count), 0) AS duplicate_contact_click_count
+      FROM analytics_click_daily
       WHERE date BETWEEN ? AND ?
-      GROUP BY date
-      ORDER BY date ASC
+        AND element_id = 'contact_method_click'
     `, [range.from, range.to]),
+    queryAll(c.env.DB, `
+      WITH contact_clicks AS (
+        SELECT
+          date,
+          SUM(raw_click_count) AS raw_contact_click_count,
+          SUM(effective_click_count) AS effective_contact_click_count,
+          SUM(duplicate_click_count) AS duplicate_contact_click_count
+        FROM analytics_click_daily
+        WHERE date BETWEEN ? AND ?
+          AND element_id = 'contact_method_click'
+        GROUP BY date
+      )
+      SELECT
+        ads.date,
+        SUM(ads.visitor_count) AS visitor_count,
+        SUM(ads.session_count) AS session_count,
+        SUM(ads.page_view_count) AS page_view_count,
+        SUM(ads.register_count) AS register_count,
+        SUM(ads.contact_click_count) AS contact_click_count,
+        COALESCE(MAX(contact_clicks.effective_contact_click_count), 0) AS effective_contact_click_count,
+        COALESCE(MAX(contact_clicks.raw_contact_click_count), 0) AS raw_contact_click_count,
+        COALESCE(MAX(contact_clicks.duplicate_contact_click_count), 0) AS duplicate_contact_click_count,
+        SUM(ads.membership_grant_count) AS membership_grant_count
+      FROM analytics_daily_sources ads
+      LEFT JOIN contact_clicks ON contact_clicks.date = ads.date
+      WHERE ads.date BETWEEN ? AND ?
+      GROUP BY ads.date
+      ORDER BY ads.date ASC
+    `, [range.from, range.to, range.from, range.to]),
     queryAll(c.env.DB, `
       SELECT source_channel, source_name, invite_code_id,
              SUM(session_count) AS session_count,
@@ -78,7 +102,7 @@ adminAnalyticsRoutes.get('/overview', async (c) => {
       FROM analytics_click_daily
       WHERE date BETWEEN ? AND ?
       GROUP BY element_id, element_type, location, target_type, target_id
-      ORDER BY raw_click_count DESC
+      ORDER BY effective_click_count DESC, raw_click_count DESC
       LIMIT 5
     `, [range.from, range.to]),
     queryFirst(c.env.DB, `
@@ -95,8 +119,9 @@ adminAnalyticsRoutes.get('/overview', async (c) => {
     `, [range.from, range.to]),
   ])
 
-  const usage = mergeQueryUsage(totals, trend, topSources, topPages, topClicks, health)
+  const usage = mergeQueryUsage(totals, contactClicks, trend, topSources, topPages, topClicks, health)
   const totalRow = totals.rows[0] ?? {}
+  const contactClickRow = contactClicks.rows[0] ?? {}
   const sessionCount = Number((totalRow as Record<string, unknown>).session_count ?? 0)
   const activeSeconds = Number((totalRow as Record<string, unknown>).active_seconds_total ?? 0)
 
@@ -106,6 +131,7 @@ adminAnalyticsRoutes.get('/overview', async (c) => {
     data: {
       totals: {
         ...totalRow,
+        ...contactClickRow,
         average_active_seconds: sessionCount > 0 ? Math.round(activeSeconds / sessionCount) : 0,
       },
       trend: trend.rows,
@@ -198,11 +224,12 @@ adminAnalyticsRoutes.get('/clicks', async (c) => {
            SUM(visitor_count) AS visitor_count,
            SUM(session_count) AS session_count,
            SUM(user_count) AS user_count,
-           SUM(exposure_session_count) AS exposure_session_count
+           SUM(exposure_session_count) AS exposure_session_count,
+           CASE WHEN element_id = 'contact_method_click' THEN 1 ELSE 0 END AS is_effective_contact_click
     FROM analytics_click_daily
     WHERE date BETWEEN ? AND ?
     GROUP BY element_id, element_type, location, target_type, target_id
-    ORDER BY raw_click_count DESC
+    ORDER BY effective_click_count DESC, raw_click_count DESC
   `, [range.from, range.to])
   return c.json({ range, usage: result.usage, data: result.rows })
 })

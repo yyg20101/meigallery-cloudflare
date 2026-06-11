@@ -23,6 +23,10 @@ function dateLabel(value: unknown) {
   const text = String(value ?? '')
   return text.slice(5) || '-'
 }
+
+function contactClickValue(row: Record<string, unknown>) {
+  return Number(row.effective_contact_click_count ?? row.contact_click_count ?? 0)
+}
 </script>
 
 <template>
@@ -55,7 +59,7 @@ function dateLabel(value: unknown) {
           v-for="item in [
             { label: 'PV', key: 'page_view_count', tone: 'text-blue-700' },
             { label: '注册', key: 'register_count', tone: 'text-emerald-700' },
-            { label: '联系', key: 'contact_click_count', tone: 'text-amber-700' },
+            { label: '有效联系', key: 'effective_contact_click_count', tone: 'text-amber-700' },
             { label: '会员', key: 'membership_grant_count', tone: 'text-gray-900' },
           ]"
           :key="item.key"
@@ -63,7 +67,7 @@ function dateLabel(value: unknown) {
         >
           <p class="text-xs text-gray-500">{{ item.label }}</p>
           <p :class="['mt-1 text-lg font-semibold', item.tone]">
-            {{ formatAnalyticsNumber(displayRows.reduce((sum, row) => sum + Number(row[item.key] ?? 0), 0)) }}
+            {{ formatAnalyticsNumber(displayRows.reduce((sum, row) => sum + (item.key === 'effective_contact_click_count' ? contactClickValue(row) : Number(row[item.key] ?? 0)), 0)) }}
           </p>
         </div>
       </div>
