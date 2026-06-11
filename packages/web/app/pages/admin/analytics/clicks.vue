@@ -7,10 +7,17 @@ const { isOwner } = useAuth()
 const analytics = useAdminAnalytics<Array<Record<string, unknown>>>('/api/admin/analytics/clicks')
 const createExport = useAnalyticsExport()
 
+interface ContactClickSummary {
+  raw: number
+  effective: number
+  duplicate: number
+  sessions: number
+}
+
 const rows = computed(() => analytics.data.value || [])
 const contactRows = computed(() => rows.value.filter(row => row.element_id === 'contact_method_click'))
 const contactSummary = computed(() => {
-  return contactRows.value.reduce((summary, row) => {
+  return contactRows.value.reduce<ContactClickSummary>((summary, row) => {
     summary.raw += Number(row.raw_click_count ?? 0)
     summary.effective += Number(row.effective_click_count ?? 0)
     summary.duplicate += Number(row.duplicate_click_count ?? 0)
