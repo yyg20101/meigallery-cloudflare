@@ -113,13 +113,28 @@ export function useFacebookPixel() {
     if (sent) logEvent('Search', payload)
   }
 
-  function trackLeadOnce(params: { location: string; methodType: string }) {
+  function trackLeadOnce(params: { location: string; methodType: string; actionType?: string }) {
     if (leadTracked.value) return
-    const payload = { location: params.location, method_type: sanitizeAnalyticsText(params.methodType, 40) }
+    const payload = {
+      location: params.location,
+      method_type: sanitizeAnalyticsText(params.methodType, 40),
+      action_type: params.actionType ? sanitizeAnalyticsText(params.actionType, 40) : undefined,
+    }
     const sent = callFbqForCurrentRoute('track', 'Lead', payload)
     if (!sent) return
     leadTracked.value = true
     logEvent('Lead', payload)
+  }
+
+  function trackContactClick(params: { location: string; methodType: string; actionType: string }) {
+    const payload = {
+      location: params.location,
+      method_type: sanitizeAnalyticsText(params.methodType, 40),
+      action_type: sanitizeAnalyticsText(params.actionType, 40),
+    }
+    const sent = callFbqForCurrentRoute('track', 'Contact', payload)
+    if (sent) logEvent('Contact', payload)
+    trackLeadOnce(params)
   }
 
   function trackCompleteRegistration() {
@@ -146,6 +161,7 @@ export function useFacebookPixel() {
     trackViewContent,
     trackSearch,
     trackLeadOnce,
+    trackContactClick,
     trackCompleteRegistration,
     trackLoginCompleted,
     trackFilterSelected,
