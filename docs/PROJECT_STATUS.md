@@ -1,6 +1,6 @@
 # 项目当前状态
 
-更新时间：2026-06-09
+更新时间：2026-06-12
 
 本文档是当前实现和部署状态的索引。若历史计划或早期 PRD 与本文冲突，以本文、`AGENTS.md`、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md`、`docs/GIT_WORKFLOW.md` 为准。
 
@@ -19,7 +19,7 @@
 - API Worker：`meigallery-api`，生产域名 `api.616618.xyz`。
 - 开发 Worker：`meigallery-web-dev` / `meigallery-api-dev`，仅使用 Workers dev 子域，不绑定生产域名。
 - 数据库：Cloudflare D1 `meigallery-db`。
-- D1 migrations：仓库当前维护到 `0027_analytics_tracking_sources.sql`；部署前需按目标环境执行所有未应用迁移。
+- D1 migrations：仓库当前维护到 `0028_analytics_source_dimensions.sql`；部署前需按目标环境执行所有未应用迁移。
 - 对象存储：Cloudflare R2 `meigallery-media`。
 - 视频：Cloudflare Stream 仍未接入，相关 secrets 为占位符，视频能力按规划保留；API 在缺少 Stream secrets 时返回 503 `STREAM_NOT_CONFIGURED`。
 - 生产部署：PR 合入 `main` 后手动执行 `./scripts/deploy.sh production` 或等价 wrangler 命令。
@@ -106,6 +106,8 @@
 - 首页广告跳转参数持续增强：站内广告链接中的 `redirect`、`next`、`return_to` 等跳转目标已限制为公开前台路径，拒绝空目标、后台/API/资源路径、外站和嵌套危险跳转；登录页成功后的 `redirect` 参数已增加站内安全兜底，并保留后台正常登录回跳。
 - Facebook Pixel 隐私持续增强：前端埋点在当前 URL query 或 hash 含 `token`、`api_key`、`signature`、`access_token` 等凭证类参数时会跳过 Pixel 初始化和事件上报，埋点文本清洗同步覆盖凭证参数，避免敏感 URL 被第三方脚本带出。
 - Facebook Pixel 脚本加载隐私增强：前端加载 `fbevents.js` 时已统一设置 `referrerPolicy="no-referrer"`，减少第三方脚本请求携带当前页面 URL 的风险；工具测试覆盖脚本地址、异步加载和来源页策略。
+- Facebook Pixel 联系点击口径增强：右下角联系面板展开只保留站内漏斗事件，Meta 标准事件 `Contact` 和准确 `Lead` 仅在用户点击具体联系方式时触发，参数只包含 `location`、`method_type`、`action_type`，不发送联系方式值、二维码 URL 或外链。
+- 数据分析联系点击口径增强：后台总览和点击分析页已新增“有效联系”展示，直接读取 `contact_method_click` 的有效点击聚合；旧 `contact_click_count` 保留为联系入口漏斗口径，避免面板展开和具体联系方式点击混在同一指标中。
 - Web Worker 安全响应头增强：前端 Worker 已通过 Nuxt routeRules 为全站响应补充 `X-Frame-Options: DENY`、`X-Content-Type-Options: nosniff`、`Referrer-Policy: strict-origin-when-cross-origin` 和收紧的 `Permissions-Policy`，降低页面被嵌入、MIME 嗅探、来源页过度泄露和无关浏览器能力调用风险。
 - Web SSR API 代理头部安全增强：`/api/**` 代理请求头已改为显式白名单，仅转发认证、内容协商和限流识别需要的头；API 响应头也只透传登录、限流、缓存、下载和跳转相关业务头，避免 `Origin`、`Referer`、`Sec-*`、`Server`、压缩和连接类头在 Web Worker 与 API Worker 之间不必要穿透。
 - Web 图片来源页保护增强：公开图库、真实案例、首页媒体、用户头像、联系方式二维码和后台预览类 `<img>` 已统一设置 `referrerpolicy="no-referrer"`，避免图片请求携带当前页面路径；新增 Vue 模板静态回归测试，后续新增图片标签缺少该策略会直接失败。

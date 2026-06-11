@@ -39,6 +39,13 @@ function totalNumber(key: string) {
   return Number(totals.value[key] ?? 0)
 }
 
+function effectiveContactClickCount() {
+  if ('effective_contact_click_count' in totals.value) {
+    return totalNumber('effective_contact_click_count')
+  }
+  return totalNumber('contact_click_count')
+}
+
 const metrics = computed(() => {
   return [
     { label: '访客', value: formatAnalyticsNumber(totalNumber('visitor_count')), hint: '独立访客', tone: 'blue' as const },
@@ -46,7 +53,7 @@ const metrics = computed(() => {
     { label: 'PV', value: formatAnalyticsNumber(totalNumber('page_view_count')), hint: '页面浏览', tone: 'default' as const },
     { label: '注册', value: formatAnalyticsNumber(totalNumber('register_count')), hint: '注册成功', tone: 'green' as const },
     { label: '邀请注册', value: formatAnalyticsNumber(totalNumber('invite_register_count')), hint: '邀请码转化', tone: 'green' as const },
-    { label: '联系', value: formatAnalyticsNumber(totalNumber('contact_click_count')), hint: '联系点击', tone: 'gold' as const },
+    { label: '有效联系', value: formatAnalyticsNumber(effectiveContactClickCount()), hint: '具体方式点击', tone: 'gold' as const },
     { label: '会员发放', value: formatAnalyticsNumber(totalNumber('membership_grant_count')), hint: '最终转化', tone: 'gold' as const },
     { label: '平均时长', value: formatAnalyticsDuration(totalNumber('average_active_seconds')), hint: '每 session', tone: 'default' as const },
   ]
@@ -68,7 +75,7 @@ const funnel = computed(() => {
   return [
     { label: '落地', value: landing, rate: landing > 0 ? '100%' : '--', tone: 'blue' as const },
     { label: '详情', value: totalNumber('gallery_detail_count'), rate: landing > 0 ? formatAnalyticsPercent(totalNumber('gallery_detail_count'), landing) : '--', tone: 'default' as const },
-    { label: '联系', value: totalNumber('contact_click_count'), rate: landing > 0 ? formatAnalyticsPercent(totalNumber('contact_click_count'), landing) : '--', tone: 'gold' as const },
+    { label: '有效联系', value: effectiveContactClickCount(), rate: landing > 0 ? formatAnalyticsPercent(effectiveContactClickCount(), landing) : '--', tone: 'gold' as const },
     { label: '注册', value: totalNumber('register_count'), rate: landing > 0 ? formatAnalyticsPercent(totalNumber('register_count'), landing) : '--', tone: 'green' as const },
     { label: '会员', value: totalNumber('membership_grant_count'), rate: landing > 0 ? formatAnalyticsPercent(totalNumber('membership_grant_count'), landing) : '--', tone: 'gold' as const },
   ]
@@ -93,6 +100,7 @@ const hasActivity = computed(() => {
     'register_count',
     'invite_register_count',
     'contact_click_count',
+    'effective_contact_click_count',
     'membership_grant_count',
     'gallery_detail_count',
   ]
@@ -219,12 +227,12 @@ function riskClass(tone: string) {
         />
         <AnalyticsTopList
           title="Top 点击"
-          description="联系、广告和 CTA 的点击入口"
+          description="按有效点击排序，包含联系方式具体点击"
           :rows="analytics.data.value.topClicks"
           label-key="element_label"
           meta-key="location_label"
-          value-key="raw_click_count"
-          value-label="点击"
+          value-key="effective_click_count"
+          value-label="有效"
           to="/admin/analytics/clicks"
         />
       </div>
@@ -260,7 +268,8 @@ function riskClass(tone: string) {
             { key: 'session_count', label: 'Session', type: 'number', sortable: true },
             { key: 'page_view_count', label: 'PV', type: 'number', sortable: true },
             { key: 'register_count', label: '注册', type: 'number', sortable: true },
-            { key: 'contact_click_count', label: '联系', type: 'number', sortable: true },
+            { key: 'contact_click_count', label: '联系入口', type: 'number', sortable: true },
+            { key: 'effective_contact_click_count', label: '有效联系', type: 'number', sortable: true },
             { key: 'membership_grant_count', label: '会员', type: 'number', sortable: true },
           ]"
           :rows="analytics.data.value.trend"

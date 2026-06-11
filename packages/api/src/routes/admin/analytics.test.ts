@@ -194,6 +194,18 @@ function createDb() {
               is_bounce: 0,
             } as T
           }
+          if (sql.includes('analytics_click_daily') && sql.includes('key_click_count')) {
+            return {
+              key_click_count: 2,
+            } as T
+          }
+          if (sql.includes('analytics_click_daily')) {
+            return {
+              raw_contact_click_count: 2,
+              effective_contact_click_count: 2,
+              duplicate_contact_click_count: 0,
+            } as T
+          }
           if (sql.includes('analytics_ingest_health_daily')) {
             return {
               accepted_count: 10,
@@ -250,6 +262,18 @@ function createPerformanceDb() {
         },
         async first<T>() {
           calls.push(call)
+          if (sql.includes('analytics_click_daily') && sql.includes('key_click_count')) {
+            return {
+              key_click_count: 0,
+            } as T
+          }
+          if (sql.includes('analytics_click_daily')) {
+            return {
+              raw_contact_click_count: 0,
+              effective_contact_click_count: 0,
+              duplicate_contact_click_count: 0,
+            } as T
+          }
           return {
             accepted_count: 0,
             rejected_count: 0,
@@ -300,6 +324,7 @@ describe('后台数据分析 API', () => {
     expect(body.range.days).toBe(7)
     expect(body.data.totals.average_active_seconds).toBe(30)
     expect(body.data.totals.gallery_detail_count).toBe(4)
+    expect(body.data.totals.effective_contact_click_count).toBe(2)
     expect(body.data.topSources[0].source_channel).toBe('invite')
     expect(body.data.topClicks[0].element_label).toBe('联系方式')
     expect(body.data.funnel.stages[0].label).toBe('Session')
