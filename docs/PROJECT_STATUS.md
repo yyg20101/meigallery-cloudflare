@@ -88,6 +88,7 @@
 - 公开 SEO 读取持续增强：`/api/settings/public` 会在整包公开设置响应阶段清空历史迁移写入的 `MeiGallery - 精选写真图库` SEO 默认值，前台改为回退到当前站点名；后台 SEO 输入框也已改为示例式 placeholder，避免旧标题再次误导保存。
 - 站点品牌默认值持续增强：前台、后台设置页、公开设置 API、邮件模板和 D1 默认迁移已清理旧脚手架站名；用户可见站名统一读取后台 `site_settings.site_name`，缺失或旧默认值时仅使用中性“图库站”兜底。
 - SEO 基础设施增强：Web Worker 已新增运行时 `robots.txt` 和 `sitemap.xml`，生产环境允许公开页抓取并屏蔽后台、API、登录注册和个人中心；sitemap 覆盖首页、发现页、真实案例、标签页、规则页、已发布图库、已发布真实案例和标签筛选落地页，非生产环境继续 noindex/no-store。
+- 结构化 SEO 增强：前台已统一生成 canonical URL、绝对 OG 图片 URL 和安全 JSON-LD；首页输出 `WebSite`/`Organization`，图库详情输出 `ImageGallery`，真实案例详情输出 `Article`，并通过单元测试和首页 SSR smoke 防回归。
 - 后台图库图片预览持续增强：编辑/新建图库的媒体网格和封面预览已改走管理员鉴权预览接口，不再受公开缩略图“仅发布且免费内容可访问”的规则影响；管理员预览仍保留 R2 key 所属校验和安全外链清洗。
 - 后台图库预览来源页保护增强：编辑/新建图库的媒体网格和封面预览图片已统一设置 `referrerpolicy="no-referrer"`，避免后台页面路径在加载外部图片或跨域 API 预览时作为来源页带出。
 - 首页广告位语义持续增强：前台广告组件已补“推广”标识，外链 CTA 通过 `aria-describedby` 关联离站和不发送来源页提示；组件测试与 Playwright smoke 同步覆盖站内/外链差异，避免安全提示仅停留在视觉文本。

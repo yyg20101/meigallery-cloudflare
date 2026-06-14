@@ -27,6 +27,10 @@ test.describe('核心页面 smoke', () => {
     expect(html).toContain('<meta name="description" content="Playwright smoke 测试站点">')
     expect(html).toContain('<meta property="og:title" content="测试站点 OG 标题">')
     expect(html).toContain('<meta property="og:description" content="测试站点 OG 描述">')
+    expect(html).toContain('<link rel="canonical" href="http://127.0.0.1:3100/">')
+    expect(html).toContain('<script type="application/ld+json"')
+    expect(html).toContain('"@type":"WebSite"')
+    expect(html).toContain('"@type":"Organization"')
     expect(html).not.toContain('<title>MeiGallery - 精选写真图库</title>')
   })
 

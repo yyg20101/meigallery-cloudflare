@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { getPrimaryRegion, getSupportTags } from '~/utils/galleryPresentation'
+import { buildAbsoluteSeoUrl, buildCanonicalUrl, buildImageGalleryJsonLd, buildJsonLdScript, normalizeSeoSiteUrl } from '~/utils/seoMetadata'
 
 const route = useRoute()
+const config = useRuntimeConfig()
 const { api } = useApi()
 const { isLoggedIn, membershipRank } = useAuth()
 const { siteName, videoEnabled } = useSiteSettings()
@@ -148,6 +150,27 @@ const formattedDate = computed(() => {
 })
 
 const supportTags = computed(() => gallery.value ? getSupportTags(gallery.value.tags, 8) : [])
+const siteUrl = computed(() => normalizeSeoSiteUrl(config.public.siteUrl))
+const canonicalUrl = computed(() => buildCanonicalUrl(siteUrl.value, route.fullPath))
+const gallerySeoDescription = computed(() => gallery.value?.summary || (gallery.value ? `${gallery.value.title} - 授权图库内容` : ''))
+const gallerySeoImages = computed(() => [
+  gallery.value?.coverUrl,
+  ...publicImages.value.slice(0, 4).map(image => image.thumbnailUrl || image.url),
+])
+const galleryOgImage = computed(() => buildAbsoluteSeoUrl(siteUrl.value, gallery.value?.coverUrl) || undefined)
+const galleryJsonLd = computed(() => {
+  if (!gallery.value) return null
+
+  return buildJsonLdScript(buildImageGalleryJsonLd({
+    siteUrl: siteUrl.value,
+    path: route.fullPath,
+    title: gallery.value.title,
+    description: gallerySeoDescription.value,
+    imageUrls: gallerySeoImages.value,
+    datePublished: gallery.value.publishedAt || gallery.value.createdAt,
+    keywords: gallery.value.tags.map(tag => tag.name),
+  }))
+})
 
 const showLoginPrompt = ref(false)
 const liking = ref(false)
@@ -240,13 +263,19 @@ function trackMembershipCta(location: string, requiredRank?: number) {
 
 useSeoMeta({
   title: () => gallery.value ? `${gallery.value.title} - ${siteName.value}` : siteName.value,
-  description: () => gallery.value?.summary || (gallery.value ? `${gallery.value.title} - 精选写真图库` : ''),
+  description: () => gallerySeoDescription.value,
   ogTitle: () => gallery.value?.title || siteName.value,
-  ogDescription: () => gallery.value?.summary || (gallery.value ? `${gallery.value.title} - 精选写真图库` : ''),
-  ogImage: () => gallery.value?.coverUrl || undefined,
+  ogDescription: () => gallerySeoDescription.value,
+  ogImage: () => galleryOgImage.value,
+  ogUrl: () => canonicalUrl.value,
   ogType: 'article',
   twitterCard: 'summary_large_image',
+  articlePublishedTime: () => gallery.value?.publishedAt || undefined,
 })
+
+useHead(() => ({
+  script: galleryJsonLd.value ? [galleryJsonLd.value] : [],
+}))
 </script>
 
 <template>

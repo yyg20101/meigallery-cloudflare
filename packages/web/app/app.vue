@@ -1,8 +1,20 @@
 <script setup lang="ts">
-const { fetchSettings, seoTitle, siteDescription, ogTitle, ogDescription, ogImage, siteIcon } = useSiteSettings()
+import { buildAbsoluteSeoUrl, buildCanonicalUrl, buildJsonLdScript, buildWebSiteJsonLd, normalizeSeoSiteUrl } from '~/utils/seoMetadata'
+
+const { fetchSettings, siteName, seoTitle, siteDescription, ogTitle, ogDescription, ogImage, siteIcon } = useSiteSettings()
 const { fetchUser } = useAuth()
 const config = useRuntimeConfig()
+const route = useRoute()
 const isDevEnvironment = computed(() => config.public.appEnv !== 'production')
+const siteUrl = computed(() => normalizeSeoSiteUrl(config.public.siteUrl))
+const canonicalUrl = computed(() => buildCanonicalUrl(siteUrl.value, route.fullPath))
+const ogImageUrl = computed(() => buildAbsoluteSeoUrl(siteUrl.value, ogImage.value) || undefined)
+const webSiteJsonLd = computed(() => buildJsonLdScript(buildWebSiteJsonLd({
+  siteUrl: siteUrl.value,
+  siteName: siteName.value,
+  description: siteDescription.value,
+  logoUrl: siteIcon.value,
+})))
 
 // 加载站点设置（SSR + 客户端均执行一次）
 await fetchSettings()
@@ -15,12 +27,18 @@ useHead(() => ({
   meta: isDevEnvironment.value
     ? [{ name: 'robots', content: 'noindex, nofollow' }]
     : [],
-  link: siteIcon.value
-    ? [
+  link: [
+    { rel: 'canonical', href: canonicalUrl.value },
+    ...(siteIcon.value
+      ? [
         { rel: 'icon', href: siteIcon.value },
         { rel: 'shortcut icon', href: siteIcon.value },
         { rel: 'apple-touch-icon', href: siteIcon.value },
       ]
+      : []),
+  ],
+  script: route.path === '/'
+    ? [webSiteJsonLd.value]
     : [],
 }))
 
@@ -28,7 +46,8 @@ useSeoMeta({
   description: () => siteDescription.value,
   ogTitle: () => ogTitle.value,
   ogDescription: () => ogDescription.value || siteDescription.value,
-  ogImage: () => ogImage.value || undefined,
+  ogImage: () => ogImageUrl.value,
+  ogUrl: () => canonicalUrl.value,
   ogType: 'website',
   twitterCard: 'summary_large_image',
 })
