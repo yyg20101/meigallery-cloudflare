@@ -177,7 +177,7 @@ async function copyTrackingLink(item: Pick<TrackingSourceMetric, 'trackingPath'>
   <AnalyticsPageShell
     v-model:range="analytics.range.value"
     title="来源分析"
-    description="比较不同来源的访问、详情、联系、注册和会员发放，优先判断来源质量。"
+    description="比较站内归因来源的访问、详情、联系、注册和会员发放，优先判断来源质量。"
     :loading="analytics.loading.value"
     :error="analytics.error.value"
     :usage="analytics.usage.value"
@@ -189,7 +189,10 @@ async function copyTrackingLink(item: Pick<TrackingSourceMetric, 'trackingPath'>
       <section class="space-y-4">
         <div>
           <h2 class="text-sm font-semibold text-gray-900">来源表现</h2>
-          <p class="mt-1 text-sm text-gray-500">自动归因结果包含邀请码、推广来源、UTM、referrer 和直接访问。</p>
+          <p class="mt-1 text-sm text-gray-500">自动归因结果包含邀请码、推广来源、UTM、referrer 和直接访问；FB/Facebook 不是 Pixel 回传。</p>
+        </div>
+        <div class="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-900">
+          FB、Facebook 或 Meta 来源来自站内 UTM、推广链接或 referrer；Meta Pixel 只用于向 Meta 后台发送 Contact、Lead 等转化事件。
         </div>
         <AnalyticsDataTable
           empty-title="暂无来源数据"
@@ -219,7 +222,7 @@ async function copyTrackingLink(item: Pick<TrackingSourceMetric, 'trackingPath'>
           <div class="flex items-center justify-between gap-3">
             <div>
               <h2 class="text-sm font-semibold text-gray-900">推广来源</h2>
-              <p class="mt-1 text-xs text-gray-500">创建标准追踪链接，区分从哪里进入站点。</p>
+              <p class="mt-1 text-xs text-gray-500">创建标准 UTM 追踪链接，区分从哪里进入站点。</p>
             </div>
             <button class="rounded-lg bg-gray-950 px-3 py-2 text-xs font-medium text-white hover:bg-gray-800" type="button" @click="createOpen = !createOpen">
               {{ createOpen ? '收起' : '创建' }}
@@ -230,7 +233,7 @@ async function copyTrackingLink(item: Pick<TrackingSourceMetric, 'trackingPath'>
             <select v-model="form.channel" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
               <option v-for="option in channelOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
             </select>
-            <input v-model="form.sourceLabel" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="自定义文案，例如 Telegram 六月互推" />
+            <input v-model="form.sourceLabel" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="自定义文案，例如 FB 六月投放" />
             <input v-model="form.targetPath" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" placeholder="落地页，例如 / 或 /discover" />
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <input v-model="form.utmMedium" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" placeholder="utm_medium" />

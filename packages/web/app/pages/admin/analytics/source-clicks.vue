@@ -15,7 +15,7 @@ const activeSourceCode = computed(() => String(route.query.sourceCode || route.q
   <AnalyticsPageShell
     v-model:range="analytics.range.value"
     title="来源点击分析"
-    description="按来源查看广告、图库卡片、联系入口、会员 CTA 和筛选操作的点击质量。"
+    description="按站内归因来源查看广告、图库卡片、联系入口、会员 CTA 和筛选操作的点击质量。"
     :loading="analytics.loading.value"
     :error="analytics.error.value"
     :usage="analytics.usage.value"
@@ -23,8 +23,11 @@ const activeSourceCode = computed(() => String(route.query.sourceCode || route.q
     @refresh="analytics.refresh"
     @export="createExport('source-clicks', analytics.range.value)"
   >
-    <div v-if="activeSourceCode" class="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-      当前来源 code：<span class="font-mono">{{ activeSourceCode }}</span>
+    <div class="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-800">
+      <template v-if="activeSourceCode">
+        当前来源 code：<span class="font-mono">{{ activeSourceCode }}</span>。
+      </template>
+      本页按站内 UTM、推广链接或 referrer 归因聚合，不读取 Meta Pixel 回传。
     </div>
 
     <AnalyticsDataTable

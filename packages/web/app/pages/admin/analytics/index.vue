@@ -166,7 +166,7 @@ function riskClass(tone: string) {
   <AnalyticsPageShell
     v-model:range="analytics.range.value"
     title="数据分析"
-    description="从来源、内容、联系和会员发放看运营闭环。默认读取聚合表和摘要表，避免扫描原始事件。"
+    description="从来源、内容、联系和会员发放看运营闭环。来源数据来自站内一方归因，不读取 Meta Pixel 回传。"
     :loading="analytics.loading.value"
     :error="analytics.error.value"
     :usage="analytics.usage.value"
@@ -176,6 +176,10 @@ function riskClass(tone: string) {
   >
     <template v-if="analytics.data.value">
       <AnalyticsHealthStrip :health="analytics.data.value.health" :usage="analytics.usage.value" to="/admin/analytics/health" />
+
+      <section class="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-900">
+        FB、Facebook 或 Meta 来源表示 UTM、推广链接或 referrer 归因；Meta Pixel 只向 Meta 后台同步转化事件，不作为本页数据源。
+      </section>
 
       <div class="grid grid-cols-2 gap-3 lg:grid-cols-4 2xl:grid-cols-8">
         <AnalyticsMetricCard
@@ -207,7 +211,7 @@ function riskClass(tone: string) {
       <div class="grid gap-5 xl:grid-cols-3">
         <AnalyticsTopList
           title="Top 来源"
-          description="优先观察带来注册和联系的来源"
+          description="站内归因来源，优先观察注册和联系"
           :rows="analytics.data.value.topSources"
           label-key="source_label"
           meta-key="source_channel_label"

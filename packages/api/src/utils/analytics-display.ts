@@ -11,6 +11,14 @@ const SOURCE_CHANNEL_LABELS: Record<string, string> = {
   unknown: '未知来源',
 }
 
+const SOURCE_NAME_LABELS: Record<string, string> = {
+  fb: 'Facebook UTM 来源',
+  facebook: 'Facebook UTM 来源',
+  meta: 'Meta UTM 来源',
+  ig: 'Instagram UTM 来源',
+  instagram: 'Instagram UTM 来源',
+}
+
 const EVENT_LABELS: Record<string, string> = {
   session_start: '开始访问',
   session_end: '结束访问',
@@ -152,7 +160,7 @@ export function analyticsSourceLabel(row: Record<string, unknown>) {
   const inviteCodeId = String(row.invite_code_id ?? '').trim()
   const channel = String(row.source_channel ?? '').trim() as AnalyticsSourceChannel | ''
   if (channel === 'invite' && inviteCodeId) return `邀请码 ${inviteCodeId}`
-  if (sourceName) return readableToken(sourceName)
+  if (sourceName) return readableSourceName(sourceName)
   return analyticsSourceChannelLabel(channel)
 }
 
@@ -191,6 +199,15 @@ function analyticsTargetLabel(targetType: string, targetId: string) {
   if (!targetId) return typeLabel
   const targetLabel = ELEMENT_LABELS[targetId] || LOCATION_LABELS[targetId] || readableToken(targetId)
   return targetLabel && targetLabel !== typeLabel ? `${typeLabel} ${targetLabel}` : typeLabel
+}
+
+function readableSourceName(value: string) {
+  const text = value.trim()
+  const key = text.toLowerCase()
+  if (SOURCE_NAME_LABELS[key]) return SOURCE_NAME_LABELS[key]
+  if (key === 'facebook.com' || key.endsWith('.facebook.com')) return 'Facebook referrer 来源'
+  if (key === 'instagram.com' || key.endsWith('.instagram.com')) return 'Instagram referrer 来源'
+  return readableToken(text)
 }
 
 function readableToken(value: string) {
