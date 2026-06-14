@@ -38,7 +38,7 @@ export function sanitizeAnalyticsPath(input: unknown): string | null {
 
   let url: URL
   try {
-    url = new URL(raw, 'https://meigallery.local')
+    url = new URL(raw, 'https://site.local')
   } catch {
     return null
   }

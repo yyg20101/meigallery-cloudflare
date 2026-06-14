@@ -79,6 +79,34 @@ describe('后台站点设置 API', () => {
     expect(body.data.home_ad_enabled.value).toBe(true)
   })
 
+  it('站长读取设置时清空旧脚手架品牌默认值', async () => {
+    const app = createApp()
+    const env = {
+      DB: createDb({
+        all: (sql) => {
+          if (sql.includes('SELECT key, value, updated_at FROM site_settings')) {
+            return [
+              { key: 'site_name', value: JSON.stringify('MeiGallery'), updated_at: '2026-06-02 00:00:00' },
+              { key: 'seo_title', value: JSON.stringify('MeiGallery - 精选写真图库'), updated_at: '2026-06-02 00:00:00' },
+              { key: 'home_ad_sponsor', value: JSON.stringify('MeiGallery 运营推荐'), updated_at: '2026-06-02 00:00:00' },
+              { key: 'rules_page_summary', value: JSON.stringify('了解 MeiGallery 的内容边界、会员访问和联系方式说明。'), updated_at: '2026-06-02 00:00:00' },
+            ]
+          }
+          return []
+        },
+      }),
+    } as unknown as Bindings
+
+    const res = await app.request('/api/admin/settings', {}, env)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.data.site_name.value).toBe('')
+    expect(body.data.seo_title.value).toBe('')
+    expect(body.data.home_ad_sponsor.value).toBe('')
+    expect(body.data.rules_page_summary.value).toBe('了解本站的内容边界、会员访问和联系方式说明。')
+  })
+
   it('站长更新首页广告链接时会写入归一化值和审计日志', async () => {
     const executed: ExecutedSql = []
     const app = createApp()

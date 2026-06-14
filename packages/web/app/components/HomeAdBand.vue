@@ -207,7 +207,7 @@ function trackAdClick() {
 }
 
 function resolveInternalDestinationLabel(url: string) {
-  const pathname = new URL(url, 'https://meigallery.local').pathname
+  const pathname = new URL(url, 'https://site.local').pathname
   if (pathname === '/') return '首页'
   if (pathname === '/discover') return '探索页'
   if (pathname === '/search') return '搜索页'
@@ -317,7 +317,7 @@ function resolveInternalDestinationLabel(url: string) {
         />
         <div v-else class="flex h-full min-h-[15rem] items-center justify-center bg-[linear-gradient(135deg,#2a211a,#111111_52%,#3b3226)] px-8 text-center">
           <div class="max-w-xs">
-            <p class="text-xs font-semibold uppercase tracking-[0.28em] text-[#d6c39a]">MeiGallery</p>
+            <p class="text-xs font-semibold uppercase tracking-[0.28em] text-[#d6c39a]">{{ currentAd.sponsor || '站点推荐' }}</p>
             <p class="mt-3 text-2xl font-semibold leading-tight text-white">{{ currentAd.eyebrow }}</p>
             <p class="mt-3 text-xs leading-5 text-white/55">上传广告大图后，这里会展示更强的首页视觉。</p>
           </div>

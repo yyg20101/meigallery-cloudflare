@@ -44,8 +44,8 @@ VALUES
   ('rules_entry_icon', '"letter"', datetime('now')),
   ('rules_modal_content', '"## 入站规则\n\n- 本站仅展示合法授权的写真、时尚、生活与艺术类内容\n- 受保护内容需登录并满足会员等级\n- 如需咨询会员或内容授权，请通过联系站长入口沟通"', datetime('now')),
   ('rules_page_title', '"入站规则"', datetime('now')),
-  ('rules_page_summary', '"了解 MeiGallery 的内容边界、会员访问和联系方式说明。"', datetime('now')),
-  ('rules_page_content', '"## 内容边界\n\nMeiGallery 仅展示经过授权的写真、时尚、生活与艺术类素材，不发布露骨、侵权或侵犯隐私的内容。\n\n## 会员访问\n\n部分高清图片和完整内容需要会员权限。会员等级由站长手动授予，到期后自动失去对应访问权限。\n\n## 联系站长\n\n如需开通会员、咨询授权或反馈问题，请使用页面右下角联系方式。"', datetime('now')),
+  ('rules_page_summary', '"了解本站的内容边界、会员访问和联系方式说明。"', datetime('now')),
+  ('rules_page_content', '"## 内容边界\n\n本站仅展示经过授权的写真、时尚、生活与艺术类素材，不发布露骨、侵权或侵犯隐私的内容。\n\n## 会员访问\n\n部分高清图片和完整内容需要会员权限。会员等级由站长手动授予，到期后自动失去对应访问权限。\n\n## 联系站长\n\n如需开通会员、咨询授权或反馈问题，请使用页面右下角联系方式。"', datetime('now')),
   ('rules_page_url', '"/rules"', datetime('now'));
 
 DELETE FROM site_settings WHERE key IN ('about_title', 'about_summary', 'about_content');

@@ -138,7 +138,7 @@ const defaultPublicSettings = {
   home_ad_summary: '探索本周精选图库、真实案例和会员可访问内容，保持文案可读、不过度堆叠并适配多断点预览。',
   home_ad_cta_label: '查看推荐',
   home_ad_url: '/discover?sort=hot',
-  home_ad_sponsor: 'MeiGallery 运营推荐',
+  home_ad_sponsor: '运营推荐',
   rules_entry_enabled: 'false',
 }
 

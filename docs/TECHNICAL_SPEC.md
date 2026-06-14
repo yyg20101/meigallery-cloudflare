@@ -541,8 +541,8 @@ CREATE TABLE site_settings (
 
 -- 初始配置
 INSERT INTO site_settings (key, value) VALUES
-  ('site_name', '"MeiGallery"'),
-  ('seo_title', '"MeiGallery - 精选写真图库"'),
+  ('site_name', '""'),
+  ('seo_title', '""'),
   ('seo_description', '""'),
   ('membership_description', '""'),
   ('email_verification_enabled', '"false"'),

@@ -430,7 +430,7 @@ function toDatetimeLocalValue(value: string) {
             </div>
             <div>
               <label class="mb-1 block text-sm font-medium text-gray-700">赞助/来源说明</label>
-              <input v-model="form.sponsor" maxlength="40" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="MeiGallery 运营推荐" />
+              <input v-model="form.sponsor" maxlength="40" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="运营推荐" />
             </div>
           </div>
 

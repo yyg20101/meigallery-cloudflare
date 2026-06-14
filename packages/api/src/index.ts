@@ -41,6 +41,7 @@ export type Bindings = {
   STREAM_API_TOKEN: string
   EMAIL_FROM: string
   EMAIL: SendEmail
+  SITE_URL?: string
   IMAGE_RESIZING_ENABLED: string // "true" | "false"
   IMPORT_TOKEN_DAILY_LIMIT?: string
   TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT?: string
