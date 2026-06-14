@@ -7,4 +7,4 @@ VALUES
   ('home_ad_summary', '"探索本周精选图库、真实案例和会员可访问内容。"', datetime('now')),
   ('home_ad_cta_label', '"查看推荐"', datetime('now')),
   ('home_ad_url', '"/discover?sort=hot"', datetime('now')),
-  ('home_ad_sponsor', '"MeiGallery 运营推荐"', datetime('now'));
+  ('home_ad_sponsor', '"运营推荐"', datetime('now'));

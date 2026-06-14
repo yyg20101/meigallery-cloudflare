@@ -21,7 +21,7 @@ export function normalizeLoginRedirect(value: unknown) {
   if (!url || url.startsWith('https://')) return '/'
   if (!hasAllowedNestedRedirectParams(url, 0)) return '/'
 
-  const pathname = new URL(url, 'https://meigallery.local').pathname
+  const pathname = new URL(url, 'https://site.local').pathname
   if (BLOCKED_LOGIN_REDIRECT_PREFIXES.some(prefix => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
     return '/'
   }
@@ -32,7 +32,7 @@ export function normalizeLoginRedirect(value: unknown) {
 function hasAllowedNestedRedirectParams(url: string, depth: number) {
   if (depth > 3) return false
 
-  const parsed = new URL(url, 'https://meigallery.local')
+  const parsed = new URL(url, 'https://site.local')
   for (const [name, target] of parsed.searchParams.entries()) {
     if (!REDIRECT_PARAM_NAMES.has(normalizeParamName(name))) continue
 
@@ -45,7 +45,7 @@ function hasAllowedNestedRedirectParams(url: string, depth: number) {
 }
 
 function isBlockedLoginRedirectPath(url: string) {
-  const pathname = new URL(url, 'https://meigallery.local').pathname
+  const pathname = new URL(url, 'https://site.local').pathname
   return BLOCKED_LOGIN_REDIRECT_PREFIXES.some(prefix => pathname === prefix || pathname.startsWith(`${prefix}/`))
 }
 

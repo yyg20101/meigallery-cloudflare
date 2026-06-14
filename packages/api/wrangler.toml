@@ -35,6 +35,7 @@ crons = ["0 0 * * *"]  # 每天 UTC 00:00（北京时间 08:00）
 APP_ENV = "production"
 CORS_ORIGIN = "https://616618.xyz,https://www.616618.xyz"
 EMAIL_FROM = "noreply@616618.xyz"
+SITE_URL = "https://616618.xyz"
 IMAGE_RESIZING_ENABLED = "true"
 
 [observability]
@@ -70,6 +71,7 @@ crons = []
 APP_ENV = "dev"
 CORS_ORIGIN = ""
 EMAIL_FROM = "noreply@616618.xyz"
+SITE_URL = "https://616618.xyz"
 IMAGE_RESIZING_ENABLED = "false"
 
 # 敏感变量需通过 wrangler secret put 设置：

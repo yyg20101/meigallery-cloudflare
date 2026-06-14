@@ -27,7 +27,7 @@ describe('useSiteSettings', () => {
     const firstSettings = await siteSettings.fetchSettings()
 
     expect(firstSettings).toEqual({})
-    expect(siteSettings.siteName.value).toBe('MeiGallery')
+    expect(siteSettings.siteName.value).toBe('图库站')
     expect(apiMock).toHaveBeenCalledTimes(1)
 
     const secondSettings = await siteSettings.fetchSettings()
@@ -36,6 +36,29 @@ describe('useSiteSettings', () => {
     expect(apiMock).toHaveBeenCalledTimes(2)
     expect(siteSettings.siteName.value).toBe('测试站')
     expect(siteSettings.seoTitle.value).toBe('测试 SEO')
+  })
+
+  it('旧脚手架站名会回退为中性站点名称', async () => {
+    resetState()
+    apiMock.mockResolvedValueOnce({ site_name: 'MeiGallery', seo_title: '' })
+
+    const siteSettings = useSiteSettings()
+    await siteSettings.fetchSettings()
+
+    expect(siteSettings.siteName.value).toBe('图库站')
+    expect(siteSettings.seoTitle.value).toBe('图库站')
+  })
+
+  it('公开 SEO 关键词会归一化为数组，供 meta 与结构化数据复用', async () => {
+    resetState()
+    apiMock.mockResolvedValueOnce({
+      seo_keywords: ' 授权图库, 写真\n#时尚写真，授权图库 ',
+    })
+
+    const siteSettings = useSiteSettings()
+    await siteSettings.fetchSettings()
+
+    expect(siteSettings.seoKeywords.value).toEqual(['授权图库', '写真', '时尚写真'])
   })
 
   it('已加载后默认复用缓存，强制刷新会重新请求并更新 SEO', async () => {

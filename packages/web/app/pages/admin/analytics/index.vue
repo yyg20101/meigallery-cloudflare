@@ -35,6 +35,14 @@ const analytics = useAdminAnalytics<OverviewData>('/api/admin/analytics/overview
 
 const totals = computed(() => analytics.data.value?.totals ?? {})
 
+const trendSeries = [
+  { label: 'Session', key: 'session_count', tone: 'blue' as const },
+  { label: 'PV', key: 'page_view_count', tone: 'teal' as const },
+  { label: '有效联系', key: 'effective_contact_click_count', fallbackKey: 'contact_click_count', tone: 'gold' as const },
+  { label: '注册', key: 'register_count', tone: 'green' as const },
+  { label: '会员', key: 'membership_grant_count', tone: 'gray' as const },
+]
+
 function totalNumber(key: string) {
   return Number(totals.value[key] ?? 0)
 }
@@ -46,18 +54,59 @@ function effectiveContactClickCount() {
   return totalNumber('contact_click_count')
 }
 
-const metrics = computed(() => {
-  return [
-    { label: '访客', value: formatAnalyticsNumber(totalNumber('visitor_count')), hint: '独立访客', tone: 'blue' as const },
-    { label: 'Session', value: formatAnalyticsNumber(totalNumber('session_count')), hint: '访问会话', tone: 'default' as const },
-    { label: 'PV', value: formatAnalyticsNumber(totalNumber('page_view_count')), hint: '页面浏览', tone: 'default' as const },
-    { label: '注册', value: formatAnalyticsNumber(totalNumber('register_count')), hint: '注册成功', tone: 'green' as const },
-    { label: '邀请注册', value: formatAnalyticsNumber(totalNumber('invite_register_count')), hint: '邀请码转化', tone: 'green' as const },
-    { label: '有效联系', value: formatAnalyticsNumber(effectiveContactClickCount()), hint: '具体方式点击', tone: 'gold' as const },
-    { label: '会员发放', value: formatAnalyticsNumber(totalNumber('membership_grant_count')), hint: '最终转化', tone: 'gold' as const },
-    { label: '平均时长', value: formatAnalyticsDuration(totalNumber('average_active_seconds')), hint: '每 session', tone: 'default' as const },
-  ]
-})
+const metrics = computed(() => [
+  {
+    label: '访问规模',
+    value: formatAnalyticsNumber(totalNumber('session_count')),
+    hint: `访客 ${formatAnalyticsNumber(totalNumber('visitor_count'))} / PV ${formatAnalyticsNumber(totalNumber('page_view_count'))}`,
+    tone: 'blue' as const,
+  },
+  {
+    label: '内容兴趣',
+    value: formatAnalyticsNumber(totalNumber('gallery_detail_count')),
+    hint: `详情打开率 ${formatAnalyticsPercent(totalNumber('gallery_detail_count'), totalNumber('session_count'))}`,
+    tone: 'default' as const,
+  },
+  {
+    label: '有效联系',
+    value: formatAnalyticsNumber(effectiveContactClickCount()),
+    hint: `联系率 ${formatAnalyticsPercent(effectiveContactClickCount(), totalNumber('session_count'))}`,
+    tone: 'gold' as const,
+  },
+  {
+    label: '注册 / 会员',
+    value: `${formatAnalyticsNumber(totalNumber('register_count'))} / ${formatAnalyticsNumber(totalNumber('membership_grant_count'))}`,
+    hint: `注册率 ${formatAnalyticsPercent(totalNumber('register_count'), totalNumber('session_count'))}`,
+    tone: 'green' as const,
+  },
+])
+
+const decisionMetrics = computed(() => [
+  {
+    label: '详情打开率',
+    value: formatAnalyticsPercent(totalNumber('gallery_detail_count'), totalNumber('session_count')),
+    description: '判断落地页是否能把访客带进内容详情。',
+    to: '/admin/analytics/pages',
+  },
+  {
+    label: '有效联系率',
+    value: formatAnalyticsPercent(effectiveContactClickCount(), totalNumber('session_count')),
+    description: '衡量联系方式点击是否真实产生咨询意图。',
+    to: '/admin/analytics/clicks',
+  },
+  {
+    label: '注册转化率',
+    value: formatAnalyticsPercent(totalNumber('register_count'), totalNumber('session_count')),
+    description: '观察访问到账号注册的转化效率。',
+    to: '/admin/analytics/sources',
+  },
+  {
+    label: '会员发放率',
+    value: formatAnalyticsPercent(totalNumber('membership_grant_count'), totalNumber('register_count')),
+    description: '衡量注册用户最终被发放会员的比例。',
+    to: '/admin/users',
+  },
+])
 
 const funnel = computed(() => {
   const apiFunnel = analytics.data.value?.funnel
@@ -110,6 +159,27 @@ const hasActivity = computed(() => {
     data.topPages.length > 0 ||
     data.topClicks.length > 0
 })
+
+const drilldowns = computed(() => [
+  {
+    title: '来源分析',
+    description: '对比自然、社交、广告、邀请来源的注册和联系质量。',
+    to: '/admin/analytics/sources',
+    value: analytics.data.value?.topSources[0]?.source_label || analytics.data.value?.topSources[0]?.source_name || '暂无来源',
+  },
+  {
+    title: 'SEO 分析',
+    description: '查看自然搜索来源、落地页、跳出和联系转化。',
+    to: '/admin/analytics/seo',
+    value: '搜索来源与落地页',
+  },
+  {
+    title: '点击分析',
+    description: '核对联系方式、会员引导、广告位等关键点击。',
+    to: '/admin/analytics/source-clicks',
+    value: analytics.data.value?.topClicks[0]?.element_label || analytics.data.value?.topClicks[0]?.element_id || '暂无点击',
+  },
+])
 
 const riskItems = computed(() => {
   const data = analytics.data.value
@@ -166,7 +236,7 @@ function riskClass(tone: string) {
   <AnalyticsPageShell
     v-model:range="analytics.range.value"
     title="数据分析"
-    description="从来源、内容、联系和会员发放看运营闭环。来源数据来自站内一方归因，不读取 Meta Pixel 回传。"
+    description="先看访问趋势、转化效率和采集健康，再下钻来源、内容、SEO 与点击明细。"
     :loading="analytics.loading.value"
     :error="analytics.error.value"
     :usage="analytics.usage.value"
@@ -178,10 +248,10 @@ function riskClass(tone: string) {
       <AnalyticsHealthStrip :health="analytics.data.value.health" :usage="analytics.usage.value" to="/admin/analytics/health" />
 
       <section class="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-900">
-        FB、Facebook 或 Meta 来源表示 UTM、推广链接或 referrer 归因；Meta Pixel 只向 Meta 后台同步转化事件，不作为本页数据源。
+        本页为站内一方数据分析。FB、Facebook 或 Meta 来源表示 UTM、推广链接或 referrer 归因；Meta Pixel 只向 Meta 后台同步转化事件，不作为本页数据源。
       </section>
 
-      <div class="grid grid-cols-2 gap-3 lg:grid-cols-4 2xl:grid-cols-8">
+      <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <AnalyticsMetricCard
           v-for="metric in metrics"
           :key="metric.label"
@@ -204,8 +274,53 @@ function riskClass(tone: string) {
       />
 
       <div class="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(22rem,0.65fr)]">
-        <AnalyticsTrendPanel :rows="analytics.data.value.trend" />
+        <AnalyticsTrendPanel
+          title="核心趋势"
+          description="按日对比 Session、PV、有效联系、注册和会员发放，优先判断增长是否连续。"
+          :rows="analytics.data.value.trend"
+          :series="trendSeries"
+        />
+
+        <section class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+          <div class="mb-4">
+            <h2 class="text-sm font-semibold text-gray-900">转化诊断</h2>
+            <p class="mt-1 text-xs leading-5 text-gray-500">用少量比率快速定位下一步分析入口。</p>
+          </div>
+          <div class="divide-y divide-gray-100">
+            <NuxtLink
+              v-for="item in decisionMetrics"
+              :key="item.label"
+              :to="item.to"
+              class="block py-3 first:pt-0 last:pb-0 hover:bg-gray-50"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <p class="text-sm font-medium text-gray-900">{{ item.label }}</p>
+                  <p class="mt-1 text-xs leading-5 text-gray-500">{{ item.description }}</p>
+                </div>
+                <span class="shrink-0 text-lg font-semibold tabular-nums text-gray-950">{{ item.value }}</span>
+              </div>
+            </NuxtLink>
+          </div>
+        </section>
+      </div>
+
+      <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_24rem]">
         <AnalyticsConversionFunnel :steps="funnel" :drop-offs="funnelDropOffs" />
+
+        <section class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+          <div class="mb-4">
+            <h2 class="text-sm font-semibold text-gray-900">下钻入口</h2>
+            <p class="mt-1 text-xs leading-5 text-gray-500">从当前范围内最有价值的维度继续分析。</p>
+          </div>
+          <div class="divide-y divide-gray-100">
+            <NuxtLink v-for="item in drilldowns" :key="item.title" :to="item.to" class="block py-3 first:pt-0 last:pb-0 hover:bg-gray-50">
+              <p class="text-sm font-medium text-gray-900">{{ item.title }}</p>
+              <p class="mt-1 text-xs leading-5 text-gray-500">{{ item.description }}</p>
+              <p class="mt-2 truncate text-xs font-medium text-blue-700">{{ item.value }}</p>
+            </NuxtLink>
+          </div>
+        </section>
       </div>
 
       <div class="grid gap-5 xl:grid-cols-3">

@@ -170,6 +170,170 @@ adminAnalyticsRoutes.get('/overview', async (c) => {
   })
 })
 
+adminAnalyticsRoutes.get('/seo', async (c) => {
+  const range = parseRangeOrError(c)
+  if (range instanceof Response) return range
+
+  const [totals, landingTotals, overallTotals, trend, referrers, landingPages] = await Promise.all([
+    queryFirst(c.env.DB, `
+      SELECT
+        COALESCE(SUM(visitor_count), 0) AS visitor_count,
+        COALESCE(SUM(session_count), 0) AS session_count,
+        COALESCE(SUM(page_view_count), 0) AS page_view_count,
+        COALESCE(SUM(gallery_detail_count), 0) AS gallery_detail_count,
+        COALESCE(SUM(register_count), 0) AS register_count,
+        COALESCE(SUM(contact_click_count), 0) AS contact_click_count,
+        COALESCE(SUM(membership_grant_count), 0) AS membership_grant_count,
+        COALESCE(SUM(active_seconds_total), 0) AS active_seconds_total
+      FROM analytics_daily_sources
+      WHERE date BETWEEN ? AND ?
+        AND source_channel = 'search'
+    `, [range.from, range.to]),
+    queryFirst(c.env.DB, `
+      SELECT
+        COALESCE(SUM(entry_count), 0) AS landing_count,
+        COALESCE(SUM(bounce_count), 0) AS bounce_count,
+        COALESCE(SUM(active_seconds_total), 0) AS landing_active_seconds_total,
+        COALESCE(MAX(max_scroll_depth), 0) AS max_scroll_depth
+      FROM analytics_source_page_daily
+      WHERE date BETWEEN ? AND ?
+        AND source_channel = 'search'
+    `, [range.from, range.to]),
+    queryFirst(c.env.DB, `
+      SELECT
+        COALESCE(SUM(session_count), 0) AS total_session_count,
+        COALESCE(SUM(page_view_count), 0) AS total_page_view_count
+      FROM analytics_daily_sources
+      WHERE date BETWEEN ? AND ?
+    `, [range.from, range.to]),
+    queryAll(c.env.DB, `
+      SELECT
+        date,
+        SUM(visitor_count) AS visitor_count,
+        SUM(session_count) AS session_count,
+        SUM(page_view_count) AS page_view_count,
+        SUM(gallery_detail_count) AS gallery_detail_count,
+        SUM(register_count) AS register_count,
+        SUM(contact_click_count) AS contact_click_count,
+        SUM(membership_grant_count) AS membership_grant_count
+      FROM analytics_daily_sources
+      WHERE date BETWEEN ? AND ?
+        AND source_channel = 'search'
+      GROUP BY date
+      ORDER BY date ASC
+    `, [range.from, range.to]),
+    queryAll(c.env.DB, `
+      SELECT
+        source_channel,
+        source_name,
+        '' AS invite_code_id,
+        SUM(visitor_count) AS visitor_count,
+        SUM(session_count) AS session_count,
+        SUM(page_view_count) AS page_view_count,
+        SUM(gallery_detail_count) AS gallery_detail_count,
+        SUM(register_count) AS register_count,
+        SUM(contact_click_count) AS contact_click_count,
+        SUM(membership_grant_count) AS membership_grant_count,
+        SUM(active_seconds_total) AS active_seconds_total,
+        CASE
+          WHEN SUM(session_count) > 0 THEN ROUND(SUM(active_seconds_total) * 1.0 / SUM(session_count), 2)
+          ELSE 0
+        END AS average_active_seconds,
+        CASE
+          WHEN SUM(session_count) > 0 THEN ROUND(SUM(contact_click_count) * 1.0 / SUM(session_count), 4)
+          ELSE 0
+        END AS contact_rate,
+        CASE
+          WHEN SUM(session_count) > 0 THEN ROUND(SUM(register_count) * 1.0 / SUM(session_count), 4)
+          ELSE 0
+        END AS register_rate
+      FROM analytics_daily_sources
+      WHERE date BETWEEN ? AND ?
+        AND source_channel = 'search'
+      GROUP BY source_channel, source_name
+      ORDER BY session_count DESC, page_view_count DESC
+      LIMIT 20
+    `, [range.from, range.to]),
+    queryAll(c.env.DB, `
+      SELECT
+        route_name,
+        path,
+        entity_type,
+        entity_id,
+        page_title,
+        SUM(visitor_count) AS visitor_count,
+        SUM(session_count) AS session_count,
+        SUM(page_view_count) AS page_view_count,
+        SUM(entry_count) AS entry_count,
+        SUM(exit_count) AS exit_count,
+        SUM(bounce_count) AS bounce_count,
+        SUM(active_seconds_total) AS active_seconds_total,
+        MAX(max_scroll_depth) AS max_scroll_depth,
+        SUM(register_count) AS register_count,
+        SUM(contact_click_count) AS contact_click_count,
+        CASE
+          WHEN SUM(entry_count) > 0 THEN ROUND(SUM(bounce_count) * 1.0 / SUM(entry_count), 4)
+          ELSE 0
+        END AS bounce_rate,
+        CASE
+          WHEN SUM(page_view_count) > 0 THEN ROUND(SUM(active_seconds_total) * 1.0 / SUM(page_view_count), 2)
+          ELSE 0
+        END AS average_active_seconds,
+        CASE
+          WHEN SUM(session_count) > 0 THEN ROUND(SUM(contact_click_count) * 1.0 / SUM(session_count), 4)
+          ELSE 0
+        END AS contact_rate,
+        CASE
+          WHEN SUM(session_count) > 0 THEN ROUND(SUM(register_count) * 1.0 / SUM(session_count), 4)
+          ELSE 0
+        END AS register_rate
+      FROM analytics_source_page_daily
+      WHERE date BETWEEN ? AND ?
+        AND source_channel = 'search'
+      GROUP BY route_name, path, entity_type, entity_id, page_title
+      ORDER BY entry_count DESC, page_view_count DESC
+      LIMIT 30
+    `, [range.from, range.to]),
+  ])
+
+  const totalRow = totals.rows[0] ?? {}
+  const landingRow = landingTotals.rows[0] ?? {}
+  const overallRow = overallTotals.rows[0] ?? {}
+  const sessionCount = Number((totalRow as Record<string, unknown>).session_count ?? 0)
+  const pageViewCount = Number((totalRow as Record<string, unknown>).page_view_count ?? 0)
+  const activeSeconds = Number((totalRow as Record<string, unknown>).active_seconds_total ?? 0)
+  const landingCount = Number((landingRow as Record<string, unknown>).landing_count ?? 0)
+  const bounceCount = Number((landingRow as Record<string, unknown>).bounce_count ?? 0)
+  const totalSessions = Number((overallRow as Record<string, unknown>).total_session_count ?? 0)
+  const totalPageViews = Number((overallRow as Record<string, unknown>).total_page_view_count ?? 0)
+
+  return c.json({
+    range,
+    usage: mergeQueryUsage(totals, landingTotals, overallTotals, trend, referrers, landingPages),
+    data: {
+      totals: {
+        ...totalRow,
+        ...landingRow,
+        total_session_count: totalSessions,
+        total_page_view_count: totalPageViews,
+        average_active_seconds: sessionCount > 0 ? Math.round(activeSeconds / sessionCount) : 0,
+        search_session_share: totalSessions > 0 ? roundRate(sessionCount / totalSessions) : 0,
+        search_page_view_share: totalPageViews > 0 ? roundRate(pageViewCount / totalPageViews) : 0,
+        landing_bounce_rate: landingCount > 0 ? roundRate(bounceCount / landingCount) : 0,
+        contact_rate: sessionCount > 0 ? roundRate(Number((totalRow as Record<string, unknown>).contact_click_count ?? 0) / sessionCount) : 0,
+        register_rate: sessionCount > 0 ? roundRate(Number((totalRow as Record<string, unknown>).register_count ?? 0) / sessionCount) : 0,
+      },
+      trend: trend.rows,
+      referrers: referrers.rows.map(enrichAnalyticsDisplayRow),
+      landingPages: landingPages.rows.map(enrichAnalyticsDisplayRow),
+      notes: {
+        source: 'SEO 数据来自站内一方埋点识别到的自然搜索 referrer 或 utm_medium=seo/search/organic_search。',
+        limitation: '当前不读取 Google Search Console 或搜索广告后台，因此不包含关键词排名、展现量和搜索词明细。',
+      },
+    },
+  })
+})
+
 adminAnalyticsRoutes.get('/sources', async (c) => {
   const range = parseRangeOrError(c)
   if (range instanceof Response) return range

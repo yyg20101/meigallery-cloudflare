@@ -40,7 +40,7 @@ export function useFacebookPixel() {
 
   function getPathname(fullPath: string) {
     try {
-      return new URL(fullPath, 'https://meigallery.local').pathname
+      return new URL(fullPath, 'https://site.local').pathname
     } catch {
       return fullPath.split(/[?#]/)[0] || fullPath
     }

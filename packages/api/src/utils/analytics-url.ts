@@ -88,7 +88,7 @@ export function sanitizeAnalyticsPath(value: unknown): string | null {
 
   let parsed: URL
   try {
-    parsed = new URL(raw, 'https://meigallery.local')
+    parsed = new URL(raw, 'https://site.local')
   } catch {
     return null
   }
@@ -135,7 +135,7 @@ export function sanitizeReferrer(value: unknown, currentHost?: string | null): S
 export function stripSensitiveParams(value: string): string | null {
   let parsed: URL
   try {
-    parsed = new URL(value, 'https://meigallery.local')
+    parsed = new URL(value, 'https://site.local')
   } catch {
     return null
   }
@@ -143,7 +143,7 @@ export function stripSensitiveParams(value: string): string | null {
     if (isSensitiveParamName(name)) parsed.searchParams.delete(name)
   }
   parsed.hash = ''
-  if (parsed.origin === 'https://meigallery.local') {
+  if (parsed.origin === 'https://site.local') {
     return `${parsed.pathname}${parsed.search}`
   }
   return parsed.toString()
@@ -187,7 +187,7 @@ export function deriveSourceAttribution(input: SourceAttributionInput): SourceAt
 }
 
 function sourceChannelFromUtmMedium(medium: string): AnalyticsSourceChannel {
-  if (medium === 'cpc' || medium === 'paid' || medium === 'ad' || medium === 'ads') return 'ad'
+  if (medium === 'cpc' || medium === 'paid' || medium === 'ad' || medium === 'ads' || medium === 'paid_social' || medium === 'paid-social' || medium === 'paidsocial') return 'ad'
   if (medium === 'social' || medium === 'sns') return 'social'
   if (medium === 'search' || medium === 'organic_search' || medium === 'seo') return 'search'
   if (medium === 'direct') return 'direct'
@@ -197,7 +197,7 @@ function sourceChannelFromUtmMedium(medium: string): AnalyticsSourceChannel {
 
 function tryParseUrl(value: string) {
   try {
-    return new URL(value, 'https://meigallery.local')
+    return new URL(value, 'https://site.local')
   } catch {
     return null
   }

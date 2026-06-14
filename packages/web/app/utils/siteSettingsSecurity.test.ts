@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getHomeAdTextPreviewWarnings, isScheduledSiteFeatureActive, normalizeAnalyticsConsentMode, normalizeAnalyticsSampleRate, normalizeBooleanSetting, normalizeFeaturedRegionSlugs, normalizeHomeAdText, normalizeHomeAdUrl, normalizeHomeHotTagLimit, normalizeInternalPath, normalizePublicImageSettingUrl, normalizePublicSettingUrl, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId, safeRulesMarkdown, safeSiteText } from './siteSettingsSecurity'
+import { getHomeAdTextPreviewWarnings, isScheduledSiteFeatureActive, normalizeAnalyticsConsentMode, normalizeAnalyticsSampleRate, normalizeBooleanSetting, normalizeFeaturedRegionSlugs, normalizeHomeAdText, normalizeHomeAdUrl, normalizeHomeHotTagLimit, normalizeInternalPath, normalizePublicImageSettingUrl, normalizePublicSettingUrl, normalizeSeoKeywords, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId, safeRulesMarkdown, safeSiteText } from './siteSettingsSecurity'
 
 describe('siteSettingsSecurity', () => {
   it('公开 URL 只允许站内路径和 https 链接', () => {
@@ -188,6 +188,12 @@ describe('siteSettingsSecurity', () => {
     expect(safeSiteText('rules_entry_summary', '入口\u0001说明')).toBe('')
     expect(safeSiteText('rules_entry_icon', '<svg>')).toBe('')
     expect(safeSiteText('rules_page_title', '入站规则')).toBe('入站规则')
+  })
+
+  it('归一化 SEO 关键词池为前台可复用数组', () => {
+    expect(normalizeSeoKeywords(' 授权图库, 写真\n#时尚写真，授权图库 ')).toEqual(['授权图库', '写真', '时尚写真'])
+    expect(normalizeSeoKeywords(Array.from({ length: 31 }, (_, index) => `关键词${index}`).join(','))).toEqual([])
+    expect(normalizeSeoKeywords(`授权图库,${'x'.repeat(25)}`)).toEqual([])
   })
 
   it('归一化首页内容配置并拒绝异常历史值', () => {

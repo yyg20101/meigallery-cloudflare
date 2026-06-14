@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import { buildAbsoluteSeoUrl, buildArticleJsonLd, buildCanonicalUrl, buildJsonLdScript, normalizeSeoSiteUrl } from '~/utils/seoMetadata'
+
 const route = useRoute()
+const config = useRuntimeConfig()
 const { api } = useApi()
-const { siteName } = useSiteSettings()
+const { siteName, seoKeywords, siteIcon } = useSiteSettings()
 
 interface CaseDetail {
   id: string
@@ -26,14 +29,61 @@ if (error.value || !item.value) {
 const formattedDate = computed(() => item.value?.publishedAt?.split('T')[0] || '')
 const coverImage = computed(() => item.value?.images[0] || null)
 const galleryImages = computed(() => item.value?.images.slice(1) ?? [])
+const siteUrl = computed(() => normalizeSeoSiteUrl(config.public.siteUrl))
+const canonicalUrl = computed(() => buildCanonicalUrl(siteUrl.value, route.fullPath))
+const caseSeoDescription = computed(() => item.value?.seoDescription || item.value?.summary || '查看已授权、已脱敏的真实案例。')
+const caseOgImage = computed(() => buildAbsoluteSeoUrl(siteUrl.value, item.value?.images[0]?.url) || undefined)
+const caseSeoKeywords = computed(() => mergeKeywords([
+  ...seoKeywords.value,
+  '真实案例',
+  '授权反馈',
+]))
+const caseJsonLd = computed(() => {
+  if (!item.value) return null
+
+  return buildJsonLdScript(buildArticleJsonLd({
+    siteUrl: siteUrl.value,
+    path: route.fullPath,
+    siteName: siteName.value,
+    title: item.value.seoTitle || item.value.title,
+    description: caseSeoDescription.value,
+    imageUrls: item.value.images.map(image => image.url),
+    datePublished: item.value.publishedAt,
+    logoUrl: siteIcon.value,
+    keywords: caseSeoKeywords.value,
+  }))
+})
 
 useSeoMeta({
   title: () => item.value?.seoTitle || (item.value ? `${item.value.title} - 真实案例 - ${siteName.value}` : `真实案例 - ${siteName.value}`),
-  description: () => item.value?.seoDescription || item.value?.summary || '查看已授权、已脱敏的真实案例。',
+  description: () => caseSeoDescription.value,
   ogTitle: () => item.value?.title || '真实案例',
-  ogDescription: () => item.value?.summary || '查看已授权、已脱敏的真实案例。',
-  ogImage: () => item.value?.images[0]?.url || undefined,
+  ogDescription: () => caseSeoDescription.value,
+  ogImage: () => caseOgImage.value,
+  ogUrl: () => canonicalUrl.value,
+  ogType: 'article',
+  twitterCard: 'summary_large_image',
+  articlePublishedTime: () => item.value?.publishedAt || undefined,
 })
+
+useHead(() => ({
+  meta: caseSeoKeywords.value.length ? [{ key: 'keywords', name: 'keywords', content: caseSeoKeywords.value.join(', ') }] : [],
+  script: caseJsonLd.value ? [caseJsonLd.value] : [],
+}))
+
+function mergeKeywords(values: string[]) {
+  const keywords: string[] = []
+  const seen = new Set<string>()
+  for (const value of values) {
+    const keyword = value.trim().replace(/\s+/g, ' ')
+    if (!keyword) continue
+    const key = keyword.toLowerCase()
+    if (seen.has(key)) continue
+    keywords.push(keyword)
+    seen.add(key)
+  }
+  return keywords
+}
 
 function openContactPanel() {
   window.dispatchEvent(new CustomEvent('meigallery:open-contact-panel'))

@@ -27,7 +27,7 @@ describe('analyticsSanitizer', () => {
       referrer: 'https://example.com/from/page',
       referrerHost: 'example.com',
     })
-    expect(sanitizeReferrer('https://meigallery.local/a', 'meigallery.local')).toEqual({ referrer: '', referrerHost: '' })
+    expect(sanitizeReferrer('https://site.local/a', 'site.local')).toEqual({ referrer: '', referrerHost: '' })
   })
 
   it('清洗 props 中的邮箱、电话、URL 和非法值', () => {

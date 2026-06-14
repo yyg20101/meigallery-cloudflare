@@ -37,7 +37,9 @@ const trackingSources = computed(() => {
 
 const createOpen = ref(true)
 const creating = ref(false)
+const metaCreating = ref(false)
 const createError = ref('')
+const metaCreateError = ref('')
 const editingId = ref('')
 const savingId = ref('')
 const form = reactive({
@@ -45,6 +47,12 @@ const form = reactive({
   channel: 'referral',
   targetPath: '/',
   utmMedium: 'referral',
+  utmCampaign: '',
+  note: '',
+})
+const metaForm = reactive({
+  sourceLabel: '',
+  targetPath: '/',
   utmCampaign: '',
   note: '',
 })
@@ -67,6 +75,15 @@ watch(() => form.channel, (channel) => {
   if (option && (!form.utmMedium || channelOptions.some(item => item.medium === form.utmMedium))) {
     form.utmMedium = option.medium
   }
+})
+
+const metaPreviewPath = computed(() => {
+  return buildTrackingPathPreview({
+    targetPath: metaForm.targetPath,
+    sourceCode: 'ad-auto-code',
+    utmMedium: 'paid_social',
+    utmCampaign: normalizeUtmPreview(metaForm.utmCampaign || metaForm.sourceLabel || 'meta-test'),
+  })
 })
 
 async function createTrackingSource() {
@@ -99,6 +116,40 @@ async function createTrackingSource() {
     createError.value = resolveApiErrorMessage(error, '推广来源创建失败')
   } finally {
     creating.value = false
+  }
+}
+
+async function createMetaTrackingSource() {
+  metaCreateError.value = ''
+  if (!metaForm.sourceLabel.trim()) {
+    metaCreateError.value = '请填写广告测试名称'
+    return
+  }
+  metaCreating.value = true
+  try {
+    const campaign = normalizeUtmPreview(metaForm.utmCampaign || metaForm.sourceLabel)
+    const result = await api<{ data: TrackingSourceMetric }>('/api/admin/tracking-sources', {
+      method: 'POST',
+      body: {
+        sourceLabel: metaForm.sourceLabel,
+        channel: 'ad',
+        targetPath: metaForm.targetPath,
+        utmMedium: 'paid_social',
+        utmCampaign: campaign || undefined,
+        note: metaForm.note || 'Meta 广告测试链接',
+      },
+    })
+    toast.add({ title: 'Meta 像素测试地址已创建', color: 'success' })
+    await copyTrackingLink(result.data)
+    metaForm.sourceLabel = ''
+    metaForm.targetPath = '/'
+    metaForm.utmCampaign = ''
+    metaForm.note = ''
+    await analytics.refresh()
+  } catch (error) {
+    metaCreateError.value = resolveApiErrorMessage(error, 'Meta 像素测试地址创建失败')
+  } finally {
+    metaCreating.value = false
   }
 }
 
@@ -171,6 +222,38 @@ async function copyTrackingLink(item: Pick<TrackingSourceMetric, 'trackingPath'>
   toast.add({ title: '追踪链接已复制', color: 'success' })
 }
 
+function buildTrackingPathPreview(input: {
+  targetPath: string
+  sourceCode: string
+  utmMedium: string
+  utmCampaign: string
+}) {
+  try {
+    const url = new URL(input.targetPath || '/', 'https://616618.xyz')
+    if (!url.pathname.startsWith('/') || url.pathname.startsWith('/admin') || url.pathname.startsWith('/api')) {
+      return '/?mg_source=ad-auto-code&utm_source=ad-auto-code&utm_medium=paid_social'
+    }
+    url.searchParams.set('mg_source', input.sourceCode)
+    url.searchParams.set('utm_source', input.sourceCode)
+    url.searchParams.set('utm_medium', input.utmMedium)
+    if (input.utmCampaign) url.searchParams.set('utm_campaign', input.utmCampaign)
+    return `${url.pathname}${url.search}`
+  } catch {
+    return '/?mg_source=ad-auto-code&utm_source=ad-auto-code&utm_medium=paid_social'
+  }
+}
+
+function normalizeUtmPreview(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9_.-]/g, '-')
+    .replace(/[-_.]{2,}/g, '-')
+    .replace(/^[-_.]+|[-_.]+$/g, '')
+    .slice(0, 80)
+}
+
 </script>
 
 <template>
@@ -218,6 +301,42 @@ async function copyTrackingLink(item: Pick<TrackingSourceMetric, 'trackingPath'>
       </section>
 
       <aside class="space-y-4">
+        <section class="overflow-hidden rounded-lg border border-indigo-100 bg-white shadow-sm">
+          <div class="border-b border-indigo-100 bg-indigo-950 px-4 py-4 text-white">
+            <h2 class="text-sm font-semibold">Meta 像素测试地址</h2>
+            <p class="mt-1 text-xs leading-5 text-indigo-100">每个广告版本创建一条地址，用来源 code 比较联系、注册和会员转化。</p>
+          </div>
+
+          <form class="space-y-3 p-4" @submit.prevent="createMetaTrackingSource">
+            <label class="block">
+              <span class="mb-1 block text-xs font-medium text-gray-600">广告测试名称</span>
+              <input v-model="metaForm.sourceLabel" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="例如 Meta 广告 A｜聊天 CTA" />
+            </label>
+            <label class="block">
+              <span class="mb-1 block text-xs font-medium text-gray-600">落地页</span>
+              <input v-model="metaForm.targetPath" class="w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm" placeholder="例如 / 或 /gallery/summer-portrait" />
+            </label>
+            <label class="block">
+              <span class="mb-1 block text-xs font-medium text-gray-600">活动标识</span>
+              <input v-model="metaForm.utmCampaign" class="w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm" placeholder="例如 meta-contact-a" />
+            </label>
+            <label class="block">
+              <span class="mb-1 block text-xs font-medium text-gray-600">内部备注</span>
+              <textarea v-model="metaForm.note" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="例如 主图版本 A，目标 Contact" />
+            </label>
+
+            <div class="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2">
+              <p class="text-xs font-medium text-indigo-900">链接预览</p>
+              <p class="mt-1 break-all font-mono text-xs leading-5 text-indigo-800">https://616618.xyz{{ metaPreviewPath }}</p>
+            </div>
+
+            <p v-if="metaCreateError" class="text-xs text-red-600">{{ metaCreateError }}</p>
+            <button class="w-full rounded-lg bg-indigo-950 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-900 disabled:opacity-60" type="submit" :disabled="metaCreating">
+              {{ metaCreating ? '创建中...' : '创建并复制像素地址' }}
+            </button>
+          </form>
+        </section>
+
         <section class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
           <div class="flex items-center justify-between gap-3">
             <div>

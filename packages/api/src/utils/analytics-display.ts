@@ -205,6 +205,10 @@ function readableSourceName(value: string) {
   const text = value.trim()
   const key = text.toLowerCase()
   if (SOURCE_NAME_LABELS[key]) return SOURCE_NAME_LABELS[key]
+  if (key === 'google.com' || key.endsWith('.google.com')) return 'Google'
+  if (key === 'bing.com' || key.endsWith('.bing.com')) return 'Bing'
+  if (key === 'baidu.com' || key.endsWith('.baidu.com')) return '百度'
+  if (key === 'duckduckgo.com' || key.endsWith('.duckduckgo.com')) return 'DuckDuckGo'
   if (key === 'facebook.com' || key.endsWith('.facebook.com')) return 'Facebook referrer 来源'
   if (key === 'instagram.com' || key.endsWith('.instagram.com')) return 'Instagram referrer 来源'
   return readableToken(text)

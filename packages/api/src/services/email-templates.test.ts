@@ -21,22 +21,31 @@ describe('邮件模板安全渲染', () => {
       '标题\r\nBcc: attacker@example.com',
       'javascript:alert(1)',
       'https://127.0.0.1/cover.jpg',
+      { siteName: '星耀传媒' },
     )
 
-    expect(result.subject).toBe('[MeiGallery] 新内容发布：标题 Bcc: attacker@example.com')
+    expect(result.subject).toBe('[星耀传媒] 新内容发布：标题 Bcc: attacker@example.com')
     expect(result.subject).not.toMatch(/[\r\n]/)
     expect(result.html).toContain('href="https://616618.xyz"')
     expect(result.html).not.toContain('<img src=')
-    expect(result.text).toBe('[MeiGallery] 新内容发布：标题 Bcc: attacker@example.com — https://616618.xyz')
+    expect(result.text).toBe('[星耀传媒] 新内容发布：标题 Bcc: attacker@example.com — https://616618.xyz')
   })
 
   it('会员到期和验证码模板会转义可变内容', () => {
-    const membership = emailTemplates.membershipExpiry('VIP<script>alert(1)</script>', '2026-06-01T00:00:00Z')
-    const registration = emailTemplates.registrationCode('123<svg/onload=alert(1)>')
+    const membership = emailTemplates.membershipExpiry('VIP<script>alert(1)</script>', '2026-06-01T00:00:00Z', { siteName: '星耀<站点>' })
+    const registration = emailTemplates.registrationCode('123<svg/onload=alert(1)>', { siteName: '星耀<站点>' })
 
     expect(membership.html).toContain('VIP&lt;script&gt;alert(1)&lt;/script&gt;')
     expect(membership.html).not.toContain('<script>alert(1)</script>')
+    expect(membership.html).toContain('星耀&lt;站点&gt;')
     expect(registration.html).toContain('123&lt;svg/onload=alert(1)&gt;')
     expect(registration.html).not.toContain('<svg/onload=alert(1)>')
+  })
+
+  it('未传站点上下文时使用中性站名兜底', () => {
+    const result = emailTemplates.passwordResetCode('123456')
+
+    expect(result.subject).toBe('[图库站] 密码重置验证码')
+    expect(result.text).toContain('[图库站]')
   })
 })

@@ -2,6 +2,28 @@ import type { AnalyticsSourceChannel } from '@meigallery/shared'
 import { hasSensitiveAnalyticsUrl, isAdminPath } from '~/utils/facebookPixel'
 import { sanitizeReferrer } from '~/utils/analyticsSanitizer'
 
+const SEARCH_REFERRER_PATTERNS = [
+  'google.',
+  'bing.com',
+  'baidu.com',
+  'duckduckgo.com',
+  'yahoo.',
+  'yandex.',
+]
+
+const SOCIAL_REFERRER_PATTERNS = [
+  'facebook.com',
+  'instagram.com',
+  't.co',
+  'twitter.com',
+  'x.com',
+  'telegram.',
+  't.me',
+  'weibo.com',
+  'xiaohongshu.com',
+  'douyin.com',
+]
+
 export default defineNuxtPlugin(async () => {
   const route = useRoute()
   const router = useRouter()
@@ -76,6 +98,7 @@ function deriveInitialSource(route: ReturnType<typeof useRoute>): {
     utmMedium,
     hasUtm: Boolean(utmSource || utmMedium || utmCampaign),
     hasReferrer: Boolean(referrer.referrerHost),
+    referrerHost: referrer.referrerHost,
   })
   return {
     channel,
@@ -97,10 +120,11 @@ function deriveInitialSourceChannel(input: {
   utmMedium: string
   hasUtm: boolean
   hasReferrer: boolean
+  referrerHost: string
 }): AnalyticsSourceChannel {
   if (input.hasInvite) return 'invite'
   if (input.hasTrackingSource || input.hasUtm) return channelFromUtmMedium(input.utmMedium)
-  if (input.hasReferrer) return 'referral'
+  if (input.hasReferrer) return channelFromReferrer(input.referrerHost)
   return 'direct'
 }
 
@@ -111,6 +135,13 @@ function channelFromUtmMedium(value: string): AnalyticsSourceChannel {
   if (medium === 'search' || medium === 'seo' || medium === 'organic_search') return 'search'
   if (medium === 'direct') return 'direct'
   if (medium === 'internal') return 'internal'
+  return 'referral'
+}
+
+function channelFromReferrer(value: string): AnalyticsSourceChannel {
+  const host = value.trim().toLowerCase()
+  if (SEARCH_REFERRER_PATTERNS.some(pattern => host.includes(pattern))) return 'search'
+  if (SOCIAL_REFERRER_PATTERNS.some(pattern => host.includes(pattern))) return 'social'
   return 'referral'
 }
 

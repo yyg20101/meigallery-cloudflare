@@ -3,7 +3,10 @@
  * 从 /api/settings/public 获取站点配置
  * 数据全局缓存，避免重复请求
  */
-import { isScheduledSiteFeatureActive, normalizeAnalyticsConsentMode, normalizeAnalyticsSampleRate, normalizeBooleanSetting, normalizeFeaturedRegionSlugs, normalizeHomeAdImageUrl, normalizeHomeAdUrl, normalizeHomeHotTagLimit, normalizeInternalPath, normalizePublicImageSettingUrl, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId, safeHomeAdText, safeRulesMarkdown, safeSiteText } from '~/utils/siteSettingsSecurity'
+import { isScheduledSiteFeatureActive, normalizeAnalyticsConsentMode, normalizeAnalyticsSampleRate, normalizeBooleanSetting, normalizeFeaturedRegionSlugs, normalizeHomeAdImageUrl, normalizeHomeAdUrl, normalizeHomeHotTagLimit, normalizeInternalPath, normalizePublicImageSettingUrl, normalizeSeoKeywords, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId, safeHomeAdText, safeRulesMarkdown, safeSiteText } from '~/utils/siteSettingsSecurity'
+
+const DEFAULT_SITE_NAME = '图库站'
+const LEGACY_DEFAULT_SITE_NAME = 'MeiGallery'
 
 export function useSiteSettings() {
   const { api } = useApi()
@@ -13,6 +16,7 @@ export function useSiteSettings() {
     site_description?: string
     site_icon?: string
     seo_title?: string
+    seo_keywords?: string
     og_title?: string
     og_description?: string
     og_image?: string
@@ -91,10 +95,14 @@ export function useSiteSettings() {
     return settings.value
   }
 
-  const siteName = computed(() => safeSiteText('site_name', settings.value.site_name) || 'MeiGallery')
+  const siteName = computed(() => {
+    const name = safeSiteText('site_name', settings.value.site_name)
+    return name && name !== LEGACY_DEFAULT_SITE_NAME ? name : DEFAULT_SITE_NAME
+  })
   const siteDescription = computed(() => safeSiteText('site_description', settings.value.site_description))
   const siteIcon = computed(() => normalizePublicImageSettingUrl(settings.value.site_icon))
   const seoTitle = computed(() => safeSiteText('seo_title', settings.value.seo_title) || siteName.value)
+  const seoKeywords = computed(() => normalizeSeoKeywords(settings.value.seo_keywords))
   const ogTitle = computed(() => safeSiteText('og_title', settings.value.og_title) || seoTitle.value)
   const ogDescription = computed(() => safeSiteText('og_description', settings.value.og_description) || siteDescription.value)
   const ogImage = computed(() => normalizePublicImageSettingUrl(settings.value.og_image))
@@ -112,7 +120,7 @@ export function useSiteSettings() {
   const homeAdSummary = computed(() => safeHomeAdText('home_ad_summary', settings.value.home_ad_summary) || '探索本周精选图库、真实案例和会员可访问内容。')
   const homeAdCtaLabel = computed(() => safeHomeAdText('home_ad_cta_label', settings.value.home_ad_cta_label) || '查看推荐')
   const homeAdUrl = computed(() => normalizeHomeAdUrl(settings.value.home_ad_url) || '/discover?sort=hot')
-  const homeAdSponsor = computed(() => safeHomeAdText('home_ad_sponsor', settings.value.home_ad_sponsor) || 'MeiGallery 运营推荐')
+  const homeAdSponsor = computed(() => safeHomeAdText('home_ad_sponsor', settings.value.home_ad_sponsor) || '运营推荐')
   const homeAdStartsAt = computed(() => normalizeSiteSettingDateTime(settings.value.home_ad_starts_at))
   const homeAdEndsAt = computed(() => normalizeSiteSettingDateTime(settings.value.home_ad_ends_at))
   const homeAdActive = computed(() => {
@@ -179,6 +187,7 @@ export function useSiteSettings() {
     siteDescription,
     siteIcon,
     seoTitle,
+    seoKeywords,
     ogTitle,
     ogDescription,
     ogImage,

@@ -79,6 +79,34 @@ describe('后台站点设置 API', () => {
     expect(body.data.home_ad_enabled.value).toBe(true)
   })
 
+  it('站长读取设置时清空旧脚手架品牌默认值', async () => {
+    const app = createApp()
+    const env = {
+      DB: createDb({
+        all: (sql) => {
+          if (sql.includes('SELECT key, value, updated_at FROM site_settings')) {
+            return [
+              { key: 'site_name', value: JSON.stringify('MeiGallery'), updated_at: '2026-06-02 00:00:00' },
+              { key: 'seo_title', value: JSON.stringify('MeiGallery - 精选写真图库'), updated_at: '2026-06-02 00:00:00' },
+              { key: 'home_ad_sponsor', value: JSON.stringify('MeiGallery 运营推荐'), updated_at: '2026-06-02 00:00:00' },
+              { key: 'rules_page_summary', value: JSON.stringify('了解 MeiGallery 的内容边界、会员访问和联系方式说明。'), updated_at: '2026-06-02 00:00:00' },
+            ]
+          }
+          return []
+        },
+      }),
+    } as unknown as Bindings
+
+    const res = await app.request('/api/admin/settings', {}, env)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.data.site_name.value).toBe('')
+    expect(body.data.seo_title.value).toBe('')
+    expect(body.data.home_ad_sponsor.value).toBe('')
+    expect(body.data.rules_page_summary.value).toBe('了解本站的内容边界、会员访问和联系方式说明。')
+  })
+
   it('站长更新首页广告链接时会写入归一化值和审计日志', async () => {
     const executed: ExecutedSql = []
     const app = createApp()
@@ -208,6 +236,7 @@ describe('后台站点设置 API', () => {
             return [
               { key: 'site_name', value: JSON.stringify('旧站名') },
               { key: 'seo_title', value: JSON.stringify('旧标题') },
+              { key: 'seo_keywords', value: JSON.stringify('旧关键词') },
               { key: 'home_hero_title', value: JSON.stringify('旧首页标题') },
             ]
           }
@@ -226,15 +255,17 @@ describe('后台站点设置 API', () => {
       body: JSON.stringify({
         site_name: '  测试   图库站  ',
         seo_title: '  测试站点   -   精选图库  ',
+        seo_keywords: ' 授权图库, 写真\n#时尚写真，授权图库 ',
         home_hero_title: '首页精选',
       }),
     }, env)
     const body = await res.json()
 
     expect(res.status).toBe(200)
-    expect(body.updated).toEqual(['site_name', 'seo_title', 'home_hero_title'])
+    expect(body.updated).toEqual(['site_name', 'seo_title', 'seo_keywords', 'home_hero_title'])
     expect(hasSettingWrite(executed, 'site_name', '"测试 图库站"')).toBe(true)
     expect(hasSettingWrite(executed, 'seo_title', '"测试站点 - 精选图库"')).toBe(true)
+    expect(hasSettingWrite(executed, 'seo_keywords', '"授权图库,写真,时尚写真"')).toBe(true)
     expect(executed.some(item => item.sql.includes('INSERT INTO admin_audit_logs'))).toBe(true)
   })
 
@@ -386,6 +417,7 @@ describe('后台站点设置 API', () => {
     for (const payload of [
       { site_name: '测试\u0001图库' },
       { seo_title: 'x'.repeat(81) },
+      { seo_keywords: Array.from({ length: 31 }, (_, index) => `关键词${index}`).join(',') },
       { home_hero_subtitle: 'x'.repeat(181) },
       { rules_entry_icon: '<svg>' },
     ]) {
@@ -397,7 +429,7 @@ describe('后台站点设置 API', () => {
       const body = await res.json()
 
       expect(res.status).toBe(400)
-      expect(body.message).toMatch(/站点名称|SEO 标题|首页副标题|规则入口图标/)
+      expect(body.message).toMatch(/站点名称|SEO 标题|SEO 关键词|首页副标题|规则入口图标/)
     }
   })
 

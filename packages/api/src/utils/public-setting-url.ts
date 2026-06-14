@@ -44,7 +44,7 @@ export function normalizePublicSettingUrl(value: unknown, fieldLabel: string) {
     }
     let parsed: URL
     try {
-      parsed = new URL(url, 'https://meigallery.local')
+      parsed = new URL(url, 'https://site.local')
     } catch {
       throw new Error(`${fieldLabel}格式无效`)
     }
@@ -114,7 +114,7 @@ export function normalizeInternalPathSetting(value: unknown, fieldLabel: string)
   }
   let parsed: URL
   try {
-    parsed = new URL(url, 'https://meigallery.local')
+    parsed = new URL(url, 'https://site.local')
   } catch {
     throw new Error(`${fieldLabel}格式无效`)
   }

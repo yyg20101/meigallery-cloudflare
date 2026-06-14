@@ -7,6 +7,7 @@ import { generateId } from '../../utils/db'
 import { normalizeHomeAdScheduleRange } from '../../utils/home-ad-schedule'
 import { isHomeAdTextKey, normalizeHomeAdText, normalizeHomeAdUrl } from '../../utils/home-ad-settings'
 import { writeAuditLog } from '../../utils/permission'
+import { LEGACY_DEFAULT_SEO_TITLE, LEGACY_DEFAULT_SITE_NAME } from '../../utils/public-site-settings'
 import { normalizeInternalPathSetting, normalizePublicImageSettingUrl } from '../../utils/public-setting-url'
 import { ADMIN_SETTING_KEYS } from '../../utils/site-settings'
 import { normalizeFeaturedRegionSlugs, normalizeHomeHotTagLimit, normalizeRulesMarkdown } from '../../utils/site-content-settings'
@@ -34,6 +35,19 @@ function publicMediaPathToR2Key(value: unknown): string | null {
   return value.replace('/api/media/public/', '')
 }
 
+function clearLegacySiteBrandDefault(key: string, value: unknown) {
+  if (key === 'site_name' && value === LEGACY_DEFAULT_SITE_NAME) return ''
+  if (key === 'seo_title' && value === LEGACY_DEFAULT_SEO_TITLE) return ''
+  if (key === 'home_ad_sponsor' && value === 'MeiGallery 运营推荐') return ''
+  if (key === 'rules_page_summary' && value === '了解 MeiGallery 的内容边界、会员访问和联系方式说明。') {
+    return '了解本站的内容边界、会员访问和联系方式说明。'
+  }
+  if (key === 'rules_page_content' && typeof value === 'string') {
+    return value.replaceAll('MeiGallery', '本站')
+  }
+  return value
+}
+
 adminSettingsRoutes.get('/', requireOwner, async (c) => {
   const db = c.env.DB
   const result = await db
@@ -42,7 +56,8 @@ adminSettingsRoutes.get('/', requireOwner, async (c) => {
 
   const settings: Record<string, { value: unknown; updatedAt: string }> = {}
   for (const row of result.results) {
-    settings[row.key] = { value: parseStoredSettingValue(row.value, ''), updatedAt: row.updated_at }
+    const value = clearLegacySiteBrandDefault(row.key, parseStoredSettingValue(row.value, ''))
+    settings[row.key] = { value, updatedAt: row.updated_at }
   }
   return c.json({ data: settings })
 })

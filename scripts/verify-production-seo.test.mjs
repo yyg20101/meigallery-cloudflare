@@ -64,6 +64,17 @@ describe('生产 SEO 校验脚本', () => {
     assert.deepEqual(failures, [])
   })
 
+  it('API 未返回站点名称时使用中性默认标题', () => {
+    const expected = expectedSeo({
+      site_name: '',
+      seo_title: '',
+      site_description: '',
+    })
+
+    assert.equal(expected.title, '图库站')
+    assert.equal(expected.ogTitle, '图库站')
+  })
+
   it('期望值不一致时指出 API 侧字段', () => {
     const settings = {
       site_name: '星耀传媒',

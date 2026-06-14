@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { LEGACY_DEFAULT_SEO_TITLE, sanitizePublicSiteSetting, sanitizePublicSiteSettings } from './public-site-settings'
+import { LEGACY_DEFAULT_SEO_TITLE, LEGACY_DEFAULT_SITE_NAME, sanitizePublicSiteSetting, sanitizePublicSiteSettings } from './public-site-settings'
 
 describe('公开站点设置安全读取', () => {
   it('清空历史危险 URL 设置', () => {
@@ -77,15 +77,17 @@ describe('公开站点设置安全读取', () => {
   it('归一化 SEO 和前台短文案并清空历史异常文本', () => {
     expect(sanitizePublicSiteSetting('site_name', '  测试   图库站  ')).toBe('测试 图库站')
     expect(sanitizePublicSiteSetting('seo_title', 'x'.repeat(81))).toBe('')
+    expect(sanitizePublicSiteSetting('seo_keywords', ' 授权图库, 写真\n#时尚写真，授权图库 ')).toBe('授权图库,写真,时尚写真')
+    expect(sanitizePublicSiteSetting('seo_keywords', Array.from({ length: 31 }, (_, index) => `关键词${index}`).join(','))).toBe('')
     expect(sanitizePublicSiteSetting('home_hero_subtitle', 'x'.repeat(181))).toBe('')
     expect(sanitizePublicSiteSetting('rules_entry_summary', '入口\u0001说明')).toBe('')
     expect(sanitizePublicSiteSetting('rules_entry_icon', '<svg>')).toBe('')
     expect(sanitizePublicSiteSetting('rules_page_title', '入站规则')).toBe('入站规则')
   })
 
-  it('清空公开响应中的历史默认 SEO 标题并保留自定义标题', () => {
+  it('清空公开响应中的历史默认站名和 SEO 标题并保留自定义标题', () => {
     const legacySettings = {
-      site_name: '星耀传媒',
+      site_name: LEGACY_DEFAULT_SITE_NAME,
       seo_title: LEGACY_DEFAULT_SEO_TITLE,
     }
     const customSettings = {
@@ -94,7 +96,7 @@ describe('公开站点设置安全读取', () => {
     }
 
     expect(sanitizePublicSiteSettings(legacySettings)).toEqual({
-      site_name: '星耀传媒',
+      site_name: '',
       seo_title: '',
       home_ad_active: false,
     })
@@ -102,6 +104,7 @@ describe('公开站点设置安全读取', () => {
       ...customSettings,
       home_ad_active: false,
     })
+    expect(legacySettings.site_name).toBe(LEGACY_DEFAULT_SITE_NAME)
     expect(legacySettings.seo_title).toBe(LEGACY_DEFAULT_SEO_TITLE)
   })
 

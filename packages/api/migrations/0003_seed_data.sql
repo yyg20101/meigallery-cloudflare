@@ -8,7 +8,7 @@ VALUES
 -- 种子数据：默认站点设置
 INSERT OR IGNORE INTO site_settings (key, value)
 VALUES
-  ('site_name', '"MeiGallery"'),
+  ('site_name', '""'),
   ('site_description', '"精选写真、时尚、生活、艺术类图库平台"'),
   ('contact_email', '""'),
   ('registration_enabled', 'true'),

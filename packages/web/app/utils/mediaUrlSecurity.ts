@@ -8,7 +8,7 @@ export function normalizeMediaUrl(value: unknown) {
   if (url.startsWith('/')) {
     if (url.startsWith('//')) return ''
     try {
-      const parsed = new URL(url, 'https://meigallery.local')
+      const parsed = new URL(url, 'https://site.local')
       return `${parsed.pathname}${parsed.search}${parsed.hash}`
     } catch {
       return ''

@@ -80,6 +80,8 @@ const SITE_TEXT_LIMITS: Record<string, { maxLength: number; pattern?: RegExp }> 
 }
 const MAX_FEATURED_REGION_SLUGS = 12
 const MAX_RULES_MARKDOWN_LENGTH = 8000
+const MAX_SEO_KEYWORD_COUNT = 30
+const MAX_SEO_KEYWORD_LENGTH = 24
 const SLUG_PATTERN = /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/i
 
 export function normalizePublicSettingUrl(value: unknown) {
@@ -89,7 +91,7 @@ export function normalizePublicSettingUrl(value: unknown) {
   if (url.startsWith('/')) {
     if (url.startsWith('//') || url.startsWith('/\\')) return ''
     try {
-      const parsed = new URL(url, 'https://meigallery.local')
+      const parsed = new URL(url, 'https://site.local')
       if (hasCredentialUrlParam(parsed)) return ''
       return `${parsed.pathname}${parsed.search}${parsed.hash}`
     } catch {
@@ -139,7 +141,7 @@ export function normalizeInternalPath(value: unknown) {
   if (!url.startsWith('/') || url.startsWith('//') || url.startsWith('/\\')) return ''
 
   try {
-    const parsed = new URL(url, 'https://meigallery.local')
+    const parsed = new URL(url, 'https://site.local')
     if (hasCredentialUrlParam(parsed)) return ''
     return `${parsed.pathname}${parsed.search}${parsed.hash}`
   } catch {
@@ -163,6 +165,31 @@ export function safeSiteText(key: string, value: unknown): string {
   if (text.length > config.maxLength) return ''
   if (text && config.pattern && !config.pattern.test(text)) return ''
   return text
+}
+
+export function normalizeSeoKeywords(value: unknown) {
+  if (value === null || value === undefined) return []
+  const raw = String(value)
+  if (hasDisallowedControlCharacter(raw)) return []
+
+  const keywords: string[] = []
+  const seen = new Set<string>()
+  for (const part of raw.split(/[,，、;；\n\r]+/)) {
+    const keyword = part
+      .trim()
+      .replace(/^#+/, '')
+      .trim()
+      .replace(/\s+/g, ' ')
+    if (!keyword) continue
+    if (keyword.length > MAX_SEO_KEYWORD_LENGTH) return []
+
+    const dedupeKey = keyword.toLowerCase()
+    if (seen.has(dedupeKey)) continue
+    keywords.push(keyword)
+    seen.add(dedupeKey)
+  }
+
+  return keywords.length <= MAX_SEO_KEYWORD_COUNT ? keywords : []
 }
 
 export function normalizeHomeHotTagLimit(value: unknown) {
@@ -350,7 +377,7 @@ function safeDecodeURIComponent(value: string) {
 }
 
 function isAllowedHomeAdInternalPath(url: string) {
-  const pathname = new URL(url, 'https://meigallery.local').pathname
+  const pathname = new URL(url, 'https://site.local').pathname
   if (pathname === '/') return true
 
   return HOME_AD_ALLOWED_INTERNAL_PATH_PREFIXES.some((prefix) => {
@@ -361,7 +388,7 @@ function isAllowedHomeAdInternalPath(url: string) {
 function hasAllowedHomeAdRedirectParams(url: string, depth: number) {
   if (depth > 3) return false
 
-  const parsed = new URL(url, 'https://meigallery.local')
+  const parsed = new URL(url, 'https://site.local')
   for (const [name, target] of parsed.searchParams.entries()) {
     if (!HOME_AD_REDIRECT_PARAM_NAMES.has(normalizeUrlParamName(name))) continue
 

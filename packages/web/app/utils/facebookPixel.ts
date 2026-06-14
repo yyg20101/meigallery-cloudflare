@@ -70,7 +70,7 @@ export function hasSensitiveAnalyticsUrl(value: unknown, depth = 0) {
 
   let parsed: URL
   try {
-    parsed = new URL(raw, 'https://meigallery.local')
+    parsed = new URL(raw, 'https://site.local')
   } catch {
     return false
   }
