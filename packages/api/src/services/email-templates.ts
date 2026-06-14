@@ -16,7 +16,7 @@ export interface EmailTemplateContext {
 
 function resolveEmailContext(context?: EmailTemplateContext) {
   const siteName = sanitizeText(context?.siteName) || DEFAULT_EMAIL_SITE_NAME
-  let siteUrl = DEFAULT_SITE_URL
+  let siteUrl: string
 
   try {
     siteUrl = assertSafeExternalUrl(String(context?.siteUrl || DEFAULT_SITE_URL)).replace(/\/+$/, '')
