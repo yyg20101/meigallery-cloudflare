@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url'
 
 const DEFAULT_API_URL = 'https://api.616618.xyz'
 const DEFAULT_WEB_URLS = ['https://616618.xyz', 'https://www.616618.xyz']
+const DEFAULT_SITE_NAME = '图库站'
 const OLD_DEFAULT_SITE_NAME = 'MeiGallery'
 const OLD_DEFAULT_TITLE = 'MeiGallery - 精选写真图库'
 
@@ -217,7 +218,7 @@ function sleep(ms) {
 }
 
 function expectedSeo(settings) {
-  const siteName = text(settings.site_name) || 'MeiGallery'
+  const siteName = text(settings.site_name) || DEFAULT_SITE_NAME
   const siteDescription = text(settings.site_description)
   const seoTitle = text(settings.seo_title) || siteName
   const heroSubtitle = text(settings.home_hero_subtitle)

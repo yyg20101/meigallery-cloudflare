@@ -89,7 +89,7 @@ export function normalizePublicSettingUrl(value: unknown) {
   if (url.startsWith('/')) {
     if (url.startsWith('//') || url.startsWith('/\\')) return ''
     try {
-      const parsed = new URL(url, 'https://meigallery.local')
+      const parsed = new URL(url, 'https://site.local')
       if (hasCredentialUrlParam(parsed)) return ''
       return `${parsed.pathname}${parsed.search}${parsed.hash}`
     } catch {
@@ -139,7 +139,7 @@ export function normalizeInternalPath(value: unknown) {
   if (!url.startsWith('/') || url.startsWith('//') || url.startsWith('/\\')) return ''
 
   try {
-    const parsed = new URL(url, 'https://meigallery.local')
+    const parsed = new URL(url, 'https://site.local')
     if (hasCredentialUrlParam(parsed)) return ''
     return `${parsed.pathname}${parsed.search}${parsed.hash}`
   } catch {
@@ -350,7 +350,7 @@ function safeDecodeURIComponent(value: string) {
 }
 
 function isAllowedHomeAdInternalPath(url: string) {
-  const pathname = new URL(url, 'https://meigallery.local').pathname
+  const pathname = new URL(url, 'https://site.local').pathname
   if (pathname === '/') return true
 
   return HOME_AD_ALLOWED_INTERNAL_PATH_PREFIXES.some((prefix) => {
@@ -361,7 +361,7 @@ function isAllowedHomeAdInternalPath(url: string) {
 function hasAllowedHomeAdRedirectParams(url: string, depth: number) {
   if (depth > 3) return false
 
-  const parsed = new URL(url, 'https://meigallery.local')
+  const parsed = new URL(url, 'https://site.local')
   for (const [name, target] of parsed.searchParams.entries()) {
     if (!HOME_AD_REDIRECT_PARAM_NAMES.has(normalizeUrlParamName(name))) continue
 

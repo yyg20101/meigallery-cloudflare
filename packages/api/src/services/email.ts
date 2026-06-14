@@ -6,6 +6,9 @@
 
 import type { Bindings } from '../index'
 import { emailTemplates } from './email-templates'
+import { DEFAULT_SITE_NAME, LEGACY_DEFAULT_SITE_NAME } from '../utils/public-site-settings'
+import { safeSiteTextSetting } from '../utils/site-text-settings'
+import { parseStoredSettingValue } from '../utils/stored-setting-value'
 
 /** 邮件发送选项 */
 interface SendMailOptions {
@@ -13,6 +16,21 @@ interface SendMailOptions {
   subject: string
   html: string
   text: string
+}
+
+type EmailEnv = Pick<Bindings, 'EMAIL' | 'EMAIL_FROM' | 'DB' | 'SITE_URL'>
+
+async function resolveTemplateContext(env: Pick<Bindings, 'DB' | 'SITE_URL'>) {
+  const row = await env.DB
+    .prepare("SELECT value FROM site_settings WHERE key = 'site_name'")
+    .first<{ value: string }>()
+  const storedSiteName = row ? safeSiteTextSetting('site_name', parseStoredSettingValue(row.value)) : ''
+  const siteName = storedSiteName && storedSiteName !== LEGACY_DEFAULT_SITE_NAME ? storedSiteName : DEFAULT_SITE_NAME
+
+  return {
+    siteName,
+    siteUrl: env.SITE_URL,
+  }
 }
 
 /**
@@ -37,43 +55,47 @@ export async function sendMail(
 
 /** 发送注册验证码 */
 export async function sendRegistrationCode(
-  env: Pick<Bindings, 'EMAIL' | 'EMAIL_FROM'>,
+  env: EmailEnv,
   to: string,
   code: string,
 ): Promise<void> {
-  const { subject, html, text } = emailTemplates.registrationCode(code)
+  const context = await resolveTemplateContext(env)
+  const { subject, html, text } = emailTemplates.registrationCode(code, context)
   await sendMail(env, { to, subject, html, text })
 }
 
 /** 发送密码重置验证码 */
 export async function sendPasswordResetCode(
-  env: Pick<Bindings, 'EMAIL' | 'EMAIL_FROM'>,
+  env: EmailEnv,
   to: string,
   code: string,
 ): Promise<void> {
-  const { subject, html, text } = emailTemplates.passwordResetCode(code)
+  const context = await resolveTemplateContext(env)
+  const { subject, html, text } = emailTemplates.passwordResetCode(code, context)
   await sendMail(env, { to, subject, html, text })
 }
 
 /** 发送会员到期提醒 */
 export async function sendMembershipExpiryReminder(
-  env: Pick<Bindings, 'EMAIL' | 'EMAIL_FROM'>,
+  env: EmailEnv,
   to: string,
   levelName: string,
   expiresAt: string,
 ): Promise<void> {
-  const { subject, html, text } = emailTemplates.membershipExpiry(levelName, expiresAt)
+  const context = await resolveTemplateContext(env)
+  const { subject, html, text } = emailTemplates.membershipExpiry(levelName, expiresAt, context)
   await sendMail(env, { to, subject, html, text })
 }
 
 /** 发送新图库通知 */
 export async function sendNewGalleryNotification(
-  env: Pick<Bindings, 'EMAIL' | 'EMAIL_FROM'>,
+  env: EmailEnv,
   to: string,
   galleryTitle: string,
   galleryUrl: string,
   coverUrl?: string,
 ): Promise<void> {
-  const { subject, html, text } = emailTemplates.newGallery(galleryTitle, galleryUrl, coverUrl)
+  const context = await resolveTemplateContext(env)
+  const { subject, html, text } = emailTemplates.newGallery(galleryTitle, galleryUrl, coverUrl, context)
   await sendMail(env, { to, subject, html, text })
 }

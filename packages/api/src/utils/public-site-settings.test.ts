@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { LEGACY_DEFAULT_SEO_TITLE, sanitizePublicSiteSetting, sanitizePublicSiteSettings } from './public-site-settings'
+import { LEGACY_DEFAULT_SEO_TITLE, LEGACY_DEFAULT_SITE_NAME, sanitizePublicSiteSetting, sanitizePublicSiteSettings } from './public-site-settings'
 
 describe('公开站点设置安全读取', () => {
   it('清空历史危险 URL 设置', () => {
@@ -83,9 +83,9 @@ describe('公开站点设置安全读取', () => {
     expect(sanitizePublicSiteSetting('rules_page_title', '入站规则')).toBe('入站规则')
   })
 
-  it('清空公开响应中的历史默认 SEO 标题并保留自定义标题', () => {
+  it('清空公开响应中的历史默认站名和 SEO 标题并保留自定义标题', () => {
     const legacySettings = {
-      site_name: '星耀传媒',
+      site_name: LEGACY_DEFAULT_SITE_NAME,
       seo_title: LEGACY_DEFAULT_SEO_TITLE,
     }
     const customSettings = {
@@ -94,7 +94,7 @@ describe('公开站点设置安全读取', () => {
     }
 
     expect(sanitizePublicSiteSettings(legacySettings)).toEqual({
-      site_name: '星耀传媒',
+      site_name: '',
       seo_title: '',
       home_ad_active: false,
     })
@@ -102,6 +102,7 @@ describe('公开站点设置安全读取', () => {
       ...customSettings,
       home_ad_active: false,
     })
+    expect(legacySettings.site_name).toBe(LEGACY_DEFAULT_SITE_NAME)
     expect(legacySettings.seo_title).toBe(LEGACY_DEFAULT_SEO_TITLE)
   })
 

@@ -76,7 +76,7 @@ function hasControlCharacter(value: string) {
 }
 
 function isAllowedHomeAdInternalPath(url: string) {
-  const pathname = new URL(url, 'https://meigallery.local').pathname
+  const pathname = new URL(url, 'https://site.local').pathname
   if (pathname === '/') return true
 
   return HOME_AD_ALLOWED_INTERNAL_PATH_PREFIXES.some((prefix) => {
@@ -89,7 +89,7 @@ function assertAllowedHomeAdRedirectParams(url: string, depth: number) {
     throw new Error('首页广告链接跳转目标只允许公开前台页面')
   }
 
-  const parsed = new URL(url, 'https://meigallery.local')
+  const parsed = new URL(url, 'https://site.local')
   for (const [name, target] of parsed.searchParams.entries()) {
     if (!HOME_AD_REDIRECT_PARAM_NAMES.has(normalizeParamName(name))) continue
 

@@ -3,6 +3,9 @@ import { normalizePublicImageSettingUrl, safeSiteText } from '~/utils/siteSettin
 
 definePageMeta({ layout: 'admin' })
 
+const DEFAULT_SITE_NAME = '图库站'
+const LEGACY_DEFAULT_SITE_NAME = 'MeiGallery'
+
 const { api } = useApi()
 const { isOwner } = useAuth()
 const { fetchSettings, settings: publicSettings } = useSiteSettings()
@@ -56,7 +59,8 @@ const messageIsError = computed(() => message.value.includes('失败') || messag
 const safeSiteIconPreview = computed(() => normalizePublicImageSettingUrl(form.site_icon))
 
 function resolveSeoSnapshot(source: Record<string, unknown>) {
-  const siteName = safeSiteText('site_name', source.site_name) || 'MeiGallery'
+  const rawSiteName = safeSiteText('site_name', source.site_name)
+  const siteName = rawSiteName && rawSiteName !== LEGACY_DEFAULT_SITE_NAME ? rawSiteName : DEFAULT_SITE_NAME
   const description = safeSiteText('site_description', source.site_description)
   const seoTitle = safeSiteText('seo_title', source.seo_title) || siteName
   const ogTitle = safeSiteText('og_title', source.og_title) || seoTitle
@@ -284,7 +288,7 @@ async function toggleVideo() {
         <legend class="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-2 w-full">基础信息</legend>
         <div>
           <label for="site-name" class="block text-sm font-medium text-gray-700 mb-1">站点名称</label>
-          <input id="site-name" v-model="form.site_name" maxlength="40" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="MeiGallery" />
+          <input id="site-name" v-model="form.site_name" maxlength="40" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="例如：你的图库站名称" />
           <p class="text-xs text-gray-400 mt-1">显示在导航栏、页脚和浏览器标签页</p>
         </div>
         <div>
@@ -309,7 +313,7 @@ async function toggleVideo() {
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">页脚文案</label>
-          <input v-model="form.footer_text" maxlength="120" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="© 2026 MeiGallery. All rights reserved." />
+          <input v-model="form.footer_text" maxlength="120" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="© 2026 你的站点名称" />
           <p class="text-xs text-gray-400 mt-1">页面底部的版权或自定义文字</p>
         </div>
       </fieldset>
@@ -454,7 +458,7 @@ async function toggleVideo() {
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">规则页摘要</label>
-          <textarea v-model="form.rules_page_summary" rows="2" maxlength="180" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="了解 MeiGallery 的内容边界、会员访问和联系方式说明。" />
+          <textarea v-model="form.rules_page_summary" rows="2" maxlength="180" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="了解本站的内容边界、会员访问和联系方式说明。" />
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">规则页 Markdown 正文</label>

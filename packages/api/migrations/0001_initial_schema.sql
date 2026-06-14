@@ -1,4 +1,4 @@
--- MeiGallery D1 初始 Schema
+-- D1 初始 Schema
 -- 包含 12 张表：users, membership_levels, user_memberships, galleries,
 -- media_assets, tags, gallery_tags, import_jobs, admin_audit_logs,
 -- site_settings, legacy_import_sources, legacy_import_items, legacy_url_redirects
@@ -163,8 +163,8 @@ CREATE TABLE IF NOT EXISTS site_settings (
 
 -- 初始站点配置
 INSERT INTO site_settings (key, value) VALUES
-  ('site_name', '"MeiGallery"'),
-  ('seo_title', '"MeiGallery - 精选写真图库"'),
+  ('site_name', '""'),
+  ('seo_title', '""'),
   ('membership_description', '""'),
   ('contact_wechat', '""'),
   ('contact_telegram', '""'),

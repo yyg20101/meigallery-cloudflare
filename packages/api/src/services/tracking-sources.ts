@@ -340,7 +340,7 @@ function buildTrackingPath(input: {
   utmMedium: string
   utmCampaign: string
 }) {
-  const url = new URL(input.targetPath, 'https://meigallery.local')
+  const url = new URL(input.targetPath, 'https://site.local')
   url.searchParams.set('mg_source', input.slug)
   url.searchParams.set('utm_source', input.utmSource)
   url.searchParams.set('utm_medium', input.utmMedium)
