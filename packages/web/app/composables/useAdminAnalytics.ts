@@ -3,6 +3,7 @@ import type { AnalyticsRangeQuery } from '@meigallery/shared'
 export type AnalyticsRangePreset = NonNullable<AnalyticsRangeQuery['range']>
 export type AnalyticsExportKind =
   | 'overview'
+  | 'seo'
   | 'sources'
   | 'pages'
   | 'paths'

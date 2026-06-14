@@ -23,6 +23,7 @@ const route = useRoute()
 const tabs = [
   { label: '总览', to: '/admin/analytics' },
   { label: '来源', to: '/admin/analytics/sources' },
+  { label: 'SEO', to: '/admin/analytics/seo' },
   { label: '内容', to: '/admin/analytics/pages' },
   { label: '来源内容', to: '/admin/analytics/source-pages' },
   { label: '链路', to: '/admin/analytics/paths' },

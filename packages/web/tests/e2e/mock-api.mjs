@@ -260,6 +260,35 @@ function adminAnalyticsResponse(pathname, rangePreset) {
         },
       }
     }
+    if (pathname.endsWith('/seo')) {
+      return {
+        range,
+        usage,
+        data: {
+          totals: {
+            visitor_count: 0,
+            session_count: 0,
+            page_view_count: 0,
+            landing_count: 0,
+            bounce_count: 0,
+            contact_click_count: 0,
+            register_count: 0,
+            membership_grant_count: 0,
+            search_session_share: 0,
+            landing_bounce_rate: 0,
+            contact_rate: 0,
+            register_rate: 0,
+          },
+          trend: [],
+          referrers: [],
+          landingPages: [],
+          notes: {
+            source: 'SEO 数据来自站内一方埋点识别到的自然搜索 referrer 或 utm_medium=seo/search/organic_search。',
+            limitation: '当前不读取 Google Search Console 或搜索广告后台，因此不包含关键词排名、展现量和搜索词明细。',
+          },
+        },
+      }
+    }
     if (pathname.endsWith('/health')) {
       return {
         range,
@@ -302,11 +331,60 @@ function adminAnalyticsResponse(pathname, rangePreset) {
           gallery_detail_count: 9,
           average_active_seconds: 42,
         },
-        trend: [{ date: '2026-06-07', visitor_count: 18, session_count: 22, page_view_count: 64, register_count: 3, contact_click_count: 4, effective_contact_click_count: 3, membership_grant_count: 1 }],
+        trend: [
+          { date: '2026-06-03', visitor_count: 8, session_count: 10, page_view_count: 24, register_count: 1, contact_click_count: 1, effective_contact_click_count: 1, membership_grant_count: 0 },
+          { date: '2026-06-04', visitor_count: 11, session_count: 13, page_view_count: 34, register_count: 1, contact_click_count: 2, effective_contact_click_count: 2, membership_grant_count: 0 },
+          { date: '2026-06-05', visitor_count: 14, session_count: 16, page_view_count: 45, register_count: 2, contact_click_count: 3, effective_contact_click_count: 2, membership_grant_count: 1 },
+          { date: '2026-06-06', visitor_count: 16, session_count: 18, page_view_count: 52, register_count: 2, contact_click_count: 3, effective_contact_click_count: 3, membership_grant_count: 1 },
+          { date: '2026-06-07', visitor_count: 18, session_count: 22, page_view_count: 64, register_count: 3, contact_click_count: 4, effective_contact_click_count: 3, membership_grant_count: 1 },
+        ],
         topSources: [{ source_channel: 'invite', source_name: 'Playwright 邀请', session_count: 12, register_count: 2 }],
         topPages: [{ route_name: '/gallery/:slug', path: '/gallery/summer-portrait', page_view_count: 9, active_seconds_total: 420 }],
         topClicks: [{ element_id: 'contact_method_click', location: 'floating_contact_panel', raw_click_count: 4, effective_click_count: 3 }],
         health: { accepted_count: 120, rejected_count: 0, estimated_rows_written: 240, last_ingested_at: '2026-06-07T10:00:00.000Z' },
+      },
+    }
+  }
+  if (pathname.endsWith('/seo')) {
+    return {
+      range,
+      usage,
+      data: {
+        totals: {
+          visitor_count: 9,
+          session_count: 11,
+          page_view_count: 31,
+          gallery_detail_count: 7,
+          landing_count: 10,
+          bounce_count: 2,
+          contact_click_count: 3,
+          register_count: 2,
+          membership_grant_count: 1,
+          average_active_seconds: 49,
+          search_session_share: 0.5,
+          search_page_view_share: 0.48,
+          landing_bounce_rate: 0.2,
+          contact_rate: 0.2727,
+          register_rate: 0.1818,
+        },
+        trend: [
+          { date: '2026-06-03', visitor_count: 2, session_count: 2, page_view_count: 5, contact_click_count: 0, register_count: 0, membership_grant_count: 0 },
+          { date: '2026-06-04', visitor_count: 2, session_count: 3, page_view_count: 8, contact_click_count: 1, register_count: 1, membership_grant_count: 0 },
+          { date: '2026-06-05', visitor_count: 2, session_count: 2, page_view_count: 6, contact_click_count: 1, register_count: 0, membership_grant_count: 0 },
+          { date: '2026-06-06', visitor_count: 3, session_count: 4, page_view_count: 12, contact_click_count: 1, register_count: 1, membership_grant_count: 1 },
+        ],
+        referrers: [
+          { source_channel: 'search', source_name: 'google.com', source_label: 'Google', session_count: 7, page_view_count: 21, average_active_seconds: 52, contact_click_count: 2, register_count: 1, contact_rate: 0.2857, register_rate: 0.1429 },
+          { source_channel: 'search', source_name: 'bing.com', source_label: 'Bing', session_count: 4, page_view_count: 10, average_active_seconds: 44, contact_click_count: 1, register_count: 1, contact_rate: 0.25, register_rate: 0.25 },
+        ],
+        landingPages: [
+          { route_label: '夏日授权写真', route_name: '/gallery/:slug', path: '/gallery/summer-portrait', entry_count: 6, page_view_count: 15, bounce_rate: 0.1667, average_active_seconds: 58, max_scroll_depth: 86, contact_click_count: 2, register_count: 1, contact_rate: 0.3333 },
+          { route_label: '发现页', route_name: '/discover', path: '/discover?sort=hot', entry_count: 4, page_view_count: 9, bounce_rate: 0.25, average_active_seconds: 42, max_scroll_depth: 72, contact_click_count: 1, register_count: 1, contact_rate: 0.25 },
+        ],
+        notes: {
+          source: 'SEO 数据来自站内一方埋点识别到的自然搜索 referrer 或 utm_medium=seo/search/organic_search。',
+          limitation: '当前不读取 Google Search Console 或搜索广告后台，因此不包含关键词排名、展现量和搜索词明细。',
+        },
       },
     }
   }

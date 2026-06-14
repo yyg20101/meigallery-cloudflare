@@ -75,6 +75,32 @@ function createDb() {
               meta: { rows_read: 1, rows_written: 0, duration: 1 },
             }
           }
+          if (sql.includes('analytics_source_page_daily') && sql.includes("source_channel = 'search'")) {
+            return {
+              results: [{
+                route_name: '/gallery/:slug',
+                path: '/gallery/demo',
+                entity_type: 'gallery',
+                entity_id: 'gallery-1',
+                page_title: '夏日写真',
+                page_view_count: 6,
+                visitor_count: 3,
+                session_count: 4,
+                entry_count: 3,
+                exit_count: 1,
+                bounce_count: 1,
+                active_seconds_total: 180,
+                max_scroll_depth: 86,
+                register_count: 1,
+                contact_click_count: 1,
+                bounce_rate: 0.3333,
+                average_active_seconds: 30,
+                contact_rate: 0.25,
+                register_rate: 0.25,
+              }] as T[],
+              meta: { rows_read: 2, rows_written: 0, duration: 1 },
+            }
+          }
           if (sql.includes('analytics_source_page_daily')) {
             return {
               results: [{
@@ -117,6 +143,42 @@ function createDb() {
                 session_count: 2,
               }] as T[],
               meta: { rows_read: 2, rows_written: 0, duration: 1 },
+            }
+          }
+          if (sql.includes('analytics_daily_sources') && sql.includes("source_channel = 'search'") && sql.includes('GROUP BY date')) {
+            return {
+              results: [{
+                date: '2026-06-07',
+                visitor_count: 3,
+                session_count: 4,
+                page_view_count: 8,
+                gallery_detail_count: 2,
+                register_count: 1,
+                contact_click_count: 1,
+                membership_grant_count: 0,
+              }] as T[],
+              meta: { rows_read: 3, rows_written: 0, duration: 1 },
+            }
+          }
+          if (sql.includes('analytics_daily_sources') && sql.includes("source_channel = 'search'") && sql.includes('GROUP BY source_channel, source_name')) {
+            return {
+              results: [{
+                source_channel: 'search',
+                source_name: 'google.com',
+                invite_code_id: '',
+                visitor_count: 3,
+                session_count: 4,
+                page_view_count: 8,
+                gallery_detail_count: 2,
+                register_count: 1,
+                contact_click_count: 1,
+                membership_grant_count: 0,
+                active_seconds_total: 120,
+                average_active_seconds: 30,
+                contact_rate: 0.25,
+                register_rate: 0.25,
+              }] as T[],
+              meta: { rows_read: 3, rows_written: 0, duration: 1 },
             }
           }
           if (sql.includes('analytics_daily_sources')) {
@@ -215,6 +277,32 @@ function createDb() {
               estimated_rows_read: 20,
               estimated_rows_written: 30,
               last_ingested_at: '2026-06-07T10:00:00.000Z',
+            } as T
+          }
+          if (sql.includes('analytics_source_page_daily') && sql.includes("source_channel = 'search'")) {
+            return {
+              landing_count: 3,
+              bounce_count: 1,
+              landing_active_seconds_total: 180,
+              max_scroll_depth: 86,
+            } as T
+          }
+          if (sql.includes('analytics_daily_sources') && sql.includes('total_session_count')) {
+            return {
+              total_session_count: 8,
+              total_page_view_count: 16,
+            } as T
+          }
+          if (sql.includes('analytics_daily_sources') && sql.includes("source_channel = 'search'")) {
+            return {
+              visitor_count: 3,
+              session_count: 4,
+              page_view_count: 8,
+              gallery_detail_count: 2,
+              register_count: 1,
+              contact_click_count: 1,
+              membership_grant_count: 0,
+              active_seconds_total: 120,
             } as T
           }
           if (sql.includes('analytics_daily_sources')) {
@@ -375,6 +463,28 @@ describe('后台数据分析 API', () => {
     expect(db.calls.some(call => call.sql.includes('analytics_events'))).toBe(false)
   })
 
+  it('SEO 分析只读取自然搜索聚合并返回落地页口径说明', async () => {
+    const db = createDb()
+    const res = await createApp('admin').request('/api/admin/analytics/seo?range=7d', {}, { DB: db } as unknown as Bindings)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.data.totals.search_session_share).toBe(0.5)
+    expect(body.data.totals.landing_bounce_rate).toBe(0.3333)
+    expect(body.data.referrers[0]).toMatchObject({
+      source_channel: 'search',
+      sourceLabel: 'Google',
+      register_rate: 0.25,
+    })
+    expect(body.data.landingPages[0]).toMatchObject({
+      route_label: '夏日写真',
+      bounce_rate: 0.3333,
+      contact_rate: 0.25,
+    })
+    expect(body.data.notes.limitation).toContain('Google Search Console')
+    expect(db.calls.some(call => call.sql.includes('analytics_events'))).toBe(false)
+  })
+
   it('漏斗接口读取聚合表并返回阶段转化', async () => {
     const db = createDb()
     const res = await createApp('admin').request('/api/admin/analytics/funnel?range=7d&sourceCode=telegram-june', {}, { DB: db } as unknown as Bindings)
@@ -438,6 +548,7 @@ describe('后台数据分析 API', () => {
     const endpoints = [
       '/api/admin/analytics/overview?range=30d',
       '/api/admin/analytics/sources?range=30d',
+      '/api/admin/analytics/seo?range=30d',
       '/api/admin/analytics/pages?range=30d',
       '/api/admin/analytics/source-pages?range=30d',
       '/api/admin/analytics/clicks?range=30d',
