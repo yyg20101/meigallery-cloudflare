@@ -1,5 +1,5 @@
 export const ADMIN_SETTING_KEYS = [
-  'site_name', 'seo_title', 'site_description', 'site_icon',
+  'site_name', 'seo_title', 'seo_keywords', 'site_description', 'site_icon',
   'og_title', 'og_description', 'og_image',
   'footer_text', 'membership_description', 'email_verification_enabled',
   'video_enabled', 'facebook_pixel_enabled', 'facebook_pixel_id', 'facebook_pixel_debug_enabled',
@@ -15,7 +15,7 @@ export const ADMIN_SETTING_KEYS = [
 ] as const
 
 export const PUBLIC_SETTING_KEYS = [
-  'site_name', 'seo_title', 'site_description', 'site_icon',
+  'site_name', 'seo_title', 'seo_keywords', 'site_description', 'site_icon',
   'og_title', 'og_description', 'og_image',
   'footer_text', 'membership_description', 'email_verification_enabled',
   'video_enabled', 'facebook_pixel_enabled', 'facebook_pixel_id', 'facebook_pixel_debug_enabled',

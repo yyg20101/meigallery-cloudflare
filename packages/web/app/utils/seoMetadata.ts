@@ -8,6 +8,7 @@ interface WebSiteJsonLdInput {
   siteName: string
   description?: string | null
   logoUrl?: string | null
+  keywords?: string[]
 }
 
 interface ImageGalleryJsonLdInput {
@@ -29,6 +30,7 @@ interface ArticleJsonLdInput {
   imageUrls?: Array<string | null | undefined>
   datePublished?: string | null
   logoUrl?: string | null
+  keywords?: string[]
 }
 
 const DEFAULT_SITE_URL = 'https://616618.xyz'
@@ -99,6 +101,7 @@ export function buildWebSiteJsonLd(input: WebSiteJsonLdInput) {
   const siteName = cleanText(input.siteName) || '图库站'
   const description = cleanText(input.description)
   const logo = buildAbsoluteSeoUrl(siteUrl, input.logoUrl)
+  const keywords = cleanKeywords(input.keywords)
 
   return removeEmpty({
     '@context': 'https://schema.org',
@@ -108,6 +111,7 @@ export function buildWebSiteJsonLd(input: WebSiteJsonLdInput) {
         name: siteName,
         url: `${siteUrl}/`,
         description,
+        keywords,
         inLanguage: 'zh-CN',
         potentialAction: {
           '@type': 'SearchAction',
@@ -158,6 +162,7 @@ export function buildArticleJsonLd(input: ArticleJsonLdInput) {
   const image = collectImageUrls(siteUrl, input.imageUrls)
   const datePublished = normalizeDate(input.datePublished)
   const logo = buildAbsoluteSeoUrl(siteUrl, input.logoUrl)
+  const keywords = cleanKeywords(input.keywords)
 
   return removeEmpty({
     '@context': 'https://schema.org',
@@ -168,6 +173,7 @@ export function buildArticleJsonLd(input: ArticleJsonLdInput) {
     mainEntityOfPage: url,
     inLanguage: 'zh-CN',
     datePublished,
+    keywords,
     image,
     author: {
       '@type': 'Organization',

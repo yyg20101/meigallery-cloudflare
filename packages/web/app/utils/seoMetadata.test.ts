@@ -48,6 +48,7 @@ describe('seoMetadata', () => {
       siteName: '测试图库站',
       description: '授权写真、时尚、生活与艺术内容。',
       logoUrl: '/api/media/public/site/icon.png',
+      keywords: ['授权图库', '写真', '授权图库'],
     })
 
     expect(graph['@graph']).toEqual([
@@ -57,6 +58,7 @@ describe('seoMetadata', () => {
         url: 'https://616618.xyz/',
         description: '授权写真、时尚、生活与艺术内容。',
         inLanguage: 'zh-CN',
+        keywords: '授权图库, 写真',
       }),
       expect.objectContaining({
         '@type': 'Organization',
@@ -102,6 +104,7 @@ describe('seoMetadata', () => {
       description: '已授权和脱敏的用户反馈。',
       imageUrls: ['/api/cases/images/case_1'],
       datePublished: '2026-06-02T09:30:00.000Z',
+      keywords: ['真实案例', '授权反馈'],
     })
 
     expect(graph).toEqual(expect.objectContaining({
@@ -110,6 +113,7 @@ describe('seoMetadata', () => {
       description: '已授权和脱敏的用户反馈。',
       url: 'https://616618.xyz/cases/spring-lookbook',
       image: ['https://616618.xyz/api/cases/images/case_1'],
+      keywords: '真实案例, 授权反馈',
       publisher: expect.objectContaining({
         '@type': 'Organization',
         name: '测试图库站',

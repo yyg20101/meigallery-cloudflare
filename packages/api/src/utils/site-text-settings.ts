@@ -9,6 +9,7 @@ const SITE_TEXT_SETTINGS: Record<string, TextSettingConfig> = {
   site_name: { label: '站点名称', maxLength: 40 },
   site_description: { label: '站点描述', maxLength: 180 },
   seo_title: { label: 'SEO 标题', maxLength: 80 },
+  seo_keywords: { label: 'SEO 关键词', maxLength: 600 },
   og_title: { label: 'OG 标题', maxLength: 80 },
   og_description: { label: 'OG 描述', maxLength: 220 },
   footer_text: { label: '页脚文案', maxLength: 120 },
@@ -41,6 +42,10 @@ export function normalizeSiteTextSetting(key: string, value: unknown) {
     throw new Error(`${config.label}不能包含控制字符`)
   }
 
+  if (key === 'seo_keywords') {
+    return normalizeSeoKeywordsSetting(raw)
+  }
+
   const text = raw.trim().replace(/\s+/g, ' ')
   if (text.length > config.maxLength) {
     throw new Error(`${config.label}不能超过 ${config.maxLength} 个字符`)
@@ -58,6 +63,37 @@ export function safeSiteTextSetting(key: string, value: unknown) {
   } catch {
     return ''
   }
+}
+
+const MAX_SEO_KEYWORD_COUNT = 30
+const MAX_SEO_KEYWORD_LENGTH = 24
+
+function normalizeSeoKeywordsSetting(value: string) {
+  const keywords: string[] = []
+  const seen = new Set<string>()
+
+  for (const part of value.split(/[,，、;；\n\r]+/)) {
+    const keyword = part
+      .trim()
+      .replace(/^#+/, '')
+      .trim()
+      .replace(/\s+/g, ' ')
+    if (!keyword) continue
+    if (keyword.length > MAX_SEO_KEYWORD_LENGTH) {
+      throw new Error(`单个 SEO 关键词不能超过 ${MAX_SEO_KEYWORD_LENGTH} 个字符`)
+    }
+
+    const dedupeKey = keyword.toLowerCase()
+    if (seen.has(dedupeKey)) continue
+    keywords.push(keyword)
+    seen.add(dedupeKey)
+  }
+
+  if (keywords.length > MAX_SEO_KEYWORD_COUNT) {
+    throw new Error(`SEO 关键词不能超过 ${MAX_SEO_KEYWORD_COUNT} 个`)
+  }
+
+  return keywords.join(',')
 }
 
 function hasDisallowedControlCharacter(value: string) {

@@ -77,6 +77,8 @@ describe('公开站点设置安全读取', () => {
   it('归一化 SEO 和前台短文案并清空历史异常文本', () => {
     expect(sanitizePublicSiteSetting('site_name', '  测试   图库站  ')).toBe('测试 图库站')
     expect(sanitizePublicSiteSetting('seo_title', 'x'.repeat(81))).toBe('')
+    expect(sanitizePublicSiteSetting('seo_keywords', ' 授权图库, 写真\n#时尚写真，授权图库 ')).toBe('授权图库,写真,时尚写真')
+    expect(sanitizePublicSiteSetting('seo_keywords', Array.from({ length: 31 }, (_, index) => `关键词${index}`).join(','))).toBe('')
     expect(sanitizePublicSiteSetting('home_hero_subtitle', 'x'.repeat(181))).toBe('')
     expect(sanitizePublicSiteSetting('rules_entry_summary', '入口\u0001说明')).toBe('')
     expect(sanitizePublicSiteSetting('rules_entry_icon', '<svg>')).toBe('')

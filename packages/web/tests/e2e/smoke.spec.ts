@@ -181,11 +181,14 @@ test.describe('核心页面 smoke', () => {
     const publicSeoSync = page.getByRole('region', { name: '前台同步状态' })
     await expect(publicSeoSync.getByRole('heading', { name: '前台同步状态' })).toBeVisible()
     await expect(publicSeoSync.getByText('公开 SEO 标题')).toBeVisible()
+    await expect(publicSeoSync.getByText('公开 SEO 关键词')).toBeVisible()
     await expect(publicSeoSync.getByText('测试站点标题 - 首页 SEO')).toBeVisible()
+    await expect(publicSeoSync.getByText('授权图库、写真、时尚写真')).toBeVisible()
 
     await page.getByLabel('站点名称').fill('运营新站名')
     await page.getByLabel('站点描述').fill('后台保存后的新站点描述')
     await page.getByLabel('SEO 标题').fill('运营新标题 - 首页')
+    await page.getByLabel('SEO 关键词池').fill('授权图库, 户外写真\n真实案例')
     await page.getByLabel('OG 标题').fill('运营新 OG 标题')
     await page.getByLabel('OG 描述').fill('运营新 OG 描述')
 
@@ -197,11 +200,13 @@ test.describe('核心页面 smoke', () => {
     await expect(page.getByText('设置已保存，前台公开 SEO 已同步')).toBeVisible()
     await expect(publicSeoSync.getByText('已同步', { exact: true })).toBeVisible()
     await expect(publicSeoSync.getByText('运营新标题 - 首页')).toBeVisible()
+    await expect(publicSeoSync.getByText('授权图库、户外写真、真实案例')).toBeVisible()
     await expect(publicSeoSync.getByText('后台保存后的新站点描述')).toBeVisible()
     await page.goto('/')
 
     await expect(page).toHaveTitle('运营新标题 - 首页')
     await expect(page.locator('meta[name="description"]')).toHaveAttribute('content', '后台保存后的新站点描述')
+    await expect(page.locator('meta[name="keywords"]')).toHaveAttribute('content', '授权图库, 户外写真, 真实案例')
     await expect(page.locator('meta[property="og:title"]')).toHaveAttribute('content', '运营新 OG 标题')
     await expect(page.locator('meta[property="og:description"]')).toHaveAttribute('content', '运营新 OG 描述')
     await expect(page).not.toHaveTitle('MeiGallery - 精选写真图库')

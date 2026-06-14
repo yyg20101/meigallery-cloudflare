@@ -122,6 +122,7 @@ const defaultPublicSettings = {
   site_name: '测试图库站',
   site_description: 'Playwright smoke 测试站点',
   seo_title: '测试站点标题 - 首页 SEO',
+  seo_keywords: '授权图库,写真,时尚写真',
   og_title: '测试站点 OG 标题',
   og_description: '测试站点 OG 描述',
   footer_text: '测试环境',

@@ -164,6 +164,7 @@ describe('公开站点设置 API', () => {
       DB: createDb([
         { key: 'site_name', value: '星耀传媒' },
         { key: 'seo_title', value: '星耀传媒 - 官方图库' },
+        { key: 'seo_keywords', value: '授权图库，写真,授权图库,#时尚写真' },
       ]),
     } as unknown as Bindings
 
@@ -172,6 +173,7 @@ describe('公开站点设置 API', () => {
 
     expect(res.status).toBe(200)
     expect(body.seo_title).toBe('星耀传媒 - 官方图库')
+    expect(body.seo_keywords).toBe('授权图库,写真,时尚写真')
   })
 
   it('返回服务端派生的首页广告展示状态', async () => {

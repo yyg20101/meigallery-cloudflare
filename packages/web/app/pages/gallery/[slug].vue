@@ -6,7 +6,7 @@ const route = useRoute()
 const config = useRuntimeConfig()
 const { api } = useApi()
 const { isLoggedIn, membershipRank } = useAuth()
-const { siteName, videoEnabled } = useSiteSettings()
+const { siteName, seoKeywords, videoEnabled } = useSiteSettings()
 const { trackViewContent } = useFacebookPixel()
 const analytics = useAnalytics()
 
@@ -157,6 +157,10 @@ const gallerySeoImages = computed(() => [
   gallery.value?.coverUrl,
   ...publicImages.value.slice(0, 4).map(image => image.thumbnailUrl || image.url),
 ])
+const gallerySeoKeywords = computed(() => mergeKeywords([
+  ...seoKeywords.value,
+  ...(gallery.value?.tags.map(tag => tag.name) ?? []),
+]))
 const galleryOgImage = computed(() => buildAbsoluteSeoUrl(siteUrl.value, gallery.value?.coverUrl) || undefined)
 const galleryJsonLd = computed(() => {
   if (!gallery.value) return null
@@ -168,7 +172,7 @@ const galleryJsonLd = computed(() => {
     description: gallerySeoDescription.value,
     imageUrls: gallerySeoImages.value,
     datePublished: gallery.value.publishedAt || gallery.value.createdAt,
-    keywords: gallery.value.tags.map(tag => tag.name),
+    keywords: gallerySeoKeywords.value,
   }))
 })
 
@@ -274,8 +278,23 @@ useSeoMeta({
 })
 
 useHead(() => ({
+  meta: gallerySeoKeywords.value.length ? [{ key: 'keywords', name: 'keywords', content: gallerySeoKeywords.value.join(', ') }] : [],
   script: galleryJsonLd.value ? [galleryJsonLd.value] : [],
 }))
+
+function mergeKeywords(values: string[]) {
+  const keywords: string[] = []
+  const seen = new Set<string>()
+  for (const value of values) {
+    const keyword = value.trim().replace(/\s+/g, ' ')
+    if (!keyword) continue
+    const key = keyword.toLowerCase()
+    if (seen.has(key)) continue
+    keywords.push(keyword)
+    seen.add(key)
+  }
+  return keywords
+}
 </script>
 
 <template>

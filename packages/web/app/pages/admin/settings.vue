@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { normalizePublicImageSettingUrl, safeSiteText } from '~/utils/siteSettingsSecurity'
+import { normalizePublicImageSettingUrl, normalizeSeoKeywords, safeSiteText } from '~/utils/siteSettingsSecurity'
 
 definePageMeta({ layout: 'admin' })
 
@@ -18,6 +18,7 @@ const form = reactive({
   footer_text: '',
   // SEO / OG
   seo_title: '',
+  seo_keywords: '',
   og_title: '',
   og_description: '',
   og_image: '',
@@ -57,16 +58,30 @@ const message = ref('')
 const siteIconInput = ref<HTMLInputElement | null>(null)
 const messageIsError = computed(() => message.value.includes('失败') || message.value.includes('不一致'))
 const safeSiteIconPreview = computed(() => normalizePublicImageSettingUrl(form.site_icon))
+const seoKeywordMatrix = [
+  { group: '核心词', role: '站点定位', examples: ['授权图库', '写真', '时尚写真', '艺术图片'] },
+  { group: '场景词', role: '内容语境', examples: ['户外写真', '棚拍', '生活方式', '清新风格'] },
+  { group: '地区词', role: '地区发现', examples: ['广东写真', '广州写真', '上海写真', '城市旅拍'] },
+  { group: '类型词', role: '页面覆盖', examples: ['图片合集', '视频预览', '真实案例', '会员内容'] },
+]
+const seoKeywordUsageRows = [
+  { label: '配置位置', value: '后台 / 站点设置 / SEO / 社交分享 / SEO 关键词池' },
+  { label: '公开输出', value: '首页、图库详情、真实案例的结构化数据 keywords；页面 meta keywords 作为兼容输出' },
+  { label: '页面合并', value: '图库详情会叠加图库标签；真实案例会叠加“真实案例、授权反馈”' },
+  { label: '排名提醒', value: 'Google 不使用 meta keywords 作为排名信号，仍要重点写好标题、描述、内容和结构化数据' },
+]
+const formSeoKeywords = computed(() => normalizeSeoKeywords(form.seo_keywords))
 
 function resolveSeoSnapshot(source: Record<string, unknown>) {
   const rawSiteName = safeSiteText('site_name', source.site_name)
   const siteName = rawSiteName && rawSiteName !== LEGACY_DEFAULT_SITE_NAME ? rawSiteName : DEFAULT_SITE_NAME
   const description = safeSiteText('site_description', source.site_description)
   const seoTitle = safeSiteText('seo_title', source.seo_title) || siteName
+  const seoKeywords = normalizeSeoKeywords(source.seo_keywords)
   const ogTitle = safeSiteText('og_title', source.og_title) || seoTitle
   const ogDescription = safeSiteText('og_description', source.og_description) || description
 
-  return { siteName, description, seoTitle, ogTitle, ogDescription }
+  return { siteName, description, seoTitle, seoKeywords, ogTitle, ogDescription }
 }
 
 const formSeoSnapshot = computed(() => resolveSeoSnapshot(form))
@@ -77,6 +92,7 @@ const publicSeoMatchesForm = computed(() => {
   return formSnapshot.siteName === publicSnapshot.siteName
     && formSnapshot.description === publicSnapshot.description
     && formSnapshot.seoTitle === publicSnapshot.seoTitle
+    && formSnapshot.seoKeywords.join(',') === publicSnapshot.seoKeywords.join(',')
     && formSnapshot.ogTitle === publicSnapshot.ogTitle
     && formSnapshot.ogDescription === publicSnapshot.ogDescription
 })
@@ -133,6 +149,7 @@ if (settings.value?.data) {
       else if (key === 'site_icon') form.site_icon = value
       else if (key === 'footer_text') form.footer_text = value
       else if (key === 'seo_title') form.seo_title = value
+      else if (key === 'seo_keywords') form.seo_keywords = value
       else if (key === 'og_title') form.og_title = value
       else if (key === 'og_description') form.og_description = value
       else if (key === 'og_image') form.og_image = value
@@ -327,6 +344,44 @@ async function toggleVideo() {
           <p class="text-xs text-gray-400 mt-1">搜索引擎显示的页面标题（title 标签）</p>
         </div>
         <div>
+          <label for="seo-keywords" class="block text-sm font-medium text-gray-700 mb-1">SEO 关键词池</label>
+          <textarea
+            id="seo-keywords"
+            v-model="form.seo_keywords"
+            rows="3"
+            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            placeholder="授权图库, 写真, 时尚写真, 户外写真, 广东写真, 真实案例"
+          />
+          <div class="mt-2 flex flex-wrap gap-2">
+            <span
+              v-for="keyword in formSeoKeywords"
+              :key="keyword"
+              class="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-700"
+            >
+              {{ keyword }}
+            </span>
+            <span v-if="form.seo_keywords && !formSeoKeywords.length" class="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700">
+              关键词格式超出限制
+            </span>
+            <span v-if="!form.seo_keywords" class="text-xs text-gray-400">建议 8-16 个，最多 30 个；用中文逗号、英文逗号或换行分隔。</span>
+          </div>
+        </div>
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div v-for="item in seoKeywordMatrix" :key="item.group" class="rounded-lg border border-gray-200 bg-white p-3">
+            <p class="text-xs font-semibold text-gray-900">{{ item.group }}</p>
+            <p class="mt-1 text-[11px] text-gray-400">{{ item.role }}</p>
+            <div class="mt-3 flex flex-wrap gap-1.5">
+              <span v-for="example in item.examples" :key="example" class="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600">{{ example }}</span>
+            </div>
+          </div>
+        </div>
+        <dl class="grid gap-3 text-xs sm:grid-cols-2">
+          <div v-for="row in seoKeywordUsageRows" :key="row.label" class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+            <dt class="font-medium text-gray-500">{{ row.label }}</dt>
+            <dd class="mt-1 leading-5 text-gray-700">{{ row.value }}</dd>
+          </div>
+        </dl>
+        <div>
           <label for="og-title" class="block text-sm font-medium text-gray-700 mb-1">OG 标题</label>
           <input id="og-title" v-model="form.og_title" maxlength="80" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="留空则使用 SEO 标题" />
           <p class="text-xs text-gray-400 mt-1">社交平台（微信、微博等）分享时显示的标题</p>
@@ -359,6 +414,10 @@ async function toggleVideo() {
             <div class="rounded-lg border border-white bg-white px-3 py-2">
               <dt class="font-medium text-gray-500">公开 SEO 标题</dt>
               <dd class="mt-1 break-words text-gray-900">{{ publicSeoSnapshot.seoTitle }}</dd>
+            </div>
+            <div class="rounded-lg border border-white bg-white px-3 py-2">
+              <dt class="font-medium text-gray-500">公开 SEO 关键词</dt>
+              <dd class="mt-1 break-words text-gray-900">{{ publicSeoSnapshot.seoKeywords.join('、') || '未设置' }}</dd>
             </div>
             <div class="rounded-lg border border-white bg-white px-3 py-2">
               <dt class="font-medium text-gray-500">公开站点描述</dt>

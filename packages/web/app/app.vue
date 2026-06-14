@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { buildAbsoluteSeoUrl, buildCanonicalUrl, buildJsonLdScript, buildWebSiteJsonLd, normalizeSeoSiteUrl } from '~/utils/seoMetadata'
 
-const { fetchSettings, siteName, seoTitle, siteDescription, ogTitle, ogDescription, ogImage, siteIcon } = useSiteSettings()
+const { fetchSettings, siteName, seoTitle, seoKeywords, siteDescription, ogTitle, ogDescription, ogImage, siteIcon } = useSiteSettings()
 const { fetchUser } = useAuth()
 const config = useRuntimeConfig()
 const route = useRoute()
@@ -14,6 +14,7 @@ const webSiteJsonLd = computed(() => buildJsonLdScript(buildWebSiteJsonLd({
   siteName: siteName.value,
   description: siteDescription.value,
   logoUrl: siteIcon.value,
+  keywords: seoKeywords.value,
 })))
 
 // 加载站点设置（SSR + 客户端均执行一次）
@@ -24,9 +25,10 @@ await fetchUser()
 // 全局 SEO meta（子页面可覆盖）
 useHead(() => ({
   title: seoTitle.value,
-  meta: isDevEnvironment.value
-    ? [{ name: 'robots', content: 'noindex, nofollow' }]
-    : [],
+  meta: [
+    ...(isDevEnvironment.value ? [{ name: 'robots', content: 'noindex, nofollow' }] : []),
+    ...(seoKeywords.value.length ? [{ key: 'keywords', name: 'keywords', content: seoKeywords.value.join(', ') }] : []),
+  ],
   link: [
     { rel: 'canonical', href: canonicalUrl.value },
     ...(siteIcon.value

@@ -3,7 +3,7 @@
  * 从 /api/settings/public 获取站点配置
  * 数据全局缓存，避免重复请求
  */
-import { isScheduledSiteFeatureActive, normalizeAnalyticsConsentMode, normalizeAnalyticsSampleRate, normalizeBooleanSetting, normalizeFeaturedRegionSlugs, normalizeHomeAdImageUrl, normalizeHomeAdUrl, normalizeHomeHotTagLimit, normalizeInternalPath, normalizePublicImageSettingUrl, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId, safeHomeAdText, safeRulesMarkdown, safeSiteText } from '~/utils/siteSettingsSecurity'
+import { isScheduledSiteFeatureActive, normalizeAnalyticsConsentMode, normalizeAnalyticsSampleRate, normalizeBooleanSetting, normalizeFeaturedRegionSlugs, normalizeHomeAdImageUrl, normalizeHomeAdUrl, normalizeHomeHotTagLimit, normalizeInternalPath, normalizePublicImageSettingUrl, normalizeSeoKeywords, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId, safeHomeAdText, safeRulesMarkdown, safeSiteText } from '~/utils/siteSettingsSecurity'
 
 const DEFAULT_SITE_NAME = '图库站'
 const LEGACY_DEFAULT_SITE_NAME = 'MeiGallery'
@@ -16,6 +16,7 @@ export function useSiteSettings() {
     site_description?: string
     site_icon?: string
     seo_title?: string
+    seo_keywords?: string
     og_title?: string
     og_description?: string
     og_image?: string
@@ -101,6 +102,7 @@ export function useSiteSettings() {
   const siteDescription = computed(() => safeSiteText('site_description', settings.value.site_description))
   const siteIcon = computed(() => normalizePublicImageSettingUrl(settings.value.site_icon))
   const seoTitle = computed(() => safeSiteText('seo_title', settings.value.seo_title) || siteName.value)
+  const seoKeywords = computed(() => normalizeSeoKeywords(settings.value.seo_keywords))
   const ogTitle = computed(() => safeSiteText('og_title', settings.value.og_title) || seoTitle.value)
   const ogDescription = computed(() => safeSiteText('og_description', settings.value.og_description) || siteDescription.value)
   const ogImage = computed(() => normalizePublicImageSettingUrl(settings.value.og_image))
@@ -185,6 +187,7 @@ export function useSiteSettings() {
     siteDescription,
     siteIcon,
     seoTitle,
+    seoKeywords,
     ogTitle,
     ogDescription,
     ogImage,
