@@ -187,7 +187,7 @@ export function deriveSourceAttribution(input: SourceAttributionInput): SourceAt
 }
 
 function sourceChannelFromUtmMedium(medium: string): AnalyticsSourceChannel {
-  if (medium === 'cpc' || medium === 'paid' || medium === 'ad' || medium === 'ads') return 'ad'
+  if (medium === 'cpc' || medium === 'paid' || medium === 'ad' || medium === 'ads' || medium === 'paid_social' || medium === 'paid-social' || medium === 'paidsocial') return 'ad'
   if (medium === 'social' || medium === 'sns') return 'social'
   if (medium === 'search' || medium === 'organic_search' || medium === 'seo') return 'search'
   if (medium === 'direct') return 'direct'
