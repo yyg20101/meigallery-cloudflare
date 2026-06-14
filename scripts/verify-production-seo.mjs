@@ -208,9 +208,49 @@ async function verifyWebUrls(webUrls, expected) {
     const actual = extractSeo(html)
     const result = compareSeo(webUrl, expected, actual)
     if (result.length > 0) failures.push(...result)
+    failures.push(...await verifySeoFiles(webUrl))
   }
 
   return failures
+}
+
+async function verifySeoFiles(webUrl) {
+  const [robots, sitemap] = await Promise.all([
+    fetchText(`${webUrl}/robots.txt`),
+    fetchText(`${webUrl}/sitemap.xml`),
+  ])
+
+  return inspectSeoFiles(webUrl, robots, sitemap)
+}
+
+function inspectSeoFiles(webUrl, robots, sitemap) {
+  const failures = []
+
+  if (!robots.includes('User-agent: *')) {
+    failures.push(`${webUrl}/robots.txt 未包含 User-agent: *`)
+  }
+  if (!/Sitemap:\s*https:\/\/\S+\/sitemap\.xml/i.test(robots)) {
+    failures.push(`${webUrl}/robots.txt 未声明 HTTPS sitemap 地址`)
+  }
+  if (containsLocalhostUrl(robots)) {
+    failures.push(`${webUrl}/robots.txt 包含 localhost 或本地地址`)
+  }
+
+  if (!sitemap.includes('<urlset')) {
+    failures.push(`${webUrl}/sitemap.xml 未包含 urlset`)
+  }
+  if (!/<loc>https:\/\/[^<]+<\/loc>/i.test(sitemap)) {
+    failures.push(`${webUrl}/sitemap.xml 未包含 HTTPS loc`)
+  }
+  if (containsLocalhostUrl(sitemap)) {
+    failures.push(`${webUrl}/sitemap.xml 包含 localhost 或本地地址`)
+  }
+
+  return failures
+}
+
+function containsLocalhostUrl(value) {
+  return /https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?/i.test(value)
 }
 
 function sleep(ms) {
@@ -336,7 +376,9 @@ export {
   compareSeo,
   expectedSeo,
   extractSeo,
+  inspectSeoFiles,
   parseArgs,
   resolveWebUrls,
   validateExpectedSeo,
+  verifySeoFiles,
 }

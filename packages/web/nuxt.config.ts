@@ -11,6 +11,10 @@ export default defineNuxtConfig({
   // Nitro 服务端引擎：部署为 Cloudflare Worker（ES Module 格式，支持 nodejs_compat）
   nitro: {
     preset: 'cloudflare-module',
+    handlers: [
+      { route: '/robots.txt', handler: '~/server/routes/robots' },
+      { route: '/sitemap.xml', handler: '~/server/routes/sitemap' },
+    ],
   },
 
   // 页面过渡动画
