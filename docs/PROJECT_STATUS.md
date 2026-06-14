@@ -19,7 +19,7 @@
 - API Worker：`meigallery-api`，生产域名 `api.616618.xyz`。
 - 开发 Worker：`meigallery-web-dev` / `meigallery-api-dev`，仅使用 Workers dev 子域，不绑定生产域名。
 - 数据库：Cloudflare D1 `meigallery-db`。
-- D1 migrations：仓库当前维护到 `0030_seo_keywords_settings.sql`；部署前需按目标环境执行所有未应用迁移。
+- D1 migrations：仓库当前维护到 `0031_seed_seo_keywords.sql`；部署前需按目标环境执行所有未应用迁移。
 - 对象存储：Cloudflare R2 `meigallery-media`。
 - 视频：Cloudflare Stream 仍未接入，相关 secrets 为占位符，视频能力按规划保留；API 在缺少 Stream secrets 时返回 503 `STREAM_NOT_CONFIGURED`。
 - 生产部署：PR 合入 `main` 后手动执行 `./scripts/deploy.sh production` 或等价 wrangler 命令。
@@ -89,7 +89,7 @@
 - 站点品牌默认值持续增强：前台、后台设置页、公开设置 API、邮件模板和 D1 默认迁移已清理旧脚手架站名；用户可见站名统一读取后台 `site_settings.site_name`，缺失或旧默认值时仅使用中性“图库站”兜底。
 - SEO 基础设施增强：Web Worker 已新增运行时 `robots.txt` 和 `sitemap.xml`，生产环境允许公开页抓取并屏蔽后台、API、登录注册和个人中心；sitemap 覆盖首页、发现页、真实案例、标签页、规则页、已发布图库、已发布真实案例和标签筛选落地页，非生产环境继续 noindex/no-store。
 - 结构化 SEO 增强：前台已统一生成 canonical URL、绝对 OG 图片 URL 和安全 JSON-LD；首页输出 `WebSite`/`Organization`，图库详情输出 `ImageGallery`，真实案例详情输出 `Article`，并通过单元测试和首页 SSR smoke 防回归。
-- SEO 关键词池增强：后台站点设置已新增 `seo_keywords`，支持中英文分隔、去重、最多 30 个关键词和单词长度限制；前台首页、图库详情和真实案例详情会将关键词池合并页面语境后写入 JSON-LD `keywords`，并兼容输出页面级 `meta keywords`。运营配置说明见 `docs/SEO_CONFIGURATION.md`。
+- SEO 关键词池增强：后台站点设置已新增 `seo_keywords`，支持中英文分隔、去重、最多 30 个关键词和单词长度限制；前台首页、图库详情和真实案例详情会将关键词池合并页面语境后写入 JSON-LD `keywords`，并兼容输出页面级 `meta keywords`。`0031_seed_seo_keywords.sql` 会在空值时写入当前项目首版关键词池，运营配置说明见 `docs/SEO_CONFIGURATION.md`。
 - 后台图库图片预览持续增强：编辑/新建图库的媒体网格和封面预览已改走管理员鉴权预览接口，不再受公开缩略图“仅发布且免费内容可访问”的规则影响；管理员预览仍保留 R2 key 所属校验和安全外链清洗。
 - 后台图库预览来源页保护增强：编辑/新建图库的媒体网格和封面预览图片已统一设置 `referrerpolicy="no-referrer"`，避免后台页面路径在加载外部图片或跨域 API 预览时作为来源页带出。
 - 首页广告位语义持续增强：前台广告组件已补“推广”标识，外链 CTA 通过 `aria-describedby` 关联离站和不发送来源页提示；组件测试与 Playwright smoke 同步覆盖站内/外链差异，避免安全提示仅停留在视觉文本。
