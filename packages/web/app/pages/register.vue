@@ -7,7 +7,7 @@ const { api } = useApi()
 const router = useRouter()
 const route = useRoute()
 const analytics = useAnalytics()
-const { trackCompleteRegistration } = useFacebookPixel()
+const { trackCompleteRegistration, trackStartTrialOnce } = useFacebookPixel()
 const { siteName } = useSiteSettings()
 
 // 表单数据
@@ -201,6 +201,7 @@ async function onDirectRegister() {
       ...buildInviteRegistrationContext(),
     })
     trackCompleteRegistration()
+    trackStartTrialOnce({ trialType: 'free_membership', method: 'email' })
     analytics.track('register_success', {
       props: { invite_code_id: validInviteCodeId.value || undefined },
       entityType: 'auth',
@@ -268,6 +269,7 @@ async function onSubmitWithCode() {
       ...buildInviteRegistrationContext(),
     })
     trackCompleteRegistration()
+    trackStartTrialOnce({ trialType: 'free_membership', method: 'email' })
     analytics.track('register_success', {
       props: { invite_code_id: validInviteCodeId.value || undefined },
       entityType: 'auth',

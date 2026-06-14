@@ -24,7 +24,7 @@ function mountItem(linkUrl: string | null, qrCodeUrl: string | null = null) {
 }
 
 describe('ContactMethodItem', () => {
-  it('点击安全链接时打开新窗口', async () => {
+  it('点击安全聊天链接并调用跳转后才发起联系事件', async () => {
     const open = vi.spyOn(window, 'open').mockImplementation(() => null)
     const wrapper = mountItem('https://example.com/contact')
 
@@ -32,6 +32,22 @@ describe('ContactMethodItem', () => {
 
     expect(wrapper.emitted('activate')?.[0]).toEqual(['custom', 'open_link'])
     expect(open).toHaveBeenCalledWith('https://example.com/contact', '_blank', 'noopener,noreferrer')
+    open.mockRestore()
+  })
+
+  it('危险链接不会在跳转前发起联系事件', async () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const writeText = vi.fn().mockRejectedValue(new Error('denied'))
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    })
+    const wrapper = mountItem('javascript:alert(1)')
+
+    await wrapper.get('[role="button"]').trigger('click')
+
+    expect(wrapper.emitted('activate')).toBeUndefined()
+    expect(open).not.toHaveBeenCalled()
     open.mockRestore()
   })
 
@@ -47,6 +63,23 @@ describe('ContactMethodItem', () => {
     await wrapper.get('[role="button"]').trigger('click')
 
     expect(wrapper.emitted('activate')?.[0]).toEqual(['custom', 'copy'])
+    expect(open).not.toHaveBeenCalled()
+    expect(writeText).toHaveBeenCalledWith('meigallery')
+    open.mockRestore()
+  })
+
+  it('复制失败时不发起联系事件', async () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const writeText = vi.fn().mockRejectedValue(new Error('denied'))
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    })
+    const wrapper = mountItem(null)
+
+    await wrapper.get('[role="button"]').trigger('click')
+
+    expect(wrapper.emitted('activate')).toBeUndefined()
     expect(open).not.toHaveBeenCalled()
     expect(writeText).toHaveBeenCalledWith('meigallery')
     open.mockRestore()
@@ -87,5 +120,17 @@ describe('ContactMethodItem', () => {
     expect(link.attributes('target')).toBe('_blank')
     expect(link.attributes('rel')).toBe('noopener noreferrer nofollow')
     expect(link.attributes('referrerpolicy')).toBe('no-referrer')
+  })
+
+  it('二维码弹层点击跳转成功后发起联系事件', async () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const wrapper = mountItem('https://example.com/contact', '/api/contact-methods/contact-1/qrcode')
+
+    await wrapper.get('button[aria-label="展开二维码"]').trigger('click')
+    await wrapper.get('a').trigger('click')
+
+    expect(open).toHaveBeenCalledWith('https://example.com/contact', '_blank', 'noopener,noreferrer')
+    expect(wrapper.emitted('activate')?.[0]).toEqual(['custom', 'open_link'])
+    open.mockRestore()
   })
 })

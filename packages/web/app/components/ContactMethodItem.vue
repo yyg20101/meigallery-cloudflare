@@ -45,19 +45,22 @@ async function copyValue() {
   } catch {
     copyFailed.value = true
     setTimeout(() => { copyFailed.value = false }, 2000)
-    return
+    return false
   }
   copied.value = true
   setTimeout(() => { copied.value = false }, 2000)
+  return true
 }
 
-function activate() {
-  emit('activate', props.method.platform, safeActionHref.value ? 'open_link' : 'copy')
+async function activate() {
   if (safeActionHref.value) {
     window.open(safeActionHref.value, '_blank', 'noopener,noreferrer')
+    emit('activate', props.method.platform, 'open_link')
     return
   }
-  copyValue()
+  if (await copyValue()) {
+    emit('activate', props.method.platform, 'copy')
+  }
 }
 </script>
 
@@ -145,6 +148,7 @@ function activate() {
           rel="noopener noreferrer nofollow"
           referrerpolicy="no-referrer"
           class="mt-1 text-xs text-gray-800 underline decoration-[#d6c39a] underline-offset-4 hover:text-black"
+          @click.prevent="activate"
         >
           点击跳转 →
         </a>
