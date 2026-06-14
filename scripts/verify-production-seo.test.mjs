@@ -4,6 +4,7 @@ import {
   compareSeo,
   expectedSeo,
   extractSeo,
+  inspectSeoFiles,
   parseArgs,
   resolveWebUrls,
   validateExpectedSeo,
@@ -128,5 +129,29 @@ describe('生产 SEO 校验脚本', () => {
     assert.equal(failures.length, 2)
     assert.match(failures[0], /description 不一致/)
     assert.match(failures[1], /仍包含旧默认标题/)
+  })
+
+  it('robots 和 sitemap 出现本地地址时会失败', () => {
+    const failures = inspectSeoFiles(
+      'https://616618.xyz',
+      'User-agent: *\nSitemap: http://localhost:3000/sitemap.xml\n',
+      '<?xml version="1.0"?><urlset><url><loc>http://localhost:3000/</loc></url></urlset>',
+    )
+
+    assert.equal(failures.length, 4)
+    assert.match(failures[0], /未声明 HTTPS sitemap 地址/)
+    assert.match(failures[1], /robots\.txt 包含 localhost/)
+    assert.match(failures[2], /未包含 HTTPS loc/)
+    assert.match(failures[3], /sitemap\.xml 包含 localhost/)
+  })
+
+  it('robots 和 sitemap 使用 HTTPS 地址时通过', () => {
+    const failures = inspectSeoFiles(
+      'https://616618.xyz',
+      'User-agent: *\nAllow: /\nSitemap: https://616618.xyz/sitemap.xml\n',
+      '<?xml version="1.0"?><urlset><url><loc>https://616618.xyz/</loc></url></urlset>',
+    )
+
+    assert.deepEqual(failures, [])
   })
 })
