@@ -40,6 +40,7 @@ describe('analytics-url', () => {
     expect(deriveSourceAttribution({ inviteCodeId: 'inv_1', referrerHost: 'google.com' })).toEqual({ channel: 'invite', name: 'invite' })
     expect(deriveSourceAttribution({ adId: 'ad_1' })).toEqual({ channel: 'ad', name: 'ad' })
     expect(deriveSourceAttribution({ utmSource: 'Newsletter', utmMedium: 'paid' })).toEqual({ channel: 'ad', name: 'newsletter' })
+    expect(deriveSourceAttribution({ utmSource: 'Meta-Contact-A', utmMedium: 'paid_social' })).toEqual({ channel: 'ad', name: 'meta-contact-a' })
     expect(deriveSourceAttribution({ trackingSourceSlug: 'telegram-june', utmSource: 'telegram-june', utmMedium: 'social' })).toEqual({ channel: 'social', name: 'telegram-june' })
     expect(deriveSourceAttribution({ referrerHost: 'www.google.com' })).toEqual({ channel: 'search', name: 'www.google.com' })
     expect(deriveSourceAttribution({ referrerHost: 't.me' })).toEqual({ channel: 'social', name: 't.me' })
