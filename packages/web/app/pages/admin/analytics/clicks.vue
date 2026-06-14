@@ -43,7 +43,7 @@ const contactSummary = computed(() => {
       <div class="rounded-lg border border-amber-200 bg-white p-4 text-amber-700 shadow-sm">
         <p class="text-xs font-medium text-gray-500">有效联系方式点击</p>
         <p class="mt-2 text-2xl font-semibold leading-none">{{ formatAnalyticsNumber(contactSummary.effective) }}</p>
-        <p class="mt-2 truncate text-xs text-gray-400">对应 Meta Contact</p>
+        <p class="mt-2 truncate text-xs text-gray-400">站内一方口径</p>
       </div>
       <div class="rounded-lg border border-gray-200 bg-white p-4 text-gray-950 shadow-sm">
         <p class="text-xs font-medium text-gray-500">Raw 联系点击</p>
