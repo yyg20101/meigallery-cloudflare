@@ -19,6 +19,7 @@ const initialized = ref(false)
 const debug = ref(false)
 const lastTrackedPagePath = ref('')
 const leadTracked = ref(false)
+const startTrialTracked = ref(false)
 
 function hasTrackingConsent() {
   return true
@@ -143,6 +144,18 @@ export function useFacebookPixel() {
     if (sent) logEvent('CompleteRegistration', payload)
   }
 
+  function trackStartTrialOnce(params: { trialType?: string; method?: string } = {}) {
+    if (startTrialTracked.value) return
+    const payload = {
+      trial_type: sanitizeAnalyticsText(params.trialType || 'free_membership', 40),
+      method: sanitizeAnalyticsText(params.method || 'email', 40),
+    }
+    const sent = callFbqForCurrentRoute('track', 'StartTrial', payload)
+    if (!sent) return
+    startTrialTracked.value = true
+    logEvent('StartTrial', payload)
+  }
+
   function trackLoginCompleted() {
     const payload = { method: 'email' }
     const sent = callFbqForCurrentRoute('trackCustom', 'login_completed', payload)
@@ -163,6 +176,7 @@ export function useFacebookPixel() {
     trackLeadOnce,
     trackContactClick,
     trackCompleteRegistration,
+    trackStartTrialOnce,
     trackLoginCompleted,
     trackFilterSelected,
   }

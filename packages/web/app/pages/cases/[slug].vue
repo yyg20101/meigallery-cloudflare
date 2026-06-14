@@ -1,7 +1,6 @@
 <script setup lang="ts">
 const route = useRoute()
 const { api } = useApi()
-const { trackLeadOnce } = useFacebookPixel()
 const { siteName } = useSiteSettings()
 
 interface CaseDetail {
@@ -37,7 +36,6 @@ useSeoMeta({
 })
 
 function openContactPanel() {
-  trackLeadOnce({ location: 'case_detail_cta', methodType: 'contact_owner' })
   window.dispatchEvent(new CustomEvent('meigallery:open-contact-panel'))
 }
 </script>

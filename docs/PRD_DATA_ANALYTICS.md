@@ -130,7 +130,7 @@
 - `[当前实现]` `galleries.view_count`：图库详情接口按 cookie + IP 短期去重后异步递增。
 - `[当前实现]` `galleries.like_count` 和 `gallery_likes`：登录用户可以点赞图库。
 - `[当前实现]` `/api/admin/dashboard`：后台基础概览继续展示内容、会员和导入待处理事项。
-- `[当前实现]` Facebook Pixel：前端可上报 `PageView`、`ViewContent`、`Search`、`Lead`、`CompleteRegistration`、`login_completed`、`filter_selected`，并已规避后台路径和敏感 URL。
+- `[当前实现]` Facebook Pixel：前端可上报 `PageView`、`ViewContent`、`Search`、`Lead`、`Contact`、`CompleteRegistration`、`StartTrial`、`login_completed`、`filter_selected`，并已规避后台路径和敏感 URL。
 - `[当前实现]` 站内一方分析：已建立 `analytics_visitors`、`analytics_sessions`、`analytics_events`、页面/session 摘要、日报聚合、邀请码、导出任务等 D1 schema。
 - `[当前实现]` 采集链路：已接入 `/api/analytics/events`、`/api/analytics/session/end`、Web 轻量 SDK、核心前台事件、邀请码转化闭环和 API 侧可信媒体授权事件。
 - `[当前实现]` 后台大盘：已新增 `/admin/analytics` 总览、来源、内容、链路、点击、时长、邀请和健康页面，默认读取聚合表和摘要表，owner-only 导出和单 session 明细由 API 二次校验。
