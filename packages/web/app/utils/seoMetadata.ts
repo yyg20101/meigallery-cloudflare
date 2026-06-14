@@ -1,6 +1,7 @@
 export interface JsonLdScript {
   type: 'application/ld+json'
   innerHTML: string
+  [key: `data-${string}`]: string | undefined
 }
 
 interface WebSiteJsonLdInput {
