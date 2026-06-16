@@ -829,6 +829,7 @@ queued → processing → completed
 | 资源类型 | 缓存策略 | TTL |
 |----------|----------|-----|
 | 前台静态资源 | Workers Assets 自动缓存 | 长期（hash 文件名） |
+| 公开站点设置 | 生产短缓存，后台强制刷新使用 cache-busting query | 60 秒，stale-while-revalidate 300 秒 |
 | 首页和列表页数据 | 短缓存，发布后失效 | 60 秒 |
 | 标签列表 | 短缓存 | 300 秒 |
 | 公开缩略图 | R2 公开访问 + CDN 缓存 | 7 天（文件名含 hash） |

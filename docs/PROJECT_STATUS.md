@@ -1,6 +1,6 @@
 # 项目当前状态
 
-更新时间：2026-06-15
+更新时间：2026-06-16
 
 本文档是当前实现和部署状态的索引。若历史计划或早期 PRD 与本文冲突，以本文、`AGENTS.md`、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md`、`docs/GIT_WORKFLOW.md` 为准。
 
@@ -24,6 +24,7 @@
 - 视频：Cloudflare Stream 仍未接入，相关 secrets 为占位符，视频能力按规划保留；API 在缺少 Stream secrets 时返回 503 `STREAM_NOT_CONFIGURED`。
 - 生产部署：PR 合入 `main` 后手动执行 `./scripts/deploy.sh production` 或等价 wrangler 命令。
 - CI：`.github/workflows/ci.yml` 只做 PR/dev 推送的测试、类型检查和构建验证，不自动部署生产。
+- 成本与性能：Cloudflare 官方费用口径、当前优化项和监控阈值见 `docs/CLOUDFLARE_COST_PERFORMANCE_OPTIMIZATION.md`；生产 Workers Logs 采样已下调，公开设置使用短缓存。
 
 ## 功能实现现状
 
@@ -142,5 +143,6 @@
 - 当前状态权威文档：`AGENTS.md`、本文档、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md`、`docs/GIT_WORKFLOW.md`。
 - 产品和设计文档：`docs/PRD*.md`、`docs/PRD_QUALITY_REVIEW.md` 与 `docs/UI_DESIGN.md` 保留产品需求、路线图、验收口径和设计约束；其中标注为草案、规划或后续阶段的内容不代表当前生产状态。数据分析专项需求以 `docs/PRD_DATA_ANALYTICS.md` 为入口。
 - 代码与文档 review 问题台账：`docs/CODE_AND_DOC_REVIEW_ISSUES.md` 记录全项目代码、配置和文档审查发现的问题、影响和修复方案。
+- Cloudflare 成本与性能优化记录：`docs/CLOUDFLARE_COST_PERFORMANCE_OPTIMIZATION.md` 记录 Workers、Workers Logs、D1、R2、Images Transformations 和 Stream 的官方费用依据、已落地优化和后续监控阈值。
 - 代码库分析文档：`docs/codebase/*.md` 记录从代码和配置验证出的栈、结构、架构、约定、集成、测试和风险。
 - 历史归档：`docs/plans/**` 与 `docs/superpowers/**` 为历史计划、规格和实现记录，可能包含 Nuxt 3、`testimonial_*`、旧路由或旧权限名，不代表当前生产状态。
