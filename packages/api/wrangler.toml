@@ -40,7 +40,7 @@ IMAGE_RESIZING_ENABLED = "true"
 
 [observability]
 enabled = true
-head_sampling_rate = 1
+head_sampling_rate = 0.05
 
 [env.dev]
 name = "meigallery-api-dev"
@@ -49,7 +49,7 @@ routes = []
 
 [env.dev.observability]
 enabled = true
-head_sampling_rate = 1
+head_sampling_rate = 0.1
 
 [[env.dev.d1_databases]]
 binding = "DB"

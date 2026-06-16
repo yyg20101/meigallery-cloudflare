@@ -30,7 +30,7 @@ NUXT_PUBLIC_TURNSTILE_SITE_KEY = "0x4AAAAAADGbuWKJvOkDMRWU"
 
 [observability]
 enabled = true
-head_sampling_rate = 1
+head_sampling_rate = 0.05
 
 [env.dev]
 name = "meigallery-web-dev"
@@ -39,7 +39,7 @@ routes = []
 
 [env.dev.observability]
 enabled = true
-head_sampling_rate = 1
+head_sampling_rate = 0.1
 
 [env.dev.assets]
 directory = ".output/public"

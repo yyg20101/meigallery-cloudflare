@@ -86,7 +86,9 @@ export function useSiteSettings() {
   async function fetchSettings(options: { force?: boolean } = {}) {
     if (loaded.value && !options.force) return settings.value
     try {
-      const data = await api<SiteSettings>('/api/settings/public')
+      const data = await api<SiteSettings>('/api/settings/public', {
+        query: options.force ? { _fresh: Date.now() } : undefined,
+      })
       settings.value = data
       loaded.value = true
     } catch {

@@ -88,7 +88,7 @@ describe('公开站点设置 API', () => {
     const body = await res.json()
 
     expect(res.status).toBe(200)
-    expect(res.headers.get('Cache-Control')).toBe('no-store')
+    expect(res.headers.get('Cache-Control')).toBe('public, max-age=60, stale-while-revalidate=300')
     expect(body.site_icon).toBe('')
     expect(body.og_image).toBe('')
     expect(body.home_ad_url).toBe('')
@@ -119,7 +119,7 @@ describe('公开站点设置 API', () => {
     const body = await res.json()
 
     expect(res.status).toBe(200)
-    expect(res.headers.get('Cache-Control')).toBe('no-store')
+    expect(res.headers.get('Cache-Control')).toBe('public, max-age=60, stale-while-revalidate=300')
     expect(body.site_name).toBe('测试图库')
     expect(body.site_description).toBe('后台保存后的站点描述')
     expect(body.seo_title).toBe('')

@@ -54,9 +54,17 @@ export type Variables = {
 }
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
+const requestLogger = logger()
+const PUBLIC_SETTINGS_CACHE_CONTROL = 'public, max-age=60, stale-while-revalidate=300'
 
 // 全局中间件
-app.use('*', logger())
+app.use('*', async (c, next) => {
+  if (c.env.APP_ENV === 'production') {
+    await next()
+    return
+  }
+  return requestLogger(c, next)
+})
 app.use('*', secureHeaders({
   crossOriginEmbedderPolicy: false, // 图片嵌入需要
   xFrameOptions: 'DENY',
@@ -211,7 +219,7 @@ app.get('/api/settings/public', async (c) => {
   settings.home_ads = adsResult.results
     .map(row => serializePublicHomeAd(row))
     .filter((ad): ad is NonNullable<typeof ad> => Boolean(ad))
-  c.header('Cache-Control', 'no-store')
+  c.header('Cache-Control', c.env.APP_ENV === 'production' ? PUBLIC_SETTINGS_CACHE_CONTROL : 'no-store')
   return c.json(sanitizePublicSiteSettings(settings))
 })
 
