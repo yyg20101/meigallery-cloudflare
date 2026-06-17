@@ -77,6 +77,7 @@ function formatRate(value: unknown) {
 <template>
   <AnalyticsPageShell
     v-model:range="analytics.range.value"
+    v-model:date="analytics.date.value"
     title="SEO 分析"
     description="基于站内一方埋点识别自然搜索来源、搜索落地页和后续联系/注册转化。"
     :loading="analytics.loading.value"

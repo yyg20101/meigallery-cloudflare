@@ -11,6 +11,7 @@ const createExport = useAnalyticsExport()
 <template>
   <AnalyticsPageShell
     v-model:range="analytics.range.value"
+    v-model:date="analytics.date.value"
     title="链路分析"
     description="查看 from route 到 to route 的聚合路径边，定位入口、详情、联系和注册之间的断点。"
     :loading="analytics.loading.value"
@@ -18,7 +19,7 @@ const createExport = useAnalyticsExport()
     :usage="analytics.usage.value"
     :show-export="isOwner"
     @refresh="analytics.refresh"
-    @export="createExport('paths', analytics.range.value)"
+    @export="createExport('paths', analytics.range.value, analytics.date.value)"
   >
     <AnalyticsDataTable
       empty-title="暂无链路数据"

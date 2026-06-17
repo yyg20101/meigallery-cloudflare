@@ -1,6 +1,6 @@
 import type { AnalyticsRangeQuery } from '@meigallery/shared'
 
-export type AnalyticsRangePreset = NonNullable<AnalyticsRangeQuery['range']>
+export type AnalyticsRangePreset = NonNullable<AnalyticsRangeQuery['range']> | 'day'
 export type AnalyticsExportKind =
   | 'overview'
   | 'seo'
@@ -32,12 +32,14 @@ export const ANALYTICS_RANGE_OPTIONS: Array<{ label: string; value: AnalyticsRan
   { label: '7 天', value: '7d' },
   { label: '30 天', value: '30d' },
   { label: '90 天', value: '90d' },
+  { label: '单日', value: 'day' },
 ]
 
 export function useAdminAnalytics<T>(endpoint: string, initialRange: AnalyticsRangePreset = '30d') {
   const { api } = useApi()
   const route = useRoute()
   const range = ref<AnalyticsRangePreset>(initialRange)
+  const date = ref(initialAnalyticsDate(route.query.date ?? route.query.from))
   const data = ref<T | null>(null)
   const responseRange = ref<AnalyticsApiResponse<T>['range'] | null>(null)
   const usage = ref<AnalyticsApiResponse<T>['usage'] | null>(null)
@@ -60,7 +62,7 @@ export function useAdminAnalytics<T>(endpoint: string, initialRange: AnalyticsRa
     error.value = ''
     try {
       const result = await api<AnalyticsApiResponse<T>>(endpoint, {
-        query: { range: range.value, ...routeFilters.value },
+        query: { ...analyticsRangeQuery(range.value, date.value), ...routeFilters.value },
       })
       data.value = result.data
       responseRange.value = result.range ?? null
@@ -75,7 +77,7 @@ export function useAdminAnalytics<T>(endpoint: string, initialRange: AnalyticsRa
     }
   }
 
-  watch(range, () => {
+  watch([range, date], () => {
     void refresh()
   })
 
@@ -89,6 +91,7 @@ export function useAdminAnalytics<T>(endpoint: string, initialRange: AnalyticsRa
 
   return {
     range,
+    date,
     responseRange,
     usage,
     extra,
@@ -110,17 +113,41 @@ export function useAnalyticsExport() {
   const { api } = useApi()
   const toast = useToast()
 
-  return async function createExport(kind: AnalyticsExportKind, range: AnalyticsRangePreset) {
+  return async function createExport(kind: AnalyticsExportKind, range: AnalyticsRangePreset, date?: string) {
     try {
       await api('/api/admin/analytics/exports', {
         method: 'POST',
-        body: { kind, range },
+        body: { kind, ...analyticsRangeQuery(range, date || todayDateInputValue()) },
       })
       toast.add({ title: '导出任务已创建', color: 'success' })
     } catch (error) {
       toast.add({ title: resolveApiErrorMessage(error, '导出任务创建失败'), color: 'error' })
     }
   }
+}
+
+export function analyticsRangeQuery(range: AnalyticsRangePreset, date: string): Pick<AnalyticsRangeQuery, 'range' | 'from' | 'to'> {
+  if (range === 'day') {
+    const day = normalizeDateInput(date) || todayDateInputValue()
+    return { from: day, to: day }
+  }
+  return { range: range as AnalyticsRangeQuery['range'] }
+}
+
+function initialAnalyticsDate(value: unknown) {
+  const raw = Array.isArray(value) ? value[0] : value
+  return normalizeDateInput(raw) || todayDateInputValue()
+}
+
+function normalizeDateInput(value: unknown) {
+  const text = String(value ?? '').trim()
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : ''
+}
+
+function todayDateInputValue() {
+  const now = new Date()
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000)
+  return local.toISOString().slice(0, 10)
 }
 
 export function formatAnalyticsNumber(value: unknown) {

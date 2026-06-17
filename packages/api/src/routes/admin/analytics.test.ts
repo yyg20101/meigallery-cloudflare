@@ -204,6 +204,20 @@ function createDb() {
               meta: { rows_read: 2, rows_written: 0, duration: 1 },
             }
           }
+          if (sql.includes('analytics_click_daily') && sql.includes('all_contact_methods')) {
+            return {
+              results: [{
+                element_id: 'contact_method_click',
+                element_type: 'button',
+                location: 'contact_panel',
+                target_type: 'contact',
+                target_id: 'all_contact_methods',
+                raw_click_count: 5,
+                effective_click_count: 4,
+              }] as T[],
+              meta: { rows_read: 2, rows_written: 0, duration: 1 },
+            }
+          }
           if (sql.includes('analytics_click_daily')) {
             return {
               results: [{
@@ -414,7 +428,13 @@ describe('后台数据分析 API', () => {
     expect(body.data.totals.gallery_detail_count).toBe(4)
     expect(body.data.totals.effective_contact_click_count).toBe(2)
     expect(body.data.topSources[0].source_channel).toBe('invite')
-    expect(body.data.topClicks[0].element_label).toBe('联系方式')
+    expect(body.data.topClicks).toHaveLength(1)
+    expect(body.data.topClicks[0]).toMatchObject({
+      element_label: '联系方式',
+      location_label: '联系面板',
+      raw_click_count: 5,
+      effective_click_count: 4,
+    })
     expect(body.data.funnel.stages[0].label).toBe('Session')
     expect(body.usage.rowsRead).toBeGreaterThan(0)
     expect(db.calls.some(call => call.sql.includes('analytics_events'))).toBe(false)

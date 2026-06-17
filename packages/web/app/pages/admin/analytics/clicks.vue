@@ -30,6 +30,7 @@ const contactSummary = computed(() => {
 <template>
   <AnalyticsPageShell
     v-model:range="analytics.range.value"
+    v-model:date="analytics.date.value"
     title="点击分析"
     description="跟踪广告、图库卡片、具体联系方式、规则入口、会员 CTA 和筛选操作的点击质量。"
     :loading="analytics.loading.value"
@@ -37,7 +38,7 @@ const contactSummary = computed(() => {
     :usage="analytics.usage.value"
     :show-export="isOwner"
     @refresh="analytics.refresh"
-    @export="createExport('clicks', analytics.range.value)"
+    @export="createExport('clicks', analytics.range.value, analytics.date.value)"
   >
     <div class="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
       <div class="rounded-lg border border-amber-200 bg-white p-4 text-amber-700 shadow-sm">

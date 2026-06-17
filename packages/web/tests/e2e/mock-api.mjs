@@ -228,13 +228,27 @@ function galleryDetail(slug) {
   }
 }
 
-function analyticsRange(range) {
+function analyticsRange(searchParams) {
+  const from = searchParams.get('from')
+  const to = searchParams.get('to')
+  if (from || to) {
+    const start = from || to || '2026-06-30'
+    const end = to || from || '2026-06-30'
+    const startDate = new Date(`${start}T00:00:00Z`)
+    const endDate = new Date(`${end}T00:00:00Z`)
+    const days = Number.isFinite(startDate.getTime()) && Number.isFinite(endDate.getTime())
+      ? Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / 86_400_000) + 1)
+      : 1
+    return { from: start, to: end, days }
+  }
+
+  const range = searchParams.get('range') || '30d'
   const days = range === '7d' ? 7 : range === '90d' ? 90 : 30
   return { from: '2026-06-01', to: '2026-06-30', days }
 }
 
-function adminAnalyticsResponse(pathname, rangePreset) {
-  const range = analyticsRange(rangePreset)
+function adminAnalyticsResponse(pathname, searchParams) {
+  const range = analyticsRange(searchParams)
   const usage = { rowsRead: 120, rowsWritten: 0, durationMs: 12 }
   if (adminAnalyticsEmpty) {
     if (pathname.endsWith('/overview')) {
@@ -579,7 +593,7 @@ function handleApi(req, res) {
     })
   }
   if (url.pathname.startsWith('/api/admin/analytics/')) {
-    return json(res, adminAnalyticsResponse(url.pathname, url.searchParams.get('range') || '30d'))
+    return json(res, adminAnalyticsResponse(url.pathname, url.searchParams))
   }
   if (url.pathname === '/api/admin/invite-codes') {
     return json(res, {

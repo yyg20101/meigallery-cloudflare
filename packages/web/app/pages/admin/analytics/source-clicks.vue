@@ -14,6 +14,7 @@ const activeSourceCode = computed(() => String(route.query.sourceCode || route.q
 <template>
   <AnalyticsPageShell
     v-model:range="analytics.range.value"
+    v-model:date="analytics.date.value"
     title="来源点击分析"
     description="按站内归因来源查看广告、图库卡片、联系入口、会员 CTA 和筛选操作的点击质量。"
     :loading="analytics.loading.value"
@@ -21,7 +22,7 @@ const activeSourceCode = computed(() => String(route.query.sourceCode || route.q
     :usage="analytics.usage.value"
     :show-export="isOwner"
     @refresh="analytics.refresh"
-    @export="createExport('source-clicks', analytics.range.value)"
+    @export="createExport('source-clicks', analytics.range.value, analytics.date.value)"
   >
     <div class="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-800">
       <template v-if="activeSourceCode">

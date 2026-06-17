@@ -235,6 +235,7 @@ function riskClass(tone: string) {
 <template>
   <AnalyticsPageShell
     v-model:range="analytics.range.value"
+    v-model:date="analytics.date.value"
     title="数据分析"
     description="先看访问趋势、转化效率和采集健康，再下钻来源、内容、SEO 与点击明细。"
     :loading="analytics.loading.value"
@@ -242,7 +243,7 @@ function riskClass(tone: string) {
     :usage="analytics.usage.value"
     :show-export="isOwner"
     @refresh="analytics.refresh"
-    @export="createExport('overview', analytics.range.value)"
+    @export="createExport('overview', analytics.range.value, analytics.date.value)"
   >
     <template v-if="analytics.data.value">
       <AnalyticsHealthStrip :health="analytics.data.value.health" :usage="analytics.usage.value" to="/admin/analytics/health" />

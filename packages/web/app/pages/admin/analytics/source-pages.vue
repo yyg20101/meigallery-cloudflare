@@ -14,6 +14,7 @@ const activeSourceCode = computed(() => String(route.query.sourceCode || route.q
 <template>
   <AnalyticsPageShell
     v-model:range="analytics.range.value"
+    v-model:date="analytics.date.value"
     title="来源内容分析"
     description="按站内归因来源查看页面访问、入口、退出、跳出、联系和注册贡献。"
     :loading="analytics.loading.value"
@@ -21,7 +22,7 @@ const activeSourceCode = computed(() => String(route.query.sourceCode || route.q
     :usage="analytics.usage.value"
     :show-export="isOwner"
     @refresh="analytics.refresh"
-    @export="createExport('source-pages', analytics.range.value)"
+    @export="createExport('source-pages', analytics.range.value, analytics.date.value)"
   >
     <div class="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-800">
       <template v-if="activeSourceCode">
