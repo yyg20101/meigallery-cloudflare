@@ -185,6 +185,7 @@ const riskItems = computed(() => {
   const data = analytics.data.value
   if (!data) return []
   const items: Array<{ title: string; description: string; tone: 'gray' | 'amber' | 'red' }> = []
+  const accepted = Number(data.health?.accepted_count ?? 0)
   const rejected = Number(data.health?.rejected_count ?? 0)
   const duplicate = Number(data.health?.duplicate_count ?? 0)
   if (!hasActivity.value) {
@@ -215,10 +216,10 @@ const riskItems = computed(() => {
       tone: 'red',
     })
   }
-  if (duplicate > 0) {
+  if (isAnalyticsDuplicateRisk(duplicate, accepted)) {
     items.push({
-      title: '存在重复事件',
-      description: `${formatAnalyticsNumber(duplicate)} 条事件被识别为重复，建议观察是否有重复上报。`,
+      title: '重复上报偏高',
+      description: `${formatAnalyticsNumber(duplicate)} 条事件被去重，占接收尝试 ${formatAnalyticsPercent(duplicate, accepted + duplicate)}，建议排查前端重试或多实例上报。`,
       tone: 'amber',
     })
   }
