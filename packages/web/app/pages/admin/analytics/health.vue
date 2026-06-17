@@ -21,6 +21,7 @@ const totals = computed(() => analytics.data.value?.totals ?? null)
 <template>
   <AnalyticsPageShell
     v-model:range="analytics.range.value"
+    v-model:date="analytics.date.value"
     title="采集健康"
     description="查看 accepted、rejected、duplicate、敏感 URL 拦截和 D1 预算估算，用于判断采集是否健康。"
     :loading="analytics.loading.value"

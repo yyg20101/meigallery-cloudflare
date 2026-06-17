@@ -11,6 +11,7 @@ const createExport = useAnalyticsExport()
 <template>
   <AnalyticsPageShell
     v-model:range="analytics.range.value"
+    v-model:date="analytics.date.value"
     title="时长分析"
     description="按页面和内容查看平均有效停留、跳出率和滚动深度，识别吸引力与流失点。"
     :loading="analytics.loading.value"
@@ -18,7 +19,7 @@ const createExport = useAnalyticsExport()
     :usage="analytics.usage.value"
     :show-export="isOwner"
     @refresh="analytics.refresh"
-    @export="createExport('durations', analytics.range.value)"
+    @export="createExport('durations', analytics.range.value, analytics.date.value)"
   >
     <AnalyticsDataTable
       empty-title="暂无时长数据"

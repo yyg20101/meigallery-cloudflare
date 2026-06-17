@@ -25,6 +25,24 @@ describe('AnalyticsPageShell', () => {
     expect(wrapper.emitted('update:range')?.[0]).toEqual(['7d'])
   })
 
+  it('单日范围显示日期选择器并发出 update 事件', async () => {
+    const wrapper = mount(AnalyticsPageShell, {
+      props: {
+        title: '数据分析',
+        range: 'day',
+        date: '2026-06-07',
+      },
+      global: { stubs: { NuxtLink: nuxtLinkStub } },
+    })
+
+    const input = wrapper.get('input[type="date"]')
+    expect((input.element as HTMLInputElement).value).toBe('2026-06-07')
+
+    await input.setValue('2026-06-08')
+
+    expect(wrapper.emitted('update:date')?.[0]).toEqual(['2026-06-08'])
+  })
+
   it('非 owner 不显示导出按钮，错误信息可见', () => {
     const wrapper = mount(AnalyticsPageShell, {
       props: {

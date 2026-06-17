@@ -117,6 +117,7 @@ async function copyInviteLink(code: string) {
 <template>
   <AnalyticsPageShell
     v-model:range="analytics.range.value"
+    v-model:date="analytics.date.value"
     title="邀请转化"
     description="查看邀请码带来的落地、注册、联系和会员发放，并维护后台邀请码。"
     :loading="analytics.loading.value"
@@ -124,7 +125,7 @@ async function copyInviteLink(code: string) {
     :usage="analytics.usage.value"
     :show-export="isOwner"
     @refresh="analytics.refresh"
-    @export="createExport('invites', analytics.range.value)"
+    @export="createExport('invites', analytics.range.value, analytics.date.value)"
   >
     <div class="grid gap-5 xl:grid-cols-[1fr_22rem]">
       <section class="space-y-3">

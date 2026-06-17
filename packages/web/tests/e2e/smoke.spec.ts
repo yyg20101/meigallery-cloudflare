@@ -222,6 +222,10 @@ test.describe('核心页面 smoke', () => {
     await expect(page.getByText('暂无趋势数据')).toBeVisible()
     await expect(page.getByText('暂无排行').first()).toBeVisible()
 
+    await page.getByRole('button', { name: '单日' }).click()
+    await expect(page.getByLabel('选择分析日期')).toBeVisible()
+    await page.getByLabel('选择分析日期').fill('2026-06-07')
+
     let hasHorizontalOverflow = await page.evaluate(() => {
       const doc = document.documentElement
       return doc.scrollWidth > doc.clientWidth + 1

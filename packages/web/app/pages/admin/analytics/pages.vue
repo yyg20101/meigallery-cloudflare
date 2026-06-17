@@ -11,6 +11,7 @@ const createExport = useAnalyticsExport()
 <template>
   <AnalyticsPageShell
     v-model:range="analytics.range.value"
+    v-model:date="analytics.date.value"
     title="内容分析"
     description="查看页面、图库和标签结果页的访问、入口、退出、跳出和转化贡献。"
     :loading="analytics.loading.value"
@@ -18,7 +19,7 @@ const createExport = useAnalyticsExport()
     :usage="analytics.usage.value"
     :show-export="isOwner"
     @refresh="analytics.refresh"
-    @export="createExport('pages', analytics.range.value)"
+    @export="createExport('pages', analytics.range.value, analytics.date.value)"
   >
     <AnalyticsDataTable
       empty-title="暂无内容数据"

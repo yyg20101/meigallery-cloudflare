@@ -100,12 +100,21 @@ adminAnalyticsRoutes.get('/overview', async (c) => {
       LIMIT 5
     `, [range.from, range.to]),
     queryAll(c.env.DB, `
-      SELECT element_id, element_type, location, target_type, target_id,
+      SELECT
+             element_id,
+             MAX(element_type) AS element_type,
+             CASE WHEN element_id = 'contact_method_click' THEN 'contact_panel' ELSE MIN(location) END AS location,
+             CASE WHEN element_id = 'contact_method_click' THEN 'contact' ELSE MIN(target_type) END AS target_type,
+             CASE WHEN element_id = 'contact_method_click' THEN 'all_contact_methods' ELSE MIN(target_id) END AS target_id,
              SUM(raw_click_count) AS raw_click_count,
              SUM(effective_click_count) AS effective_click_count
       FROM analytics_click_daily
       WHERE date BETWEEN ? AND ?
-      GROUP BY element_id, element_type, location, target_type, target_id
+      GROUP BY
+             element_id,
+             CASE WHEN element_id = 'contact_method_click' THEN 'contact_panel' ELSE location END,
+             CASE WHEN element_id = 'contact_method_click' THEN 'contact' ELSE target_type END,
+             CASE WHEN element_id = 'contact_method_click' THEN 'all_contact_methods' ELSE target_id END
       ORDER BY effective_click_count DESC, raw_click_count DESC
       LIMIT 5
     `, [range.from, range.to]),

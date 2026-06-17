@@ -6,6 +6,7 @@ const props = defineProps<{
   title: string
   description?: string
   range: AnalyticsRangePreset
+  date?: string
   loading?: boolean
   error?: string
   usage?: { rowsRead: number; rowsWritten: number; durationMs: number } | null
@@ -14,6 +15,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:range': [value: AnalyticsRangePreset]
+  'update:date': [value: string]
   refresh: []
   export: []
 }>()
@@ -62,6 +64,14 @@ function isActive(to: string) {
               {{ option.label }}
             </button>
           </div>
+          <input
+            v-if="props.range === 'day'"
+            :value="props.date || ''"
+            aria-label="选择分析日期"
+            class="min-h-9 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 shadow-sm focus:border-gray-400 focus:outline-none"
+            type="date"
+            @input="emit('update:date', ($event.target as HTMLInputElement).value)"
+          >
           <button class="min-h-9 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 shadow-sm hover:bg-gray-50" type="button" @click="emit('refresh')">
             刷新
           </button>

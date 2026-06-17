@@ -259,6 +259,7 @@ function normalizeUtmPreview(value: string) {
 <template>
   <AnalyticsPageShell
     v-model:range="analytics.range.value"
+    v-model:date="analytics.date.value"
     title="来源分析"
     description="比较站内归因来源的访问、详情、联系、注册和会员发放，优先判断来源质量。"
     :loading="analytics.loading.value"
@@ -266,7 +267,7 @@ function normalizeUtmPreview(value: string) {
     :usage="analytics.usage.value"
     :show-export="isOwner"
     @refresh="analytics.refresh"
-    @export="createExport('sources', analytics.range.value)"
+    @export="createExport('sources', analytics.range.value, analytics.date.value)"
   >
     <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_24rem]">
       <section class="space-y-4">
