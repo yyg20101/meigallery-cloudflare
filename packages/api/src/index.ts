@@ -45,6 +45,7 @@ export type Bindings = {
   IMAGE_RESIZING_ENABLED: string // "true" | "false"
   IMPORT_TOKEN_DAILY_LIMIT?: string
   TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT?: string
+  TELEGRAM_BOT_TOKEN_OPS_CASE_BOT?: string
 }
 
 /** 应用级变量 */

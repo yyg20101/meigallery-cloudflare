@@ -60,6 +60,8 @@ print_secrets() {
   echo "  ${WRANGLER_CMD} secret put STREAM_ACCOUNT_ID ${env_flag}"
   echo "  ${WRANGLER_CMD} secret put STREAM_API_TOKEN ${env_flag}"
   echo "  ${WRANGLER_CMD} secret put TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT ${env_flag}"
+  echo "  # 可选：sourceBotKey=ops_case_bot 时配置"
+  echo "  ${WRANGLER_CMD} secret put TELEGRAM_BOT_TOKEN_OPS_CASE_BOT ${env_flag}"
   echo ""
 }
 

@@ -3,6 +3,8 @@ definePageMeta({ layout: 'admin' })
 
 const route = useRoute()
 const { api } = useApi()
+const toast = useToast()
+const retrying = ref(false)
 
 interface ExternalImportFile {
   id: string
@@ -41,7 +43,7 @@ interface ExternalImportDetail {
   files: ExternalImportFile[]
 }
 
-const { data: record } = await useAsyncData(`external-import-${route.params.id}`, () =>
+const { data: record, refresh } = await useAsyncData(`external-import-${route.params.id}`, () =>
   api<ExternalImportDetail>(`/api/admin/external-import-records/${route.params.id}`),
 )
 
@@ -103,6 +105,24 @@ const targetLink = computed(() => {
   if (record.value.target_type === 'case') return `/admin/cases/${record.value.target_id}`
   return ''
 })
+
+const canRetry = computed(() => record.value?.status === 'failed')
+
+async function retryImport() {
+  if (!record.value || !canRetry.value || retrying.value) return
+  if (!confirm('确认重试该失败导入？系统会重新拉取 Telegram file_id 并尝试创建草稿。')) return
+
+  retrying.value = true
+  try {
+    await api(`/api/admin/external-import-records/${record.value.id}/retry`, { method: 'POST' })
+    await refresh()
+    toast.add({ title: '导入重试已开始', color: 'success' })
+  } catch (error) {
+    toast.add({ title: resolveApiErrorMessage(error, '导入重试失败'), color: 'error' })
+  } finally {
+    retrying.value = false
+  }
+}
 </script>
 
 <template>
@@ -112,7 +132,18 @@ const targetLink = computed(() => {
         <NuxtLink to="/admin/external-import-records" class="text-sm text-blue-600 hover:underline">← 返回外部导入记录</NuxtLink>
         <h1 class="mt-2 text-xl font-bold text-gray-900">导入详情</h1>
       </div>
-      <span v-if="record" :class="['rounded-full px-3 py-1 text-sm font-medium', statusClass(record.status)]">{{ record.status }}</span>
+      <div v-if="record" class="flex items-center gap-3">
+        <button
+          v-if="canRetry"
+          type="button"
+          :disabled="retrying"
+          class="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+          @click="retryImport"
+        >
+          {{ retrying ? '重试中...' : '重试导入' }}
+        </button>
+        <span :class="['rounded-full px-3 py-1 text-sm font-medium', statusClass(record.status)]">{{ record.status }}</span>
+      </div>
     </div>
 
     <div v-if="record" class="space-y-6">

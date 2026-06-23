@@ -2,10 +2,32 @@ import { Hono } from 'hono'
 import { PAGINATION } from '@meigallery/shared/constants'
 import type { Bindings, Variables } from '../../index'
 import { requireAdmin } from '../../middleware/auth'
+import { processTelegramFileIdImport, resetFailedImportForRetry } from '../../services/telegram-file-id-import'
+import { ImportError, importErrorBody } from '../../utils/import-errors'
+import { writeAuditLog } from '../../utils/permission'
 
 export const adminExternalImportRecordRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
 adminExternalImportRecordRoutes.use('*', requireAdmin)
+
+type RetryTokenRow = {
+  token_id: string
+  permissions: string
+  allowed_source_bot_keys: string
+}
+
+function scheduleImport(c: { executionCtx: { waitUntil: (task: Promise<unknown>) => void } }, task: Promise<void>) {
+  try {
+    c.executionCtx.waitUntil(task)
+  } catch {
+    task.catch(error => console.error('Telegram 导入后台重试异步处理失败:', error))
+  }
+}
+
+function handleRetryError(error: unknown) {
+  if (error instanceof ImportError) return { body: importErrorBody(error), status: error.status }
+  return { body: importErrorBody(new ImportError('IMPORT_PROCESS_FAILED', '导入重试失败', 500)), status: 500 as const }
+}
 
 adminExternalImportRecordRoutes.get('/', async (c) => {
   const page = Math.max(1, Number.parseInt(c.req.query('page') || '1', 10))
@@ -53,4 +75,35 @@ adminExternalImportRecordRoutes.get('/:id', async (c) => {
     ORDER BY sort_order ASC
   `).bind(id).all()
   return c.json({ ...record, files: files.results })
+})
+
+adminExternalImportRecordRoutes.post('/:id/retry', async (c) => {
+  try {
+    const id = c.req.param('id')
+    const token = await c.env.DB.prepare(`
+      SELECT eir.token_id, iat.permissions, iat.allowed_source_bot_keys
+      FROM external_import_records eir
+      JOIN import_api_tokens iat ON eir.token_id = iat.id
+      WHERE eir.id = ?
+    `).bind(id).first<RetryTokenRow>()
+    if (!token) throw new ImportError('IMPORT_NOT_FOUND', '导入记录不存在', 404)
+
+    const result = await resetFailedImportForRetry(c.env.DB, id, {
+      id: token.token_id,
+      permissions: token.permissions,
+      allowedSourceBotKeys: token.allowed_source_bot_keys,
+    })
+    await writeAuditLog(c.env.DB, {
+      adminId: c.get('userId')!,
+      action: 'telegram_import.admin_retry',
+      targetType: 'external_import_record',
+      targetId: result.importId,
+      afterValue: { importId: result.importId, targetType: result.type, status: result.status, retryCount: result.retryCount },
+    })
+    scheduleImport(c, processTelegramFileIdImport(c.env.DB, c.env.R2, c.env as unknown as Record<string, string | undefined>, result.importId))
+    return c.json(result, 202)
+  } catch (error) {
+    const result = handleRetryError(error)
+    return c.json(result.body, result.status)
+  }
 })
