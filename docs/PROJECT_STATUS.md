@@ -97,7 +97,7 @@
 - 首页广告位语义持续增强：前台广告组件已补“推广”标识，外链 CTA 通过 `aria-describedby` 关联离站和不发送来源页提示；组件测试与 Playwright smoke 同步覆盖站内/外链差异，避免安全提示仅停留在视觉文本。
 - 后台广告预览持续增强：站点设置页的首页广告实时预览已使用不可跳转预览模式，保留前台同款广告视觉和外链安全提示，但不渲染可点击链接，避免运营编辑配置时误点离开后台。
 - 公开 URL 混淆地址回归增强：公开站点设置 URL、首页广告 URL 和广告组件边界测试已覆盖十进制、十六进制、八进制、短写 IPv4 与 IPv6 地址写法，确保浏览器归一化后的本机/非公网地址不会被误放行。
-- CI 运行时持续增强：GitHub Actions 已升级到原生 Node 24 action runtime 的 checkout、setup-node 和 upload-artifact 版本；pnpm 安装改为 `corepack enable` shell 步骤，避免继续加载 Node 20 action。项目命令自身仍由 `setup-node` 固定使用 Node 20。
+- CI 运行时持续增强：GitHub Actions 已升级到原生 Node 24 action runtime 的 checkout、setup-node 和 upload-artifact 版本；pnpm 安装改为 `corepack enable` shell 步骤，避免继续加载 Node 20 action。项目命令自身已由 `setup-node` 固定使用 Node 24，并与当前 Nuxt/Wrangler 的 Node engines 要求对齐。
 - 首页广告位外链透明度增强：前台广告 CTA 和后台实时预览已在离站提示中展示清洗后的目标域名，并将域名写入外链按钮无障碍名称，避免泛化按钮文案掩盖实际跳转目标。
 - 首页广告位长域名响应式增强：前台广告离站提示、赞助来源和后台预览链接已允许长域名/长 URL 断行，Playwright smoke 使用长外链域名覆盖四个视口，避免安全提示本身造成横向溢出。
 - 前端 API 错误解析持续增强：新增统一错误消息解析工具，注册、忘记密码和后台图库批量操作已移除内联 `JSON.parse(e.data)`，统一优先展示标准错误体 `message` 并兼容历史 `error` 字段。
