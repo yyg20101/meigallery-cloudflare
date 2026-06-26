@@ -54,10 +54,12 @@ jobs:
       - name: 上传 API 覆盖率报告
         uses: actions/upload-artifact@v7
         if: always()
+        continue-on-error: true
         with:
           name: api-coverage
           path: packages/api/coverage/
           if-no-files-found: ignore
+          retention-days: 7
 
       - name: 安装 Playwright 浏览器
         run: pnpm --filter @meigallery/web exec playwright install --with-deps chromium
