@@ -1,6 +1,6 @@
 # 项目当前状态
 
-更新时间：2026-06-16
+更新时间：2026-06-23
 
 本文档是当前实现和部署状态的索引。若历史计划或早期 PRD 与本文冲突，以本文、`AGENTS.md`、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md`、`docs/GIT_WORKFLOW.md` 为准。
 
@@ -29,6 +29,7 @@
 ## 功能实现现状
 
 - 已实现：公开图库/标签/搜索/真实案例、登录注册、用户名登录、邮箱验证开关、用户中心、个人设置、后台图库/标签/用户/设置/审计、独立首页广告位管理、多广告排序、大图上传、首页广告轮播、广告排期与安全清洗、首页内容配置保存校验和公开读取兜底、右下角服务流程/消息悬浮入口强化、图库批量操作、图片上传、封面设置、单媒体 rank 配置、WordPress 迁移辅助、Telegram `gallery` / `case` 外部导入、Facebook Pixel 设置。
+- Telegram 外部导入当前边界明确为平台提供 API 接收端，不内置 Telegram Bot 本体；已支持 Import Token 管理、`file_id` 接收、幂等、异步拉取、R2 入库、草稿创建、Bot 侧重试、后台记录查看和后台失败重试。Ops Hub 自动导入由上游解析 caption 后提交标准 JSON，平台只接受 `gallery` / `case`，对接契约见 `docs/TELEGRAM_IMPORT_API.md`。
 - 部分实现：zip 导入任务有 API 和后台入口，但当前重点实现和测试集中在解析/校验与任务记录；大文件异步完整处理仍需按后续阶段继续收敛。
 - 未接入：Cloudflare Stream 生产视频上传、编码和播放链路；相关字段、secret、媒体签名逻辑保留为规划能力。
 - 当前实现：站内一方数据分析能力已形成可落地需求方案、实施计划和后台数据大盘 UI 设计；当前已落地 Phase 0 基础契约、Phase 1 D1 schema、Phase 2 公开采集 API、Phase 3 邀请码转化闭环、Phase 4 Web 轻量 SDK、Phase 5 核心业务事件、Phase 6 API 侧聚合/报表能力、Phase 7 后台页面/导航和 Phase 8 验证/上线护栏，并已补齐推广来源创建与追踪链接管理。已覆盖共享分析类型/常量、事件 props 白名单、URL/referrer 清洗、来源归因、运营时区日期、D1 rows read/write 预算读取、公开分析开关读取，`analytics_*`、`analytics_tracking_sources`、`invite_codes`、`invite_registrations`、聚合日报和导出任务迁移，`/api/analytics/events`、`/api/analytics/session/end`、关闭态 disabled 响应、IP/visitor/session 三维兜底限流、采集健康日报写入，`/api/invites/:code/status` 公开状态查询，`/api/admin/invite-codes` 后台管理、`/api/admin/tracking-sources` 推广来源管理、注册成功绑定邀请上下文，管理员首次发放 rank > 0 会员时回填邀请转化，Web 端 URL 预清洗、route 归一化、visitor/session 队列、UTM/referrer/`mg_source` 来源上下文、`sendBeacon` 兜底、15 秒本地时长累计、注册邀请码校验、登录/注册关键事件、首页广告曝光/点击、图库卡片曝光/点击、图库详情浏览、图片查看器打开、会员 CTA、点赞成功、搜索/筛选/排序/加载更多、联系与规则入口事件，API Worker 侧可信 `media_access_granted` / `media_access_denied` 媒体授权事件，Cron 日报聚合与保留期清理，`/api/admin/analytics/*` 后台分析查询、owner-only session 脱敏明细和 owner-only CSV 导出到 R2。后台已新增 `/admin/analytics` 及来源、内容、链路、点击、时长、邀请、健康子页，`/admin/invite-codes` 跳转入口，统一时间范围、加载、错误、空数据、D1 usage 状态，owner-only 导出按钮，以及邀请码创建、禁用和创建后复制完整邀请链接；来源页已支持创建推广来源、复制标准追踪链接、停用来源，并在来源报表中展示已创建来源表现。Phase 8 已补 Playwright smoke、mock API、10,000 sessions/day 写入成本 fixture、100,000 事件规模后台报表性能 fixture、部署上线顺序和回滚说明；采集开关默认关闭，生产启用必须按 D1 migrations -> API -> Web SDK -> 后台 -> Owner 开关顺序执行。
@@ -96,7 +97,7 @@
 - 首页广告位语义持续增强：前台广告组件已补“推广”标识，外链 CTA 通过 `aria-describedby` 关联离站和不发送来源页提示；组件测试与 Playwright smoke 同步覆盖站内/外链差异，避免安全提示仅停留在视觉文本。
 - 后台广告预览持续增强：站点设置页的首页广告实时预览已使用不可跳转预览模式，保留前台同款广告视觉和外链安全提示，但不渲染可点击链接，避免运营编辑配置时误点离开后台。
 - 公开 URL 混淆地址回归增强：公开站点设置 URL、首页广告 URL 和广告组件边界测试已覆盖十进制、十六进制、八进制、短写 IPv4 与 IPv6 地址写法，确保浏览器归一化后的本机/非公网地址不会被误放行。
-- CI 运行时持续增强：GitHub Actions 已升级到原生 Node 24 action runtime 的 checkout、setup-node 和 upload-artifact 版本；pnpm 安装改为 `corepack enable` shell 步骤，避免继续加载 Node 20 action。项目命令自身仍由 `setup-node` 固定使用 Node 20。
+- CI 运行时持续增强：GitHub Actions 已升级到原生 Node 24 action runtime 的 checkout、setup-node 和 upload-artifact 版本；pnpm 安装改为 `corepack enable` shell 步骤，避免继续加载 Node 20 action。项目命令自身已由 `setup-node` 固定使用 Node 24，并与当前 Nuxt/Wrangler 的 Node engines 要求对齐。
 - 首页广告位外链透明度增强：前台广告 CTA 和后台实时预览已在离站提示中展示清洗后的目标域名，并将域名写入外链按钮无障碍名称，避免泛化按钮文案掩盖实际跳转目标。
 - 首页广告位长域名响应式增强：前台广告离站提示、赞助来源和后台预览链接已允许长域名/长 URL 断行，Playwright smoke 使用长外链域名覆盖四个视口，避免安全提示本身造成横向溢出。
 - 前端 API 错误解析持续增强：新增统一错误消息解析工具，注册、忘记密码和后台图库批量操作已移除内联 `JSON.parse(e.data)`，统一优先展示标准错误体 `message` 并兼容历史 `error` 字段。

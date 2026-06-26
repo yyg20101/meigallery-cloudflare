@@ -41,6 +41,7 @@ API coverage 当前使用 Vitest v8 provider，报告目录为 `packages/api/cov
 - D1 通过测试内 mock 对象模拟 `prepare().bind().first()/all()/run()` 行为。
 - R2 在涉及上传/删除的路由测试中使用内联 mock。
 - Telegram 文件拉取测试 mock `fetch`，覆盖 getFile、download 和 MIME 校验。
+- Telegram 外部导入测试覆盖 `gallery` / `case` payload 校验、拒绝旧 `testimonial_case`、Import Token 权限、`sourceBotKey` allowlist、重复 `externalMessageId` 和后台外部导入记录查询；Ops Hub caption parser 属于上游仓库测试范围。
 - Playwright smoke 使用 `packages/web/tests/e2e/mock-api.mjs` 提供公开设置、登录态、图库、搜索、案例、联系方式和后台概览数据，不依赖线上 API、真实 D1/R2 或外部图片。
 - 测试隔离依赖每个测试构造新 mock；未发现全局 setup 文件。
 

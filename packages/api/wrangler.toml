@@ -37,6 +37,7 @@ CORS_ORIGIN = "https://616618.xyz,https://www.616618.xyz"
 EMAIL_FROM = "noreply@616618.xyz"
 SITE_URL = "https://616618.xyz"
 IMAGE_RESIZING_ENABLED = "true"
+IMPORT_TOKEN_DAILY_LIMIT = "100"
 
 [observability]
 enabled = true
@@ -73,6 +74,7 @@ CORS_ORIGIN = ""
 EMAIL_FROM = "noreply@616618.xyz"
 SITE_URL = "https://616618.xyz"
 IMAGE_RESIZING_ENABLED = "false"
+IMPORT_TOKEN_DAILY_LIMIT = "100"
 
 # 敏感变量需通过 wrangler secret put 设置：
 # corepack pnpm --filter @meigallery/api exec wrangler secret put SESSION_SECRET
@@ -80,3 +82,5 @@ IMAGE_RESIZING_ENABLED = "false"
 # corepack pnpm --filter @meigallery/api exec wrangler secret put STREAM_ACCOUNT_ID
 # corepack pnpm --filter @meigallery/api exec wrangler secret put STREAM_API_TOKEN
 # corepack pnpm --filter @meigallery/api exec wrangler secret put TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT
+# sourceBotKey=ops_case_bot 时：
+# corepack pnpm --filter @meigallery/api exec wrangler secret put TELEGRAM_BOT_TOKEN_OPS_CASE_BOT

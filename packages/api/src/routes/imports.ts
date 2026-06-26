@@ -55,7 +55,7 @@ function handleImportError(error: unknown, fallbackMessage: string) {
   return { body: importErrorBody(new ImportError('IMPORT_PROCESS_FAILED', fallbackMessage, 500)), status: 500 as const }
 }
 
-function scheduleImport(c: { executionCtx: ExecutionContext }, task: Promise<void>) {
+function scheduleImport(c: { executionCtx: { waitUntil: (task: Promise<unknown>) => void } }, task: Promise<void>) {
   try {
     c.executionCtx.waitUntil(task)
   } catch {

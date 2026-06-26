@@ -4,33 +4,39 @@
   "private": true,
   "description": "中文响应式图库平台 - Cloudflare Workers 全栈部署（monorepo）",
   "scripts": {
-    "dev": "pnpm -r --parallel dev",
-    "dev:web": "pnpm --filter @meigallery/web dev",
-    "dev:api": "pnpm --filter @meigallery/api dev",
-    "build": "pnpm -r build",
-    "build:web": "pnpm --filter @meigallery/web build",
-    "build:api": "pnpm --filter @meigallery/api build",
-    "deploy": "pnpm -r deploy",
-    "deploy:web": "pnpm --filter @meigallery/web deploy",
-    "deploy:api": "pnpm --filter @meigallery/api deploy",
+    "dev": "corepack pnpm -r --parallel dev",
+    "dev:web": "corepack pnpm --filter @meigallery/web dev",
+    "dev:api": "corepack pnpm --filter @meigallery/api dev",
+    "build": "corepack pnpm -r build",
+    "build:web": "corepack pnpm --filter @meigallery/web build",
+    "build:api": "corepack pnpm --filter @meigallery/api build",
+    "deploy": "corepack pnpm -r deploy",
+    "deploy:web": "corepack pnpm --filter @meigallery/web deploy",
+    "deploy:api": "corepack pnpm --filter @meigallery/api deploy",
     "verify:seo:production": "node scripts/verify-production-seo.mjs",
     "test:scripts": "node --test scripts/*.test.mjs",
     "lint": "eslint \"packages/**/*.{ts,js,mjs,vue}\" --max-warnings=0",
-    "typecheck": "pnpm -r typecheck",
-    "db:migrate:local": "pnpm --filter @meigallery/api db:migrate:local",
-    "db:migrate:remote": "pnpm --filter @meigallery/api db:migrate:remote"
+    "typecheck": "corepack pnpm -r typecheck",
+    "db:migrate:local": "corepack pnpm --filter @meigallery/api db:migrate:local",
+    "db:migrate:remote": "corepack pnpm --filter @meigallery/api db:migrate:remote"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "eslint": "^10.4.0",
-    "eslint-plugin-vue": "^10.9.1",
-    "globals": "^17.6.0",
-    "typescript": "^5.6.0",
-    "typescript-eslint": "^8.60.0",
-    "vue-eslint-parser": "^10.4.0"
+    "eslint": "^10.5.0",
+    "eslint-plugin-vue": "^10.9.2",
+    "globals": "^17.7.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.62.0",
+    "vue-eslint-parser": "^10.4.1"
   },
-  "packageManager": "pnpm@9.14.2",
+  "pnpm": {
+    "overrides": {
+      "esbuild": "^0.28.1",
+      "glob": "^13.0.6"
+    }
+  },
+  "packageManager": "pnpm@10.34.4+sha512.8768be55200ae3f2226b6527fcca2687e14bc4e5f12d7721a0f25da3df47915177058648db4177baf348120fa0ba2752d8d8d93f6beaf1fe64ae18da8de961af",
   "engines": {
-    "node": ">=20.0.0"
+    "node": "^22.12.0 || ^24.11.0 || >=26.0.0"
   }
 }

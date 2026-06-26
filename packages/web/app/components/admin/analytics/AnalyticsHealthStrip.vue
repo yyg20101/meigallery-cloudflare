@@ -38,7 +38,7 @@ const statusText = computed(() => {
 
 const detailText = computed(() => {
   if (!hasHealth.value) return '还没有收到分析事件，开启并访问前台后会生成健康记录'
-  return `Accepted ${formatAnalyticsNumber(accepted.value)} · Rejected ${formatAnalyticsNumber(rejected.value)} · Duplicate ${formatAnalyticsNumber(duplicate.value)}`
+  return `已接收 ${formatAnalyticsNumber(accepted.value)} · 拒绝 ${formatAnalyticsNumber(rejected.value)} · 去重 ${formatAnalyticsNumber(duplicate.value)}`
 })
 </script>
 

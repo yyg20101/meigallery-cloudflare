@@ -134,6 +134,20 @@ export function analyticsRangeQuery(range: AnalyticsRangePreset, date: string): 
   return { range: range as AnalyticsRangeQuery['range'] }
 }
 
+export function analyticsDuplicateRate(duplicate: unknown, accepted: unknown) {
+  const duplicateCount = Math.max(0, Number(duplicate ?? 0))
+  const acceptedCount = Math.max(0, Number(accepted ?? 0))
+  const receivedCount = acceptedCount + duplicateCount
+  return receivedCount > 0 ? duplicateCount / receivedCount : 0
+}
+
+export function isAnalyticsDuplicateRisk(duplicate: unknown, accepted: unknown) {
+  const duplicateCount = Math.max(0, Number(duplicate ?? 0))
+  if (duplicateCount <= 0) return false
+  const rate = analyticsDuplicateRate(duplicateCount, accepted)
+  return duplicateCount >= 10 || (duplicateCount >= 3 && rate >= 0.01)
+}
+
 function initialAnalyticsDate(value: unknown) {
   const raw = Array.isArray(value) ? value[0] : value
   return normalizeDateInput(raw) || todayDateInputValue()

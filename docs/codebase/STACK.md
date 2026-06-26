@@ -5,8 +5,8 @@
 | 范围 | 当前值 | 证据 |
 |------|--------|------|
 | 主要语言 | TypeScript / Vue Single File Component | `packages/api/src/index.ts`、`packages/web/app/app.vue`、`packages/shared/src/types/index.ts` |
-| Node 版本要求 | Node.js `>=20.0.0` | `package.json` |
-| 包管理器 | pnpm workspace，锁定 `pnpm@9.14.2` | `package.json`、`pnpm-workspace.yaml`、`pnpm-lock.yaml` |
+| Node 版本要求 | Node.js `^22.12.0 \|\| ^24.11.0 \|\| >=26.0.0` | `package.json`；与 Nuxt/Wrangler 当前 engines 对齐 |
+| 包管理器 | pnpm workspace，锁定 `pnpm@10.34.4` | `package.json`、`pnpm-workspace.yaml`、`pnpm-lock.yaml` |
 | 前端运行时 | Nuxt 4 + Vue 3，Nitro preset `cloudflare-module` | `packages/web/package.json`、`packages/web/nuxt.config.ts` |
 | API 运行时 | Hono on Cloudflare Workers | `packages/api/package.json`、`packages/api/src/index.ts`、`packages/api/wrangler.toml` |
 | 数据运行时 | Cloudflare D1 + R2 + Email binding | `packages/api/wrangler.toml`、`packages/api/src/index.ts` |
@@ -15,12 +15,12 @@
 
 | 依赖 | 版本声明 | 作用 | 证据 |
 |------|----------|------|------|
-| `nuxt` | `^4.4.4` | Web Worker SSR/CSR 应用框架 | `packages/web/package.json` |
-| `vue` | `^3.5.0` | 前端组件运行时 | `packages/web/package.json` |
-| `vue-router` | `^4.4.0` | 前端路由 | `packages/web/package.json` |
-| `@nuxt/ui` | `^4.7.1` | 后台和部分 UI 组件基础 | `packages/web/package.json` |
-| `tailwindcss` | `^4.2.4` | 前台和后台样式工具 | `packages/web/package.json`、`packages/web/app/assets/css/main.css` |
-| `hono` | `^4.6.0` | API Worker HTTP 路由框架 | `packages/api/package.json` |
+| `nuxt` | `^4.4.8` | Web Worker SSR/CSR 应用框架 | `packages/web/package.json` |
+| `vue` | `^3.5.38` | 前端组件运行时 | `packages/web/package.json` |
+| `vue-router` | `^5.1.0` | 前端路由 | `packages/web/package.json` |
+| `@nuxt/ui` | `^4.9.0` | 后台和部分 UI 组件基础 | `packages/web/package.json` |
+| `tailwindcss` | `^4.3.1` | 前台和后台样式工具 | `packages/web/package.json`、`packages/web/app/assets/css/main.css` |
+| `hono` | `^4.12.27` | API Worker HTTP 路由框架 | `packages/api/package.json` |
 | `@meigallery/shared` | workspace | 共享类型、常量和工具 | `packages/api/package.json`、`packages/web/package.json`、`packages/shared/package.json` |
 
 ## 3. 开发工具链

@@ -71,5 +71,17 @@ export default defineNuxtConfig({
     optimizeDeps: {
       include: ['vue', 'vue-router'],
     },
+    build: {
+      rollupOptions: {
+        onwarn(warning, warn) {
+          const message = typeof warning === 'string' ? warning : warning.message
+          const id = typeof warning === 'string' ? '' : warning.id || ''
+          const plugin = typeof warning === 'string' ? '' : warning.plugin || ''
+          if (plugin === 'nuxt:module-preload-polyfill' && message.includes('Sourcemap is likely to be incorrect')) return
+          if (id.includes('@vueuse/core/dist/index.js') && message.includes('#__PURE__')) return
+          warn(warning)
+        },
+      },
+    },
   },
 })

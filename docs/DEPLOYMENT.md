@@ -113,6 +113,8 @@ corepack pnpm verify:seo:production -- --expect-site-name 星耀传媒 --expect-
 | `STREAM_API_TOKEN` | API Worker secret | Stream API 令牌 |
 | `CORS_ORIGIN` | API Worker vars | 前端域名（如 `https://616618.xyz`） |
 | `IMAGE_RESIZING_ENABLED` | API Worker vars | 是否启用 Cloudflare Images Transformations；启用前需在 Dashboard 打开 Images > Transformations |
+| `IMPORT_TOKEN_DAILY_LIMIT` | API Worker vars | 单个 Import Token 每日可创建的外部导入记录上限，未设置时 API 默认 100 |
+| `TELEGRAM_BOT_TOKEN_<SOURCE_BOT_KEY>` | API Worker secret | Telegram 外部导入拉取 file_id 所需 Bot Token，例如 `ops_gallery_bot` 对应 `TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT` |
 | `NUXT_PUBLIC_API_BASE_URL` | Web Worker vars | API 地址（如 `https://api.616618.xyz`） |
 
 设置 secret：
@@ -122,6 +124,9 @@ corepack pnpm --filter @meigallery/api exec wrangler secret put SESSION_SECRET
 corepack pnpm --filter @meigallery/api exec wrangler secret put TURNSTILE_SECRET_KEY
 corepack pnpm --filter @meigallery/api exec wrangler secret put STREAM_ACCOUNT_ID
 corepack pnpm --filter @meigallery/api exec wrangler secret put STREAM_API_TOKEN
+corepack pnpm --filter @meigallery/api exec wrangler secret put TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT
+# 如有独立案例导入 Bot：
+corepack pnpm --filter @meigallery/api exec wrangler secret put TELEGRAM_BOT_TOKEN_OPS_CASE_BOT
 ```
 
 ## 6. Cloudflare 产品绑定
@@ -245,6 +250,10 @@ head_sampling_rate = 1
 - [ ] CORS_ORIGIN 和 NUXT_PUBLIC_API_BASE_URL 已设置
 - [ ] Turnstile site key 已在前端配置
 - [ ] 后台管理员账号已创建
+- [ ] 外部导入所需 Import Token 已在后台创建，权限、过期时间和 `allowedSourceBotKeys` 已确认
+- [ ] 每个 `sourceBotKey` 对应的 `TELEGRAM_BOT_TOKEN_<SOURCE_BOT_KEY>` secret 已配置
+- [ ] 如接入 Ops Hub 自动导入，Ops Hub 侧 `sourceBotKey` 与 MeiGallery Import Token allowlist 完全一致，且只提交 `metadata.type=gallery/case`
+- [ ] 已用 Ops Hub 或等价脚本完成 `#gallery` 单图、`#case` 相册、重复 `externalMessageId`、未授权 `sourceBotKey` 和旧 `testimonial_case` 拒绝验收
 - [ ] WAF 和基本 rate limiting 已启用
 - [ ] 登录、搜索、详情、媒体权限、导入流程通过验收
 - [ ] 数据分析 migrations、API、Web、后台页面和 Owner 开关顺序已完成；默认关闭态和回滚 disabled 响应已验证
