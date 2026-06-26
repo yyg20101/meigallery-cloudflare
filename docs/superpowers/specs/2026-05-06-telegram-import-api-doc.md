@@ -2,6 +2,8 @@
 
 本文档面向自定义 Telegram Bot / Ops Hub 开发者，说明如何把 Telegram 消息解析为结构化字段，并通过 MeiGallery `file_id` 异步导入 API 创建图库或真实案例草稿。
 
+> 当前实现类型已经统一为 `gallery` / `case`。旧 `testimonial_case` 仅属于历史命名，新的请求会被校验拒绝。
+
 ## 1. 接入概览
 
 **Base URL**
@@ -168,9 +170,9 @@ curl -X POST "https://api.616618.xyz/api/imports/telegram-file-id" \
 ### 5.1 Request Schema
 
 ```ts
-type TestimonialFileIdImportRequest = {
+type CaseFileIdImportRequest = {
   metadata: {
-    type: 'testimonial_case'
+    type: 'case'
     source: 'telegram'
     externalMessageId: string
     title: string
@@ -208,7 +210,7 @@ curl -X POST "https://api.616618.xyz/api/imports/telegram-file-id" \
   -H "Content-Type: application/json" \
   --data '{
     "metadata": {
-      "type": "testimonial_case",
+      "type": "case",
       "source": "telegram",
       "externalMessageId": "-1001234567890:789",
       "title": "会员反馈 2026-05-06",

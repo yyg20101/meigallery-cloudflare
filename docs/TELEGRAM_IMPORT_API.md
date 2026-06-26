@@ -19,6 +19,14 @@ Bot 侧负责：
 - 使用 Bot 自己上下文中的 Telegram `file_id` 组装 payload。
 - 处理接口返回、轮询状态，并在需要时调用重试接口。
 
+Ops Hub 自动导入约定：
+
+- Ops Hub 可以把授权 Telegram 源端中的图片消息或相册自动转成本文档定义的 JSON payload。
+- MeiGallery 不解析 Telegram caption；`#gallery`、`#case`、`标题`、`slug`、`标签`、`等级` 等字段属于 Ops Hub 上游解析约定。
+- MeiGallery 只接收标准化后的 `metadata.type=gallery` 或 `metadata.type=case`，旧 `testimonial_case` 会被拒绝。
+- Ops Hub 应使用稳定 `externalMessageId` 和 slug；重复提交同一 `externalMessageId` 时 MeiGallery 返回 `duplicate`，不创建第二个草稿。
+- 管理员可在 MeiGallery 后台 `/admin/external-import-records` 查看 Ops Hub 自动导入记录、文件状态、错误摘要和目标草稿链接。
+
 ## 2. 环境配置
 
 每个 `sourceBotKey` 都必须对应一个 API Worker secret。命名规则：
@@ -228,6 +236,7 @@ POST /api/admin/external-import-records/:id/retry
 - 外部 Bot 使用有效 token 和允许的 `sourceBotKey` 调用创建接口后返回 `pending_media_fetch`。
 - API 能根据 Telegram `file_id` 拉取图片、写入 R2，并创建 `gallery` 或 `case` 草稿。
 - 重复 `externalMessageId` 不创建重复草稿。
+- 旧 `metadata.type=testimonial_case` 被拒绝，Ops Hub 自动导入只能使用 `gallery` / `case`。
 - 失败记录可通过 Bot 侧或后台详情页重试。
 - 后台外部导入记录能查看状态、文件、错误摘要和目标草稿链接。
 - 日志、后台页面和响应体不输出 Import Token 明文、Telegram Bot Token、Telegram 文件下载 URL 或 R2 私有直链。

@@ -804,6 +804,8 @@ queued → processing → completed
 - 导入类型仅允许 `gallery` 和 `case`，真实案例使用 `case`。
 - Import Token 权限使用 `gallery:create` 和 `case:create`，真实案例不再使用旧权限名。
 - 当前项目不内置 Telegram Bot；外部 Bot / Ops Hub 负责监听 Telegram 和提交结构化 JSON，平台只提供接收、拉取、入库、状态查询和重试能力。
+- Ops Hub 自动导入中的 `#gallery`、`#case`、`标题`、`slug`、`标签`、`等级` 是上游 caption 解析约定；MeiGallery API 不解析 caption，只校验标准化 JSON。
+- 同一 `token + source + externalMessageId` 重复提交返回 `duplicate`，不创建第二个草稿；Ops Hub 需要继续查询原 `importId`。
 - `sourceBotKey` 对应 API Worker secret，命名规则为 `TELEGRAM_BOT_TOKEN_${sourceBotKey.toUpperCase()}`，例如 `ops_gallery_bot` 对应 `TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT`。
 - Bot 侧可调用 `/api/imports/:importId/retry` 重试失败记录；后台详情页也可调用 `/api/admin/external-import-records/:id/retry` 手动重试。
 - `case` 导入写入 `cases` / `case_images`，R2 key 使用 `cases/{caseId}/{imageId}.{ext}`。
@@ -864,6 +866,7 @@ queued → processing → completed
 - **图库互动**：galleries 表新增 `like_count`，`gallery_likes` 记录用户点赞关系（migration 0013）。
 - **真实案例命名**：当前使用 `cases` / `case_images`、公开路由 `/cases`、后台路由 `/admin/cases`，旧 `testimonial_*` 命名已通过 migration 0017 清理。
 - **Telegram 外部导入**：当前导入类型为 `gallery` / `case`，权限为 `gallery:create` / `case:create`，不再接受旧 `testimonial_case`。
+- **Ops Hub 自动导入对接**：MeiGallery 只接收 Ops Hub 已解析好的 JSON payload；caption 触发、slug 缺省生成、图片排序和类型选择由 Ops Hub 保证，平台侧通过 Import Token、`sourceBotKey`、payload 校验和幂等约束兜底。
 - **生产域名**：Web 站点 `616618.xyz`，API 服务 `api.616618.xyz`。
 - **Dev 环境 Worker**：当前配置为 `meigallery-web-dev` / `meigallery-api-dev`，仅使用 Workers dev 子域，不绑定生产域名。
 
