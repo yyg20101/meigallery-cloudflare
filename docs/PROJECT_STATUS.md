@@ -7,7 +7,7 @@
 ## 文档边界
 
 - 已清理历史 PRD、旧计划、旧评审台账、旧线框图和过期 Superpowers 方案，避免后续开发继续引用历史口径。
-- 当前保留 `docs/superpowers/specs/2026-07-08-meta-capi-attribution-layer-design.md` 作为 Meta CAPI 与归因层的下一阶段设计输入；该设计尚未完全实施。
+- 当前保留 `docs/superpowers/specs/2026-07-08-meta-capi-attribution-layer-design.md` 作为 Meta 归因与转化事件账本的下一阶段设计输入；该设计尚未实施。
 - 新需求进入实施时，应直接更新当前 PRD、技术规格、UI 设计或专项文档，不再恢复历史归档目录。
 
 ## 技术栈现状
@@ -44,7 +44,7 @@
 
 - Cloudflare Stream 视频上传、编码、播放和受保护视频访问链路。
 - 完整 zip 大文件上传、解压和异步导入处理。
-- Meta Conversions API 服务端回传和去重层，按当前 Meta CAPI 设计单独实施。
+- Meta Conversions API 服务端回传、去重层和站内转化事件账本，按当前 Meta 归因设计单独实施。
 - Meta Marketing API 广告花费、campaign、ad set、ad 数据导入暂不属于当前实现范围。
 
 ## 当前文档入口
@@ -59,7 +59,7 @@
 - `docs/TELEGRAM_IMPORT_API.md`：Telegram 外部导入 API 对接契约。
 - `docs/SEO_CONFIGURATION.md`：SEO 关键词和运营配置说明。
 - `docs/codebase/*.md`：代码库结构、架构、集成、测试和风险分析。
-- `docs/superpowers/specs/2026-07-08-meta-capi-attribution-layer-design.md`：Meta CAPI 与归因层下一阶段设计。
+- `docs/superpowers/specs/2026-07-08-meta-capi-attribution-layer-design.md`：Meta 归因与转化事件账本下一阶段设计。
 
 ## Git 状态
 

@@ -1,105 +1,146 @@
-# Meta CAPI 统一转化归因层设计
+# Meta 归因与转化事件账本设计
+
+状态：设计稿，尚未实施。
+
+更新时间：2026-07-08
 
 ## 1. 背景
 
-站点已经完成浏览器端 Meta Pixel MVP，并在后台数据分析中建立了一方 analytics 体系。当前 Pixel 能覆盖 `PageView`、`ViewContent`、`Search`、`Contact`、`Lead`、`CompleteRegistration`、`StartTrial` 等事件；后台数据分析则以站内事件、UTM、推广链接和 referrer 为数据源，不读取 Meta Pixel 回传。
+当前站点已经具备三类能力：
 
-随着 Facebook / Instagram 广告准备启动，仅靠浏览器 Pixel 会遇到广告拦截、浏览器隐私限制、iOS 信号损失和事件去重不可观测等问题。Meta 后台也已经提示接入 Conversions API。本设计把前一份“Facebook 广告投放启动设计”推进为可实施的架构方案：保留站内一方数据为事实来源，自管轻量 Meta CAPI，并建立统一转化事件层。
+- 一方数据分析：`/api/analytics/events` 写入 D1，并在后台 `/admin/analytics` 展示来源、点击、趋势、SEO 和健康数据。
+- 推广来源链接：后台可创建 `mg_source`、UTM 链接，用于区分广告版本和渠道来源。
+- Meta Pixel：浏览器侧可发送 `PageView`、`ViewContent`、`Search`、`Contact`、`Lead`、`CompleteRegistration`、`StartTrial` 等事件。
 
-本阶段仍不进入实现，本文档用于明确后续 implementation plan 的范围和验收口径。
+这三类能力现在是并行接入的。典型问题是业务组件里同时调用一方 analytics 和 Meta Pixel，例如联系方式点击既调用 `useAnalytics()`，又调用 `useFacebookPixel()`。这会导致事件口径分散、`event_id` 无法统一、Meta Pixel 与未来 CAPI 难以去重，后台也容易把 UTM 来源误理解为 Pixel 回传。
 
-## 2. 目标
+本设计的目标是把归因方案重构为一个干净、可维护、可扩展的架构：**站内转化事件账本是唯一事实源，Meta Pixel、Meta Conversions API 和未来广告平台都只是同步渠道**。
 
-- 建立统一转化事件层，让站内 analytics、Meta Pixel 和 Meta CAPI 从同一个业务动作派生事件。
-- 支持高价值事件的浏览器 + 服务端双通道上报，并通过同一 Meta `event_id` 去重。
-- 让后台数据分析能展示 Meta CAPI 发送状态、失败原因、广告 UTM 效果和有效联系趋势。
-- 保持 Cloudflare-only 架构，继续使用 Workers、D1、Worker Secrets 和现有部署流程。
-- 明确合规边界：不上传邮箱、手机号、联系方式值、会员备注、私有媒体 URL、R2 key、Stream token 或后台路径。
-- 降低发布风险：不一次性重写全站 analytics，不引入新的外部云平台或第三方网关。
+## 2. 当前症结
 
-## 3. 非目标
+### 2.1 事件所有权分散
 
-- 不在本阶段接入 Meta Marketing API，不自动创建广告系列、广告组、素材或预算。
-- 不引入 Meta Conversions API Gateway、GTM Server-Side、Stape、TAGGRS、Addingwell 等外部托管链路。
-- 不把 Cloudflare Zaraz 作为站内后台数据分析的唯一来源。
-- 不对 `PageView`、普通筛选、普通浏览、后台管理行为做服务端 CAPI 上报。
-- 不接入高级匹配，不上传 hash 后的邮箱或手机号。
-- 不承诺站内后台展示 Meta 后台最终归因数；站内后台只展示站内触发数和 CAPI 发送结果。
+当前高价值业务动作的定义散落在多个文件：
 
-## 4. 成熟工具评估结论
+- `packages/web/app/components/ContactPanel.vue` 同时触发 Pixel 和站内 analytics。
+- `packages/web/app/pages/register.vue` 注册成功后分别触发 Pixel 和站内 analytics。
+- `packages/web/app/composables/useFacebookPixel.ts` 内部自行判断 `Lead`、`StartTrial` 去重。
+- `packages/web/app/composables/useAnalytics.ts` 每次独立生成站内 `eventId`，无法和 Meta `event_id` 共用。
 
-| 方案 | 结论 | 原因 |
-|------|------|------|
-| Meta Conversions API Gateway | 不作为本项目首选 | 官方、成熟、低代码，但通常需要 AWS/GCP 等外部云资源，不符合当前 Cloudflare-only 边界；对站内有效联系口径和后台看板控制力弱。 |
-| Cloudflare Zaraz | 可作为后续辅助能力 | 与 Cloudflare 栈一致，支持 Facebook Pixel、HTTP Events API、Consent Management 和 Monitoring API；但配置主要在 Cloudflare Dashboard，不完全进入 Git/PR 流程，且不能替代站内一方数据口径。 |
-| Meta Business SDK | 不作为 Worker 首期依赖 | 官方 SDK 成熟，但包体和 Node 运行时兼容风险高于本项目需要；Cloudflare Workers 虽支持 `nodejs_compat`，但 CAPI 首期只需少量 Graph API `fetch`。 |
-| 自管轻量 CAPI | 本阶段推荐 | 控制力最高，能和现有 D1 analytics、后台看板、UTM 测试链接、合规过滤和部署流程保持一致。 |
+结果是同一个用户动作没有稳定的业务主键，后续接 CAPI 时只能继续补丁式把 ID 传来传去。
 
-## 5. 核心设计决策
+### 2.2 后台口径容易混淆
 
-### 5.1 一方数据是事实来源
+后台来源分析中的 `fb`、`facebook`、`meta` 来自 UTM、推广链接或 referrer。它们是站内来源归因，不是 Pixel 或 CAPI 回传。
 
-站内 `analytics_events`、聚合表和 UTM 来源识别继续作为后台数据分析的事实来源。Meta Pixel 和 Meta CAPI 是广告平台同步通道，不反向成为后台大盘的数据源。
+当前“Meta 像素测试地址”本质是广告测试链接生成器，不是 Pixel 事件测试页，也不是 CAPI 同步状态页。这个入口有价值，但名称和位置需要调整，避免运营误读。
 
-后台展示时必须区分：
+### 2.3 重复事件治理不完整
 
-- 站内转化：用户实际触发的站内事件，例如 `contact_method_click`。
-- Pixel 触发：浏览器端已尝试发送的 Meta 事件，站内不承诺能知道 Meta 是否最终接收。
-- CAPI 发送：API Worker 调用 Meta CAPI 的结果和错误分类。
+当前 `analytics_click_daily` 有 `raw_click_count`、`effective_click_count`、`duplicate_click_count` 字段，但有效点击和重复点击还没有完整的业务幂等口径。Meta 侧也没有统一 `event_id`，因此无法可靠处理 Pixel + CAPI 的重复事件。
 
-### 5.2 统一转化事件层
+### 2.4 `StartTrial` 口径不成立
 
-新增逻辑层命名为“转化事件层”，实现时可落在前端 composable 和 API service 中。它负责把一个业务动作拆成三类输出：
+现在注册成功后会发送 `StartTrial`，但产品并没有独立的“开始试用”动作。为了广告学习质量，`StartTrial` 只能在确实有试用或免费会员体验入口时发送；注册成功不能默认等同于开始试用。
 
-```text
-用户动作
-  -> 站内 analytics 事件
-  -> 浏览器 Meta Pixel 事件
-  -> 服务端 Meta CAPI 事件
+## 3. 总体目标
+
+- 建立统一转化事件账本，让站内 analytics、Meta Pixel、Meta CAPI 从同一个业务动作派生。
+- 为每个高价值转化生成稳定 `conversion_action_id`，并为每个外部渠道事件生成可去重的 `external_event_id`。
+- 保留站内一方数据作为后台事实来源，不从 Meta 反向覆盖后台大盘。
+- 支持点击聊天跳转后立即记录有效联系事件，并保证上报失败不阻断用户跳转、复制或扫码。
+- 在后台清晰展示广告链接效果、转化趋势、Meta 同步状态和失败原因。
+- 基于 Cloudflare Workers、D1、Queues、Worker Secrets，不引入非 Cloudflare 基础设施。
+- 为未来接入 Google Ads、TikTok、Meta Marketing API 预留渠道适配层。
+
+## 4. 非目标
+
+- 不在本阶段自动创建 Meta 广告系列、广告组、素材或预算。
+- 不在本阶段导入 Meta 广告花费、展示、点击和广告后台归因结果。
+- 不把 Cloudflare Zaraz、GTM Server-Side、Stape、TAGGRS、Addingwell 等外部托管工具作为主链路。
+- 不把 Pixel 或 CAPI 当作后台数据分析的事实来源。
+- 不上传邮箱、手机号、联系方式值、会员备注、私有媒体 URL、R2 key、Stream token、session token 或后台路径。
+- 不对普通浏览、后台行为、受保护媒体访问做 CAPI 上报。
+
+## 5. 核心架构
+
+```mermaid
+flowchart LR
+  A["用户动作<br/>点击聊天 / 注册成功 / 开始试用"] --> B["useConversionTracking<br/>统一前端入口"]
+  B --> C["POST /api/conversions/events<br/>API Worker"]
+  C --> D["analytics_conversion_actions<br/>一方转化账本"]
+  C --> E["analytics_events 与现有聚合<br/>兼容后台 analytics"]
+  C --> F["analytics_conversion_deliveries<br/>渠道投递记录"]
+  F --> G["Cloudflare Queues<br/>异步投递"]
+  G --> H["Meta CAPI Adapter"]
+  B --> I["Meta Pixel Adapter<br/>同 external_event_id"]
+  D --> J["后台转化看板"]
+  F --> K["后台 Meta 同步健康"]
 ```
 
-业务组件不再分别调用 `useAnalytics()`、`useFacebookPixel()` 和 CAPI 接口，而是调用统一转化入口。这样可以避免事件名、UTM、`event_id` 和脱敏逻辑分散。
+设计原则：
 
-### 5.3 Contact / Lead 口径调整
+- 业务组件只描述业务动作，不直接知道 Meta Pixel、CAPI 或投递细节。
+- API Worker 同步写入转化账本，异步投递第三方渠道。
+- Pixel 和 CAPI 对同一个 Meta 事件使用相同 `external_event_id`。
+- 后台先看站内转化，再看渠道投递状态。
 
-当前 Pixel 方案中，`Lead` 可能由联系面板展开触发。为了匹配“有效点击”的广告优化目标，本阶段调整为：
+## 6. 关键设计决策
 
-- `contact_panel_open` 只进入站内 analytics，不再触发 Meta `Lead`。
-- 用户点击具体联系方式、复制联系方式、查看二维码或打开聊天链接时，才算有效联系动作。
-- 有效联系动作派生 Meta `Contact`。
-- 同一次会话首次有效联系动作派生 Meta `Lead`，用于广告优化目标。
+### 6.1 转化账本是唯一事实源
 
-这能减少“只是展开面板但没有真正联系”的无效转化进入 Meta 学习。
+新增 `analytics_conversion_actions` 作为高价值转化事实表。后台的“有效联系”“注册”“试用”等指标以该表和现有 analytics 聚合为准。
 
-### 5.4 Meta 事件去重规则
+Meta Pixel 和 Meta CAPI 只记录为 delivery，不反向成为事实数据源。
 
-一次业务动作生成一个 `conversion_action_id`，例如：
+### 6.2 渠道适配器模式
 
-```text
-conv_20260708_8f3k2p9x_contact
-```
+所有外部平台都通过统一 delivery 模型接入：
 
-同一个业务动作可以派生多个 Meta 事件。每个 Meta 事件单独生成 `meta_event_id`：
+- `meta_pixel`：浏览器发送，站内只能记录 attempted / skipped，不能确认 Meta 是否接收。
+- `meta_capi`：服务端发送，站内可记录 queued / sent / failed / skipped / duplicate_suppressed。
+- `first_party_analytics`：现有 `/api/analytics/events` 兼容输出。
+- 后续可扩展 `google_ads`、`tiktok_events_api` 等。
 
-```text
-conv_20260708_8f3k2p9x_contact:Contact
-conv_20260708_8f3k2p9x_contact:Lead
-```
+### 6.3 生产 CAPI 使用 Cloudflare Queues
 
-规则：
+`waitUntil` 适合轻量日志和短任务，但官方文档明确它有请求结束后的时间限制，且不提供持久重试。CAPI 属于外部网络投递，生产方案应直接使用 Cloudflare Queues：
 
-- 同一个 `meta_event_name` 的 Pixel 和 CAPI 必须使用完全相同的 `meta_event_id`。
-- 不同 Meta 事件名不共用同一个 `meta_event_id`，避免 `Contact` 和 `Lead` 在排查时混淆。
-- CAPI 侧以 `meta_event_id` 做幂等键；同一个 ID 已成功发送后，不重复调用 Meta。
+1. API Worker 写入账本和 delivery 记录。
+2. API Worker 把待发送任务投递到 Queue。
+3. Queue consumer 调用 Meta CAPI。
+4. consumer 更新 delivery 状态和日聚合。
+5. 失败按队列重试策略处理，最终进入 dead-letter 或 `failed` 状态。
 
-## 6. 事件范围
+开发环境可提供手动 flush 或短路发送能力，但生产设计不依赖 `waitUntil` 兜底。
 
-| 业务动作 | 站内事件 | Meta 事件 | 触发条件 |
-|----------|----------|-----------|----------|
-| 具体联系方式点击 | `contact_method_click` | `Contact` | 用户点击 Telegram / WeChat / email / link / copy / QR 等具体联系方法。 |
-| 首次有效联系 | `contact_method_click` | `Lead` | 同一会话第一次有效联系方式动作。 |
-| 注册成功 | `register_success` | `CompleteRegistration` | 注册 API 成功后触发。 |
-| 开始试用 | 后续显式试用事件 | `StartTrial` | 只有产品逻辑明确进入试用或免费会员体验时触发；如果当前没有独立试用动作，首期不发送 `StartTrial`。 |
+### 6.4 同意状态不再硬编码
+
+当前 `useFacebookPixel()` 中 `hasTrackingConsent()` 恒为 `true`，这不适合长期广告投放。
+
+新方案必须拆分：
+
+- 一方 analytics consent：控制站内基础分析。
+- marketing consent：控制 Pixel、CAPI 和其他广告平台同步。
+
+在完整 CMP 未上线前，后台必须显式显示当前营销追踪模式，并允许 Owner 一键关闭 Pixel 和 CAPI。
+
+### 6.5 `StartTrial` 从注册链路移除
+
+注册成功只触发 `CompleteRegistration`。
+
+`StartTrial` 必须等产品有独立试用入口、免费会员体验或试用权益发放动作后再触发。没有独立业务动作时，不发送 `StartTrial`。
+
+## 7. 事件契约
+
+### 7.1 转化动作
+
+| 转化动作 | 站内 analytics 兼容事件 | Meta 事件 | 触发条件 |
+|----------|--------------------------|-----------|----------|
+| `contact_method_click` | `contact_method_click` | `Contact` | 用户点击具体联系方式、复制联系方式、点击聊天跳转，或主动展开二维码。 |
+| `contact_lead` | `contact_method_click` | `Lead` | 同一 session 第一次有效联系动作派生，不单独要求组件触发。 |
+| `register_success` | `register_success` | `CompleteRegistration` | 注册 API 成功后触发。 |
+| `trial_start` | 后续新增显式试用事件 | `StartTrial` | 仅在产品存在明确试用动作时触发。 |
 
 不进入 CAPI 的事件：
 
@@ -107,68 +148,162 @@ conv_20260708_8f3k2p9x_contact:Lead
 - `ViewContent`
 - `Search`
 - `filter_selected`
-- `login_completed`
-- 后台 `/admin/**` 行为
+- `login_success`
+- `contact_panel_open`
+- `/admin/**` 行为
 - 受保护媒体访问行为
 
-## 7. 前端数据流
+### 7.2 有效联系口径
 
-### 7.1 转化入口
+有效联系只认用户对具体联系方式的主动动作：
 
-新增统一转化入口，实施时建议命名为 `useConversionTracking()` 或 `useMarketingConversion()`。入口职责：
+- `open_link`：打开 Telegram、WhatsApp、email、外部聊天链接等。
+- `copy`：复制联系方式值。
+- `qr_view`：主动点击二维码按钮展开二维码。
 
-- 生成 `conversion_action_id`。
-- 读取当前路由、UTM、推广链接来源、visitor/session、consent state 和设备上下文。
-- 调用站内 analytics，高价值站内事件的 `eventId` 复用 `conversion_action_id`；如果现有组件已先生成普通 analytics ID，则由转化入口统一替换为本次动作 ID。
-- 调用 `useFacebookPixel()` 发送 Meta Pixel，并传入 `eventID`。
-- 调用 API Worker CAPI 接口，发送同一批 Meta 事件和上下文。
+不计为有效联系：
 
-### 7.2 点击聊天跳转
+- 打开联系面板。
+- 鼠标 hover 自动露出二维码。
+- 查看服务流程或规则。
+- 同一 session 内对同一联系方式的短时间重复点击。
 
-联系方式跳转必须优先保证用户体验，不因为广告上报失败阻断打开聊天。
-
-推荐行为：
-
-1. 用户点击具体联系方式。
-2. 前端同步生成转化 ID 和 Meta 事件 ID。
-3. 立即触发站内 analytics、Pixel 和 CAPI 接口。
-4. 对外链 / 深链跳转使用 `navigator.sendBeacon` 或 `fetch(..., { keepalive: true })` 发送 CAPI 请求，减少页面离开导致的丢失。
-5. 按原交互打开聊天、复制内容或展示二维码。
-
-如果后续发现外链跳转丢数明显，再单独设计内部 redirect 路由；本阶段不强制引入中间跳转页。
-
-### 7.3 Pixel 调整
-
-`useFacebookPixel()` 需要从“单独上报工具”变成“可接收事件 ID 的发送器”：
-
-- `trackContactClick()` 接受 `eventId`。
-- `trackCompleteRegistration()` 接受 `eventId`。
-- `trackStartTrialOnce()` 接受 `eventId`。
-- 调用 `fbq('track', eventName, payload, { eventID })`。
-- 继续保留后台路由、敏感 URL 和调试脱敏保护。
-
-## 8. API Worker 设计
-
-### 8.1 接口
-
-新增接口：
+推荐幂等键：
 
 ```text
-POST /api/analytics/meta-capi-event
+session_id + action_name + method_type + action_type + target_id
 ```
 
-接口职责：
+同一幂等键首次写入为 effective，重复写入记录 raw 但标记 `duplicate_suppressed`，不再派生 `Lead`。
 
-- 只接收公开页面触发的高价值 Meta 事件。
-- 校验事件白名单、`meta_event_id`、URL、UTM、`fbp`、`fbc` 和业务字段长度。
-- 读取请求 IP、User-Agent 和站点 Pixel ID。
-- 根据配置和 Secret 判断是否发送 CAPI。
-- 记录 CAPI 发送状态，用于后台数据分析。
-- 非阻塞返回，不影响用户联系流程。
+### 7.3 Meta 去重规则
 
-### 8.2 配置
+一个业务动作生成一个 `conversion_action_id`：
 
-继续使用现有 Pixel 设置：
+```text
+conv_20260708_x7k2_contact_method_click
+```
+
+同一业务动作可派生多个外部事件：
+
+```text
+conv_20260708_x7k2_contact_method_click:meta:Contact
+conv_20260708_x7k2_contact_method_click:meta:Lead
+```
+
+规则：
+
+- Pixel 和 CAPI 对同一个 `event_name` 使用同一个 `external_event_id`。
+- `Contact` 与 `Lead` 不共用 ID。
+- CAPI 以 `external_event_id` 做幂等，已成功发送则不重复调用 Meta。
+- Pixel 调用使用 `fbq('track', eventName, payload, { eventID })`。
+
+## 8. 前端设计
+
+### 8.1 新增统一入口
+
+新增 `useConversionTracking()`，业务组件调用它，而不是直接调用 Pixel 或 CAPI。
+
+建议接口：
+
+```ts
+trackConversion('contact_method_click', {
+  entityType: 'contact',
+  entityId: method.id,
+  props: {
+    method_type: method.platform,
+    action_type: 'open_link',
+    location: 'floating_contact_panel',
+  },
+  flush: true,
+})
+```
+
+入口职责：
+
+- 生成或接收 `conversion_action_id`。
+- 读取 route、visitor、session、source、UTM、consent、device context。
+- 调用 API Worker 写入转化账本。
+- 调用 Pixel adapter，传入统一 `external_event_id`。
+- 对跳转型联系使用 `sendBeacon` 或 `fetch keepalive`，减少页面离开导致的丢失。
+- 不阻断用户跳转、复制、扫码和注册完成。
+
+### 8.2 保留普通 analytics
+
+普通页面浏览、搜索、筛选、曝光、时长仍由现有 `useAnalytics()` 负责。
+
+高价值转化由 `useConversionTracking()` 负责，并可同步写入现有 analytics 兼容事件。这样既不重写全站 analytics，也避免转化事件再散落到业务组件。
+
+### 8.3 Pixel adapter 改造
+
+`useFacebookPixel()` 不再拥有业务口径，只负责发送。
+
+需要改造：
+
+- 支持第四参数 `{ eventID }`。
+- 移除内部 `leadTracked`、`startTrialTracked` 业务判断。
+- 不再由 Pixel 层决定 `Contact -> Lead`。
+- 保留 admin path、敏感 URL 和 debug 脱敏保护。
+- `hasTrackingConsent()` 读取 marketing consent，不再恒为 `true`。
+
+### 8.4 组件迁移范围
+
+第一批迁移：
+
+- `ContactPanel.vue`
+- `ContactMethodItem.vue`
+- `register.vue`
+
+原则：
+
+- `ContactMethodItem.vue` 只 emit 用户动作，不做上报。
+- `ContactPanel.vue` 调用 `trackConversion()`，不直接调用 Pixel。
+- `register.vue` 注册成功后只调用 `trackConversion('register_success')`。
+- `StartTrial` 从注册成功路径移除。
+
+## 9. API Worker 设计
+
+### 9.1 公开接口
+
+新增：
+
+```text
+POST /api/conversions/events
+```
+
+职责：
+
+- 接收高价值转化动作。
+- 校验事件白名单、路径、来源字段、props 长度和敏感字段。
+- 生成或校验 `conversion_action_id`、`dedupe_key`。
+- 写入 `analytics_conversion_actions`。
+- 兼容写入现有 analytics 聚合需要的事件。
+- 创建 delivery 记录。
+- 对启用的服务端渠道投递 Queue。
+
+不建议命名为 `/api/analytics/meta-capi-event`，因为这会把公共接口绑定到 Meta。干净方案应以站内转化动作命名，Meta 只是 adapter。
+
+### 9.2 管理接口
+
+新增后台接口：
+
+```text
+GET /api/admin/analytics/conversions
+GET /api/admin/analytics/conversion-deliveries
+GET /api/admin/analytics/meta-health
+POST /api/admin/analytics/meta-test-event
+```
+
+说明：
+
+- `conversions` 展示站内转化趋势和来源质量。
+- `conversion-deliveries` 展示渠道投递状态。
+- `meta-health` 展示 Pixel ID、CAPI 开关、Secret 状态、最近成功和失败分类。
+- `meta-test-event` 由 Owner 触发测试事件，写审计日志。
+
+### 9.3 配置和 Secret
+
+保留现有设置：
 
 - `facebook_pixel_enabled`
 - `facebook_pixel_id`
@@ -176,37 +311,147 @@ POST /api/analytics/meta-capi-event
 
 新增站点设置：
 
-- `meta_capi_enabled`：Owner 可开关，默认 `false`。
-- `meta_capi_debug_enabled`：只记录脱敏调试状态，默认 `false`。
+- `meta_capi_enabled`：默认 `false`。
+- `meta_capi_debug_enabled`：默认 `false`。
+- `marketing_consent_mode`：`granted` / `limited` / `denied`，默认应谨慎，生产由 Owner 显式确认。
 
 新增 Worker Secret：
 
-- `META_CAPI_ACCESS_TOKEN`：生产和 dev 分别配置。
-- `META_CAPI_TEST_EVENT_CODE`：可选，仅用于 Meta Test Events 验证。
+- `META_CAPI_ACCESS_TOKEN`
+- `META_CAPI_TEST_EVENT_CODE`，可选，仅用于 Meta Test Events。
 
-Token 不进入 D1、前端 runtime config、后台表单或日志。Cloudflare 官方建议敏感 API key / token 使用 Worker Secret，本项目继续沿用该方式。
+Token 不进入 D1、前端 runtime config、后台表单或日志。
 
-### 8.3 发送方式
+## 10. D1 数据模型
 
-首期不引入 Cloudflare Queues。API 接收请求后：
+### 10.1 转化动作表
 
-1. 写入 `queued` 或跳过状态。
-2. 使用 Worker `waitUntil` 异步调用 Meta CAPI。
-3. Meta 返回后更新发送状态。
-4. 对网络错误和 Meta 5xx 做一次短重试。
-5. 不做持久化重试队列；如果失败，后台可见，后续根据量级评估是否升级到 Queues。
+```sql
+CREATE TABLE analytics_conversion_actions (
+  id TEXT PRIMARY KEY,
+  action_name TEXT NOT NULL,
+  dedupe_key TEXT NOT NULL,
+  dedupe_status TEXT NOT NULL DEFAULT 'effective',
+  occurred_at TEXT NOT NULL,
+  date TEXT NOT NULL,
+  visitor_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  user_id INTEGER,
+  route_name TEXT NOT NULL,
+  path TEXT NOT NULL,
+  source_channel TEXT NOT NULL DEFAULT 'unknown',
+  source_name TEXT NOT NULL DEFAULT '',
+  utm_source TEXT NOT NULL DEFAULT '',
+  utm_medium TEXT NOT NULL DEFAULT '',
+  utm_campaign TEXT NOT NULL DEFAULT '',
+  utm_content TEXT NOT NULL DEFAULT '',
+  tracking_source_slug TEXT NOT NULL DEFAULT '',
+  consent_state TEXT NOT NULL DEFAULT 'limited',
+  marketing_consent_state TEXT NOT NULL DEFAULT 'limited',
+  entity_type TEXT NOT NULL DEFAULT 'system',
+  entity_id TEXT NOT NULL DEFAULT '',
+  props TEXT NOT NULL DEFAULT '{}',
+  value REAL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+```
 
-这样可以避免用户点击聊天时等待 Meta API，同时保持实现范围可控。
+索引：
 
-## 9. CAPI Payload 口径
+```sql
+CREATE UNIQUE INDEX idx_analytics_conversion_actions_dedupe
+  ON analytics_conversion_actions(dedupe_key);
+
+CREATE INDEX idx_analytics_conversion_actions_date_source
+  ON analytics_conversion_actions(date, source_channel, source_name);
+
+CREATE INDEX idx_analytics_conversion_actions_session
+  ON analytics_conversion_actions(session_id, occurred_at);
+```
+
+### 10.2 渠道投递表
+
+```sql
+CREATE TABLE analytics_conversion_deliveries (
+  id TEXT PRIMARY KEY,
+  conversion_action_id TEXT NOT NULL,
+  channel TEXT NOT NULL,
+  external_event_name TEXT NOT NULL,
+  external_event_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  status_reason TEXT NOT NULL DEFAULT '',
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  next_retry_at TEXT,
+  last_attempt_at TEXT,
+  sent_at TEXT,
+  response_code INTEGER,
+  response_trace_id TEXT NOT NULL DEFAULT '',
+  error_code TEXT NOT NULL DEFAULT '',
+  error_message TEXT NOT NULL DEFAULT '',
+  payload_version INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+```
+
+索引：
+
+```sql
+CREATE UNIQUE INDEX idx_analytics_conversion_deliveries_external
+  ON analytics_conversion_deliveries(channel, external_event_id);
+
+CREATE INDEX idx_analytics_conversion_deliveries_status
+  ON analytics_conversion_deliveries(status, updated_at);
+```
+
+### 10.3 日聚合表
+
+```sql
+CREATE TABLE analytics_conversion_daily (
+  date TEXT NOT NULL,
+  action_name TEXT NOT NULL,
+  source_channel TEXT NOT NULL DEFAULT 'unknown',
+  source_name TEXT NOT NULL DEFAULT '',
+  utm_campaign TEXT NOT NULL DEFAULT '',
+  utm_content TEXT NOT NULL DEFAULT '',
+  effective_count INTEGER NOT NULL DEFAULT 0,
+  raw_count INTEGER NOT NULL DEFAULT 0,
+  duplicate_count INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY(date, action_name, source_channel, source_name, utm_campaign, utm_content)
+);
+
+CREATE TABLE analytics_conversion_delivery_daily (
+  date TEXT NOT NULL,
+  channel TEXT NOT NULL,
+  external_event_name TEXT NOT NULL,
+  status TEXT NOT NULL,
+  source_channel TEXT NOT NULL DEFAULT 'unknown',
+  source_name TEXT NOT NULL DEFAULT '',
+  count INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY(date, channel, external_event_name, status, source_channel, source_name)
+);
+```
+
+保留策略：
+
+- `analytics_conversion_actions` 保留至少 395 天，用于广告复盘。
+- `analytics_conversion_deliveries` 明细保留 90 天，用于排错。
+- delivery 日聚合长期保留。
+
+## 11. Meta CAPI Payload
 
 标准字段：
 
 | 字段 | 口径 |
 |------|------|
-| `event_name` | `Contact`、`Lead`、`CompleteRegistration`、`StartTrial` |
-| `event_time` | API Worker 接收时间，秒级 Unix timestamp |
-| `event_id` | Pixel 和 CAPI 共用的 `meta_event_id` |
+| `event_name` | `Contact`、`Lead`、`CompleteRegistration`、后续显式 `StartTrial` |
+| `event_time` | 转化动作发生时间，秒级 Unix timestamp |
+| `event_id` | Pixel 和 CAPI 共用的 `external_event_id` |
 | `event_source_url` | 当前公开页面 URL，过滤敏感 query/hash |
 | `action_source` | 固定为 `website` |
 
@@ -218,6 +463,7 @@ Token 不进入 D1、前端 runtime config、后台表单或日志。Cloudflare 
 | `client_user_agent` | 请求头 `User-Agent` |
 | `fbp` | 浏览器 `_fbp`，格式校验通过才发送 |
 | `fbc` | 浏览器 `_fbc` 或 `fbclid` 衍生值，格式校验通过才发送 |
+| `external_id` | 后续如需使用，只能发送稳定内部匿名 ID 的 hash；首期不启用 |
 
 `custom_data`：
 
@@ -230,7 +476,7 @@ Token 不进入 D1、前端 runtime config、后台表单或日志。Cloudflare 
 | `utm_medium` | 当前媒介 |
 | `utm_campaign` | 当前广告系列 |
 | `utm_content` | 当前素材、受众或版位 |
-| `tracking_source_slug` | 站内推广链接 slug，非必填 |
+| `tracking_source_slug` | 站内推广链接 slug |
 
 禁止字段：
 
@@ -241,165 +487,195 @@ Token 不进入 D1、前端 runtime config、后台表单或日志。Cloudflare 
 - R2 key、Stream token、私有媒体 URL
 - 后台路径和后台操作详情
 
-## 10. D1 数据模型
+## 12. 后台数据分析设计
 
-新增 CAPI 发送日志表，记录一条 Meta 事件的发送生命周期：
+后台数据分析需要从“泛 analytics 看板”升级为“分析 + 归因 + 投递健康”三层结构。
 
-```text
-meta_conversion_events
-  id                     text primary key -- meta_event_id
-  conversion_action_id   text not null
-  analytics_event_id     text
-  meta_event_name        text not null
-  status                 text not null -- queued/sent/failed/skipped/invalid/duplicate_suppressed
-  status_reason          text
-  event_source_path      text not null
-  utm_source             text
-  utm_medium             text
-  utm_campaign           text
-  utm_content            text
-  source_channel         text
-  method_type            text
-  action_type            text
-  events_received        integer
-  fbtrace_id             text
-  error_code             text
-  error_message          text -- 截断后的脱敏错误
-  occurred_at            text not null
-  sent_at                text
-  created_at             text not null
-  updated_at             text not null
-```
+### 12.1 总览页
 
-新增日聚合表，用于后台趋势和来源筛选：
+保留现有访问规模、内容兴趣、有效联系、注册 / 会员。
 
-```text
-analytics_meta_conversion_daily
-  date                   text not null
-  meta_event_name        text not null
-  status                 text not null
-  utm_source             text not null default ''
-  utm_medium             text not null default ''
-  utm_campaign           text not null default ''
-  utm_content            text not null default ''
-  source_channel         text not null default 'unknown'
-  count                  integer not null default 0
-  primary key(date, meta_event_name, status, utm_source, utm_medium, utm_campaign, utm_content, source_channel)
-```
+新增归因健康条：
 
-保留策略：
+- 今日有效联系。
+- 今日注册。
+- Meta CAPI sent / failed / skipped。
+- 最近一次成功投递时间。
+- 重复转化占比。
 
-- `meta_conversion_events` 保留 90 天，用于排查。
-- `analytics_meta_conversion_daily` 长期保留，用于趋势。
-- 每日 Cron 可清理 90 天前的发送日志。
+### 12.2 转化页
 
-## 11. 后台数据分析设计
+新增 `/admin/analytics/conversions`：
 
-后台不把 Pixel 当作数据源，而是新增“Meta 同步状态”视角。
+- 趋势图：有效联系、注册、试用。
+- 来源表：source、campaign、content、session、有效联系、注册、转化率。
+- 转化明细抽样：时间、来源、动作、是否重复、delivery 状态。
+- 单日查看沿用现有 `range=day&from=YYYY-MM-DD&to=YYYY-MM-DD` 能力。
 
-总览页新增：
+### 12.3 投放链接页
 
-- Meta CAPI 状态条：已启用 / 未启用 / Secret 缺失 / 最近成功发送时间。
-- 近 7 / 30 / 90 天 CAPI 成功数、失败数、跳过数。
-- 失败率超过阈值时进入风险队列。
+将当前“Meta 像素测试地址”改名为“广告测试链接”或“投放追踪链接”。
 
-来源页新增：
+位置建议：
 
-- 按 `utm_campaign` 和 `utm_content` 展示站内有效联系数。
-- 同表展示 CAPI `Contact` / `Lead` 成功数和失败数。
-- 明确提示：FB / Facebook / Meta 来源来自 UTM、推广链接或 referrer；不是 Pixel 回传。
+- 从来源分析侧栏移到独立的投放链接区域。
+- 默认模板支持 Meta 广告，但文案必须说明这是 UTM / mg_source 链接，不是 Pixel 地址。
+- 支持 `utm_campaign`、`utm_content`、目标页面、备注。
 
-点击页新增：
+### 12.4 Meta 同步页
 
-- 联系点击的站内有效数。
-- 对应 Meta `Contact` 发送状态。
-- 重复点击不作为有效联系，不重复触发 `Lead`。
+新增 `/admin/analytics/meta`：
 
-健康页新增：
-
+- Pixel 配置状态。
 - CAPI 配置状态。
-- 最近 Meta API 错误分类。
-- Secret 缺失、Pixel ID 缺失、CAPI disabled、参数 invalid 的计数。
+- Secret 是否存在，只显示存在 / 缺失，不显示值。
+- Test Event 触发入口。
+- 最近错误分类。
+- Contact / Lead / CompleteRegistration 的 sent、failed、skipped 趋势。
 
-## 12. 合规与同意状态
+### 12.5 视觉和交互原则
 
-本项目第一阶段不上传 PII，也不做高级匹配。广告网络发送仍属于营销追踪，需要保留同意状态接入点。
+- 后台是运营工具，布局保持紧凑、克制、可扫描。
+- 不使用营销式大 hero。
+- 趋势图优先展示变化，表格用于定位来源和错误。
+- 所有“Meta”相关卡片必须明确区分：站内来源、Pixel attempted、CAPI sent。
 
-规则：
+## 13. 合规与安全
 
-- 用户明确拒绝追踪时，不加载 Pixel，不调用 CAPI。
-- 后台和受保护媒体页面不触发 Pixel / CAPI。
-- 当前未上线完整 CMP 前，不扩大到强隐私合规地区的大预算投放。
-- 后续如果面向 EU / UK / CA 等地区投放，应优先评估 Cloudflare Zaraz CMP 或自建同意管理，再默认启用广告追踪。
+- 用户拒绝 marketing tracking 时，不加载 Pixel，不创建 Meta CAPI delivery。
+- 后台 `/admin/**`、API 路径、敏感 query、私有媒体访问路径不允许进入 Pixel / CAPI。
+- 不上传 PII 和联系方式值，即使 hash 后也不在首期启用。
+- CAPI token 只存在 Worker Secret。
+- Meta API 错误日志必须脱敏并截断。
+- Owner 修改广告追踪设置、触发测试事件、启停 CAPI 都写审计日志。
+- 如果后续面向 EU / UK / CA 等强隐私地区投放，应先接 CMP，再扩大预算。
 
-## 13. 失败处理
+## 14. 失败处理
 
 | 场景 | 行为 |
 |------|------|
-| `meta_capi_enabled=false` | 记录 `skipped`，原因 `disabled`，不调用 Meta。 |
-| `META_CAPI_ACCESS_TOKEN` 缺失 | 记录 `skipped`，原因 `missing_secret`，后台健康页提示。 |
-| Pixel ID 缺失 | 记录 `skipped`，原因 `missing_pixel_id`。 |
-| `meta_event_id` 非法 | 返回 400，记录 `invalid`；不调用 Meta。 |
-| Meta API 4xx | 记录 `failed` 和脱敏错误码；不重试。 |
-| Meta API 5xx / 网络错误 | 一次短重试，仍失败则记录 `failed`。 |
-| 同一 `meta_event_id` 重复请求 | 如果已 sent，记录或返回 `duplicate_suppressed`，不重复调用 Meta。 |
+| `meta_capi_enabled=false` | delivery 记录 `skipped`，原因 `disabled`，不入队。 |
+| `META_CAPI_ACCESS_TOKEN` 缺失 | delivery 记录 `skipped`，原因 `missing_secret`。 |
+| Pixel ID 缺失 | delivery 记录 `skipped`，原因 `missing_pixel_id`。 |
+| marketing consent denied | 不创建 Meta delivery，记录站内转化。 |
+| `external_event_id` 非法 | 返回 400，记录 invalid，不能入队。 |
+| Meta API 4xx | 记录 `failed`，不重试或按错误码判断。 |
+| Meta API 5xx / 网络错误 | Queue 自动重试，超过阈值后记录 `failed`。 |
+| 同一 external event 重复 | 已 sent 则 `duplicate_suppressed`，不重复调用 Meta。 |
 
-任何 CAPI 失败都不阻断聊天跳转、复制联系方式、二维码展示、注册完成或试用开始。
+任何投递失败都不阻断聊天跳转、复制联系方式、二维码展示或注册完成。
 
-## 14. 测试策略
+## 15. 实施阶段
+
+### 阶段 1：转化账本和统一入口
+
+- 新增 shared 转化事件类型、映射表和测试。
+- 新增 D1 转化动作表、delivery 表、日聚合表。
+- 新增 `/api/conversions/events`。
+- 新增 `useConversionTracking()`。
+- 迁移联系方式和注册成功。
+- Pixel 支持 `eventID`。
+- 移除注册成功自动 `StartTrial`。
+- 后台新增转化页基础趋势和来源表。
+
+验收：
+
+- 点击聊天跳转后生成一条有效联系转化。
+- 同一 session 首次有效联系派生 `Lead`。
+- 重复点击不重复派生 `Lead`。
+- 注册成功只触发 `CompleteRegistration`。
+- 后台单日可查有效联系和注册。
+
+### 阶段 2：Meta CAPI Queue 投递
+
+- 配置 Cloudflare Queue binding。
+- 新增 Meta CAPI adapter 和 queue consumer。
+- 新增 CAPI 设置、Secret 检查、测试事件。
+- 后台新增 Meta 同步页和错误分类。
+- 使用 Meta Test Events 验证 `Contact`、`Lead`、`CompleteRegistration`。
+
+验收：
+
+- Pixel 和 CAPI 的同一 Meta 事件共享 `event_id`。
+- Meta 后台不再提示同一事件重复上报。
+- CAPI 失败可在后台看到原因。
+- Secret 缺失、CAPI disabled 不影响站内转化。
+
+### 阶段 3：投放链接和运营看板整理
+
+- 将“Meta 像素测试地址”改为“广告测试链接”。
+- 支持 `utm_content`，用于素材、受众或版位 A/B 测试。
+- 转化页和来源页联动下钻。
+- 增加重复转化、失败率、来源质量诊断。
+
+验收：
+
+- 每条广告测试链接可以独立查看有效联系、注册、Meta delivery 状态。
+- 后台文案不再把 UTM 来源称为 Pixel 回传。
+
+## 16. 测试策略
 
 单元测试：
 
-- 转化事件 ID 和 Meta 事件 ID 生成。
+- 转化动作 ID、dedupe key、external event ID 生成。
 - Contact / Lead / CompleteRegistration / StartTrial 映射。
-- Pixel `eventID` 参数传递。
-- CAPI payload 构造和字段白名单。
-- `fbp`、`fbc`、URL、UTM、method/action 字段校验。
-- PII、敏感 URL、Token、R2 key 过滤。
-- Secret 缺失、Pixel ID 缺失、CAPI disabled 降级。
-- 幂等和重复发送抑制。
+- Pixel `eventID` 第四参数。
+- CAPI payload 字段白名单和敏感字段过滤。
+- `fbp`、`fbc`、URL、UTM、method/action 校验。
+- consent denied、CAPI disabled、Secret 缺失降级。
+- 重复点击、重复 delivery 抑制。
 
 集成测试：
 
-- 点击具体联系方式后，站内 analytics、Pixel 和 CAPI 请求共享同一转化动作 ID。
-- 同一会话首次有效联系方式点击触发 `Lead`，后续有效点击只触发 `Contact`。
-- 注册成功触发 `CompleteRegistration`。
-- 试用入口触发 `StartTrial`。
-- `/admin/**` 不触发 Pixel 或 CAPI。
-- CAPI 失败不影响用户操作。
+- 点击聊天链接后，账本、analytics 兼容事件、Pixel delivery 共享同一转化动作。
+- 注册成功后只触发 `CompleteRegistration`。
+- `/admin/**` 不触发转化。
+- Queue consumer 成功和失败路径。
+- 后台单日查询、来源筛选、Meta health。
 
 人工验收：
 
-- 使用 Meta Test Events 验证 `Contact`、`Lead`、`CompleteRegistration`、`StartTrial`。
-- 使用 Meta Pixel Helper 验证浏览器事件和 `eventID`。
-- 后台数据分析按日期、`utm_campaign`、`utm_content` 查看有效联系和 CAPI 状态。
-- 浏览器 Network 和 Worker 日志中不出现邮箱、手机号、联系方式值、token、R2 key 或私有 URL。
+- Meta Pixel Helper 验证浏览器事件和 `eventID`。
+- Meta Test Events 验证 CAPI 事件。
+- Worker Logs 不出现联系方式值、token、私有 URL。
+- 后台按日期和广告链接查看趋势。
 
-## 15. 发布步骤
+## 17. 发布和回滚
 
-1. 在 `dev` 分支完成实现并部署 dev。
-2. dev 使用测试 Pixel 或 Meta Test Events，不污染生产 Pixel。
-3. 生产前在 Cloudflare API Worker 配置 `META_CAPI_ACCESS_TOKEN`。
-4. Owner 在后台启用 `meta_capi_enabled`。
-5. 小流量验证 Contact / Lead 去重。
-6. 观察后台 CAPI 失败率和 Meta 重复事件提示。
-7. 验证稳定后再扩大广告预算。
+发布顺序：
 
-## 16. 后续增强
+1. 在 `dev` 完成阶段 1，实现后部署 dev。
+2. 使用测试广告链接验证转化账本和后台趋势。
+3. 配置 dev Queue 和测试 Pixel，完成阶段 2。
+4. 配置生产 `META_CAPI_ACCESS_TOKEN`，但保持 `meta_capi_enabled=false`。
+5. PR 合入 `main` 后手动部署生产。
+6. Owner 在后台开启 Pixel 和 CAPI。
+7. 小预算观察重复事件、失败率、有效联系质量。
 
-- 如果 CAPI 失败率高或发送量上升，升级为 Cloudflare Queues 持久化重试。
-- 如果需要区域化同意管理，评估 Cloudflare Zaraz CMP 或自建 CMP。
-- 如果需要导入 Meta 广告花费、campaign/ad set/ad 数据，再单独设计 Meta Marketing API 接入。
-- 如果需要更多平台投放，复用统一转化事件层接入 Google Ads、TikTok 或 Reddit。
-- 如果需要更强匹配质量，再在明确合规依据后评估高级匹配。
+回滚：
 
-## 17. 参考
+- 关闭 `meta_capi_enabled`：停止 CAPI 入队，不影响站内转化。
+- 关闭 `facebook_pixel_enabled`：停止 Pixel，不影响站内转化。
+- 关闭 `analytics_enabled`：回到当前一方 analytics 关闭态。
+- 如果新转化页异常，可隐藏入口，保留数据表和写入兼容。
+
+## 18. 后续增强
+
+- 接入 Meta Marketing API，导入 spend、campaign、ad set、ad 数据。
+- 接入 Google Ads、TikTok Events API。
+- 引入 CMP 或评估 Cloudflare Zaraz Consent Management。
+- 在合规依据明确后评估高级匹配。
+- 增加 LTV、会员发放后的延迟转化回传。
+
+## 19. 参考
 
 - `docs/UI_DATA_ANALYTICS_DASHBOARD.md`
+- `packages/web/app/components/ContactPanel.vue`
 - `packages/web/app/composables/useFacebookPixel.ts`
 - `packages/web/app/composables/useAnalytics.ts`
 - `packages/api/src/services/analytics-ingest.ts`
-- Meta Conversions API：`https://developers.facebook.com/documentation/ads-commerce/conversions-api`
-- Meta Conversions API Gateway：`https://developers.facebook.com/documentation/ads-commerce/gateway-products/conversions-api-gateway`
+- Meta Conversions API：`https://developers.facebook.com/docs/marketing-api/conversions-api/set-up-conversions-api-as-a-platform`
+- Meta Pixel reference：`https://developers.facebook.com/docs/meta-pixel/reference`
+- Cloudflare Workers `waitUntil`：`https://developers.cloudflare.com/workers/runtime-apis/context/`
+- Cloudflare Queues：`https://developers.cloudflare.com/queues/`
 - Cloudflare Zaraz：`https://developers.cloudflare.com/zaraz/`
-- Cloudflare Workers Secrets：`https://developers.cloudflare.com/workers/configuration/secrets/`
