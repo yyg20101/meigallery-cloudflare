@@ -140,6 +140,7 @@ describe('后台用户服务', () => {
 
     const grant = await grantAdminUserMembership(db as unknown as D1Database, 1, 1, {
       levelId: 'level_1',
+      startsAt: '2026-06-01T00:00:00Z',
       expiresAt: '2026-07-01T00:00:00Z',
       note: '  test  ',
     })
