@@ -395,7 +395,6 @@ analytics_meta_conversion_daily
 
 ## 17. 参考
 
-- `docs/superpowers/specs/2026-07-08-facebook-ads-launch-design.md`
 - `docs/superpowers/specs/2026-05-06-facebook-pixel-attribution-technical-solution.md`
 - `docs/UI_DATA_ANALYTICS_DASHBOARD.md`
 - Meta Conversions API：`https://developers.facebook.com/documentation/ads-commerce/conversions-api`
