@@ -170,9 +170,11 @@ CI 配置位于 `.github/workflows/`：
 | `docs/PRD.md` | 产品需求文档 |
 | `docs/TECHNICAL_SPEC.md` | API 路由、权限模型、模块划分、迁移流程 |
 | `docs/UI_DESIGN.md` | UI 设计初稿 |
+| `docs/UI_DATA_ANALYTICS_DASHBOARD.md` | 后台数据分析看板设计 |
 | `docs/DEPLOYMENT.md` | Cloudflare 部署方案、环境变量、域名结构 |
 | `docs/GIT_WORKFLOW.md` | Git 分支策略、Commit 规范、版本号规范 |
-| `docs/SOURCE_SITE_AUDIT.md` | 旧站 `zuole.me` WordPress 审计记录 |
+| `docs/TELEGRAM_IMPORT_API.md` | Telegram 外部导入 API 对接契约 |
+| `docs/SEO_CONFIGURATION.md` | SEO 关键词和运营配置说明 |
 
 生成实现代码前，必须先阅读本文件和 `docs/TECHNICAL_SPEC.md`。
 

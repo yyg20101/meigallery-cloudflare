@@ -543,7 +543,7 @@ CREATE INDEX idx_audit_logs_admin ON admin_audit_logs(admin_id);
 CREATE INDEX idx_audit_logs_time ON admin_audit_logs(created_at);
 ```
 
-当前后台写操作审计覆盖矩阵维护在 `docs/CODE_AND_DOC_REVIEW_ISSUES.md` 的 P2-07 小节；新增 `POST` / `PUT` / `PATCH` / `DELETE` 管理端路由时必须同步补充 `writeAuditLog` 和测试断言。
+后台写操作必须在对应 service 或 route 内调用 `writeAuditLog` 并补测试；新增 `POST` / `PUT` / `PATCH` / `DELETE` 管理端路由时必须同步添加审计日志断言。
 
 ### site_settings
 

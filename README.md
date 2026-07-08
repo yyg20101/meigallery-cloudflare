@@ -5,12 +5,14 @@
 ## 文档索引
 
 - `AGENTS.md`：项目开发指南，供编码代理和贡献者参考。
-- `docs/PRD.md`：产品需求文档。
 - `docs/PROJECT_STATUS.md`：当前实现、部署、分支和文档状态索引。
-- `docs/CODE_AND_DOC_REVIEW_ISSUES.md`：代码与文档 review 问题台账和修复方案。
+- `docs/PRD.md`：产品需求文档。
 - `docs/TECHNICAL_SPEC.md`：当前技术设计和实现状态。
-- `docs/UI_DESIGN.md`：UI 设计初稿。
 - `docs/DEPLOYMENT.md`：Cloudflare 部署与套餐说明。
+- `docs/GIT_WORKFLOW.md`：分支、PR 和发布规范。
+- `docs/UI_DESIGN.md`：全站 UI 设计约束。
+- `docs/UI_DATA_ANALYTICS_DASHBOARD.md`：后台数据分析看板设计。
+- `docs/TELEGRAM_IMPORT_API.md`：Telegram 外部导入 API 对接契约。
+- `docs/SEO_CONFIGURATION.md`：SEO 关键词和运营配置说明。
 - `docs/codebase/`：代码库结构、架构、集成、测试和风险分析。
-- `docs/SKILLS_HELPERS.md`：建议的辅助技能清单。
-- `docs/SOURCE_SITE_AUDIT.md`：旧站 `zuole.me` WordPress 公开审计记录。
+- `docs/superpowers/specs/2026-07-08-meta-capi-attribution-layer-design.md`：Meta CAPI 与归因层下一阶段设计。

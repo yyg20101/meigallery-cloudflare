@@ -5,7 +5,7 @@
 - 状态：后台数据分析大盘 UI / UX 设计基线，已用于当前 `/admin/analytics` 首版实现。
 - 日期：2026-06-07。
 - 范围：`/admin/analytics` 及其子页面的数据结构、布局、组件、交互状态、权限边界、验收标准和后续增强路线。
-- 前置文档：`docs/PRD_DATA_ANALYTICS.md`、`plan/feature-data-analytics-implementation-1.md`。
+- 关联文档：`docs/PROJECT_STATUS.md`、`docs/TECHNICAL_SPEC.md`、`docs/UI_DESIGN.md`。
 - 当前说明：本文记录当前首版大盘的设计口径和后续增强方向；标注为后续增强的内容不代表当前生产能力。
 - 2026-06-08 更新：总览页已重做为工作台式大盘，补齐采集健康条、趋势面板、转化漏斗、Top 列表、风险队列和空数据状态；健康详情页不再在无日报时显示空白。
 
@@ -455,7 +455,7 @@ Nuxt 后台页面
 
 ### 4.11 性能、成本与 Cloudflare 约束
 
-本设计延续 `docs/PRD_DATA_ANALYTICS.md` 第 8 节的 Cloudflare 成本策略。实现后台大盘时必须遵守：
+本设计延续当前 Cloudflare 成本约束和 D1 聚合优先策略。实现后台大盘时必须遵守：
 
 | 约束 | UI / API 设计动作 |
 |------|------|
@@ -546,10 +546,6 @@ Nuxt 后台页面
 
 ## 7. Related Specifications / Further Reading
 
-- `docs/PRD_DATA_ANALYTICS.md`
-- `plan/feature-data-analytics-implementation-1.md`
-- `docs/UI_DESIGN.md`
-- `docs/UI_QUALITY_REVIEW.md`
-- `docs/ui/wireframes/2026-06-07-admin-analytics-dashboard-wireframe.md`
-- `docs/TECHNICAL_SPEC.md`
 - `docs/PROJECT_STATUS.md`
+- `docs/TECHNICAL_SPEC.md`
+- `docs/UI_DESIGN.md`

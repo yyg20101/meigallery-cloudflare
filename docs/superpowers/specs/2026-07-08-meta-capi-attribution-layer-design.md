@@ -395,8 +395,10 @@ analytics_meta_conversion_daily
 
 ## 17. 参考
 
-- `docs/superpowers/specs/2026-05-06-facebook-pixel-attribution-technical-solution.md`
 - `docs/UI_DATA_ANALYTICS_DASHBOARD.md`
+- `packages/web/app/composables/useFacebookPixel.ts`
+- `packages/web/app/composables/useAnalytics.ts`
+- `packages/api/src/services/analytics-ingest.ts`
 - Meta Conversions API：`https://developers.facebook.com/documentation/ads-commerce/conversions-api`
 - Meta Conversions API Gateway：`https://developers.facebook.com/documentation/ads-commerce/gateway-products/conversions-api-gateway`
 - Cloudflare Zaraz：`https://developers.cloudflare.com/zaraz/`
