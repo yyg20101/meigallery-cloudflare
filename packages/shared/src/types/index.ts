@@ -69,6 +69,30 @@ export type AnalyticsEntityType =
 /** 分析授权/采集状态 */
 export type AnalyticsConsentState = 'granted' | 'limited' | 'denied'
 
+export type ConversionActionType =
+  | 'contact'
+  | 'lead'
+  | 'complete_registration'
+  | 'start_trial'
+  | 'membership_grant'
+
+export type ConversionMetaEventName =
+  | 'Contact'
+  | 'Lead'
+  | 'CompleteRegistration'
+  | 'StartTrial'
+
+export type ConversionDeliveryChannel = 'meta_pixel' | 'meta_capi'
+
+export type ConversionDeliveryStatus = 'pending' | 'sent' | 'failed' | 'skipped' | 'duplicate_suppressed'
+
+export type ConversionSkipReason =
+  | 'disabled'
+  | 'missing_secret'
+  | 'missing_pixel_id'
+  | 'consent_denied'
+  | 'invalid_payload'
+
 /** 分析设备类型 */
 export type AnalyticsDeviceType = 'desktop' | 'tablet' | 'mobile' | 'unknown'
 

@@ -110,5 +110,22 @@ export const ANALYTICS_DEFAULT_SETTINGS = {
   CONSENT_MODE: 'limited',
 } as const
 
+export const CONVERSION_ACTIONS = ['contact', 'lead', 'complete_registration', 'start_trial', 'membership_grant'] as const
+
+export const META_EVENT_BY_CONVERSION = {
+  contact: 'Contact',
+  lead: 'Lead',
+  complete_registration: 'CompleteRegistration',
+  start_trial: 'StartTrial',
+  membership_grant: null,
+} as const
+
+export const ATTRIBUTION_LIMITS = {
+  METADATA_MAX_KEYS: 24,
+  METADATA_VALUE_MAX_LENGTH: 120,
+  DELIVERY_ERROR_MAX_LENGTH: 500,
+  CONVERSION_DETAIL_SAMPLE_LIMIT: 200,
+} as const
+
 export { CONTACT_PLATFORMS, CONTACT_PLATFORM_KEYS, canGenerateContactLink, generateContactLink } from './contact-platforms'
 export type { ContactPlatformConfig } from './contact-platforms'
