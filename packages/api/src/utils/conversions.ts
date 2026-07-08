@@ -43,6 +43,36 @@ const SENSITIVE_EXACT_OR_PREFIX_KEYS = [
 
 const SENSITIVE_VALUE_PATTERNS = ['/api/media/', 'originals/', '/admin/']
 
+const BLOCKED_CREDENTIAL_PARAM_NAMES = new Set([
+  'accesstoken',
+  'apikey',
+  'authtoken',
+  'bearer',
+  'clientsecret',
+  'cookie',
+  'credential',
+  'credentials',
+  'idtoken',
+  'jwt',
+  'password',
+  'passwd',
+  'pwd',
+  'refreshtoken',
+  'secret',
+  'securitytoken',
+  'session',
+  'sessionid',
+  'sig',
+  'signature',
+  'signed',
+  'token',
+  'xamzcredential',
+  'xamzsecuritytoken',
+  'xamzsignature',
+])
+
+const REDACTED_ONLY_PATTERN = /^(?:[\s,，;；:/：|、-]*\[redacted_(?:email|phone|url|credential|contact)\])+[\s,，;；:/：|、-]*$/
+
 export function metaEventForConversion(actionType: ConversionActionType): ConversionMetaEventName | null {
   return META_EVENT_BY_CONVERSION[actionType]
 }
@@ -67,9 +97,10 @@ export function sanitizeConversionMetadata(input: Record<string, unknown>) {
     const normalizedKey = normalizeMetadataKey(key)
     if (isSensitiveMetadataKey(normalizedKey)) continue
     if (value === null || value === undefined) continue
-    if (typeof value === 'string' && isSensitiveMetadataValue(value)) continue
     if (typeof value === 'string') {
-      output[key] = value.replace(/\s+/g, ' ').trim().slice(0, ATTRIBUTION_LIMITS.METADATA_VALUE_MAX_LENGTH)
+      if (isSensitiveMetadataValue(value)) continue
+      const sanitizedValue = sanitizeMetadataStringValue(value)
+      if (sanitizedValue) output[key] = sanitizedValue
     } else if (typeof value === 'number' && Number.isFinite(value)) {
       output[key] = value
     } else if (typeof value === 'boolean') {
@@ -108,4 +139,29 @@ function isSensitiveMetadataKey(normalizedKey: string) {
 function isSensitiveMetadataValue(value: string) {
   const normalizedValue = value.toLowerCase()
   return SENSITIVE_VALUE_PATTERNS.some((pattern) => normalizedValue.includes(pattern))
+}
+
+function sanitizeMetadataStringValue(value: string) {
+  const sanitized = value
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[\w.!#$%&'*+/=?^`{|}~-]+@[\w-]+(?:\.[\w-]+)+/g, '[redacted_email]')
+    .replace(/\bhttps?:\/\/[^\s<>"']+/gi, '[redacted_url]')
+    .replace(
+      /(^|[^a-zA-Z0-9_])(?:微信|wechat|wx|telegram|tg|line|whatsapp|qq)\s*(?:[:：=号]|\s)\s*(?:@?[a-zA-Z0-9][a-zA-Z0-9._-]{2,}|[1-9]\d{4,})(?=$|[^a-zA-Z0-9_])/gi,
+      '$1[redacted_contact]',
+    )
+    .replace(/(?:\+?\d[\d\s().-]{7,}\d)/g, '[redacted_phone]')
+    .replace(/(?:^|[?\s&#;])([^=\s&?#;]+)=([^\s&?#;]+)/g, (match, rawName: string) => {
+      return isBlockedCredentialParamName(rawName) ? match.replace(/=.*/, '=[redacted_credential]') : match
+    })
+    .trim()
+    .slice(0, ATTRIBUTION_LIMITS.METADATA_VALUE_MAX_LENGTH)
+
+  if (!sanitized || REDACTED_ONLY_PATTERN.test(sanitized)) return null
+  return sanitized
+}
+
+function isBlockedCredentialParamName(name: string) {
+  return BLOCKED_CREDENTIAL_PARAM_NAMES.has(name.toLowerCase().replace(/[-_]/g, ''))
 }

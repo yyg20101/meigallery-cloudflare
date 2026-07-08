@@ -5,6 +5,7 @@ import {
   sanitizeConversionMetadata,
   metaEventForConversion,
 } from './conversions'
+import { ATTRIBUTION_LIMITS } from '@meigallery/shared/constants'
 
 describe('conversion utils', () => {
   it('为同一业务动作生成稳定 dedupe key 和 external event id', () => {
@@ -89,5 +90,48 @@ describe('conversion utils', () => {
       Method_Type: 'telegram',
       LOCATION: 'floating_contact_panel',
     })
+  })
+
+  it('清洗安全 key 的字符串值时脱敏邮箱、手机号、URL 和凭据参数', () => {
+    const sanitized = sanitizeConversionMetadata({
+      safe_summary: '来源 user@example.test 手机 13800138000 查看 https://example.com/a?token=abc 搜索 api_key=secret&style=summer',
+    })
+
+    expect(sanitized.safe_summary).toContain('[redacted_email]')
+    expect(sanitized.safe_summary).toContain('[redacted_phone]')
+    expect(sanitized.safe_summary).toContain('[redacted_url]')
+    expect(sanitized.safe_summary).toContain('api_key=[redacted_credential]&style=summer')
+    expect(sanitized.safe_summary).not.toContain('user@example.test')
+    expect(sanitized.safe_summary).not.toContain('13800138000')
+    expect(sanitized.safe_summary).not.toContain('https://example.com/a?token=abc')
+    expect(sanitized.safe_summary).not.toContain('secret')
+  })
+
+  it('清洗安全 key 的字符串值时脱敏常见联系方式 handle', () => {
+    const sanitized = sanitizeConversionMetadata({
+      contact_hint: '联系 微信 wxid_abc123 / telegram @abc123 / line: abc123 / QQ 123456',
+      source_name: 'telegram-june',
+      method_type: 'telegram',
+    })
+
+    expect(sanitized.contact_hint).toContain('[redacted_contact]')
+    expect(sanitized.contact_hint).not.toContain('wxid_abc123')
+    expect(sanitized.contact_hint).not.toContain('@abc123')
+    expect(sanitized.contact_hint).not.toContain('line: abc123')
+    expect(sanitized.contact_hint).not.toContain('QQ 123456')
+    expect(sanitized.source_name).toBe('telegram-june')
+    expect(sanitized.method_type).toBe('telegram')
+  })
+
+  it('清洗 payload 时保留普通安全值并继续限制字符串长度', () => {
+    const longText = '清新夏日'.repeat(40)
+    const sanitized = sanitizeConversionMetadata({
+      style: '清新 夏日 户外',
+      long_text: longText,
+    })
+
+    expect(sanitized.style).toBe('清新 夏日 户外')
+    expect(sanitized.long_text).toBe(longText.slice(0, ATTRIBUTION_LIMITS.METADATA_VALUE_MAX_LENGTH))
+    expect(String(sanitized.long_text)).toHaveLength(ATTRIBUTION_LIMITS.METADATA_VALUE_MAX_LENGTH)
   })
 })
