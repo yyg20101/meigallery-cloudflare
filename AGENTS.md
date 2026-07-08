@@ -121,6 +121,7 @@ gallery-001,夏日写真,summer-portrait-001,广东,甜美,清新,"长发,户外
 规则：
 - **禁止直接推送 main**，必须通过 PR 从 dev/release/fix 分支合入。
 - 日常开发在 `dev` 分支进行，功能分支从 `dev` 拉出。
+- 非关键、非关联或阶段性文档/整理提交默认只保留本地提交，不单独推送远端；等一个功能闭环、需要远端 CI/协作、准备部署或用户明确要求时，再统一推送。
 - 发布上线：从 `dev` 创建 `release/vX.Y.Z` 分支 → 验证 → PR 合入 `main` → 打 tag。
 - 紧急修复：从 `main` 创建 `fix/urgent-xxx` → PR 合入 `main` → 合并回 `dev`。
 - Commit message 格式：`类型: 简要描述`（中文），类型包括 feat/fix/refactor/test/docs/deploy/style/chore。
@@ -146,9 +147,9 @@ CI 配置位于 `.github/workflows/`：
 1. **更新进度**：标记当前任务为已完成，记录产出物。
 2. **验证构建**：运行 `corepack pnpm --filter @meigallery/api exec tsc --noEmit` 和 `corepack pnpm --filter @meigallery/web exec nuxt build` 确认无阻断性错误。
 3. **提交代码**：`git add -A && git commit -m "..."` ，commit message 使用中文，格式为 `类型: 简要描述`。
-4. **推送远端**：`git push`。在 `dev` 分支开发时推送到 `origin/dev`，上线通过 PR 合入 `main`。
+4. **按需推送远端**：关键功能闭环、需要远端 CI/协作、准备部署或用户明确要求时执行 `git push`。在 `dev` 分支开发时推送到 `origin/dev`，上线通过 PR 合入 `main`。非关键、非关联或阶段性提交先保留本地，避免远端分支和 CI 被碎片化提交打扰。
 
-不得跳过任何步骤，不得积压多个任务后再统一提交。
+不得跳过进度记录、验证和本地提交；不得为了“统一推送”而长期不提交本地改动。推送可以按功能闭环合并执行，但每个可回滚阶段仍需形成清晰 commit。
 
 ## 实现启动时的预期工具
 
