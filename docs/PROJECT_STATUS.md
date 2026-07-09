@@ -25,11 +25,12 @@
 - 前端 Worker：`meigallery-web`，生产域名 `616618.xyz` / `www.616618.xyz`。
 - API Worker：`meigallery-api`，生产域名 `api.616618.xyz`。
 - 开发 Worker：`meigallery-web-dev` / `meigallery-api-dev`，不绑定生产域名。
-- 数据库：Cloudflare D1 `meigallery-db`；迁移文件位于 `packages/api/migrations/`。
-- 对象存储：Cloudflare R2 `meigallery-media`。
+- 数据库：生产为 Cloudflare D1 `meigallery-db`，开发环境已隔离到 `meigallery-db-dev`；迁移文件位于 `packages/api/migrations/`。
+- 对象存储：生产为 Cloudflare R2 `meigallery-media`，开发环境已隔离到 `meigallery-media-dev`。
 - 视频：Cloudflare Stream 仍未接入生产链路；相关字段和密钥按规划保留。
 - 生产部署：通过 PR 合入 `main` 后手动执行 `./scripts/deploy.sh production` 或等价 wrangler 命令。
 - CI：`.github/workflows/ci.yml` 只做 PR 和 dev 推送验证，不自动部署生产。
+- 发布快速校验：`corepack pnpm verify:quick` 当前首步会执行 `dev-resource-isolation`，阻断 dev 误用生产 D1/R2。
 
 ## 当前已实现能力
 

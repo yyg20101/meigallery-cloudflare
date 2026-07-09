@@ -12,6 +12,11 @@ import {
 
 const QUICK_STEPS = [
   {
+    name: 'dev-resource-isolation',
+    command: 'node',
+    args: ['scripts/verify-dev-resources.mjs'],
+  },
+  {
     name: 'scripts-test',
     command: 'corepack',
     args: ['pnpm', 'test:scripts'],

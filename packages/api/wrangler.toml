@@ -63,13 +63,13 @@ head_sampling_rate = 0.1
 
 [[env.dev.d1_databases]]
 binding = "DB"
-database_name = "meigallery-db"
-database_id = "714929cb-003b-4cb1-bd9f-545fa1895e8c"
+database_name = "meigallery-db-dev"
+database_id = "9ff61317-0c62-491b-8b29-e0d119f306c9"
 migrations_dir = "migrations"
 
 [[env.dev.r2_buckets]]
 binding = "R2"
-bucket_name = "meigallery-media"
+bucket_name = "meigallery-media-dev"
 
 [[env.dev.send_email]]
 name = "EMAIL"
