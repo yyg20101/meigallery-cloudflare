@@ -32,6 +32,8 @@ Thumbs.db
 *.log
 npm-debug.log*
 pnpm-debug.log*
+reports/release-verification/*.json
+reports/release-verification/*.log
 
 # 测试覆盖率
 coverage/
@@ -44,3 +46,4 @@ packages/*/playwright-report/
 # pnpm lockfile 在各子包的 node_modules
 packages/*/node_modules/
 .superpowers/
+.wrangler-release-verify/

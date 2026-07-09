@@ -1,0 +1,147 @@
+#!/usr/bin/env node
+
+import { pathToFileURL } from 'node:url'
+import {
+  assertReportCanGateProduction,
+  collectVersions,
+  getGitState,
+  readLatestReport,
+  runCommand,
+  writeReport,
+} from './release-verification-lib.mjs'
+
+const QUICK_STEPS = [
+  {
+    name: 'scripts-test',
+    command: 'corepack',
+    args: ['pnpm', 'test:scripts'],
+  },
+  {
+    name: 'api-unit',
+    command: 'corepack',
+    args: ['pnpm', '--filter', '@meigallery/api', 'test'],
+  },
+  {
+    name: 'api-typecheck',
+    command: 'corepack',
+    args: ['pnpm', '--filter', '@meigallery/api', 'exec', 'tsc', '--noEmit'],
+  },
+  {
+    name: 'web-typecheck',
+    command: 'corepack',
+    args: ['pnpm', '--filter', '@meigallery/web', 'exec', 'nuxt', 'typecheck'],
+  },
+  {
+    name: 'web-unit',
+    command: 'corepack',
+    args: ['pnpm', '--filter', '@meigallery/web', 'run', 'test:unit'],
+  },
+  {
+    name: 'web-e2e',
+    command: 'corepack',
+    args: ['pnpm', '--filter', '@meigallery/web', 'exec', 'playwright', 'test'],
+  },
+  {
+    name: 'web-build',
+    command: 'corepack',
+    args: ['pnpm', '--filter', '@meigallery/web', 'exec', 'nuxt', 'build'],
+  },
+  {
+    name: 'api-dry-run-deploy',
+    command: 'corepack',
+    args: ['pnpm', '--filter', '@meigallery/api', 'exec', 'wrangler', 'deploy', '--env=', '--dry-run', '--outdir=dist'],
+  },
+]
+
+if (isCliEntry()) {
+  try {
+    await main()
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error))
+    process.exit(1)
+  }
+}
+
+export async function main(argv = process.argv.slice(2), options = {}) {
+  const [mode] = argv
+
+  if (!mode || mode === '--help' || mode === '-h') {
+    printHelp()
+    return
+  }
+
+  if (mode === 'assert-production-allowed') {
+    const report = await readLatestReport(options)
+    assertReportCanGateProduction(report, options)
+    console.log('最近一次发布验证报告允许生产部署。')
+    return
+  }
+
+  if (mode !== 'quick') {
+    throw new Error(`模式 ${mode} 尚未在 Task 1 实现`)
+  }
+
+  const report = await runQuickVerification({ ...options, mode })
+
+  if (report.status !== 'passed') {
+    throw new Error(`发布快速验证失败，报告已写入：${report.reportFile}`)
+  }
+
+  console.log(`发布快速验证通过，报告已写入：${report.reportFile}`)
+}
+
+export async function runQuickVerification(options = {}) {
+  const mode = options.mode || 'quick'
+  const startedAt = new Date().toISOString()
+  const startedMs = Date.now()
+  const versions = await collectVersions(options)
+  const git = await getGitState(options)
+  const steps = []
+  const notes = []
+
+  for (const stepDefinition of QUICK_STEPS) {
+    const step = await runCommand(stepDefinition.command, stepDefinition.args, {
+      cwd: options.cwd || process.cwd(),
+      name: stepDefinition.name,
+    })
+    steps.push(step)
+
+    if (step.status !== 'passed') {
+      notes.push(`步骤 ${step.name} 执行失败，后续步骤已停止。`)
+      break
+    }
+  }
+
+  const finishedAt = new Date().toISOString()
+  const report = {
+    schemaVersion: 1,
+    mode,
+    status: steps.every(step => step.status === 'passed') && steps.length === QUICK_STEPS.length ? 'passed' : 'failed',
+    startedAt,
+    finishedAt,
+    durationMs: Date.now() - startedMs,
+    git,
+    versions,
+    steps: steps.map(({ stdout, stderr, ...step }) => step),
+    artifacts: [],
+    notes,
+  }
+  const files = await writeReport(report, options)
+
+  return {
+    ...report,
+    ...files,
+  }
+}
+
+function printHelp() {
+  console.log(`
+用法：
+  node scripts/verify-release.mjs quick
+  node scripts/verify-release.mjs assert-production-allowed
+`.trim())
+}
+
+function isCliEntry() {
+  return process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
+}
