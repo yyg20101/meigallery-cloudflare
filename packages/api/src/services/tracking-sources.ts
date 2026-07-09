@@ -26,6 +26,7 @@ export interface CreateTrackingSourceInput {
   utmSource?: string
   utmMedium?: string
   utmCampaign?: string
+  utmContent?: string
   note?: string | null
   createdBy: number
 }
@@ -40,6 +41,7 @@ export interface UpdateTrackingSourceInput {
   utmSource?: string
   utmMedium?: string
   utmCampaign?: string
+  utmContent?: string
   status?: TrackingSourceStatus
   note?: string | null
 }
@@ -55,6 +57,7 @@ export interface TrackingSourceItem {
   utmSource: string
   utmMedium: string
   utmCampaign: string
+  utmContent: string
   status: TrackingSourceStatus
   note: string
   createdBy: number
@@ -83,6 +86,7 @@ interface TrackingSourceRow {
   utm_source: string
   utm_medium: string
   utm_campaign: string
+  utm_content?: string
   status: TrackingSourceStatus
   note: string
   created_by: number
@@ -120,16 +124,17 @@ export async function createTrackingSource(db: TrackingSourceDb, input: CreateTr
   const utmSource = slug
   const utmMedium = normalizeUtmValue(input.utmMedium || defaultUtmMedium(channel), 'utm_medium')
   const utmCampaign = normalizeOptionalUtmValue(input.utmCampaign || slug, 'utm_campaign')
+  const utmContent = normalizeOptionalUtmValue(input.utmContent, 'utm_content')
   const note = normalizeOptionalText(input.note, 500)
 
   await assertUniqueTrackingSource(db, slug, utmSource)
   await db.prepare(`
     INSERT INTO analytics_tracking_sources (
       id, name, channel, slug, target_path, utm_source, utm_medium,
-      utm_campaign, note, created_by
+      utm_campaign, utm_content, note, created_by
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).bind(id, name, channel, slug, targetPath, utmSource, utmMedium, utmCampaign, note, input.createdBy).run()
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(id, name, channel, slug, targetPath, utmSource, utmMedium, utmCampaign, utmContent, note, input.createdBy).run()
 
   return {
     id,
@@ -142,19 +147,20 @@ export async function createTrackingSource(db: TrackingSourceDb, input: CreateTr
     utmSource,
     utmMedium,
     utmCampaign,
+    utmContent,
     status: 'active',
     note,
     createdBy: input.createdBy,
     createdAt: '',
     updatedAt: '',
-    trackingPath: buildTrackingPath({ targetPath, slug, utmSource, utmMedium, utmCampaign }),
+    trackingPath: buildTrackingPath({ targetPath, slug, utmSource, utmMedium, utmCampaign, utmContent }),
   }
 }
 
 export async function listTrackingSources(db: TrackingSourceDb): Promise<TrackingSourceItem[]> {
   const rows = await db.prepare(`
     SELECT id, name, channel, slug, target_path, utm_source, utm_medium,
-           utm_campaign, status, note, created_by, created_at, updated_at
+           utm_campaign, utm_content, status, note, created_by, created_at, updated_at
     FROM analytics_tracking_sources
     ORDER BY created_at DESC
   `).all<TrackingSourceRow>()
@@ -169,7 +175,7 @@ export async function listTrackingSourcesWithMetrics(
   const rows = await db.prepare(`
     SELECT
       ats.id, ats.name, ats.channel, ats.slug, ats.target_path, ats.utm_source,
-      ats.utm_medium, ats.utm_campaign, ats.status, ats.note, ats.created_by,
+      ats.utm_medium, ats.utm_campaign, ats.utm_content, ats.status, ats.note, ats.created_by,
       ats.created_at, ats.updated_at,
       COALESCE(SUM(ads.visitor_count), 0) AS visitor_count,
       COALESCE(SUM(ads.session_count), 0) AS session_count,
@@ -185,7 +191,7 @@ export async function listTrackingSourcesWithMetrics(
      AND ads.source_name = ats.utm_source
     GROUP BY
       ats.id, ats.name, ats.channel, ats.slug, ats.target_path, ats.utm_source,
-      ats.utm_medium, ats.utm_campaign, ats.status, ats.note, ats.created_by,
+      ats.utm_medium, ats.utm_campaign, ats.utm_content, ats.status, ats.note, ats.created_by,
       ats.created_at, ats.updated_at
     ORDER BY session_count DESC, ats.created_at DESC
   `).bind(range.from, range.to).all<TrackingSourceMetricRow>()
@@ -222,6 +228,7 @@ export async function updateTrackingSource(db: TrackingSourceDb, id: string, inp
     utmSource: before.utmSource,
     utmMedium: input.utmMedium === undefined ? before.utmMedium : normalizeUtmValue(input.utmMedium, 'utm_medium'),
     utmCampaign: input.utmCampaign === undefined ? before.utmCampaign : normalizeOptionalUtmValue(input.utmCampaign, 'utm_campaign'),
+    utmContent: input.utmContent === undefined ? before.utmContent : normalizeOptionalUtmValue(input.utmContent, 'utm_content'),
     status: input.status ?? before.status,
     note: input.note === undefined ? before.note : normalizeOptionalText(input.note, 500),
   }
@@ -231,7 +238,7 @@ export async function updateTrackingSource(db: TrackingSourceDb, id: string, inp
   await db.prepare(`
     UPDATE analytics_tracking_sources
     SET name = ?, channel = ?, slug = ?, target_path = ?, utm_source = ?,
-        utm_medium = ?, utm_campaign = ?, status = ?, note = ?,
+        utm_medium = ?, utm_campaign = ?, utm_content = ?, status = ?, note = ?,
         updated_at = datetime('now')
     WHERE id = ?
   `).bind(
@@ -242,6 +249,7 @@ export async function updateTrackingSource(db: TrackingSourceDb, id: string, inp
     next.utmSource,
     next.utmMedium,
     next.utmCampaign,
+    next.utmContent,
     next.status,
     next.note,
     id,
@@ -260,6 +268,7 @@ export async function updateTrackingSource(db: TrackingSourceDb, id: string, inp
         utmSource: next.utmSource,
         utmMedium: next.utmMedium,
         utmCampaign: next.utmCampaign,
+        utmContent: next.utmContent,
       }),
     },
   }
@@ -277,6 +286,7 @@ export function safeTrackingSourceAuditValue(source: Partial<TrackingSourceItem>
     utmSource: source.utmSource,
     utmMedium: source.utmMedium,
     utmCampaign: source.utmCampaign,
+    utmContent: source.utmContent,
     status: source.status,
     note: source.note,
   }
@@ -294,6 +304,7 @@ function serializeTrackingSource(row: TrackingSourceRow): TrackingSourceItem {
     utmSource: row.utm_source,
     utmMedium: row.utm_medium,
     utmCampaign: row.utm_campaign,
+    utmContent: row.utm_content ?? '',
     status: row.status,
     note: row.note,
     createdBy: row.created_by,
@@ -305,6 +316,7 @@ function serializeTrackingSource(row: TrackingSourceRow): TrackingSourceItem {
       utmSource: row.utm_source,
       utmMedium: row.utm_medium,
       utmCampaign: row.utm_campaign,
+      utmContent: row.utm_content ?? '',
     }),
   }
 }
@@ -312,7 +324,7 @@ function serializeTrackingSource(row: TrackingSourceRow): TrackingSourceItem {
 async function getTrackingSourceById(db: TrackingSourceDb, id: string): Promise<TrackingSourceItem> {
   const row = await db.prepare(`
     SELECT id, name, channel, slug, target_path, utm_source, utm_medium,
-           utm_campaign, status, note, created_by, created_at, updated_at
+           utm_campaign, utm_content, status, note, created_by, created_at, updated_at
     FROM analytics_tracking_sources
     WHERE id = ?
   `).bind(id).first<TrackingSourceRow>()
@@ -339,12 +351,14 @@ function buildTrackingPath(input: {
   utmSource: string
   utmMedium: string
   utmCampaign: string
+  utmContent: string
 }) {
   const url = new URL(input.targetPath, 'https://site.local')
   url.searchParams.set('mg_source', input.slug)
   url.searchParams.set('utm_source', input.utmSource)
   url.searchParams.set('utm_medium', input.utmMedium)
   if (input.utmCampaign) url.searchParams.set('utm_campaign', input.utmCampaign)
+  if (input.utmContent) url.searchParams.set('utm_content', input.utmContent)
   return `${url.pathname}${url.search}`
 }
 
