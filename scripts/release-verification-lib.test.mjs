@@ -152,4 +152,35 @@ describe('发布验证基础库', () => {
       })
     }, /schemaVersion|startedAt|finishedAt|durationMs|git\.commit|git\.branch|git\.isClean|versions|steps|artifacts|notes/)
   })
+
+  it('assertReportCanGateProduction 拒绝空 branch 或 commit 的 release 报告', () => {
+    const invalidGitReport = {
+      schemaVersion: 1,
+      mode: 'release',
+      status: 'passed',
+      startedAt: '2026-07-09T00:00:00.000Z',
+      finishedAt: '2026-07-09T00:05:00.000Z',
+      durationMs: 300000,
+      git: {
+        branch: '',
+        commit: '   ',
+        isClean: true,
+        remote: 'origin',
+      },
+      versions: {
+        node: 'v24.0.0',
+        pnpm: '10.0.0',
+        wrangler: '4.0.0',
+      },
+      steps: [],
+      artifacts: [],
+      notes: [],
+    }
+
+    assert.throws(() => {
+      assertReportCanGateProduction(invalidGitReport, {
+        now: '2026-07-09T01:00:00.000Z',
+      })
+    }, /git\.commit 缺失、为空或类型非法|git\.branch 缺失、为空或类型非法/)
+  })
 })

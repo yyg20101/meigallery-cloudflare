@@ -126,9 +126,9 @@ export async function getGitState(options = {}) {
   ])
 
   return {
-    branch: firstLine(branchStep.stdout),
-    commit: firstLine(commitStep.stdout),
-    isClean: statusStep.stdout.trim() === '',
+    branch: branchStep.status === 'passed' ? firstLine(branchStep.stdout) : '',
+    commit: commitStep.status === 'passed' ? firstLine(commitStep.stdout) : '',
+    isClean: statusStep.status === 'passed' && statusStep.stdout.trim() === '',
     remote: redactCredentialUrl(firstLine(remoteStep.stdout)),
   }
 }
@@ -212,8 +212,8 @@ function validateReportShape(report, reasons) {
   if (!report.git || typeof report.git !== 'object' || Array.isArray(report.git)) {
     reasons.push('报告 git 缺失或类型非法')
   } else {
-    if (typeof report.git.commit !== 'string') reasons.push('报告 git.commit 缺失或类型非法')
-    if (typeof report.git.branch !== 'string') reasons.push('报告 git.branch 缺失或类型非法')
+    if (typeof report.git.commit !== 'string' || report.git.commit.trim() === '') reasons.push('报告 git.commit 缺失、为空或类型非法')
+    if (typeof report.git.branch !== 'string' || report.git.branch.trim() === '') reasons.push('报告 git.branch 缺失、为空或类型非法')
     if (typeof report.git.isClean !== 'boolean') reasons.push('报告 git.isClean 缺失或类型非法')
   }
 
