@@ -120,6 +120,7 @@ export async function runReleaseVerification(options = {}) {
   const steps = []
   const artifacts = []
   const notes = []
+  const releaseSubModes = []
 
   const childRuns = [
     ['quick', runQuickVerificationFn],
@@ -136,23 +137,36 @@ export async function runReleaseVerification(options = {}) {
         .filter(step => step?.status === 'passed' && typeof step?.name === 'string' && step.name.trim() !== '')
         .map(step => step.name)
       : []
+    const childStatus = childReport.status === 'passed' && passedSteps.length > 0 ? 'passed' : 'failed'
+    const childSummary = {
+      mode: childMode,
+      status: childStatus,
+      passedStepNames: passedSteps,
+      reportFile: childReport.reportFile || '',
+    }
+    releaseSubModes.push(childSummary)
 
     steps.push({
       name: childMode,
-      status: childReport.status,
+      status: childStatus,
       durationMs: childReport.durationMs ?? 0,
       command: `node scripts/verify-release.mjs ${childMode}`,
-      exitCode: childReport.status === 'passed' ? 0 : 1,
+      exitCode: childStatus === 'passed' ? 0 : 1,
       summary: passedSteps.length > 0
         ? `通过步骤：${passedSteps.join('、')}；报告：${childReport.reportFile}`
-        : `未生成通过步骤摘要；报告：${childReport.reportFile}`,
+        : `没有真实通过步骤；报告：${childReport.reportFile}`,
+      passedStepNames: passedSteps,
     })
 
     if (Array.isArray(childReport.notes) && childReport.notes.length > 0) {
       notes.push(`[${childMode}] ${childReport.notes.join('；')}`)
     }
 
-    if (childReport.status !== 'passed') {
+    if (childReport.status === 'passed' && passedSteps.length === 0) {
+      notes.push(`[${childMode}] 子模式没有真实 passed step，release 不能通过。`)
+    }
+
+    if (childStatus !== 'passed') {
       notes.push(`release 编排在 ${childMode} 阶段停止，请先修复该阶段失败项。`)
       break
     }
@@ -169,6 +183,7 @@ export async function runReleaseVerification(options = {}) {
     git,
     versions,
     steps,
+    releaseSubModes,
     artifacts,
     notes,
   }
@@ -191,17 +206,18 @@ export async function runLocalRuntimeReleaseVerification(options = {}) {
   const versions = await collectVersionsFn(options)
   const git = await getGitStateFn(options)
   const { steps, notes, artifacts, sensitiveValues = [] } = await runLocalRuntimeVerificationFn(options)
+  const normalizedSteps = Array.isArray(steps) ? steps : []
   const finishedAt = new Date().toISOString()
   const report = {
     schemaVersion: 1,
     mode,
-    status: steps.every(step => step.status === 'passed') ? 'passed' : 'failed',
+    status: normalizedSteps.length > 0 && normalizedSteps.every(step => step.status === 'passed') ? 'passed' : 'failed',
     startedAt,
     finishedAt,
     durationMs: Date.now() - startedMs,
     git,
     versions,
-    steps,
+    steps: normalizedSteps,
     artifacts,
     notes,
   }
@@ -225,17 +241,18 @@ export async function runDevRehearsalReleaseVerification(options = {}) {
   const versions = await collectVersionsFn(options)
   const git = await getGitStateFn(options)
   const { steps, notes, artifacts, sensitiveValues = [] } = await runDevRehearsalVerificationFn(options)
+  const normalizedSteps = Array.isArray(steps) ? steps : []
   const finishedAt = new Date().toISOString()
   const report = {
     schemaVersion: 1,
     mode,
-    status: steps.every(step => step.status === 'passed') ? 'passed' : 'failed',
+    status: normalizedSteps.length > 0 && normalizedSteps.every(step => step.status === 'passed') ? 'passed' : 'failed',
     startedAt,
     finishedAt,
     durationMs: Date.now() - startedMs,
     git,
     versions,
-    steps,
+    steps: normalizedSteps,
     artifacts,
     notes,
   }

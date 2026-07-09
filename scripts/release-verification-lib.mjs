@@ -287,19 +287,48 @@ function validateReleaseSummary(report, reasons) {
   if (!Array.isArray(report.steps)) return
 
   const stepMap = new Map(report.steps.map(step => [step?.name, step]))
+  const releaseSubModeMap = Array.isArray(report.releaseSubModes)
+    ? new Map(report.releaseSubModes.map(item => [item?.mode, item]))
+    : null
+
+  if (!releaseSubModeMap) {
+    reasons.push('release 报告 releaseSubModes 缺失或类型非法')
+  }
+
   for (const mode of RELEASE_CHILD_MODES) {
     const step = stepMap.get(mode)
     if (!step) {
       reasons.push(`release 报告缺少 ${mode} 子模式摘要`)
+    } else {
+      if (step.status !== 'passed') {
+        reasons.push(`release 报告中的 ${mode} 子模式未通过`)
+      }
+
+      if (typeof step.summary !== 'string' || step.summary.trim() === '') {
+        reasons.push(`release 报告中的 ${mode} 子模式摘要为空`)
+      }
+
+      if (typeof step.summary === 'string' && (step.summary.includes('未生成通过步骤摘要') || step.summary.includes('没有真实通过步骤'))) {
+        reasons.push(`release 报告中的 ${mode} 子模式使用了占位摘要`)
+      }
+
+      if (!hasNonEmptyStringArray(step.passedStepNames)) {
+        reasons.push(`release 报告中的 ${mode} 子模式缺少真实 passed step 摘要`)
+      }
+    }
+
+    const releaseSubMode = releaseSubModeMap?.get(mode)
+    if (!releaseSubMode) {
+      reasons.push(`releaseSubModes 缺少 ${mode} 子模式`)
       continue
     }
 
-    if (step.status !== 'passed') {
-      reasons.push(`release 报告中的 ${mode} 子模式未通过`)
+    if (releaseSubMode.status !== 'passed') {
+      reasons.push(`releaseSubModes 中的 ${mode} 子模式未通过`)
     }
 
-    if (typeof step.summary !== 'string' || step.summary.trim() === '') {
-      reasons.push(`release 报告中的 ${mode} 子模式摘要为空`)
+    if (!hasNonEmptyStringArray(releaseSubMode.passedStepNames)) {
+      reasons.push(`releaseSubModes 中的 ${mode} 子模式缺少 passedStepNames`)
     }
   }
 }
@@ -308,6 +337,10 @@ function validateNonEmptyString(value, reason, reasons) {
   if (typeof value !== 'string' || value.trim() === '') {
     reasons.push(reason)
   }
+}
+
+function hasNonEmptyStringArray(value) {
+  return Array.isArray(value) && value.length > 0 && value.every(item => typeof item === 'string' && item.trim() !== '')
 }
 
 function compactWhitespace(value) {

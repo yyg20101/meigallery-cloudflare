@@ -153,6 +153,35 @@ describe('发布验证 CLI', () => {
     assert.equal(report.reportFile, '/tmp/local-runtime.json')
   })
 
+  it('runLocalRuntimeReleaseVerification 在 steps 为空时判定为 failed', async () => {
+    const report = await runLocalRuntimeReleaseVerification({
+      collectVersions: async () => ({
+        node: 'v24.0.0',
+        pnpm: '10.0.0',
+        wrangler: '4.0.0',
+      }),
+      getGitState: async () => ({
+        branch: 'dev',
+        commit: 'local-runtime-commit',
+        isClean: true,
+        remote: 'origin',
+      }),
+      runLocalRuntimeVerification: async () => ({
+        steps: [],
+        notes: [],
+        artifacts: [],
+      }),
+      writeReport: async () => ({
+        reportFile: '/tmp/local-runtime.json',
+        latestFile: '/tmp/latest.json',
+      }),
+    })
+
+    assert.equal(report.mode, 'local-runtime')
+    assert.equal(report.status, 'failed')
+    assert.deepEqual(report.steps, [])
+  })
+
   it('runDevRehearsalReleaseVerification 会生成 dev-rehearsal 报告', async () => {
     const report = await runDevRehearsalReleaseVerification({
       collectVersions: async () => ({
@@ -183,6 +212,35 @@ describe('发布验证 CLI', () => {
     assert.equal(report.mode, 'dev-rehearsal')
     assert.equal(report.status, 'passed')
     assert.equal(report.reportFile, '/tmp/dev-rehearsal.json')
+  })
+
+  it('runDevRehearsalReleaseVerification 在 steps 为空时判定为 failed', async () => {
+    const report = await runDevRehearsalReleaseVerification({
+      collectVersions: async () => ({
+        node: 'v24.0.0',
+        pnpm: '10.0.0',
+        wrangler: '4.0.0',
+      }),
+      getGitState: async () => ({
+        branch: 'dev',
+        commit: 'dev-rehearsal-commit',
+        isClean: true,
+        remote: 'origin',
+      }),
+      runDevRehearsalVerification: async () => ({
+        steps: [],
+        notes: [],
+        artifacts: [],
+      }),
+      writeReport: async () => ({
+        reportFile: '/tmp/dev-rehearsal.json',
+        latestFile: '/tmp/latest.json',
+      }),
+    })
+
+    assert.equal(report.mode, 'dev-rehearsal')
+    assert.equal(report.status, 'failed')
+    assert.deepEqual(report.steps, [])
   })
 
   it('runReleaseVerification 会按顺序编排 quick、local-runtime、dev-rehearsal 并生成 release 报告', async () => {
@@ -243,7 +301,71 @@ describe('发布验证 CLI', () => {
     assert.equal(report.status, 'passed')
     assert.deepEqual(report.artifacts, ['/tmp/quick.json', '/tmp/local-runtime.json', '/tmp/dev-rehearsal.json'])
     assert.deepEqual(report.steps.map(step => step.name), ['quick', 'local-runtime', 'dev-rehearsal'])
+    assert.deepEqual(report.releaseSubModes.map(item => item.mode), ['quick', 'local-runtime', 'dev-rehearsal'])
+    assert.deepEqual(report.releaseSubModes[0].passedStepNames, ['scripts-test'])
     assert.match(report.steps[0].summary, /scripts-test/)
+  })
+
+  it('runReleaseVerification 在子模式没有 passed step 时不会生成 passed release 报告', async () => {
+    const order = []
+    const report = await runReleaseVerification({
+      collectVersions: async () => ({
+        node: 'v24.0.0',
+        pnpm: '10.0.0',
+        wrangler: '4.0.0',
+      }),
+      getGitState: async () => ({
+        branch: 'dev',
+        commit: 'release-commit',
+        isClean: true,
+        remote: 'origin',
+      }),
+      runQuickVerification: async () => {
+        order.push('quick')
+        return {
+          mode: 'quick',
+          status: 'passed',
+          durationMs: 10,
+          reportFile: '/tmp/quick.json',
+          steps: [{ name: 'scripts-test', status: 'passed' }],
+          notes: [],
+        }
+      },
+      runLocalRuntimeReleaseVerification: async () => {
+        order.push('local-runtime')
+        return {
+          mode: 'local-runtime',
+          status: 'passed',
+          durationMs: 20,
+          reportFile: '/tmp/local-runtime.json',
+          steps: [],
+          notes: [],
+        }
+      },
+      runDevRehearsalReleaseVerification: async () => {
+        order.push('dev-rehearsal')
+        return {
+          mode: 'dev-rehearsal',
+          status: 'passed',
+          durationMs: 30,
+          reportFile: '/tmp/dev-rehearsal.json',
+          steps: [{ name: 'dev-admin-attribution', status: 'passed' }],
+          notes: [],
+        }
+      },
+      writeReport: async () => ({
+        reportFile: '/tmp/release.json',
+        latestFile: '/tmp/latest.json',
+      }),
+    })
+
+    assert.deepEqual(order, ['quick', 'local-runtime'])
+    assert.equal(report.mode, 'release')
+    assert.equal(report.status, 'failed')
+    assert.equal(report.steps[1].status, 'failed')
+    assert.deepEqual(report.steps[1].passedStepNames, [])
+    assert.deepEqual(report.releaseSubModes[1].passedStepNames, [])
+    assert.match(report.notes.join('；'), /没有真实 passed step/)
   })
 
   it('runReleaseVerification 在子模式失败时停止后续编排，但仍写出 failed release 报告', async () => {

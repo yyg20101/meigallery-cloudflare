@@ -36,6 +36,7 @@ function createValidReleaseReport() {
         durationMs: 1200,
         command: 'node scripts/verify-release.mjs quick',
         summary: '通过步骤：scripts-test、web-build',
+        passedStepNames: ['scripts-test', 'web-build'],
       },
       {
         name: 'local-runtime',
@@ -43,6 +44,7 @@ function createValidReleaseReport() {
         durationMs: 800,
         command: 'node scripts/verify-release.mjs local-runtime',
         summary: '通过步骤：local-d1-migrate、local-admin-attribution',
+        passedStepNames: ['local-d1-migrate', 'local-admin-attribution'],
       },
       {
         name: 'dev-rehearsal',
@@ -50,6 +52,27 @@ function createValidReleaseReport() {
         durationMs: 900,
         command: 'node scripts/verify-release.mjs dev-rehearsal',
         summary: '通过步骤：dev-d1-migrate、dev-admin-attribution',
+        passedStepNames: ['dev-d1-migrate', 'dev-admin-attribution'],
+      },
+    ],
+    releaseSubModes: [
+      {
+        mode: 'quick',
+        status: 'passed',
+        passedStepNames: ['scripts-test', 'web-build'],
+        reportFile: '/tmp/quick.json',
+      },
+      {
+        mode: 'local-runtime',
+        status: 'passed',
+        passedStepNames: ['local-d1-migrate', 'local-admin-attribution'],
+        reportFile: '/tmp/local-runtime.json',
+      },
+      {
+        mode: 'dev-rehearsal',
+        status: 'passed',
+        passedStepNames: ['dev-d1-migrate', 'dev-admin-attribution'],
+        reportFile: '/tmp/dev-rehearsal.json',
       },
     ],
     artifacts: ['reports/release-verification/latest.json'],
@@ -255,6 +278,15 @@ describe('发布验证基础库', () => {
           durationMs: 1,
           command: 'node scripts/verify-release.mjs quick',
           summary: '通过步骤：scripts-test',
+          passedStepNames: ['scripts-test'],
+        },
+      ],
+      releaseSubModes: [
+        {
+          mode: 'quick',
+          status: 'passed',
+          passedStepNames: ['scripts-test'],
+          reportFile: '/tmp/quick.json',
         },
       ],
     }
@@ -276,6 +308,7 @@ describe('发布验证基础库', () => {
           durationMs: 1,
           command: 'node scripts/verify-release.mjs quick',
           summary: '通过步骤：scripts-test',
+          passedStepNames: ['scripts-test'],
         },
         {
           name: 'local-runtime',
@@ -283,6 +316,7 @@ describe('发布验证基础库', () => {
           durationMs: 1,
           command: 'node scripts/verify-release.mjs local-runtime',
           summary: '失败',
+          passedStepNames: [],
         },
         {
           name: 'dev-rehearsal',
@@ -290,6 +324,27 @@ describe('发布验证基础库', () => {
           durationMs: 1,
           command: 'node scripts/verify-release.mjs dev-rehearsal',
           summary: '通过步骤：dev-admin-attribution',
+          passedStepNames: ['dev-admin-attribution'],
+        },
+      ],
+      releaseSubModes: [
+        {
+          mode: 'quick',
+          status: 'passed',
+          passedStepNames: ['scripts-test'],
+          reportFile: '/tmp/quick.json',
+        },
+        {
+          mode: 'local-runtime',
+          status: 'failed',
+          passedStepNames: [],
+          reportFile: '/tmp/local-runtime.json',
+        },
+        {
+          mode: 'dev-rehearsal',
+          status: 'passed',
+          passedStepNames: ['dev-admin-attribution'],
+          reportFile: '/tmp/dev-rehearsal.json',
         },
       ],
     }
@@ -299,6 +354,31 @@ describe('发布验证基础库', () => {
         now: '2026-07-09T01:00:00.000Z',
       })
     }, /local-runtime 子模式未通过/)
+  })
+
+  it('assertReportCanGateProduction 拒绝没有真实 passed step 的 release 子模式摘要', () => {
+    const report = {
+      ...createValidReleaseReport(),
+      steps: createValidReleaseReport().steps.map(step => step.name === 'local-runtime'
+        ? {
+            ...step,
+            summary: '未生成通过步骤摘要；报告：/tmp/local-runtime.json',
+            passedStepNames: [],
+          }
+        : step),
+      releaseSubModes: createValidReleaseReport().releaseSubModes.map(item => item.mode === 'local-runtime'
+        ? {
+            ...item,
+            passedStepNames: [],
+          }
+        : item),
+    }
+
+    assert.throws(() => {
+      assertReportCanGateProduction(report, {
+        now: '2026-07-09T01:00:00.000Z',
+      })
+    }, /占位摘要|缺少真实 passed step 摘要|缺少 passedStepNames/)
   })
 
   it('assertReportCanGateProduction 拒绝缺少 versions 子字段的 release 报告', () => {
