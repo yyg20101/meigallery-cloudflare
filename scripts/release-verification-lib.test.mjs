@@ -183,4 +183,36 @@ describe('发布验证基础库', () => {
       })
     }, /git\.commit 缺失、为空或类型非法|git\.branch 缺失、为空或类型非法/)
   })
+
+  it('assertReportCanGateProduction 拒绝与 expectedCommit 不一致的 release 报告', () => {
+    const report = {
+      schemaVersion: 1,
+      mode: 'release',
+      status: 'passed',
+      startedAt: '2026-07-09T00:00:00.000Z',
+      finishedAt: '2026-07-09T00:05:00.000Z',
+      durationMs: 300000,
+      git: {
+        branch: 'main',
+        commit: 'report-commit-sha',
+        isClean: true,
+        remote: 'origin',
+      },
+      versions: {
+        node: 'v24.0.0',
+        pnpm: '10.0.0',
+        wrangler: '4.0.0',
+      },
+      steps: [],
+      artifacts: [],
+      notes: [],
+    }
+
+    assert.throws(() => {
+      assertReportCanGateProduction(report, {
+        now: '2026-07-09T01:00:00.000Z',
+        expectedCommit: 'current-commit-sha',
+      })
+    }, /报告 commit 与当前待发布 commit 不一致/)
+  })
 })

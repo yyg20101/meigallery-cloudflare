@@ -71,8 +71,7 @@ export async function main(argv = process.argv.slice(2), options = {}) {
   }
 
   if (mode === 'assert-production-allowed') {
-    const report = await readLatestReport(options)
-    assertReportCanGateProduction(report, options)
+    await assertProductionAllowed(options)
     console.log('最近一次发布验证报告允许生产部署。')
     return
   }
@@ -88,6 +87,24 @@ export async function main(argv = process.argv.slice(2), options = {}) {
   }
 
   console.log(`发布快速验证通过，报告已写入：${report.reportFile}`)
+}
+
+export async function assertProductionAllowed(options = {}) {
+  const readLatestReportFn = options.readLatestReport || readLatestReport
+  const getGitStateFn = options.getGitState || getGitState
+  const assertReportCanGateProductionFn = options.assertReportCanGateProduction || assertReportCanGateProduction
+  const gitState = await getGitStateFn(options)
+  const expectedCommit = gitState.commit?.trim()
+
+  if (!expectedCommit) {
+    throw new Error('无法获取当前 Git commit，拒绝放行生产部署')
+  }
+
+  const report = await readLatestReportFn(options)
+  assertReportCanGateProductionFn(report, {
+    ...options,
+    expectedCommit,
+  })
 }
 
 export async function runQuickVerification(options = {}) {
