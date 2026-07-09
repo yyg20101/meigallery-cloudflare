@@ -31,11 +31,25 @@ function createValidReleaseReport() {
     },
     steps: [
       {
-        name: 'build',
+        name: 'quick',
         status: 'passed',
         durationMs: 1200,
-        command: 'corepack pnpm build',
-        summary: '构建完成',
+        command: 'node scripts/verify-release.mjs quick',
+        summary: '通过步骤：scripts-test、web-build',
+      },
+      {
+        name: 'local-runtime',
+        status: 'passed',
+        durationMs: 800,
+        command: 'node scripts/verify-release.mjs local-runtime',
+        summary: '通过步骤：local-d1-migrate、local-admin-attribution',
+      },
+      {
+        name: 'dev-rehearsal',
+        status: 'passed',
+        durationMs: 900,
+        command: 'node scripts/verify-release.mjs dev-rehearsal',
+        summary: '通过步骤：dev-d1-migrate、dev-admin-attribution',
       },
     ],
     artifacts: ['reports/release-verification/latest.json'],
@@ -208,6 +222,83 @@ describe('发布验证基础库', () => {
         expectedCommit: 'current-commit-sha',
       })
     }, /报告 commit 与当前待发布 commit 不一致/)
+  })
+
+  it('assertReportCanGateProduction 拒绝分支不在 main 或 release/* 的生产放行', () => {
+    assert.throws(() => {
+      assertReportCanGateProduction(createValidReleaseReport(), {
+        now: '2026-07-09T01:00:00.000Z',
+        currentBranch: 'dev',
+      })
+    }, /当前分支不是 main 或 release/)
+  })
+
+  it('assertReportCanGateProduction 允许通过 VERIFY_RELEASE_ALLOW_BRANCH 绕过测试分支限制', () => {
+    assert.doesNotThrow(() => {
+      assertReportCanGateProduction(createValidReleaseReport(), {
+        now: '2026-07-09T01:00:00.000Z',
+        currentBranch: 'dev',
+        env: {
+          VERIFY_RELEASE_ALLOW_BRANCH: 'dev',
+        },
+      })
+    })
+  })
+
+  it('assertReportCanGateProduction 拒绝缺少 release 子模式摘要的报告', () => {
+    const report = {
+      ...createValidReleaseReport(),
+      steps: [
+        {
+          name: 'quick',
+          status: 'passed',
+          durationMs: 1,
+          command: 'node scripts/verify-release.mjs quick',
+          summary: '通过步骤：scripts-test',
+        },
+      ],
+    }
+
+    assert.throws(() => {
+      assertReportCanGateProduction(report, {
+        now: '2026-07-09T01:00:00.000Z',
+      })
+    }, /缺少 local-runtime 子模式摘要|缺少 dev-rehearsal 子模式摘要/)
+  })
+
+  it('assertReportCanGateProduction 拒绝 release 子模式未通过的报告', () => {
+    const report = {
+      ...createValidReleaseReport(),
+      steps: [
+        {
+          name: 'quick',
+          status: 'passed',
+          durationMs: 1,
+          command: 'node scripts/verify-release.mjs quick',
+          summary: '通过步骤：scripts-test',
+        },
+        {
+          name: 'local-runtime',
+          status: 'failed',
+          durationMs: 1,
+          command: 'node scripts/verify-release.mjs local-runtime',
+          summary: '失败',
+        },
+        {
+          name: 'dev-rehearsal',
+          status: 'passed',
+          durationMs: 1,
+          command: 'node scripts/verify-release.mjs dev-rehearsal',
+          summary: '通过步骤：dev-admin-attribution',
+        },
+      ],
+    }
+
+    assert.throws(() => {
+      assertReportCanGateProduction(report, {
+        now: '2026-07-09T01:00:00.000Z',
+      })
+    }, /local-runtime 子模式未通过/)
   })
 
   it('assertReportCanGateProduction 拒绝缺少 versions 子字段的 release 报告', () => {

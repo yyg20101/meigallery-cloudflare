@@ -92,6 +92,8 @@ export async function main(argv = process.argv.slice(2), options = {}) {
     report = await runDevRehearsalReleaseVerification({ ...options, mode })
   } else if (mode === 'local-runtime') {
     report = await runLocalRuntimeReleaseVerification({ ...options, mode })
+  } else if (mode === 'release') {
+    report = await runReleaseVerification({ ...options, mode })
   } else {
     throw new Error(`模式 ${mode} 尚未实现`)
   }
@@ -101,6 +103,81 @@ export async function main(argv = process.argv.slice(2), options = {}) {
   }
 
   console.log(`发布快速验证通过，报告已写入：${report.reportFile}`)
+}
+
+export async function runReleaseVerification(options = {}) {
+  const mode = options.mode || 'release'
+  const startedAt = new Date().toISOString()
+  const startedMs = Date.now()
+  const collectVersionsFn = options.collectVersions || collectVersions
+  const getGitStateFn = options.getGitState || getGitState
+  const writeReportFn = options.writeReport || writeReport
+  const runQuickVerificationFn = options.runQuickVerification || runQuickVerification
+  const runLocalRuntimeReleaseVerificationFn = options.runLocalRuntimeReleaseVerification || runLocalRuntimeReleaseVerification
+  const runDevRehearsalReleaseVerificationFn = options.runDevRehearsalReleaseVerification || runDevRehearsalReleaseVerification
+  const versions = await collectVersionsFn(options)
+  const git = await getGitStateFn(options)
+  const steps = []
+  const artifacts = []
+  const notes = []
+
+  const childRuns = [
+    ['quick', runQuickVerificationFn],
+    ['local-runtime', runLocalRuntimeReleaseVerificationFn],
+    ['dev-rehearsal', runDevRehearsalReleaseVerificationFn],
+  ]
+
+  for (const [childMode, runChild] of childRuns) {
+    const childReport = await runChild({ ...options, mode: childMode })
+    if (childReport.reportFile) artifacts.push(childReport.reportFile)
+
+    const passedSteps = Array.isArray(childReport.steps)
+      ? childReport.steps
+        .filter(step => step?.status === 'passed' && typeof step?.name === 'string' && step.name.trim() !== '')
+        .map(step => step.name)
+      : []
+
+    steps.push({
+      name: childMode,
+      status: childReport.status,
+      durationMs: childReport.durationMs ?? 0,
+      command: `node scripts/verify-release.mjs ${childMode}`,
+      exitCode: childReport.status === 'passed' ? 0 : 1,
+      summary: passedSteps.length > 0
+        ? `通过步骤：${passedSteps.join('、')}；报告：${childReport.reportFile}`
+        : `未生成通过步骤摘要；报告：${childReport.reportFile}`,
+    })
+
+    if (Array.isArray(childReport.notes) && childReport.notes.length > 0) {
+      notes.push(`[${childMode}] ${childReport.notes.join('；')}`)
+    }
+
+    if (childReport.status !== 'passed') {
+      notes.push(`release 编排在 ${childMode} 阶段停止，请先修复该阶段失败项。`)
+      break
+    }
+  }
+
+  const finishedAt = new Date().toISOString()
+  const report = {
+    schemaVersion: 1,
+    mode,
+    status: steps.length === childRuns.length && steps.every(step => step.status === 'passed') ? 'passed' : 'failed',
+    startedAt,
+    finishedAt,
+    durationMs: Date.now() - startedMs,
+    git,
+    versions,
+    steps,
+    artifacts,
+    notes,
+  }
+  const files = await writeReportFn(report, options)
+
+  return {
+    ...report,
+    ...files,
+  }
 }
 
 export async function runLocalRuntimeReleaseVerification(options = {}) {
@@ -192,6 +269,7 @@ export async function assertProductionAllowed(options = {}) {
   const report = await readLatestReportFn(options)
   assertReportCanGateProductionFn(report, {
     ...options,
+    currentBranch: expectedBranch,
     expectedCommit,
   })
 }
@@ -250,6 +328,7 @@ function printHelp() {
   node scripts/verify-release.mjs quick
   node scripts/verify-release.mjs dev-rehearsal
   node scripts/verify-release.mjs local-runtime
+  node scripts/verify-release.mjs release
   node scripts/verify-release.mjs assert-production-allowed
 `.trim())
 }

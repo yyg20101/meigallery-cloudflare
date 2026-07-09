@@ -17,6 +17,7 @@ const SUMMARY_LIMIT = 1200
 const REPORT_MAX_AGE_MS = 24 * 60 * 60 * 1000
 const VALID_REPORT_MODES = new Set(['quick', 'local-runtime', 'dev-rehearsal', 'release'])
 const VALID_REPORT_STATUSES = new Set(['passed', 'failed', 'skipped'])
+const RELEASE_CHILD_MODES = ['quick', 'local-runtime', 'dev-rehearsal']
 
 export function redact(value) {
   const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2)
@@ -179,11 +180,19 @@ export function assertReportCanGateProduction(report, options = {}) {
       reasons.push('报告 commit 与当前待发布 commit 不一致')
     }
 
+    if (options.currentBranch && !isProductionBranchAllowed(options.currentBranch, options)) {
+      reasons.push('当前分支不是 main 或 release/*，拒绝放行生产部署')
+    }
+
     const finishedAt = Date.parse(report.finishedAt || report.startedAt || '')
     if (Number.isNaN(finishedAt)) {
       reasons.push('报告缺少有效的 finishedAt 或 startedAt 时间')
     } else if (now - finishedAt > maxAgeMs) {
       reasons.push('报告已过期')
+    }
+
+    if (report.mode === 'release') {
+      validateReleaseSummary(report, reasons)
     }
   }
 
@@ -274,6 +283,27 @@ function validateReportShape(report, reasons) {
   }
 }
 
+function validateReleaseSummary(report, reasons) {
+  if (!Array.isArray(report.steps)) return
+
+  const stepMap = new Map(report.steps.map(step => [step?.name, step]))
+  for (const mode of RELEASE_CHILD_MODES) {
+    const step = stepMap.get(mode)
+    if (!step) {
+      reasons.push(`release 报告缺少 ${mode} 子模式摘要`)
+      continue
+    }
+
+    if (step.status !== 'passed') {
+      reasons.push(`release 报告中的 ${mode} 子模式未通过`)
+    }
+
+    if (typeof step.summary !== 'string' || step.summary.trim() === '') {
+      reasons.push(`release 报告中的 ${mode} 子模式摘要为空`)
+    }
+  }
+}
+
 function validateNonEmptyString(value, reason, reasons) {
   if (typeof value !== 'string' || value.trim() === '') {
     reasons.push(reason)
@@ -295,4 +325,15 @@ function resolveReportDir(reportDir) {
 
 function redactCredentialUrl(value) {
   return String(value).replace(/(https?:\/\/)([^/\s@]+)@/gi, '$1[REDACTED]@')
+}
+
+function isProductionBranchAllowed(branch, options) {
+  const currentBranch = String(branch || '').trim()
+  if (!currentBranch) return false
+
+  const env = options.env || process.env
+  const overrideBranch = String(env.VERIFY_RELEASE_ALLOW_BRANCH || '').trim()
+  if (overrideBranch && currentBranch === overrideBranch) return true
+
+  return currentBranch === 'main' || currentBranch.startsWith('release/')
 }

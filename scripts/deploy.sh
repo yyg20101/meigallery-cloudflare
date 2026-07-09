@@ -51,6 +51,12 @@ else
     echo "已取消"
     exit 0
   fi
+
+  echo "执行生产发布验证闸门..."
+  if ! node scripts/verify-release.mjs assert-production-allowed; then
+    echo "生产部署被发布验证闸门阻断。请先运行 corepack pnpm verify:release，并确认报告通过。"
+    exit 1
+  fi
 fi
 
 echo ""
