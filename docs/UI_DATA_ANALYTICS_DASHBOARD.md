@@ -86,6 +86,12 @@
 | 邀请 | `/admin/analytics/invites` | `[当前实现]` | 邀请码带来多少注册和会员发放 | `/api/admin/analytics/invites`、`/api/admin/invite-codes` |
 | 健康 | `/admin/analytics/health` | `[当前实现]` | 采集、聚合、成本和采样是否正常 | `/api/admin/analytics/health` |
 
+### 2.3.1 与归因中心边界
+
+`/admin/analytics` 是一方行为分析大盘，回答“站内访问、内容、点击、邀请和采集健康如何”。其中来源中的 `fb`、`facebook`、`meta` 只表示站内 UTM、推广链接或 referrer 归因，不等同于 Meta Pixel 或 CAPI 回传数据。
+
+广告投放相关能力统一进入 `/admin/attribution`：创建投放追踪链接、对比 `utm_content`、查看有效联系 / Lead / 完成注册、检查 Pixel / CAPI delivery、排查重复事件和执行发布检查。数据大盘可以提供跳转入口，但不在本页面内维护 Pixel 地址、CAPI secret 或 Test Event。
+
 ### 2.4 Global Layout
 
 所有分析页面共享 `AnalyticsPageShell`：
@@ -191,6 +197,7 @@
 - 不提供无条件全量原始事件列表。
 - 不用图表动效替代可排序表格和明确指标定义。
 - 不把 Facebook Pixel 事件作为后台大盘的唯一数据源。
+- 不在 `/admin/analytics` 创建投放追踪链接或展示 Meta CAPI delivery 明细；这些由 `/admin/attribution` 维护。
 
 ## 3. AI System Requirements
 
@@ -210,6 +217,18 @@ Nuxt 后台页面
   -> D1 聚合表和摘要表
   -> 响应 KPI、趋势、表格、健康状态
   -> 页面渲染卡片、趋势、漏斗、路径边和可排序表格
+```
+
+广告归因链路：
+
+```text
+Nuxt 后台归因中心
+  -> AttributionPageShell 读取日期筛选
+  -> useAdminAttribution composable 请求 admin attribution API
+  -> API Worker 校验 admin/owner 权限
+  -> D1 转化账本和 delivery 聚合表
+  -> Cloudflare Queue 异步投递 Meta CAPI
+  -> 页面渲染投放链接、转化趋势、Meta 同步和重复诊断
 ```
 
 ### 4.2 Page Composition

@@ -51,6 +51,7 @@ const emailVerificationEnabled = ref(false)
 const videoEnabledToggle = ref(false)
 const facebookPixelEnabled = ref(false)
 const facebookPixelDebugEnabled = ref(false)
+const metaCapiEnabled = ref(false)
 const homeAdEnabled = ref(false)
 const loading = ref(false)
 const iconUploadLoading = ref(false)
@@ -189,6 +190,9 @@ if (settings.value?.data) {
     if (key === 'facebook_pixel_debug_enabled') {
       facebookPixelDebugEnabled.value = parseBooleanSetting(val.value)
     }
+    if (key === 'meta_capi_enabled') {
+      metaCapiEnabled.value = parseBooleanSetting(val.value)
+    }
     if (key === 'home_ad_enabled') {
       homeAdEnabled.value = parseBooleanSetting(val.value)
     }
@@ -214,6 +218,7 @@ async function onSave() {
         home_ad_ends_at: normalizeScheduleInput(form.home_ad_ends_at),
         facebook_pixel_enabled: facebookPixelEnabled.value,
         facebook_pixel_debug_enabled: facebookPixelDebugEnabled.value,
+        meta_capi_enabled: metaCapiEnabled.value,
         home_ad_enabled: homeAdEnabled.value,
       },
     })
@@ -550,6 +555,13 @@ async function toggleVideo() {
           <span>
             <span class="block text-sm font-medium text-gray-700">输出调试日志</span>
             <span class="mt-0.5 block text-xs text-gray-500">仅在浏览器控制台输出已脱敏事件；dev 加载测试 Pixel 仍需环境变量显式允许。</span>
+          </span>
+        </label>
+        <label class="flex items-start gap-3 rounded-lg border border-gray-200 p-4">
+          <input v-model="metaCapiEnabled" type="checkbox" class="mt-1 h-4 w-4 rounded border-gray-300" />
+          <span>
+            <span class="block text-sm font-medium text-gray-700">启用 Meta CAPI</span>
+            <span class="mt-0.5 block text-xs text-gray-500">仅控制服务端 Queue 投递；需先配置 Worker Secret 并在归因中心 Test Event 验证通过。</span>
           </span>
         </label>
       </fieldset>

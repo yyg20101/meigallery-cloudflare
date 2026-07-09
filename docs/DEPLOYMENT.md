@@ -142,9 +142,10 @@ corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_TEST_E
 
 1. Owner 关闭 `meta_capi_enabled`。
 2. 新增转化仍写入 `analytics_conversion_actions`，但 `meta_capi` delivery 应显示 `skipped/disabled`。
-3. 如 Queue 积压异常，可临时暂停 Queue delivery：`corepack pnpm --filter @meigallery/api exec wrangler queues pause-delivery meigallery-meta-capi`。
-4. 修复后恢复：`corepack pnpm --filter @meigallery/api exec wrangler queues resume-delivery meigallery-meta-capi`。
-5. 如果需撤回 Worker 版本，先保持 `meta_capi_enabled=false`，再部署旧 API Worker；不要删除 `META_CAPI_ACCESS_TOKEN`，除非确认短期内不再联调。
+3. 如需同时停止浏览器 Pixel 上报，Owner 再关闭 `facebook_pixel_enabled`；站内转化账本继续写入，便于回滚后核对损失窗口。
+4. 如 Queue 积压异常，可临时暂停 Queue delivery：`corepack pnpm --filter @meigallery/api exec wrangler queues pause-delivery meigallery-meta-capi`。
+5. 修复后恢复：`corepack pnpm --filter @meigallery/api exec wrangler queues resume-delivery meigallery-meta-capi`。
+6. 如果需撤回 Worker 版本，先保持 `meta_capi_enabled=false`，再部署旧 API Worker；不要删除 `META_CAPI_ACCESS_TOKEN`，除非确认短期内不再联调。
 
 ## 5. 环境变量
 

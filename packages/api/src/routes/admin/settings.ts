@@ -94,6 +94,9 @@ adminSettingsRoutes.patch('/', requireOwner, async (c) => {
   if ('analytics_consent_mode' in body) {
     body.analytics_consent_mode = normalizeAnalyticsConsentMode(body.analytics_consent_mode)
   }
+  if ('meta_capi_enabled' in body) {
+    body.meta_capi_enabled = normalizeBooleanSetting(body.meta_capi_enabled)
+  }
   if ('home_ad_enabled' in body) {
     body.home_ad_enabled = normalizeBooleanSetting(body.home_ad_enabled)
   }

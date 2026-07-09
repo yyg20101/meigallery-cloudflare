@@ -75,4 +75,13 @@ describe('site settings keys', () => {
       expect(PUBLIC_SETTING_KEYS).toContain(key)
     }
   })
+
+  it('keeps Meta CAPI switch admin-only', () => {
+    expect(ADMIN_SETTING_KEYS).toContain('meta_capi_enabled')
+    expect(PUBLIC_SETTING_KEYS).not.toContain('meta_capi_enabled')
+    expect(ADMIN_SETTING_KEYS).not.toContain('META_CAPI_ACCESS_TOKEN')
+    expect(PUBLIC_SETTING_KEYS).not.toContain('META_CAPI_ACCESS_TOKEN')
+    expect(ADMIN_SETTING_KEYS).not.toContain('META_CAPI_TEST_EVENT_CODE')
+    expect(PUBLIC_SETTING_KEYS).not.toContain('META_CAPI_TEST_EVENT_CODE')
+  })
 })

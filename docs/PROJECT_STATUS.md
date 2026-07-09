@@ -1,14 +1,14 @@
 # 项目当前状态
 
-更新时间：2026-07-08
+更新时间：2026-07-09
 
 本文是当前实现、部署和文档入口索引。若旧提交、历史计划或早期文档与本文冲突，以 `AGENTS.md`、本文、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md` 和 `docs/GIT_WORKFLOW.md` 为准。
 
 ## 文档边界
 
 - 已清理历史 PRD、旧计划、旧评审台账、旧线框图和过期 Superpowers 方案，避免后续开发继续引用历史口径。
-- 当前保留 `docs/superpowers/specs/2026-07-08-attribution-center-clean-design.md` 作为归因中心、后台 UI、测试矩阵和发布闸门的上层规格；该设计尚未实施。
-- 当前保留 `docs/superpowers/specs/2026-07-08-meta-capi-attribution-layer-design.md` 作为 Meta Pixel / CAPI、转化事件账本和去重层的技术输入；该设计尚未实施。
+- 当前保留 `docs/superpowers/specs/2026-07-08-attribution-center-clean-design.md` 作为归因中心、后台 UI、测试矩阵和发布闸门的设计背景；当前实现事实以代码、`docs/TECHNICAL_SPEC.md` 和本文为准。
+- 当前保留 `docs/superpowers/specs/2026-07-08-meta-capi-attribution-layer-design.md` 作为 Meta Pixel / CAPI、转化事件账本和去重层的技术输入；站内转化账本与 Meta CAPI Queue 已按该方向落地。
 - 新需求进入实施时，应直接更新当前 PRD、技术规格、UI 设计或专项文档，不再恢复历史归档目录。
 
 ## 技术栈现状
@@ -38,15 +38,15 @@
 - 后台管理：图库、媒体、标签、用户、会员发放、站点设置、联系方式、首页广告、真实案例、导入任务、审计日志。
 - Telegram 外部导入 API：项目只提供对外 API 接收能力，不内置 Telegram Bot 本体；对接契约见 `docs/TELEGRAM_IMPORT_API.md`。
 - 数据分析：已实现一方数据采集、来源归因、邀请码、联系点击、趋势和后台 `/admin/analytics` 系列看板；后台 UI 口径见 `docs/UI_DATA_ANALYTICS_DASHBOARD.md`。
-- Meta Pixel：已实现浏览器侧 Pixel 设置、标准事件和站内数据分析口径区分；数据分析中的 `fb` / `facebook` / `meta` 表示站内 UTM、推广链接或 referrer 归因，不等同于 Meta Pixel 回传数据。
+- 归因中心：已实现站内转化账本、投放追踪链接、有效联系 / Lead / 完成注册趋势、Meta Pixel / CAPI 同步健康、重复诊断和发布检查；入口为 `/admin/attribution`。
+- Meta Pixel / CAPI：已实现浏览器侧 Pixel 设置、标准事件、同一 `eventID` 去重和 Cloudflare Queue 异步 CAPI 投递；CAPI 使用 Worker secret `META_CAPI_ACCESS_TOKEN`，支持 Owner Test Event。数据分析中的 `fb` / `facebook` / `meta` 表示站内 UTM、推广链接或 referrer 归因，不等同于 Meta Pixel 回传数据。
 - SEO：已实现基础 SEO 设置、关键词池、sitemap、robots、结构化数据和生产校验脚本；运营配置见 `docs/SEO_CONFIGURATION.md`。
 
 ## 规划和未接入
 
 - Cloudflare Stream 视频上传、编码、播放和受保护视频访问链路。
 - 完整 zip 大文件上传、解压和异步导入处理。
-- 归因中心后台 UI、Meta Conversions API 服务端回传、去重层和站内转化事件账本，按当前归因中心和 Meta 技术规格分阶段实施。
-- Meta Marketing API 广告花费、campaign、ad set、ad 数据导入暂不属于当前实现范围。
+- Meta Marketing API 广告花费、campaign、ad set、ad 数据导入暂不属于当前实现范围；当前只维护站内转化事实和 Pixel / CAPI 同步状态。
 
 ## 当前文档入口
 
@@ -60,8 +60,8 @@
 - `docs/TELEGRAM_IMPORT_API.md`：Telegram 外部导入 API 对接契约。
 - `docs/SEO_CONFIGURATION.md`：SEO 关键词和运营配置说明。
 - `docs/codebase/*.md`：代码库结构、架构、集成、测试和风险分析。
-- `docs/superpowers/specs/2026-07-08-attribution-center-clean-design.md`：归因中心、后台归因 UI、测试矩阵和发布闸门设计。
-- `docs/superpowers/specs/2026-07-08-meta-capi-attribution-layer-design.md`：Meta 归因与转化事件账本下一阶段设计。
+- `docs/superpowers/specs/2026-07-08-attribution-center-clean-design.md`：归因中心、后台归因 UI、测试矩阵和发布闸门的设计背景。
+- `docs/superpowers/specs/2026-07-08-meta-capi-attribution-layer-design.md`：Meta 归因与转化事件账本的设计背景。
 
 ## Git 状态
 

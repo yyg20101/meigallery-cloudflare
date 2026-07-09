@@ -229,6 +229,7 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/media/:assetId/thumbnail` | 缩略图（公开） |
 | POST | `/api/analytics/events` | 站内一方数据分析批量采集，默认受 `analytics_enabled` 关闭态保护 |
 | POST | `/api/analytics/session/end` | session 结束兜底采集，兼容 `sendBeacon` 简写 payload |
+| POST | `/api/conversions/events` | 公开转化事件入口，记录联系、完成注册、开始试用等站内转化；受限流保护，服务端清洗 metadata，不接受会员发放、Lead 或敏感字段 |
 | GET | `/api/invites/:code/status` | 公开校验邀请码状态，只返回可展示字段和失败原因，不泄露 `code_hash` |
 | GET | `/api/settings/public` | 公开站点设置和过滤后的首页广告数组 `home_ads` |
 
@@ -299,6 +300,13 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/admin/analytics/sessions/:id` | 单 session 脱敏事件明细，写审计日志 | owner |
 | POST | `/api/admin/analytics/exports` | 创建 CSV 导出任务并写入 R2，写审计日志 | owner |
 | GET | `/api/admin/analytics/exports/:id` | 查看导出任务状态 | owner |
+| GET | `/api/admin/attribution/overview` | 归因中心总览，展示站内转化、广告来源、Pixel / CAPI 同步和重复诊断摘要 | admin+ |
+| GET | `/api/admin/attribution/conversions` | 转化账本趋势、来源分组、事件分组和样本明细 | admin+ |
+| GET | `/api/admin/attribution/links` | 投放追踪链接分析列表，返回可复制 URL、UTM 参数和转化统计；创建和修改仍复用 `/api/admin/tracking-sources` | admin+ |
+| GET | `/api/admin/attribution/meta` | Meta Pixel / CAPI 同步状态，只返回配置存在状态和 delivery 统计，不泄露 secret | admin+ |
+| POST | `/api/admin/attribution/meta/test-event` | 创建 Meta CAPI Test Event delivery 并写入审计日志，不返回 token 或 test code | owner |
+| GET | `/api/admin/attribution/duplicates` | 查看重复点击、重复转化和 Pixel / CAPI 去重诊断 | admin+ |
+| GET | `/api/admin/attribution/readiness` | 归因发布检查，展示允许公开的配置项、开关和阻断项 | admin+ |
 | POST | `/api/admin/legacy-import/sources` | 创建旧站来源 | admin+ |
 | POST | `/api/admin/legacy-import/jobs` | 启动旧站迁移 | admin+ |
 | GET | `/api/admin/legacy-import/jobs/:id` | 迁移任务详情 | admin+ |
@@ -311,7 +319,7 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 
 ## 8. D1 数据库 Schema `[当前实现]`
 
-以下为当前核心表摘要，完整结构以 `packages/api/migrations/` 中的顺序迁移为准。数据分析相关表已通过 `0023` 到 `0027` 建立 schema，并已接入公开采集 API、邀请码转化闭环、推广来源管理、Web 轻量 SDK、核心业务埋点、Cron 聚合任务、后台分析 API、后台分析页面、端到端 smoke、性能成本 fixtures、上线顺序和回滚文档。Cloudflare Queues 与 Workers Analytics Engine 仍按 Phase 9 阈值触发后再评估，不是当前 MVP 默认依赖。
+以下为当前核心表摘要，完整结构以 `packages/api/migrations/` 中的顺序迁移为准。数据分析相关表已通过 `0023` 到 `0027` 建立 schema，并已接入公开采集 API、邀请码转化闭环、推广来源管理、Web 轻量 SDK、核心业务埋点、Cron 聚合任务、后台分析 API、后台分析页面、端到端 smoke、性能成本 fixtures、上线顺序和回滚文档。站内行为分析采集仍不依赖 Cloudflare Queues 或 Workers Analytics Engine；广告归因的 Meta CAPI 投递已独立使用 Cloudflare Queues，队列绑定为 `META_CAPI_QUEUE`。
 
 ### users
 
@@ -597,6 +605,27 @@ INSERT INTO site_settings (key, value) VALUES
 | `analytics_invite_daily` | `[部分实现]` | 按日期和邀请码聚合落地、注册、联系和会员发放。 |
 | `analytics_click_daily` | `[部分实现]` | 按日期、元素和目标聚合 raw/effective/duplicate 点击。 |
 | `analytics_export_jobs` | `[当前实现]` | Owner-only CSV 导出任务元数据，导出文件写入 R2 并设置过期时间。 |
+
+### 转化账本与归因中心表 `[当前实现]`
+
+归因中心把“站内可信事实”和“外部广告平台同步”分开维护：`analytics_conversion_actions` 是事实源，Pixel / CAPI 只是 delivery 渠道。后台 `/admin/analytics` 仍是一方行为分析大盘；广告投放追踪链接、有效联系、Lead、完成注册、Pixel / CAPI 同步、重复诊断和发布检查统一放在 `/admin/attribution`。
+
+| 表 | 状态 | 用途 |
+|------|------|------|
+| `analytics_conversion_actions` | `[当前实现]` | 站内转化事实，保存 `contact`、`lead`、`complete_registration`、`start_trial`、`membership_grant` 等事件、UTM、来源、去重 key 和清洗后的 metadata。 |
+| `analytics_conversion_deliveries` | `[当前实现]` | Pixel / Meta CAPI delivery 账本，记录 channel、`external_event_id`、状态、跳过原因、失败错误、重试次数和发送时间。 |
+| `analytics_conversion_daily` | `[当前实现]` | 按日期、事件、来源、campaign、utm_content 等维度聚合站内转化，用于后台趋势和投放对比。 |
+| `analytics_conversion_delivery_daily` | `[当前实现]` | 按日期、channel、事件和 delivery 状态聚合同步结果，用于 Meta 同步健康和发布检查。 |
+
+实现约束：
+
+- `/api/conversions/events` 为公开入口，仅允许浏览器提交 `contact`、`complete_registration`、`start_trial` 等用户侧事件；`lead` 和 `membership_grant` 必须由服务端可信流程产生。
+- 公开转化入口复用应用内兜底限流，并在服务端白名单清洗 metadata；请求不得携带邮箱、手机号、联系方式明文、token、私有 R2 key、完整敏感 URL 或任意广告账户密钥。
+- `consent_state=denied` 时只保留站内必要事实，不创建 Meta Pixel / CAPI delivery；`consent_state` 仅用于当次 delivery 判断，不作为 D1 字段持久化。
+- Pixel 与 CAPI 使用同一 `external_event_id` / `eventID`，方便 Meta 后台去重；站内重复诊断不依赖 Meta 回传数据。
+- `/api/admin/attribution/*` 需要 admin+；`/api/admin/attribution/meta/test-event` 需要 owner，并写入 `admin_audit_logs`。
+- Meta CAPI 通过 Cloudflare Queue `META_CAPI_QUEUE` 异步投递，使用 Worker secret `META_CAPI_ACCESS_TOKEN`；可选 `META_CAPI_TEST_EVENT_CODE` 仅用于 Events Manager Test Events。secret 不写入 D1、不返回前端，也不写入审计日志。
+- Queue 发送失败不得阻塞站内转化账本写入；delivery 必须显示 `sent`、`failed`、`skipped`、`missing_queue`、`missing_secret`、`disabled` 等可诊断状态。
 
 成本与索引口径：
 
