@@ -44,7 +44,7 @@ test.describe('核心页面 smoke', () => {
       }
       if (smokePage.path === '/admin') {
         await expect(page.getByText('DEV 测试环境：')).toBeVisible()
-        await expect(page.getByText('当前后台连接正式 D1/R2 数据')).toBeVisible()
+        await expect(page.getByText('当前后台连接独立 dev D1/R2/Queue 资源')).toBeVisible()
         if ((page.viewportSize()?.width ?? 0) >= 1024) {
           await expect(page.getByText('测试图库站 管理')).toBeVisible()
         }

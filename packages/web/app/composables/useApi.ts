@@ -46,8 +46,8 @@ export function useApi() {
     if (!shouldConfirmDevAdminWrite(path, method)) return
 
     const confirmed = window.confirm([
-      '当前 DEV 后台连接正式 D1/R2 数据。',
-      `即将执行 ${method.toUpperCase()} ${path}，可能修改真实内容、会员或媒体文件，并会写入审计日志。`,
+      '当前 DEV 后台连接独立 dev D1/R2 数据。',
+      `即将执行 ${method.toUpperCase()} ${path}，会修改 dev 测试数据、会员或媒体文件，并会写入审计日志。`,
       '确认继续执行？',
     ].join('\n\n'))
 

@@ -11,7 +11,7 @@
 
 当前项目已经具备 CI 验证：lint、脚本测试、API/Web 类型检查、Web 单测、API 单测、API 覆盖率、Playwright mock smoke、Web build 和 API dry-run build。近期归因中心、Meta Pixel、Meta CAPI Queue、站内转化账本和后台数据分析已经接入，发布风险从“页面能否构建”升级为“Cloudflare 运行时、D1 migration、Queue、Worker secret、dev/production 资源隔离和部署顺序是否可控”。
 
-现有 Playwright smoke 主要依赖 mock API，适合防 UI 和前端链路回归，但不能充分验证 API Worker + D1 + Queue 在 Cloudflare 本地运行时中的行为。`docs/DEPLOYMENT.md` 也记录了当前 dev 环境复用生产 D1/R2 的历史策略，这不适合后续广告投放、CAPI 联调和发布前准生产演练。
+现有 Playwright smoke 主要依赖 mock API，适合防 UI 和前端链路回归，但不能充分验证 API Worker + D1 + Queue 在 Cloudflare 本地运行时中的行为。项目历史上曾有 dev 环境复用生产 D1/R2 的部署策略；本设计已将该策略替换为独立 dev D1/R2/Queue，以支撑后续广告投放、CAPI 联调和发布前准生产演练。
 
 本设计目标是建立一套严格、可审计、默认不碰生产数据的发布验证体系，让正式环境问题尽量在本地和隔离 dev 阶段暴露。
 

@@ -119,7 +119,7 @@ async function handleLogout() {
       <header class="border-b border-gray-200 bg-white">
         <div v-if="showDevDataWarning" class="border-b border-amber-200 bg-amber-50 px-8 py-2 text-sm text-amber-900">
           <span class="font-semibold">DEV 测试环境：</span>
-          当前后台连接正式 D1/R2 数据，发布、导入、上传、会员和设置修改会影响真实内容；写操作会弹出二次确认并写入审计日志。
+          当前后台连接独立 dev D1/R2/Queue 资源，发布、导入、上传、会员和设置修改会影响 dev 测试数据；写操作会弹出二次确认并写入审计日志。
         </div>
         <div class="px-8 py-3 flex items-center justify-between">
           <h2 class="text-base font-semibold text-gray-900">{{ pageTitle }}</h2>
