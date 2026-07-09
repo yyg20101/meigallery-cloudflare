@@ -99,6 +99,9 @@ export async function assertProductionAllowed(options = {}) {
   if (!expectedCommit) {
     throw new Error('无法获取当前 Git commit，拒绝放行生产部署')
   }
+  if (gitState.isClean !== true) {
+    throw new Error('当前工作区不是干净状态，拒绝放行生产部署')
+  }
 
   const report = await readLatestReportFn(options)
   assertReportCanGateProductionFn(report, {
