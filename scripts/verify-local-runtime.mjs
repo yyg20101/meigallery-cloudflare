@@ -88,9 +88,10 @@ export async function runLocalRuntimeVerification(options = {}) {
     ], {
       cwd,
       name: 'local-session-seed',
+      reportCommand: 'corepack pnpm --filter @meigallery/api exec wrangler d1 execute meigallery-db --local --persist-to ../../.wrangler-release-verify/local-runtime --command "INSERT INTO sessions (...)" --yes',
     })
     steps.push(cleanForReport(sessionStep))
-    if (sessionStep.status !== 'passed') return { steps, notes, artifacts }
+    if (sessionStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
 
     server = startLocalApiWorker({ cwd, env: buildLocalDevEnv(options.env) })
     startedServer = true
@@ -164,19 +165,23 @@ export async function runLocalRuntimeVerification(options = {}) {
     steps.push(completeRegistrationStep)
     if (completeRegistrationStep.status !== 'passed') return { steps, notes, artifacts }
 
+    const analyticsIngestStep = await postAnalyticsBatch(fetchFn)
+    steps.push(analyticsIngestStep)
+    if (analyticsIngestStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
+
     const analyticsStep = await smokeAdminAnalytics(fetchFn, sessionToken)
     steps.push(analyticsStep)
-    if (analyticsStep.status !== 'passed') return { steps, notes, artifacts }
+    if (analyticsStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
 
     const attributionStep = await smokeAdminAttribution(fetchFn, sessionToken)
     steps.push(attributionStep)
-    if (attributionStep.status !== 'passed') return { steps, notes, artifacts }
+    if (attributionStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
 
     const metaStep = await smokeMetaDelivery(fetchFn, sessionToken)
     steps.push(metaStep)
-    if (metaStep.status !== 'passed') return { steps, notes, artifacts }
+    if (metaStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
 
-    return { steps, notes, artifacts }
+    return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
   } finally {
     if (startedServer && server) {
       await stopLocalApiWorker(server)
@@ -322,16 +327,101 @@ async function postConversion(fetchFn, stepName, payload) {
   })
 }
 
+async function postAnalyticsBatch(fetchFn) {
+  return requestStep(fetchFn, 'local-analytics-events', '/api/analytics/events', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Analytics-Visitor-Id': 'visitor_release_local_analytics',
+      'X-Analytics-Session-Id': 'session_release_local_analytics',
+    },
+    body: JSON.stringify({
+      visitorId: 'visitor_release_local_analytics',
+      sessionId: 'session_release_local_analytics',
+      events: [
+        {
+          eventId: 'event_release_local_page_view',
+          eventName: 'page_view',
+          occurredAt: new Date().toISOString(),
+          routeName: '/gallery/:slug',
+          path: '/gallery/release-local',
+          entityType: 'gallery',
+          entityId: 'gallery-release-local',
+          sourceChannel: 'ad',
+          sourceName: 'release-local-fb',
+          trackingSourceSlug: 'release-local-fb',
+          utmSource: 'release-local-fb',
+          utmMedium: 'paid_social',
+          utmCampaign: 'release-local-runtime',
+          utmContent: 'release-local-chat',
+        },
+        {
+          eventId: 'event_release_local_contact_click',
+          eventName: 'contact_method_click',
+          occurredAt: new Date().toISOString(),
+          routeName: '/gallery/:slug',
+          path: '/gallery/release-local',
+          entityType: 'contact',
+          entityId: 'floating_contact_panel',
+          sourceChannel: 'ad',
+          sourceName: 'release-local-fb',
+          trackingSourceSlug: 'release-local-fb',
+          utmSource: 'release-local-fb',
+          utmMedium: 'paid_social',
+          utmCampaign: 'release-local-runtime',
+          utmContent: 'release-local-chat',
+          props: {
+            element_id: 'contact_method_click',
+            element_type: 'button',
+            location: 'floating_contact_panel',
+            target_type: 'contact',
+            target_id: 'floating_contact_panel',
+            method_type: 'telegram',
+          },
+        },
+        {
+          eventId: 'event_release_local_register_success',
+          eventName: 'register_success',
+          occurredAt: new Date().toISOString(),
+          routeName: 'register',
+          path: '/register',
+          entityType: 'auth',
+          entityId: 'register-submit',
+          sourceChannel: 'ad',
+          sourceName: 'release-local-fb',
+          trackingSourceSlug: 'release-local-fb',
+          utmSource: 'release-local-fb',
+          utmMedium: 'paid_social',
+          utmCampaign: 'release-local-runtime',
+          utmContent: 'release-local-chat',
+        },
+      ],
+    }),
+  }, (body) => {
+    if (Number(body?.accepted ?? 0) < 3) {
+      throw new Error(`analytics events accepted 不足：${String(body?.accepted ?? 0)}`)
+    }
+    if (Number(body?.rejected ?? 0) !== 0) {
+      throw new Error(`analytics events rejected=${String(body?.rejected ?? 0)}`)
+    }
+    return `analytics events 已写入，accepted=${String(body.accepted)}`
+  })
+}
+
 async function smokeAdminAnalytics(fetchFn, sessionToken) {
-  return requestStep(fetchFn, 'local-admin-analytics', '/api/admin/analytics/sources?range=7d&sourceName=release-local-fb', {
+  return requestStep(fetchFn, 'local-admin-analytics', '/api/admin/analytics/funnel?range=7d&sourceCode=release-local-fb', {
     headers: {
       Cookie: `${SESSION_COOKIE}=${sessionToken}`,
     },
   }, (body) => {
-    const rows = Array.isArray(body?.data) ? body.data : []
-    const matched = rows.find(row => String(row?.source_name || '') === 'release-local-fb')
-    if (!matched) throw new Error('analytics sources 未返回 release-local-fb')
-    return `analytics sources 可读，session_count=${String(matched.session_count ?? 0)}`
+    const stages = Array.isArray(body?.data?.stages) ? body.data.stages : []
+    const pageViews = stages.find(stage => stage?.key === 'page_views')
+    const keyClicks = stages.find(stage => stage?.key === 'key_clicks')
+    const contactsOrRegisters = stages.find(stage => stage?.key === 'contacts_or_registers')
+    if (Number(pageViews?.value ?? 0) < 1) throw new Error('analytics funnel page_views 未写入')
+    if (Number(keyClicks?.value ?? 0) < 1) throw new Error('analytics funnel key_clicks 未写入')
+    if (Number(contactsOrRegisters?.value ?? 0) < 2) throw new Error('analytics funnel contacts_or_registers 未写入')
+    return `analytics funnel 可读，page_views=${pageViews.value}, key_clicks=${keyClicks.value}, contacts_or_registers=${contactsOrRegisters.value}`
   })
 }
 

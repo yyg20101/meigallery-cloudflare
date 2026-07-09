@@ -43,12 +43,13 @@ export async function runCommand(command, args, options = {}) {
     cwd = process.cwd(),
     env = process.env,
     name = args[0] || command,
+    reportCommand,
   } = options
 
   const startedAt = Date.now()
   const stdoutChunks = []
   const stderrChunks = []
-  const renderedCommand = [command, ...args].join(' ')
+  const renderedCommand = reportCommand || [command, ...args].join(' ')
 
   return new Promise(resolve => {
     const child = spawn(command, args, {

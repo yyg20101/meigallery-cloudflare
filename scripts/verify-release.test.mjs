@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
+import { readFile, mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { describe, it } from 'node:test'
 import { assertProductionAllowed, runLocalRuntimeReleaseVerification } from './verify-release.mjs'
+import { writeReport } from './release-verification-lib.mjs'
 
 describe('发布验证 CLI', () => {
   it('assertProductionAllowed 会绑定当前 Git commit', async () => {
@@ -130,5 +134,41 @@ describe('发布验证 CLI', () => {
     assert.equal(report.mode, 'local-runtime')
     assert.equal(report.status, 'passed')
     assert.equal(report.reportFile, '/tmp/local-runtime.json')
+  })
+
+  it('runLocalRuntimeReleaseVerification 会拒绝把 session token 或 token_hash 写入报告', async () => {
+    const reportDir = await mkdtemp(path.join(tmpdir(), 'verify-local-runtime-'))
+
+    try {
+      const report = await runLocalRuntimeReleaseVerification({
+        reportDir,
+        collectVersions: async () => ({
+          node: 'v24.0.0',
+          pnpm: '10.0.0',
+          wrangler: '4.0.0',
+        }),
+        getGitState: async () => ({
+          branch: 'dev',
+          commit: 'local-runtime-commit',
+          isClean: true,
+          remote: 'origin',
+        }),
+        runLocalRuntimeVerification: async () => ({
+          steps: [
+            { name: 'local-session-seed', status: 'passed', durationMs: 1, command: 'safe command', exitCode: 0, summary: 'ok' },
+          ],
+          notes: [],
+          artifacts: [],
+          sensitiveValues: ['plain-session-token', 'plain-token-hash'],
+        }),
+        writeReport,
+      })
+
+      const latestContent = await readFile(report.latestFile, 'utf8')
+      assert.equal(latestContent.includes('plain-session-token'), false)
+      assert.equal(latestContent.includes('plain-token-hash'), false)
+    } finally {
+      await rm(reportDir, { recursive: true, force: true })
+    }
   })
 })

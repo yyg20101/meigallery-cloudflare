@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
 import {
   assertReportCanGateProduction,
@@ -108,7 +110,7 @@ export async function runLocalRuntimeReleaseVerification(options = {}) {
   const writeReportFn = options.writeReport || writeReport
   const versions = await collectVersionsFn(options)
   const git = await getGitStateFn(options)
-  const { steps, notes, artifacts } = await runLocalRuntimeVerificationFn(options)
+  const { steps, notes, artifacts, sensitiveValues = [] } = await runLocalRuntimeVerificationFn(options)
   const finishedAt = new Date().toISOString()
   const report = {
     schemaVersion: 1,
@@ -124,6 +126,7 @@ export async function runLocalRuntimeReleaseVerification(options = {}) {
     notes,
   }
   const files = await writeReportFn(report, options)
+  await assertReportOmitsSecrets(files, sensitiveValues)
 
   return {
     ...report,
@@ -215,4 +218,19 @@ function printHelp() {
 
 function isCliEntry() {
   return process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
+}
+
+async function assertReportOmitsSecrets(files, sensitiveValues) {
+  const secrets = sensitiveValues.filter(value => typeof value === 'string' && value.trim() !== '')
+  if (secrets.length === 0) return
+
+  const [reportFileContent, latestFileContent] = await Promise.all([
+    readFile(files.reportFile, 'utf8'),
+    readFile(files.latestFile, 'utf8'),
+  ])
+
+  for (const secret of secrets) {
+    assert.equal(reportFileContent.includes(secret), false, 'reportFile 包含敏感 token 信息')
+    assert.equal(latestFileContent.includes(secret), false, 'latestFile 包含敏感 token 信息')
+  }
 }

@@ -6,6 +6,7 @@ import { describe, it } from 'node:test'
 import {
   assertReportCanGateProduction,
   redact,
+  runCommand,
   writeReport,
 } from './release-verification-lib.mjs'
 
@@ -62,6 +63,15 @@ describe('发布验证基础库', () => {
     assert.equal(output.includes('ghp_secret-token'), false)
     assert.equal(output.includes('ghp_directtoken'), false)
     assert.match(output, /https:\/\/\[REDACTED]@github\.com\/yyg20101\/meigallery-cloudflare\.git/)
+  })
+
+  it('runCommand 支持使用安全的 reportCommand 覆盖报告命令', async () => {
+    const step = await runCommand('node', ['-e', 'console.log("ok")'], {
+      reportCommand: 'node -e "[REDACTED]"',
+    })
+
+    assert.equal(step.command, 'node -e "[REDACTED]"')
+    assert.equal(step.status, 'passed')
   })
 
   it('writeReport 同时写入时间戳文件和 latest.json', async () => {
