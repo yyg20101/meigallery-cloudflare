@@ -38,8 +38,8 @@ fi
 # 根据环境设置 wrangler 参数
 if [ "$IS_PRODUCTION" = "false" ]; then
   ENV_ARGS=(--env dev)
-  D1_DB="meigallery-db"
-  echo "⚠ 开发环境部署 — Worker 名称带 -dev 后缀"
+  D1_DB="meigallery-db-dev"
+  echo "⚠ 开发环境部署 — Worker 名称带 -dev 后缀，D1/R2/Queue 使用独立 dev 资源"
 else
   ENV_ARGS=(--env "")
   D1_DB="meigallery-db"

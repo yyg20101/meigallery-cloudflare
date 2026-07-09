@@ -121,6 +121,11 @@ export async function runReleaseVerification(options = {}) {
   const artifacts = []
   const notes = []
   const releaseSubModes = []
+  const releaseGitBlockers = []
+
+  if (typeof git.branch !== 'string' || git.branch.trim() === '') releaseGitBlockers.push('无法获取当前 Git branch')
+  if (typeof git.commit !== 'string' || git.commit.trim() === '') releaseGitBlockers.push('无法获取当前 Git commit')
+  if (git.isClean !== true) releaseGitBlockers.push('release 报告对应工作区不是干净状态')
 
   const childRuns = [
     ['quick', runQuickVerificationFn],
@@ -128,47 +133,51 @@ export async function runReleaseVerification(options = {}) {
     ['dev-rehearsal', runDevRehearsalReleaseVerificationFn],
   ]
 
-  for (const [childMode, runChild] of childRuns) {
-    const childReport = await runChild({ ...options, mode: childMode })
-    if (childReport.reportFile) artifacts.push(childReport.reportFile)
+  if (releaseGitBlockers.length > 0) {
+    notes.push(`${releaseGitBlockers.join('；')}，已跳过 release 子模式编排。`)
+  } else {
+    for (const [childMode, runChild] of childRuns) {
+      const childReport = await runChild({ ...options, mode: childMode })
+      if (childReport.reportFile) artifacts.push(childReport.reportFile)
 
-    const passedSteps = Array.isArray(childReport.steps)
-      ? childReport.steps
-        .filter(step => step?.status === 'passed' && typeof step?.name === 'string' && step.name.trim() !== '')
-        .map(step => step.name)
-      : []
-    const childStatus = childReport.status === 'passed' && passedSteps.length > 0 ? 'passed' : 'failed'
-    const childSummary = {
-      mode: childMode,
-      status: childStatus,
-      passedStepNames: passedSteps,
-      reportFile: childReport.reportFile || '',
-    }
-    releaseSubModes.push(childSummary)
+      const passedSteps = Array.isArray(childReport.steps)
+        ? childReport.steps
+          .filter(step => step?.status === 'passed' && typeof step?.name === 'string' && step.name.trim() !== '')
+          .map(step => step.name)
+        : []
+      const childStatus = childReport.status === 'passed' && passedSteps.length > 0 ? 'passed' : 'failed'
+      const childSummary = {
+        mode: childMode,
+        status: childStatus,
+        passedStepNames: passedSteps,
+        reportFile: childReport.reportFile || '',
+      }
+      releaseSubModes.push(childSummary)
 
-    steps.push({
-      name: childMode,
-      status: childStatus,
-      durationMs: childReport.durationMs ?? 0,
-      command: `node scripts/verify-release.mjs ${childMode}`,
-      exitCode: childStatus === 'passed' ? 0 : 1,
-      summary: passedSteps.length > 0
-        ? `通过步骤：${passedSteps.join('、')}；报告：${childReport.reportFile}`
-        : `没有真实通过步骤；报告：${childReport.reportFile}`,
-      passedStepNames: passedSteps,
-    })
+      steps.push({
+        name: childMode,
+        status: childStatus,
+        durationMs: childReport.durationMs ?? 0,
+        command: `node scripts/verify-release.mjs ${childMode}`,
+        exitCode: childStatus === 'passed' ? 0 : 1,
+        summary: passedSteps.length > 0
+          ? `通过步骤：${passedSteps.join('、')}；报告：${childReport.reportFile}`
+          : `没有真实通过步骤；报告：${childReport.reportFile}`,
+        passedStepNames: passedSteps,
+      })
 
-    if (Array.isArray(childReport.notes) && childReport.notes.length > 0) {
-      notes.push(`[${childMode}] ${childReport.notes.join('；')}`)
-    }
+      if (Array.isArray(childReport.notes) && childReport.notes.length > 0) {
+        notes.push(`[${childMode}] ${childReport.notes.join('；')}`)
+      }
 
-    if (childReport.status === 'passed' && passedSteps.length === 0) {
-      notes.push(`[${childMode}] 子模式没有真实 passed step，release 不能通过。`)
-    }
+      if (childReport.status === 'passed' && passedSteps.length === 0) {
+        notes.push(`[${childMode}] 子模式没有真实 passed step，release 不能通过。`)
+      }
 
-    if (childStatus !== 'passed') {
-      notes.push(`release 编排在 ${childMode} 阶段停止，请先修复该阶段失败项。`)
-      break
+      if (childStatus !== 'passed') {
+        notes.push(`release 编排在 ${childMode} 阶段停止，请先修复该阶段失败项。`)
+        break
+      }
     }
   }
 
@@ -176,7 +185,7 @@ export async function runReleaseVerification(options = {}) {
   const report = {
     schemaVersion: 1,
     mode,
-    status: steps.length === childRuns.length && steps.every(step => step.status === 'passed') ? 'passed' : 'failed',
+    status: releaseGitBlockers.length === 0 && steps.length === childRuns.length && steps.every(step => step.status === 'passed') ? 'passed' : 'failed',
     startedAt,
     finishedAt,
     durationMs: Date.now() - startedMs,

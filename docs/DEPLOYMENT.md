@@ -89,6 +89,7 @@ corepack pnpm verify:seo:production -- --expect-site-name 星耀传媒 --expect-
 ### 生产放行要求
 
 - 生产部署前必须持有**同一 commit** 的通过版 `verify:release` 报告。
+- 如果发布 PR 合入 `main` 后产生新的 merge/squash commit，必须切到最新 `main` 后重新运行 `corepack pnpm verify:release`；发布分支上的旧报告不能放行新的生产 HEAD。
 - `scripts/deploy.sh production` 会在远端 migration 前执行 `env -u VERIFY_RELEASE_ALLOW_BRANCH node scripts/verify-release.mjs assert-production-allowed`。
 - 缺少通过报告、报告 commit 与当前待发 commit 不一致、工作区不干净，或分支不满足放行条件时，生产部署必须阻断。
 - `VERIFY_RELEASE_ALLOW_BRANCH` 仅用于非生产分支演练 release gate，不能替代正式生产放行。
@@ -105,7 +106,7 @@ export VERIFY_DEV_WEB_URL=https://meigallery-web-dev.wajie.workers.dev
 corepack pnpm verify:dev-rehearsal
 ```
 
-4. 生产前在干净工作区运行：
+4. PR 合入 `main` 后，切到最新 `main` 的待发 commit，在干净工作区运行：
 
 ```bash
 export VERIFY_DEV_API_URL=https://meigallery-api-dev.wajie.workers.dev

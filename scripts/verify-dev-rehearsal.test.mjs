@@ -79,9 +79,65 @@ describe('开发环境发布预演验证', () => {
 
     assert.equal(result.steps.every(step => step.status === 'passed'), true)
     assert.equal(result.notes.includes('meta-test-event-code-missing'), true)
+    assert.equal(result.notes.includes('dev-smoke-owner-disabled-after-run'), true)
     assert.equal(commands.some(command => command.includes('wrangler d1 migrations apply meigallery-db-dev --env dev --remote')), true)
     assert.equal(commands.some(command => command.includes('wrangler deploy --env dev')), true)
+    assert.equal(commands.some(command => command.includes("UPDATE users SET status = 'disabled'")), true)
+    assert.equal(result.steps.some(step => step.name === 'dev-smoke-owner-cleanup' && step.status === 'passed'), true)
     assert.equal(requestedUrls.some(url => url.includes('/api/admin/attribution/conversions?') && url.includes('sourceCode=release-dev-fb')), true)
+  })
+
+  it('非 2xx smoke 响应会保留 HTTP 状态和响应体摘要', async () => {
+    const result = await runDevRehearsalVerification({
+      env: {
+        VERIFY_DEV_API_URL: 'https://api-dev.example.workers.dev',
+        VERIFY_DEV_WEB_URL: 'https://web-dev.example.workers.dev/',
+      },
+      runCommand: async (command, args, options) => ({
+        name: options.name,
+        status: 'passed',
+        durationMs: 1,
+        command: options.reportCommand || [command, ...args].join(' '),
+        exitCode: 0,
+        summary: 'ok',
+        stdout: 'ok',
+        stderr: '',
+      }),
+      fetch: async () => jsonResponse(500, { message: 'db unavailable' }),
+    })
+
+    const healthStep = result.steps.find(step => step.name === 'dev-api-health')
+    assert.equal(healthStep?.status, 'failed')
+    assert.equal(healthStep?.exitCode, 500)
+    assert.match(healthStep?.summary || '', /HTTP 500/)
+    assert.match(healthStep?.summary || '', /db unavailable/)
+    assert.equal(result.steps.some(step => step.name === 'dev-smoke-owner-cleanup' && step.status === 'passed'), true)
+  })
+
+  it('smoke fetch 超时时会失败并继续清理 dev owner', async () => {
+    const result = await runDevRehearsalVerification({
+      env: {
+        VERIFY_DEV_API_URL: 'https://api-dev.example.workers.dev',
+        VERIFY_DEV_WEB_URL: 'https://web-dev.example.workers.dev/',
+      },
+      requestTimeoutMs: 5,
+      runCommand: async (command, args, options) => ({
+        name: options.name,
+        status: 'passed',
+        durationMs: 1,
+        command: options.reportCommand || [command, ...args].join(' '),
+        exitCode: 0,
+        summary: 'ok',
+        stdout: 'ok',
+        stderr: '',
+      }),
+      fetch: async () => new Promise(() => {}),
+    })
+
+    const healthStep = result.steps.find(step => step.name === 'dev-api-health')
+    assert.equal(healthStep?.status, 'failed')
+    assert.match(healthStep?.summary || '', /请求超时：5ms/)
+    assert.equal(result.steps.some(step => step.name === 'dev-smoke-owner-cleanup' && step.status === 'passed'), true)
   })
 })
 

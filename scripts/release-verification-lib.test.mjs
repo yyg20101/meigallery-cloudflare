@@ -5,6 +5,7 @@ import path from 'node:path'
 import { describe, it } from 'node:test'
 import {
   assertReportCanGateProduction,
+  fetchWithTimeout,
   redact,
   runCommand,
   writeReport,
@@ -109,6 +110,17 @@ describe('发布验证基础库', () => {
 
     assert.equal(step.command, 'node -e "[REDACTED]"')
     assert.equal(step.status, 'passed')
+  })
+
+  it('fetchWithTimeout 会中止长期无响应的请求', async () => {
+    await assert.rejects(async () => {
+      await fetchWithTimeout(
+        () => new Promise(() => {}),
+        'https://example.test/never',
+        {},
+        5,
+      )
+    }, /请求超时：5ms/)
   })
 
   it('writeReport 同时写入时间戳文件和 latest.json', async () => {

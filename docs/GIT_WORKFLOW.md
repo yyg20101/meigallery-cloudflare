@@ -46,12 +46,13 @@ main (生产)
 
 1. 从 `dev` 创建发布分支：`git checkout -b release/v0.x.0 dev`
 2. 在发布分支上做最终验证和修复
-3. 在干净工作区设置 `VERIFY_DEV_API_URL`、`VERIFY_DEV_WEB_URL` 后运行 `corepack pnpm verify:release`，生成当前 commit 的通过报告
-4. 确认 `./scripts/deploy.sh production` 的 production gate 可读取该报告并放行
-5. 验证通过后，创建 PR 合入 `main`
-6. 合入后打 tag：`git tag v0.x.0`
-7. 将 `main` 合并回 `dev`：`git checkout dev && git merge main`
-8. 删除发布分支
+3. 在干净工作区设置 `VERIFY_DEV_API_URL`、`VERIFY_DEV_WEB_URL` 后运行 `corepack pnpm verify:release`，确认发布分支自身可通过完整验证
+4. 创建 PR 合入 `main`
+5. 合入后切到最新 `main` merged commit；如果 PR 产生 merge/squash commit，必须在 `main` 上重新运行 `corepack pnpm verify:release`，生成与生产部署 HEAD 完全一致的通过报告
+6. 确认 `./scripts/deploy.sh production` 的 production gate 可读取同一 commit 的 release 报告并放行
+7. 部署生产后打 tag：`git tag v0.x.0`
+8. 将 `main` 合并回 `dev`：`git checkout dev && git merge main`
+9. 删除发布分支
 
 ### 紧急修复
 

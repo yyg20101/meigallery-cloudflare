@@ -24,6 +24,15 @@ describe('发布验证 CLI', () => {
     )
   })
 
+  it('dev 部署迁移目标必须使用独立 dev D1', async () => {
+    const deployScript = await readFile(DEPLOY_SCRIPT_PATH, 'utf8')
+    const devBlock = deployScript.match(/if \[ "\$IS_PRODUCTION" = "false" \]; then([\s\S]*?)else/)
+
+    assert.ok(devBlock, '未找到 dev 部署分支')
+    assert.match(devBlock[1], /D1_DB="meigallery-db-dev"/)
+    assert.doesNotMatch(devBlock[1], /D1_DB="meigallery-db"\s*(?:\n|$)/)
+  })
+
   it('assertProductionAllowed 会绑定当前 Git commit', async () => {
     await assert.rejects(async () => {
       await assertProductionAllowed({
@@ -366,6 +375,54 @@ describe('发布验证 CLI', () => {
     assert.deepEqual(report.steps[1].passedStepNames, [])
     assert.deepEqual(report.releaseSubModes[1].passedStepNames, [])
     assert.match(report.notes.join('；'), /没有真实 passed step/)
+  })
+
+  it('runReleaseVerification 在工作区不干净时写出 failed release 报告', async () => {
+    const report = await runReleaseVerification({
+      collectVersions: async () => ({
+        node: 'v24.0.0',
+        pnpm: '10.0.0',
+        wrangler: '4.0.0',
+      }),
+      getGitState: async () => ({
+        branch: 'release/v0.1.0',
+        commit: 'release-commit',
+        isClean: false,
+        remote: 'origin',
+      }),
+      runQuickVerification: async () => ({
+        mode: 'quick',
+        status: 'passed',
+        durationMs: 10,
+        reportFile: '/tmp/quick.json',
+        steps: [{ name: 'scripts-test', status: 'passed' }],
+        notes: [],
+      }),
+      runLocalRuntimeReleaseVerification: async () => ({
+        mode: 'local-runtime',
+        status: 'passed',
+        durationMs: 20,
+        reportFile: '/tmp/local-runtime.json',
+        steps: [{ name: 'local-d1-migrate', status: 'passed' }],
+        notes: [],
+      }),
+      runDevRehearsalReleaseVerification: async () => ({
+        mode: 'dev-rehearsal',
+        status: 'passed',
+        durationMs: 30,
+        reportFile: '/tmp/dev-rehearsal.json',
+        steps: [{ name: 'dev-admin-attribution', status: 'passed' }],
+        notes: [],
+      }),
+      writeReport: async () => ({
+        reportFile: '/tmp/release.json',
+        latestFile: '/tmp/latest.json',
+      }),
+    })
+
+    assert.equal(report.mode, 'release')
+    assert.equal(report.status, 'failed')
+    assert.match(report.notes.join('；'), /工作区不是干净状态/)
   })
 
   it('runReleaseVerification 在子模式失败时停止后续编排，但仍写出 failed release 报告', async () => {

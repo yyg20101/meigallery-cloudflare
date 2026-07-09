@@ -29,7 +29,7 @@
 - 对象存储：生产为 Cloudflare R2 `meigallery-media`，开发环境已隔离到 `meigallery-media-dev`。
 - Queue：生产为 `meigallery-meta-capi`，开发环境已隔离到 `meigallery-meta-capi-dev`。
 - 视频：Cloudflare Stream 仍未接入生产链路；相关字段和密钥按规划保留。
-- 生产部署：通过 PR 合入 `main` 后手动执行 `./scripts/deploy.sh production` 或等价 wrangler 命令。
+- 生产部署：通过 PR 合入 `main` 后，先在最新 `main` 待发 commit 上重新确认同一 commit 的 `verify:release` 报告，再手动执行 `./scripts/deploy.sh production` 或等价 wrangler 命令。
 - CI：`.github/workflows/ci.yml` 只做 PR 和 dev 推送验证，不自动部署生产。
 - 发布快速校验：`corepack pnpm verify:quick` 当前首步会执行 `dev-resource-isolation`，阻断 dev 误用生产 D1/R2。
 

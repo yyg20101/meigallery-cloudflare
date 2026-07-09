@@ -20,8 +20,8 @@
 
 | 存储 | 角色 | 访问层 | 关键风险 | 证据 |
 |------|------|--------|----------|------|
-| D1 `meigallery-db` | 结构化业务数据 | API routes/services 通过 `c.env.DB` | dev 和 production 配置当前复用同名数据库，写操作需谨慎 | `packages/api/wrangler.toml`、`docs/DEPLOYMENT.md` |
-| R2 `meigallery-media` | 私有/公开对象 | API routes/services 通过 `c.env.R2` | 对象 key 与 D1 记录必须一致，尤其真实案例前缀迁移 | `packages/api/wrangler.toml`、`scripts/migrate-cases-r2.mjs` |
+| D1 `meigallery-db` / `meigallery-db-dev` | 生产/开发结构化业务数据 | API routes/services 通过 `c.env.DB` | dev 必须使用独立 `meigallery-db-dev`，不得对生产 D1 做联调写入或发布预演 | `packages/api/wrangler.toml`、`docs/DEPLOYMENT.md`、`scripts/verify-dev-resources.mjs` |
+| R2 `meigallery-media` / `meigallery-media-dev` | 生产/开发私有与公开对象 | API routes/services 通过 `c.env.R2` | dev 必须使用独立 `meigallery-media-dev`；对象 key 与 D1 记录必须一致，尤其真实案例前缀迁移 | `packages/api/wrangler.toml`、`scripts/migrate-cases-r2.mjs`、`scripts/verify-dev-resources.mjs` |
 | Worker secrets | 密钥 | Wrangler secret | 轮换策略未在代码中自动化 | `.env.example`、`packages/api/wrangler.toml` |
 
 ## 3. Secrets 和凭据

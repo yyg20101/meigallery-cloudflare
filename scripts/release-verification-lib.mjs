@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url'
 
 export const REPORT_DIR = new URL('../reports/release-verification/', import.meta.url)
 
+export const DEFAULT_FETCH_TIMEOUT_MS = 15_000
+
 const REDACTION_PATTERNS = [
   /(access[_-]?token\s*[=:]\s*)([^\s,;]+)/gi,
   /(token\s*[=:]\s*)([^\s,;]+)/gi,
@@ -98,6 +100,30 @@ export async function runCommand(command, args, options = {}) {
       })
     })
   })
+}
+
+export async function fetchWithTimeout(fetchFn, input, init = {}, timeoutMs = DEFAULT_FETCH_TIMEOUT_MS) {
+  const safeTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_FETCH_TIMEOUT_MS
+  const controller = new AbortController()
+  let timeoutId
+
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      controller.abort()
+      reject(new Error(`请求超时：${safeTimeoutMs}ms`))
+    }, safeTimeoutMs)
+  })
+
+  const requestPromise = Promise.resolve().then(() => fetchFn(input, {
+    ...(init || {}),
+    signal: controller.signal,
+  }))
+
+  try {
+    return await Promise.race([requestPromise, timeoutPromise])
+  } finally {
+    clearTimeout(timeoutId)
+  }
 }
 
 export async function collectVersions(options = {}) {

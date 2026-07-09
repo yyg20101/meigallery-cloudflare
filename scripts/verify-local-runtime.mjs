@@ -3,7 +3,7 @@ import crypto from 'node:crypto'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createStep, redact, runCommand } from './release-verification-lib.mjs'
+import { createStep, fetchWithTimeout, redact, runCommand } from './release-verification-lib.mjs'
 
 const ROOT_DIR = fileURLToPath(new URL('../', import.meta.url))
 const LOCAL_RUNTIME_DIR = path.join(ROOT_DIR, '.wrangler-release-verify', 'local-runtime')
@@ -14,6 +14,7 @@ const SESSION_COOKIE = 'mei_session'
 const LOCAL_API_PORT = '8789'
 const LOCAL_SERVER_TIMEOUT_MS = 60_000
 const LOCAL_POLL_INTERVAL_MS = 1_000
+const LOCAL_REQUEST_TIMEOUT_MS = 15_000
 
 const DEFAULT_WRANGLER_VARS = [
   ['APP_ENV', 'dev'],
@@ -32,8 +33,10 @@ export async function runLocalRuntimeVerification(options = {}) {
   const cwd = options.cwd || ROOT_DIR
   const runCommandFn = options.runCommand || runCommand
   const fetchFn = options.fetch || fetch
+  const requestTimeoutMs = options.requestTimeoutMs ?? LOCAL_REQUEST_TIMEOUT_MS
+  const boundedFetch = (input, init) => fetchWithTimeout(fetchFn, input, init, requestTimeoutMs)
   const steps = []
-  const notes = ['meta-capi-disabled-in-local']
+  const notes = []
   const artifacts = [LOCAL_RUNTIME_DIR]
   const sessionToken = crypto.randomBytes(32).toString('hex')
   const sessionHash = crypto.createHash('sha256').update(sessionToken).digest('hex')
@@ -95,12 +98,12 @@ export async function runLocalRuntimeVerification(options = {}) {
 
     server = startLocalApiWorker({ cwd, env: buildLocalDevEnv(options.env) })
     startedServer = true
-    const healthStep = await waitForLocalApi(server, fetchFn)
+    const healthStep = await waitForLocalApi(server, boundedFetch)
     serverLogs = healthStep.logs
     steps.push(cleanForReport(healthStep.step))
     if (healthStep.step.status !== 'passed') return { steps, notes, artifacts }
 
-    const contactStep = await postConversion(fetchFn, 'local-conversion-contact', {
+    const contactStep = await postConversion(boundedFetch, 'local-conversion-contact', {
       actionType: 'contact',
       visitorId: 'visitor_release_local',
       sessionId: 'session_release_local',
@@ -125,7 +128,7 @@ export async function runLocalRuntimeVerification(options = {}) {
     steps.push(contactStep)
     if (contactStep.status !== 'passed') return { steps, notes, artifacts }
 
-    const startTrialStep = await postConversion(fetchFn, 'local-conversion-start-trial', {
+    const startTrialStep = await postConversion(boundedFetch, 'local-conversion-start-trial', {
       actionType: 'start_trial',
       visitorId: 'visitor_release_local',
       sessionId: 'session_release_local',
@@ -145,7 +148,7 @@ export async function runLocalRuntimeVerification(options = {}) {
     steps.push(startTrialStep)
     if (startTrialStep.status !== 'passed') return { steps, notes, artifacts }
 
-    const completeRegistrationStep = await postConversion(fetchFn, 'local-conversion-complete-registration', {
+    const completeRegistrationStep = await postConversion(boundedFetch, 'local-conversion-complete-registration', {
       actionType: 'complete_registration',
       visitorId: 'visitor_release_local',
       sessionId: 'session_release_local',
@@ -165,22 +168,23 @@ export async function runLocalRuntimeVerification(options = {}) {
     steps.push(completeRegistrationStep)
     if (completeRegistrationStep.status !== 'passed') return { steps, notes, artifacts }
 
-    const analyticsIngestStep = await postAnalyticsBatch(fetchFn)
+    const analyticsIngestStep = await postAnalyticsBatch(boundedFetch)
     steps.push(analyticsIngestStep)
     if (analyticsIngestStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
 
-    const analyticsStep = await smokeAdminAnalytics(fetchFn, sessionToken)
+    const analyticsStep = await smokeAdminAnalytics(boundedFetch, sessionToken)
     steps.push(analyticsStep)
     if (analyticsStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
 
-    const attributionStep = await smokeAdminAttribution(fetchFn, sessionToken)
+    const attributionStep = await smokeAdminAttribution(boundedFetch, sessionToken)
     steps.push(attributionStep)
     if (attributionStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
 
-    const metaStep = await smokeMetaDelivery(fetchFn, sessionToken)
+    const metaStep = await smokeMetaDelivery(boundedFetch, sessionToken)
     steps.push(metaStep)
     if (metaStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
 
+    notes.push('meta-capi-disabled-in-local')
     return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
   } finally {
     if (startedServer && server) {

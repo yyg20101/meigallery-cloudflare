@@ -4,6 +4,8 @@ VALUES
   ('ml_vip', 'vip', 'VIP', 10, '开发环境发布预演默认等级', datetime('now')),
   ('ml_svip', 'svip', 'SVIP', 20, '开发环境发布预演默认等级', datetime('now'));
 
+-- 该 owner 仅供 dev-rehearsal 使用随机 session 访问后台 smoke。
+-- verify-dev-rehearsal.mjs 结束时会删除固定 smoke session 并禁用该账号，避免 dev 远端长期保留 active owner。
 INSERT OR REPLACE INTO users (
   id, email, username, nickname, password_hash, avatar_key,
   role, status, email_verified, notification_enabled, created_at, updated_at
