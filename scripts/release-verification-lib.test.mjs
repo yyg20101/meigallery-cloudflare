@@ -22,6 +22,15 @@ describe('发布验证基础库', () => {
     assert.match(output, /password=\[REDACTED\]/i)
   })
 
+  it('redact 会隐藏带凭证的 Git remote URL', () => {
+    const input = 'https://user:ghp_secret-token@github.com/yyg20101/meigallery-cloudflare.git https://ghp_directtoken@github.com/yyg20101/meigallery-cloudflare.git'
+    const output = redact(input)
+
+    assert.equal(output.includes('ghp_secret-token'), false)
+    assert.equal(output.includes('ghp_directtoken'), false)
+    assert.match(output, /https:\/\/\[REDACTED]@github\.com\/yyg20101\/meigallery-cloudflare\.git/)
+  })
+
   it('writeReport 同时写入时间戳文件和 latest.json', async () => {
     const reportDir = await mkdtemp(path.join(tmpdir(), 'release-verify-'))
     const report = {
@@ -116,5 +125,31 @@ describe('发布验证基础库', () => {
         maxAgeMs: 60 * 60 * 1000,
       })
     }, /报告已过期/)
+  })
+
+  it('assertReportCanGateProduction 拒绝畸形 release 报告', () => {
+    const malformedReport = {
+      schemaVersion: 2,
+      mode: 'release',
+      status: 'passed',
+      startedAt: 123,
+      finishedAt: null,
+      durationMs: '300000',
+      git: {
+        branch: ['main'],
+        commit: 123,
+        isClean: 'true',
+      },
+      versions: [],
+      steps: {},
+      artifacts: 'none',
+      notes: {},
+    }
+
+    assert.throws(() => {
+      assertReportCanGateProduction(malformedReport, {
+        now: '2026-07-09T01:00:00.000Z',
+      })
+    }, /schemaVersion|startedAt|finishedAt|durationMs|git\.commit|git\.branch|git\.isClean|versions|steps|artifacts|notes/)
   })
 })

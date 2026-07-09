@@ -20,10 +20,11 @@ const VALID_REPORT_STATUSES = new Set(['passed', 'failed', 'skipped'])
 
 export function redact(value) {
   const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2)
-
-  return REDACTION_PATTERNS.reduce((current, pattern) => (
+  const redactedText = REDACTION_PATTERNS.reduce((current, pattern) => (
     current.replace(pattern, (_, prefix) => `${prefix}[REDACTED]`)
   ), text)
+
+  return redactCredentialUrl(redactedText)
 }
 
 export function createStep(name) {
@@ -128,7 +129,7 @@ export async function getGitState(options = {}) {
     branch: firstLine(branchStep.stdout),
     commit: firstLine(commitStep.stdout),
     isClean: statusStep.stdout.trim() === '',
-    remote: firstLine(remoteStep.stdout),
+    remote: redactCredentialUrl(firstLine(remoteStep.stdout)),
   }
 }
 
@@ -166,6 +167,7 @@ export function assertReportCanGateProduction(report, options = {}) {
   if (!report || typeof report !== 'object') {
     reasons.push('报告不存在或格式非法')
   } else {
+    validateReportShape(report, reasons)
     if (!VALID_REPORT_MODES.has(report.mode)) reasons.push(`不支持的报告模式：${String(report.mode)}`)
     if (!VALID_REPORT_STATUSES.has(report.status)) reasons.push(`不支持的报告状态：${String(report.status)}`)
     if (report.status !== 'passed') reasons.push('报告状态不是 passed')
@@ -199,6 +201,31 @@ function summarizeOutput(stdout, stderr) {
   return summary.length > SUMMARY_LIMIT ? `${summary.slice(0, SUMMARY_LIMIT)}...` : summary
 }
 
+function validateReportShape(report, reasons) {
+  if (report.schemaVersion !== 1) reasons.push('报告 schemaVersion 必须为 1')
+  if (typeof report.mode !== 'string') reasons.push('报告 mode 缺失或类型非法')
+  if (typeof report.status !== 'string') reasons.push('报告 status 缺失或类型非法')
+  if (typeof report.startedAt !== 'string') reasons.push('报告 startedAt 缺失或类型非法')
+  if (typeof report.finishedAt !== 'string') reasons.push('报告 finishedAt 缺失或类型非法')
+  if (typeof report.durationMs !== 'number' || Number.isNaN(report.durationMs)) reasons.push('报告 durationMs 缺失或类型非法')
+
+  if (!report.git || typeof report.git !== 'object' || Array.isArray(report.git)) {
+    reasons.push('报告 git 缺失或类型非法')
+  } else {
+    if (typeof report.git.commit !== 'string') reasons.push('报告 git.commit 缺失或类型非法')
+    if (typeof report.git.branch !== 'string') reasons.push('报告 git.branch 缺失或类型非法')
+    if (typeof report.git.isClean !== 'boolean') reasons.push('报告 git.isClean 缺失或类型非法')
+  }
+
+  if (!report.versions || typeof report.versions !== 'object' || Array.isArray(report.versions)) {
+    reasons.push('报告 versions 缺失或类型非法')
+  }
+
+  if (!Array.isArray(report.steps)) reasons.push('报告 steps 缺失或类型非法')
+  if (!Array.isArray(report.artifacts)) reasons.push('报告 artifacts 缺失或类型非法')
+  if (!Array.isArray(report.notes)) reasons.push('报告 notes 缺失或类型非法')
+}
+
 function compactWhitespace(value) {
   return value.replace(/\s+/g, ' ').trim()
 }
@@ -210,4 +237,8 @@ function firstLine(value) {
 function resolveReportDir(reportDir) {
   if (reportDir instanceof URL) return fileURLToPath(reportDir)
   return reportDir || fileURLToPath(REPORT_DIR)
+}
+
+function redactCredentialUrl(value) {
+  return String(value).replace(/(https?:\/\/)([^/\s@]+)@/gi, '$1[REDACTED]@')
 }
