@@ -109,7 +109,7 @@ describe('conversion utils', () => {
 
   it('清洗安全 key 的字符串值时脱敏常见联系方式 handle', () => {
     const sanitized = sanitizeConversionMetadata({
-      contact_hint: '联系 微信 wxid_abc123 / telegram @abc123 / line: abc123 / QQ 123456',
+      contact_hint: '联系 微信 wxid_abc123 / telegram @abc123 / line: abc123 / QQ 123456 / wx wxid_more123 / tg: alpha_123 / whatsapp: wa_abc123',
       source_name: 'telegram-june',
       method_type: 'telegram',
     })
@@ -119,8 +119,41 @@ describe('conversion utils', () => {
     expect(sanitized.contact_hint).not.toContain('@abc123')
     expect(sanitized.contact_hint).not.toContain('line: abc123')
     expect(sanitized.contact_hint).not.toContain('QQ 123456')
+    expect(sanitized.contact_hint).not.toContain('wxid_more123')
+    expect(sanitized.contact_hint).not.toContain('alpha_123')
+    expect(sanitized.contact_hint).not.toContain('wa_abc123')
     expect(sanitized.source_name).toBe('telegram-june')
     expect(sanitized.method_type).toBe('telegram')
+  })
+
+  it('清洗 payload 时移除凭据类字段名', () => {
+    const sanitized = sanitizeConversionMetadata({
+      api_key: 'secret-api-key',
+      credential: 'credential-value',
+      JWT: 'jwt-value',
+      cookie_signature: 'cookie-value',
+      safe_name: 'telegram june',
+    })
+
+    expect(sanitized).toEqual({
+      safe_name: 'telegram june',
+    })
+  })
+
+  it('清洗联系方式时不误删普通广告来源名', () => {
+    const sanitized = sanitizeConversionMetadata({
+      source_name: 'telegram june',
+      source_alias: 'tg boost',
+      line_name: 'line summer',
+      whatsapp_name: 'whatsapp campaign',
+    })
+
+    expect(sanitized).toEqual({
+      source_name: 'telegram june',
+      source_alias: 'tg boost',
+      line_name: 'line summer',
+      whatsapp_name: 'whatsapp campaign',
+    })
   })
 
   it('清洗 payload 时保留普通安全值并继续限制字符串长度', () => {

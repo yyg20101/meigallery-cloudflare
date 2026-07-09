@@ -26,7 +26,7 @@ const SENSITIVE_KEYS = new Set([
   'operator_note_text',
 ])
 
-const SENSITIVE_KEY_PARTS = ['token', 'secret', 'password']
+const SENSITIVE_KEY_PARTS = ['token', 'secret', 'password', 'credential', 'cookie', 'jwt', 'signature']
 const SENSITIVE_EXACT_OR_PREFIX_KEYS = [
   'email',
   'phone',
@@ -130,6 +130,7 @@ function normalizeMetadataKey(key: string) {
 
 function isSensitiveMetadataKey(normalizedKey: string) {
   if (SENSITIVE_KEYS.has(normalizedKey)) return true
+  if (isBlockedCredentialParamName(normalizedKey)) return true
   if (SENSITIVE_KEY_PARTS.some((part) => normalizedKey.includes(part))) return true
   return SENSITIVE_EXACT_OR_PREFIX_KEYS.some(
     (candidate) => normalizedKey === candidate || normalizedKey.startsWith(candidate),
@@ -148,7 +149,19 @@ function sanitizeMetadataStringValue(value: string) {
     .replace(/[\w.!#$%&'*+/=?^`{|}~-]+@[\w-]+(?:\.[\w-]+)+/g, '[redacted_email]')
     .replace(/\bhttps?:\/\/[^\s<>"']+/gi, '[redacted_url]')
     .replace(
-      /(^|[^a-zA-Z0-9_])(?:微信|wechat|wx|telegram|tg|line|whatsapp|qq)\s*(?:[:：=号]|\s)\s*(?:@?[a-zA-Z0-9][a-zA-Z0-9._-]{2,}|[1-9]\d{4,})(?=$|[^a-zA-Z0-9_])/gi,
+      /(^|[^a-zA-Z0-9_])(?:微信|wechat|wx)\s*(?:[:：=号]\s*)?(?:wxid_[a-zA-Z0-9._-]{3,}|@?[a-zA-Z0-9._-]*(?:\d|[_-])[a-zA-Z0-9._-]{2,})(?=$|[^a-zA-Z0-9_])/gi,
+      '$1[redacted_contact]',
+    )
+    .replace(
+      /(^|[^a-zA-Z0-9_])(?:telegram|tg)\s*(?:(?:[:：=]\s*)?[＠@][a-zA-Z0-9_][a-zA-Z0-9._-]{2,}|[:：=]\s*[a-zA-Z0-9][a-zA-Z0-9._-]*(?:\d|[_-])[a-zA-Z0-9._-]*)(?=$|[^a-zA-Z0-9_])/gi,
+      '$1[redacted_contact]',
+    )
+    .replace(
+      /(^|[^a-zA-Z0-9_])(?:line|whatsapp)\s*(?:(?:[:：=]\s*)?[＠@][a-zA-Z0-9_][a-zA-Z0-9._-]{2,}|[:：=]\s*[a-zA-Z0-9][a-zA-Z0-9._-]*(?:\d|[_-])[a-zA-Z0-9._-]*)(?=$|[^a-zA-Z0-9_])/gi,
+      '$1[redacted_contact]',
+    )
+    .replace(
+      /(^|[^a-zA-Z0-9_])qq\s*(?:[:：=号]|\s)\s*[1-9]\d{4,11}(?=$|[^a-zA-Z0-9_])/gi,
       '$1[redacted_contact]',
     )
     .replace(/(?:\+?\d[\d\s().-]{7,}\d)/g, '[redacted_phone]')
