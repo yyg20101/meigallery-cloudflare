@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { assertProductionAllowed } from './verify-release.mjs'
+import { assertProductionAllowed, runLocalRuntimeReleaseVerification } from './verify-release.mjs'
 
 describe('发布验证 CLI', () => {
   it('assertProductionAllowed 会绑定当前 Git commit', async () => {
@@ -97,5 +97,38 @@ describe('发布验证 CLI', () => {
         }),
       })
     }, /当前工作区不是干净状态/)
+  })
+
+  it('runLocalRuntimeReleaseVerification 会生成 local-runtime 报告', async () => {
+    const report = await runLocalRuntimeReleaseVerification({
+      collectVersions: async () => ({
+        node: 'v24.0.0',
+        pnpm: '10.0.0',
+        wrangler: '4.0.0',
+      }),
+      getGitState: async () => ({
+        branch: 'dev',
+        commit: 'local-runtime-commit',
+        isClean: true,
+        remote: 'origin',
+      }),
+      runLocalRuntimeVerification: async () => ({
+        steps: [
+          { name: 'local-d1-migrate', status: 'passed', durationMs: 1, command: 'migrate', exitCode: 0, summary: 'ok' },
+          { name: 'local-admin-attribution', status: 'passed', durationMs: 1, command: 'attribution', exitCode: 200, summary: 'ok' },
+        ],
+        notes: ['meta-capi-disabled-in-local'],
+        artifacts: ['/.wrangler-release-verify/local-runtime'],
+      }),
+      writeReport: async (payload) => ({
+        reportFile: '/tmp/local-runtime.json',
+        latestFile: '/tmp/latest.json',
+        payload,
+      }),
+    })
+
+    assert.equal(report.mode, 'local-runtime')
+    assert.equal(report.status, 'passed')
+    assert.equal(report.reportFile, '/tmp/local-runtime.json')
   })
 })

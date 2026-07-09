@@ -9,6 +9,7 @@ import {
   runCommand,
   writeReport,
 } from './release-verification-lib.mjs'
+import { runLocalRuntimeVerification } from './verify-local-runtime.mjs'
 
 const QUICK_STEPS = [
   {
@@ -81,17 +82,53 @@ export async function main(argv = process.argv.slice(2), options = {}) {
     return
   }
 
-  if (mode !== 'quick') {
-    throw new Error(`模式 ${mode} 尚未在 Task 1 实现`)
+  let report
+  if (mode === 'quick') {
+    report = await runQuickVerification({ ...options, mode })
+  } else if (mode === 'local-runtime') {
+    report = await runLocalRuntimeReleaseVerification({ ...options, mode })
+  } else {
+    throw new Error(`模式 ${mode} 尚未实现`)
   }
-
-  const report = await runQuickVerification({ ...options, mode })
 
   if (report.status !== 'passed') {
     throw new Error(`发布快速验证失败，报告已写入：${report.reportFile}`)
   }
 
   console.log(`发布快速验证通过，报告已写入：${report.reportFile}`)
+}
+
+export async function runLocalRuntimeReleaseVerification(options = {}) {
+  const mode = options.mode || 'local-runtime'
+  const startedAt = new Date().toISOString()
+  const startedMs = Date.now()
+  const collectVersionsFn = options.collectVersions || collectVersions
+  const getGitStateFn = options.getGitState || getGitState
+  const runLocalRuntimeVerificationFn = options.runLocalRuntimeVerification || runLocalRuntimeVerification
+  const writeReportFn = options.writeReport || writeReport
+  const versions = await collectVersionsFn(options)
+  const git = await getGitStateFn(options)
+  const { steps, notes, artifacts } = await runLocalRuntimeVerificationFn(options)
+  const finishedAt = new Date().toISOString()
+  const report = {
+    schemaVersion: 1,
+    mode,
+    status: steps.every(step => step.status === 'passed') ? 'passed' : 'failed',
+    startedAt,
+    finishedAt,
+    durationMs: Date.now() - startedMs,
+    git,
+    versions,
+    steps,
+    artifacts,
+    notes,
+  }
+  const files = await writeReportFn(report, options)
+
+  return {
+    ...report,
+    ...files,
+  }
 }
 
 export async function assertProductionAllowed(options = {}) {
@@ -123,13 +160,17 @@ export async function runQuickVerification(options = {}) {
   const mode = options.mode || 'quick'
   const startedAt = new Date().toISOString()
   const startedMs = Date.now()
-  const versions = await collectVersions(options)
-  const git = await getGitState(options)
+  const collectVersionsFn = options.collectVersions || collectVersions
+  const getGitStateFn = options.getGitState || getGitState
+  const runCommandFn = options.runCommand || runCommand
+  const writeReportFn = options.writeReport || writeReport
+  const versions = await collectVersionsFn(options)
+  const git = await getGitStateFn(options)
   const steps = []
   const notes = []
 
   for (const stepDefinition of QUICK_STEPS) {
-    const step = await runCommand(stepDefinition.command, stepDefinition.args, {
+    const step = await runCommandFn(stepDefinition.command, stepDefinition.args, {
       cwd: options.cwd || process.cwd(),
       name: stepDefinition.name,
     })
@@ -155,7 +196,7 @@ export async function runQuickVerification(options = {}) {
     artifacts: [],
     notes,
   }
-  const files = await writeReport(report, options)
+  const files = await writeReportFn(report, options)
 
   return {
     ...report,
@@ -167,6 +208,7 @@ function printHelp() {
   console.log(`
 用法：
   node scripts/verify-release.mjs quick
+  node scripts/verify-release.mjs local-runtime
   node scripts/verify-release.mjs assert-production-allowed
 `.trim())
 }
