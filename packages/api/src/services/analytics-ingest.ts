@@ -22,6 +22,7 @@ import { clampActiveSeconds, toOperationDateShanghai } from '../utils/analytics-
 import { deriveSourceAttribution, sanitizeAnalyticsPath, sanitizeReferrer } from '../utils/analytics-url'
 import { normalizeBooleanSetting } from '../utils/facebook-pixel-settings'
 import { parseStoredSettingValue } from '../utils/stored-setting-value'
+import { recordConversionAction, type RecordConversionInput } from './conversions'
 
 type AnalyticsDb = Pick<D1Database, 'prepare'>
 
@@ -59,6 +60,8 @@ interface NormalizedAnalyticsEvent {
   utmSource: string
   utmMedium: string
   utmCampaign: string
+  utmContent: string
+  trackingSourceSlug: string
   sourceChannel: AnalyticsSourceChannel
   sourceName: string
   deviceType: AnalyticsDeviceType
@@ -169,6 +172,7 @@ export async function ingestAnalyticsBatch(
 
   if (acceptedEvents.length > 0) {
     await persistAcceptedEvents(env.DB, batch, acceptedEvents, context, response)
+    await recordAcceptedConversions(env, batch, acceptedEvents, context)
   }
 
   await writeIngestHealth(env.DB, {
@@ -348,6 +352,7 @@ function normalizeAnalyticsEvent(
   const utmSource = readOptionalString(raw, 'utmSource', 'utm_source') || stringProp(props.utm_source)
   const utmMedium = readOptionalString(raw, 'utmMedium', 'utm_medium') || stringProp(props.utm_medium)
   const utmCampaign = readOptionalString(raw, 'utmCampaign', 'utm_campaign') || stringProp(props.utm_campaign)
+  const utmContent = readOptionalString(raw, 'utmContent', 'utm_content') || stringProp(props.utm_content)
   const sourceNameFromProps = stringProp(props.source_name)
   const derivedSource = deriveSourceAttribution({
     inviteCodeId,
@@ -382,6 +387,8 @@ function normalizeAnalyticsEvent(
     utmSource: truncateAnalyticsString(utmSource, 120),
     utmMedium: truncateAnalyticsString(utmMedium, 120),
     utmCampaign: truncateAnalyticsString(utmCampaign, 120),
+    utmContent: truncateAnalyticsString(utmContent, 120),
+    trackingSourceSlug: truncateAnalyticsString(trackingSourceSlug, 120),
     sourceChannel,
     sourceName: truncateAnalyticsString(sourceNameFromProps || derivedSource.name, 120),
     deviceType,
@@ -599,6 +606,81 @@ async function persistAcceptedEvents(
   await writeSourcePageDailyBatch(db, events, response)
   await writeSourceClickDailyBatch(db, events, response)
   await writeRawEventsBatch(db, batch, accepted, context, response)
+}
+
+async function recordAcceptedConversions(
+  env: Pick<Bindings, 'DB' | 'APP_ENV'>,
+  batch: NormalizedAnalyticsBatch,
+  accepted: AcceptedAnalyticsEvent[],
+  context: AnalyticsIngestContext,
+) {
+  for (const { event } of accepted) {
+    const input = conversionInputFromAnalyticsEvent(batch, event, context)
+    if (!input) continue
+    await recordConversionAction(env, input)
+  }
+}
+
+function conversionInputFromAnalyticsEvent(
+  batch: NormalizedAnalyticsBatch,
+  event: NormalizedAnalyticsEvent,
+  context: AnalyticsIngestContext,
+): RecordConversionInput | null {
+  const base = {
+    visitorId: batch.visitorId,
+    sessionId: batch.sessionId,
+    userId: context.userId,
+    occurredAt: event.occurredAt,
+    routeName: event.routeName,
+    path: event.path,
+    sourceChannel: event.sourceChannel,
+    sourceName: event.sourceName,
+    trackingSourceSlug: event.trackingSourceSlug,
+    utmSource: event.utmSource,
+    utmMedium: event.utmMedium,
+    utmCampaign: event.utmCampaign,
+    utmContent: event.utmContent,
+    consentState: event.consentState,
+    metadata: conversionMetadataFromAnalyticsEvent(event),
+  } satisfies Omit<RecordConversionInput, 'actionType'>
+
+  if (event.eventName === 'contact_method_click') {
+    return {
+      ...base,
+      actionType: 'contact',
+      methodType: stringProp(event.props.method_type),
+      actionTarget: stringProp(event.props.location) || stringProp(event.props.target_id) || event.entityId,
+    }
+  }
+
+  if (event.eventName === 'register_success') {
+    return {
+      ...base,
+      actionType: 'complete_registration',
+      actionTarget: event.entityId || 'register',
+    }
+  }
+
+  return null
+}
+
+function conversionMetadataFromAnalyticsEvent(event: NormalizedAnalyticsEvent) {
+  return {
+    analytics_event_id: event.eventId,
+    analytics_event_name: event.eventName,
+    route_name: event.routeName,
+    path: event.path,
+    source_channel: event.sourceChannel,
+    source_name: event.sourceName,
+    tracking_source_slug: event.trackingSourceSlug,
+    utm_source: event.utmSource,
+    utm_medium: event.utmMedium,
+    utm_campaign: event.utmCampaign,
+    utm_content: event.utmContent,
+    entity_type: event.entityType,
+    entity_id: event.entityId,
+    ...event.props,
+  }
 }
 
 async function writeSessionSummaryBatch(

@@ -288,6 +288,92 @@ describe('analytics-ingest', () => {
     expect(db.calls.some(call => call.sql.includes('analytics_sessions'))).toBe(false)
   })
 
+  it('contact_method_click 同步写入转化账本', async () => {
+    const db = createDb()
+    await ingestAnalyticsBatch(envFor(db), {
+      body: baseBatch({
+        eventId: 'event_contact_1',
+        eventName: 'contact_method_click',
+        entityType: 'contact',
+        trackingSourceSlug: 'telegram-june',
+        utmSource: 'telegram-june',
+        utmMedium: 'social',
+        utmCampaign: 'june',
+        utmContent: 'chat-a',
+        sourceChannel: 'ad',
+        props: {
+          method_type: 'telegram',
+          action_type: 'open_link',
+          location: 'floating_contact_panel',
+          contactValue: '@secret',
+        },
+      }),
+      bodySizeBytes: 512,
+      userId: null,
+      currentHost: '616618.xyz',
+    })
+
+    const conversionInsert = db.calls.find(call => call.sql.includes('INSERT INTO analytics_conversion_actions'))
+    expect(conversionInsert).toBeTruthy()
+    expect(conversionInsert?.params[1]).toBe('contact')
+    expect(conversionInsert?.params[8]).toBe('ad')
+    expect(conversionInsert?.params[10]).toBe('telegram-june')
+    expect(conversionInsert?.params[14]).toBe('chat-a')
+    expect(JSON.stringify(conversionInsert?.params)).not.toContain('@secret')
+  })
+
+  it('register_success 同步写入 complete_registration 转化', async () => {
+    const db = createDb()
+    await ingestAnalyticsBatch(envFor(db), {
+      body: baseBatch({
+        eventId: 'event_register_2',
+        eventName: 'register_success',
+        entityType: 'auth',
+        props: { invite_code_id: 'inv_1' },
+      }),
+      bodySizeBytes: 512,
+      userId: 42,
+      currentHost: '616618.xyz',
+    })
+
+    expect(db.calls.some(call => (
+      call.sql.includes('INSERT INTO analytics_conversion_actions')
+      && call.params[1] === 'complete_registration'
+      && call.params[7] === 42
+    ))).toBe(true)
+  })
+
+  it('被拒绝事件和 raw duplicate 不写入转化账本', async () => {
+    const rejectedDb = createDb()
+    await ingestAnalyticsBatch(envFor(rejectedDb), {
+      body: baseBatch({
+        eventId: 'event_contact_bad_1',
+        eventName: 'contact_method_click',
+        path: '/gallery/demo?token=secret',
+        entityType: 'contact',
+        props: { method_type: 'telegram', location: 'floating_contact_panel' },
+      }),
+      bodySizeBytes: 512,
+      userId: null,
+      currentHost: '616618.xyz',
+    })
+    expect(rejectedDb.calls.some(call => call.sql.includes('analytics_conversion_actions'))).toBe(false)
+
+    const duplicateDb = createDb({ existingEvents: ['event_contact_dup_1'] })
+    await ingestAnalyticsBatch(envFor(duplicateDb), {
+      body: baseBatch({
+        eventId: 'event_contact_dup_1',
+        eventName: 'contact_method_click',
+        entityType: 'contact',
+        props: { method_type: 'telegram', location: 'floating_contact_panel' },
+      }),
+      bodySizeBytes: 512,
+      userId: null,
+      currentHost: '616618.xyz',
+    })
+    expect(duplicateDb.calls.some(call => call.sql.includes('analytics_conversion_actions'))).toBe(false)
+  })
+
   it('把 sendBeacon session/end 简写 payload 转成批量事件', () => {
     expect(normalizeSessionEndPayload({
       visitorId: 'visitor_123456',

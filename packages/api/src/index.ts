@@ -13,6 +13,7 @@ import { contactMethodRoutes } from './routes/contact-methods'
 import { caseRoutes } from './routes/cases'
 import { importRoutes } from './routes/imports'
 import { analyticsRoutes } from './routes/analytics'
+import { conversionRoutes } from './routes/conversions'
 import { inviteRoutes } from './routes/invites'
 import { PUBLIC_SETTING_KEYS } from './utils/site-settings'
 import { sanitizePublicSiteSetting, sanitizePublicSiteSettings } from './utils/public-site-settings'
@@ -160,6 +161,14 @@ app.use('/api/analytics/*', rateLimiter({
   limit: analyticsSessionRateLimit.requests,
   windowMs: rateLimitWindowMs(analyticsSessionRateLimit.window),
 }))
+
+// 公开转化事件入口限流：沿用分析采集 IP 预算
+app.use('/api/conversions/*', rateLimiter({
+  name: 'conversions-ip',
+  keyBy: 'ip',
+  limit: analyticsIpRateLimit.requests,
+  windowMs: rateLimitWindowMs(analyticsIpRateLimit.window),
+}))
 app.use('*', authMiddleware)
 
 // 管理员 API 速率限制兜底：每 session 每分钟 120 次
@@ -190,6 +199,7 @@ app.route('/api/contact-methods', contactMethodRoutes)
 app.route('/api/cases', caseRoutes)
 app.route('/api/imports', importRoutes)
 app.route('/api/analytics', analyticsRoutes)
+app.route('/api/conversions', conversionRoutes)
 app.route('/api/invites', inviteRoutes)
 // 公开站点信息（不需要登录）
 app.get('/api/settings/public', async (c) => {
