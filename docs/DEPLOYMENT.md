@@ -17,7 +17,7 @@
 
 - `616618.xyz` → Web Worker（前台 + 后台管理）
 - `api.616618.xyz` → API Worker
-- Dev 测试入口使用 Workers dev 子域，例如 `meigallery-web-dev.<workers-subdomain>.workers.dev` 和 `meigallery-api-dev.<workers-subdomain>.workers.dev`，不绑定生产主域。
+- Dev 测试入口使用 Workers dev 子域。当前真实 dev 地址为 `https://meigallery-web-dev.wajie.workers.dev` 和 `https://meigallery-api-dev.wajie.workers.dev`，不绑定生产主域。
 
 配置步骤：
 
@@ -74,6 +74,45 @@ corepack pnpm verify:seo:production -- --expect-site-name 星耀传媒 --expect-
 ```
 
 部署后 SEO 校验会读取 `/api/settings/public`，并检查 `616618.xyz` 与 `www.616618.xyz` 首页 SSR 原始 HTML 的 `<title>`、description 和 OG 信息是否与后台站点设置一致。若 API 已返回新设置但首页 `<head>` 仍显示旧默认值，说明 Web Worker 未部署到最新版本或边缘仍在返回旧 HTML，必须在上线验收中阻断。若 `/api/settings/public` 本身未返回后台保存的新值，优先确认 API Worker 已部署包含站点设置 upsert 的版本，并检查 `site_settings` 缺失行是否已由后台保存动作补齐。
+
+## 5. 发布验证分层
+
+发布验证分为四层，避免所有场景都跑同一套重验证：
+
+| 命令 | 使用场景 | 说明 |
+|------|----------|------|
+| `corepack pnpm verify:quick` | 日常开发、提交前快速自检 | 最轻量检查；首步会执行 `dev-resource-isolation`，阻断 dev 误连生产 D1/R2/Queue。 |
+| `corepack pnpm verify:local-runtime` | 需要验证 Worker 本地运行时、D1/Queue/归因降级链路时 | 在本机 Cloudflare 兼容运行时做链路验证，不依赖远端 dev 域名。 |
+| `corepack pnpm verify:dev-rehearsal` | 上线前的 dev 环境演练 | 依赖独立 dev 资源与 dev Workers URL，验证 remote migration、dev 部署和核心 smoke。运行前需设置 `VERIFY_DEV_API_URL`、`VERIFY_DEV_WEB_URL`。 |
+| `corepack pnpm verify:release` | 生产部署前最终放行 | 在干净工作区串联前述验证并生成 `mode=release` 报告，供生产 gate 校验。 |
+
+### 生产放行要求
+
+- 生产部署前必须持有**同一 commit** 的通过版 `verify:release` 报告。
+- `scripts/deploy.sh production` 会在远端 migration 前执行 `env -u VERIFY_RELEASE_ALLOW_BRANCH node scripts/verify-release.mjs assert-production-allowed`。
+- 缺少通过报告、报告 commit 与当前待发 commit 不一致、工作区不干净，或分支不满足放行条件时，生产部署必须阻断。
+- `VERIFY_RELEASE_ALLOW_BRANCH` 仅用于非生产分支演练 release gate，不能替代正式生产放行。
+
+### 推荐执行顺序
+
+1. 日常开发或文档更新后运行 `corepack pnpm verify:quick`。
+2. 涉及 Worker 运行时、D1、Queue、归因或发布链路改动时，再运行 `corepack pnpm verify:local-runtime`。
+3. 准备上线时设置：
+
+```bash
+export VERIFY_DEV_API_URL=https://meigallery-api-dev.wajie.workers.dev
+export VERIFY_DEV_WEB_URL=https://meigallery-web-dev.wajie.workers.dev
+corepack pnpm verify:dev-rehearsal
+```
+
+4. 生产前在干净工作区运行：
+
+```bash
+export VERIFY_DEV_API_URL=https://meigallery-api-dev.wajie.workers.dev
+export VERIFY_DEV_WEB_URL=https://meigallery-web-dev.wajie.workers.dev
+corepack pnpm verify:release
+./scripts/deploy.sh production
+```
 
 ### 数据分析上线顺序
 
@@ -147,7 +186,7 @@ corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_TEST_E
 5. 修复后恢复：`corepack pnpm --filter @meigallery/api exec wrangler queues resume-delivery meigallery-meta-capi`。
 6. 如果需撤回 Worker 版本，先保持 `meta_capi_enabled=false`，再部署旧 API Worker；不要删除 `META_CAPI_ACCESS_TOKEN`，除非确认短期内不再联调。
 
-## 5. 环境变量
+## 6. 环境变量
 
 | 变量 | 位置 | 说明 |
 |------|------|------|
@@ -177,7 +216,7 @@ corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_ACCESS
 corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_TEST_EVENT_CODE
 ```
 
-## 6. Cloudflare 产品绑定
+## 7. Cloudflare 产品绑定
 
 ### Zone/Account 信息
 
@@ -186,15 +225,35 @@ corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_TEST_E
 - D1 Database ID: `714929cb-003b-4cb1-bd9f-545fa1895e8c`
 - R2 Bucket: `meigallery-media`
 - Queue: `meigallery-meta-capi`（生产 Meta CAPI 投递）
+- D1 Database（dev）: `meigallery-db-dev`
+- R2 Bucket（dev）: `meigallery-media-dev`
 - Queue: `meigallery-meta-capi-dev`（dev Meta CAPI 投递）
 
 ### Dev 环境
 
 - `meigallery-api-dev` / `meigallery-web-dev`：用于正式上线后的开发测试环境。
 - Dev Worker 使用 Workers dev 子域访问，不接入 `616618.xyz` 主域，不进入 sitemap、导航或公开链接。
-- Dev 环境可以连接正式 D1/R2 数据以使用真实内容验证 UI，但后台写操作必须限定管理员账号、保留审计日志并显式标记为测试操作。
-- Web 后台在 `NUXT_PUBLIC_APP_ENV=dev` 时显示正式数据风险标识，并对 `/api/admin/*` 的 `POST` / `PUT` / `PATCH` / `DELETE` 请求统一弹出二次确认；如需更强隔离，后续应拆出独立 `meigallery-db-dev` 和 `meigallery-media-dev` 并切换 `env.dev` binding。
+- 当前真实 dev 地址：`https://meigallery-api-dev.wajie.workers.dev`、`https://meigallery-web-dev.wajie.workers.dev`。
+- Dev 环境使用独立 Cloudflare 资源，不再连接生产 D1/R2/Queue。
 - Dev 页面必须带测试环境标识，并建议设置 `X-Robots-Tag: noindex, nofollow` 或等价 meta，避免搜索引擎收录。
+
+### Dev / Production 资源隔离
+
+| 类型 | Production | Dev |
+|------|------------|-----|
+| Web Worker | `meigallery-web` | `meigallery-web-dev` |
+| API Worker | `meigallery-api` | `meigallery-api-dev` |
+| Web 域名 | `https://616618.xyz` / `https://www.616618.xyz` | `https://meigallery-web-dev.wajie.workers.dev` |
+| API 域名 | `https://api.616618.xyz` | `https://meigallery-api-dev.wajie.workers.dev` |
+| D1 | `meigallery-db` | `meigallery-db-dev` |
+| R2 | `meigallery-media` | `meigallery-media-dev` |
+| Queue | `meigallery-meta-capi` | `meigallery-meta-capi-dev` |
+
+要求：
+
+- dev 的 D1、R2、Queue 必须与 production 完全隔离。
+- `verify:quick` 的 `dev-resource-isolation` 必须持续通过，确保 `env.dev` 绑定不会回退到生产资源。
+- 任何“dev 可连接生产 D1/R2”口径均视为历史策略，当前不再适用。
 
 Workers：
 
@@ -268,7 +327,7 @@ head_sampling_rate = 1
 5. 完成 API 类型检查、Web 构建和核心测试后，再执行真实部署。
 6. 部署后在 Cloudflare Dashboard 的 Workers Observability / Logs 中确认 API 与 Web 均有请求日志；日志内容不得包含 token、cookie、Telegram Bot Token、R2 私有 key 或用户密码。
 
-## 7. 全球 CDN 加速
+## 8. 全球 CDN 加速
 
 - 静态资源由 Workers Assets 自动分发到全球边缘节点。
 - 公共缩略图使用长缓存，文件名带 hash。
@@ -277,7 +336,7 @@ head_sampling_rate = 1
 - API 默认不做长缓存，只缓存公开且稳定的数据。
 - 受保护媒体不放入公共缓存。
 
-## 8. 套餐建议
+## 9. 套餐建议
 
 | 产品 | 当前策略 | 对本项目的影响 |
 |------|----------|----------------|
@@ -288,7 +347,7 @@ head_sampling_rate = 1
 
 注意：Cloudflare 套餐、限制和价格会变化。每次上线或采购前都要以 Cloudflare 官方 pricing 和 docs 为准。
 
-## 9. 上线检查清单
+## 10. 上线检查清单
 
 - [ ] 域名 DNS 已接入 Cloudflare
 - [ ] `meigallery-web` Worker 已部署并绑定 `616618.xyz`
@@ -310,8 +369,10 @@ head_sampling_rate = 1
 - [ ] 数据分析 migrations、API、Web、后台页面和 Owner 开关顺序已完成；默认关闭态和回滚 disabled 响应已验证
 - [ ] 数据分析 Playwright smoke、10,000 sessions/day 写入成本 fixture 和 100,000 事件报表性能 fixture 已通过
 - [ ] `corepack pnpm verify:seo:production` 通过，首页 `<head>` 与后台站点设置一致
+- [ ] 已在干净工作区运行 `corepack pnpm verify:release`，并持有当前待发 commit 的通过报告
+- [ ] `./scripts/deploy.sh production` 的 production gate 已确认放行
 
-## 10. 旧站迁移部署计划
+## 11. 旧站迁移部署计划
 
 迁移 `https://zuole.me/` 时建议分阶段进行：
 
@@ -324,7 +385,7 @@ head_sampling_rate = 1
 7. 正式切换域名时，将 `zuole.me` DNS 指向 Cloudflare Workers 自定义域名。
 8. 保留旧 WordPress 站点只读备份，至少覆盖一个完整审核周期。
 
-## 11. R2 Cases 对象迁移
+## 12. R2 Cases 对象迁移
 
 `0017_cases_cleanup.sql` 会将真实案例表从 `testimonial_*` 切换为 `cases` / `case_images`，并将数据库中的 R2 key 从 `testimonials/...` 改为 `cases/...`。生产执行时必须先迁移 R2 对象，再执行 D1 迁移，避免数据库切表后引用不存在的对象。
 
@@ -372,7 +433,7 @@ node scripts/migrate-cases-r2.mjs --remote --delete-old --confirm-delete-old=tes
 - `scripts/deploy.sh` 会先完成 API dry-run 和 Web build，再进入 D1 migration 阶段；生产环境如果发现 `0017_cases_cleanup.sql` 仍在待执行迁移列表中，且未设置 `ALLOW_CASES_CLEANUP_MIGRATION=true`，会在 D1 migration 前中止，防止误跑一键部署导致 D1 先于 R2 迁移。0017 已应用或不在待执行列表时不会继续拦截后续生产部署。
 - 如果本地 D1 已执行 `0017_cases_cleanup.sql`，旧表 `testimonial_case_images` 可能已不存在；此时本地 dry-run 提示旧表不存在属于预期，不代表脚本实现失败。
 
-## 12. 参考资料
+## 13. 参考资料
 
 - Cloudflare Workers: https://developers.cloudflare.com/workers/
 - Workers Assets: https://developers.cloudflare.com/workers/frameworks/

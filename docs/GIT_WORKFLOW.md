@@ -23,7 +23,7 @@ main (生产)
 
 1. 从 `dev` 创建功能分支：`git checkout -b feature/xxx dev`
 2. 在功能分支上开发和提交
-3. 需要联调或验收时，先部署到 Workers dev 子域，使用真实数据验证但不影响生产主域
+3. 需要联调或验收时，先部署到 Workers dev 子域，使用独立 dev Cloudflare 资源验证，不影响生产主域和生产数据
 4. 完成后合并回 `dev`：`git checkout dev && git merge feature/xxx`
 5. 删除已合并的功能分支
 
@@ -39,17 +39,19 @@ main (生产)
 
 - 已正式上线后，未完成或未验收功能不得直接部署到 `616618.xyz` / `api.616618.xyz`。
 - 开发测试使用 `meigallery-web-dev` / `meigallery-api-dev` Worker 和 Workers dev 子域。
-- Dev 环境允许读取正式 D1/R2 数据以复现真实内容，但后台写操作必须谨慎执行，并保留审计日志。
+- Dev 环境使用独立的 `meigallery-db-dev`、`meigallery-media-dev`、`meigallery-meta-capi-dev`，不得回连生产 D1/R2/Queue。
 - Dev 页面必须带测试环境标识，并避免被生产页面、公开导航、sitemap 或搜索引擎收录。
 
 ### 发布上线
 
 1. 从 `dev` 创建发布分支：`git checkout -b release/v0.x.0 dev`
 2. 在发布分支上做最终验证和修复
-3. 验证通过后，创建 PR 合入 `main`
-4. 合入后打 tag：`git tag v0.x.0`
-5. 将 `main` 合并回 `dev`：`git checkout dev && git merge main`
-6. 删除发布分支
+3. 在干净工作区设置 `VERIFY_DEV_API_URL`、`VERIFY_DEV_WEB_URL` 后运行 `corepack pnpm verify:release`，生成当前 commit 的通过报告
+4. 确认 `./scripts/deploy.sh production` 的 production gate 可读取该报告并放行
+5. 验证通过后，创建 PR 合入 `main`
+6. 合入后打 tag：`git tag v0.x.0`
+7. 将 `main` 合并回 `dev`：`git checkout dev && git merge main`
+8. 删除发布分支
 
 ### 紧急修复
 

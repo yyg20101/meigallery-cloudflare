@@ -24,13 +24,23 @@
 - 运行平台：仅使用 Cloudflare Workers + Workers Assets，不使用 Cloudflare Pages。
 - 前端 Worker：`meigallery-web`，生产域名 `616618.xyz` / `www.616618.xyz`。
 - API Worker：`meigallery-api`，生产域名 `api.616618.xyz`。
-- 开发 Worker：`meigallery-web-dev` / `meigallery-api-dev`，不绑定生产域名。
+- 开发 Worker：`meigallery-web-dev` / `meigallery-api-dev`，不绑定生产域名；当前真实地址为 `https://meigallery-web-dev.wajie.workers.dev` / `https://meigallery-api-dev.wajie.workers.dev`。
 - 数据库：生产为 Cloudflare D1 `meigallery-db`，开发环境已隔离到 `meigallery-db-dev`；迁移文件位于 `packages/api/migrations/`。
 - 对象存储：生产为 Cloudflare R2 `meigallery-media`，开发环境已隔离到 `meigallery-media-dev`。
+- Queue：生产为 `meigallery-meta-capi`，开发环境已隔离到 `meigallery-meta-capi-dev`。
 - 视频：Cloudflare Stream 仍未接入生产链路；相关字段和密钥按规划保留。
 - 生产部署：通过 PR 合入 `main` 后手动执行 `./scripts/deploy.sh production` 或等价 wrangler 命令。
 - CI：`.github/workflows/ci.yml` 只做 PR 和 dev 推送验证，不自动部署生产。
 - 发布快速校验：`corepack pnpm verify:quick` 当前首步会执行 `dev-resource-isolation`，阻断 dev 误用生产 D1/R2。
+
+## 发布验证体系状态
+
+- 已提供四层命令：`verify:quick`、`verify:local-runtime`、`verify:dev-rehearsal`、`verify:release`。
+- `verify:quick` 适合日常提交前自检，首步检查 dev/production 资源隔离。
+- `verify:local-runtime` 用于本地 Cloudflare 运行时验证 D1、Queue、归因和降级链路。
+- `verify:dev-rehearsal` 依赖独立 dev 资源和当前 dev Workers URL，作为上线前远端演练。
+- `verify:release` 是生产放行前最终校验，但当前仓库尚未真实跑完整 release 报告；生产前必须在干净工作区、带 `VERIFY_DEV_API_URL` / `VERIFY_DEV_WEB_URL` 运行并生成同一 commit 的通过报告。
+- `scripts/deploy.sh production` 已在远端 migration 前接入 production gate；没有通过版 release 报告时必须阻断。
 
 ## 当前已实现能力
 
@@ -67,7 +77,7 @@
 ## Git 状态
 
 - `main`：生产分支，必须通过 PR 合入，禁止直接推送。
-- `dev`：开发主线，日常变更先推送到 `origin/dev`。
+- `dev`：开发主线，日常开发在此汇总；非关键、非关联或阶段性提交默认先保留本地，功能闭环、需要 CI/协作或准备部署时再统一推送到 `origin/dev`。
 - `feature/*`、`fix/*`：只保留必要工作分支，完成合并后及时删除。
 
 ## 当前命名
