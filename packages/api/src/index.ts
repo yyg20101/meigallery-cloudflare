@@ -47,6 +47,9 @@ export type Bindings = {
   IMPORT_TOKEN_DAILY_LIMIT?: string
   TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT?: string
   TELEGRAM_BOT_TOKEN_OPS_CASE_BOT?: string
+  META_CAPI_QUEUE?: Queue<{ deliveryId: string }>
+  META_CAPI_ACCESS_TOKEN?: string
+  META_CAPI_TEST_EVENT_CODE?: string
 }
 
 /** 应用级变量 */
@@ -337,5 +340,20 @@ export default {
   fetch: app.fetch,
   scheduled: async (event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) => {
     ctx.waitUntil(handleScheduled(env))
+  },
+  queue: async (batch: MessageBatch<{ deliveryId: string }>, env: Bindings) => {
+    const { sendMetaCapiEvent } = await import('./services/meta-capi')
+    for (const message of batch.messages) {
+      try {
+        await sendMetaCapiEvent(env, message.body.deliveryId)
+        message.ack()
+      } catch (error) {
+        console.error('[meta-capi] delivery failed', {
+          deliveryId: message.body.deliveryId,
+          message: error instanceof Error ? error.message : 'unknown',
+        })
+        message.retry()
+      }
+    }
   },
 }

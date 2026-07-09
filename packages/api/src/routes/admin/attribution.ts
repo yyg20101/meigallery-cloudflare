@@ -1,8 +1,10 @@
 import { Hono, type Context } from 'hono'
 import type { Bindings, Variables } from '../../index'
+import { sendMetaCapiEvent } from '../../services/meta-capi'
 import { errorJson } from '../../utils/api-error'
 import { mergeD1Usage, readD1UsageMeta, type D1Usage } from '../../utils/analytics-cost'
 import { parseAnalyticsRange, type AnalyticsDateRange } from '../../utils/analytics-time'
+import { generateId } from '../../utils/db'
 import { writeAuditLog } from '../../utils/permission'
 
 export const adminAttributionRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
@@ -257,6 +259,7 @@ adminAttributionRoutes.get('/meta', async (c) => {
       totals: totals.rows[0] ?? {},
       deliveries: rows.rows,
       lastSentAt: String((lastSentAt.rows[0] ?? {}).last_sent_at ?? ''),
+      secretPresent: Boolean(c.env.META_CAPI_ACCESS_TOKEN),
       settings: serializeSettings(settings.rows),
     },
   })
@@ -352,17 +355,63 @@ adminAttributionRoutes.post('/meta/test-event', async (c) => {
   if (ownerError) return ownerError
 
   const adminId = c.get('userId')!
-  const afterValue = {
-    status: 'skipped',
-    reason: 'queue_not_configured',
-    channel: 'meta_capi',
-    eventName: 'TestEvent',
+  const now = new Date().toISOString()
+  const date = now.slice(0, 10)
+  const conversionId = generateId('convtest')
+  const deliveryId = generateId('cdlvtest')
+  const externalEventId = `meta:Contact:test:${deliveryId}`
+  await c.env.DB.prepare(`
+    INSERT INTO analytics_conversion_actions (
+      id, action_type, dedupe_key, occurred_at, date, visitor_id, session_id,
+      source_channel, source_name, method_type, action_target, route_name, path,
+      metadata, duplicate_of
+    )
+    VALUES (?, 'contact', ?, ?, ?, 'meta_test_event', ?, 'internal', 'admin_attribution',
+      'meta_test_event', 'admin_attribution', 'admin_attribution_meta', '/admin/attribution/meta',
+      ?, '')
+  `).bind(
+    conversionId,
+    `meta-test:${deliveryId}`,
+    now,
+    date,
+    `meta_test_event:${adminId}`,
+    JSON.stringify({ test_event: true, method_type: 'meta_test_event', location: 'admin_attribution' }),
+  ).run()
+  await c.env.DB.prepare(`
+    INSERT INTO analytics_conversion_deliveries (
+      id, conversion_action_id, channel, external_event_id, event_name,
+      status, skip_reason, updated_at
+    )
+    VALUES (?, ?, 'meta_capi', ?, 'Contact', 'pending', '', datetime('now'))
+  `).bind(deliveryId, conversionId, externalEventId).run()
+
+  let afterValue: Record<string, unknown>
+  try {
+    const result = await sendMetaCapiEvent(c.env, deliveryId, {
+      testEventCode: String(c.env.META_CAPI_TEST_EVENT_CODE || '').trim() || undefined,
+    })
+    afterValue = {
+      ...result,
+      channel: 'meta_capi',
+      eventName: 'Contact',
+      testEventCodePresent: Boolean(c.env.META_CAPI_TEST_EVENT_CODE),
+    }
+  } catch (error) {
+    afterValue = {
+      deliveryId,
+      status: 'failed',
+      reason: error instanceof Error ? error.message : 'Meta CAPI Test Event 失败',
+      retryable: true,
+      channel: 'meta_capi',
+      eventName: 'Contact',
+      testEventCodePresent: Boolean(c.env.META_CAPI_TEST_EVENT_CODE),
+    }
   }
   await writeAuditLog(c.env.DB, {
     adminId,
     action: 'attribution.meta_test_event',
     targetType: 'attribution',
-    targetId: 'meta_test_event',
+    targetId: deliveryId,
     afterValue,
   })
 

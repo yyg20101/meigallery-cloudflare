@@ -30,6 +30,15 @@ name = "EMAIL"
 [triggers]
 crons = ["0 0 * * *"]  # 每天 UTC 00:00（北京时间 08:00）
 
+[[queues.producers]]
+binding = "META_CAPI_QUEUE"
+queue = "meigallery-meta-capi"
+
+[[queues.consumers]]
+queue = "meigallery-meta-capi"
+max_batch_size = 10
+max_batch_timeout = 30
+
 # 环境变量（非敏感）— 生产默认值
 [vars]
 APP_ENV = "production"
@@ -68,6 +77,15 @@ name = "EMAIL"
 [env.dev.triggers]
 crons = []
 
+[[env.dev.queues.producers]]
+binding = "META_CAPI_QUEUE"
+queue = "meigallery-meta-capi-dev"
+
+[[env.dev.queues.consumers]]
+queue = "meigallery-meta-capi-dev"
+max_batch_size = 5
+max_batch_timeout = 30
+
 [env.dev.vars]
 APP_ENV = "dev"
 CORS_ORIGIN = ""
@@ -84,3 +102,6 @@ IMPORT_TOKEN_DAILY_LIMIT = "100"
 # corepack pnpm --filter @meigallery/api exec wrangler secret put TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT
 # sourceBotKey=ops_case_bot 时：
 # corepack pnpm --filter @meigallery/api exec wrangler secret put TELEGRAM_BOT_TOKEN_OPS_CASE_BOT
+# Meta CAPI：
+# corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_ACCESS_TOKEN
+# corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_TEST_EVENT_CODE

@@ -18,6 +18,19 @@ function createApp(role: string | null = 'admin') {
 
 function createAttributionDb() {
   const calls: DbCall[] = []
+  let testAction: { id: string; occurred_at: string; date: string; path: string; metadata: string } | null = null
+  let testDelivery: {
+    id: string
+    conversion_action_id: string
+    channel: string
+    external_event_id: string
+    event_name: string
+    status: string
+    skip_reason: string
+    error_code: string
+    error_message: string
+    attempt_count: number
+  } | null = null
   const db = {
     calls,
     prepare(sql: string) {
@@ -200,6 +213,15 @@ function createAttributionDb() {
         },
         async first<T>() {
           calls.push(call)
+          if (sql.includes('FROM analytics_conversion_deliveries d') && testAction && testDelivery) {
+            return {
+              ...testDelivery,
+              occurred_at: testAction.occurred_at,
+              date: testAction.date,
+              path: testAction.path,
+              metadata: testAction.metadata,
+            } as T
+          }
           if (sql.includes('FROM analytics_conversion_daily')) {
             return {
               contact_count: 3,
@@ -224,12 +246,43 @@ function createAttributionDb() {
             return { duplicate_action_count: 1 } as T
           }
           if (sql.includes('FROM site_settings')) {
+            if (sql.includes("key = 'facebook_pixel_id'")) return { value: '1234567890' } as T
             return null
           }
           return null
         },
         async run() {
           calls.push(call)
+          if (sql.includes('INSERT INTO analytics_conversion_actions')) {
+            testAction = {
+              id: String(call.params[0] ?? ''),
+              occurred_at: String(call.params[2] ?? ''),
+              date: String(call.params[3] ?? ''),
+              path: '/admin/attribution/meta',
+              metadata: String(call.params[5] ?? '{}'),
+            }
+          }
+          if (sql.includes('INSERT INTO analytics_conversion_deliveries')) {
+            testDelivery = {
+              id: String(call.params[0] ?? ''),
+              conversion_action_id: String(call.params[1] ?? ''),
+              channel: 'meta_capi',
+              external_event_id: String(call.params[2] ?? ''),
+              event_name: 'Contact',
+              status: 'pending',
+              skip_reason: '',
+              error_code: '',
+              error_message: '',
+              attempt_count: 0,
+            }
+          }
+          if (sql.includes('UPDATE analytics_conversion_deliveries') && testDelivery) {
+            testDelivery.status = String(call.params[0] ?? '')
+            testDelivery.skip_reason = String(call.params[1] ?? '')
+            testDelivery.error_code = String(call.params[2] ?? '')
+            testDelivery.error_message = String(call.params[3] ?? '')
+            testDelivery.attempt_count += 1
+          }
           return { meta: { changes: 1, rows_read: 0, rows_written: 1, duration: 1 } }
         },
       }
@@ -289,13 +342,18 @@ describe('后台归因中心 API', () => {
   })
 
   it('返回 Meta 投递状态和配置', async () => {
-    const res = await createApp('admin').request('/api/admin/attribution/meta?from=2026-07-09&to=2026-07-09', {}, { DB: createAttributionDb() } as unknown as Bindings)
+    const res = await createApp('admin').request('/api/admin/attribution/meta?from=2026-07-09&to=2026-07-09', {}, {
+      DB: createAttributionDb(),
+      META_CAPI_ACCESS_TOKEN: 'secret-token',
+    } as unknown as Bindings)
     const body = await res.json()
 
     expect(res.status).toBe(200)
     expect(body.data.totals).toMatchObject({ sent_count: 2, failed_count: 0, duplicate_suppressed_count: 1 })
     expect(body.data.deliveries[0]).toMatchObject({ channel: 'meta_pixel', event_name: 'Contact' })
     expect(body.data.settings.facebook_pixel_id).toBe('1234567890')
+    expect(body.data.secretPresent).toBe(true)
+    expect(JSON.stringify(body)).not.toContain('secret-token')
   })
 
   it('返回重复诊断和重复样本', async () => {
@@ -334,7 +392,9 @@ describe('后台归因中心 API', () => {
 
     expect(res.status).toBe(202)
     expect(body.data.status).toBe('skipped')
+    expect(body.data.reason).toBe('missing_secret')
     expect(db.calls.some(call => call.sql.includes('INSERT INTO admin_audit_logs') && call.params[2] === 'attribution.meta_test_event')).toBe(true)
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_conversion_deliveries'))).toBe(true)
     expect(JSON.stringify(db.calls)).not.toContain('Meta 像素测试地址')
   })
 })

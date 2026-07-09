@@ -90,6 +90,8 @@ export type ConversionSkipReason =
   | 'disabled'
   | 'missing_secret'
   | 'missing_pixel_id'
+  | 'missing_queue'
+  | 'queue_send_failed'
   | 'consent_denied'
   | 'invalid_payload'
 

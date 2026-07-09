@@ -9,6 +9,7 @@ function createConversionDb(options: {
   existingDedupeKeys?: string[]
   existingLeadSessions?: string[]
   skipLeadLookup?: boolean
+  metaCapiEnabled?: boolean
 } = {}) {
   const calls: Call[] = []
   const insertedConversions: InsertedConversion[] = []
@@ -28,6 +29,9 @@ function createConversionDb(options: {
           if (sql.includes('WHERE dedupe_key = ?')) {
             const existingId = dedupe.get(String(call.params[0]))
             return existingId ? ({ id: existingId } as T) : null
+          }
+          if (sql.includes("WHERE key = 'meta_capi_enabled'")) {
+            return { value: String(options.metaCapiEnabled === true) } as T
           }
           if (sql.includes("action_type = 'lead'")) {
             if (options.skipLeadLookup) return null
@@ -65,7 +69,20 @@ function envFor(db: ReturnType<typeof createConversionDb>) {
   return {
     APP_ENV: 'test',
     DB: db,
-  } as unknown as Pick<Bindings, 'APP_ENV' | 'DB'>
+  } as unknown as Pick<Bindings, 'APP_ENV' | 'DB' | 'META_CAPI_QUEUE'>
+}
+
+function envWithQueueFor(db: ReturnType<typeof createConversionDb>, sent: Array<{ deliveryId: string }>) {
+  return {
+    APP_ENV: 'test',
+    DB: db,
+    META_CAPI_QUEUE: {
+      async send(message: { deliveryId: string }) {
+        sent.push(message)
+        return { metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } } }
+      },
+    },
+  } as unknown as Pick<Bindings, 'APP_ENV' | 'DB' | 'META_CAPI_QUEUE'>
 }
 
 describe('conversion ledger service', () => {
@@ -170,6 +187,50 @@ describe('conversion ledger service', () => {
       secondDeliveries[0]?.params[3],
       secondDeliveries[1]?.params[3],
     ])
+  })
+
+  it('CAPI 开启且 Queue 存在时发送 deliveryId', async () => {
+    const sent: Array<{ deliveryId: string }> = []
+    const db = createConversionDb({ metaCapiEnabled: true })
+
+    await recordConversionAction(envWithQueueFor(db, sent), {
+      actionType: 'complete_registration',
+      visitorId: 'visitor_1',
+      sessionId: 'session_1',
+      occurredAt: '2026-07-09T10:22:00.000Z',
+      consentState: 'granted',
+      metadata: {},
+    })
+
+    const capiDelivery = db.calls.find(call => (
+      call.sql.includes('analytics_conversion_deliveries') &&
+      call.params[2] === 'meta_capi'
+    ))
+    expect(sent).toEqual([{ deliveryId: capiDelivery?.params[0] as string }])
+  })
+
+  it('CAPI 开启但缺少 Queue binding 时标记 missing_queue', async () => {
+    const db = createConversionDb({ metaCapiEnabled: true })
+
+    await recordConversionAction(envFor(db), {
+      actionType: 'complete_registration',
+      visitorId: 'visitor_1',
+      sessionId: 'session_1',
+      occurredAt: '2026-07-09T10:23:00.000Z',
+      consentState: 'granted',
+      metadata: {},
+    })
+
+    expect(db.calls.some(call => (
+      call.sql.includes('UPDATE analytics_conversion_deliveries') &&
+      call.params[0] === 'skipped' &&
+      call.params[1] === 'missing_queue'
+    ))).toBe(true)
+    expect(db.calls.some(call => (
+      call.sql.includes('analytics_conversion_delivery_daily') &&
+      call.params[3] === 'skipped' &&
+      call.params[4] === 'missing_queue'
+    ))).toBe(true)
   })
 
   it('lead 派生命中并发 dedupe 时返回 null，不抛唯一约束错误', async () => {

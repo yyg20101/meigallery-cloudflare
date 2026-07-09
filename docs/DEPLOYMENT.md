@@ -103,6 +103,49 @@ corepack pnpm verify:seo:production -- --expect-site-name 星耀传媒 --expect-
 
 达到以下任一阈值时进入 Phase 9 规模增强评估，而不是临时放宽当前预算：采集接口 P95 > 300ms 且主要耗时来自 D1 写入；或 D1 rows written 超过 80,000/day 的 80% 连续 3 天。Phase 9 才评估 Cloudflare Queues 批处理和 Workers Analytics Engine；评估前必须重新核对 Cloudflare 官方 limits、pricing、batching、retry 和 retention 文档。
 
+### Meta CAPI 上线顺序
+
+Meta CAPI 使用 Cloudflare Queues 异步投递。站内转化账本是事实源，Pixel / CAPI 只作为同步渠道；即使 CAPI 关闭或失败，站内有效联系、Lead、注册等数据仍应继续写入 D1。
+
+首次启用前执行：
+
+```bash
+# 创建生产与 dev Queue
+corepack pnpm --filter @meigallery/api exec wrangler queues create meigallery-meta-capi
+corepack pnpm --filter @meigallery/api exec wrangler queues create meigallery-meta-capi-dev
+
+# 配置 Meta CAPI Worker secrets
+corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_ACCESS_TOKEN
+corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_TEST_EVENT_CODE
+```
+
+上线顺序：
+
+1. 执行 D1 migrations，确保 `0032_attribution_conversions.sql` 和 `0033_meta_delivery_settings.sql` 已应用。
+2. 创建 `meigallery-meta-capi` Queue，并确认 `packages/api/wrangler.toml` 中 `META_CAPI_QUEUE` producer / consumer 已通过 dry-run。
+3. 设置 `META_CAPI_ACCESS_TOKEN`；如需在 Events Manager 的 Test Events 中联调，再设置 `META_CAPI_TEST_EVENT_CODE`。
+4. 部署 API Worker，使 Queue consumer、`/api/conversions/events` 和 `/api/admin/attribution/meta` 生效。
+5. 部署 Web Worker，使前台事件继续带同一 `eventID` 上报 Pixel，并在后台 Meta 同步页显示 CAPI Secret 存在状态。
+6. 后台设置中确认 `facebook_pixel_id` 与 Pixel 开关；仅在 Test Event 验证通过后开启 `meta_capi_enabled`。
+7. 点击前台联系方式或完成注册后，在 `/admin/attribution/meta` 检查 `meta_capi` delivery 是否从 pending 变为 sent；若缺少 Queue 或 secret，应显示 skipped 且带 `missing_queue` / `missing_secret` 原因。
+
+上线前必须通过以下验证：
+
+- `corepack pnpm --filter @meigallery/api test -- meta-capi.test.ts attribution.test.ts conversions.test.ts`
+- `corepack pnpm --filter @meigallery/api exec tsc --noEmit`
+- `corepack pnpm --filter @meigallery/api exec wrangler deploy --env="" --dry-run --outdir=dist`
+- Meta Events Manager Test Events 中看到 CAPI 事件，并确认与 Pixel 事件使用同一 `event_id` 去重。
+
+### Meta CAPI 回滚顺序
+
+优先通过后台开关回滚，不删除 Queue、不删除 D1 表：
+
+1. Owner 关闭 `meta_capi_enabled`。
+2. 新增转化仍写入 `analytics_conversion_actions`，但 `meta_capi` delivery 应显示 `skipped/disabled`。
+3. 如 Queue 积压异常，可临时暂停 Queue delivery：`corepack pnpm --filter @meigallery/api exec wrangler queues pause-delivery meigallery-meta-capi`。
+4. 修复后恢复：`corepack pnpm --filter @meigallery/api exec wrangler queues resume-delivery meigallery-meta-capi`。
+5. 如果需撤回 Worker 版本，先保持 `meta_capi_enabled=false`，再部署旧 API Worker；不要删除 `META_CAPI_ACCESS_TOKEN`，除非确认短期内不再联调。
+
 ## 5. 环境变量
 
 | 变量 | 位置 | 说明 |
@@ -115,6 +158,8 @@ corepack pnpm verify:seo:production -- --expect-site-name 星耀传媒 --expect-
 | `IMAGE_RESIZING_ENABLED` | API Worker vars | 是否启用 Cloudflare Images Transformations；启用前需在 Dashboard 打开 Images > Transformations |
 | `IMPORT_TOKEN_DAILY_LIMIT` | API Worker vars | 单个 Import Token 每日可创建的外部导入记录上限，未设置时 API 默认 100 |
 | `TELEGRAM_BOT_TOKEN_<SOURCE_BOT_KEY>` | API Worker secret | Telegram 外部导入拉取 file_id 所需 Bot Token，例如 `ops_gallery_bot` 对应 `TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT` |
+| `META_CAPI_ACCESS_TOKEN` | API Worker secret | Meta Conversions API 访问令牌，只存 Worker secret，不进入 D1 或前端 |
+| `META_CAPI_TEST_EVENT_CODE` | API Worker secret | Meta Events Manager Test Events 调试码，仅用于 owner 触发 Test Event |
 | `NUXT_PUBLIC_API_BASE_URL` | Web Worker vars | API 地址（如 `https://api.616618.xyz`） |
 
 设置 secret：
@@ -127,6 +172,8 @@ corepack pnpm --filter @meigallery/api exec wrangler secret put STREAM_API_TOKEN
 corepack pnpm --filter @meigallery/api exec wrangler secret put TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT
 # 如有独立案例导入 Bot：
 corepack pnpm --filter @meigallery/api exec wrangler secret put TELEGRAM_BOT_TOKEN_OPS_CASE_BOT
+corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_ACCESS_TOKEN
+corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_TEST_EVENT_CODE
 ```
 
 ## 6. Cloudflare 产品绑定
@@ -137,6 +184,8 @@ corepack pnpm --filter @meigallery/api exec wrangler secret put TELEGRAM_BOT_TOK
 - Zone ID: `2f7f49183fa463345e09432719af2c7d`（616618.xyz，Free 计划）
 - D1 Database ID: `714929cb-003b-4cb1-bd9f-545fa1895e8c`
 - R2 Bucket: `meigallery-media`
+- Queue: `meigallery-meta-capi`（生产 Meta CAPI 投递）
+- Queue: `meigallery-meta-capi-dev`（dev Meta CAPI 投递）
 
 ### Dev 环境
 
@@ -252,6 +301,9 @@ head_sampling_rate = 1
 - [ ] 后台管理员账号已创建
 - [ ] 外部导入所需 Import Token 已在后台创建，权限、过期时间和 `allowedSourceBotKeys` 已确认
 - [ ] 每个 `sourceBotKey` 对应的 `TELEGRAM_BOT_TOKEN_<SOURCE_BOT_KEY>` secret 已配置
+- [ ] `meigallery-meta-capi` Queue 已创建，API Worker producer / consumer dry-run 通过
+- [ ] `META_CAPI_ACCESS_TOKEN` 已配置，`META_CAPI_TEST_EVENT_CODE` 按需配置
+- [ ] `/admin/attribution/meta` 显示 CAPI Secret 存在状态，Test Event 验证通过后才开启 `meta_capi_enabled`
 - [ ] WAF 和基本 rate limiting 已启用
 - [ ] 登录、搜索、详情、媒体权限、导入流程通过验收
 - [ ] 数据分析 migrations、API、Web、后台页面和 Owner 开关顺序已完成；默认关闭态和回滚 disabled 响应已验证
@@ -331,6 +383,7 @@ node scripts/migrate-cases-r2.mjs --remote --delete-old --confirm-delete-old=tes
 - Stream: https://developers.cloudflare.com/stream/
 - Turnstile: https://developers.cloudflare.com/turnstile/
 - Cloudflare Queues batching / retries: https://developers.cloudflare.com/queues/configuration/batching-retries/
+- Cloudflare Queues JavaScript APIs: https://developers.cloudflare.com/queues/configuration/javascript-apis/
 - Workers Analytics Engine limits: https://developers.cloudflare.com/analytics/analytics-engine/limits/
 - Workers Analytics Engine pricing: https://developers.cloudflare.com/analytics/analytics-engine/pricing/
 - Cloudflare pricing: https://www.cloudflare.com/plans/

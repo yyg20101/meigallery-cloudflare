@@ -1,6 +1,7 @@
 import type { AnalyticsConsentState, AnalyticsSourceChannel, ConversionActionType } from '@meigallery/shared'
 import type { Bindings } from '../index'
 import { generateId } from '../utils/db'
+import { parseStoredSettingValue } from '../utils/stored-setting-value'
 import {
   buildConversionDedupeKey,
   buildExternalEventId,
@@ -38,7 +39,7 @@ export interface RecordConversionResult {
 }
 
 export async function recordConversionAction(
-  env: Pick<Bindings, 'DB' | 'APP_ENV'>,
+  env: Pick<Bindings, 'DB' | 'APP_ENV' | 'META_CAPI_QUEUE'>,
   input: RecordConversionInput,
 ): Promise<RecordConversionResult> {
   const normalizedInput = normalizeConversionInput(input)
@@ -62,7 +63,7 @@ export async function recordConversionAction(
   }
 
   await upsertConversionDaily(env.DB, normalizedInput, date)
-  await createMetaDeliveries(env.DB, id, normalizedInput, date)
+  await createMetaDeliveries(env, id, normalizedInput, date)
 
   const derivedActions: Array<{ id: string; actionType: ConversionActionType }> = []
   if (normalizedInput.actionType === 'contact') {
@@ -189,7 +190,7 @@ async function upsertConversionDaily(db: D1Database, input: RecordConversionInpu
 }
 
 async function createMetaDeliveries(
-  db: D1Database,
+  env: Pick<Bindings, 'DB' | 'META_CAPI_QUEUE'>,
   conversionActionId: string,
   input: RecordConversionInput,
   date: string,
@@ -209,25 +210,56 @@ async function createMetaDeliveries(
     metaEventName,
   })
 
+  const capiEnabled = await isMetaCapiEnabled(env.DB)
   for (const channel of ['meta_pixel', 'meta_capi'] as const) {
-    await db.prepare(`
+    const deliveryId = generateId('cdlv')
+    const status = channel === 'meta_capi' && !capiEnabled ? 'skipped' : 'pending'
+    const skipReason = channel === 'meta_capi' && !capiEnabled ? 'disabled' : ''
+    const created = await env.DB.prepare(`
       INSERT OR IGNORE INTO analytics_conversion_deliveries (
         id, conversion_action_id, channel, external_event_id, event_name,
         status, skip_reason, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, 'pending', '', datetime('now'))
+      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
     `).bind(
-      generateId('cdlv'),
+      deliveryId,
       conversionActionId,
       channel,
       externalEventId,
       metaEventName,
+      status,
+      skipReason,
     ).run()
+    if (!d1Changed(created)) continue
+    if (channel !== 'meta_capi') continue
+    if (status === 'skipped') {
+      await upsertDeliveryDaily(env.DB, date, channel, metaEventName, status, skipReason)
+      continue
+    }
+    if (!env.META_CAPI_QUEUE) {
+      await markDeliveryTerminal(env.DB, deliveryId, date, channel, metaEventName, 'skipped', 'missing_queue')
+      continue
+    }
+    try {
+      await env.META_CAPI_QUEUE.send({ deliveryId })
+    } catch (error) {
+      await markDeliveryTerminal(
+        env.DB,
+        deliveryId,
+        date,
+        channel,
+        metaEventName,
+        'failed',
+        '',
+        'queue_send_failed',
+        error instanceof Error ? error.message : 'Queue 发送失败',
+      )
+    }
   }
 }
 
 async function recordDerivedLead(
-  env: Pick<Bindings, 'DB' | 'APP_ENV'>,
+  env: Pick<Bindings, 'DB' | 'APP_ENV' | 'META_CAPI_QUEUE'>,
   input: RecordConversionInput,
   occurredAt: string,
   date: string,
@@ -249,8 +281,59 @@ async function recordDerivedLead(
   if (!created) return null
 
   await upsertConversionDaily(env.DB, leadInput, date)
-  await createMetaDeliveries(env.DB, id, leadInput, date)
+  await createMetaDeliveries(env, id, leadInput, date)
   return { id, actionType: 'lead' as const }
+}
+
+async function isMetaCapiEnabled(db: D1Database) {
+  const row = await db.prepare("SELECT value FROM site_settings WHERE key = 'meta_capi_enabled' LIMIT 1").first<{ value: string }>()
+  return parseStoredSettingValue(row ? row.value : 'false', false) === true
+}
+
+async function markDeliveryTerminal(
+  db: D1Database,
+  deliveryId: string,
+  date: string,
+  channel: 'meta_capi',
+  eventName: string,
+  status: 'failed' | 'skipped',
+  skipReason = '',
+  errorCode = '',
+  errorMessage = '',
+) {
+  await db.prepare(`
+    UPDATE analytics_conversion_deliveries
+    SET
+      status = ?,
+      skip_reason = ?,
+      error_code = ?,
+      error_message = ?,
+      attempt_count = attempt_count + 1,
+      last_attempt_at = datetime('now'),
+      updated_at = datetime('now')
+    WHERE id = ?
+  `).bind(status, skipReason, errorCode, normalizeText(errorMessage, 500), deliveryId).run()
+  await upsertDeliveryDaily(db, date, channel, eventName, status, skipReason)
+}
+
+async function upsertDeliveryDaily(
+  db: D1Database,
+  date: string,
+  channel: 'meta_capi',
+  eventName: string,
+  status: 'failed' | 'skipped',
+  skipReason: string,
+) {
+  await db.prepare(`
+    INSERT INTO analytics_conversion_delivery_daily (
+      date, channel, event_name, status, skip_reason, delivery_count, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, 1, datetime('now'))
+    ON CONFLICT(date, channel, event_name, status, skip_reason)
+    DO UPDATE SET
+      delivery_count = analytics_conversion_delivery_daily.delivery_count + 1,
+      updated_at = datetime('now')
+  `).bind(date, channel, eventName, status, skipReason).run()
 }
 
 function conversionDedupeKey(input: RecordConversionInput, occurredDate: string) {

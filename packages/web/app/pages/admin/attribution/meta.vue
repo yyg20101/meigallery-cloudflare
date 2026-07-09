@@ -10,6 +10,7 @@ interface MetaData {
   totals: Record<string, unknown>
   deliveries: Array<Record<string, unknown>>
   lastSentAt: string
+  secretPresent?: boolean
   settings: Record<string, unknown>
 }
 
@@ -22,11 +23,16 @@ const testing = ref(false)
 const data = computed(() => attribution.data.value)
 const totals = computed(() => data.value?.totals ?? {})
 const settings = computed(() => data.value?.settings ?? {})
+const capiSecretStatus = computed(() => {
+  if (data.value?.secretPresent === true) return { value: '已配置', tone: 'green' as const }
+  if (settings.value.meta_capi_enabled === true) return { value: '缺失', tone: 'red' as const }
+  return { value: '未启用', tone: 'default' as const }
+})
 
 const metrics = computed(() => [
   { label: 'Pixel 状态', value: settings.value.facebook_pixel_enabled === true ? '已开启' : '关闭', hint: String(settings.value.facebook_pixel_id || '未配置 Pixel ID'), tone: settings.value.facebook_pixel_enabled === true ? 'green' as const : 'default' as const },
   { label: 'CAPI 状态', value: settings.value.meta_capi_enabled === true ? '已开启' : '关闭', hint: `模式 ${String(settings.value.meta_tracking_mode || '-')}`, tone: settings.value.meta_capi_enabled === true ? 'blue' as const : 'default' as const },
-  { label: 'CAPI Secret', value: settings.value.meta_capi_enabled === true ? '需确认' : '未启用', hint: 'Worker secret 状态不在前端暴露', tone: settings.value.meta_capi_enabled === true ? 'gold' as const : 'default' as const },
+  { label: 'CAPI Secret', value: capiSecretStatus.value.value, hint: '仅展示是否存在，不暴露 secret 内容', tone: capiSecretStatus.value.tone },
   { label: '最近成功', value: formatAnalyticsDateTime(data.value?.lastSentAt), hint: `已同步 ${formatAnalyticsNumber(totals.value.sent_count)}`, tone: 'green' as const },
   { label: '失败', value: formatAnalyticsNumber(totals.value.failed_count), hint: `跳过 ${formatAnalyticsNumber(totals.value.skipped_count)}`, tone: Number(totals.value.failed_count ?? 0) > 0 ? 'red' as const : 'default' as const },
 ])

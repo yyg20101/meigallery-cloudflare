@@ -556,6 +556,7 @@ function adminAttributionResponse(pathname, searchParams) {
           { channel: 'meta_capi', event_name: 'Lead', status: 'duplicate_suppressed', skip_reason: '', delivery_count: 1 },
         ],
         lastSentAt: '2026-07-09T09:30:00.000Z',
+        secretPresent: false,
         settings: {
           facebook_pixel_enabled: true,
           facebook_pixel_id: '1234567890',
