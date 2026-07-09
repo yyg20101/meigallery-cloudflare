@@ -106,8 +106,16 @@ describe('conversion ledger service', () => {
       metadata: {},
     })
     expect(result.created).toBe(false)
+    expect(result.duplicateOf).toBe('existing_contact:session_1:telegram:floating_contact_panel')
     expect(result.derivedActions).toHaveLength(0)
     expect(db.calls.some(call => call.sql.includes('INSERT OR IGNORE INTO analytics_conversion_actions'))).toBe(true)
+    expect(db.calls.some(call => (
+      call.sql.includes('INSERT OR IGNORE INTO analytics_conversion_actions') &&
+      String(call.params[2]).startsWith('duplicate:contact:session_1:telegram:floating_contact_panel:') &&
+      call.params[20] === 'existing_contact:session_1:telegram:floating_contact_panel'
+    ))).toBe(true)
+    expect(db.calls.some(call => call.sql.includes('analytics_conversion_daily'))).toBe(false)
+    expect(db.calls.some(call => call.sql.includes('analytics_conversion_deliveries'))).toBe(false)
   })
 
   it('拒绝授权时不创建 Meta delivery', async () => {

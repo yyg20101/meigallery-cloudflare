@@ -49,8 +49,11 @@ export async function recordConversionAction(
   const created = await insertConversion(env.DB, id, normalizedInput, occurredAt, date, dedupeKey, '')
   if (!created) {
     const existing = await findConversionByDedupeKey(env.DB, dedupeKey)
+    const duplicateId = existing
+      ? await recordDuplicateConversion(env.DB, normalizedInput, occurredAt, date, dedupeKey, existing.id)
+      : ''
     return {
-      id: existing?.id ?? id,
+      id: duplicateId || existing?.id || id,
       actionType: normalizedInput.actionType,
       created: false,
       duplicateOf: existing?.id ?? '',
@@ -143,6 +146,20 @@ async function findConversionByDedupeKey(db: D1Database, dedupeKey: string) {
     .prepare('SELECT id FROM analytics_conversion_actions WHERE dedupe_key = ? LIMIT 1')
     .bind(dedupeKey)
     .first<{ id: string }>()
+}
+
+async function recordDuplicateConversion(
+  db: D1Database,
+  input: RecordConversionInput,
+  occurredAt: string,
+  date: string,
+  originalDedupeKey: string,
+  duplicateOf: string,
+) {
+  const duplicateId = generateId('convdup')
+  const duplicateDedupeKey = `duplicate:${originalDedupeKey}:${duplicateId}`
+  const created = await insertConversion(db, duplicateId, input, occurredAt, date, duplicateDedupeKey, duplicateOf)
+  return created ? duplicateId : ''
 }
 
 function d1Changed(result: D1Result<unknown>) {

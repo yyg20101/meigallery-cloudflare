@@ -29,6 +29,12 @@ function createAttributionDb() {
         },
         async all<T>() {
           calls.push(call)
+          if (sql.includes('COUNT(*) AS duplicate_action_count')) {
+            return {
+              results: [{ duplicate_action_count: 1 } as T],
+              meta: { rows_read: 1, rows_written: 0, duration: 1 },
+            }
+          }
           if (sql.includes('FROM analytics_conversion_daily') && sql.includes('GROUP BY date')) {
             return {
               results: [
@@ -52,6 +58,40 @@ function createAttributionDb() {
                 { source_channel: 'ad', source_name: 'ad-a', utm_campaign: 'july', utm_content: 'chat-a', contact_count: 3, lead_count: 1, complete_registration_count: 1, start_trial_count: 0, membership_grant_count: 0 },
               ] as T[],
               meta: { rows_read: 2, rows_written: 0, duration: 1 },
+            }
+          }
+          if (sql.includes('FROM analytics_conversion_daily') && sql.includes('SUM(action_count)') && !sql.includes('FROM analytics_tracking_sources')) {
+            return {
+              results: [{ action_count: 5 } as T],
+              meta: { rows_read: 1, rows_written: 0, duration: 1 },
+            }
+          }
+          if (sql.includes('FROM analytics_conversion_daily') && !sql.includes('FROM analytics_tracking_sources')) {
+            return {
+              results: [
+                { contact_count: 3, lead_count: 1, complete_registration_count: 1, start_trial_count: 0, membership_grant_count: 0 },
+              ] as T[],
+              meta: { rows_read: 1, rows_written: 0, duration: 1 },
+            }
+          }
+          if (sql.includes('FROM analytics_conversion_actions') && sql.includes("duplicate_of != ''")) {
+            return {
+              results: [
+                {
+                  id: 'convdup_1',
+                  action_type: 'contact',
+                  occurred_at: '2026-07-09T10:01:00.000Z',
+                  source_channel: 'ad',
+                  source_name: 'ad-a',
+                  tracking_source_slug: 'ad-a',
+                  utm_campaign: 'old-july',
+                  utm_content: 'old-chat',
+                  method_type: 'telegram',
+                  action_target: 'floating_contact_panel',
+                  duplicate_of: 'conv_1',
+                },
+              ] as T[],
+              meta: { rows_read: 1, rows_written: 0, duration: 1 },
             }
           }
           if (sql.includes('FROM analytics_conversion_actions')) {
@@ -93,6 +133,14 @@ function createAttributionDb() {
               meta: { rows_read: 2, rows_written: 0, duration: 1 },
             }
           }
+          if (sql.includes('FROM analytics_conversion_delivery_daily')) {
+            return {
+              results: [
+                { sent_count: 2, failed_count: 0, skipped_count: 1, duplicate_suppressed_count: 1, delivery_count: 4 },
+              ] as T[],
+              meta: { rows_read: 1, rows_written: 0, duration: 1 },
+            }
+          }
           if (sql.includes('FROM analytics_tracking_sources')) {
             return {
               results: [
@@ -127,6 +175,25 @@ function createAttributionDb() {
                 },
               ] as T[],
               meta: { rows_read: 1, rows_written: 0, duration: 1 },
+            }
+          }
+          if (sql.includes('FROM analytics_conversion_deliveries') && sql.includes('MAX(sent_at)')) {
+            return {
+              results: [{ last_sent_at: '2026-07-09T10:00:00.000Z' } as T],
+              meta: { rows_read: 1, rows_written: 0, duration: 1 },
+            }
+          }
+          if (sql.includes('FROM site_settings')) {
+            return {
+              results: [
+                { key: 'analytics_enabled', value: 'true' },
+                { key: 'facebook_pixel_enabled', value: 'true' },
+                { key: 'facebook_pixel_id', value: '1234567890' },
+                { key: 'meta_capi_enabled', value: 'false' },
+                { key: 'meta_capi_test_event_enabled', value: 'false' },
+                { key: 'meta_tracking_mode', value: 'pixel_only' },
+              ] as T[],
+              meta: { rows_read: 6, rows_written: 0, duration: 1 },
             }
           }
           return { results: [] as T[], meta: { rows_read: 0, rows_written: 0, duration: 0 } }
@@ -183,6 +250,7 @@ describe('后台归因中心 API', () => {
 
     expect(res.status).toBe(200)
     expect(body.range).toMatchObject({ from: '2026-07-09', to: '2026-07-09', days: 1 })
+    expect(body.usage.rowsRead).toBeGreaterThan(0)
     expect(body.data.totals.contact_count).toBe(3)
     expect(body.data.meta.sent_count).toBe(2)
     expect(body.data.duplicates.duplicate_suppressed_count).toBe(1)
@@ -190,8 +258,19 @@ describe('后台归因中心 API', () => {
     expect(Array.isArray(body.data.risks)).toBe(true)
   })
 
+  it('返回转化动作、来源和最近样本', async () => {
+    const res = await createApp('admin').request('/api/admin/attribution/conversions?from=2026-07-09&to=2026-07-09', {}, { DB: createAttributionDb() } as unknown as Bindings)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.data.byAction[0]).toMatchObject({ action_type: 'contact', action_count: 3 })
+    expect(body.data.bySource[0]).toMatchObject({ source_name: 'ad-a', contact_count: 3 })
+    expect(body.data.samples[0]).toMatchObject({ id: 'conv_1', action_type: 'contact' })
+  })
+
   it('返回投放追踪链接和转化指标', async () => {
-    const res = await createApp('admin').request('/api/admin/attribution/links?from=2026-07-09&to=2026-07-09', {}, { DB: createAttributionDb() } as unknown as Bindings)
+    const db = createAttributionDb()
+    const res = await createApp('admin').request('/api/admin/attribution/links?from=2026-07-09&to=2026-07-09', {}, { DB: db } as unknown as Bindings)
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -203,6 +282,44 @@ describe('后台归因中心 API', () => {
       completeRegistrationCount: 1,
     })
     expect(body.data.links[0].trackingPath).toContain('utm_content=chat-a')
+    const linkSql = db.calls.find(call => call.sql.includes('WITH conversion_metrics'))
+    expect(linkSql?.sql).toContain('GROUP BY source_name')
+    expect(linkSql?.sql).not.toContain('cm.utm_campaign')
+    expect(linkSql?.sql).not.toContain('cm.utm_content')
+  })
+
+  it('返回 Meta 投递状态和配置', async () => {
+    const res = await createApp('admin').request('/api/admin/attribution/meta?from=2026-07-09&to=2026-07-09', {}, { DB: createAttributionDb() } as unknown as Bindings)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.data.totals).toMatchObject({ sent_count: 2, failed_count: 0, duplicate_suppressed_count: 1 })
+    expect(body.data.deliveries[0]).toMatchObject({ channel: 'meta_pixel', event_name: 'Contact' })
+    expect(body.data.settings.facebook_pixel_id).toBe('1234567890')
+  })
+
+  it('返回重复诊断和重复样本', async () => {
+    const res = await createApp('admin').request('/api/admin/attribution/duplicates?from=2026-07-09&to=2026-07-09', {}, { DB: createAttributionDb() } as unknown as Bindings)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.data.duplicateSuppressedCount).toBe(1)
+    expect(body.data.duplicateActionCount).toBe(1)
+    expect(body.data.samples[0]).toMatchObject({ id: 'convdup_1', duplicate_of: 'conv_1' })
+  })
+
+  it('返回归因上线检查状态', async () => {
+    const res = await createApp('admin').request('/api/admin/attribution/readiness?from=2026-07-09&to=2026-07-09', {}, { DB: createAttributionDb() } as unknown as Bindings)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.data.ready).toBe(true)
+    expect(body.data.checks.map((check: { key: string }) => check.key)).toEqual([
+      'analytics_enabled',
+      'conversion_ledger',
+      'meta_failures',
+      'pixel_id',
+    ])
   })
 
   it('非 owner 不能触发 Test Event', async () => {

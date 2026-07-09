@@ -169,8 +169,6 @@ adminAttributionRoutes.get('/links', async (c) => {
     WITH conversion_metrics AS (
       SELECT
         source_name,
-        utm_campaign,
-        utm_content,
         COALESCE(SUM(CASE WHEN action_type = 'contact' THEN action_count ELSE 0 END), 0) AS contact_count,
         COALESCE(SUM(CASE WHEN action_type = 'lead' THEN action_count ELSE 0 END), 0) AS lead_count,
         COALESCE(SUM(CASE WHEN action_type = 'complete_registration' THEN action_count ELSE 0 END), 0) AS complete_registration_count,
@@ -178,7 +176,7 @@ adminAttributionRoutes.get('/links', async (c) => {
         COALESCE(SUM(CASE WHEN action_type = 'membership_grant' THEN action_count ELSE 0 END), 0) AS conversion_membership_grant_count
       FROM analytics_conversion_daily
       WHERE date BETWEEN ? AND ?
-      GROUP BY source_name, utm_campaign, utm_content
+      GROUP BY source_name
     )
     SELECT
       ats.id, ats.name, ats.channel, ats.slug, ats.target_path, ats.utm_source,
@@ -203,8 +201,6 @@ adminAttributionRoutes.get('/links', async (c) => {
      AND ads.source_name = ats.utm_source
     LEFT JOIN conversion_metrics cm
       ON cm.source_name = ats.utm_source
-     AND cm.utm_campaign = ats.utm_campaign
-     AND cm.utm_content = ats.utm_content
     GROUP BY
       ats.id, ats.name, ats.channel, ats.slug, ats.target_path, ats.utm_source,
       ats.utm_medium, ats.utm_campaign, ats.utm_content, ats.status, ats.note,
@@ -406,9 +402,10 @@ async function queryFirst<T extends Row>(
   sql: string,
   params: unknown[],
 ): Promise<QueryResult<T>> {
-  const result = await db.prepare(sql).bind(...params).first<T>()
+  const result = await db.prepare(sql).bind(...params).all<T>()
+  const row = result.results?.[0]
   return {
-    rows: result ? [result] : [],
+    rows: row ? [row] : [],
     usage: readD1UsageMeta(result),
   }
 }
@@ -509,11 +506,17 @@ function parseSettingValue(value: unknown) {
   const text = String(value ?? '').trim()
   if (text === 'true') return true
   if (text === 'false') return false
-  try {
-    return JSON.parse(text)
-  } catch {
-    return text
+  if (
+    (text.startsWith('{') && text.endsWith('}')) ||
+    (text.startsWith('[') && text.endsWith(']'))
+  ) {
+    try {
+      return JSON.parse(text)
+    } catch {
+      return text
+    }
   }
+  return text
 }
 
 function numberValue(value: unknown) {
