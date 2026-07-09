@@ -1,6 +1,8 @@
 import { createFacebookPixelScript, hasSensitiveAnalyticsUrl, isAdminPath, sanitizeAnalyticsText } from '~/utils/facebookPixel'
 
 type PixelEventParams = Record<string, string | number | boolean | string[] | number[] | null | undefined>
+type PixelEventOptions = { eventID?: string }
+type PixelStandardEventName = 'Contact' | 'Lead' | 'CompleteRegistration' | 'StartTrial' | 'ViewContent' | 'Search' | 'PageView'
 type FacebookQueueFunction = ((...args: unknown[]) => void) & {
   callMethod?: (...args: unknown[]) => void
   queue: unknown[]
@@ -18,8 +20,6 @@ declare global {
 const initialized = ref(false)
 const debug = ref(false)
 const lastTrackedPagePath = ref('')
-const leadTracked = ref(false)
-const startTrialTracked = ref(false)
 
 function hasTrackingConsent() {
   return true
@@ -30,7 +30,7 @@ function logEvent(eventName: string, params?: PixelEventParams) {
 }
 
 function callFbq(...args: unknown[]) {
-  if (!import.meta.client || !initialized.value || !window.fbq) return false
+  if (!isClientRuntime() || !initialized.value || !window.fbq) return false
   window.fbq(...args)
   return true
 }
@@ -60,7 +60,7 @@ export function useFacebookPixel() {
   }
 
   function initFacebookPixel(pixelId: string, debugEnabled = false, fullPath = route.fullPath) {
-    if (!import.meta.client || initialized.value || !pixelId || !hasTrackingConsent() || isTrackingBlocked(fullPath)) return
+    if (!isClientRuntime() || initialized.value || !pixelId || !hasTrackingConsent() || isTrackingBlocked(fullPath)) return
     debug.value = debugEnabled
 
     if (!window.fbq) {
@@ -86,11 +86,19 @@ export function useFacebookPixel() {
   }
 
   function trackPageView(fullPath: string) {
-    if (!import.meta.client || isTrackingBlocked(fullPath)) return
+    if (!isClientRuntime() || isTrackingBlocked(fullPath)) return
     if (lastTrackedPagePath.value === fullPath) return
     lastTrackedPagePath.value = fullPath
     const sent = callFbqForPath(fullPath, 'track', 'PageView')
     if (sent) logEvent('PageView', { full_path: fullPath })
+  }
+
+  function trackStandardEvent(eventName: PixelStandardEventName, payload: PixelEventParams = {}, options: PixelEventOptions = {}) {
+    const args: unknown[] = ['track', eventName, payload]
+    if (options.eventID) args.push({ eventID: options.eventID })
+    const sent = callFbqForCurrentRoute(...args)
+    if (sent) logEvent(eventName, { ...payload, event_id: options.eventID })
+    return sent
   }
 
   function trackViewContent(params: { id: string; title: string; requiredRank: number; tags: string[] }) {
@@ -101,8 +109,7 @@ export function useFacebookPixel() {
       required_rank: params.requiredRank,
       tags: params.tags.slice(0, 8),
     }
-    const sent = callFbqForCurrentRoute('track', 'ViewContent', payload)
-    if (sent) logEvent('ViewContent', payload)
+    trackStandardEvent('ViewContent', payload)
   }
 
   function trackSearch(params: { searchString: string; resultCount: number }) {
@@ -110,50 +117,7 @@ export function useFacebookPixel() {
       search_string: sanitizeAnalyticsText(params.searchString, 80),
       result_count: params.resultCount,
     }
-    const sent = callFbqForCurrentRoute('track', 'Search', payload)
-    if (sent) logEvent('Search', payload)
-  }
-
-  function trackLeadOnce(params: { location: string; methodType: string; actionType?: string }) {
-    if (leadTracked.value) return
-    const payload = {
-      location: params.location,
-      method_type: sanitizeAnalyticsText(params.methodType, 40),
-      action_type: params.actionType ? sanitizeAnalyticsText(params.actionType, 40) : undefined,
-    }
-    const sent = callFbqForCurrentRoute('track', 'Lead', payload)
-    if (!sent) return
-    leadTracked.value = true
-    logEvent('Lead', payload)
-  }
-
-  function trackContactClick(params: { location: string; methodType: string; actionType: string }) {
-    const payload = {
-      location: params.location,
-      method_type: sanitizeAnalyticsText(params.methodType, 40),
-      action_type: sanitizeAnalyticsText(params.actionType, 40),
-    }
-    const sent = callFbqForCurrentRoute('track', 'Contact', payload)
-    if (sent) logEvent('Contact', payload)
-    trackLeadOnce(params)
-  }
-
-  function trackCompleteRegistration() {
-    const payload = { method: 'email' }
-    const sent = callFbqForCurrentRoute('track', 'CompleteRegistration', payload)
-    if (sent) logEvent('CompleteRegistration', payload)
-  }
-
-  function trackStartTrialOnce(params: { trialType?: string; method?: string } = {}) {
-    if (startTrialTracked.value) return
-    const payload = {
-      trial_type: sanitizeAnalyticsText(params.trialType || 'free_membership', 40),
-      method: sanitizeAnalyticsText(params.method || 'email', 40),
-    }
-    const sent = callFbqForCurrentRoute('track', 'StartTrial', payload)
-    if (!sent) return
-    startTrialTracked.value = true
-    logEvent('StartTrial', payload)
+    trackStandardEvent('Search', payload)
   }
 
   function trackLoginCompleted() {
@@ -171,13 +135,14 @@ export function useFacebookPixel() {
   return {
     initFacebookPixel,
     trackPageView,
+    trackStandardEvent,
     trackViewContent,
     trackSearch,
-    trackLeadOnce,
-    trackContactClick,
-    trackCompleteRegistration,
-    trackStartTrialOnce,
     trackLoginCompleted,
     trackFilterSelected,
   }
+}
+
+function isClientRuntime() {
+  return import.meta.client || typeof window !== 'undefined'
 }

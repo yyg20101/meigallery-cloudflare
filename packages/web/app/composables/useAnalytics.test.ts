@@ -106,6 +106,29 @@ describe('useAnalytics', () => {
     ]))
   })
 
+  it('允许外部传入 eventId 并随 flush 上报', async () => {
+    const analytics = useAnalytics()
+    analytics.initialize({ enabled: true, consentState: 'granted', route })
+    analytics.track('contact_method_click', {
+      eventId: 'conv_event_1',
+      entityType: 'contact',
+      flush: true,
+      props: { method_type: 'telegram' },
+    })
+
+    await vi.waitFor(() => {
+      expect(apiMock).toHaveBeenCalled()
+    })
+
+    const events = apiMock.mock.calls[0]?.[1]?.body?.events
+    expect(events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        eventId: 'conv_event_1',
+        eventName: 'contact_method_click',
+      }),
+    ]))
+  })
+
   it('limited consent 会跳过非必要点击和曝光事件', () => {
     const analytics = useAnalytics()
     analytics.initialize({ enabled: true, consentState: 'limited', route })

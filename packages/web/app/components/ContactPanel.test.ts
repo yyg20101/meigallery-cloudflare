@@ -26,7 +26,7 @@ async function mountPanel() {
       sortOrder: 0,
     },
   ])
-  const trackContactClick = vi.fn()
+  const trackConversion = vi.fn()
   const track = vi.fn()
 
   vi.stubGlobal('useContactMethods', () => ({
@@ -41,7 +41,7 @@ async function mountPanel() {
     rulesModalContent: ref('## 服务流程\n\n- 看规则\n- 联系站长\n- 开通访问'),
     rulesPageUrl: ref('/rules'),
   }))
-  vi.stubGlobal('useFacebookPixel', () => ({ trackContactClick }))
+  vi.stubGlobal('useConversionTracking', () => ({ trackConversion }))
   vi.stubGlobal('useAnalytics', () => ({ track }))
 
   const wrapper = mount({
@@ -56,7 +56,7 @@ async function mountPanel() {
   })
 
   await flushPromises()
-  return { wrapper, trackContactClick, track }
+  return { wrapper, trackConversion, track }
 }
 
 describe('ContactPanel', () => {
@@ -80,7 +80,7 @@ describe('ContactPanel', () => {
   })
 
   it('点击入口后展示对应弹层并记录站内联系入口', async () => {
-    const { wrapper, trackContactClick, track } = await mountPanel()
+    const { wrapper, trackConversion, track } = await mountPanel()
 
     await wrapper.get('button[aria-label="打开服务流程"]').trigger('click')
     expect(wrapper.text()).toContain('查看完整规则')
@@ -91,32 +91,28 @@ describe('ContactPanel', () => {
     await wrapper.get('button[aria-label="打开联系方式"]').trigger('click')
     expect(wrapper.text()).toContain('站长在线回复')
     expect(wrapper.text()).toContain('Telegram')
-    expect(trackContactClick).not.toHaveBeenCalled()
+    expect(trackConversion).not.toHaveBeenCalled()
     expect(track).toHaveBeenCalledWith('contact_panel_open', expect.objectContaining({
       props: { location: 'floating_contact_panel' },
     }))
   })
 
-  it('点击联系方式才记录 Meta 有效联系点击，且不记录联系值', async () => {
-    const { wrapper, trackContactClick, track } = await mountPanel()
+  it('点击联系方式才记录转化事件，且不记录联系值', async () => {
+    const { wrapper, trackConversion, track } = await mountPanel()
 
     await wrapper.get('button[aria-label="打开联系方式"]').trigger('click')
     await wrapper.get('.contact-method').trigger('click')
 
-    expect(trackContactClick).toHaveBeenCalledWith({
-      location: 'floating_contact_panel',
+    expect(trackConversion).toHaveBeenCalledWith('contact', {
       methodType: 'telegram',
-      actionType: 'open_link',
-    })
-    expect(track).toHaveBeenCalledWith('contact_method_click', expect.objectContaining({
-      entityType: 'contact',
-      props: {
+      actionTarget: 'floating_contact_panel',
+      metadata: {
         method_type: 'telegram',
         action_type: 'open_link',
         location: 'floating_contact_panel',
       },
-    }))
-    expect(JSON.stringify(trackContactClick.mock.calls)).not.toContain('@meigallery')
+    })
+    expect(JSON.stringify(trackConversion.mock.calls)).not.toContain('@meigallery')
     expect(JSON.stringify(track.mock.calls)).not.toContain('@meigallery')
   })
 })

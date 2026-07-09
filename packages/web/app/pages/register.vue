@@ -7,7 +7,7 @@ const { api } = useApi()
 const router = useRouter()
 const route = useRoute()
 const analytics = useAnalytics()
-const { trackCompleteRegistration, trackStartTrialOnce } = useFacebookPixel()
+const { trackConversion } = useConversionTracking()
 const { siteName } = useSiteSettings()
 
 // 表单数据
@@ -200,12 +200,7 @@ async function onDirectRegister() {
       turnstileToken: hasTurnstile.value ? turnstileToken.value : undefined,
       ...buildInviteRegistrationContext(),
     })
-    trackCompleteRegistration()
-    trackStartTrialOnce({ trialType: 'free_membership', method: 'email' })
-    analytics.track('register_success', {
-      props: { invite_code_id: validInviteCodeId.value || undefined },
-      entityType: 'auth',
-    })
+    await trackConversion('complete_registration', { metadata: { method: 'email' } })
     router.push('/')
   } catch (e: any) {
     analytics.track('register_failed', {
@@ -268,12 +263,7 @@ async function onSubmitWithCode() {
       turnstileToken: hasTurnstile.value ? turnstileToken.value : undefined,
       ...buildInviteRegistrationContext(),
     })
-    trackCompleteRegistration()
-    trackStartTrialOnce({ trialType: 'free_membership', method: 'email' })
-    analytics.track('register_success', {
-      props: { invite_code_id: validInviteCodeId.value || undefined },
-      entityType: 'auth',
-    })
+    await trackConversion('complete_registration', { metadata: { method: 'email' } })
     router.push('/')
   } catch (e: any) {
     analytics.track('register_failed', {

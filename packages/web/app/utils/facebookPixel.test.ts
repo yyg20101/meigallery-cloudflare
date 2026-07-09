@@ -1,7 +1,15 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createFacebookPixelScript, FACEBOOK_PIXEL_SCRIPT_SRC, hasSensitiveAnalyticsUrl, sanitizeAnalyticsText } from './facebookPixel'
 
 describe('facebookPixel 安全工具', () => {
+  afterEach(() => {
+    const pixelWindow = window as unknown as { fbq?: unknown; _fbq?: unknown }
+    delete pixelWindow.fbq
+    delete pixelWindow._fbq
+    document.head.querySelectorAll(`script[src="${FACEBOOK_PIXEL_SCRIPT_SRC}"]`).forEach(node => node.remove())
+    vi.unstubAllGlobals()
+  })
+
   it('识别 query 和 hash 中的凭证类参数', () => {
     for (const url of [
       '/gallery/summer?token=abc',
@@ -46,5 +54,32 @@ describe('facebookPixel 安全工具', () => {
     expect(script.async).toBe(true)
     expect(script.src).toBe(FACEBOOK_PIXEL_SCRIPT_SRC)
     expect(script.referrerPolicy).toBe('no-referrer')
+  })
+
+  it('Pixel adapter 通过 trackStandardEvent 发送标准事件和 eventID', async () => {
+    vi.stubGlobal('useRoute', () => ({ fullPath: '/gallery/summer' }))
+    const { useFacebookPixel } = await import('../composables/useFacebookPixel')
+    const pixel = useFacebookPixel()
+    vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T) => node)
+
+    pixel.initFacebookPixel('123456789')
+    const sent = pixel.trackStandardEvent(
+      'Contact',
+      { location: 'floating_contact_panel', method_type: 'telegram' },
+      { eventID: 'meta:Contact:contact:session_1:telegram:floating_contact_panel' },
+    )
+
+    const fbq = (window as unknown as { fbq?: { queue: unknown[] } }).fbq
+    expect(sent).toBe(true)
+    expect(fbq?.queue).toContainEqual([
+      'track',
+      'Contact',
+      { location: 'floating_contact_panel', method_type: 'telegram' },
+      { eventID: 'meta:Contact:contact:session_1:telegram:floating_contact_panel' },
+    ])
+    expect(pixel).not.toHaveProperty('trackLeadOnce')
+    expect(pixel).not.toHaveProperty('trackContactClick')
+    expect(pixel).not.toHaveProperty('trackCompleteRegistration')
+    expect(pixel).not.toHaveProperty('trackStartTrialOnce')
   })
 })

@@ -9,7 +9,7 @@ const {
   rulesModalContent,
   rulesPageUrl,
 } = useSiteSettings()
-const { trackContactClick } = useFacebookPixel()
+const { trackConversion } = useConversionTracking()
 const analytics = useAnalytics()
 
 await fetchContactMethods()
@@ -31,11 +31,10 @@ function toggleOpen() {
 }
 
 function trackContactMethod(methodType: string, actionType = 'unknown') {
-  trackContactClick({ location: 'floating_contact_panel', methodType, actionType })
-  analytics.track('contact_method_click', {
-    entityType: 'contact',
-    flush: true,
-    props: {
+  void trackConversion('contact', {
+    methodType,
+    actionTarget: 'floating_contact_panel',
+    metadata: {
       method_type: methodType,
       action_type: actionType,
       location: 'floating_contact_panel',

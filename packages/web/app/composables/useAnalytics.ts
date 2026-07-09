@@ -60,6 +60,7 @@ export interface AnalyticsSourceContext {
 }
 
 interface TrackOptions {
+  eventId?: string
   route?: AnalyticsRouteLike
   props?: Record<string, AnalyticsPropValue | undefined>
   value?: number
@@ -145,7 +146,7 @@ export function useAnalytics() {
     if (normalizedRoute.skip) return
 
     const event: AnalyticsEventPayload = {
-      eventId: createAnalyticsId(eventName),
+      eventId: options.eventId || createAnalyticsId(eventName),
       eventName,
       occurredAt: new Date().toISOString(),
       routeName: normalizedRoute.routeName,
@@ -287,6 +288,7 @@ export function useAnalytics() {
       visitorId: state.value.visitorId,
       sessionId: state.value.sessionId,
       consentState: state.value.consentState,
+      sourceChannel: state.value.sourceChannel,
       sourceContext: state.value.sourceContext,
     }
   }
