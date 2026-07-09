@@ -51,6 +51,19 @@ describe('发布验证 CLI', () => {
     }, /无法获取当前 Git commit/)
   })
 
+  it('assertProductionAllowed 在当前 Git branch 为空时保守失败', async () => {
+    await assert.rejects(async () => {
+      await assertProductionAllowed({
+        getGitState: async () => ({
+          branch: '   ',
+          commit: 'current-commit-sha',
+          isClean: true,
+          remote: 'origin',
+        }),
+      })
+    }, /无法获取当前 Git branch/)
+  })
+
   it('assertProductionAllowed 在当前工作区不干净时保守失败', async () => {
     await assert.rejects(async () => {
       await assertProductionAllowed({

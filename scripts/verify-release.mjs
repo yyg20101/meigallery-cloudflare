@@ -93,13 +93,17 @@ export async function assertProductionAllowed(options = {}) {
   const readLatestReportFn = options.readLatestReport || readLatestReport
   const getGitStateFn = options.getGitState || getGitState
   const assertReportCanGateProductionFn = options.assertReportCanGateProduction || assertReportCanGateProduction
-  const gitState = await getGitStateFn(options)
-  const expectedCommit = gitState.commit?.trim()
+  const currentGit = await getGitStateFn(options)
+  const expectedBranch = currentGit.branch?.trim()
+  const expectedCommit = currentGit.commit?.trim()
 
+  if (!expectedBranch) {
+    throw new Error('无法获取当前 Git branch，拒绝放行生产部署')
+  }
   if (!expectedCommit) {
     throw new Error('无法获取当前 Git commit，拒绝放行生产部署')
   }
-  if (gitState.isClean !== true) {
+  if (currentGit.isClean !== true) {
     throw new Error('当前工作区不是干净状态，拒绝放行生产部署')
   }
 
