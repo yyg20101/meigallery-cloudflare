@@ -115,15 +115,24 @@ adminAttributionRoutes.get('/overview', async (c) => {
 adminAttributionRoutes.get('/conversions', async (c) => {
   const range = parseRangeOrError(c)
   if (range instanceof Response) return range
+  const sourceFilter = readAttributionSourceFilter(c)
+  const dailySourceWhere = sourceFilter
+    ? 'date BETWEEN ? AND ? AND source_name = ?'
+    : 'date BETWEEN ? AND ?'
+  const actionSourceWhere = sourceFilter
+    ? 'date BETWEEN ? AND ? AND (source_name = ? OR tracking_source_slug = ?)'
+    : 'date BETWEEN ? AND ?'
+  const dailySourceParams = sourceFilter ? [range.from, range.to, sourceFilter] : [range.from, range.to]
+  const actionSourceParams = sourceFilter ? [range.from, range.to, sourceFilter, sourceFilter] : [range.from, range.to]
 
   const [byAction, bySource, samples] = await Promise.all([
     queryAll(c.env.DB, `
       SELECT action_type, SUM(action_count) AS action_count, SUM(unique_session_count) AS unique_session_count
       FROM analytics_conversion_daily
-      WHERE date BETWEEN ? AND ?
+      WHERE ${dailySourceWhere}
       GROUP BY action_type
       ORDER BY action_count DESC
-    `, [range.from, range.to]),
+    `, dailySourceParams),
     queryAll(c.env.DB, `
       SELECT
         source_channel,
@@ -136,20 +145,20 @@ adminAttributionRoutes.get('/conversions', async (c) => {
         COALESCE(SUM(CASE WHEN action_type = 'start_trial' THEN action_count ELSE 0 END), 0) AS start_trial_count,
         COALESCE(SUM(CASE WHEN action_type = 'membership_grant' THEN action_count ELSE 0 END), 0) AS membership_grant_count
       FROM analytics_conversion_daily
-      WHERE date BETWEEN ? AND ?
+      WHERE ${dailySourceWhere}
       GROUP BY source_channel, source_name, utm_campaign, utm_content
       ORDER BY contact_count DESC, lead_count DESC
       LIMIT 50
-    `, [range.from, range.to]),
+    `, dailySourceParams),
     queryAll(c.env.DB, `
       SELECT
         id, action_type, occurred_at, source_channel, source_name, tracking_source_slug,
         utm_campaign, utm_content, method_type, action_target, route_name, path, duplicate_of
       FROM analytics_conversion_actions
-      WHERE date BETWEEN ? AND ?
+      WHERE ${actionSourceWhere}
       ORDER BY occurred_at DESC
       LIMIT 100
-    `, [range.from, range.to]),
+    `, actionSourceParams),
   ])
 
   return c.json({
@@ -166,6 +175,16 @@ adminAttributionRoutes.get('/conversions', async (c) => {
 adminAttributionRoutes.get('/links', async (c) => {
   const range = parseRangeOrError(c)
   if (range instanceof Response) return range
+  const sourceFilter = readAttributionSourceFilter(c)
+  const conversionMetricsWhere = sourceFilter
+    ? 'date BETWEEN ? AND ? AND source_name = ?'
+    : 'date BETWEEN ? AND ?'
+  const linksSourceWhere = sourceFilter
+    ? 'WHERE ats.slug = ? OR ats.utm_source = ?'
+    : ''
+  const queryParams = sourceFilter
+    ? [range.from, range.to, range.from, range.to, sourceFilter, sourceFilter]
+    : [range.from, range.to, range.from, range.to]
 
   const links = await queryAll(c.env.DB, `
     WITH conversion_metrics AS (
@@ -177,7 +196,7 @@ adminAttributionRoutes.get('/links', async (c) => {
         COALESCE(SUM(CASE WHEN action_type = 'start_trial' THEN action_count ELSE 0 END), 0) AS start_trial_count,
         COALESCE(SUM(CASE WHEN action_type = 'membership_grant' THEN action_count ELSE 0 END), 0) AS conversion_membership_grant_count
       FROM analytics_conversion_daily
-      WHERE date BETWEEN ? AND ?
+      WHERE ${conversionMetricsWhere}
       GROUP BY source_name
     )
     SELECT
@@ -203,12 +222,13 @@ adminAttributionRoutes.get('/links', async (c) => {
      AND ads.source_name = ats.utm_source
     LEFT JOIN conversion_metrics cm
       ON cm.source_name = ats.utm_source
+    ${linksSourceWhere}
     GROUP BY
       ats.id, ats.name, ats.channel, ats.slug, ats.target_path, ats.utm_source,
       ats.utm_medium, ats.utm_campaign, ats.utm_content, ats.status, ats.note,
       ats.created_by, ats.created_at, ats.updated_at
     ORDER BY contact_count DESC, session_count DESC, ats.created_at DESC
-  `, [range.from, range.to, range.from, range.to])
+  `, queryParams)
 
   return c.json({
     range,
@@ -566,6 +586,19 @@ function parseSettingValue(value: unknown) {
     }
   }
   return text
+}
+
+function readAttributionSourceFilter(c: AdminAttributionContext) {
+  return (
+    normalizedQueryValue(c.req.query('sourceCode')) ||
+    normalizedQueryValue(c.req.query('sourceName')) ||
+    normalizedQueryValue(c.req.query('source'))
+  )
+}
+
+function normalizedQueryValue(value: string | undefined) {
+  const text = String(value ?? '').trim()
+  return text && text !== 'all' ? text : ''
 }
 
 function numberValue(value: unknown) {

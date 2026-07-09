@@ -5,6 +5,7 @@ const SESSION_COOKIE = 'mei_session'
 const DEV_DB_NAME = 'meigallery-db-dev'
 const DEV_SEED_FILE_RELATIVE_TO_API = '../../scripts/fixtures/release-smoke/seed-dev.sql'
 const REQUIRED_ENV_KEYS = ['VERIFY_DEV_API_URL', 'VERIFY_DEV_WEB_URL']
+const LEGACY_DEV_WORKERS_SUBDOMAIN = '250770503'
 
 export async function runDevRehearsalVerification(options = {}) {
   const cwd = options.cwd || process.cwd()
@@ -16,6 +17,7 @@ export async function runDevRehearsalVerification(options = {}) {
   const steps = []
   const notes = []
   const artifacts = []
+  const runSuffix = crypto.randomBytes(6).toString('hex')
   const sessionToken = crypto.randomBytes(32).toString('hex')
   const sessionHash = crypto.createHash('sha256').update(sessionToken).digest('hex')
   const sessionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
@@ -99,7 +101,10 @@ export async function runDevRehearsalVerification(options = {}) {
     if (!/<div[^>]+id=["']__nuxt["']/i.test(html)) {
       throw new Error('页面未包含 Nuxt app root')
     }
-    return 'Web 首页可访问，已检测到 Nuxt app root'
+    if (html.includes(LEGACY_DEV_WORKERS_SUBDOMAIN)) {
+      throw new Error(`页面仍包含旧 dev workers 子域标识 ${LEGACY_DEV_WORKERS_SUBDOMAIN}`)
+    }
+    return 'Web 首页可访问，已检测到 Nuxt app root，且未发现旧 dev workers 子域'
   })
   steps.push(webHealthStep)
   if (webHealthStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
@@ -169,7 +174,7 @@ export async function runDevRehearsalVerification(options = {}) {
   steps.push(completeRegistrationStep)
   if (completeRegistrationStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
 
-  const analyticsIngestStep = await postAnalyticsBatch(fetchFn, apiUrl)
+  const analyticsIngestStep = await postAnalyticsBatch(fetchFn, apiUrl, runSuffix)
   steps.push(analyticsIngestStep)
   if (analyticsIngestStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
 
@@ -199,7 +204,7 @@ export async function runDevRehearsalVerification(options = {}) {
   const attributionStep = await requestJsonStep(
     fetchFn,
     'dev-admin-attribution',
-    `${apiUrl}/api/admin/attribution/conversions?from=${today}&to=${today}`,
+    `${apiUrl}/api/admin/attribution/conversions?from=${today}&to=${today}&sourceCode=release-dev-fb`,
     {
       headers: {
         Cookie: `${SESSION_COOKIE}=${sessionToken}`,
@@ -207,8 +212,12 @@ export async function runDevRehearsalVerification(options = {}) {
     },
     (body) => {
       const rows = Array.isArray(body?.data?.bySource) ? body.data.bySource : []
+      if (rows.length === 0) throw new Error('attribution conversions 未返回任何来源数据')
       const matched = rows.find(row => String(row?.source_name || '') === 'release-dev-fb')
       if (!matched) throw new Error('attribution conversions 未返回 release-dev-fb')
+      if (!rows.every(row => String(row?.source_name || '') === 'release-dev-fb')) {
+        throw new Error('attribution conversions 返回了非 release-dev-fb 的来源数据')
+      }
       if (Number(matched.contact_count ?? 0) < 1) throw new Error('contact_count 未写入')
       if (Number(matched.complete_registration_count ?? 0) < 1) throw new Error('complete_registration_count 未写入')
       if (Number(matched.start_trial_count ?? 0) < 1) throw new Error('start_trial_count 未写入')
@@ -274,20 +283,22 @@ async function postConversion(fetchFn, apiUrl, stepName, payload) {
   })
 }
 
-async function postAnalyticsBatch(fetchFn, apiUrl) {
+async function postAnalyticsBatch(fetchFn, apiUrl, runSuffix) {
+  const visitorId = `visitor_release_dev_analytics_${runSuffix}`
+  const sessionId = `session_release_dev_analytics_${runSuffix}`
   return requestJsonStep(fetchFn, 'dev-analytics-events', `${apiUrl}/api/analytics/events`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Analytics-Visitor-Id': 'visitor_release_dev_analytics',
-      'X-Analytics-Session-Id': 'session_release_dev_analytics',
+      'X-Analytics-Visitor-Id': visitorId,
+      'X-Analytics-Session-Id': sessionId,
     },
     body: JSON.stringify({
-      visitorId: 'visitor_release_dev_analytics',
-      sessionId: 'session_release_dev_analytics',
+      visitorId,
+      sessionId,
       events: [
         {
-          eventId: 'event_release_dev_page_view',
+          eventId: `event_release_dev_page_view_${runSuffix}`,
           eventName: 'page_view',
           occurredAt: new Date().toISOString(),
           routeName: '/gallery/:slug',
@@ -303,7 +314,7 @@ async function postAnalyticsBatch(fetchFn, apiUrl) {
           utmContent: 'release-dev-chat',
         },
         {
-          eventId: 'event_release_dev_contact_click',
+          eventId: `event_release_dev_contact_click_${runSuffix}`,
           eventName: 'contact_method_click',
           occurredAt: new Date().toISOString(),
           routeName: '/gallery/:slug',
@@ -327,7 +338,7 @@ async function postAnalyticsBatch(fetchFn, apiUrl) {
           },
         },
         {
-          eventId: 'event_release_dev_register_success',
+          eventId: `event_release_dev_register_success_${runSuffix}`,
           eventName: 'register_success',
           occurredAt: new Date().toISOString(),
           routeName: 'register',

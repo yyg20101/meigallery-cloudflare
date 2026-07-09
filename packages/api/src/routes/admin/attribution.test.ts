@@ -321,6 +321,18 @@ describe('后台归因中心 API', () => {
     expect(body.data.samples[0]).toMatchObject({ id: 'conv_1', action_type: 'contact' })
   })
 
+  it('转化接口支持按 sourceCode 过滤', async () => {
+    const db = createAttributionDb()
+    const res = await createApp('admin').request('/api/admin/attribution/conversions?from=2026-07-09&to=2026-07-09&sourceCode=ad-a', {}, { DB: db } as unknown as Bindings)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.data.bySource[0]).toMatchObject({ source_name: 'ad-a', contact_count: 3 })
+    const sourceSqlCalls = db.calls.filter(call => call.sql.includes('analytics_conversion_daily') || call.sql.includes('analytics_conversion_actions'))
+    expect(sourceSqlCalls.some(call => call.sql.includes('source_name = ?') && call.params.includes('ad-a'))).toBe(true)
+    expect(sourceSqlCalls.some(call => call.sql.includes('tracking_source_slug = ?') && call.params.includes('ad-a'))).toBe(true)
+  })
+
   it('返回投放追踪链接和转化指标', async () => {
     const db = createAttributionDb()
     const res = await createApp('admin').request('/api/admin/attribution/links?from=2026-07-09&to=2026-07-09', {}, { DB: db } as unknown as Bindings)

@@ -13,9 +13,10 @@ describe('开发环境发布预演验证', () => {
 
   it('执行远端迁移、部署和 smoke，并在缺少 test event code 时记 note', async () => {
     const commands = []
+    const requestedUrls = []
     const responses = [
       jsonResponse(200, { status: 'ok', db: 'ok' }),
-      textResponse(200, '<!doctype html><html><body><div id="__nuxt"></div></body></html>'),
+      textResponse(200, '<!doctype html><html><body><div id="__nuxt"></div><script>window.__APP__="wajie"</script></body></html>'),
       jsonResponse(200, { data: { id: 'conv_1', actionType: 'contact', created: true } }),
       jsonResponse(200, { data: { id: 'conv_2', actionType: 'start_trial', created: true } }),
       jsonResponse(200, { data: { id: 'conv_3', actionType: 'complete_registration', created: true } }),
@@ -68,7 +69,8 @@ describe('开发环境发布预演验证', () => {
           stderr: '',
         }
       },
-      fetch: async () => {
+      fetch: async (url) => {
+        requestedUrls.push(String(url))
         const response = responses.shift()
         if (!response) throw new Error('缺少模拟响应')
         return response
@@ -79,6 +81,7 @@ describe('开发环境发布预演验证', () => {
     assert.equal(result.notes.includes('meta-test-event-code-missing'), true)
     assert.equal(commands.some(command => command.includes('wrangler d1 migrations apply meigallery-db-dev --env dev --remote')), true)
     assert.equal(commands.some(command => command.includes('wrangler deploy --env dev')), true)
+    assert.equal(requestedUrls.some(url => url.includes('/api/admin/attribution/conversions?') && url.includes('sourceCode=release-dev-fb')), true)
   })
 })
 
