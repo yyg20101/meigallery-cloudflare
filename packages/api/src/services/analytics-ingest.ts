@@ -81,6 +81,7 @@ interface NormalizedAnalyticsEvent {
 interface AcceptedAnalyticsEvent {
   event: NormalizedAnalyticsEvent
   storedRaw: boolean
+  rawDuplicate?: boolean
 }
 
 export class AnalyticsIngestError extends Error {
@@ -614,7 +615,8 @@ async function recordAcceptedConversions(
   accepted: AcceptedAnalyticsEvent[],
   context: AnalyticsIngestContext,
 ) {
-  for (const { event } of accepted) {
+  for (const { event, storedRaw, rawDuplicate } of accepted) {
+    if (storedRaw && rawDuplicate) continue
     const input = conversionInputFromAnalyticsEvent(batch, event, context)
     if (!input) continue
     await recordConversionAction(env, input)
@@ -1134,7 +1136,8 @@ async function writeRawEventsBatch(
   context: AnalyticsIngestContext,
   response: AnalyticsBatchResponse & { usage: D1Usage },
 ) {
-  for (const { event, storedRaw } of accepted) {
+  for (const item of accepted) {
+    const { event, storedRaw } = item
     if (!storedRaw) continue
     const result = await runAndTrack(db, response, `
       INSERT OR IGNORE INTO analytics_events (
@@ -1167,7 +1170,12 @@ async function writeRawEventsBatch(
       event.dedupeKey,
       event.sampled ? 1 : 0,
     ])
-    if ((result.meta?.changes ?? 1) === 0) response.duplicate += 1
+    if ((result.meta?.changes ?? 1) === 0) {
+      item.rawDuplicate = true
+      response.duplicate += 1
+    } else {
+      item.rawDuplicate = false
+    }
   }
 }
 

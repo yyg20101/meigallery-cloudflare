@@ -32,10 +32,10 @@ function createConversionDb() {
   return db
 }
 
-function createApp() {
+function createApp(userId: number | null = null) {
   const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
   app.use('*', async (c, next) => {
-    c.set('userId', null)
+    c.set('userId', userId)
     c.set('userRole', null)
     await next()
   })
@@ -63,6 +63,50 @@ describe('conversion routes', () => {
     expect(res.status).toBe(201)
     expect(body.data.actionType).toBe('contact')
     expect(JSON.stringify(db.calls)).not.toContain('@secret')
+  })
+
+  it('登录态 userId 写入转化账本', async () => {
+    const db = createConversionDb()
+    const res = await createApp(42).request('/api/conversions/events', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        actionType: 'contact',
+        visitorId: 'visitor_1',
+        sessionId: 'session_1',
+        occurredAt: '2026-07-09T10:00:00.000Z',
+        methodType: 'telegram',
+        actionTarget: 'floating_contact_panel',
+      }),
+    }, { DB: db, APP_ENV: 'test' } as unknown as Bindings)
+
+    const conversionInsert = db.calls.find(call => call.sql.includes('analytics_conversion_actions'))
+    expect(res.status).toBe(201)
+    expect(conversionInsert?.params[7]).toBe(42)
+  })
+
+  it('公开接口接受注册完成和开始试用', async () => {
+    for (const actionType of ['complete_registration', 'start_trial']) {
+      const db = createConversionDb()
+      const res = await createApp().request('/api/conversions/events', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          actionType,
+          visitorId: 'visitor_1',
+          sessionId: 'session_1',
+          occurredAt: '2026-07-09T10:00:00.000Z',
+          actionTarget: actionType,
+        }),
+      }, { DB: db, APP_ENV: 'test' } as unknown as Bindings)
+      const body = await res.json()
+
+      expect(res.status).toBe(201)
+      expect(body.data.actionType).toBe(actionType)
+      expect(db.calls.some(call => (
+        call.sql.includes('analytics_conversion_actions') && call.params[1] === actionType
+      ))).toBe(true)
+    }
   })
 
   it('公开接口不允许 lead 或 membership_grant', async () => {

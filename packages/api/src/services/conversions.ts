@@ -45,23 +45,19 @@ export async function recordConversionAction(
   const occurredAt = normalizeIso(normalizedInput.occurredAt)
   const date = occurredAt.slice(0, 10)
   const dedupeKey = conversionDedupeKey(normalizedInput, date)
-  const existing = await env.DB
-    .prepare('SELECT id FROM analytics_conversion_actions WHERE dedupe_key = ? LIMIT 1')
-    .bind(dedupeKey)
-    .first<{ id: string }>()
-
-  if (existing) {
+  const id = generateId('conv')
+  const created = await insertConversion(env.DB, id, normalizedInput, occurredAt, date, dedupeKey, '')
+  if (!created) {
+    const existing = await findConversionByDedupeKey(env.DB, dedupeKey)
     return {
-      id: existing.id,
+      id: existing?.id ?? id,
       actionType: normalizedInput.actionType,
       created: false,
-      duplicateOf: existing.id,
+      duplicateOf: existing?.id ?? '',
       derivedActions: [],
     }
   }
 
-  const id = generateId('conv')
-  await insertConversion(env.DB, id, normalizedInput, occurredAt, date, dedupeKey, '')
   await upsertConversionDaily(env.DB, normalizedInput, date)
   await createMetaDeliveries(env.DB, id, normalizedInput, date)
 
@@ -108,8 +104,8 @@ async function insertConversion(
   dedupeKey: string,
   duplicateOf: string,
 ) {
-  await db.prepare(`
-    INSERT INTO analytics_conversion_actions (
+  const result = await db.prepare(`
+    INSERT OR IGNORE INTO analytics_conversion_actions (
       id, action_type, dedupe_key, occurred_at, date, visitor_id, session_id, user_id,
       source_channel, source_name, tracking_source_slug, utm_source, utm_medium,
       utm_campaign, utm_content, method_type, action_target, route_name, path,
@@ -139,6 +135,18 @@ async function insertConversion(
     JSON.stringify(sanitizeConversionMetadata(input.metadata || {})),
     duplicateOf,
   ).run()
+  return d1Changed(result)
+}
+
+async function findConversionByDedupeKey(db: D1Database, dedupeKey: string) {
+  return db
+    .prepare('SELECT id FROM analytics_conversion_actions WHERE dedupe_key = ? LIMIT 1')
+    .bind(dedupeKey)
+    .first<{ id: string }>()
+}
+
+function d1Changed(result: D1Result<unknown>) {
+  return (result.meta?.changes ?? result.meta?.rows_written ?? 1) > 0
 }
 
 async function upsertConversionDaily(db: D1Database, input: RecordConversionInput, date: string) {
@@ -219,14 +227,10 @@ async function recordDerivedLead(
     occurredAt,
   }
   const dedupeKey = conversionDedupeKey(leadInput, date)
-  const existingDedupe = await env.DB
-    .prepare('SELECT id FROM analytics_conversion_actions WHERE dedupe_key = ? LIMIT 1')
-    .bind(dedupeKey)
-    .first<{ id: string }>()
-  if (existingDedupe) return null
-
   const id = generateId('conv')
-  await insertConversion(env.DB, id, leadInput, occurredAt, date, dedupeKey, '')
+  const created = await insertConversion(env.DB, id, leadInput, occurredAt, date, dedupeKey, '')
+  if (!created) return null
+
   await upsertConversionDaily(env.DB, leadInput, date)
   await createMetaDeliveries(env.DB, id, leadInput, date)
   return { id, actionType: 'lead' as const }

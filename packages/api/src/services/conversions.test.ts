@@ -36,11 +36,14 @@ function createConversionDb(options: {
         },
         async run() {
           calls.push(call)
-          if (sql.includes('INSERT INTO analytics_conversion_actions')) {
+          if (sql.includes('analytics_conversion_actions')) {
             const id = String(call.params[0])
             const actionType = String(call.params[1])
             const dedupeKey = String(call.params[2])
             const sessionId = String(call.params[6])
+            if (dedupe.has(dedupeKey)) {
+              return { meta: { changes: 0, rows_written: 0, rows_read: 0, duration: 1 } }
+            }
             dedupe.set(dedupeKey, id)
             if (actionType === 'lead') leadSessions.add(sessionId)
           }
@@ -98,6 +101,7 @@ describe('conversion ledger service', () => {
     })
     expect(result.created).toBe(false)
     expect(result.derivedActions).toHaveLength(0)
+    expect(db.calls.some(call => call.sql.includes('INSERT OR IGNORE INTO analytics_conversion_actions'))).toBe(true)
   })
 
   it('拒绝授权时不创建 Meta delivery', async () => {
@@ -125,6 +129,48 @@ describe('conversion ledger service', () => {
       actionTarget: 'floating_contact_panel',
       metadata: {},
     })
+    expect(result.created).toBe(true)
+    expect(result.derivedActions).toHaveLength(0)
+  })
+
+  it('可映射事件生成 Pixel 和 CAPI delivery，且 external_event_id 稳定', async () => {
+    const input = {
+      actionType: 'complete_registration' as const,
+      visitorId: 'visitor_1',
+      sessionId: 'session_1',
+      occurredAt: '2026-07-09T10:20:00.000Z',
+      consentState: 'granted',
+      actionTarget: 'register',
+      metadata: {},
+    }
+    const firstDb = createConversionDb()
+    const secondDb = createConversionDb()
+
+    await recordConversionAction(envFor(firstDb), input)
+    await recordConversionAction(envFor(secondDb), input)
+
+    const firstDeliveries = firstDb.calls.filter(call => call.sql.includes('analytics_conversion_deliveries'))
+    const secondDeliveries = secondDb.calls.filter(call => call.sql.includes('analytics_conversion_deliveries'))
+    expect(firstDeliveries.map(call => call.params[2]).sort()).toEqual(['meta_capi', 'meta_pixel'])
+    expect(firstDeliveries.map(call => call.params[3])).toEqual([
+      secondDeliveries[0]?.params[3],
+      secondDeliveries[1]?.params[3],
+    ])
+  })
+
+  it('lead 派生命中并发 dedupe 时返回 null，不抛唯一约束错误', async () => {
+    const db = createConversionDb({ existingDedupeKeys: ['lead:session_1:telegram:floating_contact_panel'] })
+    const result = await recordConversionAction(envFor(db), {
+      actionType: 'contact',
+      visitorId: 'visitor_1',
+      sessionId: 'session_1',
+      occurredAt: '2026-07-09T10:25:00.000Z',
+      consentState: 'granted',
+      methodType: 'telegram',
+      actionTarget: 'floating_contact_panel',
+      metadata: {},
+    })
+
     expect(result.created).toBe(true)
     expect(result.derivedActions).toHaveLength(0)
   })

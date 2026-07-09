@@ -313,7 +313,7 @@ describe('analytics-ingest', () => {
       currentHost: '616618.xyz',
     })
 
-    const conversionInsert = db.calls.find(call => call.sql.includes('INSERT INTO analytics_conversion_actions'))
+    const conversionInsert = db.calls.find(call => call.sql.includes('analytics_conversion_actions'))
     expect(conversionInsert).toBeTruthy()
     expect(conversionInsert?.params[1]).toBe('contact')
     expect(conversionInsert?.params[8]).toBe('ad')
@@ -337,7 +337,7 @@ describe('analytics-ingest', () => {
     })
 
     expect(db.calls.some(call => (
-      call.sql.includes('INSERT INTO analytics_conversion_actions')
+      call.sql.includes('analytics_conversion_actions')
       && call.params[1] === 'complete_registration'
       && call.params[7] === 42
     ))).toBe(true)
@@ -372,6 +372,51 @@ describe('analytics-ingest', () => {
       currentHost: '616618.xyz',
     })
     expect(duplicateDb.calls.some(call => call.sql.includes('analytics_conversion_actions'))).toBe(false)
+  })
+
+  it('批内 raw duplicate 不派生第二条不同目标的联系转化', async () => {
+    const db = createDb()
+    const result = await ingestAnalyticsBatch(envFor(db), {
+      body: {
+        visitorId: 'visitor_123456',
+        sessionId: 'session_123456',
+        events: [
+          baseBatch({
+            eventId: 'event_contact_same',
+            eventName: 'contact_method_click',
+            entityType: 'contact',
+            entityId: 'contact-a',
+            props: {
+              method_type: 'telegram',
+              location: 'floating_contact_panel',
+            },
+          }).events[0],
+          baseBatch({
+            eventId: 'event_contact_same',
+            eventName: 'contact_method_click',
+            entityType: 'contact',
+            entityId: 'contact-b',
+            props: {
+              method_type: 'wechat',
+              location: 'gallery_detail_sidebar',
+            },
+          }).events[0],
+        ],
+      },
+      bodySizeBytes: 1024,
+      userId: null,
+      currentHost: '616618.xyz',
+    })
+
+    const contactConversionInserts = db.calls.filter(call => (
+      call.sql.includes('analytics_conversion_actions') && call.params[1] === 'contact'
+    ))
+    expect(result.duplicate).toBe(1)
+    expect(contactConversionInserts).toHaveLength(1)
+    expect(contactConversionInserts[0]?.params[15]).toBe('telegram')
+    expect(contactConversionInserts[0]?.params[16]).toBe('floating_contact_panel')
+    expect(JSON.stringify(contactConversionInserts.map(call => call.params))).not.toContain('gallery_detail_sidebar')
+    expect(JSON.stringify(contactConversionInserts.map(call => call.params))).not.toContain('wechat')
   })
 
   it('把 sendBeacon session/end 简写 payload 转成批量事件', () => {
