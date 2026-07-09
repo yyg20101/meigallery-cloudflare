@@ -3,16 +3,20 @@ import type { Bindings } from '../index'
 import { recordConversionAction } from './conversions'
 
 type Call = { sql: string; params: unknown[] }
+type InsertedConversion = { id: string; actionType: string; dedupeKey: string; sessionId: string }
 
 function createConversionDb(options: {
   existingDedupeKeys?: string[]
   existingLeadSessions?: string[]
+  skipLeadLookup?: boolean
 } = {}) {
   const calls: Call[] = []
+  const insertedConversions: InsertedConversion[] = []
   const dedupe = new Map((options.existingDedupeKeys ?? []).map((key) => [key, `existing_${key}`]))
   const leadSessions = new Set(options.existingLeadSessions ?? [])
   const db = {
     calls,
+    insertedConversions,
     prepare(sql: string) {
       const call: Call = { sql, params: [] }
       return {
@@ -26,6 +30,7 @@ function createConversionDb(options: {
             return existingId ? ({ id: existingId } as T) : null
           }
           if (sql.includes("action_type = 'lead'")) {
+            if (options.skipLeadLookup) return null
             const sessionId = String(call.params[0])
             return leadSessions.has(sessionId) ? ({ id: `lead_${sessionId}` } as T) : null
           }
@@ -45,6 +50,7 @@ function createConversionDb(options: {
               return { meta: { changes: 0, rows_written: 0, rows_read: 0, duration: 1 } }
             }
             dedupe.set(dedupeKey, id)
+            insertedConversions.push({ id, actionType, dedupeKey, sessionId })
             if (actionType === 'lead') leadSessions.add(sessionId)
           }
           return { meta: { changes: 1, rows_written: 1, rows_read: 0, duration: 1 } }
@@ -159,7 +165,7 @@ describe('conversion ledger service', () => {
   })
 
   it('lead 派生命中并发 dedupe 时返回 null，不抛唯一约束错误', async () => {
-    const db = createConversionDb({ existingDedupeKeys: ['lead:session_1:telegram:floating_contact_panel'] })
+    const db = createConversionDb({ existingDedupeKeys: ['lead:session_1'] })
     const result = await recordConversionAction(envFor(db), {
       actionType: 'contact',
       visitorId: 'visitor_1',
@@ -173,5 +179,52 @@ describe('conversion ledger service', () => {
 
     expect(result.created).toBe(true)
     expect(result.derivedActions).toHaveLength(0)
+  })
+
+  it('同 session 不同 contact target 并发派生 lead 时使用 session 级 dedupe', async () => {
+    const db = createConversionDb({ skipLeadLookup: true })
+
+    const first = await recordConversionAction(envFor(db), {
+      actionType: 'contact',
+      visitorId: 'visitor_1',
+      sessionId: 'session_1',
+      occurredAt: '2026-07-09T10:30:00.000Z',
+      consentState: 'granted',
+      methodType: 'telegram',
+      actionTarget: 'floating_contact_panel',
+      metadata: {},
+    })
+    const second = await recordConversionAction(envFor(db), {
+      actionType: 'contact',
+      visitorId: 'visitor_1',
+      sessionId: 'session_1',
+      occurredAt: '2026-07-09T10:30:01.000Z',
+      consentState: 'granted',
+      methodType: 'telegram',
+      actionTarget: 'gallery_detail_cta',
+      metadata: {},
+    })
+
+    expect(first.created).toBe(true)
+    expect(second.created).toBe(true)
+    expect(first.derivedActions).toHaveLength(1)
+    expect(second.derivedActions).toHaveLength(0)
+    expect(db.insertedConversions.filter(item => item.actionType === 'contact').map(item => item.dedupeKey).sort()).toEqual([
+      'contact:session_1:telegram:floating_contact_panel',
+      'contact:session_1:telegram:gallery_detail_cta',
+    ])
+    expect(db.insertedConversions.filter(item => item.actionType === 'lead')).toEqual([
+      expect.objectContaining({ dedupeKey: 'lead:session_1' }),
+    ])
+
+    const leadDeliveries = db.calls.filter(
+      call =>
+        call.sql.includes('analytics_conversion_deliveries') &&
+        db.insertedConversions.some(item => item.actionType === 'lead' && item.id === call.params[1]),
+    )
+    expect(leadDeliveries.map(call => call.params[3])).toEqual([
+      'meta:Lead:lead:session_1',
+      'meta:Lead:lead:session_1',
+    ])
   })
 })

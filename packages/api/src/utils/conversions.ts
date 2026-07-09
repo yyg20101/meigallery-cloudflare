@@ -78,8 +78,11 @@ export function metaEventForConversion(actionType: ConversionActionType): Conver
 }
 
 export function buildConversionDedupeKey(input: ConversionDedupeInput) {
-  if (input.actionType === 'contact' || input.actionType === 'lead') {
-    return `${input.actionType}:${input.sessionId}:${normalizeKeyPart(input.methodType)}:${normalizeKeyPart(input.actionTarget)}`
+  if (input.actionType === 'contact') {
+    return `contact:${input.sessionId}:${normalizeKeyPart(input.methodType)}:${normalizeKeyPart(input.actionTarget)}`
+  }
+  if (input.actionType === 'lead') {
+    return `lead:${input.sessionId}`
   }
   if (input.actionType === 'complete_registration' || input.actionType === 'start_trial') {
     return `${input.actionType}:${input.sessionId}:${input.occurredDate}`
