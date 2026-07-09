@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFile, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, it } from 'node:test'
 import {
   assertProductionAllowed,
@@ -11,7 +12,18 @@ import {
 } from './verify-release.mjs'
 import { writeReport } from './release-verification-lib.mjs'
 
+const DEPLOY_SCRIPT_PATH = fileURLToPath(new URL('./deploy.sh', import.meta.url))
+
 describe('发布验证 CLI', () => {
+  it('production deploy gate 会显式清空 VERIFY_RELEASE_ALLOW_BRANCH', async () => {
+    const deployScript = await readFile(DEPLOY_SCRIPT_PATH, 'utf8')
+
+    assert.match(
+      deployScript,
+      /env -u VERIFY_RELEASE_ALLOW_BRANCH node scripts\/verify-release\.mjs assert-production-allowed/,
+    )
+  })
+
   it('assertProductionAllowed 会绑定当前 Git commit', async () => {
     await assert.rejects(async () => {
       await assertProductionAllowed({

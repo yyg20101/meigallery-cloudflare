@@ -53,7 +53,7 @@ else
   fi
 
   echo "执行生产发布验证闸门..."
-  if ! node scripts/verify-release.mjs assert-production-allowed; then
+  if ! env -u VERIFY_RELEASE_ALLOW_BRANCH node scripts/verify-release.mjs assert-production-allowed; then
     echo "生产部署被发布验证闸门阻断。请先运行 corepack pnpm verify:release，并确认报告通过。"
     exit 1
   fi
