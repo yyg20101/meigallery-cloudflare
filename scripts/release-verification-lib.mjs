@@ -219,11 +219,64 @@ function validateReportShape(report, reasons) {
 
   if (!report.versions || typeof report.versions !== 'object' || Array.isArray(report.versions)) {
     reasons.push('报告 versions 缺失或类型非法')
+  } else {
+    validateNonEmptyString(report.versions.node, '报告 versions.node 缺失、为空或类型非法', reasons)
+    validateNonEmptyString(report.versions.pnpm, '报告 versions.pnpm 缺失、为空或类型非法', reasons)
+    validateNonEmptyString(report.versions.wrangler, '报告 versions.wrangler 缺失、为空或类型非法', reasons)
   }
 
-  if (!Array.isArray(report.steps)) reasons.push('报告 steps 缺失或类型非法')
-  if (!Array.isArray(report.artifacts)) reasons.push('报告 artifacts 缺失或类型非法')
-  if (!Array.isArray(report.notes)) reasons.push('报告 notes 缺失或类型非法')
+  if (!Array.isArray(report.steps)) {
+    reasons.push('报告 steps 缺失或类型非法')
+  } else {
+    report.steps.forEach((step, index) => {
+      if (!step || typeof step !== 'object' || Array.isArray(step)) {
+        reasons.push(`报告 steps[${index}] 缺失或类型非法`)
+        return
+      }
+
+      validateNonEmptyString(step.name, `报告 steps[${index}].name 缺失、为空或类型非法`, reasons)
+
+      if (!VALID_REPORT_STATUSES.has(step.status)) {
+        reasons.push(`报告 steps[${index}].status 缺失或不是 passed|failed|skipped`)
+      }
+
+      if (typeof step.durationMs !== 'number' || Number.isNaN(step.durationMs) || step.durationMs < 0) {
+        reasons.push(`报告 steps[${index}].durationMs 缺失或不是非负数字`)
+      }
+
+      if (Object.hasOwn(step, 'command') && typeof step.command !== 'string') {
+        reasons.push(`报告 steps[${index}].command 类型非法`)
+      }
+
+      if (Object.hasOwn(step, 'summary') && typeof step.summary !== 'string') {
+        reasons.push(`报告 steps[${index}].summary 类型非法`)
+      }
+    })
+  }
+
+  if (!Array.isArray(report.artifacts)) {
+    reasons.push('报告 artifacts 缺失或类型非法')
+  } else {
+    report.artifacts.forEach((artifact, index) => {
+      validateNonEmptyString(artifact, `报告 artifacts[${index}] 缺失、为空或类型非法`, reasons)
+    })
+  }
+
+  if (!Array.isArray(report.notes)) {
+    reasons.push('报告 notes 缺失或类型非法')
+  } else {
+    report.notes.forEach((note, index) => {
+      if (typeof note !== 'string') {
+        reasons.push(`报告 notes[${index}] 缺失或类型非法`)
+      }
+    })
+  }
+}
+
+function validateNonEmptyString(value, reason, reasons) {
+  if (typeof value !== 'string' || value.trim() === '') {
+    reasons.push(reason)
+  }
 }
 
 function compactWhitespace(value) {

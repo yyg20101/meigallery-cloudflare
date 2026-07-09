@@ -9,6 +9,39 @@ import {
   writeReport,
 } from './release-verification-lib.mjs'
 
+function createValidReleaseReport() {
+  return {
+    schemaVersion: 1,
+    mode: 'release',
+    status: 'passed',
+    startedAt: '2026-07-09T00:00:00.000Z',
+    finishedAt: '2026-07-09T00:05:00.000Z',
+    durationMs: 300000,
+    git: {
+      branch: 'main',
+      commit: 'abcdef1234567890',
+      isClean: true,
+      remote: 'origin',
+    },
+    versions: {
+      node: 'v24.0.0',
+      pnpm: '10.0.0',
+      wrangler: '4.0.0',
+    },
+    steps: [
+      {
+        name: 'build',
+        status: 'passed',
+        durationMs: 1200,
+        command: 'corepack pnpm build',
+        summary: '构建完成',
+      },
+    ],
+    artifacts: ['reports/release-verification/latest.json'],
+    notes: ['全部校验通过'],
+  }
+}
+
 describe('发布验证基础库', () => {
   it('redact 会隐藏 token、secret、cookie 和 session', () => {
     const input = 'access_token=abc token:123 secret=xyz cookie=foo session=bar password=baz'
@@ -72,28 +105,7 @@ describe('发布验证基础库', () => {
   })
 
   it('assertReportCanGateProduction 拒绝失败报告、非 release 报告、脏工作区和过期报告', () => {
-    const baseReport = {
-      schemaVersion: 1,
-      mode: 'release',
-      status: 'passed',
-      startedAt: '2026-07-09T00:00:00.000Z',
-      finishedAt: '2026-07-09T00:05:00.000Z',
-      durationMs: 300000,
-      git: {
-        branch: 'main',
-        commit: 'abcdef1234567890',
-        isClean: true,
-        remote: 'origin',
-      },
-      versions: {
-        node: 'v24.0.0',
-        pnpm: '10.0.0',
-        wrangler: '4.0.0',
-      },
-      steps: [],
-      artifacts: [],
-      notes: [],
-    }
+    const baseReport = createValidReleaseReport()
 
     assert.throws(() => {
       assertReportCanGateProduction({
@@ -155,26 +167,13 @@ describe('发布验证基础库', () => {
 
   it('assertReportCanGateProduction 拒绝空 branch 或 commit 的 release 报告', () => {
     const invalidGitReport = {
-      schemaVersion: 1,
-      mode: 'release',
-      status: 'passed',
-      startedAt: '2026-07-09T00:00:00.000Z',
-      finishedAt: '2026-07-09T00:05:00.000Z',
-      durationMs: 300000,
+      ...createValidReleaseReport(),
       git: {
         branch: '',
         commit: '   ',
         isClean: true,
         remote: 'origin',
       },
-      versions: {
-        node: 'v24.0.0',
-        pnpm: '10.0.0',
-        wrangler: '4.0.0',
-      },
-      steps: [],
-      artifacts: [],
-      notes: [],
     }
 
     assert.throws(() => {
@@ -186,26 +185,11 @@ describe('发布验证基础库', () => {
 
   it('assertReportCanGateProduction 拒绝与 expectedCommit 不一致的 release 报告', () => {
     const report = {
-      schemaVersion: 1,
-      mode: 'release',
-      status: 'passed',
-      startedAt: '2026-07-09T00:00:00.000Z',
-      finishedAt: '2026-07-09T00:05:00.000Z',
-      durationMs: 300000,
+      ...createValidReleaseReport(),
       git: {
-        branch: 'main',
+        ...createValidReleaseReport().git,
         commit: 'report-commit-sha',
-        isClean: true,
-        remote: 'origin',
       },
-      versions: {
-        node: 'v24.0.0',
-        pnpm: '10.0.0',
-        wrangler: '4.0.0',
-      },
-      steps: [],
-      artifacts: [],
-      notes: [],
     }
 
     assert.throws(() => {
@@ -214,5 +198,65 @@ describe('发布验证基础库', () => {
         expectedCommit: 'current-commit-sha',
       })
     }, /报告 commit 与当前待发布 commit 不一致/)
+  })
+
+  it('assertReportCanGateProduction 拒绝缺少 versions 子字段的 release 报告', () => {
+    const report = {
+      ...createValidReleaseReport(),
+      versions: {
+        node: 'v24.0.0',
+        pnpm: '',
+      },
+    }
+
+    assert.throws(() => {
+      assertReportCanGateProduction(report, {
+        now: '2026-07-09T01:00:00.000Z',
+      })
+    }, /versions\.pnpm|versions\.wrangler/)
+  })
+
+  it('assertReportCanGateProduction 拒绝 step 字段不完整的 release 报告', () => {
+    const report = {
+      ...createValidReleaseReport(),
+      steps: [
+        {
+          name: '',
+          status: 'done',
+          durationMs: -1,
+          command: 123,
+          summary: {},
+        },
+      ],
+    }
+
+    assert.throws(() => {
+      assertReportCanGateProduction(report, {
+        now: '2026-07-09T01:00:00.000Z',
+      })
+    }, /steps\[0\]\.name|steps\[0\]\.status|steps\[0\]\.durationMs|steps\[0\]\.command|steps\[0\]\.summary/)
+  })
+
+  it('assertReportCanGateProduction 拒绝 notes 非字符串或 artifact 非字符串的 release 报告', () => {
+    const invalidNotesReport = {
+      ...createValidReleaseReport(),
+      notes: ['ok', 123],
+    }
+    const invalidArtifactsReport = {
+      ...createValidReleaseReport(),
+      artifacts: ['ok', { path: 'report.json' }],
+    }
+
+    assert.throws(() => {
+      assertReportCanGateProduction(invalidNotesReport, {
+        now: '2026-07-09T01:00:00.000Z',
+      })
+    }, /notes\[1\]/)
+
+    assert.throws(() => {
+      assertReportCanGateProduction(invalidArtifactsReport, {
+        now: '2026-07-09T01:00:00.000Z',
+      })
+    }, /artifacts\[1\]/)
   })
 })
