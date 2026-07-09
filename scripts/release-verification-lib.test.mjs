@@ -123,6 +123,25 @@ describe('发布验证基础库', () => {
     }, /请求超时：5ms/)
   })
 
+  it('fetchWithTimeout 会保留调用方 abort signal', async () => {
+    const controller = new AbortController()
+    let forwardedSignal = null
+    const request = fetchWithTimeout(
+      (_input, init) => {
+        forwardedSignal = init.signal
+        return new Promise(() => {})
+      },
+      'https://example.test/cancel',
+      { signal: controller.signal },
+      1000,
+    )
+
+    controller.abort(new Error('caller cancelled'))
+
+    await assert.rejects(request, /caller cancelled/)
+    assert.equal(forwardedSignal?.aborted, true)
+  })
+
   it('writeReport 同时写入时间戳文件和 latest.json', async () => {
     const reportDir = await mkdtemp(path.join(tmpdir(), 'release-verify-'))
     const report = {

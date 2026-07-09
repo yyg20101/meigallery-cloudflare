@@ -104,25 +104,51 @@ export async function runCommand(command, args, options = {}) {
 
 export async function fetchWithTimeout(fetchFn, input, init = {}, timeoutMs = DEFAULT_FETCH_TIMEOUT_MS) {
   const safeTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_FETCH_TIMEOUT_MS
-  const controller = new AbortController()
+  const timeoutController = new AbortController()
+  const callerSignal = init?.signal
   let timeoutId
+  let rejectAbortPromise = () => {}
+
+  const abortPromise = new Promise((_, reject) => {
+    rejectAbortPromise = reject
+  })
+
+  const abortRequest = (reason) => {
+    const error = reason instanceof Error ? reason : new Error('请求已取消')
+    if (!timeoutController.signal.aborted) timeoutController.abort(error)
+    rejectAbortPromise(error)
+  }
+
+  const onCallerAbort = () => {
+    abortRequest(callerSignal.reason)
+  }
 
   const timeoutPromise = new Promise((_, reject) => {
     timeoutId = setTimeout(() => {
-      controller.abort()
-      reject(new Error(`请求超时：${safeTimeoutMs}ms`))
+      const error = new Error(`请求超时：${safeTimeoutMs}ms`)
+      if (!timeoutController.signal.aborted) timeoutController.abort(error)
+      reject(error)
     }, safeTimeoutMs)
   })
 
+  if (isAbortSignal(callerSignal)) {
+    if (callerSignal.aborted) {
+      abortRequest(callerSignal.reason)
+    } else {
+      callerSignal.addEventListener('abort', onCallerAbort, { once: true })
+    }
+  }
+
   const requestPromise = Promise.resolve().then(() => fetchFn(input, {
     ...(init || {}),
-    signal: controller.signal,
+    signal: timeoutController.signal,
   }))
 
   try {
-    return await Promise.race([requestPromise, timeoutPromise])
+    return await Promise.race([requestPromise, timeoutPromise, abortPromise])
   } finally {
     clearTimeout(timeoutId)
+    if (isAbortSignal(callerSignal)) callerSignal.removeEventListener('abort', onCallerAbort)
   }
 }
 
@@ -384,6 +410,16 @@ function resolveReportDir(reportDir) {
 
 function redactCredentialUrl(value) {
   return String(value).replace(/(https?:\/\/)([^/\s@]+)@/gi, '$1[REDACTED]@')
+}
+
+function isAbortSignal(value) {
+  return Boolean(
+    value &&
+    typeof value === 'object' &&
+    typeof value.aborted === 'boolean' &&
+    typeof value.addEventListener === 'function' &&
+    typeof value.removeEventListener === 'function',
+  )
 }
 
 function isProductionBranchAllowed(branch, options) {
