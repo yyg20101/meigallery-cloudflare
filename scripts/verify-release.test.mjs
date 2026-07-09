@@ -3,7 +3,7 @@ import { readFile, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, it } from 'node:test'
-import { assertProductionAllowed, runLocalRuntimeReleaseVerification } from './verify-release.mjs'
+import { assertProductionAllowed, runDevRehearsalReleaseVerification, runLocalRuntimeReleaseVerification } from './verify-release.mjs'
 import { writeReport } from './release-verification-lib.mjs'
 
 describe('发布验证 CLI', () => {
@@ -134,6 +134,38 @@ describe('发布验证 CLI', () => {
     assert.equal(report.mode, 'local-runtime')
     assert.equal(report.status, 'passed')
     assert.equal(report.reportFile, '/tmp/local-runtime.json')
+  })
+
+  it('runDevRehearsalReleaseVerification 会生成 dev-rehearsal 报告', async () => {
+    const report = await runDevRehearsalReleaseVerification({
+      collectVersions: async () => ({
+        node: 'v24.0.0',
+        pnpm: '10.0.0',
+        wrangler: '4.0.0',
+      }),
+      getGitState: async () => ({
+        branch: 'dev',
+        commit: 'dev-rehearsal-commit',
+        isClean: true,
+        remote: 'origin',
+      }),
+      runDevRehearsalVerification: async () => ({
+        steps: [
+          { name: 'dev-d1-migrate', status: 'passed', durationMs: 1, command: 'migrate', exitCode: 0, summary: 'ok' },
+          { name: 'dev-admin-attribution', status: 'passed', durationMs: 1, command: 'attribution', exitCode: 200, summary: 'ok' },
+        ],
+        notes: ['meta-test-event-code-missing'],
+        artifacts: [],
+      }),
+      writeReport: async () => ({
+        reportFile: '/tmp/dev-rehearsal.json',
+        latestFile: '/tmp/latest.json',
+      }),
+    })
+
+    assert.equal(report.mode, 'dev-rehearsal')
+    assert.equal(report.status, 'passed')
+    assert.equal(report.reportFile, '/tmp/dev-rehearsal.json')
   })
 
   it('runLocalRuntimeReleaseVerification 会拒绝把 session token 或 token_hash 写入报告', async () => {

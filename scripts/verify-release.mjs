@@ -11,6 +11,7 @@ import {
   runCommand,
   writeReport,
 } from './release-verification-lib.mjs'
+import { runDevRehearsalVerification } from './verify-dev-rehearsal.mjs'
 import { runLocalRuntimeVerification } from './verify-local-runtime.mjs'
 
 const QUICK_STEPS = [
@@ -87,6 +88,8 @@ export async function main(argv = process.argv.slice(2), options = {}) {
   let report
   if (mode === 'quick') {
     report = await runQuickVerification({ ...options, mode })
+  } else if (mode === 'dev-rehearsal') {
+    report = await runDevRehearsalReleaseVerification({ ...options, mode })
   } else if (mode === 'local-runtime') {
     report = await runLocalRuntimeReleaseVerification({ ...options, mode })
   } else {
@@ -111,6 +114,40 @@ export async function runLocalRuntimeReleaseVerification(options = {}) {
   const versions = await collectVersionsFn(options)
   const git = await getGitStateFn(options)
   const { steps, notes, artifacts, sensitiveValues = [] } = await runLocalRuntimeVerificationFn(options)
+  const finishedAt = new Date().toISOString()
+  const report = {
+    schemaVersion: 1,
+    mode,
+    status: steps.every(step => step.status === 'passed') ? 'passed' : 'failed',
+    startedAt,
+    finishedAt,
+    durationMs: Date.now() - startedMs,
+    git,
+    versions,
+    steps,
+    artifacts,
+    notes,
+  }
+  const files = await writeReportFn(report, options)
+  await assertReportOmitsSecrets(files, sensitiveValues)
+
+  return {
+    ...report,
+    ...files,
+  }
+}
+
+export async function runDevRehearsalReleaseVerification(options = {}) {
+  const mode = options.mode || 'dev-rehearsal'
+  const startedAt = new Date().toISOString()
+  const startedMs = Date.now()
+  const collectVersionsFn = options.collectVersions || collectVersions
+  const getGitStateFn = options.getGitState || getGitState
+  const runDevRehearsalVerificationFn = options.runDevRehearsalVerification || runDevRehearsalVerification
+  const writeReportFn = options.writeReport || writeReport
+  const versions = await collectVersionsFn(options)
+  const git = await getGitStateFn(options)
+  const { steps, notes, artifacts, sensitiveValues = [] } = await runDevRehearsalVerificationFn(options)
   const finishedAt = new Date().toISOString()
   const report = {
     schemaVersion: 1,
@@ -211,6 +248,7 @@ function printHelp() {
   console.log(`
 用法：
   node scripts/verify-release.mjs quick
+  node scripts/verify-release.mjs dev-rehearsal
   node scripts/verify-release.mjs local-runtime
   node scripts/verify-release.mjs assert-production-allowed
 `.trim())
