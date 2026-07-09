@@ -184,10 +184,10 @@ export function assertReportCanGateProduction(report, options = {}) {
       reasons.push('当前分支不是 main 或 release/*，拒绝放行生产部署')
     }
 
-    const finishedAt = Date.parse(report.finishedAt || report.startedAt || '')
-    if (Number.isNaN(finishedAt)) {
-      reasons.push('报告缺少有效的 finishedAt 或 startedAt 时间')
-    } else if (now - finishedAt > maxAgeMs) {
+    const startedAt = Date.parse(report.startedAt || '')
+    if (Number.isNaN(startedAt)) {
+      reasons.push('报告缺少有效的 startedAt 时间')
+    } else if (now - startedAt > maxAgeMs) {
       reasons.push('报告已过期')
     }
 

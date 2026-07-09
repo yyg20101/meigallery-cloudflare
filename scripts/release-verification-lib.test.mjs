@@ -186,6 +186,18 @@ describe('发布验证基础库', () => {
     }, /报告已过期/)
   })
 
+  it('assertReportCanGateProduction 按 startedAt 而不是 finishedAt 校验报告时效', () => {
+    assert.throws(() => {
+      assertReportCanGateProduction({
+        ...createValidReleaseReport(),
+        startedAt: '2026-07-08T23:59:00.000Z',
+        finishedAt: '2026-07-10T00:05:00.000Z',
+      }, {
+        now: '2026-07-10T00:06:00.000Z',
+      })
+    }, /报告已过期/)
+  })
+
   it('assertReportCanGateProduction 拒绝畸形 release 报告', () => {
     const malformedReport = {
       schemaVersion: 2,
