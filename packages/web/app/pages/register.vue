@@ -200,7 +200,7 @@ async function onDirectRegister() {
       turnstileToken: hasTurnstile.value ? turnstileToken.value : undefined,
       ...buildInviteRegistrationContext(),
     })
-    await trackConversion('complete_registration', { metadata: { method: 'email' } })
+    await trackRegistrationConversion()
     router.push('/')
   } catch (e: any) {
     analytics.track('register_failed', {
@@ -263,7 +263,7 @@ async function onSubmitWithCode() {
       turnstileToken: hasTurnstile.value ? turnstileToken.value : undefined,
       ...buildInviteRegistrationContext(),
     })
-    await trackConversion('complete_registration', { metadata: { method: 'email' } })
+    await trackRegistrationConversion()
     router.push('/')
   } catch (e: any) {
     analytics.track('register_failed', {
@@ -348,6 +348,14 @@ function trackRegisterSubmit() {
     },
     entityType: 'auth',
   })
+}
+
+async function trackRegistrationConversion() {
+  try {
+    await trackConversion('complete_registration', { metadata: { method: 'email' } })
+  } catch {
+    // 注册已成功时，转化上报失败不能影响跳转或误记注册失败。
+  }
 }
 
 function normalizeInviteCode(value: unknown) {

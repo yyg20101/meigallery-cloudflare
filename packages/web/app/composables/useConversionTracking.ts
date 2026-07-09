@@ -1,4 +1,5 @@
 import type { AnalyticsConsentState, ConversionActionType, ConversionMetaEventName } from '@meigallery/shared'
+import { sanitizeAnalyticsPath } from '~/utils/analyticsSanitizer'
 
 type PublicConversionActionType = Extract<ConversionActionType, 'contact' | 'complete_registration' | 'start_trial'>
 
@@ -78,7 +79,11 @@ export function useConversionTracking() {
       metadata,
     }
 
-    await api('/api/conversions/events', { method: 'POST', body })
+    try {
+      await api('/api/conversions/events', { method: 'POST', body })
+    } catch {
+      // 转化 API 失败不应阻断站内兼容事件或 Pixel 上报。
+    }
     trackAnalyticsCompatibility(actionType, analytics, options, eventID)
     if (metaEventName && body.consentState === 'granted') {
       pixel.trackStandardEvent(metaEventName, metadata, { eventID })
@@ -222,27 +227,7 @@ function queryValue(value: unknown) {
 }
 
 function safeRoutePath(fullPath: string, path: string) {
-  if (hasSensitiveUrl(fullPath)) return normalizeText(path, 240)
-  return normalizeText(fullPath, 240)
-}
-
-function hasSensitiveUrl(value: unknown, depth = 0) {
-  const raw = String(value ?? '').trim()
-  if (!raw) return false
-  if (depth > 3) return true
-
-  let parsed: URL
-  try {
-    parsed = new URL(raw, 'https://site.local')
-  } catch {
-    return false
-  }
-
-  for (const [name, target] of parsed.searchParams.entries()) {
-    if (isSensitiveMetadataKey(normalizeMetadataKey(name))) return true
-    if (hasSensitiveUrl(target, depth + 1)) return true
-  }
-  return false
+  return sanitizeAnalyticsPath(fullPath) || sanitizeAnalyticsPath(path) || '/'
 }
 
 function normalizeText(value: unknown, maxLength: number) {

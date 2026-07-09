@@ -115,4 +115,18 @@ describe('ContactPanel', () => {
     expect(JSON.stringify(trackConversion.mock.calls)).not.toContain('@meigallery')
     expect(JSON.stringify(track.mock.calls)).not.toContain('@meigallery')
   })
+
+  it('联系方式转化上报 reject 时调用方不会抛出未处理异常', async () => {
+    const { wrapper, trackConversion } = await mountPanel()
+    trackConversion.mockRejectedValueOnce(new Error('conversion api failed'))
+
+    await wrapper.get('button[aria-label="打开联系方式"]').trigger('click')
+    await expect(wrapper.get('.contact-method').trigger('click')).resolves.toBeUndefined()
+    await flushPromises()
+
+    expect(trackConversion).toHaveBeenCalledWith('contact', expect.objectContaining({
+      methodType: 'telegram',
+      actionTarget: 'floating_contact_panel',
+    }))
+  })
 })

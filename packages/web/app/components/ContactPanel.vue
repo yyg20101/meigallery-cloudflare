@@ -31,7 +31,7 @@ function toggleOpen() {
 }
 
 function trackContactMethod(methodType: string, actionType = 'unknown') {
-  void trackConversion('contact', {
+  void Promise.resolve(trackConversion('contact', {
     methodType,
     actionTarget: 'floating_contact_panel',
     metadata: {
@@ -39,7 +39,7 @@ function trackContactMethod(methodType: string, actionType = 'unknown') {
       action_type: actionType,
       location: 'floating_contact_panel',
     },
-  })
+  })).catch(() => {})
 }
 
 function openContactPanel() {

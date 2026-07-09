@@ -6,7 +6,12 @@ const track = vi.fn()
 const trackStandardEvent = vi.fn()
 let consentState: 'granted' | 'limited' | 'denied' = 'granted'
 
-let route = {
+let route: {
+  name: string
+  path: string
+  fullPath: string
+  query: Record<string, unknown>
+} = {
   name: 'contact',
   path: '/contact',
   fullPath: '/contact?utm_content=button',
@@ -15,6 +20,8 @@ let route = {
 
 describe('useConversionTracking', () => {
   beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-09T08:00:00.000Z'))
     api.mockReset()
     api.mockResolvedValue({ data: { id: 'conv_1', created: true } })
     track.mockReset()
@@ -48,6 +55,7 @@ describe('useConversionTracking', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     vi.unstubAllGlobals()
   })
 
@@ -64,7 +72,7 @@ describe('useConversionTracking', () => {
     expect(trackStandardEvent).toHaveBeenCalledWith(
       'Contact',
       expect.any(Object),
-      expect.objectContaining({ eventID: expect.stringContaining('meta:Contact:') }),
+      { eventID: 'meta:Contact:contact:session_1:telegram:floating_contact_panel' },
     )
     expect(JSON.stringify(api.mock.calls)).not.toContain('@secret')
     expect(JSON.stringify(track.mock.calls)).not.toContain('@secret')
@@ -83,13 +91,54 @@ describe('useConversionTracking', () => {
       }),
     }))
     expect(track).toHaveBeenCalledWith('register_success', expect.objectContaining({
-      eventId: expect.stringContaining('meta:CompleteRegistration:complete_registration:session_1:'),
+      eventId: 'meta:CompleteRegistration:complete_registration:session_1:2026-07-09',
       flush: true,
     }))
     expect(trackStandardEvent).toHaveBeenCalledWith(
       'CompleteRegistration',
       { method: 'email' },
-      expect.objectContaining({ eventID: expect.stringContaining('meta:CompleteRegistration:') }),
+      { eventID: 'meta:CompleteRegistration:complete_registration:session_1:2026-07-09' },
+    )
+  })
+
+  it('注册页路径只保留 allow-list query，invite 不进入 conversion body.path', async () => {
+    route = {
+      name: 'register',
+      path: '/register',
+      fullPath: '/register?invite=abc&utm_content=ad-a',
+      query: { invite: 'abc', utm_content: 'ad-a' },
+    }
+
+    const conversion = useConversionTracking()
+    await conversion.trackConversion('complete_registration', { metadata: { method: 'email' } })
+
+    expect(api).toHaveBeenCalledWith('/api/conversions/events', expect.objectContaining({
+      body: expect.objectContaining({
+        path: '/register',
+        utmContent: 'ad-a',
+      }),
+    }))
+    expect(JSON.stringify(api.mock.calls)).not.toContain('invite')
+  })
+
+  it('conversion API 失败时仍继续 analytics 兼容事件和 Pixel', async () => {
+    api.mockRejectedValueOnce(new Error('conversion api failed'))
+
+    const conversion = useConversionTracking()
+    await expect(conversion.trackConversion('contact', {
+      methodType: 'telegram',
+      actionTarget: 'floating_contact_panel',
+      metadata: { location: 'floating_contact_panel' },
+    })).resolves.toBeUndefined()
+
+    expect(track).toHaveBeenCalledWith('contact_method_click', expect.objectContaining({
+      eventId: 'meta:Contact:contact:session_1:telegram:floating_contact_panel',
+      flush: true,
+    }))
+    expect(trackStandardEvent).toHaveBeenCalledWith(
+      'Contact',
+      { location: 'floating_contact_panel' },
+      { eventID: 'meta:Contact:contact:session_1:telegram:floating_contact_panel' },
     )
   })
 
