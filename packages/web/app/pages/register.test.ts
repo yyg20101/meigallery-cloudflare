@@ -75,7 +75,9 @@ describe('register page', () => {
     await wrapper.get('input[autocomplete="username"]').setValue('meiuser')
     await wrapper.get('input[autocomplete="email"]').setValue('mei@example.com')
     await wrapper.get('input[autocomplete="new-password"]').setValue('password123')
-    await wrapper.findAll('input[autocomplete="new-password"]')[1].setValue('password123')
+    const confirmPasswordInput = wrapper.findAll('input[autocomplete="new-password"]').at(1)
+    expect(confirmPasswordInput).toBeDefined()
+    await confirmPasswordInput!.setValue('password123')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
 

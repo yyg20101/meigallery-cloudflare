@@ -449,6 +449,165 @@ function adminAnalyticsResponse(pathname, searchParams) {
   }
 }
 
+function adminAttributionResponse(pathname, searchParams) {
+  const range = analyticsRange(searchParams)
+  const usage = { rowsRead: 86, rowsWritten: 0, durationMs: 9 }
+  const links = [
+    {
+      id: 'ats_meta_a',
+      name: 'Meta 广告 A',
+      sourceLabel: 'Meta 广告 A',
+      channel: 'ad',
+      slug: 'meta-ad-a',
+      sourceCode: 'meta-ad-a',
+      targetPath: '/',
+      utmSource: 'meta-ad-a',
+      utmMedium: 'paid_social',
+      utmCampaign: 'july-contact',
+      utmContent: 'chat-a',
+      status: 'active',
+      note: '测试广告 A',
+      trackingPath: '/?mg_source=meta-ad-a&utm_source=meta-ad-a&utm_medium=paid_social&utm_campaign=july-contact&utm_content=chat-a',
+      sessionCount: 18,
+      pageViewCount: 44,
+      galleryDetailCount: 12,
+      contactClickCount: 4,
+      registerCount: 2,
+      membershipGrantCount: 1,
+      activeSecondsTotal: 820,
+      contactCount: 4,
+      leadCount: 3,
+      completeRegistrationCount: 2,
+      startTrialCount: 0,
+      conversionMembershipGrantCount: 1,
+    },
+  ]
+
+  if (pathname.endsWith('/overview')) {
+    return {
+      range,
+      usage,
+      data: {
+        totals: {
+          contact_count: 4,
+          lead_count: 3,
+          complete_registration_count: 2,
+          start_trial_count: 0,
+          membership_grant_count: 1,
+        },
+        trend: [
+          { date: '2026-07-07', contact_count: 1, lead_count: 1, complete_registration_count: 0, start_trial_count: 0, membership_grant_count: 0 },
+          { date: '2026-07-08', contact_count: 1, lead_count: 1, complete_registration_count: 1, start_trial_count: 0, membership_grant_count: 0 },
+          { date: '2026-07-09', contact_count: 2, lead_count: 1, complete_registration_count: 1, start_trial_count: 0, membership_grant_count: 1 },
+        ],
+        meta: {
+          sent_count: 6,
+          failed_count: 0,
+          skipped_count: 1,
+          duplicate_suppressed_count: 1,
+          last_sent_at: '2026-07-09T09:30:00.000Z',
+        },
+        metaTrend: [
+          { date: '2026-07-07', sent_count: 2, failed_count: 0, skipped_count: 0, duplicate_suppressed_count: 0 },
+          { date: '2026-07-08', sent_count: 2, failed_count: 0, skipped_count: 1, duplicate_suppressed_count: 0 },
+          { date: '2026-07-09', sent_count: 2, failed_count: 0, skipped_count: 0, duplicate_suppressed_count: 1 },
+        ],
+        duplicates: {
+          duplicate_suppressed_count: 1,
+          duplicate_action_count: 1,
+          duplicate_rate: 0.125,
+        },
+        risks: [{ key: 'meta_skipped', level: 'info', message: '部分 Meta 投递被跳过' }],
+      },
+    }
+  }
+
+  if (pathname.endsWith('/conversions')) {
+    return {
+      range,
+      usage,
+      data: {
+        byAction: [
+          { action_type: 'contact', action_count: 4, unique_session_count: 4 },
+          { action_type: 'lead', action_count: 3, unique_session_count: 3 },
+          { action_type: 'complete_registration', action_count: 2, unique_session_count: 2 },
+        ],
+        bySource: [
+          { source_channel: 'ad', source_name: 'meta-ad-a', utm_campaign: 'july-contact', utm_content: 'chat-a', contact_count: 4, lead_count: 3, complete_registration_count: 2, start_trial_count: 0, membership_grant_count: 1 },
+        ],
+        samples: [
+          { id: 'conv_1', action_type: 'contact', occurred_at: '2026-07-09T09:10:00.000Z', source_channel: 'ad', source_name: 'meta-ad-a', tracking_source_slug: 'meta-ad-a', utm_campaign: 'july-contact', utm_content: 'chat-a', method_type: 'telegram', action_target: 'floating_contact_panel', route_name: 'gallery-detail', path: '/gallery/summer-portrait', duplicate_of: '' },
+        ],
+      },
+    }
+  }
+
+  if (pathname.endsWith('/links')) return { range, usage, data: { links } }
+
+  if (pathname.endsWith('/meta')) {
+    return {
+      range,
+      usage,
+      data: {
+        totals: { sent_count: 6, failed_count: 0, skipped_count: 1, duplicate_suppressed_count: 1 },
+        deliveries: [
+          { channel: 'meta_pixel', event_name: 'Contact', status: 'sent', skip_reason: '', delivery_count: 4 },
+          { channel: 'meta_capi', event_name: 'Contact', status: 'skipped', skip_reason: 'queue_not_configured', delivery_count: 1 },
+          { channel: 'meta_capi', event_name: 'Lead', status: 'duplicate_suppressed', skip_reason: '', delivery_count: 1 },
+        ],
+        lastSentAt: '2026-07-09T09:30:00.000Z',
+        settings: {
+          facebook_pixel_enabled: true,
+          facebook_pixel_id: '1234567890',
+          meta_capi_enabled: false,
+          meta_capi_test_event_enabled: false,
+          meta_tracking_mode: 'pixel_only',
+        },
+      },
+    }
+  }
+
+  if (pathname.endsWith('/duplicates')) {
+    return {
+      range,
+      usage,
+      data: {
+        duplicateSuppressedCount: 1,
+        duplicateActionCount: 1,
+        duplicateRate: 0.125,
+        samples: [
+          { id: 'convdup_1', action_type: 'contact', occurred_at: '2026-07-09T09:11:00.000Z', source_channel: 'ad', source_name: 'meta-ad-a', tracking_source_slug: 'meta-ad-a', utm_campaign: 'july-contact', utm_content: 'chat-a', method_type: 'telegram', action_target: 'floating_contact_panel', duplicate_of: 'conv_1' },
+        ],
+      },
+    }
+  }
+
+  if (pathname.endsWith('/readiness')) {
+    return {
+      range,
+      usage,
+      data: {
+        ready: true,
+        checks: [
+          { key: 'analytics_enabled', label: '站内分析已开启', ok: true },
+          { key: 'conversion_ledger', label: '转化账本有近期数据', ok: true },
+          { key: 'meta_failures', label: 'Meta 投递无失败堆积', ok: true },
+          { key: 'pixel_id', label: 'Pixel ID 已配置或保持关闭态', ok: true },
+        ],
+        settings: {
+          analytics_enabled: true,
+          facebook_pixel_enabled: true,
+          facebook_pixel_id: '1234567890',
+          meta_capi_enabled: false,
+          meta_tracking_mode: 'pixel_only',
+        },
+      },
+    }
+  }
+
+  return { range, usage, data: {} }
+}
+
 function handleApi(req, res) {
   const url = new URL(req.url || '/', `http://${req.headers.host || `${host}:${port}`}`)
 
@@ -594,6 +753,38 @@ function handleApi(req, res) {
   }
   if (url.pathname.startsWith('/api/admin/analytics/')) {
     return json(res, adminAnalyticsResponse(url.pathname, url.searchParams))
+  }
+  if (url.pathname === '/api/admin/attribution/meta/test-event' && req.method === 'POST') {
+    return json(res, { data: { status: 'skipped', reason: 'queue_not_configured', channel: 'meta_capi', eventName: 'TestEvent' } }, 202)
+  }
+  if (url.pathname.startsWith('/api/admin/attribution/')) {
+    return json(res, adminAttributionResponse(url.pathname, url.searchParams))
+  }
+  if (url.pathname === '/api/admin/tracking-sources' && req.method === 'POST') {
+    readJsonBody(req)
+      .then((body) => {
+        const slug = String(body.sourceLabel || 'tracking-source').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'tracking-source'
+        json(res, {
+          data: {
+            id: `ats_${slug}`,
+            name: body.sourceLabel || '测试投放链接',
+            sourceLabel: body.sourceLabel || '测试投放链接',
+            channel: body.channel || 'ad',
+            slug,
+            sourceCode: slug,
+            targetPath: body.targetPath || '/',
+            utmSource: slug,
+            utmMedium: body.utmMedium || 'paid_social',
+            utmCampaign: body.utmCampaign || '',
+            utmContent: body.utmContent || '',
+            status: 'active',
+            note: body.note || '',
+            trackingPath: `${body.targetPath || '/'}?mg_source=${slug}&utm_source=${slug}&utm_medium=${body.utmMedium || 'paid_social'}${body.utmCampaign ? `&utm_campaign=${body.utmCampaign}` : ''}${body.utmContent ? `&utm_content=${body.utmContent}` : ''}`,
+          },
+        }, 201)
+      })
+      .catch(() => json(res, { statusCode: 400, message: '追踪来源请求无效' }, 400))
+    return
   }
   if (url.pathname === '/api/admin/invite-codes') {
     return json(res, {

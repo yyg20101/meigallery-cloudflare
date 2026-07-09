@@ -244,6 +244,25 @@ test.describe('核心页面 smoke', () => {
     expect(hasHorizontalOverflow).toBe(false)
   })
 
+  test('后台归因中心可查看单日归因和投放链接', async ({ page }) => {
+    await page.goto('/admin/attribution')
+    await expect(page.locator('main h1', { hasText: '归因中心' })).toBeVisible()
+
+    await page.getByRole('button', { name: '单日' }).click()
+    await page.getByLabel('选择归因日期').fill('2026-07-09')
+    await page.getByRole('link', { name: '投放链接' }).click()
+
+    await expect(page).toHaveURL(/\/admin\/attribution\/links\?range=day&date=2026-07-09/)
+    await expect(page.getByText('投放追踪链接')).toBeVisible()
+    await expect(page.getByText('不是 Pixel 地址')).toBeVisible()
+
+    const hasHorizontalOverflow = await page.evaluate(() => {
+      const doc = document.documentElement
+      return doc.scrollWidth > doc.clientWidth + 1
+    })
+    expect(hasHorizontalOverflow).toBe(false)
+  })
+
   test('一方数据分析事件覆盖搜索、详情、联系和邀请注册链路', async ({ request, page }) => {
     await page.goto('/')
     await expect(page.getByRole('heading', { name: /精选写真/ }).first()).toBeVisible()
