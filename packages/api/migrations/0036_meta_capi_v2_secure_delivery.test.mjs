@@ -111,11 +111,49 @@ describe('0036 Meta CAPI v2 secure delivery migration', () => {
     assert.match(summary.new_external_id, /^[0-9a-f]{32}$/)
   })
 
+  it('唯一索引拒绝将两个用户更新为相同的 external ID', () => {
+    assert.throws(() => executeSql(`
+      UPDATE users
+      SET meta_external_id = '00000000000000000000000000000000'
+      WHERE password_hash IN ('hash_legacy_1', 'hash_legacy_2');
+    `))
+  })
+
   it('约束连接验证环境、commit、Dataset Quality 状态，并且不保存 access token 字段', () => {
     assert.equal(summary.connection_count, 1)
     assert.equal(summary.verified_commit_length, 40)
     assert.equal(summary.dataset_quality_status, 'permission_denied')
     assert.equal(summary.access_token_column_count, 0)
+  })
+
+  it('连接验证 CHECK 拒绝错误长度、非十六进制 commit 和非法 Dataset Quality 状态', () => {
+    assert.throws(() => executeSql(`
+      INSERT INTO meta_connection_verifications (
+        environment, pixel_id, token_fingerprint, graph_api_version,
+        verified_event_name, verified_commit, dataset_quality_status, verified_at
+      ) VALUES (
+        'production', 'pixel_invalid_length', lower(hex(randomblob(32))), 'v25.0',
+        'Contact', lower(hex(randomblob(19))), 'available', '2026-07-11 00:00:00'
+      );
+    `))
+    assert.throws(() => executeSql(`
+      INSERT INTO meta_connection_verifications (
+        environment, pixel_id, token_fingerprint, graph_api_version,
+        verified_event_name, verified_commit, dataset_quality_status, verified_at
+      ) VALUES (
+        'production', 'pixel_invalid_hex', lower(hex(randomblob(32))), 'v25.0',
+        'Contact', 'g' || lower(hex(randomblob(19))), 'available', '2026-07-11 00:00:00'
+      );
+    `))
+    assert.throws(() => executeSql(`
+      INSERT INTO meta_connection_verifications (
+        environment, pixel_id, token_fingerprint, graph_api_version,
+        verified_event_name, verified_commit, dataset_quality_status, verified_at
+      ) VALUES (
+        'production', 'pixel_invalid_status', lower(hex(randomblob(32))), 'v25.0',
+        'Contact', lower(hex(randomblob(20))), 'unexpected_status', '2026-07-11 00:00:00'
+      );
+    `))
   })
 
   it('仅接受 V2 的真实 AES-GCM envelope，并会随 delivery 级联删除', () => {

@@ -1,3 +1,4 @@
+import { createCipheriv, randomBytes } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ConversionDeliveryStatus, MetaCapiQueueMessage } from '@meigallery/shared'
 import type { Bindings } from '../index'
@@ -217,6 +218,33 @@ function message(attempts = 1) {
   return { body, attempts, ack: vi.fn(), retry: vi.fn() }
 }
 
+function v2Message(attempts = 1) {
+  const body: MetaCapiQueueMessage = {
+    schemaVersion: 2,
+    deliveryId: 'cdlv_v2',
+    envelope: new Proxy(createEnvelope(), {
+      get() {
+        throw new Error('V2 envelope 不应在过渡 consumer 中读取')
+      },
+    }),
+  }
+  return { body, attempts, ack: vi.fn(), retry: vi.fn() }
+}
+
+function createEnvelope() {
+  const key = randomBytes(32)
+  const iv = randomBytes(12)
+  const cipher = createCipheriv('aes-256-gcm', key, iv)
+  const ciphertext = Buffer.concat([cipher.update('queue-v2-test', 'utf8'), cipher.final()])
+  return {
+    keyId: 'test-key-v2',
+    iv: iv.toString('base64url'),
+    ciphertext: ciphertext.toString('base64url'),
+    tag: cipher.getAuthTag().toString('base64url'),
+    expiresAt: '2026-07-12T00:00:00.000Z',
+  }
+}
+
 function batch(queue: string, queueMessage: ReturnType<typeof message>) {
   return { queue, messages: [queueMessage] } as unknown as MessageBatch<MetaCapiQueueMessage>
 }
@@ -235,6 +263,24 @@ afterEach(() => {
 })
 
 describe('Meta CAPI Queue', () => {
+  it('V2 Queue message 在过渡 consumer 中不读取 envelope、不调用 Meta 且直接 ack', async () => {
+    const db = createQueueDb()
+    const queueMessage = v2Message()
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    await handleMetaCapiBatch(batch('meigallery-meta-capi', queueMessage), env(db))
+
+    expect(queueMessage.ack).toHaveBeenCalledOnce()
+    expect(queueMessage.retry).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(db.calls).toEqual([])
+    expect(consoleError).toHaveBeenCalledWith('[meta-capi] Queue schema 版本暂不支持', {
+      deliveryId: 'cdlv_v2',
+      schemaVersion: 2,
+    })
+  })
+
   it.each(['Lead', 'StartTrial'])('直接历史 %s Queue message 被安全终止且不请求 Meta', async eventName => {
     const db = createQueueDb('pending', { eventName })
     const queueMessage = message()
