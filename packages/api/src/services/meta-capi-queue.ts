@@ -1,4 +1,4 @@
-import type { MetaCapiQueueMessage } from '@meigallery/shared'
+import type { MetaCapiQueueMessage, MetaCapiQueueMessageV1 } from '@meigallery/shared'
 import type { Bindings } from '../index'
 import {
   MetaCapiDeliveryError,
@@ -57,7 +57,7 @@ export async function recoverPendingMetaCapiDeliveries(
 export async function enqueueMetaCapiDelivery(
   env: MetaCapiQueueEnv,
   deliveryId: string,
-  userData: MetaCapiQueueMessage['userData'],
+  userData: MetaCapiQueueMessageV1['userData'],
   options: { requireStale?: boolean } = {},
 ): Promise<'enqueued' | 'failed' | 'not_pending'> {
   if (!env.META_CAPI_QUEUE) {
@@ -123,6 +123,15 @@ export async function handleMetaCapiBatch(
         console.error('[meta-capi] DLQ 回写失败', { deliveryId: message.body.deliveryId })
         message.retry({ delaySeconds: computeMetaRetryDelay(message.attempts) })
       }
+      continue
+    }
+
+    if (message.body.schemaVersion !== 1) {
+      console.error('[meta-capi] Queue schema 版本暂不支持', {
+        deliveryId: message.body.deliveryId,
+        schemaVersion: message.body.schemaVersion,
+      })
+      message.ack()
       continue
     }
 

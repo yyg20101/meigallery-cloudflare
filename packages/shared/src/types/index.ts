@@ -107,18 +107,39 @@ export interface MetaPixelInstruction {
   receiptToken: string
 }
 
-export interface MetaCapiUserData {
+/** 仅允许在内存中短暂持有的 CAPI 用户匹配上下文。 */
+export interface MetaCapiSensitiveContext {
   fbp?: string
   fbc?: string
   clientIpAddress?: string
   clientUserAgent?: string
 }
 
-export interface MetaCapiQueueMessage {
+/** @deprecated Secure Task 3 完成前保留 V1 Queue 消息兼容。 */
+export interface MetaCapiUserData extends MetaCapiSensitiveContext {}
+
+/** @deprecated Secure Task 3 完成前保留 V1 Queue 消息兼容。 */
+export interface MetaCapiQueueMessageV1 {
   schemaVersion: 1
   deliveryId: string
   userData: MetaCapiUserData
 }
+
+export interface MetaCapiEncryptedEnvelope {
+  keyId: string
+  iv: string
+  ciphertext: string
+  tag: string
+  expiresAt: string
+}
+
+export interface MetaCapiQueueMessageV2 {
+  schemaVersion: 2
+  deliveryId: string
+  envelope: MetaCapiEncryptedEnvelope
+}
+
+export type MetaCapiQueueMessage = MetaCapiQueueMessageV1 | MetaCapiQueueMessageV2
 
 export type ConversionSkipReason =
   | 'disabled'

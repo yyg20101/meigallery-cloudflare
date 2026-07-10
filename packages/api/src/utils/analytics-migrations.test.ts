@@ -129,4 +129,16 @@ describe('analytics migrations', () => {
     expect(sql).toContain('idx_analytics_conversion_deliveries_status')
     expect(sql).not.toMatch(/DROP TABLE\s+analytics_conversion_actions/i)
   })
+
+  it('0036 建立安全投递与用户匹配结构，不在迁移中加入明文敏感字段', async () => {
+    const sql = await readMigration('0036_meta_capi_v2_secure_delivery.sql')
+    expect(sql).toContain('ALTER TABLE users ADD COLUMN meta_external_id TEXT')
+    expect(sql).toContain('CREATE TABLE meta_connection_verifications')
+    expect(sql).toContain('CREATE TABLE meta_capi_secure_outbox')
+    expect(sql).toContain('schema_version = 2')
+    expect(sql).toContain('has_email INTEGER NOT NULL DEFAULT 0')
+    expect(sql).toContain('has_external_id INTEGER NOT NULL DEFAULT 0')
+    expect(sql).toContain('encryption_key_id TEXT NOT NULL DEFAULT')
+    expect(sql).not.toMatch(/access_token|client_ip|user_agent|\bemail\b|\bfbp\b|\bfbc\b/i)
+  })
 })
