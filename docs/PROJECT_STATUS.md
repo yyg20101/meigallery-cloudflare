@@ -31,12 +31,12 @@
 - 视频：Cloudflare Stream 仍未接入生产链路；相关字段和密钥按规划保留。
 - 生产部署：通过 PR 合入 `main` 后，先在最新 `main` 待发 commit 上重新确认同一 commit 的 `verify:release` 报告，再手动执行 `./scripts/deploy.sh production` 或等价 wrangler 命令。
 - CI：`.github/workflows/ci.yml` 只做 PR 和 dev 推送验证，不自动部署生产。
-- 发布快速校验：`corepack pnpm verify:quick` 当前首步会执行 `dev-resource-isolation`，阻断 dev 误用生产 D1/R2。
+- 发布快速校验：`corepack pnpm verify:quick` 先执行 `dev-resource-isolation` 与 `meta-secret-leaks`，阻断 dev 误用生产资源及 tracked/release evidence 静态泄漏。
 
 ## 发布验证体系状态
 
 - 已提供四层命令：`verify:quick`、`verify:local-runtime`、`verify:dev-rehearsal`、`verify:release`。
-- `verify:quick` 适合日常提交前自检，首步检查 dev/production 资源隔离。
+- `verify:quick` 适合日常提交前自检，先检查 dev/production 资源隔离与 Meta secret 泄漏。
 - `verify:local-runtime` 用于本地 Cloudflare 运行时验证 D1、Queue、归因和降级链路。
 - `verify:dev-rehearsal` 依赖独立 dev 资源和当前 dev Workers URL，作为上线前远端演练；Meta 链路只接受 Owner 生成 `Contact`、`CompleteRegistration` 的同 commit live evidence，出现历史 `Lead` 或 `StartTrial` 证据必须阻断。
 - `verify:release` 是生产放行前最终校验，但当前仓库尚未真实跑完整 release 报告；生产前必须在干净工作区、带 `VERIFY_DEV_API_URL` / `VERIFY_DEV_WEB_URL` 运行并生成同一 commit 的通过报告。最终 `main` HEAD 必须重新部署 dev、重做 evidence，不能复用其他 commit 的结果。
@@ -50,7 +50,7 @@
 - Telegram 外部导入 API：项目只提供对外 API 接收能力，不内置 Telegram Bot 本体；对接契约见 `docs/TELEGRAM_IMPORT_API.md`。
 - 数据分析：已实现一方数据采集、来源归因、邀请码、联系点击、趋势和后台 `/admin/analytics` 系列看板；后台 UI 口径见 `docs/UI_DATA_ANALYTICS_DASHBOARD.md`。
 - 归因中心：已实现站内转化账本、投放追踪链接、有效联系 / 完成注册活动趋势、历史 Lead 只读对照、Meta Pixel / CAPI 同步健康、重复诊断和分级发布检查；历史 Lead 与会员发放辅助指标均不参与活动漏斗、比率或链接排序，会员发放仅保留在 `operations` 辅助结构。后台分别展示 blocker 与 warning，warning 不改变生产阻断状态；入口为 `/admin/attribution`。
-- Meta CAPI v2：**阶段 1 完成，尚不可生产放量**。业务事实已收口为 `Contact`、`CompleteRegistration`，`Lead` / `StartTrial` 只保留历史读取和发送前安全阻断；统一 Tracking Facade、营销授权门禁、同一 `eventID` 去重、Queue/DLQ 与分级发布检查已实现。后续必须依次完成[业务事实收口计划](superpowers/plans/2026-07-10-meta-capi-v2-domain-consolidation.md)的本门禁、[安全交付计划](superpowers/plans/2026-07-10-meta-capi-v2-secure-delivery.md)和[质量运营计划](superpowers/plans/2026-07-10-meta-capi-v2-quality-operations.md)，再执行真实 dev evidence、同 commit release 与用户授权的生产操作。后台 Pixel `attempted` 仅代表浏览器尝试；CAPI 仅在 Graph API `events_received=1` 时以 `sent` 表示接收成功。数据分析中的 `fb` / `facebook` / `meta` 只表示站内 UTM、推广链接或 referrer 归因。
+- Meta CAPI v2：**安全交付阶段已实现，尚不可生产放量**。业务事实严格限定为 `Contact`、`CompleteRegistration`；AES-256-GCM 安全 outbox、MetaConnection、Queue/DLQ、current/previous 密钥轮换状态、资源检查和静态泄漏扫描已接入。production bootstrap、rollout 与最终 evidence 门禁仍未开放，必须继续完成[质量运营计划](superpowers/plans/2026-07-10-meta-capi-v2-quality-operations.md)并获得用户授权。后台 Pixel `attempted` 仅代表浏览器尝试；CAPI 仅在 Graph API `events_received=1` 时以 `sent` 表示接收成功。
 - SEO：已实现基础 SEO 设置、关键词池、sitemap、robots、结构化数据和生产校验脚本；运营配置见 `docs/SEO_CONFIGURATION.md`。
 
 ## 规划和未接入

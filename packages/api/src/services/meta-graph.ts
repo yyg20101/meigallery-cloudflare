@@ -1,9 +1,14 @@
 export const META_GRAPH_API_VERSION = 'v25.0' as const
 
-export function metaEventsEndpoint(pixelId: string, accessToken: string) {
+export function metaEventsEndpoint(pixelId: string) {
   const url = new URL(`https://graph.facebook.com/${META_GRAPH_API_VERSION}/${encodeURIComponent(pixelId)}/events`)
-  url.searchParams.set('access_token', accessToken)
   return url.toString()
+}
+
+export function metaGraphRequestInit(accessToken: string, init: RequestInit = {}): RequestInit {
+  const headers = new Headers(init.headers)
+  headers.set('authorization', `Bearer ${accessToken}`)
+  return { ...init, headers }
 }
 
 const TRACE_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/

@@ -5,6 +5,7 @@ const { siteName } = useSiteSettings()
 const config = useRuntimeConfig()
 
 const sidebarCollapsed = ref(false)
+const sidebarReady = ref(false)
 const showDevDataWarning = computed(() =>
   config.public.appEnv === 'dev' || String(config.public.devAdminDataWarning) === 'true',
 )
@@ -15,8 +16,10 @@ function checkWidth() {
     sidebarCollapsed.value = window.innerWidth < 1024
   }
 }
-onMounted(() => {
+onMounted(async () => {
   checkWidth()
+  await nextTick()
+  sidebarReady.value = true
   window.addEventListener('resize', checkWidth)
 })
 onUnmounted(() => {
@@ -63,7 +66,8 @@ async function handleLogout() {
   <div data-admin-layout class="flex min-h-screen min-w-0">
     <aside
       :class="[
-        'bg-[#111] text-gray-300 flex flex-col shrink-0 transition-all duration-200',
+        'bg-[#111] text-gray-300 flex flex-col shrink-0',
+        sidebarReady ? 'transition-all duration-200' : '',
         sidebarCollapsed ? 'w-14' : 'w-48',
       ]"
     >

@@ -2,16 +2,23 @@ import { describe, expect, it } from 'vitest'
 import {
   META_GRAPH_API_VERSION,
   metaEventsEndpoint,
+  metaGraphRequestInit,
   readMetaEventsResponse,
 } from './meta-graph'
 
 describe('Meta Graph contract', () => {
   it('统一锁定 v25.0 events endpoint', () => {
-    const endpoint = new URL(metaEventsEndpoint('1234567890', 'token-sensitive'))
+    const endpoint = new URL(metaEventsEndpoint('1234567890'))
+    const init = metaGraphRequestInit('token-sensitive', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+    })
 
     expect(META_GRAPH_API_VERSION).toBe('v25.0')
     expect(endpoint.pathname).toBe('/v25.0/1234567890/events')
-    expect(endpoint.searchParams.get('access_token')).toBe('token-sensitive')
+    expect(endpoint.search).toBe('')
+    expect(new Headers(init.headers).get('authorization')).toBe('Bearer token-sensitive')
+    expect(new Headers(init.headers).get('content-type')).toBe('application/json')
   })
 
   it.each([

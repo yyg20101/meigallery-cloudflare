@@ -26,14 +26,26 @@ describe('Meta Cloudflare 资源检查', () => {
     assert.equal(report.commit, COMMIT)
     assert.equal(report.database, 'meigallery-db')
     assert.deepEqual(report.queues, ['meigallery-meta-capi', 'meigallery-meta-capi-dlq'])
+    assert.equal(calls.filter(call => call.args.includes('queues') && call.args.includes('info'))
+      .every(call => !call.args.includes('--json')), true)
     assert.equal(report.capiEnabled, false)
     assert.equal(report.secretsPresent, true)
+    assert.equal(report.requiredSecretsPresent, true)
+    assert.equal(report.migrationsApplied, true)
+    assert.equal(report.connectionVerified, true)
+    assert.equal(report.trackingMode, 'production')
     assert.deepEqual(findCall(calls, 'secret', 'list').args.slice(-4), ['--env', '', '--format', 'json'])
     const d1Calls = calls.filter(call => call.args.includes('d1'))
     assert.equal(d1Calls.every(call => call.args.includes('meigallery-db')), true)
     assert.equal(d1Calls.every(call => hasAdjacent(call.args, '--env', '')), true)
     const settingCall = findCall(calls, 'd1', 'execute')
     assert.equal(settingCall.args.includes('--json'), true)
+    const migrationCall = calls.find(call => call.options.name.endsWith('migration-names'))
+    const connectionCall = calls.find(call => call.options.name.endsWith('meta-connection'))
+    assert.ok(migrationCall)
+    assert.ok(connectionCall)
+    assert.match(migrationCall.args.join(' '), /SELECT name FROM d1_migrations/)
+    assert.doesNotMatch(connectionCall.args.join(' '), /token_fingerprint/)
     assert.equal(stored.environment, 'production')
     assert.equal(stored.verificationType, 'meta_resources')
     const serialized = JSON.stringify({ report, stored })
@@ -171,17 +183,17 @@ describe('Meta Cloudflare 资源检查', () => {
     assert.equal(report.initialMetaRollout, false)
   })
 
-  it('缺 token 或 Test Code 时 release 资源检查失败且不记录摘要', async () => {
+  it('test mode 要求 Test Event Code，production mode 不要求', async () => {
     for (const secretNames of [
-      ['META_CAPI_ACCESS_TOKEN'],
-      ['META_CAPI_TEST_EVENT_CODE'],
+      ['META_CAPI_ACCESS_TOKEN', 'META_CAPI_DATA_KEY_CURRENT'],
+      ['META_CAPI_TEST_EVENT_CODE', 'META_CAPI_DATA_KEY_CURRENT'],
       [],
     ]) {
       let stored = false
       const report = await runMetaResourceVerification({
         environment: 'production',
         commit: COMMIT,
-        runCommand: createPassingRunner([], { capiEnabled: false, secretNames }),
+        runCommand: createPassingRunner([], { capiEnabled: false, trackingMode: 'test', secretNames }),
         recordSummary: async () => {
           stored = true
         },
@@ -189,11 +201,41 @@ describe('Meta Cloudflare 资源检查', () => {
       assert.equal(report.status, 'failed')
       assert.equal(stored, false)
     }
+
+    const production = await runMetaResourceVerification({
+      environment: 'production',
+      commit: COMMIT,
+      reportOnly: true,
+      runCommand: createPassingRunner([], {
+        capiEnabled: false,
+        trackingMode: 'production',
+        secretNames: ['META_CAPI_ACCESS_TOKEN', 'META_CAPI_DATA_KEY_CURRENT'],
+      }),
+    })
+    assert.equal(production.status, 'passed')
+  })
+
+  it('current data key 在所有 mode 都必需', async () => {
+    for (const trackingMode of ['disabled', 'test', 'production']) {
+      const secretNames = trackingMode === 'test'
+        ? ['META_CAPI_ACCESS_TOKEN', 'META_CAPI_TEST_EVENT_CODE']
+        : ['META_CAPI_ACCESS_TOKEN']
+      const report = await runMetaResourceVerification({
+        environment: 'dev',
+        commit: COMMIT,
+        reportOnly: true,
+        runCommand: createPassingRunner([], { capiEnabled: false, trackingMode, secretNames }),
+      })
+      assert.equal(report.status, 'failed', `${trackingMode} 缺 current data key 必须失败`)
+    }
   })
 
   it('待应用 migration、consumer 缺失或命令失败时保守失败', async () => {
     for (const overrides of [
       { migrationPending: true },
+      { missingAppliedMigration: '0037_meta_connection_revision.sql' },
+      { connectionInvalidated: true },
+      { connectionPixelDrift: true },
       { missingConsumer: true },
       { failQueueInfo: true },
     ]) {
@@ -204,6 +246,22 @@ describe('Meta Cloudflare 资源检查', () => {
         runCommand: createPassingRunner([], { capiEnabled: false, ...overrides }),
       })
       assert.equal(report.status, 'failed')
+    }
+  })
+
+  it('secret、D1 JSON envelope 或 DLQ consumer 字段漂移时 fail closed', async () => {
+    for (const overrides of [
+      { unknownSecretEnvelope: true },
+      { unknownD1Envelope: true },
+      { dlqHasDeadLetter: true },
+    ]) {
+      const report = await runMetaResourceVerification({
+        environment: 'production',
+        commit: COMMIT,
+        reportOnly: true,
+        runCommand: createPassingRunner([], { capiEnabled: false, ...overrides }),
+      })
+      assert.equal(report.status, 'failed', JSON.stringify(overrides))
     }
   })
 })
@@ -236,7 +294,7 @@ function createPassingRunner(calls, options = {}) {
             ...(options.deadLetterInSettings ? {
               dead_letter_queue: options.consumerDrift === 'dead_letter_queue' ? 'wrong-dlq' : `${queue}-dlq`,
             } : {}),
-          } : {}),
+          } : options.dlqHasDeadLetter ? { dead_letter_queue: `${queue}-again` } : {}),
         }
         const identity = options.unknownConsumerEnvelope
           ? { consumer: { name: worker } }
@@ -254,14 +312,42 @@ function createPassingRunner(calls, options = {}) {
         stdout = `${options.leadingLog ? 'wrangler warning\n' : ''}${JSON.stringify(payload)}`
       }
     } else if (text.includes('secret list')) {
-      const secretNames = options.secretNames ?? ['META_CAPI_ACCESS_TOKEN', 'META_CAPI_TEST_EVENT_CODE']
-      stdout = JSON.stringify(secretNames.map(name => ({ name, value: name === 'META_CAPI_ACCESS_TOKEN' ? TOKEN : TEST_CODE })))
+      const secretNames = options.secretNames ?? ['META_CAPI_ACCESS_TOKEN', 'META_CAPI_TEST_EVENT_CODE', 'META_CAPI_DATA_KEY_CURRENT']
+      const rows = secretNames.map(name => ({ name, value: name === 'META_CAPI_ACCESS_TOKEN' ? TOKEN : TEST_CODE }))
+      stdout = JSON.stringify(options.unknownSecretEnvelope ? { items: rows } : rows)
     } else if (text.includes('migrations list')) {
       stdout = options.migrationPending ? 'Migrations to be applied:\n0034.sql' : 'No migrations to apply!'
     } else if (text.includes('d1 execute')) {
+      let results
+      if (runOptions.name.endsWith('migration-names')) {
+        const names = [
+          '0036_meta_capi_v2_secure_delivery.sql',
+          '0037_meta_connection_revision.sql',
+          '0038_conversion_dedupe_claims.sql',
+        ].filter(name => name !== options.missingAppliedMigration)
+        results = names.map(name => ({ name }))
+      } else if (runOptions.name.endsWith('meta-connection')) {
+        results = [{
+          environment: text.includes('--env dev') ? 'dev' : 'production',
+          pixel_id: options.connectionPixelDrift ? '9999999999' : '1234567890',
+          graph_api_version: 'v25.0',
+          verified_commit: COMMIT,
+          verified_at: '2026-07-11T00:00:00.000Z',
+          invalidated_at: options.connectionInvalidated ? '2026-07-11T00:01:00.000Z' : null,
+          invalidation_reason: options.connectionInvalidated ? 'verification_invalidated' : '',
+          revision: 'a'.repeat(32),
+        }]
+      } else {
+        results = [
+          { key: 'meta_capi_enabled', value: options.capiEnabled ? 'true' : 'false' },
+          { key: 'meta_tracking_mode', value: options.trackingMode ?? (options.capiEnabled ? 'test' : 'production') },
+          { key: 'facebook_pixel_id', value: '1234567890' },
+        ]
+      }
+      const payload = options.unknownD1Envelope ? { data: results } : [{ results }]
       stdout = options.invalidSettingJson
         ? 'wrangler warning\nnot-json'
-        : `${options.leadingLog ? 'wrangler warning\n' : ''}${JSON.stringify([{ results: [{ value: options.capiEnabled ? 'true' : 'false', raw: `${TOKEN}-${TEST_CODE}-${RESOURCE_ID}` }] }])}`
+        : `${options.leadingLog ? 'wrangler warning\n' : ''}${JSON.stringify(payload)}`
     }
     return {
       name: runOptions.name,

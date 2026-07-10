@@ -3,7 +3,7 @@ import { normalizeMetaTrackingMode } from '@meigallery/shared/utils'
 import type { Bindings } from '../index'
 import { loadMetaCapiCryptoKeys, metaConnectionFingerprint } from '../utils/meta-capi-crypto'
 import { parseStoredSettingValue } from '../utils/stored-setting-value'
-import { META_GRAPH_API_VERSION, metaEventsEndpoint, readMetaEventsResponse } from './meta-graph'
+import { META_GRAPH_API_VERSION, metaEventsEndpoint, metaGraphRequestInit, readMetaEventsResponse } from './meta-graph'
 
 const PIXEL_ID_PATTERN = /^\d{5,30}$/
 const RELEASE_COMMIT_PATTERN = /^[0-9a-f]{40}$/i
@@ -546,12 +546,12 @@ async function fetchBootstrapEvent(
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), META_BOOTSTRAP_TIMEOUT_MS)
   try {
-    const response = await fetch(metaEventsEndpoint(pixelId, accessToken), {
+    const response = await fetch(metaEventsEndpoint(pixelId), metaGraphRequestInit(accessToken, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(payload),
       signal: controller.signal,
-    })
+    }))
     const { eventsReceived } = await readMetaEventsResponse(response, [
       accessToken,
       payload.test_event_code,

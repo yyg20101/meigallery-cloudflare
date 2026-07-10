@@ -24,8 +24,18 @@ const RESOURCE_CONFIG = {
     dlqConsumer: { batchSize: 5, maxWaitTimeMs: 5_000 },
   },
 }
-const REQUIRED_SECRETS = ['META_CAPI_ACCESS_TOKEN', 'META_CAPI_TEST_EVENT_CODE']
-const SETTING_SQL = "SELECT value FROM site_settings WHERE key = 'meta_capi_enabled'"
+const ALWAYS_REQUIRED_SECRETS = ['META_CAPI_ACCESS_TOKEN', 'META_CAPI_DATA_KEY_CURRENT']
+const REQUIRED_MIGRATIONS = [
+  '0036_meta_capi_v2_secure_delivery.sql',
+  '0037_meta_connection_revision.sql',
+  '0038_conversion_dedupe_claims.sql',
+]
+const SETTINGS_SQL = "SELECT key, value FROM site_settings WHERE key IN ('meta_capi_enabled', 'meta_tracking_mode', 'facebook_pixel_id') ORDER BY key"
+const MIGRATION_NAMES_SQL = "SELECT name FROM d1_migrations WHERE name IN ('0036_meta_capi_v2_secure_delivery.sql', '0037_meta_connection_revision.sql', '0038_conversion_dedupe_claims.sql') ORDER BY name"
+
+function metaConnectionSql(environment) {
+  return `SELECT environment, pixel_id, graph_api_version, verified_commit, verified_at, invalidated_at, invalidation_reason, revision FROM meta_connection_verifications WHERE environment = '${environment}' LIMIT 2`
+}
 
 export async function runMetaResourceVerification(options = {}) {
   const environment = String(options.environment || '')
@@ -41,7 +51,9 @@ export async function runMetaResourceVerification(options = {}) {
     command('consumer-dlq', ['queues', 'consumer', 'worker', 'list', config.dlq, '--json']),
     command('secrets', ['secret', 'list', ...config.envArgs, '--format', 'json']),
     command('migrations', ['d1', 'migrations', 'list', config.database, ...config.envArgs, '--remote']),
-    command('capi-setting', ['d1', 'execute', config.database, ...config.envArgs, '--remote', '--command', SETTING_SQL, '--json']),
+    command('meta-settings', ['d1', 'execute', config.database, ...config.envArgs, '--remote', '--command', SETTINGS_SQL, '--json']),
+    command('migration-names', ['d1', 'execute', config.database, ...config.envArgs, '--remote', '--command', MIGRATION_NAMES_SQL, '--json']),
+    command('meta-connection', ['d1', 'execute', config.database, ...config.envArgs, '--remote', '--command', metaConnectionSql(environment), '--json']),
   ]
   const results = []
   for (const definition of calls) {
@@ -56,17 +68,37 @@ export async function runMetaResourceVerification(options = {}) {
 
   const byName = new Map(calls.map((definition, index) => [definition.name, results[index]]))
   const commandsPassed = results.every(result => result.status === 'passed')
+  const queuesPresent = byName.get('queue-main')?.status === 'passed'
+    && byName.get('queue-dlq')?.status === 'passed'
   const mainConsumerPresent = hasExpectedConsumer(byName.get('consumer-main')?.stdout, config.worker, {
     ...config.mainConsumer,
     deadLetterQueue: config.dlq,
   })
-  const dlqConsumerPresent = hasExpectedConsumer(byName.get('consumer-dlq')?.stdout, config.worker, config.dlqConsumer)
-  const secretsPresent = hasRequiredSecrets(byName.get('secrets')?.stdout)
-  const migrationsCurrent = !/Migrations to be applied/i.test(String(byName.get('migrations')?.stdout || ''))
-  const capiEnabled = parseCapiEnabled(byName.get('capi-setting')?.stdout)
+  const dlqConsumerPresent = hasExpectedConsumer(byName.get('consumer-dlq')?.stdout, config.worker, {
+    ...config.dlqConsumer,
+    deadLetterQueue: null,
+  })
+  const settings = parseMetaSettings(byName.get('meta-settings')?.stdout)
+  const requiredSecretNames = settings
+    ? [...ALWAYS_REQUIRED_SECRETS, ...(settings.trackingMode === 'test' ? ['META_CAPI_TEST_EVENT_CODE'] : [])]
+    : []
+  const requiredSecretsPresent = settings !== null
+    && hasRequiredSecrets(byName.get('secrets')?.stdout, requiredSecretNames)
+  const migrationsCurrent = /^No migrations to apply!?$/im.test(String(byName.get('migrations')?.stdout || '').trim())
+  const migrationsApplied = hasRequiredMigrations(byName.get('migration-names')?.stdout)
+  const connectionVerified = settings !== null && hasVerifiedMetaConnection(
+    byName.get('meta-connection')?.stdout,
+    environment,
+    settings.pixelId,
+    options.commit,
+  )
+  const capiEnabled = settings?.capiEnabled ?? null
+  const trackingMode = settings?.trackingMode ?? null
   const initialMetaRollout = options.initialMetaRollout === true && environment === 'production'
   const initialStateReady = !initialMetaRollout || capiEnabled === false
-  let status = commandsPassed && mainConsumerPresent && dlqConsumerPresent && secretsPresent && migrationsCurrent && capiEnabled !== null && initialStateReady
+  let status = commandsPassed && queuesPresent && mainConsumerPresent && dlqConsumerPresent
+    && requiredSecretsPresent && migrationsCurrent && migrationsApplied && connectionVerified
+    && capiEnabled !== null && trackingMode !== null && initialStateReady
     ? 'passed'
     : 'failed'
   let summaryRecorded = false
@@ -81,10 +113,13 @@ export async function runMetaResourceVerification(options = {}) {
         commit: options.commit,
         verifiedAt: options.now,
         summary: {
-          queuesReady: mainConsumerPresent && dlqConsumerPresent,
-          secretsReady: secretsPresent,
+          queuesReady: queuesPresent && mainConsumerPresent && dlqConsumerPresent,
+          secretsReady: requiredSecretsPresent,
           migrationsCurrent,
+          migrationsApplied,
+          connectionVerified,
           capiEnabled,
+          trackingMode,
           initialMetaRollout,
         },
         cwd: options.cwd,
@@ -102,10 +137,14 @@ export async function runMetaResourceVerification(options = {}) {
     commit: /^[0-9a-f]{40}$/i.test(String(options.commit || '')) ? String(options.commit) : '',
     database: config.database,
     queues: [config.mainQueue, config.dlq],
-    consumersPresent: mainConsumerPresent && dlqConsumerPresent,
-    secretsPresent,
+    consumersPresent: queuesPresent && mainConsumerPresent && dlqConsumerPresent,
+    secretsPresent: requiredSecretsPresent,
+    requiredSecretsPresent,
     migrationsCurrent,
+    migrationsApplied,
+    connectionVerified,
     capiEnabled,
+    trackingMode,
     initialMetaRollout,
     reportOnly: options.reportOnly === true,
     summaryRecorded,
@@ -122,7 +161,7 @@ function command(name, args) {
 
 function hasExpectedConsumer(stdout, worker, expected) {
   try {
-    const consumers = unwrapWranglerRows(parseWranglerJson(stdout), ['consumers', 'result', 'data'])
+    const consumers = parseConsumerRows(parseWranglerJson(stdout))
     return consumers.some(consumer => (
       consumerNames(consumer).includes(worker)
       && hasExpectedConsumerSettings(consumer, expected)
@@ -141,6 +180,7 @@ function hasExpectedConsumerSettings(consumer, expected) {
   if (expected.retryDelay !== undefined && Number(settings.retry_delay) !== expected.retryDelay) return false
   if (expected.deadLetterQueue !== undefined) {
     const deadLetterQueue = consumer.dead_letter_queue ?? settings.dead_letter_queue
+    if (expected.deadLetterQueue === null) return queueName(deadLetterQueue) === ''
     if (queueName(deadLetterQueue) !== expected.deadLetterQueue) return false
   }
   return true
@@ -155,27 +195,72 @@ function queueName(value) {
   return ''
 }
 
-function hasRequiredSecrets(stdout) {
+function hasRequiredSecrets(stdout, requiredNames) {
   try {
-    const secrets = unwrapWranglerRows(parseWranglerJson(stdout), ['secrets', 'result', 'data'])
+    const secrets = parseSecretRows(parseWranglerJson(stdout))
     const names = new Set(secrets.map(secret => secret?.name))
-    return REQUIRED_SECRETS.every(name => names.has(name))
+    return requiredNames.every(name => names.has(name))
   } catch {
     return false
   }
 }
 
-function parseCapiEnabled(stdout) {
+function parseMetaSettings(stdout) {
   try {
-    const parsed = parseWranglerJson(stdout)
-    const containers = Array.isArray(parsed) ? parsed : [parsed]
-    const value = containers.flatMap(container => Array.isArray(container?.results) ? container.results : [])
-      .find(row => Object.hasOwn(row || {}, 'value'))?.value
-    if (value === true || value === 1 || value === 'true' || value === '1' || value === '"true"') return true
-    if (value === false || value === 0 || value === 'false' || value === '0' || value === '"false"') return false
-    return null
+    const rows = parseD1Rows(parseWranglerJson(stdout))
+    const values = new Map(rows.map(row => [row?.key, storedValue(row?.value)]))
+    const capiEnabled = parseBoolean(values.get('meta_capi_enabled'))
+    const trackingMode = values.get('meta_tracking_mode')
+    const pixelId = String(values.get('facebook_pixel_id') ?? '').trim()
+    if (capiEnabled === null || !['disabled', 'test', 'production'].includes(trackingMode) || !/^\d{5,30}$/.test(pixelId)) return null
+    return { capiEnabled, trackingMode, pixelId }
   } catch {
     return null
+  }
+}
+
+function hasRequiredMigrations(stdout) {
+  try {
+    const rows = parseD1Rows(parseWranglerJson(stdout))
+    const names = new Set(rows.map(row => row?.name).filter(name => typeof name === 'string'))
+    return REQUIRED_MIGRATIONS.every(name => names.has(name))
+  } catch {
+    return false
+  }
+}
+
+function hasVerifiedMetaConnection(stdout, environment, pixelId, commit) {
+  try {
+    const rows = parseD1Rows(parseWranglerJson(stdout))
+    if (rows.length !== 1) return false
+    const row = rows[0]
+    const expectedCommit = /^[0-9a-f]{40}$/i.test(String(commit || '')) ? String(commit).toLowerCase() : ''
+    return row?.environment === environment
+      && row.pixel_id === pixelId
+      && row.graph_api_version === 'v25.0'
+      && /^[0-9a-f]{40}$/i.test(String(row.verified_commit || ''))
+      && (!expectedCommit || String(row.verified_commit).toLowerCase() === expectedCommit)
+      && typeof row.verified_at === 'string' && row.verified_at.trim() !== ''
+      && (row.invalidated_at === null || row.invalidated_at === '')
+      && row.invalidation_reason === ''
+      && /^[0-9a-f]{32}$/i.test(String(row.revision || ''))
+  } catch {
+    return false
+  }
+}
+
+function parseBoolean(value) {
+  if (value === true || value === 1 || value === 'true' || value === '1') return true
+  if (value === false || value === 0 || value === 'false' || value === '0') return false
+  return null
+}
+
+function storedValue(value) {
+  if (typeof value !== 'string') return value
+  try {
+    return JSON.parse(value)
+  } catch {
+    return value
   }
 }
 
@@ -197,15 +282,36 @@ function parseWranglerJson(stdout) {
   throw new Error('Wrangler JSON 格式非法')
 }
 
-function unwrapWranglerRows(value, envelopeKeys, depth = 0) {
+function parseConsumerRows(value) {
   if (Array.isArray(value)) return value
-  if (!value || typeof value !== 'object' || depth > 4) return []
-  for (const key of envelopeKeys) {
-    if (!Object.hasOwn(value, key)) continue
-    const rows = unwrapWranglerRows(value[key], envelopeKeys, depth + 1)
-    if (rows.length > 0 || Array.isArray(value[key])) return rows
+  if (isPlainRecord(value) && Array.isArray(value.consumers)) return value.consumers
+  if (isPlainRecord(value) && isPlainRecord(value.result) && Array.isArray(value.result.consumers)) {
+    return value.result.consumers
   }
-  return []
+  throw new Error('Wrangler consumer JSON envelope 未识别')
+}
+
+function parseSecretRows(value) {
+  if (!Array.isArray(value) || !value.every(row => isPlainRecord(row) && typeof row.name === 'string')) {
+    throw new Error('Wrangler secret JSON envelope 未识别')
+  }
+  return value
+}
+
+function parseD1Rows(value) {
+  if (!Array.isArray(value) || value.length === 0) throw new Error('Wrangler D1 JSON envelope 未识别')
+  const rows = []
+  for (const result of value) {
+    if (!isPlainRecord(result) || !Array.isArray(result.results)) {
+      throw new Error('Wrangler D1 JSON envelope 未识别')
+    }
+    rows.push(...result.results)
+  }
+  return rows
+}
+
+function isPlainRecord(value) {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
 }
 
 function consumerNames(consumer) {

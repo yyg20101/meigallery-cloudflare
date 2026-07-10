@@ -265,6 +265,8 @@ describe('MetaConnection', () => {
 
     const [url, init] = fetchMock.mock.calls[0]!
     expect(new URL(String(url)).pathname).toBe('/v25.0/1234567890/events')
+    expect(new URL(String(url)).search).toBe('')
+    expect(new Headers(init?.headers).get('authorization')).toBe(`Bearer ${TOKEN}`)
     const payload = JSON.parse(String(init?.body))
     expect(payload.test_event_code).toBe(TEST_EVENT_CODE)
     expect(payload.data[0].user_data).toEqual({

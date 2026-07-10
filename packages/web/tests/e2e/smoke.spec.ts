@@ -443,12 +443,13 @@ test.describe('核心页面 smoke', () => {
     await expect(health.getByText('8', { exact: true })).toBeVisible()
     await expect(health.getByText('CAPI 成功', { exact: true })).toBeVisible()
     await expect(health.getByText('6', { exact: true })).toBeVisible()
-    await expect(page.getByText('CAPI token', { exact: true })).toBeVisible()
+    await expect(page.getByText('CAPI token 配置', { exact: true })).toBeVisible()
     await expect(page.getByText('Test Event Code', { exact: true })).toBeVisible()
     await expect(page.getByText('Queue binding', { exact: true })).toBeVisible()
+    await expect(page.getByText('引用已清零，可移除上一把密钥', { exact: true })).toBeVisible()
 
-    await page.getByRole('button', { name: '发送 Test Event' }).click()
-    await expect(page.getByText('Meta 已接收 1 条测试事件', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '验证 MetaConnection' }).click()
+    await expect(page.getByText('MetaConnection 验证成功', { exact: true })).toBeVisible()
     await expectAdminContainersWithinViewport(page)
   })
 

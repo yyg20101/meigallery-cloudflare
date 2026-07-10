@@ -31,6 +31,24 @@ if ! "${WRANGLER[@]}" whoami &> /dev/null; then
   exit 1
 fi
 
+create_queue() {
+  local queue_name=$1
+  local output
+
+  if output=$("${WRANGLER[@]}" queues create "$queue_name" 2>&1); then
+    echo "Queue ${queue_name} 创建完成"
+    return 0
+  fi
+
+  if printf '%s' "$output" | grep -Eqi 'already exists|queue[^[:alnum:]]+exists|code[^[:digit:]]*10020'; then
+    echo "Queue ${queue_name} 已存在，继续"
+    return 0
+  fi
+
+  echo "错误: 创建 Queue ${queue_name} 失败"
+  return 1
+}
+
 print_production_resources() {
   echo ""
   echo "--- 创建生产 D1 数据库 ---"
@@ -43,7 +61,8 @@ print_production_resources() {
   echo ""
 
   echo "--- 创建生产 Meta CAPI Queue（启用 CAPI 时需要） ---"
-  echo "执行: ${WRANGLER_CMD} queues create meigallery-meta-capi"
+  create_queue "meigallery-meta-capi"
+  create_queue "meigallery-meta-capi-dlq"
   echo ""
 }
 
@@ -59,7 +78,8 @@ print_dev_resources() {
   echo ""
 
   echo "--- 创建 dev Meta CAPI Queue（启用 CAPI 或发布预演时需要） ---"
-  echo "执行: ${WRANGLER_CMD} queues create meigallery-meta-capi-dev"
+  create_queue "meigallery-meta-capi-dev"
+  create_queue "meigallery-meta-capi-dev-dlq"
   echo ""
   echo "当前 dev Worker 使用独立 D1/R2/Queue，不再复用生产资源。"
   echo ""
@@ -83,6 +103,11 @@ print_secrets() {
   echo "  ${WRANGLER_CMD} secret put TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT ${env_flag}"
   echo "  # 可选：sourceBotKey=ops_case_bot 时配置"
   echo "  ${WRANGLER_CMD} secret put TELEGRAM_BOT_TOKEN_OPS_CASE_BOT ${env_flag}"
+  echo "  ${WRANGLER_CMD} secret put META_CAPI_ACCESS_TOKEN ${env_flag}"
+  echo "  ${WRANGLER_CMD} secret put META_CAPI_TEST_EVENT_CODE ${env_flag}"
+  echo "  ${WRANGLER_CMD} secret put META_CAPI_DATA_KEY_CURRENT ${env_flag}"
+  echo "  # 仅密钥轮换窗口配置"
+  echo "  ${WRANGLER_CMD} secret put META_CAPI_DATA_KEY_PREVIOUS ${env_flag}"
   echo ""
 }
 

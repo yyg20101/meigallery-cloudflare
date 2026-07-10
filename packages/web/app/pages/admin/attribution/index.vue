@@ -21,8 +21,10 @@ interface OverviewData {
 interface MetaData {
   totals: Record<string, unknown>
   lastSentAt: string
-  secretPresent?: boolean
-  testEventCodePresent?: boolean
+  connection?: {
+    tokenConfigured: boolean
+    testEventCodeConfigured: boolean
+  }
   queueBindingPresent?: boolean
   settings: Record<string, unknown>
 }
@@ -141,8 +143,8 @@ function refreshAll() {
         :failed-count="Number(metaTotals.capi_failed_count ?? 0)"
         :skipped-count="Number(metaTotals.capi_skipped_count ?? 0)"
         :last-sent-at="metaData?.lastSentAt || ''"
-        :secret-present="metaData?.secretPresent"
-        :test-event-code-present="metaData?.testEventCodePresent"
+        :secret-present="metaData?.connection?.tokenConfigured"
+        :test-event-code-present="metaData?.connection?.testEventCodeConfigured"
         :queue-binding-present="metaData?.queueBindingPresent"
         show-presence-summary
       />

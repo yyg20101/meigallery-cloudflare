@@ -6,6 +6,7 @@ import {
   getMetaConnectionStatus,
   MetaConnectionError,
 } from '../../services/meta-connection'
+import { getMetaCapiKeyRotationStatus } from '../../services/meta-capi-key-rotation'
 import { errorJson } from '../../utils/api-error'
 import { mergeD1Usage, readD1UsageMeta, type D1Usage } from '../../utils/analytics-cost'
 import { parseAnalyticsRange, type AnalyticsDateRange } from '../../utils/analytics-time'
@@ -285,7 +286,7 @@ adminAttributionRoutes.get('/meta', async (c) => {
   const range = parseRangeOrError(c)
   if (range instanceof Response) return range
 
-  const [totals, rows, lastSentAt, settings, retryExhausted, matchQuality, connection] = await Promise.all([
+  const [totals, rows, lastSentAt, settings, retryExhausted, matchQuality, connection, keyRotation] = await Promise.all([
     queryFirst(c.env.DB, `
       SELECT
         COALESCE(SUM(CASE WHEN channel = 'meta_pixel' AND status = 'attempted' THEN delivery_count ELSE 0 END), 0) AS pixel_attempted_count,
@@ -359,6 +360,7 @@ adminAttributionRoutes.get('/meta', async (c) => {
         AND a.action_type IN ('contact', 'complete_registration')
     `, []),
     getMetaConnectionStatus(c.env),
+    getMetaCapiKeyRotationStatus(c.env),
   ])
 
   const totalRow = totals.rows[0] ?? {}
@@ -389,6 +391,7 @@ adminAttributionRoutes.get('/meta', async (c) => {
       lastSentAt: String((lastSentAt.rows[0] ?? {}).last_sent_at ?? ''),
       queueBindingPresent: Boolean(c.env.META_CAPI_QUEUE),
       connection,
+      keyRotation,
       matchQuality: {
         fbpCoverage: coverageRate(fbpMatchedCount, fbpSampleCount),
         fbpSampleCount,

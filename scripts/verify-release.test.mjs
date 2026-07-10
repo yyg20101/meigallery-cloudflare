@@ -15,6 +15,7 @@ import { writeReport } from './release-verification-lib.mjs'
 
 const DEPLOY_SCRIPT_PATH = fileURLToPath(new URL('./deploy.sh', import.meta.url))
 const VITEST_CONFIG_PATH = fileURLToPath(new URL('../packages/api/vitest.config.ts', import.meta.url))
+const PACKAGE_JSON_PATH = fileURLToPath(new URL('../package.json', import.meta.url))
 const RELEASE_COMMIT = '18dc11e0b0e4797683d4551a93a1f22e53dc4628'
 
 describe('发布验证 CLI', () => {
@@ -88,7 +89,15 @@ describe('发布验证 CLI', () => {
 
     assert.equal(report.status, 'passed')
     assert.equal(names.includes('api-coverage'), true)
+    assert.equal(names.includes('meta-secret-leaks'), true)
     assert.equal(report.steps.some(step => step.name === 'api-coverage'), true)
+    assert.equal(report.steps.some(step => step.name === 'meta-secret-leaks'), true)
+  })
+
+  it('根脚本提供 Meta secret scanner 交互命令', async () => {
+    const packageJson = JSON.parse(await readFile(PACKAGE_JSON_PATH, 'utf8'))
+
+    assert.equal(packageJson.scripts['verify:meta-secrets'], 'node scripts/verify-meta-secret-leaks.mjs')
   })
 
   it('assertProductionAllowed 会绑定当前 Git commit', async () => {
@@ -400,6 +409,9 @@ describe('发布验证 CLI', () => {
           status: 'passed',
           environment,
           capiEnabled: false,
+          migrationsApplied: true,
+          connectionVerified: true,
+          trackingMode: environment === 'dev' ? 'test' : 'disabled',
           database: environment === 'dev' ? 'meigallery-db-dev' : 'meigallery-db',
           queues: [],
         }
@@ -453,6 +465,10 @@ describe('发布验证 CLI', () => {
     assert.doesNotMatch(report.steps.find(step => step.name === 'meta-live-evidence')?.summary || '', /三事件/)
     assert.equal(report.metaResources.dev.status, 'passed')
     assert.equal(report.metaResources.production.status, 'passed')
+    assert.equal(report.metaResources.dev.migrationsApplied, true)
+    assert.equal(report.metaResources.dev.connectionVerified, true)
+    assert.equal(report.metaResources.dev.trackingMode, 'test')
+    assert.equal(report.metaResources.production.trackingMode, 'disabled')
   })
 
   it('首次上线允许 dev CAPI 开启但要求 production CAPI 关闭', async () => {

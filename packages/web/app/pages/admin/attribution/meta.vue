@@ -18,7 +18,18 @@ interface MetaData {
   lastSentAt: string
   queueBindingPresent?: boolean
   connection: MetaConnectionStatus
+  keyRotation: MetaCapiKeyRotationStatus
   settings: Record<string, unknown>
+}
+
+interface MetaCapiKeyRotationStatus {
+  currentKeyValid: boolean
+  previousKeyConfigured: boolean
+  previousKeyValid: boolean
+  previousSameAsCurrent: boolean
+  previousOutboxCount: number
+  previousActiveDeliveryCount: number
+  canRemovePrevious: boolean
 }
 
 const { api } = useApi()
@@ -31,7 +42,26 @@ const data = computed(() => attribution.data.value)
 const totals = computed(() => data.value?.totals ?? {})
 const settings = computed(() => data.value?.settings ?? {})
 const connection = computed(() => data.value?.connection ?? null)
+const keyRotation = computed<MetaCapiKeyRotationStatus>(() => data.value?.keyRotation ?? {
+  currentKeyValid: false,
+  previousKeyConfigured: false,
+  previousKeyValid: false,
+  previousSameAsCurrent: false,
+  previousOutboxCount: 0,
+  previousActiveDeliveryCount: 0,
+  canRemovePrevious: false,
+})
 const connectionCanVerify = computed(() => canVerifyMetaConnection(connection.value, isOwner.value))
+
+const keyRotationHint = computed(() => {
+  const status = keyRotation.value
+  if (!status.currentKeyValid) return '当前密钥无效，禁止轮换操作'
+  if (!status.previousKeyConfigured) return '未配置上一把密钥'
+  if (!status.previousKeyValid) return '上一把密钥无效，禁止移除'
+  if (status.previousSameAsCurrent) return '上一把密钥与当前密钥相同，可移除冗余配置'
+  if (status.canRemovePrevious) return '引用已清零，可移除上一把密钥'
+  return '仍有引用，暂不可移除'
+})
 
 function presenceStatus(present: boolean | undefined, configuredLabels = false) {
   return present === true
@@ -103,6 +133,35 @@ async function sendTestEvent() {
       <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         <AnalyticsMetricCard v-for="metric in metrics" :key="metric.label" v-bind="metric" />
       </div>
+
+      <section data-meta-key-rotation class="border-y border-gray-200 py-4">
+        <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <h2 class="text-sm font-semibold text-gray-900">数据密钥轮换</h2>
+          <p class="text-sm" :class="keyRotation.canRemovePrevious && keyRotation.previousKeyConfigured ? 'text-emerald-700' : 'text-gray-600'">
+            {{ keyRotationHint }}
+          </p>
+        </div>
+        <dl class="mt-3 grid grid-cols-2 gap-x-6 gap-y-3 text-sm md:grid-cols-4">
+          <div>
+            <dt class="text-gray-500">当前密钥</dt>
+            <dd class="mt-1 font-medium text-gray-900">{{ keyRotation.currentKeyValid ? '有效' : '无效' }}</dd>
+          </div>
+          <div>
+            <dt class="text-gray-500">上一把密钥</dt>
+            <dd class="mt-1 font-medium text-gray-900">
+              {{ !keyRotation.previousKeyConfigured ? '未配置' : keyRotation.previousKeyValid ? '有效' : '无效' }}
+            </dd>
+          </div>
+          <div>
+            <dt class="text-gray-500">Outbox 残留</dt>
+            <dd class="mt-1 font-medium tabular-nums text-gray-900">{{ keyRotation.previousOutboxCount }}</dd>
+          </div>
+          <div>
+            <dt class="text-gray-500">活动 delivery</dt>
+            <dd class="mt-1 font-medium tabular-nums text-gray-900">{{ keyRotation.previousActiveDeliveryCount }}</dd>
+          </div>
+        </dl>
+      </section>
 
       <section class="space-y-3">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

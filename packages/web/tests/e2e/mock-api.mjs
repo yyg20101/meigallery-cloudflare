@@ -567,13 +567,32 @@ function adminAttributionResponse(pathname, searchParams) {
         deliveries: [
           { channel: 'meta_pixel', event_name: 'Contact', status: 'attempted', skip_reason: '', delivery_count: 8 },
           { channel: 'meta_capi', event_name: 'Contact', status: 'sent', skip_reason: '', delivery_count: 6 },
-          { channel: 'meta_capi', event_name: 'Lead', status: 'failed', skip_reason: 'retry_exhausted', delivery_count: 2 },
+          { channel: 'meta_capi', event_name: 'CompleteRegistration', status: 'failed', skip_reason: 'retry_exhausted', delivery_count: 2 },
           { channel: 'meta_capi', event_name: 'Contact', status: 'skipped', skip_reason: 'queue_not_configured', delivery_count: 1 },
         ],
         lastSentAt: '2026-07-09T09:30:00.000Z',
-        secretPresent: true,
-        testEventCodePresent: true,
         queueBindingPresent: true,
+        connection: {
+          state: 'unverified',
+          environment: 'dev',
+          pixelIdConfigured: true,
+          tokenConfigured: true,
+          testEventCodeConfigured: true,
+          verifiedAt: null,
+          verifiedCommit: null,
+          graphApiVersion: 'v25.0',
+          datasetQualityStatus: 'not_checked',
+          invalidationReason: 'verification_missing',
+        },
+        keyRotation: {
+          currentKeyValid: true,
+          previousKeyConfigured: true,
+          previousKeyValid: true,
+          previousSameAsCurrent: false,
+          previousOutboxCount: 0,
+          previousActiveDeliveryCount: 0,
+          canRemovePrevious: true,
+        },
         settings: {
           facebook_pixel_enabled: true,
           facebook_pixel_id: '1234567890',
@@ -798,7 +817,24 @@ function handleApi(req, res) {
     return json(res, adminAnalyticsResponse(url.pathname, url.searchParams))
   }
   if (url.pathname === '/api/admin/attribution/meta/test-event' && req.method === 'POST') {
-    return json(res, { data: { status: 'sent', eventsReceived: 1, secretPresent: true, testEventCodePresent: true, pixelIdPresent: true } })
+    return json(res, {
+      data: {
+        status: 'verified',
+        eventsReceived: 1,
+        connection: {
+          state: 'verified',
+          environment: 'dev',
+          pixelIdConfigured: true,
+          tokenConfigured: true,
+          testEventCodeConfigured: true,
+          verifiedAt: '2026-07-09T09:30:00.000Z',
+          verifiedCommit: 'a'.repeat(40),
+          graphApiVersion: 'v25.0',
+          datasetQualityStatus: 'not_checked',
+          invalidationReason: '',
+        },
+      },
+    })
   }
   if (url.pathname.startsWith('/api/admin/attribution/')) {
     return json(res, adminAttributionResponse(url.pathname, url.searchParams))

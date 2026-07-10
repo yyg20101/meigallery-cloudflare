@@ -39,6 +39,8 @@ type AttributionDbOptions = {
   }
   settings?: Partial<Record<string, string | boolean>>
   readiness?: ReadinessOptions
+  previousOutboxCount?: number
+  previousActiveDeliveryCount?: number
 }
 
 function createApp(role: string | null = 'admin') {
@@ -489,6 +491,12 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
         },
         async first<T>() {
           calls.push(call)
+          if (sql.includes('FROM meta_capi_secure_outbox')) {
+            return { reference_count: options.previousOutboxCount ?? 0 } as T
+          }
+          if (sql.includes('FROM analytics_conversion_deliveries') && sql.includes('encryption_key_id')) {
+            return { reference_count: options.previousActiveDeliveryCount ?? 0 } as T
+          }
           if (sql.includes('FROM analytics_conversion_deliveries d') && testAction && testDelivery) {
             return {
               ...testDelivery,
@@ -642,6 +650,7 @@ const VALID_READINESS_ENV = {
   RELEASE_COMMIT: VALID_RELEASE_COMMIT,
   APP_ENV: 'dev',
   META_CAPI_DATA_KEY_CURRENT: Buffer.alloc(32, 7).toString('base64'),
+  META_CAPI_DATA_KEY_PREVIOUS: Buffer.alloc(32, 8).toString('base64'),
 }
 
 async function requestReadiness(
@@ -882,8 +891,40 @@ describe('后台归因中心 API', () => {
     expect(body.data.connection.tokenConfigured).toBe(true)
     expect(body.data.connection.testEventCodeConfigured).toBe(true)
     expect(body.data.queueBindingPresent).toBe(true)
+    expect(body.data.keyRotation).toEqual({
+      currentKeyValid: true,
+      previousKeyConfigured: true,
+      previousKeyValid: true,
+      previousSameAsCurrent: false,
+      previousOutboxCount: 0,
+      previousActiveDeliveryCount: 0,
+      canRemovePrevious: true,
+    })
+    expect(Object.keys(body.data.keyRotation)).toHaveLength(7)
     expect(JSON.stringify(body)).not.toContain('secret-token')
     expect(JSON.stringify(body)).not.toContain('test-code')
+    expect(JSON.stringify(body)).not.toContain(VALID_READINESS_ENV.META_CAPI_DATA_KEY_CURRENT)
+    expect(JSON.stringify(body)).not.toContain(VALID_READINESS_ENV.META_CAPI_DATA_KEY_PREVIOUS)
+  })
+
+  it('Meta key rotation 只统计 previous 的全部 outbox 与 pending/failed delivery', async () => {
+    const db = createAttributionDb({ previousOutboxCount: 4, previousActiveDeliveryCount: 2 })
+    const res = await createApp('admin').request('/api/admin/attribution/meta?range=30d', {}, {
+      DB: db,
+      ...VALID_READINESS_ENV,
+    } as unknown as Bindings)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.data.keyRotation).toMatchObject({
+      previousOutboxCount: 4,
+      previousActiveDeliveryCount: 2,
+      canRemovePrevious: false,
+    })
+    const outboxSql = db.calls.find(call => call.sql.includes('FROM meta_capi_secure_outbox'))?.sql ?? ''
+    const deliverySql = db.calls.find(call => call.sql.includes('encryption_key_id'))?.sql ?? ''
+    expect(outboxSql).not.toContain('expires_at')
+    expect(deliverySql).toContain("status IN ('pending', 'failed')")
   })
 
   it('Meta 配置存在状态将纯空白 token 和 Test Event Code 视为缺失', async () => {
@@ -1039,7 +1080,10 @@ describe('后台归因中心 API', () => {
     expect(checkStates(historicalReadiness)).toEqual(checkStates(baselineReadiness))
 
     const dailyQueries = db.calls.filter(call => call.sql.includes('FROM analytics_conversion_delivery_daily'))
-    const deliveryQueries = db.calls.filter(call => call.sql.includes('FROM analytics_conversion_deliveries'))
+    const deliveryQueries = db.calls.filter(call => (
+      call.sql.includes('FROM analytics_conversion_deliveries')
+      && !call.sql.includes('encryption_key_id')
+    ))
     const duplicateActionQueries = db.calls.filter(call => call.sql.includes('FROM analytics_conversion_actions') && call.sql.includes("duplicate_of != ''"))
     expect(dailyQueries.length).toBeGreaterThan(0)
     expect(dailyQueries.every(call => call.sql.includes("event_name IN ('Contact', 'CompleteRegistration')"))).toBe(true)

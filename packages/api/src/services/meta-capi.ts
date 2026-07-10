@@ -3,7 +3,7 @@ import { ACTIVE_META_EVENTS, ATTRIBUTION_LIMITS } from '@meigallery/shared/const
 import type { Bindings } from '../index'
 import { normalizeMetaCapiUserData } from '../utils/meta-browser-identifiers'
 import { requireVerifiedMetaConnection } from './meta-connection'
-import { metaEventsEndpoint, readMetaEventsResponse } from './meta-graph'
+import { metaEventsEndpoint, metaGraphRequestInit, readMetaEventsResponse } from './meta-graph'
 
 type MetaCapiEnv = Pick<
   Bindings,
@@ -206,12 +206,12 @@ export async function sendMetaCapiEvent(
   try {
     const metaResponse = await fetchWithCombinedTimeout(
       options.fetchFn ?? globalThis.fetch,
-      metaEventsEndpoint(connection.pixelId, accessToken),
-      {
+      metaEventsEndpoint(connection.pixelId),
+      metaGraphRequestInit(accessToken, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),
-      },
+      }),
       options.signal,
       options.timeoutMs ?? META_CAPI_TIMEOUT_MS,
       [

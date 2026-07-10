@@ -593,10 +593,11 @@ describe('meta-capi', () => {
     expect(db.delivery.status).toBe('sent')
     const [url, init] = fetchMock.mock.calls[0]!
     expect(new URL(String(url)).pathname).toBe('/v25.0/1234567890/events')
-    expect(String(url)).toContain('access_token=')
+    expect(new URL(String(url)).search).toBe('')
+    expect(new Headers(init?.headers).get('authorization')).toBe('Bearer token_1')
     const payload = JSON.parse(String(init?.body))
     expect(payload.data[0].event_source_url).toBe('https://616618.xyz/')
-    expect(JSON.stringify(init)).not.toContain('token_1')
+    expect(JSON.stringify(payload)).not.toContain('token_1')
     expect(JSON.stringify(init)).not.toContain('evil.example')
     expect(JSON.stringify(init)).not.toContain('user@example.test')
   })

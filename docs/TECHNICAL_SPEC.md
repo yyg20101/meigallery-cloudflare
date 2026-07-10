@@ -637,7 +637,9 @@ INSERT INTO site_settings (key, value) VALUES
 - `consent_state=denied` 时只保留站内必要事实，不创建 Meta Pixel / CAPI delivery；`consent_state` 仅用于当次 delivery 判断，不作为 D1 字段持久化。
 - Pixel 与 CAPI 使用同一 `external_event_id` / `eventID`，方便 Meta 后台去重；Pixel `attempted` 仅说明浏览器已尝试调用，不代表 Meta 接收。只有 CAPI `sent` 且 Graph API 返回 `events_received=1` 才代表接收成功；站内重复诊断不依赖 Meta 回传数据。
 - `/api/admin/attribution/*` 需要 admin+；`/api/admin/attribution/meta/test-event` 需要 owner，并写入 `admin_audit_logs`。
-- Meta CAPI 通过 Cloudflare Queue `META_CAPI_QUEUE` 异步投递，使用 Worker secret `META_CAPI_ACCESS_TOKEN`；可选 `META_CAPI_TEST_EVENT_CODE` 仅用于 Events Manager Test Events。dev 主 Queue / DLQ 固定为 `meigallery-meta-capi-dev` / `meigallery-meta-capi-dev-dlq`，生产为 `meigallery-meta-capi` / `meigallery-meta-capi-dlq`。secret 不写入 D1、不返回前端，也不写入审计日志。
+- Meta CAPI 通过 Cloudflare Queue `META_CAPI_QUEUE` 异步投递，使用 Worker secret `META_CAPI_ACCESS_TOKEN`、`META_CAPI_DATA_KEY_CURRENT`；`META_CAPI_TEST_EVENT_CODE` 仅在 test mode 必需，`META_CAPI_DATA_KEY_PREVIOUS` 仅用于轮换窗口。dev 主 Queue / DLQ 固定为 `meigallery-meta-capi-dev` / `meigallery-meta-capi-dev-dlq`，生产为 `meigallery-meta-capi` / `meigallery-meta-capi-dlq`。Graph token 只通过 Bearer header 发送。secret 不写入 D1、不返回前端，也不写入审计日志。
+- `/api/admin/attribution/meta` 仅返回 current/previous 有效性布尔值、previous outbox 计数、previous `pending/failed` delivery 计数和可移除状态；不返回 key ID、Base64、fingerprint 或错误 cause。
+- `corepack pnpm verify:meta-secrets` 扫描 tracked 文件与 ignored release evidence；`corepack pnpm verify:quick` 在单元测试和构建前执行该检查。正式 production bootstrap、rollout 与最终 evidence 强绑定仍保持关闭，留待质量运营阶段。
 - Queue 发送失败不得阻塞站内转化账本写入；delivery 必须显示 `sent`、`failed`、`skipped`、`missing_queue`、`missing_secret`、`disabled` 等可诊断状态。
 
 #### Meta 生产放行与回滚 `[当前实现 / 运维前置]`

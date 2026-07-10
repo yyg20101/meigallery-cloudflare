@@ -27,6 +27,11 @@ const QUICK_STEPS = [
     args: ['scripts/verify-dev-resources.mjs'],
   },
   {
+    name: 'meta-secret-leaks',
+    command: 'node',
+    args: ['scripts/verify-meta-secret-leaks.mjs'],
+  },
+  {
     name: 'scripts-test',
     command: 'corepack',
     args: ['pnpm', 'test:scripts'],
@@ -375,6 +380,11 @@ function sanitizeMetaResourceSummary(result, environment, commit) {
     consumersPresent: result?.consumersPresent === true,
     secretsPresent: result?.secretsPresent === true,
     migrationsCurrent: result?.migrationsCurrent === true,
+    migrationsApplied: result?.migrationsApplied === true,
+    connectionVerified: result?.connectionVerified === true,
+    trackingMode: ['disabled', 'test', 'production'].includes(result?.trackingMode)
+      ? result.trackingMode
+      : null,
     capiEnabled: typeof result?.capiEnabled === 'boolean' ? result.capiEnabled : null,
     initialMetaRollout: result?.initialMetaRollout === true,
   }

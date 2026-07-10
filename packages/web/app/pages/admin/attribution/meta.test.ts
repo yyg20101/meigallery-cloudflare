@@ -32,6 +32,7 @@ function connection(overrides: Record<string, unknown> = {}) {
 function mountPage(options: {
   isOwner?: boolean
   connection?: Record<string, unknown>
+  keyRotation?: Record<string, unknown>
   api?: ReturnType<typeof vi.fn>
 } = {}) {
   const refresh = vi.fn()
@@ -51,6 +52,15 @@ function mountPage(options: {
         meta_tracking_mode: 'test',
       },
       connection: options.connection ?? connection(),
+      keyRotation: options.keyRotation ?? {
+        currentKeyValid: true,
+        previousKeyConfigured: false,
+        previousKeyValid: false,
+        previousSameAsCurrent: false,
+        previousOutboxCount: 0,
+        previousActiveDeliveryCount: 0,
+        canRemovePrevious: false,
+      },
     }),
     loading: ref(false),
     error: ref(''),
@@ -145,5 +155,67 @@ describe('MetaConnection 后台状态', () => {
     expect(api).toHaveBeenCalledWith('/api/admin/attribution/meta/test-event', { method: 'POST' })
     expect(toastAdd).toHaveBeenCalledWith({ title: 'MetaConnection 验证成功', color: 'success' })
     expect(refresh).toHaveBeenCalledOnce()
+  })
+
+  it('未配置 previous 时明确显示状态且不误报可移除', () => {
+    const { wrapper } = mountPage()
+
+    expect(wrapper.get('[data-meta-key-rotation]').text()).toContain('未配置上一把密钥')
+    expect(wrapper.get('[data-meta-key-rotation]').text()).not.toContain('可移除上一把密钥')
+  })
+
+  it('同 key 作为冗余配置提示可移除且不展示 key ID', () => {
+    const { wrapper } = mountPage({
+      keyRotation: {
+        currentKeyValid: true,
+        previousKeyConfigured: true,
+        previousKeyValid: true,
+        previousSameAsCurrent: true,
+        previousOutboxCount: 0,
+        previousActiveDeliveryCount: 0,
+        canRemovePrevious: true,
+      },
+    })
+
+    const text = wrapper.get('[data-meta-key-rotation]').text()
+    expect(text).toContain('上一把密钥与当前密钥相同')
+    expect(text).toContain('可移除冗余配置')
+    expect(text).not.toContain('keyId')
+    expect(text).not.toContain('fingerprint')
+  })
+
+  it('previous 仍有引用时显示两个计数并禁止移除', () => {
+    const { wrapper } = mountPage({
+      keyRotation: {
+        currentKeyValid: true,
+        previousKeyConfigured: true,
+        previousKeyValid: true,
+        previousSameAsCurrent: false,
+        previousOutboxCount: 3,
+        previousActiveDeliveryCount: 2,
+        canRemovePrevious: false,
+      },
+    })
+
+    const text = wrapper.get('[data-meta-key-rotation]').text()
+    expect(text).toContain('Outbox 残留3')
+    expect(text).toContain('活动 delivery2')
+    expect(text).toContain('仍有引用，暂不可移除')
+  })
+
+  it('previous 引用归零时明确提示可移除', () => {
+    const { wrapper } = mountPage({
+      keyRotation: {
+        currentKeyValid: true,
+        previousKeyConfigured: true,
+        previousKeyValid: true,
+        previousSameAsCurrent: false,
+        previousOutboxCount: 0,
+        previousActiveDeliveryCount: 0,
+        canRemovePrevious: true,
+      },
+    })
+
+    expect(wrapper.get('[data-meta-key-rotation]').text()).toContain('引用已清零，可移除上一把密钥')
   })
 })
