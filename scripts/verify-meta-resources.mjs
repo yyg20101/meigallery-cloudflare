@@ -37,7 +37,7 @@ export async function runMetaResourceVerification(options = {}) {
     command('consumer-dlq', ['queues', 'consumer', 'worker', 'list', config.dlq, '--json']),
     command('secrets', ['secret', 'list', ...config.envArgs, '--format', 'json']),
     command('migrations', ['d1', 'migrations', 'list', config.database, ...config.envArgs, '--remote']),
-    command('capi-setting', ['d1', 'execute', config.database, ...config.envArgs, '--remote', '--command', SETTING_SQL]),
+    command('capi-setting', ['d1', 'execute', config.database, ...config.envArgs, '--remote', '--command', SETTING_SQL, '--json']),
   ]
   const results = []
   for (const definition of calls) {
@@ -57,7 +57,7 @@ export async function runMetaResourceVerification(options = {}) {
   const secretsPresent = hasRequiredSecrets(byName.get('secrets')?.stdout)
   const migrationsCurrent = !/Migrations to be applied/i.test(String(byName.get('migrations')?.stdout || ''))
   const capiEnabled = parseCapiEnabled(byName.get('capi-setting')?.stdout)
-  const initialMetaRollout = options.initialMetaRollout === true
+  const initialMetaRollout = options.initialMetaRollout === true && environment === 'production'
   const initialStateReady = !initialMetaRollout || capiEnabled === false
   let status = commandsPassed && mainConsumerPresent && dlqConsumerPresent && secretsPresent && migrationsCurrent && capiEnabled !== null && initialStateReady
     ? 'passed'
@@ -115,11 +115,8 @@ function command(name, args) {
 
 function hasExpectedConsumer(stdout, worker) {
   try {
-    const parsed = JSON.parse(String(stdout || ''))
-    const consumers = Array.isArray(parsed) ? parsed : parsed?.consumers
-    return Array.isArray(consumers) && consumers.some(consumer => (
-      consumer?.service_name === worker || consumer?.serviceName === worker || consumer?.script_name === worker
-    ))
+    const consumers = unwrapWranglerRows(parseWranglerJson(stdout), ['consumers', 'result', 'data'])
+    return consumers.some(consumer => consumerNames(consumer).includes(worker))
   } catch {
     return false
   }
@@ -127,9 +124,8 @@ function hasExpectedConsumer(stdout, worker) {
 
 function hasRequiredSecrets(stdout) {
   try {
-    const parsed = JSON.parse(String(stdout || ''))
-    const secrets = Array.isArray(parsed) ? parsed : parsed?.secrets
-    const names = new Set(Array.isArray(secrets) ? secrets.map(secret => secret?.name) : [])
+    const secrets = unwrapWranglerRows(parseWranglerJson(stdout), ['secrets', 'result', 'data'])
+    const names = new Set(secrets.map(secret => secret?.name))
     return REQUIRED_SECRETS.every(name => names.has(name))
   } catch {
     return false
@@ -138,7 +134,7 @@ function hasRequiredSecrets(stdout) {
 
 function parseCapiEnabled(stdout) {
   try {
-    const parsed = JSON.parse(String(stdout || ''))
+    const parsed = parseWranglerJson(stdout)
     const containers = Array.isArray(parsed) ? parsed : [parsed]
     const value = containers.flatMap(container => Array.isArray(container?.results) ? container.results : [])
       .find(row => Object.hasOwn(row || {}, 'value'))?.value
@@ -148,6 +144,50 @@ function parseCapiEnabled(stdout) {
   } catch {
     return null
   }
+}
+
+function parseWranglerJson(stdout) {
+  const text = String(stdout || '').trim()
+  if (!text) throw new Error('Wrangler 未返回 JSON')
+  try {
+    return JSON.parse(text)
+  } catch {
+    const starts = [...text.matchAll(/^[ \t]*[\[{]/gm)].map(match => match.index + match[0].search(/[\[{]/))
+    for (const start of starts) {
+      try {
+        return JSON.parse(text.slice(start))
+      } catch {
+        // 继续尝试下一段可能的 JSON 起点。
+      }
+    }
+  }
+  throw new Error('Wrangler JSON 格式非法')
+}
+
+function unwrapWranglerRows(value, envelopeKeys, depth = 0) {
+  if (Array.isArray(value)) return value
+  if (!value || typeof value !== 'object' || depth > 4) return []
+  for (const key of envelopeKeys) {
+    if (!Object.hasOwn(value, key)) continue
+    const rows = unwrapWranglerRows(value[key], envelopeKeys, depth + 1)
+    if (rows.length > 0 || Array.isArray(value[key])) return rows
+  }
+  return []
+}
+
+function consumerNames(consumer) {
+  if (!consumer || typeof consumer !== 'object') return []
+  const names = []
+  for (const key of ['script', 'service', 'service_name', 'serviceName', 'script_name', 'scriptName']) {
+    const value = consumer[key]
+    if (typeof value === 'string') names.push(value)
+    else if (value && typeof value === 'object') {
+      for (const nestedKey of ['name', 'script', 'service']) {
+        if (typeof value[nestedKey] === 'string') names.push(value[nestedKey])
+      }
+    }
+  }
+  return names
 }
 
 async function readCommit(options = {}) {

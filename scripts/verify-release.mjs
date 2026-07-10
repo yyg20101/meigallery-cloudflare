@@ -151,7 +151,8 @@ export async function runReleaseVerification(options = {}) {
   }
 
   if (typeof git.branch !== 'string' || git.branch.trim() === '') releaseGitBlockers.push('无法获取当前 Git branch')
-  if (typeof git.commit !== 'string' || git.commit.trim() === '') releaseGitBlockers.push('无法获取当前 Git commit')
+  else if (!isReleaseReportBranchAllowed(git.branch, options.env || process.env)) releaseGitBlockers.push('release 报告生成分支不是 main 或 release/*')
+  if (!isValidCommit(git.commit)) releaseGitBlockers.push('release 报告需要 40 位 Git commit')
   if (git.isClean !== true) releaseGitBlockers.push('release 报告对应工作区不是干净状态')
 
   const childRuns = [
@@ -164,7 +165,7 @@ export async function runReleaseVerification(options = {}) {
     notes.push(`${releaseGitBlockers.join('；')}，已跳过 release 子模式编排。`)
   } else {
     for (const [childMode, runChild] of childRuns) {
-      const childReport = await runChild({ ...options, mode: childMode })
+      const childReport = await runChild({ ...options, mode: childMode, releaseCommit: git.commit })
       if (childReport.reportFile) artifacts.push(childReport.reportFile)
 
       const passedSteps = Array.isArray(childReport.steps)
@@ -216,7 +217,7 @@ export async function runReleaseVerification(options = {}) {
         ...options,
         environment,
         commit: git.commit,
-        initialMetaRollout,
+        initialMetaRollout: initialMetaRollout && environment === 'production',
         reportOnly: false,
       })
       metaResources[environment] = sanitizeMetaResourceSummary(result, environment, git.commit)
@@ -224,7 +225,7 @@ export async function runReleaseVerification(options = {}) {
         name: `meta-resources-${environment}`,
         status: result?.status === 'passed' ? 'passed' : 'failed',
         durationMs: Date.now() - startedResourceMs,
-        command: `node scripts/verify-meta-resources.mjs --env ${environment}${initialMetaRollout ? ' --initial-meta-rollout' : ''}`,
+        command: `node scripts/verify-meta-resources.mjs --env ${environment}${initialMetaRollout && environment === 'production' ? ' --initial-meta-rollout' : ''}`,
         exitCode: result?.status === 'passed' ? 0 : 1,
         summary: result?.status === 'passed' ? `Meta ${environment} 资源检查通过` : `Meta ${environment} 资源检查失败`,
       })
@@ -343,6 +344,16 @@ function parseInitialMetaRollout(env) {
   return true
 }
 
+function isReleaseReportBranchAllowed(branch, env) {
+  const value = String(branch || '').trim()
+  const override = String(env?.VERIFY_RELEASE_ALLOW_BRANCH || '').trim()
+  return value === 'main' || value.startsWith('release/') || Boolean(override && value === override)
+}
+
+function isValidCommit(value) {
+  return /^[0-9a-f]{40}$/i.test(String(value || '').trim())
+}
+
 function skippedMetaResource(environment) {
   return {
     status: 'skipped',
@@ -414,7 +425,21 @@ export async function runDevRehearsalReleaseVerification(options = {}) {
   const writeReportFn = options.writeReport || writeReport
   const versions = await collectVersionsFn(options)
   const git = await getGitStateFn(options)
-  const { steps, notes, artifacts, sensitiveValues = [] } = await runDevRehearsalVerificationFn(options)
+  const verification = isValidCommit(git.commit)
+    ? await runDevRehearsalVerificationFn({ ...options, releaseCommit: git.commit })
+    : {
+        steps: [{
+          name: 'dev-release-commit',
+          status: 'failed',
+          durationMs: 0,
+          command: 'git rev-parse HEAD',
+          exitCode: 1,
+          summary: 'dev rehearsal release 路径需要 40 位 commit',
+        }],
+        notes: ['dev rehearsal release 路径缺少合法的 40 位 commit'],
+        artifacts: [],
+      }
+  const { steps, notes, artifacts, sensitiveValues = [] } = verification
   const normalizedSteps = Array.isArray(steps) ? steps : []
   const finishedAt = new Date().toISOString()
   const report = {

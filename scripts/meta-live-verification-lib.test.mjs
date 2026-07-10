@@ -41,6 +41,13 @@ describe('Meta live evidence', () => {
       })
     })
 
+    assert.doesNotThrow(() => {
+      assertMetaLiveEvidenceCanGateProduction({ ...createEvidence(), confirmedBy: 'owner:release-01' }, {
+        expectedCommit: COMMIT,
+        now: '2026-07-10T12:00:00.000Z',
+      })
+    })
+
     assert.throws(() => {
       assertMetaLiveEvidenceCanGateProduction(createEvidence(), {
         expectedCommit: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
@@ -107,6 +114,24 @@ describe('Meta live evidence', () => {
           now: '2026-07-10T12:00:00.000Z',
         })
       }, /敏感|字段|格式/)
+    }
+  })
+
+  it('拒绝允许字段值夹带 fbp/fbc、IPv4/IPv6、token/test code 或原始 event ID', () => {
+    for (const confirmedBy of [
+      'owner:fb.1.1700000000000.123456789',
+      'owner:203.0.113.7',
+      'owner:2001:db8::1',
+      'owner:test_event_code=TEST123',
+      'owner:access_token=EAAB-secret',
+      'owner:raw-event-id-123',
+    ]) {
+      assert.throws(() => {
+        assertMetaLiveEvidenceCanGateProduction({ ...createEvidence(), confirmedBy }, {
+          expectedCommit: COMMIT,
+          now: '2026-07-10T12:00:00.000Z',
+        })
+      }, /confirmedBy|敏感/)
     }
   })
 

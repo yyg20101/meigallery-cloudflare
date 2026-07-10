@@ -4,6 +4,8 @@ import { createHash } from 'node:crypto'
 import { createInterface } from 'node:readline/promises'
 import { pathToFileURL } from 'node:url'
 import {
+  assertMetaLiveEvidenceCanGateProduction,
+  isValidMetaOwnerIdentifier,
   META_LIVE_EVENTS,
   writeMetaLiveEvidence,
 } from './meta-live-verification-lib.mjs'
@@ -19,7 +21,7 @@ export function buildMetaLiveEvidence(input) {
   const verifiedAt = new Date(input?.now ?? Date.now())
   const eventResults = Array.isArray(input?.eventResults) ? input.eventResults : []
 
-  if (!confirmedBy || /[\r\n]/.test(confirmedBy)) throw new Error('确认人不能为空或包含控制字符')
+  if (!isValidMetaOwnerIdentifier(confirmedBy)) throw new Error('确认人只允许 owner 或 owner:<短标识>')
   if (!/^\d{5,30}$/.test(pixelId)) throw new Error('测试 Pixel ID 必须为 5 到 30 位数字')
   if (!/^[0-9a-f]{40}$/i.test(commit)) throw new Error('当前 commit 必须为 40 位 SHA')
   if (Number.isNaN(verifiedAt.getTime())) throw new Error('验证时间非法')
@@ -48,7 +50,7 @@ export function buildMetaLiveEvidence(input) {
     }
   })
 
-  return {
+  const evidence = {
     schemaVersion: 1,
     status: 'passed',
     commit,
@@ -58,6 +60,11 @@ export function buildMetaLiveEvidence(input) {
     events,
     confirmedBy,
   }
+  assertMetaLiveEvidenceCanGateProduction(evidence, {
+    expectedCommit: commit,
+    now: verifiedAt,
+  })
+  return evidence
 }
 
 export async function recordMetaLiveVerification(options = {}) {
@@ -66,7 +73,7 @@ export async function recordMetaLiveVerification(options = {}) {
   const getCommit = options.getCommit || readCurrentCommit
   const writeEvidence = options.writeEvidence || writeMetaLiveEvidence
   const commit = await getCommit(options)
-  const confirmedBy = await ask('确认人：', { hidden: false })
+  const confirmedBy = await ask('确认人（owner 或 owner:<短标识>）：', { hidden: false })
   const pixelId = await ask('测试 Pixel ID：', { hidden: true })
   const eventResults = []
 

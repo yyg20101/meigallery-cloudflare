@@ -235,6 +235,9 @@ export function assertReportCanGateProduction(report, options = {}) {
     if (options.currentBranch && !isProductionBranchAllowed(options.currentBranch, options)) {
       reasons.push('当前分支不是 main 或 release/*，拒绝放行生产部署')
     }
+    if (report.git?.branch && !isProductionBranchAllowed(report.git.branch, options)) {
+      reasons.push('报告生成分支不是 main 或 release/*，拒绝放行生产部署')
+    }
 
     const startedAt = Date.parse(report.startedAt || '')
     if (Number.isNaN(startedAt)) {

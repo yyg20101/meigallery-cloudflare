@@ -32,6 +32,8 @@ describe('Meta Cloudflare 资源检查', () => {
     const d1Calls = calls.filter(call => call.args.includes('d1'))
     assert.equal(d1Calls.every(call => call.args.includes('meigallery-db')), true)
     assert.equal(d1Calls.every(call => hasAdjacent(call.args, '--env', '')), true)
+    const settingCall = findCall(calls, 'd1', 'execute')
+    assert.equal(settingCall.args.includes('--json'), true)
     assert.equal(stored.environment, 'production')
     assert.equal(stored.verificationType, 'meta_resources')
     const serialized = JSON.stringify({ report, stored })
@@ -43,7 +45,7 @@ describe('Meta Cloudflare 资源检查', () => {
     const report = await runMetaResourceVerification({
       environment: 'dev',
       commit: COMMIT,
-      runCommand: createPassingRunner(calls, { capiEnabled: true }),
+      runCommand: createPassingRunner(calls, { capiEnabled: true, consumerField: 'service' }),
       recordSummary: async () => ({ status: 'passed' }),
     })
 
@@ -52,6 +54,39 @@ describe('Meta Cloudflare 资源检查', () => {
     assert.deepEqual(report.queues, ['meigallery-meta-capi-dev', 'meigallery-meta-capi-dev-dlq'])
     assert.deepEqual(findCall(calls, 'secret', 'list').args.slice(-4), ['--env', 'dev', '--format', 'json'])
     assert.equal(calls.filter(call => call.args.includes('d1')).every(call => hasAdjacent(call.args, '--env', 'dev')), true)
+  })
+
+  it('consumer 兼容当前 script/service 字段、嵌套结果和 JSON 前置日志', async () => {
+    for (const options of [
+      { consumerField: 'script' },
+      { consumerField: 'service' },
+      { consumerField: 'script', nestedConsumers: true },
+      { consumerField: 'service', leadingLog: true },
+    ]) {
+      const report = await runMetaResourceVerification({
+        environment: 'production',
+        commit: COMMIT,
+        reportOnly: true,
+        runCommand: createPassingRunner([], { capiEnabled: false, ...options }),
+      })
+      assert.equal(report.status, 'passed')
+      assert.equal(report.consumersPresent, true)
+    }
+  })
+
+  it('consumer 或 D1 的非法 JSON 保守失败', async () => {
+    for (const options of [
+      { invalidConsumerJson: true },
+      { invalidSettingJson: true },
+    ]) {
+      const report = await runMetaResourceVerification({
+        environment: 'production',
+        commit: COMMIT,
+        reportOnly: true,
+        runCommand: createPassingRunner([], { capiEnabled: false, ...options }),
+      })
+      assert.equal(report.status, 'failed')
+    }
   })
 
   it('首次上线要求 CAPI 关闭，report-only 不写 D1 摘要', async () => {
@@ -70,6 +105,20 @@ describe('Meta Cloudflare 资源检查', () => {
     assert.equal(failed.status, 'failed')
     assert.equal(failed.initialMetaRollout, true)
     assert.equal(stored, false)
+  })
+
+  it('首次上线标记在 dev 环境不要求关闭 CAPI', async () => {
+    const report = await runMetaResourceVerification({
+      environment: 'dev',
+      commit: COMMIT,
+      initialMetaRollout: true,
+      reportOnly: true,
+      runCommand: createPassingRunner([], { capiEnabled: true, consumerField: 'service' }),
+    })
+
+    assert.equal(report.status, 'passed')
+    assert.equal(report.capiEnabled, true)
+    assert.equal(report.initialMetaRollout, false)
   })
 
   it('缺 token 或 Test Code 时 release 资源检查失败且不记录摘要', async () => {
@@ -121,14 +170,28 @@ function createPassingRunner(calls, options = {}) {
     } else if (text.includes('consumer worker list')) {
       const queue = args[args.indexOf('list') + 1]
       const worker = queue.includes('-dev') ? 'meigallery-api-dev' : 'meigallery-api'
-      stdout = JSON.stringify(options.missingConsumer ? [] : [{ service_name: worker, resource_id: RESOURCE_ID }])
+      if (options.invalidConsumerJson) {
+        stdout = 'wrangler warning\nnot-json'
+      } else {
+        const field = options.consumerField ?? 'script'
+        const consumers = options.missingConsumer ? [] : [{
+          type: 'worker',
+          consumer_id: RESOURCE_ID,
+          [field]: worker,
+          settings: { batch_size: 10 },
+        }]
+        const payload = options.nestedConsumers ? { result: { consumers } } : consumers
+        stdout = `${options.leadingLog ? 'wrangler warning\n' : ''}${JSON.stringify(payload)}`
+      }
     } else if (text.includes('secret list')) {
       const secretNames = options.secretNames ?? ['META_CAPI_ACCESS_TOKEN', 'META_CAPI_TEST_EVENT_CODE']
       stdout = JSON.stringify(secretNames.map(name => ({ name, value: name === 'META_CAPI_ACCESS_TOKEN' ? TOKEN : TEST_CODE })))
     } else if (text.includes('migrations list')) {
       stdout = options.migrationPending ? 'Migrations to be applied:\n0034.sql' : 'No migrations to apply!'
     } else if (text.includes('d1 execute')) {
-      stdout = JSON.stringify([{ results: [{ value: options.capiEnabled ? 'true' : 'false', raw: `${TOKEN}-${TEST_CODE}-${RESOURCE_ID}` }] }])
+      stdout = options.invalidSettingJson
+        ? 'wrangler warning\nnot-json'
+        : `${options.leadingLog ? 'wrangler warning\n' : ''}${JSON.stringify([{ results: [{ value: options.capiEnabled ? 'true' : 'false', raw: `${TOKEN}-${TEST_CODE}-${RESOURCE_ID}` }] }])}`
     }
     return {
       name: runOptions.name,

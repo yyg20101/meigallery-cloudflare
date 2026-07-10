@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { isIP } from 'node:net'
 import { fileURLToPath } from 'node:url'
 import { redact } from './release-verification-lib.mjs'
 
@@ -25,7 +26,10 @@ const EVENT_FIELDS = new Set([
   'eventIdDigest',
   'deduplicated',
 ])
-const SENSITIVE_PATTERN = /(?:"(?:browserEventId|serverEventId|eventId|accessToken|testEventCode|fbp|fbc|clientIpAddress|ipAddress)"\s*:|\b(?:\d{1,3}\.){3}\d{1,3}\b)/i
+const OWNER_IDENTIFIER_PATTERN = /^owner(?::[a-z0-9][a-z0-9._-]{0,31})?$/
+const SENSITIVE_KEY_PATTERN = /(?:browser[_-]?event[_-]?id|server[_-]?event[_-]?id|access[_-]?token|test[_-]?event[_-]?code|client[_-]?ip|ip[_-]?address|\bfbp\b|\bfbc\b)\s*[:=]/i
+const META_BROWSER_ID_PATTERN = /\bfb\.1\.\d{6,}\.[A-Za-z0-9._-]+\b/i
+const RAW_EVENT_ID_PATTERN = /(?:raw|browser|server)[-_: ]?event[-_: ]?id|event[_ -]?id\s*[:=]/i
 
 export function assertMetaLiveEvidenceCanGateProduction(evidence, options = {}) {
   const reasons = []
@@ -41,7 +45,7 @@ export function assertMetaLiveEvidenceCanGateProduction(evidence, options = {}) 
   if (typeof evidence.commit !== 'string' || evidence.commit.trim() === '') reasons.push('commit 缺失或格式非法')
   if (options.expectedCommit && evidence.commit !== options.expectedCommit) reasons.push('commit 与当前待发布 commit 不一致')
   if (!/^\d{4}$/.test(String(evidence.pixelIdSuffix || ''))) reasons.push('pixelIdSuffix 必须为四位数字')
-  if (typeof evidence.confirmedBy !== 'string' || evidence.confirmedBy.trim() === '') reasons.push('confirmedBy 缺失或格式非法')
+  if (!isValidMetaOwnerIdentifier(evidence.confirmedBy)) reasons.push('confirmedBy 只允许 owner 或 owner:<短标识>')
 
   const verifiedAt = parseTime(evidence.verifiedAt, 'verifiedAt', reasons)
   const expiresAt = parseTime(evidence.expiresAt, 'expiresAt', reasons)
@@ -55,6 +59,10 @@ export function assertMetaLiveEvidenceCanGateProduction(evidence, options = {}) 
   assertNoSensitiveContent(evidence, reasons)
 
   if (reasons.length > 0) throw new Error(reasons.join('；'))
+}
+
+export function isValidMetaOwnerIdentifier(value) {
+  return OWNER_IDENTIFIER_PATTERN.test(String(value || '').trim())
 }
 
 export async function writeMetaLiveEvidence(evidence, options = {}) {
@@ -106,7 +114,26 @@ function validateEvents(events, reasons) {
 
 function assertNoSensitiveContent(value, reasons) {
   const serialized = JSON.stringify(value)
-  if (SENSITIVE_PATTERN.test(serialized)) reasons.push('evidence 包含原始 event ID、secret、fbp、fbc 或 IP 等敏感内容')
+  const stringValues = collectStringValues(value)
+  if (
+    SENSITIVE_KEY_PATTERN.test(serialized)
+    || stringValues.some(item => META_BROWSER_ID_PATTERN.test(item))
+    || stringValues.some(item => RAW_EVENT_ID_PATTERN.test(item))
+    || stringValues.some(containsIpAddress)
+  ) reasons.push('evidence 包含原始 event ID、secret、fbp、fbc 或 IP 等敏感内容')
+}
+
+function collectStringValues(value, output = []) {
+  if (typeof value === 'string') output.push(value)
+  else if (Array.isArray(value)) value.forEach(item => collectStringValues(item, output))
+  else if (isRecord(value)) Object.values(value).forEach(item => collectStringValues(item, output))
+  return output
+}
+
+function containsIpAddress(value) {
+  const ipv4Candidates = value.match(/(?:\d{1,3}\.){3}\d{1,3}/g) || []
+  const ipv6Candidates = (value.match(/[0-9A-Fa-f:]{2,}/g) || []).filter(candidate => candidate.includes(':'))
+  return [...ipv4Candidates, ...ipv6Candidates].some(candidate => isIP(candidate) !== 0)
 }
 
 function rejectUnknownFields(value, allowedFields, label, reasons) {

@@ -39,7 +39,13 @@ describe('发布验证 CLI', () => {
   it('deploy 将当前 commit 传给 API Worker，且生产 gate 早于 D1 migration', async () => {
     const deployScript = await readFile(DEPLOY_SCRIPT_PATH, 'utf8')
     assert.match(deployScript, /GIT_COMMIT="\$\(git rev-parse HEAD\)"/)
-    assert.match(deployScript, /wrangler deploy "\$\{ENV_ARGS\[@\]\}" --var "RELEASE_COMMIT:\$\{GIT_COMMIT\}"/)
+    const deployLines = deployScript.split('\n').filter(line => /wrangler deploy "\$\{ENV_ARGS\[@\]\}" --var/.test(line))
+    assert.equal(deployLines.length, 2)
+    assert.equal(deployLines.some(line => line.includes('--filter @meigallery/api')), true)
+    assert.equal(deployLines.some(line => line.includes('--filter @meigallery/web')), true)
+    assert.equal(deployLines.every(line => line.includes('--var "RELEASE_COMMIT:${GIT_COMMIT}"')), true)
+    assert.match(deployScript, /ENV_ARGS=\(--env dev\)/)
+    assert.match(deployScript, /ENV_ARGS=\(--env ""\)/)
 
     const gateIndex = deployScript.indexOf('verify-release.mjs assert-production-allowed')
     const migrationIndex = deployScript.indexOf('wrangler d1 migrations apply')
@@ -258,6 +264,7 @@ describe('发布验证 CLI', () => {
   })
 
   it('runDevRehearsalReleaseVerification 会生成 dev-rehearsal 报告', async () => {
+    let receivedCommit = ''
     const report = await runDevRehearsalReleaseVerification({
       collectVersions: async () => ({
         node: 'v24.0.0',
@@ -266,18 +273,21 @@ describe('发布验证 CLI', () => {
       }),
       getGitState: async () => ({
         branch: 'dev',
-        commit: 'dev-rehearsal-commit',
+        commit: RELEASE_COMMIT,
         isClean: true,
         remote: 'origin',
       }),
-      runDevRehearsalVerification: async () => ({
+      runDevRehearsalVerification: async (options) => {
+        receivedCommit = options.releaseCommit
+        return {
         steps: [
           { name: 'dev-d1-migrate', status: 'passed', durationMs: 1, command: 'migrate', exitCode: 0, summary: 'ok' },
           { name: 'dev-admin-attribution', status: 'passed', durationMs: 1, command: 'attribution', exitCode: 200, summary: 'ok' },
         ],
         notes: ['meta-test-event-code-missing'],
         artifacts: [],
-      }),
+        }
+      },
       writeReport: async () => ({
         reportFile: '/tmp/dev-rehearsal.json',
         latestFile: '/tmp/latest.json',
@@ -287,6 +297,7 @@ describe('发布验证 CLI', () => {
     assert.equal(report.mode, 'dev-rehearsal')
     assert.equal(report.status, 'passed')
     assert.equal(report.reportFile, '/tmp/dev-rehearsal.json')
+    assert.equal(receivedCommit, RELEASE_COMMIT)
   })
 
   it('runDevRehearsalReleaseVerification 在 steps 为空时判定为 failed', async () => {
@@ -298,7 +309,7 @@ describe('发布验证 CLI', () => {
       }),
       getGitState: async () => ({
         branch: 'dev',
-        commit: 'dev-rehearsal-commit',
+        commit: RELEASE_COMMIT,
         isClean: true,
         remote: 'origin',
       }),
@@ -318,6 +329,23 @@ describe('发布验证 CLI', () => {
     assert.deepEqual(report.steps, [])
   })
 
+  it('runDevRehearsalReleaseVerification 缺少合法 commit 时保守失败', async () => {
+    let called = false
+    const report = await runDevRehearsalReleaseVerification({
+      collectVersions: async () => ({ node: 'v24', pnpm: '10', wrangler: '4' }),
+      getGitState: async () => ({ branch: 'dev', commit: 'short-sha', isClean: true, remote: 'origin' }),
+      runDevRehearsalVerification: async () => {
+        called = true
+        return { steps: [], notes: [], artifacts: [] }
+      },
+      writeReport: async () => ({ reportFile: '/tmp/dev-rehearsal.json', latestFile: '/tmp/latest.json' }),
+    })
+
+    assert.equal(report.status, 'failed')
+    assert.equal(called, false)
+    assert.match(report.notes.join('；'), /40 位 commit/)
+  })
+
   it('runReleaseVerification 会按顺序编排 quick、local-runtime、dev-rehearsal 并生成 release 报告', async () => {
     const order = []
     const report = await runReleaseVerification({
@@ -327,7 +355,7 @@ describe('发布验证 CLI', () => {
         wrangler: '4.0.0',
       }),
       getGitState: async () => ({
-        branch: 'dev',
+        branch: 'release/v1.0.0',
         commit: RELEASE_COMMIT,
         isClean: true,
         remote: 'origin',
@@ -354,7 +382,8 @@ describe('发布验证 CLI', () => {
           notes: [],
         }
       },
-      runDevRehearsalReleaseVerification: async () => {
+      runDevRehearsalReleaseVerification: async (options) => {
+        assert.equal(options.releaseCommit, RELEASE_COMMIT)
         order.push('dev-rehearsal')
         return {
           mode: 'dev-rehearsal',
@@ -423,6 +452,106 @@ describe('发布验证 CLI', () => {
     assert.equal(report.metaResources.production.status, 'passed')
   })
 
+  it('首次上线允许 dev CAPI 开启但要求 production CAPI 关闭', async () => {
+    const resourceCalls = []
+    const child = mode => async () => ({
+      mode,
+      status: 'passed',
+      durationMs: 1,
+      reportFile: `/tmp/${mode}.json`,
+      steps: [{ name: `${mode}-passed`, status: 'passed' }],
+      notes: [],
+    })
+    const report = await runReleaseVerification({
+      env: { META_INITIAL_ROLLOUT: '1' },
+      collectVersions: async () => ({ node: 'v24', pnpm: '10', wrangler: '4' }),
+      getGitState: async () => ({ branch: 'release/v1.0.0', commit: RELEASE_COMMIT, isClean: true, remote: 'origin' }),
+      runQuickVerification: child('quick'),
+      runLocalRuntimeReleaseVerification: child('local-runtime'),
+      runDevRehearsalReleaseVerification: child('dev-rehearsal'),
+      runMetaResourceVerification: async ({ environment, initialMetaRollout }) => {
+        resourceCalls.push({ environment, initialMetaRollout })
+        return {
+          status: 'passed',
+          environment,
+          capiEnabled: environment === 'dev',
+          initialMetaRollout,
+          database: environment === 'dev' ? 'meigallery-db-dev' : 'meigallery-db',
+          queues: [],
+        }
+      },
+      readLatestMetaLiveEvidence: async () => ({
+        status: 'passed',
+        commit: RELEASE_COMMIT,
+        verifiedAt: '2026-07-10T00:00:00.000Z',
+        expiresAt: '2026-07-11T00:00:00.000Z',
+        events: ['Contact', 'Lead', 'CompleteRegistration'].map(eventName => ({ eventName })),
+      }),
+      assertMetaLiveEvidenceCanGateProduction: () => {},
+      recordReleaseVerificationSummary: async () => ({ status: 'passed' }),
+      writeReport: async () => ({ reportFile: '/tmp/release.json', latestFile: '/tmp/latest.json' }),
+    })
+
+    assert.equal(report.status, 'passed')
+    assert.equal(report.initialMetaRollout, true)
+    assert.deepEqual(resourceCalls, [
+      { environment: 'dev', initialMetaRollout: false },
+      { environment: 'production', initialMetaRollout: true },
+    ])
+    assert.equal(report.metaResources.dev.capiEnabled, true)
+    assert.equal(report.metaResources.dev.initialMetaRollout, false)
+    assert.equal(report.metaResources.production.capiEnabled, false)
+    assert.equal(report.metaResources.production.initialMetaRollout, true)
+  })
+
+  it('首次上线 production CAPI 开启时 release 失败', async () => {
+    const child = mode => async () => ({
+      mode,
+      status: 'passed',
+      durationMs: 1,
+      reportFile: `/tmp/${mode}.json`,
+      steps: [{ name: `${mode}-passed`, status: 'passed' }],
+      notes: [],
+    })
+    const report = await runReleaseVerification({
+      env: { META_INITIAL_ROLLOUT: '1' },
+      collectVersions: async () => ({ node: 'v24', pnpm: '10', wrangler: '4' }),
+      getGitState: async () => ({ branch: 'release/v1.0.0', commit: RELEASE_COMMIT, isClean: true, remote: 'origin' }),
+      runQuickVerification: child('quick'),
+      runLocalRuntimeReleaseVerification: child('local-runtime'),
+      runDevRehearsalReleaseVerification: child('dev-rehearsal'),
+      runMetaResourceVerification: async ({ environment }) => ({
+        status: environment === 'production' ? 'failed' : 'passed',
+        environment,
+        capiEnabled: true,
+        database: environment === 'dev' ? 'meigallery-db-dev' : 'meigallery-db',
+        queues: [],
+      }),
+      readLatestMetaLiveEvidence: async () => assert.fail('生产资源失败后不得读取 evidence'),
+      writeReport: async () => ({ reportFile: '/tmp/release.json', latestFile: '/tmp/latest.json' }),
+    })
+
+    assert.equal(report.status, 'failed')
+    assert.equal(report.metaResources.production.capiEnabled, true)
+  })
+
+  it('dev 分支不能生成 passed release 报告', async () => {
+    let childCalled = false
+    const report = await runReleaseVerification({
+      collectVersions: async () => ({ node: 'v24', pnpm: '10', wrangler: '4' }),
+      getGitState: async () => ({ branch: 'dev', commit: RELEASE_COMMIT, isClean: true, remote: 'origin' }),
+      runQuickVerification: async () => {
+        childCalled = true
+        return { status: 'passed', steps: [{ name: 'quick', status: 'passed' }] }
+      },
+      writeReport: async () => ({ reportFile: '/tmp/release.json', latestFile: '/tmp/latest.json' }),
+    })
+
+    assert.equal(report.status, 'failed')
+    assert.equal(childCalled, false)
+    assert.match(report.notes.join('；'), /分支不是 main 或 release/)
+  })
+
   it('release 在缺少 Meta 资源配置时失败，且不读取或记录 live evidence', async () => {
     const order = []
     const child = mode => async () => ({
@@ -472,8 +601,8 @@ describe('发布验证 CLI', () => {
         wrangler: '4.0.0',
       }),
       getGitState: async () => ({
-        branch: 'dev',
-        commit: 'release-commit',
+        branch: 'release/v1.0.0',
+        commit: RELEASE_COMMIT,
         isClean: true,
         remote: 'origin',
       }),
@@ -534,7 +663,7 @@ describe('发布验证 CLI', () => {
       }),
       getGitState: async () => ({
         branch: 'release/v0.1.0',
-        commit: 'release-commit',
+        commit: RELEASE_COMMIT,
         isClean: false,
         remote: 'origin',
       }),
@@ -582,8 +711,8 @@ describe('发布验证 CLI', () => {
         wrangler: '4.0.0',
       }),
       getGitState: async () => ({
-        branch: 'dev',
-        commit: 'release-commit',
+        branch: 'release/v1.0.0',
+        commit: RELEASE_COMMIT,
         isClean: true,
         remote: 'origin',
       }),

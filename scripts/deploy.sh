@@ -93,7 +93,7 @@ echo "--- 步骤 5/7: 部署 API Worker ---"
 
 echo ""
 echo "--- 步骤 6/7: 部署 Web Worker ---"
-"${PNPM[@]}" --filter @meigallery/web exec wrangler deploy "${ENV_ARGS[@]}"
+"${PNPM[@]}" --filter @meigallery/web exec wrangler deploy "${ENV_ARGS[@]}" --var "RELEASE_COMMIT:${GIT_COMMIT}"
 
 echo ""
 echo "--- 步骤 7/7: 部署后 SEO 校验 ---"

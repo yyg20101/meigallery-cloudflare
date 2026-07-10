@@ -98,4 +98,41 @@ describe('Meta live evidence 人工录入', () => {
     for (const value of Object.values(RAW_IDS)) assert.equal(output.join('\n').includes(value), false)
     assert.equal(output.join('\n').includes('different-lead-id'), false)
   })
+
+  it('confirmedBy 夹带敏感值时拒绝且不写文件', async () => {
+    for (const confirmedBy of [
+      'owner:fb.1.1700000000000.123456789',
+      'owner:2001:db8::1',
+      'owner:test_event_code=TEST123',
+      'owner:raw-event-id-123',
+    ]) {
+      const answers = [
+        confirmedBy,
+        '12345678906781',
+        RAW_IDS.Contact,
+        RAW_IDS.Contact,
+        'yes',
+        RAW_IDS.Lead,
+        RAW_IDS.Lead,
+        'yes',
+        RAW_IDS.CompleteRegistration,
+        RAW_IDS.CompleteRegistration,
+        'yes',
+        'yes',
+      ]
+      let writeCount = 0
+      await assert.rejects(async () => {
+        await recordMetaLiveVerification({
+          ask: async () => answers.shift(),
+          output: () => {},
+          getCommit: async () => COMMIT,
+          now: '2026-07-10T00:00:00.000Z',
+          writeEvidence: async () => {
+            writeCount += 1
+          },
+        })
+      }, /确认人|confirmedBy|敏感/)
+      assert.equal(writeCount, 0)
+    }
+  })
 })

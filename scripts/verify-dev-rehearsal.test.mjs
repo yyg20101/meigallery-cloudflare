@@ -5,12 +5,14 @@ import { fileURLToPath } from 'node:url'
 import { runDevRehearsalVerification } from './verify-dev-rehearsal.mjs'
 
 const DEV_SEED_PATH = fileURLToPath(new URL('./fixtures/release-smoke/seed-dev.sql', import.meta.url))
+const RELEASE_COMMIT = '18dc11e0b0e4797683d4551a93a1f22e53dc4628'
 
 describe('开发环境发布预演验证', () => {
   it('缺少 dev URL 环境变量时直接失败', async () => {
     await assert.rejects(async () => {
       await runDevRehearsalVerification({
         env: {},
+        releaseCommit: RELEASE_COMMIT,
       })
     }, /VERIFY_DEV_API_URL/)
   })
@@ -20,39 +22,10 @@ describe('开发环境发布预演验证', () => {
     const requestedUrls = []
     const conversionBodies = []
     const responses = [
-      jsonResponse(200, { status: 'ok', db: 'ok' }),
-      textResponse(200, '<!doctype html><html><body><div id="__nuxt"></div><script>window.__APP__="wajie"</script></body></html>'),
-      jsonResponse(200, { data: { id: 'conv_1', actionType: 'contact', created: true } }),
-      jsonResponse(200, { data: { id: 'conv_2', actionType: 'complete_registration', created: true } }),
-      jsonResponse(200, { accepted: 3, rejected: 0 }),
-      jsonResponse(200, {
-        data: {
-          stages: [
-            { key: 'page_views', value: 2 },
-            { key: 'key_clicks', value: 1 },
-            { key: 'contacts_or_registers', value: 2 },
-          ],
-        },
-      }),
-      jsonResponse(200, {
-        data: {
-          bySource: [
-            {
-              source_name: 'release-dev-fb',
-              contact_count: 1,
-              complete_registration_count: 1,
-            },
-          ],
-        },
-      }),
-      jsonResponse(200, {
-        data: {
-          deliveries: [
-            { channel: 'meta_capi', event_name: 'Contact', status: 'sent', delivery_count: 1 },
-            { channel: 'meta_capi', event_name: 'Lead', status: 'sent', delivery_count: 1 },
-            { channel: 'meta_capi', event_name: 'CompleteRegistration', status: 'sent', delivery_count: 1 },
-          ],
-        },
+      ...successfulResponses({
+        baseline: { Contact: 4, Lead: 8, CompleteRegistration: 2 },
+        after: { Contact: 5, Lead: 9, CompleteRegistration: 3 },
+        html: '<!doctype html><html><body><div id="__nuxt"></div><script>window.__APP__="wajie"</script></body></html>',
       }),
       jsonResponse(200, {
         data: {
@@ -68,6 +41,7 @@ describe('开发环境发布预演验证', () => {
         VERIFY_DEV_API_URL: 'https://api-dev.example.workers.dev',
         VERIFY_DEV_WEB_URL: 'https://web-dev.example.workers.dev/',
       },
+      releaseCommit: RELEASE_COMMIT,
       runCommand: async (command, args, options) => {
         commands.push([command, ...args].join(' '))
         return {
@@ -95,12 +69,21 @@ describe('开发环境发布预演验证', () => {
     assert.equal(result.notes.includes('dev-smoke-owner-disabled-after-run'), true)
     assert.equal(commands.some(command => command.includes('wrangler d1 migrations apply meigallery-db-dev --env dev --remote')), true)
     assert.equal(commands.some(command => command.includes('wrangler deploy --env dev')), true)
+    assert.equal(commands.some(command => command.includes(`wrangler deploy --env dev --var RELEASE_COMMIT:${RELEASE_COMMIT}`)), true)
+    assert.equal(commands.filter(command => command.includes(`wrangler deploy --env dev --var RELEASE_COMMIT:${RELEASE_COMMIT}`)).length, 2)
     assert.equal(commands.some(command => command.includes("UPDATE users SET status = 'disabled'")), true)
     assert.equal(result.steps.some(step => step.name === 'dev-smoke-owner-cleanup' && step.status === 'passed'), true)
     assert.equal(requestedUrls.some(url => url.includes('/api/admin/attribution/conversions?') && url.includes('sourceCode=release-dev-fb')), true)
     assert.equal(requestedUrls.some(url => url.includes('/api/admin/attribution/meta?')), true)
     assert.equal(conversionBodies.every(body => body.consentState === 'granted'), true)
     assert.deepEqual(conversionBodies.map(body => body.actionType), ['contact', 'complete_registration'])
+    assert.match(conversionBodies[0].visitorId, /^visitor_release_dev_[0-9a-f]{12}$/)
+    assert.equal(conversionBodies[1].visitorId, conversionBodies[0].visitorId)
+    assert.match(conversionBodies[0].sessionId, /^session_release_dev_[0-9a-f]{12}$/)
+    assert.equal(conversionBodies[1].sessionId, conversionBodies[0].sessionId)
+    assert.match(conversionBodies[0].actionTarget, /^floating_contact_panel_[0-9a-f]{12}$/)
+    assert.match(conversionBodies[1].actionTarget, /^register-submit_[0-9a-f]{12}$/)
+    assert.equal(requestedUrls.filter(url => url.includes('/api/admin/attribution/meta?')).length, 2)
   })
 
   it('dev seed 使用严格 test 模式', async () => {
@@ -125,6 +108,7 @@ describe('开发环境发布预演验证', () => {
         VERIFY_DEV_API_URL: 'https://api-dev.example.workers.dev',
         VERIFY_DEV_WEB_URL: 'https://web-dev.example.workers.dev/',
       },
+      releaseCommit: RELEASE_COMMIT,
       pollIntervalMs: 0,
       runCommand: passingCommand,
       fetch: async () => {
@@ -139,12 +123,53 @@ describe('开发环境发布预演验证', () => {
     assert.equal(result.notes.includes('meta-test-event-code-missing'), false)
   })
 
+  it('历史非零 CAPI sent 没有基线增量时失败并清理 Owner', async () => {
+    const unchanged = { Contact: 9, Lead: 7, CompleteRegistration: 5 }
+    const responses = successfulResponses({ baseline: unchanged, after: unchanged })
+    const result = await runDevRehearsalVerification({
+      env: {
+        VERIFY_DEV_API_URL: 'https://api-dev.example.workers.dev',
+        VERIFY_DEV_WEB_URL: 'https://web-dev.example.workers.dev/',
+      },
+      releaseCommit: RELEASE_COMMIT,
+      pollTimeoutMs: 0,
+      pollIntervalMs: 0,
+      runCommand: passingCommand,
+      fetch: async () => responses.shift() || jsonResponse(500, { message: '缺少模拟响应' }),
+    })
+
+    const deliveryStep = result.steps.find(step => step.name === 'dev-meta-capi-deliveries')
+    assert.equal(deliveryStep?.status, 'failed')
+    assert.match(deliveryStep?.summary || '', /基线增量/)
+    assert.equal(result.steps.some(step => step.name === 'dev-smoke-owner-cleanup' && step.status === 'passed'), true)
+  })
+
+  it('conversion created=false 时失败并清理 Owner', async () => {
+    const responses = successfulResponses()
+    responses[3] = jsonResponse(200, { data: { id: 'conv_existing', actionType: 'contact', created: false } })
+    const result = await runDevRehearsalVerification({
+      env: {
+        VERIFY_DEV_API_URL: 'https://api-dev.example.workers.dev',
+        VERIFY_DEV_WEB_URL: 'https://web-dev.example.workers.dev/',
+      },
+      releaseCommit: RELEASE_COMMIT,
+      runCommand: passingCommand,
+      fetch: async () => responses.shift() || jsonResponse(500, { message: '缺少模拟响应' }),
+    })
+
+    const conversionStep = result.steps.find(step => step.name === 'dev-conversion-contact')
+    assert.equal(conversionStep?.status, 'failed')
+    assert.match(conversionStep?.summary || '', /created 非 true/)
+    assert.equal(result.steps.some(step => step.name === 'dev-smoke-owner-cleanup' && step.status === 'passed'), true)
+  })
+
   it('非 2xx smoke 响应会保留 HTTP 状态和响应体摘要', async () => {
     const result = await runDevRehearsalVerification({
       env: {
         VERIFY_DEV_API_URL: 'https://api-dev.example.workers.dev',
         VERIFY_DEV_WEB_URL: 'https://web-dev.example.workers.dev/',
       },
+      releaseCommit: RELEASE_COMMIT,
       runCommand: async (command, args, options) => ({
         name: options.name,
         status: 'passed',
@@ -172,6 +197,7 @@ describe('开发环境发布预演验证', () => {
         VERIFY_DEV_API_URL: 'https://api-dev.example.workers.dev',
         VERIFY_DEV_WEB_URL: 'https://web-dev.example.workers.dev/',
       },
+      releaseCommit: RELEASE_COMMIT,
       requestTimeoutMs: 5,
       runCommand: async (command, args, options) => ({
         name: options.name,
@@ -207,10 +233,13 @@ function textResponse(status, body) {
   })
 }
 
-function successfulResponses() {
+function successfulResponses(options = {}) {
+  const baseline = options.baseline || { Contact: 0, Lead: 0, CompleteRegistration: 0 }
+  const after = options.after || { Contact: 1, Lead: 1, CompleteRegistration: 1 }
   return [
     jsonResponse(200, { status: 'ok', db: 'ok' }),
-    textResponse(200, '<!doctype html><html><body><div id="__nuxt"></div></body></html>'),
+    textResponse(200, options.html || '<!doctype html><html><body><div id="__nuxt"></div></body></html>'),
+    metaDeliveryResponse(baseline),
     jsonResponse(200, { data: { id: 'conv_1', actionType: 'contact', created: true } }),
     jsonResponse(200, { data: { id: 'conv_2', actionType: 'complete_registration', created: true } }),
     jsonResponse(200, { accepted: 3, rejected: 0 }),
@@ -228,16 +257,21 @@ function successfulResponses() {
         bySource: [{ source_name: 'release-dev-fb', contact_count: 1, complete_registration_count: 1 }],
       },
     }),
-    jsonResponse(200, {
-      data: {
-        deliveries: [
-          { channel: 'meta_capi', event_name: 'Contact', status: 'sent', delivery_count: 1 },
-          { channel: 'meta_capi', event_name: 'Lead', status: 'sent', delivery_count: 1 },
-          { channel: 'meta_capi', event_name: 'CompleteRegistration', status: 'sent', delivery_count: 1 },
-        ],
-      },
-    }),
+    metaDeliveryResponse(after),
   ]
+}
+
+function metaDeliveryResponse(counts) {
+  return jsonResponse(200, {
+    data: {
+      deliveries: Object.entries(counts).map(([eventName, deliveryCount]) => ({
+        channel: 'meta_capi',
+        event_name: eventName,
+        status: 'sent',
+        delivery_count: deliveryCount,
+      })),
+    },
+  })
 }
 
 async function passingCommand(command, args, options) {

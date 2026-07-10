@@ -321,6 +321,20 @@ describe('发布验证基础库', () => {
     }, /当前分支不是 main 或 release/)
   })
 
+  it('assertReportCanGateProduction 拒绝从 dev 生成后切到 main 的同 SHA 报告', () => {
+    const report = createValidReleaseReport()
+    assert.throws(() => {
+      assertReportCanGateProduction({
+        ...report,
+        git: { ...report.git, branch: 'dev' },
+      }, {
+        now: '2026-07-09T01:00:00.000Z',
+        currentBranch: 'main',
+        expectedCommit: report.git.commit,
+      })
+    }, /报告生成分支不是 main 或 release/)
+  })
+
   it('assertReportCanGateProduction 允许通过 VERIFY_RELEASE_ALLOW_BRANCH 绕过测试分支限制', () => {
     assert.doesNotThrow(() => {
       assertReportCanGateProduction(createValidReleaseReport(), {

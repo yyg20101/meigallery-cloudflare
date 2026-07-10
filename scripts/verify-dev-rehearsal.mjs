@@ -20,6 +20,8 @@ export async function runDevRehearsalVerification(options = {}) {
   const env = options.env || process.env
   const apiUrl = readRequiredEnv(env, 'VERIFY_DEV_API_URL')
   const webUrl = readRequiredEnv(env, 'VERIFY_DEV_WEB_URL')
+  const releaseCommit = String(options.releaseCommit || '').trim()
+  if (!/^[0-9a-f]{40}$/i.test(releaseCommit)) throw new Error('dev rehearsal 需要 40 位 RELEASE_COMMIT')
   const steps = []
   const notes = []
   const artifacts = []
@@ -80,7 +82,7 @@ export async function runDevRehearsalVerification(options = {}) {
 
     const apiDeployStep = await runCommandFn('corepack', [
       'pnpm', '--filter', '@meigallery/api', 'exec',
-      'wrangler', 'deploy', '--env', 'dev',
+      'wrangler', 'deploy', '--env', 'dev', '--var', `RELEASE_COMMIT:${releaseCommit}`,
     ], {
       cwd,
       name: 'dev-api-deploy',
@@ -90,7 +92,7 @@ export async function runDevRehearsalVerification(options = {}) {
 
     const webDeployStep = await runCommandFn('corepack', [
       'pnpm', '--filter', '@meigallery/web', 'exec',
-      'wrangler', 'deploy', '--env', 'dev',
+      'wrangler', 'deploy', '--env', 'dev', '--var', `RELEASE_COMMIT:${releaseCommit}`,
     ], {
       cwd,
       name: 'dev-web-deploy',
@@ -118,10 +120,17 @@ export async function runDevRehearsalVerification(options = {}) {
     steps.push(webHealthStep)
     if (webHealthStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
 
+    const baselineResult = await readMetaDeliveryBaseline(boundedFetch, apiUrl, sessionToken, today)
+    steps.push(baselineResult.step)
+    if (baselineResult.step.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
+
+    const conversionVisitorId = `visitor_release_dev_${runSuffix}`
+    const conversionSessionId = `session_release_dev_${runSuffix}`
+
     const contactStep = await postConversion(boundedFetch, apiUrl, 'dev-conversion-contact', {
       actionType: 'contact',
-      visitorId: 'visitor_release_dev',
-      sessionId: 'session_release_dev',
+      visitorId: conversionVisitorId,
+      sessionId: conversionSessionId,
       occurredAt: new Date().toISOString(),
       routeName: 'gallery-detail',
       path: '/gallery/release-dev-gallery',
@@ -134,7 +143,7 @@ export async function runDevRehearsalVerification(options = {}) {
       utmContent: 'release-dev-chat',
       consentState: 'granted',
       methodType: 'telegram',
-      actionTarget: 'floating_contact_panel',
+      actionTarget: `floating_contact_panel_${runSuffix}`,
       metadata: {
         fbclid: 'release-dev-fbclid',
         placement: 'dev-rehearsal-smoke',
@@ -145,8 +154,8 @@ export async function runDevRehearsalVerification(options = {}) {
 
     const completeRegistrationStep = await postConversion(boundedFetch, apiUrl, 'dev-conversion-complete-registration', {
       actionType: 'complete_registration',
-      visitorId: 'visitor_release_dev',
-      sessionId: 'session_release_dev',
+      visitorId: conversionVisitorId,
+      sessionId: conversionSessionId,
       occurredAt: new Date().toISOString(),
       routeName: 'register',
       path: '/register',
@@ -158,7 +167,7 @@ export async function runDevRehearsalVerification(options = {}) {
       utmCampaign: 'release-dev-rehearsal',
       utmContent: 'release-dev-chat',
       consentState: 'granted',
-      actionTarget: 'register-submit',
+      actionTarget: `register-submit_${runSuffix}`,
     })
     steps.push(completeRegistrationStep)
     if (completeRegistrationStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
@@ -218,6 +227,7 @@ export async function runDevRehearsalVerification(options = {}) {
     const metaDeliveryStep = await pollMetaDeliveries(boundedFetch, apiUrl, sessionToken, today, {
       timeoutMs: options.pollTimeoutMs ?? META_POLL_TIMEOUT_MS,
       intervalMs: options.pollIntervalMs ?? META_POLL_INTERVAL_MS,
+      baseline: baselineResult.counts,
     })
     steps.push(metaDeliveryStep)
     if (metaDeliveryStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
@@ -291,6 +301,9 @@ async function postConversion(fetchFn, apiUrl, stepName, payload) {
     }
     if (body?.data?.actionType !== payload.actionType) {
       throw new Error(`响应 actionType 不匹配：${String(body?.data?.actionType || '')}`)
+    }
+    if (body?.data?.created !== true) {
+      throw new Error(`${payload.actionType} 响应 created 非 true`)
     }
     return `${payload.actionType} 已写入，created=${String(body?.data?.created)}`
   })
@@ -408,15 +421,16 @@ async function pollMetaDeliveries(fetchFn, apiUrl, sessionToken, today, options)
         }
       }
 
-      const counts = countSentMetaEvents(body?.data?.deliveries)
-      if (REQUIRED_META_EVENTS.every(eventName => counts[eventName] >= 1)) {
+      if (!Array.isArray(body?.data?.deliveries)) throw new Error('Meta delivery 响应缺少 deliveries')
+      const counts = countSentMetaEvents(body.data.deliveries)
+      if (REQUIRED_META_EVENTS.every(eventName => counts[eventName] >= options.baseline[eventName] + 1)) {
         return {
           ...createStep('dev-meta-capi-deliveries'),
           status: 'passed',
           durationMs: Date.now() - startedAt,
           command,
           exitCode: response.status,
-          summary: REQUIRED_META_EVENTS.map(eventName => `${eventName}=${counts[eventName]}`).join(', '),
+          summary: REQUIRED_META_EVENTS.map(eventName => `${eventName}=${counts[eventName]} (+${counts[eventName] - options.baseline[eventName]})`).join(', '),
         }
       }
       lastSummary = REQUIRED_META_EVENTS.map(eventName => `${eventName}=${counts[eventName]}`).join(', ')
@@ -424,6 +438,7 @@ async function pollMetaDeliveries(fetchFn, apiUrl, sessionToken, today, options)
       lastSummary = error instanceof Error ? error.message : String(error)
     }
 
+    if (Date.now() - startedAt >= options.timeoutMs) break
     if (options.intervalMs > 0) await new Promise(resolve => setTimeout(resolve, options.intervalMs))
   }
 
@@ -433,7 +448,46 @@ async function pollMetaDeliveries(fetchFn, apiUrl, sessionToken, today, options)
     durationMs: Date.now() - startedAt,
     command,
     exitCode: null,
-    summary: truncateSummary(`30 秒内未等到三事件 CAPI sent：${lastSummary}`),
+    summary: truncateSummary(`30 秒内未等到三事件 CAPI sent 基线增量：${lastSummary}`),
+  }
+}
+
+async function readMetaDeliveryBaseline(fetchFn, apiUrl, sessionToken, today) {
+  const startedAt = Date.now()
+  const url = `${apiUrl}/api/admin/attribution/meta?from=${today}&to=${today}`
+  const command = `GET ${url}`
+  try {
+    const response = await fetchFn(url, {
+      headers: { Cookie: `${SESSION_COOKIE}=${sessionToken}` },
+    })
+    const text = await response.text()
+    const body = text ? JSON.parse(text) : null
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    if (!Array.isArray(body?.data?.deliveries)) throw new Error('Meta delivery 基线响应缺少 deliveries')
+    const counts = countSentMetaEvents(body.data.deliveries)
+    return {
+      counts,
+      step: {
+        ...createStep('dev-meta-capi-baseline'),
+        status: 'passed',
+        durationMs: Date.now() - startedAt,
+        command,
+        exitCode: response.status,
+        summary: REQUIRED_META_EVENTS.map(eventName => `${eventName}=${counts[eventName]}`).join(', '),
+      },
+    }
+  } catch (error) {
+    return {
+      counts: Object.fromEntries(REQUIRED_META_EVENTS.map(eventName => [eventName, 0])),
+      step: {
+        ...createStep('dev-meta-capi-baseline'),
+        status: 'failed',
+        durationMs: Date.now() - startedAt,
+        command,
+        exitCode: null,
+        summary: truncateSummary(error instanceof Error ? error.message : String(error)),
+      },
+    }
   }
 }
 
