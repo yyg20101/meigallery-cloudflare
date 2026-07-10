@@ -1,6 +1,6 @@
 # 项目当前状态
 
-更新时间：2026-07-09
+更新时间：2026-07-10
 
 本文是当前实现、部署和文档入口索引。若旧提交、历史计划或早期文档与本文冲突，以 `AGENTS.md`、本文、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md` 和 `docs/GIT_WORKFLOW.md` 为准。
 
@@ -8,7 +8,7 @@
 
 - 已清理历史 PRD、旧计划、旧评审台账、旧线框图和过期 Superpowers 方案，避免后续开发继续引用历史口径。
 - 当前保留 `docs/superpowers/specs/2026-07-08-attribution-center-clean-design.md` 作为归因中心、后台 UI、测试矩阵和发布闸门的设计背景；当前实现事实以代码、`docs/TECHNICAL_SPEC.md` 和本文为准。
-- 当前保留 `docs/superpowers/specs/2026-07-08-meta-capi-attribution-layer-design.md` 作为 Meta Pixel / CAPI、转化事件账本和去重层的技术输入；站内转化账本与 Meta CAPI Queue 已按该方向落地。
+- 当前保留 `docs/superpowers/specs/2026-07-08-meta-capi-attribution-layer-design.md` 作为 Meta Pixel / CAPI、转化事件账本和去重层的历史技术输入；核心架构已实现，生产放行细节由 2026-07-10 Meta 生产就绪设计和本状态文档覆盖。
 - 新需求进入实施时，应直接更新当前 PRD、技术规格、UI 设计或专项文档，不再恢复历史归档目录。
 
 ## 技术栈现状
@@ -27,7 +27,7 @@
 - 开发 Worker：`meigallery-web-dev` / `meigallery-api-dev`，不绑定生产域名；当前真实地址为 `https://meigallery-web-dev.wajie.workers.dev` / `https://meigallery-api-dev.wajie.workers.dev`。
 - 数据库：生产为 Cloudflare D1 `meigallery-db`，开发环境已隔离到 `meigallery-db-dev`；迁移文件位于 `packages/api/migrations/`。
 - 对象存储：生产为 Cloudflare R2 `meigallery-media`，开发环境已隔离到 `meigallery-media-dev`。
-- Queue：生产为 `meigallery-meta-capi`，开发环境已隔离到 `meigallery-meta-capi-dev`。
+- Queue：生产主 Queue / DLQ 为 `meigallery-meta-capi` / `meigallery-meta-capi-dlq`，开发环境已隔离到 `meigallery-meta-capi-dev` / `meigallery-meta-capi-dev-dlq`。
 - 视频：Cloudflare Stream 仍未接入生产链路；相关字段和密钥按规划保留。
 - 生产部署：通过 PR 合入 `main` 后，先在最新 `main` 待发 commit 上重新确认同一 commit 的 `verify:release` 报告，再手动执行 `./scripts/deploy.sh production` 或等价 wrangler 命令。
 - CI：`.github/workflows/ci.yml` 只做 PR 和 dev 推送验证，不自动部署生产。
@@ -38,8 +38,8 @@
 - 已提供四层命令：`verify:quick`、`verify:local-runtime`、`verify:dev-rehearsal`、`verify:release`。
 - `verify:quick` 适合日常提交前自检，首步检查 dev/production 资源隔离。
 - `verify:local-runtime` 用于本地 Cloudflare 运行时验证 D1、Queue、归因和降级链路。
-- `verify:dev-rehearsal` 依赖独立 dev 资源和当前 dev Workers URL，作为上线前远端演练。
-- `verify:release` 是生产放行前最终校验，但当前仓库尚未真实跑完整 release 报告；生产前必须在干净工作区、带 `VERIFY_DEV_API_URL` / `VERIFY_DEV_WEB_URL` 运行并生成同一 commit 的通过报告。
+- `verify:dev-rehearsal` 依赖独立 dev 资源和当前 dev Workers URL，作为上线前远端演练；Meta 链路还要求 Owner 生成 `Contact`、`Lead`、`CompleteRegistration` 的同 commit live evidence。
+- `verify:release` 是生产放行前最终校验，但当前仓库尚未真实跑完整 release 报告；生产前必须在干净工作区、带 `VERIFY_DEV_API_URL` / `VERIFY_DEV_WEB_URL` 运行并生成同一 commit 的通过报告。最终 `main` HEAD 必须重新部署 dev、重做 evidence，不能复用其他 commit 的结果。
 - `scripts/deploy.sh production` 已在远端 migration 前接入 production gate；没有通过版 release 报告时必须阻断。
 
 ## 当前已实现能力
@@ -50,7 +50,7 @@
 - Telegram 外部导入 API：项目只提供对外 API 接收能力，不内置 Telegram Bot 本体；对接契约见 `docs/TELEGRAM_IMPORT_API.md`。
 - 数据分析：已实现一方数据采集、来源归因、邀请码、联系点击、趋势和后台 `/admin/analytics` 系列看板；后台 UI 口径见 `docs/UI_DATA_ANALYTICS_DASHBOARD.md`。
 - 归因中心：已实现站内转化账本、投放追踪链接、有效联系 / Lead / 完成注册趋势、Meta Pixel / CAPI 同步健康、重复诊断和分级发布检查；后台分别展示 blocker 与 warning，warning 不改变生产阻断状态；入口为 `/admin/attribution`。
-- Meta Pixel / CAPI：已实现浏览器侧 Pixel 设置、标准事件、同一 `eventID` 去重和 Cloudflare Queue 异步 CAPI 投递；后台将 Pixel attempted 与 CAPI sent/failed/skipped 分开显示，并只公开 token、Test Event Code、Queue binding 的存在状态。CAPI 使用 Worker secret `META_CAPI_ACCESS_TOKEN`，仅 Owner 可在 test 模式发送严格 Test Event。数据分析中的 `fb` / `facebook` / `meta` 表示站内 UTM、推广链接或 referrer 归因，不等同于 Meta Pixel 回传数据。
+- Meta Pixel / CAPI：核心架构、营销授权门禁、同一 `eventID` 去重、Queue/DLQ 与分级发布检查已实现；正式 Meta 事件只有 `Contact`、`Lead`、`CompleteRegistration`，不支持 `StartTrial`。后台 Pixel `attempted` 仅代表浏览器尝试，不代表 Meta 接收；CAPI 仅在 Graph API `events_received=1` 时以 `sent` 表示接收成功。CAPI 使用 Worker secret `META_CAPI_ACCESS_TOKEN`，仅 Owner 可在 test 模式发送严格 Test Event；最终 production 放行仍待真实 dev evidence、同 commit release 与用户授权的生产操作完成。数据分析中的 `fb` / `facebook` / `meta` 表示站内 UTM、推广链接或 referrer 归因，不等同于 Meta Pixel 回传数据。
 - SEO：已实现基础 SEO 设置、关键词池、sitemap、robots、结构化数据和生产校验脚本；运营配置见 `docs/SEO_CONFIGURATION.md`。
 
 ## 规划和未接入

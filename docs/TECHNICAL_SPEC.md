@@ -229,7 +229,7 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/media/:assetId/thumbnail` | 缩略图（公开） |
 | POST | `/api/analytics/events` | 站内一方数据分析批量采集，默认受 `analytics_enabled` 关闭态保护 |
 | POST | `/api/analytics/session/end` | session 结束兜底采集，兼容 `sendBeacon` 简写 payload |
-| POST | `/api/conversions/events` | 公开转化事件入口，记录联系、完成注册、开始试用等站内转化；受限流保护，服务端清洗 metadata，不接受会员发放、Lead 或敏感字段 |
+| POST | `/api/conversions/events` | 公开转化事件入口，仅记录联系和完成注册；受限流保护，服务端清洗 metadata，不接受 `Lead`、`StartTrial`、会员发放或敏感字段 |
 | GET | `/api/invites/:code/status` | 公开校验邀请码状态，只返回可展示字段和失败原因，不泄露 `code_hash` |
 | GET | `/api/settings/public` | 公开站点设置和过滤后的首页广告数组 `home_ads` |
 
@@ -612,20 +612,27 @@ INSERT INTO site_settings (key, value) VALUES
 
 | 表 | 状态 | 用途 |
 |------|------|------|
-| `analytics_conversion_actions` | `[当前实现]` | 站内转化事实，保存 `contact`、`lead`、`complete_registration`、`start_trial`、`membership_grant` 等事件、UTM、来源、去重 key 和清洗后的 metadata。 |
+| `analytics_conversion_actions` | `[当前实现]` | 站内转化事实，保存 `contact`、`lead`、`complete_registration`、`membership_grant` 等当前动作；历史 schema 兼容读取 `start_trial`，但不再创建或作为正式 Meta 事件投放。 |
 | `analytics_conversion_deliveries` | `[当前实现]` | Pixel / Meta CAPI delivery 账本，记录 channel、`external_event_id`、状态、跳过原因、失败错误、重试次数和发送时间。 |
 | `analytics_conversion_daily` | `[当前实现]` | 按日期、事件、来源、campaign、utm_content 等维度聚合站内转化，用于后台趋势和投放对比。 |
 | `analytics_conversion_delivery_daily` | `[当前实现]` | 按日期、channel、事件和 delivery 状态聚合同步结果，用于 Meta 同步健康和发布检查。 |
 
 实现约束：
 
-- `/api/conversions/events` 为公开入口，仅允许浏览器提交 `contact`、`complete_registration`、`start_trial` 等用户侧事件；`lead` 和 `membership_grant` 必须由服务端可信流程产生。
+- 正式 Meta 事件严格限定为 `Contact`、`Lead`、`CompleteRegistration`；`StartTrial` 不支持。`lead` 是服务端从首次有效联系派生的可信动作，公开入口也不得提交 `lead`。
+- `/api/conversions/events` 为公开入口，仅允许浏览器提交 `contact`、`complete_registration`；`lead` 和 `membership_grant` 必须由服务端可信流程产生，历史 `start_trial` 仅为存量账本兼容值。
 - 公开转化入口复用应用内兜底限流，并在服务端白名单清洗 metadata；请求不得携带邮箱、手机号、联系方式明文、token、私有 R2 key、完整敏感 URL 或任意广告账户密钥。
 - `consent_state=denied` 时只保留站内必要事实，不创建 Meta Pixel / CAPI delivery；`consent_state` 仅用于当次 delivery 判断，不作为 D1 字段持久化。
-- Pixel 与 CAPI 使用同一 `external_event_id` / `eventID`，方便 Meta 后台去重；站内重复诊断不依赖 Meta 回传数据。
+- Pixel 与 CAPI 使用同一 `external_event_id` / `eventID`，方便 Meta 后台去重；Pixel `attempted` 仅说明浏览器已尝试调用，不代表 Meta 接收。只有 CAPI `sent` 且 Graph API 返回 `events_received=1` 才代表接收成功；站内重复诊断不依赖 Meta 回传数据。
 - `/api/admin/attribution/*` 需要 admin+；`/api/admin/attribution/meta/test-event` 需要 owner，并写入 `admin_audit_logs`。
-- Meta CAPI 通过 Cloudflare Queue `META_CAPI_QUEUE` 异步投递，使用 Worker secret `META_CAPI_ACCESS_TOKEN`；可选 `META_CAPI_TEST_EVENT_CODE` 仅用于 Events Manager Test Events。secret 不写入 D1、不返回前端，也不写入审计日志。
+- Meta CAPI 通过 Cloudflare Queue `META_CAPI_QUEUE` 异步投递，使用 Worker secret `META_CAPI_ACCESS_TOKEN`；可选 `META_CAPI_TEST_EVENT_CODE` 仅用于 Events Manager Test Events。dev 主 Queue / DLQ 固定为 `meigallery-meta-capi-dev` / `meigallery-meta-capi-dev-dlq`，生产为 `meigallery-meta-capi` / `meigallery-meta-capi-dlq`。secret 不写入 D1、不返回前端，也不写入审计日志。
 - Queue 发送失败不得阻塞站内转化账本写入；delivery 必须显示 `sent`、`failed`、`skipped`、`missing_queue`、`missing_secret`、`disabled` 等可诊断状态。
+
+#### Meta 生产放行与回滚 `[当前实现 / 运维前置]`
+
+`0034_meta_production_readiness.sql` 在迁移后将不受支持的 tracking mode 收敛为 `disabled`；生产放行必须确认 `meta_tracking_mode=disabled`、`meta_capi_enabled=false`，直至 Owner 按顺序显式开启。顺序固定为：代码关闭态 -> dev live evidence -> 生产资源 -> migration -> 最终 main HEAD 重新部署 dev 并生成同 commit evidence -> main 同 commit release -> 生产部署 -> `test` mode Owner Test Event -> `production` mode -> 开关 -> 观察。
+
+严格 Test Event 必须确认三项正式事件不含 `StartTrial`，并且 CAPI 的 `sent` 与 `events_received=1` 同时成立。由用户营销授权门禁控制的 Pixel 只能写入 `attempted`，不能替代这项确认。任何阶段失败都必须将 mode 切回 `disabled` 并保持 `meta_capi_enabled=false`；先关闭 CAPI、再关闭 mode，保留 Queue/DLQ、D1 migration 和账本用于诊断。
 
 成本与索引口径：
 

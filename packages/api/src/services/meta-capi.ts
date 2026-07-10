@@ -469,7 +469,7 @@ function readTraceId(body: Record<string, unknown>, accessToken: string) {
     : {}
   const value = typeof body.fbtrace_id === 'string' ? body.fbtrace_id : error.fbtrace_id
   if (typeof value !== 'string') return undefined
-  const traceId = value.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 120)
+  const traceId = value.replace(/\p{Cc}/gu, '').trim().slice(0, 120)
   if (accessToken && traceId.includes(accessToken)) return undefined
   return traceId || undefined
 }

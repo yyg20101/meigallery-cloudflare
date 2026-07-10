@@ -55,7 +55,6 @@ const items = computed(() => [
 
 const presenceSummary = computed(() => {
   if (!props.showPresenceSummary) return ''
-  const states = [props.secretPresent, props.testEventCodePresent, props.queueBindingPresent]
   const label = (value: boolean | undefined) => value === true ? '存在' : value === false ? '缺失' : '未确认'
   return `CAPI 配置：token ${label(props.secretPresent)} · Test Event Code ${label(props.testEventCodePresent)} · Queue binding ${label(props.queueBindingPresent)}`
 })

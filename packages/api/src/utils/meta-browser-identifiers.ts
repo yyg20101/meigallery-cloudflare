@@ -2,7 +2,7 @@ import type { MetaCapiUserData } from '@meigallery/shared'
 
 const FBP_PATTERN = /^fb\.1\.\d{10,16}\.[A-Za-z0-9._-]{1,128}$/
 const FBC_PATTERN = /^fb\.1\.\d{10,16}\.[A-Za-z0-9._-]{1,128}$/
-const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001F\u007F]/
+const CONTROL_CHARACTER_PATTERN = /\p{Cc}/u
 const IP_MAX_LENGTH = 64
 const USER_AGENT_MAX_LENGTH = 512
 

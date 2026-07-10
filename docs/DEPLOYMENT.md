@@ -143,49 +143,53 @@ corepack pnpm verify:release
 
 达到以下任一阈值时进入 Phase 9 规模增强评估，而不是临时放宽当前预算：采集接口 P95 > 300ms 且主要耗时来自 D1 写入；或 D1 rows written 超过 80,000/day 的 80% 连续 3 天。Phase 9 才评估 Cloudflare Queues 批处理和 Workers Analytics Engine；评估前必须重新核对 Cloudflare 官方 limits、pricing、batching、retry 和 retention 文档。
 
-### Meta CAPI 上线顺序
+### Meta 正式投放上线顺序
 
-Meta CAPI 使用 Cloudflare Queues 异步投递。站内转化账本是事实源，Pixel / CAPI 只作为同步渠道；即使 CAPI 关闭或失败，站内有效联系、Lead、注册等数据仍应继续写入 D1。
+Meta 正式事件仅为 `Contact`、`Lead`、`CompleteRegistration`；不支持 `StartTrial`。站内 `analytics_conversion_actions` 是唯一事实源，Pixel / CAPI 只是同步渠道，关闭或失败都不得阻断站内转化记账。
 
-首次启用前执行：
+后台与证据的状态口径必须严格区分：Pixel `attempted` 只表示浏览器已按服务端指令尝试调用，**不代表 Meta 已接收**；只有 CAPI delivery 为 `sent` 且 Graph API 返回 `events_received=1`，才可表述为 Meta 已接收。三项正式事件的 Browser/Server 同 ID 与 Meta 去重结果，必须由 Owner 在 Events Manager 中确认并生成脱敏 live evidence。
+
+环境资源固定如下，dev 和生产不得交叉使用 token、Test Event Code、D1、R2 或 Queue：
+
+| 环境 | 主 Queue | DLQ |
+|------|----------|-----|
+| dev | `meigallery-meta-capi-dev` | `meigallery-meta-capi-dev-dlq` |
+| production | `meigallery-meta-capi` | `meigallery-meta-capi-dlq` |
+
+首次由已授权操作人创建资源时，Queue 与 secret 命令只在交互式终端执行；secret 值绝不进入 shell history、文档、报告或日志：
 
 ```bash
-# 创建生产与 dev Queue
+# production；dev 使用对应的 -dev / -dev-dlq 名称和 --env dev。
 corepack pnpm --filter @meigallery/api exec wrangler queues create meigallery-meta-capi
-corepack pnpm --filter @meigallery/api exec wrangler queues create meigallery-meta-capi-dev
-
-# 配置 Meta CAPI Worker secrets
-corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_ACCESS_TOKEN
-corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_TEST_EVENT_CODE
+corepack pnpm --filter @meigallery/api exec wrangler queues create meigallery-meta-capi-dlq
+corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_ACCESS_TOKEN --env=""
+corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_TEST_EVENT_CODE --env=""
 ```
 
-上线顺序：
+正式发布必须按下列顺序完成，不能以旧 commit 的 evidence 或 release 报告放行新 HEAD：
 
-1. 执行 D1 migrations，确保 `0032_attribution_conversions.sql` 和 `0033_meta_delivery_settings.sql` 已应用。
-2. 创建 `meigallery-meta-capi` Queue，并确认 `packages/api/wrangler.toml` 中 `META_CAPI_QUEUE` producer / consumer 已通过 dry-run。
-3. 设置 `META_CAPI_ACCESS_TOKEN`；如需在 Events Manager 的 Test Events 中联调，再设置 `META_CAPI_TEST_EVENT_CODE`。
-4. 部署 API Worker，使 Queue consumer、`/api/conversions/events` 和 `/api/admin/attribution/meta` 生效。
-5. 部署 Web Worker，使前台事件继续带同一 `eventID` 上报 Pixel，并在后台 Meta 同步页显示 CAPI Secret 存在状态。
-6. 后台设置中确认 `facebook_pixel_id` 与 Pixel 开关；仅在 Test Event 验证通过后开启 `meta_capi_enabled`。
-7. 点击前台联系方式或完成注册后，在 `/admin/attribution/meta` 检查 `meta_capi` delivery 是否从 pending 变为 sent；若缺少 Queue 或 secret，应显示 skipped 且带 `missing_queue` / `missing_secret` 原因。
+1. 保持代码关闭态：`meta_tracking_mode=disabled`、`meta_capi_enabled=false`，并完成本地 migration、测试、类型检查和 Worker dry-run。
+2. 在独立 dev 资源部署当前待发布代码，完成严格 dev live evidence：`Contact`、`Lead`、`CompleteRegistration` 均有 Browser/Server、同一 event ID、去重成功，且没有 `StartTrial`。
+3. 只在获得上线授权后创建或核验生产主 Queue、DLQ、consumer 和独立的两个 Worker secret；先用 `verify:meta-resources --report-only` 排障，不得把原始 CLI 输出或 secret 写入证据。
+4. 对生产 D1 应用 migration。`0034_meta_production_readiness.sql` 后必须保持 `meta_tracking_mode=disabled` 和 `meta_capi_enabled=false`。
+5. PR 合入 `main` 后，以最终 `main` HEAD 重新部署 dev，并重新生成该 commit 的 dev live evidence；此前任何 commit 的 evidence 都失效。
+6. 在最终 `main` HEAD、干净工作区运行同 commit 的 `verify:release`，通过后才允许 production gate 放行。
+7. 部署生产 API，再部署生产 Web；部署不等同于开启营销投放。
+8. Owner 先将 mode 设为 `test`，在严格 Test Event 中确认 CAPI 返回 `sent` 且 `events_received=1`。
+9. Owner 将 mode 切为 `production`，再次确认营销授权仅在 `granted` 时允许追踪，且拒绝或 limited 不加载 Pixel、不创建 Meta delivery。
+10. 仅在上述检查全部通过后开启 `meta_capi_enabled`，按小流量观察 `attempted`、CAPI `sent`、failed/skipped、DLQ 和重复诊断；Pixel 可按同一授权门禁单独开启。
 
-上线前必须通过以下验证：
+任何一步失败都回到 `meta_tracking_mode=disabled` 并保持 `meta_capi_enabled=false`，不得伪造 live evidence 或跳过同 commit 重验。
 
-- `corepack pnpm --filter @meigallery/api test -- meta-capi.test.ts attribution.test.ts conversions.test.ts`
-- `corepack pnpm --filter @meigallery/api exec tsc --noEmit`
-- `corepack pnpm --filter @meigallery/api exec wrangler deploy --env="" --dry-run --outdir=dist`
-- Meta Events Manager Test Events 中看到 CAPI 事件，并确认与 Pixel 事件使用同一 `event_id` 去重。
+### Meta 回滚顺序
 
-### Meta CAPI 回滚顺序
+优先回滚运行开关，不删除 Queue、DLQ、secret、D1 表或已应用 migration：
 
-优先通过后台开关回滚，不删除 Queue、不删除 D1 表：
-
-1. Owner 关闭 `meta_capi_enabled`。
-2. 新增转化仍写入 `analytics_conversion_actions`，但 `meta_capi` delivery 应显示 `skipped/disabled`。
-3. 如需同时停止浏览器 Pixel 上报，Owner 再关闭 `facebook_pixel_enabled`；站内转化账本继续写入，便于回滚后核对损失窗口。
-4. 如 Queue 积压异常，可临时暂停 Queue delivery：`corepack pnpm --filter @meigallery/api exec wrangler queues pause-delivery meigallery-meta-capi`。
-5. 修复后恢复：`corepack pnpm --filter @meigallery/api exec wrangler queues resume-delivery meigallery-meta-capi`。
-6. 如果需撤回 Worker 版本，先保持 `meta_capi_enabled=false`，再部署旧 API Worker；不要删除 `META_CAPI_ACCESS_TOKEN`，除非确认短期内不再联调。
+1. Owner 先关闭 `meta_capi_enabled`，停止新 CAPI 入队；站内转化账本应继续写入，CAPI delivery 以 `skipped/disabled` 可诊断状态呈现。
+2. 将 `meta_tracking_mode` 切回 `disabled`，使营销授权即使为 granted 也不再允许 Pixel 或新的 Meta delivery。
+3. 如需进一步停止浏览器侧调用，再关闭 `facebook_pixel_enabled`；不要把 Pixel `attempted` 误读为接收量。
+4. Queue 或外部失败异常时记录 backlog、DLQ、failed 原因并暂停投递；修复后先在 `test` mode 重做 Owner Test Event，再依序恢复 production mode 与 CAPI 开关。
+5. 如必须回退 Worker，先完成前述关闭态，再部署旧版本；保留 schema 和 delivery 账本用于核对损失窗口与恢复验证。
 
 ## 6. 环境变量
 
@@ -248,7 +252,7 @@ corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_TEST_E
 | API 域名 | `https://api.616618.xyz` | `https://meigallery-api-dev.wajie.workers.dev` |
 | D1 | `meigallery-db` | `meigallery-db-dev` |
 | R2 | `meigallery-media` | `meigallery-media-dev` |
-| Queue | `meigallery-meta-capi` | `meigallery-meta-capi-dev` |
+| Queue（主 / DLQ） | `meigallery-meta-capi` / `meigallery-meta-capi-dlq` | `meigallery-meta-capi-dev` / `meigallery-meta-capi-dev-dlq` |
 
 要求：
 
@@ -362,9 +366,11 @@ head_sampling_rate = 1
 - [ ] 后台管理员账号已创建
 - [ ] 外部导入所需 Import Token 已在后台创建，权限、过期时间和 `allowedSourceBotKeys` 已确认
 - [ ] 每个 `sourceBotKey` 对应的 `TELEGRAM_BOT_TOKEN_<SOURCE_BOT_KEY>` secret 已配置
-- [ ] `meigallery-meta-capi` Queue 已创建，API Worker producer / consumer dry-run 通过
-- [ ] `META_CAPI_ACCESS_TOKEN` 已配置，`META_CAPI_TEST_EVENT_CODE` 按需配置
-- [ ] `/admin/attribution/meta` 显示 CAPI Secret 存在状态，Test Event 验证通过后才开启 `meta_capi_enabled`
+- [ ] 生产 `meigallery-meta-capi` 和 `meigallery-meta-capi-dlq` 已创建，API Worker producer / consumer dry-run 通过
+- [ ] `META_CAPI_ACCESS_TOKEN` 和 `META_CAPI_TEST_EVENT_CODE` 已作为独立 production secret 配置；dev 使用不同值
+- [ ] `0034_meta_production_readiness.sql` 已应用后，`meta_tracking_mode=disabled`、`meta_capi_enabled=false`
+- [ ] 当前 `main` HEAD 已重做 dev live evidence；`Contact` / `Lead` / `CompleteRegistration` 均完成 Browser/Server 同 ID 去重，且无 `StartTrial`
+- [ ] `/admin/attribution/meta` 将 Pixel `attempted` 与 CAPI `sent` 分开显示；Owner Test Event 返回 `events_received=1` 后才允许 production mode 和 `meta_capi_enabled`
 - [ ] WAF 和基本 rate limiting 已启用
 - [ ] 登录、搜索、详情、媒体权限、导入流程通过验收
 - [ ] 数据分析 migrations、API、Web、后台页面和 Owner 开关顺序已完成；默认关闭态和回滚 disabled 响应已验证

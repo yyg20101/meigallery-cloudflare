@@ -109,7 +109,7 @@ export function useConversionTracking() {
       deliver(instructions)
     }
 
-    let pixelEvents: MetaPixelInstruction[] = []
+    let pixelEvents: MetaPixelInstruction[]
     try {
       pixelEvents = await send()
     } catch {

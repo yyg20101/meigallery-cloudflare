@@ -1,8 +1,8 @@
 # Meta 归因与转化事件账本设计
 
-状态：设计稿，尚未实施。
+状态：历史设计参考。核心架构已实现，生产放行细节由 2026-07-10 Meta 生产就绪设计、`docs/DEPLOYMENT.md`、`docs/GIT_WORKFLOW.md` 和 `docs/TECHNICAL_SPEC.md` 覆盖；本文件保留历史决策，不作为当前部署步骤。
 
-更新时间：2026-07-08
+更新时间：2026-07-10（原始设计：2026-07-08）
 
 ## 1. 背景
 
@@ -10,7 +10,7 @@
 
 - 一方数据分析：`/api/analytics/events` 写入 D1，并在后台 `/admin/analytics` 展示来源、点击、趋势、SEO 和健康数据。
 - 推广来源链接：后台可创建 `mg_source`、UTM 链接，用于区分广告版本和渠道来源。
-- Meta Pixel：浏览器侧可发送 `PageView`、`ViewContent`、`Search`、`Contact`、`Lead`、`CompleteRegistration`、`StartTrial` 等事件。
+- Meta Pixel：历史方案曾枚举 `PageView`、`ViewContent`、`Search`、`Contact`、`Lead`、`CompleteRegistration`、`StartTrial` 等事件；当前正式 Meta 转化契约仅保留 `Contact`、`Lead`、`CompleteRegistration`，不支持 `StartTrial`。
 
 这三类能力现在是并行接入的。典型问题是业务组件里同时调用一方 analytics 和 Meta Pixel，例如联系方式点击既调用 `useAnalytics()`，又调用 `useFacebookPixel()`。这会导致事件口径分散、`event_id` 无法统一、Meta Pixel 与未来 CAPI 难以去重，后台也容易把 UTM 来源误理解为 Pixel 回传。
 
@@ -37,7 +37,7 @@
 
 ### 2.3 重复事件治理不完整
 
-当前 `analytics_click_daily` 有 `raw_click_count`、`effective_click_count`、`duplicate_click_count` 字段，但有效点击和重复点击还没有完整的业务幂等口径。Meta 侧也没有统一 `event_id`，因此无法可靠处理 Pixel + CAPI 的重复事件。
+历史设计时 `analytics_click_daily` 的有效点击和重复点击还没有完整的业务幂等口径，Meta 侧也没有统一 `event_id`。当前实现已由统一 `external_event_id`、Pixel attempted 回执、CAPI Queue/DLQ 和发布证据补齐；具体生产放行以 2026-07-10 覆盖文档为准。
 
 ### 2.4 `StartTrial` 口径不成立
 
@@ -97,7 +97,7 @@ Meta Pixel 和 Meta CAPI 只记录为 delivery，不反向成为事实数据源�
 
 所有外部平台都通过统一 delivery 模型接入：
 
-- `meta_pixel`：浏览器发送，站内只能记录 attempted / skipped，不能确认 Meta 是否接收。
+- `meta_pixel`：浏览器发送，站内只能记录 `attempted` / `skipped`；`attempted` 不能确认 Meta 是否接收。
 - `meta_capi`：服务端发送，站内可记录 queued / sent / failed / skipped / duplicate_suppressed。
 - `first_party_analytics`：现有 `/api/analytics/events` 兼容输出。
 - 后续可扩展 `google_ads`、`tiktok_events_api` 等。
@@ -640,24 +640,23 @@ CREATE TABLE analytics_conversion_delivery_daily (
 - Worker Logs 不出现联系方式值、token、私有 URL。
 - 后台按日期和广告链接查看趋势。
 
-## 17. 发布和回滚
+## 17. 发布和回滚（历史方案，已被 2026-07-10 流程覆盖）
 
 发布顺序：
 
-1. 在 `dev` 完成阶段 1，实现后部署 dev。
-2. 使用测试广告链接验证转化账本和后台趋势。
-3. 配置 dev Queue 和测试 Pixel，完成阶段 2。
-4. 配置生产 `META_CAPI_ACCESS_TOKEN`，但保持 `meta_capi_enabled=false`。
-5. PR 合入 `main` 后手动部署生产。
-6. Owner 在后台开启 Pixel 和 CAPI。
-7. 小预算观察重复事件、失败率、有效联系质量。
+1. 代码保持 `meta_tracking_mode=disabled`、`meta_capi_enabled=false`，完成本地验证。
+2. 在独立 dev 主 Queue/DLQ 上生成 `Contact`、`Lead`、`CompleteRegistration` 的 live evidence；不得出现 `StartTrial`。
+3. 用户授权后核验 production 主 Queue/DLQ 和独立 secret，应用 migration；迁移后仍保持关闭态。
+4. 最终 `main` HEAD 必须重新部署 dev、重做同 commit evidence，并运行同 commit `verify:release`。
+5. 部署生产 API/Web 后，Owner 在 `test` mode 运行 Test Event；只有 CAPI `sent` 且 `events_received=1` 才切到 `production`。
+6. 再次确认营销授权门禁后开启 CAPI，并以小流量观察 Pixel `attempted`、CAPI `sent`、failed/skipped 和 DLQ。
 
 回滚：
 
-- 关闭 `meta_capi_enabled`：停止 CAPI 入队，不影响站内转化。
-- 关闭 `facebook_pixel_enabled`：停止 Pixel，不影响站内转化。
-- 关闭 `analytics_enabled`：回到当前一方 analytics 关闭态。
-- 如果新转化页异常，可隐藏入口，保留数据表和写入兼容。
+- 先关闭 `meta_capi_enabled`，停止 CAPI 入队但不影响站内转化。
+- 再将 `meta_tracking_mode` 切为 `disabled`，阻止新的营销 delivery；必要时关闭 `facebook_pixel_enabled`。
+- 保留 Queue/DLQ、D1 migration 和账本，记录 failed/skipped 原因；修复后从 `test` mode 和严格 Test Event 重新开始。
+- `analytics_enabled` 只控制一方分析，不能替代 Meta 关闭态。
 
 ## 18. 后续增强
 
