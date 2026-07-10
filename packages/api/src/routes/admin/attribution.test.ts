@@ -10,6 +10,7 @@ type ReadinessOptions = {
   actionCount?: number
   retryExhaustedCount?: number
   externalEventIdMismatchCount?: number
+  externalEventIds?: { pixel: readonly string[]; capi: readonly string[] }
   pendingTooLongCount?: number
   permanentFailureCount?: number
   fbpSampleCount?: number
@@ -20,6 +21,8 @@ type ReadinessOptions = {
   capiSentCount?: number
   liveVerificationPresent?: boolean
   resourcesVerificationPresent?: boolean
+  liveVerificationExpiresAt?: string
+  resourcesVerificationExpiresAt?: string
   lastManualConfirmationAt?: string
 }
 
@@ -65,6 +68,8 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
     capiSentCount: 1,
     liveVerificationPresent: true,
     resourcesVerificationPresent: true,
+    liveVerificationExpiresAt: '2099-01-01T00:00:00.000Z',
+    resourcesVerificationExpiresAt: '2099-01-01T00:00:00.000Z',
     lastManualConfirmationAt: new Date().toISOString(),
     ...options.readiness,
   }
@@ -113,8 +118,11 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
             }
           }
           if (sql.includes('AS external_event_id_mismatch_count')) {
+            const externalEventIdMismatchCount = readiness.externalEventIds
+              ? externalEventIdMismatch(readiness.externalEventIds)
+              : readiness.externalEventIdMismatchCount
             return {
-              results: [{ external_event_id_mismatch_count: readiness.externalEventIdMismatchCount } as T],
+              results: [{ external_event_id_mismatch_count: externalEventIdMismatchCount } as T],
               meta: { rows_read: 1, rows_written: 0, duration: 1 },
             }
           }
@@ -157,11 +165,11 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
           }
           if (sql.includes('FROM analytics_release_verifications') && sql.includes('GROUP BY verification_type')) {
             const results = []
-            if (readiness.liveVerificationPresent) {
-              results.push({ verification_type: 'meta_live', verified_at: '2026-07-10T00:00:00.000Z', expires_at: '2099-01-01T00:00:00.000Z' })
+            if (readiness.liveVerificationPresent && isFutureIsoTimestamp(readiness.liveVerificationExpiresAt)) {
+              results.push({ verification_type: 'meta_live', verified_at: '2026-07-10T00:00:00.000Z', expires_at: readiness.liveVerificationExpiresAt })
             }
-            if (readiness.resourcesVerificationPresent) {
-              results.push({ verification_type: 'meta_resources', verified_at: '2026-07-10T00:00:00.000Z', expires_at: '2099-01-01T00:00:00.000Z' })
+            if (readiness.resourcesVerificationPresent && isFutureIsoTimestamp(readiness.resourcesVerificationExpiresAt)) {
+              results.push({ verification_type: 'meta_resources', verified_at: '2026-07-10T00:00:00.000Z', expires_at: readiness.resourcesVerificationExpiresAt })
             }
             return {
               results: results as T[],
@@ -449,6 +457,18 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
   return db
 }
 
+function externalEventIdMismatch(input: { pixel: readonly string[]; capi: readonly string[] }) {
+  const pixelIds = new Set(input.pixel)
+  const capiIds = new Set(input.capi)
+  const allIds = new Set([...pixelIds, ...capiIds])
+  return pixelIds.size === 1 && capiIds.size === 1 && allIds.size === 1 ? 0 : 1
+}
+
+function isFutureIsoTimestamp(value: string) {
+  const timestamp = new Date(value).getTime()
+  return Number.isFinite(timestamp) && timestamp > Date.now()
+}
+
 const VALID_RELEASE_COMMIT = 'a'.repeat(40)
 const VALID_READINESS_ENV = {
   META_CAPI_ACCESS_TOKEN: 'secret-token',
@@ -473,6 +493,7 @@ async function requestReadiness(
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.useRealTimers()
 })
 
 describe('后台归因中心 API', () => {
@@ -563,6 +584,19 @@ describe('后台归因中心 API', () => {
     expect(JSON.stringify(body)).not.toContain('test-code')
   })
 
+  it('Meta 配置存在状态将纯空白 token 和 Test Event Code 视为缺失', async () => {
+    const res = await createApp('admin').request('/api/admin/attribution/meta?from=2026-07-09&to=2026-07-09', {}, {
+      DB: createAttributionDb(),
+      META_CAPI_ACCESS_TOKEN: ' \n\t ',
+      META_CAPI_TEST_EVENT_CODE: '\n  ',
+    } as unknown as Bindings)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.data.secretPresent).toBe(false)
+    expect(body.data.testEventCodePresent).toBe(false)
+  })
+
   it('Meta 匹配覆盖率固定使用近 7 天合格 CAPI 与 Meta 付费样本', async () => {
     const db = createAttributionDb({
       readiness: {
@@ -610,6 +644,68 @@ describe('后台归因中心 API', () => {
       expect.objectContaining({ key: 'meta_resources_verification', level: 'blocker', ok: true }),
       expect.objectContaining({ key: 'pending_too_long', level: 'warning', ok: false }),
     ]))
+  })
+
+  it.each([
+    ['2026-07-10T11:59:59.000Z', false],
+    ['2026-07-10T12:00:01.000Z', true],
+    ['invalid', false],
+    ['', false],
+  ] as const)('release verification expires_at=%s 时有效状态为 %s', async (expiresAt, expected) => {
+    vi.useFakeTimers()
+    vi.setSystemTime('2026-07-10T12:00:00.000Z')
+    const { db, body } = await requestReadiness({
+      readiness: {
+        liveVerificationExpiresAt: expiresAt,
+        resourcesVerificationExpiresAt: expiresAt,
+      },
+    })
+    const live = body.data.checks.find((item: { key: string }) => item.key === 'meta_live_verification')
+    const resources = body.data.checks.find((item: { key: string }) => item.key === 'meta_resources_verification')
+    const verificationSql = db.calls.find(call => call.sql.includes('FROM analytics_release_verifications') && call.sql.includes('GROUP BY verification_type'))?.sql ?? ''
+
+    expect(live.ok).toBe(expected)
+    expect(resources.ok).toBe(expected)
+    expect(body.data.ready).toBe(expected)
+    expect(verificationSql).toContain("datetime(expires_at) > datetime('now')")
+    expect(verificationSql).not.toContain("AND expires_at > datetime('now')")
+  })
+
+  it.each([
+    ['capi_secret', { META_CAPI_ACCESS_TOKEN: ' \n\t ' }],
+    ['test_event_code', { META_CAPI_TEST_EVENT_CODE: '\n   ' }],
+  ] as const)('readiness 将纯空白配置判定为 %s 缺失', async (key, envOverrides) => {
+    const { body } = await requestReadiness({}, envOverrides)
+    const check = body.data.checks.find((item: { key: string }) => item.key === key)
+
+    expect(check).toMatchObject({ key, level: 'blocker', ok: false })
+    expect(body.data.ready).toBe(false)
+  })
+
+  it.each([
+    [{ pixel: ['a', 'z'], capi: ['z'] }, false],
+    [{ pixel: ['z'], capi: ['z'] }, true],
+  ] as const)('Pixel/CAPI external event ID 集合 %j 的一致性为 %s', async (externalEventIds, expected) => {
+    const { db, body } = await requestReadiness({ readiness: { externalEventIds } })
+    const check = body.data.checks.find((item: { key: string }) => item.key === 'external_event_id_consistency')
+    const mismatchSql = db.calls.find(call => call.sql.includes('AS external_event_id_mismatch_count'))?.sql ?? ''
+
+    expect(check).toMatchObject({ key: 'external_event_id_consistency', level: 'blocker', ok: expected })
+    expect(body.data.ready).toBe(expected)
+    expect(mismatchSql).toContain("COUNT(DISTINCT CASE WHEN channel = 'meta_pixel' THEN external_event_id END)")
+    expect(mismatchSql).toContain("COUNT(DISTINCT CASE WHEN channel = 'meta_capi' THEN external_event_id END)")
+    expect(mismatchSql).toContain('COUNT(DISTINCT external_event_id)')
+    expect(mismatchSql).not.toContain('MAX(')
+  })
+
+  it('readiness 的 ISO 时间字段统一经过 SQLite datetime 解析后比较', async () => {
+    const { db } = await requestReadiness()
+    const sqlByAlias = (alias: string) => db.calls.find(call => call.sql.includes(alias))?.sql ?? ''
+
+    expect(sqlByAlias('AS retry_exhausted_count')).toContain("datetime(last_attempt_at) >= datetime('now', '-24 hours')")
+    expect(sqlByAlias('AS external_event_id_mismatch_count')).toContain("datetime(created_at) >= datetime('now', '-7 days')")
+    expect(sqlByAlias('AS pending_too_long_count')).toContain("datetime(created_at) < datetime('now', '-10 minutes')")
+    expect(sqlByAlias('AS permanent_failure_count')).toContain("datetime(updated_at) >= datetime('now', '-7 days')")
   })
 
   it.each([
@@ -679,7 +775,9 @@ describe('后台归因中心 API', () => {
 
   it.each([
     ['token', {}, { META_CAPI_ACCESS_TOKEN: undefined }],
+    ['空白 token', {}, { META_CAPI_ACCESS_TOKEN: ' \n\t ' }],
     ['Test Event Code', {}, { META_CAPI_TEST_EVENT_CODE: undefined }],
+    ['空白 Test Event Code', {}, { META_CAPI_TEST_EVENT_CODE: '\n  ' }],
     ['Pixel ID', { settings: { facebook_pixel_id: '' } }, {}],
   ])('缺少 %s 时 Test Event 返回 503 并审计', async (_label, dbOptions, envOverrides) => {
     const db = createAttributionDb(dbOptions as AttributionDbOptions)

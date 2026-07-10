@@ -349,8 +349,8 @@ adminAttributionRoutes.get('/meta', async (c) => {
       },
       deliveries: rows.rows,
       lastSentAt: String((lastSentAt.rows[0] ?? {}).last_sent_at ?? ''),
-      secretPresent: Boolean(c.env.META_CAPI_ACCESS_TOKEN),
-      testEventCodePresent: Boolean(c.env.META_CAPI_TEST_EVENT_CODE),
+      secretPresent: hasConfiguredValue(c.env.META_CAPI_ACCESS_TOKEN),
+      testEventCodePresent: hasConfiguredValue(c.env.META_CAPI_TEST_EVENT_CODE),
       queueBindingPresent: Boolean(c.env.META_CAPI_QUEUE),
       matchQuality: {
         fbpCoverage: coverageRate(fbpMatchedCount, fbpSampleCount),
@@ -448,24 +448,20 @@ adminAttributionRoutes.get('/readiness', async (c) => {
         WHERE channel = 'meta_capi'
           AND status = 'failed'
           AND error_code = 'retry_exhausted'
-          AND last_attempt_at >= datetime('now', '-24 hours')
+          AND datetime(last_attempt_at) >= datetime('now', '-24 hours')
       `, []),
       queryFirst(c.env.DB, `
         SELECT COUNT(*) AS external_event_id_mismatch_count
         FROM (
           SELECT
             conversion_action_id,
-            event_name,
-            MAX(CASE WHEN channel = 'meta_pixel' THEN external_event_id END) AS pixel_external_event_id,
-            MAX(CASE WHEN channel = 'meta_capi' THEN external_event_id END) AS capi_external_event_id,
-            SUM(CASE WHEN channel = 'meta_pixel' THEN 1 ELSE 0 END) AS pixel_count,
-            SUM(CASE WHEN channel = 'meta_capi' THEN 1 ELSE 0 END) AS capi_count
+            event_name
           FROM analytics_conversion_deliveries
-          WHERE created_at >= datetime('now', '-7 days')
+          WHERE datetime(created_at) >= datetime('now', '-7 days')
           GROUP BY conversion_action_id, event_name
-          HAVING pixel_count > 0
-            AND capi_count > 0
-            AND pixel_external_event_id <> capi_external_event_id
+          HAVING COUNT(DISTINCT CASE WHEN channel = 'meta_pixel' THEN external_event_id END) <> 1
+            OR COUNT(DISTINCT CASE WHEN channel = 'meta_capi' THEN external_event_id END) <> 1
+            OR COUNT(DISTINCT external_event_id) <> 1
         ) mismatches
       `, []),
       queryFirst(c.env.DB, `
@@ -473,7 +469,7 @@ adminAttributionRoutes.get('/readiness', async (c) => {
         FROM analytics_conversion_deliveries
         WHERE channel = 'meta_capi'
           AND status = 'pending'
-          AND created_at < datetime('now', '-10 minutes')
+          AND datetime(created_at) < datetime('now', '-10 minutes')
       `, []),
       queryFirst(c.env.DB, `
         SELECT COUNT(*) AS permanent_failure_count
@@ -482,7 +478,7 @@ adminAttributionRoutes.get('/readiness', async (c) => {
           AND status = 'failed'
           AND error_code GLOB 'meta_http_4*'
           AND error_code <> 'meta_http_429'
-          AND updated_at >= datetime('now', '-7 days')
+          AND datetime(updated_at) >= datetime('now', '-7 days')
       `, []),
       queryFirst(c.env.DB, `
         SELECT
@@ -525,7 +521,7 @@ adminAttributionRoutes.get('/readiness', async (c) => {
             AND environment = ?
             AND verification_type IN ('meta_live', 'meta_resources')
             AND status = 'passed'
-            AND expires_at > datetime('now')
+            AND datetime(expires_at) > datetime('now')
           GROUP BY verification_type
           ORDER BY verified_at DESC
         `, [releaseCommit, releaseEnvironment])
@@ -552,6 +548,8 @@ adminAttributionRoutes.get('/readiness', async (c) => {
   const settingMap = serializeSettings(settings.rows)
   const mode = normalizeMetaTrackingMode(settingMap.meta_tracking_mode)
   const modeRequiresMeta = mode === 'test' || mode === 'production'
+  const secretPresent = hasConfiguredValue(c.env.META_CAPI_ACCESS_TOKEN)
+  const testEventCodePresent = hasConfiguredValue(c.env.META_CAPI_TEST_EVENT_CODE)
   const pixelEnabled = settingMap.facebook_pixel_enabled === true
   const capiEnabled = settingMap.meta_capi_enabled === true
   const pixelIdPresent = /^\d{5,30}$/.test(String(settingMap.facebook_pixel_id || '').trim())
@@ -582,8 +580,8 @@ adminAttributionRoutes.get('/readiness', async (c) => {
     blockerCheck('analytics_enabled', '站内分析已开启', settingMap.analytics_enabled === true, settingMap.analytics_enabled === true ? 'analytics_enabled 已开启' : 'analytics_enabled 未开启'),
     blockerCheck('conversion_ledger', '转化账本有近期数据', schemaReady && numberValue((conversions.rows[0] ?? {}).action_count) > 0, schemaReady ? `当前范围记录 ${numberValue((conversions.rows[0] ?? {}).action_count)} 次转化` : '归因迁移表不可用'),
     blockerCheck('pixel_mode_consistency', 'Pixel ID 与运行模式一致', pixelModeConsistent, pixelModeDetail(mode, pixelEnabled, capiEnabled, pixelIdPresent)),
-    blockerCheck('capi_secret', 'CAPI token 已配置', !modeRequiresMeta || Boolean(c.env.META_CAPI_ACCESS_TOKEN), presenceDetail(modeRequiresMeta, Boolean(c.env.META_CAPI_ACCESS_TOKEN))),
-    blockerCheck('test_event_code', 'Test Event Code 已配置', !modeRequiresMeta || Boolean(c.env.META_CAPI_TEST_EVENT_CODE), presenceDetail(modeRequiresMeta, Boolean(c.env.META_CAPI_TEST_EVENT_CODE))),
+    blockerCheck('capi_secret', 'CAPI token 已配置', !modeRequiresMeta || secretPresent, presenceDetail(modeRequiresMeta, secretPresent)),
+    blockerCheck('test_event_code', 'Test Event Code 已配置', !modeRequiresMeta || testEventCodePresent, presenceDetail(modeRequiresMeta, testEventCodePresent)),
     blockerCheck('queue_binding', 'CAPI Queue binding 已配置', !modeRequiresMeta || Boolean(c.env.META_CAPI_QUEUE), presenceDetail(modeRequiresMeta, Boolean(c.env.META_CAPI_QUEUE))),
     blockerCheck('meta_live_verification', '当前发布已通过 Meta live 验证', Boolean(releaseCommit && liveVerification), verificationDetail(releaseCommit, liveVerification)),
     blockerCheck('meta_resources_verification', '当前发布已通过 Meta 资源验证', Boolean(releaseCommit && resourcesVerification), verificationDetail(releaseCommit, resourcesVerification)),
@@ -638,8 +636,8 @@ adminAttributionRoutes.post('/meta/test-event', async (c) => {
   `, [])
   const settingMap = serializeSettings(settings.rows)
   const mode = normalizeMetaTrackingMode(settingMap.meta_tracking_mode)
-  const secretPresent = Boolean(String(c.env.META_CAPI_ACCESS_TOKEN || '').trim())
-  const testEventCodePresent = Boolean(String(c.env.META_CAPI_TEST_EVENT_CODE || '').trim())
+  const secretPresent = hasConfiguredValue(c.env.META_CAPI_ACCESS_TOKEN)
+  const testEventCodePresent = hasConfiguredValue(c.env.META_CAPI_TEST_EVENT_CODE)
   const pixelIdPresent = /^\d{5,30}$/.test(String(settingMap.facebook_pixel_id || '').trim())
   const now = new Date().toISOString()
   const date = now.slice(0, 10)
@@ -783,6 +781,10 @@ function pixelModeDetail(mode: string, pixelEnabled: boolean, capiEnabled: boole
   if (!pixelEnabled) return '测试或生产模式必须开启 Pixel'
   if (!pixelIdPresent) return '测试或生产模式必须配置有效 Pixel ID'
   return `${mode} 模式与 Pixel 配置一致`
+}
+
+function hasConfiguredValue(value: unknown) {
+  return String(value ?? '').trim().length > 0
 }
 
 function presenceDetail(required: boolean, present: boolean) {
