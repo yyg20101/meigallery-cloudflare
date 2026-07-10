@@ -68,6 +68,7 @@ const BLOCKED_CREDENTIAL_PARAM_NAMES = new Set([
 const REDACTED_ONLY_PATTERN = /^(?:[\s,，;；:/：|、-]*\[redacted_(?:email|phone|url|credential|contact)\])+[\s,，;；:/：|、-]*$/
 
 export function metaEventForConversion(actionType: ConversionActionType): ConversionMetaEventName | null {
+  if (actionType === 'start_trial') return null
   return META_EVENT_BY_CONVERSION[actionType]
 }
 

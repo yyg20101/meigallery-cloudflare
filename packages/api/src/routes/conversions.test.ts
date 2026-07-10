@@ -85,28 +85,36 @@ describe('conversion routes', () => {
     expect(conversionInsert?.params[7]).toBe(42)
   })
 
-  it('公开接口接受注册完成和开始试用', async () => {
-    for (const actionType of ['complete_registration', 'start_trial']) {
-      const db = createConversionDb()
-      const res = await createApp().request('/api/conversions/events', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          actionType,
-          visitorId: 'visitor_1',
-          sessionId: 'session_1',
-          occurredAt: '2026-07-09T10:00:00.000Z',
-          actionTarget: actionType,
-        }),
-      }, { DB: db, APP_ENV: 'test' } as unknown as Bindings)
-      const body = await res.json()
+  it('公开接口接受注册完成', async () => {
+    const db = createConversionDb()
+    const res = await createApp().request('/api/conversions/events', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        actionType: 'complete_registration',
+        visitorId: 'visitor_1',
+        sessionId: 'session_1',
+        occurredAt: '2026-07-09T10:00:00.000Z',
+      }),
+    }, { DB: db, APP_ENV: 'test', SESSION_SECRET: 'test-session-secret' } as unknown as Bindings)
+    const body = await res.json()
 
-      expect(res.status).toBe(201)
-      expect(body.data.actionType).toBe(actionType)
-      expect(db.calls.some(call => (
-        call.sql.includes('analytics_conversion_actions') && call.params[1] === actionType
-      ))).toBe(true)
-    }
+    expect(res.status).toBe(201)
+    expect(body.data.actionType).toBe('complete_registration')
+  })
+
+  it('公开接口拒绝开始试用', async () => {
+    const db = createConversionDb()
+    const res = await createApp().request('/api/conversions/events', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ actionType: 'start_trial' }),
+    }, { DB: db, APP_ENV: 'test', SESSION_SECRET: 'test-session-secret' } as unknown as Bindings)
+    const body = await res.json()
+
+    expect(res.status).toBe(400)
+    expect(body.code).toBe('CONVERSION_ACTION_INVALID')
+    expect(db.calls).toHaveLength(0)
   })
 
   it('公开接口不允许 lead 或 membership_grant', async () => {

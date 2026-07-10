@@ -1,13 +1,15 @@
-import type { AnalyticsConsentState, AnalyticsSourceChannel, ConversionActionType } from '@meigallery/shared'
+import type { AnalyticsConsentState, AnalyticsSourceChannel, ConversionActionType, MetaPixelInstruction } from '@meigallery/shared'
 import type { Bindings } from '../index'
 import { generateId } from '../utils/db'
 import { parseStoredSettingValue } from '../utils/stored-setting-value'
+import { normalizeMetaTrackingMode } from '@meigallery/shared/utils'
 import {
   buildConversionDedupeKey,
   buildExternalEventId,
   metaEventForConversion,
   sanitizeConversionMetadata,
 } from '../utils/conversions'
+import { createPixelReceiptToken } from '../utils/pixel-receipt'
 
 export interface RecordConversionInput {
   actionType: ConversionActionType
@@ -36,10 +38,11 @@ export interface RecordConversionResult {
   created: boolean
   duplicateOf: string
   derivedActions: Array<{ id: string; actionType: ConversionActionType }>
+  pixelEvents: MetaPixelInstruction[]
 }
 
 export async function recordConversionAction(
-  env: Pick<Bindings, 'DB' | 'APP_ENV' | 'META_CAPI_QUEUE'>,
+  env: Pick<Bindings, 'DB' | 'APP_ENV' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>,
   input: RecordConversionInput,
 ): Promise<RecordConversionResult> {
   const normalizedInput = normalizeConversionInput(input)
@@ -59,19 +62,23 @@ export async function recordConversionAction(
       created: false,
       duplicateOf: existing?.id ?? '',
       derivedActions: [],
+      pixelEvents: [],
     }
   }
 
   await upsertConversionDaily(env.DB, normalizedInput, date)
-  await createMetaDeliveries(env, id, normalizedInput, date)
+  const pixelEvents = await createMetaDeliveries(env, id, normalizedInput, date)
 
   const derivedActions: Array<{ id: string; actionType: ConversionActionType }> = []
   if (normalizedInput.actionType === 'contact') {
     const lead = await recordDerivedLead(env, normalizedInput, occurredAt, date)
-    if (lead) derivedActions.push(lead)
+    if (lead) {
+      derivedActions.push(lead.action)
+      pixelEvents.push(...lead.pixelEvents)
+    }
   }
 
-  return { id, actionType: normalizedInput.actionType, created: true, duplicateOf: '', derivedActions }
+  return { id, actionType: normalizedInput.actionType, created: true, duplicateOf: '', derivedActions, pixelEvents }
 }
 
 function normalizeConversionInput(input: RecordConversionInput): RecordConversionInput {
@@ -190,15 +197,18 @@ async function upsertConversionDaily(db: D1Database, input: RecordConversionInpu
 }
 
 async function createMetaDeliveries(
-  env: Pick<Bindings, 'DB' | 'META_CAPI_QUEUE'>,
+  env: Pick<Bindings, 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>,
   conversionActionId: string,
   input: RecordConversionInput,
   date: string,
-) {
-  if (input.consentState === 'denied') return
+): Promise<MetaPixelInstruction[]> {
+  if (input.consentState !== 'granted') return []
 
   const metaEventName = metaEventForConversion(input.actionType)
-  if (!metaEventName) return
+  if (!metaEventName) return []
+
+  const settings = await readMetaDeliverySettings(env.DB)
+  if (settings.mode === 'disabled' || !settings.pixelId) return []
 
   const externalEventId = buildExternalEventId({
     actionType: input.actionType,
@@ -210,11 +220,13 @@ async function createMetaDeliveries(
     metaEventName,
   })
 
-  const capiEnabled = await isMetaCapiEnabled(env.DB)
-  for (const channel of ['meta_pixel', 'meta_capi'] as const) {
+  const pixelEvents: MetaPixelInstruction[] = []
+  const channels = [
+    ...(settings.pixelEnabled ? ['meta_pixel' as const] : []),
+    ...(settings.capiEnabled ? ['meta_capi' as const] : []),
+  ]
+  for (const channel of channels) {
     const deliveryId = generateId('cdlv')
-    const status = channel === 'meta_capi' && !capiEnabled ? 'skipped' : 'pending'
-    const skipReason = channel === 'meta_capi' && !capiEnabled ? 'disabled' : ''
     const created = await env.DB.prepare(`
       INSERT OR IGNORE INTO analytics_conversion_deliveries (
         id, conversion_action_id, channel, external_event_id, event_name,
@@ -227,13 +239,22 @@ async function createMetaDeliveries(
       channel,
       externalEventId,
       metaEventName,
-      status,
-      skipReason,
+      'pending',
+      '',
     ).run()
     if (!d1Changed(created)) continue
-    if (channel !== 'meta_capi') continue
-    if (status === 'skipped') {
-      await upsertDeliveryDaily(env.DB, date, channel, metaEventName, status, skipReason)
+    if (channel === 'meta_pixel') {
+      pixelEvents.push({
+        deliveryId,
+        eventName: metaEventName,
+        eventId: externalEventId,
+        payload: sanitizeConversionMetadata(input.metadata || {}),
+        receiptToken: await createPixelReceiptToken(env.SESSION_SECRET, {
+          deliveryId,
+          eventId: externalEventId,
+          expiresAt: Math.floor(Date.now() / 1000) + 300,
+        }),
+      })
       continue
     }
     if (!env.META_CAPI_QUEUE) {
@@ -241,7 +262,7 @@ async function createMetaDeliveries(
       continue
     }
     try {
-      await env.META_CAPI_QUEUE.send({ deliveryId })
+      await env.META_CAPI_QUEUE.send({ schemaVersion: 1, deliveryId, userData: {} })
     } catch (error) {
       await markDeliveryTerminal(
         env.DB,
@@ -256,10 +277,11 @@ async function createMetaDeliveries(
       )
     }
   }
+  return pixelEvents
 }
 
 async function recordDerivedLead(
-  env: Pick<Bindings, 'DB' | 'APP_ENV' | 'META_CAPI_QUEUE'>,
+  env: Pick<Bindings, 'DB' | 'APP_ENV' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>,
   input: RecordConversionInput,
   occurredAt: string,
   date: string,
@@ -281,13 +303,24 @@ async function recordDerivedLead(
   if (!created) return null
 
   await upsertConversionDaily(env.DB, leadInput, date)
-  await createMetaDeliveries(env, id, leadInput, date)
-  return { id, actionType: 'lead' as const }
+  const pixelEvents = await createMetaDeliveries(env, id, leadInput, date)
+  return { action: { id, actionType: 'lead' as const }, pixelEvents }
 }
 
-async function isMetaCapiEnabled(db: D1Database) {
-  const row = await db.prepare("SELECT value FROM site_settings WHERE key = 'meta_capi_enabled' LIMIT 1").first<{ value: string }>()
-  return parseStoredSettingValue(row ? row.value : 'false', false) === true
+async function readMetaDeliverySettings(db: D1Database) {
+  const [modeRow, pixelEnabledRow, pixelIdRow, capiEnabledRow] = await Promise.all([
+    db.prepare("SELECT value FROM site_settings WHERE key = 'meta_tracking_mode' LIMIT 1").first<{ value: string }>(),
+    db.prepare("SELECT value FROM site_settings WHERE key = 'facebook_pixel_enabled' LIMIT 1").first<{ value: string }>(),
+    db.prepare("SELECT value FROM site_settings WHERE key = 'facebook_pixel_id' LIMIT 1").first<{ value: string }>(),
+    db.prepare("SELECT value FROM site_settings WHERE key = 'meta_capi_enabled' LIMIT 1").first<{ value: string }>(),
+  ])
+  const pixelId = String(parseStoredSettingValue(pixelIdRow?.value || '""', '') || '').trim()
+  return {
+    mode: normalizeMetaTrackingMode(parseStoredSettingValue(modeRow?.value || '"disabled"', 'disabled')),
+    pixelEnabled: parseStoredSettingValue(pixelEnabledRow?.value || 'false', false) === true,
+    pixelId: /^\d{5,30}$/.test(pixelId) ? pixelId : '',
+    capiEnabled: parseStoredSettingValue(capiEnabledRow?.value || 'false', false) === true,
+  }
 }
 
 async function markDeliveryTerminal(

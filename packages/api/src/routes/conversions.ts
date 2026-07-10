@@ -3,7 +3,7 @@ import type { Bindings, Variables } from '../index'
 import { recordConversionAction } from '../services/conversions'
 import { errorJson } from '../utils/api-error'
 
-const PUBLIC_CONVERSION_ACTIONS = new Set(['contact', 'complete_registration', 'start_trial'])
+const PUBLIC_CONVERSION_ACTIONS = new Set(['contact', 'complete_registration'])
 
 export const conversionRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -21,7 +21,7 @@ conversionRoutes.post('/events', async (c) => {
   }
 
   const result = await recordConversionAction(c.env, {
-    actionType: actionType as 'contact' | 'complete_registration' | 'start_trial',
+    actionType: actionType as 'contact' | 'complete_registration',
     visitorId: String(body.visitorId || ''),
     sessionId: String(body.sessionId || ''),
     userId: c.get('userId'),

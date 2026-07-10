@@ -10,6 +10,9 @@ function createConversionDb(options: {
   existingLeadSessions?: string[]
   skipLeadLookup?: boolean
   metaCapiEnabled?: boolean
+  facebookPixelEnabled?: boolean
+  facebookPixelId?: string
+  metaTrackingMode?: 'disabled' | 'test' | 'production'
 } = {}) {
   const calls: Call[] = []
   const insertedConversions: InsertedConversion[] = []
@@ -32,6 +35,15 @@ function createConversionDb(options: {
           }
           if (sql.includes("WHERE key = 'meta_capi_enabled'")) {
             return { value: String(options.metaCapiEnabled === true) } as T
+          }
+          if (sql.includes("WHERE key = 'facebook_pixel_enabled'")) {
+            return { value: String(options.facebookPixelEnabled === true) } as T
+          }
+          if (sql.includes("WHERE key = 'facebook_pixel_id'")) {
+            return options.facebookPixelId ? ({ value: JSON.stringify(options.facebookPixelId) } as T) : null
+          }
+          if (sql.includes("WHERE key = 'meta_tracking_mode'")) {
+            return { value: JSON.stringify(options.metaTrackingMode ?? 'disabled') } as T
           }
           if (sql.includes("action_type = 'lead'")) {
             if (options.skipLeadLookup) return null
@@ -69,25 +81,83 @@ function envFor(db: ReturnType<typeof createConversionDb>) {
   return {
     APP_ENV: 'test',
     DB: db,
-  } as unknown as Pick<Bindings, 'APP_ENV' | 'DB' | 'META_CAPI_QUEUE'>
+    SESSION_SECRET: 'test-session-secret',
+  } as unknown as Pick<Bindings, 'APP_ENV' | 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>
 }
 
-function envWithQueueFor(db: ReturnType<typeof createConversionDb>, sent: Array<{ deliveryId: string }>) {
+function envWithQueueFor(db: ReturnType<typeof createConversionDb>, sent: Array<{ schemaVersion: 1; deliveryId: string; userData: Record<string, never> }>) {
   return {
     APP_ENV: 'test',
     DB: db,
+    SESSION_SECRET: 'test-session-secret',
     META_CAPI_QUEUE: {
-      async send(message: { deliveryId: string }) {
+      async send(message: { schemaVersion: 1; deliveryId: string; userData: Record<string, never> }) {
         sent.push(message)
         return { metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } } }
       },
     },
-  } as unknown as Pick<Bindings, 'APP_ENV' | 'DB' | 'META_CAPI_QUEUE'>
+  } as unknown as Pick<Bindings, 'APP_ENV' | 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>
+}
+
+function grantedContactInput() {
+  return {
+    actionType: 'contact' as const,
+    visitorId: 'visitor_1',
+    sessionId: 'session_1',
+    occurredAt: '2026-07-09T10:00:00.000Z',
+    consentState: 'granted',
+    methodType: 'telegram',
+    actionTarget: 'floating_contact_panel',
+    metadata: { method_type: 'telegram', location: 'floating_contact_panel' },
+  }
 }
 
 describe('conversion ledger service', () => {
+  it('首次授权联系返回 Contact 和 Lead 两条同源 Pixel 指令', async () => {
+    const result = await recordConversionAction(envFor(createConversionDb({
+      facebookPixelEnabled: true,
+      facebookPixelId: '1234567890',
+      metaTrackingMode: 'test',
+    })), grantedContactInput())
+
+    expect(result.pixelEvents.map(item => item.eventName)).toEqual(['Contact', 'Lead'])
+    expect(result.pixelEvents[0]?.eventId).toBe('meta:Contact:contact:session_1:telegram:floating_contact_panel')
+    expect(result.pixelEvents[1]?.eventId).toBe('meta:Lead:lead:session_1')
+    expect(result.pixelEvents.every(item => item.receiptToken)).toBe(true)
+  })
+
+  it.each(['limited', 'denied'] as const)('%s 不创建 Meta delivery 或 Pixel 指令', async consentState => {
+    const db = createConversionDb({
+      facebookPixelEnabled: true,
+      facebookPixelId: '1234567890',
+      metaTrackingMode: 'production',
+      metaCapiEnabled: true,
+    })
+    const result = await recordConversionAction(envFor(db), { ...grantedContactInput(), consentState })
+
+    expect(result.pixelEvents).toEqual([])
+    expect(db.calls.some(call => call.sql.includes('analytics_conversion_deliveries'))).toBe(false)
+  })
+
+  it('disabled 模式不创建 Meta delivery 或 Pixel 指令', async () => {
+    const db = createConversionDb({
+      facebookPixelEnabled: true,
+      facebookPixelId: '1234567890',
+      metaTrackingMode: 'disabled',
+      metaCapiEnabled: true,
+    })
+    const result = await recordConversionAction(envFor(db), grantedContactInput())
+
+    expect(result.pixelEvents).toEqual([])
+    expect(db.calls.some(call => call.sql.includes('analytics_conversion_deliveries'))).toBe(false)
+  })
+
   it('首次有效联系写入 contact 和 lead，并创建 Meta delivery', async () => {
-    const db = createConversionDb()
+    const db = createConversionDb({
+      facebookPixelEnabled: true,
+      facebookPixelId: '1234567890',
+      metaTrackingMode: 'test',
+    })
     const result = await recordConversionAction(envFor(db), {
       actionType: 'contact',
       visitorId: 'visitor_1',
@@ -125,6 +195,7 @@ describe('conversion ledger service', () => {
     expect(result.created).toBe(false)
     expect(result.duplicateOf).toBe('existing_contact:session_1:telegram:floating_contact_panel')
     expect(result.derivedActions).toHaveLength(0)
+    expect(result.pixelEvents).toEqual([])
     expect(db.calls.some(call => call.sql.includes('INSERT OR IGNORE INTO analytics_conversion_actions'))).toBe(true)
     expect(db.calls.some(call => (
       call.sql.includes('INSERT OR IGNORE INTO analytics_conversion_actions') &&
@@ -174,14 +245,24 @@ describe('conversion ledger service', () => {
       actionTarget: 'register',
       metadata: {},
     }
-    const firstDb = createConversionDb()
-    const secondDb = createConversionDb()
+    const firstDb = createConversionDb({
+      facebookPixelEnabled: true,
+      facebookPixelId: '1234567890',
+      metaCapiEnabled: true,
+      metaTrackingMode: 'test',
+    })
+    const secondDb = createConversionDb({
+      facebookPixelEnabled: true,
+      facebookPixelId: '1234567890',
+      metaCapiEnabled: true,
+      metaTrackingMode: 'test',
+    })
 
     await recordConversionAction(envFor(firstDb), input)
     await recordConversionAction(envFor(secondDb), input)
 
-    const firstDeliveries = firstDb.calls.filter(call => call.sql.includes('analytics_conversion_deliveries'))
-    const secondDeliveries = secondDb.calls.filter(call => call.sql.includes('analytics_conversion_deliveries'))
+    const firstDeliveries = firstDb.calls.filter(call => call.sql.includes('INSERT OR IGNORE INTO analytics_conversion_deliveries'))
+    const secondDeliveries = secondDb.calls.filter(call => call.sql.includes('INSERT OR IGNORE INTO analytics_conversion_deliveries'))
     expect(firstDeliveries.map(call => call.params[2]).sort()).toEqual(['meta_capi', 'meta_pixel'])
     expect(firstDeliveries.map(call => call.params[3])).toEqual([
       secondDeliveries[0]?.params[3],
@@ -189,9 +270,9 @@ describe('conversion ledger service', () => {
     ])
   })
 
-  it('CAPI 开启且 Queue 存在时发送 deliveryId', async () => {
-    const sent: Array<{ deliveryId: string }> = []
-    const db = createConversionDb({ metaCapiEnabled: true })
+  it('CAPI 开启且 Queue 存在时发送完整版本化消息', async () => {
+    const sent: Array<{ schemaVersion: 1; deliveryId: string; userData: Record<string, never> }> = []
+    const db = createConversionDb({ metaCapiEnabled: true, metaTrackingMode: 'test', facebookPixelId: '1234567890' })
 
     await recordConversionAction(envWithQueueFor(db, sent), {
       actionType: 'complete_registration',
@@ -206,11 +287,15 @@ describe('conversion ledger service', () => {
       call.sql.includes('analytics_conversion_deliveries') &&
       call.params[2] === 'meta_capi'
     ))
-    expect(sent).toEqual([{ deliveryId: capiDelivery?.params[0] as string }])
+    expect(sent).toEqual([{
+      schemaVersion: 1,
+      deliveryId: capiDelivery?.params[0] as string,
+      userData: {},
+    }])
   })
 
   it('CAPI 开启但缺少 Queue binding 时标记 missing_queue', async () => {
-    const db = createConversionDb({ metaCapiEnabled: true })
+    const db = createConversionDb({ metaCapiEnabled: true, metaTrackingMode: 'test', facebookPixelId: '1234567890' })
 
     await recordConversionAction(envFor(db), {
       actionType: 'complete_registration',
@@ -251,7 +336,13 @@ describe('conversion ledger service', () => {
   })
 
   it('同 session 不同 contact target 并发派生 lead 时使用 session 级 dedupe', async () => {
-    const db = createConversionDb({ skipLeadLookup: true })
+    const db = createConversionDb({
+      skipLeadLookup: true,
+      facebookPixelEnabled: true,
+      facebookPixelId: '1234567890',
+      metaCapiEnabled: true,
+      metaTrackingMode: 'test',
+    })
 
     const first = await recordConversionAction(envFor(db), {
       actionType: 'contact',

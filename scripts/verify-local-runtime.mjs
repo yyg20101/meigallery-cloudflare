@@ -128,26 +128,6 @@ export async function runLocalRuntimeVerification(options = {}) {
     steps.push(contactStep)
     if (contactStep.status !== 'passed') return { steps, notes, artifacts }
 
-    const startTrialStep = await postConversion(boundedFetch, 'local-conversion-start-trial', {
-      actionType: 'start_trial',
-      visitorId: 'visitor_release_local',
-      sessionId: 'session_release_local',
-      occurredAt: new Date().toISOString(),
-      routeName: 'pricing',
-      path: '/membership',
-      sourceChannel: 'ad',
-      sourceName: 'release-local-fb',
-      trackingSourceSlug: 'release-local-fb',
-      utmSource: 'facebook',
-      utmMedium: 'paid_social',
-      utmCampaign: 'release-local-runtime',
-      utmContent: 'release-local-chat',
-      consentState: 'limited',
-      actionTarget: 'membership-upgrade',
-    })
-    steps.push(startTrialStep)
-    if (startTrialStep.status !== 'passed') return { steps, notes, artifacts }
-
     const completeRegistrationStep = await postConversion(boundedFetch, 'local-conversion-complete-registration', {
       actionType: 'complete_registration',
       visitorId: 'visitor_release_local',
@@ -440,8 +420,7 @@ async function smokeAdminAttribution(fetchFn, sessionToken) {
     if (!matched) throw new Error('attribution conversions 未返回 release-local-fb')
     if (Number(matched.contact_count ?? 0) < 1) throw new Error('contact_count 未写入')
     if (Number(matched.complete_registration_count ?? 0) < 1) throw new Error('complete_registration_count 未写入')
-    if (Number(matched.start_trial_count ?? 0) < 1) throw new Error('start_trial_count 未写入')
-    return `归因来源可读，contact=${matched.contact_count}, complete_registration=${matched.complete_registration_count}, start_trial=${matched.start_trial_count}`
+    return `归因来源可读，contact=${matched.contact_count}, complete_registration=${matched.complete_registration_count}`
   })
 }
 

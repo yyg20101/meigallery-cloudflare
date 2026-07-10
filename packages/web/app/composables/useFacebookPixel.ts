@@ -2,7 +2,7 @@ import { createFacebookPixelScript, hasSensitiveAnalyticsUrl, isAdminPath, sanit
 
 type PixelEventParams = Record<string, string | number | boolean | string[] | number[] | null | undefined>
 type PixelEventOptions = { eventID?: string }
-type PixelStandardEventName = 'Contact' | 'Lead' | 'CompleteRegistration' | 'StartTrial' | 'ViewContent' | 'Search' | 'PageView'
+type PixelStandardEventName = 'Contact' | 'Lead' | 'CompleteRegistration' | 'ViewContent' | 'Search' | 'PageView'
 type FacebookQueueFunction = ((...args: unknown[]) => void) & {
   callMethod?: (...args: unknown[]) => void
   queue: unknown[]

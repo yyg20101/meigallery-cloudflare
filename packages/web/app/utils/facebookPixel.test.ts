@@ -87,7 +87,6 @@ describe('facebookPixel 安全工具', () => {
     expect(pixel).not.toHaveProperty('trackLeadOnce')
     expect(pixel).not.toHaveProperty('trackContactClick')
     expect(pixel).not.toHaveProperty('trackCompleteRegistration')
-    expect(pixel).not.toHaveProperty('trackStartTrialOnce')
   })
 
   it('授权撤回后，即使 adapter 已初始化也不再调用 fbq', async () => {

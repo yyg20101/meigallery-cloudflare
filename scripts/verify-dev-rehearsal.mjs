@@ -140,26 +140,6 @@ export async function runDevRehearsalVerification(options = {}) {
     steps.push(contactStep)
     if (contactStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
 
-    const startTrialStep = await postConversion(boundedFetch, apiUrl, 'dev-conversion-start-trial', {
-      actionType: 'start_trial',
-      visitorId: 'visitor_release_dev',
-      sessionId: 'session_release_dev',
-      occurredAt: new Date().toISOString(),
-      routeName: 'pricing',
-      path: '/membership',
-      sourceChannel: 'ad',
-      sourceName: 'release-dev-fb',
-      trackingSourceSlug: 'release-dev-fb',
-      utmSource: 'release-dev-fb',
-      utmMedium: 'paid_social',
-      utmCampaign: 'release-dev-rehearsal',
-      utmContent: 'release-dev-chat',
-      consentState: 'limited',
-      actionTarget: 'membership-upgrade',
-    })
-    steps.push(startTrialStep)
-    if (startTrialStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
-
     const completeRegistrationStep = await postConversion(boundedFetch, apiUrl, 'dev-conversion-complete-registration', {
       actionType: 'complete_registration',
       visitorId: 'visitor_release_dev',
@@ -226,8 +206,7 @@ export async function runDevRehearsalVerification(options = {}) {
         }
         if (Number(matched.contact_count ?? 0) < 1) throw new Error('contact_count 未写入')
         if (Number(matched.complete_registration_count ?? 0) < 1) throw new Error('complete_registration_count 未写入')
-        if (Number(matched.start_trial_count ?? 0) < 1) throw new Error('start_trial_count 未写入')
-        return `归因来源查询通过，contact=${matched.contact_count}, complete_registration=${matched.complete_registration_count}, start_trial=${matched.start_trial_count}`
+        return `归因来源查询通过，contact=${matched.contact_count}, complete_registration=${matched.complete_registration_count}`
       },
     )
     steps.push(attributionStep)

@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import type { MetaCapiQueueMessage } from '@meigallery/shared'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { secureHeaders } from 'hono/secure-headers'
@@ -47,7 +48,7 @@ export type Bindings = {
   IMPORT_TOKEN_DAILY_LIMIT?: string
   TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT?: string
   TELEGRAM_BOT_TOKEN_OPS_CASE_BOT?: string
-  META_CAPI_QUEUE?: Queue<{ deliveryId: string }>
+  META_CAPI_QUEUE?: Queue<MetaCapiQueueMessage>
   META_CAPI_ACCESS_TOKEN?: string
   META_CAPI_TEST_EVENT_CODE?: string
 }

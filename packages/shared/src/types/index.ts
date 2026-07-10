@@ -80,7 +80,6 @@ export type ConversionMetaEventName =
   | 'Contact'
   | 'Lead'
   | 'CompleteRegistration'
-  | 'StartTrial'
 
 export type ConversionDeliveryChannel = 'meta_pixel' | 'meta_capi'
 

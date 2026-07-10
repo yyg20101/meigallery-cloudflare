@@ -31,7 +31,7 @@ describe('conversion utils', () => {
 
   it('注册成功映射 CompleteRegistration 且不映射 StartTrial', () => {
     expect(metaEventForConversion('complete_registration')).toBe('CompleteRegistration')
-    expect(metaEventForConversion('start_trial')).toBe('StartTrial')
+    expect(metaEventForConversion('start_trial')).toBeNull()
   })
 
   it('清洗 payload 时移除敏感字段', () => {

@@ -18,8 +18,7 @@ describe('开发环境发布预演验证', () => {
       jsonResponse(200, { status: 'ok', db: 'ok' }),
       textResponse(200, '<!doctype html><html><body><div id="__nuxt"></div><script>window.__APP__="wajie"</script></body></html>'),
       jsonResponse(200, { data: { id: 'conv_1', actionType: 'contact', created: true } }),
-      jsonResponse(200, { data: { id: 'conv_2', actionType: 'start_trial', created: true } }),
-      jsonResponse(200, { data: { id: 'conv_3', actionType: 'complete_registration', created: true } }),
+      jsonResponse(200, { data: { id: 'conv_2', actionType: 'complete_registration', created: true } }),
       jsonResponse(200, { accepted: 3, rejected: 0 }),
       jsonResponse(200, {
         data: {
@@ -37,7 +36,6 @@ describe('开发环境发布预演验证', () => {
               source_name: 'release-dev-fb',
               contact_count: 1,
               complete_registration_count: 1,
-              start_trial_count: 1,
             },
           ],
         },

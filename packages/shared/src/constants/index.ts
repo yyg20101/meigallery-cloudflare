@@ -116,7 +116,7 @@ export const META_EVENT_BY_CONVERSION = {
   contact: 'Contact',
   lead: 'Lead',
   complete_registration: 'CompleteRegistration',
-  start_trial: 'StartTrial',
+  start_trial: null,
   membership_grant: null,
 } as const
 

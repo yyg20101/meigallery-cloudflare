@@ -1,7 +1,7 @@
-import type { AnalyticsConsentState, ConversionActionType, ConversionMetaEventName } from '@meigallery/shared'
+import type { ConversionActionType, MetaPixelInstruction } from '@meigallery/shared'
 import { sanitizeAnalyticsPath } from '~/utils/analyticsSanitizer'
 
-type PublicConversionActionType = Extract<ConversionActionType, 'contact' | 'complete_registration' | 'start_trial'>
+type PublicConversionActionType = Extract<ConversionActionType, 'contact' | 'complete_registration'>
 
 type TrackConversionOptions = {
   methodType?: string
@@ -11,13 +11,6 @@ type TrackConversionOptions = {
 
 type AnalyticsContext = ReturnType<ReturnType<typeof useAnalytics>['getContext']> & {
   sourceChannel?: string
-}
-
-const META_EVENT: Partial<Record<ConversionActionType, ConversionMetaEventName>> = {
-  contact: 'Contact',
-  lead: 'Lead',
-  complete_registration: 'CompleteRegistration',
-  start_trial: 'StartTrial',
 }
 
 const SENSITIVE_METADATA_KEYS = new Set([
@@ -36,28 +29,25 @@ const SENSITIVE_METADATA_KEYS = new Set([
 
 const SENSITIVE_KEY_PARTS = ['token', 'secret', 'password', 'credential', 'cookie', 'jwt', 'signature']
 
+type FailedConversionRetry = {
+  send: () => Promise<MetaPixelInstruction[]>
+  deliver: (instructions: MetaPixelInstruction[]) => void
+  attempts: number
+}
+
+const failedConversionRetries: FailedConversionRetry[] = []
+let retryTimer: ReturnType<typeof setTimeout> | null = null
+
 export function useConversionTracking() {
   const { api } = useApi()
   const route = useRoute()
   const analytics = useAnalytics()
   const pixel = useFacebookPixel()
+  const marketingConsent = useMarketingConsent()
 
   async function trackConversion(actionType: PublicConversionActionType, options: TrackConversionOptions = {}) {
     const context = analytics.getContext() as AnalyticsContext
     const occurredAt = new Date().toISOString()
-    const occurredDate = occurredAt.slice(0, 10)
-    const metaEventName = META_EVENT[actionType]
-    const eventID = metaEventName
-      ? buildExternalEventId({
-        actionType,
-        metaEventName,
-        sessionId: context.sessionId,
-        visitorId: context.visitorId,
-        occurredDate,
-        methodType: options.methodType,
-        actionTarget: options.actionTarget,
-      })
-      : ''
     const metadata = sanitizeConversionMetadata(options.metadata || {})
     const body = {
       actionType,
@@ -73,24 +63,74 @@ export function useConversionTracking() {
       utmMedium: normalizeText(context.sourceContext.utmMedium, 120),
       utmCampaign: normalizeText(context.sourceContext.utmCampaign, 120),
       utmContent: queryValue(route.query.utm_content),
-      consentState: normalizeConsentState(context.consentState),
+      consentState: marketingConsent.state.value,
       methodType: normalizeText(options.methodType, 80),
       actionTarget: normalizeText(options.actionTarget, 120),
       metadata,
     }
 
+    const send = async () => {
+      const response = await api('/api/conversions/events', { method: 'POST', body })
+      return pixelEventsFromResponse(response)
+    }
+    const deliver = (instructions: MetaPixelInstruction[]) => {
+      for (const instruction of instructions) {
+        pixel.trackStandardEvent(instruction.eventName, instruction.payload, { eventID: instruction.eventId })
+      }
+    }
+
+    let pixelEvents: MetaPixelInstruction[] = []
     try {
-      await api('/api/conversions/events', { method: 'POST', body })
+      pixelEvents = await send()
     } catch {
-      // 转化 API 失败不应阻断站内兼容事件或 Pixel 上报。
+      queueFailedConversionRetry({ send, deliver, attempts: 0 })
     }
-    trackAnalyticsCompatibility(actionType, analytics, options, eventID)
-    if (metaEventName && body.consentState === 'granted') {
-      pixel.trackStandardEvent(metaEventName, metadata, { eventID })
-    }
+    trackAnalyticsCompatibility(actionType, analytics, options, pixelEvents[0]?.eventId || '')
+    deliver(pixelEvents)
   }
 
   return { trackConversion }
+}
+
+function queueFailedConversionRetry(entry: FailedConversionRetry) {
+  failedConversionRetries.push(entry)
+  scheduleFailedConversionRetry()
+}
+
+function scheduleFailedConversionRetry() {
+  if (retryTimer || failedConversionRetries.length === 0) return
+  retryTimer = setTimeout(() => {
+    retryTimer = null
+    void retryFailedConversions()
+  }, 1_000)
+}
+
+async function retryFailedConversions() {
+  const pending = failedConversionRetries.splice(0)
+  for (const entry of pending) {
+    try {
+      entry.deliver(await entry.send())
+    } catch {
+      if (entry.attempts < 2) failedConversionRetries.push({ ...entry, attempts: entry.attempts + 1 })
+    }
+  }
+  scheduleFailedConversionRetry()
+}
+
+function pixelEventsFromResponse(response: unknown): MetaPixelInstruction[] {
+  const events = (response as { data?: { pixelEvents?: unknown } } | null)?.data?.pixelEvents
+  if (!Array.isArray(events)) return []
+  return events.filter(isMetaPixelInstruction)
+}
+
+function isMetaPixelInstruction(value: unknown): value is MetaPixelInstruction {
+  if (!value || typeof value !== 'object') return false
+  const event = value as Partial<MetaPixelInstruction>
+  return typeof event.deliveryId === 'string'
+    && (event.eventName === 'Contact' || event.eventName === 'Lead' || event.eventName === 'CompleteRegistration')
+    && typeof event.eventId === 'string'
+    && Boolean(event.payload && typeof event.payload === 'object' && !Array.isArray(event.payload))
+    && typeof event.receiptToken === 'string'
 }
 
 function trackAnalyticsCompatibility(
@@ -141,43 +181,9 @@ function sanitizeConversionMetadata(input: Record<string, unknown>) {
   return output
 }
 
-function buildExternalEventId(input: {
-  actionType: PublicConversionActionType
-  metaEventName: ConversionMetaEventName
-  sessionId: string
-  visitorId: string
-  occurredDate: string
-  methodType?: string
-  actionTarget?: string
-}) {
-  return `meta:${input.metaEventName}:${buildConversionDedupeKey(input)}`
-}
-
-function buildConversionDedupeKey(input: {
-  actionType: PublicConversionActionType
-  sessionId: string
-  visitorId: string
-  occurredDate: string
-  methodType?: string
-  actionTarget?: string
-}) {
-  if (input.actionType === 'contact') {
-    return `contact:${input.sessionId}:${normalizeKeyPart(input.methodType)}:${normalizeKeyPart(input.actionTarget)}`
-  }
-  if (input.actionType === 'complete_registration' || input.actionType === 'start_trial') {
-    return `${input.actionType}:${input.sessionId}:${input.occurredDate}`
-  }
-  return `${input.actionType}:${input.visitorId}:${input.occurredDate}`
-}
-
 function sourceChannelFromContext(context: AnalyticsContext) {
   if (context.sourceContext.sourceName || context.sourceContext.utmSource || context.sourceContext.trackingSourceSlug) return 'ad'
   return 'unknown'
-}
-
-function normalizeConsentState(value: AnalyticsConsentState | string): AnalyticsConsentState {
-  if (value === 'granted' || value === 'denied') return value
-  return 'limited'
 }
 
 function normalizeMetadataKey(key: string) {
@@ -232,12 +238,4 @@ function safeRoutePath(fullPath: string, path: string) {
 
 function normalizeText(value: unknown, maxLength: number) {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, maxLength)
-}
-
-function normalizeKeyPart(value: unknown) {
-  const text = String(value ?? 'unknown')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]/g, '-')
-  return text || 'unknown'
 }
