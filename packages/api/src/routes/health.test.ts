@@ -37,11 +37,12 @@ describe('API 发布身份健康检查', () => {
     ['缺少 RELEASE_COMMIT', { RELEASE_COMMIT: undefined }, 'RELEASE_COMMIT_INVALID'],
     ['RELEASE_COMMIT 非 40 位 SHA', { RELEASE_COMMIT: '7c9a180' }, 'RELEASE_COMMIT_INVALID'],
     ['APP_ENV 非法', { APP_ENV: 'unknown' }, 'APP_ENV_INVALID'],
+    ['D1 不可用', { DB: { prepare: () => ({ first: async () => { throw new Error('db unavailable') } }) } }, 'DB_UNHEALTHY'],
   ] as const)('%s 时显式返回 unhealthy', async (_label, overrides, errorCode) => {
     const response = await healthRoutes.request('/', {}, createEnv(overrides as Partial<Bindings>))
     const body = await response.json()
 
-    expect(response.status).toBe(200)
+    expect(response.status).toBe(503)
     expect(body.status).toBe('unhealthy')
     expect(body.errors).toContain(errorCode)
     if (errorCode === 'RELEASE_COMMIT_INVALID') expect(body.commit).toBeNull()

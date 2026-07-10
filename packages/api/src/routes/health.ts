@@ -31,5 +31,5 @@ healthRoutes.get('/', async (c) => {
       ...(environmentValid ? [] : ['APP_ENV_INVALID']),
       ...(commitValid ? [] : ['RELEASE_COMMIT_INVALID']),
     ],
-  })
+  }, healthy ? 200 : 503)
 })

@@ -6,6 +6,7 @@ import type { MetaCapiQueueMessage } from '@meigallery/shared'
 function env(corsOrigin?: string) {
   return {
     APP_ENV: 'production',
+    RELEASE_COMMIT: 'a'.repeat(40),
     CORS_ORIGIN: corsOrigin,
     DB: {
       prepare() {

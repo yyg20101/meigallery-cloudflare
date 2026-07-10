@@ -67,6 +67,7 @@ adminAttributionRoutes.get('/overview', async (c) => {
         COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'duplicate_suppressed' THEN delivery_count ELSE 0 END), 0) AS capi_duplicate_suppressed_count
       FROM analytics_conversion_delivery_daily
       WHERE date BETWEEN ? AND ?
+        AND event_name IN ('Contact', 'Lead', 'CompleteRegistration')
     `, [range.from, range.to]),
     queryAll(c.env.DB, `
       SELECT
@@ -80,21 +81,25 @@ adminAttributionRoutes.get('/overview', async (c) => {
         COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'duplicate_suppressed' THEN delivery_count ELSE 0 END), 0) AS capi_duplicate_suppressed_count
       FROM analytics_conversion_delivery_daily
       WHERE date BETWEEN ? AND ?
+        AND event_name IN ('Contact', 'Lead', 'CompleteRegistration')
       GROUP BY date
       ORDER BY date ASC
     `, [range.from, range.to]),
     queryFirst(c.env.DB, `
-      SELECT MAX(sent_at) AS last_sent_at
-      FROM analytics_conversion_deliveries
-      WHERE channel = 'meta_capi'
-        AND status = 'sent'
-        AND sent_at IS NOT NULL
+      SELECT MAX(d.sent_at) AS last_sent_at
+      FROM analytics_conversion_deliveries d
+      JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
+      WHERE d.channel = 'meta_capi'
+        AND d.status = 'sent'
+        AND d.sent_at IS NOT NULL
+        AND a.action_type IN ('contact', 'lead', 'complete_registration')
     `, []),
     queryFirst(c.env.DB, `
       SELECT COUNT(*) AS duplicate_action_count
       FROM analytics_conversion_actions
       WHERE date BETWEEN ? AND ?
         AND duplicate_of != ''
+        AND action_type IN ('contact', 'lead', 'complete_registration')
     `, [range.from, range.to]),
   ])
 
@@ -279,20 +284,24 @@ adminAttributionRoutes.get('/meta', async (c) => {
         COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'duplicate_suppressed' THEN delivery_count ELSE 0 END), 0) AS duplicate_suppressed_count
       FROM analytics_conversion_delivery_daily
       WHERE date BETWEEN ? AND ?
+        AND event_name IN ('Contact', 'Lead', 'CompleteRegistration')
     `, [range.from, range.to]),
     queryAll(c.env.DB, `
       SELECT channel, event_name, status, skip_reason, SUM(delivery_count) AS delivery_count
       FROM analytics_conversion_delivery_daily
       WHERE date BETWEEN ? AND ?
+        AND event_name IN ('Contact', 'Lead', 'CompleteRegistration')
       GROUP BY channel, event_name, status, skip_reason
       ORDER BY channel ASC, event_name ASC, status ASC
     `, [range.from, range.to]),
     queryFirst(c.env.DB, `
-      SELECT MAX(sent_at) AS last_sent_at
-      FROM analytics_conversion_deliveries
-      WHERE channel = 'meta_capi'
-        AND status = 'sent'
-        AND sent_at IS NOT NULL
+      SELECT MAX(d.sent_at) AS last_sent_at
+      FROM analytics_conversion_deliveries d
+      JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
+      WHERE d.channel = 'meta_capi'
+        AND d.status = 'sent'
+        AND d.sent_at IS NOT NULL
+        AND a.action_type IN ('contact', 'lead', 'complete_registration')
     `, []),
     queryAll(c.env.DB, `
       SELECT key, value
@@ -307,6 +316,7 @@ adminAttributionRoutes.get('/meta', async (c) => {
         AND d.status = 'failed'
         AND d.error_code = 'retry_exhausted'
         AND a.date BETWEEN ? AND ?
+        AND a.action_type IN ('contact', 'lead', 'complete_registration')
     `, [range.from, range.to]),
     queryFirst(c.env.DB, `
       SELECT
@@ -333,6 +343,7 @@ adminAttributionRoutes.get('/meta', async (c) => {
       JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
       WHERE d.channel = 'meta_capi'
         AND a.date >= date('now', '-6 days')
+        AND a.action_type IN ('contact', 'lead', 'complete_registration')
     `, []),
   ])
 
@@ -385,12 +396,14 @@ adminAttributionRoutes.get('/duplicates', async (c) => {
         COALESCE(SUM(delivery_count), 0) AS delivery_count
       FROM analytics_conversion_delivery_daily
       WHERE date BETWEEN ? AND ?
+        AND event_name IN ('Contact', 'Lead', 'CompleteRegistration')
     `, [range.from, range.to]),
     queryFirst(c.env.DB, `
       SELECT COUNT(*) AS duplicate_action_count
       FROM analytics_conversion_actions
       WHERE date BETWEEN ? AND ?
         AND duplicate_of != ''
+        AND action_type IN ('contact', 'lead', 'complete_registration')
     `, [range.from, range.to]),
     queryAll(c.env.DB, `
       SELECT
@@ -399,6 +412,7 @@ adminAttributionRoutes.get('/duplicates', async (c) => {
       FROM analytics_conversion_actions
       WHERE date BETWEEN ? AND ?
         AND duplicate_of != ''
+        AND action_type IN ('contact', 'lead', 'complete_registration')
       ORDER BY occurred_at DESC
       LIMIT 100
     `, [range.from, range.to]),
@@ -456,11 +470,13 @@ adminAttributionRoutes.get('/readiness', async (c) => {
     `, [range.from, range.to]),
       queryFirst(c.env.DB, `
         SELECT COUNT(*) AS retry_exhausted_count
-        FROM analytics_conversion_deliveries
-        WHERE channel = 'meta_capi'
-          AND status = 'failed'
-          AND error_code = 'retry_exhausted'
-          AND datetime(last_attempt_at) >= datetime('now', '-24 hours')
+        FROM analytics_conversion_deliveries d
+        JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
+        WHERE d.channel = 'meta_capi'
+          AND d.status = 'failed'
+          AND d.error_code = 'retry_exhausted'
+          AND datetime(d.last_attempt_at) >= datetime('now', '-24 hours')
+          AND a.action_type IN ('contact', 'lead', 'complete_registration')
       `, []),
       queryFirst(c.env.DB, `
         SELECT COUNT(*) AS external_event_id_mismatch_count
@@ -472,6 +488,7 @@ adminAttributionRoutes.get('/readiness', async (c) => {
           JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
           WHERE datetime(d.created_at) >= datetime('now', '-7 days')
             AND a.source_channel <> 'internal'
+            AND a.action_type IN ('contact', 'lead', 'complete_registration')
           GROUP BY d.conversion_action_id, d.event_name
           HAVING COUNT(DISTINCT CASE WHEN d.channel = 'meta_pixel' THEN d.external_event_id END) > 0
             AND COUNT(DISTINCT CASE WHEN d.channel = 'meta_capi' THEN d.external_event_id END) > 0
@@ -484,19 +501,23 @@ adminAttributionRoutes.get('/readiness', async (c) => {
       `, []),
       queryFirst(c.env.DB, `
         SELECT COUNT(*) AS pending_too_long_count
-        FROM analytics_conversion_deliveries
-        WHERE channel = 'meta_capi'
-          AND status = 'pending'
-          AND datetime(created_at) < datetime('now', '-10 minutes')
+        FROM analytics_conversion_deliveries d
+        JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
+        WHERE d.channel = 'meta_capi'
+          AND d.status = 'pending'
+          AND datetime(d.created_at) < datetime('now', '-10 minutes')
+          AND a.action_type IN ('contact', 'lead', 'complete_registration')
       `, []),
       queryFirst(c.env.DB, `
         SELECT COUNT(*) AS permanent_failure_count
-        FROM analytics_conversion_deliveries
-        WHERE channel = 'meta_capi'
-          AND status = 'failed'
-          AND error_code GLOB 'meta_http_4*'
-          AND error_code <> 'meta_http_429'
-          AND datetime(updated_at) >= datetime('now', '-7 days')
+        FROM analytics_conversion_deliveries d
+        JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
+        WHERE d.channel = 'meta_capi'
+          AND d.status = 'failed'
+          AND d.error_code GLOB 'meta_http_4*'
+          AND d.error_code <> 'meta_http_429'
+          AND datetime(d.updated_at) >= datetime('now', '-7 days')
+          AND a.action_type IN ('contact', 'lead', 'complete_registration')
       `, []),
       queryFirst(c.env.DB, `
         SELECT
@@ -523,6 +544,7 @@ adminAttributionRoutes.get('/readiness', async (c) => {
         JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
         WHERE d.channel = 'meta_capi'
           AND a.date >= date('now', '-6 days')
+          AND a.action_type IN ('contact', 'lead', 'complete_registration')
       `, []),
       queryFirst(c.env.DB, `
         SELECT
@@ -530,6 +552,7 @@ adminAttributionRoutes.get('/readiness', async (c) => {
           COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'sent' THEN delivery_count ELSE 0 END), 0) AS capi_sent_count
         FROM analytics_conversion_delivery_daily
         WHERE date >= date('now', '-6 days')
+          AND event_name IN ('Contact', 'Lead', 'CompleteRegistration')
       `, []),
       releaseCommit
         ? queryAll(c.env.DB, `

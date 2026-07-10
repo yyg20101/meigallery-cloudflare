@@ -28,6 +28,7 @@ type ReadinessOptions = {
 
 type AttributionDbOptions = {
   failCreateBatchAt?: number
+  historicalStartTrialDeliveryCount?: number
   settings?: Partial<Record<string, string | boolean>>
   readiness?: ReadinessOptions
 }
@@ -45,6 +46,13 @@ function createApp(role: string | null = 'admin') {
 
 function createAttributionDb(options: AttributionDbOptions = {}) {
   const calls: DbCall[] = []
+  const historicalStartTrialDeliveryCount = Math.max(0, options.historicalStartTrialDeliveryCount ?? 0)
+  const dailyHistoryLeak = (sql: string) => sql.includes("event_name IN ('Contact', 'Lead', 'CompleteRegistration')")
+    ? 0
+    : historicalStartTrialDeliveryCount
+  const actionHistoryLeak = (sql: string) => sql.includes("action_type IN ('contact', 'lead', 'complete_registration')")
+    ? 0
+    : historicalStartTrialDeliveryCount
   const settings = {
     analytics_enabled: true,
     facebook_pixel_enabled: true,
@@ -115,7 +123,7 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
           }
           if (sql.includes('AS retry_exhausted_count')) {
             return {
-              results: [{ retry_exhausted_count: readiness.retryExhaustedCount } as T],
+              results: [{ retry_exhausted_count: readiness.retryExhaustedCount + actionHistoryLeak(sql) } as T],
               meta: { rows_read: 1, rows_written: 0, duration: 1 },
             }
           }
@@ -124,28 +132,28 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
               ? externalEventIdMismatch(readiness.externalEventIds)
               : readiness.externalEventIdMismatchCount
             return {
-              results: [{ external_event_id_mismatch_count: externalEventIdMismatchCount } as T],
+              results: [{ external_event_id_mismatch_count: externalEventIdMismatchCount + actionHistoryLeak(sql) } as T],
               meta: { rows_read: 1, rows_written: 0, duration: 1 },
             }
           }
           if (sql.includes('AS pending_too_long_count')) {
             return {
-              results: [{ pending_too_long_count: readiness.pendingTooLongCount } as T],
+              results: [{ pending_too_long_count: readiness.pendingTooLongCount + actionHistoryLeak(sql) } as T],
               meta: { rows_read: 1, rows_written: 0, duration: 1 },
             }
           }
           if (sql.includes('AS permanent_failure_count')) {
             return {
-              results: [{ permanent_failure_count: readiness.permanentFailureCount } as T],
+              results: [{ permanent_failure_count: readiness.permanentFailureCount + actionHistoryLeak(sql) } as T],
               meta: { rows_read: 1, rows_written: 0, duration: 1 },
             }
           }
           if (sql.includes('AS fbp_sample_count')) {
             return {
               results: [{
-                fbp_sample_count: readiness.fbpSampleCount,
+                fbp_sample_count: readiness.fbpSampleCount + actionHistoryLeak(sql),
                 fbp_matched_count: readiness.fbpMatchedCount,
-                fbc_sample_count: readiness.fbcSampleCount,
+                fbc_sample_count: readiness.fbcSampleCount + actionHistoryLeak(sql),
                 fbc_matched_count: readiness.fbcMatchedCount,
               } as T],
               meta: { rows_read: 1, rows_written: 0, duration: 1 },
@@ -154,14 +162,14 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
           if (sql.includes('AS pixel_attempted_count') && sql.includes('AS capi_sent_count') && !sql.includes('GROUP BY date')) {
             return {
               results: [{
-                pixel_attempted_count: readiness.pixelAttemptedCount,
+                pixel_attempted_count: readiness.pixelAttemptedCount + dailyHistoryLeak(sql),
                 pixel_pending_count: 0,
                 pixel_skipped_count: 0,
-                capi_sent_count: readiness.capiSentCount,
-                capi_failed_count: 0,
+                capi_sent_count: readiness.capiSentCount + dailyHistoryLeak(sql),
+                capi_failed_count: dailyHistoryLeak(sql),
                 capi_skipped_count: 0,
-                capi_duplicate_suppressed_count: 1,
-                duplicate_suppressed_count: 1,
+                capi_duplicate_suppressed_count: 1 + dailyHistoryLeak(sql),
+                duplicate_suppressed_count: 1 + dailyHistoryLeak(sql),
               } as T],
               meta: { rows_read: 1, rows_written: 0, duration: 1 },
             }
@@ -187,7 +195,7 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
           }
           if (sql.includes('COUNT(*) AS duplicate_action_count')) {
             return {
-              results: [{ duplicate_action_count: 1 } as T],
+              results: [{ duplicate_action_count: 1 + actionHistoryLeak(sql) } as T],
               meta: { rows_read: 1, rows_written: 0, duration: 1 },
             }
           }
@@ -231,23 +239,39 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
             }
           }
           if (sql.includes('FROM analytics_conversion_actions') && sql.includes("duplicate_of != ''")) {
+            const results = [
+              {
+                id: 'convdup_1',
+                action_type: 'contact',
+                occurred_at: '2026-07-09T10:01:00.000Z',
+                source_channel: 'ad',
+                source_name: 'ad-a',
+                tracking_source_slug: 'ad-a',
+                utm_campaign: 'old-july',
+                utm_content: 'old-chat',
+                method_type: 'telegram',
+                action_target: 'floating_contact_panel',
+                duplicate_of: 'conv_1',
+              },
+            ]
+            if (actionHistoryLeak(sql) > 0) {
+              results.push({
+                id: 'convdup_start_trial',
+                action_type: 'start_trial',
+                occurred_at: '2026-07-09T11:00:00.000Z',
+                source_channel: 'ad',
+                source_name: 'legacy-start-trial',
+                tracking_source_slug: 'legacy-start-trial',
+                utm_campaign: 'legacy',
+                utm_content: 'legacy',
+                method_type: '',
+                action_target: 'legacy-start-trial',
+                duplicate_of: 'conv_start_trial',
+              })
+            }
             return {
-              results: [
-                {
-                  id: 'convdup_1',
-                  action_type: 'contact',
-                  occurred_at: '2026-07-09T10:01:00.000Z',
-                  source_channel: 'ad',
-                  source_name: 'ad-a',
-                  tracking_source_slug: 'ad-a',
-                  utm_campaign: 'old-july',
-                  utm_content: 'old-chat',
-                  method_type: 'telegram',
-                  action_target: 'floating_contact_panel',
-                  duplicate_of: 'conv_1',
-                },
-              ] as T[],
-              meta: { rows_read: 1, rows_written: 0, duration: 1 },
+              results: results as T[],
+              meta: { rows_read: results.length, rows_written: 0, duration: 1 },
             }
           }
           if (sql.includes('FROM analytics_conversion_actions')) {
@@ -277,32 +301,48 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
               results: [
                 {
                   date: '2026-07-09',
-                  pixel_attempted_count: 2,
+                  pixel_attempted_count: 2 + dailyHistoryLeak(sql),
                   pixel_pending_count: 0,
                   pixel_skipped_count: 1,
-                  capi_sent_count: 1,
-                  capi_failed_count: 0,
+                  capi_sent_count: 1 + dailyHistoryLeak(sql),
+                  capi_failed_count: dailyHistoryLeak(sql),
                   capi_skipped_count: 0,
-                  capi_duplicate_suppressed_count: 1,
+                  capi_duplicate_suppressed_count: 1 + dailyHistoryLeak(sql),
                 },
               ] as T[],
               meta: { rows_read: 1, rows_written: 0, duration: 1 },
             }
           }
           if (sql.includes('FROM analytics_conversion_delivery_daily') && sql.includes('GROUP BY channel')) {
+            const results = [
+              { channel: 'meta_pixel', event_name: 'Contact', status: 'attempted', skip_reason: '', delivery_count: 2 },
+              { channel: 'meta_capi', event_name: 'Contact', status: 'sent', skip_reason: '', delivery_count: 1 },
+              { channel: 'meta_capi', event_name: 'Contact', status: 'duplicate_suppressed', skip_reason: '', delivery_count: 1 },
+            ]
+            if (dailyHistoryLeak(sql) > 0) {
+              results.push({
+                channel: 'meta_capi',
+                event_name: 'StartTrial',
+                status: 'sent',
+                skip_reason: 'legacy',
+                delivery_count: dailyHistoryLeak(sql),
+              })
+            }
             return {
-              results: [
-                { channel: 'meta_pixel', event_name: 'Contact', status: 'attempted', skip_reason: '', delivery_count: 2 },
-                { channel: 'meta_capi', event_name: 'Contact', status: 'sent', skip_reason: '', delivery_count: 1 },
-                { channel: 'meta_capi', event_name: 'Contact', status: 'duplicate_suppressed', skip_reason: '', delivery_count: 1 },
-              ] as T[],
-              meta: { rows_read: 3, rows_written: 0, duration: 1 },
+              results: results as T[],
+              meta: { rows_read: results.length, rows_written: 0, duration: 1 },
             }
           }
           if (sql.includes('FROM analytics_conversion_delivery_daily')) {
             return {
               results: [
-                { sent_count: 2, failed_count: 0, skipped_count: 1, duplicate_suppressed_count: 1, delivery_count: 4 },
+                {
+                  sent_count: 2 + dailyHistoryLeak(sql),
+                  failed_count: dailyHistoryLeak(sql),
+                  skipped_count: 1,
+                  duplicate_suppressed_count: 1 + dailyHistoryLeak(sql),
+                  delivery_count: 4 + dailyHistoryLeak(sql),
+                },
               ] as T[],
               meta: { rows_read: 1, rows_written: 0, duration: 1 },
             }
@@ -342,9 +382,13 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
               meta: { rows_read: 1, rows_written: 0, duration: 1 },
             }
           }
-          if (sql.includes('FROM analytics_conversion_deliveries') && sql.includes('MAX(sent_at)')) {
+          if (sql.includes('FROM analytics_conversion_deliveries') && sql.includes('AS last_sent_at')) {
             return {
-              results: [{ last_sent_at: '2026-07-09T10:00:00.000Z' } as T],
+              results: [{
+                last_sent_at: actionHistoryLeak(sql) > 0
+                  ? '2099-01-01T00:00:00.000Z'
+                  : '2026-07-09T10:00:00.000Z',
+              } as T],
               meta: { rows_read: 1, rows_written: 0, duration: 1 },
             }
           }
@@ -383,7 +427,7 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
               duplicate_suppressed_count: 1,
             } as T
           }
-          if (sql.includes('FROM analytics_conversion_deliveries') && sql.includes('MAX(sent_at)')) {
+          if (sql.includes('FROM analytics_conversion_deliveries') && sql.includes('AS last_sent_at')) {
             return { last_sent_at: '2026-07-09T10:00:00.000Z' } as T
           }
           if (sql.includes('COUNT(*) AS duplicate_action_count')) {
@@ -545,7 +589,7 @@ describe('后台归因中心 API', () => {
     const body = await res.json()
     const totalsSql = db.calls.find(call => call.sql.includes('AS capi_duplicate_suppressed_count') && !call.sql.includes('GROUP BY date'))?.sql ?? ''
     const trendSql = db.calls.find(call => call.sql.includes('AS capi_duplicate_suppressed_count') && call.sql.includes('GROUP BY date'))?.sql ?? ''
-    const lastSentSql = db.calls.find(call => call.sql.includes('MAX(sent_at) AS last_sent_at'))?.sql ?? ''
+    const lastSentSql = db.calls.find(call => call.sql.includes('AS last_sent_at'))?.sql ?? ''
 
     expect(res.status).toBe(200)
     expect(body.data.meta.capi_sent_count).toBe(1)
@@ -698,6 +742,85 @@ describe('后台归因中心 API', () => {
     expect(body.data.samples[0]).toMatchObject({ id: 'convdup_1', duplicate_of: 'conv_1' })
   })
 
+  it('非零历史 StartTrial delivery 不影响当前 Meta 指标、重复诊断或 readiness', async () => {
+    const readiness = {
+      fbpSampleCount: 20,
+      fbpMatchedCount: 16,
+      fbcSampleCount: 20,
+      fbcMatchedCount: 14,
+      pixelAttemptedCount: 20,
+      capiSentCount: 16,
+    }
+    const dbOptions: AttributionDbOptions = {
+      historicalStartTrialDeliveryCount: 37,
+      readiness,
+    }
+    const db = createAttributionDb(dbOptions)
+    const app = createApp('admin')
+    const env = { DB: db, ...VALID_READINESS_ENV } as unknown as Bindings
+    const [overviewResponse, metaResponse, duplicatesResponse, readinessResponse] = await Promise.all([
+      app.request('/api/admin/attribution/overview?from=2026-07-09&to=2026-07-09', {}, env),
+      app.request('/api/admin/attribution/meta?from=2026-07-09&to=2026-07-09', {}, env),
+      app.request('/api/admin/attribution/duplicates?from=2026-07-09&to=2026-07-09', {}, env),
+      app.request('/api/admin/attribution/readiness?from=2026-07-09&to=2026-07-09', {}, env),
+    ])
+    const [overview, meta, duplicates, historicalReadiness] = await Promise.all([
+      overviewResponse.json(),
+      metaResponse.json(),
+      duplicatesResponse.json(),
+      readinessResponse.json(),
+    ])
+    const { body: baselineReadiness } = await requestReadiness({ readiness })
+
+    expect(overview.data.meta).toMatchObject({
+      pixel_attempted_count: 20,
+      capi_sent_count: 16,
+      capi_failed_count: 0,
+      capi_duplicate_suppressed_count: 1,
+      last_sent_at: '2026-07-09T10:00:00.000Z',
+    })
+    expect(overview.data.duplicates).toMatchObject({
+      duplicate_suppressed_count: 1,
+      duplicate_action_count: 1,
+      duplicate_rate: 0.0588,
+    })
+    expect(meta.data.totals).toMatchObject({
+      pixel_attempted_count: 20,
+      capi_sent_count: 16,
+      capi_failed_count: 0,
+      retry_exhausted_count: 0,
+      duplicate_suppressed_count: 1,
+    })
+    expect(meta.data.lastSentAt).toBe('2026-07-09T10:00:00.000Z')
+    expect(meta.data.matchQuality).toMatchObject({ fbpCoverage: 0.8, fbpSampleCount: 20, fbcCoverage: 0.7, fbcSampleCount: 20 })
+    expect(meta.data.deliveries.every((row: { event_name: string }) => ['Contact', 'Lead', 'CompleteRegistration'].includes(row.event_name))).toBe(true)
+    expect(duplicates.data).toMatchObject({ duplicateSuppressedCount: 1, duplicateActionCount: 1, duplicateRate: 0.25 })
+    expect(duplicates.data.samples.every((row: { action_type: string }) => row.action_type !== 'start_trial')).toBe(true)
+
+    const checkStates = (body: {
+      data: { checks: Array<{ key: string; level: string; ok: boolean }> }
+    }) => body.data.checks.map((check) => ({
+      key: check.key,
+      level: check.level,
+      ok: check.ok,
+    }))
+    expect(historicalReadiness.data.ready).toBe(true)
+    expect(checkStates(historicalReadiness)).toEqual(checkStates(baselineReadiness))
+
+    const dailyQueries = db.calls.filter(call => call.sql.includes('FROM analytics_conversion_delivery_daily'))
+    const deliveryQueries = db.calls.filter(call => call.sql.includes('FROM analytics_conversion_deliveries'))
+    const duplicateActionQueries = db.calls.filter(call => call.sql.includes('FROM analytics_conversion_actions') && call.sql.includes("duplicate_of != ''"))
+    expect(dailyQueries.length).toBeGreaterThan(0)
+    expect(dailyQueries.every(call => call.sql.includes("event_name IN ('Contact', 'Lead', 'CompleteRegistration')"))).toBe(true)
+    expect(deliveryQueries.length).toBeGreaterThan(0)
+    expect(deliveryQueries.every(call => (
+      call.sql.includes('JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id') &&
+      call.sql.includes("a.action_type IN ('contact', 'lead', 'complete_registration')")
+    ))).toBe(true)
+    expect(duplicateActionQueries.length).toBeGreaterThan(0)
+    expect(duplicateActionQueries.every(call => call.sql.includes("action_type IN ('contact', 'lead', 'complete_registration')"))).toBe(true)
+  })
+
   it('返回分层归因上线检查且 ready 只由 blocker 决定', async () => {
     const { res, body } = await requestReadiness({ readiness: { pendingTooLongCount: 1 } })
 
@@ -784,10 +907,10 @@ describe('后台归因中心 API', () => {
     const { db } = await requestReadiness()
     const sqlByAlias = (alias: string) => db.calls.find(call => call.sql.includes(alias))?.sql ?? ''
 
-    expect(sqlByAlias('AS retry_exhausted_count')).toContain("datetime(last_attempt_at) >= datetime('now', '-24 hours')")
+    expect(sqlByAlias('AS retry_exhausted_count')).toContain("datetime(d.last_attempt_at) >= datetime('now', '-24 hours')")
     expect(sqlByAlias('AS external_event_id_mismatch_count')).toContain("datetime(d.created_at) >= datetime('now', '-7 days')")
-    expect(sqlByAlias('AS pending_too_long_count')).toContain("datetime(created_at) < datetime('now', '-10 minutes')")
-    expect(sqlByAlias('AS permanent_failure_count')).toContain("datetime(updated_at) >= datetime('now', '-7 days')")
+    expect(sqlByAlias('AS pending_too_long_count')).toContain("datetime(d.created_at) < datetime('now', '-10 minutes')")
+    expect(sqlByAlias('AS permanent_failure_count')).toContain("datetime(d.updated_at) >= datetime('now', '-7 days')")
   })
 
   it.each([

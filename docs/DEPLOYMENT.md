@@ -156,6 +156,8 @@ Meta 正式事件仅为 `Contact`、`Lead`、`CompleteRegistration`；不支持 
 
 后台与证据的状态口径必须严格区分：Pixel `attempted` 只表示浏览器已按服务端指令尝试调用，**不代表 Meta 已接收**；只有 CAPI delivery 为 `sent` 且 Graph API 返回 `events_received=1`，才可表述为 Meta 已接收。三项正式事件的 Browser/Server 同 ID 与 Meta 去重结果，必须由 Owner 在 Events Manager 中确认并生成脱敏 live evidence。
 
+`meta_tracking_mode=test` 时，所有 `Contact`、`Lead`、`CompleteRegistration` CAPI payload 都必须携带当前环境 Worker secret `META_CAPI_TEST_EVENT_CODE`；Owner 在后台触发的 direct Test Event 同样创建 `tracking_mode=test` delivery 并读取这一个 secret，不接受调用参数覆盖。`meta_tracking_mode=production` 时，即使环境中仍配置 Test Event Code，CAPI payload 也绝不携带 `test_event_code`。
+
 环境资源固定如下，dev 和生产不得交叉使用 token、Test Event Code、D1、R2 或 Queue：
 
 | 环境 | 主 Queue | DLQ |
@@ -178,11 +180,11 @@ corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_TEST_E
 1. 保持代码关闭态：`meta_tracking_mode=disabled`、`meta_capi_enabled=false`，并完成本地 migration、测试、类型检查和 Worker dry-run。
 2. 在独立 dev 资源部署当前待发布代码，完成严格 dev live evidence：`Contact`、`Lead`、`CompleteRegistration` 均有 Browser/Server、同一 event ID、去重成功，且没有 `StartTrial`。
 3. 先用完整的只读资源检查排障：dev 为 `corepack pnpm verify:meta-resources --env dev --report-only`，production 为 `corepack pnpm verify:meta-resources --env production --report-only`。只在获得上线授权后创建或核验生产主 Queue、DLQ、consumer 和独立的两个 Worker secret；不得把原始 CLI 输出或 secret 写入证据。
-4. 对生产 D1 应用 migration。`0034_meta_production_readiness.sql` 后必须保持 `meta_tracking_mode=disabled` 和 `meta_capi_enabled=false`。
+4. 对生产 D1 依次应用 `0001` 到 `0035`。`0034_meta_production_readiness.sql` 后必须保持 `meta_tracking_mode=disabled` 和 `meta_capi_enabled=false`；`0035_meta_capi_delivery_recovery.sql` 为 delivery 固化 `tracking_mode`，增加 `queue_enqueued_at` / `queue_attempt_count` outbox 状态、`duplicate_suppressed_at` 去重幂等时间戳和恢复索引。生产 Cron 每 5 分钟扫描超过 5 分钟仍未入队的 pending CAPI outbox；每日 UTC 00:00 trigger 在恢复 outbox 后继续执行完整维护。dev Cron 只执行 outbox 恢复。
 5. PR 合入 `main` 后，以最终 `main` HEAD 重新部署 dev，并重新生成该 commit 的 dev live evidence；此前任何 commit 的 evidence 都失效。
 6. 在最终 `main` HEAD、干净工作区运行同 commit release：首次 Meta 上线使用 `META_INITIAL_ROLLOUT=1 corepack pnpm verify:release`，该约束只要求 production `meta_capi_enabled=false`，不约束 dev；后续常规发布使用 `corepack pnpm verify:release`。通过后才允许 production gate 放行。
 7. 部署生产 API，再部署生产 Web；部署不等同于开启营销投放。
-8. Owner 先将 mode 设为 `test`，在严格 Test Event 中确认 CAPI 返回 `sent` 且 `events_received=1`。
+8. Owner 先将 mode 设为 `test`，确认普通三事件和 Owner direct Test Event 都使用当前环境同一 `META_CAPI_TEST_EVENT_CODE`，并在严格 Test Event 中确认 CAPI 返回 `sent` 且 `events_received=1`。
 9. Owner 将 mode 切为 `production`，再次确认营销授权仅在 `granted` 时允许追踪，且拒绝或 limited 不加载 Pixel、不创建 Meta delivery。
 10. 仅在上述检查全部通过后开启 `meta_capi_enabled`，按小流量观察 `attempted`、CAPI `sent`、failed/skipped、DLQ 和重复诊断；Pixel 可按同一授权门禁单独开启。
 
@@ -192,7 +194,7 @@ corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_TEST_E
 
 优先回滚运行开关，不删除 Queue、DLQ、secret、D1 表或已应用 migration：
 
-1. Owner 先关闭 `meta_capi_enabled`，停止新 CAPI 入队；站内转化账本应继续写入，CAPI delivery 以 `skipped/disabled` 可诊断状态呈现。
+1. Owner 先关闭 `meta_capi_enabled`，停止创建和入队新的 CAPI delivery；站内转化账本应继续写入，关闭后不得新增 CAPI delivery。
 2. 将 `meta_tracking_mode` 切回 `disabled`，使营销授权即使为 granted 也不再允许 Pixel 或新的 Meta delivery。
 3. 如需进一步停止浏览器侧调用，再关闭 `facebook_pixel_enabled`；不要把 Pixel `attempted` 误读为接收量。
 4. Queue 或外部失败异常时记录 backlog、DLQ、failed 原因并暂停投递；修复后先在 `test` mode 重做 Owner Test Event，再依序恢复 production mode 与 CAPI 开关。
@@ -211,7 +213,7 @@ corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_TEST_E
 | `IMPORT_TOKEN_DAILY_LIMIT` | API Worker vars | 单个 Import Token 每日可创建的外部导入记录上限，未设置时 API 默认 100 |
 | `TELEGRAM_BOT_TOKEN_<SOURCE_BOT_KEY>` | API Worker secret | Telegram 外部导入拉取 file_id 所需 Bot Token，例如 `ops_gallery_bot` 对应 `TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT` |
 | `META_CAPI_ACCESS_TOKEN` | API Worker secret | Meta Conversions API 访问令牌，只存 Worker secret，不进入 D1 或前端 |
-| `META_CAPI_TEST_EVENT_CODE` | API Worker secret | Meta Events Manager Test Events 调试码，仅用于 owner 触发 Test Event |
+| `META_CAPI_TEST_EVENT_CODE` | API Worker secret | 当前环境 Meta Events Manager Test Events 调试码；`meta_tracking_mode=test` 的普通三事件和 Owner direct Test Event 共用，production payload 永不携带 |
 | `NUXT_PUBLIC_API_BASE_URL` | Web Worker vars | API 地址（如 `https://api.616618.xyz`） |
 
 设置 secret：
@@ -364,7 +366,7 @@ head_sampling_rate = 1
 - [ ] 域名 DNS 已接入 Cloudflare
 - [ ] `meigallery-web` Worker 已部署并绑定 `616618.xyz`
 - [ ] `meigallery-api` Worker 已部署并绑定 `api.616618.xyz`
-- [ ] D1 数据库 `meigallery-db` 已创建，migrations 已执行
+- [ ] D1 数据库 `meigallery-db` 已创建，`0001` 到 `0035` migrations 已依次执行
 - [ ] R2 bucket `meigallery-media` 已创建并设置私有访问策略
 - [ ] Stream 上传和播放流程验证通过（当前未接入）
 - [ ] 所有 Worker secrets 已配置（SESSION_SECRET、TURNSTILE_SECRET_KEY、STREAM_ACCOUNT_ID、STREAM_API_TOKEN）
@@ -375,7 +377,7 @@ head_sampling_rate = 1
 - [ ] 每个 `sourceBotKey` 对应的 `TELEGRAM_BOT_TOKEN_<SOURCE_BOT_KEY>` secret 已配置
 - [ ] 生产 `meigallery-meta-capi` 和 `meigallery-meta-capi-dlq` 已创建，API Worker producer / consumer dry-run 通过
 - [ ] `META_CAPI_ACCESS_TOKEN` 和 `META_CAPI_TEST_EVENT_CODE` 已作为独立 production secret 配置；dev 使用不同值
-- [ ] `0034_meta_production_readiness.sql` 已应用后，`meta_tracking_mode=disabled`、`meta_capi_enabled=false`
+- [ ] `0034_meta_production_readiness.sql` 与 `0035_meta_capi_delivery_recovery.sql` 已应用；`meta_tracking_mode=disabled`、`meta_capi_enabled=false`，0035 的 tracking mode、outbox、恢复索引和每 5 分钟 Cron 已核验
 - [ ] 当前 `main` HEAD 已重做 dev live evidence；`Contact` / `Lead` / `CompleteRegistration` 均完成 Browser/Server 同 ID 去重，且无 `StartTrial`
 - [ ] `/admin/attribution/meta` 将 Pixel `attempted` 与 CAPI `sent` 分开显示；Owner Test Event 返回 `events_received=1` 后才允许 production mode 和 `meta_capi_enabled`
 - [ ] WAF 和基本 rate limiting 已启用

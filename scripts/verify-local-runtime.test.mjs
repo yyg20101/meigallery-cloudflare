@@ -71,10 +71,10 @@ describe('本地运行时发布身份', () => {
       environment: 'dev',
       commit: null,
       detail: rawMarker,
-    }), COMMIT, { serverTimeoutMs: 20, pollIntervalMs: 0 })
+    }, 503), COMMIT, { serverTimeoutMs: 20, pollIntervalMs: 0 })
 
     assert.equal(result.step.status, 'failed')
-    assert.match(result.step.summary, /commit 缺失或非法/)
+    assert.match(result.step.summary, /HTTP 503/)
     assert.equal(result.step.summary.includes(rawMarker), false)
   })
 
