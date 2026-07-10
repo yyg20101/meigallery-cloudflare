@@ -43,7 +43,7 @@ export interface RecordConversionResult {
 }
 
 export interface RecordConversionContext {
-  metaCapiUserData: MetaCapiUserData
+  getMetaCapiUserData: () => MetaCapiUserData
 }
 
 export interface MarkPixelAttemptedResult {
@@ -68,7 +68,7 @@ type MetaDeliverySettings = Awaited<ReturnType<typeof readMetaDeliverySettings>>
 export async function recordConversionAction(
   env: Pick<Bindings, 'DB' | 'APP_ENV' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>,
   input: RecordConversionInput,
-  context: RecordConversionContext = { metaCapiUserData: {} },
+  context: RecordConversionContext = { getMetaCapiUserData: () => ({}) },
 ): Promise<RecordConversionResult> {
   const normalizedInput = normalizeConversionInput(input)
   const occurredAt = normalizeIso(normalizedInput.occurredAt)
@@ -297,9 +297,12 @@ async function buildConversionBatchPlan(
   const statements: D1PreparedStatement[] = []
   const deliveries: PlannedDelivery[] = []
   const settings = await readMetaDeliverySettings(env.DB)
+  const metaCapiUserData = shouldCreateMetaCapiDelivery(settings, input)
+    ? normalizeMetaCapiUserData(context.getMetaCapiUserData())
+    : {}
   const actionStatementIndex = statements.push(conversionActionStatement(env.DB, actionId, input, occurredAt, date, dedupeKey)) - 1
   statements.push(conversionDailyStatement(env.DB, input, date, actionId))
-  deliveries.push(...await planMetaDeliveries(env, settings, input, date, context))
+  deliveries.push(...await planMetaDeliveries(env, settings, input, date, metaCapiUserData))
   for (const delivery of deliveries) {
     delivery.statementIndex = statements.push(conversionDeliveryStatement(env.DB, delivery, actionId)) - 1
   }
@@ -314,7 +317,7 @@ async function buildConversionBatchPlan(
       env.DB, leadId, leadInput, occurredAt, date, leadDedupeKey, actionId,
     )) - 1
     statements.push(conversionDailyStatement(env.DB, leadInput, date, leadId))
-    const leadDeliveries = await planMetaDeliveries(env, settings, leadInput, date, context)
+    const leadDeliveries = await planMetaDeliveries(env, settings, leadInput, date, metaCapiUserData)
     for (const delivery of leadDeliveries) {
       delivery.statementIndex = statements.push(conversionDeliveryStatement(env.DB, delivery, leadId)) - 1
       deliveries.push(delivery)
@@ -355,7 +358,7 @@ async function planMetaDeliveries(
   settings: MetaDeliverySettings,
   input: RecordConversionInput,
   date: string,
-  context: RecordConversionContext,
+  metaCapiUserData: MetaCapiUserData,
 ): Promise<PlannedDelivery[]> {
   if (input.consentState !== 'granted' || settings.mode === 'disabled' || !settings.pixelId) return []
   const eventName = metaEventForConversion(input.actionType)
@@ -373,7 +376,6 @@ async function planMetaDeliveries(
     ...(settings.pixelEnabled ? ['meta_pixel' as const] : []),
     ...(settings.capiEnabled ? ['meta_capi' as const] : []),
   ]
-  const userData = normalizeMetaCapiUserData(context.metaCapiUserData)
   return Promise.all(channels.map(async channel => {
     const deliveryId = generateId('cdlv')
     const pixelInstruction = channel === 'meta_pixel'
@@ -389,7 +391,7 @@ async function planMetaDeliveries(
           }),
         }
       : undefined
-    const capiUserData = channel === 'meta_capi' ? userData : {}
+    const capiUserData = channel === 'meta_capi' ? metaCapiUserData : {}
     return {
       deliveryId,
       channel,
@@ -437,7 +439,7 @@ async function finalizeCapiDeliveries(
         continue
       }
       await env.META_CAPI_QUEUE.send(metaCapiQueueMessage(delivery))
-    } catch (error) {
+    } catch {
       try {
         await markDeliveryTerminal(
           env.DB,
@@ -448,13 +450,21 @@ async function finalizeCapiDeliveries(
           'failed',
           '',
           'queue_send_failed',
-          error instanceof Error ? error.message : 'Queue 发送失败',
+          'Meta CAPI Queue 发送失败',
         )
       } catch {
         // Queue 是提交后的外部副作用，账本提交不得因补记失败而回滚或重试。
       }
     }
   }
+}
+
+function shouldCreateMetaCapiDelivery(settings: MetaDeliverySettings, input: RecordConversionInput) {
+  return input.consentState === 'granted'
+    && (settings.mode === 'test' || settings.mode === 'production')
+    && Boolean(settings.pixelId)
+    && settings.capiEnabled
+    && Boolean(metaEventForConversion(input.actionType))
 }
 
 function metaCapiQueueMessage(delivery: PlannedDelivery): MetaCapiQueueMessage {

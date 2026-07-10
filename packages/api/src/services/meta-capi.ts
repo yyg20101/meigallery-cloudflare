@@ -128,9 +128,8 @@ export async function sendMetaCapiEvent(
     return { deliveryId, status: 'sent' }
   }
 
-  const errorMessage = await safeResponseText(response)
   const retryType = classifyMetaCapiError(response.status)
-  await markDelivery(env.DB, delivery, 'failed', '', String(response.status), errorMessage)
+  await markDelivery(env.DB, delivery, 'failed', '', `meta_http_${response.status}`, 'Meta CAPI 请求失败')
   if (retryType === 'retryable') {
     throw new Error(`Meta CAPI retryable ${response.status}`)
   }
@@ -181,7 +180,7 @@ async function markDelivery(
     status,
     skipReason,
     errorCode,
-    truncateError(errorMessage),
+    storedErrorMessage(errorMessage),
     status,
     delivery.id,
   ).run()
@@ -268,14 +267,6 @@ function metaCapiEndpoint(pixelId: string, accessToken: string) {
   return url.toString()
 }
 
-async function safeResponseText(response: Response) {
-  try {
-    return truncateError(await response.text())
-  } catch {
-    return ''
-  }
-}
-
-function truncateError(value: string) {
-  return value.replace(/\s+/g, ' ').trim().slice(0, ATTRIBUTION_LIMITS.DELIVERY_ERROR_MAX_LENGTH)
+function storedErrorMessage(value: string) {
+  return value === 'Meta CAPI 请求失败' ? value : ''
 }

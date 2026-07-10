@@ -231,10 +231,13 @@ describe('meta-capi', () => {
 
   it('Meta 5xx 标记 failed 后抛错交给 Queue 重试', async () => {
     const db = createMetaCapiDb({ pixelId: '1234567890' })
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('server error', { status: 500 }))
+    const sensitive = 'fb.1.1700000000000.123456789|fb.1.1700000000000.CLICK_abc-123|203.0.113.24|MeiGallery Test Browser/1.0|token_private'
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(sensitive, { status: 500 }))
 
     await expect(sendMetaCapiEvent(envFor(db), 'cdlv_1')).rejects.toThrow('Meta CAPI retryable')
     expect(db.delivery.status).toBe('failed')
-    expect(db.delivery.error_code).toBe('500')
+    expect(db.delivery.error_code).toBe('meta_http_500')
+    expect(db.delivery.error_message).toBe('Meta CAPI 请求失败')
+    expect(JSON.stringify(db.calls)).not.toContain(sensitive)
   })
 })

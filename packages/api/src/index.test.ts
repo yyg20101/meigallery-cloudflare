@@ -100,5 +100,18 @@ describe('Meta CAPI Queue consumer', () => {
     })
     expect(message.ack).toHaveBeenCalledOnce()
     expect(message.retry).not.toHaveBeenCalled()
+
+    const sensitive = `${body.userData.fbp}|${body.userData.fbc}|${body.userData.clientIpAddress}|${body.userData.clientUserAgent}|token_private`
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    fetchMock.mockRejectedValueOnce(new Error(sensitive))
+    await app.queue({ messages: [message] } as unknown as MessageBatch<MetaCapiQueueMessage>, {
+      APP_ENV: 'test',
+      SITE_URL: 'https://616618.xyz',
+      META_CAPI_ACCESS_TOKEN: 'token_1',
+      DB: db,
+    } as unknown as Bindings)
+
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(sensitive)
+    expect(message.retry).toHaveBeenCalledOnce()
   })
 })

@@ -201,13 +201,18 @@ describe('conversion ledger service', () => {
       metaCapiEnabled: true,
     })
     const sent: MetaCapiQueueMessage[] = []
+    let supplierCalls = 0
     const result = await recordConversionAction(envWithQueueFor(db, sent), { ...grantedContactInput(), consentState }, {
-      metaCapiUserData: { fbp: 'fb.1.1700000000000.123456789', clientIpAddress: '203.0.113.24' },
+      getMetaCapiUserData: () => {
+        supplierCalls += 1
+        return { fbp: 'fb.1.1700000000000.123456789', clientIpAddress: '203.0.113.24' }
+      },
     })
 
     expect(result.pixelEvents).toEqual([])
     expect(db.calls.some(call => call.sql.includes('analytics_conversion_deliveries'))).toBe(false)
     expect(sent).toEqual([])
+    expect(supplierCalls).toBe(0)
   })
 
   it('disabled 模式不创建 Meta delivery 或 Pixel 指令', async () => {
@@ -218,13 +223,18 @@ describe('conversion ledger service', () => {
       metaCapiEnabled: true,
     })
     const sent: MetaCapiQueueMessage[] = []
+    let supplierCalls = 0
     const result = await recordConversionAction(envWithQueueFor(db, sent), grantedContactInput(), {
-      metaCapiUserData: { fbp: 'fb.1.1700000000000.123456789', clientIpAddress: '203.0.113.24' },
+      getMetaCapiUserData: () => {
+        supplierCalls += 1
+        return { fbp: 'fb.1.1700000000000.123456789', clientIpAddress: '203.0.113.24' }
+      },
     })
 
     expect(result.pixelEvents).toEqual([])
     expect(db.calls.some(call => call.sql.includes('analytics_conversion_deliveries'))).toBe(false)
     expect(sent).toEqual([])
+    expect(supplierCalls).toBe(0)
   })
 
   it('首次有效联系写入 contact 和 lead，并创建 Meta delivery', async () => {
@@ -404,12 +414,19 @@ describe('conversion ledger service', () => {
       ignored: 'must-not-pass',
     }
 
+    let supplierCalls = 0
     await recordConversionAction(envWithQueueFor(db, sent), {
       ...grantedContactInput(),
       metadata: { fbp: 'metadata-fbp', fbc: 'metadata-fbc' },
-    }, { metaCapiUserData: userData })
+    }, {
+      getMetaCapiUserData: () => {
+        supplierCalls += 1
+        return userData
+      },
+    })
 
     expect(sent).toHaveLength(2)
+    expect(supplierCalls).toBe(1)
     expect(sent.map(message => message.userData)).toEqual([{
       fbp: userData.fbp,
       fbc: userData.fbc,
@@ -430,6 +447,51 @@ describe('conversion ledger service', () => {
     expect(JSON.stringify(db.calls)).not.toContain(userData.clientUserAgent)
     expect(JSON.stringify(db.calls)).not.toContain('metadata-fbp')
     expect(JSON.stringify(db.calls)).not.toContain('metadata-fbc')
+  })
+
+  it('CAPI 未启用时不调用临时数据 supplier', async () => {
+    const db = createConversionDb({ metaTrackingMode: 'test', facebookPixelId: '1234567890' })
+    let supplierCalls = 0
+
+    await recordConversionAction(envFor(db), grantedContactInput(), {
+      getMetaCapiUserData: () => {
+        supplierCalls += 1
+        return { fbp: 'fb.1.1700000000000.123456789' }
+      },
+    })
+
+    expect(supplierCalls).toBe(0)
+  })
+
+  it('缺少合法 Pixel ID 时不调用临时数据 supplier', async () => {
+    const db = createConversionDb({ metaCapiEnabled: true, metaTrackingMode: 'test' })
+    let supplierCalls = 0
+
+    await recordConversionAction(envFor(db), grantedContactInput(), {
+      getMetaCapiUserData: () => {
+        supplierCalls += 1
+        return { fbp: 'fb.1.1700000000000.123456789' }
+      },
+    })
+
+    expect(supplierCalls).toBe(0)
+  })
+
+  it('Queue 发送异常只记录固定诊断信息，不持久化异常原文', async () => {
+    const db = createConversionDb({ metaCapiEnabled: true, metaTrackingMode: 'test', facebookPixelId: '1234567890' })
+    const sensitive = 'fb.1.1700000000000.123456789|fb.1.1700000000000.CLICK_abc-123|203.0.113.24|MeiGallery Test Browser/1.0|token_private'
+    const env = {
+      ...envFor(db),
+      META_CAPI_QUEUE: { send: async () => { throw new Error(sensitive) } },
+    } as Pick<Bindings, 'APP_ENV' | 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>
+
+    const result = await recordConversionAction(env, grantedContactInput())
+
+    const serializedCalls = JSON.stringify(db.calls)
+    expect(serializedCalls).not.toContain(sensitive)
+    expect(JSON.stringify(result)).not.toContain(sensitive)
+    expect(serializedCalls).toContain('queue_send_failed')
+    expect(serializedCalls).toContain('Meta CAPI Queue 发送失败')
   })
 
   it('CAPI 开启但缺少 Queue binding 时标记 missing_queue', async () => {

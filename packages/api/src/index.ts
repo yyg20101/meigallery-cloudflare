@@ -348,10 +348,9 @@ export default {
       try {
         await sendMetaCapiEvent(env, message.body.deliveryId, { userData: message.body.userData })
         message.ack()
-      } catch (error) {
+      } catch {
         console.error('[meta-capi] delivery failed', {
           deliveryId: message.body.deliveryId,
-          message: error instanceof Error ? error.message : 'unknown',
         })
         message.retry()
       }

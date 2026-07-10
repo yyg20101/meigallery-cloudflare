@@ -7,6 +7,7 @@ const track = vi.fn()
 const trackStandardEvent = vi.fn()
 let consentState: 'granted' | 'limited' | 'denied' = 'granted'
 const marketingConsentState = ref<'granted' | 'limited' | 'denied'>('granted')
+const canTrackMarketing = ref(true)
 
 let route: {
   name: string
@@ -30,6 +31,7 @@ describe('useConversionTracking', () => {
     trackStandardEvent.mockReset()
     consentState = 'granted'
     marketingConsentState.value = 'granted'
+    canTrackMarketing.value = true
     route = {
       name: 'contact',
       path: '/contact',
@@ -55,7 +57,7 @@ describe('useConversionTracking', () => {
       track,
     }))
     vi.stubGlobal('useFacebookPixel', () => ({ trackStandardEvent }))
-    vi.stubGlobal('useMarketingConsent', () => ({ state: marketingConsentState }))
+    vi.stubGlobal('useMarketingConsent', () => ({ state: marketingConsentState, canTrackMarketing }))
   })
 
   afterEach(async () => {
@@ -280,6 +282,17 @@ describe('useConversionTracking', () => {
     document.cookie = '_fbp=fb.1.1700000000000.123456789; path=/'
     marketingConsentState.value = 'limited'
     route.query.fbclid = 'CLICK_abc-123'
+
+    await useConversionTracking().trackConversion('contact')
+
+    const body = api.mock.calls[0]?.[1]?.body as Record<string, unknown>
+    expect(body).not.toHaveProperty('browserIdentifiers')
+  })
+
+  it('Meta mode disabled 时不读取或上报 browserIdentifiers', async () => {
+    document.cookie = '_fbp=fb.1.1700000000000.123456789; path=/'
+    route.query.fbclid = 'CLICK_abc-123'
+    canTrackMarketing.value = false
 
     await useConversionTracking().trackConversion('contact')
 

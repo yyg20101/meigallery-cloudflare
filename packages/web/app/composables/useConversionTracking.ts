@@ -82,7 +82,7 @@ export function useConversionTracking() {
       methodType: normalizeText(options.methodType, 80),
       actionTarget: normalizeText(options.actionTarget, 120),
       metadata,
-      ...(marketingConsent.state.value === 'granted' && typeof document !== 'undefined'
+      ...(marketingConsent.canTrackMarketing.value && marketingConsent.state.value === 'granted' && typeof document !== 'undefined'
         ? { browserIdentifiers: readMetaBrowserIdentifiers(document.cookie, route.query.fbclid) }
         : {}),
     }

@@ -43,9 +43,7 @@ conversionRoutes.post('/events', async (c) => {
     actionTarget: String(body.actionTarget || ''),
     metadata: isPlainRecord(body.metadata) ? body.metadata : {},
   }, {
-    metaCapiUserData: consentState === 'granted'
-      ? buildMetaCapiUserData(c.req.raw, body.browserIdentifiers)
-      : {},
+    getMetaCapiUserData: () => buildMetaCapiUserData(c.req.raw, body.browserIdentifiers),
   })
 
   return c.json({ data: result }, result.created ? 201 : 200)
