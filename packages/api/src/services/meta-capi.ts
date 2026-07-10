@@ -109,8 +109,6 @@ export async function sendMetaCapiEvent(
     eventTime: toUnixSeconds(delivery.occurred_at),
     eventSourceUrl: buildEventSourceUrl(env.SITE_URL, delivery.path),
     actionSource: 'website',
-    fbp: stringValue(metadata.fbp),
-    fbc: stringValue(metadata.fbc),
     customData: metadata,
     testEventCode: options.testEventCode,
   })
@@ -241,11 +239,6 @@ function parseMetadata(value: string) {
   } catch {
     return {}
   }
-}
-
-function stringValue(value: unknown) {
-  const text = String(value ?? '').trim()
-  return text || undefined
 }
 
 function toUnixSeconds(value: string) {

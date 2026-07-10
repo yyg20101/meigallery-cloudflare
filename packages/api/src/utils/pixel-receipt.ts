@@ -8,8 +8,13 @@ const SIGNING_PREFIX = 'meigallery:pixel-receipt:v1:'
 const SIGNATURE_BYTES = 32
 
 export async function createPixelReceiptToken(secret: string, claims: PixelReceiptClaims): Promise<string> {
-  if (!isValidClaims(claims, 0)) throw new Error('Pixel 回执无效')
-  const payload = base64UrlEncode(new TextEncoder().encode(JSON.stringify(claims)))
+  const normalizedClaims: PixelReceiptClaims = {
+    deliveryId: claims.deliveryId,
+    eventId: claims.eventId,
+    expiresAt: claims.expiresAt,
+  }
+  if (!isValidClaims(normalizedClaims, 0)) throw new Error('Pixel 回执无效')
+  const payload = base64UrlEncode(new TextEncoder().encode(JSON.stringify(normalizedClaims)))
   const signature = await sign(secret, payload)
   return `${payload}.${base64UrlEncode(signature)}`
 }
@@ -60,6 +65,8 @@ async function sign(secret: string, payload: string) {
 
 function isValidClaims(value: unknown, nowSeconds: number): value is PixelReceiptClaims {
   if (!value || typeof value !== 'object') return false
+  const keys = Object.keys(value)
+  if (keys.length !== 3 || !keys.every(key => key === 'deliveryId' || key === 'eventId' || key === 'expiresAt')) return false
   const claims = value as Partial<PixelReceiptClaims>
   return typeof claims.deliveryId === 'string'
     && claims.deliveryId.length > 0

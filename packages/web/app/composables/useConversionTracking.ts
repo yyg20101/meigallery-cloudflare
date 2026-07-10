@@ -25,13 +25,18 @@ const SENSITIVE_METADATA_KEYS = new Set([
   'link_url',
   'url',
   'token',
+  'fbp',
+  'fbc',
+  'client_ip_address',
+  'client_user_agent',
+  'user_agent',
 ])
 
 const SENSITIVE_KEY_PARTS = ['token', 'secret', 'password', 'credential', 'cookie', 'jwt', 'signature']
 
 type FailedConversionRetry = {
   send: () => Promise<MetaPixelInstruction[]>
-  deliver: (instructions: MetaPixelInstruction[]) => void
+  complete: (instructions: MetaPixelInstruction[]) => void
   attempts: number
 }
 
@@ -78,15 +83,19 @@ export function useConversionTracking() {
         pixel.trackStandardEvent(instruction.eventName, instruction.payload, { eventID: instruction.eventId })
       }
     }
+    const complete = (instructions: MetaPixelInstruction[]) => {
+      trackAnalyticsCompatibility(actionType, analytics, options, instructions[0]?.eventId || '')
+      deliver(instructions)
+    }
 
     let pixelEvents: MetaPixelInstruction[] = []
     try {
       pixelEvents = await send()
     } catch {
-      queueFailedConversionRetry({ send, deliver, attempts: 0 })
+      queueFailedConversionRetry({ send, complete, attempts: 0 })
+      return
     }
-    trackAnalyticsCompatibility(actionType, analytics, options, pixelEvents[0]?.eventId || '')
-    deliver(pixelEvents)
+    complete(pixelEvents)
   }
 
   return { trackConversion }
@@ -109,9 +118,13 @@ async function retryFailedConversions() {
   const pending = failedConversionRetries.splice(0)
   for (const entry of pending) {
     try {
-      entry.deliver(await entry.send())
+      entry.complete(await entry.send())
     } catch {
-      if (entry.attempts < 2) failedConversionRetries.push({ ...entry, attempts: entry.attempts + 1 })
+      if (entry.attempts < 2) {
+        failedConversionRetries.push({ ...entry, attempts: entry.attempts + 1 })
+      } else {
+        entry.complete([])
+      }
     }
   }
   scheduleFailedConversionRetry()

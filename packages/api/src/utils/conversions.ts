@@ -18,6 +18,11 @@ const SENSITIVE_KEYS = new Set([
   'admin_path',
   'admin_action_detail',
   'operator_note_text',
+  'fbp',
+  'fbc',
+  'client_ip_address',
+  'client_user_agent',
+  'user_agent',
 ])
 
 const SENSITIVE_KEY_PARTS = ['token', 'secret', 'password', 'credential', 'cookie', 'jwt', 'signature']

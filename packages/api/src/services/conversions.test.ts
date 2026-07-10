@@ -13,17 +13,38 @@ function createConversionDb(options: {
   facebookPixelEnabled?: boolean
   facebookPixelId?: string
   metaTrackingMode?: 'disabled' | 'test' | 'production'
+  failAt?: number
 } = {}) {
   const calls: Call[] = []
   const insertedConversions: InsertedConversion[] = []
   const dedupe = new Map((options.existingDedupeKeys ?? []).map((key) => [key, `existing_${key}`]))
   const leadSessions = new Set(options.existingLeadSessions ?? [])
+  for (const sessionId of leadSessions) dedupe.set(`lead:${sessionId}`, `lead_${sessionId}`)
+  let statementCount = 0
+
+  function applyCall(
+    call: Call,
+    target: { dedupe: Map<string, string>; leadSessions: Set<string>; insertedConversions: InsertedConversion[] },
+  ) {
+    if (call.sql.includes('INSERT OR IGNORE INTO analytics_conversion_actions')) {
+      const id = String(call.params[0])
+      const actionType = String(call.params[1])
+      const dedupeKey = String(call.params[2])
+      const sessionId = String(call.params[6])
+      if (target.dedupe.has(dedupeKey)) return { meta: { changes: 0, rows_written: 0, rows_read: 0, duration: 1 } }
+      target.dedupe.set(dedupeKey, id)
+      target.insertedConversions.push({ id, actionType, dedupeKey, sessionId })
+      if (actionType === 'lead') target.leadSessions.add(sessionId)
+    }
+    return { meta: { changes: 1, rows_written: 1, rows_read: 0, duration: 1 } }
+  }
+
   const db = {
     calls,
     insertedConversions,
     prepare(sql: string) {
       const call: Call = { sql, params: [] }
-      return {
+      const statement = {
         bind(...params: unknown[]) {
           call.params = params
           return this
@@ -56,22 +77,43 @@ function createConversionDb(options: {
           return { results: [] as T[] }
         },
         async run() {
+          statementCount += 1
           calls.push(call)
-          if (sql.includes('analytics_conversion_actions')) {
-            const id = String(call.params[0])
-            const actionType = String(call.params[1])
-            const dedupeKey = String(call.params[2])
-            const sessionId = String(call.params[6])
-            if (dedupe.has(dedupeKey)) {
-              return { meta: { changes: 0, rows_written: 0, rows_read: 0, duration: 1 } }
-            }
-            dedupe.set(dedupeKey, id)
-            insertedConversions.push({ id, actionType, dedupeKey, sessionId })
-            if (actionType === 'lead') leadSessions.add(sessionId)
-          }
-          return { meta: { changes: 1, rows_written: 1, rows_read: 0, duration: 1 } }
+          const result = applyCall(call, { dedupe, leadSessions, insertedConversions })
+          if (options.failAt === statementCount) throw new Error('模拟 D1 写入失败')
+          return result
         },
       }
+      Object.assign(statement, { __call: call })
+      return statement
+    },
+    async batch(statements: Array<{ __call?: Call }>) {
+      const staged = {
+        dedupe: new Map(dedupe),
+        leadSessions: new Set(leadSessions),
+        insertedConversions: [...insertedConversions],
+      }
+      const results = []
+      for (const statement of statements) {
+        const call = statement.__call
+        if (!call) throw new Error('缺少 batch statement')
+        statementCount += 1
+        calls.push(call)
+        if (options.failAt === statementCount) throw new Error('模拟 D1 写入失败')
+        results.push(applyCall(call, staged))
+      }
+      dedupe.clear()
+      for (const [key, value] of staged.dedupe) dedupe.set(key, value)
+      leadSessions.clear()
+      for (const value of staged.leadSessions) leadSessions.add(value)
+      insertedConversions.splice(0, insertedConversions.length, ...staged.insertedConversions)
+      return results
+    },
+    get failAt() {
+      return options.failAt
+    },
+    set failAt(value: number | undefined) {
+      options.failAt = value
     },
   }
   return db
@@ -126,6 +168,30 @@ describe('conversion ledger service', () => {
     expect(result.pixelEvents.every(item => item.receiptToken)).toBe(true)
   })
 
+  it('公开 metadata 中的 Meta 标识和网络标识不进入 SQL 参数', async () => {
+    const db = createConversionDb({
+      facebookPixelEnabled: true,
+      facebookPixelId: '1234567890',
+      metaTrackingMode: 'test',
+    })
+    await recordConversionAction(envFor(db), {
+      ...grantedContactInput(),
+      metadata: {
+        method_type: 'telegram',
+        fbp: 'fb.1.private',
+        fbc: 'fb.1.private',
+        clientIpAddress: '203.0.113.8',
+        client_user_agent: 'private-browser',
+        user_agent: 'private-browser',
+      },
+    })
+
+    const serializedCalls = JSON.stringify(db.calls)
+    expect(serializedCalls).not.toContain('fb.1.private')
+    expect(serializedCalls).not.toContain('203.0.113.8')
+    expect(serializedCalls).not.toContain('private-browser')
+  })
+
   it.each(['limited', 'denied'] as const)('%s 不创建 Meta delivery 或 Pixel 指令', async consentState => {
     const db = createConversionDb({
       facebookPixelEnabled: true,
@@ -178,6 +244,30 @@ describe('conversion ledger service', () => {
     expect(result.derivedActions.map(item => item.actionType)).toContain('lead')
     expect(db.calls.some(call => call.sql.includes('analytics_conversion_actions'))).toBe(true)
     expect(db.calls.some(call => call.sql.includes('analytics_conversion_deliveries'))).toBe(true)
+  })
+
+  it('delivery 写入失败不残留 action，重试后可返回指令', async () => {
+    const db = createConversionDb({
+      facebookPixelEnabled: true,
+      facebookPixelId: '1234567890',
+      metaTrackingMode: 'test',
+      failAt: 3,
+    })
+
+    await expect(recordConversionAction(envFor(db), grantedContactInput())).rejects.toThrow()
+    expect(db.insertedConversions).toEqual([])
+
+    db.failAt = undefined
+    const retried = await recordConversionAction(envFor(db), grantedContactInput())
+    expect(retried.created).toBe(true)
+    expect(retried.pixelEvents.map(item => item.eventName)).toEqual(['Contact', 'Lead'])
+  })
+
+  it('派生 Lead 写入失败不残留主 action', async () => {
+    const db = createConversionDb({ failAt: 3 })
+
+    await expect(recordConversionAction(envFor(db), grantedContactInput())).rejects.toThrow()
+    expect(db.insertedConversions).toEqual([])
   })
 
   it('重复有效联系不重复派生 Lead', async () => {

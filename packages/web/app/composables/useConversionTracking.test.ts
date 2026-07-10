@@ -159,7 +159,7 @@ describe('useConversionTracking', () => {
     expect(JSON.stringify(api.mock.calls)).not.toContain('invite')
   })
 
-  it('conversion API 失败时继续 analytics 兼容事件但不发送 Pixel', async () => {
+  it('conversion API 首次失败时不提前发送兼容 analytics 或 Pixel', async () => {
     api.mockRejectedValueOnce(new Error('conversion api failed'))
 
     const conversion = useConversionTracking()
@@ -169,10 +169,7 @@ describe('useConversionTracking', () => {
       metadata: { location: 'floating_contact_panel' },
     })).resolves.toBeUndefined()
 
-    expect(track).toHaveBeenCalledWith('contact_method_click', expect.objectContaining({
-      eventId: '',
-      flush: true,
-    }))
+    expect(track).not.toHaveBeenCalled()
     expect(trackStandardEvent).not.toHaveBeenCalled()
   })
 
@@ -194,15 +191,37 @@ describe('useConversionTracking', () => {
       methodType: 'telegram',
       actionTarget: 'floating_contact_panel',
     })
+    expect(track).not.toHaveBeenCalled()
     expect(trackStandardEvent).not.toHaveBeenCalled()
 
     await vi.advanceTimersByTimeAsync(1_000)
     expect(api).toHaveBeenCalledTimes(2)
+    expect(track).toHaveBeenCalledTimes(1)
+    expect(track).toHaveBeenCalledWith('contact_method_click', expect.objectContaining({
+      eventId: 'meta:Contact:contact:session_1:telegram:floating_contact_panel',
+      flush: true,
+    }))
     expect(trackStandardEvent).toHaveBeenCalledWith(
       'Contact',
       { location: 'floating_contact_panel' },
       { eventID: 'meta:Contact:contact:session_1:telegram:floating_contact_panel' },
     )
+  })
+
+  it('三次补发全部失败后只发送一次空 ID 兼容事件', async () => {
+    api.mockRejectedValue(new Error('conversion api failed'))
+    const conversion = useConversionTracking()
+
+    await conversion.trackConversion('contact', {
+      methodType: 'telegram',
+      actionTarget: 'floating_contact_panel',
+    })
+    await vi.advanceTimersByTimeAsync(3_000)
+
+    expect(api).toHaveBeenCalledTimes(4)
+    expect(track).toHaveBeenCalledTimes(1)
+    expect(track).toHaveBeenCalledWith('contact_method_click', expect.objectContaining({ eventId: '', flush: true }))
+    expect(trackStandardEvent).not.toHaveBeenCalled()
   })
 
   it('consent 非 granted 时不直接发送 Pixel', async () => {

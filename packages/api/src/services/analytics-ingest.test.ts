@@ -50,6 +50,9 @@ function createDb(options: {
         },
       }
     },
+    async batch(statements: Array<{ run: () => Promise<unknown> }>) {
+      return Promise.all(statements.map(statement => statement.run()))
+    },
   }
   return db
 }
@@ -409,7 +412,7 @@ describe('analytics-ingest', () => {
     })
 
     const contactConversionInserts = db.calls.filter(call => (
-      call.sql.includes('analytics_conversion_actions') && call.params[1] === 'contact'
+      call.sql.includes('INSERT OR IGNORE INTO analytics_conversion_actions') && call.params[1] === 'contact'
     ))
     expect(result.duplicate).toBe(1)
     expect(contactConversionInserts).toHaveLength(1)

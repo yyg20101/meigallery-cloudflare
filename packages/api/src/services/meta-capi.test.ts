@@ -176,6 +176,20 @@ describe('meta-capi', () => {
     expect(JSON.stringify(init)).not.toContain('user@example.test')
   })
 
+  it('不从 D1 metadata 恢复 fbp 或 fbc', async () => {
+    const db = createMetaCapiDb({
+      pixelId: '1234567890',
+      delivery: { metadata: JSON.stringify({ method_type: 'telegram', fbp: 'fb.1.private', fbc: 'fb.1.private' }) },
+    })
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
+
+    await sendMetaCapiEvent(envFor(db), 'cdlv_1')
+
+    const payload = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))
+    expect(payload.data[0].user_data).toEqual({})
+    expect(JSON.stringify(payload)).not.toContain('fb.1.private')
+  })
+
   it('Meta 5xx 标记 failed 后抛错交给 Queue 重试', async () => {
     const db = createMetaCapiDb({ pixelId: '1234567890' })
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('server error', { status: 500 }))

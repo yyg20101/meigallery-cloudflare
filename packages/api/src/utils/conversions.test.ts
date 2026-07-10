@@ -50,6 +50,21 @@ describe('conversion utils', () => {
     })
   })
 
+  it('清洗 payload 时移除 Meta 标识与客户端网络标识', () => {
+    const sanitized = sanitizeConversionMetadata({
+      fbp: 'fb.1.123',
+      fbc: 'fb.1.456',
+      client_ip_address: '203.0.113.8',
+      clientIpAddress: '203.0.113.9',
+      client_user_agent: 'browser-a',
+      clientUserAgent: 'browser-b',
+      user_agent: 'browser-c',
+      method_type: 'telegram',
+    })
+
+    expect(sanitized).toEqual({ method_type: 'telegram' })
+  })
+
   it('清洗 payload 时移除会员备注和后台审计详情字段', () => {
     const sanitized = sanitizeConversionMetadata({
       membership_note: '用户私密备注',

@@ -41,6 +41,17 @@ export interface RecordConversionResult {
   pixelEvents: MetaPixelInstruction[]
 }
 
+type PlannedDelivery = {
+  deliveryId: string
+  channel: 'meta_pixel' | 'meta_capi'
+  eventName: NonNullable<ReturnType<typeof metaEventForConversion>>
+  eventId: string
+  pixelInstruction?: MetaPixelInstruction
+  statementIndex: number
+}
+
+type MetaDeliverySettings = Awaited<ReturnType<typeof readMetaDeliverySettings>>
+
 export async function recordConversionAction(
   env: Pick<Bindings, 'DB' | 'APP_ENV' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>,
   input: RecordConversionInput,
@@ -49,34 +60,24 @@ export async function recordConversionAction(
   const occurredAt = normalizeIso(normalizedInput.occurredAt)
   const date = occurredAt.slice(0, 10)
   const dedupeKey = conversionDedupeKey(normalizedInput, date)
+  const existing = await findConversionByDedupeKey(env.DB, dedupeKey)
+  if (existing) return recordDuplicateResult(env.DB, normalizedInput, occurredAt, date, dedupeKey, existing.id)
+
   const id = generateId('conv')
-  const created = await insertConversion(env.DB, id, normalizedInput, occurredAt, date, dedupeKey, '')
-  if (!created) {
-    const existing = await findConversionByDedupeKey(env.DB, dedupeKey)
-    const duplicateId = existing
-      ? await recordDuplicateConversion(env.DB, normalizedInput, occurredAt, date, dedupeKey, existing.id)
-      : ''
-    return {
-      id: duplicateId || existing?.id || id,
-      actionType: normalizedInput.actionType,
-      created: false,
-      duplicateOf: existing?.id ?? '',
-      derivedActions: [],
-      pixelEvents: [],
-    }
+  const plan = await buildConversionBatchPlan(env, id, normalizedInput, occurredAt, date, dedupeKey)
+  const results = await env.DB.batch(plan.statements)
+  if (!d1Changed(results[plan.actionStatementIndex]!)) {
+    const concurrent = await findConversionByDedupeKey(env.DB, dedupeKey)
+    if (concurrent) return recordDuplicateResult(env.DB, normalizedInput, occurredAt, date, dedupeKey, concurrent.id)
+    throw new Error('转化写入未确认')
   }
 
-  await upsertConversionDaily(env.DB, normalizedInput, date)
-  const pixelEvents = await createMetaDeliveries(env, id, normalizedInput, date)
-
-  const derivedActions: Array<{ id: string; actionType: ConversionActionType }> = []
-  if (normalizedInput.actionType === 'contact') {
-    const lead = await recordDerivedLead(env, normalizedInput, occurredAt, date)
-    if (lead) {
-      derivedActions.push(lead.action)
-      pixelEvents.push(...lead.pixelEvents)
-    }
-  }
+  const committedDeliveries = plan.deliveries.filter(delivery => d1Changed(results[delivery.statementIndex]!))
+  const pixelEvents = committedDeliveries.flatMap(delivery => delivery.pixelInstruction ? [delivery.pixelInstruction] : [])
+  const derivedActions = plan.leadAction && plan.leadAction.statementIndex !== undefined && d1Changed(results[plan.leadAction.statementIndex]!)
+    ? [{ id: plan.leadAction.id, actionType: 'lead' as const }]
+    : []
+  await finalizeCapiDeliveries(env, committedDeliveries, date)
 
   return { id, actionType: normalizedInput.actionType, created: true, duplicateOf: '', derivedActions, pixelEvents }
 }
@@ -149,6 +150,25 @@ async function insertConversion(
   return d1Changed(result)
 }
 
+async function recordDuplicateResult(
+  db: D1Database,
+  input: RecordConversionInput,
+  occurredAt: string,
+  date: string,
+  dedupeKey: string,
+  existingId: string,
+): Promise<RecordConversionResult> {
+  const duplicateId = await recordDuplicateConversion(db, input, occurredAt, date, dedupeKey, existingId)
+  return {
+    id: duplicateId || existingId,
+    actionType: input.actionType,
+    created: false,
+    duplicateOf: existingId,
+    derivedActions: [],
+    pixelEvents: [],
+  }
+}
+
 async function findConversionByDedupeKey(db: D1Database, dedupeKey: string) {
   return db
     .prepare('SELECT id FROM analytics_conversion_actions WHERE dedupe_key = ? LIMIT 1')
@@ -174,13 +194,14 @@ function d1Changed(result: D1Result<unknown>) {
   return (result.meta?.changes ?? result.meta?.rows_written ?? 1) > 0
 }
 
-async function upsertConversionDaily(db: D1Database, input: RecordConversionInput, date: string) {
-  await db.prepare(`
+function conversionDailyStatement(db: D1Database, input: RecordConversionInput, date: string, actionId: string) {
+  return db.prepare(`
     INSERT INTO analytics_conversion_daily (
       date, action_type, source_channel, source_name, utm_campaign, utm_content,
       action_count, unique_session_count, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, 1, 1, datetime('now'))
+    SELECT ?, ?, ?, ?, ?, ?, 1, 1, datetime('now')
+    WHERE EXISTS (SELECT 1 FROM analytics_conversion_actions WHERE id = ?)
     ON CONFLICT(date, action_type, source_channel, source_name, utm_campaign, utm_content)
     DO UPDATE SET
       action_count = analytics_conversion_daily.action_count + 1,
@@ -193,118 +214,157 @@ async function upsertConversionDaily(db: D1Database, input: RecordConversionInpu
     input.sourceName || '',
     input.utmCampaign || '',
     input.utmContent || '',
-  ).run()
+    actionId,
+  )
 }
 
-async function createMetaDeliveries(
+async function buildConversionBatchPlan(
   env: Pick<Bindings, 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>,
-  conversionActionId: string,
+  actionId: string,
+  input: RecordConversionInput,
+  occurredAt: string,
+  date: string,
+  dedupeKey: string,
+) {
+  const statements: D1PreparedStatement[] = []
+  const deliveries: PlannedDelivery[] = []
+  const settings = await readMetaDeliverySettings(env.DB)
+  const actionStatementIndex = statements.push(conversionActionStatement(env.DB, actionId, input, occurredAt, date, dedupeKey)) - 1
+  statements.push(conversionDailyStatement(env.DB, input, date, actionId))
+  deliveries.push(...await planMetaDeliveries(env, settings, input, date))
+  for (const delivery of deliveries) {
+    delivery.statementIndex = statements.push(conversionDeliveryStatement(env.DB, delivery, actionId)) - 1
+  }
+
+  let leadAction: { id: string; statementIndex?: number } | undefined
+  if (input.actionType === 'contact') {
+    const leadInput: RecordConversionInput = { ...input, actionType: 'lead', occurredAt }
+    const leadId = generateId('conv')
+    const leadDedupeKey = conversionDedupeKey(leadInput, date)
+    leadAction = { id: leadId }
+    leadAction.statementIndex = statements.push(conversionActionStatement(
+      env.DB, leadId, leadInput, occurredAt, date, leadDedupeKey, actionId,
+    )) - 1
+    statements.push(conversionDailyStatement(env.DB, leadInput, date, leadId))
+    const leadDeliveries = await planMetaDeliveries(env, settings, leadInput, date)
+    for (const delivery of leadDeliveries) {
+      delivery.statementIndex = statements.push(conversionDeliveryStatement(env.DB, delivery, leadId)) - 1
+      deliveries.push(delivery)
+    }
+  }
+  return { statements, actionStatementIndex, deliveries, leadAction }
+}
+
+function conversionActionStatement(
+  db: D1Database,
+  id: string,
+  input: RecordConversionInput,
+  occurredAt: string,
+  date: string,
+  dedupeKey: string,
+  requiredActionId?: string,
+) {
+  const values = [
+    id, input.actionType, dedupeKey, occurredAt, date, input.visitorId || '', input.sessionId || '', input.userId ?? null,
+    input.sourceChannel || 'unknown', input.sourceName || '', input.trackingSourceSlug || '', input.utmSource || '',
+    input.utmMedium || '', input.utmCampaign || '', input.utmContent || '', input.methodType || '', input.actionTarget || '',
+    input.routeName || '', input.path || '', JSON.stringify(sanitizeConversionMetadata(input.metadata || {})), '',
+  ]
+  const condition = requiredActionId ? 'SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM analytics_conversion_actions WHERE id = ?)' : 'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  return db.prepare(`
+    INSERT OR IGNORE INTO analytics_conversion_actions (
+      id, action_type, dedupe_key, occurred_at, date, visitor_id, session_id, user_id,
+      source_channel, source_name, tracking_source_slug, utm_source, utm_medium,
+      utm_campaign, utm_content, method_type, action_target, route_name, path,
+      metadata, duplicate_of
+    )
+    ${condition}
+  `).bind(...values, ...(requiredActionId ? [requiredActionId] : []))
+}
+
+async function planMetaDeliveries(
+  env: Pick<Bindings, 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>,
+  settings: MetaDeliverySettings,
   input: RecordConversionInput,
   date: string,
-): Promise<MetaPixelInstruction[]> {
-  if (input.consentState !== 'granted') return []
-
-  const metaEventName = metaEventForConversion(input.actionType)
-  if (!metaEventName) return []
-
-  const settings = await readMetaDeliverySettings(env.DB)
-  if (settings.mode === 'disabled' || !settings.pixelId) return []
-
-  const externalEventId = buildExternalEventId({
+): Promise<PlannedDelivery[]> {
+  if (input.consentState !== 'granted' || settings.mode === 'disabled' || !settings.pixelId) return []
+  const eventName = metaEventForConversion(input.actionType)
+  if (!eventName) return []
+  const eventId = buildExternalEventId({
     actionType: input.actionType,
     sessionId: input.sessionId || '',
     visitorId: input.visitorId || '',
     occurredDate: date,
     methodType: input.methodType,
     actionTarget: input.actionTarget,
-    metaEventName,
+    metaEventName: eventName,
   })
-
-  const pixelEvents: MetaPixelInstruction[] = []
   const channels = [
     ...(settings.pixelEnabled ? ['meta_pixel' as const] : []),
     ...(settings.capiEnabled ? ['meta_capi' as const] : []),
   ]
-  for (const channel of channels) {
+  return Promise.all(channels.map(async channel => {
     const deliveryId = generateId('cdlv')
-    const created = await env.DB.prepare(`
-      INSERT OR IGNORE INTO analytics_conversion_deliveries (
-        id, conversion_action_id, channel, external_event_id, event_name,
-        status, skip_reason, updated_at
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
-    `).bind(
-      deliveryId,
-      conversionActionId,
-      channel,
-      externalEventId,
-      metaEventName,
-      'pending',
-      '',
-    ).run()
-    if (!d1Changed(created)) continue
-    if (channel === 'meta_pixel') {
-      pixelEvents.push({
-        deliveryId,
-        eventName: metaEventName,
-        eventId: externalEventId,
-        payload: sanitizeConversionMetadata(input.metadata || {}),
-        receiptToken: await createPixelReceiptToken(env.SESSION_SECRET, {
+    const pixelInstruction = channel === 'meta_pixel'
+      ? {
           deliveryId,
-          eventId: externalEventId,
-          expiresAt: Math.floor(Date.now() / 1000) + 300,
-        }),
-      })
-      continue
-    }
-    if (!env.META_CAPI_QUEUE) {
-      await markDeliveryTerminal(env.DB, deliveryId, date, channel, metaEventName, 'skipped', 'missing_queue')
-      continue
-    }
-    try {
-      await env.META_CAPI_QUEUE.send({ schemaVersion: 1, deliveryId, userData: {} })
-    } catch (error) {
-      await markDeliveryTerminal(
-        env.DB,
-        deliveryId,
-        date,
-        channel,
-        metaEventName,
-        'failed',
-        '',
-        'queue_send_failed',
-        error instanceof Error ? error.message : 'Queue 发送失败',
-      )
-    }
-  }
-  return pixelEvents
+          eventName,
+          eventId,
+          payload: sanitizeConversionMetadata(input.metadata || {}),
+          receiptToken: await createPixelReceiptToken(env.SESSION_SECRET, {
+            deliveryId,
+            eventId,
+            expiresAt: Math.floor(Date.now() / 1000) + 300,
+          }),
+        }
+      : undefined
+    return { deliveryId, channel, eventName, eventId, pixelInstruction, statementIndex: -1 }
+  }))
 }
 
-async function recordDerivedLead(
-  env: Pick<Bindings, 'DB' | 'APP_ENV' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>,
-  input: RecordConversionInput,
-  occurredAt: string,
+function conversionDeliveryStatement(db: D1Database, delivery: PlannedDelivery, actionId: string) {
+  return db.prepare(`
+    INSERT OR IGNORE INTO analytics_conversion_deliveries (
+      id, conversion_action_id, channel, external_event_id, event_name,
+      status, skip_reason, updated_at
+    )
+    SELECT ?, ?, ?, ?, ?, 'pending', '', datetime('now')
+    WHERE EXISTS (SELECT 1 FROM analytics_conversion_actions WHERE id = ?)
+  `).bind(delivery.deliveryId, actionId, delivery.channel, delivery.eventId, delivery.eventName, actionId)
+}
+
+async function finalizeCapiDeliveries(
+  env: Pick<Bindings, 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>,
+  deliveries: PlannedDelivery[],
   date: string,
 ) {
-  const existingLead = await env.DB
-    .prepare("SELECT id FROM analytics_conversion_actions WHERE session_id = ? AND action_type = 'lead' LIMIT 1")
-    .bind(input.sessionId || '')
-    .first<{ id: string }>()
-  if (existingLead) return null
-
-  const leadInput: RecordConversionInput = {
-    ...input,
-    actionType: 'lead',
-    occurredAt,
+  for (const delivery of deliveries) {
+    if (delivery.channel !== 'meta_capi') continue
+    try {
+      if (!env.META_CAPI_QUEUE) {
+        await markDeliveryTerminal(env.DB, delivery.deliveryId, date, 'meta_capi', delivery.eventName, 'skipped', 'missing_queue')
+        continue
+      }
+      await env.META_CAPI_QUEUE.send({ schemaVersion: 1, deliveryId: delivery.deliveryId, userData: {} })
+    } catch (error) {
+      try {
+        await markDeliveryTerminal(
+          env.DB,
+          delivery.deliveryId,
+          date,
+          'meta_capi',
+          delivery.eventName,
+          'failed',
+          '',
+          'queue_send_failed',
+          error instanceof Error ? error.message : 'Queue 发送失败',
+        )
+      } catch {
+        // Queue 是提交后的外部副作用，账本提交不得因补记失败而回滚或重试。
+      }
+    }
   }
-  const dedupeKey = conversionDedupeKey(leadInput, date)
-  const id = generateId('conv')
-  const created = await insertConversion(env.DB, id, leadInput, occurredAt, date, dedupeKey, '')
-  if (!created) return null
-
-  await upsertConversionDaily(env.DB, leadInput, date)
-  const pixelEvents = await createMetaDeliveries(env, id, leadInput, date)
-  return { action: { id, actionType: 'lead' as const }, pixelEvents }
 }
 
 async function readMetaDeliverySettings(db: D1Database) {
