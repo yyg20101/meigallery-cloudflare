@@ -103,6 +103,17 @@ describe('MetaConnection 后台状态', () => {
     expect(wrapper.text()).not.toContain('fingerprint')
   })
 
+  it('历史 verification 缺少 revision 时提示重新验证', () => {
+    const { wrapper } = mountPage({
+      connection: connection({
+        state: 'configuration_changed',
+        invalidationReason: 'verification_revision_missing',
+      }),
+    })
+
+    expect(wrapper.text()).toContain('连接验证|配置已变更|历史连接验证需要重新验证')
+  })
+
   it('只有 Owner 且 dev 环境可操作验证按钮', () => {
     const ownerDev = mountPage({ isOwner: true })
     expect(ownerDev.wrapper.find('[data-meta-connection-verify]').exists()).toBe(true)

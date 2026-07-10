@@ -133,6 +133,7 @@ export function metaConnectionReasonLabel(reason: string) {
     access_token_changed: 'CAPI token 已变化',
     graph_api_version_changed: 'Graph API 版本已变化',
     release_commit_changed: '发布 commit 已变化',
+    verification_revision_missing: '历史连接验证需要重新验证',
     verification_invalidated: '原连接验证已失效',
   }
   return labels[reason] || '连接状态需要重新验证'
