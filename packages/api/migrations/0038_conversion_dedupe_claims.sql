@@ -1,12 +1,12 @@
 CREATE TABLE analytics_conversion_dedupe_claims (
-  dedupe_key TEXT PRIMARY KEY,
+  dedupe_digest TEXT PRIMARY KEY,
   owner_action_id TEXT NOT NULL,
   claim_token TEXT NOT NULL,
   claimed_at TEXT NOT NULL,
   expires_at TEXT NOT NULL,
-  CHECK (length(dedupe_key) BETWEEN 1 AND 512),
+  CHECK (length(dedupe_digest) = 64 AND dedupe_digest NOT GLOB '*[^0-9a-f]*'),
   CHECK (length(owner_action_id) BETWEEN 1 AND 128),
-  CHECK (length(claim_token) BETWEEN 1 AND 128),
+  CHECK (length(claim_token) = 32 AND claim_token NOT GLOB '*[^0-9a-f]*'),
   CHECK (claimed_at = strftime('%Y-%m-%dT%H:%M:%fZ', claimed_at)),
   CHECK (expires_at = strftime('%Y-%m-%dT%H:%M:%fZ', expires_at)),
   CHECK (expires_at > claimed_at)

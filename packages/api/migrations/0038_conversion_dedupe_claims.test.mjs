@@ -56,33 +56,40 @@ describe('0038 conversion dedupe claim migration', () => {
   it('只允许严格 ISO 时间且 expires_at 必须晚于 claimed_at', () => {
     executeSql(`
       INSERT INTO analytics_conversion_dedupe_claims (
-        dedupe_key, owner_action_id, claim_token, claimed_at, expires_at
+        dedupe_digest, owner_action_id, claim_token, claimed_at, expires_at
       ) VALUES (
-        'contact:session:migration', 'conv_owner_migration', 'claim_owner_migration',
+        '${'a'.repeat(64)}', 'conv_owner_migration', '${'b'.repeat(32)}',
         '2026-07-11T00:00:00.000Z', '2026-07-11T00:01:00.000Z'
       );
     `)
-    for (const [dedupeKey, claimToken, claimedAt, expiresAt] of [
-      ['bad-token', '', '2026-07-11T00:00:00.000Z', '2026-07-11T00:01:00.000Z'],
-      ['bad-format', 'claim_owner_bad_format', '2026-07-11 00:00:00', '2026-07-11T00:01:00.000Z'],
-      ['bad-expiry', 'claim_owner_bad_expiry', '2026-07-11T00:02:00.000Z', '2026-07-11T00:01:00.000Z'],
+    for (const [dedupeDigest, claimToken, claimedAt, expiresAt] of [
+      ['c'.repeat(64), 'd'.repeat(31), '2026-07-11T00:00:00.000Z', '2026-07-11T00:01:00.000Z'],
+      ['c'.repeat(64), 'd'.repeat(33), '2026-07-11T00:00:00.000Z', '2026-07-11T00:01:00.000Z'],
+      ['c'.repeat(64), `${'d'.repeat(31)}G`, '2026-07-11T00:00:00.000Z', '2026-07-11T00:01:00.000Z'],
+      ['c'.repeat(64), 'D'.repeat(32), '2026-07-11T00:00:00.000Z', '2026-07-11T00:01:00.000Z'],
+      ['c'.repeat(63), 'd'.repeat(32), '2026-07-11T00:00:00.000Z', '2026-07-11T00:01:00.000Z'],
+      ['c'.repeat(65), 'd'.repeat(32), '2026-07-11T00:00:00.000Z', '2026-07-11T00:01:00.000Z'],
+      [`${'c'.repeat(63)}G`, 'd'.repeat(32), '2026-07-11T00:00:00.000Z', '2026-07-11T00:01:00.000Z'],
+      ['C'.repeat(64), 'd'.repeat(32), '2026-07-11T00:00:00.000Z', '2026-07-11T00:01:00.000Z'],
+      ['e'.repeat(64), 'f'.repeat(32), '2026-07-11 00:00:00', '2026-07-11T00:01:00.000Z'],
+      ['f'.repeat(64), '0'.repeat(32), '2026-07-11T00:02:00.000Z', '2026-07-11T00:01:00.000Z'],
     ]) {
       assert.throws(() => executeSql(`
         INSERT INTO analytics_conversion_dedupe_claims (
-        dedupe_key, owner_action_id, claim_token, claimed_at, expires_at
-      ) VALUES (
-          '${dedupeKey}', 'conv_owner_${dedupeKey}', '${claimToken}', '${claimedAt}', '${expiresAt}'
+          dedupe_digest, owner_action_id, claim_token, claimed_at, expires_at
+        ) VALUES (
+          '${dedupeDigest}', 'conv_owner_invalid', '${claimToken}', '${claimedAt}', '${expiresAt}'
         );
       `))
     }
   })
 
-  it('同一 dedupe key 不能出现两个 owner，且重复执行 migration gate 安全', () => {
+  it('同一 dedupe digest 不能出现两个 owner，且重复执行 migration gate 安全', () => {
     assert.throws(() => executeSql(`
       INSERT INTO analytics_conversion_dedupe_claims (
-        dedupe_key, owner_action_id, claim_token, claimed_at, expires_at
+        dedupe_digest, owner_action_id, claim_token, claimed_at, expires_at
       ) VALUES (
-        'contact:session:migration', 'conv_other_owner', 'claim_other_owner',
+        '${'a'.repeat(64)}', 'conv_other_owner', '${'c'.repeat(32)}',
         '2026-07-11T00:00:10.000Z', '2026-07-11T00:01:10.000Z'
       );
     `))

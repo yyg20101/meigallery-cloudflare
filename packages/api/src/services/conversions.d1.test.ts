@@ -129,6 +129,18 @@ describe('conversion dedupe claim 真实 D1 并发', () => {
       getRegistrationSensitiveInput: winnerSensitive,
     })
     await sensitiveEntered.promise
+    const activeClaims = await realDb.prepare(`
+      SELECT dedupe_digest, owner_action_id, claim_token, claimed_at, expires_at
+      FROM analytics_conversion_dedupe_claims
+    `).all<Record<string, unknown>>()
+    const serializedClaims = JSON.stringify(activeClaims.results)
+    expect(activeClaims.results).toHaveLength(1)
+    expect(activeClaims.results[0]?.dedupe_digest).toMatch(/^[0-9a-f]{64}$/)
+    expect(activeClaims.results[0]?.claim_token).toMatch(/^[0-9a-f]{32}$/)
+    expect(serializedClaims).not.toContain('complete_registration:user:42')
+    expect(serializedClaims).not.toContain('winner-only@example.test')
+    expect(serializedClaims).not.toContain('0123456789abcdef0123456789abcdef')
+    expect(serializedClaims).not.toContain('floating_contact_panel')
     const loserPromise = recordRegistration(conversionEnv(loserDb, queueSend), registrationInput(), {
       getMetaCapiUserData: loserBrowser,
       getRegistrationSensitiveInput: loserSensitive,
@@ -178,7 +190,7 @@ describe('conversion dedupe claim 真实 D1 并发', () => {
     const newSensitiveEntered = deferred<void>()
     const releaseNewSensitive = deferred<void>()
     const queueSend = vi.fn(async () => { throw new Error('QUEUE_UNAVAILABLE') })
-    const dedupeKey = 'complete_registration:user:42'
+    const dedupeDigest = await sha256Hex('complete_registration:user:42')
     const input = registrationInput()
     const oldPromise = recordRegistration(conversionEnv(wrapDb(realDb, {
       beforeBatch: async () => {
@@ -199,8 +211,8 @@ describe('conversion dedupe claim 真实 D1 并发', () => {
       SET
         claimed_at = '1999-12-31T23:59:00.000Z',
         expires_at = '2000-01-01T00:00:00.000Z'
-      WHERE dedupe_key = ?
-    `).bind(dedupeKey).run()
+      WHERE dedupe_digest = ?
+    `).bind(dedupeDigest).run()
 
     const newPromise = recordRegistration(conversionEnv(realDb, queueSend), input, {
       getMetaCapiUserData: async () => ({ fbp: 'fb.1.1700000000000.new-owner' }),
@@ -217,8 +229,8 @@ describe('conversion dedupe claim 真实 D1 并发', () => {
     const newClaim = await realDb.prepare(`
       SELECT owner_action_id, claim_token
       FROM analytics_conversion_dedupe_claims
-      WHERE dedupe_key = ?
-    `).bind(dedupeKey).first<{ owner_action_id: string; claim_token: string }>()
+      WHERE dedupe_digest = ?
+    `).bind(dedupeDigest).first<{ owner_action_id: string; claim_token: string }>()
 
     releaseOldBatch.resolve()
     await expect(oldPromise).rejects.toMatchObject({ code: 'CONVERSION_IN_PROGRESS' })
@@ -227,8 +239,8 @@ describe('conversion dedupe claim 真实 D1 并发', () => {
     expect(await realDb.prepare(`
       SELECT owner_action_id, claim_token
       FROM analytics_conversion_dedupe_claims
-      WHERE dedupe_key = ?
-    `).bind(dedupeKey).first()).toEqual(newClaim)
+      WHERE dedupe_digest = ?
+    `).bind(dedupeDigest).first()).toEqual(newClaim)
 
     releaseNewSensitive.resolve()
     const winner = await newPromise
@@ -237,11 +249,12 @@ describe('conversion dedupe claim 真实 D1 并发', () => {
     await expectLedgerCounts({ actions: 1, deliveries: 2, outboxes: 1, claims: 0 })
   })
 
-  it('最终 batch 只接受仍在有效期内的当前 lease', async () => {
+  it('claim 由真实 D1 时钟自然过期且无人接管时，最终 fence 阻止全部账本写入', async () => {
     const batchReady = deferred<void>()
     const releaseBatch = deferred<void>()
-    const dedupeKey = 'complete_registration:user:42'
+    const dedupeDigest = await sha256Hex('complete_registration:user:42')
     const request = recordRegistration(conversionEnv(wrapDb(realDb, {
+      claimLeaseModifier: '+1 second',
       beforeBatch: async () => {
         batchReady.resolve()
         await releaseBatch.promise
@@ -255,25 +268,25 @@ describe('conversion dedupe claim 真实 D1 并发', () => {
     })
     await batchReady.promise
 
-    await realDb.prepare(`
-      UPDATE analytics_conversion_dedupe_claims
-      SET
-        claimed_at = '1999-12-31T23:59:00.000Z',
-        expires_at = '2000-01-01T00:00:00.000Z'
-      WHERE dedupe_key = ?
-    `).bind(dedupeKey).run()
+    const beforeExpiry = await readClaimSnapshot(dedupeDigest)
+    expect(beforeExpiry).not.toBeNull()
+    await pollUntilClaimExpired(dedupeDigest)
+    expect(await readClaimSnapshot(dedupeDigest)).toEqual(beforeExpiry)
     releaseBatch.resolve()
 
     await expect(request).rejects.toMatchObject({ code: 'CONVERSION_IN_PROGRESS' })
-    await expectLedgerCounts({ actions: 0, deliveries: 0, outboxes: 0, claims: 1 })
-  })
+    await expectLedgerCounts({ actions: 0, deliveries: 0, outboxes: 0, claims: 0 })
+    expect(await scalar('SELECT count(*) AS value FROM analytics_conversion_daily')).toBe(0)
+    expect(await scalar('SELECT count(*) AS value FROM analytics_conversion_delivery_daily')).toBe(0)
+  }, 10_000)
 
   it('过期 claim 只能通过 CAS 被一个 Contact 请求接管', async () => {
+    const dedupeDigest = await sha256Hex('contact:session_contact:telegram:floating_contact_panel')
     await realDb.prepare(`
       INSERT INTO analytics_conversion_dedupe_claims (
-        dedupe_key, owner_action_id, claim_token, claimed_at, expires_at
-      ) VALUES (?, 'conv_stale_owner', 'claim_stale_owner', '2000-01-01T00:00:00.000Z', '2000-01-01T00:01:00.000Z')
-    `).bind('contact:session_contact:telegram:floating_contact_panel').run()
+        dedupe_digest, owner_action_id, claim_token, claimed_at, expires_at
+      ) VALUES (?, 'conv_stale_owner', ?, '2000-01-01T00:00:00.000Z', '2000-01-01T00:01:00.000Z')
+    `).bind(dedupeDigest, 'a'.repeat(32)).run()
     const entered = deferred<void>()
     const release = deferred<void>()
     const claimRuns: ClaimRun[] = []
@@ -305,10 +318,10 @@ describe('conversion dedupe claim 真实 D1 并发', () => {
     expect(suppliers.reduce((count, supplier) => count + supplier.mock.calls.length, 0)).toBe(1)
     expect(outcomes.filter(outcome => outcome.status === 'fulfilled' && outcome.value.created)).toHaveLength(1)
     expect(claimRuns.filter(run => (
-      run.sql.includes('SET owner_action_id') && run.changes === 1
+      /SET\s+owner_action_id = \?/.test(run.sql) && run.changes === 1
     ))).toHaveLength(1)
     expect(claimRuns.filter(run => (
-      run.sql.includes('SET owner_action_id') && run.changes > 1
+      /SET\s+owner_action_id = \?/.test(run.sql) && run.changes > 1
     ))).toHaveLength(0)
     await expectLedgerCounts({ actions: 1, deliveries: 2, outboxes: 1, claims: 0 })
   })
@@ -434,6 +447,11 @@ function registrationInput() {
   }
 }
 
+async function sha256Hex(value: string) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
+}
+
 function conversionEnv(
   db: D1Database,
   queueSend: ReturnType<typeof vi.fn> = vi.fn(async () => undefined),
@@ -466,6 +484,7 @@ function wrapDb(db: D1Database, options: {
   claimRuns?: ClaimRun[]
   failSettingsRead?: boolean
   failBatch?: boolean
+  claimLeaseModifier?: string
 }): D1Database {
   let settingsFailurePending = options.failSettingsRead === true
   let batchFailurePending = options.failBatch === true
@@ -474,7 +493,10 @@ function wrapDb(db: D1Database, options: {
     const wrapped = {
       __inner: inner,
       bind(...values: unknown[]) {
-        return wrapStatement(inner.bind(...values), sql)
+        const boundValues = sql.includes('analytics_conversion_dedupe_claims') && options.claimLeaseModifier
+          ? values.map(value => value === '+60 seconds' ? options.claimLeaseModifier : value)
+          : values
+        return wrapStatement(inner.bind(...boundValues), sql)
       },
       async first<T>(columnName?: string) {
         if (settingsFailurePending && sql.includes('FROM site_settings')) {
@@ -521,6 +543,26 @@ function wrapDb(db: D1Database, options: {
 async function scalar(sql: string) {
   const row = await realDb.prepare(sql).first<{ value: number }>()
   return Number(row?.value ?? 0)
+}
+
+async function readClaimSnapshot(dedupeDigest: string) {
+  return realDb.prepare(`
+    SELECT dedupe_digest, owner_action_id, claim_token, claimed_at, expires_at
+    FROM analytics_conversion_dedupe_claims
+    WHERE dedupe_digest = ?
+  `).bind(dedupeDigest).first<Record<string, unknown>>()
+}
+
+async function pollUntilClaimExpired(dedupeDigest: string) {
+  for (;;) {
+    const row = await realDb.prepare(`
+      SELECT expires_at <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now') AS expired
+      FROM analytics_conversion_dedupe_claims
+      WHERE dedupe_digest = ?
+    `).bind(dedupeDigest).first<{ expired: number }>()
+    if (row?.expired === 1) return
+    await Promise.resolve()
+  }
 }
 
 async function expectLedgerCounts(expected: {

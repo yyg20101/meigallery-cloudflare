@@ -83,6 +83,26 @@ function createConversionDb(options: {
   const dedupe = new Map((options.existingDedupeKeys ?? []).map((key) => [key, `existing_${key}`]))
   const claims = new Map<string, DedupeClaim>()
   let statementCount = 0
+  let leaseClock = Date.parse('2026-07-11T00:00:00.000Z')
+
+  function returnedClaim(dedupeDigest: string, ownerActionId: string, claimToken: string) {
+    const claimedAt = new Date(leaseClock += 1).toISOString()
+    const expiresAt = new Date(leaseClock + 60_000).toISOString()
+    const claim = { ownerActionId, claimToken, claimedAt, expiresAt }
+    return {
+      claim,
+      result: {
+        results: [{
+          dedupe_digest: dedupeDigest,
+          owner_action_id: ownerActionId,
+          claim_token: claimToken,
+          claimed_at: claimedAt,
+          expires_at: expiresAt,
+        }],
+        meta: { changes: 1, rows_written: 1, rows_read: 0, duration: 1 },
+      },
+    }
+  }
 
   function applyCall(
     call: Call,
@@ -95,55 +115,41 @@ function createConversionDb(options: {
     },
   ) {
     if (call.sql.includes('INSERT OR IGNORE INTO analytics_conversion_dedupe_claims')) {
-      const dedupeKey = String(call.params[0])
-      if (target.claims.has(dedupeKey)) {
+      const dedupeDigest = String(call.params[0])
+      if (target.claims.has(dedupeDigest)) {
         return { meta: { changes: 0, rows_written: 0, rows_read: 0, duration: 1 } }
       }
-      target.claims.set(dedupeKey, {
-        ownerActionId: String(call.params[1]),
-        claimToken: String(call.params[2]),
-        claimedAt: String(call.params[3]),
-        expiresAt: String(call.params[4]),
-      })
-      return { meta: { changes: 1, rows_written: 1, rows_read: 0, duration: 1 } }
+      const returned = returnedClaim(dedupeDigest, String(call.params[1]), String(call.params[2]))
+      target.claims.set(dedupeDigest, returned.claim)
+      return returned.result
     }
     if (call.sql.includes('UPDATE analytics_conversion_dedupe_claims')) {
-      if (call.sql.includes('SET owner_action_id')) {
-        const dedupeKey = String(call.params[4])
-        const current = target.claims.get(dedupeKey)
+      if (/SET\s+owner_action_id = \?/.test(call.sql)) {
+        const dedupeDigest = String(call.params[3])
+        const current = target.claims.get(dedupeDigest)
         if (!current
-          || current.ownerActionId !== String(call.params[5])
-          || current.claimToken !== String(call.params[6])
-          || current.claimedAt !== String(call.params[7])
-          || current.expiresAt !== String(call.params[8])
-          || current.expiresAt > String(call.params[9])) {
+          || current.ownerActionId !== String(call.params[4])
+          || current.claimToken !== String(call.params[5])
+          || current.claimedAt !== String(call.params[6])
+          || current.expiresAt !== String(call.params[7])) {
           return { meta: { changes: 0, rows_written: 0, rows_read: 0, duration: 1 } }
         }
-        target.claims.set(dedupeKey, {
-          ownerActionId: String(call.params[0]),
-          claimToken: String(call.params[1]),
-          claimedAt: String(call.params[2]),
-          expiresAt: String(call.params[3]),
-        })
-        return { meta: { changes: 1, rows_written: 1, rows_read: 0, duration: 1 } }
+        const returned = returnedClaim(dedupeDigest, String(call.params[0]), String(call.params[1]))
+        target.claims.set(dedupeDigest, returned.claim)
+        return returned.result
       }
-      const dedupeKey = String(call.params[1])
-      const current = target.claims.get(dedupeKey)
+      const dedupeDigest = String(call.params[1])
+      const current = target.claims.get(dedupeDigest)
       if (!current
         || current.ownerActionId !== String(call.params[2])
         || current.claimToken !== String(call.params[3])
         || current.claimedAt !== String(call.params[4])
-        || current.expiresAt !== String(call.params[5])
-        || current.expiresAt <= String(call.params[6])) {
+        || current.expiresAt !== String(call.params[5])) {
         return { meta: { changes: 0, rows_written: 0, rows_read: 0, duration: 1 } }
       }
-      target.claims.set(dedupeKey, {
-        ownerActionId: current.ownerActionId,
-        claimToken: current.claimToken,
-        claimedAt: current.claimedAt,
-        expiresAt: String(call.params[0]),
-      })
-      return { meta: { changes: 1, rows_written: 1, rows_read: 0, duration: 1 } }
+      const returned = returnedClaim(dedupeDigest, current.ownerActionId, current.claimToken)
+      target.claims.set(dedupeDigest, returned.claim)
+      return returned.result
     }
     if (call.sql.includes('DELETE FROM analytics_conversion_dedupe_claims')) {
       const dedupeKey = String(call.params[0])
@@ -169,8 +175,7 @@ function createConversionDb(options: {
           || claim.ownerActionId !== String(call.params[22])
           || claim.claimToken !== String(call.params[23])
           || claim.claimedAt !== String(call.params[24])
-          || claim.expiresAt !== String(call.params[25])
-          || claim.expiresAt <= String(call.params[26])) {
+          || claim.expiresAt !== String(call.params[25])) {
           return { meta: { changes: 0, rows_written: 0, rows_read: 0, duration: 1 } }
         }
       }
@@ -239,10 +244,10 @@ function createConversionDb(options: {
             return existingId ? ({ id: existingId } as T) : null
           }
           if (sql.includes('FROM analytics_conversion_dedupe_claims')) {
-            const dedupeKey = String(call.params[0])
-            const claim = claims.get(dedupeKey)
+            const dedupeDigest = String(call.params[0])
+            const claim = claims.get(dedupeDigest)
             return claim ? ({
-              dedupe_key: dedupeKey,
+              dedupe_digest: dedupeDigest,
               owner_action_id: claim.ownerActionId,
               claim_token: claim.claimToken,
               claimed_at: claim.claimedAt,
@@ -631,7 +636,14 @@ describe('conversion ledger service', () => {
       clientIpAddress: '203.0.113.211',
       clientUserAgent: 'S5 Registration Browser/5.0',
     }
-    const browserSupplier = vi.fn(async () => browser)
+    let renewCountBeforeBrowser = 0
+    const browserSupplier = vi.fn(async () => {
+      renewCountBeforeBrowser = db.calls.filter(call => (
+        call.sql.includes('UPDATE analytics_conversion_dedupe_claims')
+        && call.sql.includes('RETURNING dedupe_digest')
+      )).length
+      return browser
+    })
     const sensitiveSupplier = vi.fn(async () => ({ email, metaExternalId }))
 
     await recordRegistration(env, {
@@ -647,6 +659,7 @@ describe('conversion ledger service', () => {
     })
 
     expect(browserSupplier).toHaveBeenCalledOnce()
+    expect(renewCountBeforeBrowser).toBe(1)
     expect(sensitiveSupplier).toHaveBeenCalledOnce()
     expect(metaHashMocks.email).toHaveBeenCalledWith(email)
     expect(metaHashMocks.externalId).toHaveBeenCalledWith(metaExternalId)

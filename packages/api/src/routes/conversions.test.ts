@@ -21,6 +21,21 @@ function createConversionDb(options: {
   const calls: Call[] = []
   let delivery: { id: string; status: string; queueEnqueuedAt: string | null; eventName: string } | null = null
   let outbox: { deliveryId: string; keyId: string; iv: string; ciphertext: string; tag: string; expiresAt: string } | null = null
+  let leaseClock = Date.parse('2026-07-11T00:00:00.000Z')
+
+  function claimResult(dedupeDigest: string, ownerActionId: string, claimToken: string) {
+    const claimedAt = new Date(leaseClock += 1).toISOString()
+    return {
+      results: [{
+        dedupe_digest: dedupeDigest,
+        owner_action_id: ownerActionId,
+        claim_token: claimToken,
+        claimed_at: claimedAt,
+        expires_at: new Date(leaseClock + 60_000).toISOString(),
+      }],
+      meta: { changes: 1, rows_written: 1, rows_read: 0, duration: 1 },
+    }
+  }
   const db = {
     calls,
     prepare(sql: string) {
@@ -33,9 +48,9 @@ function createConversionDb(options: {
         async first<T>() {
           if (options.claimInProgress && sql.includes('FROM analytics_conversion_dedupe_claims')) {
             return {
-              dedupe_key: String(call.params[0]),
+              dedupe_digest: String(call.params[0]),
               owner_action_id: 'conv_other_owner',
-              claim_token: 'claim_other_owner',
+              claim_token: 'a'.repeat(32),
               claimed_at: '2099-01-01T00:00:00.000Z',
               expires_at: '2099-01-01T00:01:00.000Z',
             } as T
@@ -88,6 +103,15 @@ function createConversionDb(options: {
           calls.push(call)
           if (options.claimInProgress && sql.includes('INSERT OR IGNORE INTO analytics_conversion_dedupe_claims')) {
             return { meta: { changes: 0, rows_written: 0, rows_read: 0, duration: 1 } }
+          }
+          if (sql.includes('INSERT OR IGNORE INTO analytics_conversion_dedupe_claims')) {
+            return claimResult(String(call.params[0]), String(call.params[1]), String(call.params[2]))
+          }
+          if (sql.includes('UPDATE analytics_conversion_dedupe_claims')) {
+            if (options.claimInProgress) {
+              return { meta: { changes: 0, rows_written: 0, rows_read: 0, duration: 1 } }
+            }
+            return claimResult(String(call.params[1]), String(call.params[2]), String(call.params[3]))
           }
           if (sql.includes('INSERT OR IGNORE INTO analytics_conversion_deliveries')) {
             delivery = {
