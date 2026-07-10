@@ -207,7 +207,10 @@ async function consumeSecureMessage(
     }
     try {
       const connection = await requireVerifiedMetaConnection(env)
-      if (delivery.tracking_mode !== connection.trackingMode) throw new Error('connection_unverified')
+      if (delivery.tracking_mode !== connection.trackingMode
+        || delivery.meta_connection_revision !== connection.revision) {
+        throw new Error('connection_unverified')
+      }
     }
     catch {
       await markSkipped(env.DB, delivery, 'connection_unverified')

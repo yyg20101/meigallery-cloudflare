@@ -10,6 +10,7 @@ type Call = { sql: string; params: unknown[] }
 const DATA_KEY = Buffer.alloc(32, 7).toString('base64')
 const RELEASE_COMMIT = 'a'.repeat(40)
 const TOKEN_FINGERPRINT = '0b7a8749b34fd009cf020b30ea6bde2defee9e24b5f1c191764d60b8c1de9f31'
+const CONNECTION_REVISION = '1'.repeat(32)
 
 function createConversionDb(options: {
   metaCapiEnabled?: boolean
@@ -46,6 +47,7 @@ function createConversionDb(options: {
               verified_by_user_id: 1,
               invalidated_at: null,
               invalidation_reason: '',
+              revision: CONNECTION_REVISION,
             } as T
           }
           if (sql.includes('FROM meta_capi_secure_outbox') && outbox && delivery) {

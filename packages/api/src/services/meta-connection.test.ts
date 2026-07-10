@@ -2,8 +2,8 @@ import { Buffer } from 'node:buffer'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Bindings } from '../index'
 import { metaConnectionFingerprint } from '../utils/meta-capi-crypto'
+import { META_GRAPH_API_VERSION } from './meta-graph'
 import {
-  GRAPH_API_VERSION,
   MetaConnectionError,
   getMetaConnectionStatus,
   requireVerifiedMetaConnection,
@@ -28,6 +28,7 @@ type VerificationRow = {
   verified_by_user_id: number
   invalidated_at: string | null
   invalidation_reason: string
+  revision: string | null
 }
 
 type DbCall = { sql: string; params: unknown[] }
@@ -35,6 +36,7 @@ type DbCall = { sql: string; params: unknown[] }
 function createConnectionDb(options: {
   pixelId?: string
   trackingMode?: 'disabled' | 'test' | 'production'
+  beforeInvalidation?: (verifications: Map<string, VerificationRow>) => void
 } = {}) {
   const settings = new Map<string, string>([
     ['facebook_pixel_id', JSON.stringify(options.pixelId ?? PIXEL_ID)],
@@ -42,6 +44,7 @@ function createConnectionDb(options: {
   ])
   const verifications = new Map<string, VerificationRow>()
   const calls: DbCall[] = []
+  let invalidationHookCalled = false
 
   const db = {
     calls,
@@ -63,7 +66,8 @@ function createConnectionDb(options: {
             return value === undefined ? null : ({ value } as T)
           }
           if (sql.includes('FROM meta_connection_verifications')) {
-            return (verifications.get(String(call.params[0] ?? '')) ?? null) as T | null
+            const row = verifications.get(String(call.params[0] ?? ''))
+            return (row ? { ...row } : null) as T | null
           }
           return null
         },
@@ -78,32 +82,68 @@ function createConnectionDb(options: {
         },
         async run() {
           calls.push(call)
+          let changes = 1
           if (sql.includes('INSERT INTO meta_connection_verifications')) {
             const environment = String(call.params[0]) as VerificationRow['environment']
-            verifications.set(environment, {
-              environment,
-              pixel_id: String(call.params[1]),
-              token_fingerprint: String(call.params[2]),
-              graph_api_version: String(call.params[3]),
-              verified_event_name: String(call.params[4]),
-              verified_commit: String(call.params[5]),
-              dataset_quality_status: 'not_checked',
-              verified_at: '2026-07-11T00:00:00.000Z',
-              verified_by_user_id: Number(call.params[6]),
-              invalidated_at: null,
-              invalidation_reason: '',
-            })
+            if (sql.includes('WHERE NOT EXISTS') && verifications.has(environment)) {
+              changes = 0
+            } else {
+              const hasRevision = call.params.length >= 8
+              verifications.set(environment, {
+                environment,
+                pixel_id: String(call.params[1]),
+                token_fingerprint: String(call.params[2]),
+                graph_api_version: String(call.params[3]),
+                verified_event_name: String(call.params[4]),
+                verified_commit: String(call.params[5]),
+                dataset_quality_status: 'not_checked',
+                verified_at: '2026-07-11T00:00:00.000Z',
+                verified_by_user_id: Number(call.params[hasRevision ? 7 : 6]),
+                invalidated_at: null,
+                invalidation_reason: '',
+                revision: hasRevision ? String(call.params[6]) : null,
+              })
+            }
           }
-          if (sql.includes('UPDATE meta_connection_verifications') && sql.includes('invalidated_at')) {
+          if (sql.includes('UPDATE meta_connection_verifications') && sql.includes('SET pixel_id')) {
+            const environment = String(call.params[7] ?? '')
+            const expectedRevision = call.params[8] == null ? null : String(call.params[8])
+            const row = verifications.get(environment)
+            if (!row || row.revision !== expectedRevision) {
+              changes = 0
+            } else {
+              Object.assign(row, {
+                pixel_id: String(call.params[0]),
+                token_fingerprint: String(call.params[1]),
+                graph_api_version: String(call.params[2]),
+                verified_event_name: String(call.params[3]),
+                verified_commit: String(call.params[4]),
+                revision: String(call.params[5]),
+                verified_by_user_id: Number(call.params[6]),
+                invalidated_at: null,
+                invalidation_reason: '',
+              })
+            }
+          }
+          if (sql.includes('UPDATE meta_connection_verifications')
+            && sql.includes('invalidated_at')
+            && !sql.includes('SET pixel_id')) {
+            if (!invalidationHookCalled) {
+              invalidationHookCalled = true
+              options.beforeInvalidation?.(verifications)
+            }
             const reason = String(call.params[0] ?? '')
             const environment = String(call.params[1] ?? '')
             const row = verifications.get(environment)
-            if (row) {
+            const expectedRevision = call.params.length >= 3 ? call.params[2] : row?.revision
+            if (row && row.invalidated_at === null && row.revision === expectedRevision) {
               row.invalidated_at = '2026-07-11T00:00:00.000Z'
               row.invalidation_reason = reason
+            } else {
+              changes = 0
             }
           }
-          return { meta: { changes: 1, rows_written: 1, rows_read: 0, duration: 1 } }
+          return { meta: { changes, rows_written: changes, rows_read: 0, duration: 1 } }
         },
       }
     },
@@ -138,7 +178,7 @@ async function seedVerification(
     environment,
     pixel_id: pixelId,
     token_fingerprint: input.token_fingerprint ?? await metaConnectionFingerprint(pixelId, token),
-    graph_api_version: input.graph_api_version ?? GRAPH_API_VERSION,
+    graph_api_version: input.graph_api_version ?? META_GRAPH_API_VERSION,
     verified_event_name: input.verified_event_name ?? 'Contact',
     verified_commit: input.verified_commit ?? RELEASE_COMMIT,
     dataset_quality_status: input.dataset_quality_status ?? 'not_checked',
@@ -146,7 +186,18 @@ async function seedVerification(
     verified_by_user_id: input.verified_by_user_id ?? 1,
     invalidated_at: input.invalidated_at ?? null,
     invalidation_reason: input.invalidation_reason ?? '',
+    revision: input.revision === undefined ? '1'.repeat(32) : input.revision,
   })
+}
+
+function deferredResponse() {
+  let resolve!: (response: Response) => void
+  const promise = new Promise<Response>((complete) => { resolve = complete })
+  return { promise, resolve }
+}
+
+function successfulMetaResponse() {
+  return new Response(JSON.stringify({ events_received: 1 }), { status: 200 })
 }
 
 afterEach(() => {
@@ -202,6 +253,7 @@ describe('MetaConnection', () => {
       verified_event_name: 'Contact',
       verified_commit: RELEASE_COMMIT,
       verified_by_user_id: 42,
+      revision: expect.stringMatching(/^[0-9a-f]{32}$/),
     })
     expect(db.calls.some(call => call.sql.includes('analytics_conversion_actions'))).toBe(false)
     expect(db.calls.some(call => call.sql.includes('analytics_conversion_deliveries'))).toBe(false)
@@ -224,6 +276,55 @@ describe('MetaConnection', () => {
     expect(payload.data[0].user_data).not.toHaveProperty('fbc')
     expect(payload.data[0].user_data).not.toHaveProperty('em')
     expect(payload.data[0].user_data).not.toHaveProperty('external_id')
+  })
+
+  it('Graph 期间 Pixel 或 tracking mode 变化时不写 verification', async () => {
+    for (const mutate of [
+      (db: ReturnType<typeof createConnectionDb>) => db.settings.set('facebook_pixel_id', JSON.stringify('9988776655')),
+      (db: ReturnType<typeof createConnectionDb>) => db.settings.set('meta_tracking_mode', JSON.stringify('production')),
+    ]) {
+      const db = createConnectionDb()
+      const pending = deferredResponse()
+      vi.stubGlobal('fetch', vi.fn(() => pending.promise))
+
+      const verification = verifyMetaConnection(connectionEnv(db), 42, 'Contact')
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce())
+      mutate(db)
+      pending.resolve(successfulMetaResponse())
+
+      await expect(verification).rejects.toMatchObject({ code: 'META_CONNECTION_CONFIGURATION_CHANGED' })
+      expect(db.verifications.size).toBe(0)
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('后发 bootstrap 先完成时，旧 bootstrap 的 CAS 不能覆盖新 revision', async () => {
+    const db = createConnectionDb()
+    await seedVerification(db)
+    const first = deferredResponse()
+    const second = deferredResponse()
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const older = verifyMetaConnection(connectionEnv(db), 41, 'Contact')
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    const newer = verifyMetaConnection(connectionEnv(db), 42, 'CompleteRegistration')
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+
+    second.resolve(successfulMetaResponse())
+    await expect(newer).resolves.toMatchObject({ state: 'verified' })
+    const newerRevision = db.verifications.get('dev')?.revision
+    expect(newerRevision).toMatch(/^[0-9a-f]{32}$/)
+
+    first.resolve(successfulMetaResponse())
+    await expect(older).rejects.toMatchObject({ code: 'META_CONNECTION_VERIFICATION_WRITE_FAILED' })
+    expect(db.verifications.get('dev')).toMatchObject({
+      revision: newerRevision,
+      verified_event_name: 'CompleteRegistration',
+      verified_by_user_id: 42,
+    })
   })
 
   it.each([
@@ -260,6 +361,50 @@ describe('MetaConnection', () => {
       state: 'not_configured',
       testEventCodeConfigured: false,
       invalidationReason: 'test_event_code_missing',
+    })
+  })
+
+  it('历史空 revision 保持可读取但必须重新验证后才能投递', async () => {
+    const db = createConnectionDb()
+    await seedVerification(db, { revision: null })
+
+    const status = await getMetaConnectionStatus(connectionEnv(db))
+
+    expect(status).toMatchObject({
+      state: 'configuration_changed',
+      invalidationReason: 'verification_revision_missing',
+    })
+    await expect(requireVerifiedMetaConnection(connectionEnv(db)))
+      .rejects.toMatchObject({ code: 'META_CONNECTION_UNVERIFIED' })
+  })
+
+  it('旧状态读取不能失效随后完成的新 verification revision', async () => {
+    const replacementRevision = '2'.repeat(32)
+    const replacementPixelId = '9988776655'
+    const replacementFingerprint = await metaConnectionFingerprint(replacementPixelId, TOKEN)
+    const db = createConnectionDb({
+      beforeInvalidation(verifications) {
+        const row = verifications.get('dev')!
+        verifications.set('dev', {
+          ...row,
+          pixel_id: replacementPixelId,
+          token_fingerprint: replacementFingerprint,
+          revision: replacementRevision,
+          invalidated_at: null,
+          invalidation_reason: '',
+        })
+      },
+    })
+    await seedVerification(db)
+    db.settings.set('facebook_pixel_id', JSON.stringify(replacementPixelId))
+
+    const status = await getMetaConnectionStatus(connectionEnv(db))
+
+    expect(status).toMatchObject({ state: 'configuration_changed', invalidationReason: 'pixel_id_changed' })
+    expect(db.verifications.get('dev')).toMatchObject({
+      revision: replacementRevision,
+      invalidated_at: null,
+      invalidation_reason: '',
     })
   })
 

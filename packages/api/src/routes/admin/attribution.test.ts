@@ -135,6 +135,7 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
     verified_by_user_id: number
     invalidated_at: string | null
     invalidation_reason: string
+    revision: string
   } | null = null
   const db = {
     calls,
@@ -575,9 +576,10 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
               graph_api_version: String(call.params[3]),
               verified_event_name: String(call.params[4]),
               verified_commit: String(call.params[5]),
+              revision: String(call.params[6]),
               dataset_quality_status: 'not_checked',
               verified_at: '2026-07-11T00:00:00.000Z',
-              verified_by_user_id: Number(call.params[6]),
+              verified_by_user_id: Number(call.params[7]),
               invalidated_at: null,
               invalidation_reason: '',
             }

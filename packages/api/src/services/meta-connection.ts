@@ -3,17 +3,18 @@ import { normalizeMetaTrackingMode } from '@meigallery/shared/utils'
 import type { Bindings } from '../index'
 import { loadMetaCapiCryptoKeys, metaConnectionFingerprint } from '../utils/meta-capi-crypto'
 import { parseStoredSettingValue } from '../utils/stored-setting-value'
-
-export const GRAPH_API_VERSION = 'v25.0' as const
+import { META_GRAPH_API_VERSION, metaEventsEndpoint, readMetaEventsResponse } from './meta-graph'
 
 const PIXEL_ID_PATTERN = /^\d{5,30}$/
 const RELEASE_COMMIT_PATTERN = /^[0-9a-f]{40}$/i
+const VERIFICATION_REVISION_PATTERN = /^[0-9a-f]{32}$/
 const META_BOOTSTRAP_TIMEOUT_MS = 8_000
 const STABLE_INVALIDATION_REASONS = new Set([
   'pixel_id_changed',
   'access_token_changed',
   'graph_api_version_changed',
   'release_commit_changed',
+  'verification_revision_missing',
   'verification_invalidated',
 ])
 
@@ -31,7 +32,7 @@ export interface MetaConnectionStatus {
   testEventCodeConfigured: boolean
   verifiedAt: string | null
   verifiedCommit: string | null
-  graphApiVersion: typeof GRAPH_API_VERSION
+  graphApiVersion: typeof META_GRAPH_API_VERSION
   datasetQualityStatus: 'not_checked' | 'available' | 'permission_denied' | 'error'
   invalidationReason: string
 }
@@ -62,6 +63,7 @@ type VerificationRow = {
   verified_by_user_id: number | null
   invalidated_at: string | null
   invalidation_reason: string
+  revision: string | null
 }
 
 type EvaluatedConnection = {
@@ -72,6 +74,7 @@ type EvaluatedConnection = {
   trackingMode: MetaTrackingMode
   releaseCommit: string
   fingerprint: string
+  verificationRevision: string
 }
 
 export type MetaConnectionBootstrapResult = {
@@ -98,13 +101,18 @@ export async function getMetaConnectionStatus(env: MetaConnectionEnv): Promise<M
 
 export async function requireVerifiedMetaConnection(
   env: MetaConnectionEnv,
-): Promise<{ pixelId: string; trackingMode: 'test' | 'production' }> {
+): Promise<{ pixelId: string; trackingMode: 'test' | 'production'; revision: string }> {
   const evaluated = await evaluateMetaConnection(env)
   if (evaluated.status.state !== 'verified'
-    || (evaluated.trackingMode !== 'test' && evaluated.trackingMode !== 'production')) {
+    || (evaluated.trackingMode !== 'test' && evaluated.trackingMode !== 'production')
+    || !normalizeVerificationRevision(evaluated.verificationRevision)) {
     throw new MetaConnectionError('META_CONNECTION_UNVERIFIED')
   }
-  return { pixelId: evaluated.pixelId, trackingMode: evaluated.trackingMode }
+  return {
+    pixelId: evaluated.pixelId,
+    trackingMode: evaluated.trackingMode,
+    revision: evaluated.verificationRevision,
+  }
 }
 
 export async function verifyMetaConnection(
@@ -158,6 +166,7 @@ export async function bootstrapMetaConnectionVerification(
   }
 
   const fingerprint = await metaConnectionFingerprint(pixelId, accessToken)
+  const initialVerification = await readVerification(env.DB, environment)
   const deliveryId = createSyntheticDeliveryId()
   const payload = buildSyntheticBootstrapPayload(eventName, deliveryId, testEventCode)
   const response = await fetchBootstrapEvent(pixelId, accessToken, payload)
@@ -170,40 +179,104 @@ export async function bootstrapMetaConnectionVerification(
     throw new MetaConnectionError('META_TEST_EVENT_REJECTED', 424)
   }
 
-  await env.DB.prepare(`
-    INSERT INTO meta_connection_verifications (
-      environment, pixel_id, token_fingerprint, graph_api_version,
-      verified_event_name, verified_commit, verified_at, verified_by_user_id,
-      dataset_quality_status, invalidated_at, invalidation_reason, updated_at
-    )
-    VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?, 'not_checked', NULL, '', datetime('now'))
-    ON CONFLICT(environment) DO UPDATE SET
-      pixel_id = excluded.pixel_id,
-      token_fingerprint = excluded.token_fingerprint,
-      graph_api_version = excluded.graph_api_version,
-      verified_event_name = excluded.verified_event_name,
-      verified_commit = excluded.verified_commit,
-      verified_at = datetime('now'),
-      verified_by_user_id = excluded.verified_by_user_id,
-      dataset_quality_status = 'not_checked',
-      invalidated_at = NULL,
-      invalidation_reason = '',
-      updated_at = datetime('now')
-  `).bind(
-    environment,
-    pixelId,
-    fingerprint,
-    GRAPH_API_VERSION,
-    eventName,
-    releaseCommit,
-    ownerUserId,
-  ).run()
+  const currentSettings = await readMetaConnectionSettings(env.DB)
+  if (normalizePixelId(currentSettings.pixelId) !== pixelId || currentSettings.trackingMode !== settings.trackingMode) {
+    throw new MetaConnectionError('META_CONNECTION_CONFIGURATION_CHANGED', 409)
+  }
 
-  const connection = await getMetaConnectionStatus(env)
-  if (connection.state !== 'verified') {
+  const revision = createVerificationRevision()
+  let writeResult: D1Result<unknown>
+  try {
+    writeResult = await persistVerificationCas(env.DB, {
+      environment,
+      pixelId,
+      fingerprint,
+      eventName,
+      releaseCommit,
+      ownerUserId,
+      revision,
+      initialVerification,
+    })
+  }
+  catch {
     throw new MetaConnectionError('META_CONNECTION_VERIFICATION_WRITE_FAILED', 503)
   }
-  return { connection, deliveryId, eventsReceived: 1 }
+  if (!d1ChangedExactlyOnce(writeResult)) {
+    throw new MetaConnectionError('META_CONNECTION_VERIFICATION_WRITE_FAILED', 503)
+  }
+
+  const evaluated = await evaluateMetaConnection(env)
+  if (evaluated.status.state !== 'verified' || evaluated.verificationRevision !== revision) {
+    throw new MetaConnectionError('META_CONNECTION_VERIFICATION_WRITE_FAILED', 503)
+  }
+  return { connection: evaluated.status, deliveryId, eventsReceived: 1 }
+}
+
+function persistVerificationCas(
+  db: D1Database,
+  input: {
+    environment: MetaConnectionEnvironment
+    pixelId: string
+    fingerprint: string
+    eventName: ActiveMetaEventName
+    releaseCommit: string
+    ownerUserId: number
+    revision: string
+    initialVerification: VerificationRow | null
+  },
+) {
+  if (!input.initialVerification) {
+    return db.prepare(`
+      INSERT INTO meta_connection_verifications (
+        environment, pixel_id, token_fingerprint, graph_api_version,
+        verified_event_name, verified_commit, revision, verified_at,
+        verified_by_user_id, dataset_quality_status, invalidated_at,
+        invalidation_reason, updated_at
+      )
+      SELECT ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?, 'not_checked', NULL, '', datetime('now')
+      WHERE NOT EXISTS (
+        SELECT 1 FROM meta_connection_verifications WHERE environment = ?
+      )
+    `).bind(
+      input.environment,
+      input.pixelId,
+      input.fingerprint,
+      META_GRAPH_API_VERSION,
+      input.eventName,
+      input.releaseCommit,
+      input.revision,
+      input.ownerUserId,
+      input.environment,
+    ).run()
+  }
+
+  return db.prepare(`
+    UPDATE meta_connection_verifications
+    SET pixel_id = ?,
+        token_fingerprint = ?,
+        graph_api_version = ?,
+        verified_event_name = ?,
+        verified_commit = ?,
+        revision = ?,
+        verified_at = datetime('now'),
+        verified_by_user_id = ?,
+        dataset_quality_status = 'not_checked',
+        invalidated_at = NULL,
+        invalidation_reason = '',
+        updated_at = datetime('now')
+    WHERE environment = ?
+      AND revision IS ?
+  `).bind(
+    input.pixelId,
+    input.fingerprint,
+    META_GRAPH_API_VERSION,
+    input.eventName,
+    input.releaseCommit,
+    input.revision,
+    input.ownerUserId,
+    input.environment,
+    input.initialVerification.revision,
+  ).run()
 }
 
 async function evaluateMetaConnection(env: MetaConnectionEnv): Promise<EvaluatedConnection> {
@@ -218,7 +291,7 @@ async function evaluateMetaConnection(env: MetaConnectionEnv): Promise<Evaluated
     pixelIdConfigured: Boolean(pixelId),
     tokenConfigured: Boolean(accessToken),
     testEventCodeConfigured: Boolean(testEventCode),
-    graphApiVersion: GRAPH_API_VERSION,
+    graphApiVersion: META_GRAPH_API_VERSION,
   }
 
   const configuredReason = !pixelId
@@ -270,7 +343,7 @@ async function evaluateMetaConnection(env: MetaConnectionEnv): Promise<Evaluated
   const fingerprint = await metaConnectionFingerprint(pixelId, accessToken)
   const invalidationReason = connectionInvalidationReason(row, pixelId, fingerprint, releaseCommit)
   if (invalidationReason) {
-    await persistInvalidation(env.DB, environment, invalidationReason)
+    await persistInvalidation(env.DB, environment, row.revision, invalidationReason)
     return {
       status: statusFromRow(base, row, 'configuration_changed', invalidationReason),
       pixelId,
@@ -279,6 +352,7 @@ async function evaluateMetaConnection(env: MetaConnectionEnv): Promise<Evaluated
       trackingMode: settings.trackingMode,
       releaseCommit,
       fingerprint,
+      verificationRevision: normalizeVerificationRevision(row.revision),
     }
   }
 
@@ -290,14 +364,15 @@ async function evaluateMetaConnection(env: MetaConnectionEnv): Promise<Evaluated
     trackingMode: settings.trackingMode,
     releaseCommit,
     fingerprint,
+    verificationRevision: normalizeVerificationRevision(row.revision),
   }
 }
 
 function evaluatedResult(
   status: MetaConnectionStatus,
-  values: Omit<EvaluatedConnection, 'status' | 'fingerprint'>,
+  values: Omit<EvaluatedConnection, 'status' | 'fingerprint' | 'verificationRevision'>,
 ): EvaluatedConnection {
-  return { status, ...values, fingerprint: '' }
+  return { status, ...values, fingerprint: '', verificationRevision: '' }
 }
 
 function baseStatus(
@@ -338,9 +413,10 @@ function connectionInvalidationReason(
   releaseCommit: string,
 ) {
   if (row.invalidated_at) return stableInvalidationReason(row.invalidation_reason)
+  if (!normalizeVerificationRevision(row.revision)) return 'verification_revision_missing'
   if (row.pixel_id !== pixelId) return 'pixel_id_changed'
   if (row.token_fingerprint !== fingerprint) return 'access_token_changed'
-  if (row.graph_api_version !== GRAPH_API_VERSION) return 'graph_api_version_changed'
+  if (row.graph_api_version !== META_GRAPH_API_VERSION) return 'graph_api_version_changed'
   if (normalizeReleaseCommit(row.verified_commit) !== releaseCommit) return 'release_commit_changed'
   return ''
 }
@@ -348,6 +424,7 @@ function connectionInvalidationReason(
 async function persistInvalidation(
   db: D1Database,
   environment: MetaConnectionEnvironment,
+  revision: string | null,
   reason: string,
 ) {
   try {
@@ -357,7 +434,9 @@ async function persistInvalidation(
           invalidation_reason = ?,
           updated_at = datetime('now')
       WHERE environment = ?
-    `).bind(reason, environment).run()
+        AND revision IS ?
+        AND invalidated_at IS NULL
+    `).bind(reason, environment, revision).run()
   }
   catch {
     // 运行时判断已 fail closed；持久化失败不能让旧连接恢复可用。
@@ -379,7 +458,7 @@ function readVerification(db: D1Database, environment: MetaConnectionEnvironment
   return db.prepare(`
     SELECT environment, pixel_id, token_fingerprint, graph_api_version,
       verified_event_name, verified_commit, dataset_quality_status, verified_at,
-      verified_by_user_id, invalidated_at, invalidation_reason
+      verified_by_user_id, invalidated_at, invalidation_reason, revision
     FROM meta_connection_verifications
     WHERE environment = ?
     LIMIT 1
@@ -405,6 +484,11 @@ function normalizeReleaseCommit(value: unknown) {
   return RELEASE_COMMIT_PATTERN.test(normalized) ? normalized.toLowerCase() : ''
 }
 
+function normalizeVerificationRevision(value: unknown) {
+  const normalized = String(value ?? '').trim()
+  return VERIFICATION_REVISION_PATTERN.test(normalized) ? normalized : ''
+}
+
 function normalizeTimestamp(value: unknown) {
   const normalized = String(value ?? '').trim()
   return normalized || null
@@ -423,6 +507,11 @@ function stableInvalidationReason(value: unknown) {
 
 function createSyntheticDeliveryId() {
   return `meta_verify_${crypto.randomUUID().replaceAll('-', '')}`
+}
+
+function createVerificationRevision() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+  return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
 }
 
 function buildSyntheticBootstrapPayload(
@@ -457,23 +546,13 @@ async function fetchBootstrapEvent(
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), META_BOOTSTRAP_TIMEOUT_MS)
   try {
-    const response = await fetch(metaCapiEndpoint(pixelId, accessToken), {
+    const response = await fetch(metaEventsEndpoint(pixelId, accessToken), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(payload),
       signal: controller.signal,
     })
-    let body: unknown = null
-    try {
-      body = await response.json()
-    }
-    catch {
-      body = null
-    }
-    const eventsReceived = body && typeof body === 'object' && !Array.isArray(body)
-      && typeof (body as Record<string, unknown>).events_received === 'number'
-      ? (body as Record<string, unknown>).events_received as number
-      : undefined
+    const { eventsReceived } = await readMetaEventsResponse(response)
     return { ok: response.ok, status: response.status, eventsReceived }
   }
   catch {
@@ -484,8 +563,6 @@ async function fetchBootstrapEvent(
   }
 }
 
-function metaCapiEndpoint(pixelId: string, accessToken: string) {
-  const url = new URL(`https://graph.facebook.com/${GRAPH_API_VERSION}/${encodeURIComponent(pixelId)}/events`)
-  url.searchParams.set('access_token', accessToken)
-  return url.toString()
+function d1ChangedExactlyOnce(result: D1Result<unknown>) {
+  return (result.meta?.changes ?? result.meta?.rows_written ?? 0) === 1
 }

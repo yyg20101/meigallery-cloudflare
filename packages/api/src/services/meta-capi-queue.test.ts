@@ -15,6 +15,7 @@ const PREVIOUS_KEY = Buffer.alloc(32, 9).toString('base64')
 const EXPIRES_AT = '2026-07-12T10:00:00.000Z'
 const RELEASE_COMMIT = 'a'.repeat(40)
 const TOKEN_FINGERPRINT = 'c144f7bade446c762abc027132d8c31d80270f7ba5c41cd4ff9437655f939512'
+const CONNECTION_REVISION = '1'.repeat(32)
 
 type Call = { sql: string; params: unknown[] }
 type Delivery = {
@@ -29,6 +30,7 @@ type Delivery = {
   error_message: string
   attempt_count: number
   tracking_mode: 'disabled' | 'test' | 'production'
+  meta_connection_revision: string | null
   queue_enqueued_at: string | null
   queue_attempt_count: number
   duplicate_suppressed_at: string | null
@@ -54,6 +56,8 @@ function createQueueDb(options: {
   cleanupBatchFailures?: number
   beforeFirstTransition?: (delivery: Delivery, daily: Map<string, number>) => void
   connectionVerified?: boolean
+  connectionRevision?: string
+  deliveryRevision?: string | null
 } = {}) {
   const delivery: Delivery = {
     id: 'cdlv_1',
@@ -67,6 +71,7 @@ function createQueueDb(options: {
     error_message: '',
     attempt_count: 0,
     tracking_mode: 'production',
+    meta_connection_revision: options.deliveryRevision === undefined ? CONNECTION_REVISION : options.deliveryRevision,
     queue_enqueued_at: null,
     queue_attempt_count: 0,
     duplicate_suppressed_at: null,
@@ -140,6 +145,7 @@ function createQueueDb(options: {
               verified_by_user_id: 1,
               invalidated_at: null,
               invalidation_reason: '',
+              revision: options.connectionRevision ?? CONNECTION_REVISION,
             } as T
           }
           return null
@@ -332,6 +338,30 @@ describe('Meta CAPI Queue V2', () => {
     expect(db.delivery).toMatchObject({
       status: 'skipped',
       skip_reason: 'connection_unverified',
+    })
+    expect(db.outbox).toBeNull()
+    expect(message.ack).toHaveBeenCalledOnce()
+    expect(message.retry).not.toHaveBeenCalled()
+  })
+
+  it.each(['pending', 'failed'] as const)('%s delivery 由 A 连接创建、B 连接重新验证后不解密、不 fetch 并安全 ack', async status => {
+    const db = createQueueDb({
+      status,
+      deliveryRevision: 'a'.repeat(32),
+      connectionRevision: 'b'.repeat(32),
+    })
+    if (status === 'failed') db.delivery.error_code = 'meta_http_500'
+    const body = await encryptedMessage(db)
+    const message = queueMessage(body)
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+
+    await handleMetaCapiBatch(batch(message), env(db, { META_CAPI_DATA_KEY_CURRENT: undefined }))
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(db.delivery).toMatchObject({
+      status: 'skipped',
+      skip_reason: 'connection_unverified',
+      meta_connection_revision: 'a'.repeat(32),
     })
     expect(db.outbox).toBeNull()
     expect(message.ack).toHaveBeenCalledOnce()

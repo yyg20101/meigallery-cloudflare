@@ -19,6 +19,7 @@ type InsertedDelivery = {
   status: string
   skipReason: string
   encryptionKeyId: string
+  metaConnectionRevision: string | null
   queueEnqueuedAt: string | null
 }
 type InsertedOutbox = {
@@ -35,6 +36,7 @@ const DATA_KEY = Buffer.alloc(32, 7).toString('base64')
 const META_TOKEN = 'conversion-token'
 const RELEASE_COMMIT = 'a'.repeat(40)
 const TOKEN_FINGERPRINT = '769024a811a288c6842575d21f81ae2ee1adb18187c48dbd538ac364226d1197'
+const CONNECTION_REVISION = '1'.repeat(32)
 
 function createConversionDb(options: {
   existingDedupeKeys?: string[]
@@ -78,6 +80,7 @@ function createConversionDb(options: {
         status: String(call.params[5]),
         skipReason: String(call.params[6]),
         encryptionKeyId: String(call.params[11]),
+        metaConnectionRevision: call.params[13] == null ? null : String(call.params[13]),
         queueEnqueuedAt: null,
       })
     }
@@ -149,6 +152,7 @@ function createConversionDb(options: {
               verified_by_user_id: 1,
               invalidated_at: null,
               invalidation_reason: '',
+              revision: CONNECTION_REVISION,
             } as T
           }
           if (sql.includes('FROM meta_capi_secure_outbox')) {
@@ -564,7 +568,10 @@ describe('conversion ledger service', () => {
     })
     expect(Object.keys(sent[0] ?? {}).sort()).toEqual(['deliveryId', 'envelope', 'schemaVersion'])
     expect(capiDelivery?.sql).toContain('tracking_mode')
+    expect(capiDelivery?.sql).toContain('meta_connection_revision')
     expect(capiDelivery?.params).toContain('test')
+    expect(db.insertedDeliveries.find(delivery => delivery.id === capiDelivery?.params[0]))
+      .toMatchObject({ metaConnectionRevision: CONNECTION_REVISION })
     expect(db.calls.some(call => (
       call.sql.includes('queue_enqueued_at = datetime')
       && call.params.includes(capiDelivery?.params[0])

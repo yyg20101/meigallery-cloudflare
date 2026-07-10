@@ -22,6 +22,7 @@ type DeliveryRow = {
   error_message: string
   attempt_count: number
   tracking_mode: 'disabled' | 'test' | 'production'
+  meta_connection_revision: string | null
   duplicate_suppressed_at: string | null
   last_attempt_at: string | null
   sent_at: string | null
@@ -33,11 +34,13 @@ type DeliveryRow = {
 
 const RELEASE_COMMIT = 'a'.repeat(40)
 const TOKEN_FINGERPRINT = '0b7a8749b34fd009cf020b30ea6bde2defee9e24b5f1c191764d60b8c1de9f31'
+const CONNECTION_REVISION = '1'.repeat(32)
 
 function createMetaCapiDb(options: {
   pixelId?: string
   delivery?: Partial<DeliveryRow>
   connectionVerified?: boolean
+  connectionRevision?: string
 } = {}) {
   const calls: Array<{ sql: string; params: unknown[] }> = []
   const delivery: DeliveryRow = {
@@ -52,6 +55,7 @@ function createMetaCapiDb(options: {
     error_message: '',
     attempt_count: 0,
     tracking_mode: 'production',
+    meta_connection_revision: CONNECTION_REVISION,
     duplicate_suppressed_at: null,
     last_attempt_at: null,
     sent_at: null,
@@ -99,6 +103,7 @@ function createMetaCapiDb(options: {
               verified_by_user_id: 1,
               invalidated_at: null,
               invalidation_reason: '',
+              revision: options.connectionRevision ?? CONNECTION_REVISION,
             } as T
           }
           return null
@@ -153,6 +158,7 @@ function createConcurrentSuccessDb() {
     error_message: '',
     attempt_count: 0,
     tracking_mode: 'production' as const,
+    meta_connection_revision: CONNECTION_REVISION,
     duplicate_suppressed_at: null as string | null,
     last_attempt_at: null,
     sent_at: null as string | null,
@@ -190,6 +196,7 @@ function createConcurrentSuccessDb() {
               verified_by_user_id: 1,
               invalidated_at: null,
               invalidation_reason: '',
+              revision: CONNECTION_REVISION,
             } as T
           }
           return null
@@ -438,6 +445,21 @@ describe('meta-capi', () => {
       APP_ENV: 'dev',
       RELEASE_COMMIT: 'a'.repeat(40),
     }), 'cdlv_1', { fetchFn })
+
+    expect(result).toEqual({ deliveryId: 'cdlv_1', status: 'skipped', reason: 'connection_unverified' })
+    expect(db.delivery).toMatchObject({ status: 'skipped', skip_reason: 'connection_unverified' })
+    expect(fetchFn).not.toHaveBeenCalled()
+  })
+
+  it('delivery 绑定旧 revision 时在 fetch 前安全跳过', async () => {
+    const db = createMetaCapiDb({
+      pixelId: '1234567890',
+      connectionRevision: '2'.repeat(32),
+      delivery: { meta_connection_revision: '1'.repeat(32) },
+    })
+    const fetchFn = vi.fn()
+
+    const result = await sendMetaCapiEvent(envFor(db), 'cdlv_1', { fetchFn })
 
     expect(result).toEqual({ deliveryId: 'cdlv_1', status: 'skipped', reason: 'connection_unverified' })
     expect(db.delivery).toMatchObject({ status: 'skipped', skip_reason: 'connection_unverified' })

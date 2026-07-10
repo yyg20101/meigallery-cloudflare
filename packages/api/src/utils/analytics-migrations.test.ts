@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, readdir } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
 
 const MIGRATION_DIR = new URL('../../migrations/', import.meta.url)
@@ -8,6 +8,16 @@ async function readMigration(name: string) {
 }
 
 describe('analytics migrations', () => {
+  it('migration 索引从 0001 到 0037 连续且编号唯一', async () => {
+    const names = (await readdir(MIGRATION_DIR))
+      .filter(name => /^\d{4}_.+\.sql$/.test(name))
+      .sort()
+    const indexes = names.map(name => Number(name.slice(0, 4)))
+
+    expect(indexes).toEqual(Array.from({ length: 37 }, (_, index) => index + 1))
+    expect(new Set(indexes).size).toBe(indexes.length)
+  })
+
   it('0023 创建核心分析表、必要索引和默认关闭设置', async () => {
     const sql = await readMigration('0023_analytics_core.sql')
     for (const table of [
@@ -140,5 +150,18 @@ describe('analytics migrations', () => {
     expect(sql).toContain('has_external_id INTEGER NOT NULL DEFAULT 0')
     expect(sql).toContain('encryption_key_id TEXT NOT NULL DEFAULT')
     expect(sql).not.toMatch(/access_token|client_ip|user_agent|\bemail\b|\bfbp\b|\bfbc\b/i)
+  })
+
+  it('0037 为 verification 和 delivery 增加兼容历史空值的 revision 绑定', async () => {
+    const sql = await readMigration('0037_meta_connection_revision.sql')
+
+    expect(sql).toContain('ALTER TABLE meta_connection_verifications')
+    expect(sql).toContain('ADD COLUMN revision TEXT')
+    expect(sql).toContain('CREATE UNIQUE INDEX idx_meta_connection_verifications_revision')
+    expect(sql).toContain('ALTER TABLE analytics_conversion_deliveries')
+    expect(sql).toContain('ADD COLUMN meta_connection_revision TEXT')
+    expect(sql).toMatch(/revision IS NULL[\s\S]+length\(revision\) = 32/)
+    expect(sql).toMatch(/meta_connection_revision IS NULL[\s\S]+length\(meta_connection_revision\) = 32/)
+    expect(sql).not.toMatch(/access_token|test_event_code|client_ip|user_agent/i)
   })
 })

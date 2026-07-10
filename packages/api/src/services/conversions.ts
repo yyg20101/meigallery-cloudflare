@@ -125,13 +125,18 @@ type PlannedDelivery = {
   hasExternalId: 0 | 1
   encryptionKeyId: string
   trackingMode: MetaTrackingMode
+  metaConnectionRevision: string | null
   statementIndex: number
 }
 
 type CapiEncryptionPlan =
   | { state: 'disabled' }
-  | { state: 'skipped'; reason: Extract<ConversionSkipReason, 'connection_unverified' | 'missing_data_key' | 'invalid_data_key'> }
-  | { state: 'ready'; keys: MetaCapiCryptoKeys; context: MetaCapiSensitiveContext }
+  | {
+      state: 'skipped'
+      reason: Extract<ConversionSkipReason, 'connection_unverified' | 'missing_data_key' | 'invalid_data_key'>
+      connectionRevision?: string
+    }
+  | { state: 'ready'; keys: MetaCapiCryptoKeys; context: MetaCapiSensitiveContext; connectionRevision: string }
 
 type MetaDeliverySettings = Awaited<ReturnType<typeof readMetaDeliverySettings>>
 
@@ -545,6 +550,9 @@ async function planMetaDeliveries(
       hasExternalId: secureContext.externalIdSha256 ? 1 : 0,
       encryptionKeyId: envelope?.keyId ?? '',
       trackingMode: settings.mode,
+      metaConnectionRevision: channel === 'meta_capi' && capiEncryption.state !== 'disabled'
+        ? capiEncryption.connectionRevision ?? null
+        : null,
       statementIndex: -1,
     }
   }))
@@ -555,9 +563,9 @@ function conversionDeliveryStatement(db: D1Database, delivery: PlannedDelivery, 
     INSERT OR IGNORE INTO analytics_conversion_deliveries (
       id, conversion_action_id, channel, external_event_id, event_name,
       status, skip_reason, has_fbp, has_fbc, has_email, has_external_id,
-      encryption_key_id, tracking_mode, updated_at
+      encryption_key_id, tracking_mode, meta_connection_revision, updated_at
     )
-    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')
     WHERE EXISTS (SELECT 1 FROM analytics_conversion_actions WHERE id = ?)
   `).bind(
     delivery.deliveryId,
@@ -573,6 +581,7 @@ function conversionDeliveryStatement(db: D1Database, delivery: PlannedDelivery, 
     delivery.hasExternalId,
     delivery.encryptionKeyId,
     delivery.trackingMode,
+    delivery.metaConnectionRevision,
     actionId,
   )
 }
@@ -606,26 +615,31 @@ async function buildCapiEncryptionPlan(
   context: RecordConversionContext,
 ): Promise<CapiEncryptionPlan> {
   if (!shouldCreateMetaCapiDelivery(settings, input)) return { state: 'disabled' }
+  let connection: Awaited<ReturnType<typeof requireVerifiedMetaConnection>>
   try {
-    await requireVerifiedMetaConnection(env)
+    connection = await requireVerifiedMetaConnection(env)
   }
   catch {
     return { state: 'skipped', reason: 'connection_unverified' }
   }
+  if (connection.pixelId !== settings.pixelId || connection.trackingMode !== settings.mode) {
+    return { state: 'skipped', reason: 'connection_unverified' }
+  }
   if (!String(env.META_CAPI_DATA_KEY_CURRENT ?? '').trim()) {
-    return { state: 'skipped', reason: 'missing_data_key' }
+    return { state: 'skipped', reason: 'missing_data_key', connectionRevision: connection.revision }
   }
 
   let keys: MetaCapiCryptoKeys
   try {
     keys = await loadMetaCapiCryptoKeys(env)
   } catch {
-    return { state: 'skipped', reason: 'invalid_data_key' }
+    return { state: 'skipped', reason: 'invalid_data_key', connectionRevision: connection.revision }
   }
   return {
     state: 'ready',
     keys,
     context: normalizeSensitiveContext(context.getMetaCapiUserData()),
+    connectionRevision: connection.revision,
   }
 }
 

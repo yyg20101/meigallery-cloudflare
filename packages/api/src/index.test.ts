@@ -7,6 +7,7 @@ import { encryptMetaCapiContext, loadMetaCapiCryptoKeys } from './utils/meta-cap
 
 const DATA_KEY = Buffer.alloc(32, 7).toString('base64')
 const META_TOKEN_FINGERPRINT = '0b7a8749b34fd009cf020b30ea6bde2defee9e24b5f1c191764d60b8c1de9f31'
+const META_CONNECTION_REVISION = '1'.repeat(32)
 
 function env(corsOrigin?: string) {
   return {
@@ -59,6 +60,7 @@ describe('Meta CAPI Queue consumer', () => {
       error_message: '',
       attempt_count: 0,
       tracking_mode: 'production',
+      meta_connection_revision: META_CONNECTION_REVISION,
       duplicate_suppressed_at: null,
       encryption_key_id: '',
       created_at: new Date().toISOString(),
@@ -88,6 +90,7 @@ describe('Meta CAPI Queue consumer', () => {
                 verified_by_user_id: 1,
                 invalidated_at: null,
                 invalidation_reason: '',
+                revision: META_CONNECTION_REVISION,
               } as T
             }
             return null as T | null

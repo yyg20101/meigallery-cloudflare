@@ -3,6 +3,7 @@ import { ACTIVE_META_EVENTS, ATTRIBUTION_LIMITS } from '@meigallery/shared/const
 import type { Bindings } from '../index'
 import { normalizeMetaCapiUserData } from '../utils/meta-browser-identifiers'
 import { requireVerifiedMetaConnection } from './meta-connection'
+import { metaEventsEndpoint, readMetaEventsResponse } from './meta-graph'
 
 type MetaCapiEnv = Pick<
   Bindings,
@@ -36,6 +37,7 @@ export type MetaCapiDeliveryRow = ConversionDeliverySnapshot & {
   error_message: string
   attempt_count: number
   tracking_mode: MetaTrackingMode
+  meta_connection_revision: string | null
   duplicate_suppressed_at: string | null
   encryption_key_id: string
   created_at: string
@@ -74,7 +76,6 @@ export class MetaCapiDeliveryError extends Error {
   }
 }
 
-const META_GRAPH_API_VERSION = 'v25.0'
 const META_CAPI_TIMEOUT_MS = 8_000
 const DELIVERY_TRANSITION_MAX_ATTEMPTS = 3
 const META_CAPI_ERROR_MESSAGE = 'Meta CAPI 请求失败'
@@ -178,7 +179,8 @@ export async function sendMetaCapiEvent(
     if (competingSent) return competingSent
     return { deliveryId, status: 'skipped', reason: 'connection_unverified' }
   }
-  if (delivery.tracking_mode !== connection.trackingMode) {
+  if (delivery.tracking_mode !== connection.trackingMode
+    || delivery.meta_connection_revision !== connection.revision) {
     const persisted = await confirmDeliveryTransition(env.DB, delivery, {
       status: 'skipped',
       skipReason: 'connection_unverified',
@@ -200,11 +202,11 @@ export async function sendMetaCapiEvent(
   })
 
   let response: Response
-  let responseBody: Record<string, unknown>
+  let eventsReceived: number | undefined
   try {
     const metaResponse = await fetchWithCombinedTimeout(
       options.fetchFn ?? globalThis.fetch,
-      metaCapiEndpoint(connection.pixelId, accessToken),
+      metaEventsEndpoint(connection.pixelId, accessToken),
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -214,7 +216,7 @@ export async function sendMetaCapiEvent(
       options.timeoutMs ?? META_CAPI_TIMEOUT_MS,
     )
     response = metaResponse.response
-    responseBody = metaResponse.body
+    eventsReceived = metaResponse.eventsReceived
   } catch (error) {
     const timedOut = error instanceof MetaCapiDeliveryError && error.code === 'meta_timeout'
     const code = timedOut ? 'meta_timeout' : 'meta_network_error'
@@ -232,7 +234,6 @@ export async function sendMetaCapiEvent(
     )
   }
 
-  const eventsReceived = readEventsReceived(responseBody)
   if (response.ok && eventsReceived === 1) {
     const persisted = await confirmDeliveryTransition(env.DB, delivery, { status: 'sent' })
     const competingSent = await recordCompetingSent(env.DB, persisted, deliveryId)
@@ -279,7 +280,8 @@ export async function readMetaCapiDelivery(db: D1Database, deliveryId: string) {
     SELECT
       d.id, d.conversion_action_id, d.channel, d.external_event_id, d.event_name,
       d.status, d.skip_reason, d.error_code, d.error_message, d.attempt_count,
-      d.tracking_mode, d.duplicate_suppressed_at, d.encryption_key_id, d.created_at,
+      d.tracking_mode, d.meta_connection_revision, d.duplicate_suppressed_at,
+      d.encryption_key_id, d.created_at,
       a.occurred_at, a.date, a.path, a.metadata
     FROM analytics_conversion_deliveries d
     JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
@@ -466,18 +468,8 @@ async function fetchWithCombinedTimeout(
 
   try {
     const response = await fetchFn(input, { ...init, signal: controller.signal })
-    let body: Record<string, unknown> = {}
-    try {
-      const text = await response.text()
-      const parsed = JSON.parse(text || '{}')
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) body = parsed as Record<string, unknown>
-    } catch (error) {
-      if (timedOut) throw new MetaCapiDeliveryError('meta_timeout', META_CAPI_TIMEOUT_MESSAGE, true)
-      if (!(error instanceof SyntaxError)) {
-        throw new MetaCapiDeliveryError('meta_network_error', META_CAPI_ERROR_MESSAGE, true)
-      }
-    }
-    return { response, body }
+    const { eventsReceived } = await readMetaEventsResponse(response)
+    return { response, eventsReceived }
   } catch {
     if (timedOut) throw new MetaCapiDeliveryError('meta_timeout', META_CAPI_TIMEOUT_MESSAGE, true)
     throw new MetaCapiDeliveryError('meta_network_error', META_CAPI_ERROR_MESSAGE, true)
@@ -485,12 +477,6 @@ async function fetchWithCombinedTimeout(
     clearTimeout(timeoutId)
     callerSignal?.removeEventListener('abort', abortFromCaller)
   }
-}
-
-function readEventsReceived(body: Record<string, unknown>) {
-  return typeof body.events_received === 'number' && Number.isFinite(body.events_received)
-    ? body.events_received
-    : undefined
 }
 
 function compactResult(result: MetaCapiSendResult) {
@@ -563,12 +549,6 @@ function buildEventSourceUrl(siteUrl: string | undefined, path: string) {
   } catch {
     return base
   }
-}
-
-function metaCapiEndpoint(pixelId: string, accessToken: string) {
-  const url = new URL(`https://graph.facebook.com/${META_GRAPH_API_VERSION}/${encodeURIComponent(pixelId)}/events`)
-  url.searchParams.set('access_token', accessToken)
-  return url.toString()
 }
 
 function storedErrorMessage(value: string) {
