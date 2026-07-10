@@ -8,6 +8,10 @@ function createDb(options: {
   enabled?: boolean
   sampleRate?: number
   existingEvents?: string[]
+  facebookPixelEnabled?: boolean
+  facebookPixelId?: string
+  metaCapiEnabled?: boolean
+  metaTrackingMode?: 'disabled' | 'test' | 'production'
 } = {}) {
   const calls: Call[] = []
   const insertedEvents = new Set(options.existingEvents ?? [])
@@ -37,6 +41,10 @@ function createDb(options: {
           if (sql.includes('FROM analytics_events WHERE id = ?')) {
             return insertedEvents.has(String(call.params[0])) ? ({ id: call.params[0] } as T) : null
           }
+          if (sql.includes("WHERE key = 'facebook_pixel_enabled'")) return { value: JSON.stringify(options.facebookPixelEnabled ?? false) } as T
+          if (sql.includes("WHERE key = 'facebook_pixel_id'")) return { value: JSON.stringify(options.facebookPixelId ?? '') } as T
+          if (sql.includes("WHERE key = 'meta_capi_enabled'")) return { value: JSON.stringify(options.metaCapiEnabled ?? false) } as T
+          if (sql.includes("WHERE key = 'meta_tracking_mode'")) return { value: JSON.stringify(options.metaTrackingMode ?? 'disabled') } as T
           return null
         },
         async run() {
@@ -323,6 +331,37 @@ describe('analytics-ingest', () => {
     expect(conversionInsert?.params[10]).toBe('telegram-june')
     expect(conversionInsert?.params[14]).toBe('chat-a')
     expect(JSON.stringify(conversionInsert?.params)).not.toContain('@secret')
+  })
+
+  it('compatibility 转化即使携带 granted 也只写一方账本且不创建 Meta delivery', async () => {
+    const db = createDb({
+      facebookPixelEnabled: true,
+      facebookPixelId: '1234567890',
+      metaCapiEnabled: true,
+      metaTrackingMode: 'production',
+    })
+    const sent: unknown[] = []
+    await ingestAnalyticsBatch({
+      APP_ENV: 'test',
+      DB: db,
+      SESSION_SECRET: 'test-session-secret',
+      META_CAPI_QUEUE: { send: async message => { sent.push(message) } },
+    } as unknown as Pick<Bindings, 'APP_ENV' | 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>, {
+      body: baseBatch({
+        eventId: 'event_contact_fallback_1',
+        eventName: 'contact_method_click',
+        entityType: 'contact',
+        consentState: 'granted',
+        props: { method_type: 'telegram', location: 'floating_contact_panel' },
+      }),
+      bodySizeBytes: 512,
+      userId: null,
+      currentHost: '616618.xyz',
+    })
+
+    expect(db.calls.some(call => call.sql.includes('analytics_conversion_actions'))).toBe(true)
+    expect(db.calls.some(call => call.sql.includes('analytics_conversion_deliveries'))).toBe(false)
+    expect(sent).toEqual([])
   })
 
   it('register_success 同步写入 complete_registration 转化', async () => {

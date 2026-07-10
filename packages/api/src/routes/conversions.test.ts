@@ -343,8 +343,8 @@ describe('conversion routes', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         actionType: 'contact',
-        visitorId: 'visitor_1',
-        sessionId: 'session_1',
+        visitorId: 'conversion_visitor_test_user_1',
+        sessionId: 'conversion_session_test_user_1',
         occurredAt: '2026-07-09T10:00:00.000Z',
         methodType: 'telegram',
         actionTarget: 'floating_contact_panel',
@@ -355,6 +355,28 @@ describe('conversion routes', () => {
     expect(res.status).toBe(201)
     expect(body.data.actionType).toBe('contact')
     expect(JSON.stringify(db.calls)).not.toContain('@secret')
+  })
+
+  it.each([
+    ['visitorId 为空', { visitorId: '', sessionId: 'session_123456' }],
+    ['sessionId 为空', { visitorId: 'visitor_123456', sessionId: '' }],
+    ['visitorId 格式非法', { visitorId: 'bad id!', sessionId: 'session_123456' }],
+    ['sessionId 格式非法', { visitorId: 'visitor_123456', sessionId: 'x' }],
+  ])('%s 时明确返回 400', async (_label, identity) => {
+    const db = createConversionDb()
+    const res = await createApp().request('/api/conversions/events', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        actionType: 'contact',
+        occurredAt: '2026-07-09T10:00:00.000Z',
+        ...identity,
+      }),
+    }, { DB: db, APP_ENV: 'test' } as unknown as Bindings)
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).code).toBe('CONVERSION_ID_INVALID')
+    expect(db.calls).toHaveLength(0)
   })
 
   it('只接受顶层 browserIdentifiers，并将合法临时数据传入 Queue 而不持久化原值', async () => {

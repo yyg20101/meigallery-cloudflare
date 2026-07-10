@@ -1,5 +1,6 @@
 import type { ConversionActionType, MetaPixelInstruction } from '@meigallery/shared'
 import { sanitizeAnalyticsPath } from '~/utils/analyticsSanitizer'
+import { resolveConversionIdentity } from '~/utils/conversionIdentity'
 import { readMetaBrowserIdentifiers } from '~/utils/metaBrowserIdentifiers'
 
 type PublicConversionActionType = Extract<ConversionActionType, 'contact' | 'complete_registration'>
@@ -62,12 +63,13 @@ export function useConversionTracking() {
 
   async function trackConversion(actionType: PublicConversionActionType, options: TrackConversionOptions = {}) {
     const context = analytics.getContext() as AnalyticsContext
+    const identity = resolveConversionIdentity(context)
     const occurredAt = new Date().toISOString()
     const metadata = sanitizeConversionMetadata(options.metadata || {})
-    const body = {
+    const baseBody = {
       actionType,
-      visitorId: normalizeText(context.visitorId, 120),
-      sessionId: normalizeText(context.sessionId, 120),
+      visitorId: identity.visitorId,
+      sessionId: identity.sessionId,
       occurredAt,
       routeName: route.name ? String(route.name) : normalizeText(route.path, 120),
       path: safeRoutePath(route.fullPath, route.path),
@@ -78,20 +80,18 @@ export function useConversionTracking() {
       utmMedium: normalizeText(context.sourceContext.utmMedium, 120),
       utmCampaign: normalizeText(context.sourceContext.utmCampaign, 120),
       utmContent: queryValue(route.query.utm_content),
-      consentState: marketingConsent.state.value,
       methodType: normalizeText(options.methodType, 80),
       actionTarget: normalizeText(options.actionTarget, 120),
       metadata,
-      ...(marketingConsent.canTrackMarketing.value && marketingConsent.state.value === 'granted' && typeof document !== 'undefined'
-        ? { browserIdentifiers: readMetaBrowserIdentifiers(document.cookie, route.query.fbclid) }
-        : {}),
     }
 
     const send = async () => {
+      const body = consentScopedBody(baseBody, marketingConsent, route.query.fbclid)
       const response = await api('/api/conversions/events', { method: 'POST', body })
       return pixelEventsFromResponse(response)
     }
     const deliver = (instructions: MetaPixelInstruction[]) => {
+      if (!canDeliverMarketing(marketingConsent)) return
       for (const instruction of instructions) {
         const attempted = pixel.trackStandardEvent(instruction.eventName, instruction.payload, { eventID: instruction.eventId })
         if (attempted === true) reportPixelAttempted(() => api('/api/conversions/pixel-receipts', {
@@ -120,6 +120,26 @@ export function useConversionTracking() {
   }
 
   return { trackConversion }
+}
+
+function consentScopedBody<T extends Record<string, unknown>>(
+  baseBody: T,
+  marketingConsent: ReturnType<typeof useMarketingConsent>,
+  fbclid: unknown,
+) {
+  const canDeliver = canDeliverMarketing(marketingConsent)
+  const currentState = marketingConsent.state.value
+  return {
+    ...baseBody,
+    consentState: canDeliver ? 'granted' : currentState === 'denied' ? 'denied' : 'limited',
+    ...(canDeliver && typeof document !== 'undefined'
+      ? { browserIdentifiers: readMetaBrowserIdentifiers(document.cookie, fbclid) }
+      : {}),
+  }
+}
+
+function canDeliverMarketing(marketingConsent: ReturnType<typeof useMarketingConsent>) {
+  return marketingConsent.state.value === 'granted' && marketingConsent.canTrackMarketing.value
 }
 
 function queueFailedConversionRetry(entry: FailedConversionRetry) {

@@ -6,6 +6,7 @@ import { buildMetaCapiUserData } from '../utils/meta-browser-identifiers'
 import { verifyPixelReceiptToken } from '../utils/pixel-receipt'
 
 const PUBLIC_CONVERSION_ACTIONS = new Set(['contact', 'complete_registration'])
+const CONVERSION_ID_RE = /^[A-Za-z0-9_-]{8,120}$/
 
 export const conversionRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -22,11 +23,17 @@ conversionRoutes.post('/events', async (c) => {
     return errorJson(c, 400, '转化动作无效', { code: 'CONVERSION_ACTION_INVALID' })
   }
 
+  const visitorId = normalizeConversionId(body.visitorId)
+  const sessionId = normalizeConversionId(body.sessionId)
+  if (!visitorId || !sessionId) {
+    return errorJson(c, 400, '转化身份格式无效', { code: 'CONVERSION_ID_INVALID' })
+  }
+
   const consentState = String(body.consentState || 'limited')
   const result = await recordConversionAction(c.env, {
     actionType: actionType as 'contact' | 'complete_registration',
-    visitorId: String(body.visitorId || ''),
-    sessionId: String(body.sessionId || ''),
+    visitorId,
+    sessionId,
     userId: c.get('userId'),
     occurredAt: String(body.occurredAt || new Date().toISOString()),
     routeName: String(body.routeName || ''),
@@ -65,4 +72,9 @@ conversionRoutes.post('/pixel-receipts', async (c) => {
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+}
+
+function normalizeConversionId(value: unknown) {
+  const normalized = typeof value === 'string' ? value.trim() : ''
+  return CONVERSION_ID_RE.test(normalized) ? normalized : ''
 }

@@ -8,6 +8,8 @@ const trackStandardEvent = vi.fn()
 let consentState: 'granted' | 'limited' | 'denied' = 'granted'
 const marketingConsentState = ref<'granted' | 'limited' | 'denied'>('granted')
 const canTrackMarketing = ref(true)
+let analyticsVisitorId = 'visitor_1'
+let analyticsSessionId = 'session_1'
 
 let route: {
   name: string
@@ -32,6 +34,9 @@ describe('useConversionTracking', () => {
     consentState = 'granted'
     marketingConsentState.value = 'granted'
     canTrackMarketing.value = true
+    analyticsVisitorId = 'visitor_1'
+    analyticsSessionId = 'session_1'
+    sessionStorage.clear()
     route = {
       name: 'contact',
       path: '/contact',
@@ -42,8 +47,8 @@ describe('useConversionTracking', () => {
     vi.stubGlobal('useRoute', () => route)
     vi.stubGlobal('useAnalytics', () => ({
       getContext: () => ({
-        visitorId: 'visitor_1',
-        sessionId: 'session_1',
+        visitorId: analyticsVisitorId,
+        sessionId: analyticsSessionId,
         consentState,
         sourceChannel: 'ad',
         sourceContext: {
@@ -349,6 +354,39 @@ describe('useConversionTracking', () => {
     )
   })
 
+  it('granted 首次失败后撤回授权，重试实时降级并移除浏览器标识且不发 Pixel', async () => {
+    document.cookie = '_fbp=fb.1.1700000000000.123456789; path=/'
+    route.query.fbclid = 'CLICK_abc-123'
+    api.mockRejectedValueOnce(new Error('conversion api failed')).mockResolvedValueOnce({
+      data: {
+        pixelEvents: [{
+          deliveryId: 'cdlv_stale',
+          eventName: 'Contact',
+          eventId: 'meta:Contact:contact:session_1:telegram:floating_contact_panel',
+          payload: { location: 'floating_contact_panel' },
+          receiptToken: 'receipt_stale',
+        }],
+      },
+    })
+
+    await useConversionTracking().trackConversion('contact', {
+      methodType: 'telegram',
+      actionTarget: 'floating_contact_panel',
+    })
+    marketingConsentState.value = 'denied'
+    canTrackMarketing.value = false
+
+    await vi.advanceTimersByTimeAsync(1_000)
+
+    const initialBody = api.mock.calls[0]?.[1]?.body as Record<string, unknown>
+    const retryBody = api.mock.calls[1]?.[1]?.body as Record<string, unknown>
+    expect(initialBody).toMatchObject({ consentState: 'granted' })
+    expect(initialBody).toHaveProperty('browserIdentifiers')
+    expect(retryBody).toMatchObject({ consentState: 'denied' })
+    expect(retryBody).not.toHaveProperty('browserIdentifiers')
+    expect(trackStandardEvent).not.toHaveBeenCalled()
+  })
+
   it('三次补发全部失败后只发送一次空 ID 兼容事件', async () => {
     api.mockRejectedValue(new Error('conversion api failed'))
     const conversion = useConversionTracking()
@@ -363,6 +401,28 @@ describe('useConversionTracking', () => {
     expect(track).toHaveBeenCalledTimes(1)
     expect(track).toHaveBeenCalledWith('contact_method_click', expect.objectContaining({ eventId: '', flush: true }))
     expect(trackStandardEvent).not.toHaveBeenCalled()
+  })
+
+  it('analytics 关闭时按浏览器会话生成稳定且相互隔离的必要转化身份', async () => {
+    analyticsVisitorId = ''
+    analyticsSessionId = ''
+
+    await useConversionTracking().trackConversion('contact')
+    await useConversionTracking().trackConversion('complete_registration')
+    const firstUserBodies = api.mock.calls.map(call => call[1]?.body as Record<string, unknown>)
+
+    expect(firstUserBodies[0]?.visitorId).toMatch(/^conversion_visitor_[A-Za-z0-9_-]+$/)
+    expect(firstUserBodies[0]?.sessionId).toMatch(/^conversion_session_[A-Za-z0-9_-]+$/)
+    expect(firstUserBodies[1]?.visitorId).toBe(firstUserBodies[0]?.visitorId)
+    expect(firstUserBodies[1]?.sessionId).toBe(firstUserBodies[0]?.sessionId)
+
+    sessionStorage.clear()
+    api.mockClear()
+    await useConversionTracking().trackConversion('contact')
+    const secondUserBody = api.mock.calls[0]?.[1]?.body as Record<string, unknown>
+
+    expect(secondUserBody.visitorId).not.toBe(firstUserBodies[0]?.visitorId)
+    expect(secondUserBody.sessionId).not.toBe(firstUserBodies[0]?.sessionId)
   })
 
   it('consent 非 granted 时不直接发送 Pixel', async () => {

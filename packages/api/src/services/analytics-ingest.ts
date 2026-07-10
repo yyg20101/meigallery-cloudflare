@@ -642,7 +642,7 @@ function conversionInputFromAnalyticsEvent(
     utmMedium: event.utmMedium,
     utmCampaign: event.utmCampaign,
     utmContent: event.utmContent,
-    consentState: event.consentState,
+    consentState: 'denied',
     metadata: conversionMetadataFromAnalyticsEvent(event),
   } satisfies Omit<RecordConversionInput, 'actionType'>
 
