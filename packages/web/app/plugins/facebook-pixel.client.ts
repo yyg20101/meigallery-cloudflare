@@ -10,26 +10,27 @@ export default defineNuxtPlugin(async () => {
     facebookPixelId,
     facebookPixelDebugEnabled,
   } = useSiteSettings()
+  const { canTrackMarketing } = useMarketingConsent()
   const { initFacebookPixel, trackPageView } = useFacebookPixel()
 
   await fetchSettings()
 
-  const config = resolveFacebookPixelConfig({
-    enabled: facebookPixelEnabled.value,
-    pixelId: facebookPixelId.value,
-    debugEnabled: facebookPixelDebugEnabled.value,
-  }, runtimeConfig)
-
-  if (config.enabled && !isAdminPath(route.path) && !hasSensitiveAnalyticsUrl(route.fullPath)) {
-    initFacebookPixel(config.pixelId, config.debugEnabled, route.fullPath)
-    trackPageView(route.fullPath)
+  function trackAllowedPage(fullPath: string) {
+    const config = resolveFacebookPixelConfig({
+      enabled: facebookPixelEnabled.value,
+      pixelId: facebookPixelId.value,
+      debugEnabled: facebookPixelDebugEnabled.value,
+    }, runtimeConfig)
+    const pathname = new URL(fullPath, 'https://site.local').pathname
+    if (!config.enabled || !canTrackMarketing.value || isAdminPath(pathname) || hasSensitiveAnalyticsUrl(fullPath)) return
+    initFacebookPixel(config.pixelId, config.debugEnabled, fullPath)
+    trackPageView(fullPath)
   }
 
-  router.afterEach((to) => {
-    if (isAdminPath(to.path) || hasSensitiveAnalyticsUrl(to.fullPath)) return
-    if (config.enabled) {
-      initFacebookPixel(config.pixelId, config.debugEnabled, to.fullPath)
-      trackPageView(to.fullPath)
-    }
-  })
+  watch(
+    [facebookPixelEnabled, facebookPixelId, facebookPixelDebugEnabled, canTrackMarketing],
+    () => trackAllowedPage(route.fullPath),
+    { immediate: true },
+  )
+  router.afterEach(to => trackAllowedPage(to.fullPath))
 })

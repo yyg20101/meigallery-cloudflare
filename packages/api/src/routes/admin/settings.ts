@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { normalizeMetaTrackingMode } from '@meigallery/shared/utils'
 import type { Bindings, Variables } from '../../index'
 import { requireOwner } from '../../middleware/auth'
 import { normalizeAnalyticsConsentMode, normalizeAnalyticsSampleRate } from '../../utils/analytics-settings'
@@ -80,6 +81,9 @@ adminSettingsRoutes.patch('/', requireOwner, async (c) => {
   }
   if ('facebook_pixel_debug_enabled' in body) {
     body.facebook_pixel_debug_enabled = normalizeBooleanSetting(body.facebook_pixel_debug_enabled)
+  }
+  if ('meta_tracking_mode' in body) {
+    body.meta_tracking_mode = normalizeMetaTrackingMode(body.meta_tracking_mode)
   }
   if ('analytics_enabled' in body) {
     body.analytics_enabled = normalizeBooleanSetting(body.analytics_enabled)

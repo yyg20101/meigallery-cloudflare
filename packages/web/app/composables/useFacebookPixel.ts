@@ -21,22 +21,19 @@ const initialized = ref(false)
 const debug = ref(false)
 const lastTrackedPagePath = ref('')
 
-function hasTrackingConsent() {
-  return true
-}
-
 function logEvent(eventName: string, params?: PixelEventParams) {
   if (debug.value) console.info('[facebook-pixel]', eventName, params || {})
 }
 
-function callFbq(...args: unknown[]) {
-  if (!isClientRuntime() || !initialized.value || !window.fbq) return false
-  window.fbq(...args)
-  return true
-}
-
 export function useFacebookPixel() {
   const route = useRoute()
+  const { canTrackMarketing } = useMarketingConsent()
+
+  function callFbq(...args: unknown[]) {
+    if (!isClientRuntime() || !canTrackMarketing.value || !initialized.value || !window.fbq) return false
+    window.fbq(...args)
+    return true
+  }
 
   function getPathname(fullPath: string) {
     try {
@@ -60,7 +57,7 @@ export function useFacebookPixel() {
   }
 
   function initFacebookPixel(pixelId: string, debugEnabled = false, fullPath = route.fullPath) {
-    if (!isClientRuntime() || initialized.value || !pixelId || !hasTrackingConsent() || isTrackingBlocked(fullPath)) return
+    if (!isClientRuntime() || initialized.value || !pixelId || !canTrackMarketing.value || isTrackingBlocked(fullPath)) return
     debug.value = debugEnabled
 
     if (!window.fbq) {
@@ -80,17 +77,18 @@ export function useFacebookPixel() {
       document.head.appendChild(createFacebookPixelScript(document))
     }
 
-    window.fbq('init', pixelId)
     initialized.value = true
-    logEvent('init', { pixel_id: pixelId })
+    if (callFbq('init', pixelId)) logEvent('init', { pixel_id: pixelId })
   }
 
   function trackPageView(fullPath: string) {
     if (!isClientRuntime() || isTrackingBlocked(fullPath)) return
     if (lastTrackedPagePath.value === fullPath) return
-    lastTrackedPagePath.value = fullPath
     const sent = callFbqForPath(fullPath, 'track', 'PageView')
-    if (sent) logEvent('PageView', { full_path: fullPath })
+    if (sent) {
+      lastTrackedPagePath.value = fullPath
+      logEvent('PageView', { full_path: fullPath })
+    }
   }
 
   function trackStandardEvent(eventName: PixelStandardEventName, payload: PixelEventParams = {}, options: PixelEventOptions = {}) {

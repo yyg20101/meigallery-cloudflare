@@ -1,7 +1,12 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ref } from 'vue'
 import { createFacebookPixelScript, FACEBOOK_PIXEL_SCRIPT_SRC, hasSensitiveAnalyticsUrl, sanitizeAnalyticsText } from './facebookPixel'
 
 describe('facebookPixel 安全工具', () => {
+  beforeEach(() => {
+    vi.resetModules()
+  })
+
   afterEach(() => {
     const pixelWindow = window as unknown as { fbq?: unknown; _fbq?: unknown }
     delete pixelWindow.fbq
@@ -58,6 +63,7 @@ describe('facebookPixel 安全工具', () => {
 
   it('Pixel adapter 通过 trackStandardEvent 发送标准事件和 eventID', async () => {
     vi.stubGlobal('useRoute', () => ({ fullPath: '/gallery/summer' }))
+    vi.stubGlobal('useMarketingConsent', () => ({ canTrackMarketing: ref(true) }))
     const { useFacebookPixel } = await import('../composables/useFacebookPixel')
     const pixel = useFacebookPixel()
     vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T) => node)
@@ -81,5 +87,28 @@ describe('facebookPixel 安全工具', () => {
     expect(pixel).not.toHaveProperty('trackContactClick')
     expect(pixel).not.toHaveProperty('trackCompleteRegistration')
     expect(pixel).not.toHaveProperty('trackStartTrialOnce')
+  })
+
+  it('授权撤回后，即使 adapter 已初始化也不再调用 fbq', async () => {
+    const canTrackMarketing = ref(true)
+    vi.stubGlobal('useRoute', () => ({ fullPath: '/gallery/summer' }))
+    vi.stubGlobal('useMarketingConsent', () => ({ canTrackMarketing }))
+    const { useFacebookPixel } = await import('../composables/useFacebookPixel')
+    const pixel = useFacebookPixel()
+    vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T) => node)
+
+    pixel.initFacebookPixel('123456789')
+    pixel.trackPageView('/gallery/summer')
+    pixel.trackStandardEvent('Contact', { location: 'contact_panel' })
+    pixel.trackLoginCompleted()
+    const fbq = (window as unknown as { fbq?: { queue: unknown[] } }).fbq
+    const callCountBeforeDenied = fbq?.queue.length
+
+    canTrackMarketing.value = false
+    pixel.trackPageView('/gallery/autumn')
+    pixel.trackStandardEvent('Lead', { source: 'welcome' })
+    pixel.trackLoginCompleted()
+
+    expect(fbq?.queue).toHaveLength(callCountBeforeDenied ?? 0)
   })
 })
