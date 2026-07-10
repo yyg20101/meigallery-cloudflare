@@ -1,18 +1,29 @@
-import type { MetaCapiQueueMessage, MetaCapiQueueMessageV1 } from '@meigallery/shared'
+import type { MetaCapiQueueMessage } from '@meigallery/shared'
 import type { Bindings } from '../index'
+import { decryptMetaCapiContext, loadMetaCapiCryptoKeys } from '../utils/meta-capi-crypto'
 import {
   MetaCapiDeliveryError,
   confirmDeliveryTransition,
   readMetaCapiDelivery,
   recordDuplicateSuppressed,
   sendMetaCapiEvent,
+  type MetaCapiDeliveryRow,
 } from './meta-capi'
+import {
+  deleteSecureMetaCapiOutbox,
+  enqueueSecureMetaCapiDelivery,
+  type SecureOutboxEnv,
+} from './meta-capi-secure-outbox'
 
 const META_RETRY_DELAYS = [60, 300, 900, 1800] as const
 const META_RECOVERY_STALE_MINUTES = 5
 const META_RECOVERY_BATCH_SIZE = 25
+const SECURE_CONTEXT_TTL_MS = 24 * 60 * 60 * 1000
+const ACTIVE_META_EVENTS = new Set(['Contact', 'CompleteRegistration'])
+const QUEUE_MESSAGE_FIELDS = new Set(['schemaVersion', 'deliveryId', 'envelope'])
+const ENVELOPE_FIELDS = new Set(['keyId', 'iv', 'ciphertext', 'tag', 'expiresAt'])
 
-type MetaCapiQueueEnv = Pick<Bindings, 'DB' | 'META_CAPI_QUEUE'>
+type MetaCapiQueueEnv = SecureOutboxEnv
 
 export interface MetaCapiRecoveryResult {
   scanned: number
@@ -33,80 +44,26 @@ export async function recoverPendingMetaCapiDeliveries(
   if (!env.META_CAPI_QUEUE) return { scanned: 0, enqueued: 0, failed: 0, reason: 'missing_queue' }
 
   const stale = await env.DB.prepare(`
-    SELECT id
-    FROM analytics_conversion_deliveries
-    WHERE channel = 'meta_capi'
-      AND status = 'pending'
-      AND event_name IN ('Contact', 'CompleteRegistration')
-      AND queue_enqueued_at IS NULL
-      AND updated_at <= datetime('now', '-${META_RECOVERY_STALE_MINUTES} minutes')
-    ORDER BY updated_at ASC, id ASC
+    SELECT d.id
+    FROM analytics_conversion_deliveries d
+    JOIN meta_capi_secure_outbox o ON o.delivery_id = d.id AND o.schema_version = 2
+    WHERE d.channel = 'meta_capi'
+      AND d.status = 'pending'
+      AND d.event_name IN ('Contact', 'CompleteRegistration')
+      AND d.queue_enqueued_at IS NULL
+      AND d.updated_at <= datetime('now', '-${META_RECOVERY_STALE_MINUTES} minutes')
+    ORDER BY d.updated_at ASC, d.id ASC
     LIMIT ?
   `).bind(META_RECOVERY_BATCH_SIZE).all<{ id: string }>()
 
   let enqueued = 0
   let failed = 0
   for (const delivery of stale.results) {
-    const result = await enqueueMetaCapiDelivery(env, delivery.id, {}, { requireStale: true })
+    const result = await enqueueSecureMetaCapiDelivery(env, delivery.id, { requireStale: true })
     if (result === 'enqueued') enqueued += 1
     else if (result === 'failed') failed += 1
   }
   return { scanned: stale.results.length, enqueued, failed }
-}
-
-export async function enqueueMetaCapiDelivery(
-  env: MetaCapiQueueEnv,
-  deliveryId: string,
-  userData: MetaCapiQueueMessageV1['userData'],
-  options: { requireStale?: boolean } = {},
-): Promise<'enqueued' | 'failed' | 'not_pending'> {
-  if (!env.META_CAPI_QUEUE) {
-    await markQueueUnavailable(env.DB, deliveryId)
-    return 'failed'
-  }
-
-  const staleCondition = options.requireStale
-    ? `AND updated_at <= datetime('now', '-${META_RECOVERY_STALE_MINUTES} minutes')`
-    : ''
-  const claimed = await env.DB.prepare(`
-    UPDATE analytics_conversion_deliveries
-    SET
-      queue_attempt_count = queue_attempt_count + 1,
-      error_code = '',
-      error_message = '',
-      updated_at = datetime('now')
-    WHERE id = ?
-      AND channel = 'meta_capi'
-      AND status = 'pending'
-      AND queue_enqueued_at IS NULL
-      ${staleCondition}
-  `).bind(deliveryId).run()
-  if (!d1Changed(claimed)) return 'not_pending'
-
-  try {
-    await env.META_CAPI_QUEUE.send({ schemaVersion: 1, deliveryId, userData })
-  } catch {
-    await markQueueSendFailed(env.DB, deliveryId)
-    return 'failed'
-  }
-
-  try {
-    await env.DB.prepare(`
-      UPDATE analytics_conversion_deliveries
-      SET
-        queue_enqueued_at = datetime('now'),
-        error_code = '',
-        error_message = '',
-        updated_at = datetime('now')
-      WHERE id = ?
-        AND channel = 'meta_capi'
-        AND status = 'pending'
-        AND queue_enqueued_at IS NULL
-    `).bind(deliveryId).run()
-    return 'enqueued'
-  } catch {
-    return 'failed'
-  }
 }
 
 export async function handleMetaCapiBatch(
@@ -115,45 +72,165 @@ export async function handleMetaCapiBatch(
 ) {
   const isDeadLetterQueue = batch.queue.endsWith('-dlq')
   for (const message of batch.messages) {
-    if (isDeadLetterQueue) {
+    const parsed = parseQueueMessage(message.body)
+    if (!parsed.message) {
       try {
-        await markRetryExhausted(env.DB, message.body.deliveryId)
+        if (parsed.deliveryId) {
+          if (parsed.errorCode === 'secure_context_invalid') {
+            const delivery = await readMetaCapiDelivery(env.DB, parsed.deliveryId)
+            if (delivery?.status === 'sent') await recordDuplicateSuppressed(env.DB, delivery)
+            else if (delivery && !isTerminalDelivery(delivery)) await markSecureContextInvalid(env.DB, delivery)
+            await deleteSecureMetaCapiOutbox(env.DB, parsed.deliveryId)
+          } else {
+            await terminateUnsupportedMessage(env.DB, parsed.deliveryId)
+          }
+          console.error('[meta-capi] Queue 消息安全终止', {
+            deliveryId: parsed.deliveryId,
+            errorCode: parsed.errorCode,
+          })
+        }
         message.ack()
       } catch {
-        console.error('[meta-capi] DLQ 回写失败', { deliveryId: message.body.deliveryId })
-        message.retry({ delaySeconds: computeMetaRetryDelay(message.attempts) })
+        retryMessage(message, parsed.deliveryId || 'unknown', 'meta_delivery_state_conflict')
       }
       continue
     }
 
-    if (message.body.schemaVersion !== 1) {
-      console.error('[meta-capi] Queue schema 版本暂不支持', {
-        deliveryId: message.body.deliveryId,
-        schemaVersion: message.body.schemaVersion,
-      })
-      message.ack()
+    if (isDeadLetterQueue) {
+      try {
+        await markRetryExhausted(env.DB, parsed.message.deliveryId)
+        await deleteSecureMetaCapiOutbox(env.DB, parsed.message.deliveryId)
+        message.ack()
+      } catch {
+        retryMessage(message, parsed.message.deliveryId, 'meta_delivery_state_conflict')
+      }
       continue
+    }
+
+    await consumeSecureMessage(message, env, parsed.message)
+  }
+}
+
+async function consumeSecureMessage(
+  queueMessage: Message<MetaCapiQueueMessage>,
+  env: Bindings,
+  body: MetaCapiQueueMessage,
+) {
+  const deliveryId = body.deliveryId
+  try {
+    const delivery = await readMetaCapiDelivery(env.DB, deliveryId)
+    if (!delivery) {
+      await deleteSecureMetaCapiOutbox(env.DB, deliveryId)
+      queueMessage.ack()
+      return
+    }
+
+    if (delivery.status === 'sent') {
+      await recordDuplicateSuppressed(env.DB, delivery)
+      await deleteSecureMetaCapiOutbox(env.DB, deliveryId)
+      queueMessage.ack()
+      return
+    }
+    if (isTerminalDelivery(delivery)) {
+      await deleteSecureMetaCapiOutbox(env.DB, deliveryId)
+      queueMessage.ack()
+      return
+    }
+    if (isSecureContextExpired(delivery.created_at)) {
+      await markSkipped(env.DB, delivery, 'secure_context_expired')
+      await deleteSecureMetaCapiOutbox(env.DB, deliveryId)
+      queueMessage.ack()
+      return
+    }
+    if (!ACTIVE_META_EVENTS.has(delivery.event_name)) {
+      await markSkipped(env.DB, delivery, 'unsupported_event')
+      await deleteSecureMetaCapiOutbox(env.DB, deliveryId)
+      queueMessage.ack()
+      return
+    }
+
+    let sensitiveContext
+    try {
+      if (delivery.encryption_key_id !== body.envelope.keyId) throw new Error('secure_context_invalid')
+      const keys = await loadMetaCapiCryptoKeys(env)
+      sensitiveContext = await decryptMetaCapiContext({
+        keys,
+        aad: {
+          deliveryId,
+          externalEventId: delivery.external_event_id,
+          eventName: delivery.event_name as 'Contact' | 'CompleteRegistration',
+        },
+        envelope: {
+          schemaVersion: 2,
+          keyId: body.envelope.keyId,
+          iv: body.envelope.iv,
+          ciphertext: body.envelope.ciphertext,
+          tag: body.envelope.tag,
+        },
+      })
+    } catch {
+      await markSecureContextInvalid(env.DB, delivery)
+      await deleteSecureMetaCapiOutbox(env.DB, deliveryId)
+      console.error('[meta-capi] Queue 消息安全终止', {
+        deliveryId,
+        errorCode: 'secure_context_invalid',
+      })
+      queueMessage.ack()
+      return
     }
 
     try {
-      await sendMetaCapiEvent(env, message.body.deliveryId, { userData: message.body.userData })
-      message.ack()
+      const result = await sendMetaCapiEvent(env, deliveryId, { userData: sensitiveContext })
+      if (result.status === 'sent'
+        || result.status === 'skipped'
+        || result.status === 'failed'
+        || result.status === 'duplicate_suppressed') {
+        await deleteSecureMetaCapiOutbox(env.DB, deliveryId)
+        queueMessage.ack()
+        return
+      }
+      retryMessage(queueMessage, deliveryId, 'meta_delivery_state_conflict')
     } catch (error) {
       if (error instanceof MetaCapiDeliveryError && !error.retryable) {
-        console.error('[meta-capi] Queue 永久失败', { deliveryId: message.body.deliveryId })
-        message.ack()
-        continue
+        await deleteSecureMetaCapiOutbox(env.DB, deliveryId)
+        queueMessage.ack()
+        return
       }
-      const delaySeconds = computeMetaRetryDelay(message.attempts)
-      console.error('[meta-capi] Queue 安排重试', {
-        deliveryId: message.body.deliveryId,
-        errorCode: error instanceof MetaCapiDeliveryError ? error.code : 'meta_internal_error',
-        attempts: message.attempts,
-        delaySeconds,
-      })
-      message.retry({ delaySeconds })
+      retryMessage(
+        queueMessage,
+        deliveryId,
+        error instanceof MetaCapiDeliveryError ? error.code : 'meta_internal_error',
+      )
     }
+  } catch {
+    retryMessage(queueMessage, deliveryId, 'meta_internal_error')
   }
+}
+
+async function terminateUnsupportedMessage(db: D1Database, deliveryId: string) {
+  const delivery = await readMetaCapiDelivery(db, deliveryId)
+  if (delivery?.status === 'sent') await recordDuplicateSuppressed(db, delivery)
+  else if (delivery && !isTerminalDelivery(delivery)) {
+    await markSkipped(db, delivery, 'legacy_message_unsupported')
+  }
+  await deleteSecureMetaCapiOutbox(db, deliveryId)
+}
+
+async function markSecureContextInvalid(db: D1Database, delivery: MetaCapiDeliveryRow) {
+  const persisted = await confirmDeliveryTransition(db, delivery, {
+    status: 'failed',
+    errorCode: 'secure_context_invalid',
+    errorMessage: '',
+  }, { allowAnyNonSent: true })
+  if (persisted.status === 'sent') await recordDuplicateSuppressed(db, persisted)
+}
+
+async function markSkipped(db: D1Database, delivery: MetaCapiDeliveryRow, reason: string) {
+  const persisted = await confirmDeliveryTransition(db, delivery, {
+    status: 'skipped',
+    skipReason: reason,
+  }, { allowAnyNonSent: true })
+  if (persisted.status === 'sent') await recordDuplicateSuppressed(db, persisted)
 }
 
 async function markRetryExhausted(db: D1Database, deliveryId: string) {
@@ -163,6 +240,7 @@ async function markRetryExhausted(db: D1Database, deliveryId: string) {
     await recordDuplicateSuppressed(db, delivery)
     return
   }
+  if (isTerminalDelivery(delivery)) return
   const persisted = await confirmDeliveryTransition(db, delivery, {
     status: 'failed',
     errorCode: 'retry_exhausted',
@@ -171,38 +249,84 @@ async function markRetryExhausted(db: D1Database, deliveryId: string) {
   if (persisted.status === 'sent') await recordDuplicateSuppressed(db, persisted)
 }
 
-async function markQueueUnavailable(db: D1Database, deliveryId: string) {
-  await db.prepare(`
-    UPDATE analytics_conversion_deliveries
-    SET
-      error_code = 'missing_queue',
-      error_message = '',
-      updated_at = datetime('now')
-    WHERE id = ?
-      AND channel = 'meta_capi'
-      AND status = 'pending'
-      AND queue_enqueued_at IS NULL
-  `).bind(deliveryId).run()
-}
+function parseQueueMessage(value: unknown): {
+  deliveryId: string
+  errorCode: 'legacy_message_unsupported' | 'secure_context_invalid'
+  message?: MetaCapiQueueMessage
+} {
+  if (!isPlainRecord(value)) return { deliveryId: '', errorCode: 'legacy_message_unsupported' }
+  const deliveryId = safeDeliveryId(value.deliveryId)
+  if (value.schemaVersion !== 2 || !deliveryId) return { deliveryId, errorCode: 'legacy_message_unsupported' }
+  if (!hasExactFields(value, QUEUE_MESSAGE_FIELDS) || !isPlainRecord(value.envelope)) {
+    return { deliveryId, errorCode: 'secure_context_invalid' }
+  }
+  if (!hasExactFields(value.envelope, ENVELOPE_FIELDS)) {
+    return { deliveryId, errorCode: 'secure_context_invalid' }
+  }
 
-async function markQueueSendFailed(db: D1Database, deliveryId: string) {
-  try {
-    await db.prepare(`
-      UPDATE analytics_conversion_deliveries
-      SET
-        error_code = 'queue_send_failed',
-        error_message = 'Meta CAPI Queue 发送失败',
-        updated_at = datetime('now')
-      WHERE id = ?
-        AND channel = 'meta_capi'
-        AND status = 'pending'
-        AND queue_enqueued_at IS NULL
-    `).bind(deliveryId).run()
-  } catch {
-    // 外部 Queue 失败后的诊断补记不能改变已提交转化的响应。
+  const { keyId, iv, ciphertext, tag, expiresAt } = value.envelope
+  if (
+    typeof keyId !== 'string'
+    || typeof iv !== 'string'
+    || typeof ciphertext !== 'string'
+    || typeof tag !== 'string'
+    || typeof expiresAt !== 'string'
+  ) return { deliveryId, errorCode: 'secure_context_invalid' }
+  return {
+    deliveryId,
+    errorCode: 'secure_context_invalid',
+    message: {
+      schemaVersion: 2,
+      deliveryId,
+      envelope: { keyId, iv, ciphertext, tag, expiresAt },
+    },
   }
 }
 
-function d1Changed(result: D1Result<unknown>) {
-  return (result.meta?.changes ?? result.meta?.rows_written ?? 1) > 0
+function retryMessage(message: Message<MetaCapiQueueMessage>, deliveryId: string, errorCode: string) {
+  const delaySeconds = computeMetaRetryDelay(message.attempts)
+  console.error('[meta-capi] Queue 安排重试', {
+    deliveryId,
+    errorCode,
+    attempts: message.attempts,
+    delaySeconds,
+  })
+  message.retry({ delaySeconds })
+}
+
+function isTerminalDelivery(delivery: MetaCapiDeliveryRow) {
+  if (delivery.status === 'skipped' || delivery.status === 'duplicate_suppressed') return true
+  if (delivery.status !== 'failed') return false
+  return !(
+    delivery.error_code === 'meta_timeout'
+    || delivery.error_code === 'meta_network_error'
+    || delivery.error_code === 'meta_delivery_state_conflict'
+    || delivery.error_code === 'meta_http_429'
+    || /^meta_http_5\d\d$/.test(delivery.error_code)
+  )
+}
+
+function isSecureContextExpired(createdAt: string) {
+  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(createdAt)
+    ? `${createdAt.replace(' ', 'T')}Z`
+    : createdAt
+  const timestamp = Date.parse(normalized)
+  return !Number.isFinite(timestamp) || Date.now() - timestamp >= SECURE_CONTEXT_TTL_MS
+}
+
+function safeDeliveryId(value: unknown) {
+  return typeof value === 'string' && value.length > 0 && value.length <= 160 && !/\p{Cc}/u.test(value)
+    ? value
+    : ''
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
+}
+
+function hasExactFields(value: object, expected: Set<string>) {
+  const keys = Reflect.ownKeys(value)
+  return keys.length === expected.size && keys.every(key => typeof key === 'string' && expected.has(key))
 }

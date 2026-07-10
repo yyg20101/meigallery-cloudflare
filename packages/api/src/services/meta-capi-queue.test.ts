@@ -1,51 +1,94 @@
-import { createCipheriv, randomBytes } from 'node:crypto'
+import { Buffer } from 'node:buffer'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ConversionDeliveryStatus, MetaCapiQueueMessage } from '@meigallery/shared'
 import type { Bindings } from '../index'
+import {
+  encryptMetaCapiContext,
+  loadMetaCapiCryptoKeys,
+  type MetaCapiSensitiveContext,
+} from '../utils/meta-capi-crypto'
+import { enqueueSecureMetaCapiDelivery } from './meta-capi-secure-outbox'
 import { computeMetaRetryDelay, handleMetaCapiBatch, recoverPendingMetaCapiDeliveries } from './meta-capi-queue'
 
-type DeliveryStatus = ConversionDeliveryStatus
+const CURRENT_KEY = Buffer.alloc(32, 7).toString('base64')
+const PREVIOUS_KEY = Buffer.alloc(32, 9).toString('base64')
+const EXPIRES_AT = '2026-07-12T10:00:00.000Z'
 
-function createQueueDb(initialStatus: DeliveryStatus = 'pending', options: {
-  beforeFirstCasStatus?: DeliveryStatus
-  casFailures?: number
+type Call = { sql: string; params: unknown[] }
+type Delivery = {
+  id: string
+  conversion_action_id: string
+  channel: string
+  external_event_id: string
+  event_name: string
+  status: ConversionDeliveryStatus
+  skip_reason: string
+  error_code: string
+  error_message: string
+  attempt_count: number
+  tracking_mode: 'disabled' | 'test' | 'production'
+  queue_enqueued_at: string | null
+  queue_attempt_count: number
+  duplicate_suppressed_at: string | null
+  encryption_key_id: string
+  created_at: string
+  occurred_at: string
+  date: string
+  path: string
+  metadata: string
+  updated_at: string
+}
+
+type Outbox = MetaCapiQueueMessage['envelope'] & {
+  delivery_id: string
+  schema_version: 2
+  expires_at: string
+}
+
+function createQueueDb(options: {
+  status?: ConversionDeliveryStatus
   eventName?: string
+  createdAt?: string
+  cleanupBatchFailures?: number
 } = {}) {
-  const delivery = {
+  const delivery: Delivery = {
     id: 'cdlv_1',
     conversion_action_id: 'conv_1',
     channel: 'meta_capi',
     external_event_id: 'event_1',
     event_name: options.eventName ?? 'Contact',
-    status: initialStatus,
-    skip_reason: initialStatus === 'skipped'
-      ? 'missing_secret'
-      : initialStatus === 'duplicate_suppressed' ? 'already_sent' : '',
+    status: options.status ?? 'pending',
+    skip_reason: '',
     error_code: '',
     error_message: '',
-    attempt_count: initialStatus === 'pending' ? 0 : 1,
-    tracking_mode: 'production' as const,
-    queue_enqueued_at: null as string | null,
+    attempt_count: 0,
+    tracking_mode: 'production',
+    queue_enqueued_at: null,
     queue_attempt_count: 0,
-    duplicate_suppressed_at: null as string | null,
+    duplicate_suppressed_at: null,
+    encryption_key_id: '',
+    created_at: options.createdAt ?? '2026-07-11 10:00:00',
     occurred_at: '2026-07-09T10:00:00.000Z',
-    date: '2026-07-09',
+    date: '2026-07-11',
     path: '/',
     metadata: '{}',
+    updated_at: '2026-07-11 10:00:00',
   }
-  const daily = new Map<string, number>([[initialStatus, 1]])
-  const calls: Array<{ sql: string; params: unknown[] }> = []
+  const calls: Call[] = []
+  const daily = new Map<string, number>([[delivery.status, 1]])
+  let outbox: Outbox | null = null
   let lastChanges = 1
-  let casCount = 0
-  let remainingCasFailures = options.casFailures ?? 0
+  let cleanupBatchFailures = options.cleanupBatchFailures ?? 0
 
   const db = {
     delivery,
-    daily,
     calls,
+    daily,
+    get outbox() { return outbox },
+    set outbox(value: Outbox | null) { outbox = value },
     prepare(sql: string) {
-      const call = { sql, params: [] as unknown[] }
-      const statement = {
+      const call: Call = { sql, params: [] }
+      return {
         __call: call,
         bind(...params: unknown[]) {
           call.params = params
@@ -53,78 +96,113 @@ function createQueueDb(initialStatus: DeliveryStatus = 'pending', options: {
         },
         async first<T>() {
           calls.push(call)
+          if (sql.includes('FROM meta_capi_secure_outbox')) {
+            if (!outbox || call.params[0] !== delivery.id) return null
+            return {
+              delivery_id: outbox.delivery_id,
+              schema_version: outbox.schema_version,
+              key_id: outbox.keyId,
+              iv: outbox.iv,
+              ciphertext: outbox.ciphertext,
+              tag: outbox.tag,
+              expires_at: outbox.expires_at,
+              status: delivery.status,
+              skip_reason: delivery.skip_reason,
+              error_code: delivery.error_code,
+              queue_enqueued_at: delivery.queue_enqueued_at,
+              queue_attempt_count: delivery.queue_attempt_count,
+              updated_at: delivery.updated_at,
+              date: delivery.date,
+              event_name: delivery.event_name,
+            } as T
+          }
           if (sql.includes('FROM analytics_conversion_deliveries')) return { ...delivery } as T
           if (sql.includes("WHERE key = 'facebook_pixel_id'")) return { value: JSON.stringify('1234567890') } as T
           return null
         },
+        async all<T>() {
+          calls.push(call)
+          if (sql.includes('analytics_conversion_deliveries') && sql.includes('queue_enqueued_at IS NULL')) {
+            const rows = outbox && delivery.status === 'pending' && !delivery.queue_enqueued_at
+              && ['Contact', 'CompleteRegistration'].includes(delivery.event_name)
+              ? [{ id: delivery.id }]
+              : []
+            return { results: rows as T[] }
+          }
+          return { results: [] as T[] }
+        },
         async run() {
           calls.push(call)
-          return applyStatement(call)
+          return apply(call)
         },
       }
-      return statement
     },
-    async batch(statements: Array<{ __call: { sql: string; params: unknown[] } }>) {
+    async batch(statements: Array<{ __call: Call }>) {
+      if (statements.some(statement => statement.__call.sql.includes('queue_enqueued_at = datetime')) && cleanupBatchFailures > 0) {
+        cleanupBatchFailures -= 1
+        throw new Error('模拟 Queue 成功后 D1 batch 失败')
+      }
       const results = []
       for (const statement of statements) {
         calls.push(statement.__call)
-        results.push(applyStatement(statement.__call))
+        results.push(apply(statement.__call))
       }
       return results
     },
   }
 
-  function applyStatement(call: { sql: string; params: unknown[] }) {
-    if (call.sql.includes('UPDATE analytics_conversion_deliveries')) {
-      if (call.sql.includes('duplicate_suppressed_at')) {
-        if (delivery.status !== 'sent' || delivery.duplicate_suppressed_at) return result(0)
-        delivery.duplicate_suppressed_at = '2026-07-10 00:00:00'
-        return result(1)
-      }
-      const changesStatus = /SET\s+status\s*=\s*\?/m.test(call.sql)
-      if (casCount === 0 && options.beforeFirstCasStatus) forceStatus(options.beforeFirstCasStatus)
-      casCount += 1
-      if (remainingCasFailures > 0) {
-        remainingCasFailures -= 1
-        return result(0)
-      }
-      const expectedStatus = String(call.params[changesStatus ? 6 : 4])
+  function apply(call: Call) {
+    const { sql, params } = call
+    if (sql.includes('queue_attempt_count = queue_attempt_count + 1')) {
+      if (!outbox || delivery.status !== 'pending' || delivery.queue_enqueued_at) return result(0)
+      if (delivery.queue_attempt_count !== Number(params[1])) return result(0)
+      delivery.queue_attempt_count += 1
+      delivery.updated_at = '2026-07-11 10:01:00'
+      return result(1)
+    }
+    if (sql.includes('queue_enqueued_at = datetime')) {
+      delivery.queue_enqueued_at = '2026-07-11 10:01:01'
+      delivery.error_code = ''
+      return result(1)
+    }
+    if (sql.includes("error_code = 'queue_send_failed'")) {
+      delivery.error_code = 'queue_send_failed'
+      return result(1)
+    }
+    if (sql.includes("error_code = 'missing_queue'")) {
+      delivery.error_code = 'missing_queue'
+      return result(1)
+    }
+    if (sql.includes('DELETE FROM meta_capi_secure_outbox')) {
+      if (String(params[0]) === delivery.id) outbox = null
+      return result(1)
+    }
+    if (sql.includes('duplicate_suppressed_at')) {
+      const changed = delivery.status === 'sent' && !delivery.duplicate_suppressed_at
+      if (changed) delivery.duplicate_suppressed_at = '2026-07-11 10:02:00'
+      return result(changed ? 1 : 0)
+    }
+    if (sql.includes('UPDATE analytics_conversion_deliveries')) {
+      const changesStatus = /SET\s+status\s*=\s*\?/m.test(sql)
+      const expectedStatus = String(params[changesStatus ? 6 : 4])
       if (delivery.status !== expectedStatus || delivery.status === 'sent') return result(0)
-      if (changesStatus) delivery.status = String(call.params[0]) as DeliveryStatus
+      const previous = delivery.status
+      if (changesStatus) delivery.status = String(params[0]) as ConversionDeliveryStatus
       const offset = changesStatus ? 1 : 0
-      delivery.skip_reason = String(call.params[offset] ?? '')
-      delivery.error_code = String(call.params[offset + 1] ?? '')
-      delivery.error_message = String(call.params[offset + 2] ?? '')
+      delivery.skip_reason = String(params[offset] ?? '')
+      delivery.error_code = String(params[offset + 1] ?? '')
+      delivery.error_message = String(params[offset + 2] ?? '')
       delivery.attempt_count += 1
+      if (changesStatus) {
+        daily.set(previous, Math.max(0, (daily.get(previous) ?? 0) - 1))
+        daily.set(delivery.status, (daily.get(delivery.status) ?? 0) + 1)
+      }
       return result(1)
     }
-    if (!call.sql.includes('analytics_conversion_delivery_daily')) return result(1)
-    const values = call.params.map(String)
-    if (call.sql.includes('delivery_count + 1')) {
-      if (call.sql.includes('WHERE changes() = 1') && lastChanges !== 1) return result(0)
-      const status = call.sql.includes("'duplicate_suppressed'")
-        ? 'duplicate_suppressed'
-        : values.find(value => ['pending', 'sent', 'failed', 'duplicate_suppressed'].includes(value))
-      if (status) daily.set(status, (daily.get(status) ?? 0) + 1)
-      return result(1)
-    }
-    if (call.sql.includes('delivery_count - 1')) {
-      if (lastChanges !== 1) return result(0)
-      const status = values.find(value => ['pending', 'attempted', 'sent', 'failed', 'skipped', 'duplicate_suppressed'].includes(value))
-      if (status) daily.set(status, Math.max(0, (daily.get(status) ?? 0) - 1))
-      return result(1)
+    if (sql.includes('analytics_conversion_delivery_daily') && sql.includes('WHERE changes() = 1') && lastChanges !== 1) {
+      return result(0)
     }
     return result(1)
-  }
-
-  function forceStatus(status: DeliveryStatus) {
-    for (const key of ['pending', 'attempted', 'failed', 'skipped', 'duplicate_suppressed', 'sent']) daily.set(key, 0)
-    daily.set(status, 1)
-    delivery.status = status
-    delivery.skip_reason = ''
-    delivery.error_code = status === 'failed' ? 'meta_http_500' : ''
-    delivery.error_message = status === 'failed' ? 'Meta CAPI 请求失败' : ''
-    delivery.attempt_count += 1
   }
 
   function result(changes: number) {
@@ -135,474 +213,372 @@ function createQueueDb(initialStatus: DeliveryStatus = 'pending', options: {
   return db
 }
 
-function createRecoveryDb(options: {
-  failFirstEnqueuedMark?: boolean
-  rejectClaim?: boolean
-  rejectClaimWithRowsWritten?: boolean
-  failQueueDiagnostic?: boolean
-  eventName?: string
-} = {}) {
-  const delivery = {
-    id: 'cdlv_recovery',
-    event_name: options.eventName ?? 'Contact',
-    status: 'pending',
-    queue_enqueued_at: null as string | null,
-    queue_attempt_count: 0,
-    updated_at: '2026-07-09 00:00:00',
-    error_code: '',
-  }
-  const calls: Array<{ sql: string; params: unknown[] }> = []
-  let enqueuedMarkFailures = options.failFirstEnqueuedMark ? 1 : 0
-  const db = {
-    delivery,
-    calls,
-    prepare(sql: string) {
-      const call = { sql, params: [] as unknown[] }
-      return {
-        bind(...params: unknown[]) {
-          call.params = params
-          return this
-        },
-        async all<T>() {
-          calls.push(call)
-          const hasActiveFilter = sql.includes("event_name IN ('Contact', 'CompleteRegistration')")
-          const eventAllowed = !hasActiveFilter || ['Contact', 'CompleteRegistration'].includes(delivery.event_name)
-          const rows = delivery.status === 'pending' && !delivery.queue_enqueued_at && eventAllowed
-            ? [{ id: delivery.id }]
-            : []
-          return { results: rows as T[] }
-        },
-        async run() {
-          calls.push(call)
-          if (sql.includes('queue_attempt_count = queue_attempt_count + 1')) {
-            if (options.rejectClaimWithRowsWritten) return { meta: { rows_written: 0 } }
-            if (options.rejectClaim) return { meta: { changes: 0 } }
-            if (delivery.status !== 'pending' || delivery.queue_enqueued_at) return { meta: { changes: 0 } }
-            delivery.queue_attempt_count += 1
-            delivery.updated_at = '2026-07-10 00:00:00'
-            return { meta: { changes: 1 } }
-          }
-          if (sql.includes('queue_enqueued_at = datetime')) {
-            if (enqueuedMarkFailures > 0) {
-              enqueuedMarkFailures -= 1
-              throw new Error('模拟 Queue 成功后 D1 标记失败')
-            }
-            delivery.queue_enqueued_at = '2026-07-10 00:00:01'
-            delivery.error_code = ''
-            return { meta: { changes: 1 } }
-          }
-          if (sql.includes("error_code = 'queue_send_failed'")) {
-            if (options.failQueueDiagnostic) throw new Error('模拟 Queue 诊断补记失败')
-            delivery.error_code = 'queue_send_failed'
-            return { meta: { changes: 1 } }
-          }
-          return { meta: { changes: 1 } }
-        },
-      }
+async function encryptedMessage(
+  db: ReturnType<typeof createQueueDb>,
+  options: {
+    encryptionKey?: string
+    aadEventId?: string
+    context?: MetaCapiSensitiveContext
+  } = {},
+) {
+  const keys = await loadMetaCapiCryptoKeys({ META_CAPI_DATA_KEY_CURRENT: options.encryptionKey ?? CURRENT_KEY })
+  const sealed = await encryptMetaCapiContext({
+    keys,
+    aad: {
+      deliveryId: db.delivery.id,
+      externalEventId: options.aadEventId ?? db.delivery.external_event_id,
+      eventName: db.delivery.event_name as 'Contact' | 'CompleteRegistration',
     },
-  }
-  return db
-}
-
-function message(attempts = 1) {
-  const body: MetaCapiQueueMessage = {
-    schemaVersion: 1,
-    deliveryId: 'cdlv_1',
-    userData: {
+    value: options.context ?? {
       fbp: 'fb.1.1700000000000.123456789',
       fbc: 'fb.1.1700000000000.CLICK_abc-123',
       clientIpAddress: '203.0.113.24',
       clientUserAgent: 'MeiGallery Test Browser/1.0',
     },
+  })
+  const envelope = {
+    keyId: sealed.keyId,
+    iv: sealed.iv,
+    ciphertext: sealed.ciphertext,
+    tag: sealed.tag,
+    expiresAt: EXPIRES_AT,
   }
+  db.delivery.encryption_key_id = sealed.keyId
+  db.outbox = {
+    delivery_id: db.delivery.id,
+    schema_version: 2,
+    expires_at: EXPIRES_AT,
+    ...envelope,
+  }
+  return { schemaVersion: 2, deliveryId: db.delivery.id, envelope } satisfies MetaCapiQueueMessage
+}
+
+function queueMessage(body: MetaCapiQueueMessage, attempts = 1) {
   return { body, attempts, ack: vi.fn(), retry: vi.fn() }
 }
 
-function v2Message(attempts = 1) {
-  const body: MetaCapiQueueMessage = {
-    schemaVersion: 2,
-    deliveryId: 'cdlv_v2',
-    envelope: new Proxy(createEnvelope(), {
-      get() {
-        throw new Error('V2 envelope 不应在过渡 consumer 中读取')
-      },
-    }),
-  }
-  return { body, attempts, ack: vi.fn(), retry: vi.fn() }
+function batch(message: ReturnType<typeof queueMessage>, queue = 'meigallery-meta-capi') {
+  return { queue, messages: [message] } as unknown as MessageBatch<MetaCapiQueueMessage>
 }
 
-function createEnvelope() {
-  const key = randomBytes(32)
-  const iv = randomBytes(12)
-  const cipher = createCipheriv('aes-256-gcm', key, iv)
-  const ciphertext = Buffer.concat([cipher.update('queue-v2-test', 'utf8'), cipher.final()])
-  return {
-    keyId: 'test-key-v2',
-    iv: iv.toString('base64url'),
-    ciphertext: ciphertext.toString('base64url'),
-    tag: cipher.getAuthTag().toString('base64url'),
-    expiresAt: '2026-07-12T00:00:00.000Z',
-  }
-}
-
-function batch(queue: string, queueMessage: ReturnType<typeof message>) {
-  return { queue, messages: [queueMessage] } as unknown as MessageBatch<MetaCapiQueueMessage>
-}
-
-function env(db: ReturnType<typeof createQueueDb>) {
+function env(db: ReturnType<typeof createQueueDb>, overrides: Partial<Bindings> = {}) {
   return {
     APP_ENV: 'test',
     SITE_URL: 'https://616618.xyz',
     META_CAPI_ACCESS_TOKEN: 'token_private',
+    META_CAPI_DATA_KEY_CURRENT: CURRENT_KEY,
     DB: db,
+    ...overrides,
   } as unknown as Bindings
 }
 
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.useRealTimers()
 })
 
-describe('Meta CAPI Queue', () => {
-  it('V2 Queue message 在过渡 consumer 中不读取 envelope、不调用 Meta 且直接 ack', async () => {
+describe('Meta CAPI Queue V2', () => {
+  it('current 与 previous key 均可解密，并只把内存上下文发送给 Meta', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-11T12:00:00.000Z'))
+
+    for (const key of [CURRENT_KEY, PREVIOUS_KEY]) {
+      const db = createQueueDb()
+      const body = await encryptedMessage(db, { encryptionKey: key })
+      const message = queueMessage(body)
+      const fetchFn = vi.fn().mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }))
+      vi.spyOn(globalThis, 'fetch').mockImplementation(fetchFn)
+
+      await handleMetaCapiBatch(batch(message), env(db, {
+        META_CAPI_DATA_KEY_CURRENT: CURRENT_KEY,
+        META_CAPI_DATA_KEY_PREVIOUS: key === PREVIOUS_KEY ? PREVIOUS_KEY : undefined,
+      }))
+
+      const payload = JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body))
+      expect(payload.data[0].user_data).toEqual({
+        fbp: 'fb.1.1700000000000.123456789',
+        fbc: 'fb.1.1700000000000.CLICK_abc-123',
+        client_ip_address: '203.0.113.24',
+        client_user_agent: 'MeiGallery Test Browser/1.0',
+      })
+      expect(message.ack).toHaveBeenCalledOnce()
+      expect(message.retry).not.toHaveBeenCalled()
+      expect(db.delivery.status).toBe('sent')
+      expect(db.outbox).toBeNull()
+      vi.restoreAllMocks()
+    }
+  })
+
+  it.each(['unknown_key', 'key_id_mismatch', 'aad_mismatch', 'auth_failed'] as const)('%s 统一永久失败且日志不泄密', async failure => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-11T12:00:00.000Z'))
     const db = createQueueDb()
-    const queueMessage = v2Message()
+    const body = await encryptedMessage(db, { aadEventId: failure === 'aad_mismatch' ? 'wrong_event' : undefined })
+    if (failure === 'unknown_key') {
+      body.envelope.keyId = 'f'.repeat(16)
+      db.delivery.encryption_key_id = body.envelope.keyId
+    }
+    if (failure === 'key_id_mismatch') db.delivery.encryption_key_id = 'f'.repeat(16)
+    if (failure === 'auth_failed') {
+      const replacement = body.envelope.tag[0] === 'A' ? 'B' : 'A'
+      body.envelope.tag = `${replacement}${body.envelope.tag.slice(1)}`
+    }
+    const message = queueMessage(body)
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const fetchMock = vi.spyOn(globalThis, 'fetch')
+
+    await handleMetaCapiBatch(batch(message), env(db))
+
+    expect(message.ack).toHaveBeenCalledOnce()
+    expect(message.retry).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(db.delivery).toMatchObject({ status: 'failed', error_code: 'secure_context_invalid' })
+    expect(db.outbox).toBeNull()
+    expect(consoleError).toHaveBeenCalledWith('[meta-capi] Queue 消息安全终止', {
+      deliveryId: db.delivery.id,
+      errorCode: 'secure_context_invalid',
+    })
+    const serializedLogs = JSON.stringify(consoleError.mock.calls)
+    expect(serializedLogs).not.toContain(body.envelope.ciphertext)
+    expect(serializedLogs).not.toContain('203.0.113.24')
+    expect(serializedLogs).not.toContain('token_private')
+  })
+
+  it('schema V2 的畸形 envelope 归入 secure_context_invalid 而不是旧消息兼容', async () => {
+    const db = createQueueDb()
+    const body = await encryptedMessage(db)
+    const malformed = {
+      ...body,
+      envelope: { ...body.envelope, tag: 42 },
+    } as unknown as MetaCapiQueueMessage
+    const message = queueMessage(malformed)
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
-    await handleMetaCapiBatch(batch('meigallery-meta-capi', queueMessage), env(db))
+    await handleMetaCapiBatch(batch(message), env(db))
 
-    expect(queueMessage.ack).toHaveBeenCalledOnce()
-    expect(queueMessage.retry).not.toHaveBeenCalled()
-    expect(fetchMock).not.toHaveBeenCalled()
-    expect(db.calls).toEqual([])
-    expect(consoleError).toHaveBeenCalledWith('[meta-capi] Queue schema 版本暂不支持', {
-      deliveryId: 'cdlv_v2',
-      schemaVersion: 2,
+    expect(message.ack).toHaveBeenCalledOnce()
+    expect(message.retry).not.toHaveBeenCalled()
+    expect(db.delivery).toMatchObject({ status: 'failed', error_code: 'secure_context_invalid' })
+    expect(consoleError).toHaveBeenCalledWith('[meta-capi] Queue 消息安全终止', {
+      deliveryId: db.delivery.id,
+      errorCode: 'secure_context_invalid',
     })
   })
 
-  it.each(['Lead', 'StartTrial'])('直接历史 %s Queue message 被安全终止且不请求 Meta', async eventName => {
-    const db = createQueueDb('pending', { eventName })
-    const queueMessage = message()
+  it('delivery 服务端 created_at 超过 24 小时时拒绝 Queue 密文，不信任 occurredAt 或 envelope expiresAt', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-11T12:00:01.000Z'))
+    const db = createQueueDb({ createdAt: '2026-07-10 12:00:00' })
+    db.delivery.occurred_at = '2026-07-11T11:59:59.000Z'
+    const body = await encryptedMessage(db)
+    body.envelope.expiresAt = '2099-01-01T00:00:00.000Z'
+    const message = queueMessage(body)
     const fetchMock = vi.spyOn(globalThis, 'fetch')
 
-    await handleMetaCapiBatch(batch('meigallery-meta-capi', queueMessage), env(db))
+    await handleMetaCapiBatch(batch(message), env(db))
 
-    expect(queueMessage.ack).toHaveBeenCalledOnce()
-    expect(queueMessage.retry).not.toHaveBeenCalled()
     expect(fetchMock).not.toHaveBeenCalled()
-    expect(db.delivery).toMatchObject({ status: 'skipped', skip_reason: 'unsupported_event' })
+    expect(message.ack).toHaveBeenCalledOnce()
+    expect(db.delivery).toMatchObject({ status: 'skipped', skip_reason: 'secure_context_expired' })
+    expect(db.outbox).toBeNull()
   })
 
-  it.each(['Lead', 'StartTrial'])('scheduled recovery 不扫描历史 %s delivery', async eventName => {
-    const db = createRecoveryDb({ eventName })
-    const send = vi.fn()
-
-    const result = await recoverPendingMetaCapiDeliveries({
-      DB: db as unknown as D1Database,
-      META_CAPI_QUEUE: { send } as unknown as Queue<MetaCapiQueueMessage>,
-    })
-
-    expect(result).toEqual({ scanned: 0, enqueued: 0, failed: 0 })
-    expect(send).not.toHaveBeenCalled()
-    const scan = db.calls.find(call => call.sql.includes('SELECT id'))
-    expect(scan?.sql).toContain("event_name IN ('Contact', 'CompleteRegistration')")
-  })
-
-  it('scheduled 恢复提交后 send 前终止的 pending delivery，且不持久化或重放匹配数据', async () => {
-    const db = createRecoveryDb()
-    const sent: MetaCapiQueueMessage[] = []
-    const result = await recoverPendingMetaCapiDeliveries({
-      DB: db as unknown as D1Database,
-      META_CAPI_QUEUE: { send: async message => { sent.push(message) } } as Queue<MetaCapiQueueMessage>,
-    })
-
-    expect(result).toMatchObject({ scanned: 1, enqueued: 1, failed: 0 })
-    expect(sent).toEqual([{ schemaVersion: 1, deliveryId: db.delivery.id, userData: {} }])
-    expect(db.delivery).toMatchObject({ queue_attempt_count: 1, error_code: '' })
-    expect(db.delivery.queue_enqueued_at).not.toBeNull()
-    const scan = db.calls.find(call => call.sql.includes('SELECT id') && call.sql.includes('analytics_conversion_deliveries'))
-    expect(scan?.sql).toContain("datetime('now', '-5 minutes')")
-    expect(Number(scan?.params.at(-1))).toBeLessThanOrEqual(50)
-  })
-
-  it('Queue send 失败后保持 pending，下一次 scheduled 可恢复', async () => {
-    const db = createRecoveryDb()
-    const send = vi.fn()
-      .mockRejectedValueOnce(new Error('敏感异常不应落库'))
-      .mockResolvedValueOnce(undefined)
-    const recoveryEnv = {
-      DB: db as unknown as D1Database,
-      META_CAPI_QUEUE: { send } as unknown as Queue<MetaCapiQueueMessage>,
+  it('sent 终态在密钥加载、解密和 fetch 前短路，并清理残留 outbox', async () => {
+    const db = createQueueDb({ status: 'sent' })
+    const body = await encryptedMessage(db)
+    body.envelope = {
+      keyId: 'not-a-key',
+      iv: 'invalid',
+      ciphertext: 'invalid',
+      tag: 'invalid',
+      expiresAt: 'invalid',
     }
+    const message = queueMessage(body)
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
 
-    const failed = await recoverPendingMetaCapiDeliveries(recoveryEnv)
-    expect(failed).toMatchObject({ scanned: 1, enqueued: 0, failed: 1 })
-    expect(db.delivery).toMatchObject({ status: 'pending', queue_attempt_count: 1, error_code: 'queue_send_failed' })
+    await handleMetaCapiBatch(batch(message), env(db, {
+      META_CAPI_DATA_KEY_CURRENT: undefined,
+      META_CAPI_DATA_KEY_PREVIOUS: undefined,
+    }))
 
-    db.delivery.updated_at = '2026-07-09 00:00:00'
-    const recovered = await recoverPendingMetaCapiDeliveries(recoveryEnv)
-    expect(recovered).toMatchObject({ scanned: 1, enqueued: 1, failed: 0 })
-    expect(db.delivery.queue_attempt_count).toBe(2)
-    expect(send).toHaveBeenCalledTimes(2)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(message.ack).toHaveBeenCalledOnce()
+    expect(message.retry).not.toHaveBeenCalled()
+    expect(db.delivery.status).toBe('sent')
+    expect(db.outbox).toBeNull()
   })
 
-  it('Queue send 成功但 D1 标记失败时允许使用相同 deliveryId 幂等重投', async () => {
-    const db = createRecoveryDb({ failFirstEnqueuedMark: true })
-    const sent: MetaCapiQueueMessage[] = []
-    const recoveryEnv = {
-      DB: db as unknown as D1Database,
-      META_CAPI_QUEUE: { send: async message => { sent.push(message) } } as Queue<MetaCapiQueueMessage>,
+  it.each([1, 7])('V1/未知 schema %s 不读取 userData，安全 ack 并终止可识别 delivery', async schemaVersion => {
+    const db = createQueueDb()
+    const body = {
+      schemaVersion,
+      deliveryId: db.delivery.id,
+      get userData(): never {
+        throw new Error('consumer 读取了旧明文 userData')
+      },
     }
+    db.outbox = {
+      delivery_id: db.delivery.id,
+      schema_version: 2,
+      keyId: '0123456789abcdef',
+      iv: 'iv',
+      ciphertext: 'ciphertext',
+      tag: 'tag',
+      expiresAt: EXPIRES_AT,
+      expires_at: EXPIRES_AT,
+    }
+    const message = queueMessage(body as unknown as MetaCapiQueueMessage)
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
 
-    const first = await recoverPendingMetaCapiDeliveries(recoveryEnv)
-    expect(first).toMatchObject({ scanned: 1, enqueued: 0, failed: 1 })
-    expect(db.delivery.queue_enqueued_at).toBeNull()
+    await handleMetaCapiBatch(batch(message), env(db))
 
-    db.delivery.updated_at = '2026-07-09 00:00:00'
-    const second = await recoverPendingMetaCapiDeliveries(recoveryEnv)
-    expect(second).toMatchObject({ scanned: 1, enqueued: 1, failed: 0 })
-    expect(sent).toHaveLength(2)
-    expect(sent[0]?.deliveryId).toBe(sent[1]?.deliveryId)
-    expect(sent.every(item => Object.keys(item.userData).length === 0)).toBe(true)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(message.ack).toHaveBeenCalledOnce()
+    expect(message.retry).not.toHaveBeenCalled()
+    expect(db.delivery).toMatchObject({ status: 'skipped', skip_reason: 'legacy_message_unsupported' })
+    expect(db.outbox).toBeNull()
   })
 
-  it('缺少 Queue binding 时保守失败且不认领 pending delivery', async () => {
-    const db = createRecoveryDb()
-
-    const result = await recoverPendingMetaCapiDeliveries({ DB: db as unknown as D1Database })
-
-    expect(result).toEqual({ scanned: 0, enqueued: 0, failed: 0, reason: 'missing_queue' })
-    expect(db.calls).toEqual([])
-    expect(db.delivery.queue_attempt_count).toBe(0)
-  })
-
-  it('scheduled 扫描后 CAS 未认领时不发送也不计失败', async () => {
-    const db = createRecoveryDb({ rejectClaim: true })
-    const send = vi.fn()
-
-    const result = await recoverPendingMetaCapiDeliveries({
-      DB: db as unknown as D1Database,
-      META_CAPI_QUEUE: { send } as unknown as Queue<MetaCapiQueueMessage>,
-    })
-
-    expect(result).toEqual({ scanned: 1, enqueued: 0, failed: 0 })
-    expect(send).not.toHaveBeenCalled()
-  })
-
-  it('D1 未返回 changes 时使用 rows_written 判断 CAS 未认领', async () => {
-    const db = createRecoveryDb({ rejectClaimWithRowsWritten: true })
-    const send = vi.fn()
-
-    const result = await recoverPendingMetaCapiDeliveries({
-      DB: db as unknown as D1Database,
-      META_CAPI_QUEUE: { send } as unknown as Queue<MetaCapiQueueMessage>,
-    })
-
-    expect(result).toEqual({ scanned: 1, enqueued: 0, failed: 0 })
-    expect(send).not.toHaveBeenCalled()
-  })
-
-  it('Queue send 与诊断补记同时失败时仍保留恢复入口且不泄露异常', async () => {
-    const db = createRecoveryDb({ failQueueDiagnostic: true })
-
-    const result = await recoverPendingMetaCapiDeliveries({
-      DB: db as unknown as D1Database,
-      META_CAPI_QUEUE: { send: async () => { throw new Error('private queue error') } } as unknown as Queue<MetaCapiQueueMessage>,
-    })
-
-    expect(result).toEqual({ scanned: 1, enqueued: 0, failed: 1 })
-    expect(db.delivery).toMatchObject({ status: 'pending', queue_enqueued_at: null })
-    expect(JSON.stringify(db.calls)).not.toContain('private queue error')
-  })
-
-  it('主 Queue 对 retryable 错误按上限退避重试，DLQ 回写 retry_exhausted', async () => {
-    expect([1, 2, 3, 4, 5, 6].map(computeMetaRetryDelay)).toEqual([60, 300, 900, 1800, 1800, 1800])
-    expect(computeMetaRetryDelay(Number.NaN)).toBe(60)
-
+  it('retryable 失败保留消息密文并重试，永久失败删除残留 outbox', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-11T12:00:00.000Z'))
     const retryDb = createQueueDb()
-    const retryMessage = message(1)
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 500 }))
-    await handleMetaCapiBatch(batch('meigallery-meta-capi', retryMessage), env(retryDb))
+    const retryBody = await encryptedMessage(retryDb)
+    const retryMessage = queueMessage(retryBody, 2)
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response('{}', { status: 500 }))
 
-    expect(retryMessage.retry).toHaveBeenCalledWith({ delaySeconds: 60 })
+    await handleMetaCapiBatch(batch(retryMessage), env(retryDb))
+
+    expect(retryMessage.retry).toHaveBeenCalledWith({ delaySeconds: 300 })
     expect(retryMessage.ack).not.toHaveBeenCalled()
-    expect(retryDb.delivery).toMatchObject({ status: 'failed', attempt_count: 1 })
-    expect(retryDb.daily.get('pending')).toBe(0)
-    expect(retryDb.daily.get('failed')).toBe(1)
+    expect(retryDb.outbox).not.toBeNull()
 
-    const dlqDb = createQueueDb('failed')
-    const dlqMessage = message(6)
-    await handleMetaCapiBatch(batch('meigallery-meta-capi-dlq', dlqMessage), env(dlqDb))
+    const permanentDb = createQueueDb()
+    const permanentBody = await encryptedMessage(permanentDb)
+    const permanentMessage = queueMessage(permanentBody)
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response('{}', { status: 400 }))
 
-    expect(dlqDb.delivery).toMatchObject({ status: 'failed', error_code: 'retry_exhausted' })
-    expect(dlqDb.delivery.attempt_count).toBe(2)
-    expect(dlqDb.daily.get('failed')).toBe(1)
-    expect(dlqMessage.ack).toHaveBeenCalledOnce()
-    expect(dlqMessage.retry).not.toHaveBeenCalled()
+    await handleMetaCapiBatch(batch(permanentMessage), env(permanentDb))
+
+    expect(permanentMessage.ack).toHaveBeenCalledOnce()
+    expect(permanentDb.delivery.status).toBe('failed')
+    expect(permanentDb.outbox).toBeNull()
   })
 
-  it.each(['skipped', 'attempted'] as const)('DLQ 将历史 %s 状态原子转为 failed/retry_exhausted 后 ack', async initialStatus => {
-    const db = createQueueDb(initialStatus)
-    const dlqMessage = message(6)
+  it('非终态但不可发送的 delivery 状态重试消息且保留密文', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-11T12:00:00.000Z'))
+    const db = createQueueDb({ status: 'attempted' })
+    const body = await encryptedMessage(db)
+    db.delivery.status = 'attempted'
+    const message = queueMessage(body)
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
 
-    await handleMetaCapiBatch(batch('meigallery-meta-capi-dlq', dlqMessage), env(db))
+    await handleMetaCapiBatch(batch(message), env(db))
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(message.ack).not.toHaveBeenCalled()
+    expect(message.retry).toHaveBeenCalledWith({ delaySeconds: 60 })
+    expect(db.outbox).not.toBeNull()
+  })
+
+  it('DLQ retry exhausted 写终态、删除密文并 ack', async () => {
+    const db = createQueueDb({ status: 'failed' })
+    const body = await encryptedMessage(db)
+    db.delivery.status = 'failed'
+    db.delivery.error_code = 'meta_http_500'
+    db.daily.set('pending', 0)
+    db.daily.set('failed', 1)
+    const message = queueMessage(body, 6)
+
+    await handleMetaCapiBatch(batch(message, 'meigallery-meta-capi-dlq'), env(db))
 
     expect(db.delivery).toMatchObject({ status: 'failed', error_code: 'retry_exhausted' })
-    expect(db.daily.get(initialStatus)).toBe(0)
-    expect(db.daily.get('failed')).toBe(1)
+    expect(db.outbox).toBeNull()
+    expect(message.ack).toHaveBeenCalledOnce()
+    expect(message.retry).not.toHaveBeenCalled()
+  })
+
+  it('DLQ 或畸形 V2 只清理既有永久终态，不覆盖原状态', async () => {
+    const permanentDb = createQueueDb({ status: 'failed' })
+    permanentDb.delivery.error_code = 'meta_http_400'
+    const permanentBody = await encryptedMessage(permanentDb)
+    permanentDb.delivery.status = 'failed'
+    permanentDb.delivery.error_code = 'meta_http_400'
+    const dlqMessage = queueMessage(permanentBody, 6)
+
+    await handleMetaCapiBatch(batch(dlqMessage, 'meigallery-meta-capi-dlq'), env(permanentDb))
+
+    expect(permanentDb.delivery).toMatchObject({ status: 'failed', error_code: 'meta_http_400' })
+    expect(permanentDb.outbox).toBeNull()
     expect(dlqMessage.ack).toHaveBeenCalledOnce()
-    expect(dlqMessage.retry).not.toHaveBeenCalled()
+
+    const skippedDb = createQueueDb({ status: 'skipped' })
+    skippedDb.delivery.skip_reason = 'missing_secret'
+    const skippedBody = await encryptedMessage(skippedDb)
+    skippedDb.delivery.status = 'skipped'
+    skippedDb.delivery.skip_reason = 'missing_secret'
+    const malformedMessage = queueMessage({
+      ...skippedBody,
+      envelope: { ...skippedBody.envelope, tag: 42 },
+    } as unknown as MetaCapiQueueMessage)
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    await handleMetaCapiBatch(batch(malformedMessage), env(skippedDb))
+
+    expect(skippedDb.delivery).toMatchObject({ status: 'skipped', skip_reason: 'missing_secret' })
+    expect(skippedDb.outbox).toBeNull()
+    expect(malformedMessage.ack).toHaveBeenCalledOnce()
   })
 
-  it('DLQ CAS 失败后发现 sent 时不降级，只记重投诊断并 ack', async () => {
-    const db = createQueueDb('skipped', { beforeFirstCasStatus: 'sent' })
-    const dlqMessage = message(6)
+  it('scheduled recovery 从 D1 重放原密文，不再构造空匹配对象', async () => {
+    const db = createQueueDb()
+    const expected = await encryptedMessage(db)
+    const sent: MetaCapiQueueMessage[] = []
 
-    await handleMetaCapiBatch(batch('meigallery-meta-capi-dlq', dlqMessage), env(db))
+    const result = await recoverPendingMetaCapiDeliveries({
+      DB: db as unknown as D1Database,
+      META_CAPI_QUEUE: { send: async message => { sent.push(message) } } as Queue<MetaCapiQueueMessage>,
+    })
 
-    expect(db.delivery.status).toBe('sent')
-    expect(db.daily.get('sent')).toBe(1)
-    expect(db.daily.get('failed')).toBe(0)
-    expect(db.daily.get('duplicate_suppressed')).toBe(1)
-    expect(dlqMessage.ack).toHaveBeenCalledOnce()
-    expect(dlqMessage.retry).not.toHaveBeenCalled()
+    expect(result).toEqual({ scanned: 1, enqueued: 1, failed: 0 })
+    expect(sent).toEqual([expected])
+    expect(JSON.stringify(sent)).not.toContain('userData')
   })
 
-  it('DLQ 直接收到已 sent delivery 时重复消费也只记一次 duplicate_suppressed', async () => {
-    const db = createQueueDb('sent')
-    const dlqMessage = message(6)
+  it('入队清理失败可恢复出重复消息，但相同 external event ID 只发送成功一次', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-11T12:00:00.000Z'))
+    const db = createQueueDb({ cleanupBatchFailures: 1 })
+    await encryptedMessage(db)
+    const queued: MetaCapiQueueMessage[] = []
+    const producerEnv = {
+      DB: db as unknown as D1Database,
+      META_CAPI_QUEUE: { send: async message => { queued.push(message) } } as Queue<MetaCapiQueueMessage>,
+    }
 
-    await handleMetaCapiBatch(batch('meigallery-meta-capi-dlq', dlqMessage), env(db))
-    await handleMetaCapiBatch(batch('meigallery-meta-capi-dlq', dlqMessage), env(db))
+    expect(await enqueueSecureMetaCapiDelivery(producerEnv, db.delivery.id)).toBe('failed')
+    db.delivery.updated_at = '2026-07-11 10:00:00'
+    expect(await enqueueSecureMetaCapiDelivery(producerEnv, db.delivery.id)).toBe('enqueued')
+    expect(queued).toHaveLength(2)
+    expect(queued[0]).toEqual(queued[1])
 
-    expect(dlqMessage.ack).toHaveBeenCalledTimes(2)
-    expect(dlqMessage.retry).not.toHaveBeenCalled()
-    expect(db.delivery.status).toBe('sent')
-    expect(db.daily.get('duplicate_suppressed')).toBe(1)
-  })
-
-  it('DLQ 对任意非 sent 状态连续 CAS 冲突耗尽时 retry，不 ack 假成功', async () => {
-    const db = createQueueDb('skipped', { casFailures: 3 })
-    const dlqMessage = message(6)
-
-    await handleMetaCapiBatch(batch('meigallery-meta-capi-dlq', dlqMessage), env(db))
-
-    expect(db.delivery.status).toBe('skipped')
-    expect(dlqMessage.ack).not.toHaveBeenCalled()
-    expect(dlqMessage.retry).toHaveBeenCalledWith({ delaySeconds: 1800 })
-  })
-
-  it('failed 重试成功时只把日报桶从 failed 移到 sent', async () => {
-    const db = createQueueDb('failed')
-    const queueMessage = message(3)
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }))
-
-    await handleMetaCapiBatch(batch('meigallery-meta-capi', queueMessage), env(db))
-
-    expect(queueMessage.ack).toHaveBeenCalledOnce()
-    expect(db.delivery).toMatchObject({ status: 'sent', attempt_count: 2 })
-    expect(db.daily.get('failed')).toBe(0)
-    expect(db.daily.get('sent')).toBe(1)
-  })
-
-  it('Meta success 遇到 pending 到 failed 的 CAS 竞争时重读并确认 sent', async () => {
-    const db = createQueueDb('pending', { beforeFirstCasStatus: 'failed' })
-    const queueMessage = message(2)
+    const first = queueMessage(queued[0]!)
+    const second = queueMessage(queued[1]!)
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }))
 
-    await handleMetaCapiBatch(batch('meigallery-meta-capi', queueMessage), env(db))
+    await handleMetaCapiBatch(batch(first), env(db))
+    await handleMetaCapiBatch(batch(second), env(db))
 
-    expect(queueMessage.ack).toHaveBeenCalledOnce()
-    expect(queueMessage.retry).not.toHaveBeenCalled()
-    expect(db.delivery.status).toBe('sent')
-    expect(db.daily.get('pending')).toBe(0)
-    expect(db.daily.get('failed')).toBe(0)
-    expect(db.daily.get('sent')).toBe(1)
-
-    await handleMetaCapiBatch(batch('meigallery-meta-capi', queueMessage), env(db))
     expect(fetchMock).toHaveBeenCalledOnce()
     expect(db.delivery.status).toBe('sent')
     expect(db.daily.get('sent')).toBe(1)
-    expect(db.daily.get('duplicate_suppressed')).toBe(1)
+    expect(first.ack).toHaveBeenCalledOnce()
+    expect(second.ack).toHaveBeenCalledOnce()
   })
 
-  it('Meta success 多次 CAS 竞争仍无法确认 sent 时 retry 而不 ack', async () => {
-    const db = createQueueDb('pending', { casFailures: 3 })
-    const queueMessage = message(2)
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }))
-
-    await handleMetaCapiBatch(batch('meigallery-meta-capi', queueMessage), env(db))
-
-    expect(queueMessage.ack).not.toHaveBeenCalled()
-    expect(queueMessage.retry).toHaveBeenCalledWith({ delaySeconds: 300 })
-    expect(db.delivery.status).toBe('pending')
-  })
-
-  it('永久失败与并发 sent 竞争时保持 sent 且不增加 failed 桶', async () => {
-    const db = createQueueDb('pending', { beforeFirstCasStatus: 'sent' })
-    const queueMessage = message(1)
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 400 }))
-
-    await handleMetaCapiBatch(batch('meigallery-meta-capi', queueMessage), env(db))
-
-    expect(queueMessage.ack).toHaveBeenCalledOnce()
-    expect(queueMessage.retry).not.toHaveBeenCalled()
-    expect(db.delivery.status).toBe('sent')
-    expect(db.daily.get('sent')).toBe(1)
-    expect(db.daily.get('failed')).toBe(0)
-  })
-
-  it('逐条处理消息，永久失败 ack、retryable 错误仅重试对应消息', async () => {
-    const db = createQueueDb()
-    const permanent = message(1)
-    const retryable = { ...message(2), body: { ...message(2).body, deliveryId: 'cdlv_2' } }
-    const fetchMock = vi.spyOn(globalThis, 'fetch')
-      .mockResolvedValueOnce(new Response('{}', { status: 400 }))
-      .mockRejectedValueOnce(new Error('token_private|fb.1.private'))
-
-    await handleMetaCapiBatch({
-      queue: 'meigallery-meta-capi',
-      messages: [permanent, retryable],
-    } as unknown as MessageBatch<MetaCapiQueueMessage>, env(db))
-
-    expect(permanent.ack).toHaveBeenCalledOnce()
-    expect(permanent.retry).not.toHaveBeenCalled()
-    expect(retryable.ack).not.toHaveBeenCalled()
-    expect(retryable.retry).toHaveBeenCalledWith({ delaySeconds: 300 })
-    expect(fetchMock).toHaveBeenCalledTimes(2)
-  })
-
-  it('已 sent delivery 多次消费不调用 fetch、不降级，duplicate_suppressed 日报只增加一次', async () => {
-    const db = createQueueDb('sent')
-    const sentBefore = db.daily.get('sent')
-    const queueMessage = message(2)
-    const fetchMock = vi.spyOn(globalThis, 'fetch')
-
-    await handleMetaCapiBatch(batch('meigallery-meta-capi', queueMessage), env(db))
-    await handleMetaCapiBatch(batch('meigallery-meta-capi', queueMessage), env(db))
-
-    expect(fetchMock).not.toHaveBeenCalled()
-    expect(queueMessage.ack).toHaveBeenCalledTimes(2)
-    expect(queueMessage.retry).not.toHaveBeenCalled()
-    expect(db.delivery.status).toBe('sent')
-    expect(db.daily.get('sent')).toBe(sentBefore)
-    expect(db.daily.get('duplicate_suppressed')).toBe(1)
-    expect(db.delivery.duplicate_suppressed_at).not.toBeNull()
-  })
-
-  it('错误日志不包含 token 或 Queue 临时 userData', async () => {
-    const db = createQueueDb()
-    const queueMessage = message()
-    const sensitive = `${queueMessage.body.userData.fbp}|${queueMessage.body.userData.fbc}|${queueMessage.body.userData.clientIpAddress}|${queueMessage.body.userData.clientUserAgent}|token_private`
-    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error(sensitive))
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-
-    await handleMetaCapiBatch(batch('meigallery-meta-capi', queueMessage), env(db))
-
-    expect(JSON.stringify(consoleError.mock.calls)).not.toContain('token_private')
-    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(queueMessage.body.userData.fbp)
-    expect(JSON.stringify(db.calls)).not.toContain('token_private')
-    expect(JSON.stringify(db.calls)).not.toContain(queueMessage.body.userData.fbp)
+  it('重试退避固定封顶', () => {
+    expect([1, 2, 3, 4, 5, 6].map(computeMetaRetryDelay)).toEqual([60, 300, 900, 1800, 1800, 1800])
+    expect(computeMetaRetryDelay(Number.NaN)).toBe(60)
   })
 })

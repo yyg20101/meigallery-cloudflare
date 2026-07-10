@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import { Hono } from 'hono'
 import { describe, expect, it } from 'vitest'
 import type { MetaCapiQueueMessage } from '@meigallery/shared'
@@ -6,6 +7,7 @@ import { createPixelReceiptToken } from '../utils/pixel-receipt'
 import { conversionRoutes } from './conversions'
 
 type Call = { sql: string; params: unknown[] }
+const DATA_KEY = Buffer.alloc(32, 7).toString('base64')
 
 function createConversionDb(options: {
   metaCapiEnabled?: boolean
@@ -13,6 +15,8 @@ function createConversionDb(options: {
   metaTrackingMode?: 'disabled' | 'test' | 'production'
 } = {}) {
   const calls: Call[] = []
+  let delivery: { id: string; status: string; queueEnqueuedAt: string | null; eventName: string } | null = null
+  let outbox: { deliveryId: string; keyId: string; iv: string; ciphertext: string; tag: string; expiresAt: string } | null = null
   const db = {
     calls,
     prepare(sql: string) {
@@ -27,6 +31,25 @@ function createConversionDb(options: {
           if (sql.includes("WHERE key = 'facebook_pixel_enabled'")) return { value: 'false' } as T
           if (sql.includes("WHERE key = 'facebook_pixel_id'")) return options.facebookPixelId ? ({ value: JSON.stringify(options.facebookPixelId) } as T) : null
           if (sql.includes("WHERE key = 'meta_tracking_mode'")) return { value: JSON.stringify(options.metaTrackingMode ?? 'disabled') } as T
+          if (sql.includes('FROM meta_capi_secure_outbox') && outbox && delivery) {
+            return {
+              delivery_id: outbox.deliveryId,
+              schema_version: 2,
+              key_id: outbox.keyId,
+              iv: outbox.iv,
+              ciphertext: outbox.ciphertext,
+              tag: outbox.tag,
+              expires_at: outbox.expiresAt,
+              status: delivery.status,
+              skip_reason: '',
+              error_code: '',
+              queue_enqueued_at: delivery.queueEnqueuedAt,
+              queue_attempt_count: 0,
+              updated_at: '2026-07-10 00:00:00',
+              date: '2026-07-10',
+              event_name: delivery.eventName,
+            } as T
+          }
           return null as T | null
         },
         async all<T>() {
@@ -34,6 +57,29 @@ function createConversionDb(options: {
         },
         async run() {
           calls.push(call)
+          if (sql.includes('INSERT OR IGNORE INTO analytics_conversion_deliveries')) {
+            delivery = {
+              id: String(call.params[0]),
+              status: String(call.params[5]),
+              queueEnqueuedAt: null,
+              eventName: String(call.params[4]),
+            }
+          } else if (sql.includes('INSERT INTO meta_capi_secure_outbox')) {
+            outbox = {
+              deliveryId: String(call.params[0]),
+              keyId: String(call.params[2]),
+              iv: String(call.params[3]),
+              ciphertext: String(call.params[4]),
+              tag: String(call.params[5]),
+              expiresAt: String(call.params[6]),
+            }
+          } else if (sql.includes('queue_attempt_count = queue_attempt_count + 1')) {
+            return { meta: { changes: delivery?.status === 'pending' && outbox ? 1 : 0 } }
+          } else if (sql.includes('queue_enqueued_at = datetime') && delivery) {
+            delivery.queueEnqueuedAt = '2026-07-11 00:00:00'
+          } else if (sql.includes('DELETE FROM meta_capi_secure_outbox')) {
+            outbox = null
+          }
           return { meta: { changes: 1, rows_written: 1, rows_read: 0, duration: 1 } }
         },
       }
@@ -411,16 +457,22 @@ describe('conversion routes', () => {
       APP_ENV: 'test',
       SESSION_SECRET: 'test-session-secret',
       META_CAPI_QUEUE: { send: async (message: MetaCapiQueueMessage) => { sent.push(message) } },
+      META_CAPI_DATA_KEY_CURRENT: DATA_KEY,
     } as unknown as Bindings)
 
     expect(res.status).toBe(201)
     expect(sent).toHaveLength(1)
-    expect(sent.every(message => JSON.stringify(message.userData) === JSON.stringify({
-      fbp: raw.fbp,
-      fbc: raw.fbc,
-      clientIpAddress: raw.clientIpAddress,
-      clientUserAgent: raw.clientUserAgent,
-    }))).toBe(true)
+    expect(sent[0]).toMatchObject({
+      schemaVersion: 2,
+      envelope: {
+        keyId: expect.stringMatching(/^[0-9a-f]{16}$/),
+        ciphertext: expect.any(String),
+      },
+    })
+    expect(JSON.stringify(sent)).not.toContain(raw.fbp)
+    expect(JSON.stringify(sent)).not.toContain(raw.fbc)
+    expect(JSON.stringify(sent)).not.toContain(raw.clientIpAddress)
+    expect(JSON.stringify(sent)).not.toContain(raw.clientUserAgent)
     expect(JSON.stringify(db.calls)).not.toContain(raw.fbp)
     expect(JSON.stringify(db.calls)).not.toContain(raw.fbc)
     expect(JSON.stringify(db.calls)).not.toContain(raw.clientIpAddress)

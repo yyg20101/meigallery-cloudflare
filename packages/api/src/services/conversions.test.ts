@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import type { MetaCapiQueueMessage } from '@meigallery/shared'
 import type { Bindings } from '../index'
@@ -11,7 +12,26 @@ import {
 
 type Call = { sql: string; params: unknown[] }
 type InsertedConversion = { id: string; actionType: string; dedupeKey: string; sessionId: string }
-type InsertedDelivery = { conversionActionId: string; eventName: string }
+type InsertedDelivery = {
+  id: string
+  conversionActionId: string
+  eventName: string
+  status: string
+  skipReason: string
+  encryptionKeyId: string
+  queueEnqueuedAt: string | null
+}
+type InsertedOutbox = {
+  deliveryId: string
+  schemaVersion: number
+  keyId: string
+  iv: string
+  ciphertext: string
+  tag: string
+  expiresAt: string
+}
+
+const DATA_KEY = Buffer.alloc(32, 7).toString('base64')
 
 function createConversionDb(options: {
   existingDedupeKeys?: string[]
@@ -24,6 +44,7 @@ function createConversionDb(options: {
   const calls: Call[] = []
   const insertedConversions: InsertedConversion[] = []
   const insertedDeliveries: InsertedDelivery[] = []
+  const insertedOutboxes: InsertedOutbox[] = []
   const dedupe = new Map((options.existingDedupeKeys ?? []).map((key) => [key, `existing_${key}`]))
   let statementCount = 0
 
@@ -33,6 +54,7 @@ function createConversionDb(options: {
       dedupe: Map<string, string>
       insertedConversions: InsertedConversion[]
       insertedDeliveries: InsertedDelivery[]
+      insertedOutboxes: InsertedOutbox[]
     },
   ) {
     if (call.sql.includes('INSERT OR IGNORE INTO analytics_conversion_actions')) {
@@ -46,9 +68,38 @@ function createConversionDb(options: {
     }
     if (call.sql.includes('INSERT OR IGNORE INTO analytics_conversion_deliveries')) {
       target.insertedDeliveries.push({
+        id: String(call.params[0]),
         conversionActionId: String(call.params[1]),
         eventName: String(call.params[4]),
+        status: String(call.params[5]),
+        skipReason: String(call.params[6]),
+        encryptionKeyId: String(call.params[11]),
+        queueEnqueuedAt: null,
       })
+    }
+    if (call.sql.includes('INSERT INTO meta_capi_secure_outbox')) {
+      target.insertedOutboxes.push({
+        deliveryId: String(call.params[0]),
+        schemaVersion: Number(call.params[1]),
+        keyId: String(call.params[2]),
+        iv: String(call.params[3]),
+        ciphertext: String(call.params[4]),
+        tag: String(call.params[5]),
+        expiresAt: String(call.params[6]),
+      })
+    }
+    if (call.sql.includes('queue_attempt_count = queue_attempt_count + 1')) {
+      const delivery = target.insertedDeliveries.find(item => item.id === String(call.params[0]))
+      const outbox = target.insertedOutboxes.find(item => item.deliveryId === delivery?.id)
+      return { meta: { changes: delivery?.status === 'pending' && !delivery.queueEnqueuedAt && outbox ? 1 : 0 } }
+    }
+    if (call.sql.includes('queue_enqueued_at = datetime')) {
+      const delivery = target.insertedDeliveries.find(item => item.id === String(call.params[0]))
+      if (delivery) delivery.queueEnqueuedAt = '2026-07-11 00:00:00'
+    }
+    if (call.sql.includes('DELETE FROM meta_capi_secure_outbox')) {
+      const index = target.insertedOutboxes.findIndex(item => item.deliveryId === String(call.params[0]))
+      if (index >= 0) target.insertedOutboxes.splice(index, 1)
     }
     return { meta: { changes: 1, rows_written: 1, rows_read: 0, duration: 1 } }
   }
@@ -80,6 +131,29 @@ function createConversionDb(options: {
           if (sql.includes("WHERE key = 'meta_tracking_mode'")) {
             return { value: JSON.stringify(options.metaTrackingMode ?? 'disabled') } as T
           }
+          if (sql.includes('FROM meta_capi_secure_outbox')) {
+            const deliveryId = String(call.params[0])
+            const outbox = insertedOutboxes.find(item => item.deliveryId === deliveryId)
+            const delivery = insertedDeliveries.find(item => item.id === deliveryId)
+            if (!outbox || !delivery) return null
+            return {
+              delivery_id: deliveryId,
+              schema_version: outbox.schemaVersion,
+              key_id: outbox.keyId,
+              iv: outbox.iv,
+              ciphertext: outbox.ciphertext,
+              tag: outbox.tag,
+              expires_at: outbox.expiresAt,
+              status: delivery.status,
+              skip_reason: delivery.skipReason,
+              error_code: '',
+              queue_enqueued_at: delivery.queueEnqueuedAt,
+              queue_attempt_count: 0,
+              updated_at: '2026-07-10 00:00:00',
+              date: '2026-07-10',
+              event_name: delivery.eventName,
+            } as T
+          }
           return null
         },
         async all<T>() {
@@ -88,7 +162,7 @@ function createConversionDb(options: {
         async run() {
           statementCount += 1
           calls.push(call)
-          const result = applyCall(call, { dedupe, insertedConversions, insertedDeliveries })
+          const result = applyCall(call, { dedupe, insertedConversions, insertedDeliveries, insertedOutboxes })
           if (options.failAt === statementCount) throw new Error('模拟 D1 写入失败')
           return result
         },
@@ -101,6 +175,7 @@ function createConversionDb(options: {
         dedupe: new Map(dedupe),
         insertedConversions: [...insertedConversions],
         insertedDeliveries: [...insertedDeliveries],
+        insertedOutboxes: [...insertedOutboxes],
       }
       const results = []
       for (const statement of statements) {
@@ -115,6 +190,7 @@ function createConversionDb(options: {
       for (const [key, value] of staged.dedupe) dedupe.set(key, value)
       insertedConversions.splice(0, insertedConversions.length, ...staged.insertedConversions)
       insertedDeliveries.splice(0, insertedDeliveries.length, ...staged.insertedDeliveries)
+      insertedOutboxes.splice(0, insertedOutboxes.length, ...staged.insertedOutboxes)
       return results
     },
     get failAt() {
@@ -124,15 +200,17 @@ function createConversionDb(options: {
       options.failAt = value
     },
   }
-  return Object.assign(db, { insertedDeliveries })
+  return Object.assign(db, { insertedDeliveries, insertedOutboxes })
 }
 
-function envFor(db: ReturnType<typeof createConversionDb>) {
+function envFor(db: ReturnType<typeof createConversionDb>, overrides: Partial<Bindings> = {}) {
   return {
     APP_ENV: 'test',
     DB: db,
     SESSION_SECRET: 'test-session-secret',
-  } as unknown as Pick<Bindings, 'APP_ENV' | 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>
+    META_CAPI_DATA_KEY_CURRENT: DATA_KEY,
+    ...overrides,
+  } as unknown as Pick<Bindings, 'APP_ENV' | 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE' | 'META_CAPI_DATA_KEY_CURRENT' | 'META_CAPI_DATA_KEY_PREVIOUS'>
 }
 
 function envWithQueueFor(db: ReturnType<typeof createConversionDb>, sent: MetaCapiQueueMessage[]) {
@@ -140,13 +218,14 @@ function envWithQueueFor(db: ReturnType<typeof createConversionDb>, sent: MetaCa
     APP_ENV: 'test',
     DB: db,
     SESSION_SECRET: 'test-session-secret',
+    META_CAPI_DATA_KEY_CURRENT: DATA_KEY,
     META_CAPI_QUEUE: {
       async send(message: MetaCapiQueueMessage) {
         sent.push(message)
         return { metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } } }
       },
     },
-  } as unknown as Pick<Bindings, 'APP_ENV' | 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>
+  } as unknown as Pick<Bindings, 'APP_ENV' | 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE' | 'META_CAPI_DATA_KEY_CURRENT' | 'META_CAPI_DATA_KEY_PREVIOUS'>
 }
 
 function grantedContactInput() {
@@ -194,7 +273,7 @@ describe('conversion ledger service', () => {
     expect(result.pixelEvents.every(item => item.receiptToken)).toBe(true)
     expect(db.calls.filter(call => (
       call.sql.includes('INSERT INTO analytics_conversion_delivery_daily')
-      && call.sql.includes("'pending'")
+      && call.params.includes('pending')
     ))).toHaveLength(1)
   })
 
@@ -428,7 +507,7 @@ describe('conversion ledger service', () => {
     ])
   })
 
-  it('CAPI 开启且 Queue 存在时发送完整版本化消息', async () => {
+  it('CAPI 开启且 Queue 存在时只发送 V2 密文消息', async () => {
     const sent: MetaCapiQueueMessage[] = []
     const db = createConversionDb({ metaCapiEnabled: true, metaTrackingMode: 'test', facebookPixelId: '1234567890' })
 
@@ -445,11 +524,19 @@ describe('conversion ledger service', () => {
       call.sql.includes('analytics_conversion_deliveries') &&
       call.params[2] === 'meta_capi'
     ))
-    expect(sent).toEqual([{
-      schemaVersion: 1,
+    expect(sent).toHaveLength(1)
+    expect(sent[0]).toMatchObject({
+      schemaVersion: 2,
       deliveryId: capiDelivery?.params[0] as string,
-      userData: {},
-    }])
+      envelope: {
+        keyId: expect.stringMatching(/^[0-9a-f]{16}$/),
+        iv: expect.any(String),
+        ciphertext: expect.any(String),
+        tag: expect.any(String),
+        expiresAt: expect.any(String),
+      },
+    })
+    expect(Object.keys(sent[0] ?? {}).sort()).toEqual(['deliveryId', 'envelope', 'schemaVersion'])
     expect(capiDelivery?.sql).toContain('tracking_mode')
     expect(capiDelivery?.params).toContain('test')
     expect(db.calls.some(call => (
@@ -458,7 +545,7 @@ describe('conversion ledger service', () => {
     ))).toBe(true)
   })
 
-  it('只将临时匹配数据通过 CAPI Queue 传递，并仅以 0|1 写入 delivery 覆盖率', async () => {
+  it('只将临时匹配数据加密后投递，并仅以 0|1 写入 delivery 覆盖率', async () => {
     const db = createConversionDb({ metaCapiEnabled: true, metaTrackingMode: 'test', facebookPixelId: '1234567890' })
     const sent: MetaCapiQueueMessage[] = []
     const userData = {
@@ -482,12 +569,11 @@ describe('conversion ledger service', () => {
 
     expect(sent).toHaveLength(1)
     expect(supplierCalls).toBe(1)
-    expect(sent.map(message => message.userData)).toEqual([{
-      fbp: userData.fbp,
-      fbc: userData.fbc,
-      clientIpAddress: userData.clientIpAddress,
-      clientUserAgent: userData.clientUserAgent,
-    }])
+    expect(sent[0]).toMatchObject({ schemaVersion: 2, envelope: { keyId: expect.any(String) } })
+    expect(JSON.stringify(sent)).not.toContain(userData.fbp)
+    expect(JSON.stringify(sent)).not.toContain(userData.fbc)
+    expect(JSON.stringify(sent)).not.toContain(userData.clientIpAddress)
+    expect(JSON.stringify(sent)).not.toContain(userData.clientUserAgent)
     const deliveryCalls = db.calls.filter(call => call.sql.includes('INSERT OR IGNORE INTO analytics_conversion_deliveries'))
     expect(deliveryCalls).toHaveLength(1)
     expect(deliveryCalls.every(call => call.params.includes(1))).toBe(true)
@@ -569,6 +655,62 @@ describe('conversion ledger service', () => {
       call.sql.includes("error_code = 'missing_queue'")
     ))).toBe(true)
     expect(db.calls.some(call => call.sql.includes('SET\n        status = ?') && call.params[0] === 'skipped')).toBe(false)
+  })
+
+  it('outbox statement 失败时 action、delivery 与密文均不残留', async () => {
+    const db = createConversionDb({
+      metaCapiEnabled: true,
+      metaTrackingMode: 'test',
+      facebookPixelId: '1234567890',
+      failAt: 5,
+    })
+
+    await expect(recordContact(envFor(db), grantedContactInput(), {
+      getMetaCapiUserData: () => ({
+        fbp: 'fb.1.1700000000000.123456789',
+        clientIpAddress: '203.0.113.24',
+      }),
+    })).rejects.toThrow('模拟 D1 写入失败')
+
+    expect(db.insertedConversions).toEqual([])
+    expect(db.insertedDeliveries).toEqual([])
+    expect(db.insertedOutboxes).toEqual([])
+  })
+
+  it.each([
+    ['missing_data_key', undefined],
+    ['invalid_data_key', 'not-a-valid-data-key'],
+  ] as const)('数据密钥异常时 Pixel 与业务事实正常，CAPI 只写 skipped/%s', async (reason, dataKey) => {
+    const db = createConversionDb({
+      facebookPixelEnabled: true,
+      facebookPixelId: '1234567890',
+      metaCapiEnabled: true,
+      metaTrackingMode: 'test',
+    })
+    const sent: MetaCapiQueueMessage[] = []
+    let supplierCalls = 0
+    const conversionEnv = {
+      ...envWithQueueFor(db, sent),
+      META_CAPI_DATA_KEY_CURRENT: dataKey,
+    }
+
+    const result = await recordContact(conversionEnv, grantedContactInput(), {
+      getMetaCapiUserData: () => {
+        supplierCalls += 1
+        return { fbp: 'fb.1.1700000000000.123456789' }
+      },
+    })
+
+    expect(result.created).toBe(true)
+    expect(result.pixelEvents).toHaveLength(1)
+    expect(supplierCalls).toBe(0)
+    expect(sent).toEqual([])
+    expect(db.insertedConversions).toHaveLength(1)
+    expect(db.insertedDeliveries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ status: 'pending', skipReason: '' }),
+      expect.objectContaining({ status: 'skipped', skipReason: reason, encryptionKeyId: '' }),
+    ]))
+    expect(db.insertedOutboxes).toEqual([])
   })
 
   it('同 session 不同 contact target 分别记录且不生成 Lead', async () => {

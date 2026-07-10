@@ -113,16 +113,8 @@ export interface MetaCapiSensitiveContext {
   fbc?: string
   clientIpAddress?: string
   clientUserAgent?: string
-}
-
-/** @deprecated Secure Task 3 完成前保留 V1 Queue 消息兼容。 */
-export interface MetaCapiUserData extends MetaCapiSensitiveContext {}
-
-/** @deprecated Secure Task 3 完成前保留 V1 Queue 消息兼容。 */
-export interface MetaCapiQueueMessageV1 {
-  schemaVersion: 1
-  deliveryId: string
-  userData: MetaCapiUserData
+  emailSha256?: string
+  externalIdSha256?: string
 }
 
 export interface MetaCapiEncryptedEnvelope {
@@ -133,13 +125,11 @@ export interface MetaCapiEncryptedEnvelope {
   expiresAt: string
 }
 
-export interface MetaCapiQueueMessageV2 {
+export interface MetaCapiQueueMessage {
   schemaVersion: 2
   deliveryId: string
   envelope: MetaCapiEncryptedEnvelope
 }
-
-export type MetaCapiQueueMessage = MetaCapiQueueMessageV1 | MetaCapiQueueMessageV2
 
 export type ConversionSkipReason =
   | 'disabled'
@@ -150,6 +140,11 @@ export type ConversionSkipReason =
   | 'unsupported_event'
   | 'consent_denied'
   | 'invalid_payload'
+  | 'missing_data_key'
+  | 'invalid_data_key'
+  | 'secure_context_expired'
+  | 'secure_context_invalid'
+  | 'legacy_message_unsupported'
 
 /** 分析设备类型 */
 export type AnalyticsDeviceType = 'desktop' | 'tablet' | 'mobile' | 'unknown'

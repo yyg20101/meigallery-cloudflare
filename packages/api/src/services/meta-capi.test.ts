@@ -225,10 +225,17 @@ afterEach(() => {
 })
 
 describe('meta-capi', () => {
-  it('共享跳过原因包含历史事件安全终态', () => {
-    const reason: ConversionSkipReason = 'unsupported_event'
+  it('共享跳过原因包含安全投递终态', () => {
+    const reasons: ConversionSkipReason[] = [
+      'unsupported_event',
+      'missing_data_key',
+      'invalid_data_key',
+      'secure_context_expired',
+      'secure_context_invalid',
+      'legacy_message_unsupported',
+    ]
 
-    expect(reason).toBe('unsupported_event')
+    expect(reasons).toHaveLength(6)
   })
 
   it('CAPI payload 事件名使用活动 Meta 事件类型', () => {
@@ -247,6 +254,55 @@ describe('meta-capi', () => {
     })
     expect(JSON.stringify(payload)).toContain('telegram')
     expect(JSON.stringify(payload)).not.toContain('user@example.test')
+  })
+
+  it('Contact 无条件丢弃邮箱与 external ID hash', () => {
+    const payload = buildMetaCapiPayload({
+      eventName: 'Contact',
+      eventId: 'event_contact_hash_defense',
+      eventTime: 1783600800,
+      eventSourceUrl: 'https://616618.xyz/',
+      actionSource: 'website',
+      userData: {
+        fbp: 'fb.1.1700000000000.123456789',
+        emailSha256: 'a'.repeat(64),
+        externalIdSha256: 'b'.repeat(64),
+      },
+    })
+
+    expect(payload.data[0]?.user_data).toEqual({ fbp: 'fb.1.1700000000000.123456789' })
+    expect(payload.data[0]?.user_data).not.toHaveProperty('em')
+    expect(payload.data[0]?.user_data).not.toHaveProperty('external_id')
+  })
+
+  it('CompleteRegistration 仅接受 lowercase SHA-256 单元素数组', () => {
+    const emailSha256 = 'a'.repeat(64)
+    const externalIdSha256 = 'b'.repeat(64)
+    const valid = buildMetaCapiPayload({
+      eventName: 'CompleteRegistration',
+      eventId: 'event_registration_hashes',
+      eventTime: 1783600800,
+      eventSourceUrl: 'https://616618.xyz/register',
+      actionSource: 'website',
+      userData: { emailSha256, externalIdSha256 },
+    })
+    const invalid = buildMetaCapiPayload({
+      eventName: 'CompleteRegistration',
+      eventId: 'event_registration_bad_hashes',
+      eventTime: 1783600800,
+      eventSourceUrl: 'https://616618.xyz/register',
+      actionSource: 'website',
+      userData: {
+        emailSha256: 'A'.repeat(64),
+        externalIdSha256: 'b'.repeat(63),
+      },
+    })
+
+    expect(valid.data[0]?.user_data).toEqual({
+      em: [emailSha256],
+      external_id: [externalIdSha256],
+    })
+    expect(invalid.data[0]?.user_data).toEqual({})
   })
 
   it('custom_data 只保留白名单内的有效字符串、有限数字和布尔值', () => {

@@ -1,4 +1,4 @@
-import type { MetaCapiUserData } from '@meigallery/shared'
+import type { MetaCapiSensitiveContext } from '@meigallery/shared'
 
 const FBP_PATTERN = /^fb\.1\.\d{10,16}\.[A-Za-z0-9._-]{1,128}$/
 const FBC_PATTERN = /^fb\.1\.\d{10,16}\.[A-Za-z0-9._-]{1,128}$/
@@ -7,7 +7,7 @@ const IP_MAX_LENGTH = 64
 const USER_AGENT_MAX_LENGTH = 512
 const IDENTIFIER_ERROR = 'META_CAPI_IDENTIFIER_INVALID'
 
-export function normalizeMetaBrowserIdentifiers(value: unknown): Pick<MetaCapiUserData, 'fbp' | 'fbc'> {
+export function normalizeMetaBrowserIdentifiers(value: unknown): Pick<MetaCapiSensitiveContext, 'fbp' | 'fbc'> {
   if (!isPlainRecord(value)) return {}
   const fbp = textValue(value.fbp)
   const fbc = textValue(value.fbc)
@@ -17,7 +17,7 @@ export function normalizeMetaBrowserIdentifiers(value: unknown): Pick<MetaCapiUs
   }
 }
 
-export function normalizeMetaCapiUserData(value: unknown): MetaCapiUserData {
+export function normalizeMetaCapiUserData(value: unknown): MetaCapiSensitiveContext {
   if (!isPlainRecord(value)) return {}
   const identifiers = normalizeMetaBrowserIdentifiers(value)
   const clientIpAddress = safeHeaderValue(value.clientIpAddress, IP_MAX_LENGTH)
@@ -29,7 +29,7 @@ export function normalizeMetaCapiUserData(value: unknown): MetaCapiUserData {
   }
 }
 
-export function buildMetaCapiUserData(request: Request, bodyIdentifiers: unknown): MetaCapiUserData {
+export function buildMetaCapiUserData(request: Request, bodyIdentifiers: unknown): MetaCapiSensitiveContext {
   return normalizeMetaCapiUserData({
     ...normalizeMetaBrowserIdentifiers(bodyIdentifiers),
     clientIpAddress: request.headers.get('CF-Connecting-IP'),

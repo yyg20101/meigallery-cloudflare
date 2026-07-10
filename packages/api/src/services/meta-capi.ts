@@ -1,4 +1,4 @@
-import type { ActiveMetaEventName, ConversionDeliveryStatus, MetaCapiUserData, MetaTrackingMode } from '@meigallery/shared'
+import type { ActiveMetaEventName, ConversionDeliveryStatus, MetaCapiSensitiveContext, MetaTrackingMode } from '@meigallery/shared'
 import { ACTIVE_META_EVENTS, ATTRIBUTION_LIMITS } from '@meigallery/shared/constants'
 import type { Bindings } from '../index'
 import { normalizeMetaCapiUserData } from '../utils/meta-browser-identifiers'
@@ -12,7 +12,7 @@ export type MetaCapiPayloadInput = {
   eventTime: number
   eventSourceUrl: string
   actionSource: 'website'
-  userData?: MetaCapiUserData
+  userData?: MetaCapiSensitiveContext
   customData?: Record<string, unknown>
   testEventCode?: string
 }
@@ -26,7 +26,7 @@ export type ConversionDeliverySnapshot = {
   date: string
 }
 
-type MetaCapiDeliveryRow = ConversionDeliverySnapshot & {
+export type MetaCapiDeliveryRow = ConversionDeliverySnapshot & {
   conversion_action_id: string
   external_event_id: string
   error_code: string
@@ -34,6 +34,8 @@ type MetaCapiDeliveryRow = ConversionDeliverySnapshot & {
   attempt_count: number
   tracking_mode: MetaTrackingMode
   duplicate_suppressed_at: string | null
+  encryption_key_id: string
+  created_at: string
   occurred_at: string
   path: string
   metadata: string
@@ -91,6 +93,12 @@ const CUSTOM_DATA_ALLOWLIST = new Set([
 
 export function buildMetaCapiPayload(input: MetaCapiPayloadInput) {
   const userData = normalizeMetaCapiUserData(input.userData)
+  const enhancedMatching = input.eventName === 'CompleteRegistration'
+    ? {
+        em: validSha256(input.userData?.emailSha256) ? [input.userData!.emailSha256!] : undefined,
+        external_id: validSha256(input.userData?.externalIdSha256) ? [input.userData!.externalIdSha256!] : undefined,
+      }
+    : {}
   const event: Record<string, unknown> = {
     event_name: input.eventName,
     event_time: input.eventTime,
@@ -102,6 +110,7 @@ export function buildMetaCapiPayload(input: MetaCapiPayloadInput) {
       fbc: userData.fbc,
       client_ip_address: userData.clientIpAddress,
       client_user_agent: userData.clientUserAgent,
+      ...enhancedMatching,
     }),
     custom_data: sanitizeCustomData(input.customData || {}),
   }
@@ -120,7 +129,7 @@ export async function sendMetaCapiEvent(
   deliveryId: string,
   options: {
     testEventCode?: string
-    userData?: MetaCapiUserData
+    userData?: MetaCapiSensitiveContext
     fetchFn?: typeof fetch
     timeoutMs?: number
     signal?: AbortSignal
@@ -322,7 +331,7 @@ export async function readMetaCapiDelivery(db: D1Database, deliveryId: string) {
     SELECT
       d.id, d.conversion_action_id, d.channel, d.external_event_id, d.event_name,
       d.status, d.skip_reason, d.error_code, d.error_message, d.attempt_count,
-      d.tracking_mode, d.duplicate_suppressed_at,
+      d.tracking_mode, d.duplicate_suppressed_at, d.encryption_key_id, d.created_at,
       a.occurred_at, a.date, a.path, a.metadata
     FROM analytics_conversion_deliveries d
     JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
@@ -566,6 +575,10 @@ function sanitizeCustomData(input: Record<string, unknown>) {
 
 function compactObject(input: Record<string, unknown>) {
   return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined && value !== ''))
+}
+
+function validSha256(value: unknown): value is string {
+  return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value)
 }
 
 function parseMetadata(value: string) {

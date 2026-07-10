@@ -32,6 +32,7 @@ import {
   cleanupAnalyticsRetention,
 } from './services/analytics-aggregate'
 import { recoverPendingMetaCapiDeliveries } from './services/meta-capi-queue'
+import { purgeExpiredMetaCapiOutbox } from './services/meta-capi-secure-outbox'
 import { recoverRegistrationConversionFacts } from './services/registration-conversion-recovery'
 
 /** Hono 应用绑定类型 */
@@ -265,6 +266,15 @@ const DAILY_MAINTENANCE_CRON = '0 0 * * *'
 
 async function handleScheduled(event: ScheduledEvent, env: Bindings): Promise<void> {
   const db = env.DB
+
+  try {
+    const purge = await purgeExpiredMetaCapiOutbox(db, 100)
+    console.log('[cron] Meta CAPI 过期密文清理完成:', purge)
+  } catch {
+    console.error('[cron] Meta CAPI 过期密文清理失败:', {
+      errorCode: 'secure_outbox_purge_failed',
+    })
+  }
 
   try {
     const recovery = await recoverPendingMetaCapiDeliveries(env)

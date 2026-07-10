@@ -1,7 +1,11 @@
+import { Buffer } from 'node:buffer'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import app from './index'
 import type { Bindings } from './index'
 import type { MetaCapiQueueMessage } from '@meigallery/shared'
+import { encryptMetaCapiContext, loadMetaCapiCryptoKeys } from './utils/meta-capi-crypto'
+
+const DATA_KEY = Buffer.alloc(32, 7).toString('base64')
 
 function env(corsOrigin?: string) {
   return {
@@ -41,7 +45,7 @@ describe('Meta CAPI Queue consumer', () => {
     vi.restoreAllMocks()
   })
 
-  it('将 Queue 的临时 userData 传给 CAPI payload 后确认消息', async () => {
+  it('解密 Queue V2 envelope 后构造 CAPI payload 并确认消息', async () => {
     const delivery = {
       id: 'cdlv_1',
       conversion_action_id: 'conv_1',
@@ -55,6 +59,8 @@ describe('Meta CAPI Queue consumer', () => {
       attempt_count: 0,
       tracking_mode: 'production',
       duplicate_suppressed_at: null,
+      encryption_key_id: '',
+      created_at: new Date().toISOString(),
       occurred_at: '2026-07-09T10:00:00.000Z',
       date: '2026-07-09',
       path: '/',
@@ -77,14 +83,31 @@ describe('Meta CAPI Queue consumer', () => {
         return Promise.all(statements.map(statement => statement.run()))
       },
     }
-    const body: MetaCapiQueueMessage = {
-      schemaVersion: 1,
-      deliveryId: delivery.id,
-      userData: {
+    const keys = await loadMetaCapiCryptoKeys({ META_CAPI_DATA_KEY_CURRENT: DATA_KEY })
+    const sealed = await encryptMetaCapiContext({
+      keys,
+      aad: {
+        deliveryId: delivery.id,
+        externalEventId: delivery.external_event_id,
+        eventName: 'Contact',
+      },
+      value: {
         fbp: 'fb.1.1700000000000.123456789',
         fbc: 'fb.1.1700000000000.CLICK_abc-123',
         clientIpAddress: '203.0.113.24',
         clientUserAgent: 'MeiGallery Test Browser/1.0',
+      },
+    })
+    delivery.encryption_key_id = sealed.keyId
+    const body: MetaCapiQueueMessage = {
+      schemaVersion: 2,
+      deliveryId: delivery.id,
+      envelope: {
+        keyId: sealed.keyId,
+        iv: sealed.iv,
+        ciphertext: sealed.ciphertext,
+        tag: sealed.tag,
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
       },
     }
     const message = { body, ack: vi.fn(), retry: vi.fn() }
@@ -94,26 +117,28 @@ describe('Meta CAPI Queue consumer', () => {
       APP_ENV: 'test',
       SITE_URL: 'https://616618.xyz',
       META_CAPI_ACCESS_TOKEN: 'token_1',
+      META_CAPI_DATA_KEY_CURRENT: DATA_KEY,
       DB: db,
     } as unknown as Bindings)
 
     const payload = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))
     expect(payload.data[0].user_data).toEqual({
-      fbp: body.userData.fbp,
-      fbc: body.userData.fbc,
-      client_ip_address: body.userData.clientIpAddress,
-      client_user_agent: body.userData.clientUserAgent,
+      fbp: 'fb.1.1700000000000.123456789',
+      fbc: 'fb.1.1700000000000.CLICK_abc-123',
+      client_ip_address: '203.0.113.24',
+      client_user_agent: 'MeiGallery Test Browser/1.0',
     })
     expect(message.ack).toHaveBeenCalledOnce()
     expect(message.retry).not.toHaveBeenCalled()
 
-    const sensitive = `${body.userData.fbp}|${body.userData.fbc}|${body.userData.clientIpAddress}|${body.userData.clientUserAgent}|token_private`
+    const sensitive = 'fb.1.1700000000000.123456789|fb.1.1700000000000.CLICK_abc-123|203.0.113.24|MeiGallery Test Browser/1.0|token_private'
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     fetchMock.mockRejectedValueOnce(new Error(sensitive))
     await app.queue({ queue: 'meigallery-meta-capi', messages: [message] } as unknown as MessageBatch<MetaCapiQueueMessage>, {
       APP_ENV: 'test',
       SITE_URL: 'https://616618.xyz',
       META_CAPI_ACCESS_TOKEN: 'token_1',
+      META_CAPI_DATA_KEY_CURRENT: DATA_KEY,
       DB: db,
     } as unknown as Bindings)
 
@@ -126,12 +151,40 @@ describe('Meta CAPI scheduled recovery', () => {
   function createScheduledHarness() {
     const sent: MetaCapiQueueMessage[] = []
     const sqlCalls: string[] = []
+    const envelope = {
+      keyId: '0123456789abcdef',
+      iv: 'AQIDBAUGBwgJCgsM',
+      ciphertext: 'c2VjdXJlLWNpcGhlcnRleHQ',
+      tag: 'AQIDBAUGBwgJCgsMDQ4PEA',
+      expiresAt: '2099-01-01T00:00:00.000Z',
+    }
     const db = {
       prepare(sql: string) {
         sqlCalls.push(sql)
         return {
           bind() { return this },
-          async first() { return null },
+          async first() {
+            if (sql.includes('FROM meta_capi_secure_outbox')) {
+              return {
+                delivery_id: 'cdlv_stale',
+                schema_version: 2,
+                key_id: envelope.keyId,
+                iv: envelope.iv,
+                ciphertext: envelope.ciphertext,
+                tag: envelope.tag,
+                expires_at: envelope.expiresAt,
+                status: 'pending',
+                skip_reason: '',
+                error_code: '',
+                queue_enqueued_at: null,
+                queue_attempt_count: 0,
+                updated_at: '2026-07-10 00:00:00',
+                date: '2026-07-10',
+                event_name: 'Contact',
+              }
+            }
+            return null
+          },
           async all<T>() {
             return {
               results: (sql.includes('queue_enqueued_at IS NULL') ? [{ id: 'cdlv_stale' }] : []) as T[],
@@ -160,6 +213,7 @@ describe('Meta CAPI scheduled recovery', () => {
     return {
       sent,
       sqlCalls,
+      expectedMessage: { schemaVersion: 2, deliveryId: 'cdlv_stale', envelope } as MetaCapiQueueMessage,
       async run(cron: string, scheduledTime = Date.parse('2026-07-10T09:00:00.000Z')) {
         await app.scheduled({ cron, scheduledTime } as ScheduledEvent, scheduledEnv, ctx)
         await scheduledWork
@@ -172,7 +226,7 @@ describe('Meta CAPI scheduled recovery', () => {
 
     await harness.run('*/5 * * * *')
 
-    expect(harness.sent).toEqual([{ schemaVersion: 1, deliveryId: 'cdlv_stale', userData: {} }])
+    expect(harness.sent).toEqual([harness.expectedMessage])
     expect(harness.sqlCalls.some(sql => sql.includes('email_verification_codes'))).toBe(false)
     expect(harness.sqlCalls.some(sql => sql.includes('analytics_daily_sources'))).toBe(false)
     expect(harness.sqlCalls.some(sql => sql.includes('analytics_events WHERE sampled'))).toBe(false)
@@ -183,7 +237,7 @@ describe('Meta CAPI scheduled recovery', () => {
 
     await harness.run('0 0 * * *')
 
-    expect(harness.sent).toEqual([{ schemaVersion: 1, deliveryId: 'cdlv_stale', userData: {} }])
+    expect(harness.sent).toEqual([harness.expectedMessage])
     expect(harness.sqlCalls.some(sql => sql.includes('email_verification_codes'))).toBe(true)
     expect(harness.sqlCalls.some(sql => sql.includes('analytics_daily_sources'))).toBe(true)
     expect(harness.sqlCalls.some(sql => sql.includes('analytics_events WHERE sampled'))).toBe(true)
@@ -194,7 +248,7 @@ describe('Meta CAPI scheduled recovery', () => {
 
     await harness.run('13 * * * *')
 
-    expect(harness.sent).toEqual([{ schemaVersion: 1, deliveryId: 'cdlv_stale', userData: {} }])
+    expect(harness.sent).toEqual([harness.expectedMessage])
     expect(harness.sqlCalls.some(sql => sql.includes('email_verification_codes'))).toBe(false)
     expect(harness.sqlCalls.some(sql => sql.includes('analytics_daily_sources'))).toBe(false)
   })
@@ -208,6 +262,6 @@ describe('Meta CAPI scheduled recovery', () => {
 
     expect(wholeHour.sqlCalls.some(sql => sql.includes('FROM users u'))).toBe(true)
     expect(otherMinute.sqlCalls.some(sql => sql.includes('FROM users u'))).toBe(false)
-    expect(wholeHour.sent).toEqual([{ schemaVersion: 1, deliveryId: 'cdlv_stale', userData: {} }])
+    expect(wholeHour.sent).toEqual([wholeHour.expectedMessage])
   })
 })

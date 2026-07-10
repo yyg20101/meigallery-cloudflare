@@ -1,4 +1,12 @@
-import type { ActiveConversionActionType, AnalyticsConsentState, AnalyticsSourceChannel, MetaCapiUserData, MetaPixelInstruction, MetaTrackingMode } from '@meigallery/shared'
+import type {
+  ActiveConversionActionType,
+  AnalyticsConsentState,
+  AnalyticsSourceChannel,
+  ConversionSkipReason,
+  MetaCapiSensitiveContext,
+  MetaPixelInstruction,
+  MetaTrackingMode,
+} from '@meigallery/shared'
 import type { Bindings } from '../index'
 import { generateId } from '../utils/db'
 import { parseStoredSettingValue } from '../utils/stored-setting-value'
@@ -11,8 +19,26 @@ import {
 } from '../utils/conversions'
 import { createPixelReceiptToken, type PixelReceiptClaims } from '../utils/pixel-receipt'
 import { normalizeMetaCapiUserData } from '../utils/meta-browser-identifiers'
+import {
+  encryptMetaCapiContext,
+  loadMetaCapiCryptoKeys,
+  type MetaCapiCryptoKeys,
+  type MetaCapiEncryptedEnvelope,
+} from '../utils/meta-capi-crypto'
 import { transitionDeliveryStatus } from './meta-capi'
-import { enqueueMetaCapiDelivery } from './meta-capi-queue'
+import { createSecureOutboxStatement, enqueueSecureMetaCapiDelivery } from './meta-capi-secure-outbox'
+
+const SECURE_CONTEXT_TTL_MS = 24 * 60 * 60 * 1000
+
+type ConversionEnv = Pick<
+  Bindings,
+  | 'DB'
+  | 'APP_ENV'
+  | 'SESSION_SECRET'
+  | 'META_CAPI_QUEUE'
+  | 'META_CAPI_DATA_KEY_CURRENT'
+  | 'META_CAPI_DATA_KEY_PREVIOUS'
+>
 
 export interface RecordConversionInput {
   actionType: ActiveConversionActionType
@@ -71,7 +97,7 @@ export type RecordRegistrationFactOnlyInput = Pick<
 >
 
 export interface RecordConversionContext {
-  getMetaCapiUserData: () => MetaCapiUserData
+  getMetaCapiUserData: () => MetaCapiSensitiveContext
 }
 
 export interface MarkPixelAttemptedResult {
@@ -85,17 +111,28 @@ type PlannedDelivery = {
   eventName: NonNullable<ReturnType<typeof metaEventForConversion>>
   eventId: string
   pixelInstruction?: MetaPixelInstruction
-  userData: MetaCapiUserData
+  status: 'pending' | 'skipped'
+  skipReason: '' | Extract<ConversionSkipReason, 'missing_data_key' | 'invalid_data_key'>
+  envelope?: MetaCapiEncryptedEnvelope
+  expiresAt?: string
   hasFbp: 0 | 1
   hasFbc: 0 | 1
+  hasEmail: 0 | 1
+  hasExternalId: 0 | 1
+  encryptionKeyId: string
   trackingMode: MetaTrackingMode
   statementIndex: number
 }
 
+type CapiEncryptionPlan =
+  | { state: 'disabled' }
+  | { state: 'skipped'; reason: Extract<ConversionSkipReason, 'missing_data_key' | 'invalid_data_key'> }
+  | { state: 'ready'; keys: MetaCapiCryptoKeys; context: MetaCapiSensitiveContext }
+
 type MetaDeliverySettings = Awaited<ReturnType<typeof readMetaDeliverySettings>>
 
 export async function recordContact(
-  env: Pick<Bindings, 'DB' | 'APP_ENV' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>,
+  env: ConversionEnv,
   input: RecordContactInput,
   context?: RecordConversionContext,
 ) {
@@ -108,7 +145,7 @@ export async function recordContact(
 }
 
 export async function recordRegistration(
-  env: Pick<Bindings, 'DB' | 'APP_ENV' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>,
+  env: ConversionEnv,
   input: RecordRegistrationInput,
   context?: RecordConversionContext,
 ) {
@@ -167,7 +204,7 @@ export async function recordRegistrationFactOnly(
 }
 
 async function recordActiveConversion(
-  env: Pick<Bindings, 'DB' | 'APP_ENV' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>,
+  env: ConversionEnv,
   input: RecordConversionInput,
   context: RecordConversionContext = { getMetaCapiUserData: () => ({}) },
 ): Promise<RecordConversionResult> {
@@ -380,7 +417,7 @@ function conversionDailyStatement(db: D1Database, input: RecordConversionInput, 
 }
 
 async function buildConversionBatchPlan(
-  env: Pick<Bindings, 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>,
+  env: ConversionEnv,
   actionId: string,
   input: RecordConversionInput,
   occurredAt: string,
@@ -391,15 +428,20 @@ async function buildConversionBatchPlan(
   const statements: D1PreparedStatement[] = []
   const deliveries: PlannedDelivery[] = []
   const settings = await readMetaDeliverySettings(env.DB)
-  const metaCapiUserData = shouldCreateMetaCapiDelivery(settings, input)
-    ? normalizeMetaCapiUserData(context.getMetaCapiUserData())
-    : {}
+  const capiEncryption = await buildCapiEncryptionPlan(env, settings, input, context)
   const actionStatementIndex = statements.push(conversionActionStatement(env.DB, actionId, input, occurredAt, date, dedupeKey)) - 1
   statements.push(conversionDailyStatement(env.DB, input, date, actionId))
-  deliveries.push(...await planMetaDeliveries(env, settings, input, date, metaCapiUserData))
+  deliveries.push(...await planMetaDeliveries(env, settings, input, date, capiEncryption))
   for (const delivery of deliveries) {
     delivery.statementIndex = statements.push(conversionDeliveryStatement(env.DB, delivery, actionId)) - 1
-    statements.push(pendingDeliveryDailyStatement(env.DB, delivery, date))
+    statements.push(deliveryDailyStatement(env.DB, delivery, date))
+    if (delivery.channel === 'meta_capi' && delivery.envelope && delivery.expiresAt) {
+      statements.push(createSecureOutboxStatement(env.DB, {
+        deliveryId: delivery.deliveryId,
+        envelope: delivery.envelope,
+        expiresAt: delivery.expiresAt,
+      }))
+    }
   }
 
   return { statements, actionStatementIndex, deliveries }
@@ -431,11 +473,11 @@ function conversionActionStatement(
 }
 
 async function planMetaDeliveries(
-  env: Pick<Bindings, 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>,
+  env: ConversionEnv,
   settings: MetaDeliverySettings,
   input: RecordConversionInput,
   date: string,
-  metaCapiUserData: MetaCapiUserData,
+  capiEncryption: CapiEncryptionPlan,
 ): Promise<PlannedDelivery[]> {
   if (input.consentState !== 'granted' || settings.mode === 'disabled' || !settings.pixelId) return []
   const eventName = metaEventForConversion(input.actionType)
@@ -469,16 +511,35 @@ async function planMetaDeliveries(
           }),
         }
       : undefined
-    const capiUserData = channel === 'meta_capi' ? metaCapiUserData : {}
+    const capiSkipped = channel === 'meta_capi' && capiEncryption.state === 'skipped'
+    const secureContext = channel === 'meta_capi' && capiEncryption.state === 'ready'
+      ? contextForEvent(eventName, capiEncryption.context)
+      : {}
+    const expiresAt = channel === 'meta_capi' && capiEncryption.state === 'ready'
+      ? new Date(Date.now() + SECURE_CONTEXT_TTL_MS).toISOString()
+      : undefined
+    const envelope = channel === 'meta_capi' && capiEncryption.state === 'ready'
+      ? await encryptMetaCapiContext({
+          keys: capiEncryption.keys,
+          aad: { deliveryId, externalEventId: eventId, eventName },
+          value: secureContext,
+        })
+      : undefined
     return {
       deliveryId,
       channel,
       eventName,
       eventId,
       pixelInstruction,
-      userData: capiUserData,
-      hasFbp: capiUserData.fbp ? 1 : 0,
-      hasFbc: capiUserData.fbc ? 1 : 0,
+      status: capiSkipped ? 'skipped' : 'pending',
+      skipReason: capiSkipped ? capiEncryption.reason : '',
+      envelope,
+      expiresAt,
+      hasFbp: secureContext.fbp ? 1 : 0,
+      hasFbc: secureContext.fbc ? 1 : 0,
+      hasEmail: secureContext.emailSha256 ? 1 : 0,
+      hasExternalId: secureContext.externalIdSha256 ? 1 : 0,
+      encryptionKeyId: envelope?.keyId ?? '',
       trackingMode: settings.mode,
       statementIndex: -1,
     }
@@ -489,9 +550,10 @@ function conversionDeliveryStatement(db: D1Database, delivery: PlannedDelivery, 
   return db.prepare(`
     INSERT OR IGNORE INTO analytics_conversion_deliveries (
       id, conversion_action_id, channel, external_event_id, event_name,
-      status, skip_reason, has_fbp, has_fbc, tracking_mode, updated_at
+      status, skip_reason, has_fbp, has_fbc, has_email, has_external_id,
+      encryption_key_id, tracking_mode, updated_at
     )
-    SELECT ?, ?, ?, ?, ?, 'pending', '', ?, ?, ?, datetime('now')
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')
     WHERE EXISTS (SELECT 1 FROM analytics_conversion_actions WHERE id = ?)
   `).bind(
     delivery.deliveryId,
@@ -499,21 +561,26 @@ function conversionDeliveryStatement(db: D1Database, delivery: PlannedDelivery, 
     delivery.channel,
     delivery.eventId,
     delivery.eventName,
+    delivery.status,
+    delivery.skipReason,
     delivery.hasFbp,
     delivery.hasFbc,
+    delivery.hasEmail,
+    delivery.hasExternalId,
+    delivery.encryptionKeyId,
     delivery.trackingMode,
     actionId,
   )
 }
 
 async function finalizeCapiDeliveries(
-  env: Pick<Bindings, 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>,
+  env: ConversionEnv,
   deliveries: PlannedDelivery[],
 ) {
   for (const delivery of deliveries) {
-    if (delivery.channel !== 'meta_capi') continue
+    if (delivery.channel !== 'meta_capi' || delivery.status !== 'pending' || !delivery.envelope) continue
     try {
-      await enqueueMetaCapiDelivery(env, delivery.deliveryId, metaCapiQueueUserData(delivery))
+      await enqueueSecureMetaCapiDelivery(env, delivery.deliveryId)
     } catch {
       // Queue 是提交后的外部副作用，账本提交不得因补记失败而回滚或重试。
     }
@@ -528,14 +595,69 @@ function shouldCreateMetaCapiDelivery(settings: MetaDeliverySettings, input: Rec
     && Boolean(metaEventForConversion(input.actionType))
 }
 
-function metaCapiQueueUserData(delivery: PlannedDelivery): MetaCapiUserData {
-  const { fbp, fbc, clientIpAddress, clientUserAgent } = delivery.userData
+async function buildCapiEncryptionPlan(
+  env: ConversionEnv,
+  settings: MetaDeliverySettings,
+  input: RecordConversionInput,
+  context: RecordConversionContext,
+): Promise<CapiEncryptionPlan> {
+  if (!shouldCreateMetaCapiDelivery(settings, input)) return { state: 'disabled' }
+  if (!String(env.META_CAPI_DATA_KEY_CURRENT ?? '').trim()) {
+    return { state: 'skipped', reason: 'missing_data_key' }
+  }
+
+  let keys: MetaCapiCryptoKeys
+  try {
+    keys = await loadMetaCapiCryptoKeys(env)
+  } catch {
+    return { state: 'skipped', reason: 'invalid_data_key' }
+  }
   return {
+    state: 'ready',
+    keys,
+    context: normalizeSensitiveContext(context.getMetaCapiUserData()),
+  }
+}
+
+function normalizeSensitiveContext(value: unknown): MetaCapiSensitiveContext {
+  const browser = normalizeMetaCapiUserData(value)
+  if (!isPlainRecord(value)) return browser
+  const emailSha256 = validSha256(value.emailSha256)
+  const externalIdSha256 = validSha256(value.externalIdSha256)
+  return {
+    ...browser,
+    ...(emailSha256 ? { emailSha256 } : {}),
+    ...(externalIdSha256 ? { externalIdSha256 } : {}),
+  }
+}
+
+function contextForEvent(
+  eventName: PlannedDelivery['eventName'],
+  context: MetaCapiSensitiveContext,
+): MetaCapiSensitiveContext {
+  const { fbp, fbc, clientIpAddress, clientUserAgent } = context
+  const browser = {
     ...(fbp ? { fbp } : {}),
     ...(fbc ? { fbc } : {}),
     ...(clientIpAddress ? { clientIpAddress } : {}),
     ...(clientUserAgent ? { clientUserAgent } : {}),
   }
+  if (eventName === 'Contact') return browser
+  return {
+    ...browser,
+    ...(context.emailSha256 ? { emailSha256: context.emailSha256 } : {}),
+    ...(context.externalIdSha256 ? { externalIdSha256: context.externalIdSha256 } : {}),
+  }
+}
+
+function validSha256(value: unknown) {
+  return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value) ? value : ''
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
 }
 
 async function readMetaDeliverySettings(db: D1Database) {
@@ -554,7 +676,7 @@ async function readMetaDeliverySettings(db: D1Database) {
   }
 }
 
-function pendingDeliveryDailyStatement(
+function deliveryDailyStatement(
   db: D1Database,
   delivery: PlannedDelivery,
   date: string,
@@ -563,13 +685,13 @@ function pendingDeliveryDailyStatement(
     INSERT INTO analytics_conversion_delivery_daily (
       date, channel, event_name, status, skip_reason, delivery_count, updated_at
     )
-    SELECT ?, ?, ?, 'pending', '', 1, datetime('now')
+    SELECT ?, ?, ?, ?, ?, 1, datetime('now')
     WHERE changes() = 1
     ON CONFLICT(date, channel, event_name, status, skip_reason)
     DO UPDATE SET
       delivery_count = analytics_conversion_delivery_daily.delivery_count + 1,
       updated_at = datetime('now')
-  `).bind(date, delivery.channel, delivery.eventName)
+  `).bind(date, delivery.channel, delivery.eventName, delivery.status, delivery.skipReason)
 }
 
 function conversionDedupeKey(input: RecordConversionInput, occurredDate: string) {
