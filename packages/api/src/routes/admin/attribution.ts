@@ -99,7 +99,7 @@ adminAttributionRoutes.get('/overview', async (c) => {
       FROM analytics_conversion_actions
       WHERE date BETWEEN ? AND ?
         AND duplicate_of != ''
-        AND action_type IN ('contact', 'lead', 'complete_registration')
+        AND action_type <> 'start_trial'
     `, [range.from, range.to]),
   ])
 
@@ -403,7 +403,7 @@ adminAttributionRoutes.get('/duplicates', async (c) => {
       FROM analytics_conversion_actions
       WHERE date BETWEEN ? AND ?
         AND duplicate_of != ''
-        AND action_type IN ('contact', 'lead', 'complete_registration')
+        AND action_type <> 'start_trial'
     `, [range.from, range.to]),
     queryAll(c.env.DB, `
       SELECT
@@ -412,7 +412,7 @@ adminAttributionRoutes.get('/duplicates', async (c) => {
       FROM analytics_conversion_actions
       WHERE date BETWEEN ? AND ?
         AND duplicate_of != ''
-        AND action_type IN ('contact', 'lead', 'complete_registration')
+        AND action_type <> 'start_trial'
       ORDER BY occurred_at DESC
       LIMIT 100
     `, [range.from, range.to]),

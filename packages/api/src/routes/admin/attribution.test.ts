@@ -29,6 +29,7 @@ type ReadinessOptions = {
 type AttributionDbOptions = {
   failCreateBatchAt?: number
   historicalStartTrialDeliveryCount?: number
+  membershipGrantDuplicateCount?: number
   settings?: Partial<Record<string, string | boolean>>
   readiness?: ReadinessOptions
 }
@@ -47,12 +48,21 @@ function createApp(role: string | null = 'admin') {
 function createAttributionDb(options: AttributionDbOptions = {}) {
   const calls: DbCall[] = []
   const historicalStartTrialDeliveryCount = Math.max(0, options.historicalStartTrialDeliveryCount ?? 0)
+  const membershipGrantDuplicateCount = Math.max(0, options.membershipGrantDuplicateCount ?? 0)
   const dailyHistoryLeak = (sql: string) => sql.includes("event_name IN ('Contact', 'Lead', 'CompleteRegistration')")
     ? 0
     : historicalStartTrialDeliveryCount
-  const actionHistoryLeak = (sql: string) => sql.includes("action_type IN ('contact', 'lead', 'complete_registration')")
+  const actionHistoryLeak = (sql: string) => (
+    sql.includes("action_type IN ('contact', 'lead', 'complete_registration')") ||
+    sql.includes("action_type <> 'start_trial'")
+  )
     ? 0
     : historicalStartTrialDeliveryCount
+  const membershipGrantDuplicates = (sql: string) => (
+    sql.includes("action_type <> 'start_trial'") || sql.includes("'membership_grant'")
+  )
+    ? membershipGrantDuplicateCount
+    : 0
   const settings = {
     analytics_enabled: true,
     facebook_pixel_enabled: true,
@@ -195,7 +205,9 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
           }
           if (sql.includes('COUNT(*) AS duplicate_action_count')) {
             return {
-              results: [{ duplicate_action_count: 1 + actionHistoryLeak(sql) } as T],
+              results: [{
+                duplicate_action_count: 1 + actionHistoryLeak(sql) + membershipGrantDuplicates(sql),
+              } as T],
               meta: { rows_read: 1, rows_written: 0, duration: 1 },
             }
           }
@@ -267,6 +279,21 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
                 method_type: '',
                 action_target: 'legacy-start-trial',
                 duplicate_of: 'conv_start_trial',
+              })
+            }
+            if (membershipGrantDuplicates(sql) > 0) {
+              results.push({
+                id: 'convdup_membership_grant',
+                action_type: 'membership_grant',
+                occurred_at: '2026-07-09T10:30:00.000Z',
+                source_channel: 'ad',
+                source_name: 'ad-a',
+                tracking_source_slug: 'ad-a',
+                utm_campaign: 'old-july',
+                utm_content: 'membership',
+                method_type: 'manual',
+                action_target: 'membership_grant',
+                duplicate_of: 'conv_membership_grant',
               })
             }
             return {
@@ -818,7 +845,44 @@ describe('后台归因中心 API', () => {
       call.sql.includes("a.action_type IN ('contact', 'lead', 'complete_registration')")
     ))).toBe(true)
     expect(duplicateActionQueries.length).toBeGreaterThan(0)
-    expect(duplicateActionQueries.every(call => call.sql.includes("action_type IN ('contact', 'lead', 'complete_registration')"))).toBe(true)
+    expect(duplicateActionQueries.every(call => call.sql.includes("action_type <> 'start_trial'"))).toBe(true)
+  })
+
+  it('当前重复诊断保留 membership_grant 且排除历史 StartTrial', async () => {
+    const db = createAttributionDb({
+      historicalStartTrialDeliveryCount: 37,
+      membershipGrantDuplicateCount: 1,
+    })
+    const app = createApp('admin')
+    const env = { DB: db } as unknown as Bindings
+    const [overviewResponse, duplicatesResponse] = await Promise.all([
+      app.request('/api/admin/attribution/overview?from=2026-07-09&to=2026-07-09', {}, env),
+      app.request('/api/admin/attribution/duplicates?from=2026-07-09&to=2026-07-09', {}, env),
+    ])
+    const [overview, duplicates] = await Promise.all([
+      overviewResponse.json(),
+      duplicatesResponse.json(),
+    ])
+
+    expect(overview.data.duplicates.duplicate_action_count).toBe(2)
+    expect(duplicates.data.duplicateActionCount).toBe(2)
+    expect(duplicates.data.samples.map((row: { action_type: string }) => row.action_type)).toEqual(expect.arrayContaining([
+      'contact',
+      'membership_grant',
+    ]))
+    expect(duplicates.data.samples.some((row: { action_type: string }) => row.action_type === 'start_trial')).toBe(false)
+
+    const duplicateActionQueries = db.calls.filter(call => (
+      call.sql.includes('FROM analytics_conversion_actions') && call.sql.includes("duplicate_of != ''")
+    ))
+    expect(duplicateActionQueries.length).toBeGreaterThan(0)
+    expect(duplicateActionQueries.every(call => call.sql.includes("action_type <> 'start_trial'"))).toBe(true)
+
+    const deliveryQueries = db.calls.filter(call => call.sql.includes('FROM analytics_conversion_deliveries'))
+    expect(deliveryQueries.length).toBeGreaterThan(0)
+    expect(deliveryQueries.every(call => (
+      call.sql.includes("a.action_type IN ('contact', 'lead', 'complete_registration')")
+    ))).toBe(true)
   })
 
   it('返回分层归因上线检查且 ready 只由 blocker 决定', async () => {
