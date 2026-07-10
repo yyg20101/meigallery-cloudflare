@@ -142,7 +142,7 @@ describe('0036 Meta CAPI v2 secure delivery migration', () => {
         verified_event_name, verified_commit, dataset_quality_status, verified_at
       ) VALUES (
         'production', 'pixel_invalid_hex', lower(hex(randomblob(32))), 'v25.0',
-        'Contact', 'g' || lower(hex(randomblob(19))), 'available', '2026-07-11 00:00:00'
+        'Contact', 'g' || lower(hex(randomblob(19))) || '0', 'available', '2026-07-11 00:00:00'
       );
     `))
     assert.throws(() => executeSql(`
