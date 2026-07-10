@@ -73,6 +73,9 @@ describe('0038 conversion dedupe claim migration', () => {
       ['C'.repeat(64), 'd'.repeat(32), '2026-07-11T00:00:00.000Z', '2026-07-11T00:01:00.000Z'],
       ['e'.repeat(64), 'f'.repeat(32), '2026-07-11 00:00:00', '2026-07-11T00:01:00.000Z'],
       ['f'.repeat(64), '0'.repeat(32), '2026-07-11T00:02:00.000Z', '2026-07-11T00:01:00.000Z'],
+      ['1'.repeat(64), '2'.repeat(32), '', '2026-07-11T00:01:00.000Z'],
+      ['3'.repeat(64), '4'.repeat(32), '2026-07-11T00:00:00.000Z', 'zzzz'],
+      ['5'.repeat(64), '6'.repeat(32), '', 'zzzz'],
     ]) {
       assert.throws(() => executeSql(`
         INSERT INTO analytics_conversion_dedupe_claims (

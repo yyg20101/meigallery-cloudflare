@@ -179,6 +179,8 @@ describe('analytics migrations', () => {
     expect(sql).toMatch(/dedupe_digest\s+NOT GLOB '\*\[\^0-9a-f\]\*'/)
     expect(sql).toMatch(/length\(claim_token\)\s*=\s*32/)
     expect(sql).toMatch(/claim_token\s+NOT GLOB '\*\[\^0-9a-f\]\*'/)
+    expect(sql).toMatch(/strftime\('%Y-%m-%dT%H:%M:%fZ', claimed_at\)\s+IS NOT NULL[\s\S]+claimed_at\s*=\s*strftime/)
+    expect(sql).toMatch(/strftime\('%Y-%m-%dT%H:%M:%fZ', expires_at\)\s+IS NOT NULL[\s\S]+expires_at\s*=\s*strftime/)
     expect(sql).toMatch(/expires_at\s*>\s*claimed_at/)
     expect(sql).not.toContain('dedupe_key')
     expect(sql).not.toMatch(/email|external_id|client_ip|user_agent|\bfbp\b|\bfbc\b|ciphertext/i)
