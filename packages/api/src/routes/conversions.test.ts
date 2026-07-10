@@ -39,7 +39,8 @@ function createConversionDb() {
 function createPixelReceiptDb(options: {
   channel?: 'meta_pixel' | 'meta_capi'
   eventId?: string
-  status?: 'pending' | 'attempted'
+  status?: 'pending' | 'attempted' | 'sent' | 'failed' | 'skipped' | 'duplicate_suppressed'
+  failAttemptedDaily?: boolean
 } = {}) {
   const calls: Call[] = []
   const delivery = {
@@ -51,6 +52,27 @@ function createPixelReceiptDb(options: {
     eventName: 'Contact',
   }
   let dailyAttemptedCount = 0
+  let failAttemptedDaily = options.failAttemptedDaily ?? false
+  type ReceiptState = { delivery: typeof delivery; dailyAttemptedCount: number; lastChanges: number }
+  function execute(call: Call, state: ReceiptState) {
+    if (call.sql.includes("status = 'attempted'")) {
+      if (state.delivery.status !== 'pending') {
+        state.lastChanges = 0
+        return { meta: { changes: 0, rows_written: 0, rows_read: 0, duration: 1 } }
+      }
+      state.delivery.status = 'attempted'
+      state.lastChanges = 1
+      return { meta: { changes: 1, rows_written: 1, rows_read: 0, duration: 1 } }
+    }
+    if (call.sql.includes('analytics_conversion_delivery_daily')) {
+      if (failAttemptedDaily) throw new Error('模拟 attempted 日报写入失败')
+      if (state.lastChanges === 1) state.dailyAttemptedCount += 1
+      state.lastChanges = state.lastChanges === 1 ? 1 : 0
+      return { meta: { changes: state.lastChanges, rows_written: state.lastChanges, rows_read: 0, duration: 1 } }
+    }
+    state.lastChanges = 1
+    return { meta: { changes: 1, rows_written: 1, rows_read: 0, duration: 1 } }
+  }
   const db = {
     calls,
     get delivery() {
@@ -59,9 +81,12 @@ function createPixelReceiptDb(options: {
     get dailyAttemptedCount() {
       return dailyAttemptedCount
     },
+    set failAttemptedDaily(value: boolean) {
+      failAttemptedDaily = value
+    },
     prepare(sql: string) {
       const call: Call = { sql, params: [] }
-      return {
+      const statement = {
         bind(...params: unknown[]) {
           call.params = params
           return this
@@ -81,15 +106,26 @@ function createPixelReceiptDb(options: {
         },
         async run() {
           calls.push(call)
-          if (sql.includes("status = 'attempted'")) {
-            if (delivery.status !== 'pending') return { meta: { changes: 0, rows_written: 0, rows_read: 0, duration: 1 } }
-            delivery.status = 'attempted'
-            return { meta: { changes: 1, rows_written: 1, rows_read: 0, duration: 1 } }
-          }
-          if (sql.includes('analytics_conversion_delivery_daily')) dailyAttemptedCount += 1
-          return { meta: { changes: 1, rows_written: 1, rows_read: 0, duration: 1 } }
+          const state: ReceiptState = { delivery, dailyAttemptedCount, lastChanges: 1 }
+          const result = execute(call, state)
+          dailyAttemptedCount = state.dailyAttemptedCount
+          return result
         },
       }
+      Object.assign(statement, { __call: call })
+      return statement
+    },
+    async batch(statements: Array<{ __call?: Call }>) {
+      const staged: ReceiptState = { delivery: { ...delivery }, dailyAttemptedCount, lastChanges: 0 }
+      const results = []
+      for (const statement of statements) {
+        if (!statement.__call) throw new Error('缺少 batch statement')
+        calls.push(statement.__call)
+        results.push(execute(statement.__call, staged))
+      }
+      Object.assign(delivery, staged.delivery)
+      dailyAttemptedCount = staged.dailyAttemptedCount
+      return results
     },
   }
   return db
@@ -150,6 +186,98 @@ describe('conversion routes', () => {
     expect(res.status).toBe(400)
     expect(body.code).toBe('PIXEL_RECEIPT_INVALID')
     expect(db.delivery.status).toBe('pending')
+  })
+
+  it('attempted 日报写入失败时回滚 delivery，重放同 token 可成功且只聚合一次', async () => {
+    const db = createPixelReceiptDb({ failAttemptedDaily: true })
+    const receiptToken = await createPixelReceiptToken('test-session-secret', {
+      deliveryId: db.delivery.id,
+      eventId: db.delivery.eventId,
+      expiresAt: Math.floor(Date.now() / 1000) + 60,
+    })
+    const app = createApp()
+    const request = () => app.request('/api/conversions/pixel-receipts', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ deliveryId: db.delivery.id, attempted: true, receiptToken }),
+    }, { DB: db, APP_ENV: 'test', SESSION_SECRET: 'test-session-secret' } as unknown as Bindings)
+
+    const failed = await request()
+    expect(failed.status).toBe(400)
+    expect((await failed.json()).code).toBe('PIXEL_RECEIPT_INVALID')
+    expect(db.delivery.status).toBe('pending')
+    expect(db.dailyAttemptedCount).toBe(0)
+
+    db.failAttemptedDaily = false
+    const retried = await request()
+    const replay = await request()
+
+    expect(db.delivery.status).toBe('attempted')
+    expect(retried.status).toBe(200)
+    expect(replay.status).toBe(200)
+    expect(db.dailyAttemptedCount).toBe(1)
+  })
+
+  it.each(['sent', 'failed', 'skipped', 'duplicate_suppressed'] as const)(
+    '%s 状态返回 PIXEL_RECEIPT_INVALID',
+    async status => {
+      const db = createPixelReceiptDb({ status })
+      const receiptToken = await createPixelReceiptToken('test-session-secret', {
+        deliveryId: db.delivery.id,
+        eventId: db.delivery.eventId,
+        expiresAt: Math.floor(Date.now() / 1000) + 60,
+      })
+      const res = await createApp().request('/api/conversions/pixel-receipts', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ deliveryId: db.delivery.id, attempted: true, receiptToken }),
+      }, { DB: db, APP_ENV: 'test', SESSION_SECRET: 'test-session-secret' } as unknown as Bindings)
+
+      expect(res.status).toBe(400)
+      expect((await res.json()).code).toBe('PIXEL_RECEIPT_INVALID')
+    },
+  )
+
+  it('attempted=false 返回 PIXEL_RECEIPT_INVALID', async () => {
+    const db = createPixelReceiptDb()
+    const receiptToken = await createPixelReceiptToken('test-session-secret', {
+      deliveryId: db.delivery.id,
+      eventId: db.delivery.eventId,
+      expiresAt: Math.floor(Date.now() / 1000) + 60,
+    })
+    const res = await createApp().request('/api/conversions/pixel-receipts', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ attempted: false, deliveryId: db.delivery.id, receiptToken }),
+    }, { DB: db, APP_ENV: 'test', SESSION_SECRET: 'test-session-secret' } as unknown as Bindings)
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).code).toBe('PIXEL_RECEIPT_INVALID')
+  })
+
+  it('缺 receiptToken 或 deliveryId 返回 PIXEL_RECEIPT_INVALID', async () => {
+    const db = createPixelReceiptDb()
+    const receiptToken = await createPixelReceiptToken('test-session-secret', {
+      deliveryId: db.delivery.id,
+      eventId: db.delivery.eventId,
+      expiresAt: Math.floor(Date.now() / 1000) + 60,
+    })
+    const app = createApp()
+    const missingToken = await app.request('/api/conversions/pixel-receipts', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ attempted: true, deliveryId: db.delivery.id }),
+    }, { DB: db, APP_ENV: 'test', SESSION_SECRET: 'test-session-secret' } as unknown as Bindings)
+    const missingDelivery = await app.request('/api/conversions/pixel-receipts', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ attempted: true, receiptToken }),
+    }, { DB: db, APP_ENV: 'test', SESSION_SECRET: 'test-session-secret' } as unknown as Bindings)
+
+    expect(missingToken.status).toBe(400)
+    expect((await missingToken.json()).code).toBe('PIXEL_RECEIPT_INVALID')
+    expect(missingDelivery.status).toBe(400)
+    expect((await missingDelivery.json()).code).toBe('PIXEL_RECEIPT_INVALID')
   })
 
   it.each([

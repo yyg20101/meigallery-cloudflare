@@ -112,16 +112,19 @@ export async function markPixelAttempted(
   if (delivery.status === 'attempted') return { deliveryId: delivery.id, attempted: false }
   if (delivery.status !== 'pending') throw new Error('Pixel 回执无效')
 
-  const updated = await db.prepare(`
-    UPDATE analytics_conversion_deliveries
-    SET
-      status = 'attempted',
-      attempt_count = attempt_count + 1,
-      last_attempt_at = datetime('now'),
-      updated_at = datetime('now')
-    WHERE id = ? AND channel = 'meta_pixel' AND external_event_id = ? AND status = 'pending'
-  `).bind(delivery.id, claims.eventId).run()
-  if (!d1Changed(updated)) {
+  const results = await db.batch([
+    db.prepare(`
+      UPDATE analytics_conversion_deliveries
+      SET
+        status = 'attempted',
+        attempt_count = attempt_count + 1,
+        last_attempt_at = datetime('now'),
+        updated_at = datetime('now')
+      WHERE id = ? AND channel = 'meta_pixel' AND external_event_id = ? AND status = 'pending'
+    `).bind(delivery.id, claims.eventId),
+    pixelAttemptedDailyStatement(db, delivery.date, delivery.event_name),
+  ])
+  if (!d1Changed(results[0]!)) {
     const current = await db.prepare(`
       SELECT channel, external_event_id, status
       FROM analytics_conversion_deliveries
@@ -134,7 +137,6 @@ export async function markPixelAttempted(
     throw new Error('Pixel 回执无效')
   }
 
-  await upsertDeliveryDaily(db, delivery.date, 'meta_pixel', delivery.event_name, 'attempted', '')
   return { deliveryId: delivery.id, attempted: true }
 }
 
@@ -483,6 +485,20 @@ async function upsertDeliveryDaily(
       delivery_count = analytics_conversion_delivery_daily.delivery_count + 1,
       updated_at = datetime('now')
   `).bind(date, channel, eventName, status, skipReason).run()
+}
+
+function pixelAttemptedDailyStatement(db: D1Database, date: string, eventName: string) {
+  return db.prepare(`
+    INSERT INTO analytics_conversion_delivery_daily (
+      date, channel, event_name, status, skip_reason, delivery_count, updated_at
+    )
+    SELECT ?, 'meta_pixel', ?, 'attempted', '', 1, datetime('now')
+    WHERE changes() = 1
+    ON CONFLICT(date, channel, event_name, status, skip_reason)
+    DO UPDATE SET
+      delivery_count = analytics_conversion_delivery_daily.delivery_count + 1,
+      updated_at = datetime('now')
+  `).bind(date, eventName)
 }
 
 function conversionDedupeKey(input: RecordConversionInput, occurredDate: string) {
