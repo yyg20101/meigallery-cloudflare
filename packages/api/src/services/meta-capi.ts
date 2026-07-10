@@ -1,6 +1,7 @@
-import type { ConversionDeliveryStatus } from '@meigallery/shared'
+import type { ConversionDeliveryStatus, MetaCapiUserData } from '@meigallery/shared'
 import { ATTRIBUTION_LIMITS } from '@meigallery/shared/constants'
 import type { Bindings } from '../index'
+import { normalizeMetaCapiUserData } from '../utils/meta-browser-identifiers'
 import { parseStoredSettingValue } from '../utils/stored-setting-value'
 
 type MetaCapiEnv = Pick<Bindings, 'DB' | 'SITE_URL' | 'APP_ENV' | 'META_CAPI_ACCESS_TOKEN' | 'META_CAPI_TEST_EVENT_CODE'>
@@ -11,8 +12,7 @@ type MetaCapiPayloadInput = {
   eventTime: number
   eventSourceUrl: string
   actionSource: 'website'
-  fbp?: string
-  fbc?: string
+  userData?: MetaCapiUserData
   customData?: Record<string, unknown>
   testEventCode?: string
 }
@@ -54,6 +54,7 @@ const CUSTOM_DATA_ALLOWLIST = new Set([
 ])
 
 export function buildMetaCapiPayload(input: MetaCapiPayloadInput) {
+  const userData = normalizeMetaCapiUserData(input.userData)
   const event: Record<string, unknown> = {
     event_name: input.eventName,
     event_time: input.eventTime,
@@ -61,8 +62,10 @@ export function buildMetaCapiPayload(input: MetaCapiPayloadInput) {
     event_source_url: input.eventSourceUrl,
     action_source: input.actionSource,
     user_data: compactObject({
-      fbp: input.fbp,
-      fbc: input.fbc,
+      fbp: userData.fbp,
+      fbc: userData.fbc,
+      client_ip_address: userData.clientIpAddress,
+      client_user_agent: userData.clientUserAgent,
     }),
     custom_data: sanitizeCustomData(input.customData || {}),
   }
@@ -79,7 +82,7 @@ export function classifyMetaCapiError(status: number): 'retryable' | 'permanent'
 export async function sendMetaCapiEvent(
   env: MetaCapiEnv,
   deliveryId: string,
-  options: { testEventCode?: string } = {},
+  options: { testEventCode?: string; userData?: MetaCapiUserData } = {},
 ): Promise<MetaCapiSendResult> {
   const delivery = await readDelivery(env.DB, deliveryId)
   if (!delivery) return { deliveryId, status: 'skipped', reason: 'delivery_not_found' }
@@ -109,6 +112,7 @@ export async function sendMetaCapiEvent(
     eventTime: toUnixSeconds(delivery.occurred_at),
     eventSourceUrl: buildEventSourceUrl(env.SITE_URL, delivery.path),
     actionSource: 'website',
+    userData: options.userData,
     customData: metadata,
     testEventCode: options.testEventCode,
   })

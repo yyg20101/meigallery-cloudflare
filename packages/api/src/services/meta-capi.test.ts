@@ -121,8 +121,7 @@ describe('meta-capi', () => {
       eventTime: 1783600800,
       eventSourceUrl: 'https://616618.xyz/',
       actionSource: 'website',
-      fbp: 'fb.1.1',
-      fbc: 'fb.1.2',
+      userData: { fbp: 'fb.1.1', fbc: 'fb.1.2' },
       customData: { method_type: 'telegram', email: 'user@example.test' },
     })
     expect(JSON.stringify(payload)).toContain('telegram')
@@ -188,6 +187,46 @@ describe('meta-capi', () => {
     const payload = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))
     expect(payload.data[0].user_data).toEqual({})
     expect(JSON.stringify(payload)).not.toContain('fb.1.private')
+  })
+
+  it('仅使用 Queue 临时 userData 构造 Meta CAPI 匹配字段', async () => {
+    const db = createMetaCapiDb({ pixelId: '1234567890' })
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
+
+    await sendMetaCapiEvent(envFor(db), 'cdlv_1', {
+      userData: {
+        fbp: 'fb.1.1700000000000.123456789',
+        fbc: 'fb.1.1700000000000.CLICK_abc-123',
+        clientIpAddress: '203.0.113.24',
+        clientUserAgent: 'MeiGallery Test Browser/1.0',
+      },
+    })
+
+    const payload = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))
+    expect(payload.data[0].user_data).toEqual({
+      fbp: 'fb.1.1700000000000.123456789',
+      fbc: 'fb.1.1700000000000.CLICK_abc-123',
+      client_ip_address: '203.0.113.24',
+      client_user_agent: 'MeiGallery Test Browser/1.0',
+    })
+  })
+
+  it('消费异常 Queue userData 时丢弃无效字段', () => {
+    const payload = buildMetaCapiPayload({
+      eventName: 'Contact',
+      eventId: 'event_1',
+      eventTime: 1783600800,
+      eventSourceUrl: 'https://616618.xyz/',
+      actionSource: 'website',
+      userData: {
+        fbp: 'bad\nvalue',
+        fbc: 'fb.1.1700000000000.CLICK_abc-123',
+        clientIpAddress: `${'1'.repeat(65)}\n`,
+        clientUserAgent: 'browser\nagent',
+      },
+    })
+
+    expect(payload.data[0].user_data).toEqual({ fbc: 'fb.1.1700000000000.CLICK_abc-123' })
   })
 
   it('Meta 5xx 标记 failed 后抛错交给 Queue 重试', async () => {

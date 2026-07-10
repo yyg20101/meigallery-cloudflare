@@ -342,11 +342,11 @@ export default {
   scheduled: async (event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) => {
     ctx.waitUntil(handleScheduled(env))
   },
-  queue: async (batch: MessageBatch<{ deliveryId: string }>, env: Bindings) => {
+  queue: async (batch: MessageBatch<MetaCapiQueueMessage>, env: Bindings) => {
     const { sendMetaCapiEvent } = await import('./services/meta-capi')
     for (const message of batch.messages) {
       try {
-        await sendMetaCapiEvent(env, message.body.deliveryId)
+        await sendMetaCapiEvent(env, message.body.deliveryId, { userData: message.body.userData })
         message.ack()
       } catch (error) {
         console.error('[meta-capi] delivery failed', {

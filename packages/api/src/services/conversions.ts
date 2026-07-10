@@ -1,4 +1,4 @@
-import type { AnalyticsConsentState, AnalyticsSourceChannel, ConversionActionType, MetaPixelInstruction } from '@meigallery/shared'
+import type { AnalyticsConsentState, AnalyticsSourceChannel, ConversionActionType, MetaCapiQueueMessage, MetaCapiUserData, MetaPixelInstruction } from '@meigallery/shared'
 import type { Bindings } from '../index'
 import { generateId } from '../utils/db'
 import { parseStoredSettingValue } from '../utils/stored-setting-value'
@@ -10,6 +10,7 @@ import {
   sanitizeConversionMetadata,
 } from '../utils/conversions'
 import { createPixelReceiptToken, type PixelReceiptClaims } from '../utils/pixel-receipt'
+import { normalizeMetaCapiUserData } from '../utils/meta-browser-identifiers'
 
 export interface RecordConversionInput {
   actionType: ConversionActionType
@@ -41,6 +42,10 @@ export interface RecordConversionResult {
   pixelEvents: MetaPixelInstruction[]
 }
 
+export interface RecordConversionContext {
+  metaCapiUserData: MetaCapiUserData
+}
+
 export interface MarkPixelAttemptedResult {
   deliveryId: string
   attempted: boolean
@@ -52,6 +57,9 @@ type PlannedDelivery = {
   eventName: NonNullable<ReturnType<typeof metaEventForConversion>>
   eventId: string
   pixelInstruction?: MetaPixelInstruction
+  userData: MetaCapiUserData
+  hasFbp: 0 | 1
+  hasFbc: 0 | 1
   statementIndex: number
 }
 
@@ -60,6 +68,7 @@ type MetaDeliverySettings = Awaited<ReturnType<typeof readMetaDeliverySettings>>
 export async function recordConversionAction(
   env: Pick<Bindings, 'DB' | 'APP_ENV' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>,
   input: RecordConversionInput,
+  context: RecordConversionContext = { metaCapiUserData: {} },
 ): Promise<RecordConversionResult> {
   const normalizedInput = normalizeConversionInput(input)
   const occurredAt = normalizeIso(normalizedInput.occurredAt)
@@ -69,7 +78,7 @@ export async function recordConversionAction(
   if (existing) return recordDuplicateResult(env.DB, normalizedInput, occurredAt, date, dedupeKey, existing.id)
 
   const id = generateId('conv')
-  const plan = await buildConversionBatchPlan(env, id, normalizedInput, occurredAt, date, dedupeKey)
+  const plan = await buildConversionBatchPlan(env, id, normalizedInput, occurredAt, date, dedupeKey, context)
   const results = await env.DB.batch(plan.statements)
   if (!d1Changed(results[plan.actionStatementIndex]!)) {
     const concurrent = await findConversionByDedupeKey(env.DB, dedupeKey)
@@ -283,13 +292,14 @@ async function buildConversionBatchPlan(
   occurredAt: string,
   date: string,
   dedupeKey: string,
+  context: RecordConversionContext,
 ) {
   const statements: D1PreparedStatement[] = []
   const deliveries: PlannedDelivery[] = []
   const settings = await readMetaDeliverySettings(env.DB)
   const actionStatementIndex = statements.push(conversionActionStatement(env.DB, actionId, input, occurredAt, date, dedupeKey)) - 1
   statements.push(conversionDailyStatement(env.DB, input, date, actionId))
-  deliveries.push(...await planMetaDeliveries(env, settings, input, date))
+  deliveries.push(...await planMetaDeliveries(env, settings, input, date, context))
   for (const delivery of deliveries) {
     delivery.statementIndex = statements.push(conversionDeliveryStatement(env.DB, delivery, actionId)) - 1
   }
@@ -304,7 +314,7 @@ async function buildConversionBatchPlan(
       env.DB, leadId, leadInput, occurredAt, date, leadDedupeKey, actionId,
     )) - 1
     statements.push(conversionDailyStatement(env.DB, leadInput, date, leadId))
-    const leadDeliveries = await planMetaDeliveries(env, settings, leadInput, date)
+    const leadDeliveries = await planMetaDeliveries(env, settings, leadInput, date, context)
     for (const delivery of leadDeliveries) {
       delivery.statementIndex = statements.push(conversionDeliveryStatement(env.DB, delivery, leadId)) - 1
       deliveries.push(delivery)
@@ -345,6 +355,7 @@ async function planMetaDeliveries(
   settings: MetaDeliverySettings,
   input: RecordConversionInput,
   date: string,
+  context: RecordConversionContext,
 ): Promise<PlannedDelivery[]> {
   if (input.consentState !== 'granted' || settings.mode === 'disabled' || !settings.pixelId) return []
   const eventName = metaEventForConversion(input.actionType)
@@ -362,6 +373,7 @@ async function planMetaDeliveries(
     ...(settings.pixelEnabled ? ['meta_pixel' as const] : []),
     ...(settings.capiEnabled ? ['meta_capi' as const] : []),
   ]
+  const userData = normalizeMetaCapiUserData(context.metaCapiUserData)
   return Promise.all(channels.map(async channel => {
     const deliveryId = generateId('cdlv')
     const pixelInstruction = channel === 'meta_pixel'
@@ -377,7 +389,18 @@ async function planMetaDeliveries(
           }),
         }
       : undefined
-    return { deliveryId, channel, eventName, eventId, pixelInstruction, statementIndex: -1 }
+    const capiUserData = channel === 'meta_capi' ? userData : {}
+    return {
+      deliveryId,
+      channel,
+      eventName,
+      eventId,
+      pixelInstruction,
+      userData: capiUserData,
+      hasFbp: capiUserData.fbp ? 1 : 0,
+      hasFbc: capiUserData.fbc ? 1 : 0,
+      statementIndex: -1,
+    }
   }))
 }
 
@@ -385,11 +408,20 @@ function conversionDeliveryStatement(db: D1Database, delivery: PlannedDelivery, 
   return db.prepare(`
     INSERT OR IGNORE INTO analytics_conversion_deliveries (
       id, conversion_action_id, channel, external_event_id, event_name,
-      status, skip_reason, updated_at
+      status, skip_reason, has_fbp, has_fbc, updated_at
     )
-    SELECT ?, ?, ?, ?, ?, 'pending', '', datetime('now')
+    SELECT ?, ?, ?, ?, ?, 'pending', '', ?, ?, datetime('now')
     WHERE EXISTS (SELECT 1 FROM analytics_conversion_actions WHERE id = ?)
-  `).bind(delivery.deliveryId, actionId, delivery.channel, delivery.eventId, delivery.eventName, actionId)
+  `).bind(
+    delivery.deliveryId,
+    actionId,
+    delivery.channel,
+    delivery.eventId,
+    delivery.eventName,
+    delivery.hasFbp,
+    delivery.hasFbc,
+    actionId,
+  )
 }
 
 async function finalizeCapiDeliveries(
@@ -404,7 +436,7 @@ async function finalizeCapiDeliveries(
         await markDeliveryTerminal(env.DB, delivery.deliveryId, date, 'meta_capi', delivery.eventName, 'skipped', 'missing_queue')
         continue
       }
-      await env.META_CAPI_QUEUE.send({ schemaVersion: 1, deliveryId: delivery.deliveryId, userData: {} })
+      await env.META_CAPI_QUEUE.send(metaCapiQueueMessage(delivery))
     } catch (error) {
       try {
         await markDeliveryTerminal(
@@ -422,6 +454,20 @@ async function finalizeCapiDeliveries(
         // Queue 是提交后的外部副作用，账本提交不得因补记失败而回滚或重试。
       }
     }
+  }
+}
+
+function metaCapiQueueMessage(delivery: PlannedDelivery): MetaCapiQueueMessage {
+  const { fbp, fbc, clientIpAddress, clientUserAgent } = delivery.userData
+  return {
+    schemaVersion: 1,
+    deliveryId: delivery.deliveryId,
+    userData: {
+      ...(fbp ? { fbp } : {}),
+      ...(fbc ? { fbc } : {}),
+      ...(clientIpAddress ? { clientIpAddress } : {}),
+      ...(clientUserAgent ? { clientUserAgent } : {}),
+    },
   }
 }
 

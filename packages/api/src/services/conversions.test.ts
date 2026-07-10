@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { MetaCapiQueueMessage } from '@meigallery/shared'
 import type { Bindings } from '../index'
 import { recordConversionAction } from './conversions'
 
@@ -127,13 +128,13 @@ function envFor(db: ReturnType<typeof createConversionDb>) {
   } as unknown as Pick<Bindings, 'APP_ENV' | 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>
 }
 
-function envWithQueueFor(db: ReturnType<typeof createConversionDb>, sent: Array<{ schemaVersion: 1; deliveryId: string; userData: Record<string, never> }>) {
+function envWithQueueFor(db: ReturnType<typeof createConversionDb>, sent: MetaCapiQueueMessage[]) {
   return {
     APP_ENV: 'test',
     DB: db,
     SESSION_SECRET: 'test-session-secret',
     META_CAPI_QUEUE: {
-      async send(message: { schemaVersion: 1; deliveryId: string; userData: Record<string, never> }) {
+      async send(message: MetaCapiQueueMessage) {
         sent.push(message)
         return { metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } } }
       },
@@ -199,10 +200,14 @@ describe('conversion ledger service', () => {
       metaTrackingMode: 'production',
       metaCapiEnabled: true,
     })
-    const result = await recordConversionAction(envFor(db), { ...grantedContactInput(), consentState })
+    const sent: MetaCapiQueueMessage[] = []
+    const result = await recordConversionAction(envWithQueueFor(db, sent), { ...grantedContactInput(), consentState }, {
+      metaCapiUserData: { fbp: 'fb.1.1700000000000.123456789', clientIpAddress: '203.0.113.24' },
+    })
 
     expect(result.pixelEvents).toEqual([])
     expect(db.calls.some(call => call.sql.includes('analytics_conversion_deliveries'))).toBe(false)
+    expect(sent).toEqual([])
   })
 
   it('disabled 模式不创建 Meta delivery 或 Pixel 指令', async () => {
@@ -212,10 +217,14 @@ describe('conversion ledger service', () => {
       metaTrackingMode: 'disabled',
       metaCapiEnabled: true,
     })
-    const result = await recordConversionAction(envFor(db), grantedContactInput())
+    const sent: MetaCapiQueueMessage[] = []
+    const result = await recordConversionAction(envWithQueueFor(db, sent), grantedContactInput(), {
+      metaCapiUserData: { fbp: 'fb.1.1700000000000.123456789', clientIpAddress: '203.0.113.24' },
+    })
 
     expect(result.pixelEvents).toEqual([])
     expect(db.calls.some(call => call.sql.includes('analytics_conversion_deliveries'))).toBe(false)
+    expect(sent).toEqual([])
   })
 
   it('首次有效联系写入 contact 和 lead，并创建 Meta delivery', async () => {
@@ -361,7 +370,7 @@ describe('conversion ledger service', () => {
   })
 
   it('CAPI 开启且 Queue 存在时发送完整版本化消息', async () => {
-    const sent: Array<{ schemaVersion: 1; deliveryId: string; userData: Record<string, never> }> = []
+    const sent: MetaCapiQueueMessage[] = []
     const db = createConversionDb({ metaCapiEnabled: true, metaTrackingMode: 'test', facebookPixelId: '1234567890' })
 
     await recordConversionAction(envWithQueueFor(db, sent), {
@@ -382,6 +391,45 @@ describe('conversion ledger service', () => {
       deliveryId: capiDelivery?.params[0] as string,
       userData: {},
     }])
+  })
+
+  it('只将临时匹配数据通过 CAPI Queue 传递，并仅以 0|1 写入 delivery 覆盖率', async () => {
+    const db = createConversionDb({ metaCapiEnabled: true, metaTrackingMode: 'test', facebookPixelId: '1234567890' })
+    const sent: MetaCapiQueueMessage[] = []
+    const userData = {
+      fbp: 'fb.1.1700000000000.123456789',
+      fbc: 'fb.1.1700000000000.CLICK_abc-123',
+      clientIpAddress: '203.0.113.24',
+      clientUserAgent: 'MeiGallery Test Browser/1.0',
+      ignored: 'must-not-pass',
+    }
+
+    await recordConversionAction(envWithQueueFor(db, sent), {
+      ...grantedContactInput(),
+      metadata: { fbp: 'metadata-fbp', fbc: 'metadata-fbc' },
+    }, { metaCapiUserData: userData })
+
+    expect(sent).toHaveLength(2)
+    expect(sent.map(message => message.userData)).toEqual([{
+      fbp: userData.fbp,
+      fbc: userData.fbc,
+      clientIpAddress: userData.clientIpAddress,
+      clientUserAgent: userData.clientUserAgent,
+    }, {
+      fbp: userData.fbp,
+      fbc: userData.fbc,
+      clientIpAddress: userData.clientIpAddress,
+      clientUserAgent: userData.clientUserAgent,
+    }])
+    const deliveryCalls = db.calls.filter(call => call.sql.includes('INSERT OR IGNORE INTO analytics_conversion_deliveries'))
+    expect(deliveryCalls).toHaveLength(2)
+    expect(deliveryCalls.every(call => call.params.includes(1))).toBe(true)
+    expect(JSON.stringify(db.calls)).not.toContain(userData.fbp)
+    expect(JSON.stringify(db.calls)).not.toContain(userData.fbc)
+    expect(JSON.stringify(db.calls)).not.toContain(userData.clientIpAddress)
+    expect(JSON.stringify(db.calls)).not.toContain(userData.clientUserAgent)
+    expect(JSON.stringify(db.calls)).not.toContain('metadata-fbp')
+    expect(JSON.stringify(db.calls)).not.toContain('metadata-fbc')
   })
 
   it('CAPI 开启但缺少 Queue binding 时标记 missing_queue', async () => {

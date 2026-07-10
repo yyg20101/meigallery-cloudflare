@@ -259,6 +259,34 @@ describe('useConversionTracking', () => {
     expect(JSON.stringify(api.mock.calls)).not.toContain('invite')
   })
 
+  it('仅在 granted 时将合法 _fbp、_fbc 和 fbclid 置于顶层 browserIdentifiers', async () => {
+    document.cookie = '_fbp=fb.1.1700000000000.123456789; path=/'
+    document.cookie = '_fbc=fb.1.1700000000000.saved-click; path=/'
+    route.query.fbclid = 'CLICK_abc-123'
+
+    await useConversionTracking().trackConversion('contact')
+
+    expect(api).toHaveBeenCalledWith('/api/conversions/events', expect.objectContaining({
+      body: expect.objectContaining({
+        browserIdentifiers: {
+          fbp: 'fb.1.1700000000000.123456789',
+          fbc: 'fb.1.1783584000000.CLICK_abc-123',
+        },
+      }),
+    }))
+  })
+
+  it('limited 时不读取或上报 browserIdentifiers', async () => {
+    document.cookie = '_fbp=fb.1.1700000000000.123456789; path=/'
+    marketingConsentState.value = 'limited'
+    route.query.fbclid = 'CLICK_abc-123'
+
+    await useConversionTracking().trackConversion('contact')
+
+    const body = api.mock.calls[0]?.[1]?.body as Record<string, unknown>
+    expect(body).not.toHaveProperty('browserIdentifiers')
+  })
+
   it('conversion API 首次失败时不提前发送兼容 analytics 或 Pixel', async () => {
     api.mockRejectedValueOnce(new Error('conversion api failed'))
 

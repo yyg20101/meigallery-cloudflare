@@ -1,12 +1,17 @@
 import { Hono } from 'hono'
 import { describe, expect, it } from 'vitest'
+import type { MetaCapiQueueMessage } from '@meigallery/shared'
 import type { Bindings, Variables } from '../index'
 import { createPixelReceiptToken } from '../utils/pixel-receipt'
 import { conversionRoutes } from './conversions'
 
 type Call = { sql: string; params: unknown[] }
 
-function createConversionDb() {
+function createConversionDb(options: {
+  metaCapiEnabled?: boolean
+  facebookPixelId?: string
+  metaTrackingMode?: 'disabled' | 'test' | 'production'
+} = {}) {
   const calls: Call[] = []
   const db = {
     calls,
@@ -18,6 +23,10 @@ function createConversionDb() {
           return this
         },
         async first<T>() {
+          if (sql.includes("WHERE key = 'meta_capi_enabled'")) return { value: String(options.metaCapiEnabled === true) } as T
+          if (sql.includes("WHERE key = 'facebook_pixel_enabled'")) return { value: 'false' } as T
+          if (sql.includes("WHERE key = 'facebook_pixel_id'")) return options.facebookPixelId ? ({ value: JSON.stringify(options.facebookPixelId) } as T) : null
+          if (sql.includes("WHERE key = 'meta_tracking_mode'")) return { value: JSON.stringify(options.metaTrackingMode ?? 'disabled') } as T
           return null as T | null
         },
         async all<T>() {
@@ -342,6 +351,55 @@ describe('conversion routes', () => {
     expect(res.status).toBe(201)
     expect(body.data.actionType).toBe('contact')
     expect(JSON.stringify(db.calls)).not.toContain('@secret')
+  })
+
+  it('只接受顶层 browserIdentifiers，并将合法临时数据传入 Queue 而不持久化原值', async () => {
+    const db = createConversionDb({ metaCapiEnabled: true, metaTrackingMode: 'test', facebookPixelId: '1234567890' })
+    const sent: MetaCapiQueueMessage[] = []
+    const raw = {
+      fbp: 'fb.1.1700000000000.123456789',
+      fbc: 'fb.1.1700000000000.CLICK_abc-123',
+      clientIpAddress: '203.0.113.24',
+      clientUserAgent: 'MeiGallery Test Browser/1.0',
+    }
+    const res = await createApp().request('/api/conversions/events', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'CF-Connecting-IP': raw.clientIpAddress,
+        'User-Agent': raw.clientUserAgent,
+      },
+      body: JSON.stringify({
+        actionType: 'contact',
+        visitorId: 'visitor_1',
+        sessionId: 'session_1',
+        occurredAt: '2026-07-09T10:00:00.000Z',
+        consentState: 'granted',
+        browserIdentifiers: { fbp: raw.fbp, fbc: raw.fbc },
+        metadata: { fbp: 'metadata-fbp', fbc: 'metadata-fbc' },
+      }),
+    }, {
+      DB: db,
+      APP_ENV: 'test',
+      SESSION_SECRET: 'test-session-secret',
+      META_CAPI_QUEUE: { send: async (message: MetaCapiQueueMessage) => { sent.push(message) } },
+    } as unknown as Bindings)
+
+    expect(res.status).toBe(201)
+    expect(sent).toHaveLength(2)
+    expect(sent.every(message => JSON.stringify(message.userData) === JSON.stringify({
+      fbp: raw.fbp,
+      fbc: raw.fbc,
+      clientIpAddress: raw.clientIpAddress,
+      clientUserAgent: raw.clientUserAgent,
+    }))).toBe(true)
+    expect(JSON.stringify(db.calls)).not.toContain(raw.fbp)
+    expect(JSON.stringify(db.calls)).not.toContain(raw.fbc)
+    expect(JSON.stringify(db.calls)).not.toContain(raw.clientIpAddress)
+    expect(JSON.stringify(db.calls)).not.toContain(raw.clientUserAgent)
+    expect(JSON.stringify(db.calls)).not.toContain('metadata-fbp')
+    expect(JSON.stringify(await res.clone().json())).not.toContain(raw.fbp)
+    expect(JSON.stringify(await res.clone().json())).not.toContain(raw.fbc)
   })
 
   it('登录态 userId 写入转化账本', async () => {

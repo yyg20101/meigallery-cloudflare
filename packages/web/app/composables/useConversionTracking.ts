@@ -1,5 +1,6 @@
 import type { ConversionActionType, MetaPixelInstruction } from '@meigallery/shared'
 import { sanitizeAnalyticsPath } from '~/utils/analyticsSanitizer'
+import { readMetaBrowserIdentifiers } from '~/utils/metaBrowserIdentifiers'
 
 type PublicConversionActionType = Extract<ConversionActionType, 'contact' | 'complete_registration'>
 
@@ -81,6 +82,9 @@ export function useConversionTracking() {
       methodType: normalizeText(options.methodType, 80),
       actionTarget: normalizeText(options.actionTarget, 120),
       metadata,
+      ...(marketingConsent.state.value === 'granted' && typeof document !== 'undefined'
+        ? { browserIdentifiers: readMetaBrowserIdentifiers(document.cookie, route.query.fbclid) }
+        : {}),
     }
 
     const send = async () => {

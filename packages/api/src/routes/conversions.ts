@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { Bindings, Variables } from '../index'
 import { markPixelAttempted, recordConversionAction } from '../services/conversions'
 import { errorJson } from '../utils/api-error'
+import { buildMetaCapiUserData } from '../utils/meta-browser-identifiers'
 import { verifyPixelReceiptToken } from '../utils/pixel-receipt'
 
 const PUBLIC_CONVERSION_ACTIONS = new Set(['contact', 'complete_registration'])
@@ -21,6 +22,7 @@ conversionRoutes.post('/events', async (c) => {
     return errorJson(c, 400, '转化动作无效', { code: 'CONVERSION_ACTION_INVALID' })
   }
 
+  const consentState = String(body.consentState || 'limited')
   const result = await recordConversionAction(c.env, {
     actionType: actionType as 'contact' | 'complete_registration',
     visitorId: String(body.visitorId || ''),
@@ -36,10 +38,14 @@ conversionRoutes.post('/events', async (c) => {
     utmMedium: String(body.utmMedium || ''),
     utmCampaign: String(body.utmCampaign || ''),
     utmContent: String(body.utmContent || ''),
-    consentState: String(body.consentState || 'limited'),
+    consentState,
     methodType: String(body.methodType || ''),
     actionTarget: String(body.actionTarget || ''),
     metadata: isPlainRecord(body.metadata) ? body.metadata : {},
+  }, {
+    metaCapiUserData: consentState === 'granted'
+      ? buildMetaCapiUserData(c.req.raw, body.browserIdentifiers)
+      : {},
   })
 
   return c.json({ data: result }, result.created ? 201 : 200)
