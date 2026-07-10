@@ -36,6 +36,13 @@ function inspectSources(files: SourceFile[]) {
     if (/use(?:FacebookPixel|ConversionTracking)\s*\(/.test(source)) {
       violations.push(`${relativePath}: legacy Tracking call`)
     }
+    if (
+      normalizeTarget(filePath) !== normalizeTarget(adapterPath)
+      && normalizeTarget(filePath) !== normalizeTarget(useTrackingPath)
+      && usesIdentifier(filePath, source, 'metaPixelAdapter')
+    ) {
+      violations.push(`${relativePath}: direct metaPixelAdapter identifier`)
+    }
 
     for (const specifier of readImportSpecifiers(filePath, source)) {
       const target = resolveImportTarget(filePath, specifier)
@@ -61,12 +68,27 @@ function readImportSpecifiers(filePath: string, source: string) {
       }
       if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
         const [argument] = node.arguments
-        if (argument && ts.isStringLiteral(argument)) specifiers.push(argument.text)
+        if (argument && (ts.isStringLiteral(argument) || ts.isNoSubstitutionTemplateLiteral(argument))) {
+          specifiers.push(argument.text)
+        }
       }
       ts.forEachChild(node, visit)
     }
     visit(sourceFile)
     return specifiers
+  })
+}
+
+function usesIdentifier(filePath: string, source: string, identifier: string) {
+  return scriptBlocks(filePath, source).some((script, index) => {
+    const sourceFile = ts.createSourceFile(`${filePath}:${index}.ts`, script, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
+    let found = false
+    const visit = (node: ts.Node) => {
+      if (ts.isIdentifier(node) && node.text === identifier) found = true
+      if (!found) ts.forEachChild(node, visit)
+    }
+    visit(sourceFile)
+    return found
   })
 }
 
@@ -77,7 +99,9 @@ function scriptBlocks(filePath: string, source: string) {
 
 function resolveImportTarget(importer: string, specifier: string) {
   const cleanSpecifier = specifier.split(/[?#]/, 1)[0] ?? ''
-  if (cleanSpecifier.startsWith('~/')) return resolve(appDir, cleanSpecifier.slice(2))
+  if (cleanSpecifier.startsWith('~/') || cleanSpecifier.startsWith('@/')) {
+    return resolve(appDir, cleanSpecifier.slice(2))
+  }
   if (cleanSpecifier.startsWith('.')) return resolve(dirname(importer), cleanSpecifier)
   return null
 }
@@ -113,27 +137,36 @@ describe('Web Tracking 架构边界', () => {
     expect(inspectSources(files)).toEqual([])
   })
 
-  it('解析相对静态、动态 import 和直接 fbq，并豁免 adapter 与测试', () => {
+  it('解析 alias/相对静态与动态 import、auto-import 标识符和直接 fbq，并豁免 Facade、adapter 与测试', () => {
     const violations = inspectSources([
       { filePath: join(appDir, 'pages/direct.ts'), source: "import '../adapters/metaPixel.client'" },
       { filePath: join(appDir, 'components/dynamic.vue'), source: "<script setup>void import('~/adapters/metaPixel.client')</script>" },
+      { filePath: join(appDir, 'pages/at-static.ts'), source: "import '@/adapters/metaPixel.client'" },
+      { filePath: join(appDir, 'components/at-dynamic.vue'), source: "<script setup>void import('@/adapters/metaPixel.client')</script>" },
+      { filePath: join(appDir, 'layouts/template-dynamic.ts'), source: 'void import(`~/adapters/metaPixel.client`)' },
       { filePath: join(appDir, 'layouts/legacy.ts'), source: "import '../composables/useConversionTracking'" },
       { filePath: join(appDir, 'composables/bypass.ts'), source: 'window.fbq?.()' },
-      { filePath: useTrackingPath, source: "import { metaPixelAdapter } from '~/adapters/metaPixel.client'" },
-      { filePath: adapterPath, source: 'window.fbq?.()' },
-      { filePath: join(appDir, 'pages/allowed.test.ts'), source: "import('../adapters/metaPixel.client'); window.fbq?.()" },
+      { filePath: join(appDir, 'components/auto-import.vue'), source: '<script setup>metaPixelAdapter.pageView()</script>' },
+      { filePath: useTrackingPath, source: "import { metaPixelAdapter } from '~/adapters/metaPixel.client'; metaPixelAdapter.pageView()" },
+      { filePath: adapterPath, source: 'export const metaPixelAdapter = {}; window.fbq?.()' },
+      { filePath: join(appDir, 'pages/allowed.test.ts'), source: "import('../adapters/metaPixel.client'); metaPixelAdapter.pageView(); window.fbq?.()" },
     ])
 
     expect(violations).toEqual([
       'pages/direct.ts: imports Meta Pixel adapter',
       'components/dynamic.vue: imports Meta Pixel adapter',
+      'pages/at-static.ts: imports Meta Pixel adapter',
+      'components/at-dynamic.vue: imports Meta Pixel adapter',
+      'layouts/template-dynamic.ts: imports Meta Pixel adapter',
       'layouts/legacy.ts: imports legacy Tracking module',
       'composables/bypass.ts: direct window.fbq',
+      'components/auto-import.vue: direct metaPixelAdapter identifier',
     ])
   })
 
   it.each([
     ['alias adapter', "import { metaPixelAdapter } from '~/adapters/metaPixel.client'\nvoid metaPixelAdapter\n"],
+    ['@ alias adapter', "import { metaPixelAdapter } from '@/adapters/metaPixel.client'\nvoid metaPixelAdapter\n"],
     ['relative adapter', "import { metaPixelAdapter } from '../adapters/metaPixel.client'\nvoid metaPixelAdapter\n"],
     ['relative conversion composable', "import '../composables/useConversionTracking'\n"],
     ['relative Pixel composable', "import '../composables/useFacebookPixel'\n"],
@@ -147,5 +180,16 @@ describe('Web Tracking 架构边界', () => {
     expect(result?.messages).toEqual(expect.arrayContaining([
       expect.objectContaining({ ruleId: 'no-restricted-imports', severity: 2 }),
     ]))
+  })
+
+  it('ESLint 允许 useTracking 导入 Meta Pixel adapter', async () => {
+    const projectRoot = resolve(cwd(), '../..')
+    const eslint = new ESLint({ cwd: projectRoot })
+    const [result] = await eslint.lintText(
+      "import { metaPixelAdapter } from '~/adapters/metaPixel.client'\nvoid metaPixelAdapter\n",
+      { filePath: join(projectRoot, 'packages/web/app/composables/useTracking.ts') },
+    )
+
+    expect(result?.messages.filter(message => message.ruleId === 'no-restricted-imports')).toEqual([])
   })
 })
