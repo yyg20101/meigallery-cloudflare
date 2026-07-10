@@ -16,6 +16,7 @@ function createConversionDb(options: {
   metaCapiEnabled?: boolean
   facebookPixelId?: string
   metaTrackingMode?: 'disabled' | 'test' | 'production'
+  claimInProgress?: boolean
 } = {}) {
   const calls: Call[] = []
   let delivery: { id: string; status: string; queueEnqueuedAt: string | null; eventName: string } | null = null
@@ -30,6 +31,15 @@ function createConversionDb(options: {
           return this
         },
         async first<T>() {
+          if (options.claimInProgress && sql.includes('FROM analytics_conversion_dedupe_claims')) {
+            return {
+              dedupe_key: String(call.params[0]),
+              owner_action_id: 'conv_other_owner',
+              claim_token: 'claim_other_owner',
+              claimed_at: '2099-01-01T00:00:00.000Z',
+              expires_at: '2099-01-01T00:01:00.000Z',
+            } as T
+          }
           if (sql.includes("WHERE key = 'meta_capi_enabled'")) return { value: String(options.metaCapiEnabled === true) } as T
           if (sql.includes("WHERE key = 'facebook_pixel_enabled'")) return { value: 'false' } as T
           if (sql.includes("WHERE key = 'facebook_pixel_id'")) return options.facebookPixelId ? ({ value: JSON.stringify(options.facebookPixelId) } as T) : null
@@ -76,6 +86,9 @@ function createConversionDb(options: {
         },
         async run() {
           calls.push(call)
+          if (options.claimInProgress && sql.includes('INSERT OR IGNORE INTO analytics_conversion_dedupe_claims')) {
+            return { meta: { changes: 0, rows_written: 0, rows_read: 0, duration: 1 } }
+          }
           if (sql.includes('INSERT OR IGNORE INTO analytics_conversion_deliveries')) {
             delivery = {
               id: String(call.params[0]),
@@ -420,6 +433,26 @@ describe('conversion routes', () => {
     expect(res.status).toBe(201)
     expect(body.data.actionType).toBe('contact')
     expect(JSON.stringify(db.calls)).not.toContain('@secret')
+  })
+
+  it('claim 仍在处理时返回稳定 409，不返回 phantom action', async () => {
+    const db = createConversionDb({ claimInProgress: true })
+    const res = await createApp().request('/api/conversions/events', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        actionType: 'contact',
+        visitorId: 'conversion_visitor_in_progress',
+        sessionId: 'conversion_session_in_progress',
+        occurredAt: '2026-07-11T08:00:00.000Z',
+        methodType: 'telegram',
+        actionTarget: 'floating_contact_panel',
+      }),
+    }, { DB: db, APP_ENV: 'test' } as unknown as Bindings)
+
+    expect(res.status).toBe(409)
+    expect(await res.json()).toMatchObject({ code: 'CONVERSION_IN_PROGRESS' })
+    expect(db.calls.some(call => call.sql.includes('INSERT OR IGNORE INTO analytics_conversion_actions'))).toBe(false)
   })
 
   it.each([

@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import type { Bindings, Variables } from '../index'
-import { markPixelAttempted, recordContact } from '../services/conversions'
+import { ConversionInProgressError, markPixelAttempted, recordContact } from '../services/conversions'
 import { errorJson } from '../utils/api-error'
 import { buildMetaCapiUserData } from '../utils/meta-browser-identifiers'
 import { verifyPixelReceiptToken } from '../utils/pixel-receipt'
@@ -36,27 +36,36 @@ conversionRoutes.post('/events', async (c) => {
   }
 
   const consentState = String(body.consentState || 'limited')
-  const result = await recordContact(c.env, {
-    visitorId,
-    sessionId,
-    userId: c.get('userId'),
-    occurredAt: String(body.occurredAt || new Date().toISOString()),
-    routeName: String(body.routeName || ''),
-    path: String(body.path || ''),
-    sourceChannel: String(body.sourceChannel || 'unknown'),
-    sourceName: String(body.sourceName || ''),
-    trackingSourceSlug: String(body.trackingSourceSlug || ''),
-    utmSource: String(body.utmSource || ''),
-    utmMedium: String(body.utmMedium || ''),
-    utmCampaign: String(body.utmCampaign || ''),
-    utmContent: String(body.utmContent || ''),
-    consentState,
-    methodType,
-    actionTarget,
-    metadata: isPlainRecord(body.metadata) ? body.metadata : {},
-  }, {
-    getMetaCapiUserData: () => buildMetaCapiUserData(c.req.raw, body.browserIdentifiers),
-  })
+  let result
+  try {
+    result = await recordContact(c.env, {
+      visitorId,
+      sessionId,
+      userId: c.get('userId'),
+      occurredAt: String(body.occurredAt || new Date().toISOString()),
+      routeName: String(body.routeName || ''),
+      path: String(body.path || ''),
+      sourceChannel: String(body.sourceChannel || 'unknown'),
+      sourceName: String(body.sourceName || ''),
+      trackingSourceSlug: String(body.trackingSourceSlug || ''),
+      utmSource: String(body.utmSource || ''),
+      utmMedium: String(body.utmMedium || ''),
+      utmCampaign: String(body.utmCampaign || ''),
+      utmContent: String(body.utmContent || ''),
+      consentState,
+      methodType,
+      actionTarget,
+      metadata: isPlainRecord(body.metadata) ? body.metadata : {},
+    }, {
+      getMetaCapiUserData: () => buildMetaCapiUserData(c.req.raw, body.browserIdentifiers),
+    })
+  }
+  catch (error) {
+    if (error instanceof ConversionInProgressError) {
+      return errorJson(c, 409, '转化事件正在处理', { code: error.code })
+    }
+    throw error
+  }
 
   return c.json({ data: result }, result.created ? 201 : 200)
 })

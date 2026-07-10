@@ -34,6 +34,8 @@ import { createSecureOutboxStatement, enqueueSecureMetaCapiDelivery } from './me
 import { requireVerifiedMetaConnection } from './meta-connection'
 
 const SECURE_CONTEXT_TTL_MS = 24 * 60 * 60 * 1000
+const DEDUPE_CLAIM_TTL_MS = 60 * 1000
+const DEDUPE_CLAIM_ATTEMPTS = 3
 
 type ConversionEnv = Pick<
   Bindings,
@@ -129,7 +131,12 @@ type PlannedDelivery = {
   eventId: string
   pixelInstruction?: MetaPixelInstruction
   status: 'pending' | 'skipped'
-  skipReason: '' | Extract<ConversionSkipReason, 'connection_unverified' | 'missing_data_key' | 'invalid_data_key'>
+  skipReason: '' | Extract<ConversionSkipReason,
+    | 'connection_unverified'
+    | 'missing_data_key'
+    | 'invalid_data_key'
+    | 'invalid_sensitive_context'
+  >
   envelope?: MetaCapiEncryptedEnvelope
   expiresAt?: string
   hasFbp: 0 | 1
@@ -146,12 +153,34 @@ type CapiEncryptionPlan =
   | { state: 'disabled' }
   | {
       state: 'skipped'
-      reason: Extract<ConversionSkipReason, 'connection_unverified' | 'missing_data_key' | 'invalid_data_key'>
+      reason: Extract<ConversionSkipReason,
+        | 'connection_unverified'
+        | 'missing_data_key'
+        | 'invalid_data_key'
+        | 'invalid_sensitive_context'
+      >
       connectionRevision?: string
     }
   | { state: 'ready'; keys: MetaCapiCryptoKeys; context: MetaCapiSensitiveContext; connectionRevision: string }
 
 type MetaDeliverySettings = Awaited<ReturnType<typeof readMetaDeliverySettings>>
+
+type DedupeClaim = {
+  dedupe_key: string
+  owner_action_id: string
+  claim_token: string
+  claimed_at: string
+  expires_at: string
+}
+
+export class ConversionInProgressError extends Error {
+  readonly code = 'CONVERSION_IN_PROGRESS'
+
+  constructor() {
+    super('CONVERSION_IN_PROGRESS')
+    this.name = 'ConversionInProgressError'
+  }
+}
 
 export async function recordContact(
   env: ConversionEnv,
@@ -242,19 +271,201 @@ async function recordActiveConversion(
   if (existing) return recordDuplicateResult(env.DB, normalizedInput, occurredAt, date, dedupeKey, existing.id)
 
   const id = generateId('conv')
-  const plan = await buildConversionBatchPlan(env, id, normalizedInput, occurredAt, date, dedupeKey, context)
-  const results = await env.DB.batch(plan.statements)
-  if (!d1Changed(results[plan.actionStatementIndex]!)) {
-    const concurrent = await findConversionByDedupeKey(env.DB, dedupeKey)
-    if (concurrent) return recordDuplicateResult(env.DB, normalizedInput, occurredAt, date, dedupeKey, concurrent.id)
-    throw new Error('转化写入未确认')
+  const acquired = await acquireDedupeClaim(env.DB, dedupeKey, id)
+  if (acquired.state === 'duplicate') {
+    return committedDuplicateResult(normalizedInput.actionType, acquired.existingId)
   }
 
-  const committedDeliveries = plan.deliveries.filter(delivery => d1Changed(results[delivery.statementIndex]!))
-  const pixelEvents = committedDeliveries.flatMap(delivery => delivery.pixelInstruction ? [delivery.pixelInstruction] : [])
-  await finalizeCapiDeliveries(env, committedDeliveries)
+  let claim = acquired.claim
+  let ownsClaim = true
+  try {
+    const renewedBeforeSensitiveRead = await renewDedupeClaim(env.DB, claim)
+    if (!renewedBeforeSensitiveRead) {
+      await releaseDedupeClaim(env.DB, claim)
+      ownsClaim = false
+      return resolveLostDedupeClaim(env.DB, normalizedInput.actionType, dedupeKey)
+    }
+    claim = renewedBeforeSensitiveRead
+    const plan = await buildConversionBatchPlan(
+      env,
+      id,
+      normalizedInput,
+      date,
+      dedupeKey,
+      context,
+    )
+    const renewedBeforeCommit = await renewDedupeClaim(env.DB, claim)
+    if (!renewedBeforeCommit) {
+      await releaseDedupeClaim(env.DB, claim)
+      ownsClaim = false
+      return resolveLostDedupeClaim(env.DB, normalizedInput.actionType, dedupeKey)
+    }
+    claim = renewedBeforeCommit
+    plan.statements.unshift(fencedConversionActionStatement(
+      env.DB,
+      id,
+      normalizedInput,
+      occurredAt,
+      date,
+      dedupeKey,
+      claim,
+    ))
+    for (const delivery of plan.deliveries) delivery.statementIndex += 1
+    plan.statements.push(releaseDedupeClaimStatement(env.DB, claim))
+    const results = await env.DB.batch(plan.statements)
+    ownsClaim = false
+    if (!d1Changed(results[0]!)) {
+      const concurrent = await findConversionByDedupeKey(env.DB, dedupeKey)
+      if (concurrent) return committedDuplicateResult(normalizedInput.actionType, concurrent.id)
+      throw new ConversionInProgressError()
+    }
 
-  return { id, actionType: normalizedInput.actionType, created: true, duplicateOf: '', pixelEvents }
+    const committedDeliveries = plan.deliveries.filter(delivery => d1Changed(results[delivery.statementIndex]!))
+    const pixelEvents = committedDeliveries.flatMap(delivery => delivery.pixelInstruction ? [delivery.pixelInstruction] : [])
+    await finalizeCapiDeliveries(env, committedDeliveries)
+
+    return { id, actionType: normalizedInput.actionType, created: true, duplicateOf: '', pixelEvents }
+  }
+  catch (error) {
+    if (ownsClaim) await releaseDedupeClaim(env.DB, claim)
+    throw error
+  }
+}
+
+async function acquireDedupeClaim(
+  db: D1Database,
+  dedupeKey: string,
+  ownerActionId: string,
+): Promise<{ state: 'acquired'; claim: DedupeClaim } | { state: 'duplicate'; existingId: string }> {
+  for (let attempt = 0; attempt < DEDUPE_CLAIM_ATTEMPTS; attempt += 1) {
+    const now = new Date().toISOString()
+    const expiresAt = new Date(Date.parse(now) + DEDUPE_CLAIM_TTL_MS).toISOString()
+    const claimToken = generateId('claim')
+    const candidate: DedupeClaim = {
+      dedupe_key: dedupeKey,
+      owner_action_id: ownerActionId,
+      claim_token: claimToken,
+      claimed_at: now,
+      expires_at: expiresAt,
+    }
+    const inserted = await db.prepare(`
+      INSERT OR IGNORE INTO analytics_conversion_dedupe_claims (
+        dedupe_key, owner_action_id, claim_token, claimed_at, expires_at
+      ) VALUES (?, ?, ?, ?, ?)
+    `).bind(
+      candidate.dedupe_key,
+      candidate.owner_action_id,
+      candidate.claim_token,
+      candidate.claimed_at,
+      candidate.expires_at,
+    ).run()
+    if (d1Changed(inserted)) return { state: 'acquired', claim: candidate }
+
+    const existing = await findConversionByDedupeKey(db, dedupeKey)
+    if (existing) return { state: 'duplicate', existingId: existing.id }
+
+    const current = await readDedupeClaim(db, dedupeKey)
+    if (!current) continue
+    if (current.expires_at <= now) {
+      const takeover = await db.prepare(`
+        UPDATE analytics_conversion_dedupe_claims
+        SET owner_action_id = ?, claim_token = ?, claimed_at = ?, expires_at = ?
+        WHERE dedupe_key = ?
+          AND owner_action_id = ?
+          AND claim_token = ?
+          AND claimed_at = ?
+          AND expires_at = ?
+          AND expires_at <= ?
+      `).bind(
+        candidate.owner_action_id,
+        candidate.claim_token,
+        candidate.claimed_at,
+        candidate.expires_at,
+        candidate.dedupe_key,
+        current.owner_action_id,
+        current.claim_token,
+        current.claimed_at,
+        current.expires_at,
+        now,
+      ).run()
+      if (d1Changed(takeover)) return { state: 'acquired', claim: candidate }
+    }
+
+    await Promise.resolve()
+  }
+
+  const committed = await findConversionByDedupeKey(db, dedupeKey)
+  if (committed) return { state: 'duplicate', existingId: committed.id }
+  throw new ConversionInProgressError()
+}
+
+function readDedupeClaim(db: D1Database, dedupeKey: string) {
+  return db.prepare(`
+    SELECT dedupe_key, owner_action_id, claim_token, claimed_at, expires_at
+    FROM analytics_conversion_dedupe_claims
+    WHERE dedupe_key = ?
+    LIMIT 1
+  `).bind(dedupeKey).first<DedupeClaim>()
+}
+
+async function renewDedupeClaim(db: D1Database, claim: DedupeClaim): Promise<DedupeClaim | null> {
+  const now = new Date().toISOString()
+  const expiresAt = new Date(Date.parse(now) + DEDUPE_CLAIM_TTL_MS).toISOString()
+  const result = await db.prepare(`
+    UPDATE analytics_conversion_dedupe_claims
+    SET expires_at = ?
+    WHERE dedupe_key = ?
+      AND owner_action_id = ?
+      AND claim_token = ?
+      AND claimed_at = ?
+      AND expires_at = ?
+      AND expires_at > ?
+  `).bind(
+    expiresAt,
+    claim.dedupe_key,
+    claim.owner_action_id,
+    claim.claim_token,
+    claim.claimed_at,
+    claim.expires_at,
+    now,
+  ).run()
+  return d1Changed(result) ? { ...claim, expires_at: expiresAt } : null
+}
+
+function releaseDedupeClaimStatement(db: D1Database, claim: DedupeClaim) {
+  return db.prepare(`
+    DELETE FROM analytics_conversion_dedupe_claims
+    WHERE dedupe_key = ?
+      AND owner_action_id = ?
+      AND claim_token = ?
+      AND claimed_at = ?
+      AND expires_at = ?
+  `).bind(
+    claim.dedupe_key,
+    claim.owner_action_id,
+    claim.claim_token,
+    claim.claimed_at,
+    claim.expires_at,
+  )
+}
+
+async function releaseDedupeClaim(db: D1Database, claim: DedupeClaim) {
+  try {
+    await releaseDedupeClaimStatement(db, claim).run()
+  }
+  catch {
+    // 释放失败时不暴露原异常；短租约会自动过期。
+  }
+}
+
+async function resolveLostDedupeClaim(
+  db: D1Database,
+  actionType: ActiveConversionActionType,
+  dedupeKey: string,
+) {
+  const existing = await findConversionByDedupeKey(db, dedupeKey)
+  if (existing) return committedDuplicateResult(actionType, existing.id)
+  throw new ConversionInProgressError()
 }
 
 function registrationConversionContext(context: RecordRegistrationContext): RecordConversionContext {
@@ -411,6 +622,19 @@ async function recordDuplicateResult(
   }
 }
 
+function committedDuplicateResult(
+  actionType: ActiveConversionActionType,
+  existingId: string,
+): RecordConversionResult {
+  return {
+    id: existingId,
+    actionType,
+    created: false,
+    duplicateOf: existingId,
+    pixelEvents: [],
+  }
+}
+
 async function findConversionByDedupeKey(db: D1Database, dedupeKey: string) {
   return db
     .prepare('SELECT id FROM analytics_conversion_actions WHERE dedupe_key = ? LIMIT 1')
@@ -465,7 +689,6 @@ async function buildConversionBatchPlan(
   env: ConversionEnv,
   actionId: string,
   input: RecordConversionInput,
-  occurredAt: string,
   date: string,
   dedupeKey: string,
   context: RecordConversionContext,
@@ -474,7 +697,6 @@ async function buildConversionBatchPlan(
   const deliveries: PlannedDelivery[] = []
   const settings = await readMetaDeliverySettings(env.DB)
   const capiEncryption = await buildCapiEncryptionPlan(env, settings, input, context)
-  const actionStatementIndex = statements.push(conversionActionStatement(env.DB, actionId, input, occurredAt, date, dedupeKey)) - 1
   statements.push(conversionDailyStatement(env.DB, input, date, actionId))
   deliveries.push(...await planMetaDeliveries(env, settings, input, date, capiEncryption))
   for (const delivery of deliveries) {
@@ -489,7 +711,45 @@ async function buildConversionBatchPlan(
     }
   }
 
-  return { statements, actionStatementIndex, deliveries }
+  return { statements, deliveries }
+}
+
+function fencedConversionActionStatement(
+  db: D1Database,
+  id: string,
+  input: RecordConversionInput,
+  occurredAt: string,
+  date: string,
+  dedupeKey: string,
+  claim: DedupeClaim,
+) {
+  const values = conversionActionValues(id, input, occurredAt, date, dedupeKey)
+  return db.prepare(`
+    INSERT OR IGNORE INTO analytics_conversion_actions (
+      id, action_type, dedupe_key, occurred_at, date, visitor_id, session_id, user_id,
+      source_channel, source_name, tracking_source_slug, utm_source, utm_medium,
+      utm_campaign, utm_content, method_type, action_target, route_name, path,
+      metadata, duplicate_of
+    )
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+    WHERE EXISTS (
+      SELECT 1 FROM analytics_conversion_dedupe_claims
+      WHERE dedupe_key = ?
+        AND owner_action_id = ?
+        AND claim_token = ?
+        AND claimed_at = ?
+        AND expires_at = ?
+        AND expires_at > ?
+    )
+  `).bind(
+    ...values,
+    claim.dedupe_key,
+    claim.owner_action_id,
+    claim.claim_token,
+    claim.claimed_at,
+    claim.expires_at,
+    new Date().toISOString(),
+  )
 }
 
 function conversionActionStatement(
@@ -500,12 +760,7 @@ function conversionActionStatement(
   date: string,
   dedupeKey: string,
 ) {
-  const values = [
-    id, input.actionType, dedupeKey, occurredAt, date, input.visitorId || '', input.sessionId || '', input.userId ?? null,
-    input.sourceChannel || 'unknown', input.sourceName || '', input.trackingSourceSlug || '', input.utmSource || '',
-    input.utmMedium || '', input.utmCampaign || '', input.utmContent || '', input.methodType || '', input.actionTarget || '',
-    input.routeName || '', input.path || '', JSON.stringify(sanitizeConversionMetadata(input.metadata || {})), '',
-  ]
+  const values = conversionActionValues(id, input, occurredAt, date, dedupeKey)
   return db.prepare(`
     INSERT OR IGNORE INTO analytics_conversion_actions (
       id, action_type, dedupe_key, occurred_at, date, visitor_id, session_id, user_id,
@@ -515,6 +770,21 @@ function conversionActionStatement(
     )
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(...values)
+}
+
+function conversionActionValues(
+  id: string,
+  input: RecordConversionInput,
+  occurredAt: string,
+  date: string,
+  dedupeKey: string,
+) {
+  return [
+    id, input.actionType, dedupeKey, occurredAt, date, input.visitorId || '', input.sessionId || '', input.userId ?? null,
+    input.sourceChannel || 'unknown', input.sourceName || '', input.trackingSourceSlug || '', input.utmSource || '',
+    input.utmMedium || '', input.utmCampaign || '', input.utmContent || '', input.methodType || '', input.actionTarget || '',
+    input.routeName || '', input.path || '', JSON.stringify(sanitizeConversionMetadata(input.metadata || {})), '',
+  ]
 }
 
 async function planMetaDeliveries(
@@ -676,7 +946,11 @@ async function buildCapiEncryptionPlan(
     sensitiveContext = normalizeSensitiveContext(await context.getMetaCapiUserData())
   }
   catch {
-    throw new Error('META_CAPI_CONTEXT_BUILD_FAILED')
+    return {
+      state: 'skipped',
+      reason: 'invalid_sensitive_context',
+      connectionRevision: connection.revision,
+    }
   }
   return {
     state: 'ready',

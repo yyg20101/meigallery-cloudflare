@@ -54,6 +54,12 @@ type InsertedOutbox = {
   tag: string
   expiresAt: string
 }
+type DedupeClaim = {
+  ownerActionId: string
+  claimToken: string
+  claimedAt: string
+  expiresAt: string
+}
 
 const DATA_KEY = Buffer.alloc(32, 7).toString('base64')
 const META_TOKEN = 'conversion-token'
@@ -75,6 +81,7 @@ function createConversionDb(options: {
   const insertedDeliveries: InsertedDelivery[] = []
   const insertedOutboxes: InsertedOutbox[] = []
   const dedupe = new Map((options.existingDedupeKeys ?? []).map((key) => [key, `existing_${key}`]))
+  const claims = new Map<string, DedupeClaim>()
   let statementCount = 0
 
   function applyCall(
@@ -84,13 +91,89 @@ function createConversionDb(options: {
       insertedConversions: InsertedConversion[]
       insertedDeliveries: InsertedDelivery[]
       insertedOutboxes: InsertedOutbox[]
+      claims: Map<string, DedupeClaim>
     },
   ) {
+    if (call.sql.includes('INSERT OR IGNORE INTO analytics_conversion_dedupe_claims')) {
+      const dedupeKey = String(call.params[0])
+      if (target.claims.has(dedupeKey)) {
+        return { meta: { changes: 0, rows_written: 0, rows_read: 0, duration: 1 } }
+      }
+      target.claims.set(dedupeKey, {
+        ownerActionId: String(call.params[1]),
+        claimToken: String(call.params[2]),
+        claimedAt: String(call.params[3]),
+        expiresAt: String(call.params[4]),
+      })
+      return { meta: { changes: 1, rows_written: 1, rows_read: 0, duration: 1 } }
+    }
+    if (call.sql.includes('UPDATE analytics_conversion_dedupe_claims')) {
+      if (call.sql.includes('SET owner_action_id')) {
+        const dedupeKey = String(call.params[4])
+        const current = target.claims.get(dedupeKey)
+        if (!current
+          || current.ownerActionId !== String(call.params[5])
+          || current.claimToken !== String(call.params[6])
+          || current.claimedAt !== String(call.params[7])
+          || current.expiresAt !== String(call.params[8])
+          || current.expiresAt > String(call.params[9])) {
+          return { meta: { changes: 0, rows_written: 0, rows_read: 0, duration: 1 } }
+        }
+        target.claims.set(dedupeKey, {
+          ownerActionId: String(call.params[0]),
+          claimToken: String(call.params[1]),
+          claimedAt: String(call.params[2]),
+          expiresAt: String(call.params[3]),
+        })
+        return { meta: { changes: 1, rows_written: 1, rows_read: 0, duration: 1 } }
+      }
+      const dedupeKey = String(call.params[1])
+      const current = target.claims.get(dedupeKey)
+      if (!current
+        || current.ownerActionId !== String(call.params[2])
+        || current.claimToken !== String(call.params[3])
+        || current.claimedAt !== String(call.params[4])
+        || current.expiresAt !== String(call.params[5])
+        || current.expiresAt <= String(call.params[6])) {
+        return { meta: { changes: 0, rows_written: 0, rows_read: 0, duration: 1 } }
+      }
+      target.claims.set(dedupeKey, {
+        ownerActionId: current.ownerActionId,
+        claimToken: current.claimToken,
+        claimedAt: current.claimedAt,
+        expiresAt: String(call.params[0]),
+      })
+      return { meta: { changes: 1, rows_written: 1, rows_read: 0, duration: 1 } }
+    }
+    if (call.sql.includes('DELETE FROM analytics_conversion_dedupe_claims')) {
+      const dedupeKey = String(call.params[0])
+      const current = target.claims.get(dedupeKey)
+      if (!current
+        || current.ownerActionId !== String(call.params[1])
+        || current.claimToken !== String(call.params[2])
+        || current.claimedAt !== String(call.params[3])
+        || current.expiresAt !== String(call.params[4])) {
+        return { meta: { changes: 0, rows_written: 0, rows_read: 0, duration: 1 } }
+      }
+      target.claims.delete(dedupeKey)
+      return { meta: { changes: 1, rows_written: 1, rows_read: 0, duration: 1 } }
+    }
     if (call.sql.includes('INSERT OR IGNORE INTO analytics_conversion_actions')) {
       const id = String(call.params[0])
       const actionType = String(call.params[1])
       const dedupeKey = String(call.params[2])
       const sessionId = String(call.params[6])
+      if (call.sql.includes('FROM analytics_conversion_dedupe_claims')) {
+        const claim = target.claims.get(String(call.params[21]))
+        if (!claim
+          || claim.ownerActionId !== String(call.params[22])
+          || claim.claimToken !== String(call.params[23])
+          || claim.claimedAt !== String(call.params[24])
+          || claim.expiresAt !== String(call.params[25])
+          || claim.expiresAt <= String(call.params[26])) {
+          return { meta: { changes: 0, rows_written: 0, rows_read: 0, duration: 1 } }
+        }
+      }
       if (target.dedupe.has(dedupeKey)) return { meta: { changes: 0, rows_written: 0, rows_read: 0, duration: 1 } }
       target.dedupe.set(dedupeKey, id)
       target.insertedConversions.push({ id, actionType, dedupeKey, sessionId })
@@ -151,9 +234,20 @@ function createConversionDb(options: {
           return this
         },
         async first<T>() {
-          if (sql.includes('WHERE dedupe_key = ?')) {
+          if (sql.includes('FROM analytics_conversion_actions') && sql.includes('WHERE dedupe_key = ?')) {
             const existingId = dedupe.get(String(call.params[0]))
             return existingId ? ({ id: existingId } as T) : null
+          }
+          if (sql.includes('FROM analytics_conversion_dedupe_claims')) {
+            const dedupeKey = String(call.params[0])
+            const claim = claims.get(dedupeKey)
+            return claim ? ({
+              dedupe_key: dedupeKey,
+              owner_action_id: claim.ownerActionId,
+              claim_token: claim.claimToken,
+              claimed_at: claim.claimedAt,
+              expires_at: claim.expiresAt,
+            } as T) : null
           }
           if (sql.includes("WHERE key = 'meta_capi_enabled'")) {
             return { value: String(options.metaCapiEnabled === true) } as T
@@ -215,7 +309,7 @@ function createConversionDb(options: {
         async run() {
           statementCount += 1
           calls.push(call)
-          const result = applyCall(call, { dedupe, insertedConversions, insertedDeliveries, insertedOutboxes })
+          const result = applyCall(call, { dedupe, insertedConversions, insertedDeliveries, insertedOutboxes, claims })
           if (options.failAt === statementCount) throw new Error('模拟 D1 写入失败')
           return result
         },
@@ -229,6 +323,7 @@ function createConversionDb(options: {
         insertedConversions: [...insertedConversions],
         insertedDeliveries: [...insertedDeliveries],
         insertedOutboxes: [...insertedOutboxes],
+        claims: new Map(claims),
       }
       const results = []
       for (const statement of statements) {
@@ -244,6 +339,8 @@ function createConversionDb(options: {
       insertedConversions.splice(0, insertedConversions.length, ...staged.insertedConversions)
       insertedDeliveries.splice(0, insertedDeliveries.length, ...staged.insertedDeliveries)
       insertedOutboxes.splice(0, insertedOutboxes.length, ...staged.insertedOutboxes)
+      claims.clear()
+      for (const [key, value] of staged.claims) claims.set(key, value)
       return results
     },
     get failAt() {
@@ -434,7 +531,7 @@ describe('conversion ledger service', () => {
       facebookPixelEnabled: true,
       facebookPixelId: '1234567890',
       metaTrackingMode: 'test',
-      failAt: 3,
+      failAt: 5,
     })
 
     await expect(recordContact(envFor(db), grantedContactInput())).rejects.toThrow()
@@ -620,7 +717,7 @@ describe('conversion ledger service', () => {
     expect(db.insertedOutboxes).toEqual([])
   })
 
-  it('注册敏感 supplier 异常只抛稳定错误，不携带原值或 cause', async () => {
+  it('注册敏感 supplier 异常转为稳定 skipped，不携带原值或 cause', async () => {
     const db = createConversionDb({
       metaCapiEnabled: true,
       metaTrackingMode: 'production',
@@ -628,7 +725,7 @@ describe('conversion ledger service', () => {
     })
     const sensitive = 'supplier-private@example.test|33333333333333333333333333333333'
 
-    const error = await recordRegistration(envFor(db), {
+    const result = await recordRegistration(envFor(db), {
       visitorId: 'visitor_supplier_failure',
       sessionId: 'session_supplier_failure',
       userId: 424,
@@ -638,11 +735,23 @@ describe('conversion ledger service', () => {
     }, {
       getMetaCapiUserData: async () => ({ fbp: 'fb.1.1700000000000.supplier-private' }),
       getRegistrationSensitiveInput: async () => { throw new Error(sensitive) },
-    }).catch(caught => caught as Error & { cause?: unknown })
+    })
 
-    expect(error).toMatchObject({ message: 'META_CAPI_CONTEXT_BUILD_FAILED' })
-    expect(error).not.toHaveProperty('cause')
-    expect(JSON.stringify(error)).not.toContain(sensitive)
+    expect(result).toMatchObject({ created: true })
+    expect(result).not.toHaveProperty('cause')
+    expect(db.insertedDeliveries).toEqual([
+      expect.objectContaining({
+        channel: 'meta_capi',
+        status: 'skipped',
+        skipReason: 'invalid_sensitive_context',
+        hasFbp: 0,
+        hasFbc: 0,
+        hasEmail: 0,
+        hasExternalId: 0,
+        metaConnectionRevision: CONNECTION_REVISION,
+      }),
+    ])
+    expect(JSON.stringify(result)).not.toContain(sensitive)
     expect(db.insertedOutboxes).toEqual([])
   })
 

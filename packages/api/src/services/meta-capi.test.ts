@@ -278,12 +278,13 @@ describe('meta-capi', () => {
       'unsupported_event',
       'missing_data_key',
       'invalid_data_key',
+      'invalid_sensitive_context',
       'secure_context_expired',
       'secure_context_invalid',
       'legacy_message_unsupported',
     ]
 
-    expect(reasons).toHaveLength(6)
+    expect(reasons).toHaveLength(7)
   })
 
   it('CAPI payload 事件名使用活动 Meta 事件类型', () => {

@@ -26,4 +26,29 @@ describe('Meta Graph contract', () => {
     expect(JSON.stringify(parsed)).not.toContain('trace-sensitive')
     expect(JSON.stringify(parsed)).not.toContain('not-json')
   })
+
+  it.each([
+    ['ExactTrace_123', ['ExactTrace_123']],
+    ['SensitiveToken_123_suffix', ['SensitiveToken_123']],
+    ['prefix_SensitiveToken_123', ['SensitiveToken_123']],
+    ['TraceToken_123', ['prefix_TraceToken_123_suffix']],
+  ])('拒绝与敏感值双向包含的 trace: %s', async (traceId, sensitiveValues) => {
+    const parsed = await readMetaEventsResponse(new Response(JSON.stringify({
+      error: { code: 190, fbtrace_id: traceId },
+    }), { status: 400 }), sensitiveValues)
+
+    expect(parsed).toEqual({ eventsReceived: undefined, errorCode: 190 })
+  })
+
+  it('忽略空值和过短敏感片段，不误伤合法 trace', async () => {
+    const parsed = await readMetaEventsResponse(new Response(JSON.stringify({
+      error: { code: 190, fbtrace_id: 'Trace_safe_123' },
+    }), { status: 400 }), ['', ' ', 'Trace', 'safe'])
+
+    expect(parsed).toEqual({
+      eventsReceived: undefined,
+      errorCode: 190,
+      traceId: 'Trace_safe_123',
+    })
+  })
 })

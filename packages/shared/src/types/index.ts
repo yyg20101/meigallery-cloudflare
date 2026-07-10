@@ -143,6 +143,7 @@ export type ConversionSkipReason =
   | 'connection_unverified'
   | 'missing_data_key'
   | 'invalid_data_key'
+  | 'invalid_sensitive_context'
   | 'secure_context_expired'
   | 'secure_context_invalid'
   | 'legacy_message_unsupported'

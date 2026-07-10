@@ -8,13 +8,13 @@ async function readMigration(name: string) {
 }
 
 describe('analytics migrations', () => {
-  it('migration 索引从 0001 到 0037 连续且编号唯一', async () => {
+  it('migration 索引从 0001 到 0038 连续且编号唯一', async () => {
     const names = (await readdir(MIGRATION_DIR))
       .filter(name => /^\d{4}_.+\.sql$/.test(name))
       .sort()
     const indexes = names.map(name => Number(name.slice(0, 4)))
 
-    expect(indexes).toEqual(Array.from({ length: 37 }, (_, index) => index + 1))
+    expect(indexes).toEqual(Array.from({ length: 38 }, (_, index) => index + 1))
     expect(new Set(indexes).size).toBe(indexes.length)
   })
 
@@ -163,5 +163,19 @@ describe('analytics migrations', () => {
     expect(sql).toMatch(/revision IS NULL[\s\S]+length\(revision\) = 32/)
     expect(sql).toMatch(/meta_connection_revision IS NULL[\s\S]+length\(meta_connection_revision\) = 32/)
     expect(sql).not.toMatch(/access_token|test_event_code|client_ip|user_agent/i)
+  })
+
+  it('0038 建立不含 PII 的短期 conversion dedupe claim', async () => {
+    const sql = await readMigration('0038_conversion_dedupe_claims.sql')
+
+    expect(sql).toContain('CREATE TABLE analytics_conversion_dedupe_claims')
+    expect(sql).toContain('dedupe_key TEXT PRIMARY KEY')
+    expect(sql).toContain('owner_action_id TEXT NOT NULL')
+    expect(sql).toContain('claim_token TEXT NOT NULL')
+    expect(sql).toContain('claimed_at TEXT NOT NULL')
+    expect(sql).toContain('expires_at TEXT NOT NULL')
+    expect(sql).toContain('idx_analytics_conversion_dedupe_claims_expiry')
+    expect(sql).toMatch(/expires_at\s*>\s*claimed_at/)
+    expect(sql).not.toMatch(/email|external_id|client_ip|user_agent|\bfbp\b|\bfbc\b|ciphertext/i)
   })
 })

@@ -168,6 +168,6 @@ function runWrangler(args) {
     const stderr = error && typeof error === 'object' && 'stderr' in error
       ? String(error.stderr).trim()
       : ''
-    throw new Error(`Wrangler 本地 D1 命令失败${stderr ? `: ${stderr}` : ''}`)
+    throw new Error(`Wrangler 本地 D1 命令失败${stderr ? `: ${stderr}` : ''}`, { cause: error })
   }
 }

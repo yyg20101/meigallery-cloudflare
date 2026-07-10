@@ -7,6 +7,7 @@ export function metaEventsEndpoint(pixelId: string, accessToken: string) {
 }
 
 const TRACE_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/
+const MIN_SENSITIVE_TRACE_FRAGMENT_LENGTH = 8
 
 export async function readMetaEventsResponse(
   response: Response,
@@ -41,7 +42,7 @@ export async function readMetaEventsResponse(
     : undefined
   const candidateTraceId = typeof error?.fbtrace_id === 'string' ? error.fbtrace_id : ''
   const traceId = TRACE_ID_PATTERN.test(candidateTraceId)
-    && !sensitiveValues.some(value => typeof value === 'string' && value.length > 0 && value === candidateTraceId)
+    && !hasSensitiveTraceConflict(candidateTraceId, sensitiveValues)
     ? candidateTraceId
     : undefined
   return {
@@ -49,6 +50,15 @@ export async function readMetaEventsResponse(
     ...(errorCode !== undefined ? { errorCode } : {}),
     ...(traceId ? { traceId } : {}),
   }
+}
+
+function hasSensitiveTraceConflict(traceId: string, sensitiveValues: readonly string[]) {
+  return sensitiveValues.some((value) => {
+    if (typeof value !== 'string') return false
+    const sensitive = value.trim()
+    if (sensitive.length < MIN_SENSITIVE_TRACE_FRAGMENT_LENGTH) return false
+    return traceId.includes(sensitive) || sensitive.includes(traceId)
+  })
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
