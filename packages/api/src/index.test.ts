@@ -122,10 +122,12 @@ describe('Meta CAPI Queue consumer', () => {
 })
 
 describe('Meta CAPI scheduled recovery', () => {
-  it('Cron 在独立任务中扫描并重投超时 pending delivery', async () => {
+  function createScheduledHarness() {
     const sent: MetaCapiQueueMessage[] = []
+    const sqlCalls: string[] = []
     const db = {
       prepare(sql: string) {
+        sqlCalls.push(sql)
         return {
           bind() { return this },
           async first() { return null },
@@ -144,8 +146,7 @@ describe('Meta CAPI scheduled recovery', () => {
         scheduledWork = promise
       },
     } as unknown as ExecutionContext
-
-    await app.scheduled({} as ScheduledEvent, {
+    const scheduledEnv = {
       APP_ENV: 'production',
       DB: db,
       META_CAPI_QUEUE: {
@@ -153,9 +154,47 @@ describe('Meta CAPI scheduled recovery', () => {
           sent.push(message)
         },
       },
-    } as unknown as Bindings, ctx)
-    await scheduledWork
+    } as unknown as Bindings
 
-    expect(sent).toEqual([{ schemaVersion: 1, deliveryId: 'cdlv_stale', userData: {} }])
+    return {
+      sent,
+      sqlCalls,
+      async run(cron: string) {
+        await app.scheduled({ cron } as ScheduledEvent, scheduledEnv, ctx)
+        await scheduledWork
+      },
+    }
+  }
+
+  it('每 5 分钟 Cron 只恢复 outbox，不运行每日聚合或清理', async () => {
+    const harness = createScheduledHarness()
+
+    await harness.run('*/5 * * * *')
+
+    expect(harness.sent).toEqual([{ schemaVersion: 1, deliveryId: 'cdlv_stale', userData: {} }])
+    expect(harness.sqlCalls.some(sql => sql.includes('email_verification_codes'))).toBe(false)
+    expect(harness.sqlCalls.some(sql => sql.includes('analytics_daily_sources'))).toBe(false)
+    expect(harness.sqlCalls.some(sql => sql.includes('analytics_events WHERE sampled'))).toBe(false)
+  })
+
+  it('每日 Cron 同时恢复 outbox 并运行完整聚合与保留期清理', async () => {
+    const harness = createScheduledHarness()
+
+    await harness.run('0 0 * * *')
+
+    expect(harness.sent).toEqual([{ schemaVersion: 1, deliveryId: 'cdlv_stale', userData: {} }])
+    expect(harness.sqlCalls.some(sql => sql.includes('email_verification_codes'))).toBe(true)
+    expect(harness.sqlCalls.some(sql => sql.includes('analytics_daily_sources'))).toBe(true)
+    expect(harness.sqlCalls.some(sql => sql.includes('analytics_events WHERE sampled'))).toBe(true)
+  })
+
+  it('未知 Cron 保守只恢复 outbox', async () => {
+    const harness = createScheduledHarness()
+
+    await harness.run('13 * * * *')
+
+    expect(harness.sent).toEqual([{ schemaVersion: 1, deliveryId: 'cdlv_stale', userData: {} }])
+    expect(harness.sqlCalls.some(sql => sql.includes('email_verification_codes'))).toBe(false)
+    expect(harness.sqlCalls.some(sql => sql.includes('analytics_daily_sources'))).toBe(false)
   })
 })

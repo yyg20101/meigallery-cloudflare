@@ -255,10 +255,12 @@ app.onError((err, c) => {
 
 // ============================================================
 // Scheduled Handler（Cron Trigger）
-// 每天 UTC 00:00（北京时间 08:00）执行
+// 每个 trigger 都恢复 Meta outbox；仅每日 trigger 执行完整维护任务。
 // ============================================================
 
-async function handleScheduled(env: Bindings): Promise<void> {
+const DAILY_MAINTENANCE_CRON = '0 0 * * *'
+
+async function handleScheduled(event: ScheduledEvent, env: Bindings): Promise<void> {
   const db = env.DB
 
   try {
@@ -266,6 +268,11 @@ async function handleScheduled(env: Bindings): Promise<void> {
     console.log('[cron] Meta CAPI Queue 恢复完成:', recovery)
   } catch (error) {
     console.error('[cron] Meta CAPI Queue 恢复失败:', error)
+  }
+
+  if (event.cron !== DAILY_MAINTENANCE_CRON) {
+    console.log('[cron] 非每日 trigger，跳过完整维护任务:', event.cron || 'unknown')
+    return
   }
 
   // 1. 清理过期验证码（超过 1 小时的记录）
@@ -349,7 +356,7 @@ function addDays(date: string, delta: number) {
 export default {
   fetch: app.fetch,
   scheduled: async (event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) => {
-    ctx.waitUntil(handleScheduled(env))
+    ctx.waitUntil(handleScheduled(event, env))
   },
   queue: async (batch: MessageBatch<MetaCapiQueueMessage>, env: Bindings) => {
     const { handleMetaCapiBatch } = await import('./services/meta-capi-queue')
