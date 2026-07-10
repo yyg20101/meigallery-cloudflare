@@ -5,6 +5,7 @@ const FBC_PATTERN = /^fb\.1\.\d{10,16}\.[A-Za-z0-9._-]{1,128}$/
 const CONTROL_CHARACTER_PATTERN = /\p{Cc}/u
 const IP_MAX_LENGTH = 64
 const USER_AGENT_MAX_LENGTH = 512
+const IDENTIFIER_ERROR = 'META_CAPI_IDENTIFIER_INVALID'
 
 export function normalizeMetaBrowserIdentifiers(value: unknown): Pick<MetaCapiUserData, 'fbp' | 'fbc'> {
   if (!isPlainRecord(value)) return {}
@@ -34,6 +35,33 @@ export function buildMetaCapiUserData(request: Request, bodyIdentifiers: unknown
     clientIpAddress: request.headers.get('CF-Connecting-IP'),
     clientUserAgent: request.headers.get('User-Agent'),
   })
+}
+
+export async function normalizeAndHashEmail(email: string): Promise<string> {
+  try {
+    if (typeof email !== 'string') throw new Error(IDENTIFIER_ERROR)
+    const normalized = email.trim().toLowerCase()
+    if (!normalized) throw new Error(IDENTIFIER_ERROR)
+    return await sha256Hex(normalized)
+  }
+  catch {
+    throw new Error(IDENTIFIER_ERROR)
+  }
+}
+
+export async function hashMetaExternalId(externalId: string): Promise<string> {
+  try {
+    if (typeof externalId !== 'string' || !externalId) throw new Error(IDENTIFIER_ERROR)
+    return await sha256Hex(externalId)
+  }
+  catch {
+    throw new Error(IDENTIFIER_ERROR)
+  }
+}
+
+async function sha256Hex(value: string) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
 }
 
 function safeHeaderValue(value: unknown, maxLength: number) {
