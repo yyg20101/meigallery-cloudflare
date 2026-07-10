@@ -96,4 +96,37 @@ describe('analytics migrations', () => {
     }
     expect(sql).toContain('source_name TEXT NOT NULL DEFAULT')
   })
+
+  it('0034 以兼容方式扩展 Meta delivery 并保留转化事实表', async () => {
+    const sql = await readMigration('0034_meta_production_readiness.sql')
+    expect(sql).toContain('PRAGMA defer_foreign_keys = true')
+    expect(sql).toContain('PRAGMA defer_foreign_keys = false')
+
+    for (const field of [
+      'id',
+      'conversion_action_id',
+      'channel',
+      'external_event_id',
+      'event_name',
+      'status',
+      'skip_reason',
+      'error_code',
+      'error_message',
+      'attempt_count',
+      'last_attempt_at',
+      'sent_at',
+      'created_at',
+      'updated_at',
+    ]) {
+      expect(sql).toMatch(new RegExp(`INSERT INTO analytics_conversion_deliveries_v2[\\s\\S]*\\b${field}\\b`))
+      expect(sql).toMatch(new RegExp(`SELECT[\\s\\S]*\\b${field}\\b`))
+    }
+
+    expect(sql).toContain("'attempted'")
+    expect(sql).toContain('has_fbp INTEGER NOT NULL DEFAULT 0')
+    expect(sql).toContain('has_fbc INTEGER NOT NULL DEFAULT 0')
+    expect(sql).toContain('idx_analytics_conversion_deliveries_external')
+    expect(sql).toContain('idx_analytics_conversion_deliveries_status')
+    expect(sql).not.toMatch(/DROP TABLE\s+analytics_conversion_actions/i)
+  })
 })

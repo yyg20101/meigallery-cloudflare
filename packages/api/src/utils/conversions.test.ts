@@ -2,18 +2,21 @@ import { describe, expect, it } from 'vitest'
 import {
   buildConversionDedupeKey,
   buildExternalEventId,
+  normalizeMetaTrackingMode,
+} from '@meigallery/shared/utils'
+import {
   sanitizeConversionMetadata,
   metaEventForConversion,
 } from './conversions'
 import { ATTRIBUTION_LIMITS } from '@meigallery/shared/constants'
 
 describe('conversion utils', () => {
-  it('为同一业务动作生成稳定 dedupe key 和 external event id', () => {
+  it('共享契约生成稳定事件 ID 并保守归一化 Meta 模式', () => {
     const input = {
       actionType: 'contact' as const,
       sessionId: 'session_abc',
       visitorId: 'visitor_abc',
-      occurredDate: '2026-07-09',
+      occurredDate: '2026-07-10',
       methodType: 'telegram',
       actionTarget: 'floating_contact_panel',
     }
@@ -21,6 +24,9 @@ describe('conversion utils', () => {
     expect(buildExternalEventId({ ...input, metaEventName: 'Contact' })).toBe(
       'meta:Contact:contact:session_abc:telegram:floating_contact_panel',
     )
+    expect(normalizeMetaTrackingMode('production')).toBe('production')
+    expect(normalizeMetaTrackingMode('hybrid')).toBe('disabled')
+    expect(normalizeMetaTrackingMode('limited')).toBe('disabled')
   })
 
   it('注册成功映射 CompleteRegistration 且不映射 StartTrial', () => {

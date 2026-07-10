@@ -84,7 +84,32 @@ export type ConversionMetaEventName =
 
 export type ConversionDeliveryChannel = 'meta_pixel' | 'meta_capi'
 
-export type ConversionDeliveryStatus = 'pending' | 'sent' | 'failed' | 'skipped' | 'duplicate_suppressed'
+export type MetaTrackingMode = 'disabled' | 'test' | 'production'
+
+export type PublicConversionActionType = Extract<ConversionActionType, 'contact' | 'complete_registration'>
+
+export type ConversionDeliveryStatus = 'pending' | 'attempted' | 'sent' | 'failed' | 'skipped' | 'duplicate_suppressed'
+
+export interface MetaPixelInstruction {
+  deliveryId: string
+  eventName: Extract<ConversionMetaEventName, 'Contact' | 'Lead' | 'CompleteRegistration'>
+  eventId: string
+  payload: Record<string, string | number | boolean>
+  receiptToken: string
+}
+
+export interface MetaCapiUserData {
+  fbp?: string
+  fbc?: string
+  clientIpAddress?: string
+  clientUserAgent?: string
+}
+
+export interface MetaCapiQueueMessage {
+  schemaVersion: 1
+  deliveryId: string
+  userData: MetaCapiUserData
+}
 
 export type ConversionSkipReason =
   | 'disabled'

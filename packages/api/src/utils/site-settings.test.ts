@@ -77,6 +77,8 @@ describe('site settings keys', () => {
   })
 
   it('keeps Meta CAPI switch admin-only', () => {
+    expect(ADMIN_SETTING_KEYS).toContain('meta_tracking_mode')
+    expect(PUBLIC_SETTING_KEYS).toContain('meta_tracking_mode')
     expect(ADMIN_SETTING_KEYS).toContain('meta_capi_enabled')
     expect(PUBLIC_SETTING_KEYS).not.toContain('meta_capi_enabled')
     expect(ADMIN_SETTING_KEYS).not.toContain('META_CAPI_ACCESS_TOKEN')

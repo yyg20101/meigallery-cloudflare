@@ -1,14 +1,8 @@
 import type { ConversionActionType, ConversionMetaEventName } from '@meigallery/shared'
 import { ATTRIBUTION_LIMITS, META_EVENT_BY_CONVERSION } from '@meigallery/shared/constants'
+import { buildConversionDedupeKey, buildExternalEventId } from '@meigallery/shared/utils'
 
-type ConversionDedupeInput = {
-  actionType: ConversionActionType
-  sessionId: string
-  visitorId: string
-  occurredDate: string
-  methodType?: string
-  actionTarget?: string
-}
+export { buildConversionDedupeKey, buildExternalEventId }
 
 const SENSITIVE_KEYS = new Set([
   'email',
@@ -77,23 +71,6 @@ export function metaEventForConversion(actionType: ConversionActionType): Conver
   return META_EVENT_BY_CONVERSION[actionType]
 }
 
-export function buildConversionDedupeKey(input: ConversionDedupeInput) {
-  if (input.actionType === 'contact') {
-    return `contact:${input.sessionId}:${normalizeKeyPart(input.methodType)}:${normalizeKeyPart(input.actionTarget)}`
-  }
-  if (input.actionType === 'lead') {
-    return `lead:${input.sessionId}`
-  }
-  if (input.actionType === 'complete_registration' || input.actionType === 'start_trial') {
-    return `${input.actionType}:${input.sessionId}:${input.occurredDate}`
-  }
-  return `${input.actionType}:${input.visitorId}:${input.occurredDate}`
-}
-
-export function buildExternalEventId(input: ConversionDedupeInput & { metaEventName: ConversionMetaEventName }) {
-  return `meta:${input.metaEventName}:${buildConversionDedupeKey(input)}`
-}
-
 export function sanitizeConversionMetadata(input: Record<string, unknown>) {
   const output: Record<string, string | number | boolean> = {}
   for (const [key, value] of Object.entries(input).slice(0, ATTRIBUTION_LIMITS.METADATA_MAX_KEYS)) {
@@ -111,14 +88,6 @@ export function sanitizeConversionMetadata(input: Record<string, unknown>) {
     }
   }
   return output
-}
-
-function normalizeKeyPart(value: unknown) {
-  const text = String(value ?? 'unknown')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]/g, '-')
-  return text || 'unknown'
 }
 
 function normalizeMetadataKey(key: string) {
