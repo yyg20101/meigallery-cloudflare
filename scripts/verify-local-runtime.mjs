@@ -32,9 +32,16 @@ const DEFAULT_WRANGLER_VARS = [
 export async function runLocalRuntimeVerification(options = {}) {
   const cwd = options.cwd || ROOT_DIR
   const runCommandFn = options.runCommand || runCommand
+  const getCommitFn = options.getCommit || readCurrentCommit
+  const cleanLocalRuntimeDirFn = options.cleanLocalRuntimeDir || cleanLocalRuntimeDir
+  const startLocalApiWorkerFn = options.startLocalApiWorker || startLocalApiWorker
+  const waitForLocalApiFn = options.waitForLocalApi || waitForLocalApi
+  const stopLocalApiWorkerFn = options.stopLocalApiWorker || stopLocalApiWorker
   const fetchFn = options.fetch || fetch
   const requestTimeoutMs = options.requestTimeoutMs ?? LOCAL_REQUEST_TIMEOUT_MS
   const boundedFetch = (input, init) => fetchWithTimeout(fetchFn, input, init, requestTimeoutMs)
+  const releaseCommit = String(await getCommitFn({ cwd, runCommand: runCommandFn }) || '').trim()
+  if (!/^[0-9a-f]{40}$/i.test(releaseCommit)) throw new Error('local-runtime 需要当前 40 位 Git HEAD')
   const steps = []
   const notes = []
   const artifacts = [LOCAL_RUNTIME_DIR]
@@ -42,11 +49,10 @@ export async function runLocalRuntimeVerification(options = {}) {
   const sessionHash = crypto.createHash('sha256').update(sessionToken).digest('hex')
   const sessionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
   let server = null
-  let serverLogs = { stdout: '', stderr: '' }
   let startedServer = false
 
   try {
-    const cleanStep = await cleanLocalRuntimeDir()
+    const cleanStep = await cleanLocalRuntimeDirFn()
     steps.push(cleanForReport(cleanStep))
     if (cleanStep.status !== 'passed') return { steps, notes, artifacts }
 
@@ -96,10 +102,16 @@ export async function runLocalRuntimeVerification(options = {}) {
     steps.push(cleanForReport(sessionStep))
     if (sessionStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
 
-    server = startLocalApiWorker({ cwd, env: buildLocalDevEnv(options.env) })
+    server = startLocalApiWorkerFn({
+      cwd,
+      env: buildLocalDevEnv(options.env),
+      releaseCommit,
+    })
     startedServer = true
-    const healthStep = await waitForLocalApi(server, boundedFetch)
-    serverLogs = healthStep.logs
+    const healthStep = await waitForLocalApiFn(server, boundedFetch, releaseCommit, {
+      serverTimeoutMs: options.serverTimeoutMs,
+      pollIntervalMs: options.pollIntervalMs,
+    })
     steps.push(cleanForReport(healthStep.step))
     if (healthStep.step.status !== 'passed') return { steps, notes, artifacts }
 
@@ -168,10 +180,7 @@ export async function runLocalRuntimeVerification(options = {}) {
     return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
   } finally {
     if (startedServer && server) {
-      await stopLocalApiWorker(server)
-      if (serverLogs.stdout || serverLogs.stderr) {
-        notes.push(`local-api-log:${truncateSummary(`${serverLogs.stdout} ${serverLogs.stderr}`)}`)
-      }
+      await stopLocalApiWorkerFn(server)
     }
   }
 }
@@ -201,8 +210,11 @@ function buildLocalDevEnv(extraEnv = {}) {
   }
 }
 
-function startLocalApiWorker(options) {
-  const args = [
+export function buildLocalApiWorkerArgs(releaseCommit) {
+  if (!/^[0-9a-f]{40}$/i.test(String(releaseCommit || ''))) {
+    throw new Error('Wrangler dev 需要 40 位 RELEASE_COMMIT')
+  }
+  return [
     'pnpm', '--filter', '@meigallery/api', 'exec',
     'wrangler', 'dev',
     '--local',
@@ -212,7 +224,12 @@ function startLocalApiWorker(options) {
     '--log-level', 'info',
     '--show-interactive-dev-session=false',
     ...DEFAULT_WRANGLER_VARS.flatMap(([key, value]) => ['--var', `${key}:${value}`]),
+    '--var', `RELEASE_COMMIT:${releaseCommit}`,
   ]
+}
+
+function startLocalApiWorker(options) {
+  const args = buildLocalApiWorkerArgs(options.releaseCommit)
 
   const child = spawn('corepack', args, {
     cwd: options.cwd,
@@ -240,9 +257,11 @@ function startLocalApiWorker(options) {
   }
 }
 
-async function waitForLocalApi(server, fetchFn) {
+export async function waitForLocalApi(server, fetchFn, expectedCommit, options = {}) {
   const startedAt = Date.now()
-  while (Date.now() - startedAt < LOCAL_SERVER_TIMEOUT_MS) {
+  const serverTimeoutMs = options.serverTimeoutMs ?? LOCAL_SERVER_TIMEOUT_MS
+  const pollIntervalMs = options.pollIntervalMs ?? LOCAL_POLL_INTERVAL_MS
+  while (Date.now() - startedAt < serverTimeoutMs) {
     if (server.child.exitCode !== null) {
       const logs = server.readLogs()
       return {
@@ -260,8 +279,18 @@ async function waitForLocalApi(server, fetchFn) {
 
     try {
       const response = await fetchFn(`${LOCAL_API_URL}/api/health`)
-      const body = await response.json()
-      if (response.ok && body?.status === 'ok' && body?.db === 'ok') {
+      if (!response.ok) {
+        return failedLocalApiHealth(server, startedAt, `本地 API 健康端点返回 HTTP ${response.status}`, response.status)
+      }
+
+      let body
+      try {
+        body = await response.json()
+      } catch {
+        return failedLocalApiHealth(server, startedAt, '本地 API 健康端点未返回合法 JSON', response.status)
+      }
+      const identityError = validateLocalApiHealth(body, expectedCommit)
+      if (!identityError) {
         return {
           logs: server.readLogs(),
           step: {
@@ -270,15 +299,16 @@ async function waitForLocalApi(server, fetchFn) {
             durationMs: Date.now() - startedAt,
             command: `GET ${LOCAL_API_URL}/api/health`,
             exitCode: 0,
-            summary: truncateSummary(`健康检查通过，db=${body.db}`),
+            summary: truncateSummary(`健康检查通过，db=${body.db}，environment=dev，commit=${expectedCommit}`),
           },
         }
       }
+      return failedLocalApiHealth(server, startedAt, identityError, response.status)
     } catch {
       // 继续轮询
     }
 
-    await sleep(LOCAL_POLL_INTERVAL_MS)
+    await sleep(pollIntervalMs)
   }
 
   const logs = server.readLogs()
@@ -293,6 +323,39 @@ async function waitForLocalApi(server, fetchFn) {
       summary: truncateSummary(`等待本地 API 超时。${logs.stderr || logs.stdout || '无额外日志'}`),
     },
   }
+}
+
+function validateLocalApiHealth(body, expectedCommit) {
+  if (body?.environment !== 'dev') return '本地 API environment 不是 dev'
+  if (!/^[0-9a-f]{40}$/i.test(String(body?.commit || ''))) return '本地 API commit 缺失或非法'
+  if (body.commit !== expectedCommit) return '本地 API commit 与当前 Git HEAD 不一致'
+  if (body?.status !== 'ok') return '本地 API status 非 ok'
+  if (body?.db !== 'ok') return '本地 API db 非 ok'
+  return ''
+}
+
+function failedLocalApiHealth(server, startedAt, summary, exitCode) {
+  return {
+    logs: server.readLogs(),
+    step: {
+      ...createStep('local-api-health'),
+      status: 'failed',
+      durationMs: Date.now() - startedAt,
+      command: `GET ${LOCAL_API_URL}/api/health`,
+      exitCode,
+      summary: truncateSummary(summary),
+    },
+  }
+}
+
+async function readCurrentCommit(options = {}) {
+  const runCommandFn = options.runCommand || runCommand
+  const step = await runCommandFn('git', ['rev-parse', 'HEAD'], {
+    cwd: options.cwd || ROOT_DIR,
+    name: 'git-commit',
+  })
+  if (step.status !== 'passed') throw new Error('无法读取当前 Git HEAD')
+  return String(step.stdout || '').trim()
 }
 
 async function postConversion(fetchFn, stepName, payload) {
@@ -432,13 +495,8 @@ async function smokeMetaDelivery(fetchFn, sessionToken) {
   }, (body) => {
     const settings = body?.data?.settings || {}
     const deliveries = Array.isArray(body?.data?.deliveries) ? body.data.deliveries : []
-    const skippedDelivery = deliveries.find(row => (
-      row?.channel === 'meta_capi' &&
-      row?.status === 'skipped' &&
-      row?.skip_reason === 'disabled'
-    ))
     if (settings.meta_capi_enabled !== false) throw new Error('meta_capi_enabled 不是 false')
-    if (!skippedDelivery) throw new Error('未发现 meta_capi skipped disabled 记录')
+    if (deliveries.some(row => row?.channel === 'meta_capi')) throw new Error('CAPI 关闭时仍创建了 meta_capi delivery')
     return 'meta-capi-disabled-in-local'
   })
 }

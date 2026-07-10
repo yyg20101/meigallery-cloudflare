@@ -49,3 +49,20 @@
 - 既有 dev/production Worker 若未通过发布命令注入合法 `RELEASE_COMMIT`，新端点会按设计保持 unhealthy；下一次真实验证必须先完成 API/Web 同 commit 部署。
 - 历史 `start_trial` 数据仍保留在 D1 以兼容既有账本，但当前默认归因报表和 readiness 不读取；本组未改 migration 或采集链路。
 - 本次仅做本地运行时证明，未访问 Cloudflare 或 Meta 远端资源，真实 dev evidence 仍需在授权运维窗口执行。
+
+## Follow-up：local-runtime 同 commit 修复
+
+整合验证发现 `/api/health` 已要求合法 `RELEASE_COMMIT`，但 local-runtime 仍只注入 `APP_ENV=dev`，导致 Worker 返回 `unhealthy` 并最终等待超时。本轮修复完成：
+
+1. `verify-local-runtime.mjs` 在任何本地 D1 操作前通过 `git rev-parse HEAD` 读取并校验当前 40 位 SHA，测试可通过 `options.getCommit` 注入。
+2. Wrangler dev 启动参数新增 `--var RELEASE_COMMIT:<HEAD>`，不使用固定或伪造 SHA。
+3. `waitForLocalApi` 同时校验 `status=ok`、`db=ok`、`environment=dev` 和响应 commit 与当前 HEAD 完全一致；端点可达但身份缺失或不匹配时立即失败。
+4. 身份失败摘要不包含响应原文；runner 不再把完整 Worker 日志重复写入 notes。进程提前退出或超时仍在步骤摘要中保留经过脱敏和截断的必要诊断。
+5. 当前隐私口径下，`consentState=limited` 且 CAPI 关闭时不创建 CAPI delivery；local Meta smoke 已同步验证“没有任何 meta_capi delivery”，不再要求历史 `skipped/disabled` 记录。
+
+验证结果：
+
+- 聚焦 Node tests：PASS，2 suites、31 tests，其中 local-runtime 新增 6 tests。
+- 真实 `corepack pnpm verify:local-runtime`：PASS，11 个步骤全部通过；`local-api-health` 确认 `db=ok`、`environment=dev`、commit 与运行时 Git HEAD 一致。
+- 通过报告：`reports/release-verification/2026-07-10T09-23-30.718Z-local-runtime-a5eb949bc0f7.json`（按仓库规则忽略，不提交）。
+- 未访问远端 D1、Cloudflare 或 Meta，未部署、未推送。
