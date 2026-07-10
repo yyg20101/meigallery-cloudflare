@@ -2,15 +2,13 @@ import { Hono, type Context } from 'hono'
 import { normalizeMetaTrackingMode } from '@meigallery/shared/utils'
 import type { Bindings, Variables } from '../../index'
 import {
-  createMetaCapiTestDelivery,
-  MetaCapiDeliveryError,
-  sendMetaCapiEvent,
-} from '../../services/meta-capi'
+  bootstrapMetaConnectionVerification,
+  getMetaConnectionStatus,
+  MetaConnectionError,
+} from '../../services/meta-connection'
 import { errorJson } from '../../utils/api-error'
 import { mergeD1Usage, readD1UsageMeta, type D1Usage } from '../../utils/analytics-cost'
 import { parseAnalyticsRange, type AnalyticsDateRange } from '../../utils/analytics-time'
-import { generateId } from '../../utils/db'
-import { buildMetaCapiUserData } from '../../utils/meta-browser-identifiers'
 import { writeAuditLog } from '../../utils/permission'
 
 export const adminAttributionRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
@@ -287,7 +285,7 @@ adminAttributionRoutes.get('/meta', async (c) => {
   const range = parseRangeOrError(c)
   if (range instanceof Response) return range
 
-  const [totals, rows, lastSentAt, settings, retryExhausted, matchQuality] = await Promise.all([
+  const [totals, rows, lastSentAt, settings, retryExhausted, matchQuality, connection] = await Promise.all([
     queryFirst(c.env.DB, `
       SELECT
         COALESCE(SUM(CASE WHEN channel = 'meta_pixel' AND status = 'attempted' THEN delivery_count ELSE 0 END), 0) AS pixel_attempted_count,
@@ -360,6 +358,7 @@ adminAttributionRoutes.get('/meta', async (c) => {
         AND a.date >= date('now', '-6 days')
         AND a.action_type IN ('contact', 'complete_registration')
     `, []),
+    getMetaConnectionStatus(c.env),
   ])
 
   const totalRow = totals.rows[0] ?? {}
@@ -369,6 +368,8 @@ adminAttributionRoutes.get('/meta', async (c) => {
   const fbcSampleCount = numberValue(matchRow.fbc_sample_count)
   const fbpMatchedCount = numberValue(matchRow.fbp_matched_count)
   const fbcMatchedCount = numberValue(matchRow.fbc_matched_count)
+  const serializedSettings = serializeSettings(settings.rows)
+  const { facebook_pixel_id: _pixelId, ...publicSettings } = serializedSettings
 
   return c.json({
     range,
@@ -386,16 +387,15 @@ adminAttributionRoutes.get('/meta', async (c) => {
       },
       deliveries: rows.rows,
       lastSentAt: String((lastSentAt.rows[0] ?? {}).last_sent_at ?? ''),
-      secretPresent: hasConfiguredValue(c.env.META_CAPI_ACCESS_TOKEN),
-      testEventCodePresent: hasConfiguredValue(c.env.META_CAPI_TEST_EVENT_CODE),
       queueBindingPresent: Boolean(c.env.META_CAPI_QUEUE),
+      connection,
       matchQuality: {
         fbpCoverage: coverageRate(fbpMatchedCount, fbpSampleCount),
         fbpSampleCount,
         fbcCoverage: coverageRate(fbcMatchedCount, fbcSampleCount),
         fbcSampleCount,
       },
-      settings: serializeSettings(settings.rows),
+      settings: publicSettings,
     },
   })
 })
@@ -681,118 +681,45 @@ adminAttributionRoutes.get('/readiness', async (c) => {
 })
 
 adminAttributionRoutes.post('/meta/test-event', async (c) => {
-  const ownerError = requireOwner(c)
-  if (ownerError) return ownerError
-
-  const adminId = c.get('userId')!
-  const settings = await queryAll(c.env.DB, `
-    SELECT key, value
-    FROM site_settings
-    WHERE key IN ('meta_tracking_mode', 'facebook_pixel_id')
-  `, [])
-  const settingMap = serializeSettings(settings.rows)
-  const mode = normalizeMetaTrackingMode(settingMap.meta_tracking_mode)
-  const secretPresent = hasConfiguredValue(c.env.META_CAPI_ACCESS_TOKEN)
-  const testEventCodePresent = hasConfiguredValue(c.env.META_CAPI_TEST_EVENT_CODE)
-  const pixelIdPresent = /^\d{5,30}$/.test(String(settingMap.facebook_pixel_id || '').trim())
-  const now = new Date().toISOString()
-  const date = now.slice(0, 10)
-  const conversionId = generateId('convtest')
-  const deliveryId = generateId('cdlvtest')
-  const externalEventId = `meta:Contact:test:${deliveryId}`
-
-  if (mode !== 'test') {
-    const outcome = testEventOutcome({
-      deliveryId,
-      status: 'failed',
-      secretPresent,
-      testEventCodePresent,
-      pixelIdPresent,
-      errorCategory: 'mode_not_test',
+  const adminId = c.get('userId') ?? 0
+  const environment = auditEnvironment(c.env.APP_ENV)
+  if (c.get('userRole') !== 'owner') {
+    await auditMetaTestEvent(c, adminId, 'meta_connection', {
+      code: 'OWNER_REQUIRED',
+      success: false,
+      environment,
     })
-    await auditMetaTestEvent(c, adminId, deliveryId, outcome)
-    return errorJson(c, 409, '仅测试模式可发送 Meta Test Event', {
-      code: 'META_TEST_MODE_REQUIRED',
-      detail: outcome,
-    })
+    return errorJson(c, 403, '需要站长权限', { code: 'OWNER_REQUIRED' })
   }
-
-  if (!secretPresent || !testEventCodePresent || !pixelIdPresent) {
-    const outcome = testEventOutcome({
-      deliveryId,
-      status: 'failed',
-      secretPresent,
-      testEventCodePresent,
-      pixelIdPresent,
-      errorCategory: 'configuration_missing',
-    })
-    await auditMetaTestEvent(c, adminId, deliveryId, outcome)
-    return errorJson(c, 503, 'Meta Test Event 配置不完整', {
-      code: 'META_TEST_EVENT_NOT_CONFIGURED',
-      detail: outcome,
-    })
-  }
-
-  await createMetaCapiTestDelivery(c.env.DB, {
-    conversionId,
-    deliveryId,
-    externalEventId,
-    occurredAt: now,
-    date,
-    adminId,
-  })
 
   try {
-    const userData = buildMetaCapiUserData(c.req.raw, undefined)
-    const result = await sendMetaCapiEvent(c.env, deliveryId, {
-      testEventCode: String(c.env.META_CAPI_TEST_EVENT_CODE).trim(),
-      userData,
-    })
-    const sent = result.status === 'sent' && result.eventsReceived === 1
-    const outcome = testEventOutcome({
-      deliveryId,
-      status: sent ? 'sent' : 'failed',
+    const result = await bootstrapMetaConnectionVerification(c.env, adminId, 'Contact')
+    await auditMetaTestEvent(c, adminId, result.deliveryId, {
+      code: 'META_CONNECTION_VERIFIED',
+      success: true,
+      environment: result.connection.environment,
+      deliveryId: result.deliveryId,
       eventsReceived: result.eventsReceived,
-      traceId: safeTestEventTraceId(result.traceId, [
-        c.env.META_CAPI_ACCESS_TOKEN,
-        c.env.META_CAPI_TEST_EVENT_CODE,
-        userData.clientIpAddress,
-        userData.clientUserAgent,
-        userData.fbp,
-        userData.fbc,
-      ]),
-      secretPresent,
-      testEventCodePresent,
-      pixelIdPresent,
-      errorCategory: sent ? undefined : 'permanent',
     })
-    await auditMetaTestEvent(c, adminId, deliveryId, outcome)
-    if (sent) return c.json({ data: outcome })
-
-    return errorJson(c, 424, 'Meta 未确认接收测试事件', {
-      code: 'META_TEST_EVENT_REJECTED',
-      detail: outcome,
+    return c.json({
+      data: {
+        status: 'verified',
+        eventsReceived: result.eventsReceived,
+        connection: result.connection,
+      },
     })
-  } catch (error) {
-    const retryable = !(error instanceof MetaCapiDeliveryError) || error.retryable
-    const outcome = testEventOutcome({
-      deliveryId,
-      status: 'failed',
-      secretPresent,
-      testEventCodePresent,
-      pixelIdPresent,
-      errorCategory: retryable ? 'retryable' : 'permanent',
+  }
+  catch (error) {
+    const failure = error instanceof MetaConnectionError
+      ? error
+      : new MetaConnectionError('META_TEST_EVENT_RETRYABLE', 503)
+    await auditMetaTestEvent(c, adminId, 'meta_connection', {
+      code: failure.code,
+      success: false,
+      environment,
     })
-    await auditMetaTestEvent(c, adminId, deliveryId, outcome)
-    if (retryable) {
-      return errorJson(c, 503, 'Meta Test Event 暂时不可用', {
-        code: 'META_TEST_EVENT_RETRYABLE',
-        detail: outcome,
-      })
-    }
-    return errorJson(c, 424, 'Meta 拒绝接收测试事件', {
-      code: 'META_TEST_EVENT_REJECTED',
-      detail: outcome,
+    return errorJson(c, failure.httpStatus, metaConnectionErrorMessage(failure.code), {
+      code: failure.code,
     })
   }
 })
@@ -877,28 +804,6 @@ function formatPercent(rate: number) {
   return `${Math.round(rate * 10000) / 100}%`
 }
 
-function testEventOutcome(input: {
-  deliveryId: string
-  status: 'sent' | 'failed'
-  secretPresent: boolean
-  testEventCodePresent: boolean
-  pixelIdPresent: boolean
-  eventsReceived?: number
-  traceId?: string
-  errorCategory?: 'mode_not_test' | 'configuration_missing' | 'permanent' | 'retryable'
-}) {
-  return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined))
-}
-
-function safeTestEventTraceId(traceId: string | undefined, sensitiveValues: unknown[]) {
-  if (!traceId) return undefined
-  const containsSensitiveValue = sensitiveValues.some(value => {
-    const text = String(value || '').trim()
-    return Boolean(text && traceId.includes(text))
-  })
-  return containsSensitiveValue ? undefined : traceId
-}
-
 async function auditMetaTestEvent(
   c: AdminAttributionContext,
   adminId: number,
@@ -912,6 +817,20 @@ async function auditMetaTestEvent(
     targetId: deliveryId,
     afterValue: outcome,
   })
+}
+
+function auditEnvironment(value: unknown) {
+  return value === 'dev' || value === 'production' ? value : 'invalid'
+}
+
+function metaConnectionErrorMessage(code: string) {
+  if (code === 'META_PRODUCTION_TEST_GATE_PENDING') return 'production 验证门禁尚未开放'
+  if (code === 'META_TEST_MODE_REQUIRED') return '仅 dev 测试模式可验证 MetaConnection'
+  if (code === 'META_TEST_EVENT_NOT_CONFIGURED' || code === 'META_RELEASE_COMMIT_INVALID') {
+    return 'MetaConnection 验证配置不完整'
+  }
+  if (code === 'META_TEST_EVENT_REJECTED') return 'Meta 未确认接收测试事件'
+  return 'MetaConnection 验证暂时不可用'
 }
 
 function parseRangeOrError(c: AdminAttributionContext): AnalyticsDateRange | Response {
@@ -955,11 +874,6 @@ async function queryFirst<T extends Row>(
 
 function mergeQueryUsage(...items: Array<QueryResult<Row>>) {
   return mergeD1Usage(EMPTY_USAGE, ...items.map(item => item.usage))
-}
-
-function requireOwner(c: AdminAttributionContext): Response | null {
-  if (c.get('userRole') === 'owner') return null
-  return errorJson(c, 403, '需要站长权限', { code: 'OWNER_REQUIRED' })
 }
 
 function normalizeTotals(row: Row) {

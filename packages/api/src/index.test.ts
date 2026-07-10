@@ -6,6 +6,7 @@ import type { MetaCapiQueueMessage } from '@meigallery/shared'
 import { encryptMetaCapiContext, loadMetaCapiCryptoKeys } from './utils/meta-capi-crypto'
 
 const DATA_KEY = Buffer.alloc(32, 7).toString('base64')
+const META_TOKEN_FINGERPRINT = '0b7a8749b34fd009cf020b30ea6bde2defee9e24b5f1c191764d60b8c1de9f31'
 
 function env(corsOrigin?: string) {
   return {
@@ -73,6 +74,22 @@ describe('Meta CAPI Queue consumer', () => {
           async first<T>() {
             if (sql.includes('FROM analytics_conversion_deliveries')) return delivery as T
             if (sql.includes("WHERE key = 'facebook_pixel_id'")) return { value: JSON.stringify('1234567890') } as T
+            if (sql.includes("WHERE key = 'meta_tracking_mode'")) return { value: JSON.stringify('production') } as T
+            if (sql.includes('FROM meta_connection_verifications')) {
+              return {
+                environment: 'dev',
+                pixel_id: '1234567890',
+                token_fingerprint: META_TOKEN_FINGERPRINT,
+                graph_api_version: 'v25.0',
+                verified_event_name: 'Contact',
+                verified_commit: 'a'.repeat(40),
+                dataset_quality_status: 'not_checked',
+                verified_at: '2026-07-11T00:00:00.000Z',
+                verified_by_user_id: 1,
+                invalidated_at: null,
+                invalidation_reason: '',
+              } as T
+            }
             return null as T | null
           },
           async run() { return { meta: { changes: 1 } } },
@@ -114,10 +131,11 @@ describe('Meta CAPI Queue consumer', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }))
 
     await app.queue({ queue: 'meigallery-meta-capi', messages: [message] } as unknown as MessageBatch<MetaCapiQueueMessage>, {
-      APP_ENV: 'test',
+      APP_ENV: 'dev',
       SITE_URL: 'https://616618.xyz',
       META_CAPI_ACCESS_TOKEN: 'token_1',
       META_CAPI_DATA_KEY_CURRENT: DATA_KEY,
+      RELEASE_COMMIT: 'a'.repeat(40),
       DB: db,
     } as unknown as Bindings)
 
@@ -135,10 +153,11 @@ describe('Meta CAPI Queue consumer', () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     fetchMock.mockRejectedValueOnce(new Error(sensitive))
     await app.queue({ queue: 'meigallery-meta-capi', messages: [message] } as unknown as MessageBatch<MetaCapiQueueMessage>, {
-      APP_ENV: 'test',
+      APP_ENV: 'dev',
       SITE_URL: 'https://616618.xyz',
       META_CAPI_ACCESS_TOKEN: 'token_1',
       META_CAPI_DATA_KEY_CURRENT: DATA_KEY,
+      RELEASE_COMMIT: 'a'.repeat(40),
       DB: db,
     } as unknown as Bindings)
 

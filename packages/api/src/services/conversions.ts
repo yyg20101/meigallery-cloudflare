@@ -27,6 +27,7 @@ import {
 } from '../utils/meta-capi-crypto'
 import { transitionDeliveryStatus } from './meta-capi'
 import { createSecureOutboxStatement, enqueueSecureMetaCapiDelivery } from './meta-capi-secure-outbox'
+import { requireVerifiedMetaConnection } from './meta-connection'
 
 const SECURE_CONTEXT_TTL_MS = 24 * 60 * 60 * 1000
 
@@ -38,6 +39,9 @@ type ConversionEnv = Pick<
   | 'META_CAPI_QUEUE'
   | 'META_CAPI_DATA_KEY_CURRENT'
   | 'META_CAPI_DATA_KEY_PREVIOUS'
+  | 'META_CAPI_ACCESS_TOKEN'
+  | 'META_CAPI_TEST_EVENT_CODE'
+  | 'RELEASE_COMMIT'
 >
 
 export interface RecordConversionInput {
@@ -112,7 +116,7 @@ type PlannedDelivery = {
   eventId: string
   pixelInstruction?: MetaPixelInstruction
   status: 'pending' | 'skipped'
-  skipReason: '' | Extract<ConversionSkipReason, 'missing_data_key' | 'invalid_data_key'>
+  skipReason: '' | Extract<ConversionSkipReason, 'connection_unverified' | 'missing_data_key' | 'invalid_data_key'>
   envelope?: MetaCapiEncryptedEnvelope
   expiresAt?: string
   hasFbp: 0 | 1
@@ -126,7 +130,7 @@ type PlannedDelivery = {
 
 type CapiEncryptionPlan =
   | { state: 'disabled' }
-  | { state: 'skipped'; reason: Extract<ConversionSkipReason, 'missing_data_key' | 'invalid_data_key'> }
+  | { state: 'skipped'; reason: Extract<ConversionSkipReason, 'connection_unverified' | 'missing_data_key' | 'invalid_data_key'> }
   | { state: 'ready'; keys: MetaCapiCryptoKeys; context: MetaCapiSensitiveContext }
 
 type MetaDeliverySettings = Awaited<ReturnType<typeof readMetaDeliverySettings>>
@@ -602,6 +606,12 @@ async function buildCapiEncryptionPlan(
   context: RecordConversionContext,
 ): Promise<CapiEncryptionPlan> {
   if (!shouldCreateMetaCapiDelivery(settings, input)) return { state: 'disabled' }
+  try {
+    await requireVerifiedMetaConnection(env)
+  }
+  catch {
+    return { state: 'skipped', reason: 'connection_unverified' }
+  }
   if (!String(env.META_CAPI_DATA_KEY_CURRENT ?? '').trim()) {
     return { state: 'skipped', reason: 'missing_data_key' }
   }

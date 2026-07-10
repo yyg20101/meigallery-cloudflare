@@ -3,6 +3,12 @@ import AnalyticsDataTable from '~/components/admin/analytics/AnalyticsDataTable.
 import AnalyticsMetricCard from '~/components/admin/analytics/AnalyticsMetricCard.vue'
 import AttributionHealthStrip from '~/components/admin/attribution/AttributionHealthStrip.vue'
 import AttributionPageShell from '~/components/admin/attribution/AttributionPageShell.vue'
+import type { MetaConnectionStatus } from '~/composables/useAdminAttribution'
+import {
+  canVerifyMetaConnection,
+  metaConnectionReasonLabel,
+  metaConnectionStateLabel,
+} from '~/composables/useAdminAttribution'
 
 definePageMeta({ layout: 'admin' })
 
@@ -10,9 +16,8 @@ interface MetaData {
   totals: Record<string, unknown>
   deliveries: Array<Record<string, unknown>>
   lastSentAt: string
-  secretPresent?: boolean
-  testEventCodePresent?: boolean
   queueBindingPresent?: boolean
+  connection: MetaConnectionStatus
   settings: Record<string, unknown>
 }
 
@@ -25,16 +30,32 @@ const testing = ref(false)
 const data = computed(() => attribution.data.value)
 const totals = computed(() => data.value?.totals ?? {})
 const settings = computed(() => data.value?.settings ?? {})
-function presenceStatus(present: boolean | undefined) {
+const connection = computed(() => data.value?.connection ?? null)
+const connectionCanVerify = computed(() => canVerifyMetaConnection(connection.value, isOwner.value))
+
+function presenceStatus(present: boolean | undefined, configuredLabels = false) {
   return present === true
-    ? { value: '存在', tone: 'green' as const }
-    : { value: '缺失', tone: 'red' as const }
+    ? { value: configuredLabels ? '已配置' : '存在', tone: 'green' as const }
+    : { value: configuredLabels ? '未配置' : '缺失', tone: 'red' as const }
 }
 
 const metrics = computed(() => [
   { label: 'Meta 模式', value: String(settings.value.meta_tracking_mode || 'disabled'), hint: settings.value.meta_capi_enabled === true ? 'CAPI 开关已开启' : 'CAPI 开关关闭', tone: settings.value.meta_tracking_mode === 'production' ? 'blue' as const : 'default' as const },
-  { label: 'CAPI token', ...presenceStatus(data.value?.secretPresent), hint: '仅展示布尔状态，不返回凭证' },
-  { label: 'Test Event Code', ...presenceStatus(data.value?.testEventCodePresent), hint: '仅展示布尔状态，不返回 code' },
+  { label: 'Pixel ID 配置', ...presenceStatus(connection.value?.pixelIdConfigured, true), hint: '仅展示配置状态' },
+  { label: 'CAPI token 配置', ...presenceStatus(connection.value?.tokenConfigured, true), hint: '仅展示配置状态' },
+  { label: 'Test Event Code', ...presenceStatus(connection.value?.testEventCodeConfigured, true), hint: '仅展示配置状态' },
+  {
+    label: '连接验证',
+    value: connection.value ? metaConnectionStateLabel(connection.value.state) : '未确认',
+    hint: connection.value ? metaConnectionReasonLabel(connection.value.invalidationReason) : '连接状态未返回',
+    tone: connection.value?.state === 'verified'
+      ? 'green' as const
+      : connection.value?.state === 'configuration_changed'
+        ? 'red' as const
+        : 'gold' as const,
+  },
+  { label: 'Graph API', value: connection.value?.graphApiVersion || '未确认', hint: `环境：${connection.value?.environment || '未确认'}`, tone: 'blue' as const },
+  { label: '验证时间', value: formatAnalyticsDateTime(connection.value?.verifiedAt), hint: connection.value?.verifiedCommit ? `commit ${connection.value.verifiedCommit.slice(0, 12)}` : '尚无验证 commit', tone: connection.value?.verifiedAt ? 'green' as const : 'default' as const },
   { label: 'Queue binding', ...presenceStatus(data.value?.queueBindingPresent), hint: 'API Worker 运行时绑定状态' },
   { label: '重试耗尽', value: formatAnalyticsNumber(totals.value.retry_exhausted_count), hint: 'failed / retry_exhausted', tone: Number(totals.value.retry_exhausted_count ?? 0) > 0 ? 'red' as const : 'default' as const },
   { label: '最近 CAPI 成功', value: formatAnalyticsDateTime(data.value?.lastSentAt), hint: `CAPI sent ${formatAnalyticsNumber(totals.value.capi_sent_count)}`, tone: 'green' as const },
@@ -43,11 +64,11 @@ const metrics = computed(() => [
 async function sendTestEvent() {
   testing.value = true
   try {
-    const response = await api<{ data: { status?: string; eventsReceived?: number } }>('/api/admin/attribution/meta/test-event', { method: 'POST' })
-    if (response.data.status !== 'sent' || response.data.eventsReceived !== 1) {
+    const response = await api<{ data: { status?: string; eventsReceived?: number; connection?: MetaConnectionStatus } }>('/api/admin/attribution/meta/test-event', { method: 'POST' })
+    if (response.data.status !== 'verified' || response.data.eventsReceived !== 1) {
       throw new Error('Meta 未确认接收测试事件')
     }
-    toast.add({ title: 'Meta 已接收 1 条测试事件', color: 'success' })
+    toast.add({ title: 'MetaConnection 验证成功', color: 'success' })
     await attribution.refresh()
   } catch (error) {
     toast.add({ title: resolveApiErrorMessage(error, 'Test Event 触发失败'), color: 'error' })
@@ -89,9 +110,10 @@ async function sendTestEvent() {
             <h2 class="text-sm font-semibold text-gray-900">投递分类</h2>
             <p class="mt-1 text-sm text-gray-500">按 channel、事件名、状态和跳过原因聚合。</p>
           </div>
-          <button v-if="isOwner" class="rounded-lg bg-gray-950 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60" type="button" :disabled="testing" @click="sendTestEvent">
-            {{ testing ? '发送中...' : '发送 Test Event' }}
+          <button v-if="connectionCanVerify" data-meta-connection-verify class="rounded-lg bg-gray-950 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60" type="button" :disabled="testing" @click="sendTestEvent">
+            {{ testing ? '验证中...' : '验证 MetaConnection' }}
           </button>
+          <p v-else-if="isOwner && connection?.environment === 'production'" class="text-sm text-amber-700">production 验证门禁尚未开放</p>
         </div>
         <AnalyticsDataTable
           empty-title="暂无 Meta 投递"

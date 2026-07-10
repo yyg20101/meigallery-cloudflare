@@ -13,6 +13,8 @@ import { computeMetaRetryDelay, handleMetaCapiBatch, recoverPendingMetaCapiDeliv
 const CURRENT_KEY = Buffer.alloc(32, 7).toString('base64')
 const PREVIOUS_KEY = Buffer.alloc(32, 9).toString('base64')
 const EXPIRES_AT = '2026-07-12T10:00:00.000Z'
+const RELEASE_COMMIT = 'a'.repeat(40)
+const TOKEN_FINGERPRINT = 'c144f7bade446c762abc027132d8c31d80270f7ba5c41cd4ff9437655f939512'
 
 type Call = { sql: string; params: unknown[] }
 type Delivery = {
@@ -51,6 +53,7 @@ function createQueueDb(options: {
   createdAt?: string
   cleanupBatchFailures?: number
   beforeFirstTransition?: (delivery: Delivery, daily: Map<string, number>) => void
+  connectionVerified?: boolean
 } = {}) {
   const delivery: Delivery = {
     id: 'cdlv_1',
@@ -122,6 +125,23 @@ function createQueueDb(options: {
             return call.params[0] === delivery.id ? ({ ...delivery } as T) : null
           }
           if (sql.includes("WHERE key = 'facebook_pixel_id'")) return { value: JSON.stringify('1234567890') } as T
+          if (sql.includes("WHERE key = 'meta_tracking_mode'")) return { value: JSON.stringify(delivery.tracking_mode) } as T
+          if (sql.includes('FROM meta_connection_verifications')) {
+            if (options.connectionVerified === false) return null
+            return {
+              environment: 'dev',
+              pixel_id: '1234567890',
+              token_fingerprint: TOKEN_FINGERPRINT,
+              graph_api_version: 'v25.0',
+              verified_event_name: 'Contact',
+              verified_commit: RELEASE_COMMIT,
+              dataset_quality_status: 'not_checked',
+              verified_at: '2026-07-11T00:00:00.000Z',
+              verified_by_user_id: 1,
+              invalidated_at: null,
+              invalidation_reason: '',
+            } as T
+          }
           return null
         },
         async all<T>() {
@@ -283,10 +303,12 @@ function messageBatch(messages: Array<ReturnType<typeof queueMessage>>, queue = 
 
 function env(db: ReturnType<typeof createQueueDb>, overrides: Partial<Bindings> = {}) {
   return {
-    APP_ENV: 'test',
+    APP_ENV: 'dev',
     SITE_URL: 'https://616618.xyz',
     META_CAPI_ACCESS_TOKEN: 'token_private',
+    META_CAPI_TEST_EVENT_CODE: 'test-code',
     META_CAPI_DATA_KEY_CURRENT: CURRENT_KEY,
+    RELEASE_COMMIT,
     DB: db,
     ...overrides,
   } as unknown as Bindings
@@ -298,6 +320,24 @@ afterEach(() => {
 })
 
 describe('Meta CAPI Queue V2', () => {
+  it('消费前连接失效时安全终止、清理密文且不重试到新 Dataset', async () => {
+    const db = createQueueDb({ connectionVerified: false })
+    const body = await encryptedMessage(db)
+    const message = queueMessage(body)
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+
+    await handleMetaCapiBatch(batch(message), env(db))
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(db.delivery).toMatchObject({
+      status: 'skipped',
+      skip_reason: 'connection_unverified',
+    })
+    expect(db.outbox).toBeNull()
+    expect(message.ack).toHaveBeenCalledOnce()
+    expect(message.retry).not.toHaveBeenCalled()
+  })
+
   it('current 与 previous key 均可解密，并只把内存上下文发送给 Meta', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-07-11T12:00:00.000Z'))

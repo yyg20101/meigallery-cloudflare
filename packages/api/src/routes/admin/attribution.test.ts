@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import { Hono } from 'hono'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Bindings, Variables } from '../../index'
@@ -122,6 +123,19 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
   let pendingDailyCount = 0
   let pendingDailyCreated = 0
   let createBatchSeen = false
+  let metaConnectionVerification: {
+    environment: string
+    pixel_id: string
+    token_fingerprint: string
+    graph_api_version: string
+    verified_event_name: string
+    verified_commit: string
+    dataset_quality_status: string
+    verified_at: string
+    verified_by_user_id: number
+    invalidated_at: string | null
+    invalidation_reason: string
+  } | null = null
   const db = {
     calls,
     get testAction() { return testAction },
@@ -506,8 +520,12 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
             return { duplicate_action_count: 1 } as T
           }
           if (sql.includes('FROM site_settings')) {
-            if (sql.includes("key = 'facebook_pixel_id'")) return { value: JSON.stringify(settings.facebook_pixel_id) } as T
-            return null
+            const key = sql.match(/key\s*=\s*'([^']+)'/)?.[1]
+            if (!key || !(key in settings)) return null
+            return { value: JSON.stringify(settings[key as keyof typeof settings]) } as T
+          }
+          if (sql.includes('FROM meta_connection_verifications')) {
+            return metaConnectionVerification as T | null
           }
           return null
         },
@@ -548,6 +566,21 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
           if (sql.includes('INSERT INTO analytics_conversion_delivery_daily') && sql.includes("'pending'")) {
             pendingDailyCount += 1
             pendingDailyCreated += 1
+          }
+          if (sql.includes('INSERT INTO meta_connection_verifications')) {
+            metaConnectionVerification = {
+              environment: String(call.params[0]),
+              pixel_id: String(call.params[1]),
+              token_fingerprint: String(call.params[2]),
+              graph_api_version: String(call.params[3]),
+              verified_event_name: String(call.params[4]),
+              verified_commit: String(call.params[5]),
+              dataset_quality_status: 'not_checked',
+              verified_at: '2026-07-11T00:00:00.000Z',
+              verified_by_user_id: Number(call.params[6]),
+              invalidated_at: null,
+              invalidation_reason: '',
+            }
           }
           if (sql.includes('UPDATE analytics_conversion_delivery_daily') && call.params[3] === 'pending') {
             pendingDailyCount = Math.max(0, pendingDailyCount - 1)
@@ -606,6 +639,7 @@ const VALID_READINESS_ENV = {
   META_CAPI_QUEUE: { send: async () => undefined },
   RELEASE_COMMIT: VALID_RELEASE_COMMIT,
   APP_ENV: 'dev',
+  META_CAPI_DATA_KEY_CURRENT: Buffer.alloc(32, 7).toString('base64'),
 }
 
 async function requestReadiness(
@@ -829,9 +863,7 @@ describe('后台归因中心 API', () => {
   it('返回 Meta 投递状态和配置', async () => {
     const res = await createApp('admin').request('/api/admin/attribution/meta?from=2026-07-09&to=2026-07-09', {}, {
       DB: createAttributionDb(),
-      META_CAPI_ACCESS_TOKEN: 'secret-token',
-      META_CAPI_TEST_EVENT_CODE: 'test-code',
-      META_CAPI_QUEUE: { send: async () => undefined },
+      ...VALID_READINESS_ENV,
     } as unknown as Bindings)
     const body = await res.json()
 
@@ -844,9 +876,9 @@ describe('后台归因中心 API', () => {
       duplicate_suppressed_count: 1,
     })
     expect(body.data.deliveries[0]).toMatchObject({ channel: 'meta_pixel', event_name: 'Contact' })
-    expect(body.data.settings.facebook_pixel_id).toBe('1234567890')
-    expect(body.data.secretPresent).toBe(true)
-    expect(body.data.testEventCodePresent).toBe(true)
+    expect(body.data.settings).not.toHaveProperty('facebook_pixel_id')
+    expect(body.data.connection.tokenConfigured).toBe(true)
+    expect(body.data.connection.testEventCodeConfigured).toBe(true)
     expect(body.data.queueBindingPresent).toBe(true)
     expect(JSON.stringify(body)).not.toContain('secret-token')
     expect(JSON.stringify(body)).not.toContain('test-code')
@@ -855,14 +887,47 @@ describe('后台归因中心 API', () => {
   it('Meta 配置存在状态将纯空白 token 和 Test Event Code 视为缺失', async () => {
     const res = await createApp('admin').request('/api/admin/attribution/meta?from=2026-07-09&to=2026-07-09', {}, {
       DB: createAttributionDb(),
+      APP_ENV: 'dev',
+      RELEASE_COMMIT: VALID_RELEASE_COMMIT,
       META_CAPI_ACCESS_TOKEN: ' \n\t ',
       META_CAPI_TEST_EVENT_CODE: '\n  ',
     } as unknown as Bindings)
     const body = await res.json()
 
     expect(res.status).toBe(200)
-    expect(body.data.secretPresent).toBe(false)
-    expect(body.data.testEventCodePresent).toBe(false)
+    expect(body.data.connection.tokenConfigured).toBe(false)
+    expect(body.data.connection.testEventCodeConfigured).toBe(false)
+    expect(body.data).not.toHaveProperty('secretPresent')
+    expect(body.data).not.toHaveProperty('testEventCodePresent')
+  })
+
+  it('Meta 后台只返回连接布尔与验证状态，不返回 Pixel ID、fingerprint 或 secret', async () => {
+    const db = createAttributionDb()
+    const res = await createApp('admin').request('/api/admin/attribution/meta?from=2026-07-09&to=2026-07-09', {}, {
+      DB: db,
+      ...VALID_READINESS_ENV,
+    } as unknown as Bindings)
+    const body = await res.json()
+    const serialized = JSON.stringify(body)
+
+    expect(res.status).toBe(200)
+    expect(body.data.connection).toMatchObject({
+      state: 'unverified',
+      environment: 'dev',
+      pixelIdConfigured: true,
+      tokenConfigured: true,
+      testEventCodeConfigured: true,
+      verifiedAt: null,
+      verifiedCommit: null,
+      graphApiVersion: 'v25.0',
+      datasetQualityStatus: 'not_checked',
+      invalidationReason: 'verification_missing',
+    })
+    expect(body.data.settings).not.toHaveProperty('facebook_pixel_id')
+    expect(body.data.connection).not.toHaveProperty('fingerprint')
+    expect(body.data.connection).not.toHaveProperty('traceId')
+    expect(serialized).not.toContain('secret-token')
+    expect(serialized).not.toContain('test-code')
   })
 
   it('Meta 匹配覆盖率固定使用近 7 天合格 CAPI 与 Meta 付费样本', async () => {
@@ -874,7 +939,11 @@ describe('后台归因中心 API', () => {
         fbcMatchedCount: 14,
       },
     })
-    const res = await createApp('admin').request('/api/admin/attribution/meta?range=30d', {}, { DB: db } as unknown as Bindings)
+    const res = await createApp('admin').request('/api/admin/attribution/meta?range=30d', {}, {
+      DB: db,
+      APP_ENV: 'dev',
+      RELEASE_COMMIT: VALID_RELEASE_COMMIT,
+    } as unknown as Bindings)
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -1159,20 +1228,95 @@ describe('后台归因中心 API', () => {
   })
 
   it('非 owner 不能触发 Test Event', async () => {
-    const res = await createApp('admin').request('/api/admin/attribution/meta/test-event', { method: 'POST' }, { DB: createAttributionDb() } as unknown as Bindings)
+    const db = createAttributionDb()
+    const res = await createApp('admin').request('/api/admin/attribution/meta/test-event', { method: 'POST' }, { DB: db } as unknown as Bindings)
     expect(res.status).toBe(403)
+    expect(db.calls.some(call => (
+      call.sql.includes('INSERT INTO admin_audit_logs')
+      && call.params[2] === 'attribution.meta_test_event'
+    ))).toBe(true)
   })
 
-  it('非 test 模式拒绝 Test Event 并写入脱敏审计', async () => {
+  it('production bootstrap 固定 409，且在业务记录、Graph fetch 与 verification upsert 前阻断', async () => {
     const db = createAttributionDb({ settings: { meta_tracking_mode: 'production' } })
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
     const res = await createApp('owner').request('/api/admin/attribution/meta/test-event', { method: 'POST' }, {
       DB: db,
       ...VALID_READINESS_ENV,
+      APP_ENV: 'production',
     } as unknown as Bindings)
+    const body = await res.json()
 
     expect(res.status).toBe(409)
+    expect(body.code).toBe('META_PRODUCTION_TEST_GATE_PENDING')
     expect(db.calls.some(call => call.sql.includes('INSERT INTO admin_audit_logs'))).toBe(true)
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_conversion_actions'))).toBe(false)
     expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_conversion_deliveries'))).toBe(false)
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO meta_connection_verifications'))).toBe(false)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['Queue binding', { META_CAPI_QUEUE: undefined }],
+    ['data key', { META_CAPI_DATA_KEY_CURRENT: undefined }],
+    ['非法 data key', { META_CAPI_DATA_KEY_CURRENT: 'not-base64' }],
+  ])('dev bootstrap 缺少或非法 %s 时不创建记录、不 fetch 且写审计', async (_label, overrides) => {
+    const db = createAttributionDb()
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const res = await createApp('owner').request('/api/admin/attribution/meta/test-event', { method: 'POST' }, {
+      DB: db,
+      ...VALID_READINESS_ENV,
+      META_CAPI_DATA_KEY_CURRENT: Buffer.alloc(32, 7).toString('base64'),
+      ...overrides,
+    } as unknown as Bindings)
+
+    expect(res.status).toBe(503)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_conversion_actions'))).toBe(false)
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_conversion_deliveries'))).toBe(false)
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO meta_connection_verifications'))).toBe(false)
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO admin_audit_logs'))).toBe(true)
+  })
+
+  it('dev bootstrap 只发送固定合成值，不读取请求或 Owner 匹配信号', async () => {
+    const db = createAttributionDb()
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ events_received: 1 }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const res = await createApp('owner').request('/api/admin/attribution/meta/test-event', {
+      method: 'POST',
+      headers: {
+        'CF-Connecting-IP': '203.0.113.24',
+        'User-Agent': 'Owner-Request-Agent/1.0',
+        Cookie: '_fbp=fb.1.1700000000000.private; _fbc=fb.1.1700000000000.private',
+      },
+      body: JSON.stringify({
+        email: 'owner@example.test',
+        externalId: 'owner-42',
+        test_event_code: 'request-code-must-not-win',
+      }),
+    }, {
+      DB: db,
+      ...VALID_READINESS_ENV,
+      META_CAPI_DATA_KEY_CURRENT: Buffer.alloc(32, 7).toString('base64'),
+    } as unknown as Bindings)
+
+    expect(res.status).toBe(200)
+    const payload = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))
+    expect(payload.data[0].user_data).toEqual({
+      client_ip_address: '192.0.2.1',
+      client_user_agent: 'MeiGallery MetaConnection Synthetic Test/1.0',
+    })
+    const serialized = JSON.stringify({ payload, response: await res.clone().json(), calls: db.calls })
+    expect(serialized).not.toContain('owner@example.test')
+    expect(serialized).not.toContain('owner-42')
+    expect(serialized).not.toContain('203.0.113.24')
+    expect(serialized).not.toContain('Owner-Request-Agent/1.0')
+    expect(serialized).not.toContain('request-code-must-not-win')
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_conversion_actions'))).toBe(false)
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_conversion_deliveries'))).toBe(false)
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO meta_connection_verifications'))).toBe(true)
   })
 
   it.each([
@@ -1211,22 +1355,27 @@ describe('后台归因中心 API', () => {
 
     expect(res.status).toBe(200)
     expect(body.data).toMatchObject({
-      status: 'sent',
+      status: 'verified',
       eventsReceived: 1,
-      traceId: 'trace-safe',
-      secretPresent: true,
-      testEventCodePresent: true,
-      pixelIdPresent: true,
+      connection: {
+        state: 'verified',
+        verifiedCommit: VALID_RELEASE_COMMIT,
+        graphApiVersion: 'v25.0',
+      },
     })
+    expect(body.data).not.toHaveProperty('traceId')
     expect(db.calls.some(call => call.sql.includes('INSERT INTO admin_audit_logs') && call.params[2] === 'attribution.meta_test_event')).toBe(true)
-    expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_conversion_deliveries'))).toBe(true)
-    expect(db.pendingDailyCreated).toBe(1)
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_conversion_actions'))).toBe(false)
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_conversion_deliveries'))).toBe(false)
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO meta_connection_verifications'))).toBe(true)
+    expect(db.pendingDailyCreated).toBe(0)
     expect(db.pendingDailyCount).toBe(0)
     const serialized = JSON.stringify({ body, calls: db.calls })
     expect(serialized).not.toContain('secret-token')
     expect(serialized).not.toContain('test-code')
     expect(serialized).not.toContain('203.0.113.24')
     expect(serialized).not.toContain('Task7-Test-Agent/1.0')
+    expect(serialized).not.toContain('trace-safe')
   })
 
   it.each(['203.0.113.24', 'test-code'])('Test Event 丢弃回显敏感值的 traceId：%s', async sensitiveTraceId => {
@@ -1268,21 +1417,7 @@ describe('后台归因中心 API', () => {
     const body = await res.json()
 
     expect(res.status).toBe(expectedStatus)
-    expect(body.data?.status).not.toBe('sent')
+    expect(body.data?.status).not.toBe('verified')
     expect(JSON.stringify({ body, calls: db.calls })).not.toContain('sensitive upstream error')
-  })
-
-  it.each([1, 2, 3])('Test Event 创建 batch 第 %i 步失败时回滚 action、delivery 和 pending 桶', async failCreateBatchAt => {
-    const db = createAttributionDb({ failCreateBatchAt })
-    const res = await createApp('owner').request('/api/admin/attribution/meta/test-event', { method: 'POST' }, {
-      DB: db,
-      ...VALID_READINESS_ENV,
-    } as unknown as Bindings)
-
-    expect(res.status).toBe(500)
-    expect(db.testAction).toBeNull()
-    expect(db.testDelivery).toBeNull()
-    expect(db.pendingDailyCount).toBe(0)
-    expect(db.pendingDailyCreated).toBe(0)
   })
 })

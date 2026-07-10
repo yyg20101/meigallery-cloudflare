@@ -8,6 +8,8 @@ import { conversionRoutes } from './conversions'
 
 type Call = { sql: string; params: unknown[] }
 const DATA_KEY = Buffer.alloc(32, 7).toString('base64')
+const RELEASE_COMMIT = 'a'.repeat(40)
+const TOKEN_FINGERPRINT = '0b7a8749b34fd009cf020b30ea6bde2defee9e24b5f1c191764d60b8c1de9f31'
 
 function createConversionDb(options: {
   metaCapiEnabled?: boolean
@@ -31,6 +33,21 @@ function createConversionDb(options: {
           if (sql.includes("WHERE key = 'facebook_pixel_enabled'")) return { value: 'false' } as T
           if (sql.includes("WHERE key = 'facebook_pixel_id'")) return options.facebookPixelId ? ({ value: JSON.stringify(options.facebookPixelId) } as T) : null
           if (sql.includes("WHERE key = 'meta_tracking_mode'")) return { value: JSON.stringify(options.metaTrackingMode ?? 'disabled') } as T
+          if (sql.includes('FROM meta_connection_verifications')) {
+            return {
+              environment: 'dev',
+              pixel_id: options.facebookPixelId ?? '1234567890',
+              token_fingerprint: TOKEN_FINGERPRINT,
+              graph_api_version: 'v25.0',
+              verified_event_name: 'Contact',
+              verified_commit: RELEASE_COMMIT,
+              dataset_quality_status: 'not_checked',
+              verified_at: '2026-07-11T00:00:00.000Z',
+              verified_by_user_id: 1,
+              invalidated_at: null,
+              invalidation_reason: '',
+            } as T
+          }
           if (sql.includes('FROM meta_capi_secure_outbox') && outbox && delivery) {
             return {
               delivery_id: outbox.deliveryId,
@@ -454,8 +471,11 @@ describe('conversion routes', () => {
       }),
     }, {
       DB: db,
-      APP_ENV: 'test',
+      APP_ENV: 'dev',
       SESSION_SECRET: 'test-session-secret',
+      META_CAPI_ACCESS_TOKEN: 'token_1',
+      META_CAPI_TEST_EVENT_CODE: 'test-code',
+      RELEASE_COMMIT,
       META_CAPI_QUEUE: { send: async (message: MetaCapiQueueMessage) => { sent.push(message) } },
       META_CAPI_DATA_KEY_CURRENT: DATA_KEY,
     } as unknown as Bindings)

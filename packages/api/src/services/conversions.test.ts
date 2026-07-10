@@ -32,6 +32,9 @@ type InsertedOutbox = {
 }
 
 const DATA_KEY = Buffer.alloc(32, 7).toString('base64')
+const META_TOKEN = 'conversion-token'
+const RELEASE_COMMIT = 'a'.repeat(40)
+const TOKEN_FINGERPRINT = '769024a811a288c6842575d21f81ae2ee1adb18187c48dbd538ac364226d1197'
 
 function createConversionDb(options: {
   existingDedupeKeys?: string[]
@@ -39,6 +42,7 @@ function createConversionDb(options: {
   facebookPixelEnabled?: boolean
   facebookPixelId?: string
   metaTrackingMode?: 'disabled' | 'test' | 'production'
+  metaConnectionVerified?: boolean
   failAt?: number
 } = {}) {
   const calls: Call[] = []
@@ -131,6 +135,22 @@ function createConversionDb(options: {
           if (sql.includes("WHERE key = 'meta_tracking_mode'")) {
             return { value: JSON.stringify(options.metaTrackingMode ?? 'disabled') } as T
           }
+          if (sql.includes('FROM meta_connection_verifications')) {
+            if (options.metaConnectionVerified === false) return null
+            return {
+              environment: 'dev',
+              pixel_id: options.facebookPixelId ?? '1234567890',
+              token_fingerprint: TOKEN_FINGERPRINT,
+              graph_api_version: 'v25.0',
+              verified_event_name: 'Contact',
+              verified_commit: RELEASE_COMMIT,
+              dataset_quality_status: 'not_checked',
+              verified_at: '2026-07-11T00:00:00.000Z',
+              verified_by_user_id: 1,
+              invalidated_at: null,
+              invalidation_reason: '',
+            } as T
+          }
           if (sql.includes('FROM meta_capi_secure_outbox')) {
             const deliveryId = String(call.params[0])
             const outbox = insertedOutboxes.find(item => item.deliveryId === deliveryId)
@@ -205,27 +225,33 @@ function createConversionDb(options: {
 
 function envFor(db: ReturnType<typeof createConversionDb>, overrides: Partial<Bindings> = {}) {
   return {
-    APP_ENV: 'test',
+    APP_ENV: 'dev',
     DB: db,
     SESSION_SECRET: 'test-session-secret',
     META_CAPI_DATA_KEY_CURRENT: DATA_KEY,
+    META_CAPI_ACCESS_TOKEN: META_TOKEN,
+    META_CAPI_TEST_EVENT_CODE: 'test-code',
+    RELEASE_COMMIT,
     ...overrides,
-  } as unknown as Pick<Bindings, 'APP_ENV' | 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE' | 'META_CAPI_DATA_KEY_CURRENT' | 'META_CAPI_DATA_KEY_PREVIOUS'>
+  } as unknown as Pick<Bindings, 'APP_ENV' | 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE' | 'META_CAPI_ACCESS_TOKEN' | 'META_CAPI_TEST_EVENT_CODE' | 'META_CAPI_DATA_KEY_CURRENT' | 'META_CAPI_DATA_KEY_PREVIOUS' | 'RELEASE_COMMIT'>
 }
 
 function envWithQueueFor(db: ReturnType<typeof createConversionDb>, sent: MetaCapiQueueMessage[]) {
   return {
-    APP_ENV: 'test',
+    APP_ENV: 'dev',
     DB: db,
     SESSION_SECRET: 'test-session-secret',
     META_CAPI_DATA_KEY_CURRENT: DATA_KEY,
+    META_CAPI_ACCESS_TOKEN: META_TOKEN,
+    META_CAPI_TEST_EVENT_CODE: 'test-code',
+    RELEASE_COMMIT,
     META_CAPI_QUEUE: {
       async send(message: MetaCapiQueueMessage) {
         sent.push(message)
         return { metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } } }
       },
     },
-  } as unknown as Pick<Bindings, 'APP_ENV' | 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE' | 'META_CAPI_DATA_KEY_CURRENT' | 'META_CAPI_DATA_KEY_PREVIOUS'>
+  } as unknown as Pick<Bindings, 'APP_ENV' | 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE' | 'META_CAPI_ACCESS_TOKEN' | 'META_CAPI_TEST_EVENT_CODE' | 'META_CAPI_DATA_KEY_CURRENT' | 'META_CAPI_DATA_KEY_PREVIOUS' | 'RELEASE_COMMIT'>
 }
 
 function grantedContactInput() {
@@ -711,6 +737,40 @@ describe('conversion ledger service', () => {
       expect.objectContaining({ status: 'skipped', skipReason: reason, encryptionKeyId: '' }),
     ]))
     expect(db.insertedOutboxes).toEqual([])
+  })
+
+  it('MetaConnection 未验证时保留业务事实与 Pixel，并在创建 outbox 前跳过 CAPI', async () => {
+    const db = createConversionDb({
+      facebookPixelEnabled: true,
+      facebookPixelId: '1234567890',
+      metaCapiEnabled: true,
+      metaTrackingMode: 'test',
+    })
+    const sent: MetaCapiQueueMessage[] = []
+    let supplierCalls = 0
+
+    const result = await recordContact({
+      ...envWithQueueFor(db, sent),
+      APP_ENV: 'dev',
+      META_CAPI_ACCESS_TOKEN: 'unverified-token',
+      META_CAPI_TEST_EVENT_CODE: 'test-code',
+      RELEASE_COMMIT: 'a'.repeat(40),
+    } as unknown as Parameters<typeof recordContact>[0], grantedContactInput(), {
+      getMetaCapiUserData: () => {
+        supplierCalls += 1
+        return { fbp: 'fb.1.1700000000000.123456789' }
+      },
+    })
+
+    expect(result.created).toBe(true)
+    expect(result.pixelEvents).toHaveLength(1)
+    expect(db.insertedDeliveries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ status: 'pending', skipReason: '' }),
+      expect.objectContaining({ status: 'skipped', skipReason: 'connection_unverified' }),
+    ]))
+    expect(db.insertedOutboxes).toEqual([])
+    expect(sent).toEqual([])
+    expect(supplierCalls).toBe(0)
   })
 
   it('同 session 不同 contact target 分别记录且不生成 Lead', async () => {

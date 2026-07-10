@@ -16,6 +16,7 @@ import {
   enqueueSecureMetaCapiDelivery,
   type SecureOutboxEnv,
 } from './meta-capi-secure-outbox'
+import { requireVerifiedMetaConnection } from './meta-connection'
 
 const META_RETRY_DELAYS = [60, 300, 900, 1800] as const
 const META_RECOVERY_STALE_MINUTES = 5
@@ -200,6 +201,16 @@ async function consumeSecureMessage(
     }
     if (!ACTIVE_META_EVENTS.has(delivery.event_name)) {
       await markSkipped(env.DB, delivery, 'unsupported_event')
+      await deleteSecureMetaCapiOutbox(env.DB, deliveryId)
+      ackMessage(queueMessage)
+      return
+    }
+    try {
+      const connection = await requireVerifiedMetaConnection(env)
+      if (delivery.tracking_mode !== connection.trackingMode) throw new Error('connection_unverified')
+    }
+    catch {
+      await markSkipped(env.DB, delivery, 'connection_unverified')
       await deleteSecureMetaCapiOutbox(env.DB, deliveryId)
       ackMessage(queueMessage)
       return

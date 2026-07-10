@@ -5,7 +5,6 @@ import {
   MetaCapiDeliveryError,
   buildMetaCapiPayload,
   classifyMetaCapiError,
-  createMetaCapiTestDelivery,
   sendMetaCapiEvent,
   type MetaCapiPayloadInput,
 } from './meta-capi'
@@ -32,9 +31,13 @@ type DeliveryRow = {
   metadata: string
 }
 
+const RELEASE_COMMIT = 'a'.repeat(40)
+const TOKEN_FINGERPRINT = '0b7a8749b34fd009cf020b30ea6bde2defee9e24b5f1c191764d60b8c1de9f31'
+
 function createMetaCapiDb(options: {
   pixelId?: string
   delivery?: Partial<DeliveryRow>
+  connectionVerified?: boolean
 } = {}) {
   const calls: Array<{ sql: string; params: unknown[] }> = []
   const delivery: DeliveryRow = {
@@ -78,6 +81,25 @@ function createMetaCapiDb(options: {
           }
           if (sql.includes("WHERE key = 'facebook_pixel_id'")) {
             return options.pixelId ? ({ value: options.pixelId } as T) : null
+          }
+          if (sql.includes("WHERE key = 'meta_tracking_mode'")) {
+            return { value: JSON.stringify(delivery.tracking_mode) } as T
+          }
+          if (sql.includes('FROM meta_connection_verifications')) {
+            if (!options.pixelId || options.connectionVerified === false) return null
+            return {
+              environment: 'dev',
+              pixel_id: options.pixelId,
+              token_fingerprint: TOKEN_FINGERPRINT,
+              graph_api_version: 'v25.0',
+              verified_event_name: 'Contact',
+              verified_commit: RELEASE_COMMIT,
+              dataset_quality_status: 'not_checked',
+              verified_at: '2026-07-11T00:00:00.000Z',
+              verified_by_user_id: 1,
+              invalidated_at: null,
+              invalidation_reason: '',
+            } as T
           }
           return null
         },
@@ -154,6 +176,22 @@ function createConcurrentSuccessDb() {
         async first<T>() {
           if (sql.includes('FROM analytics_conversion_deliveries')) return { ...delivery } as T
           if (sql.includes("WHERE key = 'facebook_pixel_id'")) return { value: JSON.stringify('1234567890') } as T
+          if (sql.includes("WHERE key = 'meta_tracking_mode'")) return { value: JSON.stringify(delivery.tracking_mode) } as T
+          if (sql.includes('FROM meta_connection_verifications')) {
+            return {
+              environment: 'dev',
+              pixel_id: '1234567890',
+              token_fingerprint: TOKEN_FINGERPRINT,
+              graph_api_version: 'v25.0',
+              verified_event_name: 'Contact',
+              verified_commit: RELEASE_COMMIT,
+              dataset_quality_status: 'not_checked',
+              verified_at: '2026-07-11T00:00:00.000Z',
+              verified_by_user_id: 1,
+              invalidated_at: null,
+              invalidation_reason: '',
+            } as T
+          }
           return null
         },
         async run() {
@@ -212,12 +250,14 @@ function createConcurrentSuccessDb() {
 
 function envFor(db: ReturnType<typeof createMetaCapiDb>, overrides: Partial<Bindings> = {}) {
   return {
-    APP_ENV: 'test',
+    APP_ENV: 'dev',
     SITE_URL: 'https://616618.xyz',
     META_CAPI_ACCESS_TOKEN: 'token_1',
+    META_CAPI_TEST_EVENT_CODE: 'test-code',
+    RELEASE_COMMIT,
     DB: db,
     ...overrides,
-  } as unknown as Pick<Bindings, 'APP_ENV' | 'SITE_URL' | 'META_CAPI_ACCESS_TOKEN' | 'DB'>
+  } as unknown as Pick<Bindings, 'APP_ENV' | 'SITE_URL' | 'META_CAPI_ACCESS_TOKEN' | 'META_CAPI_TEST_EVENT_CODE' | 'RELEASE_COMMIT' | 'DB'>
 }
 
 afterEach(() => {
@@ -335,21 +375,18 @@ describe('meta-capi', () => {
     expect(classifyMetaCapiError(429)).toBe('retryable')
   })
 
-  it.each(['Contact', 'CompleteRegistration'] as const)('test 模式 %s 强制附带环境 Test Event Code', async eventName => {
+  it.each(['Contact', 'CompleteRegistration'] as const)('普通 test 模式 %s payload 也不携带 Test Event Code', async eventName => {
     const db = createMetaCapiDb({
       pixelId: '1234567890',
       delivery: { event_name: eventName, tracking_mode: 'test' },
     })
     const fetchFn = vi.fn().mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }))
 
-    await sendMetaCapiEvent(envFor(db, { META_CAPI_TEST_EVENT_CODE: 'test-code-from-env' } as Partial<Bindings>), 'cdlv_1', {
-      fetchFn,
-      testEventCode: 'caller-must-not-override-mode',
-    })
+    await sendMetaCapiEvent(envFor(db, { META_CAPI_TEST_EVENT_CODE: 'test-code-from-env' } as Partial<Bindings>), 'cdlv_1', { fetchFn })
 
     const payload = JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body))
     expect(payload.data[0].event_name).toBe(eventName)
-    expect(payload.test_event_code).toBe('test-code-from-env')
+    expect(payload).not.toHaveProperty('test_event_code')
   })
 
   it.each(['Lead', 'StartTrial'])('历史 %s delivery 在 fetch 前进入 unsupported_event 安全终态', async eventName => {
@@ -373,13 +410,10 @@ describe('meta-capi', () => {
     })
     const fetchFn = vi.fn()
 
-    const result = await sendMetaCapiEvent(envFor(db, { META_CAPI_TEST_EVENT_CODE: '  ' } as Partial<Bindings>), 'cdlv_1', {
-      fetchFn,
-      testEventCode: 'caller-code-is-not-trusted',
-    })
+    const result = await sendMetaCapiEvent(envFor(db, { META_CAPI_TEST_EVENT_CODE: '  ' } as Partial<Bindings>), 'cdlv_1', { fetchFn })
 
-    expect(result).toEqual({ deliveryId: 'cdlv_1', status: 'skipped', reason: 'missing_test_event_code' })
-    expect(db.delivery).toMatchObject({ status: 'skipped', skip_reason: 'missing_test_event_code' })
+    expect(result).toEqual({ deliveryId: 'cdlv_1', status: 'skipped', reason: 'connection_unverified' })
+    expect(db.delivery).toMatchObject({ status: 'skipped', skip_reason: 'connection_unverified' })
     expect(fetchFn).not.toHaveBeenCalled()
   })
 
@@ -390,51 +424,27 @@ describe('meta-capi', () => {
     })
     const fetchFn = vi.fn().mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }))
 
-    await sendMetaCapiEvent(envFor(db, { META_CAPI_TEST_EVENT_CODE: 'environment-test-code' } as Partial<Bindings>), 'cdlv_1', {
-      fetchFn,
-      testEventCode: 'caller-test-code',
-    })
+    await sendMetaCapiEvent(envFor(db, { META_CAPI_TEST_EVENT_CODE: 'environment-test-code' } as Partial<Bindings>), 'cdlv_1', { fetchFn })
 
     const payload = JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body))
     expect(payload).not.toHaveProperty('test_event_code')
   })
 
-  it('Owner direct Test Event delivery 在入账时固化 test tracking mode', async () => {
-    const calls: Array<{ sql: string; params: unknown[] }> = []
-    const db = {
-      prepare(sql: string) {
-        const call = { sql, params: [] as unknown[] }
-        return {
-          bind(...params: unknown[]) {
-            call.params = params
-            return this
-          },
-          async run() {
-            calls.push(call)
-            return { meta: { changes: 1 } }
-          },
-        }
-      },
-      async batch(statements: Array<{ run: () => Promise<unknown> }>) {
-        return Promise.all(statements.map(statement => statement.run()))
-      },
-    } as unknown as D1Database
+  it('Graph fetch 前 MetaConnection 失效时安全跳过且不使用当前新 Dataset', async () => {
+    const db = createMetaCapiDb({ pixelId: '1234567890', connectionVerified: false })
+    const fetchFn = vi.fn()
 
-    await createMetaCapiTestDelivery(db, {
-      conversionId: 'conv_test',
-      deliveryId: 'cdlv_test',
-      externalEventId: 'event_test',
-      occurredAt: '2026-07-10T00:00:00.000Z',
-      date: '2026-07-10',
-      adminId: 1,
-    })
+    const result = await sendMetaCapiEvent(envFor(db, {
+      APP_ENV: 'dev',
+      RELEASE_COMMIT: 'a'.repeat(40),
+    }), 'cdlv_1', { fetchFn })
 
-    const deliveryInsert = calls.find(call => call.sql.includes('INSERT INTO analytics_conversion_deliveries'))
-    expect(deliveryInsert?.sql).toContain('tracking_mode')
-    expect(deliveryInsert?.sql).toContain("'test'")
+    expect(result).toEqual({ deliveryId: 'cdlv_1', status: 'skipped', reason: 'connection_unverified' })
+    expect(db.delivery).toMatchObject({ status: 'skipped', skip_reason: 'connection_unverified' })
+    expect(fetchFn).not.toHaveBeenCalled()
   })
 
-  it('缺少 access token 时标记 skipped/missing_secret', async () => {
+  it('缺少 access token 时标记 skipped/connection_unverified', async () => {
     const db = createMetaCapiDb({
       pixelId: '1234567890',
       delivery: { path: 'https://evil.example/private?token=secret' },
@@ -442,16 +452,16 @@ describe('meta-capi', () => {
     await sendMetaCapiEvent(envFor(db, { META_CAPI_ACCESS_TOKEN: '' } as Partial<Bindings>), 'cdlv_1')
 
     expect(db.delivery.status).toBe('skipped')
-    expect(db.delivery.skip_reason).toBe('missing_secret')
-    expect(db.daily[0]).toMatchObject({ status: 'skipped', skip_reason: 'missing_secret' })
+    expect(db.delivery.skip_reason).toBe('connection_unverified')
+    expect(db.daily[0]).toMatchObject({ status: 'skipped', skip_reason: 'connection_unverified' })
   })
 
-  it('缺少 Pixel ID 时标记 skipped/missing_pixel_id', async () => {
+  it('缺少 Pixel ID 时标记 skipped/connection_unverified', async () => {
     const db = createMetaCapiDb()
     await sendMetaCapiEvent(envFor(db), 'cdlv_1')
 
     expect(db.delivery.status).toBe('skipped')
-    expect(db.delivery.skip_reason).toBe('missing_pixel_id')
+    expect(db.delivery.skip_reason).toBe('connection_unverified')
   })
 
   it('Meta 仅在 v25.0 返回 events_received=1 时标记 sent 且不泄露 token', async () => {
@@ -591,8 +601,8 @@ describe('meta-capi', () => {
       status: 'failed',
       reason: 'events_not_received',
       eventsReceived: 0,
-      traceId: 'trace_1',
     })
+    expect(result).not.toHaveProperty('traceId')
     expect(db.delivery).toMatchObject({
       status: 'failed',
       error_code: 'meta_events_not_received',

@@ -140,6 +140,7 @@ export type ConversionSkipReason =
   | 'unsupported_event'
   | 'consent_denied'
   | 'invalid_payload'
+  | 'connection_unverified'
   | 'missing_data_key'
   | 'invalid_data_key'
   | 'secure_context_expired'

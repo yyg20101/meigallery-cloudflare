@@ -2,6 +2,21 @@ import type { AnalyticsRangeQuery } from '@meigallery/shared'
 
 export type AttributionRangePreset = '7d' | '30d' | '90d' | 'day'
 
+export type MetaConnectionState = 'not_configured' | 'unverified' | 'verified' | 'configuration_changed'
+
+export interface MetaConnectionStatus {
+  state: MetaConnectionState
+  environment: 'dev' | 'production'
+  pixelIdConfigured: boolean
+  tokenConfigured: boolean
+  testEventCodeConfigured: boolean
+  verifiedAt: string | null
+  verifiedCommit: string | null
+  graphApiVersion: 'v25.0'
+  datasetQualityStatus: 'not_checked' | 'available' | 'permission_denied' | 'error'
+  invalidationReason: string
+}
+
 export interface AttributionApiResponse<T> {
   range?: {
     from: string
@@ -97,6 +112,34 @@ export function attributionDuplicateRate(duplicate: unknown, total: unknown) {
   const duplicateCount = Math.max(0, Number(duplicate ?? 0))
   const totalCount = Math.max(1, Number(total ?? 0))
   return duplicateCount / totalCount
+}
+
+export function metaConnectionStateLabel(state: MetaConnectionState) {
+  if (state === 'verified') return '已验证'
+  if (state === 'configuration_changed') return '配置已变更'
+  if (state === 'not_configured') return '未配置'
+  return '未验证'
+}
+
+export function metaConnectionReasonLabel(reason: string) {
+  const labels: Record<string, string> = {
+    pixel_id_missing: 'Pixel ID 未配置',
+    access_token_missing: 'CAPI token 未配置',
+    test_event_code_missing: 'Test Event Code 未配置',
+    tracking_mode_disabled: 'Meta tracking mode 已关闭',
+    release_commit_invalid: '当前 release commit 无效',
+    verification_missing: '尚未完成连接验证',
+    pixel_id_changed: 'Pixel ID 已变化',
+    access_token_changed: 'CAPI token 已变化',
+    graph_api_version_changed: 'Graph API 版本已变化',
+    release_commit_changed: '发布 commit 已变化',
+    verification_invalidated: '原连接验证已失效',
+  }
+  return labels[reason] || '连接状态需要重新验证'
+}
+
+export function canVerifyMetaConnection(connection: MetaConnectionStatus | null | undefined, isOwner: boolean) {
+  return isOwner && connection?.environment === 'dev'
 }
 
 export function normalizeAttributionRangePreset(value: unknown, fallback: AttributionRangePreset = '30d'): AttributionRangePreset {

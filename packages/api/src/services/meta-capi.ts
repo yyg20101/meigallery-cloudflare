@@ -2,9 +2,12 @@ import type { ActiveMetaEventName, ConversionDeliveryStatus, MetaCapiSensitiveCo
 import { ACTIVE_META_EVENTS, ATTRIBUTION_LIMITS } from '@meigallery/shared/constants'
 import type { Bindings } from '../index'
 import { normalizeMetaCapiUserData } from '../utils/meta-browser-identifiers'
-import { parseStoredSettingValue } from '../utils/stored-setting-value'
+import { requireVerifiedMetaConnection } from './meta-connection'
 
-type MetaCapiEnv = Pick<Bindings, 'DB' | 'SITE_URL' | 'APP_ENV' | 'META_CAPI_ACCESS_TOKEN' | 'META_CAPI_TEST_EVENT_CODE'>
+type MetaCapiEnv = Pick<
+  Bindings,
+  'DB' | 'SITE_URL' | 'APP_ENV' | 'META_CAPI_ACCESS_TOKEN' | 'META_CAPI_TEST_EVENT_CODE' | 'RELEASE_COMMIT'
+>
 
 export type MetaCapiPayloadInput = {
   eventName: ActiveMetaEventName
@@ -14,7 +17,6 @@ export type MetaCapiPayloadInput = {
   actionSource: 'website'
   userData?: MetaCapiSensitiveContext
   customData?: Record<string, unknown>
-  testEventCode?: string
 }
 
 export type ConversionDeliverySnapshot = {
@@ -47,7 +49,6 @@ export interface MetaCapiSendResult {
   status: ConversionDeliveryStatus
   reason?: string
   eventsReceived?: number
-  traceId?: string
 }
 
 export interface TransitionDeliveryStatusInput {
@@ -116,7 +117,6 @@ export function buildMetaCapiPayload(input: MetaCapiPayloadInput) {
     custom_data: sanitizeCustomData(input.customData || {}),
   }
   const payload: Record<string, unknown> = { data: [event] }
-  if (input.testEventCode) payload.test_event_code = input.testEventCode
   return payload
 }
 
@@ -137,7 +137,6 @@ export async function sendMetaCapiEvent(
   env: MetaCapiEnv,
   deliveryId: string,
   options: {
-    testEventCode?: string
     userData?: MetaCapiSensitiveContext
     fetchFn?: typeof fetch
     timeoutMs?: number
@@ -166,36 +165,29 @@ export async function sendMetaCapiEvent(
     return { deliveryId, status: 'skipped', reason: 'unsupported_event' }
   }
 
-  const trackingMode = delivery.tracking_mode
-  if (trackingMode !== 'test' && trackingMode !== 'production') {
-    const persisted = await confirmDeliveryTransition(env.DB, delivery, { status: 'skipped', skipReason: 'invalid_tracking_mode' })
+  let connection: Awaited<ReturnType<typeof requireVerifiedMetaConnection>>
+  try {
+    connection = await requireVerifiedMetaConnection(env)
+  }
+  catch {
+    const persisted = await confirmDeliveryTransition(env.DB, delivery, {
+      status: 'skipped',
+      skipReason: 'connection_unverified',
+    })
     const competingSent = await recordCompetingSent(env.DB, persisted, deliveryId)
     if (competingSent) return competingSent
-    return { deliveryId, status: 'skipped', reason: 'invalid_tracking_mode' }
+    return { deliveryId, status: 'skipped', reason: 'connection_unverified' }
   }
-  const testEventCode = trackingMode === 'test' ? String(env.META_CAPI_TEST_EVENT_CODE || '').trim() : ''
-  if (trackingMode === 'test' && !testEventCode) {
-    const persisted = await confirmDeliveryTransition(env.DB, delivery, { status: 'skipped', skipReason: 'missing_test_event_code' })
+  if (delivery.tracking_mode !== connection.trackingMode) {
+    const persisted = await confirmDeliveryTransition(env.DB, delivery, {
+      status: 'skipped',
+      skipReason: 'connection_unverified',
+    })
     const competingSent = await recordCompetingSent(env.DB, persisted, deliveryId)
     if (competingSent) return competingSent
-    return { deliveryId, status: 'skipped', reason: 'missing_test_event_code' }
+    return { deliveryId, status: 'skipped', reason: 'connection_unverified' }
   }
-
   const accessToken = String(env.META_CAPI_ACCESS_TOKEN || '').trim()
-  if (!accessToken) {
-    const persisted = await confirmDeliveryTransition(env.DB, delivery, { status: 'skipped', skipReason: 'missing_secret' })
-    const competingSent = await recordCompetingSent(env.DB, persisted, deliveryId)
-    if (competingSent) return competingSent
-    return { deliveryId, status: 'skipped', reason: 'missing_secret' }
-  }
-
-  const pixelId = await readPixelId(env.DB)
-  if (!pixelId) {
-    const persisted = await confirmDeliveryTransition(env.DB, delivery, { status: 'skipped', skipReason: 'missing_pixel_id' })
-    const competingSent = await recordCompetingSent(env.DB, persisted, deliveryId)
-    if (competingSent) return competingSent
-    return { deliveryId, status: 'skipped', reason: 'missing_pixel_id' }
-  }
 
   const payload = buildMetaCapiPayload({
     eventName: delivery.event_name,
@@ -205,7 +197,6 @@ export async function sendMetaCapiEvent(
     actionSource: 'website',
     userData: options.userData,
     customData: parseMetadata(delivery.metadata),
-    testEventCode: trackingMode === 'test' ? testEventCode : undefined,
   })
 
   let response: Response
@@ -213,7 +204,7 @@ export async function sendMetaCapiEvent(
   try {
     const metaResponse = await fetchWithCombinedTimeout(
       options.fetchFn ?? globalThis.fetch,
-      metaCapiEndpoint(pixelId, accessToken),
+      metaCapiEndpoint(connection.pixelId, accessToken),
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -242,12 +233,11 @@ export async function sendMetaCapiEvent(
   }
 
   const eventsReceived = readEventsReceived(responseBody)
-  const traceId = readTraceId(responseBody, accessToken)
   if (response.ok && eventsReceived === 1) {
     const persisted = await confirmDeliveryTransition(env.DB, delivery, { status: 'sent' })
     const competingSent = await recordCompetingSent(env.DB, persisted, deliveryId)
     if (competingSent) return competingSent
-    return compactResult({ deliveryId, status: 'sent', eventsReceived, traceId })
+    return compactResult({ deliveryId, status: 'sent', eventsReceived })
   }
 
   if (response.ok) {
@@ -263,7 +253,6 @@ export async function sendMetaCapiEvent(
       status: 'failed',
       reason: 'events_not_received',
       eventsReceived,
-      traceId,
     })
   }
 
@@ -278,64 +267,11 @@ export async function sendMetaCapiEvent(
   if (classifyMetaCapiError(response.status) === 'retryable') {
     throw new MetaCapiDeliveryError(errorCode, META_CAPI_ERROR_MESSAGE, true)
   }
-  return compactResult({ deliveryId, status: 'failed', reason: String(response.status), traceId })
+  return compactResult({ deliveryId, status: 'failed', reason: String(response.status) })
 }
 
 function isActiveMetaEventName(value: string): value is ActiveMetaEventName {
   return ACTIVE_META_EVENT_NAMES.has(value)
-}
-
-export async function createMetaCapiTestDelivery(
-  db: D1Database,
-  input: {
-    conversionId: string
-    deliveryId: string
-    externalEventId: string
-    occurredAt: string
-    date: string
-    adminId: number
-  },
-) {
-  try {
-    await db.batch([
-      db.prepare(`
-        INSERT INTO analytics_conversion_actions (
-          id, action_type, dedupe_key, occurred_at, date, visitor_id, session_id,
-          source_channel, source_name, method_type, action_target, route_name, path,
-          metadata, duplicate_of
-        )
-        VALUES (?, 'contact', ?, ?, ?, 'meta_test_event', ?, 'internal', 'admin_attribution',
-          'meta_test_event', 'admin_attribution', 'admin_attribution_meta', '/admin/attribution/meta',
-          ?, '')
-      `).bind(
-        input.conversionId,
-        `meta-test:${input.deliveryId}`,
-        input.occurredAt,
-        input.date,
-        `meta_test_event:${input.adminId}`,
-        JSON.stringify({ test_event: true, method_type: 'meta_test_event', location: 'admin_attribution' }),
-      ),
-      db.prepare(`
-        INSERT INTO analytics_conversion_deliveries (
-          id, conversion_action_id, channel, external_event_id, event_name,
-          status, skip_reason, tracking_mode, updated_at
-        )
-        VALUES (?, ?, 'meta_capi', ?, 'Contact', 'pending', '', 'test', datetime('now'))
-      `).bind(input.deliveryId, input.conversionId, input.externalEventId),
-      db.prepare(`
-        INSERT INTO analytics_conversion_delivery_daily (
-          date, channel, event_name, status, skip_reason, delivery_count, updated_at
-        )
-        VALUES (?, 'meta_capi', 'Contact', 'pending', '', 1, datetime('now'))
-        ON CONFLICT(date, channel, event_name, status, skip_reason)
-        DO UPDATE SET
-          delivery_count = analytics_conversion_delivery_daily.delivery_count + 1,
-          updated_at = datetime('now')
-      `).bind(input.date),
-    ])
-  } catch {
-    throw new Error('Meta CAPI Test Event 创建失败')
-  }
 }
 
 export async function readMetaCapiDelivery(db: D1Database, deliveryId: string) {
@@ -511,12 +447,6 @@ function deliveryDailyDecrementAfterChange(db: D1Database, delivery: ConversionD
   `).bind(delivery.date, delivery.channel, delivery.event_name, delivery.status, delivery.skip_reason || '')
 }
 
-async function readPixelId(db: D1Database) {
-  const row = await db.prepare("SELECT value FROM site_settings WHERE key = 'facebook_pixel_id' LIMIT 1").first<{ value: string }>()
-  const value = parseStoredSettingValue(row ? row.value : '', '')
-  return String(value || '').trim()
-}
-
 async function fetchWithCombinedTimeout(
   fetchFn: typeof fetch,
   input: RequestInfo | URL,
@@ -561,17 +491,6 @@ function readEventsReceived(body: Record<string, unknown>) {
   return typeof body.events_received === 'number' && Number.isFinite(body.events_received)
     ? body.events_received
     : undefined
-}
-
-function readTraceId(body: Record<string, unknown>, accessToken: string) {
-  const error = body.error && typeof body.error === 'object' && !Array.isArray(body.error)
-    ? body.error as Record<string, unknown>
-    : {}
-  const value = typeof body.fbtrace_id === 'string' ? body.fbtrace_id : error.fbtrace_id
-  if (typeof value !== 'string') return undefined
-  const traceId = value.replace(/\p{Cc}/gu, '').trim().slice(0, 120)
-  if (accessToken && traceId.includes(accessToken)) return undefined
-  return traceId || undefined
 }
 
 function compactResult(result: MetaCapiSendResult) {
