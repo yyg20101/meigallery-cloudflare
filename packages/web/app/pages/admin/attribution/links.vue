@@ -23,7 +23,6 @@ interface AttributionLink {
   contactCount: number
   historical: { leadCount: number }
   completeRegistrationCount: number
-  conversionMembershipGrantCount: number
 }
 
 const { api } = useApi()
@@ -166,7 +165,7 @@ function normalizeUtmValue(value: string) {
       <section class="min-w-0 space-y-3">
         <div>
           <h2 class="text-sm font-semibold text-gray-900">链接表现</h2>
-          <p class="mt-1 text-sm text-gray-500">按链接查看 Session、有效联系、注册、会员发放和历史 Lead 对照。</p>
+          <p class="mt-1 text-sm text-gray-500">按链接查看 Session、有效联系、注册和历史 Lead 对照。</p>
         </div>
         <AnalyticsDataTable
           empty-title="暂无投放追踪链接"
@@ -181,7 +180,6 @@ function normalizeUtmValue(value: string) {
             { key: 'contactCount', label: '有效联系', type: 'number', sortable: true },
             { key: 'historicalLeadCount', label: '历史 Lead', type: 'number' },
             { key: 'completeRegistrationCount', label: '注册', type: 'number', sortable: true },
-            { key: 'conversionMembershipGrantCount', label: '会员', type: 'number', sortable: true },
             { key: 'contactRate', label: '联系率', type: 'percent', sortable: true },
             { key: 'registerRate', label: '注册率', type: 'percent', sortable: true },
           ]"

@@ -620,6 +620,8 @@ INSERT INTO site_settings (key, value) VALUES
 
 历史 D1 中的 `lead` / `Lead` 保留读取，不删除数据。后台只通过 `historical.leadCount` 展示“历史 Lead”，不得将其用于活动漏斗、联系率、注册率、链接排序、Meta delivery 健康或 readiness。
 
+归因 API 的活动 `totals`、趋势、风险空态和比率只使用 Contact / CompleteRegistration。既有会员发放聚合若需保留，只能放在 `operations.membershipGrantCount` 等明确辅助结构中，不得进入活动卡片、活动总数、发放注册率或投放效果排序。
+
 | 表 | 状态 | 用途 |
 |------|------|------|
 | `analytics_conversion_actions` | `[当前实现]` | 站内转化事实；新写入只由 `recordContact()`、`recordRegistration()` 和注册事实修复函数创建 `contact` / `complete_registration`。历史 schema 继续只读兼容 `lead`、`start_trial` 和既有 `membership_grant`，不删除存量数据。 |

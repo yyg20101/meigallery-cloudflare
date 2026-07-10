@@ -118,8 +118,11 @@ export default [
       'no-restricted-imports': ['error', {
         patterns: [
           '~/adapters/metaPixel.client',
+          '**/adapters/metaPixel.client',
           '~/composables/useConversionTracking',
+          '**/composables/useConversionTracking',
           '~/composables/useFacebookPixel',
+          '**/composables/useFacebookPixel',
         ],
       }],
     },

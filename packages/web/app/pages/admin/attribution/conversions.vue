@@ -98,7 +98,7 @@ function refreshAll() {
           </div>
           <AnalyticsDataTable
             empty-title="暂无动作数据"
-            empty-text="有效联系、完成注册或会员发放事件上报后会出现。"
+            empty-text="有效联系或完成注册事件上报后会出现。"
             :columns="[
               { key: 'action_type', label: '动作', sortable: true },
               { key: 'action_count', label: '次数', type: 'number', sortable: true },

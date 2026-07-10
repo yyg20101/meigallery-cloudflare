@@ -135,6 +135,7 @@ adminAttributionRoutes.get('/overview', async (c) => {
     usage: mergeQueryUsage(totals, trend, metaTotals, metaTrend, lastSentAt, duplicateActions),
     data: {
       totals: normalizeTotals(totalRow),
+      operations: normalizeOperations(totalRow),
       trend: trend.rows.map(normalizeTrendRow),
       historical: normalizeHistorical(totalRow),
       meta,
@@ -210,6 +211,9 @@ adminAttributionRoutes.get('/conversions', async (c) => {
       historical: {
         leadCount: numberValue((historical.rows[0] ?? {}).historical_lead_count),
       },
+      operations: {
+        membershipGrantCount: numberValue(byAction.rows.find(row => row.action_type === 'membership_grant')?.action_count),
+      },
     },
   })
 })
@@ -225,7 +229,7 @@ adminAttributionRoutes.get('/links', async (c) => {
     ? 'WHERE ats.slug = ? OR ats.utm_source = ?'
     : ''
   const queryParams = sourceFilter
-    ? [range.from, range.to, range.from, range.to, sourceFilter, sourceFilter]
+    ? [range.from, range.to, sourceFilter, range.from, range.to, sourceFilter, sourceFilter]
     : [range.from, range.to, range.from, range.to]
 
   const links = await queryAll(c.env.DB, `
@@ -962,8 +966,11 @@ function normalizeTotals(row: Row) {
   return {
     contact_count: numberValue(row.contact_count),
     complete_registration_count: numberValue(row.complete_registration_count),
-    membership_grant_count: numberValue(row.membership_grant_count),
   }
+}
+
+function normalizeOperations(row: Row) {
+  return { membershipGrantCount: numberValue(row.membership_grant_count) }
 }
 
 function normalizeHistorical(row: Row) {
@@ -982,10 +989,15 @@ function isActiveConversionRow(row: Row) {
 }
 
 function serializeConversionSource(row: Row) {
-  const { lead_count: _leadCount, ...active } = row
+  const {
+    lead_count: _leadCount,
+    membership_grant_count: _membershipGrantCount,
+    ...active
+  } = row
   return {
     ...active,
     historical: normalizeHistorical(row),
+    operations: normalizeOperations(row),
   }
 }
 
@@ -1042,11 +1054,12 @@ function serializeAttributionLink(row: Row) {
     galleryDetailCount: numberValue(row.gallery_detail_count),
     contactClickCount: numberValue(row.contact_click_count),
     registerCount: numberValue(row.register_count),
-    membershipGrantCount: numberValue(row.membership_grant_count),
     activeSecondsTotal: numberValue(row.active_seconds_total),
     contactCount: numberValue(row.contact_count),
     completeRegistrationCount: numberValue(row.complete_registration_count),
-    conversionMembershipGrantCount: numberValue(row.conversion_membership_grant_count),
+    operations: {
+      membershipGrantCount: numberValue(row.conversion_membership_grant_count),
+    },
     historical: normalizeHistorical(row),
   }
   return {

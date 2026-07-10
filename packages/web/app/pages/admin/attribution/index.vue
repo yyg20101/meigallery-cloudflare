@@ -90,12 +90,6 @@ const metrics = computed(() => [
     tone: 'green' as const,
   },
   {
-    label: '会员发放',
-    value: formatAnalyticsNumber(totals.value.membership_grant_count),
-    hint: `发放 / 注册 ${formatAnalyticsPercent(totals.value.membership_grant_count, totals.value.complete_registration_count)}`,
-    tone: 'default' as const,
-  },
-  {
     label: 'CAPI 失败',
     value: formatAnalyticsNumber(metaTotals.value.capi_failed_count),
     hint: `CAPI sent ${formatAnalyticsNumber(metaTotals.value.capi_sent_count)}`,
@@ -153,7 +147,7 @@ function refreshAll() {
         show-presence-summary
       />
 
-      <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <AnalyticsMetricCard v-for="metric in metrics" :key="metric.label" v-bind="metric" />
       </div>
 

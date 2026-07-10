@@ -40,11 +40,12 @@ describe('归因转化页当前口径', () => {
         source_name: 'Meta A',
         contact_count: 1,
         complete_registration_count: 1,
-        membership_grant_count: 1,
+        operations: { membershipGrantCount: 9 },
         start_trial_count: 100,
         historical: { leadCount: 1 },
       }],
       historical: { leadCount: 1 },
+      operations: { membershipGrantCount: 9 },
       samples: [],
     })
     const overview = attributionState({ trend: [] })
@@ -70,9 +71,11 @@ describe('归因转化页当前口径', () => {
     expect(sourceRow.contact_rate).toBe(0.5)
     expect(sourceRow.register_rate).toBe(0.5)
     expect(sourceRow.historical_lead_count).toBe(1)
+    expect(sourceRow).not.toHaveProperty('membership_grant_count')
     expect(tables[0]!.props('columns')).toContainEqual(expect.objectContaining({ key: 'historical_lead_count', label: '历史 Lead' }))
     expect(wrapper.text()).not.toContain('开始试用')
-    expect(wrapper.text()).toContain('有效联系、完成注册或会员发放事件上报后会出现。')
+    expect(wrapper.text()).toContain('有效联系或完成注册事件上报后会出现。')
+    expect(wrapper.text()).not.toContain('会员发放')
   })
 
   it('归因页面只使用“历史 Lead”标签', () => {
@@ -81,5 +84,17 @@ describe('归因转化页当前口径', () => {
       expect(source).not.toMatch(/label:\s*['"]Lead['"]/)
       expect(source).toContain('历史 Lead')
     }
+  })
+
+  it('归因活动 UI 不展示会员发放卡片、比率或活动列', () => {
+    const indexSource = readFileSync(join(cwd(), 'app/pages/admin/attribution/index.vue'), 'utf8')
+    const conversionsSource = readFileSync(join(cwd(), 'app/pages/admin/attribution/conversions.vue'), 'utf8')
+    const linksSource = readFileSync(join(cwd(), 'app/pages/admin/attribution/links.vue'), 'utf8')
+
+    expect(indexSource).not.toContain("label: '会员发放'")
+    expect(indexSource).not.toContain('发放 / 注册')
+    expect(conversionsSource).not.toContain('会员发放事件')
+    expect(linksSource).not.toContain('conversionMembershipGrantCount')
+    expect(linksSource).not.toMatch(/label:\s*['"]会员['"]/)
   })
 })

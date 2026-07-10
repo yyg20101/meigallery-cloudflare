@@ -30,6 +30,12 @@ type AttributionDbOptions = {
   failCreateBatchAt?: number
   historicalStartTrialDeliveryCount?: number
   membershipGrantDuplicateCount?: number
+  attributionTotals?: {
+    contactCount: number
+    leadCount: number
+    completeRegistrationCount: number
+    membershipGrantCount: number
+  }
   settings?: Partial<Record<string, string | boolean>>
   readiness?: ReadinessOptions
 }
@@ -49,6 +55,12 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
   const calls: DbCall[] = []
   const historicalStartTrialDeliveryCount = Math.max(0, options.historicalStartTrialDeliveryCount ?? 0)
   const membershipGrantDuplicateCount = Math.max(0, options.membershipGrantDuplicateCount ?? 0)
+  const attributionTotals = options.attributionTotals ?? {
+    contactCount: 3,
+    leadCount: 1,
+    completeRegistrationCount: 1,
+    membershipGrantCount: 0,
+  }
   const dailyHistoryLeak = (sql: string) => sql.includes("event_name IN ('Contact', 'CompleteRegistration')")
     ? 0
     : historicalStartTrialDeliveryCount
@@ -121,6 +133,10 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
       const statement = {
         __call: call,
         bind(...params: unknown[]) {
+          const placeholderCount = sql.match(/\?/g)?.length ?? 0
+          if (placeholderCount !== params.length) {
+            throw new Error(`SQL placeholder 数 ${placeholderCount} 与 bind 数 ${params.length} 不一致`)
+          }
           call.params = params
           return this
         },
@@ -215,7 +231,13 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
           if (sql.includes('FROM analytics_conversion_daily') && sql.includes('GROUP BY date')) {
             return {
               results: [
-                { date: '2026-07-09', contact_count: 3, lead_count: 1, complete_registration_count: 1, membership_grant_count: 0 },
+                {
+                  date: '2026-07-09',
+                  contact_count: attributionTotals.contactCount,
+                  lead_count: attributionTotals.leadCount,
+                  complete_registration_count: attributionTotals.completeRegistrationCount,
+                  membership_grant_count: attributionTotals.membershipGrantCount,
+                },
               ] as T[],
               meta: { rows_read: 1, rows_written: 0, duration: 1 },
             }
@@ -223,23 +245,34 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
           if (sql.includes('FROM analytics_conversion_daily') && sql.includes('GROUP BY action_type')) {
             return {
               results: [
-                { action_type: 'contact', action_count: 3, unique_session_count: 3 },
-                { action_type: 'lead', action_count: 1, unique_session_count: 1 },
+                { action_type: 'contact', action_count: attributionTotals.contactCount, unique_session_count: attributionTotals.contactCount },
+                { action_type: 'lead', action_count: attributionTotals.leadCount, unique_session_count: attributionTotals.leadCount },
+                { action_type: 'complete_registration', action_count: attributionTotals.completeRegistrationCount, unique_session_count: attributionTotals.completeRegistrationCount },
+                { action_type: 'membership_grant', action_count: attributionTotals.membershipGrantCount, unique_session_count: attributionTotals.membershipGrantCount },
               ] as T[],
-              meta: { rows_read: 2, rows_written: 0, duration: 1 },
+              meta: { rows_read: 4, rows_written: 0, duration: 1 },
             }
           }
           if (sql.includes('FROM analytics_conversion_daily') && sql.includes('GROUP BY source_channel')) {
             return {
               results: [
-                { source_channel: 'ad', source_name: 'ad-a', utm_campaign: 'july', utm_content: 'chat-a', contact_count: 3, lead_count: 1, complete_registration_count: 1, membership_grant_count: 0 },
+                {
+                  source_channel: 'ad',
+                  source_name: 'ad-a',
+                  utm_campaign: 'july',
+                  utm_content: 'chat-a',
+                  contact_count: attributionTotals.contactCount,
+                  lead_count: attributionTotals.leadCount,
+                  complete_registration_count: attributionTotals.completeRegistrationCount,
+                  membership_grant_count: attributionTotals.membershipGrantCount,
+                },
               ] as T[],
               meta: { rows_read: 2, rows_written: 0, duration: 1 },
             }
           }
           if (sql.includes('AS historical_lead_count')) {
             return {
-              results: [{ historical_lead_count: 1 } as T],
+              results: [{ historical_lead_count: attributionTotals.leadCount } as T],
               meta: { rows_read: 1, rows_written: 0, duration: 1 },
             }
           }
@@ -252,7 +285,12 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
           if (sql.includes('FROM analytics_conversion_daily') && !sql.includes('FROM analytics_tracking_sources')) {
             return {
               results: [
-                { contact_count: 3, lead_count: 1, complete_registration_count: 1, membership_grant_count: 0 },
+                {
+                  contact_count: attributionTotals.contactCount,
+                  lead_count: attributionTotals.leadCount,
+                  complete_registration_count: attributionTotals.completeRegistrationCount,
+                  membership_grant_count: attributionTotals.membershipGrantCount,
+                },
               ] as T[],
               meta: { rows_read: 1, rows_written: 0, duration: 1 },
             }
@@ -407,10 +445,10 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
                   register_count: 0,
                   membership_grant_count: 0,
                   active_seconds_total: 120,
-                  contact_count: 3,
-                  lead_count: 1,
-                  complete_registration_count: 1,
-                  conversion_membership_grant_count: 0,
+                  contact_count: attributionTotals.contactCount,
+                  lead_count: attributionTotals.leadCount,
+                  complete_registration_count: attributionTotals.completeRegistrationCount,
+                  conversion_membership_grant_count: attributionTotals.membershipGrantCount,
                 },
               ] as T[],
               meta: { rows_read: 1, rows_written: 0, duration: 1 },
@@ -447,10 +485,10 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
           }
           if (sql.includes('FROM analytics_conversion_daily')) {
             return {
-              contact_count: 3,
-              lead_count: 1,
-              complete_registration_count: 1,
-              membership_grant_count: 0,
+              contact_count: attributionTotals.contactCount,
+              lead_count: attributionTotals.leadCount,
+              complete_registration_count: attributionTotals.completeRegistrationCount,
+              membership_grant_count: attributionTotals.membershipGrantCount,
             } as T
           }
           if (sql.includes('FROM analytics_conversion_delivery_daily')) {
@@ -663,13 +701,21 @@ describe('后台归因中心 API', () => {
     ])
 
     expect(overview.data.totals).not.toHaveProperty('lead_count')
+    expect(overview.data.totals).not.toHaveProperty('membership_grant_count')
+    expect(overview.data.operations).toEqual({ membershipGrantCount: 0 })
     expect(overview.data.historical).toEqual({ leadCount: 1 })
     expect(overview.data.trend[0]).not.toHaveProperty('lead_count')
+    expect(overview.data.trend[0]).not.toHaveProperty('membership_grant_count')
     expect(conversions.data.historical).toEqual({ leadCount: 1 })
+    expect(conversions.data.operations).toEqual({ membershipGrantCount: 0 })
     expect(conversions.data.byAction.map((row: { action_type: string }) => row.action_type)).not.toContain('lead')
     expect(conversions.data.bySource[0]).not.toHaveProperty('lead_count')
+    expect(conversions.data.bySource[0]).not.toHaveProperty('membership_grant_count')
+    expect(conversions.data.bySource[0].operations).toEqual({ membershipGrantCount: 0 })
     expect(conversions.data.bySource[0].historical).toEqual({ leadCount: 1 })
     expect(links.data.links[0]).not.toHaveProperty('leadCount')
+    expect(links.data.links[0]).not.toHaveProperty('conversionMembershipGrantCount')
+    expect(links.data.links[0].operations).toEqual({ membershipGrantCount: 0 })
     expect(links.data.links[0].historical).toEqual({ leadCount: 1 })
 
     const activityQueries = db.calls.filter(call => (
@@ -681,6 +727,25 @@ describe('后台归因中心 API', () => {
     expect(activityQueries.every(call => !call.sql.includes("'lead'"))).toBe(true)
     const linksSql = db.calls.find(call => call.sql.includes('WITH conversion_metrics'))?.sql ?? ''
     expect(linksSql).not.toContain('ORDER BY contact_count DESC, lead_count DESC')
+  })
+
+  it('只有会员发放时仍判定活动转化为空', async () => {
+    const res = await createApp('admin').request('/api/admin/attribution/overview?from=2026-07-09&to=2026-07-09', {}, {
+      DB: createAttributionDb({
+        attributionTotals: {
+          contactCount: 0,
+          leadCount: 0,
+          completeRegistrationCount: 0,
+          membershipGrantCount: 7,
+        },
+      }),
+    } as unknown as Bindings)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.data.totals).toEqual({ contact_count: 0, complete_registration_count: 0 })
+    expect(body.data.operations).toEqual({ membershipGrantCount: 7 })
+    expect(body.data.risks).toContainEqual(expect.objectContaining({ key: 'conversion_empty' }))
   })
 
   it('默认 overview/conversions/links SQL 与响应完全排除历史 start_trial', async () => {
@@ -737,6 +802,28 @@ describe('后台归因中心 API', () => {
     expect(linkSql?.sql).not.toContain('cm.utm_campaign')
     expect(linkSql?.sql).not.toContain('cm.utm_content')
     expect(body.data.links[0]).not.toHaveProperty('startTrialCount')
+  })
+
+  it('投放链接按 sourceCode 过滤时 SQL placeholder 与 bind 顺序完全匹配', async () => {
+    const db = createAttributionDb()
+    const res = await createApp('admin').request('/api/admin/attribution/links?from=2026-07-09&to=2026-07-09&sourceCode=ad-a', {}, {
+      DB: db,
+    } as unknown as Bindings)
+    const body = await res.json()
+    const linkCall = db.calls.find(call => call.sql.includes('WITH conversion_metrics'))
+
+    expect(res.status).toBe(200)
+    expect(body.data.links[0]).toMatchObject({ sourceCode: 'ad-a' })
+    expect(linkCall?.sql.match(/\?/g)).toHaveLength(7)
+    expect(linkCall?.params).toEqual([
+      '2026-07-09',
+      '2026-07-09',
+      'ad-a',
+      '2026-07-09',
+      '2026-07-09',
+      'ad-a',
+      'ad-a',
+    ])
   })
 
   it('返回 Meta 投递状态和配置', async () => {
