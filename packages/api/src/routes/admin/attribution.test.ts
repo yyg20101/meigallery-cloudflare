@@ -16,7 +16,7 @@ function createApp(role: string | null = 'admin') {
   return app
 }
 
-function createAttributionDb() {
+function createAttributionDb(options: { failCreateBatchAt?: number } = {}) {
   const calls: DbCall[] = []
   let testAction: { id: string; occurred_at: string; date: string; path: string; metadata: string } | null = null
   let testDelivery: {
@@ -31,11 +31,19 @@ function createAttributionDb() {
     error_message: string
     attempt_count: number
   } | null = null
+  let pendingDailyCount = 0
+  let pendingDailyCreated = 0
+  let createBatchSeen = false
   const db = {
     calls,
+    get testAction() { return testAction },
+    get testDelivery() { return testDelivery },
+    get pendingDailyCount() { return pendingDailyCount },
+    get pendingDailyCreated() { return pendingDailyCreated },
     prepare(sql: string) {
       const call: DbCall = { sql, params: [] }
-      return {
+      const statement = {
+        __call: call,
         bind(...params: unknown[]) {
           call.params = params
           return this
@@ -283,12 +291,41 @@ function createAttributionDb() {
             testDelivery.error_message = String(call.params[3] ?? '')
             testDelivery.attempt_count += 1
           }
+          if (sql.includes('INSERT INTO analytics_conversion_delivery_daily') && sql.includes("'pending'")) {
+            pendingDailyCount += 1
+            pendingDailyCreated += 1
+          }
+          if (sql.includes('UPDATE analytics_conversion_delivery_daily') && call.params[3] === 'pending') {
+            pendingDailyCount = Math.max(0, pendingDailyCount - 1)
+          }
           return { meta: { changes: 1, rows_read: 0, rows_written: 1, duration: 1 } }
         },
       }
+      return statement
     },
     async batch(statements: Array<{ run: () => Promise<unknown> }>) {
-      return Promise.all(statements.map(statement => statement.run()))
+      const isCreateBatch = !createBatchSeen && statements.length === 3
+      if (isCreateBatch) createBatchSeen = true
+      const snapshot = {
+        testAction: testAction ? { ...testAction } : null,
+        testDelivery: testDelivery ? { ...testDelivery } : null,
+        pendingDailyCount,
+        pendingDailyCreated,
+      }
+      const results = []
+      try {
+        for (let index = 0; index < statements.length; index += 1) {
+          if (isCreateBatch && options.failCreateBatchAt === index + 1) throw new Error('模拟 Test Event 创建失败')
+          results.push(await statements[index]!.run())
+        }
+        return results
+      } catch (error) {
+        testAction = snapshot.testAction
+        testDelivery = snapshot.testDelivery
+        pendingDailyCount = snapshot.pendingDailyCount
+        pendingDailyCreated = snapshot.pendingDailyCreated
+        throw error
+      }
     },
   }
   return db
@@ -410,6 +447,19 @@ describe('后台归因中心 API', () => {
     expect(body.data.reason).toBe('missing_secret')
     expect(db.calls.some(call => call.sql.includes('INSERT INTO admin_audit_logs') && call.params[2] === 'attribution.meta_test_event')).toBe(true)
     expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_conversion_deliveries'))).toBe(true)
+    expect(db.pendingDailyCreated).toBe(1)
+    expect(db.pendingDailyCount).toBe(0)
     expect(JSON.stringify(db.calls)).not.toContain('Meta 像素测试地址')
+  })
+
+  it.each([1, 2, 3])('Test Event 创建 batch 第 %i 步失败时回滚 action、delivery 和 pending 桶', async failCreateBatchAt => {
+    const db = createAttributionDb({ failCreateBatchAt })
+    const res = await createApp('owner').request('/api/admin/attribution/meta/test-event', { method: 'POST' }, { DB: db } as unknown as Bindings)
+
+    expect(res.status).toBe(500)
+    expect(db.testAction).toBeNull()
+    expect(db.testDelivery).toBeNull()
+    expect(db.pendingDailyCount).toBe(0)
+    expect(db.pendingDailyCreated).toBe(0)
   })
 })

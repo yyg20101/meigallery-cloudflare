@@ -1,6 +1,6 @@
 import { Hono, type Context } from 'hono'
 import type { Bindings, Variables } from '../../index'
-import { sendMetaCapiEvent } from '../../services/meta-capi'
+import { createMetaCapiTestDelivery, sendMetaCapiEvent } from '../../services/meta-capi'
 import { errorJson } from '../../utils/api-error'
 import { mergeD1Usage, readD1UsageMeta, type D1Usage } from '../../utils/analytics-cost'
 import { parseAnalyticsRange, type AnalyticsDateRange } from '../../utils/analytics-time'
@@ -380,30 +380,14 @@ adminAttributionRoutes.post('/meta/test-event', async (c) => {
   const conversionId = generateId('convtest')
   const deliveryId = generateId('cdlvtest')
   const externalEventId = `meta:Contact:test:${deliveryId}`
-  await c.env.DB.prepare(`
-    INSERT INTO analytics_conversion_actions (
-      id, action_type, dedupe_key, occurred_at, date, visitor_id, session_id,
-      source_channel, source_name, method_type, action_target, route_name, path,
-      metadata, duplicate_of
-    )
-    VALUES (?, 'contact', ?, ?, ?, 'meta_test_event', ?, 'internal', 'admin_attribution',
-      'meta_test_event', 'admin_attribution', 'admin_attribution_meta', '/admin/attribution/meta',
-      ?, '')
-  `).bind(
+  await createMetaCapiTestDelivery(c.env.DB, {
     conversionId,
-    `meta-test:${deliveryId}`,
-    now,
+    deliveryId,
+    externalEventId,
+    occurredAt: now,
     date,
-    `meta_test_event:${adminId}`,
-    JSON.stringify({ test_event: true, method_type: 'meta_test_event', location: 'admin_attribution' }),
-  ).run()
-  await c.env.DB.prepare(`
-    INSERT INTO analytics_conversion_deliveries (
-      id, conversion_action_id, channel, external_event_id, event_name,
-      status, skip_reason, updated_at
-    )
-    VALUES (?, ?, 'meta_capi', ?, 'Contact', 'pending', '', datetime('now'))
-  `).bind(deliveryId, conversionId, externalEventId).run()
+    adminId,
+  })
 
   let afterValue: Record<string, unknown>
   try {

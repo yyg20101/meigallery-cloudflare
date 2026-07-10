@@ -5,7 +5,10 @@ import { computeMetaRetryDelay, handleMetaCapiBatch } from './meta-capi-queue'
 
 type DeliveryStatus = 'pending' | 'sent' | 'failed'
 
-function createQueueDb(initialStatus: DeliveryStatus = 'pending') {
+function createQueueDb(initialStatus: DeliveryStatus = 'pending', options: {
+  beforeFirstCasStatus?: DeliveryStatus
+  casFailures?: number
+} = {}) {
   const delivery = {
     id: 'cdlv_1',
     conversion_action_id: 'conv_1',
@@ -24,6 +27,9 @@ function createQueueDb(initialStatus: DeliveryStatus = 'pending') {
   }
   const daily = new Map<string, number>([[initialStatus, 1]])
   const calls: Array<{ sql: string; params: unknown[] }> = []
+  let lastChanges = 1
+  let casCount = 0
+  let remainingCasFailures = options.casFailures ?? 0
 
   const db = {
     delivery,
@@ -45,44 +51,72 @@ function createQueueDb(initialStatus: DeliveryStatus = 'pending') {
         },
         async run() {
           calls.push(call)
-          applyStatement(call)
-          return { meta: { changes: 1, rows_written: 1, rows_read: 0, duration: 1 } }
+          return applyStatement(call)
         },
       }
       return statement
     },
     async batch(statements: Array<{ __call: { sql: string; params: unknown[] } }>) {
+      const results = []
       for (const statement of statements) {
         calls.push(statement.__call)
-        applyStatement(statement.__call)
+        results.push(applyStatement(statement.__call))
       }
-      return statements.map(() => ({ meta: { changes: 1, rows_written: 1, rows_read: 0, duration: 1 } }))
+      return results
     },
   }
 
   function applyStatement(call: { sql: string; params: unknown[] }) {
     if (call.sql.includes('UPDATE analytics_conversion_deliveries')) {
       const changesStatus = /SET\s+status\s*=\s*\?/m.test(call.sql)
+      if (casCount === 0 && options.beforeFirstCasStatus) forceStatus(options.beforeFirstCasStatus)
+      casCount += 1
+      if (remainingCasFailures > 0) {
+        remainingCasFailures -= 1
+        return result(0)
+      }
+      const expectedStatus = String(call.params[changesStatus ? 6 : 4])
+      if (delivery.status !== expectedStatus || delivery.status === 'sent') return result(0)
       if (changesStatus) delivery.status = String(call.params[0]) as DeliveryStatus
       const offset = changesStatus ? 1 : 0
       delivery.skip_reason = String(call.params[offset] ?? '')
       delivery.error_code = String(call.params[offset + 1] ?? '')
       delivery.error_message = String(call.params[offset + 2] ?? '')
       delivery.attempt_count += 1
-      return
+      return result(1)
     }
-    if (!call.sql.includes('analytics_conversion_delivery_daily')) return
+    if (!call.sql.includes('analytics_conversion_delivery_daily')) return result(1)
     const values = call.params.map(String)
     if (call.sql.includes('delivery_count + 1')) {
+      if (lastChanges !== 1) return result(0)
       const status = call.sql.includes("'duplicate_suppressed'")
         ? 'duplicate_suppressed'
         : values.find(value => ['pending', 'sent', 'failed', 'duplicate_suppressed'].includes(value))
       if (status) daily.set(status, (daily.get(status) ?? 0) + 1)
+      return result(1)
     }
     if (call.sql.includes('delivery_count - 1')) {
+      if (lastChanges !== 1) return result(0)
       const status = values.find(value => ['pending', 'sent', 'failed'].includes(value))
       if (status) daily.set(status, Math.max(0, (daily.get(status) ?? 0) - 1))
+      return result(1)
     }
+    return result(1)
+  }
+
+  function forceStatus(status: DeliveryStatus) {
+    for (const key of ['pending', 'failed', 'sent']) daily.set(key, 0)
+    daily.set(status, 1)
+    delivery.status = status
+    delivery.skip_reason = ''
+    delivery.error_code = status === 'failed' ? 'meta_http_500' : ''
+    delivery.error_message = status === 'failed' ? 'Meta CAPI 请求失败' : ''
+    delivery.attempt_count += 1
+  }
+
+  function result(changes: number) {
+    lastChanges = changes
+    return { meta: { changes, rows_written: changes, rows_read: 0, duration: 1 } }
   }
 
   return db
@@ -156,6 +190,53 @@ describe('Meta CAPI Queue', () => {
     expect(db.delivery).toMatchObject({ status: 'sent', attempt_count: 2 })
     expect(db.daily.get('failed')).toBe(0)
     expect(db.daily.get('sent')).toBe(1)
+  })
+
+  it('Meta success 遇到 pending 到 failed 的 CAS 竞争时重读并确认 sent', async () => {
+    const db = createQueueDb('pending', { beforeFirstCasStatus: 'failed' })
+    const queueMessage = message(2)
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }))
+
+    await handleMetaCapiBatch(batch('meigallery-meta-capi', queueMessage), env(db))
+
+    expect(queueMessage.ack).toHaveBeenCalledOnce()
+    expect(queueMessage.retry).not.toHaveBeenCalled()
+    expect(db.delivery.status).toBe('sent')
+    expect(db.daily.get('pending')).toBe(0)
+    expect(db.daily.get('failed')).toBe(0)
+    expect(db.daily.get('sent')).toBe(1)
+
+    await handleMetaCapiBatch(batch('meigallery-meta-capi', queueMessage), env(db))
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(db.delivery.status).toBe('sent')
+    expect(db.daily.get('sent')).toBe(1)
+    expect(db.daily.get('duplicate_suppressed')).toBe(1)
+  })
+
+  it('Meta success 多次 CAS 竞争仍无法确认 sent 时 retry 而不 ack', async () => {
+    const db = createQueueDb('pending', { casFailures: 3 })
+    const queueMessage = message(2)
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }))
+
+    await handleMetaCapiBatch(batch('meigallery-meta-capi', queueMessage), env(db))
+
+    expect(queueMessage.ack).not.toHaveBeenCalled()
+    expect(queueMessage.retry).toHaveBeenCalledWith({ delaySeconds: 300 })
+    expect(db.delivery.status).toBe('pending')
+  })
+
+  it('永久失败与并发 sent 竞争时保持 sent 且不增加 failed 桶', async () => {
+    const db = createQueueDb('pending', { beforeFirstCasStatus: 'sent' })
+    const queueMessage = message(1)
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 400 }))
+
+    await handleMetaCapiBatch(batch('meigallery-meta-capi', queueMessage), env(db))
+
+    expect(queueMessage.ack).toHaveBeenCalledOnce()
+    expect(queueMessage.retry).not.toHaveBeenCalled()
+    expect(db.delivery.status).toBe('sent')
+    expect(db.daily.get('sent')).toBe(1)
+    expect(db.daily.get('failed')).toBe(0)
   })
 
   it('逐条处理消息，永久失败 ack、retryable 错误仅重试对应消息', async () => {

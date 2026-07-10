@@ -66,8 +66,10 @@ export class MetaCapiDeliveryError extends Error {
 
 const META_GRAPH_API_VERSION = 'v25.0'
 const META_CAPI_TIMEOUT_MS = 8_000
+const DELIVERY_TRANSITION_MAX_ATTEMPTS = 3
 const META_CAPI_ERROR_MESSAGE = 'Meta CAPI 请求失败'
 const META_CAPI_TIMEOUT_MESSAGE = 'Meta CAPI 请求超时'
+const META_CAPI_STATE_ERROR_CODE = 'meta_delivery_state_conflict'
 const CUSTOM_DATA_ALLOWLIST = new Set([
   'method_type',
   'action_type',
@@ -129,13 +131,15 @@ export async function sendMetaCapiEvent(
 
   const accessToken = String(env.META_CAPI_ACCESS_TOKEN || '').trim()
   if (!accessToken) {
-    await transitionDeliveryStatus(env.DB, delivery, { status: 'skipped', skipReason: 'missing_secret' })
+    const persisted = await confirmDeliveryTransition(env.DB, delivery, { status: 'skipped', skipReason: 'missing_secret' })
+    if (persisted.status === 'sent') return alreadySentResult(deliveryId)
     return { deliveryId, status: 'skipped', reason: 'missing_secret' }
   }
 
   const pixelId = await readPixelId(env.DB)
   if (!pixelId) {
-    await transitionDeliveryStatus(env.DB, delivery, { status: 'skipped', skipReason: 'missing_pixel_id' })
+    const persisted = await confirmDeliveryTransition(env.DB, delivery, { status: 'skipped', skipReason: 'missing_pixel_id' })
+    if (persisted.status === 'sent') return alreadySentResult(deliveryId)
     return { deliveryId, status: 'skipped', reason: 'missing_pixel_id' }
   }
 
@@ -169,11 +173,12 @@ export async function sendMetaCapiEvent(
   } catch (error) {
     const timedOut = error instanceof MetaCapiDeliveryError && error.code === 'meta_timeout'
     const code = timedOut ? 'meta_timeout' : 'meta_network_error'
-    await transitionDeliveryStatus(env.DB, delivery, {
+    const persisted = await confirmDeliveryTransition(env.DB, delivery, {
       status: 'failed',
       errorCode: code,
       errorMessage: META_CAPI_ERROR_MESSAGE,
     })
+    if (persisted.status === 'sent') return alreadySentResult(deliveryId)
     throw new MetaCapiDeliveryError(
       code,
       timedOut ? META_CAPI_TIMEOUT_MESSAGE : META_CAPI_ERROR_MESSAGE,
@@ -184,16 +189,17 @@ export async function sendMetaCapiEvent(
   const eventsReceived = readEventsReceived(responseBody)
   const traceId = readTraceId(responseBody, accessToken)
   if (response.ok && eventsReceived === 1) {
-    await transitionDeliveryStatus(env.DB, delivery, { status: 'sent' })
+    await confirmDeliveryTransition(env.DB, delivery, { status: 'sent' })
     return compactResult({ deliveryId, status: 'sent', eventsReceived, traceId })
   }
 
   if (response.ok) {
-    await transitionDeliveryStatus(env.DB, delivery, {
+    const persisted = await confirmDeliveryTransition(env.DB, delivery, {
       status: 'failed',
       errorCode: 'meta_events_not_received',
       errorMessage: META_CAPI_ERROR_MESSAGE,
     })
+    if (persisted.status === 'sent') return alreadySentResult(deliveryId)
     return compactResult({
       deliveryId,
       status: 'failed',
@@ -204,15 +210,69 @@ export async function sendMetaCapiEvent(
   }
 
   const errorCode = `meta_http_${response.status}`
-  await transitionDeliveryStatus(env.DB, delivery, {
+  const persisted = await confirmDeliveryTransition(env.DB, delivery, {
     status: 'failed',
     errorCode,
     errorMessage: META_CAPI_ERROR_MESSAGE,
   })
+  if (persisted.status === 'sent') return alreadySentResult(deliveryId)
   if (classifyMetaCapiError(response.status) === 'retryable') {
     throw new MetaCapiDeliveryError(errorCode, META_CAPI_ERROR_MESSAGE, true)
   }
   return compactResult({ deliveryId, status: 'failed', reason: String(response.status), traceId })
+}
+
+export async function createMetaCapiTestDelivery(
+  db: D1Database,
+  input: {
+    conversionId: string
+    deliveryId: string
+    externalEventId: string
+    occurredAt: string
+    date: string
+    adminId: number
+  },
+) {
+  try {
+    await db.batch([
+      db.prepare(`
+        INSERT INTO analytics_conversion_actions (
+          id, action_type, dedupe_key, occurred_at, date, visitor_id, session_id,
+          source_channel, source_name, method_type, action_target, route_name, path,
+          metadata, duplicate_of
+        )
+        VALUES (?, 'contact', ?, ?, ?, 'meta_test_event', ?, 'internal', 'admin_attribution',
+          'meta_test_event', 'admin_attribution', 'admin_attribution_meta', '/admin/attribution/meta',
+          ?, '')
+      `).bind(
+        input.conversionId,
+        `meta-test:${input.deliveryId}`,
+        input.occurredAt,
+        input.date,
+        `meta_test_event:${input.adminId}`,
+        JSON.stringify({ test_event: true, method_type: 'meta_test_event', location: 'admin_attribution' }),
+      ),
+      db.prepare(`
+        INSERT INTO analytics_conversion_deliveries (
+          id, conversion_action_id, channel, external_event_id, event_name,
+          status, skip_reason, updated_at
+        )
+        VALUES (?, ?, 'meta_capi', ?, 'Contact', 'pending', '', datetime('now'))
+      `).bind(input.deliveryId, input.conversionId, input.externalEventId),
+      db.prepare(`
+        INSERT INTO analytics_conversion_delivery_daily (
+          date, channel, event_name, status, skip_reason, delivery_count, updated_at
+        )
+        VALUES (?, 'meta_capi', 'Contact', 'pending', '', 1, datetime('now'))
+        ON CONFLICT(date, channel, event_name, status, skip_reason)
+        DO UPDATE SET
+          delivery_count = analytics_conversion_delivery_daily.delivery_count + 1,
+          updated_at = datetime('now')
+      `).bind(input.date),
+    ])
+  } catch {
+    throw new Error('Meta CAPI Test Event 创建失败')
+  }
 }
 
 export async function readMetaCapiDelivery(db: D1Database, deliveryId: string) {
@@ -272,6 +332,35 @@ export async function transitionDeliveryStatus(
     deliveryDailyDecrementAfterChange(db, delivery),
   ])
   return { changed: d1Changed(results[0]!) }
+}
+
+export async function confirmDeliveryTransition(
+  db: D1Database,
+  delivery: ConversionDeliverySnapshot,
+  input: TransitionDeliveryStatusInput,
+): Promise<ConversionDeliverySnapshot> {
+  let current = delivery
+  for (let attempt = 0; attempt < DELIVERY_TRANSITION_MAX_ATTEMPTS; attempt += 1) {
+    if (current.status === 'sent') return current
+    if (current.status !== 'pending' && current.status !== 'failed') {
+      throw stateConflictError()
+    }
+
+    const transition = await transitionDeliveryStatus(db, current, input)
+    if (transition.changed) {
+      return {
+        ...current,
+        status: input.status,
+        skip_reason: input.skipReason ?? '',
+      }
+    }
+
+    const refreshed = await readMetaCapiDelivery(db, current.id)
+    if (!refreshed) throw stateConflictError()
+    current = refreshed
+  }
+  if (current.status === 'sent') return current
+  throw stateConflictError()
 }
 
 export async function recordDuplicateSuppressed(db: D1Database, delivery: ConversionDeliverySnapshot) {
@@ -386,6 +475,14 @@ function readTraceId(body: Record<string, unknown>, accessToken: string) {
 
 function compactResult(result: MetaCapiSendResult) {
   return Object.fromEntries(Object.entries(result).filter(([, value]) => value !== undefined)) as unknown as MetaCapiSendResult
+}
+
+function alreadySentResult(deliveryId: string): MetaCapiSendResult {
+  return { deliveryId, status: 'sent', reason: 'already_sent' }
+}
+
+function stateConflictError() {
+  return new MetaCapiDeliveryError(META_CAPI_STATE_ERROR_CODE, META_CAPI_ERROR_MESSAGE, true)
 }
 
 function sanitizeCustomData(input: Record<string, unknown>) {

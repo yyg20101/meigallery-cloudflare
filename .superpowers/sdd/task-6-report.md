@@ -72,3 +72,38 @@
 ## 疑虑
 
 无阻断性疑虑。Wrangler dry-run 能确认 TOML 可解析和主 Queue binding，但不会证明远端 DLQ 已创建；实际资源存在性应在后续发布资源检查中验证。本任务按要求未创建远端 Queue/DLQ、未部署。
+
+## 复审 Important 修复（追加）
+
+### RED
+
+- 新增 Queue CAS 竞争测试：首次读取为 `pending`，写 sent 前由另一处理者原子切到 `failed`；要求当前处理者重读后完成 `failed -> sent`，后续重投只增加 `duplicate_suppressed` 且不再次调用 Meta。
+- 新增 CAS 连续三次失败测试：无法确认 D1 为 sent 时必须抛固定脱敏 retryable 错误，由 Queue 调用 `retry({ delaySeconds: 300 })`，不得 ack 假成功。
+- 新增永久 4xx 与并发 sent 竞争测试，要求 delivery 和日报 sent 桶不可降级或增加 failed 桶。
+- 新增 Admin Test Event 原子创建测试，覆盖 action、delivery、pending 日报三个 batch 步骤分别失败时全部回滚；正常缺 secret 转换前必须创建 pending 桶，转换后 pending 正确减为 0。
+- 首次运行 `corepack pnpm --filter @meigallery/api test -- src/services/meta-capi.test.ts src/services/meta-capi-queue.test.ts src/routes/admin/attribution.test.ts` 失败 5 项：CAS 竞争后 D1 仍为 failed、CAS 耗尽仍 ack、Test Event 未创建 pending 桶、delivery/daily 创建失败未触发原子回滚。其余 543 项通过。
+
+### GREEN
+
+- 新增 `confirmDeliveryTransition()`，最多执行三次 CAS。每次 `changed=false` 都重新读取 delivery：已 sent 立即确认；pending/failed 使用实际状态重新执行原子转换；仍无法确认时抛 `meta_delivery_state_conflict`、`retryable=true` 的固定错误。
+- success、2xx/0、4xx、429/5xx、网络和超时路径均使用状态确认；并发已 sent 时返回 D1 的 sent 事实，不写 failed/skipped，不把外部异常原文带入结果或日志。
+- DLQ 的 `retry_exhausted` 回写同样复用状态确认；若竞争后发现 sent，只记录重投诊断，不降级。
+- 新增 `createMetaCapiTestDelivery()`，通过单个 D1 batch 原子写 conversion action、meta_capi pending delivery 和 `analytics_conversion_delivery_daily/pending` 桶；batch 任一步异常统一抛固定创建错误。
+- Admin Test Event 仅替换创建方式，保留既有 API 状态码、响应结构和 readiness 行为，未提前实现 Task 7 strict API shape/readiness。
+
+### 复审验证
+
+- `corepack pnpm --filter @meigallery/api test -- src/services/meta-capi.test.ts src/services/meta-capi-queue.test.ts src/routes/admin/attribution.test.ts`
+  - 结果：81 个测试文件、550 项测试通过。
+- `corepack pnpm --filter @meigallery/api exec tsc --noEmit`
+  - 结果：通过。
+- `corepack pnpm --filter @meigallery/web exec nuxt build`
+  - 结果：通过；Nuxt 4.4.8 / Nitro `cloudflare-module` 构建完成。
+
+### 复审自检
+
+- CAS 重读不会再次调用 Meta；只重试 D1 状态确认，避免放大外部投递。
+- sent 仍是不可降级终态，成功和永久失败竞争均有测试覆盖。
+- 创建失败测试验证 action、delivery 和 pending 桶状态全部回滚；正常 skipped 转换验证 pending 桶减少。
+- 新错误 code、message 和 Queue 日志均为固定文本，不包含 access token、Meta 原始错误或临时 `userData`。
+- 未修改 Task 7 readiness/API shape 或 Task 9 发布 gate，未推送、未部署。

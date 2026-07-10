@@ -2,10 +2,10 @@ import type { MetaCapiQueueMessage } from '@meigallery/shared'
 import type { Bindings } from '../index'
 import {
   MetaCapiDeliveryError,
+  confirmDeliveryTransition,
   readMetaCapiDelivery,
   recordDuplicateSuppressed,
   sendMetaCapiEvent,
-  transitionDeliveryStatus,
 } from './meta-capi'
 
 const META_RETRY_DELAYS = [60, 300, 900, 1800] as const
@@ -61,9 +61,10 @@ async function markRetryExhausted(db: D1Database, deliveryId: string) {
     await recordDuplicateSuppressed(db, delivery)
     return
   }
-  await transitionDeliveryStatus(db, delivery, {
+  const persisted = await confirmDeliveryTransition(db, delivery, {
     status: 'failed',
     errorCode: 'retry_exhausted',
     errorMessage: 'Meta CAPI 请求失败',
   })
+  if (persisted.status === 'sent') await recordDuplicateSuppressed(db, persisted)
 }
