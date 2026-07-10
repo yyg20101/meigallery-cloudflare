@@ -107,3 +107,31 @@
 - 创建失败测试验证 action、delivery 和 pending 桶状态全部回滚；正常 skipped 转换验证 pending 桶减少。
 - 新错误 code、message 和 Queue 日志均为固定文本，不包含 access token、Meta 原始错误或临时 `userData`。
 - 未修改 Task 7 readiness/API shape 或 Task 9 发布 gate，未推送、未部署。
+
+## 复审 DLQ 全状态修复（追加）
+
+### RED
+
+- 扩展 Queue 状态 fixture 到完整 `ConversionDeliveryStatus`，新增 `skipped`、历史 `attempted` 进入 DLQ 后必须原子转为 `failed/retry_exhausted` 并 ack 的测试。
+- 新增 DLQ CAS 途中变 sent 测试：必须保持 sent、只增加 `duplicate_suppressed` 诊断并 ack。
+- 新增任意非 sent 状态连续三次 CAS 冲突测试：耗尽后 retry 1800 秒，不得 ack 假成功。
+- 首次运行 `corepack pnpm --filter @meigallery/api test -- src/services/meta-capi-queue.test.ts src/services/meta-capi.test.ts` 失败 3 项：skipped、attempted 被窄状态确认器拒绝，CAS 竞争变 sent 也未进入确认流程；其余 551 项通过。
+
+### GREEN
+
+- `confirmDeliveryTransition()` 新增显式 `allowAnyNonSent` 参数；默认仍只允许主投递的 pending/failed，避免放宽正常 CAPI 状态机。
+- DLQ `retry_exhausted` 路径单独启用 `allowAnyNonSent`，因此 pending、failed、skipped、attempted、duplicate_suppressed 等任何非 sent 历史状态都能基于当前实际状态执行原子 CAS。
+- 每次 CAS 失败仍重新读取 delivery；发现 sent 时不降级并记录重投诊断，其余非 sent 状态继续以实际状态重试；三次耗尽继续由 DLQ handler retry。
+- 修正测试 fixture，使无条件 `duplicate_suppressed` upsert 不错误继承前一条 CAS 的 `changes()`；生产 SQL 未作放宽。
+
+### 验证与自检
+
+- `corepack pnpm --filter @meigallery/api test -- src/services/meta-capi-queue.test.ts src/services/meta-capi.test.ts`
+  - 结果：81 个测试文件、554 项测试通过。
+- `corepack pnpm --filter @meigallery/api exec tsc --noEmit`
+  - 结果：通过。
+- `corepack pnpm --filter @meigallery/web exec nuxt build`
+  - 结果：通过；Nuxt 4.4.8 / Nitro `cloudflare-module` 构建完成。
+- 状态迁移继续复用 `transitionDeliveryStatus()` 的同一 D1 batch，旧日报桶减少与 failed 桶增加保持原子。
+- DLQ 日志仍只包含固定文案和 delivery ID；`retry_exhausted` 错误字段保持固定脱敏，不记录 token、Meta 原始错误或临时 `userData`。
+- 未修改 Task 7/9，未推送、未部署。

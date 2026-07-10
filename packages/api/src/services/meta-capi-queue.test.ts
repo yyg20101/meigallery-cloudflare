@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { MetaCapiQueueMessage } from '@meigallery/shared'
+import type { ConversionDeliveryStatus, MetaCapiQueueMessage } from '@meigallery/shared'
 import type { Bindings } from '../index'
 import { computeMetaRetryDelay, handleMetaCapiBatch } from './meta-capi-queue'
 
-type DeliveryStatus = 'pending' | 'sent' | 'failed'
+type DeliveryStatus = ConversionDeliveryStatus
 
 function createQueueDb(initialStatus: DeliveryStatus = 'pending', options: {
   beforeFirstCasStatus?: DeliveryStatus
@@ -16,7 +16,9 @@ function createQueueDb(initialStatus: DeliveryStatus = 'pending', options: {
     external_event_id: 'event_1',
     event_name: 'Contact',
     status: initialStatus,
-    skip_reason: '',
+    skip_reason: initialStatus === 'skipped'
+      ? 'missing_secret'
+      : initialStatus === 'duplicate_suppressed' ? 'already_sent' : '',
     error_code: '',
     error_message: '',
     attempt_count: initialStatus === 'pending' ? 0 : 1,
@@ -88,7 +90,7 @@ function createQueueDb(initialStatus: DeliveryStatus = 'pending', options: {
     if (!call.sql.includes('analytics_conversion_delivery_daily')) return result(1)
     const values = call.params.map(String)
     if (call.sql.includes('delivery_count + 1')) {
-      if (lastChanges !== 1) return result(0)
+      if (call.sql.includes('WHERE changes() = 1') && lastChanges !== 1) return result(0)
       const status = call.sql.includes("'duplicate_suppressed'")
         ? 'duplicate_suppressed'
         : values.find(value => ['pending', 'sent', 'failed', 'duplicate_suppressed'].includes(value))
@@ -97,7 +99,7 @@ function createQueueDb(initialStatus: DeliveryStatus = 'pending', options: {
     }
     if (call.sql.includes('delivery_count - 1')) {
       if (lastChanges !== 1) return result(0)
-      const status = values.find(value => ['pending', 'sent', 'failed'].includes(value))
+      const status = values.find(value => ['pending', 'attempted', 'sent', 'failed', 'skipped', 'duplicate_suppressed'].includes(value))
       if (status) daily.set(status, Math.max(0, (daily.get(status) ?? 0) - 1))
       return result(1)
     }
@@ -105,7 +107,7 @@ function createQueueDb(initialStatus: DeliveryStatus = 'pending', options: {
   }
 
   function forceStatus(status: DeliveryStatus) {
-    for (const key of ['pending', 'failed', 'sent']) daily.set(key, 0)
+    for (const key of ['pending', 'attempted', 'failed', 'skipped', 'duplicate_suppressed', 'sent']) daily.set(key, 0)
     daily.set(status, 1)
     delivery.status = status
     delivery.skip_reason = ''
@@ -177,6 +179,44 @@ describe('Meta CAPI Queue', () => {
     expect(dlqDb.daily.get('failed')).toBe(1)
     expect(dlqMessage.ack).toHaveBeenCalledOnce()
     expect(dlqMessage.retry).not.toHaveBeenCalled()
+  })
+
+  it.each(['skipped', 'attempted'] as const)('DLQ 将历史 %s 状态原子转为 failed/retry_exhausted 后 ack', async initialStatus => {
+    const db = createQueueDb(initialStatus)
+    const dlqMessage = message(6)
+
+    await handleMetaCapiBatch(batch('meigallery-meta-capi-dlq', dlqMessage), env(db))
+
+    expect(db.delivery).toMatchObject({ status: 'failed', error_code: 'retry_exhausted' })
+    expect(db.daily.get(initialStatus)).toBe(0)
+    expect(db.daily.get('failed')).toBe(1)
+    expect(dlqMessage.ack).toHaveBeenCalledOnce()
+    expect(dlqMessage.retry).not.toHaveBeenCalled()
+  })
+
+  it('DLQ CAS 失败后发现 sent 时不降级，只记重投诊断并 ack', async () => {
+    const db = createQueueDb('skipped', { beforeFirstCasStatus: 'sent' })
+    const dlqMessage = message(6)
+
+    await handleMetaCapiBatch(batch('meigallery-meta-capi-dlq', dlqMessage), env(db))
+
+    expect(db.delivery.status).toBe('sent')
+    expect(db.daily.get('sent')).toBe(1)
+    expect(db.daily.get('failed')).toBe(0)
+    expect(db.daily.get('duplicate_suppressed')).toBe(1)
+    expect(dlqMessage.ack).toHaveBeenCalledOnce()
+    expect(dlqMessage.retry).not.toHaveBeenCalled()
+  })
+
+  it('DLQ 对任意非 sent 状态连续 CAS 冲突耗尽时 retry，不 ack 假成功', async () => {
+    const db = createQueueDb('skipped', { casFailures: 3 })
+    const dlqMessage = message(6)
+
+    await handleMetaCapiBatch(batch('meigallery-meta-capi-dlq', dlqMessage), env(db))
+
+    expect(db.delivery.status).toBe('skipped')
+    expect(dlqMessage.ack).not.toHaveBeenCalled()
+    expect(dlqMessage.retry).toHaveBeenCalledWith({ delaySeconds: 1800 })
   })
 
   it('failed 重试成功时只把日报桶从 failed 移到 sent', async () => {

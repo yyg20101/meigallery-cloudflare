@@ -65,6 +65,6 @@ async function markRetryExhausted(db: D1Database, deliveryId: string) {
     status: 'failed',
     errorCode: 'retry_exhausted',
     errorMessage: 'Meta CAPI 请求失败',
-  })
+  }, { allowAnyNonSent: true })
   if (persisted.status === 'sent') await recordDuplicateSuppressed(db, persisted)
 }

@@ -338,11 +338,12 @@ export async function confirmDeliveryTransition(
   db: D1Database,
   delivery: ConversionDeliverySnapshot,
   input: TransitionDeliveryStatusInput,
+  options: { allowAnyNonSent?: boolean } = {},
 ): Promise<ConversionDeliverySnapshot> {
   let current = delivery
   for (let attempt = 0; attempt < DELIVERY_TRANSITION_MAX_ATTEMPTS; attempt += 1) {
     if (current.status === 'sent') return current
-    if (current.status !== 'pending' && current.status !== 'failed') {
+    if (!options.allowAnyNonSent && current.status !== 'pending' && current.status !== 'failed') {
       throw stateConflictError()
     }
 
