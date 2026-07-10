@@ -1,4 +1,4 @@
-import type { AnalyticsConsentState, AnalyticsSourceChannel, ConversionActionType, MetaCapiQueueMessage, MetaCapiUserData, MetaPixelInstruction } from '@meigallery/shared'
+import type { AnalyticsConsentState, AnalyticsSourceChannel, ConversionActionType, MetaCapiUserData, MetaPixelInstruction, MetaTrackingMode } from '@meigallery/shared'
 import type { Bindings } from '../index'
 import { generateId } from '../utils/db'
 import { parseStoredSettingValue } from '../utils/stored-setting-value'
@@ -12,6 +12,7 @@ import {
 import { createPixelReceiptToken, type PixelReceiptClaims } from '../utils/pixel-receipt'
 import { normalizeMetaCapiUserData } from '../utils/meta-browser-identifiers'
 import { transitionDeliveryStatus } from './meta-capi'
+import { enqueueMetaCapiDelivery } from './meta-capi-queue'
 
 export interface RecordConversionInput {
   actionType: ConversionActionType
@@ -61,6 +62,7 @@ type PlannedDelivery = {
   userData: MetaCapiUserData
   hasFbp: 0 | 1
   hasFbc: 0 | 1
+  trackingMode: MetaTrackingMode
   statementIndex: number
 }
 
@@ -92,7 +94,7 @@ export async function recordConversionAction(
   const derivedActions = plan.leadAction && plan.leadAction.statementIndex !== undefined && d1Changed(results[plan.leadAction.statementIndex]!)
     ? [{ id: plan.leadAction.id, actionType: 'lead' as const }]
     : []
-  await finalizeCapiDeliveries(env, committedDeliveries, date)
+  await finalizeCapiDeliveries(env, committedDeliveries)
 
   return { id, actionType: normalizedInput.actionType, created: true, duplicateOf: '', derivedActions, pixelEvents }
 }
@@ -400,6 +402,7 @@ async function planMetaDeliveries(
       userData: capiUserData,
       hasFbp: capiUserData.fbp ? 1 : 0,
       hasFbc: capiUserData.fbc ? 1 : 0,
+      trackingMode: settings.mode,
       statementIndex: -1,
     }
   }))
@@ -409,9 +412,9 @@ function conversionDeliveryStatement(db: D1Database, delivery: PlannedDelivery, 
   return db.prepare(`
     INSERT OR IGNORE INTO analytics_conversion_deliveries (
       id, conversion_action_id, channel, external_event_id, event_name,
-      status, skip_reason, has_fbp, has_fbc, updated_at
+      status, skip_reason, has_fbp, has_fbc, tracking_mode, updated_at
     )
-    SELECT ?, ?, ?, ?, ?, 'pending', '', ?, ?, datetime('now')
+    SELECT ?, ?, ?, ?, ?, 'pending', '', ?, ?, ?, datetime('now')
     WHERE EXISTS (SELECT 1 FROM analytics_conversion_actions WHERE id = ?)
   `).bind(
     delivery.deliveryId,
@@ -421,6 +424,7 @@ function conversionDeliveryStatement(db: D1Database, delivery: PlannedDelivery, 
     delivery.eventName,
     delivery.hasFbp,
     delivery.hasFbc,
+    delivery.trackingMode,
     actionId,
   )
 }
@@ -428,32 +432,13 @@ function conversionDeliveryStatement(db: D1Database, delivery: PlannedDelivery, 
 async function finalizeCapiDeliveries(
   env: Pick<Bindings, 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>,
   deliveries: PlannedDelivery[],
-  date: string,
 ) {
   for (const delivery of deliveries) {
     if (delivery.channel !== 'meta_capi') continue
     try {
-      if (!env.META_CAPI_QUEUE) {
-        await markDeliveryTerminal(env.DB, delivery.deliveryId, date, 'meta_capi', delivery.eventName, 'skipped', 'missing_queue')
-        continue
-      }
-      await env.META_CAPI_QUEUE.send(metaCapiQueueMessage(delivery))
+      await enqueueMetaCapiDelivery(env, delivery.deliveryId, metaCapiQueueUserData(delivery))
     } catch {
-      try {
-        await markDeliveryTerminal(
-          env.DB,
-          delivery.deliveryId,
-          date,
-          'meta_capi',
-          delivery.eventName,
-          'failed',
-          '',
-          'queue_send_failed',
-          'Meta CAPI Queue 发送失败',
-        )
-      } catch {
-        // Queue 是提交后的外部副作用，账本提交不得因补记失败而回滚或重试。
-      }
+      // Queue 是提交后的外部副作用，账本提交不得因补记失败而回滚或重试。
     }
   }
 }
@@ -466,17 +451,13 @@ function shouldCreateMetaCapiDelivery(settings: MetaDeliverySettings, input: Rec
     && Boolean(metaEventForConversion(input.actionType))
 }
 
-function metaCapiQueueMessage(delivery: PlannedDelivery): MetaCapiQueueMessage {
+function metaCapiQueueUserData(delivery: PlannedDelivery): MetaCapiUserData {
   const { fbp, fbc, clientIpAddress, clientUserAgent } = delivery.userData
   return {
-    schemaVersion: 1,
-    deliveryId: delivery.deliveryId,
-    userData: {
-      ...(fbp ? { fbp } : {}),
-      ...(fbc ? { fbc } : {}),
-      ...(clientIpAddress ? { clientIpAddress } : {}),
-      ...(clientUserAgent ? { clientUserAgent } : {}),
-    },
+    ...(fbp ? { fbp } : {}),
+    ...(fbc ? { fbc } : {}),
+    ...(clientIpAddress ? { clientIpAddress } : {}),
+    ...(clientUserAgent ? { clientUserAgent } : {}),
   }
 }
 
@@ -494,32 +475,6 @@ async function readMetaDeliverySettings(db: D1Database) {
     pixelId: /^\d{5,30}$/.test(pixelId) ? pixelId : '',
     capiEnabled: parseStoredSettingValue(capiEnabledRow?.value || 'false', false) === true,
   }
-}
-
-async function markDeliveryTerminal(
-  db: D1Database,
-  deliveryId: string,
-  date: string,
-  channel: 'meta_capi',
-  eventName: string,
-  status: 'failed' | 'skipped',
-  skipReason = '',
-  errorCode = '',
-  errorMessage = '',
-) {
-  await transitionDeliveryStatus(db, {
-    id: deliveryId,
-    channel,
-    event_name: eventName,
-    status: 'pending',
-    skip_reason: '',
-    date,
-  }, {
-    status,
-    skipReason,
-    errorCode,
-    errorMessage: normalizeText(errorMessage, 500),
-  })
 }
 
 function pendingDeliveryDailyStatement(

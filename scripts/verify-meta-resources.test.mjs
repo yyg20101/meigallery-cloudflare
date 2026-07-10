@@ -60,8 +60,9 @@ describe('Meta Cloudflare 资源检查', () => {
     for (const options of [
       { consumerField: 'script' },
       { consumerField: 'service' },
+      { nestedService: true },
       { consumerField: 'script', nestedConsumers: true },
-      { consumerField: 'service', leadingLog: true },
+      { consumerField: 'service', leadingLog: true, deadLetterInSettings: true },
     ]) {
       const report = await runMetaResourceVerification({
         environment: 'production',
@@ -72,6 +73,55 @@ describe('Meta Cloudflare 资源检查', () => {
       assert.equal(report.status, 'passed')
       assert.equal(report.consumersPresent, true)
     }
+  })
+
+  it('主 Queue consumer 的重试、延迟、DLQ 与环境 batch 配置漂移时失败', async () => {
+    for (const consumerDrift of [
+      'max_retries',
+      'retry_delay',
+      'dead_letter_queue',
+      'batch_size',
+      'max_wait_time_ms',
+    ]) {
+      const report = await runMetaResourceVerification({
+        environment: 'production',
+        commit: COMMIT,
+        reportOnly: true,
+        runCommand: createPassingRunner([], { capiEnabled: false, consumerDrift }),
+      })
+      assert.equal(report.status, 'failed', `${consumerDrift} 漂移必须失败`)
+    }
+  })
+
+  it('dev 使用 batch=5，production 使用 batch=10，DLQ consumer 同步校验', async () => {
+    for (const environment of ['dev', 'production']) {
+      const report = await runMetaResourceVerification({
+        environment,
+        commit: COMMIT,
+        reportOnly: true,
+        runCommand: createPassingRunner([], { capiEnabled: false }),
+      })
+      assert.equal(report.status, 'passed')
+    }
+
+    const driftedDlq = await runMetaResourceVerification({
+      environment: 'dev',
+      commit: COMMIT,
+      reportOnly: true,
+      runCommand: createPassingRunner([], { capiEnabled: false, dlqBatchDrift: true }),
+    })
+    assert.equal(driftedDlq.status, 'failed')
+  })
+
+  it('未知 consumer envelope 即使含期望 Worker 名也保守失败', async () => {
+    const report = await runMetaResourceVerification({
+      environment: 'production',
+      commit: COMMIT,
+      reportOnly: true,
+      runCommand: createPassingRunner([], { capiEnabled: false, unknownConsumerEnvelope: true }),
+    })
+
+    assert.equal(report.status, 'failed')
   })
 
   it('consumer 或 D1 的非法 JSON 保守失败', async () => {
@@ -170,15 +220,35 @@ function createPassingRunner(calls, options = {}) {
     } else if (text.includes('consumer worker list')) {
       const queue = args[args.indexOf('list') + 1]
       const worker = queue.includes('-dev') ? 'meigallery-api-dev' : 'meigallery-api'
+      const isDev = queue.includes('-dev')
+      const isDlq = queue.endsWith('-dlq')
+      const expectedBatchSize = isDev ? 5 : 10
       if (options.invalidConsumerJson) {
         stdout = 'wrangler warning\nnot-json'
       } else {
         const field = options.consumerField ?? 'script'
+        const settings = {
+          batch_size: options.consumerDrift === 'batch_size' || (isDlq && options.dlqBatchDrift) ? 99 : expectedBatchSize,
+          max_wait_time_ms: options.consumerDrift === 'max_wait_time_ms' ? 999 : isDlq ? 5000 : 30000,
+          ...(!isDlq ? {
+            max_retries: options.consumerDrift === 'max_retries' ? 4 : 5,
+            retry_delay: options.consumerDrift === 'retry_delay' ? 30 : 60,
+            ...(options.deadLetterInSettings ? {
+              dead_letter_queue: options.consumerDrift === 'dead_letter_queue' ? 'wrong-dlq' : `${queue}-dlq`,
+            } : {}),
+          } : {}),
+        }
+        const identity = options.unknownConsumerEnvelope
+          ? { consumer: { name: worker } }
+          : options.nestedService ? { service: { name: worker } } : { [field]: worker }
         const consumers = options.missingConsumer ? [] : [{
           type: 'worker',
           consumer_id: RESOURCE_ID,
-          [field]: worker,
-          settings: { batch_size: 10 },
+          ...identity,
+          settings,
+          ...(!isDlq && !options.deadLetterInSettings ? {
+            dead_letter_queue: options.consumerDrift === 'dead_letter_queue' ? 'wrong-dlq' : `${queue}-dlq`,
+          } : {}),
         }]
         const payload = options.nestedConsumers ? { result: { consumers } } : consumers
         stdout = `${options.leadingLog ? 'wrangler warning\n' : ''}${JSON.stringify(payload)}`

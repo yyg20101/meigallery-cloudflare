@@ -52,6 +52,8 @@ describe('Meta CAPI Queue consumer', () => {
       error_code: '',
       error_message: '',
       attempt_count: 0,
+      tracking_mode: 'production',
+      duplicate_suppressed_at: null,
       occurred_at: '2026-07-09T10:00:00.000Z',
       date: '2026-07-09',
       path: '/',
@@ -116,5 +118,44 @@ describe('Meta CAPI Queue consumer', () => {
 
     expect(JSON.stringify(consoleError.mock.calls)).not.toContain(sensitive)
     expect(message.retry).toHaveBeenCalledOnce()
+  })
+})
+
+describe('Meta CAPI scheduled recovery', () => {
+  it('Cron 在独立任务中扫描并重投超时 pending delivery', async () => {
+    const sent: MetaCapiQueueMessage[] = []
+    const db = {
+      prepare(sql: string) {
+        return {
+          bind() { return this },
+          async first() { return null },
+          async all<T>() {
+            return {
+              results: (sql.includes('queue_enqueued_at IS NULL') ? [{ id: 'cdlv_stale' }] : []) as T[],
+            }
+          },
+          async run() { return { meta: { changes: 1 } } },
+        }
+      },
+    }
+    let scheduledWork: Promise<unknown> | undefined
+    const ctx = {
+      waitUntil(promise: Promise<unknown>) {
+        scheduledWork = promise
+      },
+    } as unknown as ExecutionContext
+
+    await app.scheduled({} as ScheduledEvent, {
+      APP_ENV: 'production',
+      DB: db,
+      META_CAPI_QUEUE: {
+        async send(message: MetaCapiQueueMessage) {
+          sent.push(message)
+        },
+      },
+    } as unknown as Bindings, ctx)
+    await scheduledWork
+
+    expect(sent).toEqual([{ schemaVersion: 1, deliveryId: 'cdlv_stale', userData: {} }])
   })
 })

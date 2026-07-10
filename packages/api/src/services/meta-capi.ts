@@ -1,4 +1,4 @@
-import type { ConversionDeliveryStatus, MetaCapiUserData } from '@meigallery/shared'
+import type { ConversionDeliveryStatus, MetaCapiUserData, MetaTrackingMode } from '@meigallery/shared'
 import { ATTRIBUTION_LIMITS } from '@meigallery/shared/constants'
 import type { Bindings } from '../index'
 import { normalizeMetaCapiUserData } from '../utils/meta-browser-identifiers'
@@ -32,6 +32,8 @@ type MetaCapiDeliveryRow = ConversionDeliverySnapshot & {
   error_code: string
   error_message: string
   attempt_count: number
+  tracking_mode: MetaTrackingMode
+  duplicate_suppressed_at: string | null
   occurred_at: string
   path: string
   metadata: string
@@ -129,6 +131,19 @@ export async function sendMetaCapiEvent(
     return { deliveryId, status: delivery.status, reason: delivery.skip_reason || 'not_pending' }
   }
 
+  const trackingMode = delivery.tracking_mode
+  if (trackingMode !== 'test' && trackingMode !== 'production') {
+    const persisted = await confirmDeliveryTransition(env.DB, delivery, { status: 'skipped', skipReason: 'invalid_tracking_mode' })
+    if (persisted.status === 'sent') return alreadySentResult(deliveryId)
+    return { deliveryId, status: 'skipped', reason: 'invalid_tracking_mode' }
+  }
+  const testEventCode = trackingMode === 'test' ? String(env.META_CAPI_TEST_EVENT_CODE || '').trim() : ''
+  if (trackingMode === 'test' && !testEventCode) {
+    const persisted = await confirmDeliveryTransition(env.DB, delivery, { status: 'skipped', skipReason: 'missing_test_event_code' })
+    if (persisted.status === 'sent') return alreadySentResult(deliveryId)
+    return { deliveryId, status: 'skipped', reason: 'missing_test_event_code' }
+  }
+
   const accessToken = String(env.META_CAPI_ACCESS_TOKEN || '').trim()
   if (!accessToken) {
     const persisted = await confirmDeliveryTransition(env.DB, delivery, { status: 'skipped', skipReason: 'missing_secret' })
@@ -151,7 +166,7 @@ export async function sendMetaCapiEvent(
     actionSource: 'website',
     userData: options.userData,
     customData: parseMetadata(delivery.metadata),
-    testEventCode: options.testEventCode,
+    testEventCode: trackingMode === 'test' ? testEventCode : undefined,
   })
 
   let response: Response
@@ -255,9 +270,9 @@ export async function createMetaCapiTestDelivery(
       db.prepare(`
         INSERT INTO analytics_conversion_deliveries (
           id, conversion_action_id, channel, external_event_id, event_name,
-          status, skip_reason, updated_at
+          status, skip_reason, tracking_mode, updated_at
         )
-        VALUES (?, ?, 'meta_capi', ?, 'Contact', 'pending', '', datetime('now'))
+        VALUES (?, ?, 'meta_capi', ?, 'Contact', 'pending', '', 'test', datetime('now'))
       `).bind(input.deliveryId, input.conversionId, input.externalEventId),
       db.prepare(`
         INSERT INTO analytics_conversion_delivery_daily (
@@ -280,6 +295,7 @@ export async function readMetaCapiDelivery(db: D1Database, deliveryId: string) {
     SELECT
       d.id, d.conversion_action_id, d.channel, d.external_event_id, d.event_name,
       d.status, d.skip_reason, d.error_code, d.error_message, d.attempt_count,
+      d.tracking_mode, d.duplicate_suppressed_at,
       a.occurred_at, a.date, a.path, a.metadata
     FROM analytics_conversion_deliveries d
     JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
@@ -365,16 +381,24 @@ export async function confirmDeliveryTransition(
 }
 
 export async function recordDuplicateSuppressed(db: D1Database, delivery: ConversionDeliverySnapshot) {
-  await db.prepare(`
-    INSERT INTO analytics_conversion_delivery_daily (
-      date, channel, event_name, status, skip_reason, delivery_count, updated_at
-    )
-    VALUES (?, ?, ?, 'duplicate_suppressed', 'already_sent', 1, datetime('now'))
-    ON CONFLICT(date, channel, event_name, status, skip_reason)
-    DO UPDATE SET
-      delivery_count = analytics_conversion_delivery_daily.delivery_count + 1,
-      updated_at = datetime('now')
-  `).bind(delivery.date, delivery.channel, delivery.event_name).run()
+  await db.batch([
+    db.prepare(`
+      UPDATE analytics_conversion_deliveries
+      SET duplicate_suppressed_at = datetime('now'), updated_at = datetime('now')
+      WHERE id = ? AND status = 'sent' AND duplicate_suppressed_at IS NULL
+    `).bind(delivery.id),
+    db.prepare(`
+      INSERT INTO analytics_conversion_delivery_daily (
+        date, channel, event_name, status, skip_reason, delivery_count, updated_at
+      )
+      SELECT ?, ?, ?, 'duplicate_suppressed', 'already_sent', 1, datetime('now')
+      WHERE changes() = 1
+      ON CONFLICT(date, channel, event_name, status, skip_reason)
+      DO UPDATE SET
+        delivery_count = analytics_conversion_delivery_daily.delivery_count + 1,
+        updated_at = datetime('now')
+    `).bind(delivery.date, delivery.channel, delivery.event_name),
+  ])
 }
 
 function deliveryDailyIncrementAfterChange(

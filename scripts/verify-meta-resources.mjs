@@ -11,6 +11,8 @@ const RESOURCE_CONFIG = {
     worker: 'meigallery-api',
     mainQueue: 'meigallery-meta-capi',
     dlq: 'meigallery-meta-capi-dlq',
+    mainConsumer: { batchSize: 10, maxWaitTimeMs: 30_000, maxRetries: 5, retryDelay: 60 },
+    dlqConsumer: { batchSize: 10, maxWaitTimeMs: 5_000 },
   },
   dev: {
     envArgs: ['--env', 'dev'],
@@ -18,6 +20,8 @@ const RESOURCE_CONFIG = {
     worker: 'meigallery-api-dev',
     mainQueue: 'meigallery-meta-capi-dev',
     dlq: 'meigallery-meta-capi-dev-dlq',
+    mainConsumer: { batchSize: 5, maxWaitTimeMs: 30_000, maxRetries: 5, retryDelay: 60 },
+    dlqConsumer: { batchSize: 5, maxWaitTimeMs: 5_000 },
   },
 }
 const REQUIRED_SECRETS = ['META_CAPI_ACCESS_TOKEN', 'META_CAPI_TEST_EVENT_CODE']
@@ -52,8 +56,11 @@ export async function runMetaResourceVerification(options = {}) {
 
   const byName = new Map(calls.map((definition, index) => [definition.name, results[index]]))
   const commandsPassed = results.every(result => result.status === 'passed')
-  const mainConsumerPresent = hasExpectedConsumer(byName.get('consumer-main')?.stdout, config.worker)
-  const dlqConsumerPresent = hasExpectedConsumer(byName.get('consumer-dlq')?.stdout, config.worker)
+  const mainConsumerPresent = hasExpectedConsumer(byName.get('consumer-main')?.stdout, config.worker, {
+    ...config.mainConsumer,
+    deadLetterQueue: config.dlq,
+  })
+  const dlqConsumerPresent = hasExpectedConsumer(byName.get('consumer-dlq')?.stdout, config.worker, config.dlqConsumer)
   const secretsPresent = hasRequiredSecrets(byName.get('secrets')?.stdout)
   const migrationsCurrent = !/Migrations to be applied/i.test(String(byName.get('migrations')?.stdout || ''))
   const capiEnabled = parseCapiEnabled(byName.get('capi-setting')?.stdout)
@@ -113,13 +120,39 @@ function command(name, args) {
   }
 }
 
-function hasExpectedConsumer(stdout, worker) {
+function hasExpectedConsumer(stdout, worker, expected) {
   try {
     const consumers = unwrapWranglerRows(parseWranglerJson(stdout), ['consumers', 'result', 'data'])
-    return consumers.some(consumer => consumerNames(consumer).includes(worker))
+    return consumers.some(consumer => (
+      consumerNames(consumer).includes(worker)
+      && hasExpectedConsumerSettings(consumer, expected)
+    ))
   } catch {
     return false
   }
+}
+
+function hasExpectedConsumerSettings(consumer, expected) {
+  if (!consumer || typeof consumer !== 'object' || !consumer.settings || typeof consumer.settings !== 'object') return false
+  const settings = consumer.settings
+  if (Number(settings.batch_size) !== expected.batchSize) return false
+  if (Number(settings.max_wait_time_ms) !== expected.maxWaitTimeMs) return false
+  if (expected.maxRetries !== undefined && Number(settings.max_retries) !== expected.maxRetries) return false
+  if (expected.retryDelay !== undefined && Number(settings.retry_delay) !== expected.retryDelay) return false
+  if (expected.deadLetterQueue !== undefined) {
+    const deadLetterQueue = consumer.dead_letter_queue ?? settings.dead_letter_queue
+    if (queueName(deadLetterQueue) !== expected.deadLetterQueue) return false
+  }
+  return true
+}
+
+function queueName(value) {
+  if (typeof value === 'string') return value
+  if (!value || typeof value !== 'object') return ''
+  for (const key of ['name', 'queue', 'queue_name']) {
+    if (typeof value[key] === 'string') return value[key]
+  }
+  return ''
 }
 
 function hasRequiredSecrets(stdout) {

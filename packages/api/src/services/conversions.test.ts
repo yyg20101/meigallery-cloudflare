@@ -406,6 +406,12 @@ describe('conversion ledger service', () => {
       deliveryId: capiDelivery?.params[0] as string,
       userData: {},
     }])
+    expect(capiDelivery?.sql).toContain('tracking_mode')
+    expect(capiDelivery?.params).toContain('test')
+    expect(db.calls.some(call => (
+      call.sql.includes('queue_enqueued_at = datetime')
+      && call.params.includes(capiDelivery?.params[0])
+    ))).toBe(true)
   })
 
   it('只将临时匹配数据通过 CAPI Queue 传递，并仅以 0|1 写入 delivery 覆盖率', async () => {
@@ -446,6 +452,7 @@ describe('conversion ledger service', () => {
     const deliveryCalls = db.calls.filter(call => call.sql.includes('INSERT OR IGNORE INTO analytics_conversion_deliveries'))
     expect(deliveryCalls).toHaveLength(2)
     expect(deliveryCalls.every(call => call.params.includes(1))).toBe(true)
+    expect(deliveryCalls.every(call => call.sql.includes('tracking_mode') && call.params.includes('test'))).toBe(true)
     expect(JSON.stringify(db.calls)).not.toContain(userData.fbp)
     expect(JSON.stringify(db.calls)).not.toContain(userData.fbc)
     expect(JSON.stringify(db.calls)).not.toContain(userData.clientIpAddress)
@@ -496,10 +503,17 @@ describe('conversion ledger service', () => {
     expect(serializedCalls).not.toContain(sensitive)
     expect(JSON.stringify(result)).not.toContain(sensitive)
     expect(serializedCalls).toContain('queue_send_failed')
-    expect(serializedCalls).toContain('Meta CAPI Queue 发送失败')
+    expect(db.calls.some(call => (
+      call.sql.includes('queue_attempt_count = queue_attempt_count + 1')
+      && call.params.includes(db.calls.find(item => item.sql.includes('analytics_conversion_deliveries') && item.params[2] === 'meta_capi')?.params[0])
+    ))).toBe(true)
+    expect(db.calls.some(call => (
+      call.sql.includes("error_code = 'queue_send_failed'")
+      && !/SET\s+status\s*=/.test(call.sql)
+    ))).toBe(true)
   })
 
-  it('CAPI 开启但缺少 Queue binding 时标记 missing_queue', async () => {
+  it('CAPI 开启但缺少 Queue binding 时保持 pending 并记录可恢复诊断', async () => {
     const db = createConversionDb({ metaCapiEnabled: true, metaTrackingMode: 'test', facebookPixelId: '1234567890' })
 
     await recordConversionAction(envFor(db), {
@@ -513,14 +527,9 @@ describe('conversion ledger service', () => {
 
     expect(db.calls.some(call => (
       call.sql.includes('UPDATE analytics_conversion_deliveries') &&
-      call.params[0] === 'skipped' &&
-      call.params[1] === 'missing_queue'
+      call.sql.includes("error_code = 'missing_queue'")
     ))).toBe(true)
-    expect(db.calls.some(call => (
-      call.sql.includes('analytics_conversion_delivery_daily') &&
-      call.params[3] === 'skipped' &&
-      call.params[4] === 'missing_queue'
-    ))).toBe(true)
+    expect(db.calls.some(call => call.sql.includes('SET\n        status = ?') && call.params[0] === 'skipped')).toBe(false)
   })
 
   it('lead 派生命中并发 dedupe 时返回 null，不抛唯一约束错误', async () => {

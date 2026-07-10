@@ -4,6 +4,7 @@ import {
   MetaCapiDeliveryError,
   buildMetaCapiPayload,
   classifyMetaCapiError,
+  createMetaCapiTestDelivery,
   sendMetaCapiEvent,
 } from './meta-capi'
 
@@ -19,6 +20,8 @@ type DeliveryRow = {
   error_code: string
   error_message: string
   attempt_count: number
+  tracking_mode: 'disabled' | 'test' | 'production'
+  duplicate_suppressed_at: string | null
   last_attempt_at: string | null
   sent_at: string | null
   date: string
@@ -43,6 +46,8 @@ function createMetaCapiDb(options: {
     error_code: '',
     error_message: '',
     attempt_count: 0,
+    tracking_mode: 'production',
+    duplicate_suppressed_at: null,
     last_attempt_at: null,
     sent_at: null,
     date: '2026-07-09',
@@ -168,6 +173,91 @@ describe('meta-capi', () => {
     expect(classifyMetaCapiError(400)).toBe('permanent')
     expect(classifyMetaCapiError(500)).toBe('retryable')
     expect(classifyMetaCapiError(429)).toBe('retryable')
+  })
+
+  it.each(['Contact', 'Lead', 'CompleteRegistration'])('test 模式 %s 强制附带环境 Test Event Code', async eventName => {
+    const db = createMetaCapiDb({
+      pixelId: '1234567890',
+      delivery: { event_name: eventName, tracking_mode: 'test' },
+    })
+    const fetchFn = vi.fn().mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }))
+
+    await sendMetaCapiEvent(envFor(db, { META_CAPI_TEST_EVENT_CODE: 'test-code-from-env' } as Partial<Bindings>), 'cdlv_1', {
+      fetchFn,
+      testEventCode: 'caller-must-not-override-mode',
+    })
+
+    const payload = JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body))
+    expect(payload.data[0].event_name).toBe(eventName)
+    expect(payload.test_event_code).toBe('test-code-from-env')
+  })
+
+  it('test 模式缺少 Test Event Code 时 fail closed 且绝不请求 Graph', async () => {
+    const db = createMetaCapiDb({
+      pixelId: '1234567890',
+      delivery: { tracking_mode: 'test' },
+    })
+    const fetchFn = vi.fn()
+
+    const result = await sendMetaCapiEvent(envFor(db, { META_CAPI_TEST_EVENT_CODE: '  ' } as Partial<Bindings>), 'cdlv_1', {
+      fetchFn,
+      testEventCode: 'caller-code-is-not-trusted',
+    })
+
+    expect(result).toEqual({ deliveryId: 'cdlv_1', status: 'skipped', reason: 'missing_test_event_code' })
+    expect(db.delivery).toMatchObject({ status: 'skipped', skip_reason: 'missing_test_event_code' })
+    expect(fetchFn).not.toHaveBeenCalled()
+  })
+
+  it('production 模式即使环境和调用参数有 Test Event Code 也绝不附带', async () => {
+    const db = createMetaCapiDb({
+      pixelId: '1234567890',
+      delivery: { tracking_mode: 'production' },
+    })
+    const fetchFn = vi.fn().mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }))
+
+    await sendMetaCapiEvent(envFor(db, { META_CAPI_TEST_EVENT_CODE: 'environment-test-code' } as Partial<Bindings>), 'cdlv_1', {
+      fetchFn,
+      testEventCode: 'caller-test-code',
+    })
+
+    const payload = JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body))
+    expect(payload).not.toHaveProperty('test_event_code')
+  })
+
+  it('Owner direct Test Event delivery 在入账时固化 test tracking mode', async () => {
+    const calls: Array<{ sql: string; params: unknown[] }> = []
+    const db = {
+      prepare(sql: string) {
+        const call = { sql, params: [] as unknown[] }
+        return {
+          bind(...params: unknown[]) {
+            call.params = params
+            return this
+          },
+          async run() {
+            calls.push(call)
+            return { meta: { changes: 1 } }
+          },
+        }
+      },
+      async batch(statements: Array<{ run: () => Promise<unknown> }>) {
+        return Promise.all(statements.map(statement => statement.run()))
+      },
+    } as unknown as D1Database
+
+    await createMetaCapiTestDelivery(db, {
+      conversionId: 'conv_test',
+      deliveryId: 'cdlv_test',
+      externalEventId: 'event_test',
+      occurredAt: '2026-07-10T00:00:00.000Z',
+      date: '2026-07-10',
+      adminId: 1,
+    })
+
+    const deliveryInsert = calls.find(call => call.sql.includes('INSERT INTO analytics_conversion_deliveries'))
+    expect(deliveryInsert?.sql).toContain('tracking_mode')
+    expect(deliveryInsert?.sql).toContain("'test'")
   })
 
   it('缺少 access token 时标记 skipped/missing_secret', async () => {

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ConversionDeliveryStatus, MetaCapiQueueMessage } from '@meigallery/shared'
 import type { Bindings } from '../index'
-import { computeMetaRetryDelay, handleMetaCapiBatch } from './meta-capi-queue'
+import { computeMetaRetryDelay, handleMetaCapiBatch, recoverPendingMetaCapiDeliveries } from './meta-capi-queue'
 
 type DeliveryStatus = ConversionDeliveryStatus
 
@@ -22,6 +22,10 @@ function createQueueDb(initialStatus: DeliveryStatus = 'pending', options: {
     error_code: '',
     error_message: '',
     attempt_count: initialStatus === 'pending' ? 0 : 1,
+    tracking_mode: 'production' as const,
+    queue_enqueued_at: null as string | null,
+    queue_attempt_count: 0,
+    duplicate_suppressed_at: null as string | null,
     occurred_at: '2026-07-09T10:00:00.000Z',
     date: '2026-07-09',
     path: '/',
@@ -70,6 +74,11 @@ function createQueueDb(initialStatus: DeliveryStatus = 'pending', options: {
 
   function applyStatement(call: { sql: string; params: unknown[] }) {
     if (call.sql.includes('UPDATE analytics_conversion_deliveries')) {
+      if (call.sql.includes('duplicate_suppressed_at')) {
+        if (delivery.status !== 'sent' || delivery.duplicate_suppressed_at) return result(0)
+        delivery.duplicate_suppressed_at = '2026-07-10 00:00:00'
+        return result(1)
+      }
       const changesStatus = /SET\s+status\s*=\s*\?/m.test(call.sql)
       if (casCount === 0 && options.beforeFirstCasStatus) forceStatus(options.beforeFirstCasStatus)
       casCount += 1
@@ -124,6 +133,69 @@ function createQueueDb(initialStatus: DeliveryStatus = 'pending', options: {
   return db
 }
 
+function createRecoveryDb(options: {
+  failFirstEnqueuedMark?: boolean
+  rejectClaim?: boolean
+  rejectClaimWithRowsWritten?: boolean
+  failQueueDiagnostic?: boolean
+} = {}) {
+  const delivery = {
+    id: 'cdlv_recovery',
+    status: 'pending',
+    queue_enqueued_at: null as string | null,
+    queue_attempt_count: 0,
+    updated_at: '2026-07-09 00:00:00',
+    error_code: '',
+  }
+  const calls: Array<{ sql: string; params: unknown[] }> = []
+  let enqueuedMarkFailures = options.failFirstEnqueuedMark ? 1 : 0
+  const db = {
+    delivery,
+    calls,
+    prepare(sql: string) {
+      const call = { sql, params: [] as unknown[] }
+      return {
+        bind(...params: unknown[]) {
+          call.params = params
+          return this
+        },
+        async all<T>() {
+          calls.push(call)
+          const rows = delivery.status === 'pending' && !delivery.queue_enqueued_at ? [{ id: delivery.id }] : []
+          return { results: rows as T[] }
+        },
+        async run() {
+          calls.push(call)
+          if (sql.includes('queue_attempt_count = queue_attempt_count + 1')) {
+            if (options.rejectClaimWithRowsWritten) return { meta: { rows_written: 0 } }
+            if (options.rejectClaim) return { meta: { changes: 0 } }
+            if (delivery.status !== 'pending' || delivery.queue_enqueued_at) return { meta: { changes: 0 } }
+            delivery.queue_attempt_count += 1
+            delivery.updated_at = '2026-07-10 00:00:00'
+            return { meta: { changes: 1 } }
+          }
+          if (sql.includes('queue_enqueued_at = datetime')) {
+            if (enqueuedMarkFailures > 0) {
+              enqueuedMarkFailures -= 1
+              throw new Error('模拟 Queue 成功后 D1 标记失败')
+            }
+            delivery.queue_enqueued_at = '2026-07-10 00:00:01'
+            delivery.error_code = ''
+            return { meta: { changes: 1 } }
+          }
+          if (sql.includes("error_code = 'queue_send_failed'")) {
+            if (options.failQueueDiagnostic) throw new Error('模拟 Queue 诊断补记失败')
+            delivery.error_code = 'queue_send_failed'
+            return { meta: { changes: 1 } }
+          }
+          return { meta: { changes: 1 } }
+        },
+      }
+    },
+  }
+  return db
+}
+
 function message(attempts = 1) {
   const body: MetaCapiQueueMessage = {
     schemaVersion: 1,
@@ -156,8 +228,116 @@ afterEach(() => {
 })
 
 describe('Meta CAPI Queue', () => {
+  it('scheduled 恢复提交后 send 前终止的 pending delivery，且不持久化或重放匹配数据', async () => {
+    const db = createRecoveryDb()
+    const sent: MetaCapiQueueMessage[] = []
+    const result = await recoverPendingMetaCapiDeliveries({
+      DB: db as unknown as D1Database,
+      META_CAPI_QUEUE: { send: async message => { sent.push(message) } } as Queue<MetaCapiQueueMessage>,
+    })
+
+    expect(result).toMatchObject({ scanned: 1, enqueued: 1, failed: 0 })
+    expect(sent).toEqual([{ schemaVersion: 1, deliveryId: db.delivery.id, userData: {} }])
+    expect(db.delivery).toMatchObject({ queue_attempt_count: 1, error_code: '' })
+    expect(db.delivery.queue_enqueued_at).not.toBeNull()
+    const scan = db.calls.find(call => call.sql.includes('SELECT id') && call.sql.includes('analytics_conversion_deliveries'))
+    expect(scan?.sql).toContain("datetime('now', '-5 minutes')")
+    expect(Number(scan?.params.at(-1))).toBeLessThanOrEqual(50)
+  })
+
+  it('Queue send 失败后保持 pending，下一次 scheduled 可恢复', async () => {
+    const db = createRecoveryDb()
+    const send = vi.fn()
+      .mockRejectedValueOnce(new Error('敏感异常不应落库'))
+      .mockResolvedValueOnce(undefined)
+    const recoveryEnv = {
+      DB: db as unknown as D1Database,
+      META_CAPI_QUEUE: { send } as unknown as Queue<MetaCapiQueueMessage>,
+    }
+
+    const failed = await recoverPendingMetaCapiDeliveries(recoveryEnv)
+    expect(failed).toMatchObject({ scanned: 1, enqueued: 0, failed: 1 })
+    expect(db.delivery).toMatchObject({ status: 'pending', queue_attempt_count: 1, error_code: 'queue_send_failed' })
+
+    db.delivery.updated_at = '2026-07-09 00:00:00'
+    const recovered = await recoverPendingMetaCapiDeliveries(recoveryEnv)
+    expect(recovered).toMatchObject({ scanned: 1, enqueued: 1, failed: 0 })
+    expect(db.delivery.queue_attempt_count).toBe(2)
+    expect(send).toHaveBeenCalledTimes(2)
+  })
+
+  it('Queue send 成功但 D1 标记失败时允许使用相同 deliveryId 幂等重投', async () => {
+    const db = createRecoveryDb({ failFirstEnqueuedMark: true })
+    const sent: MetaCapiQueueMessage[] = []
+    const recoveryEnv = {
+      DB: db as unknown as D1Database,
+      META_CAPI_QUEUE: { send: async message => { sent.push(message) } } as Queue<MetaCapiQueueMessage>,
+    }
+
+    const first = await recoverPendingMetaCapiDeliveries(recoveryEnv)
+    expect(first).toMatchObject({ scanned: 1, enqueued: 0, failed: 1 })
+    expect(db.delivery.queue_enqueued_at).toBeNull()
+
+    db.delivery.updated_at = '2026-07-09 00:00:00'
+    const second = await recoverPendingMetaCapiDeliveries(recoveryEnv)
+    expect(second).toMatchObject({ scanned: 1, enqueued: 1, failed: 0 })
+    expect(sent).toHaveLength(2)
+    expect(sent[0]?.deliveryId).toBe(sent[1]?.deliveryId)
+    expect(sent.every(item => Object.keys(item.userData).length === 0)).toBe(true)
+  })
+
+  it('缺少 Queue binding 时保守失败且不认领 pending delivery', async () => {
+    const db = createRecoveryDb()
+
+    const result = await recoverPendingMetaCapiDeliveries({ DB: db as unknown as D1Database })
+
+    expect(result).toEqual({ scanned: 0, enqueued: 0, failed: 0, reason: 'missing_queue' })
+    expect(db.calls).toEqual([])
+    expect(db.delivery.queue_attempt_count).toBe(0)
+  })
+
+  it('scheduled 扫描后 CAS 未认领时不发送也不计失败', async () => {
+    const db = createRecoveryDb({ rejectClaim: true })
+    const send = vi.fn()
+
+    const result = await recoverPendingMetaCapiDeliveries({
+      DB: db as unknown as D1Database,
+      META_CAPI_QUEUE: { send } as unknown as Queue<MetaCapiQueueMessage>,
+    })
+
+    expect(result).toEqual({ scanned: 1, enqueued: 0, failed: 0 })
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('D1 未返回 changes 时使用 rows_written 判断 CAS 未认领', async () => {
+    const db = createRecoveryDb({ rejectClaimWithRowsWritten: true })
+    const send = vi.fn()
+
+    const result = await recoverPendingMetaCapiDeliveries({
+      DB: db as unknown as D1Database,
+      META_CAPI_QUEUE: { send } as unknown as Queue<MetaCapiQueueMessage>,
+    })
+
+    expect(result).toEqual({ scanned: 1, enqueued: 0, failed: 0 })
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('Queue send 与诊断补记同时失败时仍保留恢复入口且不泄露异常', async () => {
+    const db = createRecoveryDb({ failQueueDiagnostic: true })
+
+    const result = await recoverPendingMetaCapiDeliveries({
+      DB: db as unknown as D1Database,
+      META_CAPI_QUEUE: { send: async () => { throw new Error('private queue error') } } as unknown as Queue<MetaCapiQueueMessage>,
+    })
+
+    expect(result).toEqual({ scanned: 1, enqueued: 0, failed: 1 })
+    expect(db.delivery).toMatchObject({ status: 'pending', queue_enqueued_at: null })
+    expect(JSON.stringify(db.calls)).not.toContain('private queue error')
+  })
+
   it('主 Queue 对 retryable 错误按上限退避重试，DLQ 回写 retry_exhausted', async () => {
     expect([1, 2, 3, 4, 5, 6].map(computeMetaRetryDelay)).toEqual([60, 300, 900, 1800, 1800, 1800])
+    expect(computeMetaRetryDelay(Number.NaN)).toBe(60)
 
     const retryDb = createQueueDb()
     const retryMessage = message(1)
@@ -206,6 +386,19 @@ describe('Meta CAPI Queue', () => {
     expect(db.daily.get('duplicate_suppressed')).toBe(1)
     expect(dlqMessage.ack).toHaveBeenCalledOnce()
     expect(dlqMessage.retry).not.toHaveBeenCalled()
+  })
+
+  it('DLQ 直接收到已 sent delivery 时重复消费也只记一次 duplicate_suppressed', async () => {
+    const db = createQueueDb('sent')
+    const dlqMessage = message(6)
+
+    await handleMetaCapiBatch(batch('meigallery-meta-capi-dlq', dlqMessage), env(db))
+    await handleMetaCapiBatch(batch('meigallery-meta-capi-dlq', dlqMessage), env(db))
+
+    expect(dlqMessage.ack).toHaveBeenCalledTimes(2)
+    expect(dlqMessage.retry).not.toHaveBeenCalled()
+    expect(db.delivery.status).toBe('sent')
+    expect(db.daily.get('duplicate_suppressed')).toBe(1)
   })
 
   it('DLQ 对任意非 sent 状态连续 CAS 冲突耗尽时 retry，不 ack 假成功', async () => {
@@ -299,20 +492,22 @@ describe('Meta CAPI Queue', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
-  it('已 sent delivery 不调用 fetch、不降级，只增加 duplicate_suppressed 诊断并 ack', async () => {
+  it('已 sent delivery 多次消费不调用 fetch、不降级，duplicate_suppressed 日报只增加一次', async () => {
     const db = createQueueDb('sent')
     const sentBefore = db.daily.get('sent')
     const queueMessage = message(2)
     const fetchMock = vi.spyOn(globalThis, 'fetch')
 
     await handleMetaCapiBatch(batch('meigallery-meta-capi', queueMessage), env(db))
+    await handleMetaCapiBatch(batch('meigallery-meta-capi', queueMessage), env(db))
 
     expect(fetchMock).not.toHaveBeenCalled()
-    expect(queueMessage.ack).toHaveBeenCalledOnce()
+    expect(queueMessage.ack).toHaveBeenCalledTimes(2)
     expect(queueMessage.retry).not.toHaveBeenCalled()
     expect(db.delivery.status).toBe('sent')
     expect(db.daily.get('sent')).toBe(sentBefore)
     expect(db.daily.get('duplicate_suppressed')).toBe(1)
+    expect(db.delivery.duplicate_suppressed_at).not.toBeNull()
   })
 
   it('错误日志不包含 token 或 Queue 临时 userData', async () => {

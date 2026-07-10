@@ -31,6 +31,7 @@ import {
   aggregatePathEdges,
   cleanupAnalyticsRetention,
 } from './services/analytics-aggregate'
+import { recoverPendingMetaCapiDeliveries } from './services/meta-capi-queue'
 
 /** Hono 应用绑定类型 */
 export type Bindings = {
@@ -259,6 +260,13 @@ app.onError((err, c) => {
 
 async function handleScheduled(env: Bindings): Promise<void> {
   const db = env.DB
+
+  try {
+    const recovery = await recoverPendingMetaCapiDeliveries(env)
+    console.log('[cron] Meta CAPI Queue 恢复完成:', recovery)
+  } catch (error) {
+    console.error('[cron] Meta CAPI Queue 恢复失败:', error)
+  }
 
   // 1. 清理过期验证码（超过 1 小时的记录）
   const cleaned = await db
