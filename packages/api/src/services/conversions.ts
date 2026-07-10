@@ -11,6 +11,7 @@ import {
 } from '../utils/conversions'
 import { createPixelReceiptToken, type PixelReceiptClaims } from '../utils/pixel-receipt'
 import { normalizeMetaCapiUserData } from '../utils/meta-browser-identifiers'
+import { transitionDeliveryStatus } from './meta-capi'
 
 export interface RecordConversionInput {
   actionType: ConversionActionType
@@ -121,19 +122,15 @@ export async function markPixelAttempted(
   if (delivery.status === 'attempted') return { deliveryId: delivery.id, attempted: false }
   if (delivery.status !== 'pending') throw new Error('Pixel 回执无效')
 
-  const results = await db.batch([
-    db.prepare(`
-      UPDATE analytics_conversion_deliveries
-      SET
-        status = 'attempted',
-        attempt_count = attempt_count + 1,
-        last_attempt_at = datetime('now'),
-        updated_at = datetime('now')
-      WHERE id = ? AND channel = 'meta_pixel' AND external_event_id = ? AND status = 'pending'
-    `).bind(delivery.id, claims.eventId),
-    pixelAttemptedDailyStatement(db, delivery.date, delivery.event_name),
-  ])
-  if (!d1Changed(results[0]!)) {
+  const transition = await transitionDeliveryStatus(db, {
+    id: delivery.id,
+    channel: delivery.channel,
+    event_name: delivery.event_name,
+    status: 'pending',
+    skip_reason: '',
+    date: delivery.date,
+  }, { status: 'attempted' })
+  if (!transition.changed) {
     const current = await db.prepare(`
       SELECT channel, external_event_id, status
       FROM analytics_conversion_deliveries
@@ -305,6 +302,7 @@ async function buildConversionBatchPlan(
   deliveries.push(...await planMetaDeliveries(env, settings, input, date, metaCapiUserData))
   for (const delivery of deliveries) {
     delivery.statementIndex = statements.push(conversionDeliveryStatement(env.DB, delivery, actionId)) - 1
+    statements.push(pendingDeliveryDailyStatement(env.DB, delivery, date))
   }
 
   let leadAction: { id: string; statementIndex?: number } | undefined
@@ -320,6 +318,7 @@ async function buildConversionBatchPlan(
     const leadDeliveries = await planMetaDeliveries(env, settings, leadInput, date, metaCapiUserData)
     for (const delivery of leadDeliveries) {
       delivery.statementIndex = statements.push(conversionDeliveryStatement(env.DB, delivery, leadId)) - 1
+      statements.push(pendingDeliveryDailyStatement(env.DB, delivery, date))
       deliveries.push(delivery)
     }
   }
@@ -508,53 +507,37 @@ async function markDeliveryTerminal(
   errorCode = '',
   errorMessage = '',
 ) {
-  await db.prepare(`
-    UPDATE analytics_conversion_deliveries
-    SET
-      status = ?,
-      skip_reason = ?,
-      error_code = ?,
-      error_message = ?,
-      attempt_count = attempt_count + 1,
-      last_attempt_at = datetime('now'),
-      updated_at = datetime('now')
-    WHERE id = ?
-  `).bind(status, skipReason, errorCode, normalizeText(errorMessage, 500), deliveryId).run()
-  await upsertDeliveryDaily(db, date, channel, eventName, status, skipReason)
+  await transitionDeliveryStatus(db, {
+    id: deliveryId,
+    channel,
+    event_name: eventName,
+    status: 'pending',
+    skip_reason: '',
+    date,
+  }, {
+    status,
+    skipReason,
+    errorCode,
+    errorMessage: normalizeText(errorMessage, 500),
+  })
 }
 
-async function upsertDeliveryDaily(
+function pendingDeliveryDailyStatement(
   db: D1Database,
+  delivery: PlannedDelivery,
   date: string,
-  channel: 'meta_pixel' | 'meta_capi',
-  eventName: string,
-  status: 'attempted' | 'failed' | 'skipped',
-  skipReason: string,
 ) {
-  await db.prepare(`
-    INSERT INTO analytics_conversion_delivery_daily (
-      date, channel, event_name, status, skip_reason, delivery_count, updated_at
-    )
-    VALUES (?, ?, ?, ?, ?, 1, datetime('now'))
-    ON CONFLICT(date, channel, event_name, status, skip_reason)
-    DO UPDATE SET
-      delivery_count = analytics_conversion_delivery_daily.delivery_count + 1,
-      updated_at = datetime('now')
-  `).bind(date, channel, eventName, status, skipReason).run()
-}
-
-function pixelAttemptedDailyStatement(db: D1Database, date: string, eventName: string) {
   return db.prepare(`
     INSERT INTO analytics_conversion_delivery_daily (
       date, channel, event_name, status, skip_reason, delivery_count, updated_at
     )
-    SELECT ?, 'meta_pixel', ?, 'attempted', '', 1, datetime('now')
+    SELECT ?, ?, ?, 'pending', '', 1, datetime('now')
     WHERE changes() = 1
     ON CONFLICT(date, channel, event_name, status, skip_reason)
     DO UPDATE SET
       delivery_count = analytics_conversion_delivery_daily.delivery_count + 1,
       updated_at = datetime('now')
-  `).bind(date, eventName)
+  `).bind(date, delivery.channel, delivery.eventName)
 }
 
 function conversionDedupeKey(input: RecordConversionInput, occurredDate: string) {

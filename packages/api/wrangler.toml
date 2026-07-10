@@ -38,6 +38,14 @@ queue = "meigallery-meta-capi"
 queue = "meigallery-meta-capi"
 max_batch_size = 10
 max_batch_timeout = 30
+max_retries = 5
+retry_delay = 60
+dead_letter_queue = "meigallery-meta-capi-dlq"
+
+[[queues.consumers]]
+queue = "meigallery-meta-capi-dlq"
+max_batch_size = 10
+max_batch_timeout = 5
 
 # 环境变量（非敏感）— 生产默认值
 [vars]
@@ -85,6 +93,14 @@ queue = "meigallery-meta-capi-dev"
 queue = "meigallery-meta-capi-dev"
 max_batch_size = 5
 max_batch_timeout = 30
+max_retries = 5
+retry_delay = 60
+dead_letter_queue = "meigallery-meta-capi-dev-dlq"
+
+[[env.dev.queues.consumers]]
+queue = "meigallery-meta-capi-dev-dlq"
+max_batch_size = 5
+max_batch_timeout = 5
 
 [env.dev.vars]
 APP_ENV = "dev"

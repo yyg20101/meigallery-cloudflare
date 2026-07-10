@@ -287,6 +287,9 @@ function createAttributionDb() {
         },
       }
     },
+    async batch(statements: Array<{ run: () => Promise<unknown> }>) {
+      return Promise.all(statements.map(statement => statement.run()))
+    },
   }
   return db
 }

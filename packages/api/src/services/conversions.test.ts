@@ -157,16 +157,21 @@ function grantedContactInput() {
 
 describe('conversion ledger service', () => {
   it('首次授权联系返回 Contact 和 Lead 两条同源 Pixel 指令', async () => {
-    const result = await recordConversionAction(envFor(createConversionDb({
+    const db = createConversionDb({
       facebookPixelEnabled: true,
       facebookPixelId: '1234567890',
       metaTrackingMode: 'test',
-    })), grantedContactInput())
+    })
+    const result = await recordConversionAction(envFor(db), grantedContactInput())
 
     expect(result.pixelEvents.map(item => item.eventName)).toEqual(['Contact', 'Lead'])
     expect(result.pixelEvents[0]?.eventId).toBe('meta:Contact:contact:session_1:telegram:floating_contact_panel')
     expect(result.pixelEvents[1]?.eventId).toBe('meta:Lead:lead:session_1')
     expect(result.pixelEvents.every(item => item.receiptToken)).toBe(true)
+    expect(db.calls.filter(call => (
+      call.sql.includes('INSERT INTO analytics_conversion_delivery_daily')
+      && call.sql.includes("'pending'")
+    ))).toHaveLength(2)
   })
 
   it('公开 metadata 中的 Meta 标识和网络标识不进入 SQL 参数', async () => {

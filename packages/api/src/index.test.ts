@@ -70,6 +70,9 @@ describe('Meta CAPI Queue consumer', () => {
         }
         return statement
       },
+      async batch(statements: Array<{ run: () => Promise<unknown> }>) {
+        return Promise.all(statements.map(statement => statement.run()))
+      },
     }
     const body: MetaCapiQueueMessage = {
       schemaVersion: 1,
@@ -82,9 +85,9 @@ describe('Meta CAPI Queue consumer', () => {
       },
     }
     const message = { body, ack: vi.fn(), retry: vi.fn() }
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }))
 
-    await app.queue({ messages: [message] } as unknown as MessageBatch<MetaCapiQueueMessage>, {
+    await app.queue({ queue: 'meigallery-meta-capi', messages: [message] } as unknown as MessageBatch<MetaCapiQueueMessage>, {
       APP_ENV: 'test',
       SITE_URL: 'https://616618.xyz',
       META_CAPI_ACCESS_TOKEN: 'token_1',
@@ -104,7 +107,7 @@ describe('Meta CAPI Queue consumer', () => {
     const sensitive = `${body.userData.fbp}|${body.userData.fbc}|${body.userData.clientIpAddress}|${body.userData.clientUserAgent}|token_private`
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     fetchMock.mockRejectedValueOnce(new Error(sensitive))
-    await app.queue({ messages: [message] } as unknown as MessageBatch<MetaCapiQueueMessage>, {
+    await app.queue({ queue: 'meigallery-meta-capi', messages: [message] } as unknown as MessageBatch<MetaCapiQueueMessage>, {
       APP_ENV: 'test',
       SITE_URL: 'https://616618.xyz',
       META_CAPI_ACCESS_TOKEN: 'token_1',

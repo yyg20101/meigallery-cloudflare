@@ -17,19 +17,22 @@ type MetaCapiPayloadInput = {
   testEventCode?: string
 }
 
-type MetaCapiDeliveryRow = {
+export type ConversionDeliverySnapshot = {
   id: string
-  conversion_action_id: string
   channel: string
-  external_event_id: string
   event_name: string
   status: ConversionDeliveryStatus
   skip_reason: string
+  date: string
+}
+
+type MetaCapiDeliveryRow = ConversionDeliverySnapshot & {
+  conversion_action_id: string
+  external_event_id: string
   error_code: string
   error_message: string
   attempt_count: number
   occurred_at: string
-  date: string
   path: string
   metadata: string
 }
@@ -38,9 +41,33 @@ export interface MetaCapiSendResult {
   deliveryId: string
   status: ConversionDeliveryStatus
   reason?: string
+  eventsReceived?: number
+  traceId?: string
+}
+
+export interface TransitionDeliveryStatusInput {
+  status: ConversionDeliveryStatus
+  skipReason?: string
+  errorCode?: string
+  errorMessage?: string
+}
+
+export class MetaCapiDeliveryError extends Error {
+  readonly retryable: boolean
+  readonly code: string
+
+  constructor(code: string, message: string, retryable: boolean) {
+    super(message)
+    this.name = 'MetaCapiDeliveryError'
+    this.code = code
+    this.retryable = retryable
+  }
 }
 
 const META_GRAPH_API_VERSION = 'v25.0'
+const META_CAPI_TIMEOUT_MS = 8_000
+const META_CAPI_ERROR_MESSAGE = 'Meta CAPI 请求失败'
+const META_CAPI_TIMEOUT_MESSAGE = 'Meta CAPI 请求超时'
 const CUSTOM_DATA_ALLOWLIST = new Set([
   'method_type',
   'action_type',
@@ -82,11 +109,18 @@ export function classifyMetaCapiError(status: number): 'retryable' | 'permanent'
 export async function sendMetaCapiEvent(
   env: MetaCapiEnv,
   deliveryId: string,
-  options: { testEventCode?: string; userData?: MetaCapiUserData } = {},
+  options: {
+    testEventCode?: string
+    userData?: MetaCapiUserData
+    fetchFn?: typeof fetch
+    timeoutMs?: number
+    signal?: AbortSignal
+  } = {},
 ): Promise<MetaCapiSendResult> {
-  const delivery = await readDelivery(env.DB, deliveryId)
+  const delivery = await readMetaCapiDelivery(env.DB, deliveryId)
   if (!delivery) return { deliveryId, status: 'skipped', reason: 'delivery_not_found' }
   if (delivery.status === 'sent') {
+    await recordDuplicateSuppressed(env.DB, delivery)
     return { deliveryId, status: 'duplicate_suppressed', reason: 'already_sent' }
   }
   if (delivery.status !== 'pending' && delivery.status !== 'failed') {
@@ -95,17 +129,16 @@ export async function sendMetaCapiEvent(
 
   const accessToken = String(env.META_CAPI_ACCESS_TOKEN || '').trim()
   if (!accessToken) {
-    await markDelivery(env.DB, delivery, 'skipped', 'missing_secret')
+    await transitionDeliveryStatus(env.DB, delivery, { status: 'skipped', skipReason: 'missing_secret' })
     return { deliveryId, status: 'skipped', reason: 'missing_secret' }
   }
 
   const pixelId = await readPixelId(env.DB)
   if (!pixelId) {
-    await markDelivery(env.DB, delivery, 'skipped', 'missing_pixel_id')
+    await transitionDeliveryStatus(env.DB, delivery, { status: 'skipped', skipReason: 'missing_pixel_id' })
     return { deliveryId, status: 'skipped', reason: 'missing_pixel_id' }
   }
 
-  const metadata = parseMetadata(delivery.metadata)
   const payload = buildMetaCapiPayload({
     eventName: delivery.event_name,
     eventId: delivery.external_event_id,
@@ -113,30 +146,76 @@ export async function sendMetaCapiEvent(
     eventSourceUrl: buildEventSourceUrl(env.SITE_URL, delivery.path),
     actionSource: 'website',
     userData: options.userData,
-    customData: metadata,
+    customData: parseMetadata(delivery.metadata),
     testEventCode: options.testEventCode,
   })
 
-  const response = await fetch(metaCapiEndpoint(pixelId, accessToken), {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
+  let response: Response
+  let responseBody: Record<string, unknown>
+  try {
+    const metaResponse = await fetchWithCombinedTimeout(
+      options.fetchFn ?? globalThis.fetch,
+      metaCapiEndpoint(pixelId, accessToken),
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      },
+      options.signal,
+      options.timeoutMs ?? META_CAPI_TIMEOUT_MS,
+    )
+    response = metaResponse.response
+    responseBody = metaResponse.body
+  } catch (error) {
+    const timedOut = error instanceof MetaCapiDeliveryError && error.code === 'meta_timeout'
+    const code = timedOut ? 'meta_timeout' : 'meta_network_error'
+    await transitionDeliveryStatus(env.DB, delivery, {
+      status: 'failed',
+      errorCode: code,
+      errorMessage: META_CAPI_ERROR_MESSAGE,
+    })
+    throw new MetaCapiDeliveryError(
+      code,
+      timedOut ? META_CAPI_TIMEOUT_MESSAGE : META_CAPI_ERROR_MESSAGE,
+      true,
+    )
+  }
+
+  const eventsReceived = readEventsReceived(responseBody)
+  const traceId = readTraceId(responseBody, accessToken)
+  if (response.ok && eventsReceived === 1) {
+    await transitionDeliveryStatus(env.DB, delivery, { status: 'sent' })
+    return compactResult({ deliveryId, status: 'sent', eventsReceived, traceId })
+  }
 
   if (response.ok) {
-    await markDelivery(env.DB, delivery, 'sent')
-    return { deliveryId, status: 'sent' }
+    await transitionDeliveryStatus(env.DB, delivery, {
+      status: 'failed',
+      errorCode: 'meta_events_not_received',
+      errorMessage: META_CAPI_ERROR_MESSAGE,
+    })
+    return compactResult({
+      deliveryId,
+      status: 'failed',
+      reason: 'events_not_received',
+      eventsReceived,
+      traceId,
+    })
   }
 
-  const retryType = classifyMetaCapiError(response.status)
-  await markDelivery(env.DB, delivery, 'failed', '', `meta_http_${response.status}`, 'Meta CAPI 请求失败')
-  if (retryType === 'retryable') {
-    throw new Error(`Meta CAPI retryable ${response.status}`)
+  const errorCode = `meta_http_${response.status}`
+  await transitionDeliveryStatus(env.DB, delivery, {
+    status: 'failed',
+    errorCode,
+    errorMessage: META_CAPI_ERROR_MESSAGE,
+  })
+  if (classifyMetaCapiError(response.status) === 'retryable') {
+    throw new MetaCapiDeliveryError(errorCode, META_CAPI_ERROR_MESSAGE, true)
   }
-  return { deliveryId, status: 'failed', reason: String(response.status) }
+  return compactResult({ deliveryId, status: 'failed', reason: String(response.status), traceId })
 }
 
-async function readDelivery(db: D1Database, deliveryId: string) {
+export async function readMetaCapiDelivery(db: D1Database, deliveryId: string) {
   return db.prepare(`
     SELECT
       d.id, d.conversion_action_id, d.channel, d.external_event_id, d.event_name,
@@ -150,69 +229,163 @@ async function readDelivery(db: D1Database, deliveryId: string) {
   `).bind(deliveryId).first<MetaCapiDeliveryRow>()
 }
 
+export async function transitionDeliveryStatus(
+  db: D1Database,
+  delivery: ConversionDeliverySnapshot,
+  input: TransitionDeliveryStatusInput,
+) {
+  const skipReason = input.skipReason ?? ''
+  const errorCode = input.errorCode ?? ''
+  const errorMessage = storedErrorMessage(input.errorMessage ?? '')
+  if (delivery.status === 'sent') return { changed: false }
+
+  if (delivery.status === input.status) {
+    const result = await db.prepare(`
+      UPDATE analytics_conversion_deliveries
+      SET
+        skip_reason = ?,
+        error_code = ?,
+        error_message = ?,
+        attempt_count = attempt_count + 1,
+        last_attempt_at = datetime('now'),
+        updated_at = datetime('now')
+      WHERE id = ? AND status = ? AND status <> 'sent'
+    `).bind(skipReason, errorCode, errorMessage, delivery.id, delivery.status).run()
+    return { changed: d1Changed(result) }
+  }
+
+  const results = await db.batch([
+    db.prepare(`
+      UPDATE analytics_conversion_deliveries
+      SET
+        status = ?,
+        skip_reason = ?,
+        error_code = ?,
+        error_message = ?,
+        attempt_count = attempt_count + 1,
+        last_attempt_at = datetime('now'),
+        sent_at = CASE WHEN ? = 'sent' THEN datetime('now') ELSE sent_at END,
+        updated_at = datetime('now')
+      WHERE id = ? AND status = ? AND status <> 'sent'
+    `).bind(input.status, skipReason, errorCode, errorMessage, input.status, delivery.id, delivery.status),
+    deliveryDailyIncrementAfterChange(db, delivery, input.status, skipReason),
+    deliveryDailyDecrementAfterChange(db, delivery),
+  ])
+  return { changed: d1Changed(results[0]!) }
+}
+
+export async function recordDuplicateSuppressed(db: D1Database, delivery: ConversionDeliverySnapshot) {
+  await db.prepare(`
+    INSERT INTO analytics_conversion_delivery_daily (
+      date, channel, event_name, status, skip_reason, delivery_count, updated_at
+    )
+    VALUES (?, ?, ?, 'duplicate_suppressed', 'already_sent', 1, datetime('now'))
+    ON CONFLICT(date, channel, event_name, status, skip_reason)
+    DO UPDATE SET
+      delivery_count = analytics_conversion_delivery_daily.delivery_count + 1,
+      updated_at = datetime('now')
+  `).bind(delivery.date, delivery.channel, delivery.event_name).run()
+}
+
+function deliveryDailyIncrementAfterChange(
+  db: D1Database,
+  delivery: ConversionDeliverySnapshot,
+  status: ConversionDeliveryStatus,
+  skipReason: string,
+) {
+  return db.prepare(`
+    INSERT INTO analytics_conversion_delivery_daily (
+      date, channel, event_name, status, skip_reason, delivery_count, updated_at
+    )
+    SELECT ?, ?, ?, ?, ?, 1, datetime('now')
+    WHERE changes() = 1
+    ON CONFLICT(date, channel, event_name, status, skip_reason)
+    DO UPDATE SET
+      delivery_count = analytics_conversion_delivery_daily.delivery_count + 1,
+      updated_at = datetime('now')
+  `).bind(delivery.date, delivery.channel, delivery.event_name, status, skipReason)
+}
+
+function deliveryDailyDecrementAfterChange(db: D1Database, delivery: ConversionDeliverySnapshot) {
+  return db.prepare(`
+    UPDATE analytics_conversion_delivery_daily
+    SET
+      delivery_count = MAX(delivery_count - 1, 0),
+      updated_at = datetime('now')
+    WHERE date = ?
+      AND channel = ?
+      AND event_name = ?
+      AND status = ?
+      AND skip_reason = ?
+      AND changes() = 1
+  `).bind(delivery.date, delivery.channel, delivery.event_name, delivery.status, delivery.skip_reason || '')
+}
+
 async function readPixelId(db: D1Database) {
   const row = await db.prepare("SELECT value FROM site_settings WHERE key = 'facebook_pixel_id' LIMIT 1").first<{ value: string }>()
   const value = parseStoredSettingValue(row ? row.value : '', '')
   return String(value || '').trim()
 }
 
-async function markDelivery(
-  db: D1Database,
-  delivery: MetaCapiDeliveryRow,
-  status: ConversionDeliveryStatus,
-  skipReason = '',
-  errorCode = '',
-  errorMessage = '',
+async function fetchWithCombinedTimeout(
+  fetchFn: typeof fetch,
+  input: RequestInfo | URL,
+  init: RequestInit,
+  callerSignal: AbortSignal | undefined,
+  timeoutMs: number,
 ) {
-  await db.prepare(`
-    UPDATE analytics_conversion_deliveries
-    SET
-      status = ?,
-      skip_reason = ?,
-      error_code = ?,
-      error_message = ?,
-      attempt_count = attempt_count + 1,
-      last_attempt_at = datetime('now'),
-      sent_at = CASE WHEN ? = 'sent' THEN datetime('now') ELSE sent_at END,
-      updated_at = datetime('now')
-    WHERE id = ?
-  `).bind(
-    status,
-    skipReason,
-    errorCode,
-    storedErrorMessage(errorMessage),
-    status,
-    delivery.id,
-  ).run()
-  await upsertDeliveryDaily(db, {
-    date: delivery.date,
-    channel: delivery.channel,
-    eventName: delivery.event_name,
-    status,
-    skipReason,
-  })
+  const controller = new AbortController()
+  let timedOut = false
+  const abortFromCaller = () => controller.abort()
+  if (callerSignal?.aborted) controller.abort()
+  else callerSignal?.addEventListener('abort', abortFromCaller, { once: true })
+  const timeoutId = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, Math.max(1, timeoutMs))
+
+  try {
+    const response = await fetchFn(input, { ...init, signal: controller.signal })
+    let body: Record<string, unknown> = {}
+    try {
+      const text = await response.text()
+      const parsed = JSON.parse(text || '{}')
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) body = parsed as Record<string, unknown>
+    } catch (error) {
+      if (timedOut) throw new MetaCapiDeliveryError('meta_timeout', META_CAPI_TIMEOUT_MESSAGE, true)
+      if (!(error instanceof SyntaxError)) {
+        throw new MetaCapiDeliveryError('meta_network_error', META_CAPI_ERROR_MESSAGE, true)
+      }
+    }
+    return { response, body }
+  } catch {
+    if (timedOut) throw new MetaCapiDeliveryError('meta_timeout', META_CAPI_TIMEOUT_MESSAGE, true)
+    throw new MetaCapiDeliveryError('meta_network_error', META_CAPI_ERROR_MESSAGE, true)
+  } finally {
+    clearTimeout(timeoutId)
+    callerSignal?.removeEventListener('abort', abortFromCaller)
+  }
 }
 
-async function upsertDeliveryDaily(
-  db: D1Database,
-  input: { date: string; channel: string; eventName: string; status: ConversionDeliveryStatus; skipReason: string },
-) {
-  await db.prepare(`
-    INSERT INTO analytics_conversion_delivery_daily (
-      date, channel, event_name, status, skip_reason, delivery_count, updated_at
-    )
-    VALUES (?, ?, ?, ?, ?, 1, datetime('now'))
-    ON CONFLICT(date, channel, event_name, status, skip_reason)
-    DO UPDATE SET
-      delivery_count = analytics_conversion_delivery_daily.delivery_count + 1,
-      updated_at = datetime('now')
-  `).bind(
-    input.date,
-    input.channel,
-    input.eventName,
-    input.status,
-    input.skipReason,
-  ).run()
+function readEventsReceived(body: Record<string, unknown>) {
+  return typeof body.events_received === 'number' && Number.isFinite(body.events_received)
+    ? body.events_received
+    : undefined
+}
+
+function readTraceId(body: Record<string, unknown>, accessToken: string) {
+  const error = body.error && typeof body.error === 'object' && !Array.isArray(body.error)
+    ? body.error as Record<string, unknown>
+    : {}
+  const value = typeof body.fbtrace_id === 'string' ? body.fbtrace_id : error.fbtrace_id
+  if (typeof value !== 'string') return undefined
+  const traceId = value.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 120)
+  if (accessToken && traceId.includes(accessToken)) return undefined
+  return traceId || undefined
+}
+
+function compactResult(result: MetaCapiSendResult) {
+  return Object.fromEntries(Object.entries(result).filter(([, value]) => value !== undefined)) as unknown as MetaCapiSendResult
 }
 
 function sanitizeCustomData(input: Record<string, unknown>) {
@@ -268,5 +441,9 @@ function metaCapiEndpoint(pixelId: string, accessToken: string) {
 }
 
 function storedErrorMessage(value: string) {
-  return value === 'Meta CAPI 请求失败' ? value : ''
+  return value === META_CAPI_ERROR_MESSAGE || value === 'Meta CAPI Queue 发送失败' ? value : ''
+}
+
+function d1Changed(result: D1Result<unknown>) {
+  return (result.meta?.changes ?? result.meta?.rows_written ?? 1) > 0
 }

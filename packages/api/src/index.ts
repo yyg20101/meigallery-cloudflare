@@ -343,17 +343,7 @@ export default {
     ctx.waitUntil(handleScheduled(env))
   },
   queue: async (batch: MessageBatch<MetaCapiQueueMessage>, env: Bindings) => {
-    const { sendMetaCapiEvent } = await import('./services/meta-capi')
-    for (const message of batch.messages) {
-      try {
-        await sendMetaCapiEvent(env, message.body.deliveryId, { userData: message.body.userData })
-        message.ack()
-      } catch {
-        console.error('[meta-capi] delivery failed', {
-          deliveryId: message.body.deliveryId,
-        })
-        message.retry()
-      }
-    }
+    const { handleMetaCapiBatch } = await import('./services/meta-capi-queue')
+    await handleMetaCapiBatch(batch, env)
   },
 }

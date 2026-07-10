@@ -64,7 +64,7 @@ function createPixelReceiptDb(options: {
   let failAttemptedDaily = options.failAttemptedDaily ?? false
   type ReceiptState = { delivery: typeof delivery; dailyAttemptedCount: number; lastChanges: number }
   function execute(call: Call, state: ReceiptState) {
-    if (call.sql.includes("status = 'attempted'")) {
+    if (call.sql.includes('UPDATE analytics_conversion_deliveries')) {
       if (state.delivery.status !== 'pending') {
         state.lastChanges = 0
         return { meta: { changes: 0, rows_written: 0, rows_read: 0, duration: 1 } }
@@ -73,9 +73,13 @@ function createPixelReceiptDb(options: {
       state.lastChanges = 1
       return { meta: { changes: 1, rows_written: 1, rows_read: 0, duration: 1 } }
     }
-    if (call.sql.includes('analytics_conversion_delivery_daily')) {
+    if (call.sql.includes('INSERT INTO analytics_conversion_delivery_daily')) {
       if (failAttemptedDaily) throw new Error('模拟 attempted 日报写入失败')
-      if (state.lastChanges === 1) state.dailyAttemptedCount += 1
+      if (state.lastChanges === 1 && call.params[3] === 'attempted') state.dailyAttemptedCount += 1
+      state.lastChanges = state.lastChanges === 1 ? 1 : 0
+      return { meta: { changes: state.lastChanges, rows_written: state.lastChanges, rows_read: 0, duration: 1 } }
+    }
+    if (call.sql.includes('UPDATE analytics_conversion_delivery_daily')) {
       state.lastChanges = state.lastChanges === 1 ? 1 : 0
       return { meta: { changes: state.lastChanges, rows_written: state.lastChanges, rows_read: 0, duration: 1 } }
     }

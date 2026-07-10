@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Bindings } from '../index'
-import { buildMetaCapiPayload, classifyMetaCapiError, sendMetaCapiEvent } from './meta-capi'
+import {
+  MetaCapiDeliveryError,
+  buildMetaCapiPayload,
+  classifyMetaCapiError,
+  sendMetaCapiEvent,
+} from './meta-capi'
 
 type DeliveryStatus = 'pending' | 'sent' | 'failed' | 'skipped' | 'duplicate_suppressed'
 type DeliveryRow = {
@@ -53,7 +58,8 @@ function createMetaCapiDb(options: {
     daily,
     prepare(sql: string) {
       const call = { sql, params: [] as unknown[] }
-      return {
+      const statement = {
+        __call: call,
         bind(...params: unknown[]) {
           call.params = params
           return this
@@ -75,10 +81,12 @@ function createMetaCapiDb(options: {
         async run() {
           calls.push(call)
           if (sql.includes('UPDATE analytics_conversion_deliveries')) {
-            delivery.status = String(call.params[0]) as DeliveryStatus
-            delivery.skip_reason = String(call.params[1] ?? '')
-            delivery.error_code = String(call.params[2] ?? '')
-            delivery.error_message = String(call.params[3] ?? '')
+            const changesStatus = /SET\s+status\s*=\s*\?/m.test(sql)
+            if (changesStatus) delivery.status = String(call.params[0]) as DeliveryStatus
+            const offset = changesStatus ? 1 : 0
+            delivery.skip_reason = String(call.params[offset] ?? '')
+            delivery.error_code = String(call.params[offset + 1] ?? '')
+            delivery.error_message = String(call.params[offset + 2] ?? '')
             delivery.attempt_count += 1
             if (delivery.status === 'sent') delivery.sent_at = 'now'
           }
@@ -94,6 +102,10 @@ function createMetaCapiDb(options: {
           return { meta: { changes: 1, rows_written: 1, rows_read: 0, duration: 1 } }
         },
       }
+      return statement
+    },
+    async batch(statements: Array<{ run: () => Promise<D1Result<unknown>> }>) {
+      return Promise.all(statements.map(statement => statement.run()))
     },
   }
   return db
@@ -154,7 +166,7 @@ describe('meta-capi', () => {
     expect(db.delivery.skip_reason).toBe('missing_pixel_id')
   })
 
-  it('Meta 2xx 返回时标记 sent 并不泄露 token', async () => {
+  it('Meta 仅在 v25.0 返回 events_received=1 时标记 sent 且不泄露 token', async () => {
     const db = createMetaCapiDb({
       pixelId: '1234567890',
       delivery: { path: 'https://evil.example/private?token=secret' },
@@ -164,9 +176,10 @@ describe('meta-capi', () => {
     const result = await sendMetaCapiEvent(envFor(db), 'cdlv_1')
 
     expect(result.status).toBe('sent')
+    expect(result.eventsReceived).toBe(1)
     expect(db.delivery.status).toBe('sent')
     const [url, init] = fetchMock.mock.calls[0]!
-    expect(String(url)).toContain('/1234567890/events')
+    expect(new URL(String(url)).pathname).toBe('/v25.0/1234567890/events')
     expect(String(url)).toContain('access_token=')
     const payload = JSON.parse(String(init?.body))
     expect(payload.data[0].event_source_url).toBe('https://616618.xyz/')
@@ -180,7 +193,7 @@ describe('meta-capi', () => {
       pixelId: '1234567890',
       delivery: { metadata: JSON.stringify({ method_type: 'telegram', fbp: 'fb.1.private', fbc: 'fb.1.private' }) },
     })
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }))
 
     await sendMetaCapiEvent(envFor(db), 'cdlv_1')
 
@@ -191,7 +204,7 @@ describe('meta-capi', () => {
 
   it('仅使用 Queue 临时 userData 构造 Meta CAPI 匹配字段', async () => {
     const db = createMetaCapiDb({ pixelId: '1234567890' })
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }))
 
     await sendMetaCapiEvent(envFor(db), 'cdlv_1', {
       userData: {
@@ -234,10 +247,108 @@ describe('meta-capi', () => {
     const sensitive = 'fb.1.1700000000000.123456789|fb.1.1700000000000.CLICK_abc-123|203.0.113.24|MeiGallery Test Browser/1.0|token_private'
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(sensitive, { status: 500 }))
 
-    await expect(sendMetaCapiEvent(envFor(db), 'cdlv_1')).rejects.toThrow('Meta CAPI retryable')
+    await expect(sendMetaCapiEvent(envFor(db), 'cdlv_1')).rejects.toMatchObject({
+      message: 'Meta CAPI 请求失败',
+      retryable: true,
+      code: 'meta_http_500',
+    })
     expect(db.delivery.status).toBe('failed')
     expect(db.delivery.error_code).toBe('meta_http_500')
     expect(db.delivery.error_message).toBe('Meta CAPI 请求失败')
     expect(JSON.stringify(db.calls)).not.toContain(sensitive)
+  })
+
+  it('Meta 2xx 但 events_received=0 时记录永久失败', async () => {
+    const db = createMetaCapiDb({ pixelId: '1234567890' })
+    const fetchFn = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      events_received: 0,
+      fbtrace_id: 'trace_1',
+    }), { status: 200 }))
+
+    const result = await sendMetaCapiEvent(envFor(db), 'cdlv_1', { fetchFn })
+
+    expect(result).toMatchObject({
+      status: 'failed',
+      reason: 'events_not_received',
+      eventsReceived: 0,
+      traceId: 'trace_1',
+    })
+    expect(db.delivery).toMatchObject({
+      status: 'failed',
+      error_code: 'meta_events_not_received',
+      error_message: 'Meta CAPI 请求失败',
+    })
+  })
+
+  it('确定性 4xx 与 2xx/0 不抛可重试错误', async () => {
+    const badRequestDb = createMetaCapiDb({ pixelId: '1234567890' })
+    const badRequest = await sendMetaCapiEvent(envFor(badRequestDb), 'cdlv_1', {
+      fetchFn: vi.fn().mockResolvedValue(new Response('{}', { status: 400 })),
+    })
+    expect(badRequest).toMatchObject({ status: 'failed', reason: '400' })
+
+    const emptySuccessDb = createMetaCapiDb({ pixelId: '1234567890' })
+    await expect(sendMetaCapiEvent(envFor(emptySuccessDb), 'cdlv_1', {
+      fetchFn: vi.fn().mockResolvedValue(new Response(JSON.stringify({ events_received: 0 }), { status: 200 })),
+    })).resolves.toMatchObject({ status: 'failed', eventsReceived: 0 })
+  })
+
+  it('网络错误与 8 秒可注入超时都转为固定脱敏 retryable 错误', async () => {
+    const sensitive = 'token_1|fb.1.private|203.0.113.24|private-browser'
+    const networkDb = createMetaCapiDb({ pixelId: '1234567890' })
+    const networkPromise = sendMetaCapiEvent(envFor(networkDb), 'cdlv_1', {
+      fetchFn: vi.fn().mockRejectedValue(new Error(sensitive)),
+      userData: {
+        fbp: 'fb.1.private',
+        clientIpAddress: '203.0.113.24',
+        clientUserAgent: 'private-browser',
+      },
+    })
+
+    const networkError = await networkPromise.catch(error => error as MetaCapiDeliveryError)
+    expect(networkError).toMatchObject({
+      message: 'Meta CAPI 请求失败',
+      code: 'meta_network_error',
+      retryable: true,
+    })
+    expect(JSON.stringify(networkError)).not.toContain(sensitive)
+    expect(JSON.stringify(networkError)).not.toContain('token_1')
+    expect(JSON.stringify(networkError)).not.toContain('fb.1.private')
+
+    const timeoutDb = createMetaCapiDb({ pixelId: '1234567890' })
+    const timeoutFetch = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true })
+    }))
+    const timeoutError = await sendMetaCapiEvent(envFor(timeoutDb), 'cdlv_1', {
+      fetchFn: timeoutFetch,
+      timeoutMs: 5,
+    }).catch(error => error as MetaCapiDeliveryError)
+
+    expect(timeoutError).toMatchObject({
+      message: 'Meta CAPI 请求超时',
+      code: 'meta_timeout',
+      retryable: true,
+    })
+    expect(timeoutFetch.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal)
+  })
+
+  it('组合超时保留调用方 abort signal', async () => {
+    const db = createMetaCapiDb({ pixelId: '1234567890' })
+    const caller = new AbortController()
+    const fetchFn = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true })
+    }))
+    const sending = sendMetaCapiEvent(envFor(db), 'cdlv_1', {
+      fetchFn,
+      signal: caller.signal,
+      timeoutMs: 8_000,
+    })
+
+    await vi.waitFor(() => expect(fetchFn).toHaveBeenCalledOnce())
+    caller.abort()
+
+    await expect(sending).rejects.toMatchObject({ retryable: true, code: 'meta_network_error' })
+    expect(fetchFn.mock.calls[0]?.[1]?.signal).not.toBe(caller.signal)
+    expect(fetchFn.mock.calls[0]?.[1]?.signal?.aborted).toBe(true)
   })
 })
