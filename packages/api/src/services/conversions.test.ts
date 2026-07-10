@@ -4,6 +4,7 @@ import type { Bindings } from '../index'
 import {
   recordContact,
   recordRegistration,
+  recordRegistrationFactOnly,
   type RecordContactInput,
   type RecordRegistrationInput,
 } from './conversions'
@@ -332,6 +333,63 @@ describe('conversion ledger service', () => {
       consentState: 'denied',
       metadata: {},
     })
+    expect(db.calls.some(call => call.sql.includes('analytics_conversion_deliveries'))).toBe(false)
+  })
+
+  it('同一服务端用户重复注册按用户 ID 去重且不重复规划 delivery', async () => {
+    const db = createConversionDb({
+      facebookPixelEnabled: true,
+      facebookPixelId: '1234567890',
+      metaCapiEnabled: true,
+      metaTrackingMode: 'production',
+    })
+    const sent: MetaCapiQueueMessage[] = []
+    const input = {
+      visitorId: 'visitor_first',
+      sessionId: 'session_first',
+      userId: 42,
+      occurredAt: '2026-07-10T08:00:00.000Z',
+      consentState: 'granted',
+      metadata: { method: 'email' },
+    }
+
+    const first = await recordRegistration(envWithQueueFor(db, sent), input)
+    const second = await recordRegistration(envWithQueueFor(db, sent), {
+      ...input,
+      visitorId: 'visitor_retry',
+      sessionId: 'session_retry',
+    })
+
+    expect(first.created).toBe(true)
+    expect(second).toMatchObject({ created: false, duplicateOf: first.id, pixelEvents: [] })
+    expect(db.insertedConversions[0]?.dedupeKey).toBe('complete_registration:user:42')
+    expect(db.insertedDeliveries).toHaveLength(2)
+    expect(sent).toHaveLength(1)
+  })
+
+  it('注册事实修复只写 action 与 daily aggregate，且按服务端用户 ID 幂等', async () => {
+    const db = createConversionDb({
+      facebookPixelEnabled: true,
+      facebookPixelId: '1234567890',
+      metaCapiEnabled: true,
+      metaTrackingMode: 'production',
+    })
+    const input = {
+      userId: 42,
+      visitorId: 'registration_user_42',
+      sessionId: 'registration_user_42',
+      occurredAt: '2026-07-10T08:00:00.000Z',
+      sourceChannel: 'unknown',
+      metadata: { method: 'email', recovery: true },
+    }
+
+    const first = await recordRegistrationFactOnly(db as unknown as D1Database, input)
+    const second = await recordRegistrationFactOnly(db as unknown as D1Database, input)
+
+    expect(first.created).toBe(true)
+    expect(second.created).toBe(false)
+    expect(db.insertedConversions.map(item => item.dedupeKey)).toEqual(['complete_registration:user:42'])
+    expect(db.calls.filter(call => call.sql.includes('analytics_conversion_daily'))).toHaveLength(1)
     expect(db.calls.some(call => call.sql.includes('analytics_conversion_deliveries'))).toBe(false)
   })
 

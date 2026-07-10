@@ -14,6 +14,28 @@ import {
 import { validateUsername } from '@meigallery/shared/utils'
 import { getTurnstileConfigError, validateTurnstile } from '../utils/turnstile'
 import { consumeInviteCodeForRegistration } from '../services/invite-codes'
+import type { AnalyticsConsentState } from '@meigallery/shared'
+import { recordRegistration } from '../services/conversions'
+import { buildMetaCapiUserData } from '../utils/meta-browser-identifiers'
+
+type RegistrationAttributionContext = {
+  visitorId?: string
+  sessionId?: string
+  occurredAt?: string
+  routeName?: string
+  path?: string
+  sourceChannel?: string
+  sourceName?: string
+  trackingSourceSlug?: string
+  utmSource?: string
+  utmMedium?: string
+  utmCampaign?: string
+  utmContent?: string
+  consentState?: AnalyticsConsentState
+  browserIdentifiers?: unknown
+}
+
+const CONVERSION_ID_RE = /^[A-Za-z0-9_-]{8,120}$/
 
 export const authRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -141,6 +163,7 @@ authRoutes.post('/register', async (c) => {
     sourceChannel?: string
     landingPath?: string
     turnstileToken?: string
+    attribution?: RegistrationAttributionContext
   }>()
 
   // 参数校验
@@ -217,16 +240,18 @@ authRoutes.post('/register', async (c) => {
     .bind(email, username, body.nickname?.trim() || null, passwordHash, 'user', 'active', emailVerified)
     .run()
   const userId = insertResult.meta.last_row_id
+  const attribution = normalizeRegistrationAttribution(body.attribution, userId)
+  const hasAttribution = isPlainRecord(body.attribution)
 
   if (body.inviteCode) {
     try {
       await consumeInviteCodeForRegistration(db, {
         code: body.inviteCode,
         invitedUserId: userId,
-        visitorId: body.analyticsVisitorId,
-        sessionId: body.analyticsSessionId,
-        sourceChannel: body.sourceChannel,
-        landingPath: body.landingPath,
+        visitorId: hasAttribution ? attribution.visitorId : body.analyticsVisitorId,
+        sessionId: hasAttribution ? attribution.sessionId : body.analyticsSessionId,
+        sourceChannel: hasAttribution ? attribution.sourceChannel : body.sourceChannel,
+        landingPath: hasAttribution ? attribution.path : body.landingPath,
       })
     } catch (error) {
       console.warn('邀请码注册绑定失败，已继续普通注册:', error)
@@ -235,6 +260,35 @@ authRoutes.post('/register', async (c) => {
 
   // 创建会话
   await createSession(c, userId)
+
+  let pixelEvents = [] as Awaited<ReturnType<typeof recordRegistration>>['pixelEvents']
+  try {
+    const registration = await recordRegistration(c.env, {
+      userId,
+      visitorId: attribution.visitorId,
+      sessionId: attribution.sessionId,
+      occurredAt: attribution.occurredAt,
+      routeName: attribution.routeName,
+      path: attribution.path,
+      sourceChannel: attribution.sourceChannel,
+      sourceName: attribution.sourceName,
+      trackingSourceSlug: attribution.trackingSourceSlug,
+      utmSource: attribution.utmSource,
+      utmMedium: attribution.utmMedium,
+      utmCampaign: attribution.utmCampaign,
+      utmContent: attribution.utmContent,
+      consentState: attribution.consentState,
+      metadata: { method: 'email' },
+    }, {
+      getMetaCapiUserData: () => buildMetaCapiUserData(c.req.raw, attribution.browserIdentifiers),
+    })
+    pixelEvents = registration.pixelEvents
+  } catch {
+    console.error('[auth.register] 注册转化事实写入失败', {
+      userId,
+      code: 'REGISTRATION_CONVERSION_WRITE_FAILED',
+    })
+  }
 
   return c.json({
     id: userId,
@@ -245,8 +299,52 @@ authRoutes.post('/register', async (c) => {
     status: 'active',
     membershipRank: 0,
     membershipExpiry: null,
+    pixelEvents,
   }, 201)
 })
+
+function normalizeRegistrationAttribution(value: unknown, userId: number) {
+  const input = isPlainRecord(value) ? value : {}
+  const fallbackId = `registration_user_${userId}`
+  return {
+    visitorId: normalizeConversionId(input.visitorId) || fallbackId,
+    sessionId: normalizeConversionId(input.sessionId) || fallbackId,
+    occurredAt: normalizeOccurredAt(input.occurredAt),
+    routeName: normalizeText(input.routeName, 120),
+    path: normalizeText(input.path, 240),
+    sourceChannel: normalizeText(input.sourceChannel, 40) || 'unknown',
+    sourceName: normalizeText(input.sourceName, 120),
+    trackingSourceSlug: normalizeText(input.trackingSourceSlug, 120),
+    utmSource: normalizeText(input.utmSource, 120),
+    utmMedium: normalizeText(input.utmMedium, 120),
+    utmCampaign: normalizeText(input.utmCampaign, 120),
+    utmContent: normalizeText(input.utmContent, 120),
+    consentState: normalizeConsentState(input.consentState),
+    browserIdentifiers: input.browserIdentifiers,
+  }
+}
+
+function normalizeConversionId(value: unknown) {
+  const normalized = typeof value === 'string' ? value.trim() : ''
+  return CONVERSION_ID_RE.test(normalized) ? normalized : ''
+}
+
+function normalizeOccurredAt(value: unknown) {
+  const parsed = new Date(typeof value === 'string' ? value : '')
+  return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString()
+}
+
+function normalizeConsentState(value: unknown): AnalyticsConsentState {
+  return value === 'granted' || value === 'denied' ? value : 'limited'
+}
+
+function normalizeText(value: unknown, maxLength: number) {
+  return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, maxLength)
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+}
 
 // ============================================================
 // POST /api/auth/reset-password - 密码重置

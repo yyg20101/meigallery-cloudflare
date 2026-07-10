@@ -32,6 +32,7 @@ import {
   cleanupAnalyticsRetention,
 } from './services/analytics-aggregate'
 import { recoverPendingMetaCapiDeliveries } from './services/meta-capi-queue'
+import { recoverRegistrationConversionFacts } from './services/registration-conversion-recovery'
 
 /** Hono 应用绑定类型 */
 export type Bindings = {
@@ -270,6 +271,17 @@ async function handleScheduled(event: ScheduledEvent, env: Bindings): Promise<vo
     console.error('[cron] Meta CAPI Queue 恢复失败:', error)
   }
 
+  if (shouldRecoverRegistrationConversions(event)) {
+    try {
+      const recovery = await recoverRegistrationConversionFacts(db, new Date(event.scheduledTime))
+      console.log('[cron] 注册转化事实修复完成:', recovery)
+    } catch {
+      console.error('[cron.registration-recovery] 注册事实修复任务失败', {
+        code: 'REGISTRATION_CONVERSION_RECOVERY_JOB_FAILED',
+      })
+    }
+  }
+
   if (event.cron !== DAILY_MAINTENANCE_CRON) {
     console.log('[cron] 非每日 trigger，跳过完整维护任务:', event.cron || 'unknown')
     return
@@ -336,6 +348,12 @@ async function handleScheduled(event: ScheduledEvent, env: Bindings): Promise<vo
   } catch (e) {
     console.error('[cron] 数据分析聚合任务失败:', e)
   }
+}
+
+function shouldRecoverRegistrationConversions(event: ScheduledEvent) {
+  if (event.cron !== '*/5 * * * *') return false
+  const scheduledAt = new Date(event.scheduledTime)
+  return !Number.isNaN(scheduledAt.getTime()) && scheduledAt.getUTCMinutes() === 0
 }
 
 function operationDate(now = new Date()) {

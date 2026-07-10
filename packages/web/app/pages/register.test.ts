@@ -11,11 +11,21 @@ const push = vi.fn()
 const replace = vi.fn()
 const track = vi.fn()
 const trackConversion = vi.fn()
+const executePixelInstructions = vi.fn()
 
 describe('register page', () => {
   beforeEach(() => {
     register.mockReset()
-    register.mockResolvedValue({ id: 1 })
+    register.mockResolvedValue({
+      id: 1,
+      pixelEvents: [{
+        deliveryId: 'cdlv_registration_1',
+        eventName: 'CompleteRegistration',
+        eventId: 'meta:CompleteRegistration:complete_registration:user:1',
+        payload: { method: 'email' },
+        receiptToken: 'receipt_registration_1',
+      }],
+    })
     sendCode.mockReset()
     checkUsername.mockReset()
     checkUsername.mockResolvedValue({ available: true })
@@ -26,6 +36,8 @@ describe('register page', () => {
     track.mockReset()
     trackConversion.mockReset()
     trackConversion.mockRejectedValue(new Error('conversion api failed'))
+    executePixelInstructions.mockReset()
+    executePixelInstructions.mockResolvedValue(undefined)
 
     vi.stubGlobal('useAuth', () => ({
       register,
@@ -35,15 +47,29 @@ describe('register page', () => {
     }))
     vi.stubGlobal('useApi', () => ({ api }))
     vi.stubGlobal('useRouter', () => ({ push, replace }))
-    vi.stubGlobal('useRoute', () => ({ fullPath: '/register', query: {} }))
+    vi.stubGlobal('useRoute', () => ({ name: 'register', path: '/register', fullPath: '/register?utm_content=hero', query: { utm_content: 'hero', fbclid: 'click_1' } }))
     vi.stubGlobal('useAnalytics', () => ({
       track,
       getContext: () => ({
         visitorId: 'visitor_1',
         sessionId: 'session_1',
+        consentState: 'limited',
+        sourceChannel: 'ad',
+        sourceContext: {
+          sourceName: 'meta',
+          trackingSourceSlug: 'meta-summer',
+          utmSource: 'meta',
+          utmMedium: 'paid_social',
+          utmCampaign: 'summer',
+        },
       }),
     }))
     vi.stubGlobal('useConversionTracking', () => ({ trackConversion }))
+    vi.stubGlobal('useTracking', () => ({ executePixelInstructions }))
+    vi.stubGlobal('useMarketingConsent', () => ({
+      state: ref('granted'),
+      canTrackMarketing: ref(true),
+    }))
     vi.stubGlobal('useSiteSettings', () => ({ siteName: ref('MeiGallery') }))
     vi.stubGlobal('useTurnstile', () => ({
       turnstileToken: ref(''),
@@ -62,7 +88,7 @@ describe('register page', () => {
     vi.unstubAllGlobals()
   })
 
-  it('注册成功后 conversion reject 不触发 register_failed，仍跳转首页', async () => {
+  it('注册请求携带脱敏归因且成功后只执行响应中的 Pixel 指令', async () => {
     const wrapper = mount(RegisterPage, {
       global: {
         stubs: {
@@ -81,8 +107,50 @@ describe('register page', () => {
     await wrapper.get('form').trigger('submit')
     await flushPromises()
 
-    expect(register).toHaveBeenCalled()
-    expect(trackConversion).toHaveBeenCalledWith('complete_registration', { metadata: { method: 'email' } })
+    expect(register).toHaveBeenCalledWith(expect.objectContaining({
+      attribution: expect.objectContaining({
+        visitorId: 'visitor_1',
+        sessionId: 'session_1',
+        routeName: 'register',
+        path: '/register',
+        sourceChannel: 'ad',
+        sourceName: 'meta',
+        trackingSourceSlug: 'meta-summer',
+        utmSource: 'meta',
+        utmMedium: 'paid_social',
+        utmCampaign: 'summer',
+        utmContent: 'hero',
+        consentState: 'granted',
+      }),
+    }))
+    expect(register.mock.calls[0]?.[0]).not.toHaveProperty('actionType')
+    expect(register.mock.calls[0]?.[0]).not.toHaveProperty('userId')
+    expect(trackConversion).not.toHaveBeenCalled()
+    expect(executePixelInstructions).toHaveBeenCalledWith([
+      expect.objectContaining({ eventName: 'CompleteRegistration' }),
+    ])
+    expect(push).toHaveBeenCalledWith('/')
+    expect(track).not.toHaveBeenCalledWith('register_failed', expect.anything())
+  })
+
+  it('Pixel 指令执行失败不误记注册失败且仍跳转首页', async () => {
+    executePixelInstructions.mockRejectedValueOnce(new Error('pixel failed'))
+    const wrapper = mount(RegisterPage, {
+      global: {
+        stubs: {
+          NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
+        },
+      },
+    })
+    await flushPromises()
+
+    await wrapper.get('input[autocomplete="username"]').setValue('meiuser')
+    await wrapper.get('input[autocomplete="email"]').setValue('mei@example.com')
+    await wrapper.get('input[autocomplete="new-password"]').setValue('password123')
+    await wrapper.findAll('input[autocomplete="new-password"]').at(1)!.setValue('password123')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
     expect(push).toHaveBeenCalledWith('/')
     expect(track).not.toHaveBeenCalledWith('register_failed', expect.anything())
   })

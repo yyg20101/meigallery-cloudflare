@@ -160,8 +160,8 @@ describe('Meta CAPI scheduled recovery', () => {
     return {
       sent,
       sqlCalls,
-      async run(cron: string) {
-        await app.scheduled({ cron } as ScheduledEvent, scheduledEnv, ctx)
+      async run(cron: string, scheduledTime = Date.parse('2026-07-10T09:00:00.000Z')) {
+        await app.scheduled({ cron, scheduledTime } as ScheduledEvent, scheduledEnv, ctx)
         await scheduledWork
       },
     }
@@ -197,5 +197,17 @@ describe('Meta CAPI scheduled recovery', () => {
     expect(harness.sent).toEqual([{ schemaVersion: 1, deliveryId: 'cdlv_stale', userData: {} }])
     expect(harness.sqlCalls.some(sql => sql.includes('email_verification_codes'))).toBe(false)
     expect(harness.sqlCalls.some(sql => sql.includes('analytics_daily_sources'))).toBe(false)
+  })
+
+  it('注册事实修复只在 5 分钟 Cron 的整点运行，每小时最多一次', async () => {
+    const wholeHour = createScheduledHarness()
+    const otherMinute = createScheduledHarness()
+
+    await wholeHour.run('*/5 * * * *', Date.parse('2026-07-10T09:00:00.000Z'))
+    await otherMinute.run('*/5 * * * *', Date.parse('2026-07-10T09:05:00.000Z'))
+
+    expect(wholeHour.sqlCalls.some(sql => sql.includes('FROM users u'))).toBe(true)
+    expect(otherMinute.sqlCalls.some(sql => sql.includes('FROM users u'))).toBe(false)
+    expect(wholeHour.sent).toEqual([{ schemaVersion: 1, deliveryId: 'cdlv_stale', userData: {} }])
   })
 })

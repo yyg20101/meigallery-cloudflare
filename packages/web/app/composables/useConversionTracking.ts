@@ -1,9 +1,7 @@
-import type { ConversionActionType, MetaPixelInstruction } from '@meigallery/shared'
+import type { PublicConversionActionType } from '@meigallery/shared'
 import { sanitizeAnalyticsPath } from '~/utils/analyticsSanitizer'
 import { resolveConversionIdentity } from '~/utils/conversionIdentity'
 import { readMetaBrowserIdentifiers } from '~/utils/metaBrowserIdentifiers'
-
-type PublicConversionActionType = Extract<ConversionActionType, 'contact' | 'complete_registration'>
 
 type TrackConversionOptions = {
   methodType?: string
@@ -37,28 +35,19 @@ const SENSITIVE_METADATA_KEYS = new Set([
 const SENSITIVE_KEY_PARTS = ['token', 'secret', 'password', 'credential', 'cookie', 'jwt', 'signature']
 
 type FailedConversionRetry = {
-  send: () => Promise<MetaPixelInstruction[]>
-  complete: (instructions: MetaPixelInstruction[]) => void
-  attempts: number
-}
-
-type FailedPixelReceiptRetry = {
-  send: () => Promise<unknown>
+  send: () => Promise<unknown[]>
+  complete: (instructions: unknown[]) => void
   attempts: number
 }
 
 const failedConversionRetries: FailedConversionRetry[] = []
-const failedPixelReceiptRetries: FailedPixelReceiptRetry[] = []
-const PIXEL_RECEIPT_RETRY_DELAYS = [250, 1_000, 3_000]
-const PIXEL_RECEIPT_RETRY_LIMIT = 100
 let conversionRetryTimer: ReturnType<typeof setTimeout> | null = null
-let pixelReceiptRetryTimer: ReturnType<typeof setTimeout> | null = null
 
 export function useConversionTracking() {
   const { api } = useApi()
   const route = useRoute()
   const analytics = useAnalytics()
-  const pixel = useFacebookPixel()
+  const tracking = useTracking()
   const marketingConsent = useMarketingConsent()
 
   async function trackConversion(actionType: PublicConversionActionType, options: TrackConversionOptions = {}) {
@@ -90,26 +79,12 @@ export function useConversionTracking() {
       const response = await api('/api/conversions/events', { method: 'POST', body })
       return pixelEventsFromResponse(response)
     }
-    const deliver = (instructions: MetaPixelInstruction[]) => {
-      if (!canDeliverMarketing(marketingConsent)) return
-      for (const instruction of instructions) {
-        const attempted = pixel.trackStandardEvent(instruction.eventName, instruction.payload, { eventID: instruction.eventId })
-        if (attempted === true) reportPixelAttempted(() => api('/api/conversions/pixel-receipts', {
-          method: 'POST',
-          body: {
-            deliveryId: instruction.deliveryId,
-            attempted: true,
-            receiptToken: instruction.receiptToken,
-          },
-        }))
-      }
-    }
-    const complete = (instructions: MetaPixelInstruction[]) => {
-      trackAnalyticsCompatibility(actionType, analytics, options, instructions[0]?.eventId || '')
-      deliver(instructions)
+    const complete = (instructions: unknown[]) => {
+      trackAnalyticsCompatibility(analytics, options, firstInstructionEventId(instructions))
+      tracking.executePixelInstructions(instructions)
     }
 
-    let pixelEvents: MetaPixelInstruction[]
+    let pixelEvents: unknown[]
     try {
       pixelEvents = await send()
     } catch {
@@ -171,83 +146,35 @@ async function retryFailedConversions() {
   scheduleFailedConversionRetry()
 }
 
-function reportPixelAttempted(send: () => Promise<unknown>) {
-  void send().catch(() => queueFailedPixelReceiptRetry({ send, attempts: 0 }))
-}
-
-function queueFailedPixelReceiptRetry(entry: FailedPixelReceiptRetry) {
-  if (failedPixelReceiptRetries.length >= PIXEL_RECEIPT_RETRY_LIMIT) return
-  failedPixelReceiptRetries.push(entry)
-  scheduleFailedPixelReceiptRetry()
-}
-
-function scheduleFailedPixelReceiptRetry() {
-  if (pixelReceiptRetryTimer || failedPixelReceiptRetries.length === 0) return
-  const delay = PIXEL_RECEIPT_RETRY_DELAYS[failedPixelReceiptRetries[0]!.attempts]!
-  pixelReceiptRetryTimer = setTimeout(() => {
-    pixelReceiptRetryTimer = null
-    void retryFailedPixelReceipts()
-  }, delay)
-}
-
-async function retryFailedPixelReceipts() {
-  const pending = failedPixelReceiptRetries.splice(0)
-  for (const entry of pending) {
-    try {
-      await entry.send()
-    } catch {
-      if (entry.attempts < PIXEL_RECEIPT_RETRY_DELAYS.length - 1) {
-        queueFailedPixelReceiptRetry({ ...entry, attempts: entry.attempts + 1 })
-      }
-    }
-  }
-  scheduleFailedPixelReceiptRetry()
-}
-
-function pixelEventsFromResponse(response: unknown): MetaPixelInstruction[] {
+function pixelEventsFromResponse(response: unknown): unknown[] {
   const events = (response as { data?: { pixelEvents?: unknown } } | null)?.data?.pixelEvents
-  if (!Array.isArray(events)) return []
-  return events.filter(isMetaPixelInstruction)
+  return Array.isArray(events) ? events : []
 }
 
-function isMetaPixelInstruction(value: unknown): value is MetaPixelInstruction {
-  if (!value || typeof value !== 'object') return false
-  const event = value as Partial<MetaPixelInstruction>
-  return typeof event.deliveryId === 'string'
-    && (event.eventName === 'Contact' || event.eventName === 'Lead' || event.eventName === 'CompleteRegistration')
-    && typeof event.eventId === 'string'
-    && Boolean(event.payload && typeof event.payload === 'object' && !Array.isArray(event.payload))
-    && typeof event.receiptToken === 'string'
+function firstInstructionEventId(instructions: unknown[]) {
+  for (const value of instructions) {
+    if (!value || typeof value !== 'object') continue
+    const eventId = (value as { eventId?: unknown }).eventId
+    if (typeof eventId === 'string') return eventId
+  }
+  return ''
 }
 
 function trackAnalyticsCompatibility(
-  actionType: ConversionActionType,
   analytics: ReturnType<typeof useAnalytics>,
   options: TrackConversionOptions,
   eventId: string,
 ) {
-  if (actionType === 'contact') {
-    analytics.track('contact_method_click', {
-      eventId,
-      entityType: 'contact',
-      flush: true,
-      props: {
-        method_type: normalizeText(options.methodType, 80) || 'unknown',
-        action_type: normalizeText(options.metadata?.action_type, 40) || 'open_link',
-        location: normalizeText(options.actionTarget, 120) || 'floating_contact_panel',
-      },
-    })
-  }
-  if (actionType === 'complete_registration') {
-    analytics.track('register_success', {
-      eventId,
-      entityType: 'auth',
-      flush: true,
-      props: {
-        method: normalizeText(options.metadata?.method, 40) || 'email',
-      },
-    })
-  }
+  analytics.track('contact_method_click', {
+    eventId,
+    entityType: 'contact',
+    flush: true,
+    props: {
+      method_type: normalizeText(options.methodType, 80) || 'unknown',
+      action_type: normalizeText(options.metadata?.action_type, 40) || 'open_link',
+      location: normalizeText(options.actionTarget, 120) || 'floating_contact_panel',
+    },
+  })
 }
 
 function sanitizeConversionMetadata(input: Record<string, unknown>) {

@@ -54,6 +54,22 @@ export type RecordRegistrationInput = Omit<RecordActiveConversionInput, 'userId'
   userId: number
 }
 
+export type RecordRegistrationFactOnlyInput = Pick<
+  RecordRegistrationInput,
+  | 'userId'
+  | 'visitorId'
+  | 'sessionId'
+  | 'occurredAt'
+  | 'sourceChannel'
+  | 'sourceName'
+  | 'trackingSourceSlug'
+  | 'utmSource'
+  | 'utmMedium'
+  | 'utmCampaign'
+  | 'utmContent'
+  | 'metadata'
+>
+
 export interface RecordConversionContext {
   getMetaCapiUserData: () => MetaCapiUserData
 }
@@ -97,6 +113,57 @@ export async function recordRegistration(
   context?: RecordConversionContext,
 ) {
   return recordActiveConversion(env, { ...input, actionType: 'complete_registration' }, context)
+}
+
+export async function recordRegistrationFactOnly(
+  db: D1Database,
+  input: RecordRegistrationFactOnlyInput,
+): Promise<RecordConversionResult> {
+  const normalizedInput = normalizeConversionInput({
+    ...input,
+    actionType: 'complete_registration',
+    consentState: 'limited',
+  })
+  const occurredAt = normalizeIso(normalizedInput.occurredAt)
+  const date = occurredAt.slice(0, 10)
+  const dedupeKey = conversionDedupeKey(normalizedInput, date)
+  const existing = await findConversionByDedupeKey(db, dedupeKey)
+  if (existing) {
+    return {
+      id: existing.id,
+      actionType: 'complete_registration',
+      created: false,
+      duplicateOf: existing.id,
+      pixelEvents: [],
+    }
+  }
+
+  const id = generateId('conv')
+  const results = await db.batch([
+    conversionActionStatement(db, id, normalizedInput, occurredAt, date, dedupeKey),
+    conversionDailyStatement(db, normalizedInput, date, id),
+  ])
+  if (!d1Changed(results[0]!)) {
+    const concurrent = await findConversionByDedupeKey(db, dedupeKey)
+    if (concurrent) {
+      return {
+        id: concurrent.id,
+        actionType: 'complete_registration',
+        created: false,
+        duplicateOf: concurrent.id,
+        pixelEvents: [],
+      }
+    }
+    throw new Error('注册转化事实写入未确认')
+  }
+
+  return {
+    id,
+    actionType: 'complete_registration',
+    created: true,
+    duplicateOf: '',
+    pixelEvents: [],
+  }
 }
 
 async function recordActiveConversion(
@@ -294,7 +361,8 @@ function conversionDailyStatement(db: D1Database, input: RecordConversionInput, 
       action_count, unique_session_count, updated_at
     )
     SELECT ?, ?, ?, ?, ?, ?, 1, 1, datetime('now')
-    WHERE EXISTS (SELECT 1 FROM analytics_conversion_actions WHERE id = ?)
+    WHERE changes() = 1
+      AND EXISTS (SELECT 1 FROM analytics_conversion_actions WHERE id = ?)
     ON CONFLICT(date, action_type, source_channel, source_name, utm_campaign, utm_content)
     DO UPDATE SET
       action_count = analytics_conversion_daily.action_count + 1,

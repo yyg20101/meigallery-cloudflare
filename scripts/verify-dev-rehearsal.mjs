@@ -9,7 +9,7 @@ const LEGACY_DEV_WORKERS_SUBDOMAIN = '250770503'
 const DEV_REQUEST_TIMEOUT_MS = 20_000
 const META_POLL_TIMEOUT_MS = 30_000
 const META_POLL_INTERVAL_MS = 1_000
-const REQUIRED_META_EVENTS = ['Contact']
+const REQUIRED_META_EVENTS = ['Contact', 'CompleteRegistration']
 
 export async function runDevRehearsalVerification(options = {}) {
   const cwd = options.cwd || process.cwd()
@@ -29,8 +29,17 @@ export async function runDevRehearsalVerification(options = {}) {
   const sessionToken = crypto.randomBytes(32).toString('hex')
   const sessionHash = crypto.createHash('sha256').update(sessionToken).digest('hex')
   const sessionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+  const registrationEmail = `release-dev-${runSuffix}@example.test`
+  const registrationUsername = `release_dev_${runSuffix}`
+  const registrationPassword = `${crypto.randomBytes(18).toString('base64url')}Aa1!`
+  const registrationCode = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0')
+  const registrationCodeId = `evc_release_dev_${runSuffix}`
+  const registrationSettingBackupKey = `release_dev_previous_email_verification_${runSuffix}`
+  const sensitiveValues = [sessionToken, sessionHash, registrationEmail, registrationPassword, registrationCode]
   const today = new Date().toISOString().slice(0, 10)
   let shouldCleanupDevSmokeOwner = false
+  let shouldCleanupRegistrationFixture = false
+  let registeredUserId = null
 
   try {
     const migrateStep = await runCommandFn('corepack', [
@@ -78,7 +87,7 @@ export async function runDevRehearsalVerification(options = {}) {
       reportCommand: 'corepack pnpm --filter @meigallery/api exec wrangler d1 execute meigallery-db-dev --env dev --remote --command "INSERT INTO sessions (...)" --yes',
     })
     steps.push(cleanForReport(sessionStep))
-    if (sessionStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
+    if (sessionStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
     const apiDeployStep = await runCommandFn('corepack', [
       'pnpm', '--filter', '@meigallery/api', 'exec',
@@ -88,7 +97,7 @@ export async function runDevRehearsalVerification(options = {}) {
       name: 'dev-api-deploy',
     })
     steps.push(cleanForReport(apiDeployStep))
-    if (apiDeployStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
+    if (apiDeployStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
     const webDeployStep = await runCommandFn('corepack', [
       'pnpm', '--filter', '@meigallery/web', 'exec',
@@ -98,7 +107,7 @@ export async function runDevRehearsalVerification(options = {}) {
       name: 'dev-web-deploy',
     })
     steps.push(cleanForReport(webDeployStep))
-    if (webDeployStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
+    if (webDeployStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
     const [apiHealthStep, webReleaseStep] = await Promise.all([
       requestJsonStep(boundedFetch, 'dev-api-health', `${apiUrl}/api/health`, {}, (body) => {
@@ -114,7 +123,7 @@ export async function runDevRehearsalVerification(options = {}) {
     ])
     steps.push(apiHealthStep, webReleaseStep)
     if (apiHealthStep.status !== 'passed' || webReleaseStep.status !== 'passed') {
-      return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
+      return { steps, notes, artifacts, sensitiveValues }
     }
 
     const webHealthStep = await requestTextStep(boundedFetch, 'dev-web-health', webUrl, {}, (html) => {
@@ -127,11 +136,11 @@ export async function runDevRehearsalVerification(options = {}) {
       return 'Web 首页可访问，已检测到 Nuxt app root，且未发现旧 dev workers 子域'
     })
     steps.push(webHealthStep)
-    if (webHealthStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
+    if (webHealthStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
     const baselineResult = await readMetaDeliveryBaseline(boundedFetch, apiUrl, sessionToken, today)
     steps.push(baselineResult.step)
-    if (baselineResult.step.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
+    if (baselineResult.step.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
     const conversionVisitorId = `visitor_release_dev_${runSuffix}`
     const conversionSessionId = `session_release_dev_${runSuffix}`
@@ -159,11 +168,63 @@ export async function runDevRehearsalVerification(options = {}) {
       },
     })
     steps.push(contactStep)
-    if (contactStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
+    if (contactStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
+
+    shouldCleanupRegistrationFixture = true
+    const registrationFixtureSql = [
+      'INSERT OR REPLACE INTO site_settings (key, value, updated_at)',
+      `SELECT '${registrationSettingBackupKey}', value, datetime('now') FROM site_settings WHERE key = 'email_verification_enabled';`,
+      "UPDATE site_settings SET value = '\"true\"', updated_at = datetime('now') WHERE key = 'email_verification_enabled';",
+      'INSERT INTO email_verification_codes (id, email, code, purpose, expires_at, used, attempts, created_at)',
+      `VALUES ('${registrationCodeId}', '${registrationEmail}', '${registrationCode}', 'register', datetime('now', '+10 minutes'), 0, 0, datetime('now'));`,
+    ].join(' ')
+    const registrationFixtureStep = await runCommandFn('corepack', [
+      'pnpm', '--filter', '@meigallery/api', 'exec',
+      'wrangler', 'd1', 'execute', DEV_DB_NAME,
+      '--env', 'dev',
+      '--remote',
+      '--command', registrationFixtureSql,
+      '--yes',
+    ], {
+      cwd,
+      name: 'dev-registration-fixture',
+      reportCommand: 'corepack pnpm --filter @meigallery/api exec wrangler d1 execute meigallery-db-dev --env dev --remote --command "enable verification; insert one-time registration code" --yes',
+    })
+    steps.push(cleanForReport(registrationFixtureStep))
+    if (registrationFixtureStep.status !== 'passed') {
+      return { steps, notes, artifacts, sensitiveValues }
+    }
+
+    const registrationStep = await postRegistration(boundedFetch, apiUrl, {
+      email: registrationEmail,
+      username: registrationUsername,
+      password: registrationPassword,
+      code: registrationCode,
+      attribution: {
+        visitorId: conversionVisitorId,
+        sessionId: conversionSessionId,
+        occurredAt: new Date().toISOString(),
+        routeName: 'register',
+        path: '/register',
+        sourceChannel: 'ad',
+        sourceName: 'release-dev-fb',
+        trackingSourceSlug: 'release-dev-fb',
+        utmSource: 'release-dev-fb',
+        utmMedium: 'paid_social',
+        utmCampaign: 'release-dev-rehearsal',
+        utmContent: 'release-dev-registration',
+        consentState: 'granted',
+      },
+    })
+    steps.push(registrationStep.step)
+    if (registrationStep.step.status !== 'passed') {
+      return { steps, notes, artifacts, sensitiveValues }
+    }
+    registeredUserId = registrationStep.userId
 
     const analyticsIngestStep = await postAnalyticsBatch(boundedFetch, apiUrl, runSuffix)
     steps.push(analyticsIngestStep)
-    if (analyticsIngestStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
+    if (analyticsIngestStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
     const analyticsStep = await requestJsonStep(
       boundedFetch,
@@ -186,7 +247,7 @@ export async function runDevRehearsalVerification(options = {}) {
       },
     )
     steps.push(analyticsStep)
-    if (analyticsStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
+    if (analyticsStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
     const attributionStep = await requestJsonStep(
       boundedFetch,
@@ -206,11 +267,12 @@ export async function runDevRehearsalVerification(options = {}) {
           throw new Error('attribution conversions 返回了非 release-dev-fb 的来源数据')
         }
         if (Number(matched.contact_count ?? 0) < 1) throw new Error('contact_count 未写入')
-        return `归因来源查询通过，contact=${matched.contact_count}`
+        if (Number(matched.complete_registration_count ?? 0) < 1) throw new Error('complete_registration_count 未写入')
+        return `归因来源查询通过，contact=${matched.contact_count}, complete_registration=${matched.complete_registration_count}`
       },
     )
     steps.push(attributionStep)
-    if (attributionStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
+    if (attributionStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
     const metaDeliveryStep = await pollMetaDeliveries(boundedFetch, apiUrl, sessionToken, today, {
       timeoutMs: options.pollTimeoutMs ?? META_POLL_TIMEOUT_MS,
@@ -218,7 +280,7 @@ export async function runDevRehearsalVerification(options = {}) {
       baseline: baselineResult.counts,
     })
     steps.push(metaDeliveryStep)
-    if (metaDeliveryStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
+    if (metaDeliveryStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
     const metaStep = await requestJsonStep(
       boundedFetch,
@@ -240,11 +302,20 @@ export async function runDevRehearsalVerification(options = {}) {
     )
     steps.push(metaStep)
 
-    return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
+    return { steps, notes, artifacts, sensitiveValues }
   } finally {
     if (shouldCleanupDevSmokeOwner) {
       const cleanupSql = [
         "DELETE FROM sessions WHERE id = 'ses_release_dev_rehearsal';",
+        ...(registeredUserId ? [
+          `DELETE FROM sessions WHERE user_id = ${registeredUserId};`,
+          `UPDATE users SET status = 'disabled', updated_at = datetime('now') WHERE id = ${registeredUserId};`,
+        ] : []),
+        ...(shouldCleanupRegistrationFixture ? [
+          `DELETE FROM email_verification_codes WHERE id = '${registrationCodeId}';`,
+          `UPDATE site_settings SET value = COALESCE((SELECT value FROM site_settings WHERE key = '${registrationSettingBackupKey}'), '\"false\"'), updated_at = datetime('now') WHERE key = 'email_verification_enabled';`,
+          `DELETE FROM site_settings WHERE key = '${registrationSettingBackupKey}';`,
+        ] : []),
         "UPDATE users SET status = 'disabled', updated_at = datetime('now') WHERE id = 1 AND email = 'release-dev-owner@example.test';",
       ].join(' ')
       const cleanupStep = await runCommandFn('corepack', [
@@ -257,7 +328,7 @@ export async function runDevRehearsalVerification(options = {}) {
       ], {
         cwd,
         name: 'dev-smoke-owner-cleanup',
-        reportCommand: 'corepack pnpm --filter @meigallery/api exec wrangler d1 execute meigallery-db-dev --env dev --remote --command "DELETE smoke session; disable release-dev-owner" --yes',
+        reportCommand: 'corepack pnpm --filter @meigallery/api exec wrangler d1 execute meigallery-db-dev --env dev --remote --command "cleanup smoke sessions and registration fixture; disable smoke users" --yes',
       })
       steps.push(cleanForReport(cleanupStep))
       if (cleanupStep.status === 'passed') notes.push('dev-smoke-owner-disabled-after-run')
@@ -316,6 +387,24 @@ async function postConversion(fetchFn, apiUrl, stepName, payload) {
     }
     return `${payload.actionType} 已写入，created=${String(body?.data?.created)}`
   })
+}
+
+async function postRegistration(fetchFn, apiUrl, payload) {
+  let userId = null
+  const step = await requestJsonStep(fetchFn, 'dev-auth-register', `${apiUrl}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }, (body) => {
+    if (!Number.isInteger(body?.id) || Number(body.id) <= 0) throw new Error('注册响应缺少合法用户 ID')
+    if (!Array.isArray(body?.pixelEvents)) throw new Error('注册响应缺少 Pixel 指令数组')
+    if (!body.pixelEvents.some(event => event?.eventName === 'CompleteRegistration')) {
+      throw new Error('注册响应缺少 CompleteRegistration Pixel 指令')
+    }
+    userId = Number(body.id)
+    return '真实注册 API 已创建用户并返回 CompleteRegistration Pixel 指令'
+  })
+  return { step, userId }
 }
 
 async function postAnalyticsBatch(fetchFn, apiUrl, runSuffix) {
@@ -457,7 +546,7 @@ async function pollMetaDeliveries(fetchFn, apiUrl, sessionToken, today, options)
     durationMs: Date.now() - startedAt,
     command,
     exitCode: null,
-    summary: truncateSummary(`30 秒内未等到 Contact CAPI sent 基线增量：${lastSummary}`),
+    summary: truncateSummary(`30 秒内未等到必需 Meta CAPI sent 基线增量：${lastSummary}`),
   }
 }
 
