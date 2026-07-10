@@ -85,6 +85,8 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
     error_code: string
     error_message: string
     attempt_count: number
+    tracking_mode: 'test'
+    duplicate_suppressed_at: string | null
   } | null = null
   let pendingDailyCount = 0
   let pendingDailyCreated = 0
@@ -149,7 +151,7 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
               meta: { rows_read: 1, rows_written: 0, duration: 1 },
             }
           }
-          if (sql.includes('AS pixel_attempted_count') && sql.includes('AS capi_sent_count')) {
+          if (sql.includes('AS pixel_attempted_count') && sql.includes('AS capi_sent_count') && !sql.includes('GROUP BY date')) {
             return {
               results: [{
                 pixel_attempted_count: readiness.pixelAttemptedCount,
@@ -158,6 +160,7 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
                 capi_sent_count: readiness.capiSentCount,
                 capi_failed_count: 0,
                 capi_skipped_count: 0,
+                capi_duplicate_suppressed_count: 1,
                 duplicate_suppressed_count: 1,
               } as T],
               meta: { rows_read: 1, rows_written: 0, duration: 1 },
@@ -191,7 +194,7 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
           if (sql.includes('FROM analytics_conversion_daily') && sql.includes('GROUP BY date')) {
             return {
               results: [
-                { date: '2026-07-09', contact_count: 3, lead_count: 1, complete_registration_count: 1, start_trial_count: 0, membership_grant_count: 0 },
+                { date: '2026-07-09', contact_count: 3, lead_count: 1, complete_registration_count: 1, membership_grant_count: 0 },
               ] as T[],
               meta: { rows_read: 1, rows_written: 0, duration: 1 },
             }
@@ -208,7 +211,7 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
           if (sql.includes('FROM analytics_conversion_daily') && sql.includes('GROUP BY source_channel')) {
             return {
               results: [
-                { source_channel: 'ad', source_name: 'ad-a', utm_campaign: 'july', utm_content: 'chat-a', contact_count: 3, lead_count: 1, complete_registration_count: 1, start_trial_count: 0, membership_grant_count: 0 },
+                { source_channel: 'ad', source_name: 'ad-a', utm_campaign: 'july', utm_content: 'chat-a', contact_count: 3, lead_count: 1, complete_registration_count: 1, membership_grant_count: 0 },
               ] as T[],
               meta: { rows_read: 2, rows_written: 0, duration: 1 },
             }
@@ -222,7 +225,7 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
           if (sql.includes('FROM analytics_conversion_daily') && !sql.includes('FROM analytics_tracking_sources')) {
             return {
               results: [
-                { contact_count: 3, lead_count: 1, complete_registration_count: 1, start_trial_count: 0, membership_grant_count: 0 },
+                { contact_count: 3, lead_count: 1, complete_registration_count: 1, membership_grant_count: 0 },
               ] as T[],
               meta: { rows_read: 1, rows_written: 0, duration: 1 },
             }
@@ -272,7 +275,16 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
           if (sql.includes('FROM analytics_conversion_delivery_daily') && sql.includes('GROUP BY date')) {
             return {
               results: [
-                { date: '2026-07-09', sent_count: 2, failed_count: 0, skipped_count: 1, duplicate_suppressed_count: 1 },
+                {
+                  date: '2026-07-09',
+                  pixel_attempted_count: 2,
+                  pixel_pending_count: 0,
+                  pixel_skipped_count: 1,
+                  capi_sent_count: 1,
+                  capi_failed_count: 0,
+                  capi_skipped_count: 0,
+                  capi_duplicate_suppressed_count: 1,
+                },
               ] as T[],
               meta: { rows_read: 1, rows_written: 0, duration: 1 },
             }
@@ -324,7 +336,6 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
                   contact_count: 3,
                   lead_count: 1,
                   complete_registration_count: 1,
-                  start_trial_count: 0,
                   conversion_membership_grant_count: 0,
                 },
               ] as T[],
@@ -361,7 +372,6 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
               contact_count: 3,
               lead_count: 1,
               complete_registration_count: 1,
-              start_trial_count: 0,
               membership_grant_count: 0,
             } as T
           }
@@ -408,6 +418,8 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
               error_code: '',
               error_message: '',
               attempt_count: 0,
+              tracking_mode: 'test',
+              duplicate_suppressed_at: null,
             }
           }
           if (sql.includes('UPDATE analytics_conversion_deliveries') && testDelivery) {
@@ -512,10 +524,38 @@ describe('后台归因中心 API', () => {
     expect(body.range).toMatchObject({ from: '2026-07-09', to: '2026-07-09', days: 1 })
     expect(body.usage.rowsRead).toBeGreaterThan(0)
     expect(body.data.totals.contact_count).toBe(3)
-    expect(body.data.meta.sent_count).toBe(2)
+    expect(body.data.meta).toMatchObject({
+      pixel_attempted_count: 2,
+      pixel_pending_count: 0,
+      pixel_skipped_count: 0,
+      capi_sent_count: 1,
+      capi_failed_count: 0,
+      capi_skipped_count: 0,
+      capi_duplicate_suppressed_count: 1,
+    })
     expect(body.data.duplicates.duplicate_suppressed_count).toBe(1)
     expect(body.data.trend[0]).toMatchObject({ date: '2026-07-09', contact_count: 3 })
+    expect(body.data.metaTrend[0]).toMatchObject({ date: '2026-07-09', capi_failed_count: 0, failed_count: 0 })
     expect(Array.isArray(body.data.risks)).toBe(true)
+  })
+
+  it('总览 Meta 汇总严格按 Pixel/CAPI 渠道解释状态', async () => {
+    const db = createAttributionDb()
+    const res = await createApp('admin').request('/api/admin/attribution/overview?from=2026-07-09&to=2026-07-09', {}, { DB: db } as unknown as Bindings)
+    const body = await res.json()
+    const totalsSql = db.calls.find(call => call.sql.includes('AS capi_duplicate_suppressed_count') && !call.sql.includes('GROUP BY date'))?.sql ?? ''
+    const trendSql = db.calls.find(call => call.sql.includes('AS capi_duplicate_suppressed_count') && call.sql.includes('GROUP BY date'))?.sql ?? ''
+    const lastSentSql = db.calls.find(call => call.sql.includes('MAX(sent_at) AS last_sent_at'))?.sql ?? ''
+
+    expect(res.status).toBe(200)
+    expect(body.data.meta.capi_sent_count).toBe(1)
+    expect(body.data.meta).not.toHaveProperty('sent_count')
+    expect(totalsSql).toContain("channel = 'meta_pixel' AND status = 'attempted'")
+    expect(totalsSql).not.toContain("channel = 'meta_pixel' AND status = 'sent'")
+    expect(totalsSql).toContain("channel = 'meta_capi' AND status = 'sent'")
+    expect(trendSql).toContain("channel = 'meta_capi' AND status = 'sent'")
+    expect(lastSentSql).toContain("channel = 'meta_capi'")
+    expect(lastSentSql).toContain("status = 'sent'")
   })
 
   it('返回转化动作、来源和最近样本', async () => {
@@ -526,6 +566,27 @@ describe('后台归因中心 API', () => {
     expect(body.data.byAction[0]).toMatchObject({ action_type: 'contact', action_count: 3 })
     expect(body.data.bySource[0]).toMatchObject({ source_name: 'ad-a', contact_count: 3 })
     expect(body.data.samples[0]).toMatchObject({ id: 'conv_1', action_type: 'contact' })
+    expect(JSON.stringify(body.data)).not.toContain('start_trial')
+  })
+
+  it('默认 overview/conversions/links SQL 与响应完全排除历史 start_trial', async () => {
+    const db = createAttributionDb()
+    const app = createApp('admin')
+    const env = { DB: db } as unknown as Bindings
+    const [overview, conversions, links] = await Promise.all([
+      app.request('/api/admin/attribution/overview?from=2026-07-09&to=2026-07-09', {}, env),
+      app.request('/api/admin/attribution/conversions?from=2026-07-09&to=2026-07-09', {}, env),
+      app.request('/api/admin/attribution/links?from=2026-07-09&to=2026-07-09', {}, env),
+    ])
+    const bodies = await Promise.all([overview.json(), conversions.json(), links.json()])
+    const currentReportCalls = db.calls.filter(call => call.sql.includes('FROM analytics_conversion_daily'))
+
+    expect(bodies.every(body => !JSON.stringify(body.data).includes('start_trial'))).toBe(true)
+    expect(currentReportCalls.length).toBeGreaterThan(0)
+    expect(currentReportCalls.every(call => call.sql.includes("action_type <> 'start_trial'"))).toBe(true)
+    expect(currentReportCalls.every(call => !call.sql.includes('AS start_trial_count'))).toBe(true)
+    const sampleSql = db.calls.find(call => call.sql.includes('FROM analytics_conversion_actions') && call.sql.includes('LIMIT 100'))?.sql ?? ''
+    expect(sampleSql).toContain("action_type <> 'start_trial'")
   })
 
   it('转化接口支持按 sourceCode 过滤', async () => {
@@ -558,6 +619,7 @@ describe('后台归因中心 API', () => {
     expect(linkSql?.sql).toContain('GROUP BY source_name')
     expect(linkSql?.sql).not.toContain('cm.utm_campaign')
     expect(linkSql?.sql).not.toContain('cm.utm_content')
+    expect(body.data.links[0]).not.toHaveProperty('startTrialCount')
   })
 
   it('返回 Meta 投递状态和配置', async () => {
@@ -646,6 +708,16 @@ describe('后台归因中心 API', () => {
       expect.objectContaining({ key: 'meta_resources_verification', level: 'blocker', ok: true }),
       expect.objectContaining({ key: 'pending_too_long', level: 'warning', ok: false }),
     ]))
+  })
+
+  it('当前范围只含历史 start_trial 时 conversion ledger blocker 不通过', async () => {
+    const { db, body } = await requestReadiness({ readiness: { actionCount: 0 } })
+    const ledger = body.data.checks.find((item: { key: string }) => item.key === 'conversion_ledger')
+    const ledgerSql = db.calls.find(call => call.sql.includes('SUM(action_count)') && call.sql.includes('analytics_conversion_daily'))?.sql ?? ''
+
+    expect(ledger).toMatchObject({ key: 'conversion_ledger', level: 'blocker', ok: false })
+    expect(body.data.ready).toBe(false)
+    expect(ledgerSql).toContain("action_type <> 'start_trial'")
   })
 
   it.each([

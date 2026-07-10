@@ -38,10 +38,10 @@ adminAttributionRoutes.get('/overview', async (c) => {
         COALESCE(SUM(CASE WHEN action_type = 'contact' THEN action_count ELSE 0 END), 0) AS contact_count,
         COALESCE(SUM(CASE WHEN action_type = 'lead' THEN action_count ELSE 0 END), 0) AS lead_count,
         COALESCE(SUM(CASE WHEN action_type = 'complete_registration' THEN action_count ELSE 0 END), 0) AS complete_registration_count,
-        COALESCE(SUM(CASE WHEN action_type = 'start_trial' THEN action_count ELSE 0 END), 0) AS start_trial_count,
         COALESCE(SUM(CASE WHEN action_type = 'membership_grant' THEN action_count ELSE 0 END), 0) AS membership_grant_count
       FROM analytics_conversion_daily
       WHERE date BETWEEN ? AND ?
+        AND action_type <> 'start_trial'
     `, [range.from, range.to]),
     queryAll(c.env.DB, `
       SELECT
@@ -49,29 +49,35 @@ adminAttributionRoutes.get('/overview', async (c) => {
         COALESCE(SUM(CASE WHEN action_type = 'contact' THEN action_count ELSE 0 END), 0) AS contact_count,
         COALESCE(SUM(CASE WHEN action_type = 'lead' THEN action_count ELSE 0 END), 0) AS lead_count,
         COALESCE(SUM(CASE WHEN action_type = 'complete_registration' THEN action_count ELSE 0 END), 0) AS complete_registration_count,
-        COALESCE(SUM(CASE WHEN action_type = 'start_trial' THEN action_count ELSE 0 END), 0) AS start_trial_count,
         COALESCE(SUM(CASE WHEN action_type = 'membership_grant' THEN action_count ELSE 0 END), 0) AS membership_grant_count
       FROM analytics_conversion_daily
       WHERE date BETWEEN ? AND ?
+        AND action_type <> 'start_trial'
       GROUP BY date
       ORDER BY date ASC
     `, [range.from, range.to]),
     queryFirst(c.env.DB, `
       SELECT
-        COALESCE(SUM(CASE WHEN status = 'sent' THEN delivery_count ELSE 0 END), 0) AS sent_count,
-        COALESCE(SUM(CASE WHEN status = 'failed' THEN delivery_count ELSE 0 END), 0) AS failed_count,
-        COALESCE(SUM(CASE WHEN status = 'skipped' THEN delivery_count ELSE 0 END), 0) AS skipped_count,
-        COALESCE(SUM(CASE WHEN status = 'duplicate_suppressed' THEN delivery_count ELSE 0 END), 0) AS duplicate_suppressed_count
+        COALESCE(SUM(CASE WHEN channel = 'meta_pixel' AND status = 'attempted' THEN delivery_count ELSE 0 END), 0) AS pixel_attempted_count,
+        COALESCE(SUM(CASE WHEN channel = 'meta_pixel' AND status = 'pending' THEN delivery_count ELSE 0 END), 0) AS pixel_pending_count,
+        COALESCE(SUM(CASE WHEN channel = 'meta_pixel' AND status = 'skipped' THEN delivery_count ELSE 0 END), 0) AS pixel_skipped_count,
+        COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'sent' THEN delivery_count ELSE 0 END), 0) AS capi_sent_count,
+        COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'failed' THEN delivery_count ELSE 0 END), 0) AS capi_failed_count,
+        COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'skipped' THEN delivery_count ELSE 0 END), 0) AS capi_skipped_count,
+        COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'duplicate_suppressed' THEN delivery_count ELSE 0 END), 0) AS capi_duplicate_suppressed_count
       FROM analytics_conversion_delivery_daily
       WHERE date BETWEEN ? AND ?
     `, [range.from, range.to]),
     queryAll(c.env.DB, `
       SELECT
         date,
-        COALESCE(SUM(CASE WHEN status = 'sent' THEN delivery_count ELSE 0 END), 0) AS sent_count,
-        COALESCE(SUM(CASE WHEN status = 'failed' THEN delivery_count ELSE 0 END), 0) AS failed_count,
-        COALESCE(SUM(CASE WHEN status = 'skipped' THEN delivery_count ELSE 0 END), 0) AS skipped_count,
-        COALESCE(SUM(CASE WHEN status = 'duplicate_suppressed' THEN delivery_count ELSE 0 END), 0) AS duplicate_suppressed_count
+        COALESCE(SUM(CASE WHEN channel = 'meta_pixel' AND status = 'attempted' THEN delivery_count ELSE 0 END), 0) AS pixel_attempted_count,
+        COALESCE(SUM(CASE WHEN channel = 'meta_pixel' AND status = 'pending' THEN delivery_count ELSE 0 END), 0) AS pixel_pending_count,
+        COALESCE(SUM(CASE WHEN channel = 'meta_pixel' AND status = 'skipped' THEN delivery_count ELSE 0 END), 0) AS pixel_skipped_count,
+        COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'sent' THEN delivery_count ELSE 0 END), 0) AS capi_sent_count,
+        COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'failed' THEN delivery_count ELSE 0 END), 0) AS capi_failed_count,
+        COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'skipped' THEN delivery_count ELSE 0 END), 0) AS capi_skipped_count,
+        COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'duplicate_suppressed' THEN delivery_count ELSE 0 END), 0) AS capi_duplicate_suppressed_count
       FROM analytics_conversion_delivery_daily
       WHERE date BETWEEN ? AND ?
       GROUP BY date
@@ -80,7 +86,9 @@ adminAttributionRoutes.get('/overview', async (c) => {
     queryFirst(c.env.DB, `
       SELECT MAX(sent_at) AS last_sent_at
       FROM analytics_conversion_deliveries
-      WHERE sent_at IS NOT NULL
+      WHERE channel = 'meta_capi'
+        AND status = 'sent'
+        AND sent_at IS NOT NULL
     `, []),
     queryFirst(c.env.DB, `
       SELECT COUNT(*) AS duplicate_action_count
@@ -92,23 +100,29 @@ adminAttributionRoutes.get('/overview', async (c) => {
 
   const totalRow = totals.rows[0] ?? {}
   const metaRow = metaTotals.rows[0] ?? {}
-  const duplicateSuppressedCount = numberValue(metaRow.duplicate_suppressed_count)
-  const sentCount = numberValue(metaRow.sent_count)
-  const failedCount = numberValue(metaRow.failed_count)
-  const skippedCount = numberValue(metaRow.skipped_count)
+  const pixelAttemptedCount = numberValue(metaRow.pixel_attempted_count)
+  const pixelPendingCount = numberValue(metaRow.pixel_pending_count)
+  const pixelSkippedCount = numberValue(metaRow.pixel_skipped_count)
+  const capiSentCount = numberValue(metaRow.capi_sent_count)
+  const capiFailedCount = numberValue(metaRow.capi_failed_count)
+  const capiSkippedCount = numberValue(metaRow.capi_skipped_count)
+  const duplicateSuppressedCount = numberValue(metaRow.capi_duplicate_suppressed_count)
   const duplicateActionCount = numberValue((duplicateActions.rows[0] ?? {}).duplicate_action_count)
-  const deliveryTotal = sentCount + failedCount + skippedCount + duplicateSuppressedCount
+  const capiDeliveryTotal = capiSentCount + capiFailedCount + capiSkippedCount + duplicateSuppressedCount
   const meta = {
-    sent_count: sentCount,
-    failed_count: failedCount,
-    skipped_count: skippedCount,
-    duplicate_suppressed_count: duplicateSuppressedCount,
+    pixel_attempted_count: pixelAttemptedCount,
+    pixel_pending_count: pixelPendingCount,
+    pixel_skipped_count: pixelSkippedCount,
+    capi_sent_count: capiSentCount,
+    capi_failed_count: capiFailedCount,
+    capi_skipped_count: capiSkippedCount,
+    capi_duplicate_suppressed_count: duplicateSuppressedCount,
     last_sent_at: String((lastSentAt.rows[0] ?? {}).last_sent_at ?? ''),
   }
   const duplicates = {
     duplicate_suppressed_count: duplicateSuppressedCount,
     duplicate_action_count: duplicateActionCount,
-    duplicate_rate: deliveryTotal > 0 ? roundRate(duplicateSuppressedCount / deliveryTotal) : 0,
+    duplicate_rate: capiDeliveryTotal > 0 ? roundRate(duplicateSuppressedCount / capiDeliveryTotal) : 0,
   }
 
   return c.json({
@@ -118,7 +132,7 @@ adminAttributionRoutes.get('/overview', async (c) => {
       totals: normalizeTotals(totalRow),
       trend: trend.rows.map(normalizeTrendRow),
       meta,
-      metaTrend: metaTrend.rows,
+      metaTrend: metaTrend.rows.map(normalizeMetaTrendRow),
       duplicates,
       risks: buildRisks(normalizeTotals(totalRow), meta, duplicates),
     },
@@ -130,11 +144,11 @@ adminAttributionRoutes.get('/conversions', async (c) => {
   if (range instanceof Response) return range
   const sourceFilter = readAttributionSourceFilter(c)
   const dailySourceWhere = sourceFilter
-    ? 'date BETWEEN ? AND ? AND source_name = ?'
-    : 'date BETWEEN ? AND ?'
+    ? "date BETWEEN ? AND ? AND action_type <> 'start_trial' AND source_name = ?"
+    : "date BETWEEN ? AND ? AND action_type <> 'start_trial'"
   const actionSourceWhere = sourceFilter
-    ? 'date BETWEEN ? AND ? AND (source_name = ? OR tracking_source_slug = ?)'
-    : 'date BETWEEN ? AND ?'
+    ? "date BETWEEN ? AND ? AND action_type <> 'start_trial' AND (source_name = ? OR tracking_source_slug = ?)"
+    : "date BETWEEN ? AND ? AND action_type <> 'start_trial'"
   const dailySourceParams = sourceFilter ? [range.from, range.to, sourceFilter] : [range.from, range.to]
   const actionSourceParams = sourceFilter ? [range.from, range.to, sourceFilter, sourceFilter] : [range.from, range.to]
 
@@ -155,7 +169,6 @@ adminAttributionRoutes.get('/conversions', async (c) => {
         COALESCE(SUM(CASE WHEN action_type = 'contact' THEN action_count ELSE 0 END), 0) AS contact_count,
         COALESCE(SUM(CASE WHEN action_type = 'lead' THEN action_count ELSE 0 END), 0) AS lead_count,
         COALESCE(SUM(CASE WHEN action_type = 'complete_registration' THEN action_count ELSE 0 END), 0) AS complete_registration_count,
-        COALESCE(SUM(CASE WHEN action_type = 'start_trial' THEN action_count ELSE 0 END), 0) AS start_trial_count,
         COALESCE(SUM(CASE WHEN action_type = 'membership_grant' THEN action_count ELSE 0 END), 0) AS membership_grant_count
       FROM analytics_conversion_daily
       WHERE ${dailySourceWhere}
@@ -190,8 +203,8 @@ adminAttributionRoutes.get('/links', async (c) => {
   if (range instanceof Response) return range
   const sourceFilter = readAttributionSourceFilter(c)
   const conversionMetricsWhere = sourceFilter
-    ? 'date BETWEEN ? AND ? AND source_name = ?'
-    : 'date BETWEEN ? AND ?'
+    ? "date BETWEEN ? AND ? AND action_type <> 'start_trial' AND source_name = ?"
+    : "date BETWEEN ? AND ? AND action_type <> 'start_trial'"
   const linksSourceWhere = sourceFilter
     ? 'WHERE ats.slug = ? OR ats.utm_source = ?'
     : ''
@@ -206,7 +219,6 @@ adminAttributionRoutes.get('/links', async (c) => {
         COALESCE(SUM(CASE WHEN action_type = 'contact' THEN action_count ELSE 0 END), 0) AS contact_count,
         COALESCE(SUM(CASE WHEN action_type = 'lead' THEN action_count ELSE 0 END), 0) AS lead_count,
         COALESCE(SUM(CASE WHEN action_type = 'complete_registration' THEN action_count ELSE 0 END), 0) AS complete_registration_count,
-        COALESCE(SUM(CASE WHEN action_type = 'start_trial' THEN action_count ELSE 0 END), 0) AS start_trial_count,
         COALESCE(SUM(CASE WHEN action_type = 'membership_grant' THEN action_count ELSE 0 END), 0) AS conversion_membership_grant_count
       FROM analytics_conversion_daily
       WHERE ${conversionMetricsWhere}
@@ -227,7 +239,6 @@ adminAttributionRoutes.get('/links', async (c) => {
       COALESCE(MAX(cm.contact_count), 0) AS contact_count,
       COALESCE(MAX(cm.lead_count), 0) AS lead_count,
       COALESCE(MAX(cm.complete_registration_count), 0) AS complete_registration_count,
-      COALESCE(MAX(cm.start_trial_count), 0) AS start_trial_count,
       COALESCE(MAX(cm.conversion_membership_grant_count), 0) AS conversion_membership_grant_count
     FROM analytics_tracking_sources ats
     LEFT JOIN analytics_daily_sources ads
@@ -441,6 +452,7 @@ adminAttributionRoutes.get('/readiness', async (c) => {
       SELECT COALESCE(SUM(action_count), 0) AS action_count
       FROM analytics_conversion_daily
       WHERE date BETWEEN ? AND ?
+        AND action_type <> 'start_trial'
     `, [range.from, range.to]),
       queryFirst(c.env.DB, `
         SELECT COUNT(*) AS retry_exhausted_count
@@ -917,7 +929,6 @@ function normalizeTotals(row: Row) {
     contact_count: numberValue(row.contact_count),
     lead_count: numberValue(row.lead_count),
     complete_registration_count: numberValue(row.complete_registration_count),
-    start_trial_count: numberValue(row.start_trial_count),
     membership_grant_count: numberValue(row.membership_grant_count),
   }
 }
@@ -929,16 +940,31 @@ function normalizeTrendRow(row: Row) {
   }
 }
 
+function normalizeMetaTrendRow(row: Row) {
+  return {
+    date: String(row.date ?? ''),
+    pixel_attempted_count: numberValue(row.pixel_attempted_count),
+    pixel_pending_count: numberValue(row.pixel_pending_count),
+    pixel_skipped_count: numberValue(row.pixel_skipped_count),
+    capi_sent_count: numberValue(row.capi_sent_count),
+    capi_failed_count: numberValue(row.capi_failed_count),
+    capi_skipped_count: numberValue(row.capi_skipped_count),
+    capi_duplicate_suppressed_count: numberValue(row.capi_duplicate_suppressed_count),
+    // 现有趋势组件读取该键；值只来自上面的 CAPI failed 聚合。
+    failed_count: numberValue(row.capi_failed_count),
+  }
+}
+
 function buildRisks(
   totals: ReturnType<typeof normalizeTotals>,
-  meta: { failed_count: number; skipped_count: number },
+  meta: { capi_failed_count: number; pixel_skipped_count: number; capi_skipped_count: number },
   duplicates: { duplicate_rate: number },
 ) {
   const risks: Array<{ key: string; level: 'info' | 'warning'; message: string }> = []
   const conversionTotal = Object.values(totals).reduce((sum, value) => sum + value, 0)
   if (conversionTotal === 0) risks.push({ key: 'conversion_empty', level: 'info', message: '当前范围暂无转化数据' })
-  if (meta.failed_count > 0) risks.push({ key: 'meta_failed', level: 'warning', message: 'Meta 投递存在失败记录' })
-  if (meta.skipped_count > 0) risks.push({ key: 'meta_skipped', level: 'info', message: '部分 Meta 投递被跳过' })
+  if (meta.capi_failed_count > 0) risks.push({ key: 'meta_failed', level: 'warning', message: 'Meta CAPI 投递存在失败记录' })
+  if (meta.pixel_skipped_count + meta.capi_skipped_count > 0) risks.push({ key: 'meta_skipped', level: 'info', message: '部分 Meta 投递被跳过' })
   if (duplicates.duplicate_rate >= 0.1) risks.push({ key: 'duplicate_high', level: 'warning', message: '重复抑制比例偏高' })
   return risks
 }
@@ -972,7 +998,6 @@ function serializeAttributionLink(row: Row) {
     contactCount: numberValue(row.contact_count),
     leadCount: numberValue(row.lead_count),
     completeRegistrationCount: numberValue(row.complete_registration_count),
-    startTrialCount: numberValue(row.start_trial_count),
     conversionMembershipGrantCount: numberValue(row.conversion_membership_grant_count),
   }
   return {

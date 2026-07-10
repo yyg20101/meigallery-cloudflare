@@ -12,6 +12,7 @@ export default defineNuxtConfig({
   nitro: {
     preset: 'cloudflare-module',
     handlers: [
+      { route: '/__release', handler: '~/server/routes/__release' },
       { route: '/robots.txt', handler: '~/server/routes/robots' },
       { route: '/sitemap.xml', handler: '~/server/routes/sitemap' },
     ],

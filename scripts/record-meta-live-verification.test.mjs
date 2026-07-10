@@ -13,6 +13,28 @@ const RAW_IDS = {
   CompleteRegistration: 'registration-browser-server-raw-id',
 }
 
+function verifiedRuntimeOptions(overrides = {}) {
+  return {
+    env: {
+      VERIFY_DEV_API_URL: 'https://api-dev.example.workers.dev',
+      VERIFY_DEV_WEB_URL: 'https://web-dev.example.workers.dev',
+    },
+    fetch: async url => {
+      const pathname = new URL(String(url)).pathname
+      return new Response(JSON.stringify({
+        status: 'ok',
+        db: pathname === '/api/health' ? 'ok' : undefined,
+        environment: 'dev',
+        commit: COMMIT,
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    },
+    ...overrides,
+  }
+}
+
 function validInput() {
   return {
     confirmedBy: 'owner',
@@ -84,6 +106,7 @@ describe('Meta live evidence 人工录入', () => {
 
     await assert.rejects(async () => {
       await recordMetaLiveVerification({
+        ...verifiedRuntimeOptions(),
         ask: async () => answers.shift(),
         output: message => output.push(String(message)),
         getCommit: async () => COMMIT,
@@ -123,6 +146,7 @@ describe('Meta live evidence 人工录入', () => {
       let writeCount = 0
       await assert.rejects(async () => {
         await recordMetaLiveVerification({
+          ...verifiedRuntimeOptions(),
           ask: async () => answers.shift(),
           output: () => {},
           getCommit: async () => COMMIT,
@@ -134,5 +158,73 @@ describe('Meta live evidence 人工录入', () => {
       }, /确认人|confirmedBy|敏感/)
       assert.equal(writeCount, 0)
     }
+  })
+
+  it('任一 Worker 仍是旧 commit 时不进入录入且不写 evidence', async () => {
+    let askCount = 0
+    let writeCount = 0
+
+    await assert.rejects(() => recordMetaLiveVerification({
+      ...verifiedRuntimeOptions({
+        fetch: async url => new Response(JSON.stringify({
+          status: 'ok',
+          environment: 'dev',
+          commit: new URL(String(url)).pathname === '/__release'
+            ? 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+            : COMMIT,
+        }), { status: 200 }),
+      }),
+      ask: async () => {
+        askCount += 1
+        return ''
+      },
+      getCommit: async () => COMMIT,
+      writeEvidence: async () => {
+        writeCount += 1
+      },
+    }), /Web 发布 commit 与本地 Git HEAD 不一致/)
+
+    assert.equal(askCount, 0)
+    assert.equal(writeCount, 0)
+  })
+
+  it('发布身份 endpoint 缺失时不写 evidence，错误不泄露 URL 凭证或响应原文', async () => {
+    const secretResponse = 'raw-response-with-secret'
+    let writeCount = 0
+    let caught
+
+    try {
+      await recordMetaLiveVerification({
+        ...verifiedRuntimeOptions({
+          fetch: async url => new URL(String(url)).pathname === '/__release'
+            ? new Response(secretResponse, { status: 404 })
+            : new Response(JSON.stringify({ status: 'ok', db: 'ok', environment: 'dev', commit: COMMIT }), { status: 200 }),
+        }),
+        ask: async () => '',
+        getCommit: async () => COMMIT,
+        writeEvidence: async () => {
+          writeCount += 1
+        },
+      })
+    } catch (error) {
+      caught = error
+    }
+
+    assert.match(String(caught?.message || caught), /Web 发布身份端点不可用/)
+    assert.equal(String(caught?.message || caught).includes(secretResponse), false)
+    assert.equal(writeCount, 0)
+  })
+
+  it('缺少 VERIFY_DEV URL 时在录入前失败', async () => {
+    let writeCount = 0
+    await assert.rejects(() => recordMetaLiveVerification({
+      env: {},
+      ask: async () => '',
+      getCommit: async () => COMMIT,
+      writeEvidence: async () => {
+        writeCount += 1
+      },
+    }), /VERIFY_DEV_API_URL/)
+    assert.equal(writeCount, 0)
   })
 })

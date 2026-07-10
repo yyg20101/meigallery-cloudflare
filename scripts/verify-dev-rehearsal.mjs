@@ -100,13 +100,22 @@ export async function runDevRehearsalVerification(options = {}) {
     steps.push(cleanForReport(webDeployStep))
     if (webDeployStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
 
-    const apiHealthStep = await requestJsonStep(boundedFetch, 'dev-api-health', `${apiUrl}/api/health`, {}, (body) => {
-      if (body?.status !== 'ok') throw new Error(`健康检查 status 非 ok：${String(body?.status || '')}`)
-      if (body?.db !== 'ok') throw new Error(`健康检查 db 非 ok：${String(body?.db || '')}`)
-      return `健康检查通过，db=${body.db}`
-    })
-    steps.push(apiHealthStep)
-    if (apiHealthStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
+    const [apiHealthStep, webReleaseStep] = await Promise.all([
+      requestJsonStep(boundedFetch, 'dev-api-health', `${apiUrl}/api/health`, {}, (body) => {
+        if (body?.status !== 'ok') throw new Error(`健康检查 status 非 ok：${String(body?.status || '')}`)
+        if (body?.db !== 'ok') throw new Error(`健康检查 db 非 ok：${String(body?.db || '')}`)
+        assertReleaseIdentity(body, releaseCommit, 'API')
+        return `API 发布身份通过，environment=dev，commit=${releaseCommit}`
+      }),
+      requestJsonStep(boundedFetch, 'dev-web-release', `${webUrl}/__release`, {}, (body) => {
+        assertReleaseIdentity(body, releaseCommit, 'Web')
+        return `Web 发布身份通过，environment=dev，commit=${releaseCommit}`
+      }),
+    ])
+    steps.push(apiHealthStep, webReleaseStep)
+    if (apiHealthStep.status !== 'passed' || webReleaseStep.status !== 'passed') {
+      return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
+    }
 
     const webHealthStep = await requestTextStep(boundedFetch, 'dev-web-health', webUrl, {}, (html) => {
       if (!/<div[^>]+id=["']__nuxt["']/i.test(html)) {
@@ -282,7 +291,28 @@ function readRequiredEnv(env, key) {
   if (!value) {
     throw new Error(`缺少必需环境变量 ${key}，请先导出实际 dev Worker HTTPS 地址后重试。必需变量：${REQUIRED_ENV_KEYS.join(', ')}`)
   }
-  return value.replace(/\/+$/, '')
+  let url
+  try {
+    url = new URL(value)
+  } catch {
+    throw new Error(`${key} 必须是合法的 dev Worker HTTPS 地址`)
+  }
+  if (url.protocol !== 'https:' || url.username || url.password) {
+    throw new Error(`${key} 必须是不含凭证的 dev Worker HTTPS 地址`)
+  }
+  url.pathname = url.pathname.replace(/\/+$/, '')
+  url.search = ''
+  url.hash = ''
+  return url.toString().replace(/\/+$/, '')
+}
+
+function assertReleaseIdentity(body, releaseCommit, serviceName) {
+  if (body?.status !== 'ok') throw new Error(`${serviceName} 发布身份状态非 ok`)
+  if (body?.environment !== 'dev') throw new Error(`${serviceName} 发布环境不是 dev`)
+  if (!/^[0-9a-f]{40}$/i.test(String(body?.commit || ''))) throw new Error(`${serviceName} 发布 commit 缺失或非法`)
+  if (String(body.commit) !== releaseCommit) {
+    throw new Error(`${serviceName} 发布 commit 与本次 releaseCommit 不一致`)
+  }
 }
 
 function cleanForReport(step) {

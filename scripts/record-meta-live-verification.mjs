@@ -9,10 +9,12 @@ import {
   META_LIVE_EVENTS,
   writeMetaLiveEvidence,
 } from './meta-live-verification-lib.mjs'
-import { runCommand } from './release-verification-lib.mjs'
+import { fetchWithTimeout, runCommand } from './release-verification-lib.mjs'
 
 const YES_VALUES = new Set(['y', 'yes', '是'])
 const EVIDENCE_TTL_MS = 24 * 60 * 60 * 1000
+const VERIFY_TIMEOUT_MS = 20_000
+const REQUIRED_VERIFY_URLS = ['VERIFY_DEV_API_URL', 'VERIFY_DEV_WEB_URL']
 
 export function buildMetaLiveEvidence(input) {
   const confirmedBy = String(input?.confirmedBy || '').trim()
@@ -73,6 +75,7 @@ export async function recordMetaLiveVerification(options = {}) {
   const getCommit = options.getCommit || readCurrentCommit
   const writeEvidence = options.writeEvidence || writeMetaLiveEvidence
   const commit = await getCommit(options)
+  await verifyDevReleaseIdentity({ ...options, commit })
   const confirmedBy = await ask('确认人（owner 或 owner:<短标识>）：', { hidden: false })
   const pixelId = await ask('测试 Pixel ID：', { hidden: true })
   const eventResults = []
@@ -100,6 +103,60 @@ export async function recordMetaLiveVerification(options = {}) {
   })
   output(`Meta live evidence 已写入：${files.evidenceFile}`)
   return { evidence, ...files }
+}
+
+export async function verifyDevReleaseIdentity(options = {}) {
+  const commit = String(options.commit || '').trim()
+  if (!/^[0-9a-f]{40}$/i.test(commit)) throw new Error('本地 Git HEAD 必须为 40 位 SHA')
+
+  const env = options.env || process.env
+  const apiOrigin = readRequiredVerifyOrigin(env, 'VERIFY_DEV_API_URL')
+  const webOrigin = readRequiredVerifyOrigin(env, 'VERIFY_DEV_WEB_URL')
+  const fetchFn = options.fetch || fetch
+  const timeoutMs = options.requestTimeoutMs ?? VERIFY_TIMEOUT_MS
+
+  await Promise.all([
+    requestReleaseIdentity(fetchFn, new URL('/api/health', apiOrigin), 'API', commit, timeoutMs),
+    requestReleaseIdentity(fetchFn, new URL('/__release', webOrigin), 'Web', commit, timeoutMs),
+  ])
+}
+
+function readRequiredVerifyOrigin(env, key) {
+  const value = String(env?.[key] || '').trim()
+  if (!value) throw new Error(`缺少必需环境变量 ${key}；必需变量：${REQUIRED_VERIFY_URLS.join(', ')}`)
+
+  let url
+  try {
+    url = new URL(value)
+  } catch {
+    throw new Error(`${key} 必须是合法的 dev Worker HTTPS 地址`)
+  }
+  if (url.protocol !== 'https:' || url.username || url.password) {
+    throw new Error(`${key} 必须是不含凭证的 dev Worker HTTPS 地址`)
+  }
+  return url.origin
+}
+
+async function requestReleaseIdentity(fetchFn, url, serviceName, expectedCommit, timeoutMs) {
+  let response
+  try {
+    response = await fetchWithTimeout(fetchFn, url, { headers: { Accept: 'application/json' } }, timeoutMs)
+  } catch {
+    throw new Error(`${serviceName} 发布身份端点请求失败`)
+  }
+  if (!response.ok) throw new Error(`${serviceName} 发布身份端点不可用（HTTP ${response.status}）`)
+
+  let body
+  try {
+    body = await response.json()
+  } catch {
+    throw new Error(`${serviceName} 发布身份端点未返回合法 JSON`)
+  }
+  if (body?.status !== 'ok') throw new Error(`${serviceName} 发布身份状态非 ok`)
+  if (body?.environment !== 'dev') throw new Error(`${serviceName} 发布环境不是 dev`)
+  const deployedCommit = String(body?.commit || '').trim()
+  if (!/^[0-9a-f]{40}$/i.test(deployedCommit)) throw new Error(`${serviceName} 发布 commit 缺失或非法`)
+  if (deployedCommit !== expectedCommit) throw new Error(`${serviceName} 发布 commit 与本地 Git HEAD 不一致`)
 }
 
 function digestEventId(value) {
