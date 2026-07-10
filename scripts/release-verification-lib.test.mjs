@@ -82,7 +82,7 @@ function createValidReleaseReport() {
       commit: 'abcdef1234567890',
       verifiedAt: '2026-07-09T00:00:00.000Z',
       expiresAt: '2026-07-10T00:00:00.000Z',
-      events: ['Contact', 'Lead', 'CompleteRegistration'],
+      events: ['Contact', 'CompleteRegistration'],
     },
     metaResources: {
       dev: {
@@ -526,6 +526,8 @@ describe('发布验证基础库', () => {
     for (const report of [
       { ...base, metaLiveVerification: { ...base.metaLiveVerification, commit: 'other-commit' } },
       { ...base, metaLiveVerification: { ...base.metaLiveVerification, status: 'failed' } },
+      { ...base, metaLiveVerification: { ...base.metaLiveVerification, events: ['Contact', 'Lead', 'CompleteRegistration'] } },
+      { ...base, metaLiveVerification: { ...base.metaLiveVerification, events: ['Contact', 'CompleteRegistration', 'StartTrial'] } },
       { ...base, metaResources: { ...base.metaResources, dev: { ...base.metaResources.dev, status: 'failed' } } },
       { ...base, metaResources: { ...base.metaResources, production: { ...base.metaResources.production, status: 'failed' } } },
     ]) {

@@ -401,6 +401,8 @@ describe('conversion routes', () => {
         sessionId: 'session_1',
         occurredAt: '2026-07-09T10:00:00.000Z',
         consentState: 'granted',
+        methodType: 'telegram',
+        actionTarget: 'floating_contact_panel',
         browserIdentifiers: { fbp: raw.fbp, fbc: raw.fbc },
         metadata: { fbp: 'metadata-fbp', fbc: 'metadata-fbc' },
       }),
@@ -412,7 +414,7 @@ describe('conversion routes', () => {
     } as unknown as Bindings)
 
     expect(res.status).toBe(201)
-    expect(sent).toHaveLength(2)
+    expect(sent).toHaveLength(1)
     expect(sent.every(message => JSON.stringify(message.userData) === JSON.stringify({
       fbp: raw.fbp,
       fbc: raw.fbc,
@@ -448,51 +450,49 @@ describe('conversion routes', () => {
     expect(conversionInsert?.params[7]).toBe(42)
   })
 
-  it('公开接口接受注册完成', async () => {
+  it.each(['complete_registration', 'lead', 'start_trial'])(
+    '公开接口拒绝 %s',
+    async actionType => {
     const db = createConversionDb()
     const res = await createApp().request('/api/conversions/events', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        actionType: 'complete_registration',
+        actionType,
         visitorId: 'visitor_1',
         sessionId: 'session_1',
         occurredAt: '2026-07-09T10:00:00.000Z',
+        methodType: 'telegram',
+        actionTarget: 'floating_contact_panel',
       }),
-    }, { DB: db, APP_ENV: 'test', SESSION_SECRET: 'test-session-secret' } as unknown as Bindings)
-    const body = await res.json()
-
-    expect(res.status).toBe(201)
-    expect(body.data.actionType).toBe('complete_registration')
-  })
-
-  it('公开接口拒绝开始试用', async () => {
-    const db = createConversionDb()
-    const res = await createApp().request('/api/conversions/events', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ actionType: 'start_trial' }),
     }, { DB: db, APP_ENV: 'test', SESSION_SECRET: 'test-session-secret' } as unknown as Bindings)
     const body = await res.json()
 
     expect(res.status).toBe(400)
     expect(body.code).toBe('CONVERSION_ACTION_INVALID')
     expect(db.calls).toHaveLength(0)
-  })
+    },
+  )
 
-  it('公开接口不允许 lead 或 membership_grant', async () => {
-    const db = createConversionDb()
-    const res = await createApp().request('/api/conversions/events', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        actionType: 'lead',
-        visitorId: 'visitor_1',
-        sessionId: 'session_1',
-        occurredAt: '2026-07-09T10:00:00.000Z',
-      }),
-    }, { DB: db, APP_ENV: 'test' } as unknown as Bindings)
-    expect(res.status).toBe(400)
-    expect(db.calls).toHaveLength(0)
-  })
+  it.each([
+    ['methodType', { actionTarget: 'floating_contact_panel' }],
+    ['actionTarget', { methodType: 'telegram' }],
+  ])('联系缺少 %s 时拒绝无口径事件', async (_field, context) => {
+      const db = createConversionDb()
+      const res = await createApp().request('/api/conversions/events', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          actionType: 'contact',
+          visitorId: 'visitor_1',
+          sessionId: 'session_1',
+          occurredAt: '2026-07-09T10:00:00.000Z',
+          ...context,
+        }),
+      }, { DB: db, APP_ENV: 'test' } as unknown as Bindings)
+
+      expect(res.status).toBe(400)
+      expect((await res.json()).code).toBe('CONVERSION_CONTACT_CONTEXT_INVALID')
+      expect(db.calls).toHaveLength(0)
+    })
 })

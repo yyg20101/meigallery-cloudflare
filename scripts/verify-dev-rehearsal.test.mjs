@@ -23,8 +23,8 @@ describe('开发环境发布预演验证', () => {
     const conversionBodies = []
     const responses = [
       ...successfulResponses({
-        baseline: { Contact: 4, Lead: 8, CompleteRegistration: 2 },
-        after: { Contact: 5, Lead: 9, CompleteRegistration: 3 },
+        baseline: { Contact: 4 },
+        after: { Contact: 5 },
         html: '<!doctype html><html><body><div id="__nuxt"></div><script>window.__APP__="wajie"</script></body></html>',
       }),
       jsonResponse(200, {
@@ -78,13 +78,10 @@ describe('开发环境发布预演验证', () => {
     assert.equal(requestedUrls.some(url => url.endsWith('/__release')), true)
     assert.equal(requestedUrls.some(url => url.includes('/api/admin/attribution/meta?')), true)
     assert.equal(conversionBodies.every(body => body.consentState === 'granted'), true)
-    assert.deepEqual(conversionBodies.map(body => body.actionType), ['contact', 'complete_registration'])
+    assert.deepEqual(conversionBodies.map(body => body.actionType), ['contact'])
     assert.match(conversionBodies[0].visitorId, /^visitor_release_dev_[0-9a-f]{12}$/)
-    assert.equal(conversionBodies[1].visitorId, conversionBodies[0].visitorId)
     assert.match(conversionBodies[0].sessionId, /^session_release_dev_[0-9a-f]{12}$/)
-    assert.equal(conversionBodies[1].sessionId, conversionBodies[0].sessionId)
     assert.match(conversionBodies[0].actionTarget, /^floating_contact_panel_[0-9a-f]{12}$/)
-    assert.match(conversionBodies[1].actionTarget, /^register-submit_[0-9a-f]{12}$/)
     assert.equal(requestedUrls.filter(url => url.includes('/api/admin/attribution/meta?')).length, 2)
   })
 
@@ -153,7 +150,7 @@ describe('开发环境发布预演验证', () => {
   })
 
   it('历史非零 CAPI sent 没有基线增量时失败并清理 Owner', async () => {
-    const unchanged = { Contact: 9, Lead: 7, CompleteRegistration: 5 }
+    const unchanged = { Contact: 9 }
     const responses = successfulResponses({ baseline: unchanged, after: unchanged })
     const result = await runDevRehearsalVerification({
       env: {
@@ -263,15 +260,14 @@ function textResponse(status, body) {
 }
 
 function successfulResponses(options = {}) {
-  const baseline = options.baseline || { Contact: 0, Lead: 0, CompleteRegistration: 0 }
-  const after = options.after || { Contact: 1, Lead: 1, CompleteRegistration: 1 }
+  const baseline = options.baseline || { Contact: 0 }
+  const after = options.after || { Contact: 1 }
   return [
     jsonResponse(200, { status: 'ok', db: 'ok', environment: 'dev', commit: RELEASE_COMMIT }),
     jsonResponse(200, { status: 'ok', environment: 'dev', commit: RELEASE_COMMIT }),
     textResponse(200, options.html || '<!doctype html><html><body><div id="__nuxt"></div></body></html>'),
     metaDeliveryResponse(baseline),
     jsonResponse(200, { data: { id: 'conv_1', actionType: 'contact', created: true } }),
-    jsonResponse(200, { data: { id: 'conv_2', actionType: 'complete_registration', created: true } }),
     jsonResponse(200, { accepted: 3, rejected: 0 }),
     jsonResponse(200, {
       data: {
@@ -284,7 +280,7 @@ function successfulResponses(options = {}) {
     }),
     jsonResponse(200, {
       data: {
-        bySource: [{ source_name: 'release-dev-fb', contact_count: 1, complete_registration_count: 1 }],
+        bySource: [{ source_name: 'release-dev-fb', contact_count: 1, complete_registration_count: 0 }],
       },
     }),
     metaDeliveryResponse(after),

@@ -1,4 +1,4 @@
-import type { ConversionActionType, ConversionMetaEventName } from '@meigallery/shared'
+import type { ActiveMetaEventName, ConversionActionType } from '@meigallery/shared'
 import { ATTRIBUTION_LIMITS, META_EVENT_BY_CONVERSION } from '@meigallery/shared/constants'
 import { buildConversionDedupeKey, buildExternalEventId } from '@meigallery/shared/utils'
 
@@ -72,8 +72,7 @@ const BLOCKED_CREDENTIAL_PARAM_NAMES = new Set([
 
 const REDACTED_ONLY_PATTERN = /^(?:[\s,，;；:/：|、-]*\[redacted_(?:email|phone|url|credential|contact)\])+[\s,，;；:/：|、-]*$/
 
-export function metaEventForConversion(actionType: ConversionActionType): ConversionMetaEventName | null {
-  if (actionType === 'start_trial') return null
+export function metaEventForConversion(actionType: ConversionActionType): ActiveMetaEventName | null {
   return META_EVENT_BY_CONVERSION[actionType]
 }
 

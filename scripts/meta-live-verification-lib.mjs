@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { redact } from './release-verification-lib.mjs'
 
 export const META_LIVE_REPORT_DIR = new URL('../reports/meta-live-verification/', import.meta.url)
-export const META_LIVE_EVENTS = Object.freeze(['Contact', 'Lead', 'CompleteRegistration'])
+export const META_LIVE_EVENTS = Object.freeze(['Contact', 'CompleteRegistration'])
 
 const EVIDENCE_TTL_MS = 24 * 60 * 60 * 1000
 const TOP_LEVEL_FIELDS = new Set([

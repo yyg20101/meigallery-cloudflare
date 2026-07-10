@@ -9,7 +9,7 @@ const LEGACY_DEV_WORKERS_SUBDOMAIN = '250770503'
 const DEV_REQUEST_TIMEOUT_MS = 20_000
 const META_POLL_TIMEOUT_MS = 30_000
 const META_POLL_INTERVAL_MS = 1_000
-const REQUIRED_META_EVENTS = ['Contact', 'Lead', 'CompleteRegistration']
+const REQUIRED_META_EVENTS = ['Contact']
 
 export async function runDevRehearsalVerification(options = {}) {
   const cwd = options.cwd || process.cwd()
@@ -161,26 +161,6 @@ export async function runDevRehearsalVerification(options = {}) {
     steps.push(contactStep)
     if (contactStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
 
-    const completeRegistrationStep = await postConversion(boundedFetch, apiUrl, 'dev-conversion-complete-registration', {
-      actionType: 'complete_registration',
-      visitorId: conversionVisitorId,
-      sessionId: conversionSessionId,
-      occurredAt: new Date().toISOString(),
-      routeName: 'register',
-      path: '/register',
-      sourceChannel: 'ad',
-      sourceName: 'release-dev-fb',
-      trackingSourceSlug: 'release-dev-fb',
-      utmSource: 'release-dev-fb',
-      utmMedium: 'paid_social',
-      utmCampaign: 'release-dev-rehearsal',
-      utmContent: 'release-dev-chat',
-      consentState: 'granted',
-      actionTarget: `register-submit_${runSuffix}`,
-    })
-    steps.push(completeRegistrationStep)
-    if (completeRegistrationStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
-
     const analyticsIngestStep = await postAnalyticsBatch(boundedFetch, apiUrl, runSuffix)
     steps.push(analyticsIngestStep)
     if (analyticsIngestStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
@@ -226,8 +206,7 @@ export async function runDevRehearsalVerification(options = {}) {
           throw new Error('attribution conversions 返回了非 release-dev-fb 的来源数据')
         }
         if (Number(matched.contact_count ?? 0) < 1) throw new Error('contact_count 未写入')
-        if (Number(matched.complete_registration_count ?? 0) < 1) throw new Error('complete_registration_count 未写入')
-        return `归因来源查询通过，contact=${matched.contact_count}, complete_registration=${matched.complete_registration_count}`
+        return `归因来源查询通过，contact=${matched.contact_count}`
       },
     )
     steps.push(attributionStep)
@@ -478,7 +457,7 @@ async function pollMetaDeliveries(fetchFn, apiUrl, sessionToken, today, options)
     durationMs: Date.now() - startedAt,
     command,
     exitCode: null,
-    summary: truncateSummary(`30 秒内未等到三事件 CAPI sent 基线增量：${lastSummary}`),
+    summary: truncateSummary(`30 秒内未等到 Contact CAPI sent 基线增量：${lastSummary}`),
   }
 }
 

@@ -1,11 +1,11 @@
 import { Hono } from 'hono'
 import type { Bindings, Variables } from '../index'
-import { markPixelAttempted, recordConversionAction } from '../services/conversions'
+import { markPixelAttempted, recordContact } from '../services/conversions'
 import { errorJson } from '../utils/api-error'
 import { buildMetaCapiUserData } from '../utils/meta-browser-identifiers'
 import { verifyPixelReceiptToken } from '../utils/pixel-receipt'
 
-const PUBLIC_CONVERSION_ACTIONS = new Set(['contact', 'complete_registration'])
+const PUBLIC_CONVERSION_ACTIONS = new Set(['contact'])
 const CONVERSION_ID_RE = /^[A-Za-z0-9_-]{8,120}$/
 
 export const conversionRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
@@ -29,9 +29,14 @@ conversionRoutes.post('/events', async (c) => {
     return errorJson(c, 400, '转化身份格式无效', { code: 'CONVERSION_ID_INVALID' })
   }
 
+  const methodType = String(body.methodType || '').trim()
+  const actionTarget = String(body.actionTarget || '').trim()
+  if (!methodType || !actionTarget) {
+    return errorJson(c, 400, '联系事件缺少必要上下文', { code: 'CONVERSION_CONTACT_CONTEXT_INVALID' })
+  }
+
   const consentState = String(body.consentState || 'limited')
-  const result = await recordConversionAction(c.env, {
-    actionType: actionType as 'contact' | 'complete_registration',
+  const result = await recordContact(c.env, {
     visitorId,
     sessionId,
     userId: c.get('userId'),
@@ -46,8 +51,8 @@ conversionRoutes.post('/events', async (c) => {
     utmCampaign: String(body.utmCampaign || ''),
     utmContent: String(body.utmContent || ''),
     consentState,
-    methodType: String(body.methodType || ''),
-    actionTarget: String(body.actionTarget || ''),
+    methodType,
+    actionTarget,
     metadata: isPlainRecord(body.metadata) ? body.metadata : {},
   }, {
     getMetaCapiUserData: () => buildMetaCapiUserData(c.req.raw, body.browserIdentifiers),

@@ -1,15 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { MetaCapiQueueMessage } from '@meigallery/shared'
 import type { Bindings } from '../index'
-import { recordConversionAction } from './conversions'
+import { recordContact, recordRegistration } from './conversions'
 
 type Call = { sql: string; params: unknown[] }
 type InsertedConversion = { id: string; actionType: string; dedupeKey: string; sessionId: string }
+type InsertedDelivery = { conversionActionId: string; eventName: string }
 
 function createConversionDb(options: {
   existingDedupeKeys?: string[]
-  existingLeadSessions?: string[]
-  skipLeadLookup?: boolean
   metaCapiEnabled?: boolean
   facebookPixelEnabled?: boolean
   facebookPixelId?: string
@@ -18,14 +17,17 @@ function createConversionDb(options: {
 } = {}) {
   const calls: Call[] = []
   const insertedConversions: InsertedConversion[] = []
+  const insertedDeliveries: InsertedDelivery[] = []
   const dedupe = new Map((options.existingDedupeKeys ?? []).map((key) => [key, `existing_${key}`]))
-  const leadSessions = new Set(options.existingLeadSessions ?? [])
-  for (const sessionId of leadSessions) dedupe.set(`lead:${sessionId}`, `lead_${sessionId}`)
   let statementCount = 0
 
   function applyCall(
     call: Call,
-    target: { dedupe: Map<string, string>; leadSessions: Set<string>; insertedConversions: InsertedConversion[] },
+    target: {
+      dedupe: Map<string, string>
+      insertedConversions: InsertedConversion[]
+      insertedDeliveries: InsertedDelivery[]
+    },
   ) {
     if (call.sql.includes('INSERT OR IGNORE INTO analytics_conversion_actions')) {
       const id = String(call.params[0])
@@ -35,7 +37,12 @@ function createConversionDb(options: {
       if (target.dedupe.has(dedupeKey)) return { meta: { changes: 0, rows_written: 0, rows_read: 0, duration: 1 } }
       target.dedupe.set(dedupeKey, id)
       target.insertedConversions.push({ id, actionType, dedupeKey, sessionId })
-      if (actionType === 'lead') target.leadSessions.add(sessionId)
+    }
+    if (call.sql.includes('INSERT OR IGNORE INTO analytics_conversion_deliveries')) {
+      target.insertedDeliveries.push({
+        conversionActionId: String(call.params[1]),
+        eventName: String(call.params[4]),
+      })
     }
     return { meta: { changes: 1, rows_written: 1, rows_read: 0, duration: 1 } }
   }
@@ -67,11 +74,6 @@ function createConversionDb(options: {
           if (sql.includes("WHERE key = 'meta_tracking_mode'")) {
             return { value: JSON.stringify(options.metaTrackingMode ?? 'disabled') } as T
           }
-          if (sql.includes("action_type = 'lead'")) {
-            if (options.skipLeadLookup) return null
-            const sessionId = String(call.params[0])
-            return leadSessions.has(sessionId) ? ({ id: `lead_${sessionId}` } as T) : null
-          }
           return null
         },
         async all<T>() {
@@ -80,7 +82,7 @@ function createConversionDb(options: {
         async run() {
           statementCount += 1
           calls.push(call)
-          const result = applyCall(call, { dedupe, leadSessions, insertedConversions })
+          const result = applyCall(call, { dedupe, insertedConversions, insertedDeliveries })
           if (options.failAt === statementCount) throw new Error('模拟 D1 写入失败')
           return result
         },
@@ -91,8 +93,8 @@ function createConversionDb(options: {
     async batch(statements: Array<{ __call?: Call }>) {
       const staged = {
         dedupe: new Map(dedupe),
-        leadSessions: new Set(leadSessions),
         insertedConversions: [...insertedConversions],
+        insertedDeliveries: [...insertedDeliveries],
       }
       const results = []
       for (const statement of statements) {
@@ -105,9 +107,8 @@ function createConversionDb(options: {
       }
       dedupe.clear()
       for (const [key, value] of staged.dedupe) dedupe.set(key, value)
-      leadSessions.clear()
-      for (const value of staged.leadSessions) leadSessions.add(value)
       insertedConversions.splice(0, insertedConversions.length, ...staged.insertedConversions)
+      insertedDeliveries.splice(0, insertedDeliveries.length, ...staged.insertedDeliveries)
       return results
     },
     get failAt() {
@@ -117,7 +118,7 @@ function createConversionDb(options: {
       options.failAt = value
     },
   }
-  return db
+  return Object.assign(db, { insertedDeliveries })
 }
 
 function envFor(db: ReturnType<typeof createConversionDb>) {
@@ -144,7 +145,6 @@ function envWithQueueFor(db: ReturnType<typeof createConversionDb>, sent: MetaCa
 
 function grantedContactInput() {
   return {
-    actionType: 'contact' as const,
     visitorId: 'visitor_1',
     sessionId: 'session_1',
     occurredAt: '2026-07-09T10:00:00.000Z',
@@ -156,22 +156,21 @@ function grantedContactInput() {
 }
 
 describe('conversion ledger service', () => {
-  it('首次授权联系返回 Contact 和 Lead 两条同源 Pixel 指令', async () => {
+  it('首次授权联系只返回 Contact Pixel 指令', async () => {
     const db = createConversionDb({
       facebookPixelEnabled: true,
       facebookPixelId: '1234567890',
       metaTrackingMode: 'test',
     })
-    const result = await recordConversionAction(envFor(db), grantedContactInput())
+    const result = await recordContact(envFor(db), grantedContactInput())
 
-    expect(result.pixelEvents.map(item => item.eventName)).toEqual(['Contact', 'Lead'])
+    expect(result.pixelEvents.map(item => item.eventName)).toEqual(['Contact'])
     expect(result.pixelEvents[0]?.eventId).toBe('meta:Contact:contact:session_1:telegram:floating_contact_panel')
-    expect(result.pixelEvents[1]?.eventId).toBe('meta:Lead:lead:session_1')
     expect(result.pixelEvents.every(item => item.receiptToken)).toBe(true)
     expect(db.calls.filter(call => (
       call.sql.includes('INSERT INTO analytics_conversion_delivery_daily')
       && call.sql.includes("'pending'")
-    ))).toHaveLength(2)
+    ))).toHaveLength(1)
   })
 
   it('公开 metadata 中的 Meta 标识和网络标识不进入 SQL 参数', async () => {
@@ -180,7 +179,7 @@ describe('conversion ledger service', () => {
       facebookPixelId: '1234567890',
       metaTrackingMode: 'test',
     })
-    await recordConversionAction(envFor(db), {
+    await recordContact(envFor(db), {
       ...grantedContactInput(),
       metadata: {
         method_type: 'telegram',
@@ -207,7 +206,7 @@ describe('conversion ledger service', () => {
     })
     const sent: MetaCapiQueueMessage[] = []
     let supplierCalls = 0
-    const result = await recordConversionAction(envWithQueueFor(db, sent), { ...grantedContactInput(), consentState }, {
+    const result = await recordContact(envWithQueueFor(db, sent), { ...grantedContactInput(), consentState }, {
       getMetaCapiUserData: () => {
         supplierCalls += 1
         return { fbp: 'fb.1.1700000000000.123456789', clientIpAddress: '203.0.113.24' }
@@ -229,7 +228,7 @@ describe('conversion ledger service', () => {
     })
     const sent: MetaCapiQueueMessage[] = []
     let supplierCalls = 0
-    const result = await recordConversionAction(envWithQueueFor(db, sent), grantedContactInput(), {
+    const result = await recordContact(envWithQueueFor(db, sent), grantedContactInput(), {
       getMetaCapiUserData: () => {
         supplierCalls += 1
         return { fbp: 'fb.1.1700000000000.123456789', clientIpAddress: '203.0.113.24' }
@@ -242,32 +241,19 @@ describe('conversion ledger service', () => {
     expect(supplierCalls).toBe(0)
   })
 
-  it('首次有效联系写入 contact 和 lead，并创建 Meta delivery', async () => {
+  it('首次有效联系只写入一条 contact 与两条派生 delivery', async () => {
     const db = createConversionDb({
       facebookPixelEnabled: true,
       facebookPixelId: '1234567890',
       metaTrackingMode: 'test',
+      metaCapiEnabled: true,
     })
-    const result = await recordConversionAction(envFor(db), {
-      actionType: 'contact',
-      visitorId: 'visitor_1',
-      sessionId: 'session_1',
-      occurredAt: '2026-07-09T10:00:00.000Z',
-      routeName: 'home',
-      path: '/',
-      sourceChannel: 'ad',
-      sourceName: 'ad-july',
-      utmCampaign: 'july',
-      utmContent: 'chat-a',
-      consentState: 'granted',
-      methodType: 'telegram',
-      actionTarget: 'floating_contact_panel',
-      metadata: { method_type: 'telegram', location: 'floating_contact_panel' },
-    })
-    expect(result.created).toBe(true)
-    expect(result.derivedActions.map(item => item.actionType)).toContain('lead')
-    expect(db.calls.some(call => call.sql.includes('analytics_conversion_actions'))).toBe(true)
-    expect(db.calls.some(call => call.sql.includes('analytics_conversion_deliveries'))).toBe(true)
+    const result = await recordContact(envFor(db), grantedContactInput())
+
+    expect(result.actionType).toBe('contact')
+    expect(result).not.toHaveProperty('derivedActions')
+    expect(db.insertedConversions.map(item => item.actionType)).toEqual(['contact'])
+    expect(db.insertedDeliveries.map(item => item.eventName)).toEqual(['Contact', 'Contact'])
   })
 
   it('delivery 写入失败不残留 action，重试后可返回指令', async () => {
@@ -278,26 +264,18 @@ describe('conversion ledger service', () => {
       failAt: 3,
     })
 
-    await expect(recordConversionAction(envFor(db), grantedContactInput())).rejects.toThrow()
+    await expect(recordContact(envFor(db), grantedContactInput())).rejects.toThrow()
     expect(db.insertedConversions).toEqual([])
 
     db.failAt = undefined
-    const retried = await recordConversionAction(envFor(db), grantedContactInput())
+    const retried = await recordContact(envFor(db), grantedContactInput())
     expect(retried.created).toBe(true)
-    expect(retried.pixelEvents.map(item => item.eventName)).toEqual(['Contact', 'Lead'])
+    expect(retried.pixelEvents.map(item => item.eventName)).toEqual(['Contact'])
   })
 
-  it('派生 Lead 写入失败不残留主 action', async () => {
-    const db = createConversionDb({ failAt: 3 })
-
-    await expect(recordConversionAction(envFor(db), grantedContactInput())).rejects.toThrow()
-    expect(db.insertedConversions).toEqual([])
-  })
-
-  it('重复有效联系不重复派生 Lead', async () => {
+  it('重复有效联系只记录重复账本，不创建 delivery', async () => {
     const db = createConversionDb({ existingDedupeKeys: ['contact:session_1:telegram:floating_contact_panel'] })
-    const result = await recordConversionAction(envFor(db), {
-      actionType: 'contact',
+    const result = await recordContact(envFor(db), {
       visitorId: 'visitor_1',
       sessionId: 'session_1',
       occurredAt: '2026-07-09T10:05:00.000Z',
@@ -308,7 +286,7 @@ describe('conversion ledger service', () => {
     })
     expect(result.created).toBe(false)
     expect(result.duplicateOf).toBe('existing_contact:session_1:telegram:floating_contact_panel')
-    expect(result.derivedActions).toHaveLength(0)
+    expect(result).not.toHaveProperty('derivedActions')
     expect(result.pixelEvents).toEqual([])
     expect(db.calls.some(call => call.sql.includes('INSERT OR IGNORE INTO analytics_conversion_actions'))).toBe(true)
     expect(db.calls.some(call => (
@@ -322,10 +300,10 @@ describe('conversion ledger service', () => {
 
   it('拒绝授权时不创建 Meta delivery', async () => {
     const db = createConversionDb()
-    await recordConversionAction(envFor(db), {
-      actionType: 'complete_registration',
+    await recordRegistration(envFor(db), {
       visitorId: 'visitor_1',
       sessionId: 'session_1',
+      userId: 42,
       occurredAt: '2026-07-09T10:10:00.000Z',
       consentState: 'denied',
       metadata: {},
@@ -333,27 +311,11 @@ describe('conversion ledger service', () => {
     expect(db.calls.some(call => call.sql.includes('analytics_conversion_deliveries'))).toBe(false)
   })
 
-  it('同 session 已有 lead 时不重复派生', async () => {
-    const db = createConversionDb({ existingLeadSessions: ['session_1'] })
-    const result = await recordConversionAction(envFor(db), {
-      actionType: 'contact',
-      visitorId: 'visitor_1',
-      sessionId: 'session_1',
-      occurredAt: '2026-07-09T10:15:00.000Z',
-      consentState: 'limited',
-      methodType: 'telegram',
-      actionTarget: 'floating_contact_panel',
-      metadata: {},
-    })
-    expect(result.created).toBe(true)
-    expect(result.derivedActions).toHaveLength(0)
-  })
-
   it('可映射事件生成 Pixel 和 CAPI delivery，且 external_event_id 稳定', async () => {
     const input = {
-      actionType: 'complete_registration' as const,
       visitorId: 'visitor_1',
       sessionId: 'session_1',
+      userId: 42,
       occurredAt: '2026-07-09T10:20:00.000Z',
       consentState: 'granted',
       actionTarget: 'register',
@@ -372,8 +334,8 @@ describe('conversion ledger service', () => {
       metaTrackingMode: 'test',
     })
 
-    await recordConversionAction(envFor(firstDb), input)
-    await recordConversionAction(envFor(secondDb), input)
+    await recordRegistration(envFor(firstDb), input)
+    await recordRegistration(envFor(secondDb), input)
 
     const firstDeliveries = firstDb.calls.filter(call => call.sql.includes('INSERT OR IGNORE INTO analytics_conversion_deliveries'))
     const secondDeliveries = secondDb.calls.filter(call => call.sql.includes('INSERT OR IGNORE INTO analytics_conversion_deliveries'))
@@ -388,10 +350,10 @@ describe('conversion ledger service', () => {
     const sent: MetaCapiQueueMessage[] = []
     const db = createConversionDb({ metaCapiEnabled: true, metaTrackingMode: 'test', facebookPixelId: '1234567890' })
 
-    await recordConversionAction(envWithQueueFor(db, sent), {
-      actionType: 'complete_registration',
+    await recordRegistration(envWithQueueFor(db, sent), {
       visitorId: 'visitor_1',
       sessionId: 'session_1',
+      userId: 42,
       occurredAt: '2026-07-09T10:22:00.000Z',
       consentState: 'granted',
       metadata: {},
@@ -426,7 +388,7 @@ describe('conversion ledger service', () => {
     }
 
     let supplierCalls = 0
-    await recordConversionAction(envWithQueueFor(db, sent), {
+    await recordContact(envWithQueueFor(db, sent), {
       ...grantedContactInput(),
       metadata: { fbp: 'metadata-fbp', fbc: 'metadata-fbc' },
     }, {
@@ -436,21 +398,16 @@ describe('conversion ledger service', () => {
       },
     })
 
-    expect(sent).toHaveLength(2)
+    expect(sent).toHaveLength(1)
     expect(supplierCalls).toBe(1)
     expect(sent.map(message => message.userData)).toEqual([{
       fbp: userData.fbp,
       fbc: userData.fbc,
       clientIpAddress: userData.clientIpAddress,
       clientUserAgent: userData.clientUserAgent,
-    }, {
-      fbp: userData.fbp,
-      fbc: userData.fbc,
-      clientIpAddress: userData.clientIpAddress,
-      clientUserAgent: userData.clientUserAgent,
     }])
     const deliveryCalls = db.calls.filter(call => call.sql.includes('INSERT OR IGNORE INTO analytics_conversion_deliveries'))
-    expect(deliveryCalls).toHaveLength(2)
+    expect(deliveryCalls).toHaveLength(1)
     expect(deliveryCalls.every(call => call.params.includes(1))).toBe(true)
     expect(deliveryCalls.every(call => call.sql.includes('tracking_mode') && call.params.includes('test'))).toBe(true)
     expect(JSON.stringify(db.calls)).not.toContain(userData.fbp)
@@ -465,7 +422,7 @@ describe('conversion ledger service', () => {
     const db = createConversionDb({ metaTrackingMode: 'test', facebookPixelId: '1234567890' })
     let supplierCalls = 0
 
-    await recordConversionAction(envFor(db), grantedContactInput(), {
+    await recordContact(envFor(db), grantedContactInput(), {
       getMetaCapiUserData: () => {
         supplierCalls += 1
         return { fbp: 'fb.1.1700000000000.123456789' }
@@ -479,7 +436,7 @@ describe('conversion ledger service', () => {
     const db = createConversionDb({ metaCapiEnabled: true, metaTrackingMode: 'test' })
     let supplierCalls = 0
 
-    await recordConversionAction(envFor(db), grantedContactInput(), {
+    await recordContact(envFor(db), grantedContactInput(), {
       getMetaCapiUserData: () => {
         supplierCalls += 1
         return { fbp: 'fb.1.1700000000000.123456789' }
@@ -497,7 +454,7 @@ describe('conversion ledger service', () => {
       META_CAPI_QUEUE: { send: async () => { throw new Error(sensitive) } },
     } as Pick<Bindings, 'APP_ENV' | 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>
 
-    const result = await recordConversionAction(env, grantedContactInput())
+    const result = await recordContact(env, grantedContactInput())
 
     const serializedCalls = JSON.stringify(db.calls)
     expect(serializedCalls).not.toContain(sensitive)
@@ -516,10 +473,10 @@ describe('conversion ledger service', () => {
   it('CAPI 开启但缺少 Queue binding 时保持 pending 并记录可恢复诊断', async () => {
     const db = createConversionDb({ metaCapiEnabled: true, metaTrackingMode: 'test', facebookPixelId: '1234567890' })
 
-    await recordConversionAction(envFor(db), {
-      actionType: 'complete_registration',
+    await recordRegistration(envFor(db), {
       visitorId: 'visitor_1',
       sessionId: 'session_1',
+      userId: 42,
       occurredAt: '2026-07-09T10:23:00.000Z',
       consentState: 'granted',
       metadata: {},
@@ -532,34 +489,15 @@ describe('conversion ledger service', () => {
     expect(db.calls.some(call => call.sql.includes('SET\n        status = ?') && call.params[0] === 'skipped')).toBe(false)
   })
 
-  it('lead 派生命中并发 dedupe 时返回 null，不抛唯一约束错误', async () => {
-    const db = createConversionDb({ existingDedupeKeys: ['lead:session_1'] })
-    const result = await recordConversionAction(envFor(db), {
-      actionType: 'contact',
-      visitorId: 'visitor_1',
-      sessionId: 'session_1',
-      occurredAt: '2026-07-09T10:25:00.000Z',
-      consentState: 'granted',
-      methodType: 'telegram',
-      actionTarget: 'floating_contact_panel',
-      metadata: {},
-    })
-
-    expect(result.created).toBe(true)
-    expect(result.derivedActions).toHaveLength(0)
-  })
-
-  it('同 session 不同 contact target 并发派生 lead 时使用 session 级 dedupe', async () => {
+  it('同 session 不同 contact target 分别记录且不生成 Lead', async () => {
     const db = createConversionDb({
-      skipLeadLookup: true,
       facebookPixelEnabled: true,
       facebookPixelId: '1234567890',
       metaCapiEnabled: true,
       metaTrackingMode: 'test',
     })
 
-    const first = await recordConversionAction(envFor(db), {
-      actionType: 'contact',
+    const first = await recordContact(envFor(db), {
       visitorId: 'visitor_1',
       sessionId: 'session_1',
       occurredAt: '2026-07-09T10:30:00.000Z',
@@ -568,8 +506,7 @@ describe('conversion ledger service', () => {
       actionTarget: 'floating_contact_panel',
       metadata: {},
     })
-    const second = await recordConversionAction(envFor(db), {
-      actionType: 'contact',
+    const second = await recordContact(envFor(db), {
       visitorId: 'visitor_1',
       sessionId: 'session_1',
       occurredAt: '2026-07-09T10:30:01.000Z',
@@ -581,24 +518,13 @@ describe('conversion ledger service', () => {
 
     expect(first.created).toBe(true)
     expect(second.created).toBe(true)
-    expect(first.derivedActions).toHaveLength(1)
-    expect(second.derivedActions).toHaveLength(0)
+    expect(first).not.toHaveProperty('derivedActions')
+    expect(second).not.toHaveProperty('derivedActions')
     expect(db.insertedConversions.filter(item => item.actionType === 'contact').map(item => item.dedupeKey).sort()).toEqual([
       'contact:session_1:telegram:floating_contact_panel',
       'contact:session_1:telegram:gallery_detail_cta',
     ])
-    expect(db.insertedConversions.filter(item => item.actionType === 'lead')).toEqual([
-      expect.objectContaining({ dedupeKey: 'lead:session_1' }),
-    ])
-
-    const leadDeliveries = db.calls.filter(
-      call =>
-        call.sql.includes('analytics_conversion_deliveries') &&
-        db.insertedConversions.some(item => item.actionType === 'lead' && item.id === call.params[1]),
-    )
-    expect(leadDeliveries.map(call => call.params[3])).toEqual([
-      'meta:Lead:lead:session_1',
-      'meta:Lead:lead:session_1',
-    ])
+    expect(db.insertedConversions.some(item => item.actionType === 'lead')).toBe(false)
+    expect(db.insertedDeliveries.map(item => item.eventName)).toEqual(['Contact', 'Contact', 'Contact', 'Contact'])
   })
 })

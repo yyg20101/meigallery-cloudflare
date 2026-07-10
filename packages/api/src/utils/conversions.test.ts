@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, expectTypeOf, it } from 'vitest'
+import type { ActiveConversionActionType, ActiveMetaEventName } from '@meigallery/shared'
 import {
   buildConversionDedupeKey,
   buildExternalEventId,
@@ -8,7 +9,11 @@ import {
   sanitizeConversionMetadata,
   metaEventForConversion,
 } from './conversions'
-import { ATTRIBUTION_LIMITS } from '@meigallery/shared/constants'
+import {
+  ACTIVE_CONVERSION_ACTIONS,
+  ACTIVE_META_EVENTS,
+  ATTRIBUTION_LIMITS,
+} from '@meigallery/shared/constants'
 
 describe('conversion utils', () => {
   it('共享契约生成稳定事件 ID 并保守归一化 Meta 模式', () => {
@@ -29,9 +34,35 @@ describe('conversion utils', () => {
     expect(normalizeMetaTrackingMode('limited')).toBe('disabled')
   })
 
-  it('注册成功映射 CompleteRegistration 且不映射 StartTrial', () => {
+  it('活动 Meta 契约只包含联系和注册', () => {
+    expectTypeOf<ActiveConversionActionType>().toEqualTypeOf<'contact' | 'complete_registration'>()
+    expectTypeOf<ActiveMetaEventName>().toEqualTypeOf<'Contact' | 'CompleteRegistration'>()
+    expect(ACTIVE_CONVERSION_ACTIONS).toEqual(['contact', 'complete_registration'])
+    expect(ACTIVE_META_EVENTS).toEqual(['Contact', 'CompleteRegistration'])
+    expect(metaEventForConversion('contact')).toBe('Contact')
     expect(metaEventForConversion('complete_registration')).toBe('CompleteRegistration')
+    expect(metaEventForConversion('lead')).toBeNull()
     expect(metaEventForConversion('start_trial')).toBeNull()
+    expect(metaEventForConversion('membership_grant')).toBeNull()
+  })
+
+  it('注册事件按服务端用户 ID 生成稳定去重键', () => {
+    expect(buildConversionDedupeKey({
+      actionType: 'complete_registration',
+      userId: 42,
+      sessionId: 'session_a',
+      visitorId: 'visitor_a',
+      occurredDate: '2026-07-10',
+    })).toBe('complete_registration:user:42')
+  })
+
+  it('历史动作仅使用统一的确定性读取 fallback', () => {
+    expect(buildConversionDedupeKey({
+      actionType: 'lead',
+      sessionId: 'session_a',
+      visitorId: 'visitor_a',
+      occurredDate: '2026-07-10',
+    })).toBe('historical:lead:visitor_a:session_a:2026-07-10')
   })
 
   it('清洗 payload 时移除敏感字段', () => {

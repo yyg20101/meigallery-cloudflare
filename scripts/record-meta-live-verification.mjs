@@ -27,11 +27,11 @@ export function buildMetaLiveEvidence(input) {
   if (!/^\d{5,30}$/.test(pixelId)) throw new Error('测试 Pixel ID 必须为 5 到 30 位数字')
   if (!/^[0-9a-f]{40}$/i.test(commit)) throw new Error('当前 commit 必须为 40 位 SHA')
   if (Number.isNaN(verifiedAt.getTime())) throw new Error('验证时间非法')
-  if (input?.noStartTrial !== true) throw new Error('必须明确确认 Test Events 中没有 StartTrial')
+  if (input?.noStartTrial !== true) throw new Error('必须明确确认 Test Events 中没有 Lead 或 StartTrial')
 
   const resultMap = new Map(eventResults.map(result => [result?.eventName, result]))
   if (eventResults.length !== META_LIVE_EVENTS.length || resultMap.size !== META_LIVE_EVENTS.length) {
-    throw new Error('必须录入固定三事件的验证结果')
+    throw new Error('必须录入固定两事件的验证结果')
   }
 
   const events = META_LIVE_EVENTS.map(eventName => {
@@ -87,7 +87,7 @@ export async function recordMetaLiveVerification(options = {}) {
     eventResults.push({ eventName, browserEventId, serverEventId, deduplicated })
   }
 
-  const noStartTrial = isYes(await ask('已确认 Test Events 中没有 StartTrial？(yes/no)：', { hidden: false }))
+  const noStartTrial = isYes(await ask('已确认 Test Events 中没有 Lead 或 StartTrial？(yes/no)：', { hidden: false }))
   const evidence = buildMetaLiveEvidence({
     confirmedBy,
     pixelId,

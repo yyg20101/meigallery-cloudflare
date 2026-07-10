@@ -5,6 +5,7 @@ export interface ConversionDedupeInput {
   sessionId: string
   visitorId: string
   occurredDate: string
+  userId?: number
   methodType?: string
   actionTarget?: string
 }
@@ -13,11 +14,13 @@ export function buildConversionDedupeKey(input: ConversionDedupeInput) {
   if (input.actionType === 'contact') {
     return `contact:${input.sessionId}:${normalizePart(input.methodType)}:${normalizePart(input.actionTarget)}`
   }
-  if (input.actionType === 'lead') return `lead:${input.sessionId}`
-  if (input.actionType === 'complete_registration' || input.actionType === 'start_trial') {
-    return `${input.actionType}:${input.sessionId}:${input.occurredDate}`
+  if (input.actionType === 'complete_registration') {
+    if (!Number.isInteger(input.userId) || Number(input.userId) <= 0) {
+      throw new Error('注册转化必须包含正整数 userId')
+    }
+    return `complete_registration:user:${input.userId}`
   }
-  return `${input.actionType}:${input.visitorId}:${input.occurredDate}`
+  return `historical:${input.actionType}:${input.visitorId}:${input.sessionId}:${input.occurredDate}`
 }
 
 export function buildExternalEventId(input: ConversionDedupeInput & { metaEventName: ConversionMetaEventName }) {

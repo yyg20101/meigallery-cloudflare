@@ -1,4 +1,4 @@
-import type { AnalyticsConsentState, AnalyticsSourceChannel, ConversionActionType, MetaCapiUserData, MetaPixelInstruction, MetaTrackingMode } from '@meigallery/shared'
+import type { ActiveConversionActionType, AnalyticsConsentState, AnalyticsSourceChannel, MetaCapiUserData, MetaPixelInstruction, MetaTrackingMode } from '@meigallery/shared'
 import type { Bindings } from '../index'
 import { generateId } from '../utils/db'
 import { parseStoredSettingValue } from '../utils/stored-setting-value'
@@ -15,7 +15,7 @@ import { transitionDeliveryStatus } from './meta-capi'
 import { enqueueMetaCapiDelivery } from './meta-capi-queue'
 
 export interface RecordConversionInput {
-  actionType: ConversionActionType
+  actionType: ActiveConversionActionType
   visitorId: string
   sessionId: string
   userId?: number | null
@@ -37,12 +37,13 @@ export interface RecordConversionInput {
 
 export interface RecordConversionResult {
   id: string
-  actionType: ConversionActionType
+  actionType: ActiveConversionActionType
   created: boolean
   duplicateOf: string
-  derivedActions: Array<{ id: string; actionType: ConversionActionType }>
   pixelEvents: MetaPixelInstruction[]
 }
+
+export type RecordActiveConversionInput = Omit<RecordConversionInput, 'actionType'>
 
 export interface RecordConversionContext {
   getMetaCapiUserData: () => MetaCapiUserData
@@ -68,7 +69,23 @@ type PlannedDelivery = {
 
 type MetaDeliverySettings = Awaited<ReturnType<typeof readMetaDeliverySettings>>
 
-export async function recordConversionAction(
+export function recordContact(
+  env: Pick<Bindings, 'DB' | 'APP_ENV' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>,
+  input: RecordActiveConversionInput,
+  context?: RecordConversionContext,
+) {
+  return recordActiveConversion(env, { ...input, actionType: 'contact' }, context)
+}
+
+export function recordRegistration(
+  env: Pick<Bindings, 'DB' | 'APP_ENV' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>,
+  input: RecordActiveConversionInput,
+  context?: RecordConversionContext,
+) {
+  return recordActiveConversion(env, { ...input, actionType: 'complete_registration' }, context)
+}
+
+async function recordActiveConversion(
   env: Pick<Bindings, 'DB' | 'APP_ENV' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>,
   input: RecordConversionInput,
   context: RecordConversionContext = { getMetaCapiUserData: () => ({}) },
@@ -91,12 +108,9 @@ export async function recordConversionAction(
 
   const committedDeliveries = plan.deliveries.filter(delivery => d1Changed(results[delivery.statementIndex]!))
   const pixelEvents = committedDeliveries.flatMap(delivery => delivery.pixelInstruction ? [delivery.pixelInstruction] : [])
-  const derivedActions = plan.leadAction && plan.leadAction.statementIndex !== undefined && d1Changed(results[plan.leadAction.statementIndex]!)
-    ? [{ id: plan.leadAction.id, actionType: 'lead' as const }]
-    : []
   await finalizeCapiDeliveries(env, committedDeliveries)
 
-  return { id, actionType: normalizedInput.actionType, created: true, duplicateOf: '', derivedActions, pixelEvents }
+  return { id, actionType: normalizedInput.actionType, created: true, duplicateOf: '', pixelEvents }
 }
 
 export async function markPixelAttempted(
@@ -230,7 +244,6 @@ async function recordDuplicateResult(
     actionType: input.actionType,
     created: false,
     duplicateOf: existingId,
-    derivedActions: [],
     pixelEvents: [],
   }
 }
@@ -307,24 +320,7 @@ async function buildConversionBatchPlan(
     statements.push(pendingDeliveryDailyStatement(env.DB, delivery, date))
   }
 
-  let leadAction: { id: string; statementIndex?: number } | undefined
-  if (input.actionType === 'contact') {
-    const leadInput: RecordConversionInput = { ...input, actionType: 'lead', occurredAt }
-    const leadId = generateId('conv')
-    const leadDedupeKey = conversionDedupeKey(leadInput, date)
-    leadAction = { id: leadId }
-    leadAction.statementIndex = statements.push(conversionActionStatement(
-      env.DB, leadId, leadInput, occurredAt, date, leadDedupeKey, actionId,
-    )) - 1
-    statements.push(conversionDailyStatement(env.DB, leadInput, date, leadId))
-    const leadDeliveries = await planMetaDeliveries(env, settings, leadInput, date, metaCapiUserData)
-    for (const delivery of leadDeliveries) {
-      delivery.statementIndex = statements.push(conversionDeliveryStatement(env.DB, delivery, leadId)) - 1
-      statements.push(pendingDeliveryDailyStatement(env.DB, delivery, date))
-      deliveries.push(delivery)
-    }
-  }
-  return { statements, actionStatementIndex, deliveries, leadAction }
+  return { statements, actionStatementIndex, deliveries }
 }
 
 function conversionActionStatement(
@@ -334,7 +330,6 @@ function conversionActionStatement(
   occurredAt: string,
   date: string,
   dedupeKey: string,
-  requiredActionId?: string,
 ) {
   const values = [
     id, input.actionType, dedupeKey, occurredAt, date, input.visitorId || '', input.sessionId || '', input.userId ?? null,
@@ -342,7 +337,6 @@ function conversionActionStatement(
     input.utmMedium || '', input.utmCampaign || '', input.utmContent || '', input.methodType || '', input.actionTarget || '',
     input.routeName || '', input.path || '', JSON.stringify(sanitizeConversionMetadata(input.metadata || {})), '',
   ]
-  const condition = requiredActionId ? 'SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM analytics_conversion_actions WHERE id = ?)' : 'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   return db.prepare(`
     INSERT OR IGNORE INTO analytics_conversion_actions (
       id, action_type, dedupe_key, occurred_at, date, visitor_id, session_id, user_id,
@@ -350,8 +344,8 @@ function conversionActionStatement(
       utm_campaign, utm_content, method_type, action_target, route_name, path,
       metadata, duplicate_of
     )
-    ${condition}
-  `).bind(...values, ...(requiredActionId ? [requiredActionId] : []))
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(...values)
 }
 
 async function planMetaDeliveries(
@@ -369,6 +363,7 @@ async function planMetaDeliveries(
     sessionId: input.sessionId || '',
     visitorId: input.visitorId || '',
     occurredDate: date,
+    userId: input.userId ?? undefined,
     methodType: input.methodType,
     actionTarget: input.actionTarget,
     metaEventName: eventName,
@@ -501,6 +496,7 @@ function conversionDedupeKey(input: RecordConversionInput, occurredDate: string)
     sessionId: input.sessionId || '',
     visitorId: input.visitorId || '',
     occurredDate,
+    userId: input.userId ?? undefined,
     methodType: input.methodType,
     actionTarget: input.actionTarget,
   })

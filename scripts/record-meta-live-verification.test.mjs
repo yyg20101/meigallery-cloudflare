@@ -9,7 +9,6 @@ import {
 const COMMIT = '18dc11e0b0e4797683d4551a93a1f22e53dc4628'
 const RAW_IDS = {
   Contact: 'contact-browser-server-raw-id',
-  Lead: 'lead-browser-server-raw-id',
   CompleteRegistration: 'registration-browser-server-raw-id',
 }
 
@@ -57,7 +56,7 @@ describe('Meta live evidence 人工录入', () => {
     const serialized = JSON.stringify(evidence)
 
     assert.equal(evidence.pixelIdSuffix, '6781')
-    assert.deepEqual(evidence.events.map(event => event.eventName), ['Contact', 'Lead', 'CompleteRegistration'])
+    assert.deepEqual(evidence.events.map(event => event.eventName), ['Contact', 'CompleteRegistration'])
     for (const event of evidence.events) {
       const rawId = RAW_IDS[event.eventName]
       const expected = createHash('sha256').update(rawId).digest('hex').slice(0, 12)
@@ -68,7 +67,7 @@ describe('Meta live evidence 人工录入', () => {
     assert.equal(serialized.includes('12345678906781'), false)
   })
 
-  it('拒绝 ID 不同、未去重、事件缺失和存在 StartTrial', () => {
+  it('拒绝 ID 不同、未去重、事件缺失和存在 Lead 或 StartTrial', () => {
     const base = validInput()
     const invalidInputs = [
       {
@@ -79,7 +78,25 @@ describe('Meta live evidence 人工录入', () => {
         ...base,
         eventResults: base.eventResults.map((event, index) => index === 0 ? { ...event, deduplicated: false } : event),
       },
-      { ...base, eventResults: base.eventResults.slice(0, 2) },
+      { ...base, eventResults: base.eventResults.slice(0, 1) },
+      {
+        ...base,
+        eventResults: [...base.eventResults, {
+          eventName: 'Lead',
+          browserEventId: 'lead-raw-id',
+          serverEventId: 'lead-raw-id',
+          deduplicated: true,
+        }],
+      },
+      {
+        ...base,
+        eventResults: [...base.eventResults, {
+          eventName: 'StartTrial',
+          browserEventId: 'trial-raw-id',
+          serverEventId: 'trial-raw-id',
+          deduplicated: true,
+        }],
+      },
       { ...base, noStartTrial: false },
     ]
 
@@ -93,11 +110,8 @@ describe('Meta live evidence 人工录入', () => {
       RAW_IDS.Contact,
       RAW_IDS.Contact,
       'yes',
-      RAW_IDS.Lead,
-      'different-lead-id',
-      'yes',
       RAW_IDS.CompleteRegistration,
-      RAW_IDS.CompleteRegistration,
+      'different-registration-id',
       'yes',
       'yes',
     ]
@@ -119,7 +133,7 @@ describe('Meta live evidence 人工录入', () => {
 
     assert.equal(writeCount, 0)
     for (const value of Object.values(RAW_IDS)) assert.equal(output.join('\n').includes(value), false)
-    assert.equal(output.join('\n').includes('different-lead-id'), false)
+    assert.equal(output.join('\n').includes('different-registration-id'), false)
   })
 
   it('confirmedBy 夹带敏感值时拒绝且不写文件', async () => {
@@ -134,9 +148,6 @@ describe('Meta live evidence 人工录入', () => {
         '12345678906781',
         RAW_IDS.Contact,
         RAW_IDS.Contact,
-        'yes',
-        RAW_IDS.Lead,
-        RAW_IDS.Lead,
         'yes',
         RAW_IDS.CompleteRegistration,
         RAW_IDS.CompleteRegistration,

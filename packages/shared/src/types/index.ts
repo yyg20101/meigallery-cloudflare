@@ -76,22 +76,32 @@ export type ConversionActionType =
   | 'start_trial'
   | 'membership_grant'
 
+export type ActiveConversionActionType = Extract<
+  ConversionActionType,
+  'contact' | 'complete_registration'
+>
+
 export type ConversionMetaEventName =
   | 'Contact'
   | 'Lead'
   | 'CompleteRegistration'
 
+export type ActiveMetaEventName = Extract<
+  ConversionMetaEventName,
+  'Contact' | 'CompleteRegistration'
+>
+
 export type ConversionDeliveryChannel = 'meta_pixel' | 'meta_capi'
 
 export type MetaTrackingMode = 'disabled' | 'test' | 'production'
 
-export type PublicConversionActionType = Extract<ConversionActionType, 'contact' | 'complete_registration'>
+export type PublicConversionActionType = Extract<ActiveConversionActionType, 'contact'>
 
 export type ConversionDeliveryStatus = 'pending' | 'attempted' | 'sent' | 'failed' | 'skipped' | 'duplicate_suppressed'
 
 export interface MetaPixelInstruction {
   deliveryId: string
-  eventName: Extract<ConversionMetaEventName, 'Contact' | 'Lead' | 'CompleteRegistration'>
+  eventName: ActiveMetaEventName
   eventId: string
   payload: Record<string, string | number | boolean>
   receiptToken: string

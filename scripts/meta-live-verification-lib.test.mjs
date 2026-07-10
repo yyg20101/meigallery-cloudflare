@@ -20,7 +20,7 @@ function createEvidence() {
     verifiedAt: VERIFIED_AT,
     expiresAt: EXPIRES_AT,
     pixelIdSuffix: '6781',
-    events: ['Contact', 'Lead', 'CompleteRegistration'].map(eventName => ({
+    events: ['Contact', 'CompleteRegistration'].map(eventName => ({
       eventName,
       browser: true,
       server: true,
@@ -33,7 +33,7 @@ function createEvidence() {
 }
 
 describe('Meta live evidence', () => {
-  it('只接受当前 commit、严格 24 小时和固定三事件的完整证据', () => {
+  it('只接受当前 commit、严格 24 小时和固定两事件的完整证据', () => {
     assert.doesNotThrow(() => {
       assertMetaLiveEvidenceCanGateProduction(createEvidence(), {
         expectedCommit: COMMIT,
@@ -73,10 +73,11 @@ describe('Meta live evidence', () => {
     }, /24 小时/)
   })
 
-  it('拒绝缺事件、StartTrial 和任何事件验证失败', () => {
+  it('拒绝缺事件、Lead、StartTrial 和任何事件验证失败', () => {
     const evidence = createEvidence()
     const invalidEvidence = [
-      { ...evidence, events: evidence.events.slice(0, 2) },
+      { ...evidence, events: evidence.events.slice(0, 1) },
+      { ...evidence, events: [...evidence.events, { ...evidence.events[0], eventName: 'Lead' }] },
       { ...evidence, events: [...evidence.events, { ...evidence.events[0], eventName: 'StartTrial' }] },
       { ...evidence, events: evidence.events.map((event, index) => index === 0 ? { ...event, browser: false } : event) },
       { ...evidence, events: evidence.events.map((event, index) => index === 0 ? { ...event, server: false } : event) },

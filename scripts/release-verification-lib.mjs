@@ -397,7 +397,7 @@ function validateMetaReleaseSummary(report, reasons, now) {
   } else {
     if (live.status !== 'passed') reasons.push('Meta live evidence 未通过')
     if (live.commit !== report.git?.commit) reasons.push('Meta live evidence commit 与报告 commit 不一致')
-    if (!Array.isArray(live.events) || live.events.length !== 3 || !['Contact', 'Lead', 'CompleteRegistration'].every(name => live.events.includes(name))) {
+    if (!Array.isArray(live.events) || live.events.length !== 2 || !['Contact', 'CompleteRegistration'].every(name => live.events.includes(name))) {
       reasons.push('Meta live evidence 事件集合不完整')
     }
     const verifiedAt = Date.parse(live.verifiedAt || '')
