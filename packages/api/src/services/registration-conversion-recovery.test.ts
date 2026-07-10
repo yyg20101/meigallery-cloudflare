@@ -36,6 +36,8 @@ describe('注册转化事实修复任务', () => {
     expect(scan?.sql).toContain("datetime(?, '-24 hours')")
     expect(scan?.sql).toContain("a.action_type = 'complete_registration'")
     expect(scan?.sql).toContain('LIMIT 100')
+    expect(scan?.sql).not.toContain('email')
+    expect(scan?.sql).not.toContain('meta_external_id')
     expect(scan?.params).toEqual(['2026-07-10T09:00:00.000Z'])
     expect(recordFactOnlyMock).toHaveBeenNthCalledWith(1, expect.anything(), {
       userId: 41,
@@ -45,6 +47,7 @@ describe('注册转化事实修复任务', () => {
       sourceChannel: 'unknown',
       metadata: { method: 'email', recovery: true },
     })
+    expect(recordFactOnlyMock.mock.calls.every(call => call.length === 2)).toBe(true)
   })
 
   it('逐用户隔离失败且不要求任何 Meta delivery 环境', async () => {

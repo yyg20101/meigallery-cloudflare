@@ -8,6 +8,7 @@ import {
   sendMetaCapiEvent,
   type MetaCapiPayloadInput,
 } from './meta-capi'
+import { readMetaEventsResponse } from './meta-graph'
 
 type DeliveryStatus = 'pending' | 'sent' | 'failed' | 'skipped' | 'duplicate_suppressed'
 type DeliveryRow = {
@@ -350,6 +351,97 @@ describe('meta-capi', () => {
       external_id: [externalIdSha256],
     })
     expect(invalid.data[0]?.user_data).toEqual({})
+  })
+
+  it('CompleteRegistration Graph body 只携带 hash，不携带邮箱或 external ID 原值', async () => {
+    const db = createMetaCapiDb({
+      pixelId: '1234567890',
+      delivery: { event_name: 'CompleteRegistration' },
+    })
+    const fetchFn = vi.fn().mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }))
+    const email = 'graph-raw-s5@example.test'
+    const externalId = 'fedcba9876543210fedcba9876543210'
+    const emailSha256 = 'a'.repeat(64)
+    const externalIdSha256 = 'b'.repeat(64)
+
+    await sendMetaCapiEvent(envFor(db), 'cdlv_1', {
+      fetchFn,
+      userData: {
+        fbp: 'fb.1.1700000000000.graph-s5',
+        emailSha256,
+        externalIdSha256,
+        email,
+        metaExternalId: externalId,
+      } as never,
+    })
+
+    const graphRequest = String(fetchFn.mock.calls[0]?.[1]?.body)
+    expect(JSON.parse(graphRequest).data[0].user_data).toEqual({
+      fbp: 'fb.1.1700000000000.graph-s5',
+      em: [emailSha256],
+      external_id: [externalIdSha256],
+    })
+    expect(graphRequest).not.toContain(email)
+    expect(graphRequest).not.toContain(externalId)
+    expect(graphRequest).not.toContain('conversion-token')
+  })
+
+  it('Graph 错误只解析数字 code 与严格 trace，丢弃完整 body 和冲突 trace', async () => {
+    const sensitiveToken = 'S5SensitiveToken_123'
+    const parsed = await readMetaEventsResponse(new Response(JSON.stringify({
+      error: {
+        message: 'graph-raw-s5@example.test fedcba9876543210fedcba9876543210',
+        type: 'OAuthException',
+        code: 190,
+        error_subcode: 463,
+        fbtrace_id: 'Trace_S5-safe-123',
+      },
+    }), { status: 400 }), [sensitiveToken])
+    const conflict = await readMetaEventsResponse(new Response(JSON.stringify({
+      error: { code: 190, fbtrace_id: sensitiveToken },
+    }), { status: 400 }), [sensitiveToken])
+
+    expect(parsed).toEqual({ eventsReceived: undefined, errorCode: 190, traceId: 'Trace_S5-safe-123' })
+    expect(JSON.stringify(parsed)).not.toContain('graph-raw-s5@example.test')
+    expect(JSON.stringify(parsed)).not.toContain('OAuthException')
+    expect(JSON.stringify(parsed)).not.toContain('463')
+    expect(conflict).toEqual({ eventsReceived: undefined, errorCode: 190 })
+  })
+
+  it('Graph 错误原值不进入 delivery、结果或 console', async () => {
+    const db = createMetaCapiDb({ pixelId: '1234567890' })
+    const sensitiveValues = [
+      'graph-error-s5@example.test',
+      '44444444444444444444444444444444',
+      'conversion-token',
+      '203.0.113.177',
+      'Graph Error Private Browser/7.7',
+    ]
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const fetchFn = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      error: {
+        message: sensitiveValues.join('|'),
+        type: 'OAuthException',
+        code: 190,
+        fbtrace_id: 'conversion-token',
+      },
+    }), { status: 400 }))
+
+    const result = await sendMetaCapiEvent(envFor(db), 'cdlv_1', { fetchFn })
+    const serializedBoundaries = JSON.stringify({
+      result,
+      dbCalls: db.calls,
+      delivery: db.delivery,
+      logs: [...consoleError.mock.calls, ...consoleWarn.mock.calls],
+    })
+
+    expect(result).toEqual({ deliveryId: 'cdlv_1', status: 'failed', reason: '400' })
+    for (const sensitive of sensitiveValues) expect(serializedBoundaries).not.toContain(sensitive)
+    expect(consoleError).not.toHaveBeenCalled()
+    expect(consoleWarn).not.toHaveBeenCalled()
+    consoleError.mockRestore()
+    consoleWarn.mockRestore()
   })
 
   it('custom_data 只保留白名单内的有效字符串、有限数字和布尔值', () => {

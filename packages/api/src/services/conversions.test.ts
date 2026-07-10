@@ -1,7 +1,8 @@
 import { Buffer } from 'node:buffer'
-import { describe, expect, expectTypeOf, it } from 'vitest'
+import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 import type { MetaCapiQueueMessage } from '@meigallery/shared'
 import type { Bindings } from '../index'
+import { decryptMetaCapiContext, loadMetaCapiCryptoKeys } from '../utils/meta-capi-crypto'
 import {
   recordContact,
   recordRegistration,
@@ -10,17 +11,39 @@ import {
   type RecordRegistrationInput,
 } from './conversions'
 
+const metaHashMocks = vi.hoisted(() => ({
+  email: vi.fn(),
+  externalId: vi.fn(),
+}))
+
+vi.mock('../utils/meta-browser-identifiers', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils/meta-browser-identifiers')>()
+  metaHashMocks.email.mockImplementation(actual.hashMetaEmail)
+  metaHashMocks.externalId.mockImplementation(actual.hashMetaExternalId)
+  return {
+    ...actual,
+    hashMetaEmail: metaHashMocks.email,
+    hashMetaExternalId: metaHashMocks.externalId,
+  }
+})
+
 type Call = { sql: string; params: unknown[] }
 type InsertedConversion = { id: string; actionType: string; dedupeKey: string; sessionId: string }
 type InsertedDelivery = {
   id: string
   conversionActionId: string
+  channel: string
   eventName: string
+  eventId: string
   status: string
   skipReason: string
   encryptionKeyId: string
   metaConnectionRevision: string | null
   queueEnqueuedAt: string | null
+  hasFbp: number
+  hasFbc: number
+  hasEmail: number
+  hasExternalId: number
 }
 type InsertedOutbox = {
   deliveryId: string
@@ -76,12 +99,18 @@ function createConversionDb(options: {
       target.insertedDeliveries.push({
         id: String(call.params[0]),
         conversionActionId: String(call.params[1]),
+        channel: String(call.params[2]),
         eventName: String(call.params[4]),
+        eventId: String(call.params[3]),
         status: String(call.params[5]),
         skipReason: String(call.params[6]),
         encryptionKeyId: String(call.params[11]),
         metaConnectionRevision: call.params[13] == null ? null : String(call.params[13]),
         queueEnqueuedAt: null,
+        hasFbp: Number(call.params[7]),
+        hasFbc: Number(call.params[8]),
+        hasEmail: Number(call.params[9]),
+        hasExternalId: Number(call.params[10]),
       })
     }
     if (call.sql.includes('INSERT INTO meta_capi_secure_outbox')) {
@@ -270,7 +299,17 @@ function grantedContactInput() {
   }
 }
 
+async function sha256Hex(value: string) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
+}
+
 describe('conversion ledger service', () => {
+  beforeEach(() => {
+    metaHashMocks.email.mockClear()
+    metaHashMocks.externalId.mockClear()
+  })
+
   it('联系与注册入口使用独立输入契约', () => {
     expectTypeOf<RecordContactInput['methodType']>().toEqualTypeOf<string>()
     expectTypeOf<RecordContactInput['actionTarget']>().toEqualTypeOf<string>()
@@ -445,6 +484,193 @@ describe('conversion ledger service', () => {
     expect(db.calls.some(call => call.sql.includes('analytics_conversion_deliveries'))).toBe(false)
   })
 
+  it.each(['limited', 'denied'] as const)('%s 注册不读取浏览器或敏感值、不 hash 且不创建 outbox', async consentState => {
+    const db = createConversionDb({
+      facebookPixelEnabled: true,
+      facebookPixelId: '1234567890',
+      metaCapiEnabled: true,
+      metaTrackingMode: 'production',
+    })
+    const browserSupplier = vi.fn(async () => ({ fbp: 'fb.1.must-not-read' }))
+    const sensitiveSupplier = vi.fn(async () => ({
+      email: 'limited-private@example.test',
+      metaExternalId: '0123456789abcdef0123456789abcdef',
+    }))
+
+    await recordRegistration(envFor(db), {
+      visitorId: 'visitor_limited_registration',
+      sessionId: 'session_limited_registration',
+      userId: 420,
+      occurredAt: '2026-07-10T08:00:00.000Z',
+      consentState,
+      metadata: { method: 'email' },
+    }, {
+      getMetaCapiUserData: browserSupplier,
+      getRegistrationSensitiveInput: sensitiveSupplier,
+    })
+
+    expect(browserSupplier).not.toHaveBeenCalled()
+    expect(sensitiveSupplier).not.toHaveBeenCalled()
+    expect(metaHashMocks.email).not.toHaveBeenCalled()
+    expect(metaHashMocks.externalId).not.toHaveBeenCalled()
+    expect(db.insertedDeliveries).toEqual([])
+    expect(db.insertedOutboxes).toEqual([])
+  })
+
+  it('授权注册只在惰性门禁后 hash，并将浏览器信号与两项 hash 写入同一密文上下文', async () => {
+    const db = createConversionDb({
+      facebookPixelEnabled: true,
+      facebookPixelId: '1234567890',
+      metaCapiEnabled: true,
+      metaTrackingMode: 'production',
+    })
+    const sent: MetaCapiQueueMessage[] = []
+    const env = envWithQueueFor(db, sent)
+    const email = '  Granted.Unique+S5@Example.Test  '
+    const metaExternalId = 'abcdef0123456789abcdef0123456789'
+    const browser = {
+      fbp: 'fb.1.1700000000000.987654321',
+      fbc: 'fb.1.1700000000000.CLICK_s5-unique',
+      clientIpAddress: '203.0.113.211',
+      clientUserAgent: 'S5 Registration Browser/5.0',
+    }
+    const browserSupplier = vi.fn(async () => browser)
+    const sensitiveSupplier = vi.fn(async () => ({ email, metaExternalId }))
+
+    await recordRegistration(env, {
+      visitorId: 'visitor_registration_s5',
+      sessionId: 'session_registration_s5',
+      userId: 421,
+      occurredAt: '2026-07-10T08:01:00.000Z',
+      consentState: 'granted',
+      metadata: { method: 'email' },
+    }, {
+      getMetaCapiUserData: browserSupplier,
+      getRegistrationSensitiveInput: sensitiveSupplier,
+    })
+
+    expect(browserSupplier).toHaveBeenCalledOnce()
+    expect(sensitiveSupplier).toHaveBeenCalledOnce()
+    expect(metaHashMocks.email).toHaveBeenCalledWith(email)
+    expect(metaHashMocks.externalId).toHaveBeenCalledWith(metaExternalId)
+    const delivery = db.insertedDeliveries.find(item => (
+      item.eventName === 'CompleteRegistration' && item.channel === 'meta_capi'
+    ))!
+    expect(delivery).toMatchObject({ hasFbp: 1, hasFbc: 1, hasEmail: 1, hasExternalId: 1 })
+    const envelope = sent.find(item => item.deliveryId === delivery.id)!.envelope
+    const keys = await loadMetaCapiCryptoKeys(env)
+    const decrypted = await decryptMetaCapiContext({
+      keys,
+      aad: { deliveryId: delivery.id, externalEventId: delivery.eventId, eventName: 'CompleteRegistration' },
+      envelope: {
+        schemaVersion: 2,
+        keyId: envelope.keyId,
+        iv: envelope.iv,
+        ciphertext: envelope.ciphertext,
+        tag: envelope.tag,
+      },
+    })
+    expect(decrypted).toEqual({
+      ...browser,
+      emailSha256: await sha256Hex(email.trim().toLowerCase()),
+      externalIdSha256: await sha256Hex(metaExternalId),
+    })
+    const serializedPersistentBoundaries = JSON.stringify({ calls: db.calls, sent })
+    expect(serializedPersistentBoundaries).not.toContain(email)
+    expect(serializedPersistentBoundaries).not.toContain(metaExternalId)
+    expect(serializedPersistentBoundaries).not.toContain(browser.fbp)
+    expect(serializedPersistentBoundaries).not.toContain(browser.fbc)
+    expect(serializedPersistentBoundaries).not.toContain(browser.clientIpAddress)
+    expect(serializedPersistentBoundaries).not.toContain(browser.clientUserAgent)
+  })
+
+  it.each([
+    ['CAPI disabled', { metaCapiEnabled: false, metaTrackingMode: 'production' as const, facebookPixelId: '1234567890' }, DATA_KEY],
+    ['tracking disabled', { metaCapiEnabled: true, metaTrackingMode: 'disabled' as const, facebookPixelId: '1234567890' }, DATA_KEY],
+    ['connection unverified', { metaCapiEnabled: true, metaTrackingMode: 'production' as const, facebookPixelId: '1234567890', metaConnectionVerified: false }, DATA_KEY],
+    ['missing data key', { metaCapiEnabled: true, metaTrackingMode: 'production' as const, facebookPixelId: '1234567890' }, undefined],
+    ['invalid data key', { metaCapiEnabled: true, metaTrackingMode: 'production' as const, facebookPixelId: '1234567890' }, 'invalid-key'],
+  ])('%s 时注册不读取或 hash 匹配数据', async (_caseName, dbOptions, dataKey) => {
+    const db = createConversionDb(dbOptions)
+    const browserSupplier = vi.fn(async () => ({ fbp: 'fb.1.1700000000000.gated-private' }))
+    const sensitiveSupplier = vi.fn(async () => ({
+      email: 'gated-private@example.test',
+      metaExternalId: '22222222222222222222222222222222',
+    }))
+
+    await recordRegistration({
+      ...envFor(db),
+      META_CAPI_DATA_KEY_CURRENT: dataKey,
+    }, {
+      visitorId: 'visitor_gated_registration',
+      sessionId: 'session_gated_registration',
+      userId: 423,
+      occurredAt: '2026-07-10T08:03:00.000Z',
+      consentState: 'granted',
+      metadata: {},
+    }, {
+      getMetaCapiUserData: browserSupplier,
+      getRegistrationSensitiveInput: sensitiveSupplier,
+    })
+
+    expect(browserSupplier).not.toHaveBeenCalled()
+    expect(sensitiveSupplier).not.toHaveBeenCalled()
+    expect(metaHashMocks.email).not.toHaveBeenCalled()
+    expect(metaHashMocks.externalId).not.toHaveBeenCalled()
+    expect(db.insertedOutboxes).toEqual([])
+  })
+
+  it('注册敏感 supplier 异常只抛稳定错误，不携带原值或 cause', async () => {
+    const db = createConversionDb({
+      metaCapiEnabled: true,
+      metaTrackingMode: 'production',
+      facebookPixelId: '1234567890',
+    })
+    const sensitive = 'supplier-private@example.test|33333333333333333333333333333333'
+
+    const error = await recordRegistration(envFor(db), {
+      visitorId: 'visitor_supplier_failure',
+      sessionId: 'session_supplier_failure',
+      userId: 424,
+      occurredAt: '2026-07-10T08:04:00.000Z',
+      consentState: 'granted',
+      metadata: {},
+    }, {
+      getMetaCapiUserData: async () => ({ fbp: 'fb.1.1700000000000.supplier-private' }),
+      getRegistrationSensitiveInput: async () => { throw new Error(sensitive) },
+    }).catch(caught => caught as Error & { cause?: unknown })
+
+    expect(error).toMatchObject({ message: 'META_CAPI_CONTEXT_BUILD_FAILED' })
+    expect(error).not.toHaveProperty('cause')
+    expect(JSON.stringify(error)).not.toContain(sensitive)
+    expect(db.insertedOutboxes).toEqual([])
+  })
+
+  it('已登录 Contact 只读取浏览器 supplier，不接收或查询注册 PII', async () => {
+    const db = createConversionDb({
+      facebookPixelId: '1234567890',
+      metaCapiEnabled: true,
+      metaTrackingMode: 'production',
+    })
+    const browserSupplier = vi.fn(async () => ({
+      fbp: 'fb.1.1700000000000.contact-only',
+      emailSha256: 'a'.repeat(64),
+      externalIdSha256: 'b'.repeat(64),
+    }))
+
+    await recordContact(envFor(db), { ...grantedContactInput(), userId: 421 }, {
+      getMetaCapiUserData: browserSupplier,
+    })
+
+    expect(browserSupplier).toHaveBeenCalledOnce()
+    expect(metaHashMocks.email).not.toHaveBeenCalled()
+    expect(metaHashMocks.externalId).not.toHaveBeenCalled()
+    expect(db.calls.some(call => /FROM\s+users/i.test(call.sql))).toBe(false)
+    expect(db.insertedDeliveries).toEqual([
+      expect.objectContaining({ hasEmail: 0, hasExternalId: 0 }),
+    ])
+  })
+
   it('同一服务端用户重复注册按用户 ID 去重且不重复规划 delivery', async () => {
     const db = createConversionDb({
       facebookPixelEnabled: true,
@@ -474,6 +700,33 @@ describe('conversion ledger service', () => {
     expect(db.insertedConversions[0]?.dedupeKey).toBe('complete_registration:user:42')
     expect(db.insertedDeliveries).toHaveLength(2)
     expect(sent).toHaveLength(1)
+  })
+
+  it('重复注册事实不读取惰性上下文且不 hash', async () => {
+    const db = createConversionDb({ existingDedupeKeys: ['complete_registration:user:422'] })
+    const browserSupplier = vi.fn(async () => ({ fbp: 'fb.1.duplicate-private' }))
+    const sensitiveSupplier = vi.fn(async () => ({
+      email: 'duplicate-private@example.test',
+      metaExternalId: '11111111111111111111111111111111',
+    }))
+
+    await recordRegistration(envFor(db), {
+      visitorId: 'visitor_duplicate_registration',
+      sessionId: 'session_duplicate_registration',
+      userId: 422,
+      occurredAt: '2026-07-10T08:02:00.000Z',
+      consentState: 'granted',
+      metadata: {},
+    }, {
+      getMetaCapiUserData: browserSupplier,
+      getRegistrationSensitiveInput: sensitiveSupplier,
+    })
+
+    expect(browserSupplier).not.toHaveBeenCalled()
+    expect(sensitiveSupplier).not.toHaveBeenCalled()
+    expect(metaHashMocks.email).not.toHaveBeenCalled()
+    expect(metaHashMocks.externalId).not.toHaveBeenCalled()
+    expect(db.insertedDeliveries).toEqual([])
   })
 
   it('注册事实修复只写 action 与 daily aggregate，且按服务端用户 ID 幂等', async () => {

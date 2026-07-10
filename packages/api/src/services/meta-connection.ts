@@ -552,7 +552,12 @@ async function fetchBootstrapEvent(
       body: JSON.stringify(payload),
       signal: controller.signal,
     })
-    const { eventsReceived } = await readMetaEventsResponse(response)
+    const { eventsReceived } = await readMetaEventsResponse(response, [
+      accessToken,
+      payload.test_event_code,
+      payload.data[0]!.user_data.client_ip_address,
+      payload.data[0]!.user_data.client_user_agent,
+    ])
     return { ok: response.ok, status: response.status, eventsReceived }
   }
   catch {

@@ -135,8 +135,11 @@ authRoutes.post('/send-code', async (c) => {
     } else {
       await sendPasswordResetCode(c.env, email, code)
     }
-  } catch (e) {
-    console.error('邮件发送失败:', e)
+  } catch {
+    console.error('[auth.send-code] 邮件发送失败', {
+      purpose,
+      code: 'AUTH_EMAIL_SEND_FAILED',
+    })
     return c.json({ statusCode: 500, message: '邮件发送失败，请稍后重试' }, 500)
   }
 
@@ -231,13 +234,14 @@ authRoutes.post('/register', async (c) => {
 
   // 创建用户（自增 ID）
   const passwordHash = await hashPassword(body.password)
+  const metaExternalId = generateMetaExternalId()
 
   const insertResult = await db
     .prepare(
-      `INSERT INTO users (email, username, nickname, password_hash, role, status, email_verified)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO users (email, username, nickname, password_hash, role, status, email_verified, meta_external_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .bind(email, username, body.nickname?.trim() || null, passwordHash, 'user', 'active', emailVerified)
+    .bind(email, username, body.nickname?.trim() || null, passwordHash, 'user', 'active', emailVerified, metaExternalId)
     .run()
   const userId = insertResult.meta.last_row_id
   const attribution = normalizeRegistrationAttribution(body.attribution, userId)
@@ -253,8 +257,11 @@ authRoutes.post('/register', async (c) => {
         sourceChannel: hasAttribution ? attribution.sourceChannel : body.sourceChannel,
         landingPath: hasAttribution ? attribution.path : body.landingPath,
       })
-    } catch (error) {
-      console.warn('邀请码注册绑定失败，已继续普通注册:', error)
+    } catch {
+      console.warn('[auth.register] 邀请码注册绑定失败', {
+        userId,
+        code: 'INVITE_REGISTRATION_BIND_FAILED',
+      })
     }
   }
 
@@ -281,6 +288,7 @@ authRoutes.post('/register', async (c) => {
       metadata: { method: 'email' },
     }, {
       getMetaCapiUserData: () => buildMetaCapiUserData(c.req.raw, attribution.browserIdentifiers),
+      getRegistrationSensitiveInput: async () => readRegistrationSensitiveInput(db, userId),
     })
     pixelEvents = registration.pixelEvents
   } catch {
@@ -302,6 +310,32 @@ authRoutes.post('/register', async (c) => {
     pixelEvents,
   }, 201)
 })
+
+function generateMetaExternalId() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+  return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
+}
+
+async function readRegistrationSensitiveInput(db: D1Database, userId: number) {
+  const user = await db.prepare(`
+    SELECT id, email, meta_external_id
+    FROM users
+    WHERE id = ?
+    LIMIT 1
+  `).bind(userId).first<{
+    id: number
+    email: string
+    meta_external_id: string | null
+  }>()
+  if (user?.id !== userId
+    || typeof user.email !== 'string'
+    || !user.email.trim()
+    || typeof user.meta_external_id !== 'string'
+    || !/^[0-9a-f]{32}$/.test(user.meta_external_id)) {
+    throw new Error('REGISTRATION_MATCH_DATA_UNAVAILABLE')
+  }
+  return { email: user.email, metaExternalId: user.meta_external_id }
+}
 
 function normalizeRegistrationAttribution(value: unknown, userId: number) {
   const input = isPlainRecord(value) ? value : {}

@@ -18,7 +18,11 @@ import {
   sanitizeConversionMetadata,
 } from '../utils/conversions'
 import { createPixelReceiptToken, type PixelReceiptClaims } from '../utils/pixel-receipt'
-import { normalizeMetaCapiUserData } from '../utils/meta-browser-identifiers'
+import {
+  hashMetaEmail,
+  hashMetaExternalId,
+  normalizeMetaCapiUserData,
+} from '../utils/meta-browser-identifiers'
 import {
   encryptMetaCapiContext,
   loadMetaCapiCryptoKeys,
@@ -101,7 +105,16 @@ export type RecordRegistrationFactOnlyInput = Pick<
 >
 
 export interface RecordConversionContext {
-  getMetaCapiUserData: () => MetaCapiSensitiveContext
+  getMetaCapiUserData: () => MetaCapiSensitiveContext | Promise<MetaCapiSensitiveContext>
+}
+
+interface RecordRegistrationSensitiveInput {
+  email: string
+  metaExternalId: string
+}
+
+interface RecordRegistrationContext extends RecordConversionContext {
+  getRegistrationSensitiveInput: () => RecordRegistrationSensitiveInput | Promise<RecordRegistrationSensitiveInput>
 }
 
 export interface MarkPixelAttemptedResult {
@@ -156,9 +169,13 @@ export async function recordContact(
 export async function recordRegistration(
   env: ConversionEnv,
   input: RecordRegistrationInput,
-  context?: RecordConversionContext,
+  context?: RecordRegistrationContext,
 ) {
-  return recordActiveConversion(env, { ...input, actionType: 'complete_registration' }, context)
+  return recordActiveConversion(
+    env,
+    { ...input, actionType: 'complete_registration' },
+    context ? registrationConversionContext(context) : undefined,
+  )
 }
 
 export async function recordRegistrationFactOnly(
@@ -238,6 +255,25 @@ async function recordActiveConversion(
   await finalizeCapiDeliveries(env, committedDeliveries)
 
   return { id, actionType: normalizedInput.actionType, created: true, duplicateOf: '', pixelEvents }
+}
+
+function registrationConversionContext(context: RecordRegistrationContext): RecordConversionContext {
+  return {
+    getMetaCapiUserData: async () => {
+      try {
+        const browser = await context.getMetaCapiUserData()
+        const sensitive = await context.getRegistrationSensitiveInput()
+        const [emailSha256, externalIdSha256] = await Promise.all([
+          hashMetaEmail(sensitive.email),
+          hashMetaExternalId(sensitive.metaExternalId),
+        ])
+        return { ...browser, emailSha256, externalIdSha256 }
+      }
+      catch {
+        throw new Error('META_CAPI_CONTEXT_BUILD_FAILED')
+      }
+    },
+  }
 }
 
 export async function markPixelAttempted(
@@ -635,10 +671,17 @@ async function buildCapiEncryptionPlan(
   } catch {
     return { state: 'skipped', reason: 'invalid_data_key', connectionRevision: connection.revision }
   }
+  let sensitiveContext: MetaCapiSensitiveContext
+  try {
+    sensitiveContext = normalizeSensitiveContext(await context.getMetaCapiUserData())
+  }
+  catch {
+    throw new Error('META_CAPI_CONTEXT_BUILD_FAILED')
+  }
   return {
     state: 'ready',
     keys,
-    context: normalizeSensitiveContext(context.getMetaCapiUserData()),
+    context: sensitiveContext,
     connectionRevision: connection.revision,
   }
 }

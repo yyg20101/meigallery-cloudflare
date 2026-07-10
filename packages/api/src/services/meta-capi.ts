@@ -214,6 +214,10 @@ export async function sendMetaCapiEvent(
       },
       options.signal,
       options.timeoutMs ?? META_CAPI_TIMEOUT_MS,
+      [
+        accessToken,
+        ...Object.values(options.userData || {}).filter((value): value is string => typeof value === 'string'),
+      ],
     )
     response = metaResponse.response
     eventsReceived = metaResponse.eventsReceived
@@ -455,6 +459,7 @@ async function fetchWithCombinedTimeout(
   init: RequestInit,
   callerSignal: AbortSignal | undefined,
   timeoutMs: number,
+  sensitiveValues: readonly string[],
 ) {
   const controller = new AbortController()
   let timedOut = false
@@ -468,7 +473,7 @@ async function fetchWithCombinedTimeout(
 
   try {
     const response = await fetchFn(input, { ...init, signal: controller.signal })
-    const { eventsReceived } = await readMetaEventsResponse(response)
+    const { eventsReceived } = await readMetaEventsResponse(response, sensitiveValues)
     return { response, eventsReceived }
   } catch {
     if (timedOut) throw new MetaCapiDeliveryError('meta_timeout', META_CAPI_TIMEOUT_MESSAGE, true)

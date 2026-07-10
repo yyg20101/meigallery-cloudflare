@@ -37,7 +37,9 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
 
   it('用户、邀请码和 session 成功后只调用一次 recordRegistration', async () => {
     const db = createRegisterDb(await hashInviteCode('ACTIVE1'))
-    recordRegistrationMock.mockImplementationOnce(async () => {
+    let authoritativeSensitiveInput: Record<string, unknown> | undefined
+    recordRegistrationMock.mockImplementationOnce(async (_env, _input, context) => {
+      authoritativeSensitiveInput = await context?.getRegistrationSensitiveInput?.()
       db.events.push('record_registration')
       return registrationResult()
     })
@@ -60,7 +62,22 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
       sessionId: 'session_registration_42',
       consentState: 'granted',
       metadata: { method: 'email' },
-    }), expect.objectContaining({ getMetaCapiUserData: expect.any(Function) }))
+    }), expect.objectContaining({
+      getMetaCapiUserData: expect.any(Function),
+      getRegistrationSensitiveInput: expect.any(Function),
+    }))
+    const userInsert = db.calls.find(call => call.sql.includes('INSERT INTO users'))
+    const metaExternalId = String(userInsert?.params[7])
+    expect(userInsert?.sql).toContain('meta_external_id')
+    expect(metaExternalId).toMatch(/^[0-9a-f]{32}$/)
+    expect(authoritativeSensitiveInput).toEqual({
+      email: 'new@example.com',
+      metaExternalId,
+    })
+    expect(db.calls.some(call => (
+      call.sql.includes('SELECT id, email, meta_external_id')
+      && call.params[0] === 42
+    ))).toBe(true)
     expect(recordRegistrationMock.mock.calls[0]?.[1]).not.toHaveProperty('actionType')
     expect(recordRegistrationMock.mock.calls[0]?.[1].userId).not.toBe(999)
     expect(db.events.indexOf('invite_registration')).toBeGreaterThan(db.events.indexOf('user_insert'))
@@ -71,6 +88,7 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
     expect(body).not.toHaveProperty('capi')
     expect(body).not.toHaveProperty('emailHash')
     expect(JSON.stringify(body)).not.toContain('external')
+    expect(JSON.stringify(db.calls.filter(call => !call.sql.includes('INSERT INTO users')))).not.toContain(metaExternalId)
   })
 
   it('缺少客户端身份时使用服务端用户 ID 作为稳定 fallback', async () => {
@@ -92,7 +110,8 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
       pixelEvents: [],
     })
 
-    const response = await register(createRegisterDb(), {
+    const db = createRegisterDb()
+    const response = await register(db, {
       attribution: { ...grantedAttribution(), consentState: 'denied' },
     })
     const body = await response.json<Record<string, unknown>>()
@@ -100,12 +119,56 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
     expect(response.status).toBe(201)
     expect(recordRegistrationMock).toHaveBeenCalledOnce()
     expect(recordRegistrationMock.mock.calls[0]?.[1].consentState).toBe('denied')
+    expect(db.calls.some(call => call.sql.includes('SELECT id, email, meta_external_id'))).toBe(false)
     expect(body.pixelEvents).toEqual([])
   })
 
+  it('limited 注册不会提前读取权威匹配字段', async () => {
+    const db = createRegisterDb()
+
+    await register(db, { attribution: { ...grantedAttribution(), consentState: 'limited' } })
+
+    expect(db.calls.some(call => call.sql.includes('SELECT id, email, meta_external_id'))).toBe(false)
+  })
+
+  it('邀请码绑定异常只记录稳定 code，不记录 Error 或注册敏感值', async () => {
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const db = createRegisterDb(await hashInviteCode('ACTIVE1'), { failInviteRegistration: true })
+
+    const response = await register(db, {
+      inviteCode: 'ACTIVE1',
+      attribution: {
+        ...grantedAttribution(),
+        browserIdentifiers: {
+          fbp: 'fb.1.1700000000000.invite-private',
+          clientIpAddress: '203.0.113.199',
+          clientUserAgent: 'Invite Private Browser/9.9',
+        },
+      },
+    })
+    const metaExternalId = String(db.calls.find(call => call.sql.includes('INSERT INTO users'))?.params[7])
+    const logs = JSON.stringify(consoleWarn.mock.calls)
+
+    expect(response.status).toBe(201)
+    expect(consoleWarn).toHaveBeenCalledWith('[auth.register] 邀请码注册绑定失败', {
+      userId: 42,
+      code: 'INVITE_REGISTRATION_BIND_FAILED',
+    })
+    for (const sensitive of [
+      'new@example.com',
+      metaExternalId,
+      'ACTIVE1',
+      'fb.1.1700000000000.invite-private',
+      '203.0.113.199',
+      'Invite Private Browser/9.9',
+    ]) expect(logs).not.toContain(sensitive)
+  })
+
   it('转化写入失败不回滚用户或 session，并只记录脱敏结构化错误', async () => {
-    const sensitive = 'new@example.com|password123|fb.1.private|private-browser'
-    recordRegistrationMock.mockRejectedValueOnce(new Error(sensitive))
+    recordRegistrationMock.mockImplementationOnce(async (_env, _input, context) => {
+      const sensitive = await context?.getRegistrationSensitiveInput?.()
+      throw new Error(`${sensitive?.email}|${sensitive?.metaExternalId}|token-private|203.0.113.188|private-browser`)
+    })
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const db = createRegisterDb()
 
@@ -116,6 +179,7 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
       },
     })
     const body = await response.json<Record<string, unknown>>()
+    const metaExternalId = String(db.calls.find(call => call.sql.includes('INSERT INTO users'))?.params[7])
 
     expect(response.status).toBe(201)
     expect(body.pixelEvents).toEqual([])
@@ -127,7 +191,10 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
       { userId: 42, code: 'REGISTRATION_CONVERSION_WRITE_FAILED' },
     )
     expect(JSON.stringify(consoleError.mock.calls)).not.toContain('new@example.com')
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(metaExternalId)
     expect(JSON.stringify(consoleError.mock.calls)).not.toContain('password123')
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain('token-private')
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain('203.0.113.188')
     expect(JSON.stringify(consoleError.mock.calls)).not.toContain('fb.1.private')
     expect(JSON.stringify(consoleError.mock.calls)).not.toContain('private-browser')
   })
@@ -187,7 +254,10 @@ function registrationResult() {
   }
 }
 
-function createRegisterDb(activeInviteHash?: string) {
+function createRegisterDb(
+  activeInviteHash?: string,
+  options: { failInviteRegistration?: boolean } = {},
+) {
   const calls: PreparedCall[] = []
   const events: string[] = []
   return {
@@ -202,6 +272,15 @@ function createRegisterDb(activeInviteHash?: string) {
           return this
         },
         async first<T>() {
+          if (sql.includes('SELECT id, email, meta_external_id') && call.params[0] === 42) {
+            const userInsert = calls.find(item => item.sql.includes('INSERT INTO users'))
+            events.push('registration_sensitive_select')
+            return {
+              id: 42,
+              email: String(userInsert?.params[0]),
+              meta_external_id: String(userInsert?.params[7]),
+            } as T
+          }
           if (sql.includes('FROM invite_codes') && call.params[0] === activeInviteHash) {
             return {
               id: 'inv_1',
@@ -216,6 +295,9 @@ function createRegisterDb(activeInviteHash?: string) {
           return null as T | null
         },
         async run() {
+          if (options.failInviteRegistration && sql.includes('INSERT OR IGNORE INTO invite_registrations')) {
+            throw new Error('new@example.com|ACTIVE1|203.0.113.199|Invite Private Browser/9.9')
+          }
           if (sql.includes('INSERT INTO users')) events.push('user_insert')
           if (sql.includes('INSERT OR IGNORE INTO invite_registrations')) events.push('invite_registration')
           if (sql.includes('UPDATE invite_codes SET used_count')) events.push('invite_counter_update')

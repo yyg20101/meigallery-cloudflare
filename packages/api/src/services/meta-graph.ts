@@ -6,7 +6,12 @@ export function metaEventsEndpoint(pixelId: string, accessToken: string) {
   return url.toString()
 }
 
-export async function readMetaEventsResponse(response: Response) {
+const TRACE_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/
+
+export async function readMetaEventsResponse(
+  response: Response,
+  sensitiveValues: readonly string[] = [],
+) {
   let text: string
   try {
     text = await response.text()
@@ -28,5 +33,24 @@ export async function readMetaEventsResponse(response: Response) {
     && Number.isFinite((body as Record<string, unknown>).events_received)
     ? (body as Record<string, unknown>).events_received as number
     : undefined
-  return { eventsReceived }
+  const error = isPlainRecord(body) && isPlainRecord(body.error) ? body.error : null
+  const errorCode = Number.isSafeInteger(error?.code)
+    && Number(error?.code) >= 0
+    && Number(error?.code) <= 2_147_483_647
+    ? Number(error!.code)
+    : undefined
+  const candidateTraceId = typeof error?.fbtrace_id === 'string' ? error.fbtrace_id : ''
+  const traceId = TRACE_ID_PATTERN.test(candidateTraceId)
+    && !sensitiveValues.some(value => typeof value === 'string' && value.length > 0 && value === candidateTraceId)
+    ? candidateTraceId
+    : undefined
+  return {
+    eventsReceived,
+    ...(errorCode !== undefined ? { errorCode } : {}),
+    ...(traceId ? { traceId } : {}),
+  }
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
 }

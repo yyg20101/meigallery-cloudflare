@@ -37,7 +37,7 @@ export function buildMetaCapiUserData(request: Request, bodyIdentifiers: unknown
   })
 }
 
-export async function normalizeAndHashEmail(email: string): Promise<string> {
+export async function hashMetaEmail(email: string): Promise<string> {
   try {
     if (typeof email !== 'string') throw new Error(IDENTIFIER_ERROR)
     const normalized = email.trim().toLowerCase()
@@ -48,6 +48,8 @@ export async function normalizeAndHashEmail(email: string): Promise<string> {
     throw new Error(IDENTIFIER_ERROR)
   }
 }
+
+export const normalizeAndHashEmail = hashMetaEmail
 
 export async function hashMetaExternalId(externalId: string): Promise<string> {
   try {
