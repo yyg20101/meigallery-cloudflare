@@ -133,9 +133,14 @@ describe('useAnalytics', () => {
     const analytics = useAnalytics()
     analytics.initialize({ enabled: true, consentState: 'limited', route })
     analytics.track('home_ad_click', { props: { ad_id: 'ad_1' } })
+    analytics.track('contact_qr_expand', {
+      entityType: 'contact',
+      props: { method_type: 'telegram', action_type: 'qr_expand', location: 'floating_contact_panel' },
+    })
     analytics.track('register_submit', { props: { email_verification_enabled: false } })
 
     expect(analytics.state.value.queue.some(event => event.eventName === 'home_ad_click')).toBe(false)
+    expect(analytics.state.value.queue.some(event => event.eventName === 'contact_qr_expand')).toBe(false)
     expect(analytics.state.value.queue.some(event => event.eventName === 'register_submit')).toBe(true)
   })
 

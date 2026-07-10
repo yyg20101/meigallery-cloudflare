@@ -107,6 +107,7 @@ const CLICK_EVENTS = new Set<AnalyticsEventName>([
   'sort_changed',
   'load_more',
   'contact_method_click',
+  'contact_qr_expand',
   'rules_page_click',
   'membership_cta_click',
 ])

@@ -92,6 +92,7 @@ const NON_ESSENTIAL_LIMITED_EVENTS = new Set<AnalyticsEventName>([
   'filter_removed',
   'sort_changed',
   'load_more',
+  'contact_qr_expand',
 ])
 
 let analyticsApi: AnalyticsApi | null = null

@@ -18,7 +18,6 @@ useSeoMeta({
 const route = useRoute()
 const router = useRouter()
 const analytics = useAnalytics()
-const { trackFilterSelected } = useFacebookPixel()
 
 const PAGE_SIZE = 24
 
@@ -57,7 +56,6 @@ function toggleTag(slug: string) {
     selectedSlugs.value.push(slug)
   }
   updateQuery()
-  trackFilterSelected({ tagSlug: slug, tagType: findTagType(slug), location: 'discover_filter' })
   analytics.track(selected ? 'filter_selected' : 'filter_removed', {
     entityType: 'tag',
     entityId: slug,

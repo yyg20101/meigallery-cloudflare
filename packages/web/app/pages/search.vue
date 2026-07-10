@@ -3,7 +3,7 @@ const route = useRoute()
 const router = useRouter()
 const { api } = useApi()
 const analytics = useAnalytics()
-const { trackSearch, trackFilterSelected } = useFacebookPixel()
+const { trackSearch } = useTracking()
 const { siteName } = useSiteSettings()
 
 interface GallerySummary {
@@ -109,7 +109,6 @@ function toggleTag(slug: string) {
   }
   page.value = 1
   updateUrl()
-  trackFilterSelected({ tagSlug: slug, tagType: findTagType(slug), location: 'search_filter' })
   analytics.track(selected ? 'filter_selected' : 'filter_removed', {
     entityType: 'tag',
     entityId: slug,
@@ -154,7 +153,6 @@ function updateUrl() {
 }
 
 function goToTag(slug: string) {
-  trackFilterSelected({ tagSlug: slug, tagType: findTagType(slug), location: 'search_related_tag' })
   analytics.track('filter_selected', {
     entityType: 'tag',
     entityId: slug,

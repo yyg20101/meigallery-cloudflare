@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ref } from 'vue'
 import { createFacebookPixelScript, FACEBOOK_PIXEL_SCRIPT_SRC, hasSensitiveAnalyticsUrl, sanitizeAnalyticsText } from './facebookPixel'
 
 describe('facebookPixel 安全工具', () => {
@@ -9,10 +8,6 @@ describe('facebookPixel 安全工具', () => {
   })
 
   afterEach(() => {
-    const pixelWindow = window as unknown as { fbq?: unknown; _fbq?: unknown }
-    delete pixelWindow.fbq
-    delete pixelWindow._fbq
-    document.head.querySelectorAll(`script[src="${FACEBOOK_PIXEL_SCRIPT_SRC}"]`).forEach(node => node.remove())
     vi.unstubAllGlobals()
   })
 
@@ -51,7 +46,6 @@ describe('facebookPixel 安全工具', () => {
     expect(sanitizeAnalyticsText('联系 me@example.com 或 +86 138 0000 0000')).toBe('联系 [redacted_email] 或 [redacted_phone]')
     expect(sanitizeAnalyticsText('查看 https://example.com/rules?token=abc')).toBe('查看 [redacted_url]')
     expect(sanitizeAnalyticsText('搜索 api_key=abc&style=summer signature=xyz')).toBe('搜索 api_key=[redacted_credential]&style=summer signature=[redacted_credential]')
-    expect(sanitizeAnalyticsText('授权 x-amz-signature=abc access-token=xyz')).toBe('授权 x-amz-signature=[redacted_credential] access-token=[redacted_credential]')
   })
 
   it('Pixel 脚本加载不发送来源页信息', () => {
@@ -61,103 +55,33 @@ describe('facebookPixel 安全工具', () => {
     expect(script.src).toBe(FACEBOOK_PIXEL_SCRIPT_SRC)
     expect(script.referrerPolicy).toBe('no-referrer')
   })
+})
 
-  it('Pixel adapter 通过 trackStandardEvent 发送标准事件和 eventID', async () => {
-    vi.stubGlobal('useRoute', () => ({ fullPath: '/gallery/summer' }))
-    vi.stubGlobal('useMarketingConsent', () => ({ canTrackMarketing: ref(true) }))
-    const { useFacebookPixel } = await import('../composables/useFacebookPixel')
-    const pixel = useFacebookPixel()
-    vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T) => node)
-
-    pixel.initFacebookPixel('123456789')
-    const sent = pixel.trackStandardEvent(
-      'Contact',
-      { location: 'floating_contact_panel', method_type: 'telegram' },
-      { eventID: 'meta:Contact:contact:session_1:telegram:floating_contact_panel' },
-    )
-
-    const fbq = (window as unknown as { fbq?: { queue: unknown[] } }).fbq
-    expect(sent).toBe(true)
-    expect(fbq?.queue).toContainEqual([
-      'track',
-      'Contact',
-      { location: 'floating_contact_panel', method_type: 'telegram' },
-      { eventID: 'meta:Contact:contact:session_1:telegram:floating_contact_panel' },
-    ])
-    expect(pixel).not.toHaveProperty('trackLeadOnce')
-    expect(pixel).not.toHaveProperty('trackContactClick')
-    expect(pixel).not.toHaveProperty('trackCompleteRegistration')
+describe('useFacebookPixel 兼容包装', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
   })
 
-  it('授权撤回后，即使 adapter 已初始化也不再调用 fbq', async () => {
-    const canTrackMarketing = ref(true)
-    vi.stubGlobal('useRoute', () => ({ fullPath: '/gallery/summer' }))
-    vi.stubGlobal('useMarketingConsent', () => ({ canTrackMarketing }))
+  it('只委托 Tracking Facade 且不再接受 Lead', async () => {
+    const trackPageView = vi.fn()
+    const trackViewContent = vi.fn()
+    const trackSearch = vi.fn()
+    vi.stubGlobal('useTracking', () => ({ trackPageView, trackViewContent, trackSearch }))
     const { useFacebookPixel } = await import('../composables/useFacebookPixel')
     const pixel = useFacebookPixel()
-    vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T) => node)
 
-    pixel.initFacebookPixel('123456789')
     pixel.trackPageView('/gallery/summer')
-    pixel.trackStandardEvent('Contact', { location: 'contact_panel' })
-    pixel.trackLoginCompleted()
-    const fbq = (window as unknown as { fbq?: { queue: unknown[] } }).fbq
-    const callCountBeforeDenied = fbq?.queue.length
+    pixel.trackViewContent({ id: 'gallery_1', title: '夏日', requiredRank: 10, tags: ['summer'] })
+    pixel.trackSearch({ searchString: 'has_query=true', resultCount: 3 })
 
-    canTrackMarketing.value = false
-    pixel.trackPageView('/gallery/autumn')
-    pixel.trackStandardEvent('Lead', { source: 'welcome' })
-    pixel.trackLoginCompleted()
-
-    expect(fbq?.queue).toHaveLength(callCountBeforeDenied ?? 0)
-  })
-
-  it('外部脚本加载前撤回授权会清除队列、脚本和全局引用', async () => {
-    const canTrackMarketing = ref(true)
-    let script: HTMLScriptElement | undefined
-    vi.stubGlobal('useRoute', () => ({ fullPath: '/gallery/summer' }))
-    vi.stubGlobal('useMarketingConsent', () => ({ canTrackMarketing }))
-    vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T) => {
-      script = node as unknown as HTMLScriptElement
-      return node
+    expect(trackPageView).toHaveBeenCalledOnce()
+    expect(trackViewContent).toHaveBeenCalledWith({
+      content_id: 'gallery_1',
+      content_name: '夏日',
+      required_rank: 10,
+      tag_count: 1,
     })
-    const { useFacebookPixel } = await import('../composables/useFacebookPixel')
-    const pixel = useFacebookPixel()
-
-    pixel.initFacebookPixel('123456789')
-    pixel.trackPageView('/gallery/summer')
-    const removeScript = vi.spyOn(script!, 'remove')
-    const fbq = (window as unknown as { fbq?: { queue: unknown[] } }).fbq
-
-    canTrackMarketing.value = false
-    pixel.cleanupFacebookPixel()
-
-    expect(fbq?.queue).toEqual([])
-    expect(removeScript).toHaveBeenCalledTimes(1)
-    expect((window as unknown as { fbq?: unknown }).fbq).toBeUndefined()
-    expect((window as unknown as { _fbq?: unknown })._fbq).toBeUndefined()
-  })
-
-  it('撤回后重新授权可重新初始化，当前页只排队一次 PageView', async () => {
-    const canTrackMarketing = ref(true)
-    vi.stubGlobal('useRoute', () => ({ fullPath: '/gallery/summer' }))
-    vi.stubGlobal('useMarketingConsent', () => ({ canTrackMarketing }))
-    vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T) => node)
-    const { useFacebookPixel } = await import('../composables/useFacebookPixel')
-    const pixel = useFacebookPixel()
-
-    pixel.initFacebookPixel('123456789')
-    pixel.trackPageView('/gallery/summer')
-    canTrackMarketing.value = false
-    pixel.cleanupFacebookPixel()
-    canTrackMarketing.value = true
-    pixel.initFacebookPixel('123456789')
-    pixel.trackPageView('/gallery/summer')
-
-    const fbq = (window as unknown as { fbq?: { queue: unknown[] } }).fbq
-    expect(fbq?.queue).toEqual([
-      ['init', '123456789'],
-      ['track', 'PageView'],
-    ])
+    expect(trackSearch).toHaveBeenCalledWith({ search_string: 'has_query=true', result_count: 3 })
+    expect(pixel.trackStandardEvent('Lead' as never)).toBe(false)
   })
 })

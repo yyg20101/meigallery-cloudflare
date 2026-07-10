@@ -5,7 +5,6 @@ const { login, isLoggedIn } = useAuth()
 const route = useRoute()
 const router = useRouter()
 const analytics = useAnalytics()
-const { trackLoginCompleted } = useFacebookPixel()
 const { siteName } = useSiteSettings()
 
 const identifier = ref('')
@@ -64,7 +63,6 @@ async function onSubmit() {
       entityType: 'auth',
     })
     await login(identifier.value, password.value, hasTurnstile.value ? turnstileToken.value : undefined)
-    trackLoginCompleted()
     const redirectPath = normalizeLoginRedirect(route.query.redirect)
     analytics.track('login_success', {
       props: { redirect_path_type: getRedirectPathType(redirectPath) },
