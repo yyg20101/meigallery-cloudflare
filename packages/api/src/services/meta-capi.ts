@@ -54,6 +54,10 @@ export interface TransitionDeliveryStatusInput {
   errorMessage?: string
 }
 
+export type ConfirmedDeliveryTransition = ConversionDeliverySnapshot & {
+  transitionChanged: boolean
+}
+
 export class MetaCapiDeliveryError extends Error {
   readonly retryable: boolean
   readonly code: string
@@ -134,27 +138,31 @@ export async function sendMetaCapiEvent(
   const trackingMode = delivery.tracking_mode
   if (trackingMode !== 'test' && trackingMode !== 'production') {
     const persisted = await confirmDeliveryTransition(env.DB, delivery, { status: 'skipped', skipReason: 'invalid_tracking_mode' })
-    if (persisted.status === 'sent') return alreadySentResult(deliveryId)
+    const competingSent = await recordCompetingSent(env.DB, persisted, deliveryId)
+    if (competingSent) return competingSent
     return { deliveryId, status: 'skipped', reason: 'invalid_tracking_mode' }
   }
   const testEventCode = trackingMode === 'test' ? String(env.META_CAPI_TEST_EVENT_CODE || '').trim() : ''
   if (trackingMode === 'test' && !testEventCode) {
     const persisted = await confirmDeliveryTransition(env.DB, delivery, { status: 'skipped', skipReason: 'missing_test_event_code' })
-    if (persisted.status === 'sent') return alreadySentResult(deliveryId)
+    const competingSent = await recordCompetingSent(env.DB, persisted, deliveryId)
+    if (competingSent) return competingSent
     return { deliveryId, status: 'skipped', reason: 'missing_test_event_code' }
   }
 
   const accessToken = String(env.META_CAPI_ACCESS_TOKEN || '').trim()
   if (!accessToken) {
     const persisted = await confirmDeliveryTransition(env.DB, delivery, { status: 'skipped', skipReason: 'missing_secret' })
-    if (persisted.status === 'sent') return alreadySentResult(deliveryId)
+    const competingSent = await recordCompetingSent(env.DB, persisted, deliveryId)
+    if (competingSent) return competingSent
     return { deliveryId, status: 'skipped', reason: 'missing_secret' }
   }
 
   const pixelId = await readPixelId(env.DB)
   if (!pixelId) {
     const persisted = await confirmDeliveryTransition(env.DB, delivery, { status: 'skipped', skipReason: 'missing_pixel_id' })
-    if (persisted.status === 'sent') return alreadySentResult(deliveryId)
+    const competingSent = await recordCompetingSent(env.DB, persisted, deliveryId)
+    if (competingSent) return competingSent
     return { deliveryId, status: 'skipped', reason: 'missing_pixel_id' }
   }
 
@@ -193,7 +201,8 @@ export async function sendMetaCapiEvent(
       errorCode: code,
       errorMessage: META_CAPI_ERROR_MESSAGE,
     })
-    if (persisted.status === 'sent') return alreadySentResult(deliveryId)
+    const competingSent = await recordCompetingSent(env.DB, persisted, deliveryId)
+    if (competingSent) return competingSent
     throw new MetaCapiDeliveryError(
       code,
       timedOut ? META_CAPI_TIMEOUT_MESSAGE : META_CAPI_ERROR_MESSAGE,
@@ -204,7 +213,9 @@ export async function sendMetaCapiEvent(
   const eventsReceived = readEventsReceived(responseBody)
   const traceId = readTraceId(responseBody, accessToken)
   if (response.ok && eventsReceived === 1) {
-    await confirmDeliveryTransition(env.DB, delivery, { status: 'sent' })
+    const persisted = await confirmDeliveryTransition(env.DB, delivery, { status: 'sent' })
+    const competingSent = await recordCompetingSent(env.DB, persisted, deliveryId)
+    if (competingSent) return competingSent
     return compactResult({ deliveryId, status: 'sent', eventsReceived, traceId })
   }
 
@@ -214,7 +225,8 @@ export async function sendMetaCapiEvent(
       errorCode: 'meta_events_not_received',
       errorMessage: META_CAPI_ERROR_MESSAGE,
     })
-    if (persisted.status === 'sent') return alreadySentResult(deliveryId)
+    const competingSent = await recordCompetingSent(env.DB, persisted, deliveryId)
+    if (competingSent) return competingSent
     return compactResult({
       deliveryId,
       status: 'failed',
@@ -230,7 +242,8 @@ export async function sendMetaCapiEvent(
     errorCode,
     errorMessage: META_CAPI_ERROR_MESSAGE,
   })
-  if (persisted.status === 'sent') return alreadySentResult(deliveryId)
+  const competingSent = await recordCompetingSent(env.DB, persisted, deliveryId)
+  if (competingSent) return competingSent
   if (classifyMetaCapiError(response.status) === 'retryable') {
     throw new MetaCapiDeliveryError(errorCode, META_CAPI_ERROR_MESSAGE, true)
   }
@@ -355,10 +368,10 @@ export async function confirmDeliveryTransition(
   delivery: ConversionDeliverySnapshot,
   input: TransitionDeliveryStatusInput,
   options: { allowAnyNonSent?: boolean } = {},
-): Promise<ConversionDeliverySnapshot> {
+): Promise<ConfirmedDeliveryTransition> {
   let current = delivery
   for (let attempt = 0; attempt < DELIVERY_TRANSITION_MAX_ATTEMPTS; attempt += 1) {
-    if (current.status === 'sent') return current
+    if (current.status === 'sent') return { ...current, transitionChanged: false }
     if (!options.allowAnyNonSent && current.status !== 'pending' && current.status !== 'failed') {
       throw stateConflictError()
     }
@@ -369,6 +382,7 @@ export async function confirmDeliveryTransition(
         ...current,
         status: input.status,
         skip_reason: input.skipReason ?? '',
+        transitionChanged: true,
       }
     }
 
@@ -376,7 +390,7 @@ export async function confirmDeliveryTransition(
     if (!refreshed) throw stateConflictError()
     current = refreshed
   }
-  if (current.status === 'sent') return current
+  if (current.status === 'sent') return { ...current, transitionChanged: false }
   throw stateConflictError()
 }
 
@@ -504,6 +518,16 @@ function compactResult(result: MetaCapiSendResult) {
 
 function alreadySentResult(deliveryId: string): MetaCapiSendResult {
   return { deliveryId, status: 'sent', reason: 'already_sent' }
+}
+
+async function recordCompetingSent(
+  db: D1Database,
+  delivery: ConfirmedDeliveryTransition,
+  deliveryId: string,
+) {
+  if (delivery.status !== 'sent' || delivery.transitionChanged) return undefined
+  await recordDuplicateSuppressed(db, delivery)
+  return alreadySentResult(deliveryId)
 }
 
 function stateConflictError() {

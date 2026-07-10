@@ -116,6 +116,98 @@ function createMetaCapiDb(options: {
   return db
 }
 
+function createConcurrentSuccessDb() {
+  const delivery = {
+    id: 'cdlv_concurrent',
+    conversion_action_id: 'conv_concurrent',
+    channel: 'meta_capi',
+    external_event_id: 'event_concurrent',
+    event_name: 'Contact',
+    status: 'pending' as DeliveryStatus,
+    skip_reason: '',
+    error_code: '',
+    error_message: '',
+    attempt_count: 0,
+    tracking_mode: 'production' as const,
+    duplicate_suppressed_at: null as string | null,
+    last_attempt_at: null,
+    sent_at: null as string | null,
+    date: '2026-07-10',
+    occurred_at: '2026-07-10T00:00:00.000Z',
+    path: '/',
+    metadata: '{}',
+  }
+  const daily = new Map<string, number>([['pending', 1]])
+  const db = {
+    delivery,
+    daily,
+    prepare(sql: string) {
+      const statement = {
+        sql,
+        params: [] as unknown[],
+        bind(...params: unknown[]) {
+          this.params = params
+          return this
+        },
+        async first<T>() {
+          if (sql.includes('FROM analytics_conversion_deliveries')) return { ...delivery } as T
+          if (sql.includes("WHERE key = 'facebook_pixel_id'")) return { value: JSON.stringify('1234567890') } as T
+          return null
+        },
+        async run() {
+          return applyStatement(statement, 1).result
+        },
+      }
+      return statement
+    },
+    async batch(statements: Array<{ sql: string; params: unknown[] }>) {
+      let lastChanges = 1
+      return statements.map(statement => {
+        const applied = applyStatement(statement, lastChanges)
+        lastChanges = applied.changes
+        return applied.result
+      })
+    },
+  }
+
+  function applyStatement(statement: { sql: string; params: unknown[] }, lastChanges: number) {
+    const { sql, params } = statement
+    let changes = 1
+    if (sql.includes('UPDATE analytics_conversion_deliveries')) {
+      if (sql.includes('duplicate_suppressed_at')) {
+        changes = delivery.status === 'sent' && !delivery.duplicate_suppressed_at ? 1 : 0
+        if (changes) delivery.duplicate_suppressed_at = '2026-07-10 00:00:02'
+      } else {
+        const expectedStatus = String(params[6])
+        changes = delivery.status === expectedStatus && delivery.status !== 'sent' ? 1 : 0
+        if (changes) {
+          delivery.status = String(params[0]) as DeliveryStatus
+          delivery.skip_reason = String(params[1] ?? '')
+          delivery.error_code = String(params[2] ?? '')
+          delivery.error_message = String(params[3] ?? '')
+          delivery.attempt_count += 1
+          if (delivery.status === 'sent') delivery.sent_at = '2026-07-10 00:00:01'
+        }
+      }
+    } else if (sql.includes('analytics_conversion_delivery_daily')) {
+      changes = sql.includes('WHERE changes() = 1') && lastChanges !== 1 ? 0 : 1
+      if (changes && sql.includes('delivery_count + 1')) {
+        const status = sql.includes("'duplicate_suppressed'") ? 'duplicate_suppressed' : String(params[3])
+        daily.set(status, (daily.get(status) ?? 0) + 1)
+      } else if (changes && sql.includes('delivery_count - 1')) {
+        const status = String(params[3])
+        daily.set(status, Math.max(0, (daily.get(status) ?? 0) - 1))
+      }
+    }
+    return {
+      changes,
+      result: { meta: { changes, rows_written: changes, rows_read: 0, duration: 1 } },
+    }
+  }
+
+  return db
+}
+
 function envFor(db: ReturnType<typeof createMetaCapiDb>, overrides: Partial<Bindings> = {}) {
   return {
     APP_ENV: 'test',
@@ -300,6 +392,38 @@ describe('meta-capi', () => {
     expect(JSON.stringify(init)).not.toContain('token_1')
     expect(JSON.stringify(init)).not.toContain('evil.example')
     expect(JSON.stringify(init)).not.toContain('user@example.test')
+  })
+
+  it('两个 pending 消息并发成功时后完成者只记一次 duplicate_suppressed，第三次重投不再增加', async () => {
+    const db = createConcurrentSuccessDb()
+    let arrived = 0
+    let release!: () => void
+    const barrier = new Promise<void>(resolve => { release = resolve })
+    const fetchFn = vi.fn(async () => {
+      arrived += 1
+      if (arrived === 2) release()
+      await barrier
+      return new Response(JSON.stringify({ events_received: 1 }), { status: 200 })
+    })
+    const concurrentEnv = envFor(db as unknown as ReturnType<typeof createMetaCapiDb>)
+
+    const results = await Promise.all([
+      sendMetaCapiEvent(concurrentEnv, db.delivery.id, { fetchFn }),
+      sendMetaCapiEvent(concurrentEnv, db.delivery.id, { fetchFn }),
+    ])
+    expect(db.daily.get('duplicate_suppressed')).toBe(1)
+    expect(db.delivery.duplicate_suppressed_at).not.toBeNull()
+
+    const third = await sendMetaCapiEvent(concurrentEnv, db.delivery.id, { fetchFn })
+
+    expect(results.map(result => result.status)).toEqual(['sent', 'sent'])
+    expect(third).toMatchObject({ status: 'duplicate_suppressed', reason: 'already_sent' })
+    expect(fetchFn).toHaveBeenCalledTimes(2)
+    expect(db.delivery).toMatchObject({ status: 'sent', attempt_count: 1 })
+    expect(db.daily.get('pending')).toBe(0)
+    expect(db.daily.get('sent')).toBe(1)
+    expect(db.daily.get('duplicate_suppressed')).toBe(1)
+    expect(db.delivery.duplicate_suppressed_at).not.toBeNull()
   })
 
   it('不从 D1 metadata 恢复 fbp 或 fbc', async () => {
