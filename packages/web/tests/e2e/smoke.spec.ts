@@ -263,6 +263,43 @@ test.describe('核心页面 smoke', () => {
     expect(hasHorizontalOverflow).toBe(false)
   })
 
+  test('后台归因 Meta 控制面按生产检查保守启用并分渠道展示状态', async ({ page }) => {
+    await page.goto('/admin/settings')
+
+    await expect(page.getByLabel('Meta 运行模式')).toHaveValue('test')
+    await expect(page.getByLabel('启用 Meta CAPI')).toBeDisabled()
+    await expect(page.getByRole('link', { name: '查看发布检查' })).toHaveAttribute('href', '/admin/attribution/readiness')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)).toBe(false)
+
+    await page.goto('/admin/attribution/meta')
+    const health = page.getByRole('region', { name: 'Meta 渠道健康' })
+    await expect(health.getByText('Pixel 尝试')).toBeVisible()
+    await expect(health.getByText('8', { exact: true })).toBeVisible()
+    await expect(health.getByText('CAPI 成功')).toBeVisible()
+    await expect(health.getByText('6', { exact: true })).toBeVisible()
+    await expect(page.getByText('CAPI token')).toBeVisible()
+    await expect(page.getByText('Test Event Code')).toBeVisible()
+    await expect(page.getByText('Queue binding')).toBeVisible()
+
+    await page.getByRole('button', { name: '发送 Test Event' }).click()
+    await expect(page.getByText('Meta 已接收 1 条测试事件', { exact: true })).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)).toBe(false)
+  })
+
+  test('后台归因发布检查区分阻断项和警告项且警告不改变阻断口径', async ({ page }) => {
+    await page.goto('/admin/attribution/readiness')
+
+    await expect(page.getByText('生产阻断项仍需处理')).toBeVisible()
+    await expect(page.getByRole('region', { name: '阻断项' }).getByText('最近 24 小时无重试耗尽')).toBeVisible()
+    await expect(page.getByRole('region', { name: '警告项' }).getByText('无超过 10 分钟的 CAPI pending')).toBeVisible()
+    await expect(page.getByText('Meta 资源验证')).toBeVisible()
+    await expect(page.getByText('验证时间：2026-07-10 08:05')).toBeVisible()
+    await expect(page.getByText('正式投放就绪')).toHaveCount(0)
+
+    const hasHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)
+    expect(hasHorizontalOverflow).toBe(false)
+  })
+
   test('一方数据分析事件覆盖搜索、详情、联系和邀请注册链路', async ({ request, page }) => {
     await page.goto('/')
     await expect(page.getByRole('heading', { name: /精选写真/ }).first()).toBeVisible()
@@ -294,8 +331,11 @@ test.describe('核心页面 smoke', () => {
     await expect.poll(async () => {
       const response = await request.get(`${apiURL}/api/test/analytics-events`)
       const body = await response.json()
-      return body.registrations.length
-    }, { timeout: 8_000 }).toBe(1)
+      return {
+        registrations: body.registrations.length,
+        registerSuccess: body.events.some((event: { eventName?: string }) => event.eventName === 'register_success'),
+      }
+    }, { timeout: 8_000 }).toEqual({ registrations: 1, registerSuccess: true })
 
     const response = await request.get(`${apiURL}/api/test/analytics-events`)
     const payload = await response.json()

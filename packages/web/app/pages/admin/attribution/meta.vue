@@ -11,6 +11,8 @@ interface MetaData {
   deliveries: Array<Record<string, unknown>>
   lastSentAt: string
   secretPresent?: boolean
+  testEventCodePresent?: boolean
+  queueBindingPresent?: boolean
   settings: Record<string, unknown>
 }
 
@@ -23,25 +25,29 @@ const testing = ref(false)
 const data = computed(() => attribution.data.value)
 const totals = computed(() => data.value?.totals ?? {})
 const settings = computed(() => data.value?.settings ?? {})
-const capiSecretStatus = computed(() => {
-  if (data.value?.secretPresent === true) return { value: '已配置', tone: 'green' as const }
-  if (settings.value.meta_capi_enabled === true) return { value: '缺失', tone: 'red' as const }
-  return { value: '未启用', tone: 'default' as const }
-})
+function presenceStatus(present: boolean | undefined) {
+  return present === true
+    ? { value: '存在', tone: 'green' as const }
+    : { value: '缺失', tone: 'red' as const }
+}
 
 const metrics = computed(() => [
-  { label: 'Pixel 状态', value: settings.value.facebook_pixel_enabled === true ? '已开启' : '关闭', hint: String(settings.value.facebook_pixel_id || '未配置 Pixel ID'), tone: settings.value.facebook_pixel_enabled === true ? 'green' as const : 'default' as const },
-  { label: 'CAPI 状态', value: settings.value.meta_capi_enabled === true ? '已开启' : '关闭', hint: `模式 ${String(settings.value.meta_tracking_mode || '-')}`, tone: settings.value.meta_capi_enabled === true ? 'blue' as const : 'default' as const },
-  { label: 'CAPI Secret', value: capiSecretStatus.value.value, hint: '仅展示是否存在，不暴露 secret 内容', tone: capiSecretStatus.value.tone },
-  { label: '最近成功', value: formatAnalyticsDateTime(data.value?.lastSentAt), hint: `已同步 ${formatAnalyticsNumber(totals.value.sent_count)}`, tone: 'green' as const },
-  { label: '失败', value: formatAnalyticsNumber(totals.value.failed_count), hint: `跳过 ${formatAnalyticsNumber(totals.value.skipped_count)}`, tone: Number(totals.value.failed_count ?? 0) > 0 ? 'red' as const : 'default' as const },
+  { label: 'Meta 模式', value: String(settings.value.meta_tracking_mode || 'disabled'), hint: settings.value.meta_capi_enabled === true ? 'CAPI 开关已开启' : 'CAPI 开关关闭', tone: settings.value.meta_tracking_mode === 'production' ? 'blue' as const : 'default' as const },
+  { label: 'CAPI token', ...presenceStatus(data.value?.secretPresent), hint: '仅展示布尔状态，不返回凭证' },
+  { label: 'Test Event Code', ...presenceStatus(data.value?.testEventCodePresent), hint: '仅展示布尔状态，不返回 code' },
+  { label: 'Queue binding', ...presenceStatus(data.value?.queueBindingPresent), hint: 'API Worker 运行时绑定状态' },
+  { label: '重试耗尽', value: formatAnalyticsNumber(totals.value.retry_exhausted_count), hint: 'failed / retry_exhausted', tone: Number(totals.value.retry_exhausted_count ?? 0) > 0 ? 'red' as const : 'default' as const },
+  { label: '最近 CAPI 成功', value: formatAnalyticsDateTime(data.value?.lastSentAt), hint: `CAPI sent ${formatAnalyticsNumber(totals.value.capi_sent_count)}`, tone: 'green' as const },
 ])
 
 async function sendTestEvent() {
   testing.value = true
   try {
-    await api('/api/admin/attribution/meta/test-event', { method: 'POST' })
-    toast.add({ title: 'Test Event 已进入审计记录', color: 'success' })
+    const response = await api<{ data: { status?: string; eventsReceived?: number } }>('/api/admin/attribution/meta/test-event', { method: 'POST' })
+    if (response.data.status !== 'sent' || response.data.eventsReceived !== 1) {
+      throw new Error('Meta 未确认接收测试事件')
+    }
+    toast.add({ title: 'Meta 已接收 1 条测试事件', color: 'success' })
     await attribution.refresh()
   } catch (error) {
     toast.add({ title: resolveApiErrorMessage(error, 'Test Event 触发失败'), color: 'error' })
@@ -66,14 +72,14 @@ async function sendTestEvent() {
       <AttributionHealthStrip
         :pixel-enabled="settings.facebook_pixel_enabled === true"
         :capi-enabled="settings.meta_capi_enabled === true"
-        :sent-count="Number(totals.sent_count ?? 0)"
-        :failed-count="Number(totals.failed_count ?? 0)"
-        :skipped-count="Number(totals.skipped_count ?? 0)"
-        :duplicate-rate="attributionDuplicateRate(totals.duplicate_suppressed_count, Number(totals.sent_count ?? 0) + Number(totals.failed_count ?? 0) + Number(totals.skipped_count ?? 0) + Number(totals.duplicate_suppressed_count ?? 0))"
+        :pixel-attempted-count="Number(totals.pixel_attempted_count ?? 0)"
+        :capi-sent-count="Number(totals.capi_sent_count ?? 0)"
+        :failed-count="Number(totals.capi_failed_count ?? 0)"
+        :skipped-count="Number(totals.capi_skipped_count ?? 0)"
         :last-sent-at="data.lastSentAt"
       />
 
-      <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         <AnalyticsMetricCard v-for="metric in metrics" :key="metric.label" v-bind="metric" />
       </div>
 

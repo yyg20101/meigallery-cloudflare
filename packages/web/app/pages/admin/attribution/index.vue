@@ -124,10 +124,9 @@ function refreshAll() {
   >
     <template v-if="attribution.data.value">
       <AttributionHealthStrip
-        :sent-count="Number(meta.sent_count ?? 0)"
+        :capi-sent-count="Number(meta.sent_count ?? 0)"
         :failed-count="Number(meta.failed_count ?? 0)"
         :skipped-count="Number(meta.skipped_count ?? 0)"
-        :duplicate-rate="Number(duplicates.duplicate_rate ?? 0)"
         :last-sent-at="String(meta.last_sent_at ?? '')"
       />
 

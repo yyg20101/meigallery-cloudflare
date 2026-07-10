@@ -49,8 +49,8 @@
 - 后台管理：图库、媒体、标签、用户、会员发放、站点设置、联系方式、首页广告、真实案例、导入任务、审计日志。
 - Telegram 外部导入 API：项目只提供对外 API 接收能力，不内置 Telegram Bot 本体；对接契约见 `docs/TELEGRAM_IMPORT_API.md`。
 - 数据分析：已实现一方数据采集、来源归因、邀请码、联系点击、趋势和后台 `/admin/analytics` 系列看板；后台 UI 口径见 `docs/UI_DATA_ANALYTICS_DASHBOARD.md`。
-- 归因中心：已实现站内转化账本、投放追踪链接、有效联系 / Lead / 完成注册趋势、Meta Pixel / CAPI 同步健康、重复诊断和发布检查；入口为 `/admin/attribution`。
-- Meta Pixel / CAPI：已实现浏览器侧 Pixel 设置、标准事件、同一 `eventID` 去重和 Cloudflare Queue 异步 CAPI 投递；CAPI 使用 Worker secret `META_CAPI_ACCESS_TOKEN`，支持 Owner Test Event。数据分析中的 `fb` / `facebook` / `meta` 表示站内 UTM、推广链接或 referrer 归因，不等同于 Meta Pixel 回传数据。
+- 归因中心：已实现站内转化账本、投放追踪链接、有效联系 / Lead / 完成注册趋势、Meta Pixel / CAPI 同步健康、重复诊断和分级发布检查；后台分别展示 blocker 与 warning，warning 不改变生产阻断状态；入口为 `/admin/attribution`。
+- Meta Pixel / CAPI：已实现浏览器侧 Pixel 设置、标准事件、同一 `eventID` 去重和 Cloudflare Queue 异步 CAPI 投递；后台将 Pixel attempted 与 CAPI sent/failed/skipped 分开显示，并只公开 token、Test Event Code、Queue binding 的存在状态。CAPI 使用 Worker secret `META_CAPI_ACCESS_TOKEN`，仅 Owner 可在 test 模式发送严格 Test Event。数据分析中的 `fb` / `facebook` / `meta` 表示站内 UTM、推广链接或 referrer 归因，不等同于 Meta Pixel 回传数据。
 - SEO：已实现基础 SEO 设置、关键词池、sitemap、robots、结构化数据和生产校验脚本；运营配置见 `docs/SEO_CONFIGURATION.md`。
 
 ## 规划和未接入

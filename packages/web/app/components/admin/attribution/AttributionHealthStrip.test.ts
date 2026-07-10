@@ -14,25 +14,32 @@ const mountOptions = {
 }
 
 describe('AttributionHealthStrip', () => {
-  it('未知 Pixel 和 CAPI 状态显示为未确认', () => {
-    const wrapper = mount(AttributionHealthStrip, mountOptions)
-
-    expect(wrapper.text()).toContain('Pixel')
-    expect(wrapper.text()).toContain('CAPI')
-    expect(wrapper.text()).toContain('未确认')
-    expect(wrapper.text()).not.toContain('关闭')
-  })
-
-  it('明确关闭时才显示关闭', () => {
+  it('独立展示 Pixel、CAPI 与四类投递数量', () => {
     const wrapper = mount(AttributionHealthStrip, {
       ...mountOptions,
       props: {
-        pixelEnabled: false,
+        pixelEnabled: true,
         capiEnabled: true,
+        pixelAttemptedCount: 12,
+        capiSentCount: 9,
+        failedCount: 2,
+        skippedCount: 1,
       },
     })
 
-    expect(wrapper.text()).toContain('关闭')
-    expect(wrapper.text()).toContain('已开启')
+    const labels = wrapper.findAll('[data-health-label]').map(item => item.text())
+    expect(labels).toEqual(['Pixel 状态', 'CAPI 状态', 'Pixel 尝试', 'CAPI 成功', '失败', '跳过'])
+    expect(wrapper.text()).toContain('12')
+    expect(wrapper.text()).toContain('9')
+    expect(wrapper.text()).toContain('2')
+    expect(wrapper.text()).toContain('1')
+    expect(wrapper.text()).not.toContain('已同步')
+  })
+
+  it('未知状态保持未确认且不误报为关闭', () => {
+    const wrapper = mount(AttributionHealthStrip, mountOptions)
+
+    expect(wrapper.text()).toContain('未确认')
+    expect(wrapper.text()).not.toContain('关闭')
   })
 })

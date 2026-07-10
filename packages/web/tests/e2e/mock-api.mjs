@@ -128,6 +128,9 @@ const defaultPublicSettings = {
   footer_text: '测试环境',
   video_enabled: 'false',
   facebook_pixel_enabled: 'false',
+  facebook_pixel_id: '1234567890',
+  meta_capi_enabled: 'false',
+  meta_tracking_mode: 'test',
   analytics_enabled: 'true',
   analytics_sample_rate: '0',
   analytics_consent_mode: 'granted',
@@ -549,20 +552,31 @@ function adminAttributionResponse(pathname, searchParams) {
       range,
       usage,
       data: {
-        totals: { sent_count: 6, failed_count: 0, skipped_count: 1, duplicate_suppressed_count: 1 },
+        totals: {
+          pixel_attempted_count: 8,
+          pixel_pending_count: 0,
+          pixel_skipped_count: 1,
+          capi_sent_count: 6,
+          capi_failed_count: 2,
+          capi_skipped_count: 1,
+          retry_exhausted_count: 1,
+          duplicate_suppressed_count: 1,
+        },
         deliveries: [
-          { channel: 'meta_pixel', event_name: 'Contact', status: 'sent', skip_reason: '', delivery_count: 4 },
+          { channel: 'meta_pixel', event_name: 'Contact', status: 'attempted', skip_reason: '', delivery_count: 8 },
+          { channel: 'meta_capi', event_name: 'Contact', status: 'sent', skip_reason: '', delivery_count: 6 },
+          { channel: 'meta_capi', event_name: 'Lead', status: 'failed', skip_reason: 'retry_exhausted', delivery_count: 2 },
           { channel: 'meta_capi', event_name: 'Contact', status: 'skipped', skip_reason: 'queue_not_configured', delivery_count: 1 },
-          { channel: 'meta_capi', event_name: 'Lead', status: 'duplicate_suppressed', skip_reason: '', delivery_count: 1 },
         ],
         lastSentAt: '2026-07-09T09:30:00.000Z',
-        secretPresent: false,
+        secretPresent: true,
+        testEventCodePresent: true,
+        queueBindingPresent: true,
         settings: {
           facebook_pixel_enabled: true,
           facebook_pixel_id: '1234567890',
-          meta_capi_enabled: false,
-          meta_capi_test_event_enabled: false,
-          meta_tracking_mode: 'pixel_only',
+          meta_capi_enabled: true,
+          meta_tracking_mode: 'test',
         },
       },
     }
@@ -588,19 +602,26 @@ function adminAttributionResponse(pathname, searchParams) {
       range,
       usage,
       data: {
-        ready: true,
+        ready: false,
         checks: [
-          { key: 'analytics_enabled', label: '站内分析已开启', ok: true },
-          { key: 'conversion_ledger', label: '转化账本有近期数据', ok: true },
-          { key: 'meta_failures', label: 'Meta 投递无失败堆积', ok: true },
-          { key: 'pixel_id', label: 'Pixel ID 已配置或保持关闭态', ok: true },
+          { key: 'analytics_enabled', label: '站内分析已开启', level: 'blocker', ok: true, detail: 'analytics_enabled 已开启' },
+          { key: 'conversion_ledger', label: '转化账本有近期数据', level: 'blocker', ok: true, detail: '当前范围记录 9 次转化' },
+          { key: 'retry_exhausted', label: '最近 24 小时无重试耗尽', level: 'blocker', ok: false, detail: '发现 1 条 retry_exhausted' },
+          { key: 'pending_too_long', label: '无超过 10 分钟的 CAPI pending', level: 'warning', ok: false, detail: '发现 2 条超时 pending' },
+          { key: 'fbp_coverage', label: '近 7 天 fbp 覆盖率', level: 'warning', ok: true, detail: '覆盖率 92.0%' },
         ],
         settings: {
           analytics_enabled: true,
           facebook_pixel_enabled: true,
           facebook_pixel_id: '1234567890',
           meta_capi_enabled: false,
-          meta_tracking_mode: 'pixel_only',
+          meta_tracking_mode: 'test',
+        },
+        verifications: {
+          environment: 'dev',
+          releaseCommitPresent: true,
+          metaLive: { present: true, verifiedAt: '2026-07-10T08:00:00.000Z', expiresAt: '2026-07-11T08:00:00.000Z' },
+          metaResources: { present: true, verifiedAt: '2026-07-10T08:05:00.000Z', expiresAt: '2026-07-11T08:05:00.000Z' },
         },
       },
     }
@@ -713,6 +734,9 @@ function handleApi(req, res) {
       .catch(() => json(res, { statusCode: 400, message: '注册请求无效' }, 400))
     return
   }
+  if (url.pathname === '/api/conversions/events' && req.method === 'POST') {
+    return json(res, { data: { pixelEvents: [] } })
+  }
   if (url.pathname === '/api/cases') return json(res, { data: cases, total: cases.length })
   if (url.pathname === '/api/tags') {
     return json(res, {
@@ -756,7 +780,7 @@ function handleApi(req, res) {
     return json(res, adminAnalyticsResponse(url.pathname, url.searchParams))
   }
   if (url.pathname === '/api/admin/attribution/meta/test-event' && req.method === 'POST') {
-    return json(res, { data: { status: 'skipped', reason: 'queue_not_configured', channel: 'meta_capi', eventName: 'TestEvent' } }, 202)
+    return json(res, { data: { status: 'sent', eventsReceived: 1, secretPresent: true, testEventCodePresent: true, pixelIdPresent: true } })
   }
   if (url.pathname.startsWith('/api/admin/attribution/')) {
     return json(res, adminAttributionResponse(url.pathname, url.searchParams))
