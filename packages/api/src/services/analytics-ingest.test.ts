@@ -299,7 +299,7 @@ describe('analytics-ingest', () => {
     expect(db.calls.some(call => call.sql.includes('analytics_sessions'))).toBe(false)
   })
 
-  it('contact_method_click 同步写入转化账本', async () => {
+  it('contact_method_click 更新 Analytics 联系统计但不写入转化账本', async () => {
     const db = createDb()
     await ingestAnalyticsBatch(envFor(db), {
       body: baseBatch({
@@ -324,16 +324,12 @@ describe('analytics-ingest', () => {
       currentHost: '616618.xyz',
     })
 
-    const conversionInsert = db.calls.find(call => call.sql.includes('analytics_conversion_actions'))
-    expect(conversionInsert).toBeTruthy()
-    expect(conversionInsert?.params[1]).toBe('contact')
-    expect(conversionInsert?.params[8]).toBe('ad')
-    expect(conversionInsert?.params[10]).toBe('telegram-june')
-    expect(conversionInsert?.params[14]).toBe('chat-a')
-    expect(JSON.stringify(conversionInsert?.params)).not.toContain('@secret')
+    const sourceAggregate = db.calls.find(call => call.sql.includes('INSERT INTO analytics_daily_sources'))
+    expect(sourceAggregate?.params[8]).toBe(1)
+    expect(db.calls.some(call => call.sql.includes('analytics_conversion_actions'))).toBe(false)
   })
 
-  it('compatibility 转化即使携带 granted 也只写一方账本且不创建 Meta delivery', async () => {
+  it('重复分析批次不会创建任何 Meta delivery', async () => {
     const db = createDb({
       facebookPixelEnabled: true,
       facebookPixelId: '1234567890',
@@ -341,14 +337,15 @@ describe('analytics-ingest', () => {
       metaTrackingMode: 'production',
     })
     const sent: unknown[] = []
-    await ingestAnalyticsBatch({
+    const env = {
       APP_ENV: 'test',
       DB: db,
       SESSION_SECRET: 'test-session-secret',
       META_CAPI_QUEUE: { send: async message => { sent.push(message) } },
-    } as unknown as Pick<Bindings, 'APP_ENV' | 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>, {
+    } as unknown as Pick<Bindings, 'APP_ENV' | 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>
+    const context = {
       body: baseBatch({
-        eventId: 'event_contact_fallback_1',
+        eventId: 'event_contact_duplicate_1',
         eventName: 'contact_method_click',
         entityType: 'contact',
         consentState: 'granted',
@@ -357,14 +354,16 @@ describe('analytics-ingest', () => {
       bodySizeBytes: 512,
       userId: null,
       currentHost: '616618.xyz',
-    })
+    }
+    await ingestAnalyticsBatch(env, context)
+    const duplicate = await ingestAnalyticsBatch(env, context)
 
-    expect(db.calls.some(call => call.sql.includes('analytics_conversion_actions'))).toBe(true)
+    expect(duplicate.duplicate).toBe(1)
     expect(db.calls.some(call => call.sql.includes('analytics_conversion_deliveries'))).toBe(false)
     expect(sent).toEqual([])
   })
 
-  it('register_success 同步写入 complete_registration 转化', async () => {
+  it('register_success 更新 Analytics 注册统计但不写入转化账本', async () => {
     const db = createDb()
     await ingestAnalyticsBatch(envFor(db), {
       body: baseBatch({
@@ -378,11 +377,9 @@ describe('analytics-ingest', () => {
       currentHost: '616618.xyz',
     })
 
-    expect(db.calls.some(call => (
-      call.sql.includes('analytics_conversion_actions')
-      && call.params[1] === 'complete_registration'
-      && call.params[7] === 42
-    ))).toBe(true)
+    const sourceAggregate = db.calls.find(call => call.sql.includes('INSERT INTO analytics_daily_sources'))
+    expect(sourceAggregate?.params[9]).toBe(1)
+    expect(db.calls.some(call => call.sql.includes('analytics_conversion_actions'))).toBe(false)
   })
 
   it('被拒绝事件和 raw duplicate 不写入转化账本', async () => {
@@ -416,7 +413,7 @@ describe('analytics-ingest', () => {
     expect(duplicateDb.calls.some(call => call.sql.includes('analytics_conversion_actions'))).toBe(false)
   })
 
-  it('批内 raw duplicate 不派生第二条不同目标的联系转化', async () => {
+  it('批内 raw duplicate 不写入转化账本', async () => {
     const db = createDb()
     const result = await ingestAnalyticsBatch(envFor(db), {
       body: {
@@ -450,15 +447,8 @@ describe('analytics-ingest', () => {
       currentHost: '616618.xyz',
     })
 
-    const contactConversionInserts = db.calls.filter(call => (
-      call.sql.includes('INSERT OR IGNORE INTO analytics_conversion_actions') && call.params[1] === 'contact'
-    ))
     expect(result.duplicate).toBe(1)
-    expect(contactConversionInserts).toHaveLength(1)
-    expect(contactConversionInserts[0]?.params[15]).toBe('telegram')
-    expect(contactConversionInserts[0]?.params[16]).toBe('floating_contact_panel')
-    expect(JSON.stringify(contactConversionInserts.map(call => call.params))).not.toContain('gallery_detail_sidebar')
-    expect(JSON.stringify(contactConversionInserts.map(call => call.params))).not.toContain('wechat')
+    expect(db.calls.some(call => call.sql.includes('analytics_conversion_actions'))).toBe(false)
   })
 
   it('把 sendBeacon session/end 简写 payload 转成批量事件', () => {
