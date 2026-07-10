@@ -40,8 +40,17 @@ type FailedConversionRetry = {
   attempts: number
 }
 
+type FailedPixelReceiptRetry = {
+  send: () => Promise<unknown>
+  attempts: number
+}
+
 const failedConversionRetries: FailedConversionRetry[] = []
-let retryTimer: ReturnType<typeof setTimeout> | null = null
+const failedPixelReceiptRetries: FailedPixelReceiptRetry[] = []
+const PIXEL_RECEIPT_RETRY_DELAYS = [250, 1_000, 3_000]
+const PIXEL_RECEIPT_RETRY_LIMIT = 100
+let conversionRetryTimer: ReturnType<typeof setTimeout> | null = null
+let pixelReceiptRetryTimer: ReturnType<typeof setTimeout> | null = null
 
 export function useConversionTracking() {
   const { api } = useApi()
@@ -80,7 +89,15 @@ export function useConversionTracking() {
     }
     const deliver = (instructions: MetaPixelInstruction[]) => {
       for (const instruction of instructions) {
-        pixel.trackStandardEvent(instruction.eventName, instruction.payload, { eventID: instruction.eventId })
+        const attempted = pixel.trackStandardEvent(instruction.eventName, instruction.payload, { eventID: instruction.eventId })
+        if (attempted === true) reportPixelAttempted(() => api('/api/conversions/pixel-receipts', {
+          method: 'POST',
+          body: {
+            deliveryId: instruction.deliveryId,
+            attempted: true,
+            receiptToken: instruction.receiptToken,
+          },
+        }))
       }
     }
     const complete = (instructions: MetaPixelInstruction[]) => {
@@ -107,9 +124,9 @@ function queueFailedConversionRetry(entry: FailedConversionRetry) {
 }
 
 function scheduleFailedConversionRetry() {
-  if (retryTimer || failedConversionRetries.length === 0) return
-  retryTimer = setTimeout(() => {
-    retryTimer = null
+  if (conversionRetryTimer || failedConversionRetries.length === 0) return
+  conversionRetryTimer = setTimeout(() => {
+    conversionRetryTimer = null
     void retryFailedConversions()
   }, 1_000)
 }
@@ -128,6 +145,39 @@ async function retryFailedConversions() {
     }
   }
   scheduleFailedConversionRetry()
+}
+
+function reportPixelAttempted(send: () => Promise<unknown>) {
+  void send().catch(() => queueFailedPixelReceiptRetry({ send, attempts: 0 }))
+}
+
+function queueFailedPixelReceiptRetry(entry: FailedPixelReceiptRetry) {
+  if (failedPixelReceiptRetries.length >= PIXEL_RECEIPT_RETRY_LIMIT) return
+  failedPixelReceiptRetries.push(entry)
+  scheduleFailedPixelReceiptRetry()
+}
+
+function scheduleFailedPixelReceiptRetry() {
+  if (pixelReceiptRetryTimer || failedPixelReceiptRetries.length === 0) return
+  const delay = PIXEL_RECEIPT_RETRY_DELAYS[failedPixelReceiptRetries[0]!.attempts]!
+  pixelReceiptRetryTimer = setTimeout(() => {
+    pixelReceiptRetryTimer = null
+    void retryFailedPixelReceipts()
+  }, delay)
+}
+
+async function retryFailedPixelReceipts() {
+  const pending = failedPixelReceiptRetries.splice(0)
+  for (const entry of pending) {
+    try {
+      await entry.send()
+    } catch {
+      if (entry.attempts < PIXEL_RECEIPT_RETRY_DELAYS.length - 1) {
+        queueFailedPixelReceiptRetry({ ...entry, attempts: entry.attempts + 1 })
+      }
+    }
+  }
+  scheduleFailedPixelReceiptRetry()
 }
 
 function pixelEventsFromResponse(response: unknown): MetaPixelInstruction[] {

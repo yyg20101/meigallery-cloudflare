@@ -139,6 +139,106 @@ describe('useConversionTracking', () => {
     expect(trackStandardEvent).toHaveBeenCalledTimes(1)
   })
 
+  it('Pixel adapter 返回 true 后异步回传 attempted，且不阻断用户流程', async () => {
+    trackStandardEvent.mockReturnValue(true)
+    let resolveReceipt: (() => void) | undefined
+    api.mockImplementation((path: string) => {
+      if (path === '/api/conversions/pixel-receipts') {
+        return new Promise<void>((resolve) => { resolveReceipt = resolve })
+      }
+      return Promise.resolve({
+        data: {
+          pixelEvents: [{
+            deliveryId: 'cdlv_contact',
+            eventName: 'Contact',
+            eventId: 'meta:Contact:contact:session_1:telegram:floating_contact_panel',
+            payload: {},
+            receiptToken: 'receipt_contact',
+          }],
+        },
+      })
+    })
+
+    await expect(useConversionTracking().trackConversion('contact')).resolves.toBeUndefined()
+
+    expect(api).toHaveBeenCalledWith('/api/conversions/pixel-receipts', {
+      method: 'POST',
+      body: { deliveryId: 'cdlv_contact', attempted: true, receiptToken: 'receipt_contact' },
+    })
+    resolveReceipt?.()
+  })
+
+  it('Pixel adapter 返回 false 时不回传 attempted', async () => {
+    trackStandardEvent.mockReturnValue(false)
+    api.mockResolvedValueOnce({
+      data: {
+        pixelEvents: [{
+          deliveryId: 'cdlv_contact',
+          eventName: 'Contact',
+          eventId: 'meta:Contact:contact:session_1:telegram:floating_contact_panel',
+          payload: {},
+          receiptToken: 'receipt_contact',
+        }],
+      },
+    })
+
+    await useConversionTracking().trackConversion('contact')
+
+    expect(api).not.toHaveBeenCalledWith('/api/conversions/pixel-receipts', expect.anything())
+  })
+
+  it('回执失败按 250、1000、3000ms 在内存中重试', async () => {
+    trackStandardEvent.mockReturnValue(true)
+    api.mockImplementation((path: string) => {
+      if (path === '/api/conversions/events') {
+        return Promise.resolve({
+          data: {
+            pixelEvents: [{
+              deliveryId: 'cdlv_contact',
+              eventName: 'Contact',
+              eventId: 'meta:Contact:contact:session_1:telegram:floating_contact_panel',
+              payload: {},
+              receiptToken: 'receipt_contact',
+            }],
+          },
+        })
+      }
+      return Promise.reject(new Error('receipt failed'))
+    })
+
+    await useConversionTracking().trackConversion('contact')
+    await vi.runAllTicks()
+    expect(api).toHaveBeenCalledTimes(2)
+
+    await vi.advanceTimersByTimeAsync(250)
+    expect(api).toHaveBeenCalledTimes(3)
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(api).toHaveBeenCalledTimes(4)
+    await vi.advanceTimersByTimeAsync(3_000)
+    expect(api).toHaveBeenCalledTimes(5)
+  })
+
+  it('回执重试队列最多保留 100 条', async () => {
+    trackStandardEvent.mockReturnValue(true)
+    const pixelEvents = Array.from({ length: 101 }, (_, index) => ({
+      deliveryId: `cdlv_${index}`,
+      eventName: 'Contact' as const,
+      eventId: `meta:Contact:contact:session_1:${index}`,
+      payload: {},
+      receiptToken: `receipt_${index}`,
+    }))
+    api.mockImplementation((path: string) => {
+      if (path === '/api/conversions/events') return Promise.resolve({ data: { pixelEvents } })
+      return Promise.reject(new Error('receipt failed'))
+    })
+
+    await useConversionTracking().trackConversion('contact')
+    await vi.runAllTicks()
+    await vi.advanceTimersByTimeAsync(250)
+
+    expect(api).toHaveBeenCalledTimes(202)
+  })
+
   it('注册页路径只保留 allow-list query，invite 不进入 conversion body.path', async () => {
     route = {
       name: 'register',

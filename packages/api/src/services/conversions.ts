@@ -9,7 +9,7 @@ import {
   metaEventForConversion,
   sanitizeConversionMetadata,
 } from '../utils/conversions'
-import { createPixelReceiptToken } from '../utils/pixel-receipt'
+import { createPixelReceiptToken, type PixelReceiptClaims } from '../utils/pixel-receipt'
 
 export interface RecordConversionInput {
   actionType: ConversionActionType
@@ -39,6 +39,11 @@ export interface RecordConversionResult {
   duplicateOf: string
   derivedActions: Array<{ id: string; actionType: ConversionActionType }>
   pixelEvents: MetaPixelInstruction[]
+}
+
+export interface MarkPixelAttemptedResult {
+  deliveryId: string
+  attempted: boolean
 }
 
 type PlannedDelivery = {
@@ -80,6 +85,57 @@ export async function recordConversionAction(
   await finalizeCapiDeliveries(env, committedDeliveries, date)
 
   return { id, actionType: normalizedInput.actionType, created: true, duplicateOf: '', derivedActions, pixelEvents }
+}
+
+export async function markPixelAttempted(
+  db: D1Database,
+  claims: PixelReceiptClaims,
+): Promise<MarkPixelAttemptedResult> {
+  const delivery = await db.prepare(`
+    SELECT d.id, d.channel, d.external_event_id, d.status, d.event_name, a.date
+    FROM analytics_conversion_deliveries d
+    JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
+    WHERE d.id = ?
+    LIMIT 1
+  `).bind(claims.deliveryId).first<{
+    id: string
+    channel: string
+    external_event_id: string
+    status: string
+    event_name: string
+    date: string
+  }>()
+
+  if (!delivery || delivery.channel !== 'meta_pixel' || delivery.external_event_id !== claims.eventId) {
+    throw new Error('Pixel 回执无效')
+  }
+  if (delivery.status === 'attempted') return { deliveryId: delivery.id, attempted: false }
+  if (delivery.status !== 'pending') throw new Error('Pixel 回执无效')
+
+  const updated = await db.prepare(`
+    UPDATE analytics_conversion_deliveries
+    SET
+      status = 'attempted',
+      attempt_count = attempt_count + 1,
+      last_attempt_at = datetime('now'),
+      updated_at = datetime('now')
+    WHERE id = ? AND channel = 'meta_pixel' AND external_event_id = ? AND status = 'pending'
+  `).bind(delivery.id, claims.eventId).run()
+  if (!d1Changed(updated)) {
+    const current = await db.prepare(`
+      SELECT channel, external_event_id, status
+      FROM analytics_conversion_deliveries
+      WHERE id = ?
+      LIMIT 1
+    `).bind(delivery.id).first<{ channel: string; external_event_id: string; status: string }>()
+    if (current?.channel === 'meta_pixel' && current.external_event_id === claims.eventId && current.status === 'attempted') {
+      return { deliveryId: delivery.id, attempted: false }
+    }
+    throw new Error('Pixel 回执无效')
+  }
+
+  await upsertDeliveryDaily(db, delivery.date, 'meta_pixel', delivery.event_name, 'attempted', '')
+  return { deliveryId: delivery.id, attempted: true }
 }
 
 function normalizeConversionInput(input: RecordConversionInput): RecordConversionInput {
@@ -412,9 +468,9 @@ async function markDeliveryTerminal(
 async function upsertDeliveryDaily(
   db: D1Database,
   date: string,
-  channel: 'meta_capi',
+  channel: 'meta_pixel' | 'meta_capi',
   eventName: string,
-  status: 'failed' | 'skipped',
+  status: 'attempted' | 'failed' | 'skipped',
   skipReason: string,
 ) {
   await db.prepare(`

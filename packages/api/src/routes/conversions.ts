@@ -1,7 +1,8 @@
 import { Hono } from 'hono'
 import type { Bindings, Variables } from '../index'
-import { recordConversionAction } from '../services/conversions'
+import { markPixelAttempted, recordConversionAction } from '../services/conversions'
 import { errorJson } from '../utils/api-error'
+import { verifyPixelReceiptToken } from '../utils/pixel-receipt'
 
 const PUBLIC_CONVERSION_ACTIONS = new Set(['contact', 'complete_registration'])
 
@@ -42,6 +43,20 @@ conversionRoutes.post('/events', async (c) => {
   })
 
   return c.json({ data: result }, result.created ? 201 : 200)
+})
+
+conversionRoutes.post('/pixel-receipts', async (c) => {
+  try {
+    const body = await c.req.json<{ deliveryId?: string; attempted?: boolean; receiptToken?: string }>()
+    const claims = await verifyPixelReceiptToken(c.env.SESSION_SECRET, String(body.receiptToken || ''))
+    if (body.attempted !== true || claims.deliveryId !== body.deliveryId) {
+      return errorJson(c, 400, 'Pixel 回执无效', { code: 'PIXEL_RECEIPT_INVALID' })
+    }
+    const result = await markPixelAttempted(c.env.DB, claims)
+    return c.json({ data: result })
+  } catch {
+    return errorJson(c, 400, 'Pixel 回执无效', { code: 'PIXEL_RECEIPT_INVALID' })
+  }
 })
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
