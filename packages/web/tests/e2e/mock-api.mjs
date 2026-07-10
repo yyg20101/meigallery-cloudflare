@@ -152,6 +152,7 @@ const sessionEndBatches = []
 const registrations = []
 let authenticated = true
 let adminAnalyticsEmpty = false
+let adminAttributionReadinessBlocked = true
 
 function resetPublicSettings() {
   for (const key of Object.keys(mutablePublicSettings)) {
@@ -163,6 +164,7 @@ function resetPublicSettings() {
   registrations.length = 0
   authenticated = true
   adminAnalyticsEmpty = false
+  adminAttributionReadinessBlocked = true
 }
 
 function json(res, data, status = 200) {
@@ -602,11 +604,11 @@ function adminAttributionResponse(pathname, searchParams) {
       range,
       usage,
       data: {
-        ready: false,
+        ready: !adminAttributionReadinessBlocked,
         checks: [
           { key: 'analytics_enabled', label: '站内分析已开启', level: 'blocker', ok: true, detail: 'analytics_enabled 已开启' },
           { key: 'conversion_ledger', label: '转化账本有近期数据', level: 'blocker', ok: true, detail: '当前范围记录 9 次转化' },
-          { key: 'retry_exhausted', label: '最近 24 小时无重试耗尽', level: 'blocker', ok: false, detail: '发现 1 条 retry_exhausted' },
+          { key: 'retry_exhausted', label: '最近 24 小时无重试耗尽', level: 'blocker', ok: !adminAttributionReadinessBlocked, detail: adminAttributionReadinessBlocked ? '发现 1 条 retry_exhausted' : '发现 0 条 retry_exhausted' },
           { key: 'pending_too_long', label: '无超过 10 分钟的 CAPI pending', level: 'warning', ok: false, detail: '发现 2 条超时 pending' },
           { key: 'fbp_coverage', label: '近 7 天 fbp 覆盖率', level: 'warning', ok: true, detail: '覆盖率 92.0%' },
         ],
@@ -614,8 +616,8 @@ function adminAttributionResponse(pathname, searchParams) {
           analytics_enabled: true,
           facebook_pixel_enabled: true,
           facebook_pixel_id: '1234567890',
-          meta_capi_enabled: false,
-          meta_tracking_mode: 'test',
+          meta_capi_enabled: mutablePublicSettings.meta_capi_enabled === true || mutablePublicSettings.meta_capi_enabled === 'true',
+          meta_tracking_mode: mutablePublicSettings.meta_tracking_mode,
         },
         verifications: {
           environment: 'dev',
@@ -656,6 +658,15 @@ function handleApi(req, res) {
         json(res, { ok: true, enabled: adminAnalyticsEmpty })
       })
       .catch(() => json(res, { statusCode: 400, message: '测试设置请求无效' }, 400))
+    return
+  }
+  if (url.pathname === '/api/test/admin-attribution-readiness' && req.method === 'PATCH') {
+    readJsonBody(req)
+      .then((body) => {
+        adminAttributionReadinessBlocked = body.blocked !== false
+        json(res, { ok: true, blocked: adminAttributionReadinessBlocked })
+      })
+      .catch(() => json(res, { statusCode: 400, message: '归因 readiness 测试请求无效' }, 400))
     return
   }
   if (url.pathname === '/api/test/analytics-events') {

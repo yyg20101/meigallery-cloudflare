@@ -38,6 +38,14 @@ export function canEnableMetaCapi(checks: ReadonlyArray<{ level: 'blocker' | 'wa
   return blockers.length > 0 && blockers.every(check => check.ok)
 }
 
+export function clampMetaCapiEnabled(requested: boolean, allowed: boolean) {
+  return requested === true && allowed === true
+}
+
+export function isMetaCapiToggleDisabled(enabled: boolean, allowed: boolean) {
+  return enabled === false && allowed === false
+}
+
 export function serializeReadinessSettingRows(settings: Record<string, unknown>): ReadinessSettingRow[] {
   return Object.entries(READINESS_SETTING_LABELS).map(([key, label]) => ({
     key,

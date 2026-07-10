@@ -17,6 +17,15 @@ interface OverviewData {
   risks: Array<{ key: string; level: 'info' | 'warning'; message: string }>
 }
 
+interface MetaData {
+  totals: Record<string, unknown>
+  lastSentAt: string
+  secretPresent?: boolean
+  testEventCodePresent?: boolean
+  queueBindingPresent?: boolean
+  settings: Record<string, unknown>
+}
+
 interface AttributionLink {
   sourceLabel: string
   channel: string
@@ -31,15 +40,19 @@ interface AttributionLink {
 
 const attribution = useAdminAttribution<OverviewData>('/api/admin/attribution/overview')
 const links = useAdminAttribution<{ links: AttributionLink[] }>('/api/admin/attribution/links')
+const metaStatus = useAdminAttribution<MetaData>('/api/admin/attribution/meta')
 
 watch([attribution.range, attribution.date], ([range, date]) => {
   links.range.value = range
   links.date.value = date
+  metaStatus.range.value = range
+  metaStatus.date.value = date
 })
 
 const totals = computed(() => attribution.data.value?.totals ?? {})
-const meta = computed(() => attribution.data.value?.meta ?? {})
-const duplicates = computed(() => attribution.data.value?.duplicates ?? {})
+const metaData = computed(() => metaStatus.data.value)
+const metaTotals = computed(() => metaData.value?.totals ?? {})
+const metaSettings = computed(() => metaData.value?.settings ?? {})
 
 const trendRows = computed(() => {
   const rows = new Map<string, Record<string, unknown>>()
@@ -82,9 +95,9 @@ const metrics = computed(() => [
   },
   {
     label: 'CAPI 失败',
-    value: formatAnalyticsNumber(meta.value.failed_count),
-    hint: `已同步 ${formatAnalyticsNumber(meta.value.sent_count)}`,
-    tone: Number(meta.value.failed_count ?? 0) > 0 ? 'red' as const : 'default' as const,
+    value: formatAnalyticsNumber(metaTotals.value.capi_failed_count),
+    hint: `CAPI sent ${formatAnalyticsNumber(metaTotals.value.capi_sent_count)}`,
+    tone: Number(metaTotals.value.capi_failed_count ?? 0) > 0 ? 'red' as const : 'default' as const,
   },
 ])
 
@@ -107,7 +120,7 @@ const riskRows = computed(() => (attribution.data.value?.risks ?? []).map(item =
 })))
 
 function refreshAll() {
-  void Promise.all([attribution.refresh(), links.refresh()])
+  void Promise.all([attribution.refresh(), links.refresh(), metaStatus.refresh()])
 }
 </script>
 
@@ -117,17 +130,24 @@ function refreshAll() {
     v-model:date="attribution.date.value"
     title="归因中心"
     description="集中查看广告归因、有效联系、注册、Meta 同步和重复诊断。"
-    :loading="attribution.loading.value || links.loading.value"
-    :error="attribution.error.value || links.error.value"
+    :loading="attribution.loading.value || links.loading.value || metaStatus.loading.value"
+    :error="attribution.error.value || links.error.value || metaStatus.error.value"
     :usage="attribution.usage.value"
     @refresh="refreshAll"
   >
     <template v-if="attribution.data.value">
       <AttributionHealthStrip
-        :capi-sent-count="Number(meta.sent_count ?? 0)"
-        :failed-count="Number(meta.failed_count ?? 0)"
-        :skipped-count="Number(meta.skipped_count ?? 0)"
-        :last-sent-at="String(meta.last_sent_at ?? '')"
+        :pixel-enabled="metaSettings.facebook_pixel_enabled === true"
+        :capi-enabled="metaSettings.meta_capi_enabled === true"
+        :pixel-attempted-count="Number(metaTotals.pixel_attempted_count ?? 0)"
+        :capi-sent-count="Number(metaTotals.capi_sent_count ?? 0)"
+        :failed-count="Number(metaTotals.capi_failed_count ?? 0)"
+        :skipped-count="Number(metaTotals.capi_skipped_count ?? 0)"
+        :last-sent-at="metaData?.lastSentAt || ''"
+        :secret-present="metaData?.secretPresent"
+        :test-event-code-present="metaData?.testEventCodePresent"
+        :queue-binding-present="metaData?.queueBindingPresent"
+        show-presence-summary
       />
 
       <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
@@ -141,8 +161,8 @@ function refreshAll() {
         :series="trendSeries"
       />
 
-      <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_24rem]">
-        <section class="space-y-3">
+      <div class="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-5 xl:grid-cols-[minmax(0,1fr)_24rem]">
+        <section class="min-w-0 max-w-full space-y-3">
           <div>
             <h2 class="text-sm font-semibold text-gray-900">Top 投放链接</h2>
             <p class="mt-1 text-sm text-gray-500">按有效联系和注册查看当前范围内表现靠前的投放链接。</p>
@@ -168,7 +188,7 @@ function refreshAll() {
           />
         </section>
 
-        <section class="space-y-3">
+        <section class="min-w-0 max-w-full space-y-3">
           <div>
             <h2 class="text-sm font-semibold text-gray-900">风险提示</h2>
             <p class="mt-1 text-sm text-gray-500">优先处理可能影响广告学习和归因可信度的问题。</p>

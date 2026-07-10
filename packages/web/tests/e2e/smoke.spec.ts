@@ -4,6 +4,64 @@ const apiURL = process.env.PLAYWRIGHT_API_URL || 'http://127.0.0.1:8788'
 const longAdHostname = 'verylongsponsoredcampaignlandingdestination.example.com'
 const longAdUrl = `https://${longAdHostname}/sponsor-campaign`
 
+async function expectAdminContainersWithinViewport(page: import('@playwright/test').Page) {
+  const result = await page.evaluate(() => {
+    const requiredSelectors = [
+      'main',
+      '[data-admin-content]',
+      '[data-admin-main]',
+    ]
+    if (location.pathname === '/admin/settings') {
+      requiredSelectors.push('[data-settings-page]', '[data-settings-form]')
+    }
+    if (location.pathname.startsWith('/admin/attribution')) {
+      requiredSelectors.push(
+        '[data-attribution-page]',
+        '[data-attribution-header]',
+        '[data-attribution-controls]',
+        '[data-attribution-tabs]',
+      )
+    }
+    if (location.pathname === '/admin/attribution') requiredSelectors.push('[data-attribution-health]')
+    if (location.pathname === '/admin/attribution/meta') requiredSelectors.push('[data-attribution-health]')
+    if (location.pathname === '/admin/attribution/readiness') {
+      requiredSelectors.push('[data-readiness-status]', '[aria-label="阻断项"]', '[aria-label="警告项"]')
+    }
+
+    const missing: string[] = []
+    const violations: Array<{ selector: string; left: number; right: number; viewport: number; clientWidth: number; scrollWidth: number }> = []
+    for (const selector of requiredSelectors) {
+      const element = document.querySelector<HTMLElement>(selector)
+      if (!element) {
+        missing.push(selector)
+        continue
+      }
+      const rect = element.getBoundingClientRect()
+      if (rect.left < -1 || rect.right > window.innerWidth + 1 || element.scrollWidth > element.clientWidth + 1) {
+        violations.push({
+          selector,
+          left: Math.round(rect.left),
+          right: Math.round(rect.right),
+          viewport: window.innerWidth,
+          clientWidth: element.clientWidth,
+          scrollWidth: element.scrollWidth,
+        })
+      }
+    }
+    return { missing, violations }
+  })
+
+  expect(result.missing).toEqual([])
+  expect(result.violations).toEqual([])
+}
+
+async function submitAdminSettings(page: import('@playwright/test').Page) {
+  await Promise.all([
+    page.waitForResponse(response => response.url().endsWith('/api/admin/settings') && response.request().method() === 'PATCH' && response.ok()),
+    page.getByRole('button', { name: '保存设置' }).press('Enter'),
+  ])
+}
+
 const smokePages = [
   { path: '/', heading: /精选写真/ },
   { path: '/search?q=夏日', heading: /搜索写真/, title: '搜索: 夏日 - 测试图库站' },
@@ -195,7 +253,7 @@ test.describe('核心页面 smoke', () => {
     await expect(publicSeoSync.getByText('待同步', { exact: true })).toBeVisible()
     await expect(publicSeoSync.getByText('前台公开读取值与当前表单不一致，保存后会重新校验公开设置。')).toBeVisible()
 
-    await page.getByRole('button', { name: '保存设置' }).click()
+    await submitAdminSettings(page)
 
     await expect(page.getByText('设置已保存，前台公开 SEO 已同步')).toBeVisible()
     await expect(publicSeoSync.getByText('已同步', { exact: true })).toBeVisible()
@@ -248,6 +306,17 @@ test.describe('核心页面 smoke', () => {
     await page.goto('/admin/attribution')
     await expect(page.locator('main h1', { hasText: '归因中心' })).toBeVisible()
 
+    const health = page.getByRole('region', { name: 'Meta 渠道健康' })
+    await expect(health.getByText('Pixel 状态')).toBeVisible()
+    await expect(health.getByText('已开启', { exact: true })).toHaveCount(2)
+    await expect(health.getByText('Pixel 尝试')).toBeVisible()
+    await expect(health.getByText('8', { exact: true })).toBeVisible()
+    await expect(health.getByText('CAPI 成功', { exact: true })).toBeVisible()
+    await expect(health.getByText('6', { exact: true })).toBeVisible()
+    await expect(health.getByText('CAPI 配置：token 存在 · Test Event Code 存在 · Queue binding 存在')).toBeVisible()
+    await expect(page.getByText('已同步', { exact: true })).toHaveCount(0)
+    await expectAdminContainersWithinViewport(page)
+
     await page.getByRole('button', { name: '单日' }).click()
     await page.getByLabel('选择归因日期').fill('2026-07-09')
     await page.getByRole('link', { name: '投放链接' }).click()
@@ -269,21 +338,66 @@ test.describe('核心页面 smoke', () => {
     await expect(page.getByLabel('Meta 运行模式')).toHaveValue('test')
     await expect(page.getByLabel('启用 Meta CAPI')).toBeDisabled()
     await expect(page.getByRole('link', { name: '查看发布检查' })).toHaveAttribute('href', '/admin/attribution/readiness')
-    expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)).toBe(false)
+    await expectAdminContainersWithinViewport(page)
 
     await page.goto('/admin/attribution/meta')
     const health = page.getByRole('region', { name: 'Meta 渠道健康' })
     await expect(health.getByText('Pixel 尝试')).toBeVisible()
     await expect(health.getByText('8', { exact: true })).toBeVisible()
-    await expect(health.getByText('CAPI 成功')).toBeVisible()
+    await expect(health.getByText('CAPI 成功', { exact: true })).toBeVisible()
     await expect(health.getByText('6', { exact: true })).toBeVisible()
-    await expect(page.getByText('CAPI token')).toBeVisible()
-    await expect(page.getByText('Test Event Code')).toBeVisible()
-    await expect(page.getByText('Queue binding')).toBeVisible()
+    await expect(page.getByText('CAPI token', { exact: true })).toBeVisible()
+    await expect(page.getByText('Test Event Code', { exact: true })).toBeVisible()
+    await expect(page.getByText('Queue binding', { exact: true })).toBeVisible()
 
     await page.getByRole('button', { name: '发送 Test Event' }).click()
     await expect(page.getByText('Meta 已接收 1 条测试事件', { exact: true })).toBeVisible()
-    expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)).toBe(false)
+    await expectAdminContainersWithinViewport(page)
+  })
+
+  test('后台归因设置始终允许关闭已开启的 CAPI', async ({ request, page }) => {
+    await request.patch(`${apiURL}/api/test/admin-attribution-readiness`, { data: { blocked: false } })
+    await request.patch(`${apiURL}/api/admin/settings`, { data: { meta_tracking_mode: 'test', meta_capi_enabled: true } })
+
+    await page.goto('/admin/settings')
+    const capi = page.getByLabel('启用 Meta CAPI')
+    await expect(capi).toBeChecked()
+    await expect(capi).toBeEnabled()
+    await capi.uncheck()
+    await submitAdminSettings(page)
+
+    const settings = await (await request.get(`${apiURL}/api/settings/public`)).json()
+    expect(settings.meta_capi_enabled).toBe(false)
+  })
+
+  test('后台归因设置在 blocker 失败时清除旧 CAPI true 并保存 false', async ({ request, page }) => {
+    await request.patch(`${apiURL}/api/admin/settings`, { data: { meta_tracking_mode: 'test', meta_capi_enabled: true } })
+
+    await page.goto('/admin/settings')
+    const capi = page.getByLabel('启用 Meta CAPI')
+    await expect(capi).not.toBeChecked()
+    await expect(capi).toBeDisabled()
+    await submitAdminSettings(page)
+
+    const settings = await (await request.get(`${apiURL}/api/settings/public`)).json()
+    expect(settings.meta_capi_enabled).toBe(false)
+  })
+
+  test('后台归因设置不会把 test 的 CAPI true 带入 production', async ({ request, page }) => {
+    await request.patch(`${apiURL}/api/test/admin-attribution-readiness`, { data: { blocked: false } })
+    await request.patch(`${apiURL}/api/admin/settings`, { data: { meta_tracking_mode: 'test', meta_capi_enabled: true } })
+
+    await page.goto('/admin/settings')
+    const capi = page.getByLabel('启用 Meta CAPI')
+    await expect(capi).toBeChecked()
+    await page.getByLabel('Meta 运行模式').selectOption('production')
+    await expect(capi).not.toBeChecked()
+    await expect(capi).toBeDisabled()
+    await submitAdminSettings(page)
+
+    const settings = await (await request.get(`${apiURL}/api/settings/public`)).json()
+    expect(settings.meta_tracking_mode).toBe('production')
+    expect(settings.meta_capi_enabled).toBe(false)
   })
 
   test('后台归因发布检查区分阻断项和警告项且警告不改变阻断口径', async ({ page }) => {
@@ -296,8 +410,7 @@ test.describe('核心页面 smoke', () => {
     await expect(page.getByText('验证时间：2026-07-10 08:05')).toBeVisible()
     await expect(page.getByText('正式投放就绪')).toHaveCount(0)
 
-    const hasHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)
-    expect(hasHorizontalOverflow).toBe(false)
+    await expectAdminContainersWithinViewport(page)
   })
 
   test('一方数据分析事件覆盖搜索、详情、联系和邀请注册链路', async ({ request, page }) => {

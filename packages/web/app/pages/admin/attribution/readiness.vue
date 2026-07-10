@@ -42,43 +42,43 @@ function checkClass(check: ReadinessData['checks'][number]) {
     @refresh="attribution.refresh"
   >
     <template v-if="data">
-      <section :class="['rounded-lg border px-4 py-3 text-sm font-medium', data.ready ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-red-200 bg-red-50 text-red-900']">
+      <section data-readiness-status :class="['w-full min-w-0 max-w-full rounded-lg border px-4 py-3 text-sm font-medium', data.ready ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-red-200 bg-red-50 text-red-900']">
         {{ data.ready ? '生产阻断项已通过' : '生产阻断项仍需处理' }}
       </section>
 
-      <section aria-label="阻断项" class="space-y-3">
+      <section aria-label="阻断项" class="w-full min-w-0 max-w-full space-y-3">
         <div>
           <h2 class="text-sm font-semibold text-gray-900">阻断项</h2>
           <p class="mt-1 text-sm text-gray-500">任一未通过都会阻止 CAPI 开关启用。</p>
         </div>
         <div class="grid gap-3 md:grid-cols-2">
           <article v-for="check in blockerChecks" :key="check.key" :class="['rounded-lg border p-4', checkClass(check)]">
-            <div class="flex items-start justify-between gap-3">
+            <div class="flex min-w-0 flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-3">
               <div class="min-w-0">
                 <h3 class="text-sm font-semibold">{{ check.label }}</h3>
                 <p class="mt-1 break-words text-xs leading-5 opacity-80">{{ check.detail }}</p>
                 <p class="mt-1 break-all font-mono text-xs opacity-60">{{ check.key }}</p>
               </div>
-              <span class="shrink-0 text-xs font-medium">{{ check.ok ? '通过' : '阻断' }}</span>
+              <span class="shrink-0 text-xs font-medium sm:pt-0.5">{{ check.ok ? '通过' : '阻断' }}</span>
             </div>
           </article>
         </div>
       </section>
 
-      <section aria-label="警告项" class="space-y-3">
+      <section aria-label="警告项" class="w-full min-w-0 max-w-full space-y-3">
         <div>
           <h2 class="text-sm font-semibold text-gray-900">警告项</h2>
           <p class="mt-1 text-sm text-gray-500">用于提示质量和稳定性风险，不改变顶部生产阻断状态。</p>
         </div>
         <div class="grid gap-3 md:grid-cols-2">
           <article v-for="check in warningChecks" :key="check.key" :class="['rounded-lg border p-4', checkClass(check)]">
-            <div class="flex items-start justify-between gap-3">
+            <div class="flex min-w-0 flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-3">
               <div class="min-w-0">
                 <h3 class="text-sm font-semibold">{{ check.label }}</h3>
                 <p class="mt-1 break-words text-xs leading-5 opacity-80">{{ check.detail }}</p>
                 <p class="mt-1 break-all font-mono text-xs opacity-60">{{ check.key }}</p>
               </div>
-              <span class="shrink-0 text-xs font-medium">{{ check.ok ? '正常' : '警告' }}</span>
+              <span class="shrink-0 text-xs font-medium sm:pt-0.5">{{ check.ok ? '正常' : '警告' }}</span>
             </div>
           </article>
         </div>

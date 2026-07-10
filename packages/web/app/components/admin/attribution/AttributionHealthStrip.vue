@@ -7,6 +7,10 @@ const props = withDefaults(defineProps<{
   failedCount?: number
   skippedCount?: number
   lastSentAt?: string
+  secretPresent?: boolean
+  testEventCodePresent?: boolean
+  queueBindingPresent?: boolean
+  showPresenceSummary?: boolean
 }>(), {
   pixelEnabled: undefined,
   capiEnabled: undefined,
@@ -49,6 +53,13 @@ const items = computed(() => [
   },
 ])
 
+const presenceSummary = computed(() => {
+  if (!props.showPresenceSummary) return ''
+  const states = [props.secretPresent, props.testEventCodePresent, props.queueBindingPresent]
+  const label = (value: boolean | undefined) => value === true ? '存在' : value === false ? '缺失' : '未确认'
+  return `CAPI 配置：token ${label(props.secretPresent)} · Test Event Code ${label(props.testEventCodePresent)} · Queue binding ${label(props.queueBindingPresent)}`
+})
+
 function toneClass(tone: string) {
   if (tone === 'green') return 'border-emerald-100 bg-emerald-50 text-emerald-800'
   if (tone === 'blue') return 'border-blue-100 bg-blue-50 text-blue-800'
@@ -59,13 +70,14 @@ function toneClass(tone: string) {
 </script>
 
 <template>
-  <section aria-label="Meta 渠道健康" class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+  <section data-attribution-health aria-label="Meta 渠道健康" class="w-full min-w-0 max-w-full rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
     <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
-      <div v-for="item in items" :key="item.label" :class="['rounded-lg border px-3 py-2', toneClass(item.tone)]">
+      <div v-for="item in items" :key="item.label" :class="['min-w-0 rounded-lg border px-3 py-2', toneClass(item.tone)]">
         <p data-health-label class="text-xs font-medium opacity-75">{{ item.label }}</p>
         <p class="mt-1 text-sm font-semibold tabular-nums">{{ item.value }}</p>
       </div>
     </div>
-    <p class="mt-3 text-xs text-gray-500">最近成功同步：{{ formatAnalyticsDateTime(lastSentAt) }}</p>
+    <p class="mt-3 break-words text-xs text-gray-500">最近 CAPI 成功：{{ formatAnalyticsDateTime(lastSentAt) }}</p>
+    <p v-if="presenceSummary" class="mt-1 break-words text-xs text-gray-500">{{ presenceSummary }}</p>
   </section>
 </template>

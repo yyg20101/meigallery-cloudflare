@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { normalizeMetaTrackingMode } from '@meigallery/shared/utils'
-import { canEnableMetaCapi } from '~/utils/attributionReadiness'
+import { canEnableMetaCapi, clampMetaCapiEnabled, isMetaCapiToggleDisabled } from '~/utils/attributionReadiness'
 import { normalizePublicImageSettingUrl, normalizeSeoKeywords, safeSiteText } from '~/utils/siteSettingsSecurity'
 
 definePageMeta({ layout: 'admin' })
@@ -214,6 +214,11 @@ if (settings.value?.data) {
   }
 }
 
+metaCapiEnabled.value = clampMetaCapiEnabled(metaCapiEnabled.value, metaCapiCanEnable.value)
+watch(metaCapiCanEnable, (allowed) => {
+  if (!allowed) metaCapiEnabled.value = false
+}, { flush: 'sync' })
+
 async function onSave() {
   loading.value = true
   message.value = ''
@@ -225,6 +230,9 @@ async function onSave() {
       return Number.isNaN(parsed.getTime()) ? trimmed : parsed.toISOString()
     }
 
+    const safeMetaCapiEnabled = clampMetaCapiEnabled(metaCapiEnabled.value, metaCapiCanEnable.value)
+    metaCapiEnabled.value = safeMetaCapiEnabled
+
     await api('/api/admin/settings', {
       method: 'PATCH',
       body: {
@@ -233,7 +241,7 @@ async function onSave() {
         home_ad_ends_at: normalizeScheduleInput(form.home_ad_ends_at),
         facebook_pixel_enabled: facebookPixelEnabled.value,
         facebook_pixel_debug_enabled: facebookPixelDebugEnabled.value,
-        meta_capi_enabled: metaCapiEnabled.value,
+        meta_capi_enabled: safeMetaCapiEnabled,
         meta_tracking_mode: metaTrackingMode.value,
         home_ad_enabled: homeAdEnabled.value,
       },
@@ -313,14 +321,14 @@ async function toggleVideo() {
 </script>
 
 <template>
-  <div class="max-w-5xl">
+  <div data-settings-page class="w-full min-w-0 max-w-5xl">
     <h1 class="text-xl font-bold text-gray-900 mb-6">站点设置</h1>
 
     <div v-if="!isOwner" class="rounded-lg bg-yellow-50 p-4 text-sm text-yellow-800 mb-6">
       仅站长可修改站点设置
     </div>
 
-    <form v-else class="space-y-8" @submit.prevent="onSave">
+    <form v-else data-settings-form class="w-full min-w-0 max-w-full space-y-8" @submit.prevent="onSave">
       <!-- 基础信息 -->
       <fieldset class="space-y-4">
         <legend class="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-2 w-full">基础信息</legend>
@@ -583,7 +591,7 @@ async function toggleVideo() {
           </span>
         </label>
         <div class="flex items-start gap-3 rounded-lg border border-gray-200 p-4">
-          <input id="meta-capi-enabled" v-model="metaCapiEnabled" type="checkbox" :disabled="!metaCapiCanEnable" class="mt-1 h-4 w-4 rounded border-gray-300 disabled:cursor-not-allowed disabled:opacity-50" />
+          <input id="meta-capi-enabled" v-model="metaCapiEnabled" type="checkbox" :disabled="isMetaCapiToggleDisabled(metaCapiEnabled, metaCapiCanEnable)" class="mt-1 h-4 w-4 rounded border-gray-300 disabled:cursor-not-allowed disabled:opacity-50" />
           <span class="min-w-0">
             <label for="meta-capi-enabled" class="block text-sm font-medium text-gray-700">启用 Meta CAPI</label>
             <span class="mt-0.5 block text-xs text-gray-500">仅控制服务端 Queue 投递；全部生产阻断项通过后才可开启。</span>

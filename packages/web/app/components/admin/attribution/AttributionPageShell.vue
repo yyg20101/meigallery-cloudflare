@@ -43,20 +43,20 @@ function isActive(to: string) {
 </script>
 
 <template>
-  <div class="space-y-5">
-    <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+  <div data-attribution-page class="w-full min-w-0 max-w-full space-y-5">
+    <div data-attribution-header class="w-full min-w-0 max-w-full rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
       <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div class="min-w-0">
           <h1 class="text-xl font-bold text-gray-900">{{ title }}</h1>
           <p v-if="description" class="mt-1 max-w-3xl text-sm leading-6 text-gray-500">{{ description }}</p>
         </div>
-        <div class="flex flex-wrap items-center gap-2">
-          <div class="inline-flex rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
+        <div data-attribution-controls class="grid w-full min-w-0 max-w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
+          <div class="col-span-2 grid min-w-0 max-w-full grid-cols-2 rounded-lg border border-gray-200 bg-white p-1 shadow-sm sm:inline-flex sm:w-auto">
             <button
               v-for="option in ATTRIBUTION_RANGE_OPTIONS"
               :key="option.value"
               :class="[
-                'min-h-9 rounded-md px-3 text-sm font-medium transition-colors',
+                'min-h-9 min-w-0 rounded-md px-2 text-sm font-medium transition-colors sm:px-3',
                 props.range === option.value ? 'bg-gray-950 text-white' : 'text-gray-600 hover:bg-gray-100',
               ]"
               type="button"
@@ -69,25 +69,25 @@ function isActive(to: string) {
             v-if="props.range === 'day'"
             :value="props.date || ''"
             aria-label="选择归因日期"
-            class="min-h-9 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 shadow-sm focus:border-gray-400 focus:outline-none"
+            class="min-h-9 min-w-0 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 shadow-sm focus:border-gray-400 focus:outline-none"
             type="date"
             @input="emit('update:date', ($event.target as HTMLInputElement).value)"
           >
-          <button class="min-h-9 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 shadow-sm hover:bg-gray-50" type="button" @click="emit('refresh')">
+          <button class="min-h-9 min-w-0 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 shadow-sm hover:bg-gray-50" type="button" @click="emit('refresh')">
             刷新
           </button>
         </div>
       </div>
     </div>
 
-    <div class="overflow-x-auto rounded-lg border border-gray-200 bg-white px-2 py-2 shadow-sm">
-      <div class="flex w-max min-w-full gap-1">
+    <div data-attribution-tabs class="w-full min-w-0 max-w-full rounded-lg border border-gray-200 bg-white px-2 py-2 shadow-sm">
+      <div class="flex min-w-0 max-w-full flex-wrap gap-1">
         <NuxtLink
           v-for="tab in tabLinks"
           :key="tab.to"
           :to="tab.route"
           :class="[
-            'shrink-0 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+            'min-w-0 rounded-md px-3 py-2 text-sm font-medium transition-colors',
             isActive(tab.to) ? 'bg-gray-950 text-white' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900',
           ]"
         >
@@ -96,7 +96,7 @@ function isActive(to: string) {
       </div>
     </div>
 
-    <div v-if="usage" class="flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 text-xs text-gray-500">
+    <div v-if="usage" class="flex min-w-0 max-w-full flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 text-xs text-gray-500">
       <span>Rows read {{ formatAnalyticsNumber(usage.rowsRead) }}</span>
       <span>Rows written {{ formatAnalyticsNumber(usage.rowsWritten) }}</span>
       <span>查询耗时 {{ formatAnalyticsNumber(usage.durationMs) }}ms</span>
