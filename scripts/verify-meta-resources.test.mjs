@@ -264,6 +264,70 @@ describe('Meta Cloudflare 资源检查', () => {
       assert.equal(report.status, 'failed', JSON.stringify(overrides))
     }
   })
+
+  it('DLQ 仅允许 dead_letter_queue 缺失或明确空字符串', async () => {
+    for (const overrides of [
+      { dlqTopDeadLetter: null },
+      { dlqTopDeadLetter: { name: '' } },
+      { dlqTopDeadLetter: 0 },
+      { dlqSettingsDeadLetter: null },
+      { dlqSettingsDeadLetter: { unknown: '' } },
+      { dlqTopDeadLetter: '', dlqSettingsDeadLetter: null },
+    ]) {
+      const report = await runMetaResourceVerification({
+        environment: 'production',
+        commit: COMMIT,
+        reportOnly: true,
+        runCommand: createPassingRunner([], { capiEnabled: false, ...overrides }),
+      })
+      assert.equal(report.status, 'failed', JSON.stringify(overrides))
+    }
+
+    for (const overrides of [
+      { dlqTopDeadLetter: '' },
+      { dlqSettingsDeadLetter: '' },
+      { dlqTopDeadLetter: '', dlqSettingsDeadLetter: '' },
+    ]) {
+      const report = await runMetaResourceVerification({
+        environment: 'production',
+        commit: COMMIT,
+        reportOnly: true,
+        runCommand: createPassingRunner([], { capiEnabled: false, ...overrides }),
+      })
+      assert.equal(report.status, 'passed', JSON.stringify(overrides))
+    }
+  })
+
+  it('主 Queue 的 top/settings DLQ 必须都是一致的字符串', async () => {
+    const expected = 'meigallery-meta-capi-dlq'
+    for (const overrides of [
+      { mainTopDeadLetter: null },
+      { mainTopDeadLetter: { name: expected } },
+      { mainTopDeadLetter: 1 },
+      { mainTopDeadLetter: expected, mainSettingsDeadLetter: 'wrong-dlq' },
+      { mainTopDeadLetter: expected, mainSettingsDeadLetter: null },
+    ]) {
+      const report = await runMetaResourceVerification({
+        environment: 'production',
+        commit: COMMIT,
+        reportOnly: true,
+        runCommand: createPassingRunner([], { capiEnabled: false, ...overrides }),
+      })
+      assert.equal(report.status, 'failed', JSON.stringify(overrides))
+    }
+
+    const consistent = await runMetaResourceVerification({
+      environment: 'production',
+      commit: COMMIT,
+      reportOnly: true,
+      runCommand: createPassingRunner([], {
+        capiEnabled: false,
+        mainTopDeadLetter: expected,
+        mainSettingsDeadLetter: expected,
+      }),
+    })
+    assert.equal(consistent.status, 'passed')
+  })
 })
 
 function createPassingRunner(calls, options = {}) {
@@ -299,7 +363,7 @@ function createPassingRunner(calls, options = {}) {
         const identity = options.unknownConsumerEnvelope
           ? { consumer: { name: worker } }
           : options.nestedService ? { service: { name: worker } } : { [field]: worker }
-        const consumers = options.missingConsumer ? [] : [{
+        const consumer = {
           type: 'worker',
           consumer_id: RESOURCE_ID,
           ...identity,
@@ -307,7 +371,12 @@ function createPassingRunner(calls, options = {}) {
           ...(!isDlq && !options.deadLetterInSettings ? {
             dead_letter_queue: options.consumerDrift === 'dead_letter_queue' ? 'wrong-dlq' : `${queue}-dlq`,
           } : {}),
-        }]
+        }
+        if (!isDlq && Object.hasOwn(options, 'mainTopDeadLetter')) consumer.dead_letter_queue = options.mainTopDeadLetter
+        if (!isDlq && Object.hasOwn(options, 'mainSettingsDeadLetter')) settings.dead_letter_queue = options.mainSettingsDeadLetter
+        if (isDlq && Object.hasOwn(options, 'dlqTopDeadLetter')) consumer.dead_letter_queue = options.dlqTopDeadLetter
+        if (isDlq && Object.hasOwn(options, 'dlqSettingsDeadLetter')) settings.dead_letter_queue = options.dlqSettingsDeadLetter
+        const consumers = options.missingConsumer ? [] : [consumer]
         const payload = options.nestedConsumers ? { result: { consumers } } : consumers
         stdout = `${options.leadingLog ? 'wrangler warning\n' : ''}${JSON.stringify(payload)}`
       }

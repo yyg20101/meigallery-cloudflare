@@ -31,12 +31,13 @@ describe('Cloudflare setup Queue 初始化', () => {
       const result = await runSetup(environment)
 
       assert.deepEqual(await createdQueues(result.logFile), expected)
+      assert.deepEqual(await inspectedQueues(result.logFile), expected)
       assert.equal(`${result.stdout}${result.stderr}`.includes(FIXTURE_SECRET), false)
     })
   }
 
   it('Queue 已存在时保持幂等并继续创建后续 Queue', async () => {
-    const result = await runSetup('all', 'exists')
+    const result = await runSetup('all', 'create-failed-info-passed')
 
     assert.deepEqual(await createdQueues(result.logFile), [
       'meigallery-meta-capi',
@@ -44,13 +45,19 @@ describe('Cloudflare setup Queue 初始化', () => {
       'meigallery-meta-capi-dev',
       'meigallery-meta-capi-dev-dlq',
     ])
-    assert.match(result.stdout, /已存在，继续/)
+    assert.deepEqual(await inspectedQueues(result.logFile), [
+      'meigallery-meta-capi',
+      'meigallery-meta-capi-dlq',
+      'meigallery-meta-capi-dev',
+      'meigallery-meta-capi-dev-dlq',
+    ])
+    assert.match(result.stdout, /已确认存在/)
     assert.equal(`${result.stdout}${result.stderr}`.includes(FIXTURE_SECRET), false)
   })
 
-  it('非已存在错误立即失败且不回显 Wrangler 原始输出', async () => {
+  it('create 权限错误即使含 exists 字样，info 失败仍通用报错退出', async () => {
     await assert.rejects(
-      runSetup('dev', 'fail'),
+      runSetup('dev', 'permission-exists-info-failed'),
       (error) => {
         assert.equal(error.code, 1)
         assert.match(error.stdout, /创建 Queue .*失败/)
@@ -58,6 +65,15 @@ describe('Cloudflare setup Queue 初始化', () => {
         return true
       },
     )
+  })
+
+  it('create 成功后仍以 info 验证，info 失败时退出', async () => {
+    await assert.rejects(runSetup('dev', 'create-passed-info-failed'), error => {
+      assert.equal(error.code, 1)
+      assert.match(error.stdout, /创建 Queue .*失败/)
+      assert.equal(`${error.stdout}${error.stderr}`.includes(FIXTURE_SECRET), false)
+      return true
+    })
   })
 })
 
@@ -77,10 +93,15 @@ case "\${1:-}" in
   whoami) printf '%s\\n' "$FIXTURE_SECRET"; exit 0 ;;
   queues)
     printf '%s\\n' "$FIXTURE_SECRET" >&2
-    case "$WRANGLER_MODE" in
-      success) exit 0 ;;
-      exists) printf 'Queue already exists\\n' >&2; exit 1 ;;
-      fail) printf 'remote failure %s\\n' "$FIXTURE_SECRET" >&2; exit 2 ;;
+    action="\${2:-}"
+    case "$WRANGLER_MODE:$action" in
+      success:create|success:info) exit 0 ;;
+      create-failed-info-passed:create) printf 'remote create failure %s\\n' "$FIXTURE_SECRET" >&2; exit 2 ;;
+      create-failed-info-passed:info) exit 0 ;;
+      permission-exists-info-failed:create) printf 'permission denied but docs say queue exists %s\\n' "$FIXTURE_SECRET" >&2; exit 2 ;;
+      permission-exists-info-failed:info) printf 'permission denied %s\\n' "$FIXTURE_SECRET" >&2; exit 3 ;;
+      create-passed-info-failed:create) exit 0 ;;
+      create-passed-info-failed:info) printf 'not visible %s\\n' "$FIXTURE_SECRET" >&2; exit 4 ;;
     esac
     ;;
 esac
@@ -106,4 +127,11 @@ async function createdQueues(logFile) {
   return lines
     .filter(line => line.startsWith('queues create '))
     .map(line => line.slice('queues create '.length))
+}
+
+async function inspectedQueues(logFile) {
+  const lines = (await readFile(logFile, 'utf8')).trim().split('\n')
+  return lines
+    .filter(line => line.startsWith('queues info '))
+    .map(line => line.slice('queues info '.length))
 }

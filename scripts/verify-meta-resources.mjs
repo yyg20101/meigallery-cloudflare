@@ -179,20 +179,17 @@ function hasExpectedConsumerSettings(consumer, expected) {
   if (expected.maxRetries !== undefined && Number(settings.max_retries) !== expected.maxRetries) return false
   if (expected.retryDelay !== undefined && Number(settings.retry_delay) !== expected.retryDelay) return false
   if (expected.deadLetterQueue !== undefined) {
-    const deadLetterQueue = consumer.dead_letter_queue ?? settings.dead_letter_queue
-    if (expected.deadLetterQueue === null) return queueName(deadLetterQueue) === ''
-    if (queueName(deadLetterQueue) !== expected.deadLetterQueue) return false
+    if (!hasExpectedDeadLetterQueue(consumer, settings, expected.deadLetterQueue)) return false
   }
   return true
 }
 
-function queueName(value) {
-  if (typeof value === 'string') return value
-  if (!value || typeof value !== 'object') return ''
-  for (const key of ['name', 'queue', 'queue_name']) {
-    if (typeof value[key] === 'string') return value[key]
-  }
-  return ''
+function hasExpectedDeadLetterQueue(consumer, settings, expected) {
+  const values = []
+  if (Object.hasOwn(consumer, 'dead_letter_queue')) values.push(consumer.dead_letter_queue)
+  if (Object.hasOwn(settings, 'dead_letter_queue')) values.push(settings.dead_letter_queue)
+  if (expected === null) return values.every(value => value === '')
+  return values.length > 0 && values.every(value => typeof value === 'string' && value === expected)
 }
 
 function hasRequiredSecrets(stdout, requiredNames) {

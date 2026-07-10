@@ -33,15 +33,15 @@ fi
 
 create_queue() {
   local queue_name=$1
-  local output
 
-  if output=$("${WRANGLER[@]}" queues create "$queue_name" 2>&1); then
-    echo "Queue ${queue_name} 创建完成"
-    return 0
+  if "${WRANGLER[@]}" queues create "$queue_name" &> /dev/null; then
+    :
+  else
+    :
   fi
 
-  if printf '%s' "$output" | grep -Eqi 'already exists|queue[^[:alnum:]]+exists|code[^[:digit:]]*10020'; then
-    echo "Queue ${queue_name} 已存在，继续"
+  if "${WRANGLER[@]}" queues info "$queue_name" &> /dev/null; then
+    echo "Queue ${queue_name} 已确认存在"
     return 0
   fi
 

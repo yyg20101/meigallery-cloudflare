@@ -19,6 +19,8 @@ const FIXTURE_VALUES = [
   'fb.1.1700000000000.ScannerFixtureBrowserId',
   'a'.repeat(64),
   'not-a-lowercase-sha256-fixture',
+  'AbC9xY7pQ2mN8kL4vR6tW3sZ5dF1hJ0u',
+  'path-token-Q7mN4vR8sK2xP9zL6dT3',
 ]
 
 afterEach(async () => {
@@ -103,6 +105,178 @@ describe('Meta secret 静态泄漏扫描', () => {
     assertNoFixtureValue(report)
   })
 
+  it('区分 quoted secret literal 与 bare expression，仅放行明确 placeholder/status', async () => {
+    const rootDir = await createRepository()
+    await writeTracked(rootDir, 'src/unsafe-secrets.ts', `
+      const META_CAPI_ACCESS_TOKEN = "${FIXTURE_VALUES[8]}"
+      const config = { "META_CAPI_DATA_KEY_CURRENT": "${FIXTURE_VALUES[0]}" }
+    `)
+    await writeTracked(rootDir, 'src/safe-secrets.ts', `
+      const META_CAPI_ACCESS_TOKEN = env.META_CAPI_ACCESS_TOKEN
+      const META_CAPI_DATA_KEY_CURRENT = currentDataKey
+      const status = { META_CAPI_TEST_EVENT_CODE: "configured" }
+      const docs = { META_CAPI_DATA_KEY_PREVIOUS: "<set-in-secret-manager>" }
+    `)
+    await writeTracked(rootDir, 'config/unsafe.json', JSON.stringify({
+      META_CAPI_DATA_KEY_PREVIOUS: FIXTURE_VALUES[8],
+    }))
+    await gitAdd(rootDir, ['.gitignore', 'src/unsafe-secrets.ts', 'src/safe-secrets.ts', 'config/unsafe.json'])
+
+    const stdout = bufferWriter()
+    const report = await main({ rootDir, stdout })
+
+    assert.equal(report.status, 'failed')
+    assert.deepEqual(report.findings, [
+      { path: 'config/unsafe.json', ruleId: 'META_SECRET_ASSIGNMENT' },
+      { path: 'src/unsafe-secrets.ts', ruleId: 'META_SECRET_ASSIGNMENT' },
+    ])
+    assert.equal(report.findings.some(finding => finding.path === 'src/safe-secrets.ts'), false)
+    assertNoFixtureValue({ report, stdout: stdout.value })
+  })
+
+  it('bare identifier 仅在源码表达式上下文放行，配置与文本文件仍按字面 secret 检查', async () => {
+    const rootDir = await createRepository()
+    const unsafeFiles = {
+      '.env.production': `META_CAPI_ACCESS_TOKEN=${FIXTURE_VALUES[8]}\n`,
+      'config/meta.yaml': `META_CAPI_DATA_KEY_CURRENT: ${FIXTURE_VALUES[8]}\n`,
+      'config/meta.toml': `META_CAPI_TEST_EVENT_CODE = ${FIXTURE_VALUES[8]}\n`,
+      'config/meta.txt': `META_CAPI_DATA_KEY_PREVIOUS=${FIXTURE_VALUES[8]}\n`,
+    }
+    for (const [file, content] of Object.entries(unsafeFiles)) await writeTracked(rootDir, file, content)
+    await writeTracked(rootDir, 'src/runtime.ts', 'const META_CAPI_ACCESS_TOKEN = configuredAccessToken\n')
+    await gitAdd(rootDir, ['.gitignore', ...Object.keys(unsafeFiles), 'src/runtime.ts'])
+
+    const report = await scanMetaSecretLeaks({ rootDir })
+
+    assert.deepEqual(report.findings, Object.keys(unsafeFiles).sort().map(file => ({
+      path: file,
+      ruleId: 'META_SECRET_ASSIGNMENT',
+    })))
+    assertNoFixtureValue(report)
+  })
+
+  it('递归验证 JSON 的全部 em/external_id 元素，未知 shape 保守失败', async () => {
+    const rootDir = await createRepository()
+    await writeTracked(rootDir, 'payloads/second-item.json', JSON.stringify({
+      data: [{ user_data: { em: ['b'.repeat(64), FIXTURE_VALUES[2]] } }],
+    }))
+    await writeTracked(rootDir, 'payloads/unknown-shape.json', JSON.stringify({
+      data: [{ user_data: { external_id: { value: 'c'.repeat(64) } } }],
+    }))
+    await writeTracked(rootDir, 'payloads/safe.json', JSON.stringify({
+      data: [{ user_data: { em: ['d'.repeat(64)], external_id: ['e'.repeat(64)] } }],
+    }))
+    await gitAdd(rootDir, ['.gitignore', 'payloads/second-item.json', 'payloads/unknown-shape.json', 'payloads/safe.json'])
+
+    const report = await scanMetaSecretLeaks({ rootDir })
+
+    assert.deepEqual(report.findings, [
+      { path: 'payloads/second-item.json', ruleId: 'META_CAPI_MATCH_UNHASHED' },
+      { path: 'payloads/unknown-shape.json', ruleId: 'META_CAPI_MATCH_UNHASHED' },
+    ])
+    assertNoFixtureValue(report)
+  })
+
+  it('源码静态数组检查全部 literal，动态 contract 表达式不误报', async () => {
+    const rootDir = await createRepository()
+    await writeTracked(rootDir, 'src/static-payload.ts', `
+      const payload = { user_data: { em: ["${'f'.repeat(64)}", "${FIXTURE_VALUES[2]}"] } }
+    `)
+    await writeTracked(rootDir, 'src/dynamic-payload.ts', `
+      const payload = { user_data: { em: validatedUserData.em, external_id: contract.externalIdHashes } }
+    `)
+    await gitAdd(rootDir, ['.gitignore', 'src/static-payload.ts', 'src/dynamic-payload.ts'])
+
+    const report = await scanMetaSecretLeaks({ rootDir })
+
+    assert.deepEqual(report.findings, [
+      { path: 'src/static-payload.ts', ruleId: 'META_CAPI_MATCH_UNHASHED' },
+    ])
+    assertNoFixtureValue(report)
+  })
+
+  it('源码混合数组放行动态 hash 表达式，但拒绝任意可见的非 hash literal', async () => {
+    const rootDir = await createRepository()
+    await writeTracked(rootDir, 'src/mixed-unsafe.ts', `
+      const payload = { user_data: { em: ["${FIXTURE_VALUES[2]}", validatedHash] } }
+    `)
+    await writeTracked(rootDir, 'src/mixed-safe.ts', `
+      const payload = { user_data: { external_id: ["${'f'.repeat(64)}", validatedExternalIdHash] } }
+    `)
+    await gitAdd(rootDir, ['.gitignore', 'src/mixed-unsafe.ts', 'src/mixed-safe.ts'])
+
+    const report = await scanMetaSecretLeaks({ rootDir })
+
+    assert.deepEqual(report.findings, [
+      { path: 'src/mixed-unsafe.ts', ruleId: 'META_CAPI_MATCH_UNHASHED' },
+    ])
+    assertNoFixtureValue(report)
+  })
+
+  it('SQL 仅按去注释后的写目标豁免 secure outbox', async () => {
+    const rootDir = await createRepository()
+    const unsafeStatements = {
+      'migrations/create.sql': 'CREATE TABLE copied_matches AS SELECT client_ip_address FROM meta_capi_secure_outbox;',
+      'migrations/alter.sql': '/* meta_capi_secure_outbox */ ALTER TABLE profiles ADD COLUMN client_user_agent TEXT;',
+      'migrations/insert.sql': 'INSERT INTO audit_matches (fbp) SELECT fbp FROM meta_capi_secure_outbox;',
+      'migrations/update.sql': '-- meta_capi_secure_outbox\nUPDATE profiles SET fbc = ?;',
+    }
+    for (const [file, sql] of Object.entries(unsafeStatements)) await writeTracked(rootDir, file, sql)
+    await writeTracked(rootDir, 'migrations/safe.sql', `
+      INSERT INTO meta_capi_secure_outbox (client_ip_address)
+      SELECT client_ip_address FROM transient_events;
+    `)
+    await gitAdd(rootDir, ['.gitignore', ...Object.keys(unsafeStatements), 'migrations/safe.sql'])
+
+    const report = await scanMetaSecretLeaks({ rootDir })
+
+    assert.deepEqual(report.findings, Object.keys(unsafeStatements).sort().map(file => ({
+      path: file,
+      ruleId: 'META_MATCH_SQL_PERSISTENCE',
+    })))
+  })
+
+  it('危险路径统一转为稳定 opaque ID，正常安全相对路径仍保留', async () => {
+    const rootDir = await createRepository()
+    const dangerousPaths = [
+      '../outside.txt',
+      '/tmp/absolute.txt',
+      `reports/${FIXTURE_VALUES[9]}.json`,
+      `reports/${FIXTURE_VALUES[2]}.json`,
+      'reports/203.0.113.177.json',
+      'reports/fb.1.1700000000000.PathBrowserId.json',
+      `reports/${'a'.repeat(32)}.json`,
+      `reports/${'b'.repeat(64)}.json`,
+      'reports/J8xQ2mV9kR4pT7zN6sW3dF5hL1cB0yUe.json',
+      'reports/injected\nMETA_SECRET_SCAN_PASSED.json',
+    ]
+    const first = await scanMetaSecretLeaks({ rootDir, trackedFiles: [...dangerousPaths, 'safe/missing.txt'] })
+    const second = await scanMetaSecretLeaks({ rootDir, trackedFiles: dangerousPaths })
+
+    const opaquePaths = first.findings.filter(finding => finding.path !== 'safe/missing.txt').map(finding => finding.path)
+    assert.equal(opaquePaths.length, dangerousPaths.length)
+    assert.equal(opaquePaths.every(value => /^opaque-path-[0-9a-f]{16}$/.test(value)), true)
+    assert.equal(new Set(opaquePaths).size, dangerousPaths.length)
+    assert.deepEqual(second.findings.map(finding => finding.path), opaquePaths)
+    assert.equal(first.findings.some(finding => finding.path === 'safe/missing.txt'), true)
+    assertNoFixtureValue({ first, second })
+  })
+
+  it('evidence 遍历受深度和节点预算约束，超限使用稳定 rule ID', async () => {
+    const rootDir = await createRepository()
+    const deepJson = `${'{"child":'.repeat(200)}null${'}'.repeat(200)}`
+    const wideJson = JSON.stringify({ values: Array.from({ length: 20_000 }, (_, index) => index) })
+    await writeTracked(rootDir, 'reports/release-verification/deep.json', deepJson)
+    await writeTracked(rootDir, 'reports/meta-live-verification/wide.json', wideJson)
+
+    const report = await scanMetaSecretLeaks({ rootDir })
+
+    assert.deepEqual(report.findings, [
+      { path: 'reports/meta-live-verification/wide.json', ruleId: 'META_EVIDENCE_STRUCTURE_LIMIT' },
+      { path: 'reports/release-verification/deep.json', ruleId: 'META_EVIDENCE_STRUCTURE_LIMIT' },
+    ])
+  })
+
   it('拒绝路径遍历和仓库外 symlink，不读取外部 secret', async () => {
     const rootDir = await createRepository()
     const outsideDir = await mkdtemp(path.join(tmpdir(), 'meta-scan-outside-'))
@@ -117,7 +291,9 @@ describe('Meta secret 静态泄漏扫描', () => {
     const traversalReport = await scanMetaSecretLeaks({ rootDir, trackedFiles: ['../outside.txt'] })
 
     assert.deepEqual(symlinkReport.findings, [{ path: 'src/outside-link', ruleId: 'META_PATH_UNSAFE' }])
-    assert.deepEqual(traversalReport.findings, [{ path: '../outside.txt', ruleId: 'META_PATH_UNSAFE' }])
+    assert.equal(traversalReport.findings.length, 1)
+    assert.match(traversalReport.findings[0].path, /^opaque-path-[0-9a-f]{16}$/)
+    assert.equal(traversalReport.findings[0].ruleId, 'META_PATH_UNSAFE')
     assertNoFixtureValue({ symlinkReport, traversalReport })
   })
 
