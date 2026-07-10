@@ -13,6 +13,12 @@ import {
 } from './release-verification-lib.mjs'
 import { runDevRehearsalVerification } from './verify-dev-rehearsal.mjs'
 import { runLocalRuntimeVerification } from './verify-local-runtime.mjs'
+import {
+  assertMetaLiveEvidenceCanGateProduction,
+  readLatestMetaLiveEvidence,
+} from './meta-live-verification-lib.mjs'
+import { recordReleaseVerificationSummary } from './release-verification-store.mjs'
+import { runMetaResourceVerification } from './verify-meta-resources.mjs'
 
 const QUICK_STEPS = [
   {
@@ -29,6 +35,11 @@ const QUICK_STEPS = [
     name: 'api-unit',
     command: 'corepack',
     args: ['pnpm', '--filter', '@meigallery/api', 'test'],
+  },
+  {
+    name: 'api-coverage',
+    command: 'corepack',
+    args: ['pnpm', '--filter', '@meigallery/api', 'run', 'test:coverage'],
   },
   {
     name: 'api-typecheck',
@@ -106,6 +117,7 @@ export async function main(argv = process.argv.slice(2), options = {}) {
 }
 
 export async function runReleaseVerification(options = {}) {
+  const initialMetaRollout = parseInitialMetaRollout(options.env || process.env)
   const mode = options.mode || 'release'
   const startedAt = new Date().toISOString()
   const startedMs = Date.now()
@@ -115,6 +127,10 @@ export async function runReleaseVerification(options = {}) {
   const runQuickVerificationFn = options.runQuickVerification || runQuickVerification
   const runLocalRuntimeReleaseVerificationFn = options.runLocalRuntimeReleaseVerification || runLocalRuntimeReleaseVerification
   const runDevRehearsalReleaseVerificationFn = options.runDevRehearsalReleaseVerification || runDevRehearsalReleaseVerification
+  const runMetaResourceVerificationFn = options.runMetaResourceVerification || runMetaResourceVerification
+  const readLatestMetaLiveEvidenceFn = options.readLatestMetaLiveEvidence || readLatestMetaLiveEvidence
+  const assertMetaLiveEvidenceCanGateProductionFn = options.assertMetaLiveEvidenceCanGateProduction || assertMetaLiveEvidenceCanGateProduction
+  const recordReleaseVerificationSummaryFn = options.recordReleaseVerificationSummary || recordReleaseVerificationSummary
   const versions = await collectVersionsFn(options)
   const git = await getGitStateFn(options)
   const steps = []
@@ -122,6 +138,17 @@ export async function runReleaseVerification(options = {}) {
   const notes = []
   const releaseSubModes = []
   const releaseGitBlockers = []
+  const metaResources = {
+    dev: skippedMetaResource('dev'),
+    production: skippedMetaResource('production'),
+  }
+  let metaLiveVerification = {
+    status: 'skipped',
+    commit: git.commit || '',
+    verifiedAt: '',
+    expiresAt: '',
+    events: [],
+  }
 
   if (typeof git.branch !== 'string' || git.branch.trim() === '') releaseGitBlockers.push('无法获取当前 Git branch')
   if (typeof git.commit !== 'string' || git.commit.trim() === '') releaseGitBlockers.push('无法获取当前 Git commit')
@@ -181,11 +208,113 @@ export async function runReleaseVerification(options = {}) {
     }
   }
 
+  const childModesPassed = releaseSubModes.length === childRuns.length && releaseSubModes.every(item => item.status === 'passed')
+  if (releaseGitBlockers.length === 0 && childModesPassed) {
+    for (const environment of ['dev', 'production']) {
+      const startedResourceMs = Date.now()
+      const result = await runMetaResourceVerificationFn({
+        ...options,
+        environment,
+        commit: git.commit,
+        initialMetaRollout,
+        reportOnly: false,
+      })
+      metaResources[environment] = sanitizeMetaResourceSummary(result, environment, git.commit)
+      steps.push({
+        name: `meta-resources-${environment}`,
+        status: result?.status === 'passed' ? 'passed' : 'failed',
+        durationMs: Date.now() - startedResourceMs,
+        command: `node scripts/verify-meta-resources.mjs --env ${environment}${initialMetaRollout ? ' --initial-meta-rollout' : ''}`,
+        exitCode: result?.status === 'passed' ? 0 : 1,
+        summary: result?.status === 'passed' ? `Meta ${environment} 资源检查通过` : `Meta ${environment} 资源检查失败`,
+      })
+      if (result?.status !== 'passed') {
+        notes.push(`Meta ${environment} 资源检查失败，已停止后续生产门禁。`)
+        break
+      }
+    }
+  }
+
+  const resourcesPassed = metaResources.dev.status === 'passed' && metaResources.production.status === 'passed'
+  if (resourcesPassed) {
+    const liveStartedMs = Date.now()
+    try {
+      const evidence = await readLatestMetaLiveEvidenceFn(options)
+      assertMetaLiveEvidenceCanGateProductionFn(evidence, {
+        expectedCommit: git.commit,
+        now: options.now,
+      })
+      metaLiveVerification = {
+        status: 'passed',
+        commit: evidence.commit,
+        verifiedAt: evidence.verifiedAt,
+        expiresAt: evidence.expiresAt,
+        events: evidence.events.map(event => event.eventName),
+      }
+      steps.push({
+        name: 'meta-live-evidence',
+        status: 'passed',
+        durationMs: Date.now() - liveStartedMs,
+        command: '读取 reports/meta-live-verification/latest.json',
+        exitCode: 0,
+        summary: `同 commit 三事件 live evidence 通过：${metaLiveVerification.events.join('、')}`,
+      })
+    } catch (error) {
+      steps.push({
+        name: 'meta-live-evidence',
+        status: 'failed',
+        durationMs: Date.now() - liveStartedMs,
+        command: '读取 reports/meta-live-verification/latest.json',
+        exitCode: 1,
+        summary: error instanceof Error ? error.message : String(error),
+      })
+      notes.push('Meta live evidence 校验失败。')
+    }
+  }
+
+  if (metaLiveVerification.status === 'passed') {
+    for (const environment of ['dev', 'production']) {
+      const startedStoreMs = Date.now()
+      const storeStep = await recordReleaseVerificationSummaryFn({
+        environment,
+        verificationType: 'meta_live',
+        commit: git.commit,
+        verifiedAt: metaLiveVerification.verifiedAt,
+        summary: {
+          eventsVerified: true,
+          noStartTrial: true,
+        },
+        cwd: options.cwd,
+        runCommand: options.runCommand,
+      })
+      steps.push({
+        name: `meta-live-store-${environment}`,
+        status: storeStep?.status === 'passed' ? 'passed' : 'failed',
+        durationMs: Date.now() - startedStoreMs,
+        command: `写入 ${environment} D1 Meta live 脱敏摘要`,
+        exitCode: storeStep?.status === 'passed' ? 0 : 1,
+        summary: storeStep?.status === 'passed' ? 'Meta live 脱敏摘要写入成功' : 'Meta live 脱敏摘要写入失败',
+      })
+      if (storeStep?.status !== 'passed') {
+        notes.push(`Meta live 脱敏摘要写入 ${environment} D1 失败。`)
+        break
+      }
+    }
+  }
+
   const finishedAt = new Date().toISOString()
+  const requiredMetaSteps = [
+    'meta-resources-dev',
+    'meta-resources-production',
+    'meta-live-evidence',
+    'meta-live-store-dev',
+    'meta-live-store-production',
+  ]
+  const metaStepsPassed = requiredMetaSteps.every(name => steps.some(step => step.name === name && step.status === 'passed'))
   const report = {
     schemaVersion: 1,
     mode,
-    status: releaseGitBlockers.length === 0 && steps.length === childRuns.length && steps.every(step => step.status === 'passed') ? 'passed' : 'failed',
+    status: releaseGitBlockers.length === 0 && childModesPassed && metaStepsPassed ? 'passed' : 'failed',
     startedAt,
     finishedAt,
     durationMs: Date.now() - startedMs,
@@ -193,6 +322,9 @@ export async function runReleaseVerification(options = {}) {
     versions,
     steps,
     releaseSubModes,
+    initialMetaRollout,
+    metaLiveVerification,
+    metaResources,
     artifacts,
     notes,
   }
@@ -201,6 +333,39 @@ export async function runReleaseVerification(options = {}) {
   return {
     ...report,
     ...files,
+  }
+}
+
+function parseInitialMetaRollout(env) {
+  const value = env?.META_INITIAL_ROLLOUT
+  if (value === undefined || value === '') return false
+  if (value !== '1') throw new Error('META_INITIAL_ROLLOUT 只接受精确值 1')
+  return true
+}
+
+function skippedMetaResource(environment) {
+  return {
+    status: 'skipped',
+    environment,
+    commit: '',
+    database: environment === 'dev' ? 'meigallery-db-dev' : 'meigallery-db',
+    queues: [],
+    capiEnabled: null,
+  }
+}
+
+function sanitizeMetaResourceSummary(result, environment, commit) {
+  return {
+    status: result?.status === 'passed' ? 'passed' : 'failed',
+    environment,
+    commit,
+    database: String(result?.database || (environment === 'dev' ? 'meigallery-db-dev' : 'meigallery-db')),
+    queues: Array.isArray(result?.queues) ? result.queues.map(String) : [],
+    consumersPresent: result?.consumersPresent === true,
+    secretsPresent: result?.secretsPresent === true,
+    migrationsCurrent: result?.migrationsCurrent === true,
+    capiEnabled: typeof result?.capiEnabled === 'boolean' ? result.capiEnabled : null,
+    initialMetaRollout: result?.initialMetaRollout === true,
   }
 }
 
@@ -290,6 +455,9 @@ export async function assertProductionAllowed(options = {}) {
   }
   if (currentGit.isClean !== true) {
     throw new Error('当前工作区不是干净状态，拒绝放行生产部署')
+  }
+  if (expectedBranch !== 'main') {
+    throw new Error('最终生产部署只允许 main 分支')
   }
 
   const report = await readLatestReportFn(options)

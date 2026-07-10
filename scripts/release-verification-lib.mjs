@@ -244,7 +244,7 @@ export function assertReportCanGateProduction(report, options = {}) {
     }
 
     if (report.mode === 'release') {
-      validateReleaseSummary(report, reasons)
+      validateReleaseSummary(report, reasons, now)
     }
   }
 
@@ -335,7 +335,7 @@ function validateReportShape(report, reasons) {
   }
 }
 
-function validateReleaseSummary(report, reasons) {
+function validateReleaseSummary(report, reasons, now) {
   if (!Array.isArray(report.steps)) return
 
   const stepMap = new Map(report.steps.map(step => [step?.name, step]))
@@ -382,6 +382,42 @@ function validateReleaseSummary(report, reasons) {
     if (!hasNonEmptyStringArray(releaseSubMode.passedStepNames)) {
       reasons.push(`releaseSubModes 中的 ${mode} 子模式缺少 passedStepNames`)
     }
+  }
+
+  validateMetaReleaseSummary(report, reasons, now)
+}
+
+function validateMetaReleaseSummary(report, reasons, now) {
+  const live = report.metaLiveVerification
+  if (!live || typeof live !== 'object' || Array.isArray(live)) {
+    reasons.push('release 报告缺少 Meta live evidence 摘要')
+  } else {
+    if (live.status !== 'passed') reasons.push('Meta live evidence 未通过')
+    if (live.commit !== report.git?.commit) reasons.push('Meta live evidence commit 与报告 commit 不一致')
+    if (!Array.isArray(live.events) || live.events.length !== 3 || !['Contact', 'Lead', 'CompleteRegistration'].every(name => live.events.includes(name))) {
+      reasons.push('Meta live evidence 事件集合不完整')
+    }
+    const verifiedAt = Date.parse(live.verifiedAt || '')
+    const expiresAt = Date.parse(live.expiresAt || '')
+    if (Number.isNaN(verifiedAt) || Number.isNaN(expiresAt)) {
+      reasons.push('Meta live evidence 时间格式非法')
+    } else {
+      if (expiresAt - verifiedAt !== 24 * 60 * 60 * 1000) reasons.push('Meta live evidence 有效期不是严格 24 小时')
+      if (now >= expiresAt) reasons.push('Meta live evidence 已过期')
+    }
+  }
+
+  for (const environment of ['dev', 'production']) {
+    const resource = report.metaResources?.[environment]
+    if (!resource || typeof resource !== 'object' || resource.status !== 'passed' || resource.environment !== environment) {
+      reasons.push(`Meta ${environment} 资源检查未通过`)
+    } else if (resource.commit !== report.git?.commit) {
+      reasons.push(`Meta ${environment} 资源检查 commit 与报告 commit 不一致`)
+    }
+  }
+
+  if (report.initialMetaRollout === true && report.metaResources?.production?.capiEnabled !== false) {
+    reasons.push('Meta 首次上线要求生产 CAPI 保持关闭')
   }
 }
 

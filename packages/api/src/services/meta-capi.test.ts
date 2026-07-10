@@ -140,6 +140,30 @@ describe('meta-capi', () => {
     expect(JSON.stringify(payload)).not.toContain('user@example.test')
   })
 
+  it('custom_data 只保留白名单内的有效字符串、有限数字和布尔值', () => {
+    const payload = buildMetaCapiPayload({
+      eventName: 'Lead',
+      eventId: 'event_typed_custom_data',
+      eventTime: 1783600800,
+      eventSourceUrl: 'https://616618.xyz/',
+      actionSource: 'website',
+      customData: {
+        method_type: 42,
+        action_type: true,
+        content_category: '  portrait  ',
+        location: Number.POSITIVE_INFINITY,
+        content_name: '   ',
+        unknown_field: 'secret',
+      },
+    })
+
+    expect(payload.data[0]?.custom_data).toEqual({
+      method_type: 42,
+      action_type: true,
+      content_category: 'portrait',
+    })
+  })
+
   it('Meta 4xx 不重试，5xx 和 429 重试', () => {
     expect(classifyMetaCapiError(400)).toBe('permanent')
     expect(classifyMetaCapiError(500)).toBe('retryable')

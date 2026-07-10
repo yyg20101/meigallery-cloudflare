@@ -99,4 +99,4 @@ VALUES
   ('facebook_pixel_debug_enabled', 'false', datetime('now')),
   ('meta_capi_enabled', 'true', datetime('now')),
   ('meta_capi_test_event_enabled', 'true', datetime('now')),
-  ('meta_tracking_mode', '"hybrid"', datetime('now'));
+  ('meta_tracking_mode', '"test"', datetime('now'));

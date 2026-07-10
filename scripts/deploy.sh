@@ -20,6 +20,7 @@ IS_PRODUCTION=false
 if [ "$ENV" = "production" ]; then
   IS_PRODUCTION=true
 fi
+GIT_COMMIT="$(git rev-parse HEAD)"
 
 echo "=== MeiGallery 部署 (环境: $ENV) ==="
 
@@ -88,7 +89,7 @@ fi
 
 echo ""
 echo "--- 步骤 5/7: 部署 API Worker ---"
-"${PNPM[@]}" --filter @meigallery/api exec wrangler deploy "${ENV_ARGS[@]}"
+"${PNPM[@]}" --filter @meigallery/api exec wrangler deploy "${ENV_ARGS[@]}" --var "RELEASE_COMMIT:${GIT_COMMIT}"
 
 echo ""
 echo "--- 步骤 6/7: 部署 Web Worker ---"

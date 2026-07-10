@@ -7,6 +7,9 @@ const DEV_SEED_FILE_RELATIVE_TO_API = '../../scripts/fixtures/release-smoke/seed
 const REQUIRED_ENV_KEYS = ['VERIFY_DEV_API_URL', 'VERIFY_DEV_WEB_URL']
 const LEGACY_DEV_WORKERS_SUBDOMAIN = '250770503'
 const DEV_REQUEST_TIMEOUT_MS = 20_000
+const META_POLL_TIMEOUT_MS = 30_000
+const META_POLL_INTERVAL_MS = 1_000
+const REQUIRED_META_EVENTS = ['Contact', 'Lead', 'CompleteRegistration']
 
 export async function runDevRehearsalVerification(options = {}) {
   const cwd = options.cwd || process.cwd()
@@ -129,7 +132,7 @@ export async function runDevRehearsalVerification(options = {}) {
       utmMedium: 'paid_social',
       utmCampaign: 'release-dev-rehearsal',
       utmContent: 'release-dev-chat',
-      consentState: 'limited',
+      consentState: 'granted',
       methodType: 'telegram',
       actionTarget: 'floating_contact_panel',
       metadata: {
@@ -154,7 +157,7 @@ export async function runDevRehearsalVerification(options = {}) {
       utmMedium: 'paid_social',
       utmCampaign: 'release-dev-rehearsal',
       utmContent: 'release-dev-chat',
-      consentState: 'limited',
+      consentState: 'granted',
       actionTarget: 'register-submit',
     })
     steps.push(completeRegistrationStep)
@@ -212,6 +215,13 @@ export async function runDevRehearsalVerification(options = {}) {
     steps.push(attributionStep)
     if (attributionStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
 
+    const metaDeliveryStep = await pollMetaDeliveries(boundedFetch, apiUrl, sessionToken, today, {
+      timeoutMs: options.pollTimeoutMs ?? META_POLL_TIMEOUT_MS,
+      intervalMs: options.pollIntervalMs ?? META_POLL_INTERVAL_MS,
+    })
+    steps.push(metaDeliveryStep)
+    if (metaDeliveryStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
+
     const metaStep = await requestJsonStep(
       boundedFetch,
       'dev-meta-test-event',
@@ -224,14 +234,10 @@ export async function runDevRehearsalVerification(options = {}) {
       },
       (body) => {
         const data = body?.data || {}
-        if (typeof data.testEventCodePresent !== 'boolean') {
-          throw new Error('Meta Test Event 响应缺少 testEventCodePresent')
-        }
-        if (data.testEventCodePresent !== true) {
-          notes.push('meta-test-event-code-missing')
-          return `Meta Test Event 已触发，status=${String(data.status || 'unknown')}，未配置 test event code`
-        }
-        return `Meta Test Event 已触发，status=${String(data.status || 'unknown')}，test event code 已配置`
+        if (data.status !== 'sent') throw new Error(`Meta Test Event status 非 sent：${String(data.status || 'missing')}`)
+        if (data.eventsReceived !== 1) throw new Error(`Meta Test Event eventsReceived 非 1：${String(data.eventsReceived ?? 'missing')}`)
+        if (data.testEventCodePresent !== true) throw new Error('Meta Test Event 缺少 Test Event Code')
+        return 'Meta Test Event 已由 Meta 确认接收 1 条事件'
       },
     )
     steps.push(metaStep)
@@ -371,6 +377,77 @@ async function postAnalyticsBatch(fetchFn, apiUrl, runSuffix) {
     }
     return `analytics events 已写入，accepted=${String(body.accepted)}`
   })
+}
+
+async function pollMetaDeliveries(fetchFn, apiUrl, sessionToken, today, options) {
+  const startedAt = Date.now()
+  const url = `${apiUrl}/api/admin/attribution/meta?from=${today}&to=${today}`
+  const command = `GET ${url}`
+  let lastSummary = '尚未返回 delivery 数据'
+
+  while (Date.now() - startedAt <= options.timeoutMs) {
+    try {
+      const response = await fetchFn(url, {
+        headers: { Cookie: `${SESSION_COOKIE}=${sessionToken}` },
+      })
+      const text = await response.text()
+      let body
+      try {
+        body = text ? JSON.parse(text) : null
+      } catch {
+        body = null
+      }
+      if (!response.ok) {
+        return {
+          ...createStep('dev-meta-capi-deliveries'),
+          status: 'failed',
+          durationMs: Date.now() - startedAt,
+          command,
+          exitCode: response.status,
+          summary: truncateSummary(`HTTP ${response.status}`),
+        }
+      }
+
+      const counts = countSentMetaEvents(body?.data?.deliveries)
+      if (REQUIRED_META_EVENTS.every(eventName => counts[eventName] >= 1)) {
+        return {
+          ...createStep('dev-meta-capi-deliveries'),
+          status: 'passed',
+          durationMs: Date.now() - startedAt,
+          command,
+          exitCode: response.status,
+          summary: REQUIRED_META_EVENTS.map(eventName => `${eventName}=${counts[eventName]}`).join(', '),
+        }
+      }
+      lastSummary = REQUIRED_META_EVENTS.map(eventName => `${eventName}=${counts[eventName]}`).join(', ')
+    } catch (error) {
+      lastSummary = error instanceof Error ? error.message : String(error)
+    }
+
+    if (options.intervalMs > 0) await new Promise(resolve => setTimeout(resolve, options.intervalMs))
+  }
+
+  return {
+    ...createStep('dev-meta-capi-deliveries'),
+    status: 'failed',
+    durationMs: Date.now() - startedAt,
+    command,
+    exitCode: null,
+    summary: truncateSummary(`30 秒内未等到三事件 CAPI sent：${lastSummary}`),
+  }
+}
+
+function countSentMetaEvents(deliveries) {
+  const counts = Object.fromEntries(REQUIRED_META_EVENTS.map(eventName => [eventName, 0]))
+  if (!Array.isArray(deliveries)) return counts
+  for (const delivery of deliveries) {
+    const eventName = String(delivery?.event_name || delivery?.eventName || '')
+    const channel = String(delivery?.channel || '')
+    const status = String(delivery?.status || '')
+    if (!Object.hasOwn(counts, eventName) || channel !== 'meta_capi' || status !== 'sent') continue
+    counts[eventName] += Number(delivery?.delivery_count ?? delivery?.deliveryCount ?? 1) || 0
+  }
+  return counts
 }
 
 async function requestJsonStep(fetchFn, stepName, url, init, assertBody) {

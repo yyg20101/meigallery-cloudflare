@@ -34,6 +34,7 @@ npm-debug.log*
 pnpm-debug.log*
 reports/release-verification/*.json
 reports/release-verification/*.log
+reports/meta-live-verification/*.json
 
 # 测试覆盖率
 coverage/

@@ -76,6 +76,28 @@ function createValidReleaseReport() {
         reportFile: '/tmp/dev-rehearsal.json',
       },
     ],
+    initialMetaRollout: false,
+    metaLiveVerification: {
+      status: 'passed',
+      commit: 'abcdef1234567890',
+      verifiedAt: '2026-07-09T00:00:00.000Z',
+      expiresAt: '2026-07-10T00:00:00.000Z',
+      events: ['Contact', 'Lead', 'CompleteRegistration'],
+    },
+    metaResources: {
+      dev: {
+        status: 'passed',
+        environment: 'dev',
+        commit: 'abcdef1234567890',
+        capiEnabled: true,
+      },
+      production: {
+        status: 'passed',
+        environment: 'production',
+        commit: 'abcdef1234567890',
+        capiEnabled: true,
+      },
+    },
     artifacts: ['reports/release-verification/latest.json'],
     notes: ['全部校验通过'],
   }
@@ -482,5 +504,58 @@ describe('发布验证基础库', () => {
         now: '2026-07-09T01:00:00.000Z',
       })
     }, /artifacts\[1\]/)
+  })
+
+  it('assertReportCanGateProduction 强制同 commit live evidence 与两套资源摘要', () => {
+    const base = createValidReleaseReport()
+
+    for (const report of [
+      { ...base, metaLiveVerification: { ...base.metaLiveVerification, commit: 'other-commit' } },
+      { ...base, metaLiveVerification: { ...base.metaLiveVerification, status: 'failed' } },
+      { ...base, metaResources: { ...base.metaResources, dev: { ...base.metaResources.dev, status: 'failed' } } },
+      { ...base, metaResources: { ...base.metaResources, production: { ...base.metaResources.production, status: 'failed' } } },
+    ]) {
+      assert.throws(() => {
+        assertReportCanGateProduction(report, {
+          now: '2026-07-09T01:00:00.000Z',
+          expectedCommit: base.git.commit,
+        })
+      }, /Meta|meta|资源|evidence|commit/)
+    }
+  })
+
+  it('assertReportCanGateProduction 在首次上线时强制生产 CAPI 关闭', () => {
+    const base = createValidReleaseReport()
+    assert.throws(() => {
+      assertReportCanGateProduction({
+        ...base,
+        initialMetaRollout: true,
+      }, {
+        now: '2026-07-09T01:00:00.000Z',
+      })
+    }, /首次上线|CAPI/)
+  })
+
+  it('assertReportCanGateProduction 拒绝过期 live evidence 或不同 commit 的资源摘要', () => {
+    const base = createValidReleaseReport()
+    assert.throws(() => {
+      assertReportCanGateProduction({
+        ...base,
+        metaLiveVerification: {
+          ...base.metaLiveVerification,
+          expiresAt: '2026-07-09T00:30:00.000Z',
+        },
+      }, { now: '2026-07-09T01:00:00.000Z' })
+    }, /live evidence 已过期/)
+
+    assert.throws(() => {
+      assertReportCanGateProduction({
+        ...base,
+        metaResources: {
+          ...base.metaResources,
+          production: { ...base.metaResources.production, commit: 'other-commit' },
+        },
+      }, { now: '2026-07-09T01:00:00.000Z' })
+    }, /资源检查 commit/)
   })
 })

@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import { describe, it } from 'node:test'
+import { fileURLToPath } from 'node:url'
 import { runDevRehearsalVerification } from './verify-dev-rehearsal.mjs'
+
+const DEV_SEED_PATH = fileURLToPath(new URL('./fixtures/release-smoke/seed-dev.sql', import.meta.url))
 
 describe('开发环境发布预演验证', () => {
   it('缺少 dev URL 环境变量时直接失败', async () => {
@@ -11,9 +15,10 @@ describe('开发环境发布预演验证', () => {
     }, /VERIFY_DEV_API_URL/)
   })
 
-  it('执行远端迁移、部署和 smoke，并在缺少 test event code 时记 note', async () => {
+  it('执行远端迁移、部署和严格 Meta smoke', async () => {
     const commands = []
     const requestedUrls = []
+    const conversionBodies = []
     const responses = [
       jsonResponse(200, { status: 'ok', db: 'ok' }),
       textResponse(200, '<!doctype html><html><body><div id="__nuxt"></div><script>window.__APP__="wajie"</script></body></html>'),
@@ -40,11 +45,20 @@ describe('开发环境发布预演验证', () => {
           ],
         },
       }),
-      jsonResponse(202, {
+      jsonResponse(200, {
         data: {
-          status: 'skipped',
-          reason: 'missing_secret',
-          testEventCodePresent: false,
+          deliveries: [
+            { channel: 'meta_capi', event_name: 'Contact', status: 'sent', delivery_count: 1 },
+            { channel: 'meta_capi', event_name: 'Lead', status: 'sent', delivery_count: 1 },
+            { channel: 'meta_capi', event_name: 'CompleteRegistration', status: 'sent', delivery_count: 1 },
+          ],
+        },
+      }),
+      jsonResponse(200, {
+        data: {
+          status: 'sent',
+          eventsReceived: 1,
+          testEventCodePresent: true,
         },
       }),
     ]
@@ -67,8 +81,9 @@ describe('开发环境发布预演验证', () => {
           stderr: '',
         }
       },
-      fetch: async (url) => {
+      fetch: async (url, init) => {
         requestedUrls.push(String(url))
+        if (String(url).endsWith('/api/conversions/events')) conversionBodies.push(JSON.parse(init.body))
         const response = responses.shift()
         if (!response) throw new Error('缺少模拟响应')
         return response
@@ -76,13 +91,52 @@ describe('开发环境发布预演验证', () => {
     })
 
     assert.equal(result.steps.every(step => step.status === 'passed'), true)
-    assert.equal(result.notes.includes('meta-test-event-code-missing'), true)
+    assert.equal(result.notes.includes('meta-test-event-code-missing'), false)
     assert.equal(result.notes.includes('dev-smoke-owner-disabled-after-run'), true)
     assert.equal(commands.some(command => command.includes('wrangler d1 migrations apply meigallery-db-dev --env dev --remote')), true)
     assert.equal(commands.some(command => command.includes('wrangler deploy --env dev')), true)
     assert.equal(commands.some(command => command.includes("UPDATE users SET status = 'disabled'")), true)
     assert.equal(result.steps.some(step => step.name === 'dev-smoke-owner-cleanup' && step.status === 'passed'), true)
     assert.equal(requestedUrls.some(url => url.includes('/api/admin/attribution/conversions?') && url.includes('sourceCode=release-dev-fb')), true)
+    assert.equal(requestedUrls.some(url => url.includes('/api/admin/attribution/meta?')), true)
+    assert.equal(conversionBodies.every(body => body.consentState === 'granted'), true)
+    assert.deepEqual(conversionBodies.map(body => body.actionType), ['contact', 'complete_registration'])
+  })
+
+  it('dev seed 使用严格 test 模式', async () => {
+    const seed = await readFile(DEV_SEED_PATH, 'utf8')
+    assert.match(seed, /\('meta_tracking_mode', '"test"'/)
+    assert.doesNotMatch(seed, /\('meta_tracking_mode', '"hybrid"'/)
+  })
+
+  it('Test Event 缺 secret/code 或未 sent 时失败并清理 Owner', async () => {
+    const responses = successfulResponses()
+    responses.push(jsonResponse(503, {
+      code: 'META_TEST_EVENT_NOT_CONFIGURED',
+      detail: {
+        status: 'failed',
+        eventsReceived: 0,
+        testEventCodePresent: false,
+      },
+    }))
+
+    const result = await runDevRehearsalVerification({
+      env: {
+        VERIFY_DEV_API_URL: 'https://api-dev.example.workers.dev',
+        VERIFY_DEV_WEB_URL: 'https://web-dev.example.workers.dev/',
+      },
+      pollIntervalMs: 0,
+      runCommand: passingCommand,
+      fetch: async () => {
+        const response = responses.shift()
+        if (!response) throw new Error('缺少模拟响应')
+        return response
+      },
+    })
+
+    assert.equal(result.steps.find(step => step.name === 'dev-meta-test-event')?.status, 'failed')
+    assert.equal(result.steps.some(step => step.name === 'dev-smoke-owner-cleanup' && step.status === 'passed'), true)
+    assert.equal(result.notes.includes('meta-test-event-code-missing'), false)
   })
 
   it('非 2xx smoke 响应会保留 HTTP 状态和响应体摘要', async () => {
@@ -151,4 +205,50 @@ function textResponse(status, body) {
     status,
     headers: { 'content-type': 'text/html; charset=utf-8' },
   })
+}
+
+function successfulResponses() {
+  return [
+    jsonResponse(200, { status: 'ok', db: 'ok' }),
+    textResponse(200, '<!doctype html><html><body><div id="__nuxt"></div></body></html>'),
+    jsonResponse(200, { data: { id: 'conv_1', actionType: 'contact', created: true } }),
+    jsonResponse(200, { data: { id: 'conv_2', actionType: 'complete_registration', created: true } }),
+    jsonResponse(200, { accepted: 3, rejected: 0 }),
+    jsonResponse(200, {
+      data: {
+        stages: [
+          { key: 'page_views', value: 2 },
+          { key: 'key_clicks', value: 1 },
+          { key: 'contacts_or_registers', value: 2 },
+        ],
+      },
+    }),
+    jsonResponse(200, {
+      data: {
+        bySource: [{ source_name: 'release-dev-fb', contact_count: 1, complete_registration_count: 1 }],
+      },
+    }),
+    jsonResponse(200, {
+      data: {
+        deliveries: [
+          { channel: 'meta_capi', event_name: 'Contact', status: 'sent', delivery_count: 1 },
+          { channel: 'meta_capi', event_name: 'Lead', status: 'sent', delivery_count: 1 },
+          { channel: 'meta_capi', event_name: 'CompleteRegistration', status: 'sent', delivery_count: 1 },
+        ],
+      },
+    }),
+  ]
+}
+
+async function passingCommand(command, args, options) {
+  return {
+    name: options.name,
+    status: 'passed',
+    durationMs: 1,
+    command: options.reportCommand || [command, ...args].join(' '),
+    exitCode: 0,
+    summary: 'ok',
+    stdout: 'ok',
+    stderr: '',
+  }
 }
