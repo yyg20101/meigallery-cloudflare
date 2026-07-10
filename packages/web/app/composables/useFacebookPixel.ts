@@ -20,10 +20,7 @@ export function useFacebookPixel() {
   }
 
   function trackSearch(params: { searchString: string; resultCount: number }) {
-    tracking.trackSearch({
-      search_string: sanitizeAnalyticsText(params.searchString, 80),
-      result_count: params.resultCount,
-    })
+    tracking.trackSearch(params)
   }
 
   function trackStandardEvent(_eventName: LegacyStandardEventName) {

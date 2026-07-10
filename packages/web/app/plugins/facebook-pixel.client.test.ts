@@ -5,6 +5,7 @@ describe('facebook-pixel plugin', () => {
   const afterEachHandlers: Array<() => void> = []
   const fetchSettings = vi.fn()
   const trackPageView = vi.fn()
+  const teardownPixel = vi.fn()
   const consent = ref<'limited' | 'granted' | 'denied'>('limited')
   const facebookPixelEnabled = ref(true)
   const facebookPixelId = ref('123456789')
@@ -17,6 +18,7 @@ describe('facebook-pixel plugin', () => {
     fetchSettings.mockReset()
     fetchSettings.mockResolvedValue(undefined)
     trackPageView.mockReset()
+    teardownPixel.mockReset()
 
     vi.stubGlobal('defineNuxtPlugin', <T>(plugin: T) => plugin)
     vi.stubGlobal('useRouter', () => ({ afterEach: (handler: () => void) => afterEachHandlers.push(handler) }))
@@ -29,7 +31,7 @@ describe('facebook-pixel plugin', () => {
     vi.stubGlobal('useMarketingConsent', () => ({
       canTrackMarketing: computed(() => consent.value === 'granted'),
     }))
-    vi.stubGlobal('useTracking', () => ({ trackPageView }))
+    vi.stubGlobal('useTracking', () => ({ trackPageView, teardownPixel }))
   })
 
   afterEach(() => {
@@ -41,21 +43,23 @@ describe('facebook-pixel plugin', () => {
 
     await plugin({} as never)
     expect(fetchSettings).toHaveBeenCalledOnce()
-    expect(trackPageView).toHaveBeenCalledTimes(1)
+    expect(teardownPixel).toHaveBeenCalledTimes(1)
+    expect(trackPageView).not.toHaveBeenCalled()
 
     consent.value = 'granted'
     await nextTick()
-    expect(trackPageView).toHaveBeenCalledTimes(2)
+    expect(trackPageView).toHaveBeenCalledTimes(1)
 
     facebookPixelId.value = '987654321'
     await nextTick()
-    expect(trackPageView).toHaveBeenCalledTimes(3)
+    expect(trackPageView).toHaveBeenCalledTimes(2)
 
     afterEachHandlers[0]?.()
-    expect(trackPageView).toHaveBeenCalledTimes(4)
+    expect(trackPageView).toHaveBeenCalledTimes(3)
 
     consent.value = 'denied'
     await nextTick()
-    expect(trackPageView).toHaveBeenCalledTimes(5)
+    expect(teardownPixel).toHaveBeenCalledTimes(2)
+    expect(trackPageView).toHaveBeenCalledTimes(3)
   })
 })

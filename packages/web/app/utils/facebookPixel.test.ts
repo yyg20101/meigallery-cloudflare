@@ -81,7 +81,7 @@ describe('useFacebookPixel 兼容包装', () => {
       required_rank: 10,
       tag_count: 1,
     })
-    expect(trackSearch).toHaveBeenCalledWith({ search_string: 'has_query=true', result_count: 3 })
+    expect(trackSearch).toHaveBeenCalledWith({ searchString: 'has_query=true', resultCount: 3 })
     expect(pixel.trackStandardEvent('Lead' as never)).toBe(false)
   })
 })

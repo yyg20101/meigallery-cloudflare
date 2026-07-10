@@ -20,6 +20,7 @@ declare global {
 
 export interface MetaPixelAdapter {
   initialize(pixelId: string): boolean
+  teardown(): void
   pageView(): boolean
   standardEvent(
     eventName: MetaPixelEventName,
@@ -30,6 +31,10 @@ export interface MetaPixelAdapter {
 
 export function createMetaPixelAdapter(): MetaPixelAdapter {
   let initialized = false
+  let activePixelId = ''
+  let ownedFbq: FacebookQueueFunction | null = null
+  let pendingScript: HTMLScriptElement | null = null
+  let pendingScriptLoadHandler: (() => void) | null = null
 
   function call(...args: unknown[]) {
     if (!isClientRuntime() || !initialized || !window.fbq) return false
@@ -40,7 +45,8 @@ export function createMetaPixelAdapter(): MetaPixelAdapter {
   function initialize(pixelId: string) {
     const normalizedPixelId = normalizePixelId(pixelId)
     if (!isClientRuntime() || !normalizedPixelId) return false
-    if (initialized && window.fbq) return true
+    if (initialized && activePixelId === normalizedPixelId && window.fbq) return true
+    if (activePixelId && activePixelId !== normalizedPixelId) teardown()
 
     if (!window.fbq) {
       const fbq = function (...args: unknown[]) {
@@ -53,11 +59,42 @@ export function createMetaPixelAdapter(): MetaPixelAdapter {
       fbq.version = '2.0'
       window.fbq = fbq
       window._fbq = fbq
-      document.head.appendChild(createFacebookPixelScript(document))
+      ownedFbq = fbq
+
+      const script = createFacebookPixelScript(document)
+      const handleLoad = () => {
+        if (pendingScript === script) {
+          pendingScript = null
+          pendingScriptLoadHandler = null
+        }
+        script.removeEventListener('load', handleLoad)
+      }
+      script.addEventListener('load', handleLoad)
+      pendingScript = script
+      pendingScriptLoadHandler = handleLoad
+      document.head.appendChild(script)
     }
 
     initialized = true
+    activePixelId = normalizedPixelId
     return call('init', normalizedPixelId)
+  }
+
+  function teardown() {
+    if (ownedFbq?.queue) ownedFbq.queue.length = 0
+    if (pendingScript && pendingScriptLoadHandler) {
+      pendingScript.removeEventListener('load', pendingScriptLoadHandler)
+    }
+    pendingScript?.remove()
+    if (isClientRuntime()) {
+      if (window.fbq === ownedFbq) delete window.fbq
+      if (window._fbq === ownedFbq) delete window._fbq
+    }
+    pendingScript = null
+    pendingScriptLoadHandler = null
+    ownedFbq = null
+    initialized = false
+    activePixelId = ''
   }
 
   function pageView() {
@@ -74,7 +111,7 @@ export function createMetaPixelAdapter(): MetaPixelAdapter {
       : call('track', eventName, payload)
   }
 
-  return { initialize, pageView, standardEvent }
+  return { initialize, teardown, pageView, standardEvent }
 }
 
 export const metaPixelAdapter = createMetaPixelAdapter()

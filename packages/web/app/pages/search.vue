@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { TrackSearchInput } from '~/composables/useTracking'
+
 const route = useRoute()
 const router = useRouter()
 const { api } = useApi()
@@ -63,10 +65,11 @@ watch(searchResult, (result) => {
   const key = getSearchTrackingKey()
   if (lastTrackedSearchKey.value === key) return
   lastTrackedSearchKey.value = key
-  trackSearch({
+  const trackingInput: TrackSearchInput = {
     searchString: `has_query=${keyword.value.trim() ? 'true' : 'false'} tag_count=${selectedTags.value.length} sort=${sort.value}`,
     resultCount: result.total,
-  })
+  }
+  trackSearch(trackingInput)
   analytics.track(result.total > 0 ? 'search_results_view' : 'search_no_results', {
     entityType: 'page',
     props: result.total > 0

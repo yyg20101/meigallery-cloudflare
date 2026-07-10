@@ -62,4 +62,53 @@ describe('Meta Pixel adapter', () => {
     const fbq = (window as unknown as { fbq?: { queue: unknown[] } }).fbq
     expect(fbq?.queue).toEqual([['init', '123456789']])
   })
+
+  it('脚本加载前 teardown 会清空队列、移除脚本并使迟到 load 失效', async () => {
+    const { createMetaPixelAdapter } = await import('./metaPixel.client')
+    const adapter = createMetaPixelAdapter()
+    let appendedScript: HTMLScriptElement | undefined
+    vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T) => {
+      appendedScript = node as unknown as HTMLScriptElement
+      return node
+    })
+
+    adapter.initialize('123456789')
+    adapter.pageView()
+    const ownedFbq = (window as unknown as { fbq?: { queue: unknown[]; callMethod?: (...args: unknown[]) => void } }).fbq!
+    const callMethod = vi.fn()
+    ownedFbq.callMethod = callMethod
+    const remove = vi.spyOn(appendedScript!, 'remove')
+    const teardown = (adapter as typeof adapter & { teardown?: () => void }).teardown
+
+    expect(teardown).toBeTypeOf('function')
+    teardown?.()
+    appendedScript?.dispatchEvent(new Event('load'))
+
+    expect(ownedFbq.queue).toEqual([])
+    expect(remove).toHaveBeenCalledOnce()
+    expect((window as unknown as { fbq?: unknown }).fbq).toBeUndefined()
+    expect((window as unknown as { _fbq?: unknown })._fbq).toBeUndefined()
+    expect(callMethod).not.toHaveBeenCalled()
+    expect(adapter.pageView()).toBe(false)
+  })
+
+  it('Pixel ID 变化会 teardown 旧实例并重新 init', async () => {
+    const { createMetaPixelAdapter } = await import('./metaPixel.client')
+    const adapter = createMetaPixelAdapter()
+    vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T) => node)
+
+    adapter.initialize('123456789')
+    adapter.pageView()
+    const firstFbq = (window as unknown as { fbq?: { queue: unknown[] } }).fbq!
+    adapter.initialize('987654321')
+    adapter.pageView()
+    const secondFbq = (window as unknown as { fbq?: { queue: unknown[] } }).fbq!
+
+    expect(firstFbq.queue).toEqual([])
+    expect(secondFbq).not.toBe(firstFbq)
+    expect(secondFbq.queue).toEqual([
+      ['init', '987654321'],
+      ['track', 'PageView'],
+    ])
+  })
 })

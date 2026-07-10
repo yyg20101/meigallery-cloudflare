@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { validateUsername } from '@meigallery/shared/utils'
 import type { InviteCodeStatusResponse, MetaPixelInstruction } from '@meigallery/shared'
-import { sanitizeAnalyticsPath } from '~/utils/analyticsSanitizer'
-import { readMetaBrowserIdentifiers } from '~/utils/metaBrowserIdentifiers'
 
 const { register, sendCode, checkUsername, isLoggedIn } = useAuth()
 const { api } = useApi()
@@ -10,7 +8,6 @@ const router = useRouter()
 const route = useRoute()
 const analytics = useAnalytics()
 const tracking = useTracking()
-const marketingConsent = useMarketingConsent()
 const { siteName } = useSiteSettings()
 
 // 表单数据
@@ -202,7 +199,7 @@ async function onDirectRegister() {
       username: username.value,
       turnstileToken: hasTurnstile.value ? turnstileToken.value : undefined,
       ...buildInviteRegistrationContext(),
-      attribution: buildRegistrationAttribution(),
+      attribution: tracking.buildRegistrationAttributionContext(),
     })
     await completeRegistration(result.pixelEvents)
     router.push('/')
@@ -266,7 +263,7 @@ async function onSubmitWithCode() {
       code: verificationCode.value,
       turnstileToken: hasTurnstile.value ? turnstileToken.value : undefined,
       ...buildInviteRegistrationContext(),
-      attribution: buildRegistrationAttribution(),
+      attribution: tracking.buildRegistrationAttributionContext(),
     })
     await completeRegistration(result.pixelEvents)
     router.push('/')
@@ -355,30 +352,6 @@ function trackRegisterSubmit() {
   })
 }
 
-function buildRegistrationAttribution() {
-  const context = analytics.getContext()
-  const canDeliverMarketing = marketingConsent.state.value === 'granted' && marketingConsent.canTrackMarketing.value
-  const sourceContext = context.sourceContext || {}
-  return {
-    visitorId: normalizeText(context.visitorId, 120) || undefined,
-    sessionId: normalizeText(context.sessionId, 120) || undefined,
-    occurredAt: new Date().toISOString(),
-    routeName: normalizeText(route.name || route.path, 120),
-    path: sanitizeAnalyticsPath(route.fullPath) || sanitizeAnalyticsPath(route.path) || '/',
-    sourceChannel: normalizeText(context.sourceChannel, 40) || 'unknown',
-    sourceName: normalizeText(sourceContext.sourceName, 120),
-    trackingSourceSlug: normalizeText(sourceContext.trackingSourceSlug, 120),
-    utmSource: normalizeText(sourceContext.utmSource, 120),
-    utmMedium: normalizeText(sourceContext.utmMedium, 120),
-    utmCampaign: normalizeText(sourceContext.utmCampaign, 120),
-    utmContent: normalizeText(queryValue(route.query.utm_content), 120),
-    consentState: canDeliverMarketing ? 'granted' as const : marketingConsent.state.value === 'denied' ? 'denied' as const : 'limited' as const,
-    ...(canDeliverMarketing && typeof document !== 'undefined'
-      ? { browserIdentifiers: readMetaBrowserIdentifiers(document.cookie, route.query.fbclid) }
-      : {}),
-  }
-}
-
 async function completeRegistration(pixelEvents: MetaPixelInstruction[]) {
   analytics.track('register_success', {
     eventId: pixelEvents[0]?.eventId || '',
@@ -394,14 +367,6 @@ async function completeRegistration(pixelEvents: MetaPixelInstruction[]) {
   } catch {
     // 注册已成功时，Pixel 执行失败不能影响跳转或误记注册失败。
   }
-}
-
-function queryValue(value: unknown) {
-  return Array.isArray(value) ? value[0] : value
-}
-
-function normalizeText(value: unknown, maxLength: number) {
-  return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, maxLength)
 }
 
 function normalizeInviteCode(value: unknown) {

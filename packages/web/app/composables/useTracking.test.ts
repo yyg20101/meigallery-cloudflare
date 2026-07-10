@@ -5,6 +5,7 @@ const adapter = vi.hoisted(() => ({
   initialize: vi.fn(),
   pageView: vi.fn(),
   standardEvent: vi.fn(),
+  teardown: vi.fn(),
 }))
 
 vi.mock('~/adapters/metaPixel.client', () => ({ metaPixelAdapter: adapter }))
@@ -15,6 +16,9 @@ const api = vi.fn()
 const trackAnalytics = vi.fn()
 const marketingConsentState = ref<'granted' | 'limited' | 'denied'>('granted')
 const canTrackMarketing = ref(true)
+const facebookPixelEnabled = ref(true)
+const facebookPixelId = ref('123456789')
+const facebookPixelDebugEnabled = ref(false)
 let analyticsVisitorId = 'visitor_1'
 let analyticsSessionId = 'session_1'
 let route = {
@@ -37,8 +41,12 @@ describe('useTracking', () => {
     adapter.pageView.mockReturnValue(true)
     adapter.standardEvent.mockReset()
     adapter.standardEvent.mockReturnValue(true)
+    adapter.teardown.mockReset()
     marketingConsentState.value = 'granted'
     canTrackMarketing.value = true
+    facebookPixelEnabled.value = true
+    facebookPixelId.value = '123456789'
+    facebookPixelDebugEnabled.value = false
     analyticsVisitorId = 'visitor_1'
     analyticsSessionId = 'session_1'
     route = {
@@ -52,9 +60,9 @@ describe('useTracking', () => {
     vi.stubGlobal('useRoute', () => route)
     vi.stubGlobal('useRuntimeConfig', () => ({ public: { appEnv: 'production' } }))
     vi.stubGlobal('useSiteSettings', () => ({
-      facebookPixelEnabled: ref(true),
-      facebookPixelId: ref('123456789'),
-      facebookPixelDebugEnabled: ref(false),
+      facebookPixelEnabled,
+      facebookPixelId,
+      facebookPixelDebugEnabled,
     }))
     vi.stubGlobal('useAnalytics', () => ({
       getContext: () => ({
@@ -230,6 +238,60 @@ describe('useTracking', () => {
     expect(adapter.standardEvent).not.toHaveBeenCalled()
   })
 
+  it('limited activation 即使重试前升级 granted 也不读取标识或执行 Pixel', async () => {
+    marketingConsentState.value = 'limited'
+    canTrackMarketing.value = false
+    document.cookie = '_fbp=fb.1.1700000000000.123456789; path=/'
+    route.query.fbclid = 'CLICK_abc-123'
+    api.mockRejectedValueOnce(new Error('conversion failed')).mockResolvedValueOnce({
+      data: { pixelEvents: [instruction('Contact')] },
+    })
+
+    await useTracking().trackContact({
+      methodType: 'telegram',
+      actionTarget: 'floating_contact_panel',
+      actionType: 'open_link',
+    })
+    marketingConsentState.value = 'granted'
+    canTrackMarketing.value = true
+    await vi.advanceTimersByTimeAsync(1_000)
+
+    const bodies = api.mock.calls
+      .filter(call => call[0] === '/api/conversions/events')
+      .map(call => call[1]?.body as Record<string, unknown>)
+    expect(bodies).toHaveLength(2)
+    expect(bodies.every(body => body.consentState === 'limited')).toBe(true)
+    expect(bodies.every(body => !('browserIdentifiers' in body))).toBe(true)
+    expect(adapter.standardEvent).not.toHaveBeenCalled()
+  })
+
+  it('analytics 本地异常不会重新提交 conversion', async () => {
+    trackAnalytics.mockImplementationOnce(() => { throw new Error('analytics failed') })
+
+    await expect(useTracking().trackContact({
+      methodType: 'telegram',
+      actionTarget: 'floating_contact_panel',
+      actionType: 'open_link',
+    })).resolves.toBeUndefined()
+    await vi.runAllTimersAsync()
+
+    expect(api.mock.calls.filter(call => call[0] === '/api/conversions/events')).toHaveLength(1)
+  })
+
+  it('Pixel 本地异常不会重新提交 conversion', async () => {
+    api.mockResolvedValueOnce({ data: { pixelEvents: [instruction('Contact')] } })
+    adapter.standardEvent.mockImplementationOnce(() => { throw new Error('fbq failed') })
+
+    await expect(useTracking().trackContact({
+      methodType: 'telegram',
+      actionTarget: 'floating_contact_panel',
+      actionType: 'open_link',
+    })).resolves.toBeUndefined()
+    await vi.runAllTimersAsync()
+
+    expect(api.mock.calls.filter(call => call[0] === '/api/conversions/events')).toHaveLength(1)
+  })
+
   it('conversion API 全部补发失败后只写一次空 ID 兼容分析', async () => {
     api.mockRejectedValue(new Error('conversion failed'))
 
@@ -301,7 +363,7 @@ describe('useTracking', () => {
     const tracking = useTracking()
     tracking.trackPageView()
     tracking.trackViewContent({ content_id: 'gallery_1', required_rank: 10 })
-    tracking.trackSearch({ search_string: 'has_query=true', result_count: 12 })
+    tracking.trackSearch({ searchString: 'has_query=true', resultCount: 12 })
 
     expect(adapter.initialize).toHaveBeenCalledWith('123456789')
     expect(adapter.pageView).toHaveBeenCalledOnce()
@@ -315,6 +377,82 @@ describe('useTracking', () => {
       'Search',
       { search_string: 'has_query=true', result_count: 12 },
     )
+  })
+
+  it('Search 统一清洗并发送 snake_case payload', () => {
+    useTracking().trackSearch({
+      searchString: '联系 me@example.com',
+      resultCount: 7,
+    })
+
+    expect(adapter.standardEvent).toHaveBeenCalledWith('Search', {
+      search_string: '联系 [redacted_email]',
+      result_count: 7,
+    })
+  })
+
+  it('同页 Pixel ID 变化会重新初始化并补发 PageView', () => {
+    route.fullPath = '/gallery/pixel-id-change'
+    route.path = '/gallery/pixel-id-change'
+    const tracking = useTracking()
+    tracking.trackPageView()
+    facebookPixelId.value = '987654321'
+    tracking.trackPageView()
+
+    expect(adapter.initialize).toHaveBeenNthCalledWith(1, '123456789')
+    expect(adapter.initialize).toHaveBeenNthCalledWith(2, '987654321')
+    expect(adapter.pageView).toHaveBeenCalledTimes(2)
+  })
+
+  it('配置禁用会 teardown，再启用同页会补发 PageView', () => {
+    route.fullPath = '/gallery/pixel-reenable'
+    route.path = '/gallery/pixel-reenable'
+    const tracking = useTracking()
+    tracking.trackPageView()
+    facebookPixelEnabled.value = false
+    tracking.trackPageView()
+    facebookPixelEnabled.value = true
+    tracking.trackPageView()
+
+    expect(adapter.teardown).toHaveBeenCalledOnce()
+    expect(adapter.initialize).toHaveBeenCalledTimes(2)
+    expect(adapter.pageView).toHaveBeenCalledTimes(2)
+  })
+
+  it('注册归因只在 granted 范围读取 browser identifiers', () => {
+    route = {
+      name: 'register',
+      path: '/register',
+      fullPath: '/register?utm_content=hero',
+      query: { utm_content: 'hero', fbclid: 'CLICK_abc-123' },
+    }
+    document.cookie = '_fbp=fb.1.1700000000000.123456789; path=/'
+
+    const attribution = useTracking().buildRegistrationAttributionContext()
+
+    expect(attribution).toMatchObject({
+      visitorId: 'visitor_1',
+      sessionId: 'session_1',
+      routeName: 'register',
+      path: '/register',
+      utmContent: 'hero',
+      consentState: 'granted',
+      browserIdentifiers: {
+        fbp: 'fb.1.1700000000000.123456789',
+        fbc: `fb.1.${new Date('2026-07-10T08:00:00.000Z').getTime()}.CLICK_abc-123`,
+      },
+    })
+  })
+
+  it('注册归因在 limited 时不读取 browser identifiers', () => {
+    marketingConsentState.value = 'limited'
+    canTrackMarketing.value = false
+    route.query.fbclid = 'CLICK_abc-123'
+
+    const attribution = useTracking().buildRegistrationAttributionContext()
+
+    expect(attribution).toMatchObject({ consentState: 'limited' })
+    expect(attribution).not.toHaveProperty('browserIdentifiers')
   })
 
   it('后台与敏感 URL 不委托 adapter', () => {

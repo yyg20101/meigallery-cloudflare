@@ -11,10 +11,18 @@ export default defineNuxtPlugin(async () => {
 
   await fetchSettings()
 
+  function syncPixelTracking() {
+    if (!canTrackMarketing.value || !facebookPixelEnabled.value || !String(facebookPixelId.value || '').trim()) {
+      tracking.teardownPixel()
+      return
+    }
+    tracking.trackPageView()
+  }
+
   watch(
     [facebookPixelEnabled, facebookPixelId, facebookPixelDebugEnabled, canTrackMarketing],
-    () => tracking.trackPageView(),
+    syncPixelTracking,
     { immediate: true },
   )
-  router.afterEach(() => tracking.trackPageView())
+  router.afterEach(syncPixelTracking)
 })

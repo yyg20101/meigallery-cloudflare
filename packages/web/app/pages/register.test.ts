@@ -12,6 +12,7 @@ const replace = vi.fn()
 const track = vi.fn()
 const trackConversion = vi.fn()
 const executePixelInstructions = vi.fn()
+const buildRegistrationAttributionContext = vi.fn()
 
 describe('register page', () => {
   beforeEach(() => {
@@ -38,6 +39,23 @@ describe('register page', () => {
     trackConversion.mockRejectedValue(new Error('conversion api failed'))
     executePixelInstructions.mockReset()
     executePixelInstructions.mockResolvedValue(undefined)
+    buildRegistrationAttributionContext.mockReset()
+    buildRegistrationAttributionContext.mockReturnValue({
+      visitorId: 'visitor_1',
+      sessionId: 'session_1',
+      occurredAt: '2026-07-10T08:00:00.000Z',
+      routeName: 'register',
+      path: '/register',
+      sourceChannel: 'ad',
+      sourceName: 'meta',
+      trackingSourceSlug: 'meta-summer',
+      utmSource: 'meta',
+      utmMedium: 'paid_social',
+      utmCampaign: 'summer',
+      utmContent: 'hero',
+      consentState: 'granted',
+      browserIdentifiers: { fbp: 'fb.1.1700000000000.123456789' },
+    })
 
     vi.stubGlobal('useAuth', () => ({
       register,
@@ -65,7 +83,7 @@ describe('register page', () => {
       }),
     }))
     vi.stubGlobal('useConversionTracking', () => ({ trackConversion }))
-    vi.stubGlobal('useTracking', () => ({ executePixelInstructions }))
+    vi.stubGlobal('useTracking', () => ({ executePixelInstructions, buildRegistrationAttributionContext }))
     vi.stubGlobal('useMarketingConsent', () => ({
       state: ref('granted'),
       canTrackMarketing: ref(true),
@@ -108,9 +126,10 @@ describe('register page', () => {
     await flushPromises()
 
     expect(register).toHaveBeenCalledWith(expect.objectContaining({
-      attribution: expect.objectContaining({
+      attribution: {
         visitorId: 'visitor_1',
         sessionId: 'session_1',
+        occurredAt: '2026-07-10T08:00:00.000Z',
         routeName: 'register',
         path: '/register',
         sourceChannel: 'ad',
@@ -121,8 +140,10 @@ describe('register page', () => {
         utmCampaign: 'summer',
         utmContent: 'hero',
         consentState: 'granted',
-      }),
+        browserIdentifiers: { fbp: 'fb.1.1700000000000.123456789' },
+      },
     }))
+    expect(buildRegistrationAttributionContext).toHaveBeenCalledOnce()
     expect(register.mock.calls[0]?.[0]).not.toHaveProperty('actionType')
     expect(register.mock.calls[0]?.[0]).not.toHaveProperty('userId')
     expect(trackConversion).not.toHaveBeenCalled()
