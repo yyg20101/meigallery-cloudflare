@@ -53,8 +53,8 @@
 ### Task 1: 增加 rollout、incident 与质量快照模型
 
 **Files:**
-- Create: `packages/api/migrations/0037_meta_capi_v2_operations.sql`
-- Create: `packages/api/migrations/0037_meta_capi_v2_operations.test.mjs`
+- Create: `packages/api/migrations/0039_meta_capi_v2_operations.sql`
+- Create: `packages/api/migrations/0039_meta_capi_v2_operations.test.mjs`
 - Modify: `packages/api/src/utils/analytics-migrations.test.ts`
 - Modify: `packages/shared/src/types/index.ts`
 
@@ -140,7 +140,7 @@ VALUES ('meta_capi_rollout_percentage', '0', datetime('now'));
 
 - [ ] **Step 1: 写 migration 失败测试**
 
-测试顺序执行 0001-0037 并断言：
+测试顺序执行 0001-0039 并断言：
 
 - rollout 默认 0，只接受四个离散值。
 - bucket 只接受 0-99 或 null。
@@ -151,18 +151,18 @@ VALUES ('meta_capi_rollout_percentage', '0', datetime('now'));
 - site setting 默认 JSON number `0`，不是字符串 `"0"`。
 - 所有历史 action 与 delivery 行保留。
 
-在 migration runner 执行 0037 前增加只读 preflight：若存在 `(conversion_action_id, channel)` 重复组，立即阻断并输出组数，不自动删除历史数据。
+在 migration runner 执行 0039 前增加只读 preflight：若存在 `(conversion_action_id, channel)` 重复组，立即阻断并输出组数，不自动删除历史数据。
 
 - [ ] **Step 2: 运行测试并确认失败**
 
 Run:
 
 ```bash
-node --test packages/api/migrations/0037_meta_capi_v2_operations.test.mjs scripts/verify-meta-migration.test.mjs
+node --test packages/api/migrations/0039_meta_capi_v2_operations.test.mjs scripts/verify-meta-migration.test.mjs
 corepack pnpm --filter @meigallery/api test -- src/utils/analytics-migrations.test.ts
 ```
 
-Expected: FAIL，0037 与重复组 preflight 尚不存在。
+Expected: FAIL，0039 与重复组 preflight 尚不存在。
 
 - [ ] **Step 3: 创建 migration 与共享运维类型**
 
@@ -187,11 +187,11 @@ export interface MetaCapiRolloutDecision {
 Run:
 
 ```bash
-node --test packages/api/migrations/0037_meta_capi_v2_operations.test.mjs scripts/verify-meta-migration.test.mjs
+node --test packages/api/migrations/0039_meta_capi_v2_operations.test.mjs scripts/verify-meta-migration.test.mjs
 corepack pnpm --filter @meigallery/api test -- src/utils/analytics-migrations.test.ts
 corepack pnpm --filter @meigallery/api exec tsc --noEmit
 git diff --check
-git add packages/api/migrations/0037_meta_capi_v2_operations.sql packages/api/migrations/0037_meta_capi_v2_operations.test.mjs packages/api/src/utils/analytics-migrations.test.ts packages/shared/src/types/index.ts scripts/verify-meta-migration.mjs scripts/verify-meta-migration.test.mjs
+git add packages/api/migrations/0039_meta_capi_v2_operations.sql packages/api/migrations/0039_meta_capi_v2_operations.test.mjs packages/api/src/utils/analytics-migrations.test.ts packages/shared/src/types/index.ts scripts/verify-meta-migration.mjs scripts/verify-meta-migration.test.mjs
 git commit -m "feat: 建立 CAPI 灰度与质量数据模型"
 ```
 
@@ -698,7 +698,7 @@ interface MetaLiveEvidenceV2 {
 - evidence 必须恰好包含 Contact、CompleteRegistration，各一组 Browser/Server 相同 event ID 且 deduplicated。
 - 出现 Lead、StartTrial 或额外事件即失败。
 - evidence commit 必须等于当前 40-char HEAD，环境匹配，24 小时内有效。
-- resources verification 要求 migrations 0036/0037、Queue/DLQ、data key、verified connection、无 open critical incident。
+- resources verification 要求 migrations 0036/0037/0038/0039、Queue/DLQ、data key、verified connection、无 open critical incident。
 - Dataset Quality contract 和 collector 未完成时 release 失败。
 - production initial gate 要求 target/effective rollout 都为 0。
 - production deploy 后 Test Event evidence 未通过时不能升到 10。
@@ -849,7 +849,7 @@ git commit -m "test: 完成 Meta CAPI v2 上线前验证"
 - 三份 Meta CAPI v2 主计划全部执行并通过各自 Phase Exit Gate。
 - Dataset Quality 官方契约已由 Owner 确认，补充 collector 计划已生成并完整执行。
 - dev 与 production 使用独立 Pixel/Dataset、token、test code、data key、Queue 和 DLQ。
-- migrations 0036/0037 已在 dev 演练，production migration preflight 无重复 action/channel。
+- migrations 0036/0037/0038/0039 已在 dev 演练，production migration preflight 无重复 action/channel。
 - 当前最终 commit 的 API/Web/script tests、lint、coverage、API tsc、Web build、local runtime 全通过。
 - 当前最终 commit 的 dev Meta live evidence 在 24 小时内，且只有 Contact、CompleteRegistration。
 - MetaConnection verified，无 open critical incident，Dataset Quality 数据当前。
