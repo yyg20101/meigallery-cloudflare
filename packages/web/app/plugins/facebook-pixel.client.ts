@@ -11,7 +11,7 @@ export default defineNuxtPlugin(async () => {
     facebookPixelDebugEnabled,
   } = useSiteSettings()
   const { canTrackMarketing } = useMarketingConsent()
-  const { initFacebookPixel, trackPageView } = useFacebookPixel()
+  const { initFacebookPixel, cleanupFacebookPixel, trackPageView } = useFacebookPixel()
 
   await fetchSettings()
 
@@ -29,7 +29,13 @@ export default defineNuxtPlugin(async () => {
 
   watch(
     [facebookPixelEnabled, facebookPixelId, facebookPixelDebugEnabled, canTrackMarketing],
-    () => trackAllowedPage(route.fullPath),
+    () => {
+      if (!canTrackMarketing.value) {
+        cleanupFacebookPixel()
+        return
+      }
+      trackAllowedPage(route.fullPath)
+    },
     { immediate: true },
   )
   router.afterEach(to => trackAllowedPage(to.fullPath))

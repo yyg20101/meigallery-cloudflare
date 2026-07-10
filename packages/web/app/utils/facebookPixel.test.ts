@@ -4,6 +4,7 @@ import { createFacebookPixelScript, FACEBOOK_PIXEL_SCRIPT_SRC, hasSensitiveAnaly
 
 describe('facebookPixel 安全工具', () => {
   beforeEach(() => {
+    vi.restoreAllMocks()
     vi.resetModules()
   })
 
@@ -110,5 +111,54 @@ describe('facebookPixel 安全工具', () => {
     pixel.trackLoginCompleted()
 
     expect(fbq?.queue).toHaveLength(callCountBeforeDenied ?? 0)
+  })
+
+  it('外部脚本加载前撤回授权会清除队列、脚本和全局引用', async () => {
+    const canTrackMarketing = ref(true)
+    let script: HTMLScriptElement | undefined
+    vi.stubGlobal('useRoute', () => ({ fullPath: '/gallery/summer' }))
+    vi.stubGlobal('useMarketingConsent', () => ({ canTrackMarketing }))
+    vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T) => {
+      script = node as unknown as HTMLScriptElement
+      return node
+    })
+    const { useFacebookPixel } = await import('../composables/useFacebookPixel')
+    const pixel = useFacebookPixel()
+
+    pixel.initFacebookPixel('123456789')
+    pixel.trackPageView('/gallery/summer')
+    const removeScript = vi.spyOn(script!, 'remove')
+    const fbq = (window as unknown as { fbq?: { queue: unknown[] } }).fbq
+
+    canTrackMarketing.value = false
+    pixel.cleanupFacebookPixel()
+
+    expect(fbq?.queue).toEqual([])
+    expect(removeScript).toHaveBeenCalledTimes(1)
+    expect((window as unknown as { fbq?: unknown }).fbq).toBeUndefined()
+    expect((window as unknown as { _fbq?: unknown })._fbq).toBeUndefined()
+  })
+
+  it('撤回后重新授权可重新初始化，当前页只排队一次 PageView', async () => {
+    const canTrackMarketing = ref(true)
+    vi.stubGlobal('useRoute', () => ({ fullPath: '/gallery/summer' }))
+    vi.stubGlobal('useMarketingConsent', () => ({ canTrackMarketing }))
+    vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T) => node)
+    const { useFacebookPixel } = await import('../composables/useFacebookPixel')
+    const pixel = useFacebookPixel()
+
+    pixel.initFacebookPixel('123456789')
+    pixel.trackPageView('/gallery/summer')
+    canTrackMarketing.value = false
+    pixel.cleanupFacebookPixel()
+    canTrackMarketing.value = true
+    pixel.initFacebookPixel('123456789')
+    pixel.trackPageView('/gallery/summer')
+
+    const fbq = (window as unknown as { fbq?: { queue: unknown[] } }).fbq
+    expect(fbq?.queue).toEqual([
+      ['init', '123456789'],
+      ['track', 'PageView'],
+    ])
   })
 })

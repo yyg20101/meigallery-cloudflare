@@ -7,6 +7,7 @@ describe('facebook-pixel plugin', () => {
   const fetchSettings = vi.fn()
   const initFacebookPixel = vi.fn()
   const trackPageView = vi.fn()
+  const cleanupFacebookPixel = vi.fn()
   const consent = ref<'limited' | 'granted' | 'denied'>('limited')
   const facebookPixelEnabled = ref(true)
   const facebookPixelId = ref('123456789')
@@ -22,6 +23,7 @@ describe('facebook-pixel plugin', () => {
     fetchSettings.mockResolvedValue(undefined)
     initFacebookPixel.mockReset()
     trackPageView.mockReset()
+    cleanupFacebookPixel.mockReset()
 
     vi.stubGlobal('defineNuxtPlugin', <T>(plugin: T) => plugin)
     vi.stubGlobal('useRoute', () => route)
@@ -36,7 +38,7 @@ describe('facebook-pixel plugin', () => {
     vi.stubGlobal('useMarketingConsent', () => ({
       canTrackMarketing: computed(() => consent.value === 'granted'),
     }))
-    vi.stubGlobal('useFacebookPixel', () => ({ initFacebookPixel, trackPageView }))
+    vi.stubGlobal('useFacebookPixel', () => ({ initFacebookPixel, trackPageView, cleanupFacebookPixel }))
   })
 
   afterEach(() => {
@@ -49,6 +51,7 @@ describe('facebook-pixel plugin', () => {
     await plugin({} as never)
     expect(initFacebookPixel).not.toHaveBeenCalled()
     expect(trackPageView).not.toHaveBeenCalled()
+    cleanupFacebookPixel.mockClear()
 
     consent.value = 'granted'
     await nextTick()
@@ -57,8 +60,27 @@ describe('facebook-pixel plugin', () => {
 
     consent.value = 'denied'
     await nextTick()
+    expect(cleanupFacebookPixel).toHaveBeenCalledTimes(1)
     afterEachHandlers[0]?.({ fullPath: '/discover', path: '/discover' })
     expect(initFacebookPixel).toHaveBeenCalledTimes(1)
     expect(trackPageView).toHaveBeenCalledTimes(1)
+
+    consent.value = 'granted'
+    await nextTick()
+    expect(initFacebookPixel).toHaveBeenCalledTimes(2)
+    expect(trackPageView).toHaveBeenCalledTimes(2)
+  })
+
+  it('即使已经授权，后台和敏感 URL 仍不会初始化或发送 PageView', async () => {
+    consent.value = 'granted'
+    route.fullPath = '/admin/analytics'
+    route.path = '/admin/analytics'
+    const plugin = (await import('./facebook-pixel.client')).default
+
+    await plugin({} as never)
+    afterEachHandlers[0]?.({ fullPath: '/gallery/summer?token=secret', path: '/gallery/summer' })
+
+    expect(initFacebookPixel).not.toHaveBeenCalled()
+    expect(trackPageView).not.toHaveBeenCalled()
   })
 })

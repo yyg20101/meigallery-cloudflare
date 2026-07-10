@@ -20,6 +20,7 @@ declare global {
 const initialized = ref(false)
 const debug = ref(false)
 const lastTrackedPagePath = ref('')
+let pendingPixelScript: HTMLScriptElement | null = null
 
 function logEvent(eventName: string, params?: PixelEventParams) {
   if (debug.value) console.info('[facebook-pixel]', eventName, params || {})
@@ -74,11 +75,31 @@ export function useFacebookPixel() {
       fbq.queue = []
       fbq.loaded = true
       fbq.version = '2.0'
-      document.head.appendChild(createFacebookPixelScript(document))
+      const script = createFacebookPixelScript(document)
+      const clearPendingScript = () => {
+        if (pendingPixelScript === script) pendingPixelScript = null
+        script.removeEventListener('load', clearPendingScript)
+      }
+      script.addEventListener('load', clearPendingScript)
+      pendingPixelScript = script
+      document.head.appendChild(script)
     }
 
     initialized.value = true
     if (callFbq('init', pixelId)) logEvent('init', { pixel_id: pixelId })
+  }
+
+  function cleanupFacebookPixel() {
+    if (isClientRuntime()) {
+      if (window.fbq?.queue) window.fbq.queue.length = 0
+      pendingPixelScript?.remove()
+      delete window.fbq
+      delete window._fbq
+    }
+    pendingPixelScript = null
+    initialized.value = false
+    debug.value = false
+    lastTrackedPagePath.value = ''
   }
 
   function trackPageView(fullPath: string) {
@@ -132,6 +153,7 @@ export function useFacebookPixel() {
 
   return {
     initFacebookPixel,
+    cleanupFacebookPixel,
     trackPageView,
     trackStandardEvent,
     trackViewContent,
