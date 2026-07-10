@@ -69,12 +69,28 @@ describe('注册转化事实修复任务', () => {
     expect(recordFactOnlyMock).toHaveBeenCalledTimes(2)
     expect(JSON.stringify(consoleError.mock.calls)).not.toContain('private failure')
   })
+
+  it('不扫描 created_at 在未来的用户', async () => {
+    const db = createRecoveryDb([
+      { id: 99, created_at: '2999-01-01T00:00:00.000Z' },
+    ], { excludeFutureWhenUpperBounded: true })
+
+    const result = await recoverRegistrationConversionFacts(
+      db as unknown as D1Database,
+      new Date('2026-07-10T09:00:00.000Z'),
+    )
+
+    const scan = db.calls.find(call => call.sql.includes('FROM users u'))
+    expect(scan?.sql).toContain("datetime(u.created_at) <= datetime('now')")
+    expect(result).toEqual({ scanned: 0, created: 0, existing: 0, failed: 0 })
+    expect(recordFactOnlyMock).not.toHaveBeenCalled()
+  })
 })
 
 type RecoveryUser = { id: number; created_at: string }
 type PreparedCall = { sql: string; params: unknown[] }
 
-function createRecoveryDb(users: RecoveryUser[]) {
+function createRecoveryDb(users: RecoveryUser[], options: { excludeFutureWhenUpperBounded?: boolean } = {}) {
   const calls: PreparedCall[] = []
   return {
     calls,
@@ -87,7 +103,11 @@ function createRecoveryDb(users: RecoveryUser[]) {
           return this
         },
         async all<T>() {
-          return { results: users as T[] }
+          const results = options.excludeFutureWhenUpperBounded
+            && sql.includes("datetime(u.created_at) <= datetime('now')")
+            ? []
+            : users
+          return { results: results as T[] }
         },
       }
     },

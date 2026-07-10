@@ -39,7 +39,6 @@ export async function runDevRehearsalVerification(options = {}) {
   const today = new Date().toISOString().slice(0, 10)
   let shouldCleanupDevSmokeOwner = false
   let shouldCleanupRegistrationFixture = false
-  let registeredUserId = null
 
   try {
     const migrateStep = await runCommandFn('corepack', [
@@ -190,7 +189,7 @@ export async function runDevRehearsalVerification(options = {}) {
       name: 'dev-registration-fixture',
       reportCommand: 'corepack pnpm --filter @meigallery/api exec wrangler d1 execute meigallery-db-dev --env dev --remote --command "enable verification; insert one-time registration code" --yes',
     })
-    steps.push(cleanForReport(registrationFixtureStep))
+    steps.push(cleanForReport({ ...registrationFixtureStep, summary: '一次性注册夹具已准备' }))
     if (registrationFixtureStep.status !== 'passed') {
       return { steps, notes, artifacts, sensitiveValues }
     }
@@ -220,7 +219,6 @@ export async function runDevRehearsalVerification(options = {}) {
     if (registrationStep.step.status !== 'passed') {
       return { steps, notes, artifacts, sensitiveValues }
     }
-    registeredUserId = registrationStep.userId
 
     const analyticsIngestStep = await postAnalyticsBatch(boundedFetch, apiUrl, runSuffix)
     steps.push(analyticsIngestStep)
@@ -307,11 +305,9 @@ export async function runDevRehearsalVerification(options = {}) {
     if (shouldCleanupDevSmokeOwner) {
       const cleanupSql = [
         "DELETE FROM sessions WHERE id = 'ses_release_dev_rehearsal';",
-        ...(registeredUserId ? [
-          `DELETE FROM sessions WHERE user_id = ${registeredUserId};`,
-          `UPDATE users SET status = 'disabled', updated_at = datetime('now') WHERE id = ${registeredUserId};`,
-        ] : []),
         ...(shouldCleanupRegistrationFixture ? [
+          `DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE username = '${registrationUsername}');`,
+          `UPDATE users SET status = 'disabled', updated_at = datetime('now') WHERE username = '${registrationUsername}';`,
           `DELETE FROM email_verification_codes WHERE id = '${registrationCodeId}';`,
           `UPDATE site_settings SET value = COALESCE((SELECT value FROM site_settings WHERE key = '${registrationSettingBackupKey}'), '\"false\"'), updated_at = datetime('now') WHERE key = 'email_verification_enabled';`,
           `DELETE FROM site_settings WHERE key = '${registrationSettingBackupKey}';`,
@@ -330,7 +326,7 @@ export async function runDevRehearsalVerification(options = {}) {
         name: 'dev-smoke-owner-cleanup',
         reportCommand: 'corepack pnpm --filter @meigallery/api exec wrangler d1 execute meigallery-db-dev --env dev --remote --command "cleanup smoke sessions and registration fixture; disable smoke users" --yes',
       })
-      steps.push(cleanForReport(cleanupStep))
+      steps.push(cleanForReport({ ...cleanupStep, summary: 'smoke session、注册夹具和测试用户已清理' }))
       if (cleanupStep.status === 'passed') notes.push('dev-smoke-owner-disabled-after-run')
     }
   }
@@ -390,7 +386,6 @@ async function postConversion(fetchFn, apiUrl, stepName, payload) {
 }
 
 async function postRegistration(fetchFn, apiUrl, payload) {
-  let userId = null
   const step = await requestJsonStep(fetchFn, 'dev-auth-register', `${apiUrl}/api/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -401,10 +396,9 @@ async function postRegistration(fetchFn, apiUrl, payload) {
     if (!body.pixelEvents.some(event => event?.eventName === 'CompleteRegistration')) {
       throw new Error('注册响应缺少 CompleteRegistration Pixel 指令')
     }
-    userId = Number(body.id)
     return '真实注册 API 已创建用户并返回 CompleteRegistration Pixel 指令'
   })
-  return { step, userId }
+  return { step }
 }
 
 async function postAnalyticsBatch(fetchFn, apiUrl, runSuffix) {

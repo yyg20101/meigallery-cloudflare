@@ -22,11 +22,17 @@ describe('本地运行时发布身份', () => {
     let startedWithCommit = ''
     let waitedForCommit = ''
     let stopped = false
+    const commands = []
+    const conversionBodies = []
+    const registrationBodies = []
 
     const result = await runLocalRuntimeVerification({
       getCommit: async () => COMMIT,
       cleanLocalRuntimeDir: async () => passedStep('local-runtime-clean'),
-      runCommand: async (_command, _args, options) => passedStep(options.name),
+      runCommand: async (command, args, options) => {
+        commands.push({ name: options.name, command, args })
+        return passedStep(options.name)
+      },
       startLocalApiWorker: (options) => {
         startedWithCommit = options.releaseCommit
         return { child: { exitCode: null }, readLogs: () => ({ stdout: '', stderr: '' }) }
@@ -38,7 +44,12 @@ describe('本地运行时发布身份', () => {
       stopLocalApiWorker: async () => {
         stopped = true
       },
-      fetch: localSmokeFetch,
+      fetch: async (input, init) => {
+        const url = new URL(String(input))
+        if (url.pathname === '/api/conversions/events') conversionBodies.push(JSON.parse(init.body))
+        if (url.pathname === '/api/auth/register') registrationBodies.push(JSON.parse(init.body))
+        return localSmokeFetch(input, init)
+      },
     })
 
     assert.equal(startedWithCommit, COMMIT)
@@ -47,6 +58,18 @@ describe('本地运行时发布身份', () => {
     assert.equal(result.steps.every(step => step.status === 'passed'), true)
     assert.deepEqual(result.notes, ['meta-capi-disabled-in-local'])
     assert.equal(result.notes.some(note => note.startsWith('local-api-log:')), false)
+    assert.deepEqual(conversionBodies.map(body => body.actionType), ['contact'])
+    assert.equal(registrationBodies.length, 1)
+    assert.equal(registrationBodies[0].actionType, undefined)
+    assert.equal(registrationBodies[0].userId, undefined)
+    const cleanup = commands.find(item => item.name === 'local-registration-cleanup')
+    assert.ok(cleanup)
+    const cleanupSql = cleanup.args.join(' ')
+    assert.match(cleanupSql, new RegExp(`DELETE FROM sessions WHERE user_id IN \\(SELECT id FROM users WHERE username = '${registrationBodies[0].username}'\\)`))
+    assert.match(cleanupSql, new RegExp(`UPDATE users SET status = 'disabled'.*WHERE username = '${registrationBodies[0].username}'`))
+    const report = JSON.stringify({ steps: result.steps, notes: result.notes, artifacts: result.artifacts })
+    assert.equal(report.includes(registrationBodies[0].email), false)
+    assert.equal(report.includes(registrationBodies[0].password), false)
   })
 
   it('拒绝缺失或非法的 Git HEAD，且不启动本地操作', async () => {
@@ -129,6 +152,9 @@ async function localSmokeFetch(input, init = {}) {
   if (url.pathname === '/api/conversions/events') {
     const body = JSON.parse(String(init.body || '{}'))
     return jsonResponse({ data: { id: `conv_${body.actionType}`, actionType: body.actionType, created: true } }, 201)
+  }
+  if (url.pathname === '/api/auth/register') {
+    return jsonResponse({ id: 42, pixelEvents: [] }, 201)
   }
   if (url.pathname === '/api/analytics/events') return jsonResponse({ accepted: 3, rejected: 0 })
   if (url.pathname === '/api/admin/analytics/funnel') {

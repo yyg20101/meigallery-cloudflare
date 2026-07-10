@@ -48,8 +48,17 @@ export async function runLocalRuntimeVerification(options = {}) {
   const sessionToken = crypto.randomBytes(32).toString('hex')
   const sessionHash = crypto.createHash('sha256').update(sessionToken).digest('hex')
   const sessionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+  const runSuffix = crypto.randomBytes(6).toString('hex')
+  const registrationEmail = `release-local-${runSuffix}@example.test`
+  const registrationUsername = `release_local_${runSuffix}`
+  const registrationPassword = `${crypto.randomBytes(18).toString('base64url')}Aa1!`
+  const registrationCode = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0')
+  const registrationCodeId = `evc_release_local_${runSuffix}`
+  const registrationSettingBackupKey = `release_local_previous_email_verification_${runSuffix}`
+  const sensitiveValues = [sessionToken, sessionHash, registrationEmail, registrationPassword, registrationCode]
   let server = null
   let startedServer = false
+  let shouldCleanupRegistrationFixture = false
 
   try {
     const cleanStep = await cleanLocalRuntimeDirFn()
@@ -100,7 +109,30 @@ export async function runLocalRuntimeVerification(options = {}) {
       reportCommand: 'corepack pnpm --filter @meigallery/api exec wrangler d1 execute meigallery-db --local --persist-to ../../.wrangler-release-verify/local-runtime --command "INSERT INTO sessions (...)" --yes',
     })
     steps.push(cleanForReport(sessionStep))
-    if (sessionStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
+    if (sessionStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
+
+    shouldCleanupRegistrationFixture = true
+    const registrationFixtureSql = [
+      'INSERT OR REPLACE INTO site_settings (key, value, updated_at)',
+      `SELECT '${registrationSettingBackupKey}', value, datetime('now') FROM site_settings WHERE key = 'email_verification_enabled';`,
+      "UPDATE site_settings SET value = '\"true\"', updated_at = datetime('now') WHERE key = 'email_verification_enabled';",
+      'INSERT INTO email_verification_codes (id, email, code, purpose, expires_at, used, attempts, created_at)',
+      `VALUES ('${registrationCodeId}', '${registrationEmail}', '${registrationCode}', 'register', datetime('now', '+10 minutes'), 0, 0, datetime('now'));`,
+    ].join(' ')
+    const registrationFixtureStep = await runCommandFn('corepack', [
+      'pnpm', '--filter', '@meigallery/api', 'exec',
+      'wrangler', 'd1', 'execute', 'meigallery-db',
+      '--local',
+      '--persist-to', LOCAL_RUNTIME_DIR_RELATIVE_TO_API,
+      '--command', registrationFixtureSql,
+      '--yes',
+    ], {
+      cwd,
+      name: 'local-registration-fixture',
+      reportCommand: 'corepack pnpm --filter @meigallery/api exec wrangler d1 execute meigallery-db --local --persist-to ../../.wrangler-release-verify/local-runtime --command "enable verification; insert one-time registration code" --yes',
+    })
+    steps.push(cleanForReport({ ...registrationFixtureStep, summary: '一次性本地注册夹具已准备' }))
+    if (registrationFixtureStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
     server = startLocalApiWorkerFn({
       cwd,
@@ -113,7 +145,7 @@ export async function runLocalRuntimeVerification(options = {}) {
       pollIntervalMs: options.pollIntervalMs,
     })
     steps.push(cleanForReport(healthStep.step))
-    if (healthStep.step.status !== 'passed') return { steps, notes, artifacts }
+    if (healthStep.step.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
     const contactStep = await postConversion(boundedFetch, 'local-conversion-contact', {
       actionType: 'contact',
@@ -138,49 +170,75 @@ export async function runLocalRuntimeVerification(options = {}) {
       },
     })
     steps.push(contactStep)
-    if (contactStep.status !== 'passed') return { steps, notes, artifacts }
+    if (contactStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
-    const completeRegistrationStep = await postConversion(boundedFetch, 'local-conversion-complete-registration', {
-      actionType: 'complete_registration',
-      visitorId: 'visitor_release_local',
-      sessionId: 'session_release_local',
-      occurredAt: new Date().toISOString(),
-      routeName: 'register',
-      path: '/register',
-      sourceChannel: 'ad',
-      sourceName: 'release-local-fb',
-      trackingSourceSlug: 'release-local-fb',
-      utmSource: 'facebook',
-      utmMedium: 'paid_social',
-      utmCampaign: 'release-local-runtime',
-      utmContent: 'release-local-chat',
-      consentState: 'limited',
-      actionTarget: 'register-submit',
+    const completeRegistrationStep = await postRegistration(boundedFetch, {
+      email: registrationEmail,
+      username: registrationUsername,
+      password: registrationPassword,
+      code: registrationCode,
+      attribution: {
+        visitorId: 'visitor_release_local',
+        sessionId: 'session_release_local',
+        occurredAt: new Date().toISOString(),
+        routeName: 'register',
+        path: '/register',
+        sourceChannel: 'ad',
+        sourceName: 'release-local-fb',
+        trackingSourceSlug: 'release-local-fb',
+        utmSource: 'facebook',
+        utmMedium: 'paid_social',
+        utmCampaign: 'release-local-runtime',
+        utmContent: 'release-local-chat',
+        consentState: 'limited',
+      },
     })
     steps.push(completeRegistrationStep)
-    if (completeRegistrationStep.status !== 'passed') return { steps, notes, artifacts }
+    if (completeRegistrationStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
     const analyticsIngestStep = await postAnalyticsBatch(boundedFetch)
     steps.push(analyticsIngestStep)
-    if (analyticsIngestStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
+    if (analyticsIngestStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
     const analyticsStep = await smokeAdminAnalytics(boundedFetch, sessionToken)
     steps.push(analyticsStep)
-    if (analyticsStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
+    if (analyticsStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
     const attributionStep = await smokeAdminAttribution(boundedFetch, sessionToken)
     steps.push(attributionStep)
-    if (attributionStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
+    if (attributionStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
     const metaStep = await smokeMetaDelivery(boundedFetch, sessionToken)
     steps.push(metaStep)
-    if (metaStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
+    if (metaStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
     notes.push('meta-capi-disabled-in-local')
-    return { steps, notes, artifacts, sensitiveValues: [sessionToken, sessionHash] }
+    return { steps, notes, artifacts, sensitiveValues }
   } finally {
     if (startedServer && server) {
       await stopLocalApiWorkerFn(server)
+    }
+    if (shouldCleanupRegistrationFixture) {
+      const cleanupSql = [
+        `DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE username = '${registrationUsername}');`,
+        `UPDATE users SET status = 'disabled', updated_at = datetime('now') WHERE username = '${registrationUsername}';`,
+        `DELETE FROM email_verification_codes WHERE id = '${registrationCodeId}';`,
+        `UPDATE site_settings SET value = COALESCE((SELECT value FROM site_settings WHERE key = '${registrationSettingBackupKey}'), '\"false\"'), updated_at = datetime('now') WHERE key = 'email_verification_enabled';`,
+        `DELETE FROM site_settings WHERE key = '${registrationSettingBackupKey}';`,
+      ].join(' ')
+      const cleanupStep = await runCommandFn('corepack', [
+        'pnpm', '--filter', '@meigallery/api', 'exec',
+        'wrangler', 'd1', 'execute', 'meigallery-db',
+        '--local',
+        '--persist-to', LOCAL_RUNTIME_DIR_RELATIVE_TO_API,
+        '--command', cleanupSql,
+        '--yes',
+      ], {
+        cwd,
+        name: 'local-registration-cleanup',
+        reportCommand: 'corepack pnpm --filter @meigallery/api exec wrangler d1 execute meigallery-db --local --persist-to ../../.wrangler-release-verify/local-runtime --command "cleanup registration fixture and smoke user" --yes',
+      })
+      steps.push(cleanForReport({ ...cleanupStep, summary: '本地注册夹具、session 和测试用户已清理' }))
     }
   }
 }
@@ -371,6 +429,18 @@ async function postConversion(fetchFn, stepName, payload) {
       throw new Error(`响应 actionType 不匹配：${String(body?.data?.actionType || '')}`)
     }
     return `${payload.actionType} 已写入，created=${String(body?.data?.created)}`
+  })
+}
+
+async function postRegistration(fetchFn, payload) {
+  return requestStep(fetchFn, 'local-auth-register', '/api/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }, (body) => {
+    if (!Number.isInteger(body?.id) || Number(body.id) <= 0) throw new Error('注册响应缺少合法用户 ID')
+    if (!Array.isArray(body?.pixelEvents)) throw new Error('注册响应缺少 Pixel 指令数组')
+    return '真实注册 API 已创建用户和 CompleteRegistration 第一方事实'
   })
 }
 

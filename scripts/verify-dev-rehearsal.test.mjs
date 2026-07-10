@@ -198,6 +198,58 @@ describe('开发环境发布预演验证', () => {
     assert.equal(result.steps.some(step => step.name === 'dev-smoke-owner-cleanup' && step.status === 'passed'), true)
   })
 
+  it('注册 201 但缺少 Pixel 指令时仍按唯一 username 清理用户和 session', async () => {
+    const responses = successfulResponses()
+    responses[5] = jsonResponse(201, { id: 42, pixelEvents: [] })
+    const commands = []
+    const registrationBodies = []
+
+    const result = await runDevRehearsalVerification({
+      env: {
+        VERIFY_DEV_API_URL: 'https://api-dev.example.workers.dev',
+        VERIFY_DEV_WEB_URL: 'https://web-dev.example.workers.dev/',
+      },
+      releaseCommit: RELEASE_COMMIT,
+      runCommand: recordingCommand(commands),
+      fetch: async (url, init) => {
+        if (String(url).endsWith('/api/auth/register')) registrationBodies.push(JSON.parse(init.body))
+        return responses.shift() || jsonResponse(500, { message: '缺少模拟响应' })
+      },
+    })
+
+    assert.equal(result.steps.find(step => step.name === 'dev-auth-register')?.status, 'failed')
+    assert.equal(registrationBodies.length, 1)
+    assertUsernameCleanup(commands, registrationBodies[0].username)
+    assertReportOmitsRegistrationCredentials(result, registrationBodies[0])
+  })
+
+  it('注册请求提交后 fetch 抛错时仍按唯一 username 清理用户和 session', async () => {
+    const responses = successfulResponses().slice(0, 5)
+    const commands = []
+    const registrationBodies = []
+
+    const result = await runDevRehearsalVerification({
+      env: {
+        VERIFY_DEV_API_URL: 'https://api-dev.example.workers.dev',
+        VERIFY_DEV_WEB_URL: 'https://web-dev.example.workers.dev/',
+      },
+      releaseCommit: RELEASE_COMMIT,
+      runCommand: recordingCommand(commands),
+      fetch: async (url, init) => {
+        if (String(url).endsWith('/api/auth/register')) {
+          registrationBodies.push(JSON.parse(init.body))
+          throw new Error('注册提交后连接中断')
+        }
+        return responses.shift() || jsonResponse(500, { message: '缺少模拟响应' })
+      },
+    })
+
+    assert.equal(result.steps.find(step => step.name === 'dev-auth-register')?.status, 'failed')
+    assert.equal(registrationBodies.length, 1)
+    assertUsernameCleanup(commands, registrationBodies[0].username)
+    assertReportOmitsRegistrationCredentials(result, registrationBodies[0])
+  })
+
   it('非 2xx smoke 响应会保留 HTTP 状态和响应体摘要', async () => {
     const result = await runDevRehearsalVerification({
       env: {
@@ -331,4 +383,25 @@ async function passingCommand(command, args, options) {
     stdout: 'ok',
     stderr: '',
   }
+}
+
+function recordingCommand(commands) {
+  return async (command, args, options) => {
+    commands.push({ name: options.name, command, args })
+    return passingCommand(command, args, options)
+  }
+}
+
+function assertUsernameCleanup(commands, username) {
+  const cleanup = commands.find(item => item.name === 'dev-smoke-owner-cleanup')
+  assert.ok(cleanup)
+  const cleanupSql = cleanup.args.join(' ')
+  assert.match(cleanupSql, new RegExp(`DELETE FROM sessions WHERE user_id IN \\(SELECT id FROM users WHERE username = '${username}'\\)`))
+  assert.match(cleanupSql, new RegExp(`UPDATE users SET status = 'disabled'.*WHERE username = '${username}'`))
+}
+
+function assertReportOmitsRegistrationCredentials(result, registrationBody) {
+  const report = JSON.stringify({ steps: result.steps, notes: result.notes, artifacts: result.artifacts })
+  assert.equal(report.includes(registrationBody.email), false)
+  assert.equal(report.includes(registrationBody.password), false)
 }

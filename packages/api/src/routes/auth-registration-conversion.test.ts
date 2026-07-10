@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Bindings, Variables } from '../index'
 import { recordRegistration } from '../services/conversions'
+import { hashInviteCode } from '../services/invite-codes'
 import { authRoutes } from './auth'
 
 vi.mock('../services/conversions', () => ({
@@ -35,10 +36,15 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
   })
 
   it('用户、邀请码和 session 成功后只调用一次 recordRegistration', async () => {
-    const db = createRegisterDb()
+    const db = createRegisterDb(await hashInviteCode('ACTIVE1'))
+    recordRegistrationMock.mockImplementationOnce(async () => {
+      db.events.push('record_registration')
+      return registrationResult()
+    })
     const response = await register(db, {
       actionType: 'lead',
       userId: 999,
+      inviteCode: 'ACTIVE1',
       attribution: grantedAttribution(),
     })
     const body = await response.json<Record<string, unknown>>()
@@ -57,6 +63,10 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
     }), expect.objectContaining({ getMetaCapiUserData: expect.any(Function) }))
     expect(recordRegistrationMock.mock.calls[0]?.[1]).not.toHaveProperty('actionType')
     expect(recordRegistrationMock.mock.calls[0]?.[1].userId).not.toBe(999)
+    expect(db.events.indexOf('invite_registration')).toBeGreaterThan(db.events.indexOf('user_insert'))
+    expect(db.events.indexOf('invite_counter_update')).toBeGreaterThan(db.events.indexOf('invite_registration'))
+    expect(db.events.indexOf('session_insert')).toBeGreaterThan(db.events.indexOf('invite_counter_update'))
+    expect(db.events.indexOf('record_registration')).toBeGreaterThan(db.events.indexOf('session_insert'))
     expect(body.pixelEvents).toEqual([expect.objectContaining({ eventName: 'CompleteRegistration' })])
     expect(body).not.toHaveProperty('capi')
     expect(body).not.toHaveProperty('emailHash')
@@ -161,10 +171,28 @@ async function register(db: ReturnType<typeof createRegisterDb>, extra: Record<s
 
 type PreparedCall = { sql: string; params: unknown[] }
 
-function createRegisterDb() {
+function registrationResult() {
+  return {
+    id: 'conv_registration_42',
+    actionType: 'complete_registration' as const,
+    created: true,
+    duplicateOf: '',
+    pixelEvents: [{
+      deliveryId: 'cdlv_registration_42',
+      eventName: 'CompleteRegistration' as const,
+      eventId: 'meta:CompleteRegistration:complete_registration:user:42',
+      payload: { method: 'email' },
+      receiptToken: 'receipt_registration_42',
+    }],
+  }
+}
+
+function createRegisterDb(activeInviteHash?: string) {
   const calls: PreparedCall[] = []
+  const events: string[] = []
   return {
     calls,
+    events,
     prepare(sql: string) {
       const call: PreparedCall = { sql, params: [] }
       calls.push(call)
@@ -174,9 +202,24 @@ function createRegisterDb() {
           return this
         },
         async first<T>() {
+          if (sql.includes('FROM invite_codes') && call.params[0] === activeInviteHash) {
+            return {
+              id: 'inv_1',
+              name: '活动',
+              channel: 'telegram',
+              status: 'active',
+              max_uses: 10,
+              used_count: 0,
+              expires_at: null,
+            } as T
+          }
           return null as T | null
         },
         async run() {
+          if (sql.includes('INSERT INTO users')) events.push('user_insert')
+          if (sql.includes('INSERT OR IGNORE INTO invite_registrations')) events.push('invite_registration')
+          if (sql.includes('UPDATE invite_codes SET used_count')) events.push('invite_counter_update')
+          if (sql.includes('INSERT INTO sessions')) events.push('session_insert')
           return sql.includes('INSERT INTO users')
             ? { meta: { last_row_id: 42, changes: 1 } }
             : { meta: { changes: 1 } }

@@ -22,6 +22,7 @@ export async function recoverRegistrationConversionFacts(
     SELECT u.id, u.created_at
     FROM users u
     WHERE datetime(u.created_at) >= datetime(?, '-24 hours')
+      AND datetime(u.created_at) <= datetime('now')
       AND NOT EXISTS (
         SELECT 1
         FROM analytics_conversion_actions a
