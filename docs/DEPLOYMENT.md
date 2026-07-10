@@ -33,41 +33,45 @@
 # 首次初始化
 ./scripts/setup.sh
 
-# 部署
+# 生产部署（推荐；脚本会在远端 migration 前执行 production gate，并向 API/Web 注入当前 commit）
 # 重要警告：生产环境中，当待发布包含 0017_cases_cleanup.sql 时，禁止直接运行一键部署。
 # 必须先完成本地或 CI 构建预检，再按“R2 Cases 对象迁移”专项顺序完成
 # dry-run、复制和目标对象验证，然后才执行 D1 remote migration 和部署。
-./scripts/deploy.sh
+./scripts/deploy.sh production
 
-# 或手动步骤：
+# 或以下安全等价手动步骤：
 # 1. API Worker 构建预检，不部署
 corepack pnpm --filter @meigallery/api exec wrangler deploy --env="" --dry-run --outdir=dist
 
 # 2. 构建前端
 corepack pnpm --filter @meigallery/web exec nuxt build
 
-# 3. D1 迁移
+# 3. 记录当前 commit，并在任何 remote migration 前执行 production gate。
+GIT_COMMIT="$(git rev-parse HEAD)"
+env -u VERIFY_RELEASE_ALLOW_BRANCH node scripts/verify-release.mjs assert-production-allowed
+
+# 4. D1 迁移
 # 重要警告：如果待执行 migrations 包含 0017_cases_cleanup.sql，必须先完成：
 # 构建预检 -> R2 Cases dry-run -> R2 复制和目标对象验证，再执行此 D1 remote migration。
 corepack pnpm --filter @meigallery/api exec wrangler d1 migrations apply meigallery-db --env="" --remote
 
-# 4. 部署 API Worker
-corepack pnpm --filter @meigallery/api exec wrangler deploy --env=""
+# 5. 部署 API Worker
+corepack pnpm --filter @meigallery/api exec wrangler deploy --env="" --var "RELEASE_COMMIT:${GIT_COMMIT}"
 
-# 5. 部署 Web Worker
-corepack pnpm --filter @meigallery/web exec wrangler deploy --env=""
+# 6. 部署 Web Worker
+corepack pnpm --filter @meigallery/web exec wrangler deploy --env="" --var "RELEASE_COMMIT:${GIT_COMMIT}"
 
-# 6. 部署后 SEO 校验
+# 7. 部署后 SEO 校验
 corepack pnpm verify:seo:production
 ```
 
 ## 4. CI/CD
 
-**手动部署**：生产部署通过本地手动执行 wrangler deploy，且显式传入 `--env=""` 选择 wrangler 顶层生产配置。GitHub Actions 不负责生产部署，避免合入分支后自动影响线上用户。
+**手动部署**：生产部署推荐只通过 `./scripts/deploy.sh production` 执行。该脚本会在任何远端 migration 前执行 production gate，并为 API/Web 注入当前 `RELEASE_COMMIT`。GitHub Actions 不负责生产部署，避免合入分支后自动影响线上用户。
 
 ```bash
-corepack pnpm --filter @meigallery/api exec wrangler deploy --env=""
-corepack pnpm --filter @meigallery/web exec wrangler deploy --env=""
+# 已完成同 commit release 验证后的生产发布。
+./scripts/deploy.sh production
 corepack pnpm verify:seo:production
 # 已知生产站点名称和 SEO 标题时，建议显式写入期望值，避免 API 与 Web 同时回退默认标题仍误判通过。
 corepack pnpm verify:seo:production -- --expect-site-name 星耀传媒 --expect-title 星耀传媒 --expect-description "用专业服务点亮每一次相遇."
@@ -111,9 +115,12 @@ corepack pnpm verify:dev-rehearsal
 ```bash
 export VERIFY_DEV_API_URL=https://meigallery-api-dev.wajie.workers.dev
 export VERIFY_DEV_WEB_URL=https://meigallery-web-dev.wajie.workers.dev
-corepack pnpm verify:release
+# 首次 Meta 上线：只额外要求 production 的 meta_capi_enabled=false，不约束 dev。
+META_INITIAL_ROLLOUT=1 corepack pnpm verify:release
 ./scripts/deploy.sh production
 ```
+
+后续常规发布使用 `corepack pnpm verify:release`，不设置 `META_INITIAL_ROLLOUT`。首次 Meta 上线完成后，该变量也不得作为常规发布的替代参数。
 
 ### 数据分析上线顺序
 
@@ -170,10 +177,10 @@ corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_TEST_E
 
 1. 保持代码关闭态：`meta_tracking_mode=disabled`、`meta_capi_enabled=false`，并完成本地 migration、测试、类型检查和 Worker dry-run。
 2. 在独立 dev 资源部署当前待发布代码，完成严格 dev live evidence：`Contact`、`Lead`、`CompleteRegistration` 均有 Browser/Server、同一 event ID、去重成功，且没有 `StartTrial`。
-3. 只在获得上线授权后创建或核验生产主 Queue、DLQ、consumer 和独立的两个 Worker secret；先用 `verify:meta-resources --report-only` 排障，不得把原始 CLI 输出或 secret 写入证据。
+3. 先用完整的只读资源检查排障：dev 为 `corepack pnpm verify:meta-resources --env dev --report-only`，production 为 `corepack pnpm verify:meta-resources --env production --report-only`。只在获得上线授权后创建或核验生产主 Queue、DLQ、consumer 和独立的两个 Worker secret；不得把原始 CLI 输出或 secret 写入证据。
 4. 对生产 D1 应用 migration。`0034_meta_production_readiness.sql` 后必须保持 `meta_tracking_mode=disabled` 和 `meta_capi_enabled=false`。
 5. PR 合入 `main` 后，以最终 `main` HEAD 重新部署 dev，并重新生成该 commit 的 dev live evidence；此前任何 commit 的 evidence 都失效。
-6. 在最终 `main` HEAD、干净工作区运行同 commit 的 `verify:release`，通过后才允许 production gate 放行。
+6. 在最终 `main` HEAD、干净工作区运行同 commit release：首次 Meta 上线使用 `META_INITIAL_ROLLOUT=1 corepack pnpm verify:release`，该约束只要求 production `meta_capi_enabled=false`，不约束 dev；后续常规发布使用 `corepack pnpm verify:release`。通过后才允许 production gate 放行。
 7. 部署生产 API，再部署生产 Web；部署不等同于开启营销投放。
 8. Owner 先将 mode 设为 `test`，在严格 Test Event 中确认 CAPI 返回 `sent` 且 `events_received=1`。
 9. Owner 将 mode 切为 `production`，再次确认营销授权仅在 `granted` 时允许追踪，且拒绝或 limited 不加载 Pixel、不创建 Meta delivery。
@@ -405,6 +412,10 @@ head_sampling_rate = 1
 corepack pnpm --filter @meigallery/api exec wrangler deploy --env="" --dry-run --outdir=dist
 corepack pnpm --filter @meigallery/web exec nuxt build
 
+# 1.1 在任何 remote migration 前绑定当前 commit 并执行 production gate。
+GIT_COMMIT="$(git rev-parse HEAD)"
+env -u VERIFY_RELEASE_ALLOW_BRANCH node scripts/verify-release.mjs assert-production-allowed
+
 # 2. 查看将复制和将删除的映射，不修改 R2 或 D1
 node scripts/migrate-cases-r2.mjs --dry-run --remote
 
@@ -416,11 +427,11 @@ corepack pnpm --filter @meigallery/api exec wrangler d1 migrations apply meigall
 
 # 如需改用一键部署脚本在生产环境执行包含 0017 的迁移，必须先完成 R2 dry-run、复制和验证，
 # 再显式设置以下环境变量解除 production-only 保护。
-ALLOW_CASES_CLEANUP_MIGRATION=true ./scripts/deploy.sh
+ALLOW_CASES_CLEANUP_MIGRATION=true ./scripts/deploy.sh production
 
 # 5. 部署 API 和 Web Worker，并完成 smoke 测试
-corepack pnpm --filter @meigallery/api exec wrangler deploy --env=""
-corepack pnpm --filter @meigallery/web exec wrangler deploy --env=""
+corepack pnpm --filter @meigallery/api exec wrangler deploy --env="" --var "RELEASE_COMMIT:${GIT_COMMIT}"
+corepack pnpm --filter @meigallery/web exec wrangler deploy --env="" --var "RELEASE_COMMIT:${GIT_COMMIT}"
 
 # 6. smoke 通过后，显式删除旧 testimonials/ 对象
 node scripts/migrate-cases-r2.mjs --remote --delete-old --confirm-delete-old=testimonials-to-cases
