@@ -2,7 +2,7 @@ import type { MetaPixelInstruction } from '@meigallery/shared'
 import { metaPixelAdapter } from '~/adapters/metaPixel.client'
 import { sanitizeAnalyticsPath } from '~/utils/analyticsSanitizer'
 import { resolveConversionIdentity } from '~/utils/conversionIdentity'
-import { hasSensitiveAnalyticsUrl, isAdminPath, resolveFacebookPixelConfig, sanitizeAnalyticsText } from '~/utils/facebookPixel'
+import { hasSensitiveAnalyticsUrl, isAdminPath, resolveFacebookPixelConfig, sanitizeAnalyticsText } from '~/utils/trackingSanitizer'
 import { readMetaBrowserIdentifiers } from '~/utils/metaBrowserIdentifiers'
 
 export interface TrackContactInput {
@@ -249,7 +249,7 @@ function isMetaPixelInstruction(value: unknown): value is MetaPixelInstruction {
 }
 
 function isMarketingRouteAllowed(fullPath: string) {
-  let pathname = fullPath
+  let pathname: string
   try {
     pathname = new URL(fullPath, 'https://site.local').pathname
   } catch {

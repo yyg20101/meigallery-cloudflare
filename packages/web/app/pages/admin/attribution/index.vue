@@ -10,6 +10,7 @@ definePageMeta({ layout: 'admin' })
 
 interface OverviewData {
   totals: Record<string, number>
+  historical: { leadCount: number }
   trend: Array<Record<string, unknown>>
   meta: Record<string, unknown>
   metaTrend: Array<Record<string, unknown>>
@@ -34,7 +35,7 @@ interface AttributionLink {
   utmContent: string
   sessionCount: number
   contactCount: number
-  leadCount: number
+  historical: { leadCount: number }
   completeRegistrationCount: number
 }
 
@@ -50,6 +51,7 @@ watch([attribution.range, attribution.date], ([range, date]) => {
 })
 
 const totals = computed(() => attribution.data.value?.totals ?? {})
+const historical = computed(() => attribution.data.value?.historical ?? { leadCount: 0 })
 const metaData = computed(() => metaStatus.data.value)
 const metaTotals = computed(() => metaData.value?.totals ?? {})
 const metaSettings = computed(() => metaData.value?.settings ?? {})
@@ -72,19 +74,19 @@ const metrics = computed(() => [
   {
     label: '有效联系',
     value: formatAnalyticsNumber(totals.value.contact_count),
-    hint: `Lead ${formatAnalyticsNumber(totals.value.lead_count)}`,
+    hint: `注册 / 联系 ${formatAnalyticsPercent(totals.value.complete_registration_count, totals.value.contact_count)}`,
     tone: 'gold' as const,
   },
   {
-    label: 'Lead',
-    value: formatAnalyticsNumber(totals.value.lead_count),
-    hint: `联系到 Lead ${formatAnalyticsPercent(totals.value.lead_count, totals.value.contact_count)}`,
+    label: '历史 Lead',
+    value: formatAnalyticsNumber(historical.value.leadCount),
+    hint: '仅供历史对照，不参与活动比率',
     tone: 'blue' as const,
   },
   {
     label: '完成注册',
     value: formatAnalyticsNumber(totals.value.complete_registration_count),
-    hint: `注册 / Lead ${formatAnalyticsPercent(totals.value.complete_registration_count, totals.value.lead_count)}`,
+    hint: `有效联系 ${formatAnalyticsNumber(totals.value.contact_count)}`,
     tone: 'green' as const,
   },
   {
@@ -109,6 +111,7 @@ const trendSeries = [
 
 const topLinkRows = computed(() => (links.data.value?.links ?? []).slice(0, 8).map(item => ({
   ...item,
+  historicalLeadCount: Number(item.historical?.leadCount ?? 0),
   contactRate: Number(item.contactCount ?? 0) / Math.max(1, Number(item.sessionCount ?? 0)),
   registerRate: Number(item.completeRegistrationCount ?? 0) / Math.max(1, Number(item.sessionCount ?? 0)),
 })))
@@ -169,7 +172,7 @@ function refreshAll() {
           </div>
           <AnalyticsDataTable
             empty-title="暂无投放链接数据"
-            empty-text="创建投放追踪链接并产生访问后，这里会展示有效联系、Lead 和注册。"
+            empty-text="创建投放追踪链接并产生访问后，这里会展示有效联系、注册和历史 Lead 对照。"
             empty-action-label="创建投放链接"
             empty-action-to="/admin/attribution/links"
             :columns="[
@@ -178,7 +181,7 @@ function refreshAll() {
               { key: 'utmContent', label: 'content', sortable: true },
               { key: 'sessionCount', label: 'Session', type: 'number', sortable: true },
               { key: 'contactCount', label: '有效联系', type: 'number', sortable: true },
-              { key: 'leadCount', label: 'Lead', type: 'number', sortable: true },
+              { key: 'historicalLeadCount', label: '历史 Lead', type: 'number' },
               { key: 'completeRegistrationCount', label: '注册', type: 'number', sortable: true },
               { key: 'contactRate', label: '联系率', type: 'percent', sortable: true },
               { key: 'registerRate', label: '注册率', type: 'percent', sortable: true },

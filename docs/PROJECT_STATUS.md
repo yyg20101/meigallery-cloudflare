@@ -38,7 +38,7 @@
 - 已提供四层命令：`verify:quick`、`verify:local-runtime`、`verify:dev-rehearsal`、`verify:release`。
 - `verify:quick` 适合日常提交前自检，首步检查 dev/production 资源隔离。
 - `verify:local-runtime` 用于本地 Cloudflare 运行时验证 D1、Queue、归因和降级链路。
-- `verify:dev-rehearsal` 依赖独立 dev 资源和当前 dev Workers URL，作为上线前远端演练；Meta 链路还要求 Owner 生成 `Contact`、`Lead`、`CompleteRegistration` 的同 commit live evidence。
+- `verify:dev-rehearsal` 依赖独立 dev 资源和当前 dev Workers URL，作为上线前远端演练；Meta 链路只接受 Owner 生成 `Contact`、`CompleteRegistration` 的同 commit live evidence，出现历史 `Lead` 或 `StartTrial` 证据必须阻断。
 - `verify:release` 是生产放行前最终校验，但当前仓库尚未真实跑完整 release 报告；生产前必须在干净工作区、带 `VERIFY_DEV_API_URL` / `VERIFY_DEV_WEB_URL` 运行并生成同一 commit 的通过报告。最终 `main` HEAD 必须重新部署 dev、重做 evidence，不能复用其他 commit 的结果。
 - `scripts/deploy.sh production` 已在远端 migration 前接入 production gate；没有通过版 release 报告时必须阻断。
 
@@ -49,8 +49,8 @@
 - 后台管理：图库、媒体、标签、用户、会员发放、站点设置、联系方式、首页广告、真实案例、导入任务、审计日志。
 - Telegram 外部导入 API：项目只提供对外 API 接收能力，不内置 Telegram Bot 本体；对接契约见 `docs/TELEGRAM_IMPORT_API.md`。
 - 数据分析：已实现一方数据采集、来源归因、邀请码、联系点击、趋势和后台 `/admin/analytics` 系列看板；后台 UI 口径见 `docs/UI_DATA_ANALYTICS_DASHBOARD.md`。
-- 归因中心：已实现站内转化账本、投放追踪链接、有效联系 / Lead / 完成注册趋势、Meta Pixel / CAPI 同步健康、重复诊断和分级发布检查；后台分别展示 blocker 与 warning，warning 不改变生产阻断状态；入口为 `/admin/attribution`。
-- Meta Pixel / CAPI：核心架构、营销授权门禁、同一 `eventID` 去重、Queue/DLQ 与分级发布检查已实现；正式 Meta 事件只有 `Contact`、`Lead`、`CompleteRegistration`，不支持 `StartTrial`。后台 Pixel `attempted` 仅代表浏览器尝试，不代表 Meta 接收；CAPI 仅在 Graph API `events_received=1` 时以 `sent` 表示接收成功。CAPI 使用 Worker secret `META_CAPI_ACCESS_TOKEN`，仅 Owner 可在 test 模式发送严格 Test Event；最终 production 放行仍待真实 dev evidence、同 commit release 与用户授权的生产操作完成。数据分析中的 `fb` / `facebook` / `meta` 表示站内 UTM、推广链接或 referrer 归因，不等同于 Meta Pixel 回传数据。
+- 归因中心：已实现站内转化账本、投放追踪链接、有效联系 / 完成注册活动趋势、历史 Lead 只读对照、Meta Pixel / CAPI 同步健康、重复诊断和分级发布检查；历史 Lead 不参与活动漏斗、比率或链接排序。后台分别展示 blocker 与 warning，warning 不改变生产阻断状态；入口为 `/admin/attribution`。
+- Meta CAPI v2：**阶段 1 完成，尚不可生产放量**。业务事实已收口为 `Contact`、`CompleteRegistration`，`Lead` / `StartTrial` 只保留历史读取和发送前安全阻断；统一 Tracking Facade、营销授权门禁、同一 `eventID` 去重、Queue/DLQ 与分级发布检查已实现。后续必须依次完成[业务事实收口计划](superpowers/plans/2026-07-10-meta-capi-v2-domain-consolidation.md)的本门禁、[安全交付计划](superpowers/plans/2026-07-10-meta-capi-v2-secure-delivery.md)和[质量运营计划](superpowers/plans/2026-07-10-meta-capi-v2-quality-operations.md)，再执行真实 dev evidence、同 commit release 与用户授权的生产操作。后台 Pixel `attempted` 仅代表浏览器尝试；CAPI 仅在 Graph API `events_received=1` 时以 `sent` 表示接收成功。数据分析中的 `fb` / `facebook` / `meta` 只表示站内 UTM、推广链接或 referrer 归因。
 - SEO：已实现基础 SEO 设置、关键词池、sitemap、robots、结构化数据和生产校验脚本；运营配置见 `docs/SEO_CONFIGURATION.md`。
 
 ## 规划和未接入
@@ -73,6 +73,9 @@
 - `docs/codebase/*.md`：代码库结构、架构、集成、测试和风险分析。
 - `docs/superpowers/specs/2026-07-08-attribution-center-clean-design.md`：归因中心、后台归因 UI、测试矩阵和发布闸门的设计背景。
 - `docs/superpowers/specs/2026-07-08-meta-capi-attribution-layer-design.md`：Meta 归因与转化事件账本的设计背景。
+- `docs/superpowers/plans/2026-07-10-meta-capi-v2-domain-consolidation.md`：Meta CAPI v2 阶段 1 业务事实收口计划。
+- `docs/superpowers/plans/2026-07-10-meta-capi-v2-secure-delivery.md`：Meta CAPI v2 安全交付计划。
+- `docs/superpowers/plans/2026-07-10-meta-capi-v2-quality-operations.md`：Meta CAPI v2 质量运营计划。
 
 ## Git 状态
 

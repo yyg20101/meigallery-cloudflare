@@ -112,4 +112,16 @@ export default [
       'vue/singleline-html-element-content-newline': 'off',
     },
   },
+  {
+    files: ['packages/web/app/{pages,components,layouts,plugins}/**/*.{ts,vue}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [
+          '~/adapters/metaPixel.client',
+          '~/composables/useConversionTracking',
+          '~/composables/useFacebookPixel',
+        ],
+      }],
+    },
+  },
 ]

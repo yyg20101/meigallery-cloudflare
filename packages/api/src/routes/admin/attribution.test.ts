@@ -49,11 +49,12 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
   const calls: DbCall[] = []
   const historicalStartTrialDeliveryCount = Math.max(0, options.historicalStartTrialDeliveryCount ?? 0)
   const membershipGrantDuplicateCount = Math.max(0, options.membershipGrantDuplicateCount ?? 0)
-  const dailyHistoryLeak = (sql: string) => sql.includes("event_name IN ('Contact', 'Lead', 'CompleteRegistration')")
+  const dailyHistoryLeak = (sql: string) => sql.includes("event_name IN ('Contact', 'CompleteRegistration')")
     ? 0
     : historicalStartTrialDeliveryCount
   const actionHistoryLeak = (sql: string) => (
-    sql.includes("action_type IN ('contact', 'lead', 'complete_registration')") ||
+    sql.includes("action_type IN ('contact', 'complete_registration')") ||
+    sql.includes("action_type IN ('contact', 'complete_registration', 'membership_grant')") ||
     sql.includes("action_type <> 'start_trial'")
   )
     ? 0
@@ -234,6 +235,12 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
                 { source_channel: 'ad', source_name: 'ad-a', utm_campaign: 'july', utm_content: 'chat-a', contact_count: 3, lead_count: 1, complete_registration_count: 1, membership_grant_count: 0 },
               ] as T[],
               meta: { rows_read: 2, rows_written: 0, duration: 1 },
+            }
+          }
+          if (sql.includes('AS historical_lead_count')) {
+            return {
+              results: [{ historical_lead_count: 1 } as T],
+              meta: { rows_read: 1, rows_written: 0, duration: 1 },
             }
           }
           if (sql.includes('FROM analytics_conversion_daily') && sql.includes('SUM(action_count)') && !sql.includes('FROM analytics_tracking_sources')) {
@@ -640,6 +647,42 @@ describe('后台归因中心 API', () => {
     expect(JSON.stringify(body.data)).not.toContain('start_trial')
   })
 
+  it('活动归因只统计 Contact 和完成注册并单独返回历史 Lead', async () => {
+    const db = createAttributionDb()
+    const app = createApp('admin')
+    const env = { DB: db } as unknown as Bindings
+    const [overviewResponse, conversionsResponse, linksResponse] = await Promise.all([
+      app.request('/api/admin/attribution/overview?from=2026-07-09&to=2026-07-09', {}, env),
+      app.request('/api/admin/attribution/conversions?from=2026-07-09&to=2026-07-09', {}, env),
+      app.request('/api/admin/attribution/links?from=2026-07-09&to=2026-07-09', {}, env),
+    ])
+    const [overview, conversions, links] = await Promise.all([
+      overviewResponse.json(),
+      conversionsResponse.json(),
+      linksResponse.json(),
+    ])
+
+    expect(overview.data.totals).not.toHaveProperty('lead_count')
+    expect(overview.data.historical).toEqual({ leadCount: 1 })
+    expect(overview.data.trend[0]).not.toHaveProperty('lead_count')
+    expect(conversions.data.historical).toEqual({ leadCount: 1 })
+    expect(conversions.data.byAction.map((row: { action_type: string }) => row.action_type)).not.toContain('lead')
+    expect(conversions.data.bySource[0]).not.toHaveProperty('lead_count')
+    expect(conversions.data.bySource[0].historical).toEqual({ leadCount: 1 })
+    expect(links.data.links[0]).not.toHaveProperty('leadCount')
+    expect(links.data.links[0].historical).toEqual({ leadCount: 1 })
+
+    const activityQueries = db.calls.filter(call => (
+      call.sql.includes('FROM analytics_conversion_delivery_daily') ||
+      call.sql.includes('FROM analytics_conversion_deliveries')
+    ))
+    expect(activityQueries.length).toBeGreaterThan(0)
+    expect(activityQueries.every(call => !call.sql.includes("'Lead'"))).toBe(true)
+    expect(activityQueries.every(call => !call.sql.includes("'lead'"))).toBe(true)
+    const linksSql = db.calls.find(call => call.sql.includes('WITH conversion_metrics'))?.sql ?? ''
+    expect(linksSql).not.toContain('ORDER BY contact_count DESC, lead_count DESC')
+  })
+
   it('默认 overview/conversions/links SQL 与响应完全排除历史 start_trial', async () => {
     const db = createAttributionDb()
     const app = createApp('admin')
@@ -654,7 +697,10 @@ describe('后台归因中心 API', () => {
 
     expect(bodies.every(body => !JSON.stringify(body.data).includes('start_trial'))).toBe(true)
     expect(currentReportCalls.length).toBeGreaterThan(0)
-    expect(currentReportCalls.every(call => call.sql.includes("action_type <> 'start_trial'"))).toBe(true)
+    expect(currentReportCalls.every(call => (
+      call.sql.includes("action_type <> 'start_trial'") ||
+      call.sql.includes("action_type = 'lead'")
+    ))).toBe(true)
     expect(currentReportCalls.every(call => !call.sql.includes('AS start_trial_count'))).toBe(true)
     const sampleSql = db.calls.find(call => call.sql.includes('FROM analytics_conversion_actions') && call.sql.includes('LIMIT 100'))?.sql ?? ''
     expect(sampleSql).toContain("action_type <> 'start_trial'")
@@ -682,8 +728,8 @@ describe('后台归因中心 API', () => {
       sourceLabel: 'Meta 广告 A',
       utmContent: 'chat-a',
       contactCount: 3,
-      leadCount: 1,
       completeRegistrationCount: 1,
+      historical: { leadCount: 1 },
     })
     expect(body.data.links[0].trackingPath).toContain('utm_content=chat-a')
     const linkSql = db.calls.find(call => call.sql.includes('WITH conversion_metrics'))
@@ -820,7 +866,7 @@ describe('后台归因中心 API', () => {
     })
     expect(meta.data.lastSentAt).toBe('2026-07-09T10:00:00.000Z')
     expect(meta.data.matchQuality).toMatchObject({ fbpCoverage: 0.8, fbpSampleCount: 20, fbcCoverage: 0.7, fbcSampleCount: 20 })
-    expect(meta.data.deliveries.every((row: { event_name: string }) => ['Contact', 'Lead', 'CompleteRegistration'].includes(row.event_name))).toBe(true)
+    expect(meta.data.deliveries.every((row: { event_name: string }) => ['Contact', 'CompleteRegistration'].includes(row.event_name))).toBe(true)
     expect(duplicates.data).toMatchObject({ duplicateSuppressedCount: 1, duplicateActionCount: 1, duplicateRate: 0.25 })
     expect(duplicates.data.samples.every((row: { action_type: string }) => row.action_type !== 'start_trial')).toBe(true)
 
@@ -838,14 +884,14 @@ describe('后台归因中心 API', () => {
     const deliveryQueries = db.calls.filter(call => call.sql.includes('FROM analytics_conversion_deliveries'))
     const duplicateActionQueries = db.calls.filter(call => call.sql.includes('FROM analytics_conversion_actions') && call.sql.includes("duplicate_of != ''"))
     expect(dailyQueries.length).toBeGreaterThan(0)
-    expect(dailyQueries.every(call => call.sql.includes("event_name IN ('Contact', 'Lead', 'CompleteRegistration')"))).toBe(true)
+    expect(dailyQueries.every(call => call.sql.includes("event_name IN ('Contact', 'CompleteRegistration')"))).toBe(true)
     expect(deliveryQueries.length).toBeGreaterThan(0)
     expect(deliveryQueries.every(call => (
       call.sql.includes('JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id') &&
-      call.sql.includes("a.action_type IN ('contact', 'lead', 'complete_registration')")
+      call.sql.includes("a.action_type IN ('contact', 'complete_registration')")
     ))).toBe(true)
     expect(duplicateActionQueries.length).toBeGreaterThan(0)
-    expect(duplicateActionQueries.every(call => call.sql.includes("action_type <> 'start_trial'"))).toBe(true)
+    expect(duplicateActionQueries.every(call => call.sql.includes("action_type IN ('contact', 'complete_registration', 'membership_grant')"))).toBe(true)
   })
 
   it('当前重复诊断保留 membership_grant 且排除历史 StartTrial', async () => {
@@ -876,12 +922,12 @@ describe('后台归因中心 API', () => {
       call.sql.includes('FROM analytics_conversion_actions') && call.sql.includes("duplicate_of != ''")
     ))
     expect(duplicateActionQueries.length).toBeGreaterThan(0)
-    expect(duplicateActionQueries.every(call => call.sql.includes("action_type <> 'start_trial'"))).toBe(true)
+    expect(duplicateActionQueries.every(call => call.sql.includes("action_type IN ('contact', 'complete_registration', 'membership_grant')"))).toBe(true)
 
     const deliveryQueries = db.calls.filter(call => call.sql.includes('FROM analytics_conversion_deliveries'))
     expect(deliveryQueries.length).toBeGreaterThan(0)
     expect(deliveryQueries.every(call => (
-      call.sql.includes("a.action_type IN ('contact', 'lead', 'complete_registration')")
+      call.sql.includes("a.action_type IN ('contact', 'complete_registration')")
     ))).toBe(true)
   })
 
@@ -897,14 +943,14 @@ describe('后台归因中心 API', () => {
     ]))
   })
 
-  it('当前范围只含历史 start_trial 时 conversion ledger blocker 不通过', async () => {
+  it('conversion ledger 只使用 Contact 和完成注册活动事实', async () => {
     const { db, body } = await requestReadiness({ readiness: { actionCount: 0 } })
     const ledger = body.data.checks.find((item: { key: string }) => item.key === 'conversion_ledger')
     const ledgerSql = db.calls.find(call => call.sql.includes('SUM(action_count)') && call.sql.includes('analytics_conversion_daily'))?.sql ?? ''
 
     expect(ledger).toMatchObject({ key: 'conversion_ledger', level: 'blocker', ok: false })
     expect(body.data.ready).toBe(false)
-    expect(ledgerSql).toContain("action_type <> 'start_trial'")
+    expect(ledgerSql).toContain("action_type IN ('contact', 'complete_registration')")
   })
 
   it.each([

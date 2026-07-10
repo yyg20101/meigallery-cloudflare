@@ -193,7 +193,7 @@ async function copyTrackingLink(item: Pick<TrackingSourceMetric, 'trackingPath'>
           <p class="mt-1 text-sm text-gray-500">自动归因结果包含邀请码、推广来源、UTM、referrer 和直接访问；FB/Facebook 不是 Pixel 回传。</p>
         </div>
         <div class="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-900">
-          FB、Facebook 或 Meta 来源来自站内 UTM、推广链接或 referrer；Meta Pixel 只用于向 Meta 后台发送 Contact、Lead 等转化事件。
+          FB、Facebook 或 Meta 来源来自站内 UTM、推广链接或 referrer；Meta Pixel 只用于向 Meta 后台发送 Contact、CompleteRegistration 转化事件。
         </div>
         <AnalyticsDataTable
           empty-title="暂无来源数据"

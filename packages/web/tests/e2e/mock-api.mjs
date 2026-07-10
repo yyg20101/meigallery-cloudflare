@@ -740,6 +740,13 @@ function handleApi(req, res) {
           role: 'user',
           membershipRank: 0,
           membershipName: 'free',
+          pixelEvents: [{
+            deliveryId: 'cdlv_registration_22',
+            eventName: 'CompleteRegistration',
+            eventId: 'meta:CompleteRegistration:complete_registration:user:22',
+            payload: { method: 'email' },
+            receiptToken: 'receipt_registration_22',
+          }],
         })
       })
       .catch(() => json(res, { statusCode: 400, message: '注册请求无效' }, 400))

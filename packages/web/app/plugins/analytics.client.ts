@@ -1,5 +1,5 @@
 import type { AnalyticsSourceChannel } from '@meigallery/shared'
-import { hasSensitiveAnalyticsUrl, isAdminPath } from '~/utils/facebookPixel'
+import { hasSensitiveAnalyticsUrl, isAdminPath } from '~/utils/trackingSanitizer'
 import { sanitizeReferrer } from '~/utils/analyticsSanitizer'
 
 const SEARCH_REFERRER_PATTERNS = [

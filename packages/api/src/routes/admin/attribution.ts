@@ -41,7 +41,7 @@ adminAttributionRoutes.get('/overview', async (c) => {
         COALESCE(SUM(CASE WHEN action_type = 'membership_grant' THEN action_count ELSE 0 END), 0) AS membership_grant_count
       FROM analytics_conversion_daily
       WHERE date BETWEEN ? AND ?
-        AND action_type <> 'start_trial'
+        AND action_type IN ('contact', 'lead', 'complete_registration', 'membership_grant')
     `, [range.from, range.to]),
     queryAll(c.env.DB, `
       SELECT
@@ -52,7 +52,7 @@ adminAttributionRoutes.get('/overview', async (c) => {
         COALESCE(SUM(CASE WHEN action_type = 'membership_grant' THEN action_count ELSE 0 END), 0) AS membership_grant_count
       FROM analytics_conversion_daily
       WHERE date BETWEEN ? AND ?
-        AND action_type <> 'start_trial'
+        AND action_type IN ('contact', 'lead', 'complete_registration', 'membership_grant')
       GROUP BY date
       ORDER BY date ASC
     `, [range.from, range.to]),
@@ -67,7 +67,7 @@ adminAttributionRoutes.get('/overview', async (c) => {
         COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'duplicate_suppressed' THEN delivery_count ELSE 0 END), 0) AS capi_duplicate_suppressed_count
       FROM analytics_conversion_delivery_daily
       WHERE date BETWEEN ? AND ?
-        AND event_name IN ('Contact', 'Lead', 'CompleteRegistration')
+        AND event_name IN ('Contact', 'CompleteRegistration')
     `, [range.from, range.to]),
     queryAll(c.env.DB, `
       SELECT
@@ -81,7 +81,7 @@ adminAttributionRoutes.get('/overview', async (c) => {
         COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'duplicate_suppressed' THEN delivery_count ELSE 0 END), 0) AS capi_duplicate_suppressed_count
       FROM analytics_conversion_delivery_daily
       WHERE date BETWEEN ? AND ?
-        AND event_name IN ('Contact', 'Lead', 'CompleteRegistration')
+        AND event_name IN ('Contact', 'CompleteRegistration')
       GROUP BY date
       ORDER BY date ASC
     `, [range.from, range.to]),
@@ -92,14 +92,14 @@ adminAttributionRoutes.get('/overview', async (c) => {
       WHERE d.channel = 'meta_capi'
         AND d.status = 'sent'
         AND d.sent_at IS NOT NULL
-        AND a.action_type IN ('contact', 'lead', 'complete_registration')
+        AND a.action_type IN ('contact', 'complete_registration')
     `, []),
     queryFirst(c.env.DB, `
       SELECT COUNT(*) AS duplicate_action_count
       FROM analytics_conversion_actions
       WHERE date BETWEEN ? AND ?
         AND duplicate_of != ''
-        AND action_type <> 'start_trial'
+        AND action_type IN ('contact', 'complete_registration', 'membership_grant')
     `, [range.from, range.to]),
   ])
 
@@ -136,6 +136,7 @@ adminAttributionRoutes.get('/overview', async (c) => {
     data: {
       totals: normalizeTotals(totalRow),
       trend: trend.rows.map(normalizeTrendRow),
+      historical: normalizeHistorical(totalRow),
       meta,
       metaTrend: metaTrend.rows.map(normalizeMetaTrendRow),
       duplicates,
@@ -157,7 +158,7 @@ adminAttributionRoutes.get('/conversions', async (c) => {
   const dailySourceParams = sourceFilter ? [range.from, range.to, sourceFilter] : [range.from, range.to]
   const actionSourceParams = sourceFilter ? [range.from, range.to, sourceFilter, sourceFilter] : [range.from, range.to]
 
-  const [byAction, bySource, samples] = await Promise.all([
+  const [byAction, bySource, samples, historical] = await Promise.all([
     queryAll(c.env.DB, `
       SELECT action_type, SUM(action_count) AS action_count, SUM(unique_session_count) AS unique_session_count
       FROM analytics_conversion_daily
@@ -178,7 +179,7 @@ adminAttributionRoutes.get('/conversions', async (c) => {
       FROM analytics_conversion_daily
       WHERE ${dailySourceWhere}
       GROUP BY source_channel, source_name, utm_campaign, utm_content
-      ORDER BY contact_count DESC, lead_count DESC
+      ORDER BY contact_count DESC, complete_registration_count DESC
       LIMIT 50
     `, dailySourceParams),
     queryAll(c.env.DB, `
@@ -190,15 +191,25 @@ adminAttributionRoutes.get('/conversions', async (c) => {
       ORDER BY occurred_at DESC
       LIMIT 100
     `, actionSourceParams),
+    queryFirst(c.env.DB, `
+      SELECT COALESCE(SUM(action_count), 0) AS historical_lead_count
+      FROM analytics_conversion_daily
+      WHERE date BETWEEN ? AND ?
+        AND action_type = 'lead'
+        ${sourceFilter ? 'AND source_name = ?' : ''}
+    `, dailySourceParams),
   ])
 
   return c.json({
     range,
-    usage: mergeQueryUsage(byAction, bySource, samples),
+    usage: mergeQueryUsage(byAction, bySource, samples, historical),
     data: {
-      byAction: byAction.rows,
-      bySource: bySource.rows,
-      samples: samples.rows,
+      byAction: byAction.rows.filter(isActiveConversionRow),
+      bySource: bySource.rows.map(serializeConversionSource),
+      samples: samples.rows.filter(isActiveConversionRow),
+      historical: {
+        leadCount: numberValue((historical.rows[0] ?? {}).historical_lead_count),
+      },
     },
   })
 })
@@ -256,7 +267,7 @@ adminAttributionRoutes.get('/links', async (c) => {
       ats.id, ats.name, ats.channel, ats.slug, ats.target_path, ats.utm_source,
       ats.utm_medium, ats.utm_campaign, ats.utm_content, ats.status, ats.note,
       ats.created_by, ats.created_at, ats.updated_at
-    ORDER BY contact_count DESC, session_count DESC, ats.created_at DESC
+    ORDER BY contact_count DESC, complete_registration_count DESC, session_count DESC, ats.created_at DESC
   `, queryParams)
 
   return c.json({
@@ -284,13 +295,13 @@ adminAttributionRoutes.get('/meta', async (c) => {
         COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'duplicate_suppressed' THEN delivery_count ELSE 0 END), 0) AS duplicate_suppressed_count
       FROM analytics_conversion_delivery_daily
       WHERE date BETWEEN ? AND ?
-        AND event_name IN ('Contact', 'Lead', 'CompleteRegistration')
+        AND event_name IN ('Contact', 'CompleteRegistration')
     `, [range.from, range.to]),
     queryAll(c.env.DB, `
       SELECT channel, event_name, status, skip_reason, SUM(delivery_count) AS delivery_count
       FROM analytics_conversion_delivery_daily
       WHERE date BETWEEN ? AND ?
-        AND event_name IN ('Contact', 'Lead', 'CompleteRegistration')
+        AND event_name IN ('Contact', 'CompleteRegistration')
       GROUP BY channel, event_name, status, skip_reason
       ORDER BY channel ASC, event_name ASC, status ASC
     `, [range.from, range.to]),
@@ -301,7 +312,7 @@ adminAttributionRoutes.get('/meta', async (c) => {
       WHERE d.channel = 'meta_capi'
         AND d.status = 'sent'
         AND d.sent_at IS NOT NULL
-        AND a.action_type IN ('contact', 'lead', 'complete_registration')
+        AND a.action_type IN ('contact', 'complete_registration')
     `, []),
     queryAll(c.env.DB, `
       SELECT key, value
@@ -316,7 +327,7 @@ adminAttributionRoutes.get('/meta', async (c) => {
         AND d.status = 'failed'
         AND d.error_code = 'retry_exhausted'
         AND a.date BETWEEN ? AND ?
-        AND a.action_type IN ('contact', 'lead', 'complete_registration')
+        AND a.action_type IN ('contact', 'complete_registration')
     `, [range.from, range.to]),
     queryFirst(c.env.DB, `
       SELECT
@@ -343,7 +354,7 @@ adminAttributionRoutes.get('/meta', async (c) => {
       JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
       WHERE d.channel = 'meta_capi'
         AND a.date >= date('now', '-6 days')
-        AND a.action_type IN ('contact', 'lead', 'complete_registration')
+        AND a.action_type IN ('contact', 'complete_registration')
     `, []),
   ])
 
@@ -396,14 +407,14 @@ adminAttributionRoutes.get('/duplicates', async (c) => {
         COALESCE(SUM(delivery_count), 0) AS delivery_count
       FROM analytics_conversion_delivery_daily
       WHERE date BETWEEN ? AND ?
-        AND event_name IN ('Contact', 'Lead', 'CompleteRegistration')
+        AND event_name IN ('Contact', 'CompleteRegistration')
     `, [range.from, range.to]),
     queryFirst(c.env.DB, `
       SELECT COUNT(*) AS duplicate_action_count
       FROM analytics_conversion_actions
       WHERE date BETWEEN ? AND ?
         AND duplicate_of != ''
-        AND action_type <> 'start_trial'
+        AND action_type IN ('contact', 'complete_registration', 'membership_grant')
     `, [range.from, range.to]),
     queryAll(c.env.DB, `
       SELECT
@@ -412,7 +423,7 @@ adminAttributionRoutes.get('/duplicates', async (c) => {
       FROM analytics_conversion_actions
       WHERE date BETWEEN ? AND ?
         AND duplicate_of != ''
-        AND action_type <> 'start_trial'
+        AND action_type IN ('contact', 'complete_registration', 'membership_grant')
       ORDER BY occurred_at DESC
       LIMIT 100
     `, [range.from, range.to]),
@@ -466,7 +477,7 @@ adminAttributionRoutes.get('/readiness', async (c) => {
       SELECT COALESCE(SUM(action_count), 0) AS action_count
       FROM analytics_conversion_daily
       WHERE date BETWEEN ? AND ?
-        AND action_type <> 'start_trial'
+        AND action_type IN ('contact', 'complete_registration')
     `, [range.from, range.to]),
       queryFirst(c.env.DB, `
         SELECT COUNT(*) AS retry_exhausted_count
@@ -476,7 +487,7 @@ adminAttributionRoutes.get('/readiness', async (c) => {
           AND d.status = 'failed'
           AND d.error_code = 'retry_exhausted'
           AND datetime(d.last_attempt_at) >= datetime('now', '-24 hours')
-          AND a.action_type IN ('contact', 'lead', 'complete_registration')
+          AND a.action_type IN ('contact', 'complete_registration')
       `, []),
       queryFirst(c.env.DB, `
         SELECT COUNT(*) AS external_event_id_mismatch_count
@@ -488,7 +499,7 @@ adminAttributionRoutes.get('/readiness', async (c) => {
           JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
           WHERE datetime(d.created_at) >= datetime('now', '-7 days')
             AND a.source_channel <> 'internal'
-            AND a.action_type IN ('contact', 'lead', 'complete_registration')
+            AND a.action_type IN ('contact', 'complete_registration')
           GROUP BY d.conversion_action_id, d.event_name
           HAVING COUNT(DISTINCT CASE WHEN d.channel = 'meta_pixel' THEN d.external_event_id END) > 0
             AND COUNT(DISTINCT CASE WHEN d.channel = 'meta_capi' THEN d.external_event_id END) > 0
@@ -506,7 +517,7 @@ adminAttributionRoutes.get('/readiness', async (c) => {
         WHERE d.channel = 'meta_capi'
           AND d.status = 'pending'
           AND datetime(d.created_at) < datetime('now', '-10 minutes')
-          AND a.action_type IN ('contact', 'lead', 'complete_registration')
+          AND a.action_type IN ('contact', 'complete_registration')
       `, []),
       queryFirst(c.env.DB, `
         SELECT COUNT(*) AS permanent_failure_count
@@ -517,7 +528,7 @@ adminAttributionRoutes.get('/readiness', async (c) => {
           AND d.error_code GLOB 'meta_http_4*'
           AND d.error_code <> 'meta_http_429'
           AND datetime(d.updated_at) >= datetime('now', '-7 days')
-          AND a.action_type IN ('contact', 'lead', 'complete_registration')
+          AND a.action_type IN ('contact', 'complete_registration')
       `, []),
       queryFirst(c.env.DB, `
         SELECT
@@ -544,7 +555,7 @@ adminAttributionRoutes.get('/readiness', async (c) => {
         JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
         WHERE d.channel = 'meta_capi'
           AND a.date >= date('now', '-6 days')
-          AND a.action_type IN ('contact', 'lead', 'complete_registration')
+          AND a.action_type IN ('contact', 'complete_registration')
       `, []),
       queryFirst(c.env.DB, `
         SELECT
@@ -552,7 +563,7 @@ adminAttributionRoutes.get('/readiness', async (c) => {
           COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'sent' THEN delivery_count ELSE 0 END), 0) AS capi_sent_count
         FROM analytics_conversion_delivery_daily
         WHERE date >= date('now', '-6 days')
-          AND event_name IN ('Contact', 'Lead', 'CompleteRegistration')
+          AND event_name IN ('Contact', 'CompleteRegistration')
       `, []),
       releaseCommit
         ? queryAll(c.env.DB, `
@@ -950,16 +961,31 @@ function requireOwner(c: AdminAttributionContext): Response | null {
 function normalizeTotals(row: Row) {
   return {
     contact_count: numberValue(row.contact_count),
-    lead_count: numberValue(row.lead_count),
     complete_registration_count: numberValue(row.complete_registration_count),
     membership_grant_count: numberValue(row.membership_grant_count),
   }
+}
+
+function normalizeHistorical(row: Row) {
+  return { leadCount: numberValue(row.lead_count) }
 }
 
 function normalizeTrendRow(row: Row) {
   return {
     date: String(row.date ?? ''),
     ...normalizeTotals(row),
+  }
+}
+
+function isActiveConversionRow(row: Row) {
+  return row.action_type === 'contact' || row.action_type === 'complete_registration'
+}
+
+function serializeConversionSource(row: Row) {
+  const { lead_count: _leadCount, ...active } = row
+  return {
+    ...active,
+    historical: normalizeHistorical(row),
   }
 }
 
@@ -1019,9 +1045,9 @@ function serializeAttributionLink(row: Row) {
     membershipGrantCount: numberValue(row.membership_grant_count),
     activeSecondsTotal: numberValue(row.active_seconds_total),
     contactCount: numberValue(row.contact_count),
-    leadCount: numberValue(row.lead_count),
     completeRegistrationCount: numberValue(row.complete_registration_count),
     conversionMembershipGrantCount: numberValue(row.conversion_membership_grant_count),
+    historical: normalizeHistorical(row),
   }
   return {
     ...item,

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
-import type { ActiveMetaEventName } from '@meigallery/shared'
+import type { ActiveMetaEventName, ConversionSkipReason } from '@meigallery/shared'
 import type { Bindings } from '../index'
 import {
   MetaCapiDeliveryError,
@@ -225,6 +225,12 @@ afterEach(() => {
 })
 
 describe('meta-capi', () => {
+  it('共享跳过原因包含历史事件安全终态', () => {
+    const reason: ConversionSkipReason = 'unsupported_event'
+
+    expect(reason).toBe('unsupported_event')
+  })
+
   it('CAPI payload 事件名使用活动 Meta 事件类型', () => {
     expectTypeOf<MetaCapiPayloadInput['eventName']>().toEqualTypeOf<ActiveMetaEventName>()
   })

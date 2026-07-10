@@ -1,5 +1,8 @@
 import { shallowMount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { cwd } from 'node:process'
 import { defineComponent, ref } from 'vue'
 import ConversionsPage from './conversions.vue'
 
@@ -7,6 +10,7 @@ const DataTableStub = defineComponent({
   name: 'AnalyticsDataTable',
   props: {
     rows: { type: Array, default: () => [] },
+    columns: { type: Array, default: () => [] },
     emptyText: { type: String, default: '' },
   },
   template: '<div class="data-table">{{ emptyText }}</div>',
@@ -29,17 +33,18 @@ describe('归因转化页当前口径', () => {
     vi.unstubAllGlobals()
   })
 
-  it('来源分母和默认文案不包含历史 start_trial', () => {
+  it('来源活动比率只使用有效联系和完成注册', () => {
     const conversions = attributionState({
       byAction: [],
       bySource: [{
         source_name: 'Meta A',
         contact_count: 1,
-        lead_count: 1,
         complete_registration_count: 1,
         membership_grant_count: 1,
         start_trial_count: 100,
+        historical: { leadCount: 1 },
       }],
+      historical: { leadCount: 1 },
       samples: [],
     })
     const overview = attributionState({ trend: [] })
@@ -62,9 +67,19 @@ describe('归因转化页当前口径', () => {
     expect(tables.length).toBe(3)
     const sourceRow = (tables[0]!.props('rows') as Array<Record<string, unknown>>)[0]!
 
-    expect(sourceRow.contact_rate).toBe(0.25)
-    expect(sourceRow.register_rate).toBe(0.25)
+    expect(sourceRow.contact_rate).toBe(0.5)
+    expect(sourceRow.register_rate).toBe(0.5)
+    expect(sourceRow.historical_lead_count).toBe(1)
+    expect(tables[0]!.props('columns')).toContainEqual(expect.objectContaining({ key: 'historical_lead_count', label: '历史 Lead' }))
     expect(wrapper.text()).not.toContain('开始试用')
-    expect(wrapper.text()).toContain('有效联系、Lead、完成注册或会员发放事件上报后会出现。')
+    expect(wrapper.text()).toContain('有效联系、完成注册或会员发放事件上报后会出现。')
+  })
+
+  it('归因页面只使用“历史 Lead”标签', () => {
+    for (const fileName of ['index.vue', 'conversions.vue', 'links.vue']) {
+      const source = readFileSync(join(cwd(), 'app/pages/admin/attribution', fileName), 'utf8')
+      expect(source).not.toMatch(/label:\s*['"]Lead['"]/)
+      expect(source).toContain('历史 Lead')
+    }
   })
 })

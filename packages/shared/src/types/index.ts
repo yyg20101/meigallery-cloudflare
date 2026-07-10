@@ -126,6 +126,7 @@ export type ConversionSkipReason =
   | 'missing_pixel_id'
   | 'missing_queue'
   | 'queue_send_failed'
+  | 'unsupported_event'
   | 'consent_denied'
   | 'invalid_payload'
 

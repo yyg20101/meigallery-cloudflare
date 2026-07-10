@@ -229,7 +229,7 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/media/:assetId/thumbnail` | 缩略图（公开） |
 | POST | `/api/analytics/events` | 站内一方数据分析批量采集，默认受 `analytics_enabled` 关闭态保护 |
 | POST | `/api/analytics/session/end` | session 结束兜底采集，兼容 `sendBeacon` 简写 payload |
-| POST | `/api/conversions/events` | 公开转化事件入口，仅记录联系和完成注册；受限流保护，服务端清洗 metadata，不接受 `Lead`、`StartTrial`、会员发放或敏感字段 |
+| POST | `/api/conversions/events` | 公开转化事件入口，仅接受有效联系；受限流保护，服务端清洗 metadata，明确拒绝完成注册、`Lead`、`StartTrial`、会员发放或敏感字段 |
 | GET | `/api/invites/:code/status` | 公开校验邀请码状态，只返回可展示字段和失败原因，不泄露 `code_hash` |
 | GET | `/api/settings/public` | 公开站点设置和过滤后的首页广告数组 `home_ads` |
 
@@ -608,19 +608,29 @@ INSERT INTO site_settings (key, value) VALUES
 
 ### 转化账本与归因中心表 `[当前实现]`
 
-归因中心把“站内可信事实”和“外部广告平台同步”分开维护：`analytics_conversion_actions` 是事实源，Pixel / CAPI 只是 delivery 渠道。后台 `/admin/analytics` 仍是一方行为分析大盘；广告投放追踪链接、有效联系、Lead、完成注册、Pixel / CAPI 同步、重复诊断和发布检查统一放在 `/admin/attribution`。
+归因中心把“站内可信事实”和“外部广告平台同步”分开维护：`analytics_conversion_actions` 是事实源，Pixel / CAPI 只是 delivery 渠道。后台 `/admin/analytics` 仍是一方行为分析大盘；广告投放追踪链接、有效联系、完成注册、历史 Lead 对照、Pixel / CAPI 同步、重复诊断和发布检查统一放在 `/admin/attribution`。
+
+#### 归因事实所有权 `[当前实现]`
+
+| 事实 | 唯一所有者与命名入口 | 可信触发 | 派生与投递关系 |
+|------|------|------|------|
+| `Contact` | API conversion service 的 `recordContact()` | URL 通过安全校验后发起原生联系跳转，或复制联系方式明确成功后，由公开联系命令进入服务端校验 | 写入 `contact` 事实；不派生 `Lead`。授权允许时可生成同一 `eventID` 的 Pixel / CAPI delivery。二维码展开、复制失败和无效 URL 不创建 Contact。 |
+| `CompleteRegistration` | 注册 API 在用户、邀请码和 session 事务成功后调用 `recordRegistration()`；事实修复只允许 `recordRegistrationFactOnly()` | 服务端已持久化的正整数 `userId`，客户端不能声明事件类型或注册成功 | 写入 `complete_registration` 事实并以 `userId` 去重；注册响应可携带 Pixel 指令，浏览器只能执行指令，不能通过公开 conversion API 创建注册事实。 |
+| QR 展开 | Web `ContactPanel` 通过 `useAnalytics()` 记录 `contact_qr_expand`，由 analytics ingest 所有 | 用户展开通过安全 URL 校验的二维码 | 仅是一方行为分析事件；不创建 Contact、不进入 conversion 账本，也不生成 Pixel / CAPI delivery。 |
+
+历史 D1 中的 `lead` / `Lead` 保留读取，不删除数据。后台只通过 `historical.leadCount` 展示“历史 Lead”，不得将其用于活动漏斗、联系率、注册率、链接排序、Meta delivery 健康或 readiness。
 
 | 表 | 状态 | 用途 |
 |------|------|------|
-| `analytics_conversion_actions` | `[当前实现]` | 站内转化事实，保存 `contact`、`lead`、`complete_registration`、`membership_grant` 等当前动作；历史 schema 兼容读取 `start_trial`，但不再创建或作为正式 Meta 事件投放。 |
+| `analytics_conversion_actions` | `[当前实现]` | 站内转化事实；新写入只由 `recordContact()`、`recordRegistration()` 和注册事实修复函数创建 `contact` / `complete_registration`。历史 schema 继续只读兼容 `lead`、`start_trial` 和既有 `membership_grant`，不删除存量数据。 |
 | `analytics_conversion_deliveries` | `[当前实现]` | Pixel / Meta CAPI delivery 账本，记录 channel、`external_event_id`、状态、跳过原因、失败错误、重试次数和发送时间。 |
 | `analytics_conversion_daily` | `[当前实现]` | 按日期、事件、来源、campaign、utm_content 等维度聚合站内转化，用于后台趋势和投放对比。 |
 | `analytics_conversion_delivery_daily` | `[当前实现]` | 按日期、channel、事件和 delivery 状态聚合同步结果，用于 Meta 同步健康和发布检查。 |
 
 实现约束：
 
-- 正式 Meta 事件严格限定为 `Contact`、`Lead`、`CompleteRegistration`；`StartTrial` 不支持。`lead` 是服务端从首次有效联系派生的可信动作，公开入口也不得提交 `lead`。
-- `/api/conversions/events` 为公开入口，仅允许浏览器提交 `contact`、`complete_registration`；`lead` 和 `membership_grant` 必须由服务端可信流程产生，历史 `start_trial` 仅为存量账本兼容值。
+- 正式活动 Meta 事件严格限定为 `Contact`、`CompleteRegistration`；`Lead`、`StartTrial` 仅为历史读取值，sender 与 recovery 均不得再次发送。
+- `/api/conversions/events` 为公开联系命令入口，仅允许提交 `contact`；完成注册由注册 API 的服务端事务创建。`lead`、`complete_registration`、`start_trial` 和 `membership_grant` 的公开提交均返回明确 4xx。
 - 公开转化入口复用应用内兜底限流，并在服务端白名单清洗 metadata；请求不得携带邮箱、手机号、联系方式明文、token、私有 R2 key、完整敏感 URL 或任意广告账户密钥。
 - `consent_state=denied` 时只保留站内必要事实，不创建 Meta Pixel / CAPI delivery；`consent_state` 仅用于当次 delivery 判断，不作为 D1 字段持久化。
 - Pixel 与 CAPI 使用同一 `external_event_id` / `eventID`，方便 Meta 后台去重；Pixel `attempted` 仅说明浏览器已尝试调用，不代表 Meta 接收。只有 CAPI `sent` 且 Graph API 返回 `events_received=1` 才代表接收成功；站内重复诊断不依赖 Meta 回传数据。
@@ -632,7 +642,7 @@ INSERT INTO site_settings (key, value) VALUES
 
 `0034_meta_production_readiness.sql` 在迁移后将不受支持的 tracking mode 收敛为 `disabled`；生产放行必须确认 `meta_tracking_mode=disabled`、`meta_capi_enabled=false`，直至 Owner 按顺序显式开启。顺序固定为：代码关闭态 -> dev live evidence -> 生产资源 -> migration -> 最终 main HEAD 重新部署 dev 并生成同 commit evidence -> main 同 commit release -> 生产部署 -> `test` mode Owner Test Event -> `production` mode -> 开关 -> 观察。
 
-严格 Test Event 必须确认三项正式事件不含 `StartTrial`，并且 CAPI 的 `sent` 与 `events_received=1` 同时成立。由用户营销授权门禁控制的 Pixel 只能写入 `attempted`，不能替代这项确认。任何阶段失败都必须将 mode 切回 `disabled` 并保持 `meta_capi_enabled=false`；先关闭 CAPI、再关闭 mode，保留 Queue/DLQ、D1 migration 和账本用于诊断。
+严格 Test Event 必须只包含 `Contact`、`CompleteRegistration`，出现 `Lead` 或 `StartTrial` 必须阻断，并且 CAPI 的 `sent` 与 `events_received=1` 同时成立。由用户营销授权门禁控制的 Pixel 只能写入 `attempted`，不能替代这项确认。任何阶段失败都必须将 mode 切回 `disabled` 并保持 `meta_capi_enabled=false`；先关闭 CAPI、再关闭 mode，保留 Queue/DLQ、D1 migration 和账本用于诊断。
 
 成本与索引口径：
 

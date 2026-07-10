@@ -521,7 +521,8 @@ test.describe('核心页面 smoke', () => {
 
     await page.getByRole('button', { name: '打开联系方式' }).click()
     await expect(page.getByRole('heading', { name: '站长在线回复' })).toBeVisible()
-    await page.getByRole('button', { name: /Telegram/ }).click()
+    await page.route('https://t.me/**', route => route.abort())
+    await page.getByRole('link', { name: /Telegram/ }).click({ noWaitAfter: true })
     await expect.poll(async () => {
       const response = await request.get(`${apiURL}/api/test/analytics-events`)
       const body = await response.json()

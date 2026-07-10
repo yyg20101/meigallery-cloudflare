@@ -10,7 +10,6 @@ const api = vi.fn()
 const push = vi.fn()
 const replace = vi.fn()
 const track = vi.fn()
-const trackConversion = vi.fn()
 const executePixelInstructions = vi.fn()
 const buildRegistrationAttributionContext = vi.fn()
 
@@ -35,8 +34,6 @@ describe('register page', () => {
     push.mockReset()
     replace.mockReset()
     track.mockReset()
-    trackConversion.mockReset()
-    trackConversion.mockRejectedValue(new Error('conversion api failed'))
     executePixelInstructions.mockReset()
     executePixelInstructions.mockResolvedValue(undefined)
     buildRegistrationAttributionContext.mockReset()
@@ -82,7 +79,6 @@ describe('register page', () => {
         },
       }),
     }))
-    vi.stubGlobal('useConversionTracking', () => ({ trackConversion }))
     vi.stubGlobal('useTracking', () => ({ executePixelInstructions, buildRegistrationAttributionContext }))
     vi.stubGlobal('useMarketingConsent', () => ({
       state: ref('granted'),
@@ -146,7 +142,6 @@ describe('register page', () => {
     expect(buildRegistrationAttributionContext).toHaveBeenCalledOnce()
     expect(register.mock.calls[0]?.[0]).not.toHaveProperty('actionType')
     expect(register.mock.calls[0]?.[0]).not.toHaveProperty('userId')
-    expect(trackConversion).not.toHaveBeenCalled()
     expect(executePixelInstructions).toHaveBeenCalledWith([
       expect.objectContaining({ eventName: 'CompleteRegistration' }),
     ])

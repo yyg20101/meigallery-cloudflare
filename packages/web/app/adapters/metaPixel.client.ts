@@ -1,4 +1,4 @@
-import { createFacebookPixelScript, normalizePixelId } from '~/utils/facebookPixel'
+import { createFacebookPixelScript, normalizePixelId } from '~/utils/trackingSanitizer'
 
 type MetaPixelEventName = 'ViewContent' | 'Search' | 'Contact' | 'CompleteRegistration'
 type MetaPixelPayload = Record<string, string | number | boolean>

@@ -21,7 +21,7 @@ interface AttributionLink {
   sessionCount: number
   pageViewCount: number
   contactCount: number
-  leadCount: number
+  historical: { leadCount: number }
   completeRegistrationCount: number
   conversionMembershipGrantCount: number
 }
@@ -57,6 +57,7 @@ watch(() => form.channel, (channel) => {
 
 const linkRows = computed(() => (attribution.data.value?.links ?? []).map(item => ({
   ...item,
+  historicalLeadCount: Number(item.historical?.leadCount ?? 0),
   contactRate: Number(item.contactCount ?? 0) / Math.max(1, Number(item.sessionCount ?? 0)),
   registerRate: Number(item.completeRegistrationCount ?? 0) / Math.max(1, Number(item.sessionCount ?? 0)),
 })))
@@ -165,7 +166,7 @@ function normalizeUtmValue(value: string) {
       <section class="min-w-0 space-y-3">
         <div>
           <h2 class="text-sm font-semibold text-gray-900">链接表现</h2>
-          <p class="mt-1 text-sm text-gray-500">按链接查看 Session、有效联系、Lead、注册和会员发放。</p>
+          <p class="mt-1 text-sm text-gray-500">按链接查看 Session、有效联系、注册、会员发放和历史 Lead 对照。</p>
         </div>
         <AnalyticsDataTable
           empty-title="暂无投放追踪链接"
@@ -178,7 +179,7 @@ function normalizeUtmValue(value: string) {
             { key: 'sessionCount', label: 'Session', type: 'number', sortable: true },
             { key: 'pageViewCount', label: 'PV', type: 'number', sortable: true },
             { key: 'contactCount', label: '有效联系', type: 'number', sortable: true },
-            { key: 'leadCount', label: 'Lead', type: 'number', sortable: true },
+            { key: 'historicalLeadCount', label: '历史 Lead', type: 'number' },
             { key: 'completeRegistrationCount', label: '注册', type: 'number', sortable: true },
             { key: 'conversionMembershipGrantCount', label: '会员', type: 'number', sortable: true },
             { key: 'contactRate', label: '联系率', type: 'percent', sortable: true },
