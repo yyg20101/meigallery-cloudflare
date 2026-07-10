@@ -161,8 +161,8 @@ function normalizeUtmValue(value: string) {
       这是 UTM / mg_source 投放链接，不是 Pixel 地址。
     </section>
 
-    <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_24rem]">
-      <section class="space-y-3">
+    <div class="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5 xl:grid-cols-[minmax(0,1fr)_24rem]">
+      <section class="min-w-0 space-y-3">
         <div>
           <h2 class="text-sm font-semibold text-gray-900">链接表现</h2>
           <p class="mt-1 text-sm text-gray-500">按链接查看 Session、有效联系、Lead、注册和会员发放。</p>
@@ -209,8 +209,8 @@ function normalizeUtmValue(value: string) {
         </div>
       </section>
 
-      <aside>
-        <section class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+      <aside class="min-w-0 max-w-full">
+        <section class="min-w-0 max-w-full rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
           <h2 class="text-sm font-semibold text-gray-900">创建链接</h2>
           <form class="mt-4 space-y-3" @submit.prevent="createTrackingLink">
             <label class="block">

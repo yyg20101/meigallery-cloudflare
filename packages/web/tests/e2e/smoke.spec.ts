@@ -6,53 +6,153 @@ const longAdUrl = `https://${longAdHostname}/sponsor-campaign`
 
 async function expectAdminContainersWithinViewport(page: import('@playwright/test').Page) {
   const result = await page.evaluate(() => {
-    const requiredSelectors = [
-      'main',
-      '[data-admin-content]',
-      '[data-admin-main]',
+    const requirements: Array<{ selector: string; minCount?: number }> = [
+      { selector: '[data-admin-layout]' },
+      { selector: '[data-admin-content]' },
+      { selector: '[data-admin-header]' },
+      { selector: '[data-admin-dev-warning]' },
+      { selector: '[data-admin-header-row]' },
+      { selector: '[data-admin-header-title]' },
+      { selector: '[data-admin-main]' },
     ]
     if (location.pathname === '/admin/settings') {
-      requiredSelectors.push('[data-settings-page]', '[data-settings-form]')
-    }
-    if (location.pathname.startsWith('/admin/attribution')) {
-      requiredSelectors.push(
-        '[data-attribution-page]',
-        '[data-attribution-header]',
-        '[data-attribution-controls]',
-        '[data-attribution-tabs]',
+      requirements.push(
+        { selector: '[data-settings-page]' },
+        { selector: '[data-settings-form]' },
       )
     }
-    if (location.pathname === '/admin/attribution') requiredSelectors.push('[data-attribution-health]')
-    if (location.pathname === '/admin/attribution/meta') requiredSelectors.push('[data-attribution-health]')
+    if (location.pathname.startsWith('/admin/attribution')) {
+      requirements.push(
+        { selector: '[data-attribution-page]' },
+        { selector: '[data-attribution-header]' },
+        { selector: '[data-attribution-header-title]' },
+        { selector: '[data-attribution-header-description]' },
+        { selector: '[data-attribution-controls]' },
+        { selector: '[data-attribution-range-group]' },
+        { selector: '[data-attribution-range-control]', minCount: 4 },
+        { selector: '[data-attribution-control]', minCount: 5 },
+        { selector: '[data-attribution-refresh]' },
+        { selector: '[data-attribution-tabs]' },
+        { selector: '[data-attribution-tab-list]' },
+        { selector: '[data-attribution-tab]', minCount: 6 },
+      )
+    }
+    if (location.pathname === '/admin/attribution' || location.pathname === '/admin/attribution/meta') {
+      requirements.push(
+        { selector: '[data-attribution-health]' },
+        { selector: '[data-health-grid]' },
+        { selector: '[data-health-item]', minCount: 6 },
+        { selector: '[data-health-label]', minCount: 6 },
+        { selector: '[data-health-value]', minCount: 6 },
+        { selector: '[data-health-summary]', minCount: location.pathname === '/admin/attribution' ? 2 : 1 },
+      )
+    }
     if (location.pathname === '/admin/attribution/readiness') {
-      requiredSelectors.push('[data-readiness-status]', '[aria-label="阻断项"]', '[aria-label="警告项"]')
+      requirements.push(
+        { selector: '[data-readiness-status]' },
+        { selector: '[data-readiness-section]', minCount: 2 },
+        { selector: '[data-readiness-section-intro]', minCount: 2 },
+        { selector: '[data-readiness-check-grid]', minCount: 2 },
+        { selector: '[data-readiness-check]' },
+        { selector: '[data-readiness-check-title]' },
+        { selector: '[data-readiness-check-detail]' },
+        { selector: '[data-readiness-check-key]' },
+        { selector: '[data-readiness-check-state]' },
+        { selector: '[data-readiness-settings]' },
+        { selector: '[data-readiness-setting-item]' },
+        { selector: '[data-readiness-verifications]' },
+        { selector: '[data-readiness-verification-item]' },
+      )
     }
 
-    const missing: string[] = []
-    const violations: Array<{ selector: string; left: number; right: number; viewport: number; clientWidth: number; scrollWidth: number }> = []
-    for (const selector of requiredSelectors) {
-      const element = document.querySelector<HTMLElement>(selector)
-      if (!element) {
-        missing.push(selector)
+    const containerSelectors = new Set([
+      '[data-admin-layout]',
+      '[data-admin-content]',
+      '[data-admin-header]',
+      '[data-admin-dev-warning]',
+      '[data-admin-header-row]',
+      '[data-admin-main]',
+      '[data-settings-page]',
+      '[data-settings-form]',
+      '[data-attribution-page]',
+      '[data-attribution-header]',
+      '[data-attribution-controls]',
+      '[data-attribution-range-group]',
+      '[data-attribution-tabs]',
+      '[data-attribution-tab-list]',
+      '[data-attribution-health]',
+      '[data-health-grid]',
+      '[data-health-item]',
+      '[data-readiness-status]',
+      '[data-readiness-section]',
+      '[data-readiness-check-grid]',
+      '[data-readiness-check]',
+      '[data-readiness-settings]',
+      '[data-readiness-verifications]',
+    ])
+    const documentClientWidth = document.documentElement.clientWidth
+    const visualViewportWidth = window.visualViewport?.width ?? documentClientWidth
+    const visibleWidth = Math.min(documentClientWidth, visualViewportWidth)
+    const missing: Array<{ selector: string; expected: number; actual: number }> = []
+    const violations: Array<{
+      selector: string
+      index: number
+      left: number
+      right: number
+      width: number
+      visibleWidth: number
+      clientWidth: number
+      scrollWidth: number
+      overflow?: boolean
+    }> = []
+    for (const requirement of requirements) {
+      const elements = [...document.querySelectorAll<HTMLElement>(requirement.selector)]
+      const expected = requirement.minCount ?? 1
+      if (elements.length < expected) {
+        missing.push({ selector: requirement.selector, expected, actual: elements.length })
         continue
       }
-      const rect = element.getBoundingClientRect()
-      if (rect.left < -1 || rect.right > window.innerWidth + 1 || element.scrollWidth > element.clientWidth + 1) {
-        violations.push({
-          selector,
-          left: Math.round(rect.left),
-          right: Math.round(rect.right),
-          viewport: window.innerWidth,
-          clientWidth: element.clientWidth,
-          scrollWidth: element.scrollWidth,
-        })
+      for (const [index, element] of elements.entries()) {
+        const rect = element.getBoundingClientRect()
+        const overflow = containerSelectors.has(requirement.selector) && element.scrollWidth > element.clientWidth + 1
+        if (rect.left < 0 || rect.right > visibleWidth || overflow) {
+          violations.push({
+            selector: requirement.selector,
+            index,
+            left: Number(rect.left.toFixed(2)),
+            right: Number(rect.right.toFixed(2)),
+            width: Number(rect.width.toFixed(2)),
+            visibleWidth,
+            clientWidth: element.clientWidth,
+            scrollWidth: element.scrollWidth,
+            overflow,
+          })
+        }
       }
     }
-    return { missing, violations }
+    return {
+      missing,
+      violations,
+      diagnostics: {
+        innerWidth: window.innerWidth,
+        documentClientWidth,
+        visualViewportWidth,
+        visibleWidth,
+      },
+    }
   })
 
-  expect(result.missing).toEqual([])
-  expect(result.violations).toEqual([])
+  const screenshot = await page.screenshot({ fullPage: true })
+  const screenshotWidth = screenshot.readUInt32BE(16)
+  const screenshotHeight = screenshot.readUInt32BE(20)
+
+  expect(result.missing, JSON.stringify({ ...result.diagnostics, screenshotWidth, missing: result.missing }, null, 2)).toEqual([])
+  expect(result.violations, JSON.stringify({ ...result.diagnostics, screenshotWidth, violations: result.violations }, null, 2)).toEqual([])
+  expect({ ...result.diagnostics, screenshotWidth, screenshotHeight }).toEqual({
+    ...result.diagnostics,
+    screenshotWidth: result.diagnostics.documentClientWidth,
+    screenshotHeight: expect.any(Number),
+  })
 }
 
 async function submitAdminSettings(page: import('@playwright/test').Page) {
@@ -226,11 +326,7 @@ test.describe('核心页面 smoke', () => {
     await expect(preview.getByText('不发送来源页信息')).toBeVisible()
     await expect(preview.locator(`a[href="${longAdUrl}"]`)).toHaveCount(0)
 
-    const hasHorizontalOverflow = await page.evaluate(() => {
-      const doc = document.documentElement
-      return doc.scrollWidth > doc.clientWidth + 1
-    })
-    expect(hasHorizontalOverflow).toBe(false)
+    await expectAdminContainersWithinViewport(page)
   })
 
   test('后台更新站点 SEO 后首页立即读取新标题', async ({ page }) => {
@@ -302,7 +398,7 @@ test.describe('核心页面 smoke', () => {
     expect(hasHorizontalOverflow).toBe(false)
   })
 
-  test('后台归因中心可查看单日归因和投放链接', async ({ page }) => {
+  test('后台归因中心可查看单日归因和投放链接', async ({ page }, testInfo) => {
     await page.goto('/admin/attribution')
     await expect(page.locator('main h1', { hasText: '归因中心' })).toBeVisible()
 
@@ -316,6 +412,12 @@ test.describe('核心页面 smoke', () => {
     await expect(health.getByText('CAPI 配置：token 存在 · Test Event Code 存在 · Queue binding 存在')).toBeVisible()
     await expect(page.getByText('已同步', { exact: true })).toHaveCount(0)
     await expectAdminContainersWithinViewport(page)
+    if (process.env.TASK8_SCREENSHOT_DIR) {
+      await page.screenshot({
+        path: `${process.env.TASK8_SCREENSHOT_DIR}/attribution-${page.viewportSize()?.width ?? testInfo.project.name}.png`,
+        fullPage: true,
+      })
+    }
 
     await page.getByRole('button', { name: '单日' }).click()
     await page.getByLabel('选择归因日期').fill('2026-07-09')
@@ -324,12 +426,7 @@ test.describe('核心页面 smoke', () => {
     await expect(page).toHaveURL(/\/admin\/attribution\/links\?range=day&date=2026-07-09/)
     await expect(page.getByText('投放追踪链接')).toBeVisible()
     await expect(page.getByText('不是 Pixel 地址')).toBeVisible()
-
-    const hasHorizontalOverflow = await page.evaluate(() => {
-      const doc = document.documentElement
-      return doc.scrollWidth > doc.clientWidth + 1
-    })
-    expect(hasHorizontalOverflow).toBe(false)
+    await expectAdminContainersWithinViewport(page)
   })
 
   test('后台归因 Meta 控制面按生产检查保守启用并分渠道展示状态', async ({ page }) => {

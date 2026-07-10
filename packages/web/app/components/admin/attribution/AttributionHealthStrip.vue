@@ -70,14 +70,14 @@ function toneClass(tone: string) {
 </script>
 
 <template>
-  <section data-attribution-health aria-label="Meta 渠道健康" class="w-full min-w-0 max-w-full rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-    <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
-      <div v-for="item in items" :key="item.label" :class="['min-w-0 rounded-lg border px-3 py-2', toneClass(item.tone)]">
-        <p data-health-label class="text-xs font-medium opacity-75">{{ item.label }}</p>
-        <p class="mt-1 text-sm font-semibold tabular-nums">{{ item.value }}</p>
+  <section data-attribution-health aria-label="Meta 渠道健康" class="min-w-0 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+    <div data-health-grid class="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 sm:grid-cols-[repeat(2,minmax(0,1fr))] lg:grid-cols-[repeat(6,minmax(0,1fr))]">
+      <div v-for="item in items" :key="item.label" data-health-item :class="['min-w-0 max-w-full rounded-lg border px-3 py-2 [overflow-wrap:anywhere]', toneClass(item.tone)]">
+        <p data-health-label class="min-w-0 text-xs font-medium opacity-75">{{ item.label }}</p>
+        <p data-health-value class="mt-1 min-w-0 text-sm font-semibold tabular-nums">{{ item.value }}</p>
       </div>
     </div>
-    <p class="mt-3 break-words text-xs text-gray-500">最近 CAPI 成功：{{ formatAnalyticsDateTime(lastSentAt) }}</p>
-    <p v-if="presenceSummary" class="mt-1 break-words text-xs text-gray-500">{{ presenceSummary }}</p>
+    <p data-health-summary class="mt-3 min-w-0 whitespace-normal text-xs text-gray-500 [overflow-wrap:anywhere]">最近 CAPI 成功：{{ formatAnalyticsDateTime(lastSentAt) }}</p>
+    <p v-if="presenceSummary" data-health-summary class="mt-1 min-w-0 whitespace-normal text-xs text-gray-500 [overflow-wrap:anywhere]">{{ presenceSummary }}</p>
   </section>
 </template>

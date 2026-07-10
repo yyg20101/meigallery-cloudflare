@@ -332,9 +332,9 @@ function toDatetimeLocalValue(value: string) {
 </script>
 
 <template>
-  <div class="space-y-6">
-    <div class="flex flex-wrap items-start justify-between gap-4">
-      <div>
+  <div class="min-w-0 space-y-6">
+    <div class="flex min-w-0 flex-wrap items-start justify-between gap-4">
+      <div class="min-w-0 [overflow-wrap:anywhere]">
         <h1 class="text-xl font-bold text-gray-900">广告位管理</h1>
         <p class="mt-1 text-sm text-gray-500">配置首页大图广告轮播，支持多个广告位、排序、排期和安全跳转。</p>
       </div>
@@ -350,18 +350,18 @@ function toDatetimeLocalValue(value: string) {
       仅站长可管理广告位。
     </div>
 
-    <div v-else class="grid gap-6 xl:grid-cols-[minmax(21rem,0.86fr)_minmax(0,1.14fr)]">
-      <section class="space-y-4">
-        <div class="grid grid-cols-3 gap-3">
-          <div class="rounded-xl border border-gray-200 bg-white p-4">
+    <div v-else class="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[minmax(21rem,0.86fr)_minmax(0,1.14fr)]">
+      <section class="min-w-0 space-y-4">
+        <div class="grid min-w-0 grid-cols-[repeat(3,minmax(0,1fr))] gap-3">
+          <div class="min-w-0 rounded-xl border border-gray-200 bg-white p-4 [overflow-wrap:anywhere]">
             <p class="text-xs text-gray-500">广告总数</p>
             <p class="mt-1 text-2xl font-semibold text-gray-950">{{ ads.length }}</p>
           </div>
-          <div class="rounded-xl border border-gray-200 bg-white p-4">
+          <div class="min-w-0 rounded-xl border border-gray-200 bg-white p-4 [overflow-wrap:anywhere]">
             <p class="text-xs text-gray-500">启用中</p>
             <p class="mt-1 text-2xl font-semibold text-green-600">{{ activeAds.length }}</p>
           </div>
-          <div class="rounded-xl border border-gray-200 bg-white p-4">
+          <div class="min-w-0 rounded-xl border border-gray-200 bg-white p-4 [overflow-wrap:anywhere]">
             <p class="text-xs text-gray-500">轮播位</p>
             <p class="mt-1 text-2xl font-semibold text-gray-950">首页</p>
           </div>
@@ -410,10 +410,10 @@ function toDatetimeLocalValue(value: string) {
         </div>
       </section>
 
-      <section class="space-y-4">
-        <form class="rounded-xl border border-gray-200 bg-white p-5" @submit.prevent="saveAd">
-          <div class="mb-5 flex items-start justify-between gap-4">
-            <div>
+      <section class="min-w-0 space-y-4">
+        <form class="min-w-0 max-w-full rounded-xl border border-gray-200 bg-white p-5" @submit.prevent="saveAd">
+          <div class="mb-5 flex min-w-0 items-start justify-between gap-4">
+            <div class="min-w-0 [overflow-wrap:anywhere]">
               <h2 class="text-base font-semibold text-gray-950">{{ selectedAd ? '编辑广告位' : '新增广告位' }}</h2>
               <p class="mt-1 text-xs text-gray-500">标题、跳转链接为必填；图片可上传到 R2，也可填写安全 https 图片地址。</p>
             </div>
@@ -423,35 +423,35 @@ function toDatetimeLocalValue(value: string) {
             </label>
           </div>
 
-          <div class="grid gap-4 md:grid-cols-2">
-            <div>
+          <div class="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-[repeat(2,minmax(0,1fr))]">
+            <div class="min-w-0">
               <label class="mb-1 block text-sm font-medium text-gray-700">广告眉标</label>
-              <input v-model="form.eyebrow" maxlength="16" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="本周推荐" />
+              <input v-model="form.eyebrow" maxlength="16" class="w-full min-w-0 max-w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="本周推荐" />
             </div>
-            <div>
+            <div class="min-w-0">
               <label class="mb-1 block text-sm font-medium text-gray-700">赞助/来源说明</label>
-              <input v-model="form.sponsor" maxlength="40" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="运营推荐" />
+              <input v-model="form.sponsor" maxlength="40" class="w-full min-w-0 max-w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="运营推荐" />
             </div>
           </div>
 
           <div class="mt-4">
             <label class="mb-1 block text-sm font-medium text-gray-700">广告标题 <span class="text-red-500">*</span></label>
-            <input v-model="form.title" required maxlength="64" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="会员季精选内容" />
+            <input v-model="form.title" required maxlength="64" class="w-full min-w-0 max-w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="会员季精选内容" />
           </div>
 
           <div class="mt-4">
             <label class="mb-1 block text-sm font-medium text-gray-700">广告摘要</label>
-            <textarea v-model="form.summary" rows="3" maxlength="180" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="探索本周精选图库、真实案例和会员可访问内容。" />
+            <textarea v-model="form.summary" rows="3" maxlength="180" class="w-full min-w-0 max-w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="探索本周精选图库、真实案例和会员可访问内容。" />
           </div>
 
-          <div class="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_10rem]">
-            <div>
+          <div class="mt-4 grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-[minmax(0,1fr)_10rem]">
+            <div class="min-w-0">
               <label class="mb-1 block text-sm font-medium text-gray-700">跳转链接 <span class="text-red-500">*</span></label>
-              <input v-model="form.targetUrl" required class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="/discover?sort=hot" />
+              <input v-model="form.targetUrl" required class="w-full min-w-0 max-w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="/discover?sort=hot" />
             </div>
-            <div>
+            <div class="min-w-0">
               <label class="mb-1 block text-sm font-medium text-gray-700">按钮文案</label>
-              <input v-model="form.ctaLabel" maxlength="16" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="查看详情" />
+              <input v-model="form.ctaLabel" maxlength="16" class="w-full min-w-0 max-w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="查看详情" />
             </div>
           </div>
 
@@ -521,18 +521,18 @@ function toDatetimeLocalValue(value: string) {
 
           <div class="mt-4">
             <label class="mb-1 block text-sm font-medium text-gray-700">大图 URL（备用）</label>
-            <input v-model="form.imageUrl" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="/api/media/public/home-ads/... 或 https://example.com/ad.webp" />
+            <input v-model="form.imageUrl" class="w-full min-w-0 max-w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="/api/media/public/home-ads/... 或 https://example.com/ad.webp" />
             <p class="mt-1 text-xs text-gray-400">选择本地图片时预览优先显示待上传图片；清除选择后显示该 URL。外链仅允许安全 https 公开图片地址。</p>
           </div>
 
-          <div class="mt-4 grid gap-4 md:grid-cols-2">
-            <div>
+          <div class="mt-4 grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-[repeat(2,minmax(0,1fr))]">
+            <div class="min-w-0">
               <label class="mb-1 block text-sm font-medium text-gray-700">开始时间</label>
-              <input v-model="form.startsAt" type="datetime-local" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <input v-model="form.startsAt" type="datetime-local" class="w-full min-w-0 max-w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
             </div>
-            <div>
+            <div class="min-w-0">
               <label class="mb-1 block text-sm font-medium text-gray-700">结束时间</label>
-              <input v-model="form.endsAt" type="datetime-local" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <input v-model="form.endsAt" type="datetime-local" class="w-full min-w-0 max-w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
             </div>
           </div>
 
@@ -546,7 +546,7 @@ function toDatetimeLocalValue(value: string) {
           </div>
         </form>
 
-        <div class="rounded-xl border border-gray-200 bg-white p-5">
+        <div class="min-w-0 max-w-full rounded-xl border border-gray-200 bg-white p-5">
           <div class="mb-4">
             <h2 class="text-base font-semibold text-gray-950">首页预览</h2>
             <p class="mt-1 text-xs text-gray-500">预览复用首页广告组件；按钮不可跳转。</p>
