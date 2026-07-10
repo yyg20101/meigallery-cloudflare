@@ -8,13 +8,14 @@ type DeliveryStatus = ConversionDeliveryStatus
 function createQueueDb(initialStatus: DeliveryStatus = 'pending', options: {
   beforeFirstCasStatus?: DeliveryStatus
   casFailures?: number
+  eventName?: string
 } = {}) {
   const delivery = {
     id: 'cdlv_1',
     conversion_action_id: 'conv_1',
     channel: 'meta_capi',
     external_event_id: 'event_1',
-    event_name: 'Contact',
+    event_name: options.eventName ?? 'Contact',
     status: initialStatus,
     skip_reason: initialStatus === 'skipped'
       ? 'missing_secret'
@@ -138,9 +139,11 @@ function createRecoveryDb(options: {
   rejectClaim?: boolean
   rejectClaimWithRowsWritten?: boolean
   failQueueDiagnostic?: boolean
+  eventName?: string
 } = {}) {
   const delivery = {
     id: 'cdlv_recovery',
+    event_name: options.eventName ?? 'Contact',
     status: 'pending',
     queue_enqueued_at: null as string | null,
     queue_attempt_count: 0,
@@ -161,7 +164,11 @@ function createRecoveryDb(options: {
         },
         async all<T>() {
           calls.push(call)
-          const rows = delivery.status === 'pending' && !delivery.queue_enqueued_at ? [{ id: delivery.id }] : []
+          const hasActiveFilter = sql.includes("event_name IN ('Contact', 'CompleteRegistration')")
+          const eventAllowed = !hasActiveFilter || ['Contact', 'CompleteRegistration'].includes(delivery.event_name)
+          const rows = delivery.status === 'pending' && !delivery.queue_enqueued_at && eventAllowed
+            ? [{ id: delivery.id }]
+            : []
           return { results: rows as T[] }
         },
         async run() {
@@ -228,6 +235,34 @@ afterEach(() => {
 })
 
 describe('Meta CAPI Queue', () => {
+  it.each(['Lead', 'StartTrial'])('直接历史 %s Queue message 被安全终止且不请求 Meta', async eventName => {
+    const db = createQueueDb('pending', { eventName })
+    const queueMessage = message()
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+
+    await handleMetaCapiBatch(batch('meigallery-meta-capi', queueMessage), env(db))
+
+    expect(queueMessage.ack).toHaveBeenCalledOnce()
+    expect(queueMessage.retry).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(db.delivery).toMatchObject({ status: 'skipped', skip_reason: 'unsupported_event' })
+  })
+
+  it.each(['Lead', 'StartTrial'])('scheduled recovery 不扫描历史 %s delivery', async eventName => {
+    const db = createRecoveryDb({ eventName })
+    const send = vi.fn()
+
+    const result = await recoverPendingMetaCapiDeliveries({
+      DB: db as unknown as D1Database,
+      META_CAPI_QUEUE: { send } as unknown as Queue<MetaCapiQueueMessage>,
+    })
+
+    expect(result).toEqual({ scanned: 0, enqueued: 0, failed: 0 })
+    expect(send).not.toHaveBeenCalled()
+    const scan = db.calls.find(call => call.sql.includes('SELECT id'))
+    expect(scan?.sql).toContain("event_name IN ('Contact', 'CompleteRegistration')")
+  })
+
   it('scheduled 恢复提交后 send 前终止的 pending delivery，且不持久化或重放匹配数据', async () => {
     const db = createRecoveryDb()
     const sent: MetaCapiQueueMessage[] = []

@@ -37,6 +37,7 @@ export async function recoverPendingMetaCapiDeliveries(
     FROM analytics_conversion_deliveries
     WHERE channel = 'meta_capi'
       AND status = 'pending'
+      AND event_name IN ('Contact', 'CompleteRegistration')
       AND queue_enqueued_at IS NULL
       AND updated_at <= datetime('now', '-${META_RECOVERY_STALE_MINUTES} minutes')
     ORDER BY updated_at ASC, id ASC

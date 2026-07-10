@@ -16,6 +16,29 @@ import {
 } from '@meigallery/shared/constants'
 
 describe('conversion utils', () => {
+  it('外部投递事件 ID 输入只接受活动动作和活动 Meta 事件', () => {
+    type ExternalEventInput = Parameters<typeof buildExternalEventId>[0]
+    expectTypeOf<ExternalEventInput['actionType']>().toEqualTypeOf<ActiveConversionActionType>()
+    expectTypeOf<ExternalEventInput['metaEventName']>().toEqualTypeOf<ActiveMetaEventName>()
+
+    expect(buildExternalEventId({
+      actionType: 'complete_registration',
+      metaEventName: 'CompleteRegistration',
+      userId: 42,
+      sessionId: 'session_a',
+      visitorId: 'visitor_a',
+      occurredDate: '2026-07-10',
+    })).toBe('meta:CompleteRegistration:complete_registration:user:42')
+
+    expect(() => buildExternalEventId({
+      actionType: 'lead',
+      metaEventName: 'Lead',
+      sessionId: 'session_a',
+      visitorId: 'visitor_a',
+      occurredDate: '2026-07-10',
+    } as never)).toThrow('外部投递只允许活动转化事件')
+  })
+
   it('共享契约生成稳定事件 ID 并保守归一化 Meta 模式', () => {
     const input = {
       actionType: 'contact' as const,

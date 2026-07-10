@@ -258,7 +258,7 @@ export async function runReleaseVerification(options = {}) {
         durationMs: Date.now() - liveStartedMs,
         command: '读取 reports/meta-live-verification/latest.json',
         exitCode: 0,
-        summary: `同 commit 三事件 live evidence 通过：${metaLiveVerification.events.join('、')}`,
+        summary: `同 commit 两事件 live evidence 通过：${metaLiveVerification.events.join('、')}`,
       })
     } catch (error) {
       steps.push({

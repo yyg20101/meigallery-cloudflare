@@ -1,7 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 import type { MetaCapiQueueMessage } from '@meigallery/shared'
 import type { Bindings } from '../index'
-import { recordContact, recordRegistration } from './conversions'
+import {
+  recordContact,
+  recordRegistration,
+  type RecordContactInput,
+  type RecordRegistrationInput,
+} from './conversions'
 
 type Call = { sql: string; params: unknown[] }
 type InsertedConversion = { id: string; actionType: string; dedupeKey: string; sessionId: string }
@@ -156,6 +161,25 @@ function grantedContactInput() {
 }
 
 describe('conversion ledger service', () => {
+  it('联系与注册入口使用独立输入契约', () => {
+    expectTypeOf<RecordContactInput['methodType']>().toEqualTypeOf<string>()
+    expectTypeOf<RecordContactInput['actionTarget']>().toEqualTypeOf<string>()
+    expectTypeOf<RecordRegistrationInput['userId']>().toEqualTypeOf<number>()
+  })
+
+  it.each([
+    ['methodType', { methodType: '   ' }],
+    ['actionTarget', { actionTarget: '\t\n' }],
+  ] as const)('服务层拒绝空白 %s', async (_field, override) => {
+    const db = createConversionDb()
+
+    await expect(recordContact(envFor(db), {
+      ...grantedContactInput(),
+      ...override,
+    })).rejects.toThrow('联系转化必须包含非空 methodType 和 actionTarget')
+    expect(db.calls).toEqual([])
+  })
+
   it('首次授权联系只返回 Contact Pixel 指令', async () => {
     const db = createConversionDb({
       facebookPixelEnabled: true,

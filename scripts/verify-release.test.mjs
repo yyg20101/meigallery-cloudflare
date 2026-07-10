@@ -409,7 +409,7 @@ describe('发布验证 CLI', () => {
         commit: RELEASE_COMMIT,
         verifiedAt: '2026-07-10T00:00:00.000Z',
         expiresAt: '2026-07-11T00:00:00.000Z',
-        events: ['Contact', 'Lead', 'CompleteRegistration'].map(eventName => ({ eventName })),
+        events: ['Contact', 'CompleteRegistration'].map(eventName => ({ eventName })),
       }),
       assertMetaLiveEvidenceCanGateProduction: () => {},
       recordReleaseVerificationSummary: async ({ environment, verificationType }) => {
@@ -448,6 +448,9 @@ describe('发布验证 CLI', () => {
     assert.deepEqual(report.releaseSubModes[0].passedStepNames, ['scripts-test'])
     assert.match(report.steps[0].summary, /scripts-test/)
     assert.equal(report.metaLiveVerification.commit, RELEASE_COMMIT)
+    assert.deepEqual(report.metaLiveVerification.events, ['Contact', 'CompleteRegistration'])
+    assert.match(report.steps.find(step => step.name === 'meta-live-evidence')?.summary || '', /同 commit 两事件/)
+    assert.doesNotMatch(report.steps.find(step => step.name === 'meta-live-evidence')?.summary || '', /三事件/)
     assert.equal(report.metaResources.dev.status, 'passed')
     assert.equal(report.metaResources.production.status, 'passed')
   })
@@ -485,7 +488,7 @@ describe('发布验证 CLI', () => {
         commit: RELEASE_COMMIT,
         verifiedAt: '2026-07-10T00:00:00.000Z',
         expiresAt: '2026-07-11T00:00:00.000Z',
-        events: ['Contact', 'Lead', 'CompleteRegistration'].map(eventName => ({ eventName })),
+        events: ['Contact', 'CompleteRegistration'].map(eventName => ({ eventName })),
       }),
       assertMetaLiveEvidenceCanGateProduction: () => {},
       recordReleaseVerificationSummary: async () => ({ status: 'passed' }),

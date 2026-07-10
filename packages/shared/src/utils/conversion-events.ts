@@ -1,4 +1,10 @@
-import type { ConversionActionType, ConversionMetaEventName, MetaTrackingMode } from '../types'
+import type {
+  ActiveConversionActionType,
+  ActiveMetaEventName,
+  ConversionActionType,
+  MetaTrackingMode,
+} from '../types'
+import { ACTIVE_CONVERSION_ACTIONS, ACTIVE_META_EVENTS } from '../constants'
 
 export interface ConversionDedupeInput {
   actionType: ConversionActionType
@@ -8,6 +14,10 @@ export interface ConversionDedupeInput {
   userId?: number
   methodType?: string
   actionTarget?: string
+}
+
+export type ActiveConversionDedupeInput = Omit<ConversionDedupeInput, 'actionType'> & {
+  actionType: ActiveConversionActionType
 }
 
 export function buildConversionDedupeKey(input: ConversionDedupeInput) {
@@ -23,7 +33,13 @@ export function buildConversionDedupeKey(input: ConversionDedupeInput) {
   return `historical:${input.actionType}:${input.visitorId}:${input.sessionId}:${input.occurredDate}`
 }
 
-export function buildExternalEventId(input: ConversionDedupeInput & { metaEventName: ConversionMetaEventName }) {
+export function buildExternalEventId(input: ActiveConversionDedupeInput & { metaEventName: ActiveMetaEventName }) {
+  if (
+    !ACTIVE_CONVERSION_ACTIONS.includes(input.actionType)
+    || !ACTIVE_META_EVENTS.includes(input.metaEventName)
+  ) {
+    throw new Error('外部投递只允许活动转化事件')
+  }
   return `meta:${input.metaEventName}:${buildConversionDedupeKey(input)}`
 }
 

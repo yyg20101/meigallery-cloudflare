@@ -43,7 +43,16 @@ export interface RecordConversionResult {
   pixelEvents: MetaPixelInstruction[]
 }
 
-export type RecordActiveConversionInput = Omit<RecordConversionInput, 'actionType'>
+type RecordActiveConversionInput = Omit<RecordConversionInput, 'actionType'>
+
+export type RecordContactInput = Omit<RecordActiveConversionInput, 'methodType' | 'actionTarget'> & {
+  methodType: string
+  actionTarget: string
+}
+
+export type RecordRegistrationInput = Omit<RecordActiveConversionInput, 'userId'> & {
+  userId: number
+}
 
 export interface RecordConversionContext {
   getMetaCapiUserData: () => MetaCapiUserData
@@ -69,17 +78,22 @@ type PlannedDelivery = {
 
 type MetaDeliverySettings = Awaited<ReturnType<typeof readMetaDeliverySettings>>
 
-export function recordContact(
+export async function recordContact(
   env: Pick<Bindings, 'DB' | 'APP_ENV' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>,
-  input: RecordActiveConversionInput,
+  input: RecordContactInput,
   context?: RecordConversionContext,
 ) {
-  return recordActiveConversion(env, { ...input, actionType: 'contact' }, context)
+  const methodType = input.methodType.trim()
+  const actionTarget = input.actionTarget.trim()
+  if (!methodType || !actionTarget) {
+    throw new Error('联系转化必须包含非空 methodType 和 actionTarget')
+  }
+  return recordActiveConversion(env, { ...input, methodType, actionTarget, actionType: 'contact' }, context)
 }
 
-export function recordRegistration(
+export async function recordRegistration(
   env: Pick<Bindings, 'DB' | 'APP_ENV' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>,
-  input: RecordActiveConversionInput,
+  input: RecordRegistrationInput,
   context?: RecordConversionContext,
 ) {
   return recordActiveConversion(env, { ...input, actionType: 'complete_registration' }, context)

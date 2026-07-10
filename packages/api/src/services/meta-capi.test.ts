@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
+import type { ActiveMetaEventName } from '@meigallery/shared'
 import type { Bindings } from '../index'
 import {
   MetaCapiDeliveryError,
@@ -6,6 +7,7 @@ import {
   classifyMetaCapiError,
   createMetaCapiTestDelivery,
   sendMetaCapiEvent,
+  type MetaCapiPayloadInput,
 } from './meta-capi'
 
 type DeliveryStatus = 'pending' | 'sent' | 'failed' | 'skipped' | 'duplicate_suppressed'
@@ -223,6 +225,10 @@ afterEach(() => {
 })
 
 describe('meta-capi', () => {
+  it('CAPI payload 事件名使用活动 Meta 事件类型', () => {
+    expectTypeOf<MetaCapiPayloadInput['eventName']>().toEqualTypeOf<ActiveMetaEventName>()
+  })
+
   it('payload 只包含白名单字段', () => {
     const payload = buildMetaCapiPayload({
       eventName: 'Contact',
@@ -239,7 +245,7 @@ describe('meta-capi', () => {
 
   it('custom_data 只保留白名单内的有效字符串、有限数字和布尔值', () => {
     const payload = buildMetaCapiPayload({
-      eventName: 'Lead',
+      eventName: 'CompleteRegistration',
       eventId: 'event_typed_custom_data',
       eventTime: 1783600800,
       eventSourceUrl: 'https://616618.xyz/',
@@ -267,7 +273,7 @@ describe('meta-capi', () => {
     expect(classifyMetaCapiError(429)).toBe('retryable')
   })
 
-  it.each(['Contact', 'Lead', 'CompleteRegistration'])('test 模式 %s 强制附带环境 Test Event Code', async eventName => {
+  it.each(['Contact', 'CompleteRegistration'] as const)('test 模式 %s 强制附带环境 Test Event Code', async eventName => {
     const db = createMetaCapiDb({
       pixelId: '1234567890',
       delivery: { event_name: eventName, tracking_mode: 'test' },
@@ -282,6 +288,20 @@ describe('meta-capi', () => {
     const payload = JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body))
     expect(payload.data[0].event_name).toBe(eventName)
     expect(payload.test_event_code).toBe('test-code-from-env')
+  })
+
+  it.each(['Lead', 'StartTrial'])('历史 %s delivery 在 fetch 前进入 unsupported_event 安全终态', async eventName => {
+    const db = createMetaCapiDb({
+      pixelId: '1234567890',
+      delivery: { event_name: eventName },
+    })
+    const fetchFn = vi.fn()
+
+    const result = await sendMetaCapiEvent(envFor(db), 'cdlv_1', { fetchFn })
+
+    expect(result).toEqual({ deliveryId: 'cdlv_1', status: 'skipped', reason: 'unsupported_event' })
+    expect(db.delivery).toMatchObject({ status: 'skipped', skip_reason: 'unsupported_event' })
+    expect(fetchFn).not.toHaveBeenCalled()
   })
 
   it('test 模式缺少 Test Event Code 时 fail closed 且绝不请求 Graph', async () => {

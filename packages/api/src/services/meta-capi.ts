@@ -1,13 +1,13 @@
-import type { ConversionDeliveryStatus, MetaCapiUserData, MetaTrackingMode } from '@meigallery/shared'
-import { ATTRIBUTION_LIMITS } from '@meigallery/shared/constants'
+import type { ActiveMetaEventName, ConversionDeliveryStatus, MetaCapiUserData, MetaTrackingMode } from '@meigallery/shared'
+import { ACTIVE_META_EVENTS, ATTRIBUTION_LIMITS } from '@meigallery/shared/constants'
 import type { Bindings } from '../index'
 import { normalizeMetaCapiUserData } from '../utils/meta-browser-identifiers'
 import { parseStoredSettingValue } from '../utils/stored-setting-value'
 
 type MetaCapiEnv = Pick<Bindings, 'DB' | 'SITE_URL' | 'APP_ENV' | 'META_CAPI_ACCESS_TOKEN' | 'META_CAPI_TEST_EVENT_CODE'>
 
-type MetaCapiPayloadInput = {
-  eventName: string
+export type MetaCapiPayloadInput = {
+  eventName: ActiveMetaEventName
   eventId: string
   eventTime: number
   eventSourceUrl: string
@@ -76,6 +76,7 @@ const DELIVERY_TRANSITION_MAX_ATTEMPTS = 3
 const META_CAPI_ERROR_MESSAGE = 'Meta CAPI 请求失败'
 const META_CAPI_TIMEOUT_MESSAGE = 'Meta CAPI 请求超时'
 const META_CAPI_STATE_ERROR_CODE = 'meta_delivery_state_conflict'
+const ACTIVE_META_EVENT_NAMES = new Set<string>(ACTIVE_META_EVENTS)
 const CUSTOM_DATA_ALLOWLIST = new Set([
   'method_type',
   'action_type',
@@ -133,6 +134,15 @@ export async function sendMetaCapiEvent(
   }
   if (delivery.status !== 'pending' && delivery.status !== 'failed') {
     return { deliveryId, status: delivery.status, reason: delivery.skip_reason || 'not_pending' }
+  }
+  if (!isActiveMetaEventName(delivery.event_name)) {
+    const persisted = await confirmDeliveryTransition(env.DB, delivery, {
+      status: 'skipped',
+      skipReason: 'unsupported_event',
+    })
+    const competingSent = await recordCompetingSent(env.DB, persisted, deliveryId)
+    if (competingSent) return competingSent
+    return { deliveryId, status: 'skipped', reason: 'unsupported_event' }
   }
 
   const trackingMode = delivery.tracking_mode
@@ -248,6 +258,10 @@ export async function sendMetaCapiEvent(
     throw new MetaCapiDeliveryError(errorCode, META_CAPI_ERROR_MESSAGE, true)
   }
   return compactResult({ deliveryId, status: 'failed', reason: String(response.status), traceId })
+}
+
+function isActiveMetaEventName(value: string): value is ActiveMetaEventName {
+  return ACTIVE_META_EVENT_NAMES.has(value)
 }
 
 export async function createMetaCapiTestDelivery(
