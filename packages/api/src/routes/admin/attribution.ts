@@ -1,10 +1,16 @@
 import { Hono, type Context } from 'hono'
+import { normalizeMetaTrackingMode } from '@meigallery/shared/utils'
 import type { Bindings, Variables } from '../../index'
-import { createMetaCapiTestDelivery, sendMetaCapiEvent } from '../../services/meta-capi'
+import {
+  createMetaCapiTestDelivery,
+  MetaCapiDeliveryError,
+  sendMetaCapiEvent,
+} from '../../services/meta-capi'
 import { errorJson } from '../../utils/api-error'
 import { mergeD1Usage, readD1UsageMeta, type D1Usage } from '../../utils/analytics-cost'
 import { parseAnalyticsRange, type AnalyticsDateRange } from '../../utils/analytics-time'
 import { generateId } from '../../utils/db'
+import { buildMetaCapiUserData } from '../../utils/meta-browser-identifiers'
 import { writeAuditLog } from '../../utils/permission'
 
 export const adminAttributionRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
@@ -12,6 +18,13 @@ export const adminAttributionRoutes = new Hono<{ Bindings: Bindings; Variables: 
 type AdminAttributionContext = Context<{ Bindings: Bindings; Variables: Variables }>
 type QueryResult<T> = { rows: T[]; usage: D1Usage }
 type Row = Record<string, unknown>
+type ReadinessCheck = {
+  key: string
+  label: string
+  level: 'blocker' | 'warning'
+  ok: boolean
+  detail: string
+}
 
 const EMPTY_USAGE: D1Usage = { rowsRead: 0, rowsWritten: 0, durationMs: 0 }
 
@@ -243,13 +256,16 @@ adminAttributionRoutes.get('/meta', async (c) => {
   const range = parseRangeOrError(c)
   if (range instanceof Response) return range
 
-  const [totals, rows, lastSentAt, settings] = await Promise.all([
+  const [totals, rows, lastSentAt, settings, retryExhausted, matchQuality] = await Promise.all([
     queryFirst(c.env.DB, `
       SELECT
-        COALESCE(SUM(CASE WHEN status = 'sent' THEN delivery_count ELSE 0 END), 0) AS sent_count,
-        COALESCE(SUM(CASE WHEN status = 'failed' THEN delivery_count ELSE 0 END), 0) AS failed_count,
-        COALESCE(SUM(CASE WHEN status = 'skipped' THEN delivery_count ELSE 0 END), 0) AS skipped_count,
-        COALESCE(SUM(CASE WHEN status = 'duplicate_suppressed' THEN delivery_count ELSE 0 END), 0) AS duplicate_suppressed_count
+        COALESCE(SUM(CASE WHEN channel = 'meta_pixel' AND status = 'attempted' THEN delivery_count ELSE 0 END), 0) AS pixel_attempted_count,
+        COALESCE(SUM(CASE WHEN channel = 'meta_pixel' AND status = 'pending' THEN delivery_count ELSE 0 END), 0) AS pixel_pending_count,
+        COALESCE(SUM(CASE WHEN channel = 'meta_pixel' AND status = 'skipped' THEN delivery_count ELSE 0 END), 0) AS pixel_skipped_count,
+        COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'sent' THEN delivery_count ELSE 0 END), 0) AS capi_sent_count,
+        COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'failed' THEN delivery_count ELSE 0 END), 0) AS capi_failed_count,
+        COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'skipped' THEN delivery_count ELSE 0 END), 0) AS capi_skipped_count,
+        COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'duplicate_suppressed' THEN delivery_count ELSE 0 END), 0) AS duplicate_suppressed_count
       FROM analytics_conversion_delivery_daily
       WHERE date BETWEEN ? AND ?
     `, [range.from, range.to]),
@@ -263,23 +279,85 @@ adminAttributionRoutes.get('/meta', async (c) => {
     queryFirst(c.env.DB, `
       SELECT MAX(sent_at) AS last_sent_at
       FROM analytics_conversion_deliveries
-      WHERE sent_at IS NOT NULL
+      WHERE channel = 'meta_capi'
+        AND status = 'sent'
+        AND sent_at IS NOT NULL
     `, []),
     queryAll(c.env.DB, `
       SELECT key, value
       FROM site_settings
-      WHERE key IN ('facebook_pixel_enabled', 'facebook_pixel_id', 'meta_capi_enabled', 'meta_capi_test_event_enabled', 'meta_tracking_mode')
+      WHERE key IN ('facebook_pixel_enabled', 'facebook_pixel_id', 'meta_capi_enabled', 'meta_tracking_mode')
+    `, []),
+    queryFirst(c.env.DB, `
+      SELECT COUNT(*) AS retry_exhausted_count
+      FROM analytics_conversion_deliveries d
+      JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
+      WHERE d.channel = 'meta_capi'
+        AND d.status = 'failed'
+        AND d.error_code = 'retry_exhausted'
+        AND a.date BETWEEN ? AND ?
+    `, [range.from, range.to]),
+    queryFirst(c.env.DB, `
+      SELECT
+        COALESCE(SUM(CASE
+          WHEN d.status IN ('pending', 'sent', 'failed', 'duplicate_suppressed') THEN 1 ELSE 0
+        END), 0) AS fbp_sample_count,
+        COALESCE(SUM(CASE
+          WHEN d.status IN ('pending', 'sent', 'failed', 'duplicate_suppressed') AND d.has_fbp = 1 THEN 1 ELSE 0
+        END), 0) AS fbp_matched_count,
+        COALESCE(SUM(CASE
+          WHEN d.status IN ('pending', 'sent', 'failed', 'duplicate_suppressed')
+            AND a.source_channel = 'ad'
+            AND lower(a.utm_source) IN ('facebook', 'fb', 'meta', 'instagram')
+          THEN 1 ELSE 0
+        END), 0) AS fbc_sample_count,
+        COALESCE(SUM(CASE
+          WHEN d.status IN ('pending', 'sent', 'failed', 'duplicate_suppressed')
+            AND a.source_channel = 'ad'
+            AND lower(a.utm_source) IN ('facebook', 'fb', 'meta', 'instagram')
+            AND d.has_fbc = 1
+          THEN 1 ELSE 0
+        END), 0) AS fbc_matched_count
+      FROM analytics_conversion_deliveries d
+      JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
+      WHERE d.channel = 'meta_capi'
+        AND a.date >= date('now', '-6 days')
     `, []),
   ])
 
+  const totalRow = totals.rows[0] ?? {}
+  const retryRow = retryExhausted.rows[0] ?? {}
+  const matchRow = matchQuality.rows[0] ?? {}
+  const fbpSampleCount = numberValue(matchRow.fbp_sample_count)
+  const fbcSampleCount = numberValue(matchRow.fbc_sample_count)
+  const fbpMatchedCount = numberValue(matchRow.fbp_matched_count)
+  const fbcMatchedCount = numberValue(matchRow.fbc_matched_count)
+
   return c.json({
     range,
-    usage: mergeQueryUsage(totals, rows, lastSentAt, settings),
+    usage: mergeQueryUsage(totals, rows, lastSentAt, settings, retryExhausted, matchQuality),
     data: {
-      totals: totals.rows[0] ?? {},
+      totals: {
+        pixel_attempted_count: numberValue(totalRow.pixel_attempted_count),
+        pixel_pending_count: numberValue(totalRow.pixel_pending_count),
+        pixel_skipped_count: numberValue(totalRow.pixel_skipped_count),
+        capi_sent_count: numberValue(totalRow.capi_sent_count),
+        capi_failed_count: numberValue(totalRow.capi_failed_count),
+        capi_skipped_count: numberValue(totalRow.capi_skipped_count),
+        retry_exhausted_count: numberValue(retryRow.retry_exhausted_count),
+        duplicate_suppressed_count: numberValue(totalRow.duplicate_suppressed_count),
+      },
       deliveries: rows.rows,
       lastSentAt: String((lastSentAt.rows[0] ?? {}).last_sent_at ?? ''),
       secretPresent: Boolean(c.env.META_CAPI_ACCESS_TOKEN),
+      testEventCodePresent: Boolean(c.env.META_CAPI_TEST_EVENT_CODE),
+      queueBindingPresent: Boolean(c.env.META_CAPI_QUEUE),
+      matchQuality: {
+        fbpCoverage: coverageRate(fbpMatchedCount, fbpSampleCount),
+        fbpSampleCount,
+        fbcCoverage: coverageRate(fbcMatchedCount, fbcSampleCount),
+        fbcSampleCount,
+      },
       settings: serializeSettings(settings.rows),
     },
   })
@@ -334,38 +412,216 @@ adminAttributionRoutes.get('/readiness', async (c) => {
   const range = parseRangeOrError(c)
   if (range instanceof Response) return range
 
-  const [settings, conversions, metaFailures] = await Promise.all([
+  const [schema, settings] = await Promise.all([
+    queryFirst(c.env.DB, `
+      SELECT COUNT(*) AS table_count
+      FROM sqlite_master
+      WHERE type = 'table'
+        AND name IN (
+          'analytics_conversion_actions',
+          'analytics_conversion_deliveries',
+          'analytics_conversion_delivery_daily',
+          'analytics_release_verifications'
+        )
+    `, []),
     queryAll(c.env.DB, `
       SELECT key, value
       FROM site_settings
       WHERE key IN ('analytics_enabled', 'facebook_pixel_enabled', 'facebook_pixel_id', 'meta_capi_enabled', 'meta_tracking_mode')
     `, []),
-    queryFirst(c.env.DB, `
+  ])
+  const schemaReady = numberValue((schema.rows[0] ?? {}).table_count) === 4
+  const releaseCommitValue = String(c.env.RELEASE_COMMIT || '').trim()
+  const releaseCommit = /^[0-9a-f]{40}$/i.test(releaseCommitValue) ? releaseCommitValue : ''
+  const releaseEnvironment = c.env.APP_ENV === 'production' ? 'production' : 'dev'
+
+  const [conversions, retryExhausted, externalIdMismatch, pendingTooLong, permanentFailures, matchQuality, channelTotals, releaseVerifications, manualConfirmation] = schemaReady
+    ? await Promise.all([
+      queryFirst(c.env.DB, `
       SELECT COALESCE(SUM(action_count), 0) AS action_count
       FROM analytics_conversion_daily
       WHERE date BETWEEN ? AND ?
     `, [range.from, range.to]),
-    queryFirst(c.env.DB, `
-      SELECT COALESCE(SUM(CASE WHEN status = 'failed' THEN delivery_count ELSE 0 END), 0) AS failed_count
-      FROM analytics_conversion_delivery_daily
-      WHERE date BETWEEN ? AND ?
-    `, [range.from, range.to]),
-  ])
+      queryFirst(c.env.DB, `
+        SELECT COUNT(*) AS retry_exhausted_count
+        FROM analytics_conversion_deliveries
+        WHERE channel = 'meta_capi'
+          AND status = 'failed'
+          AND error_code = 'retry_exhausted'
+          AND last_attempt_at >= datetime('now', '-24 hours')
+      `, []),
+      queryFirst(c.env.DB, `
+        SELECT COUNT(*) AS external_event_id_mismatch_count
+        FROM (
+          SELECT
+            conversion_action_id,
+            event_name,
+            MAX(CASE WHEN channel = 'meta_pixel' THEN external_event_id END) AS pixel_external_event_id,
+            MAX(CASE WHEN channel = 'meta_capi' THEN external_event_id END) AS capi_external_event_id,
+            SUM(CASE WHEN channel = 'meta_pixel' THEN 1 ELSE 0 END) AS pixel_count,
+            SUM(CASE WHEN channel = 'meta_capi' THEN 1 ELSE 0 END) AS capi_count
+          FROM analytics_conversion_deliveries
+          WHERE created_at >= datetime('now', '-7 days')
+          GROUP BY conversion_action_id, event_name
+          HAVING pixel_count > 0
+            AND capi_count > 0
+            AND pixel_external_event_id <> capi_external_event_id
+        ) mismatches
+      `, []),
+      queryFirst(c.env.DB, `
+        SELECT COUNT(*) AS pending_too_long_count
+        FROM analytics_conversion_deliveries
+        WHERE channel = 'meta_capi'
+          AND status = 'pending'
+          AND created_at < datetime('now', '-10 minutes')
+      `, []),
+      queryFirst(c.env.DB, `
+        SELECT COUNT(*) AS permanent_failure_count
+        FROM analytics_conversion_deliveries
+        WHERE channel = 'meta_capi'
+          AND status = 'failed'
+          AND error_code GLOB 'meta_http_4*'
+          AND error_code <> 'meta_http_429'
+          AND updated_at >= datetime('now', '-7 days')
+      `, []),
+      queryFirst(c.env.DB, `
+        SELECT
+          COALESCE(SUM(CASE
+            WHEN d.status IN ('pending', 'sent', 'failed', 'duplicate_suppressed') THEN 1 ELSE 0
+          END), 0) AS fbp_sample_count,
+          COALESCE(SUM(CASE
+            WHEN d.status IN ('pending', 'sent', 'failed', 'duplicate_suppressed') AND d.has_fbp = 1 THEN 1 ELSE 0
+          END), 0) AS fbp_matched_count,
+          COALESCE(SUM(CASE
+            WHEN d.status IN ('pending', 'sent', 'failed', 'duplicate_suppressed')
+              AND a.source_channel = 'ad'
+              AND lower(a.utm_source) IN ('facebook', 'fb', 'meta', 'instagram')
+            THEN 1 ELSE 0
+          END), 0) AS fbc_sample_count,
+          COALESCE(SUM(CASE
+            WHEN d.status IN ('pending', 'sent', 'failed', 'duplicate_suppressed')
+              AND a.source_channel = 'ad'
+              AND lower(a.utm_source) IN ('facebook', 'fb', 'meta', 'instagram')
+              AND d.has_fbc = 1
+            THEN 1 ELSE 0
+          END), 0) AS fbc_matched_count
+        FROM analytics_conversion_deliveries d
+        JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
+        WHERE d.channel = 'meta_capi'
+          AND a.date >= date('now', '-6 days')
+      `, []),
+      queryFirst(c.env.DB, `
+        SELECT
+          COALESCE(SUM(CASE WHEN channel = 'meta_pixel' AND status = 'attempted' THEN delivery_count ELSE 0 END), 0) AS pixel_attempted_count,
+          COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'sent' THEN delivery_count ELSE 0 END), 0) AS capi_sent_count
+        FROM analytics_conversion_delivery_daily
+        WHERE date >= date('now', '-6 days')
+      `, []),
+      releaseCommit
+        ? queryAll(c.env.DB, `
+          SELECT verification_type, verified_at, expires_at
+          FROM analytics_release_verifications
+          WHERE commit_sha = ?
+            AND environment = ?
+            AND verification_type IN ('meta_live', 'meta_resources')
+            AND status = 'passed'
+            AND expires_at > datetime('now')
+          GROUP BY verification_type
+          ORDER BY verified_at DESC
+        `, [releaseCommit, releaseEnvironment])
+        : emptyQueryResult(),
+      queryFirst(c.env.DB, `
+        SELECT MAX(verified_at) AS last_manual_confirmation_at
+        FROM analytics_release_verifications
+        WHERE verification_type = 'meta_live'
+          AND status = 'passed'
+      `, []),
+    ])
+    : [
+      emptyQueryResult(),
+      emptyQueryResult(),
+      emptyQueryResult(),
+      emptyQueryResult(),
+      emptyQueryResult(),
+      emptyQueryResult(),
+      emptyQueryResult(),
+      emptyQueryResult(),
+      emptyQueryResult(),
+    ]
+
   const settingMap = serializeSettings(settings.rows)
-  const checks = [
-    { key: 'analytics_enabled', label: '站内分析已开启', ok: settingMap.analytics_enabled === true },
-    { key: 'conversion_ledger', label: '转化账本有近期数据', ok: numberValue((conversions.rows[0] ?? {}).action_count) > 0 },
-    { key: 'meta_failures', label: 'Meta 投递无失败堆积', ok: numberValue((metaFailures.rows[0] ?? {}).failed_count) === 0 },
-    { key: 'pixel_id', label: 'Pixel ID 已配置或保持关闭态', ok: Boolean(settingMap.facebook_pixel_id) || settingMap.facebook_pixel_enabled !== true },
+  const mode = normalizeMetaTrackingMode(settingMap.meta_tracking_mode)
+  const modeRequiresMeta = mode === 'test' || mode === 'production'
+  const pixelEnabled = settingMap.facebook_pixel_enabled === true
+  const capiEnabled = settingMap.meta_capi_enabled === true
+  const pixelIdPresent = /^\d{5,30}$/.test(String(settingMap.facebook_pixel_id || '').trim())
+  const verificationMap = Object.fromEntries(releaseVerifications.rows.map(row => [String(row.verification_type || ''), row]))
+  const liveVerification = verificationMap.meta_live
+  const resourcesVerification = verificationMap.meta_resources
+  const retryExhaustedCount = numberValue((retryExhausted.rows[0] ?? {}).retry_exhausted_count)
+  const externalEventIdMismatchCount = numberValue((externalIdMismatch.rows[0] ?? {}).external_event_id_mismatch_count)
+  const pendingTooLongCount = numberValue((pendingTooLong.rows[0] ?? {}).pending_too_long_count)
+  const permanentFailureCount = numberValue((permanentFailures.rows[0] ?? {}).permanent_failure_count)
+  const matchRow = matchQuality.rows[0] ?? {}
+  const fbpSampleCount = numberValue(matchRow.fbp_sample_count)
+  const fbpCoverage = coverageRate(numberValue(matchRow.fbp_matched_count), fbpSampleCount)
+  const fbcSampleCount = numberValue(matchRow.fbc_sample_count)
+  const fbcCoverage = coverageRate(numberValue(matchRow.fbc_matched_count), fbcSampleCount)
+  const channelRow = channelTotals.rows[0] ?? {}
+  const pixelAttemptedCount = numberValue(channelRow.pixel_attempted_count)
+  const capiSentCount = numberValue(channelRow.capi_sent_count)
+  const capiDeliveryRatio = coverageRate(capiSentCount, pixelAttemptedCount)
+  const lastManualConfirmationAt = String((manualConfirmation.rows[0] ?? {}).last_manual_confirmation_at || '')
+  const manualConfirmationCurrent = isWithinDays(lastManualConfirmationAt, 30)
+  const pixelModeConsistent = mode === 'disabled'
+    ? !pixelEnabled && !capiEnabled
+    : pixelEnabled && pixelIdPresent
+
+  const checks: ReadinessCheck[] = [
+    blockerCheck('conversion_schema', '归因迁移表已应用', schemaReady, schemaReady ? '所需归因表均存在' : '归因迁移表不完整'),
+    blockerCheck('analytics_enabled', '站内分析已开启', settingMap.analytics_enabled === true, settingMap.analytics_enabled === true ? 'analytics_enabled 已开启' : 'analytics_enabled 未开启'),
+    blockerCheck('conversion_ledger', '转化账本有近期数据', schemaReady && numberValue((conversions.rows[0] ?? {}).action_count) > 0, schemaReady ? `当前范围记录 ${numberValue((conversions.rows[0] ?? {}).action_count)} 次转化` : '归因迁移表不可用'),
+    blockerCheck('pixel_mode_consistency', 'Pixel ID 与运行模式一致', pixelModeConsistent, pixelModeDetail(mode, pixelEnabled, capiEnabled, pixelIdPresent)),
+    blockerCheck('capi_secret', 'CAPI token 已配置', !modeRequiresMeta || Boolean(c.env.META_CAPI_ACCESS_TOKEN), presenceDetail(modeRequiresMeta, Boolean(c.env.META_CAPI_ACCESS_TOKEN))),
+    blockerCheck('test_event_code', 'Test Event Code 已配置', !modeRequiresMeta || Boolean(c.env.META_CAPI_TEST_EVENT_CODE), presenceDetail(modeRequiresMeta, Boolean(c.env.META_CAPI_TEST_EVENT_CODE))),
+    blockerCheck('queue_binding', 'CAPI Queue binding 已配置', !modeRequiresMeta || Boolean(c.env.META_CAPI_QUEUE), presenceDetail(modeRequiresMeta, Boolean(c.env.META_CAPI_QUEUE))),
+    blockerCheck('meta_live_verification', '当前发布已通过 Meta live 验证', Boolean(releaseCommit && liveVerification), verificationDetail(releaseCommit, liveVerification)),
+    blockerCheck('meta_resources_verification', '当前发布已通过 Meta 资源验证', Boolean(releaseCommit && resourcesVerification), verificationDetail(releaseCommit, resourcesVerification)),
+    blockerCheck('retry_exhausted', '最近 24 小时无重试耗尽', schemaReady && retryExhaustedCount === 0, schemaReady ? `发现 ${retryExhaustedCount} 条 retry_exhausted` : '归因迁移表不可用'),
+    blockerCheck('external_event_id_consistency', 'Pixel/CAPI 事件 ID 一致', schemaReady && externalEventIdMismatchCount === 0, schemaReady ? `发现 ${externalEventIdMismatchCount} 组事件 ID 不一致` : '归因迁移表不可用'),
+    warningCheck('pending_too_long', '无超过 10 分钟的 CAPI pending', schemaReady && pendingTooLongCount === 0, schemaReady ? `发现 ${pendingTooLongCount} 条超时 pending` : '归因迁移表不可用'),
+    warningCheck('permanent_failure', '近期无 Meta 永久 4xx', schemaReady && permanentFailureCount === 0, schemaReady ? `发现 ${permanentFailureCount} 条永久 4xx` : '归因迁移表不可用'),
+    qualityWarning('fbp_coverage', '近 7 天 fbp 覆盖率', fbpSampleCount, fbpCoverage, 0.8),
+    qualityWarning('fbc_coverage', '近 7 天 Meta 付费样本 fbc 覆盖率', fbcSampleCount, fbcCoverage, 0.7),
+    qualityWarning('capi_delivery_ratio', 'CAPI 成功与 Pixel 尝试比例', pixelAttemptedCount, capiDeliveryRatio, 0.8),
+    warningCheck('manual_confirmation', '人工去重确认在 30 天内', manualConfirmationCurrent, lastManualConfirmationAt ? `最近确认：${lastManualConfirmationAt}` : '尚无人工确认记录'),
   ]
 
   return c.json({
     range,
-    usage: mergeQueryUsage(settings, conversions, metaFailures),
+    usage: mergeQueryUsage(
+      schema,
+      settings,
+      conversions,
+      retryExhausted,
+      externalIdMismatch,
+      pendingTooLong,
+      permanentFailures,
+      matchQuality,
+      channelTotals,
+      releaseVerifications,
+      manualConfirmation,
+    ),
     data: {
-      ready: checks.every(check => check.ok),
+      ready: checks.filter(check => check.level === 'blocker').every(check => check.ok),
       checks,
       settings: settingMap,
+      verifications: {
+        environment: releaseEnvironment,
+        releaseCommitPresent: Boolean(releaseCommit),
+        metaLive: serializeVerification(liveVerification),
+        metaResources: serializeVerification(resourcesVerification),
+      },
     },
   })
 })
@@ -375,11 +631,54 @@ adminAttributionRoutes.post('/meta/test-event', async (c) => {
   if (ownerError) return ownerError
 
   const adminId = c.get('userId')!
+  const settings = await queryAll(c.env.DB, `
+    SELECT key, value
+    FROM site_settings
+    WHERE key IN ('meta_tracking_mode', 'facebook_pixel_id')
+  `, [])
+  const settingMap = serializeSettings(settings.rows)
+  const mode = normalizeMetaTrackingMode(settingMap.meta_tracking_mode)
+  const secretPresent = Boolean(String(c.env.META_CAPI_ACCESS_TOKEN || '').trim())
+  const testEventCodePresent = Boolean(String(c.env.META_CAPI_TEST_EVENT_CODE || '').trim())
+  const pixelIdPresent = /^\d{5,30}$/.test(String(settingMap.facebook_pixel_id || '').trim())
   const now = new Date().toISOString()
   const date = now.slice(0, 10)
   const conversionId = generateId('convtest')
   const deliveryId = generateId('cdlvtest')
   const externalEventId = `meta:Contact:test:${deliveryId}`
+
+  if (mode !== 'test') {
+    const outcome = testEventOutcome({
+      deliveryId,
+      status: 'failed',
+      secretPresent,
+      testEventCodePresent,
+      pixelIdPresent,
+      errorCategory: 'mode_not_test',
+    })
+    await auditMetaTestEvent(c, adminId, deliveryId, outcome)
+    return errorJson(c, 409, '仅测试模式可发送 Meta Test Event', {
+      code: 'META_TEST_MODE_REQUIRED',
+      detail: outcome,
+    })
+  }
+
+  if (!secretPresent || !testEventCodePresent || !pixelIdPresent) {
+    const outcome = testEventOutcome({
+      deliveryId,
+      status: 'failed',
+      secretPresent,
+      testEventCodePresent,
+      pixelIdPresent,
+      errorCategory: 'configuration_missing',
+    })
+    await auditMetaTestEvent(c, adminId, deliveryId, outcome)
+    return errorJson(c, 503, 'Meta Test Event 配置不完整', {
+      code: 'META_TEST_EVENT_NOT_CONFIGURED',
+      detail: outcome,
+    })
+  }
+
   await createMetaCapiTestDelivery(c.env.DB, {
     conversionId,
     deliveryId,
@@ -389,40 +688,173 @@ adminAttributionRoutes.post('/meta/test-event', async (c) => {
     adminId,
   })
 
-  let afterValue: Record<string, unknown>
   try {
+    const userData = buildMetaCapiUserData(c.req.raw, undefined)
     const result = await sendMetaCapiEvent(c.env, deliveryId, {
-      testEventCode: String(c.env.META_CAPI_TEST_EVENT_CODE || '').trim() || undefined,
+      testEventCode: String(c.env.META_CAPI_TEST_EVENT_CODE).trim(),
+      userData,
     })
-    afterValue = {
-      ...result,
-      channel: 'meta_capi',
-      eventName: 'Contact',
-      testEventCodePresent: Boolean(c.env.META_CAPI_TEST_EVENT_CODE),
-    }
+    const sent = result.status === 'sent' && result.eventsReceived === 1
+    const outcome = testEventOutcome({
+      deliveryId,
+      status: sent ? 'sent' : 'failed',
+      eventsReceived: result.eventsReceived,
+      traceId: safeTestEventTraceId(result.traceId, [
+        c.env.META_CAPI_ACCESS_TOKEN,
+        c.env.META_CAPI_TEST_EVENT_CODE,
+        userData.clientIpAddress,
+        userData.clientUserAgent,
+        userData.fbp,
+        userData.fbc,
+      ]),
+      secretPresent,
+      testEventCodePresent,
+      pixelIdPresent,
+      errorCategory: sent ? undefined : 'permanent',
+    })
+    await auditMetaTestEvent(c, adminId, deliveryId, outcome)
+    if (sent) return c.json({ data: outcome })
+
+    return errorJson(c, 424, 'Meta 未确认接收测试事件', {
+      code: 'META_TEST_EVENT_REJECTED',
+      detail: outcome,
+    })
   } catch (error) {
-    afterValue = {
+    const retryable = !(error instanceof MetaCapiDeliveryError) || error.retryable
+    const outcome = testEventOutcome({
       deliveryId,
       status: 'failed',
-      reason: error instanceof Error ? error.message : 'Meta CAPI Test Event 失败',
-      retryable: true,
-      channel: 'meta_capi',
-      eventName: 'Contact',
-      testEventCodePresent: Boolean(c.env.META_CAPI_TEST_EVENT_CODE),
+      secretPresent,
+      testEventCodePresent,
+      pixelIdPresent,
+      errorCategory: retryable ? 'retryable' : 'permanent',
+    })
+    await auditMetaTestEvent(c, adminId, deliveryId, outcome)
+    if (retryable) {
+      return errorJson(c, 503, 'Meta Test Event 暂时不可用', {
+        code: 'META_TEST_EVENT_RETRYABLE',
+        detail: outcome,
+      })
     }
+    return errorJson(c, 424, 'Meta 拒绝接收测试事件', {
+      code: 'META_TEST_EVENT_REJECTED',
+      detail: outcome,
+    })
   }
+})
+
+function emptyQueryResult(): QueryResult<Row> {
+  return { rows: [], usage: EMPTY_USAGE }
+}
+
+function blockerCheck(key: string, label: string, ok: boolean, detail: string): ReadinessCheck {
+  return { key, label, level: 'blocker', ok, detail }
+}
+
+function warningCheck(key: string, label: string, ok: boolean, detail: string): ReadinessCheck {
+  return { key, label, level: 'warning', ok, detail }
+}
+
+function qualityWarning(
+  key: string,
+  label: string,
+  sampleCount: number,
+  rate: number,
+  threshold: number,
+): ReadinessCheck {
+  if (sampleCount < 20) {
+    return warningCheck(key, label, true, `样本不足（${sampleCount}/20）`)
+  }
+  const ok = rate >= threshold
+  return warningCheck(
+    key,
+    label,
+    ok,
+    `样本 ${sampleCount}，覆盖率 ${formatPercent(rate)}，阈值 ${formatPercent(threshold)}`,
+  )
+}
+
+function pixelModeDetail(mode: string, pixelEnabled: boolean, capiEnabled: boolean, pixelIdPresent: boolean) {
+  if (mode === 'disabled') {
+    return !pixelEnabled && !capiEnabled
+      ? '关闭模式下 Pixel 与 CAPI 均已关闭'
+      : '关闭模式下 Pixel 与 CAPI 必须保持关闭'
+  }
+  if (!pixelEnabled) return '测试或生产模式必须开启 Pixel'
+  if (!pixelIdPresent) return '测试或生产模式必须配置有效 Pixel ID'
+  return `${mode} 模式与 Pixel 配置一致`
+}
+
+function presenceDetail(required: boolean, present: boolean) {
+  if (!required) return '关闭模式无需配置'
+  return present ? '已配置，仅返回存在状态' : '尚未配置'
+}
+
+function verificationDetail(releaseCommit: string, row: Row | undefined) {
+  if (!releaseCommit) return '当前 Worker 未提供 RELEASE_COMMIT'
+  if (!row) return '当前 commit 没有未过期的通过记录'
+  return `验证时间：${String(row.verified_at || '')}；有效期至：${String(row.expires_at || '')}`
+}
+
+function serializeVerification(row: Row | undefined) {
+  return {
+    present: Boolean(row),
+    verifiedAt: String(row?.verified_at || ''),
+    expiresAt: String(row?.expires_at || ''),
+  }
+}
+
+function isWithinDays(value: string, days: number) {
+  const timestamp = new Date(value).getTime()
+  if (!Number.isFinite(timestamp)) return false
+  const age = Date.now() - timestamp
+  return age >= 0 && age <= days * 24 * 60 * 60 * 1000
+}
+
+function coverageRate(numerator: number, denominator: number) {
+  return denominator > 0 ? roundRate(numerator / denominator) : 0
+}
+
+function formatPercent(rate: number) {
+  return `${Math.round(rate * 10000) / 100}%`
+}
+
+function testEventOutcome(input: {
+  deliveryId: string
+  status: 'sent' | 'failed'
+  secretPresent: boolean
+  testEventCodePresent: boolean
+  pixelIdPresent: boolean
+  eventsReceived?: number
+  traceId?: string
+  errorCategory?: 'mode_not_test' | 'configuration_missing' | 'permanent' | 'retryable'
+}) {
+  return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined))
+}
+
+function safeTestEventTraceId(traceId: string | undefined, sensitiveValues: unknown[]) {
+  if (!traceId) return undefined
+  const containsSensitiveValue = sensitiveValues.some(value => {
+    const text = String(value || '').trim()
+    return Boolean(text && traceId.includes(text))
+  })
+  return containsSensitiveValue ? undefined : traceId
+}
+
+async function auditMetaTestEvent(
+  c: AdminAttributionContext,
+  adminId: number,
+  deliveryId: string,
+  outcome: Record<string, unknown>,
+) {
   await writeAuditLog(c.env.DB, {
     adminId,
     action: 'attribution.meta_test_event',
     targetType: 'attribution',
     targetId: deliveryId,
-    afterValue,
+    afterValue: outcome,
   })
-
-  return c.json({
-    data: afterValue,
-  }, 202)
-})
+}
 
 function parseRangeOrError(c: AdminAttributionContext): AnalyticsDateRange | Response {
   try {
@@ -557,19 +989,11 @@ function serializeSettings(rows: Row[]) {
 
 function parseSettingValue(value: unknown) {
   const text = String(value ?? '').trim()
-  if (text === 'true') return true
-  if (text === 'false') return false
-  if (
-    (text.startsWith('{') && text.endsWith('}')) ||
-    (text.startsWith('[') && text.endsWith(']'))
-  ) {
-    try {
-      return JSON.parse(text)
-    } catch {
-      return text
-    }
+  try {
+    return JSON.parse(text)
+  } catch {
+    return text
   }
-  return text
 }
 
 function readAttributionSourceFilter(c: AdminAttributionContext) {

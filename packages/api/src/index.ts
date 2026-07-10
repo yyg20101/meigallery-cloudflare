@@ -51,6 +51,7 @@ export type Bindings = {
   META_CAPI_QUEUE?: Queue<MetaCapiQueueMessage>
   META_CAPI_ACCESS_TOKEN?: string
   META_CAPI_TEST_EVENT_CODE?: string
+  RELEASE_COMMIT?: string
 }
 
 /** 应用级变量 */
