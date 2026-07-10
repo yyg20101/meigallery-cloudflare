@@ -23,6 +23,7 @@ export type ConversionDeliverySnapshot = {
   event_name: string
   status: ConversionDeliveryStatus
   skip_reason: string
+  error_code?: string
   date: string
 }
 
@@ -124,6 +125,14 @@ export function classifyMetaCapiError(status: number): 'retryable' | 'permanent'
   return 'permanent'
 }
 
+export function isRetryableMetaCapiErrorCode(errorCode: string) {
+  return errorCode === 'meta_timeout'
+    || errorCode === 'meta_network_error'
+    || errorCode === 'meta_delivery_state_conflict'
+    || errorCode === 'meta_http_429'
+    || /^meta_http_5\d\d$/.test(errorCode)
+}
+
 export async function sendMetaCapiEvent(
   env: MetaCapiEnv,
   deliveryId: string,
@@ -143,6 +152,9 @@ export async function sendMetaCapiEvent(
   }
   if (delivery.status !== 'pending' && delivery.status !== 'failed') {
     return { deliveryId, status: delivery.status, reason: delivery.skip_reason || 'not_pending' }
+  }
+  if (delivery.status === 'failed' && !isRetryableMetaCapiErrorCode(delivery.error_code)) {
+    return { deliveryId, status: 'failed', reason: delivery.error_code || 'not_pending' }
   }
   if (!isActiveMetaEventName(delivery.event_name)) {
     const persisted = await confirmDeliveryTransition(env.DB, delivery, {
@@ -349,6 +361,7 @@ export async function transitionDeliveryStatus(
   const skipReason = input.skipReason ?? ''
   const errorCode = input.errorCode ?? ''
   const errorMessage = storedErrorMessage(input.errorMessage ?? '')
+  const expectedErrorCode = delivery.error_code ?? ''
   if (delivery.status === 'sent') return { changed: false }
 
   if (delivery.status === input.status) {
@@ -361,8 +374,20 @@ export async function transitionDeliveryStatus(
         attempt_count = attempt_count + 1,
         last_attempt_at = datetime('now'),
         updated_at = datetime('now')
-      WHERE id = ? AND status = ? AND status <> 'sent'
-    `).bind(skipReason, errorCode, errorMessage, delivery.id, delivery.status).run()
+      WHERE id = ?
+        AND status = ?
+        AND skip_reason = ?
+        AND error_code = ?
+        AND status <> 'sent'
+    `).bind(
+      skipReason,
+      errorCode,
+      errorMessage,
+      delivery.id,
+      delivery.status,
+      delivery.skip_reason || '',
+      expectedErrorCode,
+    ).run()
     return { changed: d1Changed(result) }
   }
 
@@ -378,8 +403,22 @@ export async function transitionDeliveryStatus(
         last_attempt_at = datetime('now'),
         sent_at = CASE WHEN ? = 'sent' THEN datetime('now') ELSE sent_at END,
         updated_at = datetime('now')
-      WHERE id = ? AND status = ? AND status <> 'sent'
-    `).bind(input.status, skipReason, errorCode, errorMessage, input.status, delivery.id, delivery.status),
+      WHERE id = ?
+        AND status = ?
+        AND skip_reason = ?
+        AND error_code = ?
+        AND status <> 'sent'
+    `).bind(
+      input.status,
+      skipReason,
+      errorCode,
+      errorMessage,
+      input.status,
+      delivery.id,
+      delivery.status,
+      delivery.skip_reason || '',
+      expectedErrorCode,
+    ),
     deliveryDailyIncrementAfterChange(db, delivery, input.status, skipReason),
     deliveryDailyDecrementAfterChange(db, delivery),
   ])
@@ -390,12 +429,12 @@ export async function confirmDeliveryTransition(
   db: D1Database,
   delivery: ConversionDeliverySnapshot,
   input: TransitionDeliveryStatusInput,
-  options: { allowAnyNonSent?: boolean } = {},
 ): Promise<ConfirmedDeliveryTransition> {
   let current = delivery
   for (let attempt = 0; attempt < DELIVERY_TRANSITION_MAX_ATTEMPTS; attempt += 1) {
     if (current.status === 'sent') return { ...current, transitionChanged: false }
-    if (!options.allowAnyNonSent && current.status !== 'pending' && current.status !== 'failed') {
+    if (current.status !== 'pending'
+      && (current.status !== 'failed' || !isRetryableMetaCapiErrorCode(current.error_code ?? ''))) {
       throw stateConflictError()
     }
 

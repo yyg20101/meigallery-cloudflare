@@ -216,9 +216,27 @@ async function expireOutboxRows(db: D1Database, rows: ExpiredOutboxRow[]) {
           last_attempt_at = datetime('now'),
           updated_at = datetime('now')
         WHERE id = ?
+          AND channel = 'meta_capi'
           AND status = ?
+          AND skip_reason = ?
+          AND error_code = ?
           AND status <> 'sent'
-      `).bind(row.delivery_id, row.status))
+          AND (
+            status IN ('pending', 'attempted')
+            OR (
+              status = 'failed'
+              AND (
+                error_code IN (
+                  'meta_timeout',
+                  'meta_network_error',
+                  'meta_delivery_state_conflict',
+                  'meta_http_429'
+                )
+                OR error_code GLOB 'meta_http_5[0-9][0-9]'
+              )
+            )
+          )
+      `).bind(row.delivery_id, row.status, row.skip_reason || '', row.error_code || ''))
       statements.push(db.prepare(`
         INSERT INTO analytics_conversion_delivery_daily (
           date, channel, event_name, status, skip_reason, delivery_count, updated_at

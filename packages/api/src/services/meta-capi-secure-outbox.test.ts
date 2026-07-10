@@ -39,17 +39,28 @@ function createOutboxDb(options: {
   failCleanupBatches?: number
   deliveries?: Delivery[]
   outboxes?: Outbox[]
+  beforeExpireBatch?: (state: {
+    deliveries: Map<string, Delivery>
+    daily: Map<string, number>
+  }) => void
 } = {}) {
   const actions = new Set<string>()
   const deliveries = new Map((options.deliveries ?? []).map(item => [item.id, { ...item }]))
   const outboxes = new Map((options.outboxes ?? []).map(item => [item.deliveryId, { ...item }]))
+  const daily = new Map<string, number>()
+  for (const row of deliveries.values()) {
+    const key = dailyKey(row.status, row.skipReason)
+    daily.set(key, (daily.get(key) ?? 0) + 1)
+  }
   const calls: Call[] = []
   let cleanupFailures = options.failCleanupBatches ?? 0
+  let expireHookCalled = false
 
   const db = {
     actions,
     deliveries,
     outboxes,
+    daily,
     calls,
     prepare(sql: string) {
       const call: Call = { sql, params: [] }
@@ -105,15 +116,21 @@ function createOutboxDb(options: {
         },
         async run() {
           calls.push(call)
-          return apply(call, { actions, deliveries, outboxes })
+          return apply(call, { actions, deliveries, outboxes, daily }, 1)
         },
       }
     },
     async batch(statements: Array<{ __call: Call }>) {
+      const isExpireBatch = statements.some(statement => statement.__call.sql.includes('secure_context_expired'))
+      if (isExpireBatch && !expireHookCalled) {
+        expireHookCalled = true
+        options.beforeExpireBatch?.({ deliveries, daily })
+      }
       const staged = {
         actions: new Set(actions),
         deliveries: new Map(Array.from(deliveries, ([id, value]) => [id, { ...value }])),
         outboxes: new Map(Array.from(outboxes, ([id, value]) => [id, { ...value }])),
+        daily: new Map(daily),
       }
       const isCleanup = statements.some(statement => statement.__call.sql.includes('queue_enqueued_at = datetime'))
       if (isCleanup && cleanupFailures > 0) {
@@ -121,12 +138,15 @@ function createOutboxDb(options: {
         throw new Error('模拟入队后 D1 batch 失败')
       }
       const results = []
+      let lastChanges = 1
       for (const statement of statements) {
         calls.push(statement.__call)
         if (options.failBatchOn && statement.__call.sql.includes(options.failBatchOn)) {
           throw new Error('模拟 D1 batch statement 失败')
         }
-        results.push(apply(statement.__call, staged))
+        const applied = apply(statement.__call, staged, lastChanges)
+        results.push(applied)
+        lastChanges = applied.meta.changes
       }
       actions.clear()
       staged.actions.forEach(id => actions.add(id))
@@ -134,6 +154,8 @@ function createOutboxDb(options: {
       staged.deliveries.forEach((value, id) => deliveries.set(id, value))
       outboxes.clear()
       staged.outboxes.forEach((value, id) => outboxes.set(id, value))
+      daily.clear()
+      staged.daily.forEach((value, key) => daily.set(key, value))
       return results
     },
   }
@@ -144,7 +166,9 @@ function createOutboxDb(options: {
       actions: Set<string>
       deliveries: Map<string, Delivery>
       outboxes: Map<string, Outbox>
+      daily: Map<string, number>
     },
+    lastChanges: number,
   ) {
     if (call.sql.includes('INSERT INTO analytics_conversion_actions')) {
       target.actions.add(String(call.params[0]))
@@ -181,10 +205,26 @@ function createOutboxDb(options: {
       target.outboxes.delete(String(call.params[0]))
     } else if (call.sql.includes('UPDATE analytics_conversion_deliveries') && call.sql.includes('secure_context_expired')) {
       const row = target.deliveries.get(String(call.params[0]))
-      if (row && (row.status === 'pending' || row.status === 'failed' || row.status === 'attempted')) {
-        row.status = 'skipped'
-        row.skipReason = 'secure_context_expired'
-      }
+      const expectedStatus = String(call.params[1])
+      const expectedSkipReason = String(call.params[2] ?? '')
+      const expectedErrorCode = String(call.params[3] ?? '')
+      if (!row || row.status === 'sent' || row.status !== expectedStatus) return result(0)
+      if (call.sql.includes('AND skip_reason = ?') && row.skipReason !== expectedSkipReason) return result(0)
+      if (call.sql.includes('AND error_code = ?') && row.errorCode !== expectedErrorCode) return result(0)
+      row.status = 'skipped'
+      row.skipReason = 'secure_context_expired'
+      row.errorCode = ''
+      return result(1)
+    } else if (call.sql.includes('INSERT INTO analytics_conversion_delivery_daily')) {
+      if (call.sql.includes('WHERE changes() = 1') && lastChanges !== 1) return result(0)
+      const key = dailyKey('skipped', 'secure_context_expired')
+      target.daily.set(key, (target.daily.get(key) ?? 0) + 1)
+      return result(1)
+    } else if (call.sql.includes('UPDATE analytics_conversion_delivery_daily')) {
+      if (call.sql.includes('AND changes() = 1') && lastChanges !== 1) return result(0)
+      const key = dailyKey(String(call.params[2]), String(call.params[3] ?? ''))
+      target.daily.set(key, Math.max(0, (target.daily.get(key) ?? 0) - 1))
+      return result(1)
     }
     return result(1)
   }
@@ -213,6 +253,10 @@ function outbox(deliveryId = 'cdlv_1', overrides: Partial<Outbox> = {}): Outbox 
 
 function result(changes: number) {
   return { meta: { changes, rows_written: changes, rows_read: 0, duration: 1 } }
+}
+
+function dailyKey(status: string, skipReason = '') {
+  return `${status}:${skipReason}`
 }
 
 describe('Meta CAPI secure outbox', () => {
@@ -320,6 +364,55 @@ describe('Meta CAPI secure outbox', () => {
     expect(outcome).toBe('expired')
     expect(send).not.toHaveBeenCalled()
     expect(db.deliveries.get('cdlv_1')).toMatchObject({ status: 'skipped', skipReason: 'secure_context_expired' })
+    expect(db.outboxes.has('cdlv_1')).toBe(false)
+    vi.useRealTimers()
+  })
+
+  it('purge 读取 retryable failed 后遇到并发永久失败时不覆盖状态或搬移日报', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-11T12:00:00.000Z'))
+    const db = createOutboxDb({
+      deliveries: [delivery('cdlv_1', { status: 'failed', errorCode: 'meta_http_500' })],
+      outboxes: [outbox('cdlv_1', { expiresAt: '2026-07-11T00:00:00.000Z' })],
+      beforeExpireBatch: ({ deliveries }) => {
+        deliveries.get('cdlv_1')!.errorCode = 'meta_http_400'
+      },
+    })
+
+    const outcome = await purgeExpiredMetaCapiOutbox(db as unknown as D1Database)
+
+    expect(outcome).toEqual({ purged: 1, skipped: 0 })
+    expect(db.deliveries.get('cdlv_1')).toMatchObject({ status: 'failed', errorCode: 'meta_http_400' })
+    expect(db.daily.get(dailyKey('failed'))).toBe(1)
+    expect(db.daily.get(dailyKey('skipped', 'secure_context_expired')) ?? 0).toBe(0)
+    expect(db.outboxes.has('cdlv_1')).toBe(false)
+    const transition = db.calls.find(call => call.sql.includes('secure_context_expired'))
+    expect(transition?.sql).toContain('AND error_code = ?')
+    vi.useRealTimers()
+  })
+
+  it('purge 读取 pending 后遇到并发 skipped 时保留新终态及其日报', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-11T12:00:00.000Z'))
+    const db = createOutboxDb({
+      deliveries: [delivery()],
+      outboxes: [outbox('cdlv_1', { expiresAt: '2026-07-11T00:00:00.000Z' })],
+      beforeExpireBatch: ({ deliveries, daily }) => {
+        const row = deliveries.get('cdlv_1')!
+        row.status = 'skipped'
+        row.skipReason = 'missing_secret'
+        daily.set(dailyKey('pending'), 0)
+        daily.set(dailyKey('skipped', 'missing_secret'), 1)
+      },
+    })
+
+    const outcome = await purgeExpiredMetaCapiOutbox(db as unknown as D1Database)
+
+    expect(outcome).toEqual({ purged: 1, skipped: 0 })
+    expect(db.deliveries.get('cdlv_1')).toMatchObject({ status: 'skipped', skipReason: 'missing_secret' })
+    expect(db.daily.get(dailyKey('pending'))).toBe(0)
+    expect(db.daily.get(dailyKey('skipped', 'missing_secret'))).toBe(1)
+    expect(db.daily.get(dailyKey('skipped', 'secure_context_expired')) ?? 0).toBe(0)
     expect(db.outboxes.has('cdlv_1')).toBe(false)
     vi.useRealTimers()
   })

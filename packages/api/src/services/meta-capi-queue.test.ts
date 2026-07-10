@@ -50,6 +50,7 @@ function createQueueDb(options: {
   eventName?: string
   createdAt?: string
   cleanupBatchFailures?: number
+  beforeFirstTransition?: (delivery: Delivery, daily: Map<string, number>) => void
 } = {}) {
   const delivery: Delivery = {
     id: 'cdlv_1',
@@ -79,6 +80,7 @@ function createQueueDb(options: {
   let outbox: Outbox | null = null
   let lastChanges = 1
   let cleanupBatchFailures = options.cleanupBatchFailures ?? 0
+  let transitionHookCalled = false
 
   const db = {
     delivery,
@@ -116,7 +118,9 @@ function createQueueDb(options: {
               event_name: delivery.event_name,
             } as T
           }
-          if (sql.includes('FROM analytics_conversion_deliveries')) return { ...delivery } as T
+          if (sql.includes('FROM analytics_conversion_deliveries')) {
+            return call.params[0] === delivery.id ? ({ ...delivery } as T) : null
+          }
           if (sql.includes("WHERE key = 'facebook_pixel_id'")) return { value: JSON.stringify('1234567890') } as T
           return null
         },
@@ -184,8 +188,20 @@ function createQueueDb(options: {
     }
     if (sql.includes('UPDATE analytics_conversion_deliveries')) {
       const changesStatus = /SET\s+status\s*=\s*\?/m.test(sql)
+      if (!transitionHookCalled) {
+        transitionHookCalled = true
+        options.beforeFirstTransition?.(delivery, daily)
+      }
       const expectedStatus = String(params[changesStatus ? 6 : 4])
       if (delivery.status !== expectedStatus || delivery.status === 'sent') return result(0)
+      if (sql.includes('AND skip_reason = ?')) {
+        const expectedSkipReason = String(params[changesStatus ? 7 : 5] ?? '')
+        if (delivery.skip_reason !== expectedSkipReason) return result(0)
+      }
+      if (sql.includes('AND error_code = ?')) {
+        const expectedErrorCode = String(params[changesStatus ? 8 : 6] ?? '')
+        if (delivery.error_code !== expectedErrorCode) return result(0)
+      }
       const previous = delivery.status
       if (changesStatus) delivery.status = String(params[0]) as ConversionDeliveryStatus
       const offset = changesStatus ? 1 : 0
@@ -258,7 +274,11 @@ function queueMessage(body: MetaCapiQueueMessage, attempts = 1) {
 }
 
 function batch(message: ReturnType<typeof queueMessage>, queue = 'meigallery-meta-capi') {
-  return { queue, messages: [message] } as unknown as MessageBatch<MetaCapiQueueMessage>
+  return messageBatch([message], queue)
+}
+
+function messageBatch(messages: Array<ReturnType<typeof queueMessage>>, queue = 'meigallery-meta-capi') {
+  return { queue, messages } as unknown as MessageBatch<MetaCapiQueueMessage>
 }
 
 function env(db: ReturnType<typeof createQueueDb>, overrides: Partial<Bindings> = {}) {
@@ -365,6 +385,32 @@ describe('Meta CAPI Queue V2', () => {
     })
   })
 
+  it('secure_context_invalid CAS 冲突刷新为 skipped 后保留终态及日报', async () => {
+    const db = createQueueDb({
+      beforeFirstTransition: (delivery, daily) => {
+        delivery.status = 'skipped'
+        delivery.skip_reason = 'missing_secret'
+        daily.set('pending', 0)
+        daily.set('skipped', 1)
+      },
+    })
+    const body = await encryptedMessage(db)
+    const message = queueMessage({
+      ...body,
+      envelope: { ...body.envelope, tag: 42 },
+    } as unknown as MetaCapiQueueMessage)
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    await handleMetaCapiBatch(batch(message), env(db))
+
+    expect(db.delivery).toMatchObject({ status: 'skipped', skip_reason: 'missing_secret', error_code: '' })
+    expect(db.daily.get('pending')).toBe(0)
+    expect(db.daily.get('skipped')).toBe(1)
+    expect(db.daily.get('failed') ?? 0).toBe(0)
+    expect(db.outbox).toBeNull()
+    expect(message.ack).toHaveBeenCalledOnce()
+  })
+
   it('delivery 服务端 created_at 超过 24 小时时拒绝 Queue 密文，不信任 occurredAt 或 envelope expiresAt', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-07-11T12:00:01.000Z'))
@@ -381,6 +427,35 @@ describe('Meta CAPI Queue V2', () => {
     expect(message.ack).toHaveBeenCalledOnce()
     expect(db.delivery).toMatchObject({ status: 'skipped', skip_reason: 'secure_context_expired' })
     expect(db.outbox).toBeNull()
+  })
+
+  it('secure_context_expired CAS 冲突刷新为 duplicate_suppressed 后不覆盖或搬移日报', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-11T12:00:01.000Z'))
+    const db = createQueueDb({
+      createdAt: '2026-07-10 12:00:00',
+      beforeFirstTransition: (delivery, daily) => {
+        delivery.status = 'duplicate_suppressed'
+        delivery.skip_reason = 'already_sent'
+        daily.set('pending', 0)
+        daily.set('duplicate_suppressed', 1)
+      },
+    })
+    const body = await encryptedMessage(db)
+    const message = queueMessage(body)
+
+    await handleMetaCapiBatch(batch(message), env(db))
+
+    expect(db.delivery).toMatchObject({
+      status: 'duplicate_suppressed',
+      skip_reason: 'already_sent',
+      error_code: '',
+    })
+    expect(db.daily.get('pending')).toBe(0)
+    expect(db.daily.get('duplicate_suppressed')).toBe(1)
+    expect(db.daily.get('skipped') ?? 0).toBe(0)
+    expect(db.outbox).toBeNull()
+    expect(message.ack).toHaveBeenCalledOnce()
   })
 
   it('sent 终态在密钥加载、解密和 fetch 前短路，并清理残留 outbox', async () => {
@@ -439,6 +514,96 @@ describe('Meta CAPI Queue V2', () => {
     expect(db.outbox).toBeNull()
   })
 
+  it('未知或非内部格式 deliveryId 在日志中固定为 unknown', async () => {
+    const db = createQueueDb()
+    const untrustedIds = [
+      'token_private',
+      'a'.repeat(64),
+      'fb.1.1700000000000.123456789',
+      'cdlv_not_in_db',
+    ]
+    const messages = untrustedIds.map(deliveryId => queueMessage({
+      schemaVersion: 1,
+      deliveryId,
+      userData: {},
+    } as unknown as MetaCapiQueueMessage))
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    await handleMetaCapiBatch(messageBatch(messages), env(db))
+
+    expect(messages.every(message => message.ack.mock.calls.length === 1)).toBe(true)
+    expect(consoleError).toHaveBeenCalledTimes(untrustedIds.length)
+    for (const call of consoleError.mock.calls) {
+      expect(call[1]).toMatchObject({ deliveryId: 'unknown' })
+    }
+    const serializedLogs = JSON.stringify(consoleError.mock.calls)
+    for (const deliveryId of untrustedIds) expect(serializedLogs).not.toContain(deliveryId)
+    expect(db.delivery).toMatchObject({ status: 'pending', skip_reason: '' })
+  })
+
+  it('own accessor 抛错时不触发 getter、不打断批次并继续消费下一条消息', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-11T12:00:00.000Z'))
+    const db = createQueueDb()
+    const validBody = await encryptedMessage(db)
+    let getterReads = 0
+    const poisonedBody = {
+      schemaVersion: 2,
+      get deliveryId(): never {
+        getterReads += 1
+        throw new Error('不应读取 accessor')
+      },
+      envelope: validBody.envelope,
+    }
+    const poisoned = queueMessage(poisonedBody as unknown as MetaCapiQueueMessage)
+    const valid = queueMessage(validBody)
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }))
+
+    await expect(handleMetaCapiBatch(messageBatch([poisoned, valid]), env(db))).resolves.toBeUndefined()
+
+    expect(getterReads).toBe(0)
+    expect(poisoned.ack).toHaveBeenCalledOnce()
+    expect(valid.ack).toHaveBeenCalledOnce()
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(db.delivery.status).toBe('sent')
+  })
+
+  it('Proxy trap 抛错和异常 prototype 均安全终止且不影响后续消息', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-11T12:00:00.000Z'))
+    const db = createQueueDb()
+    const validBody = await encryptedMessage(db)
+    let inheritedGetterReads = 0
+    const inherited = Object.create({
+      get deliveryId(): never {
+        inheritedGetterReads += 1
+        throw new Error('不应读取 prototype getter')
+      },
+    }) as Record<string, unknown>
+    inherited.schemaVersion = 2
+    inherited.envelope = validBody.envelope
+    const poisoned = [
+      queueMessage(new Proxy({}, {
+        getPrototypeOf() { throw new Error('poison getPrototypeOf') },
+      }) as unknown as MetaCapiQueueMessage),
+      queueMessage(new Proxy({}, {
+        ownKeys() { throw new Error('poison ownKeys') },
+      }) as unknown as MetaCapiQueueMessage),
+      queueMessage(inherited as unknown as MetaCapiQueueMessage),
+    ]
+    const valid = queueMessage(validBody)
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }))
+
+    await expect(handleMetaCapiBatch(messageBatch([...poisoned, valid]), env(db))).resolves.toBeUndefined()
+
+    expect(inheritedGetterReads).toBe(0)
+    expect(poisoned.every(message => message.ack.mock.calls.length === 1)).toBe(true)
+    expect(valid.ack).toHaveBeenCalledOnce()
+    expect(fetchMock).toHaveBeenCalledOnce()
+  })
+
   it('retryable 失败保留消息密文并重试，永久失败删除残留 outbox', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-07-11T12:00:00.000Z'))
@@ -494,6 +659,29 @@ describe('Meta CAPI Queue V2', () => {
     await handleMetaCapiBatch(batch(message, 'meigallery-meta-capi-dlq'), env(db))
 
     expect(db.delivery).toMatchObject({ status: 'failed', error_code: 'retry_exhausted' })
+    expect(db.outbox).toBeNull()
+    expect(message.ack).toHaveBeenCalledOnce()
+    expect(message.retry).not.toHaveBeenCalled()
+  })
+
+  it('retry_exhausted CAS 遇到 retryable failed 并发变为永久 failed 时保留原错误和日报', async () => {
+    const db = createQueueDb({
+      status: 'failed',
+      beforeFirstTransition: (delivery) => {
+        delivery.error_code = 'meta_http_400'
+      },
+    })
+    db.delivery.error_code = 'meta_http_500'
+    const body = await encryptedMessage(db)
+    db.delivery.status = 'failed'
+    db.delivery.error_code = 'meta_http_500'
+    const message = queueMessage(body, 6)
+
+    await handleMetaCapiBatch(batch(message, 'meigallery-meta-capi-dlq'), env(db))
+
+    expect(db.delivery).toMatchObject({ status: 'failed', error_code: 'meta_http_400' })
+    expect(db.daily.get('failed')).toBe(1)
+    expect(db.daily.get('skipped') ?? 0).toBe(0)
     expect(db.outbox).toBeNull()
     expect(message.ack).toHaveBeenCalledOnce()
     expect(message.retry).not.toHaveBeenCalled()
