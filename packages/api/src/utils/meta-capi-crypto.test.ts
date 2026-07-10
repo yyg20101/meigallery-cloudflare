@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   decryptMetaCapiContext,
   encryptMetaCapiContext,
@@ -66,6 +66,103 @@ describe('Meta CAPI Web Crypto', () => {
       META_CAPI_DATA_KEY_PREVIOUS: CURRENT_KEY_BASE64,
     })
     expect(duplicate.previous).toBeUndefined()
+  })
+
+  it('按 current/previous 角色导入精确 usage，previous 不可用于加密', async () => {
+    const keys = await loadMetaCapiCryptoKeys({
+      META_CAPI_DATA_KEY_CURRENT: CURRENT_KEY_BASE64,
+      META_CAPI_DATA_KEY_PREVIOUS: PREVIOUS_KEY_BASE64,
+    })
+
+    expect(keys.current.key.usages).toEqual(['encrypt', 'decrypt'])
+    expect(keys.previous?.key.usages).toEqual(['decrypt'])
+    await expect(encryptMetaCapiContext({
+      keys: { current: keys.previous! },
+      aad: AAD,
+      value: SENSITIVE_CONTEXT,
+    })).rejects.toThrow('META_CAPI_CONTEXT_INVALID')
+  })
+
+  it('加密前拒绝 AES-128、extractable、错误算法/usage 和伪 CryptoKey', async () => {
+    const valid = await loadMetaCapiCryptoKeys({ META_CAPI_DATA_KEY_CURRENT: CURRENT_KEY_BASE64 })
+    const invalidKeys: Array<[string, CryptoKey]> = [
+      ['AES-128', await crypto.subtle.importKey(
+        'raw',
+        CURRENT_KEY_BYTES.slice(0, 16),
+        'AES-GCM',
+        false,
+        ['encrypt', 'decrypt'],
+      )],
+      ['extractable', await crypto.subtle.importKey(
+        'raw',
+        CURRENT_KEY_BYTES,
+        'AES-GCM',
+        true,
+        ['encrypt', 'decrypt'],
+      )],
+      ['wrong algorithm', await crypto.subtle.importKey(
+        'raw',
+        CURRENT_KEY_BYTES,
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign'],
+      )],
+      ['wrong usage', await crypto.subtle.importKey(
+        'raw',
+        CURRENT_KEY_BYTES,
+        'AES-GCM',
+        false,
+        ['decrypt'],
+      )],
+      ['fake structure', {
+        type: 'secret',
+        algorithm: { name: 'AES-GCM', length: 256 },
+        extractable: false,
+        usages: ['encrypt', 'decrypt'],
+      } as CryptoKey],
+    ]
+
+    for (const [label, key] of invalidKeys) {
+      let contextInspected = false
+      const value = new Proxy({}, {
+        ownKeys() {
+          contextInspected = true
+          return []
+        },
+      }) as typeof SENSITIVE_CONTEXT
+      const error = await captureError(() => encryptMetaCapiContext({
+        keys: { current: { id: valid.current.id, key } },
+        aad: AAD,
+        value,
+      }))
+      expect(error, label).toMatchObject({ name: 'Error', message: 'META_CAPI_CONTEXT_INVALID' })
+      expect(contextInspected, label).toBe(false)
+    }
+  })
+
+  it('解密前拒绝缺少 decrypt usage 的 CryptoKey，且不调用 subtle.decrypt', async () => {
+    const valid = await loadMetaCapiCryptoKeys({ META_CAPI_DATA_KEY_CURRENT: CURRENT_KEY_BASE64 })
+    const envelope = await encryptMetaCapiContext({ keys: valid, aad: AAD, value: SENSITIVE_CONTEXT })
+    const encryptOnly = await crypto.subtle.importKey(
+      'raw',
+      CURRENT_KEY_BYTES,
+      'AES-GCM',
+      false,
+      ['encrypt'],
+    )
+    const decryptSpy = vi.spyOn(crypto.subtle, 'decrypt')
+
+    try {
+      await expect(decryptMetaCapiContext({
+        keys: { current: { id: valid.current.id, key: encryptOnly } },
+        aad: AAD,
+        envelope,
+      })).rejects.toThrow('META_CAPI_CONTEXT_INVALID')
+      expect(decryptSpy).not.toHaveBeenCalled()
+    }
+    finally {
+      decryptSpy.mockRestore()
+    }
   })
 
   it('每次使用不同的 12-byte IV，相同明文生成不同 ciphertext', async () => {
@@ -144,6 +241,44 @@ describe('Meta CAPI Web Crypto', () => {
     })).rejects.toThrow('META_CAPI_CONTEXT_INVALID')
   })
 
+  it('AAD/envelope 必填字段必须为 own property，Object.prototype 污染不能补齐', async () => {
+    const keys = await loadMetaCapiCryptoKeys({ META_CAPI_DATA_KEY_CURRENT: CURRENT_KEY_BASE64 })
+    const envelope = await encryptMetaCapiContext({ keys, aad: AAD, value: SENSITIVE_CONTEXT })
+    const { deliveryId: _deliveryId, ...aadWithoutDeliveryId } = AAD
+    const { schemaVersion: _schemaVersion, ...envelopeWithoutSchemaVersion } = envelope
+
+    await withObjectPrototypeProperty('deliveryId', AAD.deliveryId, async () => {
+      await expect(encryptMetaCapiContext({
+        keys,
+        aad: aadWithoutDeliveryId as MetaCapiEnvelopeAad,
+        value: SENSITIVE_CONTEXT,
+      })).rejects.toThrow('META_CAPI_CONTEXT_INVALID')
+    })
+    await withObjectPrototypeProperty('schemaVersion', 2, async () => {
+      await expect(decryptMetaCapiContext({
+        keys,
+        aad: AAD,
+        envelope: envelopeWithoutSchemaVersion as MetaCapiEncryptedEnvelope,
+      })).rejects.toThrow('META_CAPI_CONTEXT_INVALID')
+    })
+
+    expect(Object.hasOwn(Object.prototype, 'deliveryId')).toBe(false)
+    expect(Object.hasOwn(Object.prototype, 'schemaVersion')).toBe(false)
+  })
+
+  it('context 只读取 own property，继承字段拒绝且 Object.prototype 污染不被接受', async () => {
+    const keys = await loadMetaCapiCryptoKeys({ META_CAPI_DATA_KEY_CURRENT: CURRENT_KEY_BASE64 })
+    const inherited = Object.create({ fbp: SENSITIVE_CONTEXT.fbp }) as typeof SENSITIVE_CONTEXT
+    await expect(encryptMetaCapiContext({ keys, aad: AAD, value: inherited }))
+      .rejects.toThrow('META_CAPI_CONTEXT_INVALID')
+
+    await withObjectPrototypeProperty('fbp', SENSITIVE_CONTEXT.fbp, async () => {
+      const envelope = await encryptMetaCapiContext({ keys, aad: AAD, value: {} })
+      await expect(decryptMetaCapiContext({ keys, aad: AAD, envelope })).resolves.toEqual({})
+    })
+    expect(Object.hasOwn(Object.prototype, 'fbp')).toBe(false)
+  })
+
   it('明文仅接受固定 allowlist，并严格校验 hash', async () => {
     const keys = await loadMetaCapiCryptoKeys({ META_CAPI_DATA_KEY_CURRENT: CURRENT_KEY_BASE64 })
     await expect(encryptMetaCapiContext({
@@ -215,7 +350,18 @@ describe('Meta CAPI Web Crypto', () => {
       const error = await captureError(fail)
       const exposed = errorSurface(error)
       for (const value of forbidden) expect(exposed).not.toContain(value)
+      expect(error).not.toHaveProperty('cause')
     }
+  })
+
+  it('errorSurface 递归捕获 non-enumerable Error.cause 和 primitive cause', () => {
+    const sensitiveCause = 'sensitive-primitive-cause'
+    const nested = new Error('middle', { cause: sensitiveCause })
+    const outer = new Error('outer', { cause: nested })
+
+    expect(Object.getOwnPropertyDescriptor(outer, 'cause')?.enumerable).toBe(false)
+    expect(Object.getOwnPropertyDescriptor(nested, 'cause')?.enumerable).toBe(false)
+    expect(errorSurface(outer)).toContain(sensitiveCause)
   })
 })
 
@@ -286,13 +432,41 @@ async function captureError(action: () => unknown | Promise<unknown>) {
 function errorSurface(error: unknown) {
   const surfaces: string[] = []
   const seen = new Set<unknown>()
-  let current = error
-  while (current && typeof current === 'object' && !seen.has(current)) {
+
+  function collect(current: unknown) {
+    if (current === null || typeof current !== 'object') {
+      surfaces.push(String(current ?? ''))
+      return
+    }
+    if (seen.has(current)) return
     seen.add(current)
     const record = current as { name?: unknown; message?: unknown; cause?: unknown }
     surfaces.push(String(record.name ?? ''), String(record.message ?? ''))
     surfaces.push(JSON.stringify(current, (key, value) => key === 'stack' ? undefined : value) ?? '')
-    current = record.cause
+    if (Object.hasOwn(current, 'cause')) collect(record.cause)
   }
+
+  collect(error)
   return surfaces.join('\n')
+}
+
+async function withObjectPrototypeProperty(
+  property: string,
+  value: unknown,
+  run: () => unknown | Promise<unknown>,
+) {
+  const original = Object.getOwnPropertyDescriptor(Object.prototype, property)
+  Object.defineProperty(Object.prototype, property, {
+    configurable: true,
+    enumerable: false,
+    writable: true,
+    value,
+  })
+  try {
+    await run()
+  }
+  finally {
+    if (original) Object.defineProperty(Object.prototype, property, original)
+    else delete (Object.prototype as Record<string, unknown>)[property]
+  }
 }

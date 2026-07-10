@@ -26,6 +26,9 @@ const CONTEXT_FIELDS = [
   'externalIdSha256',
 ] as const
 const ENVELOPE_FIELDS = new Set(['schemaVersion', 'keyId', 'iv', 'ciphertext', 'tag'])
+type DataKeyUsage = 'encrypt' | 'decrypt'
+const CURRENT_KEY_USAGES: DataKeyUsage[] = ['encrypt', 'decrypt']
+const PREVIOUS_KEY_USAGES: DataKeyUsage[] = ['decrypt']
 
 export interface MetaCapiSensitiveContext extends SharedMetaCapiSensitiveContext {
   emailSha256?: string
@@ -52,10 +55,10 @@ export async function loadMetaCapiCryptoKeys(env: {
   META_CAPI_DATA_KEY_PREVIOUS?: string
 }): Promise<MetaCapiCryptoKeys> {
   try {
-    const current = await importDataKey(env.META_CAPI_DATA_KEY_CURRENT)
+    const current = await importDataKey(env.META_CAPI_DATA_KEY_CURRENT, CURRENT_KEY_USAGES)
     if (env.META_CAPI_DATA_KEY_PREVIOUS === undefined) return { current }
 
-    const previous = await importDataKey(env.META_CAPI_DATA_KEY_PREVIOUS)
+    const previous = await importDataKey(env.META_CAPI_DATA_KEY_PREVIOUS, PREVIOUS_KEY_USAGES)
     return previous.id === current.id ? { current } : { current, previous }
   }
   catch {
@@ -69,7 +72,7 @@ export async function encryptMetaCapiContext(input: {
   value: MetaCapiSensitiveContext
 }): Promise<MetaCapiEncryptedEnvelope> {
   try {
-    validateCryptoKey(input.keys.current)
+    validateCryptoKey(input.keys.current, 'encrypt')
     const additionalData = encodeAad(input.aad)
     const plaintext = new TextEncoder().encode(JSON.stringify(validateContext(input.value)))
     const iv = crypto.getRandomValues(new Uint8Array(AES_GCM_IV_BYTES))
@@ -106,7 +109,7 @@ export async function decryptMetaCapiContext(input: {
     const selected = [input.keys.current, input.keys.previous]
       .find(candidate => candidate?.id === envelope.keyId)
     if (!selected) throw stableError(CONTEXT_ERROR)
-    validateCryptoKey(selected)
+    validateCryptoKey(selected, 'decrypt')
 
     const sealed = concatenateBytes(envelope.ciphertext, envelope.tag)
     const plaintext = await crypto.subtle.decrypt({
@@ -148,7 +151,7 @@ export async function metaConnectionFingerprint(pixelId: string, accessToken: st
   }
 }
 
-async function importDataKey(value: string | undefined) {
+async function importDataKey(value: string | undefined, usages: DataKeyUsage[]) {
   if (typeof value !== 'string') throw stableError(DATA_KEY_ERROR)
   const canonical = value.trim()
   if (!BASE64_KEY_PATTERN.test(canonical)) throw stableError(DATA_KEY_ERROR)
@@ -157,13 +160,13 @@ async function importDataKey(value: string | undefined) {
     throw stableError(DATA_KEY_ERROR)
   }
   const digest = await crypto.subtle.digest('SHA-256', raw)
-  const key = await crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt'])
+  const key = await crypto.subtle.importKey('raw', raw, 'AES-GCM', false, usages)
   return { id: bytesToHex(new Uint8Array(digest)).slice(0, 16), key }
 }
 
 function encodeAad(value: MetaCapiEnvelopeAad) {
   if (!isPlainRecord(value)) throw stableError(CONTEXT_ERROR)
-  if (!hasOnlyFields(value, ['deliveryId', 'externalEventId', 'eventName'])) {
+  if (!hasExactOwnFields(value, ['deliveryId', 'externalEventId', 'eventName'])) {
     throw stableError(CONTEXT_ERROR)
   }
   const { deliveryId, externalEventId, eventName } = value
@@ -182,7 +185,7 @@ function encodeAad(value: MetaCapiEnvelopeAad) {
 }
 
 function validateEnvelope(value: MetaCapiEncryptedEnvelope) {
-  if (!isPlainRecord(value) || !hasOnlyFields(value, ENVELOPE_FIELDS)) {
+  if (!isPlainRecord(value) || !hasExactOwnFields(value, ENVELOPE_FIELDS)) {
     throw stableError(CONTEXT_ERROR)
   }
   if (value.schemaVersion !== 2 || typeof value.keyId !== 'string' || !KEY_ID_PATTERN.test(value.keyId)) {
@@ -202,8 +205,8 @@ function validateContext(value: unknown): MetaCapiSensitiveContext {
   }
   const validated: MetaCapiSensitiveContext = {}
   for (const field of CONTEXT_FIELDS) {
+    if (!Object.hasOwn(value, field)) continue
     const fieldValue = value[field]
-    if (fieldValue === undefined) continue
     if (typeof fieldValue !== 'string' || !isValidContextField(field, fieldValue)) {
       throw stableError(CONTEXT_ERROR)
     }
@@ -221,8 +224,27 @@ function isValidContextField(field: typeof CONTEXT_FIELDS[number], value: string
   return HASH_PATTERN.test(value)
 }
 
-function validateCryptoKey(value: { id: string; key: CryptoKey }) {
-  if (!value || !KEY_ID_PATTERN.test(value.id) || !value.key) throw stableError(CONTEXT_ERROR)
+function validateCryptoKey(
+  value: unknown,
+  requiredUsage: DataKeyUsage,
+): asserts value is { id: string; key: CryptoKey } {
+  if (!value || typeof value !== 'object' || !Object.hasOwn(value, 'id') || !Object.hasOwn(value, 'key')) {
+    throw stableError(CONTEXT_ERROR)
+  }
+  const { id, key } = value as { id?: unknown; key?: unknown }
+  if (typeof id !== 'string' || !KEY_ID_PATTERN.test(id)) throw stableError(CONTEXT_ERROR)
+  if (typeof CryptoKey === 'undefined' || !(key instanceof CryptoKey)) throw stableError(CONTEXT_ERROR)
+
+  const algorithm = key.algorithm as { name: string; length?: unknown }
+  if (
+    key.type !== 'secret'
+    || algorithm.name !== 'AES-GCM'
+    || algorithm.length !== AES_KEY_BYTES * 8
+    || key.extractable
+    || !key.usages.includes(requiredUsage)
+  ) {
+    throw stableError(CONTEXT_ERROR)
+  }
 }
 
 function decodeBase64(value: string) {
@@ -276,6 +298,12 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 function hasOnlyFields(value: object, allowed: Iterable<string>) {
   const allowedFields = allowed instanceof Set ? allowed : new Set(allowed)
   return Reflect.ownKeys(value).every(key => typeof key === 'string' && allowedFields.has(key))
+}
+
+function hasExactOwnFields(value: object, fields: Iterable<string>) {
+  const requiredFields = fields instanceof Set ? fields : new Set(fields)
+  return hasOnlyFields(value, requiredFields)
+    && Array.from(requiredFields).every(field => Object.hasOwn(value, field))
 }
 
 function stableError(code: string) {
