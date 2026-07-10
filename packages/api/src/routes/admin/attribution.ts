@@ -454,14 +454,20 @@ adminAttributionRoutes.get('/readiness', async (c) => {
         SELECT COUNT(*) AS external_event_id_mismatch_count
         FROM (
           SELECT
-            conversion_action_id,
-            event_name
-          FROM analytics_conversion_deliveries
-          WHERE datetime(created_at) >= datetime('now', '-7 days')
-          GROUP BY conversion_action_id, event_name
-          HAVING COUNT(DISTINCT CASE WHEN channel = 'meta_pixel' THEN external_event_id END) <> 1
-            OR COUNT(DISTINCT CASE WHEN channel = 'meta_capi' THEN external_event_id END) <> 1
-            OR COUNT(DISTINCT external_event_id) <> 1
+            d.conversion_action_id,
+            d.event_name
+          FROM analytics_conversion_deliveries d
+          JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
+          WHERE datetime(d.created_at) >= datetime('now', '-7 days')
+            AND a.source_channel <> 'internal'
+          GROUP BY d.conversion_action_id, d.event_name
+          HAVING COUNT(DISTINCT CASE WHEN d.channel = 'meta_pixel' THEN d.external_event_id END) > 0
+            AND COUNT(DISTINCT CASE WHEN d.channel = 'meta_capi' THEN d.external_event_id END) > 0
+            AND (
+              COUNT(DISTINCT CASE WHEN d.channel = 'meta_pixel' THEN d.external_event_id END) <> 1
+              OR COUNT(DISTINCT CASE WHEN d.channel = 'meta_capi' THEN d.external_event_id END) <> 1
+              OR COUNT(DISTINCT d.external_event_id) <> 1
+            )
         ) mismatches
       `, []),
       queryFirst(c.env.DB, `

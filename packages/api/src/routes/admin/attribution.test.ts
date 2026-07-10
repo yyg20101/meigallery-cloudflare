@@ -10,7 +10,7 @@ type ReadinessOptions = {
   actionCount?: number
   retryExhaustedCount?: number
   externalEventIdMismatchCount?: number
-  externalEventIds?: { pixel: readonly string[]; capi: readonly string[] }
+  externalEventIds?: { sourceChannel?: string; pixel: readonly string[]; capi: readonly string[] }
   pendingTooLongCount?: number
   permanentFailureCount?: number
   fbpSampleCount?: number
@@ -457,9 +457,11 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
   return db
 }
 
-function externalEventIdMismatch(input: { pixel: readonly string[]; capi: readonly string[] }) {
+function externalEventIdMismatch(input: { sourceChannel?: string; pixel: readonly string[]; capi: readonly string[] }) {
+  if (input.sourceChannel === 'internal') return 0
   const pixelIds = new Set(input.pixel)
   const capiIds = new Set(input.capi)
+  if (pixelIds.size === 0 || capiIds.size === 0) return 0
   const allIds = new Set([...pixelIds, ...capiIds])
   return pixelIds.size === 1 && capiIds.size === 1 && allIds.size === 1 ? 0 : 1
 }
@@ -683,18 +685,26 @@ describe('后台归因中心 API', () => {
   })
 
   it.each([
-    [{ pixel: ['a', 'z'], capi: ['z'] }, false],
-    [{ pixel: ['z'], capi: ['z'] }, true],
-  ] as const)('Pixel/CAPI external event ID 集合 %j 的一致性为 %s', async (externalEventIds, expected) => {
+    ['internal Test Event CAPI-only', { sourceChannel: 'internal', pixel: [], capi: ['test'] }, true],
+    ['首次 Pixel-only', { sourceChannel: 'ad', pixel: ['pixel-only'], capi: [] }, true],
+    ['CAPI-only', { sourceChannel: 'ad', pixel: [], capi: ['capi-only'] }, true],
+    ['双渠道一一匹配', { sourceChannel: 'ad', pixel: ['z'], capi: ['z'] }, true],
+    ['双渠道 Pixel 多值', { sourceChannel: 'ad', pixel: ['a', 'z'], capi: ['z'] }, false],
+    ['双渠道值不同', { sourceChannel: 'ad', pixel: ['a'], capi: ['z'] }, false],
+  ] as const)('%s 的 external event ID 集合 %j 一致性为 %s', async (_label, externalEventIds, expected) => {
     const { db, body } = await requestReadiness({ readiness: { externalEventIds } })
     const check = body.data.checks.find((item: { key: string }) => item.key === 'external_event_id_consistency')
     const mismatchSql = db.calls.find(call => call.sql.includes('AS external_event_id_mismatch_count'))?.sql ?? ''
 
     expect(check).toMatchObject({ key: 'external_event_id_consistency', level: 'blocker', ok: expected })
     expect(body.data.ready).toBe(expected)
-    expect(mismatchSql).toContain("COUNT(DISTINCT CASE WHEN channel = 'meta_pixel' THEN external_event_id END)")
-    expect(mismatchSql).toContain("COUNT(DISTINCT CASE WHEN channel = 'meta_capi' THEN external_event_id END)")
-    expect(mismatchSql).toContain('COUNT(DISTINCT external_event_id)')
+    expect(mismatchSql).toContain('JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id')
+    expect(mismatchSql).toContain("a.source_channel <> 'internal'")
+    expect(mismatchSql).toContain("COUNT(DISTINCT CASE WHEN d.channel = 'meta_pixel' THEN d.external_event_id END) > 0")
+    expect(mismatchSql).toContain("COUNT(DISTINCT CASE WHEN d.channel = 'meta_capi' THEN d.external_event_id END) > 0")
+    expect(mismatchSql).toContain("COUNT(DISTINCT CASE WHEN d.channel = 'meta_pixel' THEN d.external_event_id END)")
+    expect(mismatchSql).toContain("COUNT(DISTINCT CASE WHEN d.channel = 'meta_capi' THEN d.external_event_id END)")
+    expect(mismatchSql).toContain('COUNT(DISTINCT d.external_event_id)')
     expect(mismatchSql).not.toContain('MAX(')
   })
 
@@ -703,7 +713,7 @@ describe('后台归因中心 API', () => {
     const sqlByAlias = (alias: string) => db.calls.find(call => call.sql.includes(alias))?.sql ?? ''
 
     expect(sqlByAlias('AS retry_exhausted_count')).toContain("datetime(last_attempt_at) >= datetime('now', '-24 hours')")
-    expect(sqlByAlias('AS external_event_id_mismatch_count')).toContain("datetime(created_at) >= datetime('now', '-7 days')")
+    expect(sqlByAlias('AS external_event_id_mismatch_count')).toContain("datetime(d.created_at) >= datetime('now', '-7 days')")
     expect(sqlByAlias('AS pending_too_long_count')).toContain("datetime(created_at) < datetime('now', '-10 minutes')")
     expect(sqlByAlias('AS permanent_failure_count')).toContain("datetime(updated_at) >= datetime('now', '-7 days')")
   })
