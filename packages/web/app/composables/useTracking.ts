@@ -100,6 +100,7 @@ export function useTracking() {
     instructions: MetaPixelInstruction[],
     maximumConsentScope: MarketingConsentScope,
   ) {
+    if (!ensureCurrentMarketingRouteAllowed()) return
     if (scopedMarketingConsent(marketingConsent, maximumConsentScope) !== 'granted' || !Array.isArray(instructions)) return
     for (const value of instructions) {
       if (!isMetaPixelInstruction(value)) continue
@@ -117,6 +118,7 @@ export function useTracking() {
   }
 
   function trackPageView() {
+    if (!ensureCurrentMarketingRouteAllowed()) return
     if (!canDeliverMarketing(marketingConsent)) {
       teardownPixel()
       return
@@ -131,8 +133,6 @@ export function useTracking() {
       teardownPixel()
       return
     }
-    if (isTrackingBlocked(route.fullPath)) return
-
     const pageKey = `${config.pixelId}|${route.fullPath}`
     if (lastTrackedPageKey === pageKey) return
     if (!metaPixelAdapter.initialize(config.pixelId)) return
@@ -144,13 +144,19 @@ export function useTracking() {
     lastTrackedPageKey = ''
   }
 
+  function ensureCurrentMarketingRouteAllowed() {
+    if (isMarketingRouteAllowed(route.fullPath)) return true
+    teardownPixel()
+    return false
+  }
+
   function trackViewContent(payload: Record<string, string | number | boolean>) {
-    if (!canDeliverMarketing(marketingConsent) || isTrackingBlocked(route.fullPath)) return
+    if (!ensureCurrentMarketingRouteAllowed() || !canDeliverMarketing(marketingConsent)) return
     metaPixelAdapter.standardEvent('ViewContent', payload)
   }
 
   function trackSearch(input: TrackSearchInput) {
-    if (!canDeliverMarketing(marketingConsent) || isTrackingBlocked(route.fullPath)) return
+    if (!ensureCurrentMarketingRouteAllowed() || !canDeliverMarketing(marketingConsent)) return
     metaPixelAdapter.standardEvent('Search', {
       search_string: sanitizeAnalyticsText(input.searchString, 80),
       result_count: Number.isFinite(input.resultCount) ? input.resultCount : 0,
@@ -242,14 +248,14 @@ function isMetaPixelInstruction(value: unknown): value is MetaPixelInstruction {
     && event.receiptToken.length > 0
 }
 
-function isTrackingBlocked(fullPath: string) {
+function isMarketingRouteAllowed(fullPath: string) {
   let pathname = fullPath
   try {
     pathname = new URL(fullPath, 'https://site.local').pathname
   } catch {
     pathname = fullPath.split(/[?#]/)[0] || fullPath
   }
-  return isAdminPath(pathname) || hasSensitiveAnalyticsUrl(fullPath)
+  return !isAdminPath(pathname) && !hasSensitiveAnalyticsUrl(fullPath)
 }
 
 function queueFailedConversionRetry(entry: FailedConversionRetry) {

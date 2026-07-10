@@ -468,6 +468,56 @@ describe('useTracking', () => {
     expect(adapter.initialize).not.toHaveBeenCalled()
     expect(adapter.pageView).not.toHaveBeenCalled()
   })
+
+  it('导航到敏感 URL 后 Contact 只写第一方事实并 teardown Pixel', async () => {
+    route.fullPath = '/gallery/public-before-sensitive'
+    route.path = '/gallery/public-before-sensitive'
+    const tracking = useTracking()
+    tracking.trackPageView()
+    adapter.teardown.mockClear()
+    adapter.standardEvent.mockClear()
+    api.mockResolvedValueOnce({ data: { pixelEvents: [instruction('Contact')] } })
+
+    route.fullPath = '/gallery/private?token=secret&credential=hidden'
+    route.path = '/gallery/private'
+    await tracking.trackContact({
+      methodType: 'telegram',
+      actionTarget: 'floating_contact_panel',
+      actionType: 'open_link',
+    })
+
+    expect(adapter.initialize).toHaveBeenCalledWith('123456789')
+    expect(adapter.pageView).toHaveBeenCalledOnce()
+    expect(adapter.teardown).toHaveBeenCalledOnce()
+    expect(adapter.standardEvent).not.toHaveBeenCalled()
+    expect(api.mock.calls.filter(call => call[0] === '/api/conversions/events')).toHaveLength(1)
+    expect(api.mock.calls.filter(call => call[0] === '/api/conversions/pixel-receipts')).toHaveLength(0)
+    expect(trackAnalytics).toHaveBeenCalledWith('contact_method_click', expect.objectContaining({ flush: true }))
+  })
+
+  it('admin route 的 Contact 只写第一方事实并 teardown Pixel', async () => {
+    route.fullPath = '/gallery/public-before-admin'
+    route.path = '/gallery/public-before-admin'
+    const tracking = useTracking()
+    tracking.trackPageView()
+    adapter.teardown.mockClear()
+    adapter.standardEvent.mockClear()
+    api.mockResolvedValueOnce({ data: { pixelEvents: [instruction('Contact')] } })
+
+    route.fullPath = '/admin/analytics'
+    route.path = '/admin/analytics'
+    await tracking.trackContact({
+      methodType: 'wechat',
+      actionTarget: 'floating_contact_panel',
+      actionType: 'copy',
+    })
+
+    expect(adapter.teardown).toHaveBeenCalledOnce()
+    expect(adapter.standardEvent).not.toHaveBeenCalled()
+    expect(api.mock.calls.filter(call => call[0] === '/api/conversions/events')).toHaveLength(1)
+    expect(api.mock.calls.filter(call => call[0] === '/api/conversions/pixel-receipts')).toHaveLength(0)
+    expect(trackAnalytics).toHaveBeenCalledOnce()
+  })
 })
 
 function instruction(eventName: 'Contact' | 'Lead' | 'CompleteRegistration') {
