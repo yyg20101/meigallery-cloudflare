@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { describe, it } from 'node:test'
-import { buildMetaLiveEvidence, recordMetaLiveVerification } from './record-meta-live-verification.mjs'
+import {
+  buildDevMetaLiveReadinessSql,
+  buildMetaLiveEvidence,
+  recordMetaLiveVerification,
+} from './record-meta-live-verification.mjs'
 
 const COMMIT = '18dc11e0b0e4797683d4551a93a1f22e53dc4628'
 const CONTRACT = { version: 1, digest: `sha256:${'9'.repeat(64)}` }
@@ -63,6 +68,57 @@ function runtime(overrides = {}) {
 }
 
 describe('Meta live evidence V2 Worker challenge 录入', () => {
+  it('Dataset Quality readiness 只判断固定两事件各自最新快照', () => {
+    const sql = buildDevMetaLiveReadinessSql(COMMIT, CONTRACT)
+    const program = `
+      import { DatabaseSync } from 'node:sqlite';
+      const db = new DatabaseSync(':memory:');
+      db.exec(${JSON.stringify(`
+      CREATE TABLE meta_dataset_quality_snapshots (
+        id TEXT PRIMARY KEY, environment TEXT, event_name TEXT, contract_version INTEGER,
+        contract_digest TEXT, collection_status TEXT, collected_at TEXT
+      );
+      CREATE TABLE meta_connection_verifications (
+        environment TEXT, pixel_id TEXT, verified_commit TEXT, verified_at TEXT, invalidated_at TEXT
+      );
+      CREATE TABLE meta_live_challenges (
+        id TEXT, environment TEXT, commit_sha TEXT, contact_event_digest TEXT,
+        complete_registration_event_digest TEXT, status TEXT, events_received INTEGER,
+        expires_at TEXT, consumed_at TEXT
+      );
+      CREATE TABLE analytics_conversion_deliveries (
+        event_name TEXT, has_email INTEGER, has_external_id INTEGER, channel TEXT, status TEXT
+      );
+      INSERT INTO meta_connection_verifications VALUES ('dev', '12345678906781', '${COMMIT}', datetime('now'), NULL);
+      INSERT INTO meta_live_challenges VALUES (
+        'mlc_${'c'.repeat(32)}', 'dev', '${COMMIT}', '${DIGESTS.Contact}', '${DIGESTS.CompleteRegistration}',
+        'server_sent', 2, datetime('now', '+1 hour'), datetime('now')
+      );
+      INSERT INTO analytics_conversion_deliveries VALUES ('CompleteRegistration', 1, 1, 'meta_capi', 'sent');
+      INSERT INTO analytics_conversion_deliveries VALUES ('Contact', 0, 0, 'meta_capi', 'sent');
+      INSERT INTO meta_dataset_quality_snapshots VALUES
+        ('old-contact', 'dev', 'Contact', 1, '${CONTRACT.digest}', 'failed', '2000-01-01T00:00:00.000Z'),
+        ('old-registration', 'dev', 'CompleteRegistration', 1, '${CONTRACT.digest}', 'failed', '2000-01-01T00:00:00.000Z'),
+        ('fresh-contact', 'dev', 'Contact', 1, '${CONTRACT.digest}', 'success', datetime('now', '-1 hour')),
+        ('fresh-registration', 'dev', 'CompleteRegistration', 1, '${CONTRACT.digest}', 'success', datetime('now', '-1 hour'));
+      `)});
+      const sql = ${JSON.stringify(sql)};
+      const before = db.prepare(sql).get().collector_current;
+      db.exec(${JSON.stringify(`INSERT INTO meta_dataset_quality_snapshots VALUES
+        ('new-contact-failure', 'dev', 'Contact', 1, '${CONTRACT.digest}', 'failed', datetime('now'))`)});
+      const after = db.prepare(sql).get().collector_current;
+      db.close();
+      console.log(JSON.stringify([before, after]));
+    `
+    const result = execFileSync(process.execPath, [
+      '--disable-warning=ExperimentalWarning',
+      '--input-type=module',
+      '--eval',
+      program,
+    ], { encoding: 'utf8' })
+    assert.deepEqual(JSON.parse(result), [1, 0])
+  })
+
   it('只接受 Worker 返回的不可逆摘要，证据不含原始 ID', () => {
     const evidence = buildMetaLiveEvidence(validInput())
     assert.equal(evidence.schemaVersion, 2)

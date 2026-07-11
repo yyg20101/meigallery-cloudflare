@@ -7,6 +7,7 @@ import {
   recordReleaseVerificationSummary,
 } from './release-verification-store.mjs'
 import { fetchWithTimeout, runCommand } from './release-verification-lib.mjs'
+import { verifyApprovedMetaDatasetQualityContract } from './meta-dataset-quality-contract-lib.mjs'
 
 const RESOURCE_CONFIG = {
   production: {
@@ -74,12 +75,20 @@ const META_OPERATIONS_SQL = `
     (SELECT COUNT(*) FROM active_keys) AS active_key_count
   FROM rollout CROSS JOIN incidents
 `.replace(/\s+/g, ' ').trim()
-const DATASET_QUALITY_SQL = `
+function datasetQualitySql(contract) {
+  if (!Number.isSafeInteger(contract?.version)
+    || !/^sha256:[0-9a-f]{64}$/.test(String(contract?.digest || ''))) {
+    throw new Error('dev 资源检查需要 approved Dataset Quality contract')
+  }
+  return `
   WITH latest AS (
     SELECT event_name, contract_version, contract_digest, collection_status, collected_at,
       ROW_NUMBER() OVER (PARTITION BY event_name ORDER BY collected_at DESC, id DESC) AS row_rank
     FROM meta_dataset_quality_snapshots
     WHERE environment = 'dev'
+      AND contract_version = ${contract.version}
+      AND contract_digest = '${contract.digest}'
+      AND event_name IN ('Contact', 'CompleteRegistration')
   )
   SELECT contract_version, contract_digest,
     COUNT(*) AS event_count,
@@ -90,9 +99,9 @@ const DATASET_QUALITY_SQL = `
   FROM latest
   WHERE row_rank = 1
   GROUP BY contract_version, contract_digest
-  ORDER BY contract_version DESC
   LIMIT 1
-`.replace(/\s+/g, ' ').trim()
+  `.replace(/\s+/g, ' ').trim()
+}
 
 function metaConnectionSql(environment) {
   return `SELECT environment, pixel_id, graph_api_version, verified_commit, verified_at, invalidated_at, invalidation_reason, revision FROM meta_connection_verifications WHERE environment = '${environment}' LIMIT 2`
@@ -102,6 +111,8 @@ export async function runMetaResourceVerification(options = {}) {
   const environment = String(options.environment || '')
   const config = RESOURCE_CONFIG[environment]
   if (!config) throw new Error('--env 只允许 dev 或 production')
+  const expectedDatasetQualityContract = options.expectedDatasetQualityContract
+  if (environment === 'dev') datasetQualitySql(expectedDatasetQualityContract)
   if (options.initialMetaRollout !== undefined && typeof options.initialMetaRollout !== 'boolean') throw new Error('initialMetaRollout 必须为布尔值')
   const phase = options.phase || (options.initialMetaRollout === true && environment === 'production' ? 'bootstrap' : 'full')
   if (!['bootstrap', 'post-deploy', 'full'].includes(phase)
@@ -124,8 +135,8 @@ export async function runMetaResourceVerification(options = {}) {
     command('meta-connection', ['d1', 'execute', config.database, ...config.envArgs, '--remote', '--command', metaConnectionSql(environment), '--json']),
     command('meta-operations', ['d1', 'execute', config.database, ...config.envArgs, '--remote', '--command', META_OPERATIONS_SQL, '--json']),
   ]
-  if (environment === 'dev' && options.expectedDatasetQualityContract) {
-    calls.push(command('dataset-quality', ['d1', 'execute', config.database, ...config.envArgs, '--remote', '--command', DATASET_QUALITY_SQL, '--json']))
+  if (environment === 'dev') {
+    calls.push(command('dataset-quality', ['d1', 'execute', config.database, ...config.envArgs, '--remote', '--command', datasetQualitySql(expectedDatasetQualityContract), '--json']))
   }
   const results = []
   for (const definition of calls) {
@@ -200,10 +211,10 @@ export async function runMetaResourceVerification(options = {}) {
   }
   const isolationReady = d1Identity && r2Identity && queueMainIdentity && queueDlqIdentity
     && (environment !== 'production' || phase === 'bootstrap' || Object.values(secretIsolation).every(Boolean))
-  const datasetQuality = options.expectedDatasetQualityContract
-    ? parseDatasetQuality(byName.get('dataset-quality')?.stdout, options.expectedDatasetQualityContract)
+  const datasetQuality = environment === 'dev'
+    ? parseDatasetQuality(byName.get('dataset-quality')?.stdout, expectedDatasetQualityContract)
     : null
-  const datasetQualityReady = !options.expectedDatasetQualityContract || datasetQuality?.collectorCurrent === true
+  const datasetQualityReady = environment !== 'dev' || datasetQuality?.collectorCurrent === true
   const initialStateReady = !initialMetaRollout || (
     capiEnabled === false
     && operations?.targetRolloutPercentage === 0
@@ -700,6 +711,11 @@ export async function main(argv = process.argv.slice(2), options = {}) {
     throw new Error('用法：verify-meta-resources.mjs --env dev|production [--initial-meta-rollout|--post-deploy-isolation] [--report-only]')
   }
   const commit = reportOnly ? undefined : await readCommit(options)
+  const expectedDatasetQualityContract = environment === 'dev'
+    ? await (options.verifyDatasetQualityContract || verifyApprovedMetaDatasetQualityContract)({
+        cwd: options.cwd || process.cwd(),
+      })
+    : undefined
   const report = await runMetaResourceVerification({
     ...options,
     environment,
@@ -707,6 +723,7 @@ export async function main(argv = process.argv.slice(2), options = {}) {
     initialMetaRollout,
     phase: postDeployIsolation ? 'post-deploy' : undefined,
     commit,
+    expectedDatasetQualityContract,
   })
   console.log(JSON.stringify(report, null, 2))
   if (report.status !== 'passed') throw new Error(`Meta ${environment} 资源检查失败`)

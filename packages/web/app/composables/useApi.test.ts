@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { useApi } from './useApi'
+import { fetchViaApiServiceBinding, useApi } from './useApi'
 
 const fetchMock = vi.fn()
 
@@ -43,5 +43,77 @@ describe('useApi 浏览器请求目标', () => {
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/conversions/events')
     expect(fetchMock.mock.calls[0]?.[0]).not.toContain(configuredApi)
+  })
+})
+
+describe('useApi SSR Service Binding', () => {
+  it('转发多个 Set-Cookie 并解析成功响应', async () => {
+    const appendHeader = vi.fn()
+    vi.stubGlobal('appendResponseHeader', appendHeader)
+    const headers = new Headers()
+    Object.defineProperty(headers, 'getSetCookie', {
+      value: () => [
+        'mei_session=renewed; Path=/; HttpOnly',
+        'mei_marketing_consent_receipt=receipt; Path=/; HttpOnly',
+      ],
+    })
+    const binding = {
+      fetch: vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        headers,
+        json: async () => ({ id: 'usr_1' }),
+      } as Response),
+    }
+    const event = { context: {} } as ReturnType<typeof useRequestEvent>
+
+    const result = await fetchViaApiServiceBinding<{ id: string }>(
+      event,
+      binding,
+      '/api/me',
+      { method: 'GET', headers: { cookie: 'mei_session=old' } },
+    )
+
+    expect(result).toEqual({ id: 'usr_1' })
+    expect(binding.fetch).toHaveBeenCalledWith('https://api.internal/api/me', expect.objectContaining({
+      method: 'GET',
+      headers: { cookie: 'mei_session=old' },
+    }))
+    expect(appendHeader.mock.calls).toEqual([
+      [event, 'set-cookie', 'mei_session=renewed; Path=/; HttpOnly'],
+      [event, 'set-cookie', 'mei_marketing_consent_receipt=receipt; Path=/; HttpOnly'],
+    ])
+  })
+
+  it('非 2xx 仍先转发续期 Cookie，并保留状态与响应体', async () => {
+    const appendHeader = vi.fn()
+    vi.stubGlobal('appendResponseHeader', appendHeader)
+    const headers = new Headers()
+    Object.defineProperty(headers, 'getSetCookie', {
+      value: () => ['mei_session=renewed; Path=/; HttpOnly'],
+    })
+    const binding = {
+      fetch: vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized',
+        headers,
+        text: async () => '{"error":"expired"}',
+      } as Response),
+    }
+    const event = { context: {} } as ReturnType<typeof useRequestEvent>
+
+    await expect(fetchViaApiServiceBinding(
+      event,
+      binding,
+      '/api/me',
+      { method: 'GET' },
+    )).rejects.toMatchObject({
+      statusCode: 401,
+      statusMessage: 'Unauthorized',
+      data: '{"error":"expired"}',
+    })
+    expect(appendHeader).toHaveBeenCalledWith(event, 'set-cookie', 'mei_session=renewed; Path=/; HttpOnly')
   })
 })

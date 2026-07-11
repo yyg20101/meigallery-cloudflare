@@ -84,20 +84,7 @@ export function useApi() {
         (init as any).headers = { ...(init.headers as Record<string, string> || {}), cookie: requestHeaders.cookie }
       }
 
-      const response = await apiBinding.fetch(`https://api.internal${fullPath}`, init)
-      forwardSsrResponseCookies(event, response)
-
-      if (!response.ok) {
-        // 模拟 $fetch 的行为：非 2xx 抛出错误
-        const errorBody = await response.text().catch(() => '')
-        const err = new Error(`[${init.method}] "${fullPath}": ${response.status} ${response.statusText}`)
-        ;(err as any).statusCode = response.status
-        ;(err as any).statusMessage = response.statusText
-        ;(err as any).data = errorBody
-        throw err
-      }
-
-      return response.json() as Promise<T>
+      return fetchViaApiServiceBinding<T>(event, apiBinding, fullPath, init)
     }
 
     // 本地开发回退：直接 HTTP 请求 API 开发服务器（无 Worker-to-Worker 限制）
@@ -167,4 +154,23 @@ function forwardSsrResponseCookies(event: ReturnType<typeof useRequestEvent>, re
   for (const [name, value] of apiProxyResponseHeaderEntries(response.headers)) {
     if (name === 'set-cookie') appendResponseHeader(event, name, value)
   }
+}
+
+export async function fetchViaApiServiceBinding<T>(
+  event: ReturnType<typeof useRequestEvent>,
+  apiBinding: { fetch: (input: string, init?: RequestInit) => Promise<Response> },
+  fullPath: string,
+  init: RequestInit,
+): Promise<T> {
+  const response = await apiBinding.fetch(`https://api.internal${fullPath}`, init)
+  forwardSsrResponseCookies(event, response)
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => '')
+    const err = new Error(`[${init.method}] "${fullPath}": ${response.status} ${response.statusText}`)
+    ;(err as any).statusCode = response.status
+    ;(err as any).statusMessage = response.statusText
+    ;(err as any).data = errorBody
+    throw err
+  }
+  return response.json() as Promise<T>
 }

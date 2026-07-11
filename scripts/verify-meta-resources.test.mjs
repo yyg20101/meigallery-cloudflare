@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   compareLiveAttestations,
+  main as verifyMetaResourcesMain,
   requestLiveResourceAttestations,
   runMetaResourceVerification as runMetaResourceVerificationImpl,
 } from './verify-meta-resources.mjs'
@@ -14,11 +15,37 @@ const RESOURCE_ID = '714929cb-sensitive-resource-id'
 function runMetaResourceVerification(options) {
   return runMetaResourceVerificationImpl({
     requestResourceAttestations: async input => passingLiveIsolation(input.commit),
+    ...(options.environment === 'dev' && !options.expectedDatasetQualityContract
+      ? { expectedDatasetQualityContract: { version: 1, digest: `sha256:${'9'.repeat(64)}` } }
+      : {}),
     ...options,
   })
 }
 
 describe('Meta Cloudflare 资源检查', () => {
+  it('dev 程序入口和 CLI 都不能绕过 approved Dataset Quality contract', async () => {
+    await assert.rejects(runMetaResourceVerificationImpl({ environment: 'dev' }), /approved Dataset Quality contract/)
+
+    let verified = 0
+    const originalLog = console.log
+    console.log = () => {}
+    try {
+      const report = await verifyMetaResourcesMain(['--env', 'dev', '--report-only'], {
+        verifyDatasetQualityContract: async () => {
+          verified += 1
+          return { version: 1, digest: `sha256:${'9'.repeat(64)}` }
+        },
+        runCommand: createPassingRunner([], { capiEnabled: true }),
+      })
+      assert.equal(report.status, 'passed')
+      assert.equal(report.datasetQualityCollectorCurrent, true)
+    }
+    finally {
+      console.log = originalLog
+    }
+    assert.equal(verified, 1)
+  })
+
   it('live attestation 只向固定可信 origin 换票，并以无 Cookie 的一次性 ticket 完成最终请求', async () => {
     const calls = []
     const now = '2026-07-11T00:00:00.000Z'
