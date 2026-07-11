@@ -12,6 +12,7 @@ import {
   MetaCapiCircuitError,
   openMetaCapiIncident,
   readMetaCircuitSnapshot,
+  runMetaCapiCircuitEvaluation,
 } from './meta-capi-circuit-breaker'
 
 const RELEASE_COMMIT = 'a'.repeat(40)
@@ -193,6 +194,49 @@ describe('Meta CAPI incident 生命周期', () => {
       duplicateSuppressed: 1,
       duplicateDeliveryGroups: 0,
     })
+  })
+
+  it('10 条 payload invalid 经 scheduled evaluation 仍不产生 critical incident', async () => {
+    const values = Array.from({ length: 10 }, (_, index) => (
+      `('payload_${index}', 'payload_action_${index}', 'meta_capi', 'failed', 'secure_context_payload_invalid', 1, datetime('now', '-1 minute'), NULL, datetime('now', '-2 minutes'))`
+    )).join(',')
+    await execSql(`INSERT INTO analytics_conversion_deliveries VALUES ${values};`)
+
+    const evaluated = await runMetaCapiCircuitEvaluation(circuitEnv())
+
+    expect(evaluated.snapshot).toMatchObject({ totalAttempts: 10, permanentFailures: 0 })
+    expect(evaluated.criticalTriggers).toEqual([])
+    expect(await incidentCount()).toBe(0)
+  })
+
+  it('旧 secure_context_invalid fail safe，不当作已确认认证失败', async () => {
+    const values = Array.from({ length: 10 }, (_, index) => (
+      `('legacy_${index}', 'legacy_action_${index}', 'meta_capi', 'failed', 'secure_context_invalid', 1, datetime('now', '-1 minute'), NULL, datetime('now', '-2 minutes'))`
+    )).join(',')
+    await execSql(`INSERT INTO analytics_conversion_deliveries VALUES ${values};`)
+
+    const evaluated = await runMetaCapiCircuitEvaluation(circuitEnv())
+
+    expect(evaluated.snapshot).toMatchObject({ totalAttempts: 10, permanentFailures: 0 })
+    expect(evaluated.criticalTriggers).toEqual([])
+    expect(await incidentCount()).toBe(0)
+  })
+
+  it('已确认 authentication failure 进入 scheduled 永久失败口径且分类准确', async () => {
+    const values = Array.from({ length: 10 }, (_, index) => (
+      `('auth_${index}', 'auth_action_${index}', 'meta_capi', '${index === 0 ? 'failed' : 'sent'}', '${index === 0 ? 'secure_context_authentication_failed' : ''}', 1, datetime('now', '-1 minute'), NULL, datetime('now', '-2 minutes'))`
+    )).join(',')
+    await execSql(`INSERT INTO analytics_conversion_deliveries VALUES ${values};`)
+
+    const evaluated = await runMetaCapiCircuitEvaluation(circuitEnv())
+
+    expect(evaluated.snapshot).toMatchObject({ totalAttempts: 10, permanentFailures: 1 })
+    expect(evaluated.criticalTriggers).toEqual([
+      expect.objectContaining({ code: 'permanent_failure_rate' }),
+    ])
+    await expect(db.prepare(`
+      SELECT trigger_code FROM meta_capi_incidents WHERE status = 'open'
+    `).first<{ trigger_code: string }>()).resolves.toEqual({ trigger_code: 'permanent_failure_rate' })
   })
 
   it('同 trigger 重复观察保留 opened_at，只更新观察时间、evidence 与 rollout 快照', async () => {

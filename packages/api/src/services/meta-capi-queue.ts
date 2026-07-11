@@ -35,10 +35,15 @@ const QUEUE_MESSAGE_FIELDS = new Set(['schemaVersion', 'deliveryId', 'envelope']
 const ENVELOPE_FIELDS = new Set(['keyId', 'iv', 'ciphertext', 'tag', 'expiresAt'])
 const QUEUE_TRANSITION_MAX_ATTEMPTS = 3
 const UNKNOWN_DELIVERY_ID = 'unknown'
+const SECURE_CONTEXT_AUTHENTICATION_FAILED = 'secure_context_authentication_failed'
+const SECURE_CONTEXT_PAYLOAD_INVALID = 'secure_context_payload_invalid'
 const INTERNAL_DELIVERY_ID_PATTERN = /^cdlv_[a-z0-9]+(?:_[a-z0-9]+)*$/
 const MISSING_DATA_PROPERTY = Symbol('missing_data_property')
 
 type MetaCapiQueueEnv = SecureOutboxEnv
+type SecureContextFailureCode =
+  | typeof SECURE_CONTEXT_AUTHENTICATION_FAILED
+  | typeof SECURE_CONTEXT_PAYLOAD_INVALID
 
 export interface MetaCapiRecoveryResult {
   scanned: number
@@ -138,9 +143,11 @@ async function terminateInvalidQueueMessage(
       : null
     if (delivery) {
       logDeliveryId = delivery.id
-      if (parsed.errorCode === 'secure_context_invalid') {
+      if (parsed.errorCode === SECURE_CONTEXT_PAYLOAD_INVALID) {
         if (delivery.status === 'sent') await recordDuplicateSuppressed(db, delivery)
-        else if (!isTerminalDelivery(delivery)) await markSecureContextInvalid(db, delivery)
+        else if (!isTerminalDelivery(delivery)) {
+          await markSecureContextFailure(db, delivery, SECURE_CONTEXT_PAYLOAD_INVALID)
+        }
         await deleteSecureMetaCapiOutbox(db, delivery.id)
       } else {
         await terminateUnsupportedMessage(db, delivery)
@@ -230,14 +237,16 @@ async function consumeSecureMessage(
     let sensitiveContext
     let keys: Awaited<ReturnType<typeof loadMetaCapiCryptoKeys>>
     try {
-      if (delivery.encryption_key_id !== body.envelope.keyId) throw new Error('secure_context_invalid')
+      if (delivery.encryption_key_id !== body.envelope.keyId) {
+        throw new Error(SECURE_CONTEXT_PAYLOAD_INVALID)
+      }
       keys = await loadMetaCapiCryptoKeys(env)
     } catch {
-      await markSecureContextInvalid(env.DB, delivery)
+      await markSecureContextFailure(env.DB, delivery, SECURE_CONTEXT_PAYLOAD_INVALID)
       await deleteSecureMetaCapiOutbox(env.DB, deliveryId)
       console.error('[meta-capi] Queue 消息安全终止', {
         deliveryId: logDeliveryId,
-        errorCode: 'secure_context_invalid',
+        errorCode: SECURE_CONTEXT_PAYLOAD_INVALID,
       })
       ackMessage(queueMessage)
       return
@@ -259,18 +268,22 @@ async function consumeSecureMessage(
         },
       })
     } catch (error) {
-      if (error instanceof MetaCapiCryptoError
-        && error.code === 'META_CAPI_AUTHENTICATION_FAILED') {
+      const authenticationFailed = error instanceof MetaCapiCryptoError
+        && error.code === 'META_CAPI_AUTHENTICATION_FAILED'
+      const errorCode = authenticationFailed
+        ? SECURE_CONTEXT_AUTHENTICATION_FAILED
+        : SECURE_CONTEXT_PAYLOAD_INVALID
+      if (authenticationFailed) {
         await openMetaCapiIncidentSafely(
           env,
           createMetaIncidentTrigger('secure_context_decryption_failed'),
         )
       }
-      await markSecureContextInvalid(env.DB, delivery)
+      await markSecureContextFailure(env.DB, delivery, errorCode)
       await deleteSecureMetaCapiOutbox(env.DB, deliveryId)
       console.error('[meta-capi] Queue 消息安全终止', {
         deliveryId: logDeliveryId,
-        errorCode: 'secure_context_invalid',
+        errorCode,
       })
       ackMessage(queueMessage)
       return
@@ -312,10 +325,14 @@ async function terminateUnsupportedMessage(db: D1Database, delivery: MetaCapiDel
   await deleteSecureMetaCapiOutbox(db, delivery.id)
 }
 
-async function markSecureContextInvalid(db: D1Database, delivery: MetaCapiDeliveryRow) {
+async function markSecureContextFailure(
+  db: D1Database,
+  delivery: MetaCapiDeliveryRow,
+  errorCode: SecureContextFailureCode,
+) {
   const persisted = await confirmQueueTerminalTransition(db, delivery, {
     status: 'failed',
-    errorCode: 'secure_context_invalid',
+    errorCode,
     errorMessage: '',
   })
   if (persisted.status === 'sent') await recordDuplicateSuppressed(db, persisted)
@@ -371,7 +388,7 @@ async function confirmQueueTerminalTransition(
 
 type QueueMessageParseResult = {
   deliveryId: string
-  errorCode: 'legacy_message_unsupported' | 'secure_context_invalid'
+  errorCode: 'legacy_message_unsupported' | typeof SECURE_CONTEXT_PAYLOAD_INVALID
   message?: MetaCapiQueueMessage
 }
 
@@ -385,10 +402,10 @@ function parseQueueMessage(value: unknown): QueueMessageParseResult {
     }
     const envelope = readOwnDataProperty(value, 'envelope')
     if (!hasExactFields(value, QUEUE_MESSAGE_FIELDS) || !isPlainRecord(envelope)) {
-      return { deliveryId, errorCode: 'secure_context_invalid' }
+      return { deliveryId, errorCode: SECURE_CONTEXT_PAYLOAD_INVALID }
     }
     if (!hasExactFields(envelope, ENVELOPE_FIELDS)) {
-      return { deliveryId, errorCode: 'secure_context_invalid' }
+      return { deliveryId, errorCode: SECURE_CONTEXT_PAYLOAD_INVALID }
     }
 
     const keyId = readOwnDataProperty(envelope, 'keyId')
@@ -402,10 +419,10 @@ function parseQueueMessage(value: unknown): QueueMessageParseResult {
       || typeof ciphertext !== 'string'
       || typeof tag !== 'string'
       || typeof expiresAt !== 'string'
-    ) return { deliveryId, errorCode: 'secure_context_invalid' }
+    ) return { deliveryId, errorCode: SECURE_CONTEXT_PAYLOAD_INVALID }
     return {
       deliveryId,
-      errorCode: 'secure_context_invalid',
+      errorCode: SECURE_CONTEXT_PAYLOAD_INVALID,
       message: {
         schemaVersion: 2,
         deliveryId,

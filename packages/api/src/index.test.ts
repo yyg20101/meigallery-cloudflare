@@ -256,25 +256,40 @@ describe('Meta CAPI scheduled recovery', () => {
     expect(harness.sqlCalls.some(sql => sql.includes('AS duplicate_delivery_group_count'))).toBe(true)
   })
 
-  it('每日 Cron 同时恢复 outbox 并运行完整聚合与保留期清理', async () => {
+  it('每日 Cron 只运行完整聚合与保留期清理', async () => {
     const harness = createScheduledHarness()
 
     await harness.run('0 0 * * *')
 
-    expect(harness.sent).toEqual([harness.expectedMessage])
+    expect(harness.sent).toEqual([])
     expect(harness.sqlCalls.some(sql => sql.includes('email_verification_codes'))).toBe(true)
     expect(harness.sqlCalls.some(sql => sql.includes('analytics_daily_sources'))).toBe(true)
     expect(harness.sqlCalls.some(sql => sql.includes('analytics_events WHERE sampled'))).toBe(true)
+    expect(harness.sqlCalls.some(sql => sql.includes('AS duplicate_delivery_group_count'))).toBe(false)
   })
 
-  it('未知 Cron 保守只恢复 outbox', async () => {
+  it('未知 Cron 保守跳过所有任务', async () => {
     const harness = createScheduledHarness()
 
     await harness.run('13 * * * *')
 
-    expect(harness.sent).toEqual([harness.expectedMessage])
+    expect(harness.sent).toEqual([])
     expect(harness.sqlCalls.some(sql => sql.includes('email_verification_codes'))).toBe(false)
     expect(harness.sqlCalls.some(sql => sql.includes('analytics_daily_sources'))).toBe(false)
+    expect(harness.sqlCalls.some(sql => sql.includes('AS duplicate_delivery_group_count'))).toBe(false)
+  })
+
+  it('UTC 00:00 的 minute 与 daily trigger 分别调用时公共任务总计只执行一次', async () => {
+    const harness = createScheduledHarness()
+    const scheduledTime = Date.parse('2026-07-11T00:00:00.000Z')
+
+    await harness.run('* * * * *', scheduledTime)
+    await harness.run('0 0 * * *', scheduledTime)
+
+    expect(harness.sent).toEqual([harness.expectedMessage])
+    expect(harness.sqlCalls.filter(sql => sql.includes('AS duplicate_delivery_group_count'))).toHaveLength(1)
+    expect(harness.sqlCalls.filter(sql => sql.includes('FROM users u'))).toHaveLength(1)
+    expect(harness.sqlCalls.filter(sql => sql.includes('email_verification_codes'))).toHaveLength(1)
   })
 
   it('注册事实修复只在每分钟主 Cron 的整点运行，每小时最多一次', async () => {

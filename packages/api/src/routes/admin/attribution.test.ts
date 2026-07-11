@@ -690,6 +690,8 @@ type RolloutDbOptions = {
   connectionVerified?: boolean
   liveEvidence?: boolean
   incidentSeverity?: 'warning' | 'critical' | null
+  incidentTriggerCode?: string
+  incidentTriggerSummary?: string
   sent?: number
   failed?: number
   permissionErrors?: number
@@ -714,8 +716,8 @@ function createRolloutDb(options: RolloutDbOptions = {}) {
       return [{
         id: 'incident_rollout_open',
         severity: 'critical',
-        trigger_code: 'meta_permission_denied',
-        trigger_summary: 'Meta 权限拒绝',
+        trigger_code: options.incidentTriggerCode ?? 'meta_permission_denied',
+        trigger_summary: options.incidentTriggerSummary ?? 'Meta 权限拒绝',
         target_rollout_percentage: options.target ?? 0,
         effective_rollout_percentage: 0,
         opened_at: '2026-07-11T00:00:00.000Z',
@@ -1882,6 +1884,23 @@ describe('后台归因中心 API', () => {
       },
     })
     expect(JSON.stringify(body)).not.toContain('rollout-token')
+  })
+
+  it.each([
+    ['meta_permission_denied', 'Meta CAPI 权限被拒绝'],
+    ['future_trigger', '未知 Meta CAPI incident'],
+  ])('rollout 只按 trigger code 输出固定 summary：%s', async (triggerCode, expectedSummary) => {
+    const pollutedSummary = '数据库中的用户、Pixel 与 token 原文'
+    const { res, body } = await requestRollout('admin', {
+      target: 10,
+      incidentSeverity: 'critical',
+      incidentTriggerCode: triggerCode,
+      incidentTriggerSummary: pollutedSummary,
+    })
+
+    expect(res.status).toBe(200)
+    expect(body.data.openIncident.triggerSummary).toBe(expectedSummary)
+    expect(JSON.stringify(body)).not.toContain(pollutedSummary)
   })
 
   it('warning incident 不熔断 rollout', async () => {

@@ -260,55 +260,59 @@ app.onError((err, c) => {
 
 // ============================================================
 // Scheduled Handler（Cron Trigger）
-// 每个 trigger 都恢复 Meta outbox；仅每日 trigger 执行完整维护任务。
+// minute trigger 执行高频公共任务；daily trigger 只执行完整维护任务。
 // ============================================================
 
+const MINUTE_MAINTENANCE_CRON = '* * * * *'
 const DAILY_MAINTENANCE_CRON = '0 0 * * *'
 
 async function handleScheduled(event: ScheduledEvent, env: Bindings): Promise<void> {
   const db = env.DB
 
-  try {
-    const circuit = await runMetaCapiCircuitEvaluation(env)
-    console.log('[cron] Meta CAPI Circuit Breaker 评估完成:', {
-      criticalCount: circuit.criticalTriggers.length,
-      warningCount: circuit.warnings.length,
-    })
-  } catch {
-    console.error('[cron] Meta CAPI Circuit Breaker 评估失败:', {
-      errorCode: 'meta_circuit_evaluation_failed',
-    })
-  }
-
-  try {
-    const purge = await purgeExpiredMetaCapiOutbox(db, 100)
-    console.log('[cron] Meta CAPI 过期密文清理完成:', purge)
-  } catch {
-    console.error('[cron] Meta CAPI 过期密文清理失败:', {
-      errorCode: 'secure_outbox_purge_failed',
-    })
-  }
-
-  try {
-    const recovery = await recoverPendingMetaCapiDeliveries(env)
-    console.log('[cron] Meta CAPI Queue 恢复完成:', recovery)
-  } catch (error) {
-    console.error('[cron] Meta CAPI Queue 恢复失败:', error)
-  }
-
-  if (shouldRecoverRegistrationConversions(event)) {
+  if (event.cron === MINUTE_MAINTENANCE_CRON) {
     try {
-      const recovery = await recoverRegistrationConversionFacts(db, new Date(event.scheduledTime))
-      console.log('[cron] 注册转化事实修复完成:', recovery)
+      const circuit = await runMetaCapiCircuitEvaluation(env)
+      console.log('[cron] Meta CAPI Circuit Breaker 评估完成:', {
+        criticalCount: circuit.criticalTriggers.length,
+        warningCount: circuit.warnings.length,
+      })
     } catch {
-      console.error('[cron.registration-recovery] 注册事实修复任务失败', {
-        code: 'REGISTRATION_CONVERSION_RECOVERY_JOB_FAILED',
+      console.error('[cron] Meta CAPI Circuit Breaker 评估失败:', {
+        errorCode: 'meta_circuit_evaluation_failed',
       })
     }
+
+    try {
+      const purge = await purgeExpiredMetaCapiOutbox(db, 100)
+      console.log('[cron] Meta CAPI 过期密文清理完成:', purge)
+    } catch {
+      console.error('[cron] Meta CAPI 过期密文清理失败:', {
+        errorCode: 'secure_outbox_purge_failed',
+      })
+    }
+
+    try {
+      const recovery = await recoverPendingMetaCapiDeliveries(env)
+      console.log('[cron] Meta CAPI Queue 恢复完成:', recovery)
+    } catch (error) {
+      console.error('[cron] Meta CAPI Queue 恢复失败:', error)
+    }
+
+    if (shouldRecoverRegistrationConversions(event)) {
+      try {
+        const recovery = await recoverRegistrationConversionFacts(db, new Date(event.scheduledTime))
+        console.log('[cron] 注册转化事实修复完成:', recovery)
+      } catch {
+        console.error('[cron.registration-recovery] 注册事实修复任务失败', {
+          code: 'REGISTRATION_CONVERSION_RECOVERY_JOB_FAILED',
+        })
+      }
+    }
+    return
   }
 
   if (event.cron !== DAILY_MAINTENANCE_CRON) {
-    console.log('[cron] 非每日 trigger，跳过完整维护任务:', event.cron || 'unknown')
+    console.log('[cron] 未知 trigger，跳过定时任务:', event.cron || 'unknown')
     return
   }
 
@@ -376,7 +380,7 @@ async function handleScheduled(event: ScheduledEvent, env: Bindings): Promise<vo
 }
 
 function shouldRecoverRegistrationConversions(event: ScheduledEvent) {
-  if (event.cron !== '* * * * *') return false
+  if (event.cron !== MINUTE_MAINTENANCE_CRON) return false
   const scheduledAt = new Date(event.scheduledTime)
   return !Number.isNaN(scheduledAt.getTime()) && scheduledAt.getUTCMinutes() === 0
 }

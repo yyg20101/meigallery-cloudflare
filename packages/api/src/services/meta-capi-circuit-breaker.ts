@@ -158,7 +158,7 @@ export async function readMetaCircuitSnapshot(db: D1Database): Promise<MetaCircu
       COALESCE(SUM(CASE
         WHEN status = 'failed'
           AND (
-            error_code IN ('meta_events_not_received', 'secure_context_invalid')
+            error_code IN ('meta_events_not_received', 'secure_context_authentication_failed')
             OR (error_code GLOB 'meta_http_4[0-9][0-9]' AND error_code <> 'meta_http_429')
           )
         THEN 1 ELSE 0 END), 0) AS permanent_failure_count,

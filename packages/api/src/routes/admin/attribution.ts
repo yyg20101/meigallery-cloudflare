@@ -1049,7 +1049,7 @@ async function readOpenCriticalIncident(
 ): Promise<OpenMetaIncident | null> {
   if (environment === 'invalid') return null
   const row = await db.prepare(`
-    SELECT id, severity, trigger_code, trigger_summary,
+    SELECT id, severity, trigger_code,
       target_rollout_percentage, effective_rollout_percentage,
       opened_at, last_observed_at
     FROM meta_capi_incidents
@@ -1064,7 +1064,7 @@ async function readOpenCriticalIncident(
     id: String(row.id || ''),
     severity: 'critical',
     triggerCode: String(row.trigger_code || ''),
-    triggerSummary: String(row.trigger_summary || ''),
+    triggerSummary: metaCapiIncidentSummary(row.trigger_code),
     targetPercentage: numberValue(row.target_rollout_percentage),
     effectivePercentage: numberValue(row.effective_rollout_percentage),
     openedAt: String(row.opened_at || ''),
@@ -1158,7 +1158,15 @@ async function readMetaRolloutMetrics(
 
 function serializeMetaRolloutSnapshot(snapshot: MetaRolloutSnapshot) {
   const { rawTargetValue: _rawTargetValue, ...safeSnapshot } = snapshot
-  return safeSnapshot
+  return {
+    ...safeSnapshot,
+    openIncident: safeSnapshot.openIncident
+      ? {
+          ...safeSnapshot.openIncident,
+          triggerSummary: metaCapiIncidentSummary(safeSnapshot.openIncident.triggerCode),
+        }
+      : null,
+  }
 }
 
 async function readRolloutRequest(c: AdminAttributionContext): Promise<{

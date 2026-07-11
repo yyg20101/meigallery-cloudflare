@@ -440,7 +440,12 @@ describe('Meta CAPI Queue V2', () => {
     }
   })
 
-  it.each(['unknown_key', 'key_id_mismatch', 'aad_mismatch', 'auth_failed'] as const)('%s 统一永久失败且日志不泄密', async failure => {
+  it.each([
+    ['unknown_key', 'secure_context_payload_invalid'],
+    ['key_id_mismatch', 'secure_context_payload_invalid'],
+    ['aad_mismatch', 'secure_context_authentication_failed'],
+    ['auth_failed', 'secure_context_authentication_failed'],
+  ] as const)('%s 按失败阶段持久互斥 error code 且日志不泄密', async (failure, errorCode) => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-07-11T12:00:00.000Z'))
     const db = createQueueDb()
@@ -463,11 +468,11 @@ describe('Meta CAPI Queue V2', () => {
     expect(message.ack).toHaveBeenCalledOnce()
     expect(message.retry).not.toHaveBeenCalled()
     expect(fetchMock).not.toHaveBeenCalled()
-    expect(db.delivery).toMatchObject({ status: 'failed', error_code: 'secure_context_invalid' })
+    expect(db.delivery).toMatchObject({ status: 'failed', error_code: errorCode })
     expect(db.outbox).toBeNull()
     expect(consoleError).toHaveBeenCalledWith('[meta-capi] Queue 消息安全终止', {
       deliveryId: db.delivery.id,
-      errorCode: 'secure_context_invalid',
+      errorCode,
     })
     const serializedLogs = JSON.stringify(consoleError.mock.calls)
     expect(serializedLogs).not.toContain(body.envelope.ciphertext)
@@ -475,7 +480,7 @@ describe('Meta CAPI Queue V2', () => {
     expect(serializedLogs).not.toContain('token_private')
   })
 
-  it('schema V2 的畸形 envelope 归入 secure_context_invalid 而不是旧消息兼容', async () => {
+  it('schema V2 的畸形 envelope 归入 secure_context_payload_invalid 而不是旧消息兼容', async () => {
     const db = createQueueDb()
     const body = await encryptedMessage(db)
     const malformed = {
@@ -489,14 +494,14 @@ describe('Meta CAPI Queue V2', () => {
 
     expect(message.ack).toHaveBeenCalledOnce()
     expect(message.retry).not.toHaveBeenCalled()
-    expect(db.delivery).toMatchObject({ status: 'failed', error_code: 'secure_context_invalid' })
+    expect(db.delivery).toMatchObject({ status: 'failed', error_code: 'secure_context_payload_invalid' })
     expect(consoleError).toHaveBeenCalledWith('[meta-capi] Queue 消息安全终止', {
       deliveryId: db.delivery.id,
-      errorCode: 'secure_context_invalid',
+      errorCode: 'secure_context_payload_invalid',
     })
   })
 
-  it('secure_context_invalid CAS 冲突刷新为 skipped 后保留终态及日报', async () => {
+  it('secure_context_payload_invalid CAS 冲突刷新为 skipped 后保留终态及日报', async () => {
     const db = createQueueDb({
       beforeFirstTransition: (delivery, daily) => {
         delivery.status = 'skipped'
@@ -753,7 +758,7 @@ describe('Meta CAPI Queue V2', () => {
 
     await handleMetaCapiBatch(batch(message), env(db))
 
-    expect(db.delivery).toMatchObject({ status: 'failed', error_code: 'secure_context_invalid' })
+    expect(db.delivery).toMatchObject({ status: 'failed', error_code: 'secure_context_authentication_failed' })
     expect(message.ack).toHaveBeenCalledOnce()
     const incident = db.calls.find(call => call.sql.includes('INSERT OR IGNORE INTO meta_capi_incidents'))
     expect(incident?.params).toContain('secure_context_decryption_failed')
@@ -769,7 +774,7 @@ describe('Meta CAPI Queue V2', () => {
 
     await handleMetaCapiBatch(batch(message), env(db))
 
-    expect(db.delivery).toMatchObject({ status: 'failed', error_code: 'secure_context_invalid' })
+    expect(db.delivery).toMatchObject({ status: 'failed', error_code: 'secure_context_payload_invalid' })
     expect(message.ack).toHaveBeenCalledOnce()
     expect(db.calls.some(call => call.sql.includes('INSERT OR IGNORE INTO meta_capi_incidents'))).toBe(false)
   })
