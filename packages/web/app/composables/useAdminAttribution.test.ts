@@ -18,7 +18,7 @@ describe('useAdminAttribution', () => {
   it('从路由查询识别归因范围', () => {
     expect(normalizeAttributionRangePreset('day')).toBe('day')
     expect(normalizeAttributionRangePreset('90d')).toBe('90d')
-    expect(normalizeAttributionRangePreset('unknown')).toBe('30d')
+    expect(normalizeAttributionRangePreset('unknown')).toBe('7d')
   })
 
   it('重复率按 duplicate / total 计算', () => {

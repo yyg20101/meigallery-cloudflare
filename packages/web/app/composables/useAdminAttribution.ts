@@ -1,10 +1,12 @@
 import type { AnalyticsRangeQuery } from '@meigallery/shared'
+import type { ComputedRef, Ref } from 'vue'
 
 export type AttributionRangePreset = '7d' | '30d' | '90d' | 'day'
-
+export type EvidenceLayer = 'business' | 'pixel' | 'capi' | 'quality'
 export type MetaConnectionState = 'not_configured' | 'unverified' | 'verified' | 'configuration_changed'
+export type MetaCapiRolloutPercentage = 0 | 10 | 50 | 100
 
-export interface MetaConnectionStatus {
+export interface MetaConnectionStatusData {
   state: MetaConnectionState
   environment: 'dev' | 'production'
   pixelIdConfigured: boolean
@@ -17,17 +19,146 @@ export interface MetaConnectionStatus {
   invalidationReason: string
 }
 
+// 保留旧类型名，避免既有调用方在迁移期中断。
+export type MetaConnectionStatus = MetaConnectionStatusData
+
+export interface AttributionDeliveryMetrics {
+  pixelAttempted: number
+  capiSent: number
+  failed: number
+  skipped: number
+  pending: number
+  retryExhausted: number
+}
+
+export interface AttributionBusinessMetrics {
+  contactCount: number
+  completeRegistrationCount: number
+  actionCount: number
+}
+
+export interface AttributionSummaryData {
+  business: AttributionBusinessMetrics
+  historical: { leadCount: number }
+  delivery: AttributionDeliveryMetrics
+}
+
+export interface AttributionTrendRow {
+  date: string
+  business: AttributionBusinessMetrics
+  delivery: AttributionDeliveryMetrics
+}
+
+export interface AttributionTrendsData {
+  granularity: 'day'
+  rows: AttributionTrendRow[]
+}
+
+export interface AttributionMatchMetric {
+  availability: 'available' | 'unavailable'
+  numerator: number
+  denominator: number
+  rate: number | null
+}
+
+export interface AttributionMatchRow {
+  date: string
+  fbp: AttributionMatchMetric
+  fbc: AttributionMatchMetric
+  email: AttributionMatchMetric
+  externalId: AttributionMatchMetric
+}
+
+export interface DatasetQualityRow {
+  date: string
+  eventName: string
+  metricKey: string
+  value: number | null
+  status: string
+  errorCategory: string
+  collectedAt: string
+  windowStart: string | null
+  windowEnd: string | null
+  contractVersion: number
+}
+
+export interface AttributionQualityData {
+  match: {
+    summary: Record<'fbp' | 'fbc' | 'email' | 'externalId', AttributionMatchMetric>
+    rows: AttributionMatchRow[]
+  }
+  datasetQuality: {
+    availability: 'available' | 'not_available'
+    latest: DatasetQualityRow | null
+    rows: DatasetQualityRow[]
+  }
+}
+
+export interface MetaIncident {
+  id: string
+  environment: string
+  status: 'open' | 'closed'
+  severity: string
+  triggerCode: string
+  triggerSummary: string
+  targetPercentage: number
+  effectivePercentage: number
+  evidence: Record<string, number | string>
+  openedAt: string
+  lastObservedAt: string
+  closedAt: string | null
+  resolution: string
+}
+
+export interface MetaRolloutSnapshot {
+  environment: 'dev' | 'production' | 'invalid'
+  targetPercentage: MetaCapiRolloutPercentage
+  effectivePercentage: MetaCapiRolloutPercentage
+  connectionVerified: boolean
+  liveEvidencePresent: boolean
+  openIncident: MetaIncident | null
+  metrics: {
+    sent: number
+    failed: number
+    permissionErrors: number
+    retryExhausted: number
+    stalePending: number
+    criticalQualityDiagnostics: number
+  }
+  metricsStatus: { available: boolean; errorCode: string | null }
+  promotion: {
+    from: MetaCapiRolloutPercentage
+    to: MetaCapiRolloutPercentage
+    allowed: boolean
+    requiresOverrideReason: boolean
+    blockers: string[]
+    hardBlockers: string[]
+  }
+}
+
+export interface MetaStatusData {
+  connection: MetaConnectionStatusData
+  rollout: MetaRolloutSnapshot
+  activity: AttributionSummaryData
+}
+
+export interface AttributionReadinessData {
+  ready: boolean
+  checks: Array<{ key: string; label: string; level: 'blocker' | 'warning'; ok: boolean; detail: string }>
+  settings: Record<string, unknown>
+  verifications: Record<string, unknown>
+}
+
+export interface AttributionRangeState {
+  range: Ref<AttributionRangePreset>
+  date: Ref<string>
+  query: ComputedRef<Pick<AnalyticsRangeQuery, 'range' | 'from' | 'to'>>
+  queryKey: ComputedRef<string>
+}
+
 export interface AttributionApiResponse<T> {
-  range?: {
-    from: string
-    to: string
-    days: number
-  }
-  usage?: {
-    rowsRead: number
-    rowsWritten: number
-    durationMs: number
-  }
+  range?: { from: string; to: string; days: number }
+  usage?: { rowsRead: number; rowsWritten: number; durationMs: number }
   data: T
 }
 
@@ -38,11 +169,74 @@ export const ATTRIBUTION_RANGE_OPTIONS: Array<{ label: string; value: Attributio
   { label: '单日', value: 'day' },
 ]
 
-export function useAdminAttribution<T>(endpoint: string, initialRange: AttributionRangePreset = '30d') {
-  const { api } = useApi()
+export function useAdminAttributionRange(initialRange: AttributionRangePreset = '7d'): AttributionRangeState {
   const route = useRoute()
-  const range = ref<AttributionRangePreset>(normalizeAttributionRangePreset(route.query.range, initialRange))
-  const date = ref(initialAttributionDate(route.query.date ?? route.query.from))
+  const router = useRouter()
+  const state = useState('admin-attribution-range-v2', () => ({
+    range: normalizeAttributionRangePreset(route.query.range, rangeFromDates(route.query.from, route.query.to) ?? initialRange),
+    date: initialAttributionDate(route.query.date ?? route.query.from),
+  }))
+  let syncingRoute = false
+
+  const replaceRouteRange = async (nextRange: AttributionRangePreset, nextDate: string) => {
+    if (syncingRoute) return
+    const query = { ...route.query }
+    delete query.range
+    delete query.date
+    delete query.from
+    delete query.to
+    Object.assign(query, attributionRouteQuery(nextRange, nextDate))
+    await router.replace({ query })
+  }
+
+  const range = computed<AttributionRangePreset>({
+    get: () => state.value.range,
+    set: (value) => {
+      const normalized = normalizeAttributionRangePreset(value, '7d')
+      state.value.range = normalized
+      void replaceRouteRange(normalized, state.value.date)
+    },
+  })
+  const date = computed<string>({
+    get: () => state.value.date,
+    set: (value) => {
+      state.value.date = normalizeDateInput(value) || todayDateInputValue()
+      if (state.value.range === 'day') void replaceRouteRange('day', state.value.date)
+    },
+  })
+  const query = computed(() => attributionRangeQuery(range.value, date.value))
+  const queryKey = computed(() => JSON.stringify(query.value))
+
+  watch(
+    () => [route.query.range, route.query.date, route.query.from, route.query.to] as const,
+    ([routeRange, routeDate, from, to]) => {
+      syncingRoute = true
+      const singleDay = rangeFromDates(from, to)
+      state.value.range = normalizeAttributionRangePreset(routeRange, singleDay ?? initialRange)
+      state.value.date = initialAttributionDate(routeDate ?? from)
+      syncingRoute = false
+    },
+  )
+
+  onMounted(() => {
+    if (!route.query.range && !route.query.from && !route.query.to) {
+      void replaceRouteRange(range.value, date.value)
+    }
+  })
+
+  return { range, date, query, queryKey }
+}
+
+export function useAdminAttribution<T>(
+  endpoint: string,
+  options: {
+    rangeState?: AttributionRangeState
+    autoRefresh?: boolean
+    query?: Record<string, string | number | undefined> | ComputedRef<Record<string, string | number | undefined>>
+  } = {},
+) {
+  const { api } = useApi()
+  const rangeState = options.rangeState ?? useAdminAttributionRange()
   const data = ref<T | null>(null)
   const responseRange = ref<AttributionApiResponse<T>['range'] | null>(null)
   const usage = ref<AttributionApiResponse<T>['usage'] | null>(null)
@@ -50,38 +244,47 @@ export function useAdminAttribution<T>(endpoint: string, initialRange: Attributi
   const loading = ref(false)
   const error = ref('')
   const loadedAt = ref('')
+  let requestRevision = 0
+
+  const extraQuery = computed<Record<string, string | number | undefined>>(() => {
+    const value = options.query
+    return (value && 'value' in value ? value.value : value ?? {}) as Record<string, string | number | undefined>
+  })
+  const refreshKey = computed(() => JSON.stringify([rangeState.query.value, extraQuery.value]))
 
   async function refresh() {
+    const revision = ++requestRevision
     loading.value = true
     error.value = ''
     try {
       const result = await api<AttributionApiResponse<T>>(endpoint, {
-        query: attributionRangeQuery(range.value, date.value),
+        query: { ...rangeState.query.value, ...extraQuery.value },
       })
+      if (revision !== requestRevision) return
       data.value = result.data
       responseRange.value = result.range ?? null
       usage.value = result.usage ?? null
       const { data: _data, range: _range, usage: _usage, ...rest } = result as AttributionApiResponse<T> & Record<string, unknown>
       extra.value = rest
       loadedAt.value = new Date().toISOString()
-    } catch (err) {
-      error.value = resolveApiErrorMessage(err, '归因数据加载失败')
-    } finally {
-      loading.value = false
+    }
+    catch (err) {
+      if (revision === requestRevision) error.value = resolveApiErrorMessage(err, '归因数据加载失败')
+    }
+    finally {
+      if (revision === requestRevision) loading.value = false
     }
   }
 
-  watch([range, date], () => {
-    void refresh()
-  })
-
-  onMounted(() => {
-    void refresh()
-  })
+  if (options.autoRefresh !== false) {
+    watch(refreshKey, () => void refresh())
+    onMounted(() => void refresh())
+  }
 
   return {
-    range,
-    date,
+    range: rangeState.range,
+    date: rangeState.date,
+    query: rangeState.query,
     responseRange,
     usage,
     extra,
@@ -103,7 +306,8 @@ export function attributionRangeQuery(range: AttributionRangePreset, date: strin
 
 export function attributionRouteQuery(range: AttributionRangePreset, date: string): Record<string, string> {
   if (range === 'day') {
-    return { range, date: normalizeDateInput(date) || todayDateInputValue() }
+    const day = normalizeDateInput(date) || todayDateInputValue()
+    return { range, date: day }
   }
   return { range }
 }
@@ -136,17 +340,23 @@ export function metaConnectionReasonLabel(reason: string) {
     verification_revision_missing: '历史连接验证需要重新验证',
     verification_invalidated: '原连接验证已失效',
   }
-  return labels[reason] || '连接状态需要重新验证'
+  return labels[reason] || (reason ? '连接状态需要重新验证' : '连接配置与验证记录一致')
 }
 
-export function canVerifyMetaConnection(connection: MetaConnectionStatus | null | undefined, isOwner: boolean) {
+export function canVerifyMetaConnection(connection: MetaConnectionStatusData | null | undefined, isOwner: boolean) {
   return isOwner && connection?.environment === 'dev'
 }
 
-export function normalizeAttributionRangePreset(value: unknown, fallback: AttributionRangePreset = '30d'): AttributionRangePreset {
+export function normalizeAttributionRangePreset(value: unknown, fallback: AttributionRangePreset = '7d'): AttributionRangePreset {
   const raw = Array.isArray(value) ? value[0] : value
   if (raw === '7d' || raw === '30d' || raw === '90d' || raw === 'day') return raw
   return fallback
+}
+
+function rangeFromDates(from: unknown, to: unknown): AttributionRangePreset | null {
+  const normalizedFrom = normalizeDateInput(Array.isArray(from) ? from[0] : from)
+  const normalizedTo = normalizeDateInput(Array.isArray(to) ? to[0] : to)
+  return normalizedFrom && normalizedFrom === normalizedTo ? 'day' : null
 }
 
 function initialAttributionDate(value: unknown) {

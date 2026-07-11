@@ -15,7 +15,8 @@ interface ReadinessData {
 }
 
 const { isOwner } = useAuth()
-const attribution = useAdminAttribution<ReadinessData>('/api/admin/attribution/readiness')
+const rangeState = useAdminAttributionRange('7d')
+const attribution = useAdminAttribution<ReadinessData>('/api/admin/attribution/readiness', { rangeState })
 const data = computed(() => attribution.data.value)
 const settingRows = computed(() => serializeReadinessSettingRows(data.value?.settings ?? {}))
 const verificationRows = computed(() => serializeReadinessVerificationRows(data.value?.verifications ?? {}))
@@ -32,8 +33,8 @@ function checkClass(check: ReadinessData['checks'][number]) {
 
 <template>
   <AttributionPageShell
-    v-model:range="attribution.range.value"
-    v-model:date="attribution.date.value"
+    v-model:range="rangeState.range.value"
+    v-model:date="rangeState.date.value"
     title="发布检查"
     description="上线广告前确认站内分析、转化账本、Meta 配置和失败堆积状态。"
     :loading="attribution.loading.value"

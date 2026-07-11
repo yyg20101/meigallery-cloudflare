@@ -153,6 +153,10 @@ const registrations = []
 let authenticated = true
 let adminAnalyticsEmpty = false
 let adminAttributionReadinessBlocked = true
+let adminAttributionActionMode = 'success'
+let adminAttributionRolloutTarget = 10
+let adminAttributionIncidentOpen = true
+const adminAttributionRequests = []
 
 function resetPublicSettings() {
   for (const key of Object.keys(mutablePublicSettings)) {
@@ -165,6 +169,10 @@ function resetPublicSettings() {
   authenticated = true
   adminAnalyticsEmpty = false
   adminAttributionReadinessBlocked = true
+  adminAttributionActionMode = 'success'
+  adminAttributionRolloutTarget = 10
+  adminAttributionIncidentOpen = true
+  adminAttributionRequests.length = 0
 }
 
 function json(res, data, status = 200) {
@@ -488,6 +496,39 @@ function adminAttributionResponse(pathname, searchParams) {
     },
   ]
 
+  const dates = range.days === 1 ? [range.from] : ['2026-07-08', '2026-07-09', '2026-07-10']
+  const trendRows = dates.map((date, index) => ({
+    date,
+    business: { contactCount: index + 1, completeRegistrationCount: index, actionCount: index * 2 + 1 },
+    delivery: { pixelAttempted: index + 3, capiSent: index + 2, failed: index === 1 ? 1 : 0, skipped: 1, pending: index === 2 ? 1 : 0, retryExhausted: 0 },
+  }))
+  const rollout = {
+    environment: 'dev',
+    targetPercentage: adminAttributionRolloutTarget,
+    effectivePercentage: adminAttributionIncidentOpen ? 0 : adminAttributionRolloutTarget,
+    connectionVerified: true,
+    liveEvidencePresent: true,
+    openIncident: adminAttributionIncidentOpen ? {
+      id: 'incident-1', environment: 'dev', status: 'open', severity: 'critical', triggerCode: 'retry_exhausted', triggerSummary: 'CAPI 重试耗尽', targetPercentage: adminAttributionRolloutTarget, effectivePercentage: 0, evidence: {}, openedAt: '2026-07-09T08:00:00Z', lastObservedAt: '2026-07-10T08:00:00Z', closedAt: null, resolution: '',
+    } : null,
+    metrics: { sent: 42, failed: 1, permissionErrors: 0, retryExhausted: 0, stalePending: 0, criticalQualityDiagnostics: 0 },
+    metricsStatus: { available: true, errorCode: null },
+    promotion: { from: adminAttributionRolloutTarget, to: adminAttributionRolloutTarget === 10 ? 50 : 100, allowed: false, requiresOverrideReason: true, blockers: ['insufficient_attempts'], hardBlockers: adminAttributionIncidentOpen ? ['circuit_open'] : [] },
+  }
+  const connection = {
+    state: 'verified', environment: 'dev', pixelIdConfigured: true, tokenConfigured: true, testEventCodeConfigured: true, verifiedAt: '2026-07-10T07:00:00Z', verifiedCommit: 'a'.repeat(40), graphApiVersion: 'v25.0', datasetQualityStatus: 'not_checked', invalidationReason: '',
+  }
+
+  if (pathname.endsWith('/summary')) return { range, usage, data: { business: { contactCount: 6, completeRegistrationCount: 3, actionCount: 9 }, historical: { leadCount: 7 }, delivery: { pixelAttempted: 12, capiSent: 9, failed: 1, skipped: 3, pending: 1, retryExhausted: 0 } } }
+  if (pathname.endsWith('/trends')) return { range, usage, data: { granularity: 'day', rows: trendRows } }
+  if (pathname.endsWith('/quality')) {
+    const metric = (numerator, denominator) => ({ availability: denominator ? 'available' : 'unavailable', numerator, denominator, rate: denominator ? numerator / denominator : null })
+    return { range, usage, data: { match: { summary: { fbp: metric(8, 9), fbc: metric(0, 0), email: metric(9, 9), externalId: metric(7, 9) }, rows: dates.map(date => ({ date, fbp: metric(8, 9), fbc: metric(0, 0), email: metric(9, 9), externalId: metric(7, 9) })) }, datasetQuality: { availability: 'not_available', latest: null, rows: [] } } }
+  }
+  if (pathname.endsWith('/breakdown')) return { range, usage, data: { dimension: searchParams.get('dimension') || 'utm_campaign', rows: [{ value: 'july-contact', actionCount: 6, contactCount: 4, completeRegistrationCount: 2, delivery: { pixelAttempted: 6, capiSent: 5, failed: 1, skipped: 0, pending: 0, retryExhausted: 0 } }] } }
+  if (pathname.endsWith('/meta/status')) return { range, usage, data: { connection, rollout, activity: { business: { contactCount: 6, completeRegistrationCount: 3, actionCount: 9 }, historical: { leadCount: 7 }, delivery: { pixelAttempted: 12, capiSent: 9, failed: 1, skipped: 3, pending: 1, retryExhausted: 0 } } } }
+  if (pathname.endsWith('/meta/incidents')) return { range, usage, data: { items: rollout.openIncident ? [rollout.openIncident] : [], pagination: { limit: 20, offset: 0, hasMore: false } } }
+
   if (pathname.endsWith('/overview')) {
     return {
       range,
@@ -688,6 +729,16 @@ function handleApi(req, res) {
       .catch(() => json(res, { statusCode: 400, message: '归因 readiness 测试请求无效' }, 400))
     return
   }
+  if (url.pathname === '/api/test/admin-attribution-requests') {
+    return json(res, { requests: adminAttributionRequests })
+  }
+  if (url.pathname === '/api/test/admin-attribution-action-mode' && req.method === 'PATCH') {
+    readJsonBody(req).then((body) => {
+      adminAttributionActionMode = String(body.mode || 'success')
+      json(res, { ok: true, mode: adminAttributionActionMode })
+    }).catch(() => json(res, { statusCode: 400, message: '测试模式请求无效' }, 400))
+    return
+  }
   if (url.pathname === '/api/test/analytics-events') {
     return json(res, {
       batches: analyticsBatches,
@@ -836,7 +887,28 @@ function handleApi(req, res) {
       },
     })
   }
+  if (url.pathname === '/api/admin/attribution/meta/rollout' && req.method === 'POST') {
+    readJsonBody(req).then((body) => {
+      if (adminAttributionActionMode === 'conflict') return json(res, { statusCode: 409, message: 'CAPI rollout 升级门禁未通过' }, 409)
+      if (adminAttributionActionMode === 'forbidden') return json(res, { statusCode: 403, message: '需要站长权限' }, 403)
+      if (adminAttributionActionMode === 'network') return json(res, { statusCode: 503, message: '服务暂时不可用' }, 503)
+      adminAttributionRolloutTarget = Number(body.percentage)
+      json(res, { data: { targetPercentage: adminAttributionRolloutTarget, effectivePercentage: adminAttributionIncidentOpen ? 0 : adminAttributionRolloutTarget, changed: true } })
+    }).catch(() => json(res, { statusCode: 400, message: 'rollout 请求无效' }, 400))
+    return
+  }
+  if (/^\/api\/admin\/attribution\/meta\/incidents\/[^/]+\/close$/.test(url.pathname) && req.method === 'POST') {
+    readJsonBody(req).then(() => {
+      if (adminAttributionActionMode === 'conflict') return json(res, { statusCode: 409, message: 'incident 关闭门禁未通过' }, 409)
+      if (adminAttributionActionMode === 'forbidden') return json(res, { statusCode: 403, message: '需要站长权限' }, 403)
+      if (adminAttributionActionMode === 'network') return json(res, { statusCode: 503, message: '服务暂时不可用' }, 503)
+      adminAttributionIncidentOpen = false
+      json(res, { data: { id: 'incident-1', status: 'closed' } })
+    }).catch(() => json(res, { statusCode: 400, message: 'incident 请求无效' }, 400))
+    return
+  }
   if (url.pathname.startsWith('/api/admin/attribution/')) {
+    adminAttributionRequests.push({ path: url.pathname, query: Object.fromEntries(url.searchParams.entries()) })
     return json(res, adminAttributionResponse(url.pathname, url.searchParams))
   }
   if (url.pathname === '/api/admin/tracking-sources' && req.method === 'POST') {

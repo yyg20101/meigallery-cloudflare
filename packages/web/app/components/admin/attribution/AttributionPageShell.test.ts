@@ -32,7 +32,7 @@ describe('AttributionPageShell', () => {
     expect((input.element as HTMLInputElement).value).toBe('2026-07-09')
   })
 
-  it('展示投放链接和 Meta 同步标签', () => {
+  it('展示投放链接和 Meta 运维标签', () => {
     const wrapper = mount(AttributionPageShell, {
       props: {
         title: '归因中心',
@@ -42,7 +42,8 @@ describe('AttributionPageShell', () => {
     })
 
     expect(wrapper.text()).toContain('投放链接')
-    expect(wrapper.text()).toContain('Meta 同步')
+    expect(wrapper.text()).toContain('Meta 运维')
+    expect(wrapper.text()).not.toContain('重复诊断')
   })
 
   it('标签链接携带当前归因日期口径', () => {

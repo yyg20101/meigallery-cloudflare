@@ -27,7 +27,8 @@ interface AttributionLink {
 
 const { api } = useApi()
 const toast = useToast()
-const attribution = useAdminAttribution<{ links: AttributionLink[] }>('/api/admin/attribution/links')
+const rangeState = useAdminAttributionRange('7d')
+const attribution = useAdminAttribution<{ links: AttributionLink[] }>('/api/admin/attribution/links', { rangeState })
 
 const creating = ref(false)
 const createError = ref('')
@@ -148,8 +149,8 @@ function normalizeUtmValue(value: string) {
 
 <template>
   <AttributionPageShell
-    v-model:range="attribution.range.value"
-    v-model:date="attribution.date.value"
+    v-model:range="rangeState.range.value"
+    v-model:date="rangeState.date.value"
     title="投放追踪链接"
     description="为 Facebook 广告测试创建 UTM / mg_source 链接，按广告版本查看有效联系和注册。"
     :loading="attribution.loading.value"

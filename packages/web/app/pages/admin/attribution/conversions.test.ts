@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { cwd } from 'node:process'
-import { defineComponent, ref } from 'vue'
+import { computed, defineComponent, ref } from 'vue'
 import ConversionsPage from './conversions.vue'
 
 const DataTableStub = defineComponent({
@@ -48,16 +48,17 @@ describe('归因转化页当前口径', () => {
       operations: { membershipGrantCount: 9 },
       samples: [],
     })
-    const overview = attributionState({ trend: [] })
+    const overview = attributionState({ rows: [] })
 
     vi.stubGlobal('definePageMeta', vi.fn())
-    vi.stubGlobal('useAdminAttribution', (endpoint: string) => endpoint.endsWith('/overview') ? overview : conversions)
+    vi.stubGlobal('useAdminAttributionRange', () => ({ range: ref('7d'), date: ref('2026-07-10'), queryKey: computed(() => '7d') }))
+    vi.stubGlobal('useAdminAttribution', (endpoint: string) => endpoint.endsWith('/trends') ? overview : conversions)
 
     const wrapper = shallowMount(ConversionsPage, {
       global: {
         stubs: {
           AnalyticsDataTable: DataTableStub,
-          AnalyticsTrendPanel: true,
+          AttributionTrendPanel: true,
           AttributionPageShell: {
             template: '<main><slot /></main>',
           },

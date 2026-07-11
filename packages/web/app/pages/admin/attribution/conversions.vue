@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import AnalyticsDataTable from '~/components/admin/analytics/AnalyticsDataTable.vue'
-import AnalyticsTrendPanel from '~/components/admin/analytics/AnalyticsTrendPanel.vue'
+import AttributionTrendPanel from '~/components/admin/attribution/AttributionTrendPanel.vue'
 import AttributionPageShell from '~/components/admin/attribution/AttributionPageShell.vue'
 
 definePageMeta({ layout: 'admin' })
@@ -13,20 +13,23 @@ interface ConversionData {
 }
 
 interface OverviewTrend {
-  trend: Array<Record<string, unknown>>
+  rows: Array<Record<string, unknown>>
 }
 
-const conversions = useAdminAttribution<ConversionData>('/api/admin/attribution/conversions')
-const overview = useAdminAttribution<OverviewTrend>('/api/admin/attribution/overview')
-
-watch([conversions.range, conversions.date], ([range, date]) => {
-  overview.range.value = range
-  overview.date.value = date
+const rangeState = useAdminAttributionRange('7d')
+const requestOptions = { rangeState, autoRefresh: false }
+const conversions = useAdminAttribution<ConversionData>('/api/admin/attribution/conversions', requestOptions)
+const overview = useAdminAttribution<OverviewTrend>('/api/admin/attribution/trends', {
+  ...requestOptions,
+  query: { granularity: 'day' },
 })
 
+watch(rangeState.queryKey, () => void refreshAll())
+onMounted(() => void refreshAll())
+
 const trendSeries = [
-  { label: '有效联系', key: 'contact_count', tone: 'gold' as const },
-  { label: '注册', key: 'complete_registration_count', tone: 'green' as const },
+  { label: '有效联系', key: 'business.contactCount', layer: 'business' as const },
+  { label: '完成注册', key: 'business.completeRegistrationCount', layer: 'business' as const },
 ]
 
 const sourceRows = computed(() => (conversions.data.value?.bySource ?? []).map(row => {
@@ -49,8 +52,8 @@ function refreshAll() {
 
 <template>
   <AttributionPageShell
-    v-model:range="conversions.range.value"
-    v-model:date="conversions.date.value"
+    v-model:range="rangeState.range.value"
+    v-model:date="rangeState.date.value"
     title="转化明细"
     description="按动作、来源、campaign 和 content 检查有效联系、注册与历史 Lead 对照。"
     :loading="conversions.loading.value || overview.loading.value"
@@ -59,10 +62,10 @@ function refreshAll() {
     @refresh="refreshAll"
   >
     <template v-if="conversions.data.value">
-      <AnalyticsTrendPanel
+      <AttributionTrendPanel
         title="转化趋势"
         description="按日查看有效联系和完成注册的变化；历史 Lead 不进入活动趋势。"
-        :rows="overview.data.value?.trend || []"
+        :rows="overview.data.value?.rows || []"
         :series="trendSeries"
       />
 

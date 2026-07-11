@@ -38,6 +38,7 @@ export default defineNuxtConfig({
   routeRules: {
     '/**': { headers: WEB_SECURITY_HEADERS },
     '/admin/**': { ssr: false, headers: WEB_SECURITY_HEADERS },
+    '/admin/attribution/duplicates': { redirect: '/admin/attribution', ssr: false, headers: WEB_SECURITY_HEADERS },
   },
 
   // 运行时配置
