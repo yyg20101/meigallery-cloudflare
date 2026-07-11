@@ -14,6 +14,15 @@ const PIXEL_ID_PATTERN = /^\d{5,30}$/
 const RELEASE_COMMIT_PATTERN = /^[0-9a-f]{40}$/i
 const VERIFICATION_REVISION_PATTERN = /^[0-9a-f]{32}$/
 const META_BOOTSTRAP_TIMEOUT_MS = 8_000
+const PRODUCTION_POST_DEPLOY_SUMMARY_FIELDS = [
+  'schemaVersion', 'verificationPhase', 'bootstrapReady', 'liveAttestation',
+  'migrationsReady', 'd1Ready', 'r2Ready', 'queuesReady', 'secretsReady',
+  'migrationsCurrent', 'migrationsApplied', 'connectionVerified', 'capiEnabled',
+  'initialMetaRollout', 'noOpenCriticalIncident', 'initialRolloutZero',
+  'secureOutboxReady', 'previousKeyReferencesExplainable', 'rolloutZero',
+  'environmentIsolation',
+]
+const PRODUCTION_POST_DEPLOY_ISOLATION_FIELDS = ['d1', 'r2', 'queue', 'dlq', 'pixel', 'token', 'testEventCode', 'dataKey']
 const STABLE_INVALIDATION_REASONS = new Set([
   'pixel_id_changed',
   'access_token_changed',
@@ -261,7 +270,7 @@ async function assertProductionBootstrapGate(
     ])
     const target = Number(parseStoredSettingValue(rollout?.value ?? '', -1))
     const incidentCount = Number(incident?.incident_count)
-    const summary = parseProductionBootstrapSummary(resource?.summary)
+    const summary = parseProductionPostDeploySummary(resource?.summary)
     if (!resource || !summary || target !== 0 || incidentCount !== 0) {
       throw new Error('blocked')
     }
@@ -271,23 +280,39 @@ async function assertProductionBootstrapGate(
   }
 }
 
-function parseProductionBootstrapSummary(value: unknown) {
+function parseProductionPostDeploySummary(value: unknown) {
   try {
     const summary = JSON.parse(String(value || '')) as Record<string, unknown>
     const isolation = summary.environmentIsolation as Record<string, unknown> | undefined
-    const required = [
+    const readyFields = [
       'liveAttestation', 'migrationsReady', 'd1Ready', 'r2Ready', 'queuesReady',
-      'secretsReady', 'rolloutZero', 'noOpenCriticalIncident',
+      'secretsReady', 'migrationsCurrent', 'migrationsApplied', 'noOpenCriticalIncident',
+      'initialRolloutZero', 'secureOutboxReady', 'previousKeyReferencesExplainable', 'rolloutZero',
     ]
-    const isolated = ['d1', 'r2', 'queue', 'dlq', 'pixel', 'token', 'testEventCode', 'dataKey']
-    return required.every(key => summary[key] === true)
-      && Boolean(isolation && isolated.every(key => isolation[key] === true))
+    return hasExactKeys(summary, PRODUCTION_POST_DEPLOY_SUMMARY_FIELDS)
+      && summary.schemaVersion === 2
+      && summary.verificationPhase === 'post-deploy'
+      && summary.bootstrapReady === false
+      && summary.connectionVerified === false
+      && summary.capiEnabled === false
+      && summary.initialMetaRollout === false
+      && readyFields.every(key => summary[key] === true)
+      && Boolean(isolation
+        && hasExactKeys(isolation, PRODUCTION_POST_DEPLOY_ISOLATION_FIELDS)
+        && PRODUCTION_POST_DEPLOY_ISOLATION_FIELDS.every(key => isolation[key] === true))
       ? summary
       : null
   }
   catch {
     return null
   }
+}
+
+function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]) {
+  const actual = Object.keys(value).sort()
+  const sortedExpected = [...expected].sort()
+  return actual.length === sortedExpected.length
+    && actual.every((key, index) => key === sortedExpected[index])
 }
 
 function persistVerificationCas(

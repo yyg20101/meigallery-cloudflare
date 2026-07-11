@@ -128,6 +128,11 @@ app.use('/api/meta/resource-attestation', async (c, next) => {
   await next()
 })
 
+app.use('/api/admin/attribution/meta/resource-attestation-ticket', async (c, next) => {
+  c.header('Cache-Control', 'no-store')
+  await next()
+})
+
 // 公开 API 速率限制兜底：每 IP 每分钟 60 次
 for (const path of [
   '/api/galleries',

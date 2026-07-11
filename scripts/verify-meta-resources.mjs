@@ -159,7 +159,8 @@ export async function runMetaResourceVerification(options = {}) {
     : []
   const requiredSecretsPresent = settings !== null
     && hasRequiredSecrets(byName.get('secrets')?.stdout, requiredSecretNames)
-  const migrationsCurrent = hasNoPendingMigrations(byName.get('migrations')?.stdout)
+  const migrations = byName.get('migrations')
+  const migrationsCurrent = hasNoPendingMigrations(`${migrations?.stdout || ''}\n${migrations?.stderr || ''}`)
   const migrationsApplied = hasRequiredMigrations(byName.get('migration-names')?.stdout)
   const connectionVerified = settings !== null && hasVerifiedMetaConnection(
     byName.get('meta-connection')?.stdout,

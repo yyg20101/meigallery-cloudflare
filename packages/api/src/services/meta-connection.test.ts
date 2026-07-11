@@ -4,6 +4,10 @@ import type { Bindings } from '../index'
 import { metaConnectionFingerprint } from '../utils/meta-capi-crypto'
 import { META_GRAPH_API_VERSION } from './meta-graph'
 import {
+  createProductionPostDeployMetaResourcesSummary,
+  META_RESOURCES_ISOLATION_FIELDS,
+} from '../../../../scripts/meta-resources-summary-fixture.mjs'
+import {
   MetaConnectionError,
   getMetaConnectionStatus,
   requireVerifiedMetaConnection,
@@ -484,29 +488,10 @@ describe('MetaConnection', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('production bootstrap 只信当前 commit 未过期的完整 bootstrap evidence，且绝不查询 production D1 的 dev row', async () => {
+  it('production Test Event 只信当前 commit 未过期的完整 post-deploy V2 摘要，且绝不查询 production D1 的 dev row', async () => {
     const db = createConnectionDb({
       trackingMode: 'test',
-      productionBootstrapEvidence: {
-        liveAttestation: true,
-        migrationsReady: true,
-        d1Ready: true,
-        r2Ready: true,
-        queuesReady: true,
-        secretsReady: true,
-        rolloutZero: true,
-        noOpenCriticalIncident: true,
-        environmentIsolation: {
-          d1: true,
-          r2: true,
-          queue: true,
-          dlq: true,
-          pixel: true,
-          token: true,
-          testEventCode: true,
-          dataKey: true,
-        },
-      },
+      productionBootstrapEvidence: createProductionPostDeployMetaResourcesSummary(),
     })
     const fetchMock = vi.fn(async () => successfulMetaResponse())
     vi.stubGlobal('fetch', fetchMock)
@@ -521,20 +506,7 @@ describe('MetaConnection', () => {
   it.each(['disabled', 'production'] as const)('production bootstrap 在 trackingMode=%s 时于 fetch 前阻断', async trackingMode => {
     const db = createConnectionDb({
       trackingMode,
-      productionBootstrapEvidence: {
-        liveAttestation: true,
-        migrationsReady: true,
-        d1Ready: true,
-        r2Ready: true,
-        queuesReady: true,
-        secretsReady: true,
-        rolloutZero: true,
-        noOpenCriticalIncident: true,
-        environmentIsolation: {
-          d1: true, r2: true, queue: true, dlq: true,
-          pixel: true, token: true, testEventCode: true, dataKey: true,
-        },
-      },
+      productionBootstrapEvidence: createProductionPostDeployMetaResourcesSummary(),
     })
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
@@ -544,24 +516,23 @@ describe('MetaConnection', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('production bootstrap 每个资源摘要、rollout 与 incident 门禁都在 fetch 前失败', async () => {
-    const complete = {
-      liveAttestation: true,
-      migrationsReady: true,
-      d1Ready: true,
-      r2Ready: true,
-      queuesReady: true,
-      secretsReady: true,
-      rolloutZero: true,
-      noOpenCriticalIncident: true,
-      environmentIsolation: {
-        d1: true, r2: true, queue: true, dlq: true,
-        pixel: true, token: true, testEventCode: true, dataKey: true,
-      },
-    }
+  it('production Test Event 对所有 post-deploy 资源、rollout 与 incident 门禁都在 fetch 前失败', async () => {
+    const complete = createProductionPostDeployMetaResourcesSummary()
+    const requiredReadyFields = [
+      'liveAttestation', 'migrationsReady', 'd1Ready', 'r2Ready', 'queuesReady', 'secretsReady',
+      'migrationsCurrent', 'migrationsApplied', 'noOpenCriticalIncident', 'initialRolloutZero',
+      'secureOutboxReady', 'previousKeyReferencesExplainable', 'rolloutZero',
+    ] as const
+    const requiredFalseFields = ['bootstrapReady', 'connectionVerified', 'capiEnabled', 'initialMetaRollout'] as const
     const cases = [
-      { productionBootstrapEvidence: { ...complete, r2Ready: false } },
-      { productionBootstrapEvidence: { ...complete, environmentIsolation: { ...complete.environmentIsolation, dataKey: false } } },
+      ...requiredReadyFields.map(field => ({ productionBootstrapEvidence: { ...complete, [field]: false } })),
+      ...requiredFalseFields.map(field => ({ productionBootstrapEvidence: { ...complete, [field]: true } })),
+      ...META_RESOURCES_ISOLATION_FIELDS.map(field => ({
+        productionBootstrapEvidence: {
+          ...complete,
+          environmentIsolation: { ...complete.environmentIsolation, [field]: false },
+        },
+      })),
       { productionBootstrapEvidence: complete, productionRollout: 10 },
       { productionBootstrapEvidence: complete, productionIncidentCount: 1 },
     ]
@@ -575,6 +546,23 @@ describe('MetaConnection', () => {
       expect(fetchMock).not.toHaveBeenCalled()
       expect(db.verifications.size).toBe(0)
     }
+  })
+
+  it.each([
+    createProductionPostDeployMetaResourcesSummary({ schemaVersion: 1 }),
+    createProductionPostDeployMetaResourcesSummary({ verificationPhase: 'bootstrap' }),
+    createProductionPostDeployMetaResourcesSummary({ verificationPhase: 'full' }),
+    { ...createProductionPostDeployMetaResourcesSummary(), raw: 'must-reject' },
+    { liveAttestation: true, environmentIsolation: { d1: true } },
+  ])('production Test Event 拒绝旧格式、非 post-deploy phase 与额外 raw 字段', async productionBootstrapEvidence => {
+    const db = createConnectionDb({ trackingMode: 'test', productionBootstrapEvidence })
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(verifyMetaConnection(connectionEnv(db, { APP_ENV: 'production' }), 1, 'Contact'))
+      .rejects.toMatchObject({ code: 'META_PRODUCTION_TEST_GATE_BLOCKED', httpStatus: 409 })
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(db.verifications.size).toBe(0)
   })
 
   it('未知环境绝不复用 dev verification', async () => {

@@ -572,6 +572,27 @@ describe('Meta Cloudflare 资源检查', () => {
     }
   })
 
+  it('migrationsCurrent 合并 stdout/stderr 判定，stderr 冲突即使 exit 0 和 stdout 成功也 fail closed', async () => {
+    for (const migrationStderr of [
+      'WARNING: migration status unavailable',
+      'Error: unable to verify migration state',
+      'partial result returned',
+    ]) {
+      const report = await runMetaResourceVerification({
+        environment: 'dev',
+        commit: COMMIT,
+        reportOnly: true,
+        runCommand: createPassingRunner([], {
+          capiEnabled: false,
+          migrationOutput: 'No migrations to apply!',
+          migrationStderr,
+        }),
+      })
+      assert.equal(report.migrationsCurrent, false, migrationStderr)
+      assert.equal(report.status, 'failed', migrationStderr)
+    }
+  })
+
   it('secret、D1 JSON envelope 或 DLQ consumer 字段漂移时 fail closed', async () => {
     for (const overrides of [
       { unknownSecretEnvelope: true },
@@ -658,6 +679,7 @@ function createPassingRunner(calls, options = {}) {
     calls.push({ command, args, options: runOptions })
     const text = args.join(' ')
     let stdout = ''
+    let stderr = ''
     let status = 'passed'
     if (runOptions.name.endsWith('r2-bucket')) {
       stdout = JSON.stringify({ name: options.r2NameDrift ? 'wrong-bucket' : text.includes('meigallery-media-dev') ? 'meigallery-media-dev' : 'meigallery-media' })
@@ -717,6 +739,7 @@ function createPassingRunner(calls, options = {}) {
       stdout = JSON.stringify(options.unknownSecretEnvelope ? { items: rows } : rows)
     } else if (text.includes('migrations list')) {
       stdout = options.migrationOutput ?? (options.migrationPending ? 'Migrations to be applied:\n0034.sql' : 'No migrations to apply!')
+      stderr = options.migrationStderr ?? ''
     } else if (text.includes('d1 execute')) {
       let results
       if (runOptions.name.endsWith('migration-names')) {
@@ -779,7 +802,7 @@ function createPassingRunner(calls, options = {}) {
       exitCode: status === 'passed' ? 0 : 1,
       summary: stdout,
       stdout,
-      stderr: '',
+      stderr,
     }
   }
 }

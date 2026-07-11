@@ -4,6 +4,10 @@ import {
   assertReleaseVerificationSummary,
   recordReleaseVerificationSummary,
 } from './release-verification-store.mjs'
+import {
+  createProductionPostDeployMetaResourcesSummary,
+  PRODUCTION_POST_DEPLOY_META_RESOURCES_FIELDS,
+} from './meta-resources-summary-fixture.mjs'
 import { readRemoteDevGate } from './verify-release.mjs'
 
 const COMMIT = '18dc11e0b0e4797683d4551a93a1f22e53dc4628'
@@ -169,6 +173,14 @@ describe('发布验证 D1 摘要存储', () => {
         environment: 'production', verificationType: 'meta_resources', commit: COMMIT, summary,
       }), /summary|bootstrap|post-deploy|full|门禁|语义/)
     }
+  })
+
+  it('production post-deploy 共享摘要 fixture 只接受完整精确字段集', () => {
+    const summary = createProductionPostDeployMetaResourcesSummary()
+    assert.deepEqual(Object.keys(summary).sort(), [...PRODUCTION_POST_DEPLOY_META_RESOURCES_FIELDS].sort())
+    assert.doesNotThrow(() => assertReleaseVerificationSummary({
+      environment: 'production', verificationType: 'meta_resources', commit: COMMIT, summary,
+    }))
   })
 
   it('V2 meta_live 只接受精确 allowlist，拒绝 secret、PII、raw ID 与任意对象', async () => {
