@@ -6,6 +6,7 @@ import { afterEach, describe, it } from 'node:test'
 import {
   ContractRecorderError,
   MAX_RAW_BYTES,
+  assertSafeContractDocument,
   main,
   recordMetaDatasetQualityContract,
 } from './record-meta-dataset-quality-contract.mjs'
@@ -13,6 +14,10 @@ import {
 const COMMIT = '95fae701b4a38c99b50ef694690e8df2eeec88ae'
 const DATASET_ID = '1234567890123456789'
 const UNKNOWN_VALUE = 'UNKNOWN_VALUE_MUST_NOT_LEAK'
+const ENCODED_DATASET_ID = [...DATASET_ID]
+  .map(character => `%${character.charCodeAt(0).toString(16).toUpperCase()}`)
+  .join('')
+const DOUBLE_ENCODED_DATASET_ID = ENCODED_DATASET_ID.replaceAll('%', '%25')
 const TEMP_DIRS = []
 
 afterEach(async () => {
@@ -110,10 +115,62 @@ describe('Dataset Quality 契约记录器', () => {
     assert.match(document, /\$\.data\[\]\.score.*number.*否/)
     assert.match(document, /\$\.data\[\]\.nullable_note.*unknown.*是/)
     assert.equal(document.includes(DATASET_ID), false)
+    assert.equal(decodePercentTwice(document).includes(DATASET_ID), false)
     assert.equal(document.includes('fixture_metric_value'), false)
     assert.equal(document.includes('fixture_freshness_value'), false)
     assert.equal(document.includes(UNKNOWN_VALUE), false)
     await assertMissing(files.rawPath)
+  })
+
+  it('三个审查反例均在 stage 前以稳定脱敏错误拒绝并销毁 raw', async () => {
+    const baseManifest = manifest()
+    const allowlistedLeakPath = `$.data[].allowlisted_${DATASET_ID}`
+    const cases = [
+      { manifest: manifest({ request: { endpointPath: `/{dataset_id}/quality_${DATASET_ID}` } }) },
+      { manifest: manifest({ request: { permissions: [`ads_${DATASET_ID}`] } }) },
+      {
+        manifest: manifest({
+          ownerAllowlist: {
+            responsePaths: [...baseManifest.ownerAllowlist.responsePaths, allowlistedLeakPath],
+          },
+        }),
+        raw: raw({
+          [`allowlisted_${DATASET_ID}`]: 1,
+          [`rejected_${DATASET_ID}`]: 1,
+        }),
+      },
+    ]
+
+    for (const input of cases) {
+      const files = await fixture(input)
+      let stageCalled = false
+      const error = await captureError(() => record(files, {
+        stageContract: async () => {
+          stageCalled = true
+          throw new Error('不应进入 stage')
+        },
+      }))
+
+      assert.equal(error.code, 'CONTRACT_REDACTION_FAILED')
+      assert.equal(error.message.includes(DATASET_ID), false)
+      assert.equal(stageCalled, false)
+      await assertMissing(files.rawPath)
+      await assertMissing(files.outputPath)
+    }
+  })
+
+  it('最终 Markdown 兜底扫描拒绝明文、百分号与双编码且不回显 Dataset ID', () => {
+    for (const exposed of [DATASET_ID, ENCODED_DATASET_ID, DOUBLE_ENCODED_DATASET_ID]) {
+      assert.throws(
+        () => assertSafeContractDocument(`# contract\n\n${exposed}\n`, DATASET_ID),
+        error => {
+          assert.equal(error.code, 'CONTRACT_REDACTION_FAILED')
+          assert.equal(error.message.includes(DATASET_ID), false)
+          assert.equal(error.message.includes(exposed), false)
+          return true
+        },
+      )
+    }
   })
 
   it('敏感键无论 allowlist 与否均硬拒绝，且销毁 raw', async () => {
@@ -264,19 +321,15 @@ describe('Dataset Quality 契约记录器', () => {
   })
 
   it('拒绝非法官方 URL、非当前 commit 与非法 Dataset ID，并逐次销毁 raw', async () => {
-    const encodedDatasetId = [...DATASET_ID]
-      .map(character => `%${character.charCodeAt(0).toString(16).toUpperCase()}`)
-      .join('')
-    const doubleEncodedDatasetId = encodedDatasetId.replaceAll('%', '%25')
     const cases = [
       [manifest({ officialUrls: ['https://developers.facebook.com.evil.test/docs'] }), 'OFFICIAL_URL_INVALID'],
       [manifest({ officialUrls: [`https://business.facebook.com/events_manager2/list/dataset/${DATASET_ID}%/`] }), 'OFFICIAL_URL_INVALID'],
-      [manifest({ officialUrls: [`https://business.facebook.com/events_manager2/list/dataset/${doubleEncodedDatasetId}/`] }), 'OFFICIAL_URL_INVALID'],
+      [manifest({ officialUrls: [`https://business.facebook.com/events_manager2/list/dataset/${DOUBLE_ENCODED_DATASET_ID}/`] }), 'OFFICIAL_URL_INVALID'],
       [manifest({ officialUrls: [`https://business.facebook.com/events_manager2/list/dataset/?asset_id=${DATASET_ID}`] }), 'OFFICIAL_URL_INVALID'],
       [manifest({ officialUrls: [`https://business.facebook.com/events_manager2/list/dataset/prefix${DATASET_ID}/`] }), 'OFFICIAL_URL_INVALID'],
-      [manifest({ officialUrls: [`https://business.facebook.com/events_manager2/list/dataset/${DATASET_ID}/asset_${encodedDatasetId}`] }), 'OFFICIAL_URL_INVALID'],
-      [manifest({ officialUrls: [`https://business.facebook.com/events_manager2/list/dataset/${DATASET_ID}/?asset_${encodedDatasetId}=score`] }), 'OFFICIAL_URL_INVALID'],
-      [manifest({ officialUrls: [`https://business.facebook.com/events_manager2/list/dataset/${DATASET_ID}/?asset_${doubleEncodedDatasetId}=score`] }), 'OFFICIAL_URL_INVALID'],
+      [manifest({ officialUrls: [`https://business.facebook.com/events_manager2/list/dataset/${DATASET_ID}/asset_${ENCODED_DATASET_ID}`] }), 'OFFICIAL_URL_INVALID'],
+      [manifest({ officialUrls: [`https://business.facebook.com/events_manager2/list/dataset/${DATASET_ID}/?asset_${ENCODED_DATASET_ID}=score`] }), 'OFFICIAL_URL_INVALID'],
+      [manifest({ officialUrls: [`https://business.facebook.com/events_manager2/list/dataset/${DATASET_ID}/?asset_${DOUBLE_ENCODED_DATASET_ID}=score`] }), 'OFFICIAL_URL_INVALID'],
       [manifest({ request: { queryKeys: [`asset_${DATASET_ID}`] } }), 'REQUEST_INVALID'],
       [manifest({ releaseCommit: 'a'.repeat(40) }), 'COMMIT_INVALID'],
       [manifest({ request: { datasetId: '12345678' } }), 'DATASET_ID_INVALID'],
@@ -286,19 +339,16 @@ describe('Dataset Quality 契约记录器', () => {
       const error = await captureError(() => record(files))
       assert.equal(error.code, code)
       assert.equal(error.message.includes(DATASET_ID), false)
-      assert.equal(error.message.toUpperCase().includes(encodedDatasetId), false)
+      assert.equal(error.message.toUpperCase().includes(ENCODED_DATASET_ID), false)
       await assertMissing(files.rawPath)
     }
   })
 
   it('逐字符百分号编码的 Dataset ID 仅生成不可逆 mask，query 仅保留 key', async () => {
-    const encodedDatasetId = [...DATASET_ID]
-      .map(character => `%${character.charCodeAt(0).toString(16).toUpperCase()}`)
-      .join('')
     const files = await fixture({
       manifest: manifest({
         officialUrls: [
-          `https://business.facebook.com/events_manager2/list/dataset/${encodedDatasetId}/?fields=score&asset_id=${encodedDatasetId}`,
+          `https://business.facebook.com/events_manager2/list/dataset/${ENCODED_DATASET_ID}/?fields=score&asset_id=${ENCODED_DATASET_ID}`,
         ],
       }),
     })
@@ -307,7 +357,7 @@ describe('Dataset Quality 契约记录器', () => {
     const document = await readFile(files.outputPath, 'utf8')
     assert.match(document, /https:\/\/business\.facebook\.com\/events_manager2\/list\/dataset\/1234\.\.\.6789\/?\?asset_id&fields/)
     assert.equal(document.includes(DATASET_ID), false)
-    assert.equal(document.toUpperCase().includes(encodedDatasetId), false)
+    assert.equal(document.toUpperCase().includes(ENCODED_DATASET_ID), false)
     assert.equal(decodeURIComponent(document).includes(DATASET_ID), false)
     assert.equal(document.includes('asset_id='), false)
     assert.equal(document.includes('fields='), false)
@@ -367,6 +417,14 @@ function bufferWriter() {
     value: '',
     write(chunk) { this.value += String(chunk) },
   }
+}
+
+function decodePercentTwice(value) {
+  let decoded = value
+  for (let pass = 0; pass < 2; pass += 1) {
+    decoded = decoded.replace(/%([0-9a-f]{2})/gi, (_, hex) => String.fromCharCode(Number.parseInt(hex, 16)))
+  }
+  return decoded
 }
 
 function failingRawOperation(rawPath, operation) {

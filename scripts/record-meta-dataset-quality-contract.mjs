@@ -64,6 +64,7 @@ const ERROR_MESSAGES = Object.freeze({
   OWNER_ALLOWLIST_INVALID: 'Owner allowlist 非法',
   SENSITIVE_KEY_REJECTED: 'raw 包含禁止的敏感键',
   RAW_SCHEMA_INVALID: 'raw schema 非法',
+  CONTRACT_REDACTION_FAILED: 'contract 脱敏校验失败',
   CONTRACT_WRITE_FAILED: 'contract 写入失败',
   INTERNAL_ERROR: '记录器内部错误',
 })
@@ -161,16 +162,33 @@ export function buildContractDocument(manifestInput, raw, options = {}) {
   const datasetMask = maskDatasetId(manifest.request.datasetId)
   const officialUrls = manifest.officialUrls
 
+  const renderInput = {
+    environment: manifest.environment,
+    graphVersion: manifest.graphVersion,
+    releaseCommit: manifest.releaseCommit,
+    capturedAt: manifest.capturedAt,
+    request: {
+      method: manifest.request.method,
+      endpointPath: manifest.request.endpointPath,
+      queryKeys: manifest.request.queryKeys,
+      permissions: manifest.request.permissions,
+    },
+    errorClassifications: manifest.errorClassifications,
+    datasetMask,
+    officialUrls,
+    allowlistedSchema,
+    freshnessPaths,
+    windowPaths,
+    rejectedPaths,
+  }
+  assertDatasetIdAbsent(renderInput, manifest.request.datasetId, 'CONTRACT_REDACTION_FAILED')
+  const document = assertSafeContractDocument(
+    renderContract(renderInput),
+    manifest.request.datasetId,
+  )
+
   return {
-    document: renderContract({
-      manifest,
-      datasetMask,
-      officialUrls,
-      allowlistedSchema,
-      freshnessPaths,
-      windowPaths,
-      rejectedPaths,
-    }),
+    document,
     summary: {
       environment: manifest.environment,
       graphVersion: manifest.graphVersion,
@@ -346,16 +364,15 @@ function validatePathListShape(paths, requireNonEmpty) {
 }
 
 function renderContract(input) {
-  const { manifest } = input
   const schemaRows = input.allowlistedSchema
     .map(field => `| \`${field.path}\` | \`${field.type}\` | ${field.nullable ? '是' : '否'} |`)
     .join('\n')
   const officialUrls = input.officialUrls.map(url => `- ${url}`).join('\n')
-  const permissions = manifest.request.permissions.map(name => `\`${name}\``).join('、')
-  const queryKeys = manifest.request.queryKeys.length > 0
-    ? manifest.request.queryKeys.map(name => `\`${name}\``).join('、')
+  const permissions = input.request.permissions.map(name => `\`${name}\``).join('、')
+  const queryKeys = input.request.queryKeys.length > 0
+    ? input.request.queryKeys.map(name => `\`${name}\``).join('、')
     : '无'
-  const errors = manifest.errorClassifications.map(category => `- \`${category}\``).join('\n')
+  const errors = input.errorClassifications.map(category => `- \`${category}\``).join('\n')
   const freshness = renderSemanticPaths(input.freshnessPaths, '本次 capture 未批准 freshness 字段，不得推断新鲜度。')
   const windows = renderSemanticPaths(input.windowPaths, '本次 capture 未批准 window 字段，不得推断统计窗口。')
   const rejected = input.rejectedPaths.length > 0
@@ -364,16 +381,16 @@ function renderContract(input) {
 
   return `# Meta Dataset Quality 官方契约\n\n` +
     `## 1. 验证环境与 commit\n\n` +
-    `- 环境：\`${manifest.environment}\`\n` +
-    `- Graph version：\`${manifest.graphVersion}\`\n` +
-    `- RELEASE_COMMIT：\`${manifest.releaseCommit}\`\n` +
-    `- capturedAt：\`${manifest.capturedAt}\`\n` +
+    `- 环境：\`${input.environment}\`\n` +
+    `- Graph version：\`${input.graphVersion}\`\n` +
+    `- RELEASE_COMMIT：\`${input.releaseCommit}\`\n` +
+    `- capturedAt：\`${input.capturedAt}\`\n` +
     `- Dataset：\`${input.datasetMask}\`\n\n` +
     `## 2. 官方入口与权限\n\n${officialUrls}\n\n- 所需权限：${permissions}\n\n` +
     `## 3. HTTP request contract\n\n` +
-    `- Method：\`${manifest.request.method}\`\n` +
-    `- Graph version：\`${manifest.graphVersion}\`\n` +
-    `- Endpoint path：\`${manifest.request.endpointPath}\`\n` +
+    `- Method：\`${input.request.method}\`\n` +
+    `- Graph version：\`${input.graphVersion}\`\n` +
+    `- Endpoint path：\`${input.request.endpointPath}\`\n` +
     `- Query keys：${queryKeys}\n` +
     `- Dataset：\`${input.datasetMask}\`\n\n` +
     `## 4. allowlisted response schema\n\n` +
@@ -387,7 +404,7 @@ function renderContract(input) {
     `- 正式 collector 只能使用本契约批准的 schema path，并从 verified MetaConnection 读取完整 Dataset ID。\n\n` +
     `## 8. redacted acceptance evidence\n\n` +
     `- Owner allowlist：已明确批准。\n` +
-    `- 请求绑定：\`${manifest.environment}\` / \`${manifest.graphVersion}\` / \`${manifest.releaseCommit}\`。\n` +
+    `- 请求绑定：\`${input.environment}\` / \`${input.graphVersion}\` / \`${input.releaseCommit}\`。\n` +
     `- Dataset 证据：\`${input.datasetMask}\`。\n` +
     `- Schema 统计：批准 ${input.allowlistedSchema.length} 个路径，拒绝 ${input.rejectedPaths.length} 个未知路径。\n\n` +
     `## 9. rejected unknown fields\n\n${rejected}\n`
@@ -651,19 +668,28 @@ function isSensitivePath(segments) {
   return false
 }
 
-function assertDatasetIdAbsent(values, datasetId, code) {
-  for (const value of values) {
-    let decoded = String(value)
-    for (let pass = 0; pass <= 2; pass += 1) {
-      if (decoded.includes(datasetId)) throw new ContractRecorderError(code)
-      if (!decoded.includes('%')) break
-      try {
-        decoded = decodeURIComponent(decoded)
-      } catch {
-        break
-      }
-    }
+function assertDatasetIdAbsent(value, datasetId, code) {
+  if (Array.isArray(value)) {
+    for (const item of value) assertDatasetIdAbsent(item, datasetId, code)
+    return
   }
+  if (value && typeof value === 'object') {
+    for (const item of Object.values(value)) assertDatasetIdAbsent(item, datasetId, code)
+    return
+  }
+  if (typeof value !== 'string') return
+
+  let decoded = value
+  for (let pass = 0; pass <= 2; pass += 1) {
+    if (decoded.includes(datasetId)) throw new ContractRecorderError(code)
+    if (pass === 2 || !/%[0-9a-f]{2}/i.test(decoded)) return
+    decoded = decoded.replace(/%([0-9a-f]{2})/gi, (_, hex) => String.fromCharCode(Number.parseInt(hex, 16)))
+  }
+}
+
+export function assertSafeContractDocument(document, datasetId) {
+  assertDatasetIdAbsent(document, datasetId, 'CONTRACT_REDACTION_FAILED')
+  return document
 }
 
 function maskDatasetId(datasetId) {
