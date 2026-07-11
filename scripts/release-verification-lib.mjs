@@ -225,6 +225,8 @@ function sanitizeReportValue(value, contextKey = '') {
     if (value.length > 0 && (normalizedKey.includes('useragent') || normalizedKey === 'fbp' || normalizedKey === 'fbc')) {
       return PRIVACY_REDACTION
     }
+    const parsed = parseStructuredJsonString(value)
+    if (parsed !== null) return JSON.stringify(sanitizeReportValue(parsed))
     return redactForReport(value)
   }
   if (Array.isArray(value)) return value.map(child => sanitizeReportValue(child, contextKey))
@@ -329,8 +331,8 @@ export function assertReportCanGateProduction(report, options = {}) {
 
 function summarizeOutput(stdout, stderr) {
   const chunks = []
-  if (stdout) chunks.push(`stdout: ${compactWhitespace(redactForReport(stdout))}`)
-  if (stderr) chunks.push(`stderr: ${compactWhitespace(redactForReport(stderr))}`)
+  if (stdout) chunks.push(`stdout: ${compactWhitespace(sanitizeReportValue(stdout))}`)
+  if (stderr) chunks.push(`stderr: ${compactWhitespace(sanitizeReportValue(stderr))}`)
   if (chunks.length === 0) return '无输出'
 
   const summary = chunks.join(' | ')
@@ -507,6 +509,18 @@ function hasNonEmptyStringArray(value) {
 
 function compactWhitespace(value) {
   return value.replace(/\s+/g, ' ').trim()
+}
+
+function parseStructuredJsonString(value) {
+  const trimmed = value.trim()
+  if (!trimmed || !((trimmed.startsWith('{') && trimmed.endsWith('}'))
+    || (trimmed.startsWith('[') && trimmed.endsWith(']')))) return null
+  try {
+    const parsed = JSON.parse(trimmed)
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
 }
 
 function firstLine(value) {

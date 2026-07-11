@@ -38,6 +38,7 @@ const SECRET_ASSIGNMENT_PATTERN = /(?:["']?)(META_CAPI_ACCESS_TOKEN|META_CAPI_TE
 const PERSISTENCE_PATTERN = /\b(?:CREATE|ALTER|INSERT|UPDATE)\b/i
 const MATCH_SIGNAL_PATTERN = /(?:\bclient_ip_address\b|\bclient_user_agent\b|(?<![A-Za-z0-9_])fbp(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])fbc(?![A-Za-z0-9_]))/i
 const EXPLICIT_SECRET_PLACEHOLDER_PATTERN = /^(?:<[^>\r\n]{1,80}>|\$\{?[A-Z][A-Z0-9_]*\}?|configured|present|missing|unset|disabled|redacted|placeholder|not[-_ ]?configured|undefined|null)$/i
+const SANITIZED_EVIDENCE_VALUES = new Set(['[PRIVATE_REDACTED]', '[REDACTED]'])
 const BARE_VARIABLE_REFERENCE_PATTERN = /^[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*$/
 const SOURCE_CODE_EXTENSION_PATTERN = /\.(?:[cm]?[jt]sx?|vue)$/i
 const CAPI_FIELD_PATTERN = /(?:\b(em|external_id)\b|["'](em|external_id)["'])\s*:\s*/g
@@ -547,10 +548,11 @@ function scanEvidence(relativePath, text, findings) {
     const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '')
     scanEvidenceString(relativePath, key, findings)
     if (typeof value !== 'string' || value.length === 0) return
-    if (normalizedKey.includes('useragent')) {
+    const isSanitized = SANITIZED_EVIDENCE_VALUES.has(value)
+    if (normalizedKey.includes('useragent') && !isSanitized) {
       addFinding(findings, relativePath, 'META_EVIDENCE_RAW_USER_AGENT')
     }
-    if (normalizedKey === 'fbp' || normalizedKey === 'fbc') {
+    if ((normalizedKey === 'fbp' || normalizedKey === 'fbc') && !isSanitized) {
       addFinding(findings, relativePath, 'META_EVIDENCE_BROWSER_ID')
     }
     scanEvidenceString(relativePath, value, findings)
@@ -607,7 +609,10 @@ function walkEvidence(root, visit) {
     if (current.depth > MAX_EVIDENCE_DEPTH || ++visited > MAX_EVIDENCE_NODES) return false
     visit(current.key, current.value)
     let children = []
-    if (Array.isArray(current.value)) {
+    const embedded = typeof current.value === 'string' ? parseStructuredJsonString(current.value) : null
+    if (embedded !== null) {
+      children = [{ value: embedded, key: current.key, depth: current.depth + 1 }]
+    } else if (Array.isArray(current.value)) {
       children = current.value.map(value => ({ value, key: current.key, depth: current.depth + 1 }))
     } else if (current.value && typeof current.value === 'object') {
       children = Object.entries(current.value).map(([key, value]) => ({ value, key, depth: current.depth + 1 }))
@@ -616,6 +621,18 @@ function walkEvidence(root, visit) {
     for (let index = children.length - 1; index >= 0; index -= 1) stack.push(children[index])
   }
   return true
+}
+
+function parseStructuredJsonString(value) {
+  const trimmed = value.trim()
+  if (!trimmed || !((trimmed.startsWith('{') && trimmed.endsWith('}'))
+    || (trimmed.startsWith('[') && trimmed.endsWith(']')))) return null
+  try {
+    const parsed = JSON.parse(trimmed)
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
 }
 
 function hasUnsafePersistence(relativePath, text) {

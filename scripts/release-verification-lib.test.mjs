@@ -130,11 +130,17 @@ describe('发布验证基础库', () => {
       'e'.repeat(32),
       '203.0.113.88',
       'f'.repeat(64),
+      'opaque-runtime-agent',
+      'opaque-browser-id',
+      'opaque-click-id',
     ]
     const payload = {
       revision: sensitiveValues[0],
       localAddress: sensitiveValues[1],
       hash: sensitiveValues[2],
+      userAgent: sensitiveValues[3],
+      fbp: sensitiveValues[4],
+      fbc: sensitiveValues[5],
     }
 
     const serializedPayload = JSON.stringify(payload)
@@ -146,6 +152,7 @@ describe('发布验证基础库', () => {
     assert.deepEqual(JSON.parse(step.stdout), payload)
     assert.deepEqual(JSON.parse(step.stderr), payload)
     for (const value of sensitiveValues) assert.equal(step.summary.includes(value), false)
+    assert.match(step.summary, /\[PRIVATE_REDACTED\]/)
   })
 
   it('runCommand 支持使用安全的 reportCommand 覆盖报告命令', async () => {

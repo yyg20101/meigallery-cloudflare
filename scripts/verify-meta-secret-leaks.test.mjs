@@ -6,6 +6,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, it } from 'node:test'
 import { promisify } from 'node:util'
+import { writeReport } from './release-verification-lib.mjs'
 import { main, scanMetaSecretLeaks } from './verify-meta-secret-leaks.mjs'
 
 const execFile = promisify(execFileCallback)
@@ -456,6 +457,96 @@ describe('Meta secret 静态泄漏扫描', () => {
     ])
   })
 
+  it('evidence 字段上下文只放行精确受控脱敏占位符', async () => {
+    const rootDir = await createRepository()
+    await writeIgnoredEvidence(rootDir, 'reports/release-verification/safe-placeholders.json', {
+      userAgent: '[PRIVATE_REDACTED]',
+      client_user_agent: '[REDACTED]',
+      nested: {
+        fbp: '[PRIVATE_REDACTED]',
+        fbc: '[REDACTED]',
+      },
+    })
+    await writeIgnoredEvidence(rootDir, 'reports/release-verification/unsafe-placeholders.json', {
+      userAgent: 'prefix-[PRIVATE_REDACTED]',
+      client_user_agent: '[PRIVATE_REDACTED]-suffix',
+      nested: {
+        fbp: '[private_redacted]',
+        fbc: '[redacted]',
+      },
+    })
+
+    const report = await scanMetaSecretLeaks({ rootDir })
+
+    assert.deepEqual(report.findings, [
+      { path: 'reports/release-verification/unsafe-placeholders.json', ruleId: 'META_EVIDENCE_BROWSER_ID' },
+      { path: 'reports/release-verification/unsafe-placeholders.json', ruleId: 'META_EVIDENCE_RAW_USER_AGENT' },
+    ])
+  })
+
+  it('writeReport 与 scanner 端到端处理字符串 JSON，并拒绝 raw embedded evidence', async () => {
+    const rootDir = await createRepository()
+    const reportDir = path.join(rootDir, 'reports/release-verification')
+    const sensitiveKey = 'private-owner@example.test'
+    const sensitiveValues = {
+      userAgent: 'opaque-runtime-agent',
+      fbp: 'opaque-browser-id',
+      fbc: 'opaque-click-id',
+    }
+    const embeddedEvidence = JSON.stringify({
+      private_redacted_1: 'reserved-value',
+      [sensitiveKey]: 'sensitive-key-value',
+      nested: sensitiveValues,
+    })
+    const report = {
+      schemaVersion: 1,
+      mode: 'quick',
+      status: 'passed',
+      startedAt: '2026-07-11T00:00:00.000Z',
+      finishedAt: '2026-07-11T00:01:00.000Z',
+      durationMs: 60_000,
+      git: { branch: 'dev', commit: 'abcdef1234567890', isClean: true, remote: 'origin' },
+      versions: { node: 'v24.0.0', pnpm: '10.0.0', wrangler: '4.0.0' },
+      steps: [{
+        name: 'embedded-evidence',
+        status: 'passed',
+        durationMs: 1,
+        command: 'node embedded-evidence',
+        summary: embeddedEvidence,
+      }],
+      artifacts: [],
+      notes: [],
+    }
+
+    const { reportFile, latestFile } = await writeReport(report, { reportDir })
+    const contents = await Promise.all([readFile(reportFile, 'utf8'), readFile(latestFile, 'utf8')])
+    for (const content of contents) {
+      assert.equal(content.includes(sensitiveKey), false)
+      for (const value of Object.values(sensitiveValues)) assert.equal(content.includes(value), false)
+      const parsedEmbedded = JSON.parse(JSON.parse(content).steps[0].summary)
+      assert.equal(parsedEmbedded.private_redacted_1, 'reserved-value')
+      assert.equal(parsedEmbedded.private_redacted_2, 'sensitive-key-value')
+      assert.deepEqual(parsedEmbedded.nested, {
+        userAgent: '[PRIVATE_REDACTED]',
+        fbp: '[PRIVATE_REDACTED]',
+        fbc: '[PRIVATE_REDACTED]',
+      })
+    }
+
+    const sanitizedScan = await scanMetaSecretLeaks({ rootDir })
+    assert.equal(sanitizedScan.status, 'passed')
+    assert.deepEqual(sanitizedScan.findings, [])
+
+    await writeIgnoredEvidence(rootDir, 'reports/release-verification/raw-embedded.json', {
+      evidence: JSON.stringify(sensitiveValues),
+    })
+    const rawScan = await scanMetaSecretLeaks({ rootDir })
+    assert.deepEqual(rawScan.findings, [
+      { path: 'reports/release-verification/raw-embedded.json', ruleId: 'META_EVIDENCE_BROWSER_ID' },
+      { path: 'reports/release-verification/raw-embedded.json', ruleId: 'META_EVIDENCE_RAW_USER_AGENT' },
+    ])
+  })
+
   it('危险路径统一转为稳定 opaque ID，正常安全相对路径仍保留', async () => {
     const rootDir = await createRepository()
     const dangerousPaths = [
@@ -505,7 +596,11 @@ describe('Meta secret 静态泄漏扫描', () => {
     const rootDir = await createRepository()
     const deepJson = `${'{"child":'.repeat(200)}null${'}'.repeat(200)}`
     const wideJson = JSON.stringify({ values: Array.from({ length: 20_000 }, (_, index) => index) })
+    const embeddedWideJson = JSON.stringify({
+      values: Array.from({ length: 200 }, () => JSON.stringify(Array.from({ length: 100 }, (_, index) => index))),
+    })
     await writeTracked(rootDir, 'reports/release-verification/deep.json', deepJson)
+    await writeTracked(rootDir, 'reports/release-verification/embedded-wide.json', embeddedWideJson)
     await writeTracked(rootDir, 'reports/meta-live-verification/wide.json', wideJson)
 
     const report = await scanMetaSecretLeaks({ rootDir })
@@ -513,6 +608,7 @@ describe('Meta secret 静态泄漏扫描', () => {
     assert.deepEqual(report.findings, [
       { path: 'reports/meta-live-verification/wide.json', ruleId: 'META_EVIDENCE_STRUCTURE_LIMIT' },
       { path: 'reports/release-verification/deep.json', ruleId: 'META_EVIDENCE_STRUCTURE_LIMIT' },
+      { path: 'reports/release-verification/embedded-wide.json', ruleId: 'META_EVIDENCE_STRUCTURE_LIMIT' },
     ])
   })
 
