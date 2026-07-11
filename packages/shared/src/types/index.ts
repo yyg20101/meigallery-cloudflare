@@ -95,6 +95,20 @@ export type ConversionDeliveryChannel = 'meta_pixel' | 'meta_capi'
 
 export type MetaTrackingMode = 'disabled' | 'test' | 'production'
 
+export type MetaCapiRolloutPercentage = 0 | 10 | 50 | 100
+
+export type MetaCapiIncidentStatus = 'open' | 'closed'
+
+export type MetaCapiIncidentSeverity = 'warning' | 'critical'
+
+export interface MetaCapiRolloutDecision {
+  targetPercentage: MetaCapiRolloutPercentage
+  effectivePercentage: MetaCapiRolloutPercentage
+  bucket: number | null
+  included: boolean
+  reason: 'included' | 'rollout_excluded' | 'circuit_open' | 'missing_stable_id'
+}
+
 export type PublicConversionActionType = Extract<ActiveConversionActionType, 'contact'>
 
 export type ConversionDeliveryStatus = 'pending' | 'attempted' | 'sent' | 'failed' | 'skipped' | 'duplicate_suppressed'
