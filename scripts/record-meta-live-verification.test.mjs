@@ -1,12 +1,11 @@
 import assert from 'node:assert/strict'
-import { createHash } from 'node:crypto'
 import { describe, it } from 'node:test'
 import { buildMetaLiveEvidence, recordMetaLiveVerification } from './record-meta-live-verification.mjs'
 
 const COMMIT = '18dc11e0b0e4797683d4551a93a1f22e53dc4628'
-const RAW_IDS = {
-  Contact: 'meta_verify_contact_0123456789abcdef',
-  CompleteRegistration: 'meta_verify_registration_0123456789abcdef',
+const DIGESTS = {
+  Contact: `sha256:${'a'.repeat(64)}`,
+  CompleteRegistration: `sha256:${'b'.repeat(64)}`,
 }
 
 function readiness() {
@@ -15,6 +14,8 @@ function readiness() {
     commitSha: COMMIT,
     pixelId: '12345678906781',
     connectionVerifiedAt: '2026-07-09T23:55:00.000Z',
+    challengeId: `mlc_${'c'.repeat(32)}`,
+    eventDigests: DIGESTS,
     enhancedMatch: {
       completeRegistrationEmail: true,
       completeRegistrationExternalId: true,
@@ -31,10 +32,9 @@ function validInput() {
     commit: COMMIT,
     now: '2026-07-10T00:00:00.000Z',
     forbiddenEventsAbsent: { Lead: true, StartTrial: true },
-    eventResults: Object.entries(RAW_IDS).map(([eventName, eventId]) => ({
+    eventResults: Object.entries(DIGESTS).map(([eventName, eventIdDigest]) => ({
       eventName,
-      browserEventId: eventId,
-      serverEventId: eventId,
+      eventIdDigest,
       browserSeen: true,
       serverSeen: true,
       deduplicated: true,
@@ -43,183 +43,86 @@ function validInput() {
   }
 }
 
-function verifiedRuntimeOptions(overrides = {}) {
+function runtime(overrides = {}) {
   return {
     env: {
       VERIFY_DEV_API_URL: 'https://api-dev.example.workers.dev',
       VERIFY_DEV_WEB_URL: 'https://web-dev.example.workers.dev',
     },
-    fetch: async url => new Response(JSON.stringify({
-      status: 'ok',
-      db: new URL(String(url)).pathname === '/api/health' ? 'ok' : undefined,
-      environment: 'dev',
-      commit: COMMIT,
-    }), { status: 200, headers: { 'content-type': 'application/json' } }),
+    fetch: async () => new Response(JSON.stringify({ status: 'ok', environment: 'dev', commit: COMMIT }), { status: 200 }),
+    getCommit: async () => COMMIT,
     readReadiness: async () => readiness(),
-    createSession: async () => ({
-      challengeId: 'challenge_0123456789abcdef',
-      nonce: '0123456789abcdef',
-      commitSha: COMMIT,
-      environment: 'dev',
-      createdAt: '2026-07-10T00:00:00.000Z',
-      expiresAt: '2026-07-10T01:00:00.000Z',
-      eventIds: { ...RAW_IDS },
-    }),
-    destroySession: async () => {},
+    destroyChallenge: async () => {},
+    output: () => {},
+    now: '2026-07-10T00:00:00.000Z',
     ...overrides,
   }
 }
 
-describe('Meta live evidence V2 人工录入', () => {
-  it('从 readiness 生成 V2，只保留 Pixel mask 和 event ID 不可逆摘要', () => {
+describe('Meta live evidence V2 Worker challenge 录入', () => {
+  it('只接受 Worker 返回的不可逆摘要，证据不含原始 ID', () => {
     const evidence = buildMetaLiveEvidence(validInput())
-    const serialized = JSON.stringify(evidence)
-
     assert.equal(evidence.schemaVersion, 2)
-    assert.equal(evidence.commitSha, COMMIT)
-    assert.equal(evidence.environment, 'dev')
-    assert.equal(evidence.pixelIdMasked, '1234****6781')
-    assert.deepEqual(evidence.events.map(event => event.eventName), ['Contact', 'CompleteRegistration'])
-    for (const event of evidence.events) {
-      const expected = createHash('sha256').update(RAW_IDS[event.eventName]).digest('hex')
-      assert.equal(event.browserEventId, `sha256:${expected}`)
-      assert.equal(event.serverEventId, event.browserEventId)
-      assert.equal(serialized.includes(RAW_IDS[event.eventName]), false)
-    }
-    assert.equal(serialized.includes('12345678906781'), false)
+    assert.deepEqual(evidence.events.map(event => event.browserEventId), Object.values(DIGESTS))
+    assert.equal(JSON.stringify(evidence).includes('mlv_'), false)
   })
 
-  it('拒绝非本次 opaque 合成 ID、ID 不同、未 seen/去重/接收和禁止事件未确认', () => {
-    const base = validInput()
-    const mutateFirst = patch => ({
-      ...base,
-      eventResults: base.eventResults.map((event, index) => index === 0 ? { ...event, ...patch } : event),
-    })
-    for (const candidate of [
-      mutateFirst({ serverEventId: 'meta_verify_different_0123456789abcdef' }),
-      mutateFirst({ browserEventId: 'person@example.com', serverEventId: 'person@example.com' }),
-      mutateFirst({ browserSeen: false }),
-      mutateFirst({ serverSeen: false }),
-      mutateFirst({ deduplicated: false }),
-      mutateFirst({ eventsReceived: 0 }),
-      { ...base, eventResults: base.eventResults.slice(0, 1) },
-      { ...base, forbiddenEventsAbsent: { Lead: false, StartTrial: true } },
-      { ...base, forbiddenEventsAbsent: { Lead: true, StartTrial: false } },
-    ]) assert.throws(() => buildMetaLiveEvidence(candidate))
-  })
-
-  it('增强匹配不足时稳定失败，Q5 状态不再由 Evidence 自报布尔放行', () => {
-    const base = validInput()
-    for (const candidate of [
-      { ...base, enhancedMatch: { ...base.enhancedMatch, completeRegistrationEmail: false } },
-      { ...base, enhancedMatch: { ...base.enhancedMatch, completeRegistrationExternalId: false } },
-      { ...base, enhancedMatch: { ...base.enhancedMatch, contactContainsRegistrationIdentity: true } },
-    ]) assert.throws(() => buildMetaLiveEvidence(candidate))
-  })
-
-  it('交互逐项确认 Browser、Server、dedup 和禁止事件，且从 D1 readiness 取增强匹配', async () => {
-    const answers = [
-      RAW_IDS.Contact, RAW_IDS.Contact, 'yes', 'yes', 'yes', 'yes',
-      RAW_IDS.CompleteRegistration, RAW_IDS.CompleteRegistration, 'yes', 'yes', 'yes', 'yes',
-      'yes', 'yes',
-    ]
-    let written
-    const result = await recordMetaLiveVerification({
-      ...verifiedRuntimeOptions(),
-      ask: async () => answers.shift(),
-      output: () => {},
-      getCommit: async () => COMMIT,
-      now: '2026-07-10T00:00:00.000Z',
-      writeEvidence: async evidence => {
-        written = evidence
-        return { evidenceFile: '/tmp/evidence.json', latestFile: '/tmp/latest.json' }
+  it('不再询问或生成 event ID，只逐项确认 Browser/Server/去重并在成功后销毁 challenge', async () => {
+    const prompts = []
+    let destroyed = 0
+    const result = await recordMetaLiveVerification(runtime({
+      ask: async prompt => { prompts.push(prompt); return 'yes' },
+      destroyChallenge: async challengeId => {
+        destroyed += 1
+        assert.equal(challengeId, readiness().challengeId)
       },
-    })
-
+      writeEvidence: async () => ({ evidenceFile: '/tmp/evidence.json', latestFile: '/tmp/latest.json' }),
+    }))
     assert.equal(result.evidence.schemaVersion, 2)
-    assert.deepEqual(written.enhancedMatch, readiness().enhancedMatch)
-    assert.equal(answers.length, 0)
+    assert.equal(prompts.some(prompt => /event ID/i.test(prompt)), false)
+    assert.equal(prompts.length, 10)
+    assert.equal(destroyed, 1)
   })
 
-  it('只接受本次一小时会话生成的预期 ID，并在成功或失败后销毁 challenge', async () => {
-    for (const accepted of [true, false]) {
-      let destroyed = 0
-      const expectedIds = { ...RAW_IDS }
-      const answers = accepted
-        ? [
-            expectedIds.Contact, expectedIds.Contact, 'yes', 'yes', 'yes', 'yes',
-            expectedIds.CompleteRegistration, expectedIds.CompleteRegistration, 'yes', 'yes', 'yes', 'yes',
-            'yes', 'yes',
-          ]
-        : [
-            'meta_verify_historical_0123456789abcdef', 'meta_verify_historical_0123456789abcdef',
-            'yes', 'yes', 'yes', 'yes',
-            expectedIds.CompleteRegistration, expectedIds.CompleteRegistration, 'yes', 'yes', 'yes', 'yes',
-            'yes', 'yes',
-          ]
-      const run = recordMetaLiveVerification({
-        ...verifiedRuntimeOptions(),
-        ask: async () => answers.shift(),
-        output: () => {},
-        getCommit: async () => COMMIT,
-        now: '2026-07-10T00:00:00.000Z',
-        createSession: async () => ({
-          challengeId: 'challenge_0123456789abcdef',
-          nonce: '0123456789abcdef',
-          commitSha: COMMIT,
-          environment: 'dev',
-          createdAt: '2026-07-10T00:00:00.000Z',
-          expiresAt: '2026-07-10T01:00:00.000Z',
-          eventIds: expectedIds,
-        }),
-        destroySession: async () => { destroyed += 1 },
-        writeEvidence: async () => ({ evidenceFile: '/tmp/evidence.json', latestFile: '/tmp/latest.json' }),
-      })
-
-      if (accepted) await run
-      else await assert.rejects(run, /本次.*会话|预期 event ID/)
-      assert.equal(destroyed, 1)
-    }
+  it('Owner 任一确认失败时仍销毁 challenge 且不写 evidence', async () => {
+    let destroyed = 0
+    let writes = 0
+    const answers = ['no', ...Array(9).fill('yes')]
+    await assert.rejects(recordMetaLiveVerification(runtime({
+      ask: async () => answers.shift(),
+      destroyChallenge: async () => { destroyed += 1 },
+      writeEvidence: async () => { writes += 1 },
+    })), /确认不完整|Browser/)
+    assert.equal(destroyed, 1)
+    assert.equal(writes, 0)
   })
 
-  it('readiness 查询失败、旧 commit 或 pending 时均不进入录入也不写 evidence', async () => {
-    for (const overrides of [
-      { readReadiness: async () => { throw new Error('query failed') } },
-      { readReadiness: async () => ({ ...readiness(), commitSha: 'a'.repeat(40) }) },
-      { readReadiness: async () => ({ ...readiness(), datasetQualityCollectorCurrent: false }) },
+  it('缺失 challenge、错误 commit 或 Q5/collector pending 时不进入人工确认', async () => {
+    for (const partial of [
+      { challengeId: '' },
+      { commitSha: 'd'.repeat(40) },
+      { datasetQualityCollectorCurrent: false },
+      { eventDigests: { ...DIGESTS, Contact: 'raw-event-id' } },
     ]) {
       let asks = 0
-      let writes = 0
-      await assert.rejects(() => recordMetaLiveVerification({
-        ...verifiedRuntimeOptions(overrides),
-        ask: async () => { asks += 1; return '' },
-        getCommit: async () => COMMIT,
-        writeEvidence: async () => { writes += 1 },
-      }))
+      await assert.rejects(recordMetaLiveVerification(runtime({
+        readReadiness: async () => ({ ...readiness(), ...partial }),
+        ask: async () => { asks += 1; return 'yes' },
+      })))
       assert.equal(asks, 0)
-      assert.equal(writes, 0)
     }
   })
 
-  it('任一 Worker 不是当前 commit 时不读取 readiness、不录入、不写文件', async () => {
-    let readinessReads = 0
-    let asks = 0
-    let writes = 0
-    await assert.rejects(() => recordMetaLiveVerification({
-      ...verifiedRuntimeOptions({
-        fetch: async url => new Response(JSON.stringify({
-          status: 'ok',
-          environment: 'dev',
-          commit: new URL(String(url)).pathname === '/__release' ? 'a'.repeat(40) : COMMIT,
-        }), { status: 200 }),
-        readReadiness: async () => { readinessReads += 1; return readiness() },
-      }),
-      ask: async () => { asks += 1; return '' },
-      getCommit: async () => COMMIT,
-      writeEvidence: async () => { writes += 1 },
-    }), /Web 发布 commit/)
-    assert.equal(readinessReads, 0)
-    assert.equal(asks, 0)
-    assert.equal(writes, 0)
+  it('任一 dev Worker 不是当前 commit 时不读 D1 challenge', async () => {
+    let reads = 0
+    await assert.rejects(recordMetaLiveVerification(runtime({
+      fetch: async url => new Response(JSON.stringify({
+        status: 'ok',
+        environment: 'dev',
+        commit: new URL(String(url)).pathname === '/__release' ? 'd'.repeat(40) : COMMIT,
+      }), { status: 200 }),
+      readReadiness: async () => { reads += 1; return readiness() },
+    })), /Web 发布 commit/)
+    assert.equal(reads, 0)
   })
 })

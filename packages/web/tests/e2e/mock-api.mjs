@@ -926,6 +926,24 @@ function handleApi(req, res) {
       },
     })
   }
+  if (url.pathname === '/api/admin/attribution/meta/live-challenge' && req.method === 'POST') {
+    return json(res, {
+      data: {
+        challengeId: `mlc_${'c'.repeat(32)}`,
+        environment: 'dev',
+        commitSha: 'a'.repeat(40),
+        pixelId: '1234567890',
+        expiresAt: '2026-07-11T01:00:00.000Z',
+        eventIds: {
+          Contact: `mlv_contact_${'a'.repeat(32)}`,
+          CompleteRegistration: `mlv_registration_${'b'.repeat(32)}`,
+        },
+      },
+    })
+  }
+  if (url.pathname === '/api/admin/attribution/meta/live-challenge/consume' && req.method === 'POST') {
+    return json(res, { data: { status: 'server_sent', eventsReceived: 2 } })
+  }
   if (url.pathname === '/api/admin/attribution/meta/rollout' && req.method === 'POST') {
     readJsonBody(req).then((body) => {
       adminAttributionActions.push({ type: 'rollout', body })

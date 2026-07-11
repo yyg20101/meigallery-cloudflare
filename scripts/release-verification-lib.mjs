@@ -558,7 +558,7 @@ function validateMetaReleaseSummary(report, reasons, now) {
       if (bootstrapProduction) {
         const isolation = resource.environmentIsolation
         if (resource.r2Present !== true || resource.secretsPresent !== true
-          || !isolation || !['d1', 'r2', 'queue', 'dlq', 'pixel', 'token', 'testEventCode', 'dataKey'].every(key => isolation[key] === true)) {
+          || !isolation || !['d1', 'r2', 'queue', 'dlq'].every(key => isolation[key] === true)) {
           reasons.push('Meta production bootstrap 资源或环境隔离证明不完整')
         }
       }

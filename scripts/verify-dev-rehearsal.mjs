@@ -290,25 +290,6 @@ export async function runDevRehearsalVerification(options = {}) {
     steps.push(metaDeliveryStep)
     if (metaDeliveryStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
-    const metaStep = await requestJsonStep(
-      boundedFetch,
-      'dev-meta-test-event',
-      `${apiUrl}/api/admin/attribution/meta/test-event`,
-      {
-        method: 'POST',
-        headers: {
-          Cookie: `${SESSION_COOKIE}=${sessionToken}`,
-        },
-      },
-      (body) => {
-        const data = body?.data || {}
-        if (data.status !== 'verified') throw new Error(`Meta Test Event status 非 verified：${String(data.status || 'missing')}`)
-        if (data.eventsReceived !== 1) throw new Error(`Meta Test Event eventsReceived 非 1：${String(data.eventsReceived ?? 'missing')}`)
-        return 'Meta Test Event 已由 Meta 确认接收 1 条事件'
-      },
-    )
-    steps.push(metaStep)
-
     return { steps, notes, artifacts, sensitiveValues }
   } finally {
     if (shouldCleanupDevSmokeOwner) {

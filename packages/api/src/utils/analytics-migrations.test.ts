@@ -8,13 +8,13 @@ async function readMigration(name: string) {
 }
 
 describe('analytics migrations', () => {
-  it('migration 索引从 0001 到 0040 连续且编号唯一', async () => {
+  it('migration 索引从 0001 到 0041 连续且编号唯一', async () => {
     const names = (await readdir(MIGRATION_DIR))
       .filter(name => /^\d{4}_.+\.sql$/.test(name))
       .sort()
     const indexes = names.map(name => Number(name.slice(0, 4)))
 
-    expect(indexes).toEqual(Array.from({ length: 40 }, (_, index) => index + 1))
+    expect(indexes).toEqual(Array.from({ length: 41 }, (_, index) => index + 1))
     expect(new Set(indexes).size).toBe(indexes.length)
   })
 
@@ -219,5 +219,17 @@ describe('analytics migrations', () => {
       'idx_meta_capi_delivery_duplicate_window',
       'idx_meta_capi_delivery_created_window',
     ]) expect(sql).toContain(`CREATE INDEX ${index}`)
+  })
+
+  it('0041 建立短期一次性 Meta live challenge，原始 ID 可在消费后不可恢复', async () => {
+    const sql = await readMigration('0041_meta_live_challenges.sql')
+    expect(sql).toContain('CREATE TABLE meta_live_challenges')
+    expect(sql).toContain('contact_event_id TEXT')
+    expect(sql).toContain('complete_registration_event_id TEXT')
+    expect(sql).toContain("status IN ('pending', 'consuming', 'server_sent')")
+    expect(sql).toContain('expires_at TEXT NOT NULL')
+    expect(sql).toContain('contact_event_digest TEXT')
+    expect(sql).toContain('complete_registration_event_digest TEXT')
+    expect(sql).not.toMatch(/email|client_ip|user_agent|access_token|test_event_code/i)
   })
 })

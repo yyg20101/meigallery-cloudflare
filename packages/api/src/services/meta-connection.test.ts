@@ -472,7 +472,7 @@ describe('MetaConnection', () => {
   })
 
   it('production bootstrap 缺少发布资源证据时 409，且不 fetch、不写 verification', async () => {
-    const db = createConnectionDb({ trackingMode: 'production' })
+    const db = createConnectionDb({ trackingMode: 'test' })
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
 
@@ -486,9 +486,9 @@ describe('MetaConnection', () => {
 
   it('production bootstrap 只信当前 commit 未过期的完整 bootstrap evidence，且绝不查询 production D1 的 dev row', async () => {
     const db = createConnectionDb({
-      trackingMode: 'production',
+      trackingMode: 'test',
       productionBootstrapEvidence: {
-        bootstrapReady: true,
+        liveAttestation: true,
         migrationsReady: true,
         d1Ready: true,
         r2Ready: true,
@@ -518,9 +518,35 @@ describe('MetaConnection', () => {
     expect(db.calls.some(call => call.sql.includes("environment = 'dev'"))).toBe(false)
   })
 
+  it.each(['disabled', 'production'] as const)('production bootstrap 在 trackingMode=%s 时于 fetch 前阻断', async trackingMode => {
+    const db = createConnectionDb({
+      trackingMode,
+      productionBootstrapEvidence: {
+        liveAttestation: true,
+        migrationsReady: true,
+        d1Ready: true,
+        r2Ready: true,
+        queuesReady: true,
+        secretsReady: true,
+        rolloutZero: true,
+        noOpenCriticalIncident: true,
+        environmentIsolation: {
+          d1: true, r2: true, queue: true, dlq: true,
+          pixel: true, token: true, testEventCode: true, dataKey: true,
+        },
+      },
+    })
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(verifyMetaConnection(connectionEnv(db, { APP_ENV: 'production' }), 1, 'Contact'))
+      .rejects.toMatchObject({ code: 'META_PRODUCTION_TEST_GATE_BLOCKED', httpStatus: 409 })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('production bootstrap 每个资源摘要、rollout 与 incident 门禁都在 fetch 前失败', async () => {
     const complete = {
-      bootstrapReady: true,
+      liveAttestation: true,
       migrationsReady: true,
       d1Ready: true,
       r2Ready: true,
@@ -541,7 +567,7 @@ describe('MetaConnection', () => {
     ]
 
     for (const options of cases) {
-      const db = createConnectionDb({ trackingMode: 'production', ...options })
+      const db = createConnectionDb({ trackingMode: 'test', ...options })
       const fetchMock = vi.fn()
       vi.stubGlobal('fetch', fetchMock)
       await expect(verifyMetaConnection(connectionEnv(db, { APP_ENV: 'production' }), 1, 'Contact'))

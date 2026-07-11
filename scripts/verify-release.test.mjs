@@ -163,6 +163,40 @@ describe('发布验证 CLI', () => {
     }, /报告 commit 与当前待发布 commit 不一致/)
   })
 
+  it('assertProductionAllowed 即使 latest.json current 字段被篡改为通过也必须重新查询受信远端事实', async () => {
+    let trustedQueries = 0
+    await assert.rejects(assertProductionAllowed({
+      getGitState: async () => ({ branch: 'main', commit: RELEASE_COMMIT, isClean: true, remote: 'origin' }),
+      readLatestReport: async () => ({
+        status: 'passed',
+        git: { commit: RELEASE_COMMIT },
+        metaResources: { dev: { status: 'passed' }, production: { status: 'passed' } },
+        metaLiveVerification: { status: 'passed', commit: RELEASE_COMMIT },
+      }),
+      assertReportCanGateProduction: () => {},
+      collectTrustedProductionGateFacts: async ({ commit }) => {
+        trustedQueries += 1
+        assert.equal(commit, RELEASE_COMMIT)
+        throw new Error('远端 dev live/resource/incident/rollout 链不完整')
+      },
+    }), /远端 dev live\/resource\/incident\/rollout 链不完整/)
+    assert.equal(trustedQueries, 1)
+  })
+
+  it('首次 rollout=0 的受信门禁使用 production bootstrap phase，不要求未部署 endpoint', async () => {
+    let trustedInput
+    await assertProductionAllowed({
+      getGitState: async () => ({ branch: 'main', commit: RELEASE_COMMIT, isClean: true, remote: 'origin' }),
+      readLatestReport: async () => ({ initialMetaRollout: true }),
+      assertReportCanGateProduction: () => {},
+      collectTrustedProductionGateFacts: async input => {
+        trustedInput = input
+        return { status: 'passed' }
+      },
+    })
+    assert.equal(trustedInput.initialMetaRollout, true)
+  })
+
   it('assertProductionAllowed 在当前 Git commit 为空时保守失败', async () => {
     await assert.rejects(async () => {
       await assertProductionAllowed({

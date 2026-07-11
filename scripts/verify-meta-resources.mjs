@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 
 import { pathToFileURL } from 'node:url'
-import { lstat, readFile } from 'node:fs/promises'
-import { createHash } from 'node:crypto'
+import { randomBytes } from 'node:crypto'
 import { recordReleaseVerificationSummary } from './release-verification-store.mjs'
-import { runCommand } from './release-verification-lib.mjs'
+import { fetchWithTimeout, runCommand } from './release-verification-lib.mjs'
 
 const RESOURCE_CONFIG = {
   production: {
@@ -37,9 +36,10 @@ const REQUIRED_MIGRATIONS = [
   '0038_conversion_dedupe_claims.sql',
   '0039_meta_capi_v2_operations.sql',
   '0040_meta_capi_circuit_indexes.sql',
+  '0041_meta_live_challenges.sql',
 ]
 const SETTINGS_SQL = "SELECT key, value FROM site_settings WHERE key IN ('meta_capi_enabled', 'meta_tracking_mode', 'facebook_pixel_id') ORDER BY key"
-const MIGRATION_NAMES_SQL = "SELECT name FROM d1_migrations WHERE name IN ('0036_meta_capi_v2_secure_delivery.sql', '0037_meta_connection_revision.sql', '0038_conversion_dedupe_claims.sql', '0039_meta_capi_v2_operations.sql', '0040_meta_capi_circuit_indexes.sql') ORDER BY name"
+const MIGRATION_NAMES_SQL = "SELECT name FROM d1_migrations WHERE name IN ('0036_meta_capi_v2_secure_delivery.sql', '0037_meta_connection_revision.sql', '0038_conversion_dedupe_claims.sql', '0039_meta_capi_v2_operations.sql', '0040_meta_capi_circuit_indexes.sql', '0041_meta_live_challenges.sql') ORDER BY name"
 const META_OPERATIONS_SQL = `
   WITH rollout AS (
     SELECT CAST(COALESCE((SELECT value FROM site_settings WHERE key = 'meta_capi_rollout_percentage' LIMIT 1), '-1') AS INTEGER) AS target
@@ -92,15 +92,16 @@ export async function runMetaResourceVerification(options = {}) {
   if (!config) throw new Error('--env 只允许 dev 或 production')
   if (options.initialMetaRollout !== undefined && typeof options.initialMetaRollout !== 'boolean') throw new Error('initialMetaRollout 必须为布尔值')
   const phase = options.phase || (options.initialMetaRollout === true && environment === 'production' ? 'bootstrap' : 'full')
-  if (!['bootstrap', 'full'].includes(phase) || (phase === 'bootstrap' && environment !== 'production')) {
-    throw new Error('phase 只允许 production bootstrap 或 full')
+  if (!['bootstrap', 'post-deploy', 'full'].includes(phase)
+    || ((phase === 'bootstrap' || phase === 'post-deploy') && environment !== 'production')) {
+    throw new Error('phase 只允许 production bootstrap、post-deploy 或 full')
   }
   const runCommandFn = options.runCommand || runCommand
-  const resourceIdentities = options.resourceIdentities || await readResourceIdentities(options)
   const recordSummary = options.recordSummary || recordReleaseVerificationSummary
   const calls = [
     command('queue-main', ['queues', 'info', config.mainQueue]),
     command('queue-dlq', ['queues', 'info', config.dlq]),
+    command('d1-info', ['d1', 'info', config.database, ...config.envArgs, '--json']),
     command('r2-bucket', ['r2', 'bucket', 'info', config.r2, '--json']),
     command('consumer-main', ['queues', 'consumer', 'worker', 'list', config.mainQueue, '--json']),
     command('consumer-dlq', ['queues', 'consumer', 'worker', 'list', config.dlq, '--json']),
@@ -127,9 +128,13 @@ export async function runMetaResourceVerification(options = {}) {
 
   const byName = new Map(calls.map((definition, index) => [definition.name, results[index]]))
   const commandsPassed = results.every(result => result.status === 'passed')
+  const queueMainIdentity = hasNamedResource(byName.get('queue-main')?.stdout, config.mainQueue)
+  const queueDlqIdentity = hasNamedResource(byName.get('queue-dlq')?.stdout, config.dlq)
   const queuesPresent = byName.get('queue-main')?.status === 'passed'
-    && byName.get('queue-dlq')?.status === 'passed'
-  const r2Present = byName.get('r2-bucket')?.status === 'passed'
+    && byName.get('queue-dlq')?.status === 'passed' && queueMainIdentity && queueDlqIdentity
+  const d1Identity = hasD1Identity(byName.get('d1-info')?.stdout, config.database, config.d1Id)
+  const r2Identity = hasJsonResourceName(byName.get('r2-bucket')?.stdout, config.r2)
+  const r2Present = byName.get('r2-bucket')?.status === 'passed' && r2Identity
   const mainConsumerPresent = hasExpectedConsumer(byName.get('consumer-main')?.stdout, config.worker, {
     ...config.mainConsumer,
     deadLetterQueue: config.dlq,
@@ -161,8 +166,27 @@ export async function runMetaResourceVerification(options = {}) {
     && operations.activeKeyCount <= 2
     && (operations.previousKeyActiveCount === 0 || (operations.activeKeyCount === 2 && previousSecretPresent))
   const incidentReady = operations?.openCriticalIncidentCount === 0
-  const environmentIsolation = deriveEnvironmentIsolation(resourceIdentities, environment, settings?.pixelId)
-  const isolationReady = phase !== 'bootstrap' || Object.values(environmentIsolation).every(Boolean)
+  let secretIsolation = { pixel: false, token: false, testEventCode: false, dataKey: false }
+  if (environment === 'production' && phase !== 'bootstrap') {
+    try {
+      secretIsolation = await (options.requestResourceAttestations || requestLiveResourceAttestations)({
+        ...options,
+        commit: options.commit,
+      })
+    }
+    catch {
+      secretIsolation = { pixel: false, token: false, testEventCode: false, dataKey: false }
+    }
+  }
+  const environmentIsolation = {
+    d1: d1Identity,
+    r2: r2Identity,
+    queue: queueMainIdentity,
+    dlq: queueDlqIdentity,
+    ...secretIsolation,
+  }
+  const isolationReady = d1Identity && r2Identity && queueMainIdentity && queueDlqIdentity
+    && (environment !== 'production' || phase === 'bootstrap' || Object.values(secretIsolation).every(Boolean))
   const datasetQuality = options.expectedDatasetQualityContract
     ? parseDatasetQuality(byName.get('dataset-quality')?.stdout, options.expectedDatasetQualityContract)
     : null
@@ -175,12 +199,15 @@ export async function runMetaResourceVerification(options = {}) {
     && previousKeyActiveCountExplainable
   )
   let status = commandsPassed && queuesPresent && r2Present && mainConsumerPresent && dlqConsumerPresent
-    && requiredSecretsPresent && migrationsCurrent && migrationsApplied && (phase === 'bootstrap' || connectionVerified)
+    && requiredSecretsPresent && migrationsCurrent && migrationsApplied && (phase !== 'full' || connectionVerified)
     && capiEnabled !== null && trackingMode !== null && operations !== null && incidentReady && initialStateReady
     && isolationReady
     && datasetQualityReady
     ? 'passed'
     : 'failed'
+  if (phase === 'post-deploy' && (trackingMode !== 'test'
+    || operations?.targetRolloutPercentage !== 0
+    || operations?.effectiveRolloutPercentage !== 0)) status = 'failed'
   let summaryRecorded = false
 
   if (status === 'passed' && options.reportOnly !== true) {
@@ -194,6 +221,7 @@ export async function runMetaResourceVerification(options = {}) {
         verifiedAt: options.now,
         summary: {
           bootstrapReady: phase === 'bootstrap',
+          liveAttestation: environment === 'production' && phase !== 'bootstrap' && Object.values(environmentIsolation).every(Boolean),
           migrationsReady: migrationsCurrent && migrationsApplied,
           d1Ready: settings !== null && operations !== null,
           r2Ready: r2Present,
@@ -257,19 +285,6 @@ export async function runMetaResourceVerification(options = {}) {
   }
 }
 
-async function readResourceIdentities(options) {
-  const file = String((options.env || process.env)?.META_RESOURCE_IDENTITIES_FILE || '').trim()
-  if (!file) return null
-  const stats = await lstat(file).catch(() => null)
-  if (!stats?.isFile() || stats.isSymbolicLink() || stats.size <= 0 || stats.size > 64 * 1024) return null
-  try {
-    return JSON.parse(await readFile(file, 'utf8'))
-  }
-  catch {
-    return null
-  }
-}
-
 function parseDatasetQuality(stdout, expectedContract) {
   try {
     if (!expectedContract
@@ -297,26 +312,84 @@ function parseDatasetQuality(stdout, expectedContract) {
   }
 }
 
-function deriveEnvironmentIsolation(value, environment, pixelId) {
-  const resourceValues = {
-    d1: [RESOURCE_CONFIG.dev.d1Id, RESOURCE_CONFIG.production.d1Id],
-    r2: [RESOURCE_CONFIG.dev.r2, RESOURCE_CONFIG.production.r2],
-    queue: [RESOURCE_CONFIG.dev.mainQueue, RESOURCE_CONFIG.production.mainQueue],
-    dlq: [RESOURCE_CONFIG.dev.dlq, RESOURCE_CONFIG.production.dlq],
-  }
-  const dev = isPlainRecord(value?.dev) ? value.dev : {}
-  const production = isPlainRecord(value?.production) ? value.production : {}
-  const resourceProof = Object.fromEntries(Object.entries(resourceValues).map(([field, [left, right]]) => [field, left !== right]))
-  const fingerprintProof = Object.fromEntries(['pixel', 'token', 'testEventCode', 'dataKey'].map(field => {
-    const left = String(dev[field] || '').trim()
-    const right = String(production[field] || '').trim()
-    const valid = /^sha256:[0-9a-f]{64}$/.test(left) && /^sha256:[0-9a-f]{64}$/.test(right)
-    const currentPixelMatches = field !== 'pixel' || !pixelId || (
-      String(value?.[environment]?.pixel || '') === `sha256:${createHash('sha256').update(String(pixelId)).digest('hex')}`
-    )
-    return [field, valid && left !== right && currentPixelMatches]
+export async function requestLiveResourceAttestations(options = {}) {
+  const commit = String(options.commit || '').trim().toLowerCase()
+  if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error('live resource attestation 需要当前 commit')
+  const env = options.env || process.env
+  const nonce = `nonce_${randomBytes(32).toString('hex')}`
+  const fetchFn = options.fetch || fetch
+  const definitions = [
+    ['dev', 'VERIFY_DEV_API_URL', 'VERIFY_DEV_OWNER_SESSION_COOKIE'],
+    ['production', 'VERIFY_PRODUCTION_API_URL', 'VERIFY_PRODUCTION_OWNER_SESSION_COOKIE'],
+  ]
+  const attestations = await Promise.all(definitions.map(async ([environment, urlKey, cookieKey]) => {
+    const origin = new URL(String(env[urlKey] || ''))
+    const cookie = String(env[cookieKey] || '').trim()
+    if (origin.protocol !== 'https:' || origin.username || origin.password || !cookie) throw new Error(`${environment} attestation 凭据不完整`)
+    const response = await fetchWithTimeout(fetchFn, new URL('/api/admin/attribution/meta/resource-attestation', origin), {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({ nonce }),
+    }, options.requestTimeoutMs)
+    if (!response.ok) throw new Error(`${environment} live resource attestation 请求失败`)
+    const body = await response.json()
+    return body?.data
   }))
-  return { ...resourceProof, ...fingerprintProof }
+  return compareLiveAttestations(attestations[0], attestations[1], { commit, nonce, now: options.now })
+}
+
+export function compareLiveAttestations(dev, production, expected) {
+  const now = new Date(expected.now ?? Date.now()).getTime()
+  const fields = ['pixel', 'token', 'testEventCode', 'dataKey']
+  for (const [environment, value] of [['dev', dev], ['production', production]]) {
+    if (!isPlainRecord(value) || value.schemaVersion !== 1 || value.environment !== environment
+      || value.commitSha !== expected.commit || value.nonce !== expected.nonce) {
+      throw new Error(`${environment} live resource attestation 身份不一致`)
+    }
+    const issuedAt = Date.parse(value.issuedAt)
+    const expiresAt = Date.parse(value.expiresAt)
+    if (!Number.isFinite(issuedAt) || !Number.isFinite(expiresAt)
+      || expiresAt - issuedAt !== 5 * 60 * 1000 || now < issuedAt || now >= expiresAt) {
+      throw new Error(`${environment} live resource attestation 已过期或 TTL 非法`)
+    }
+    if (!isPlainRecord(value.identities)
+      || !fields.every(field => /^hmac-sha256:[0-9a-f]{64}$/.test(String(value.identities[field] || '')))) {
+      throw new Error(`${environment} live resource attestation 摘要非法`)
+    }
+  }
+  const isolation = Object.fromEntries(fields.map(field => [field, dev.identities[field] !== production.identities[field]]))
+  if (!Object.values(isolation).every(Boolean)) throw new Error('live resource attestation 环境隔离失败')
+  return isolation
+}
+
+function hasNamedResource(stdout, expectedName) {
+  const text = String(stdout || '')
+  const escaped = expectedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`(?:^|[^A-Za-z0-9_-])${escaped}(?:$|[^A-Za-z0-9_-])`, 'm').test(text)
+}
+
+function hasJsonResourceName(stdout, expectedName) {
+  try {
+    const value = parseWranglerJson(stdout)
+    const resource = isPlainRecord(value?.result) ? value.result : value
+    return isPlainRecord(resource) && (resource.name === expectedName || resource.bucket_name === expectedName)
+  }
+  catch {
+    return false
+  }
+}
+
+function hasD1Identity(stdout, expectedName, expectedId) {
+  try {
+    const value = parseWranglerJson(stdout)
+    const resource = isPlainRecord(value?.result) ? value.result : value
+    const id = resource?.uuid ?? resource?.id ?? resource?.database_id
+    const name = resource?.name ?? resource?.database_name
+    return name === expectedName && id === expectedId
+  }
+  catch {
+    return false
+  }
 }
 
 function command(name, args) {
@@ -538,10 +611,20 @@ export async function main(argv = process.argv.slice(2), options = {}) {
   const environment = environmentIndex >= 0 ? argv[environmentIndex + 1] : ''
   const reportOnly = argv.includes('--report-only')
   const initialMetaRollout = argv.includes('--initial-meta-rollout')
-  const allowed = new Set(['--env', environment, '--report-only', '--initial-meta-rollout'])
-  if (!environment || argv.some(argument => !allowed.has(argument))) throw new Error('用法：verify-meta-resources.mjs --env dev|production [--initial-meta-rollout] [--report-only]')
+  const postDeployIsolation = argv.includes('--post-deploy-isolation')
+  const allowed = new Set(['--env', environment, '--report-only', '--initial-meta-rollout', '--post-deploy-isolation'])
+  if (!environment || (initialMetaRollout && postDeployIsolation) || argv.some(argument => !allowed.has(argument))) {
+    throw new Error('用法：verify-meta-resources.mjs --env dev|production [--initial-meta-rollout|--post-deploy-isolation] [--report-only]')
+  }
   const commit = reportOnly ? undefined : await readCommit(options)
-  const report = await runMetaResourceVerification({ ...options, environment, reportOnly, initialMetaRollout, commit })
+  const report = await runMetaResourceVerification({
+    ...options,
+    environment,
+    reportOnly,
+    initialMetaRollout,
+    phase: postDeployIsolation ? 'post-deploy' : undefined,
+    commit,
+  })
   console.log(JSON.stringify(report, null, 2))
   if (report.status !== 'passed') throw new Error(`Meta ${environment} 资源检查失败`)
   return report

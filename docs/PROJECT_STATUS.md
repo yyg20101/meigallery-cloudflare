@@ -50,7 +50,7 @@
 - Telegram 外部导入 API：项目只提供对外 API 接收能力，不内置 Telegram Bot 本体；对接契约见 `docs/TELEGRAM_IMPORT_API.md`。
 - 数据分析：已实现一方数据采集、来源归因、邀请码、联系点击、趋势和后台 `/admin/analytics` 系列看板；后台 UI 口径见 `docs/UI_DATA_ANALYTICS_DASHBOARD.md`。
 - 归因中心：已实现站内转化账本、投放追踪链接、有效联系 / 完成注册活动趋势、历史 Lead 只读对照、Meta Pixel / CAPI 同步健康、重复诊断和分级发布检查；历史 Lead 与会员发放辅助指标均不参与活动漏斗、比率或链接排序，会员发放仅保留在 `operations` 辅助结构。后台分别展示 blocker 与 warning，warning 不改变生产阻断状态；入口为 `/admin/attribution`。
-- Meta CAPI v2：**Task 6 发布证据门禁已实现，仍不可生产放量**。Evidence V2 只接受当前 40 位 commit、匹配环境、24 小时内的 `Contact` / `CompleteRegistration` 精确 Browser/Server 去重契约；Evidence V1 直接拒绝。资源门禁覆盖 migrations `0036..0040`、Queue/DLQ、data key、同 commit connection、incident、cold-start rollout 与 secure outbox。production synthetic Test Event 仅在部署后的同 commit 硬门禁通过时可携带 `test_event_code`，普通 production delivery 继续禁止。Dataset Quality 当前仍为 `contract_pending`，没有真实 dev capture、Owner 批准 contract 和 collector；因此 release 稳定 fail closed，production rollout 保持 `0`，不得以 mock 或伪造 evidence 放行。
+- Meta CAPI v2：**Task 6 代码门禁已完成，外部证据仍未完成，当前不可生产放量**。dev live evidence 使用 `0041` Worker 一次性 challenge，Browser 真实 `fbq` 与 Server CAPI 使用同组 `Contact` / `CompleteRegistration` opaque ID，原始 ID 在消费后不可恢复；CLI 只记录脱敏摘要。资源门禁从 Wrangler/Cloudflare 响应核对 migrations `0036..0041`、D1/R2/Queue/DLQ，并通过 dev/prod Worker 同 nonce HMAC attestation 核对 Pixel/token/Test Event Code/data key 隔离。production 冷启动顺序为 rollout=0 bootstrap、部署、post-deploy attestation、`trackingMode=test` Test Event、full gate、切 production 和 0→10。Dataset Quality 当前仍为 `contract_pending`，没有真实 dev capture、Owner 批准 contract 和 collector，因此 release 稳定 fail closed，production rollout 必须保持 `0`。
 - SEO：已实现基础 SEO 设置、关键词池、sitemap、robots、结构化数据和生产校验脚本；运营配置见 `docs/SEO_CONFIGURATION.md`。
 
 ## 规划和未接入

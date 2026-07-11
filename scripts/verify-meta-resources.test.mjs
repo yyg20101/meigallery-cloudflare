@@ -1,12 +1,21 @@
 import assert from 'node:assert/strict'
-import { createHash } from 'node:crypto'
 import { describe, it } from 'node:test'
-import { runMetaResourceVerification } from './verify-meta-resources.mjs'
+import {
+  compareLiveAttestations,
+  runMetaResourceVerification as runMetaResourceVerificationImpl,
+} from './verify-meta-resources.mjs'
 
 const COMMIT = '18dc11e0b0e4797683d4551a93a1f22e53dc4628'
 const TOKEN = 'META_ACCESS_TOKEN_SHOULD_NOT_LEAK'
 const TEST_CODE = 'META_TEST_CODE_SHOULD_NOT_LEAK'
 const RESOURCE_ID = '714929cb-sensitive-resource-id'
+
+function runMetaResourceVerification(options) {
+  return runMetaResourceVerificationImpl({
+    requestResourceAttestations: async input => passingLiveIsolation(input.commit),
+    ...options,
+  })
+}
 
 describe('Meta Cloudflare 资源检查', () => {
   it('production 固定空 env、生产 D1，且报告和 SQL 不含敏感输出', async () => {
@@ -203,7 +212,7 @@ describe('Meta Cloudflare 资源检查', () => {
     }
   })
 
-  it('production bootstrap 不要求 connection，但要求 R2、全部 bootstrap secret 与完整环境隔离证明', async () => {
+  it('production bootstrap 不要求 connection/live endpoint，但要求 Wrangler 资源身份和全部 bootstrap secret', async () => {
     const calls = []
     const passed = await runMetaResourceVerification({
       environment: 'production',
@@ -224,18 +233,18 @@ describe('Meta Cloudflare 资源检查', () => {
 
     for (const overrides of [
       { secretNames: ['META_CAPI_ACCESS_TOKEN', 'META_CAPI_DATA_KEY_CURRENT'] },
-      { resourceIdentities: completeResourceIdentities({ production: { testEventCode: 'sha256:' + '3'.repeat(64) } }) },
+      { r2NameDrift: true },
     ]) {
       const report = await runMetaResourceVerification({
         environment: 'production',
         commit: COMMIT,
         phase: 'bootstrap',
         reportOnly: true,
-        resourceIdentities: overrides.resourceIdentities ?? completeResourceIdentities(),
         runCommand: createPassingRunner([], {
           capiEnabled: false,
           connectionVerified: false,
           ...(overrides.secretNames ? { secretNames: overrides.secretNames } : {}),
+          ...(overrides.r2NameDrift ? { r2NameDrift: true } : {}),
         }),
       })
       assert.equal(report.status, 'failed')
@@ -253,6 +262,51 @@ describe('Meta Cloudflare 资源检查', () => {
     })
 
     assert.equal(report.status, 'failed')
+  })
+
+  it('production post-deploy 仅在 trackingMode=test、rollout=0 和 live attestation 下放行且不要求 connection', async () => {
+    const passed = await runMetaResourceVerification({
+      environment: 'production',
+      commit: COMMIT,
+      phase: 'post-deploy',
+      reportOnly: true,
+      runCommand: createPassingRunner([], { capiEnabled: false, trackingMode: 'test', connectionVerified: false }),
+    })
+    assert.equal(passed.status, 'passed')
+    assert.equal(passed.connectionVerified, false)
+    assert.equal(Object.values(passed.environmentIsolation).every(Boolean), true)
+
+    for (const overrides of [
+      { trackingMode: 'disabled' },
+      { trackingMode: 'production' },
+      { trackingMode: 'test', targetRolloutPercentage: 10 },
+    ]) {
+      const report = await runMetaResourceVerification({
+        environment: 'production',
+        commit: COMMIT,
+        phase: 'post-deploy',
+        reportOnly: true,
+        runCommand: createPassingRunner([], { capiEnabled: false, connectionVerified: false, ...overrides }),
+      })
+      assert.equal(report.status, 'failed', JSON.stringify(overrides))
+    }
+  })
+
+  it('任意 META_RESOURCE_IDENTITIES_FILE 不能替代 production live Worker attestation', async () => {
+    const report = await runMetaResourceVerification({
+      environment: 'production',
+      commit: COMMIT,
+      phase: 'full',
+      reportOnly: true,
+      env: { META_RESOURCE_IDENTITIES_FILE: '/tmp/forged-identities.json' },
+      requestResourceAttestations: async () => { throw new Error('endpoint unavailable') },
+      runCommand: createPassingRunner([], { capiEnabled: false }),
+    })
+    assert.equal(report.status, 'failed')
+    assert.deepEqual(report.environmentIsolation, {
+      d1: true, r2: true, queue: true, dlq: true,
+      pixel: false, token: false, testEventCode: false, dataKey: false,
+    })
   })
 
   it('dev Dataset Quality 从真实 resource query 读取 contract version 与 freshness，不读取 Evidence 布尔', async () => {
@@ -384,6 +438,7 @@ describe('Meta Cloudflare 资源检查', () => {
       { missingAppliedMigration: '0037_meta_connection_revision.sql' },
       { missingAppliedMigration: '0039_meta_capi_v2_operations.sql' },
       { missingAppliedMigration: '0040_meta_capi_circuit_indexes.sql' },
+      { missingAppliedMigration: '0041_meta_live_challenges.sql' },
       { connectionInvalidated: true },
       { connectionPixelDrift: true },
       { missingConsumer: true },
@@ -487,10 +542,16 @@ function createPassingRunner(calls, options = {}) {
     let stdout = ''
     let status = 'passed'
     if (runOptions.name.endsWith('r2-bucket')) {
-      stdout = JSON.stringify({ name: text.includes('meigallery-media-dev') ? 'meigallery-media-dev' : 'meigallery-media' })
+      stdout = JSON.stringify({ name: options.r2NameDrift ? 'wrong-bucket' : text.includes('meigallery-media-dev') ? 'meigallery-media-dev' : 'meigallery-media' })
     } else if (text.includes('queues info')) {
-      stdout = `queue ok ${RESOURCE_ID}`
+      stdout = `Queue Name: ${args.at(-1)}\nQueue ID: ${RESOURCE_ID}`
       if (options.failQueueInfo) status = 'failed'
+    } else if (runOptions.name.endsWith('d1-info')) {
+      const isDev = text.includes('meigallery-db-dev')
+      stdout = JSON.stringify({
+        name: isDev ? 'meigallery-db-dev' : 'meigallery-db',
+        uuid: isDev ? '9ff61317-0c62-491b-8b29-e0d119f306c9' : '714929cb-003b-4cb1-bd9f-545fa1895e8c',
+      })
     } else if (text.includes('consumer worker list')) {
       const queue = args[args.indexOf('list') + 1]
       const worker = queue.includes('-dev') ? 'meigallery-api-dev' : 'meigallery-api'
@@ -547,6 +608,7 @@ function createPassingRunner(calls, options = {}) {
           '0038_conversion_dedupe_claims.sql',
           '0039_meta_capi_v2_operations.sql',
           '0040_meta_capi_circuit_indexes.sql',
+          '0041_meta_live_challenges.sql',
         ].filter(name => name !== options.missingAppliedMigration)
         results = names.map(name => ({ name }))
       } else if (runOptions.name.endsWith('dataset-quality')) {
@@ -615,7 +677,6 @@ function hasAdjacent(args, key, value) {
 }
 
 function completeResourceIdentities(overrides = {}) {
-  const currentPixel = `sha256:${createHash('sha256').update('1234567890').digest('hex')}`
   return {
     dev: {
       d1: 'd1-dev', r2: 'r2-dev', queue: 'queue-dev', dlq: 'dlq-dev',
@@ -627,11 +688,36 @@ function completeResourceIdentities(overrides = {}) {
     },
     production: {
       d1: 'd1-production', r2: 'r2-production', queue: 'queue-production', dlq: 'dlq-production',
-      pixel: currentPixel,
+      pixel: `sha256:${'5'.repeat(64)}`,
       token: `sha256:${'6'.repeat(64)}`,
       testEventCode: `sha256:${'7'.repeat(64)}`,
       dataKey: `sha256:${'8'.repeat(64)}`,
       ...(overrides.production || {}),
     },
   }
+}
+
+function passingLiveIsolation(commit = COMMIT) {
+  const issuedAt = new Date().toISOString()
+  const expiresAt = new Date(Date.parse(issuedAt) + 5 * 60 * 1000).toISOString()
+  const nonce = `nonce_${'a'.repeat(64)}`
+  const attestation = (environment, seed) => ({
+    schemaVersion: 1,
+    environment,
+    commitSha: commit,
+    nonce,
+    issuedAt,
+    expiresAt,
+    identities: {
+      pixel: `hmac-sha256:${seed.repeat(64)}`,
+      token: `hmac-sha256:${String(Number(seed) + 1).repeat(64)}`,
+      testEventCode: `hmac-sha256:${String(Number(seed) + 2).repeat(64)}`,
+      dataKey: `hmac-sha256:${String(Number(seed) + 3).repeat(64)}`,
+    },
+  })
+  return compareLiveAttestations(attestation('dev', '1'), attestation('production', '5'), {
+    commit,
+    nonce,
+    now: issuedAt,
+  })
 }

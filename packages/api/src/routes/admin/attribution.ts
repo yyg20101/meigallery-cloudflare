@@ -35,6 +35,12 @@ import {
   queryAttributionSummary,
   queryAttributionTrends,
 } from '../../services/attribution-dashboard'
+import {
+  consumeMetaLiveChallenge,
+  createMetaLiveChallenge,
+  MetaLiveChallengeError,
+} from '../../services/meta-live-challenge'
+import { createRuntimeMetaResourceAttestation } from '../../services/meta-resource-attestation'
 
 export const adminAttributionRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -1064,6 +1070,71 @@ adminAttributionRoutes.post('/meta/rollout', async (c) => {
   return c.json({ data: { ...serializeMetaRolloutSnapshot(updated), changed: true } })
 })
 
+adminAttributionRoutes.post('/meta/live-challenge', async (c) => {
+  const adminId = c.get('userId') ?? 0
+  if (c.get('userRole') !== 'owner') return errorJson(c, 403, '需要站长权限', { code: 'OWNER_REQUIRED' })
+  try {
+    const challenge = await createMetaLiveChallenge(c.env, adminId)
+    await writeAuditLog(c.env.DB, {
+      adminId,
+      action: 'attribution.meta_live_challenge_create',
+      targetType: 'attribution',
+      targetId: 'meta_live_challenge',
+      afterValue: { success: true, environment: 'dev', commitSha: challenge.commitSha },
+    })
+    return c.json({ data: challenge })
+  }
+  catch (error) {
+    const failure = error instanceof MetaLiveChallengeError
+      ? error
+      : new MetaLiveChallengeError('META_LIVE_CHALLENGE_UNAVAILABLE', 503)
+    return errorJson(c, failure.httpStatus, 'Meta live challenge 暂时不可用', { code: failure.code })
+  }
+})
+
+adminAttributionRoutes.post('/meta/live-challenge/consume', async (c) => {
+  const adminId = c.get('userId') ?? 0
+  if (c.get('userRole') !== 'owner') return errorJson(c, 403, '需要站长权限', { code: 'OWNER_REQUIRED' })
+  const body: { challengeId?: unknown } = await c.req.json<{ challengeId?: unknown }>().catch(() => ({}))
+  try {
+    const result = await consumeMetaLiveChallenge(c.env, adminId, String(body.challengeId || ''))
+    await writeAuditLog(c.env.DB, {
+      adminId,
+      action: 'attribution.meta_live_challenge_consume',
+      targetType: 'attribution',
+      targetId: 'meta_live_challenge',
+      afterValue: { success: true, environment: 'dev', eventsReceived: result.eventsReceived },
+    })
+    return c.json({ data: { status: 'server_sent', eventsReceived: result.eventsReceived } })
+  }
+  catch (error) {
+    const failure = error instanceof MetaLiveChallengeError
+      ? error
+      : new MetaLiveChallengeError('META_LIVE_CHALLENGE_UNAVAILABLE', 503)
+    return errorJson(c, failure.httpStatus, 'Meta live challenge 验证失败', { code: failure.code })
+  }
+})
+
+adminAttributionRoutes.post('/meta/resource-attestation', async (c) => {
+  const adminId = c.get('userId') ?? 0
+  if (c.get('userRole') !== 'owner') return errorJson(c, 403, '需要站长权限', { code: 'OWNER_REQUIRED' })
+  const body: { nonce?: unknown } = await c.req.json<{ nonce?: unknown }>().catch(() => ({}))
+  try {
+    const attestation = await createRuntimeMetaResourceAttestation(c.env, String(body.nonce || ''))
+    await writeAuditLog(c.env.DB, {
+      adminId,
+      action: 'attribution.meta_resource_attestation',
+      targetType: 'attribution',
+      targetId: 'meta_resources',
+      afterValue: { success: true, environment: attestation.environment, commitSha: attestation.commitSha },
+    })
+    return c.json({ data: attestation })
+  }
+  catch {
+    return errorJson(c, 409, 'Meta 资源身份不可证明', { code: 'META_RESOURCE_ATTESTATION_BLOCKED' })
+  }
+})
+
 adminAttributionRoutes.post('/meta/test-event', async (c) => {
   const adminId = c.get('userId') ?? 0
   const environment = auditEnvironment(c.env.APP_ENV)
@@ -1278,16 +1349,32 @@ async function readCurrentMetaPromotionEvidenceWithUsage(
   if (!releaseCommit) return { value: false, usage: EMPTY_USAGE }
   try {
     if (environment === 'production') {
-      const result = await queryFirstWithUsage<{ revision: string }>(db.prepare(`
-        SELECT revision
-        FROM meta_connection_verifications
-        WHERE environment = ?
-          AND verified_commit = ?
-          AND invalidated_at IS NULL
-          AND length(revision) = 32
-        LIMIT 1
-      `).bind('production', releaseCommit))
-      return { value: Boolean(result.row), usage: result.usage }
+      const [connection, resources] = await Promise.all([
+        queryFirstWithUsage<{ revision: string }>(db.prepare(`
+          SELECT revision
+          FROM meta_connection_verifications
+          WHERE environment = ?
+            AND verified_commit = ?
+            AND invalidated_at IS NULL
+            AND length(revision) = 32
+          LIMIT 1
+        `).bind('production', releaseCommit)),
+        queryFirstWithUsage<{ summary: string }>(db.prepare(`
+          SELECT summary
+          FROM analytics_release_verifications
+          WHERE environment = 'production'
+            AND verification_type = 'meta_resources'
+            AND status = 'passed'
+            AND commit_sha = ?
+            AND datetime(expires_at) > datetime('now')
+          ORDER BY verified_at DESC
+          LIMIT 1
+        `).bind(releaseCommit)),
+      ])
+      return {
+        value: Boolean(connection.row) && hasCurrentProductionIsolation(resources.row?.summary),
+        usage: mergeD1Usage(connection.usage, resources.usage),
+      }
     }
     if (environment !== 'dev') return { value: false, usage: EMPTY_USAGE }
     const result = await queryFirstWithUsage<{ id: string }>(db.prepare(`
@@ -1305,6 +1392,22 @@ async function readCurrentMetaPromotionEvidenceWithUsage(
   }
   catch {
     return { value: false, usage: EMPTY_USAGE }
+  }
+}
+
+function hasCurrentProductionIsolation(value: unknown) {
+  try {
+    const summary = JSON.parse(String(value || '')) as Record<string, unknown>
+    const isolation = summary.environmentIsolation as Record<string, unknown> | undefined
+    return summary.liveAttestation === true
+      && summary.connectionVerified === true
+      && summary.rolloutZero === true
+      && summary.noOpenCriticalIncident === true
+      && Boolean(isolation && ['d1', 'r2', 'queue', 'dlq', 'pixel', 'token', 'testEventCode', 'dataKey']
+        .every(key => isolation[key] === true))
+  }
+  catch {
+    return false
   }
 }
 

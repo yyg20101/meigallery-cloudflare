@@ -16,6 +16,14 @@ export interface TrackSearchInput {
   resultCount: number
 }
 
+export interface MetaLiveChallengeInput {
+  pixelId: string
+  eventIds: {
+    Contact: string
+    CompleteRegistration: string
+  }
+}
+
 type MarketingConsentScope = 'granted' | 'limited' | 'denied'
 
 type AnalyticsContext = ReturnType<ReturnType<typeof useAnalytics>['getContext']> & {
@@ -187,6 +195,26 @@ export function useTracking() {
     }
   }
 
+  function sendMetaLiveChallenge(input: MetaLiveChallengeInput) {
+    const contactId = String(input?.eventIds?.Contact || '')
+    const registrationId = String(input?.eventIds?.CompleteRegistration || '')
+    if (!/^mlv_contact_[0-9a-f]{32}$/.test(contactId)
+      || !/^mlv_registration_[0-9a-f]{32}$/.test(registrationId)
+      || contactId === registrationId) return false
+    if (!metaPixelAdapter.initialize(input.pixelId)) return false
+    const contactSent = metaPixelAdapter.standardEvent(
+      'Contact',
+      { content_category: 'meta_live_synthetic_test' },
+      { eventID: contactId },
+    )
+    const registrationSent = metaPixelAdapter.standardEvent(
+      'CompleteRegistration',
+      { content_category: 'meta_live_synthetic_test' },
+      { eventID: registrationId },
+    )
+    return contactSent && registrationSent
+  }
+
   return {
     trackAnalytics: analytics.track,
     trackContact,
@@ -196,6 +224,7 @@ export function useTracking() {
     trackViewContent,
     trackSearch,
     buildRegistrationAttributionContext,
+    sendMetaLiveChallenge,
   }
 }
 

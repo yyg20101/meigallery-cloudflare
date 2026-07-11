@@ -118,6 +118,29 @@ describe('useTracking', () => {
     }))
   })
 
+  it('Owner live challenge 通过真实 Pixel adapter 发送恰好两条同组 eventID', () => {
+    const eventIds = {
+      Contact: `mlv_contact_${'a'.repeat(32)}`,
+      CompleteRegistration: `mlv_registration_${'b'.repeat(32)}`,
+    }
+
+    expect(useTracking().sendMetaLiveChallenge({ pixelId: '1234567890', eventIds })).toBe(true)
+    expect(adapter.initialize).toHaveBeenCalledWith('1234567890')
+    expect(adapter.standardEvent.mock.calls).toEqual([
+      ['Contact', { content_category: 'meta_live_synthetic_test' }, { eventID: eventIds.Contact }],
+      ['CompleteRegistration', { content_category: 'meta_live_synthetic_test' }, { eventID: eventIds.CompleteRegistration }],
+    ])
+  })
+
+  it('Owner live challenge 任一 ID 非服务端 opaque 会话格式时不初始化 Pixel', () => {
+    expect(useTracking().sendMetaLiveChallenge({
+      pixelId: '1234567890',
+      eventIds: { Contact: '13800138000', CompleteRegistration: `mlv_registration_${'b'.repeat(32)}` },
+    })).toBe(false)
+    expect(adapter.initialize).not.toHaveBeenCalled()
+    expect(adapter.standardEvent).not.toHaveBeenCalled()
+  })
+
   it('Contact Pixel instruction 使用服务端同一个 eventID', async () => {
     api.mockResolvedValueOnce({ data: { pixelEvents: [instruction('Contact')] } })
 

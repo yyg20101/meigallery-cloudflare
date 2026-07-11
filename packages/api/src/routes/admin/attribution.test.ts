@@ -895,6 +895,7 @@ type RolloutDbOptions = {
   deliveryErrorCategories?: string[]
   metricsQueryError?: boolean
   conflict?: boolean
+  resourceIsolation?: boolean
 }
 
 function createRolloutDb(options: RolloutDbOptions = {}) {
@@ -919,7 +920,22 @@ function createRolloutDb(options: RolloutDbOptions = {}) {
       } as T]
     }
     if (sql.includes('FROM analytics_release_verifications')) {
-      return options.liveEvidence === false ? [] : [{ id: 'verification_meta_live' } as T]
+      if (options.liveEvidence === false || options.resourceIsolation === false) return []
+      if (sql.includes("environment = 'production'")) {
+        return [{
+          summary: JSON.stringify({
+            liveAttestation: true,
+            connectionVerified: true,
+            rolloutZero: true,
+            noOpenCriticalIncident: true,
+            environmentIsolation: {
+              d1: true, r2: true, queue: true, dlq: true,
+              pixel: true, token: true, testEventCode: true, dataKey: true,
+            },
+          }),
+        } as T]
+      }
+      return [{ id: 'verification_meta_live' } as T]
     }
     if (sql.includes('AS permission_error_count')) {
       if (options.metricsQueryError) throw new Error('模拟 rollout metrics 查询失败')
@@ -1879,8 +1895,41 @@ describe('后台归因中心 API', () => {
     ))).toBe(true)
   })
 
+  it.each([
+    '/api/admin/attribution/meta/live-challenge',
+    '/api/admin/attribution/meta/live-challenge/consume',
+    '/api/admin/attribution/meta/resource-attestation',
+  ])('非 owner 不能调用受信 Meta 验证流程：%s', async path => {
+    const db = createAttributionDb()
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const res = await createApp('admin').request(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nonce: `nonce_${'a'.repeat(32)}`, challengeId: `mlc_${'b'.repeat(32)}` }),
+    }, { DB: db, ...VALID_READINESS_ENV } as unknown as Bindings)
+    expect(res.status).toBe(403)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('Owner resource attestation 只返回 HMAC 摘要并绑定当前环境与 commit', async () => {
+    const db = createAttributionDb()
+    const nonce = `nonce_${'a'.repeat(32)}`
+    const res = await createApp('owner').request('/api/admin/attribution/meta/resource-attestation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nonce }),
+    }, { DB: db, ...VALID_READINESS_ENV } as unknown as Bindings)
+    const body = await res.json()
+    expect(res.status).toBe(200)
+    expect(body.data).toMatchObject({ environment: 'dev', commitSha: VALID_RELEASE_COMMIT, nonce })
+    expect(Object.values(body.data.identities).every(value => /^hmac-sha256:[0-9a-f]{64}$/.test(String(value)))).toBe(true)
+    expect(JSON.stringify({ body, calls: db.calls })).not.toContain('secret-token')
+    expect(JSON.stringify({ body, calls: db.calls })).not.toContain('test-code')
+  })
+
   it('production bootstrap 缺发布资源证据时 409，且在 Graph fetch 与 verification upsert 前阻断', async () => {
-    const db = createAttributionDb({ settings: { meta_tracking_mode: 'production' } })
+    const db = createAttributionDb({ settings: { meta_tracking_mode: 'test' } })
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
     const res = await createApp('owner').request('/api/admin/attribution/meta/test-event', { method: 'POST' }, {
@@ -2041,6 +2090,18 @@ describe('后台归因中心 API', () => {
     ))
     expect(verificationQueries.some(call => call.sql.includes("environment = 'dev'"))).toBe(false)
     expect(verificationQueries.some(call => call.params.includes('production'))).toBe(true)
+  })
+
+  it('production 0 -> 10 缺当前 full isolation attestation 时在 rollout UPDATE 前阻断', async () => {
+    const { db, res, body } = await requestRollout('owner', { target: 0, resourceIsolation: false }, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ percentage: 10, force: false }),
+    }, { APP_ENV: 'production' })
+
+    expect(res.status).toBe(409)
+    expect(body.detail.blockers).toContain('meta_live_verification_missing')
+    expect(db.calls.some(call => call.sql.includes('UPDATE site_settings'))).toBe(false)
   })
 
   it.each(['203.0.113.24', 'test-code'])('Test Event 丢弃回显敏感值的 traceId：%s', async sensitiveTraceId => {

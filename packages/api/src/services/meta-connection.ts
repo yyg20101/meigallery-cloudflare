@@ -166,7 +166,7 @@ export async function bootstrapMetaConnectionVerification(
   if (environment === 'dev' && settings.trackingMode !== 'test') {
     throw new MetaConnectionError('META_TEST_MODE_REQUIRED', 409)
   }
-  if (environment === 'production' && settings.trackingMode !== 'production') {
+  if (environment === 'production' && settings.trackingMode !== 'test') {
     throw new MetaConnectionError('META_PRODUCTION_TEST_GATE_BLOCKED', 409)
   }
   if (!releaseCommit) {
@@ -276,7 +276,7 @@ function parseProductionBootstrapSummary(value: unknown) {
     const summary = JSON.parse(String(value || '')) as Record<string, unknown>
     const isolation = summary.environmentIsolation as Record<string, unknown> | undefined
     const required = [
-      'bootstrapReady', 'migrationsReady', 'd1Ready', 'r2Ready', 'queuesReady',
+      'liveAttestation', 'migrationsReady', 'd1Ready', 'r2Ready', 'queuesReady',
       'secretsReady', 'rolloutZero', 'noOpenCriticalIncident',
     ]
     const isolated = ['d1', 'r2', 'queue', 'dlq', 'pixel', 'token', 'testEventCode', 'dataKey']

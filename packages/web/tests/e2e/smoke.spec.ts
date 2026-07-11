@@ -487,17 +487,22 @@ test.describe('核心页面 smoke', () => {
     await expect(page.locator('[data-meta-incident-list]')).toContainText('CAPI 重试耗尽')
 
     const [verificationResponse] = await Promise.all([
-      page.waitForResponse(response => response.url().endsWith('/api/admin/attribution/meta/test-event') && response.request().method() === 'POST'),
+      page.waitForResponse(response => response.url().endsWith('/api/admin/attribution/meta/live-challenge/consume') && response.request().method() === 'POST'),
       page.getByRole('button', { name: '验证连接' }).click(),
     ])
     expect(verificationResponse.status()).toBe(200)
     await expect(verificationResponse.json()).resolves.toMatchObject({
       data: {
-        status: 'verified',
-        eventsReceived: 1,
-        connection: { state: 'verified', graphApiVersion: 'v25.0' },
+        status: 'server_sent',
+        eventsReceived: 2,
       },
     })
+    const queuedMetaEvents = await page.evaluate(() => {
+      const queue = (window as unknown as { fbq?: { queue?: unknown[][] } }).fbq?.queue || []
+      return queue.filter(call => call[0] === 'track' && ['Contact', 'CompleteRegistration'].includes(String(call[1])))
+    })
+    expect(queuedMetaEvents).toHaveLength(2)
+    expect(queuedMetaEvents.map(call => call[1]).sort()).toEqual(['CompleteRegistration', 'Contact'])
     await expect(page.locator('[data-meta-connection-status]').getByText('已验证', { exact: true })).toBeVisible()
     await expectAdminContainersWithinViewport(page)
 

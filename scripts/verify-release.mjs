@@ -20,6 +20,7 @@ import {
 import { recordReleaseVerificationSummary } from './release-verification-store.mjs'
 import { runMetaResourceVerification } from './verify-meta-resources.mjs'
 import { verifyApprovedMetaDatasetQualityContract } from './meta-dataset-quality-contract-lib.mjs'
+import { verifyDevReleaseIdentity } from './record-meta-live-verification.mjs'
 
 const QUICK_STEPS = [
   {
@@ -379,8 +380,14 @@ export async function runReleaseVerification(options = {}) {
         commit: git.commit,
         verifiedAt: metaLiveVerification.verifiedAt,
         summary: {
+          schemaVersion: 2,
+          commitSha: git.commit,
+          environment,
+          events: ['Contact', 'CompleteRegistration'],
           eventsVerified: true,
-          noStartTrial: true,
+          forbiddenEventsAbsent: true,
+          datasetQualityContractVersion: datasetQualityContract.version,
+          datasetQualityContractDigest: datasetQualityContract.digest,
         },
         cwd: options.cwd,
         runCommand: options.runCommand,
@@ -589,6 +596,7 @@ export async function assertProductionAllowed(options = {}) {
   const readLatestReportFn = options.readLatestReport || readLatestReport
   const getGitStateFn = options.getGitState || getGitState
   const assertReportCanGateProductionFn = options.assertReportCanGateProduction || assertReportCanGateProduction
+  const collectTrustedProductionGateFactsFn = options.collectTrustedProductionGateFacts || collectTrustedProductionGateFacts
   const currentGit = await getGitStateFn(options)
   const expectedBranch = currentGit.branch?.trim()
   const expectedCommit = currentGit.commit?.trim()
@@ -612,6 +620,93 @@ export async function assertProductionAllowed(options = {}) {
     currentBranch: expectedBranch,
     expectedCommit,
   })
+  await collectTrustedProductionGateFactsFn({
+    ...options,
+    commit: expectedCommit,
+    initialMetaRollout: report?.initialMetaRollout === true,
+  })
+}
+
+export async function collectTrustedProductionGateFacts(options = {}) {
+  const commit = String(options.commit || '').trim().toLowerCase()
+  if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error('受信生产门禁需要当前 40 位 commit')
+  const verifyDevReleaseIdentityFn = options.verifyDevReleaseIdentity || verifyDevReleaseIdentity
+  const verifyContractFn = options.verifyApprovedMetaDatasetQualityContract || verifyApprovedMetaDatasetQualityContract
+  const runMetaResourceVerificationFn = options.runMetaResourceVerification || runMetaResourceVerification
+  const readRemoteDevGateFn = options.readRemoteDevGate || readRemoteDevGate
+
+  await verifyDevReleaseIdentityFn({ ...options, commit })
+  const contract = await verifyContractFn(options)
+  const dev = await runMetaResourceVerificationFn({
+    ...options,
+    environment: 'dev',
+    commit,
+    phase: 'full',
+    reportOnly: true,
+    expectedDatasetQualityContract: contract,
+  })
+  if (dev?.status !== 'passed'
+    || dev.connectionVerified !== true
+    || dev.openCriticalIncidentCount !== 0
+    || dev.datasetQualityCollectorCurrent !== true
+    || dev.datasetQualityContractVersion !== contract.version
+    || dev.datasetQualityContractDigest !== contract.digest) {
+    throw new Error('当前 dev 远端 resource/connection/contract/collector/incident 链未通过')
+  }
+  const live = await readRemoteDevGateFn({ ...options, commit, contract })
+  if (live?.status !== 'passed') throw new Error('当前 dev 远端 live evidence 链未通过')
+
+  const production = await runMetaResourceVerificationFn({
+    ...options,
+    environment: 'production',
+    commit,
+    phase: options.initialMetaRollout === true ? 'bootstrap' : 'full',
+    initialMetaRollout: options.initialMetaRollout === true,
+    reportOnly: true,
+  })
+  if (production?.status !== 'passed'
+    || production.openCriticalIncidentCount !== 0
+    || (options.initialMetaRollout === true && (
+      production.targetRolloutPercentage !== 0 || production.effectiveRolloutPercentage !== 0
+    ))) {
+    throw new Error('当前 production 远端 resource/incident/rollout 链未通过')
+  }
+  return { status: 'passed', dev, production, live, contract }
+}
+
+async function readRemoteDevGate(options = {}) {
+  const sql = `
+    SELECT summary, verified_at, expires_at
+    FROM analytics_release_verifications
+    WHERE environment = 'dev' AND verification_type = 'meta_live'
+      AND status = 'passed' AND commit_sha = '${options.commit}'
+      AND datetime(expires_at) > datetime('now')
+    ORDER BY verified_at DESC LIMIT 1
+  `.replace(/\s+/g, ' ').trim()
+  const step = await (options.runCommand || runCommand)('corepack', [
+    'pnpm', '--filter', '@meigallery/api', 'exec', 'wrangler', 'd1', 'execute', 'meigallery-db-dev',
+    '--env', 'dev', '--remote', '--command', sql, '--json',
+  ], { cwd: options.cwd || process.cwd(), name: 'production-gate-dev-live', reportCommand: '重查 dev D1 当前 commit Meta live 脱敏摘要' })
+  if (step.status !== 'passed') throw new Error('当前 dev 远端 live evidence 查询失败')
+  try {
+    const payload = JSON.parse(String(step.stdout || ''))
+    const row = payload?.[0]?.results?.[0]
+    const summary = JSON.parse(String(row?.summary || ''))
+    const events = Array.isArray(summary.events) ? summary.events : []
+    const contract = options.contract
+    const valid = summary.schemaVersion === 2
+      && summary.commitSha === options.commit
+      && summary.environment === 'dev'
+      && events.length === 2
+      && ['Contact', 'CompleteRegistration'].every(name => events.includes(name))
+      && summary.forbiddenEventsAbsent === true
+      && summary.datasetQualityContractVersion === contract.version
+      && summary.datasetQualityContractDigest === contract.digest
+    return { status: valid ? 'passed' : 'failed' }
+  }
+  catch {
+    return { status: 'failed' }
+  }
 }
 
 export async function runQuickVerification(options = {}) {

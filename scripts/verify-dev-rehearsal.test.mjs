@@ -22,19 +22,11 @@ describe('开发环境发布预演验证', () => {
     const requestedUrls = []
     const conversionBodies = []
     const registrationBodies = []
-    const responses = [
-      ...successfulResponses({
+    const responses = successfulResponses({
         baseline: { Contact: 4, CompleteRegistration: 7 },
         after: { Contact: 5, CompleteRegistration: 8 },
         html: '<!doctype html><html><body><div id="__nuxt"></div><script>window.__APP__="wajie"</script></body></html>',
-      }),
-      jsonResponse(200, {
-        data: {
-          status: 'verified',
-          eventsReceived: 1,
-        },
-      }),
-    ]
+      })
 
     const result = await runDevRehearsalVerification({
       env: {
@@ -93,6 +85,8 @@ describe('开发环境发布预演验证', () => {
     assert.match(conversionBodies[0].sessionId, /^session_release_dev_[0-9a-f]{12}$/)
     assert.match(conversionBodies[0].actionTarget, /^floating_contact_panel_[0-9a-f]{12}$/)
     assert.equal(requestedUrls.filter(url => url.includes('/api/admin/attribution/meta?')).length, 2)
+    assert.equal(requestedUrls.some(url => url.endsWith('/api/admin/attribution/meta/test-event')), false)
+    assert.equal(result.steps.some(step => step.name === 'dev-meta-test-event'), false)
     const serializedReport = JSON.stringify({ steps: result.steps, notes: result.notes, artifacts: result.artifacts })
     assert.doesNotMatch(serializedReport, /@example\.test|password|fb\.1\./i)
   })
@@ -124,37 +118,6 @@ describe('开发环境发布预演验证', () => {
     const seed = await readFile(DEV_SEED_PATH, 'utf8')
     assert.match(seed, /\('meta_tracking_mode', '"test"'/)
     assert.doesNotMatch(seed, /\('meta_tracking_mode', '"hybrid"'/)
-  })
-
-  it('Test Event 缺 secret/code 或未 sent 时失败并清理 Owner', async () => {
-    const responses = successfulResponses()
-    responses.push(jsonResponse(503, {
-      code: 'META_TEST_EVENT_NOT_CONFIGURED',
-      detail: {
-        status: 'failed',
-        eventsReceived: 0,
-        testEventCodePresent: false,
-      },
-    }))
-
-    const result = await runDevRehearsalVerification({
-      env: {
-        VERIFY_DEV_API_URL: 'https://api-dev.example.workers.dev',
-        VERIFY_DEV_WEB_URL: 'https://web-dev.example.workers.dev/',
-      },
-      releaseCommit: RELEASE_COMMIT,
-      pollIntervalMs: 0,
-      runCommand: passingCommand,
-      fetch: async () => {
-        const response = responses.shift()
-        if (!response) throw new Error('缺少模拟响应')
-        return response
-      },
-    })
-
-    assert.equal(result.steps.find(step => step.name === 'dev-meta-test-event')?.status, 'failed')
-    assert.equal(result.steps.some(step => step.name === 'dev-smoke-owner-cleanup' && step.status === 'passed'), true)
-    assert.equal(result.notes.includes('meta-test-event-code-missing'), false)
   })
 
   it('API 与 Web commit 不一致时在业务 smoke 前失败并清理 Owner', async () => {

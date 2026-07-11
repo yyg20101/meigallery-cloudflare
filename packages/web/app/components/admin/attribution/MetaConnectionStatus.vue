@@ -16,6 +16,7 @@ const props = withDefaults(defineProps<{
 })
 const emit = defineEmits<{ refreshed: [] }>()
 const { api } = useApi()
+const { sendMetaLiveChallenge } = useTracking()
 const testing = ref(false)
 const message = ref('')
 const messageTone = ref<'success' | 'error'>('success')
@@ -32,6 +33,25 @@ async function verifyConnection() {
   testing.value = true
   message.value = ''
   try {
+    if (props.connection?.environment === 'dev') {
+      const challenge = await api<{ data: {
+        challengeId: string
+        pixelId: string
+        eventIds: { Contact: string; CompleteRegistration: string }
+      } }>('/api/admin/attribution/meta/live-challenge', { method: 'POST' })
+      if (!sendMetaLiveChallenge(challenge.data)) throw new Error('浏览器 Pixel 事件发送失败')
+      const consumed = await api<{ data: { status?: string; eventsReceived?: number } }>(
+        '/api/admin/attribution/meta/live-challenge/consume',
+        { method: 'POST', body: { challengeId: challenge.data.challengeId } },
+      )
+      if (consumed.data.status !== 'server_sent' || consumed.data.eventsReceived !== 2) {
+        throw new Error('Meta 未确认接收两条服务端测试事件')
+      }
+      messageTone.value = 'success'
+      message.value = 'Browser 与 Server 测试事件已发送，请在 Events Manager 确认去重后记录证据'
+      emit('refreshed')
+      return
+    }
     const response = await api<{ data: { status?: string; eventsReceived?: number } }>('/api/admin/attribution/meta/test-event', { method: 'POST' })
     if (response.data.status !== 'verified' || response.data.eventsReceived !== 1) throw new Error('Meta 未确认接收测试事件')
     messageTone.value = 'success'
