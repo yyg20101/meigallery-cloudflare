@@ -839,7 +839,7 @@ async function buildReadinessResponse(c: AdminAttributionContext) {
     warningCheck('permanent_failure', '近期无 Meta 永久 4xx', schemaReady && permanentFailureCount === 0, schemaReady ? `发现 ${permanentFailureCount} 条永久 4xx` : '归因迁移表不可用'),
     qualityWarning('fbp_coverage', '当前范围 fbp 覆盖率', fbpSampleCount, fbpCoverage, 0.8),
     qualityWarning('fbc_coverage', '当前范围 Meta 付费样本 fbc 覆盖率', fbcSampleCount, fbcCoverage, 0.7),
-    qualityWarning('capi_delivery_ratio', 'CAPI 成功与 Pixel 尝试比例', pixelAttemptedCount, capiDeliveryRatio, 0.8),
+    qualityWarning('capi_delivery_ratio', 'CAPI 接收与 Pixel 尝试比例', pixelAttemptedCount, capiDeliveryRatio, 0.8),
     warningCheck('manual_confirmation', '人工去重确认在 30 天内', manualConfirmationCurrent, lastManualConfirmationAt ? `最近确认：${lastManualConfirmationAt}` : '尚无人工确认记录'),
   ]
 

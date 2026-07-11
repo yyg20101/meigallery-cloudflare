@@ -31,6 +31,38 @@ test('共享单日 query、五区证据轨与 Meta 操作错误态', async ({ pa
   const rail = page.locator('[data-evidence-rail]')
   for (const label of ['站内事实', 'Pixel 尝试', 'CAPI 接收', 'Meta 质量']) await expect(rail).toContainText(label)
 
+  const fbpPath = page.locator('[data-trend-path][data-series-key="fbp.rate"]')
+  await expect(fbpPath).toHaveCount(1)
+  const fbpPathData = await fbpPath.getAttribute('d') || ''
+  expect(fbpPathData.match(/\bM\b/g)).toHaveLength(2)
+  expect(fbpPathData).not.toMatch(/\bL\b/)
+  await expect(page.locator('[data-trend-marker][data-series-key="fbp.rate"]')).toHaveCount(2)
+  await expect(page.locator('[data-attribution-chart]', { has: fbpPath })).toHaveAttribute('aria-label', /fbp .*缺失 1 个样本，缺失处不连线且不显示数据点/)
+
+  const legendContracts = await page.locator('[data-attribution-trend]').evaluateAll(panels => panels.flatMap(panel => (
+    [...panel.querySelectorAll<SVGPathElement>('[data-trend-path]')].map((path) => {
+      const key = path.dataset.seriesKey || ''
+      const legends = panel.querySelectorAll<SVGSVGElement>(`[data-trend-legend-swatch][data-series-key="${key}"]`)
+      const legendLine = legends[0]?.querySelector<SVGLineElement>('[data-trend-legend-line]')
+      const legendMarker = legends[0]?.querySelector<SVGCircleElement>('[data-trend-legend-marker]')
+      const chartMarker = panel.querySelector<SVGCircleElement>(`[data-trend-marker][data-series-key="${key}"]`)
+      return {
+        legendCount: legends.length,
+        lineMatches: Boolean(legendLine)
+          && legendLine.getAttribute('stroke') === path.getAttribute('stroke')
+          && legendLine.getAttribute('stroke-dasharray') === path.getAttribute('stroke-dasharray')
+          && legendLine.getAttribute('opacity') === path.getAttribute('opacity'),
+        markerMatches: Boolean(legendMarker && chartMarker)
+          && legendMarker!.getAttribute('r') === chartMarker!.getAttribute('r')
+          && legendMarker!.getAttribute('fill') === chartMarker!.getAttribute('fill')
+          && legendMarker!.getAttribute('stroke') === chartMarker!.getAttribute('stroke')
+          && legendMarker!.getAttribute('opacity') === chartMarker!.getAttribute('opacity'),
+      }
+    })
+  )))
+  expect(legendContracts.length).toBeGreaterThan(0)
+  expect(legendContracts.every(contract => contract.legendCount === 1 && contract.lineMatches && contract.markerMatches)).toBe(true)
+
   await page.getByRole('button', { name: '单日' }).click()
   await expect(page).toHaveURL(/range=day&date=/)
   await request.post(`${apiURL}/api/test/admin-attribution-requests/clear`)

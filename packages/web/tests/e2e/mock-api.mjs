@@ -539,7 +539,7 @@ function adminAttributionResponse(pathname, searchParams) {
     const datasetQuality = adminAttributionDatasetScenario === 'error'
       ? { availability: 'error', latest: { availability: 'error', value: null, status: 'error', errorCategory: 'permission_denied' }, rows: [] }
       : { availability: 'unavailable', latest: null, rows: [] }
-    return { range, usage, data: { match: { summary: { fbp: metric(8, 9), fbc: metric(0, 0), email: metric(9, 9), externalId: metric(7, 9) }, rows: dates.map((date, index) => ({ date, fbp: metric(6 + index, 9), fbc: metric(0, 0), email: metric(8 + index, 9), externalId: metric(5 + index, 9) })) }, datasetQuality } }
+    return { range, usage, data: { match: { summary: { fbp: metric(8, 9), fbc: metric(0, 0), email: metric(9, 9), externalId: metric(7, 9) }, rows: dates.map((date, index) => ({ date, fbp: index === 1 ? metric(0, 0) : metric(6 + index, 9), fbc: metric(0, 0), email: metric(8 + index, 9), externalId: metric(5 + index, 9) })) }, datasetQuality } }
   }
   if (pathname.endsWith('/breakdown')) return { range, usage, data: { dimension: searchParams.get('dimension') || 'utm_campaign', rows: [{ value: 'july-contact', actionCount: 6, contactCount: 4, completeRegistrationCount: 2, delivery: { pixelAttempted: 6, capiSent: 5, failed: 1, skipped: 0, pending: 0, retryExhausted: 0 } }] } }
   if (pathname.endsWith('/meta/status')) return { range, usage, data: { connection, rollout, activity: { business: { contactCount: 6, completeRegistrationCount: 3, actionCount: 9 }, historical: { leadCount: 7 }, delivery: { pixelAttempted: 12, capiSent: 9, failed: 1, skipped: 3, pending: 1, retryExhausted: 0 } } } }

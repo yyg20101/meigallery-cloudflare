@@ -89,11 +89,59 @@ describe('AttributionTrendPanel', () => {
     })
 
     const paths = wrapper.findAll('[data-trend-path]')
+    const legendSwatches = wrapper.findAll('[data-trend-legend-swatch]')
     expect(paths.map(path => path.attributes('data-series-variant'))).toEqual(['solid', 'dashed'])
     expect(paths[0]!.attributes('stroke-dasharray')).not.toBe(paths[1]!.attributes('stroke-dasharray'))
     expect(wrapper.findAll('[data-trend-legend-variant]').map(item => item.attributes('data-series-variant'))).toEqual(['solid', 'dashed'])
+    expect(legendSwatches).toHaveLength(paths.length)
+    for (const path of paths) {
+      const seriesKey = path.attributes('data-series-key')!
+      const legend = wrapper.get(`[data-trend-legend-swatch][data-series-key="${seriesKey}"]`)
+      const legendLine = legend.get('[data-trend-legend-line]')
+      const legendMarker = legend.get('[data-trend-legend-marker]')
+      const chartMarker = wrapper.get(`[data-trend-marker][data-series-key="${seriesKey}"]`)
+      expect(legendLine.attributes('stroke')).toBe(path.attributes('stroke'))
+      expect(legendLine.attributes('stroke-dasharray')).toBe(path.attributes('stroke-dasharray'))
+      expect(legendLine.attributes('opacity')).toBe(path.attributes('opacity'))
+      expect(legendMarker.attributes('r')).toBe(chartMarker.attributes('r'))
+      expect(legendMarker.attributes('fill')).toBe(chartMarker.attributes('fill'))
+      expect(legendMarker.attributes('stroke')).toBe(chartMarker.attributes('stroke'))
+      expect(legendMarker.attributes('opacity')).toBe(chartMarker.attributes('opacity'))
+    }
     expect(wrapper.get('[data-attribution-chart]').attributes('aria-label')).toContain('实线')
     expect(wrapper.get('[data-attribution-chart]').attributes('aria-label')).toContain('虚线')
+  })
+
+  it.each([
+    ['null', null],
+    ['undefined', undefined],
+    ['NaN', Number.NaN],
+    ['Infinity', Number.POSITIVE_INFINITY],
+  ])('%s rate 作为缺失样本分段且不画 marker', (_, missingRate) => {
+    const wrapper = mount(AttributionTrendPanel, {
+      props: {
+        title: '匹配质量趋势',
+        rows: [
+          { date: '2026-07-08', fbp: { rate: 0.75, numerator: 3, denominator: 4 } },
+          { date: '2026-07-09', fbp: { rate: missingRate, numerator: 0, denominator: 0 } },
+          { date: '2026-07-10', fbp: { rate: 0.5, numerator: 1, denominator: 2 } },
+        ],
+        series: [{
+          key: 'fbp.rate',
+          label: 'fbp',
+          layer: 'quality',
+          format: 'percent',
+          aggregation: { type: 'weightedRate', numeratorKey: 'fbp.numerator', denominatorKey: 'fbp.denominator' },
+        }],
+      },
+    })
+
+    const path = wrapper.get('[data-trend-path]').attributes('d')!
+    expect(path.match(/\bM\b/g)).toHaveLength(2)
+    expect(path).not.toMatch(/\bL\b/)
+    expect(wrapper.findAll('[data-trend-marker]')).toHaveLength(2)
+    expect(wrapper.find('[data-trend-marker][data-date="2026-07-09"]').exists()).toBe(false)
+    expect(wrapper.get('[data-attribution-chart]').attributes('aria-label')).toContain('缺失 1 个样本，缺失处不连线且不显示数据点')
   })
 
   it('图表由自身横向滚动容器承载', () => {

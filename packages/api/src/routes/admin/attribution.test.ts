@@ -1850,6 +1850,13 @@ describe('后台归因中心 API', () => {
     expect(body.data.ready).toBe(true)
   })
 
+  it('readiness 使用 CAPI 接收口径描述投递比例', async () => {
+    const { body } = await requestReadiness()
+    const check = body.data.checks.find((item: { key: string }) => item.key === 'capi_delivery_ratio')
+
+    expect(check.label).toBe('CAPI 接收与 Pixel 尝试比例')
+  })
+
   it.each([
     ['fbp_coverage', { fbpSampleCount: 19, fbpMatchedCount: 0 }],
     ['fbc_coverage', { fbcSampleCount: 19, fbcMatchedCount: 0 }],

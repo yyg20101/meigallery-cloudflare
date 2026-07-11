@@ -43,9 +43,18 @@ const seriesViews = computed(() => props.series.map((series, index) => {
   const layerIndex = props.series.slice(0, index).filter(item => item.layer === series.layer).length
   return { ...series, variant: variants[layerIndex % variants.length]! }
 }))
-const maxValue = computed(() => Math.max(1, ...displayRows.value.flatMap(row => seriesViews.value.map(series => valueFor(row, series)))))
-const summary = computed(() => seriesViews.value.map(series => ({ ...series, total: aggregateSeries(series) })))
-const ariaSummary = computed(() => `${props.title}。${summary.value.map(item => `${item.label} ${formatValue(item.total, item.format)}（${item.variant.label}）`).join('，')}`)
+const maxValue = computed(() => Math.max(1, ...displayRows.value
+  .flatMap(row => seriesViews.value.map(series => valueFor(row, series)))
+  .filter((value): value is number => value !== null)))
+const summary = computed(() => seriesViews.value.map(series => ({
+  ...series,
+  total: aggregateSeries(series),
+  missingCount: displayRows.value.filter(row => valueFor(row, series) === null).length,
+})))
+const ariaSummary = computed(() => `${props.title}。${summary.value.map(item => {
+  const missing = item.missingCount > 0 ? `，缺失 ${item.missingCount} 个样本，缺失处不连线且不显示数据点` : ''
+  return `${item.label} ${formatValue(item.total, item.format)}（${item.variant.label}）${missing}`
+}).join('，')}`)
 
 function nestedValue(row: Record<string, unknown>, key: string): unknown {
   return key.split('.').reduce<unknown>((value, part) => {
@@ -54,24 +63,39 @@ function nestedValue(row: Record<string, unknown>, key: string): unknown {
 }
 
 function valueFor(row: Record<string, unknown>, series: TrendSeries) {
-  const value = Number(nestedValue(row, series.key))
-  if (!Number.isFinite(value)) return 0
+  const rawValue = nestedValue(row, series.key)
+  if (rawValue === null || rawValue === undefined) return null
+  const value = Number(rawValue)
+  if (!Number.isFinite(value)) return null
   return series.format === 'percent' ? Math.min(1, Math.max(0, value)) : Math.max(0, value)
 }
 
 function pointFor(row: Record<string, unknown>, index: number, series: TrendSeries) {
-  const count = Math.max(1, displayRows.value.length - 1)
+  const value = valueFor(row, series)
+  if (value === null) return null
   return {
-    x: round(chart.left + index / count * plotWidth),
-    y: round(chart.top + (1 - valueFor(row, series) / maxValue.value) * plotHeight),
+    x: xFor(index),
+    y: round(chart.top + (1 - value / maxValue.value) * plotHeight),
   }
 }
 
 function pathFor(series: TrendSeries) {
-  return displayRows.value.map((row, index) => {
+  let segmentOpen = false
+  return displayRows.value.flatMap((row, index) => {
     const point = pointFor(row, index, series)
-    return `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`
+    if (!point) {
+      segmentOpen = false
+      return []
+    }
+    const command = segmentOpen ? 'L' : 'M'
+    segmentOpen = true
+    return `${command} ${point.x} ${point.y}`
   }).join(' ')
+}
+
+function xFor(index: number) {
+  const count = Math.max(1, displayRows.value.length - 1)
+  return round(chart.left + index / count * plotWidth)
 }
 
 function showDateTick(index: number) {
@@ -90,7 +114,7 @@ function aggregateSeries(series: TrendSeries) {
     const denominator = displayRows.value.reduce((total, row) => total + numericValue(nestedValue(row, aggregation.denominatorKey)), 0)
     return denominator > 0 ? Math.min(1, numerator / denominator) : null
   }
-  return displayRows.value.reduce((total, row) => total + valueFor(row, series), 0)
+  return displayRows.value.reduce((total, row) => total + (valueFor(row, series) ?? 0), 0)
 }
 
 function numericValue(value: unknown) {
@@ -141,6 +165,7 @@ function round(value: number) {
           v-for="item in seriesViews"
           :key="item.key"
           data-trend-path
+          :data-series-key="item.key"
           :data-evidence-layer="item.layer"
           :d="pathFor(item)"
           :stroke="layerStyles[item.layer].stroke"
@@ -153,24 +178,27 @@ function round(value: number) {
           stroke-width="2.5"
         />
         <template v-for="item in seriesViews" :key="`${item.key}-markers`">
-          <circle
-            v-for="(row, index) in displayRows"
-            :key="`${item.key}-${String(row.date)}`"
-            data-trend-marker
-            :data-series-variant="item.variant.key"
-            :cx="pointFor(row, index, item).x"
-            :cy="pointFor(row, index, item).y"
-            :r="item.variant.radius"
-            :fill="item.variant.fill === 'stroke' ? layerStyles[item.layer].stroke : '#ffffff'"
-            :stroke="layerStyles[item.layer].stroke"
-            stroke-width="1.5"
-            :opacity="item.variant.opacity"
-          />
+          <template v-for="(row, index) in displayRows" :key="`${item.key}-${String(row.date)}`">
+            <circle
+              v-if="pointFor(row, index, item)"
+              data-trend-marker
+              :data-series-key="item.key"
+              :data-date="String(row.date)"
+              :data-series-variant="item.variant.key"
+              :cx="pointFor(row, index, item)!.x"
+              :cy="pointFor(row, index, item)!.y"
+              :r="item.variant.radius"
+              :fill="item.variant.fill === 'stroke' ? layerStyles[item.layer].stroke : '#ffffff'"
+              :stroke="layerStyles[item.layer].stroke"
+              stroke-width="1.5"
+              :opacity="item.variant.opacity"
+            />
+          </template>
         </template>
         <template v-for="(row, index) in displayRows" :key="String(row.date)">
           <text
             v-if="showDateTick(index)"
-            :x="pointFor(row, index, seriesViews[0]!).x"
+            :x="xFor(index)"
             :y="chart.height - 12"
             fill="#6b7280"
             font-size="11"
@@ -189,15 +217,43 @@ function round(value: number) {
           v-for="item in summary"
           :key="item.key"
           :data-evidence-layer="item.layer"
+          :data-series-key="item.key"
           data-trend-legend-variant
           :data-series-variant="item.variant.key"
           :aria-label="`${item.label}，${item.variant.label}，${formatValue(item.total, item.format)}`"
           :class="['inline-flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium', layerStyles[item.layer].bg, layerStyles[item.layer].text]"
         >
-          <span class="relative inline-flex h-3 w-7 items-center" aria-hidden="true">
-            <span class="w-full border-t-2" :style="{ borderColor: layerStyles[item.layer].stroke, borderTopStyle: item.variant.dash ? 'dashed' : 'solid', opacity: item.variant.opacity }" />
-            <span class="absolute left-1/2 h-2 w-2 -translate-x-1/2 rounded-full border" :style="{ borderColor: layerStyles[item.layer].stroke, backgroundColor: item.variant.fill === 'stroke' ? layerStyles[item.layer].stroke : '#ffffff' }" />
-          </span>
+          <svg
+            data-trend-legend-swatch
+            :data-series-key="item.key"
+            :data-series-variant="item.variant.key"
+            class="h-3 w-7 shrink-0"
+            viewBox="0 0 28 12"
+            aria-hidden="true"
+          >
+            <line
+              data-trend-legend-line
+              x1="1"
+              x2="27"
+              y1="6"
+              y2="6"
+              :stroke="layerStyles[item.layer].stroke"
+              :stroke-dasharray="item.variant.dash || undefined"
+              :opacity="item.variant.opacity"
+              stroke-linecap="round"
+              stroke-width="2.5"
+            />
+            <circle
+              data-trend-legend-marker
+              cx="14"
+              cy="6"
+              :r="item.variant.radius"
+              :fill="item.variant.fill === 'stroke' ? layerStyles[item.layer].stroke : '#ffffff'"
+              :stroke="layerStyles[item.layer].stroke"
+              stroke-width="1.5"
+              :opacity="item.variant.opacity"
+            />
+          </svg>
           {{ item.label }} {{ formatValue(item.total, item.format) }}
         </span>
       </div>
