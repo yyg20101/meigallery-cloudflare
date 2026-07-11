@@ -251,6 +251,52 @@ describe('Meta secret 静态泄漏扫描', () => {
     assertNoFixtureValue(report)
   })
 
+  it('源码动态匹配字段仅放行可证明的 hash 来源，并逐项验证数组', async () => {
+    const rootDir = await createRepository()
+    const unsafeFiles = {
+      'src/raw-email.ts': 'const payload = { user_data: { em: rawEmail } }',
+      'src/raw-email-array.ts': 'const payload = { user_data: { em: [rawEmail] } }',
+      'src/raw-external-id.ts': 'const payload = { user_data: { external_id: input.externalId } }',
+      'src/raw-external-id-array.ts': 'const payload = { user_data: { external_id: [input.externalId] } }',
+      'src/raw-getter.ts': 'const payload = { user_data: { em: getRawEmail(), external_id: [readRawExternalId()] } }',
+      'src/mixed-dynamic-array.ts': 'const payload = { user_data: { em: [validatedEmailHash, rawEmail] } }',
+    }
+    for (const [file, content] of Object.entries(unsafeFiles)) await writeTracked(rootDir, file, content)
+    await writeTracked(rootDir, 'src/proven-hashes.ts', [
+      'const payload = {',
+      '  user_data: {',
+      '    em: validSha256(input.userData?.emailSha256) ? [input.userData!.emailSha256!] : undefined,',
+      '    external_id: validSha256(input.userData?.externalIdSha256) ? [input.userData!.externalIdSha256!] : undefined,',
+      '    backup_em: [emailHash, profile.emailHashes, input.emailSha256],',
+      '    backup_external_id: validatedUserData.external_id,',
+      '  },',
+      '}',
+      'const second = { em: validatedUserData.em, external_id: contract.externalIdHashes }',
+    ].join('\n'))
+    await gitAdd(rootDir, ['.gitignore', ...Object.keys(unsafeFiles), 'src/proven-hashes.ts'])
+
+    const report = await scanMetaSecretLeaks({ rootDir })
+
+    assert.deepEqual(report.findings, Object.keys(unsafeFiles).sort().map(file => ({
+      path: file,
+      ruleId: 'META_CAPI_MATCH_UNHASHED',
+    })))
+  })
+
+  it('真实 Meta CAPI payload 的 validSha256 guard 可通过仓库 scanner', async () => {
+    const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+
+    const report = await scanMetaSecretLeaks({
+      rootDir,
+      trackedFiles: ['packages/api/src/services/meta-capi.ts'],
+    })
+
+    assert.equal(report.findings.some(finding => (
+      finding.path === 'packages/api/src/services/meta-capi.ts'
+      && finding.ruleId === 'META_CAPI_MATCH_UNHASHED'
+    )), false)
+  })
+
   it('SQL 仅按去注释后的写目标豁免 secure outbox', async () => {
     const rootDir = await createRepository()
     const unsafeStatements = {
@@ -352,6 +398,62 @@ describe('Meta secret 静态泄漏扫描', () => {
       path: 'reports/release-verification/ipv4-port.json',
       ruleId: 'META_EVIDENCE_RAW_IP',
     }])
+  })
+
+  it('evidence 递归扫描对象 key 中的敏感数据且正常 schema key 不误报', async () => {
+    const rootDir = await createRepository()
+    await writeIgnoredEvidence(rootDir, 'reports/release-verification/sensitive-keys.json', {
+      [`email-${FIXTURE_VALUES[2]}`]: 'redacted',
+      [`ipv4-${FIXTURE_VALUES[3]}:443`]: 'redacted',
+      'ipv6-[2001:db8:85a3::8a2e:370:7334]:443': 'redacted',
+      [`ua-${FIXTURE_VALUES[4]}`]: 'redacted',
+      [`browser-${FIXTURE_VALUES[5]}`]: 'redacted',
+      [`match32-${'d'.repeat(32)}`]: 'redacted',
+      [`match64-${FIXTURE_VALUES[6]}`]: 'redacted',
+      nested: {
+        has_fbp: true,
+        has_fbc: false,
+        userAgent: false,
+        client_user_agent_present: true,
+      },
+    })
+
+    const report = await scanMetaSecretLeaks({ rootDir })
+    const ruleIds = new Set(report.findings.map(finding => finding.ruleId))
+
+    for (const ruleId of [
+      'META_EVIDENCE_RAW_EMAIL',
+      'META_EVIDENCE_RAW_IP',
+      'META_EVIDENCE_RAW_USER_AGENT',
+      'META_EVIDENCE_BROWSER_ID',
+      'META_EVIDENCE_MATCH_IDENTIFIER',
+    ]) assert.equal(ruleIds.has(ruleId), true, ruleId)
+    assert.equal(report.findings.every(finding => finding.path === 'reports/release-verification/sensitive-keys.json'), true)
+    assertNoFixtureValue(report)
+  })
+
+  it('evidence 保留 userAgent 与 fbp/fbc 字段上下文门禁', async () => {
+    const rootDir = await createRepository()
+    await writeIgnoredEvidence(rootDir, 'reports/release-verification/contextual-match.json', {
+      client_user_agent: 'custom-runtime',
+      userAgent: 'custom-client',
+      nested: {
+        fbp: 'opaque-browser-value',
+        fbc: 'opaque-click-value',
+      },
+      safeSchema: {
+        userAgent: false,
+        has_fbp: true,
+        has_fbc: false,
+      },
+    })
+
+    const report = await scanMetaSecretLeaks({ rootDir })
+
+    assert.deepEqual(report.findings, [
+      { path: 'reports/release-verification/contextual-match.json', ruleId: 'META_EVIDENCE_BROWSER_ID' },
+      { path: 'reports/release-verification/contextual-match.json', ruleId: 'META_EVIDENCE_RAW_USER_AGENT' },
+    ])
   })
 
   it('危险路径统一转为稳定 opaque ID，正常安全相对路径仍保留', async () => {

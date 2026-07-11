@@ -219,11 +219,34 @@ export async function writeReport(report, options = {}) {
   }
 }
 
-function sanitizeReportValue(value) {
-  if (typeof value === 'string') return redactForReport(value)
-  if (Array.isArray(value)) return value.map(sanitizeReportValue)
+function sanitizeReportValue(value, contextKey = '') {
+  if (typeof value === 'string') {
+    const normalizedKey = contextKey.toLowerCase().replace(/[^a-z0-9]/g, '')
+    if (value.length > 0 && (normalizedKey.includes('useragent') || normalizedKey === 'fbp' || normalizedKey === 'fbc')) {
+      return PRIVACY_REDACTION
+    }
+    return redactForReport(value)
+  }
+  if (Array.isArray(value)) return value.map(child => sanitizeReportValue(child, contextKey))
   if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, sanitizeReportValue(child)]))
+    const entries = Object.entries(value)
+    const reservedKeys = new Set(entries
+      .map(([key]) => key)
+      .filter(key => redactForReport(key) === key))
+    const sanitizedEntries = []
+    let privateKeyIndex = 1
+    for (const [key, child] of entries) {
+      let safeKey = key
+      if (redactForReport(key) !== key) {
+        do {
+          safeKey = `private_redacted_${privateKeyIndex}`
+          privateKeyIndex += 1
+        } while (reservedKeys.has(safeKey))
+        reservedKeys.add(safeKey)
+      }
+      sanitizedEntries.push([safeKey, sanitizeReportValue(child, key)])
+    }
+    return Object.fromEntries(sanitizedEntries)
   }
   return value
 }

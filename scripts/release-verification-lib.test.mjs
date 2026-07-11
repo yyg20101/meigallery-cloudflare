@@ -281,6 +281,67 @@ describe('发布验证基础库', () => {
     }
   })
 
+  it('writeReport 递归脱敏对象 key，并在脱敏冲突时保留全部字段', async () => {
+    const reportDir = await mkdtemp(path.join(tmpdir(), 'release-verify-private-keys-'))
+    const sensitiveKeys = [
+      'key-person@example.test',
+      'key-198.51.100.27:443',
+      'key-[2001:db8::27]:443',
+      'key-Agent/1.0',
+      'key-fb.1.1700000000000.KeyBrowserId',
+      `key-${'c'.repeat(32)}`,
+      `key-${'d'.repeat(64)}`,
+    ]
+    const keyedValues = Object.fromEntries(sensitiveKeys.map((key, index) => [key, `value-${index}`]))
+    const report = {
+      schemaVersion: 1,
+      mode: 'quick',
+      status: 'passed',
+      startedAt: '2026-07-11T00:00:00.000Z',
+      finishedAt: '2026-07-11T00:01:00.000Z',
+      durationMs: 60_000,
+      git: { branch: 'dev', commit: 'abcdef1234567890', isClean: true, remote: 'origin' },
+      versions: { node: 'v24.0.0', pnpm: '10.0.0', wrangler: '4.0.0' },
+      steps: [],
+      artifacts: [],
+      notes: [],
+      evidence: {
+        private_redacted_1: '合法字段不得被覆盖',
+        ...keyedValues,
+        nested: { ...keyedValues },
+        has_fbp: true,
+        userAgent: false,
+        contextual: {
+          client_user_agent: 'custom-runtime',
+          fbp: 'opaque-browser-value',
+          fbc: 'opaque-click-value',
+        },
+      },
+    }
+
+    try {
+      const { reportFile, latestFile } = await writeReport(report, { reportDir })
+      const contents = await Promise.all([readFile(reportFile, 'utf8'), readFile(latestFile, 'utf8')])
+
+      for (const content of contents) {
+        for (const key of sensitiveKeys) assert.equal(content.includes(key), false)
+        const parsed = JSON.parse(content)
+        assert.equal(parsed.evidence.private_redacted_1, '合法字段不得被覆盖')
+        assert.deepEqual(Object.values(parsed.evidence).filter(value => /^value-\d$/.test(value)).sort(), Object.values(keyedValues).sort())
+        assert.deepEqual(Object.values(parsed.evidence.nested).sort(), Object.values(keyedValues).sort())
+        assert.equal(parsed.evidence.has_fbp, true)
+        assert.equal(parsed.evidence.userAgent, false)
+        assert.deepEqual(parsed.evidence.contextual, {
+          client_user_agent: '[PRIVATE_REDACTED]',
+          fbp: '[PRIVATE_REDACTED]',
+          fbc: '[PRIVATE_REDACTED]',
+        })
+      }
+    } finally {
+      await rm(reportDir, { recursive: true, force: true })
+    }
+  })
+
   it('assertReportCanGateProduction 拒绝失败报告、非 release 报告、脏工作区和过期报告', () => {
     const baseReport = createValidReleaseReport()
 

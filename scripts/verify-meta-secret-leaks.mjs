@@ -253,18 +253,48 @@ function hasUnsafeSourceCapiMatch(text) {
   CAPI_FIELD_PATTERN.lastIndex = 0
   for (const match of text.matchAll(CAPI_FIELD_PATTERN)) {
     const start = match.index + match[0].length
-    const next = skipSourceWhitespace(text, start)
-    if (text[next] === '[') {
-      const end = findClosingArray(text, next)
-      if (end < 0) return true
-      const parsed = inspectSourceArray(text, next, end)
-      if (parsed.unsafe || parsed.itemCount === 0) return true
-      continue
-    }
-    if (text[next] === '"' || text[next] === "'" || text[next] === '{' || /[0-9]/.test(text[next] || '')) return true
-    if (/^(?:null|undefined|true|false)\b/.test(text.slice(next))) return true
+    const expression = readSourceExpression(text, start)
+    const fieldName = match[1] || match[2]
+    if (!expression || !isProvenSafeSourceMatchExpression(expression, fieldName)) return true
   }
   return false
+}
+
+function readSourceExpression(text, start) {
+  const expressionStart = skipSourceWhitespace(text, start)
+  let quote = ''
+  let escaped = false
+  let squareDepth = 0
+  let parenDepth = 0
+  let braceDepth = 0
+  for (let index = expressionStart; index < text.length; index += 1) {
+    const char = text[index]
+    if (quote) {
+      if (escaped) escaped = false
+      else if (char === '\\') escaped = true
+      else if (char === quote) quote = ''
+      continue
+    }
+    if (char === '"' || char === "'" || char === '`') {
+      quote = char
+      continue
+    }
+    if (char === '[') squareDepth += 1
+    else if (char === ']') squareDepth -= 1
+    else if (char === '(') parenDepth += 1
+    else if (char === ')') parenDepth -= 1
+    else if (char === '{') braceDepth += 1
+    else if (char === '}') {
+      if (braceDepth === 0 && squareDepth === 0 && parenDepth === 0) {
+        return text.slice(expressionStart, index).trim()
+      }
+      braceDepth -= 1
+    } else if (char === ',' && squareDepth === 0 && parenDepth === 0 && braceDepth === 0) {
+      return text.slice(expressionStart, index).trim()
+    }
+    if (squareDepth < 0 || parenDepth < 0 || braceDepth < 0) return ''
+  }
+  return text.slice(expressionStart).trim().replace(/;$/, '').trim()
 }
 
 function findClosingArray(text, start) {
@@ -328,6 +358,12 @@ function inspectSourceArray(text, start, end) {
 }
 
 function isProvenSafeSourceArrayItem(item) {
+  return isProvenSafeSourceMatchExpression(item, '')
+}
+
+function isProvenSafeSourceMatchExpression(expression, fieldName) {
+  const item = expression.trim()
+  if (!item) return false
   const first = item[0]
   if (first === '"' || first === "'") {
     const literal = readSourceString(item, 0, first, item.length)
@@ -340,9 +376,137 @@ function isProvenSafeSourceArrayItem(item) {
       && !template.value.includes('${')
       && HASH_PATTERN.test(template.value))
   }
-  if (first === '[' || first === '{') return false
+  if (first === '[') {
+    const end = findClosingArray(item, 0)
+    if (end !== item.length - 1) return false
+    const parsed = inspectSourceArray(item, 0, end)
+    return !parsed.unsafe && parsed.itemCount > 0
+  }
+  if (first === '{') return false
   if (/^(?:null|undefined|true|false|\d)/.test(item)) return false
-  return true
+  if (isValidSha256GuardedTernary(item)) return true
+  return isProvenHashReference(item, fieldName)
+}
+
+function isValidSha256GuardedTernary(expression) {
+  const conditional = splitTopLevelConditional(expression)
+  if (!conditional || conditional.whenFalse.trim() !== 'undefined') return false
+  const guardedArgument = readValidSha256GuardArgument(conditional.condition)
+  if (!guardedArgument) return false
+
+  const whenTrue = conditional.whenTrue.trim()
+  if (whenTrue.startsWith('[')) {
+    const end = findClosingArray(whenTrue, 0)
+    if (end !== whenTrue.length - 1) return false
+    const items = readSourceArrayItems(whenTrue, 0, end)
+    return items.length === 1 && sameSourceReference(items[0], guardedArgument)
+  }
+  return sameSourceReference(whenTrue, guardedArgument)
+}
+
+function splitTopLevelConditional(expression) {
+  let questionIndex = -1
+  let quote = ''
+  let escaped = false
+  let squareDepth = 0
+  let parenDepth = 0
+  let braceDepth = 0
+  let nestedConditionalDepth = 0
+  for (let index = 0; index < expression.length; index += 1) {
+    const char = expression[index]
+    if (quote) {
+      if (escaped) escaped = false
+      else if (char === '\\') escaped = true
+      else if (char === quote) quote = ''
+      continue
+    }
+    if (char === '"' || char === "'" || char === '`') {
+      quote = char
+      continue
+    }
+    if (char === '[') squareDepth += 1
+    else if (char === ']') squareDepth -= 1
+    else if (char === '(') parenDepth += 1
+    else if (char === ')') parenDepth -= 1
+    else if (char === '{') braceDepth += 1
+    else if (char === '}') braceDepth -= 1
+    else if (squareDepth === 0 && parenDepth === 0 && braceDepth === 0 && char === '?') {
+      if (expression[index + 1] === '.') continue
+      if (questionIndex < 0) questionIndex = index
+      else nestedConditionalDepth += 1
+    } else if (squareDepth === 0 && parenDepth === 0 && braceDepth === 0 && char === ':' && questionIndex >= 0) {
+      if (nestedConditionalDepth > 0) nestedConditionalDepth -= 1
+      else {
+        return {
+          condition: expression.slice(0, questionIndex).trim(),
+          whenTrue: expression.slice(questionIndex + 1, index).trim(),
+          whenFalse: expression.slice(index + 1).trim(),
+        }
+      }
+    }
+  }
+  return null
+}
+
+function readValidSha256GuardArgument(condition) {
+  const normalized = condition.trim()
+  if (!normalized.startsWith('validSha256(') || !normalized.endsWith(')')) return ''
+  const argument = normalized.slice('validSha256('.length, -1).trim()
+  return isSourceReference(argument) ? argument : ''
+}
+
+function readSourceArrayItems(text, start, end) {
+  const items = []
+  let itemStart = start + 1
+  let quote = ''
+  let escaped = false
+  let nestedDepth = 0
+  const append = (from, to) => {
+    const item = text.slice(from, to).trim()
+    if (item) items.push(item)
+  }
+  for (let index = start + 1; index < end; index += 1) {
+    const char = text[index]
+    if (quote) {
+      if (escaped) escaped = false
+      else if (char === '\\') escaped = true
+      else if (char === quote) quote = ''
+      continue
+    }
+    if (char === '"' || char === "'" || char === '`') quote = char
+    else if (char === '[' || char === '(' || char === '{') nestedDepth += 1
+    else if (char === ']' || char === ')' || char === '}') nestedDepth -= 1
+    else if (char === ',' && nestedDepth === 0) {
+      append(itemStart, index)
+      itemStart = index + 1
+    }
+  }
+  append(itemStart, end)
+  return items
+}
+
+function isProvenHashReference(expression, fieldName) {
+  if (!isSourceReference(expression)) return false
+  const segments = canonicalSourceReference(expression).split('.')
+  const last = segments.at(-1) || ''
+  if (/(?:Hash|Hashes|Sha256)$/.test(last)) return true
+  return /^validated[A-Za-z0-9_$]*$/.test(segments[0] || '')
+    && (last === 'em' || last === 'external_id')
+    && (!fieldName || last === fieldName)
+}
+
+function sameSourceReference(left, right) {
+  return isSourceReference(left)
+    && isSourceReference(right)
+    && canonicalSourceReference(left) === canonicalSourceReference(right)
+}
+
+function isSourceReference(expression) {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*(?:(?:\?\.|!\.|\.)[A-Za-z_$][A-Za-z0-9_$]*!?)*!?$/.test(expression.trim())
+}
+
+function canonicalSourceReference(expression) {
+  return expression.trim().replace(/\?\.|!\./g, '.').replace(/!/g, '')
 }
 
 function readSourceString(text, start, quote, limit) {
@@ -381,22 +545,32 @@ function scanEvidence(relativePath, text, findings) {
   }
   const withinBudget = walkEvidence(parsed, (key, value) => {
     const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '')
+    scanEvidenceString(relativePath, key, findings)
     if (typeof value !== 'string' || value.length === 0) return
-    if (containsRawEmail(value)) {
-      addFinding(findings, relativePath, 'META_EVIDENCE_RAW_EMAIL')
-    }
-    if (containsRawIp(value)) addFinding(findings, relativePath, 'META_EVIDENCE_RAW_IP')
-    if (normalizedKey.includes('useragent') || EMBEDDED_USER_AGENT_PATTERN.test(value)) {
+    if (normalizedKey.includes('useragent')) {
       addFinding(findings, relativePath, 'META_EVIDENCE_RAW_USER_AGENT')
     }
-    if (normalizedKey === 'fbp' || normalizedKey === 'fbc' || EMBEDDED_BROWSER_ID_PATTERN.test(value)) {
+    if (normalizedKey === 'fbp' || normalizedKey === 'fbc') {
       addFinding(findings, relativePath, 'META_EVIDENCE_BROWSER_ID')
     }
-    if (EVIDENCE_MATCH_IDENTIFIER_PATTERN.test(value)) {
-      addFinding(findings, relativePath, 'META_EVIDENCE_MATCH_IDENTIFIER')
-    }
+    scanEvidenceString(relativePath, value, findings)
   })
   if (!withinBudget) addFinding(findings, relativePath, 'META_EVIDENCE_STRUCTURE_LIMIT')
+}
+
+function scanEvidenceString(relativePath, value, findings) {
+  if (!value) return
+  if (containsRawEmail(value)) addFinding(findings, relativePath, 'META_EVIDENCE_RAW_EMAIL')
+  if (containsRawIp(value)) addFinding(findings, relativePath, 'META_EVIDENCE_RAW_IP')
+  if (EMBEDDED_USER_AGENT_PATTERN.test(value)) {
+    addFinding(findings, relativePath, 'META_EVIDENCE_RAW_USER_AGENT')
+  }
+  if (EMBEDDED_BROWSER_ID_PATTERN.test(value)) {
+    addFinding(findings, relativePath, 'META_EVIDENCE_BROWSER_ID')
+  }
+  if (EVIDENCE_MATCH_IDENTIFIER_PATTERN.test(value)) {
+    addFinding(findings, relativePath, 'META_EVIDENCE_MATCH_IDENTIFIER')
+  }
 }
 
 function containsRawEmail(value) {
