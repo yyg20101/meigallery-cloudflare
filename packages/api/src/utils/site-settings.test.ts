@@ -86,4 +86,9 @@ describe('site settings keys', () => {
     expect(ADMIN_SETTING_KEYS).not.toContain('META_CAPI_TEST_EVENT_CODE')
     expect(PUBLIC_SETTING_KEYS).not.toContain('META_CAPI_TEST_EVENT_CODE')
   })
+
+  it('keeps Meta CAPI rollout admin-only', () => {
+    expect(ADMIN_SETTING_KEYS).toContain('meta_capi_rollout_percentage')
+    expect(PUBLIC_SETTING_KEYS).not.toContain('meta_capi_rollout_percentage')
+  })
 })

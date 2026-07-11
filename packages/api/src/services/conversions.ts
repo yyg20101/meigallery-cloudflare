@@ -33,6 +33,11 @@ import { transitionDeliveryStatus } from './meta-capi'
 import { createSecureOutboxStatement, enqueueSecureMetaCapiDelivery } from './meta-capi-secure-outbox'
 import { requireVerifiedMetaConnection } from './meta-connection'
 import {
+  decideMetaCapiRollout,
+  normalizeMetaCapiRollout,
+  type MetaCapiRolloutDecision,
+} from './meta-capi-rollout'
+import {
   acquireConversionDedupeClaim,
   conversionDedupeClaimSnapshotParams,
   d1Changed,
@@ -144,6 +149,9 @@ type PlannedDelivery = {
     | 'missing_data_key'
     | 'invalid_data_key'
     | 'invalid_sensitive_context'
+    | 'rollout_excluded'
+    | 'circuit_open'
+    | 'missing_stable_id'
   >
   envelope?: MetaCapiEncryptedEnvelope
   expiresAt?: string
@@ -154,6 +162,9 @@ type PlannedDelivery = {
   encryptionKeyId: string
   trackingMode: MetaTrackingMode
   metaConnectionRevision: string | null
+  rolloutTargetPercentage: number
+  rolloutEffectivePercentage: number
+  rolloutBucket: number | null
   statementIndex: number
 }
 
@@ -166,10 +177,20 @@ type CapiEncryptionPlan =
         | 'missing_data_key'
         | 'invalid_data_key'
         | 'invalid_sensitive_context'
+        | 'rollout_excluded'
+        | 'circuit_open'
+        | 'missing_stable_id'
       >
       connectionRevision?: string
+      rollout: MetaCapiRolloutDecision | null
     }
-  | { state: 'ready'; keys: MetaCapiCryptoKeys; context: MetaCapiSensitiveContext; connectionRevision: string }
+  | {
+      state: 'ready'
+      keys: MetaCapiCryptoKeys
+      context: MetaCapiSensitiveContext
+      connectionRevision: string
+      rollout: MetaCapiRolloutDecision
+    }
 
 type MetaDeliverySettings = Awaited<ReturnType<typeof readMetaDeliverySettings>>
 
@@ -733,6 +754,15 @@ async function planMetaDeliveries(
       metaConnectionRevision: channel === 'meta_capi' && capiEncryption.state !== 'disabled'
         ? capiEncryption.connectionRevision ?? null
         : null,
+      rolloutTargetPercentage: channel === 'meta_capi' && capiEncryption.state !== 'disabled'
+        ? capiEncryption.rollout?.targetPercentage ?? 0
+        : 0,
+      rolloutEffectivePercentage: channel === 'meta_capi' && capiEncryption.state !== 'disabled'
+        ? capiEncryption.rollout?.effectivePercentage ?? 0
+        : 0,
+      rolloutBucket: channel === 'meta_capi' && capiEncryption.state !== 'disabled'
+        ? capiEncryption.rollout?.bucket ?? null
+        : null,
       statementIndex: -1,
     }
   }))
@@ -743,9 +773,10 @@ function conversionDeliveryStatement(db: D1Database, delivery: PlannedDelivery, 
     INSERT OR IGNORE INTO analytics_conversion_deliveries (
       id, conversion_action_id, channel, external_event_id, event_name,
       status, skip_reason, has_fbp, has_fbc, has_email, has_external_id,
-      encryption_key_id, tracking_mode, meta_connection_revision, updated_at
+      encryption_key_id, tracking_mode, meta_connection_revision,
+      rollout_target_percentage, rollout_effective_percentage, rollout_bucket, updated_at
     )
-    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')
     WHERE EXISTS (SELECT 1 FROM analytics_conversion_actions WHERE id = ?)
   `).bind(
     delivery.deliveryId,
@@ -762,6 +793,9 @@ function conversionDeliveryStatement(db: D1Database, delivery: PlannedDelivery, 
     delivery.encryptionKeyId,
     delivery.trackingMode,
     delivery.metaConnectionRevision,
+    delivery.rolloutTargetPercentage,
+    delivery.rolloutEffectivePercentage,
+    delivery.rolloutBucket,
     actionId,
   )
 }
@@ -801,20 +835,36 @@ async function buildCapiEncryptionPlan(
     connection = await requireVerifiedMetaConnection(env)
   }
   catch {
-    return { state: 'skipped', reason: 'connection_unverified' }
+    return { state: 'skipped', reason: 'connection_unverified', rollout: null }
   }
   if (connection.pixelId !== settings.pixelId || connection.trackingMode !== settings.mode) {
-    return { state: 'skipped', reason: 'connection_unverified' }
+    return { state: 'skipped', reason: 'connection_unverified', rollout: null }
+  }
+
+  const stableId = await readMetaCapiStableId(env.DB, input)
+  const circuitOpen = await hasOpenCriticalMetaCapiIncident(env.DB, env.APP_ENV)
+  const rollout = await decideMetaCapiRollout({
+    targetPercentage: settings.rolloutPercentage,
+    stableId,
+    circuitOpen,
+  })
+  if (!rollout.included) {
+    return {
+      state: 'skipped',
+      reason: rollout.reason === 'included' ? 'rollout_excluded' : rollout.reason,
+      connectionRevision: connection.revision,
+      rollout,
+    }
   }
   if (!String(env.META_CAPI_DATA_KEY_CURRENT ?? '').trim()) {
-    return { state: 'skipped', reason: 'missing_data_key', connectionRevision: connection.revision }
+    return { state: 'skipped', reason: 'missing_data_key', connectionRevision: connection.revision, rollout }
   }
 
   let keys: MetaCapiCryptoKeys
   try {
     keys = await loadMetaCapiCryptoKeys(env)
   } catch {
-    return { state: 'skipped', reason: 'invalid_data_key', connectionRevision: connection.revision }
+    return { state: 'skipped', reason: 'invalid_data_key', connectionRevision: connection.revision, rollout }
   }
   await beforeSensitiveAccess()
   let sensitiveContext: MetaCapiSensitiveContext
@@ -826,6 +876,7 @@ async function buildCapiEncryptionPlan(
       state: 'skipped',
       reason: 'invalid_sensitive_context',
       connectionRevision: connection.revision,
+      rollout,
     }
   }
   return {
@@ -833,7 +884,36 @@ async function buildCapiEncryptionPlan(
     keys,
     context: sensitiveContext,
     connectionRevision: connection.revision,
+    rollout,
   }
+}
+
+async function readMetaCapiStableId(db: D1Database, input: RecordConversionInput) {
+  const visitorId = input.visitorId.trim()
+  if (input.actionType === 'contact' || visitorId) return visitorId
+  if (input.actionType !== 'complete_registration' || !Number.isSafeInteger(input.userId) || Number(input.userId) <= 0) {
+    return ''
+  }
+  const row = await db.prepare(`
+    SELECT meta_external_id
+    FROM users
+    WHERE id = ?
+    LIMIT 1
+  `).bind(input.userId).first<{ meta_external_id: string | null }>()
+  return String(row?.meta_external_id ?? '').trim()
+}
+
+async function hasOpenCriticalMetaCapiIncident(db: D1Database, environment: string) {
+  if (environment !== 'dev' && environment !== 'production') return false
+  const row = await db.prepare(`
+    SELECT id
+    FROM meta_capi_incidents
+    WHERE environment = ?
+      AND status = 'open'
+      AND severity = 'critical'
+    LIMIT 1
+  `).bind(environment).first<{ id: string }>()
+  return Boolean(row)
 }
 
 function normalizeSensitiveContext(value: unknown): MetaCapiSensitiveContext {
@@ -878,11 +958,12 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 }
 
 async function readMetaDeliverySettings(db: D1Database) {
-  const [modeRow, pixelEnabledRow, pixelIdRow, capiEnabledRow] = await Promise.all([
+  const [modeRow, pixelEnabledRow, pixelIdRow, capiEnabledRow, rolloutRow] = await Promise.all([
     db.prepare("SELECT value FROM site_settings WHERE key = 'meta_tracking_mode' LIMIT 1").first<{ value: string }>(),
     db.prepare("SELECT value FROM site_settings WHERE key = 'facebook_pixel_enabled' LIMIT 1").first<{ value: string }>(),
     db.prepare("SELECT value FROM site_settings WHERE key = 'facebook_pixel_id' LIMIT 1").first<{ value: string }>(),
     db.prepare("SELECT value FROM site_settings WHERE key = 'meta_capi_enabled' LIMIT 1").first<{ value: string }>(),
+    db.prepare("SELECT value FROM site_settings WHERE key = 'meta_capi_rollout_percentage' LIMIT 1").first<{ value: string }>(),
   ])
   const pixelId = String(parseStoredSettingValue(pixelIdRow?.value || '""', '') || '').trim()
   return {
@@ -890,6 +971,7 @@ async function readMetaDeliverySettings(db: D1Database) {
     pixelEnabled: parseStoredSettingValue(pixelEnabledRow?.value || 'false', false) === true,
     pixelId: /^\d{5,30}$/.test(pixelId) ? pixelId : '',
     capiEnabled: parseStoredSettingValue(capiEnabledRow?.value || 'false', false) === true,
+    rolloutPercentage: normalizeMetaCapiRollout(parseStoredSettingValue(rolloutRow?.value || '', undefined)),
   }
 }
 

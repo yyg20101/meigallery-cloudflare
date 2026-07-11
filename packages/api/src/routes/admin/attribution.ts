@@ -7,10 +7,18 @@ import {
   MetaConnectionError,
 } from '../../services/meta-connection'
 import { getMetaCapiKeyRotationStatus } from '../../services/meta-capi-key-rotation'
+import {
+  evaluateRolloutPromotion,
+  normalizeMetaCapiRollout,
+  type MetaCapiRolloutPercentage,
+  type RolloutPromotionInput,
+} from '../../services/meta-capi-rollout'
 import { errorJson } from '../../utils/api-error'
 import { mergeD1Usage, readD1UsageMeta, type D1Usage } from '../../utils/analytics-cost'
 import { parseAnalyticsRange, type AnalyticsDateRange } from '../../utils/analytics-time'
+import { generateId } from '../../utils/db'
 import { writeAuditLog } from '../../utils/permission'
+import { parseStoredSettingValue } from '../../utils/stored-setting-value'
 
 export const adminAttributionRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -683,6 +691,93 @@ adminAttributionRoutes.get('/readiness', async (c) => {
   })
 })
 
+adminAttributionRoutes.get('/meta/rollout', async (c) => {
+  const snapshot = await readMetaRolloutSnapshot(c)
+  return c.json({ data: serializeMetaRolloutSnapshot(snapshot) })
+})
+
+adminAttributionRoutes.post('/meta/rollout', async (c) => {
+  if (c.get('userRole') !== 'owner') {
+    return errorJson(c, 403, '需要站长权限', { code: 'OWNER_REQUIRED' })
+  }
+
+  const body = await readRolloutRequest(c)
+  if (body instanceof Response) return body
+  const snapshot = await readMetaRolloutSnapshot(c, body.percentage)
+  const current = snapshot.targetPercentage
+  if (body.percentage === current) {
+    return c.json({ data: { ...serializeMetaRolloutSnapshot(snapshot), changed: false } })
+  }
+
+  const upgrading = body.percentage > current
+  if (body.force && !upgrading) {
+    return errorJson(c, 400, '仅指标阻断的升级可使用 force', {
+      code: 'META_CAPI_ROLLOUT_FORCE_NOT_APPLICABLE',
+    })
+  }
+  if (upgrading) {
+    const blockers = [...snapshot.promotion.hardBlockers, ...snapshot.promotion.blockers]
+    if (snapshot.promotion.hardBlockers.length > 0 || (!body.force && snapshot.promotion.blockers.length > 0)) {
+      return errorJson(c, 409, 'CAPI rollout 升级门禁未通过', {
+        code: 'META_CAPI_ROLLOUT_PROMOTION_BLOCKED',
+        detail: { blockers },
+      })
+    }
+    if (body.force) {
+      if (!snapshot.promotion.requiresOverrideReason) {
+        return errorJson(c, 400, '当前升级没有可由 force 覆盖的指标阻断', {
+          code: 'META_CAPI_ROLLOUT_FORCE_NOT_APPLICABLE',
+        })
+      }
+      if (hanCharacterCount(body.reason) < 20) {
+        return errorJson(c, 400, 'force 理由至少需要 20 个汉字', {
+          code: 'META_CAPI_ROLLOUT_FORCE_REASON_INVALID',
+        })
+      }
+    }
+  }
+
+  const beforeValue = { percentage: current }
+  const afterValue = {
+    percentage: body.percentage,
+    force: body.force,
+    reason: body.reason,
+    blockers: body.force ? snapshot.promotion.blockers : [],
+    environment: snapshot.environment,
+  }
+  const nextRaw = JSON.stringify(body.percentage)
+  const update = c.env.DB.prepare(`
+    UPDATE site_settings
+    SET value = ?, updated_at = datetime('now')
+    WHERE key = 'meta_capi_rollout_percentage'
+      AND value = ?
+  `).bind(nextRaw, snapshot.rawTargetValue)
+  const audit = c.env.DB.prepare(`
+    INSERT INTO admin_audit_logs (
+      id, admin_id, action, target_type, target_id, before_value, after_value
+    )
+    SELECT ?, ?, ?, ?, ?, ?, ?
+    WHERE changes() = 1
+  `).bind(
+    generateId('log'),
+    c.get('userId') ?? 0,
+    'attribution.meta_rollout_update',
+    'attribution',
+    'meta_capi_rollout_percentage',
+    JSON.stringify(beforeValue),
+    JSON.stringify(afterValue),
+  )
+  const results = await c.env.DB.batch([update, audit])
+  if (!d1ChangedOnce(results[0])) {
+    return errorJson(c, 409, 'CAPI rollout 已被其他请求修改', {
+      code: 'META_CAPI_ROLLOUT_CONFLICT',
+    })
+  }
+
+  const updated = await readMetaRolloutSnapshot(c)
+  return c.json({ data: { ...serializeMetaRolloutSnapshot(updated), changed: true } })
+})
+
 adminAttributionRoutes.post('/meta/test-event', async (c) => {
   const adminId = c.get('userId') ?? 0
   const environment = auditEnvironment(c.env.APP_ENV)
@@ -726,6 +821,252 @@ adminAttributionRoutes.post('/meta/test-event', async (c) => {
     })
   }
 })
+
+type MetaRolloutMetrics = Omit<RolloutPromotionInput, 'from' | 'to'>
+
+type OpenMetaIncident = {
+  id: string
+  severity: 'critical'
+  triggerCode: string
+  triggerSummary: string
+  targetPercentage: number
+  effectivePercentage: number
+  openedAt: string
+  lastObservedAt: string
+}
+
+type MetaRolloutSnapshot = {
+  environment: 'dev' | 'production' | 'invalid'
+  rawTargetValue: string
+  targetPercentage: MetaCapiRolloutPercentage
+  effectivePercentage: MetaCapiRolloutPercentage
+  connectionVerified: boolean
+  liveEvidencePresent: boolean
+  openIncident: OpenMetaIncident | null
+  metrics: MetaRolloutMetrics
+  promotion: {
+    from: MetaCapiRolloutPercentage
+    to: MetaCapiRolloutPercentage
+    allowed: boolean
+    requiresOverrideReason: boolean
+    blockers: string[]
+    hardBlockers: string[]
+  }
+}
+
+async function readMetaRolloutSnapshot(
+  c: AdminAttributionContext,
+  requestedPercentage?: MetaCapiRolloutPercentage,
+): Promise<MetaRolloutSnapshot> {
+  const targetRow = await c.env.DB.prepare(`
+    SELECT value
+    FROM site_settings
+    WHERE key = 'meta_capi_rollout_percentage'
+    LIMIT 1
+  `).first<{ value: string }>()
+  const rawTargetValue = String(targetRow?.value ?? '')
+  const targetPercentage = normalizeMetaCapiRollout(
+    parseStoredSettingValue(rawTargetValue, undefined),
+  )
+  const environment = auditEnvironment(c.env.APP_ENV)
+  const releaseCommit = normalizeReleaseCommit(c.env.RELEASE_COMMIT)
+  const [connectionVerified, openIncident, liveEvidencePresent, metrics] = await Promise.all([
+    readConnectionVerified(c),
+    readOpenCriticalIncident(c.env.DB, environment),
+    readCurrentDevMetaLiveEvidence(c.env.DB, releaseCommit),
+    readMetaRolloutMetrics(c.env.DB, targetPercentage),
+  ])
+  const to = requestedPercentage ?? nextRolloutPercentage(targetPercentage)
+  const evaluation = evaluateRolloutPromotion({ from: targetPercentage, to, ...metrics })
+  const hardBlockers: string[] = []
+  if (to > targetPercentage) {
+    if (!connectionVerified) hardBlockers.push('connection_unverified')
+    if (!releaseCommit) hardBlockers.push('release_commit_invalid')
+    else if (!liveEvidencePresent) hardBlockers.push('meta_live_verification_missing')
+    if (openIncident) hardBlockers.push('circuit_open')
+    if (evaluation.blockers.includes('non_adjacent_promotion')) {
+      hardBlockers.push('non_adjacent_promotion')
+    }
+  }
+  const metricBlockers = evaluation.blockers.filter(blocker => blocker !== 'non_adjacent_promotion')
+  return {
+    environment,
+    rawTargetValue,
+    targetPercentage,
+    effectivePercentage: openIncident ? 0 : targetPercentage,
+    connectionVerified,
+    liveEvidencePresent,
+    openIncident,
+    metrics,
+    promotion: {
+      from: targetPercentage,
+      to,
+      allowed: hardBlockers.length === 0 && metricBlockers.length === 0,
+      requiresOverrideReason: evaluation.requiresOverrideReason,
+      blockers: metricBlockers,
+      hardBlockers,
+    },
+  }
+}
+
+async function readConnectionVerified(c: AdminAttributionContext) {
+  try {
+    return (await getMetaConnectionStatus(c.env)).state === 'verified'
+  }
+  catch {
+    return false
+  }
+}
+
+async function readOpenCriticalIncident(
+  db: D1Database,
+  environment: MetaRolloutSnapshot['environment'],
+): Promise<OpenMetaIncident | null> {
+  if (environment === 'invalid') return null
+  const row = await db.prepare(`
+    SELECT id, severity, trigger_code, trigger_summary,
+      target_rollout_percentage, effective_rollout_percentage,
+      opened_at, last_observed_at
+    FROM meta_capi_incidents
+    WHERE environment = ?
+      AND status = 'open'
+      AND severity = 'critical'
+    ORDER BY opened_at ASC
+    LIMIT 1
+  `).bind(environment).first<Row>()
+  if (!row) return null
+  return {
+    id: String(row.id || ''),
+    severity: 'critical',
+    triggerCode: String(row.trigger_code || ''),
+    triggerSummary: String(row.trigger_summary || ''),
+    targetPercentage: numberValue(row.target_rollout_percentage),
+    effectivePercentage: numberValue(row.effective_rollout_percentage),
+    openedAt: String(row.opened_at || ''),
+    lastObservedAt: String(row.last_observed_at || ''),
+  }
+}
+
+async function readCurrentDevMetaLiveEvidence(db: D1Database, releaseCommit: string) {
+  if (!releaseCommit) return false
+  try {
+    const row = await db.prepare(`
+      SELECT id
+      FROM analytics_release_verifications
+      WHERE commit_sha = ?
+        AND environment = 'dev'
+        AND verification_type = 'meta_live'
+        AND status = 'passed'
+        AND datetime(expires_at) > datetime('now')
+      ORDER BY verified_at DESC
+      LIMIT 1
+    `).bind(releaseCommit).first<{ id: string }>()
+    return Boolean(row)
+  }
+  catch {
+    return false
+  }
+}
+
+async function readMetaRolloutMetrics(
+  db: D1Database,
+  targetPercentage: MetaCapiRolloutPercentage,
+): Promise<MetaRolloutMetrics> {
+  try {
+    const row = await db.prepare(`
+      SELECT
+        COALESCE(SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END), 0) AS sent_count,
+        COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) AS failed_count,
+        COALESCE(SUM(CASE
+          WHEN status = 'failed' AND (
+            error_code IN ('meta_permission_denied', 'http_401', 'http_403')
+            OR error_code LIKE '%permission%'
+          ) THEN 1 ELSE 0 END), 0) AS permission_error_count,
+        COALESCE(SUM(CASE
+          WHEN status = 'failed' AND error_code = 'retry_exhausted' THEN 1 ELSE 0 END), 0
+        ) AS retry_exhausted_count,
+        COALESCE(SUM(CASE
+          WHEN status = 'pending' AND datetime(created_at) < datetime('now', '-10 minutes')
+          THEN 1 ELSE 0 END), 0) AS stale_pending_count,
+        COALESCE(SUM(CASE
+          WHEN status = 'failed' AND (
+            error_code IN ('meta_permission_denied', 'http_401', 'http_403', 'retry_exhausted')
+            OR error_code LIKE '%permission%'
+          ) THEN 1 ELSE 0 END), 0) AS critical_quality_diagnostic_count
+      FROM analytics_conversion_deliveries
+      WHERE channel = 'meta_capi'
+        AND rollout_target_percentage = ?
+    `).bind(targetPercentage).first<Row>()
+    return {
+      sent: numberValue(row?.sent_count),
+      failed: numberValue(row?.failed_count),
+      permissionErrors: numberValue(row?.permission_error_count),
+      retryExhausted: numberValue(row?.retry_exhausted_count),
+      stalePending: numberValue(row?.stale_pending_count),
+      criticalQualityDiagnostics: numberValue(row?.critical_quality_diagnostic_count),
+    }
+  }
+  catch {
+    return {
+      sent: 0,
+      failed: 0,
+      permissionErrors: 0,
+      retryExhausted: 0,
+      stalePending: 0,
+      criticalQualityDiagnostics: 0,
+    }
+  }
+}
+
+function serializeMetaRolloutSnapshot(snapshot: MetaRolloutSnapshot) {
+  const { rawTargetValue: _rawTargetValue, ...safeSnapshot } = snapshot
+  return safeSnapshot
+}
+
+async function readRolloutRequest(c: AdminAttributionContext): Promise<{
+  percentage: MetaCapiRolloutPercentage
+  force: boolean
+  reason: string
+} | Response> {
+  let value: unknown
+  try {
+    value = await c.req.json()
+  }
+  catch {
+    return errorJson(c, 400, '请求 JSON 无效', { code: 'META_CAPI_ROLLOUT_REQUEST_INVALID' })
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return errorJson(c, 400, 'rollout 请求无效', { code: 'META_CAPI_ROLLOUT_REQUEST_INVALID' })
+  }
+  const input = value as Record<string, unknown>
+  if (![0, 10, 50, 100].includes(input.percentage as number) || typeof input.force !== 'boolean') {
+    return errorJson(c, 400, 'rollout 档位或 force 无效', { code: 'META_CAPI_ROLLOUT_REQUEST_INVALID' })
+  }
+  return {
+    percentage: input.percentage as MetaCapiRolloutPercentage,
+    force: input.force,
+    reason: typeof input.reason === 'string' ? input.reason.trim() : '',
+  }
+}
+
+function nextRolloutPercentage(value: MetaCapiRolloutPercentage): MetaCapiRolloutPercentage {
+  if (value === 0) return 10
+  if (value === 10) return 50
+  return 100
+}
+
+function normalizeReleaseCommit(value: unknown) {
+  const commit = String(value ?? '').trim().toLowerCase()
+  return /^[0-9a-f]{40}$/.test(commit) ? commit : ''
+}
+
+function hanCharacterCount(value: string) {
+  return value.match(/\p{Script=Han}/gu)?.length ?? 0
+}
+
+function d1ChangedOnce(result: D1Result<unknown> | undefined) {
+  return Number(result?.meta?.changes ?? result?.meta?.rows_written ?? 0) === 1
+}
 
 function emptyQueryResult(): QueryResult<Row> {
   return { rows: [], usage: EMPTY_USAGE }

@@ -10,10 +10,15 @@ import {
   type RecordContactInput,
   type RecordRegistrationInput,
 } from './conversions'
+import { rolloutBucket } from './meta-capi-rollout'
 
 const metaHashMocks = vi.hoisted(() => ({
   email: vi.fn(),
   externalId: vi.fn(),
+}))
+
+const metaCryptoMocks = vi.hoisted(() => ({
+  encrypt: vi.fn(),
 }))
 
 vi.mock('../utils/meta-browser-identifiers', async (importOriginal) => {
@@ -24,6 +29,15 @@ vi.mock('../utils/meta-browser-identifiers', async (importOriginal) => {
     ...actual,
     hashMetaEmail: metaHashMocks.email,
     hashMetaExternalId: metaHashMocks.externalId,
+  }
+})
+
+vi.mock('../utils/meta-capi-crypto', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils/meta-capi-crypto')>()
+  metaCryptoMocks.encrypt.mockImplementation(actual.encryptMetaCapiContext)
+  return {
+    ...actual,
+    encryptMetaCapiContext: metaCryptoMocks.encrypt,
   }
 })
 
@@ -44,6 +58,9 @@ type InsertedDelivery = {
   hasFbc: number
   hasEmail: number
   hasExternalId: number
+  rolloutTargetPercentage: number
+  rolloutEffectivePercentage: number
+  rolloutBucket: number | null
 }
 type InsertedOutbox = {
   deliveryId: string
@@ -74,9 +91,13 @@ function createConversionDb(options: {
   facebookPixelId?: string
   metaTrackingMode?: 'disabled' | 'test' | 'production'
   metaConnectionVerified?: boolean
+  metaCapiRolloutPercentage?: unknown
+  criticalIncidentOpen?: boolean
+  userMetaExternalId?: string | null
   failAt?: number
 } = {}) {
   const calls: Call[] = []
+  const readCalls: Call[] = []
   const insertedConversions: InsertedConversion[] = []
   const insertedDeliveries: InsertedDelivery[] = []
   const insertedOutboxes: InsertedOutbox[] = []
@@ -199,6 +220,9 @@ function createConversionDb(options: {
         hasFbc: Number(call.params[8]),
         hasEmail: Number(call.params[9]),
         hasExternalId: Number(call.params[10]),
+        rolloutTargetPercentage: Number(call.params[14]),
+        rolloutEffectivePercentage: Number(call.params[15]),
+        rolloutBucket: call.params[16] == null ? null : Number(call.params[16]),
       })
     }
     if (call.sql.includes('INSERT INTO meta_capi_secure_outbox')) {
@@ -239,6 +263,7 @@ function createConversionDb(options: {
           return this
         },
         async first<T>() {
+          readCalls.push(call)
           if (sql.includes('FROM analytics_conversion_actions') && sql.includes('WHERE dedupe_key = ?')) {
             const existingId = dedupe.get(String(call.params[0]))
             return existingId ? ({ id: existingId } as T) : null
@@ -265,6 +290,19 @@ function createConversionDb(options: {
           }
           if (sql.includes("WHERE key = 'meta_tracking_mode'")) {
             return { value: JSON.stringify(options.metaTrackingMode ?? 'disabled') } as T
+          }
+          if (sql.includes("WHERE key = 'meta_capi_rollout_percentage'")) {
+            return { value: JSON.stringify(options.metaCapiRolloutPercentage ?? 100) } as T
+          }
+          if (sql.includes('FROM meta_capi_incidents')) {
+            return options.criticalIncidentOpen
+              ? ({ id: 'incident_open' } as T)
+              : null
+          }
+          if (sql.includes('SELECT meta_external_id') && sql.includes('FROM users')) {
+            return options.userMetaExternalId == null
+              ? null
+              : ({ meta_external_id: options.userMetaExternalId } as T)
           }
           if (sql.includes('FROM meta_connection_verifications')) {
             if (options.metaConnectionVerified === false) return null
@@ -355,7 +393,7 @@ function createConversionDb(options: {
       options.failAt = value
     },
   }
-  return Object.assign(db, { insertedDeliveries, insertedOutboxes })
+  return Object.assign(db, { insertedDeliveries, insertedOutboxes, readCalls })
 }
 
 function envFor(db: ReturnType<typeof createConversionDb>, overrides: Partial<Bindings> = {}) {
@@ -410,6 +448,7 @@ describe('conversion ledger service', () => {
   beforeEach(() => {
     metaHashMocks.email.mockClear()
     metaHashMocks.externalId.mockClear()
+    metaCryptoMocks.encrypt.mockClear()
   })
 
   it('联系与注册入口使用独立输入契约', () => {
@@ -1153,6 +1192,163 @@ describe('conversion ledger service', () => {
     expect(db.insertedOutboxes).toEqual([])
     expect(sent).toEqual([])
     expect(supplierCalls).toBe(0)
+    expect(db.insertedDeliveries.find(item => item.channel === 'meta_capi')).toMatchObject({
+      rolloutTargetPercentage: 0,
+      rolloutEffectivePercentage: 0,
+      rolloutBucket: null,
+    })
+  })
+
+  it.each([
+    ['rollout_excluded', { metaCapiRolloutPercentage: 0 }, 'visitor_rollout_excluded'],
+    ['circuit_open', { metaCapiRolloutPercentage: 100, criticalIncidentOpen: true }, 'visitor_circuit_open'],
+    ['missing_stable_id', { metaCapiRolloutPercentage: 100 }, '   '],
+  ] as const)('%s 在敏感上下文之前短路，保留 skipped delivery 且不创建 secure outbox', async (
+    reason,
+    rolloutOptions,
+    visitorId,
+  ) => {
+    const db = createConversionDb({
+      facebookPixelEnabled: true,
+      facebookPixelId: '1234567890',
+      metaCapiEnabled: true,
+      metaTrackingMode: 'test',
+      ...rolloutOptions,
+    })
+    const browserProvider = vi.fn(async () => ({
+      fbp: 'fb.1.must-not-read',
+      clientIpAddress: '203.0.113.10',
+    }))
+
+    const result = await recordContact(envFor(db), {
+      ...grantedContactInput(),
+      visitorId,
+    }, { getMetaCapiUserData: browserProvider })
+
+    expect(result.pixelEvents).toHaveLength(1)
+    expect(browserProvider).not.toHaveBeenCalled()
+    expect(metaCryptoMocks.encrypt).not.toHaveBeenCalled()
+    expect(db.insertedOutboxes).toEqual([])
+    const delivery = db.insertedDeliveries.find(item => item.channel === 'meta_capi')
+    expect(delivery).toMatchObject({
+      status: 'skipped',
+      skipReason: reason,
+      encryptionKeyId: '',
+      rolloutTargetPercentage: rolloutOptions.metaCapiRolloutPercentage,
+      rolloutEffectivePercentage: reason === 'circuit_open' ? 0 : rolloutOptions.metaCapiRolloutPercentage,
+    })
+    expect(delivery?.rolloutBucket == null).toBe(reason === 'missing_stable_id')
+    expect(db.insertedDeliveries.find(item => item.channel === 'meta_pixel')).toMatchObject({
+      rolloutTargetPercentage: 0,
+      rolloutEffectivePercentage: 0,
+      rolloutBucket: null,
+    })
+  })
+
+  it('Contact 仅使用 visitorId，不使用 userId 或用户 external ID 回退', async () => {
+    const db = createConversionDb({
+      facebookPixelEnabled: true,
+      facebookPixelId: '1234567890',
+      metaCapiEnabled: true,
+      metaTrackingMode: 'test',
+      metaCapiRolloutPercentage: 100,
+      userMetaExternalId: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    })
+    const browserProvider = vi.fn(async () => ({ fbp: 'fb.1.must-not-read' }))
+
+    await recordContact(envFor(db), {
+      ...grantedContactInput(),
+      visitorId: ' ',
+      userId: 42,
+    }, { getMetaCapiUserData: browserProvider })
+
+    expect(browserProvider).not.toHaveBeenCalled()
+    expect(metaCryptoMocks.encrypt).not.toHaveBeenCalled()
+    expect(db.readCalls.some(call => call.sql.includes('SELECT meta_external_id'))).toBe(false)
+    expect(db.insertedDeliveries.find(item => item.channel === 'meta_capi')).toMatchObject({
+      status: 'skipped',
+      skipReason: 'missing_stable_id',
+      rolloutBucket: null,
+    })
+  })
+
+  it('CompleteRegistration 缺 visitorId 时只按 userId 查询 meta_external_id 作为 stable ID', async () => {
+    const stableId = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+    const db = createConversionDb({
+      facebookPixelEnabled: true,
+      facebookPixelId: '1234567890',
+      metaCapiEnabled: true,
+      metaTrackingMode: 'test',
+      metaCapiRolloutPercentage: 100,
+      userMetaExternalId: stableId,
+    })
+    const browserProvider = vi.fn(async () => ({ fbp: 'fb.1.1700000000000.registration' }))
+    const sensitiveProvider = vi.fn(async () => ({
+      email: 'registration@example.test',
+      metaExternalId: stableId,
+    }))
+
+    await recordRegistration(envFor(db), {
+      visitorId: ' ',
+      sessionId: 'session_registration_rollout',
+      userId: 42,
+      occurredAt: '2026-07-11T08:00:00.000Z',
+      consentState: 'granted',
+      metadata: {},
+    }, {
+      getMetaCapiUserData: browserProvider,
+      getRegistrationSensitiveInput: sensitiveProvider,
+    })
+
+    expect(browserProvider).toHaveBeenCalledOnce()
+    expect(sensitiveProvider).toHaveBeenCalledOnce()
+    expect(db.readCalls.find(call => call.sql.includes('SELECT meta_external_id'))?.params).toEqual([42])
+    expect(db.insertedDeliveries.find(item => item.channel === 'meta_capi')).toMatchObject({
+      status: 'pending',
+      rolloutTargetPercentage: 100,
+      rolloutEffectivePercentage: 100,
+      rolloutBucket: await rolloutBucket(stableId),
+    })
+  })
+
+  it('CompleteRegistration 同时缺 visitorId 与 meta_external_id 时不读取或 hash 敏感值', async () => {
+    const db = createConversionDb({
+      facebookPixelEnabled: true,
+      facebookPixelId: '1234567890',
+      metaCapiEnabled: true,
+      metaTrackingMode: 'test',
+      metaCapiRolloutPercentage: 100,
+      userMetaExternalId: null,
+    })
+    const browserProvider = vi.fn(async () => ({ fbp: 'fb.1.must-not-read' }))
+    const sensitiveProvider = vi.fn(async () => ({
+      email: 'must-not-hash@example.test',
+      metaExternalId: 'cccccccccccccccccccccccccccccccc',
+    }))
+
+    await recordRegistration(envFor(db), {
+      visitorId: '',
+      sessionId: 'session_registration_missing_stable',
+      userId: 42,
+      occurredAt: '2026-07-11T08:00:00.000Z',
+      consentState: 'granted',
+      metadata: {},
+    }, {
+      getMetaCapiUserData: browserProvider,
+      getRegistrationSensitiveInput: sensitiveProvider,
+    })
+
+    expect(browserProvider).not.toHaveBeenCalled()
+    expect(sensitiveProvider).not.toHaveBeenCalled()
+    expect(metaHashMocks.email).not.toHaveBeenCalled()
+    expect(metaHashMocks.externalId).not.toHaveBeenCalled()
+    expect(metaCryptoMocks.encrypt).not.toHaveBeenCalled()
+    expect(db.insertedOutboxes).toEqual([])
+    expect(db.insertedDeliveries.find(item => item.channel === 'meta_capi')).toMatchObject({
+      status: 'skipped',
+      skipReason: 'missing_stable_id',
+      rolloutBucket: null,
+    })
   })
 
   it('同 session 不同 contact target 分别记录且不生成 Lead', async () => {

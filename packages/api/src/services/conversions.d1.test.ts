@@ -71,6 +71,7 @@ beforeAll(async () => {
     '0036_meta_capi_v2_secure_delivery.sql',
     '0037_meta_connection_revision.sql',
     '0038_conversion_dedupe_claims.sql',
+    '0039_meta_capi_v2_operations.sql',
   ]) await applyMigration(name)
 }, 30_000)
 
@@ -84,6 +85,7 @@ beforeEach(async () => {
     DELETE FROM analytics_conversion_daily;
     DELETE FROM analytics_conversion_actions;
     DELETE FROM analytics_conversion_dedupe_claims;
+    DELETE FROM meta_capi_incidents;
     DELETE FROM meta_connection_verifications;
     DELETE FROM site_settings;
     DELETE FROM users;
@@ -397,6 +399,65 @@ describe('conversion dedupe claim 真实 D1 并发', () => {
       consoleWarn.mockRestore()
     },
   )
+
+  it.each([
+    ['rollout_excluded', false, 'visitor_rollout_d1'],
+    ['circuit_open', true, 'visitor_circuit_d1'],
+    ['missing_stable_id', false, '   '],
+  ] as const)('%s 在真实 D1 中写入 rollout 快照与 daily，且不产生 outbox', async (
+    reason,
+    circuitOpen,
+    visitorId,
+  ) => {
+    if (reason === 'rollout_excluded') {
+      await realDb.prepare(`
+        UPDATE site_settings SET value = '0'
+        WHERE key = 'meta_capi_rollout_percentage'
+      `).run()
+    }
+    if (circuitOpen) {
+      await realDb.prepare(`
+        INSERT INTO meta_capi_incidents (
+          id, environment, status, severity, trigger_code, trigger_summary,
+          target_rollout_percentage, effective_rollout_percentage, evidence,
+          opened_at, last_observed_at
+        ) VALUES (?, 'dev', 'open', 'critical', 'permission_denied', '权限错误',
+          100, 0, '{}', '2026-07-11T00:00:00.000Z', '2026-07-11T00:00:00.000Z')
+      `).bind('incident_conversion_d1').run()
+    }
+    const provider = vi.fn(async () => ({ fbp: 'fb.1.must-not-read' }))
+
+    await recordContact(conversionEnv(realDb), {
+      visitorId,
+      sessionId: `session_${reason}`,
+      occurredAt: '2026-07-11T08:00:00.000Z',
+      consentState: 'granted',
+      methodType: 'telegram',
+      actionTarget: `target_${reason}`,
+      metadata: {},
+    }, { getMetaCapiUserData: provider })
+
+    const delivery = await realDb.prepare(`
+      SELECT status, skip_reason, rollout_target_percentage,
+        rollout_effective_percentage, rollout_bucket
+      FROM analytics_conversion_deliveries
+      WHERE channel = 'meta_capi'
+    `).first<Record<string, unknown>>()
+    expect(delivery).toMatchObject({
+      status: 'skipped',
+      skip_reason: reason,
+      rollout_target_percentage: reason === 'rollout_excluded' ? 0 : 100,
+      rollout_effective_percentage: reason === 'circuit_open' ? 0 : (reason === 'rollout_excluded' ? 0 : 100),
+      rollout_bucket: reason === 'missing_stable_id' ? null : expect.any(Number),
+    })
+    expect(provider).not.toHaveBeenCalled()
+    expect(await scalar('SELECT count(*) AS value FROM meta_capi_secure_outbox')).toBe(0)
+    expect(await scalar(`
+      SELECT delivery_count AS value
+      FROM analytics_conversion_delivery_daily
+      WHERE channel = 'meta_capi' AND status = 'skipped' AND skip_reason = '${reason}'
+    `)).toBe(1)
+  })
 })
 
 function readMigration(name: string) {
@@ -421,7 +482,8 @@ async function seedRuntime() {
         ('facebook_pixel_id', ?),
         ('facebook_pixel_enabled', 'true'),
         ('meta_capi_enabled', 'true'),
-        ('meta_tracking_mode', '"production"')
+        ('meta_tracking_mode', '"production"'),
+        ('meta_capi_rollout_percentage', '100')
     `).bind(JSON.stringify(PIXEL_ID)),
     realDb.prepare(`
       INSERT INTO meta_connection_verifications (

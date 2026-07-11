@@ -666,6 +666,172 @@ async function requestReadiness(
   return { db, res, body: await res.json() }
 }
 
+type RolloutDbOptions = {
+  target?: 0 | 10 | 50 | 100
+  connectionVerified?: boolean
+  liveEvidence?: boolean
+  incidentSeverity?: 'warning' | 'critical' | null
+  sent?: number
+  failed?: number
+  permissionErrors?: number
+  retryExhausted?: number
+  stalePending?: number
+  criticalQualityDiagnostics?: number
+  conflict?: boolean
+}
+
+function createRolloutDb(options: RolloutDbOptions = {}) {
+  const calls: DbCall[] = []
+  const audits: Array<{ before: unknown; after: unknown }> = []
+  let targetRaw = JSON.stringify(options.target ?? 0)
+  let batchCount = 0
+  let lastChanges = 0
+
+  function rowsFor<T>(sql: string, params: unknown[]): T[] {
+    if (sql.includes('FROM meta_capi_incidents')) {
+      if (options.incidentSeverity !== 'critical') return []
+      return [{
+        id: 'incident_rollout_open',
+        severity: 'critical',
+        trigger_code: 'meta_permission_denied',
+        trigger_summary: 'Meta 权限拒绝',
+        target_rollout_percentage: options.target ?? 0,
+        effective_rollout_percentage: 0,
+        opened_at: '2026-07-11T00:00:00.000Z',
+        last_observed_at: '2026-07-11T00:01:00.000Z',
+      } as T]
+    }
+    if (sql.includes('FROM analytics_release_verifications')) {
+      return options.liveEvidence === false ? [] : [{ id: 'verification_meta_live' } as T]
+    }
+    if (sql.includes('AS permission_error_count')) {
+      return [{
+        sent_count: options.sent ?? 100,
+        failed_count: options.failed ?? 0,
+        permission_error_count: options.permissionErrors ?? 0,
+        retry_exhausted_count: options.retryExhausted ?? 0,
+        stale_pending_count: options.stalePending ?? 0,
+        critical_quality_diagnostic_count: options.criticalQualityDiagnostics ?? 0,
+      } as T]
+    }
+    if (sql.includes('FROM site_settings') && sql.includes("key = 'meta_capi_rollout_percentage'")) {
+      return [{ value: targetRaw } as T]
+    }
+    if (sql.includes('FROM site_settings') && sql.includes("key = 'facebook_pixel_id'")) {
+      return [{ value: JSON.stringify('1234567890') } as T]
+    }
+    if (sql.includes('FROM site_settings') && sql.includes("key = 'meta_tracking_mode'")) {
+      return [{ value: JSON.stringify('test') } as T]
+    }
+    if (sql.includes('FROM meta_connection_verifications')) {
+      if (options.connectionVerified === false) return []
+      return [{
+        environment: 'dev',
+        pixel_id: '1234567890',
+        token_fingerprint: 'a31456d57fa4fd03160643daf898d11bff0e56e42c445ffa81680f662de55276',
+        graph_api_version: 'v25.0',
+        verified_event_name: 'Contact',
+        verified_commit: VALID_RELEASE_COMMIT,
+        dataset_quality_status: 'not_checked',
+        verified_at: '2026-07-11T00:00:00.000Z',
+        verified_by_user_id: 1,
+        invalidated_at: null,
+        invalidation_reason: '',
+        revision: '1'.repeat(32),
+      } as T]
+    }
+    return []
+  }
+
+  const db = {
+    calls,
+    audits,
+    get target() { return JSON.parse(targetRaw) },
+    get batchCount() { return batchCount },
+    prepare(sql: string) {
+      const call: DbCall = { sql, params: [] }
+      const statement = {
+        bind(...params: unknown[]) {
+          call.params = params
+          return this
+        },
+        async first<T>() {
+          calls.push(call)
+          return rowsFor<T>(sql, call.params)[0] ?? null
+        },
+        async all<T>() {
+          calls.push(call)
+          return { results: rowsFor<T>(sql, call.params), meta: { rows_read: 1, rows_written: 0 } }
+        },
+        async run() {
+          calls.push(call)
+          if (sql.includes('UPDATE site_settings') && sql.includes('meta_capi_rollout_percentage')) {
+            const [nextRaw, expectedRaw] = call.params.map(String)
+            if (options.conflict || targetRaw !== expectedRaw) {
+              lastChanges = 0
+              return { meta: { changes: 0, rows_written: 0 } }
+            }
+            targetRaw = nextRaw!
+            lastChanges = 1
+            return { meta: { changes: 1, rows_written: 1 } }
+          }
+          if (sql.includes('INSERT INTO admin_audit_logs')) {
+            if (lastChanges === 1) {
+              audits.push({
+                before: JSON.parse(String(call.params[5])),
+                after: JSON.parse(String(call.params[6])),
+              })
+              return { meta: { changes: 1, rows_written: 1 } }
+            }
+            return { meta: { changes: 0, rows_written: 0 } }
+          }
+          lastChanges = 1
+          return { meta: { changes: 1, rows_written: 1 } }
+        },
+      }
+      return statement
+    },
+    async batch(statements: Array<{ run: () => Promise<unknown> }>) {
+      batchCount += 1
+      const beforeTarget = targetRaw
+      const beforeAudits = [...audits]
+      try {
+        const results = []
+        for (const statement of statements) results.push(await statement.run())
+        return results
+      }
+      catch (error) {
+        targetRaw = beforeTarget
+        audits.splice(0, audits.length, ...beforeAudits)
+        throw error
+      }
+    },
+  }
+  return db
+}
+
+const VALID_ROLLOUT_ENV = {
+  APP_ENV: 'dev',
+  META_CAPI_ACCESS_TOKEN: 'rollout-token',
+  META_CAPI_TEST_EVENT_CODE: 'test-code',
+  RELEASE_COMMIT: VALID_RELEASE_COMMIT,
+}
+
+async function requestRollout(
+  role: string,
+  dbOptions: RolloutDbOptions = {},
+  init: RequestInit = {},
+  envOverrides: Partial<Bindings> = {},
+) {
+  const db = createRolloutDb(dbOptions)
+  const res = await createApp(role).request(
+    '/api/admin/attribution/meta/rollout',
+    init,
+    { DB: db, ...VALID_ROLLOUT_ENV, ...envOverrides } as unknown as Bindings,
+  )
+  return { db, res, body: await res.json() }
+}
+
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.useRealTimers()
@@ -1465,5 +1631,172 @@ describe('后台归因中心 API', () => {
     expect(res.status).toBe(expectedStatus)
     expect(body.data?.status).not.toBe('verified')
     expect(JSON.stringify({ body, calls: db.calls })).not.toContain('sensitive upstream error')
+  })
+
+  it('rollout GET 返回 target、critical incident 熔断后的 effective 与晋级检查', async () => {
+    const { res, body } = await requestRollout('admin', {
+      target: 10,
+      incidentSeverity: 'critical',
+    })
+
+    expect(res.status).toBe(200)
+    expect(body.data).toMatchObject({
+      targetPercentage: 10,
+      effectivePercentage: 0,
+      promotion: {
+        from: 10,
+        to: 50,
+        allowed: false,
+        hardBlockers: ['circuit_open'],
+      },
+      openIncident: {
+        id: 'incident_rollout_open',
+        severity: 'critical',
+        triggerCode: 'meta_permission_denied',
+      },
+    })
+    expect(JSON.stringify(body)).not.toContain('rollout-token')
+  })
+
+  it('warning incident 不熔断 rollout', async () => {
+    const { res, body } = await requestRollout('admin', {
+      target: 10,
+      incidentSeverity: 'warning',
+    })
+
+    expect(res.status).toBe(200)
+    expect(body.data).toMatchObject({
+      targetPercentage: 10,
+      effectivePercentage: 10,
+      openIncident: null,
+    })
+  })
+
+  it('POST rollout 显式要求 Owner', async () => {
+    const { db, res, body } = await requestRollout('admin', { target: 0 }, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ percentage: 10, force: false }),
+    })
+
+    expect(res.status).toBe(403)
+    expect(body.code).toBe('OWNER_REQUIRED')
+    expect(db.batchCount).toBe(0)
+    expect(db.audits).toEqual([])
+  })
+
+  it.each([
+    ['connection_unverified', { connectionVerified: false }, {}],
+    ['meta_live_verification_missing', { liveEvidence: false }, {}],
+    ['release_commit_invalid', {}, { RELEASE_COMMIT: 'invalid' }],
+  ] as const)('0 -> 10 不允许绕过硬门禁 %s', async (blocker, dbOptions, envOverrides) => {
+    const { db, res, body } = await requestRollout('owner', { target: 0, ...dbOptions }, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        percentage: 10,
+        force: true,
+        reason: '当前指标已有人工复核确认风险受控并持续观察运行状态',
+      }),
+    }, envOverrides)
+
+    expect(res.status).toBe(409)
+    expect(body.code).toBe('META_CAPI_ROLLOUT_PROMOTION_BLOCKED')
+    expect(body.detail.blockers).toContain(blocker)
+    expect(db.batchCount).toBe(0)
+  })
+
+  it('升级只允许相邻档位，force 不能绕过跳级', async () => {
+    const { db, res, body } = await requestRollout('owner', { target: 0 }, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        percentage: 50,
+        force: true,
+        reason: '当前指标已有人工复核确认风险受控并持续观察运行状态',
+      }),
+    })
+
+    expect(res.status).toBe(409)
+    expect(body.detail.blockers).toContain('non_adjacent_promotion')
+    expect(db.batchCount).toBe(0)
+  })
+
+  it('指标不达标时 force 需要至少 20 个汉字，合格后以同一 batch 更新与审计', async () => {
+    const short = await requestRollout('owner', { target: 10, sent: 9 }, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ percentage: 50, force: true, reason: '风险已人工确认' }),
+    })
+    expect(short.res.status).toBe(400)
+    expect(short.body.code).toBe('META_CAPI_ROLLOUT_FORCE_REASON_INVALID')
+    expect(short.db.batchCount).toBe(0)
+
+    const reason = '当前指标已有人工复核确认风险受控并持续观察运行状态'
+    const forced = await requestRollout('owner', { target: 10, sent: 9 }, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ percentage: 50, force: true, reason }),
+    })
+
+    expect(forced.res.status).toBe(200)
+    expect(forced.body.data).toMatchObject({ targetPercentage: 50, effectivePercentage: 50, changed: true })
+    expect(forced.db.target).toBe(50)
+    expect(forced.db.batchCount).toBe(1)
+    expect(forced.db.audits).toHaveLength(1)
+    expect(forced.db.calls.some(call => (
+      call.sql.includes('INSERT INTO admin_audit_logs')
+      && call.params[2] === 'attribution.meta_rollout_update'
+    ))).toBe(true)
+    expect(forced.db.audits[0]).toEqual({
+      before: { percentage: 10 },
+      after: {
+        percentage: 50,
+        force: true,
+        reason,
+        blockers: ['insufficient_attempts'],
+        environment: 'dev',
+      },
+    })
+    expect(JSON.stringify(forced.db.audits)).not.toContain('rollout-token')
+  })
+
+  it('同值为 no-op 不写审计，降级到任意低档位始终允许', async () => {
+    const same = await requestRollout('owner', { target: 50 }, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ percentage: 50, force: false }),
+    })
+    expect(same.res.status).toBe(200)
+    expect(same.body.data.changed).toBe(false)
+    expect(same.db.batchCount).toBe(0)
+    expect(same.db.audits).toEqual([])
+
+    const downgrade = await requestRollout('owner', {
+      target: 100,
+      incidentSeverity: 'critical',
+      sent: 0,
+      failed: 100,
+    }, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ percentage: 10, force: false }),
+    })
+    expect(downgrade.res.status).toBe(200)
+    expect(downgrade.db.target).toBe(10)
+    expect(downgrade.db.audits).toHaveLength(1)
+  })
+
+  it('旧值条件冲突时返回稳定错误码且不写误导性审计', async () => {
+    const { db, res, body } = await requestRollout('owner', { target: 0, conflict: true }, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ percentage: 10, force: false }),
+    })
+
+    expect(res.status).toBe(409)
+    expect(body.code).toBe('META_CAPI_ROLLOUT_CONFLICT')
+    expect(db.target).toBe(0)
+    expect(db.audits).toEqual([])
   })
 })

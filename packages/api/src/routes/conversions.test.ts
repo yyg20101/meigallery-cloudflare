@@ -59,6 +59,8 @@ function createConversionDb(options: {
           if (sql.includes("WHERE key = 'facebook_pixel_enabled'")) return { value: 'false' } as T
           if (sql.includes("WHERE key = 'facebook_pixel_id'")) return options.facebookPixelId ? ({ value: JSON.stringify(options.facebookPixelId) } as T) : null
           if (sql.includes("WHERE key = 'meta_tracking_mode'")) return { value: JSON.stringify(options.metaTrackingMode ?? 'disabled') } as T
+          if (sql.includes("WHERE key = 'meta_capi_rollout_percentage'")) return { value: '100' } as T
+          if (sql.includes('FROM meta_capi_incidents')) return null as T | null
           if (sql.includes('FROM meta_connection_verifications')) {
             return {
               environment: 'dev',

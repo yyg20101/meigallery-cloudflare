@@ -5,6 +5,7 @@ export const ADMIN_SETTING_KEYS = [
   'video_enabled', 'facebook_pixel_enabled', 'facebook_pixel_id', 'facebook_pixel_debug_enabled',
   'analytics_enabled', 'analytics_sample_rate', 'analytics_consent_mode',
   'meta_tracking_mode', 'meta_capi_enabled',
+  'meta_capi_rollout_percentage',
   'home_hero_title', 'home_hero_subtitle',
   'home_featured_region_slugs', 'home_hot_tag_limit',
   'home_ad_enabled', 'home_ad_eyebrow', 'home_ad_title',
