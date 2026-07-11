@@ -56,6 +56,16 @@ function verifiedRuntimeOptions(overrides = {}) {
       commit: COMMIT,
     }), { status: 200, headers: { 'content-type': 'application/json' } }),
     readReadiness: async () => readiness(),
+    createSession: async () => ({
+      challengeId: 'challenge_0123456789abcdef',
+      nonce: '0123456789abcdef',
+      commitSha: COMMIT,
+      environment: 'dev',
+      createdAt: '2026-07-10T00:00:00.000Z',
+      expiresAt: '2026-07-10T01:00:00.000Z',
+      eventIds: { ...RAW_IDS },
+    }),
+    destroySession: async () => {},
     ...overrides,
   }
 }
@@ -98,11 +108,9 @@ describe('Meta live evidence V2 人工录入', () => {
     ]) assert.throws(() => buildMetaLiveEvidence(candidate))
   })
 
-  it('Q5 contract/collector pending 或增强匹配不足时稳定失败', () => {
+  it('增强匹配不足时稳定失败，Q5 状态不再由 Evidence 自报布尔放行', () => {
     const base = validInput()
     for (const candidate of [
-      { ...base, datasetQualityContractVersion: 0 },
-      { ...base, datasetQualityCollectorCurrent: false },
       { ...base, enhancedMatch: { ...base.enhancedMatch, completeRegistrationEmail: false } },
       { ...base, enhancedMatch: { ...base.enhancedMatch, completeRegistrationExternalId: false } },
       { ...base, enhancedMatch: { ...base.enhancedMatch, contactContainsRegistrationIdentity: true } },
@@ -131,6 +139,47 @@ describe('Meta live evidence V2 人工录入', () => {
     assert.equal(result.evidence.schemaVersion, 2)
     assert.deepEqual(written.enhancedMatch, readiness().enhancedMatch)
     assert.equal(answers.length, 0)
+  })
+
+  it('只接受本次一小时会话生成的预期 ID，并在成功或失败后销毁 challenge', async () => {
+    for (const accepted of [true, false]) {
+      let destroyed = 0
+      const expectedIds = { ...RAW_IDS }
+      const answers = accepted
+        ? [
+            expectedIds.Contact, expectedIds.Contact, 'yes', 'yes', 'yes', 'yes',
+            expectedIds.CompleteRegistration, expectedIds.CompleteRegistration, 'yes', 'yes', 'yes', 'yes',
+            'yes', 'yes',
+          ]
+        : [
+            'meta_verify_historical_0123456789abcdef', 'meta_verify_historical_0123456789abcdef',
+            'yes', 'yes', 'yes', 'yes',
+            expectedIds.CompleteRegistration, expectedIds.CompleteRegistration, 'yes', 'yes', 'yes', 'yes',
+            'yes', 'yes',
+          ]
+      const run = recordMetaLiveVerification({
+        ...verifiedRuntimeOptions(),
+        ask: async () => answers.shift(),
+        output: () => {},
+        getCommit: async () => COMMIT,
+        now: '2026-07-10T00:00:00.000Z',
+        createSession: async () => ({
+          challengeId: 'challenge_0123456789abcdef',
+          nonce: '0123456789abcdef',
+          commitSha: COMMIT,
+          environment: 'dev',
+          createdAt: '2026-07-10T00:00:00.000Z',
+          expiresAt: '2026-07-10T01:00:00.000Z',
+          eventIds: expectedIds,
+        }),
+        destroySession: async () => { destroyed += 1 },
+        writeEvidence: async () => ({ evidenceFile: '/tmp/evidence.json', latestFile: '/tmp/latest.json' }),
+      })
+
+      if (accepted) await run
+      else await assert.rejects(run, /本次.*会话|预期 event ID/)
+      assert.equal(destroyed, 1)
+    }
   })
 
   it('readiness 查询失败、旧 commit 或 pending 时均不进入录入也不写 evidence', async () => {

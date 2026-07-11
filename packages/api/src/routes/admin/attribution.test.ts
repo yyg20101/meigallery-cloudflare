@@ -1981,7 +1981,8 @@ describe('后台归因中心 API', () => {
   })
 
   it('Meta 确认接收 1 条 Test Event 时返回 200 且不泄露临时数据', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ events_received: 1, fbtrace_id: 'trace-safe' }), { status: 200 })))
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ events_received: 1, fbtrace_id: 'trace-safe' }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
     const db = createAttributionDb()
     const res = await createApp('owner').request('/api/admin/attribution/meta/test-event', {
       method: 'POST',
@@ -2018,6 +2019,28 @@ describe('后台归因中心 API', () => {
     expect(serialized).not.toContain('203.0.113.24')
     expect(serialized).not.toContain('Task7-Test-Agent/1.0')
     expect(serialized).not.toContain('trace-safe')
+    const graphPayload = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))
+    const rawDeliveryId = String(graphPayload.data[0].event_id)
+    const auditCall = db.calls.find(call => call.sql.includes('INSERT INTO admin_audit_logs'))
+    expect(JSON.stringify(auditCall)).not.toContain(rawDeliveryId)
+  })
+
+  it('production 0 -> 10 只读取当前 production connection/Test Event，不查询 dev live row', async () => {
+    const { db, res, body } = await requestRollout('owner', { target: 0 }, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ percentage: 10, force: false }),
+    }, {
+      APP_ENV: 'production',
+    })
+
+    expect(res.status).toBe(200)
+    expect(body.data.targetPercentage).toBe(10)
+    const verificationQueries = db.calls.filter(call => (
+      call.sql.includes('analytics_release_verifications') || call.sql.includes('meta_connection_verifications')
+    ))
+    expect(verificationQueries.some(call => call.sql.includes("environment = 'dev'"))).toBe(false)
+    expect(verificationQueries.some(call => call.params.includes('production'))).toBe(true)
   })
 
   it.each(['203.0.113.24', 'test-code'])('Test Event 丢弃回显敏感值的 traceId：%s', async sensitiveTraceId => {

@@ -19,6 +19,7 @@ import {
 } from './meta-live-verification-lib.mjs'
 import { recordReleaseVerificationSummary } from './release-verification-store.mjs'
 import { runMetaResourceVerification } from './verify-meta-resources.mjs'
+import { verifyApprovedMetaDatasetQualityContract } from './meta-dataset-quality-contract-lib.mjs'
 
 const QUICK_STEPS = [
   {
@@ -164,6 +165,12 @@ export async function runReleaseVerification(options = {}) {
     expiresAt: '',
     events: [],
   }
+  let datasetQualityContract = {
+    status: 'failed',
+    path: '',
+    version: null,
+    digest: '',
+  }
 
   if (typeof git.branch !== 'string' || git.branch.trim() === '') releaseGitBlockers.push('无法获取当前 Git branch')
   else if (!isReleaseReportBranchAllowed(git.branch, options.env || process.env)) releaseGitBlockers.push('release 报告生成分支不是 main 或 release/*')
@@ -226,6 +233,26 @@ export async function runReleaseVerification(options = {}) {
 
   const childModesPassed = releaseSubModes.length === childRuns.length && releaseSubModes.every(item => item.status === 'passed')
   if (releaseGitBlockers.length === 0 && childModesPassed) {
+    const contractStartedMs = Date.now()
+    try {
+      const contract = await verifyApprovedMetaDatasetQualityContract({ cwd: options.cwd })
+      datasetQualityContract = { status: 'passed', ...contract }
+      steps.push({
+        name: 'meta-dataset-quality-contract', status: 'passed', durationMs: Date.now() - contractStartedMs,
+        command: '验证 Git tracked approved Dataset Quality contract artifact/digest', exitCode: 0,
+        summary: `Dataset Quality contract v${contract.version} digest 已验证`,
+      })
+    } catch (error) {
+      steps.push({
+        name: 'meta-dataset-quality-contract', status: 'failed', durationMs: Date.now() - contractStartedMs,
+        command: '验证 Git tracked approved Dataset Quality contract artifact/digest', exitCode: 1,
+        summary: error instanceof Error ? error.message : String(error),
+      })
+      notes.push('Dataset Quality approved contract artifact/digest 校验失败。')
+    }
+  }
+
+  if (releaseGitBlockers.length === 0 && childModesPassed && datasetQualityContract.status === 'passed') {
     for (const environment of ['dev']) {
       const startedResourceMs = Date.now()
       const result = await runMetaResourceVerificationFn({
@@ -234,6 +261,7 @@ export async function runReleaseVerification(options = {}) {
         commit: git.commit,
         initialMetaRollout: initialMetaRollout && environment === 'production',
         reportOnly: false,
+        expectedDatasetQualityContract: datasetQualityContract,
       })
       metaResources[environment] = sanitizeMetaResourceSummary(result, environment, git.commit)
       steps.push({
@@ -271,8 +299,6 @@ export async function runReleaseVerification(options = {}) {
           && evidence.enhancedMatch?.contactContainsRegistrationIdentity === false,
         forbiddenEventsAbsent: evidence.forbiddenEventsAbsent?.Lead === true
           && evidence.forbiddenEventsAbsent?.StartTrial === true,
-        datasetQualityContractVersion: evidence.datasetQualityContractVersion,
-        datasetQualityCollectorCurrent: evidence.datasetQualityCollectorCurrent,
       }
       steps.push({
         name: 'meta-live-evidence',
@@ -296,12 +322,12 @@ export async function runReleaseVerification(options = {}) {
   }
 
   if (metaLiveVerification.status === 'passed') {
-    const qualityPassed = Number.isSafeInteger(metaLiveVerification.datasetQualityContractVersion)
-      && metaLiveVerification.datasetQualityContractVersion > 0
-      && metaLiveVerification.datasetQualityCollectorCurrent === true
+    const qualityPassed = metaResources.dev.datasetQualityContractVersion === datasetQualityContract.version
+      && metaResources.dev.datasetQualityContractDigest === datasetQualityContract.digest
+      && metaResources.dev.datasetQualityCollectorCurrent === true
     steps.push({
       name: 'meta-dataset-quality', status: qualityPassed ? 'passed' : 'failed', durationMs: 0,
-      command: '校验 Evidence V2 Dataset Quality contract/collector', exitCode: qualityPassed ? 0 : 1,
+      command: '校验 tracked contract digest 与 dev Dataset Quality collector freshness', exitCode: qualityPassed ? 0 : 1,
       summary: qualityPassed ? 'Dataset Quality contract 与 collector freshness 通过' : 'Dataset Quality contract/collector pending',
     })
     const incidentPassed = metaResources.dev.openCriticalIncidentCount === 0
@@ -376,6 +402,7 @@ export async function runReleaseVerification(options = {}) {
 
   const finishedAt = new Date().toISOString()
   const requiredMetaSteps = [
+    'meta-dataset-quality-contract',
     'meta-resources-dev',
     'meta-resources-production',
     'meta-live-evidence',
@@ -399,6 +426,7 @@ export async function runReleaseVerification(options = {}) {
     releaseSubModes,
     initialMetaRollout,
     metaLiveVerification,
+    datasetQualityContract,
     metaResources,
     artifacts,
     notes,
@@ -447,6 +475,7 @@ function sanitizeMetaResourceSummary(result, environment, commit) {
     database: String(result?.database || (environment === 'dev' ? 'meigallery-db-dev' : 'meigallery-db')),
     queues: Array.isArray(result?.queues) ? result.queues.map(String) : [],
     consumersPresent: result?.consumersPresent === true,
+    r2Present: result?.r2Present === true,
     secretsPresent: result?.secretsPresent === true,
     migrationsCurrent: result?.migrationsCurrent === true,
     migrationsApplied: result?.migrationsApplied === true,
@@ -459,7 +488,17 @@ function sanitizeMetaResourceSummary(result, environment, commit) {
       : null,
     capiEnabled: typeof result?.capiEnabled === 'boolean' ? result.capiEnabled : null,
     initialMetaRollout: result?.initialMetaRollout === true,
+    phase: result?.phase === 'bootstrap' ? 'bootstrap' : 'full',
+    datasetQualityContractVersion: Number.isSafeInteger(result?.datasetQualityContractVersion) ? result.datasetQualityContractVersion : null,
+    datasetQualityContractDigest: /^sha256:[0-9a-f]{64}$/.test(String(result?.datasetQualityContractDigest || '')) ? result.datasetQualityContractDigest : '',
+    datasetQualityCollectorCurrent: result?.datasetQualityCollectorCurrent === true,
+    environmentIsolation: sanitizeEnvironmentIsolation(result?.environmentIsolation),
   }
+}
+
+function sanitizeEnvironmentIsolation(value) {
+  const fields = ['d1', 'r2', 'queue', 'dlq', 'pixel', 'token', 'testEventCode', 'dataKey']
+  return Object.fromEntries(fields.map(field => [field, value?.[field] === true]))
 }
 
 export async function runLocalRuntimeReleaseVerification(options = {}) {

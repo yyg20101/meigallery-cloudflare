@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
+import { mkdir, unlink, writeFile } from 'node:fs/promises'
 import { isIP } from 'node:net'
+import path from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { pathToFileURL } from 'node:url'
 import {
@@ -16,6 +18,8 @@ const EVIDENCE_TTL_MS = 24 * 60 * 60 * 1000
 const VERIFY_TIMEOUT_MS = 20_000
 const REQUIRED_VERIFY_URLS = ['VERIFY_DEV_API_URL', 'VERIFY_DEV_WEB_URL']
 const OPAQUE_EVENT_ID_PATTERN = /^[A-Za-z0-9._:-]{16,160}$/
+const SESSION_TTL_MS = 60 * 60 * 1000
+const SESSION_DIR = new URL('../reports/meta-live-verification/', import.meta.url)
 
 export function buildMetaLiveEvidence(input) {
   const pixelId = String(input?.pixelId || '').trim()
@@ -91,39 +95,110 @@ export async function recordMetaLiveVerification(options = {}) {
   const getCommit = options.getCommit || readCurrentCommit
   const writeEvidence = options.writeEvidence || writeMetaLiveEvidence
   const readReadiness = options.readReadiness || readDevMetaLiveReadiness
+  const createSession = options.createSession || createMetaLiveRecordingSession
+  const destroySession = options.destroySession || destroyMetaLiveRecordingSession
   const commit = await getCommit(options)
   await verifyDevReleaseIdentity({ ...options, commit })
   const readiness = await readReadiness({ ...options, commit })
   assertReadinessCanRecord(readiness, commit)
-  const eventResults = []
+  const session = await createSession({ ...options, commit, environment: 'dev' })
 
-  for (const eventName of META_LIVE_EVENTS) {
-    const browserEventId = await ask(`${eventName} Browser event ID：`, { hidden: true })
-    const serverEventId = await ask(`${eventName} Server event ID：`, { hidden: true })
-    const browserSeen = isYes(await ask(`${eventName} 已在 Events Manager 确认 Browser event？(yes/no)：`, { hidden: false }))
-    const serverSeen = isYes(await ask(`${eventName} 已在 Events Manager 确认 Server event？(yes/no)：`, { hidden: false }))
-    const deduplicated = isYes(await ask(`${eventName} 已在 Events Manager 确认去重？(yes/no)：`, { hidden: false }))
-    const eventsReceived = isYes(await ask(`${eventName} 已确认 Meta events_received=1？(yes/no)：`, { hidden: false })) ? 1 : 0
-    eventResults.push({ eventName, browserEventId, serverEventId, browserSeen, serverSeen, deduplicated, eventsReceived })
+  try {
+    assertRecordingSession(session, commit, options.now)
+    const eventResults = []
+    for (const eventName of META_LIVE_EVENTS) {
+      const browserEventId = await ask(`${eventName} Browser event ID：`, { hidden: true })
+      const serverEventId = await ask(`${eventName} Server event ID：`, { hidden: true })
+      if (browserEventId !== session.eventIds[eventName] || serverEventId !== session.eventIds[eventName]) {
+        throw new Error(`${eventName} 不是本次录入会话的预期 event ID`)
+      }
+      const browserSeen = isYes(await ask(`${eventName} 已在 Events Manager 确认 Browser event？(yes/no)：`, { hidden: false }))
+      const serverSeen = isYes(await ask(`${eventName} 已在 Events Manager 确认 Server event？(yes/no)：`, { hidden: false }))
+      const deduplicated = isYes(await ask(`${eventName} 已在 Events Manager 确认去重？(yes/no)：`, { hidden: false }))
+      const eventsReceived = isYes(await ask(`${eventName} 已确认 Meta events_received=1？(yes/no)：`, { hidden: false })) ? 1 : 0
+      eventResults.push({ eventName, browserEventId, serverEventId, browserSeen, serverSeen, deduplicated, eventsReceived })
+    }
+
+    const leadAbsent = isYes(await ask('已确认 Test Events 中没有 Lead？(yes/no)：', { hidden: false }))
+    const startTrialAbsent = isYes(await ask('已确认 Test Events 中没有 StartTrial？(yes/no)：', { hidden: false }))
+    const evidence = buildMetaLiveEvidence({
+      ...readiness,
+      eventResults,
+      forbiddenEventsAbsent: { Lead: leadAbsent, StartTrial: startTrialAbsent },
+      commit,
+      now: options.now,
+    })
+    const files = await writeEvidence(evidence, {
+      ...options,
+      expectedCommit: commit,
+      expectedEnvironment: 'dev',
+      now: options.now,
+    })
+    output(`Meta live evidence 已写入：${files.evidenceFile}`)
+    return { evidence, ...files }
+  } finally {
+    await destroySession(session, options)
   }
+}
 
-  const leadAbsent = isYes(await ask('已确认 Test Events 中没有 Lead？(yes/no)：', { hidden: false }))
-  const startTrialAbsent = isYes(await ask('已确认 Test Events 中没有 StartTrial？(yes/no)：', { hidden: false }))
-  const evidence = buildMetaLiveEvidence({
-    ...readiness,
-    eventResults,
-    forbiddenEventsAbsent: { Lead: leadAbsent, StartTrial: startTrialAbsent },
-    commit,
-    now: options.now,
-  })
-  const files = await writeEvidence(evidence, {
-    ...options,
-    expectedCommit: commit,
-    expectedEnvironment: 'dev',
-    now: options.now,
-  })
-  output(`Meta live evidence 已写入：${files.evidenceFile}`)
-  return { evidence, ...files }
+export async function createMetaLiveRecordingSession(options = {}) {
+  const commit = String(options.commit || '').trim().toLowerCase()
+  const environment = String(options.environment || '')
+  const createdAt = new Date(options.now ?? Date.now())
+  if (!/^[0-9a-f]{40}$/.test(commit) || environment !== 'dev' || Number.isNaN(createdAt.getTime())) {
+    throw new Error('无法创建 Meta live 录入会话')
+  }
+  const challengeId = `challenge_${randomBytes(16).toString('hex')}`
+  const nonce = randomBytes(32).toString('hex')
+  const eventIds = Object.fromEntries(META_LIVE_EVENTS.map(eventName => [
+    eventName,
+    `meta_verify_${eventName.toLowerCase()}_${randomBytes(16).toString('hex')}`,
+  ]))
+  const session = {
+    challengeId,
+    nonce,
+    commitSha: commit,
+    environment,
+    createdAt: createdAt.toISOString(),
+    expiresAt: new Date(createdAt.getTime() + SESSION_TTL_MS).toISOString(),
+    eventIds,
+  }
+  const reportDir = options.reportDir instanceof URL ? options.reportDir : options.reportDir || SESSION_DIR
+  const directory = reportDir instanceof URL ? reportDir : path.resolve(reportDir)
+  await mkdir(directory, { recursive: true })
+  const sessionFile = path.join(directory instanceof URL ? directory.pathname : directory, `.session-${challengeId}.json`)
+  await writeFile(sessionFile, JSON.stringify(session), { encoding: 'utf8', mode: 0o600, flag: 'wx' })
+  return { ...session, sessionFile }
+}
+
+export async function destroyMetaLiveRecordingSession(session) {
+  if (typeof session?.sessionFile === 'string' && session.sessionFile) {
+    await unlink(session.sessionFile).catch(error => {
+      if (error?.code !== 'ENOENT') throw error
+    })
+  }
+}
+
+function assertRecordingSession(session, commit, nowValue) {
+  const now = new Date(nowValue ?? Date.now()).getTime()
+  const createdAt = new Date(session?.createdAt).getTime()
+  const expiresAt = new Date(session?.expiresAt).getTime()
+  if (!/^challenge_[0-9a-f]{16,64}$/.test(String(session?.challengeId || ''))
+    || !/^[0-9a-f]{16,128}$/.test(String(session?.nonce || ''))
+    || session?.commitSha !== commit.toLowerCase()
+    || session?.environment !== 'dev'
+    || !Number.isFinite(createdAt)
+    || !Number.isFinite(expiresAt)
+    || expiresAt - createdAt !== SESSION_TTL_MS
+    || now < createdAt
+    || now >= expiresAt) {
+    throw new Error('Meta live 录入会话无效或已过期')
+  }
+  for (const eventName of META_LIVE_EVENTS) {
+    if (!isOpaqueSyntheticEventId(String(session?.eventIds?.[eventName] || ''))) {
+      throw new Error('Meta live 录入会话缺少预期 event ID')
+    }
+  }
 }
 
 export async function readDevMetaLiveReadiness(options = {}) {
@@ -246,6 +321,11 @@ function isOpaqueSyntheticEventId(value) {
 }
 
 function assertReadinessCanRecord(readiness, commit) {
+  if (!Number.isSafeInteger(readiness?.datasetQualityContractVersion)
+    || readiness.datasetQualityContractVersion < 1
+    || readiness?.datasetQualityCollectorCurrent !== true) {
+    throw new Error('dev Dataset Quality contract/collector readiness 未通过')
+  }
   buildMetaLiveEvidence({
     ...readiness,
     commit,

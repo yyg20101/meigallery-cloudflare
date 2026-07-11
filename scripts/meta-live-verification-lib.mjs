@@ -73,10 +73,6 @@ export function assertMetaLiveEvidenceCanGateProduction(evidence, options = {}) 
   validateEvents(evidence.events, reasons)
   validateEnhancedMatch(evidence.enhancedMatch, reasons)
   validateForbiddenEvents(evidence.forbiddenEventsAbsent, reasons)
-  if (!Number.isSafeInteger(evidence.datasetQualityContractVersion) || evidence.datasetQualityContractVersion < 1) {
-    reasons.push('Dataset Quality contract 尚未完成')
-  }
-  if (evidence.datasetQualityCollectorCurrent !== true) reasons.push('Dataset Quality collector 不是当前状态')
   assertNoSensitiveContent(evidence, reasons)
 
   if (reasons.length > 0) throw new Error(reasons.join('；'))

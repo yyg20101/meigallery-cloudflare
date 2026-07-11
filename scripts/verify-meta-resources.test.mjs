@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { describe, it } from 'node:test'
 import { runMetaResourceVerification } from './verify-meta-resources.mjs'
 
@@ -175,6 +176,7 @@ describe('Meta Cloudflare 资源检查', () => {
       commit: COMMIT,
       initialMetaRollout: true,
       reportOnly: true,
+      resourceIdentities: completeResourceIdentities(),
       runCommand: createPassingRunner([], { capiEnabled: false }),
     })
     assert.equal(passed.status, 'passed')
@@ -194,9 +196,92 @@ describe('Meta Cloudflare 资源检查', () => {
         commit: COMMIT,
         initialMetaRollout: true,
         reportOnly: true,
+        resourceIdentities: completeResourceIdentities(),
         runCommand: createPassingRunner([], { capiEnabled: false, ...overrides }),
       })
       assert.equal(report.status, 'failed', JSON.stringify(overrides))
+    }
+  })
+
+  it('production bootstrap 不要求 connection，但要求 R2、全部 bootstrap secret 与完整环境隔离证明', async () => {
+    const calls = []
+    const passed = await runMetaResourceVerification({
+      environment: 'production',
+      commit: COMMIT,
+      phase: 'bootstrap',
+      reportOnly: true,
+      resourceIdentities: completeResourceIdentities(),
+      runCommand: createPassingRunner(calls, {
+        capiEnabled: false,
+        connectionVerified: false,
+      }),
+    })
+
+    assert.equal(passed.status, 'passed')
+    assert.equal(passed.phase, 'bootstrap')
+    assert.equal(passed.connectionVerified, false)
+    assert.equal(calls.some(call => call.options.name.endsWith('r2-bucket')), true)
+
+    for (const overrides of [
+      { secretNames: ['META_CAPI_ACCESS_TOKEN', 'META_CAPI_DATA_KEY_CURRENT'] },
+      { resourceIdentities: completeResourceIdentities({ production: { testEventCode: 'sha256:' + '3'.repeat(64) } }) },
+    ]) {
+      const report = await runMetaResourceVerification({
+        environment: 'production',
+        commit: COMMIT,
+        phase: 'bootstrap',
+        reportOnly: true,
+        resourceIdentities: overrides.resourceIdentities ?? completeResourceIdentities(),
+        runCommand: createPassingRunner([], {
+          capiEnabled: false,
+          connectionVerified: false,
+          ...(overrides.secretNames ? { secretNames: overrides.secretNames } : {}),
+        }),
+      })
+      assert.equal(report.status, 'failed')
+    }
+  })
+
+  it('full resources 仍要求当前 commit connection', async () => {
+    const report = await runMetaResourceVerification({
+      environment: 'production',
+      commit: COMMIT,
+      phase: 'full',
+      reportOnly: true,
+      resourceIdentities: completeResourceIdentities(),
+      runCommand: createPassingRunner([], { capiEnabled: false, connectionVerified: false }),
+    })
+
+    assert.equal(report.status, 'failed')
+  })
+
+  it('dev Dataset Quality 从真实 resource query 读取 contract version 与 freshness，不读取 Evidence 布尔', async () => {
+    const digest = `sha256:${'9'.repeat(64)}`
+    const passing = await runMetaResourceVerification({
+      environment: 'dev',
+      commit: COMMIT,
+      reportOnly: true,
+      expectedDatasetQualityContract: { version: 3, digest },
+      runCommand: createPassingRunner([], { capiEnabled: true, datasetQualityContractVersion: 3 }),
+    })
+    assert.equal(passing.status, 'passed')
+    assert.equal(passing.datasetQualityContractVersion, 3)
+    assert.equal(passing.datasetQualityContractDigest, digest)
+    assert.equal(passing.datasetQualityCollectorCurrent, true)
+
+    for (const overrides of [
+      { datasetQualityContractVersion: 2 },
+      { datasetQualityCollectorCurrent: false },
+      { datasetQualityEventCount: 1 },
+    ]) {
+      const report = await runMetaResourceVerification({
+        environment: 'dev',
+        commit: COMMIT,
+        reportOnly: true,
+        expectedDatasetQualityContract: { version: 3, digest },
+        runCommand: createPassingRunner([], { capiEnabled: true, ...overrides }),
+      })
+      assert.equal(report.status, 'failed')
     }
   })
 
@@ -206,11 +291,12 @@ describe('Meta Cloudflare 资源检查', () => {
       commit: COMMIT,
       initialMetaRollout: true,
       reportOnly: true,
+      resourceIdentities: completeResourceIdentities(),
       runCommand: createPassingRunner([], {
         capiEnabled: false,
         previousKeyActiveCount: 2,
         activeKeyCount: 2,
-        secretNames: ['META_CAPI_ACCESS_TOKEN', 'META_CAPI_DATA_KEY_CURRENT', 'META_CAPI_DATA_KEY_PREVIOUS'],
+        secretNames: ['META_CAPI_ACCESS_TOKEN', 'META_CAPI_TEST_EVENT_CODE', 'META_CAPI_DATA_KEY_CURRENT', 'META_CAPI_DATA_KEY_PREVIOUS'],
       }),
     })
     assert.equal(explained.status, 'passed')
@@ -400,7 +486,9 @@ function createPassingRunner(calls, options = {}) {
     const text = args.join(' ')
     let stdout = ''
     let status = 'passed'
-    if (text.includes('queues info')) {
+    if (runOptions.name.endsWith('r2-bucket')) {
+      stdout = JSON.stringify({ name: text.includes('meigallery-media-dev') ? 'meigallery-media-dev' : 'meigallery-media' })
+    } else if (text.includes('queues info')) {
       stdout = `queue ok ${RESOURCE_ID}`
       if (options.failQueueInfo) status = 'failed'
     } else if (text.includes('consumer worker list')) {
@@ -461,8 +549,17 @@ function createPassingRunner(calls, options = {}) {
           '0040_meta_capi_circuit_indexes.sql',
         ].filter(name => name !== options.missingAppliedMigration)
         results = names.map(name => ({ name }))
-      } else if (runOptions.name.endsWith('meta-connection')) {
+      } else if (runOptions.name.endsWith('dataset-quality')) {
         results = [{
+          contract_version: options.datasetQualityContractVersion ?? 1,
+          event_count: options.datasetQualityEventCount ?? 2,
+          all_success: 1,
+          collector_current: options.datasetQualityCollectorCurrent === false ? 0 : 1,
+          oldest_collected_at: '2026-07-11T00:00:00.000Z',
+          newest_collected_at: '2026-07-11T00:05:00.000Z',
+        }]
+      } else if (runOptions.name.endsWith('meta-connection')) {
+        results = options.connectionVerified === false ? [] : [{
           environment: text.includes('--env dev') ? 'dev' : 'production',
           pixel_id: options.connectionPixelDrift ? '9999999999' : '1234567890',
           graph_api_version: 'v25.0',
@@ -515,4 +612,26 @@ function findCall(calls, ...parts) {
 function hasAdjacent(args, key, value) {
   const index = args.indexOf(key)
   return index >= 0 && args[index + 1] === value
+}
+
+function completeResourceIdentities(overrides = {}) {
+  const currentPixel = `sha256:${createHash('sha256').update('1234567890').digest('hex')}`
+  return {
+    dev: {
+      d1: 'd1-dev', r2: 'r2-dev', queue: 'queue-dev', dlq: 'dlq-dev',
+      pixel: `sha256:${'1'.repeat(64)}`,
+      token: `sha256:${'2'.repeat(64)}`,
+      testEventCode: `sha256:${'3'.repeat(64)}`,
+      dataKey: `sha256:${'4'.repeat(64)}`,
+      ...(overrides.dev || {}),
+    },
+    production: {
+      d1: 'd1-production', r2: 'r2-production', queue: 'queue-production', dlq: 'dlq-production',
+      pixel: currentPixel,
+      token: `sha256:${'6'.repeat(64)}`,
+      testEventCode: `sha256:${'7'.repeat(64)}`,
+      dataKey: `sha256:${'8'.repeat(64)}`,
+      ...(overrides.production || {}),
+    },
+  }
 }

@@ -526,10 +526,6 @@ function validateMetaReleaseSummary(report, reasons, now) {
     }
     if (live.enhancedMatchVerified !== true) reasons.push('Meta live evidence 增强匹配未通过')
     if (live.forbiddenEventsAbsent !== true) reasons.push('Meta live evidence 禁止事件缺席未确认')
-    if (!Number.isSafeInteger(live.datasetQualityContractVersion) || live.datasetQualityContractVersion < 1) {
-      reasons.push('Dataset Quality contract 未完成')
-    }
-    if (live.datasetQualityCollectorCurrent !== true) reasons.push('Dataset Quality collector 不是当前状态')
     const verifiedAt = Date.parse(live.verifiedAt || '')
     const expiresAt = Date.parse(live.expiresAt || '')
     if (Number.isNaN(verifiedAt) || Number.isNaN(expiresAt)) {
@@ -540,6 +536,13 @@ function validateMetaReleaseSummary(report, reasons, now) {
     }
   }
 
+  const contract = report.datasetQualityContract
+  if (!contract || contract.status !== 'passed'
+    || !Number.isSafeInteger(contract.version) || contract.version < 1
+    || !/^sha256:[0-9a-f]{64}$/.test(String(contract.digest || ''))) {
+    reasons.push('Dataset Quality tracked approved contract/digest 未通过')
+  }
+
   for (const environment of ['dev', 'production']) {
     const resource = report.metaResources?.[environment]
     if (!resource || typeof resource !== 'object' || resource.status !== 'passed' || resource.environment !== environment) {
@@ -547,8 +550,25 @@ function validateMetaReleaseSummary(report, reasons, now) {
     } else if (resource.commit !== report.git?.commit) {
       reasons.push(`Meta ${environment} 资源检查 commit 与报告 commit 不一致`)
     } else {
-      if (resource.connectionVerified !== true) reasons.push(`Meta ${environment} connection 未验证`)
+      const bootstrapProduction = environment === 'production'
+        && report.initialMetaRollout === true
+        && resource.phase === 'bootstrap'
+      if (!bootstrapProduction && resource.connectionVerified !== true) reasons.push(`Meta ${environment} connection 未验证`)
       if (resource.openCriticalIncidentCount !== 0) reasons.push(`Meta ${environment} 存在 open critical incident`)
+      if (bootstrapProduction) {
+        const isolation = resource.environmentIsolation
+        if (resource.r2Present !== true || resource.secretsPresent !== true
+          || !isolation || !['d1', 'r2', 'queue', 'dlq', 'pixel', 'token', 'testEventCode', 'dataKey'].every(key => isolation[key] === true)) {
+          reasons.push('Meta production bootstrap 资源或环境隔离证明不完整')
+        }
+      }
+      if (environment === 'dev') {
+        if (resource.datasetQualityContractVersion !== contract?.version
+          || resource.datasetQualityContractDigest !== contract?.digest
+          || resource.datasetQualityCollectorCurrent !== true) {
+          reasons.push('dev Dataset Quality collector/contract digest 不是当前状态')
+        }
+      }
     }
   }
 

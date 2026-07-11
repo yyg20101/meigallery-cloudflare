@@ -1176,7 +1176,7 @@ async function readMetaRolloutSnapshotWithUsage(
       ? readConnectionVerifiedWithUsage(c)
       : Promise.resolve({ value: knownConnectionVerified, usage: EMPTY_USAGE }),
     readOpenCriticalIncidentWithUsage(c.env.DB, environment),
-    readCurrentDevMetaLiveEvidenceWithUsage(c.env.DB, releaseCommit),
+    readCurrentMetaPromotionEvidenceWithUsage(c.env.DB, environment, releaseCommit),
     readMetaRolloutMetricsWithUsage(c.env.DB, targetPercentage),
   ])
   const connectionVerified = connectionResult.value
@@ -1270,9 +1270,26 @@ async function readOpenCriticalIncidentWithUsage(
   }, usage: result.usage }
 }
 
-async function readCurrentDevMetaLiveEvidenceWithUsage(db: D1Database, releaseCommit: string) {
+async function readCurrentMetaPromotionEvidenceWithUsage(
+  db: D1Database,
+  environment: MetaRolloutSnapshot['environment'],
+  releaseCommit: string,
+) {
   if (!releaseCommit) return { value: false, usage: EMPTY_USAGE }
   try {
+    if (environment === 'production') {
+      const result = await queryFirstWithUsage<{ revision: string }>(db.prepare(`
+        SELECT revision
+        FROM meta_connection_verifications
+        WHERE environment = ?
+          AND verified_commit = ?
+          AND invalidated_at IS NULL
+          AND length(revision) = 32
+        LIMIT 1
+      `).bind('production', releaseCommit))
+      return { value: Boolean(result.row), usage: result.usage }
+    }
+    if (environment !== 'dev') return { value: false, usage: EMPTY_USAGE }
     const result = await queryFirstWithUsage<{ id: string }>(db.prepare(`
       SELECT id
       FROM analytics_release_verifications
@@ -1506,16 +1523,25 @@ function formatPercent(rate: number) {
 async function auditMetaTestEvent(
   c: AdminAttributionContext,
   adminId: number,
-  deliveryId: string,
+  _deliveryId: string,
   outcome: Record<string, unknown>,
 ) {
   await writeAuditLog(c.env.DB, {
     adminId,
     action: 'attribution.meta_test_event',
     targetType: 'attribution',
-    targetId: deliveryId,
-    afterValue: outcome,
+    targetId: 'meta_connection',
+    afterValue: sanitizeMetaTestEventAuditOutcome(outcome),
   })
+}
+
+function sanitizeMetaTestEventAuditOutcome(outcome: Record<string, unknown>) {
+  return {
+    code: String(outcome.code || ''),
+    success: outcome.success === true,
+    environment: auditEnvironment(outcome.environment),
+    ...(outcome.eventsReceived === 1 ? { eventsReceived: 1 } : {}),
+  }
 }
 
 function auditEnvironment(value: unknown) {

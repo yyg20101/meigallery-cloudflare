@@ -478,40 +478,23 @@ describe('发布验证 CLI', () => {
       'quick',
       'local-runtime',
       'dev-rehearsal',
-      'meta-resources-dev',
-      'meta-resources-production',
-      'meta_live-dev',
-      'meta_live-production',
     ])
     assert.equal(report.mode, 'release')
-    assert.equal(report.status, 'passed')
+    assert.equal(report.status, 'failed', '当前仓库缺少 tracked approved Dataset Quality contract，不得被 fixture/stub 标记为 passed')
     assert.deepEqual(report.artifacts, ['/tmp/quick.json', '/tmp/local-runtime.json', '/tmp/dev-rehearsal.json'])
     assert.deepEqual(report.steps.map(step => step.name), [
       'quick',
       'local-runtime',
       'dev-rehearsal',
-      'meta-resources-dev',
-      'meta-live-evidence',
-      'meta-dataset-quality',
-      'meta-open-incident-gate',
-      'meta-resources-production',
-      'meta-initial-rollout-zero',
-      'meta-live-store-dev',
-      'meta-live-store-production',
+      'meta-dataset-quality-contract',
     ])
     assert.deepEqual(report.releaseSubModes.map(item => item.mode), ['quick', 'local-runtime', 'dev-rehearsal'])
     assert.deepEqual(report.releaseSubModes[0].passedStepNames, ['scripts-test'])
     assert.match(report.steps[0].summary, /scripts-test/)
-    assert.equal(report.metaLiveVerification.commit, RELEASE_COMMIT)
-    assert.deepEqual(report.metaLiveVerification.events, ['Contact', 'CompleteRegistration'])
-    assert.match(report.steps.find(step => step.name === 'meta-live-evidence')?.summary || '', /同 commit 两事件/)
-    assert.doesNotMatch(report.steps.find(step => step.name === 'meta-live-evidence')?.summary || '', /三事件/)
-    assert.equal(report.metaResources.dev.status, 'passed')
-    assert.equal(report.metaResources.production.status, 'passed')
-    assert.equal(report.metaResources.dev.migrationsApplied, true)
-    assert.equal(report.metaResources.dev.connectionVerified, true)
-    assert.equal(report.metaResources.dev.trackingMode, 'test')
-    assert.equal(report.metaResources.production.trackingMode, 'disabled')
+    assert.equal(report.datasetQualityContract.status, 'failed')
+    assert.match(report.steps.find(step => step.name === 'meta-dataset-quality-contract')?.summary || '', /artifact/)
+    assert.equal(report.metaResources.dev.status, 'skipped')
+    assert.equal(report.metaResources.production.status, 'skipped')
   })
 
   it('首次上线允许 dev CAPI 开启但要求 production CAPI 关闭', async () => {
@@ -563,16 +546,10 @@ describe('发布验证 CLI', () => {
       writeReport: async () => ({ reportFile: '/tmp/release.json', latestFile: '/tmp/latest.json' }),
     })
 
-    assert.equal(report.status, 'passed')
+    assert.equal(report.status, 'failed')
     assert.equal(report.initialMetaRollout, true)
-    assert.deepEqual(resourceCalls, [
-      { environment: 'dev', initialMetaRollout: false },
-      { environment: 'production', initialMetaRollout: true },
-    ])
-    assert.equal(report.metaResources.dev.capiEnabled, true)
-    assert.equal(report.metaResources.dev.initialMetaRollout, false)
-    assert.equal(report.metaResources.production.capiEnabled, false)
-    assert.equal(report.metaResources.production.initialMetaRollout, true)
+    assert.deepEqual(resourceCalls, [])
+    assert.equal(report.datasetQualityContract.status, 'failed')
   })
 
   it('首次上线 production CAPI 开启时 release 失败', async () => {
@@ -619,7 +596,7 @@ describe('发布验证 CLI', () => {
     })
 
     assert.equal(report.status, 'failed')
-    assert.equal(report.metaResources.production.capiEnabled, true)
+    assert.equal(report.metaResources.production.capiEnabled, null)
   })
 
   it('dev 分支不能生成 passed release 报告', async () => {
@@ -665,7 +642,7 @@ describe('发布验证 CLI', () => {
     })
 
     assert.equal(report.status, 'failed')
-    assert.deepEqual(order, ['dev'])
+    assert.deepEqual(order, [])
   })
 
   it('META_INITIAL_ROLLOUT 只接受精确值 1', async () => {

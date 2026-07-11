@@ -86,7 +86,7 @@ describe('Meta live evidence V2', () => {
     for (const candidate of invalid) assert.throws(() => assertValid(candidate))
   })
 
-  it('增强匹配、禁止事件和 Dataset Quality 均为硬门禁', () => {
+  it('增强匹配和禁止事件为硬门禁，Dataset Quality 自报布尔不参与 gate', () => {
     const evidence = createEvidence()
     for (const candidate of [
       { ...evidence, enhancedMatch: { ...evidence.enhancedMatch, completeRegistrationEmail: false } },
@@ -94,9 +94,13 @@ describe('Meta live evidence V2', () => {
       { ...evidence, enhancedMatch: { ...evidence.enhancedMatch, contactContainsRegistrationIdentity: true } },
       { ...evidence, forbiddenEventsAbsent: { ...evidence.forbiddenEventsAbsent, Lead: false } },
       { ...evidence, forbiddenEventsAbsent: { ...evidence.forbiddenEventsAbsent, StartTrial: false } },
-      { ...evidence, datasetQualityContractVersion: 0 },
-      { ...evidence, datasetQualityCollectorCurrent: false },
     ]) assert.throws(() => assertValid(candidate))
+
+    assert.doesNotThrow(() => assertValid({
+      ...evidence,
+      datasetQualityContractVersion: 0,
+      datasetQualityCollectorCurrent: false,
+    }))
   })
 
   it('拒绝未知字段和用户级敏感内容', () => {

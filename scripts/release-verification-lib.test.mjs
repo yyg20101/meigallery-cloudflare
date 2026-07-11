@@ -13,6 +13,7 @@ import {
 } from './release-verification-lib.mjs'
 
 const RELEASE_COMMIT = 'abcdef1234567890abcdef1234567890abcdef12'
+const CONTRACT_DIGEST = `sha256:${'9'.repeat(64)}`
 
 function createValidReleaseReport() {
   return {
@@ -80,6 +81,12 @@ function createValidReleaseReport() {
       },
     ],
     initialMetaRollout: true,
+    datasetQualityContract: {
+      status: 'passed',
+      path: 'docs/superpowers/specs/2026-07-10-meta-dataset-quality-contract.md',
+      version: 1,
+      digest: CONTRACT_DIGEST,
+    },
     metaLiveVerification: {
       status: 'passed',
       commit: RELEASE_COMMIT,
@@ -101,6 +108,7 @@ function createValidReleaseReport() {
         connectionVerified: true,
         openCriticalIncidentCount: 0,
         datasetQualityContractVersion: 1,
+        datasetQualityContractDigest: CONTRACT_DIGEST,
         datasetQualityCollectorCurrent: true,
       },
       production: {
@@ -109,6 +117,13 @@ function createValidReleaseReport() {
         commit: RELEASE_COMMIT,
         capiEnabled: false,
         connectionVerified: true,
+        phase: 'bootstrap',
+        r2Present: true,
+        secretsPresent: true,
+        environmentIsolation: {
+          d1: true, r2: true, queue: true, dlq: true,
+          pixel: true, token: true, testEventCode: true, dataKey: true,
+        },
         openCriticalIncidentCount: 0,
         targetRolloutPercentage: 0,
         effectiveRolloutPercentage: 0,
@@ -122,7 +137,7 @@ function createValidReleaseReport() {
 }
 
 describe('发布验证基础库', () => {
-  it('release gate 强制 current commit、dev Evidence V2 quality、connection/incident 和 production rollout 0 同链', () => {
+  it('release gate 强制 current commit、tracked contract/dev collector、connection/incident 和 production rollout 0 同链', () => {
     const valid = createValidReleaseReport()
     assert.doesNotThrow(() => assertReportCanGateProduction(valid, {
       currentBranch: 'main',
@@ -133,8 +148,9 @@ describe('发布验证基础库', () => {
     const candidates = [
       { ...valid, git: { ...valid.git, commit: 'short' } },
       { ...valid, metaLiveVerification: { ...valid.metaLiveVerification, environment: 'production' } },
-      { ...valid, metaLiveVerification: { ...valid.metaLiveVerification, datasetQualityCollectorCurrent: false } },
-      { ...valid, metaLiveVerification: { ...valid.metaLiveVerification, datasetQualityContractVersion: 0 } },
+      { ...valid, datasetQualityContract: { ...valid.datasetQualityContract, status: 'failed' } },
+      { ...valid, metaResources: { ...valid.metaResources, dev: { ...valid.metaResources.dev, datasetQualityCollectorCurrent: false } } },
+      { ...valid, metaResources: { ...valid.metaResources, dev: { ...valid.metaResources.dev, datasetQualityContractDigest: `sha256:${'8'.repeat(64)}` } } },
       { ...valid, metaResources: { ...valid.metaResources, dev: { ...valid.metaResources.dev, connectionVerified: false } } },
       { ...valid, metaResources: { ...valid.metaResources, production: { ...valid.metaResources.production, openCriticalIncidentCount: 1 } } },
       { ...valid, metaResources: { ...valid.metaResources, production: { ...valid.metaResources.production, targetRolloutPercentage: 10 } } },

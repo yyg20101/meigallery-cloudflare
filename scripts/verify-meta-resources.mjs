@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 import { pathToFileURL } from 'node:url'
+import { lstat, readFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import { recordReleaseVerificationSummary } from './release-verification-store.mjs'
 import { runCommand } from './release-verification-lib.mjs'
 
@@ -8,18 +10,22 @@ const RESOURCE_CONFIG = {
   production: {
     envArgs: ['--env', ''],
     database: 'meigallery-db',
+    d1Id: '714929cb-003b-4cb1-bd9f-545fa1895e8c',
     worker: 'meigallery-api',
     mainQueue: 'meigallery-meta-capi',
     dlq: 'meigallery-meta-capi-dlq',
+    r2: 'meigallery-media',
     mainConsumer: { batchSize: 10, maxWaitTimeMs: 30_000, maxRetries: 5, retryDelay: 60 },
     dlqConsumer: { batchSize: 10, maxWaitTimeMs: 5_000 },
   },
   dev: {
     envArgs: ['--env', 'dev'],
     database: 'meigallery-db-dev',
+    d1Id: '9ff61317-0c62-491b-8b29-e0d119f306c9',
     worker: 'meigallery-api-dev',
     mainQueue: 'meigallery-meta-capi-dev',
     dlq: 'meigallery-meta-capi-dev-dlq',
+    r2: 'meigallery-media-dev',
     mainConsumer: { batchSize: 5, maxWaitTimeMs: 30_000, maxRetries: 5, retryDelay: 60 },
     dlqConsumer: { batchSize: 5, maxWaitTimeMs: 5_000 },
   },
@@ -56,6 +62,25 @@ const META_OPERATIONS_SQL = `
     (SELECT COUNT(*) FROM active_keys) AS active_key_count
   FROM rollout CROSS JOIN incidents
 `.replace(/\s+/g, ' ').trim()
+const DATASET_QUALITY_SQL = `
+  WITH latest AS (
+    SELECT event_name, contract_version, collection_status, collected_at,
+      ROW_NUMBER() OVER (PARTITION BY event_name ORDER BY collected_at DESC, id DESC) AS row_rank
+    FROM meta_dataset_quality_snapshots
+    WHERE environment = 'dev'
+  )
+  SELECT contract_version,
+    COUNT(*) AS event_count,
+    MIN(CASE WHEN collection_status = 'success' THEN 1 ELSE 0 END) AS all_success,
+    MIN(collected_at) AS oldest_collected_at,
+    MAX(collected_at) AS newest_collected_at,
+    MIN(CASE WHEN datetime(collected_at) > datetime('now', '-24 hours') THEN 1 ELSE 0 END) AS collector_current
+  FROM latest
+  WHERE row_rank = 1
+  GROUP BY contract_version
+  ORDER BY contract_version DESC
+  LIMIT 1
+`.replace(/\s+/g, ' ').trim()
 
 function metaConnectionSql(environment) {
   return `SELECT environment, pixel_id, graph_api_version, verified_commit, verified_at, invalidated_at, invalidation_reason, revision FROM meta_connection_verifications WHERE environment = '${environment}' LIMIT 2`
@@ -66,11 +91,17 @@ export async function runMetaResourceVerification(options = {}) {
   const config = RESOURCE_CONFIG[environment]
   if (!config) throw new Error('--env 只允许 dev 或 production')
   if (options.initialMetaRollout !== undefined && typeof options.initialMetaRollout !== 'boolean') throw new Error('initialMetaRollout 必须为布尔值')
+  const phase = options.phase || (options.initialMetaRollout === true && environment === 'production' ? 'bootstrap' : 'full')
+  if (!['bootstrap', 'full'].includes(phase) || (phase === 'bootstrap' && environment !== 'production')) {
+    throw new Error('phase 只允许 production bootstrap 或 full')
+  }
   const runCommandFn = options.runCommand || runCommand
+  const resourceIdentities = options.resourceIdentities || await readResourceIdentities(options)
   const recordSummary = options.recordSummary || recordReleaseVerificationSummary
   const calls = [
     command('queue-main', ['queues', 'info', config.mainQueue]),
     command('queue-dlq', ['queues', 'info', config.dlq]),
+    command('r2-bucket', ['r2', 'bucket', 'info', config.r2, '--json']),
     command('consumer-main', ['queues', 'consumer', 'worker', 'list', config.mainQueue, '--json']),
     command('consumer-dlq', ['queues', 'consumer', 'worker', 'list', config.dlq, '--json']),
     command('secrets', ['secret', 'list', ...config.envArgs, '--format', 'json']),
@@ -80,6 +111,9 @@ export async function runMetaResourceVerification(options = {}) {
     command('meta-connection', ['d1', 'execute', config.database, ...config.envArgs, '--remote', '--command', metaConnectionSql(environment), '--json']),
     command('meta-operations', ['d1', 'execute', config.database, ...config.envArgs, '--remote', '--command', META_OPERATIONS_SQL, '--json']),
   ]
+  if (environment === 'dev' && options.expectedDatasetQualityContract) {
+    calls.push(command('dataset-quality', ['d1', 'execute', config.database, ...config.envArgs, '--remote', '--command', DATASET_QUALITY_SQL, '--json']))
+  }
   const results = []
   for (const definition of calls) {
     results.push(await runCommandFn('corepack', [
@@ -95,6 +129,7 @@ export async function runMetaResourceVerification(options = {}) {
   const commandsPassed = results.every(result => result.status === 'passed')
   const queuesPresent = byName.get('queue-main')?.status === 'passed'
     && byName.get('queue-dlq')?.status === 'passed'
+  const r2Present = byName.get('r2-bucket')?.status === 'passed'
   const mainConsumerPresent = hasExpectedConsumer(byName.get('consumer-main')?.stdout, config.worker, {
     ...config.mainConsumer,
     deadLetterQueue: config.dlq,
@@ -105,7 +140,7 @@ export async function runMetaResourceVerification(options = {}) {
   })
   const settings = parseMetaSettings(byName.get('meta-settings')?.stdout)
   const requiredSecretNames = settings
-    ? [...ALWAYS_REQUIRED_SECRETS, ...(settings.trackingMode === 'test' ? ['META_CAPI_TEST_EVENT_CODE'] : [])]
+    ? [...ALWAYS_REQUIRED_SECRETS, ...((phase === 'bootstrap' || settings.trackingMode === 'test') ? ['META_CAPI_TEST_EVENT_CODE'] : [])]
     : []
   const requiredSecretsPresent = settings !== null
     && hasRequiredSecrets(byName.get('secrets')?.stdout, requiredSecretNames)
@@ -126,6 +161,12 @@ export async function runMetaResourceVerification(options = {}) {
     && operations.activeKeyCount <= 2
     && (operations.previousKeyActiveCount === 0 || (operations.activeKeyCount === 2 && previousSecretPresent))
   const incidentReady = operations?.openCriticalIncidentCount === 0
+  const environmentIsolation = deriveEnvironmentIsolation(resourceIdentities, environment, settings?.pixelId)
+  const isolationReady = phase !== 'bootstrap' || Object.values(environmentIsolation).every(Boolean)
+  const datasetQuality = options.expectedDatasetQualityContract
+    ? parseDatasetQuality(byName.get('dataset-quality')?.stdout, options.expectedDatasetQualityContract)
+    : null
+  const datasetQualityReady = !options.expectedDatasetQualityContract || datasetQuality?.collectorCurrent === true
   const initialStateReady = !initialMetaRollout || (
     capiEnabled === false
     && operations?.targetRolloutPercentage === 0
@@ -133,9 +174,11 @@ export async function runMetaResourceVerification(options = {}) {
     && operations?.expiredSecureOutboxCount === 0
     && previousKeyActiveCountExplainable
   )
-  let status = commandsPassed && queuesPresent && mainConsumerPresent && dlqConsumerPresent
-    && requiredSecretsPresent && migrationsCurrent && migrationsApplied && connectionVerified
+  let status = commandsPassed && queuesPresent && r2Present && mainConsumerPresent && dlqConsumerPresent
+    && requiredSecretsPresent && migrationsCurrent && migrationsApplied && (phase === 'bootstrap' || connectionVerified)
     && capiEnabled !== null && trackingMode !== null && operations !== null && incidentReady && initialStateReady
+    && isolationReady
+    && datasetQualityReady
     ? 'passed'
     : 'failed'
   let summaryRecorded = false
@@ -150,13 +193,16 @@ export async function runMetaResourceVerification(options = {}) {
         commit: options.commit,
         verifiedAt: options.now,
         summary: {
+          bootstrapReady: phase === 'bootstrap',
+          migrationsReady: migrationsCurrent && migrationsApplied,
+          d1Ready: settings !== null && operations !== null,
+          r2Ready: r2Present,
           queuesReady: queuesPresent && mainConsumerPresent && dlqConsumerPresent,
           secretsReady: requiredSecretsPresent,
           migrationsCurrent,
           migrationsApplied,
           connectionVerified,
           capiEnabled,
-          trackingMode,
           initialMetaRollout,
           noOpenCriticalIncident: incidentReady,
           initialRolloutZero: !initialMetaRollout || (
@@ -164,6 +210,8 @@ export async function runMetaResourceVerification(options = {}) {
           ),
           secureOutboxReady: !initialMetaRollout || operations?.expiredSecureOutboxCount === 0,
           previousKeyReferencesExplainable: !initialMetaRollout || previousKeyActiveCountExplainable,
+          rolloutZero: operations?.targetRolloutPercentage === 0 && operations?.effectiveRolloutPercentage === 0,
+          environmentIsolation,
         },
         cwd: options.cwd,
         runCommand: options.runCommand,
@@ -176,11 +224,13 @@ export async function runMetaResourceVerification(options = {}) {
   return {
     schemaVersion: 1,
     status,
+    phase,
     environment,
     commit: /^[0-9a-f]{40}$/i.test(String(options.commit || '')) ? String(options.commit) : '',
     database: config.database,
     queues: [config.mainQueue, config.dlq],
     consumersPresent: queuesPresent && mainConsumerPresent && dlqConsumerPresent,
+    r2Present,
     secretsPresent: requiredSecretsPresent,
     requiredSecretsPresent,
     migrationsCurrent,
@@ -196,9 +246,77 @@ export async function runMetaResourceVerification(options = {}) {
     previousKeyActiveCount: operations?.previousKeyActiveCount ?? null,
     activeKeyCount: operations?.activeKeyCount ?? null,
     previousKeyActiveCountExplainable,
+    environmentIsolation,
+    datasetQualityContractVersion: datasetQuality?.contractVersion ?? null,
+    datasetQualityContractDigest: datasetQuality?.contractDigest ?? '',
+    datasetQualityCollectorCurrent: datasetQuality?.collectorCurrent ?? false,
+    datasetQualityOldestCollectedAt: datasetQuality?.oldestCollectedAt ?? '',
+    datasetQualityNewestCollectedAt: datasetQuality?.newestCollectedAt ?? '',
     reportOnly: options.reportOnly === true,
     summaryRecorded,
   }
+}
+
+async function readResourceIdentities(options) {
+  const file = String((options.env || process.env)?.META_RESOURCE_IDENTITIES_FILE || '').trim()
+  if (!file) return null
+  const stats = await lstat(file).catch(() => null)
+  if (!stats?.isFile() || stats.isSymbolicLink() || stats.size <= 0 || stats.size > 64 * 1024) return null
+  try {
+    return JSON.parse(await readFile(file, 'utf8'))
+  }
+  catch {
+    return null
+  }
+}
+
+function parseDatasetQuality(stdout, expectedContract) {
+  try {
+    if (!expectedContract
+      || !Number.isSafeInteger(expectedContract.version)
+      || !/^sha256:[0-9a-f]{64}$/.test(String(expectedContract.digest || ''))) return null
+    const rows = parseD1Rows(parseWranglerJson(stdout))
+    if (rows.length !== 1) return null
+    const row = rows[0]
+    const contractVersion = Number(row.contract_version)
+    const eventCount = Number(row.event_count)
+    const allSuccess = Number(row.all_success)
+    const collectorCurrent = Number(row.collector_current)
+    if (contractVersion !== expectedContract.version || eventCount !== 2 || allSuccess !== 1 || collectorCurrent !== 1) return null
+    if (typeof row.oldest_collected_at !== 'string' || typeof row.newest_collected_at !== 'string') return null
+    return {
+      contractVersion,
+      contractDigest: expectedContract.digest,
+      collectorCurrent: true,
+      oldestCollectedAt: row.oldest_collected_at,
+      newestCollectedAt: row.newest_collected_at,
+    }
+  }
+  catch {
+    return null
+  }
+}
+
+function deriveEnvironmentIsolation(value, environment, pixelId) {
+  const resourceValues = {
+    d1: [RESOURCE_CONFIG.dev.d1Id, RESOURCE_CONFIG.production.d1Id],
+    r2: [RESOURCE_CONFIG.dev.r2, RESOURCE_CONFIG.production.r2],
+    queue: [RESOURCE_CONFIG.dev.mainQueue, RESOURCE_CONFIG.production.mainQueue],
+    dlq: [RESOURCE_CONFIG.dev.dlq, RESOURCE_CONFIG.production.dlq],
+  }
+  const dev = isPlainRecord(value?.dev) ? value.dev : {}
+  const production = isPlainRecord(value?.production) ? value.production : {}
+  const resourceProof = Object.fromEntries(Object.entries(resourceValues).map(([field, [left, right]]) => [field, left !== right]))
+  const fingerprintProof = Object.fromEntries(['pixel', 'token', 'testEventCode', 'dataKey'].map(field => {
+    const left = String(dev[field] || '').trim()
+    const right = String(production[field] || '').trim()
+    const valid = /^sha256:[0-9a-f]{64}$/.test(left) && /^sha256:[0-9a-f]{64}$/.test(right)
+    const currentPixelMatches = field !== 'pixel' || !pixelId || (
+      String(value?.[environment]?.pixel || '') === `sha256:${createHash('sha256').update(String(pixelId)).digest('hex')}`
+    )
+    return [field, valid && left !== right && currentPixelMatches]
+  }))
+  return { ...resourceProof, ...fingerprintProof }
 }
 
 function command(name, args) {

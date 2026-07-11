@@ -37,10 +37,14 @@ function createConnectionDb(options: {
   pixelId?: string
   trackingMode?: 'disabled' | 'test' | 'production'
   beforeInvalidation?: (verifications: Map<string, VerificationRow>) => void
+  productionBootstrapEvidence?: Record<string, unknown> | null
+  productionRollout?: number
+  productionIncidentCount?: number
 } = {}) {
   const settings = new Map<string, string>([
     ['facebook_pixel_id', JSON.stringify(options.pixelId ?? PIXEL_ID)],
     ['meta_tracking_mode', JSON.stringify(options.trackingMode ?? 'test')],
+    ['meta_capi_rollout_percentage', String(options.productionRollout ?? 0)],
   ])
   const verifications = new Map<string, VerificationRow>()
   const calls: DbCall[] = []
@@ -62,6 +66,15 @@ function createConnectionDb(options: {
         },
         async first<T>() {
           calls.push(call)
+          if (sql.includes('FROM analytics_release_verifications')) {
+            return (options.productionBootstrapEvidence === null || options.productionBootstrapEvidence === undefined
+              ? null
+              : {
+                  id: 'rvf_production_meta_resources',
+                  summary: JSON.stringify(options.productionBootstrapEvidence),
+                }) as T | null
+          }
+          if (sql.includes('FROM meta_capi_incidents')) return { incident_count: options.productionIncidentCount ?? 0 } as T
           if (sql.includes('FROM site_settings')) {
             const literalKey = sql.match(/key\s*=\s*'([^']+)'/)?.[1]
             const key = literalKey || String(call.params[0] ?? '')
@@ -469,6 +482,73 @@ describe('MetaConnection', () => {
     expect(db.calls.some(call => call.sql.includes('INSERT INTO meta_connection_verifications'))).toBe(false)
     expect(db.verifications.size).toBe(0)
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('production bootstrap 只信当前 commit 未过期的完整 bootstrap evidence，且绝不查询 production D1 的 dev row', async () => {
+    const db = createConnectionDb({
+      trackingMode: 'production',
+      productionBootstrapEvidence: {
+        bootstrapReady: true,
+        migrationsReady: true,
+        d1Ready: true,
+        r2Ready: true,
+        queuesReady: true,
+        secretsReady: true,
+        rolloutZero: true,
+        noOpenCriticalIncident: true,
+        environmentIsolation: {
+          d1: true,
+          r2: true,
+          queue: true,
+          dlq: true,
+          pixel: true,
+          token: true,
+          testEventCode: true,
+          dataKey: true,
+        },
+      },
+    })
+    const fetchMock = vi.fn(async () => successfulMetaResponse())
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(verifyMetaConnection(connectionEnv(db, { APP_ENV: 'production' }), 1, 'Contact'))
+      .resolves.toMatchObject({ state: 'verified', environment: 'production' })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(db.calls.some(call => call.sql.includes("environment = 'dev'"))).toBe(false)
+  })
+
+  it('production bootstrap 每个资源摘要、rollout 与 incident 门禁都在 fetch 前失败', async () => {
+    const complete = {
+      bootstrapReady: true,
+      migrationsReady: true,
+      d1Ready: true,
+      r2Ready: true,
+      queuesReady: true,
+      secretsReady: true,
+      rolloutZero: true,
+      noOpenCriticalIncident: true,
+      environmentIsolation: {
+        d1: true, r2: true, queue: true, dlq: true,
+        pixel: true, token: true, testEventCode: true, dataKey: true,
+      },
+    }
+    const cases = [
+      { productionBootstrapEvidence: { ...complete, r2Ready: false } },
+      { productionBootstrapEvidence: { ...complete, environmentIsolation: { ...complete.environmentIsolation, dataKey: false } } },
+      { productionBootstrapEvidence: complete, productionRollout: 10 },
+      { productionBootstrapEvidence: complete, productionIncidentCount: 1 },
+    ]
+
+    for (const options of cases) {
+      const db = createConnectionDb({ trackingMode: 'production', ...options })
+      const fetchMock = vi.fn()
+      vi.stubGlobal('fetch', fetchMock)
+      await expect(verifyMetaConnection(connectionEnv(db, { APP_ENV: 'production' }), 1, 'Contact'))
+        .rejects.toMatchObject({ code: 'META_PRODUCTION_TEST_GATE_BLOCKED', httpStatus: 409 })
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(db.verifications.size).toBe(0)
+    }
   })
 
   it('未知环境绝不复用 dev verification', async () => {

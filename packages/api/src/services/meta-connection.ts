@@ -192,7 +192,7 @@ export async function bootstrapMetaConnectionVerification(
 
   const fingerprint = await metaConnectionFingerprint(pixelId, accessToken)
   if (environment === 'production') {
-    await assertProductionBootstrapGate(env.DB, { releaseCommit, pixelId, fingerprint })
+    await assertProductionBootstrapGate(env.DB, releaseCommit)
   }
   const initialVerification = await readVerification(env.DB, environment)
   const deliveryId = createSyntheticDeliveryId()
@@ -242,38 +242,51 @@ export async function bootstrapMetaConnectionVerification(
 
 async function assertProductionBootstrapGate(
   db: D1Database,
-  input: { releaseCommit: string; pixelId: string; fingerprint: string },
+  releaseCommit: string,
 ) {
   try {
-    const [resource, rollout, incident, devConnection] = await Promise.all([
+    const [resource, rollout, incident] = await Promise.all([
       db.prepare(`
-        SELECT id FROM analytics_release_verifications
+        SELECT id, summary FROM analytics_release_verifications
         WHERE environment = 'production' AND verification_type = 'meta_resources'
           AND status = 'passed' AND commit_sha = ?
           AND datetime(expires_at) > datetime('now')
         ORDER BY verified_at DESC LIMIT 1
-      `).bind(input.releaseCommit).first<{ id: string }>(),
+      `).bind(releaseCommit).first<{ id: string; summary: string }>(),
       db.prepare("SELECT value FROM site_settings WHERE key = 'meta_capi_rollout_percentage' LIMIT 1").first<{ value: string }>(),
       db.prepare(`
         SELECT COUNT(*) AS incident_count FROM meta_capi_incidents
         WHERE environment = 'production' AND status = 'open' AND severity = 'critical'
       `).first<{ incident_count: unknown }>(),
-      db.prepare(`
-        SELECT pixel_id, token_fingerprint FROM meta_connection_verifications
-        WHERE environment = 'dev' AND invalidated_at IS NULL LIMIT 1
-      `).first<{ pixel_id: string; token_fingerprint: string }>(),
     ])
     const target = Number(parseStoredSettingValue(rollout?.value ?? '', -1))
     const incidentCount = Number(incident?.incident_count)
-    const productionIndependent = Boolean(devConnection)
-      && devConnection!.pixel_id !== input.pixelId
-      && devConnection!.token_fingerprint !== input.fingerprint
-    if (!resource || target !== 0 || incidentCount !== 0 || !productionIndependent) {
+    const summary = parseProductionBootstrapSummary(resource?.summary)
+    if (!resource || !summary || target !== 0 || incidentCount !== 0) {
       throw new Error('blocked')
     }
   }
   catch {
     throw new MetaConnectionError('META_PRODUCTION_TEST_GATE_BLOCKED', 409)
+  }
+}
+
+function parseProductionBootstrapSummary(value: unknown) {
+  try {
+    const summary = JSON.parse(String(value || '')) as Record<string, unknown>
+    const isolation = summary.environmentIsolation as Record<string, unknown> | undefined
+    const required = [
+      'bootstrapReady', 'migrationsReady', 'd1Ready', 'r2Ready', 'queuesReady',
+      'secretsReady', 'rolloutZero', 'noOpenCriticalIncident',
+    ]
+    const isolated = ['d1', 'r2', 'queue', 'dlq', 'pixel', 'token', 'testEventCode', 'dataKey']
+    return required.every(key => summary[key] === true)
+      && Boolean(isolation && isolated.every(key => isolation[key] === true))
+      ? summary
+      : null
+  }
+  catch {
+    return null
   }
 }
 
