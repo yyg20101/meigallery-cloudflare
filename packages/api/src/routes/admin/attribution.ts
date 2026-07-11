@@ -34,6 +34,15 @@ type ReadinessCheck = {
 }
 
 const EMPTY_USAGE: D1Usage = { rowsRead: 0, rowsWritten: 0, durationMs: 0 }
+const META_CAPI_PERMISSION_ERROR_CODES = [
+  'meta_permission_denied',
+  'meta_http_401',
+  'meta_http_403',
+] as const
+const META_CAPI_CRITICAL_QUALITY_ERROR_CODES = [
+  ...META_CAPI_PERMISSION_ERROR_CODES,
+  'retry_exhausted',
+] as const
 
 adminAttributionRoutes.get('/overview', async (c) => {
   const range = parseRangeOrError(c)
@@ -991,7 +1000,7 @@ async function readMetaRolloutMetrics(
         COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) AS failed_count,
         COALESCE(SUM(CASE
           WHEN status = 'failed' AND (
-            error_code IN ('meta_permission_denied', 'http_401', 'http_403')
+            error_code IN (?, ?, ?)
             OR error_code LIKE '%permission%'
           ) THEN 1 ELSE 0 END), 0) AS permission_error_count,
         COALESCE(SUM(CASE
@@ -1002,13 +1011,17 @@ async function readMetaRolloutMetrics(
           THEN 1 ELSE 0 END), 0) AS stale_pending_count,
         COALESCE(SUM(CASE
           WHEN status = 'failed' AND (
-            error_code IN ('meta_permission_denied', 'http_401', 'http_403', 'retry_exhausted')
+            error_code IN (?, ?, ?, ?)
             OR error_code LIKE '%permission%'
           ) THEN 1 ELSE 0 END), 0) AS critical_quality_diagnostic_count
       FROM analytics_conversion_deliveries
       WHERE channel = 'meta_capi'
         AND rollout_target_percentage = ?
-    `).bind(targetPercentage).first<Row>()
+    `).bind(
+      ...META_CAPI_PERMISSION_ERROR_CODES,
+      ...META_CAPI_CRITICAL_QUALITY_ERROR_CODES,
+      targetPercentage,
+    ).first<Row>()
     return {
       metrics: {
         sent: numberValue(row?.sent_count),

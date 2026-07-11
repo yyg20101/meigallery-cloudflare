@@ -677,6 +677,7 @@ type RolloutDbOptions = {
   retryExhausted?: number
   stalePending?: number
   criticalQualityDiagnostics?: number
+  deliveryErrorCategories?: string[]
   metricsQueryError?: boolean
   conflict?: boolean
 }
@@ -707,13 +708,30 @@ function createRolloutDb(options: RolloutDbOptions = {}) {
     }
     if (sql.includes('AS permission_error_count')) {
       if (options.metricsQueryError) throw new Error('模拟 rollout metrics 查询失败')
+      const deliveryErrorCategories = options.deliveryErrorCategories ?? []
+      const queryRecognizes = (category: string) => (
+        sql.includes(`'${category}'`) || params.includes(category)
+      )
+      const permissionErrorCategories = [
+        'meta_permission_denied',
+        'meta_http_401',
+        'meta_http_403',
+      ]
+      const criticalQualityCategories = [
+        ...permissionErrorCategories,
+        'retry_exhausted',
+      ]
       return [{
         sent_count: options.sent ?? 100,
-        failed_count: options.failed ?? 0,
-        permission_error_count: options.permissionErrors ?? 0,
+        failed_count: options.failed ?? deliveryErrorCategories.length,
+        permission_error_count: options.permissionErrors ?? deliveryErrorCategories.filter(category => (
+          permissionErrorCategories.includes(category) && queryRecognizes(category)
+        )).length,
         retry_exhausted_count: options.retryExhausted ?? 0,
         stale_pending_count: options.stalePending ?? 0,
-        critical_quality_diagnostic_count: options.criticalQualityDiagnostics ?? 0,
+        critical_quality_diagnostic_count: options.criticalQualityDiagnostics ?? deliveryErrorCategories.filter(category => (
+          criticalQualityCategories.includes(category) && queryRecognizes(category)
+        )).length,
       } as T]
     }
     if (sql.includes('FROM site_settings') && sql.includes("key = 'meta_capi_rollout_percentage'")) {
@@ -1872,6 +1890,42 @@ describe('后台归因中心 API', () => {
       },
     })
     expect(JSON.stringify(forced.db.audits)).not.toContain('rollout-token')
+  })
+
+  it('99 sent + 1 meta_http_403 权限错误不能通过 10 -> 50', async () => {
+    const { db, res, body } = await requestRollout('owner', {
+      target: 10,
+      sent: 99,
+      deliveryErrorCategories: ['meta_http_403'],
+    }, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ percentage: 50, force: false }),
+    })
+
+    expect(res.status).toBe(409)
+    expect(body.code).toBe('META_CAPI_ROLLOUT_PROMOTION_BLOCKED')
+    expect(body.detail.blockers).toContain('permission_errors_present')
+    expect(db.batchCount).toBe(0)
+    expect(db.audits).toEqual([])
+  })
+
+  it('meta_http_403 关键诊断不能通过 50 -> 100', async () => {
+    const { db, res, body } = await requestRollout('owner', {
+      target: 50,
+      sent: 99,
+      deliveryErrorCategories: ['meta_http_403'],
+    }, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ percentage: 100, force: false }),
+    })
+
+    expect(res.status).toBe(409)
+    expect(body.code).toBe('META_CAPI_ROLLOUT_PROMOTION_BLOCKED')
+    expect(body.detail.blockers).toContain('critical_quality_diagnostics_present')
+    expect(db.batchCount).toBe(0)
+    expect(db.audits).toEqual([])
   })
 
   it.each([

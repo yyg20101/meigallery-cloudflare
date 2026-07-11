@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { ADMIN_SETTING_KEYS, PUBLIC_SETTING_KEYS } from './site-settings'
+import {
+  ADMIN_SETTING_KEYS,
+  findProtectedAdminSettingKeys,
+  PROTECTED_ADMIN_SETTING_KEYS,
+  PUBLIC_SETTING_KEYS,
+} from './site-settings'
 
 describe('site settings keys', () => {
   it('does not expose removed about page settings', () => {
@@ -90,5 +95,11 @@ describe('site settings keys', () => {
   it('keeps Meta CAPI rollout admin-only', () => {
     expect(ADMIN_SETTING_KEYS).toContain('meta_capi_rollout_percentage')
     expect(PUBLIC_SETTING_KEYS).not.toContain('meta_capi_rollout_percentage')
+    expect(PROTECTED_ADMIN_SETTING_KEYS).toEqual(['meta_capi_rollout_percentage'])
+    expect(findProtectedAdminSettingKeys([
+      'site_name',
+      'meta_capi_rollout_percentage',
+      'home_hero_title',
+    ])).toEqual(['meta_capi_rollout_percentage'])
   })
 })
