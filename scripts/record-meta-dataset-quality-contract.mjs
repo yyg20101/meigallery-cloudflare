@@ -231,10 +231,11 @@ function validateManifest(input, currentCommit) {
   if (input.request.method !== 'GET' || !ENDPOINT_PATH_PATTERN.test(input.request.endpointPath)) {
     throw new ContractRecorderError('REQUEST_INVALID')
   }
+  if (!/^\d{9,30}$/.test(input.request.datasetId)) throw new ContractRecorderError('DATASET_ID_INVALID')
   const queryKeys = validateNameList(input.request.queryKeys, FIELD_NAME_PATTERN, 'REQUEST_INVALID', { allowEmpty: true })
   if (queryKeys.some(isSensitiveKey)) throw new ContractRecorderError('REQUEST_INVALID')
+  assertDatasetIdAbsent(queryKeys, input.request.datasetId, 'REQUEST_INVALID')
   const permissions = validateNameList(input.request.permissions, PERMISSION_PATTERN, 'REQUEST_INVALID')
-  if (!/^\d{9,30}$/.test(input.request.datasetId)) throw new ContractRecorderError('DATASET_ID_INVALID')
 
   if (!Array.isArray(input.officialUrls) || input.officialUrls.length === 0 || input.officialUrls.length > 8) {
     throw new ContractRecorderError('OFFICIAL_URL_INVALID')
@@ -589,6 +590,7 @@ function sanitizeOfficialUrl(value, datasetId) {
 
   const queryKeys = [...new Set(url.searchParams.keys())].sort()
   const safePath = pathSegments.map(segment => segment === datasetId ? datasetMask : segment).join('/')
+  assertDatasetIdAbsent([safePath, ...queryKeys], datasetId, 'OFFICIAL_URL_INVALID')
   return `${url.origin}${safePath}${queryKeys.length > 0 ? `?${queryKeys.join('&')}` : ''}`
 }
 
@@ -641,10 +643,27 @@ function isSensitivePath(segments) {
   if (normalized.some(isSensitiveKey)) return true
 
   const sensitiveIdParents = new Set(['user', 'users', 'event', 'events', 'session', 'sessions', 'delivery', 'deliveries'])
-  for (let index = 1; index < normalized.length; index += 1) {
-    if (normalized[index] === 'id' && sensitiveIdParents.has(normalized[index - 1])) return true
+  let hasSensitiveParent = false
+  for (const segment of normalized) {
+    if (sensitiveIdParents.has(segment)) hasSensitiveParent = true
+    else if (hasSensitiveParent && (segment === 'id' || segment === 'ids')) return true
   }
   return false
+}
+
+function assertDatasetIdAbsent(values, datasetId, code) {
+  for (const value of values) {
+    let decoded = String(value)
+    for (let pass = 0; pass <= 2; pass += 1) {
+      if (decoded.includes(datasetId)) throw new ContractRecorderError(code)
+      if (!decoded.includes('%')) break
+      try {
+        decoded = decodeURIComponent(decoded)
+      } catch {
+        break
+      }
+    }
+  }
 }
 
 function maskDatasetId(datasetId) {

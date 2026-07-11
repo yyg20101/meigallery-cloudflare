@@ -126,23 +126,28 @@ describe('Dataset Quality 契约记录器', () => {
     }
   })
 
-  it('按完整路径拒绝嵌套用户、事件、会话和投递 ID，误 allowlist 同样失败', async () => {
-    for (const [parent, key] of [
-      ['user', 'id'],
-      ['event', 'id'],
-      ['session', 'id'],
-      ['delivery', 'id'],
-      ['users', 'id'],
-      ['deliveries', 'id'],
+  it('敏感父路径下的 id/ids 数组及命名变体全部拒绝，误 allowlist 同样失败', async () => {
+    for (const [parent, child] of [
+      ['user', { id: 'SENSITIVE_FIXTURE_VALUE' }],
+      ['event', { ids: ['SENSITIVE_FIXTURE_VALUE'] }],
+      ['session', { details: { i_d: 'SENSITIVE_FIXTURE_VALUE' } }],
+      ['delivery', { details: { 'i-d-s': ['SENSITIVE_FIXTURE_VALUE'] } }],
+      ['users', [{ IDs: ['SENSITIVE_FIXTURE_VALUE'] }]],
+      ['deliveries', [{ record: { ID: 'SENSITIVE_FIXTURE_VALUE' } }]],
     ]) {
-      const files = await fixture({ raw: raw({ [parent]: { [key]: 'SENSITIVE_FIXTURE_VALUE' } }) })
+      const files = await fixture({ raw: raw({ [parent]: child }) })
       const error = await captureError(() => record(files))
-      assert.equal(error.code, 'SENSITIVE_KEY_REJECTED', `${parent}.${key}`)
+      assert.equal(error.code, 'SENSITIVE_KEY_REJECTED', parent)
       await assertMissing(files.rawPath)
       await assertMissing(files.outputPath)
     }
 
-    for (const sensitivePath of ['$.data[].user.id', '$.data[].event.id', '$.data[].session.id', '$.data[].delivery.id']) {
+    for (const sensitivePath of [
+      '$.data[].user.id',
+      '$.data[].event.ids[]',
+      '$.data[].session.details.i_d',
+      '$.data[].delivery.details.i-d-s[]',
+    ]) {
       const files = await fixture({
         manifest: manifest({ ownerAllowlist: { responsePaths: [sensitivePath] } }),
       })
@@ -153,14 +158,14 @@ describe('Dataset Quality 契约记录器', () => {
     }
   })
 
-  it('允许 Owner 明确批准合法聚合 metric id，且不输出其值', async () => {
-    const approvedPath = '$.data[].metric.id'
+  it('允许 Owner 明确批准合法聚合 metric.id 与 metric.ids[]，且不输出其值', async () => {
+    const approvedPaths = ['$.data[].metric.id', '$.data[].metric.ids[]']
     const baseManifest = manifest()
     const files = await fixture({
-      raw: raw({ metric: { id: 'AGGREGATE_METRIC_ID_VALUE' } }),
+      raw: raw({ metric: { id: 'AGGREGATE_METRIC_ID_VALUE', ids: ['AGGREGATE_METRIC_IDS_VALUE'] } }),
       manifest: manifest({
         ownerAllowlist: {
-          responsePaths: [...baseManifest.ownerAllowlist.responsePaths, approvedPath],
+          responsePaths: [...baseManifest.ownerAllowlist.responsePaths, ...approvedPaths],
         },
       }),
     })
@@ -168,7 +173,9 @@ describe('Dataset Quality 契约记录器', () => {
     await record(files)
     const document = await readFile(files.outputPath, 'utf8')
     assert.match(document, /\$\.data\[\]\.metric\.id.*string.*否/)
+    assert.match(document, /\$\.data\[\]\.metric\.ids\[\].*string.*否/)
     assert.equal(document.includes('AGGREGATE_METRIC_ID_VALUE'), false)
+    assert.equal(document.includes('AGGREGATE_METRIC_IDS_VALUE'), false)
   })
 
   it('未知字段只记录 path，不记录原始值', async () => {
@@ -182,9 +189,15 @@ describe('Dataset Quality 契约记录器', () => {
   it('truncate、sync、close 或 unlink 失败均以稳定 cleanup error 优先', async () => {
     for (const operation of ['truncate', 'sync', 'close', 'unlink']) {
       const files = await fixture({ raw: raw({ access_token: 'PRIMARY_SECRET_VALUE' }) })
-      const error = await captureError(() => record(files, operation === 'unlink'
-        ? { unlinkFile: async () => { throw new Error('DELETE_SECRET_VALUE') } }
-        : { openFile: failingRawOperation(files.rawPath, operation) }))
+      const failure = operation === 'unlink' ? null : failingRawOperation(files.rawPath, operation)
+      let error
+      try {
+        error = await captureError(() => record(files, operation === 'unlink'
+          ? { unlinkFile: async () => { throw new Error('DELETE_SECRET_VALUE') } }
+          : { openFile: failure.openFile }))
+      } finally {
+        await failure?.release()
+      }
 
       assert.equal(error.code, 'RAW_DELETE_FAILED', operation)
       assert.equal(error.message.includes('SECRET_VALUE'), false)
@@ -233,16 +246,38 @@ describe('Dataset Quality 契约记录器', () => {
     await assertMissing(files.rawPath)
   })
 
+  it('真实 contract 写入失败叠加 cleanup 失败时稳定以 cleanup error 优先', async () => {
+    const files = await fixture()
+    await writeFile(files.outputPath, 'EXISTING_CONTRACT')
+    const failure = failingRawOperation(files.rawPath, 'close')
+    let error
+    try {
+      error = await captureError(() => record(files, { openFile: failure.openFile }))
+    } finally {
+      await failure.release()
+    }
+
+    assert.equal(error.code, 'RAW_DELETE_FAILED')
+    assert.equal(error.message.includes('CONTRACT'), false)
+    assert.equal(await readFile(files.outputPath, 'utf8'), 'EXISTING_CONTRACT')
+    await assertMissing(files.rawPath)
+  })
+
   it('拒绝非法官方 URL、非当前 commit 与非法 Dataset ID，并逐次销毁 raw', async () => {
     const encodedDatasetId = [...DATASET_ID]
       .map(character => `%${character.charCodeAt(0).toString(16).toUpperCase()}`)
       .join('')
+    const doubleEncodedDatasetId = encodedDatasetId.replaceAll('%', '%25')
     const cases = [
       [manifest({ officialUrls: ['https://developers.facebook.com.evil.test/docs'] }), 'OFFICIAL_URL_INVALID'],
       [manifest({ officialUrls: [`https://business.facebook.com/events_manager2/list/dataset/${DATASET_ID}%/`] }), 'OFFICIAL_URL_INVALID'],
-      [manifest({ officialUrls: [`https://business.facebook.com/events_manager2/list/dataset/${encodedDatasetId.replaceAll('%', '%25')}/`] }), 'OFFICIAL_URL_INVALID'],
+      [manifest({ officialUrls: [`https://business.facebook.com/events_manager2/list/dataset/${doubleEncodedDatasetId}/`] }), 'OFFICIAL_URL_INVALID'],
       [manifest({ officialUrls: [`https://business.facebook.com/events_manager2/list/dataset/?asset_id=${DATASET_ID}`] }), 'OFFICIAL_URL_INVALID'],
       [manifest({ officialUrls: [`https://business.facebook.com/events_manager2/list/dataset/prefix${DATASET_ID}/`] }), 'OFFICIAL_URL_INVALID'],
+      [manifest({ officialUrls: [`https://business.facebook.com/events_manager2/list/dataset/${DATASET_ID}/asset_${encodedDatasetId}`] }), 'OFFICIAL_URL_INVALID'],
+      [manifest({ officialUrls: [`https://business.facebook.com/events_manager2/list/dataset/${DATASET_ID}/?asset_${encodedDatasetId}=score`] }), 'OFFICIAL_URL_INVALID'],
+      [manifest({ officialUrls: [`https://business.facebook.com/events_manager2/list/dataset/${DATASET_ID}/?asset_${doubleEncodedDatasetId}=score`] }), 'OFFICIAL_URL_INVALID'],
+      [manifest({ request: { queryKeys: [`asset_${DATASET_ID}`] } }), 'REQUEST_INVALID'],
       [manifest({ releaseCommit: 'a'.repeat(40) }), 'COMMIT_INVALID'],
       [manifest({ request: { datasetId: '12345678' } }), 'DATASET_ID_INVALID'],
     ]
@@ -250,6 +285,8 @@ describe('Dataset Quality 契约记录器', () => {
       const files = await fixture({ manifest: input })
       const error = await captureError(() => record(files))
       assert.equal(error.code, code)
+      assert.equal(error.message.includes(DATASET_ID), false)
+      assert.equal(error.message.toUpperCase().includes(encodedDatasetId), false)
       await assertMissing(files.rawPath)
     }
   })
@@ -333,24 +370,29 @@ function bufferWriter() {
 }
 
 function failingRawOperation(rawPath, operation) {
-  return async (filePath, flags) => {
-    const handle = await open(filePath, flags)
-    if (filePath !== rawPath) return handle
+  let rawHandle = null
+  return {
+    async openFile(filePath, flags) {
+      const handle = await open(filePath, flags)
+      if (filePath !== rawPath) return handle
+      rawHandle = handle
 
-    return {
-      stat: (...args) => handle.stat(...args),
-      readFile: (...args) => handle.readFile(...args),
-      truncate: (...args) => operation === 'truncate'
-        ? Promise.reject(new Error('TRUNCATE_SECRET_VALUE'))
-        : handle.truncate(...args),
-      sync: (...args) => operation === 'sync'
-        ? Promise.reject(new Error('SYNC_SECRET_VALUE'))
-        : handle.sync(...args),
-      async close(...args) {
-        if (operation !== 'close') return handle.close(...args)
-        await handle.close(...args)
-        throw new Error('CLOSE_SECRET_VALUE')
-      },
-    }
+      return {
+        stat: (...args) => handle.stat(...args),
+        readFile: (...args) => handle.readFile(...args),
+        truncate: (...args) => operation === 'truncate'
+          ? Promise.reject(new Error('TRUNCATE_SECRET_VALUE'))
+          : handle.truncate(...args),
+        sync: (...args) => operation === 'sync'
+          ? Promise.reject(new Error('SYNC_SECRET_VALUE'))
+          : handle.sync(...args),
+        close: (...args) => operation === 'close'
+          ? Promise.reject(new Error('CLOSE_SECRET_VALUE'))
+          : handle.close(...args),
+      }
+    },
+    async release() {
+      await rawHandle?.close().catch(() => {})
+    },
   }
 }
