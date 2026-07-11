@@ -345,7 +345,7 @@ export function metaConnectionReasonLabel(reason: string) {
 }
 
 export function canVerifyMetaConnection(connection: MetaConnectionStatusData | null | undefined, isOwner: boolean) {
-  return isOwner && connection?.environment === 'dev'
+  return isOwner && (connection?.environment === 'dev' || connection?.environment === 'production')
 }
 
 export function normalizeAttributionRangePreset(value: unknown, fallback: AttributionRangePreset = '7d'): AttributionRangePreset {

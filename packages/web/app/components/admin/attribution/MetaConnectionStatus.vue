@@ -91,7 +91,6 @@ async function verifyConnection() {
       >
         {{ testing ? '验证中...' : '验证连接' }}
       </button>
-      <p v-else-if="isOwner && connection?.environment === 'production'" class="text-xs text-amber-700">production 验证门禁尚未开放</p>
     </div>
     <p v-if="message" role="status" :class="messageTone === 'error' ? 'text-red-700' : 'text-emerald-700'" class="mt-2 text-sm">{{ message }}</p>
   </div>

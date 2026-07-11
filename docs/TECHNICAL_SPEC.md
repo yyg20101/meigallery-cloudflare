@@ -307,7 +307,8 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | POST | `/api/admin/attribution/meta/test-event` | 创建 Meta CAPI Test Event delivery 并写入审计日志，不返回 token 或 test code | owner |
 | POST | `/api/admin/attribution/meta/live-challenge` | 由 dev Worker 创建绑定当前 commit 的一次性 Browser/CAPI 双事件 challenge | owner |
 | POST | `/api/admin/attribution/meta/live-challenge/consume` | 原子消费 challenge，并使用 Browser 同组 ID 真实发送两条 CAPI Test Event | owner |
-| POST | `/api/admin/attribution/meta/resource-attestation` | 对随机 nonce 返回当前 Worker Meta 资源 HMAC 身份摘要，不返回原始 secret | owner |
+| POST | `/api/admin/attribution/meta/resource-attestation-ticket` | Owner Cookie 仅在固定可信 API origin 换取绑定环境、commit、nonce 的 60 秒一次性 ticket | owner |
+| POST | `/api/meta/resource-attestation` | 原子消费一次性 ticket 并返回当前 Worker Meta 资源 HMAC 摘要；不接受 Owner Cookie 作为凭据 | ticket |
 | GET | `/api/admin/attribution/duplicates` | 查看重复点击、重复转化和 Pixel / CAPI 去重诊断 | admin+ |
 | GET | `/api/admin/attribution/readiness` | 归因发布检查，展示允许公开的配置项、开关和阻断项 | admin+ |
 | POST | `/api/admin/legacy-import/sources` | 创建旧站来源 | admin+ |

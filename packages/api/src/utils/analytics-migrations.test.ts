@@ -8,13 +8,13 @@ async function readMigration(name: string) {
 }
 
 describe('analytics migrations', () => {
-  it('migration 索引从 0001 到 0041 连续且编号唯一', async () => {
+  it('migration 索引从 0001 到 0042 连续且编号唯一', async () => {
     const names = (await readdir(MIGRATION_DIR))
       .filter(name => /^\d{4}_.+\.sql$/.test(name))
       .sort()
     const indexes = names.map(name => Number(name.slice(0, 4)))
 
-    expect(indexes).toEqual(Array.from({ length: 41 }, (_, index) => index + 1))
+    expect(indexes).toEqual(Array.from({ length: 42 }, (_, index) => index + 1))
     expect(new Set(indexes).size).toBe(indexes.length)
   })
 
@@ -231,5 +231,18 @@ describe('analytics migrations', () => {
     expect(sql).toContain('contact_event_digest TEXT')
     expect(sql).toContain('complete_registration_event_digest TEXT')
     expect(sql).not.toMatch(/email|client_ip|user_agent|access_token|test_event_code/i)
+  })
+
+  it('0042 建立仅存摘要、绑定环境/commit/nonce 的一次性 attestation ticket', async () => {
+    const sql = await readMigration('0042_meta_resource_attestation_tickets.sql')
+    expect(sql).toContain('CREATE TABLE meta_resource_attestation_tickets')
+    expect(sql).toContain('ticket_digest TEXT PRIMARY KEY')
+    expect(sql).toContain("environment IN ('dev', 'production')")
+    expect(sql).toContain('commit_sha TEXT NOT NULL')
+    expect(sql).toContain('nonce TEXT NOT NULL')
+    expect(sql).toContain('owner_user_id INTEGER NOT NULL')
+    expect(sql).toContain('expires_at TEXT NOT NULL')
+    expect(sql).toContain('consumed_at TEXT')
+    expect(sql).not.toMatch(/session|cookie|access_token|test_event_code|email|client_ip|user_agent/i)
   })
 })

@@ -158,6 +158,7 @@ let adminAttributionRolloutTarget = 10
 let adminAttributionIncidentOpen = true
 let adminAttributionRolloutScenario = 'hard'
 let adminAttributionDatasetScenario = 'unavailable'
+let adminAttributionEnvironment = 'dev'
 const adminAttributionRequests = []
 const adminAttributionActions = []
 
@@ -177,6 +178,7 @@ function resetPublicSettings() {
   adminAttributionIncidentOpen = true
   adminAttributionRolloutScenario = 'hard'
   adminAttributionDatasetScenario = 'unavailable'
+  adminAttributionEnvironment = 'dev'
   adminAttributionRequests.length = 0
   adminAttributionActions.length = 0
 }
@@ -509,7 +511,7 @@ function adminAttributionResponse(pathname, searchParams) {
     delivery: { pixelAttempted: index + 3, capiSent: index + 2, failed: index === 1 ? 1 : 0, skipped: 1, pending: index === 2 ? 1 : 0, retryExhausted: 0 },
   }))
   const rollout = {
-    environment: 'dev',
+    environment: adminAttributionEnvironment,
     targetPercentage: adminAttributionRolloutTarget,
     effectivePercentage: adminAttributionIncidentOpen ? 0 : adminAttributionRolloutTarget,
     connectionVerified: true,
@@ -529,7 +531,7 @@ function adminAttributionResponse(pathname, searchParams) {
     },
   }
   const connection = {
-    state: 'verified', environment: 'dev', pixelIdConfigured: true, tokenConfigured: true, testEventCodeConfigured: true, verifiedAt: '2026-07-10T07:00:00Z', verifiedCommit: 'a'.repeat(40), graphApiVersion: 'v25.0', datasetQualityStatus: 'not_checked', invalidationReason: '',
+    state: 'verified', environment: adminAttributionEnvironment, pixelIdConfigured: true, tokenConfigured: true, testEventCodeConfigured: true, verifiedAt: '2026-07-10T07:00:00Z', verifiedCommit: 'a'.repeat(40), graphApiVersion: 'v25.0', datasetQualityStatus: 'not_checked', invalidationReason: '',
   }
 
   if (pathname.endsWith('/summary')) return { range, usage, data: { business: { contactCount: 6, completeRegistrationCount: 3, actionCount: 9 }, historical: { leadCount: 7 }, delivery: { pixelAttempted: 12, capiSent: 9, failed: 1, skipped: 3, pending: 1, retryExhausted: 0 } } }
@@ -778,6 +780,13 @@ function handleApi(req, res) {
     }).catch(() => json(res, { statusCode: 400, message: '测试模式请求无效' }, 400))
     return
   }
+  if (url.pathname === '/api/test/admin-attribution-environment' && req.method === 'PATCH') {
+    readJsonBody(req).then((body) => {
+      adminAttributionEnvironment = body.environment === 'production' ? 'production' : 'dev'
+      json(res, { ok: true, environment: adminAttributionEnvironment })
+    }).catch(() => json(res, { statusCode: 400, message: '归因环境无效' }, 400))
+    return
+  }
   if (url.pathname === '/api/test/analytics-events') {
     return json(res, {
       batches: analyticsBatches,
@@ -907,13 +916,21 @@ function handleApi(req, res) {
     return json(res, adminAnalyticsResponse(url.pathname, url.searchParams))
   }
   if (url.pathname === '/api/admin/attribution/meta/test-event' && req.method === 'POST') {
+    if (adminAttributionActionMode === 'conflict') {
+      return json(res, {
+        statusCode: 409,
+        message: 'production 资源验证尚未通过',
+        code: 'META_TEST_EVENT_BOOTSTRAP_BLOCKED',
+        detail: { blockers: ['meta_resources_verification_missing'] },
+      }, 409)
+    }
     return json(res, {
       data: {
         status: 'verified',
         eventsReceived: 1,
         connection: {
           state: 'verified',
-          environment: 'dev',
+          environment: adminAttributionEnvironment,
           pixelIdConfigured: true,
           tokenConfigured: true,
           testEventCodeConfigured: true,

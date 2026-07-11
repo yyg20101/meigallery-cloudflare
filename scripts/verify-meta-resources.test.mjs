@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   compareLiveAttestations,
+  requestLiveResourceAttestations,
   runMetaResourceVerification as runMetaResourceVerificationImpl,
 } from './verify-meta-resources.mjs'
 
@@ -18,6 +19,94 @@ function runMetaResourceVerification(options) {
 }
 
 describe('Meta Cloudflare 资源检查', () => {
+  it('live attestation 只向固定可信 origin 换票，并以无 Cookie 的一次性 ticket 完成最终请求', async () => {
+    const calls = []
+    const now = '2026-07-11T00:00:00.000Z'
+    const nonce = `nonce_${'a'.repeat(64)}`
+    const identities = environment => ({
+      pixel: `hmac-sha256:${environment === 'dev' ? '1' : '5'}`.padEnd(76, environment === 'dev' ? '1' : '5'),
+      token: `hmac-sha256:${environment === 'dev' ? '2' : '6'}`.padEnd(76, environment === 'dev' ? '2' : '6'),
+      testEventCode: `hmac-sha256:${environment === 'dev' ? '3' : '7'}`.padEnd(76, environment === 'dev' ? '3' : '7'),
+      dataKey: `hmac-sha256:${environment === 'dev' ? '4' : '8'}`.padEnd(76, environment === 'dev' ? '4' : '8'),
+    })
+    const trusted = {
+      dev: 'https://meigallery-api-dev.wajie.workers.dev',
+      production: 'https://api.616618.xyz',
+    }
+    const fetchFn = async (input, init) => {
+      const url = String(input)
+      calls.push({ url, init })
+      const environment = url.startsWith(trusted.dev) ? 'dev' : 'production'
+      if (url.endsWith('/resource-attestation-ticket')) {
+        return responseAt(url, { data: {
+          schemaVersion: 1,
+          environment,
+          commitSha: COMMIT,
+          nonce,
+          ticket: `mrat_${environment === 'dev' ? 'a' : 'b'}`.padEnd(69, environment === 'dev' ? 'a' : 'b'),
+          issuedAt: now,
+          expiresAt: '2026-07-11T00:01:00.000Z',
+        } })
+      }
+      return responseAt(url, { data: {
+        schemaVersion: 1,
+        environment,
+        commitSha: COMMIT,
+        nonce,
+        issuedAt: now,
+        expiresAt: '2026-07-11T00:05:00.000Z',
+        identities: identities(environment),
+      } })
+    }
+
+    const result = await requestLiveResourceAttestations({
+      commit: COMMIT,
+      now,
+      nonce,
+      fetch: fetchFn,
+      env: {
+        VERIFY_DEV_API_URL: 'https://attacker.example',
+        VERIFY_PRODUCTION_API_URL: 'https://other.example',
+        VERIFY_DEV_OWNER_SESSION_COOKIE: 'session=dev-owner',
+        VERIFY_PRODUCTION_OWNER_SESSION_COOKIE: 'session=production-owner',
+      },
+    })
+
+    assert.deepEqual(result, { pixel: true, token: true, testEventCode: true, dataKey: true })
+    assert.equal(calls.length, 4)
+    assert.equal(calls.some(call => call.url.includes('attacker.example') || call.url.includes('other.example')), false)
+    for (const [environment, origin] of Object.entries(trusted)) {
+      const ticketCall = calls.find(call => call.url === `${origin}/api/admin/attribution/meta/resource-attestation-ticket`)
+      const finalCall = calls.find(call => call.url === `${origin}/api/meta/resource-attestation`)
+      assert.ok(ticketCall, `${environment} 应向固定 origin 换票`)
+      assert.ok(finalCall, `${environment} 应向固定 origin 使用 ticket`)
+      assert.equal(ticketCall.init.redirect, 'manual')
+      assert.equal(finalCall.init.redirect, 'manual')
+      assert.match(String(ticketCall.init.headers.Cookie), /owner/)
+      assert.equal(Object.hasOwn(finalCall.init.headers, 'Cookie'), false)
+      assert.match(String(finalCall.init.body), /mrat_/)
+    }
+  })
+
+  it('live attestation 对 redirect 或响应 final URL/origin/path 漂移 fail closed', async () => {
+    const trustedUrl = 'https://meigallery-api-dev.wajie.workers.dev/api/admin/attribution/meta/resource-attestation-ticket'
+    await assert.rejects(requestLiveResourceAttestations({
+      commit: COMMIT,
+      nonce: `nonce_${'b'.repeat(64)}`,
+      env: {
+        VERIFY_DEV_OWNER_SESSION_COOKIE: 'session=dev-owner',
+        VERIFY_PRODUCTION_OWNER_SESSION_COOKIE: 'session=production-owner',
+      },
+      fetch: async (input) => responseAt(String(input) === trustedUrl ? 'https://attacker.example/ticket' : String(input), {
+        data: {
+          schemaVersion: 1, environment: 'dev', commitSha: COMMIT,
+          nonce: `nonce_${'b'.repeat(64)}`, ticket: `mrat_${'c'.repeat(64)}`,
+          issuedAt: '2026-07-11T00:00:00.000Z', expiresAt: '2026-07-11T00:01:00.000Z',
+        },
+      }),
+    }), /URL|origin|path|响应/)
+  })
+
   it('production 固定空 env、生产 D1，且报告和 SQL 不含敏感输出', async () => {
     const calls = []
     let stored
@@ -439,6 +528,7 @@ describe('Meta Cloudflare 资源检查', () => {
       { missingAppliedMigration: '0039_meta_capi_v2_operations.sql' },
       { missingAppliedMigration: '0040_meta_capi_circuit_indexes.sql' },
       { missingAppliedMigration: '0041_meta_live_challenges.sql' },
+      { missingAppliedMigration: '0042_meta_resource_attestation_tickets.sql' },
       { connectionInvalidated: true },
       { connectionPixelDrift: true },
       { missingConsumer: true },
@@ -451,6 +541,30 @@ describe('Meta Cloudflare 资源检查', () => {
         runCommand: createPassingRunner([], { capiEnabled: false, ...overrides }),
       })
       assert.equal(report.status, 'failed')
+    }
+  })
+
+  it('兼容 Wrangler 4.103.0 带 ANSI/前缀的无 migration 输出，含糊或 pending 输出仍失败', async () => {
+    const actual = await runMetaResourceVerification({
+      environment: 'dev', commit: COMMIT, reportOnly: true,
+      runCommand: createPassingRunner([], {
+        capiEnabled: false,
+        migrationOutput: '\u001b[32m✅ No migrations to apply!\u001b[0m',
+      }),
+    })
+    assert.equal(actual.status, 'passed')
+
+    for (const migrationOutput of [
+      '⛅️ wrangler 4.103.0\n✅ No migrations to apply!',
+      '✅ No migrations to apply!\nMigrations to be applied:\n0043_pending.sql',
+      'No migrations to apply, probably',
+      'migration status unavailable',
+    ]) {
+      const report = await runMetaResourceVerification({
+        environment: 'dev', commit: COMMIT, reportOnly: true,
+        runCommand: createPassingRunner([], { capiEnabled: false, migrationOutput }),
+      })
+      assert.equal(report.status, migrationOutput.includes('wrangler 4.103.0') ? 'passed' : 'failed', migrationOutput)
     }
   })
 
@@ -598,7 +712,7 @@ function createPassingRunner(calls, options = {}) {
       const rows = secretNames.map(name => ({ name, value: name === 'META_CAPI_ACCESS_TOKEN' ? TOKEN : TEST_CODE }))
       stdout = JSON.stringify(options.unknownSecretEnvelope ? { items: rows } : rows)
     } else if (text.includes('migrations list')) {
-      stdout = options.migrationPending ? 'Migrations to be applied:\n0034.sql' : 'No migrations to apply!'
+      stdout = options.migrationOutput ?? (options.migrationPending ? 'Migrations to be applied:\n0034.sql' : 'No migrations to apply!')
     } else if (text.includes('d1 execute')) {
       let results
       if (runOptions.name.endsWith('migration-names')) {
@@ -609,6 +723,7 @@ function createPassingRunner(calls, options = {}) {
           '0039_meta_capi_v2_operations.sql',
           '0040_meta_capi_circuit_indexes.sql',
           '0041_meta_live_challenges.sql',
+          '0042_meta_resource_attestation_tickets.sql',
         ].filter(name => name !== options.missingAppliedMigration)
         results = names.map(name => ({ name }))
       } else if (runOptions.name.endsWith('dataset-quality')) {
@@ -662,6 +777,16 @@ function createPassingRunner(calls, options = {}) {
       stdout,
       stderr: '',
     }
+  }
+}
+
+function responseAt(url, payload, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    url,
+    redirected: false,
+    async json() { return payload },
   }
 }
 

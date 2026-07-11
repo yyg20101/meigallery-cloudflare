@@ -63,6 +63,7 @@ export async function createMetaResourceAttestation(input: {
 export async function createRuntimeMetaResourceAttestation(
   env: Pick<Bindings, 'DB' | 'APP_ENV' | 'RELEASE_COMMIT' | 'META_CAPI_ACCESS_TOKEN' | 'META_CAPI_TEST_EVENT_CODE' | 'META_CAPI_DATA_KEY_CURRENT'>,
   nonce: string,
+  now?: string | number | Date,
 ) {
   if (env.APP_ENV !== 'dev' && env.APP_ENV !== 'production') throw new Error('Meta resource attestation 环境非法')
   const pixelRow = await env.DB.prepare("SELECT value FROM site_settings WHERE key = 'facebook_pixel_id' LIMIT 1")
@@ -71,6 +72,7 @@ export async function createRuntimeMetaResourceAttestation(
     environment: env.APP_ENV,
     commitSha: String(env.RELEASE_COMMIT || ''),
     nonce,
+    now,
     pixelId: String(parseStoredSettingValue(pixelRow?.value || '""', '') || ''),
     accessToken: String(env.META_CAPI_ACCESS_TOKEN || ''),
     testEventCode: String(env.META_CAPI_TEST_EVENT_CODE || ''),

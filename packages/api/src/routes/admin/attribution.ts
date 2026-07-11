@@ -40,7 +40,7 @@ import {
   createMetaLiveChallenge,
   MetaLiveChallengeError,
 } from '../../services/meta-live-challenge'
-import { createRuntimeMetaResourceAttestation } from '../../services/meta-resource-attestation'
+import { issueMetaResourceAttestationTicket } from '../../services/meta-resource-attestation-ticket'
 
 export const adminAttributionRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -1115,20 +1115,20 @@ adminAttributionRoutes.post('/meta/live-challenge/consume', async (c) => {
   }
 })
 
-adminAttributionRoutes.post('/meta/resource-attestation', async (c) => {
+adminAttributionRoutes.post('/meta/resource-attestation-ticket', async (c) => {
   const adminId = c.get('userId') ?? 0
   if (c.get('userRole') !== 'owner') return errorJson(c, 403, '需要站长权限', { code: 'OWNER_REQUIRED' })
   const body: { nonce?: unknown } = await c.req.json<{ nonce?: unknown }>().catch(() => ({}))
   try {
-    const attestation = await createRuntimeMetaResourceAttestation(c.env, String(body.nonce || ''))
+    const ticket = await issueMetaResourceAttestationTicket(c.env, adminId, String(body.nonce || ''))
     await writeAuditLog(c.env.DB, {
       adminId,
-      action: 'attribution.meta_resource_attestation',
+      action: 'attribution.meta_resource_attestation_ticket_issue',
       targetType: 'attribution',
       targetId: 'meta_resources',
-      afterValue: { success: true, environment: attestation.environment, commitSha: attestation.commitSha },
+      afterValue: { success: true, environment: ticket.environment, commitSha: ticket.commitSha },
     })
-    return c.json({ data: attestation })
+    return c.json({ data: ticket })
   }
   catch {
     return errorJson(c, 409, 'Meta 资源身份不可证明', { code: 'META_RESOURCE_ATTESTATION_BLOCKED' })
@@ -1230,17 +1230,22 @@ async function readMetaRolloutSnapshotWithUsage(
   force = false,
   knownConnectionVerified?: boolean,
 ): Promise<{ snapshot: MetaRolloutSnapshot; usage: D1Usage }> {
-  const targetResult = await queryFirstWithUsage<{ value: string }>(c.env.DB.prepare(`
-    SELECT value
-    FROM site_settings
-    WHERE key = 'meta_capi_rollout_percentage'
-    LIMIT 1
-  `))
+  const [targetResult, trackingModeResult] = await Promise.all([
+    queryFirstWithUsage<{ value: string }>(c.env.DB.prepare(`
+      SELECT value FROM site_settings
+      WHERE key = 'meta_capi_rollout_percentage' LIMIT 1
+    `)),
+    queryFirstWithUsage<{ value: string }>(c.env.DB.prepare(`
+      SELECT value FROM site_settings
+      WHERE key = 'meta_tracking_mode' LIMIT 1
+    `)),
+  ])
   const rawTargetValue = String(targetResult.row?.value ?? '')
   const targetPercentage = normalizeMetaCapiRollout(
     parseStoredSettingValue(rawTargetValue, undefined),
   )
   const environment = auditEnvironment(c.env.APP_ENV)
+  const trackingMode = normalizeMetaTrackingMode(parseStoredSettingValue(String(trackingModeResult.row?.value || ''), ''))
   const releaseCommit = normalizeReleaseCommit(c.env.RELEASE_COMMIT)
   const [connectionResult, incidentResult, evidenceResult, metricsResult] = await Promise.all([
     knownConnectionVerified === undefined
@@ -1261,6 +1266,9 @@ async function readMetaRolloutSnapshotWithUsage(
     if ((targetPercentage === 0 && to === 10) || force) {
       if (!releaseCommit) hardBlockers.push('release_commit_invalid')
       else if (!liveEvidencePresent) hardBlockers.push('meta_live_verification_missing')
+    }
+    if (environment === 'production' && targetPercentage === 0 && to === 10 && trackingMode !== 'production') {
+      hardBlockers.push('tracking_mode_not_production')
     }
     if (openIncident) hardBlockers.push('circuit_open')
     if (!metricsResult.status.available) hardBlockers.push('metrics_unavailable')
@@ -1293,6 +1301,7 @@ async function readMetaRolloutSnapshotWithUsage(
     },
     usage: mergeD1Usage(
       targetResult.usage,
+      trackingModeResult.usage,
       connectionResult.usage,
       incidentResult.usage,
       evidenceResult.usage,

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { recordReleaseVerificationSummary } from './release-verification-store.mjs'
+import { readRemoteDevGate } from './verify-release.mjs'
 
 const COMMIT = '18dc11e0b0e4797683d4551a93a1f22e53dc4628'
 
@@ -12,7 +13,7 @@ describe('发布验证 D1 摘要存储', () => {
       verificationType: 'meta_resources',
       commit: COMMIT,
       verifiedAt: '2026-07-10T00:00:00.000Z',
-      summary: { queuesReady: true, capiEnabled: false },
+      summary: metaResourcesSummary(),
       runCommand: async (command, args, options) => {
         captured = { command, args, options }
         return { name: options.name, status: 'passed', exitCode: 0, stdout: 'resource-id-sensitive', stderr: '', summary: 'raw output' }
@@ -39,7 +40,7 @@ describe('发布验证 D1 摘要存储', () => {
       verificationType: 'meta_live',
       commit: COMMIT,
       verifiedAt: '2026-07-10T00:00:00.000Z',
-      summary: { eventsVerified: true },
+      summary: metaLiveSummary('dev'),
       runCommand: async (_command, commandArgs, options) => {
         args = commandArgs
         return { name: options.name, status: 'passed', exitCode: 0, stdout: '', stderr: '', summary: 'ok' }
@@ -48,6 +49,56 @@ describe('发布验证 D1 摘要存储', () => {
 
     assert.equal(args.includes('meigallery-db-dev'), true)
     assert.deepEqual(args.slice(args.indexOf('meigallery-db-dev') + 1, args.indexOf('meigallery-db-dev') + 3), ['--env', 'dev'])
+  })
+
+  it('真实 store 接受严格 V2 meta_live 摘要，写入后可由远端 gate 读取通过', async () => {
+    let storedSummary = ''
+    const contract = { version: 3, digest: `sha256:${'9'.repeat(64)}` }
+    const result = await recordReleaseVerificationSummary({
+      environment: 'dev',
+      verificationType: 'meta_live',
+      commit: COMMIT,
+      verifiedAt: '2026-07-10T00:00:00.000Z',
+      summary: metaLiveSummary('dev', contract),
+      runCommand: async (_command, args, options) => {
+        const sql = args[args.indexOf('--command') + 1]
+        const match = sql.match(/'((?:[^']|'')*)', '2026-07-10T00:00:00\.000Z'/)
+        assert.ok(match)
+        storedSummary = match[1].replaceAll("''", "'")
+        return { name: options.name, status: 'passed', exitCode: 0, stdout: '', stderr: '' }
+      },
+    })
+    assert.equal(result.status, 'passed')
+
+    const gate = await readRemoteDevGate({
+      commit: COMMIT,
+      contract,
+      runCommand: async (_command, _args, options) => ({
+        name: options.name,
+        status: 'passed',
+        stdout: JSON.stringify([{ results: [{ summary: storedSummary }] }]),
+        stderr: '',
+        exitCode: 0,
+      }),
+    })
+    assert.equal(gate.status, 'passed')
+  })
+
+  it('V2 meta_live 只接受精确 allowlist，拒绝 secret、PII、raw ID 与任意对象', async () => {
+    for (const summary of [
+      { ...metaLiveSummary('dev'), accessToken: 'secret-token' },
+      { ...metaLiveSummary('dev'), email: 'owner@example.com' },
+      { ...metaLiveSummary('dev'), browserEventId: `mlv_${'a'.repeat(32)}` },
+      { ...metaLiveSummary('dev'), events: [{ eventName: 'Contact' }] },
+      { ...metaLiveSummary('dev'), environment: 'production' },
+      { ...metaLiveSummary('dev'), commitSha: 'b'.repeat(40) },
+    ]) {
+      await assert.rejects(recordReleaseVerificationSummary({
+        environment: 'dev', verificationType: 'meta_live', commit: COMMIT,
+        verifiedAt: '2026-07-10T00:00:00.000Z', summary,
+        runCommand: async () => assert.fail('非法摘要不得执行写入'),
+      }), /summary|字段|Meta live|非法|一致/)
+    }
   })
 
   it('拒绝非法 type、commit 和非布尔摘要，避免敏感值进入 SQL', async () => {
@@ -62,7 +113,7 @@ describe('发布验证 D1 摘要存储', () => {
           verificationType: 'meta_live',
           commit: COMMIT,
           verifiedAt: '2026-07-10T00:00:00.000Z',
-          summary: { passed: true },
+          summary: metaLiveSummary('dev'),
           runCommand: async () => assert.fail('非法输入不得执行命令'),
           ...overrides,
         })
@@ -70,3 +121,44 @@ describe('发布验证 D1 摘要存储', () => {
     }
   })
 })
+
+function metaLiveSummary(environment, contract = { version: 3, digest: `sha256:${'9'.repeat(64)}` }) {
+  return {
+    schemaVersion: 2,
+    commitSha: COMMIT,
+    environment,
+    events: ['Contact', 'CompleteRegistration'],
+    eventsVerified: true,
+    forbiddenEventsAbsent: true,
+    datasetQualityContractVersion: contract.version,
+    datasetQualityContractDigest: contract.digest,
+  }
+}
+
+function metaResourcesSummary() {
+  return {
+    schemaVersion: 2,
+    verificationPhase: 'full',
+    bootstrapReady: false,
+    liveAttestation: true,
+    migrationsReady: true,
+    d1Ready: true,
+    r2Ready: true,
+    queuesReady: true,
+    secretsReady: true,
+    migrationsCurrent: true,
+    migrationsApplied: true,
+    connectionVerified: true,
+    capiEnabled: false,
+    initialMetaRollout: false,
+    noOpenCriticalIncident: true,
+    initialRolloutZero: true,
+    secureOutboxReady: true,
+    previousKeyReferencesExplainable: true,
+    rolloutZero: true,
+    environmentIsolation: {
+      d1: true, r2: true, queue: true, dlq: true,
+      pixel: true, token: true, testEventCode: true, dataKey: true,
+    },
+  }
+}

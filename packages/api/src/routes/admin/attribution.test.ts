@@ -896,6 +896,8 @@ type RolloutDbOptions = {
   metricsQueryError?: boolean
   conflict?: boolean
   resourceIsolation?: boolean
+  trackingMode?: 'disabled' | 'test' | 'production'
+  environment?: 'dev' | 'production'
 }
 
 function createRolloutDb(options: RolloutDbOptions = {}) {
@@ -972,12 +974,12 @@ function createRolloutDb(options: RolloutDbOptions = {}) {
       return [{ value: JSON.stringify('1234567890') } as T]
     }
     if (sql.includes('FROM site_settings') && sql.includes("key = 'meta_tracking_mode'")) {
-      return [{ value: JSON.stringify('test') } as T]
+      return [{ value: JSON.stringify(options.trackingMode ?? 'production') } as T]
     }
     if (sql.includes('FROM meta_connection_verifications')) {
       if (options.connectionVerified === false) return []
       return [{
-        environment: 'dev',
+        environment: options.environment ?? 'dev',
         pixel_id: '1234567890',
         token_fingerprint: 'a31456d57fa4fd03160643daf898d11bff0e56e42c445ffa81680f662de55276',
         graph_api_version: 'v25.0',
@@ -1074,7 +1076,10 @@ async function requestRollout(
   init: RequestInit = {},
   envOverrides: Partial<Bindings> = {},
 ) {
-  const db = createRolloutDb(dbOptions)
+  const db = createRolloutDb({
+    ...dbOptions,
+    environment: envOverrides.APP_ENV === 'production' ? 'production' : 'dev',
+  })
   const res = await createApp(role).request(
     '/api/admin/attribution/meta/rollout',
     init,
@@ -1898,7 +1903,7 @@ describe('后台归因中心 API', () => {
   it.each([
     '/api/admin/attribution/meta/live-challenge',
     '/api/admin/attribution/meta/live-challenge/consume',
-    '/api/admin/attribution/meta/resource-attestation',
+    '/api/admin/attribution/meta/resource-attestation-ticket',
   ])('非 owner 不能调用受信 Meta 验证流程：%s', async path => {
     const db = createAttributionDb()
     const fetchMock = vi.fn()
@@ -1912,18 +1917,22 @@ describe('后台归因中心 API', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('Owner resource attestation 只返回 HMAC 摘要并绑定当前环境与 commit', async () => {
+  it('Owner 只能换取绑定环境/commit/nonce 的短期 ticket，不直接返回 resource attestation', async () => {
     const db = createAttributionDb()
     const nonce = `nonce_${'a'.repeat(32)}`
-    const res = await createApp('owner').request('/api/admin/attribution/meta/resource-attestation', {
+    const res = await createApp('owner').request('/api/admin/attribution/meta/resource-attestation-ticket', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ nonce }),
     }, { DB: db, ...VALID_READINESS_ENV } as unknown as Bindings)
     const body = await res.json()
     expect(res.status).toBe(200)
-    expect(body.data).toMatchObject({ environment: 'dev', commitSha: VALID_RELEASE_COMMIT, nonce })
-    expect(Object.values(body.data.identities).every(value => /^hmac-sha256:[0-9a-f]{64}$/.test(String(value)))).toBe(true)
+    expect(body.data).toMatchObject({
+      schemaVersion: 1, environment: 'dev', commitSha: VALID_RELEASE_COMMIT, nonce,
+      ticket: expect.stringMatching(/^mrat_[0-9a-f]{64}$/),
+    })
+    expect(Date.parse(body.data.expiresAt) - Date.parse(body.data.issuedAt)).toBe(60_000)
+    expect(body.data).not.toHaveProperty('identities')
     expect(JSON.stringify({ body, calls: db.calls })).not.toContain('secret-token')
     expect(JSON.stringify({ body, calls: db.calls })).not.toContain('test-code')
   })
@@ -2102,6 +2111,27 @@ describe('后台归因中心 API', () => {
     expect(res.status).toBe(409)
     expect(body.detail.blockers).toContain('meta_live_verification_missing')
     expect(db.calls.some(call => call.sql.includes('UPDATE site_settings'))).toBe(false)
+  })
+
+  it.each(['disabled', 'test'] as const)('production 0 -> 10 在 trackingMode=%s 时先于 fetch/queue/rollout UPDATE 阻断', async trackingMode => {
+    const fetchMock = vi.fn()
+    const queueSend = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const { db, res, body } = await requestRollout('owner', { target: 0, trackingMode }, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ percentage: 10, force: false }),
+    }, {
+      APP_ENV: 'production',
+      META_CAPI_QUEUE: { send: queueSend },
+    })
+
+    expect(res.status).toBe(409)
+    expect(body.detail.blockers).toContain('tracking_mode_not_production')
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(queueSend).not.toHaveBeenCalled()
+    expect(db.calls.some(call => call.sql.includes('UPDATE site_settings'))).toBe(false)
+    expect(db.batchCount).toBe(0)
   })
 
   it.each(['203.0.113.24', 'test-code'])('Test Event 丢弃回显敏感值的 traceId：%s', async sensitiveTraceId => {
@@ -2672,11 +2702,11 @@ describe('Meta CAPI v2 质量运维看板契约', () => {
     const body = await res.json()
 
     expect(res.status).toBe(200)
-    expect(body.usage).toEqual({ rowsRead: 160, rowsWritten: 0, durationMs: 31 })
+    expect(body.usage).toEqual({ rowsRead: 163, rowsWritten: 0, durationMs: 31 })
     expect(db.calls.filter(call => call.sql.includes("key = 'facebook_pixel_id'"))).toHaveLength(1)
-    expect(db.calls.filter(call => call.sql.includes("key = 'meta_tracking_mode'"))).toHaveLength(1)
+    expect(db.calls.filter(call => call.sql.includes("key = 'meta_tracking_mode'"))).toHaveLength(2)
     expect(db.calls.filter(call => call.sql.includes('FROM meta_connection_verifications'))).toHaveLength(1)
-    expect(db.calls).toHaveLength(11)
+    expect(db.calls).toHaveLength(12)
   })
 
   it('breakdown 以 conversion fact 为 action 基数，双通道不会翻倍', async () => {

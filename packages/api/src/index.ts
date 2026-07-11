@@ -20,6 +20,7 @@ import { PUBLIC_SETTING_KEYS } from './utils/site-settings'
 import { sanitizePublicSiteSetting, sanitizePublicSiteSettings } from './utils/public-site-settings'
 import { HOME_AD_PLACEMENT, type HomeAdRow, serializePublicHomeAd } from './utils/home-ads'
 import { adminRoutes } from './routes/admin'
+import { metaResourceAttestationRoutes } from './routes/meta-resource-attestation'
 import { healthRoutes } from './routes/health'
 import { authMiddleware } from './middleware/auth'
 import { rateLimiter } from './middleware/rate-limit'
@@ -245,6 +246,7 @@ app.get('/api/settings/public', async (c) => {
   return c.json(sanitizePublicSiteSettings(settings))
 })
 
+app.route('/api/meta', metaResourceAttestationRoutes)
 app.route('/api/admin', adminRoutes)
 
 // 404 fallback

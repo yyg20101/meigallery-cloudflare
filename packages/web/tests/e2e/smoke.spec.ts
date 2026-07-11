@@ -512,6 +512,21 @@ test.describe('核心页面 smoke', () => {
     await expect(deliverySection.locator('dl').first().locator(':scope > div').filter({ hasText: /^CAPI 接收\s*9$/ })).toHaveCount(1)
   })
 
+  test('production Owner 可触发 Test Event，并直接看到后端 blocker', async ({ request, page }) => {
+    await request.patch(`${apiURL}/api/test/admin-attribution-environment`, { data: { environment: 'production' } })
+    await request.patch(`${apiURL}/api/test/admin-attribution-action-mode`, { data: { mode: 'conflict' } })
+    await page.goto('/admin/attribution/meta')
+
+    const connection = page.locator('[data-meta-connection-status]')
+    await expect(connection).toContainText('· production')
+    const [response] = await Promise.all([
+      page.waitForResponse(candidate => candidate.url().endsWith('/api/admin/attribution/meta/test-event')),
+      connection.getByRole('button', { name: '验证连接' }).click(),
+    ])
+    expect(response.status()).toBe(409)
+    await expect(connection.getByRole('status')).toHaveText('production 资源验证尚未通过')
+  })
+
   test('后台归因设置始终允许关闭已开启的 CAPI', async ({ request, page }) => {
     await request.patch(`${apiURL}/api/test/admin-attribution-readiness`, { data: { blocked: false } })
     await request.patch(`${apiURL}/api/admin/settings`, { data: { meta_tracking_mode: 'test', meta_capi_enabled: true } })

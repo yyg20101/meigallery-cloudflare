@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, it } from 'node:test'
 import {
   assertProductionAllowed,
+  collectTrustedProductionGateFacts,
   runDevRehearsalReleaseVerification,
   runLocalRuntimeReleaseVerification,
   runQuickVerification,
@@ -194,7 +195,75 @@ describe('发布验证 CLI', () => {
         return { status: 'passed' }
       },
     })
-    assert.equal(trustedInput.initialMetaRollout, true)
+    assert.equal(Object.hasOwn(trustedInput, 'initialMetaRollout'), false)
+  })
+
+  it('latest.initialMetaRollout 双向篡改都不能改变 production 受信 phase', async () => {
+    for (const [reportFlag, permitPresent, expectedPhase] of [
+      [false, true, 'bootstrap'],
+      [true, false, 'full'],
+    ]) {
+      const phases = []
+      await assertProductionAllowed({
+        getGitState: async () => ({ branch: 'main', commit: RELEASE_COMMIT, isClean: true, remote: 'origin' }),
+        readLatestReport: async () => ({ initialMetaRollout: reportFlag }),
+        assertReportCanGateProduction: () => {},
+        collectTrustedProductionGateFacts: options => collectTrustedProductionGateFacts({
+          ...options,
+          verifyDevReleaseIdentity: async () => {},
+          verifyApprovedMetaDatasetQualityContract: async () => ({ version: 3, digest: `sha256:${'9'.repeat(64)}` }),
+          readRemoteDevGate: async () => ({ status: 'passed' }),
+          readTrustedProductionBootstrapPermit: async () => permitPresent,
+          runMetaResourceVerification: async input => {
+            if (input.environment === 'production') phases.push(input.phase)
+            return input.environment === 'dev'
+              ? {
+                  status: 'passed', connectionVerified: true, openCriticalIncidentCount: 0,
+                  datasetQualityCollectorCurrent: true, datasetQualityContractVersion: 3,
+                  datasetQualityContractDigest: `sha256:${'9'.repeat(64)}`,
+                }
+              : {
+                  status: 'passed', openCriticalIncidentCount: 0,
+                  targetRolloutPercentage: 0, effectiveRolloutPercentage: 0,
+                }
+          },
+        }),
+      })
+      assert.deepEqual(phases, [expectedPhase])
+    }
+  })
+
+  it('bootstrap permit 必须来自 production D1、绑定当前 commit、未过期且为严格资源摘要', async () => {
+    let permitQuery = ''
+    const phases = []
+    await collectTrustedProductionGateFacts({
+      commit: RELEASE_COMMIT,
+      verifyDevReleaseIdentity: async () => {},
+      verifyApprovedMetaDatasetQualityContract: async () => ({ version: 3, digest: `sha256:${'9'.repeat(64)}` }),
+      readRemoteDevGate: async () => ({ status: 'passed' }),
+      runCommand: async (_command, args, options) => {
+        permitQuery = args[args.indexOf('--command') + 1]
+        return {
+          name: options.name, status: 'passed', exitCode: 0, stderr: '',
+          stdout: JSON.stringify([{ results: [{ summary: JSON.stringify(bootstrapResourceSummary()) }] }]),
+        }
+      },
+      runMetaResourceVerification: async input => {
+        if (input.environment === 'production') phases.push(input.phase)
+        return input.environment === 'dev'
+          ? {
+              status: 'passed', connectionVerified: true, openCriticalIncidentCount: 0,
+              datasetQualityCollectorCurrent: true, datasetQualityContractVersion: 3,
+              datasetQualityContractDigest: `sha256:${'9'.repeat(64)}`,
+            }
+          : { status: 'passed', openCriticalIncidentCount: 0, targetRolloutPercentage: 0, effectiveRolloutPercentage: 0 }
+      },
+    })
+    assert.deepEqual(phases, ['bootstrap'])
+    assert.match(permitQuery, /environment = 'production'/)
+    assert.match(permitQuery, /verification_type = 'meta_resources'/)
+    assert.match(permitQuery, /datetime\(expires_at\) > datetime\('now'\)/)
+    assert.match(permitQuery, new RegExp(RELEASE_COMMIT))
   })
 
   it('assertProductionAllowed 在当前 Git commit 为空时保守失败', async () => {
@@ -896,3 +965,31 @@ describe('发布验证 CLI', () => {
     }
   })
 })
+
+function bootstrapResourceSummary() {
+  return {
+    schemaVersion: 2,
+    verificationPhase: 'bootstrap',
+    bootstrapReady: true,
+    liveAttestation: false,
+    migrationsReady: true,
+    d1Ready: true,
+    r2Ready: true,
+    queuesReady: true,
+    secretsReady: true,
+    migrationsCurrent: true,
+    migrationsApplied: true,
+    connectionVerified: false,
+    capiEnabled: false,
+    initialMetaRollout: true,
+    noOpenCriticalIncident: true,
+    initialRolloutZero: true,
+    secureOutboxReady: true,
+    previousKeyReferencesExplainable: true,
+    rolloutZero: true,
+    environmentIsolation: {
+      d1: true, r2: true, queue: true, dlq: true,
+      pixel: false, token: false, testEventCode: false, dataKey: false,
+    },
+  }
+}

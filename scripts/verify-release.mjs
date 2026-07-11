@@ -17,7 +17,10 @@ import {
   assertMetaLiveEvidenceCanGateProduction,
   readLatestMetaLiveEvidence,
 } from './meta-live-verification-lib.mjs'
-import { recordReleaseVerificationSummary } from './release-verification-store.mjs'
+import {
+  assertReleaseVerificationSummary,
+  recordReleaseVerificationSummary,
+} from './release-verification-store.mjs'
 import { runMetaResourceVerification } from './verify-meta-resources.mjs'
 import { verifyApprovedMetaDatasetQualityContract } from './meta-dataset-quality-contract-lib.mjs'
 import { verifyDevReleaseIdentity } from './record-meta-live-verification.mjs'
@@ -623,7 +626,6 @@ export async function assertProductionAllowed(options = {}) {
   await collectTrustedProductionGateFactsFn({
     ...options,
     commit: expectedCommit,
-    initialMetaRollout: report?.initialMetaRollout === true,
   })
 }
 
@@ -634,6 +636,7 @@ export async function collectTrustedProductionGateFacts(options = {}) {
   const verifyContractFn = options.verifyApprovedMetaDatasetQualityContract || verifyApprovedMetaDatasetQualityContract
   const runMetaResourceVerificationFn = options.runMetaResourceVerification || runMetaResourceVerification
   const readRemoteDevGateFn = options.readRemoteDevGate || readRemoteDevGate
+  const readTrustedProductionBootstrapPermitFn = options.readTrustedProductionBootstrapPermit || readTrustedProductionBootstrapPermit
 
   await verifyDevReleaseIdentityFn({ ...options, commit })
   const contract = await verifyContractFn(options)
@@ -656,17 +659,18 @@ export async function collectTrustedProductionGateFacts(options = {}) {
   const live = await readRemoteDevGateFn({ ...options, commit, contract })
   if (live?.status !== 'passed') throw new Error('当前 dev 远端 live evidence 链未通过')
 
+  const bootstrapPermitted = await readTrustedProductionBootstrapPermitFn({ ...options, commit })
   const production = await runMetaResourceVerificationFn({
     ...options,
     environment: 'production',
     commit,
-    phase: options.initialMetaRollout === true ? 'bootstrap' : 'full',
-    initialMetaRollout: options.initialMetaRollout === true,
+    phase: bootstrapPermitted ? 'bootstrap' : 'full',
+    initialMetaRollout: bootstrapPermitted,
     reportOnly: true,
   })
   if (production?.status !== 'passed'
     || production.openCriticalIncidentCount !== 0
-    || (options.initialMetaRollout === true && (
+    || (bootstrapPermitted && (
       production.targetRolloutPercentage !== 0 || production.effectiveRolloutPercentage !== 0
     ))) {
     throw new Error('当前 production 远端 resource/incident/rollout 链未通过')
@@ -674,7 +678,7 @@ export async function collectTrustedProductionGateFacts(options = {}) {
   return { status: 'passed', dev, production, live, contract }
 }
 
-async function readRemoteDevGate(options = {}) {
+export async function readRemoteDevGate(options = {}) {
   const sql = `
     SELECT summary, verified_at, expires_at
     FROM analytics_release_verifications
@@ -706,6 +710,45 @@ async function readRemoteDevGate(options = {}) {
   }
   catch {
     return { status: 'failed' }
+  }
+}
+
+export async function readTrustedProductionBootstrapPermit(options = {}) {
+  const commit = String(options.commit || '').trim().toLowerCase()
+  if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error('bootstrap permit 需要当前 40 位 commit')
+  const sql = `
+    SELECT summary, verified_at, expires_at
+    FROM analytics_release_verifications
+    WHERE environment = 'production' AND verification_type = 'meta_resources'
+      AND status = 'passed' AND commit_sha = '${commit}'
+      AND datetime(expires_at) > datetime('now')
+    ORDER BY verified_at DESC LIMIT 1
+  `.replace(/\s+/g, ' ').trim()
+  const step = await (options.runCommand || runCommand)('corepack', [
+    'pnpm', '--filter', '@meigallery/api', 'exec', 'wrangler', 'd1', 'execute', 'meigallery-db',
+    '--env', '', '--remote', '--command', sql, '--json',
+  ], { cwd: options.cwd || process.cwd(), name: 'production-gate-bootstrap-permit', reportCommand: '重查 production D1 当前 commit bootstrap permit' })
+  if (step.status !== 'passed') throw new Error('production bootstrap permit 查询失败')
+  try {
+    const payload = JSON.parse(String(step.stdout || ''))
+    const summary = JSON.parse(String(payload?.[0]?.results?.[0]?.summary || ''))
+    assertReleaseVerificationSummary({
+      environment: 'production', verificationType: 'meta_resources', commit, summary,
+    })
+    return summary.verificationPhase === 'bootstrap'
+      && summary.bootstrapReady === true
+      && summary.liveAttestation === false
+      && summary.capiEnabled === false
+      && summary.initialMetaRollout === true
+      && summary.noOpenCriticalIncident === true
+      && summary.initialRolloutZero === true
+      && summary.secureOutboxReady === true
+      && summary.previousKeyReferencesExplainable === true
+      && summary.rolloutZero === true
+      && ['d1', 'r2', 'queue', 'dlq'].every(key => summary.environmentIsolation[key] === true)
+  }
+  catch {
+    return false
   }
 }
 

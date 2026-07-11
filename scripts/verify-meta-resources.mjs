@@ -29,6 +29,12 @@ const RESOURCE_CONFIG = {
     dlqConsumer: { batchSize: 5, maxWaitTimeMs: 5_000 },
   },
 }
+const TRUSTED_ATTESTATION_ORIGINS = {
+  dev: 'https://meigallery-api-dev.wajie.workers.dev',
+  production: 'https://api.616618.xyz',
+}
+const ATTESTATION_TICKET_PATH = '/api/admin/attribution/meta/resource-attestation-ticket'
+const ATTESTATION_PATH = '/api/meta/resource-attestation'
 const ALWAYS_REQUIRED_SECRETS = ['META_CAPI_ACCESS_TOKEN', 'META_CAPI_DATA_KEY_CURRENT']
 const REQUIRED_MIGRATIONS = [
   '0036_meta_capi_v2_secure_delivery.sql',
@@ -37,9 +43,10 @@ const REQUIRED_MIGRATIONS = [
   '0039_meta_capi_v2_operations.sql',
   '0040_meta_capi_circuit_indexes.sql',
   '0041_meta_live_challenges.sql',
+  '0042_meta_resource_attestation_tickets.sql',
 ]
 const SETTINGS_SQL = "SELECT key, value FROM site_settings WHERE key IN ('meta_capi_enabled', 'meta_tracking_mode', 'facebook_pixel_id') ORDER BY key"
-const MIGRATION_NAMES_SQL = "SELECT name FROM d1_migrations WHERE name IN ('0036_meta_capi_v2_secure_delivery.sql', '0037_meta_connection_revision.sql', '0038_conversion_dedupe_claims.sql', '0039_meta_capi_v2_operations.sql', '0040_meta_capi_circuit_indexes.sql', '0041_meta_live_challenges.sql') ORDER BY name"
+const MIGRATION_NAMES_SQL = "SELECT name FROM d1_migrations WHERE name IN ('0036_meta_capi_v2_secure_delivery.sql', '0037_meta_connection_revision.sql', '0038_conversion_dedupe_claims.sql', '0039_meta_capi_v2_operations.sql', '0040_meta_capi_circuit_indexes.sql', '0041_meta_live_challenges.sql', '0042_meta_resource_attestation_tickets.sql') ORDER BY name"
 const META_OPERATIONS_SQL = `
   WITH rollout AS (
     SELECT CAST(COALESCE((SELECT value FROM site_settings WHERE key = 'meta_capi_rollout_percentage' LIMIT 1), '-1') AS INTEGER) AS target
@@ -149,7 +156,7 @@ export async function runMetaResourceVerification(options = {}) {
     : []
   const requiredSecretsPresent = settings !== null
     && hasRequiredSecrets(byName.get('secrets')?.stdout, requiredSecretNames)
-  const migrationsCurrent = /^No migrations to apply!?$/im.test(String(byName.get('migrations')?.stdout || '').trim())
+  const migrationsCurrent = hasNoPendingMigrations(byName.get('migrations')?.stdout)
   const migrationsApplied = hasRequiredMigrations(byName.get('migration-names')?.stdout)
   const connectionVerified = settings !== null && hasVerifiedMetaConnection(
     byName.get('meta-connection')?.stdout,
@@ -160,7 +167,7 @@ export async function runMetaResourceVerification(options = {}) {
   const operations = parseMetaOperations(byName.get('meta-operations')?.stdout)
   const capiEnabled = settings?.capiEnabled ?? null
   const trackingMode = settings?.trackingMode ?? null
-  const initialMetaRollout = options.initialMetaRollout === true && environment === 'production'
+  const initialMetaRollout = phase === 'bootstrap'
   const previousSecretPresent = hasRequiredSecrets(byName.get('secrets')?.stdout, ['META_CAPI_DATA_KEY_PREVIOUS'])
   const previousKeyActiveCountExplainable = operations !== null
     && operations.activeKeyCount <= 2
@@ -220,6 +227,8 @@ export async function runMetaResourceVerification(options = {}) {
         commit: options.commit,
         verifiedAt: options.now,
         summary: {
+          schemaVersion: 2,
+          verificationPhase: phase,
           bootstrapReady: phase === 'bootstrap',
           liveAttestation: environment === 'production' && phase !== 'bootstrap' && Object.values(environmentIsolation).every(Boolean),
           migrationsReady: migrationsCurrent && migrationsApplied,
@@ -316,26 +325,73 @@ export async function requestLiveResourceAttestations(options = {}) {
   const commit = String(options.commit || '').trim().toLowerCase()
   if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error('live resource attestation 需要当前 commit')
   const env = options.env || process.env
-  const nonce = `nonce_${randomBytes(32).toString('hex')}`
+  const nonce = options.nonce || `nonce_${randomBytes(32).toString('hex')}`
+  if (!/^nonce_[0-9a-f]{32,128}$/.test(nonce)) throw new Error('live resource attestation nonce 非法')
   const fetchFn = options.fetch || fetch
   const definitions = [
-    ['dev', 'VERIFY_DEV_API_URL', 'VERIFY_DEV_OWNER_SESSION_COOKIE'],
-    ['production', 'VERIFY_PRODUCTION_API_URL', 'VERIFY_PRODUCTION_OWNER_SESSION_COOKIE'],
+    ['dev', 'VERIFY_DEV_OWNER_SESSION_COOKIE'],
+    ['production', 'VERIFY_PRODUCTION_OWNER_SESSION_COOKIE'],
   ]
-  const attestations = await Promise.all(definitions.map(async ([environment, urlKey, cookieKey]) => {
-    const origin = new URL(String(env[urlKey] || ''))
+  const attestations = await Promise.all(definitions.map(async ([environment, cookieKey]) => {
+    const origin = new URL(TRUSTED_ATTESTATION_ORIGINS[environment])
     const cookie = String(env[cookieKey] || '').trim()
-    if (origin.protocol !== 'https:' || origin.username || origin.password || !cookie) throw new Error(`${environment} attestation 凭据不完整`)
-    const response = await fetchWithTimeout(fetchFn, new URL('/api/admin/attribution/meta/resource-attestation', origin), {
+    if (!cookie) throw new Error(`${environment} attestation 凭据不完整`)
+    const ticketUrl = new URL(ATTESTATION_TICKET_PATH, origin)
+    const ticketResponse = await fetchWithTimeout(fetchFn, ticketUrl, {
       method: 'POST',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json', Cookie: cookie },
       body: JSON.stringify({ nonce }),
+      redirect: 'manual',
     }, options.requestTimeoutMs)
+    assertExactResponseUrl(ticketResponse, ticketUrl, environment, 'ticket')
+    if (!ticketResponse.ok) throw new Error(`${environment} live resource attestation ticket 请求失败`)
+    const ticket = (await ticketResponse.json())?.data
+    assertAttestationTicket(ticket, { environment, commit, nonce, now: options.now })
+
+    const attestationUrl = new URL(ATTESTATION_PATH, origin)
+    const response = await fetchWithTimeout(fetchFn, attestationUrl, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nonce, ticket: ticket.ticket }),
+      redirect: 'manual',
+    }, options.requestTimeoutMs)
+    assertExactResponseUrl(response, attestationUrl, environment, 'attestation')
     if (!response.ok) throw new Error(`${environment} live resource attestation 请求失败`)
-    const body = await response.json()
-    return body?.data
+    return (await response.json())?.data
   }))
   return compareLiveAttestations(attestations[0], attestations[1], { commit, nonce, now: options.now })
+}
+
+function assertExactResponseUrl(response, expectedUrl, environment, kind) {
+  if (response?.redirected === true || String(response?.url || '') !== expectedUrl.href) {
+    throw new Error(`${environment} live resource ${kind} 响应 URL/origin/path 不一致`)
+  }
+}
+
+function assertAttestationTicket(value, expected) {
+  if (!isPlainRecord(value)
+    || value.schemaVersion !== 1
+    || value.environment !== expected.environment
+    || value.commitSha !== expected.commit
+    || value.nonce !== expected.nonce
+    || !/^mrat_[0-9a-f]{64}$/.test(String(value.ticket || ''))) {
+    throw new Error(`${expected.environment} live resource attestation ticket 绑定非法`)
+  }
+  const issuedAt = Date.parse(value.issuedAt)
+  const expiresAt = Date.parse(value.expiresAt)
+  const now = new Date(expected.now ?? Date.now()).getTime()
+  if (!Number.isFinite(issuedAt) || !Number.isFinite(expiresAt)
+    || expiresAt - issuedAt !== 60_000 || now < issuedAt || now >= expiresAt) {
+    throw new Error(`${expected.environment} live resource attestation ticket TTL 非法`)
+  }
+}
+
+export function hasNoPendingMigrations(stdout) {
+  const text = String(stdout || '').replace(/\u001B\[[0-?]*[ -/]*[@-~]/g, '')
+  if (/migrations?\s+to\s+be\s+applied|pending\s+migrations?|will\s+apply/i.test(text)) return false
+  if (/^\s*\d{4}_[^\r\n]+\.sql\s*$/im.test(text)) return false
+  const matches = text.split(/\r?\n/).filter(line => /^\s*(?:✅\s*)?No migrations to apply!\s*$/i.test(line))
+  return matches.length === 1
 }
 
 export function compareLiveAttestations(dev, production, expected) {
