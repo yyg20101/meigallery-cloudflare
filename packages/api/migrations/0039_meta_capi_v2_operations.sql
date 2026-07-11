@@ -8,7 +8,14 @@ ALTER TABLE analytics_conversion_deliveries
 
 ALTER TABLE analytics_conversion_deliveries
   ADD COLUMN rollout_bucket INTEGER
-  CHECK (rollout_bucket IS NULL OR (rollout_bucket >= 0 AND rollout_bucket <= 99));
+  CHECK (
+    rollout_bucket IS NULL
+    OR (
+      typeof(rollout_bucket) = 'integer'
+      AND rollout_bucket >= 0
+      AND rollout_bucket <= 99
+    )
+  );
 
 CREATE UNIQUE INDEX idx_conversion_delivery_action_channel
   ON analytics_conversion_deliveries(conversion_action_id, channel);

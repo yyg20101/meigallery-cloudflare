@@ -85,6 +85,7 @@ if [ "$IS_PRODUCTION" = "true" ] && [ -f "packages/api/migrations/0017_cases_cle
   fi
   echo "0017_cases_cleanup.sql 已应用或不在待执行列表中，继续生产迁移检查。"
 fi
+node scripts/verify-meta-migration.mjs preflight --env "$ENV"
 "${PNPM[@]}" --filter @meigallery/api exec wrangler d1 migrations apply "$D1_DB" "${ENV_ARGS[@]}" --remote
 
 echo ""

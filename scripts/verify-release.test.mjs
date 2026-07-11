@@ -16,6 +16,7 @@ import { writeReport } from './release-verification-lib.mjs'
 const DEPLOY_SCRIPT_PATH = fileURLToPath(new URL('./deploy.sh', import.meta.url))
 const VITEST_CONFIG_PATH = fileURLToPath(new URL('../packages/api/vitest.config.ts', import.meta.url))
 const PACKAGE_JSON_PATH = fileURLToPath(new URL('../package.json', import.meta.url))
+const API_PACKAGE_JSON_PATH = fileURLToPath(new URL('../packages/api/package.json', import.meta.url))
 const RELEASE_COMMIT = '18dc11e0b0e4797683d4551a93a1f22e53dc4628'
 
 describe('发布验证 CLI', () => {
@@ -37,7 +38,7 @@ describe('发布验证 CLI', () => {
     assert.doesNotMatch(devBlock[1], /D1_DB="meigallery-db"\s*(?:\n|$)/)
   })
 
-  it('deploy 将当前 commit 传给 API Worker，且生产 gate 早于 D1 migration', async () => {
+  it('deploy 将当前 commit 传给 API Worker，且生产 gate/preflight 均早于 D1 migration', async () => {
     const deployScript = await readFile(DEPLOY_SCRIPT_PATH, 'utf8')
     assert.match(deployScript, /GIT_COMMIT="\$\(git rev-parse HEAD\)"/)
     const deployLines = deployScript.split('\n').filter(line => /wrangler deploy "\$\{ENV_ARGS\[@\]\}" --var/.test(line))
@@ -49,11 +50,24 @@ describe('发布验证 CLI', () => {
     assert.match(deployScript, /ENV_ARGS=\(--env ""\)/)
 
     const gateIndex = deployScript.indexOf('verify-release.mjs assert-production-allowed')
+    const preflightIndex = deployScript.indexOf('verify-meta-migration.mjs preflight --env "$ENV"')
     const migrationIndex = deployScript.indexOf('wrangler d1 migrations apply')
     const deployIndex = deployScript.indexOf('wrangler deploy "${ENV_ARGS[@]}" --var')
     assert.ok(gateIndex >= 0)
-    assert.ok(migrationIndex > gateIndex)
+    assert.ok(preflightIndex > gateIndex)
+    assert.ok(migrationIndex > preflightIndex)
     assert.ok(deployIndex > gateIndex)
+  })
+
+  it('API remote migration package script 在 production apply 前执行只读 preflight', async () => {
+    const packageJson = JSON.parse(await readFile(API_PACKAGE_JSON_PATH, 'utf8'))
+    const command = packageJson.scripts['db:migrate:remote']
+
+    const preflightIndex = command.indexOf('verify-meta-migration.mjs preflight --env production')
+    const migrationIndex = command.indexOf('wrangler d1 migrations apply meigallery-db --env="" --remote')
+    assert.ok(preflightIndex >= 0)
+    assert.ok(migrationIndex > preflightIndex)
+    assert.match(command.slice(preflightIndex, migrationIndex), /&&/)
   })
 
   it('API coverage 显式包含八个 Meta 文件和独立阈值', async () => {

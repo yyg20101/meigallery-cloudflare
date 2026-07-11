@@ -110,7 +110,7 @@ describe('0039 Meta CAPI v2 质量运营 migration', () => {
       executeSql(`UPDATE analytics_conversion_deliveries SET rollout_bucket = ${bucket} WHERE id = 'delivery_0039_capi';`)
     }
     executeSql("UPDATE analytics_conversion_deliveries SET rollout_bucket = NULL WHERE id = 'delivery_0039_capi';")
-    for (const bucket of [-1, 100]) {
+    for (const bucket of ['-1', '100', '0.5', '1.5', "'invalid'", "'1.5'"]) {
       assert.throws(() => executeSql(`UPDATE analytics_conversion_deliveries SET rollout_bucket = ${bucket} WHERE id = 'delivery_0039_capi';`))
     }
   })

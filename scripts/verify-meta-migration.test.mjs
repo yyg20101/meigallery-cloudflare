@@ -3,7 +3,12 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { after, describe, it } from 'node:test'
-import { runMetaMigrationVerification } from './verify-meta-migration.mjs'
+import {
+  main,
+  metaMigrationExitCode,
+  runMetaMigrationVerification,
+  runRemoteMetaMigrationPreflight,
+} from './verify-meta-migration.mjs'
 
 const integrationDir = await mkdtemp(path.join(tmpdir(), 'meigallery-meta-verifier-'))
 
@@ -164,3 +169,120 @@ describe('Meta migration 演练', () => {
     }
   })
 })
+
+describe('目标 D1 duplicate preflight', () => {
+  for (const [environment, database, envArgs] of [
+    ['dev', 'meigallery-db-dev', ['--env', 'dev']],
+    ['production', 'meigallery-db', ['--env', '']],
+  ]) {
+    it(`${environment} 固定使用目标 D1/env 和 remote 只读查询`, async () => {
+      const calls = []
+      const report = await runRemoteMetaMigrationPreflight({
+        environment,
+        runCommand: remotePreflightRunner(calls, { tablePresent: true, duplicateGroupCount: 0 }),
+      })
+
+      assert.deepEqual(report, {
+        status: 'ready',
+        tablePresent: true,
+        duplicateGroupCount: 0,
+      })
+      assert.equal(calls.length, 2)
+      for (const call of calls) {
+        assert.equal(call.args.includes(database), true)
+        assert.equal(hasAdjacent(call.args, envArgs[0], envArgs[1]), true)
+        assert.equal(call.args.includes('--remote'), true)
+        assert.equal(call.args.includes('--json'), true)
+        assert.doesNotMatch(call.args.join(' '), /external_event_id/)
+      }
+      assert.match(commandSql(calls[0]), /sqlite_schema/)
+      assert.match(commandSql(calls[1]), /COUNT\(\*\) AS duplicate_group_count/i)
+    })
+  }
+
+  it('全新库无 delivery 表时视为 0 个重复组且不执行 group query', async () => {
+    const calls = []
+    const report = await runRemoteMetaMigrationPreflight({
+      environment: 'dev',
+      runCommand: remotePreflightRunner(calls, { tablePresent: false }),
+    })
+
+    assert.deepEqual(report, {
+      status: 'ready',
+      tablePresent: false,
+      duplicateGroupCount: 0,
+    })
+    assert.equal(calls.length, 1)
+  })
+
+  it('发现重复组时只返回稳定状态和数量', async () => {
+    const report = await runRemoteMetaMigrationPreflight({
+      environment: 'production',
+      runCommand: remotePreflightRunner([], { tablePresent: true, duplicateGroupCount: 3 }),
+    })
+
+    assert.deepEqual(report, {
+      status: 'blocked_duplicates',
+      tablePresent: true,
+      duplicateGroupCount: 3,
+    })
+    assert.deepEqual(Object.keys(report).sort(), ['duplicateGroupCount', 'status', 'tablePresent'])
+    assert.doesNotMatch(JSON.stringify(report), /action|delivery_|external|row/i)
+  })
+
+  it('只读命令失败或返回异常 envelope 时 fail closed', async () => {
+    for (const runCommand of [
+      async (_command, _args, options) => failedStep(options.name),
+      async (_command, _args, options) => passedStep(options.name, JSON.stringify([{ results: [{ table_present: 2 }] }])),
+    ]) {
+      const report = await runRemoteMetaMigrationPreflight({ environment: 'dev', runCommand })
+      assert.deepEqual(report, {
+        status: 'check_failed',
+        tablePresent: false,
+        duplicateGroupCount: 0,
+      })
+    }
+  })
+
+  it('CLI 仅输出 preflight JSON contract', async () => {
+    const outputs = []
+    const report = await main(['preflight', '--env', 'dev'], {
+      runCommand: remotePreflightRunner([], { tablePresent: true, duplicateGroupCount: 0 }),
+      writeOutput: value => outputs.push(value),
+    })
+
+    assert.equal(outputs.length, 1)
+    assert.deepEqual(JSON.parse(outputs[0]), report)
+    assert.deepEqual(Object.keys(JSON.parse(outputs[0])).sort(), [
+      'duplicateGroupCount',
+      'status',
+      'tablePresent',
+    ])
+  })
+
+  it('CLI 对 duplicate blocked 和 check failed 返回非 0', () => {
+    assert.equal(metaMigrationExitCode({ status: 'ready' }), 0)
+    assert.equal(metaMigrationExitCode({ status: 'passed' }), 0)
+    assert.equal(metaMigrationExitCode({ status: 'blocked_duplicates' }), 1)
+    assert.equal(metaMigrationExitCode({ status: 'check_failed' }), 1)
+  })
+})
+
+function remotePreflightRunner(calls, options) {
+  return async (command, args, runOptions) => {
+    calls.push({ command, args, options: runOptions })
+    const stdout = runOptions.name === 'meta-migration-remote-table-check'
+      ? JSON.stringify([{ results: [{ table_present: options.tablePresent ? 1 : 0 }] }])
+      : JSON.stringify([{ results: [{ duplicate_group_count: options.duplicateGroupCount ?? 0 }] }])
+    return passedStep(runOptions.name, stdout)
+  }
+}
+
+function commandSql(call) {
+  return call.args[call.args.indexOf('--command') + 1]
+}
+
+function hasAdjacent(args, key, value) {
+  const index = args.indexOf(key)
+  return index >= 0 && args[index + 1] === value
+}

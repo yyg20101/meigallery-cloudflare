@@ -197,6 +197,7 @@ describe('analytics migrations', () => {
       expect(sql).toContain(`ADD COLUMN ${field}`)
     }
     expect(sql).toContain('idx_conversion_delivery_action_channel')
+    expect(sql).toMatch(/rollout_bucket IS NULL[\s\S]+typeof\(rollout_bucket\) = 'integer'/)
     expect(sql).toContain('CREATE TABLE meta_capi_incidents')
     expect(sql).toContain("json_valid(evidence)")
     expect(sql).toContain("json_type(evidence) = 'object'")

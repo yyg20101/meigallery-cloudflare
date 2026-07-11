@@ -69,6 +69,10 @@ describe('开发环境发布预演验证', () => {
     assert.equal(result.steps.every(step => step.status === 'passed'), true)
     assert.equal(result.notes.includes('meta-test-event-code-missing'), false)
     assert.equal(result.notes.includes('dev-smoke-owner-disabled-after-run'), true)
+    const preflightIndex = commands.findIndex(command => command.includes('verify-meta-migration.mjs preflight --env dev'))
+    const migrationIndex = commands.findIndex(command => command.includes('wrangler d1 migrations apply meigallery-db-dev --env dev --remote'))
+    assert.ok(preflightIndex >= 0)
+    assert.ok(migrationIndex > preflightIndex)
     assert.equal(commands.some(command => command.includes('wrangler d1 migrations apply meigallery-db-dev --env dev --remote')), true)
     assert.equal(commands.some(command => command.includes('wrangler deploy --env dev')), true)
     assert.equal(commands.some(command => command.includes(`wrangler deploy --env dev --var RELEASE_COMMIT:${RELEASE_COMMIT}`)), true)
@@ -92,6 +96,29 @@ describe('开发环境发布预演验证', () => {
     assert.equal(requestedUrls.filter(url => url.includes('/api/admin/attribution/meta?')).length, 2)
     const serializedReport = JSON.stringify({ steps: result.steps, notes: result.notes, artifacts: result.artifacts })
     assert.doesNotMatch(serializedReport, /@example\.test|password|fb\.1\./i)
+  })
+
+  it('远端 preflight 失败时不执行 dev migration', async () => {
+    const commands = []
+    const result = await runDevRehearsalVerification({
+      env: {
+        VERIFY_DEV_API_URL: 'https://api-dev.example.workers.dev',
+        VERIFY_DEV_WEB_URL: 'https://web-dev.example.workers.dev/',
+      },
+      releaseCommit: RELEASE_COMMIT,
+      runCommand: async (command, args, options) => {
+        commands.push([command, ...args].join(' '))
+        return options.name === 'dev-meta-migration-preflight'
+          ? { name: options.name, status: 'failed', exitCode: 1, stdout: '', stderr: '', summary: '' }
+          : passingCommand(command, args, options)
+      },
+      fetch: async () => {
+        throw new Error('preflight 失败后不应发起请求')
+      },
+    })
+
+    assert.equal(result.steps.at(-1)?.name, 'dev-meta-migration-preflight')
+    assert.equal(commands.some(command => command.includes('wrangler d1 migrations apply')), false)
   })
 
   it('dev seed 使用严格 test 模式', async () => {

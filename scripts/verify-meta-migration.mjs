@@ -5,6 +5,21 @@ import { runCommand } from './release-verification-lib.mjs'
 
 const ROOT_DIR = fileURLToPath(new URL('../', import.meta.url))
 const PRE_MIGRATION_FILE = 'pre-0039.sql'
+const REMOTE_PREFLIGHT_CONFIG = {
+  dev: {
+    database: 'meigallery-db-dev',
+    envArgs: ['--env', 'dev'],
+  },
+  production: {
+    database: 'meigallery-db',
+    envArgs: ['--env', ''],
+  },
+}
+const TABLE_PRESENT_SQL = `
+SELECT COUNT(*) AS table_present
+FROM sqlite_schema
+WHERE type = 'table' AND name = 'analytics_conversion_deliveries';
+`.trim()
 const DUPLICATE_GROUP_SQL = `
 SELECT COUNT(*) AS duplicate_group_count
 FROM (
@@ -105,6 +120,86 @@ export async function runMetaMigrationVerification(options = {}) {
   finally {
     await rm(preMigrationPath, { force: true })
   }
+}
+
+export async function runRemoteMetaMigrationPreflight(options = {}) {
+  const environment = String(options.environment || '')
+  const config = REMOTE_PREFLIGHT_CONFIG[environment]
+  if (!config) throw new Error('preflight --env 只允许 dev 或 production')
+  const runCommandFn = options.runCommand || runCommand
+  const cwd = options.cwd || ROOT_DIR
+
+  const tableStep = await runRemoteD1Query(
+    runCommandFn,
+    cwd,
+    config,
+    'meta-migration-remote-table-check',
+    TABLE_PRESENT_SQL,
+  )
+  if (tableStep.status !== 'passed') return remotePreflightReport('check_failed', false, 0)
+
+  let tablePresent
+  try {
+    tablePresent = parseRemoteCount(tableStep.stdout, 'table_present', { boolean: true }) === 1
+  }
+  catch {
+    return remotePreflightReport('check_failed', false, 0)
+  }
+  if (!tablePresent) return remotePreflightReport('ready', false, 0)
+
+  const duplicateStep = await runRemoteD1Query(
+    runCommandFn,
+    cwd,
+    config,
+    'meta-migration-remote-duplicate-check',
+    DUPLICATE_GROUP_SQL,
+  )
+  if (duplicateStep.status !== 'passed') return remotePreflightReport('check_failed', true, 0)
+
+  let duplicateGroupCount
+  try {
+    duplicateGroupCount = parseRemoteCount(duplicateStep.stdout, 'duplicate_group_count')
+  }
+  catch {
+    return remotePreflightReport('check_failed', true, 0)
+  }
+  return remotePreflightReport(
+    duplicateGroupCount > 0 ? 'blocked_duplicates' : 'ready',
+    true,
+    duplicateGroupCount,
+  )
+}
+
+async function runRemoteD1Query(runCommandFn, cwd, config, name, sql) {
+  return runCommandFn('corepack', [
+    'pnpm', '--filter', '@meigallery/api', 'exec',
+    'wrangler', 'd1', 'execute', config.database,
+    ...config.envArgs,
+    '--remote',
+    '--command', sql,
+    '--json',
+    '--yes',
+  ], {
+    cwd,
+    name,
+    reportCommand: `目标 D1 Meta migration 只读 preflight：${name}`,
+  })
+}
+
+function remotePreflightReport(status, tablePresent, duplicateGroupCount) {
+  return { status, tablePresent, duplicateGroupCount }
+}
+
+function parseRemoteCount(stdout, key, options = {}) {
+  const rows = parseWranglerResults(stdout, '远端 migration preflight')
+  const count = rows[0]?.[key]
+  if (rows.length !== 1 || !Number.isSafeInteger(count) || count < 0) {
+    throw new Error('远端 migration preflight 结果非法')
+  }
+  if (options.boolean === true && count !== 0 && count !== 1) {
+    throw new Error('远端 migration preflight 表状态非法')
+  }
+  return count
 }
 
 async function buildPreMigrationSql(migrationDir) {
@@ -240,16 +335,44 @@ function failedResult(steps, stateDir, error, duplicateGroupCount) {
   }
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const result = await runMetaMigrationVerification()
-  if (result.duplicateGroupCount > 0) {
-    console.error(result.error)
-  }
-  else {
-    for (const step of result.steps) {
-      console.log(`${step.status === 'passed' ? 'PASS' : 'FAIL'} ${step.name}`)
+export async function main(argv = process.argv.slice(2), options = {}) {
+  const writeOutput = options.writeOutput || (value => console.log(value))
+  const writeError = options.writeError || (value => console.error(value))
+
+  if (argv[0] === 'preflight') {
+    if (argv.length !== 3 || argv[1] !== '--env') {
+      throw new Error('用法：verify-meta-migration.mjs preflight --env dev|production')
     }
-    if (result.status !== 'passed') console.error(result.error || 'Meta migration 演练失败')
+    const report = await runRemoteMetaMigrationPreflight({
+      environment: argv[2],
+      cwd: options.cwd,
+      runCommand: options.runCommand,
+    })
+    writeOutput(JSON.stringify(report))
+    return report
   }
-  if (result.status !== 'passed') process.exitCode = 1
+  if (argv.length > 0) throw new Error('用法：verify-meta-migration.mjs [preflight --env dev|production]')
+
+  const result = await runMetaMigrationVerification(options)
+  if (result.duplicateGroupCount > 0) writeError(result.error)
+  else {
+    for (const step of result.steps) writeOutput(`${step.status === 'passed' ? 'PASS' : 'FAIL'} ${step.name}`)
+    if (result.status !== 'passed') writeError(result.error || 'Meta migration 演练失败')
+  }
+  return result
+}
+
+export function metaMigrationExitCode(result) {
+  return result?.status === 'passed' || result?.status === 'ready' ? 0 : 1
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    const result = await main()
+    process.exitCode = metaMigrationExitCode(result)
+  }
+  catch (error) {
+    console.error(error instanceof Error ? error.message : String(error))
+    process.exitCode = 1
+  }
 }

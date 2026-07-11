@@ -5,22 +5,33 @@ const RATE_KEY = /(?:Rate|Ratio|_rate|_ratio)$/
 const PERCENTAGE_KEY = /(?:Percentage|_percentage)$/
 const CATEGORY_KEY = /(?:Category|_category)$/
 const TIME_KEY = /^(?:windowStart|windowEnd|observedAt|window_start|window_end|observed_at)$/
-const STABLE_CATEGORY = /^[a-z][a-z0-9_]{0,63}$/
 const UTC_ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
 const SENSITIVE_KEY = /(?:token|secret|email|useragent|clientip|ipaddress|authorization|credential|cookie|session|fbp|fbc|external(?:event)?id|hash|fingerprint)/
-const SENSITIVE_VALUE_PATTERNS = [
-  /(?:bearer|token|secret)\s*[=: ]/i,
-  /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i,
-  /\b(?:\d{1,3}\.){3}\d{1,3}\b/,
-  /\b(?:[0-9a-f]{1,4}:){2,}[0-9a-f:]*\b/i,
-  /\b(?:mozilla|agent|browser|client|curl|okhttp)\/\S+/i,
-  /^(?:Browser|Client)$/,
-  /\bfb\.1\.\d+\.\S+/i,
-  /\bmeta:(?:Contact|CompleteRegistration):\S+/,
-  /\b[0-9a-f]{32}\b/i,
-  /\b[0-9a-f]{40}\b/i,
-  /\b[0-9a-f]{64}\b/i,
-]
+
+export const META_CAPI_INCIDENT_CATEGORIES = [
+  'rate_limited',
+  'client_error',
+  'authorization_failed',
+  'permission_denied',
+  'server_error',
+  'timeout',
+  'network_error',
+  'invalid_request',
+  'retry_exhausted',
+  'stale_pending',
+  'duplicate_delivery',
+  'duplicate_suppressed',
+  'decryption_failed',
+  'connection_changed',
+  'dataset_mismatch',
+  'collector_unavailable',
+  'collector_stale',
+  'unknown_error',
+] as const
+
+export type MetaCapiIncidentCategory = typeof META_CAPI_INCIDENT_CATEGORIES[number]
+
+const META_CAPI_INCIDENT_CATEGORY_SET = new Set<string>(META_CAPI_INCIDENT_CATEGORIES)
 
 export function validateMetaCapiIncidentEvidence(value: unknown): MetaCapiIncidentEvidence {
   if (!isPlainObject(value)) throw validationError()
@@ -44,7 +55,7 @@ export function validateMetaCapiIncidentEvidence(value: unknown): MetaCapiIncide
       continue
     }
     if (CATEGORY_KEY.test(key)) {
-      if (typeof item !== 'string' || !STABLE_CATEGORY.test(item) || containsSensitiveValue(item)) {
+      if (typeof item !== 'string' || !META_CAPI_INCIDENT_CATEGORY_SET.has(item)) {
         throw validationError()
       }
       continue
@@ -57,10 +68,6 @@ export function validateMetaCapiIncidentEvidence(value: unknown): MetaCapiIncide
   }
 
   return { ...value }
-}
-
-function containsSensitiveValue(value: string) {
-  return SENSITIVE_VALUE_PATTERNS.some(pattern => pattern.test(value))
 }
 
 function isSensitiveKey(normalizedKey: string) {

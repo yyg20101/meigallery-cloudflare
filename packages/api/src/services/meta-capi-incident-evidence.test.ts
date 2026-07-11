@@ -1,5 +1,29 @@
 import { describe, expect, it } from 'vitest'
-import { validateMetaCapiIncidentEvidence } from './meta-capi-incident-evidence'
+import {
+  META_CAPI_INCIDENT_CATEGORIES,
+  validateMetaCapiIncidentEvidence,
+} from './meta-capi-incident-evidence'
+
+const EXPECTED_CATEGORIES = [
+  'rate_limited',
+  'client_error',
+  'authorization_failed',
+  'permission_denied',
+  'server_error',
+  'timeout',
+  'network_error',
+  'invalid_request',
+  'retry_exhausted',
+  'stale_pending',
+  'duplicate_delivery',
+  'duplicate_suppressed',
+  'decryption_failed',
+  'connection_changed',
+  'dataset_mismatch',
+  'collector_unavailable',
+  'collector_stale',
+  'unknown_error',
+] as const
 
 describe('Meta CAPI incident evidence validator', () => {
   it('只接受脱敏计数、比率、稳定错误分类和 UTC 时间窗', () => {
@@ -16,6 +40,24 @@ describe('Meta CAPI incident evidence validator', () => {
 
     expect(validateMetaCapiIncidentEvidence(evidence)).toEqual(evidence)
     expect(validateMetaCapiIncidentEvidence({})).toEqual({})
+  })
+
+  it('集中导出明确 incident category allowlist', () => {
+    expect(META_CAPI_INCIDENT_CATEGORIES).toEqual(EXPECTED_CATEGORIES)
+    for (const category of EXPECTED_CATEGORIES) {
+      expect(validateMetaCapiIncidentEvidence({ errorCategory: category })).toEqual({
+        errorCategory: category,
+      })
+    }
+  })
+
+  it.each([
+    'token_rotated',
+    'email_redacted',
+    'useragent_missing',
+    'some_stable_but_unknown_category',
+  ])('拒绝伪装或未知 incident category %s', (category) => {
+    expect(() => validateMetaCapiIncidentEvidence({ errorCategory: category })).toThrow(/evidence/i)
   })
 
   it.each([
