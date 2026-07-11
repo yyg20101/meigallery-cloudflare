@@ -9,12 +9,29 @@ export const REPORT_DIR = new URL('../reports/release-verification/', import.met
 export const DEFAULT_FETCH_TIMEOUT_MS = 15_000
 
 const REDACTION_PATTERNS = [
-  /(access[_-]?token\s*[=:]\s*)([^\s,;]+)/gi,
-  /(token\s*[=:]\s*)([^\s,;]+)/gi,
-  /(secret\s*[=:]\s*)([^\s,;]+)/gi,
-  /(password\s*[=:]\s*)([^\s,;]+)/gi,
-  /(session\s*[=:]\s*)([^\s,;]+)/gi,
-  /(cookie\s*[=:]\s*)([^\s,;]+)/gi,
+  /(access[_-]?token\s*[=:]\s*)(?:(["'`])[^"'`\r\n]*\2|([^\s,;&}"'`\]]+))/gi,
+  /(token\s*[=:]\s*)(?:(["'`])[^"'`\r\n]*\2|([^\s,;&}"'`\]]+))/gi,
+  /(secret\s*[=:]\s*)(?:(["'`])[^"'`\r\n]*\2|([^\s,;&}"'`\]]+))/gi,
+  /(password\s*[=:]\s*)(?:(["'`])[^"'`\r\n]*\2|([^\s,;&}"'`\]]+))/gi,
+  /(session\s*[=:]\s*)(?:(["'`])[^"'`\r\n]*\2|([^\s,;&}"'`\]]+))/gi,
+  /(cookie\s*[=:]\s*)(?:(["'`])[^"'`\r\n]*\2|([^\s,;&}"'`\]]+))/gi,
+]
+const CREDENTIAL_CONTEXT_KEYS = new Set([
+  'authorization',
+  'cookie',
+  'session',
+  'setcookie',
+])
+const CREDENTIAL_CONTEXT_SUFFIXES = [
+  'token',
+  'secret',
+  'password',
+  'apikey',
+  'privatekey',
+  'credential',
+  'credentials',
+  'authorizationheader',
+  'cookieheader',
 ]
 const PRIVATE_EMAIL_PATTERN = /(?<![A-Z0-9.!#$%&'*+=?^_{|}~-])[A-Z0-9.!#$%&'*+=?^_{|}~-]+@[A-Z0-9-]+(?:\.[A-Z0-9-]+)*\.[A-Z]{2,63}(?![A-Z0-9-])/gi
 const PRIVATE_BROWSER_ID_PATTERN = /\bfb\.1\.\d{10,}\.[A-Z0-9._-]+\b/gi
@@ -27,6 +44,7 @@ const PRIVATE_USER_AGENT_PATTERNS = [
   /\b(?:[A-Z][A-Z0-9._-]*)?(?:Agent|Browser|Client)\/\d+(?:\.\d+)*(?:[^\r\n|,;]{0,200})?/gi,
 ]
 const PRIVACY_REDACTION = '[PRIVATE_REDACTED]'
+const SANITIZED_PRIVATE_VALUES = new Set([PRIVACY_REDACTION, '[REDACTED]'])
 const SUMMARY_LIMIT = 1200
 const REPORT_MAX_AGE_MS = 24 * 60 * 60 * 1000
 const VALID_REPORT_MODES = new Set(['quick', 'local-runtime', 'dev-rehearsal', 'release'])
@@ -36,10 +54,17 @@ const RELEASE_CHILD_MODES = ['quick', 'local-runtime', 'dev-rehearsal']
 export function redact(value) {
   const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2)
   const redactedText = REDACTION_PATTERNS.reduce((current, pattern) => (
-    current.replace(pattern, (_, prefix) => `${prefix}[REDACTED]`)
+    current.replace(pattern, (_, prefix, quote) => `${prefix}${quote || ''}[REDACTED]${quote || ''}`)
   ), text)
 
   return redactCredentialUrl(redactedText)
+}
+
+export function redactMachineOutput(value) {
+  const text = typeof value === 'string' ? value : JSON.stringify(value)
+  const parsed = parseStructuredJsonString(text)
+  if (parsed === null) return redact(text)
+  return JSON.stringify(redactMachineValue(parsed))
 }
 
 export function createStep(name) {
@@ -83,7 +108,7 @@ export async function runCommand(command, args, options = {}) {
 
     child.on('error', error => {
       const durationMs = Date.now() - startedAt
-      const stderr = redact(error instanceof Error ? error.message : String(error))
+      const stderr = redactMachineOutput(error instanceof Error ? error.message : String(error))
       resolve({
         ...createStep(name),
         status: 'failed',
@@ -98,8 +123,8 @@ export async function runCommand(command, args, options = {}) {
 
     child.on('close', code => {
       const durationMs = Date.now() - startedAt
-      const stdout = redact(stdoutChunks.join('').trim())
-      const stderr = redact(stderrChunks.join('').trim())
+      const stdout = redactMachineOutput(stdoutChunks.join('').trim())
+      const stderr = redactMachineOutput(stderrChunks.join('').trim())
       resolve({
         ...createStep(name),
         status: code === 0 ? 'passed' : 'failed',
@@ -220,11 +245,13 @@ export async function writeReport(report, options = {}) {
 }
 
 function sanitizeReportValue(value, contextKey = '') {
+  const normalizedKey = normalizeContextKey(contextKey)
+  if (isPrivateContextKey(normalizedKey)) {
+    return typeof value === 'string' && SANITIZED_PRIVATE_VALUES.has(value)
+      ? value
+      : PRIVACY_REDACTION
+  }
   if (typeof value === 'string') {
-    const normalizedKey = contextKey.toLowerCase().replace(/[^a-z0-9]/g, '')
-    if (value.length > 0 && (normalizedKey.includes('useragent') || normalizedKey === 'fbp' || normalizedKey === 'fbc')) {
-      return PRIVACY_REDACTION
-    }
     const parsed = parseStructuredJsonString(value)
     if (parsed !== null) return JSON.stringify(sanitizeReportValue(parsed))
     return redactForReport(value)
@@ -251,6 +278,29 @@ function sanitizeReportValue(value, contextKey = '') {
     return Object.fromEntries(sanitizedEntries)
   }
   return value
+}
+
+function redactMachineValue(value) {
+  if (Array.isArray(value)) return value.map(redactMachineValue)
+  if (!value || typeof value !== 'object') return value
+  return Object.fromEntries(Object.entries(value).map(([key, child]) => [
+    key,
+    isCredentialContextKey(key) ? '[REDACTED]' : redactMachineValue(child),
+  ]))
+}
+
+function isCredentialContextKey(key) {
+  const normalizedKey = normalizeContextKey(key)
+  return CREDENTIAL_CONTEXT_KEYS.has(normalizedKey)
+    || CREDENTIAL_CONTEXT_SUFFIXES.some(suffix => normalizedKey.endsWith(suffix))
+}
+
+function isPrivateContextKey(normalizedKey) {
+  return normalizedKey.includes('useragent') || normalizedKey === 'fbp' || normalizedKey === 'fbc'
+}
+
+function normalizeContextKey(key) {
+  return String(key).toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
 function redactPrivateData(value) {

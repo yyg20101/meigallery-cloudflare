@@ -7,6 +7,7 @@ import {
   assertReportCanGateProduction,
   fetchWithTimeout,
   redact,
+  redactMachineOutput,
   runCommand,
   writeReport,
 } from './release-verification-lib.mjs'
@@ -125,8 +126,59 @@ describe('发布验证基础库', () => {
     assert.match(output, /https:\/\/\[REDACTED]@github\.com\/yyg20101\/meigallery-cloudflare\.git/)
   })
 
-  it('runCommand 保留机器输出中的 revision/IP/hash，但 summary 使用完整隐私脱敏', async () => {
+  it('redactMachineOutput 递归脱敏 credential 并保持完整 JSON 可解析', () => {
+    const payload = [{
+      access_token: 'machine-access-token',
+      refreshToken: 'machine-refresh-token',
+      clientSecret: 'machine-client-secret',
+      databasePassword: 'machine-database-password',
+      serviceApiKey: 'machine-api-key',
+      signingPrivateKey: 'machine-private-key',
+      serviceCredential: 'machine-service-credential',
+      credentials: 'machine-credentials',
+      authorization: 'Bearer machine-authorization',
+      cookieHeader: 'session=machine-cookie',
+      token_count: 2,
+      session_id: 'machine-session-id',
+      sessionId: 'machine-session-id-camel',
+      secret_name: 'META_CAPI_ACCESS_TOKEN',
+      token_fingerprint: 'machine-token-fingerprint',
+      nested: {
+        password: 'machine-password',
+        revision: 'e'.repeat(32),
+      },
+    }]
+
+    assert.deepEqual(JSON.parse(redactMachineOutput(JSON.stringify(payload))), [{
+      access_token: '[REDACTED]',
+      refreshToken: '[REDACTED]',
+      clientSecret: '[REDACTED]',
+      databasePassword: '[REDACTED]',
+      serviceApiKey: '[REDACTED]',
+      signingPrivateKey: '[REDACTED]',
+      serviceCredential: '[REDACTED]',
+      credentials: '[REDACTED]',
+      authorization: '[REDACTED]',
+      cookieHeader: '[REDACTED]',
+      token_count: 2,
+      session_id: 'machine-session-id',
+      sessionId: 'machine-session-id-camel',
+      secret_name: 'META_CAPI_ACCESS_TOKEN',
+      token_fingerprint: 'machine-token-fingerprint',
+      nested: {
+        password: '[REDACTED]',
+        revision: 'e'.repeat(32),
+      },
+    }])
+    assert.equal(
+      redactMachineOutput('access_token="machine-token" result={"ok":true} values=[1]'),
+      'access_token="[REDACTED]" result={"ok":true} values=[1]',
+    )
+  })
+
+  it('runCommand 保持 credential 脱敏后的机器 JSON 可解析，summary 使用完整隐私脱敏', async () => {
     const sensitiveValues = [
+      'machine-access-token',
       'e'.repeat(32),
       '203.0.113.88',
       'f'.repeat(64),
@@ -135,12 +187,13 @@ describe('发布验证基础库', () => {
       'opaque-click-id',
     ]
     const payload = {
-      revision: sensitiveValues[0],
-      localAddress: sensitiveValues[1],
-      hash: sensitiveValues[2],
-      userAgent: sensitiveValues[3],
-      fbp: sensitiveValues[4],
-      fbc: sensitiveValues[5],
+      access_token: sensitiveValues[0],
+      revision: sensitiveValues[1],
+      localAddress: sensitiveValues[2],
+      hash: sensitiveValues[3],
+      userAgent: sensitiveValues[4],
+      fbp: sensitiveValues[5],
+      fbc: sensitiveValues[6],
     }
 
     const serializedPayload = JSON.stringify(payload)
@@ -149,8 +202,9 @@ describe('发布验证基础库', () => {
       `process.stderr.write(${JSON.stringify(serializedPayload)})`,
     ].join(';')])
 
-    assert.deepEqual(JSON.parse(step.stdout), payload)
-    assert.deepEqual(JSON.parse(step.stderr), payload)
+    const expectedMachinePayload = { ...payload, access_token: '[REDACTED]' }
+    assert.deepEqual(JSON.parse(step.stdout), expectedMachinePayload)
+    assert.deepEqual(JSON.parse(step.stderr), expectedMachinePayload)
     for (const value of sensitiveValues) assert.equal(step.summary.includes(value), false)
     assert.match(step.summary, /\[PRIVATE_REDACTED\]/)
   })
@@ -319,9 +373,11 @@ describe('发布验证基础库', () => {
         has_fbp: true,
         userAgent: false,
         contextual: {
-          client_user_agent: 'custom-runtime',
-          fbp: 'opaque-browser-value',
-          fbc: 'opaque-click-value',
+          client_user_agent: { value: 'custom-runtime' },
+          userAgent: ['opaque-runtime-agent'],
+          fbp: { value: 'opaque-browser-value' },
+          fbc: 42,
+          browser: { fbp: false },
         },
       },
     }
@@ -337,11 +393,13 @@ describe('发布验证基础库', () => {
         assert.deepEqual(Object.values(parsed.evidence).filter(value => /^value-\d$/.test(value)).sort(), Object.values(keyedValues).sort())
         assert.deepEqual(Object.values(parsed.evidence.nested).sort(), Object.values(keyedValues).sort())
         assert.equal(parsed.evidence.has_fbp, true)
-        assert.equal(parsed.evidence.userAgent, false)
+        assert.equal(parsed.evidence.userAgent, '[PRIVATE_REDACTED]')
         assert.deepEqual(parsed.evidence.contextual, {
           client_user_agent: '[PRIVATE_REDACTED]',
+          userAgent: '[PRIVATE_REDACTED]',
           fbp: '[PRIVATE_REDACTED]',
           fbc: '[PRIVATE_REDACTED]',
+          browser: { fbp: '[PRIVATE_REDACTED]' },
         })
       }
     } finally {

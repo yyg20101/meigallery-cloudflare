@@ -547,14 +547,14 @@ function scanEvidence(relativePath, text, findings) {
   const withinBudget = walkEvidence(parsed, (key, value) => {
     const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '')
     scanEvidenceString(relativePath, key, findings)
-    if (typeof value !== 'string' || value.length === 0) return
-    const isSanitized = SANITIZED_EVIDENCE_VALUES.has(value)
+    const isSanitized = typeof value === 'string' && SANITIZED_EVIDENCE_VALUES.has(value)
     if (normalizedKey.includes('useragent') && !isSanitized) {
       addFinding(findings, relativePath, 'META_EVIDENCE_RAW_USER_AGENT')
     }
     if ((normalizedKey === 'fbp' || normalizedKey === 'fbc') && !isSanitized) {
       addFinding(findings, relativePath, 'META_EVIDENCE_BROWSER_ID')
     }
+    if (typeof value !== 'string' || value.length === 0) return
     scanEvidenceString(relativePath, value, findings)
   })
   if (!withinBudget) addFinding(findings, relativePath, 'META_EVIDENCE_STRUCTURE_LIMIT')

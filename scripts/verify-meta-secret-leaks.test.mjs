@@ -6,7 +6,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, it } from 'node:test'
 import { promisify } from 'node:util'
-import { writeReport } from './release-verification-lib.mjs'
+import { runCommand, writeReport } from './release-verification-lib.mjs'
 import { main, scanMetaSecretLeaks } from './verify-meta-secret-leaks.mjs'
 
 const execFile = promisify(execFileCallback)
@@ -484,11 +484,41 @@ describe('Meta secret 静态泄漏扫描', () => {
     ])
   })
 
-  it('writeReport 与 scanner 端到端处理字符串 JSON，并拒绝 raw embedded evidence', async () => {
+  it('evidence 敏感字段上下文拒绝对象、数组和标量包装且继续扫描子节点', async () => {
+    const rootDir = await createRepository()
+    await writeIgnoredEvidence(rootDir, 'reports/release-verification/wrapped-context.json', {
+      fbp: { value: FIXTURE_VALUES[2] },
+      fbc: ['opaque-click-id'],
+      userAgent: { value: 'opaque-runtime-agent' },
+      client_user_agent: [42],
+      nested: {
+        fbp: 42,
+        fbc: false,
+      },
+      safeSchema: {
+        has_fbp: true,
+        has_fbc: false,
+      },
+    })
+
+    const report = await scanMetaSecretLeaks({ rootDir })
+
+    assert.deepEqual(report.findings, [
+      { path: 'reports/release-verification/wrapped-context.json', ruleId: 'META_EVIDENCE_BROWSER_ID' },
+      { path: 'reports/release-verification/wrapped-context.json', ruleId: 'META_EVIDENCE_RAW_EMAIL' },
+      { path: 'reports/release-verification/wrapped-context.json', ruleId: 'META_EVIDENCE_RAW_USER_AGENT' },
+    ])
+  })
+
+  it('runCommand、writeReport 与 scanner 端到端保持机器 JSON 并清除落盘隐私', async () => {
     const rootDir = await createRepository()
     const reportDir = path.join(rootDir, 'reports/release-verification')
     const sensitiveKey = 'private-owner@example.test'
     const sensitiveValues = {
+      accessToken: 'machine-access-token',
+      revision: 'e'.repeat(32),
+      ip: '203.0.113.88',
+      hash: 'f'.repeat(64),
       userAgent: 'opaque-runtime-agent',
       fbp: 'opaque-browser-id',
       fbc: 'opaque-click-id',
@@ -496,8 +526,28 @@ describe('Meta secret 静态泄漏扫描', () => {
     const embeddedEvidence = JSON.stringify({
       private_redacted_1: 'reserved-value',
       [sensitiveKey]: 'sensitive-key-value',
-      nested: sensitiveValues,
+      nested: {
+        access_token: sensitiveValues.accessToken,
+        revision: sensitiveValues.revision,
+        localAddress: sensitiveValues.ip,
+        hash: sensitiveValues.hash,
+        userAgent: sensitiveValues.userAgent,
+        fbp: sensitiveValues.fbp,
+        fbc: sensitiveValues.fbc,
+      },
     })
+    const step = await runCommand('node', ['-e', `process.stdout.write(${JSON.stringify(embeddedEvidence)})`], {
+      reportCommand: 'node machine-evidence',
+    })
+    const machinePayload = JSON.parse(step.stdout)
+    assert.equal(machinePayload.nested.access_token, '[REDACTED]')
+    assert.equal(machinePayload.nested.revision, sensitiveValues.revision)
+    assert.equal(machinePayload.nested.localAddress, sensitiveValues.ip)
+    assert.equal(machinePayload.nested.hash, sensitiveValues.hash)
+    assert.equal(machinePayload.nested.userAgent, sensitiveValues.userAgent)
+    assert.equal(machinePayload.nested.fbp, sensitiveValues.fbp)
+    assert.equal(machinePayload.nested.fbc, sensitiveValues.fbc)
+    for (const value of Object.values(sensitiveValues)) assert.equal(step.summary.includes(value), false)
     const report = {
       schemaVersion: 1,
       mode: 'quick',
@@ -507,13 +557,7 @@ describe('Meta secret 静态泄漏扫描', () => {
       durationMs: 60_000,
       git: { branch: 'dev', commit: 'abcdef1234567890', isClean: true, remote: 'origin' },
       versions: { node: 'v24.0.0', pnpm: '10.0.0', wrangler: '4.0.0' },
-      steps: [{
-        name: 'embedded-evidence',
-        status: 'passed',
-        durationMs: 1,
-        command: 'node embedded-evidence',
-        summary: embeddedEvidence,
-      }],
+      steps: [step],
       artifacts: [],
       notes: [],
     }
@@ -523,10 +567,15 @@ describe('Meta secret 静态泄漏扫描', () => {
     for (const content of contents) {
       assert.equal(content.includes(sensitiveKey), false)
       for (const value of Object.values(sensitiveValues)) assert.equal(content.includes(value), false)
-      const parsedEmbedded = JSON.parse(JSON.parse(content).steps[0].summary)
+      const parsedReport = JSON.parse(content)
+      const parsedEmbedded = JSON.parse(parsedReport.steps[0].stdout)
       assert.equal(parsedEmbedded.private_redacted_1, 'reserved-value')
       assert.equal(parsedEmbedded.private_redacted_2, 'sensitive-key-value')
       assert.deepEqual(parsedEmbedded.nested, {
+        access_token: '[REDACTED]',
+        revision: '[PRIVATE_REDACTED]',
+        localAddress: '[PRIVATE_REDACTED]',
+        hash: '[PRIVATE_REDACTED]',
         userAgent: '[PRIVATE_REDACTED]',
         fbp: '[PRIVATE_REDACTED]',
         fbc: '[PRIVATE_REDACTED]',
@@ -538,7 +587,11 @@ describe('Meta secret 静态泄漏扫描', () => {
     assert.deepEqual(sanitizedScan.findings, [])
 
     await writeIgnoredEvidence(rootDir, 'reports/release-verification/raw-embedded.json', {
-      evidence: JSON.stringify(sensitiveValues),
+      evidence: JSON.stringify({
+        userAgent: sensitiveValues.userAgent,
+        fbp: sensitiveValues.fbp,
+        fbc: sensitiveValues.fbc,
+      }),
     })
     const rawScan = await scanMetaSecretLeaks({ rootDir })
     assert.deepEqual(rawScan.findings, [
