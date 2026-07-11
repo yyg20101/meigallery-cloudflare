@@ -8,7 +8,7 @@
 
 - 已清理历史 PRD、旧计划、旧评审台账、旧线框图和过期 Superpowers 方案，避免后续开发继续引用历史口径。
 - 当前保留 `docs/superpowers/specs/2026-07-08-attribution-center-clean-design.md` 作为归因中心、后台 UI、测试矩阵和发布闸门的设计背景；当前实现事实以代码、`docs/TECHNICAL_SPEC.md` 和本文为准。
-- 当前保留 `docs/superpowers/specs/2026-07-08-meta-capi-attribution-layer-design.md` 作为 Meta Pixel / CAPI、转化事件账本和去重层的历史技术输入；核心架构已实现，生产放行细节由 2026-07-10 Meta 生产就绪设计和本状态文档覆盖。
+- 当前保留 `docs/superpowers/specs/2026-07-08-meta-capi-attribution-layer-design.md` 作为 Meta Pixel / CAPI、转化事件账本和去重层的历史技术输入；核心架构已实现，当前生产放行口径由 Meta CAPI v2 三阶段计划和本状态文档覆盖。
 - 新需求进入实施时，应直接更新当前 PRD、技术规格、UI 设计或专项文档，不再恢复历史归档目录。
 
 ## 技术栈现状
@@ -50,7 +50,7 @@
 - Telegram 外部导入 API：项目只提供对外 API 接收能力，不内置 Telegram Bot 本体；对接契约见 `docs/TELEGRAM_IMPORT_API.md`。
 - 数据分析：已实现一方数据采集、来源归因、邀请码、联系点击、趋势和后台 `/admin/analytics` 系列看板；后台 UI 口径见 `docs/UI_DATA_ANALYTICS_DASHBOARD.md`。
 - 归因中心：已实现站内转化账本、投放追踪链接、有效联系 / 完成注册活动趋势、历史 Lead 只读对照、Meta Pixel / CAPI 同步健康、重复诊断和分级发布检查；历史 Lead 与会员发放辅助指标均不参与活动漏斗、比率或链接排序，会员发放仅保留在 `operations` 辅助结构。后台分别展示 blocker 与 warning，warning 不改变生产阻断状态；入口为 `/admin/attribution`。
-- Meta CAPI v2：**Task 6 代码门禁已完成，外部证据仍未完成，当前不可生产放量**。dev live evidence 使用 `0041` Worker 一次性 challenge，Browser 真实 `fbq` 与 Server CAPI 使用同组 `Contact` / `CompleteRegistration` opaque ID，原始 ID 在消费后不可恢复；CLI 只记录脱敏摘要。资源门禁核对 migrations `0036..0042`、D1/R2/Queue/DLQ；Owner Cookie 只向固定可信 API origin 换取 `0042` D1 原子一次性 ticket，最终 HMAC attestation 请求不携带 Cookie。production 冷启动由当前 commit、未过期的 production D1 bootstrap permit 决定部署 phase，之后依次执行 post-deploy attestation、`trackingMode=test` Test Event、full gate、切换 production 和 0→10。Dataset Quality 当前仍为 `contract_pending`，没有真实 dev capture、Owner 批准 contract 和 collector，因此 release 稳定 fail closed，production rollout 必须保持 `0`。
+- Meta CAPI v2：**Task 7 可自主本地项已全量通过；外部 Step 4 明确阻断，不满足生产候选或正式部署条件**。本地已通过 lint、API/Web coverage、scripts 与 migrations、API `tsc`、Nuxt build、故障注入、secret scan、`verify:quick`、`verify:local-runtime` 和 diff check。活动 Meta 事件只有 `Contact`、`CompleteRegistration`，`Lead` 只作历史只读对照且不得进入活动漏斗、delivery 或 readiness。dev live evidence 使用 migration `0041` 的 Worker 一次性 challenge，Browser 真实 `fbq` 与 Server CAPI 使用同组 opaque ID，原始 ID 在消费后不可恢复；CLI 只记录脱敏摘要。资源门禁核对 migrations `0036..0042`、D1/R2/Queue/DLQ；Owner Cookie 只向固定可信 API origin 换取 migration `0042` 的 D1 原子一次性 ticket，最终 HMAC attestation 请求不携带 Cookie。production 冷启动由当前 commit、未过期的 production D1 bootstrap permit 决定 `bootstrap` phase，之后依次执行 `post-deploy` attestation、`trackingMode=test` Test Event、`full` gate、切换 production 和 `0 -> 10`。Q5 Dataset Quality 仍为 `contract_pending`：缺少真实 dev capture、Owner 批准 contract、collector 补充计划及其实现；同时缺少当前最终 commit 的真实远端 dev evidence。按控制器决议，本任务未执行 dev/production 部署、远端 D1、Meta 网络 capture、push 或 `verify:release`，production rollout 必须保持 `0`。
 - SEO：已实现基础 SEO 设置、关键词池、sitemap、robots、结构化数据和生产校验脚本；运营配置见 `docs/SEO_CONFIGURATION.md`。
 
 ## 规划和未接入

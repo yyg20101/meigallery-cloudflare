@@ -1716,7 +1716,7 @@ function metaConnectionErrorMessage(code: string) {
 }
 
 function serializeMetaIncident(row: Row) {
-  let evidence: Record<string, number | string> = {}
+  let evidence: Record<string, number | string>
   try {
     evidence = sanitizeMetaCapiIncidentEvidence(
       row.trigger_code,

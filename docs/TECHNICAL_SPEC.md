@@ -645,14 +645,23 @@ INSERT INTO site_settings (key, value) VALUES
 - `/api/admin/attribution/*` 需要 admin+；`/api/admin/attribution/meta/test-event` 需要 owner，并写入 `admin_audit_logs`。
 - Meta CAPI 通过 Cloudflare Queue `META_CAPI_QUEUE` 异步投递，使用 Worker secret `META_CAPI_ACCESS_TOKEN`、`META_CAPI_DATA_KEY_CURRENT`；`META_CAPI_TEST_EVENT_CODE` 仅在 test mode 必需，`META_CAPI_DATA_KEY_PREVIOUS` 仅用于轮换窗口。dev 主 Queue / DLQ 固定为 `meigallery-meta-capi-dev` / `meigallery-meta-capi-dev-dlq`，生产为 `meigallery-meta-capi` / `meigallery-meta-capi-dlq`。Graph token 只通过 Bearer header 发送。secret 不写入 D1、不返回前端，也不写入审计日志。
 - `/api/admin/attribution/meta` 仅返回 current/previous 有效性布尔值、previous outbox 计数、previous `pending/failed` delivery 计数和可移除状态；不返回 key ID、Base64、fingerprint 或错误 cause。
-- `corepack pnpm verify:meta-secrets` 扫描 tracked 文件与 ignored release evidence；`corepack pnpm verify:quick` 在单元测试和构建前执行该检查。正式 production bootstrap、rollout 与最终 evidence 强绑定仍保持关闭，留待质量运营阶段。
+- `corepack pnpm verify:meta-secrets` 扫描 tracked 文件与 ignored release evidence；`corepack pnpm verify:quick` 在单元测试和构建前执行该检查。production bootstrap、rollout 与最终 evidence 已由本地代码门禁强绑定，但没有外部证据时始终 fail closed。
 - Queue 发送失败不得阻塞站内转化账本写入；delivery 必须显示 `sent`、`failed`、`skipped`、`missing_queue`、`missing_secret`、`disabled` 等可诊断状态。
+
+Meta CAPI v2 远端证据链：
+
+- migration `0041_meta_live_challenges.sql` 保存绑定 environment、40 字符 commit 和有效期的一次性 dev challenge；Browser `fbq` 与 Server CAPI 只允许 `Contact`、`CompleteRegistration`，共享 opaque external event ID，消费后不得恢复原始 ID。
+- migration `0042_meta_resource_attestation_tickets.sql` 保存 60 秒 D1 原子一次性 ticket。Owner Cookie 只能在固定可信 API origin 换取 ticket；`/api/meta/resource-attestation` 只接受 ticket 并返回 HMAC 摘要，最终请求不携带 Cookie，ticket 响应和审计均不得回显凭据。
+- production 冷启动 gate 分为 `bootstrap`、`post-deploy`、`full`：当前 commit 与未过期 D1 bootstrap permit 决定首次部署资格；部署后必须通过资源 attestation 和 `trackingMode=test` 的真实 Test Event；完整 gate 通过后才能切换 production，并由 Owner 将 rollout 从 `0` 手动升至 `10`。系统不得自动升级，只能因 incident 自动降至 `0`。
+- Q5 Dataset Quality 仍为 `contract_pending`。在取得项目 dev Dataset 的真实官方 capture、Owner 批准 contract、生成并完整执行 collector 补充计划前，不推断 dataset mismatch，后台只显示 quality warning，release 与 production readiness 保持 blocked。
 
 #### Meta 生产放行与回滚 `[当前实现 / 运维前置]`
 
-`0034_meta_production_readiness.sql` 在迁移后将不受支持的 tracking mode 收敛为 `disabled`；生产放行必须确认 `meta_tracking_mode=disabled`、`meta_capi_enabled=false`，直至 Owner 按顺序显式开启。顺序固定为：代码关闭态 -> dev live evidence -> 生产资源 -> migration -> 最终 main HEAD 重新部署 dev 并生成同 commit evidence -> main 同 commit release -> 生产部署 -> `test` mode Owner Test Event -> `production` mode -> 开关 -> 观察。
+`0034_meta_production_readiness.sql` 在迁移后将不受支持的 tracking mode 收敛为 `disabled`；生产放行必须确认 `meta_tracking_mode=disabled`、`meta_capi_enabled=false`，直至 Owner 按顺序显式开启。顺序固定为：代码关闭态 -> dev live evidence -> 生产资源与 migrations `0036..0042` -> 最终 main HEAD 重新部署 dev 并生成同 commit evidence -> `bootstrap` gate -> 生产部署 -> `post-deploy` attestation -> `test` mode Owner Test Event -> `full` gate -> `production` mode -> CAPI 开关 -> `0 -> 10 -> 50 -> 100` 人工放量与观察。
 
 严格 Test Event 必须只包含 `Contact`、`CompleteRegistration`，出现 `Lead` 或 `StartTrial` 必须阻断，并且 CAPI 的 `sent` 与 `events_received=1` 同时成立。由用户营销授权门禁控制的 Pixel 只能写入 `attempted`，不能替代这项确认。任何阶段失败都必须将 mode 切回 `disabled` 并保持 `meta_capi_enabled=false`；先关闭 CAPI、再关闭 mode，保留 Queue/DLQ、D1 migration 和账本用于诊断。
+
+当前外部 blocker：没有 Q5 approved contract/collector，没有当前最终 commit 的真实远端 dev challenge、Meta live、resource attestation 与 Dataset Quality evidence。因此不得把本地测试通过描述为“满足生产候选条件”，也不得据此执行 production deploy 或提高 rollout。
 
 成本与索引口径：
 

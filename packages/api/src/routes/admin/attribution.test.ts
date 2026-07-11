@@ -2858,8 +2858,8 @@ describe('Meta CAPI v2 质量运维看板契约', () => {
       .map(call => call.sql)
       .filter(sql => !sql.includes("action_type = 'lead'"))
       .join('\n')
-    expect(activeSql).not.toMatch(/action_type\s+IN\s*\([^)]*['\"]lead['\"]/i)
-    expect(activeSql).not.toMatch(/event_name\s+IN\s*\([^)]*['\"]Lead['\"]/i)
+    expect(activeSql).not.toMatch(/action_type\s+IN\s*\([^)]*["']lead["']/i)
+    expect(activeSql).not.toMatch(/event_name\s+IN\s*\([^)]*["']Lead["']/i)
     expect(db.calls.some(call => call.sql.includes("action_type = 'lead'"))).toBe(true)
   })
 

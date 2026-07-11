@@ -60,6 +60,8 @@ describe('本地运行时发布身份', () => {
     assert.equal(result.notes.some(note => note.startsWith('local-api-log:')), false)
     assert.deepEqual(conversionBodies.map(body => body.actionType), ['contact'])
     assert.equal(registrationBodies.length, 1)
+    assert.match(registrationBodies[0].username, /^rl[0-9a-f]{12}$/)
+    assert.ok(registrationBodies[0].username.length <= 20)
     assert.equal(registrationBodies[0].actionType, undefined)
     assert.equal(registrationBodies[0].userId, undefined)
     const cleanup = commands.find(item => item.name === 'local-registration-cleanup')

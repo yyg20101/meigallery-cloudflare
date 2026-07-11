@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { MetaIncident } from '~/composables/useAdminAttribution'
 
-const props = withDefaults(defineProps<{
+withDefaults(defineProps<{
   incidents: MetaIncident[]
   isOwner?: boolean
 }>(), {

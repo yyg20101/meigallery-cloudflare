@@ -90,7 +90,7 @@
 
 `/admin/analytics` 是一方行为分析大盘，回答“站内访问、内容、点击、邀请和采集健康如何”。其中来源中的 `fb`、`facebook`、`meta` 只表示站内 UTM、推广链接或 referrer 归因，不等同于 Meta Pixel 或 CAPI 回传数据。
 
-广告投放相关能力统一进入 `/admin/attribution`：创建投放追踪链接、对比 `utm_content`、查看有效联系 / Lead / 完成注册、检查 Pixel / CAPI delivery、排查重复事件和执行发布检查。正式 Meta 事件仅为 `Contact`、`Lead`、`CompleteRegistration`，不支持 `StartTrial`。数据大盘可以提供跳转入口，但不在本页面内维护 Pixel 地址、CAPI secret 或 Test Event。
+广告投放相关能力统一进入 `/admin/attribution`：创建投放追踪链接、对比 `utm_content`、查看有效联系 / 完成注册、检查 Pixel / CAPI delivery、排查重复事件和执行发布检查。活动 Meta 事件仅为 `Contact`、`CompleteRegistration`；`Lead` 只在独立历史对象中作只读对照，不进入活动漏斗、比率、排序、delivery 健康或 readiness，`StartTrial` 不支持。数据大盘可以提供跳转入口，但不在本页面内维护 Pixel 地址、CAPI secret 或 Test Event。
 
 归因中心的交付状态必须避免夸大：Pixel `attempted` 只表示浏览器按指令尝试发送，不能显示为“Meta 已接收”；CAPI 只有 `sent` 且严格 Test Event 返回 `events_received=1` 才能显示为接收成功。运营页仅展示 secret、Test Event Code、Queue binding 的存在状态，不展示值、原始 event ID、`fbp`、`fbc`、IP 或用户代理。
 
@@ -238,7 +238,10 @@ Nuxt 后台归因中心
 - `[当前实现]` Meta 健康条分别显示 Pixel attempted、CAPI sent、failed、skipped；不得合并为“已同步”总数。
 - `[当前实现]` readiness 按 blocker 与 warning 分区。blocker 未通过时，`meta_capi_enabled` 保持不可开启；warning 只提示观察项，不伪装为生产放行。
 - `[当前实现]` Owner 仅能在 `meta_tracking_mode=test` 发起严格 Test Event；成功条件为 CAPI `sent` 和 `events_received=1`，不是仅创建审计记录。
-- `[运维前置]` 发布 UI 的执行顺序为关闭态 -> dev evidence -> 资源和 migration -> 最终 main commit evidence/release -> production 部署 -> test -> production -> CAPI 开关 -> 观察。任一步失败先关闭 CAPI，再切 mode 为 `disabled`。
+- `[当前实现]` dev live evidence 通过 migration `0041` 的一次性 challenge 绑定 environment 与当前 commit；Browser/CAPI 使用同组 opaque ID，UI 和 CLI 不展示原始 event ID。
+- `[当前实现]` 资源 attestation 通过 migration `0042` 的 60 秒 D1 原子一次性 ticket 完成；Owner Cookie 只用于向固定可信 API origin 换票，最终 HMAC attestation 请求不携带 Cookie。
+- `[运维前置]` 发布 UI 的执行顺序为关闭态 -> dev evidence -> migrations `0036..0042` 与资源检查 -> 最终 main commit evidence -> `bootstrap` gate -> production 部署 -> `post-deploy` attestation -> test -> `full` gate -> production -> CAPI 开关 -> `0 -> 10 -> 50 -> 100` 人工放量与观察。任一步失败先关闭 CAPI，再切 mode 为 `disabled`；系统只能自动降至 `0`。
+- `[外部阻断]` Q5 当前为 `contract_pending`，缺少真实 dev capture、Owner 批准 contract、collector 补充计划及其执行，也缺少当前最终 commit 的真实远端 dev evidence。readiness 必须显示 blocked，不得展示“满足生产候选条件”。
 - `[运维前置]` Queue 名称在页面与交接中明确为 dev `meigallery-meta-capi-dev` / `meigallery-meta-capi-dev-dlq`、production `meigallery-meta-capi` / `meigallery-meta-capi-dlq`，但页面不显示 Cloudflare resource ID 或命令原始输出。
 
 ### 4.2 Page Composition

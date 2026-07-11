@@ -11,7 +11,6 @@ import {
 } from './meta-live-challenge'
 
 const COMMIT = 'a'.repeat(40)
-const PIXEL_ID = '1234567890'
 const DATA_KEY = Buffer.alloc(32, 7).toString('base64')
 
 let miniflare: Miniflare
