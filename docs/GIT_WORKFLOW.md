@@ -51,9 +51,9 @@ main (生产)
 3. 只有明确获得上线授权后才创建或核验 production Queue `meigallery-meta-capi`、DLQ `meigallery-meta-capi-dlq`、consumer 与独立 secret；不得复制 dev token 或 Test Event Code 到 production。
 4. 创建 PR 合入 `main`，并对 production D1 应用 migration；迁移后仍保持 mode `disabled` 和 CAPI 开关 `false`。
 5. 切到最终 `main` HEAD，重新部署 dev 并重新生成**同一 commit**的 live evidence；合入前或其他分支的 evidence 不能复用。
-6. 在最终 `main` HEAD 的干净工作区设置 `VERIFY_DEV_API_URL`、`VERIFY_DEV_WEB_URL` 后运行 `corepack pnpm verify:release`；不得用 `VERIFY_RELEASE_ALLOW_BRANCH` 替代生产放行。
+6. 在最终 `main` HEAD 的干净工作区设置 `VERIFY_DEV_API_URL`、`VERIFY_DEV_WEB_URL` 后运行 `META_INITIAL_ROLLOUT=1 corepack pnpm verify:release`；Evidence V1、非当前 commit、超过 24 小时、Q5 contract/collector pending、open incident 或 production rollout 非 0 均必须阻断。不得用 `VERIFY_RELEASE_ALLOW_BRANCH` 替代生产放行。
 7. 确认 `./scripts/deploy.sh production` 的 production gate 读取到同 commit 通过报告后，部署生产 API 和 Web。
-8. Owner 先在 `test` mode 执行严格 Test Event，只有 CAPI `sent` 且 `events_received=1` 才可切到 `production`；随后再次检查营销授权门禁，再开启 `meta_capi_enabled`。
+8. Owner 在 production 部署后执行 synthetic Test Event；只有硬门禁通过且 Meta 返回 `events_received=1`，才允许从 rollout `0` 手动升到 `10`。部署本身不修改 setting、incident 或 rollout。
 9. 小流量观察 Pixel `attempted`、CAPI `sent`、failed/skipped、DLQ 与去重诊断。`attempted` 只表示浏览器尝试，不能作为 Meta 接收证据。
 10. 任一步失败先关闭 `meta_capi_enabled`，再切回 `meta_tracking_mode=disabled`；保留 Queue/DLQ、D1 账本和 migration，修复后从 test mode 重新验证。
 11. 部署稳定后打 tag：`git tag v0.x.0`，再将 `main` 合并回 `dev` 并删除发布分支。

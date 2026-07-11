@@ -10,23 +10,34 @@ export const META_LIVE_EVENTS = Object.freeze(['Contact', 'CompleteRegistration'
 const EVIDENCE_TTL_MS = 24 * 60 * 60 * 1000
 const TOP_LEVEL_FIELDS = new Set([
   'schemaVersion',
-  'status',
-  'commit',
-  'verifiedAt',
+  'commitSha',
+  'environment',
+  'pixelIdMasked',
+  'connectionVerifiedAt',
+  'capturedAt',
   'expiresAt',
-  'pixelIdSuffix',
   'events',
-  'confirmedBy',
+  'enhancedMatch',
+  'forbiddenEventsAbsent',
+  'datasetQualityContractVersion',
+  'datasetQualityCollectorCurrent',
 ])
 const EVENT_FIELDS = new Set([
   'eventName',
-  'browser',
-  'server',
-  'eventIdMatched',
-  'eventIdDigest',
+  'browserEventId',
+  'serverEventId',
+  'browserSeen',
+  'serverSeen',
   'deduplicated',
+  'eventsReceived',
 ])
-const OWNER_IDENTIFIER_PATTERN = /^owner(?::[a-z0-9][a-z0-9._-]{0,31})?$/
+const ENHANCED_MATCH_FIELDS = new Set([
+  'completeRegistrationEmail',
+  'completeRegistrationExternalId',
+  'contactContainsRegistrationIdentity',
+])
+const FORBIDDEN_EVENT_FIELDS = new Set(['Lead', 'StartTrial'])
+const EVENT_ID_DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/
 const SENSITIVE_KEY_PATTERN = /(?:browser[_-]?event[_-]?id|server[_-]?event[_-]?id|access[_-]?token|test[_-]?event[_-]?code|client[_-]?ip|ip[_-]?address|\bfbp\b|\bfbc\b)\s*[:=]/i
 const META_BROWSER_ID_PATTERN = /\bfb\.1\.\d{6,}\.[A-Za-z0-9._-]+\b/i
 const RAW_EVENT_ID_PATTERN = /(?:raw|browser|server)[-_: ]?event[-_: ]?id|event[_ -]?id\s*[:=]/i
@@ -40,29 +51,35 @@ export function assertMetaLiveEvidenceCanGateProduction(evidence, options = {}) 
   }
 
   rejectUnknownFields(evidence, TOP_LEVEL_FIELDS, 'evidence', reasons)
-  if (evidence.schemaVersion !== 1) reasons.push('schemaVersion 必须为 1')
-  if (evidence.status !== 'passed') reasons.push('status 必须为 passed')
-  if (typeof evidence.commit !== 'string' || evidence.commit.trim() === '') reasons.push('commit 缺失或格式非法')
-  if (options.expectedCommit && evidence.commit !== options.expectedCommit) reasons.push('commit 与当前待发布 commit 不一致')
-  if (!/^\d{4}$/.test(String(evidence.pixelIdSuffix || ''))) reasons.push('pixelIdSuffix 必须为四位数字')
-  if (!isValidMetaOwnerIdentifier(evidence.confirmedBy)) reasons.push('confirmedBy 只允许 owner 或 owner:<短标识>')
+  if (evidence.schemaVersion !== 2) reasons.push('schemaVersion 必须为 2，Evidence V1 已过期')
+  if (!/^[0-9a-f]{40}$/.test(String(evidence.commitSha || ''))) reasons.push('commitSha 必须为 40 位 SHA')
+  if (options.expectedCommit && evidence.commitSha !== options.expectedCommit) reasons.push('commit 与当前待发布 commit 不一致')
+  if (!['dev', 'production'].includes(evidence.environment)) reasons.push('environment 只允许 dev 或 production')
+  if (options.expectedEnvironment && evidence.environment !== options.expectedEnvironment) reasons.push('evidence 环境与预期环境不一致')
+  if (!/^\d{4}\*{4}\d{4}$/.test(String(evidence.pixelIdMasked || ''))) reasons.push('pixelIdMasked 格式非法')
 
-  const verifiedAt = parseTime(evidence.verifiedAt, 'verifiedAt', reasons)
+  const connectionVerifiedAt = parseTime(evidence.connectionVerifiedAt, 'connectionVerifiedAt', reasons)
+  const capturedAt = parseTime(evidence.capturedAt, 'capturedAt', reasons)
   const expiresAt = parseTime(evidence.expiresAt, 'expiresAt', reasons)
-  if (Number.isFinite(verifiedAt) && Number.isFinite(expiresAt) && expiresAt - verifiedAt !== EVIDENCE_TTL_MS) {
+  if (Number.isFinite(capturedAt) && Number.isFinite(expiresAt) && expiresAt - capturedAt !== EVIDENCE_TTL_MS) {
     reasons.push('evidence 有效期必须严格为 24 小时')
   }
-  if (Number.isFinite(now) && Number.isFinite(verifiedAt) && now < verifiedAt) reasons.push('evidence 尚未生效')
+  if (Number.isFinite(connectionVerifiedAt) && Number.isFinite(capturedAt) && connectionVerifiedAt > capturedAt) {
+    reasons.push('connectionVerifiedAt 不能晚于 capturedAt')
+  }
+  if (Number.isFinite(now) && Number.isFinite(capturedAt) && now < capturedAt) reasons.push('evidence 尚未生效')
   if (Number.isFinite(now) && Number.isFinite(expiresAt) && now >= expiresAt) reasons.push('evidence 已过期')
 
   validateEvents(evidence.events, reasons)
+  validateEnhancedMatch(evidence.enhancedMatch, reasons)
+  validateForbiddenEvents(evidence.forbiddenEventsAbsent, reasons)
+  if (!Number.isSafeInteger(evidence.datasetQualityContractVersion) || evidence.datasetQualityContractVersion < 1) {
+    reasons.push('Dataset Quality contract 尚未完成')
+  }
+  if (evidence.datasetQualityCollectorCurrent !== true) reasons.push('Dataset Quality collector 不是当前状态')
   assertNoSensitiveContent(evidence, reasons)
 
   if (reasons.length > 0) throw new Error(reasons.join('；'))
-}
-
-export function isValidMetaOwnerIdentifier(value) {
-  return OWNER_IDENTIFIER_PATTERN.test(String(value || '').trim())
 }
 
 export async function writeMetaLiveEvidence(evidence, options = {}) {
@@ -73,8 +90,8 @@ export async function writeMetaLiveEvidence(evidence, options = {}) {
   if (sensitiveReasons.length > 0) throw new Error(sensitiveReasons.join('；'))
 
   const reportDir = resolveReportDir(options.reportDir)
-  const timestamp = evidence.verifiedAt.replaceAll(':', '-')
-  const evidenceFile = path.join(reportDir, `${timestamp}-${evidence.commit.slice(0, 12)}.json`)
+  const timestamp = evidence.capturedAt.replaceAll(':', '-')
+  const evidenceFile = path.join(reportDir, `${timestamp}-${evidence.commitSha.slice(0, 12)}.json`)
   const latestFile = path.join(reportDir, 'latest.json')
   await mkdir(reportDir, { recursive: true })
   await writeFile(evidenceFile, serialized)
@@ -104,20 +121,42 @@ function validateEvents(events, reasons) {
     }
     rejectUnknownFields(event, EVENT_FIELDS, `events[${index}]`, reasons)
     if (!META_LIVE_EVENTS.includes(event.eventName)) reasons.push(`events[${index}].eventName 非法`)
-    if (event.browser !== true) reasons.push(`${String(event.eventName)} Browser event 未确认`)
-    if (event.server !== true) reasons.push(`${String(event.eventName)} Server event 未确认`)
-    if (event.eventIdMatched !== true) reasons.push(`${String(event.eventName)} event ID 不一致`)
-    if (!/^sha256:[0-9a-f]{12}$/.test(String(event.eventIdDigest || ''))) reasons.push(`${String(event.eventName)} eventIdDigest 格式非法`)
+    if (!EVENT_ID_DIGEST_PATTERN.test(String(event.browserEventId || ''))) reasons.push(`${String(event.eventName)} browserEventId 必须为不可逆摘要`)
+    if (!EVENT_ID_DIGEST_PATTERN.test(String(event.serverEventId || ''))) reasons.push(`${String(event.eventName)} serverEventId 必须为不可逆摘要`)
+    if (event.browserEventId !== event.serverEventId) reasons.push(`${String(event.eventName)} Browser/Server event ID 不一致`)
+    if (event.browserSeen !== true) reasons.push(`${String(event.eventName)} Browser event 未确认`)
+    if (event.serverSeen !== true) reasons.push(`${String(event.eventName)} Server event 未确认`)
     if (event.deduplicated !== true) reasons.push(`${String(event.eventName)} 未确认去重`)
+    if (event.eventsReceived !== 1) reasons.push(`${String(event.eventName)} eventsReceived 必须为 1`)
   })
+}
+
+function validateEnhancedMatch(value, reasons) {
+  if (!isRecord(value)) {
+    reasons.push('enhancedMatch 缺失或格式非法')
+    return
+  }
+  rejectUnknownFields(value, ENHANCED_MATCH_FIELDS, 'enhancedMatch', reasons)
+  if (value.completeRegistrationEmail !== true) reasons.push('CompleteRegistration email 增强匹配未覆盖')
+  if (value.completeRegistrationExternalId !== true) reasons.push('CompleteRegistration external_id 增强匹配未覆盖')
+  if (value.contactContainsRegistrationIdentity !== false) reasons.push('Contact 不得包含注册身份')
+}
+
+function validateForbiddenEvents(value, reasons) {
+  if (!isRecord(value)) {
+    reasons.push('forbiddenEventsAbsent 缺失或格式非法')
+    return
+  }
+  rejectUnknownFields(value, FORBIDDEN_EVENT_FIELDS, 'forbiddenEventsAbsent', reasons)
+  if (value.Lead !== true) reasons.push('必须确认 Lead 缺席')
+  if (value.StartTrial !== true) reasons.push('必须确认 StartTrial 缺席')
 }
 
 function assertNoSensitiveContent(value, reasons) {
   const serialized = JSON.stringify(value)
   const stringValues = collectStringValues(value)
   if (
-    SENSITIVE_KEY_PATTERN.test(serialized)
-    || stringValues.some(item => META_BROWSER_ID_PATTERN.test(item))
+    stringValues.some(item => META_BROWSER_ID_PATTERN.test(item))
     || stringValues.some(item => RAW_EVENT_ID_PATTERN.test(item))
     || stringValues.some(containsIpAddress)
   ) reasons.push('evidence 包含原始 event ID、secret、fbp、fbc 或 IP 等敏感内容')

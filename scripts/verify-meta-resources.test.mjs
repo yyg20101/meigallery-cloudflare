@@ -169,6 +169,68 @@ describe('Meta Cloudflare 资源检查', () => {
     assert.equal(stored, false)
   })
 
+  it('production initial gate 同时要求 target/effective=0、无 critical incident、无过期 outbox', async () => {
+    const passed = await runMetaResourceVerification({
+      environment: 'production',
+      commit: COMMIT,
+      initialMetaRollout: true,
+      reportOnly: true,
+      runCommand: createPassingRunner([], { capiEnabled: false }),
+    })
+    assert.equal(passed.status, 'passed')
+    assert.equal(passed.targetRolloutPercentage, 0)
+    assert.equal(passed.effectiveRolloutPercentage, 0)
+    assert.equal(passed.openCriticalIncidentCount, 0)
+    assert.equal(passed.expiredSecureOutboxCount, 0)
+
+    for (const overrides of [
+      { targetRolloutPercentage: 10 },
+      { effectiveRolloutPercentage: 10 },
+      { openCriticalIncidentCount: 1 },
+      { expiredSecureOutboxCount: 1 },
+    ]) {
+      const report = await runMetaResourceVerification({
+        environment: 'production',
+        commit: COMMIT,
+        initialMetaRollout: true,
+        reportOnly: true,
+        runCommand: createPassingRunner([], { capiEnabled: false, ...overrides }),
+      })
+      assert.equal(report.status, 'failed', JSON.stringify(overrides))
+    }
+  })
+
+  it('previous key active count 必须至多一把且由 previous secret 解释', async () => {
+    const explained = await runMetaResourceVerification({
+      environment: 'production',
+      commit: COMMIT,
+      initialMetaRollout: true,
+      reportOnly: true,
+      runCommand: createPassingRunner([], {
+        capiEnabled: false,
+        previousKeyActiveCount: 2,
+        activeKeyCount: 2,
+        secretNames: ['META_CAPI_ACCESS_TOKEN', 'META_CAPI_DATA_KEY_CURRENT', 'META_CAPI_DATA_KEY_PREVIOUS'],
+      }),
+    })
+    assert.equal(explained.status, 'passed')
+    assert.equal(explained.previousKeyActiveCountExplainable, true)
+
+    for (const overrides of [
+      { previousKeyActiveCount: 2, activeKeyCount: 2 },
+      { previousKeyActiveCount: 2, activeKeyCount: 3, secretNames: ['META_CAPI_ACCESS_TOKEN', 'META_CAPI_DATA_KEY_CURRENT', 'META_CAPI_DATA_KEY_PREVIOUS'] },
+    ]) {
+      const report = await runMetaResourceVerification({
+        environment: 'production',
+        commit: COMMIT,
+        initialMetaRollout: true,
+        reportOnly: true,
+        runCommand: createPassingRunner([], { capiEnabled: false, ...overrides }),
+      })
+      assert.equal(report.status, 'failed')
+    }
+  })
+
   it('首次上线标记在 dev 环境不要求关闭 CAPI', async () => {
     const report = await runMetaResourceVerification({
       environment: 'dev',
@@ -409,6 +471,15 @@ function createPassingRunner(calls, options = {}) {
           invalidated_at: options.connectionInvalidated ? '2026-07-11T00:01:00.000Z' : null,
           invalidation_reason: options.connectionInvalidated ? 'verification_invalidated' : '',
           revision: 'a'.repeat(32),
+        }]
+      } else if (runOptions.name.endsWith('meta-operations')) {
+        results = [{
+          target_rollout_percentage: options.targetRolloutPercentage ?? 0,
+          effective_rollout_percentage: options.effectiveRolloutPercentage ?? options.targetRolloutPercentage ?? 0,
+          open_critical_incident_count: options.openCriticalIncidentCount ?? 0,
+          expired_secure_outbox_count: options.expiredSecureOutboxCount ?? 0,
+          previous_key_active_count: options.previousKeyActiveCount ?? 0,
+          active_key_count: options.activeKeyCount ?? 1,
         }]
       } else {
         results = [

@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
 import { createHash } from 'node:crypto'
+import { isIP } from 'node:net'
 import { createInterface } from 'node:readline/promises'
 import { pathToFileURL } from 'node:url'
 import {
   assertMetaLiveEvidenceCanGateProduction,
-  isValidMetaOwnerIdentifier,
   META_LIVE_EVENTS,
   writeMetaLiveEvidence,
 } from './meta-live-verification-lib.mjs'
@@ -15,19 +15,22 @@ const YES_VALUES = new Set(['y', 'yes', '是'])
 const EVIDENCE_TTL_MS = 24 * 60 * 60 * 1000
 const VERIFY_TIMEOUT_MS = 20_000
 const REQUIRED_VERIFY_URLS = ['VERIFY_DEV_API_URL', 'VERIFY_DEV_WEB_URL']
+const OPAQUE_EVENT_ID_PATTERN = /^[A-Za-z0-9._:-]{16,160}$/
 
 export function buildMetaLiveEvidence(input) {
-  const confirmedBy = String(input?.confirmedBy || '').trim()
   const pixelId = String(input?.pixelId || '').trim()
   const commit = String(input?.commit || '').trim()
-  const verifiedAt = new Date(input?.now ?? Date.now())
+  const environment = String(input?.environment || '')
+  const capturedAt = new Date(input?.now ?? Date.now())
+  const connectionVerifiedAt = new Date(input?.connectionVerifiedAt)
   const eventResults = Array.isArray(input?.eventResults) ? input.eventResults : []
 
-  if (!isValidMetaOwnerIdentifier(confirmedBy)) throw new Error('确认人只允许 owner 或 owner:<短标识>')
   if (!/^\d{5,30}$/.test(pixelId)) throw new Error('测试 Pixel ID 必须为 5 到 30 位数字')
   if (!/^[0-9a-f]{40}$/i.test(commit)) throw new Error('当前 commit 必须为 40 位 SHA')
-  if (Number.isNaN(verifiedAt.getTime())) throw new Error('验证时间非法')
-  if (input?.noStartTrial !== true) throw new Error('必须明确确认 Test Events 中没有 Lead 或 StartTrial')
+  if (input?.commitSha !== commit) throw new Error('readiness commit 与当前 commit 不一致')
+  if (environment !== 'dev') throw new Error('live evidence 只接受 dev readiness')
+  if (Number.isNaN(capturedAt.getTime()) || Number.isNaN(connectionVerifiedAt.getTime())) throw new Error('验证时间非法')
+  if (connectionVerifiedAt.getTime() > capturedAt.getTime()) throw new Error('连接验证时间晚于 evidence capture')
 
   const resultMap = new Map(eventResults.map(result => [result?.eventName, result]))
   if (eventResults.length !== META_LIVE_EVENTS.length || resultMap.size !== META_LIVE_EVENTS.length) {
@@ -38,33 +41,46 @@ export function buildMetaLiveEvidence(input) {
     const result = resultMap.get(eventName)
     const browserEventId = String(result?.browserEventId || '')
     const serverEventId = String(result?.serverEventId || '')
-    if (!browserEventId || !serverEventId) throw new Error(`${eventName} 缺少 Browser 或 Server event ID`)
+    if (!isOpaqueSyntheticEventId(browserEventId) || !isOpaqueSyntheticEventId(serverEventId)) {
+      throw new Error(`${eventName} event ID 必须是本次合成验证的 opaque/non-PII 值`)
+    }
     if (browserEventId !== serverEventId) throw new Error(`${eventName} Browser/Server event ID 不一致`)
+    if (result?.browserSeen !== true) throw new Error(`${eventName} 未确认 Browser event`)
+    if (result?.serverSeen !== true) throw new Error(`${eventName} 未确认 Server event`)
     if (result?.deduplicated !== true) throw new Error(`${eventName} 未确认去重`)
+    if (result?.eventsReceived !== 1) throw new Error(`${eventName} eventsReceived 必须为 1`)
+
+    const eventIdDigest = digestEventId(browserEventId)
 
     return {
       eventName,
-      browser: true,
-      server: true,
-      eventIdMatched: true,
-      eventIdDigest: digestEventId(browserEventId),
+      browserEventId: eventIdDigest,
+      serverEventId: eventIdDigest,
+      browserSeen: true,
+      serverSeen: true,
       deduplicated: true,
+      eventsReceived: 1,
     }
   })
 
   const evidence = {
-    schemaVersion: 1,
-    status: 'passed',
-    commit,
-    verifiedAt: verifiedAt.toISOString(),
-    expiresAt: new Date(verifiedAt.getTime() + EVIDENCE_TTL_MS).toISOString(),
-    pixelIdSuffix: pixelId.slice(-4),
+    schemaVersion: 2,
+    commitSha: commit.toLowerCase(),
+    environment,
+    pixelIdMasked: `${pixelId.slice(0, 4)}****${pixelId.slice(-4)}`,
+    connectionVerifiedAt: connectionVerifiedAt.toISOString(),
+    capturedAt: capturedAt.toISOString(),
+    expiresAt: new Date(capturedAt.getTime() + EVIDENCE_TTL_MS).toISOString(),
     events,
-    confirmedBy,
+    enhancedMatch: input?.enhancedMatch,
+    forbiddenEventsAbsent: input?.forbiddenEventsAbsent,
+    datasetQualityContractVersion: input?.datasetQualityContractVersion,
+    datasetQualityCollectorCurrent: input?.datasetQualityCollectorCurrent,
   }
   assertMetaLiveEvidenceCanGateProduction(evidence, {
     expectedCommit: commit,
-    now: verifiedAt,
+    expectedEnvironment: 'dev',
+    now: capturedAt,
   })
   return evidence
 }
@@ -74,35 +90,96 @@ export async function recordMetaLiveVerification(options = {}) {
   const output = options.output || console.log
   const getCommit = options.getCommit || readCurrentCommit
   const writeEvidence = options.writeEvidence || writeMetaLiveEvidence
+  const readReadiness = options.readReadiness || readDevMetaLiveReadiness
   const commit = await getCommit(options)
   await verifyDevReleaseIdentity({ ...options, commit })
-  const confirmedBy = await ask('确认人（owner 或 owner:<短标识>）：', { hidden: false })
-  const pixelId = await ask('测试 Pixel ID：', { hidden: true })
+  const readiness = await readReadiness({ ...options, commit })
+  assertReadinessCanRecord(readiness, commit)
   const eventResults = []
 
   for (const eventName of META_LIVE_EVENTS) {
     const browserEventId = await ask(`${eventName} Browser event ID：`, { hidden: true })
     const serverEventId = await ask(`${eventName} Server event ID：`, { hidden: true })
+    const browserSeen = isYes(await ask(`${eventName} 已在 Events Manager 确认 Browser event？(yes/no)：`, { hidden: false }))
+    const serverSeen = isYes(await ask(`${eventName} 已在 Events Manager 确认 Server event？(yes/no)：`, { hidden: false }))
     const deduplicated = isYes(await ask(`${eventName} 已在 Events Manager 确认去重？(yes/no)：`, { hidden: false }))
-    eventResults.push({ eventName, browserEventId, serverEventId, deduplicated })
+    const eventsReceived = isYes(await ask(`${eventName} 已确认 Meta events_received=1？(yes/no)：`, { hidden: false })) ? 1 : 0
+    eventResults.push({ eventName, browserEventId, serverEventId, browserSeen, serverSeen, deduplicated, eventsReceived })
   }
 
-  const noStartTrial = isYes(await ask('已确认 Test Events 中没有 Lead 或 StartTrial？(yes/no)：', { hidden: false }))
+  const leadAbsent = isYes(await ask('已确认 Test Events 中没有 Lead？(yes/no)：', { hidden: false }))
+  const startTrialAbsent = isYes(await ask('已确认 Test Events 中没有 StartTrial？(yes/no)：', { hidden: false }))
   const evidence = buildMetaLiveEvidence({
-    confirmedBy,
-    pixelId,
+    ...readiness,
     eventResults,
-    noStartTrial,
+    forbiddenEventsAbsent: { Lead: leadAbsent, StartTrial: startTrialAbsent },
     commit,
     now: options.now,
   })
   const files = await writeEvidence(evidence, {
     ...options,
     expectedCommit: commit,
+    expectedEnvironment: 'dev',
     now: options.now,
   })
   output(`Meta live evidence 已写入：${files.evidenceFile}`)
   return { evidence, ...files }
+}
+
+export async function readDevMetaLiveReadiness(options = {}) {
+  const commit = String(options.commit || '').trim().toLowerCase()
+  if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error('readiness 查询需要当前 40 位 commit')
+  const runCommandFn = options.runCommand || runCommand
+  const sql = `
+    WITH quality AS (
+      SELECT contract_version, COUNT(DISTINCT event_name) AS event_count,
+        MIN(CASE WHEN collection_status = 'success' AND datetime(collected_at) > datetime('now', '-24 hours') THEN 1 ELSE 0 END) AS collector_current
+      FROM meta_dataset_quality_snapshots
+      WHERE environment = 'dev'
+        AND collected_at = (SELECT MAX(q2.collected_at) FROM meta_dataset_quality_snapshots q2 WHERE q2.environment = 'dev' AND q2.event_name = meta_dataset_quality_snapshots.event_name)
+      GROUP BY contract_version
+      ORDER BY contract_version DESC
+      LIMIT 1
+    ), matching AS (
+      SELECT
+        MAX(CASE WHEN event_name = 'CompleteRegistration' AND has_email = 1 THEN 1 ELSE 0 END) AS registration_email,
+        MAX(CASE WHEN event_name = 'CompleteRegistration' AND has_external_id = 1 THEN 1 ELSE 0 END) AS registration_external_id,
+        MAX(CASE WHEN event_name = 'Contact' AND (has_email = 1 OR has_external_id = 1) THEN 1 ELSE 0 END) AS contact_registration_identity
+      FROM analytics_conversion_deliveries
+      WHERE channel = 'meta_capi' AND status = 'sent'
+    )
+    SELECT c.environment, c.pixel_id, c.verified_commit, c.verified_at AS connection_verified_at,
+      matching.registration_email, matching.registration_external_id, matching.contact_registration_identity,
+      quality.contract_version, CASE WHEN quality.event_count = 2 AND quality.collector_current = 1 THEN 1 ELSE 0 END AS collector_current
+    FROM meta_connection_verifications c CROSS JOIN matching LEFT JOIN quality ON 1 = 1
+    WHERE c.environment = 'dev' AND c.verified_commit = '${commit}' AND c.invalidated_at IS NULL
+    LIMIT 1
+  `.replace(/\s+/g, ' ').trim()
+  const step = await runCommandFn('corepack', [
+    'pnpm', '--filter', '@meigallery/api', 'exec', 'wrangler', 'd1', 'execute', 'meigallery-db-dev',
+    '--env', 'dev', '--remote', '--command', sql, '--json',
+  ], {
+    cwd: options.cwd || process.cwd(),
+    name: 'meta-live-dev-readiness',
+    reportCommand: '读取 dev D1 Meta live readiness 脱敏布尔摘要',
+  })
+  if (step.status !== 'passed') throw new Error('dev Meta live readiness 查询失败')
+  const rows = parseD1Rows(step.stdout)
+  if (rows.length !== 1) throw new Error('dev Meta live readiness 不完整')
+  const row = rows[0]
+  return {
+    environment: row.environment,
+    commitSha: String(row.verified_commit || '').toLowerCase(),
+    pixelId: String(row.pixel_id || ''),
+    connectionVerifiedAt: row.connection_verified_at,
+    enhancedMatch: {
+      completeRegistrationEmail: row.registration_email === 1,
+      completeRegistrationExternalId: row.registration_external_id === 1,
+      contactContainsRegistrationIdentity: row.contact_registration_identity !== 0,
+    },
+    datasetQualityContractVersion: Number(row.contract_version || 0),
+    datasetQualityCollectorCurrent: row.collector_current === 1,
+  }
 }
 
 export async function verifyDevReleaseIdentity(options = {}) {
@@ -160,7 +237,44 @@ async function requestReleaseIdentity(fetchFn, url, serviceName, expectedCommit,
 }
 
 function digestEventId(value) {
-  return `sha256:${createHash('sha256').update(value).digest('hex').slice(0, 12)}`
+  return `sha256:${createHash('sha256').update(value).digest('hex')}`
+}
+
+function isOpaqueSyntheticEventId(value) {
+  if (!OPAQUE_EVENT_ID_PATTERN.test(value) || value.includes('@') || /\bfb\.1\./i.test(value)) return false
+  return isIP(value) === 0 && !/(?:access[_-]?token|test[_-]?event[_-]?code|client[_-]?ip)/i.test(value)
+}
+
+function assertReadinessCanRecord(readiness, commit) {
+  buildMetaLiveEvidence({
+    ...readiness,
+    commit,
+    now: readiness.connectionVerifiedAt,
+    forbiddenEventsAbsent: { Lead: true, StartTrial: true },
+    eventResults: META_LIVE_EVENTS.map((eventName, index) => ({
+      eventName,
+      browserEventId: `meta_verify_preflight_${index}_0123456789abcdef`,
+      serverEventId: `meta_verify_preflight_${index}_0123456789abcdef`,
+      browserSeen: true,
+      serverSeen: true,
+      deduplicated: true,
+      eventsReceived: 1,
+    })),
+  })
+}
+
+function parseD1Rows(stdout) {
+  const text = String(stdout || '').trim()
+  let payload
+  try {
+    payload = JSON.parse(text)
+  } catch {
+    throw new Error('dev Meta live readiness JSON 非法')
+  }
+  if (!Array.isArray(payload) || payload.length !== 1 || !Array.isArray(payload[0]?.results)) {
+    throw new Error('dev Meta live readiness JSON envelope 非法')
+  }
+  return payload[0].results
 }
 
 function isYes(value) {

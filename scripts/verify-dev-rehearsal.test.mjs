@@ -30,9 +30,8 @@ describe('开发环境发布预演验证', () => {
       }),
       jsonResponse(200, {
         data: {
-          status: 'sent',
+          status: 'verified',
           eventsReceived: 1,
-          testEventCodePresent: true,
         },
       }),
     ]

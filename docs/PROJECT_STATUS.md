@@ -40,7 +40,7 @@
 - `verify:local-runtime` 用于本地 Cloudflare 运行时验证 D1、Queue、归因和降级链路。
 - `verify:dev-rehearsal` 依赖独立 dev 资源和当前 dev Workers URL，作为上线前远端演练；Meta 链路只接受 Owner 生成 `Contact`、`CompleteRegistration` 的同 commit live evidence，出现历史 `Lead` 或 `StartTrial` 证据必须阻断。
 - `verify:release` 是生产放行前最终校验，但当前仓库尚未真实跑完整 release 报告；生产前必须在干净工作区、带 `VERIFY_DEV_API_URL` / `VERIFY_DEV_WEB_URL` 运行并生成同一 commit 的通过报告。最终 `main` HEAD 必须重新部署 dev、重做 evidence，不能复用其他 commit 的结果。
-- `scripts/deploy.sh production` 已在远端 migration 前接入 production gate；没有通过版 release 报告时必须阻断。
+- `scripts/deploy.sh production` 已在远端 migration 前接入 production gate；没有通过版 release 报告时必须阻断。部署路径只负责 preflight、migration 与 Worker 部署，不写 setting、不关闭 incident、不调整 rollout。
 
 ## 当前已实现能力
 
@@ -50,7 +50,7 @@
 - Telegram 外部导入 API：项目只提供对外 API 接收能力，不内置 Telegram Bot 本体；对接契约见 `docs/TELEGRAM_IMPORT_API.md`。
 - 数据分析：已实现一方数据采集、来源归因、邀请码、联系点击、趋势和后台 `/admin/analytics` 系列看板；后台 UI 口径见 `docs/UI_DATA_ANALYTICS_DASHBOARD.md`。
 - 归因中心：已实现站内转化账本、投放追踪链接、有效联系 / 完成注册活动趋势、历史 Lead 只读对照、Meta Pixel / CAPI 同步健康、重复诊断和分级发布检查；历史 Lead 与会员发放辅助指标均不参与活动漏斗、比率或链接排序，会员发放仅保留在 `operations` 辅助结构。后台分别展示 blocker 与 warning，warning 不改变生产阻断状态；入口为 `/admin/attribution`。
-- Meta CAPI v2：**安全交付阶段已实现，尚不可生产放量**。业务事实严格限定为 `Contact`、`CompleteRegistration`；AES-256-GCM 安全 outbox、MetaConnection、Queue/DLQ、current/previous 密钥轮换状态、资源检查和静态泄漏扫描已接入。Dataset Quality 当前为 `contract_pending`：仓库只有安全契约记录器；记录器会统一扫描全部可渲染字段及最终 Markdown，拒绝完整 Dataset ID 的明文、百分号编码和双编码，并在失败时继续销毁 raw。尚无真实 dev Dataset capture、Owner 批准 contract 或 collector，`meta_dataset_quality_snapshots` 必须保持空。production readiness 保持 blocked，production rollout 固定为 `0`；不得创建完成态 contract、扩展 collector 或以 mock 证据放行。后台 Pixel `attempted` 仅代表浏览器尝试；CAPI 仅在 Graph API `events_received=1` 时以 `sent` 表示接收成功。后续仍须按[质量运营计划](superpowers/plans/2026-07-10-meta-capi-v2-quality-operations.md)完成外部依赖并获得用户授权。
+- Meta CAPI v2：**Task 6 发布证据门禁已实现，仍不可生产放量**。Evidence V2 只接受当前 40 位 commit、匹配环境、24 小时内的 `Contact` / `CompleteRegistration` 精确 Browser/Server 去重契约；Evidence V1 直接拒绝。资源门禁覆盖 migrations `0036..0040`、Queue/DLQ、data key、同 commit connection、incident、cold-start rollout 与 secure outbox。production synthetic Test Event 仅在部署后的同 commit 硬门禁通过时可携带 `test_event_code`，普通 production delivery 继续禁止。Dataset Quality 当前仍为 `contract_pending`，没有真实 dev capture、Owner 批准 contract 和 collector；因此 release 稳定 fail closed，production rollout 保持 `0`，不得以 mock 或伪造 evidence 放行。
 - SEO：已实现基础 SEO 设置、关键词池、sitemap、robots、结构化数据和生产校验脚本；运营配置见 `docs/SEO_CONFIGURATION.md`。
 
 ## 规划和未接入

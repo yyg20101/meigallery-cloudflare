@@ -458,15 +458,15 @@ describe('MetaConnection', () => {
     expect(db.verifications.size).toBe(0)
   })
 
-  it('production bootstrap 在任何读取、业务记录、fetch 和 verification upsert 前固定阻断', async () => {
+  it('production bootstrap 缺少发布资源证据时 409，且不 fetch、不写 verification', async () => {
     const db = createConnectionDb({ trackingMode: 'production' })
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
 
     await expect(verifyMetaConnection(connectionEnv(db, { APP_ENV: 'production' }), 1, 'Contact'))
-      .rejects.toMatchObject({ code: 'META_PRODUCTION_TEST_GATE_PENDING', httpStatus: 409 })
+      .rejects.toMatchObject({ code: 'META_PRODUCTION_TEST_GATE_BLOCKED', httpStatus: 409 })
 
-    expect(db.calls).toEqual([])
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO meta_connection_verifications'))).toBe(false)
     expect(db.verifications.size).toBe(0)
     expect(fetchMock).not.toHaveBeenCalled()
   })

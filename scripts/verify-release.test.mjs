@@ -59,6 +59,18 @@ describe('发布验证 CLI', () => {
     assert.ok(deployIndex > gateIndex)
   })
 
+  it('所有部署路径都不写 site setting、rollout 或 incident', async () => {
+    const [deployScript, rootPackage, apiPackage] = await Promise.all([
+      readFile(DEPLOY_SCRIPT_PATH, 'utf8'),
+      readFile(PACKAGE_JSON_PATH, 'utf8'),
+      readFile(API_PACKAGE_JSON_PATH, 'utf8'),
+    ])
+    const deploymentPaths = [deployScript, rootPackage, apiPackage].join('\n')
+    assert.doesNotMatch(deployScript, /(?:INSERT|UPDATE|DELETE)[^\n]*(?:site_settings|meta_capi_incidents)/i)
+    assert.doesNotMatch(deployScript, /d1 execute[^\n]*(?:meta_capi_rollout_percentage|meta_capi_incidents)/i)
+    assert.doesNotMatch(deploymentPaths, /wrangler d1 execute[^\n]*(?:meta_capi_rollout_percentage|meta_capi_incidents)/i)
+  })
+
   it('API remote migration package script 在 production apply 前执行只读 preflight', async () => {
     const packageJson = JSON.parse(await readFile(API_PACKAGE_JSON_PATH, 'utf8'))
     const command = packageJson.scripts['db:migrate:remote']
@@ -103,6 +115,8 @@ describe('发布验证 CLI', () => {
 
     assert.equal(report.status, 'passed')
     assert.equal(names.includes('api-coverage'), true)
+    assert.equal(names[0], 'dependency-install')
+    assert.equal(names[1], 'lint')
     assert.equal(names.includes('meta-secret-leaks'), true)
     assert.equal(report.steps.some(step => step.name === 'api-coverage'), true)
     assert.equal(report.steps.some(step => step.name === 'meta-secret-leaks'), true)
@@ -425,17 +439,29 @@ describe('发布验证 CLI', () => {
           capiEnabled: false,
           migrationsApplied: true,
           connectionVerified: true,
+          openCriticalIncidentCount: 0,
+          targetRolloutPercentage: 0,
+          effectiveRolloutPercentage: 0,
           trackingMode: environment === 'dev' ? 'test' : 'disabled',
           database: environment === 'dev' ? 'meigallery-db-dev' : 'meigallery-db',
           queues: [],
         }
       },
       readLatestMetaLiveEvidence: async () => ({
-        status: 'passed',
-        commit: RELEASE_COMMIT,
-        verifiedAt: '2026-07-10T00:00:00.000Z',
+        schemaVersion: 2,
+        commitSha: RELEASE_COMMIT,
+        environment: 'dev',
+        capturedAt: '2026-07-10T00:00:00.000Z',
         expiresAt: '2026-07-11T00:00:00.000Z',
         events: ['Contact', 'CompleteRegistration'].map(eventName => ({ eventName })),
+        enhancedMatch: {
+          completeRegistrationEmail: true,
+          completeRegistrationExternalId: true,
+          contactContainsRegistrationIdentity: false,
+        },
+        forbiddenEventsAbsent: { Lead: true, StartTrial: true },
+        datasetQualityContractVersion: 1,
+        datasetQualityCollectorCurrent: true,
       }),
       assertMetaLiveEvidenceCanGateProduction: () => {},
       recordReleaseVerificationSummary: async ({ environment, verificationType }) => {
@@ -465,8 +491,11 @@ describe('发布验证 CLI', () => {
       'local-runtime',
       'dev-rehearsal',
       'meta-resources-dev',
-      'meta-resources-production',
       'meta-live-evidence',
+      'meta-dataset-quality',
+      'meta-open-incident-gate',
+      'meta-resources-production',
+      'meta-initial-rollout-zero',
       'meta-live-store-dev',
       'meta-live-store-production',
     ])
@@ -511,14 +540,23 @@ describe('发布验证 CLI', () => {
           initialMetaRollout,
           database: environment === 'dev' ? 'meigallery-db-dev' : 'meigallery-db',
           queues: [],
+          connectionVerified: true,
+          openCriticalIncidentCount: 0,
+          targetRolloutPercentage: 0,
+          effectiveRolloutPercentage: 0,
         }
       },
       readLatestMetaLiveEvidence: async () => ({
-        status: 'passed',
-        commit: RELEASE_COMMIT,
-        verifiedAt: '2026-07-10T00:00:00.000Z',
+        schemaVersion: 2,
+        commitSha: RELEASE_COMMIT,
+        environment: 'dev',
+        capturedAt: '2026-07-10T00:00:00.000Z',
         expiresAt: '2026-07-11T00:00:00.000Z',
         events: ['Contact', 'CompleteRegistration'].map(eventName => ({ eventName })),
+        enhancedMatch: { completeRegistrationEmail: true, completeRegistrationExternalId: true, contactContainsRegistrationIdentity: false },
+        forbiddenEventsAbsent: { Lead: true, StartTrial: true },
+        datasetQualityContractVersion: 1,
+        datasetQualityCollectorCurrent: true,
       }),
       assertMetaLiveEvidenceCanGateProduction: () => {},
       recordReleaseVerificationSummary: async () => ({ status: 'passed' }),
@@ -559,8 +597,24 @@ describe('发布验证 CLI', () => {
         capiEnabled: true,
         database: environment === 'dev' ? 'meigallery-db-dev' : 'meigallery-db',
         queues: [],
+        connectionVerified: true,
+        openCriticalIncidentCount: 0,
+        targetRolloutPercentage: 0,
+        effectiveRolloutPercentage: 0,
       }),
-      readLatestMetaLiveEvidence: async () => assert.fail('生产资源失败后不得读取 evidence'),
+      readLatestMetaLiveEvidence: async () => ({
+        schemaVersion: 2,
+        commitSha: RELEASE_COMMIT,
+        environment: 'dev',
+        capturedAt: '2026-07-10T00:00:00.000Z',
+        expiresAt: '2026-07-11T00:00:00.000Z',
+        events: ['Contact', 'CompleteRegistration'].map(eventName => ({ eventName })),
+        enhancedMatch: { completeRegistrationEmail: true, completeRegistrationExternalId: true, contactContainsRegistrationIdentity: false },
+        forbiddenEventsAbsent: { Lead: true, StartTrial: true },
+        datasetQualityContractVersion: 1,
+        datasetQualityCollectorCurrent: true,
+      }),
+      assertMetaLiveEvidenceCanGateProduction: () => {},
       writeReport: async () => ({ reportFile: '/tmp/release.json', latestFile: '/tmp/latest.json' }),
     })
 

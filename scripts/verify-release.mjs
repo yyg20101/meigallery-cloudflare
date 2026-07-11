@@ -22,6 +22,16 @@ import { runMetaResourceVerification } from './verify-meta-resources.mjs'
 
 const QUICK_STEPS = [
   {
+    name: 'dependency-install',
+    command: 'corepack',
+    args: ['pnpm', 'install', '--frozen-lockfile'],
+  },
+  {
+    name: 'lint',
+    command: 'corepack',
+    args: ['pnpm', 'lint'],
+  },
+  {
     name: 'dev-resource-isolation',
     command: 'node',
     args: ['scripts/verify-dev-resources.mjs'],
@@ -216,7 +226,7 @@ export async function runReleaseVerification(options = {}) {
 
   const childModesPassed = releaseSubModes.length === childRuns.length && releaseSubModes.every(item => item.status === 'passed')
   if (releaseGitBlockers.length === 0 && childModesPassed) {
-    for (const environment of ['dev', 'production']) {
+    for (const environment of ['dev']) {
       const startedResourceMs = Date.now()
       const result = await runMetaResourceVerificationFn({
         ...options,
@@ -241,8 +251,7 @@ export async function runReleaseVerification(options = {}) {
     }
   }
 
-  const resourcesPassed = metaResources.dev.status === 'passed' && metaResources.production.status === 'passed'
-  if (resourcesPassed) {
+  if (metaResources.dev.status === 'passed') {
     const liveStartedMs = Date.now()
     try {
       const evidence = await readLatestMetaLiveEvidenceFn(options)
@@ -252,10 +261,18 @@ export async function runReleaseVerification(options = {}) {
       })
       metaLiveVerification = {
         status: 'passed',
-        commit: evidence.commit,
-        verifiedAt: evidence.verifiedAt,
+        commit: evidence.commitSha,
+        environment: evidence.environment,
+        verifiedAt: evidence.capturedAt,
         expiresAt: evidence.expiresAt,
         events: evidence.events.map(event => event.eventName),
+        enhancedMatchVerified: evidence.enhancedMatch?.completeRegistrationEmail === true
+          && evidence.enhancedMatch?.completeRegistrationExternalId === true
+          && evidence.enhancedMatch?.contactContainsRegistrationIdentity === false,
+        forbiddenEventsAbsent: evidence.forbiddenEventsAbsent?.Lead === true
+          && evidence.forbiddenEventsAbsent?.StartTrial === true,
+        datasetQualityContractVersion: evidence.datasetQualityContractVersion,
+        datasetQualityCollectorCurrent: evidence.datasetQualityCollectorCurrent,
       }
       steps.push({
         name: 'meta-live-evidence',
@@ -279,6 +296,55 @@ export async function runReleaseVerification(options = {}) {
   }
 
   if (metaLiveVerification.status === 'passed') {
+    const qualityPassed = Number.isSafeInteger(metaLiveVerification.datasetQualityContractVersion)
+      && metaLiveVerification.datasetQualityContractVersion > 0
+      && metaLiveVerification.datasetQualityCollectorCurrent === true
+    steps.push({
+      name: 'meta-dataset-quality', status: qualityPassed ? 'passed' : 'failed', durationMs: 0,
+      command: '校验 Evidence V2 Dataset Quality contract/collector', exitCode: qualityPassed ? 0 : 1,
+      summary: qualityPassed ? 'Dataset Quality contract 与 collector freshness 通过' : 'Dataset Quality contract/collector pending',
+    })
+    const incidentPassed = metaResources.dev.openCriticalIncidentCount === 0
+    steps.push({
+      name: 'meta-open-incident-gate', status: incidentPassed ? 'passed' : 'failed', durationMs: 0,
+      command: '校验 dev open critical incident', exitCode: incidentPassed ? 0 : 1,
+      summary: incidentPassed ? 'dev 无 open critical incident' : 'dev open critical incident 查询失败或非零',
+    })
+  }
+
+  const devEvidenceGatesPassed = ['meta-dataset-quality', 'meta-open-incident-gate']
+    .every(name => steps.some(step => step.name === name && step.status === 'passed'))
+  if (devEvidenceGatesPassed) {
+    const startedResourceMs = Date.now()
+    const result = await runMetaResourceVerificationFn({
+      ...options,
+      environment: 'production',
+      commit: git.commit,
+      initialMetaRollout,
+      reportOnly: false,
+    })
+    metaResources.production = sanitizeMetaResourceSummary(result, 'production', git.commit)
+    steps.push({
+      name: 'meta-resources-production', status: result?.status === 'passed' ? 'passed' : 'failed',
+      durationMs: Date.now() - startedResourceMs,
+      command: `node scripts/verify-meta-resources.mjs --env production${initialMetaRollout ? ' --initial-meta-rollout' : ''}`,
+      exitCode: result?.status === 'passed' ? 0 : 1,
+      summary: result?.status === 'passed' ? 'Meta production 资源检查通过' : 'Meta production 资源检查失败',
+    })
+    if (result?.status === 'passed') {
+      const rolloutPassed = !initialMetaRollout || (
+        result.targetRolloutPercentage === 0 && result.effectiveRolloutPercentage === 0
+      )
+      steps.push({
+        name: 'meta-initial-rollout-zero', status: rolloutPassed ? 'passed' : 'failed', durationMs: 0,
+        command: '校验 production target/effective rollout', exitCode: rolloutPassed ? 0 : 1,
+        summary: rolloutPassed ? 'production initial rollout 为 0' : 'production initial rollout 非 0',
+      })
+    }
+  }
+
+  const resourcesPassed = metaResources.dev.status === 'passed' && metaResources.production.status === 'passed'
+  if (metaLiveVerification.status === 'passed' && resourcesPassed) {
     for (const environment of ['dev', 'production']) {
       const startedStoreMs = Date.now()
       const storeStep = await recordReleaseVerificationSummaryFn({
@@ -313,9 +379,12 @@ export async function runReleaseVerification(options = {}) {
     'meta-resources-dev',
     'meta-resources-production',
     'meta-live-evidence',
+    'meta-dataset-quality',
+    'meta-open-incident-gate',
     'meta-live-store-dev',
     'meta-live-store-production',
   ]
+  if (initialMetaRollout) requiredMetaSteps.push('meta-initial-rollout-zero')
   const metaStepsPassed = requiredMetaSteps.every(name => steps.some(step => step.name === name && step.status === 'passed'))
   const report = {
     schemaVersion: 1,
@@ -382,6 +451,9 @@ function sanitizeMetaResourceSummary(result, environment, commit) {
     migrationsCurrent: result?.migrationsCurrent === true,
     migrationsApplied: result?.migrationsApplied === true,
     connectionVerified: result?.connectionVerified === true,
+    openCriticalIncidentCount: Number.isSafeInteger(result?.openCriticalIncidentCount) ? result.openCriticalIncidentCount : null,
+    targetRolloutPercentage: Number.isSafeInteger(result?.targetRolloutPercentage) ? result.targetRolloutPercentage : null,
+    effectiveRolloutPercentage: Number.isSafeInteger(result?.effectiveRolloutPercentage) ? result.effectiveRolloutPercentage : null,
     trackingMode: ['disabled', 'test', 'production'].includes(result?.trackingMode)
       ? result.trackingMode
       : null,

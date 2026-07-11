@@ -34,6 +34,28 @@ const REQUIRED_MIGRATIONS = [
 ]
 const SETTINGS_SQL = "SELECT key, value FROM site_settings WHERE key IN ('meta_capi_enabled', 'meta_tracking_mode', 'facebook_pixel_id') ORDER BY key"
 const MIGRATION_NAMES_SQL = "SELECT name FROM d1_migrations WHERE name IN ('0036_meta_capi_v2_secure_delivery.sql', '0037_meta_connection_revision.sql', '0038_conversion_dedupe_claims.sql', '0039_meta_capi_v2_operations.sql', '0040_meta_capi_circuit_indexes.sql') ORDER BY name"
+const META_OPERATIONS_SQL = `
+  WITH rollout AS (
+    SELECT CAST(COALESCE((SELECT value FROM site_settings WHERE key = 'meta_capi_rollout_percentage' LIMIT 1), '-1') AS INTEGER) AS target
+  ), incidents AS (
+    SELECT COUNT(*) AS open_count FROM meta_capi_incidents WHERE status = 'open' AND severity = 'critical'
+  ), active_keys AS (
+    SELECT o.key_id, COUNT(*) AS reference_count, MAX(o.created_at) AS newest_at
+    FROM meta_capi_secure_outbox o
+    JOIN analytics_conversion_deliveries d ON d.id = o.delivery_id
+    WHERE d.status IN ('pending', 'failed') AND datetime(o.expires_at) > datetime('now')
+    GROUP BY o.key_id
+  ), ranked_keys AS (
+    SELECT key_id, reference_count, ROW_NUMBER() OVER (ORDER BY newest_at DESC, key_id ASC) AS key_rank FROM active_keys
+  )
+  SELECT rollout.target AS target_rollout_percentage,
+    CASE WHEN incidents.open_count > 0 THEN 0 ELSE rollout.target END AS effective_rollout_percentage,
+    incidents.open_count AS open_critical_incident_count,
+    (SELECT COUNT(*) FROM meta_capi_secure_outbox WHERE datetime(expires_at) <= datetime('now')) AS expired_secure_outbox_count,
+    COALESCE((SELECT SUM(reference_count) FROM ranked_keys WHERE key_rank = 2), 0) AS previous_key_active_count,
+    (SELECT COUNT(*) FROM active_keys) AS active_key_count
+  FROM rollout CROSS JOIN incidents
+`.replace(/\s+/g, ' ').trim()
 
 function metaConnectionSql(environment) {
   return `SELECT environment, pixel_id, graph_api_version, verified_commit, verified_at, invalidated_at, invalidation_reason, revision FROM meta_connection_verifications WHERE environment = '${environment}' LIMIT 2`
@@ -56,6 +78,7 @@ export async function runMetaResourceVerification(options = {}) {
     command('meta-settings', ['d1', 'execute', config.database, ...config.envArgs, '--remote', '--command', SETTINGS_SQL, '--json']),
     command('migration-names', ['d1', 'execute', config.database, ...config.envArgs, '--remote', '--command', MIGRATION_NAMES_SQL, '--json']),
     command('meta-connection', ['d1', 'execute', config.database, ...config.envArgs, '--remote', '--command', metaConnectionSql(environment), '--json']),
+    command('meta-operations', ['d1', 'execute', config.database, ...config.envArgs, '--remote', '--command', META_OPERATIONS_SQL, '--json']),
   ]
   const results = []
   for (const definition of calls) {
@@ -94,13 +117,25 @@ export async function runMetaResourceVerification(options = {}) {
     settings.pixelId,
     options.commit,
   )
+  const operations = parseMetaOperations(byName.get('meta-operations')?.stdout)
   const capiEnabled = settings?.capiEnabled ?? null
   const trackingMode = settings?.trackingMode ?? null
   const initialMetaRollout = options.initialMetaRollout === true && environment === 'production'
-  const initialStateReady = !initialMetaRollout || capiEnabled === false
+  const previousSecretPresent = hasRequiredSecrets(byName.get('secrets')?.stdout, ['META_CAPI_DATA_KEY_PREVIOUS'])
+  const previousKeyActiveCountExplainable = operations !== null
+    && operations.activeKeyCount <= 2
+    && (operations.previousKeyActiveCount === 0 || (operations.activeKeyCount === 2 && previousSecretPresent))
+  const incidentReady = operations?.openCriticalIncidentCount === 0
+  const initialStateReady = !initialMetaRollout || (
+    capiEnabled === false
+    && operations?.targetRolloutPercentage === 0
+    && operations?.effectiveRolloutPercentage === 0
+    && operations?.expiredSecureOutboxCount === 0
+    && previousKeyActiveCountExplainable
+  )
   let status = commandsPassed && queuesPresent && mainConsumerPresent && dlqConsumerPresent
     && requiredSecretsPresent && migrationsCurrent && migrationsApplied && connectionVerified
-    && capiEnabled !== null && trackingMode !== null && initialStateReady
+    && capiEnabled !== null && trackingMode !== null && operations !== null && incidentReady && initialStateReady
     ? 'passed'
     : 'failed'
   let summaryRecorded = false
@@ -123,6 +158,12 @@ export async function runMetaResourceVerification(options = {}) {
           capiEnabled,
           trackingMode,
           initialMetaRollout,
+          noOpenCriticalIncident: incidentReady,
+          initialRolloutZero: !initialMetaRollout || (
+            operations?.targetRolloutPercentage === 0 && operations?.effectiveRolloutPercentage === 0
+          ),
+          secureOutboxReady: !initialMetaRollout || operations?.expiredSecureOutboxCount === 0,
+          previousKeyReferencesExplainable: !initialMetaRollout || previousKeyActiveCountExplainable,
         },
         cwd: options.cwd,
         runCommand: options.runCommand,
@@ -148,6 +189,13 @@ export async function runMetaResourceVerification(options = {}) {
     capiEnabled,
     trackingMode,
     initialMetaRollout,
+    targetRolloutPercentage: operations?.targetRolloutPercentage ?? null,
+    effectiveRolloutPercentage: operations?.effectiveRolloutPercentage ?? null,
+    openCriticalIncidentCount: operations?.openCriticalIncidentCount ?? null,
+    expiredSecureOutboxCount: operations?.expiredSecureOutboxCount ?? null,
+    previousKeyActiveCount: operations?.previousKeyActiveCount ?? null,
+    activeKeyCount: operations?.activeKeyCount ?? null,
+    previousKeyActiveCountExplainable,
     reportOnly: options.reportOnly === true,
     summaryRecorded,
   }
@@ -225,6 +273,35 @@ function hasRequiredMigrations(stdout) {
     return REQUIRED_MIGRATIONS.every(name => names.has(name))
   } catch {
     return false
+  }
+}
+
+function parseMetaOperations(stdout) {
+  try {
+    const rows = parseD1Rows(parseWranglerJson(stdout))
+    if (rows.length !== 1) return null
+    const fields = [
+      'target_rollout_percentage',
+      'effective_rollout_percentage',
+      'open_critical_incident_count',
+      'expired_secure_outbox_count',
+      'previous_key_active_count',
+      'active_key_count',
+    ]
+    const values = Object.fromEntries(fields.map(field => [field, Number(rows[0]?.[field])]))
+    if (!fields.every(field => Number.isSafeInteger(values[field]) && values[field] >= 0)) return null
+    if (![0, 10, 50, 100].includes(values.target_rollout_percentage)) return null
+    if (![0, 10, 50, 100].includes(values.effective_rollout_percentage)) return null
+    return {
+      targetRolloutPercentage: values.target_rollout_percentage,
+      effectiveRolloutPercentage: values.effective_rollout_percentage,
+      openCriticalIncidentCount: values.open_critical_incident_count,
+      expiredSecureOutboxCount: values.expired_secure_outbox_count,
+      previousKeyActiveCount: values.previous_key_active_count,
+      activeKeyCount: values.active_key_count,
+    }
+  } catch {
+    return null
   }
 }
 

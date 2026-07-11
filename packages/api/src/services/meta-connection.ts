@@ -150,9 +150,6 @@ export async function bootstrapMetaConnectionVerification(
   eventName: ActiveMetaEventName,
 ): Promise<MetaConnectionBootstrapResult> {
   const environment = requireRuntimeEnvironment(env.APP_ENV)
-  if (environment === 'production') {
-    throw new MetaConnectionError('META_PRODUCTION_TEST_GATE_PENDING', 409)
-  }
   if (!Number.isSafeInteger(ownerUserId) || ownerUserId <= 0) {
     throw new MetaConnectionError('META_CONNECTION_OWNER_INVALID', 403)
   }
@@ -166,27 +163,37 @@ export async function bootstrapMetaConnectionVerification(
   const testEventCode = configuredValue(env.META_CAPI_TEST_EVENT_CODE)
   const releaseCommit = normalizeReleaseCommit(env.RELEASE_COMMIT)
 
-  if (settings.trackingMode !== 'test') {
+  if (environment === 'dev' && settings.trackingMode !== 'test') {
     throw new MetaConnectionError('META_TEST_MODE_REQUIRED', 409)
   }
+  if (environment === 'production' && settings.trackingMode !== 'production') {
+    throw new MetaConnectionError('META_PRODUCTION_TEST_GATE_BLOCKED', 409)
+  }
   if (!releaseCommit) {
+    if (environment === 'production') throw new MetaConnectionError('META_PRODUCTION_TEST_GATE_BLOCKED', 409)
     throw new MetaConnectionError('META_RELEASE_COMMIT_INVALID', 503)
   }
   if (!pixelId || !accessToken || !testEventCode || !env.META_CAPI_QUEUE) {
+    if (environment === 'production') throw new MetaConnectionError('META_PRODUCTION_TEST_GATE_BLOCKED', 409)
     throw new MetaConnectionError('META_TEST_EVENT_NOT_CONFIGURED', 503)
   }
   const rawDataKey = env.META_CAPI_DATA_KEY_CURRENT
   if (typeof rawDataKey !== 'string' || rawDataKey.length === 0 || rawDataKey.trim() !== rawDataKey) {
+    if (environment === 'production') throw new MetaConnectionError('META_PRODUCTION_TEST_GATE_BLOCKED', 409)
     throw new MetaConnectionError('META_TEST_EVENT_NOT_CONFIGURED', 503)
   }
   try {
     await loadMetaCapiCryptoKeys({ META_CAPI_DATA_KEY_CURRENT: rawDataKey })
   }
   catch {
+    if (environment === 'production') throw new MetaConnectionError('META_PRODUCTION_TEST_GATE_BLOCKED', 409)
     throw new MetaConnectionError('META_TEST_EVENT_NOT_CONFIGURED', 503)
   }
 
   const fingerprint = await metaConnectionFingerprint(pixelId, accessToken)
+  if (environment === 'production') {
+    await assertProductionBootstrapGate(env.DB, { releaseCommit, pixelId, fingerprint })
+  }
   const initialVerification = await readVerification(env.DB, environment)
   const deliveryId = createSyntheticDeliveryId()
   const payload = buildSyntheticBootstrapPayload(eventName, deliveryId, testEventCode)
@@ -231,6 +238,43 @@ export async function bootstrapMetaConnectionVerification(
     throw new MetaConnectionError('META_CONNECTION_VERIFICATION_WRITE_FAILED', 503)
   }
   return { connection: evaluated.status, deliveryId, eventsReceived: 1 }
+}
+
+async function assertProductionBootstrapGate(
+  db: D1Database,
+  input: { releaseCommit: string; pixelId: string; fingerprint: string },
+) {
+  try {
+    const [resource, rollout, incident, devConnection] = await Promise.all([
+      db.prepare(`
+        SELECT id FROM analytics_release_verifications
+        WHERE environment = 'production' AND verification_type = 'meta_resources'
+          AND status = 'passed' AND commit_sha = ?
+          AND datetime(expires_at) > datetime('now')
+        ORDER BY verified_at DESC LIMIT 1
+      `).bind(input.releaseCommit).first<{ id: string }>(),
+      db.prepare("SELECT value FROM site_settings WHERE key = 'meta_capi_rollout_percentage' LIMIT 1").first<{ value: string }>(),
+      db.prepare(`
+        SELECT COUNT(*) AS incident_count FROM meta_capi_incidents
+        WHERE environment = 'production' AND status = 'open' AND severity = 'critical'
+      `).first<{ incident_count: unknown }>(),
+      db.prepare(`
+        SELECT pixel_id, token_fingerprint FROM meta_connection_verifications
+        WHERE environment = 'dev' AND invalidated_at IS NULL LIMIT 1
+      `).first<{ pixel_id: string; token_fingerprint: string }>(),
+    ])
+    const target = Number(parseStoredSettingValue(rollout?.value ?? '', -1))
+    const incidentCount = Number(incident?.incident_count)
+    const productionIndependent = Boolean(devConnection)
+      && devConnection!.pixel_id !== input.pixelId
+      && devConnection!.token_fingerprint !== input.fingerprint
+    if (!resource || target !== 0 || incidentCount !== 0 || !productionIndependent) {
+      throw new Error('blocked')
+    }
+  }
+  catch {
+    throw new MetaConnectionError('META_PRODUCTION_TEST_GATE_BLOCKED', 409)
+  }
 }
 
 function persistVerificationCas(

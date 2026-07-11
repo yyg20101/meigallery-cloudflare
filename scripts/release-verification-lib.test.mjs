@@ -12,6 +12,8 @@ import {
   writeReport,
 } from './release-verification-lib.mjs'
 
+const RELEASE_COMMIT = 'abcdef1234567890abcdef1234567890abcdef12'
+
 function createValidReleaseReport() {
   return {
     schemaVersion: 1,
@@ -22,7 +24,7 @@ function createValidReleaseReport() {
     durationMs: 300000,
     git: {
       branch: 'main',
-      commit: 'abcdef1234567890',
+      commit: RELEASE_COMMIT,
       isClean: true,
       remote: 'origin',
     },
@@ -77,26 +79,41 @@ function createValidReleaseReport() {
         reportFile: '/tmp/dev-rehearsal.json',
       },
     ],
-    initialMetaRollout: false,
+    initialMetaRollout: true,
     metaLiveVerification: {
       status: 'passed',
-      commit: 'abcdef1234567890',
+      commit: RELEASE_COMMIT,
+      environment: 'dev',
       verifiedAt: '2026-07-09T00:00:00.000Z',
       expiresAt: '2026-07-10T00:00:00.000Z',
       events: ['Contact', 'CompleteRegistration'],
+      enhancedMatchVerified: true,
+      forbiddenEventsAbsent: true,
+      datasetQualityContractVersion: 1,
+      datasetQualityCollectorCurrent: true,
     },
     metaResources: {
       dev: {
         status: 'passed',
         environment: 'dev',
-        commit: 'abcdef1234567890',
+        commit: RELEASE_COMMIT,
         capiEnabled: true,
+        connectionVerified: true,
+        openCriticalIncidentCount: 0,
+        datasetQualityContractVersion: 1,
+        datasetQualityCollectorCurrent: true,
       },
       production: {
         status: 'passed',
         environment: 'production',
-        commit: 'abcdef1234567890',
-        capiEnabled: true,
+        commit: RELEASE_COMMIT,
+        capiEnabled: false,
+        connectionVerified: true,
+        openCriticalIncidentCount: 0,
+        targetRolloutPercentage: 0,
+        effectiveRolloutPercentage: 0,
+        datasetQualityContractVersion: 1,
+        datasetQualityCollectorCurrent: true,
       },
     },
     artifacts: ['reports/release-verification/latest.json'],
@@ -105,6 +122,30 @@ function createValidReleaseReport() {
 }
 
 describe('发布验证基础库', () => {
+  it('release gate 强制 current commit、dev Evidence V2 quality、connection/incident 和 production rollout 0 同链', () => {
+    const valid = createValidReleaseReport()
+    assert.doesNotThrow(() => assertReportCanGateProduction(valid, {
+      currentBranch: 'main',
+      expectedCommit: RELEASE_COMMIT,
+      now: '2026-07-09T12:00:00.000Z',
+    }))
+
+    const candidates = [
+      { ...valid, git: { ...valid.git, commit: 'short' } },
+      { ...valid, metaLiveVerification: { ...valid.metaLiveVerification, environment: 'production' } },
+      { ...valid, metaLiveVerification: { ...valid.metaLiveVerification, datasetQualityCollectorCurrent: false } },
+      { ...valid, metaLiveVerification: { ...valid.metaLiveVerification, datasetQualityContractVersion: 0 } },
+      { ...valid, metaResources: { ...valid.metaResources, dev: { ...valid.metaResources.dev, connectionVerified: false } } },
+      { ...valid, metaResources: { ...valid.metaResources, production: { ...valid.metaResources.production, openCriticalIncidentCount: 1 } } },
+      { ...valid, metaResources: { ...valid.metaResources, production: { ...valid.metaResources.production, targetRolloutPercentage: 10 } } },
+      { ...valid, metaResources: { ...valid.metaResources, production: { ...valid.metaResources.production, effectiveRolloutPercentage: 10 } } },
+    ]
+    for (const report of candidates) assert.throws(() => assertReportCanGateProduction(report, {
+      currentBranch: 'main',
+      expectedCommit: RELEASE_COMMIT,
+      now: '2026-07-09T12:00:00.000Z',
+    }))
+  })
   it('redact 会隐藏 token、secret、cookie 和 session', () => {
     const input = 'access_token=abc token:123 secret=xyz cookie=foo session=bar password=baz'
     const output = redact(input)
@@ -749,6 +790,10 @@ describe('发布验证基础库', () => {
       assertReportCanGateProduction({
         ...base,
         initialMetaRollout: true,
+        metaResources: {
+          ...base.metaResources,
+          production: { ...base.metaResources.production, capiEnabled: true },
+        },
       }, {
         now: '2026-07-09T01:00:00.000Z',
       })

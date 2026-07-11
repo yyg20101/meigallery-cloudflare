@@ -1523,7 +1523,7 @@ function auditEnvironment(value: unknown) {
 }
 
 function metaConnectionErrorMessage(code: string) {
-  if (code === 'META_PRODUCTION_TEST_GATE_PENDING') return 'production 验证门禁尚未开放'
+  if (code === 'META_PRODUCTION_TEST_GATE_PENDING' || code === 'META_PRODUCTION_TEST_GATE_BLOCKED') return 'production Test Event 发布门禁未通过'
   if (code === 'META_TEST_MODE_REQUIRED') return '仅 dev 测试模式可验证 MetaConnection'
   if (code === 'META_TEST_EVENT_NOT_CONFIGURED' || code === 'META_RELEASE_COMMIT_INVALID') {
     return 'MetaConnection 验证配置不完整'

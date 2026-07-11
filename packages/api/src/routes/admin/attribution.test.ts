@@ -1879,7 +1879,7 @@ describe('后台归因中心 API', () => {
     ))).toBe(true)
   })
 
-  it('production bootstrap 固定 409，且在业务记录、Graph fetch 与 verification upsert 前阻断', async () => {
+  it('production bootstrap 缺发布资源证据时 409，且在 Graph fetch 与 verification upsert 前阻断', async () => {
     const db = createAttributionDb({ settings: { meta_tracking_mode: 'production' } })
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
@@ -1891,7 +1891,7 @@ describe('后台归因中心 API', () => {
     const body = await res.json()
 
     expect(res.status).toBe(409)
-    expect(body.code).toBe('META_PRODUCTION_TEST_GATE_PENDING')
+    expect(body.code).toBe('META_PRODUCTION_TEST_GATE_BLOCKED')
     expect(db.calls.some(call => call.sql.includes('INSERT INTO admin_audit_logs'))).toBe(true)
     expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_conversion_actions'))).toBe(false)
     expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_conversion_deliveries'))).toBe(false)

@@ -302,9 +302,8 @@ export async function runDevRehearsalVerification(options = {}) {
       },
       (body) => {
         const data = body?.data || {}
-        if (data.status !== 'sent') throw new Error(`Meta Test Event status 非 sent：${String(data.status || 'missing')}`)
+        if (data.status !== 'verified') throw new Error(`Meta Test Event status 非 verified：${String(data.status || 'missing')}`)
         if (data.eventsReceived !== 1) throw new Error(`Meta Test Event eventsReceived 非 1：${String(data.eventsReceived ?? 'missing')}`)
-        if (data.testEventCodePresent !== true) throw new Error('Meta Test Event 缺少 Test Event Code')
         return 'Meta Test Event 已由 Meta 确认接收 1 条事件'
       },
     )

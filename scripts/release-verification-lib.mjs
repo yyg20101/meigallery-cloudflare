@@ -400,7 +400,7 @@ function validateReportShape(report, reasons) {
   if (!report.git || typeof report.git !== 'object' || Array.isArray(report.git)) {
     reasons.push('报告 git 缺失或类型非法')
   } else {
-    if (typeof report.git.commit !== 'string' || report.git.commit.trim() === '') reasons.push('报告 git.commit 缺失、为空或类型非法')
+    if (!/^[0-9a-f]{40}$/i.test(String(report.git.commit || '').trim())) reasons.push('报告 git.commit 必须为 40 位 SHA')
     if (typeof report.git.branch !== 'string' || report.git.branch.trim() === '') reasons.push('报告 git.branch 缺失、为空或类型非法')
     if (typeof report.git.isClean !== 'boolean') reasons.push('报告 git.isClean 缺失或类型非法')
   }
@@ -520,9 +520,16 @@ function validateMetaReleaseSummary(report, reasons, now) {
   } else {
     if (live.status !== 'passed') reasons.push('Meta live evidence 未通过')
     if (live.commit !== report.git?.commit) reasons.push('Meta live evidence commit 与报告 commit 不一致')
+    if (live.environment !== 'dev') reasons.push('Meta live evidence 必须来自 dev')
     if (!Array.isArray(live.events) || live.events.length !== 2 || !['Contact', 'CompleteRegistration'].every(name => live.events.includes(name))) {
       reasons.push('Meta live evidence 事件集合不完整')
     }
+    if (live.enhancedMatchVerified !== true) reasons.push('Meta live evidence 增强匹配未通过')
+    if (live.forbiddenEventsAbsent !== true) reasons.push('Meta live evidence 禁止事件缺席未确认')
+    if (!Number.isSafeInteger(live.datasetQualityContractVersion) || live.datasetQualityContractVersion < 1) {
+      reasons.push('Dataset Quality contract 未完成')
+    }
+    if (live.datasetQualityCollectorCurrent !== true) reasons.push('Dataset Quality collector 不是当前状态')
     const verifiedAt = Date.parse(live.verifiedAt || '')
     const expiresAt = Date.parse(live.expiresAt || '')
     if (Number.isNaN(verifiedAt) || Number.isNaN(expiresAt)) {
@@ -539,11 +546,18 @@ function validateMetaReleaseSummary(report, reasons, now) {
       reasons.push(`Meta ${environment} 资源检查未通过`)
     } else if (resource.commit !== report.git?.commit) {
       reasons.push(`Meta ${environment} 资源检查 commit 与报告 commit 不一致`)
+    } else {
+      if (resource.connectionVerified !== true) reasons.push(`Meta ${environment} connection 未验证`)
+      if (resource.openCriticalIncidentCount !== 0) reasons.push(`Meta ${environment} 存在 open critical incident`)
     }
   }
 
-  if (report.initialMetaRollout === true && report.metaResources?.production?.capiEnabled !== false) {
-    reasons.push('Meta 首次上线要求生产 CAPI 保持关闭')
+  if (report.initialMetaRollout === true) {
+    const production = report.metaResources?.production
+    if (production?.capiEnabled !== false) reasons.push('Meta 首次上线要求生产 CAPI 保持关闭')
+    if (production?.targetRolloutPercentage !== 0 || production?.effectiveRolloutPercentage !== 0) {
+      reasons.push('Meta 首次上线要求 production target/effective rollout 均为 0')
+    }
   }
 }
 
