@@ -4,6 +4,7 @@ import type { Bindings, Variables } from '../../index'
 import {
   bootstrapMetaConnectionVerification,
   getMetaConnectionStatus,
+  getMetaConnectionStatusWithUsage,
   MetaConnectionError,
 } from '../../services/meta-connection'
 import { getMetaCapiKeyRotationStatus } from '../../services/meta-capi-key-rotation'
@@ -132,17 +133,22 @@ adminAttributionRoutes.get('/meta/status', async (c) => {
   const range = parseRangeOrError(c)
   if (range instanceof Response) return range
   try {
-    const [connection, rollout, activity] = await Promise.all([
-      getMetaConnectionStatus(c.env),
-      readMetaRolloutSnapshot(c),
+    const [connectionResult, activity] = await Promise.all([
+      getMetaConnectionStatusWithUsage(c.env),
       queryAttributionSummary(c.env.DB, range),
     ])
+    const rolloutResult = await readMetaRolloutSnapshotWithUsage(
+      c,
+      undefined,
+      false,
+      connectionResult.status.state === 'verified',
+    )
     return c.json({
       range,
-      usage: activity.usage,
+      usage: mergeD1Usage(connectionResult.usage, rolloutResult.usage, activity.usage),
       data: {
-        connection,
-        rollout: serializeMetaRolloutSnapshot(rollout),
+        connection: connectionResult.status,
+        rollout: serializeMetaRolloutSnapshot(rolloutResult.snapshot),
         activity: activity.data,
       },
     })
@@ -1144,24 +1150,38 @@ async function readMetaRolloutSnapshot(
   requestedPercentage?: MetaCapiRolloutPercentage,
   force = false,
 ): Promise<MetaRolloutSnapshot> {
-  const targetRow = await c.env.DB.prepare(`
+  return (await readMetaRolloutSnapshotWithUsage(c, requestedPercentage, force)).snapshot
+}
+
+async function readMetaRolloutSnapshotWithUsage(
+  c: AdminAttributionContext,
+  requestedPercentage?: MetaCapiRolloutPercentage,
+  force = false,
+  knownConnectionVerified?: boolean,
+): Promise<{ snapshot: MetaRolloutSnapshot; usage: D1Usage }> {
+  const targetResult = await queryFirstWithUsage<{ value: string }>(c.env.DB.prepare(`
     SELECT value
     FROM site_settings
     WHERE key = 'meta_capi_rollout_percentage'
     LIMIT 1
-  `).first<{ value: string }>()
-  const rawTargetValue = String(targetRow?.value ?? '')
+  `))
+  const rawTargetValue = String(targetResult.row?.value ?? '')
   const targetPercentage = normalizeMetaCapiRollout(
     parseStoredSettingValue(rawTargetValue, undefined),
   )
   const environment = auditEnvironment(c.env.APP_ENV)
   const releaseCommit = normalizeReleaseCommit(c.env.RELEASE_COMMIT)
-  const [connectionVerified, openIncident, liveEvidencePresent, metricsResult] = await Promise.all([
-    readConnectionVerified(c),
-    readOpenCriticalIncident(c.env.DB, environment),
-    readCurrentDevMetaLiveEvidence(c.env.DB, releaseCommit),
-    readMetaRolloutMetrics(c.env.DB, targetPercentage),
+  const [connectionResult, incidentResult, evidenceResult, metricsResult] = await Promise.all([
+    knownConnectionVerified === undefined
+      ? readConnectionVerifiedWithUsage(c)
+      : Promise.resolve({ value: knownConnectionVerified, usage: EMPTY_USAGE }),
+    readOpenCriticalIncidentWithUsage(c.env.DB, environment),
+    readCurrentDevMetaLiveEvidenceWithUsage(c.env.DB, releaseCommit),
+    readMetaRolloutMetricsWithUsage(c.env.DB, targetPercentage),
   ])
+  const connectionVerified = connectionResult.value
+  const openIncident = incidentResult.value
+  const liveEvidencePresent = evidenceResult.value
   const to = requestedPercentage ?? nextRolloutPercentage(targetPercentage)
   const evaluation = evaluateRolloutPromotion({ from: targetPercentage, to, ...metricsResult.metrics })
   const hardBlockers: string[] = []
@@ -1181,41 +1201,51 @@ async function readMetaRolloutSnapshot(
     ? evaluation.blockers.filter(blocker => blocker !== 'non_adjacent_promotion')
     : []
   return {
-    environment,
-    rawTargetValue,
-    targetPercentage,
-    effectivePercentage: openIncident ? 0 : targetPercentage,
-    connectionVerified,
-    liveEvidencePresent,
-    openIncident,
-    metrics: metricsResult.metrics,
-    metricsStatus: metricsResult.status,
-    promotion: {
-      from: targetPercentage,
-      to,
-      allowed: hardBlockers.length === 0 && metricBlockers.length === 0,
-      requiresOverrideReason: metricsResult.status.available && evaluation.requiresOverrideReason,
-      blockers: metricBlockers,
-      hardBlockers,
+    snapshot: {
+      environment,
+      rawTargetValue,
+      targetPercentage,
+      effectivePercentage: openIncident ? 0 : targetPercentage,
+      connectionVerified,
+      liveEvidencePresent,
+      openIncident,
+      metrics: metricsResult.metrics,
+      metricsStatus: metricsResult.status,
+      promotion: {
+        from: targetPercentage,
+        to,
+        allowed: hardBlockers.length === 0 && metricBlockers.length === 0,
+        requiresOverrideReason: metricsResult.status.available && evaluation.requiresOverrideReason,
+        blockers: metricBlockers,
+        hardBlockers,
+      },
     },
+    usage: mergeD1Usage(
+      targetResult.usage,
+      connectionResult.usage,
+      incidentResult.usage,
+      evidenceResult.usage,
+      metricsResult.usage,
+    ),
   }
 }
 
-async function readConnectionVerified(c: AdminAttributionContext) {
+async function readConnectionVerifiedWithUsage(c: AdminAttributionContext) {
   try {
-    return (await getMetaConnectionStatus(c.env)).state === 'verified'
+    const result = await getMetaConnectionStatusWithUsage(c.env)
+    return { value: result.status.state === 'verified', usage: result.usage }
   }
   catch {
-    return false
+    return { value: false, usage: EMPTY_USAGE }
   }
 }
 
-async function readOpenCriticalIncident(
+async function readOpenCriticalIncidentWithUsage(
   db: D1Database,
   environment: MetaRolloutSnapshot['environment'],
-): Promise<OpenMetaIncident | null> {
-  if (environment === 'invalid') return null
-  const row = await db.prepare(`
+): Promise<{ value: OpenMetaIncident | null; usage: D1Usage }> {
+  if (environment === 'invalid') return { value: null, usage: EMPTY_USAGE }
+  const result = await queryFirstWithUsage<Row>(db.prepare(`
     SELECT id, severity, trigger_code,
       target_rollout_percentage, effective_rollout_percentage,
       opened_at, last_observed_at
@@ -1225,9 +1255,10 @@ async function readOpenCriticalIncident(
       AND severity = 'critical'
     ORDER BY opened_at ASC
     LIMIT 1
-  `).bind(environment).first<Row>()
-  if (!row) return null
-  return {
+  `).bind(environment))
+  const row = result.row
+  if (!row) return { value: null, usage: result.usage }
+  return { value: {
     id: String(row.id || ''),
     severity: 'critical',
     triggerCode: String(row.trigger_code || ''),
@@ -1236,13 +1267,13 @@ async function readOpenCriticalIncident(
     effectivePercentage: numberValue(row.effective_rollout_percentage),
     openedAt: String(row.opened_at || ''),
     lastObservedAt: String(row.last_observed_at || ''),
-  }
+  }, usage: result.usage }
 }
 
-async function readCurrentDevMetaLiveEvidence(db: D1Database, releaseCommit: string) {
-  if (!releaseCommit) return false
+async function readCurrentDevMetaLiveEvidenceWithUsage(db: D1Database, releaseCommit: string) {
+  if (!releaseCommit) return { value: false, usage: EMPTY_USAGE }
   try {
-    const row = await db.prepare(`
+    const result = await queryFirstWithUsage<{ id: string }>(db.prepare(`
       SELECT id
       FROM analytics_release_verifications
       WHERE commit_sha = ?
@@ -1252,20 +1283,20 @@ async function readCurrentDevMetaLiveEvidence(db: D1Database, releaseCommit: str
         AND datetime(expires_at) > datetime('now')
       ORDER BY verified_at DESC
       LIMIT 1
-    `).bind(releaseCommit).first<{ id: string }>()
-    return Boolean(row)
+    `).bind(releaseCommit))
+    return { value: Boolean(result.row), usage: result.usage }
   }
   catch {
-    return false
+    return { value: false, usage: EMPTY_USAGE }
   }
 }
 
-async function readMetaRolloutMetrics(
+async function readMetaRolloutMetricsWithUsage(
   db: D1Database,
   targetPercentage: MetaCapiRolloutPercentage,
-): Promise<{ metrics: MetaRolloutMetrics; status: MetaRolloutMetricsStatus }> {
+): Promise<{ metrics: MetaRolloutMetrics; status: MetaRolloutMetricsStatus; usage: D1Usage }> {
   try {
-    const row = await db.prepare(`
+    const result = await queryFirstWithUsage<Row>(db.prepare(`
       SELECT
         COALESCE(SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END), 0) AS sent_count,
         COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) AS failed_count,
@@ -1292,7 +1323,8 @@ async function readMetaRolloutMetrics(
       ...META_CAPI_PERMISSION_ERROR_CODES,
       ...META_CAPI_CRITICAL_QUALITY_ERROR_CODES,
       targetPercentage,
-    ).first<Row>()
+    ))
+    const row = result.row
     return {
       metrics: {
         sent: numberValue(row?.sent_count),
@@ -1303,6 +1335,7 @@ async function readMetaRolloutMetrics(
         criticalQualityDiagnostics: numberValue(row?.critical_quality_diagnostic_count),
       },
       status: { available: true, errorCode: null },
+      usage: result.usage,
     }
   }
   catch {
@@ -1319,7 +1352,16 @@ async function readMetaRolloutMetrics(
         available: false,
         errorCode: 'META_CAPI_ROLLOUT_METRICS_QUERY_FAILED',
       },
+      usage: EMPTY_USAGE,
     }
+  }
+}
+
+async function queryFirstWithUsage<T>(statement: D1PreparedStatement) {
+  const result = await statement.all<T>()
+  return {
+    row: result.results[0] ?? null,
+    usage: readD1UsageMeta(result),
   }
 }
 

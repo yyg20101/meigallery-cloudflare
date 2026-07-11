@@ -198,6 +198,7 @@ export async function queryAttributionQuality(
     ...serializeMatchRow(matchByDate.get(date) ?? {}),
   }))
   const datasetRows = datasetQuality.rows.map(serializeDatasetQualityRow)
+  const latestDatasetRow = datasetRows[0] ?? null
 
   return {
     usage: mergeUsage(match, datasetQuality),
@@ -207,8 +208,8 @@ export async function queryAttributionQuality(
         rows: matchRows,
       },
       datasetQuality: {
-        availability: datasetRows.length > 0 ? 'available' as const : 'not_available' as const,
-        latest: datasetRows[0] ?? null,
+        availability: latestDatasetRow?.availability ?? 'unavailable' as const,
+        latest: latestDatasetRow,
         rows: datasetRows,
       },
     },
@@ -332,11 +333,13 @@ function matchMetric(numeratorValue: unknown, denominatorValue: unknown): MatchM
 }
 
 function serializeDatasetQualityRow(row: Row) {
+  const availability = datasetSnapshotAvailability(row)
   return {
     date: String(row.date || ''),
     eventName: String(row.event_name || ''),
     metricKey: String(row.metric_key || ''),
-    value: row.collection_status === 'success' && Number.isFinite(Number(row.metric_value))
+    availability,
+    value: availability === 'available'
       ? Number(row.metric_value)
       : null,
     status: String(row.collection_status || 'error'),
@@ -346,6 +349,15 @@ function serializeDatasetQualityRow(row: Row) {
     windowEnd: row.window_end == null ? null : String(row.window_end),
     contractVersion: count(row.contract_version),
   }
+}
+
+function datasetSnapshotAvailability(row: Row): 'available' | 'error' | 'unavailable' {
+  if (row.collection_status === 'error') return 'error'
+  return row.collection_status === 'success'
+    && typeof row.metric_value === 'number'
+    && Number.isFinite(row.metric_value)
+    ? 'available'
+    : 'unavailable'
 }
 
 function serializeBusiness(row: Row) {

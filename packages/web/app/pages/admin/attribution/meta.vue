@@ -32,7 +32,17 @@ const qualitySeries = computed(() => {
     { key: 'email', label: 'email' },
     { key: 'externalId', label: 'external_id' },
   ].filter(item => summary[item.key as keyof typeof summary].availability === 'available')
-    .map(item => ({ key: `${item.key}.rate`, label: item.label, layer: 'quality' as const, format: 'percent' as const }))
+    .map(item => ({
+      key: `${item.key}.rate`,
+      label: item.label,
+      layer: 'quality' as const,
+      format: 'percent' as const,
+      aggregation: {
+        type: 'weightedRate' as const,
+        numeratorKey: `${item.key}.numerator`,
+        denominatorKey: `${item.key}.denominator`,
+      },
+    }))
 })
 
 async function refreshAll() {
@@ -65,7 +75,8 @@ onMounted(() => void refreshAll())
       </section>
       <section class="border-b border-gray-200 px-3 py-5 sm:px-5">
         <h2 class="text-sm font-semibold text-gray-900">Meta 质量</h2>
-        <p v-if="quality.data.value?.datasetQuality.availability !== 'available'" class="mt-2 text-sm text-gray-600">尚未取得 Meta 质量数据</p>
+        <p v-if="quality.data.value?.datasetQuality.availability === 'error'" class="mt-2 text-sm text-red-700">Meta 质量数据采集失败</p>
+        <p v-else-if="quality.data.value?.datasetQuality.availability !== 'available'" class="mt-2 text-sm text-gray-600">尚未取得 Meta 质量数据</p>
         <AttributionTrendPanel v-if="qualitySeries.length" class="mt-4" title="匹配质量趋势" :rows="quality.data.value?.match.rows as unknown as Array<Record<string, unknown>> || []" :series="qualitySeries" />
       </section>
       <section class="px-3 py-5 sm:px-5">

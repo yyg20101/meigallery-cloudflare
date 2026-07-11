@@ -78,7 +78,17 @@ const matchEntries = computed(() => {
 })
 const qualitySeries = computed(() => matchEntries.value
   .filter(item => item.metric.availability === 'available')
-  .map(item => ({ key: `${item.key}.rate`, label: item.label, layer: 'quality' as const, format: 'percent' as const })))
+  .map(item => ({
+    key: `${item.key}.rate`,
+    label: item.label,
+    layer: 'quality' as const,
+    format: 'percent' as const,
+    aggregation: {
+      type: 'weightedRate' as const,
+      numeratorKey: `${item.key}.numerator`,
+      denominatorKey: `${item.key}.denominator`,
+    },
+  })))
 const qualityRows = computed(() => quality.data.value?.match.rows as unknown as Array<Record<string, unknown>> ?? [])
 const datasetQuality = computed(() => quality.data.value?.datasetQuality)
 const blockerCount = computed(() => readiness.data.value?.checks.filter(check => check.level === 'blocker' && !check.ok).length ?? 0)
@@ -86,16 +96,16 @@ const warningCount = computed(() => readiness.data.value?.checks.filter(check =>
 const linkRoute = computed(() => ({ path: '/admin/attribution/links', query: attributionRouteQuery(rangeState.range.value, rangeState.date.value) }))
 
 const businessSeries = [
-  { key: 'business.contactCount', label: '有效联系', layer: 'business' as const },
-  { key: 'business.completeRegistrationCount', label: '完成注册', layer: 'business' as const },
+  { key: 'business.contactCount', label: '有效联系', layer: 'business' as const, aggregation: { type: 'sum' as const } },
+  { key: 'business.completeRegistrationCount', label: '完成注册', layer: 'business' as const, aggregation: { type: 'sum' as const } },
 ]
 const deliverySeries = [
-  { key: 'delivery.pixelAttempted', label: 'Pixel 尝试', layer: 'pixel' as const },
-  { key: 'delivery.capiSent', label: 'CAPI 接收', layer: 'capi' as const },
-  { key: 'delivery.failed', label: '失败', layer: 'capi' as const },
-  { key: 'delivery.skipped', label: '跳过', layer: 'capi' as const },
-  { key: 'delivery.pending', label: '等待', layer: 'capi' as const },
-  { key: 'delivery.retryExhausted', label: '重试耗尽', layer: 'capi' as const },
+  { key: 'delivery.pixelAttempted', label: 'Pixel 尝试', layer: 'pixel' as const, aggregation: { type: 'sum' as const } },
+  { key: 'delivery.capiSent', label: 'CAPI 接收', layer: 'capi' as const, aggregation: { type: 'sum' as const } },
+  { key: 'delivery.failed', label: '失败', layer: 'capi' as const, aggregation: { type: 'sum' as const } },
+  { key: 'delivery.skipped', label: '跳过', layer: 'capi' as const, aggregation: { type: 'sum' as const } },
+  { key: 'delivery.pending', label: '等待', layer: 'capi' as const, aggregation: { type: 'sum' as const } },
+  { key: 'delivery.retryExhausted', label: '重试耗尽', layer: 'capi' as const, aggregation: { type: 'sum' as const } },
 ]
 const evidenceLayers = [
   { label: '站内事实', detail: '联系与完成注册', class: 'bg-emerald-50 text-emerald-800', dot: '#047857' },
@@ -222,6 +232,7 @@ function formatCount(value: unknown) {
           <div class="col-span-2 min-w-0 px-3 py-3 lg:col-span-1">
             <p class="text-xs text-gray-500">Meta Dataset Quality</p>
             <p v-if="datasetQuality?.availability === 'available'" class="mt-1 text-base font-semibold text-rose-700">{{ datasetQualityValue() }}</p>
+            <p v-else-if="datasetQuality?.availability === 'error'" class="mt-1 text-sm font-medium text-red-700">Meta 质量数据采集失败</p>
             <p v-else class="mt-1 text-sm font-medium text-gray-600">尚未取得 Meta 质量数据</p>
           </div>
         </div>

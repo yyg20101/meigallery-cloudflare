@@ -769,6 +769,78 @@ function createDashboardDb(options: DashboardDbOptions = {}) {
   return db
 }
 
+function createMetaStatusUsageDb() {
+  const calls: DbCall[] = []
+
+  function queryUsage(sql: string) {
+    if (sql.includes("key = 'facebook_pixel_id'")) return 2
+    if (sql.includes("key = 'meta_tracking_mode'")) return 3
+    if (sql.includes('FROM meta_connection_verifications')) return 5
+    if (sql.includes("key = 'meta_capi_rollout_percentage'")) return 7
+    if (sql.includes('FROM meta_capi_incidents')) return 11
+    if (sql.includes('FROM analytics_release_verifications')) return 13
+    if (sql.includes('AS permission_error_count')) return 17
+    if (sql.includes('AS total_action_count')) return 19
+    if (sql.includes('AS historical_lead_count')) return 23
+    if (sql.includes('AS pixel_attempted_count')) return 29
+    if (sql.includes('AS retry_exhausted_count')) return 31
+    return 0
+  }
+
+  function rowsFor<T>(sql: string): T[] {
+    if (sql.includes("key = 'facebook_pixel_id'")) return [{ value: JSON.stringify('1234567890') } as T]
+    if (sql.includes("key = 'meta_tracking_mode'")) return [{ value: JSON.stringify('test') } as T]
+    if (sql.includes('FROM meta_connection_verifications')) return []
+    if (sql.includes("key = 'meta_capi_rollout_percentage'")) return [{ value: JSON.stringify(10) } as T]
+    if (sql.includes('FROM meta_capi_incidents')) return []
+    if (sql.includes('FROM analytics_release_verifications')) return [{ id: 'verification_meta_live' } as T]
+    if (sql.includes('AS permission_error_count')) {
+      return [{
+        sent_count: 100,
+        failed_count: 0,
+        permission_error_count: 0,
+        retry_exhausted_count: 0,
+        stale_pending_count: 0,
+        critical_quality_diagnostic_count: 0,
+      } as T]
+    }
+    if (sql.includes('AS total_action_count')) {
+      return [{ contact_count: 3, complete_registration_count: 2, total_action_count: 5 } as T]
+    }
+    if (sql.includes('AS historical_lead_count')) return [{ historical_lead_count: 9 } as T]
+    if (sql.includes('AS pixel_attempted_count')) {
+      return [{ pixel_attempted_count: 5, capi_sent_count: 4, failed_count: 1, skipped_count: 2, pending_count: 3 } as T]
+    }
+    if (sql.includes('AS retry_exhausted_count')) return [{ retry_exhausted_count: 1 } as T]
+    return []
+  }
+
+  return {
+    calls,
+    prepare(sql: string) {
+      const call: DbCall = { sql, params: [] }
+      return {
+        bind(...params: unknown[]) {
+          call.params = params
+          return this
+        },
+        async all<T>() {
+          calls.push(call)
+          const value = queryUsage(sql)
+          return {
+            results: rowsFor<T>(sql),
+            meta: { rows_read: value, rows_written: 0, duration: value },
+          }
+        },
+        async first<T>() {
+          calls.push(call)
+          return rowsFor<T>(sql)[0] ?? null
+        },
+      }
+    },
+  }
+}
+
 function externalEventIdMismatch(input: { sourceChannel?: string; pixel: readonly string[]; capi: readonly string[] }) {
   if (input.sourceChannel === 'internal') return 0
   const pixelIds = new Set(input.pixel)
@@ -2440,7 +2512,7 @@ describe('Meta CAPI v2 质量运维看板契约', () => {
     })
     expect(body.data.match.rows).toHaveLength(1)
     expect(body.data.datasetQuality).toEqual({
-      availability: 'not_available',
+      availability: 'unavailable',
       latest: null,
       rows: [],
     })
@@ -2462,6 +2534,58 @@ describe('Meta CAPI v2 质量运维看板契约', () => {
       rate: null,
     })
     expect(body.data.match.rows[0].fbp.rate).toBeNull()
+  })
+
+  it.each([
+    ['error', null, 'error'],
+    ['success', null, 'unavailable'],
+  ] as const)('Dataset snapshot 为 %s/null 时不标记 available', async (collectionStatus, metricValue, availability) => {
+    const res = await createApp('admin').request(
+      `/api/admin/attribution/quality?${singleDay}`,
+      {},
+      {
+        DB: createDashboardDb({
+          datasetQualityRows: [{
+            date: '2026-07-10',
+            event_name: 'Contact',
+            metric_key: 'event_match_quality',
+            metric_value: metricValue,
+            collection_status: collectionStatus,
+            error_category: collectionStatus === 'error' ? 'permission_denied' : '',
+            collected_at: '2026-07-10T08:00:00.000Z',
+            window_start: null,
+            window_end: null,
+            contract_version: 1,
+          }],
+        }),
+      } as unknown as Bindings,
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.data.datasetQuality.availability).toBe(availability)
+    expect(body.data.datasetQuality.latest).toMatchObject({
+      availability,
+      value: null,
+      status: collectionStatus,
+    })
+  })
+
+  it('meta/status 合并 connection、rollout、activity 的每项 D1 usage 且只读取一次 connection', async () => {
+    const db = createMetaStatusUsageDb()
+    const res = await createApp('admin').request(
+      `/api/admin/attribution/meta/status?${singleDay}`,
+      {},
+      { DB: db, ...VALID_READINESS_ENV } as unknown as Bindings,
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.usage).toEqual({ rowsRead: 160, rowsWritten: 0, durationMs: 31 })
+    expect(db.calls.filter(call => call.sql.includes("key = 'facebook_pixel_id'"))).toHaveLength(1)
+    expect(db.calls.filter(call => call.sql.includes("key = 'meta_tracking_mode'"))).toHaveLength(1)
+    expect(db.calls.filter(call => call.sql.includes('FROM meta_connection_verifications'))).toHaveLength(1)
+    expect(db.calls).toHaveLength(11)
   })
 
   it('breakdown 以 conversion fact 为 action 基数，双通道不会翻倍', async () => {

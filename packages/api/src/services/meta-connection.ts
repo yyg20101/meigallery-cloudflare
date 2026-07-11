@@ -1,6 +1,7 @@
 import type { ActiveMetaEventName, MetaTrackingMode } from '@meigallery/shared'
 import { normalizeMetaTrackingMode } from '@meigallery/shared/utils'
 import type { Bindings } from '../index'
+import { mergeD1Usage, readD1UsageMeta, type D1Usage } from '../utils/analytics-cost'
 import { loadMetaCapiCryptoKeys, metaConnectionFingerprint } from '../utils/meta-capi-crypto'
 import { parseStoredSettingValue } from '../utils/stored-setting-value'
 import { META_GRAPH_API_VERSION, metaEventsEndpoint, metaGraphRequestInit, readMetaEventsResponse } from './meta-graph'
@@ -101,6 +102,14 @@ export class MetaConnectionError extends Error {
 
 export async function getMetaConnectionStatus(env: MetaConnectionEnv): Promise<MetaConnectionStatus> {
   return (await evaluateMetaConnection(env)).status
+}
+
+export async function getMetaConnectionStatusWithUsage(
+  env: MetaConnectionEnv,
+): Promise<{ status: MetaConnectionStatus; usage: D1Usage }> {
+  const tracked = trackD1Usage(env.DB)
+  const status = await getMetaConnectionStatus({ ...env, DB: tracked.db })
+  return { status, usage: tracked.usage() }
 }
 
 export async function requireVerifiedMetaConnection(
@@ -504,6 +513,50 @@ function normalizeVerificationRevision(value: unknown) {
 function normalizeTimestamp(value: unknown) {
   const normalized = String(value ?? '').trim()
   return normalized || null
+}
+
+function trackD1Usage(db: D1Database) {
+  let total: D1Usage = { rowsRead: 0, rowsWritten: 0, durationMs: 0 }
+  const add = (result: unknown) => {
+    total = mergeD1Usage(total, readD1UsageMeta(result))
+  }
+
+  function wrap(statement: D1PreparedStatement): D1PreparedStatement {
+    return {
+      bind(...values: unknown[]) {
+        return wrap(statement.bind(...values))
+      },
+      async first<T = Record<string, unknown>>(columnName?: string) {
+        const result = await statement.all<T>()
+        add(result)
+        const row = result.results[0] ?? null
+        if (!columnName || row === null) return row as T | null
+        return (row as Record<string, unknown>)[columnName] as T
+      },
+      async all<T = Record<string, unknown>>() {
+        const result = await statement.all<T>()
+        add(result)
+        return result
+      },
+      async run<T = Record<string, unknown>>() {
+        const result = await statement.run<T>()
+        add(result)
+        return result
+      },
+      raw(options?: unknown) {
+        return (statement.raw as (value?: unknown) => Promise<unknown>)(options)
+      },
+    } as D1PreparedStatement
+  }
+
+  return {
+    db: {
+      prepare(query: string) {
+        return wrap(db.prepare(query))
+      },
+    } as D1Database,
+    usage: () => total,
+  }
 }
 
 function normalizeDatasetQualityStatus(value: unknown): DatasetQualityStatus {

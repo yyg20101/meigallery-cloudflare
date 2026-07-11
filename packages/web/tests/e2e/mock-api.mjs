@@ -156,7 +156,10 @@ let adminAttributionReadinessBlocked = true
 let adminAttributionActionMode = 'success'
 let adminAttributionRolloutTarget = 10
 let adminAttributionIncidentOpen = true
+let adminAttributionRolloutScenario = 'hard'
+let adminAttributionDatasetScenario = 'unavailable'
 const adminAttributionRequests = []
+const adminAttributionActions = []
 
 function resetPublicSettings() {
   for (const key of Object.keys(mutablePublicSettings)) {
@@ -172,7 +175,10 @@ function resetPublicSettings() {
   adminAttributionActionMode = 'success'
   adminAttributionRolloutTarget = 10
   adminAttributionIncidentOpen = true
+  adminAttributionRolloutScenario = 'hard'
+  adminAttributionDatasetScenario = 'unavailable'
   adminAttributionRequests.length = 0
+  adminAttributionActions.length = 0
 }
 
 function json(res, data, status = 200) {
@@ -513,7 +519,14 @@ function adminAttributionResponse(pathname, searchParams) {
     } : null,
     metrics: { sent: 42, failed: 1, permissionErrors: 0, retryExhausted: 0, stalePending: 0, criticalQualityDiagnostics: 0 },
     metricsStatus: { available: true, errorCode: null },
-    promotion: { from: adminAttributionRolloutTarget, to: adminAttributionRolloutTarget === 10 ? 50 : 100, allowed: false, requiresOverrideReason: true, blockers: ['insufficient_attempts'], hardBlockers: adminAttributionIncidentOpen ? ['circuit_open'] : [] },
+    promotion: {
+      from: adminAttributionRolloutTarget,
+      to: adminAttributionRolloutTarget === 10 ? 50 : 100,
+      allowed: adminAttributionRolloutScenario === 'none',
+      requiresOverrideReason: adminAttributionRolloutScenario === 'metric-only',
+      blockers: adminAttributionRolloutScenario === 'metric-only' ? ['insufficient_attempts'] : [],
+      hardBlockers: adminAttributionIncidentOpen ? ['circuit_open'] : [],
+    },
   }
   const connection = {
     state: 'verified', environment: 'dev', pixelIdConfigured: true, tokenConfigured: true, testEventCodeConfigured: true, verifiedAt: '2026-07-10T07:00:00Z', verifiedCommit: 'a'.repeat(40), graphApiVersion: 'v25.0', datasetQualityStatus: 'not_checked', invalidationReason: '',
@@ -523,7 +536,10 @@ function adminAttributionResponse(pathname, searchParams) {
   if (pathname.endsWith('/trends')) return { range, usage, data: { granularity: 'day', rows: trendRows } }
   if (pathname.endsWith('/quality')) {
     const metric = (numerator, denominator) => ({ availability: denominator ? 'available' : 'unavailable', numerator, denominator, rate: denominator ? numerator / denominator : null })
-    return { range, usage, data: { match: { summary: { fbp: metric(8, 9), fbc: metric(0, 0), email: metric(9, 9), externalId: metric(7, 9) }, rows: dates.map(date => ({ date, fbp: metric(8, 9), fbc: metric(0, 0), email: metric(9, 9), externalId: metric(7, 9) })) }, datasetQuality: { availability: 'not_available', latest: null, rows: [] } } }
+    const datasetQuality = adminAttributionDatasetScenario === 'error'
+      ? { availability: 'error', latest: { availability: 'error', value: null, status: 'error', errorCategory: 'permission_denied' }, rows: [] }
+      : { availability: 'unavailable', latest: null, rows: [] }
+    return { range, usage, data: { match: { summary: { fbp: metric(8, 9), fbc: metric(0, 0), email: metric(9, 9), externalId: metric(7, 9) }, rows: dates.map((date, index) => ({ date, fbp: metric(6 + index, 9), fbc: metric(0, 0), email: metric(8 + index, 9), externalId: metric(5 + index, 9) })) }, datasetQuality } }
   }
   if (pathname.endsWith('/breakdown')) return { range, usage, data: { dimension: searchParams.get('dimension') || 'utm_campaign', rows: [{ value: 'july-contact', actionCount: 6, contactCount: 4, completeRegistrationCount: 2, delivery: { pixelAttempted: 6, capiSent: 5, failed: 1, skipped: 0, pending: 0, retryExhausted: 0 } }] } }
   if (pathname.endsWith('/meta/status')) return { range, usage, data: { connection, rollout, activity: { business: { contactCount: 6, completeRegistrationCount: 3, actionCount: 9 }, historical: { leadCount: 7 }, delivery: { pixelAttempted: 12, capiSent: 9, failed: 1, skipped: 3, pending: 1, retryExhausted: 0 } } } }
@@ -732,6 +748,29 @@ function handleApi(req, res) {
   if (url.pathname === '/api/test/admin-attribution-requests') {
     return json(res, { requests: adminAttributionRequests })
   }
+  if (url.pathname === '/api/test/admin-attribution-requests/clear' && req.method === 'POST') {
+    adminAttributionRequests.length = 0
+    return json(res, { ok: true })
+  }
+  if (url.pathname === '/api/test/admin-attribution-actions') {
+    return json(res, { actions: adminAttributionActions })
+  }
+  if (url.pathname === '/api/test/admin-attribution-rollout-scenario' && req.method === 'PATCH') {
+    readJsonBody(req).then((body) => {
+      adminAttributionRolloutScenario = String(body.scenario || 'hard')
+      adminAttributionRolloutTarget = Number(body.target ?? 10)
+      adminAttributionIncidentOpen = adminAttributionRolloutScenario === 'hard'
+      json(res, { ok: true, scenario: adminAttributionRolloutScenario })
+    }).catch(() => json(res, { statusCode: 400, message: 'rollout 场景无效' }, 400))
+    return
+  }
+  if (url.pathname === '/api/test/admin-attribution-dataset-scenario' && req.method === 'PATCH') {
+    readJsonBody(req).then((body) => {
+      adminAttributionDatasetScenario = String(body.scenario || 'unavailable')
+      json(res, { ok: true, scenario: adminAttributionDatasetScenario })
+    }).catch(() => json(res, { statusCode: 400, message: 'Dataset 场景无效' }, 400))
+    return
+  }
   if (url.pathname === '/api/test/admin-attribution-action-mode' && req.method === 'PATCH') {
     readJsonBody(req).then((body) => {
       adminAttributionActionMode = String(body.mode || 'success')
@@ -889,10 +928,25 @@ function handleApi(req, res) {
   }
   if (url.pathname === '/api/admin/attribution/meta/rollout' && req.method === 'POST') {
     readJsonBody(req).then((body) => {
+      adminAttributionActions.push({ type: 'rollout', body })
+      const percentage = Number(body.percentage)
+      const upgrading = percentage > adminAttributionRolloutTarget
+      const blockers = adminAttributionIncidentOpen ? ['circuit_open'] : ['insufficient_attempts']
+      if (upgrading && adminAttributionIncidentOpen) {
+        return json(res, { statusCode: 409, message: 'CAPI rollout 升级门禁未通过', code: 'META_CAPI_ROLLOUT_PROMOTION_BLOCKED', detail: { blockers } }, 409)
+      }
+      if (upgrading && adminAttributionRolloutScenario === 'metric-only' && body.force !== true) {
+        return json(res, { statusCode: 409, message: 'CAPI rollout 升级门禁未通过', code: 'META_CAPI_ROLLOUT_PROMOTION_BLOCKED', detail: { blockers } }, 409)
+      }
+      if (body.force === true) {
+        const hanCount = String(body.reason || '').match(/[\u3400-\u9fff]/g)?.length ?? 0
+        if (!upgrading || adminAttributionRolloutScenario !== 'metric-only') return json(res, { statusCode: 400, message: '当前升级不能 force', code: 'META_CAPI_ROLLOUT_FORCE_NOT_APPLICABLE' }, 400)
+        if (hanCount < 20) return json(res, { statusCode: 400, message: 'force 理由至少需要 20 个汉字', code: 'META_CAPI_ROLLOUT_FORCE_REASON_INVALID' }, 400)
+      }
       if (adminAttributionActionMode === 'conflict') return json(res, { statusCode: 409, message: 'CAPI rollout 升级门禁未通过' }, 409)
       if (adminAttributionActionMode === 'forbidden') return json(res, { statusCode: 403, message: '需要站长权限' }, 403)
       if (adminAttributionActionMode === 'network') return json(res, { statusCode: 503, message: '服务暂时不可用' }, 503)
-      adminAttributionRolloutTarget = Number(body.percentage)
+      adminAttributionRolloutTarget = percentage
       json(res, { data: { targetPercentage: adminAttributionRolloutTarget, effectivePercentage: adminAttributionIncidentOpen ? 0 : adminAttributionRolloutTarget, changed: true } })
     }).catch(() => json(res, { statusCode: 400, message: 'rollout 请求无效' }, 400))
     return

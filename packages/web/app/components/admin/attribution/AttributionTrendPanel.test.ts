@@ -34,17 +34,78 @@ describe('AttributionTrendPanel', () => {
     expect(wrapper.find('[data-evidence-layer="capi"]').exists()).toBe(true)
   })
 
-  it('单日零值仍生成稳定 path，不把空序列渲染为空图', () => {
+  it('单日零值渲染真实可见 marker，不把只有 M 命令当作趋势图', () => {
     const wrapper = mount(AttributionTrendPanel, {
       props: {
         title: '业务转化趋势',
         rows: [{ date: '2026-07-10', business: { contactCount: 0 } }],
-        series: [{ key: 'business.contactCount', label: '有效联系', layer: 'business' }],
+        series: [{ key: 'business.contactCount', label: '有效联系', layer: 'business', aggregation: { type: 'sum' } }],
       },
     })
 
     expect(wrapper.get('[data-trend-path]').attributes('d')).toMatch(/^M /)
+    expect(wrapper.findAll('[data-trend-marker]')).toHaveLength(1)
+    expect(Number(wrapper.get('[data-trend-marker]').attributes('r'))).toBeGreaterThan(0)
     expect(wrapper.text()).toContain('2026-07-10')
     expect(wrapper.text()).toContain('有效联系 0')
+  })
+
+  it('percent 摘要按 numerator/denominator 加权且不超过 100%', () => {
+    const wrapper = mount(AttributionTrendPanel, {
+      props: {
+        title: '匹配质量趋势',
+        rows: [
+          { date: '2026-07-09', fbp: { rate: 0.9, numerator: 9, denominator: 10 } },
+          { date: '2026-07-10', fbp: { rate: 0.5, numerator: 1, denominator: 2 } },
+        ],
+        series: [{
+          key: 'fbp.rate',
+          label: 'fbp',
+          layer: 'quality',
+          format: 'percent',
+          aggregation: { type: 'weightedRate', numeratorKey: 'fbp.numerator', denominatorKey: 'fbp.denominator' },
+        }],
+      },
+    })
+
+    expect(wrapper.get('[data-trend-summary]').text()).toContain('fbp 83.33%')
+    expect(wrapper.get('[data-attribution-chart]').attributes('aria-label')).toContain('fbp 83.33%')
+    expect(wrapper.text()).not.toContain('140%')
+  })
+
+  it('同层多序列使用不同线型，图例与 aria 同步说明', () => {
+    const wrapper = mount(AttributionTrendPanel, {
+      props: {
+        title: '业务转化趋势',
+        rows: [
+          { date: '2026-07-09', business: { contactCount: 1, completeRegistrationCount: 2 } },
+          { date: '2026-07-10', business: { contactCount: 2, completeRegistrationCount: 3 } },
+        ],
+        series: [
+          { key: 'business.contactCount', label: '有效联系', layer: 'business', aggregation: { type: 'sum' } },
+          { key: 'business.completeRegistrationCount', label: '完成注册', layer: 'business', aggregation: { type: 'sum' } },
+        ],
+      },
+    })
+
+    const paths = wrapper.findAll('[data-trend-path]')
+    expect(paths.map(path => path.attributes('data-series-variant'))).toEqual(['solid', 'dashed'])
+    expect(paths[0]!.attributes('stroke-dasharray')).not.toBe(paths[1]!.attributes('stroke-dasharray'))
+    expect(wrapper.findAll('[data-trend-legend-variant]').map(item => item.attributes('data-series-variant'))).toEqual(['solid', 'dashed'])
+    expect(wrapper.get('[data-attribution-chart]').attributes('aria-label')).toContain('实线')
+    expect(wrapper.get('[data-attribution-chart]').attributes('aria-label')).toContain('虚线')
+  })
+
+  it('图表由自身横向滚动容器承载', () => {
+    const wrapper = mount(AttributionTrendPanel, {
+      props: {
+        title: '投递趋势',
+        rows: [{ date: '2026-07-10', delivery: { capiSent: 1 } }],
+        series: [{ key: 'delivery.capiSent', label: 'CAPI 接收', layer: 'capi', aggregation: { type: 'sum' } }],
+      },
+    })
+
+    expect(wrapper.get('[data-chart-scroll]').classes()).toContain('overflow-x-auto')
+    expect(wrapper.get('[data-chart-scroll]').classes()).not.toContain('overflow-hidden')
   })
 })

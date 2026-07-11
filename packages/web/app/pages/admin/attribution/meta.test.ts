@@ -46,7 +46,7 @@ function mountPage() {
       },
       rows: [],
     },
-    datasetQuality: { availability: 'not_available', latest: null, rows: [] },
+    datasetQuality: { availability: 'unavailable', latest: null, rows: [] },
   })
   const incidents = state({
     items: [{ id: 'incident-1', status: 'open', severity: 'critical', resolution: '' }],

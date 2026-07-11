@@ -47,7 +47,7 @@ function mountPage(datasetAvailable = false) {
       },
       datasetQuality: datasetAvailable
         ? { availability: 'available', latest: { value: 0.82 }, rows: [] }
-        : { availability: 'not_available', latest: null, rows: [] },
+        : { availability: 'unavailable', latest: null, rows: [] },
     }),
     '/api/admin/attribution/meta/status': state({
       connection: { state: 'verified', environment: 'dev', pixelIdConfigured: true, tokenConfigured: true },

@@ -74,6 +74,7 @@ export interface DatasetQualityRow {
   eventName: string
   metricKey: string
   value: number | null
+  availability: 'available' | 'error' | 'unavailable'
   status: string
   errorCategory: string
   collectedAt: string
@@ -88,7 +89,7 @@ export interface AttributionQualityData {
     rows: AttributionMatchRow[]
   }
   datasetQuality: {
-    availability: 'available' | 'not_available'
+    availability: 'available' | 'error' | 'unavailable'
     latest: DatasetQualityRow | null
     rows: DatasetQualityRow[]
   }
