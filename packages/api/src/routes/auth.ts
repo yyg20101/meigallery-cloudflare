@@ -17,6 +17,9 @@ import { consumeInviteCodeForRegistration } from '../services/invite-codes'
 import type { AnalyticsConsentState } from '@meigallery/shared'
 import { recordRegistration } from '../services/conversions'
 import { buildMetaCapiUserData } from '../utils/meta-browser-identifiers'
+import { getCookie } from 'hono/cookie'
+import { MARKETING_CONSENT_RECEIPT_COOKIE } from './marketing-consent'
+import { resolveTrustedMarketingConsent } from '../utils/marketing-consent-receipt'
 
 type RegistrationAttributionContext = {
   visitorId?: string
@@ -245,6 +248,11 @@ authRoutes.post('/register', async (c) => {
     .run()
   const userId = insertResult.meta.last_row_id
   const attribution = normalizeRegistrationAttribution(body.attribution, userId)
+  attribution.consentState = await resolveTrustedMarketingConsent(
+    c.env.SESSION_SECRET,
+    getCookie(c, MARKETING_CONSENT_RECEIPT_COOKIE),
+    attribution.consentState,
+  )
   const hasAttribution = isPlainRecord(body.attribution)
 
   if (body.inviteCode) {

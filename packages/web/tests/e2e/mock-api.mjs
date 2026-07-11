@@ -151,6 +151,7 @@ const analyticsBatches = []
 const sessionEndBatches = []
 const registrations = []
 let authenticated = true
+let marketingConsentState = 'granted'
 let adminAnalyticsEmpty = false
 let adminAttributionReadinessBlocked = true
 let adminAttributionActionMode = 'success'
@@ -171,6 +172,7 @@ function resetPublicSettings() {
   sessionEndBatches.length = 0
   registrations.length = 0
   authenticated = true
+  marketingConsentState = 'granted'
   adminAnalyticsEmpty = false
   adminAttributionReadinessBlocked = true
   adminAttributionActionMode = 'success'
@@ -718,7 +720,7 @@ function handleApi(req, res) {
       'Access-Control-Allow-Origin': allowedOrigin,
       'Access-Control-Allow-Credentials': 'true',
       'Access-Control-Allow-Headers': 'content-type',
-      'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
+      'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
     })
     res.end()
     return
@@ -805,6 +807,22 @@ function handleApi(req, res) {
     return
   }
   if (url.pathname === '/api/settings/public') return json(res, publicSettings())
+  if (url.pathname === '/api/marketing-consent' && req.method === 'GET') {
+    return json(res, { state: marketingConsentState })
+  }
+  if (url.pathname === '/api/marketing-consent' && req.method === 'PUT') {
+    readJsonBody(req)
+      .then((body) => {
+        if (body.state !== 'granted' && body.state !== 'denied') {
+          json(res, { code: 'MARKETING_CONSENT_INVALID', message: '营销授权状态无效' }, 400)
+          return
+        }
+        marketingConsentState = body.state
+        json(res, { state: marketingConsentState })
+      })
+      .catch(() => json(res, { code: 'MARKETING_CONSENT_INVALID', message: '营销授权请求无效' }, 400))
+    return
+  }
   if (url.pathname === '/api/me') {
     return authenticated
       ? json(res, user)

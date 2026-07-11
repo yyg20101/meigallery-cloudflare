@@ -1,6 +1,7 @@
 import { recordRegistrationFactOnly } from './conversions'
 
 const RECOVERY_LIMIT = 100
+const RECOVERY_CURSOR_SETTING = 'registration_conversion_recovery_cursor'
 
 type MissingRegistrationFactUser = {
   id: number
@@ -16,12 +17,13 @@ export type RegistrationConversionRecoveryResult = {
 
 export async function recoverRegistrationConversionFacts(
   db: D1Database,
-  now = new Date(),
+  _now = new Date(),
 ): Promise<RegistrationConversionRecoveryResult> {
+  const cursor = await readRecoveryCursor(db)
   const users = await db.prepare(`
     SELECT u.id, u.created_at
     FROM users u
-    WHERE datetime(u.created_at) >= datetime(?, '-24 hours')
+    WHERE u.id > ?
       AND datetime(u.created_at) <= datetime('now')
       AND NOT EXISTS (
         SELECT 1
@@ -30,9 +32,9 @@ export async function recoverRegistrationConversionFacts(
           AND a.action_type = 'complete_registration'
           AND a.duplicate_of = ''
       )
-    ORDER BY datetime(u.created_at) ASC, u.id ASC
+    ORDER BY u.id ASC
     LIMIT 100
-  `).bind(now.toISOString()).all<MissingRegistrationFactUser>()
+  `).bind(cursor).all<MissingRegistrationFactUser>()
 
   const result: RegistrationConversionRecoveryResult = {
     scanned: users.results.length,
@@ -62,5 +64,24 @@ export async function recoverRegistrationConversionFacts(
     }
   }
 
+  const lastUser = users.results.at(-1)
+  await writeRecoveryCursor(db, lastUser?.id ?? (cursor > 0 ? 0 : cursor))
+
   return result
+}
+
+async function readRecoveryCursor(db: D1Database) {
+  const row = await db.prepare(`
+    SELECT value FROM site_settings WHERE key = ? LIMIT 1
+  `).bind(RECOVERY_CURSOR_SETTING).first<{ value: string }>()
+  const value = Number(row?.value ?? 0)
+  return Number.isSafeInteger(value) && value >= 0 ? value : 0
+}
+
+async function writeRecoveryCursor(db: D1Database, cursor: number) {
+  await db.prepare(`
+    INSERT INTO site_settings (key, value, updated_at)
+    VALUES (?, ?, datetime('now'))
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')
+  `).bind(RECOVERY_CURSOR_SETTING, String(cursor)).run()
 }

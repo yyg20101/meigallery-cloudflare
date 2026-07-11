@@ -8,13 +8,13 @@ async function readMigration(name: string) {
 }
 
 describe('analytics migrations', () => {
-  it('migration 索引从 0001 到 0042 连续且编号唯一', async () => {
+  it('migration 索引从 0001 到 0043 连续且编号唯一', async () => {
     const names = (await readdir(MIGRATION_DIR))
       .filter(name => /^\d{4}_.+\.sql$/.test(name))
       .sort()
     const indexes = names.map(name => Number(name.slice(0, 4)))
 
-    expect(indexes).toEqual(Array.from({ length: 42 }, (_, index) => index + 1))
+    expect(indexes).toEqual(Array.from({ length: 43 }, (_, index) => index + 1))
     expect(new Set(indexes).size).toBe(indexes.length)
   })
 
@@ -244,5 +244,15 @@ describe('analytics migrations', () => {
     expect(sql).toContain('expires_at TEXT NOT NULL')
     expect(sql).toContain('consumed_at TEXT')
     expect(sql).not.toMatch(/session|cookie|access_token|test_event_code|email|client_ip|user_agent/i)
+  })
+
+  it('0043 为 CAPI delivery 增加短期发送 lease，不保存 token 到其他表', async () => {
+    const sql = await readMigration('0043_meta_capi_delivery_lease.sql')
+    expect(sql).toContain('ADD COLUMN delivery_lease_token TEXT')
+    expect(sql).toContain('ADD COLUMN delivery_lease_expires_at TEXT')
+    expect(sql).toContain('idx_meta_capi_delivery_lease_expiry')
+    expect(sql).toContain("registration_conversion_recovery_cursor', '0'")
+    expect(sql).toMatch(/length\(delivery_lease_token\)\s*=\s*32/)
+    expect(sql).not.toMatch(/access_token|test_event_code|client_ip|user_agent|email|ciphertext/i)
   })
 })

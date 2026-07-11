@@ -44,6 +44,8 @@ export type MetaCapiDeliveryRow = ConversionDeliverySnapshot & {
   meta_connection_revision: string | null
   duplicate_suppressed_at: string | null
   encryption_key_id: string
+  delivery_lease_token: string
+  delivery_lease_expires_at: string | null
   created_at: string
   occurred_at: string
   path: string
@@ -85,6 +87,7 @@ const DELIVERY_TRANSITION_MAX_ATTEMPTS = 3
 const META_CAPI_ERROR_MESSAGE = 'Meta CAPI 请求失败'
 const META_CAPI_TIMEOUT_MESSAGE = 'Meta CAPI 请求超时'
 const META_CAPI_STATE_ERROR_CODE = 'meta_delivery_state_conflict'
+const META_CAPI_DELIVERY_LEASE_SECONDS = 60
 const ACTIVE_META_EVENT_NAMES = new Set<string>(ACTIVE_META_EVENTS)
 const CUSTOM_DATA_ALLOWLIST = new Set([
   'method_type',
@@ -195,93 +198,145 @@ export async function sendMetaCapiEvent(
   }
   const accessToken = String(env.META_CAPI_ACCESS_TOKEN || '').trim()
 
-  const payload = buildMetaCapiPayload({
-    eventName: delivery.event_name,
-    eventId: delivery.external_event_id,
-    eventTime: toUnixSeconds(delivery.occurred_at),
-    eventSourceUrl: buildEventSourceUrl(env.SITE_URL, delivery.path),
-    actionSource: 'website',
-    userData: options.userData,
-    customData: parseMetadata(delivery.metadata),
-  })
-
-  let response: Response
-  let eventsReceived: number | undefined
-  try {
-    const metaResponse = await fetchWithCombinedTimeout(
-      options.fetchFn ?? globalThis.fetch,
-      metaEventsEndpoint(connection.pixelId),
-      metaGraphRequestInit(accessToken, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(payload),
-      }),
-      options.signal,
-      options.timeoutMs ?? META_CAPI_TIMEOUT_MS,
-      [
-        accessToken,
-        ...Object.values(options.userData || {}).filter((value): value is string => typeof value === 'string'),
-      ],
-    )
-    response = metaResponse.response
-    eventsReceived = metaResponse.eventsReceived
-  } catch (error) {
-    const timedOut = error instanceof MetaCapiDeliveryError && error.code === 'meta_timeout'
-    const code = timedOut ? 'meta_timeout' : 'meta_network_error'
-    const persisted = await confirmDeliveryTransition(env.DB, delivery, {
-      status: 'failed',
-      errorCode: code,
-      errorMessage: META_CAPI_ERROR_MESSAGE,
-    })
-    const competingSent = await recordCompetingSent(env.DB, persisted, deliveryId)
-    if (competingSent) return competingSent
-    throw new MetaCapiDeliveryError(
-      code,
-      timedOut ? META_CAPI_TIMEOUT_MESSAGE : META_CAPI_ERROR_MESSAGE,
-      true,
-    )
-  }
-
-  if (response.ok && eventsReceived === 1) {
-    const persisted = await confirmDeliveryTransition(env.DB, delivery, { status: 'sent' })
-    const competingSent = await recordCompetingSent(env.DB, persisted, deliveryId)
-    if (competingSent) return competingSent
-    return compactResult({ deliveryId, status: 'sent', eventsReceived })
-  }
-
-  if (response.ok) {
-    const persisted = await confirmDeliveryTransition(env.DB, delivery, {
-      status: 'failed',
-      errorCode: 'meta_events_not_received',
-      errorMessage: META_CAPI_ERROR_MESSAGE,
-    })
-    const competingSent = await recordCompetingSent(env.DB, persisted, deliveryId)
-    if (competingSent) return competingSent
-    return compactResult({
+  const leaseToken = await acquireMetaCapiDeliveryLease(env.DB, deliveryId)
+  if (!leaseToken) {
+    const current = await readMetaCapiDelivery(env.DB, deliveryId)
+    if (current?.status === 'sent') {
+      await recordDuplicateSuppressed(env.DB, current)
+      return { deliveryId, status: 'duplicate_suppressed', reason: 'already_sent' }
+    }
+    return {
       deliveryId,
-      status: 'failed',
-      reason: 'events_not_received',
-      eventsReceived,
-    })
+      status: current?.status ?? delivery.status,
+      reason: 'delivery_lease_active',
+    }
   }
 
-  const errorCode = `meta_http_${response.status}`
-  if (response.status === 401 || response.status === 403) {
-    await openMetaCapiIncidentSafely(env, createMetaIncidentTrigger('meta_permission_denied', {
-      failedCount: 1,
-    }))
+  try {
+    const payload = buildMetaCapiPayload({
+      eventName: delivery.event_name,
+      eventId: delivery.external_event_id,
+      eventTime: toUnixSeconds(delivery.occurred_at),
+      eventSourceUrl: buildEventSourceUrl(env.SITE_URL, delivery.path),
+      actionSource: 'website',
+      userData: options.userData,
+      customData: parseMetadata(delivery.metadata),
+    })
+
+    let response: Response
+    let eventsReceived: number | undefined
+    try {
+      const metaResponse = await fetchWithCombinedTimeout(
+        options.fetchFn ?? globalThis.fetch,
+        metaEventsEndpoint(connection.pixelId),
+        metaGraphRequestInit(accessToken, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+        }),
+        options.signal,
+        options.timeoutMs ?? META_CAPI_TIMEOUT_MS,
+        [
+          accessToken,
+          ...Object.values(options.userData || {}).filter((value): value is string => typeof value === 'string'),
+        ],
+      )
+      response = metaResponse.response
+      eventsReceived = metaResponse.eventsReceived
+    } catch (error) {
+      const timedOut = error instanceof MetaCapiDeliveryError && error.code === 'meta_timeout'
+      const code = timedOut ? 'meta_timeout' : 'meta_network_error'
+      const persisted = await confirmDeliveryTransition(env.DB, delivery, {
+        status: 'failed',
+        errorCode: code,
+        errorMessage: META_CAPI_ERROR_MESSAGE,
+      }, leaseToken)
+      const competingSent = await recordCompetingSent(env.DB, persisted, deliveryId)
+      if (competingSent) return competingSent
+      throw new MetaCapiDeliveryError(
+        code,
+        timedOut ? META_CAPI_TIMEOUT_MESSAGE : META_CAPI_ERROR_MESSAGE,
+        true,
+      )
+    }
+
+    if (response.ok && eventsReceived === 1) {
+      const persisted = await confirmDeliveryTransition(env.DB, delivery, { status: 'sent' }, leaseToken)
+      const competingSent = await recordCompetingSent(env.DB, persisted, deliveryId)
+      if (competingSent) return competingSent
+      return compactResult({ deliveryId, status: 'sent', eventsReceived })
+    }
+
+    if (response.ok) {
+      const persisted = await confirmDeliveryTransition(env.DB, delivery, {
+        status: 'failed',
+        errorCode: 'meta_events_not_received',
+        errorMessage: META_CAPI_ERROR_MESSAGE,
+      }, leaseToken)
+      const competingSent = await recordCompetingSent(env.DB, persisted, deliveryId)
+      if (competingSent) return competingSent
+      return compactResult({
+        deliveryId,
+        status: 'failed',
+        reason: 'events_not_received',
+        eventsReceived,
+      })
+    }
+
+    const errorCode = `meta_http_${response.status}`
+    if (response.status === 401 || response.status === 403) {
+      await openMetaCapiIncidentSafely(env, createMetaIncidentTrigger('meta_permission_denied', {
+        failedCount: 1,
+      }))
+    }
+    const persisted = await confirmDeliveryTransition(env.DB, delivery, {
+      status: 'failed',
+      errorCode,
+      errorMessage: META_CAPI_ERROR_MESSAGE,
+    }, leaseToken)
+    const competingSent = await recordCompetingSent(env.DB, persisted, deliveryId)
+    if (competingSent) return competingSent
+    if (classifyMetaCapiError(response.status) === 'retryable') {
+      throw new MetaCapiDeliveryError(errorCode, META_CAPI_ERROR_MESSAGE, true)
+    }
+    return compactResult({ deliveryId, status: 'failed', reason: String(response.status) })
   }
-  const persisted = await confirmDeliveryTransition(env.DB, delivery, {
-    status: 'failed',
-    errorCode,
-    errorMessage: META_CAPI_ERROR_MESSAGE,
-  })
-  const competingSent = await recordCompetingSent(env.DB, persisted, deliveryId)
-  if (competingSent) return competingSent
-  if (classifyMetaCapiError(response.status) === 'retryable') {
-    throw new MetaCapiDeliveryError(errorCode, META_CAPI_ERROR_MESSAGE, true)
+  finally {
+    await releaseMetaCapiDeliveryLease(env.DB, deliveryId, leaseToken)
   }
-  return compactResult({ deliveryId, status: 'failed', reason: String(response.status) })
+}
+
+export async function acquireMetaCapiDeliveryLease(db: D1Database, deliveryId: string) {
+  const leaseToken = randomLeaseToken()
+  const result = await db.prepare(`
+    UPDATE analytics_conversion_deliveries
+    SET
+      delivery_lease_token = ?,
+      delivery_lease_expires_at = datetime('now', '+${META_CAPI_DELIVERY_LEASE_SECONDS} seconds'),
+      updated_at = datetime('now')
+    WHERE id = ?
+      AND channel = 'meta_capi'
+      AND status IN ('pending', 'failed')
+      AND status <> 'sent'
+      AND (
+        delivery_lease_token = ''
+        OR delivery_lease_expires_at IS NULL
+        OR delivery_lease_expires_at <= datetime('now')
+      )
+  `).bind(leaseToken, deliveryId).run()
+  return d1Changed(result) ? leaseToken : null
+}
+
+export async function releaseMetaCapiDeliveryLease(
+  db: D1Database,
+  deliveryId: string,
+  leaseToken: string,
+) {
+  await db.prepare(`
+    UPDATE analytics_conversion_deliveries
+    SET delivery_lease_token = '', delivery_lease_expires_at = NULL, updated_at = datetime('now')
+    WHERE id = ? AND delivery_lease_token = ?
+  `).bind(deliveryId, leaseToken).run()
 }
 
 function isActiveMetaEventName(value: string): value is ActiveMetaEventName {
@@ -294,7 +349,7 @@ export async function readMetaCapiDelivery(db: D1Database, deliveryId: string) {
       d.id, d.conversion_action_id, d.channel, d.external_event_id, d.event_name,
       d.status, d.skip_reason, d.error_code, d.error_message, d.attempt_count,
       d.tracking_mode, d.meta_connection_revision, d.duplicate_suppressed_at,
-      d.encryption_key_id, d.created_at,
+      d.encryption_key_id, d.delivery_lease_token, d.delivery_lease_expires_at, d.created_at,
       a.occurred_at, a.date, a.path, a.metadata
     FROM analytics_conversion_deliveries d
     JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
@@ -308,6 +363,7 @@ export async function transitionDeliveryStatus(
   db: D1Database,
   delivery: ConversionDeliverySnapshot,
   input: TransitionDeliveryStatusInput,
+  leaseToken?: string,
 ) {
   const skipReason = input.skipReason ?? ''
   const errorCode = input.errorCode ?? ''
@@ -330,6 +386,7 @@ export async function transitionDeliveryStatus(
         AND skip_reason = ?
         AND error_code = ?
         AND status <> 'sent'
+        ${leaseToken ? 'AND delivery_lease_token = ?' : ''}
     `).bind(
       skipReason,
       errorCode,
@@ -338,6 +395,7 @@ export async function transitionDeliveryStatus(
       delivery.status,
       delivery.skip_reason || '',
       expectedErrorCode,
+      ...(leaseToken ? [leaseToken] : []),
     ).run()
     return { changed: d1Changed(result) }
   }
@@ -359,6 +417,7 @@ export async function transitionDeliveryStatus(
         AND skip_reason = ?
         AND error_code = ?
         AND status <> 'sent'
+        ${leaseToken ? 'AND delivery_lease_token = ?' : ''}
     `).bind(
       input.status,
       skipReason,
@@ -369,6 +428,7 @@ export async function transitionDeliveryStatus(
       delivery.status,
       delivery.skip_reason || '',
       expectedErrorCode,
+      ...(leaseToken ? [leaseToken] : []),
     ),
     deliveryDailyIncrementAfterChange(db, delivery, input.status, skipReason),
     deliveryDailyDecrementAfterChange(db, delivery),
@@ -380,6 +440,7 @@ export async function confirmDeliveryTransition(
   db: D1Database,
   delivery: ConversionDeliverySnapshot,
   input: TransitionDeliveryStatusInput,
+  leaseToken?: string,
 ): Promise<ConfirmedDeliveryTransition> {
   let current = delivery
   for (let attempt = 0; attempt < DELIVERY_TRANSITION_MAX_ATTEMPTS; attempt += 1) {
@@ -389,7 +450,7 @@ export async function confirmDeliveryTransition(
       throw stateConflictError()
     }
 
-    const transition = await transitionDeliveryStatus(db, current, input)
+    const transition = await transitionDeliveryStatus(db, current, input, leaseToken)
     if (transition.changed) {
       return {
         ...current,
@@ -571,4 +632,9 @@ function storedErrorMessage(value: string) {
 
 function d1Changed(result: D1Result<unknown>) {
   return (result.meta?.changes ?? result.meta?.rows_written ?? 1) > 0
+}
+
+function randomLeaseToken() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+  return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
 }

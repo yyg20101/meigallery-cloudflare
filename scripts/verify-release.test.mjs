@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import { readFile, mkdtemp, rm } from 'node:fs/promises'
+import { chmod, mkdir, readFile, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { spawn } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -18,7 +19,29 @@ const DEPLOY_SCRIPT_PATH = fileURLToPath(new URL('./deploy.sh', import.meta.url)
 const VITEST_CONFIG_PATH = fileURLToPath(new URL('../packages/api/vitest.config.ts', import.meta.url))
 const PACKAGE_JSON_PATH = fileURLToPath(new URL('../package.json', import.meta.url))
 const API_PACKAGE_JSON_PATH = fileURLToPath(new URL('../packages/api/package.json', import.meta.url))
+const ROOT_DIR = fileURLToPath(new URL('../', import.meta.url))
 const RELEASE_COMMIT = '18dc11e0b0e4797683d4551a93a1f22e53dc4628'
+
+async function writeExecutable(file, content) {
+  await writeFile(file, content)
+  await chmod(file, 0o755)
+}
+
+function runProcess(command, args, options) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd,
+      env: options.env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    let output = ''
+    child.stdout.on('data', chunk => { output += chunk })
+    child.stderr.on('data', chunk => { output += chunk })
+    child.on('error', reject)
+    child.on('close', code => resolve({ code, output }))
+    child.stdin.end(options.input)
+  })
+}
 
 describe('发布验证 CLI', () => {
   it('production deploy gate 会显式清空 VERIFY_RELEASE_ALLOW_BRANCH', async () => {
@@ -26,8 +49,45 @@ describe('发布验证 CLI', () => {
 
     assert.match(
       deployScript,
+      /env -u VERIFY_RELEASE_ALLOW_BRANCH "\$\{PNPM\[@\]\}" verify:release/,
+    )
+    assert.match(
+      deployScript,
       /env -u VERIFY_RELEASE_ALLOW_BRANCH node scripts\/verify-release\.mjs assert-production-allowed/,
     )
+    assert.ok(
+      deployScript.indexOf('"${PNPM[@]}" verify:release')
+      < deployScript.indexOf('verify-release.mjs assert-production-allowed'),
+    )
+  })
+
+  it('旧伪造 latest 即使可通过 assert，fresh release 失败也不能进入 migration 或 deploy', async () => {
+    const tempDir = await mkdtemp(path.join(tmpdir(), 'meigallery-deploy-gate-'))
+    const binDir = path.join(tempDir, 'bin')
+    const logFile = path.join(tempDir, 'commands.log')
+    await mkdir(binDir)
+    await Promise.all([
+      writeExecutable(path.join(binDir, 'git'), '#!/usr/bin/env bash\necho 18dc11e0b0e4797683d4551a93a1f22e53dc4628\n'),
+      writeExecutable(path.join(binDir, 'pnpm'), `#!/usr/bin/env bash\necho "pnpm $*" >> "${logFile}"\nif [ "$*" = "verify:release" ]; then exit 9; fi\nexit 0\n`),
+      writeExecutable(path.join(binDir, 'node'), `#!/usr/bin/env bash\necho "node $*" >> "${logFile}"\nexit 0\n`),
+    ])
+
+    try {
+      const result = await runProcess('bash', [DEPLOY_SCRIPT_PATH, 'production'], {
+        cwd: ROOT_DIR,
+        env: { ...process.env, PATH: `${binDir}:${process.env.PATH}`, FORGED_LATEST_STATUS: 'passed' },
+        input: 'y\n',
+      })
+      const commands = await readFile(logFile, 'utf8')
+
+      assert.notEqual(result.code, 0)
+      assert.match(commands, /pnpm verify:release/)
+      assert.doesNotMatch(commands, /assert-production-allowed|migrations apply|wrangler deploy/)
+      assert.match(result.output, /旧 latest 报告不能替代本次完整验证/)
+    }
+    finally {
+      await rm(tempDir, { recursive: true, force: true })
+    }
   })
 
   it('dev 部署迁移目标必须使用独立 dev D1', async () => {
@@ -50,11 +110,13 @@ describe('发布验证 CLI', () => {
     assert.match(deployScript, /ENV_ARGS=\(--env dev\)/)
     assert.match(deployScript, /ENV_ARGS=\(--env ""\)/)
 
+    const freshGateIndex = deployScript.indexOf('"${PNPM[@]}" verify:release')
     const gateIndex = deployScript.indexOf('verify-release.mjs assert-production-allowed')
     const preflightIndex = deployScript.indexOf('verify-meta-migration.mjs preflight --env "$ENV"')
     const migrationIndex = deployScript.indexOf('wrangler d1 migrations apply')
     const deployIndex = deployScript.indexOf('wrangler deploy "${ENV_ARGS[@]}" --var')
-    assert.ok(gateIndex >= 0)
+    assert.ok(freshGateIndex >= 0)
+    assert.ok(gateIndex > freshGateIndex)
     assert.ok(preflightIndex > gateIndex)
     assert.ok(migrationIndex > preflightIndex)
     assert.ok(deployIndex > gateIndex)

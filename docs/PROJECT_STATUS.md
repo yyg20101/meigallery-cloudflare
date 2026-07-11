@@ -29,7 +29,7 @@
 - 对象存储：生产为 Cloudflare R2 `meigallery-media`，开发环境已隔离到 `meigallery-media-dev`。
 - Queue：生产主 Queue / DLQ 为 `meigallery-meta-capi` / `meigallery-meta-capi-dlq`，开发环境已隔离到 `meigallery-meta-capi-dev` / `meigallery-meta-capi-dev-dlq`。
 - 视频：Cloudflare Stream 仍未接入生产链路；相关字段和密钥按规划保留。
-- 生产部署：通过 PR 合入 `main` 后，先在最新 `main` 待发 commit 上重新确认同一 commit 的 `verify:release` 报告，再手动执行 `./scripts/deploy.sh production` 或等价 wrangler 命令。
+- 生产部署：通过 PR 合入 `main` 后手动执行 `./scripts/deploy.sh production`；脚本会强制重新运行完整 `verify:release` 并只断言本次新报告，之后才允许 migration 或 Worker deploy。
 - CI：`.github/workflows/ci.yml` 只做 PR 和 dev 推送验证，不自动部署生产。
 - 发布快速校验：`corepack pnpm verify:quick` 先执行 `dev-resource-isolation` 与 `meta-secret-leaks`，阻断 dev 误用生产资源及 tracked/release evidence 静态泄漏。
 
@@ -40,7 +40,7 @@
 - `verify:local-runtime` 用于本地 Cloudflare 运行时验证 D1、Queue、归因和降级链路。
 - `verify:dev-rehearsal` 依赖独立 dev 资源和当前 dev Workers URL，作为上线前远端演练；Meta 链路只接受 Owner 生成 `Contact`、`CompleteRegistration` 的同 commit live evidence，出现历史 `Lead` 或 `StartTrial` 证据必须阻断。
 - `verify:release` 是生产放行前最终校验，但当前仓库尚未真实跑完整 release 报告；生产前必须在干净工作区、带 `VERIFY_DEV_API_URL` / `VERIFY_DEV_WEB_URL` 运行并生成同一 commit 的通过报告。最终 `main` HEAD 必须重新部署 dev、重做 evidence，不能复用其他 commit 的结果。
-- `scripts/deploy.sh production` 已在远端 migration 前接入 production gate；没有通过版 release 报告时必须阻断。部署路径只负责 preflight、migration 与 Worker 部署，不写 setting、不关闭 incident、不调整 rollout。
+- `scripts/deploy.sh production` 已在远端 migration 前接入 fresh production gate；旧 `latest.json` 不能跳过 lint、API/Web coverage、scripts、tsc、build、local-runtime 和 remote gates。部署路径只负责验证、preflight、migration 与 Worker 部署，不写 setting、不关闭 incident、不调整 rollout。
 
 ## 当前已实现能力
 
@@ -50,7 +50,7 @@
 - Telegram 外部导入 API：项目只提供对外 API 接收能力，不内置 Telegram Bot 本体；对接契约见 `docs/TELEGRAM_IMPORT_API.md`。
 - 数据分析：已实现一方数据采集、来源归因、邀请码、联系点击、趋势和后台 `/admin/analytics` 系列看板；后台 UI 口径见 `docs/UI_DATA_ANALYTICS_DASHBOARD.md`。
 - 归因中心：已实现站内转化账本、投放追踪链接、有效联系 / 完成注册活动趋势、历史 Lead 只读对照、Meta Pixel / CAPI 同步健康、重复诊断和分级发布检查；历史 Lead 与会员发放辅助指标均不参与活动漏斗、比率或链接排序，会员发放仅保留在 `operations` 辅助结构。后台分别展示 blocker 与 warning，warning 不改变生产阻断状态；入口为 `/admin/attribution`。
-- Meta CAPI v2：**Task 7 可自主本地项已全量通过；外部 Step 4 明确阻断，不满足生产候选或正式部署条件**。本地已通过 lint、API/Web coverage、scripts 与 migrations、API `tsc`、Nuxt build、故障注入、secret scan、`verify:quick`、`verify:local-runtime` 和 diff check。活动 Meta 事件只有 `Contact`、`CompleteRegistration`，`Lead` 只作历史只读对照且不得进入活动漏斗、delivery 或 readiness。dev live evidence 使用 migration `0041` 的 Worker 一次性 challenge，Browser 真实 `fbq` 与 Server CAPI 使用同组 opaque ID，原始 ID 在消费后不可恢复；CLI 只记录脱敏摘要。资源门禁核对 migrations `0036..0042`、D1/R2/Queue/DLQ；Owner Cookie 只向固定可信 API origin 换取 migration `0042` 的 D1 原子一次性 ticket，最终 HMAC attestation 请求不携带 Cookie。production 冷启动由当前 commit、未过期的 production D1 bootstrap permit 决定 `bootstrap` phase，之后依次执行 `post-deploy` attestation、`trackingMode=test` Test Event、`full` gate、切换 production 和 `0 -> 10`。Q5 Dataset Quality 仍为 `contract_pending`：缺少真实 dev capture、Owner 批准 contract、collector 补充计划及其实现；同时缺少当前最终 commit 的真实远端 dev evidence。按控制器决议，本任务未执行 dev/production 部署、远端 D1、Meta 网络 capture、push 或 `verify:release`，production rollout 必须保持 `0`。
+- Meta CAPI v2：**本地修复仍不满足生产候选或正式部署条件**。活动 Meta 事件只有 `Contact`、`CompleteRegistration`；营销授权由 30 分钟服务端签名 HttpOnly receipt 决定，body 只能降级；registration recovery 覆盖任意年龄缺失事实；migration `0043` 为 Graph 发送增加 D1 CAS lease；后台连接验证与 dev Live Evidence 已拆分；breakdown 排除 duplicate diagnostic 行。资源门禁核对 migrations `0036..0043`、D1/R2/Queue/DLQ。Q5 Dataset Quality 继续 `contract_pending`，且缺少当前最终 commit 的真实远端 dev evidence；本轮不执行 dev/production 部署、远端 D1、Meta 网络 capture、push 或 `verify:release`，production rollout 必须保持 `0`。
 - SEO：已实现基础 SEO 设置、关键词池、sitemap、robots、结构化数据和生产校验脚本；运营配置见 `docs/SEO_CONFIGURATION.md`。
 
 ## 规划和未接入

@@ -4,6 +4,9 @@ import { ConversionInProgressError, markPixelAttempted, recordContact } from '..
 import { errorJson } from '../utils/api-error'
 import { buildMetaCapiUserData } from '../utils/meta-browser-identifiers'
 import { verifyPixelReceiptToken } from '../utils/pixel-receipt'
+import { getCookie } from 'hono/cookie'
+import { MARKETING_CONSENT_RECEIPT_COOKIE } from './marketing-consent'
+import { resolveTrustedMarketingConsent } from '../utils/marketing-consent-receipt'
 
 const PUBLIC_CONVERSION_ACTIONS = new Set(['contact'])
 const CONVERSION_ID_RE = /^[A-Za-z0-9_-]{8,120}$/
@@ -35,7 +38,11 @@ conversionRoutes.post('/events', async (c) => {
     return errorJson(c, 400, '联系事件缺少必要上下文', { code: 'CONVERSION_CONTACT_CONTEXT_INVALID' })
   }
 
-  const consentState = String(body.consentState || 'limited')
+  const consentState = await resolveTrustedMarketingConsent(
+    c.env.SESSION_SECRET,
+    getCookie(c, MARKETING_CONSENT_RECEIPT_COOKIE),
+    body.consentState,
+  )
   let result
   try {
     result = await recordContact(c.env, {

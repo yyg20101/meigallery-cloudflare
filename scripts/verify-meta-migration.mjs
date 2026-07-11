@@ -5,12 +5,13 @@ import { runCommand } from './release-verification-lib.mjs'
 
 const ROOT_DIR = fileURLToPath(new URL('../', import.meta.url))
 const PRE_MIGRATION_FILE = 'pre-0039.sql'
-const ALL_MIGRATIONS_FILE = 'empty-0001-0042.sql'
+const ALL_MIGRATIONS_FILE = 'empty-0001-0043.sql'
 const FOLLOW_UP_MIGRATIONS = [
   '0039_meta_capi_v2_operations.sql',
   '0040_meta_capi_circuit_indexes.sql',
   '0041_meta_live_challenges.sql',
   '0042_meta_resource_attestation_tickets.sql',
+  '0043_meta_capi_delivery_lease.sql',
 ]
 const REMOTE_PREFLIGHT_CONFIG = {
   dev: {
@@ -55,7 +56,7 @@ export async function runMetaMigrationVerification(options = {}) {
     await rm(stateDir, { recursive: true, force: true })
     await mkdir(stateDir, { recursive: true })
     await writeFile(preMigrationPath, await buildPreMigrationSql(migrationDir))
-    await writeFile(allMigrationsPath, await buildMigrationSql(migrationDir, 42))
+    await writeFile(allMigrationsPath, await buildMigrationSql(migrationDir, 43))
 
     if (!await runD1Step(runCommandFn, rootDir, oldPersistTo, 'meta-migration-apply-0001-0038', [
       '--file', preMigrationRelativePath,
@@ -130,7 +131,7 @@ export async function runMetaMigrationVerification(options = {}) {
       setting: parseWranglerResults(settingStep.stdout, '设置查询'),
     })
 
-    if (!await runD1Step(runCommandFn, rootDir, emptyPersistTo, 'meta-migration-empty-apply-0001-0042', [
+    if (!await runD1Step(runCommandFn, rootDir, emptyPersistTo, 'meta-migration-empty-apply-0001-0043', [
       '--file', allMigrationsRelativePath,
       '--yes',
     ], steps)) return failedResult(steps, stateDir, undefined, duplicateGroupCount)
@@ -324,6 +325,7 @@ SELECT
   (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'index' AND name = 'idx_meta_live_challenges_expiry') AS challenge_index,
   (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = 'meta_resource_attestation_tickets') AS ticket_table,
   (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'index' AND name = 'idx_meta_resource_attestation_tickets_expiry') AS ticket_index,
+  (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'index' AND name = 'idx_meta_capi_delivery_lease_expiry') AS delivery_lease_index,
   (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = 'meta_capi_incidents') AS incident_table,
   (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = 'meta_dataset_quality_snapshots') AS quality_table;
 `.trim()
@@ -391,9 +393,10 @@ function assertSchemaResult(rows) {
   if (rows.length !== 1
     || row?.delivery_unique_index !== 1
     || row?.circuit_index_count !== 4
+    || row?.delivery_lease_index !== 1
     || ['challenge_table', 'challenge_index', 'ticket_table', 'ticket_index', 'incident_table', 'quality_table']
       .some(field => row?.[field] !== 1)) {
-    throw new Error('Meta 0040-0042 schema 不完整')
+    throw new Error('Meta 0040-0043 schema 不完整')
   }
 }
 

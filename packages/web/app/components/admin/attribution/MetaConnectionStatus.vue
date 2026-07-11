@@ -17,10 +17,12 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{ refreshed: [] }>()
 const { api } = useApi()
 const { sendMetaLiveChallenge } = useTracking()
-const testing = ref(false)
+const verifying = ref(false)
+const evidencing = ref(false)
 const message = ref('')
 const messageTone = ref<'success' | 'error'>('success')
 const canVerify = computed(() => canVerifyMetaConnection(props.connection, props.isOwner))
+const busy = computed(() => verifying.value || evidencing.value)
 
 const connectionItems = computed(() => [
   { label: '连接验证', value: props.connection ? metaConnectionStateLabel(props.connection.state) : '未确认', ok: props.connection?.state === 'verified' },
@@ -30,28 +32,9 @@ const connectionItems = computed(() => [
 ])
 
 async function verifyConnection() {
-  testing.value = true
+  verifying.value = true
   message.value = ''
   try {
-    if (props.connection?.environment === 'dev') {
-      const challenge = await api<{ data: {
-        challengeId: string
-        pixelId: string
-        eventIds: { Contact: string; CompleteRegistration: string }
-      } }>('/api/admin/attribution/meta/live-challenge', { method: 'POST' })
-      if (!sendMetaLiveChallenge(challenge.data)) throw new Error('浏览器 Pixel 事件发送失败')
-      const consumed = await api<{ data: { status?: string; eventsReceived?: number } }>(
-        '/api/admin/attribution/meta/live-challenge/consume',
-        { method: 'POST', body: { challengeId: challenge.data.challengeId } },
-      )
-      if (consumed.data.status !== 'server_sent' || consumed.data.eventsReceived !== 2) {
-        throw new Error('Meta 未确认接收两条服务端测试事件')
-      }
-      messageTone.value = 'success'
-      message.value = 'Browser 与 Server 测试事件已发送，请在 Events Manager 确认去重后记录证据'
-      emit('refreshed')
-      return
-    }
     const response = await api<{ data: { status?: string; eventsReceived?: number } }>('/api/admin/attribution/meta/test-event', { method: 'POST' })
     if (response.data.status !== 'verified' || response.data.eventsReceived !== 1) throw new Error('Meta 未确认接收测试事件')
     messageTone.value = 'success'
@@ -63,7 +46,38 @@ async function verifyConnection() {
     message.value = resolveApiErrorMessage(error, 'MetaConnection 验证失败')
   }
   finally {
-    testing.value = false
+    verifying.value = false
+  }
+}
+
+async function runLiveEvidence() {
+  if (props.connection?.environment !== 'dev') return
+  evidencing.value = true
+  message.value = ''
+  try {
+    const challenge = await api<{ data: {
+      challengeId: string
+      pixelId: string
+      eventIds: { Contact: string; CompleteRegistration: string }
+    } }>('/api/admin/attribution/meta/live-challenge', { method: 'POST' })
+    if (!sendMetaLiveChallenge(challenge.data)) throw new Error('浏览器 Pixel 事件发送失败')
+    const consumed = await api<{ data: { status?: string; eventsReceived?: number } }>(
+      '/api/admin/attribution/meta/live-challenge/consume',
+      { method: 'POST', body: { challengeId: challenge.data.challengeId } },
+    )
+    if (consumed.data.status !== 'server_sent' || consumed.data.eventsReceived !== 2) {
+      throw new Error('Meta 未确认接收两条服务端测试事件')
+    }
+    messageTone.value = 'success'
+    message.value = 'Browser 与 Server 测试事件已发送，请在 Events Manager 确认去重后记录证据'
+    emit('refreshed')
+  }
+  catch (error) {
+    messageTone.value = 'error'
+    message.value = resolveApiErrorMessage(error, 'Live Evidence 执行失败')
+  }
+  finally {
+    evidencing.value = false
   }
 }
 </script>
@@ -81,16 +95,27 @@ async function verifyConnection() {
         {{ connection ? metaConnectionReasonLabel(connection.invalidationReason) : '连接状态未返回' }}
         <span v-if="connection"> · {{ connection.environment }}</span>
       </p>
-      <button
-        v-if="canVerify"
-        data-meta-connection-verify
-        class="shrink-0 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-        type="button"
-        :disabled="testing"
-        @click="verifyConnection"
-      >
-        {{ testing ? '验证中...' : '验证连接' }}
-      </button>
+      <div v-if="canVerify" class="flex shrink-0 gap-2">
+        <button
+          data-meta-connection-verify
+          class="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+          type="button"
+          :disabled="busy"
+          @click="verifyConnection"
+        >
+          {{ verifying ? '验证中...' : '验证连接' }}
+        </button>
+        <button
+          v-if="connection?.environment === 'dev'"
+          data-meta-live-evidence
+          class="rounded-md bg-gray-950 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60"
+          type="button"
+          :disabled="busy"
+          @click="runLiveEvidence"
+        >
+          {{ evidencing ? '执行中...' : 'Live Evidence' }}
+        </button>
+      </div>
     </div>
     <p v-if="message" role="status" :class="messageTone === 'error' ? 'text-red-700' : 'text-emerald-700'" class="mt-2 text-sm">{{ message }}</p>
   </div>

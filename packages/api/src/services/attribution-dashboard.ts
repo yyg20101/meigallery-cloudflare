@@ -232,6 +232,7 @@ export async function queryAttributionBreakdown(
       FROM analytics_conversion_actions a
       WHERE a.date BETWEEN ? AND ?
         AND a.action_type IN ${ACTIVE_ACTION_SQL}
+        AND a.duplicate_of = ''
     ),
     delivery_per_action AS (
       SELECT

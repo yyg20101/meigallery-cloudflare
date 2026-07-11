@@ -486,9 +486,18 @@ test.describe('核心页面 smoke', () => {
     await expect(page.getByText('尚未取得 Meta 质量数据')).toBeVisible()
     await expect(page.locator('[data-meta-incident-list]')).toContainText('CAPI 重试耗尽')
 
+    const [connectionResponse] = await Promise.all([
+      page.waitForResponse(response => response.url().endsWith('/api/admin/attribution/meta/test-event') && response.request().method() === 'POST'),
+      page.getByRole('button', { name: '验证连接' }).click(),
+    ])
+    expect(connectionResponse.status()).toBe(200)
+    await expect(connectionResponse.json()).resolves.toMatchObject({
+      data: { status: 'verified', eventsReceived: 1 },
+    })
+
     const [verificationResponse] = await Promise.all([
       page.waitForResponse(response => response.url().endsWith('/api/admin/attribution/meta/live-challenge/consume') && response.request().method() === 'POST'),
-      page.getByRole('button', { name: '验证连接' }).click(),
+      page.getByRole('button', { name: 'Live Evidence' }).click(),
     ])
     expect(verificationResponse.status()).toBe(200)
     await expect(verificationResponse.json()).resolves.toMatchObject({

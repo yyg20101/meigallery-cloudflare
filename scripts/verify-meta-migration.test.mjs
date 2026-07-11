@@ -59,6 +59,7 @@ function mockJsonFor(name, options = {}) {
       challenge_index: 1,
       ticket_table: 1,
       ticket_index: 1,
+      delivery_lease_index: 1,
       incident_table: 1,
       quality_table: 1,
     }] }])
@@ -79,10 +80,11 @@ describe('Meta migration 演练', () => {
     'meta-migration-apply-0040',
     'meta-migration-apply-0041',
     'meta-migration-apply-0042',
+    'meta-migration-apply-0043',
     'meta-migration-query-history',
     'meta-migration-query-schema',
     'meta-migration-query-setting',
-    'meta-migration-empty-apply-0001-0042',
+    'meta-migration-empty-apply-0001-0043',
     'meta-migration-empty-query-schema',
   ]) {
     it(`当 ${name} 命令失败时演练失败`, async () => {
@@ -158,7 +160,7 @@ describe('Meta migration 演练', () => {
     assert.match(result.error, /历史 Meta 事实未完整保留/)
   })
 
-  it('在真实 D1 上从旧库顺序执行 0039、0040、0041、0042 并保全历史事实', async () => {
+  it('在真实 D1 上从旧库顺序执行 0039 至 0043 并保全历史事实', async () => {
     const result = await runMetaMigrationVerification({
       stateDir: path.join(integrationDir, 'clean'),
     })
@@ -169,7 +171,8 @@ describe('Meta migration 演练', () => {
     assert.ok(names.indexOf('meta-migration-apply-0039') < names.indexOf('meta-migration-apply-0040'))
     assert.ok(names.indexOf('meta-migration-apply-0040') < names.indexOf('meta-migration-apply-0041'))
     assert.ok(names.indexOf('meta-migration-apply-0041') < names.indexOf('meta-migration-apply-0042'))
-    assert.ok(names.includes('meta-migration-empty-apply-0001-0042'))
+    assert.ok(names.indexOf('meta-migration-apply-0042') < names.indexOf('meta-migration-apply-0043'))
+    assert.ok(names.includes('meta-migration-empty-apply-0001-0043'))
     assert.ok(names.includes('meta-migration-empty-query-schema'))
   })
 

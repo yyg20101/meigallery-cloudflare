@@ -30,6 +30,7 @@ describe('facebook-pixel plugin', () => {
     }))
     vi.stubGlobal('useMarketingConsent', () => ({
       canTrackMarketing: computed(() => consent.value === 'granted'),
+      refresh: vi.fn(async () => undefined),
     }))
     vi.stubGlobal('useTracking', () => ({ trackPageView, teardownPixel }))
   })

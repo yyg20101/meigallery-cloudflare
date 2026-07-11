@@ -31,6 +31,8 @@ type DeliveryRow = {
   occurred_at: string
   path: string
   metadata: string
+  delivery_lease_token: string
+  delivery_lease_expires_at: string | null
 }
 
 const RELEASE_COMMIT = 'a'.repeat(40)
@@ -66,6 +68,8 @@ function createMetaCapiDb(options: {
     occurred_at: '2026-07-09T10:00:00.000Z',
     path: '/gallery/demo',
     metadata: JSON.stringify({ method_type: 'telegram', email: 'user@example.test' }),
+    delivery_lease_token: '',
+    delivery_lease_expires_at: null,
     ...options.delivery,
   }
   const daily: Array<Record<string, unknown>> = []
@@ -118,6 +122,22 @@ function createMetaCapiDb(options: {
         },
         async run() {
           calls.push(call)
+          if (sql.includes('delivery_lease_expires_at = datetime')) {
+            if (delivery.delivery_lease_token || !['pending', 'failed'].includes(delivery.status)) {
+              return { meta: { changes: 0, rows_written: 0, rows_read: 0, duration: 1 } }
+            }
+            delivery.delivery_lease_token = String(call.params[0])
+            delivery.delivery_lease_expires_at = '2026-07-11 00:01:00'
+            return { meta: { changes: 1, rows_written: 1, rows_read: 0, duration: 1 } }
+          }
+          if (sql.includes("SET delivery_lease_token = ''")) {
+            const matches = delivery.delivery_lease_token === String(call.params[1])
+            if (matches) {
+              delivery.delivery_lease_token = ''
+              delivery.delivery_lease_expires_at = null
+            }
+            return { meta: { changes: matches ? 1 : 0, rows_written: matches ? 1 : 0, rows_read: 0, duration: 1 } }
+          }
           if (sql.includes('UPDATE analytics_conversion_deliveries')) {
             const changesStatus = /SET\s+status\s*=\s*\?/m.test(sql)
             if (!transitionHookCalled) {
@@ -126,6 +146,10 @@ function createMetaCapiDb(options: {
             }
             const expectedStatus = String(call.params[changesStatus ? 6 : 4])
             if (delivery.status !== expectedStatus || delivery.status === 'sent') {
+              return { meta: { changes: 0, rows_written: 0, rows_read: 0, duration: 1 } }
+            }
+            if (sql.includes('AND delivery_lease_token = ?')
+              && delivery.delivery_lease_token !== String(call.params.at(-1))) {
               return { meta: { changes: 0, rows_written: 0, rows_read: 0, duration: 1 } }
             }
             if (changesStatus) delivery.status = String(call.params[0]) as DeliveryStatus
@@ -182,6 +206,8 @@ function createConcurrentSuccessDb() {
     occurred_at: '2026-07-10T00:00:00.000Z',
     path: '/',
     metadata: '{}',
+    delivery_lease_token: '',
+    delivery_lease_expires_at: null as string | null,
   }
   const daily = new Map<string, number>([['pending', 1]])
   const db = {
@@ -237,12 +263,27 @@ function createConcurrentSuccessDb() {
     const { sql, params } = statement
     let changes = 1
     if (sql.includes('UPDATE analytics_conversion_deliveries')) {
-      if (sql.includes('duplicate_suppressed_at')) {
+      if (sql.includes('delivery_lease_expires_at = datetime')) {
+        changes = !delivery.delivery_lease_token && ['pending', 'failed'].includes(delivery.status) ? 1 : 0
+        if (changes) {
+          delivery.delivery_lease_token = String(params[0])
+          delivery.delivery_lease_expires_at = '2026-07-10 00:01:00'
+        }
+      } else if (sql.includes("SET delivery_lease_token = ''")) {
+        changes = delivery.delivery_lease_token === String(params[1]) ? 1 : 0
+        if (changes) {
+          delivery.delivery_lease_token = ''
+          delivery.delivery_lease_expires_at = null
+        }
+      } else if (sql.includes('duplicate_suppressed_at')) {
         changes = delivery.status === 'sent' && !delivery.duplicate_suppressed_at ? 1 : 0
         if (changes) delivery.duplicate_suppressed_at = '2026-07-10 00:00:02'
       } else {
         const expectedStatus = String(params[6])
-        changes = delivery.status === expectedStatus && delivery.status !== 'sent' ? 1 : 0
+        changes = delivery.status === expectedStatus
+          && delivery.status !== 'sent'
+          && (!sql.includes('AND delivery_lease_token = ?') || delivery.delivery_lease_token === String(params.at(-1)))
+          ? 1 : 0
         if (changes) {
           delivery.status = String(params[0]) as DeliveryStatus
           delivery.skip_reason = String(params[1] ?? '')
@@ -502,7 +543,7 @@ describe('meta-capi', () => {
     expect(incident?.params).toContain('meta_permission_denied')
     expect(JSON.stringify(incident)).not.toContain('token_1')
     expect(db.calls.findIndex(call => call.sql.includes('INSERT OR IGNORE INTO meta_capi_incidents')))
-      .toBeLessThan(db.calls.findIndex(call => call.sql.includes('UPDATE analytics_conversion_deliveries')))
+      .toBeLessThan(db.calls.findIndex(call => /UPDATE analytics_conversion_deliveries[\s\S]+SET\s+status\s*=\s*\?/.test(call.sql)))
   })
 
   it('401/403 即使 CAS 竞争为 sent，也先打开权限 incident 再返回 duplicate_suppressed', async () => {
@@ -674,31 +715,27 @@ describe('meta-capi', () => {
     expect(JSON.stringify(init)).not.toContain('user@example.test')
   })
 
-  it('两个 pending 消息并发成功时后完成者只记一次 duplicate_suppressed，第三次重投不再增加', async () => {
+  it('两个 pending 消息并发时只有 lease 赢家 fetch，loser 安全等待且第三次识别 sent', async () => {
     const db = createConcurrentSuccessDb()
-    let arrived = 0
     let release!: () => void
     const barrier = new Promise<void>(resolve => { release = resolve })
     const fetchFn = vi.fn(async () => {
-      arrived += 1
-      if (arrived === 2) release()
       await barrier
       return new Response(JSON.stringify({ events_received: 1 }), { status: 200 })
     })
     const concurrentEnv = envFor(db as unknown as ReturnType<typeof createMetaCapiDb>)
 
-    const results = await Promise.all([
-      sendMetaCapiEvent(concurrentEnv, db.delivery.id, { fetchFn }),
-      sendMetaCapiEvent(concurrentEnv, db.delivery.id, { fetchFn }),
-    ])
-    expect(db.daily.get('duplicate_suppressed')).toBe(1)
-    expect(db.delivery.duplicate_suppressed_at).not.toBeNull()
-
+    const winnerPromise = sendMetaCapiEvent(concurrentEnv, db.delivery.id, { fetchFn })
+    await vi.waitFor(() => expect(fetchFn).toHaveBeenCalledOnce())
+    const loser = await sendMetaCapiEvent(concurrentEnv, db.delivery.id, { fetchFn })
+    release()
+    const winner = await winnerPromise
     const third = await sendMetaCapiEvent(concurrentEnv, db.delivery.id, { fetchFn })
 
-    expect(results.map(result => result.status)).toEqual(['sent', 'sent'])
+    expect(winner.status).toBe('sent')
+    expect(loser).toMatchObject({ status: 'pending', reason: 'delivery_lease_active' })
     expect(third).toMatchObject({ status: 'duplicate_suppressed', reason: 'already_sent' })
-    expect(fetchFn).toHaveBeenCalledTimes(2)
+    expect(fetchFn).toHaveBeenCalledOnce()
     expect(db.delivery).toMatchObject({ status: 'sent', attempt_count: 1 })
     expect(db.daily.get('pending')).toBe(0)
     expect(db.daily.get('sent')).toBe(1)

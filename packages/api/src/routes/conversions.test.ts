@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { MetaCapiQueueMessage } from '@meigallery/shared'
 import type { Bindings, Variables } from '../index'
 import { createPixelReceiptToken } from '../utils/pixel-receipt'
+import { createMarketingConsentReceipt } from '../utils/marketing-consent-receipt'
 import { conversionRoutes } from './conversions'
 
 type Call = { sql: string; params: unknown[] }
@@ -512,12 +513,14 @@ describe('conversion routes', () => {
       clientIpAddress: '203.0.113.24',
       clientUserAgent: 'MeiGallery Test Browser/1.0',
     }
+    const receipt = await createMarketingConsentReceipt('test-session-secret', 'granted')
     const res = await createApp().request('/api/conversions/events', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
         'CF-Connecting-IP': raw.clientIpAddress,
         'User-Agent': raw.clientUserAgent,
+        Cookie: `mei_marketing_consent_receipt=${receipt}`,
       },
       body: JSON.stringify({
         actionType: 'contact',
@@ -561,6 +564,92 @@ describe('conversion routes', () => {
     expect(JSON.stringify(db.calls)).not.toContain('metadata-fbp')
     expect(JSON.stringify(await res.clone().json())).not.toContain(raw.fbp)
     expect(JSON.stringify(await res.clone().json())).not.toContain(raw.fbc)
+  })
+
+  it.each([
+    ['伪造 body', ''],
+    ['篡改 receipt', 'mei_marketing_consent_receipt=tampered.receipt'],
+  ])('%s 不创建 Meta delivery', async (_label, cookie) => {
+    const db = createConversionDb({ metaCapiEnabled: true, metaTrackingMode: 'test', facebookPixelId: '1234567890' })
+    const sent: MetaCapiQueueMessage[] = []
+    const res = await createApp().request('/api/conversions/events', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
+      body: JSON.stringify({
+        actionType: 'contact',
+        visitorId: 'visitor_untrusted',
+        sessionId: 'session_untrusted',
+        consentState: 'granted',
+        methodType: 'telegram',
+        actionTarget: 'floating_contact_panel',
+        browserIdentifiers: { fbp: 'fb.1.1700000000000.private' },
+      }),
+    }, {
+      DB: db,
+      APP_ENV: 'dev',
+      SESSION_SECRET: 'test-session-secret',
+      META_CAPI_ACCESS_TOKEN: 'token_1',
+      META_CAPI_TEST_EVENT_CODE: 'test-code',
+      RELEASE_COMMIT,
+      META_CAPI_QUEUE: { send: async (message: MetaCapiQueueMessage) => { sent.push(message) } },
+      META_CAPI_DATA_KEY_CURRENT: DATA_KEY,
+    } as unknown as Bindings)
+
+    expect(res.status).toBe(201)
+    expect(sent).toHaveLength(0)
+    expect(JSON.stringify(db.calls)).not.toContain('fb.1.1700000000000.private')
+  })
+
+  it.each([
+    ['denied receipt', 'denied' as const, 'granted'],
+    ['有效 grant 被 body 降级', 'granted' as const, 'denied'],
+  ])('%s 不创建 Meta delivery', async (_label, receiptState, bodyState) => {
+    const receipt = await createMarketingConsentReceipt('test-session-secret', receiptState)
+    const db = createConversionDb({ metaCapiEnabled: true, metaTrackingMode: 'test', facebookPixelId: '1234567890' })
+    const sent: MetaCapiQueueMessage[] = []
+    const res = await createApp().request('/api/conversions/events', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        Cookie: `mei_marketing_consent_receipt=${receipt}`,
+      },
+      body: JSON.stringify({
+        actionType: 'contact',
+        visitorId: 'visitor_denied_receipt',
+        sessionId: 'session_denied_receipt',
+        consentState: bodyState,
+        methodType: 'telegram',
+        actionTarget: 'floating_contact_panel',
+      }),
+    }, conversionEnv(db, sent))
+
+    expect(res.status).toBe(201)
+    expect(sent).toHaveLength(0)
+  })
+
+  it('过期 granted receipt 不能创建 Meta delivery', async () => {
+    const now = Math.floor(Date.now() / 1000)
+    const receipt = await createMarketingConsentReceipt('test-session-secret', 'granted', now - 1_800)
+    const db = createConversionDb({ metaCapiEnabled: true, metaTrackingMode: 'test', facebookPixelId: '1234567890' })
+    const sent: MetaCapiQueueMessage[] = []
+    const res = await createApp().request('/api/conversions/events', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        Cookie: `mei_marketing_consent_receipt=${receipt}`,
+      },
+      body: JSON.stringify({
+        actionType: 'contact',
+        visitorId: 'visitor_expired_receipt',
+        sessionId: 'session_expired_receipt',
+        consentState: 'granted',
+        methodType: 'telegram',
+        actionTarget: 'floating_contact_panel',
+      }),
+    }, conversionEnv(db, sent))
+
+    expect(res.status).toBe(201)
+    expect(sent).toHaveLength(0)
   })
 
   it('登录态 userId 写入转化账本', async () => {
@@ -629,3 +718,16 @@ describe('conversion routes', () => {
       expect(db.calls).toHaveLength(0)
     })
 })
+
+function conversionEnv(db: ReturnType<typeof createConversionDb>, sent: MetaCapiQueueMessage[]) {
+  return {
+    DB: db,
+    APP_ENV: 'dev',
+    SESSION_SECRET: 'test-session-secret',
+    META_CAPI_ACCESS_TOKEN: 'token_1',
+    META_CAPI_TEST_EVENT_CODE: 'test-code',
+    RELEASE_COMMIT,
+    META_CAPI_QUEUE: { send: async (message: MetaCapiQueueMessage) => { sent.push(message) } },
+    META_CAPI_DATA_KEY_CURRENT: DATA_KEY,
+  } as unknown as Bindings
+}

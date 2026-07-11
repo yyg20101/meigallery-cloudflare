@@ -41,6 +41,8 @@ type Delivery = {
   path: string
   metadata: string
   updated_at: string
+  delivery_lease_token: string
+  delivery_lease_expires_at: string | null
 }
 
 type Outbox = MetaCapiQueueMessage['envelope'] & {
@@ -82,6 +84,8 @@ function createQueueDb(options: {
     path: '/',
     metadata: '{}',
     updated_at: '2026-07-11 10:00:00',
+    delivery_lease_token: '',
+    delivery_lease_expires_at: null,
   }
   const calls: Call[] = []
   const daily = new Map<string, number>([[delivery.status, 1]])
@@ -183,6 +187,20 @@ function createQueueDb(options: {
 
   function apply(call: Call) {
     const { sql, params } = call
+    if (sql.includes('delivery_lease_expires_at = datetime')) {
+      if (delivery.delivery_lease_token || !['pending', 'failed'].includes(delivery.status)) return result(0)
+      delivery.delivery_lease_token = String(params[0])
+      delivery.delivery_lease_expires_at = '2026-07-11 10:03:00'
+      return result(1)
+    }
+    if (sql.includes("SET delivery_lease_token = ''")) {
+      const matches = delivery.delivery_lease_token === String(params[1])
+      if (matches) {
+        delivery.delivery_lease_token = ''
+        delivery.delivery_lease_expires_at = null
+      }
+      return result(matches ? 1 : 0)
+    }
     if (sql.includes('queue_attempt_count = queue_attempt_count + 1')) {
       if (!outbox || delivery.status !== 'pending' || delivery.queue_enqueued_at) return result(0)
       if (delivery.queue_attempt_count !== Number(params[1])) return result(0)
@@ -220,6 +238,8 @@ function createQueueDb(options: {
       }
       const expectedStatus = String(params[changesStatus ? 6 : 4])
       if (delivery.status !== expectedStatus || delivery.status === 'sent') return result(0)
+      if (sql.includes('AND delivery_lease_token = ?')
+        && delivery.delivery_lease_token !== String(params.at(-1))) return result(0)
       if (sql.includes('AND skip_reason = ?')) {
         const expectedSkipReason = String(params[changesStatus ? 7 : 5] ?? '')
         if (delivery.skip_reason !== expectedSkipReason) return result(0)

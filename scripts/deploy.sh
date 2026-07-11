@@ -53,9 +53,15 @@ else
     exit 0
   fi
 
-  echo "执行生产发布验证闸门..."
+  echo "重新执行完整生产发布验证..."
+  if ! env -u VERIFY_RELEASE_ALLOW_BRANCH "${PNPM[@]}" verify:release; then
+    echo "生产部署被 fresh verify:release 阻断。旧 latest 报告不能替代本次完整验证。"
+    exit 1
+  fi
+
+  echo "校验本次新生成的生产发布报告..."
   if ! env -u VERIFY_RELEASE_ALLOW_BRANCH node scripts/verify-release.mjs assert-production-allowed; then
-    echo "生产部署被发布验证闸门阻断。请先运行 corepack pnpm verify:release，并确认报告通过。"
+    echo "生产部署被发布验证闸门阻断。本次 fresh verify:release 报告未获放行。"
     exit 1
   fi
 fi

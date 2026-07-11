@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Bindings, Variables } from '../index'
 import { recordRegistration } from '../services/conversions'
 import { hashInviteCode } from '../services/invite-codes'
+import { createMarketingConsentReceipt } from '../utils/marketing-consent-receipt'
 import { authRoutes } from './auth'
 
 vi.mock('../services/conversions', () => ({
@@ -123,6 +124,17 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
     expect(body.pixelEvents).toEqual([])
   })
 
+  it('注册伪造 granted body 但缺少 receipt 时降级为 limited 且不读取匹配字段', async () => {
+    const db = createRegisterDb()
+
+    await register(db, { attribution: grantedAttribution() }, false)
+
+    expect(recordRegistrationMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      consentState: 'limited',
+    }), expect.anything())
+    expect(db.calls.some(call => call.sql.includes('SELECT id, email, meta_external_id'))).toBe(false)
+  })
+
   it('limited 注册不会提前读取权威匹配字段', async () => {
     const db = createRegisterDb()
 
@@ -219,10 +231,22 @@ function grantedAttribution() {
   }
 }
 
-async function register(db: ReturnType<typeof createRegisterDb>, extra: Record<string, unknown>) {
+async function register(
+  db: ReturnType<typeof createRegisterDb>,
+  extra: Record<string, unknown>,
+  withTrustedReceipt = true,
+) {
+  const requestedConsent = (extra.attribution as { consentState?: unknown } | undefined)?.consentState
+  const receipt = withTrustedReceipt && requestedConsent === 'granted'
+    ? await createMarketingConsentReceipt('test-session-secret', 'granted')
+    : ''
   return createApp().request('/api/auth/register', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'User-Agent': 'unit-test-browser' },
+    headers: {
+      'Content-Type': 'application/json',
+      'User-Agent': 'unit-test-browser',
+      ...(receipt ? { Cookie: `mei_marketing_consent_receipt=${receipt}` } : {}),
+    },
     body: JSON.stringify({
       email: 'new@example.com',
       username: 'newuser',

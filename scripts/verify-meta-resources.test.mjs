@@ -529,6 +529,7 @@ describe('Meta Cloudflare 资源检查', () => {
       { missingAppliedMigration: '0040_meta_capi_circuit_indexes.sql' },
       { missingAppliedMigration: '0041_meta_live_challenges.sql' },
       { missingAppliedMigration: '0042_meta_resource_attestation_tickets.sql' },
+      { missingAppliedMigration: '0043_meta_capi_delivery_lease.sql' },
       { connectionInvalidated: true },
       { connectionPixelDrift: true },
       { missingConsumer: true },
@@ -751,6 +752,7 @@ function createPassingRunner(calls, options = {}) {
           '0040_meta_capi_circuit_indexes.sql',
           '0041_meta_live_challenges.sql',
           '0042_meta_resource_attestation_tickets.sql',
+          '0043_meta_capi_delivery_lease.sql',
         ].filter(name => name !== options.missingAppliedMigration)
         results = names.map(name => ({ name }))
       } else if (runOptions.name.endsWith('dataset-quality')) {

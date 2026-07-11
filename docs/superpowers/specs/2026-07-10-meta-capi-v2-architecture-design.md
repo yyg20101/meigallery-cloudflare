@@ -190,6 +190,8 @@ AND Circuit Breaker 未打开
 
 `limited` 和 `denied` 只保留必要的一方业务事实，不加载 Pixel、不创建 Meta delivery。
 
+营销授权由 API 使用 `SESSION_SECRET` 签发的 30 分钟 HttpOnly receipt cookie 作为服务端权威依据。公开 API 负责授权、撤销和读取脱敏状态；请求 body 只能降级授权，不能把 missing、invalid、expired 或 denied receipt 升级为 `granted`。receipt、签名、nonce 和 cookie 值不进入日志、D1、API 响应、审计或报告。浏览器 Pixel 使用公开 API 返回状态，服务端 CAPI 独立验证 receipt。
+
 Owner 合成 Test Event 是建立 MetaConnection 验证的唯一引导例外：它只允许在 `test` 模式下绕过“已有连接验证”和 rollout 检查，仍必须要求 Pixel ID、Access Token、Test Event Code、Queue 和加密能力存在。它不读取用户邮箱、联系方式或站内用户标识；成功返回 `events_received=1` 后才能写入新的连接指纹。
 
 ### 7.2 Contact 匹配字段
@@ -263,6 +265,7 @@ pending -> queued -> sending -> sent
 - 401/403 或数据集无权访问：永久失败并立即熔断。
 - 429、5xx、网络错误和超时：可重试。
 - 已 sent delivery：重复抑制，不再请求 Meta。
+- Graph fetch 前必须通过 D1 CAS 获取短期 delivery lease；并发 loser 不 fetch，网络、Meta 或状态写回失败释放 lease，消费者崩溃后由 TTL 到期接管。所有接管继续使用原 event ID，lease token 不写日志或响应。
 - DLQ：写入 `retry_exhausted`，不无限重试。
 
 Graph API 版本集中在 Meta Adapter 配置中，并通过契约测试和季度版本审查维护。正式请求继续使用 Worker 兼容的窄接口直接 HTTP Adapter，不为两个事件引入完整 Node Business SDK 运行时。
@@ -420,7 +423,7 @@ Dataset Quality API 故障只产生 warning，不影响 CAPI 投递。
 
 ### 13.6 注册请求上下文
 
-注册页面对所有注册请求提交经过现有白名单清洗的 visitor、session、来源和 UTM 上下文，而不是只在邀请码注册时提交。注册 API 从第一方 consent cookie 读取营销授权，并只在 `granted` 时接收和校验浏览器标识；邮箱哈希始终在服务端生成。注册响应返回本次服务端创建的 Pixel 指令。
+注册页面对所有注册请求提交经过现有白名单清洗的 visitor、session、来源和 UTM 上下文，而不是只在邀请码注册时提交。注册 API 从服务端签名的短期 consent receipt cookie 读取营销授权，并只在 `granted` 时接收和校验浏览器标识；邮箱哈希始终在服务端生成。注册响应返回本次服务端创建的 Pixel 指令。
 
 ## 14. 旧代码清理
 
