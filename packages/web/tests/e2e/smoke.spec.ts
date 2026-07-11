@@ -6,7 +6,7 @@ const longAdUrl = `https://${longAdHostname}/sponsor-campaign`
 
 async function expectAdminContainersWithinViewport(page: import('@playwright/test').Page) {
   const result = await page.evaluate(() => {
-    const requirements: Array<{ selector: string; minCount?: number }> = [
+    const requirements: Array<{ selector: string; minCount?: number; exactCount?: number; allowHorizontalOverflow?: boolean }> = [
       { selector: '[data-admin-layout]' },
       { selector: '[data-admin-content]' },
       { selector: '[data-admin-header]' },
@@ -32,19 +32,27 @@ async function expectAdminContainersWithinViewport(page: import('@playwright/tes
         { selector: '[data-attribution-range-control]', minCount: 4 },
         { selector: '[data-attribution-control]', minCount: 5 },
         { selector: '[data-attribution-refresh]' },
-        { selector: '[data-attribution-tabs]' },
-        { selector: '[data-attribution-tab-list]' },
-        { selector: '[data-attribution-tab]', minCount: 6 },
+        { selector: '[data-attribution-tabs]', allowHorizontalOverflow: true },
+        { selector: '[data-attribution-tab-list]', allowHorizontalOverflow: true },
+        { selector: '[data-attribution-tab]', exactCount: 5, allowHorizontalOverflow: true },
       )
     }
-    if (location.pathname === '/admin/attribution' || location.pathname === '/admin/attribution/meta') {
+    if (location.pathname === '/admin/attribution') {
       requirements.push(
-        { selector: '[data-attribution-health]' },
-        { selector: '[data-health-grid]' },
-        { selector: '[data-health-item]', minCount: 6 },
-        { selector: '[data-health-label]', minCount: 6 },
-        { selector: '[data-health-value]', minCount: 6 },
-        { selector: '[data-health-summary]', minCount: location.pathname === '/admin/attribution' ? 2 : 1 },
+        { selector: '[data-evidence-rail]', allowHorizontalOverflow: true },
+        { selector: '[data-attribution-section]', exactCount: 5 },
+        { selector: '[data-meta-connection-status]' },
+        { selector: '[data-meta-rollout-control]' },
+        { selector: '[data-meta-incident-list]' },
+        { selector: '[data-attribution-trend]', minCount: 3 },
+      )
+    }
+    if (location.pathname === '/admin/attribution/meta') {
+      requirements.push(
+        { selector: '[data-meta-connection-status]' },
+        { selector: '[data-meta-rollout-control]' },
+        { selector: '[data-meta-incident-list]' },
+        { selector: '[data-attribution-trend]' },
       )
     }
     if (location.pathname === '/admin/attribution/readiness') {
@@ -80,9 +88,12 @@ async function expectAdminContainersWithinViewport(page: import('@playwright/tes
       '[data-attribution-range-group]',
       '[data-attribution-tabs]',
       '[data-attribution-tab-list]',
-      '[data-attribution-health]',
-      '[data-health-grid]',
-      '[data-health-item]',
+      '[data-evidence-rail]',
+      '[data-attribution-section]',
+      '[data-meta-connection-status]',
+      '[data-meta-rollout-control]',
+      '[data-meta-incident-list]',
+      '[data-attribution-trend]',
       '[data-readiness-status]',
       '[data-readiness-section]',
       '[data-readiness-check-grid]',
@@ -107,15 +118,21 @@ async function expectAdminContainersWithinViewport(page: import('@playwright/tes
     }> = []
     for (const requirement of requirements) {
       const elements = [...document.querySelectorAll<HTMLElement>(requirement.selector)]
-      const expected = requirement.minCount ?? 1
-      if (elements.length < expected) {
+      const expected = requirement.exactCount ?? requirement.minCount ?? 1
+      const countMatches = requirement.exactCount === undefined
+        ? elements.length >= expected
+        : elements.length === expected
+      if (!countMatches) {
         missing.push({ selector: requirement.selector, expected, actual: elements.length })
         continue
       }
       for (const [index, element] of elements.entries()) {
         const rect = element.getBoundingClientRect()
-        const overflow = containerSelectors.has(requirement.selector) && element.scrollWidth > element.clientWidth + 1
-        if (rect.left < 0 || rect.right > visibleWidth || overflow) {
+        const overflow = !requirement.allowHorizontalOverflow
+          && containerSelectors.has(requirement.selector)
+          && element.scrollWidth > element.clientWidth + 1
+        const outsideViewport = rect.left < 0 || (!requirement.allowHorizontalOverflow && rect.right > visibleWidth)
+        if (outsideViewport || overflow) {
           violations.push({
             selector: requirement.selector,
             index,
@@ -398,18 +415,33 @@ test.describe('核心页面 smoke', () => {
     expect(hasHorizontalOverflow).toBe(false)
   })
 
-  test('后台归因中心可查看单日归因和投放链接', async ({ page }, testInfo) => {
+  test('后台 Meta 归因质量总览可查看五区、单日归因和投放链接', async ({ page }, testInfo) => {
     await page.goto('/admin/attribution')
-    await expect(page.locator('main h1', { hasText: '归因中心' })).toBeVisible()
+    await expect(page.locator('main h1')).toHaveText('Meta 归因质量')
+    await expect(page.getByText('按时间比较站内事实、Pixel 尝试、CAPI 接收与 Meta 质量，定位投放和投递问题。')).toBeVisible()
 
-    const health = page.getByRole('region', { name: 'Meta 渠道健康' })
-    await expect(health.getByText('Pixel 状态')).toBeVisible()
-    await expect(health.getByText('已开启', { exact: true })).toHaveCount(2)
-    await expect(health.getByText('Pixel 尝试')).toBeVisible()
-    await expect(health.getByText('8', { exact: true })).toBeVisible()
-    await expect(health.getByText('CAPI 成功', { exact: true })).toBeVisible()
-    await expect(health.getByText('6', { exact: true })).toBeVisible()
-    await expect(health.getByText('CAPI 配置：token 存在 · Test Event Code 存在 · Queue binding 存在')).toBeVisible()
+    const sections = page.locator('[data-attribution-section]')
+    await expect(sections).toHaveCount(5)
+    expect(await sections.evaluateAll(elements => elements.map(element => element.getAttribute('data-attribution-section')))).toEqual([
+      'connection', 'business', 'delivery', 'quality', 'rollout',
+    ])
+    for (const label of ['站内事实', 'Pixel 尝试', 'CAPI 接收', 'Meta 质量']) {
+      await expect(page.locator('[data-evidence-rail]')).toContainText(label)
+    }
+
+    const connectionSection = page.locator('[data-attribution-section="connection"]')
+    await expect(connectionSection.getByRole('heading', { name: 'Meta 连接与当前活动' })).toBeVisible()
+    await expect(connectionSection.getByText('已验证', { exact: true })).toBeVisible()
+    await expect(connectionSection.getByText('已配置', { exact: true })).toHaveCount(2)
+
+    const deliverySection = page.locator('[data-attribution-section="delivery"]')
+    await expect(deliverySection.getByRole('heading', { name: 'Pixel 与 CAPI delivery' })).toBeVisible()
+    await expect(deliverySection.getByText('CAPI 接收只表示 API 接收，不表示 Meta 已归因。')).toBeVisible()
+    const deliveryItems = deliverySection.locator('dl').first().locator(':scope > div')
+    await expect(deliveryItems.filter({ hasText: /^Pixel 尝试\s*12$/ })).toHaveCount(1)
+    await expect(deliveryItems.filter({ hasText: /^CAPI 接收\s*9$/ })).toHaveCount(1)
+    await expect(page.locator('[data-attribution-section="quality"]').getByRole('heading', { name: '匹配覆盖与 Meta 质量' })).toBeVisible()
+    await expect(page.locator('[data-attribution-section="rollout"]').getByRole('heading', { name: 'CAPI rollout 与 incident' })).toBeVisible()
     await expect(page.getByText('已同步', { exact: true })).toHaveCount(0)
     await expectAdminContainersWithinViewport(page)
     if (process.env.TASK8_SCREENSHOT_DIR) {
@@ -421,7 +453,7 @@ test.describe('核心页面 smoke', () => {
 
     await page.getByRole('button', { name: '单日' }).click()
     await page.getByLabel('选择归因日期').fill('2026-07-09')
-    await page.getByRole('link', { name: '投放链接' }).click()
+    await page.getByRole('link', { name: '投放链接', exact: true }).click()
 
     await expect(page).toHaveURL(/\/admin\/attribution\/links\?range=day&date=2026-07-09/)
     await expect(page.getByText('投放追踪链接')).toBeVisible()
@@ -429,7 +461,7 @@ test.describe('核心页面 smoke', () => {
     await expectAdminContainersWithinViewport(page)
   })
 
-  test('后台归因 Meta 控制面按生产检查保守启用并分渠道展示状态', async ({ page }) => {
+  test('后台归因 Meta 控制面按生产检查保守启用并验证连接与投递口径', async ({ page }) => {
     await page.goto('/admin/settings')
 
     await expect(page.getByLabel('Meta 运行模式')).toHaveValue('test')
@@ -438,19 +470,41 @@ test.describe('核心页面 smoke', () => {
     await expectAdminContainersWithinViewport(page)
 
     await page.goto('/admin/attribution/meta')
-    const health = page.getByRole('region', { name: 'Meta 渠道健康' })
-    await expect(health.getByText('Pixel 尝试')).toBeVisible()
-    await expect(health.getByText('8', { exact: true })).toBeVisible()
-    await expect(health.getByText('CAPI 成功', { exact: true })).toBeVisible()
-    await expect(health.getByText('6', { exact: true })).toBeVisible()
-    await expect(page.getByText('CAPI token 配置', { exact: true })).toBeVisible()
-    await expect(page.getByText('Test Event Code', { exact: true })).toBeVisible()
-    await expect(page.getByText('Queue binding', { exact: true })).toBeVisible()
-    await expect(page.getByText('引用已清零，可移除上一把密钥', { exact: true })).toBeVisible()
+    await expect(page.locator('main h1')).toHaveText('Meta 运维')
+    const connection = page.locator('[data-meta-connection-status]')
+    await expect(connection.getByText('连接验证', { exact: true })).toBeVisible()
+    await expect(connection.getByText('已验证', { exact: true })).toBeVisible()
+    await expect(connection.getByText('Pixel ID', { exact: true })).toBeVisible()
+    await expect(connection.getByText('CAPI token', { exact: true })).toBeVisible()
+    await expect(connection.getByText('已配置', { exact: true })).toHaveCount(2)
+    await expect(connection.getByText('v25.0', { exact: true })).toBeVisible()
+    await expect(connection.getByText('连接配置与验证记录一致 · dev', { exact: true })).toBeVisible()
 
-    await page.getByRole('button', { name: '验证 MetaConnection' }).click()
-    await expect(page.getByText('MetaConnection 验证成功', { exact: true })).toBeVisible()
+    const rollout = page.locator('[data-meta-rollout-control]')
+    await expect(rollout.getByText('critical incident 已打开，effective 强制为 0%；target 10% 保留。')).toBeVisible()
+    await expect(rollout.getByText('critical incident 尚未关闭', { exact: true })).toBeVisible()
+    await expect(page.getByText('尚未取得 Meta 质量数据')).toBeVisible()
+    await expect(page.locator('[data-meta-incident-list]')).toContainText('CAPI 重试耗尽')
+
+    const [verificationResponse] = await Promise.all([
+      page.waitForResponse(response => response.url().endsWith('/api/admin/attribution/meta/test-event') && response.request().method() === 'POST'),
+      page.getByRole('button', { name: '验证连接' }).click(),
+    ])
+    expect(verificationResponse.status()).toBe(200)
+    await expect(verificationResponse.json()).resolves.toMatchObject({
+      data: {
+        status: 'verified',
+        eventsReceived: 1,
+        connection: { state: 'verified', graphApiVersion: 'v25.0' },
+      },
+    })
+    await expect(page.locator('[data-meta-connection-status]').getByText('已验证', { exact: true })).toBeVisible()
     await expectAdminContainersWithinViewport(page)
+
+    await page.getByRole('link', { name: '总览', exact: true }).click()
+    const deliverySection = page.locator('[data-attribution-section="delivery"]')
+    await expect(deliverySection.getByText('CAPI 接收只表示 API 接收，不表示 Meta 已归因。')).toBeVisible()
+    await expect(deliverySection.locator('dl').first().locator(':scope > div').filter({ hasText: /^CAPI 接收\s*9$/ })).toHaveCount(1)
   })
 
   test('后台归因设置始终允许关闭已开启的 CAPI', async ({ request, page }) => {
