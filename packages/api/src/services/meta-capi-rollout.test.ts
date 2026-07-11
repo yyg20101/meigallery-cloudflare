@@ -18,15 +18,8 @@ describe('Meta CAPI 稳定 rollout', () => {
   })
 
   it('按带版本前缀的 SHA-256 前 4 bytes unsigned big-endian 稳定分桶', async () => {
-    const stableId = 'visitor_stable_42'
-    const digest = await crypto.subtle.digest(
-      'SHA-256',
-      new TextEncoder().encode(`meta-capi-rollout-v1\n${stableId}`),
-    )
-    const expected = new DataView(digest).getUint32(0, false) % 100
-
-    await expect(rolloutBucket(`  ${stableId}  `)).resolves.toBe(expected)
-    await expect(rolloutBucket(stableId)).resolves.toBe(expected)
+    await expect(rolloutBucket('  visitor_stable_42  ')).resolves.toBe(53)
+    await expect(rolloutBucket('visitor_stable_42')).resolves.toBe(53)
   })
 
   it('空 stable ID 不进入 hash', async () => {

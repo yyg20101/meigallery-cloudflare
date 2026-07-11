@@ -19,6 +19,7 @@ const metaHashMocks = vi.hoisted(() => ({
 
 const metaCryptoMocks = vi.hoisted(() => ({
   encrypt: vi.fn(),
+  loadKeys: vi.fn(),
 }))
 
 vi.mock('../utils/meta-browser-identifiers', async (importOriginal) => {
@@ -35,9 +36,11 @@ vi.mock('../utils/meta-browser-identifiers', async (importOriginal) => {
 vi.mock('../utils/meta-capi-crypto', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../utils/meta-capi-crypto')>()
   metaCryptoMocks.encrypt.mockImplementation(actual.encryptMetaCapiContext)
+  metaCryptoMocks.loadKeys.mockImplementation(actual.loadMetaCapiCryptoKeys)
   return {
     ...actual,
     encryptMetaCapiContext: metaCryptoMocks.encrypt,
+    loadMetaCapiCryptoKeys: metaCryptoMocks.loadKeys,
   }
 })
 
@@ -94,6 +97,8 @@ function createConversionDb(options: {
   metaCapiRolloutPercentage?: unknown
   criticalIncidentOpen?: boolean
   userMetaExternalId?: string | null
+  stableIdQueryError?: boolean
+  incidentQueryError?: boolean
   failAt?: number
 } = {}) {
   const calls: Call[] = []
@@ -295,11 +300,13 @@ function createConversionDb(options: {
             return { value: JSON.stringify(options.metaCapiRolloutPercentage ?? 100) } as T
           }
           if (sql.includes('FROM meta_capi_incidents')) {
+            if (options.incidentQueryError) throw new Error('模拟 incident 查询失败')
             return options.criticalIncidentOpen
               ? ({ id: 'incident_open' } as T)
               : null
           }
           if (sql.includes('SELECT meta_external_id') && sql.includes('FROM users')) {
+            if (options.stableIdQueryError) throw new Error('模拟 stable ID 查询失败')
             return options.userMetaExternalId == null
               ? null
               : ({ meta_external_id: options.userMetaExternalId } as T)
@@ -449,6 +456,7 @@ describe('conversion ledger service', () => {
     metaHashMocks.email.mockClear()
     metaHashMocks.externalId.mockClear()
     metaCryptoMocks.encrypt.mockClear()
+    metaCryptoMocks.loadKeys.mockClear()
   })
 
   it('联系与注册入口使用独立输入契约', () => {
@@ -1243,6 +1251,132 @@ describe('conversion ledger service', () => {
       rolloutEffectivePercentage: 0,
       rolloutBucket: null,
     })
+  })
+
+  it('stable ID 查询异常时保留注册事实与 Pixel，并 fail closed 跳过 CAPI', async () => {
+    const db = createConversionDb({
+      facebookPixelEnabled: true,
+      facebookPixelId: '1234567890',
+      metaCapiEnabled: true,
+      metaTrackingMode: 'test',
+      metaCapiRolloutPercentage: 100,
+      stableIdQueryError: true,
+    })
+    const browserProvider = vi.fn(async () => ({ fbp: 'fb.1.must-not-read' }))
+    const sensitiveProvider = vi.fn(async () => ({
+      email: 'must-not-hash@example.test',
+      metaExternalId: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    }))
+
+    const result = await recordRegistration(envFor(db), {
+      visitorId: '',
+      sessionId: 'session_registration_stable_query_error',
+      userId: 42,
+      occurredAt: '2026-07-11T08:00:00.000Z',
+      consentState: 'granted',
+      metadata: {},
+    }, {
+      getMetaCapiUserData: browserProvider,
+      getRegistrationSensitiveInput: sensitiveProvider,
+    })
+
+    expect(result.created).toBe(true)
+    expect(result.pixelEvents).toHaveLength(1)
+    expect(db.insertedConversions).toHaveLength(1)
+    expect(browserProvider).not.toHaveBeenCalled()
+    expect(sensitiveProvider).not.toHaveBeenCalled()
+    expect(metaHashMocks.email).not.toHaveBeenCalled()
+    expect(metaHashMocks.externalId).not.toHaveBeenCalled()
+    expect(metaCryptoMocks.loadKeys).not.toHaveBeenCalled()
+    expect(metaCryptoMocks.encrypt).not.toHaveBeenCalled()
+    expect(db.insertedOutboxes).toEqual([])
+    expect(db.insertedDeliveries.find(item => item.channel === 'meta_capi')).toMatchObject({
+      status: 'skipped',
+      skipReason: 'rollout_excluded',
+      rolloutTargetPercentage: 0,
+      rolloutEffectivePercentage: 0,
+      rolloutBucket: null,
+    })
+  })
+
+  it('critical incident 查询异常时保留联系事实与 Pixel，并 fail closed 跳过 CAPI', async () => {
+    const db = createConversionDb({
+      facebookPixelEnabled: true,
+      facebookPixelId: '1234567890',
+      metaCapiEnabled: true,
+      metaTrackingMode: 'test',
+      metaCapiRolloutPercentage: 100,
+      incidentQueryError: true,
+    })
+    const browserProvider = vi.fn(async () => ({ fbp: 'fb.1.must-not-read' }))
+
+    const result = await recordContact(
+      envFor(db),
+      { ...grantedContactInput(), visitorId: 'visitor_incident_query_error' },
+      { getMetaCapiUserData: browserProvider },
+    )
+
+    expect(result.created).toBe(true)
+    expect(result.pixelEvents).toHaveLength(1)
+    expect(db.insertedConversions).toHaveLength(1)
+    expect(browserProvider).not.toHaveBeenCalled()
+    expect(metaCryptoMocks.loadKeys).not.toHaveBeenCalled()
+    expect(metaCryptoMocks.encrypt).not.toHaveBeenCalled()
+    expect(db.insertedOutboxes).toEqual([])
+    expect(db.insertedDeliveries.find(item => item.channel === 'meta_capi')).toMatchObject({
+      status: 'skipped',
+      skipReason: 'rollout_excluded',
+      rolloutTargetPercentage: 0,
+      rolloutEffectivePercentage: 0,
+      rolloutBucket: null,
+    })
+  })
+
+  it('rollout digest 异常时保留联系事实与 Pixel，并 fail closed 跳过 CAPI', async () => {
+    const db = createConversionDb({
+      facebookPixelEnabled: true,
+      facebookPixelId: '1234567890',
+      metaCapiEnabled: true,
+      metaTrackingMode: 'test',
+      metaCapiRolloutPercentage: 100,
+    })
+    const browserProvider = vi.fn(async () => ({ fbp: 'fb.1.must-not-read' }))
+    const originalDigest = crypto.subtle.digest.bind(crypto.subtle)
+    const digestSpy = vi.spyOn(crypto.subtle, 'digest').mockImplementation((algorithm, data) => {
+      const bytes = data instanceof ArrayBuffer
+        ? new Uint8Array(data)
+        : new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+      if (new TextDecoder().decode(bytes).startsWith('meta-capi-rollout-v1\n')) {
+        return Promise.reject(new Error('模拟 rollout digest 失败'))
+      }
+      return originalDigest(algorithm, data)
+    })
+
+    try {
+      const result = await recordContact(
+        envFor(db),
+        { ...grantedContactInput(), visitorId: 'visitor_digest_error' },
+        { getMetaCapiUserData: browserProvider },
+      )
+
+      expect(result.created).toBe(true)
+      expect(result.pixelEvents).toHaveLength(1)
+      expect(db.insertedConversions).toHaveLength(1)
+      expect(browserProvider).not.toHaveBeenCalled()
+      expect(metaCryptoMocks.loadKeys).not.toHaveBeenCalled()
+      expect(metaCryptoMocks.encrypt).not.toHaveBeenCalled()
+      expect(db.insertedOutboxes).toEqual([])
+      expect(db.insertedDeliveries.find(item => item.channel === 'meta_capi')).toMatchObject({
+        status: 'skipped',
+        skipReason: 'rollout_excluded',
+        rolloutTargetPercentage: 0,
+        rolloutEffectivePercentage: 0,
+        rolloutBucket: null,
+      })
+    }
+    finally {
+      digestSpy.mockRestore()
+    }
   })
 
   it('Contact 仅使用 visitorId，不使用 userId 或用户 external ID 回退', async () => {

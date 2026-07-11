@@ -703,7 +703,7 @@ adminAttributionRoutes.post('/meta/rollout', async (c) => {
 
   const body = await readRolloutRequest(c)
   if (body instanceof Response) return body
-  const snapshot = await readMetaRolloutSnapshot(c, body.percentage)
+  const snapshot = await readMetaRolloutSnapshot(c, body.percentage, body.force)
   const current = snapshot.targetPercentage
   if (body.percentage === current) {
     return c.json({ data: { ...serializeMetaRolloutSnapshot(snapshot), changed: false } })
@@ -857,6 +857,7 @@ type MetaRolloutSnapshot = {
 async function readMetaRolloutSnapshot(
   c: AdminAttributionContext,
   requestedPercentage?: MetaCapiRolloutPercentage,
+  force = false,
 ): Promise<MetaRolloutSnapshot> {
   const targetRow = await c.env.DB.prepare(`
     SELECT value
@@ -881,8 +882,10 @@ async function readMetaRolloutSnapshot(
   const hardBlockers: string[] = []
   if (to > targetPercentage) {
     if (!connectionVerified) hardBlockers.push('connection_unverified')
-    if (!releaseCommit) hardBlockers.push('release_commit_invalid')
-    else if (!liveEvidencePresent) hardBlockers.push('meta_live_verification_missing')
+    if ((targetPercentage === 0 && to === 10) || force) {
+      if (!releaseCommit) hardBlockers.push('release_commit_invalid')
+      else if (!liveEvidencePresent) hardBlockers.push('meta_live_verification_missing')
+    }
     if (openIncident) hardBlockers.push('circuit_open')
     if (evaluation.blockers.includes('non_adjacent_promotion')) {
       hardBlockers.push('non_adjacent_promotion')

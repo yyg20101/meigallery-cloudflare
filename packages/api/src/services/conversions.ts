@@ -841,13 +841,25 @@ async function buildCapiEncryptionPlan(
     return { state: 'skipped', reason: 'connection_unverified', rollout: null }
   }
 
-  const stableId = await readMetaCapiStableId(env.DB, input)
-  const circuitOpen = await hasOpenCriticalMetaCapiIncident(env.DB, env.APP_ENV)
-  const rollout = await decideMetaCapiRollout({
-    targetPercentage: settings.rolloutPercentage,
-    stableId,
-    circuitOpen,
-  })
+  let rollout: MetaCapiRolloutDecision
+  try {
+    const stableId = await readMetaCapiStableId(env.DB, input)
+    const circuitOpen = await hasOpenCriticalMetaCapiIncident(env.DB, env.APP_ENV)
+    rollout = await decideMetaCapiRollout({
+      targetPercentage: settings.rolloutPercentage,
+      stableId,
+      circuitOpen,
+    })
+  }
+  catch {
+    rollout = {
+      targetPercentage: 0,
+      effectivePercentage: 0,
+      bucket: null,
+      included: false,
+      reason: 'rollout_excluded',
+    }
+  }
   if (!rollout.included) {
     return {
       state: 'skipped',

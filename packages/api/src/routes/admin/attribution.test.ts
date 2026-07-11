@@ -1722,6 +1722,72 @@ describe('后台归因中心 API', () => {
     expect(db.batchCount).toBe(0)
   })
 
+  it.each([
+    [10, 50],
+    [50, 100],
+  ] as const)('普通 %i -> %i 不因 dev meta_live 缺失被阻止', async (target, percentage) => {
+    const { db, res, body } = await requestRollout('owner', {
+      target,
+      liveEvidence: false,
+    }, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ percentage, force: false }),
+    })
+
+    expect(res.status).toBe(200)
+    expect(body.data).toMatchObject({
+      targetPercentage: percentage,
+      effectivePercentage: percentage,
+      liveEvidencePresent: false,
+      changed: true,
+    })
+    expect(db.target).toBe(percentage)
+  })
+
+  it.each([
+    ['meta_live_verification_missing', { liveEvidence: false }, {}],
+    ['release_commit_invalid', {}, { RELEASE_COMMIT: 'invalid' }],
+  ] as const)('force 升级仍要求当前 commit 的 dev meta_live 门禁：%s', async (
+    blocker,
+    dbOptions,
+    envOverrides,
+  ) => {
+    const reason = '当前指标已有人工复核确认风险受控并持续观察运行状态'
+    const { db, res, body } = await requestRollout('owner', {
+      target: 10,
+      sent: 9,
+      ...dbOptions,
+    }, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ percentage: 50, force: true, reason }),
+    }, envOverrides)
+
+    expect(res.status).toBe(409)
+    expect(body.code).toBe('META_CAPI_ROLLOUT_PROMOTION_BLOCKED')
+    expect(body.detail.blockers).toContain(blocker)
+    expect(db.batchCount).toBe(0)
+  })
+
+  it('GET 暴露证据缺失状态，但普通 10 -> 50 晋级检查不把它列为 blocker', async () => {
+    const { res, body } = await requestRollout('admin', {
+      target: 10,
+      liveEvidence: false,
+    })
+
+    expect(res.status).toBe(200)
+    expect(body.data).toMatchObject({
+      liveEvidencePresent: false,
+      promotion: {
+        from: 10,
+        to: 50,
+        allowed: true,
+        hardBlockers: [],
+      },
+    })
+  })
+
   it('指标不达标时 force 需要至少 20 个汉字，合格后以同一 batch 更新与审计', async () => {
     const short = await requestRollout('owner', { target: 10, sent: 9 }, {
       method: 'POST',
