@@ -28,6 +28,27 @@ function createDb(rows: unknown[], firstRow: unknown = null) {
 }
 
 describe('公开联系方式 API', () => {
+  it('二维码地址始终为公开相对路径，不泄漏 Service Binding origin', async () => {
+    const app = createApp()
+    const env = {
+      DB: createDb([{
+        id: 'contact-1',
+        platform: 'telegram',
+        label: 'Telegram',
+        value: '@meigallery',
+        link_url: null,
+        qr_code_key: 'qrcodes/contact-1.png',
+        sort_order: 0,
+      }]),
+    } as unknown as Bindings
+
+    const res = await app.request('https://api.internal/api/contact-methods', {}, env)
+    const body = await res.json()
+
+    expect(body.data[0].qrCodeUrl).toBe('/api/contact-methods/contact-1/qrcode')
+    expect(JSON.stringify(body)).not.toContain('api.internal')
+  })
+
   it('丢弃历史危险 link_url 并回退到平台自动链接', async () => {
     const app = createApp()
     const env = {

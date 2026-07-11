@@ -42,6 +42,32 @@ function createDb(handlers: {
 }
 
 describe('后台联系方式 API', () => {
+  it('后台列表也只返回公开相对二维码路径', async () => {
+    const app = createApp()
+    const env = {
+      DB: createDb({
+        all: () => [{
+          id: 'contact-1',
+          platform: 'telegram',
+          label: 'Telegram',
+          value: '@meigallery',
+          link_url: null,
+          qr_code_key: 'qrcodes/contact-1.png',
+          sort_order: 0,
+          enabled: 1,
+          created_at: '2026-05-01T00:00:00Z',
+          updated_at: '2026-05-01T00:00:00Z',
+        }],
+      }),
+    } as unknown as Bindings
+
+    const res = await app.request('https://api.internal/api/admin/contact-methods', {}, env)
+    const body = await res.json()
+
+    expect(body.data[0].qrCodeUrl).toBe('/api/contact-methods/contact-1/qrcode')
+    expect(JSON.stringify(body)).not.toContain('api.internal')
+  })
+
   it('创建联系方式时归一化安全跳转链接并写审计日志', async () => {
     const executed: Array<{ sql: string; params: unknown[] }> = []
     const app = createApp()

@@ -692,17 +692,37 @@ test.describe('核心页面 smoke', () => {
     await page.getByPlaceholder('再次输入密码').fill('Password123')
     await page.getByRole('button', { name: '注册' }).click()
     await expect(page).toHaveURL('/')
+
+    const registrationPayload = await (await request.get(`${apiURL}/api/test/analytics-events`)).json()
+    expect(registrationPayload.receiptProtectedRequests).toEqual(expect.arrayContaining([
+      expect.objectContaining({ endpoint: '/api/conversions/events', cookie: expect.stringContaining('mei_marketing_consent_receipt=mock-granted') }),
+      expect.objectContaining({ endpoint: '/api/auth/register', cookie: expect.stringContaining('mei_marketing_consent_receipt=mock-granted') }),
+    ]))
+
+    await request.post(`${apiURL}/api/test/receipt-protected-requests/clear`)
     await page.reload()
     await page.waitForLoadState('networkidle')
 
-    const payload = await (await request.get(`${apiURL}/api/test/analytics-events`)).json()
-    expect(payload.receiptProtectedRequests).toEqual(expect.arrayContaining([
-      expect.objectContaining({ endpoint: '/api/conversions/events', cookie: expect.stringContaining('mei_marketing_consent_receipt=mock-granted') }),
-      expect.objectContaining({ endpoint: '/api/auth/register', cookie: expect.stringContaining('mei_marketing_consent_receipt=mock-granted') }),
-      expect.objectContaining({ endpoint: '/api/me', cookie: expect.stringContaining('mei_session=mock-session') }),
-    ]))
+    const reloadPayload = await (await request.get(`${apiURL}/api/test/analytics-events`)).json()
+    const reloadSessionRequests = reloadPayload.receiptProtectedRequests.filter((item: { endpoint?: string }) => item.endpoint === '/api/me')
+    expect(reloadSessionRequests.length).toBeGreaterThan(0)
+    expect(reloadSessionRequests.every((item: { cookie?: string }) => item.cookie?.includes('mei_session=mock-session'))).toBe(true)
     expect(protectedRequestUrls.length).toBeGreaterThanOrEqual(5)
     expect(protectedRequestUrls.every(url => new URL(url).origin === new URL(page.url()).origin)).toBe(true)
     expect(protectedRequestUrls.some(url => url.includes('meigallery-api-dev.wajie.workers.dev'))).toBe(false)
+  })
+
+  test('Web 同源代理完整保留 multipart 二进制字节', async ({ page }) => {
+    await page.goto('/')
+    const result = await page.evaluate(async () => {
+      const marker = new Uint8Array([0x00, 0xff, 0xfe, 0x80, 0x41, 0x42, 0x43])
+      const body = new FormData()
+      body.append('file', new Blob([marker], { type: 'application/octet-stream' }), 'binary.dat')
+      const response = await fetch('/api/test/binary-upload', { method: 'POST', body, credentials: 'include' })
+      return response.json() as Promise<{ preserved: boolean; bytes: number }>
+    })
+
+    expect(result.preserved).toBe(true)
+    expect(result.bytes).toBeGreaterThan(7)
   })
 })

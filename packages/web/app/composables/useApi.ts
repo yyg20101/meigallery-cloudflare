@@ -64,6 +64,7 @@ export function useApi() {
     const event = useRequestEvent()
     const apiBinding = (event?.context as Record<string, any>)?.cloudflare?.env?.API_SERVICE
     const isTestEnvironment = config.public.appEnv === 'test'
+    const requestHeaders = useRequestHeaders(['cookie'])
 
     if (apiBinding && !isTestEnvironment) {
       // Cloudflare Workers 环境：Service Binding 直连（域名仅占位，路由取决于路径）
@@ -77,9 +78,8 @@ export function useApi() {
         init.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body)
       }
       // 转发原始请求的 cookie（用于认证场景）
-      const reqHeaders = useRequestHeaders(['cookie'])
-      if (reqHeaders.cookie) {
-        (init as any).headers = { ...(init.headers as Record<string, string> || {}), cookie: reqHeaders.cookie }
+      if (requestHeaders.cookie) {
+        (init as any).headers = { ...(init.headers as Record<string, string> || {}), cookie: requestHeaders.cookie }
       }
 
       const response = await apiBinding.fetch(`https://api.internal${fullPath}`, init)
@@ -107,6 +107,9 @@ export function useApi() {
     } else if (options?.body) {
       fetchOpts.headers = { 'Content-Type': 'application/json' }
       fetchOpts.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body)
+    }
+    if (requestHeaders.cookie) {
+      fetchOpts.headers = { ...(fetchOpts.headers as Record<string, string> || {}), cookie: requestHeaders.cookie }
     }
     return $fetch<T>(`${apiBaseUrl}${fullPath}`, fetchOpts as any)
   }

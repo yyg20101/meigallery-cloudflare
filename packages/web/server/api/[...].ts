@@ -34,9 +34,10 @@ export default defineEventHandler(async (event) => {
   const forwardHeaders = filterApiProxyRequestHeaders(getRequestHeaders(event))
 
   // 读取请求体（仅 POST/PUT/PATCH/DELETE）
-  let body: string | undefined
+  let body: BodyInit | undefined
   if (!['GET', 'HEAD'].includes(method)) {
-    body = (await readRawBody(event)) ?? undefined
+    const rawBody = await readRawBody(event, false)
+    body = rawBody ? new Uint8Array(rawBody).buffer : undefined
   }
 
   let response: Response

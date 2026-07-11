@@ -152,6 +152,7 @@ const sessionEndBatches = []
 const registrations = []
 const receiptProtectedRequests = []
 let authenticated = true
+let sessionCookieRequired = false
 let marketingConsentState = 'granted'
 let adminAnalyticsEmpty = false
 let adminAttributionReadinessBlocked = true
@@ -174,6 +175,7 @@ function resetPublicSettings() {
   registrations.length = 0
   receiptProtectedRequests.length = 0
   authenticated = true
+  sessionCookieRequired = false
   marketingConsentState = 'granted'
   adminAnalyticsEmpty = false
   adminAttributionReadinessBlocked = true
@@ -215,11 +217,15 @@ function adminSettings() {
 }
 
 async function readJsonBody(req) {
-  const chunks = []
-  for await (const chunk of req) chunks.push(chunk)
-  const raw = Buffer.concat(chunks).toString('utf8')
+  const raw = (await readRawBodyBuffer(req)).toString('utf8')
   if (!raw) return {}
   return JSON.parse(raw)
+}
+
+async function readRawBodyBuffer(req) {
+  const chunks = []
+  for await (const chunk of req) chunks.push(chunk)
+  return Buffer.concat(chunks)
 }
 
 function galleryDetail(slug) {
@@ -801,6 +807,19 @@ function handleApi(req, res) {
       events: analyticsBatches.flatMap(batch => Array.isArray(batch.events) ? batch.events : []),
     })
   }
+  if (url.pathname === '/api/test/receipt-protected-requests/clear' && req.method === 'POST') {
+    receiptProtectedRequests.length = 0
+    return json(res, { ok: true })
+  }
+  if (url.pathname === '/api/test/binary-upload' && req.method === 'POST') {
+    readRawBodyBuffer(req)
+      .then((body) => {
+        const marker = Buffer.from([0x00, 0xff, 0xfe, 0x80, 0x41, 0x42, 0x43])
+        json(res, { preserved: body.includes(marker), bytes: body.length })
+      })
+      .catch(() => json(res, { statusCode: 400, message: '二进制上传读取失败' }, 400))
+    return
+  }
   if (url.pathname === '/api/test/auth' && req.method === 'PATCH') {
     readJsonBody(req)
       .then((body) => {
@@ -840,7 +859,8 @@ function handleApi(req, res) {
   }
   if (url.pathname === '/api/me') {
     receiptProtectedRequests.push({ endpoint: '/api/me', cookie: req.headers.cookie || '' })
-    return authenticated
+    const hasRequiredSession = !sessionCookieRequired || String(req.headers.cookie || '').includes('mei_session=mock-session')
+    return authenticated && hasRequiredSession
       ? json(res, user)
       : json(res, { statusCode: 401, message: '未登录', code: 'AUTH_REQUIRED' }, 401)
   }
@@ -885,6 +905,7 @@ function handleApi(req, res) {
         receiptProtectedRequests.push({ endpoint: '/api/auth/register', cookie: req.headers.cookie || '' })
         registrations.push(body)
         authenticated = true
+        sessionCookieRequired = true
         json(res, {
           ...user,
           id: 22,
