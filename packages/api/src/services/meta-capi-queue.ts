@@ -1,6 +1,10 @@
 import type { MetaCapiQueueMessage } from '@meigallery/shared'
 import type { Bindings } from '../index'
-import { decryptMetaCapiContext, loadMetaCapiCryptoKeys } from '../utils/meta-capi-crypto'
+import {
+  decryptMetaCapiContext,
+  loadMetaCapiCryptoKeys,
+  MetaCapiCryptoError,
+} from '../utils/meta-capi-crypto'
 import {
   MetaCapiDeliveryError,
   isRetryableMetaCapiErrorCode,
@@ -254,9 +258,9 @@ async function consumeSecureMessage(
           tag: body.envelope.tag,
         },
       })
-    } catch {
-      if (hasMatchingCryptoKey(keys, body.envelope.keyId)
-        && isAesGcmEnvelopeCandidate(body.envelope)) {
+    } catch (error) {
+      if (error instanceof MetaCapiCryptoError
+        && error.code === 'META_CAPI_AUTHENTICATION_FAILED') {
         await openMetaCapiIncidentSafely(
           env,
           createMetaIncidentTrigger('secure_context_decryption_failed'),
@@ -460,33 +464,6 @@ function safeDeliveryId(value: unknown) {
   return typeof value === 'string' && value.length <= 96 && INTERNAL_DELIVERY_ID_PATTERN.test(value)
     ? value
     : ''
-}
-
-function isAesGcmEnvelopeCandidate(envelope: MetaCapiQueueMessage['envelope']) {
-  return /^[0-9a-f]{16}$/.test(envelope.keyId)
-    && base64UrlByteLength(envelope.iv) === 12
-    && base64UrlByteLength(envelope.tag) === 16
-    && base64UrlByteLength(envelope.ciphertext) > 0
-}
-
-function hasMatchingCryptoKey(
-  keys: Awaited<ReturnType<typeof loadMetaCapiCryptoKeys>>,
-  keyId: string,
-) {
-  return keys.current.id === keyId || keys.previous?.id === keyId
-}
-
-function base64UrlByteLength(value: string) {
-  if (!/^[A-Za-z0-9_-]+$/.test(value) || value.length % 4 === 1) return -1
-  try {
-    const standard = value.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - value.length % 4) % 4)
-    const decoded = atob(standard)
-    const canonical = btoa(decoded).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
-    return canonical === value ? decoded.length : -1
-  }
-  catch {
-    return -1
-  }
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {

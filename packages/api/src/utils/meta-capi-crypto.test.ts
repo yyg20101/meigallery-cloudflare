@@ -3,6 +3,7 @@ import {
   decryptMetaCapiContext,
   encryptMetaCapiContext,
   loadMetaCapiCryptoKeys,
+  MetaCapiCryptoError,
   metaConnectionFingerprint,
   type MetaCapiCryptoKeys,
   type MetaCapiEncryptedEnvelope,
@@ -135,7 +136,7 @@ describe('Meta CAPI Web Crypto', () => {
         aad: AAD,
         value,
       }))
-      expect(error, label).toMatchObject({ name: 'Error', message: 'META_CAPI_CONTEXT_INVALID' })
+      expect(error, label).toMatchObject({ name: 'MetaCapiCryptoError', message: 'META_CAPI_CONTEXT_INVALID' })
       expect(contextInspected, label).toBe(false)
     }
   })
@@ -182,7 +183,7 @@ describe('Meta CAPI Web Crypto', () => {
     const keys = await loadMetaCapiCryptoKeys({ META_CAPI_DATA_KEY_CURRENT: CURRENT_KEY_BASE64 })
     const envelope = await encryptMetaCapiContext({ keys, aad: AAD, value: SENSITIVE_CONTEXT })
     await expect(decryptMetaCapiContext({ keys, aad: changedAad, envelope }))
-      .rejects.toThrow('META_CAPI_CONTEXT_INVALID')
+      .rejects.toMatchObject({ code: 'META_CAPI_AUTHENTICATION_FAILED' })
   })
 
   it.each(['ciphertext', 'tag'] as const)('修改 %s 后认证解密失败', async (field) => {
@@ -190,7 +191,7 @@ describe('Meta CAPI Web Crypto', () => {
     const envelope = await encryptMetaCapiContext({ keys, aad: AAD, value: SENSITIVE_CONTEXT })
     const changed = { ...envelope, [field]: mutateBase64Url(envelope[field]) }
     await expect(decryptMetaCapiContext({ keys, aad: AAD, envelope: changed }))
-      .rejects.toThrow('META_CAPI_CONTEXT_INVALID')
+      .rejects.toMatchObject({ code: 'META_CAPI_AUTHENTICATION_FAILED' })
   })
 
   it('current/previous 轮换窗口均可解密，未知 key ID 拒绝', async () => {
@@ -297,7 +298,7 @@ describe('Meta CAPI Web Crypto', () => {
       accessToken: 'must-not-pass',
     })
     await expect(decryptMetaCapiContext({ keys, aad: AAD, envelope: unknownFieldEnvelope }))
-      .rejects.toThrow('META_CAPI_CONTEXT_INVALID')
+      .rejects.toMatchObject({ code: 'META_CAPI_PAYLOAD_INVALID' })
 
     const malformedJsonEnvelope = await encryptRawPlaintext(keys, AAD, '{"fbp":')
     const malformedError = await captureError(() => decryptMetaCapiContext({
@@ -305,8 +306,38 @@ describe('Meta CAPI Web Crypto', () => {
       aad: AAD,
       envelope: malformedJsonEnvelope,
     }))
-    expect(malformedError).toMatchObject({ name: 'Error', message: 'META_CAPI_CONTEXT_INVALID' })
+    expect(malformedError).toMatchObject({
+      name: 'MetaCapiCryptoError',
+      message: 'META_CAPI_PAYLOAD_INVALID',
+      code: 'META_CAPI_PAYLOAD_INVALID',
+    })
     expect(malformedError).not.toHaveProperty('cause')
+  })
+
+  it('真实 Web Crypto 认证失败返回 typed authentication failure', async () => {
+    const keys = await loadMetaCapiCryptoKeys({ META_CAPI_DATA_KEY_CURRENT: CURRENT_KEY_BASE64 })
+    const envelope = await encryptMetaCapiContext({ keys, aad: AAD, value: SENSITIVE_CONTEXT })
+    const error = await captureError(() => decryptMetaCapiContext({
+      keys,
+      aad: AAD,
+      envelope: { ...envelope, tag: mutateBase64Url(envelope.tag) },
+    }))
+
+    expect(error).toBeInstanceOf(MetaCapiCryptoError)
+    expect(error).toMatchObject({ code: 'META_CAPI_AUTHENTICATION_FAILED' })
+  })
+
+  it.each([
+    ['非法 UTF-8', new Uint8Array([0xff, 0xfe, 0xfd])],
+    ['非法 JSON', new TextEncoder().encode('{"fbp":')],
+    ['非法 context', new TextEncoder().encode('{"payload":"secret"}')],
+  ])('真实 Web Crypto 解密成功后的%s返回 typed payload invalid', async (_label, plaintext) => {
+    const keys = await loadMetaCapiCryptoKeys({ META_CAPI_DATA_KEY_CURRENT: CURRENT_KEY_BASE64 })
+    const envelope = await encryptRawBytes(keys, AAD, plaintext)
+    const error = await captureError(() => decryptMetaCapiContext({ keys, aad: AAD, envelope }))
+
+    expect(error).toBeInstanceOf(MetaCapiCryptoError)
+    expect(error).toMatchObject({ code: 'META_CAPI_PAYLOAD_INVALID' })
   })
 
   it('connection fingerprint 固定使用 token 作为 HMAC key 和指定 message', async () => {
@@ -378,6 +409,14 @@ async function encryptRawPlaintext(
   aad: MetaCapiEnvelopeAad,
   plaintext: string,
 ): Promise<MetaCapiEncryptedEnvelope> {
+  return encryptRawBytes(keys, aad, new TextEncoder().encode(plaintext))
+}
+
+async function encryptRawBytes(
+  keys: MetaCapiCryptoKeys,
+  aad: MetaCapiEnvelopeAad,
+  plaintext: Uint8Array,
+): Promise<MetaCapiEncryptedEnvelope> {
   const iv = crypto.getRandomValues(new Uint8Array(12))
   const additionalData = new TextEncoder().encode(JSON.stringify({
     schemaVersion: 2,
@@ -390,7 +429,7 @@ async function encryptRawPlaintext(
     iv,
     additionalData,
     tagLength: 128,
-  }, keys.current.key, new TextEncoder().encode(plaintext)))
+  }, keys.current.key, plaintext))
   return {
     schemaVersion: 2,
     keyId: keys.current.id,

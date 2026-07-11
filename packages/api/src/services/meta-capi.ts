@@ -266,6 +266,11 @@ export async function sendMetaCapiEvent(
   }
 
   const errorCode = `meta_http_${response.status}`
+  if (response.status === 401 || response.status === 403) {
+    await openMetaCapiIncidentSafely(env, createMetaIncidentTrigger('meta_permission_denied', {
+      failedCount: 1,
+    }))
+  }
   const persisted = await confirmDeliveryTransition(env.DB, delivery, {
     status: 'failed',
     errorCode,
@@ -273,12 +278,6 @@ export async function sendMetaCapiEvent(
   })
   const competingSent = await recordCompetingSent(env.DB, persisted, deliveryId)
   if (competingSent) return competingSent
-  if (response.status === 401 || response.status === 403) {
-    await openMetaCapiIncidentSafely(env, createMetaIncidentTrigger('meta_permission_denied', {
-      failedCount: 1,
-      errorCategory: 'permission_denied',
-    }))
-  }
   if (classifyMetaCapiError(response.status) === 'retryable') {
     throw new MetaCapiDeliveryError(errorCode, META_CAPI_ERROR_MESSAGE, true)
   }

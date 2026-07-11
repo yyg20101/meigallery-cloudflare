@@ -295,6 +295,47 @@ async function encryptedMessage(
   return { schemaVersion: 2, deliveryId: db.delivery.id, envelope } satisfies MetaCapiQueueMessage
 }
 
+async function encryptedRawMessage(
+  db: ReturnType<typeof createQueueDb>,
+  plaintext: Uint8Array,
+) {
+  const keys = await loadMetaCapiCryptoKeys({ META_CAPI_DATA_KEY_CURRENT: CURRENT_KEY })
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const additionalData = new TextEncoder().encode(JSON.stringify({
+    schemaVersion: 2,
+    deliveryId: db.delivery.id,
+    externalEventId: db.delivery.external_event_id,
+    eventName: db.delivery.event_name,
+  }))
+  const sealed = new Uint8Array(await crypto.subtle.encrypt({
+    name: 'AES-GCM',
+    iv,
+    additionalData,
+    tagLength: 128,
+  }, keys.current.key, plaintext))
+  const envelope = {
+    keyId: keys.current.id,
+    iv: bytesToBase64Url(iv),
+    ciphertext: bytesToBase64Url(sealed.slice(0, -16)),
+    tag: bytesToBase64Url(sealed.slice(-16)),
+    expiresAt: EXPIRES_AT,
+  }
+  db.delivery.encryption_key_id = keys.current.id
+  db.outbox = {
+    delivery_id: db.delivery.id,
+    schema_version: 2,
+    expires_at: EXPIRES_AT,
+    ...envelope,
+  }
+  return { schemaVersion: 2, deliveryId: db.delivery.id, envelope } satisfies MetaCapiQueueMessage
+}
+
+function bytesToBase64Url(bytes: Uint8Array) {
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+}
+
 function queueMessage(body: MetaCapiQueueMessage, attempts = 1) {
   return { body, attempts, ack: vi.fn(), retry: vi.fn() }
 }
@@ -717,6 +758,20 @@ describe('Meta CAPI Queue V2', () => {
     const incident = db.calls.find(call => call.sql.includes('INSERT OR IGNORE INTO meta_capi_incidents'))
     expect(incident?.params).toContain('secure_context_decryption_failed')
     expect(JSON.stringify(incident)).not.toContain(body.envelope.ciphertext)
+  })
+
+  it('AES-GCM 解密成功但 payload 非法时保留 delivery failure，且不得打开解密 incident', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-11T12:00:00.000Z'))
+    const db = createQueueDb()
+    const body = await encryptedRawMessage(db, new TextEncoder().encode('{"payload":"secret"}'))
+    const message = queueMessage(body)
+
+    await handleMetaCapiBatch(batch(message), env(db))
+
+    expect(db.delivery).toMatchObject({ status: 'failed', error_code: 'secure_context_invalid' })
+    expect(message.ack).toHaveBeenCalledOnce()
+    expect(db.calls.some(call => call.sql.includes('INSERT OR IGNORE INTO meta_capi_incidents'))).toBe(false)
   })
 
   it('非终态但不可发送的 delivery 状态重试消息且保留密文', async () => {

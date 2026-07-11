@@ -3,9 +3,10 @@ import { loadMetaCapiCryptoKeys } from '../utils/meta-capi-crypto'
 import { generateId } from '../utils/db'
 import { parseStoredSettingValue } from '../utils/stored-setting-value'
 import {
-  validateMetaCapiIncidentEvidence,
-  type MetaCapiIncidentCategory,
+  META_CAPI_INCIDENT_DEFINITIONS,
+  sanitizeMetaCapiIncidentEvidence,
   type MetaCapiIncidentEvidence,
+  type MetaIncidentTriggerCode,
 } from './meta-capi-incident-evidence'
 import { normalizeMetaCapiRollout, type MetaCapiRolloutPercentage } from './meta-capi-rollout'
 
@@ -18,16 +19,7 @@ export interface MetaCircuitSnapshot {
   duplicateDeliveryGroups: number
 }
 
-export type MetaIncidentTriggerCode =
-  | 'permanent_failure_rate'
-  | 'retry_exhausted'
-  | 'stale_pending'
-  | 'duplicate_delivery'
-  | 'duplicate_suppressed_rate'
-  | 'connection_fingerprint_changed'
-  | 'meta_permission_denied'
-  | 'secure_context_decryption_failed'
-  | 'dataset_pixel_mismatch'
+export type { MetaIncidentTriggerCode } from './meta-capi-incident-evidence'
 
 export interface MetaIncidentTrigger {
   code: MetaIncidentTriggerCode
@@ -62,65 +54,22 @@ type IncidentRow = {
   last_observed_at: string
 }
 
-type SnapshotRow = {
+type AttemptSnapshotRow = {
   total_attempt_count: number
   permanent_failure_count: number
   retry_exhausted_count: number
-  stale_pending_count: number
-  duplicate_suppressed_count: number
-  duplicate_delivery_group_count: number
 }
 
-const TRIGGER_DEFINITIONS: Record<MetaIncidentTriggerCode, {
-  severity: MetaIncidentTrigger['severity']
-  summary: string
-  category: MetaCapiIncidentCategory
-}> = {
-  permanent_failure_rate: {
-    severity: 'critical',
-    summary: 'Meta CAPI 永久失败率达到熔断阈值',
-    category: 'client_error',
-  },
-  retry_exhausted: {
-    severity: 'critical',
-    summary: 'Meta CAPI 重试耗尽达到熔断阈值',
-    category: 'retry_exhausted',
-  },
-  stale_pending: {
-    severity: 'critical',
-    summary: 'Meta CAPI 陈旧待处理投递达到熔断阈值',
-    category: 'stale_pending',
-  },
-  duplicate_delivery: {
-    severity: 'critical',
-    summary: 'Meta CAPI 检测到重复有效投递',
-    category: 'duplicate_delivery',
-  },
-  duplicate_suppressed_rate: {
-    severity: 'warning',
-    summary: 'Meta CAPI 重复抑制比例达到告警阈值',
-    category: 'duplicate_suppressed',
-  },
-  connection_fingerprint_changed: {
-    severity: 'critical',
-    summary: 'MetaConnection 连接指纹已变化',
-    category: 'connection_changed',
-  },
-  meta_permission_denied: {
-    severity: 'critical',
-    summary: 'Meta CAPI 权限被拒绝',
-    category: 'permission_denied',
-  },
-  secure_context_decryption_failed: {
-    severity: 'critical',
-    summary: 'Meta CAPI 安全上下文解密失败',
-    category: 'decryption_failed',
-  },
-  dataset_pixel_mismatch: {
-    severity: 'critical',
-    summary: 'Meta Dataset 与已验证连接不一致',
-    category: 'dataset_mismatch',
-  },
+type PendingSnapshotRow = {
+  stale_pending_count: number
+}
+
+type DuplicateSnapshotRow = {
+  duplicate_suppressed_count: number
+}
+
+type DuplicateGroupSnapshotRow = {
+  duplicate_delivery_group_count: number
 }
 
 export class MetaCapiCircuitError extends Error {
@@ -141,14 +90,14 @@ export function createMetaIncidentTrigger(
   code: MetaIncidentTriggerCode,
   evidence: MetaCapiIncidentEvidence = {},
 ): MetaIncidentTrigger {
-  const definition = TRIGGER_DEFINITIONS[code]
+  const definition = META_CAPI_INCIDENT_DEFINITIONS[code]
   return {
     code,
     severity: definition.severity,
     summary: definition.summary,
-    evidence: validateMetaCapiIncidentEvidence({
+    evidence: sanitizeMetaCapiIncidentEvidence(code, {
       ...evidence,
-      errorCategory: evidence.errorCategory ?? definition.category,
+      errorCategory: definition.category,
     }),
   }
 }
@@ -202,15 +151,12 @@ export function evaluateDatasetPixelMismatch(): null {
 }
 
 export async function readMetaCircuitSnapshot(db: D1Database): Promise<MetaCircuitSnapshot> {
-  const row = await db.prepare(`
-    SELECT
-      COALESCE(SUM(CASE
-        WHEN status IN ('sent', 'failed')
-          AND datetime(last_attempt_at) >= datetime('now', '-15 minutes')
-        THEN 1 ELSE 0 END), 0) AS total_attempt_count,
+  const [attempts, pending, duplicates, duplicateGroups] = await Promise.all([
+    db.prepare(`
+      SELECT
+        COUNT(*) AS total_attempt_count,
       COALESCE(SUM(CASE
         WHEN status = 'failed'
-          AND datetime(last_attempt_at) >= datetime('now', '-15 minutes')
           AND (
             error_code IN ('meta_events_not_received', 'secure_context_invalid')
             OR (error_code GLOB 'meta_http_4[0-9][0-9]' AND error_code <> 'meta_http_429')
@@ -219,39 +165,49 @@ export async function readMetaCircuitSnapshot(db: D1Database): Promise<MetaCircu
       COALESCE(SUM(CASE
         WHEN status = 'failed'
           AND error_code = 'retry_exhausted'
-          AND datetime(last_attempt_at) >= datetime('now', '-15 minutes')
-        THEN 1 ELSE 0 END), 0) AS retry_exhausted_count,
-      COALESCE(SUM(CASE
-        WHEN status = 'pending'
-          AND datetime(created_at) >= datetime('now', '-15 minutes')
-          AND datetime(created_at) < datetime('now', '-10 minutes')
-        THEN 1 ELSE 0 END), 0) AS stale_pending_count,
-      COALESCE(SUM(CASE
-        WHEN duplicate_suppressed_at IS NOT NULL
-          AND datetime(duplicate_suppressed_at) >= datetime('now', '-15 minutes')
-        THEN 1 ELSE 0 END), 0) AS duplicate_suppressed_count,
-      (
-        SELECT COUNT(*)
-        FROM (
-          SELECT conversion_action_id, channel
-          FROM analytics_conversion_deliveries
-          WHERE channel = 'meta_capi'
-            AND datetime(created_at) >= datetime('now', '-15 minutes')
-          GROUP BY conversion_action_id, channel
-          HAVING COUNT(*) > 1
-        ) duplicate_delivery_groups
-      ) AS duplicate_delivery_group_count
-    FROM analytics_conversion_deliveries
-    WHERE channel = 'meta_capi'
-  `).first<SnapshotRow>()
+        THEN 1 ELSE 0 END), 0) AS retry_exhausted_count
+      FROM analytics_conversion_deliveries
+      WHERE channel = 'meta_capi'
+        AND status IN ('sent', 'failed')
+        AND last_attempt_at >= datetime('now', '-15 minutes')
+        AND last_attempt_at <= datetime('now')
+    `).first<AttemptSnapshotRow>(),
+    db.prepare(`
+      SELECT COUNT(*) AS stale_pending_count
+      FROM analytics_conversion_deliveries
+      WHERE channel = 'meta_capi'
+        AND status = 'pending'
+        AND created_at >= datetime('now', '-15 minutes')
+        AND created_at < datetime('now', '-10 minutes')
+    `).first<PendingSnapshotRow>(),
+    db.prepare(`
+      SELECT COUNT(*) AS duplicate_suppressed_count
+      FROM analytics_conversion_deliveries
+      WHERE channel = 'meta_capi'
+        AND duplicate_suppressed_at >= datetime('now', '-15 minutes')
+        AND duplicate_suppressed_at <= datetime('now')
+    `).first<DuplicateSnapshotRow>(),
+    db.prepare(`
+      SELECT COUNT(*) AS duplicate_delivery_group_count
+      FROM (
+        SELECT conversion_action_id
+        FROM analytics_conversion_deliveries
+        WHERE channel = 'meta_capi'
+          AND created_at >= datetime('now', '-15 minutes')
+          AND created_at <= datetime('now')
+        GROUP BY conversion_action_id
+        HAVING COUNT(*) > 1
+      ) duplicate_delivery_groups
+    `).first<DuplicateGroupSnapshotRow>(),
+  ])
 
   return normalizeSnapshot({
-    totalAttempts: count(row?.total_attempt_count),
-    permanentFailures: count(row?.permanent_failure_count),
-    retryExhausted: count(row?.retry_exhausted_count),
-    stalePending: count(row?.stale_pending_count),
-    duplicateSuppressed: count(row?.duplicate_suppressed_count),
-    duplicateDeliveryGroups: count(row?.duplicate_delivery_group_count),
+    totalAttempts: count(attempts?.total_attempt_count),
+    permanentFailures: count(attempts?.permanent_failure_count),
+    retryExhausted: count(attempts?.retry_exhausted_count),
+    stalePending: count(pending?.stale_pending_count),
+    duplicateSuppressed: count(duplicates?.duplicate_suppressed_count),
+    duplicateDeliveryGroups: count(duplicateGroups?.duplicate_delivery_group_count),
   })
 }
 
@@ -270,7 +226,7 @@ export async function openMetaCapiIncident(
   trigger: MetaIncidentTrigger,
 ): Promise<{ id: string; created: boolean }> {
   const environment = runtimeEnvironment(env.APP_ENV)
-  const definition = TRIGGER_DEFINITIONS[trigger.code]
+  const definition = META_CAPI_INCIDENT_DEFINITIONS[trigger.code]
   if (!definition
     || trigger.severity !== definition.severity
     || trigger.summary !== definition.summary) {
@@ -279,7 +235,7 @@ export async function openMetaCapiIncident(
   const observedAt = new Date().toISOString()
   const windowEnd = observedAt
   const windowStart = new Date(Date.parse(observedAt) - 15 * 60 * 1000).toISOString()
-  const evidence = JSON.stringify(validateMetaCapiIncidentEvidence({
+  const evidence = JSON.stringify(sanitizeMetaCapiIncidentEvidence(trigger.code, {
     ...trigger.evidence,
     windowStart,
     windowEnd,
@@ -320,6 +276,7 @@ export async function openMetaCapiIncident(
       AND trigger_code = ?
       AND status = 'open'
       AND id <> ?
+      AND last_observed_at < ?
   `).bind(
     definition.summary,
     targetPercentage,
@@ -330,6 +287,7 @@ export async function openMetaCapiIncident(
     environment,
     trigger.code,
     candidateId,
+    observedAt,
   )
   const results = await env.DB.batch([insert, update])
   const created = d1ChangedOnce(results[0])

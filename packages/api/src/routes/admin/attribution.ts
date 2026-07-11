@@ -23,7 +23,10 @@ import {
   closeMetaCapiIncident,
   MetaCapiCircuitError,
 } from '../../services/meta-capi-circuit-breaker'
-import { validateMetaCapiIncidentEvidence } from '../../services/meta-capi-incident-evidence'
+import {
+  metaCapiIncidentSummary,
+  sanitizeMetaCapiIncidentEvidence,
+} from '../../services/meta-capi-incident-evidence'
 
 export const adminAttributionRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -777,9 +780,13 @@ adminAttributionRoutes.post('/meta/incidents/:id/close', async (c) => {
   catch {
     value = null
   }
-  const resolution = value && typeof value === 'object' && !Array.isArray(value)
-    ? String((value as Record<string, unknown>).resolution ?? '')
-    : ''
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || typeof (value as Record<string, unknown>).resolution !== 'string') {
+    return errorJson(c, 400, 'resolution 必须为字符串', {
+      code: 'META_CAPI_INCIDENT_RESOLUTION_INVALID',
+    })
+  }
+  const resolution = (value as { resolution: string }).resolution
   try {
     await closeMetaCapiIncident(c.env, {
       incidentId: c.req.param('id'),
@@ -1311,7 +1318,11 @@ function metaConnectionErrorMessage(code: string) {
 function serializeMetaIncident(row: Row) {
   let evidence: Record<string, number | string> = {}
   try {
-    evidence = validateMetaCapiIncidentEvidence(JSON.parse(String(row.evidence || '{}')))
+    evidence = sanitizeMetaCapiIncidentEvidence(
+      row.trigger_code,
+      JSON.parse(String(row.evidence || '{}')),
+      'drop',
+    )
   }
   catch {
     evidence = {}
@@ -1322,7 +1333,7 @@ function serializeMetaIncident(row: Row) {
     status: String(row.status || ''),
     severity: String(row.severity || ''),
     triggerCode: String(row.trigger_code || ''),
-    triggerSummary: String(row.trigger_summary || ''),
+    triggerSummary: metaCapiIncidentSummary(row.trigger_code),
     targetPercentage: numberValue(row.target_rollout_percentage),
     effectivePercentage: numberValue(row.effective_rollout_percentage),
     evidence,

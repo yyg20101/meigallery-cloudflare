@@ -8,13 +8,13 @@ async function readMigration(name: string) {
 }
 
 describe('analytics migrations', () => {
-  it('migration 索引从 0001 到 0039 连续且编号唯一', async () => {
+  it('migration 索引从 0001 到 0040 连续且编号唯一', async () => {
     const names = (await readdir(MIGRATION_DIR))
       .filter(name => /^\d{4}_.+\.sql$/.test(name))
       .sort()
     const indexes = names.map(name => Number(name.slice(0, 4)))
 
-    expect(indexes).toEqual(Array.from({ length: 39 }, (_, index) => index + 1))
+    expect(indexes).toEqual(Array.from({ length: 40 }, (_, index) => index + 1))
     expect(new Set(indexes).size).toBe(indexes.length)
   })
 
@@ -209,5 +209,15 @@ describe('analytics migrations', () => {
     expect(sql).toContain('INSERT OR IGNORE INTO site_settings')
     expect(sql).not.toMatch(/DELETE\s+FROM\s+analytics_conversion_(actions|deliveries)/i)
     expect(sql).not.toMatch(/UPDATE\s+site_settings[\s\S]+meta_capi_rollout_percentage/i)
+  })
+
+  it('0040 为 CAPI 15 分钟熔断窗口建立覆盖时间索引', async () => {
+    const sql = await readMigration('0040_meta_capi_circuit_indexes.sql')
+    for (const index of [
+      'idx_meta_capi_delivery_attempt_window',
+      'idx_meta_capi_delivery_pending_window',
+      'idx_meta_capi_delivery_duplicate_window',
+      'idx_meta_capi_delivery_created_window',
+    ]) expect(sql).toContain(`CREATE INDEX ${index}`)
   })
 })

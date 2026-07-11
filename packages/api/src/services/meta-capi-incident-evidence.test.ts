@@ -1,123 +1,60 @@
 import { describe, expect, it } from 'vitest'
 import {
   META_CAPI_INCIDENT_CATEGORIES,
-  validateMetaCapiIncidentEvidence,
+  metaCapiIncidentSummary,
+  sanitizeMetaCapiIncidentEvidence,
 } from './meta-capi-incident-evidence'
 
-const EXPECTED_CATEGORIES = [
-  'rate_limited',
-  'client_error',
-  'authorization_failed',
-  'permission_denied',
-  'server_error',
-  'timeout',
-  'network_error',
-  'invalid_request',
-  'retry_exhausted',
-  'stale_pending',
-  'duplicate_delivery',
-  'duplicate_suppressed',
-  'decryption_failed',
-  'connection_changed',
-  'dataset_mismatch',
-  'collector_unavailable',
-  'collector_stale',
-  'unknown_error',
-] as const
-
-describe('Meta CAPI incident evidence validator', () => {
-  it('只接受脱敏计数、比率、稳定错误分类和 UTC 时间窗', () => {
+describe('Meta CAPI incident evidence sanitizer', () => {
+  it('按 trigger code 只接受逐字段显式 allowlist 与固定 category', () => {
     const evidence = {
-      failedCount: 12,
-      retry_rate: 0.25,
-      deliveryPercentage: 50,
-      errorCategory: 'rate_limited',
-      clientCategory: 'client_error',
-      authCategory: 'authorization_failed',
+      totalCount: 20,
+      failedCount: 2,
+      failedRate: 0.1,
+      errorCategory: 'client_error',
       windowStart: '2026-07-11T00:00:00.000Z',
-      window_end: '2026-07-11T00:15:00.000Z',
+      windowEnd: '2026-07-11T00:15:00.000Z',
+      observedAt: '2026-07-11T00:15:00.000Z',
     }
-
-    expect(validateMetaCapiIncidentEvidence(evidence)).toEqual(evidence)
-    expect(validateMetaCapiIncidentEvidence({})).toEqual({})
+    expect(sanitizeMetaCapiIncidentEvidence('permanent_failure_rate', evidence)).toEqual(evidence)
+    expect(() => sanitizeMetaCapiIncidentEvidence('meta_permission_denied', evidence)).toThrow(/evidence/i)
   })
 
-  it('集中导出明确 incident category allowlist', () => {
-    expect(META_CAPI_INCIDENT_CATEGORIES).toEqual(EXPECTED_CATEGORIES)
-    for (const category of EXPECTED_CATEGORIES) {
-      expect(validateMetaCapiIncidentEvidence({ errorCategory: category })).toEqual({
-        errorCategory: category,
+  it.each(['pixelCount', 'userCount', 'payloadCount', 'rawResponse', 'exceptionMessage'])(
+    'reject 模式拒绝未知或敏感字段 %s，drop 模式逐字段丢弃',
+    field => {
+      const evidence = { failedCount: 1, errorCategory: 'permission_denied', [field]: 9 }
+      expect(() => sanitizeMetaCapiIncidentEvidence('meta_permission_denied', evidence)).toThrow(/evidence/i)
+      expect(sanitizeMetaCapiIncidentEvidence('meta_permission_denied', evidence, 'drop')).toEqual({
+        failedCount: 1,
+        errorCategory: 'permission_denied',
       })
-    }
-  })
-
-  it.each([
-    'token_rotated',
-    'email_redacted',
-    'useragent_missing',
-    'some_stable_but_unknown_category',
-  ])('拒绝伪装或未知 incident category %s', (category) => {
-    expect(() => validateMetaCapiIncidentEvidence({ errorCategory: category })).toThrow(/evidence/i)
-  })
-
-  it.each([
-    ['access_token', 'redacted'],
-    ['secret', 'redacted'],
-    ['email', 'redacted'],
-    ['clientIp', 'redacted'],
-    ['ip', 'redacted'],
-    ['user_agent', 'redacted'],
-    ['authorization', 'redacted'],
-    ['authorizationCategory', 'redacted'],
-    ['credential', 'redacted'],
-    ['credentialCount', 1],
-    ['cookie', 'redacted'],
-    ['cookieCount', 1],
-    ['session', 'redacted'],
-    ['sessionCount', 1],
-    ['ipCount', 1],
-    ['fbp', 'redacted'],
-    ['fbc', 'redacted'],
-    ['externalEventId', 'redacted'],
-    ['payload_hash', 'redacted'],
-  ])('拒绝敏感键 %s', (key, item) => {
-    expect(() => validateMetaCapiIncidentEvidence({ [key]: item })).toThrow(/evidence/i)
-  })
-
-  it.each([
-    'token=EAAB-sensitive',
-    'owner@example.com',
-    '203.0.113.42',
-    '2001:db8::1',
-    'Mozilla/5.0 (Macintosh)',
-    'Agent/1.0',
-    'Browser',
-    'Browser/122.0',
-    'Client',
-    'Client/1.2',
-    'curl/8.7.1',
-    'okhttp/4.12.0',
-    'fb.1.1712345678.nondigit-value',
-    'meta:Contact:external-123',
-    'a'.repeat(64),
-    'Bearer secret-value',
-  ])('拒绝可能泄漏敏感信息的值', (value) => {
-    expect(() => validateMetaCapiIncidentEvidence({ errorCategory: value })).toThrow(/evidence/i)
-  })
+    },
+  )
 
   it.each([
     null,
     [],
     'not-an-object',
-    { rawResponse: 'permission denied' },
     { failedCount: -1 },
     { failedCount: 1.5 },
-    { retryRate: 1.1 },
-    { deliveryPercentage: 101 },
-    { errorCategory: 'Graph Error 400' },
+    { failedRate: 1.1 },
+    { errorCategory: 'server_error' },
     { windowStart: '2026-07-11 00:00:00' },
-    { nestedCount: { value: 1 } },
-  ])('拒绝非白名单或非法 evidence %#', (value) => {
-    expect(() => validateMetaCapiIncidentEvidence(value)).toThrow(/evidence/i)
+    { failedCount: { value: 1 } },
+  ])('拒绝非法 evidence %#', value => {
+    expect(() => sanitizeMetaCapiIncidentEvidence('meta_permission_denied', value)).toThrow(/evidence/i)
+  })
+
+  it('未知 trigger 不信任数据库 summary 或 evidence', () => {
+    expect(metaCapiIncidentSummary('future_trigger')).toBe('未知 Meta CAPI incident')
+    expect(sanitizeMetaCapiIncidentEvidence('future_trigger', { userCount: 1 }, 'drop')).toEqual({})
+    expect(() => sanitizeMetaCapiIncidentEvidence('future_trigger', {})).toThrow(/evidence/i)
+  })
+
+  it('保留集中定义的稳定 category 清单', () => {
+    expect(META_CAPI_INCIDENT_CATEGORIES).toContain('permission_denied')
+    expect(META_CAPI_INCIDENT_CATEGORIES).toContain('decryption_failed')
+    expect(META_CAPI_INCIDENT_CATEGORIES).not.toContain('Graph Error 400')
   })
 })

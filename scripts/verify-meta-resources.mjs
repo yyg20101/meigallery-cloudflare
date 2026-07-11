@@ -30,9 +30,10 @@ const REQUIRED_MIGRATIONS = [
   '0037_meta_connection_revision.sql',
   '0038_conversion_dedupe_claims.sql',
   '0039_meta_capi_v2_operations.sql',
+  '0040_meta_capi_circuit_indexes.sql',
 ]
 const SETTINGS_SQL = "SELECT key, value FROM site_settings WHERE key IN ('meta_capi_enabled', 'meta_tracking_mode', 'facebook_pixel_id') ORDER BY key"
-const MIGRATION_NAMES_SQL = "SELECT name FROM d1_migrations WHERE name IN ('0036_meta_capi_v2_secure_delivery.sql', '0037_meta_connection_revision.sql', '0038_conversion_dedupe_claims.sql', '0039_meta_capi_v2_operations.sql') ORDER BY name"
+const MIGRATION_NAMES_SQL = "SELECT name FROM d1_migrations WHERE name IN ('0036_meta_capi_v2_secure_delivery.sql', '0037_meta_connection_revision.sql', '0038_conversion_dedupe_claims.sql', '0039_meta_capi_v2_operations.sql', '0040_meta_capi_circuit_indexes.sql') ORDER BY name"
 
 function metaConnectionSql(environment) {
   return `SELECT environment, pixel_id, graph_api_version, verified_commit, verified_at, invalidated_at, invalidation_reason, revision FROM meta_connection_verifications WHERE environment = '${environment}' LIMIT 2`

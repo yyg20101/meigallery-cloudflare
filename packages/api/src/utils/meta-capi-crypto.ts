@@ -6,6 +6,8 @@ import type {
 
 const DATA_KEY_ERROR = 'META_CAPI_DATA_KEY_INVALID'
 const CONTEXT_ERROR = 'META_CAPI_CONTEXT_INVALID'
+const AUTHENTICATION_ERROR = 'META_CAPI_AUTHENTICATION_FAILED'
+const PAYLOAD_ERROR = 'META_CAPI_PAYLOAD_INVALID'
 const AES_KEY_BYTES = 32
 const AES_GCM_IV_BYTES = 12
 const AES_GCM_TAG_BYTES = 16
@@ -48,6 +50,21 @@ export interface MetaCapiEncryptedEnvelope extends Omit<SharedMetaCapiEncryptedE
 export interface MetaCapiCryptoKeys {
   current: { id: string; key: CryptoKey }
   previous?: { id: string; key: CryptoKey }
+}
+
+export type MetaCapiCryptoErrorCode =
+  | typeof CONTEXT_ERROR
+  | typeof AUTHENTICATION_ERROR
+  | typeof PAYLOAD_ERROR
+
+export class MetaCapiCryptoError extends Error {
+  readonly code: MetaCapiCryptoErrorCode
+
+  constructor(code: MetaCapiCryptoErrorCode) {
+    super(code)
+    this.name = 'MetaCapiCryptoError'
+    this.code = code
+  }
 }
 
 export async function loadMetaCapiCryptoKeys(env: {
@@ -103,26 +120,42 @@ export async function decryptMetaCapiContext(input: {
   aad: MetaCapiEnvelopeAad
   envelope: MetaCapiEncryptedEnvelope
 }): Promise<MetaCapiSensitiveContext> {
+  let additionalData: Uint8Array
+  let envelope: ReturnType<typeof validateEnvelope>
+  let selected: { id: string; key: CryptoKey }
   try {
-    const additionalData = encodeAad(input.aad)
-    const envelope = validateEnvelope(input.envelope)
-    const selected = [input.keys.current, input.keys.previous]
+    additionalData = encodeAad(input.aad)
+    envelope = validateEnvelope(input.envelope)
+    const candidate = [input.keys.current, input.keys.previous]
       .find(candidate => candidate?.id === envelope.keyId)
-    if (!selected) throw stableError(CONTEXT_ERROR)
-    validateCryptoKey(selected, 'decrypt')
+    if (!candidate) throw stableError(CONTEXT_ERROR)
+    validateCryptoKey(candidate, 'decrypt')
+    selected = candidate
+  }
+  catch {
+    throw stableError(CONTEXT_ERROR)
+  }
 
+  let plaintext: ArrayBuffer
+  try {
     const sealed = concatenateBytes(envelope.ciphertext, envelope.tag)
-    const plaintext = await crypto.subtle.decrypt({
+    plaintext = await crypto.subtle.decrypt({
       name: 'AES-GCM',
       iv: envelope.iv,
       additionalData,
       tagLength: AES_GCM_TAG_BYTES * 8,
     }, selected.key, sealed)
+  }
+  catch {
+    throw stableError(AUTHENTICATION_ERROR)
+  }
+
+  try {
     const parsed = JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(plaintext))
     return validateContext(parsed)
   }
   catch {
-    throw stableError(CONTEXT_ERROR)
+    throw stableError(PAYLOAD_ERROR)
   }
 }
 
@@ -306,6 +339,6 @@ function hasExactOwnFields(value: object, fields: Iterable<string>) {
     && Array.from(requiredFields).every(field => Object.hasOwn(value, field))
 }
 
-function stableError(code: string) {
-  return new Error(code)
+function stableError(code: MetaCapiCryptoErrorCode | typeof DATA_KEY_ERROR) {
+  return code === DATA_KEY_ERROR ? new Error(code) : new MetaCapiCryptoError(code)
 }

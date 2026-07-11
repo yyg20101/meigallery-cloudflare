@@ -1,5 +1,5 @@
 import { Buffer } from 'node:buffer'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Miniflare } from 'miniflare'
 import { unstable_splitSqlQuery } from 'wrangler'
 import type { Bindings } from '../index'
@@ -127,6 +127,10 @@ afterAll(async () => {
   await miniflare.dispose()
 })
 
+afterEach(() => {
+  vi.useRealTimers()
+})
+
 describe('Meta CAPI Circuit Breaker 阈值', () => {
   const base = {
     totalAttempts: 0,
@@ -234,6 +238,45 @@ describe('Meta CAPI incident 生命周期', () => {
       ...createMetaIncidentTrigger('meta_permission_denied'),
       evidence: { rawResponse: 'OAuth token owner@example.test' },
     })).rejects.toThrow(/evidence/i)
+  })
+
+  it.each(['pixelCount', 'userCount', 'payloadCount'])(
+    'trigger 级 evidence allowlist 拒绝恶意后缀字段 %s',
+    async field => {
+      expect(() => createMetaIncidentTrigger('meta_permission_denied', {
+        [field]: 1,
+      })).toThrow(/evidence/i)
+      await expect(openMetaCapiIncident(circuitEnv(), {
+        ...createMetaIncidentTrigger('meta_permission_denied'),
+        evidence: { [field]: 1 },
+      })).rejects.toThrow(/evidence/i)
+    },
+  )
+
+  it('乱序重复观察不得覆盖较新的 last_observed_at、evidence 或 rollout，opened_at 保持固定', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-11T12:05:00.000Z'))
+    const first = await openMetaCapiIncident(
+      circuitEnv(),
+      createMetaIncidentTrigger('meta_permission_denied', { failedCount: 5 }),
+    )
+    const opened = await incident(first.id)
+    await db.prepare("UPDATE site_settings SET value = '100' WHERE key = 'meta_capi_rollout_percentage'").run()
+
+    vi.setSystemTime(new Date('2026-07-11T12:04:00.000Z'))
+    await openMetaCapiIncident(
+      circuitEnv(),
+      createMetaIncidentTrigger('meta_permission_denied', { failedCount: 1 }),
+    )
+    const observed = await incident(first.id)
+
+    expect(observed.opened_at).toBe(opened.opened_at)
+    expect(observed.last_observed_at).toBe('2026-07-11T12:05:00.000Z')
+    expect(observed.target_rollout_percentage).toBe(50)
+    expect(JSON.parse(String(observed.evidence))).toMatchObject({
+      failedCount: 5,
+      observedAt: '2026-07-11T12:05:00.000Z',
+    })
   })
 
   it.each([

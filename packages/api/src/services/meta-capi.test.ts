@@ -43,6 +43,7 @@ function createMetaCapiDb(options: {
   connectionVerified?: boolean
   connectionRevision?: string
   incidentBatchFailure?: boolean
+  beforeFirstDeliveryTransition?: (delivery: DeliveryRow) => void
 } = {}) {
   const calls: Array<{ sql: string; params: unknown[] }> = []
   const delivery: DeliveryRow = {
@@ -68,6 +69,7 @@ function createMetaCapiDb(options: {
     ...options.delivery,
   }
   const daily: Array<Record<string, unknown>> = []
+  let transitionHookCalled = false
   const db = {
     calls,
     delivery,
@@ -118,6 +120,14 @@ function createMetaCapiDb(options: {
           calls.push(call)
           if (sql.includes('UPDATE analytics_conversion_deliveries')) {
             const changesStatus = /SET\s+status\s*=\s*\?/m.test(sql)
+            if (!transitionHookCalled) {
+              transitionHookCalled = true
+              options.beforeFirstDeliveryTransition?.(delivery)
+            }
+            const expectedStatus = String(call.params[changesStatus ? 6 : 4])
+            if (delivery.status !== expectedStatus || delivery.status === 'sent') {
+              return { meta: { changes: 0, rows_written: 0, rows_read: 0, duration: 1 } }
+            }
             if (changesStatus) delivery.status = String(call.params[0]) as DeliveryStatus
             const offset = changesStatus ? 1 : 0
             delivery.skip_reason = String(call.params[offset] ?? '')
@@ -491,6 +501,40 @@ describe('meta-capi', () => {
     const incident = db.calls.find(call => call.sql.includes('INSERT OR IGNORE INTO meta_capi_incidents'))
     expect(incident?.params).toContain('meta_permission_denied')
     expect(JSON.stringify(incident)).not.toContain('token_1')
+    expect(db.calls.findIndex(call => call.sql.includes('INSERT OR IGNORE INTO meta_capi_incidents')))
+      .toBeLessThan(db.calls.findIndex(call => call.sql.includes('UPDATE analytics_conversion_deliveries')))
+  })
+
+  it('401/403 即使 CAS 竞争为 sent，也先打开权限 incident 再返回 duplicate_suppressed', async () => {
+    const db = createMetaCapiDb({
+      pixelId: '1234567890',
+      beforeFirstDeliveryTransition: delivery => {
+        delivery.status = 'sent'
+        delivery.sent_at = 'now'
+      },
+    })
+    const result = await sendMetaCapiEvent(envFor(db), 'cdlv_1', {
+      fetchFn: vi.fn().mockResolvedValue(new Response('{}', { status: 401 })),
+    })
+
+    expect(result).toMatchObject({ status: 'sent', reason: 'already_sent' })
+    expect(db.calls.some(call => call.sql.includes('INSERT OR IGNORE INTO meta_capi_incidents'))).toBe(true)
+  })
+
+  it('401/403 即使 delivery transition 冲突，也先打开权限 incident再保留状态冲突', async () => {
+    const db = createMetaCapiDb({
+      pixelId: '1234567890',
+      beforeFirstDeliveryTransition: delivery => {
+        delivery.status = 'skipped'
+        delivery.skip_reason = 'concurrent_skip'
+      },
+    })
+    const error = await sendMetaCapiEvent(envFor(db), 'cdlv_1', {
+      fetchFn: vi.fn().mockResolvedValue(new Response('{}', { status: 403 })),
+    }).catch(value => value as MetaCapiDeliveryError)
+
+    expect(error).toMatchObject({ code: 'meta_delivery_state_conflict' })
+    expect(db.calls.some(call => call.sql.includes('INSERT OR IGNORE INTO meta_capi_incidents'))).toBe(true)
   })
 
   it('权限 incident 写入失败不替换原 delivery 失败', async () => {

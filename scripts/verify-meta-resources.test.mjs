@@ -235,6 +235,7 @@ describe('Meta Cloudflare 资源检查', () => {
       { migrationPending: true },
       { missingAppliedMigration: '0037_meta_connection_revision.sql' },
       { missingAppliedMigration: '0039_meta_capi_v2_operations.sql' },
+      { missingAppliedMigration: '0040_meta_capi_circuit_indexes.sql' },
       { connectionInvalidated: true },
       { connectionPixelDrift: true },
       { missingConsumer: true },
@@ -395,6 +396,7 @@ function createPassingRunner(calls, options = {}) {
           '0037_meta_connection_revision.sql',
           '0038_conversion_dedupe_claims.sql',
           '0039_meta_capi_v2_operations.sql',
+          '0040_meta_capi_circuit_indexes.sql',
         ].filter(name => name !== options.missingAppliedMigration)
         results = names.map(name => ({ name }))
       } else if (runOptions.name.endsWith('meta-connection')) {

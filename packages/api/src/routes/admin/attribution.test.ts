@@ -3,6 +3,16 @@ import { Hono } from 'hono'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Bindings, Variables } from '../../index'
 import { adminRoutes } from './index'
+import { MetaCapiCircuitError } from '../../services/meta-capi-circuit-breaker'
+
+const { closeIncidentMock } = vi.hoisted(() => ({
+  closeIncidentMock: vi.fn(),
+}))
+
+vi.mock('../../services/meta-capi-circuit-breaker', async importOriginal => ({
+  ...await importOriginal<typeof import('../../services/meta-capi-circuit-breaker')>(),
+  closeMetaCapiIncident: closeIncidentMock,
+}))
 
 type DbCall = { sql: string; params: unknown[] }
 
@@ -41,6 +51,8 @@ type AttributionDbOptions = {
   readiness?: ReadinessOptions
   previousOutboxCount?: number
   previousActiveDeliveryCount?: number
+  incidentRows?: Array<Record<string, unknown>>
+  incidentQueryError?: boolean
 }
 
 function createApp(role: string | null = 'admin') {
@@ -159,6 +171,13 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
         },
         async all<T>() {
           calls.push(call)
+          if (sql.includes('FROM meta_capi_incidents')) {
+            if (options.incidentQueryError) throw new Error('模拟 incident 查询失败')
+            return {
+              results: (options.incidentRows ?? []) as T[],
+              meta: { rows_read: options.incidentRows?.length ?? 0, rows_written: 0, duration: 1 },
+            }
+          }
           if (sql.includes('FROM sqlite_master')) {
             return {
               results: [{ table_count: readiness.schemaTableCount } as T],
@@ -855,6 +874,7 @@ async function requestRollout(
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.useRealTimers()
+  vi.clearAllMocks()
 })
 
 describe('后台归因中心 API', () => {
@@ -884,6 +904,164 @@ describe('后台归因中心 API', () => {
 
     expect(res.status).toBe(403)
     expect(body.code).toBe('OWNER_REQUIRED')
+  })
+
+  it('incident 列表默认最近 30 个上海业务日，并提供稳定默认分页与排序', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-11T04:00:00.000Z'))
+    const db = createAttributionDb()
+    const res = await createApp('admin').request(
+      '/api/admin/attribution/meta/incidents',
+      {},
+      { DB: db, APP_ENV: 'dev' } as unknown as Bindings,
+    )
+    const body = await res.json()
+    const query = db.calls.find(call => call.sql.includes('FROM meta_capi_incidents'))
+
+    expect(res.status).toBe(200)
+    expect(body.range).toEqual({ from: '2026-06-12', to: '2026-07-11', days: 30 })
+    expect(body.data.pagination).toEqual({ limit: 50, offset: 0, hasMore: false })
+    expect(query?.params).toEqual(['dev', '2026-06-12', '2026-07-11', 51, 0])
+    expect(query?.sql).toContain('ORDER BY opened_at DESC, id DESC')
+  })
+
+  it('incident 列表支持 from/to、status、limit/offset，并绑定有界参数', async () => {
+    const db = createAttributionDb()
+    const res = await createApp('admin').request(
+      '/api/admin/attribution/meta/incidents?from=2026-07-01&to=2026-07-10&status=open&limit=20&offset=40',
+      {},
+      { DB: db, APP_ENV: 'production' } as unknown as Bindings,
+    )
+    const query = db.calls.find(call => call.sql.includes('FROM meta_capi_incidents'))
+
+    expect(res.status).toBe(200)
+    expect(query?.params).toEqual(['production', '2026-07-01', '2026-07-10', 'open', 21, 40])
+  })
+
+  it('incident GET 从 trigger 固定定义重建 summary，并逐字段丢弃未知 evidence', async () => {
+    const db = createAttributionDb({
+      incidentRows: [
+        {
+          id: 'known', environment: 'dev', status: 'open', severity: 'critical',
+          trigger_code: 'meta_permission_denied', trigger_summary: 'payload: 原始异常文本',
+          target_rollout_percentage: 50, effective_rollout_percentage: 0,
+          evidence: JSON.stringify({
+            failedCount: 1,
+            errorCategory: 'permission_denied',
+            payloadCount: 99,
+            rawResponse: 'OAuth secret',
+          }),
+          opened_at: '2026-07-11T00:00:00.000Z', last_observed_at: '2026-07-11T00:01:00.000Z',
+          closed_at: null, closed_by_user_id: null, resolution: '',
+        },
+        {
+          id: 'unknown', environment: 'dev', status: 'open', severity: 'critical',
+          trigger_code: 'future_trigger', trigger_summary: '数据库中的用户与 Pixel 原文',
+          target_rollout_percentage: 50, effective_rollout_percentage: 0,
+          evidence: JSON.stringify({ userCount: 2, payload: 'private' }),
+          opened_at: '2026-07-10T00:00:00.000Z', last_observed_at: '2026-07-10T00:01:00.000Z',
+          closed_at: null, closed_by_user_id: null, resolution: '',
+        },
+      ],
+    })
+    const res = await createApp('admin').request(
+      '/api/admin/attribution/meta/incidents',
+      {},
+      { DB: db, APP_ENV: 'dev' } as unknown as Bindings,
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.data.items[0]).toMatchObject({
+      triggerSummary: 'Meta CAPI 权限被拒绝',
+      evidence: { failedCount: 1, errorCategory: 'permission_denied' },
+    })
+    expect(body.data.items[0].evidence).not.toHaveProperty('payloadCount')
+    expect(body.data.items[0].evidence).not.toHaveProperty('rawResponse')
+    expect(body.data.items[1]).toMatchObject({
+      triggerSummary: '未知 Meta CAPI incident',
+      evidence: {},
+    })
+    expect(JSON.stringify(body)).not.toContain('数据库中的用户与 Pixel 原文')
+    expect(JSON.stringify(body)).not.toContain('private')
+  })
+
+  it('incident 查询失败时 fail closed 返回稳定 503', async () => {
+    const res = await createApp('admin').request(
+      '/api/admin/attribution/meta/incidents',
+      {},
+      { DB: createAttributionDb({ incidentQueryError: true }), APP_ENV: 'dev' } as unknown as Bindings,
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(503)
+    expect(body.code).toBe('META_CAPI_INCIDENT_QUERY_UNAVAILABLE')
+  })
+
+  it.each([
+    ['数组', []],
+    ['对象', { text: '已完成连接复验、资源检查并确认投递窗口恢复正常。' }],
+    ['数字', 123],
+    ['null', null],
+  ])('incident close 在 service 前拒绝%s resolution', async (_label, resolution) => {
+    const res = await createApp('owner').request(
+      '/api/admin/attribution/meta/incidents/incident_1/close',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ resolution }),
+      },
+      { DB: createAttributionDb(), APP_ENV: 'dev' } as unknown as Bindings,
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(400)
+    expect(body.code).toBe('META_CAPI_INCIDENT_RESOLUTION_INVALID')
+    expect(closeIncidentMock).not.toHaveBeenCalled()
+  })
+
+  it('incident close 成功返回 closed，并原样传递 string resolution', async () => {
+    closeIncidentMock.mockResolvedValueOnce(undefined)
+    const resolution = '已完成连接复验、资源检查并确认投递窗口恢复正常。'
+    const res = await createApp('owner').request(
+      '/api/admin/attribution/meta/incidents/incident_1/close',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ resolution }),
+      },
+      { DB: createAttributionDb(), APP_ENV: 'dev' } as unknown as Bindings,
+    )
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual({ data: { id: 'incident_1', status: 'closed' } })
+    expect(closeIncidentMock).toHaveBeenCalledWith(expect.anything(), {
+      incidentId: 'incident_1', ownerUserId: 1, resolution,
+    })
+  })
+
+  it('incident close 将 service 409 稳定映射为 blocker 响应', async () => {
+    closeIncidentMock.mockRejectedValueOnce(new MetaCapiCircuitError(
+      'META_CAPI_INCIDENT_CLOSE_CONFLICT',
+      409,
+      ['incident_state_changed'],
+    ))
+    const res = await createApp('owner').request(
+      '/api/admin/attribution/meta/incidents/incident_1/close',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ resolution: '已完成连接复验、资源检查并确认投递窗口恢复正常。' }),
+      },
+      { DB: createAttributionDb(), APP_ENV: 'dev' } as unknown as Bindings,
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(409)
+    expect(body).toMatchObject({
+      code: 'META_CAPI_INCIDENT_CLOSE_CONFLICT',
+      detail: { blockers: ['incident_state_changed'] },
+    })
   })
 
   it('要求 admin+ 才能访问归因总览', async () => {
