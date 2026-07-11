@@ -238,6 +238,7 @@ describe('发布验证 CLI', () => {
     const phases = []
     await collectTrustedProductionGateFacts({
       commit: RELEASE_COMMIT,
+      now: '2026-07-11T12:00:00.000Z',
       verifyDevReleaseIdentity: async () => {},
       verifyApprovedMetaDatasetQualityContract: async () => ({ version: 3, digest: `sha256:${'9'.repeat(64)}` }),
       readRemoteDevGate: async () => ({ status: 'passed' }),
@@ -245,7 +246,11 @@ describe('发布验证 CLI', () => {
         permitQuery = args[args.indexOf('--command') + 1]
         return {
           name: options.name, status: 'passed', exitCode: 0, stderr: '',
-          stdout: JSON.stringify([{ results: [{ summary: JSON.stringify(bootstrapResourceSummary()) }] }]),
+          stdout: JSON.stringify([{ results: [{
+            summary: JSON.stringify(bootstrapResourceSummary()),
+            verified_at: '2026-07-11T00:00:00.000Z',
+            expires_at: '2026-07-12T00:00:00.000Z',
+          }] }]),
         }
       },
       runMetaResourceVerification: async input => {

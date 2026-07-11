@@ -329,6 +329,7 @@ API Worker 已内置应用内兜底限流，但该实现使用 Worker isolate �
 |------|----------------|----------|------|------|
 | 登录/注册 | `http.host eq "api.616618.xyz" and http.request.uri.path matches "^/api/auth/(login|register)$"` | IP | 5 次 / 60 秒 | Managed Challenge 或 Block |
 | 公开 JSON API | `http.host eq "api.616618.xyz" and http.request.uri.path matches "^/api/(galleries|tags|search|cases|contact-methods)(/.*)?$"` | IP | 60 次 / 60 秒 | Managed Challenge 或 Block |
+| Meta 资源 attestation | `http.host eq "api.616618.xyz" and http.request.uri.path eq "/api/meta/resource-attestation" and http.request.method eq "POST"` | IP | 60 次 / 60 秒 | Block |
 | 管理员 API | `http.host eq "api.616618.xyz" and http.request.uri.path starts_with "/api/admin/"` | session cookie 或 IP | 120 次 / 60 秒 | Managed Challenge 或 Block |
 | 媒体访问接口 | `http.host eq "api.616618.xyz" and http.request.uri.path matches "^/api/media/[^/]+/access$"` | session cookie 或 IP | 30 次 / 60 秒 | Managed Challenge 或 Block |
 | 外部导入 API | `http.host eq "api.616618.xyz" and http.request.uri.path starts_with "/api/imports/"` | IP | 120 次 / 60 秒 | Block |
@@ -337,7 +338,7 @@ API Worker 已内置应用内兜底限流，但该实现使用 Worker isolate �
 
 - 先使用 Log 或 Managed Challenge 验证阈值，再切换到 Block。
 - 规则的 Period、Requests、Characteristics、Mitigation timeout 和 Action 必须按 Dashboard 当前可用选项配置；不同 Cloudflare WAF 计划可用规则数和周期不同。
-- 当前 Zone 为 Free 计划时，若规则数量不足以完整覆盖上表，至少启用登录/注册规则，并保留代码内兜底限流；媒体访问接口和管理员 API 需在上线风险清单中标注。
+- 当前 Zone 为 Free 计划时，若规则数量不足以完整覆盖上表，至少启用登录/注册与 Meta 资源 attestation 规则，并保留代码内兜底限流；媒体访问接口和管理员 API 需在上线风险清单中标注。
 - 如果后续需要强一致的用户级或 session 级应用限流，可评估 Cloudflare Workers Rate Limiting binding、Durable Objects 或 D1 计数表；Workers Rate Limiting binding 仍按 Cloudflare location 本地生效，不应被描述为全球强一致。
 
 ### Workers Logs 与兼容日期

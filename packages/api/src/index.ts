@@ -123,6 +123,11 @@ app.use('/api/auth/*', rateLimiter({
   windowMs: rateLimitWindowMs(authRateLimit.window),
 }))
 
+app.use('/api/meta/resource-attestation', async (c, next) => {
+  c.header('Cache-Control', 'no-store')
+  await next()
+})
+
 // 公开 API 速率限制兜底：每 IP 每分钟 60 次
 for (const path of [
   '/api/galleries',
@@ -137,6 +142,7 @@ for (const path of [
   '/api/contact-methods/*',
   '/api/invites/*',
   '/api/settings/public',
+  '/api/meta/resource-attestation',
 ]) {
   app.use(path, rateLimiter({
     name: 'public-api',

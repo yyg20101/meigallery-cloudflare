@@ -321,6 +321,8 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | POST | `/api/admin/legacy-import/migrate/retry-failed` | 重置旧站下载失败图片 | admin+ |
 | POST | `/api/admin/legacy-import/migrate/set-covers` | 批量设置旧站迁移图库封面 | admin+ |
 
+`/api/meta/resource-attestation` 复用公开 API 的 IP 应用内限流，并要求生产 WAF 配置独立 IP Rate Limiting Rule。ticket 签发与消费响应统一使用 `Cache-Control: no-store`，响应、审计和错误信息均不得回显已消费 ticket。
+
 ## 8. D1 数据库 Schema `[当前实现]`
 
 以下为当前核心表摘要，完整结构以 `packages/api/migrations/` 中的顺序迁移为准。数据分析相关表已通过 `0023` 到 `0027` 建立 schema，并已接入公开采集 API、邀请码转化闭环、推广来源管理、Web 轻量 SDK、核心业务埋点、Cron 聚合任务、后台分析 API、后台分析页面、端到端 smoke、性能成本 fixtures、上线顺序和回滚文档。站内行为分析采集仍不依赖 Cloudflare Queues 或 Workers Analytics Engine；广告归因的 Meta CAPI 投递已独立使用 Cloudflare Queues，队列绑定为 `META_CAPI_QUEUE`。

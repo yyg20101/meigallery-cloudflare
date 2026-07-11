@@ -1038,12 +1038,27 @@ adminAttributionRoutes.post('/meta/rollout', async (c) => {
     environment: snapshot.environment,
   }
   const nextRaw = JSON.stringify(body.percentage)
+  const requireProductionModeCas = snapshot.environment === 'production'
+    && current === 0
+    && body.percentage === 10
+  const productionModeCondition = requireProductionModeCas
+    ? `AND EXISTS (
+        SELECT 1 FROM site_settings AS tracking_mode
+        WHERE tracking_mode.key = 'meta_tracking_mode'
+          AND tracking_mode.value = ?
+      )`
+    : ''
   const update = c.env.DB.prepare(`
     UPDATE site_settings
     SET value = ?, updated_at = datetime('now')
     WHERE key = 'meta_capi_rollout_percentage'
       AND value = ?
-  `).bind(nextRaw, snapshot.rawTargetValue)
+      ${productionModeCondition}
+  `).bind(
+    nextRaw,
+    snapshot.rawTargetValue,
+    ...(requireProductionModeCas ? [JSON.stringify('production')] : []),
+  )
   const audit = c.env.DB.prepare(`
     INSERT INTO admin_audit_logs (
       id, admin_id, action, target_type, target_id, before_value, after_value
@@ -1116,6 +1131,7 @@ adminAttributionRoutes.post('/meta/live-challenge/consume', async (c) => {
 })
 
 adminAttributionRoutes.post('/meta/resource-attestation-ticket', async (c) => {
+  c.header('Cache-Control', 'no-store')
   const adminId = c.get('userId') ?? 0
   if (c.get('userRole') !== 'owner') return errorJson(c, 403, '需要站长权限', { code: 'OWNER_REQUIRED' })
   const body: { nonce?: unknown } = await c.req.json<{ nonce?: unknown }>().catch(() => ({}))
@@ -1407,17 +1423,46 @@ async function readCurrentMetaPromotionEvidenceWithUsage(
 function hasCurrentProductionIsolation(value: unknown) {
   try {
     const summary = JSON.parse(String(value || '')) as Record<string, unknown>
+    const fields = [
+      'schemaVersion', 'verificationPhase', 'bootstrapReady', 'liveAttestation',
+      'migrationsReady', 'd1Ready', 'r2Ready', 'queuesReady', 'secretsReady',
+      'migrationsCurrent', 'migrationsApplied', 'connectionVerified', 'capiEnabled',
+      'initialMetaRollout', 'noOpenCriticalIncident', 'initialRolloutZero',
+      'secureOutboxReady', 'previousKeyReferencesExplainable', 'rolloutZero',
+      'environmentIsolation',
+    ]
+    if (!hasExactKeys(summary, fields)
+      || summary.schemaVersion !== 2
+      || summary.verificationPhase !== 'full'
+      || summary.bootstrapReady !== false
+      || summary.liveAttestation !== true
+      || summary.connectionVerified !== true
+      || summary.initialMetaRollout !== false
+      || typeof summary.capiEnabled !== 'boolean') return false
+    for (const field of [
+      'migrationsReady', 'd1Ready', 'r2Ready', 'queuesReady', 'secretsReady',
+      'migrationsCurrent', 'migrationsApplied', 'noOpenCriticalIncident',
+      'initialRolloutZero', 'secureOutboxReady', 'previousKeyReferencesExplainable',
+      'rolloutZero',
+    ]) {
+      if (summary[field] !== true) return false
+    }
     const isolation = summary.environmentIsolation as Record<string, unknown> | undefined
-    return summary.liveAttestation === true
-      && summary.connectionVerified === true
-      && summary.rolloutZero === true
-      && summary.noOpenCriticalIncident === true
-      && Boolean(isolation && ['d1', 'r2', 'queue', 'dlq', 'pixel', 'token', 'testEventCode', 'dataKey']
-        .every(key => isolation[key] === true))
+    const isolationFields = ['d1', 'r2', 'queue', 'dlq', 'pixel', 'token', 'testEventCode', 'dataKey']
+    return Boolean(isolation
+      && hasExactKeys(isolation, isolationFields)
+      && isolationFields.every(key => isolation[key] === true))
   }
   catch {
     return false
   }
+}
+
+function hasExactKeys(value: Record<string, unknown>, expected: string[]) {
+  const actual = Object.keys(value).sort()
+  const sortedExpected = [...expected].sort()
+  return actual.length === sortedExpected.length
+    && actual.every((key, index) => key === sortedExpected[index])
 }
 
 async function readMetaRolloutMetricsWithUsage(

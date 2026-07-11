@@ -63,10 +63,32 @@ export function assertReleaseVerificationSummary(options) {
     return
   }
   if (options.verificationType === 'meta_resources') {
-    assertMetaResourcesSummary(options.summary)
+    assertMetaResourcesSummary(options.summary, options)
     return
   }
   throw new Error('verificationType 非法')
+}
+
+export function assertReleaseVerificationRow(options) {
+  const row = options?.row
+  assertExactRecord(row, ['summary', 'verified_at', 'expires_at'], 'release verification row')
+  if (typeof row.summary !== 'string') throw new Error('release verification row.summary 非法')
+  const verifiedAt = strictIsoTime(row.verified_at, 'verified_at')
+  const expiresAt = strictIsoTime(row.expires_at, 'expires_at')
+  const now = new Date(options.now ?? Date.now()).getTime()
+  if (!Number.isFinite(now)) throw new Error('release verification row now 非法')
+  if (expiresAt - verifiedAt !== TTL_MS || verifiedAt > now || now >= expiresAt) {
+    throw new Error('release verification row 时效非法')
+  }
+  let summary
+  try {
+    summary = JSON.parse(row.summary)
+  }
+  catch {
+    throw new Error('release verification row.summary 不是合法 JSON')
+  }
+  assertReleaseVerificationSummary({ ...options, summary })
+  return summary
 }
 
 function assertMetaLiveSummary(value, expected) {
@@ -94,7 +116,7 @@ function assertMetaLiveSummary(value, expected) {
   }
 }
 
-function assertMetaResourcesSummary(value) {
+function assertMetaResourcesSummary(value, expected) {
   const booleanFields = [
     'bootstrapReady', 'liveAttestation', 'migrationsReady', 'd1Ready', 'r2Ready',
     'queuesReady', 'secretsReady', 'migrationsCurrent', 'migrationsApplied',
@@ -116,6 +138,63 @@ function assertMetaResourcesSummary(value) {
       throw new Error(`summary.environmentIsolation.${field} 只允许布尔值`)
     }
   }
+
+  const alwaysReady = [
+    'migrationsReady', 'd1Ready', 'r2Ready', 'queuesReady', 'secretsReady',
+    'migrationsCurrent', 'migrationsApplied', 'noOpenCriticalIncident',
+    'initialRolloutZero', 'secureOutboxReady', 'previousKeyReferencesExplainable',
+  ]
+  requireTrueFields(value, alwaysReady, value.verificationPhase)
+  requireTrueFields(value.environmentIsolation, ['d1', 'r2', 'queue', 'dlq'], `${value.verificationPhase}.environmentIsolation`)
+
+  if (value.verificationPhase === 'bootstrap') {
+    if (expected.environment !== 'production'
+      || value.bootstrapReady !== true
+      || value.liveAttestation !== false
+      || value.connectionVerified !== false
+      || value.capiEnabled !== false
+      || value.initialMetaRollout !== true
+      || value.rolloutZero !== true) {
+      throw new Error('summary bootstrap 语义门禁未通过')
+    }
+    for (const field of ['pixel', 'token', 'testEventCode', 'dataKey']) {
+      if (value.environmentIsolation[field] !== false) throw new Error('summary bootstrap 隔离语义非法')
+    }
+    return
+  }
+
+  if (value.bootstrapReady !== false || value.initialMetaRollout !== false) {
+    throw new Error(`summary ${value.verificationPhase} 语义门禁未通过`)
+  }
+  if (expected.environment === 'production') {
+    if (value.liveAttestation !== true) throw new Error(`summary ${value.verificationPhase} live attestation 未通过`)
+    requireTrueFields(value.environmentIsolation, ['pixel', 'token', 'testEventCode', 'dataKey'], `${value.verificationPhase}.environmentIsolation`)
+  }
+  if (value.verificationPhase === 'post-deploy') {
+    if (expected.environment !== 'production'
+      || value.connectionVerified !== false
+      || value.capiEnabled !== false
+      || value.rolloutZero !== true) {
+      throw new Error('summary post-deploy 语义门禁未通过')
+    }
+    return
+  }
+  if (value.connectionVerified !== true) throw new Error('summary full connection 门禁未通过')
+}
+
+function requireTrueFields(value, fields, path) {
+  for (const field of fields) {
+    if (value[field] !== true) throw new Error(`summary ${path}.${field} 必须为 true`)
+  }
+}
+
+function strictIsoTime(value, field) {
+  if (typeof value !== 'string') throw new Error(`release verification row.${field} 非法`)
+  const parsed = Date.parse(value)
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== value) {
+    throw new Error(`release verification row.${field} 非法`)
+  }
+  return parsed
 }
 
 function assertExactRecord(value, keys, path) {

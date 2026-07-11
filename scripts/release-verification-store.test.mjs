@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { recordReleaseVerificationSummary } from './release-verification-store.mjs'
+import {
+  assertReleaseVerificationSummary,
+  recordReleaseVerificationSummary,
+} from './release-verification-store.mjs'
 import { readRemoteDevGate } from './verify-release.mjs'
 
 const COMMIT = '18dc11e0b0e4797683d4551a93a1f22e53dc4628'
@@ -73,15 +76,99 @@ describe('发布验证 D1 摘要存储', () => {
     const gate = await readRemoteDevGate({
       commit: COMMIT,
       contract,
+      now: '2026-07-10T12:00:00.000Z',
       runCommand: async (_command, _args, options) => ({
         name: options.name,
         status: 'passed',
-        stdout: JSON.stringify([{ results: [{ summary: storedSummary }] }]),
+        stdout: JSON.stringify([{ results: [{
+          summary: storedSummary,
+          verified_at: '2026-07-10T00:00:00.000Z',
+          expires_at: '2026-07-11T00:00:00.000Z',
+        }] }]),
         stderr: '',
         exitCode: 0,
       }),
     })
     assert.equal(gate.status, 'passed')
+  })
+
+  it('远端 dev gate 先拒绝非 40 位 commit，且不执行 D1 查询', async () => {
+    await assert.rejects(readRemoteDevGate({
+      commit: "a' OR 1=1 --",
+      contract: { version: 3, digest: `sha256:${'9'.repeat(64)}` },
+      runCommand: async () => assert.fail('非法 commit 不得进入 SQL'),
+    }), /40 位 commit/)
+  })
+
+  it('远端 dev gate 复用 store schema，拒绝 false、乱序、raw ID 和额外字段', async () => {
+    const contract = { version: 3, digest: `sha256:${'9'.repeat(64)}` }
+    for (const summary of [
+      { ...metaLiveSummary('dev', contract), eventsVerified: false },
+      { ...metaLiveSummary('dev', contract), events: ['CompleteRegistration', 'Contact'] },
+      { ...metaLiveSummary('dev', contract), browserEventId: `mlv_${'a'.repeat(32)}` },
+      { ...metaLiveSummary('dev', contract), raw: { eventId: 'raw-id' } },
+    ]) {
+      const gate = await readRemoteDevGate({
+        commit: COMMIT,
+        contract,
+        now: '2026-07-10T12:00:00.000Z',
+        runCommand: async (_command, _args, options) => ({
+          name: options.name,
+          status: 'passed',
+          stdout: JSON.stringify([{ results: [{
+            summary: JSON.stringify(summary),
+            verified_at: '2026-07-10T00:00:00.000Z',
+            expires_at: '2026-07-11T00:00:00.000Z',
+          }] }]),
+        }),
+      })
+      assert.equal(gate.status, 'failed', JSON.stringify(summary))
+    }
+  })
+
+  it('远端 dev gate 应用层严格校验 verified_at/expires_at 及固定 TTL', async () => {
+    const contract = { version: 3, digest: `sha256:${'9'.repeat(64)}` }
+    for (const [verifiedAt, expiresAt, now] of [
+      ['2026-07-10T00:00:00.000Z', '2026-07-11T00:00:00.000Z', '2026-07-11T00:00:00.000Z'],
+      ['2026-07-10T12:01:00.000Z', '2026-07-11T12:01:00.000Z', '2026-07-10T12:00:00.000Z'],
+      ['2026-07-10T00:00:00.000Z', '2026-07-10T23:59:59.000Z', '2026-07-10T12:00:00.000Z'],
+      ['not-a-date', '2026-07-11T00:00:00.000Z', '2026-07-10T12:00:00.000Z'],
+    ]) {
+      const gate = await readRemoteDevGate({
+        commit: COMMIT,
+        contract,
+        now,
+        runCommand: async (_command, _args, options) => ({
+          name: options.name,
+          status: 'passed',
+          stdout: JSON.stringify([{ results: [{
+            summary: JSON.stringify(metaLiveSummary('dev', contract)),
+            verified_at: verifiedAt,
+            expires_at: expiresAt,
+          }] }]),
+        }),
+      })
+      assert.equal(gate.status, 'failed', `${verifiedAt} / ${expiresAt} / ${now}`)
+    }
+  })
+
+  it('meta_resources 对 bootstrap/post-deploy/full 使用严格 phase 语义', () => {
+    const bootstrap = metaResourcesSummary('bootstrap')
+    assert.doesNotThrow(() => assertReleaseVerificationSummary({
+      environment: 'production', verificationType: 'meta_resources', commit: COMMIT, summary: bootstrap,
+    }))
+    for (const summary of [
+      { ...bootstrap, migrationsApplied: false },
+      { ...bootstrap, connectionVerified: true },
+      { ...bootstrap, liveAttestation: true },
+      { ...bootstrap, environmentIsolation: { ...bootstrap.environmentIsolation, pixel: true } },
+      { ...metaResourcesSummary('post-deploy'), verificationPhase: 'bootstrap' },
+      { ...metaResourcesSummary('full'), verificationPhase: 'post-deploy' },
+    ]) {
+      assert.throws(() => assertReleaseVerificationSummary({
+        environment: 'production', verificationType: 'meta_resources', commit: COMMIT, summary,
+      }), /summary|bootstrap|post-deploy|full|门禁|语义/)
+    }
   })
 
   it('V2 meta_live 只接受精确 allowlist，拒绝 secret、PII、raw ID 与任意对象', async () => {
@@ -135,12 +222,14 @@ function metaLiveSummary(environment, contract = { version: 3, digest: `sha256:$
   }
 }
 
-function metaResourcesSummary() {
+function metaResourcesSummary(phase = 'full') {
+  const bootstrap = phase === 'bootstrap'
+  const postDeploy = phase === 'post-deploy'
   return {
     schemaVersion: 2,
-    verificationPhase: 'full',
-    bootstrapReady: false,
-    liveAttestation: true,
+    verificationPhase: phase,
+    bootstrapReady: bootstrap,
+    liveAttestation: !bootstrap,
     migrationsReady: true,
     d1Ready: true,
     r2Ready: true,
@@ -148,9 +237,9 @@ function metaResourcesSummary() {
     secretsReady: true,
     migrationsCurrent: true,
     migrationsApplied: true,
-    connectionVerified: true,
+    connectionVerified: phase === 'full',
     capiEnabled: false,
-    initialMetaRollout: false,
+    initialMetaRollout: bootstrap,
     noOpenCriticalIncident: true,
     initialRolloutZero: true,
     secureOutboxReady: true,
@@ -158,7 +247,7 @@ function metaResourcesSummary() {
     rolloutZero: true,
     environmentIsolation: {
       d1: true, r2: true, queue: true, dlq: true,
-      pixel: true, token: true, testEventCode: true, dataKey: true,
+      pixel: !bootstrap, token: !bootstrap, testEventCode: !bootstrap, dataKey: !bootstrap,
     },
   }
 }

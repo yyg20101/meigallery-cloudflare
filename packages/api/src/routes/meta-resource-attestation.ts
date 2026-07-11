@@ -7,6 +7,7 @@ import { writeAuditLog } from '../utils/permission'
 export const metaResourceAttestationRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
 metaResourceAttestationRoutes.post('/resource-attestation', async (c) => {
+  c.header('Cache-Control', 'no-store')
   const body: { nonce?: unknown; ticket?: unknown } = await c.req.json().catch(() => ({}))
   try {
     const consumed = await consumeMetaResourceAttestationTicket(

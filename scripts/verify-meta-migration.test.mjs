@@ -47,10 +47,21 @@ function mockJsonFor(name, options = {}) {
       capi_target: 0,
       capi_effective: 0,
       capi_bucket: null,
+      incident_count: 1,
+      quality_count: 1,
     }] }])
   }
-  if (name === 'meta-migration-query-indexes') {
-    return JSON.stringify([{ results: [{ name: 'idx_conversion_delivery_action_channel', unique: 1 }] }])
+  if (name === 'meta-migration-query-schema' || name === 'meta-migration-empty-query-schema') {
+    return JSON.stringify([{ results: [{
+      delivery_unique_index: 1,
+      circuit_index_count: 4,
+      challenge_table: 1,
+      challenge_index: 1,
+      ticket_table: 1,
+      ticket_index: 1,
+      incident_table: 1,
+      quality_table: 1,
+    }] }])
   }
   if (name === 'meta-migration-query-setting') {
     return JSON.stringify([{ results: [{ value: '0' }] }])
@@ -64,9 +75,15 @@ describe('Meta migration 演练', () => {
     'meta-migration-seed',
     'meta-migration-preflight-0039',
     'meta-migration-apply-0039',
+    'meta-migration-seed-0039-history',
+    'meta-migration-apply-0040',
+    'meta-migration-apply-0041',
+    'meta-migration-apply-0042',
     'meta-migration-query-history',
-    'meta-migration-query-indexes',
+    'meta-migration-query-schema',
     'meta-migration-query-setting',
+    'meta-migration-empty-apply-0001-0042',
+    'meta-migration-empty-query-schema',
   ]) {
     it(`当 ${name} 命令失败时演练失败`, async () => {
       const result = await runMetaMigrationVerification({ runCommand: createRunCommand({ failName: name }) })
@@ -129,6 +146,8 @@ describe('Meta migration 演练', () => {
             capi_target: 0,
             capi_effective: 0,
             capi_bucket: null,
+            incident_count: 1,
+            quality_count: 1,
           }] }])
         : mockJsonFor(options.name)
       return passedStep(options.name, stdout)
@@ -139,13 +158,19 @@ describe('Meta migration 演练', () => {
     assert.match(result.error, /历史 Meta 事实未完整保留/)
   })
 
-  it('在真实 D1 上顺序执行 0001-0039 并通过无重复 preflight', async () => {
+  it('在真实 D1 上从旧库顺序执行 0039、0040、0041、0042 并保全历史事实', async () => {
     const result = await runMetaMigrationVerification({
       stateDir: path.join(integrationDir, 'clean'),
     })
 
     assert.equal(result.status, 'passed', result.error)
     assert.equal(result.duplicateGroupCount, 0)
+    const names = result.steps.map(step => step.name)
+    assert.ok(names.indexOf('meta-migration-apply-0039') < names.indexOf('meta-migration-apply-0040'))
+    assert.ok(names.indexOf('meta-migration-apply-0040') < names.indexOf('meta-migration-apply-0041'))
+    assert.ok(names.indexOf('meta-migration-apply-0041') < names.indexOf('meta-migration-apply-0042'))
+    assert.ok(names.includes('meta-migration-empty-apply-0001-0042'))
+    assert.ok(names.includes('meta-migration-empty-query-schema'))
   })
 
   it('在真实 D1 上阻断重复组且不执行 0039', async () => {

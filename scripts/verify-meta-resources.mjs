@@ -2,7 +2,10 @@
 
 import { pathToFileURL } from 'node:url'
 import { randomBytes } from 'node:crypto'
-import { recordReleaseVerificationSummary } from './release-verification-store.mjs'
+import {
+  assertReleaseVerificationSummary,
+  recordReleaseVerificationSummary,
+} from './release-verification-store.mjs'
 import { fetchWithTimeout, runCommand } from './release-verification-lib.mjs'
 
 const RESOURCE_CONFIG = {
@@ -205,10 +208,13 @@ export async function runMetaResourceVerification(options = {}) {
     && operations?.expiredSecureOutboxCount === 0
     && previousKeyActiveCountExplainable
   )
+  const operationsReady = operations?.expiredSecureOutboxCount === 0
+    && previousKeyActiveCountExplainable
   let status = commandsPassed && queuesPresent && r2Present && mainConsumerPresent && dlqConsumerPresent
     && requiredSecretsPresent && migrationsCurrent && migrationsApplied && (phase !== 'full' || connectionVerified)
     && capiEnabled !== null && trackingMode !== null && operations !== null && incidentReady && initialStateReady
     && isolationReady
+    && operationsReady
     && datasetQualityReady
     ? 'passed'
     : 'failed'
@@ -221,40 +227,49 @@ export async function runMetaResourceVerification(options = {}) {
     if (!/^[0-9a-f]{40}$/i.test(String(options.commit || ''))) {
       status = 'failed'
     } else {
-      const storeStep = await recordSummary({
-        environment,
-        verificationType: 'meta_resources',
-        commit: options.commit,
-        verifiedAt: options.now,
-        summary: {
-          schemaVersion: 2,
-          verificationPhase: phase,
-          bootstrapReady: phase === 'bootstrap',
-          liveAttestation: environment === 'production' && phase !== 'bootstrap' && Object.values(environmentIsolation).every(Boolean),
-          migrationsReady: migrationsCurrent && migrationsApplied,
-          d1Ready: settings !== null && operations !== null,
-          r2Ready: r2Present,
-          queuesReady: queuesPresent && mainConsumerPresent && dlqConsumerPresent,
-          secretsReady: requiredSecretsPresent,
-          migrationsCurrent,
-          migrationsApplied,
-          connectionVerified,
-          capiEnabled,
-          initialMetaRollout,
-          noOpenCriticalIncident: incidentReady,
-          initialRolloutZero: !initialMetaRollout || (
-            operations?.targetRolloutPercentage === 0 && operations?.effectiveRolloutPercentage === 0
-          ),
-          secureOutboxReady: !initialMetaRollout || operations?.expiredSecureOutboxCount === 0,
-          previousKeyReferencesExplainable: !initialMetaRollout || previousKeyActiveCountExplainable,
-          rolloutZero: operations?.targetRolloutPercentage === 0 && operations?.effectiveRolloutPercentage === 0,
-          environmentIsolation,
-        },
-        cwd: options.cwd,
-        runCommand: options.runCommand,
-      })
-      summaryRecorded = storeStep?.status === 'passed'
-      if (!summaryRecorded) status = 'failed'
+      const summary = {
+        schemaVersion: 2,
+        verificationPhase: phase,
+        bootstrapReady: phase === 'bootstrap',
+        liveAttestation: environment === 'production' && phase !== 'bootstrap' && Object.values(environmentIsolation).every(Boolean),
+        migrationsReady: migrationsCurrent && migrationsApplied,
+        d1Ready: settings !== null && operations !== null,
+        r2Ready: r2Present,
+        queuesReady: queuesPresent && mainConsumerPresent && dlqConsumerPresent,
+        secretsReady: requiredSecretsPresent,
+        migrationsCurrent,
+        migrationsApplied,
+        connectionVerified,
+        capiEnabled,
+        initialMetaRollout,
+        noOpenCriticalIncident: incidentReady,
+        initialRolloutZero: !initialMetaRollout || (
+          operations?.targetRolloutPercentage === 0 && operations?.effectiveRolloutPercentage === 0
+        ),
+        secureOutboxReady: operations?.expiredSecureOutboxCount === 0,
+        previousKeyReferencesExplainable: previousKeyActiveCountExplainable,
+        rolloutZero: operations?.targetRolloutPercentage === 0 && operations?.effectiveRolloutPercentage === 0,
+        environmentIsolation,
+      }
+      try {
+        assertReleaseVerificationSummary({ environment, verificationType: 'meta_resources', commit: options.commit, summary })
+      }
+      catch {
+        status = 'failed'
+      }
+      if (status === 'passed') {
+        const storeStep = await recordSummary({
+          environment,
+          verificationType: 'meta_resources',
+          commit: options.commit,
+          verifiedAt: options.now,
+          summary,
+          cwd: options.cwd,
+          runCommand: options.runCommand,
+        })
+        summaryRecorded = storeStep?.status === 'passed'
+        if (!summaryRecorded) status = 'failed'
+      }
     }
   }
 
@@ -388,10 +403,14 @@ function assertAttestationTicket(value, expected) {
 
 export function hasNoPendingMigrations(stdout) {
   const text = String(stdout || '').replace(/\u001B\[[0-?]*[ -/]*[@-~]/g, '')
-  if (/migrations?\s+to\s+be\s+applied|pending\s+migrations?|will\s+apply/i.test(text)) return false
+  if (/\b(?:warning|error|failed|failure|unable|unavailable|partial|unknown)\b|migrations?\s+to\s+be\s+applied|pending\s+migrations?|will\s+apply/i.test(text)) return false
   if (/^\s*\d{4}_[^\r\n]+\.sql\s*$/im.test(text)) return false
-  const matches = text.split(/\r?\n/).filter(line => /^\s*(?:✅\s*)?No migrations to apply!\s*$/i.test(line))
-  return matches.length === 1
+  const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+  const terminal = /^(?:✅\s*)?No migrations to apply!$/i
+  const banner = /^(?:⛅️?\s*)?wrangler\s+\d+\.\d+\.\d+(?:\s+\([^)]+\))?$/i
+  const separator = /^-{3,}$/
+  const matches = lines.filter(line => terminal.test(line))
+  return matches.length === 1 && lines.every(line => terminal.test(line) || banner.test(line) || separator.test(line))
 }
 
 export function compareLiveAttestations(dev, production, expected) {

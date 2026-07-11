@@ -559,6 +559,10 @@ describe('Meta Cloudflare 资源检查', () => {
       '✅ No migrations to apply!\nMigrations to be applied:\n0043_pending.sql',
       'No migrations to apply, probably',
       'migration status unavailable',
+      'WARNING: migration status unavailable\nNo migrations to apply!',
+      'No migrations to apply!\nError: unable to verify migration state',
+      'No migrations to apply!\npartial result returned',
+      'No migrations to apply!\nstatus unknown',
     ]) {
       const report = await runMetaResourceVerification({
         environment: 'dev', commit: COMMIT, reportOnly: true,

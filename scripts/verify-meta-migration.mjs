@@ -5,6 +5,13 @@ import { runCommand } from './release-verification-lib.mjs'
 
 const ROOT_DIR = fileURLToPath(new URL('../', import.meta.url))
 const PRE_MIGRATION_FILE = 'pre-0039.sql'
+const ALL_MIGRATIONS_FILE = 'empty-0001-0042.sql'
+const FOLLOW_UP_MIGRATIONS = [
+  '0039_meta_capi_v2_operations.sql',
+  '0040_meta_capi_circuit_indexes.sql',
+  '0041_meta_live_challenges.sql',
+  '0042_meta_resource_attestation_tickets.sql',
+]
 const REMOTE_PREFLIGHT_CONFIG = {
   dev: {
     database: 'meigallery-db-dev',
@@ -36,12 +43,11 @@ export async function runMetaMigrationVerification(options = {}) {
   const migrationDir = path.join(apiDir, 'migrations')
   const stateDir = options.stateDir || path.join(rootDir, '.wrangler-release-verify', 'meta-migration')
   const preMigrationPath = path.join(stateDir, PRE_MIGRATION_FILE)
-  const persistTo = path.relative(apiDir, stateDir)
+  const allMigrationsPath = path.join(stateDir, ALL_MIGRATIONS_FILE)
+  const oldPersistTo = path.relative(apiDir, path.join(stateDir, 'old'))
+  const emptyPersistTo = path.relative(apiDir, path.join(stateDir, 'empty'))
   const preMigrationRelativePath = path.relative(apiDir, preMigrationPath)
-  const migration0039RelativePath = path.relative(
-    apiDir,
-    path.join(migrationDir, '0039_meta_capi_v2_operations.sql'),
-  )
+  const allMigrationsRelativePath = path.relative(apiDir, allMigrationsPath)
   const runCommandFn = options.runCommand || runCommand
   const steps = []
 
@@ -49,13 +55,14 @@ export async function runMetaMigrationVerification(options = {}) {
     await rm(stateDir, { recursive: true, force: true })
     await mkdir(stateDir, { recursive: true })
     await writeFile(preMigrationPath, await buildPreMigrationSql(migrationDir))
+    await writeFile(allMigrationsPath, await buildMigrationSql(migrationDir, 42))
 
-    if (!await runD1Step(runCommandFn, rootDir, persistTo, 'meta-migration-apply-0001-0038', [
+    if (!await runD1Step(runCommandFn, rootDir, oldPersistTo, 'meta-migration-apply-0001-0038', [
       '--file', preMigrationRelativePath,
       '--yes',
     ], steps)) return failedResult(steps, stateDir)
 
-    if (!await runD1Step(runCommandFn, rootDir, persistTo, 'meta-migration-seed', [
+    if (!await runD1Step(runCommandFn, rootDir, oldPersistTo, 'meta-migration-seed', [
       '--command', seedSql(options.includeDuplicateFixture === true),
       '--yes',
     ], steps)) return failedResult(steps, stateDir)
@@ -63,7 +70,7 @@ export async function runMetaMigrationVerification(options = {}) {
     const preflightStep = await runD1Step(
       runCommandFn,
       rootDir,
-      persistTo,
+      oldPersistTo,
       'meta-migration-preflight-0039',
       ['--command', DUPLICATE_GROUP_SQL, '--json', '--yes'],
       steps,
@@ -80,26 +87,37 @@ export async function runMetaMigrationVerification(options = {}) {
       )
     }
 
-    if (!await runD1Step(runCommandFn, rootDir, persistTo, 'meta-migration-apply-0039', [
-      '--file', migration0039RelativePath,
-      '--yes',
-    ], steps)) return failedResult(steps, stateDir, undefined, duplicateGroupCount)
+    for (const migrationName of FOLLOW_UP_MIGRATIONS) {
+      const number = migrationName.slice(0, 4)
+      if (!await runD1Step(runCommandFn, rootDir, oldPersistTo, `meta-migration-apply-${number}`, [
+        '--file', path.relative(apiDir, path.join(migrationDir, migrationName)),
+        '--yes',
+      ], steps)) return failedResult(steps, stateDir, undefined, duplicateGroupCount)
+      if (number === '0039' && !await runD1Step(
+        runCommandFn,
+        rootDir,
+        oldPersistTo,
+        'meta-migration-seed-0039-history',
+        ['--command', seedPost0039Sql(), '--yes'],
+        steps,
+      )) return failedResult(steps, stateDir, undefined, duplicateGroupCount)
+    }
 
-    const historyStep = await runD1Step(runCommandFn, rootDir, persistTo, 'meta-migration-query-history', [
+    const historyStep = await runD1Step(runCommandFn, rootDir, oldPersistTo, 'meta-migration-query-history', [
       '--command', historyQuerySql(),
       '--json',
       '--yes',
     ], steps)
     if (!historyStep) return failedResult(steps, stateDir, undefined, duplicateGroupCount)
 
-    const indexStep = await runD1Step(runCommandFn, rootDir, persistTo, 'meta-migration-query-indexes', [
-      '--command', "SELECT name, [unique] AS [unique] FROM pragma_index_list('analytics_conversion_deliveries') WHERE name = 'idx_conversion_delivery_action_channel';",
+    const schemaStep = await runD1Step(runCommandFn, rootDir, oldPersistTo, 'meta-migration-query-schema', [
+      '--command', schemaQuerySql(),
       '--json',
       '--yes',
     ], steps)
-    if (!indexStep) return failedResult(steps, stateDir, undefined, duplicateGroupCount)
+    if (!schemaStep) return failedResult(steps, stateDir, undefined, duplicateGroupCount)
 
-    const settingStep = await runD1Step(runCommandFn, rootDir, persistTo, 'meta-migration-query-setting', [
+    const settingStep = await runD1Step(runCommandFn, rootDir, oldPersistTo, 'meta-migration-query-setting', [
       '--command', "SELECT value FROM site_settings WHERE key = 'meta_capi_rollout_percentage';",
       '--json',
       '--yes',
@@ -108,9 +126,21 @@ export async function runMetaMigrationVerification(options = {}) {
 
     assertMigrationResult({
       history: parseWranglerResults(historyStep.stdout, '历史事实查询'),
-      indexes: parseWranglerResults(indexStep.stdout, '索引查询'),
+      schema: parseWranglerResults(schemaStep.stdout, 'schema 查询'),
       setting: parseWranglerResults(settingStep.stdout, '设置查询'),
     })
+
+    if (!await runD1Step(runCommandFn, rootDir, emptyPersistTo, 'meta-migration-empty-apply-0001-0042', [
+      '--file', allMigrationsRelativePath,
+      '--yes',
+    ], steps)) return failedResult(steps, stateDir, undefined, duplicateGroupCount)
+    const emptySchemaStep = await runD1Step(runCommandFn, rootDir, emptyPersistTo, 'meta-migration-empty-query-schema', [
+      '--command', schemaQuerySql(),
+      '--json',
+      '--yes',
+    ], steps)
+    if (!emptySchemaStep) return failedResult(steps, stateDir, undefined, duplicateGroupCount)
+    assertSchemaResult(parseWranglerResults(emptySchemaStep.stdout, '空库 schema 查询'))
 
     return { status: 'passed', steps, artifacts: [stateDir], duplicateGroupCount }
   }
@@ -119,6 +149,7 @@ export async function runMetaMigrationVerification(options = {}) {
   }
   finally {
     await rm(preMigrationPath, { force: true })
+    await rm(allMigrationsPath, { force: true })
   }
 }
 
@@ -203,16 +234,20 @@ function parseRemoteCount(stdout, key, options = {}) {
 }
 
 async function buildPreMigrationSql(migrationDir) {
+  return buildMigrationSql(migrationDir, 38)
+}
+
+async function buildMigrationSql(migrationDir, lastMigration) {
   const migrationNames = (await readdir(migrationDir))
-    .filter(name => /^\d{4}_.+\.sql$/.test(name) && Number(name.slice(0, 4)) <= 38)
+    .filter(name => /^\d{4}_.+\.sql$/.test(name) && Number(name.slice(0, 4)) <= lastMigration)
     .sort()
 
-  if (migrationNames.length !== 38) {
-    throw new Error(`预期读取 0001 到 0038 共 38 个 migration，实际为 ${migrationNames.length}`)
+  if (migrationNames.length !== lastMigration) {
+    throw new Error(`预期读取 0001 到 ${String(lastMigration).padStart(4, '0')} 共 ${lastMigration} 个 migration，实际为 ${migrationNames.length}`)
   }
   const indexes = migrationNames.map(name => Number(name.slice(0, 4)))
   if (!indexes.every((value, index) => value === index + 1)) {
-    throw new Error('0001 到 0038 migration 编号不连续')
+    throw new Error(`0001 到 ${String(lastMigration).padStart(4, '0')} migration 编号不连续`)
   }
 
   const migrations = await Promise.all(migrationNames.map(name => readFile(path.join(migrationDir, name), 'utf8')))
@@ -249,6 +284,13 @@ function seedSql(includeDuplicateFixture) {
   return statements.join('\n')
 }
 
+function seedPost0039Sql() {
+  return [
+    "INSERT INTO meta_capi_incidents (id, environment, status, severity, trigger_code, trigger_summary, target_rollout_percentage, effective_rollout_percentage, evidence, opened_at, last_observed_at) VALUES ('incident_legacy', 'dev', 'open', 'warning', 'legacy_warning', '历史 warning', 0, 0, '{}', '2026-07-10T00:00:00.000Z', '2026-07-10T00:01:00.000Z');",
+    "INSERT INTO meta_dataset_quality_snapshots (id, environment, dataset_id, event_name, metric_key, metric_value, collection_status, error_category, collected_at, contract_version) VALUES ('quality_legacy', 'dev', '1234567890', 'Contact', 'emq_score', 8.5, 'success', '', '2026-07-10T00:02:00.000Z', 1);",
+  ].join('\n')
+}
+
 function historyQuerySql() {
   return `
 SELECT
@@ -257,12 +299,33 @@ SELECT
   (SELECT COUNT(*) FROM meta_connection_verifications WHERE environment = 'dev') AS verification_count,
   (SELECT COUNT(*) FROM meta_capi_secure_outbox WHERE delivery_id = 'delivery_capi') AS outbox_count,
   (SELECT COUNT(*) FROM analytics_conversion_dedupe_claims WHERE owner_action_id = 'action_legacy') AS claim_count,
+  (SELECT COUNT(*) FROM meta_capi_incidents WHERE id = 'incident_legacy') AS incident_count,
+  (SELECT COUNT(*) FROM meta_dataset_quality_snapshots WHERE id = 'quality_legacy') AS quality_count,
   (SELECT rollout_target_percentage FROM analytics_conversion_deliveries WHERE channel = 'meta_pixel' AND conversion_action_id = 'action_legacy') AS pixel_target,
   (SELECT rollout_effective_percentage FROM analytics_conversion_deliveries WHERE channel = 'meta_pixel' AND conversion_action_id = 'action_legacy') AS pixel_effective,
   (SELECT rollout_bucket FROM analytics_conversion_deliveries WHERE channel = 'meta_pixel' AND conversion_action_id = 'action_legacy') AS pixel_bucket,
   (SELECT rollout_target_percentage FROM analytics_conversion_deliveries WHERE channel = 'meta_capi' AND conversion_action_id = 'action_legacy') AS capi_target,
   (SELECT rollout_effective_percentage FROM analytics_conversion_deliveries WHERE channel = 'meta_capi' AND conversion_action_id = 'action_legacy') AS capi_effective,
   (SELECT rollout_bucket FROM analytics_conversion_deliveries WHERE channel = 'meta_capi' AND conversion_action_id = 'action_legacy') AS capi_bucket;
+`.trim()
+}
+
+function schemaQuerySql() {
+  return `
+SELECT
+  (SELECT COUNT(*) FROM pragma_index_list('analytics_conversion_deliveries') WHERE name = 'idx_conversion_delivery_action_channel' AND [unique] = 1) AS delivery_unique_index,
+  (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'index' AND name IN (
+    'idx_meta_capi_delivery_attempt_window',
+    'idx_meta_capi_delivery_pending_window',
+    'idx_meta_capi_delivery_duplicate_window',
+    'idx_meta_capi_delivery_created_window'
+  )) AS circuit_index_count,
+  (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = 'meta_live_challenges') AS challenge_table,
+  (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'index' AND name = 'idx_meta_live_challenges_expiry') AS challenge_index,
+  (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = 'meta_resource_attestation_tickets') AS ticket_table,
+  (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'index' AND name = 'idx_meta_resource_attestation_tickets_expiry') AS ticket_index,
+  (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = 'meta_capi_incidents') AS incident_table,
+  (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = 'meta_dataset_quality_snapshots') AS quality_table;
 `.trim()
 }
 
@@ -289,13 +352,15 @@ function parseWranglerResults(stdout, label) {
   return result
 }
 
-function assertMigrationResult({ history, indexes, setting }) {
+function assertMigrationResult({ history, schema, setting }) {
   const row = history[0]
   if (history.length !== 1 || [
     row?.action_count,
     row?.verification_count,
     row?.outbox_count,
     row?.claim_count,
+    row?.incident_count,
+    row?.quality_count,
   ].some(value => value !== 1) || row?.delivery_count !== 2) {
     throw new Error('历史 Meta 事实未完整保留')
   }
@@ -306,11 +371,7 @@ function assertMigrationResult({ history, indexes, setting }) {
     }
   }
 
-  if (indexes.length !== 1
-    || indexes[0]?.name !== 'idx_conversion_delivery_action_channel'
-    || indexes[0]?.unique !== 1) {
-    throw new Error('action/channel 唯一索引缺失')
-  }
+  assertSchemaResult(schema)
 
   if (setting.length !== 1) throw new Error('meta_capi_rollout_percentage 缺失')
   let parsedSetting
@@ -322,6 +383,17 @@ function assertMigrationResult({ history, indexes, setting }) {
   }
   if (parsedSetting !== 0 || typeof parsedSetting !== 'number') {
     throw new Error('meta_capi_rollout_percentage 必须为 JSON number 0')
+  }
+}
+
+function assertSchemaResult(rows) {
+  const row = rows[0]
+  if (rows.length !== 1
+    || row?.delivery_unique_index !== 1
+    || row?.circuit_index_count !== 4
+    || ['challenge_table', 'challenge_index', 'ticket_table', 'ticket_index', 'incident_table', 'quality_table']
+      .some(field => row?.[field] !== 1)) {
+    throw new Error('Meta 0040-0042 schema 不完整')
   }
 }
 

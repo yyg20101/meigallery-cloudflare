@@ -18,7 +18,7 @@ import {
   readLatestMetaLiveEvidence,
 } from './meta-live-verification-lib.mjs'
 import {
-  assertReleaseVerificationSummary,
+  assertReleaseVerificationRow,
   recordReleaseVerificationSummary,
 } from './release-verification-store.mjs'
 import { runMetaResourceVerification } from './verify-meta-resources.mjs'
@@ -679,11 +679,13 @@ export async function collectTrustedProductionGateFacts(options = {}) {
 }
 
 export async function readRemoteDevGate(options = {}) {
+  const commit = String(options.commit || '').trim().toLowerCase()
+  if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error('dev remote gate 需要当前 40 位 commit')
   const sql = `
     SELECT summary, verified_at, expires_at
     FROM analytics_release_verifications
     WHERE environment = 'dev' AND verification_type = 'meta_live'
-      AND status = 'passed' AND commit_sha = '${options.commit}'
+      AND status = 'passed' AND commit_sha = '${commit}'
       AND datetime(expires_at) > datetime('now')
     ORDER BY verified_at DESC LIMIT 1
   `.replace(/\s+/g, ' ').trim()
@@ -694,18 +696,18 @@ export async function readRemoteDevGate(options = {}) {
   if (step.status !== 'passed') throw new Error('当前 dev 远端 live evidence 查询失败')
   try {
     const payload = JSON.parse(String(step.stdout || ''))
-    const row = payload?.[0]?.results?.[0]
-    const summary = JSON.parse(String(row?.summary || ''))
-    const events = Array.isArray(summary.events) ? summary.events : []
+    const rows = payload?.[0]?.results
+    if (!Array.isArray(rows) || rows.length !== 1) return { status: 'failed' }
     const contract = options.contract
-    const valid = summary.schemaVersion === 2
-      && summary.commitSha === options.commit
-      && summary.environment === 'dev'
-      && events.length === 2
-      && ['Contact', 'CompleteRegistration'].every(name => events.includes(name))
-      && summary.forbiddenEventsAbsent === true
-      && summary.datasetQualityContractVersion === contract.version
-      && summary.datasetQualityContractDigest === contract.digest
+    const summary = assertReleaseVerificationRow({
+      row: rows[0],
+      environment: 'dev',
+      verificationType: 'meta_live',
+      commit,
+      now: options.now,
+    })
+    const valid = summary.datasetQualityContractVersion === contract?.version
+      && summary.datasetQualityContractDigest === contract?.digest
     return { status: valid ? 'passed' : 'failed' }
   }
   catch {
@@ -731,21 +733,12 @@ export async function readTrustedProductionBootstrapPermit(options = {}) {
   if (step.status !== 'passed') throw new Error('production bootstrap permit 查询失败')
   try {
     const payload = JSON.parse(String(step.stdout || ''))
-    const summary = JSON.parse(String(payload?.[0]?.results?.[0]?.summary || ''))
-    assertReleaseVerificationSummary({
-      environment: 'production', verificationType: 'meta_resources', commit, summary,
+    const rows = payload?.[0]?.results
+    if (!Array.isArray(rows) || rows.length !== 1) return false
+    const summary = assertReleaseVerificationRow({
+      row: rows[0], environment: 'production', verificationType: 'meta_resources', commit, now: options.now,
     })
     return summary.verificationPhase === 'bootstrap'
-      && summary.bootstrapReady === true
-      && summary.liveAttestation === false
-      && summary.capiEnabled === false
-      && summary.initialMetaRollout === true
-      && summary.noOpenCriticalIncident === true
-      && summary.initialRolloutZero === true
-      && summary.secureOutboxReady === true
-      && summary.previousKeyReferencesExplainable === true
-      && summary.rolloutZero === true
-      && ['d1', 'r2', 'queue', 'dlq'].every(key => summary.environmentIsolation[key] === true)
   }
   catch {
     return false

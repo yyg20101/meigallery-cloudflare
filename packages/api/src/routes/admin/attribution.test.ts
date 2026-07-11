@@ -898,6 +898,8 @@ type RolloutDbOptions = {
   resourceIsolation?: boolean
   trackingMode?: 'disabled' | 'test' | 'production'
   environment?: 'dev' | 'production'
+  resourceSummary?: Record<string, unknown>
+  trackingModeConflict?: boolean
 }
 
 function createRolloutDb(options: RolloutDbOptions = {}) {
@@ -925,16 +927,7 @@ function createRolloutDb(options: RolloutDbOptions = {}) {
       if (options.liveEvidence === false || options.resourceIsolation === false) return []
       if (sql.includes("environment = 'production'")) {
         return [{
-          summary: JSON.stringify({
-            liveAttestation: true,
-            connectionVerified: true,
-            rolloutZero: true,
-            noOpenCriticalIncident: true,
-            environmentIsolation: {
-              d1: true, r2: true, queue: true, dlq: true,
-              pixel: true, token: true, testEventCode: true, dataKey: true,
-            },
-          }),
+          summary: JSON.stringify(options.resourceSummary ?? fullResourceSummary()),
         } as T]
       }
       return [{ id: 'verification_meta_live' } as T]
@@ -1019,8 +1012,9 @@ function createRolloutDb(options: RolloutDbOptions = {}) {
         async run() {
           calls.push(call)
           if (sql.includes('UPDATE site_settings') && sql.includes('meta_capi_rollout_percentage')) {
-            const [nextRaw, expectedRaw] = call.params.map(String)
-            if (options.conflict || targetRaw !== expectedRaw) {
+            const [nextRaw, expectedRaw, expectedTrackingMode] = call.params.map(String)
+            if (options.conflict || targetRaw !== expectedRaw
+              || (expectedTrackingMode && (options.trackingModeConflict || JSON.stringify(options.trackingMode ?? 'production') !== expectedTrackingMode))) {
               lastChanges = 0
               return { meta: { changes: 0, rows_written: 0 } }
             }
@@ -1927,6 +1921,7 @@ describe('后台归因中心 API', () => {
     }, { DB: db, ...VALID_READINESS_ENV } as unknown as Bindings)
     const body = await res.json()
     expect(res.status).toBe(200)
+    expect(res.headers.get('cache-control')).toBe('no-store')
     expect(body.data).toMatchObject({
       schemaVersion: 1, environment: 'dev', commitSha: VALID_RELEASE_COMMIT, nonce,
       ticket: expect.stringMatching(/^mrat_[0-9a-f]{64}$/),
@@ -2111,6 +2106,42 @@ describe('后台归因中心 API', () => {
     expect(res.status).toBe(409)
     expect(body.detail.blockers).toContain('meta_live_verification_missing')
     expect(db.calls.some(call => call.sql.includes('UPDATE site_settings'))).toBe(false)
+  })
+
+  it.each(['bootstrap', 'post-deploy'] as const)('production 0 -> 10 拒绝 %s 资源摘要冒充 full', async verificationPhase => {
+    const { db, res, body } = await requestRollout('owner', {
+      target: 0,
+      resourceSummary: {
+        ...fullResourceSummary(),
+        verificationPhase,
+        bootstrapReady: verificationPhase === 'bootstrap',
+        connectionVerified: verificationPhase !== 'bootstrap',
+      },
+    }, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ percentage: 10, force: false }),
+    }, { APP_ENV: 'production' })
+
+    expect(res.status).toBe(409)
+    expect(body.detail.blockers).toContain('meta_live_verification_missing')
+    expect(db.batchCount).toBe(0)
+  })
+
+  it('production 0 -> 10 的原子 UPDATE 同时约束旧 rollout 与当前 JSON production mode', async () => {
+    const { db, res, body } = await requestRollout('owner', { target: 0, trackingModeConflict: true }, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ percentage: 10, force: false }),
+    }, { APP_ENV: 'production' })
+
+    expect(res.status).toBe(409)
+    expect(body.code).toBe('META_CAPI_ROLLOUT_CONFLICT')
+    const update = db.calls.find(call => call.sql.includes('UPDATE site_settings'))
+    expect(update?.sql).toContain("key = 'meta_tracking_mode'")
+    expect(update?.params).toContain(JSON.stringify('production'))
+    expect(db.target).toBe(0)
+    expect(db.audits).toEqual([])
   })
 
   it.each(['disabled', 'test'] as const)('production 0 -> 10 在 trackingMode=%s 时先于 fetch/queue/rollout UPDATE 阻断', async trackingMode => {
@@ -2534,6 +2565,34 @@ describe('后台归因中心 API', () => {
     expect(db.audits).toEqual([])
   })
 })
+
+function fullResourceSummary(): Record<string, unknown> {
+  return {
+    schemaVersion: 2,
+    verificationPhase: 'full',
+    bootstrapReady: false,
+    liveAttestation: true,
+    migrationsReady: true,
+    d1Ready: true,
+    r2Ready: true,
+    queuesReady: true,
+    secretsReady: true,
+    migrationsCurrent: true,
+    migrationsApplied: true,
+    connectionVerified: true,
+    capiEnabled: false,
+    initialMetaRollout: false,
+    noOpenCriticalIncident: true,
+    initialRolloutZero: true,
+    secureOutboxReady: true,
+    previousKeyReferencesExplainable: true,
+    rolloutZero: true,
+    environmentIsolation: {
+      d1: true, r2: true, queue: true, dlq: true,
+      pixel: true, token: true, testEventCode: true, dataKey: true,
+    },
+  }
+}
 
 describe('Meta CAPI v2 质量运维看板契约', () => {
   const singleDay = 'from=2026-07-10&to=2026-07-10'
