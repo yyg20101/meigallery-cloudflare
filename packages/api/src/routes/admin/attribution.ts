@@ -720,7 +720,7 @@ adminAttributionRoutes.post('/meta/rollout', async (c) => {
     if (snapshot.promotion.hardBlockers.length > 0 || (!body.force && snapshot.promotion.blockers.length > 0)) {
       return errorJson(c, 409, 'CAPI rollout 升级门禁未通过', {
         code: 'META_CAPI_ROLLOUT_PROMOTION_BLOCKED',
-        detail: { blockers },
+        detail: { blockers, metricsStatus: snapshot.metricsStatus },
       })
     }
     if (body.force) {
@@ -823,6 +823,10 @@ adminAttributionRoutes.post('/meta/test-event', async (c) => {
 })
 
 type MetaRolloutMetrics = Omit<RolloutPromotionInput, 'from' | 'to'>
+type MetaRolloutMetricsStatus = {
+  available: boolean
+  errorCode: 'META_CAPI_ROLLOUT_METRICS_QUERY_FAILED' | null
+}
 
 type OpenMetaIncident = {
   id: string
@@ -844,6 +848,7 @@ type MetaRolloutSnapshot = {
   liveEvidencePresent: boolean
   openIncident: OpenMetaIncident | null
   metrics: MetaRolloutMetrics
+  metricsStatus: MetaRolloutMetricsStatus
   promotion: {
     from: MetaCapiRolloutPercentage
     to: MetaCapiRolloutPercentage
@@ -871,14 +876,14 @@ async function readMetaRolloutSnapshot(
   )
   const environment = auditEnvironment(c.env.APP_ENV)
   const releaseCommit = normalizeReleaseCommit(c.env.RELEASE_COMMIT)
-  const [connectionVerified, openIncident, liveEvidencePresent, metrics] = await Promise.all([
+  const [connectionVerified, openIncident, liveEvidencePresent, metricsResult] = await Promise.all([
     readConnectionVerified(c),
     readOpenCriticalIncident(c.env.DB, environment),
     readCurrentDevMetaLiveEvidence(c.env.DB, releaseCommit),
     readMetaRolloutMetrics(c.env.DB, targetPercentage),
   ])
   const to = requestedPercentage ?? nextRolloutPercentage(targetPercentage)
-  const evaluation = evaluateRolloutPromotion({ from: targetPercentage, to, ...metrics })
+  const evaluation = evaluateRolloutPromotion({ from: targetPercentage, to, ...metricsResult.metrics })
   const hardBlockers: string[] = []
   if (to > targetPercentage) {
     if (!connectionVerified) hardBlockers.push('connection_unverified')
@@ -887,11 +892,14 @@ async function readMetaRolloutSnapshot(
       else if (!liveEvidencePresent) hardBlockers.push('meta_live_verification_missing')
     }
     if (openIncident) hardBlockers.push('circuit_open')
+    if (!metricsResult.status.available) hardBlockers.push('metrics_unavailable')
     if (evaluation.blockers.includes('non_adjacent_promotion')) {
       hardBlockers.push('non_adjacent_promotion')
     }
   }
-  const metricBlockers = evaluation.blockers.filter(blocker => blocker !== 'non_adjacent_promotion')
+  const metricBlockers = metricsResult.status.available
+    ? evaluation.blockers.filter(blocker => blocker !== 'non_adjacent_promotion')
+    : []
   return {
     environment,
     rawTargetValue,
@@ -900,12 +908,13 @@ async function readMetaRolloutSnapshot(
     connectionVerified,
     liveEvidencePresent,
     openIncident,
-    metrics,
+    metrics: metricsResult.metrics,
+    metricsStatus: metricsResult.status,
     promotion: {
       from: targetPercentage,
       to,
       allowed: hardBlockers.length === 0 && metricBlockers.length === 0,
-      requiresOverrideReason: evaluation.requiresOverrideReason,
+      requiresOverrideReason: metricsResult.status.available && evaluation.requiresOverrideReason,
       blockers: metricBlockers,
       hardBlockers,
     },
@@ -974,7 +983,7 @@ async function readCurrentDevMetaLiveEvidence(db: D1Database, releaseCommit: str
 async function readMetaRolloutMetrics(
   db: D1Database,
   targetPercentage: MetaCapiRolloutPercentage,
-): Promise<MetaRolloutMetrics> {
+): Promise<{ metrics: MetaRolloutMetrics; status: MetaRolloutMetricsStatus }> {
   try {
     const row = await db.prepare(`
       SELECT
@@ -1001,22 +1010,31 @@ async function readMetaRolloutMetrics(
         AND rollout_target_percentage = ?
     `).bind(targetPercentage).first<Row>()
     return {
-      sent: numberValue(row?.sent_count),
-      failed: numberValue(row?.failed_count),
-      permissionErrors: numberValue(row?.permission_error_count),
-      retryExhausted: numberValue(row?.retry_exhausted_count),
-      stalePending: numberValue(row?.stale_pending_count),
-      criticalQualityDiagnostics: numberValue(row?.critical_quality_diagnostic_count),
+      metrics: {
+        sent: numberValue(row?.sent_count),
+        failed: numberValue(row?.failed_count),
+        permissionErrors: numberValue(row?.permission_error_count),
+        retryExhausted: numberValue(row?.retry_exhausted_count),
+        stalePending: numberValue(row?.stale_pending_count),
+        criticalQualityDiagnostics: numberValue(row?.critical_quality_diagnostic_count),
+      },
+      status: { available: true, errorCode: null },
     }
   }
   catch {
     return {
-      sent: 0,
-      failed: 0,
-      permissionErrors: 0,
-      retryExhausted: 0,
-      stalePending: 0,
-      criticalQualityDiagnostics: 0,
+      metrics: {
+        sent: 0,
+        failed: 0,
+        permissionErrors: 0,
+        retryExhausted: 0,
+        stalePending: 0,
+        criticalQualityDiagnostics: 0,
+      },
+      status: {
+        available: false,
+        errorCode: 'META_CAPI_ROLLOUT_METRICS_QUERY_FAILED',
+      },
     }
   }
 }

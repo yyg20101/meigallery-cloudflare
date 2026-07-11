@@ -36,6 +36,7 @@ import {
   decideMetaCapiRollout,
   normalizeMetaCapiRollout,
   type MetaCapiRolloutDecision,
+  type MetaCapiRolloutPercentage,
 } from './meta-capi-rollout'
 import {
   acquireConversionDedupeClaim,
@@ -840,6 +841,20 @@ async function buildCapiEncryptionPlan(
   if (connection.pixelId !== settings.pixelId || connection.trackingMode !== settings.mode) {
     return { state: 'skipped', reason: 'connection_unverified', rollout: null }
   }
+  if (!settings.rolloutSettingAvailable) {
+    return {
+      state: 'skipped',
+      reason: 'rollout_excluded',
+      connectionRevision: connection.revision,
+      rollout: {
+        targetPercentage: 0,
+        effectivePercentage: 0,
+        bucket: null,
+        included: false,
+        reason: 'rollout_excluded',
+      },
+    }
+  }
 
   let rollout: MetaCapiRolloutDecision
   try {
@@ -970,12 +985,14 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 }
 
 async function readMetaDeliverySettings(db: D1Database) {
-  const [modeRow, pixelEnabledRow, pixelIdRow, capiEnabledRow, rolloutRow] = await Promise.all([
-    db.prepare("SELECT value FROM site_settings WHERE key = 'meta_tracking_mode' LIMIT 1").first<{ value: string }>(),
-    db.prepare("SELECT value FROM site_settings WHERE key = 'facebook_pixel_enabled' LIMIT 1").first<{ value: string }>(),
-    db.prepare("SELECT value FROM site_settings WHERE key = 'facebook_pixel_id' LIMIT 1").first<{ value: string }>(),
-    db.prepare("SELECT value FROM site_settings WHERE key = 'meta_capi_enabled' LIMIT 1").first<{ value: string }>(),
-    db.prepare("SELECT value FROM site_settings WHERE key = 'meta_capi_rollout_percentage' LIMIT 1").first<{ value: string }>(),
+  const [[modeRow, pixelEnabledRow, pixelIdRow, capiEnabledRow], rolloutSetting] = await Promise.all([
+    Promise.all([
+      db.prepare("SELECT value FROM site_settings WHERE key = 'meta_tracking_mode' LIMIT 1").first<{ value: string }>(),
+      db.prepare("SELECT value FROM site_settings WHERE key = 'facebook_pixel_enabled' LIMIT 1").first<{ value: string }>(),
+      db.prepare("SELECT value FROM site_settings WHERE key = 'facebook_pixel_id' LIMIT 1").first<{ value: string }>(),
+      db.prepare("SELECT value FROM site_settings WHERE key = 'meta_capi_enabled' LIMIT 1").first<{ value: string }>(),
+    ]),
+    readMetaCapiRolloutPercentage(db),
   ])
   const pixelId = String(parseStoredSettingValue(pixelIdRow?.value || '""', '') || '').trim()
   return {
@@ -983,7 +1000,26 @@ async function readMetaDeliverySettings(db: D1Database) {
     pixelEnabled: parseStoredSettingValue(pixelEnabledRow?.value || 'false', false) === true,
     pixelId: /^\d{5,30}$/.test(pixelId) ? pixelId : '',
     capiEnabled: parseStoredSettingValue(capiEnabledRow?.value || 'false', false) === true,
-    rolloutPercentage: normalizeMetaCapiRollout(parseStoredSettingValue(rolloutRow?.value || '', undefined)),
+    rolloutPercentage: rolloutSetting.percentage,
+    rolloutSettingAvailable: rolloutSetting.available,
+  }
+}
+
+async function readMetaCapiRolloutPercentage(db: D1Database): Promise<{
+  percentage: MetaCapiRolloutPercentage
+  available: boolean
+}> {
+  try {
+    const row = await db.prepare(
+      "SELECT value FROM site_settings WHERE key = 'meta_capi_rollout_percentage' LIMIT 1",
+    ).first<{ value: string }>()
+    return {
+      percentage: normalizeMetaCapiRollout(parseStoredSettingValue(row?.value || '', undefined)),
+      available: true,
+    }
+  }
+  catch {
+    return { percentage: 0, available: false }
   }
 }
 

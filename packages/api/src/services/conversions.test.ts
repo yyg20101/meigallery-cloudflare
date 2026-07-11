@@ -97,6 +97,7 @@ function createConversionDb(options: {
   metaCapiRolloutPercentage?: unknown
   criticalIncidentOpen?: boolean
   userMetaExternalId?: string | null
+  rolloutSettingQueryError?: boolean
   stableIdQueryError?: boolean
   incidentQueryError?: boolean
   failAt?: number
@@ -297,6 +298,7 @@ function createConversionDb(options: {
             return { value: JSON.stringify(options.metaTrackingMode ?? 'disabled') } as T
           }
           if (sql.includes("WHERE key = 'meta_capi_rollout_percentage'")) {
+            if (options.rolloutSettingQueryError) throw new Error('模拟 rollout setting 查询失败')
             return { value: JSON.stringify(options.metaCapiRolloutPercentage ?? 100) } as T
           }
           if (sql.includes('FROM meta_capi_incidents')) {
@@ -1293,6 +1295,47 @@ describe('conversion ledger service', () => {
     expect(db.insertedDeliveries.find(item => item.channel === 'meta_capi')).toMatchObject({
       status: 'skipped',
       skipReason: 'rollout_excluded',
+      rolloutTargetPercentage: 0,
+      rolloutEffectivePercentage: 0,
+      rolloutBucket: null,
+    })
+  })
+
+  it('rollout setting 查询异常时保留联系事实与 Pixel，并在敏感访问前 fail closed', async () => {
+    const db = createConversionDb({
+      facebookPixelEnabled: true,
+      facebookPixelId: '1234567890',
+      metaCapiEnabled: true,
+      metaTrackingMode: 'test',
+      rolloutSettingQueryError: true,
+    })
+    const browserProvider = vi.fn(async () => ({
+      fbp: 'fb.1.must-not-read',
+      clientIpAddress: '203.0.113.10',
+    }))
+
+    const result = await recordContact(
+      envFor(db),
+      { ...grantedContactInput(), visitorId: 'visitor_rollout_setting_query_error' },
+      { getMetaCapiUserData: browserProvider },
+    )
+
+    expect(result.created).toBe(true)
+    expect(result.pixelEvents).toHaveLength(1)
+    expect(db.insertedConversions).toHaveLength(1)
+    expect(browserProvider).not.toHaveBeenCalled()
+    expect(metaCryptoMocks.loadKeys).not.toHaveBeenCalled()
+    expect(metaCryptoMocks.encrypt).not.toHaveBeenCalled()
+    expect(db.insertedOutboxes).toEqual([])
+    expect(db.insertedDeliveries.find(item => item.channel === 'meta_capi')).toMatchObject({
+      status: 'skipped',
+      skipReason: 'rollout_excluded',
+      rolloutTargetPercentage: 0,
+      rolloutEffectivePercentage: 0,
+      rolloutBucket: null,
+    })
+    expect(db.insertedDeliveries.find(item => item.channel === 'meta_pixel')).toMatchObject({
+      status: 'pending',
       rolloutTargetPercentage: 0,
       rolloutEffectivePercentage: 0,
       rolloutBucket: null,

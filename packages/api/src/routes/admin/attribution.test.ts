@@ -677,6 +677,7 @@ type RolloutDbOptions = {
   retryExhausted?: number
   stalePending?: number
   criticalQualityDiagnostics?: number
+  metricsQueryError?: boolean
   conflict?: boolean
 }
 
@@ -705,6 +706,7 @@ function createRolloutDb(options: RolloutDbOptions = {}) {
       return options.liveEvidence === false ? [] : [{ id: 'verification_meta_live' } as T]
     }
     if (sql.includes('AS permission_error_count')) {
+      if (options.metricsQueryError) throw new Error('模拟 rollout metrics 查询失败')
       return [{
         sent_count: options.sent ?? 100,
         failed_count: options.failed ?? 0,
@@ -1672,6 +1674,25 @@ describe('后台归因中心 API', () => {
     })
   })
 
+  it('rollout GET 明确返回指标不可用状态并禁止升级', async () => {
+    const { res, body } = await requestRollout('admin', {
+      target: 10,
+      metricsQueryError: true,
+    })
+
+    expect(res.status).toBe(200)
+    expect(body.data).toMatchObject({
+      metricsStatus: {
+        available: false,
+        errorCode: 'META_CAPI_ROLLOUT_METRICS_QUERY_FAILED',
+      },
+      promotion: {
+        allowed: false,
+        hardBlockers: ['metrics_unavailable'],
+      },
+    })
+  })
+
   it('POST rollout 显式要求 Owner', async () => {
     const { db, res, body } = await requestRollout('admin', { target: 0 }, {
       method: 'POST',
@@ -1743,6 +1764,32 @@ describe('后台归因中心 API', () => {
       changed: true,
     })
     expect(db.target).toBe(percentage)
+  })
+
+  it.each([
+    [10, 50, 'RELEASE_COMMIT 缺失', {}, { RELEASE_COMMIT: undefined }],
+    [10, 50, 'RELEASE_COMMIT 非法', {}, { RELEASE_COMMIT: 'invalid' }],
+    [10, 50, 'MetaConnection 未验证', { connectionVerified: false }, {}],
+    [50, 100, 'RELEASE_COMMIT 缺失', {}, { RELEASE_COMMIT: undefined }],
+    [50, 100, 'RELEASE_COMMIT 非法', {}, { RELEASE_COMMIT: 'invalid' }],
+    [50, 100, 'MetaConnection 未验证', { connectionVerified: false }, {}],
+  ] as const)('普通 %i -> %i 在%s时仍要求当前 verified connection', async (
+    target,
+    percentage,
+    _caseName,
+    dbOptions,
+    envOverrides,
+  ) => {
+    const { db, res, body } = await requestRollout('owner', { target, ...dbOptions }, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ percentage, force: false }),
+    }, envOverrides)
+
+    expect(res.status).toBe(409)
+    expect(body.code).toBe('META_CAPI_ROLLOUT_PROMOTION_BLOCKED')
+    expect(body.detail.blockers).toContain('connection_unverified')
+    expect(db.batchCount).toBe(0)
   })
 
   it.each([
@@ -1825,6 +1872,32 @@ describe('后台归因中心 API', () => {
       },
     })
     expect(JSON.stringify(forced.db.audits)).not.toContain('rollout-token')
+  })
+
+  it.each([
+    ['普通升级', false, ''],
+    ['force 升级', true, '当前指标已有人工复核确认风险受控并持续观察运行状态'],
+  ] as const)('指标查询失败时拒绝%s且返回稳定非敏感错误状态', async (_caseName, force, reason) => {
+    const { db, res, body } = await requestRollout('owner', {
+      target: 10,
+      metricsQueryError: true,
+    }, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ percentage: 50, force, reason }),
+    })
+
+    expect(res.status).toBe(409)
+    expect(body.code).toBe('META_CAPI_ROLLOUT_PROMOTION_BLOCKED')
+    expect(body.detail).toMatchObject({
+      blockers: expect.arrayContaining(['metrics_unavailable']),
+      metricsStatus: {
+        available: false,
+        errorCode: 'META_CAPI_ROLLOUT_METRICS_QUERY_FAILED',
+      },
+    })
+    expect(JSON.stringify(body)).not.toContain('模拟 rollout metrics 查询失败')
+    expect(db.batchCount).toBe(0)
   })
 
   it('同值为 no-op 不写审计，降级到任意低档位始终允许', async () => {
