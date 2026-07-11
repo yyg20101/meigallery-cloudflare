@@ -312,6 +312,14 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
               meta: { rows_read: 1, rows_written: 0, duration: 1 },
             }
           }
+          if (sql.includes('AS membership_grant_count')
+            && sql.includes("action_type = 'membership_grant'")
+            && !sql.includes('FROM analytics_tracking_sources')) {
+            return {
+              results: [{ membership_grant_count: attributionTotals.membershipGrantCount } as T],
+              meta: { rows_read: 1, rows_written: 0, duration: 1 },
+            }
+          }
           if (sql.includes('FROM analytics_conversion_daily') && sql.includes('SUM(action_count)') && !sql.includes('FROM analytics_tracking_sources')) {
             return {
               results: [{ action_count: readiness.actionCount } as T],
@@ -641,6 +649,120 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
         pendingDailyCount = snapshot.pendingDailyCount
         pendingDailyCreated = snapshot.pendingDailyCreated
         throw error
+      }
+    },
+  }
+  return db
+}
+
+type DashboardDbOptions = {
+  empty?: boolean
+  fail?: boolean
+  matchDenominator?: number
+  datasetQualityRows?: Array<Record<string, unknown>>
+}
+
+function createDashboardDb(options: DashboardDbOptions = {}) {
+  const calls: DbCall[] = []
+  const usage = { rows_read: 1, rows_written: 0, duration: 1 }
+  const matchDenominator = options.matchDenominator ?? 4
+
+  function rowsFor(sql: string): Array<Record<string, unknown>> {
+    if (options.fail) throw new Error('模拟 dashboard 查询失败')
+    if (sql.includes('WITH action_facts')) {
+      return options.empty
+        ? []
+        : [{
+            dimension_value: 'summer-campaign',
+            action_count: 5,
+            contact_count: 3,
+            complete_registration_count: 2,
+            pixel_attempted_count: 5,
+            capi_sent_count: 4,
+            failed_count: 1,
+            skipped_count: 0,
+            pending_count: 0,
+          }]
+    }
+    if (sql.includes('AS historical_lead_count')) {
+      return [{ historical_lead_count: options.empty ? 0 : 9 }]
+    }
+    if (sql.includes('AS total_action_count')) {
+      return [{
+        contact_count: options.empty ? 0 : 3,
+        complete_registration_count: options.empty ? 0 : 2,
+        total_action_count: options.empty ? 0 : 5,
+      }]
+    }
+    if (sql.includes('AS retry_exhausted_count') && !sql.includes('GROUP BY')) {
+      return [{ retry_exhausted_count: options.empty ? 0 : 1 }]
+    }
+    if (sql.includes('AS retry_exhausted_count') && sql.includes('GROUP BY a.date')) {
+      return options.empty ? [] : [{ date: '2026-07-10', retry_exhausted_count: 1 }]
+    }
+    if (sql.includes('AS pixel_attempted_count') && !sql.includes('GROUP BY date')) {
+      return [{
+        pixel_attempted_count: options.empty ? 0 : 5,
+        capi_sent_count: options.empty ? 0 : 4,
+        failed_count: options.empty ? 0 : 1,
+        skipped_count: options.empty ? 0 : 2,
+        pending_count: options.empty ? 0 : 3,
+      }]
+    }
+    if (sql.includes('FROM analytics_conversion_daily') && sql.includes('GROUP BY date')) {
+      return options.empty
+        ? []
+        : [{ date: '2026-07-10', contact_count: 3, complete_registration_count: 2 }]
+    }
+    if (sql.includes('FROM analytics_conversion_delivery_daily') && sql.includes('GROUP BY date')) {
+      return options.empty
+        ? []
+        : [{
+            date: '2026-07-10',
+            pixel_attempted_count: 5,
+            capi_sent_count: 4,
+            failed_count: 1,
+            skipped_count: 2,
+            pending_count: 3,
+          }]
+    }
+    if (sql.includes('AS fbp_numerator')) {
+      return [{
+        date: '2026-07-10',
+        fbp_numerator: matchDenominator > 0 ? 3 : 0,
+        fbp_denominator: matchDenominator,
+        fbc_numerator: matchDenominator > 0 ? 2 : 0,
+        fbc_denominator: matchDenominator,
+        email_numerator: matchDenominator > 0 ? 4 : 0,
+        email_denominator: matchDenominator,
+        external_id_numerator: matchDenominator > 0 ? 1 : 0,
+        external_id_denominator: matchDenominator,
+      }]
+    }
+    if (sql.includes('FROM meta_dataset_quality_snapshots')) {
+      return options.datasetQualityRows ?? []
+    }
+    return []
+  }
+
+  const db = {
+    calls,
+    prepare(sql: string) {
+      const call: DbCall = { sql, params: [] }
+      return {
+        bind(...params: unknown[]) {
+          call.params = params
+          return this
+        },
+        async all<T>() {
+          calls.push(call)
+          const results = rowsFor(sql) as T[]
+          return { results, meta: { ...usage, rows_read: results.length } }
+        },
+        async first<T>() {
+          calls.push(call)
+          return (rowsFor(sql)[0] ?? null) as T | null
+        },
       }
     },
   }
@@ -1164,7 +1286,7 @@ describe('后台归因中心 API', () => {
     expect(activityQueries.length).toBeGreaterThan(0)
     expect(activityQueries.every(call => !call.sql.includes("'Lead'"))).toBe(true)
     expect(activityQueries.every(call => !call.sql.includes("'lead'"))).toBe(true)
-    const linksSql = db.calls.find(call => call.sql.includes('WITH conversion_metrics'))?.sql ?? ''
+    const linksSql = db.calls.find(call => call.sql.includes('conversion_metrics AS'))?.sql ?? ''
     expect(linksSql).not.toContain('ORDER BY contact_count DESC, lead_count DESC')
   })
 
@@ -1202,12 +1324,13 @@ describe('后台归因中心 API', () => {
     expect(bodies.every(body => !JSON.stringify(body.data).includes('start_trial'))).toBe(true)
     expect(currentReportCalls.length).toBeGreaterThan(0)
     expect(currentReportCalls.every(call => (
-      call.sql.includes("action_type <> 'start_trial'") ||
-      call.sql.includes("action_type = 'lead'")
+      call.sql.includes("action_type IN ('contact', 'complete_registration')") ||
+      call.sql.includes("action_type = 'lead'") ||
+      call.sql.includes("action_type = 'membership_grant'")
     ))).toBe(true)
     expect(currentReportCalls.every(call => !call.sql.includes('AS start_trial_count'))).toBe(true)
     const sampleSql = db.calls.find(call => call.sql.includes('FROM analytics_conversion_actions') && call.sql.includes('LIMIT 100'))?.sql ?? ''
-    expect(sampleSql).toContain("action_type <> 'start_trial'")
+    expect(sampleSql).toContain("action_type IN ('contact', 'complete_registration')")
   })
 
   it('转化接口支持按 sourceCode 过滤', async () => {
@@ -1236,7 +1359,7 @@ describe('后台归因中心 API', () => {
       historical: { leadCount: 1 },
     })
     expect(body.data.links[0].trackingPath).toContain('utm_content=chat-a')
-    const linkSql = db.calls.find(call => call.sql.includes('WITH conversion_metrics'))
+    const linkSql = db.calls.find(call => call.sql.includes('conversion_metrics AS'))
     expect(linkSql?.sql).toContain('GROUP BY source_name')
     expect(linkSql?.sql).not.toContain('cm.utm_campaign')
     expect(linkSql?.sql).not.toContain('cm.utm_content')
@@ -1249,7 +1372,7 @@ describe('后台归因中心 API', () => {
       DB: db,
     } as unknown as Bindings)
     const body = await res.json()
-    const linkCall = db.calls.find(call => call.sql.includes('WITH conversion_metrics'))
+    const linkCall = db.calls.find(call => call.sql.includes('conversion_metrics AS'))
 
     expect(res.status).toBe(200)
     expect(body.data.links[0]).toMatchObject({ sourceCode: 'ad-a' })
@@ -1613,10 +1736,10 @@ describe('后台归因中心 API', () => {
     const { db } = await requestReadiness()
     const sqlByAlias = (alias: string) => db.calls.find(call => call.sql.includes(alias))?.sql ?? ''
 
-    expect(sqlByAlias('AS retry_exhausted_count')).toContain("datetime(d.last_attempt_at) >= datetime('now', '-24 hours')")
-    expect(sqlByAlias('AS external_event_id_mismatch_count')).toContain("datetime(d.created_at) >= datetime('now', '-7 days')")
+    expect(sqlByAlias('AS retry_exhausted_count')).toContain('a.date BETWEEN ? AND ?')
+    expect(sqlByAlias('AS external_event_id_mismatch_count')).toContain('a.date BETWEEN ? AND ?')
     expect(sqlByAlias('AS pending_too_long_count')).toContain("datetime(d.created_at) < datetime('now', '-10 minutes')")
-    expect(sqlByAlias('AS permanent_failure_count')).toContain("datetime(d.updated_at) >= datetime('now', '-7 days')")
+    expect(sqlByAlias('AS permanent_failure_count')).toContain('a.date BETWEEN ? AND ?')
   })
 
   it.each([
@@ -2217,4 +2340,239 @@ describe('后台归因中心 API', () => {
     expect(db.target).toBe(0)
     expect(db.audits).toEqual([])
   })
+})
+
+describe('Meta CAPI v2 质量运维看板契约', () => {
+  const singleDay = 'from=2026-07-10&to=2026-07-10'
+
+  it('summary 单日只汇总活动业务 action，并将 Lead 放入 historical', async () => {
+    const db = createDashboardDb()
+    const res = await createApp('admin').request(
+      `/api/admin/attribution/summary?${singleDay}`,
+      {},
+      { DB: db } as unknown as Bindings,
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body).toMatchObject({
+      range: { from: '2026-07-10', to: '2026-07-10', days: 1 },
+      usage: { rowsRead: expect.any(Number), rowsWritten: 0, durationMs: expect.any(Number) },
+      data: {
+        business: {
+          contactCount: 3,
+          completeRegistrationCount: 2,
+          actionCount: 5,
+        },
+        historical: { leadCount: 9 },
+        delivery: {
+          pixelAttempted: 5,
+          capiSent: 4,
+          failed: 1,
+          skipped: 2,
+          pending: 3,
+          retryExhausted: 1,
+        },
+      },
+    })
+    expect(body.data.business).not.toHaveProperty('leadCount')
+    expect(JSON.stringify(body.data)).not.toContain('Meta 归因成功')
+  })
+
+  it('trends 对指定单日恰好返回一行并保持业务与投递证据分层', async () => {
+    const res = await createApp('admin').request(
+      `/api/admin/attribution/trends?${singleDay}&granularity=day`,
+      {},
+      { DB: createDashboardDb() } as unknown as Bindings,
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.range).toEqual({ from: '2026-07-10', to: '2026-07-10', days: 1 })
+    expect(body.data.granularity).toBe('day')
+    expect(body.data.rows).toEqual([{
+      date: '2026-07-10',
+      business: { contactCount: 3, completeRegistrationCount: 2, actionCount: 5 },
+      delivery: {
+        pixelAttempted: 5,
+        capiSent: 4,
+        failed: 1,
+        skipped: 2,
+        pending: 3,
+        retryExhausted: 1,
+      },
+    }])
+  })
+
+  it('trends 对无数据范围按上海业务日期逐日补零', async () => {
+    const res = await createApp('admin').request(
+      '/api/admin/attribution/trends?from=2026-07-09&to=2026-07-11&granularity=day',
+      {},
+      { DB: createDashboardDb({ empty: true }) } as unknown as Bindings,
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.data.rows.map((row: { date: string }) => row.date)).toEqual([
+      '2026-07-09',
+      '2026-07-10',
+      '2026-07-11',
+    ])
+    expect(body.data.rows.every((row: { business: { actionCount: number }; delivery: { capiSent: number } }) => (
+      row.business.actionCount === 0 && row.delivery.capiSent === 0
+    ))).toBe(true)
+  })
+
+  it('quality 返回四项 match 分子、分母与 rate，且无 Dataset snapshot 不伪造 0 分', async () => {
+    const res = await createApp('admin').request(
+      `/api/admin/attribution/quality?${singleDay}`,
+      {},
+      { DB: createDashboardDb() } as unknown as Bindings,
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.data.match.summary).toEqual({
+      fbp: { availability: 'available', numerator: 3, denominator: 4, rate: 0.75 },
+      fbc: { availability: 'available', numerator: 2, denominator: 4, rate: 0.5 },
+      email: { availability: 'available', numerator: 4, denominator: 4, rate: 1 },
+      externalId: { availability: 'available', numerator: 1, denominator: 4, rate: 0.25 },
+    })
+    expect(body.data.match.rows).toHaveLength(1)
+    expect(body.data.datasetQuality).toEqual({
+      availability: 'not_available',
+      latest: null,
+      rows: [],
+    })
+  })
+
+  it('quality 的 match denominator 为零时 rate 为 null 且明确 unavailable', async () => {
+    const res = await createApp('admin').request(
+      `/api/admin/attribution/quality?${singleDay}`,
+      {},
+      { DB: createDashboardDb({ matchDenominator: 0 }) } as unknown as Bindings,
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.data.match.summary.fbp).toEqual({
+      availability: 'unavailable',
+      numerator: 0,
+      denominator: 0,
+      rate: null,
+    })
+    expect(body.data.match.rows[0].fbp.rate).toBeNull()
+  })
+
+  it('breakdown 以 conversion fact 为 action 基数，双通道不会翻倍', async () => {
+    const db = createDashboardDb()
+    const res = await createApp('admin').request(
+      `/api/admin/attribution/breakdown?${singleDay}&dimension=utm_campaign`,
+      {},
+      { DB: db } as unknown as Bindings,
+    )
+    const body = await res.json()
+    const query = db.calls.find(call => call.sql.includes('WITH action_facts'))
+
+    expect(res.status).toBe(200)
+    expect(body.data.dimension).toBe('utm_campaign')
+    expect(body.data.rows[0]).toMatchObject({
+      value: 'summer-campaign',
+      actionCount: 5,
+      contactCount: 3,
+      completeRegistrationCount: 2,
+      delivery: { pixelAttempted: 5, capiSent: 4, failed: 1 },
+    })
+    expect(query?.sql).toContain('delivery_per_action')
+    expect(query?.sql).toContain('COUNT(*) AS action_count')
+    expect(query?.params).toEqual(['2026-07-10', '2026-07-10', 50])
+  })
+
+  it.each(['utm_campaign', 'utm_content', 'tracking_link'] as const)(
+    'breakdown 接受白名单 dimension %s',
+    async (dimension) => {
+      const res = await createApp('admin').request(
+        `/api/admin/attribution/breakdown?${singleDay}&dimension=${dimension}`,
+        {},
+        { DB: createDashboardDb() } as unknown as Bindings,
+      )
+      expect(res.status).toBe(200)
+    },
+  )
+
+  it('breakdown 拒绝未知 dimension 且不执行查询', async () => {
+    const db = createDashboardDb()
+    const res = await createApp('admin').request(
+      `/api/admin/attribution/breakdown?${singleDay}&dimension=source_name`,
+      {},
+      { DB: db } as unknown as Bindings,
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(400)
+    expect(body.code).toBe('ATTRIBUTION_BREAKDOWN_DIMENSION_INVALID')
+    expect(db.calls).toHaveLength(0)
+  })
+
+  it.each(['summary', 'trends', 'quality', 'breakdown', 'meta/status', 'readiness'])(
+    '%s 使用统一日期范围契约',
+    async (endpoint) => {
+      const suffix = endpoint === 'breakdown' ? '&dimension=utm_content' : ''
+      const db = endpoint === 'meta/status' || endpoint === 'readiness'
+        ? createAttributionDb()
+        : createDashboardDb()
+      const res = await createApp('admin').request(
+        `/api/admin/attribution/${endpoint}?${singleDay}${suffix}`,
+        {},
+        { DB: db, ...VALID_READINESS_ENV } as unknown as Bindings,
+      )
+      const body = await res.json()
+
+      expect(res.status).toBe(200)
+      expect(body.range).toEqual({ from: '2026-07-10', to: '2026-07-10', days: 1 })
+      expect(body.usage).toMatchObject({
+        rowsRead: expect.any(Number),
+        rowsWritten: expect.any(Number),
+        durationMs: expect.any(Number),
+      })
+      expect(body.data).toBeTypeOf('object')
+    },
+  )
+
+  it('新看板运行时 SQL 的 active 查询不会把 Lead 混入统计', async () => {
+    const db = createDashboardDb()
+    const app = createApp('admin')
+    const env = { DB: db } as unknown as Bindings
+    await Promise.all([
+      app.request(`/api/admin/attribution/summary?${singleDay}`, {}, env),
+      app.request(`/api/admin/attribution/trends?${singleDay}&granularity=day`, {}, env),
+      app.request(`/api/admin/attribution/quality?${singleDay}`, {}, env),
+      app.request(`/api/admin/attribution/breakdown?${singleDay}&dimension=tracking_link`, {}, env),
+    ])
+
+    const activeSql = db.calls
+      .map(call => call.sql)
+      .filter(sql => !sql.includes("action_type = 'lead'"))
+      .join('\n')
+    expect(activeSql).not.toMatch(/action_type\s+IN\s*\([^)]*['\"]lead['\"]/i)
+    expect(activeSql).not.toMatch(/event_name\s+IN\s*\([^)]*['\"]Lead['\"]/i)
+    expect(db.calls.some(call => call.sql.includes("action_type = 'lead'"))).toBe(true)
+  })
+
+  it.each(['summary', 'trends', 'quality', 'breakdown', 'meta/status', 'readiness'])(
+    '%s 查询失败时 fail closed 为稳定 503',
+    async (endpoint) => {
+      const suffix = endpoint === 'breakdown' ? '&dimension=utm_campaign' : ''
+      const res = await createApp('admin').request(
+        `/api/admin/attribution/${endpoint}?${singleDay}${suffix}`,
+        {},
+        { DB: createDashboardDb({ fail: true }), ...VALID_READINESS_ENV } as unknown as Bindings,
+      )
+      const body = await res.json()
+
+      expect(res.status).toBe(503)
+      expect(body.code).toBe('ATTRIBUTION_DASHBOARD_UNAVAILABLE')
+      expect(JSON.stringify(body)).not.toContain('模拟 dashboard 查询失败')
+    },
+  )
 })

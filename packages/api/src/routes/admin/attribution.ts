@@ -27,6 +27,13 @@ import {
   metaCapiIncidentSummary,
   sanitizeMetaCapiIncidentEvidence,
 } from '../../services/meta-capi-incident-evidence'
+import {
+  isAttributionBreakdownDimension,
+  queryAttributionBreakdown,
+  queryAttributionQuality,
+  queryAttributionSummary,
+  queryAttributionTrends,
+} from '../../services/attribution-dashboard'
 
 export const adminAttributionRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -52,31 +59,132 @@ const META_CAPI_CRITICAL_QUALITY_ERROR_CODES = [
   'retry_exhausted',
 ] as const
 
+adminAttributionRoutes.get('/summary', async (c) => {
+  const range = parseRangeOrError(c)
+  if (range instanceof Response) return range
+  try {
+    const result = await queryAttributionSummary(c.env.DB, range)
+    return c.json({ range, ...result })
+  }
+  catch {
+    return dashboardUnavailable(c)
+  }
+})
+
+adminAttributionRoutes.get('/trends', async (c) => {
+  const range = parseRangeOrError(c)
+  if (range instanceof Response) return range
+  if ((c.req.query('granularity') || 'day') !== 'day') {
+    return errorJson(c, 400, '归因趋势粒度无效', {
+      code: 'ATTRIBUTION_TREND_GRANULARITY_INVALID',
+    })
+  }
+  try {
+    const result = await queryAttributionTrends(c.env.DB, range)
+    return c.json({ range, ...result })
+  }
+  catch {
+    return dashboardUnavailable(c)
+  }
+})
+
+adminAttributionRoutes.get('/quality', async (c) => {
+  const range = parseRangeOrError(c)
+  if (range instanceof Response) return range
+  try {
+    const result = await queryAttributionQuality(
+      c.env.DB,
+      range,
+      c.env.APP_ENV === 'production' ? 'production' : 'dev',
+    )
+    return c.json({ range, ...result })
+  }
+  catch {
+    return dashboardUnavailable(c)
+  }
+})
+
+adminAttributionRoutes.get('/breakdown', async (c) => {
+  const range = parseRangeOrError(c)
+  if (range instanceof Response) return range
+  const dimension = c.req.query('dimension')
+  if (!isAttributionBreakdownDimension(dimension)) {
+    return errorJson(c, 400, '归因拆分维度无效', {
+      code: 'ATTRIBUTION_BREAKDOWN_DIMENSION_INVALID',
+    })
+  }
+  const limit = parseBoundedInteger(c.req.query('limit'), 50, 1, 100)
+  if (limit === null) {
+    return errorJson(c, 400, '归因拆分数量无效', {
+      code: 'ATTRIBUTION_BREAKDOWN_LIMIT_INVALID',
+    })
+  }
+  try {
+    const result = await queryAttributionBreakdown(c.env.DB, range, dimension, limit)
+    return c.json({ range, ...result })
+  }
+  catch {
+    return dashboardUnavailable(c)
+  }
+})
+
+adminAttributionRoutes.get('/meta/status', async (c) => {
+  const range = parseRangeOrError(c)
+  if (range instanceof Response) return range
+  try {
+    const [connection, rollout, activity] = await Promise.all([
+      getMetaConnectionStatus(c.env),
+      readMetaRolloutSnapshot(c),
+      queryAttributionSummary(c.env.DB, range),
+    ])
+    return c.json({
+      range,
+      usage: activity.usage,
+      data: {
+        connection,
+        rollout: serializeMetaRolloutSnapshot(rollout),
+        activity: activity.data,
+      },
+    })
+  }
+  catch {
+    return dashboardUnavailable(c)
+  }
+})
+
 adminAttributionRoutes.get('/overview', async (c) => {
   const range = parseRangeOrError(c)
   if (range instanceof Response) return range
 
-  const [totals, trend, metaTotals, metaTrend, lastSentAt, duplicateActions] = await Promise.all([
+  const [totals, operations, historical, trend, metaTotals, metaTrend, lastSentAt, duplicateActions] = await Promise.all([
     queryFirst(c.env.DB, `
       SELECT
         COALESCE(SUM(CASE WHEN action_type = 'contact' THEN action_count ELSE 0 END), 0) AS contact_count,
-        COALESCE(SUM(CASE WHEN action_type = 'lead' THEN action_count ELSE 0 END), 0) AS lead_count,
-        COALESCE(SUM(CASE WHEN action_type = 'complete_registration' THEN action_count ELSE 0 END), 0) AS complete_registration_count,
-        COALESCE(SUM(CASE WHEN action_type = 'membership_grant' THEN action_count ELSE 0 END), 0) AS membership_grant_count
+        COALESCE(SUM(CASE WHEN action_type = 'complete_registration' THEN action_count ELSE 0 END), 0) AS complete_registration_count
       FROM analytics_conversion_daily
       WHERE date BETWEEN ? AND ?
-        AND action_type IN ('contact', 'lead', 'complete_registration', 'membership_grant')
+        AND action_type IN ('contact', 'complete_registration')
+    `, [range.from, range.to]),
+    queryFirst(c.env.DB, `
+      SELECT COALESCE(SUM(action_count), 0) AS membership_grant_count
+      FROM analytics_conversion_daily
+      WHERE date BETWEEN ? AND ?
+        AND action_type = 'membership_grant'
+    `, [range.from, range.to]),
+    queryFirst(c.env.DB, `
+      SELECT COALESCE(SUM(action_count), 0) AS historical_lead_count
+      FROM analytics_conversion_daily
+      WHERE date BETWEEN ? AND ?
+        AND action_type = 'lead'
     `, [range.from, range.to]),
     queryAll(c.env.DB, `
       SELECT
         date,
         COALESCE(SUM(CASE WHEN action_type = 'contact' THEN action_count ELSE 0 END), 0) AS contact_count,
-        COALESCE(SUM(CASE WHEN action_type = 'lead' THEN action_count ELSE 0 END), 0) AS lead_count,
-        COALESCE(SUM(CASE WHEN action_type = 'complete_registration' THEN action_count ELSE 0 END), 0) AS complete_registration_count,
-        COALESCE(SUM(CASE WHEN action_type = 'membership_grant' THEN action_count ELSE 0 END), 0) AS membership_grant_count
+        COALESCE(SUM(CASE WHEN action_type = 'complete_registration' THEN action_count ELSE 0 END), 0) AS complete_registration_count
       FROM analytics_conversion_daily
       WHERE date BETWEEN ? AND ?
-        AND action_type IN ('contact', 'lead', 'complete_registration', 'membership_grant')
+        AND action_type IN ('contact', 'complete_registration')
       GROUP BY date
       ORDER BY date ASC
     `, [range.from, range.to]),
@@ -156,12 +264,14 @@ adminAttributionRoutes.get('/overview', async (c) => {
 
   return c.json({
     range,
-    usage: mergeQueryUsage(totals, trend, metaTotals, metaTrend, lastSentAt, duplicateActions),
+    usage: mergeQueryUsage(totals, operations, historical, trend, metaTotals, metaTrend, lastSentAt, duplicateActions),
     data: {
       totals: normalizeTotals(totalRow),
-      operations: normalizeOperations(totalRow),
+      operations: normalizeOperations(operations.rows[0] ?? {}),
       trend: trend.rows.map(normalizeTrendRow),
-      historical: normalizeHistorical(totalRow),
+      historical: {
+        leadCount: numberValue((historical.rows[0] ?? {}).historical_lead_count),
+      },
       meta,
       metaTrend: metaTrend.rows.map(normalizeMetaTrendRow),
       duplicates,
@@ -175,15 +285,15 @@ adminAttributionRoutes.get('/conversions', async (c) => {
   if (range instanceof Response) return range
   const sourceFilter = readAttributionSourceFilter(c)
   const dailySourceWhere = sourceFilter
-    ? "date BETWEEN ? AND ? AND action_type <> 'start_trial' AND source_name = ?"
-    : "date BETWEEN ? AND ? AND action_type <> 'start_trial'"
+    ? "date BETWEEN ? AND ? AND action_type IN ('contact', 'complete_registration') AND source_name = ?"
+    : "date BETWEEN ? AND ? AND action_type IN ('contact', 'complete_registration')"
   const actionSourceWhere = sourceFilter
-    ? "date BETWEEN ? AND ? AND action_type <> 'start_trial' AND (source_name = ? OR tracking_source_slug = ?)"
-    : "date BETWEEN ? AND ? AND action_type <> 'start_trial'"
+    ? "date BETWEEN ? AND ? AND action_type IN ('contact', 'complete_registration') AND (source_name = ? OR tracking_source_slug = ?)"
+    : "date BETWEEN ? AND ? AND action_type IN ('contact', 'complete_registration')"
   const dailySourceParams = sourceFilter ? [range.from, range.to, sourceFilter] : [range.from, range.to]
   const actionSourceParams = sourceFilter ? [range.from, range.to, sourceFilter, sourceFilter] : [range.from, range.to]
 
-  const [byAction, bySource, samples, historical] = await Promise.all([
+  const [byAction, bySource, sourceHistorical, sourceOperations, samples, historical, operations] = await Promise.all([
     queryAll(c.env.DB, `
       SELECT action_type, SUM(action_count) AS action_count, SUM(unique_session_count) AS unique_session_count
       FROM analytics_conversion_daily
@@ -198,14 +308,30 @@ adminAttributionRoutes.get('/conversions', async (c) => {
         utm_campaign,
         utm_content,
         COALESCE(SUM(CASE WHEN action_type = 'contact' THEN action_count ELSE 0 END), 0) AS contact_count,
-        COALESCE(SUM(CASE WHEN action_type = 'lead' THEN action_count ELSE 0 END), 0) AS lead_count,
-        COALESCE(SUM(CASE WHEN action_type = 'complete_registration' THEN action_count ELSE 0 END), 0) AS complete_registration_count,
-        COALESCE(SUM(CASE WHEN action_type = 'membership_grant' THEN action_count ELSE 0 END), 0) AS membership_grant_count
+        COALESCE(SUM(CASE WHEN action_type = 'complete_registration' THEN action_count ELSE 0 END), 0) AS complete_registration_count
       FROM analytics_conversion_daily
       WHERE ${dailySourceWhere}
       GROUP BY source_channel, source_name, utm_campaign, utm_content
       ORDER BY contact_count DESC, complete_registration_count DESC
       LIMIT 50
+    `, dailySourceParams),
+    queryAll(c.env.DB, `
+      SELECT source_channel, source_name, utm_campaign, utm_content,
+        COALESCE(SUM(action_count), 0) AS lead_count
+      FROM analytics_conversion_daily
+      WHERE date BETWEEN ? AND ?
+        AND action_type = 'lead'
+        ${sourceFilter ? 'AND source_name = ?' : ''}
+      GROUP BY source_channel, source_name, utm_campaign, utm_content
+    `, dailySourceParams),
+    queryAll(c.env.DB, `
+      SELECT source_channel, source_name, utm_campaign, utm_content,
+        COALESCE(SUM(action_count), 0) AS membership_grant_count
+      FROM analytics_conversion_daily
+      WHERE date BETWEEN ? AND ?
+        AND action_type = 'membership_grant'
+        ${sourceFilter ? 'AND source_name = ?' : ''}
+      GROUP BY source_channel, source_name, utm_campaign, utm_content
     `, dailySourceParams),
     queryAll(c.env.DB, `
       SELECT
@@ -223,20 +349,27 @@ adminAttributionRoutes.get('/conversions', async (c) => {
         AND action_type = 'lead'
         ${sourceFilter ? 'AND source_name = ?' : ''}
     `, dailySourceParams),
+    queryFirst(c.env.DB, `
+      SELECT COALESCE(SUM(action_count), 0) AS membership_grant_count
+      FROM analytics_conversion_daily
+      WHERE date BETWEEN ? AND ?
+        AND action_type = 'membership_grant'
+        ${sourceFilter ? 'AND source_name = ?' : ''}
+    `, dailySourceParams),
   ])
 
   return c.json({
     range,
-    usage: mergeQueryUsage(byAction, bySource, samples, historical),
+    usage: mergeQueryUsage(byAction, bySource, sourceHistorical, sourceOperations, samples, historical, operations),
     data: {
       byAction: byAction.rows.filter(isActiveConversionRow),
-      bySource: bySource.rows.map(serializeConversionSource),
+      bySource: mergeConversionSourceRows(bySource.rows, sourceHistorical.rows, sourceOperations.rows),
       samples: samples.rows.filter(isActiveConversionRow),
       historical: {
         leadCount: numberValue((historical.rows[0] ?? {}).historical_lead_count),
       },
       operations: {
-        membershipGrantCount: numberValue(byAction.rows.find(row => row.action_type === 'membership_grant')?.action_count),
+        membershipGrantCount: numberValue((operations.rows[0] ?? {}).membership_grant_count),
       },
     },
   })
@@ -247,8 +380,8 @@ adminAttributionRoutes.get('/links', async (c) => {
   if (range instanceof Response) return range
   const sourceFilter = readAttributionSourceFilter(c)
   const conversionMetricsWhere = sourceFilter
-    ? "date BETWEEN ? AND ? AND action_type <> 'start_trial' AND source_name = ?"
-    : "date BETWEEN ? AND ? AND action_type <> 'start_trial'"
+    ? 'date BETWEEN ? AND ? AND source_name = ?'
+    : 'date BETWEEN ? AND ?'
   const linksSourceWhere = sourceFilter
     ? 'WHERE ats.slug = ? OR ats.utm_source = ?'
     : ''
@@ -257,15 +390,35 @@ adminAttributionRoutes.get('/links', async (c) => {
     : [range.from, range.to, range.from, range.to]
 
   const links = await queryAll(c.env.DB, `
-    WITH conversion_metrics AS (
+    WITH scoped_conversion_facts AS (
+      SELECT source_name, action_type, action_count
+      FROM analytics_conversion_daily
+      WHERE ${conversionMetricsWhere}
+        AND (
+          action_type IN ('contact', 'complete_registration')
+          OR action_type = 'lead'
+          OR action_type = 'membership_grant'
+        )
+    ),
+    conversion_metrics AS (
       SELECT
         source_name,
         COALESCE(SUM(CASE WHEN action_type = 'contact' THEN action_count ELSE 0 END), 0) AS contact_count,
-        COALESCE(SUM(CASE WHEN action_type = 'lead' THEN action_count ELSE 0 END), 0) AS lead_count,
-        COALESCE(SUM(CASE WHEN action_type = 'complete_registration' THEN action_count ELSE 0 END), 0) AS complete_registration_count,
-        COALESCE(SUM(CASE WHEN action_type = 'membership_grant' THEN action_count ELSE 0 END), 0) AS conversion_membership_grant_count
-      FROM analytics_conversion_daily
-      WHERE ${conversionMetricsWhere}
+        COALESCE(SUM(CASE WHEN action_type = 'complete_registration' THEN action_count ELSE 0 END), 0) AS complete_registration_count
+      FROM scoped_conversion_facts
+      WHERE action_type IN ('contact', 'complete_registration')
+      GROUP BY source_name
+    ),
+    historical_metrics AS (
+      SELECT source_name, COALESCE(SUM(action_count), 0) AS lead_count
+      FROM scoped_conversion_facts
+      WHERE action_type = 'lead'
+      GROUP BY source_name
+    ),
+    operation_metrics AS (
+      SELECT source_name, COALESCE(SUM(action_count), 0) AS conversion_membership_grant_count
+      FROM scoped_conversion_facts
+      WHERE action_type = 'membership_grant'
       GROUP BY source_name
     )
     SELECT
@@ -281,15 +434,19 @@ adminAttributionRoutes.get('/links', async (c) => {
       COALESCE(SUM(ads.membership_grant_count), 0) AS membership_grant_count,
       COALESCE(SUM(ads.active_seconds_total), 0) AS active_seconds_total,
       COALESCE(MAX(cm.contact_count), 0) AS contact_count,
-      COALESCE(MAX(cm.lead_count), 0) AS lead_count,
+      COALESCE(MAX(hm.lead_count), 0) AS lead_count,
       COALESCE(MAX(cm.complete_registration_count), 0) AS complete_registration_count,
-      COALESCE(MAX(cm.conversion_membership_grant_count), 0) AS conversion_membership_grant_count
+      COALESCE(MAX(om.conversion_membership_grant_count), 0) AS conversion_membership_grant_count
     FROM analytics_tracking_sources ats
     LEFT JOIN analytics_daily_sources ads
       ON ads.date BETWEEN ? AND ?
      AND ads.source_name = ats.utm_source
     LEFT JOIN conversion_metrics cm
       ON cm.source_name = ats.utm_source
+    LEFT JOIN historical_metrics hm
+      ON hm.source_name = ats.utm_source
+    LEFT JOIN operation_metrics om
+      ON om.source_name = ats.utm_source
     ${linksSourceWhere}
     GROUP BY
       ats.id, ats.name, ats.channel, ats.slug, ats.target_path, ats.utm_source,
@@ -476,7 +633,7 @@ adminAttributionRoutes.get('/duplicates', async (c) => {
   })
 })
 
-adminAttributionRoutes.get('/readiness', async (c) => {
+async function buildReadinessResponse(c: AdminAttributionContext) {
   const range = parseRangeOrError(c)
   if (range instanceof Response) return range
 
@@ -518,9 +675,9 @@ adminAttributionRoutes.get('/readiness', async (c) => {
         WHERE d.channel = 'meta_capi'
           AND d.status = 'failed'
           AND d.error_code = 'retry_exhausted'
-          AND datetime(d.last_attempt_at) >= datetime('now', '-24 hours')
+          AND a.date BETWEEN ? AND ?
           AND a.action_type IN ('contact', 'complete_registration')
-      `, []),
+      `, [range.from, range.to]),
       queryFirst(c.env.DB, `
         SELECT COUNT(*) AS external_event_id_mismatch_count
         FROM (
@@ -529,7 +686,7 @@ adminAttributionRoutes.get('/readiness', async (c) => {
             d.event_name
           FROM analytics_conversion_deliveries d
           JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
-          WHERE datetime(d.created_at) >= datetime('now', '-7 days')
+          WHERE a.date BETWEEN ? AND ?
             AND a.source_channel <> 'internal'
             AND a.action_type IN ('contact', 'complete_registration')
           GROUP BY d.conversion_action_id, d.event_name
@@ -541,7 +698,7 @@ adminAttributionRoutes.get('/readiness', async (c) => {
               OR COUNT(DISTINCT d.external_event_id) <> 1
             )
         ) mismatches
-      `, []),
+      `, [range.from, range.to]),
       queryFirst(c.env.DB, `
         SELECT COUNT(*) AS pending_too_long_count
         FROM analytics_conversion_deliveries d
@@ -549,8 +706,9 @@ adminAttributionRoutes.get('/readiness', async (c) => {
         WHERE d.channel = 'meta_capi'
           AND d.status = 'pending'
           AND datetime(d.created_at) < datetime('now', '-10 minutes')
+          AND a.date BETWEEN ? AND ?
           AND a.action_type IN ('contact', 'complete_registration')
-      `, []),
+      `, [range.from, range.to]),
       queryFirst(c.env.DB, `
         SELECT COUNT(*) AS permanent_failure_count
         FROM analytics_conversion_deliveries d
@@ -559,9 +717,9 @@ adminAttributionRoutes.get('/readiness', async (c) => {
           AND d.status = 'failed'
           AND d.error_code GLOB 'meta_http_4*'
           AND d.error_code <> 'meta_http_429'
-          AND datetime(d.updated_at) >= datetime('now', '-7 days')
+          AND a.date BETWEEN ? AND ?
           AND a.action_type IN ('contact', 'complete_registration')
-      `, []),
+      `, [range.from, range.to]),
       queryFirst(c.env.DB, `
         SELECT
           COALESCE(SUM(CASE
@@ -586,17 +744,17 @@ adminAttributionRoutes.get('/readiness', async (c) => {
         FROM analytics_conversion_deliveries d
         JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
         WHERE d.channel = 'meta_capi'
-          AND a.date >= date('now', '-6 days')
+          AND a.date BETWEEN ? AND ?
           AND a.action_type IN ('contact', 'complete_registration')
-      `, []),
+      `, [range.from, range.to]),
       queryFirst(c.env.DB, `
         SELECT
           COALESCE(SUM(CASE WHEN channel = 'meta_pixel' AND status = 'attempted' THEN delivery_count ELSE 0 END), 0) AS pixel_attempted_count,
           COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'sent' THEN delivery_count ELSE 0 END), 0) AS capi_sent_count
         FROM analytics_conversion_delivery_daily
-        WHERE date >= date('now', '-6 days')
+        WHERE date BETWEEN ? AND ?
           AND event_name IN ('Contact', 'CompleteRegistration')
-      `, []),
+      `, [range.from, range.to]),
       releaseCommit
         ? queryAll(c.env.DB, `
           SELECT verification_type, verified_at, expires_at
@@ -669,12 +827,12 @@ adminAttributionRoutes.get('/readiness', async (c) => {
     blockerCheck('queue_binding', 'CAPI Queue binding 已配置', !modeRequiresMeta || Boolean(c.env.META_CAPI_QUEUE), presenceDetail(modeRequiresMeta, Boolean(c.env.META_CAPI_QUEUE))),
     blockerCheck('meta_live_verification', '当前发布已通过 Meta live 验证', Boolean(releaseCommit && liveVerification), verificationDetail(releaseCommit, liveVerification)),
     blockerCheck('meta_resources_verification', '当前发布已通过 Meta 资源验证', Boolean(releaseCommit && resourcesVerification), verificationDetail(releaseCommit, resourcesVerification)),
-    blockerCheck('retry_exhausted', '最近 24 小时无重试耗尽', schemaReady && retryExhaustedCount === 0, schemaReady ? `发现 ${retryExhaustedCount} 条 retry_exhausted` : '归因迁移表不可用'),
+    blockerCheck('retry_exhausted', '当前范围无重试耗尽', schemaReady && retryExhaustedCount === 0, schemaReady ? `发现 ${retryExhaustedCount} 条 retry_exhausted` : '归因迁移表不可用'),
     blockerCheck('external_event_id_consistency', 'Pixel/CAPI 事件 ID 一致', schemaReady && externalEventIdMismatchCount === 0, schemaReady ? `发现 ${externalEventIdMismatchCount} 组事件 ID 不一致` : '归因迁移表不可用'),
     warningCheck('pending_too_long', '无超过 10 分钟的 CAPI pending', schemaReady && pendingTooLongCount === 0, schemaReady ? `发现 ${pendingTooLongCount} 条超时 pending` : '归因迁移表不可用'),
     warningCheck('permanent_failure', '近期无 Meta 永久 4xx', schemaReady && permanentFailureCount === 0, schemaReady ? `发现 ${permanentFailureCount} 条永久 4xx` : '归因迁移表不可用'),
-    qualityWarning('fbp_coverage', '近 7 天 fbp 覆盖率', fbpSampleCount, fbpCoverage, 0.8),
-    qualityWarning('fbc_coverage', '近 7 天 Meta 付费样本 fbc 覆盖率', fbcSampleCount, fbcCoverage, 0.7),
+    qualityWarning('fbp_coverage', '当前范围 fbp 覆盖率', fbpSampleCount, fbpCoverage, 0.8),
+    qualityWarning('fbc_coverage', '当前范围 Meta 付费样本 fbc 覆盖率', fbcSampleCount, fbcCoverage, 0.7),
     qualityWarning('capi_delivery_ratio', 'CAPI 成功与 Pixel 尝试比例', pixelAttemptedCount, capiDeliveryRatio, 0.8),
     warningCheck('manual_confirmation', '人工去重确认在 30 天内', manualConfirmationCurrent, lastManualConfirmationAt ? `最近确认：${lastManualConfirmationAt}` : '尚无人工确认记录'),
   ]
@@ -706,6 +864,15 @@ adminAttributionRoutes.get('/readiness', async (c) => {
       },
     },
   })
+}
+
+adminAttributionRoutes.get('/readiness', async (c) => {
+  try {
+    return await buildReadinessResponse(c)
+  }
+  catch {
+    return dashboardUnavailable(c)
+  }
 })
 
 adminAttributionRoutes.get('/meta/rollout', async (c) => {
@@ -1379,6 +1546,12 @@ function parseRangeOrError(c: AdminAttributionContext): AnalyticsDateRange | Res
   }
 }
 
+function dashboardUnavailable(c: AdminAttributionContext) {
+  return errorJson(c, 503, '归因看板数据暂时不可用', {
+    code: 'ATTRIBUTION_DASHBOARD_UNAVAILABLE',
+  })
+}
+
 async function queryAll<T extends Row>(
   db: Pick<D1Database, 'prepare'>,
   sql: string,
@@ -1432,6 +1605,25 @@ function normalizeTrendRow(row: Row) {
 
 function isActiveConversionRow(row: Row) {
   return row.action_type === 'contact' || row.action_type === 'complete_registration'
+}
+
+function mergeConversionSourceRows(activeRows: Row[], historicalRows: Row[], operationRows: Row[]) {
+  const historical = new Map(historicalRows.map(row => [conversionSourceKey(row), row]))
+  const operations = new Map(operationRows.map(row => [conversionSourceKey(row), row]))
+  return activeRows.map((row) => {
+    const key = conversionSourceKey(row)
+    return serializeConversionSource({
+      ...row,
+      lead_count: historical.get(key)?.lead_count,
+      membership_grant_count: operations.get(key)?.membership_grant_count,
+    })
+  })
+}
+
+function conversionSourceKey(row: Row) {
+  return [row.source_channel, row.source_name, row.utm_campaign, row.utm_content]
+    .map(value => String(value ?? ''))
+    .join('\u0000')
 }
 
 function serializeConversionSource(row: Row) {
