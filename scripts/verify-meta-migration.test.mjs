@@ -60,6 +60,11 @@ function mockJsonFor(name, options = {}) {
       ticket_table: 1,
       ticket_index: 1,
       delivery_lease_index: 1,
+      delivery_lease_token_column: 1,
+      delivery_lease_expires_column: 1,
+      delivery_lease_index_columns: 'delivery_lease_expires_at',
+      delivery_lease_index_sql: "CREATE INDEX idx_meta_capi_delivery_lease_expiry ON analytics_conversion_deliveries(delivery_lease_expires_at) WHERE channel = 'meta_capi' AND delivery_lease_token <> ''",
+      registration_recovery_cursor: '0',
       incident_table: 1,
       quality_table: 1,
     }] }])
@@ -175,6 +180,30 @@ describe('Meta migration 演练', () => {
     assert.ok(names.includes('meta-migration-empty-apply-0001-0043'))
     assert.ok(names.includes('meta-migration-empty-query-schema'))
   })
+
+  for (const [label, field, value] of [
+    ['delivery lease token 列', 'delivery_lease_token_column', 0],
+    ['delivery lease expires 列', 'delivery_lease_expires_column', 0],
+    ['delivery lease 索引目标列', 'delivery_lease_index_columns', 'delivery_lease_token'],
+    ['delivery lease 部分索引 WHERE', 'delivery_lease_index_sql', 'CREATE INDEX broken'],
+    ['registration recovery cursor', 'registration_recovery_cursor', '1'],
+  ]) {
+    it(`${label} 不精确时旧库演练 fail closed`, async () => {
+      const runCommand = async (_command, _args, options = {}) => {
+        const stdout = mockJsonFor(options.name)
+        if (options.name !== 'meta-migration-query-schema' && options.name !== 'meta-migration-empty-query-schema') {
+          return passedStep(options.name, stdout)
+        }
+        const parsed = JSON.parse(stdout)
+        parsed[0].results[0][field] = value
+        return passedStep(options.name, JSON.stringify(parsed))
+      }
+
+      const result = await runMetaMigrationVerification({ runCommand })
+      assert.equal(result.status, 'failed')
+      assert.match(result.error, /0040-0043 schema/)
+    })
+  }
 
   it('在真实 D1 上阻断重复组且不执行 0039', async () => {
     const result = await runMetaMigrationVerification({

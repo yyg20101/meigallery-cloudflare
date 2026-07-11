@@ -658,4 +658,48 @@ test.describe('核心页面 smoke', () => {
     expect(serialized).not.toContain('originals/')
     expect(serialized).not.toContain('imports/')
   })
+
+  test('marketing receipt 依赖请求通过 Web 同源代理并转发 HttpOnly cookie', async ({ request, page }) => {
+    await request.patch(`${apiURL}/api/test/auth`, { data: { authenticated: false } })
+    await request.patch(`${apiURL}/api/test/marketing-consent-state`, { data: { state: 'limited' } })
+    const receiptRequestUrls: string[] = []
+    page.on('request', (browserRequest) => {
+      if (/\/api\/(marketing-consent|conversions\/events|auth\/register)$/.test(new URL(browserRequest.url()).pathname)) {
+        receiptRequestUrls.push(browserRequest.url())
+      }
+    })
+
+    await page.goto('/register?invite=TESTCODE')
+    await page.waitForLoadState('networkidle')
+    const [consentResponse] = await Promise.all([
+      page.waitForResponse(response => response.url().endsWith('/api/marketing-consent') && response.request().method() === 'PUT'),
+      page.getByRole('button', { name: '同意营销追踪' }).click(),
+    ])
+    expect((await consentResponse.allHeaders())['set-cookie']).toContain('mei_marketing_consent_receipt=mock-granted')
+
+    await page.getByRole('button', { name: '打开联系方式' }).click()
+    await page.route('https://t.me/**', route => route.abort())
+    await page.getByRole('link', { name: /Telegram/ }).click({ noWaitAfter: true })
+    await expect.poll(async () => {
+      const body = await (await request.get(`${apiURL}/api/test/analytics-events`)).json()
+      return body.receiptProtectedRequests.some((item: { endpoint?: string }) => item.endpoint === '/api/conversions/events')
+    }).toBe(true)
+    await page.getByRole('button', { name: '关闭联系方式' }).click()
+
+    await page.getByPlaceholder('英文字母和数字，3-20 位').fill('receiptuser')
+    await page.getByPlaceholder('your@email.com').fill('receiptuser@example.test')
+    await page.getByPlaceholder('至少 8 位').fill('Password123')
+    await page.getByPlaceholder('再次输入密码').fill('Password123')
+    await page.getByRole('button', { name: '注册' }).click()
+    await expect(page).toHaveURL('/')
+
+    const payload = await (await request.get(`${apiURL}/api/test/analytics-events`)).json()
+    expect(payload.receiptProtectedRequests).toEqual(expect.arrayContaining([
+      expect.objectContaining({ endpoint: '/api/conversions/events', cookie: expect.stringContaining('mei_marketing_consent_receipt=mock-granted') }),
+      expect.objectContaining({ endpoint: '/api/auth/register', cookie: expect.stringContaining('mei_marketing_consent_receipt=mock-granted') }),
+    ]))
+    expect(receiptRequestUrls.length).toBeGreaterThanOrEqual(4)
+    expect(receiptRequestUrls.every(url => new URL(url).origin === new URL(page.url()).origin)).toBe(true)
+    expect(receiptRequestUrls.some(url => url.includes('meigallery-api-dev.wajie.workers.dev'))).toBe(false)
+  })
 })

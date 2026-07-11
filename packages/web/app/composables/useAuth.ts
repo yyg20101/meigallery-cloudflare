@@ -105,6 +105,7 @@ export function useAuth() {
     const result = await api<UserInfo & { pixelEvents: MetaPixelInstruction[] }>('/api/auth/register', {
       method: 'POST',
       body: params,
+      sameOrigin: true,
     })
     user.value = result
     return result

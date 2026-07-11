@@ -640,7 +640,7 @@ INSERT INTO site_settings (key, value) VALUES
 - 正式活动 Meta 事件严格限定为 `Contact`、`CompleteRegistration`；`Lead`、`StartTrial` 仅为历史读取值，sender 与 recovery 均不得再次发送。
 - `/api/conversions/events` 为公开联系命令入口，仅允许提交 `contact`；完成注册由注册 API 的服务端事务创建。`lead`、`complete_registration`、`start_trial` 和 `membership_grant` 的公开提交均返回明确 4xx。
 - 公开转化入口复用应用内兜底限流，并在服务端白名单清洗 metadata；请求不得携带邮箱、手机号、联系方式明文、token、私有 R2 key、完整敏感 URL 或任意广告账户密钥。
-- 浏览器通过 `PUT /api/marketing-consent` 授权或撤销；API 使用 `SESSION_SECRET` 与 Web Crypto 签发 30 分钟 `HttpOnly`、`SameSite=Lax` receipt cookie，HTTPS 环境同时设置 `Secure`。前端 body 只能把服务端 receipt 的授权降级，缺失、篡改、过期或 denied receipt 都不能由 `consentState=granted` 升级。receipt、签名、nonce 和 cookie 值不得进入日志、D1、API 响应、审计或发布报告。
+- 浏览器通过 `PUT /api/marketing-consent` 授权或撤销；API 使用 `SESSION_SECRET` 与 Web Crypto 签发 30 分钟 `HttpOnly`、`SameSite=Lax` receipt cookie，HTTPS 环境同时设置 `Secure`。授权 GET/PUT、Contact conversion、registration 和 Pixel receipt 重试显式通过 Web 同源 `/api` 代理：Cloudflare 环境使用 `API_SERVICE`，本地回退 API URL，代理逐条转发 `Set-Cookie` 和后续请求 cookie；其余浏览器 API 保持既有直连策略。前端 body 只能把服务端 receipt 的授权降级，缺失、篡改、过期或 denied receipt 都不能由 `consentState=granted` 升级。receipt、签名、nonce 和 cookie 值不得进入日志、D1、API 响应、审计或发布报告。
 - `consent_state=denied` 时只保留站内必要事实，不创建 Meta Pixel / CAPI delivery；服务端解析后的 `consent_state` 仅用于当次 delivery 判断，不作为 D1 字段持久化。浏览器 Pixel 以公开授权 API 返回状态为准，服务端 CAPI 始终独立验证 receipt。
 - Pixel 与 CAPI 使用同一 `external_event_id` / `eventID`，方便 Meta 后台去重；Pixel `attempted` 仅说明浏览器已尝试调用，不代表 Meta 接收。只有 CAPI `sent` 且 Graph API 返回 `events_received=1` 才代表接收成功；站内重复诊断不依赖 Meta 回传数据。
 - `/api/admin/attribution/*` 需要 admin+；`/api/admin/attribution/meta/test-event` 需要 owner，并写入 `admin_audit_logs`。
@@ -648,7 +648,7 @@ INSERT INTO site_settings (key, value) VALUES
 - `/api/admin/attribution/meta` 仅返回 current/previous 有效性布尔值、previous outbox 计数、previous `pending/failed` delivery 计数和可移除状态；不返回 key ID、Base64、fingerprint 或错误 cause。
 - `corepack pnpm verify:meta-secrets` 扫描 tracked 文件与 ignored release evidence；`corepack pnpm verify:quick` 在单元测试和构建前执行该检查。production bootstrap、rollout 与最终 evidence 已由本地代码门禁强绑定，但没有外部证据时始终 fail closed。
 - Queue 发送失败不得阻塞站内转化账本写入；delivery 必须显示 `sent`、`failed`、`skipped`、`missing_queue`、`missing_secret`、`disabled` 等可诊断状态。
-- migration `0043_meta_capi_delivery_lease.sql` 为每条 CAPI delivery 增加短期发送 lease。Queue consumer 必须在 Graph fetch 前用 D1 CAS 获取 lease，loser 不发请求；网络、Meta 或状态写回失败按 token 释放 lease，进程崩溃则由 TTL 到期接管，重试始终复用原 `external_event_id`。lease token 不得进入日志、响应或报告。
+- migration `0043_meta_capi_delivery_lease.sql` 为每条 CAPI delivery 增加短期发送 lease。Queue consumer 必须在 Graph fetch 前用 D1 CAS 获取 lease，loser 不发请求；持 token 的发送结果只匹配自身 token，所有无 token 的 Queue、DLQ、安全终止和过期清理终态写都在同一 delivery `UPDATE` CAS 中要求 lease 为空或已过期，冲突时保留 outbox 并安全重试。网络、Meta 或状态写回失败按 token 释放 lease，进程崩溃则由 TTL 到期接管，重试始终复用原 `external_event_id`；`sent` 不可回归。lease token 不得进入日志、响应或报告。
 
 Meta CAPI v2 远端证据链：
 

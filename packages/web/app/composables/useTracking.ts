@@ -82,7 +82,7 @@ export function useTracking() {
 
     const send = async () => {
       const body = consentScopedBody(baseBody, marketingConsent, route.query.fbclid, activationConsentScope)
-      const response = await api('/api/conversions/events', { method: 'POST', body })
+      const response = await api('/api/conversions/events', { method: 'POST', body, sameOrigin: true })
       return pixelEventsFromResponse(response)
     }
     const complete = (instructions: unknown[]) => {
@@ -116,6 +116,7 @@ export function useTracking() {
       if (!attempted) continue
       reportPixelAttempted(() => api('/api/conversions/pixel-receipts', {
         method: 'POST',
+        sameOrigin: true,
         body: {
           deliveryId: value.deliveryId,
           attempted: true,

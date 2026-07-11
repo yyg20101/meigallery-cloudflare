@@ -326,6 +326,13 @@ SELECT
   (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = 'meta_resource_attestation_tickets') AS ticket_table,
   (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'index' AND name = 'idx_meta_resource_attestation_tickets_expiry') AS ticket_index,
   (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'index' AND name = 'idx_meta_capi_delivery_lease_expiry') AS delivery_lease_index,
+  (SELECT COUNT(*) FROM pragma_table_info('analytics_conversion_deliveries')
+    WHERE name = 'delivery_lease_token' AND upper(type) = 'TEXT' AND [notnull] = 1 AND dflt_value = "''") AS delivery_lease_token_column,
+  (SELECT COUNT(*) FROM pragma_table_info('analytics_conversion_deliveries')
+    WHERE name = 'delivery_lease_expires_at' AND upper(type) = 'TEXT' AND [notnull] = 0) AS delivery_lease_expires_column,
+  (SELECT group_concat(name, ',') FROM pragma_index_info('idx_meta_capi_delivery_lease_expiry') ORDER BY seqno) AS delivery_lease_index_columns,
+  (SELECT sql FROM sqlite_schema WHERE type = 'index' AND name = 'idx_meta_capi_delivery_lease_expiry') AS delivery_lease_index_sql,
+  (SELECT value FROM site_settings WHERE key = 'registration_conversion_recovery_cursor') AS registration_recovery_cursor,
   (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = 'meta_capi_incidents') AS incident_table,
   (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = 'meta_dataset_quality_snapshots') AS quality_table;
 `.trim()
@@ -390,10 +397,16 @@ function assertMigrationResult({ history, schema, setting }) {
 
 function assertSchemaResult(rows) {
   const row = rows[0]
+  const leaseIndexSql = String(row?.delivery_lease_index_sql || '').replace(/\s+/g, ' ').trim().toLowerCase()
   if (rows.length !== 1
     || row?.delivery_unique_index !== 1
     || row?.circuit_index_count !== 4
     || row?.delivery_lease_index !== 1
+    || row?.delivery_lease_token_column !== 1
+    || row?.delivery_lease_expires_column !== 1
+    || row?.delivery_lease_index_columns !== 'delivery_lease_expires_at'
+    || !leaseIndexSql.includes("where channel = 'meta_capi' and delivery_lease_token <> ''")
+    || row?.registration_recovery_cursor !== '0'
     || ['challenge_table', 'challenge_index', 'ticket_table', 'ticket_index', 'incident_table', 'quality_table']
       .some(field => row?.[field] !== 1)) {
     throw new Error('Meta 0040-0043 schema 不完整')

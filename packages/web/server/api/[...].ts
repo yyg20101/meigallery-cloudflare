@@ -13,8 +13,8 @@
  */
 
 import {
+  apiProxyResponseHeaderEntries,
   filterApiProxyRequestHeaders,
-  shouldForwardApiProxyResponseHeader,
 } from '../../app/utils/apiProxyHeaders'
 
 interface CloudflareEnv {
@@ -25,7 +25,8 @@ interface CloudflareEnv {
 
 export default defineEventHandler(async (event) => {
   const cloudflareEnv = (event.context as Record<string, any>).cloudflare?.env as CloudflareEnv | undefined
-  const apiBinding = cloudflareEnv?.API_SERVICE
+  const config = useRuntimeConfig()
+  const apiBinding = config.public.appEnv === 'test' ? undefined : cloudflareEnv?.API_SERVICE
 
   // 构建目标 URL
   const path = event.path // 完整路径，如 /api/galleries/summer-fresh-guangzhou?page=1
@@ -43,16 +44,13 @@ export default defineEventHandler(async (event) => {
   if (apiBinding) {
     // Cloudflare Workers 环境：Service Binding 直连
     // Service Binding 忽略域名，仅使用路径路由到目标 Worker
-    response = await apiBinding.fetch(
-      new Request(`https://api.internal${path}`, {
-        method,
-        headers: forwardHeaders,
-        body,
-      }),
-    )
+    response = await apiBinding.fetch(`https://api.internal${path}`, {
+      method,
+      headers: forwardHeaders,
+      body,
+    })
   } else {
     // 本地开发回退：代理到 API 开发服务器
-    const config = useRuntimeConfig()
     const apiBaseUrl = config.public.apiBaseUrl as string
     response = await fetch(`${apiBaseUrl}${path}`, {
       method,
@@ -65,11 +63,10 @@ export default defineEventHandler(async (event) => {
   setResponseStatus(event, response.status, response.statusText)
 
   // 转发响应头（仅保留前端确实需要感知的业务头）
-  response.headers.forEach((value, key) => {
-    if (shouldForwardApiProxyResponseHeader(key)) {
-      setResponseHeader(event, key, value)
-    }
-  })
+  for (const [name, value] of apiProxyResponseHeaderEntries(response.headers)) {
+    if (name === 'set-cookie') appendResponseHeader(event, name, value)
+    else setResponseHeader(event, name, value)
+  }
 
   // 返回响应体
   const contentType = response.headers.get('content-type') || ''

@@ -150,6 +150,7 @@ const mutablePublicSettings = { ...defaultPublicSettings }
 const analyticsBatches = []
 const sessionEndBatches = []
 const registrations = []
+const receiptProtectedRequests = []
 let authenticated = true
 let marketingConsentState = 'granted'
 let adminAnalyticsEmpty = false
@@ -171,6 +172,7 @@ function resetPublicSettings() {
   analyticsBatches.length = 0
   sessionEndBatches.length = 0
   registrations.length = 0
+  receiptProtectedRequests.length = 0
   authenticated = true
   marketingConsentState = 'granted'
   adminAnalyticsEmpty = false
@@ -185,7 +187,7 @@ function resetPublicSettings() {
   adminAttributionActions.length = 0
 }
 
-function json(res, data, status = 200) {
+function json(res, data, status = 200, extraHeaders = {}) {
   const body = JSON.stringify(data)
   res.writeHead(status, {
     'Access-Control-Allow-Origin': allowedOrigin,
@@ -194,6 +196,7 @@ function json(res, data, status = 200) {
     'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': Buffer.byteLength(body),
+    ...extraHeaders,
   })
   res.end(body)
 }
@@ -794,6 +797,7 @@ function handleApi(req, res) {
       batches: analyticsBatches,
       sessionEnds: sessionEndBatches,
       registrations,
+      receiptProtectedRequests,
       events: analyticsBatches.flatMap(batch => Array.isArray(batch.events) ? batch.events : []),
     })
   }
@@ -804,6 +808,15 @@ function handleApi(req, res) {
         json(res, { ok: true, authenticated })
       })
       .catch(() => json(res, { statusCode: 400, message: '认证状态请求无效' }, 400))
+    return
+  }
+  if (url.pathname === '/api/test/marketing-consent-state' && req.method === 'PATCH') {
+    readJsonBody(req)
+      .then((body) => {
+        marketingConsentState = body.state === 'granted' || body.state === 'denied' ? body.state : 'limited'
+        json(res, { state: marketingConsentState })
+      })
+      .catch(() => json(res, { statusCode: 400, message: '营销授权测试状态无效' }, 400))
     return
   }
   if (url.pathname === '/api/settings/public') return json(res, publicSettings())
@@ -818,7 +831,9 @@ function handleApi(req, res) {
           return
         }
         marketingConsentState = body.state
-        json(res, { state: marketingConsentState })
+        json(res, { state: marketingConsentState }, 200, {
+          'Set-Cookie': `mei_marketing_consent_receipt=mock-${marketingConsentState}; Path=/; HttpOnly; SameSite=Lax`,
+        })
       })
       .catch(() => json(res, { code: 'MARKETING_CONSENT_INVALID', message: '营销授权请求无效' }, 400))
     return
@@ -866,6 +881,7 @@ function handleApi(req, res) {
   if (url.pathname === '/api/auth/register' && req.method === 'POST') {
     readJsonBody(req)
       .then((body) => {
+        receiptProtectedRequests.push({ endpoint: '/api/auth/register', cookie: req.headers.cookie || '' })
         registrations.push(body)
         authenticated = true
         json(res, {
@@ -889,6 +905,7 @@ function handleApi(req, res) {
     return
   }
   if (url.pathname === '/api/conversions/events' && req.method === 'POST') {
+    receiptProtectedRequests.push({ endpoint: '/api/conversions/events', cookie: req.headers.cookie || '' })
     return json(res, { data: { pixelEvents: [] } })
   }
   if (url.pathname === '/api/cases') return json(res, { data: cases, total: cases.length })

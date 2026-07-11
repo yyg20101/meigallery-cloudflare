@@ -66,6 +66,8 @@ export interface TransitionDeliveryStatusInput {
   errorMessage?: string
 }
 
+type DeliveryTransitionLease = { leaseToken?: string }
+
 export type ConfirmedDeliveryTransition = ConversionDeliverySnapshot & {
   transitionChanged: boolean
 }
@@ -386,7 +388,7 @@ export async function transitionDeliveryStatus(
         AND skip_reason = ?
         AND error_code = ?
         AND status <> 'sent'
-        ${leaseToken ? 'AND delivery_lease_token = ?' : ''}
+        ${deliveryTransitionLeaseFence({ leaseToken })}
     `).bind(
       skipReason,
       errorCode,
@@ -417,7 +419,7 @@ export async function transitionDeliveryStatus(
         AND skip_reason = ?
         AND error_code = ?
         AND status <> 'sent'
-        ${leaseToken ? 'AND delivery_lease_token = ?' : ''}
+        ${deliveryTransitionLeaseFence({ leaseToken })}
     `).bind(
       input.status,
       skipReason,
@@ -434,6 +436,15 @@ export async function transitionDeliveryStatus(
     deliveryDailyDecrementAfterChange(db, delivery),
   ])
   return { changed: d1Changed(results[0]!) }
+}
+
+function deliveryTransitionLeaseFence({ leaseToken }: DeliveryTransitionLease) {
+  if (leaseToken) return 'AND delivery_lease_token = ?'
+  return `AND (
+    delivery_lease_token = ''
+    OR delivery_lease_expires_at IS NULL
+    OR delivery_lease_expires_at <= datetime('now')
+  )`
 }
 
 export async function confirmDeliveryTransition(

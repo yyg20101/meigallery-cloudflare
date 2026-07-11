@@ -9,8 +9,14 @@ export function useMarketingConsent() {
   const canTrackMarketing = computed(() => isMarketingTrackingAllowed(state.value, metaTrackingMode.value))
 
   async function refresh() {
-    const response = await api<{ state?: unknown }>('/api/marketing-consent')
-    state.value = trustedResponseState(response.state)
+    try {
+      const response = await api<{ state?: unknown }>('/api/marketing-consent', { sameOrigin: true })
+      state.value = trustedResponseState(response.state)
+    }
+    catch (error) {
+      state.value = 'limited'
+      throw error
+    }
   }
 
   async function update(nextState: 'granted' | 'denied') {
@@ -19,8 +25,13 @@ export function useMarketingConsent() {
       const response = await api<{ state?: unknown }>('/api/marketing-consent', {
         method: 'PUT',
         body: { state: nextState },
+        sameOrigin: true,
       })
       state.value = trustedResponseState(response.state)
+    }
+    catch (error) {
+      state.value = 'limited'
+      throw error
     }
     finally {
       pending.value = false

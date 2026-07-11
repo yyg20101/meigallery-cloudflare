@@ -32,6 +32,7 @@ const connectionItems = computed(() => [
 ])
 
 async function verifyConnection() {
+  if (busy.value) return
   verifying.value = true
   message.value = ''
   try {
@@ -51,6 +52,7 @@ async function verifyConnection() {
 }
 
 async function runLiveEvidence() {
+  if (busy.value) return
   if (props.connection?.environment !== 'dev') return
   evidencing.value = true
   message.value = ''

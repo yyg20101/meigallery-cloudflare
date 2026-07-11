@@ -38,6 +38,22 @@ export function shouldForwardApiProxyResponseHeader(name: string): boolean {
   return ALLOWED_API_PROXY_RESPONSE_HEADERS.has(normalizeHeaderName(name))
 }
 
+export function apiProxyResponseHeaderEntries(headers: Headers): Array<[string, string]> {
+  const entries: Array<[string, string]> = []
+  headers.forEach((value, name) => {
+    const normalizedName = normalizeHeaderName(name)
+    if (normalizedName === 'set-cookie' || !shouldForwardApiProxyResponseHeader(normalizedName)) return
+    entries.push([normalizedName, value])
+  })
+
+  const getSetCookie = (headers as Headers & { getSetCookie?: () => string[] }).getSetCookie
+  const setCookies = typeof getSetCookie === 'function'
+    ? getSetCookie.call(headers)
+    : [headers.get('set-cookie')].filter((value): value is string => Boolean(value))
+  for (const cookie of setCookies) entries.push(['set-cookie', cookie])
+  return entries
+}
+
 function normalizeHeaderName(name: string): string {
   return name.trim().toLowerCase()
 }

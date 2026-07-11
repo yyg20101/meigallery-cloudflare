@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  apiProxyResponseHeaderEntries,
   filterApiProxyRequestHeaders,
   shouldForwardApiProxyResponseHeader,
 } from './apiProxyHeaders'
@@ -74,5 +75,21 @@ describe('Web API 代理头部白名单', () => {
     ]) {
       expect(shouldForwardApiProxyResponseHeader(name)).toBe(false)
     }
+  })
+
+  it('逐条保留多个 Set-Cookie，避免注册 session 与 receipt 被逗号合并', () => {
+    const headers = new Headers({ 'Content-Type': 'application/json', Server: 'hidden' })
+    Object.defineProperty(headers, 'getSetCookie', {
+      value: () => [
+        'mei_session=abc; Path=/; HttpOnly; Secure; SameSite=Lax',
+        'mei_marketing_consent_receipt=receipt; Path=/; HttpOnly; Secure; SameSite=Lax',
+      ],
+    })
+
+    expect(apiProxyResponseHeaderEntries(headers)).toEqual([
+      ['content-type', 'application/json'],
+      ['set-cookie', 'mei_session=abc; Path=/; HttpOnly; Secure; SameSite=Lax'],
+      ['set-cookie', 'mei_marketing_consent_receipt=receipt; Path=/; HttpOnly; Secure; SameSite=Lax'],
+    ])
   })
 })

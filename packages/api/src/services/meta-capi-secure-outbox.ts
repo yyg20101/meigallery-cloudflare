@@ -1,6 +1,7 @@
 import type { MetaCapiQueueMessage } from '@meigallery/shared'
 import type { Bindings } from '../index'
 import type { MetaCapiEncryptedEnvelope } from '../utils/meta-capi-crypto'
+import { transitionDeliveryStatus } from './meta-capi'
 
 const META_RECOVERY_STALE_MINUTES = 5
 const MAX_PURGE_LIMIT = 100
@@ -163,8 +164,7 @@ export async function purgeExpiredMetaCapiOutbox(
   `).bind(normalizedLimit).all<ExpiredOutboxRow>()
 
   if (expired.results.length === 0) return { purged: 0, skipped: 0 }
-  const skipped = await expireOutboxRows(db, expired.results)
-  return { purged: expired.results.length, skipped }
+  return expireOutboxRows(db, expired.results)
 }
 
 export async function deleteSecureMetaCapiOutbox(db: D1Database, deliveryId: string) {
@@ -200,72 +200,47 @@ function readSecureOutbox(db: D1Database, deliveryId: string) {
 }
 
 async function expireOutboxRows(db: D1Database, rows: ExpiredOutboxRow[]) {
-  const statements: D1PreparedStatement[] = []
-  const transitionIndexes: number[] = []
+  let purged = 0
+  let skipped = 0
   for (const row of rows) {
+    let canDeleteOutbox = !isNonTerminalDelivery(row.status, row.error_code)
     if (isNonTerminalDelivery(row.status, row.error_code)) {
-      transitionIndexes.push(statements.length)
-      statements.push(db.prepare(`
-        UPDATE analytics_conversion_deliveries
-        SET
-          status = 'skipped',
-          skip_reason = 'secure_context_expired',
-          error_code = '',
-          error_message = '',
-          attempt_count = attempt_count + 1,
-          last_attempt_at = datetime('now'),
-          updated_at = datetime('now')
-        WHERE id = ?
-          AND channel = 'meta_capi'
-          AND status = ?
-          AND skip_reason = ?
-          AND error_code = ?
-          AND status <> 'sent'
-          AND (
-            status IN ('pending', 'attempted')
-            OR (
-              status = 'failed'
-              AND (
-                error_code IN (
-                  'meta_timeout',
-                  'meta_network_error',
-                  'meta_delivery_state_conflict',
-                  'meta_http_429'
-                )
-                OR error_code GLOB 'meta_http_5[0-9][0-9]'
-              )
-            )
-          )
-      `).bind(row.delivery_id, row.status, row.skip_reason || '', row.error_code || ''))
-      statements.push(db.prepare(`
-        INSERT INTO analytics_conversion_delivery_daily (
-          date, channel, event_name, status, skip_reason, delivery_count, updated_at
-        )
-        SELECT ?, 'meta_capi', ?, 'skipped', 'secure_context_expired', 1, datetime('now')
-        WHERE changes() = 1
-        ON CONFLICT(date, channel, event_name, status, skip_reason)
-        DO UPDATE SET
-          delivery_count = analytics_conversion_delivery_daily.delivery_count + 1,
-          updated_at = datetime('now')
-      `).bind(row.date, row.event_name))
-      statements.push(db.prepare(`
-        UPDATE analytics_conversion_delivery_daily
-        SET
-          delivery_count = MAX(delivery_count - 1, 0),
-          updated_at = datetime('now')
-        WHERE date = ?
-          AND channel = 'meta_capi'
-          AND event_name = ?
-          AND status = ?
-          AND skip_reason = ?
-          AND changes() = 1
-      `).bind(row.date, row.event_name, row.status, row.skip_reason || ''))
+      const transition = await transitionDeliveryStatus(db, {
+        id: row.delivery_id,
+        channel: 'meta_capi',
+        event_name: row.event_name,
+        status: row.status as never,
+        skip_reason: row.skip_reason || '',
+        error_code: row.error_code || '',
+        date: row.date,
+      }, {
+        status: 'skipped',
+        skipReason: 'secure_context_expired',
+      })
+      if (transition.changed) {
+        skipped += 1
+        canDeleteOutbox = true
+      }
+      else {
+        const current = await readDeliveryTerminalState(db, row.delivery_id)
+        canDeleteOutbox = !current || !isNonTerminalDelivery(current.status, current.error_code)
+      }
     }
-    statements.push(secureOutboxDeleteStatement(db, row.delivery_id))
+    if (canDeleteOutbox) {
+      const deleted = await secureOutboxDeleteStatement(db, row.delivery_id).run()
+      if (d1Changed(deleted)) purged += 1
+    }
   }
+  return { purged, skipped }
+}
 
-  const results = await db.batch(statements)
-  return transitionIndexes.reduce((count, index) => count + (d1Changed(results[index]!) ? 1 : 0), 0)
+function readDeliveryTerminalState(db: D1Database, deliveryId: string) {
+  return db.prepare(`
+    SELECT status, error_code
+    FROM analytics_conversion_deliveries
+    WHERE id = ? AND channel = 'meta_capi'
+    LIMIT 1
+  `).bind(deliveryId).first<{ status: string; error_code: string }>()
 }
 
 function secureOutboxDeleteStatement(db: D1Database, deliveryId: string) {

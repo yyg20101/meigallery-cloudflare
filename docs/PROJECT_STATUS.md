@@ -50,7 +50,7 @@
 - Telegram 外部导入 API：项目只提供对外 API 接收能力，不内置 Telegram Bot 本体；对接契约见 `docs/TELEGRAM_IMPORT_API.md`。
 - 数据分析：已实现一方数据采集、来源归因、邀请码、联系点击、趋势和后台 `/admin/analytics` 系列看板；后台 UI 口径见 `docs/UI_DATA_ANALYTICS_DASHBOARD.md`。
 - 归因中心：已实现站内转化账本、投放追踪链接、有效联系 / 完成注册活动趋势、历史 Lead 只读对照、Meta Pixel / CAPI 同步健康、重复诊断和分级发布检查；历史 Lead 与会员发放辅助指标均不参与活动漏斗、比率或链接排序，会员发放仅保留在 `operations` 辅助结构。后台分别展示 blocker 与 warning，warning 不改变生产阻断状态；入口为 `/admin/attribution`。
-- Meta CAPI v2：**本地修复仍不满足生产候选或正式部署条件**。活动 Meta 事件只有 `Contact`、`CompleteRegistration`；营销授权由 30 分钟服务端签名 HttpOnly receipt 决定，body 只能降级；registration recovery 覆盖任意年龄缺失事实；migration `0043` 为 Graph 发送增加 D1 CAS lease；后台连接验证与 dev Live Evidence 已拆分；breakdown 排除 duplicate diagnostic 行。资源门禁核对 migrations `0036..0043`、D1/R2/Queue/DLQ。Q5 Dataset Quality 继续 `contract_pending`，且缺少当前最终 commit 的真实远端 dev evidence；本轮不执行 dev/production 部署、远端 D1、Meta 网络 capture、push 或 `verify:release`，production rollout 必须保持 `0`。
+- Meta CAPI v2：**本地修复仍不满足生产候选或正式部署条件**。活动 Meta 事件只有 `Contact`、`CompleteRegistration`；营销授权由 30 分钟服务端签名 HttpOnly receipt 决定，receipt 依赖请求通过 Web 同源代理转发 cookie，body 只能降级；registration recovery 覆盖任意年龄缺失事实；migration `0043` 为 Graph 发送增加 D1 CAS lease，无 token 终态写受 active lease fence 保护；后台连接验证与 dev Live Evidence 已拆分；breakdown 排除 duplicate diagnostic 行。资源门禁核对 migrations `0036..0043`、D1/R2/Queue/DLQ。Q5 Dataset Quality 继续 `contract_pending`，且缺少当前最终 commit 的真实远端 dev evidence；本轮不执行 dev/production 部署、远端 D1、Meta 网络 capture、push 或 `verify:release`，production rollout 必须保持 `0`。
 - SEO：已实现基础 SEO 设置、关键词池、sitemap、robots、结构化数据和生产校验脚本；运营配置见 `docs/SEO_CONFIGURATION.md`。
 
 ## 规划和未接入

@@ -9,7 +9,13 @@ export default defineNuxtPlugin(async () => {
   const { canTrackMarketing, refresh: refreshMarketingConsent } = useMarketingConsent()
   const tracking = useTracking()
 
-  await Promise.all([fetchSettings(), refreshMarketingConsent()])
+  try {
+    await Promise.all([fetchSettings(), refreshMarketingConsent()])
+  }
+  catch {
+    tracking.teardownPixel()
+    return
+  }
 
   function syncPixelTracking() {
     if (!canTrackMarketing.value || !facebookPixelEnabled.value || !String(facebookPixelId.value || '').trim()) {

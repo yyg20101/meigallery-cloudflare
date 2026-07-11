@@ -6,6 +6,7 @@ describe('facebook-pixel plugin', () => {
   const fetchSettings = vi.fn()
   const trackPageView = vi.fn()
   const teardownPixel = vi.fn()
+  const refreshMarketingConsent = vi.fn()
   const consent = ref<'limited' | 'granted' | 'denied'>('limited')
   const facebookPixelEnabled = ref(true)
   const facebookPixelId = ref('123456789')
@@ -19,6 +20,8 @@ describe('facebook-pixel plugin', () => {
     fetchSettings.mockResolvedValue(undefined)
     trackPageView.mockReset()
     teardownPixel.mockReset()
+    refreshMarketingConsent.mockReset()
+    refreshMarketingConsent.mockResolvedValue(undefined)
 
     vi.stubGlobal('defineNuxtPlugin', <T>(plugin: T) => plugin)
     vi.stubGlobal('useRouter', () => ({ afterEach: (handler: () => void) => afterEachHandlers.push(handler) }))
@@ -30,7 +33,7 @@ describe('facebook-pixel plugin', () => {
     }))
     vi.stubGlobal('useMarketingConsent', () => ({
       canTrackMarketing: computed(() => consent.value === 'granted'),
-      refresh: vi.fn(async () => undefined),
+      refresh: refreshMarketingConsent,
     }))
     vi.stubGlobal('useTracking', () => ({ trackPageView, teardownPixel }))
   })
@@ -62,5 +65,20 @@ describe('facebook-pixel plugin', () => {
     await nextTick()
     expect(teardownPixel).toHaveBeenCalledTimes(2)
     expect(trackPageView).toHaveBeenCalledTimes(3)
+  })
+
+  it('历史 granted 但初始化 refresh 失败时不启用 Pixel 且插件安全返回', async () => {
+    consent.value = 'granted'
+    await nextTick()
+    trackPageView.mockClear()
+    teardownPixel.mockClear()
+    refreshMarketingConsent.mockRejectedValueOnce(new Error('receipt unavailable'))
+    const plugin = (await import('./facebook-pixel.client')).default
+
+    await expect(plugin({} as never)).resolves.toBeUndefined()
+
+    expect(trackPageView).not.toHaveBeenCalled()
+    expect(teardownPixel).toHaveBeenCalledOnce()
+    expect(afterEachHandlers).toHaveLength(0)
   })
 })

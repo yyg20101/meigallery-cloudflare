@@ -101,6 +101,7 @@ describe('useTracking', () => {
     expect(api).toHaveBeenCalledTimes(1)
     expect(api).toHaveBeenCalledWith('/api/conversions/events', expect.objectContaining({
       method: 'POST',
+      sameOrigin: true,
       body: expect.objectContaining({
         actionType: 'contact',
         methodType: 'telegram',
@@ -194,6 +195,7 @@ describe('useTracking', () => {
     const receiptCalls = api.mock.calls.filter(call => call[0] === '/api/conversions/pixel-receipts')
     expect(conversionCalls).toHaveLength(1)
     expect(receiptCalls).toHaveLength(4)
+    expect(receiptCalls.every(call => call[1]?.sameOrigin === true)).toBe(true)
     expect(adapter.standardEvent).toHaveBeenCalledOnce()
   })
 

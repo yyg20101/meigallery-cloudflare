@@ -83,9 +83,7 @@ export function useApi() {
         (init as any).headers = { ...(init.headers as Record<string, string> || {}), cookie: reqHeaders.cookie }
       }
 
-      const response = await apiBinding.fetch(
-        new Request(`https://api.internal${fullPath}`, init),
-      )
+      const response = await apiBinding.fetch(`https://api.internal${fullPath}`, init)
 
       if (!response.ok) {
         // 模拟 $fetch 的行为：非 2xx 抛出错误
@@ -120,6 +118,7 @@ export function useApi() {
       method?: string
       body?: unknown
       query?: Record<string, string | number | undefined>
+      sameOrigin?: boolean
     },
   ): Promise<T> {
     const method = options?.method || 'GET'
@@ -132,7 +131,7 @@ export function useApi() {
       return ssrFetch<T>(fullPath, options)
     }
 
-    // CSR: 浏览器直连 API Worker
+    // receipt 依赖链路显式走 Web 同源代理，其余调用保持现有 API Worker 直连。
     const fetchOptions: Record<string, unknown> = {
       method,
       credentials: 'include',
@@ -143,7 +142,8 @@ export function useApi() {
       fetchOptions.headers = { 'Content-Type': 'application/json' }
       fetchOptions.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body)
     }
-    return $fetch<T>(`${clientBaseURL}${fullPath}`, fetchOptions as any)
+    const requestTarget = options?.sameOrigin ? fullPath : `${clientBaseURL}${fullPath}`
+    return $fetch<T>(requestTarget, fetchOptions as any)
   }
 
   return { api, baseURL: clientBaseURL }

@@ -18,6 +18,8 @@ type Delivery = {
   updatedAt: string
   date: string
   eventName: string
+  deliveryLeaseToken: string
+  deliveryLeaseExpiresAt: string | null
 }
 
 type Outbox = MetaCapiEncryptedEnvelope & {
@@ -72,6 +74,10 @@ function createOutboxDb(options: {
         },
         async first<T>() {
           calls.push(call)
+          if (sql.includes('FROM analytics_conversion_deliveries')) {
+            const delivery = deliveries.get(String(call.params[0]))
+            return delivery ? { status: delivery.status, error_code: delivery.errorCode } as T : null
+          }
           if (!sql.includes('FROM meta_capi_secure_outbox')) return null
           const deliveryId = String(call.params[0])
           const outbox = outboxes.get(deliveryId)
@@ -121,7 +127,7 @@ function createOutboxDb(options: {
       }
     },
     async batch(statements: Array<{ __call: Call }>) {
-      const isExpireBatch = statements.some(statement => statement.__call.sql.includes('secure_context_expired'))
+      const isExpireBatch = statements.some(statement => /SET\s+status\s*=\s*\?/m.test(statement.__call.sql))
       if (isExpireBatch && !expireHookCalled) {
         expireHookCalled = true
         options.beforeExpireBatch?.({ deliveries, daily })
@@ -203,14 +209,17 @@ function createOutboxDb(options: {
       if (row) row.errorCode = 'missing_queue'
     } else if (call.sql.includes('DELETE FROM meta_capi_secure_outbox')) {
       target.outboxes.delete(String(call.params[0]))
-    } else if (call.sql.includes('UPDATE analytics_conversion_deliveries') && call.sql.includes('secure_context_expired')) {
-      const row = target.deliveries.get(String(call.params[0]))
-      const expectedStatus = String(call.params[1])
-      const expectedSkipReason = String(call.params[2] ?? '')
-      const expectedErrorCode = String(call.params[3] ?? '')
+    } else if (call.sql.includes('UPDATE analytics_conversion_deliveries') && /SET\s+status\s*=\s*\?/m.test(call.sql)) {
+      const row = target.deliveries.get(String(call.params[5]))
+      const expectedStatus = String(call.params[6])
+      const expectedSkipReason = String(call.params[7] ?? '')
+      const expectedErrorCode = String(call.params[8] ?? '')
       if (!row || row.status === 'sent' || row.status !== expectedStatus) return result(0)
       if (call.sql.includes('AND skip_reason = ?') && row.skipReason !== expectedSkipReason) return result(0)
       if (call.sql.includes('AND error_code = ?') && row.errorCode !== expectedErrorCode) return result(0)
+      if (call.sql.includes("delivery_lease_token = ''")
+        && row.deliveryLeaseToken
+        && Date.parse(row.deliveryLeaseExpiresAt || '') > Date.now()) return result(0)
       row.status = 'skipped'
       row.skipReason = 'secure_context_expired'
       row.errorCode = ''
@@ -243,6 +252,8 @@ function delivery(id = 'cdlv_1', overrides: Partial<Delivery> = {}): Delivery {
     updatedAt: '2026-07-10 00:00:00',
     date: '2026-07-10',
     eventName: 'Contact',
+    deliveryLeaseToken: '',
+    deliveryLeaseExpiresAt: null,
     ...overrides,
   }
 }
@@ -386,7 +397,7 @@ describe('Meta CAPI secure outbox', () => {
     expect(db.daily.get(dailyKey('failed'))).toBe(1)
     expect(db.daily.get(dailyKey('skipped', 'secure_context_expired')) ?? 0).toBe(0)
     expect(db.outboxes.has('cdlv_1')).toBe(false)
-    const transition = db.calls.find(call => call.sql.includes('secure_context_expired'))
+    const transition = db.calls.find(call => /SET\s+status\s*=\s*\?/m.test(call.sql))
     expect(transition?.sql).toContain('AND error_code = ?')
     vi.useRealTimers()
   })
@@ -414,6 +425,25 @@ describe('Meta CAPI secure outbox', () => {
     expect(db.daily.get(dailyKey('skipped', 'missing_secret'))).toBe(1)
     expect(db.daily.get(dailyKey('skipped', 'secure_context_expired')) ?? 0).toBe(0)
     expect(db.outboxes.has('cdlv_1')).toBe(false)
+    vi.useRealTimers()
+  })
+
+  it('purge 遇到 active delivery lease 时不终止 delivery 且不删除 outbox', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-11T12:00:00.000Z'))
+    const db = createOutboxDb({
+      deliveries: [delivery('cdlv_1', {
+        deliveryLeaseToken: 'a'.repeat(32),
+        deliveryLeaseExpiresAt: '2026-07-11T12:01:00.000Z',
+      })],
+      outboxes: [outbox('cdlv_1', { expiresAt: '2026-07-11T00:00:00.000Z' })],
+    })
+
+    const outcome = await purgeExpiredMetaCapiOutbox(db as unknown as D1Database)
+
+    expect(outcome).toEqual({ purged: 0, skipped: 0 })
+    expect(db.deliveries.get('cdlv_1')?.status).toBe('pending')
+    expect(db.outboxes.has('cdlv_1')).toBe(true)
     vi.useRealTimers()
   })
 

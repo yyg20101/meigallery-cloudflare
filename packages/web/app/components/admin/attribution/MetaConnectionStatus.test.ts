@@ -24,6 +24,37 @@ function mountStatus(environment: 'dev' | 'production', api = vi.fn(), sendMetaL
 afterEach(() => vi.unstubAllGlobals())
 
 describe('MetaConnectionStatus', () => {
+  it('程序化重复调用 verifyConnection 时 busy guard 只允许一个请求', async () => {
+    let release!: () => void
+    const pending = new Promise(resolve => { release = () => resolve({ data: { status: 'verified', eventsReceived: 1 } }) })
+    const api = vi.fn(() => pending)
+    const wrapper = mountStatus('production', api)
+    const verifyConnection = (wrapper.vm as unknown as { verifyConnection: () => Promise<void> }).verifyConnection
+
+    const first = verifyConnection()
+    const second = verifyConnection()
+    expect(api).toHaveBeenCalledOnce()
+    release()
+    await Promise.all([first, second])
+  })
+
+  it('任一 handler busy 时程序化 runLiveEvidence 重入立即返回', async () => {
+    let release!: () => void
+    const pending = new Promise(resolve => { release = () => resolve({ data: { status: 'verified', eventsReceived: 1 } }) })
+    const api = vi.fn(() => pending)
+    const wrapper = mountStatus('dev', api)
+    const vm = wrapper.vm as unknown as {
+      verifyConnection: () => Promise<void>
+      runLiveEvidence: () => Promise<void>
+    }
+
+    const first = vm.verifyConnection()
+    const second = vm.runLiveEvidence()
+    expect(api).toHaveBeenCalledOnce()
+    release()
+    await Promise.all([first, second])
+  })
+
   it('dev 验证连接与 production 一样只建立 MetaConnection revision', async () => {
     const api = vi.fn().mockResolvedValue({ data: { status: 'verified', eventsReceived: 1 } })
     const sendMetaLiveChallenge = vi.fn(() => true)

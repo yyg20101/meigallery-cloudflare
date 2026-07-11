@@ -27,7 +27,7 @@ describe('useMarketingConsent', () => {
 
     await consent.refresh()
 
-    expect(api).toHaveBeenCalledWith('/api/marketing-consent')
+    expect(api).toHaveBeenCalledWith('/api/marketing-consent', { sameOrigin: true })
     expect(consent.state.value).toBe('granted')
     expect(useCookie).not.toHaveBeenCalled()
   })
@@ -39,6 +39,7 @@ describe('useMarketingConsent', () => {
     expect(api).toHaveBeenNthCalledWith(1, '/api/marketing-consent', {
       method: 'PUT',
       body: { state: 'granted' },
+      sameOrigin: true,
     })
     expect(consent.canTrackMarketing.value).toBe(true)
 
@@ -53,6 +54,18 @@ describe('useMarketingConsent', () => {
     api.mockRejectedValueOnce(new Error('network'))
 
     await expect(consent.grant()).rejects.toThrow('network')
+    expect(consent.state.value).toBe('limited')
+    expect(consent.canTrackMarketing.value).toBe(false)
+  })
+
+  it('历史 granted 后 refresh 失败时先强制降级 limited 再抛错', async () => {
+    const consent = useMarketingConsent()
+    api.mockResolvedValueOnce({ state: 'granted' })
+    await consent.refresh()
+    expect(consent.state.value).toBe('granted')
+
+    api.mockRejectedValueOnce(new Error('refresh failed'))
+    await expect(consent.refresh()).rejects.toThrow('refresh failed')
     expect(consent.state.value).toBe('limited')
     expect(consent.canTrackMarketing.value).toBe(false)
   })
