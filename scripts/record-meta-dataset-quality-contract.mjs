@@ -82,7 +82,7 @@ export async function recordMetaDatasetQualityContract(options = {}) {
   const outputPath = requirePath(options.outputPath)
   assertDistinctPaths(manifestPath, rawPath, outputPath)
 
-  const rawState = { candidate: null }
+  const rawState = { candidate: null, handle: null }
   let staged = null
   let result = null
   let primaryError = null
@@ -159,7 +159,7 @@ export function buildContractDocument(manifestInput, raw, options = {}) {
   const rejectedPaths = [...schema.keys()].filter(jsonPath => !responsePathSet.has(jsonPath)).sort()
   const allowlistedSchema = responsePaths.map(jsonPath => ({ path: jsonPath, ...schema.get(jsonPath) }))
   const datasetMask = maskDatasetId(manifest.request.datasetId)
-  const officialUrls = manifest.officialUrls.map(url => sanitizeOfficialUrl(url, manifest.request.datasetId, datasetMask))
+  const officialUrls = manifest.officialUrls
 
   return {
     document: renderContract({
@@ -227,12 +227,6 @@ function validateManifest(input, currentCommit) {
   }
   if (!isCanonicalIsoTimestamp(input.capturedAt)) throw new ContractRecorderError('MANIFEST_INVALID')
 
-  if (!Array.isArray(input.officialUrls) || input.officialUrls.length === 0 || input.officialUrls.length > 8) {
-    throw new ContractRecorderError('OFFICIAL_URL_INVALID')
-  }
-  const officialUrls = input.officialUrls.map(validateOfficialUrl)
-  if (new Set(officialUrls).size !== officialUrls.length) throw new ContractRecorderError('OFFICIAL_URL_INVALID')
-
   assertRecordWithKeys(input.request, ['method', 'endpointPath', 'queryKeys', 'permissions', 'datasetId'], 'REQUEST_INVALID')
   if (input.request.method !== 'GET' || !ENDPOINT_PATH_PATTERN.test(input.request.endpointPath)) {
     throw new ContractRecorderError('REQUEST_INVALID')
@@ -241,6 +235,12 @@ function validateManifest(input, currentCommit) {
   if (queryKeys.some(isSensitiveKey)) throw new ContractRecorderError('REQUEST_INVALID')
   const permissions = validateNameList(input.request.permissions, PERMISSION_PATTERN, 'REQUEST_INVALID')
   if (!/^\d{9,30}$/.test(input.request.datasetId)) throw new ContractRecorderError('DATASET_ID_INVALID')
+
+  if (!Array.isArray(input.officialUrls) || input.officialUrls.length === 0 || input.officialUrls.length > 8) {
+    throw new ContractRecorderError('OFFICIAL_URL_INVALID')
+  }
+  const officialUrls = input.officialUrls.map(value => sanitizeOfficialUrl(value, input.request.datasetId))
+  if (new Set(officialUrls).size !== officialUrls.length) throw new ContractRecorderError('OFFICIAL_URL_INVALID')
 
   assertRecordWithKeys(input.ownerAllowlist, ['approved', 'responsePaths', 'freshnessPaths', 'windowPaths'], 'OWNER_ALLOWLIST_INVALID')
   if (input.ownerAllowlist.approved !== true) throw new ContractRecorderError('OWNER_ALLOWLIST_INVALID')
@@ -270,7 +270,7 @@ function collectResponseSchema(raw) {
   const observations = new Map()
   const state = { visitedNodes: 0 }
 
-  const visit = (value, jsonPath, depth) => {
+  const visit = (value, jsonPath, depth, pathSegments) => {
     state.visitedNodes += 1
     if (depth > MAX_JSON_DEPTH || state.visitedNodes > MAX_SCHEMA_PATHS * 4) {
       throw new ContractRecorderError('RAW_SCHEMA_INVALID')
@@ -282,7 +282,7 @@ function collectResponseSchema(raw) {
     }
     if (Array.isArray(value)) {
       if (value.length === 0) observe(observations, jsonPath, value)
-      for (const item of value) visit(item, `${jsonPath}[]`, depth + 1)
+      for (const item of value) visit(item, `${jsonPath}[]`, depth + 1, pathSegments)
       return
     }
 
@@ -290,12 +290,13 @@ function collectResponseSchema(raw) {
     if (entries.length === 0) observe(observations, jsonPath, value)
     for (const [key, child] of entries) {
       if (!FIELD_NAME_PATTERN.test(key)) throw new ContractRecorderError('RAW_SCHEMA_INVALID')
-      if (isSensitiveKey(key)) throw new ContractRecorderError('SENSITIVE_KEY_REJECTED')
-      visit(child, `${jsonPath}.${key}`, depth + 1)
+      const childPathSegments = [...pathSegments, key]
+      if (isSensitivePath(childPathSegments)) throw new ContractRecorderError('SENSITIVE_KEY_REJECTED')
+      visit(child, `${jsonPath}.${key}`, depth + 1, childPathSegments)
     }
   }
 
-  visit(raw, '$', 0)
+  visit(raw, '$', 0, [])
   observations.delete('$')
   if (observations.size === 0 || observations.size > MAX_SCHEMA_PATHS) {
     throw new ContractRecorderError('RAW_SCHEMA_INVALID')
@@ -339,7 +340,7 @@ function validatePathListShape(paths, requireNonEmpty) {
       throw new ContractRecorderError('OWNER_ALLOWLIST_INVALID')
     }
     const segments = jsonPath.replaceAll('[]', '').split('.').slice(1)
-    if (segments.some(isSensitiveKey)) throw new ContractRecorderError('SENSITIVE_KEY_REJECTED')
+    if (isSensitivePath(segments)) throw new ContractRecorderError('SENSITIVE_KEY_REJECTED')
   }
 }
 
@@ -415,10 +416,15 @@ async function readJsonInput(filePath, options) {
   let handle
   try {
     const noFollow = constants.O_NOFOLLOW || 0
-    handle = await openFile(filePath, constants.O_RDONLY | noFollow)
+    const accessMode = options.rawState ? constants.O_RDWR : constants.O_RDONLY
+    handle = await openFile(filePath, accessMode | noFollow)
     const openedStats = await handle.stat()
     if (!openedStats.isFile() || !sameIdentity(stats, openedStats) || openedStats.size > options.maxBytes) {
       throw new ContractRecorderError(`${options.kind}_UNREADABLE`)
+    }
+    if (options.rawState) {
+      options.rawState.candidate = fileIdentity(openedStats)
+      options.rawState.handle = handle
     }
     const bytes = await handle.readFile()
     if (bytes.length > options.maxBytes || bytes.includes(0)) throw new ContractRecorderError(`${options.kind}_NOT_JSON`)
@@ -428,23 +434,58 @@ async function readJsonInput(filePath, options) {
     if (error instanceof ContractRecorderError) throw error
     throw new ContractRecorderError(`${options.kind}_NOT_JSON`)
   } finally {
-    await handle?.close().catch(() => {})
+    if (!options.rawState || options.rawState.handle !== handle) {
+      await handle?.close().catch(() => {})
+    }
   }
 }
 
 async function destroyRawFile(rawPath, rawState, options) {
-  if (!rawState.candidate) return
+  if (!rawState.candidate && !rawState.handle) return
   const lstatFile = options.lstatFile || lstat
   const unlinkFile = options.unlinkFile || unlink
-  let current
-  try {
-    current = await lstatFile(rawPath)
-  } catch (error) {
-    if (error?.code === 'ENOENT') return
-    throw error
+  let cleanupFailed = false
+
+  if (rawState.handle) {
+    try {
+      await rawState.handle.truncate(0)
+    } catch {
+      cleanupFailed = true
+    }
+    try {
+      await rawState.handle.sync()
+    } catch {
+      cleanupFailed = true
+    }
+    try {
+      await rawState.handle.close()
+    } catch {
+      cleanupFailed = true
+    }
+    rawState.handle = null
   }
-  if (!sameIdentity(rawState.candidate, current)) throw new Error('raw identity changed')
-  await unlinkFile(rawPath)
+
+  if (rawState.candidate) {
+    let current = null
+    try {
+      current = await lstatFile(rawPath)
+    } catch (error) {
+      if (error?.code !== 'ENOENT') cleanupFailed = true
+    }
+    if (current) {
+      if (!sameIdentity(rawState.candidate, current)) {
+        cleanupFailed = true
+      } else {
+        try {
+          await unlinkFile(rawPath)
+        } catch (error) {
+          if (error?.code !== 'ENOENT') cleanupFailed = true
+        }
+      }
+    }
+  }
+
+  if (cleanupFailed) throw new Error('raw cleanup failed')
 }
 
 async function stageContractFile(outputPath, document) {
@@ -507,7 +548,7 @@ async function readCurrentCommit(options) {
   }
 }
 
-function validateOfficialUrl(value) {
+function sanitizeOfficialUrl(value, datasetId) {
   let url
   try {
     url = new URL(value)
@@ -525,13 +566,29 @@ function validateOfficialUrl(value) {
   for (const key of url.searchParams.keys()) {
     if (!FIELD_NAME_PATTERN.test(key) || isSensitiveKey(key)) throw new ContractRecorderError('OFFICIAL_URL_INVALID')
   }
-  return url.toString()
-}
 
-function sanitizeOfficialUrl(value, datasetId, datasetMask) {
-  const url = new URL(value)
+  let decodedPath
+  try {
+    decodedPath = decodeURIComponent(url.pathname)
+  } catch {
+    throw new ContractRecorderError('OFFICIAL_URL_INVALID')
+  }
+  if (decodedPath.includes('%') || !/^\/(?:[A-Za-z0-9._~-]+\/)*[A-Za-z0-9._~-]*$/.test(decodedPath)) {
+    throw new ContractRecorderError('OFFICIAL_URL_INVALID')
+  }
+
+  const datasetMask = maskDatasetId(datasetId)
+  const pathSegments = decodedPath.split('/')
+  const datasetSegments = pathSegments.filter(segment => segment === datasetId)
+  if (
+    datasetSegments.length === 0 ||
+    pathSegments.some(segment => segment !== datasetId && segment.includes(datasetId))
+  ) {
+    throw new ContractRecorderError('OFFICIAL_URL_INVALID')
+  }
+
   const queryKeys = [...new Set(url.searchParams.keys())].sort()
-  const safePath = url.pathname.split(datasetId).join(datasetMask)
+  const safePath = pathSegments.map(segment => segment === datasetId ? datasetMask : segment).join('/')
   return `${url.origin}${safePath}${queryKeys.length > 0 ? `?${queryKeys.join('&')}` : ''}`
 }
 
@@ -561,6 +618,8 @@ function isSensitiveKey(key) {
     normalized === 'em' ||
     normalized.includes('phone') ||
     normalized === 'ph' ||
+    normalized === 'clientip' ||
+    normalized === 'clientua' ||
     normalized === 'ip' ||
     normalized.includes('ipaddress') ||
     normalized === 'ua' ||
@@ -570,10 +629,22 @@ function isSensitiveKey(key) {
     normalized.includes('externalid') ||
     normalized.includes('userid') ||
     normalized.includes('eventid') ||
+    normalized.includes('deliveryid') ||
     normalized.includes('visitorid') ||
     normalized.includes('sessionid') ||
     normalized.includes('leadid') ||
     normalized === 'userdata'
+}
+
+function isSensitivePath(segments) {
+  const normalized = segments.map(segment => String(segment).toLowerCase().replace(/[^a-z0-9]/g, ''))
+  if (normalized.some(isSensitiveKey)) return true
+
+  const sensitiveIdParents = new Set(['user', 'users', 'event', 'events', 'session', 'sessions', 'delivery', 'deliveries'])
+  for (let index = 1; index < normalized.length; index += 1) {
+    if (normalized[index] === 'id' && sensitiveIdParents.has(normalized[index - 1])) return true
+  }
+  return false
 }
 
 function maskDatasetId(datasetId) {

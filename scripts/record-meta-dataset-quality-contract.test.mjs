@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { access, mkdtemp, readFile, rm, symlink, writeFile, mkdir } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, open, readFile, rename, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, it } from 'node:test'
@@ -117,13 +117,58 @@ describe('Dataset Quality 契约记录器', () => {
   })
 
   it('敏感键无论 allowlist 与否均硬拒绝，且销毁 raw', async () => {
-    for (const key of ['access_token', 'test_event_code', 'email', 'phone', 'client_ip_address', 'client_user_agent', 'fbp', 'fbc', 'external_id', 'event_id']) {
+    for (const key of ['access_token', 'test_event_code', 'email', 'phone', 'client_ip', 'clientIp', 'client_ua', 'clientUa', 'client_ip_address', 'client_user_agent', 'fbp', 'fbc', 'external_id', 'event_id', 'eventId', 'delivery_id', 'deliveryId']) {
       const files = await fixture({ raw: raw({ [key]: 'SENSITIVE_FIXTURE_VALUE' }) })
       const error = await captureError(() => record(files))
       assert.equal(error.code, 'SENSITIVE_KEY_REJECTED', key)
       await assertMissing(files.rawPath)
       await assertMissing(files.outputPath)
     }
+  })
+
+  it('按完整路径拒绝嵌套用户、事件、会话和投递 ID，误 allowlist 同样失败', async () => {
+    for (const [parent, key] of [
+      ['user', 'id'],
+      ['event', 'id'],
+      ['session', 'id'],
+      ['delivery', 'id'],
+      ['users', 'id'],
+      ['deliveries', 'id'],
+    ]) {
+      const files = await fixture({ raw: raw({ [parent]: { [key]: 'SENSITIVE_FIXTURE_VALUE' } }) })
+      const error = await captureError(() => record(files))
+      assert.equal(error.code, 'SENSITIVE_KEY_REJECTED', `${parent}.${key}`)
+      await assertMissing(files.rawPath)
+      await assertMissing(files.outputPath)
+    }
+
+    for (const sensitivePath of ['$.data[].user.id', '$.data[].event.id', '$.data[].session.id', '$.data[].delivery.id']) {
+      const files = await fixture({
+        manifest: manifest({ ownerAllowlist: { responsePaths: [sensitivePath] } }),
+      })
+      const error = await captureError(() => record(files))
+      assert.equal(error.code, 'SENSITIVE_KEY_REJECTED', sensitivePath)
+      await assertMissing(files.rawPath)
+      await assertMissing(files.outputPath)
+    }
+  })
+
+  it('允许 Owner 明确批准合法聚合 metric id，且不输出其值', async () => {
+    const approvedPath = '$.data[].metric.id'
+    const baseManifest = manifest()
+    const files = await fixture({
+      raw: raw({ metric: { id: 'AGGREGATE_METRIC_ID_VALUE' } }),
+      manifest: manifest({
+        ownerAllowlist: {
+          responsePaths: [...baseManifest.ownerAllowlist.responsePaths, approvedPath],
+        },
+      }),
+    })
+
+    await record(files)
+    const document = await readFile(files.outputPath, 'utf8')
+    assert.match(document, /\$\.data\[\]\.metric\.id.*string.*否/)
+    assert.equal(document.includes('AGGREGATE_METRIC_ID_VALUE'), false)
   })
 
   it('未知字段只记录 path，不记录原始值', async () => {
@@ -134,14 +179,48 @@ describe('Dataset Quality 契约记录器', () => {
     assert.equal(document.includes(UNKNOWN_VALUE), false)
   })
 
-  it('raw 删除失败覆盖原结果并不落地 contract', async () => {
+  it('truncate、sync、close 或 unlink 失败均以稳定 cleanup error 优先', async () => {
+    for (const operation of ['truncate', 'sync', 'close', 'unlink']) {
+      const files = await fixture({ raw: raw({ access_token: 'PRIMARY_SECRET_VALUE' }) })
+      const error = await captureError(() => record(files, operation === 'unlink'
+        ? { unlinkFile: async () => { throw new Error('DELETE_SECRET_VALUE') } }
+        : { openFile: failingRawOperation(files.rawPath, operation) }))
+
+      assert.equal(error.code, 'RAW_DELETE_FAILED', operation)
+      assert.equal(error.message.includes('SECRET_VALUE'), false)
+      await assertMissing(files.outputPath)
+      if (operation === 'unlink') {
+        assert.equal((await stat(files.rawPath)).size, 0)
+        assert.equal(await readFile(files.rawPath, 'utf8'), '')
+      } else {
+        await assertMissing(files.rawPath)
+      }
+    }
+  })
+
+  it('raw 读取后被改名时仍通过原 fd 清零移动后的 inode', async () => {
     const files = await fixture()
-    const error = await captureError(() => record(files, {
-      unlinkFile: async () => { throw new Error('DELETE_SECRET_VALUE') },
-    }))
-    assert.equal(error.code, 'RAW_DELETE_FAILED')
-    await access(files.rawPath)
-    await assertMissing(files.outputPath)
+    const movedPath = path.join(files.dir, 'raw-moved.json')
+
+    await record(files, {
+      stageContract: async (outputPath, document) => {
+        await rename(files.rawPath, movedPath)
+        let active = true
+        return {
+          async finalize() {
+            if (!active) throw new Error('inactive')
+            await writeFile(outputPath, document)
+            active = false
+          },
+          async abort() { active = false },
+        }
+      },
+    })
+
+    await assertMissing(files.rawPath)
+    assert.equal((await stat(movedPath)).size, 0)
+    assert.equal(await readFile(movedPath, 'utf8'), '')
+    await access(files.outputPath)
   })
 
   it('contract 写入失败仍销毁 raw，且错误不回显底层内容', async () => {
@@ -155,8 +234,15 @@ describe('Dataset Quality 契约记录器', () => {
   })
 
   it('拒绝非法官方 URL、非当前 commit 与非法 Dataset ID，并逐次销毁 raw', async () => {
+    const encodedDatasetId = [...DATASET_ID]
+      .map(character => `%${character.charCodeAt(0).toString(16).toUpperCase()}`)
+      .join('')
     const cases = [
       [manifest({ officialUrls: ['https://developers.facebook.com.evil.test/docs'] }), 'OFFICIAL_URL_INVALID'],
+      [manifest({ officialUrls: [`https://business.facebook.com/events_manager2/list/dataset/${DATASET_ID}%/`] }), 'OFFICIAL_URL_INVALID'],
+      [manifest({ officialUrls: [`https://business.facebook.com/events_manager2/list/dataset/${encodedDatasetId.replaceAll('%', '%25')}/`] }), 'OFFICIAL_URL_INVALID'],
+      [manifest({ officialUrls: [`https://business.facebook.com/events_manager2/list/dataset/?asset_id=${DATASET_ID}`] }), 'OFFICIAL_URL_INVALID'],
+      [manifest({ officialUrls: [`https://business.facebook.com/events_manager2/list/dataset/prefix${DATASET_ID}/`] }), 'OFFICIAL_URL_INVALID'],
       [manifest({ releaseCommit: 'a'.repeat(40) }), 'COMMIT_INVALID'],
       [manifest({ request: { datasetId: '12345678' } }), 'DATASET_ID_INVALID'],
     ]
@@ -166,6 +252,28 @@ describe('Dataset Quality 契约记录器', () => {
       assert.equal(error.code, code)
       await assertMissing(files.rawPath)
     }
+  })
+
+  it('逐字符百分号编码的 Dataset ID 仅生成不可逆 mask，query 仅保留 key', async () => {
+    const encodedDatasetId = [...DATASET_ID]
+      .map(character => `%${character.charCodeAt(0).toString(16).toUpperCase()}`)
+      .join('')
+    const files = await fixture({
+      manifest: manifest({
+        officialUrls: [
+          `https://business.facebook.com/events_manager2/list/dataset/${encodedDatasetId}/?fields=score&asset_id=${encodedDatasetId}`,
+        ],
+      }),
+    })
+
+    await record(files)
+    const document = await readFile(files.outputPath, 'utf8')
+    assert.match(document, /https:\/\/business\.facebook\.com\/events_manager2\/list\/dataset\/1234\.\.\.6789\/?\?asset_id&fields/)
+    assert.equal(document.includes(DATASET_ID), false)
+    assert.equal(document.toUpperCase().includes(encodedDatasetId), false)
+    assert.equal(decodeURIComponent(document).includes(DATASET_ID), false)
+    assert.equal(document.includes('asset_id='), false)
+    assert.equal(document.includes('fields='), false)
   })
 
   it('拒绝 raw symlink 且只删除链接，不删除目标', async () => {
@@ -221,5 +329,28 @@ function bufferWriter() {
   return {
     value: '',
     write(chunk) { this.value += String(chunk) },
+  }
+}
+
+function failingRawOperation(rawPath, operation) {
+  return async (filePath, flags) => {
+    const handle = await open(filePath, flags)
+    if (filePath !== rawPath) return handle
+
+    return {
+      stat: (...args) => handle.stat(...args),
+      readFile: (...args) => handle.readFile(...args),
+      truncate: (...args) => operation === 'truncate'
+        ? Promise.reject(new Error('TRUNCATE_SECRET_VALUE'))
+        : handle.truncate(...args),
+      sync: (...args) => operation === 'sync'
+        ? Promise.reject(new Error('SYNC_SECRET_VALUE'))
+        : handle.sync(...args),
+      async close(...args) {
+        if (operation !== 'close') return handle.close(...args)
+        await handle.close(...args)
+        throw new Error('CLOSE_SECRET_VALUE')
+      },
+    }
   }
 }
