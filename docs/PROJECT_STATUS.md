@@ -1,6 +1,6 @@
 # 项目当前状态
 
-更新时间：2026-07-10
+更新时间：2026-07-11
 
 本文是当前实现、部署和文档入口索引。若旧提交、历史计划或早期文档与本文冲突，以 `AGENTS.md`、本文、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md` 和 `docs/GIT_WORKFLOW.md` 为准。
 
@@ -50,7 +50,7 @@
 - Telegram 外部导入 API：项目只提供对外 API 接收能力，不内置 Telegram Bot 本体；对接契约见 `docs/TELEGRAM_IMPORT_API.md`。
 - 数据分析：已实现一方数据采集、来源归因、邀请码、联系点击、趋势和后台 `/admin/analytics` 系列看板；后台 UI 口径见 `docs/UI_DATA_ANALYTICS_DASHBOARD.md`。
 - 归因中心：已实现站内转化账本、投放追踪链接、有效联系 / 完成注册活动趋势、历史 Lead 只读对照、Meta Pixel / CAPI 同步健康、重复诊断和分级发布检查；历史 Lead 与会员发放辅助指标均不参与活动漏斗、比率或链接排序，会员发放仅保留在 `operations` 辅助结构。后台分别展示 blocker 与 warning，warning 不改变生产阻断状态；入口为 `/admin/attribution`。
-- Meta CAPI v2：**安全交付阶段已实现，尚不可生产放量**。业务事实严格限定为 `Contact`、`CompleteRegistration`；AES-256-GCM 安全 outbox、MetaConnection、Queue/DLQ、current/previous 密钥轮换状态、资源检查和静态泄漏扫描已接入。production bootstrap、rollout 与最终 evidence 门禁仍未开放，必须继续完成[质量运营计划](superpowers/plans/2026-07-10-meta-capi-v2-quality-operations.md)并获得用户授权。后台 Pixel `attempted` 仅代表浏览器尝试；CAPI 仅在 Graph API `events_received=1` 时以 `sent` 表示接收成功。
+- Meta CAPI v2：**安全交付阶段已实现，尚不可生产放量**。业务事实严格限定为 `Contact`、`CompleteRegistration`；AES-256-GCM 安全 outbox、MetaConnection、Queue/DLQ、current/previous 密钥轮换状态、资源检查和静态泄漏扫描已接入。Dataset Quality 当前为 `contract_pending`：仓库只有安全契约记录器，尚无真实 dev Dataset capture、Owner 批准 contract 或 collector，`meta_dataset_quality_snapshots` 必须保持空。production readiness 保持 blocked，production rollout 固定为 `0`；不得创建完成态 contract、扩展 collector 或以 mock 证据放行。后台 Pixel `attempted` 仅代表浏览器尝试；CAPI 仅在 Graph API `events_received=1` 时以 `sent` 表示接收成功。后续仍须按[质量运营计划](superpowers/plans/2026-07-10-meta-capi-v2-quality-operations.md)完成外部依赖并获得用户授权。
 - SEO：已实现基础 SEO 设置、关键词池、sitemap、robots、结构化数据和生产校验脚本；运营配置见 `docs/SEO_CONFIGURATION.md`。
 
 ## 规划和未接入

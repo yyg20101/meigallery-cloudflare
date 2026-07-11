@@ -3,12 +3,14 @@
 ## 0. 文档状态
 
 - 日期：2026-07-10
-- 状态：设计已确认，待用户审核与实施计划
+- 状态：历史设计输入；当前 Dataset Quality 为 `contract_pending`，production readiness blocked，production rollout `0`
 - 范围：Meta Pixel、Meta CAPI、营销授权、事件去重、Cloudflare Queue 可靠性、归因后台口径和生产放行
 - 依赖设计：`2026-07-08-meta-capi-attribution-layer-design.md`、`2026-07-09-local-release-verification-design.md`
 - 设计基线：继续以站内转化账本为事实源，Pixel 与 CAPI 只作为外部同步渠道
 
 本文不重写既有归因架构，而是补齐“代码存在”到“可以正式投放”之间的生产验收契约。与既有文档冲突时，涉及生产放行、授权、Pixel 状态和 Queue 可靠性的内容以本文为准。
+
+当前放行口径以 `docs/PROJECT_STATUS.md`、`docs/DEPLOYMENT.md` 和 Meta CAPI v2 质量运营计划为准。没有真实 dev Dataset capture、Owner 批准的 Dataset Quality contract 与已验收 collector 时，本设计不得被解释为允许 production rollout；记录器能力本身不改变 `contract_pending`。
 
 ## 1. 审计结论
 

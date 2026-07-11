@@ -155,6 +155,8 @@ META_INITIAL_ROLLOUT=1 corepack pnpm verify:release
 
 Meta 正式事件仅为 `Contact`、`CompleteRegistration`；`Lead`、`StartTrial` 只保留历史读取。站内 `analytics_conversion_actions` 是唯一事实源，Pixel / CAPI 只是同步渠道，关闭或失败都不得阻断站内转化记账。
 
+Dataset Quality 当前状态为 `contract_pending`。在取得真实 dev Dataset capture、Owner 批准九章节 contract，并按补充计划完成 collector 前，`meta_dataset_quality_snapshots` 必须保持空，production readiness 必须为 blocked，production rollout 必须保持 `0`。记录器测试或本地 mock 不能替代该外部证据，也不能生成完成态 contract。
+
 后台与证据的状态口径必须严格区分：Pixel `attempted` 只表示浏览器已按服务端指令尝试调用，**不代表 Meta 已接收**；只有 CAPI delivery 为 `sent` 且 Graph API 返回 `events_received=1`，才可表述为 Meta 已接收。两项正式事件的 Browser/Server 同 ID 与 Meta 去重结果，必须由 Owner 在 Events Manager 中确认并生成脱敏 live evidence。
 
 普通 test mode 的 `Contact`、`CompleteRegistration` 不自动携带 `test_event_code`。只有 Owner 显式触发的 Test Event/bootstrap 路径使用 `META_CAPI_TEST_EVENT_CODE`，且只读取当前环境 Worker secret，不接受调用参数覆盖。`meta_tracking_mode=production` 时，即使环境中仍配置 Test Event Code，CAPI payload 也绝不携带 `test_event_code`。
