@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import MediaUploader from './MediaUploader.vue'
 
 function mountUploader() {
-  vi.stubGlobal('useApi', () => ({ baseURL: 'https://api.example.com' }))
   vi.stubGlobal('crypto', { randomUUID: () => 'upload-1' })
 
   return mount(MediaUploader, {
@@ -40,7 +39,7 @@ describe('MediaUploader', () => {
     await flushPromises()
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://api.example.com/api/admin/galleries/gallery-1/media/upload',
+      '/api/admin/galleries/gallery-1/media/upload',
       expect.objectContaining({
         method: 'POST',
         credentials: 'include',

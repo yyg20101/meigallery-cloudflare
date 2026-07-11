@@ -201,13 +201,10 @@ function membershipLabel(rank: number): string {
   return '免费用户'
 }
 
-const config = useRuntimeConfig()
-
 // 头像 URL（R2 公开访问 或 通过媒体 API）
 const avatarUrl = computed(() => {
   if (!user.value?.avatarKey) return null
-  const apiBase = config.public.apiBaseUrl as string
-  return `${apiBase}/api/media/public/${user.value.avatarKey}`
+  return `/api/media/public/${user.value.avatarKey}`
 })
 
 onUnmounted(() => {

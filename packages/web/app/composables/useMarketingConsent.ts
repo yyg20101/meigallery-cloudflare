@@ -10,7 +10,7 @@ export function useMarketingConsent() {
 
   async function refresh() {
     try {
-      const response = await api<{ state?: unknown }>('/api/marketing-consent', { sameOrigin: true })
+      const response = await api<{ state?: unknown }>('/api/marketing-consent')
       state.value = trustedResponseState(response.state)
     }
     catch (error) {
@@ -25,7 +25,6 @@ export function useMarketingConsent() {
       const response = await api<{ state?: unknown }>('/api/marketing-consent', {
         method: 'PUT',
         body: { state: nextState },
-        sameOrigin: true,
       })
       state.value = trustedResponseState(response.state)
     }

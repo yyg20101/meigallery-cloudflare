@@ -470,7 +470,7 @@ function persistFailedQueue(events: AnalyticsEventPayload[]) {
 }
 
 function sendBeacon(path: string, body: unknown) {
-  if (!isBrowser() || !navigator.sendBeacon || !analyticsBaseURL) return false
+  if (!isBrowser() || !navigator.sendBeacon) return false
   const blob = new Blob([JSON.stringify(body)], { type: 'application/json' })
   return navigator.sendBeacon(`${analyticsBaseURL}${path}`, blob)
 }

@@ -5,7 +5,7 @@ import { parseAdminImportManifestCsv } from '~/utils/adminImportManifest'
 definePageMeta({ layout: 'admin' })
 
 const route = useRoute()
-const { api, baseURL } = useApi()
+const { api } = useApi()
 const jobId = route.params.id as string
 const {
   turnstileToken,
@@ -45,7 +45,7 @@ interface ProcessResult {
   errors?: Array<{ folder: string; error: string }>
 }
 const processResult = ref<ProcessResult | null>(null)
-const errorReportUrl = computed(() => resolveAdminImportErrorReportUrl(job.value?.id ?? jobId, baseURL))
+const errorReportUrl = computed(() => resolveAdminImportErrorReportUrl(job.value?.id ?? jobId))
 
 onMounted(() => {
   void mountTurnstile()

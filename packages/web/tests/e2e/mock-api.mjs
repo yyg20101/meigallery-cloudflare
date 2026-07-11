@@ -839,6 +839,7 @@ function handleApi(req, res) {
     return
   }
   if (url.pathname === '/api/me') {
+    receiptProtectedRequests.push({ endpoint: '/api/me', cookie: req.headers.cookie || '' })
     return authenticated
       ? json(res, user)
       : json(res, { statusCode: 401, message: '未登录', code: 'AUTH_REQUIRED' }, 401)
@@ -899,6 +900,8 @@ function handleApi(req, res) {
             payload: { method: 'email' },
             receiptToken: 'receipt_registration_22',
           }],
+        }, 200, {
+          'Set-Cookie': 'mei_session=mock-session; Path=/; HttpOnly; SameSite=Lax',
         })
       })
       .catch(() => json(res, { statusCode: 400, message: '注册请求无效' }, 400))

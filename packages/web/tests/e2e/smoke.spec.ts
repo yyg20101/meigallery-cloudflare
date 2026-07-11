@@ -662,10 +662,10 @@ test.describe('核心页面 smoke', () => {
   test('marketing receipt 依赖请求通过 Web 同源代理并转发 HttpOnly cookie', async ({ request, page }) => {
     await request.patch(`${apiURL}/api/test/auth`, { data: { authenticated: false } })
     await request.patch(`${apiURL}/api/test/marketing-consent-state`, { data: { state: 'limited' } })
-    const receiptRequestUrls: string[] = []
+    const protectedRequestUrls: string[] = []
     page.on('request', (browserRequest) => {
-      if (/\/api\/(marketing-consent|conversions\/events|auth\/register)$/.test(new URL(browserRequest.url()).pathname)) {
-        receiptRequestUrls.push(browserRequest.url())
+      if (/\/api\/(marketing-consent|conversions\/events|auth\/register|me)$/.test(new URL(browserRequest.url()).pathname)) {
+        protectedRequestUrls.push(browserRequest.url())
       }
     })
 
@@ -692,14 +692,17 @@ test.describe('核心页面 smoke', () => {
     await page.getByPlaceholder('再次输入密码').fill('Password123')
     await page.getByRole('button', { name: '注册' }).click()
     await expect(page).toHaveURL('/')
+    await page.reload()
+    await page.waitForLoadState('networkidle')
 
     const payload = await (await request.get(`${apiURL}/api/test/analytics-events`)).json()
     expect(payload.receiptProtectedRequests).toEqual(expect.arrayContaining([
       expect.objectContaining({ endpoint: '/api/conversions/events', cookie: expect.stringContaining('mei_marketing_consent_receipt=mock-granted') }),
       expect.objectContaining({ endpoint: '/api/auth/register', cookie: expect.stringContaining('mei_marketing_consent_receipt=mock-granted') }),
+      expect.objectContaining({ endpoint: '/api/me', cookie: expect.stringContaining('mei_session=mock-session') }),
     ]))
-    expect(receiptRequestUrls.length).toBeGreaterThanOrEqual(4)
-    expect(receiptRequestUrls.every(url => new URL(url).origin === new URL(page.url()).origin)).toBe(true)
-    expect(receiptRequestUrls.some(url => url.includes('meigallery-api-dev.wajie.workers.dev'))).toBe(false)
+    expect(protectedRequestUrls.length).toBeGreaterThanOrEqual(5)
+    expect(protectedRequestUrls.every(url => new URL(url).origin === new URL(page.url()).origin)).toBe(true)
+    expect(protectedRequestUrls.some(url => url.includes('meigallery-api-dev.wajie.workers.dev'))).toBe(false)
   })
 })

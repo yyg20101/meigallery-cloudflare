@@ -19,7 +19,7 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('useAuth 注册', () => {
-  it('registration POST 显式走 Web 同源代理以转发 HttpOnly marketing receipt', async () => {
+  it('registration POST 复用统一 API 客户端以转发 HttpOnly cookie', async () => {
     api.mockResolvedValue({ id: 22, email: 'mei@example.com', pixelEvents: [] })
     const params = {
       email: 'mei@example.com',
@@ -33,7 +33,6 @@ describe('useAuth 注册', () => {
     expect(api).toHaveBeenCalledWith('/api/auth/register', {
       method: 'POST',
       body: params,
-      sameOrigin: true,
     })
   })
 })

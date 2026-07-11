@@ -4,13 +4,12 @@
  *
  * SSR（Cloudflare）：通过 useRequestEvent() 获取 Service Binding，直连 API Worker（零网络开销）
  * SSR（本地开发）：$fetch 直接请求 localhost:8787
- * CSR（浏览器）：$fetch 直连 API Worker 完整 URL
+ * CSR（浏览器）：统一请求 Web 同源 /api 代理
  *
  * 解决 Cloudflare 同账户 *.workers.dev 域名互访限制（error 1042）
  */
 export function useApi() {
   const config = useRuntimeConfig()
-  const clientBaseURL = config.public.apiBaseUrl as string
   const appEnv = String(config.public.appEnv || 'development')
   const mutatingMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 
@@ -118,7 +117,6 @@ export function useApi() {
       method?: string
       body?: unknown
       query?: Record<string, string | number | undefined>
-      sameOrigin?: boolean
     },
   ): Promise<T> {
     const method = options?.method || 'GET'
@@ -131,7 +129,7 @@ export function useApi() {
       return ssrFetch<T>(fullPath, options)
     }
 
-    // receipt 依赖链路显式走 Web 同源代理，其余调用保持现有 API Worker 直连。
+    // 浏览器统一走 Web 同源代理，保证 session 与授权 receipt 共用同一 host-only cookie 域。
     const fetchOptions: Record<string, unknown> = {
       method,
       credentials: 'include',
@@ -142,9 +140,8 @@ export function useApi() {
       fetchOptions.headers = { 'Content-Type': 'application/json' }
       fetchOptions.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body)
     }
-    const requestTarget = options?.sameOrigin ? fullPath : `${clientBaseURL}${fullPath}`
-    return $fetch<T>(requestTarget, fetchOptions as any)
+    return $fetch<T>(fullPath, fetchOptions as any)
   }
 
-  return { api, baseURL: clientBaseURL }
+  return { api, baseURL: '' }
 }

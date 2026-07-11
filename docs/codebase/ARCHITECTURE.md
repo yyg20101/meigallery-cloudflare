@@ -20,7 +20,7 @@
 
 典型请求流程：
 
-1. 前端通过 `useApi()` 或 SSR 相对 `/api/...` 请求 API；SSR 环境由 `packages/web/server/api/[...].ts` 使用 `API_SERVICE` Service Binding 转发。
+1. 浏览器通过 `useApi()` 统一请求 Web 同源 `/api/...` 代理；SSR 使用 `API_SERVICE` Service Binding 直连 API Worker，本地服务端代理回退到配置的 API 地址。
 2. API Worker 在 `packages/api/src/index.ts` 先应用 logger、secure headers、CORS、noindex、速率限制和 `authMiddleware`。
 3. 公开路由如 `/api/galleries`、`/api/cases`、`/api/media` 在入口文件直接挂载；后台路由统一挂载到 `/api/admin`。
 4. `packages/api/src/routes/admin/index.ts` 对所有后台路由应用 `requireAdmin`，再分发到图库、标签、用户、设置、案例等子路由。

@@ -27,7 +27,7 @@ describe('useMarketingConsent', () => {
 
     await consent.refresh()
 
-    expect(api).toHaveBeenCalledWith('/api/marketing-consent', { sameOrigin: true })
+    expect(api).toHaveBeenCalledWith('/api/marketing-consent')
     expect(consent.state.value).toBe('granted')
     expect(useCookie).not.toHaveBeenCalled()
   })
@@ -39,7 +39,6 @@ describe('useMarketingConsent', () => {
     expect(api).toHaveBeenNthCalledWith(1, '/api/marketing-consent', {
       method: 'PUT',
       body: { state: 'granted' },
-      sameOrigin: true,
     })
     expect(consent.canTrackMarketing.value).toBe(true)
 

@@ -6,7 +6,7 @@ const apiMock = vi.fn()
 const stateStore = new Map<string, ReturnType<typeof ref>>()
 let route = { fullPath: '/', path: '/', params: {} }
 
-vi.stubGlobal('useApi', () => ({ api: apiMock, baseURL: 'https://api.example.com' }))
+vi.stubGlobal('useApi', () => ({ api: apiMock, baseURL: '' }))
 vi.stubGlobal('useRoute', () => route)
 vi.stubGlobal('useState', <T>(key: string, init: () => T) => {
   if (!stateStore.has(key)) stateStore.set(key, ref(init()))
@@ -169,8 +169,8 @@ describe('useAnalytics', () => {
     await analytics.flush({ beacon: true })
     analytics.sendSessionEnd({ beacon: true })
 
-    expect(sendBeacon).toHaveBeenCalledWith('https://api.example.com/api/analytics/events', expect.any(Blob))
-    expect(sendBeacon).toHaveBeenCalledWith('https://api.example.com/api/analytics/session/end', expect.any(Blob))
+    expect(sendBeacon).toHaveBeenCalledWith('/api/analytics/events', expect.any(Blob))
+    expect(sendBeacon).toHaveBeenCalledWith('/api/analytics/session/end', expect.any(Blob))
   })
 
   it('flush 失败会把事件放回队列并持久化到 localStorage', async () => {
