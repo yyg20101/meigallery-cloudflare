@@ -125,6 +125,29 @@ describe('发布验证基础库', () => {
     assert.match(output, /https:\/\/\[REDACTED]@github\.com\/yyg20101\/meigallery-cloudflare\.git/)
   })
 
+  it('runCommand 保留机器输出中的 revision/IP/hash，但 summary 使用完整隐私脱敏', async () => {
+    const sensitiveValues = [
+      'e'.repeat(32),
+      '203.0.113.88',
+      'f'.repeat(64),
+    ]
+    const payload = {
+      revision: sensitiveValues[0],
+      localAddress: sensitiveValues[1],
+      hash: sensitiveValues[2],
+    }
+
+    const serializedPayload = JSON.stringify(payload)
+    const step = await runCommand('node', ['-e', [
+      `process.stdout.write(${JSON.stringify(serializedPayload)})`,
+      `process.stderr.write(${JSON.stringify(serializedPayload)})`,
+    ].join(';')])
+
+    assert.deepEqual(JSON.parse(step.stdout), payload)
+    assert.deepEqual(JSON.parse(step.stderr), payload)
+    for (const value of sensitiveValues) assert.equal(step.summary.includes(value), false)
+  })
+
   it('runCommand 支持使用安全的 reportCommand 覆盖报告命令', async () => {
     const step = await runCommand('node', ['-e', 'console.log("ok")'], {
       reportCommand: 'node -e "[REDACTED]"',
@@ -199,6 +222,60 @@ describe('发布验证基础库', () => {
       assert.deepEqual(JSON.parse(timestampContent), report)
       assert.deepEqual(JSON.parse(latestContent), report)
       assert.notEqual(path.basename(reportFile), 'latest.json')
+    } finally {
+      await rm(reportDir, { recursive: true, force: true })
+    }
+  })
+
+  it('writeReport 在写盘前递归脱敏 report summary 中的匹配数据', async () => {
+    const reportDir = await mkdtemp(path.join(tmpdir(), 'release-verify-private-'))
+    const sensitiveValues = [
+      'nested-person@example.test',
+      '198.51.100.27',
+      '2001:db8::27',
+      'NestedFixtureAgent/3.2',
+      'Agent/1.0',
+      'Browser/2.0',
+      'Client/3.0',
+      'fb.1.1700000000000.NestedBrowserId',
+      'c'.repeat(32),
+      'd'.repeat(64),
+    ]
+    const report = {
+      schemaVersion: 1,
+      mode: 'quick',
+      status: 'passed',
+      startedAt: '2026-07-11T00:00:00.000Z',
+      finishedAt: '2026-07-11T00:01:00.000Z',
+      durationMs: 60_000,
+      git: {
+        branch: 'dev',
+        commit: 'abcdef1234567890',
+        isClean: true,
+        remote: 'ssh://git@github.com/example/repository.git',
+      },
+      versions: { node: 'v24.0.0', pnpm: '10.0.0', wrangler: '4.0.0' },
+      steps: [{
+        name: 'privacy-fixture',
+        status: 'passed',
+        durationMs: 1,
+        command: 'node privacy-fixture',
+        summary: `普通摘要 ${sensitiveValues.join(' ')}`,
+      }],
+      artifacts: [],
+      notes: [{ nestedSummary: `完成 ${sensitiveValues.join(' ')}` }],
+    }
+
+    try {
+      const { reportFile, latestFile } = await writeReport(report, { reportDir })
+      const contents = await Promise.all([readFile(reportFile, 'utf8'), readFile(latestFile, 'utf8')])
+
+      for (const content of contents) {
+        for (const value of sensitiveValues) assert.equal(content.includes(value), false)
+        assert.match(content, /普通摘要/)
+        assert.equal(JSON.parse(content).git.remote, 'ssh://git@github.com/example/repository.git')
+      }
+      assert.equal(report.steps[0].summary.includes(sensitiveValues[0]), true)
     } finally {
       await rm(reportDir, { recursive: true, force: true })
     }

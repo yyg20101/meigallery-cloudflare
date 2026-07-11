@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile as execFileCallback } from 'node:child_process'
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -29,11 +29,13 @@ afterEach(async () => {
 
 describe('Meta secret 静态泄漏扫描', () => {
   it('scanner 自身不会被 SQL 持久化规则误报', async () => {
-    const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-    const report = await scanMetaSecretLeaks({
-      rootDir,
-      trackedFiles: ['scripts/verify-meta-secret-leaks.mjs'],
-    })
+    const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+    const rootDir = await createRepository()
+    const scanner = await readFile(path.join(repositoryRoot, 'scripts/verify-meta-secret-leaks.mjs'), 'utf8')
+    await writeTracked(rootDir, 'scripts/verify-meta-secret-leaks.mjs', scanner)
+    await gitAdd(rootDir, ['.gitignore', 'scripts/verify-meta-secret-leaks.mjs'])
+
+    const report = await scanMetaSecretLeaks({ rootDir })
 
     assert.equal(report.status, 'passed')
     assert.deepEqual(report.findings, [])
@@ -95,6 +97,9 @@ describe('Meta secret 静态泄漏扫描', () => {
       fbc_sample_count: 20,
       commit: 'd'.repeat(40),
       remote: 'git@github.com:example/repository.git',
+      remoteUrl: 'ssh://git@github.com/example/repository.git',
+      toolVersion: 'vitest@4.0.18',
+      packageCoordinate: '@scope/tool@4.0.18',
     })
     await gitAdd(rootDir, ['.gitignore', 'src/safe.ts', 'src/safe.test.ts'])
 
@@ -213,6 +218,39 @@ describe('Meta secret 静态泄漏扫描', () => {
     assertNoFixtureValue(report)
   })
 
+  it('源码数组拒绝可见模板字符串和嵌套明文，同时放行已验证 hash 表达式', async () => {
+    const rootDir = await createRepository()
+    await writeTracked(rootDir, 'src/template-email.ts', [
+      'const payload = { user_data: { em: [`RawPersonUnique@example.test`, validatedHash] } }',
+    ].join('\n'))
+    await writeTracked(rootDir, 'src/template-interpolation.ts', [
+      'const rawId = "raw-id"',
+      'const payload = { user_data: { external_id: [`visible-${rawId}`] } }',
+    ].join('\n'))
+    await writeTracked(rootDir, 'src/nested-raw-id.ts', [
+      'const payload = { user_data: { external_id: [["raw-id"]] } }',
+    ].join('\n'))
+    await writeTracked(rootDir, 'src/validated-hashes.ts', [
+      'const payload = { user_data: { em: [validatedEmailHash], external_id: validatedExternalIdHashes } }',
+    ].join('\n'))
+    await gitAdd(rootDir, [
+      '.gitignore',
+      'src/template-email.ts',
+      'src/template-interpolation.ts',
+      'src/nested-raw-id.ts',
+      'src/validated-hashes.ts',
+    ])
+
+    const report = await scanMetaSecretLeaks({ rootDir })
+
+    assert.deepEqual(report.findings, [
+      { path: 'src/nested-raw-id.ts', ruleId: 'META_CAPI_MATCH_UNHASHED' },
+      { path: 'src/template-email.ts', ruleId: 'META_CAPI_MATCH_UNHASHED' },
+      { path: 'src/template-interpolation.ts', ruleId: 'META_CAPI_MATCH_UNHASHED' },
+    ])
+    assertNoFixtureValue(report)
+  })
+
   it('SQL 仅按去注释后的写目标豁免 secure outbox', async () => {
     const rootDir = await createRepository()
     const unsafeStatements = {
@@ -234,6 +272,86 @@ describe('Meta secret 静态泄漏扫描', () => {
       path: file,
       ruleId: 'META_MATCH_SQL_PERSISTENCE',
     })))
+  })
+
+  it('源码 SQL 模板去注释并逐语句判定每个真实写目标', async () => {
+    const rootDir = await createRepository()
+    await writeTracked(rootDir, 'src/multi-statement.ts', [
+      'const sql = `',
+      '  INSERT INTO meta_capi_secure_outbox (fbp) VALUES (?);',
+      '  -- UPDATE ignored_comment SET fbc = ?;',
+      '  UPDATE profiles SET fbc = ?;',
+      '`',
+    ].join('\n'))
+    await writeTracked(rootDir, 'src/comment-only.ts', [
+      'const sql = `',
+      '  INSERT INTO meta_capi_secure_outbox (client_ip_address) VALUES (?);',
+      '  /* UPDATE profiles SET client_user_agent = ?; */',
+      '`',
+    ].join('\n'))
+    await gitAdd(rootDir, ['.gitignore', 'src/multi-statement.ts', 'src/comment-only.ts'])
+
+    const report = await scanMetaSecretLeaks({ rootDir })
+
+    assert.deepEqual(report.findings, [
+      { path: 'src/multi-statement.ts', ruleId: 'META_MATCH_SQL_PERSISTENCE' },
+    ])
+  })
+
+  it('evidence 扫描所有字符串中的嵌入式敏感值且不误报普通摘要', async () => {
+    const rootDir = await createRepository()
+    await writeIgnoredEvidence(rootDir, 'reports/release-verification/embedded.json', {
+      summary: [
+        `联系人 ${FIXTURE_VALUES[2]}`,
+        `来源 IPv4=${FIXTURE_VALUES[3]}`,
+        '来源 IPv6=2001:db8:85a3::8a2e:370:7334',
+        `客户端 ${FIXTURE_VALUES[4]}`,
+        `浏览器标识 ${FIXTURE_VALUES[5]}`,
+        `匹配标识 prefix-${'d'.repeat(32)}-suffix`,
+        `散列标识 prefix-${FIXTURE_VALUES[6]}-suffix`,
+      ].join('；'),
+      safeSummary: '验证完成，两项正式事件均已通过脱敏检查，未记录原始匹配数据。',
+    })
+
+    const report = await scanMetaSecretLeaks({ rootDir })
+    const ruleIds = new Set(report.findings.map(finding => finding.ruleId))
+
+    for (const ruleId of [
+      'META_EVIDENCE_RAW_EMAIL',
+      'META_EVIDENCE_RAW_IP',
+      'META_EVIDENCE_RAW_USER_AGENT',
+      'META_EVIDENCE_BROWSER_ID',
+      'META_EVIDENCE_MATCH_IDENTIFIER',
+    ]) assert.equal(ruleIds.has(ruleId), true, ruleId)
+    assertNoFixtureValue(report)
+  })
+
+  it('evidence 自由文本拒绝裸 Agent、Browser 和 Client User-Agent', async () => {
+    const rootDir = await createRepository()
+    await writeIgnoredEvidence(rootDir, 'reports/release-verification/bare-user-agent.json', {
+      summary: 'ua=Agent/1.0；browser=Browser/2.0；client=Client/3.0',
+    })
+
+    const report = await scanMetaSecretLeaks({ rootDir })
+
+    assert.deepEqual(report.findings, [{
+      path: 'reports/release-verification/bare-user-agent.json',
+      ruleId: 'META_EVIDENCE_RAW_USER_AGENT',
+    }])
+  })
+
+  it('evidence 自由文本拒绝带端口的 IPv4', async () => {
+    const rootDir = await createRepository()
+    await writeIgnoredEvidence(rootDir, 'reports/release-verification/ipv4-port.json', {
+      summary: '远端地址 ip=203.0.113.177:443',
+    })
+
+    const report = await scanMetaSecretLeaks({ rootDir })
+
+    assert.deepEqual(report.findings, [{
+      path: 'reports/release-verification/ipv4-port.json',
+      ruleId: 'META_EVIDENCE_RAW_IP',
+    }])
   })
 
   it('危险路径统一转为稳定 opaque ID，正常安全相对路径仍保留', async () => {
@@ -260,6 +378,25 @@ describe('Meta secret 静态泄漏扫描', () => {
     assert.deepEqual(second.findings.map(finding => finding.path), opaquePaths)
     assert.equal(first.findings.some(finding => finding.path === 'safe/missing.txt'), true)
     assertNoFixtureValue({ first, second })
+  })
+
+  it('Unicode 换行与方向控制字符路径均 opaque，report 和输出不含原始值', async () => {
+    const rootDir = await createRepository()
+    const dangerousPaths = [
+      'reports/line\rbreak.json',
+      'reports/line\nbreak.json',
+      'reports/line\u2028break.json',
+      'reports/line\u2029break.json',
+      'reports/direction\u202ebreak.json',
+    ]
+    const stdout = bufferWriter()
+
+    const report = await main({ rootDir, trackedFiles: dangerousPaths, stdout })
+    const serialized = JSON.stringify({ report, stdout: stdout.value })
+
+    assert.equal(report.findings.length, dangerousPaths.length)
+    assert.equal(report.findings.every(finding => /^opaque-path-[0-9a-f]{16}$/.test(finding.path)), true)
+    for (const dangerousPath of dangerousPaths) assert.equal(serialized.includes(dangerousPath), false)
   })
 
   it('evidence 遍历受深度和节点预算约束，超限使用稳定 rule ID', async () => {
@@ -325,6 +462,14 @@ describe('Meta secret 静态泄漏扫描', () => {
 
     assert.deepEqual(report.findings, [{ path: 'assets/large.txt', ruleId: 'META_FILE_TOO_LARGE' }])
     assertNoFixtureValue(report)
+  })
+
+  it('部署文档说明普通 test mode 事件不自动携带 Test Event Code', async () => {
+    const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+    const deployment = await readFile(path.join(rootDir, 'docs/DEPLOYMENT.md'), 'utf8')
+
+    assert.match(deployment, /普通 test mode 的 `Contact`、`CompleteRegistration` 不自动携带 `test_event_code`/)
+    assert.match(deployment, /只有 Owner 显式触发的 Test Event\/bootstrap 路径使用 `META_CAPI_TEST_EVENT_CODE`/)
   })
 })
 

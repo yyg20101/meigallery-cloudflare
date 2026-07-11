@@ -157,7 +157,7 @@ Meta 正式事件仅为 `Contact`、`CompleteRegistration`；`Lead`、`StartTria
 
 后台与证据的状态口径必须严格区分：Pixel `attempted` 只表示浏览器已按服务端指令尝试调用，**不代表 Meta 已接收**；只有 CAPI delivery 为 `sent` 且 Graph API 返回 `events_received=1`，才可表述为 Meta 已接收。两项正式事件的 Browser/Server 同 ID 与 Meta 去重结果，必须由 Owner 在 Events Manager 中确认并生成脱敏 live evidence。
 
-`meta_tracking_mode=test` 时，`Contact`、`CompleteRegistration` CAPI payload 使用当前环境 Worker secret `META_CAPI_TEST_EVENT_CODE`；Owner 合成 Test Event 读取同一 secret，不接受调用参数覆盖。`meta_tracking_mode=production` 时，即使环境中仍配置 Test Event Code，CAPI payload 也绝不携带 `test_event_code`。
+普通 test mode 的 `Contact`、`CompleteRegistration` 不自动携带 `test_event_code`。只有 Owner 显式触发的 Test Event/bootstrap 路径使用 `META_CAPI_TEST_EVENT_CODE`，且只读取当前环境 Worker secret，不接受调用参数覆盖。`meta_tracking_mode=production` 时，即使环境中仍配置 Test Event Code，CAPI payload 也绝不携带 `test_event_code`。
 
 环境资源固定如下，dev 和生产不得交叉使用 token、Test Event Code、D1、R2 或 Queue：
 
@@ -195,7 +195,7 @@ dev 操作将上述 `--env=""` 替换为 `--env dev`。后台只展示有效性�
 5. PR 合入 `main` 后，以最终 `main` HEAD 重新部署 dev，并重新生成该 commit 的 dev live evidence；此前任何 commit 的 evidence 都失效。
 6. 在最终 `main` HEAD、干净工作区运行同 commit release：首次 Meta 上线使用 `META_INITIAL_ROLLOUT=1 corepack pnpm verify:release`，该约束只要求 production `meta_capi_enabled=false`，不约束 dev；后续常规发布使用 `corepack pnpm verify:release`。通过后才允许 production gate 放行。
 7. 部署生产 API，再部署生产 Web；部署不等同于开启营销投放。
-8. Owner 先将 mode 设为 `test`，确认两项正式事件和 Owner 合成 Test Event 都使用当前环境同一 `META_CAPI_TEST_EVENT_CODE`，并在严格 Test Event 中确认 CAPI 返回 `sent` 且 `events_received=1`。
+8. Owner 先将 mode 设为 `test`，确认普通 `Contact`、`CompleteRegistration` 不携带 `test_event_code`；再显式触发 Owner Test Event/bootstrap，确认该路径使用当前环境 `META_CAPI_TEST_EVENT_CODE`，并在严格 Test Event 中确认 CAPI 返回 `sent` 且 `events_received=1`。
 9. Owner 将 mode 切为 `production`，再次确认营销授权仅在 `granted` 时允许追踪，且拒绝或 limited 不加载 Pixel、不创建 Meta delivery。
 10. 仅在上述检查全部通过后开启 `meta_capi_enabled`，按小流量观察 `attempted`、CAPI `sent`、failed/skipped、DLQ 和重复诊断；Pixel 可按同一授权门禁单独开启。
 
@@ -224,7 +224,7 @@ dev 操作将上述 `--env=""` 替换为 `--env dev`。后台只展示有效性�
 | `IMPORT_TOKEN_DAILY_LIMIT` | API Worker vars | 单个 Import Token 每日可创建的外部导入记录上限，未设置时 API 默认 100 |
 | `TELEGRAM_BOT_TOKEN_<SOURCE_BOT_KEY>` | API Worker secret | Telegram 外部导入拉取 file_id 所需 Bot Token，例如 `ops_gallery_bot` 对应 `TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT` |
 | `META_CAPI_ACCESS_TOKEN` | API Worker secret | Meta Conversions API 访问令牌，只存 Worker secret，不进入 D1 或前端 |
-| `META_CAPI_TEST_EVENT_CODE` | API Worker secret | 当前环境 Meta Events Manager Test Events 调试码；`meta_tracking_mode=test` 的两项正式事件和 Owner 合成 Test Event 共用，production payload 永不携带 |
+| `META_CAPI_TEST_EVENT_CODE` | API Worker secret | 当前环境 Meta Events Manager Test Events 调试码；仅供 Owner 显式 Test Event/bootstrap 使用，普通 test mode 正式事件不自动携带，production payload 永不携带 |
 | `META_CAPI_DATA_KEY_CURRENT` | API Worker secret | AES-256-GCM 当前数据密钥；所有 mode 的 CAPI readiness 必需 |
 | `META_CAPI_DATA_KEY_PREVIOUS` | API Worker secret | 仅轮换窗口使用的上一把数据密钥 |
 | `NUXT_PUBLIC_API_BASE_URL` | Web Worker vars | API 地址（如 `https://api.616618.xyz`） |

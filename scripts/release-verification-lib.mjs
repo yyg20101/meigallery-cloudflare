@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { isIP } from 'node:net'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -15,6 +16,17 @@ const REDACTION_PATTERNS = [
   /(session\s*[=:]\s*)([^\s,;]+)/gi,
   /(cookie\s*[=:]\s*)([^\s,;]+)/gi,
 ]
+const PRIVATE_EMAIL_PATTERN = /(?<![A-Z0-9.!#$%&'*+=?^_{|}~-])[A-Z0-9.!#$%&'*+=?^_{|}~-]+@[A-Z0-9-]+(?:\.[A-Z0-9-]+)*\.[A-Z]{2,63}(?![A-Z0-9-])/gi
+const PRIVATE_BROWSER_ID_PATTERN = /\bfb\.1\.\d{10,}\.[A-Z0-9._-]+\b/gi
+const PRIVATE_MATCH_ID_PATTERN = /(?<![0-9a-f])(?:[0-9a-f]{64}|[0-9a-f]{32})(?![0-9a-f])/gi
+const PRIVATE_IPV4_PATTERN = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g
+const PRIVATE_IPV6_PATTERN = /(?<![0-9a-f:])[0-9a-f]*:[0-9a-f:.]*:[0-9a-f:.]*(?![0-9a-f:])/gi
+const PRIVATE_USER_AGENT_PATTERNS = [
+  /\bMozilla\/5\.0[^\r\n|]{0,512}/gi,
+  /\b(?:curl|Wget|PostmanRuntime|okhttp)\/\d+(?:\.\d+)*(?:[^\r\n|]{0,200})?/gi,
+  /\b(?:[A-Z][A-Z0-9._-]*)?(?:Agent|Browser|Client)\/\d+(?:\.\d+)*(?:[^\r\n|,;]{0,200})?/gi,
+]
+const PRIVACY_REDACTION = '[PRIVATE_REDACTED]'
 const SUMMARY_LIMIT = 1200
 const REPORT_MAX_AGE_MS = 24 * 60 * 60 * 1000
 const VALID_REPORT_MODES = new Set(['quick', 'local-runtime', 'dev-rehearsal', 'release'])
@@ -190,7 +202,8 @@ export async function getGitState(options = {}) {
 export async function writeReport(report, options = {}) {
   const reportDir = resolveReportDir(options.reportDir)
   const finishedAt = report.finishedAt || new Date().toISOString()
-  const serializedReport = JSON.stringify(report, null, 2)
+  const safeReport = sanitizeReportValue(report)
+  const serializedReport = JSON.stringify(safeReport, null, 2)
   const timestamp = finishedAt.replaceAll(':', '-')
   const commitSuffix = report.git?.commit ? `-${report.git.commit.slice(0, 12)}` : ''
   const reportFile = path.join(reportDir, `${timestamp}-${report.mode}${commitSuffix}.json`)
@@ -204,6 +217,41 @@ export async function writeReport(report, options = {}) {
     reportFile,
     latestFile,
   }
+}
+
+function sanitizeReportValue(value) {
+  if (typeof value === 'string') return redactForReport(value)
+  if (Array.isArray(value)) return value.map(sanitizeReportValue)
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, sanitizeReportValue(child)]))
+  }
+  return value
+}
+
+function redactPrivateData(value) {
+  let output = redactPrivateEmails(String(value))
+  output = output.replace(PRIVATE_BROWSER_ID_PATTERN, PRIVACY_REDACTION)
+  output = output.replace(PRIVATE_MATCH_ID_PATTERN, PRIVACY_REDACTION)
+  output = output.replace(PRIVATE_IPV4_PATTERN, candidate => isIP(candidate) === 4 ? PRIVACY_REDACTION : candidate)
+  output = output.replace(PRIVATE_IPV6_PATTERN, candidate => isIP(candidate) === 6 ? PRIVACY_REDACTION : candidate)
+  for (const pattern of PRIVATE_USER_AGENT_PATTERNS) output = output.replace(pattern, PRIVACY_REDACTION)
+  return output
+}
+
+function redactForReport(value) {
+  return redactPrivateData(redact(value))
+}
+
+function redactPrivateEmails(value) {
+  return value.replace(PRIVATE_EMAIL_PATTERN, (candidate, offset, source) => {
+    const before = source.slice(0, offset)
+    const after = source.slice(offset + candidate.length)
+    if (candidate.toLowerCase().startsWith('git@')
+      && (before.toLowerCase().endsWith('ssh://') || after.startsWith(':') || after.startsWith('/'))) {
+      return candidate
+    }
+    return PRIVACY_REDACTION
+  })
 }
 
 export async function readLatestReport(options = {}) {
@@ -258,8 +306,8 @@ export function assertReportCanGateProduction(report, options = {}) {
 
 function summarizeOutput(stdout, stderr) {
   const chunks = []
-  if (stdout) chunks.push(`stdout: ${compactWhitespace(stdout)}`)
-  if (stderr) chunks.push(`stderr: ${compactWhitespace(stderr)}`)
+  if (stdout) chunks.push(`stdout: ${compactWhitespace(redactForReport(stdout))}`)
+  if (stderr) chunks.push(`stderr: ${compactWhitespace(redactForReport(stderr))}`)
   if (chunks.length === 0) return '无输出'
 
   const summary = chunks.join(' | ')

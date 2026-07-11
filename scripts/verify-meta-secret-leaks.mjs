@@ -27,8 +27,13 @@ const EXCLUDED_SEGMENTS = new Set([
   '.wrangler-release-verify',
 ])
 const HASH_PATTERN = /^[0-9a-f]{64}$/
-const EVIDENCE_MATCH_IDENTIFIER_PATTERN = /^(?:[0-9a-f]{32}|[0-9a-f]{64})$/i
-const EMAIL_PATTERN = /^[A-Z0-9.!#$%&'*+/=?^_{|}~-]+@[A-Z0-9-]+(?:\.[A-Z0-9-]+)+$/i
+const EVIDENCE_MATCH_IDENTIFIER_PATTERN = /(?<![0-9a-f])(?:[0-9a-f]{64}|[0-9a-f]{32})(?![0-9a-f])/i
+const EMAIL_PATTERN = /^[A-Z0-9.!#$%&'*+/=?^_{|}~-]+@[A-Z0-9-]+(?:\.[A-Z0-9-]+)*\.[A-Z]{2,63}$/i
+const EMBEDDED_EMAIL_PATTERN = /(?<![A-Z0-9.!#$%&'*+=?^_{|}~-])[A-Z0-9.!#$%&'*+=?^_{|}~-]+@[A-Z0-9-]+(?:\.[A-Z0-9-]+)*\.[A-Z]{2,63}(?![A-Z0-9-])/gi
+const EMBEDDED_BROWSER_ID_PATTERN = /\bfb\.1\.\d{10,}\.[A-Z0-9._-]+\b/i
+const EMBEDDED_USER_AGENT_PATTERN = /(?:\bMozilla\/5\.0\b|\b(?:curl|Wget|PostmanRuntime|okhttp)\/\d|\b(?:[A-Z][A-Z0-9._-]*)?(?:Agent|Browser|Client)\/\d)/i
+const EMBEDDED_IPV4_PATTERN = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g
+const EMBEDDED_IPV6_PATTERN = /(?<![0-9a-f:])[0-9a-f]*:[0-9a-f:.]*:[0-9a-f:.]*(?![0-9a-f:])/gi
 const SECRET_ASSIGNMENT_PATTERN = /(?:["']?)(META_CAPI_ACCESS_TOKEN|META_CAPI_TEST_EVENT_CODE|META_CAPI_DATA_KEY_CURRENT|META_CAPI_DATA_KEY_PREVIOUS)(?:["']?)\s*(?:=(?!=|\|)|:)\s*(?:(["'])([^"'\r\n]+)\2|([^\s,;}\r\n]+))/g
 const PERSISTENCE_PATTERN = /\b(?:CREATE|ALTER|INSERT|UPDATE)\b/i
 const MATCH_SIGNAL_PATTERN = /(?:\bclient_ip_address\b|\bclient_user_agent\b|(?<![A-Za-z0-9_])fbp(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])fbc(?![A-Za-z0-9_]))/i
@@ -253,8 +258,7 @@ function hasUnsafeSourceCapiMatch(text) {
       const end = findClosingArray(text, next)
       if (end < 0) return true
       const parsed = inspectSourceArray(text, next, end)
-      if (parsed.visibleLiterals.some(value => !HASH_PATTERN.test(value))) return true
-      if (parsed.itemCount === 0) return true
+      if (parsed.unsafe || parsed.itemCount === 0) return true
       continue
     }
     if (text[next] === '"' || text[next] === "'" || text[next] === '{' || /[0-9]/.test(text[next] || '')) return true
@@ -286,8 +290,8 @@ function findClosingArray(text, start) {
 }
 
 function inspectSourceArray(text, start, end) {
-  const visibleLiterals = []
   let itemCount = 0
+  let unsafe = false
   let itemStart = start + 1
   let quote = ''
   let escaped = false
@@ -297,10 +301,7 @@ function inspectSourceArray(text, start, end) {
     const item = text.slice(from, to).trim()
     if (!item) return
     itemCount += 1
-    const literalQuote = item[0]
-    if (literalQuote !== '"' && literalQuote !== "'") return
-    const literal = readSourceString(item, 0, literalQuote, item.length)
-    if (literal) visibleLiterals.push(literal.value)
+    if (!isProvenSafeSourceArrayItem(item)) unsafe = true
   }
 
   for (let index = start + 1; index < end; index += 1) {
@@ -323,7 +324,25 @@ function inspectSourceArray(text, start, end) {
     }
   }
   inspectItem(itemStart, end)
-  return { itemCount, visibleLiterals }
+  return { itemCount, unsafe }
+}
+
+function isProvenSafeSourceArrayItem(item) {
+  const first = item[0]
+  if (first === '"' || first === "'") {
+    const literal = readSourceString(item, 0, first, item.length)
+    return Boolean(literal && literal.end === item.length && HASH_PATTERN.test(literal.value))
+  }
+  if (first === '`') {
+    const template = readSourceString(item, 0, first, item.length)
+    return Boolean(template
+      && template.end === item.length
+      && !template.value.includes('${')
+      && HASH_PATTERN.test(template.value))
+  }
+  if (first === '[' || first === '{') return false
+  if (/^(?:null|undefined|true|false|\d)/.test(item)) return false
+  return true
 }
 
 function readSourceString(text, start, quote, limit) {
@@ -363,10 +382,14 @@ function scanEvidence(relativePath, text, findings) {
   const withinBudget = walkEvidence(parsed, (key, value) => {
     const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '')
     if (typeof value !== 'string' || value.length === 0) return
-    if (EMAIL_PATTERN.test(value)) addFinding(findings, relativePath, 'META_EVIDENCE_RAW_EMAIL')
-    if (isIP(value) !== 0) addFinding(findings, relativePath, 'META_EVIDENCE_RAW_IP')
-    if (normalizedKey.includes('useragent')) addFinding(findings, relativePath, 'META_EVIDENCE_RAW_USER_AGENT')
-    if (normalizedKey === 'fbp' || normalizedKey === 'fbc' || /^fb\.1\./.test(value)) {
+    if (containsRawEmail(value)) {
+      addFinding(findings, relativePath, 'META_EVIDENCE_RAW_EMAIL')
+    }
+    if (containsRawIp(value)) addFinding(findings, relativePath, 'META_EVIDENCE_RAW_IP')
+    if (normalizedKey.includes('useragent') || EMBEDDED_USER_AGENT_PATTERN.test(value)) {
+      addFinding(findings, relativePath, 'META_EVIDENCE_RAW_USER_AGENT')
+    }
+    if (normalizedKey === 'fbp' || normalizedKey === 'fbc' || EMBEDDED_BROWSER_ID_PATTERN.test(value)) {
       addFinding(findings, relativePath, 'META_EVIDENCE_BROWSER_ID')
     }
     if (EVIDENCE_MATCH_IDENTIFIER_PATTERN.test(value)) {
@@ -374,6 +397,32 @@ function scanEvidence(relativePath, text, findings) {
     }
   })
   if (!withinBudget) addFinding(findings, relativePath, 'META_EVIDENCE_STRUCTURE_LIMIT')
+}
+
+function containsRawEmail(value) {
+  if (EMAIL_PATTERN.test(value)) return true
+  for (const match of value.matchAll(EMBEDDED_EMAIL_PATTERN)) {
+    const before = value.slice(0, match.index)
+    const after = value.slice(match.index + match[0].length)
+    if (isGitSshRemoteEmail(match[0], before, after)) continue
+    return true
+  }
+  return false
+}
+
+function isGitSshRemoteEmail(candidate, before, after) {
+  if (!candidate.toLowerCase().startsWith('git@')) return false
+  return before.toLowerCase().endsWith('ssh://') || after.startsWith(':') || after.startsWith('/')
+}
+
+function containsRawIp(value) {
+  for (const match of value.matchAll(EMBEDDED_IPV4_PATTERN)) {
+    if (isIP(match[0]) === 4) return true
+  }
+  for (const match of value.matchAll(EMBEDDED_IPV6_PATTERN)) {
+    if (isIP(match[0]) === 6) return true
+  }
+  return false
 }
 
 function walkEvidence(root, visit) {
@@ -396,14 +445,70 @@ function walkEvidence(root, visit) {
 }
 
 function hasUnsafePersistence(relativePath, text) {
-  const candidates = relativePath.endsWith('.sql')
-    ? splitSqlStatements(stripSqlComments(text))
-    : [...text.matchAll(/`([\s\S]*?)`/g)].map(match => match[1])
-  return candidates.some((candidate) => {
-    const sql = stripSqlComments(candidate)
+  const sources = relativePath.endsWith('.sql')
+    ? [text]
+    : extractSourceTemplates(text)
+  const statements = sources.flatMap(source => splitSqlStatements(stripSqlComments(source)))
+  return statements.some((sql) => {
     if (!PERSISTENCE_PATTERN.test(sql) || !MATCH_SIGNAL_PATTERN.test(sql)) return false
     return parseWriteTarget(sql) !== 'meta_capi_secure_outbox'
   })
+}
+
+function extractSourceTemplates(text) {
+  const templates = []
+  let quote = ''
+  let escaped = false
+  let lineComment = false
+  let blockComment = false
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]
+    const next = text[index + 1]
+    if (lineComment) {
+      if (char === '\n') lineComment = false
+      continue
+    }
+    if (blockComment) {
+      if (char === '*' && next === '/') {
+        blockComment = false
+        index += 1
+      }
+      continue
+    }
+    if (quote) {
+      if (escaped) escaped = false
+      else if (char === '\\') escaped = true
+      else if (char === quote) quote = ''
+      continue
+    }
+    if (char === '/' && next === '/') {
+      lineComment = true
+      index += 1
+      continue
+    }
+    if (char === '/' && next === '*') {
+      blockComment = true
+      index += 1
+      continue
+    }
+    if (char === '"' || char === "'") {
+      quote = char
+      continue
+    }
+    if (char !== '`') continue
+
+    const start = index + 1
+    escaped = false
+    for (index += 1; index < text.length; index += 1) {
+      const templateChar = text[index]
+      if (escaped) escaped = false
+      else if (templateChar === '\\') escaped = true
+      else if (templateChar === '`') break
+    }
+    if (index >= text.length) return templates
+    templates.push(text.slice(start, index))
+  }
+  return templates
 }
 
 function stripSqlComments(sql) {
@@ -513,7 +618,7 @@ function safeFindingPath(value) {
 }
 
 function isSafeReportPath(raw, normalized) {
-  if (!normalized || /[\0-\x1f\x7f]/.test(raw) || path.isAbsolute(normalized) || /^[A-Za-z]:\//.test(normalized)) return false
+  if (!normalized || /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(raw) || path.isAbsolute(normalized) || /^[A-Za-z]:\//.test(normalized)) return false
   const segments = normalized.split('/')
   if (segments.some(segment => !segment || segment === '.' || segment === '..')) return false
   return !segments.some(isSuspiciousPathSegment)
