@@ -5,13 +5,14 @@ import { runCommand } from './release-verification-lib.mjs'
 
 const ROOT_DIR = fileURLToPath(new URL('../', import.meta.url))
 const PRE_MIGRATION_FILE = 'pre-0039.sql'
-const ALL_MIGRATIONS_FILE = 'empty-0001-0043.sql'
+const ALL_MIGRATIONS_FILE = 'empty-0001-0044.sql'
 const FOLLOW_UP_MIGRATIONS = [
   '0039_meta_capi_v2_operations.sql',
   '0040_meta_capi_circuit_indexes.sql',
   '0041_meta_live_challenges.sql',
   '0042_meta_resource_attestation_tickets.sql',
   '0043_meta_capi_delivery_lease.sql',
+  '0044_meta_dataset_quality_contract_digest.sql',
 ]
 const REMOTE_PREFLIGHT_CONFIG = {
   dev: {
@@ -56,7 +57,7 @@ export async function runMetaMigrationVerification(options = {}) {
     await rm(stateDir, { recursive: true, force: true })
     await mkdir(stateDir, { recursive: true })
     await writeFile(preMigrationPath, await buildPreMigrationSql(migrationDir))
-    await writeFile(allMigrationsPath, await buildMigrationSql(migrationDir, 43))
+    await writeFile(allMigrationsPath, await buildMigrationSql(migrationDir, 44))
 
     if (!await runD1Step(runCommandFn, rootDir, oldPersistTo, 'meta-migration-apply-0001-0038', [
       '--file', preMigrationRelativePath,
@@ -131,7 +132,7 @@ export async function runMetaMigrationVerification(options = {}) {
       setting: parseWranglerResults(settingStep.stdout, '设置查询'),
     })
 
-    if (!await runD1Step(runCommandFn, rootDir, emptyPersistTo, 'meta-migration-empty-apply-0001-0043', [
+    if (!await runD1Step(runCommandFn, rootDir, emptyPersistTo, 'meta-migration-empty-apply-0001-0044', [
       '--file', allMigrationsRelativePath,
       '--yes',
     ], steps)) return failedResult(steps, stateDir, undefined, duplicateGroupCount)
@@ -333,6 +334,9 @@ SELECT
   (SELECT group_concat(name, ',') FROM pragma_index_info('idx_meta_capi_delivery_lease_expiry') ORDER BY seqno) AS delivery_lease_index_columns,
   (SELECT sql FROM sqlite_schema WHERE type = 'index' AND name = 'idx_meta_capi_delivery_lease_expiry') AS delivery_lease_index_sql,
   (SELECT value FROM site_settings WHERE key = 'registration_conversion_recovery_cursor') AS registration_recovery_cursor,
+  (SELECT COUNT(*) FROM pragma_table_info('meta_dataset_quality_snapshots')
+    WHERE name = 'contract_digest' AND upper(type) = 'TEXT' AND [notnull] = 1 AND dflt_value = "''") AS quality_contract_digest_column,
+  (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'index' AND name = 'idx_meta_dataset_quality_contract') AS quality_contract_digest_index,
   (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = 'meta_capi_incidents') AS incident_table,
   (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = 'meta_dataset_quality_snapshots') AS quality_table;
 `.trim()
@@ -407,9 +411,11 @@ function assertSchemaResult(rows) {
     || row?.delivery_lease_index_columns !== 'delivery_lease_expires_at'
     || !leaseIndexSql.includes("where channel = 'meta_capi' and delivery_lease_token <> ''")
     || row?.registration_recovery_cursor !== '0'
+    || row?.quality_contract_digest_column !== 1
+    || row?.quality_contract_digest_index !== 1
     || ['challenge_table', 'challenge_index', 'ticket_table', 'ticket_index', 'incident_table', 'quality_table']
       .some(field => row?.[field] !== 1)) {
-    throw new Error('Meta 0040-0043 schema 不完整')
+    throw new Error('Meta 0040-0044 schema 不完整')
   }
 }
 

@@ -8,13 +8,13 @@ async function readMigration(name: string) {
 }
 
 describe('analytics migrations', () => {
-  it('migration 索引从 0001 到 0043 连续且编号唯一', async () => {
+  it('migration 索引从 0001 到 0044 连续且编号唯一', async () => {
     const names = (await readdir(MIGRATION_DIR))
       .filter(name => /^\d{4}_.+\.sql$/.test(name))
       .sort()
     const indexes = names.map(name => Number(name.slice(0, 4)))
 
-    expect(indexes).toEqual(Array.from({ length: 43 }, (_, index) => index + 1))
+    expect(indexes).toEqual(Array.from({ length: 44 }, (_, index) => index + 1))
     expect(new Set(indexes).size).toBe(indexes.length)
   })
 
@@ -254,5 +254,12 @@ describe('analytics migrations', () => {
     expect(sql).toContain("registration_conversion_recovery_cursor', '0'")
     expect(sql).toMatch(/length\(delivery_lease_token\)\s*=\s*32/)
     expect(sql).not.toMatch(/access_token|test_event_code|client_ip|user_agent|email|ciphertext/i)
+  })
+
+  it('0044 将 Dataset Quality 快照绑定 approved contract digest', async () => {
+    const sql = await readMigration('0044_meta_dataset_quality_contract_digest.sql')
+    expect(sql).toContain('ADD COLUMN contract_digest TEXT NOT NULL')
+    expect(sql).toContain("substr(contract_digest, 1, 7) = 'sha256:'")
+    expect(sql).toContain('idx_meta_dataset_quality_contract')
   })
 })

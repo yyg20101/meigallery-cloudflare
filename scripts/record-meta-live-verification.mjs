@@ -8,6 +8,7 @@ import {
   writeMetaLiveEvidence,
 } from './meta-live-verification-lib.mjs'
 import { fetchWithTimeout, runCommand } from './release-verification-lib.mjs'
+import { verifyApprovedMetaDatasetQualityContract } from './meta-dataset-quality-contract-lib.mjs'
 
 const YES_VALUES = new Set(['y', 'yes', '是'])
 const EVIDENCE_TTL_MS = 24 * 60 * 60 * 1000
@@ -70,9 +71,10 @@ export async function recordMetaLiveVerification(options = {}) {
   const readReadiness = options.readReadiness || readDevMetaLiveReadiness
   const destroyChallenge = options.destroyChallenge || destroyRemoteChallenge
   const commit = await getCommit(options)
+  const contract = await (options.verifyContract || verifyApprovedMetaDatasetQualityContract)({ cwd: options.cwd || process.cwd() })
   await verifyDevReleaseIdentity({ ...options, commit })
-  const readiness = await readReadiness({ ...options, commit })
-  assertReadinessCanRecord(readiness, commit, options.now)
+  const readiness = await readReadiness({ ...options, commit, expectedDatasetQualityContract: contract })
+  assertReadinessCanRecord(readiness, commit, options.now, contract)
   const ask = options.ask || createCliPrompter()
 
   try {
@@ -113,12 +115,18 @@ export async function recordMetaLiveVerification(options = {}) {
 export async function readDevMetaLiveReadiness(options = {}) {
   const commit = String(options.commit || '').trim().toLowerCase()
   if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error('readiness 查询需要当前 40 位 commit')
+  const contract = options.expectedDatasetQualityContract
+  if (!Number.isSafeInteger(contract?.version)
+    || !/^sha256:[0-9a-f]{64}$/.test(String(contract?.digest || ''))) {
+    throw new Error('readiness 查询需要 approved Dataset Quality contract')
+  }
   const sql = `
     WITH quality AS (
-      SELECT contract_version, COUNT(DISTINCT event_name) AS event_count,
+      SELECT contract_version, contract_digest, COUNT(DISTINCT event_name) AS event_count,
         MIN(CASE WHEN collection_status = 'success' AND datetime(collected_at) > datetime('now', '-24 hours') THEN 1 ELSE 0 END) AS collector_current
-      FROM meta_dataset_quality_snapshots WHERE environment = 'dev'
-      GROUP BY contract_version ORDER BY contract_version DESC LIMIT 1
+      FROM meta_dataset_quality_snapshots
+      WHERE environment = 'dev' AND contract_version = ${contract.version} AND contract_digest = '${contract.digest}'
+      GROUP BY contract_version, contract_digest LIMIT 1
     ), matching AS (
       SELECT
         MAX(CASE WHEN event_name = 'CompleteRegistration' AND has_email = 1 THEN 1 ELSE 0 END) AS registration_email,
@@ -129,7 +137,8 @@ export async function readDevMetaLiveReadiness(options = {}) {
     SELECT c.environment, c.pixel_id, c.verified_commit, c.verified_at AS connection_verified_at,
       ch.id AS challenge_id, ch.contact_event_digest, ch.complete_registration_event_digest,
       matching.registration_email, matching.registration_external_id, matching.contact_registration_identity,
-      quality.contract_version, CASE WHEN quality.event_count = 2 AND quality.collector_current = 1 THEN 1 ELSE 0 END AS collector_current
+      quality.contract_version, quality.contract_digest,
+      CASE WHEN quality.event_count = 2 AND quality.collector_current = 1 THEN 1 ELSE 0 END AS collector_current
     FROM meta_connection_verifications c
     JOIN meta_live_challenges ch ON ch.environment = c.environment AND ch.commit_sha = c.verified_commit
     CROSS JOIN matching LEFT JOIN quality ON 1 = 1
@@ -161,6 +170,7 @@ export async function readDevMetaLiveReadiness(options = {}) {
       contactContainsRegistrationIdentity: row.contact_registration_identity !== 0,
     },
     datasetQualityContractVersion: Number(row.contract_version || 0),
+    datasetQualityContractDigest: String(row.contract_digest || ''),
     datasetQualityCollectorCurrent: row.collector_current === 1,
   }
 }
@@ -193,7 +203,7 @@ async function destroyRemoteChallenge(challengeId, options = {}) {
   if (step.status !== 'passed') throw new Error('Meta live challenge 清理失败')
 }
 
-function assertReadinessCanRecord(readiness, commit, nowValue) {
+function assertReadinessCanRecord(readiness, commit, nowValue, contract) {
   if (readiness?.environment !== 'dev' || readiness?.commitSha !== commit.toLowerCase()) throw new Error('dev challenge 与当前 commit 不一致')
   if (!CHALLENGE_PATTERN.test(String(readiness.challengeId || ''))
     || !META_LIVE_EVENTS.every(name => DIGEST_PATTERN.test(String(readiness?.eventDigests?.[name] || '')))) {
@@ -201,6 +211,8 @@ function assertReadinessCanRecord(readiness, commit, nowValue) {
   }
   if (!Number.isSafeInteger(readiness.datasetQualityContractVersion)
     || readiness.datasetQualityContractVersion < 1
+    || readiness.datasetQualityContractVersion !== contract?.version
+    || readiness.datasetQualityContractDigest !== contract?.digest
     || readiness.datasetQualityCollectorCurrent !== true) throw new Error('dev Dataset Quality contract/collector readiness 未通过')
   buildMetaLiveEvidence({
     ...readiness,

@@ -192,8 +192,8 @@ dev 操作将上述 `--env=""` 替换为 `--env dev`。后台只展示有效性�
 
 1. 保持代码关闭态：`meta_tracking_mode=disabled`、`meta_capi_enabled=false`，并完成本地 migration、测试、类型检查和 Worker dry-run。
 2. 在独立 dev 资源部署当前待发布代码，完成严格 dev live evidence：`Contact`、`CompleteRegistration` 均有 Browser/Server、同一 event ID、去重成功，且没有 `Lead`、`StartTrial`。
-3. 先执行 `corepack pnpm verify:meta-secrets`，再用只读资源检查排障：dev 为 `corepack pnpm verify:meta-resources --env dev --report-only`，production 为 `corepack pnpm verify:meta-resources --env production --report-only`。资源检查从 Wrangler/Cloudflare 响应核对 migrations `0036..0043`、D1、R2、Queue、DLQ 与 secret 名称，不接受本地 JSON 自证。
-4. 对生产 D1 依次应用 `0001` 到 `0043`，每次 remote apply 前必须先执行 duplicate preflight。保持 production target/effective rollout 为 `0`；`--initial-meta-rollout` 还要求无过期 secure outbox，previous key 活动引用可由 secret 状态解释，并为当前 commit 写入未过期的 production D1 bootstrap permit。
+3. 先执行 `corepack pnpm verify:meta-secrets`，再用只读资源检查排障：dev 为 `corepack pnpm verify:meta-resources --env dev --report-only`，production 为 `corepack pnpm verify:meta-resources --env production --report-only`。资源检查从 Wrangler/Cloudflare 响应核对 migrations `0036..0044`、D1、R2、Queue、DLQ 与 secret 名称，不接受本地 JSON 自证；dev Dataset Quality 快照还必须携带与 Git tracked approved contract 精确一致的 SHA-256 digest。
+4. 对生产 D1 依次应用 `0001` 到 `0044`，每次 remote apply 前必须先执行 duplicate preflight。保持 production target/effective rollout 为 `0`；`--initial-meta-rollout` 还要求无过期 secure outbox，previous key 活动引用可由 secret 状态解释，并为当前 commit 写入未过期的 production D1 bootstrap permit。
 5. PR 合入 `main` 后，以最终 `main` HEAD 重新部署 dev，并重新生成该 commit 的 dev live evidence；此前任何 commit 的 evidence 都失效。
 6. 在最终 `main` HEAD、干净工作区运行同 commit release 作预检：首次 Meta 上线使用 `META_INITIAL_ROLLOUT=1 corepack pnpm verify:release`，该约束只要求 production `meta_capi_enabled=false`，不约束 dev；后续常规发布使用 `corepack pnpm verify:release`。执行 `./scripts/deploy.sh production` 时脚本仍会强制重跑完整 release，不能复用这份旧报告跳过验证。
 7. 部署生产 API，再部署生产 Web；部署不等同于开启营销投放。

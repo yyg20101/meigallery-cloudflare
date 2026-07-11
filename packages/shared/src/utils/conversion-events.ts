@@ -33,14 +33,14 @@ export function buildConversionDedupeKey(input: ConversionDedupeInput) {
   return `historical:${input.actionType}:${input.visitorId}:${input.sessionId}:${input.occurredDate}`
 }
 
-export function buildExternalEventId(input: ActiveConversionDedupeInput & { metaEventName: ActiveMetaEventName }) {
+export function buildExternalEventIdBasis(input: ActiveConversionDedupeInput & { metaEventName: ActiveMetaEventName }) {
   if (
     !ACTIVE_CONVERSION_ACTIONS.includes(input.actionType)
     || !ACTIVE_META_EVENTS.includes(input.metaEventName)
   ) {
     throw new Error('外部投递只允许活动转化事件')
   }
-  return `meta:${input.metaEventName}:${buildConversionDedupeKey(input)}`
+  return `${input.metaEventName}:${buildConversionDedupeKey(input)}`
 }
 
 export function normalizeMetaTrackingMode(value: unknown): MetaTrackingMode {

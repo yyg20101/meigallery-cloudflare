@@ -405,7 +405,7 @@ describe('Meta Cloudflare 资源检查', () => {
       commit: COMMIT,
       reportOnly: true,
       expectedDatasetQualityContract: { version: 3, digest },
-      runCommand: createPassingRunner([], { capiEnabled: true, datasetQualityContractVersion: 3 }),
+      runCommand: createPassingRunner([], { capiEnabled: true, datasetQualityContractVersion: 3, datasetQualityContractDigest: digest }),
     })
     assert.equal(passing.status, 'passed')
     assert.equal(passing.datasetQualityContractVersion, 3)
@@ -414,6 +414,7 @@ describe('Meta Cloudflare 资源检查', () => {
 
     for (const overrides of [
       { datasetQualityContractVersion: 2 },
+      { datasetQualityContractDigest: `sha256:${'8'.repeat(64)}` },
       { datasetQualityCollectorCurrent: false },
       { datasetQualityEventCount: 1 },
     ]) {
@@ -422,7 +423,7 @@ describe('Meta Cloudflare 资源检查', () => {
         commit: COMMIT,
         reportOnly: true,
         expectedDatasetQualityContract: { version: 3, digest },
-        runCommand: createPassingRunner([], { capiEnabled: true, ...overrides }),
+        runCommand: createPassingRunner([], { capiEnabled: true, datasetQualityContractDigest: digest, ...overrides }),
       })
       assert.equal(report.status, 'failed')
     }
@@ -530,6 +531,7 @@ describe('Meta Cloudflare 资源检查', () => {
       { missingAppliedMigration: '0041_meta_live_challenges.sql' },
       { missingAppliedMigration: '0042_meta_resource_attestation_tickets.sql' },
       { missingAppliedMigration: '0043_meta_capi_delivery_lease.sql' },
+      { missingAppliedMigration: '0044_meta_dataset_quality_contract_digest.sql' },
       { connectionInvalidated: true },
       { connectionPixelDrift: true },
       { missingConsumer: true },
@@ -753,11 +755,13 @@ function createPassingRunner(calls, options = {}) {
           '0041_meta_live_challenges.sql',
           '0042_meta_resource_attestation_tickets.sql',
           '0043_meta_capi_delivery_lease.sql',
+          '0044_meta_dataset_quality_contract_digest.sql',
         ].filter(name => name !== options.missingAppliedMigration)
         results = names.map(name => ({ name }))
       } else if (runOptions.name.endsWith('dataset-quality')) {
         results = [{
           contract_version: options.datasetQualityContractVersion ?? 1,
+          contract_digest: options.datasetQualityContractDigest ?? `sha256:${'9'.repeat(64)}`,
           event_count: options.datasetQualityEventCount ?? 2,
           all_success: 1,
           collector_current: options.datasetQualityCollectorCurrent === false ? 0 : 1,

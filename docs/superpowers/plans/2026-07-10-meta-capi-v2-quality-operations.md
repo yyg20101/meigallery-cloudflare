@@ -120,10 +120,12 @@ CREATE TABLE meta_dataset_quality_snapshots (
   error_category TEXT NOT NULL DEFAULT '',
   collected_at TEXT NOT NULL,
   contract_version INTEGER NOT NULL,
+  contract_digest TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   CHECK (environment IN ('dev', 'production')),
   CHECK (event_name IN ('Contact', 'CompleteRegistration')),
   CHECK (contract_version >= 1),
+  CHECK (contract_digest GLOB 'sha256:*'),
   CHECK (collection_status IN ('success', 'error')),
   CHECK (
     (collection_status = 'success' AND metric_value IS NOT NULL AND error_category = '')
@@ -622,7 +624,7 @@ git commit -m "docs: 固化 Meta Dataset Quality 官方契约"
 docs/superpowers/plans/2026-07-10-meta-dataset-quality-collector.md
 ```
 
-该计划必须写出准确 endpoint、query、response allowlist、collector 测试 fixture、Cron 频率、API/UI 映射和错误退避，所有字段必须来自实际官方响应。完成并执行该补充计划前：
+该计划必须写出准确 endpoint、query、response allowlist、collector 测试 fixture、Cron 频率、API/UI 映射和错误退避，所有字段必须来自实际官方响应。collector 每次写入还必须携带 Git tracked approved contract 的精确 `contract_digest`；只匹配 `contract_version` 不构成同一契约。完成并执行该补充计划前：
 
 - `meta_dataset_quality_snapshots` 可以存在但保持空。
 - 后台显示 `contract_pending` 或 `collector_pending` warning。

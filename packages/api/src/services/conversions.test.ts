@@ -489,8 +489,12 @@ describe('conversion ledger service', () => {
     const result = await recordContact(envFor(db), grantedContactInput())
 
     expect(result.pixelEvents.map(item => item.eventName)).toEqual(['Contact'])
-    expect(result.pixelEvents[0]?.eventId).toBe('meta:Contact:contact:session_1:telegram:floating_contact_panel')
+    expect(result.pixelEvents[0]?.eventId).toMatch(/^mg:v2:Contact:[0-9a-f]{64}$/)
+    expect(result.pixelEvents[0]?.eventId).not.toContain('session_1')
     expect(result.pixelEvents.every(item => item.receiptToken)).toBe(true)
+    expect(db.insertedDeliveries.find(item => item.channel === 'meta_pixel')).toMatchObject({
+      metaConnectionRevision: CONNECTION_REVISION,
+    })
     expect(db.calls.filter(call => (
       call.sql.includes('INSERT INTO analytics_conversion_delivery_daily')
       && call.params.includes('pending')
@@ -1170,7 +1174,7 @@ describe('conversion ledger service', () => {
     expect(db.insertedOutboxes).toEqual([])
   })
 
-  it('MetaConnection 未验证时保留业务事实与 Pixel，并在创建 outbox 前跳过 CAPI', async () => {
+  it('MetaConnection 未验证时保留业务事实，但 Pixel/CAPI 都 fail closed', async () => {
     const db = createConversionDb({
       facebookPixelEnabled: true,
       facebookPixelId: '1234567890',
@@ -1194,9 +1198,9 @@ describe('conversion ledger service', () => {
     })
 
     expect(result.created).toBe(true)
-    expect(result.pixelEvents).toHaveLength(1)
+    expect(result.pixelEvents).toEqual([])
     expect(db.insertedDeliveries).toEqual(expect.arrayContaining([
-      expect.objectContaining({ status: 'pending', skipReason: '' }),
+      expect.objectContaining({ channel: 'meta_pixel', status: 'skipped', skipReason: 'connection_unverified' }),
       expect.objectContaining({ status: 'skipped', skipReason: 'connection_unverified' }),
     ]))
     expect(db.insertedOutboxes).toEqual([])

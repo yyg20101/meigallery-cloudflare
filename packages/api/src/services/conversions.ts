@@ -170,7 +170,7 @@ type PlannedDelivery = {
 }
 
 type CapiEncryptionPlan =
-  | { state: 'disabled' }
+  | { state: 'disabled'; connectionRevision?: string }
   | {
       state: 'skipped'
       reason: Extract<ConversionSkipReason,
@@ -693,7 +693,7 @@ async function planMetaDeliveries(
   if (input.consentState !== 'granted' || settings.mode === 'disabled' || !settings.pixelId) return []
   const eventName = metaEventForConversion(input.actionType)
   if (!eventName) return []
-  const eventId = buildExternalEventId({
+  const eventId = await buildExternalEventId(env.SESSION_SECRET, {
     actionType: input.actionType,
     sessionId: input.sessionId || '',
     visitorId: input.visitorId || '',
@@ -707,9 +707,16 @@ async function planMetaDeliveries(
     ...(settings.pixelEnabled ? ['meta_pixel' as const] : []),
     ...(settings.capiEnabled ? ['meta_capi' as const] : []),
   ]
+  const connectionBlocked = capiEncryption.state === 'skipped' && capiEncryption.reason === 'connection_unverified'
+  const connectionRevision = 'connectionRevision' in capiEncryption
+    ? capiEncryption.connectionRevision ?? null
+    : null
   return Promise.all(channels.map(async channel => {
     const deliveryId = generateId('cdlv')
-    const pixelInstruction = channel === 'meta_pixel'
+    const capiSkipped = channel === 'meta_capi' && capiEncryption.state === 'skipped'
+    const channelSkipped = connectionBlocked || capiSkipped
+    const skipReason = channelSkipped && capiEncryption.state === 'skipped' ? capiEncryption.reason : ''
+    const pixelInstruction = channel === 'meta_pixel' && !channelSkipped
       ? {
           deliveryId,
           eventName,
@@ -722,7 +729,6 @@ async function planMetaDeliveries(
           }),
         }
       : undefined
-    const capiSkipped = channel === 'meta_capi' && capiEncryption.state === 'skipped'
     const secureContext = channel === 'meta_capi' && capiEncryption.state === 'ready'
       ? contextForEvent(eventName, capiEncryption.context)
       : {}
@@ -742,8 +748,8 @@ async function planMetaDeliveries(
       eventName,
       eventId,
       pixelInstruction,
-      status: capiSkipped ? 'skipped' : 'pending',
-      skipReason: capiSkipped ? capiEncryption.reason : '',
+      status: channelSkipped ? 'skipped' : 'pending',
+      skipReason,
       envelope,
       expiresAt,
       hasFbp: secureContext.fbp ? 1 : 0,
@@ -752,9 +758,7 @@ async function planMetaDeliveries(
       hasExternalId: secureContext.externalIdSha256 ? 1 : 0,
       encryptionKeyId: envelope?.keyId ?? '',
       trackingMode: settings.mode,
-      metaConnectionRevision: channel === 'meta_capi' && capiEncryption.state !== 'disabled'
-        ? capiEncryption.connectionRevision ?? null
-        : null,
+      metaConnectionRevision: connectionRevision,
       rolloutTargetPercentage: channel === 'meta_capi' && capiEncryption.state !== 'disabled'
         ? capiEncryption.rollout?.targetPercentage ?? 0
         : 0,
@@ -815,12 +819,16 @@ async function finalizeCapiDeliveries(
   }
 }
 
-function shouldCreateMetaCapiDelivery(settings: MetaDeliverySettings, input: RecordConversionInput) {
+function shouldCreateMetaDelivery(settings: MetaDeliverySettings, input: RecordConversionInput) {
   return input.consentState === 'granted'
     && (settings.mode === 'test' || settings.mode === 'production')
     && Boolean(settings.pixelId)
-    && settings.capiEnabled
+    && (settings.pixelEnabled || settings.capiEnabled)
     && Boolean(metaEventForConversion(input.actionType))
+}
+
+function shouldCreateMetaCapiDelivery(settings: MetaDeliverySettings, input: RecordConversionInput) {
+  return shouldCreateMetaDelivery(settings, input) && settings.capiEnabled
 }
 
 async function buildCapiEncryptionPlan(
@@ -830,7 +838,7 @@ async function buildCapiEncryptionPlan(
   context: RecordConversionContext,
   beforeSensitiveAccess: () => Promise<void>,
 ): Promise<CapiEncryptionPlan> {
-  if (!shouldCreateMetaCapiDelivery(settings, input)) return { state: 'disabled' }
+  if (!shouldCreateMetaDelivery(settings, input)) return { state: 'disabled' }
   let connection: Awaited<ReturnType<typeof requireVerifiedMetaConnection>>
   try {
     connection = await requireVerifiedMetaConnection(env)
@@ -840,6 +848,9 @@ async function buildCapiEncryptionPlan(
   }
   if (connection.pixelId !== settings.pixelId || connection.trackingMode !== settings.mode) {
     return { state: 'skipped', reason: 'connection_unverified', rollout: null }
+  }
+  if (!shouldCreateMetaCapiDelivery(settings, input)) {
+    return { state: 'disabled', connectionRevision: connection.revision }
   }
   if (!settings.rolloutSettingAvailable) {
     return {

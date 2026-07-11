@@ -48,9 +48,10 @@ const REQUIRED_MIGRATIONS = [
   '0041_meta_live_challenges.sql',
   '0042_meta_resource_attestation_tickets.sql',
   '0043_meta_capi_delivery_lease.sql',
+  '0044_meta_dataset_quality_contract_digest.sql',
 ]
 const SETTINGS_SQL = "SELECT key, value FROM site_settings WHERE key IN ('meta_capi_enabled', 'meta_tracking_mode', 'facebook_pixel_id') ORDER BY key"
-const MIGRATION_NAMES_SQL = "SELECT name FROM d1_migrations WHERE name IN ('0036_meta_capi_v2_secure_delivery.sql', '0037_meta_connection_revision.sql', '0038_conversion_dedupe_claims.sql', '0039_meta_capi_v2_operations.sql', '0040_meta_capi_circuit_indexes.sql', '0041_meta_live_challenges.sql', '0042_meta_resource_attestation_tickets.sql', '0043_meta_capi_delivery_lease.sql') ORDER BY name"
+const MIGRATION_NAMES_SQL = "SELECT name FROM d1_migrations WHERE name IN ('0036_meta_capi_v2_secure_delivery.sql', '0037_meta_connection_revision.sql', '0038_conversion_dedupe_claims.sql', '0039_meta_capi_v2_operations.sql', '0040_meta_capi_circuit_indexes.sql', '0041_meta_live_challenges.sql', '0042_meta_resource_attestation_tickets.sql', '0043_meta_capi_delivery_lease.sql', '0044_meta_dataset_quality_contract_digest.sql') ORDER BY name"
 const META_OPERATIONS_SQL = `
   WITH rollout AS (
     SELECT CAST(COALESCE((SELECT value FROM site_settings WHERE key = 'meta_capi_rollout_percentage' LIMIT 1), '-1') AS INTEGER) AS target
@@ -75,12 +76,12 @@ const META_OPERATIONS_SQL = `
 `.replace(/\s+/g, ' ').trim()
 const DATASET_QUALITY_SQL = `
   WITH latest AS (
-    SELECT event_name, contract_version, collection_status, collected_at,
+    SELECT event_name, contract_version, contract_digest, collection_status, collected_at,
       ROW_NUMBER() OVER (PARTITION BY event_name ORDER BY collected_at DESC, id DESC) AS row_rank
     FROM meta_dataset_quality_snapshots
     WHERE environment = 'dev'
   )
-  SELECT contract_version,
+  SELECT contract_version, contract_digest,
     COUNT(*) AS event_count,
     MIN(CASE WHEN collection_status = 'success' THEN 1 ELSE 0 END) AS all_success,
     MIN(collected_at) AS oldest_collected_at,
@@ -88,7 +89,7 @@ const DATASET_QUALITY_SQL = `
     MIN(CASE WHEN datetime(collected_at) > datetime('now', '-24 hours') THEN 1 ELSE 0 END) AS collector_current
   FROM latest
   WHERE row_rank = 1
-  GROUP BY contract_version
+  GROUP BY contract_version, contract_digest
   ORDER BY contract_version DESC
   LIMIT 1
 `.replace(/\s+/g, ' ').trim()
@@ -320,14 +321,19 @@ function parseDatasetQuality(stdout, expectedContract) {
     if (rows.length !== 1) return null
     const row = rows[0]
     const contractVersion = Number(row.contract_version)
+    const contractDigest = String(row.contract_digest || '')
     const eventCount = Number(row.event_count)
     const allSuccess = Number(row.all_success)
     const collectorCurrent = Number(row.collector_current)
-    if (contractVersion !== expectedContract.version || eventCount !== 2 || allSuccess !== 1 || collectorCurrent !== 1) return null
+    if (contractVersion !== expectedContract.version
+      || contractDigest !== expectedContract.digest
+      || eventCount !== 2
+      || allSuccess !== 1
+      || collectorCurrent !== 1) return null
     if (typeof row.oldest_collected_at !== 'string' || typeof row.newest_collected_at !== 'string') return null
     return {
       contractVersion,
-      contractDigest: expectedContract.digest,
+      contractDigest,
       collectorCurrent: true,
       oldestCollectedAt: row.oldest_collected_at,
       newestCollectedAt: row.newest_collected_at,

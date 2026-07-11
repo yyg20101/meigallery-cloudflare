@@ -858,10 +858,15 @@ function handleApi(req, res) {
     return
   }
   if (url.pathname === '/api/me') {
-    receiptProtectedRequests.push({ endpoint: '/api/me', cookie: req.headers.cookie || '' })
-    const hasRequiredSession = !sessionCookieRequired || String(req.headers.cookie || '').includes('mei_session=mock-session')
+    const cookie = String(req.headers.cookie || '')
+    receiptProtectedRequests.push({ endpoint: '/api/me', cookie })
+    const hasRequiredSession = !sessionCookieRequired
+      || cookie.includes('mei_session=mock-session')
+      || cookie.includes('mei_session=renewed-session')
     return authenticated && hasRequiredSession
-      ? json(res, user)
+      ? json(res, user, 200, cookie.includes('mei_session=mock-session')
+          ? { 'Set-Cookie': 'mei_session=renewed-session; Path=/; HttpOnly; SameSite=Lax' }
+          : {})
       : json(res, { statusCode: 401, message: '未登录', code: 'AUTH_REQUIRED' }, 401)
   }
   if (url.pathname === '/api/contact-methods') return json(res, { data: contactMethods })

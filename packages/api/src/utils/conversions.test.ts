@@ -2,10 +2,11 @@ import { describe, expect, expectTypeOf, it } from 'vitest'
 import type { ActiveConversionActionType, ActiveMetaEventName } from '@meigallery/shared'
 import {
   buildConversionDedupeKey,
-  buildExternalEventId,
+  buildExternalEventIdBasis,
   normalizeMetaTrackingMode,
 } from '@meigallery/shared/utils'
 import {
+  buildExternalEventId,
   sanitizeConversionMetadata,
   metaEventForConversion,
 } from './conversions'
@@ -16,21 +17,23 @@ import {
 } from '@meigallery/shared/constants'
 
 describe('conversion utils', () => {
-  it('外部投递事件 ID 输入只接受活动动作和活动 Meta 事件', () => {
-    type ExternalEventInput = Parameters<typeof buildExternalEventId>[0]
+  it('外部投递事件 ID 输入只接受活动动作和活动 Meta 事件', async () => {
+    type ExternalEventInput = Parameters<typeof buildExternalEventIdBasis>[0]
     expectTypeOf<ExternalEventInput['actionType']>().toEqualTypeOf<ActiveConversionActionType>()
     expectTypeOf<ExternalEventInput['metaEventName']>().toEqualTypeOf<ActiveMetaEventName>()
 
-    expect(buildExternalEventId({
+    const eventId = await buildExternalEventId('stable-server-secret', {
       actionType: 'complete_registration',
       metaEventName: 'CompleteRegistration',
       userId: 42,
       sessionId: 'session_a',
       visitorId: 'visitor_a',
       occurredDate: '2026-07-10',
-    })).toBe('meta:CompleteRegistration:complete_registration:user:42')
+    })
+    expect(eventId).toMatch(/^mg:v2:CompleteRegistration:[0-9a-f]{64}$/)
+    expect(eventId).not.toContain('user:42')
 
-    expect(() => buildExternalEventId({
+    expect(() => buildExternalEventIdBasis({
       actionType: 'lead',
       metaEventName: 'Lead',
       sessionId: 'session_a',
@@ -39,7 +42,7 @@ describe('conversion utils', () => {
     } as never)).toThrow('外部投递只允许活动转化事件')
   })
 
-  it('共享契约生成稳定事件 ID 并保守归一化 Meta 模式', () => {
+  it('共享契约生成稳定事件 ID 并保守归一化 Meta 模式', async () => {
     const input = {
       actionType: 'contact' as const,
       sessionId: 'session_abc',
@@ -49,9 +52,13 @@ describe('conversion utils', () => {
       actionTarget: 'floating_contact_panel',
     }
     expect(buildConversionDedupeKey(input)).toBe('contact:session_abc:telegram:floating_contact_panel')
-    expect(buildExternalEventId({ ...input, metaEventName: 'Contact' })).toBe(
-      'meta:Contact:contact:session_abc:telegram:floating_contact_panel',
+    expect(buildExternalEventIdBasis({ ...input, metaEventName: 'Contact' })).toBe(
+      'Contact:contact:session_abc:telegram:floating_contact_panel',
     )
+    const first = await buildExternalEventId('stable-server-secret', { ...input, metaEventName: 'Contact' })
+    const second = await buildExternalEventId('stable-server-secret', { ...input, metaEventName: 'Contact' })
+    expect(first).toBe(second)
+    expect(first).not.toContain('session_abc')
     expect(normalizeMetaTrackingMode('production')).toBe('production')
     expect(normalizeMetaTrackingMode('hybrid')).toBe('disabled')
     expect(normalizeMetaTrackingMode('limited')).toBe('disabled')

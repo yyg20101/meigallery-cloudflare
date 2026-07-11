@@ -65,6 +65,8 @@ function mockJsonFor(name, options = {}) {
       delivery_lease_index_columns: 'delivery_lease_expires_at',
       delivery_lease_index_sql: "CREATE INDEX idx_meta_capi_delivery_lease_expiry ON analytics_conversion_deliveries(delivery_lease_expires_at) WHERE channel = 'meta_capi' AND delivery_lease_token <> ''",
       registration_recovery_cursor: '0',
+      quality_contract_digest_column: 1,
+      quality_contract_digest_index: 1,
       incident_table: 1,
       quality_table: 1,
     }] }])
@@ -86,10 +88,11 @@ describe('Meta migration 演练', () => {
     'meta-migration-apply-0041',
     'meta-migration-apply-0042',
     'meta-migration-apply-0043',
+    'meta-migration-apply-0044',
     'meta-migration-query-history',
     'meta-migration-query-schema',
     'meta-migration-query-setting',
-    'meta-migration-empty-apply-0001-0043',
+    'meta-migration-empty-apply-0001-0044',
     'meta-migration-empty-query-schema',
   ]) {
     it(`当 ${name} 命令失败时演练失败`, async () => {
@@ -165,7 +168,7 @@ describe('Meta migration 演练', () => {
     assert.match(result.error, /历史 Meta 事实未完整保留/)
   })
 
-  it('在真实 D1 上从旧库顺序执行 0039 至 0043 并保全历史事实', async () => {
+  it('在真实 D1 上从旧库顺序执行 0039 至 0044 并保全历史事实', async () => {
     const result = await runMetaMigrationVerification({
       stateDir: path.join(integrationDir, 'clean'),
     })
@@ -177,7 +180,8 @@ describe('Meta migration 演练', () => {
     assert.ok(names.indexOf('meta-migration-apply-0040') < names.indexOf('meta-migration-apply-0041'))
     assert.ok(names.indexOf('meta-migration-apply-0041') < names.indexOf('meta-migration-apply-0042'))
     assert.ok(names.indexOf('meta-migration-apply-0042') < names.indexOf('meta-migration-apply-0043'))
-    assert.ok(names.includes('meta-migration-empty-apply-0001-0043'))
+    assert.ok(names.indexOf('meta-migration-apply-0043') < names.indexOf('meta-migration-apply-0044'))
+    assert.ok(names.includes('meta-migration-empty-apply-0001-0044'))
     assert.ok(names.includes('meta-migration-empty-query-schema'))
   })
 
@@ -187,6 +191,8 @@ describe('Meta migration 演练', () => {
     ['delivery lease 索引目标列', 'delivery_lease_index_columns', 'delivery_lease_token'],
     ['delivery lease 部分索引 WHERE', 'delivery_lease_index_sql', 'CREATE INDEX broken'],
     ['registration recovery cursor', 'registration_recovery_cursor', '1'],
+    ['Dataset Quality contract digest 列', 'quality_contract_digest_column', 0],
+    ['Dataset Quality contract digest 索引', 'quality_contract_digest_index', 0],
   ]) {
     it(`${label} 不精确时旧库演练 fail closed`, async () => {
       const runCommand = async (_command, _args, options = {}) => {
@@ -201,7 +207,7 @@ describe('Meta migration 演练', () => {
 
       const result = await runMetaMigrationVerification({ runCommand })
       assert.equal(result.status, 'failed')
-      assert.match(result.error, /0040-0043 schema/)
+      assert.match(result.error, /0040-0044 schema/)
     })
   }
 

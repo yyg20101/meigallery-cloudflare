@@ -1,8 +1,27 @@
 import type { ActiveMetaEventName, ConversionActionType } from '@meigallery/shared'
 import { ATTRIBUTION_LIMITS, META_EVENT_BY_CONVERSION } from '@meigallery/shared/constants'
-import { buildConversionDedupeKey, buildExternalEventId } from '@meigallery/shared/utils'
+import { buildConversionDedupeKey, buildExternalEventIdBasis } from '@meigallery/shared/utils'
 
-export { buildConversionDedupeKey, buildExternalEventId }
+export { buildConversionDedupeKey }
+
+export async function buildExternalEventId(
+  secret: string,
+  input: Parameters<typeof buildExternalEventIdBasis>[0],
+) {
+  const normalizedSecret = secret.trim()
+  if (!normalizedSecret) throw new Error('外部事件 ID 签名 secret 缺失')
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(normalizedSecret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  )
+  const basis = buildExternalEventIdBasis(input)
+  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`meigallery:meta-event:v2:${basis}`))
+  const digest = Array.from(new Uint8Array(signature), byte => byte.toString(16).padStart(2, '0')).join('')
+  return `mg:v2:${input.metaEventName}:${digest}`
+}
 
 const SENSITIVE_KEYS = new Set([
   'email',

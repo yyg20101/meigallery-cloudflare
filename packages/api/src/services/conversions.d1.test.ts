@@ -384,7 +384,7 @@ describe('conversion dedupe claim 真实 D1 并发', () => {
           has_fbc: 0,
           has_email: 0,
           has_external_id: 0,
-          meta_connection_revision: null,
+          meta_connection_revision: CONNECTION_REVISION,
         },
       ])
       expect(daily.results).toEqual([

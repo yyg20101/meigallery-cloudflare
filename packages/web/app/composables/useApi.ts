@@ -8,6 +8,8 @@
  *
  * 解决 Cloudflare 同账户 *.workers.dev 域名互访限制（error 1042）
  */
+import { apiProxyResponseHeaderEntries } from '~/utils/apiProxyHeaders'
+
 export function useApi() {
   const config = useRuntimeConfig()
   const appEnv = String(config.public.appEnv || 'development')
@@ -83,6 +85,7 @@ export function useApi() {
       }
 
       const response = await apiBinding.fetch(`https://api.internal${fullPath}`, init)
+      forwardSsrResponseCookies(event, response)
 
       if (!response.ok) {
         // 模拟 $fetch 的行为：非 2xx 抛出错误
@@ -99,7 +102,7 @@ export function useApi() {
 
     // 本地开发回退：直接 HTTP 请求 API 开发服务器（无 Worker-to-Worker 限制）
     const apiBaseUrl = config.public.apiBaseUrl as string
-    const fetchOpts: Record<string, unknown> = {
+    const fetchOpts: RequestInit = {
       method: options?.method || 'GET',
     }
     if (isFormDataBody(options?.body)) {
@@ -111,7 +114,17 @@ export function useApi() {
     if (requestHeaders.cookie) {
       fetchOpts.headers = { ...(fetchOpts.headers as Record<string, string> || {}), cookie: requestHeaders.cookie }
     }
-    return $fetch<T>(`${apiBaseUrl}${fullPath}`, fetchOpts as any)
+    const response = await fetch(`${apiBaseUrl}${fullPath}`, fetchOpts)
+    forwardSsrResponseCookies(event, response)
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => '')
+      const err = new Error(`[${fetchOpts.method}] "${fullPath}": ${response.status} ${response.statusText}`)
+      ;(err as any).statusCode = response.status
+      ;(err as any).statusMessage = response.statusText
+      ;(err as any).data = errorBody
+      throw err
+    }
+    return response.json() as Promise<T>
   }
 
   async function api<T = unknown>(
@@ -147,4 +160,11 @@ export function useApi() {
   }
 
   return { api, baseURL: '' }
+}
+
+function forwardSsrResponseCookies(event: ReturnType<typeof useRequestEvent>, response: Response) {
+  if (!event) return
+  for (const [name, value] of apiProxyResponseHeaderEntries(response.headers)) {
+    if (name === 'set-cookie') appendResponseHeader(event, name, value)
+  }
 }

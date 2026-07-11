@@ -659,7 +659,7 @@ Meta CAPI v2 远端证据链：
 
 #### Meta 生产放行与回滚 `[当前实现 / 运维前置]`
 
-`0034_meta_production_readiness.sql` 在迁移后将不受支持的 tracking mode 收敛为 `disabled`；生产放行必须确认 `meta_tracking_mode=disabled`、`meta_capi_enabled=false`，直至 Owner 按顺序显式开启。顺序固定为：代码关闭态 -> dev live evidence -> 生产资源与 migrations `0036..0043` -> 最终 main HEAD 重新部署 dev 并生成同 commit evidence -> `bootstrap` gate -> production deploy 强制 fresh `verify:release` 并校验新报告 -> 生产部署 -> `post-deploy` attestation -> `test` mode Owner Test Event -> `full` gate -> `production` mode -> CAPI 开关 -> `0 -> 10 -> 50 -> 100` 人工放量与观察。
+`0034_meta_production_readiness.sql` 在迁移后将不受支持的 tracking mode 收敛为 `disabled`；生产放行必须确认 `meta_tracking_mode=disabled`、`meta_capi_enabled=false`，直至 Owner 按顺序显式开启。`0044_meta_dataset_quality_contract_digest.sql` 将每条 Dataset Quality 快照绑定 Git tracked approved contract 的精确 SHA-256 digest，版本相同但内容不同不得复用旧 collector 结果。Pixel 与 CAPI 都必须绑定当前有效 MetaConnection revision；连接失效时两条渠道均 fail closed。生产 `event_id` 由服务端 `SESSION_SECRET` 对规范化业务去重基础做 HMAC，外部值不包含用户 ID、session 或联系方式输入。顺序固定为：代码关闭态 -> dev live evidence -> 生产资源与 migrations `0036..0044` -> 最终 main HEAD 重新部署 dev 并生成同 commit evidence -> `bootstrap` gate -> production deploy 强制 fresh `verify:release` 并校验新报告 -> 生产部署 -> `post-deploy` attestation -> `test` mode Owner Test Event -> `full` gate -> `production` mode -> CAPI 开关 -> `0 -> 10 -> 50 -> 100` 人工放量与观察。
 
 严格 Test Event 必须只包含 `Contact`、`CompleteRegistration`，出现 `Lead` 或 `StartTrial` 必须阻断，并且 CAPI 的 `sent` 与 `events_received=1` 同时成立。由用户营销授权门禁控制的 Pixel 只能写入 `attempted`，不能替代这项确认。任何阶段失败都必须将 mode 切回 `disabled` 并保持 `meta_capi_enabled=false`；先关闭 CAPI、再关闭 mode，保留 Queue/DLQ、D1 migration 和账本用于诊断。
 

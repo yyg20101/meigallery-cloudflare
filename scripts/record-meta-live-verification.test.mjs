@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 import { buildMetaLiveEvidence, recordMetaLiveVerification } from './record-meta-live-verification.mjs'
 
 const COMMIT = '18dc11e0b0e4797683d4551a93a1f22e53dc4628'
+const CONTRACT = { version: 1, digest: `sha256:${'9'.repeat(64)}` }
 const DIGESTS = {
   Contact: `sha256:${'a'.repeat(64)}`,
   CompleteRegistration: `sha256:${'b'.repeat(64)}`,
@@ -22,6 +23,7 @@ function readiness() {
       contactContainsRegistrationIdentity: false,
     },
     datasetQualityContractVersion: 1,
+    datasetQualityContractDigest: CONTRACT.digest,
     datasetQualityCollectorCurrent: true,
   }
 }
@@ -51,6 +53,7 @@ function runtime(overrides = {}) {
     },
     fetch: async () => new Response(JSON.stringify({ status: 'ok', environment: 'dev', commit: COMMIT }), { status: 200 }),
     getCommit: async () => COMMIT,
+    verifyContract: async () => CONTRACT,
     readReadiness: async () => readiness(),
     destroyChallenge: async () => {},
     output: () => {},
@@ -102,6 +105,7 @@ describe('Meta live evidence V2 Worker challenge 录入', () => {
       { challengeId: '' },
       { commitSha: 'd'.repeat(40) },
       { datasetQualityCollectorCurrent: false },
+      { datasetQualityContractDigest: `sha256:${'8'.repeat(64)}` },
       { eventDigests: { ...DIGESTS, Contact: 'raw-event-id' } },
     ]) {
       let asks = 0
