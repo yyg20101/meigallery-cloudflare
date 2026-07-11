@@ -34,6 +34,7 @@ import {
 import { recoverPendingMetaCapiDeliveries } from './services/meta-capi-queue'
 import { purgeExpiredMetaCapiOutbox } from './services/meta-capi-secure-outbox'
 import { recoverRegistrationConversionFacts } from './services/registration-conversion-recovery'
+import { runMetaCapiCircuitEvaluation } from './services/meta-capi-circuit-breaker'
 
 /** Hono 应用绑定类型 */
 export type Bindings = {
@@ -268,6 +269,18 @@ async function handleScheduled(event: ScheduledEvent, env: Bindings): Promise<vo
   const db = env.DB
 
   try {
+    const circuit = await runMetaCapiCircuitEvaluation(env)
+    console.log('[cron] Meta CAPI Circuit Breaker 评估完成:', {
+      criticalCount: circuit.criticalTriggers.length,
+      warningCount: circuit.warnings.length,
+    })
+  } catch {
+    console.error('[cron] Meta CAPI Circuit Breaker 评估失败:', {
+      errorCode: 'meta_circuit_evaluation_failed',
+    })
+  }
+
+  try {
     const purge = await purgeExpiredMetaCapiOutbox(db, 100)
     console.log('[cron] Meta CAPI 过期密文清理完成:', purge)
   } catch {
@@ -363,7 +376,7 @@ async function handleScheduled(event: ScheduledEvent, env: Bindings): Promise<vo
 }
 
 function shouldRecoverRegistrationConversions(event: ScheduledEvent) {
-  if (event.cron !== '*/5 * * * *') return false
+  if (event.cron !== '* * * * *') return false
   const scheduledAt = new Date(event.scheduledTime)
   return !Number.isNaN(scheduledAt.getTime()) && scheduledAt.getUTCMinutes() === 0
 }

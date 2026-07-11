@@ -44,13 +44,16 @@ function createConnectionDb(options: {
   ])
   const verifications = new Map<string, VerificationRow>()
   const calls: DbCall[] = []
+  const preparedSql: string[] = []
   let invalidationHookCalled = false
 
   const db = {
     calls,
+    preparedSql,
     settings,
     verifications,
     prepare(sql: string) {
+      preparedSql.push(sql)
       const call: DbCall = { sql, params: [] }
       return {
         bind(...params: unknown[]) {
@@ -346,6 +349,22 @@ describe('MetaConnection', () => {
     expect(db.verifications.get('dev')).toMatchObject({ invalidation_reason: reason })
     await expect(requireVerifiedMetaConnection(env)).rejects.toMatchObject({ code: 'META_CONNECTION_UNVERIFIED' })
   })
+
+  it.each(['pixel_id_changed', 'access_token_changed'] as const)(
+    '%s 在 require 阶段尝试打开 fingerprint critical，incident 失败也保留原连接错误',
+    async (reason) => {
+      const db = createConnectionDb()
+      await seedVerification(db)
+      const env = connectionEnv(db)
+      if (reason === 'pixel_id_changed') db.settings.set('facebook_pixel_id', JSON.stringify('9988776655'))
+      else env.META_CAPI_ACCESS_TOKEN = 'rotated-token'
+
+      await expect(requireVerifiedMetaConnection(env)).rejects.toMatchObject({
+        code: 'META_CONNECTION_UNVERIFIED',
+      })
+      expect(db.preparedSql.some(sql => sql.includes('INSERT OR IGNORE INTO meta_capi_incidents'))).toBe(true)
+    },
+  )
 
   it('Test Event Code 变化不改变 fingerprint，但 test mode 仍要求非空', async () => {
     const db = createConnectionDb()

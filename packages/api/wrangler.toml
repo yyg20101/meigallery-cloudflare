@@ -28,7 +28,7 @@ name = "EMAIL"
 
 # Cron Trigger（定时任务）
 [triggers]
-crons = ["*/5 * * * *", "0 0 * * *"]  # 每 5 分钟恢复 Meta outbox；每天 UTC 00:00 执行完整维护
+crons = ["* * * * *", "0 0 * * *"]  # 每分钟评估熔断并恢复 Meta outbox；每天 UTC 00:00 执行完整维护
 
 [[queues.producers]]
 binding = "META_CAPI_QUEUE"
@@ -83,7 +83,7 @@ bucket_name = "meigallery-media-dev"
 name = "EMAIL"
 
 [env.dev.triggers]
-crons = ["*/5 * * * *"]  # dev 只恢复 Meta outbox，不运行每日聚合
+crons = ["* * * * *"]  # dev 每分钟评估熔断并恢复 Meta outbox，不运行每日聚合
 
 [[env.dev.queues.producers]]
 binding = "META_CAPI_QUEUE"

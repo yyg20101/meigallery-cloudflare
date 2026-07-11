@@ -19,6 +19,11 @@ import { parseAnalyticsRange, type AnalyticsDateRange } from '../../utils/analyt
 import { generateId } from '../../utils/db'
 import { writeAuditLog } from '../../utils/permission'
 import { parseStoredSettingValue } from '../../utils/stored-setting-value'
+import {
+  closeMetaCapiIncident,
+  MetaCapiCircuitError,
+} from '../../services/meta-capi-circuit-breaker'
+import { validateMetaCapiIncidentEvidence } from '../../services/meta-capi-incident-evidence'
 
 export const adminAttributionRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -705,6 +710,98 @@ adminAttributionRoutes.get('/meta/rollout', async (c) => {
   return c.json({ data: serializeMetaRolloutSnapshot(snapshot) })
 })
 
+adminAttributionRoutes.get('/meta/incidents', async (c) => {
+  const status = c.req.query('status') || 'all'
+  if (status !== 'open' && status !== 'closed' && status !== 'all') {
+    return errorJson(c, 400, 'incident 查询状态无效', {
+      code: 'META_CAPI_INCIDENT_QUERY_INVALID',
+    })
+  }
+  const range = parseRangeOrError(c)
+  if (range instanceof Response) return range
+  const limit = parseBoundedInteger(c.req.query('limit'), 50, 1, 100)
+  const offset = parseBoundedInteger(c.req.query('offset'), 0, 0, 10_000)
+  if (limit === null || offset === null) {
+    return errorJson(c, 400, 'incident 分页参数无效', {
+      code: 'META_CAPI_INCIDENT_QUERY_INVALID',
+    })
+  }
+  const environment = auditEnvironment(c.env.APP_ENV)
+  if (environment === 'invalid') {
+    return errorJson(c, 503, 'incident 查询暂时不可用', {
+      code: 'META_CAPI_INCIDENT_QUERY_UNAVAILABLE',
+    })
+  }
+
+  try {
+    const statusClause = status === 'all' ? '' : 'AND status = ?'
+    const params: unknown[] = [environment, range.from, range.to]
+    if (status !== 'all') params.push(status)
+    params.push(limit + 1, offset)
+    const result = await c.env.DB.prepare(`
+      SELECT id, environment, status, severity, trigger_code, trigger_summary,
+        target_rollout_percentage, effective_rollout_percentage, evidence,
+        opened_at, last_observed_at, closed_at, closed_by_user_id, resolution
+      FROM meta_capi_incidents
+      WHERE environment = ?
+        AND date(datetime(opened_at, '+8 hours')) BETWEEN ? AND ?
+        ${statusClause}
+      ORDER BY opened_at DESC, id DESC
+      LIMIT ? OFFSET ?
+    `).bind(...params).all<Row>()
+    const hasMore = result.results.length > limit
+    const items = result.results.slice(0, limit).map(serializeMetaIncident)
+    return c.json({
+      range,
+      data: {
+        items,
+        pagination: { limit, offset, hasMore },
+      },
+    })
+  }
+  catch {
+    return errorJson(c, 503, 'incident 查询暂时不可用', {
+      code: 'META_CAPI_INCIDENT_QUERY_UNAVAILABLE',
+    })
+  }
+})
+
+adminAttributionRoutes.post('/meta/incidents/:id/close', async (c) => {
+  if (c.get('userRole') !== 'owner') {
+    return errorJson(c, 403, '需要站长权限', { code: 'OWNER_REQUIRED' })
+  }
+  let value: unknown
+  try {
+    value = await c.req.json()
+  }
+  catch {
+    value = null
+  }
+  const resolution = value && typeof value === 'object' && !Array.isArray(value)
+    ? String((value as Record<string, unknown>).resolution ?? '')
+    : ''
+  try {
+    await closeMetaCapiIncident(c.env, {
+      incidentId: c.req.param('id'),
+      ownerUserId: c.get('userId') ?? 0,
+      resolution,
+    })
+    return c.json({ data: { id: c.req.param('id'), status: 'closed' } })
+  }
+  catch (error) {
+    if (error instanceof MetaCapiCircuitError) {
+      return errorJson(c, error.httpStatus, error.httpStatus === 403 ? '需要站长权限' : 'incident 关闭门禁未通过', {
+        code: error.code,
+        detail: { blockers: error.blockers },
+      })
+    }
+    return errorJson(c, 409, 'incident 关闭门禁未通过', {
+      code: 'META_CAPI_INCIDENT_CLOSE_BLOCKED',
+      detail: { blockers: ['incident_close_unavailable'] },
+    })
+  }
+})
+
 adminAttributionRoutes.post('/meta/rollout', async (c) => {
   if (c.get('userRole') !== 'owner') {
     return errorJson(c, 403, '需要站长权限', { code: 'OWNER_REQUIRED' })
@@ -1209,6 +1306,44 @@ function metaConnectionErrorMessage(code: string) {
   }
   if (code === 'META_TEST_EVENT_REJECTED') return 'Meta 未确认接收测试事件'
   return 'MetaConnection 验证暂时不可用'
+}
+
+function serializeMetaIncident(row: Row) {
+  let evidence: Record<string, number | string> = {}
+  try {
+    evidence = validateMetaCapiIncidentEvidence(JSON.parse(String(row.evidence || '{}')))
+  }
+  catch {
+    evidence = {}
+  }
+  return {
+    id: String(row.id || ''),
+    environment: String(row.environment || ''),
+    status: String(row.status || ''),
+    severity: String(row.severity || ''),
+    triggerCode: String(row.trigger_code || ''),
+    triggerSummary: String(row.trigger_summary || ''),
+    targetPercentage: numberValue(row.target_rollout_percentage),
+    effectivePercentage: numberValue(row.effective_rollout_percentage),
+    evidence,
+    openedAt: String(row.opened_at || ''),
+    lastObservedAt: String(row.last_observed_at || ''),
+    closedAt: row.closed_at == null ? null : String(row.closed_at),
+    closedByUserId: row.closed_by_user_id == null ? null : numberValue(row.closed_by_user_id),
+    resolution: String(row.resolution || ''),
+  }
+}
+
+function parseBoundedInteger(
+  value: string | undefined,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+) {
+  if (value === undefined || value === '') return fallback
+  if (!/^\d+$/.test(value)) return null
+  const parsed = Number.parseInt(value, 10)
+  return parsed >= minimum && parsed <= maximum ? parsed : null
 }
 
 function parseRangeOrError(c: AdminAttributionContext): AnalyticsDateRange | Response {

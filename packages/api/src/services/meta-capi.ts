@@ -4,6 +4,10 @@ import type { Bindings } from '../index'
 import { normalizeMetaCapiUserData } from '../utils/meta-browser-identifiers'
 import { requireVerifiedMetaConnection } from './meta-connection'
 import { metaEventsEndpoint, metaGraphRequestInit, readMetaEventsResponse } from './meta-graph'
+import {
+  createMetaIncidentTrigger,
+  openMetaCapiIncidentSafely,
+} from './meta-capi-circuit-breaker'
 
 type MetaCapiEnv = Pick<
   Bindings,
@@ -269,6 +273,12 @@ export async function sendMetaCapiEvent(
   })
   const competingSent = await recordCompetingSent(env.DB, persisted, deliveryId)
   if (competingSent) return competingSent
+  if (response.status === 401 || response.status === 403) {
+    await openMetaCapiIncidentSafely(env, createMetaIncidentTrigger('meta_permission_denied', {
+      failedCount: 1,
+      errorCategory: 'permission_denied',
+    }))
+  }
   if (classifyMetaCapiError(response.status) === 'retryable') {
     throw new MetaCapiDeliveryError(errorCode, META_CAPI_ERROR_MESSAGE, true)
   }

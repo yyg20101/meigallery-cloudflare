@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer'
+import { readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import app from './index'
 import type { Bindings } from './index'
@@ -243,15 +244,16 @@ describe('Meta CAPI scheduled recovery', () => {
     }
   }
 
-  it('每 5 分钟 Cron 只恢复 outbox，不运行每日聚合或清理', async () => {
+  it('每分钟 Cron 评估 Circuit Breaker 并恢复 outbox，不运行每日聚合或清理', async () => {
     const harness = createScheduledHarness()
 
-    await harness.run('*/5 * * * *')
+    await harness.run('* * * * *')
 
     expect(harness.sent).toEqual([harness.expectedMessage])
     expect(harness.sqlCalls.some(sql => sql.includes('email_verification_codes'))).toBe(false)
     expect(harness.sqlCalls.some(sql => sql.includes('analytics_daily_sources'))).toBe(false)
     expect(harness.sqlCalls.some(sql => sql.includes('analytics_events WHERE sampled'))).toBe(false)
+    expect(harness.sqlCalls.some(sql => sql.includes('AS duplicate_delivery_group_count'))).toBe(true)
   })
 
   it('每日 Cron 同时恢复 outbox 并运行完整聚合与保留期清理', async () => {
@@ -275,15 +277,21 @@ describe('Meta CAPI scheduled recovery', () => {
     expect(harness.sqlCalls.some(sql => sql.includes('analytics_daily_sources'))).toBe(false)
   })
 
-  it('注册事实修复只在 5 分钟 Cron 的整点运行，每小时最多一次', async () => {
+  it('注册事实修复只在每分钟主 Cron 的整点运行，每小时最多一次', async () => {
     const wholeHour = createScheduledHarness()
     const otherMinute = createScheduledHarness()
 
-    await wholeHour.run('*/5 * * * *', Date.parse('2026-07-10T09:00:00.000Z'))
-    await otherMinute.run('*/5 * * * *', Date.parse('2026-07-10T09:05:00.000Z'))
+    await wholeHour.run('* * * * *', Date.parse('2026-07-10T09:00:00.000Z'))
+    await otherMinute.run('* * * * *', Date.parse('2026-07-10T09:05:00.000Z'))
 
     expect(wholeHour.sqlCalls.some(sql => sql.includes('FROM users u'))).toBe(true)
     expect(otherMinute.sqlCalls.some(sql => sql.includes('FROM users u'))).toBe(false)
     expect(wholeHour.sent).toEqual([wholeHour.expectedMessage])
+  })
+
+  it('Wrangler 主环境与 dev 都只注册一个每分钟恢复 Cron', () => {
+    const config = readFileSync(new URL('../wrangler.toml', import.meta.url), 'utf8')
+    expect(config).not.toContain('*/5 * * * *')
+    expect(config.match(/\* \* \* \* \*/g)).toHaveLength(2)
   })
 })

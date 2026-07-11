@@ -858,6 +858,34 @@ afterEach(() => {
 })
 
 describe('后台归因中心 API', () => {
+  it('incident 列表拒绝未知 status，避免无界或歧义查询', async () => {
+    const res = await createApp('admin').request(
+      '/api/admin/attribution/meta/incidents?status=broken',
+      {},
+      { DB: createAttributionDb() } as unknown as Bindings,
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(400)
+    expect(body.code).toBe('META_CAPI_INCIDENT_QUERY_INVALID')
+  })
+
+  it('incident close 显式要求 Owner', async () => {
+    const res = await createApp('admin').request(
+      '/api/admin/attribution/meta/incidents/incident_1/close',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ resolution: '已完成连接复验、资源检查并确认投递窗口恢复正常。' }),
+      },
+      { DB: createAttributionDb() } as unknown as Bindings,
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(403)
+    expect(body.code).toBe('OWNER_REQUIRED')
+  })
+
   it('要求 admin+ 才能访问归因总览', async () => {
     const res = await createApp(null).request('/api/admin/attribution/overview?range=7d', {}, { DB: createAttributionDb() } as unknown as Bindings)
     expect(res.status).toBe(403)

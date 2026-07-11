@@ -42,6 +42,7 @@ function createMetaCapiDb(options: {
   delivery?: Partial<DeliveryRow>
   connectionVerified?: boolean
   connectionRevision?: string
+  incidentBatchFailure?: boolean
 } = {}) {
   const calls: Array<{ sql: string; params: unknown[] }> = []
   const delivery: DeliveryRow = {
@@ -140,6 +141,10 @@ function createMetaCapiDb(options: {
       return statement
     },
     async batch(statements: Array<{ run: () => Promise<D1Result<unknown>> }>) {
+      if (options.incidentBatchFailure && statements.some(statement => (
+        '__call' in statement
+        && String((statement as { __call?: { sql?: string } }).__call?.sql).includes('meta_capi_incidents')
+      ))) throw new Error('模拟 incident 写入失败')
       return Promise.all(statements.map(statement => statement.run()))
     },
   }
@@ -473,6 +478,29 @@ describe('meta-capi', () => {
     expect(classifyMetaCapiError(400)).toBe('permanent')
     expect(classifyMetaCapiError(500)).toBe('retryable')
     expect(classifyMetaCapiError(429)).toBe('retryable')
+  })
+
+  it.each([401, 403])('Meta HTTP %i 使用真实 error code 并立即打开权限 incident', async status => {
+    const db = createMetaCapiDb({ pixelId: '1234567890' })
+    const result = await sendMetaCapiEvent(envFor(db), 'cdlv_1', {
+      fetchFn: vi.fn().mockResolvedValue(new Response('{}', { status })),
+    })
+
+    expect(result).toMatchObject({ status: 'failed', reason: String(status) })
+    expect(db.delivery.error_code).toBe(`meta_http_${status}`)
+    const incident = db.calls.find(call => call.sql.includes('INSERT OR IGNORE INTO meta_capi_incidents'))
+    expect(incident?.params).toContain('meta_permission_denied')
+    expect(JSON.stringify(incident)).not.toContain('token_1')
+  })
+
+  it('权限 incident 写入失败不替换原 delivery 失败', async () => {
+    const db = createMetaCapiDb({ pixelId: '1234567890', incidentBatchFailure: true })
+    const result = await sendMetaCapiEvent(envFor(db), 'cdlv_1', {
+      fetchFn: vi.fn().mockResolvedValue(new Response('{}', { status: 401 })),
+    })
+
+    expect(result).toEqual({ deliveryId: 'cdlv_1', status: 'failed', reason: '401' })
+    expect(db.delivery.error_code).toBe('meta_http_401')
   })
 
   it.each(['Contact', 'CompleteRegistration'] as const)('普通 test 模式 %s payload 也不携带 Test Event Code', async eventName => {

@@ -700,6 +700,25 @@ describe('Meta CAPI Queue V2', () => {
     expect(permanentDb.outbox).toBeNull()
   })
 
+  it('结构合法但认证失败的 AES-GCM envelope 打开解密 incident，并保留安全终态', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-11T12:00:00.000Z'))
+    const db = createQueueDb()
+    const body = await encryptedMessage(db)
+    const tamperIndex = Math.floor(body.envelope.ciphertext.length / 2)
+    const replacement = body.envelope.ciphertext[tamperIndex] === 'A' ? 'B' : 'A'
+    body.envelope.ciphertext = `${body.envelope.ciphertext.slice(0, tamperIndex)}${replacement}${body.envelope.ciphertext.slice(tamperIndex + 1)}`
+    const message = queueMessage(body)
+
+    await handleMetaCapiBatch(batch(message), env(db))
+
+    expect(db.delivery).toMatchObject({ status: 'failed', error_code: 'secure_context_invalid' })
+    expect(message.ack).toHaveBeenCalledOnce()
+    const incident = db.calls.find(call => call.sql.includes('INSERT OR IGNORE INTO meta_capi_incidents'))
+    expect(incident?.params).toContain('secure_context_decryption_failed')
+    expect(JSON.stringify(incident)).not.toContain(body.envelope.ciphertext)
+  })
+
   it('非终态但不可发送的 delivery 状态重试消息且保留密文', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-07-11T12:00:00.000Z'))

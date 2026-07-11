@@ -17,6 +17,10 @@ import {
   type SecureOutboxEnv,
 } from './meta-capi-secure-outbox'
 import { requireVerifiedMetaConnection } from './meta-connection'
+import {
+  createMetaIncidentTrigger,
+  openMetaCapiIncidentSafely,
+} from './meta-capi-circuit-breaker'
 
 const META_RETRY_DELAYS = [60, 300, 900, 1800] as const
 const META_RECOVERY_STALE_MINUTES = 5
@@ -220,9 +224,21 @@ async function consumeSecureMessage(
     }
 
     let sensitiveContext
+    let keys: Awaited<ReturnType<typeof loadMetaCapiCryptoKeys>>
     try {
       if (delivery.encryption_key_id !== body.envelope.keyId) throw new Error('secure_context_invalid')
-      const keys = await loadMetaCapiCryptoKeys(env)
+      keys = await loadMetaCapiCryptoKeys(env)
+    } catch {
+      await markSecureContextInvalid(env.DB, delivery)
+      await deleteSecureMetaCapiOutbox(env.DB, deliveryId)
+      console.error('[meta-capi] Queue 消息安全终止', {
+        deliveryId: logDeliveryId,
+        errorCode: 'secure_context_invalid',
+      })
+      ackMessage(queueMessage)
+      return
+    }
+    try {
       sensitiveContext = await decryptMetaCapiContext({
         keys,
         aad: {
@@ -239,6 +255,13 @@ async function consumeSecureMessage(
         },
       })
     } catch {
+      if (hasMatchingCryptoKey(keys, body.envelope.keyId)
+        && isAesGcmEnvelopeCandidate(body.envelope)) {
+        await openMetaCapiIncidentSafely(
+          env,
+          createMetaIncidentTrigger('secure_context_decryption_failed'),
+        )
+      }
       await markSecureContextInvalid(env.DB, delivery)
       await deleteSecureMetaCapiOutbox(env.DB, deliveryId)
       console.error('[meta-capi] Queue 消息安全终止', {
@@ -437,6 +460,33 @@ function safeDeliveryId(value: unknown) {
   return typeof value === 'string' && value.length <= 96 && INTERNAL_DELIVERY_ID_PATTERN.test(value)
     ? value
     : ''
+}
+
+function isAesGcmEnvelopeCandidate(envelope: MetaCapiQueueMessage['envelope']) {
+  return /^[0-9a-f]{16}$/.test(envelope.keyId)
+    && base64UrlByteLength(envelope.iv) === 12
+    && base64UrlByteLength(envelope.tag) === 16
+    && base64UrlByteLength(envelope.ciphertext) > 0
+}
+
+function hasMatchingCryptoKey(
+  keys: Awaited<ReturnType<typeof loadMetaCapiCryptoKeys>>,
+  keyId: string,
+) {
+  return keys.current.id === keyId || keys.previous?.id === keyId
+}
+
+function base64UrlByteLength(value: string) {
+  if (!/^[A-Za-z0-9_-]+$/.test(value) || value.length % 4 === 1) return -1
+  try {
+    const standard = value.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - value.length % 4) % 4)
+    const decoded = atob(standard)
+    const canonical = btoa(decoded).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+    return canonical === value ? decoded.length : -1
+  }
+  catch {
+    return -1
+  }
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {

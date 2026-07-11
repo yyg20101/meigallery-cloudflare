@@ -4,6 +4,10 @@ import type { Bindings } from '../index'
 import { loadMetaCapiCryptoKeys, metaConnectionFingerprint } from '../utils/meta-capi-crypto'
 import { parseStoredSettingValue } from '../utils/stored-setting-value'
 import { META_GRAPH_API_VERSION, metaEventsEndpoint, metaGraphRequestInit, readMetaEventsResponse } from './meta-graph'
+import {
+  createMetaIncidentTrigger,
+  openMetaCapiIncidentSafely,
+} from './meta-capi-circuit-breaker'
 
 const PIXEL_ID_PATTERN = /^\d{5,30}$/
 const RELEASE_COMMIT_PATTERN = /^[0-9a-f]{40}$/i
@@ -106,7 +110,15 @@ export async function requireVerifiedMetaConnection(
   if (evaluated.status.state !== 'verified'
     || (evaluated.trackingMode !== 'test' && evaluated.trackingMode !== 'production')
     || !normalizeVerificationRevision(evaluated.verificationRevision)) {
-    throw new MetaConnectionError('META_CONNECTION_UNVERIFIED')
+    const originalError = new MetaConnectionError('META_CONNECTION_UNVERIFIED')
+    if (evaluated.status.invalidationReason === 'pixel_id_changed'
+      || evaluated.status.invalidationReason === 'access_token_changed') {
+      await openMetaCapiIncidentSafely(
+        env,
+        createMetaIncidentTrigger('connection_fingerprint_changed'),
+      )
+    }
+    throw originalError
   }
   return {
     pixelId: evaluated.pixelId,
