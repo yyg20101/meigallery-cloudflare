@@ -132,23 +132,19 @@ test('共享单日 query、五区证据轨与 Meta 操作错误态', async ({ pa
   ])
 })
 
-test('三视口无 document overflow、控件重叠且保留可滚动表格', async ({ page }) => {
+test('多视口无 document overflow、控件重叠且保留可滚动表格', async ({ page }, testInfo) => {
   mkdirSync(artifactDir, { recursive: true })
-  for (const viewport of [
-    { width: 360, height: 800, name: '360x800' },
-    { width: 768, height: 1024, name: '768x1024' },
-    { width: 1440, height: 1000, name: '1440x1000' },
-  ]) {
-    await page.setViewportSize(viewport)
-    await page.goto('/admin/attribution?range=day&date=2026-07-10')
-    await expect(page.locator('[data-attribution-section]')).toHaveCount(5)
-    await expect(page.locator('[data-trend-path]').first()).toHaveAttribute('d', /^M /)
-    const marker = page.locator('[data-trend-marker]').first()
-    await expect(marker).toBeVisible()
-    const markerBox = await marker.boundingBox()
-    expect(markerBox?.width).toBeGreaterThan(0)
-    expect(markerBox?.height).toBeGreaterThan(0)
-    const layout = await page.evaluate(() => {
+  const viewport = page.viewportSize()
+  expect(viewport).not.toBeNull()
+  await page.goto('/admin/attribution?range=day&date=2026-07-10')
+  await expect(page.locator('[data-attribution-section]')).toHaveCount(5)
+  await expect(page.locator('[data-trend-path]').first()).toHaveAttribute('d', /^M /)
+  const marker = page.locator('[data-trend-marker]').first()
+  await expect(marker).toBeVisible()
+  const markerBox = await marker.boundingBox()
+  expect(markerBox?.width).toBeGreaterThan(0)
+  expect(markerBox?.height).toBeGreaterThan(0)
+  const layout = await page.evaluate(() => {
       const doc = document.documentElement
       const isVisible = (element: HTMLElement) => {
         const style = getComputedStyle(element)
@@ -201,16 +197,15 @@ test('三视口无 document overflow、控件重叠且保留可滚动表格', as
         chartScrollable: chartScroll.scrollWidth > chartScroll.clientWidth + 1,
         chartScrollMoved: movedScrollLeft > initialScrollLeft,
       }
-    })
-    expect(layout.documentOverflow).toBe(false)
-    expect(layout.overlap).toBe(false)
-    expect(layout.clippedButtons).toEqual([])
-    expect(layout.clippedText).toEqual([])
-    expect(layout.uncontainedTables).toBe(0)
-    expect(layout.chartOverflowX).toBe('auto')
-    expect(layout.chartContained).toBe(true)
-    expect(layout.chartScrollable).toBe(viewport.width === 360)
-    expect(layout.chartScrollMoved).toBe(viewport.width === 360)
-    await page.screenshot({ path: `${artifactDir}/${viewport.name}.png`, fullPage: true })
-  }
+  })
+  expect(layout.documentOverflow).toBe(false)
+  expect(layout.overlap).toBe(false)
+  expect(layout.clippedButtons).toEqual([])
+  expect(layout.clippedText).toEqual([])
+  expect(layout.uncontainedTables).toBe(0)
+  expect(layout.chartOverflowX).toBe('auto')
+  expect(layout.chartContained).toBe(true)
+  expect(layout.chartScrollable).toBe(viewport!.width < 768)
+  expect(layout.chartScrollMoved).toBe(viewport!.width < 768)
+  await page.screenshot({ path: `${artifactDir}/${testInfo.project.name}.png`, fullPage: true })
 })
