@@ -68,7 +68,7 @@ describe('发布验证 CLI', () => {
     await mkdir(binDir)
     await Promise.all([
       writeExecutable(path.join(binDir, 'git'), '#!/usr/bin/env bash\necho 18dc11e0b0e4797683d4551a93a1f22e53dc4628\n'),
-      writeExecutable(path.join(binDir, 'pnpm'), `#!/usr/bin/env bash\necho "pnpm $*" >> "${logFile}"\nif [ "$*" = "verify:release" ]; then exit 9; fi\nexit 0\n`),
+      writeExecutable(path.join(binDir, 'corepack'), `#!/usr/bin/env bash\necho "$*" >> "${logFile}"\nif [ "$*" = "pnpm verify:release" ]; then exit 9; fi\nexit 0\n`),
       writeExecutable(path.join(binDir, 'node'), `#!/usr/bin/env bash\necho "node $*" >> "${logFile}"\nexit 0\n`),
     ])
 
@@ -189,6 +189,12 @@ describe('发布验证 CLI', () => {
     const packageJson = JSON.parse(await readFile(PACKAGE_JSON_PATH, 'utf8'))
 
     assert.equal(packageJson.scripts['verify:meta-secrets'], 'node scripts/verify-meta-secret-leaks.mjs')
+  })
+
+  it('部署脚本固定使用 corepack pnpm，避免全局 pnpm 主版本污染', async () => {
+    const deployScript = await readFile(DEPLOY_SCRIPT_PATH, 'utf8')
+    assert.match(deployScript, /PNPM=\(corepack pnpm\)/)
+    assert.doesNotMatch(deployScript, /command -v pnpm/)
   })
 
   it('assertProductionAllowed 会绑定当前 Git commit', async () => {

@@ -24,11 +24,8 @@ GIT_COMMIT="$(git rev-parse HEAD)"
 
 echo "=== MeiGallery 部署 (环境: $ENV) ==="
 
-if command -v pnpm >/dev/null 2>&1; then
-  PNPM=(pnpm)
-else
-  PNPM=(corepack pnpm)
-fi
+# 始终使用 packageManager 锁定的 pnpm，避免 PATH 中的其他主版本污染发布。
+PNPM=(corepack pnpm)
 
 # 检查是否已登录
 if ! "${PNPM[@]}" --filter @meigallery/api exec wrangler whoami &> /dev/null; then
