@@ -7,6 +7,8 @@ const CHALLENGE_ID_PATTERN = /^mlc_[0-9a-f]{32}$/
 const EVENT_ID_PATTERN = /^mlv_[a-z]+_[0-9a-f]{32}$/
 const CHALLENGE_TTL_MS = 60 * 60 * 1000
 const META_TIMEOUT_MS = 8_000
+const REGISTRATION_EMAIL_HASH = '6262cb8f3a917e5df0cb4d06a2a906194aa46f45b63af973d7f213fb9722280d'
+const REGISTRATION_EXTERNAL_ID_HASH = 'fef50236caaad5477b9d7f64fa68ff922b09cbca76830d5208d115c4e161c8d4'
 
 type ChallengeEnv = Pick<
   Bindings,
@@ -97,6 +99,9 @@ export async function consumeMetaLiveChallenge(env: ChallengeEnv, ownerUserId: n
         complete_registration_event_id = NULL,
         contact_event_digest = ?,
         complete_registration_event_digest = ?,
+        registration_email_covered = 1,
+        registration_external_id_covered = 1,
+        contact_registration_identity_absent = 1,
         consumed_at = ?
     WHERE id = ? AND status = 'pending' AND environment = 'production'
       AND commit_sha = ? AND owner_user_id = ? AND expires_at > ?
@@ -201,6 +206,9 @@ function syntheticEvent(eventName: 'Contact' | 'CompleteRegistration', eventId: 
     user_data: {
       client_ip_address: '192.0.2.1',
       client_user_agent: 'MeiGallery Meta Live Synthetic Test/2.0',
+      ...(eventName === 'CompleteRegistration'
+        ? { em: [REGISTRATION_EMAIL_HASH], external_id: [REGISTRATION_EXTERNAL_ID_HASH] }
+        : {}),
     },
     custom_data: { content_category: 'meta_live_synthetic_test' },
   }
@@ -223,7 +231,13 @@ async function fetchChallengeEvents(
     const result = await readMetaEventsResponse(response, [
       accessToken,
       payload.test_event_code,
-      ...payload.data.flatMap(event => [event.event_id, event.user_data.client_ip_address, event.user_data.client_user_agent]),
+      ...payload.data.flatMap(event => [
+        event.event_id,
+        event.user_data.client_ip_address,
+        event.user_data.client_user_agent,
+        ...('em' in event.user_data ? (event.user_data.em ?? []) : []),
+        ...('external_id' in event.user_data ? (event.user_data.external_id ?? []) : []),
+      ]),
     ])
     return { ok: response.ok, status: response.status, eventsReceived: result.eventsReceived }
   }

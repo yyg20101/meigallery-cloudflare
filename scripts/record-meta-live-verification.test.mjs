@@ -71,6 +71,7 @@ describe('Meta live evidence V2 Worker challenge 录入', () => {
   it('production live readiness 不直接读取 Dataset Quality 快照', () => {
     const sql = buildProductionMetaLiveReadinessSql(COMMIT, CONTRACT)
     assert.equal(sql.includes('meta_dataset_quality_snapshots'), false)
+    assert.equal(sql.includes('analytics_conversion_deliveries'), false)
     const program = `
       import { DatabaseSync } from 'node:sqlite';
       const db = new DatabaseSync(':memory:');
@@ -81,18 +82,14 @@ describe('Meta live evidence V2 Worker challenge 录入', () => {
       CREATE TABLE meta_live_challenges (
         id TEXT, environment TEXT, commit_sha TEXT, contact_event_digest TEXT,
         complete_registration_event_digest TEXT, status TEXT, events_received INTEGER,
-        expires_at TEXT, consumed_at TEXT
-      );
-      CREATE TABLE analytics_conversion_deliveries (
-        event_name TEXT, has_email INTEGER, has_external_id INTEGER, channel TEXT, status TEXT
+        expires_at TEXT, consumed_at TEXT, registration_email_covered INTEGER,
+        registration_external_id_covered INTEGER, contact_registration_identity_absent INTEGER
       );
       INSERT INTO meta_connection_verifications VALUES ('production', '12345678906781', '${COMMIT}', datetime('now'), NULL);
       INSERT INTO meta_live_challenges VALUES (
         'mlc_${'c'.repeat(32)}', 'production', '${COMMIT}', '${DIGESTS.Contact}', '${DIGESTS.CompleteRegistration}',
-        'server_sent', 2, datetime('now', '+1 hour'), datetime('now')
+        'server_sent', 2, datetime('now', '+1 hour'), datetime('now'), 1, 1, 1
       );
-      INSERT INTO analytics_conversion_deliveries VALUES ('CompleteRegistration', 1, 1, 'meta_capi', 'sent');
-      INSERT INTO analytics_conversion_deliveries VALUES ('Contact', 0, 0, 'meta_capi', 'sent');
       `)});
       const sql = ${JSON.stringify(sql)};
       const row = db.prepare(sql).get();

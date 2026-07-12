@@ -58,6 +58,7 @@ function mockJsonFor(name, options = {}) {
       challenge_table: 1,
       challenge_table_sql: "CREATE TABLE meta_live_challenges (... CHECK (environment = 'production'))",
       challenge_index: 1,
+      challenge_match_coverage_columns: 3,
       ticket_table: 1,
       ticket_index: 1,
       delivery_lease_index: 1,
@@ -91,10 +92,11 @@ describe('Meta migration 演练', () => {
     'meta-migration-apply-0043',
     'meta-migration-apply-0044',
     'meta-migration-apply-0045',
+    'meta-migration-apply-0046',
     'meta-migration-query-history',
     'meta-migration-query-schema',
     'meta-migration-query-setting',
-    'meta-migration-empty-apply-0001-0045',
+    'meta-migration-empty-apply-0001-0046',
     'meta-migration-empty-query-schema',
   ]) {
     it(`当 ${name} 命令失败时演练失败`, async () => {
@@ -184,7 +186,8 @@ describe('Meta migration 演练', () => {
     assert.ok(names.indexOf('meta-migration-apply-0042') < names.indexOf('meta-migration-apply-0043'))
     assert.ok(names.indexOf('meta-migration-apply-0043') < names.indexOf('meta-migration-apply-0044'))
     assert.ok(names.indexOf('meta-migration-apply-0044') < names.indexOf('meta-migration-apply-0045'))
-    assert.ok(names.includes('meta-migration-empty-apply-0001-0045'))
+    assert.ok(names.indexOf('meta-migration-apply-0045') < names.indexOf('meta-migration-apply-0046'))
+    assert.ok(names.includes('meta-migration-empty-apply-0001-0046'))
     assert.ok(names.includes('meta-migration-empty-query-schema'))
   })
 
@@ -196,6 +199,7 @@ describe('Meta migration 演练', () => {
     ['registration recovery cursor', 'registration_recovery_cursor', '1'],
     ['Dataset Quality contract digest 列', 'quality_contract_digest_column', 0],
     ['Dataset Quality contract digest 索引', 'quality_contract_digest_index', 0],
+    ['Meta live 匹配覆盖列', 'challenge_match_coverage_columns', 2],
   ]) {
     it(`${label} 不精确时旧库演练 fail closed`, async () => {
       const runCommand = async (_command, _args, options = {}) => {
@@ -210,7 +214,7 @@ describe('Meta migration 演练', () => {
 
       const result = await runMetaMigrationVerification({ runCommand })
       assert.equal(result.status, 'failed')
-      assert.match(result.error, /0040-0045 schema/)
+      assert.match(result.error, /0040-0046 schema/)
     })
   }
 
