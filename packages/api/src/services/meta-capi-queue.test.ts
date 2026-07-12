@@ -1,5 +1,5 @@
 import { Buffer } from 'node:buffer'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ConversionDeliveryStatus, MetaCapiQueueMessage } from '@meigallery/shared'
 import type { Bindings } from '../index'
 import {
@@ -380,6 +380,11 @@ function env(db: ReturnType<typeof createQueueDb>, overrides: Partial<Bindings> 
     ...overrides,
   } as unknown as Bindings
 }
+
+beforeEach(() => {
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date('2026-07-11T12:00:00.000Z'))
+})
 
 afterEach(() => {
   vi.restoreAllMocks()
