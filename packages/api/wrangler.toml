@@ -28,7 +28,7 @@ name = "EMAIL"
 
 # Cron Trigger（定时任务）
 [triggers]
-crons = ["* * * * *", "0 0 * * *"]  # 每分钟评估熔断并恢复 Meta outbox；每天 UTC 00:00 执行完整维护
+crons = ["* * * * *"]  # 每分钟评估熔断；UTC 00:00 由同一 trigger 继续执行完整维护
 
 [[queues.producers]]
 binding = "META_CAPI_QUEUE"

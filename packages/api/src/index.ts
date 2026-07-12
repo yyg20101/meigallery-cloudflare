@@ -277,7 +277,7 @@ app.onError((err, c) => {
 
 // ============================================================
 // Scheduled Handler（Cron Trigger）
-// minute trigger 执行高频公共任务；daily trigger 只执行完整维护任务。
+// minute trigger 执行高频公共任务，并在 UTC 00:00 继续执行完整维护任务。
 // ============================================================
 
 const MINUTE_MAINTENANCE_CRON = '* * * * *'
@@ -325,10 +325,9 @@ async function handleScheduled(event: ScheduledEvent, env: Bindings): Promise<vo
         })
       }
     }
-    return
+    if (!shouldRunDailyMaintenance(event)) return
   }
-
-  if (event.cron !== DAILY_MAINTENANCE_CRON) {
+  else if (event.cron !== DAILY_MAINTENANCE_CRON) {
     console.log('[cron] 未知 trigger，跳过定时任务:', event.cron || 'unknown')
     return
   }
@@ -404,6 +403,13 @@ async function handleScheduled(event: ScheduledEvent, env: Bindings): Promise<vo
       errorCode: 'meta_dataset_quality_collection_failed',
     })
   }
+}
+
+function shouldRunDailyMaintenance(event: ScheduledEvent) {
+  const scheduledAt = new Date(event.scheduledTime)
+  return !Number.isNaN(scheduledAt.getTime())
+    && scheduledAt.getUTCHours() === 0
+    && scheduledAt.getUTCMinutes() === 0
 }
 
 function shouldRecoverRegistrationConversions(event: ScheduledEvent) {
