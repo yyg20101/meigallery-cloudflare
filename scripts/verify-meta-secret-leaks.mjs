@@ -7,6 +7,7 @@ import { isIP } from 'node:net'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
+import { verifyApprovedMetaDatasetQualityContract } from './meta-dataset-quality-contract-lib.mjs'
 
 const execFile = promisify(execFileCallback)
 const MAX_TEXT_FILE_BYTES = 1024 * 1024
@@ -52,6 +53,8 @@ const WRITE_TARGET_PATTERNS = [
 
 export async function scanMetaSecretLeaks(options = {}) {
   const rootDir = path.resolve(options.rootDir || process.cwd())
+  const approvedContractDigest = options.approvedContractDigest
+    ?? await verifyApprovedMetaDatasetQualityContract({ cwd: rootDir }).then(value => value.digest).catch(() => '')
   const findings = []
   const trackedFiles = options.trackedFiles ?? await readTrackedFiles(rootDir)
   const candidates = new Map()
@@ -72,7 +75,7 @@ export async function scanMetaSecretLeaks(options = {}) {
     if (loaded.kind === 'binary') continue
     scannedFileCount += 1
     scanText(candidate.path, loaded.text, findings)
-    if (candidate.evidence) scanEvidence(candidate.path, loaded.text, findings)
+    if (candidate.evidence) scanEvidence(candidate.path, loaded.text, findings, approvedContractDigest)
   }
 
   const normalizedFindings = uniqueFindings(findings)
@@ -535,7 +538,7 @@ function skipSourceWhitespace(text, start) {
   return index
 }
 
-function scanEvidence(relativePath, text, findings) {
+function scanEvidence(relativePath, text, findings, approvedContractDigest) {
   let parsed
   try {
     parsed = JSON.parse(text)
@@ -555,12 +558,14 @@ function scanEvidence(relativePath, text, findings) {
       addFinding(findings, relativePath, 'META_EVIDENCE_BROWSER_ID')
     }
     if (typeof value !== 'string' || value.length === 0) return
-    scanEvidenceString(relativePath, value, findings)
+    const isApprovedContractDigest = (normalizedKey === 'digest' || normalizedKey === 'datasetqualitycontractdigest')
+      && value === approvedContractDigest
+    scanEvidenceString(relativePath, value, findings, { skipMatchIdentifier: isApprovedContractDigest })
   })
   if (!withinBudget) addFinding(findings, relativePath, 'META_EVIDENCE_STRUCTURE_LIMIT')
 }
 
-function scanEvidenceString(relativePath, value, findings) {
+function scanEvidenceString(relativePath, value, findings, options = {}) {
   if (!value) return
   if (containsRawEmail(value)) addFinding(findings, relativePath, 'META_EVIDENCE_RAW_EMAIL')
   if (containsRawIp(value)) addFinding(findings, relativePath, 'META_EVIDENCE_RAW_IP')
@@ -570,7 +575,7 @@ function scanEvidenceString(relativePath, value, findings) {
   if (EMBEDDED_BROWSER_ID_PATTERN.test(value)) {
     addFinding(findings, relativePath, 'META_EVIDENCE_BROWSER_ID')
   }
-  if (EVIDENCE_MATCH_IDENTIFIER_PATTERN.test(value)) {
+  if (!options.skipMatchIdentifier && EVIDENCE_MATCH_IDENTIFIER_PATTERN.test(value)) {
     addFinding(findings, relativePath, 'META_EVIDENCE_MATCH_IDENTIFIER')
   }
 }
