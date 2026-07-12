@@ -238,7 +238,7 @@ Nuxt 后台归因中心
 - `[当前实现]` Meta 健康条分别显示 Pixel attempted、CAPI sent、failed、skipped；不得合并为“已同步”总数。
 - `[当前实现]` readiness 按 blocker 与 warning 分区。blocker 未通过时，`meta_capi_enabled` 保持不可开启；warning 只提示观察项，不伪装为生产放行。
 - `[当前实现]` Owner 仅能在 `meta_tracking_mode=test` 发起严格 Test Event；成功条件为 CAPI `sent` 和 `events_received=1`，不是仅创建审计记录。
-- `[当前实现]` production live evidence 通过 migrations `0041`、`0045` 的一次性 challenge 绑定正式环境与当前 commit；正式域名 Browser/CAPI 使用同组 opaque ID，UI 和 CLI 不展示原始 event ID。
+- `[当前实现]` production live evidence 通过 migrations `0041`、`0045`、`0046` 的一次性 challenge 绑定正式环境、当前 commit 与增强匹配覆盖证明；正式域名 Browser/CAPI 使用同组 opaque ID，UI 和 CLI 不展示原始 event ID。
 - `[当前实现]` 资源 attestation 通过 migration `0042` 的 60 秒 D1 原子一次性 ticket 完成；Owner Cookie 只用于向固定可信 API origin 换票，最终 HMAC attestation 请求不携带 Cookie。
 - `[运维前置]` 发布 UI 的执行顺序为关闭态 -> dev evidence -> migrations `0036..0044` 与资源检查（含 approved contract digest）-> 最终 main commit evidence -> `bootstrap` gate -> fresh `verify:release` 与新报告断言 -> production 部署 -> `post-deploy` attestation -> test -> `full` gate -> production -> CAPI 开关 -> `0 -> 10 -> 50 -> 100` 人工放量与观察。任一步失败先关闭 CAPI，再切 mode 为 `disabled`；系统只能自动降至 `0`。
 - `[外部阻断]` Q5 当前为 `contract_pending`，缺少真实 dev capture、Owner 批准 contract、collector 补充计划及其执行，也缺少当前最终 commit 的真实远端 dev evidence。readiness 必须显示 blocked，不得展示“满足生产候选条件”。

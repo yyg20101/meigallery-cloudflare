@@ -32,6 +32,7 @@ beforeAll(async () => {
   `)
   await applyMigration('0041_meta_live_challenges.sql')
   await applyMigration('0045_meta_live_production.sql')
+  await applyMigration('0046_meta_live_match_coverage.sql')
 }, 30_000)
 
 beforeEach(async () => {
@@ -71,6 +72,14 @@ describe('Meta live Worker challenge', () => {
       expect(payload.data.map((event: { event_id: string }) => event.event_id).sort())
         .toEqual(Object.values(challenge.eventIds).sort())
       expect(payload.test_event_code).toBe('test-code')
+      const contact = payload.data.find((event: { event_name: string }) => event.event_name === 'Contact')
+      const registration = payload.data.find((event: { event_name: string }) => event.event_name === 'CompleteRegistration')
+      expect(contact.user_data).not.toHaveProperty('em')
+      expect(contact.user_data).not.toHaveProperty('external_id')
+      expect(registration.user_data).toMatchObject({
+        em: [expect.stringMatching(/^[0-9a-f]{64}$/)],
+        external_id: [expect.stringMatching(/^[0-9a-f]{64}$/)],
+      })
       return new Response(JSON.stringify({ events_received: 2 }), { status: 200 })
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -85,7 +94,14 @@ describe('Meta live Worker challenge', () => {
     })
 
     const row = await db.prepare('SELECT * FROM meta_live_challenges WHERE id = ?').bind(challenge.challengeId).first<Record<string, unknown>>()
-    expect(row).toMatchObject({ status: 'server_sent', contact_event_id: null, complete_registration_event_id: null })
+    expect(row).toMatchObject({
+      status: 'server_sent',
+      contact_event_id: null,
+      complete_registration_event_id: null,
+      registration_email_covered: 1,
+      registration_external_id_covered: 1,
+      contact_registration_identity_absent: 1,
+    })
     expect(JSON.stringify(row)).not.toContain(challenge.eventIds.Contact)
     expect(JSON.stringify(row)).not.toContain(challenge.eventIds.CompleteRegistration)
     expect(fetchMock).toHaveBeenCalledOnce()

@@ -157,19 +157,13 @@ export function buildProductionMetaLiveReadinessSql(commit, contract) {
     throw new Error('readiness SQL 需要当前 commit 与 approved Dataset Quality contract')
   }
   return `
-    WITH matching AS (
-      SELECT
-        MAX(CASE WHEN event_name = 'CompleteRegistration' AND has_email = 1 THEN 1 ELSE 0 END) AS registration_email,
-        MAX(CASE WHEN event_name = 'CompleteRegistration' AND has_external_id = 1 THEN 1 ELSE 0 END) AS registration_external_id,
-        MAX(CASE WHEN event_name = 'Contact' AND (has_email = 1 OR has_external_id = 1) THEN 1 ELSE 0 END) AS contact_registration_identity
-      FROM analytics_conversion_deliveries WHERE channel = 'meta_capi' AND status = 'sent'
-    )
     SELECT c.environment, c.pixel_id, c.verified_commit, c.verified_at AS connection_verified_at,
       ch.id AS challenge_id, ch.contact_event_digest, ch.complete_registration_event_digest,
-      matching.registration_email, matching.registration_external_id, matching.contact_registration_identity
+      ch.registration_email_covered AS registration_email,
+      ch.registration_external_id_covered AS registration_external_id,
+      CASE WHEN ch.contact_registration_identity_absent = 1 THEN 0 ELSE 1 END AS contact_registration_identity
     FROM meta_connection_verifications c
     JOIN meta_live_challenges ch ON ch.environment = c.environment AND ch.commit_sha = c.verified_commit
-    CROSS JOIN matching
     WHERE c.environment = 'production' AND c.verified_commit = '${commit}' AND c.invalidated_at IS NULL
       AND ch.status = 'server_sent' AND ch.events_received = 2 AND datetime(ch.expires_at) > datetime('now')
     ORDER BY ch.consumed_at DESC LIMIT 1
