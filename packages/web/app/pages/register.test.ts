@@ -19,6 +19,7 @@ describe('register page', () => {
     register.mockResolvedValue({
       id: 1,
       trackingInstructions: [{
+        provider: 'meta',
         deliveryId: 'cdlv_registration_1',
         eventName: 'CompleteRegistration',
         eventId: 'meta:CompleteRegistration:complete_registration:user:1',

@@ -27,6 +27,7 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
       created: true,
       duplicateOf: '',
       trackingInstructions: [{
+        provider: 'meta',
         deliveryId: 'cdlv_registration_42',
         eventName: 'CompleteRegistration',
         eventId: 'meta:CompleteRegistration:complete_registration:user:42',
@@ -269,6 +270,7 @@ function registrationResult() {
     created: true,
     duplicateOf: '',
     trackingInstructions: [{
+      provider: 'meta',
       deliveryId: 'cdlv_registration_42',
       eventName: 'CompleteRegistration' as const,
       eventId: 'meta:CompleteRegistration:complete_registration:user:42',
