@@ -194,6 +194,8 @@ function readSecureOutbox(db: D1Database, deliveryId: string) {
     JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
     WHERE o.delivery_id = ?
       AND o.schema_version = 2
+      AND d.provider = 'meta'
+      AND d.transport = 'server'
       AND d.channel = 'meta_capi'
     LIMIT 1
   `).bind(deliveryId).first<SecureOutboxRow>()
@@ -207,6 +209,8 @@ async function expireOutboxRows(db: D1Database, rows: ExpiredOutboxRow[]) {
     if (isNonTerminalDelivery(row.status, row.error_code)) {
       const transition = await transitionDeliveryStatus(db, {
         id: row.delivery_id,
+        provider: 'meta',
+        transport: 'server',
         channel: 'meta_capi',
         event_name: row.event_name,
         status: row.status as never,

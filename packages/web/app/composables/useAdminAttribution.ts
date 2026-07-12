@@ -6,6 +6,18 @@ export type EvidenceLayer = 'business' | 'pixel' | 'capi' | 'quality'
 export type MetaConnectionState = 'not_configured' | 'unverified' | 'verified' | 'configuration_changed'
 export type MetaCapiRolloutPercentage = 0 | 10 | 50 | 100
 
+export interface AdPlatformConnectionStatusData {
+  provider: 'meta' | 'tiktok' | 'google'
+  environment: 'production'
+  destinationConfigured: boolean
+  serverCredentialConfigured: boolean
+  testCredentialConfigured: boolean
+  mode: 'disabled' | 'test' | 'production'
+  state: 'not_configured' | 'unverified' | 'verified' | 'invalidated'
+  verifiedAt: string
+  verifiedCommit: string
+}
+
 export interface MetaConnectionStatusData {
   state: MetaConnectionState
   environment: 'dev' | 'production'

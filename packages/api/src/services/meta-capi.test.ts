@@ -163,10 +163,10 @@ function createMetaCapiDb(options: {
           if (sql.includes('INSERT INTO analytics_conversion_delivery_daily')) {
             daily.push({
               date: call.params[0],
-              channel: call.params[1],
-              event_name: call.params[2],
-              status: call.params[3],
-              skip_reason: call.params[4],
+              channel: call.params[3],
+              event_name: call.params[4],
+              status: call.params[5],
+              skip_reason: call.params[6],
             })
           }
           return { meta: { changes: 1, rows_written: 1, rows_read: 0, duration: 1 } }
@@ -296,10 +296,10 @@ function createConcurrentSuccessDb() {
     } else if (sql.includes('analytics_conversion_delivery_daily')) {
       changes = sql.includes('WHERE changes() = 1') && lastChanges !== 1 ? 0 : 1
       if (changes && sql.includes('delivery_count + 1')) {
-        const status = sql.includes("'duplicate_suppressed'") ? 'duplicate_suppressed' : String(params[3])
+        const status = sql.includes("'duplicate_suppressed'") ? 'duplicate_suppressed' : String(params[5])
         daily.set(status, (daily.get(status) ?? 0) + 1)
       } else if (changes && sql.includes('delivery_count - 1')) {
-        const status = String(params[3])
+        const status = String(params[5])
         daily.set(status, Math.max(0, (daily.get(status) ?? 0) - 1))
       }
     }

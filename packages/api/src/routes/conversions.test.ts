@@ -159,6 +159,8 @@ function createPixelReceiptDb(options: {
   const calls: Call[] = []
   const delivery = {
     id: 'cdlv_pixel_1',
+    provider: 'meta',
+    transport: 'browser',
     channel: options.channel ?? 'meta_pixel',
     eventId: options.eventId ?? 'meta:Contact:contact:session_1:telegram:floating_contact_panel',
     status: options.status ?? 'pending',
@@ -180,7 +182,7 @@ function createPixelReceiptDb(options: {
     }
     if (call.sql.includes('INSERT INTO analytics_conversion_delivery_daily')) {
       if (failAttemptedDaily) throw new Error('模拟 attempted 日报写入失败')
-      if (state.lastChanges === 1 && call.params[3] === 'attempted') state.dailyAttemptedCount += 1
+      if (state.lastChanges === 1 && call.params[5] === 'attempted') state.dailyAttemptedCount += 1
       state.lastChanges = state.lastChanges === 1 ? 1 : 0
       return { meta: { changes: state.lastChanges, rows_written: state.lastChanges, rows_read: 0, duration: 1 } }
     }
@@ -213,6 +215,8 @@ function createPixelReceiptDb(options: {
           if (sql.includes('FROM analytics_conversion_deliveries')) {
             return {
               id: delivery.id,
+              provider: delivery.provider,
+              transport: delivery.transport,
               channel: delivery.channel,
               external_event_id: delivery.eventId,
               status: delivery.status,

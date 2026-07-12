@@ -41,7 +41,8 @@ beforeAll(async () => {
       status TEXT, summary TEXT, verified_at TEXT, expires_at TEXT
     );
     CREATE TABLE analytics_conversion_deliveries (
-      id TEXT PRIMARY KEY, channel TEXT, status TEXT, error_code TEXT,
+      id TEXT PRIMARY KEY, provider TEXT NOT NULL DEFAULT 'meta',
+      transport TEXT NOT NULL DEFAULT 'server', channel TEXT, status TEXT, error_code TEXT,
       created_at TEXT, rollout_target_percentage INTEGER
     );
     CREATE TABLE admin_audit_logs (

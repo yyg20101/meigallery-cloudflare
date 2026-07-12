@@ -168,6 +168,8 @@ export async function readMetaCircuitSnapshot(db: D1Database): Promise<MetaCircu
         THEN 1 ELSE 0 END), 0) AS retry_exhausted_count
       FROM analytics_conversion_deliveries
       WHERE channel = 'meta_capi'
+        AND provider = 'meta'
+        AND transport = 'server'
         AND status IN ('sent', 'failed')
         AND last_attempt_at >= datetime('now', '-15 minutes')
         AND last_attempt_at <= datetime('now')
@@ -176,6 +178,8 @@ export async function readMetaCircuitSnapshot(db: D1Database): Promise<MetaCircu
       SELECT COUNT(*) AS stale_pending_count
       FROM analytics_conversion_deliveries
       WHERE channel = 'meta_capi'
+        AND provider = 'meta'
+        AND transport = 'server'
         AND status = 'pending'
         AND created_at >= datetime('now', '-15 minutes')
         AND created_at < datetime('now', '-10 minutes')
@@ -184,6 +188,8 @@ export async function readMetaCircuitSnapshot(db: D1Database): Promise<MetaCircu
       SELECT COUNT(*) AS duplicate_suppressed_count
       FROM analytics_conversion_deliveries
       WHERE channel = 'meta_capi'
+        AND provider = 'meta'
+        AND transport = 'server'
         AND duplicate_suppressed_at >= datetime('now', '-15 minutes')
         AND duplicate_suppressed_at <= datetime('now')
     `).first<DuplicateSnapshotRow>(),
@@ -193,6 +199,8 @@ export async function readMetaCircuitSnapshot(db: D1Database): Promise<MetaCircu
         SELECT conversion_action_id
         FROM analytics_conversion_deliveries
         WHERE channel = 'meta_capi'
+          AND provider = 'meta'
+          AND transport = 'server'
           AND created_at >= datetime('now', '-15 minutes')
           AND created_at <= datetime('now')
         GROUP BY conversion_action_id

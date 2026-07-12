@@ -80,6 +80,7 @@ function schemaSql() {
     );
     CREATE TABLE analytics_conversion_deliveries (
       id TEXT PRIMARY KEY, conversion_action_id TEXT NOT NULL,
+      provider TEXT NOT NULL DEFAULT 'meta', transport TEXT NOT NULL DEFAULT 'server',
       channel TEXT NOT NULL, status TEXT NOT NULL
     );
   `

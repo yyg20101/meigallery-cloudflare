@@ -9,6 +9,7 @@ type SourceFile = { filePath: string; source: string }
 
 const appDir = join(cwd(), 'app')
 const adapterPath = resolve(appDir, 'adapters/metaPixel.client.ts')
+const platformAdapterPath = resolve(appDir, 'adapters/adPlatformBrowser.client.ts')
 const useTrackingPath = resolve(appDir, 'composables/useTracking.ts')
 const forbiddenImportTargets = new Set([
   resolve(appDir, 'composables/useConversionTracking.ts'),
@@ -38,7 +39,7 @@ function inspectSources(files: SourceFile[]) {
     }
     if (
       normalizeTarget(filePath) !== normalizeTarget(adapterPath)
-      && normalizeTarget(filePath) !== normalizeTarget(useTrackingPath)
+      && normalizeTarget(filePath) !== normalizeTarget(platformAdapterPath)
       && usesIdentifier(filePath, source, 'metaPixelAdapter')
     ) {
       violations.push(`${relativePath}: direct metaPixelAdapter identifier`)
@@ -47,8 +48,11 @@ function inspectSources(files: SourceFile[]) {
     for (const specifier of readImportSpecifiers(filePath, source)) {
       const target = resolveImportTarget(filePath, specifier)
       if (!target) continue
-      if (normalizeTarget(target) === normalizeTarget(adapterPath) && normalizeTarget(filePath) !== normalizeTarget(useTrackingPath)) {
+      if (normalizeTarget(target) === normalizeTarget(adapterPath) && normalizeTarget(filePath) !== normalizeTarget(platformAdapterPath)) {
         violations.push(`${relativePath}: imports Meta Pixel adapter`)
+      }
+      if (normalizeTarget(target) === normalizeTarget(platformAdapterPath) && normalizeTarget(filePath) !== normalizeTarget(useTrackingPath)) {
+        violations.push(`${relativePath}: imports ad platform adapter`)
       }
       if (forbiddenImportTargets.has(withTypeScriptExtension(target))) {
         violations.push(`${relativePath}: imports legacy Tracking module`)
@@ -131,7 +135,7 @@ describe('Web Tracking 架构边界', () => {
     expect(obsoletePaths.filter(filePath => existsSync(join(appDir, filePath)))).toEqual([])
   })
 
-  it('整个非测试 app 只有 useTracking 可导入 adapter 且只有 adapter 可访问 window.fbq', () => {
+  it('业务层只访问通用广告 adapter，只有平台 adapter 可访问 Meta adapter 和 window.fbq', () => {
     const files = collectSourceFiles(appDir).map(filePath => ({ filePath, source: readFileSync(filePath, 'utf8') }))
 
     expect(inspectSources(files)).toEqual([])
@@ -147,7 +151,8 @@ describe('Web Tracking 架构边界', () => {
       { filePath: join(appDir, 'layouts/legacy.ts'), source: "import '../composables/useConversionTracking'" },
       { filePath: join(appDir, 'composables/bypass.ts'), source: 'window.fbq?.()' },
       { filePath: join(appDir, 'components/auto-import.vue'), source: '<script setup>metaPixelAdapter.pageView()</script>' },
-      { filePath: useTrackingPath, source: "import { metaPixelAdapter } from '~/adapters/metaPixel.client'; metaPixelAdapter.pageView()" },
+      { filePath: useTrackingPath, source: "import { dispatchAdBrowserInstruction } from '~/adapters/adPlatformBrowser.client'; void dispatchAdBrowserInstruction" },
+      { filePath: platformAdapterPath, source: "import { metaPixelAdapter } from './metaPixel.client'; void metaPixelAdapter" },
       { filePath: adapterPath, source: 'export const metaPixelAdapter = {}; window.fbq?.()' },
       { filePath: join(appDir, 'pages/allowed.test.ts'), source: "import('../adapters/metaPixel.client'); metaPixelAdapter.pageView(); window.fbq?.()" },
     ])
@@ -182,11 +187,11 @@ describe('Web Tracking 架构边界', () => {
     ]))
   })
 
-  it('ESLint 允许 useTracking 导入 Meta Pixel adapter', async () => {
+  it('ESLint 允许 useTracking 导入通用广告 adapter', async () => {
     const projectRoot = resolve(cwd(), '../..')
     const eslint = new ESLint({ cwd: projectRoot })
     const [result] = await eslint.lintText(
-      "import { metaPixelAdapter } from '~/adapters/metaPixel.client'\nvoid metaPixelAdapter\n",
+      "import { dispatchAdBrowserInstruction } from '~/adapters/adPlatformBrowser.client'\nvoid dispatchAdBrowserInstruction\n",
       { filePath: join(projectRoot, 'packages/web/app/composables/useTracking.ts') },
     )
 

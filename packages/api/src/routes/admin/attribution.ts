@@ -41,6 +41,7 @@ import {
   MetaLiveChallengeError,
 } from '../../services/meta-live-challenge'
 import { issueMetaResourceAttestationTicket } from '../../services/meta-resource-attestation-ticket'
+import { listAdPlatformConnections } from '../../services/ad-platform/status'
 
 export const adminAttributionRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -65,6 +66,15 @@ const META_CAPI_CRITICAL_QUALITY_ERROR_CODES = [
   ...META_CAPI_PERMISSION_ERROR_CODES,
   'retry_exhausted',
 ] as const
+
+adminAttributionRoutes.get('/platforms', async (c) => {
+  try {
+    return c.json({ data: await listAdPlatformConnections(c.env) })
+  }
+  catch {
+    return dashboardUnavailable(c)
+  }
+})
 
 adminAttributionRoutes.get('/summary', async (c) => {
   const range = parseRangeOrError(c)
@@ -211,6 +221,7 @@ adminAttributionRoutes.get('/overview', async (c) => {
         COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'duplicate_suppressed' THEN delivery_count ELSE 0 END), 0) AS capi_duplicate_suppressed_count
       FROM analytics_conversion_delivery_daily
       WHERE date BETWEEN ? AND ?
+        AND provider = 'meta'
         AND event_name IN ('Contact', 'CompleteRegistration')
     `, [range.from, range.to]),
     queryAll(c.env.DB, `
@@ -225,6 +236,7 @@ adminAttributionRoutes.get('/overview', async (c) => {
         COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'duplicate_suppressed' THEN delivery_count ELSE 0 END), 0) AS capi_duplicate_suppressed_count
       FROM analytics_conversion_delivery_daily
       WHERE date BETWEEN ? AND ?
+        AND provider = 'meta'
         AND event_name IN ('Contact', 'CompleteRegistration')
       GROUP BY date
       ORDER BY date ASC
@@ -234,6 +246,8 @@ adminAttributionRoutes.get('/overview', async (c) => {
       FROM analytics_conversion_deliveries d
       JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
       WHERE d.channel = 'meta_capi'
+        AND d.provider = 'meta'
+        AND d.transport = 'server'
         AND d.status = 'sent'
         AND d.sent_at IS NOT NULL
         AND a.action_type IN ('contact', 'complete_registration')
@@ -492,12 +506,14 @@ adminAttributionRoutes.get('/meta', async (c) => {
         COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'duplicate_suppressed' THEN delivery_count ELSE 0 END), 0) AS duplicate_suppressed_count
       FROM analytics_conversion_delivery_daily
       WHERE date BETWEEN ? AND ?
+        AND provider = 'meta'
         AND event_name IN ('Contact', 'CompleteRegistration')
     `, [range.from, range.to]),
     queryAll(c.env.DB, `
       SELECT channel, event_name, status, skip_reason, SUM(delivery_count) AS delivery_count
       FROM analytics_conversion_delivery_daily
       WHERE date BETWEEN ? AND ?
+        AND provider = 'meta'
         AND event_name IN ('Contact', 'CompleteRegistration')
       GROUP BY channel, event_name, status, skip_reason
       ORDER BY channel ASC, event_name ASC, status ASC
@@ -507,6 +523,8 @@ adminAttributionRoutes.get('/meta', async (c) => {
       FROM analytics_conversion_deliveries d
       JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
       WHERE d.channel = 'meta_capi'
+        AND d.provider = 'meta'
+        AND d.transport = 'server'
         AND d.status = 'sent'
         AND d.sent_at IS NOT NULL
         AND a.action_type IN ('contact', 'complete_registration')
@@ -521,6 +539,8 @@ adminAttributionRoutes.get('/meta', async (c) => {
       FROM analytics_conversion_deliveries d
       JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
       WHERE d.channel = 'meta_capi'
+        AND d.provider = 'meta'
+        AND d.transport = 'server'
         AND d.status = 'failed'
         AND d.error_code = 'retry_exhausted'
         AND a.date BETWEEN ? AND ?
@@ -550,6 +570,8 @@ adminAttributionRoutes.get('/meta', async (c) => {
       FROM analytics_conversion_deliveries d
       JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
       WHERE d.channel = 'meta_capi'
+        AND d.provider = 'meta'
+        AND d.transport = 'server'
         AND a.date >= date('now', '-6 days')
         AND a.action_type IN ('contact', 'complete_registration')
     `, []),
@@ -608,6 +630,7 @@ adminAttributionRoutes.get('/duplicates', async (c) => {
         COALESCE(SUM(delivery_count), 0) AS delivery_count
       FROM analytics_conversion_delivery_daily
       WHERE date BETWEEN ? AND ?
+        AND provider = 'meta'
         AND event_name IN ('Contact', 'CompleteRegistration')
     `, [range.from, range.to]),
     queryFirst(c.env.DB, `
@@ -685,6 +708,8 @@ async function buildReadinessResponse(c: AdminAttributionContext) {
         FROM analytics_conversion_deliveries d
         JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
         WHERE d.channel = 'meta_capi'
+          AND d.provider = 'meta'
+          AND d.transport = 'server'
           AND d.status = 'failed'
           AND d.error_code = 'retry_exhausted'
           AND a.date BETWEEN ? AND ?
@@ -716,6 +741,8 @@ async function buildReadinessResponse(c: AdminAttributionContext) {
         FROM analytics_conversion_deliveries d
         JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
         WHERE d.channel = 'meta_capi'
+          AND d.provider = 'meta'
+          AND d.transport = 'server'
           AND d.status = 'pending'
           AND datetime(d.created_at) < datetime('now', '-10 minutes')
           AND a.date BETWEEN ? AND ?
@@ -726,6 +753,8 @@ async function buildReadinessResponse(c: AdminAttributionContext) {
         FROM analytics_conversion_deliveries d
         JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
         WHERE d.channel = 'meta_capi'
+          AND d.provider = 'meta'
+          AND d.transport = 'server'
           AND d.status = 'failed'
           AND d.error_code GLOB 'meta_http_4*'
           AND d.error_code <> 'meta_http_429'
@@ -756,6 +785,8 @@ async function buildReadinessResponse(c: AdminAttributionContext) {
         FROM analytics_conversion_deliveries d
         JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
         WHERE d.channel = 'meta_capi'
+          AND d.provider = 'meta'
+          AND d.transport = 'server'
           AND a.date BETWEEN ? AND ?
           AND a.action_type IN ('contact', 'complete_registration')
       `, [range.from, range.to]),
@@ -765,6 +796,7 @@ async function buildReadinessResponse(c: AdminAttributionContext) {
           COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'sent' THEN delivery_count ELSE 0 END), 0) AS capi_sent_count
         FROM analytics_conversion_delivery_daily
         WHERE date BETWEEN ? AND ?
+          AND provider = 'meta'
           AND event_name IN ('Contact', 'CompleteRegistration')
       `, [range.from, range.to]),
       releaseCommit
@@ -1492,6 +1524,8 @@ async function readMetaRolloutMetricsWithUsage(
           ) THEN 1 ELSE 0 END), 0) AS critical_quality_diagnostic_count
       FROM analytics_conversion_deliveries
       WHERE channel = 'meta_capi'
+        AND provider = 'meta'
+        AND transport = 'server'
         AND rollout_target_percentage = ?
     `).bind(
       ...META_CAPI_PERMISSION_ERROR_CODES,

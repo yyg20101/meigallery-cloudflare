@@ -316,6 +316,7 @@ authRoutes.post('/register', async (c) => {
     membershipRank: 0,
     membershipExpiry: null,
     pixelEvents,
+    trackingInstructions: pixelEvents.map(event => ({ ...event, provider: 'meta' })),
   }, 201)
 })
 

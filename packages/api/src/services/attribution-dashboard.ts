@@ -64,6 +64,8 @@ export async function queryAttributionSummary(db: D1Database, range: AnalyticsDa
       JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
       WHERE a.date BETWEEN ? AND ?
         AND a.action_type IN ${ACTIVE_ACTION_SQL}
+        AND d.provider = 'meta'
+        AND d.transport = 'server'
         AND d.channel = 'meta_capi'
         AND d.status = 'failed'
         AND d.error_code = 'retry_exhausted'
@@ -104,6 +106,8 @@ export async function queryAttributionTrends(db: D1Database, range: AnalyticsDat
       JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
       WHERE a.date BETWEEN ? AND ?
         AND a.action_type IN ${ACTIVE_ACTION_SQL}
+        AND d.provider = 'meta'
+        AND d.transport = 'server'
         AND d.channel = 'meta_capi'
         AND d.status = 'failed'
         AND d.error_code = 'retry_exhausted'
@@ -168,6 +172,8 @@ export async function queryAttributionQuality(
       JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
       WHERE a.date BETWEEN ? AND ?
         AND a.action_type IN ${ACTIVE_ACTION_SQL}
+        AND d.provider = 'meta'
+        AND d.transport = 'server'
         AND d.channel = 'meta_capi'
         AND d.status IN ${PLANNED_CAPI_STATUS_SQL}
       GROUP BY a.date
@@ -244,6 +250,7 @@ export async function queryAttributionBreakdown(
         MAX(CASE WHEN d.status = 'pending' THEN 1 ELSE 0 END) AS pending
       FROM analytics_conversion_deliveries d
       JOIN action_facts af ON af.id = d.conversion_action_id
+      WHERE d.provider = 'meta'
       GROUP BY d.conversion_action_id
     )
     SELECT
@@ -289,6 +296,7 @@ function deliveryAggregateSql() {
       COALESCE(SUM(CASE WHEN status = 'pending' THEN delivery_count ELSE 0 END), 0) AS pending_count
     FROM analytics_conversion_delivery_daily
     WHERE date BETWEEN ? AND ?
+      AND provider = 'meta'
       AND event_name IN ${ACTIVE_EVENT_SQL}`
 }
 

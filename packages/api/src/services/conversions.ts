@@ -1,7 +1,10 @@
 import type {
   ActiveConversionActionType,
+  AdDeliveryTransport,
+  AdPlatformProvider,
   AnalyticsConsentState,
   AnalyticsSourceChannel,
+  AdBrowserInstruction,
   ConversionSkipReason,
   MetaCapiSensitiveContext,
   MetaPixelInstruction,
@@ -30,6 +33,7 @@ import {
   type MetaCapiEncryptedEnvelope,
 } from '../utils/meta-capi-crypto'
 import { transitionDeliveryStatus } from './meta-capi'
+import { legacyChannelForTransport, mapConversionToPlatformEvent } from './ad-platform/registry'
 import { createSecureOutboxStatement, enqueueSecureMetaCapiDelivery } from './meta-capi-secure-outbox'
 import { requireVerifiedMetaConnection } from './meta-connection'
 import {
@@ -91,6 +95,7 @@ export interface RecordConversionResult {
   created: boolean
   duplicateOf: string
   pixelEvents: MetaPixelInstruction[]
+  trackingInstructions?: AdBrowserInstruction[]
 }
 
 type RecordActiveConversionInput = Omit<RecordConversionInput, 'actionType'>
@@ -140,6 +145,8 @@ export interface MarkPixelAttemptedResult {
 
 type PlannedDelivery = {
   deliveryId: string
+  provider: AdPlatformProvider
+  transport: AdDeliveryTransport
   channel: 'meta_pixel' | 'meta_capi'
   eventName: NonNullable<ReturnType<typeof metaEventForConversion>>
   eventId: string
@@ -351,7 +358,14 @@ async function recordActiveConversion(
     const pixelEvents = committedDeliveries.flatMap(delivery => delivery.pixelInstruction ? [delivery.pixelInstruction] : [])
     await finalizeCapiDeliveries(env, committedDeliveries)
 
-    return { id, actionType: normalizedInput.actionType, created: true, duplicateOf: '', pixelEvents }
+    return {
+      id,
+      actionType: normalizedInput.actionType,
+      created: true,
+      duplicateOf: '',
+      pixelEvents,
+      trackingInstructions: pixelEvents.map(event => ({ ...event, provider: 'meta' })),
+    }
   }
   catch (error) {
     if (ownsClaim) await releaseConversionDedupeClaim(env.DB, claim)
@@ -396,13 +410,15 @@ export async function markPixelAttempted(
   claims: PixelReceiptClaims,
 ): Promise<MarkPixelAttemptedResult> {
   const delivery = await db.prepare(`
-    SELECT d.id, d.channel, d.external_event_id, d.status, d.event_name, a.date
+    SELECT d.id, d.provider, d.transport, d.channel, d.external_event_id, d.status, d.event_name, a.date
     FROM analytics_conversion_deliveries d
     JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
     WHERE d.id = ?
     LIMIT 1
   `).bind(claims.deliveryId).first<{
     id: string
+    provider: string
+    transport: string
     channel: string
     external_event_id: string
     status: string
@@ -410,7 +426,11 @@ export async function markPixelAttempted(
     date: string
   }>()
 
-  if (!delivery || delivery.channel !== 'meta_pixel' || delivery.external_event_id !== claims.eventId) {
+  if (!delivery
+    || delivery.provider !== 'meta'
+    || delivery.transport !== 'browser'
+    || delivery.channel !== 'meta_pixel'
+    || delivery.external_event_id !== claims.eventId) {
     throw new Error('Pixel 回执无效')
   }
   if (delivery.status === 'attempted') return { deliveryId: delivery.id, attempted: false }
@@ -418,6 +438,8 @@ export async function markPixelAttempted(
 
   const transition = await transitionDeliveryStatus(db, {
     id: delivery.id,
+    provider: delivery.provider,
+    transport: delivery.transport,
     channel: delivery.channel,
     event_name: delivery.event_name,
     status: 'pending',
@@ -691,8 +713,7 @@ async function planMetaDeliveries(
   capiEncryption: CapiEncryptionPlan,
 ): Promise<PlannedDelivery[]> {
   if (input.consentState !== 'granted' || settings.mode === 'disabled' || !settings.pixelId) return []
-  const eventName = metaEventForConversion(input.actionType)
-  if (!eventName) return []
+  const eventName = mapConversionToPlatformEvent('meta', input.actionType)
   const eventId = await buildExternalEventId(env.SESSION_SECRET, {
     actionType: input.actionType,
     sessionId: input.sessionId || '',
@@ -703,21 +724,23 @@ async function planMetaDeliveries(
     actionTarget: input.actionTarget,
     metaEventName: eventName,
   })
-  const channels = [
-    ...(settings.pixelEnabled ? ['meta_pixel' as const] : []),
-    ...(settings.capiEnabled ? ['meta_capi' as const] : []),
+  const transports = [
+    ...(settings.pixelEnabled ? ['browser' as const] : []),
+    ...(settings.capiEnabled ? ['server' as const] : []),
   ]
   const connectionBlocked = capiEncryption.state === 'skipped' && capiEncryption.reason === 'connection_unverified'
   const connectionRevision = 'connectionRevision' in capiEncryption
     ? capiEncryption.connectionRevision ?? null
     : null
-  return Promise.all(channels.map(async channel => {
+  return Promise.all(transports.map(async transport => {
     const deliveryId = generateId('cdlv')
+    const channel = legacyChannelForTransport('meta', transport)
     const capiSkipped = channel === 'meta_capi' && capiEncryption.state === 'skipped'
     const channelSkipped = connectionBlocked || capiSkipped
     const skipReason = channelSkipped && capiEncryption.state === 'skipped' ? capiEncryption.reason : ''
     const pixelInstruction = channel === 'meta_pixel' && !channelSkipped
       ? {
+          provider: 'meta' as const,
           deliveryId,
           eventName,
           eventId,
@@ -744,6 +767,8 @@ async function planMetaDeliveries(
       : undefined
     return {
       deliveryId,
+      provider: 'meta',
+      transport,
       channel,
       eventName,
       eventId,
@@ -779,9 +804,10 @@ function conversionDeliveryStatement(db: D1Database, delivery: PlannedDelivery, 
       id, conversion_action_id, channel, external_event_id, event_name,
       status, skip_reason, has_fbp, has_fbc, has_email, has_external_id,
       encryption_key_id, tracking_mode, meta_connection_revision,
-      rollout_target_percentage, rollout_effective_percentage, rollout_bucket, updated_at
+      rollout_target_percentage, rollout_effective_percentage, rollout_bucket,
+      provider, transport, connection_revision, updated_at
     )
-    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')
     WHERE EXISTS (SELECT 1 FROM analytics_conversion_actions WHERE id = ?)
   `).bind(
     delivery.deliveryId,
@@ -801,6 +827,9 @@ function conversionDeliveryStatement(db: D1Database, delivery: PlannedDelivery, 
     delivery.rolloutTargetPercentage,
     delivery.rolloutEffectivePercentage,
     delivery.rolloutBucket,
+    delivery.provider,
+    delivery.transport,
+    delivery.metaConnectionRevision,
     actionId,
   )
 }
@@ -1041,15 +1070,23 @@ function deliveryDailyStatement(
 ) {
   return db.prepare(`
     INSERT INTO analytics_conversion_delivery_daily (
-      date, channel, event_name, status, skip_reason, delivery_count, updated_at
+      date, provider, transport, channel, event_name, status, skip_reason, delivery_count, updated_at
     )
-    SELECT ?, ?, ?, ?, ?, 1, datetime('now')
+    SELECT ?, ?, ?, ?, ?, ?, ?, 1, datetime('now')
     WHERE changes() = 1
-    ON CONFLICT(date, channel, event_name, status, skip_reason)
+    ON CONFLICT(date, provider, transport, event_name, status, skip_reason)
     DO UPDATE SET
       delivery_count = analytics_conversion_delivery_daily.delivery_count + 1,
       updated_at = datetime('now')
-  `).bind(date, delivery.channel, delivery.eventName, delivery.status, delivery.skipReason)
+  `).bind(
+    date,
+    delivery.provider,
+    delivery.transport,
+    delivery.channel,
+    delivery.eventName,
+    delivery.status,
+    delivery.skipReason,
+  )
 }
 
 function conversionDedupeKey(input: RecordConversionInput, occurredDate: string) {

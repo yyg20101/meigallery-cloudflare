@@ -54,6 +54,8 @@ function mockJsonFor(name, options = {}) {
   if (name === 'meta-migration-query-schema' || name === 'meta-migration-empty-query-schema') {
     return JSON.stringify([{ results: [{
       delivery_unique_index: 1,
+      provider_external_unique_index: 1,
+      ad_platform_core_columns: 3,
       circuit_index_count: 4,
       challenge_table: 1,
       challenge_table_sql: "CREATE TABLE meta_live_challenges (... CHECK (environment = 'production'))",
@@ -93,10 +95,11 @@ describe('Meta migration 演练', () => {
     'meta-migration-apply-0044',
     'meta-migration-apply-0045',
     'meta-migration-apply-0046',
+    'meta-migration-apply-0047',
     'meta-migration-query-history',
     'meta-migration-query-schema',
     'meta-migration-query-setting',
-    'meta-migration-empty-apply-0001-0046',
+    'meta-migration-empty-apply-0001-0047',
     'meta-migration-empty-query-schema',
   ]) {
     it(`当 ${name} 命令失败时演练失败`, async () => {
@@ -187,7 +190,8 @@ describe('Meta migration 演练', () => {
     assert.ok(names.indexOf('meta-migration-apply-0043') < names.indexOf('meta-migration-apply-0044'))
     assert.ok(names.indexOf('meta-migration-apply-0044') < names.indexOf('meta-migration-apply-0045'))
     assert.ok(names.indexOf('meta-migration-apply-0045') < names.indexOf('meta-migration-apply-0046'))
-    assert.ok(names.includes('meta-migration-empty-apply-0001-0046'))
+    assert.ok(names.indexOf('meta-migration-apply-0046') < names.indexOf('meta-migration-apply-0047'))
+    assert.ok(names.includes('meta-migration-empty-apply-0001-0047'))
     assert.ok(names.includes('meta-migration-empty-query-schema'))
   })
 
@@ -200,6 +204,7 @@ describe('Meta migration 演练', () => {
     ['Dataset Quality contract digest 列', 'quality_contract_digest_column', 0],
     ['Dataset Quality contract digest 索引', 'quality_contract_digest_index', 0],
     ['Meta live 匹配覆盖列', 'challenge_match_coverage_columns', 2],
+    ['广告平台核心列', 'ad_platform_core_columns', 2],
   ]) {
     it(`${label} 不精确时旧库演练 fail closed`, async () => {
       const runCommand = async (_command, _args, options = {}) => {
@@ -214,7 +219,7 @@ describe('Meta migration 演练', () => {
 
       const result = await runMetaMigrationVerification({ runCommand })
       assert.equal(result.status, 'failed')
-      assert.match(result.error, /0040-0046 schema/)
+      assert.match(result.error, /0040-0047 schema/)
     })
   }
 
@@ -342,7 +347,10 @@ function remotePreflightRunner(calls, options) {
   return async (command, args, runOptions) => {
     calls.push({ command, args, options: runOptions })
     const stdout = runOptions.name === 'meta-migration-remote-table-check'
-      ? JSON.stringify([{ results: [{ table_present: options.tablePresent ? 1 : 0 }] }])
+      ? JSON.stringify([{ results: [{
+          table_present: options.tablePresent ? 1 : 0,
+          platform_core_column_count: options.platformCorePresent ? 2 : 0,
+        }] }])
       : JSON.stringify([{ results: [{ duplicate_group_count: options.duplicateGroupCount ?? 0 }] }])
     return passedStep(runOptions.name, stdout)
   }

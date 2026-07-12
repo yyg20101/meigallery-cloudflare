@@ -72,6 +72,7 @@ beforeAll(async () => {
     '0037_meta_connection_revision.sql',
     '0038_conversion_dedupe_claims.sql',
     '0039_meta_capi_v2_operations.sql',
+    '0047_ad_platform_delivery_core.sql',
   ]) await applyMigration(name)
 }, 30_000)
 

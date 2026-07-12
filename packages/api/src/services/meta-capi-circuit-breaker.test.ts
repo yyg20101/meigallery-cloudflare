@@ -45,7 +45,9 @@ beforeAll(async () => {
       attempt_count INTEGER NOT NULL DEFAULT 0,
       last_attempt_at TEXT,
       duplicate_suppressed_at TEXT,
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      provider TEXT GENERATED ALWAYS AS ('meta') VIRTUAL,
+      transport TEXT GENERATED ALWAYS AS ('server') VIRTUAL
     );
     CREATE TABLE meta_capi_incidents (
       id TEXT PRIMARY KEY,

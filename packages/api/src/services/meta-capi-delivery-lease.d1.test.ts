@@ -193,9 +193,9 @@ async function seedDelivery(deliveryId: string, eventId: string) {
     `).bind(deliveryId, actionId, eventId, REVISION),
     db.prepare(`
       INSERT INTO analytics_conversion_delivery_daily (
-        date, channel, event_name, status, skip_reason, delivery_count
-      ) VALUES ('2026-07-11', 'meta_capi', 'Contact', 'pending', '', 1)
-      ON CONFLICT(date, channel, event_name, status, skip_reason)
+        date, provider, transport, channel, event_name, status, skip_reason, delivery_count
+      ) VALUES ('2026-07-11', 'meta', 'server', 'meta_capi', 'Contact', 'pending', '', 1)
+      ON CONFLICT(date, provider, transport, event_name, status, skip_reason)
       DO UPDATE SET delivery_count = delivery_count + 1
     `),
   ])
@@ -287,6 +287,7 @@ function schemaSql() {
     );
     CREATE TABLE analytics_conversion_deliveries (
       id TEXT PRIMARY KEY, conversion_action_id TEXT NOT NULL, channel TEXT NOT NULL,
+      provider TEXT NOT NULL DEFAULT 'meta', transport TEXT NOT NULL DEFAULT 'server',
       external_event_id TEXT NOT NULL, event_name TEXT NOT NULL, status TEXT NOT NULL,
       skip_reason TEXT NOT NULL DEFAULT '', error_code TEXT NOT NULL DEFAULT '',
       error_message TEXT NOT NULL DEFAULT '', attempt_count INTEGER NOT NULL DEFAULT 0,
@@ -300,10 +301,11 @@ function schemaSql() {
       iv TEXT NOT NULL, ciphertext TEXT NOT NULL, tag TEXT NOT NULL, expires_at TEXT NOT NULL
     );
     CREATE TABLE analytics_conversion_delivery_daily (
-      date TEXT NOT NULL, channel TEXT NOT NULL, event_name TEXT NOT NULL,
+      date TEXT NOT NULL, provider TEXT NOT NULL DEFAULT 'meta', transport TEXT NOT NULL DEFAULT 'server',
+      channel TEXT NOT NULL, event_name TEXT NOT NULL,
       status TEXT NOT NULL, skip_reason TEXT NOT NULL DEFAULT '', delivery_count INTEGER NOT NULL,
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-      UNIQUE(date, channel, event_name, status, skip_reason)
+      UNIQUE(date, provider, transport, event_name, status, skip_reason)
     );
   `
 }

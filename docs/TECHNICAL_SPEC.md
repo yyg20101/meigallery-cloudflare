@@ -631,11 +631,14 @@ INSERT INTO site_settings (key, value) VALUES
 | 表 | 状态 | 用途 |
 |------|------|------|
 | `analytics_conversion_actions` | `[当前实现]` | 站内转化事实；新写入只由 `recordContact()`、`recordRegistration()` 和注册事实修复函数创建 `contact` / `complete_registration`。历史 schema 继续只读兼容 `lead`、`start_trial` 和既有 `membership_grant`，不删除存量数据。 |
-| `analytics_conversion_deliveries` | `[当前实现]` | Pixel / Meta CAPI delivery 账本，记录 channel、`external_event_id`、状态、跳过原因、失败错误、重试次数和发送时间。 |
+| `analytics_conversion_deliveries` | `[当前实现]` | 广告平台投递账本，记录 provider、transport、`external_event_id`、连接版本、状态、跳过原因、失败错误、重试次数和发送时间。 |
 | `analytics_conversion_daily` | `[当前实现]` | 按日期、事件、来源、campaign、utm_content 等维度聚合站内转化，用于后台趋势和投放对比。 |
 | `analytics_conversion_delivery_daily` | `[当前实现]` | 按日期、channel、事件和 delivery 状态聚合同步结果，用于 Meta 同步健康和发布检查。 |
 
 实现约束：
+
+- migration `0047_ad_platform_delivery_core.sql` 为 delivery 增加通用 `provider`、`transport`、`connection_revision`，并将唯一目标约束改为 `conversion_action_id + provider + transport`。旧 `channel` / `meta_connection_revision` 只在兼容期保留；新增平台必须通过 adapter registry 接入，不得复制业务事实服务。
+- API 优先返回 provider-aware `trackingInstructions`，前端通过广告平台 adapter registry 执行。`pixelEvents` 仅为 Meta 兼容字段，后续在调用方全部迁移后单独删除。
 
 - 正式活动 Meta 事件严格限定为 `Contact`、`CompleteRegistration`；`Lead`、`StartTrial` 仅为历史读取值，sender 与 recovery 均不得再次发送。
 - `/api/conversions/events` 为公开联系命令入口，仅允许提交 `contact`；完成注册由注册 API 的服务端事务创建。`lead`、`complete_registration`、`start_trial` 和 `membership_grant` 的公开提交均返回明确 4xx。

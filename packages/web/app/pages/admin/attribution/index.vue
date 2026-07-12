@@ -10,6 +10,7 @@ import type {
   AttributionReadinessData,
   AttributionSummaryData,
   AttributionTrendsData,
+  AdPlatformConnectionStatusData,
   MetaIncident,
   MetaStatusData,
 } from '~/composables/useAdminAttribution'
@@ -54,6 +55,7 @@ const breakdown = useAdminAttribution<BreakdownData>('/api/admin/attribution/bre
   query: { dimension: 'utm_campaign', limit: 8 },
 })
 const metaStatus = useAdminAttribution<MetaStatusData>('/api/admin/attribution/meta/status', requestOptions)
+const platforms = useAdminAttribution<AdPlatformConnectionStatusData[]>('/api/admin/attribution/platforms', requestOptions)
 const readiness = useAdminAttribution<AttributionReadinessData>('/api/admin/attribution/readiness', requestOptions)
 const duplicates = useAdminAttribution<DuplicateData>('/api/admin/attribution/duplicates', requestOptions)
 const incidents = useAdminAttribution<IncidentData>('/api/admin/attribution/meta/incidents', {
@@ -61,7 +63,7 @@ const incidents = useAdminAttribution<IncidentData>('/api/admin/attribution/meta
   query: { status: 'all', limit: 20 },
 })
 
-const sources = [summary, trends, quality, breakdown, metaStatus, readiness, duplicates, incidents]
+const sources = [summary, trends, quality, breakdown, platforms, metaStatus, readiness, duplicates, incidents]
 const loading = computed(() => sources.some(source => source.loading.value))
 const error = computed(() => sources.map(source => source.error.value).find(Boolean) || '')
 const business = computed(() => summary.data.value?.business ?? { contactCount: 0, completeRegistrationCount: 0, actionCount: 0 })
@@ -143,8 +145,8 @@ function formatCount(value: unknown) {
   <AttributionPageShell
     v-model:range="rangeState.range.value"
     v-model:date="rangeState.date.value"
-    title="Meta 归因质量"
-    description="按时间比较站内事实、Pixel 尝试、CAPI 接收与 Meta 质量，定位投放和投递问题。"
+    title="广告归因质量"
+    description="按平台比较站内事实、浏览器尝试、服务器接收与平台质量，定位投放和投递问题。"
     :loading="loading"
     :error="error"
     :usage="summary.usage.value"
@@ -164,8 +166,18 @@ function formatCount(value: unknown) {
       <section data-attribution-section="connection" class="min-w-0 border-b border-gray-200 px-3 py-5 sm:px-5">
         <div class="mb-4">
           <p class="text-xs font-medium text-gray-400">01 · 连接状态</p>
-          <h2 class="mt-1 text-base font-semibold text-gray-900">Meta 连接与当前活动</h2>
+          <h2 class="mt-1 text-base font-semibold text-gray-900">广告平台连接</h2>
+          <p class="mt-1 text-sm text-gray-500">ID 与凭证状态按同一连接展示，凭证值不会返回前端。</p>
         </div>
+        <div class="mb-5 divide-y divide-gray-200 border-y border-gray-200">
+          <div v-for="connection in platforms.data.value || []" :key="connection.provider" class="grid gap-2 px-1 py-3 text-sm sm:grid-cols-[8rem_1fr_auto] sm:items-center">
+            <strong class="uppercase text-gray-900">{{ connection.provider }}</strong>
+            <span class="text-gray-500">目标 ID {{ connection.destinationConfigured ? '已配置' : '未配置' }} · Server 凭证 {{ connection.serverCredentialConfigured ? '已配置' : '未配置' }} · {{ connection.mode }}</span>
+            <span :class="connection.state === 'verified' ? 'text-emerald-700' : 'text-amber-700'" class="font-medium">{{ connection.state === 'verified' ? '已验证' : '待验证' }}</span>
+          </div>
+          <p v-if="!platforms.data.value?.length" class="px-1 py-4 text-sm text-gray-500">尚未取得平台连接状态</p>
+        </div>
+        <h3 class="mb-3 text-sm font-semibold text-gray-900">Meta 运维状态</h3>
         <MetaConnectionStatus
           :connection="metaStatus.data.value?.connection || null"
           :activity="metaStatus.data.value?.activity || null"

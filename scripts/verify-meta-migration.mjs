@@ -5,7 +5,7 @@ import { runCommand } from './release-verification-lib.mjs'
 
 const ROOT_DIR = fileURLToPath(new URL('../', import.meta.url))
 const PRE_MIGRATION_FILE = 'pre-0039.sql'
-const ALL_MIGRATIONS_FILE = 'empty-0001-0046.sql'
+const ALL_MIGRATIONS_FILE = 'empty-0001-0047.sql'
 const FOLLOW_UP_MIGRATIONS = [
   '0039_meta_capi_v2_operations.sql',
   '0040_meta_capi_circuit_indexes.sql',
@@ -15,6 +15,7 @@ const FOLLOW_UP_MIGRATIONS = [
   '0044_meta_dataset_quality_contract_digest.sql',
   '0045_meta_live_production.sql',
   '0046_meta_live_match_coverage.sql',
+  '0047_ad_platform_delivery_core.sql',
 ]
 const REMOTE_PREFLIGHT_CONFIG = {
   dev: {
@@ -27,9 +28,9 @@ const REMOTE_PREFLIGHT_CONFIG = {
   },
 }
 const TABLE_PRESENT_SQL = `
-SELECT COUNT(*) AS table_present
-FROM sqlite_schema
-WHERE type = 'table' AND name = 'analytics_conversion_deliveries';
+SELECT
+  (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = 'analytics_conversion_deliveries') AS table_present,
+  (SELECT COUNT(*) FROM pragma_table_info('analytics_conversion_deliveries') WHERE name IN ('provider', 'transport')) AS platform_core_column_count;
 `.trim()
 const DUPLICATE_GROUP_SQL = `
 SELECT COUNT(*) AS duplicate_group_count
@@ -37,6 +38,15 @@ FROM (
   SELECT 1
   FROM analytics_conversion_deliveries
   GROUP BY conversion_action_id, channel
+  HAVING COUNT(*) > 1
+);
+`.trim()
+const PLATFORM_DUPLICATE_GROUP_SQL = `
+SELECT COUNT(*) AS duplicate_group_count
+FROM (
+  SELECT 1
+  FROM analytics_conversion_deliveries
+  GROUP BY conversion_action_id, provider, transport
   HAVING COUNT(*) > 1
 );
 `.trim()
@@ -59,7 +69,7 @@ export async function runMetaMigrationVerification(options = {}) {
     await rm(stateDir, { recursive: true, force: true })
     await mkdir(stateDir, { recursive: true })
     await writeFile(preMigrationPath, await buildPreMigrationSql(migrationDir))
-    await writeFile(allMigrationsPath, await buildMigrationSql(migrationDir, 46))
+    await writeFile(allMigrationsPath, await buildMigrationSql(migrationDir, 47))
 
     if (!await runD1Step(runCommandFn, rootDir, oldPersistTo, 'meta-migration-apply-0001-0038', [
       '--file', preMigrationRelativePath,
@@ -134,7 +144,7 @@ export async function runMetaMigrationVerification(options = {}) {
       setting: parseWranglerResults(settingStep.stdout, '设置查询'),
     })
 
-    if (!await runD1Step(runCommandFn, rootDir, emptyPersistTo, 'meta-migration-empty-apply-0001-0046', [
+    if (!await runD1Step(runCommandFn, rootDir, emptyPersistTo, 'meta-migration-empty-apply-0001-0047', [
       '--file', allMigrationsRelativePath,
       '--yes',
     ], steps)) return failedResult(steps, stateDir, undefined, duplicateGroupCount)
@@ -174,8 +184,10 @@ export async function runRemoteMetaMigrationPreflight(options = {}) {
   if (tableStep.status !== 'passed') return remotePreflightReport('check_failed', false, 0)
 
   let tablePresent
+  let platformCorePresent
   try {
     tablePresent = parseRemoteCount(tableStep.stdout, 'table_present', { boolean: true }) === 1
+    platformCorePresent = parseRemoteCount(tableStep.stdout, 'platform_core_column_count') === 2
   }
   catch {
     return remotePreflightReport('check_failed', false, 0)
@@ -187,7 +199,7 @@ export async function runRemoteMetaMigrationPreflight(options = {}) {
     cwd,
     config,
     'meta-migration-remote-duplicate-check',
-    DUPLICATE_GROUP_SQL,
+    platformCorePresent ? PLATFORM_DUPLICATE_GROUP_SQL : DUPLICATE_GROUP_SQL,
   )
   if (duplicateStep.status !== 'passed') return remotePreflightReport('check_failed', true, 0)
 
@@ -317,7 +329,9 @@ SELECT
 function schemaQuerySql() {
   return `
 SELECT
-  (SELECT COUNT(*) FROM pragma_index_list('analytics_conversion_deliveries') WHERE name = 'idx_conversion_delivery_action_channel' AND [unique] = 1) AS delivery_unique_index,
+  (SELECT COUNT(*) FROM pragma_index_list('analytics_conversion_deliveries') WHERE name = 'idx_conversion_delivery_action_destination' AND [unique] = 1) AS delivery_unique_index,
+  (SELECT COUNT(*) FROM pragma_index_list('analytics_conversion_deliveries') WHERE name = 'idx_conversion_delivery_provider_external' AND [unique] = 1) AS provider_external_unique_index,
+  (SELECT COUNT(*) FROM pragma_table_info('analytics_conversion_deliveries') WHERE name IN ('provider', 'transport', 'connection_revision')) AS ad_platform_core_columns,
   (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'index' AND name IN (
     'idx_meta_capi_delivery_attempt_window',
     'idx_meta_capi_delivery_pending_window',
@@ -411,6 +425,8 @@ function assertSchemaResult(rows) {
   const challengeTableSql = String(row?.challenge_table_sql || '').replace(/\s+/g, ' ').trim().toLowerCase()
   if (rows.length !== 1
     || row?.delivery_unique_index !== 1
+    || row?.provider_external_unique_index !== 1
+    || row?.ad_platform_core_columns !== 3
     || row?.circuit_index_count !== 4
     || row?.delivery_lease_index !== 1
     || row?.delivery_lease_token_column !== 1
@@ -424,7 +440,7 @@ function assertSchemaResult(rows) {
     || row?.challenge_match_coverage_columns !== 3
     || ['challenge_table', 'challenge_index', 'ticket_table', 'ticket_index', 'incident_table', 'quality_table']
       .some(field => row?.[field] !== 1)) {
-    throw new Error('Meta 0040-0046 schema 不完整')
+    throw new Error('Meta/广告平台 0040-0047 schema 不完整')
   }
 }
 

@@ -6,6 +6,7 @@
 - 当前模式：`meta_tracking_mode=test`。
 - CAPI：关闭，target/effective rollout 均为 `0%`。
 - Meta 远端资源和验证仅存在于 production；dev/local 只做代码、契约、migration、类型和构建验证。
+- delivery 已迁移到通用广告平台内核；本计划仍只控制 Meta adapter，TikTok/Google 使用独立连接和 rollout。
 - 后续每个阶段开始前先同步确认，不自动开启 CAPI，不自动提高 rollout。
 
 ## 一、等待 Dataset Quality
