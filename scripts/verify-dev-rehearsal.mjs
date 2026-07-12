@@ -276,14 +276,16 @@ export async function runDevRehearsalVerification(options = {}) {
       (body) => {
         const rows = Array.isArray(body?.data?.bySource) ? body.data.bySource : []
         if (rows.length === 0) throw new Error('attribution conversions 未返回任何来源数据')
-        const matched = rows.find(row => String(row?.source_name || '') === 'release-dev-fb')
-        if (!matched) throw new Error('attribution conversions 未返回 release-dev-fb')
+        const matched = rows.filter(row => String(row?.source_name || '') === 'release-dev-fb')
+        if (matched.length === 0) throw new Error('attribution conversions 未返回 release-dev-fb')
         if (!rows.every(row => String(row?.source_name || '') === 'release-dev-fb')) {
           throw new Error('attribution conversions 返回了非 release-dev-fb 的来源数据')
         }
-        if (Number(matched.contact_count ?? 0) < 1) throw new Error('contact_count 未写入')
-        if (Number(matched.complete_registration_count ?? 0) < 1) throw new Error('complete_registration_count 未写入')
-        return `归因来源查询通过，contact=${matched.contact_count}, complete_registration=${matched.complete_registration_count}`
+        const contactCount = matched.reduce((sum, row) => sum + Number(row?.contact_count ?? 0), 0)
+        const registrationCount = matched.reduce((sum, row) => sum + Number(row?.complete_registration_count ?? 0), 0)
+        if (contactCount < 1) throw new Error('contact_count 未写入')
+        if (registrationCount < 1) throw new Error('complete_registration_count 未写入')
+        return `归因来源查询通过，contact=${contactCount}, complete_registration=${registrationCount}`
       },
     )
     steps.push(attributionStep)

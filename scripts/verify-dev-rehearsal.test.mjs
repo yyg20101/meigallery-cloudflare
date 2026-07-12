@@ -337,7 +337,10 @@ function successfulResponses(options = {}) {
     }),
     jsonResponse(200, {
       data: {
-        bySource: [{ source_name: 'release-dev-fb', contact_count: 1, complete_registration_count: 1 }],
+        bySource: [
+          { source_name: 'release-dev-fb', utm_content: 'chat', contact_count: 1, complete_registration_count: 0 },
+          { source_name: 'release-dev-fb', utm_content: 'registration', contact_count: 0, complete_registration_count: 1 },
+        ],
       },
     }),
     metaDeliveryResponse(after),
