@@ -257,7 +257,7 @@ export async function runReleaseVerification(options = {}) {
     }
   }
 
-  if (releaseGitBlockers.length === 0 && childModesPassed && datasetQualityContract.status === 'passed') {
+  if (!initialMetaRollout && releaseGitBlockers.length === 0 && childModesPassed && datasetQualityContract.status === 'passed') {
     for (const environment of ['dev']) {
       const startedResourceMs = Date.now()
       const result = await runMetaResourceVerificationFn({
@@ -341,8 +341,10 @@ export async function runReleaseVerification(options = {}) {
     })
   }
 
-  const devEvidenceGatesPassed = ['meta-dataset-quality', 'meta-open-incident-gate']
-    .every(name => steps.some(step => step.name === name && step.status === 'passed'))
+  const devEvidenceGatesPassed = initialMetaRollout
+    ? datasetQualityContract.status === 'passed'
+    : ['meta-dataset-quality', 'meta-open-incident-gate']
+        .every(name => steps.some(step => step.name === name && step.status === 'passed'))
   if (devEvidenceGatesPassed) {
     const startedResourceMs = Date.now()
     const result = await runMetaResourceVerificationFn({
@@ -411,17 +413,18 @@ export async function runReleaseVerification(options = {}) {
   }
 
   const finishedAt = new Date().toISOString()
-  const requiredMetaSteps = [
-    'meta-dataset-quality-contract',
-    'meta-resources-dev',
-    'meta-resources-production',
-    'meta-live-evidence',
-    'meta-dataset-quality',
-    'meta-open-incident-gate',
-    'meta-live-store-dev',
-    'meta-live-store-production',
-  ]
-  if (initialMetaRollout) requiredMetaSteps.push('meta-initial-rollout-zero')
+  const requiredMetaSteps = initialMetaRollout
+    ? ['meta-dataset-quality-contract', 'meta-resources-production', 'meta-initial-rollout-zero']
+    : [
+        'meta-dataset-quality-contract',
+        'meta-resources-dev',
+        'meta-resources-production',
+        'meta-live-evidence',
+        'meta-dataset-quality',
+        'meta-open-incident-gate',
+        'meta-live-store-dev',
+        'meta-live-store-production',
+      ]
   const metaStepsPassed = requiredMetaSteps.every(name => steps.some(step => step.name === name && step.status === 'passed'))
   const report = {
     schemaVersion: 1,
@@ -640,6 +643,24 @@ export async function collectTrustedProductionGateFacts(options = {}) {
 
   await verifyDevReleaseIdentityFn({ ...options, commit })
   const contract = await verifyContractFn(options)
+  const bootstrapPermitted = await readTrustedProductionBootstrapPermitFn({ ...options, commit })
+  if (bootstrapPermitted) {
+    const production = await runMetaResourceVerificationFn({
+      ...options,
+      environment: 'production',
+      commit,
+      phase: 'bootstrap',
+      initialMetaRollout: true,
+      reportOnly: true,
+    })
+    if (production?.status !== 'passed'
+      || production.openCriticalIncidentCount !== 0
+      || production.targetRolloutPercentage !== 0
+      || production.effectiveRolloutPercentage !== 0) {
+      throw new Error('当前 production bootstrap resource/incident/rollout 链未通过')
+    }
+    return { contract, production, bootstrapPermitted: true }
+  }
   const dev = await runMetaResourceVerificationFn({
     ...options,
     environment: 'dev',
@@ -655,26 +676,22 @@ export async function collectTrustedProductionGateFacts(options = {}) {
   const live = await readRemoteDevGateFn({ ...options, commit, contract })
   if (live?.status !== 'passed') throw new Error('当前 dev 远端 live evidence 链未通过')
 
-  const bootstrapPermitted = await readTrustedProductionBootstrapPermitFn({ ...options, commit })
   const production = await runMetaResourceVerificationFn({
     ...options,
     environment: 'production',
     commit,
-    phase: bootstrapPermitted ? 'bootstrap' : 'full',
-    initialMetaRollout: bootstrapPermitted,
+    phase: 'full',
+    initialMetaRollout: false,
     reportOnly: true,
-    expectedDatasetQualityContract: bootstrapPermitted ? undefined : contract,
+    expectedDatasetQualityContract: contract,
   })
   if (production?.status !== 'passed'
     || production.openCriticalIncidentCount !== 0
-    || (!bootstrapPermitted && (
+    || (
       production.datasetQualityCollectorCurrent !== true
       || production.datasetQualityContractVersion !== contract.version
       || production.datasetQualityContractDigest !== contract.digest
-    ))
-    || (bootstrapPermitted && (
-      production.targetRolloutPercentage !== 0 || production.effectiveRolloutPercentage !== 0
-    ))) {
+    )) {
     throw new Error('当前 production 远端 resource/incident/rollout 链未通过')
   }
   return { status: 'passed', dev, production, live, contract }

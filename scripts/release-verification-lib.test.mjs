@@ -137,7 +137,7 @@ function createValidReleaseReport() {
 }
 
 describe('发布验证基础库', () => {
-  it('release gate 强制 current commit、tracked contract/dev collector、connection/incident 和 production rollout 0 同链', () => {
+  it('冷启动 release gate 强制 current commit、tracked contract 和 production bootstrap rollout 0 同链', () => {
     const valid = createValidReleaseReport()
     assert.doesNotThrow(() => assertReportCanGateProduction(valid, {
       currentBranch: 'main',
@@ -147,11 +147,7 @@ describe('发布验证基础库', () => {
 
     const candidates = [
       { ...valid, git: { ...valid.git, commit: 'short' } },
-      { ...valid, metaLiveVerification: { ...valid.metaLiveVerification, environment: 'production' } },
       { ...valid, datasetQualityContract: { ...valid.datasetQualityContract, status: 'failed' } },
-      { ...valid, metaResources: { ...valid.metaResources, dev: { ...valid.metaResources.dev, datasetQualityCollectorCurrent: false } } },
-      { ...valid, metaResources: { ...valid.metaResources, dev: { ...valid.metaResources.dev, datasetQualityContractDigest: `sha256:${'8'.repeat(64)}` } } },
-      { ...valid, metaResources: { ...valid.metaResources, dev: { ...valid.metaResources.dev, connectionVerified: false } } },
       { ...valid, metaResources: { ...valid.metaResources, production: { ...valid.metaResources.production, openCriticalIncidentCount: 1 } } },
       { ...valid, metaResources: { ...valid.metaResources, production: { ...valid.metaResources.production, targetRolloutPercentage: 10 } } },
       { ...valid, metaResources: { ...valid.metaResources, production: { ...valid.metaResources.production, effectiveRolloutPercentage: 10 } } },

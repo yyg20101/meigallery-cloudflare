@@ -514,8 +514,11 @@ function validateReleaseSummary(report, reasons, now) {
 }
 
 function validateMetaReleaseSummary(report, reasons, now) {
+  const bootstrap = report.initialMetaRollout === true
   const live = report.metaLiveVerification
-  if (!live || typeof live !== 'object' || Array.isArray(live)) {
+  if (bootstrap && live?.status === 'skipped') {
+    // 冷启动的真实 Test Event 在 production rollout=0 部署后完成。
+  } else if (!live || typeof live !== 'object' || Array.isArray(live)) {
     reasons.push('release 报告缺少 Meta live evidence 摘要')
   } else {
     if (live.status !== 'passed') reasons.push('Meta live evidence 未通过')
@@ -545,6 +548,7 @@ function validateMetaReleaseSummary(report, reasons, now) {
 
   for (const environment of ['dev', 'production']) {
     const resource = report.metaResources?.[environment]
+    if (bootstrap && environment === 'dev' && resource?.status === 'skipped') continue
     if (!resource || typeof resource !== 'object' || resource.status !== 'passed' || resource.environment !== environment) {
       reasons.push(`Meta ${environment} 资源检查未通过`)
     } else if (resource.commit !== report.git?.commit) {
@@ -562,7 +566,7 @@ function validateMetaReleaseSummary(report, reasons, now) {
           reasons.push('Meta production bootstrap 资源或环境隔离证明不完整')
         }
       }
-      if (environment === 'dev') {
+      if (!bootstrap && environment === 'dev') {
         if (resource.datasetQualityContractVersion !== contract?.version
           || resource.datasetQualityContractDigest !== contract?.digest
           || resource.datasetQualityCollectorCurrent !== true) {
