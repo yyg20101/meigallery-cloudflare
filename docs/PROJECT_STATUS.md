@@ -35,6 +35,8 @@
 
 ## 发布验证体系状态
 
+- 2026-07-12 工具链基线：Node `24.13.0`、pnpm `10.34.4`、Wrangler `4.110.0`、Workers Types `5.20260712.1`、Miniflare `4.20260708.1`、Vitest `4.1.10`、Playwright `1.61.1`。TypeScript 保持 Nuxt 当前 peer 范围支持的最新 `6.0.3`，暂不采用尚未受支持的 TypeScript 7。
+
 - 已提供四层命令：`verify:quick`、`verify:local-runtime`、`verify:dev-rehearsal`、`verify:release`。
 - `verify:quick` 适合日常提交前自检，先检查 dev/production 资源隔离与 Meta secret 泄漏。
 - `verify:local-runtime` 用于本地 Cloudflare 运行时验证 D1、Queue、归因和降级链路。
