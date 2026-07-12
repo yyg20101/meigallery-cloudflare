@@ -50,7 +50,7 @@ export async function createMetaLiveChallenge(env: ChallengeEnv, ownerUserId: nu
     INSERT INTO meta_live_challenges (
       id, environment, commit_sha, owner_user_id, status,
       contact_event_id, complete_registration_event_id, created_at, expires_at
-    ) VALUES (?, 'dev', ?, ?, 'pending', ?, ?, ?, ?)
+    ) VALUES (?, 'production', ?, ?, 'pending', ?, ?, ?, ?)
   `).bind(
     challengeId,
     config.commitSha,
@@ -62,7 +62,7 @@ export async function createMetaLiveChallenge(env: ChallengeEnv, ownerUserId: nu
   ).run()
   return {
     challengeId,
-    environment: 'dev' as const,
+    environment: 'production' as const,
     commitSha: config.commitSha,
     pixelId: config.pixelId,
     expiresAt: new Date(createdAt.getTime() + CHALLENGE_TTL_MS).toISOString(),
@@ -98,7 +98,7 @@ export async function consumeMetaLiveChallenge(env: ChallengeEnv, ownerUserId: n
         contact_event_digest = ?,
         complete_registration_event_digest = ?,
         consumed_at = ?
-    WHERE id = ? AND status = 'pending' AND environment = 'dev'
+    WHERE id = ? AND status = 'pending' AND environment = 'production'
       AND commit_sha = ? AND owner_user_id = ? AND expires_at > ?
   `).bind(
     eventDigests.Contact,
@@ -147,7 +147,7 @@ export function isOpaqueSyntheticEventId(value: string) {
 }
 
 async function requireChallengeConfiguration(env: ChallengeEnv, ownerUserId: number) {
-  if (env.APP_ENV !== 'dev' || !Number.isSafeInteger(ownerUserId) || ownerUserId <= 0) {
+  if (env.APP_ENV !== 'production' || !Number.isSafeInteger(ownerUserId) || ownerUserId <= 0) {
     throw new MetaLiveChallengeError('META_LIVE_CHALLENGE_INVALID')
   }
   const commitSha = normalizeCommit(env.RELEASE_COMMIT)
@@ -166,7 +166,7 @@ async function requireChallengeConfiguration(env: ChallengeEnv, ownerUserId: num
 }
 
 function validPendingChallenge(row: ChallengeRow | null, commitSha: string, ownerUserId: number) {
-  if (!row || row.status !== 'pending' || row.environment !== 'dev' || row.commit_sha !== commitSha || row.owner_user_id !== ownerUserId) return false
+  if (!row || row.status !== 'pending' || row.environment !== 'production' || row.commit_sha !== commitSha || row.owner_user_id !== ownerUserId) return false
   const createdAt = Date.parse(row.created_at)
   const expiresAt = Date.parse(row.expires_at)
   const now = Date.now()
@@ -196,7 +196,7 @@ function syntheticEvent(eventName: 'Contact' | 'CompleteRegistration', eventId: 
     event_name: eventName,
     event_time: eventTime,
     event_id: eventId,
-    event_source_url: 'https://example.com/meta-live-verification',
+    event_source_url: 'https://616618.xyz/meta-live-verification',
     action_source: 'website',
     user_data: {
       client_ip_address: '192.0.2.1',

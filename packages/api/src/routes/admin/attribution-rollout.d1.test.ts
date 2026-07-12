@@ -113,6 +113,11 @@ async function seedProductionGate() {
       (id, commit_sha, environment, verification_type, status, summary, verified_at, expires_at)
     VALUES ('full', ?, 'production', 'meta_resources', 'passed', ?, datetime('now'), datetime('now', '+1 day'))
   `).bind(COMMIT, JSON.stringify(fullResourceSummary())).run()
+  await db.prepare(`
+    INSERT INTO analytics_release_verifications
+      (id, commit_sha, environment, verification_type, status, summary, verified_at, expires_at)
+    VALUES ('live', ?, 'production', 'meta_live', 'passed', '{}', datetime('now'), datetime('now', '+1 day'))
+  `).bind(COMMIT).run()
   const inserts = Array.from({ length: 100 }, (_, index) => (
     db.prepare(`
       INSERT INTO analytics_conversion_deliveries

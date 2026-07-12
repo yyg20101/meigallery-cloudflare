@@ -823,6 +823,7 @@ function createPassingRunner(calls, options = {}) {
           '0042_meta_resource_attestation_tickets.sql',
           '0043_meta_capi_delivery_lease.sql',
           '0044_meta_dataset_quality_contract_digest.sql',
+          '0045_meta_live_production.sql',
         ].filter(name => name !== options.missingAppliedMigration)
         results = names.map(name => ({ name }))
       } else if (runOptions.name.endsWith('dataset-quality')) {

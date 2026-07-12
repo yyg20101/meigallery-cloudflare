@@ -23,7 +23,7 @@ import {
 } from './release-verification-store.mjs'
 import { runMetaResourceVerification } from './verify-meta-resources.mjs'
 import { verifyApprovedMetaDatasetQualityContract } from './meta-dataset-quality-contract-lib.mjs'
-import { verifyDevReleaseIdentity } from './record-meta-live-verification.mjs'
+import { verifyProductionReleaseIdentity } from './record-meta-live-verification.mjs'
 
 const QUICK_STEPS = [
   {
@@ -258,33 +258,6 @@ export async function runReleaseVerification(options = {}) {
   }
 
   if (!initialMetaRollout && releaseGitBlockers.length === 0 && childModesPassed && datasetQualityContract.status === 'passed') {
-    for (const environment of ['dev']) {
-      const startedResourceMs = Date.now()
-      const result = await runMetaResourceVerificationFn({
-        ...options,
-        environment,
-        commit: git.commit,
-        initialMetaRollout: initialMetaRollout && environment === 'production',
-        reportOnly: false,
-        expectedDatasetQualityContract: datasetQualityContract,
-      })
-      metaResources[environment] = sanitizeMetaResourceSummary(result, environment, git.commit)
-      steps.push({
-        name: `meta-resources-${environment}`,
-        status: result?.status === 'passed' ? 'passed' : 'failed',
-        durationMs: Date.now() - startedResourceMs,
-        command: `node scripts/verify-meta-resources.mjs --env ${environment}${initialMetaRollout && environment === 'production' ? ' --initial-meta-rollout' : ''}`,
-        exitCode: result?.status === 'passed' ? 0 : 1,
-        summary: result?.status === 'passed' ? `Meta ${environment} 资源检查通过` : `Meta ${environment} 资源检查失败`,
-      })
-      if (result?.status !== 'passed') {
-        notes.push(`Meta ${environment} 资源检查失败，已停止后续生产门禁。`)
-        break
-      }
-    }
-  }
-
-  if (metaResources.dev.status === 'passed') {
     const liveStartedMs = Date.now()
     try {
       const evidence = await readLatestMetaLiveEvidenceFn(options)
@@ -326,26 +299,10 @@ export async function runReleaseVerification(options = {}) {
     }
   }
 
-  if (metaLiveVerification.status === 'passed') {
-    const qualityPassed = datasetQualityContract.status === 'passed'
-    steps.push({
-      name: 'meta-dataset-quality', status: qualityPassed ? 'passed' : 'failed', durationMs: 0,
-      command: '校验 tracked production Dataset Quality contract digest', exitCode: qualityPassed ? 0 : 1,
-      summary: qualityPassed ? 'production Dataset Quality contract 已批准' : 'Dataset Quality contract pending',
-    })
-    const incidentPassed = metaResources.dev.openCriticalIncidentCount === 0
-    steps.push({
-      name: 'meta-open-incident-gate', status: incidentPassed ? 'passed' : 'failed', durationMs: 0,
-      command: '校验 dev open critical incident', exitCode: incidentPassed ? 0 : 1,
-      summary: incidentPassed ? 'dev 无 open critical incident' : 'dev open critical incident 查询失败或非零',
-    })
-  }
-
-  const devEvidenceGatesPassed = initialMetaRollout
+  const productionEvidenceGatePassed = initialMetaRollout
     ? datasetQualityContract.status === 'passed'
-    : ['meta-dataset-quality', 'meta-open-incident-gate']
-        .every(name => steps.some(step => step.name === name && step.status === 'passed'))
-  if (devEvidenceGatesPassed) {
+    : metaLiveVerification.status === 'passed'
+  if (productionEvidenceGatePassed) {
     const startedResourceMs = Date.now()
     const result = await runMetaResourceVerificationFn({
       ...options,
@@ -364,6 +321,18 @@ export async function runReleaseVerification(options = {}) {
       summary: result?.status === 'passed' ? 'Meta production 资源检查通过' : 'Meta production 资源检查失败',
     })
     if (result?.status === 'passed') {
+      if (!initialMetaRollout) {
+        steps.push({
+          name: 'meta-dataset-quality', status: result.datasetQualityCollectorCurrent === true ? 'passed' : 'failed', durationMs: 0,
+          command: '校验 production Dataset Quality 当前快照', exitCode: result.datasetQualityCollectorCurrent === true ? 0 : 1,
+          summary: result.datasetQualityCollectorCurrent === true ? 'production Dataset Quality 当前快照通过' : 'production Dataset Quality 当前快照缺失',
+        })
+        steps.push({
+          name: 'meta-open-incident-gate', status: result.openCriticalIncidentCount === 0 ? 'passed' : 'failed', durationMs: 0,
+          command: '校验 production open critical incident', exitCode: result.openCriticalIncidentCount === 0 ? 0 : 1,
+          summary: result.openCriticalIncidentCount === 0 ? 'production 无 open critical incident' : 'production open critical incident 非零',
+        })
+      }
       const rolloutPassed = !initialMetaRollout || (
         result.targetRolloutPercentage === 0 && result.effectiveRolloutPercentage === 0
       )
@@ -375,9 +344,9 @@ export async function runReleaseVerification(options = {}) {
     }
   }
 
-  const resourcesPassed = metaResources.dev.status === 'passed' && metaResources.production.status === 'passed'
+  const resourcesPassed = metaResources.production.status === 'passed'
   if (metaLiveVerification.status === 'passed' && resourcesPassed) {
-    for (const environment of ['dev', 'production']) {
+    for (const environment of ['production']) {
       const startedStoreMs = Date.now()
       const storeStep = await recordReleaseVerificationSummaryFn({
         environment,
@@ -417,12 +386,10 @@ export async function runReleaseVerification(options = {}) {
     ? ['meta-dataset-quality-contract', 'meta-resources-production', 'meta-initial-rollout-zero']
     : [
         'meta-dataset-quality-contract',
-        'meta-resources-dev',
         'meta-resources-production',
         'meta-live-evidence',
         'meta-dataset-quality',
         'meta-open-incident-gate',
-        'meta-live-store-dev',
         'meta-live-store-production',
       ]
   const metaStepsPassed = requiredMetaSteps.every(name => steps.some(step => step.name === name && step.status === 'passed'))
@@ -635,13 +602,13 @@ export async function assertProductionAllowed(options = {}) {
 export async function collectTrustedProductionGateFacts(options = {}) {
   const commit = String(options.commit || '').trim().toLowerCase()
   if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error('受信生产门禁需要当前 40 位 commit')
-  const verifyDevReleaseIdentityFn = options.verifyDevReleaseIdentity || verifyDevReleaseIdentity
+  const verifyProductionReleaseIdentityFn = options.verifyProductionReleaseIdentity || verifyProductionReleaseIdentity
   const verifyContractFn = options.verifyApprovedMetaDatasetQualityContract || verifyApprovedMetaDatasetQualityContract
   const runMetaResourceVerificationFn = options.runMetaResourceVerification || runMetaResourceVerification
-  const readRemoteDevGateFn = options.readRemoteDevGate || readRemoteDevGate
+  const readRemoteProductionLiveGateFn = options.readRemoteProductionLiveGate || readRemoteProductionLiveGate
   const readTrustedProductionBootstrapPermitFn = options.readTrustedProductionBootstrapPermit || readTrustedProductionBootstrapPermit
 
-  await verifyDevReleaseIdentityFn({ ...options, commit })
+  await verifyProductionReleaseIdentityFn({ ...options, commit })
   const contract = await verifyContractFn(options)
   const bootstrapPermitted = await readTrustedProductionBootstrapPermitFn({ ...options, commit })
   if (bootstrapPermitted) {
@@ -661,20 +628,8 @@ export async function collectTrustedProductionGateFacts(options = {}) {
     }
     return { contract, production, bootstrapPermitted: true }
   }
-  const dev = await runMetaResourceVerificationFn({
-    ...options,
-    environment: 'dev',
-    commit,
-    phase: 'full',
-    reportOnly: true,
-  })
-  if (dev?.status !== 'passed'
-    || dev.connectionVerified !== true
-    || dev.openCriticalIncidentCount !== 0) {
-    throw new Error('当前 dev 远端 resource/connection/incident 链未通过')
-  }
-  const live = await readRemoteDevGateFn({ ...options, commit, contract })
-  if (live?.status !== 'passed') throw new Error('当前 dev 远端 live evidence 链未通过')
+  const live = await readRemoteProductionLiveGateFn({ ...options, commit, contract })
+  if (live?.status !== 'passed') throw new Error('当前 production 远端 live evidence 链未通过')
 
   const production = await runMetaResourceVerificationFn({
     ...options,
@@ -694,25 +649,25 @@ export async function collectTrustedProductionGateFacts(options = {}) {
     )) {
     throw new Error('当前 production 远端 resource/incident/rollout 链未通过')
   }
-  return { status: 'passed', dev, production, live, contract }
+  return { status: 'passed', production, live, contract }
 }
 
-export async function readRemoteDevGate(options = {}) {
+export async function readRemoteProductionLiveGate(options = {}) {
   const commit = String(options.commit || '').trim().toLowerCase()
-  if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error('dev remote gate 需要当前 40 位 commit')
+  if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error('production remote gate 需要当前 40 位 commit')
   const sql = `
     SELECT summary, verified_at, expires_at
     FROM analytics_release_verifications
-    WHERE environment = 'dev' AND verification_type = 'meta_live'
+    WHERE environment = 'production' AND verification_type = 'meta_live'
       AND status = 'passed' AND commit_sha = '${commit}'
       AND datetime(expires_at) > datetime('now')
     ORDER BY verified_at DESC LIMIT 1
   `.replace(/\s+/g, ' ').trim()
   const step = await (options.runCommand || runCommand)('corepack', [
-    'pnpm', '--filter', '@meigallery/api', 'exec', 'wrangler', 'd1', 'execute', 'meigallery-db-dev',
-    '--env', 'dev', '--remote', '--command', sql, '--json',
-  ], { cwd: options.cwd || process.cwd(), name: 'production-gate-dev-live', reportCommand: '重查 dev D1 当前 commit Meta live 脱敏摘要' })
-  if (step.status !== 'passed') throw new Error('当前 dev 远端 live evidence 查询失败')
+    'pnpm', '--filter', '@meigallery/api', 'exec', 'wrangler', 'd1', 'execute', 'meigallery-db',
+    '--env', '', '--remote', '--command', sql, '--json',
+  ], { cwd: options.cwd || process.cwd(), name: 'production-gate-production-live', reportCommand: '重查 production D1 当前 commit Meta live 脱敏摘要' })
+  if (step.status !== 'passed') throw new Error('当前 production 远端 live evidence 查询失败')
   try {
     const payload = JSON.parse(String(step.stdout || ''))
     const rows = payload?.[0]?.results
@@ -720,7 +675,7 @@ export async function readRemoteDevGate(options = {}) {
     const contract = options.contract
     const summary = assertReleaseVerificationRow({
       row: rows[0],
-      environment: 'dev',
+      environment: 'production',
       verificationType: 'meta_live',
       commit,
       now: options.now,

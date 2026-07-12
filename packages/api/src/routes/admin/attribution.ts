@@ -1095,7 +1095,7 @@ adminAttributionRoutes.post('/meta/live-challenge', async (c) => {
       action: 'attribution.meta_live_challenge_create',
       targetType: 'attribution',
       targetId: 'meta_live_challenge',
-      afterValue: { success: true, environment: 'dev', commitSha: challenge.commitSha },
+      afterValue: { success: true, environment: challenge.environment, commitSha: challenge.commitSha },
     })
     return c.json({ data: challenge })
   }
@@ -1118,7 +1118,7 @@ adminAttributionRoutes.post('/meta/live-challenge/consume', async (c) => {
       action: 'attribution.meta_live_challenge_consume',
       targetType: 'attribution',
       targetId: 'meta_live_challenge',
-      afterValue: { success: true, environment: 'dev', eventsReceived: result.eventsReceived },
+      afterValue: { success: true, environment: 'production', eventsReceived: result.eventsReceived },
     })
     return c.json({ data: { status: 'server_sent', eventsReceived: result.eventsReceived } })
   }
@@ -1268,7 +1268,7 @@ async function readMetaRolloutSnapshotWithUsage(
       ? readConnectionVerifiedWithUsage(c)
       : Promise.resolve({ value: knownConnectionVerified, usage: EMPTY_USAGE }),
     readOpenCriticalIncidentWithUsage(c.env.DB, environment),
-    readCurrentMetaPromotionEvidenceWithUsage(c.env.DB, environment, releaseCommit),
+    readCurrentMetaPromotionEvidenceWithUsage(c.env.DB, environment, releaseCommit, knownConnectionVerified),
     readMetaRolloutMetricsWithUsage(c.env.DB, targetPercentage),
   ])
   const connectionVerified = connectionResult.value
@@ -1370,12 +1370,13 @@ async function readCurrentMetaPromotionEvidenceWithUsage(
   db: D1Database,
   environment: MetaRolloutSnapshot['environment'],
   releaseCommit: string,
+  knownConnectionVerified?: boolean,
 ) {
   if (!releaseCommit) return { value: false, usage: EMPTY_USAGE }
   try {
     if (environment === 'production') {
-      const [connection, resources] = await Promise.all([
-        queryFirstWithUsage<{ revision: string }>(db.prepare(`
+      const [connection, resources, live] = await Promise.all([
+        knownConnectionVerified === undefined ? queryFirstWithUsage<{ revision: string }>(db.prepare(`
           SELECT revision
           FROM meta_connection_verifications
           WHERE environment = ?
@@ -1383,7 +1384,7 @@ async function readCurrentMetaPromotionEvidenceWithUsage(
             AND invalidated_at IS NULL
             AND length(revision) = 32
           LIMIT 1
-        `).bind('production', releaseCommit)),
+        `).bind('production', releaseCommit)) : Promise.resolve({ row: knownConnectionVerified ? { revision: 'verified' } : null, usage: EMPTY_USAGE }),
         queryFirstWithUsage<{ summary: string }>(db.prepare(`
           SELECT summary
           FROM analytics_release_verifications
@@ -1395,25 +1396,24 @@ async function readCurrentMetaPromotionEvidenceWithUsage(
           ORDER BY verified_at DESC
           LIMIT 1
         `).bind(releaseCommit)),
+        queryFirstWithUsage<{ id: string }>(db.prepare(`
+          SELECT id
+          FROM analytics_release_verifications
+          WHERE environment = 'production'
+            AND verification_type = 'meta_live'
+            AND status = 'passed'
+            AND commit_sha = ?
+            AND datetime(expires_at) > datetime('now')
+          ORDER BY verified_at DESC
+          LIMIT 1
+        `).bind(releaseCommit)),
       ])
       return {
-        value: Boolean(connection.row) && hasCurrentProductionIsolation(resources.row?.summary),
-        usage: mergeD1Usage(connection.usage, resources.usage),
+        value: Boolean(connection.row) && hasCurrentProductionIsolation(resources.row?.summary) && Boolean(live.row),
+        usage: mergeD1Usage(connection.usage, resources.usage, live.usage),
       }
     }
-    if (environment !== 'dev') return { value: false, usage: EMPTY_USAGE }
-    const result = await queryFirstWithUsage<{ id: string }>(db.prepare(`
-      SELECT id
-      FROM analytics_release_verifications
-      WHERE commit_sha = ?
-        AND environment = 'dev'
-        AND verification_type = 'meta_live'
-        AND status = 'passed'
-        AND datetime(expires_at) > datetime('now')
-      ORDER BY verified_at DESC
-      LIMIT 1
-    `).bind(releaseCommit))
-    return { value: Boolean(result.row), usage: result.usage }
+    return { value: false, usage: EMPTY_USAGE }
   }
   catch {
     return { value: false, usage: EMPTY_USAGE }

@@ -47,7 +47,7 @@ main (生产)
 常规发布遵循既有 release 流程。涉及 Meta 正式投放时，以下顺序是额外且强制的放行链，`Contact`、`Lead`、`CompleteRegistration` 是唯一正式 Meta 事件，`StartTrial` 不支持：
 
 1. 从 `dev` 创建发布分支：`git checkout -b release/v0.x.0 dev`，保持 `meta_tracking_mode=disabled`、`meta_capi_enabled=false` 的代码关闭态。
-2. 在发布分支完成本地 migration、测试、dry-run；在独立 dev 主 Queue/DLQ 与独立 secret 上部署当前 commit，生成三项正式事件的 strict dev live evidence。
+2. 在发布分支完成本地 migration、测试、dry-run；部署最终 production commit 后保持 test 模式与 rollout `0`，生成 `Contact`、`CompleteRegistration` 的 strict production live evidence。
 3. 只有明确获得上线授权后才创建或核验 production Queue `meigallery-meta-capi`、DLQ `meigallery-meta-capi-dlq`、consumer 与独立 secret；不得复制 dev token 或 Test Event Code 到 production。
 4. 创建 PR 合入 `main`，并对 production D1 应用 migration；迁移后仍保持 mode `disabled` 和 CAPI 开关 `false`。
 5. 切到最终 `main` HEAD，重新部署 dev 并重新生成**同一 commit**的 live evidence；合入前或其他分支的 evidence 不能复用。

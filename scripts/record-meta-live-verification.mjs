@@ -13,7 +13,7 @@ import { verifyApprovedMetaDatasetQualityContract } from './meta-dataset-quality
 const YES_VALUES = new Set(['y', 'yes', '是'])
 const EVIDENCE_TTL_MS = 24 * 60 * 60 * 1000
 const VERIFY_TIMEOUT_MS = 20_000
-const REQUIRED_VERIFY_URLS = ['VERIFY_DEV_API_URL', 'VERIFY_DEV_WEB_URL']
+const REQUIRED_VERIFY_URLS = ['VERIFY_PRODUCTION_API_URL', 'VERIFY_PRODUCTION_WEB_URL']
 const DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/
 const CHALLENGE_PATTERN = /^mlc_[0-9a-f]{32}$/
 
@@ -25,7 +25,7 @@ export function buildMetaLiveEvidence(input) {
   const eventResults = Array.isArray(input?.eventResults) ? input.eventResults : []
   if (!/^\d{5,30}$/.test(pixelId)) throw new Error('测试 Pixel ID 必须为 5 到 30 位数字')
   if (!/^[0-9a-f]{40}$/.test(commit) || input?.commitSha !== commit) throw new Error('readiness commit 与当前 commit 不一致')
-  if (input?.environment !== 'dev') throw new Error('live evidence 只接受 dev readiness')
+  if (input?.environment !== 'production') throw new Error('live evidence 只接受 production readiness')
   if (!Number.isFinite(capturedAt.getTime()) || !Number.isFinite(connectionVerifiedAt.getTime())) throw new Error('验证时间非法')
   const resultMap = new Map(eventResults.map(result => [result?.eventName, result]))
   if (eventResults.length !== 2 || resultMap.size !== 2) throw new Error('必须录入固定两事件的验证结果')
@@ -50,7 +50,7 @@ export function buildMetaLiveEvidence(input) {
   const evidence = {
     schemaVersion: 2,
     commitSha: commit,
-    environment: 'dev',
+    environment: 'production',
     pixelIdMasked: `${pixelId.slice(0, 4)}****${pixelId.slice(-4)}`,
     connectionVerifiedAt: connectionVerifiedAt.toISOString(),
     capturedAt: capturedAt.toISOString(),
@@ -61,18 +61,18 @@ export function buildMetaLiveEvidence(input) {
     datasetQualityContractVersion: input.datasetQualityContractVersion,
     datasetQualityCollectorCurrent: input.datasetQualityCollectorCurrent,
   }
-  assertMetaLiveEvidenceCanGateProduction(evidence, { expectedCommit: commit, expectedEnvironment: 'dev', now: capturedAt })
+  assertMetaLiveEvidenceCanGateProduction(evidence, { expectedCommit: commit, expectedEnvironment: 'production', now: capturedAt })
   return evidence
 }
 
 export async function recordMetaLiveVerification(options = {}) {
   const getCommit = options.getCommit || readCurrentCommit
   const writeEvidence = options.writeEvidence || writeMetaLiveEvidence
-  const readReadiness = options.readReadiness || readDevMetaLiveReadiness
+  const readReadiness = options.readReadiness || readProductionMetaLiveReadiness
   const destroyChallenge = options.destroyChallenge || destroyRemoteChallenge
   const commit = await getCommit(options)
   const contract = await (options.verifyContract || verifyApprovedMetaDatasetQualityContract)({ cwd: options.cwd || process.cwd() })
-  await verifyDevReleaseIdentity({ ...options, commit })
+  await verifyProductionReleaseIdentity({ ...options, commit })
   const readiness = await readReadiness({ ...options, commit, expectedDatasetQualityContract: contract })
   assertReadinessCanRecord(readiness, commit, options.now, contract)
   const ask = options.ask || createCliPrompter()
@@ -101,7 +101,7 @@ export async function recordMetaLiveVerification(options = {}) {
     const files = await writeEvidence(evidence, {
       ...options,
       expectedCommit: commit,
-      expectedEnvironment: 'dev',
+      expectedEnvironment: 'production',
       now: options.now,
     })
     options.output?.(`Meta live evidence 已写入：${files.evidenceFile}`)
@@ -112,7 +112,7 @@ export async function recordMetaLiveVerification(options = {}) {
   }
 }
 
-export async function readDevMetaLiveReadiness(options = {}) {
+export async function readProductionMetaLiveReadiness(options = {}) {
   const commit = String(options.commit || '').trim().toLowerCase()
   if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error('readiness 查询需要当前 40 位 commit')
   const contract = options.expectedDatasetQualityContract
@@ -120,14 +120,14 @@ export async function readDevMetaLiveReadiness(options = {}) {
     || !/^sha256:[0-9a-f]{64}$/.test(String(contract?.digest || ''))) {
     throw new Error('readiness 查询需要 approved Dataset Quality contract')
   }
-  const sql = buildDevMetaLiveReadinessSql(commit, contract)
+  const sql = buildProductionMetaLiveReadinessSql(commit, contract)
   const step = await (options.runCommand || runCommand)('corepack', [
-    'pnpm', '--filter', '@meigallery/api', 'exec', 'wrangler', 'd1', 'execute', 'meigallery-db-dev',
-    '--env', 'dev', '--remote', '--command', sql, '--json',
-  ], { cwd: options.cwd || process.cwd(), name: 'meta-live-dev-readiness', reportCommand: '读取 dev D1 Meta live challenge 脱敏摘要' })
-  if (step.status !== 'passed') throw new Error('dev Meta live readiness 查询失败')
+    'pnpm', '--filter', '@meigallery/api', 'exec', 'wrangler', 'd1', 'execute', 'meigallery-db',
+    '--env', '', '--remote', '--command', sql, '--json',
+  ], { cwd: options.cwd || process.cwd(), name: 'meta-live-production-readiness', reportCommand: '读取 production D1 Meta live challenge 脱敏摘要' })
+  if (step.status !== 'passed') throw new Error('production Meta live readiness 查询失败')
   const rows = parseD1Rows(step.stdout)
-  if (rows.length !== 1) throw new Error('dev Meta live readiness 不完整')
+  if (rows.length !== 1) throw new Error('production Meta live readiness 不完整')
   const row = rows[0]
   return {
     environment: row.environment,
@@ -150,7 +150,7 @@ export async function readDevMetaLiveReadiness(options = {}) {
   }
 }
 
-export function buildDevMetaLiveReadinessSql(commit, contract) {
+export function buildProductionMetaLiveReadinessSql(commit, contract) {
   if (!/^[0-9a-f]{40}$/.test(String(commit || ''))
     || !Number.isSafeInteger(contract?.version)
     || !/^sha256:[0-9a-f]{64}$/.test(String(contract?.digest || ''))) {
@@ -170,13 +170,13 @@ export function buildDevMetaLiveReadinessSql(commit, contract) {
     FROM meta_connection_verifications c
     JOIN meta_live_challenges ch ON ch.environment = c.environment AND ch.commit_sha = c.verified_commit
     CROSS JOIN matching
-    WHERE c.environment = 'dev' AND c.verified_commit = '${commit}' AND c.invalidated_at IS NULL
+    WHERE c.environment = 'production' AND c.verified_commit = '${commit}' AND c.invalidated_at IS NULL
       AND ch.status = 'server_sent' AND ch.events_received = 2 AND datetime(ch.expires_at) > datetime('now')
     ORDER BY ch.consumed_at DESC LIMIT 1
   `.replace(/\s+/g, ' ').trim()
 }
 
-export async function verifyDevReleaseIdentity(options = {}) {
+export async function verifyProductionReleaseIdentity(options = {}) {
   const commit = String(options.commit || '').trim()
   if (!/^[0-9a-f]{40}$/i.test(commit)) throw new Error('本地 Git HEAD 必须为 40 位 SHA')
   const env = options.env || process.env
@@ -184,36 +184,36 @@ export async function verifyDevReleaseIdentity(options = {}) {
   await Promise.all(REQUIRED_VERIFY_URLS.map(async key => {
     const value = String(env[key] || '').trim()
     let origin
-    try { origin = new URL(value) } catch { throw new Error(`${key} 必须是合法的 dev Worker HTTPS 地址`) }
-    if (origin.protocol !== 'https:' || origin.username || origin.password) throw new Error(`${key} 必须是不含凭证的 dev Worker HTTPS 地址`)
-    const endpoint = key === 'VERIFY_DEV_API_URL' ? '/api/health' : '/__release'
+    try { origin = new URL(value) } catch { throw new Error(`${key} 必须是合法的 production Worker HTTPS 地址`) }
+    if (origin.protocol !== 'https:' || origin.username || origin.password) throw new Error(`${key} 必须是不含凭证的 production Worker HTTPS 地址`)
+    const endpoint = key === 'VERIFY_PRODUCTION_API_URL' ? '/api/health' : '/__release'
     const response = await fetchWithTimeout(fetchFn, new URL(endpoint, origin), { headers: { Accept: 'application/json' } }, options.requestTimeoutMs ?? VERIFY_TIMEOUT_MS)
     const body = response.ok ? await response.json().catch(() => null) : null
     const name = key === 'VERIFY_DEV_API_URL' ? 'API' : 'Web'
-    if (!body || body.status !== 'ok' || body.environment !== 'dev' || body.commit !== commit) throw new Error(`${name} 发布 commit 与本地 Git HEAD 不一致`)
+    if (!body || body.status !== 'ok' || body.environment !== 'production' || body.commit !== commit) throw new Error(`${name} 发布 commit 与本地 Git HEAD 不一致`)
   }))
 }
 
 async function destroyRemoteChallenge(challengeId, options = {}) {
   if (!CHALLENGE_PATTERN.test(String(challengeId || ''))) throw new Error('Meta live challenge ID 非法，拒绝清理')
-  const sql = `DELETE FROM meta_live_challenges WHERE id = '${challengeId}' AND environment = 'dev' AND commit_sha = '${options.commit}'`
+  const sql = `DELETE FROM meta_live_challenges WHERE id = '${challengeId}' AND environment = 'production' AND commit_sha = '${options.commit}'`
   const step = await (options.runCommand || runCommand)('corepack', [
-    'pnpm', '--filter', '@meigallery/api', 'exec', 'wrangler', 'd1', 'execute', 'meigallery-db-dev',
-    '--env', 'dev', '--remote', '--command', sql,
-  ], { cwd: options.cwd || process.cwd(), name: 'meta-live-challenge-destroy', reportCommand: '销毁 dev Meta live challenge 脱敏摘要' })
+    'pnpm', '--filter', '@meigallery/api', 'exec', 'wrangler', 'd1', 'execute', 'meigallery-db',
+    '--env', '', '--remote', '--command', sql,
+  ], { cwd: options.cwd || process.cwd(), name: 'meta-live-challenge-destroy', reportCommand: '销毁 production Meta live challenge 脱敏摘要' })
   if (step.status !== 'passed') throw new Error('Meta live challenge 清理失败')
 }
 
 function assertReadinessCanRecord(readiness, commit, nowValue, contract) {
-  if (readiness?.environment !== 'dev' || readiness?.commitSha !== commit.toLowerCase()) throw new Error('dev challenge 与当前 commit 不一致')
+  if (readiness?.environment !== 'production' || readiness?.commitSha !== commit.toLowerCase()) throw new Error('production challenge 与当前 commit 不一致')
   if (!CHALLENGE_PATTERN.test(String(readiness.challengeId || ''))
     || !META_LIVE_EVENTS.every(name => DIGEST_PATTERN.test(String(readiness?.eventDigests?.[name] || '')))) {
-    throw new Error('dev Worker challenge 脱敏摘要缺失')
+    throw new Error('production Worker challenge 脱敏摘要缺失')
   }
   if (!Number.isSafeInteger(readiness.datasetQualityContractVersion)
     || readiness.datasetQualityContractVersion < 1
     || readiness.datasetQualityContractVersion !== contract?.version
-    || readiness.datasetQualityContractDigest !== contract?.digest) throw new Error('Dataset Quality approved contract 与 dev live evidence 不一致')
+    || readiness.datasetQualityContractDigest !== contract?.digest) throw new Error('Dataset Quality approved contract 与 production live evidence 不一致')
   buildMetaLiveEvidence({
     ...readiness,
     commit,
@@ -236,7 +236,7 @@ function parseD1Rows(stdout) {
     if (!Array.isArray(payload) || payload.length !== 1 || !Array.isArray(payload[0]?.results)) throw new Error()
     return payload[0].results
   }
-  catch { throw new Error('dev Meta live readiness JSON 非法') }
+  catch { throw new Error('production Meta live readiness JSON 非法') }
 }
 
 async function readCurrentCommit(options = {}) {

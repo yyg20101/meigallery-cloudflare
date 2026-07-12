@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { describe, it } from 'node:test'
 import {
-  buildDevMetaLiveReadinessSql,
+  buildProductionMetaLiveReadinessSql,
   buildMetaLiveEvidence,
   recordMetaLiveVerification,
 } from './record-meta-live-verification.mjs'
@@ -16,7 +16,7 @@ const DIGESTS = {
 
 function readiness() {
   return {
-    environment: 'dev',
+    environment: 'production',
     commitSha: COMMIT,
     pixelId: '12345678906781',
     connectionVerifiedAt: '2026-07-09T23:55:00.000Z',
@@ -53,10 +53,10 @@ function validInput() {
 function runtime(overrides = {}) {
   return {
     env: {
-      VERIFY_DEV_API_URL: 'https://api-dev.example.workers.dev',
-      VERIFY_DEV_WEB_URL: 'https://web-dev.example.workers.dev',
+      VERIFY_PRODUCTION_API_URL: 'https://api.example.com',
+      VERIFY_PRODUCTION_WEB_URL: 'https://www.example.com',
     },
-    fetch: async () => new Response(JSON.stringify({ status: 'ok', environment: 'dev', commit: COMMIT }), { status: 200 }),
+    fetch: async () => new Response(JSON.stringify({ status: 'ok', environment: 'production', commit: COMMIT }), { status: 200 }),
     getCommit: async () => COMMIT,
     verifyContract: async () => CONTRACT,
     readReadiness: async () => readiness(),
@@ -68,8 +68,8 @@ function runtime(overrides = {}) {
 }
 
 describe('Meta live evidence V2 Worker challenge 录入', () => {
-  it('dev live readiness 不读取 production-only Dataset Quality 快照', () => {
-    const sql = buildDevMetaLiveReadinessSql(COMMIT, CONTRACT)
+  it('production live readiness 不直接读取 Dataset Quality 快照', () => {
+    const sql = buildProductionMetaLiveReadinessSql(COMMIT, CONTRACT)
     assert.equal(sql.includes('meta_dataset_quality_snapshots'), false)
     const program = `
       import { DatabaseSync } from 'node:sqlite';
@@ -86,9 +86,9 @@ describe('Meta live evidence V2 Worker challenge 录入', () => {
       CREATE TABLE analytics_conversion_deliveries (
         event_name TEXT, has_email INTEGER, has_external_id INTEGER, channel TEXT, status TEXT
       );
-      INSERT INTO meta_connection_verifications VALUES ('dev', '12345678906781', '${COMMIT}', datetime('now'), NULL);
+      INSERT INTO meta_connection_verifications VALUES ('production', '12345678906781', '${COMMIT}', datetime('now'), NULL);
       INSERT INTO meta_live_challenges VALUES (
-        'mlc_${'c'.repeat(32)}', 'dev', '${COMMIT}', '${DIGESTS.Contact}', '${DIGESTS.CompleteRegistration}',
+        'mlc_${'c'.repeat(32)}', 'production', '${COMMIT}', '${DIGESTS.Contact}', '${DIGESTS.CompleteRegistration}',
         'server_sent', 2, datetime('now', '+1 hour'), datetime('now')
       );
       INSERT INTO analytics_conversion_deliveries VALUES ('CompleteRegistration', 1, 1, 'meta_capi', 'sent');
@@ -161,12 +161,12 @@ describe('Meta live evidence V2 Worker challenge 录入', () => {
     }
   })
 
-  it('任一 dev Worker 不是当前 commit 时不读 D1 challenge', async () => {
+  it('任一 production Worker 不是当前 commit 时不读 D1 challenge', async () => {
     let reads = 0
     await assert.rejects(recordMetaLiveVerification(runtime({
       fetch: async url => new Response(JSON.stringify({
         status: 'ok',
-        environment: 'dev',
+        environment: 'production',
         commit: new URL(String(url)).pathname === '/__release' ? 'd'.repeat(40) : COMMIT,
       }), { status: 200 }),
       readReadiness: async () => { reads += 1; return readiness() },
