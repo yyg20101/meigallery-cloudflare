@@ -279,12 +279,11 @@ describe('Meta CAPI scheduled recovery', () => {
     expect(harness.sqlCalls.some(sql => sql.includes('AS duplicate_delivery_group_count'))).toBe(false)
   })
 
-  it('UTC 00:00 的 minute 与 daily trigger 分别调用时公共任务总计只执行一次', async () => {
+  it('UTC 00:00 的 minute trigger 同时执行公共任务和每日维护', async () => {
     const harness = createScheduledHarness()
     const scheduledTime = Date.parse('2026-07-11T00:00:00.000Z')
 
     await harness.run('* * * * *', scheduledTime)
-    await harness.run('0 0 * * *', scheduledTime)
 
     expect(harness.sent).toEqual([harness.expectedMessage])
     expect(harness.sqlCalls.filter(sql => sql.includes('AS duplicate_delivery_group_count'))).toHaveLength(1)
