@@ -91,11 +91,13 @@ export type ActiveMetaEventName = Extract<
   'Contact' | 'CompleteRegistration'
 >
 
+export type ActiveTikTokEventName = 'Contact' | 'CompleteRegistration'
+
 export type AdPlatformProvider = 'meta' | 'tiktok' | 'google'
 
 export type AdDeliveryTransport = 'browser' | 'server'
 
-export type ActiveAdPlatformEventName = ActiveMetaEventName
+export type ActiveAdPlatformEventName = ActiveMetaEventName | ActiveTikTokEventName
 
 export type AdPlatformTrackingMode = 'disabled' | 'test' | 'production'
 

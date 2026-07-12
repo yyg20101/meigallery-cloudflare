@@ -638,6 +638,7 @@ INSERT INTO site_settings (key, value) VALUES
 实现约束：
 
 - migration `0047_ad_platform_delivery_core.sql` 建立统一连接表和最终 delivery schema，将唯一目标约束改为 `conversion_action_id + provider + transport`，并清空旧投递技术数据。旧 `channel`、`meta_connection_revision` 和旧 Meta 站点设置键已删除；新增平台必须通过 adapter registry 接入，不得复制业务事实服务。
+- migration `0048_tiktok_pixel_connection.sql` 增加默认关闭的 TikTok 连接。TikTok Browser Pixel 复用统一连接、营销同意、Contact / CompleteRegistration 事实和 delivery 回执；PageView、ViewContent、Search 由前端 provider adapter 发送。Events API 尚未接入，后台和 API 均拒绝启用 TikTok server transport。
 - API 只返回 provider-aware `trackingInstructions`，前端通过广告平台 adapter registry 执行，不保留 `pixelEvents` 兼容响应。
 
 - 正式活动 Meta 事件严格限定为 `Contact`、`CompleteRegistration`；`Lead`、`StartTrial` 仅为历史读取值，sender 与 recovery 均不得再次发送。

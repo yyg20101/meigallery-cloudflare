@@ -20,8 +20,18 @@ const META_ADAPTER: AdPlatformAdapterDefinition = {
   transports: ['browser', 'server'],
 }
 
+const TIKTOK_ADAPTER: AdPlatformAdapterDefinition = {
+  provider: 'tiktok',
+  eventNames: {
+    contact: 'Contact',
+    complete_registration: 'CompleteRegistration',
+  },
+  transports: ['browser'],
+}
+
 const ADAPTERS: ReadonlyMap<AdPlatformProvider, AdPlatformAdapterDefinition> = new Map([
   [META_ADAPTER.provider, META_ADAPTER],
+  [TIKTOK_ADAPTER.provider, TIKTOK_ADAPTER],
 ])
 
 export function getAdPlatformAdapter(provider: AdPlatformProvider) {
@@ -36,4 +46,3 @@ export function mapConversionToPlatformEvent(
 ) {
   return getAdPlatformAdapter(provider).eventNames[actionType]
 }
-

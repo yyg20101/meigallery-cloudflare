@@ -94,6 +94,9 @@ function createConversionDb(options: {
   metaBrowserEnabled?: boolean
   metaDestinationId?: string
   metaMode?: 'disabled' | 'test' | 'production'
+  tiktokBrowserEnabled?: boolean
+  tiktokDestinationId?: string
+  tiktokMode?: 'disabled' | 'test' | 'production'
   metaConnectionVerified?: boolean
   metaRolloutPercentage?: unknown
   criticalIncidentOpen?: boolean
@@ -289,6 +292,20 @@ function createConversionDb(options: {
           }
           if (sql.includes('FROM ad_platform_connections')) {
             if (options.rolloutSettingQueryError) throw new Error('模拟 rollout setting 查询失败')
+            if (call.params[0] === 'tiktok') {
+              return {
+                provider: 'tiktok',
+                enabled: options.tiktokBrowserEnabled === true ? 1 : 0,
+                mode: options.tiktokMode ?? 'disabled',
+                browser_enabled: options.tiktokBrowserEnabled === true ? 1 : 0,
+                server_enabled: 0,
+                destination_id: options.tiktokDestinationId ?? '',
+                debug_enabled: 0,
+                rollout_percentage: 0,
+                credential_secret_name: '',
+                revision: null,
+              } as T
+            }
             return {
               provider: 'meta',
               enabled: options.metaBrowserEnabled === true || options.metaServerEnabled === true ? 1 : 0,
@@ -357,6 +374,24 @@ function createConversionDb(options: {
           return null
         },
         async all<T>() {
+          if (sql.includes('FROM ad_platform_connections')) {
+            const rows: unknown[] = []
+            if (options.metaBrowserEnabled || options.metaServerEnabled) rows.push({
+              provider: 'meta', enabled: 1, mode: options.metaMode ?? 'disabled',
+              browser_enabled: options.metaBrowserEnabled ? 1 : 0,
+              server_enabled: options.metaServerEnabled ? 1 : 0,
+              destination_id: options.metaDestinationId ?? '', debug_enabled: 0,
+              rollout_percentage: options.metaRolloutPercentage ?? 100,
+              credential_secret_name: 'META_CAPI_ACCESS_TOKEN', revision: CONNECTION_REVISION,
+            })
+            if (options.tiktokBrowserEnabled) rows.push({
+              provider: 'tiktok', enabled: 1, mode: options.tiktokMode ?? 'disabled',
+              browser_enabled: 1, server_enabled: 0,
+              destination_id: options.tiktokDestinationId ?? '', debug_enabled: 0,
+              rollout_percentage: 0, credential_secret_name: '', revision: null,
+            })
+            return { results: rows as T[] }
+          }
           return { results: [] as T[] }
         },
         async run() {
@@ -500,6 +535,23 @@ describe('conversion ledger service', () => {
       call.sql.includes('INSERT INTO analytics_conversion_delivery_daily')
       && call.params.includes('pending')
     ))).toHaveLength(1)
+  })
+
+  it('同一联系事实为 Meta 与 TikTok 生成独立浏览器投递', async () => {
+    const db = createConversionDb({
+      metaBrowserEnabled: true,
+      metaDestinationId: '1234567890',
+      metaMode: 'test',
+      tiktokBrowserEnabled: true,
+      tiktokDestinationId: 'C123456789ABCDEF',
+      tiktokMode: 'test',
+    })
+    const result = await recordContact(envFor(db), grantedContactInput())
+
+    expect(result.trackingInstructions).toHaveLength(2)
+    expect(result.trackingInstructions.map(item => item.provider)).toEqual(['meta', 'tiktok'])
+    expect(result.trackingInstructions.every(item => item.eventName === 'Contact')).toBe(true)
+    expect(db.insertedDeliveries.map(item => item.provider)).toEqual(['meta', 'tiktok'])
   })
 
   it('公开 metadata 中的 Meta 标识和网络标识不进入 SQL 参数', async () => {

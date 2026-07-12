@@ -542,6 +542,18 @@ test.describe('核心页面 smoke', () => {
     await expect(page.getByText('Meta 连接已保存')).toBeVisible()
   })
 
+  test('后台归因通过统一连接表单保存 TikTok Pixel 配置', async ({ page }) => {
+    await page.goto('/admin/attribution')
+    const form = page.locator('form').filter({ hasText: 'TikTok Pixel ID' })
+    await form.locator('input[pattern="[A-Za-z0-9]{10,30}"]').fill('C123456789ABCDEF')
+    await form.getByLabel('启用连接').check()
+    await form.getByLabel('Browser Pixel').check()
+    const response = page.waitForResponse(candidate => candidate.url().endsWith('/api/admin/attribution/platforms/tiktok') && candidate.request().method() === 'PATCH')
+    await form.getByRole('button', { name: '保存 TikTok' }).click()
+    expect((await response).ok()).toBeTruthy()
+    await expect(form.getByText('TikTok 连接已保存')).toBeVisible()
+  })
+
   test('后台归因发布检查区分阻断项和警告项且警告不改变阻断口径', async ({ page }) => {
     await page.goto('/admin/attribution/readiness')
 

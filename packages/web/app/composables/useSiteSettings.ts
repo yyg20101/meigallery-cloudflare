@@ -163,6 +163,7 @@ export function useSiteSettings() {
     ? settings.value.ad_platform_browser_connections
     : [])
   const metaBrowserConnection = computed(() => browserConnections.value.find(row => row.provider === 'meta') ?? null)
+  const tiktokBrowserConnection = computed(() => browserConnections.value.find(row => row.provider === 'tiktok') ?? null)
   const marketingTrackingMode = computed(() => metaBrowserConnection.value?.mode ?? 'disabled')
   const analyticsEnabled = computed(() => {
     return normalizeBooleanSetting(settings.value.analytics_enabled)
@@ -216,6 +217,7 @@ export function useSiteSettings() {
     videoEnabled,
     browserConnections,
     metaBrowserConnection,
+    tiktokBrowserConnection,
     marketingTrackingMode,
     analyticsEnabled,
     analyticsSampleRate,

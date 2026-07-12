@@ -53,7 +53,7 @@ const PIXEL_RECEIPT_RETRY_DELAYS = [250, 1_000, 3_000]
 const PIXEL_RECEIPT_RETRY_LIMIT = 100
 let conversionRetryTimer: ReturnType<typeof setTimeout> | null = null
 let pixelReceiptRetryTimer: ReturnType<typeof setTimeout> | null = null
-let lastTrackedPageKey = ''
+const lastTrackedPageKeys = new Map<AdBrowserInstruction['provider'], string>()
 
 export function useTracking() {
   const { api } = useApi()
@@ -138,20 +138,26 @@ export function useTracking() {
       return
     }
 
-    const connection = siteSettings.metaBrowserConnection.value
-    if (!connection?.destinationId) {
+    const connections = siteSettings.browserConnections.value.filter(
+      connection => isSupportedBrowserProvider(connection.provider) && Boolean(connection.destinationId),
+    )
+    if (!connections.length) {
       teardownPixel()
       return
     }
-    const pageKey = `${connection.destinationId}|${route.fullPath}`
-    if (lastTrackedPageKey === pageKey) return
-    if (!initializeAdBrowserProvider('meta', connection.destinationId)) return
-    if (trackAdBrowserPageView('meta')) lastTrackedPageKey = pageKey
+    for (const connection of connections) {
+      const provider = connection.provider as AdBrowserInstruction['provider']
+      const pageKey = `${connection.destinationId}|${route.fullPath}`
+      if (lastTrackedPageKeys.get(provider) === pageKey) continue
+      if (!initializeAdBrowserProvider(provider, connection.destinationId!)) continue
+      const tracked = trackAdBrowserPageView(provider)
+      if (tracked || provider === 'tiktok') lastTrackedPageKeys.set(provider, pageKey)
+    }
   }
 
   function teardownPixel() {
-    teardownAdBrowserProvider('meta')
-    lastTrackedPageKey = ''
+    for (const provider of ['meta', 'tiktok'] as const) teardownAdBrowserProvider(provider)
+    lastTrackedPageKeys.clear()
   }
 
   function ensureCurrentMarketingRouteAllowed() {
@@ -162,15 +168,26 @@ export function useTracking() {
 
   function trackViewContent(payload: Record<string, string | number | boolean>) {
     if (!ensureCurrentMarketingRouteAllowed() || !canDeliverMarketing(marketingConsent)) return
-    trackAdBrowserStandardEvent('meta', 'ViewContent', payload)
+    trackStandardEventForActiveProviders('ViewContent', payload)
   }
 
   function trackSearch(input: TrackSearchInput) {
     if (!ensureCurrentMarketingRouteAllowed() || !canDeliverMarketing(marketingConsent)) return
-    trackAdBrowserStandardEvent('meta', 'Search', {
+    trackStandardEventForActiveProviders('Search', {
       search_string: sanitizeAnalyticsText(input.searchString, 80),
       result_count: Number.isFinite(input.resultCount) ? input.resultCount : 0,
     })
+  }
+
+  function trackStandardEventForActiveProviders(
+    eventName: string,
+    payload: Record<string, string | number | boolean>,
+  ) {
+    for (const connection of siteSettings.browserConnections.value) {
+      if (!isSupportedBrowserProvider(connection.provider) || !connection.destinationId) continue
+      if (!initializeAdBrowserProvider(connection.provider, connection.destinationId)) continue
+      trackAdBrowserStandardEvent(connection.provider, eventName, payload)
+    }
   }
 
   function buildRegistrationAttributionContext() {
@@ -280,6 +297,10 @@ function isAdBrowserInstruction(value: unknown): value is AdBrowserInstruction {
     && Boolean(event.payload && typeof event.payload === 'object' && !Array.isArray(event.payload))
     && typeof event.receiptToken === 'string'
     && event.receiptToken.length > 0
+}
+
+function isSupportedBrowserProvider(value: unknown): value is 'meta' | 'tiktok' {
+  return value === 'meta' || value === 'tiktok'
 }
 
 function normalizeBrowserInstruction(value: unknown): AdBrowserInstruction | null {

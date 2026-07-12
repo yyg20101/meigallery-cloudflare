@@ -1197,6 +1197,32 @@ describe('后台归因中心 API', () => {
     expect((await response.json()).code).toBe(code)
   })
 
+  it('TikTok 连接配置限制 production、校验 Pixel ID 且拒绝提前启用 Events API', async () => {
+    const dev = await createApp('owner').request('/api/admin/attribution/platforms/tiktok', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ destinationId: 'C123456789ABCDEF', mode: 'test' }),
+    }, { APP_ENV: 'dev' } as Bindings)
+    expect(dev.status).toBe(409)
+    expect((await dev.json()).code).toBe('AD_PLATFORM_PRODUCTION_ONLY')
+
+    const invalid = await createApp('owner').request('/api/admin/attribution/platforms/tiktok', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ destinationId: '<script>', mode: 'test' }),
+    }, { APP_ENV: 'production' } as Bindings)
+    expect(invalid.status).toBe(400)
+    expect((await invalid.json()).code).toBe('AD_PLATFORM_DESTINATION_INVALID')
+
+    const server = await createApp('owner').request('/api/admin/attribution/platforms/tiktok', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ destinationId: 'C123456789ABCDEF', mode: 'test', serverEnabled: true }),
+    }, { APP_ENV: 'production' } as Bindings)
+    expect(server.status).toBe(409)
+    expect((await server.json()).code).toBe('AD_PLATFORM_SERVER_UNSUPPORTED')
+  })
+
   it('incident 列表拒绝未知 status，避免无界或歧义查询', async () => {
     const res = await createApp('admin').request(
       '/api/admin/attribution/meta/incidents?status=broken',

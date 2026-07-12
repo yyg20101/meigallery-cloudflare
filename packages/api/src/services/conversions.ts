@@ -31,7 +31,7 @@ import {
 } from '../utils/meta-capi-crypto'
 import { transitionDeliveryStatus } from './meta-capi'
 import { mapConversionToPlatformEvent } from './ad-platform/registry'
-import { readAdPlatformConnection } from './ad-platform/connections'
+import { listAdPlatformConnections, readAdPlatformConnection } from './ad-platform/connections'
 import { createSecureOutboxStatement, enqueueSecureMetaCapiDelivery } from './meta-capi-secure-outbox'
 import { requireVerifiedMetaConnection } from './meta-connection'
 import {
@@ -421,7 +421,7 @@ export async function markPixelAttempted(
   }>()
 
   if (!delivery
-    || delivery.provider !== 'meta'
+    || (delivery.provider !== 'meta' && delivery.provider !== 'tiktok')
     || delivery.transport !== 'browser'
     || delivery.external_event_id !== claims.eventId) {
     throw new Error('Pixel 回执无效')
@@ -445,7 +445,7 @@ export async function markPixelAttempted(
       WHERE id = ?
       LIMIT 1
     `).bind(delivery.id).first<{ provider: string; transport: string; external_event_id: string; status: string }>()
-    if (current?.provider === 'meta'
+    if ((current?.provider === 'meta' || current?.provider === 'tiktok')
       && current.transport === 'browser'
       && current.external_event_id === claims.eventId
       && current.status === 'attempted') {
@@ -613,10 +613,16 @@ async function buildConversionBatchPlan(
 ) {
   const statements: D1PreparedStatement[] = []
   const deliveries: PlannedDelivery[] = []
-  const settings = await readMetaDeliverySettings(env.DB)
+  const [settings, platformConnections] = await Promise.all([
+    readMetaDeliverySettings(env.DB),
+    listAdPlatformConnections(env.DB),
+  ])
   const capiEncryption = await buildCapiEncryptionPlan(env, settings, input, context, beforeSensitiveAccess)
   statements.push(conversionDailyStatement(env.DB, input, date, actionId))
   deliveries.push(...await planMetaDeliveries(env, settings, input, date, capiEncryption))
+  for (const connection of platformConnections) {
+    deliveries.push(...await planBrowserPlatformDelivery(env, connection, input, date))
+  }
   for (const delivery of deliveries) {
     delivery.statementIndex = statements.push(conversionDeliveryStatement(env.DB, delivery, actionId)) - 1
     statements.push(deliveryDailyStatement(env.DB, delivery, date))
@@ -789,6 +795,66 @@ async function planMetaDeliveries(
       statementIndex: -1,
     }
   }))
+}
+
+async function planBrowserPlatformDelivery(
+  env: ConversionEnv,
+  connection: Awaited<ReturnType<typeof readAdPlatformConnection>>,
+  input: RecordConversionInput,
+  date: string,
+): Promise<PlannedDelivery[]> {
+  if (!connection
+    || connection.provider === 'meta'
+    || input.consentState !== 'granted'
+    || !connection.enabled
+    || !connection.browserEnabled
+    || connection.mode === 'disabled'
+    || !connection.destinationId) return []
+
+  const eventName = mapConversionToPlatformEvent(connection.provider, input.actionType)
+  const eventId = await buildExternalEventId(env.SESSION_SECRET, {
+    actionType: input.actionType,
+    sessionId: input.sessionId || '',
+    visitorId: input.visitorId || '',
+    occurredDate: date,
+    userId: input.userId ?? undefined,
+    methodType: input.methodType,
+    actionTarget: input.actionTarget,
+    metaEventName: eventName,
+  })
+  const deliveryId = generateId('cdlv')
+  return [{
+    deliveryId,
+    provider: connection.provider,
+    transport: 'browser',
+    eventName,
+    eventId,
+    browserInstruction: {
+      provider: connection.provider,
+      deliveryId,
+      eventName,
+      eventId,
+      payload: sanitizeConversionMetadata(input.metadata || {}),
+      receiptToken: await createPixelReceiptToken(env.SESSION_SECRET, {
+        deliveryId,
+        eventId,
+        expiresAt: Math.floor(Date.now() / 1000) + 300,
+      }),
+    },
+    status: 'pending',
+    skipReason: '',
+    hasFbp: 0,
+    hasFbc: 0,
+    hasEmail: 0,
+    hasExternalId: 0,
+    encryptionKeyId: '',
+    trackingMode: connection.mode,
+    connectionRevision: connection.revision,
+    rolloutTargetPercentage: 0,
+    rolloutEffectivePercentage: 0,
+    rolloutBucket: null,
+    statementIndex: -1,
+  }]
 }
 
 function conversionDeliveryStatement(db: D1Database, delivery: PlannedDelivery, actionId: string) {

@@ -14,6 +14,7 @@ describe('广告平台浏览器插件', () => {
   const metaBrowserConnection = computed(() => facebookPixelEnabled.value && facebookPixelId.value
     ? { provider: 'meta', destinationId: facebookPixelId.value, debugEnabled: facebookPixelDebugEnabled.value }
     : null)
+  const browserConnections = computed(() => metaBrowserConnection.value ? [metaBrowserConnection.value] : [])
 
   beforeEach(() => {
     vi.resetModules()
@@ -31,6 +32,7 @@ describe('广告平台浏览器插件', () => {
     vi.stubGlobal('useSiteSettings', () => ({
       fetchSettings,
       metaBrowserConnection,
+      browserConnections,
     }))
     vi.stubGlobal('useMarketingConsent', () => ({
       canTrackMarketing: computed(() => consent.value === 'granted'),
