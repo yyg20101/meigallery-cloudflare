@@ -85,6 +85,10 @@ name = "EMAIL"
 [env.dev.triggers]
 crons = []
 
+[env.dev.queues]
+producers = []
+consumers = []
+
 [env.dev.vars]
 APP_ENV = "dev"
 CORS_ORIGIN = ""
