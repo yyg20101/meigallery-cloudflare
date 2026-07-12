@@ -484,6 +484,22 @@ describe('Meta secret 静态泄漏扫描', () => {
     ])
   })
 
+  it('evidence 只放行与批准契约一致的公开 digest', async () => {
+    const rootDir = await createRepository()
+    const approvedContractDigest = `sha256:${'9'.repeat(64)}`
+    await writeIgnoredEvidence(rootDir, 'reports/release-verification/contract-digests.json', {
+      digest: approvedContractDigest,
+      datasetQualityContractDigest: approvedContractDigest,
+      nested: { digest: `sha256:${'8'.repeat(64)}` },
+    })
+
+    const report = await scanMetaSecretLeaks({ rootDir, approvedContractDigest })
+
+    assert.deepEqual(report.findings, [
+      { path: 'reports/release-verification/contract-digests.json', ruleId: 'META_EVIDENCE_MATCH_IDENTIFIER' },
+    ])
+  })
+
   it('evidence 敏感字段上下文拒绝对象、数组和标量包装且继续扫描子节点', async () => {
     const rootDir = await createRepository()
     await writeIgnoredEvidence(rootDir, 'reports/release-verification/wrapped-context.json', {
