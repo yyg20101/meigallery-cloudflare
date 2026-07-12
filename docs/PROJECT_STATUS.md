@@ -72,12 +72,10 @@
 - `docs/UI_DATA_ANALYTICS_DASHBOARD.md`：后台数据分析看板设计。
 - `docs/TELEGRAM_IMPORT_API.md`：Telegram 外部导入 API 对接契约。
 - `docs/SEO_CONFIGURATION.md`：SEO 关键词和运营配置说明。
+- `docs/META_PRODUCTION_ROLLOUT_PLAN.md`：Meta production 证据、发布、放量和同步确认计划。
 - `docs/codebase/*.md`：代码库结构、架构、集成、测试和风险分析。
 - `docs/superpowers/specs/2026-07-08-attribution-center-clean-design.md`：归因中心、后台归因 UI、测试矩阵和发布闸门的设计背景。
-- `docs/superpowers/specs/2026-07-08-meta-capi-attribution-layer-design.md`：Meta 归因与转化事件账本的设计背景。
-- `docs/superpowers/plans/2026-07-10-meta-capi-v2-domain-consolidation.md`：Meta CAPI v2 阶段 1 业务事实收口计划。
-- `docs/superpowers/plans/2026-07-10-meta-capi-v2-secure-delivery.md`：Meta CAPI v2 安全交付计划。
-- `docs/superpowers/plans/2026-07-10-meta-capi-v2-quality-operations.md`：Meta CAPI v2 质量运营计划。
+- `docs/superpowers/specs/2026-07-10-meta-dataset-quality-contract.md`：Meta Dataset Quality 已批准契约。
 
 ## Git 状态
 
