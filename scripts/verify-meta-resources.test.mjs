@@ -17,6 +17,7 @@ function runMetaResourceVerification(options) {
     requestResourceAttestations: async input => passingLiveIsolation(input.commit),
     ...(options.environment === 'production'
       && options.phase !== 'bootstrap'
+      && options.phase !== 'post-deploy'
       && options.initialMetaRollout !== true
       && !options.expectedDatasetQualityContract
       ? { expectedDatasetQualityContract: { version: 1, digest: `sha256:${'9'.repeat(64)}` } }
@@ -397,16 +398,19 @@ describe('Meta Cloudflare 资源检查', () => {
   })
 
   it('production post-deploy 仅在 trackingMode=test、rollout=0 和 live attestation 下放行且不要求 connection', async () => {
+    const calls = []
     const passed = await runMetaResourceVerification({
       environment: 'production',
       commit: COMMIT,
       phase: 'post-deploy',
       reportOnly: true,
-      runCommand: createPassingRunner([], { capiEnabled: false, trackingMode: 'test', connectionVerified: false }),
+      runCommand: createPassingRunner(calls, { capiEnabled: false, trackingMode: 'test', connectionVerified: false }),
     })
     assert.equal(passed.status, 'passed')
     assert.equal(passed.connectionVerified, false)
     assert.equal(Object.values(passed.environmentIsolation).every(Boolean), true)
+    assert.equal(passed.datasetQualityCollectorCurrent, false)
+    assert.equal(calls.some(call => call.options.name.endsWith('dataset-quality')), false)
 
     for (const overrides of [
       { trackingMode: 'disabled' },
@@ -422,6 +426,27 @@ describe('Meta Cloudflare 资源检查', () => {
       })
       assert.equal(report.status, 'failed', JSON.stringify(overrides))
     }
+  })
+
+  it('production post-deploy CLI 不提前校验 Dataset Quality 契约', async () => {
+    let verified = 0
+    const originalLog = console.log
+    console.log = () => {}
+    try {
+      const report = await verifyMetaResourcesMain(['--env', 'production', '--post-deploy-isolation', '--report-only'], {
+        verifyDatasetQualityContract: async () => {
+          verified += 1
+          throw new Error('首次连接阶段不应读取 Dataset Quality 契约')
+        },
+        runCommand: createPassingRunner([], { capiEnabled: false, trackingMode: 'test', connectionVerified: false }),
+        requestResourceAttestations: async input => passingLiveIsolation(input.commit),
+      })
+      assert.equal(report.status, 'passed')
+    }
+    finally {
+      console.log = originalLog
+    }
+    assert.equal(verified, 0)
   })
 
   it('任意 META_RESOURCE_IDENTITIES_FILE 不能替代 production live Worker attestation', async () => {

@@ -134,7 +134,7 @@ export async function runMetaResourceVerification(options = {}) {
     command('meta-connection', ['d1', 'execute', config.database, ...config.envArgs, '--remote', '--command', metaConnectionSql(environment), '--json']),
     command('meta-operations', ['d1', 'execute', config.database, ...config.envArgs, '--remote', '--command', META_OPERATIONS_SQL, '--json']),
   ]
-  if (environment === 'production' && phase !== 'bootstrap') {
+  if (environment === 'production' && phase === 'full') {
     datasetQualitySql(expectedDatasetQualityContract)
     calls.push(command('dataset-quality', ['d1', 'execute', config.database, ...config.envArgs, '--remote', '--command', datasetQualitySql(expectedDatasetQualityContract), '--json']))
   }
@@ -211,10 +211,10 @@ export async function runMetaResourceVerification(options = {}) {
   }
   const isolationReady = d1Identity && r2Identity && queueMainIdentity && queueDlqIdentity
     && (environment !== 'production' || phase === 'bootstrap' || Object.values(secretIsolation).every(Boolean))
-  const datasetQuality = environment === 'production' && phase !== 'bootstrap'
+  const datasetQuality = environment === 'production' && phase === 'full'
     ? parseDatasetQuality(byName.get('dataset-quality')?.stdout, expectedDatasetQualityContract)
     : null
-  const datasetQualityReady = environment !== 'production' || phase === 'bootstrap' || datasetQuality?.collectorCurrent === true
+  const datasetQualityReady = environment !== 'production' || phase !== 'full' || datasetQuality?.collectorCurrent === true
   const initialStateReady = !initialMetaRollout || (
     capiEnabled === false
     && operations?.targetRolloutPercentage === 0
@@ -713,7 +713,7 @@ export async function main(argv = process.argv.slice(2), options = {}) {
     throw new Error('用法：verify-meta-resources.mjs --env dev|production [--initial-meta-rollout|--post-deploy-isolation] [--report-only]')
   }
   const commit = reportOnly ? undefined : await readCommit(options)
-  const expectedDatasetQualityContract = environment === 'production' && !initialMetaRollout
+  const expectedDatasetQualityContract = environment === 'production' && !initialMetaRollout && !postDeployIsolation
     ? await (options.verifyDatasetQualityContract || verifyApprovedMetaDatasetQualityContract)({
         cwd: options.cwd || process.cwd(),
       })
