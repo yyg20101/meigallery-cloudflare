@@ -144,9 +144,9 @@ export async function readDevMetaLiveReadiness(options = {}) {
       completeRegistrationExternalId: row.registration_external_id === 1,
       contactContainsRegistrationIdentity: row.contact_registration_identity !== 0,
     },
-    datasetQualityContractVersion: Number(row.contract_version || 0),
-    datasetQualityContractDigest: String(row.contract_digest || ''),
-    datasetQualityCollectorCurrent: row.collector_current === 1,
+    datasetQualityContractVersion: contract.version,
+    datasetQualityContractDigest: contract.digest,
+    datasetQualityCollectorCurrent: false,
   }
 }
 
@@ -157,21 +157,7 @@ export function buildDevMetaLiveReadinessSql(commit, contract) {
     throw new Error('readiness SQL 需要当前 commit 与 approved Dataset Quality contract')
   }
   return `
-    WITH latest_quality AS (
-      SELECT event_name, contract_version, contract_digest, collection_status, collected_at,
-        ROW_NUMBER() OVER (PARTITION BY event_name ORDER BY collected_at DESC, id DESC) AS row_rank
-      FROM meta_dataset_quality_snapshots
-      WHERE environment = 'dev'
-        AND contract_version = ${contract.version}
-        AND contract_digest = '${contract.digest}'
-        AND event_name IN ('Contact', 'CompleteRegistration')
-    ), quality AS (
-      SELECT contract_version, contract_digest, COUNT(DISTINCT event_name) AS event_count,
-        MIN(CASE WHEN collection_status = 'success' AND datetime(collected_at) > datetime('now', '-24 hours') THEN 1 ELSE 0 END) AS collector_current
-      FROM latest_quality
-      WHERE row_rank = 1
-      GROUP BY contract_version, contract_digest LIMIT 1
-    ), matching AS (
+    WITH matching AS (
       SELECT
         MAX(CASE WHEN event_name = 'CompleteRegistration' AND has_email = 1 THEN 1 ELSE 0 END) AS registration_email,
         MAX(CASE WHEN event_name = 'CompleteRegistration' AND has_external_id = 1 THEN 1 ELSE 0 END) AS registration_external_id,
@@ -180,12 +166,10 @@ export function buildDevMetaLiveReadinessSql(commit, contract) {
     )
     SELECT c.environment, c.pixel_id, c.verified_commit, c.verified_at AS connection_verified_at,
       ch.id AS challenge_id, ch.contact_event_digest, ch.complete_registration_event_digest,
-      matching.registration_email, matching.registration_external_id, matching.contact_registration_identity,
-      quality.contract_version, quality.contract_digest,
-      CASE WHEN quality.event_count = 2 AND quality.collector_current = 1 THEN 1 ELSE 0 END AS collector_current
+      matching.registration_email, matching.registration_external_id, matching.contact_registration_identity
     FROM meta_connection_verifications c
     JOIN meta_live_challenges ch ON ch.environment = c.environment AND ch.commit_sha = c.verified_commit
-    CROSS JOIN matching LEFT JOIN quality ON 1 = 1
+    CROSS JOIN matching
     WHERE c.environment = 'dev' AND c.verified_commit = '${commit}' AND c.invalidated_at IS NULL
       AND ch.status = 'server_sent' AND ch.events_received = 2 AND datetime(ch.expires_at) > datetime('now')
     ORDER BY ch.consumed_at DESC LIMIT 1
@@ -229,8 +213,7 @@ function assertReadinessCanRecord(readiness, commit, nowValue, contract) {
   if (!Number.isSafeInteger(readiness.datasetQualityContractVersion)
     || readiness.datasetQualityContractVersion < 1
     || readiness.datasetQualityContractVersion !== contract?.version
-    || readiness.datasetQualityContractDigest !== contract?.digest
-    || readiness.datasetQualityCollectorCurrent !== true) throw new Error('dev Dataset Quality contract/collector readiness 未通过')
+    || readiness.datasetQualityContractDigest !== contract?.digest) throw new Error('Dataset Quality approved contract 与 dev live evidence 不一致')
   buildMetaLiveEvidence({
     ...readiness,
     commit,

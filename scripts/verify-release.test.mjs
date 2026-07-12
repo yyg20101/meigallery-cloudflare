@@ -601,6 +601,9 @@ describe('发布验证 CLI', () => {
           notes: [],
         }
       },
+      verifyApprovedMetaDatasetQualityContract: async () => {
+        throw new Error('Dataset Quality approved contract artifact 缺失')
+      },
       runMetaResourceVerification: async ({ environment }) => {
         order.push(`meta-resources-${environment}`)
         return {
@@ -684,6 +687,9 @@ describe('发布验证 CLI', () => {
       runQuickVerification: child('quick'),
       runLocalRuntimeReleaseVerification: child('local-runtime'),
       runDevRehearsalReleaseVerification: child('dev-rehearsal'),
+      verifyApprovedMetaDatasetQualityContract: async () => {
+        throw new Error('Dataset Quality approved contract artifact 缺失')
+      },
       runMetaResourceVerification: async ({ environment, initialMetaRollout }) => {
         resourceCalls.push({ environment, initialMetaRollout })
         return {
@@ -802,6 +808,9 @@ describe('发布验证 CLI', () => {
       runQuickVerification: child('quick'),
       runLocalRuntimeReleaseVerification: child('local-runtime'),
       runDevRehearsalReleaseVerification: child('dev-rehearsal'),
+      verifyApprovedMetaDatasetQualityContract: async () => {
+        throw new Error('Dataset Quality approved contract artifact 缺失')
+      },
       runMetaResourceVerification: async ({ environment }) => {
         order.push(environment)
         return { status: 'failed', environment, capiEnabled: false, database: 'safe', queues: [] }

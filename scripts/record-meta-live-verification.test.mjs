@@ -29,7 +29,7 @@ function readiness() {
     },
     datasetQualityContractVersion: 1,
     datasetQualityContractDigest: CONTRACT.digest,
-    datasetQualityCollectorCurrent: true,
+    datasetQualityCollectorCurrent: false,
   }
 }
 
@@ -68,16 +68,13 @@ function runtime(overrides = {}) {
 }
 
 describe('Meta live evidence V2 Worker challenge 录入', () => {
-  it('Dataset Quality readiness 只判断固定两事件各自最新快照', () => {
+  it('dev live readiness 不读取 production-only Dataset Quality 快照', () => {
     const sql = buildDevMetaLiveReadinessSql(COMMIT, CONTRACT)
+    assert.equal(sql.includes('meta_dataset_quality_snapshots'), false)
     const program = `
       import { DatabaseSync } from 'node:sqlite';
       const db = new DatabaseSync(':memory:');
       db.exec(${JSON.stringify(`
-      CREATE TABLE meta_dataset_quality_snapshots (
-        id TEXT PRIMARY KEY, environment TEXT, event_name TEXT, contract_version INTEGER,
-        contract_digest TEXT, collection_status TEXT, collected_at TEXT
-      );
       CREATE TABLE meta_connection_verifications (
         environment TEXT, pixel_id TEXT, verified_commit TEXT, verified_at TEXT, invalidated_at TEXT
       );
@@ -96,19 +93,11 @@ describe('Meta live evidence V2 Worker challenge 录入', () => {
       );
       INSERT INTO analytics_conversion_deliveries VALUES ('CompleteRegistration', 1, 1, 'meta_capi', 'sent');
       INSERT INTO analytics_conversion_deliveries VALUES ('Contact', 0, 0, 'meta_capi', 'sent');
-      INSERT INTO meta_dataset_quality_snapshots VALUES
-        ('old-contact', 'dev', 'Contact', 1, '${CONTRACT.digest}', 'failed', '2000-01-01T00:00:00.000Z'),
-        ('old-registration', 'dev', 'CompleteRegistration', 1, '${CONTRACT.digest}', 'failed', '2000-01-01T00:00:00.000Z'),
-        ('fresh-contact', 'dev', 'Contact', 1, '${CONTRACT.digest}', 'success', datetime('now', '-1 hour')),
-        ('fresh-registration', 'dev', 'CompleteRegistration', 1, '${CONTRACT.digest}', 'success', datetime('now', '-1 hour'));
       `)});
       const sql = ${JSON.stringify(sql)};
-      const before = db.prepare(sql).get().collector_current;
-      db.exec(${JSON.stringify(`INSERT INTO meta_dataset_quality_snapshots VALUES
-        ('new-contact-failure', 'dev', 'Contact', 1, '${CONTRACT.digest}', 'failed', datetime('now'))`)});
-      const after = db.prepare(sql).get().collector_current;
+      const row = db.prepare(sql).get();
       db.close();
-      console.log(JSON.stringify([before, after]));
+      console.log(JSON.stringify([row.registration_email, row.registration_external_id, row.contact_registration_identity]));
     `
     const result = execFileSync(process.execPath, [
       '--disable-warning=ExperimentalWarning',
@@ -116,7 +105,7 @@ describe('Meta live evidence V2 Worker challenge 录入', () => {
       '--eval',
       program,
     ], { encoding: 'utf8' })
-    assert.deepEqual(JSON.parse(result), [1, 0])
+    assert.deepEqual(JSON.parse(result), [1, 1, 0])
   })
 
   it('只接受 Worker 返回的不可逆摘要，证据不含原始 ID', () => {
@@ -156,11 +145,10 @@ describe('Meta live evidence V2 Worker challenge 录入', () => {
     assert.equal(writes, 0)
   })
 
-  it('缺失 challenge、错误 commit 或 Q5/collector pending 时不进入人工确认', async () => {
+  it('缺失 challenge、错误 commit 或契约不一致时不进入人工确认', async () => {
     for (const partial of [
       { challengeId: '' },
       { commitSha: 'd'.repeat(40) },
-      { datasetQualityCollectorCurrent: false },
       { datasetQualityContractDigest: `sha256:${'8'.repeat(64)}` },
       { eventDigests: { ...DIGESTS, Contact: 'raw-event-id' } },
     ]) {

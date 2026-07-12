@@ -147,6 +147,7 @@ export async function runReleaseVerification(options = {}) {
   const runQuickVerificationFn = options.runQuickVerification || runQuickVerification
   const runLocalRuntimeReleaseVerificationFn = options.runLocalRuntimeReleaseVerification || runLocalRuntimeReleaseVerification
   const runDevRehearsalReleaseVerificationFn = options.runDevRehearsalReleaseVerification || runDevRehearsalReleaseVerification
+  const verifyApprovedMetaDatasetQualityContractFn = options.verifyApprovedMetaDatasetQualityContract || verifyApprovedMetaDatasetQualityContract
   const runMetaResourceVerificationFn = options.runMetaResourceVerification || runMetaResourceVerification
   const readLatestMetaLiveEvidenceFn = options.readLatestMetaLiveEvidence || readLatestMetaLiveEvidence
   const assertMetaLiveEvidenceCanGateProductionFn = options.assertMetaLiveEvidenceCanGateProduction || assertMetaLiveEvidenceCanGateProduction
@@ -239,7 +240,7 @@ export async function runReleaseVerification(options = {}) {
   if (releaseGitBlockers.length === 0 && childModesPassed) {
     const contractStartedMs = Date.now()
     try {
-      const contract = await verifyApprovedMetaDatasetQualityContract({ cwd: options.cwd })
+      const contract = await verifyApprovedMetaDatasetQualityContractFn({ cwd: options.cwd })
       datasetQualityContract = { status: 'passed', ...contract }
       steps.push({
         name: 'meta-dataset-quality-contract', status: 'passed', durationMs: Date.now() - contractStartedMs,
@@ -326,13 +327,11 @@ export async function runReleaseVerification(options = {}) {
   }
 
   if (metaLiveVerification.status === 'passed') {
-    const qualityPassed = metaResources.dev.datasetQualityContractVersion === datasetQualityContract.version
-      && metaResources.dev.datasetQualityContractDigest === datasetQualityContract.digest
-      && metaResources.dev.datasetQualityCollectorCurrent === true
+    const qualityPassed = datasetQualityContract.status === 'passed'
     steps.push({
       name: 'meta-dataset-quality', status: qualityPassed ? 'passed' : 'failed', durationMs: 0,
-      command: '校验 tracked contract digest 与 dev Dataset Quality collector freshness', exitCode: qualityPassed ? 0 : 1,
-      summary: qualityPassed ? 'Dataset Quality contract 与 collector freshness 通过' : 'Dataset Quality contract/collector pending',
+      command: '校验 tracked production Dataset Quality contract digest', exitCode: qualityPassed ? 0 : 1,
+      summary: qualityPassed ? 'production Dataset Quality contract 已批准' : 'Dataset Quality contract pending',
     })
     const incidentPassed = metaResources.dev.openCriticalIncidentCount === 0
     steps.push({
@@ -352,6 +351,7 @@ export async function runReleaseVerification(options = {}) {
       commit: git.commit,
       initialMetaRollout,
       reportOnly: false,
+      expectedDatasetQualityContract: initialMetaRollout ? undefined : datasetQualityContract,
     })
     metaResources.production = sanitizeMetaResourceSummary(result, 'production', git.commit)
     steps.push({
@@ -646,15 +646,11 @@ export async function collectTrustedProductionGateFacts(options = {}) {
     commit,
     phase: 'full',
     reportOnly: true,
-    expectedDatasetQualityContract: contract,
   })
   if (dev?.status !== 'passed'
     || dev.connectionVerified !== true
-    || dev.openCriticalIncidentCount !== 0
-    || dev.datasetQualityCollectorCurrent !== true
-    || dev.datasetQualityContractVersion !== contract.version
-    || dev.datasetQualityContractDigest !== contract.digest) {
-    throw new Error('当前 dev 远端 resource/connection/contract/collector/incident 链未通过')
+    || dev.openCriticalIncidentCount !== 0) {
+    throw new Error('当前 dev 远端 resource/connection/incident 链未通过')
   }
   const live = await readRemoteDevGateFn({ ...options, commit, contract })
   if (live?.status !== 'passed') throw new Error('当前 dev 远端 live evidence 链未通过')
@@ -667,9 +663,15 @@ export async function collectTrustedProductionGateFacts(options = {}) {
     phase: bootstrapPermitted ? 'bootstrap' : 'full',
     initialMetaRollout: bootstrapPermitted,
     reportOnly: true,
+    expectedDatasetQualityContract: bootstrapPermitted ? undefined : contract,
   })
   if (production?.status !== 'passed'
     || production.openCriticalIncidentCount !== 0
+    || (!bootstrapPermitted && (
+      production.datasetQualityCollectorCurrent !== true
+      || production.datasetQualityContractVersion !== contract.version
+      || production.datasetQualityContractDigest !== contract.digest
+    ))
     || (bootstrapPermitted && (
       production.targetRolloutPercentage !== 0 || production.effectiveRolloutPercentage !== 0
     ))) {

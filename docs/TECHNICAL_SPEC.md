@@ -655,7 +655,7 @@ Meta CAPI v2 远端证据链：
 - migration `0041_meta_live_challenges.sql` 保存绑定 environment、40 字符 commit 和有效期的一次性 dev challenge；Browser `fbq` 与 Server CAPI 只允许 `Contact`、`CompleteRegistration`，共享 opaque external event ID，消费后不得恢复原始 ID。
 - migration `0042_meta_resource_attestation_tickets.sql` 保存 60 秒 D1 原子一次性 ticket。Owner Cookie 只能在固定可信 API origin 换取 ticket；`/api/meta/resource-attestation` 只接受 ticket 并返回 HMAC 摘要，最终请求不携带 Cookie，ticket 响应和审计均不得回显凭据。
 - production 冷启动 gate 分为 `bootstrap`、`post-deploy`、`full`：当前 commit 与未过期 D1 bootstrap permit 决定首次部署资格；部署后必须通过资源 attestation 和 `trackingMode=test` 的真实 Test Event；完整 gate 通过后才能切换 production，并由 Owner 将 rollout 从 `0` 手动升至 `10`。系统不得自动升级，只能因 incident 自动降至 `0`。
-- Q5 Dataset Quality 仍为 `contract_pending`。在取得项目 dev Dataset 的真实官方 capture、Owner 批准 contract、生成并完整执行 collector 补充计划前，不推断 dataset mismatch，后台只显示 quality warning，release 与 production readiness 保持 blocked。
+- Dataset Quality 使用唯一 production Dataset：批准契约固定 `GET /v25.0/dataset_quality` 的字段白名单，collector 只在 production 每日执行并写入契约 version/digest。dev live evidence 不依赖或复制 production 质量快照；首次 production bootstrap 保持 rollout `0`，部署后的 full gate 必须验证 production collector 的两项活动事件快照与 24 小时新鲜度。
 
 #### Meta 生产放行与回滚 `[当前实现 / 运维前置]`
 
@@ -663,7 +663,7 @@ Meta CAPI v2 远端证据链：
 
 严格 Test Event 必须只包含 `Contact`、`CompleteRegistration`，出现 `Lead` 或 `StartTrial` 必须阻断，并且 CAPI 的 `sent` 与 `events_received=1` 同时成立。由用户营销授权门禁控制的 Pixel 只能写入 `attempted`，不能替代这项确认。任何阶段失败都必须将 mode 切回 `disabled` 并保持 `meta_capi_enabled=false`；先关闭 CAPI、再关闭 mode，保留 Queue/DLQ、D1 migration 和账本用于诊断。
 
-当前外部 blocker：没有 Q5 approved contract/collector，没有当前最终 commit 的真实远端 dev challenge、Meta live、resource attestation 与 Dataset Quality evidence。因此不得把本地测试通过描述为“满足生产候选条件”，也不得据此执行 production deploy 或提高 rollout。
+当前外部 blocker：仍缺少当前最终 commit 的真实远端 dev challenge、Meta live、resource attestation，以及 production 部署后生成的 Dataset Quality 快照。首次 production bootstrap 可以在 rollout `0` 且 CAPI 关闭时执行；在 post-deploy/full gate 全部通过前不得提高 rollout。
 
 成本与索引口径：
 

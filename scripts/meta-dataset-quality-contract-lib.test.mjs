@@ -13,11 +13,10 @@ import {
 const execFile = promisify(execFileCallback)
 
 describe('Dataset Quality approved contract gate', () => {
-  it('当前仓库缺少完成态 contract 时稳定失败', async () => {
-    await assert.rejects(
-      verifyApprovedMetaDatasetQualityContract({ cwd: process.cwd() }),
-      /缺失|tracked/,
-    )
+  it('当前仓库包含可验证的 production contract', async () => {
+    const result = await verifyApprovedMetaDatasetQualityContract({ cwd: process.cwd() })
+    assert.equal(result.version, 1)
+    assert.match(result.digest, /^sha256:[0-9a-f]{64}$/)
   })
 
   it('只接受 Git tracked、approved、带版本的 production v25.0 artifact，并计算内容 digest', async () => {

@@ -37,6 +37,7 @@ import { recoverPendingMetaCapiDeliveries } from './services/meta-capi-queue'
 import { purgeExpiredMetaCapiOutbox } from './services/meta-capi-secure-outbox'
 import { recoverRegistrationConversionFacts } from './services/registration-conversion-recovery'
 import { runMetaCapiCircuitEvaluation } from './services/meta-capi-circuit-breaker'
+import { collectMetaDatasetQuality } from './services/meta-dataset-quality'
 
 /** Hono 应用绑定类型 */
 export type Bindings = {
@@ -392,6 +393,16 @@ async function handleScheduled(event: ScheduledEvent, env: Bindings): Promise<vo
     console.log('[cron] 数据分析保留期清理完成:', cleanup.changes)
   } catch (e) {
     console.error('[cron] 数据分析聚合任务失败:', e)
+  }
+
+  // 4. Dataset Quality 只读采集独立于 CAPI 投递，失败不阻断其他维护任务。
+  try {
+    const quality = await collectMetaDatasetQuality(env, new Date(event.scheduledTime))
+    console.log('[cron] Meta Dataset Quality 采集完成:', quality)
+  } catch {
+    console.error('[cron] Meta Dataset Quality 采集失败:', {
+      errorCode: 'meta_dataset_quality_collection_failed',
+    })
   }
 }
 
