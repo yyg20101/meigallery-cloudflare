@@ -78,14 +78,14 @@ const META_OPERATIONS_SQL = `
 function datasetQualitySql(contract) {
   if (!Number.isSafeInteger(contract?.version)
     || !/^sha256:[0-9a-f]{64}$/.test(String(contract?.digest || ''))) {
-    throw new Error('dev 资源检查需要 approved Dataset Quality contract')
+    throw new Error('production 资源检查需要 approved Dataset Quality contract')
   }
   return `
   WITH latest AS (
     SELECT event_name, contract_version, contract_digest, collection_status, collected_at,
       ROW_NUMBER() OVER (PARTITION BY event_name ORDER BY collected_at DESC, id DESC) AS row_rank
     FROM meta_dataset_quality_snapshots
-    WHERE environment = 'dev'
+    WHERE environment = 'production'
       AND contract_version = ${contract.version}
       AND contract_digest = '${contract.digest}'
       AND event_name IN ('Contact', 'CompleteRegistration')

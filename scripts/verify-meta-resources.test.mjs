@@ -15,7 +15,10 @@ const RESOURCE_ID = '714929cb-sensitive-resource-id'
 function runMetaResourceVerification(options) {
   return runMetaResourceVerificationImpl({
     requestResourceAttestations: async input => passingLiveIsolation(input.commit),
-    ...(options.environment === 'dev' && !options.expectedDatasetQualityContract
+    ...(options.environment === 'production'
+      && options.phase !== 'bootstrap'
+      && options.initialMetaRollout !== true
+      && !options.expectedDatasetQualityContract
       ? { expectedDatasetQualityContract: { version: 1, digest: `sha256:${'9'.repeat(64)}` } }
       : {}),
     ...options,
@@ -23,19 +26,20 @@ function runMetaResourceVerification(options) {
 }
 
 describe('Meta Cloudflare 资源检查', () => {
-  it('dev 程序入口和 CLI 都不能绕过 approved Dataset Quality contract', async () => {
-    await assert.rejects(runMetaResourceVerificationImpl({ environment: 'dev' }), /approved Dataset Quality contract/)
+  it('production full 程序入口和 CLI 都不能绕过 approved Dataset Quality contract', async () => {
+    await assert.rejects(runMetaResourceVerificationImpl({ environment: 'production' }), /approved Dataset Quality contract/)
 
     let verified = 0
     const originalLog = console.log
     console.log = () => {}
     try {
-      const report = await verifyMetaResourcesMain(['--env', 'dev', '--report-only'], {
+      const report = await verifyMetaResourcesMain(['--env', 'production', '--report-only'], {
         verifyDatasetQualityContract: async () => {
           verified += 1
           return { version: 1, digest: `sha256:${'9'.repeat(64)}` }
         },
         runCommand: createPassingRunner([], { capiEnabled: true }),
+        requestResourceAttestations: async input => passingLiveIsolation(input.commit),
       })
       assert.equal(report.status, 'passed')
       assert.equal(report.datasetQualityCollectorCurrent, true)
@@ -425,10 +429,10 @@ describe('Meta Cloudflare 资源检查', () => {
     })
   })
 
-  it('dev Dataset Quality 从真实 resource query 读取 contract version 与 freshness，不读取 Evidence 布尔', async () => {
+  it('production Dataset Quality 从真实 resource query 读取 contract version 与 freshness，不读取 Evidence 布尔', async () => {
     const digest = `sha256:${'9'.repeat(64)}`
     const passing = await runMetaResourceVerification({
-      environment: 'dev',
+      environment: 'production',
       commit: COMMIT,
       reportOnly: true,
       expectedDatasetQualityContract: { version: 3, digest },
@@ -446,7 +450,7 @@ describe('Meta Cloudflare 资源检查', () => {
       { datasetQualityEventCount: 1 },
     ]) {
       const report = await runMetaResourceVerification({
-        environment: 'dev',
+        environment: 'production',
         commit: COMMIT,
         reportOnly: true,
         expectedDatasetQualityContract: { version: 3, digest },

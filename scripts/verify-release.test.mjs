@@ -287,6 +287,9 @@ describe('发布验证 CLI', () => {
               : {
                   status: 'passed', openCriticalIncidentCount: 0,
                   targetRolloutPercentage: 0, effectiveRolloutPercentage: 0,
+                  datasetQualityCollectorCurrent: true,
+                  datasetQualityContractVersion: 3,
+                  datasetQualityContractDigest: `sha256:${'9'.repeat(64)}`,
                 }
           },
         }),
@@ -772,7 +775,7 @@ describe('发布验证 CLI', () => {
     })
 
     assert.equal(report.status, 'failed')
-    assert.equal(report.metaResources.production.capiEnabled, null)
+    assert.equal(report.metaResources.production.capiEnabled, true)
   })
 
   it('dev 分支不能生成 passed release 报告', async () => {
