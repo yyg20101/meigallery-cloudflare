@@ -371,6 +371,18 @@ describe('Meta Cloudflare 资源检查', () => {
     }
   })
 
+  it('production bootstrap 允许 consumer 尚未由新 Worker 创建', async () => {
+    const report = await runMetaResourceVerification({
+      environment: 'production',
+      commit: COMMIT,
+      initialMetaRollout: true,
+      reportOnly: true,
+      runCommand: createPassingRunner([], { missingConsumer: true, capiEnabled: false }),
+    })
+    assert.equal(report.status, 'passed')
+    assert.equal(report.consumersPresent, false)
+  })
+
   it('full resources 仍要求当前 commit connection', async () => {
     const report = await runMetaResourceVerification({
       environment: 'production',

@@ -224,7 +224,8 @@ export async function runMetaResourceVerification(options = {}) {
   )
   const operationsReady = operations?.expiredSecureOutboxCount === 0
     && previousKeyActiveCountExplainable
-  let status = commandsPassed && queuesPresent && r2Present && mainConsumerPresent && dlqConsumerPresent
+  const consumersReady = phase === 'bootstrap' || (mainConsumerPresent && dlqConsumerPresent)
+  let status = commandsPassed && queuesPresent && r2Present && consumersReady
     && requiredSecretsPresent && migrationsCurrent && migrationsApplied && (phase !== 'full' || connectionVerified)
     && capiEnabled !== null && trackingMode !== null && operations !== null && incidentReady && initialStateReady
     && isolationReady
@@ -249,7 +250,7 @@ export async function runMetaResourceVerification(options = {}) {
         migrationsReady: migrationsCurrent && migrationsApplied,
         d1Ready: settings !== null && operations !== null,
         r2Ready: r2Present,
-        queuesReady: queuesPresent && mainConsumerPresent && dlqConsumerPresent,
+        queuesReady: queuesPresent && consumersReady,
         secretsReady: requiredSecretsPresent,
         migrationsCurrent,
         migrationsApplied,
