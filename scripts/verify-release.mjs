@@ -116,6 +116,12 @@ export async function main(argv = process.argv.slice(2), options = {}) {
     return
   }
 
+  if (mode === 'assert-production-identity') {
+    await assertProductionReleaseIdentity(options)
+    console.log('production API/Web 发布 commit 与本地 Git HEAD 一致。')
+    return
+  }
+
   let report
   if (mode === 'quick') {
     report = await runQuickVerification({ ...options, mode })
@@ -608,7 +614,6 @@ export async function collectTrustedProductionGateFacts(options = {}) {
   const readRemoteProductionLiveGateFn = options.readRemoteProductionLiveGate || readRemoteProductionLiveGate
   const readTrustedProductionBootstrapPermitFn = options.readTrustedProductionBootstrapPermit || readTrustedProductionBootstrapPermit
 
-  await verifyProductionReleaseIdentityFn({ ...options, commit })
   const contract = await verifyContractFn(options)
   const bootstrapPermitted = await readTrustedProductionBootstrapPermitFn({ ...options, commit })
   if (bootstrapPermitted) {
@@ -628,6 +633,7 @@ export async function collectTrustedProductionGateFacts(options = {}) {
     }
     return { contract, production, bootstrapPermitted: true }
   }
+  await verifyProductionReleaseIdentityFn({ ...options, commit })
   const live = await readRemoteProductionLiveGateFn({ ...options, commit, contract })
   if (live?.status !== 'passed') throw new Error('当前 production 远端 live evidence 链未通过')
 
@@ -650,6 +656,16 @@ export async function collectTrustedProductionGateFacts(options = {}) {
     throw new Error('当前 production 远端 resource/incident/rollout 链未通过')
   }
   return { status: 'passed', production, live, contract }
+}
+
+export async function assertProductionReleaseIdentity(options = {}) {
+  const getGitStateFn = options.getGitState || getGitState
+  const verifyProductionReleaseIdentityFn = options.verifyProductionReleaseIdentity || verifyProductionReleaseIdentity
+  const git = await getGitStateFn(options)
+  if (git.branch !== 'main' || git.isClean !== true || !isValidCommit(git.commit)) {
+    throw new Error('production 发布后 identity 校验只允许干净的 main 40 位 commit')
+  }
+  await verifyProductionReleaseIdentityFn({ ...options, commit: git.commit.toLowerCase() })
 }
 
 export async function readRemoteProductionLiveGate(options = {}) {
@@ -775,6 +791,7 @@ function printHelp() {
   node scripts/verify-release.mjs local-runtime
   node scripts/verify-release.mjs release
   node scripts/verify-release.mjs assert-production-allowed
+  node scripts/verify-release.mjs assert-production-identity
 `.trim())
 }
 

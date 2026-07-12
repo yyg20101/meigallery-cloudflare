@@ -99,6 +99,11 @@ echo ""
 echo "--- 步骤 6/7: 部署 Web Worker ---"
 "${PNPM[@]}" --filter @meigallery/web exec wrangler deploy "${ENV_ARGS[@]}" --var "RELEASE_COMMIT:${GIT_COMMIT}"
 
+if [ "$IS_PRODUCTION" = "true" ]; then
+  echo "校验 production API/Web release identity..."
+  env -u VERIFY_RELEASE_ALLOW_BRANCH node scripts/verify-release.mjs assert-production-identity
+fi
+
 echo ""
 echo "--- 步骤 7/7: 部署后 SEO 校验 ---"
 if [ "$IS_PRODUCTION" = "true" ]; then

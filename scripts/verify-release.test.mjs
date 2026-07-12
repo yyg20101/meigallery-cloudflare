@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, it } from 'node:test'
 import {
   assertProductionAllowed,
+  assertProductionReleaseIdentity,
   collectTrustedProductionGateFacts,
   runDevRehearsalReleaseVerification,
   runLocalRuntimeReleaseVerification,
@@ -115,11 +116,14 @@ describe('发布验证 CLI', () => {
     const preflightIndex = deployScript.indexOf('verify-meta-migration.mjs preflight --env "$ENV"')
     const migrationIndex = deployScript.indexOf('wrangler d1 migrations apply')
     const deployIndex = deployScript.indexOf('wrangler deploy "${ENV_ARGS[@]}" --var')
+    const webDeployIndex = deployScript.lastIndexOf('wrangler deploy "${ENV_ARGS[@]}" --var')
+    const identityIndex = deployScript.indexOf('verify-release.mjs assert-production-identity')
     assert.ok(freshGateIndex >= 0)
     assert.ok(gateIndex > freshGateIndex)
     assert.ok(preflightIndex > gateIndex)
     assert.ok(migrationIndex > preflightIndex)
     assert.ok(deployIndex > gateIndex)
+    assert.ok(identityIndex > webDeployIndex)
   })
 
   it('所有部署路径都不写 site setting、rollout 或 incident', async () => {
@@ -272,13 +276,14 @@ describe('发布验证 CLI', () => {
       [true, false, 'full'],
     ]) {
       const phases = []
+      let identityChecks = 0
       await assertProductionAllowed({
         getGitState: async () => ({ branch: 'main', commit: RELEASE_COMMIT, isClean: true, remote: 'origin' }),
         readLatestReport: async () => ({ initialMetaRollout: reportFlag }),
         assertReportCanGateProduction: () => {},
         collectTrustedProductionGateFacts: options => collectTrustedProductionGateFacts({
           ...options,
-          verifyProductionReleaseIdentity: async () => {},
+          verifyProductionReleaseIdentity: async () => { identityChecks += 1 },
           verifyApprovedMetaDatasetQualityContract: async () => ({ version: 3, digest: `sha256:${'9'.repeat(64)}` }),
           readRemoteProductionLiveGate: async () => ({ status: 'passed' }),
           readTrustedProductionBootstrapPermit: async () => permitPresent,
@@ -295,7 +300,22 @@ describe('发布验证 CLI', () => {
         }),
       })
       assert.deepEqual(phases, [expectedPhase])
+      assert.equal(identityChecks, permitPresent ? 0 : 1)
     }
+  })
+
+  it('production 发布后 identity 校验要求干净 main，并绑定当前 commit', async () => {
+    let verifiedCommit = ''
+    await assertProductionReleaseIdentity({
+      getGitState: async () => ({ branch: 'main', commit: RELEASE_COMMIT, isClean: true, remote: 'origin' }),
+      verifyProductionReleaseIdentity: async ({ commit }) => { verifiedCommit = commit },
+    })
+    assert.equal(verifiedCommit, RELEASE_COMMIT)
+
+    await assert.rejects(assertProductionReleaseIdentity({
+      getGitState: async () => ({ branch: 'dev', commit: RELEASE_COMMIT, isClean: true, remote: 'origin' }),
+      verifyProductionReleaseIdentity: async () => {},
+    }), /只允许干净的 main/)
   })
 
   it('bootstrap permit 必须来自 production D1、绑定当前 commit、未过期且为严格资源摘要', async () => {
