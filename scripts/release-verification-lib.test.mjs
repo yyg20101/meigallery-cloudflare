@@ -420,6 +420,8 @@ describe('发布验证基础库', () => {
       artifacts: [],
       notes: [],
       evidence: {
+        digest: CONTRACT_DIGEST,
+        datasetQualityContractDigest: CONTRACT_DIGEST,
         private_redacted_1: '合法字段不得被覆盖',
         ...keyedValues,
         nested: { ...keyedValues },
@@ -442,6 +444,8 @@ describe('发布验证基础库', () => {
       for (const content of contents) {
         for (const key of sensitiveKeys) assert.equal(content.includes(key), false)
         const parsed = JSON.parse(content)
+        assert.equal(parsed.evidence.digest, CONTRACT_DIGEST)
+        assert.equal(parsed.evidence.datasetQualityContractDigest, CONTRACT_DIGEST)
         assert.equal(parsed.evidence.private_redacted_1, '合法字段不得被覆盖')
         assert.deepEqual(Object.values(parsed.evidence).filter(value => /^value-\d$/.test(value)).sort(), Object.values(keyedValues).sort())
         assert.deepEqual(Object.values(parsed.evidence.nested).sort(), Object.values(keyedValues).sort())

@@ -45,6 +45,7 @@ const PRIVATE_USER_AGENT_PATTERNS = [
 ]
 const PRIVACY_REDACTION = '[PRIVATE_REDACTED]'
 const SANITIZED_PRIVATE_VALUES = new Set([PRIVACY_REDACTION, '[REDACTED]'])
+const PUBLIC_DIGEST_CONTEXT_KEYS = new Set(['digest', 'datasetqualitycontractdigest'])
 const SUMMARY_LIMIT = 1200
 const REPORT_MAX_AGE_MS = 24 * 60 * 60 * 1000
 const VALID_REPORT_MODES = new Set(['quick', 'local-runtime', 'dev-rehearsal', 'release'])
@@ -252,6 +253,9 @@ function sanitizeReportValue(value, contextKey = '') {
       : PRIVACY_REDACTION
   }
   if (typeof value === 'string') {
+    if (PUBLIC_DIGEST_CONTEXT_KEYS.has(normalizedKey) && /^sha256:[0-9a-f]{64}$/.test(value)) {
+      return value
+    }
     const parsed = parseStructuredJsonString(value)
     if (parsed !== null) return JSON.stringify(sanitizeReportValue(parsed))
     return redactForReport(value)
