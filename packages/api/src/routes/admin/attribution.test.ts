@@ -1165,6 +1165,38 @@ afterEach(() => {
 })
 
 describe('后台归因中心 API', () => {
+  it('统一 Meta 连接配置仅允许 Owner 在 production 修改', async () => {
+    const admin = await createApp('admin').request('/api/admin/attribution/platforms/meta', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    }, {} as Bindings)
+    expect(admin.status).toBe(403)
+    expect((await admin.json()).code).toBe('OWNER_REQUIRED')
+
+    const dev = await createApp('owner').request('/api/admin/attribution/platforms/meta', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    }, { APP_ENV: 'dev' } as Bindings)
+    expect(dev.status).toBe(409)
+    expect((await dev.json()).code).toBe('AD_PLATFORM_PRODUCTION_ONLY')
+  })
+
+  it.each([
+    [{ destinationId: 'bad', mode: 'test', rolloutPercentage: 0 }, 'AD_PLATFORM_DESTINATION_INVALID'],
+    [{ destinationId: '1234567890', mode: 'legacy', rolloutPercentage: 0 }, 'AD_PLATFORM_MODE_INVALID'],
+    [{ destinationId: '1234567890', mode: 'test', rolloutPercentage: 25 }, 'AD_PLATFORM_ROLLOUT_INVALID'],
+  ] as const)('统一 Meta 连接配置拒绝非法参数 %#', async (body, code) => {
+    const response = await createApp('owner').request('/api/admin/attribution/platforms/meta', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }, { APP_ENV: 'production' } as Bindings)
+    expect(response.status).toBe(400)
+    expect((await response.json()).code).toBe(code)
+  })
+
   it('incident 列表拒绝未知 status，避免无界或歧义查询', async () => {
     const res = await createApp('admin').request(
       '/api/admin/attribution/meta/incidents?status=broken',
