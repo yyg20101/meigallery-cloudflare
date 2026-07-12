@@ -67,8 +67,7 @@ export async function recoverPendingMetaCapiDeliveries(
     SELECT d.id
     FROM analytics_conversion_deliveries d
     JOIN meta_capi_secure_outbox o ON o.delivery_id = d.id AND o.schema_version = 2
-    WHERE d.channel = 'meta_capi'
-      AND d.provider = 'meta'
+    WHERE d.provider = 'meta'
       AND d.transport = 'server'
       AND d.status = 'pending'
       AND d.event_name IN ('Contact', 'CompleteRegistration')
@@ -225,7 +224,7 @@ async function consumeSecureMessage(
     try {
       const connection = await requireVerifiedMetaConnection(env)
       if (delivery.tracking_mode !== connection.trackingMode
-        || delivery.meta_connection_revision !== connection.revision) {
+        || delivery.connection_revision !== connection.revision) {
         throw new Error('connection_unverified')
       }
     }

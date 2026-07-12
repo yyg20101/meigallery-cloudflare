@@ -1,7 +1,6 @@
 import type { Bindings } from '../index'
 import { loadMetaCapiCryptoKeys } from '../utils/meta-capi-crypto'
 import { generateId } from '../utils/db'
-import { parseStoredSettingValue } from '../utils/stored-setting-value'
 import {
   META_CAPI_INCIDENT_DEFINITIONS,
   sanitizeMetaCapiIncidentEvidence,
@@ -167,8 +166,7 @@ export async function readMetaCircuitSnapshot(db: D1Database): Promise<MetaCircu
           AND error_code = 'retry_exhausted'
         THEN 1 ELSE 0 END), 0) AS retry_exhausted_count
       FROM analytics_conversion_deliveries
-      WHERE channel = 'meta_capi'
-        AND provider = 'meta'
+      WHERE provider = 'meta'
         AND transport = 'server'
         AND status IN ('sent', 'failed')
         AND last_attempt_at >= datetime('now', '-15 minutes')
@@ -177,8 +175,7 @@ export async function readMetaCircuitSnapshot(db: D1Database): Promise<MetaCircu
     db.prepare(`
       SELECT COUNT(*) AS stale_pending_count
       FROM analytics_conversion_deliveries
-      WHERE channel = 'meta_capi'
-        AND provider = 'meta'
+      WHERE provider = 'meta'
         AND transport = 'server'
         AND status = 'pending'
         AND created_at >= datetime('now', '-15 minutes')
@@ -187,8 +184,7 @@ export async function readMetaCircuitSnapshot(db: D1Database): Promise<MetaCircu
     db.prepare(`
       SELECT COUNT(*) AS duplicate_suppressed_count
       FROM analytics_conversion_deliveries
-      WHERE channel = 'meta_capi'
-        AND provider = 'meta'
+      WHERE provider = 'meta'
         AND transport = 'server'
         AND duplicate_suppressed_at >= datetime('now', '-15 minutes')
         AND duplicate_suppressed_at <= datetime('now')
@@ -198,8 +194,7 @@ export async function readMetaCircuitSnapshot(db: D1Database): Promise<MetaCircu
       FROM (
         SELECT conversion_action_id
         FROM analytics_conversion_deliveries
-        WHERE channel = 'meta_capi'
-          AND provider = 'meta'
+        WHERE provider = 'meta'
           AND transport = 'server'
           AND created_at >= datetime('now', '-15 minutes')
           AND created_at <= datetime('now')
@@ -490,9 +485,9 @@ function runtimeEnvironment(value: unknown): 'dev' | 'production' {
 
 async function readTargetRollout(db: D1Database): Promise<MetaCapiRolloutPercentage> {
   const row = await db.prepare(
-    "SELECT value FROM site_settings WHERE key = 'meta_capi_rollout_percentage' LIMIT 1",
-  ).first<{ value: string }>()
-  return normalizeMetaCapiRollout(parseStoredSettingValue(row?.value || '', undefined))
+    "SELECT rollout_percentage FROM ad_platform_connections WHERE provider = 'meta' LIMIT 1",
+  ).first<{ rollout_percentage: number }>()
+  return normalizeMetaCapiRollout(row?.rollout_percentage)
 }
 
 function normalizeSnapshot(snapshot: MetaCircuitSnapshot): MetaCircuitSnapshot {

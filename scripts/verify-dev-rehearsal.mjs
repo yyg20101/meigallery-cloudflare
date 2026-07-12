@@ -371,9 +371,9 @@ async function postRegistration(fetchFn, apiUrl, payload, options = {}) {
     body: JSON.stringify(payload),
   }, (body) => {
     if (!Number.isInteger(body?.id) || Number(body.id) <= 0) throw new Error('注册响应缺少合法用户 ID')
-    if (options.requirePixelEvent && !Array.isArray(body?.pixelEvents)) throw new Error('注册响应缺少 Pixel 指令数组')
-    if (options.requirePixelEvent && !body.pixelEvents.some(event => event?.eventName === 'CompleteRegistration')) {
-      throw new Error('注册响应缺少 CompleteRegistration Pixel 指令')
+    if (options.requirePixelEvent && !Array.isArray(body?.trackingInstructions)) throw new Error('注册响应缺少浏览器追踪指令数组')
+    if (options.requirePixelEvent && !body.trackingInstructions.some(event => event?.eventName === 'CompleteRegistration')) {
+      throw new Error('注册响应缺少 CompleteRegistration 浏览器追踪指令')
     }
     return options.requirePixelEvent
       ? '真实注册 API 已创建用户并返回 CompleteRegistration Pixel 指令'

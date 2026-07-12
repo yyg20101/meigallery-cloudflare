@@ -14,7 +14,8 @@ type DeliveryStatus = 'pending' | 'sent' | 'failed' | 'skipped' | 'duplicate_sup
 type DeliveryRow = {
   id: string
   conversion_action_id: string
-  channel: string
+  provider: 'meta'
+  transport: string
   external_event_id: string
   event_name: string
   status: DeliveryStatus
@@ -23,7 +24,7 @@ type DeliveryRow = {
   error_message: string
   attempt_count: number
   tracking_mode: 'disabled' | 'test' | 'production'
-  meta_connection_revision: string | null
+  connection_revision: string | null
   duplicate_suppressed_at: string | null
   last_attempt_at: string | null
   sent_at: string | null
@@ -51,7 +52,8 @@ function createMetaCapiDb(options: {
   const delivery: DeliveryRow = {
     id: 'cdlv_1',
     conversion_action_id: 'conv_1',
-    channel: 'meta_capi',
+    provider: 'meta',
+    transport: 'server',
     external_event_id: 'meta:Contact:contact:session_1:telegram:floating_contact_panel',
     event_name: 'Contact',
     status: 'pending',
@@ -60,7 +62,7 @@ function createMetaCapiDb(options: {
     error_message: '',
     attempt_count: 0,
     tracking_mode: 'production',
-    meta_connection_revision: CONNECTION_REVISION,
+    connection_revision: CONNECTION_REVISION,
     duplicate_suppressed_at: null,
     last_attempt_at: null,
     sent_at: null,
@@ -91,11 +93,13 @@ function createMetaCapiDb(options: {
           if (sql.includes('FROM analytics_conversion_deliveries') && sql.includes('JOIN analytics_conversion_actions')) {
             return call.params[0] === delivery.id ? ({ ...delivery } as T) : null
           }
-          if (sql.includes("WHERE key = 'facebook_pixel_id'")) {
-            return options.pixelId ? ({ value: options.pixelId } as T) : null
-          }
-          if (sql.includes("WHERE key = 'meta_tracking_mode'")) {
-            return { value: JSON.stringify(delivery.tracking_mode) } as T
+          if (sql.includes('FROM ad_platform_connections')) {
+            return options.pixelId ? ({
+              provider: 'meta', enabled: 1, mode: delivery.tracking_mode,
+              browser_enabled: 1, server_enabled: 1, destination_id: options.pixelId,
+              debug_enabled: 0, rollout_percentage: 100,
+              credential_secret_name: 'META_CAPI_ACCESS_TOKEN', revision: CONNECTION_REVISION,
+            } as T) : null
           }
           if (sql.includes('FROM meta_connection_verifications')) {
             if (!options.pixelId || options.connectionVerified === false) return null
@@ -163,10 +167,10 @@ function createMetaCapiDb(options: {
           if (sql.includes('INSERT INTO analytics_conversion_delivery_daily')) {
             daily.push({
               date: call.params[0],
-              channel: call.params[3],
-              event_name: call.params[4],
-              status: call.params[5],
-              skip_reason: call.params[6],
+              transport: call.params[2],
+              event_name: call.params[3],
+              status: call.params[4],
+              skip_reason: call.params[5],
             })
           }
           return { meta: { changes: 1, rows_written: 1, rows_read: 0, duration: 1 } }
@@ -189,7 +193,8 @@ function createConcurrentSuccessDb() {
   const delivery = {
     id: 'cdlv_concurrent',
     conversion_action_id: 'conv_concurrent',
-    channel: 'meta_capi',
+    provider: 'meta' as const,
+    transport: 'server',
     external_event_id: 'event_concurrent',
     event_name: 'Contact',
     status: 'pending' as DeliveryStatus,
@@ -198,7 +203,7 @@ function createConcurrentSuccessDb() {
     error_message: '',
     attempt_count: 0,
     tracking_mode: 'production' as const,
-    meta_connection_revision: CONNECTION_REVISION,
+    connection_revision: CONNECTION_REVISION,
     duplicate_suppressed_at: null as string | null,
     last_attempt_at: null,
     sent_at: null as string | null,
@@ -223,8 +228,12 @@ function createConcurrentSuccessDb() {
         },
         async first<T>() {
           if (sql.includes('FROM analytics_conversion_deliveries')) return { ...delivery } as T
-          if (sql.includes("WHERE key = 'facebook_pixel_id'")) return { value: JSON.stringify('1234567890') } as T
-          if (sql.includes("WHERE key = 'meta_tracking_mode'")) return { value: JSON.stringify(delivery.tracking_mode) } as T
+          if (sql.includes('FROM ad_platform_connections')) return {
+            provider: 'meta', enabled: 1, mode: delivery.tracking_mode,
+            browser_enabled: 1, server_enabled: 1, destination_id: '1234567890',
+            debug_enabled: 0, rollout_percentage: 100,
+            credential_secret_name: 'META_CAPI_ACCESS_TOKEN', revision: CONNECTION_REVISION,
+          } as T
           if (sql.includes('FROM meta_connection_verifications')) {
             return {
               environment: 'dev',
@@ -296,10 +305,10 @@ function createConcurrentSuccessDb() {
     } else if (sql.includes('analytics_conversion_delivery_daily')) {
       changes = sql.includes('WHERE changes() = 1') && lastChanges !== 1 ? 0 : 1
       if (changes && sql.includes('delivery_count + 1')) {
-        const status = sql.includes("'duplicate_suppressed'") ? 'duplicate_suppressed' : String(params[5])
+        const status = sql.includes("'duplicate_suppressed'") ? 'duplicate_suppressed' : String(params[4])
         daily.set(status, (daily.get(status) ?? 0) + 1)
       } else if (changes && sql.includes('delivery_count - 1')) {
-        const status = String(params[5])
+        const status = String(params[4])
         daily.set(status, Math.max(0, (daily.get(status) ?? 0) - 1))
       }
     }
@@ -661,7 +670,7 @@ describe('meta-capi', () => {
     const db = createMetaCapiDb({
       pixelId: '1234567890',
       connectionRevision: '2'.repeat(32),
-      delivery: { meta_connection_revision: '1'.repeat(32) },
+      delivery: { connection_revision: '1'.repeat(32) },
     })
     const fetchFn = vi.fn()
 

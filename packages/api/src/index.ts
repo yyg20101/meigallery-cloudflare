@@ -233,7 +233,7 @@ app.get('/api/settings/public', async (c) => {
   const db = c.env.DB
   const keys = [...PUBLIC_SETTING_KEYS]
   const placeholders = keys.map(() => '?').join(',')
-  const [settingsResult, adsResult] = await Promise.all([
+  const [settingsResult, adsResult, browserConnectionsResult] = await Promise.all([
     db
     .prepare(`SELECT key, value FROM site_settings WHERE key IN (${placeholders})`)
     .bind(...keys)
@@ -248,6 +248,12 @@ app.get('/api/settings/public', async (c) => {
       `)
       .bind(HOME_AD_PLACEMENT)
       .all<HomeAdRow>(),
+    db.prepare(`
+      SELECT provider, destination_id, debug_enabled, mode
+      FROM ad_platform_connections
+      WHERE enabled = 1 AND browser_enabled = 1 AND destination_id <> ''
+      ORDER BY provider
+    `).all<{ provider: string; destination_id: string; debug_enabled: number; mode: string }>(),
   ])
 
   const settings: Record<string, unknown> = {}
@@ -257,6 +263,14 @@ app.get('/api/settings/public', async (c) => {
   settings.home_ads = adsResult.results
     .map(row => serializePublicHomeAd(row))
     .filter((ad): ad is NonNullable<typeof ad> => Boolean(ad))
+  settings.ad_platform_browser_connections = browserConnectionsResult.results
+    .filter(row => /^(meta|tiktok|google)$/.test(row.provider) && /^\d{5,30}$/.test(row.destination_id))
+    .map(row => ({
+      provider: row.provider,
+      destinationId: row.destination_id,
+      debugEnabled: row.debug_enabled === 1,
+      mode: row.mode,
+    }))
   c.header('Cache-Control', c.env.APP_ENV === 'production' ? PUBLIC_SETTINGS_CACHE_CONTROL : 'no-store')
   return c.json(sanitizePublicSiteSettings(settings))
 })

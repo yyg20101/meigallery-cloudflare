@@ -1,5 +1,4 @@
 import type { Bindings } from '../index'
-import { parseStoredSettingValue } from '../utils/stored-setting-value'
 import { META_GRAPH_API_VERSION, metaEventsEndpoint, metaGraphRequestInit, readMetaEventsResponse } from './meta-graph'
 
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/i
@@ -158,12 +157,11 @@ async function requireChallengeConfiguration(env: ChallengeEnv, ownerUserId: num
   const commitSha = normalizeCommit(env.RELEASE_COMMIT)
   const accessToken = configuredValue(env.META_CAPI_ACCESS_TOKEN)
   const testEventCode = configuredValue(env.META_CAPI_TEST_EVENT_CODE)
-  const [pixelRow, modeRow] = await Promise.all([
-    env.DB.prepare("SELECT value FROM site_settings WHERE key = 'facebook_pixel_id' LIMIT 1").first<{ value: string }>(),
-    env.DB.prepare("SELECT value FROM site_settings WHERE key = 'meta_tracking_mode' LIMIT 1").first<{ value: string }>(),
-  ])
-  const pixelId = String(parseStoredSettingValue(pixelRow?.value || '""', '') || '').trim()
-  const trackingMode = parseStoredSettingValue(modeRow?.value || '"disabled"', 'disabled')
+  const connection = await env.DB.prepare(`
+    SELECT destination_id, mode FROM ad_platform_connections WHERE provider = 'meta' LIMIT 1
+  `).first<{ destination_id: string; mode: string }>()
+  const pixelId = String(connection?.destination_id || '').trim()
+  const trackingMode = connection?.mode || 'disabled'
   const siteOrigin = productionSiteOrigin(env.SITE_URL)
   if (!commitSha || !/^\d{5,30}$/.test(pixelId) || trackingMode !== 'test' || !accessToken || !testEventCode || !siteOrigin) {
     throw new MetaLiveChallengeError('META_LIVE_CHALLENGE_NOT_CONFIGURED', 503)

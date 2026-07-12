@@ -1,9 +1,8 @@
 import type { ActiveMetaEventName, MetaTrackingMode } from '@meigallery/shared'
-import { normalizeMetaTrackingMode } from '@meigallery/shared/utils'
 import type { Bindings } from '../index'
 import { mergeD1Usage, readD1UsageMeta, type D1Usage } from '../utils/analytics-cost'
 import { loadMetaCapiCryptoKeys, metaConnectionFingerprint } from '../utils/meta-capi-crypto'
-import { parseStoredSettingValue } from '../utils/stored-setting-value'
+import { readAdPlatformConnection } from './ad-platform/connections'
 import { META_GRAPH_API_VERSION, metaEventsEndpoint, metaGraphRequestInit, readMetaEventsResponse } from './meta-graph'
 import {
   createMetaIncidentTrigger,
@@ -241,6 +240,17 @@ export async function bootstrapMetaConnectionVerification(
   if (!d1ChangedExactlyOnce(writeResult)) {
     throw new MetaConnectionError('META_CONNECTION_VERIFICATION_WRITE_FAILED', 503)
   }
+  try {
+    const revisionResult = await env.DB.prepare(`
+      UPDATE ad_platform_connections
+      SET revision = ?, updated_at = datetime('now')
+      WHERE provider = 'meta'
+    `).bind(revision).run()
+    if (!d1ChangedExactlyOnce(revisionResult)) throw new Error('revision not persisted')
+  }
+  catch {
+    throw new MetaConnectionError('META_CONNECTION_VERIFICATION_WRITE_FAILED', 503)
+  }
 
   const evaluated = await evaluateMetaConnection(env)
   if (evaluated.status.state !== 'verified' || evaluated.verificationRevision !== revision) {
@@ -262,13 +272,14 @@ async function assertProductionBootstrapGate(
           AND datetime(expires_at) > datetime('now')
         ORDER BY verified_at DESC LIMIT 1
       `).bind(releaseCommit).first<{ id: string; summary: string }>(),
-      db.prepare("SELECT value FROM site_settings WHERE key = 'meta_capi_rollout_percentage' LIMIT 1").first<{ value: string }>(),
+      db.prepare("SELECT rollout_percentage FROM ad_platform_connections WHERE provider = 'meta' LIMIT 1")
+        .first<{ rollout_percentage: number }>(),
       db.prepare(`
         SELECT COUNT(*) AS incident_count FROM meta_capi_incidents
         WHERE environment = 'production' AND status = 'open' AND severity = 'critical'
       `).first<{ incident_count: unknown }>(),
     ])
-    const target = Number(parseStoredSettingValue(rollout?.value ?? '', -1))
+    const target = Number(rollout?.rollout_percentage ?? -1)
     const incidentCount = Number(incident?.incident_count)
     const summary = parseProductionPostDeploySummary(resource?.summary)
     if (!resource || !summary || target !== 0 || incidentCount !== 0) {
@@ -547,13 +558,10 @@ async function persistInvalidation(
 }
 
 async function readMetaConnectionSettings(db: D1Database) {
-  const [pixelRow, modeRow] = await Promise.all([
-    db.prepare("SELECT value FROM site_settings WHERE key = 'facebook_pixel_id' LIMIT 1").first<{ value: string }>(),
-    db.prepare("SELECT value FROM site_settings WHERE key = 'meta_tracking_mode' LIMIT 1").first<{ value: string }>(),
-  ])
+  const connection = await readAdPlatformConnection(db, 'meta')
   return {
-    pixelId: String(parseStoredSettingValue(pixelRow?.value || '""', '') || ''),
-    trackingMode: normalizeMetaTrackingMode(parseStoredSettingValue(modeRow?.value || '"disabled"', 'disabled')),
+    pixelId: connection?.destinationId ?? '',
+    trackingMode: connection?.mode ?? 'disabled',
   }
 }
 

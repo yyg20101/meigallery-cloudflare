@@ -33,7 +33,7 @@ Meta Adapter / TikTok Adapter / Google Adapter
 - `connection_revision`：投递绑定的连接版本。
 - `status`、重试、lease、rollout 和匹配覆盖率继续作为投递事实保存。
 
-旧 `channel` 与 `meta_connection_revision` 在兼容期保留；新代码不得使用它们判断平台业务语义。migration `0047_ad_platform_delivery_core.sql` 回填全部历史 Meta 数据，并将唯一约束收口到 `conversion_action_id + provider + transport`。
+旧 `channel` 与 `meta_connection_revision` 已由 migration `0047_ad_platform_delivery_core.sql` 删除。旧投递和投递日聚合属于可重建的技术数据，迁移时清空；`analytics_conversion_actions` 业务事实、连接验证和平台诊断保留。唯一约束收口到 `conversion_action_id + provider + transport`。
 
 ### Adapter 层
 
@@ -54,7 +54,7 @@ interface AdBrowserInstruction {
 }
 ```
 
-前端通过 provider registry 分发。兼容期继续返回 `pixelEvents`，现有调用方迁移完成后再单独删除旧字段。
+前端通过 provider registry 分发。API 只返回 `trackingInstructions`，不再返回平台专属兼容字段。
 
 ## 连接管理
 
@@ -64,7 +64,7 @@ interface AdBrowserInstruction {
 - Access Token：只保存在 production secret 或受控加密凭证存储中，禁止回显。
 - 任一配置变化都会使 connection revision 失效并要求重新验证。
 
-统一只读入口为 `GET /api/admin/attribution/platforms`。平台专属写操作继续放在各 adapter 路由中，直到通用命令契约完成。
+统一只读入口为 `GET /api/admin/attribution/platforms`。Meta 连接通过 `PATCH /api/admin/attribution/platforms/meta` 原子管理公开标识、Browser/Server 开关、运行模式和灰度；token 仍只由 Worker secret 管理。
 
 ## 环境规则
 
@@ -88,7 +88,7 @@ interface AdBrowserInstruction {
 
 ## 当前迁移状态
 
-- 已完成：通用 provider/transport schema、历史 Meta 回填、事件 registry、统一连接状态 API、浏览器 adapter registry、通用 tracking instruction 响应。
-- 兼容保留：Meta `channel`、`meta_connection_revision`、`pixelEvents` 和 Meta 专属运维表。
+- 已完成：统一连接表、通用 provider/transport schema、事件 registry、统一连接管理 API、浏览器 adapter registry、通用 tracking instruction 响应。
+- 已清理：旧 Meta 站点设置键、`channel`、`meta_connection_revision`、`pixelEvents`、旧投递数据和旧投递日聚合。
+- 保留：Meta adapter、Queue、secure outbox、incident、Dataset Quality 和 live challenge。这些是当前 Meta 实现，不是兼容层。
 - 下一平台：TikTok Pixel + Events API，通过新 adapter 接入。
-- 后续清理：所有调用方改用通用字段后，再通过独立 migration 删除兼容列，禁止在同一次平台接入中强删历史字段。

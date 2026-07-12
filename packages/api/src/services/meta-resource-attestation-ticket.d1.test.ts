@@ -23,15 +23,15 @@ beforeAll(async () => {
     d1Persist: false,
   })
   db = (await miniflare.getBindings<{ DB: D1Database }>()).DB
-  await db.exec('CREATE TABLE site_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);')
+  await db.exec('CREATE TABLE ad_platform_connections (provider TEXT PRIMARY KEY, destination_id TEXT NOT NULL);')
   const sql = readFileSync(new URL('../../migrations/0042_meta_resource_attestation_tickets.sql', import.meta.url), 'utf8')
   for (const statement of unstable_splitSqlQuery(sql)) await db.prepare(statement).run()
 }, 30_000)
 
 beforeEach(async () => {
   await db.prepare('DELETE FROM meta_resource_attestation_tickets').run()
-  await db.prepare('DELETE FROM site_settings').run()
-  await db.prepare("INSERT INTO site_settings (key, value) VALUES ('facebook_pixel_id', '\"1234567890\"')").run()
+  await db.prepare('DELETE FROM ad_platform_connections').run()
+  await db.prepare("INSERT INTO ad_platform_connections (provider, destination_id) VALUES ('meta', '1234567890')").run()
 })
 
 afterAll(async () => miniflare.dispose())

@@ -64,7 +64,7 @@ function createDb(rows: SettingRow[], homeAds: HomeAdTestRow[] = []) {
 }
 
 describe('公开站点设置 API', () => {
-  it('过滤历史危险公开 URL 和 Pixel 设置', async () => {
+  it('过滤历史危险公开 URL，响应不包含广告平台凭据', async () => {
     const env = {
       APP_ENV: 'production',
       DB: createDb([
@@ -72,8 +72,6 @@ describe('公开站点设置 API', () => {
         { key: 'og_image', value: 'https://example.com/%5Cog.jpg' },
         { key: 'home_ad_url', value: '/api/media/public/site/icon.png' },
         { key: 'rules_page_url', value: '/rules%5Cnext' },
-        { key: 'facebook_pixel_id', value: 'fbq("track")' },
-        { key: 'meta_tracking_mode', value: 'legacy_mode' },
         { key: 'home_ad_enabled', value: 'true' },
         { key: 'home_ad_eyebrow', value: '  本周   推荐  ' },
         { key: 'home_ad_title', value: 'x'.repeat(41) },
@@ -94,8 +92,8 @@ describe('公开站点设置 API', () => {
     expect(body.og_image).toBe('')
     expect(body.home_ad_url).toBe('')
     expect(body.rules_page_url).toBe('')
-    expect(body.facebook_pixel_id).toBe('')
-    expect(body.meta_tracking_mode).toBe('disabled')
+    expect(body).not.toHaveProperty('destination_id')
+    expect(body).not.toHaveProperty('mode')
     expect(body.home_ad_enabled).toBe(true)
     expect(body.home_ad_eyebrow).toBe('本周 推荐')
     expect(body.home_ad_title).toBe('')

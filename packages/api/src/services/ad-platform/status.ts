@@ -1,12 +1,17 @@
 import type { AdPlatformProvider, AdPlatformTrackingMode } from '@meigallery/shared'
-import { normalizeMetaTrackingMode } from '@meigallery/shared/utils'
 import type { MetaConnectionStatus, MetaConnectionEnv } from '../meta-connection'
 import { getMetaConnectionStatus } from '../meta-connection'
-import { parseStoredSettingValue } from '../../utils/stored-setting-value'
+import { readAdPlatformConnection } from './connections'
 
 export interface AdPlatformConnectionStatus {
   provider: AdPlatformProvider
   environment: 'production'
+  enabled: boolean
+  browserEnabled: boolean
+  serverEnabled: boolean
+  destinationId: string
+  debugEnabled: boolean
+  rolloutPercentage: number
   destinationConfigured: boolean
   serverCredentialConfigured: boolean
   testCredentialConfigured: boolean
@@ -17,22 +22,30 @@ export interface AdPlatformConnectionStatus {
 }
 
 export async function listAdPlatformConnections(env: MetaConnectionEnv) {
-  const [meta, modeRow] = await Promise.all([
+  const [meta, connection] = await Promise.all([
     getMetaConnectionStatus(env),
-    env.DB.prepare("SELECT value FROM site_settings WHERE key = 'meta_tracking_mode' LIMIT 1").first<{ value: string }>(),
+    readAdPlatformConnection(env.DB, 'meta'),
   ])
-  const mode = normalizeMetaTrackingMode(parseStoredSettingValue(modeRow?.value || '"disabled"', 'disabled'))
-  return [fromMetaConnection(meta, mode)]
+  return [fromMetaConnection(meta, connection)]
 }
 
-function fromMetaConnection(status: MetaConnectionStatus, mode: AdPlatformTrackingMode): AdPlatformConnectionStatus {
+function fromMetaConnection(
+  status: MetaConnectionStatus,
+  connection: Awaited<ReturnType<typeof readAdPlatformConnection>>,
+): AdPlatformConnectionStatus {
   return {
     provider: 'meta',
     environment: 'production',
+    enabled: connection?.enabled ?? false,
+    browserEnabled: connection?.browserEnabled ?? false,
+    serverEnabled: connection?.serverEnabled ?? false,
+    destinationId: connection?.destinationId ?? '',
+    debugEnabled: connection?.debugEnabled ?? false,
+    rolloutPercentage: connection?.rolloutPercentage ?? 0,
     destinationConfigured: status.pixelIdConfigured,
     serverCredentialConfigured: status.tokenConfigured,
     testCredentialConfigured: status.testEventCodeConfigured,
-    mode,
+    mode: connection?.mode ?? 'disabled',
     state: normalizeState(status.state),
     verifiedAt: status.verifiedAt || '',
     verifiedCommit: status.verifiedCommit || '',

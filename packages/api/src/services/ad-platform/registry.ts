@@ -37,8 +37,3 @@ export function mapConversionToPlatformEvent(
   return getAdPlatformAdapter(provider).eventNames[actionType]
 }
 
-export function legacyChannelForTransport(provider: AdPlatformProvider, transport: AdDeliveryTransport) {
-  if (provider !== 'meta') throw new Error('AD_PLATFORM_LEGACY_CHANNEL_UNAVAILABLE')
-  return transport === 'browser' ? 'meta_pixel' as const : 'meta_capi' as const
-}
-

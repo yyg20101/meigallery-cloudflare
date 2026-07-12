@@ -116,7 +116,7 @@ corepack pnpm verify:dev-rehearsal
 ```bash
 export VERIFY_DEV_API_URL=https://meigallery-api-dev.wajie.workers.dev
 export VERIFY_DEV_WEB_URL=https://meigallery-web-dev.wajie.workers.dev
-# 首次 Meta 上线：只额外要求 production 的 meta_capi_enabled=false，不约束 dev。
+# 首次 Meta 上线：只额外要求 production 的 ad_platform_connections.server_enabled=false，不约束 dev。
 META_INITIAL_ROLLOUT=1 corepack pnpm verify:release
 ./scripts/deploy.sh production
 ```
@@ -159,7 +159,7 @@ Dataset Quality 使用唯一 production Dataset。Owner 已批准九章节 produ
 
 后台与证据的状态口径必须严格区分：Pixel `attempted` 只表示浏览器已按服务端指令尝试调用，**不代表 Meta 已接收**；只有 CAPI delivery 为 `sent` 且 Graph API 返回 `events_received=1`，才可表述为 Meta 已接收。两项正式事件的 Browser/Server 同 ID 与 Meta 去重结果，必须由 Owner 在 Events Manager 中确认并生成脱敏 live evidence。
 
-普通 test mode 的 `Contact`、`CompleteRegistration` 不自动携带 `test_event_code`。只有 Owner 显式触发的 Test Event/bootstrap 路径使用 `META_CAPI_TEST_EVENT_CODE`，且只读取当前环境 Worker secret，不接受调用参数覆盖。`meta_tracking_mode=production` 时，即使环境中仍配置 Test Event Code，CAPI payload 也绝不携带 `test_event_code`。
+普通 test mode 的 `Contact`、`CompleteRegistration` 不自动携带 `test_event_code`。只有 Owner 显式触发的 Test Event/bootstrap 路径使用 `META_CAPI_TEST_EVENT_CODE`，且只读取当前环境 Worker secret，不接受调用参数覆盖。`ad_platform_connections.mode=production` 时，即使环境中仍配置 Test Event Code，CAPI payload 也绝不携带 `test_event_code`。
 
 Meta 远端资源只存在于 production：
 
@@ -189,28 +189,28 @@ dev 不执行上述操作。后台只展示有效性布尔值、引用计数和�
 
 正式发布必须按下列顺序完成，不能以旧 commit 的 evidence 或 release 报告放行新 HEAD：
 
-1. 保持代码关闭态：`meta_tracking_mode=disabled`、`meta_capi_enabled=false`，并完成本地 migration、测试、类型检查和 Worker dry-run。
-2. 在 production 保持 `meta_tracking_mode=test`、CAPI rollout `0`，完成严格 production live evidence：`Contact`、`CompleteRegistration` 均有 Browser/Server、同一 event ID、去重成功，且没有 `Lead`、`StartTrial`。
+1. 保持代码关闭态：`ad_platform_connections.mode=disabled`、`ad_platform_connections.server_enabled=false`，并完成本地 migration、测试、类型检查和 Worker dry-run。
+2. 在 production 保持 `ad_platform_connections.mode=test`、CAPI rollout `0`，完成严格 production live evidence：`Contact`、`CompleteRegistration` 均有 Browser/Server、同一 event ID、去重成功，且没有 `Lead`、`StartTrial`。
 3. 先执行 `corepack pnpm verify:meta-secrets`，再执行 `corepack pnpm verify:meta-resources --report-only`。该命令默认检查 production，并从 Wrangler/Cloudflare 响应核对 migrations、D1、R2、Queue、DLQ 与 secret 名称，不接受本地 JSON 自证。dev 只运行代码、契约和构建验证。
 4. 对生产 D1 依次应用 `0001` 到 `0047`，每次 remote apply 前必须先执行 duplicate preflight。保持 production target/effective rollout 为 `0`；`--initial-meta-rollout` 还要求无过期 secure outbox，previous key 活动引用可由 secret 状态解释，并为当前 commit 写入未过期的 production D1 bootstrap permit。
 5. PR 合入 `main` 后，以最终 `main` HEAD 重新部署 production，并重新生成该 commit 的 production live evidence；此前任何 commit 的 evidence 都失效。
-6. 在最终 `main` HEAD、干净工作区运行同 commit release 作预检：首次 Meta 上线使用 `META_INITIAL_ROLLOUT=1 corepack pnpm verify:release`，该约束只要求 production `meta_capi_enabled=false`，不约束 dev；后续常规发布使用 `corepack pnpm verify:release`。执行 `./scripts/deploy.sh production` 时脚本仍会强制重跑完整 release，不能复用这份旧报告跳过验证。
+6. 在最终 `main` HEAD、干净工作区运行同 commit release 作预检：首次 Meta 上线使用 `META_INITIAL_ROLLOUT=1 corepack pnpm verify:release`，该约束只要求 production `ad_platform_connections.server_enabled=false`，不约束 dev；后续常规发布使用 `corepack pnpm verify:release`。执行 `./scripts/deploy.sh production` 时脚本仍会强制重跑完整 release，不能复用这份旧报告跳过验证。
 7. 部署生产 API，再部署生产 Web；部署不等同于开启营销投放。
-8. production Worker 部署后，将 `meta_tracking_mode` 设为 `test`。CLI 只向 production origin 携带 Owner Cookie 换取 60 秒一次性 ticket；最终 attestation 请求不携带 Cookie，且禁止 redirect。执行 `corepack pnpm verify:meta-resources --post-deploy-isolation`，确认 production Worker、commit、nonce、TTL 与 Pixel/token/Test Event Code/data key 摘要完整。bootstrap 阶段不要求该 endpoint，避免首次部署死锁。
+8. production Worker 部署后，将 `ad_platform_connections.mode` 设为 `test`。CLI 只向 production origin 携带 Owner Cookie 换取 60 秒一次性 ticket；最终 attestation 请求不携带 Cookie，且禁止 redirect。执行 `corepack pnpm verify:meta-resources --post-deploy-isolation`，确认 production Worker、commit、nonce、TTL 与 Pixel/token/Test Event Code/data key 摘要完整。bootstrap 阶段不要求该 endpoint，避免首次部署死锁。
 9. post-deploy isolation 摘要通过后，Owner 才能触发 production synthetic Test Event。API 会在 fetch 前检查当前 commit、target/effective rollout `0`、无 open critical incident和完整 isolation；`disabled` 或 `production` mode 均拒绝。Meta 返回 `events_received=1` 后写入当前 production connection verification。
-10. 在 production 后台创建 live challenge，由正式域名浏览器发送 Pixel 事件、production Worker 发送同 ID CAPI 测试事件；在 Events Manager 人工确认去重后运行 `corepack pnpm verify:meta-live`。命令默认使用 production 地址，必要时才通过 `VERIFY_PRODUCTION_API_URL` / `VERIFY_PRODUCTION_WEB_URL` 覆盖。随后执行 `corepack pnpm verify:meta-resources` 写入 full 摘要，再把 `meta_tracking_mode` 切为 `production`。
+10. 在 production 后台创建 live challenge，由正式域名浏览器发送 Pixel 事件、production Worker 发送同 ID CAPI 测试事件；在 Events Manager 人工确认去重后运行 `corepack pnpm verify:meta-live`。命令默认使用 production 地址，必要时才通过 `VERIFY_PRODUCTION_API_URL` / `VERIFY_PRODUCTION_WEB_URL` 覆盖。随后执行 `corepack pnpm verify:meta-resources` 写入 full 摘要，再把 `ad_platform_connections.mode` 切为 `production`。
 
 production live evidence 必须由后台 Owner 按钮创建 Worker challenge：正式域名浏览器通过真实 `fbq` 发送 `Contact` 与 `CompleteRegistration`，随后 production Worker 使用同组 opaque event ID 发送 CAPI。`corepack pnpm verify:meta-live` 只读取生产 D1 中已销毁原始 ID 的摘要并记录 Events Manager 人工确认，不在本地生成 session 或 event ID；成功或失败都会清理短期 challenge 摘要。
 
-任何一步失败都回到 `meta_tracking_mode=disabled` 并保持 `meta_capi_enabled=false`，不得伪造 live evidence 或跳过同 commit 重验。
+任何一步失败都回到 `ad_platform_connections.mode=disabled` 并保持 `ad_platform_connections.server_enabled=false`，不得伪造 live evidence 或跳过同 commit 重验。
 
 ### Meta 回滚顺序
 
 优先回滚运行开关，不删除 Queue、DLQ、secret、D1 表或已应用 migration：
 
-1. Owner 先关闭 `meta_capi_enabled`，停止创建和入队新的 CAPI delivery；站内转化账本应继续写入，关闭后不得新增 CAPI delivery。
-2. 将 `meta_tracking_mode` 切回 `disabled`，使营销授权即使为 granted 也不再允许 Pixel 或新的 Meta delivery。
-3. 如需进一步停止浏览器侧调用，再关闭 `facebook_pixel_enabled`；不要把 Pixel `attempted` 误读为接收量。
+1. Owner 先关闭 `ad_platform_connections.server_enabled`，停止创建和入队新的 CAPI delivery；站内转化账本应继续写入，关闭后不得新增 CAPI delivery。
+2. 将 `ad_platform_connections.mode` 切回 `disabled`，使营销授权即使为 granted 也不再允许 Pixel 或新的 Meta delivery。
+3. 如需进一步停止浏览器侧调用，再关闭 `ad_platform_connections.browser_enabled`；不要把 Pixel `attempted` 误读为接收量。
 4. Queue 或外部失败异常时记录 backlog、DLQ、failed 原因并暂停投递；修复后先在 `test` mode 重做 Owner Test Event，再依序恢复 production mode 与 CAPI 开关。
 5. 如必须回退 Worker，先完成前述关闭态，再部署旧版本；保留 schema 和 delivery 账本用于核对损失窗口与恢复验证。
 
@@ -396,9 +396,9 @@ head_sampling_rate = 1
 - [ ] 每个 `sourceBotKey` 对应的 `TELEGRAM_BOT_TOKEN_<SOURCE_BOT_KEY>` secret 已配置
 - [ ] 生产 `meigallery-meta-capi` 和 `meigallery-meta-capi-dlq` 已创建，API Worker producer / consumer dry-run 通过
 - [ ] `META_CAPI_ACCESS_TOKEN`、`META_CAPI_TEST_EVENT_CODE` 和 `META_CAPI_DATA_KEY_CURRENT` 已作为独立 production secret 配置；dev 使用不同值
-- [ ] `0036_meta_capi_v2_secure_delivery.sql`、`0037_meta_connection_revision.sql` 与 `0038_conversion_dedupe_claims.sql` 已应用；`meta_tracking_mode=disabled`、`meta_capi_enabled=false`
+- [ ] `0036_meta_capi_v2_secure_delivery.sql`、`0037_meta_connection_revision.sql` 与 `0038_conversion_dedupe_claims.sql` 已应用；`ad_platform_connections.mode=disabled`、`ad_platform_connections.server_enabled=false`
 - [ ] 当前 `main` HEAD 已重做 production live evidence；`Contact` / `CompleteRegistration` 均完成 Browser/Server 同 ID 去重，且无 `Lead` / `StartTrial`
-- [ ] `/admin/attribution/meta` 将 Pixel `attempted` 与 CAPI `sent` 分开显示；Owner Test Event 返回 `events_received=1` 后才允许 production mode 和 `meta_capi_enabled`
+- [ ] `/admin/attribution/meta` 将 Pixel `attempted` 与 CAPI `sent` 分开显示；Owner Test Event 返回 `events_received=1` 后才允许 production mode 和 `ad_platform_connections.server_enabled`
 - [ ] 如接入 Ops Hub 自动导入，Ops Hub 侧 `sourceBotKey` 与 MeiGallery Import Token allowlist 完全一致，且只提交 `metadata.type=gallery/case`
 - [ ] 已用 Ops Hub 或等价脚本完成 `#gallery` 单图、`#case` 相册、重复 `externalMessageId`、未授权 `sourceBotKey` 和旧 `testimonial_case` 拒绝验收
 - [ ] WAF 和基本 rate limiting 已启用

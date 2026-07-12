@@ -16,7 +16,7 @@ describe('注册转化事实修复任务', () => {
       actionType: 'complete_registration',
       created: true,
       duplicateOf: '',
-      pixelEvents: [],
+      trackingInstructions: [],
     })
   })
 
@@ -66,7 +66,7 @@ describe('注册转化事实修复任务', () => {
         actionType: 'complete_registration',
         created: true,
         duplicateOf: '',
-        pixelEvents: [],
+        trackingInstructions: [],
       }
     })
 
@@ -96,7 +96,7 @@ describe('注册转化事实修复任务', () => {
         actionType: 'complete_registration',
         created: true,
         duplicateOf: '',
-        pixelEvents: [],
+        trackingInstructions: [],
       }
     })
 
@@ -115,7 +115,7 @@ describe('注册转化事实修复任务', () => {
         actionType: 'complete_registration',
         created: false,
         duplicateOf: 'conv_existing',
-        pixelEvents: [],
+        trackingInstructions: [],
       })
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const db = createRecoveryDb([

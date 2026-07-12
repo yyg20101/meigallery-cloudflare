@@ -35,19 +35,24 @@ beforeAll(async () => {
   db = (await miniflare.getBindings<{ DB: D1Database }>()).DB
   const schema = `
     CREATE TABLE users (id INTEGER PRIMARY KEY, role TEXT NOT NULL);
-    CREATE TABLE site_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT);
+    CREATE TABLE ad_platform_connections (
+      provider TEXT PRIMARY KEY, enabled INTEGER NOT NULL, mode TEXT NOT NULL,
+      browser_enabled INTEGER NOT NULL, server_enabled INTEGER NOT NULL,
+      destination_id TEXT NOT NULL, debug_enabled INTEGER NOT NULL,
+      rollout_percentage INTEGER NOT NULL, credential_secret_name TEXT NOT NULL,
+      revision TEXT, created_at TEXT, updated_at TEXT
+    );
     CREATE TABLE analytics_conversion_deliveries (
       id TEXT PRIMARY KEY,
       conversion_action_id TEXT NOT NULL,
-      channel TEXT NOT NULL,
+      transport TEXT NOT NULL,
       status TEXT NOT NULL,
       error_code TEXT NOT NULL DEFAULT '',
       attempt_count INTEGER NOT NULL DEFAULT 0,
       last_attempt_at TEXT,
       duplicate_suppressed_at TEXT,
       created_at TEXT NOT NULL,
-      provider TEXT GENERATED ALWAYS AS ('meta') VIRTUAL,
-      transport TEXT GENERATED ALWAYS AS ('server') VIRTUAL
+      provider TEXT GENERATED ALWAYS AS ('meta') VIRTUAL
     );
     CREATE TABLE meta_capi_incidents (
       id TEXT PRIMARY KEY,
@@ -116,13 +121,14 @@ beforeEach(async () => {
     DELETE FROM meta_connection_verifications;
     DELETE FROM meta_capi_incidents;
     DELETE FROM analytics_conversion_deliveries;
-    DELETE FROM site_settings;
+    DELETE FROM ad_platform_connections;
     DELETE FROM users;
     INSERT INTO users (id, role) VALUES (1, 'owner'), (2, 'admin');
-    INSERT INTO site_settings (key, value) VALUES
-      ('facebook_pixel_id', '"1234567890"'),
-      ('meta_tracking_mode', '"production"'),
-      ('meta_capi_rollout_percentage', '50');
+    INSERT INTO ad_platform_connections
+      (provider, enabled, mode, browser_enabled, server_enabled, destination_id,
+       debug_enabled, rollout_percentage, credential_secret_name, revision)
+    VALUES ('meta', 1, 'production', 1, 1, '1234567890', 0, 50,
+            'META_CAPI_ACCESS_TOKEN', '${CONNECTION_REVISION}');
   `)
 })
 
@@ -178,14 +184,14 @@ describe('Meta CAPI incident 生命周期', () => {
   it('15 分钟 snapshot 只计明确终态，stale pending 额外使用 10 分钟边界', async () => {
     await execSql(`
       INSERT INTO analytics_conversion_deliveries VALUES
-        ('d_sent', 'a1', 'meta_capi', 'sent', '', 1, datetime('now', '-1 minute'), NULL, datetime('now', '-2 minutes')),
-        ('d_400', 'a2', 'meta_capi', 'failed', 'meta_http_400', 1, datetime('now', '-2 minutes'), NULL, datetime('now', '-3 minutes')),
-        ('d_500', 'a3', 'meta_capi', 'failed', 'meta_http_500', 1, datetime('now', '-3 minutes'), NULL, datetime('now', '-4 minutes')),
-        ('d_dlq', 'a4', 'meta_capi', 'failed', 'retry_exhausted', 5, datetime('now', '-4 minutes'), NULL, datetime('now', '-5 minutes')),
-        ('d_stale', 'a5', 'meta_capi', 'pending', '', 0, NULL, NULL, datetime('now', '-11 minutes')),
-        ('d_fresh', 'a6', 'meta_capi', 'pending', '', 0, NULL, NULL, datetime('now', '-9 minutes')),
-        ('d_duplicate', 'a7', 'meta_capi', 'sent', '', 1, datetime('now', '-1 minute'), datetime('now', '-1 minute'), datetime('now', '-2 minutes')),
-        ('d_old', 'a8', 'meta_capi', 'failed', 'meta_http_400', 1, datetime('now', '-16 minutes'), NULL, datetime('now', '-16 minutes'));
+        ('d_sent', 'a1', 'server', 'sent', '', 1, datetime('now', '-1 minute'), NULL, datetime('now', '-2 minutes')),
+        ('d_400', 'a2', 'server', 'failed', 'meta_http_400', 1, datetime('now', '-2 minutes'), NULL, datetime('now', '-3 minutes')),
+        ('d_500', 'a3', 'server', 'failed', 'meta_http_500', 1, datetime('now', '-3 minutes'), NULL, datetime('now', '-4 minutes')),
+        ('d_dlq', 'a4', 'server', 'failed', 'retry_exhausted', 5, datetime('now', '-4 minutes'), NULL, datetime('now', '-5 minutes')),
+        ('d_stale', 'a5', 'server', 'pending', '', 0, NULL, NULL, datetime('now', '-11 minutes')),
+        ('d_fresh', 'a6', 'server', 'pending', '', 0, NULL, NULL, datetime('now', '-9 minutes')),
+        ('d_duplicate', 'a7', 'server', 'sent', '', 1, datetime('now', '-1 minute'), datetime('now', '-1 minute'), datetime('now', '-2 minutes')),
+        ('d_old', 'a8', 'server', 'failed', 'meta_http_400', 1, datetime('now', '-16 minutes'), NULL, datetime('now', '-16 minutes'));
     `)
 
     await expect(readMetaCircuitSnapshot(db)).resolves.toEqual({
@@ -200,7 +206,7 @@ describe('Meta CAPI incident 生命周期', () => {
 
   it('10 条 payload invalid 经 scheduled evaluation 仍不产生 critical incident', async () => {
     const values = Array.from({ length: 10 }, (_, index) => (
-      `('payload_${index}', 'payload_action_${index}', 'meta_capi', 'failed', 'secure_context_payload_invalid', 1, datetime('now', '-1 minute'), NULL, datetime('now', '-2 minutes'))`
+      `('payload_${index}', 'payload_action_${index}', 'server', 'failed', 'secure_context_payload_invalid', 1, datetime('now', '-1 minute'), NULL, datetime('now', '-2 minutes'))`
     )).join(',')
     await execSql(`INSERT INTO analytics_conversion_deliveries VALUES ${values};`)
 
@@ -213,7 +219,7 @@ describe('Meta CAPI incident 生命周期', () => {
 
   it('旧 secure_context_invalid fail safe，不当作已确认认证失败', async () => {
     const values = Array.from({ length: 10 }, (_, index) => (
-      `('legacy_${index}', 'legacy_action_${index}', 'meta_capi', 'failed', 'secure_context_invalid', 1, datetime('now', '-1 minute'), NULL, datetime('now', '-2 minutes'))`
+      `('legacy_${index}', 'legacy_action_${index}', 'server', 'failed', 'secure_context_invalid', 1, datetime('now', '-1 minute'), NULL, datetime('now', '-2 minutes'))`
     )).join(',')
     await execSql(`INSERT INTO analytics_conversion_deliveries VALUES ${values};`)
 
@@ -226,7 +232,7 @@ describe('Meta CAPI incident 生命周期', () => {
 
   it('已确认 authentication failure 进入 scheduled 永久失败口径且分类准确', async () => {
     const values = Array.from({ length: 10 }, (_, index) => (
-      `('auth_${index}', 'auth_action_${index}', 'meta_capi', '${index === 0 ? 'failed' : 'sent'}', '${index === 0 ? 'secure_context_authentication_failed' : ''}', 1, datetime('now', '-1 minute'), NULL, datetime('now', '-2 minutes'))`
+      `('auth_${index}', 'auth_action_${index}', 'server', '${index === 0 ? 'failed' : 'sent'}', '${index === 0 ? 'secure_context_authentication_failed' : ''}', 1, datetime('now', '-1 minute'), NULL, datetime('now', '-2 minutes'))`
     )).join(',')
     await execSql(`INSERT INTO analytics_conversion_deliveries VALUES ${values};`)
 
@@ -245,7 +251,7 @@ describe('Meta CAPI incident 生命周期', () => {
     const env = circuitEnv()
     const first = await openMetaCapiIncident(env, createMetaIncidentTrigger('meta_permission_denied'))
     const opened = await incident(first.id)
-    await db.prepare("UPDATE site_settings SET value = '100' WHERE key = 'meta_capi_rollout_percentage'").run()
+    await db.prepare("UPDATE ad_platform_connections SET rollout_percentage = 100 WHERE provider = 'meta'").run()
     const second = await openMetaCapiIncident(env, createMetaIncidentTrigger('meta_permission_denied', {
       failedCount: 2,
       errorCategory: 'permission_denied',
@@ -307,7 +313,7 @@ describe('Meta CAPI incident 生命周期', () => {
       createMetaIncidentTrigger('meta_permission_denied', { failedCount: 5 }),
     )
     const opened = await incident(first.id)
-    await db.prepare("UPDATE site_settings SET value = '100' WHERE key = 'meta_capi_rollout_percentage'").run()
+    await db.prepare("UPDATE ad_platform_connections SET rollout_percentage = 100 WHERE provider = 'meta'").run()
 
     vi.setSystemTime(new Date('2026-07-11T12:04:00.000Z'))
     await openMetaCapiIncident(
@@ -470,7 +476,7 @@ async function seedCloseEvidence(options: { verificationTime?: string; resources
 
 async function seedCriticalFailures() {
   const values = Array.from({ length: 10 }, (_, index) => (
-    `('critical_${index}', 'critical_action_${index}', 'meta_capi', '${index === 0 ? 'failed' : 'sent'}', '${index === 0 ? 'meta_http_400' : ''}', 1, datetime('now', '-1 minute'), NULL, datetime('now', '-2 minutes'))`
+    `('critical_${index}', 'critical_action_${index}', 'server', '${index === 0 ? 'failed' : 'sent'}', '${index === 0 ? 'meta_http_400' : ''}', 1, datetime('now', '-1 minute'), NULL, datetime('now', '-2 minutes'))`
   )).join(',')
   await execSql(`INSERT INTO analytics_conversion_deliveries VALUES ${values};`)
 }

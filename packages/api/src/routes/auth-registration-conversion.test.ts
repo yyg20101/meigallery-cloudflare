@@ -26,7 +26,7 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
       actionType: 'complete_registration',
       created: true,
       duplicateOf: '',
-      pixelEvents: [{
+      trackingInstructions: [{
         deliveryId: 'cdlv_registration_42',
         eventName: 'CompleteRegistration',
         eventId: 'meta:CompleteRegistration:complete_registration:user:42',
@@ -85,7 +85,7 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
     expect(db.events.indexOf('invite_counter_update')).toBeGreaterThan(db.events.indexOf('invite_registration'))
     expect(db.events.indexOf('session_insert')).toBeGreaterThan(db.events.indexOf('invite_counter_update'))
     expect(db.events.indexOf('record_registration')).toBeGreaterThan(db.events.indexOf('session_insert'))
-    expect(body.pixelEvents).toEqual([expect.objectContaining({ eventName: 'CompleteRegistration' })])
+    expect(body.trackingInstructions).toEqual([expect.objectContaining({ eventName: 'CompleteRegistration' })])
     expect(body).not.toHaveProperty('capi')
     expect(body).not.toHaveProperty('emailHash')
     expect(JSON.stringify(body)).not.toContain('external')
@@ -108,7 +108,7 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
       actionType: 'complete_registration',
       created: true,
       duplicateOf: '',
-      pixelEvents: [],
+      trackingInstructions: [],
     })
 
     const db = createRegisterDb()
@@ -121,7 +121,7 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
     expect(recordRegistrationMock).toHaveBeenCalledOnce()
     expect(recordRegistrationMock.mock.calls[0]?.[1].consentState).toBe('denied')
     expect(db.calls.some(call => call.sql.includes('SELECT id, email, meta_external_id'))).toBe(false)
-    expect(body.pixelEvents).toEqual([])
+    expect(body.trackingInstructions).toEqual([])
   })
 
   it('注册伪造 granted body 但缺少 receipt 时降级为 limited 且不读取匹配字段', async () => {
@@ -194,7 +194,7 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
     const metaExternalId = String(db.calls.find(call => call.sql.includes('INSERT INTO users'))?.params[7])
 
     expect(response.status).toBe(201)
-    expect(body.pixelEvents).toEqual([])
+    expect(body.trackingInstructions).toEqual([])
     expect(db.calls.some(call => call.sql.includes('INSERT INTO users'))).toBe(true)
     expect(db.calls.some(call => call.sql.includes('INSERT INTO sessions'))).toBe(true)
     expect(db.calls.some(call => /DELETE\s+FROM\s+(users|sessions)/i.test(call.sql))).toBe(false)
@@ -268,7 +268,7 @@ function registrationResult() {
     actionType: 'complete_registration' as const,
     created: true,
     duplicateOf: '',
-    pixelEvents: [{
+    trackingInstructions: [{
       deliveryId: 'cdlv_registration_42',
       eventName: 'CompleteRegistration' as const,
       eventId: 'meta:CompleteRegistration:complete_registration:user:42',

@@ -3,7 +3,7 @@
 ## 当前状态
 
 - 当前阶段：等待 Dataset Quality 首份有效 production 快照。
-- 当前模式：`meta_tracking_mode=test`。
+- 当前模式：`ad_platform_connections.mode=test`。
 - CAPI：关闭，target/effective rollout 均为 `0%`。
 - Meta 远端资源和验证仅存在于 production；dev/local 只做代码、契约、migration、类型和构建验证。
 - delivery 已迁移到通用广告平台内核；本计划仍只控制 Meta adapter，TikTok/Google 使用独立连接和 rollout。
@@ -36,7 +36,7 @@ Dataset Quality 通过后：
 
 最终 production commit 部署后：
 
-1. 保持 `meta_tracking_mode=test`、CAPI 关闭、rollout `0%`。
+1. 保持 `ad_platform_connections.mode=test`、CAPI 关闭、rollout `0%`。
 2. 运行 production post-deploy resource attestation。
 3. 触发 production synthetic Test Event，要求 Meta 返回 `events_received=1`。
 4. 在 production 后台触发 `Live Evidence`。
@@ -55,7 +55,7 @@ Dataset Quality 通过后：
 
 全部正式证据通过后：
 
-1. 将 `meta_tracking_mode` 从 `test` 调整为 `production`。
+1. 将 `ad_platform_connections.mode` 从 `test` 调整为 `production`。
 2. 保持 CAPI rollout `0%`，观察连接、incident、Queue/DLQ 和永久失败。
 3. 确认 production payload 不再携带 `test_event_code`。
 
@@ -71,7 +71,7 @@ Dataset Quality 通过后：
 | `10% -> 50%` | 24 小时 | 接收比例、永久失败、重复事件、`_fbp`/`_fbc`、IP、User-Agent 覆盖 |
 | `50% -> 100%` | 24–72 小时 | Dataset Quality、广告归因稳定性、单次成效费用和异常趋势 |
 
-任一级异常时立即降回 `0%`；必要时关闭 `meta_capi_enabled`，再将 `meta_tracking_mode` 切回 `disabled`。保留生产 Queue/DLQ、D1 账本、incident 和 migrations 用于诊断。
+任一级异常时立即降回 `0%`；必要时关闭 `ad_platform_connections.server_enabled`，再将 `ad_platform_connections.mode` 切回 `disabled`。保留生产 Queue/DLQ、D1 账本、incident 和 migrations 用于诊断。
 
 ## 六、Meta 诊断观察
 

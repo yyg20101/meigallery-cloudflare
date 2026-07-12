@@ -42,6 +42,7 @@ interface IncidentData {
 }
 
 const { isOwner } = useAuth()
+const { api } = useApi()
 const rangeState = useAdminAttributionRange('7d')
 const requestOptions = { rangeState, autoRefresh: false }
 const summary = useAdminAttribution<AttributionSummaryData>('/api/admin/attribution/summary', requestOptions)
@@ -95,6 +96,29 @@ const qualityRows = computed(() => quality.data.value?.match.rows as unknown as 
 const datasetQuality = computed(() => quality.data.value?.datasetQuality)
 const blockerCount = computed(() => readiness.data.value?.checks.filter(check => check.level === 'blocker' && !check.ok).length ?? 0)
 const warningCount = computed(() => readiness.data.value?.checks.filter(check => check.level === 'warning' && !check.ok).length ?? 0)
+const connectionSaving = ref(false)
+const connectionMessage = ref('')
+const metaConnectionForm = reactive({
+  enabled: false,
+  browserEnabled: false,
+  serverEnabled: false,
+  destinationId: '',
+  debugEnabled: false,
+  mode: 'disabled' as 'disabled' | 'test' | 'production',
+  rolloutPercentage: 0 as 0 | 10 | 50 | 100,
+})
+watch(() => platforms.data.value?.find(item => item.provider === 'meta'), (connection) => {
+  if (!connection) return
+  Object.assign(metaConnectionForm, {
+    enabled: connection.enabled,
+    browserEnabled: connection.browserEnabled,
+    serverEnabled: connection.serverEnabled,
+    destinationId: connection.destinationId,
+    debugEnabled: connection.debugEnabled,
+    mode: connection.mode,
+    rolloutPercentage: connection.rolloutPercentage,
+  })
+}, { immediate: true })
 const linkRoute = computed(() => ({ path: '/admin/attribution/links', query: attributionRouteQuery(rangeState.range.value, rangeState.date.value) }))
 
 const businessSeries = [
@@ -118,6 +142,25 @@ const evidenceLayers = [
 
 async function refreshAll() {
   await Promise.all(sources.map(source => source.refresh()))
+}
+
+async function saveMetaConnection() {
+  connectionSaving.value = true
+  connectionMessage.value = ''
+  try {
+    await api('/api/admin/attribution/platforms/meta', {
+      method: 'PATCH',
+      body: { ...metaConnectionForm },
+    })
+    connectionMessage.value = 'Meta 连接已保存'
+    await refreshAll()
+  }
+  catch (error) {
+    connectionMessage.value = resolveApiErrorMessage(error, 'Meta 连接保存失败')
+  }
+  finally {
+    connectionSaving.value = false
+  }
 }
 
 watch(rangeState.queryKey, () => void refreshAll())
@@ -177,6 +220,37 @@ function formatCount(value: unknown) {
           </div>
           <p v-if="!platforms.data.value?.length" class="px-1 py-4 text-sm text-gray-500">尚未取得平台连接状态</p>
         </div>
+        <form v-if="isOwner" class="mb-6 grid gap-4 border-b border-gray-200 pb-6 sm:grid-cols-2 lg:grid-cols-4" @submit.prevent="saveMetaConnection">
+          <label class="sm:col-span-2">
+            <span class="mb-1 block text-xs font-medium text-gray-600">Meta Dataset ID</span>
+            <input v-model="metaConnectionForm.destinationId" inputmode="numeric" pattern="[0-9]{5,30}" required class="w-full border border-gray-300 px-3 py-2 text-sm" />
+          </label>
+          <label>
+            <span class="mb-1 block text-xs font-medium text-gray-600">运行模式</span>
+            <select v-model="metaConnectionForm.mode" class="w-full border border-gray-300 px-3 py-2 text-sm">
+              <option value="disabled">关闭</option>
+              <option value="test">测试</option>
+              <option value="production">生产</option>
+            </select>
+          </label>
+          <label>
+            <span class="mb-1 block text-xs font-medium text-gray-600">Server 放量</span>
+            <select v-model="metaConnectionForm.rolloutPercentage" class="w-full border border-gray-300 px-3 py-2 text-sm">
+              <option :value="0">0%</option>
+              <option :value="10">10%</option>
+              <option :value="50">50%</option>
+              <option :value="100">100%</option>
+            </select>
+          </label>
+          <label class="flex items-center gap-2 text-sm"><input v-model="metaConnectionForm.enabled" type="checkbox" />启用连接</label>
+          <label class="flex items-center gap-2 text-sm"><input v-model="metaConnectionForm.browserEnabled" type="checkbox" />Browser Pixel</label>
+          <label class="flex items-center gap-2 text-sm"><input v-model="metaConnectionForm.serverEnabled" type="checkbox" />Server API</label>
+          <label class="flex items-center gap-2 text-sm"><input v-model="metaConnectionForm.debugEnabled" type="checkbox" />调试日志</label>
+          <div class="flex items-center gap-3 sm:col-span-2 lg:col-span-4">
+            <button type="submit" :disabled="connectionSaving" class="bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">保存连接</button>
+            <span class="text-sm text-gray-500">{{ connectionMessage }}</span>
+          </div>
+        </form>
         <h3 class="mb-3 text-sm font-semibold text-gray-900">Meta 运维状态</h3>
         <MetaConnectionStatus
           :connection="metaStatus.data.value?.connection || null"

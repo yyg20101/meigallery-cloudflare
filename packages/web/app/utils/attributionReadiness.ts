@@ -1,9 +1,10 @@
 const READINESS_SETTING_LABELS: Record<string, string> = {
   analytics_enabled: '站内分析',
-  facebook_pixel_enabled: 'Pixel 开关',
-  facebook_pixel_id: 'Pixel ID',
-  meta_capi_enabled: 'CAPI 开关',
-  meta_tracking_mode: 'Meta 模式',
+  enabled: 'Meta 连接',
+  browser_enabled: 'Browser Pixel',
+  server_enabled: 'Server API',
+  destination_configured: 'Dataset ID',
+  mode: 'Meta 模式',
 }
 
 export interface ReadinessSettingRow {
@@ -31,19 +32,6 @@ export interface ReadinessVerificationRow {
   present: boolean
   verifiedAt: string
   expiresAt: string
-}
-
-export function canEnableMetaCapi(checks: ReadonlyArray<{ level: 'blocker' | 'warning'; ok: boolean }>) {
-  const blockers = checks.filter(check => check.level === 'blocker')
-  return blockers.length > 0 && blockers.every(check => check.ok)
-}
-
-export function clampMetaCapiEnabled(requested: boolean, allowed: boolean) {
-  return requested === true && allowed === true
-}
-
-export function isMetaCapiToggleDisabled(enabled: boolean, allowed: boolean) {
-  return enabled === false && allowed === false
 }
 
 export function serializeReadinessSettingRows(settings: Record<string, unknown>): ReadinessSettingRow[] {

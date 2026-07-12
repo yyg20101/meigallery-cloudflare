@@ -44,11 +44,8 @@ describe('公开站点设置安全读取', () => {
     expect(sanitizePublicSiteSetting('rules_page_url', ' /rules#top ')).toBe('/rules#top')
   })
 
-  it('归一化公开布尔和 Pixel 设置', () => {
+  it('归一化公开布尔设置', () => {
     expect(sanitizePublicSiteSetting('home_ad_enabled', 'true')).toBe(true)
-    expect(sanitizePublicSiteSetting('facebook_pixel_enabled', 'false')).toBe(false)
-    expect(sanitizePublicSiteSetting('facebook_pixel_id', ' 1234567890 ')).toBe('1234567890')
-    expect(sanitizePublicSiteSetting('facebook_pixel_id', 'fbq("track")')).toBe('')
   })
 
   it('归一化数据分析公开设置', () => {

@@ -28,7 +28,6 @@ export type ConversionDeliverySnapshot = {
   id: string
   provider: string
   transport: string
-  channel: string
   event_name: string
   status: ConversionDeliveryStatus
   skip_reason: string
@@ -43,7 +42,7 @@ export type MetaCapiDeliveryRow = ConversionDeliverySnapshot & {
   error_message: string
   attempt_count: number
   tracking_mode: MetaTrackingMode
-  meta_connection_revision: string | null
+  connection_revision: string | null
   duplicate_suppressed_at: string | null
   encryption_key_id: string
   delivery_lease_token: string
@@ -191,7 +190,7 @@ export async function sendMetaCapiEvent(
     return { deliveryId, status: 'skipped', reason: 'connection_unverified' }
   }
   if (delivery.tracking_mode !== connection.trackingMode
-    || delivery.meta_connection_revision !== connection.revision) {
+    || delivery.connection_revision !== connection.revision) {
     const persisted = await confirmDeliveryTransition(env.DB, delivery, {
       status: 'skipped',
       skipReason: 'connection_unverified',
@@ -319,7 +318,8 @@ export async function acquireMetaCapiDeliveryLease(db: D1Database, deliveryId: s
       delivery_lease_expires_at = datetime('now', '+${META_CAPI_DELIVERY_LEASE_SECONDS} seconds'),
       updated_at = datetime('now')
     WHERE id = ?
-      AND channel = 'meta_capi'
+      AND provider = 'meta'
+      AND transport = 'server'
       AND status IN ('pending', 'failed')
       AND status <> 'sent'
       AND (
@@ -350,9 +350,9 @@ function isActiveMetaEventName(value: string): value is ActiveMetaEventName {
 export async function readMetaCapiDelivery(db: D1Database, deliveryId: string) {
   return db.prepare(`
     SELECT
-      d.id, d.conversion_action_id, d.provider, d.transport, d.channel, d.external_event_id, d.event_name,
+      d.id, d.conversion_action_id, d.provider, d.transport, d.external_event_id, d.event_name,
       d.status, d.skip_reason, d.error_code, d.error_message, d.attempt_count,
-      d.tracking_mode, d.meta_connection_revision, d.duplicate_suppressed_at,
+      d.tracking_mode, d.connection_revision, d.duplicate_suppressed_at,
       d.encryption_key_id, d.delivery_lease_token, d.delivery_lease_expires_at, d.created_at,
       a.occurred_at, a.date, a.path, a.metadata
     FROM analytics_conversion_deliveries d
@@ -360,7 +360,6 @@ export async function readMetaCapiDelivery(db: D1Database, deliveryId: string) {
     WHERE d.id = ?
       AND d.provider = 'meta'
       AND d.transport = 'server'
-      AND d.channel = 'meta_capi'
     LIMIT 1
   `).bind(deliveryId).first<MetaCapiDeliveryRow>()
 }
@@ -492,15 +491,15 @@ export async function recordDuplicateSuppressed(db: D1Database, delivery: Conver
     `).bind(delivery.id),
     db.prepare(`
       INSERT INTO analytics_conversion_delivery_daily (
-        date, provider, transport, channel, event_name, status, skip_reason, delivery_count, updated_at
+        date, provider, transport, event_name, status, skip_reason, delivery_count, updated_at
       )
-      SELECT ?, ?, ?, ?, ?, 'duplicate_suppressed', 'already_sent', 1, datetime('now')
+      SELECT ?, ?, ?, ?, 'duplicate_suppressed', 'already_sent', 1, datetime('now')
       WHERE changes() = 1
       ON CONFLICT(date, provider, transport, event_name, status, skip_reason)
       DO UPDATE SET
         delivery_count = analytics_conversion_delivery_daily.delivery_count + 1,
         updated_at = datetime('now')
-    `).bind(delivery.date, delivery.provider, delivery.transport, delivery.channel, delivery.event_name),
+    `).bind(delivery.date, delivery.provider, delivery.transport, delivery.event_name),
   ])
 }
 
@@ -512,9 +511,9 @@ function deliveryDailyIncrementAfterChange(
 ) {
   return db.prepare(`
     INSERT INTO analytics_conversion_delivery_daily (
-      date, provider, transport, channel, event_name, status, skip_reason, delivery_count, updated_at
+      date, provider, transport, event_name, status, skip_reason, delivery_count, updated_at
     )
-    SELECT ?, ?, ?, ?, ?, ?, ?, 1, datetime('now')
+    SELECT ?, ?, ?, ?, ?, ?, 1, datetime('now')
     WHERE changes() = 1
     ON CONFLICT(date, provider, transport, event_name, status, skip_reason)
     DO UPDATE SET
@@ -524,7 +523,6 @@ function deliveryDailyIncrementAfterChange(
     delivery.date,
     delivery.provider,
     delivery.transport,
-    delivery.channel,
     delivery.event_name,
     status,
     skipReason,
@@ -540,7 +538,6 @@ function deliveryDailyDecrementAfterChange(db: D1Database, delivery: ConversionD
     WHERE date = ?
       AND provider = ?
       AND transport = ?
-      AND channel = ?
       AND event_name = ?
       AND status = ?
       AND skip_reason = ?
@@ -549,7 +546,6 @@ function deliveryDailyDecrementAfterChange(db: D1Database, delivery: ConversionD
     delivery.date,
     delivery.provider,
     delivery.transport,
-    delivery.channel,
     delivery.event_name,
     delivery.status,
     delivery.skip_reason || '',

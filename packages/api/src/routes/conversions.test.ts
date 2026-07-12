@@ -56,11 +56,12 @@ function createConversionDb(options: {
               expires_at: '2099-01-01T00:01:00.000Z',
             } as T
           }
-          if (sql.includes("WHERE key = 'meta_capi_enabled'")) return { value: String(options.metaCapiEnabled === true) } as T
-          if (sql.includes("WHERE key = 'facebook_pixel_enabled'")) return { value: 'false' } as T
-          if (sql.includes("WHERE key = 'facebook_pixel_id'")) return options.facebookPixelId ? ({ value: JSON.stringify(options.facebookPixelId) } as T) : null
-          if (sql.includes("WHERE key = 'meta_tracking_mode'")) return { value: JSON.stringify(options.metaTrackingMode ?? 'disabled') } as T
-          if (sql.includes("WHERE key = 'meta_capi_rollout_percentage'")) return { value: '100' } as T
+          if (sql.includes('FROM ad_platform_connections')) return options.facebookPixelId ? ({
+            provider: 'meta', enabled: 1, mode: options.metaTrackingMode ?? 'disabled',
+            browser_enabled: 0, server_enabled: options.metaCapiEnabled === true ? 1 : 0,
+            destination_id: options.facebookPixelId, debug_enabled: 0, rollout_percentage: 100,
+            credential_secret_name: 'META_CAPI_ACCESS_TOKEN', revision: CONNECTION_REVISION,
+          } as T) : null
           if (sql.includes('FROM meta_capi_incidents')) return null as T | null
           if (sql.includes('FROM meta_connection_verifications')) {
             return {
@@ -119,9 +120,9 @@ function createConversionDb(options: {
           if (sql.includes('INSERT OR IGNORE INTO analytics_conversion_deliveries')) {
             delivery = {
               id: String(call.params[0]),
-              status: String(call.params[5]),
+              status: String(call.params[6]),
               queueEnqueuedAt: null,
-              eventName: String(call.params[4]),
+              eventName: String(call.params[5]),
             }
           } else if (sql.includes('INSERT INTO meta_capi_secure_outbox')) {
             outbox = {
@@ -151,7 +152,7 @@ function createConversionDb(options: {
 }
 
 function createPixelReceiptDb(options: {
-  channel?: 'meta_pixel' | 'meta_capi'
+  transport?: 'browser' | 'server'
   eventId?: string
   status?: 'pending' | 'attempted' | 'sent' | 'failed' | 'skipped' | 'duplicate_suppressed'
   failAttemptedDaily?: boolean
@@ -160,8 +161,7 @@ function createPixelReceiptDb(options: {
   const delivery = {
     id: 'cdlv_pixel_1',
     provider: 'meta',
-    transport: 'browser',
-    channel: options.channel ?? 'meta_pixel',
+    transport: options.transport ?? 'browser',
     eventId: options.eventId ?? 'meta:Contact:contact:session_1:telegram:floating_contact_panel',
     status: options.status ?? 'pending',
     date: '2026-07-09',
@@ -182,7 +182,7 @@ function createPixelReceiptDb(options: {
     }
     if (call.sql.includes('INSERT INTO analytics_conversion_delivery_daily')) {
       if (failAttemptedDaily) throw new Error('模拟 attempted 日报写入失败')
-      if (state.lastChanges === 1 && call.params[5] === 'attempted') state.dailyAttemptedCount += 1
+      if (state.lastChanges === 1 && call.params[4] === 'attempted') state.dailyAttemptedCount += 1
       state.lastChanges = state.lastChanges === 1 ? 1 : 0
       return { meta: { changes: state.lastChanges, rows_written: state.lastChanges, rows_read: 0, duration: 1 } }
     }
@@ -217,7 +217,6 @@ function createPixelReceiptDb(options: {
               id: delivery.id,
               provider: delivery.provider,
               transport: delivery.transport,
-              channel: delivery.channel,
               external_event_id: delivery.eventId,
               status: delivery.status,
               date: delivery.date,
@@ -403,7 +402,7 @@ describe('conversion routes', () => {
   })
 
   it.each([
-    ['CAPI delivery', createPixelReceiptDb({ channel: 'meta_capi' }), undefined],
+    ['CAPI delivery', createPixelReceiptDb({ transport: 'server' }), undefined],
     ['delivery 与 event ID 不匹配', createPixelReceiptDb({ eventId: 'meta:Contact:other' }), undefined],
     ['伪造 token', createPixelReceiptDb(), 'forged.token'],
     ['过期 token', createPixelReceiptDb(), 'expired'],

@@ -49,13 +49,14 @@ type InsertedConversion = { id: string; actionType: string; dedupeKey: string; s
 type InsertedDelivery = {
   id: string
   conversionActionId: string
-  channel: string
+  provider: string
+  transport: string
   eventName: string
   eventId: string
   status: string
   skipReason: string
   encryptionKeyId: string
-  metaConnectionRevision: string | null
+  connectionRevision: string | null
   queueEnqueuedAt: string | null
   hasFbp: number
   hasFbc: number
@@ -89,12 +90,12 @@ const CONNECTION_REVISION = '1'.repeat(32)
 
 function createConversionDb(options: {
   existingDedupeKeys?: string[]
-  metaCapiEnabled?: boolean
-  facebookPixelEnabled?: boolean
-  facebookPixelId?: string
-  metaTrackingMode?: 'disabled' | 'test' | 'production'
+  metaServerEnabled?: boolean
+  metaBrowserEnabled?: boolean
+  metaDestinationId?: string
+  metaMode?: 'disabled' | 'test' | 'production'
   metaConnectionVerified?: boolean
-  metaCapiRolloutPercentage?: unknown
+  metaRolloutPercentage?: unknown
   criticalIncidentOpen?: boolean
   userMetaExternalId?: string | null
   rolloutSettingQueryError?: boolean
@@ -214,21 +215,22 @@ function createConversionDb(options: {
       target.insertedDeliveries.push({
         id: String(call.params[0]),
         conversionActionId: String(call.params[1]),
-        channel: String(call.params[2]),
-        eventName: String(call.params[4]),
-        eventId: String(call.params[3]),
-        status: String(call.params[5]),
-        skipReason: String(call.params[6]),
-        encryptionKeyId: String(call.params[11]),
-        metaConnectionRevision: call.params[13] == null ? null : String(call.params[13]),
+        provider: String(call.params[2]),
+        transport: String(call.params[3]),
+        eventName: String(call.params[5]),
+        eventId: String(call.params[4]),
+        status: String(call.params[6]),
+        skipReason: String(call.params[7]),
+        encryptionKeyId: String(call.params[12]),
+        connectionRevision: call.params[14] == null ? null : String(call.params[14]),
         queueEnqueuedAt: null,
-        hasFbp: Number(call.params[7]),
-        hasFbc: Number(call.params[8]),
-        hasEmail: Number(call.params[9]),
-        hasExternalId: Number(call.params[10]),
-        rolloutTargetPercentage: Number(call.params[14]),
-        rolloutEffectivePercentage: Number(call.params[15]),
-        rolloutBucket: call.params[16] == null ? null : Number(call.params[16]),
+        hasFbp: Number(call.params[8]),
+        hasFbc: Number(call.params[9]),
+        hasEmail: Number(call.params[10]),
+        hasExternalId: Number(call.params[11]),
+        rolloutTargetPercentage: Number(call.params[15]),
+        rolloutEffectivePercentage: Number(call.params[16]),
+        rolloutBucket: call.params[17] == null ? null : Number(call.params[17]),
       })
     }
     if (call.sql.includes('INSERT INTO meta_capi_secure_outbox')) {
@@ -285,21 +287,20 @@ function createConversionDb(options: {
               expires_at: claim.expiresAt,
             } as T) : null
           }
-          if (sql.includes("WHERE key = 'meta_capi_enabled'")) {
-            return { value: String(options.metaCapiEnabled === true) } as T
-          }
-          if (sql.includes("WHERE key = 'facebook_pixel_enabled'")) {
-            return { value: String(options.facebookPixelEnabled === true) } as T
-          }
-          if (sql.includes("WHERE key = 'facebook_pixel_id'")) {
-            return options.facebookPixelId ? ({ value: JSON.stringify(options.facebookPixelId) } as T) : null
-          }
-          if (sql.includes("WHERE key = 'meta_tracking_mode'")) {
-            return { value: JSON.stringify(options.metaTrackingMode ?? 'disabled') } as T
-          }
-          if (sql.includes("WHERE key = 'meta_capi_rollout_percentage'")) {
+          if (sql.includes('FROM ad_platform_connections')) {
             if (options.rolloutSettingQueryError) throw new Error('模拟 rollout setting 查询失败')
-            return { value: JSON.stringify(options.metaCapiRolloutPercentage ?? 100) } as T
+            return {
+              provider: 'meta',
+              enabled: options.metaBrowserEnabled === true || options.metaServerEnabled === true ? 1 : 0,
+              mode: options.metaMode ?? 'disabled',
+              browser_enabled: options.metaBrowserEnabled === true ? 1 : 0,
+              server_enabled: options.metaServerEnabled === true ? 1 : 0,
+              destination_id: options.metaDestinationId ?? '',
+              debug_enabled: 0,
+              rollout_percentage: options.metaRolloutPercentage ?? 100,
+              credential_secret_name: 'META_CAPI_ACCESS_TOKEN',
+              revision: CONNECTION_REVISION,
+            } as T
           }
           if (sql.includes('FROM meta_capi_incidents')) {
             if (options.incidentQueryError) throw new Error('模拟 incident 查询失败')
@@ -317,7 +318,7 @@ function createConversionDb(options: {
             if (options.metaConnectionVerified === false) return null
             return {
               environment: 'dev',
-              pixel_id: options.facebookPixelId ?? '1234567890',
+              pixel_id: options.metaDestinationId ?? '1234567890',
               token_fingerprint: TOKEN_FINGERPRINT,
               graph_api_version: 'v25.0',
               verified_event_name: 'Contact',
@@ -482,18 +483,18 @@ describe('conversion ledger service', () => {
 
   it('首次授权联系只返回 Contact Pixel 指令', async () => {
     const db = createConversionDb({
-      facebookPixelEnabled: true,
-      facebookPixelId: '1234567890',
-      metaTrackingMode: 'test',
+      metaBrowserEnabled: true,
+      metaDestinationId: '1234567890',
+      metaMode: 'test',
     })
     const result = await recordContact(envFor(db), grantedContactInput())
 
-    expect(result.pixelEvents.map(item => item.eventName)).toEqual(['Contact'])
-    expect(result.pixelEvents[0]?.eventId).toMatch(/^mg:v2:Contact:[0-9a-f]{64}$/)
-    expect(result.pixelEvents[0]?.eventId).not.toContain('session_1')
-    expect(result.pixelEvents.every(item => item.receiptToken)).toBe(true)
-    expect(db.insertedDeliveries.find(item => item.channel === 'meta_pixel')).toMatchObject({
-      metaConnectionRevision: CONNECTION_REVISION,
+    expect(result.trackingInstructions.map(item => item.eventName)).toEqual(['Contact'])
+    expect(result.trackingInstructions[0]?.eventId).toMatch(/^mg:v2:Contact:[0-9a-f]{64}$/)
+    expect(result.trackingInstructions[0]?.eventId).not.toContain('session_1')
+    expect(result.trackingInstructions.every(item => item.receiptToken)).toBe(true)
+    expect(db.insertedDeliveries.find(item => item.transport === 'browser')).toMatchObject({
+      connectionRevision: CONNECTION_REVISION,
     })
     expect(db.calls.filter(call => (
       call.sql.includes('INSERT INTO analytics_conversion_delivery_daily')
@@ -503,9 +504,9 @@ describe('conversion ledger service', () => {
 
   it('公开 metadata 中的 Meta 标识和网络标识不进入 SQL 参数', async () => {
     const db = createConversionDb({
-      facebookPixelEnabled: true,
-      facebookPixelId: '1234567890',
-      metaTrackingMode: 'test',
+      metaBrowserEnabled: true,
+      metaDestinationId: '1234567890',
+      metaMode: 'test',
     })
     await recordContact(envFor(db), {
       ...grantedContactInput(),
@@ -527,10 +528,10 @@ describe('conversion ledger service', () => {
 
   it.each(['limited', 'denied'] as const)('%s 不创建 Meta delivery 或 Pixel 指令', async consentState => {
     const db = createConversionDb({
-      facebookPixelEnabled: true,
-      facebookPixelId: '1234567890',
-      metaTrackingMode: 'production',
-      metaCapiEnabled: true,
+      metaBrowserEnabled: true,
+      metaDestinationId: '1234567890',
+      metaMode: 'production',
+      metaServerEnabled: true,
     })
     const sent: MetaCapiQueueMessage[] = []
     let supplierCalls = 0
@@ -541,7 +542,7 @@ describe('conversion ledger service', () => {
       },
     })
 
-    expect(result.pixelEvents).toEqual([])
+    expect(result.trackingInstructions).toEqual([])
     expect(db.calls.some(call => call.sql.includes('analytics_conversion_deliveries'))).toBe(false)
     expect(sent).toEqual([])
     expect(supplierCalls).toBe(0)
@@ -549,10 +550,10 @@ describe('conversion ledger service', () => {
 
   it('disabled 模式不创建 Meta delivery 或 Pixel 指令', async () => {
     const db = createConversionDb({
-      facebookPixelEnabled: true,
-      facebookPixelId: '1234567890',
-      metaTrackingMode: 'disabled',
-      metaCapiEnabled: true,
+      metaBrowserEnabled: true,
+      metaDestinationId: '1234567890',
+      metaMode: 'disabled',
+      metaServerEnabled: true,
     })
     const sent: MetaCapiQueueMessage[] = []
     let supplierCalls = 0
@@ -563,7 +564,7 @@ describe('conversion ledger service', () => {
       },
     })
 
-    expect(result.pixelEvents).toEqual([])
+    expect(result.trackingInstructions).toEqual([])
     expect(db.calls.some(call => call.sql.includes('analytics_conversion_deliveries'))).toBe(false)
     expect(sent).toEqual([])
     expect(supplierCalls).toBe(0)
@@ -571,10 +572,10 @@ describe('conversion ledger service', () => {
 
   it('首次有效联系只写入一条 contact 与两条派生 delivery', async () => {
     const db = createConversionDb({
-      facebookPixelEnabled: true,
-      facebookPixelId: '1234567890',
-      metaTrackingMode: 'test',
-      metaCapiEnabled: true,
+      metaBrowserEnabled: true,
+      metaDestinationId: '1234567890',
+      metaMode: 'test',
+      metaServerEnabled: true,
     })
     const result = await recordContact(envFor(db), grantedContactInput())
 
@@ -586,9 +587,9 @@ describe('conversion ledger service', () => {
 
   it('delivery 写入失败不残留 action，重试后可返回指令', async () => {
     const db = createConversionDb({
-      facebookPixelEnabled: true,
-      facebookPixelId: '1234567890',
-      metaTrackingMode: 'test',
+      metaBrowserEnabled: true,
+      metaDestinationId: '1234567890',
+      metaMode: 'test',
       failAt: 5,
     })
 
@@ -598,7 +599,7 @@ describe('conversion ledger service', () => {
     db.failAt = undefined
     const retried = await recordContact(envFor(db), grantedContactInput())
     expect(retried.created).toBe(true)
-    expect(retried.pixelEvents.map(item => item.eventName)).toEqual(['Contact'])
+    expect(retried.trackingInstructions.map(item => item.eventName)).toEqual(['Contact'])
   })
 
   it('重复有效联系只记录重复账本，不创建 delivery', async () => {
@@ -615,7 +616,7 @@ describe('conversion ledger service', () => {
     expect(result.created).toBe(false)
     expect(result.duplicateOf).toBe('existing_contact:session_1:telegram:floating_contact_panel')
     expect(result).not.toHaveProperty('derivedActions')
-    expect(result.pixelEvents).toEqual([])
+    expect(result.trackingInstructions).toEqual([])
     expect(db.calls.some(call => call.sql.includes('INSERT OR IGNORE INTO analytics_conversion_actions'))).toBe(true)
     expect(db.calls.some(call => (
       call.sql.includes('INSERT OR IGNORE INTO analytics_conversion_actions') &&
@@ -641,10 +642,10 @@ describe('conversion ledger service', () => {
 
   it.each(['limited', 'denied'] as const)('%s 注册不读取浏览器或敏感值、不 hash 且不创建 outbox', async consentState => {
     const db = createConversionDb({
-      facebookPixelEnabled: true,
-      facebookPixelId: '1234567890',
-      metaCapiEnabled: true,
-      metaTrackingMode: 'production',
+      metaBrowserEnabled: true,
+      metaDestinationId: '1234567890',
+      metaServerEnabled: true,
+      metaMode: 'production',
     })
     const browserSupplier = vi.fn(async () => ({ fbp: 'fb.1.must-not-read' }))
     const sensitiveSupplier = vi.fn(async () => ({
@@ -674,10 +675,10 @@ describe('conversion ledger service', () => {
 
   it('授权注册只在惰性门禁后 hash，并将浏览器信号与两项 hash 写入同一密文上下文', async () => {
     const db = createConversionDb({
-      facebookPixelEnabled: true,
-      facebookPixelId: '1234567890',
-      metaCapiEnabled: true,
-      metaTrackingMode: 'production',
+      metaBrowserEnabled: true,
+      metaDestinationId: '1234567890',
+      metaServerEnabled: true,
+      metaMode: 'production',
     })
     const sent: MetaCapiQueueMessage[] = []
     const env = envWithQueueFor(db, sent)
@@ -717,7 +718,7 @@ describe('conversion ledger service', () => {
     expect(metaHashMocks.email).toHaveBeenCalledWith(email)
     expect(metaHashMocks.externalId).toHaveBeenCalledWith(metaExternalId)
     const delivery = db.insertedDeliveries.find(item => (
-      item.eventName === 'CompleteRegistration' && item.channel === 'meta_capi'
+      item.eventName === 'CompleteRegistration' && item.transport === 'server'
     ))!
     expect(delivery).toMatchObject({ hasFbp: 1, hasFbc: 1, hasEmail: 1, hasExternalId: 1 })
     const envelope = sent.find(item => item.deliveryId === delivery.id)!.envelope
@@ -748,11 +749,11 @@ describe('conversion ledger service', () => {
   })
 
   it.each([
-    ['CAPI disabled', { metaCapiEnabled: false, metaTrackingMode: 'production' as const, facebookPixelId: '1234567890' }, DATA_KEY],
-    ['tracking disabled', { metaCapiEnabled: true, metaTrackingMode: 'disabled' as const, facebookPixelId: '1234567890' }, DATA_KEY],
-    ['connection unverified', { metaCapiEnabled: true, metaTrackingMode: 'production' as const, facebookPixelId: '1234567890', metaConnectionVerified: false }, DATA_KEY],
-    ['missing data key', { metaCapiEnabled: true, metaTrackingMode: 'production' as const, facebookPixelId: '1234567890' }, undefined],
-    ['invalid data key', { metaCapiEnabled: true, metaTrackingMode: 'production' as const, facebookPixelId: '1234567890' }, 'invalid-key'],
+    ['CAPI disabled', { metaServerEnabled: false, metaMode: 'production' as const, metaDestinationId: '1234567890' }, DATA_KEY],
+    ['tracking disabled', { metaServerEnabled: true, metaMode: 'disabled' as const, metaDestinationId: '1234567890' }, DATA_KEY],
+    ['connection unverified', { metaServerEnabled: true, metaMode: 'production' as const, metaDestinationId: '1234567890', metaConnectionVerified: false }, DATA_KEY],
+    ['missing data key', { metaServerEnabled: true, metaMode: 'production' as const, metaDestinationId: '1234567890' }, undefined],
+    ['invalid data key', { metaServerEnabled: true, metaMode: 'production' as const, metaDestinationId: '1234567890' }, 'invalid-key'],
   ])('%s 时注册不读取或 hash 匹配数据', async (_caseName, dbOptions, dataKey) => {
     const db = createConversionDb(dbOptions)
     const browserSupplier = vi.fn(async () => ({ fbp: 'fb.1.1700000000000.gated-private' }))
@@ -785,9 +786,9 @@ describe('conversion ledger service', () => {
 
   it('注册敏感 supplier 异常转为稳定 skipped，不携带原值或 cause', async () => {
     const db = createConversionDb({
-      metaCapiEnabled: true,
-      metaTrackingMode: 'production',
-      facebookPixelId: '1234567890',
+      metaServerEnabled: true,
+      metaMode: 'production',
+      metaDestinationId: '1234567890',
     })
     const sensitive = 'supplier-private@example.test|33333333333333333333333333333333'
 
@@ -807,14 +808,14 @@ describe('conversion ledger service', () => {
     expect(result).not.toHaveProperty('cause')
     expect(db.insertedDeliveries).toEqual([
       expect.objectContaining({
-        channel: 'meta_capi',
+        transport: 'server',
         status: 'skipped',
         skipReason: 'invalid_sensitive_context',
         hasFbp: 0,
         hasFbc: 0,
         hasEmail: 0,
         hasExternalId: 0,
-        metaConnectionRevision: CONNECTION_REVISION,
+        connectionRevision: CONNECTION_REVISION,
       }),
     ])
     expect(JSON.stringify(result)).not.toContain(sensitive)
@@ -823,9 +824,9 @@ describe('conversion ledger service', () => {
 
   it('已登录 Contact 只读取浏览器 supplier，不接收或查询注册 PII', async () => {
     const db = createConversionDb({
-      facebookPixelId: '1234567890',
-      metaCapiEnabled: true,
-      metaTrackingMode: 'production',
+      metaDestinationId: '1234567890',
+      metaServerEnabled: true,
+      metaMode: 'production',
     })
     const browserSupplier = vi.fn(async () => ({
       fbp: 'fb.1.1700000000000.contact-only',
@@ -848,10 +849,10 @@ describe('conversion ledger service', () => {
 
   it('同一服务端用户重复注册按用户 ID 去重且不重复规划 delivery', async () => {
     const db = createConversionDb({
-      facebookPixelEnabled: true,
-      facebookPixelId: '1234567890',
-      metaCapiEnabled: true,
-      metaTrackingMode: 'production',
+      metaBrowserEnabled: true,
+      metaDestinationId: '1234567890',
+      metaServerEnabled: true,
+      metaMode: 'production',
     })
     const sent: MetaCapiQueueMessage[] = []
     const input = {
@@ -871,7 +872,7 @@ describe('conversion ledger service', () => {
     })
 
     expect(first.created).toBe(true)
-    expect(second).toMatchObject({ created: false, duplicateOf: first.id, pixelEvents: [] })
+    expect(second).toMatchObject({ created: false, duplicateOf: first.id, trackingInstructions: [] })
     expect(db.insertedConversions[0]?.dedupeKey).toBe('complete_registration:user:42')
     expect(db.insertedDeliveries).toHaveLength(2)
     expect(sent).toHaveLength(1)
@@ -906,10 +907,10 @@ describe('conversion ledger service', () => {
 
   it('注册事实修复只写 action 与 daily aggregate，且按服务端用户 ID 幂等', async () => {
     const db = createConversionDb({
-      facebookPixelEnabled: true,
-      facebookPixelId: '1234567890',
-      metaCapiEnabled: true,
-      metaTrackingMode: 'production',
+      metaBrowserEnabled: true,
+      metaDestinationId: '1234567890',
+      metaServerEnabled: true,
+      metaMode: 'production',
     })
     const input = {
       userId: 42,
@@ -941,16 +942,16 @@ describe('conversion ledger service', () => {
       metadata: {},
     }
     const firstDb = createConversionDb({
-      facebookPixelEnabled: true,
-      facebookPixelId: '1234567890',
-      metaCapiEnabled: true,
-      metaTrackingMode: 'test',
+      metaBrowserEnabled: true,
+      metaDestinationId: '1234567890',
+      metaServerEnabled: true,
+      metaMode: 'test',
     })
     const secondDb = createConversionDb({
-      facebookPixelEnabled: true,
-      facebookPixelId: '1234567890',
-      metaCapiEnabled: true,
-      metaTrackingMode: 'test',
+      metaBrowserEnabled: true,
+      metaDestinationId: '1234567890',
+      metaServerEnabled: true,
+      metaMode: 'test',
     })
 
     await recordRegistration(envFor(firstDb), input)
@@ -958,16 +959,16 @@ describe('conversion ledger service', () => {
 
     const firstDeliveries = firstDb.calls.filter(call => call.sql.includes('INSERT OR IGNORE INTO analytics_conversion_deliveries'))
     const secondDeliveries = secondDb.calls.filter(call => call.sql.includes('INSERT OR IGNORE INTO analytics_conversion_deliveries'))
-    expect(firstDeliveries.map(call => call.params[2]).sort()).toEqual(['meta_capi', 'meta_pixel'])
-    expect(firstDeliveries.map(call => call.params[3])).toEqual([
-      secondDeliveries[0]?.params[3],
-      secondDeliveries[1]?.params[3],
+    expect(firstDeliveries.map(call => call.params[3]).sort()).toEqual(['browser', 'server'])
+    expect(firstDeliveries.map(call => call.params[4])).toEqual([
+      secondDeliveries[0]?.params[4],
+      secondDeliveries[1]?.params[4],
     ])
   })
 
   it('CAPI 开启且 Queue 存在时只发送 V2 密文消息', async () => {
     const sent: MetaCapiQueueMessage[] = []
-    const db = createConversionDb({ metaCapiEnabled: true, metaTrackingMode: 'test', facebookPixelId: '1234567890' })
+    const db = createConversionDb({ metaServerEnabled: true, metaMode: 'test', metaDestinationId: '1234567890' })
 
     await recordRegistration(envWithQueueFor(db, sent), {
       visitorId: 'visitor_1',
@@ -980,7 +981,7 @@ describe('conversion ledger service', () => {
 
     const capiDelivery = db.calls.find(call => (
       call.sql.includes('analytics_conversion_deliveries') &&
-      call.params[2] === 'meta_capi'
+      call.params[3] === 'server'
     ))
     expect(sent).toHaveLength(1)
     expect(sent[0]).toMatchObject({
@@ -996,10 +997,10 @@ describe('conversion ledger service', () => {
     })
     expect(Object.keys(sent[0] ?? {}).sort()).toEqual(['deliveryId', 'envelope', 'schemaVersion'])
     expect(capiDelivery?.sql).toContain('tracking_mode')
-    expect(capiDelivery?.sql).toContain('meta_connection_revision')
+    expect(capiDelivery?.sql).toContain('connection_revision')
     expect(capiDelivery?.params).toContain('test')
     expect(db.insertedDeliveries.find(delivery => delivery.id === capiDelivery?.params[0]))
-      .toMatchObject({ metaConnectionRevision: CONNECTION_REVISION })
+      .toMatchObject({ connectionRevision: CONNECTION_REVISION })
     expect(db.calls.some(call => (
       call.sql.includes('queue_enqueued_at = datetime')
       && call.params.includes(capiDelivery?.params[0])
@@ -1007,7 +1008,7 @@ describe('conversion ledger service', () => {
   })
 
   it('只将临时匹配数据加密后投递，并仅以 0|1 写入 delivery 覆盖率', async () => {
-    const db = createConversionDb({ metaCapiEnabled: true, metaTrackingMode: 'test', facebookPixelId: '1234567890' })
+    const db = createConversionDb({ metaServerEnabled: true, metaMode: 'test', metaDestinationId: '1234567890' })
     const sent: MetaCapiQueueMessage[] = []
     const userData = {
       fbp: 'fb.1.1700000000000.123456789',
@@ -1048,7 +1049,7 @@ describe('conversion ledger service', () => {
   })
 
   it('CAPI 未启用时不调用临时数据 supplier', async () => {
-    const db = createConversionDb({ metaTrackingMode: 'test', facebookPixelId: '1234567890' })
+    const db = createConversionDb({ metaMode: 'test', metaDestinationId: '1234567890' })
     let supplierCalls = 0
 
     await recordContact(envFor(db), grantedContactInput(), {
@@ -1062,7 +1063,7 @@ describe('conversion ledger service', () => {
   })
 
   it('缺少合法 Pixel ID 时不调用临时数据 supplier', async () => {
-    const db = createConversionDb({ metaCapiEnabled: true, metaTrackingMode: 'test' })
+    const db = createConversionDb({ metaServerEnabled: true, metaMode: 'test' })
     let supplierCalls = 0
 
     await recordContact(envFor(db), grantedContactInput(), {
@@ -1076,7 +1077,7 @@ describe('conversion ledger service', () => {
   })
 
   it('Queue 发送异常只记录固定诊断信息，不持久化异常原文', async () => {
-    const db = createConversionDb({ metaCapiEnabled: true, metaTrackingMode: 'test', facebookPixelId: '1234567890' })
+    const db = createConversionDb({ metaServerEnabled: true, metaMode: 'test', metaDestinationId: '1234567890' })
     const sensitive = 'fb.1.1700000000000.123456789|fb.1.1700000000000.CLICK_abc-123|203.0.113.24|MeiGallery Test Browser/1.0|token_private'
     const env = {
       ...envFor(db),
@@ -1091,7 +1092,7 @@ describe('conversion ledger service', () => {
     expect(serializedCalls).toContain('queue_send_failed')
     expect(db.calls.some(call => (
       call.sql.includes('queue_attempt_count = queue_attempt_count + 1')
-      && call.params.includes(db.calls.find(item => item.sql.includes('analytics_conversion_deliveries') && item.params[2] === 'meta_capi')?.params[0])
+      && call.params.includes(db.calls.find(item => item.sql.includes('analytics_conversion_deliveries') && item.params[3] === 'server')?.params[0])
     ))).toBe(true)
     expect(db.calls.some(call => (
       call.sql.includes("error_code = 'queue_send_failed'")
@@ -1100,7 +1101,7 @@ describe('conversion ledger service', () => {
   })
 
   it('CAPI 开启但缺少 Queue binding 时保持 pending 并记录可恢复诊断', async () => {
-    const db = createConversionDb({ metaCapiEnabled: true, metaTrackingMode: 'test', facebookPixelId: '1234567890' })
+    const db = createConversionDb({ metaServerEnabled: true, metaMode: 'test', metaDestinationId: '1234567890' })
 
     await recordRegistration(envFor(db), {
       visitorId: 'visitor_1',
@@ -1120,9 +1121,9 @@ describe('conversion ledger service', () => {
 
   it('outbox statement 失败时 action、delivery 与密文均不残留', async () => {
     const db = createConversionDb({
-      metaCapiEnabled: true,
-      metaTrackingMode: 'test',
-      facebookPixelId: '1234567890',
+      metaServerEnabled: true,
+      metaMode: 'test',
+      metaDestinationId: '1234567890',
       failAt: 5,
     })
 
@@ -1143,10 +1144,10 @@ describe('conversion ledger service', () => {
     ['invalid_data_key', 'not-a-valid-data-key'],
   ] as const)('数据密钥异常时 Pixel 与业务事实正常，CAPI 只写 skipped/%s', async (reason, dataKey) => {
     const db = createConversionDb({
-      facebookPixelEnabled: true,
-      facebookPixelId: '1234567890',
-      metaCapiEnabled: true,
-      metaTrackingMode: 'test',
+      metaBrowserEnabled: true,
+      metaDestinationId: '1234567890',
+      metaServerEnabled: true,
+      metaMode: 'test',
     })
     const sent: MetaCapiQueueMessage[] = []
     let supplierCalls = 0
@@ -1163,7 +1164,7 @@ describe('conversion ledger service', () => {
     })
 
     expect(result.created).toBe(true)
-    expect(result.pixelEvents).toHaveLength(1)
+    expect(result.trackingInstructions).toHaveLength(1)
     expect(supplierCalls).toBe(0)
     expect(sent).toEqual([])
     expect(db.insertedConversions).toHaveLength(1)
@@ -1176,10 +1177,10 @@ describe('conversion ledger service', () => {
 
   it('MetaConnection 未验证时保留业务事实，但 Pixel/CAPI 都 fail closed', async () => {
     const db = createConversionDb({
-      facebookPixelEnabled: true,
-      facebookPixelId: '1234567890',
-      metaCapiEnabled: true,
-      metaTrackingMode: 'test',
+      metaBrowserEnabled: true,
+      metaDestinationId: '1234567890',
+      metaServerEnabled: true,
+      metaMode: 'test',
     })
     const sent: MetaCapiQueueMessage[] = []
     let supplierCalls = 0
@@ -1198,15 +1199,15 @@ describe('conversion ledger service', () => {
     })
 
     expect(result.created).toBe(true)
-    expect(result.pixelEvents).toEqual([])
+    expect(result.trackingInstructions).toEqual([])
     expect(db.insertedDeliveries).toEqual(expect.arrayContaining([
-      expect.objectContaining({ channel: 'meta_pixel', status: 'skipped', skipReason: 'connection_unverified' }),
+      expect.objectContaining({ transport: 'browser', status: 'skipped', skipReason: 'connection_unverified' }),
       expect.objectContaining({ status: 'skipped', skipReason: 'connection_unverified' }),
     ]))
     expect(db.insertedOutboxes).toEqual([])
     expect(sent).toEqual([])
     expect(supplierCalls).toBe(0)
-    expect(db.insertedDeliveries.find(item => item.channel === 'meta_capi')).toMatchObject({
+    expect(db.insertedDeliveries.find(item => item.transport === 'server')).toMatchObject({
       rolloutTargetPercentage: 0,
       rolloutEffectivePercentage: 0,
       rolloutBucket: null,
@@ -1214,19 +1215,19 @@ describe('conversion ledger service', () => {
   })
 
   it.each([
-    ['rollout_excluded', { metaCapiRolloutPercentage: 0 }, 'visitor_rollout_excluded'],
-    ['circuit_open', { metaCapiRolloutPercentage: 100, criticalIncidentOpen: true }, 'visitor_circuit_open'],
-    ['missing_stable_id', { metaCapiRolloutPercentage: 100 }, '   '],
+    ['rollout_excluded', { metaRolloutPercentage: 0 }, 'visitor_rollout_excluded'],
+    ['circuit_open', { metaRolloutPercentage: 100, criticalIncidentOpen: true }, 'visitor_circuit_open'],
+    ['missing_stable_id', { metaRolloutPercentage: 100 }, '   '],
   ] as const)('%s 在敏感上下文之前短路，保留 skipped delivery 且不创建 secure outbox', async (
     reason,
     rolloutOptions,
     visitorId,
   ) => {
     const db = createConversionDb({
-      facebookPixelEnabled: true,
-      facebookPixelId: '1234567890',
-      metaCapiEnabled: true,
-      metaTrackingMode: 'test',
+      metaBrowserEnabled: true,
+      metaDestinationId: '1234567890',
+      metaServerEnabled: true,
+      metaMode: 'test',
       ...rolloutOptions,
     })
     const browserProvider = vi.fn(async () => ({
@@ -1239,20 +1240,20 @@ describe('conversion ledger service', () => {
       visitorId,
     }, { getMetaCapiUserData: browserProvider })
 
-    expect(result.pixelEvents).toHaveLength(1)
+    expect(result.trackingInstructions).toHaveLength(1)
     expect(browserProvider).not.toHaveBeenCalled()
     expect(metaCryptoMocks.encrypt).not.toHaveBeenCalled()
     expect(db.insertedOutboxes).toEqual([])
-    const delivery = db.insertedDeliveries.find(item => item.channel === 'meta_capi')
+    const delivery = db.insertedDeliveries.find(item => item.transport === 'server')
     expect(delivery).toMatchObject({
       status: 'skipped',
       skipReason: reason,
       encryptionKeyId: '',
-      rolloutTargetPercentage: rolloutOptions.metaCapiRolloutPercentage,
-      rolloutEffectivePercentage: reason === 'circuit_open' ? 0 : rolloutOptions.metaCapiRolloutPercentage,
+      rolloutTargetPercentage: rolloutOptions.metaRolloutPercentage,
+      rolloutEffectivePercentage: reason === 'circuit_open' ? 0 : rolloutOptions.metaRolloutPercentage,
     })
     expect(delivery?.rolloutBucket == null).toBe(reason === 'missing_stable_id')
-    expect(db.insertedDeliveries.find(item => item.channel === 'meta_pixel')).toMatchObject({
+    expect(db.insertedDeliveries.find(item => item.transport === 'browser')).toMatchObject({
       rolloutTargetPercentage: 0,
       rolloutEffectivePercentage: 0,
       rolloutBucket: null,
@@ -1261,11 +1262,11 @@ describe('conversion ledger service', () => {
 
   it('stable ID 查询异常时保留注册事实与 Pixel，并 fail closed 跳过 CAPI', async () => {
     const db = createConversionDb({
-      facebookPixelEnabled: true,
-      facebookPixelId: '1234567890',
-      metaCapiEnabled: true,
-      metaTrackingMode: 'test',
-      metaCapiRolloutPercentage: 100,
+      metaBrowserEnabled: true,
+      metaDestinationId: '1234567890',
+      metaServerEnabled: true,
+      metaMode: 'test',
+      metaRolloutPercentage: 100,
       stableIdQueryError: true,
     })
     const browserProvider = vi.fn(async () => ({ fbp: 'fb.1.must-not-read' }))
@@ -1287,7 +1288,7 @@ describe('conversion ledger service', () => {
     })
 
     expect(result.created).toBe(true)
-    expect(result.pixelEvents).toHaveLength(1)
+    expect(result.trackingInstructions).toHaveLength(1)
     expect(db.insertedConversions).toHaveLength(1)
     expect(browserProvider).not.toHaveBeenCalled()
     expect(sensitiveProvider).not.toHaveBeenCalled()
@@ -1296,7 +1297,7 @@ describe('conversion ledger service', () => {
     expect(metaCryptoMocks.loadKeys).not.toHaveBeenCalled()
     expect(metaCryptoMocks.encrypt).not.toHaveBeenCalled()
     expect(db.insertedOutboxes).toEqual([])
-    expect(db.insertedDeliveries.find(item => item.channel === 'meta_capi')).toMatchObject({
+    expect(db.insertedDeliveries.find(item => item.transport === 'server')).toMatchObject({
       status: 'skipped',
       skipReason: 'rollout_excluded',
       rolloutTargetPercentage: 0,
@@ -1305,12 +1306,12 @@ describe('conversion ledger service', () => {
     })
   })
 
-  it('rollout setting 查询异常时保留联系事实与 Pixel，并在敏感访问前 fail closed', async () => {
+  it('统一连接读取异常时不提交事实或访问敏感上下文', async () => {
     const db = createConversionDb({
-      facebookPixelEnabled: true,
-      facebookPixelId: '1234567890',
-      metaCapiEnabled: true,
-      metaTrackingMode: 'test',
+      metaBrowserEnabled: true,
+      metaDestinationId: '1234567890',
+      metaServerEnabled: true,
+      metaMode: 'test',
       rolloutSettingQueryError: true,
     })
     const browserProvider = vi.fn(async () => ({
@@ -1318,41 +1319,27 @@ describe('conversion ledger service', () => {
       clientIpAddress: '203.0.113.10',
     }))
 
-    const result = await recordContact(
+    await expect(recordContact(
       envFor(db),
       { ...grantedContactInput(), visitorId: 'visitor_rollout_setting_query_error' },
       { getMetaCapiUserData: browserProvider },
-    )
+    )).rejects.toThrow('模拟 rollout setting 查询失败')
 
-    expect(result.created).toBe(true)
-    expect(result.pixelEvents).toHaveLength(1)
-    expect(db.insertedConversions).toHaveLength(1)
+    expect(db.insertedConversions).toHaveLength(0)
     expect(browserProvider).not.toHaveBeenCalled()
     expect(metaCryptoMocks.loadKeys).not.toHaveBeenCalled()
     expect(metaCryptoMocks.encrypt).not.toHaveBeenCalled()
     expect(db.insertedOutboxes).toEqual([])
-    expect(db.insertedDeliveries.find(item => item.channel === 'meta_capi')).toMatchObject({
-      status: 'skipped',
-      skipReason: 'rollout_excluded',
-      rolloutTargetPercentage: 0,
-      rolloutEffectivePercentage: 0,
-      rolloutBucket: null,
-    })
-    expect(db.insertedDeliveries.find(item => item.channel === 'meta_pixel')).toMatchObject({
-      status: 'pending',
-      rolloutTargetPercentage: 0,
-      rolloutEffectivePercentage: 0,
-      rolloutBucket: null,
-    })
+    expect(db.insertedDeliveries).toEqual([])
   })
 
   it('critical incident 查询异常时保留联系事实与 Pixel，并 fail closed 跳过 CAPI', async () => {
     const db = createConversionDb({
-      facebookPixelEnabled: true,
-      facebookPixelId: '1234567890',
-      metaCapiEnabled: true,
-      metaTrackingMode: 'test',
-      metaCapiRolloutPercentage: 100,
+      metaBrowserEnabled: true,
+      metaDestinationId: '1234567890',
+      metaServerEnabled: true,
+      metaMode: 'test',
+      metaRolloutPercentage: 100,
       incidentQueryError: true,
     })
     const browserProvider = vi.fn(async () => ({ fbp: 'fb.1.must-not-read' }))
@@ -1364,13 +1351,13 @@ describe('conversion ledger service', () => {
     )
 
     expect(result.created).toBe(true)
-    expect(result.pixelEvents).toHaveLength(1)
+    expect(result.trackingInstructions).toHaveLength(1)
     expect(db.insertedConversions).toHaveLength(1)
     expect(browserProvider).not.toHaveBeenCalled()
     expect(metaCryptoMocks.loadKeys).not.toHaveBeenCalled()
     expect(metaCryptoMocks.encrypt).not.toHaveBeenCalled()
     expect(db.insertedOutboxes).toEqual([])
-    expect(db.insertedDeliveries.find(item => item.channel === 'meta_capi')).toMatchObject({
+    expect(db.insertedDeliveries.find(item => item.transport === 'server')).toMatchObject({
       status: 'skipped',
       skipReason: 'rollout_excluded',
       rolloutTargetPercentage: 0,
@@ -1381,11 +1368,11 @@ describe('conversion ledger service', () => {
 
   it('rollout digest 异常时保留联系事实与 Pixel，并 fail closed 跳过 CAPI', async () => {
     const db = createConversionDb({
-      facebookPixelEnabled: true,
-      facebookPixelId: '1234567890',
-      metaCapiEnabled: true,
-      metaTrackingMode: 'test',
-      metaCapiRolloutPercentage: 100,
+      metaBrowserEnabled: true,
+      metaDestinationId: '1234567890',
+      metaServerEnabled: true,
+      metaMode: 'test',
+      metaRolloutPercentage: 100,
     })
     const browserProvider = vi.fn(async () => ({ fbp: 'fb.1.must-not-read' }))
     const originalDigest = crypto.subtle.digest.bind(crypto.subtle)
@@ -1407,13 +1394,13 @@ describe('conversion ledger service', () => {
       )
 
       expect(result.created).toBe(true)
-      expect(result.pixelEvents).toHaveLength(1)
+      expect(result.trackingInstructions).toHaveLength(1)
       expect(db.insertedConversions).toHaveLength(1)
       expect(browserProvider).not.toHaveBeenCalled()
       expect(metaCryptoMocks.loadKeys).not.toHaveBeenCalled()
       expect(metaCryptoMocks.encrypt).not.toHaveBeenCalled()
       expect(db.insertedOutboxes).toEqual([])
-      expect(db.insertedDeliveries.find(item => item.channel === 'meta_capi')).toMatchObject({
+      expect(db.insertedDeliveries.find(item => item.transport === 'server')).toMatchObject({
         status: 'skipped',
         skipReason: 'rollout_excluded',
         rolloutTargetPercentage: 0,
@@ -1428,11 +1415,11 @@ describe('conversion ledger service', () => {
 
   it('Contact 仅使用 visitorId，不使用 userId 或用户 external ID 回退', async () => {
     const db = createConversionDb({
-      facebookPixelEnabled: true,
-      facebookPixelId: '1234567890',
-      metaCapiEnabled: true,
-      metaTrackingMode: 'test',
-      metaCapiRolloutPercentage: 100,
+      metaBrowserEnabled: true,
+      metaDestinationId: '1234567890',
+      metaServerEnabled: true,
+      metaMode: 'test',
+      metaRolloutPercentage: 100,
       userMetaExternalId: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
     })
     const browserProvider = vi.fn(async () => ({ fbp: 'fb.1.must-not-read' }))
@@ -1446,7 +1433,7 @@ describe('conversion ledger service', () => {
     expect(browserProvider).not.toHaveBeenCalled()
     expect(metaCryptoMocks.encrypt).not.toHaveBeenCalled()
     expect(db.readCalls.some(call => call.sql.includes('SELECT meta_external_id'))).toBe(false)
-    expect(db.insertedDeliveries.find(item => item.channel === 'meta_capi')).toMatchObject({
+    expect(db.insertedDeliveries.find(item => item.transport === 'server')).toMatchObject({
       status: 'skipped',
       skipReason: 'missing_stable_id',
       rolloutBucket: null,
@@ -1456,11 +1443,11 @@ describe('conversion ledger service', () => {
   it('CompleteRegistration 缺 visitorId 时只按 userId 查询 meta_external_id 作为 stable ID', async () => {
     const stableId = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
     const db = createConversionDb({
-      facebookPixelEnabled: true,
-      facebookPixelId: '1234567890',
-      metaCapiEnabled: true,
-      metaTrackingMode: 'test',
-      metaCapiRolloutPercentage: 100,
+      metaBrowserEnabled: true,
+      metaDestinationId: '1234567890',
+      metaServerEnabled: true,
+      metaMode: 'test',
+      metaRolloutPercentage: 100,
       userMetaExternalId: stableId,
     })
     const browserProvider = vi.fn(async () => ({ fbp: 'fb.1.1700000000000.registration' }))
@@ -1484,7 +1471,7 @@ describe('conversion ledger service', () => {
     expect(browserProvider).toHaveBeenCalledOnce()
     expect(sensitiveProvider).toHaveBeenCalledOnce()
     expect(db.readCalls.find(call => call.sql.includes('SELECT meta_external_id'))?.params).toEqual([42])
-    expect(db.insertedDeliveries.find(item => item.channel === 'meta_capi')).toMatchObject({
+    expect(db.insertedDeliveries.find(item => item.transport === 'server')).toMatchObject({
       status: 'pending',
       rolloutTargetPercentage: 100,
       rolloutEffectivePercentage: 100,
@@ -1494,11 +1481,11 @@ describe('conversion ledger service', () => {
 
   it('CompleteRegistration 同时缺 visitorId 与 meta_external_id 时不读取或 hash 敏感值', async () => {
     const db = createConversionDb({
-      facebookPixelEnabled: true,
-      facebookPixelId: '1234567890',
-      metaCapiEnabled: true,
-      metaTrackingMode: 'test',
-      metaCapiRolloutPercentage: 100,
+      metaBrowserEnabled: true,
+      metaDestinationId: '1234567890',
+      metaServerEnabled: true,
+      metaMode: 'test',
+      metaRolloutPercentage: 100,
       userMetaExternalId: null,
     })
     const browserProvider = vi.fn(async () => ({ fbp: 'fb.1.must-not-read' }))
@@ -1525,7 +1512,7 @@ describe('conversion ledger service', () => {
     expect(metaHashMocks.externalId).not.toHaveBeenCalled()
     expect(metaCryptoMocks.encrypt).not.toHaveBeenCalled()
     expect(db.insertedOutboxes).toEqual([])
-    expect(db.insertedDeliveries.find(item => item.channel === 'meta_capi')).toMatchObject({
+    expect(db.insertedDeliveries.find(item => item.transport === 'server')).toMatchObject({
       status: 'skipped',
       skipReason: 'missing_stable_id',
       rolloutBucket: null,
@@ -1534,10 +1521,10 @@ describe('conversion ledger service', () => {
 
   it('同 session 不同 contact target 分别记录且不生成 Lead', async () => {
     const db = createConversionDb({
-      facebookPixelEnabled: true,
-      facebookPixelId: '1234567890',
-      metaCapiEnabled: true,
-      metaTrackingMode: 'test',
+      metaBrowserEnabled: true,
+      metaDestinationId: '1234567890',
+      metaServerEnabled: true,
+      metaMode: 'test',
     })
 
     const first = await recordContact(envFor(db), {

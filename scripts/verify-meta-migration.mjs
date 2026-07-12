@@ -131,17 +131,9 @@ export async function runMetaMigrationVerification(options = {}) {
     ], steps)
     if (!schemaStep) return failedResult(steps, stateDir, undefined, duplicateGroupCount)
 
-    const settingStep = await runD1Step(runCommandFn, rootDir, oldPersistTo, 'meta-migration-query-setting', [
-      '--command', "SELECT value FROM site_settings WHERE key = 'meta_capi_rollout_percentage';",
-      '--json',
-      '--yes',
-    ], steps)
-    if (!settingStep) return failedResult(steps, stateDir, undefined, duplicateGroupCount)
-
     assertMigrationResult({
       history: parseWranglerResults(historyStep.stdout, '历史事实查询'),
       schema: parseWranglerResults(schemaStep.stdout, 'schema 查询'),
-      setting: parseWranglerResults(settingStep.stdout, '设置查询'),
     })
 
     if (!await runD1Step(runCommandFn, rootDir, emptyPersistTo, 'meta-migration-empty-apply-0001-0047', [
@@ -291,6 +283,7 @@ function seedSql(includeDuplicateFixture) {
     "INSERT INTO analytics_conversion_actions (id, action_type, dedupe_key, occurred_at, date, visitor_id, session_id) VALUES ('action_legacy', 'contact', 'contact:legacy', '2026-07-09T00:00:00.000Z', '2026-07-09', 'visitor_legacy', 'session_legacy');",
     "INSERT INTO analytics_conversion_deliveries (id, conversion_action_id, channel, external_event_id, event_name, status, skip_reason, error_code, error_message, attempt_count, last_attempt_at, sent_at, created_at, updated_at) VALUES ('delivery_pixel', 'action_legacy', 'meta_pixel', 'meta:Contact:old_pixel', 'Contact', 'attempted', '', '', '', 2, '2026-07-10T00:00:00.000Z', NULL, '2026-07-09T00:00:00.000Z', '2026-07-10T00:01:00.000Z'), ('delivery_capi', 'action_legacy', 'meta_capi', 'meta:Contact:old_capi', 'Contact', 'pending', '', '', '', 0, NULL, NULL, '2026-07-09T00:00:00.000Z', '2026-07-09T00:00:00.000Z');",
     "INSERT INTO meta_connection_verifications (environment, pixel_id, token_fingerprint, graph_api_version, verified_event_name, verified_commit, verified_at, revision) VALUES ('dev', '1234567890', lower(hex(randomblob(32))), 'v25.0', 'Contact', lower(hex(randomblob(20))), '2026-07-10T00:00:00.000Z', lower(hex(randomblob(16))));",
+    "INSERT OR REPLACE INTO site_settings (key, value) VALUES ('facebook_pixel_enabled', 'true'), ('facebook_pixel_id', '\"1234567890\"'), ('facebook_pixel_debug_enabled', 'false'), ('meta_tracking_mode', '\"production\"'), ('meta_capi_enabled', 'true'), ('meta_capi_rollout_percentage', '50'), ('meta_capi_test_event_enabled', 'false');",
     "INSERT INTO meta_capi_secure_outbox (delivery_id, schema_version, key_id, iv, ciphertext, tag, expires_at) VALUES ('delivery_capi', 2, 'key-current', 'iv-redacted', 'ciphertext-redacted', 'tag-redacted', '2026-07-12T00:00:00.000Z');",
     `INSERT INTO analytics_conversion_dedupe_claims (dedupe_digest, owner_action_id, claim_token, claimed_at, expires_at) VALUES ('${'a'.repeat(64)}', 'action_legacy', '${'b'.repeat(32)}', '2026-07-10T00:00:00.000Z', '2026-07-10T00:01:00.000Z');`,
   ]
@@ -313,16 +306,18 @@ SELECT
   (SELECT COUNT(*) FROM analytics_conversion_actions WHERE id = 'action_legacy' AND action_type = 'contact') AS action_count,
   (SELECT COUNT(*) FROM analytics_conversion_deliveries WHERE conversion_action_id = 'action_legacy') AS delivery_count,
   (SELECT COUNT(*) FROM meta_connection_verifications WHERE environment = 'dev') AS verification_count,
-  (SELECT COUNT(*) FROM meta_capi_secure_outbox WHERE delivery_id = 'delivery_capi') AS outbox_count,
+  (SELECT COUNT(*) FROM meta_capi_secure_outbox) AS outbox_count,
   (SELECT COUNT(*) FROM analytics_conversion_dedupe_claims WHERE owner_action_id = 'action_legacy') AS claim_count,
   (SELECT COUNT(*) FROM meta_capi_incidents WHERE id = 'incident_legacy') AS incident_count,
   (SELECT COUNT(*) FROM meta_dataset_quality_snapshots WHERE id = 'quality_legacy') AS quality_count,
-  (SELECT rollout_target_percentage FROM analytics_conversion_deliveries WHERE channel = 'meta_pixel' AND conversion_action_id = 'action_legacy') AS pixel_target,
-  (SELECT rollout_effective_percentage FROM analytics_conversion_deliveries WHERE channel = 'meta_pixel' AND conversion_action_id = 'action_legacy') AS pixel_effective,
-  (SELECT rollout_bucket FROM analytics_conversion_deliveries WHERE channel = 'meta_pixel' AND conversion_action_id = 'action_legacy') AS pixel_bucket,
-  (SELECT rollout_target_percentage FROM analytics_conversion_deliveries WHERE channel = 'meta_capi' AND conversion_action_id = 'action_legacy') AS capi_target,
-  (SELECT rollout_effective_percentage FROM analytics_conversion_deliveries WHERE channel = 'meta_capi' AND conversion_action_id = 'action_legacy') AS capi_effective,
-  (SELECT rollout_bucket FROM analytics_conversion_deliveries WHERE channel = 'meta_capi' AND conversion_action_id = 'action_legacy') AS capi_bucket;
+  (SELECT COUNT(*) FROM ad_platform_connections WHERE provider = 'meta' AND enabled = 1
+    AND mode = 'production' AND browser_enabled = 1 AND server_enabled = 1
+    AND destination_id = '1234567890' AND rollout_percentage = 50) AS connection_count,
+  (SELECT COUNT(*) FROM site_settings WHERE key IN (
+    'facebook_pixel_enabled', 'facebook_pixel_id', 'facebook_pixel_debug_enabled',
+    'meta_tracking_mode', 'meta_capi_enabled', 'meta_capi_rollout_percentage',
+    'meta_capi_test_event_enabled'
+  )) AS legacy_setting_count;
 `.trim()
 }
 
@@ -332,12 +327,8 @@ SELECT
   (SELECT COUNT(*) FROM pragma_index_list('analytics_conversion_deliveries') WHERE name = 'idx_conversion_delivery_action_destination' AND [unique] = 1) AS delivery_unique_index,
   (SELECT COUNT(*) FROM pragma_index_list('analytics_conversion_deliveries') WHERE name = 'idx_conversion_delivery_provider_external' AND [unique] = 1) AS provider_external_unique_index,
   (SELECT COUNT(*) FROM pragma_table_info('analytics_conversion_deliveries') WHERE name IN ('provider', 'transport', 'connection_revision')) AS ad_platform_core_columns,
-  (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'index' AND name IN (
-    'idx_meta_capi_delivery_attempt_window',
-    'idx_meta_capi_delivery_pending_window',
-    'idx_meta_capi_delivery_duplicate_window',
-    'idx_meta_capi_delivery_created_window'
-  )) AS circuit_index_count,
+  (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = 'ad_platform_connections') AS connection_table,
+  (SELECT COUNT(*) FROM pragma_table_info('analytics_conversion_deliveries') WHERE name IN ('channel', 'meta_connection_revision')) AS legacy_delivery_columns,
   (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = 'meta_live_challenges') AS challenge_table,
   (SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = 'meta_live_challenges') AS challenge_table_sql,
   (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'index' AND name = 'idx_meta_live_challenges_expiry') AS challenge_index,
@@ -346,13 +337,13 @@ SELECT
   ) AND upper(type) = 'INTEGER' AND [notnull] = 1 AND dflt_value = '0') AS challenge_match_coverage_columns,
   (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = 'meta_resource_attestation_tickets') AS ticket_table,
   (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'index' AND name = 'idx_meta_resource_attestation_tickets_expiry') AS ticket_index,
-  (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'index' AND name = 'idx_meta_capi_delivery_lease_expiry') AS delivery_lease_index,
+  (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'index' AND name = 'idx_conversion_delivery_lease_expiry') AS delivery_lease_index,
   (SELECT COUNT(*) FROM pragma_table_info('analytics_conversion_deliveries')
     WHERE name = 'delivery_lease_token' AND upper(type) = 'TEXT' AND [notnull] = 1 AND dflt_value = "''") AS delivery_lease_token_column,
   (SELECT COUNT(*) FROM pragma_table_info('analytics_conversion_deliveries')
     WHERE name = 'delivery_lease_expires_at' AND upper(type) = 'TEXT' AND [notnull] = 0) AS delivery_lease_expires_column,
-  (SELECT group_concat(name, ',') FROM pragma_index_info('idx_meta_capi_delivery_lease_expiry') ORDER BY seqno) AS delivery_lease_index_columns,
-  (SELECT sql FROM sqlite_schema WHERE type = 'index' AND name = 'idx_meta_capi_delivery_lease_expiry') AS delivery_lease_index_sql,
+  (SELECT group_concat(name, ',') FROM pragma_index_info('idx_conversion_delivery_lease_expiry') ORDER BY seqno) AS delivery_lease_index_columns,
+  (SELECT sql FROM sqlite_schema WHERE type = 'index' AND name = 'idx_conversion_delivery_lease_expiry') AS delivery_lease_index_sql,
   (SELECT value FROM site_settings WHERE key = 'registration_conversion_recovery_cursor') AS registration_recovery_cursor,
   (SELECT COUNT(*) FROM pragma_table_info('meta_dataset_quality_snapshots')
     WHERE name = 'contract_digest' AND upper(type) = 'TEXT' AND [notnull] = 1 AND dflt_value = "''") AS quality_contract_digest_column,
@@ -385,38 +376,23 @@ function parseWranglerResults(stdout, label) {
   return result
 }
 
-function assertMigrationResult({ history, schema, setting }) {
+function assertMigrationResult({ history, schema }) {
   const row = history[0]
   if (history.length !== 1 || [
     row?.action_count,
     row?.verification_count,
-    row?.outbox_count,
     row?.claim_count,
     row?.incident_count,
     row?.quality_count,
-  ].some(value => value !== 1) || row?.delivery_count !== 2) {
-    throw new Error('历史 Meta 事实未完整保留')
-  }
-
-  for (const prefix of ['pixel', 'capi']) {
-    if (row[`${prefix}_target`] !== 0 || row[`${prefix}_effective`] !== 0 || row[`${prefix}_bucket`] !== null) {
-      throw new Error('历史 delivery rollout 默认值不正确')
-    }
+    row?.connection_count,
+  ].some(value => value !== 1)
+  || row?.delivery_count !== 0
+  || row?.outbox_count !== 0
+  || row?.legacy_setting_count !== 0) {
+    throw new Error('业务事实或统一广告平台迁移结果不正确')
   }
 
   assertSchemaResult(schema)
-
-  if (setting.length !== 1) throw new Error('meta_capi_rollout_percentage 缺失')
-  let parsedSetting
-  try {
-    parsedSetting = JSON.parse(setting[0]?.value)
-  }
-  catch {
-    throw new Error('meta_capi_rollout_percentage 不是合法 JSON')
-  }
-  if (parsedSetting !== 0 || typeof parsedSetting !== 'number') {
-    throw new Error('meta_capi_rollout_percentage 必须为 JSON number 0')
-  }
 }
 
 function assertSchemaResult(rows) {
@@ -427,12 +403,13 @@ function assertSchemaResult(rows) {
     || row?.delivery_unique_index !== 1
     || row?.provider_external_unique_index !== 1
     || row?.ad_platform_core_columns !== 3
-    || row?.circuit_index_count !== 4
+    || row?.connection_table !== 1
+    || row?.legacy_delivery_columns !== 0
     || row?.delivery_lease_index !== 1
     || row?.delivery_lease_token_column !== 1
     || row?.delivery_lease_expires_column !== 1
-    || row?.delivery_lease_index_columns !== 'delivery_lease_expires_at'
-    || !leaseIndexSql.includes("where channel = 'meta_capi' and delivery_lease_token <> ''")
+    || row?.delivery_lease_index_columns !== 'provider,transport,delivery_lease_expires_at'
+    || !leaseIndexSql.includes("where delivery_lease_token <> ''")
     || row?.registration_recovery_cursor !== '0'
     || row?.quality_contract_digest_column !== 1
     || row?.quality_contract_digest_index !== 1

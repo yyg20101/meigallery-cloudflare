@@ -1,9 +1,8 @@
 import { Hono } from 'hono'
-import { normalizeMetaTrackingMode } from '@meigallery/shared/utils'
 import type { Bindings, Variables } from '../../index'
 import { requireOwner } from '../../middleware/auth'
 import { normalizeAnalyticsConsentMode, normalizeAnalyticsSampleRate } from '../../utils/analytics-settings'
-import { normalizeBooleanSetting, normalizeFacebookPixelId } from '../../utils/facebook-pixel-settings'
+import { normalizeBooleanSetting } from '../../utils/setting-normalization'
 import { generateId } from '../../utils/db'
 import { normalizeHomeAdScheduleRange } from '../../utils/home-ad-schedule'
 import { isHomeAdTextKey, normalizeHomeAdText, normalizeHomeAdUrl } from '../../utils/home-ad-settings'
@@ -78,22 +77,6 @@ adminSettingsRoutes.patch('/', requireOwner, async (c) => {
     }, 400)
   }
 
-  if ('facebook_pixel_id' in body) {
-    try {
-      body.facebook_pixel_id = normalizeFacebookPixelId(body.facebook_pixel_id)
-    } catch (error) {
-      return c.json({ statusCode: 400, message: error instanceof Error ? error.message : 'Facebook Pixel ID 无效' }, 400)
-    }
-  }
-  if ('facebook_pixel_enabled' in body) {
-    body.facebook_pixel_enabled = normalizeBooleanSetting(body.facebook_pixel_enabled)
-  }
-  if ('facebook_pixel_debug_enabled' in body) {
-    body.facebook_pixel_debug_enabled = normalizeBooleanSetting(body.facebook_pixel_debug_enabled)
-  }
-  if ('meta_tracking_mode' in body) {
-    body.meta_tracking_mode = normalizeMetaTrackingMode(body.meta_tracking_mode)
-  }
   if ('analytics_enabled' in body) {
     body.analytics_enabled = normalizeBooleanSetting(body.analytics_enabled)
   }
@@ -106,9 +89,6 @@ adminSettingsRoutes.patch('/', requireOwner, async (c) => {
   }
   if ('analytics_consent_mode' in body) {
     body.analytics_consent_mode = normalizeAnalyticsConsentMode(body.analytics_consent_mode)
-  }
-  if ('meta_capi_enabled' in body) {
-    body.meta_capi_enabled = normalizeBooleanSetting(body.meta_capi_enabled)
   }
   if ('home_ad_enabled' in body) {
     body.home_ad_enabled = normalizeBooleanSetting(body.home_ad_enabled)
@@ -175,7 +155,16 @@ adminSettingsRoutes.patch('/', requireOwner, async (c) => {
     }
   }
 
-  const keys = Object.keys(body).filter(k => ALLOWED_KEYS.includes(k))
+  const unknownKeys = Object.keys(body).filter(k => !ALLOWED_KEYS.includes(k))
+  if (unknownKeys.length > 0) {
+    return c.json({
+      statusCode: 400,
+      code: 'ADMIN_SETTING_UNKNOWN',
+      message: '包含不属于站点设置的字段',
+      unknownKeys,
+    }, 400)
+  }
+  const keys = Object.keys(body)
   if (keys.length === 0) {
     return c.json({ statusCode: 400, message: '没有有效的设置项' }, 400)
   }

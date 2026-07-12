@@ -37,18 +37,14 @@ function mockJsonFor(name, options = {}) {
   if (name === 'meta-migration-query-history') {
     return JSON.stringify([{ results: [{
       action_count: 1,
-      delivery_count: 2,
+      delivery_count: 0,
       verification_count: 1,
-      outbox_count: 1,
+      outbox_count: 0,
       claim_count: 1,
-      pixel_target: 0,
-      pixel_effective: 0,
-      pixel_bucket: null,
-      capi_target: 0,
-      capi_effective: 0,
-      capi_bucket: null,
       incident_count: 1,
       quality_count: 1,
+      connection_count: 1,
+      legacy_setting_count: 0,
     }] }])
   }
   if (name === 'meta-migration-query-schema' || name === 'meta-migration-empty-query-schema') {
@@ -56,7 +52,8 @@ function mockJsonFor(name, options = {}) {
       delivery_unique_index: 1,
       provider_external_unique_index: 1,
       ad_platform_core_columns: 3,
-      circuit_index_count: 4,
+      connection_table: 1,
+      legacy_delivery_columns: 0,
       challenge_table: 1,
       challenge_table_sql: "CREATE TABLE meta_live_challenges (... CHECK (environment = 'production'))",
       challenge_index: 1,
@@ -66,17 +63,14 @@ function mockJsonFor(name, options = {}) {
       delivery_lease_index: 1,
       delivery_lease_token_column: 1,
       delivery_lease_expires_column: 1,
-      delivery_lease_index_columns: 'delivery_lease_expires_at',
-      delivery_lease_index_sql: "CREATE INDEX idx_meta_capi_delivery_lease_expiry ON analytics_conversion_deliveries(delivery_lease_expires_at) WHERE channel = 'meta_capi' AND delivery_lease_token <> ''",
+      delivery_lease_index_columns: 'provider,transport,delivery_lease_expires_at',
+      delivery_lease_index_sql: "CREATE INDEX idx_conversion_delivery_lease_expiry ON analytics_conversion_deliveries(provider, transport, delivery_lease_expires_at) WHERE delivery_lease_token <> ''",
       registration_recovery_cursor: '0',
       quality_contract_digest_column: 1,
       quality_contract_digest_index: 1,
       incident_table: 1,
       quality_table: 1,
     }] }])
-  }
-  if (name === 'meta-migration-query-setting') {
-    return JSON.stringify([{ results: [{ value: '0' }] }])
   }
   return ''
 }
@@ -98,7 +92,6 @@ describe('Meta migration 演练', () => {
     'meta-migration-apply-0047',
     'meta-migration-query-history',
     'meta-migration-query-schema',
-    'meta-migration-query-setting',
     'meta-migration-empty-apply-0001-0047',
     'meta-migration-empty-query-schema',
   ]) {
@@ -148,23 +141,19 @@ describe('Meta migration 演练', () => {
     }
   })
 
-  it('查询结果未保留任一历史事实时演练失败', async () => {
+  it('查询结果未保留业务事实时演练失败', async () => {
     const runCommand = async (_command, _args, options = {}) => {
       const stdout = options.name === 'meta-migration-query-history'
         ? JSON.stringify([{ results: [{
             action_count: 1,
-            delivery_count: 2,
+            delivery_count: 0,
             verification_count: 0,
-            outbox_count: 1,
+            outbox_count: 0,
             claim_count: 1,
-            pixel_target: 0,
-            pixel_effective: 0,
-            pixel_bucket: null,
-            capi_target: 0,
-            capi_effective: 0,
-            capi_bucket: null,
             incident_count: 1,
             quality_count: 1,
+            connection_count: 1,
+            legacy_setting_count: 0,
           }] }])
         : mockJsonFor(options.name)
       return passedStep(options.name, stdout)
@@ -172,10 +161,10 @@ describe('Meta migration 演练', () => {
 
     const result = await runMetaMigrationVerification({ runCommand })
     assert.equal(result.status, 'failed')
-    assert.match(result.error, /历史 Meta 事实未完整保留/)
+    assert.match(result.error, /业务事实或统一广告平台迁移结果不正确/)
   })
 
-  it('在真实 D1 上从旧库顺序执行 0039 至 0044 并保全历史事实', async () => {
+  it('在真实 D1 上完成旧配置迁移、清理旧投递并保全业务事实', async () => {
     const result = await runMetaMigrationVerification({
       stateDir: path.join(integrationDir, 'clean'),
     })
@@ -205,6 +194,8 @@ describe('Meta migration 演练', () => {
     ['Dataset Quality contract digest 索引', 'quality_contract_digest_index', 0],
     ['Meta live 匹配覆盖列', 'challenge_match_coverage_columns', 2],
     ['广告平台核心列', 'ad_platform_core_columns', 2],
+    ['广告平台连接表', 'connection_table', 0],
+    ['旧投递列', 'legacy_delivery_columns', 1],
   ]) {
     it(`${label} 不精确时旧库演练 fail closed`, async () => {
       const runCommand = async (_command, _args, options = {}) => {

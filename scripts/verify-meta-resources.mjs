@@ -27,11 +27,11 @@ const REQUIRED_MIGRATIONS = [
   '0046_meta_live_match_coverage.sql',
   '0047_ad_platform_delivery_core.sql',
 ]
-const SETTINGS_SQL = "SELECT key, value FROM site_settings WHERE key IN ('meta_capi_enabled', 'meta_tracking_mode', 'facebook_pixel_id') ORDER BY key"
+const SETTINGS_SQL = "SELECT enabled, mode, browser_enabled, server_enabled, destination_id, rollout_percentage, revision FROM ad_platform_connections WHERE provider = 'meta'"
 const MIGRATION_NAMES_SQL = "SELECT name FROM d1_migrations WHERE name IN ('0036_meta_capi_v2_secure_delivery.sql', '0037_meta_connection_revision.sql', '0038_conversion_dedupe_claims.sql', '0039_meta_capi_v2_operations.sql', '0040_meta_capi_circuit_indexes.sql', '0041_meta_live_challenges.sql', '0042_meta_resource_attestation_tickets.sql', '0043_meta_capi_delivery_lease.sql', '0044_meta_dataset_quality_contract_digest.sql', '0045_meta_live_production.sql', '0046_meta_live_match_coverage.sql', '0047_ad_platform_delivery_core.sql') ORDER BY name"
 const META_OPERATIONS_SQL = `
   WITH rollout AS (
-    SELECT CAST(COALESCE((SELECT value FROM site_settings WHERE key = 'meta_capi_rollout_percentage' LIMIT 1), '-1') AS INTEGER) AS target
+    SELECT COALESCE((SELECT rollout_percentage FROM ad_platform_connections WHERE provider = 'meta' LIMIT 1), -1) AS target
   ), incidents AS (
     SELECT COUNT(*) AS open_count FROM meta_capi_incidents WHERE status = 'open' AND severity = 'critical'
   ), active_keys AS (
@@ -534,10 +534,11 @@ function hasRequiredSecrets(stdout, requiredNames) {
 function parseMetaSettings(stdout) {
   try {
     const rows = parseD1Rows(parseWranglerJson(stdout))
-    const values = new Map(rows.map(row => [row?.key, storedValue(row?.value)]))
-    const capiEnabled = parseBoolean(values.get('meta_capi_enabled'))
-    const trackingMode = values.get('meta_tracking_mode')
-    const pixelId = String(values.get('facebook_pixel_id') ?? '').trim()
+    if (rows.length !== 1) return null
+    const row = rows[0]
+    const capiEnabled = parseBoolean(row.server_enabled)
+    const trackingMode = row.mode
+    const pixelId = String(row.destination_id ?? '').trim()
     if (capiEnabled === null || !['disabled', 'test', 'production'].includes(trackingMode) || !/^\d{5,30}$/.test(pixelId)) return null
     return { capiEnabled, trackingMode, pixelId }
   } catch {
@@ -608,15 +609,6 @@ function parseBoolean(value) {
   if (value === true || value === 1 || value === 'true' || value === '1') return true
   if (value === false || value === 0 || value === 'false' || value === '0') return false
   return null
-}
-
-function storedValue(value) {
-  if (typeof value !== 'string') return value
-  try {
-    return JSON.parse(value)
-  } catch {
-    return value
-  }
 }
 
 function parseWranglerJson(stdout) {

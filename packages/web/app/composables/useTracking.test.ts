@@ -33,7 +33,7 @@ describe('useTracking', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-07-10T08:00:00.000Z'))
     api.mockReset()
-    api.mockResolvedValue({ data: { id: 'contact_1', created: true, pixelEvents: [] } })
+    api.mockResolvedValue({ data: { id: 'contact_1', created: true, trackingInstructions: [] } })
     trackAnalytics.mockReset()
     adapter.initialize.mockReset()
     adapter.initialize.mockReturnValue(true)
@@ -142,7 +142,7 @@ describe('useTracking', () => {
   })
 
   it('Contact Pixel instruction 使用服务端同一个 eventID', async () => {
-    api.mockResolvedValueOnce({ data: { pixelEvents: [instruction('Contact')] } })
+    api.mockResolvedValueOnce({ data: { trackingInstructions: [instruction('Contact')] } })
 
     await useTracking().trackContact({
       methodType: 'telegram',
@@ -163,7 +163,7 @@ describe('useTracking', () => {
   it.each(['limited', 'denied'] as const)('%s 授权仍写第一方 Contact 且不执行 Pixel', async consent => {
     marketingConsentState.value = consent
     canTrackMarketing.value = false
-    api.mockResolvedValueOnce({ data: { pixelEvents: [instruction('Contact')] } })
+    api.mockResolvedValueOnce({ data: { trackingInstructions: [instruction('Contact')] } })
 
     await useTracking().trackContact({
       methodType: 'wechat',
@@ -180,7 +180,7 @@ describe('useTracking', () => {
 
   it('Pixel attempted 回执失败走有界重试且不重复创建 Contact', async () => {
     api
-      .mockResolvedValueOnce({ data: { pixelEvents: [instruction('Contact')] } })
+      .mockResolvedValueOnce({ data: { trackingInstructions: [instruction('Contact')] } })
       .mockRejectedValue(new Error('receipt failed'))
 
     await useTracking().trackContact({
@@ -221,7 +221,7 @@ describe('useTracking', () => {
 
   it('conversion API 首次失败后有界重试且只完成一次兼容分析', async () => {
     api.mockRejectedValueOnce(new Error('conversion failed')).mockResolvedValueOnce({
-      data: { pixelEvents: [instruction('Contact')] },
+      data: { trackingInstructions: [instruction('Contact')] },
     })
 
     await useTracking().trackContact({
@@ -242,7 +242,7 @@ describe('useTracking', () => {
     document.cookie = '_fbp=fb.1.1700000000000.123456789; path=/'
     route.query.fbclid = 'CLICK_abc-123'
     api.mockRejectedValueOnce(new Error('conversion failed')).mockResolvedValueOnce({
-      data: { pixelEvents: [instruction('Contact')] },
+      data: { trackingInstructions: [instruction('Contact')] },
     })
 
     await useTracking().trackContact({
@@ -268,7 +268,7 @@ describe('useTracking', () => {
     document.cookie = '_fbp=fb.1.1700000000000.123456789; path=/'
     route.query.fbclid = 'CLICK_abc-123'
     api.mockRejectedValueOnce(new Error('conversion failed')).mockResolvedValueOnce({
-      data: { pixelEvents: [instruction('Contact')] },
+      data: { trackingInstructions: [instruction('Contact')] },
     })
 
     await useTracking().trackContact({
@@ -303,7 +303,7 @@ describe('useTracking', () => {
   })
 
   it('Pixel 本地异常不会重新提交 conversion', async () => {
-    api.mockResolvedValueOnce({ data: { pixelEvents: [instruction('Contact')] } })
+    api.mockResolvedValueOnce({ data: { trackingInstructions: [instruction('Contact')] } })
     adapter.standardEvent.mockImplementationOnce(() => { throw new Error('fbq failed') })
 
     await expect(useTracking().trackContact({
@@ -373,8 +373,8 @@ describe('useTracking', () => {
     expect(request).not.toContain('token=secret')
   })
 
-  it('executePixelInstructions 拒绝 Lead 与结构不完整指令', () => {
-    useTracking().executePixelInstructions([
+  it('executeBrowserInstructions 拒绝 Lead 与结构不完整指令', () => {
+    useTracking().executeBrowserInstructions([
       instruction('Lead'),
       { ...instruction('Contact'), receiptToken: '' },
     ] as never)
@@ -500,7 +500,7 @@ describe('useTracking', () => {
     tracking.trackPageView()
     adapter.teardown.mockClear()
     adapter.standardEvent.mockClear()
-    api.mockResolvedValueOnce({ data: { pixelEvents: [instruction('Contact')] } })
+    api.mockResolvedValueOnce({ data: { trackingInstructions: [instruction('Contact')] } })
 
     route.fullPath = '/gallery/private?token=secret&credential=hidden'
     route.path = '/gallery/private'
@@ -526,7 +526,7 @@ describe('useTracking', () => {
     tracking.trackPageView()
     adapter.teardown.mockClear()
     adapter.standardEvent.mockClear()
-    api.mockResolvedValueOnce({ data: { pixelEvents: [instruction('Contact')] } })
+    api.mockResolvedValueOnce({ data: { trackingInstructions: [instruction('Contact')] } })
 
     route.fullPath = '/admin/analytics'
     route.path = '/admin/analytics'

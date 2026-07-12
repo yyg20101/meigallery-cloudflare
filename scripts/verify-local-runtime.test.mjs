@@ -156,7 +156,7 @@ async function localSmokeFetch(input, init = {}) {
     return jsonResponse({ data: { id: `conv_${body.actionType}`, actionType: body.actionType, created: true } }, 201)
   }
   if (url.pathname === '/api/auth/register') {
-    return jsonResponse({ id: 42, pixelEvents: [] }, 201)
+    return jsonResponse({ id: 42, trackingInstructions: [] }, 201)
   }
   if (url.pathname === '/api/analytics/events') return jsonResponse({ accepted: 3, rejected: 0 })
   if (url.pathname === '/api/admin/analytics/funnel') {
@@ -180,7 +180,7 @@ async function localSmokeFetch(input, init = {}) {
   if (url.pathname === '/api/admin/attribution/meta') {
     return jsonResponse({
       data: {
-        settings: { meta_capi_enabled: false },
+        settings: { server_enabled: false },
         deliveries: [],
       },
     })

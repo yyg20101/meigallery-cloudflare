@@ -38,6 +38,7 @@ type ReadinessOptions = {
 }
 
 type AttributionDbOptions = {
+  connectionVerified?: boolean
   failCreateBatchAt?: number
   historicalStartTrialDeliveryCount?: number
   membershipGrantDuplicateCount?: number
@@ -93,10 +94,13 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
     : 0
   const settings = {
     analytics_enabled: true,
-    facebook_pixel_enabled: true,
-    facebook_pixel_id: '1234567890',
-    meta_capi_enabled: false,
-    meta_tracking_mode: 'test',
+    enabled: true,
+    browser_enabled: true,
+    destination_id: '1234567890',
+    server_enabled: false,
+    debug_enabled: false,
+    rollout_percentage: 0,
+    mode: 'test',
     ...options.settings,
   }
   const readiness = {
@@ -123,7 +127,8 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
   let testDelivery: {
     id: string
     conversion_action_id: string
-    channel: string
+    provider: 'meta'
+    transport: 'server'
     external_event_id: string
     event_name: string
     status: string
@@ -150,7 +155,20 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
     invalidated_at: string | null
     invalidation_reason: string
     revision: string
-  } | null = null
+  } | null = options.connectionVerified ? {
+    environment: 'dev',
+    pixel_id: String(settings.destination_id),
+    token_fingerprint: 'a31456d57fa4fd03160643daf898d11bff0e56e42c445ffa81680f662de55276',
+    graph_api_version: 'v25.0',
+    verified_event_name: 'Contact',
+    verified_commit: VALID_RELEASE_COMMIT,
+    dataset_quality_status: 'not_checked',
+    verified_at: '2026-07-11T00:00:00.000Z',
+    verified_by_user_id: 1,
+    invalidated_at: null,
+    invalidation_reason: '',
+    revision: '1'.repeat(32),
+  } : null
   const db = {
     calls,
     get testAction() { return testAction },
@@ -171,6 +189,20 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
         },
         async all<T>() {
           calls.push(call)
+          if (sql.includes("SELECT key, value FROM site_settings WHERE key = 'analytics_enabled'")
+            && sql.includes('FROM ad_platform_connections')) {
+            return {
+              results: [
+                { key: 'analytics_enabled', value: JSON.stringify(settings.analytics_enabled) },
+                { key: 'enabled', value: String(Boolean(settings.enabled)) },
+                { key: 'browser_enabled', value: String(Boolean(settings.browser_enabled)) },
+                { key: 'server_enabled', value: String(Boolean(settings.server_enabled)) },
+                { key: 'destination_configured', value: String(Boolean(settings.destination_id)) },
+                { key: 'mode', value: JSON.stringify(settings.mode) },
+              ] as T[],
+              meta: { rows_read: 2, rows_written: 0, duration: 1 },
+            }
+          }
           if (sql.includes('FROM meta_capi_incidents')) {
             if (options.incidentQueryError) throw new Error('模拟 incident 查询失败')
             return {
@@ -429,15 +461,15 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
               meta: { rows_read: 1, rows_written: 0, duration: 1 },
             }
           }
-          if (sql.includes('FROM analytics_conversion_delivery_daily') && sql.includes('GROUP BY channel')) {
+          if (sql.includes('FROM analytics_conversion_delivery_daily') && sql.includes('GROUP BY transport')) {
             const results = [
-              { channel: 'meta_pixel', event_name: 'Contact', status: 'attempted', skip_reason: '', delivery_count: 2 },
-              { channel: 'meta_capi', event_name: 'Contact', status: 'sent', skip_reason: '', delivery_count: 1 },
-              { channel: 'meta_capi', event_name: 'Contact', status: 'duplicate_suppressed', skip_reason: '', delivery_count: 1 },
+              { transport: 'browser', event_name: 'Contact', status: 'attempted', skip_reason: '', delivery_count: 2 },
+              { transport: 'server', event_name: 'Contact', status: 'sent', skip_reason: '', delivery_count: 1 },
+              { transport: 'server', event_name: 'Contact', status: 'duplicate_suppressed', skip_reason: '', delivery_count: 1 },
             ]
             if (dailyHistoryLeak(sql) > 0) {
               results.push({
-                channel: 'meta_capi',
+                transport: 'server',
                 event_name: 'StartTrial',
                 status: 'sent',
                 skip_reason: 'legacy',
@@ -514,6 +546,23 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
               meta: { rows_read: Object.keys(settings).length, rows_written: 0, duration: 1 },
             }
           }
+          if (sql.includes('FROM ad_platform_connections')) {
+            return {
+              results: [{
+                provider: 'meta',
+                enabled: settings.enabled ? 1 : 0,
+                mode: settings.mode,
+                browser_enabled: settings.browser_enabled ? 1 : 0,
+                server_enabled: settings.server_enabled ? 1 : 0,
+                destination_id: settings.destination_id,
+                debug_enabled: settings.debug_enabled ? 1 : 0,
+                rollout_percentage: Number(settings.rollout_percentage),
+                credential_secret_name: 'META_CAPI_ACCESS_TOKEN',
+                revision: metaConnectionVerification?.revision ?? null,
+              }] as T[],
+              meta: { rows_read: 1, rows_written: 0, duration: 1 },
+            }
+          }
           return { results: [] as T[], meta: { rows_read: 0, rows_written: 0, duration: 0 } }
         },
         async first<T>() {
@@ -560,6 +609,20 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
             if (!key || !(key in settings)) return null
             return { value: JSON.stringify(settings[key as keyof typeof settings]) } as T
           }
+          if (sql.includes('FROM ad_platform_connections')) {
+            return {
+              provider: 'meta',
+              enabled: settings.enabled ? 1 : 0,
+              mode: settings.mode,
+              browser_enabled: settings.browser_enabled ? 1 : 0,
+              server_enabled: settings.server_enabled ? 1 : 0,
+              destination_id: settings.destination_id,
+              debug_enabled: settings.debug_enabled ? 1 : 0,
+              rollout_percentage: Number(settings.rollout_percentage),
+              credential_secret_name: 'META_CAPI_ACCESS_TOKEN',
+              revision: metaConnectionVerification?.revision ?? null,
+            } as T
+          }
           if (sql.includes('FROM meta_connection_verifications')) {
             return metaConnectionVerification as T | null
           }
@@ -580,7 +643,8 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
             testDelivery = {
               id: String(call.params[0] ?? ''),
               conversion_action_id: String(call.params[1] ?? ''),
-              channel: 'meta_capi',
+              provider: 'meta',
+              transport: 'server',
               external_event_id: String(call.params[2] ?? ''),
               event_name: 'Contact',
               status: 'pending',
@@ -773,10 +837,11 @@ function createMetaStatusUsageDb() {
   const calls: DbCall[] = []
 
   function queryUsage(sql: string) {
-    if (sql.includes("key = 'facebook_pixel_id'")) return 2
-    if (sql.includes("key = 'meta_tracking_mode'")) return 3
+    if (sql.includes('FROM ad_platform_connections')) return 5
+    if (sql.includes("key = 'destination_id'")) return 2
+    if (sql.includes("key = 'mode'")) return 3
     if (sql.includes('FROM meta_connection_verifications')) return 5
-    if (sql.includes("key = 'meta_capi_rollout_percentage'")) return 7
+    if (sql.includes("key = 'rollout_percentage'")) return 7
     if (sql.includes('FROM meta_capi_incidents')) return 11
     if (sql.includes('FROM analytics_release_verifications')) return 13
     if (sql.includes('AS permission_error_count')) return 17
@@ -788,10 +853,15 @@ function createMetaStatusUsageDb() {
   }
 
   function rowsFor<T>(sql: string): T[] {
-    if (sql.includes("key = 'facebook_pixel_id'")) return [{ value: JSON.stringify('1234567890') } as T]
-    if (sql.includes("key = 'meta_tracking_mode'")) return [{ value: JSON.stringify('test') } as T]
+    if (sql.includes('FROM ad_platform_connections')) return [{
+      provider: 'meta', enabled: 1, mode: 'test', browser_enabled: 1, server_enabled: 1,
+      destination_id: '1234567890', debug_enabled: 0, rollout_percentage: 10,
+      credential_secret_name: 'META_CAPI_ACCESS_TOKEN', revision: '1'.repeat(32),
+    } as T]
+    if (sql.includes("key = 'destination_id'")) return [{ value: JSON.stringify('1234567890') } as T]
+    if (sql.includes("key = 'mode'")) return [{ value: JSON.stringify('test') } as T]
     if (sql.includes('FROM meta_connection_verifications')) return []
-    if (sql.includes("key = 'meta_capi_rollout_percentage'")) return [{ value: JSON.stringify(10) } as T]
+    if (sql.includes("key = 'rollout_percentage'")) return [{ value: JSON.stringify(10) } as T]
     if (sql.includes('FROM meta_capi_incidents')) return []
     if (sql.includes('FROM analytics_release_verifications')) return [{ id: 'verification_meta_live' } as T]
     if (sql.includes('AS permission_error_count')) {
@@ -870,7 +940,7 @@ async function requestReadiness(
   dbOptions: AttributionDbOptions = {},
   envOverrides: Partial<Bindings> = {},
 ) {
-  const db = createAttributionDb(dbOptions)
+  const db = createAttributionDb({ connectionVerified: true, ...dbOptions })
   const res = await createApp('admin').request(
     '/api/admin/attribution/readiness?from=2026-07-09&to=2026-07-09',
     {},
@@ -961,14 +1031,19 @@ function createRolloutDb(options: RolloutDbOptions = {}) {
         )).length,
       } as T]
     }
-    if (sql.includes('FROM site_settings') && sql.includes("key = 'meta_capi_rollout_percentage'")) {
-      return [{ value: targetRaw } as T]
-    }
-    if (sql.includes('FROM site_settings') && sql.includes("key = 'facebook_pixel_id'")) {
-      return [{ value: JSON.stringify('1234567890') } as T]
-    }
-    if (sql.includes('FROM site_settings') && sql.includes("key = 'meta_tracking_mode'")) {
-      return [{ value: JSON.stringify(options.trackingMode ?? 'production') } as T]
+    if (sql.includes('FROM ad_platform_connections')) {
+      return [{
+        provider: 'meta',
+        enabled: 1,
+        mode: options.trackingMode ?? 'production',
+        browser_enabled: 1,
+        server_enabled: 1,
+        destination_id: '1234567890',
+        debug_enabled: 0,
+        rollout_percentage: JSON.parse(targetRaw),
+        credential_secret_name: 'META_CAPI_ACCESS_TOKEN',
+        revision: '1'.repeat(32),
+      } as T]
     }
     if (sql.includes('FROM meta_connection_verifications')) {
       if (options.connectionVerified === false) return []
@@ -1012,14 +1087,14 @@ function createRolloutDb(options: RolloutDbOptions = {}) {
         },
         async run() {
           calls.push(call)
-          if (sql.includes('UPDATE site_settings') && sql.includes('meta_capi_rollout_percentage')) {
-            const [nextRaw, expectedRaw, expectedTrackingMode] = call.params.map(String)
-            if (options.conflict || targetRaw !== expectedRaw
-              || (expectedTrackingMode && (options.trackingModeConflict || JSON.stringify(options.trackingMode ?? 'production') !== expectedTrackingMode))) {
+          if (sql.includes('UPDATE ad_platform_connections') && sql.includes('rollout_percentage')) {
+            const [nextValue, expectedValue, expectedTrackingMode] = call.params
+            if (options.conflict || JSON.parse(targetRaw) !== Number(expectedValue)
+              || (expectedTrackingMode && (options.trackingModeConflict || (options.trackingMode ?? 'production') !== expectedTrackingMode))) {
               lastChanges = 0
               return { meta: { changes: 0, rows_written: 0 } }
             }
-            targetRaw = nextRaw!
+            targetRaw = JSON.stringify(Number(nextValue))
             lastChanges = 1
             return { meta: { changes: 1, rows_written: 1 } }
           }
@@ -1315,11 +1390,11 @@ describe('后台归因中心 API', () => {
     expect(res.status).toBe(200)
     expect(body.data.meta.capi_sent_count).toBe(1)
     expect(body.data.meta).not.toHaveProperty('sent_count')
-    expect(totalsSql).toContain("channel = 'meta_pixel' AND status = 'attempted'")
-    expect(totalsSql).not.toContain("channel = 'meta_pixel' AND status = 'sent'")
-    expect(totalsSql).toContain("channel = 'meta_capi' AND status = 'sent'")
-    expect(trendSql).toContain("channel = 'meta_capi' AND status = 'sent'")
-    expect(lastSentSql).toContain("channel = 'meta_capi'")
+    expect(totalsSql).toContain("transport = 'browser' AND status = 'attempted'")
+    expect(totalsSql).not.toContain("transport = 'browser' AND status = 'sent'")
+    expect(totalsSql).toContain("transport = 'server' AND status = 'sent'")
+    expect(trendSql).toContain("transport = 'server' AND status = 'sent'")
+    expect(lastSentSql).toContain("transport = 'server'")
     expect(lastSentSql).toContain("status = 'sent'")
   })
 
@@ -1491,8 +1566,8 @@ describe('后台归因中心 API', () => {
       retry_exhausted_count: 0,
       duplicate_suppressed_count: 1,
     })
-    expect(body.data.deliveries[0]).toMatchObject({ channel: 'meta_pixel', event_name: 'Contact' })
-    expect(body.data.settings).not.toHaveProperty('facebook_pixel_id')
+    expect(body.data.deliveries[0]).toMatchObject({ transport: 'browser', event_name: 'Contact' })
+    expect(body.data.settings).not.toHaveProperty('destination_id')
     expect(body.data.connection.tokenConfigured).toBe(true)
     expect(body.data.connection.testEventCodeConfigured).toBe(true)
     expect(body.data.queueBindingPresent).toBe(true)
@@ -1549,7 +1624,7 @@ describe('后台归因中心 API', () => {
     expect(body.data).not.toHaveProperty('testEventCodePresent')
   })
 
-  it('Meta 后台只返回连接布尔与验证状态，不返回 Pixel ID、fingerprint 或 secret', async () => {
+  it('Meta 后台返回可管理的连接配置，但不返回 fingerprint 或 secret', async () => {
     const db = createAttributionDb()
     const res = await createApp('admin').request('/api/admin/attribution/meta?from=2026-07-09&to=2026-07-09', {}, {
       DB: db,
@@ -1571,7 +1646,7 @@ describe('后台归因中心 API', () => {
       datasetQualityStatus: 'not_checked',
       invalidationReason: 'verification_missing',
     })
-    expect(body.data.settings).not.toHaveProperty('facebook_pixel_id')
+    expect(body.data.settings).not.toHaveProperty('destination_id')
     expect(body.data.connection).not.toHaveProperty('fingerprint')
     expect(body.data.connection).not.toHaveProperty('traceId')
     expect(serialized).not.toContain('secret-token')
@@ -1812,10 +1887,10 @@ describe('后台归因中心 API', () => {
     expect(body.data.ready).toBe(expected)
     expect(mismatchSql).toContain('JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id')
     expect(mismatchSql).toContain("a.source_channel <> 'internal'")
-    expect(mismatchSql).toContain("COUNT(DISTINCT CASE WHEN d.channel = 'meta_pixel' THEN d.external_event_id END) > 0")
-    expect(mismatchSql).toContain("COUNT(DISTINCT CASE WHEN d.channel = 'meta_capi' THEN d.external_event_id END) > 0")
-    expect(mismatchSql).toContain("COUNT(DISTINCT CASE WHEN d.channel = 'meta_pixel' THEN d.external_event_id END)")
-    expect(mismatchSql).toContain("COUNT(DISTINCT CASE WHEN d.channel = 'meta_capi' THEN d.external_event_id END)")
+    expect(mismatchSql).toContain("COUNT(DISTINCT CASE WHEN d.transport = 'browser' THEN d.external_event_id END) > 0")
+    expect(mismatchSql).toContain("COUNT(DISTINCT CASE WHEN d.transport = 'server' THEN d.external_event_id END) > 0")
+    expect(mismatchSql).toContain("COUNT(DISTINCT CASE WHEN d.transport = 'browser' THEN d.external_event_id END)")
+    expect(mismatchSql).toContain("COUNT(DISTINCT CASE WHEN d.transport = 'server' THEN d.external_event_id END)")
     expect(mismatchSql).toContain('COUNT(DISTINCT d.external_event_id)')
     expect(mismatchSql).not.toContain('MAX(')
   })
@@ -1834,7 +1909,7 @@ describe('后台归因中心 API', () => {
     ['conversion_schema', { readiness: { schemaTableCount: 3 } }, {}],
     ['analytics_enabled', { settings: { analytics_enabled: false } }, {}],
     ['conversion_ledger', { readiness: { actionCount: 0 } }, {}],
-    ['pixel_mode_consistency', { settings: { facebook_pixel_enabled: false } }, {}],
+    ['pixel_mode_consistency', { settings: { browser_enabled: false } }, {}],
     ['capi_secret', {}, { META_CAPI_ACCESS_TOKEN: undefined }],
     ['test_event_code', {}, { META_CAPI_TEST_EVENT_CODE: undefined }],
     ['queue_binding', {}, { META_CAPI_QUEUE: undefined }],
@@ -1934,7 +2009,7 @@ describe('后台归因中心 API', () => {
   })
 
   it('production bootstrap 缺发布资源证据时 409，且在 Graph fetch 与 verification upsert 前阻断', async () => {
-    const db = createAttributionDb({ settings: { meta_tracking_mode: 'test' } })
+    const db = createAttributionDb({ settings: { mode: 'test' } })
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
     const res = await createApp('owner').request('/api/admin/attribution/meta/test-event', { method: 'POST' }, {
@@ -2020,7 +2095,7 @@ describe('后台归因中心 API', () => {
     ['空白 token', {}, { META_CAPI_ACCESS_TOKEN: ' \n\t ' }],
     ['Test Event Code', {}, { META_CAPI_TEST_EVENT_CODE: undefined }],
     ['空白 Test Event Code', {}, { META_CAPI_TEST_EVENT_CODE: '\n  ' }],
-    ['Pixel ID', { settings: { facebook_pixel_id: '' } }, {}],
+    ['Pixel ID', { settings: { destination_id: '' } }, {}],
   ])('缺少 %s 时 Test Event 返回 503 并审计', async (_label, dbOptions, envOverrides) => {
     const db = createAttributionDb(dbOptions as AttributionDbOptions)
     const res = await createApp('owner').request('/api/admin/attribution/meta/test-event', { method: 'POST' }, {
@@ -2106,7 +2181,7 @@ describe('后台归因中心 API', () => {
 
     expect(res.status).toBe(409)
     expect(body.detail.blockers).toContain('meta_live_verification_missing')
-    expect(db.calls.some(call => call.sql.includes('UPDATE site_settings'))).toBe(false)
+    expect(db.calls.some(call => call.sql.includes('UPDATE ad_platform_connections'))).toBe(false)
   })
 
   it.each(['bootstrap', 'post-deploy'] as const)('production 0 -> 10 拒绝 %s 资源摘要冒充 full', async verificationPhase => {
@@ -2138,9 +2213,9 @@ describe('后台归因中心 API', () => {
 
     expect(res.status).toBe(409)
     expect(body.code).toBe('META_CAPI_ROLLOUT_CONFLICT')
-    const update = db.calls.find(call => call.sql.includes('UPDATE site_settings'))
-    expect(update?.sql).toContain("key = 'meta_tracking_mode'")
-    expect(update?.params).toContain(JSON.stringify('production'))
+    const update = db.calls.find(call => call.sql.includes('UPDATE ad_platform_connections'))
+    expect(update?.sql).toContain("mode = ?")
+    expect(update?.params).toContain('production')
     expect(db.target).toBe(0)
     expect(db.audits).toEqual([])
   })
@@ -2162,7 +2237,7 @@ describe('后台归因中心 API', () => {
     expect(body.detail.blockers).toContain('tracking_mode_not_production')
     expect(fetchMock).not.toHaveBeenCalled()
     expect(queueSend).not.toHaveBeenCalled()
-    expect(db.calls.some(call => call.sql.includes('UPDATE site_settings'))).toBe(false)
+    expect(db.calls.some(call => call.sql.includes('UPDATE ad_platform_connections'))).toBe(false)
     expect(db.batchCount).toBe(0)
   })
 
@@ -2762,11 +2837,10 @@ describe('Meta CAPI v2 质量运维看板契约', () => {
     const body = await res.json()
 
     expect(res.status).toBe(200)
-    expect(body.usage).toEqual({ rowsRead: 176, rowsWritten: 0, durationMs: 31 })
-    expect(db.calls.filter(call => call.sql.includes("key = 'facebook_pixel_id'"))).toHaveLength(1)
-    expect(db.calls.filter(call => call.sql.includes("key = 'meta_tracking_mode'"))).toHaveLength(2)
+    expect(body.usage).toEqual({ rowsRead: 171, rowsWritten: 0, durationMs: 31 })
+    expect(db.calls.filter(call => call.sql.includes('FROM ad_platform_connections'))).toHaveLength(2)
     expect(db.calls.filter(call => call.sql.includes('FROM meta_connection_verifications'))).toHaveLength(1)
-    expect(db.calls).toHaveLength(13)
+    expect(db.calls).toHaveLength(11)
   })
 
   it('breakdown 以 conversion fact 为 action 基数，双通道不会翻倍', async () => {

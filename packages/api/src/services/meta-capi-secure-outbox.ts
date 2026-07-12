@@ -43,7 +43,7 @@ export function createSecureOutboxStatement(
     WHERE EXISTS (
       SELECT 1
       FROM analytics_conversion_deliveries
-      WHERE id = ? AND channel = 'meta_capi' AND status = 'pending'
+      WHERE id = ? AND provider = 'meta' AND transport = 'server' AND status = 'pending'
     )
   `).bind(
     input.deliveryId,
@@ -85,7 +85,8 @@ export async function enqueueSecureMetaCapiDelivery(
       error_message = '',
       updated_at = datetime('now')
     WHERE id = ?
-      AND channel = 'meta_capi'
+      AND provider = 'meta'
+      AND transport = 'server'
       AND status = 'pending'
       AND queue_enqueued_at IS NULL
       AND queue_attempt_count = ?
@@ -127,7 +128,8 @@ export async function enqueueSecureMetaCapiDelivery(
           error_message = '',
           updated_at = datetime('now')
         WHERE id = ?
-          AND channel = 'meta_capi'
+          AND provider = 'meta'
+          AND transport = 'server'
           AND status = 'pending'
           AND queue_enqueued_at IS NULL
       `).bind(deliveryId),
@@ -196,7 +198,6 @@ function readSecureOutbox(db: D1Database, deliveryId: string) {
       AND o.schema_version = 2
       AND d.provider = 'meta'
       AND d.transport = 'server'
-      AND d.channel = 'meta_capi'
     LIMIT 1
   `).bind(deliveryId).first<SecureOutboxRow>()
 }
@@ -211,7 +212,6 @@ async function expireOutboxRows(db: D1Database, rows: ExpiredOutboxRow[]) {
         id: row.delivery_id,
         provider: 'meta',
         transport: 'server',
-        channel: 'meta_capi',
         event_name: row.event_name,
         status: row.status as never,
         skip_reason: row.skip_reason || '',
@@ -242,7 +242,7 @@ function readDeliveryTerminalState(db: D1Database, deliveryId: string) {
   return db.prepare(`
     SELECT status, error_code
     FROM analytics_conversion_deliveries
-    WHERE id = ? AND channel = 'meta_capi'
+    WHERE id = ? AND provider = 'meta' AND transport = 'server'
     LIMIT 1
   `).bind(deliveryId).first<{ status: string; error_code: string }>()
 }
@@ -260,7 +260,8 @@ async function markQueueUnavailable(db: D1Database, deliveryId: string) {
         error_message = '',
         updated_at = datetime('now')
       WHERE id = ?
-        AND channel = 'meta_capi'
+        AND provider = 'meta'
+        AND transport = 'server'
         AND status = 'pending'
         AND queue_enqueued_at IS NULL
     `).bind(deliveryId).run()
@@ -278,7 +279,8 @@ async function markQueueSendFailed(db: D1Database, deliveryId: string) {
         error_message = 'Meta CAPI Queue 发送失败',
         updated_at = datetime('now')
       WHERE id = ?
-        AND channel = 'meta_capi'
+        AND provider = 'meta'
+        AND transport = 'server'
         AND status = 'pending'
         AND queue_enqueued_at IS NULL
     `).bind(deliveryId).run()

@@ -21,7 +21,8 @@ type Call = { sql: string; params: unknown[] }
 type Delivery = {
   id: string
   conversion_action_id: string
-  channel: string
+  provider: 'meta'
+  transport: string
   external_event_id: string
   event_name: string
   status: ConversionDeliveryStatus
@@ -30,7 +31,7 @@ type Delivery = {
   error_message: string
   attempt_count: number
   tracking_mode: 'disabled' | 'test' | 'production'
-  meta_connection_revision: string | null
+  connection_revision: string | null
   queue_enqueued_at: string | null
   queue_attempt_count: number
   duplicate_suppressed_at: string | null
@@ -64,7 +65,8 @@ function createQueueDb(options: {
   const delivery: Delivery = {
     id: 'cdlv_1',
     conversion_action_id: 'conv_1',
-    channel: 'meta_capi',
+    provider: 'meta',
+    transport: 'server',
     external_event_id: 'event_1',
     event_name: options.eventName ?? 'Contact',
     status: options.status ?? 'pending',
@@ -73,7 +75,7 @@ function createQueueDb(options: {
     error_message: '',
     attempt_count: 0,
     tracking_mode: 'production',
-    meta_connection_revision: options.deliveryRevision === undefined ? CONNECTION_REVISION : options.deliveryRevision,
+    connection_revision: options.deliveryRevision === undefined ? CONNECTION_REVISION : options.deliveryRevision,
     queue_enqueued_at: null,
     queue_attempt_count: 0,
     duplicate_suppressed_at: null,
@@ -133,8 +135,12 @@ function createQueueDb(options: {
           if (sql.includes('FROM analytics_conversion_deliveries')) {
             return call.params[0] === delivery.id ? ({ ...delivery } as T) : null
           }
-          if (sql.includes("WHERE key = 'facebook_pixel_id'")) return { value: JSON.stringify('1234567890') } as T
-          if (sql.includes("WHERE key = 'meta_tracking_mode'")) return { value: JSON.stringify(delivery.tracking_mode) } as T
+          if (sql.includes('FROM ad_platform_connections')) return {
+            provider: 'meta', enabled: 1, mode: delivery.tracking_mode,
+            browser_enabled: 1, server_enabled: 1, destination_id: '1234567890',
+            debug_enabled: 0, rollout_percentage: 100,
+            credential_secret_name: 'META_CAPI_ACCESS_TOKEN', revision: CONNECTION_REVISION,
+          } as T
           if (sql.includes('FROM meta_connection_verifications')) {
             if (options.connectionVerified === false) return null
             return {
@@ -427,7 +433,7 @@ describe('Meta CAPI Queue V2', () => {
     expect(db.delivery).toMatchObject({
       status: 'skipped',
       skip_reason: 'connection_unverified',
-      meta_connection_revision: 'a'.repeat(32),
+      connection_revision: 'a'.repeat(32),
     })
     expect(db.outbox).toBeNull()
     expect(message.ack).toHaveBeenCalledOnce()

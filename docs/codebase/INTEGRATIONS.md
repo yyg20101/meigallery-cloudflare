@@ -14,7 +14,7 @@
 | Cloudflare Stream | 外部 API | 规划中的视频签名播放和上传 | `STREAM_ACCOUNT_ID` / `STREAM_API_TOKEN` | 中 | `packages/api/src/routes/media.ts`、`docs/PROJECT_STATUS.md` |
 | Telegram Bot API | 外部 API | file_id 图片拉取并写入 R2，生成图库/案例草稿 | Bot token secret per sourceBotKey | 中 | `packages/api/src/services/telegram-file-fetcher.ts`、`packages/api/src/routes/imports.ts` |
 | WordPress REST API | 外部 API | 旧站文章、分类、标签和媒体迁移 | 公开 URL + 安全 URL 校验 | 中 | `packages/api/src/services/wp-fetcher.ts`、`scripts/migrate-wordpress.mjs` |
-| Meta/Facebook Pixel | 浏览器脚本 | 广告归因事件 | 后台配置 Pixel ID | 低 | `packages/web/app/plugins/facebook-pixel.client.ts`、`packages/api/src/utils/facebook-pixel-settings.ts` |
+| Meta Pixel / CAPI | Browser + Server adapter | 广告归因事件 | 后台统一平台连接 + Worker secret | 中 | `packages/web/app/plugins/ad-platform.client.ts`、`packages/api/src/services/ad-platform/` |
 
 ## 2. 数据存储
 

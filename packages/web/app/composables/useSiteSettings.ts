@@ -3,9 +3,7 @@
  * 从 /api/settings/public 获取站点配置
  * 数据全局缓存，避免重复请求
  */
-import type { MetaTrackingMode } from '@meigallery/shared'
-import { normalizeMetaTrackingMode } from '@meigallery/shared/utils'
-import { isScheduledSiteFeatureActive, normalizeAnalyticsConsentMode, normalizeAnalyticsSampleRate, normalizeBooleanSetting, normalizeFeaturedRegionSlugs, normalizeHomeAdImageUrl, normalizeHomeAdUrl, normalizeHomeHotTagLimit, normalizeInternalPath, normalizePublicImageSettingUrl, normalizeSeoKeywords, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId, safeHomeAdText, safeRulesMarkdown, safeSiteText } from '~/utils/siteSettingsSecurity'
+import { isScheduledSiteFeatureActive, normalizeAnalyticsConsentMode, normalizeAnalyticsSampleRate, normalizeBooleanSetting, normalizeFeaturedRegionSlugs, normalizeHomeAdImageUrl, normalizeHomeAdUrl, normalizeHomeHotTagLimit, normalizeInternalPath, normalizePublicImageSettingUrl, normalizeSeoKeywords, normalizeSiteSettingDateTime, safeHomeAdText, safeRulesMarkdown, safeSiteText } from '~/utils/siteSettingsSecurity'
 
 const DEFAULT_SITE_NAME = '图库站'
 const LEGACY_DEFAULT_SITE_NAME = 'MeiGallery'
@@ -26,10 +24,7 @@ export function useSiteSettings() {
     membership_description?: string
     email_verification_enabled?: string | boolean
     video_enabled?: string | boolean
-    facebook_pixel_enabled?: string | boolean
-    facebook_pixel_id?: string
-    facebook_pixel_debug_enabled?: string | boolean
-    meta_tracking_mode?: string
+    ad_platform_browser_connections?: BrowserConnectionSetting[]
     analytics_enabled?: string | boolean
     analytics_sample_rate?: string | number
     analytics_consent_mode?: string
@@ -69,6 +64,13 @@ export function useSiteSettings() {
     sponsor?: string
     imageUrl?: string
     sortOrder?: number
+  }
+
+  interface BrowserConnectionSetting {
+    provider?: string
+    destinationId?: string
+    debugEnabled?: boolean
+    mode?: 'disabled' | 'test' | 'production'
   }
 
   interface NormalizedHomeAd {
@@ -157,16 +159,11 @@ export function useSiteSettings() {
   const videoEnabled = computed(() => {
     return normalizeBooleanSetting(settings.value.video_enabled)
   })
-  const facebookPixelEnabled = computed(() => {
-    return normalizeBooleanSetting(settings.value.facebook_pixel_enabled)
-  })
-  const facebookPixelId = computed(() => normalizeSiteSettingPixelId(settings.value.facebook_pixel_id))
-  const facebookPixelDebugEnabled = computed(() => {
-    return normalizeBooleanSetting(settings.value.facebook_pixel_debug_enabled)
-  })
-  const metaTrackingMode = computed<MetaTrackingMode>(() => {
-    return normalizeMetaTrackingMode(settings.value.meta_tracking_mode)
-  })
+  const browserConnections = computed(() => Array.isArray(settings.value.ad_platform_browser_connections)
+    ? settings.value.ad_platform_browser_connections
+    : [])
+  const metaBrowserConnection = computed(() => browserConnections.value.find(row => row.provider === 'meta') ?? null)
+  const marketingTrackingMode = computed(() => metaBrowserConnection.value?.mode ?? 'disabled')
   const analyticsEnabled = computed(() => {
     return normalizeBooleanSetting(settings.value.analytics_enabled)
   })
@@ -217,10 +214,9 @@ export function useSiteSettings() {
     homeAdActive,
     homeAds,
     videoEnabled,
-    facebookPixelEnabled,
-    facebookPixelId,
-    facebookPixelDebugEnabled,
-    metaTrackingMode,
+    browserConnections,
+    metaBrowserConnection,
+    marketingTrackingMode,
     analyticsEnabled,
     analyticsSampleRate,
     analyticsConsentMode,

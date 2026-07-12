@@ -276,7 +276,7 @@ authRoutes.post('/register', async (c) => {
   // 创建会话
   await createSession(c, userId)
 
-  let pixelEvents = [] as Awaited<ReturnType<typeof recordRegistration>>['pixelEvents']
+  let trackingInstructions = [] as Awaited<ReturnType<typeof recordRegistration>>['trackingInstructions']
   try {
     const registration = await recordRegistration(c.env, {
       userId,
@@ -298,7 +298,7 @@ authRoutes.post('/register', async (c) => {
       getMetaCapiUserData: () => buildMetaCapiUserData(c.req.raw, attribution.browserIdentifiers),
       getRegistrationSensitiveInput: async () => readRegistrationSensitiveInput(db, userId),
     })
-    pixelEvents = registration.pixelEvents
+    trackingInstructions = registration.trackingInstructions
   } catch {
     console.error('[auth.register] 注册转化事实写入失败', {
       userId,
@@ -315,8 +315,7 @@ authRoutes.post('/register', async (c) => {
     status: 'active',
     membershipRank: 0,
     membershipExpiry: null,
-    pixelEvents,
-    trackingInstructions: pixelEvents.map(event => ({ ...event, provider: 'meta' })),
+    trackingInstructions,
   }, 201)
 })
 

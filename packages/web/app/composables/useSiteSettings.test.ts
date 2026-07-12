@@ -61,14 +61,14 @@ describe('useSiteSettings', () => {
     expect(siteSettings.seoKeywords.value).toEqual(['授权图库', '写真', '时尚写真'])
   })
 
-  it('历史 Meta 追踪模式在前台一律回退为 disabled', async () => {
+  it('缺少浏览器平台连接时营销追踪模式为 disabled', async () => {
     resetState()
-    apiMock.mockResolvedValueOnce({ meta_tracking_mode: 'legacy_mode' })
+    apiMock.mockResolvedValueOnce({ ad_platform_browser_connections: [] })
 
     const siteSettings = useSiteSettings()
     await siteSettings.fetchSettings()
 
-    expect(siteSettings.metaTrackingMode.value).toBe('disabled')
+    expect(siteSettings.marketingTrackingMode.value).toBe('disabled')
   })
 
   it('已加载后默认复用缓存，强制刷新会重新请求并更新 SEO', async () => {

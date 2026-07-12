@@ -7,13 +7,10 @@ import type {
   AdBrowserInstruction,
   ConversionSkipReason,
   MetaCapiSensitiveContext,
-  MetaPixelInstruction,
   MetaTrackingMode,
 } from '@meigallery/shared'
 import type { Bindings } from '../index'
 import { generateId } from '../utils/db'
-import { parseStoredSettingValue } from '../utils/stored-setting-value'
-import { normalizeMetaTrackingMode } from '@meigallery/shared/utils'
 import {
   buildConversionDedupeKey,
   buildExternalEventId,
@@ -33,14 +30,13 @@ import {
   type MetaCapiEncryptedEnvelope,
 } from '../utils/meta-capi-crypto'
 import { transitionDeliveryStatus } from './meta-capi'
-import { legacyChannelForTransport, mapConversionToPlatformEvent } from './ad-platform/registry'
+import { mapConversionToPlatformEvent } from './ad-platform/registry'
+import { readAdPlatformConnection } from './ad-platform/connections'
 import { createSecureOutboxStatement, enqueueSecureMetaCapiDelivery } from './meta-capi-secure-outbox'
 import { requireVerifiedMetaConnection } from './meta-connection'
 import {
   decideMetaCapiRollout,
-  normalizeMetaCapiRollout,
   type MetaCapiRolloutDecision,
-  type MetaCapiRolloutPercentage,
 } from './meta-capi-rollout'
 import {
   acquireConversionDedupeClaim,
@@ -94,8 +90,7 @@ export interface RecordConversionResult {
   actionType: ActiveConversionActionType
   created: boolean
   duplicateOf: string
-  pixelEvents: MetaPixelInstruction[]
-  trackingInstructions?: AdBrowserInstruction[]
+  trackingInstructions: AdBrowserInstruction[]
 }
 
 type RecordActiveConversionInput = Omit<RecordConversionInput, 'actionType'>
@@ -147,10 +142,9 @@ type PlannedDelivery = {
   deliveryId: string
   provider: AdPlatformProvider
   transport: AdDeliveryTransport
-  channel: 'meta_pixel' | 'meta_capi'
   eventName: NonNullable<ReturnType<typeof metaEventForConversion>>
   eventId: string
-  pixelInstruction?: MetaPixelInstruction
+  browserInstruction?: AdBrowserInstruction
   status: 'pending' | 'skipped'
   skipReason: '' | Extract<ConversionSkipReason,
     | 'connection_unverified'
@@ -169,7 +163,7 @@ type PlannedDelivery = {
   hasExternalId: 0 | 1
   encryptionKeyId: string
   trackingMode: MetaTrackingMode
-  metaConnectionRevision: string | null
+  connectionRevision: string | null
   rolloutTargetPercentage: number
   rolloutEffectivePercentage: number
   rolloutBucket: number | null
@@ -255,7 +249,7 @@ export async function recordRegistrationFactOnly(
       actionType: 'complete_registration',
       created: false,
       duplicateOf: existing.id,
-      pixelEvents: [],
+      trackingInstructions: [],
     }
   }
 
@@ -272,7 +266,7 @@ export async function recordRegistrationFactOnly(
         actionType: 'complete_registration',
         created: false,
         duplicateOf: concurrent.id,
-        pixelEvents: [],
+        trackingInstructions: [],
       }
     }
     throw new Error('注册转化事实写入未确认')
@@ -283,7 +277,7 @@ export async function recordRegistrationFactOnly(
     actionType: 'complete_registration',
     created: true,
     duplicateOf: '',
-    pixelEvents: [],
+    trackingInstructions: [],
   }
 }
 
@@ -355,7 +349,9 @@ async function recordActiveConversion(
     }
 
     const committedDeliveries = plan.deliveries.filter(delivery => d1Changed(results[delivery.statementIndex]!))
-    const pixelEvents = committedDeliveries.flatMap(delivery => delivery.pixelInstruction ? [delivery.pixelInstruction] : [])
+    const trackingInstructions = committedDeliveries.flatMap(
+      delivery => delivery.browserInstruction ? [delivery.browserInstruction] : [],
+    )
     await finalizeCapiDeliveries(env, committedDeliveries)
 
     return {
@@ -363,8 +359,7 @@ async function recordActiveConversion(
       actionType: normalizedInput.actionType,
       created: true,
       duplicateOf: '',
-      pixelEvents,
-      trackingInstructions: pixelEvents.map(event => ({ ...event, provider: 'meta' })),
+      trackingInstructions,
     }
   }
   catch (error) {
@@ -410,7 +405,7 @@ export async function markPixelAttempted(
   claims: PixelReceiptClaims,
 ): Promise<MarkPixelAttemptedResult> {
   const delivery = await db.prepare(`
-    SELECT d.id, d.provider, d.transport, d.channel, d.external_event_id, d.status, d.event_name, a.date
+    SELECT d.id, d.provider, d.transport, d.external_event_id, d.status, d.event_name, a.date
     FROM analytics_conversion_deliveries d
     JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
     WHERE d.id = ?
@@ -419,7 +414,6 @@ export async function markPixelAttempted(
     id: string
     provider: string
     transport: string
-    channel: string
     external_event_id: string
     status: string
     event_name: string
@@ -429,7 +423,6 @@ export async function markPixelAttempted(
   if (!delivery
     || delivery.provider !== 'meta'
     || delivery.transport !== 'browser'
-    || delivery.channel !== 'meta_pixel'
     || delivery.external_event_id !== claims.eventId) {
     throw new Error('Pixel 回执无效')
   }
@@ -440,7 +433,6 @@ export async function markPixelAttempted(
     id: delivery.id,
     provider: delivery.provider,
     transport: delivery.transport,
-    channel: delivery.channel,
     event_name: delivery.event_name,
     status: 'pending',
     skip_reason: '',
@@ -448,12 +440,15 @@ export async function markPixelAttempted(
   }, { status: 'attempted' })
   if (!transition.changed) {
     const current = await db.prepare(`
-      SELECT channel, external_event_id, status
+      SELECT provider, transport, external_event_id, status
       FROM analytics_conversion_deliveries
       WHERE id = ?
       LIMIT 1
-    `).bind(delivery.id).first<{ channel: string; external_event_id: string; status: string }>()
-    if (current?.channel === 'meta_pixel' && current.external_event_id === claims.eventId && current.status === 'attempted') {
+    `).bind(delivery.id).first<{ provider: string; transport: string; external_event_id: string; status: string }>()
+    if (current?.provider === 'meta'
+      && current.transport === 'browser'
+      && current.external_event_id === claims.eventId
+      && current.status === 'attempted') {
       return { deliveryId: delivery.id, attempted: false }
     }
     throw new Error('Pixel 回执无效')
@@ -544,7 +539,7 @@ async function recordDuplicateResult(
     actionType: input.actionType,
     created: false,
     duplicateOf: existingId,
-    pixelEvents: [],
+    trackingInstructions: [],
   }
 }
 
@@ -557,7 +552,7 @@ function committedDuplicateResult(
     actionType,
     created: false,
     duplicateOf: existingId,
-    pixelEvents: [],
+    trackingInstructions: [],
   }
 }
 
@@ -625,7 +620,7 @@ async function buildConversionBatchPlan(
   for (const delivery of deliveries) {
     delivery.statementIndex = statements.push(conversionDeliveryStatement(env.DB, delivery, actionId)) - 1
     statements.push(deliveryDailyStatement(env.DB, delivery, date))
-    if (delivery.channel === 'meta_capi' && delivery.envelope && delivery.expiresAt) {
+    if (delivery.transport === 'server' && delivery.envelope && delivery.expiresAt) {
       statements.push(createSecureOutboxStatement(env.DB, {
         deliveryId: delivery.deliveryId,
         envelope: delivery.envelope,
@@ -734,11 +729,10 @@ async function planMetaDeliveries(
     : null
   return Promise.all(transports.map(async transport => {
     const deliveryId = generateId('cdlv')
-    const channel = legacyChannelForTransport('meta', transport)
-    const capiSkipped = channel === 'meta_capi' && capiEncryption.state === 'skipped'
-    const channelSkipped = connectionBlocked || capiSkipped
-    const skipReason = channelSkipped && capiEncryption.state === 'skipped' ? capiEncryption.reason : ''
-    const pixelInstruction = channel === 'meta_pixel' && !channelSkipped
+    const serverSkipped = transport === 'server' && capiEncryption.state === 'skipped'
+    const deliverySkipped = connectionBlocked || serverSkipped
+    const skipReason = deliverySkipped && capiEncryption.state === 'skipped' ? capiEncryption.reason : ''
+    const browserInstruction = transport === 'browser' && !deliverySkipped
       ? {
           provider: 'meta' as const,
           deliveryId,
@@ -752,13 +746,13 @@ async function planMetaDeliveries(
           }),
         }
       : undefined
-    const secureContext = channel === 'meta_capi' && capiEncryption.state === 'ready'
+    const secureContext = transport === 'server' && capiEncryption.state === 'ready'
       ? contextForEvent(eventName, capiEncryption.context)
       : {}
-    const expiresAt = channel === 'meta_capi' && capiEncryption.state === 'ready'
+    const expiresAt = transport === 'server' && capiEncryption.state === 'ready'
       ? new Date(Date.now() + SECURE_CONTEXT_TTL_MS).toISOString()
       : undefined
-    const envelope = channel === 'meta_capi' && capiEncryption.state === 'ready'
+    const envelope = transport === 'server' && capiEncryption.state === 'ready'
       ? await encryptMetaCapiContext({
           keys: capiEncryption.keys,
           aad: { deliveryId, externalEventId: eventId, eventName },
@@ -769,11 +763,10 @@ async function planMetaDeliveries(
       deliveryId,
       provider: 'meta',
       transport,
-      channel,
       eventName,
       eventId,
-      pixelInstruction,
-      status: channelSkipped ? 'skipped' : 'pending',
+      browserInstruction,
+      status: deliverySkipped ? 'skipped' : 'pending',
       skipReason,
       envelope,
       expiresAt,
@@ -783,14 +776,14 @@ async function planMetaDeliveries(
       hasExternalId: secureContext.externalIdSha256 ? 1 : 0,
       encryptionKeyId: envelope?.keyId ?? '',
       trackingMode: settings.mode,
-      metaConnectionRevision: connectionRevision,
-      rolloutTargetPercentage: channel === 'meta_capi' && capiEncryption.state !== 'disabled'
+      connectionRevision,
+      rolloutTargetPercentage: transport === 'server' && capiEncryption.state !== 'disabled'
         ? capiEncryption.rollout?.targetPercentage ?? 0
         : 0,
-      rolloutEffectivePercentage: channel === 'meta_capi' && capiEncryption.state !== 'disabled'
+      rolloutEffectivePercentage: transport === 'server' && capiEncryption.state !== 'disabled'
         ? capiEncryption.rollout?.effectivePercentage ?? 0
         : 0,
-      rolloutBucket: channel === 'meta_capi' && capiEncryption.state !== 'disabled'
+      rolloutBucket: transport === 'server' && capiEncryption.state !== 'disabled'
         ? capiEncryption.rollout?.bucket ?? null
         : null,
       statementIndex: -1,
@@ -801,18 +794,18 @@ async function planMetaDeliveries(
 function conversionDeliveryStatement(db: D1Database, delivery: PlannedDelivery, actionId: string) {
   return db.prepare(`
     INSERT OR IGNORE INTO analytics_conversion_deliveries (
-      id, conversion_action_id, channel, external_event_id, event_name,
+      id, conversion_action_id, provider, transport, external_event_id, event_name,
       status, skip_reason, has_fbp, has_fbc, has_email, has_external_id,
-      encryption_key_id, tracking_mode, meta_connection_revision,
-      rollout_target_percentage, rollout_effective_percentage, rollout_bucket,
-      provider, transport, connection_revision, updated_at
+      encryption_key_id, tracking_mode, connection_revision,
+      rollout_target_percentage, rollout_effective_percentage, rollout_bucket, updated_at
     )
-    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')
     WHERE EXISTS (SELECT 1 FROM analytics_conversion_actions WHERE id = ?)
   `).bind(
     delivery.deliveryId,
     actionId,
-    delivery.channel,
+    delivery.provider,
+    delivery.transport,
     delivery.eventId,
     delivery.eventName,
     delivery.status,
@@ -823,13 +816,10 @@ function conversionDeliveryStatement(db: D1Database, delivery: PlannedDelivery, 
     delivery.hasExternalId,
     delivery.encryptionKeyId,
     delivery.trackingMode,
-    delivery.metaConnectionRevision,
+    delivery.connectionRevision,
     delivery.rolloutTargetPercentage,
     delivery.rolloutEffectivePercentage,
     delivery.rolloutBucket,
-    delivery.provider,
-    delivery.transport,
-    delivery.metaConnectionRevision,
     actionId,
   )
 }
@@ -839,7 +829,7 @@ async function finalizeCapiDeliveries(
   deliveries: PlannedDelivery[],
 ) {
   for (const delivery of deliveries) {
-    if (delivery.channel !== 'meta_capi' || delivery.status !== 'pending' || !delivery.envelope) continue
+    if (delivery.transport !== 'server' || delivery.status !== 'pending' || !delivery.envelope) continue
     try {
       await enqueueSecureMetaCapiDelivery(env, delivery.deliveryId)
     } catch {
@@ -1025,41 +1015,14 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 }
 
 async function readMetaDeliverySettings(db: D1Database) {
-  const [[modeRow, pixelEnabledRow, pixelIdRow, capiEnabledRow], rolloutSetting] = await Promise.all([
-    Promise.all([
-      db.prepare("SELECT value FROM site_settings WHERE key = 'meta_tracking_mode' LIMIT 1").first<{ value: string }>(),
-      db.prepare("SELECT value FROM site_settings WHERE key = 'facebook_pixel_enabled' LIMIT 1").first<{ value: string }>(),
-      db.prepare("SELECT value FROM site_settings WHERE key = 'facebook_pixel_id' LIMIT 1").first<{ value: string }>(),
-      db.prepare("SELECT value FROM site_settings WHERE key = 'meta_capi_enabled' LIMIT 1").first<{ value: string }>(),
-    ]),
-    readMetaCapiRolloutPercentage(db),
-  ])
-  const pixelId = String(parseStoredSettingValue(pixelIdRow?.value || '""', '') || '').trim()
+  const connection = await readAdPlatformConnection(db, 'meta')
   return {
-    mode: normalizeMetaTrackingMode(parseStoredSettingValue(modeRow?.value || '"disabled"', 'disabled')),
-    pixelEnabled: parseStoredSettingValue(pixelEnabledRow?.value || 'false', false) === true,
-    pixelId: /^\d{5,30}$/.test(pixelId) ? pixelId : '',
-    capiEnabled: parseStoredSettingValue(capiEnabledRow?.value || 'false', false) === true,
-    rolloutPercentage: rolloutSetting.percentage,
-    rolloutSettingAvailable: rolloutSetting.available,
-  }
-}
-
-async function readMetaCapiRolloutPercentage(db: D1Database): Promise<{
-  percentage: MetaCapiRolloutPercentage
-  available: boolean
-}> {
-  try {
-    const row = await db.prepare(
-      "SELECT value FROM site_settings WHERE key = 'meta_capi_rollout_percentage' LIMIT 1",
-    ).first<{ value: string }>()
-    return {
-      percentage: normalizeMetaCapiRollout(parseStoredSettingValue(row?.value || '', undefined)),
-      available: true,
-    }
-  }
-  catch {
-    return { percentage: 0, available: false }
+    mode: connection?.mode ?? 'disabled',
+    pixelEnabled: connection?.enabled === true && connection.browserEnabled,
+    pixelId: connection?.destinationId ?? '',
+    capiEnabled: connection?.enabled === true && connection.serverEnabled,
+    rolloutPercentage: connection?.rolloutPercentage ?? 0,
+    rolloutSettingAvailable: Boolean(connection),
   }
 }
 
@@ -1070,9 +1033,9 @@ function deliveryDailyStatement(
 ) {
   return db.prepare(`
     INSERT INTO analytics_conversion_delivery_daily (
-      date, provider, transport, channel, event_name, status, skip_reason, delivery_count, updated_at
+      date, provider, transport, event_name, status, skip_reason, delivery_count, updated_at
     )
-    SELECT ?, ?, ?, ?, ?, ?, ?, 1, datetime('now')
+    SELECT ?, ?, ?, ?, ?, ?, 1, datetime('now')
     WHERE changes() = 1
     ON CONFLICT(date, provider, transport, event_name, status, skip_reason)
     DO UPDATE SET
@@ -1082,7 +1045,6 @@ function deliveryDailyStatement(
     date,
     delivery.provider,
     delivery.transport,
-    delivery.channel,
     delivery.eventName,
     delivery.status,
     delivery.skipReason,

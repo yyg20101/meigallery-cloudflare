@@ -19,7 +19,6 @@ import { mergeD1Usage, readD1UsageMeta, type D1Usage } from '../../utils/analyti
 import { parseAnalyticsRange, type AnalyticsDateRange } from '../../utils/analytics-time'
 import { generateId } from '../../utils/db'
 import { writeAuditLog } from '../../utils/permission'
-import { parseStoredSettingValue } from '../../utils/stored-setting-value'
 import {
   closeMetaCapiIncident,
   MetaCapiCircuitError,
@@ -74,6 +73,86 @@ adminAttributionRoutes.get('/platforms', async (c) => {
   catch {
     return dashboardUnavailable(c)
   }
+})
+
+adminAttributionRoutes.patch('/platforms/meta', async (c) => {
+  if (c.get('userRole') !== 'owner') {
+    return errorJson(c, 403, '需要站长权限', { code: 'OWNER_REQUIRED' })
+  }
+  if (c.env.APP_ENV !== 'production') {
+    return errorJson(c, 409, 'Meta 连接只允许在生产环境配置', { code: 'AD_PLATFORM_PRODUCTION_ONLY' })
+  }
+  const body = await c.req.json<Record<string, unknown>>()
+  const destinationId = String(body.destinationId ?? '').trim()
+  const mode = String(body.mode ?? '')
+  const rolloutPercentage = Number(body.rolloutPercentage)
+  if (!/^\d{5,30}$/.test(destinationId)) {
+    return errorJson(c, 400, 'Meta Dataset ID 无效', { code: 'AD_PLATFORM_DESTINATION_INVALID' })
+  }
+  if (mode !== 'disabled' && mode !== 'test' && mode !== 'production') {
+    return errorJson(c, 400, 'Meta 运行模式无效', { code: 'AD_PLATFORM_MODE_INVALID' })
+  }
+  if (![0, 10, 50, 100].includes(rolloutPercentage)) {
+    return errorJson(c, 400, 'Meta 服务端放量比例无效', { code: 'AD_PLATFORM_ROLLOUT_INVALID' })
+  }
+  const enabled = body.enabled === true
+  const browserEnabled = body.browserEnabled === true
+  const serverEnabled = body.serverEnabled === true
+  const debugEnabled = body.debugEnabled === true
+  const before = await c.env.DB.prepare(`
+    SELECT enabled, mode, browser_enabled, server_enabled, destination_id,
+      debug_enabled, rollout_percentage, revision
+    FROM ad_platform_connections WHERE provider = 'meta'
+  `).first<Record<string, unknown>>()
+  if (!before) return errorJson(c, 409, 'Meta 连接尚未初始化', { code: 'AD_PLATFORM_CONNECTION_MISSING' })
+
+  const identityChanged = before.destination_id !== destinationId || before.mode !== mode
+  const after = { enabled, mode, browserEnabled, serverEnabled, destinationId, debugEnabled, rolloutPercentage }
+  if (serverEnabled) {
+    const status = await getMetaConnectionStatus(c.env)
+    if (identityChanged || status.state !== 'verified' || mode !== 'production') {
+      return errorJson(c, 409, '必须先以当前连接完成验证并切换生产模式，才能启用 Server API', {
+        code: 'AD_PLATFORM_SERVER_GATE_BLOCKED',
+      })
+    }
+  }
+  await c.env.DB.batch([
+    c.env.DB.prepare(`
+      UPDATE ad_platform_connections
+      SET enabled = ?, mode = ?, browser_enabled = ?, server_enabled = ?,
+        destination_id = ?, debug_enabled = ?, rollout_percentage = ?,
+        revision = CASE WHEN ? THEN NULL ELSE revision END,
+        updated_at = datetime('now')
+      WHERE provider = 'meta'
+    `).bind(
+      enabled ? 1 : 0,
+      mode,
+      browserEnabled ? 1 : 0,
+      serverEnabled ? 1 : 0,
+      destinationId,
+      debugEnabled ? 1 : 0,
+      rolloutPercentage,
+      identityChanged ? 1 : 0,
+    ),
+    c.env.DB.prepare(`
+      UPDATE meta_connection_verifications
+      SET invalidated_at = CASE WHEN ? THEN datetime('now') ELSE invalidated_at END,
+        invalidation_reason = CASE WHEN ? THEN 'connection_configuration_changed' ELSE invalidation_reason END,
+        updated_at = datetime('now')
+      WHERE environment = 'production' AND ?
+    `).bind(identityChanged ? 1 : 0, identityChanged ? 1 : 0, identityChanged ? 1 : 0),
+    c.env.DB.prepare(`
+      INSERT INTO admin_audit_logs
+        (id, admin_id, action, target_type, target_id, before_value, after_value)
+      VALUES (?, ?, 'update_ad_platform_connection', 'ad_platform_connection', 'meta', ?, ?)
+    `).bind(
+      generateId('log'),
+      c.get('userId')!,
+      JSON.stringify(before),
+      JSON.stringify(after),
+    ),
+  ])
+  return c.json({ data: await listAdPlatformConnections(c.env) })
 })
 
 adminAttributionRoutes.get('/summary', async (c) => {
@@ -212,13 +291,13 @@ adminAttributionRoutes.get('/overview', async (c) => {
     `, [range.from, range.to]),
     queryFirst(c.env.DB, `
       SELECT
-        COALESCE(SUM(CASE WHEN channel = 'meta_pixel' AND status = 'attempted' THEN delivery_count ELSE 0 END), 0) AS pixel_attempted_count,
-        COALESCE(SUM(CASE WHEN channel = 'meta_pixel' AND status = 'pending' THEN delivery_count ELSE 0 END), 0) AS pixel_pending_count,
-        COALESCE(SUM(CASE WHEN channel = 'meta_pixel' AND status = 'skipped' THEN delivery_count ELSE 0 END), 0) AS pixel_skipped_count,
-        COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'sent' THEN delivery_count ELSE 0 END), 0) AS capi_sent_count,
-        COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'failed' THEN delivery_count ELSE 0 END), 0) AS capi_failed_count,
-        COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'skipped' THEN delivery_count ELSE 0 END), 0) AS capi_skipped_count,
-        COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'duplicate_suppressed' THEN delivery_count ELSE 0 END), 0) AS capi_duplicate_suppressed_count
+        COALESCE(SUM(CASE WHEN transport = 'browser' AND status = 'attempted' THEN delivery_count ELSE 0 END), 0) AS pixel_attempted_count,
+        COALESCE(SUM(CASE WHEN transport = 'browser' AND status = 'pending' THEN delivery_count ELSE 0 END), 0) AS pixel_pending_count,
+        COALESCE(SUM(CASE WHEN transport = 'browser' AND status = 'skipped' THEN delivery_count ELSE 0 END), 0) AS pixel_skipped_count,
+        COALESCE(SUM(CASE WHEN transport = 'server' AND status = 'sent' THEN delivery_count ELSE 0 END), 0) AS capi_sent_count,
+        COALESCE(SUM(CASE WHEN transport = 'server' AND status = 'failed' THEN delivery_count ELSE 0 END), 0) AS capi_failed_count,
+        COALESCE(SUM(CASE WHEN transport = 'server' AND status = 'skipped' THEN delivery_count ELSE 0 END), 0) AS capi_skipped_count,
+        COALESCE(SUM(CASE WHEN transport = 'server' AND status = 'duplicate_suppressed' THEN delivery_count ELSE 0 END), 0) AS capi_duplicate_suppressed_count
       FROM analytics_conversion_delivery_daily
       WHERE date BETWEEN ? AND ?
         AND provider = 'meta'
@@ -227,13 +306,13 @@ adminAttributionRoutes.get('/overview', async (c) => {
     queryAll(c.env.DB, `
       SELECT
         date,
-        COALESCE(SUM(CASE WHEN channel = 'meta_pixel' AND status = 'attempted' THEN delivery_count ELSE 0 END), 0) AS pixel_attempted_count,
-        COALESCE(SUM(CASE WHEN channel = 'meta_pixel' AND status = 'pending' THEN delivery_count ELSE 0 END), 0) AS pixel_pending_count,
-        COALESCE(SUM(CASE WHEN channel = 'meta_pixel' AND status = 'skipped' THEN delivery_count ELSE 0 END), 0) AS pixel_skipped_count,
-        COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'sent' THEN delivery_count ELSE 0 END), 0) AS capi_sent_count,
-        COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'failed' THEN delivery_count ELSE 0 END), 0) AS capi_failed_count,
-        COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'skipped' THEN delivery_count ELSE 0 END), 0) AS capi_skipped_count,
-        COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'duplicate_suppressed' THEN delivery_count ELSE 0 END), 0) AS capi_duplicate_suppressed_count
+        COALESCE(SUM(CASE WHEN transport = 'browser' AND status = 'attempted' THEN delivery_count ELSE 0 END), 0) AS pixel_attempted_count,
+        COALESCE(SUM(CASE WHEN transport = 'browser' AND status = 'pending' THEN delivery_count ELSE 0 END), 0) AS pixel_pending_count,
+        COALESCE(SUM(CASE WHEN transport = 'browser' AND status = 'skipped' THEN delivery_count ELSE 0 END), 0) AS pixel_skipped_count,
+        COALESCE(SUM(CASE WHEN transport = 'server' AND status = 'sent' THEN delivery_count ELSE 0 END), 0) AS capi_sent_count,
+        COALESCE(SUM(CASE WHEN transport = 'server' AND status = 'failed' THEN delivery_count ELSE 0 END), 0) AS capi_failed_count,
+        COALESCE(SUM(CASE WHEN transport = 'server' AND status = 'skipped' THEN delivery_count ELSE 0 END), 0) AS capi_skipped_count,
+        COALESCE(SUM(CASE WHEN transport = 'server' AND status = 'duplicate_suppressed' THEN delivery_count ELSE 0 END), 0) AS capi_duplicate_suppressed_count
       FROM analytics_conversion_delivery_daily
       WHERE date BETWEEN ? AND ?
         AND provider = 'meta'
@@ -245,9 +324,8 @@ adminAttributionRoutes.get('/overview', async (c) => {
       SELECT MAX(d.sent_at) AS last_sent_at
       FROM analytics_conversion_deliveries d
       JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
-      WHERE d.channel = 'meta_capi'
+      WHERE d.transport = 'server'
         AND d.provider = 'meta'
-        AND d.transport = 'server'
         AND d.status = 'sent'
         AND d.sent_at IS NOT NULL
         AND a.action_type IN ('contact', 'complete_registration')
@@ -497,32 +575,32 @@ adminAttributionRoutes.get('/meta', async (c) => {
   const [totals, rows, lastSentAt, settings, retryExhausted, matchQuality, connection, keyRotation] = await Promise.all([
     queryFirst(c.env.DB, `
       SELECT
-        COALESCE(SUM(CASE WHEN channel = 'meta_pixel' AND status = 'attempted' THEN delivery_count ELSE 0 END), 0) AS pixel_attempted_count,
-        COALESCE(SUM(CASE WHEN channel = 'meta_pixel' AND status = 'pending' THEN delivery_count ELSE 0 END), 0) AS pixel_pending_count,
-        COALESCE(SUM(CASE WHEN channel = 'meta_pixel' AND status = 'skipped' THEN delivery_count ELSE 0 END), 0) AS pixel_skipped_count,
-        COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'sent' THEN delivery_count ELSE 0 END), 0) AS capi_sent_count,
-        COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'failed' THEN delivery_count ELSE 0 END), 0) AS capi_failed_count,
-        COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'skipped' THEN delivery_count ELSE 0 END), 0) AS capi_skipped_count,
-        COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'duplicate_suppressed' THEN delivery_count ELSE 0 END), 0) AS duplicate_suppressed_count
+        COALESCE(SUM(CASE WHEN transport = 'browser' AND status = 'attempted' THEN delivery_count ELSE 0 END), 0) AS pixel_attempted_count,
+        COALESCE(SUM(CASE WHEN transport = 'browser' AND status = 'pending' THEN delivery_count ELSE 0 END), 0) AS pixel_pending_count,
+        COALESCE(SUM(CASE WHEN transport = 'browser' AND status = 'skipped' THEN delivery_count ELSE 0 END), 0) AS pixel_skipped_count,
+        COALESCE(SUM(CASE WHEN transport = 'server' AND status = 'sent' THEN delivery_count ELSE 0 END), 0) AS capi_sent_count,
+        COALESCE(SUM(CASE WHEN transport = 'server' AND status = 'failed' THEN delivery_count ELSE 0 END), 0) AS capi_failed_count,
+        COALESCE(SUM(CASE WHEN transport = 'server' AND status = 'skipped' THEN delivery_count ELSE 0 END), 0) AS capi_skipped_count,
+        COALESCE(SUM(CASE WHEN transport = 'server' AND status = 'duplicate_suppressed' THEN delivery_count ELSE 0 END), 0) AS duplicate_suppressed_count
       FROM analytics_conversion_delivery_daily
       WHERE date BETWEEN ? AND ?
         AND provider = 'meta'
         AND event_name IN ('Contact', 'CompleteRegistration')
     `, [range.from, range.to]),
     queryAll(c.env.DB, `
-      SELECT channel, event_name, status, skip_reason, SUM(delivery_count) AS delivery_count
+      SELECT transport, event_name, status, skip_reason, SUM(delivery_count) AS delivery_count
       FROM analytics_conversion_delivery_daily
       WHERE date BETWEEN ? AND ?
         AND provider = 'meta'
         AND event_name IN ('Contact', 'CompleteRegistration')
-      GROUP BY channel, event_name, status, skip_reason
-      ORDER BY channel ASC, event_name ASC, status ASC
+      GROUP BY transport, event_name, status, skip_reason
+      ORDER BY transport ASC, event_name ASC, status ASC
     `, [range.from, range.to]),
     queryFirst(c.env.DB, `
       SELECT MAX(d.sent_at) AS last_sent_at
       FROM analytics_conversion_deliveries d
       JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
-      WHERE d.channel = 'meta_capi'
+      WHERE d.transport = 'server'
         AND d.provider = 'meta'
         AND d.transport = 'server'
         AND d.status = 'sent'
@@ -530,17 +608,20 @@ adminAttributionRoutes.get('/meta', async (c) => {
         AND a.action_type IN ('contact', 'complete_registration')
     `, []),
     queryAll(c.env.DB, `
-      SELECT key, value
-      FROM site_settings
-      WHERE key IN ('facebook_pixel_enabled', 'facebook_pixel_id', 'meta_capi_enabled', 'meta_tracking_mode')
+      SELECT 'enabled' AS key, CASE enabled WHEN 1 THEN 'true' ELSE 'false' END AS value
+      FROM ad_platform_connections WHERE provider = 'meta'
+      UNION ALL SELECT 'browser_enabled', CASE browser_enabled WHEN 1 THEN 'true' ELSE 'false' END
+      FROM ad_platform_connections WHERE provider = 'meta'
+      UNION ALL SELECT 'server_enabled', CASE server_enabled WHEN 1 THEN 'true' ELSE 'false' END
+      FROM ad_platform_connections WHERE provider = 'meta'
+      UNION ALL SELECT 'mode', json_quote(mode) FROM ad_platform_connections WHERE provider = 'meta'
     `, []),
     queryFirst(c.env.DB, `
       SELECT COUNT(*) AS retry_exhausted_count
       FROM analytics_conversion_deliveries d
       JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
-      WHERE d.channel = 'meta_capi'
+      WHERE d.transport = 'server'
         AND d.provider = 'meta'
-        AND d.transport = 'server'
         AND d.status = 'failed'
         AND d.error_code = 'retry_exhausted'
         AND a.date BETWEEN ? AND ?
@@ -569,9 +650,8 @@ adminAttributionRoutes.get('/meta', async (c) => {
         END), 0) AS fbc_matched_count
       FROM analytics_conversion_deliveries d
       JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
-      WHERE d.channel = 'meta_capi'
+      WHERE d.transport = 'server'
         AND d.provider = 'meta'
-        AND d.transport = 'server'
         AND a.date >= date('now', '-6 days')
         AND a.action_type IN ('contact', 'complete_registration')
     `, []),
@@ -586,8 +666,7 @@ adminAttributionRoutes.get('/meta', async (c) => {
   const fbcSampleCount = numberValue(matchRow.fbc_sample_count)
   const fbpMatchedCount = numberValue(matchRow.fbp_matched_count)
   const fbcMatchedCount = numberValue(matchRow.fbc_matched_count)
-  const serializedSettings = serializeSettings(settings.rows)
-  const { facebook_pixel_id: _pixelId, ...publicSettings } = serializedSettings
+  const publicSettings = serializeSettings(settings.rows)
 
   return c.json({
     range,
@@ -685,9 +764,16 @@ async function buildReadinessResponse(c: AdminAttributionContext) {
         )
     `, []),
     queryAll(c.env.DB, `
-      SELECT key, value
-      FROM site_settings
-      WHERE key IN ('analytics_enabled', 'facebook_pixel_enabled', 'facebook_pixel_id', 'meta_capi_enabled', 'meta_tracking_mode')
+      SELECT key, value FROM site_settings WHERE key = 'analytics_enabled'
+      UNION ALL SELECT 'enabled', CASE enabled WHEN 1 THEN 'true' ELSE 'false' END
+      FROM ad_platform_connections WHERE provider = 'meta'
+      UNION ALL SELECT 'browser_enabled', CASE browser_enabled WHEN 1 THEN 'true' ELSE 'false' END
+      FROM ad_platform_connections WHERE provider = 'meta'
+      UNION ALL SELECT 'server_enabled', CASE server_enabled WHEN 1 THEN 'true' ELSE 'false' END
+      FROM ad_platform_connections WHERE provider = 'meta'
+      UNION ALL SELECT 'destination_configured', CASE WHEN destination_id <> '' THEN 'true' ELSE 'false' END
+      FROM ad_platform_connections WHERE provider = 'meta'
+      UNION ALL SELECT 'mode', json_quote(mode) FROM ad_platform_connections WHERE provider = 'meta'
     `, []),
   ])
   const schemaReady = numberValue((schema.rows[0] ?? {}).table_count) === 4
@@ -707,7 +793,7 @@ async function buildReadinessResponse(c: AdminAttributionContext) {
         SELECT COUNT(*) AS retry_exhausted_count
         FROM analytics_conversion_deliveries d
         JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
-        WHERE d.channel = 'meta_capi'
+        WHERE d.transport = 'server'
           AND d.provider = 'meta'
           AND d.transport = 'server'
           AND d.status = 'failed'
@@ -727,11 +813,11 @@ async function buildReadinessResponse(c: AdminAttributionContext) {
             AND a.source_channel <> 'internal'
             AND a.action_type IN ('contact', 'complete_registration')
           GROUP BY d.conversion_action_id, d.event_name
-          HAVING COUNT(DISTINCT CASE WHEN d.channel = 'meta_pixel' THEN d.external_event_id END) > 0
-            AND COUNT(DISTINCT CASE WHEN d.channel = 'meta_capi' THEN d.external_event_id END) > 0
+          HAVING COUNT(DISTINCT CASE WHEN d.transport = 'browser' THEN d.external_event_id END) > 0
+            AND COUNT(DISTINCT CASE WHEN d.transport = 'server' THEN d.external_event_id END) > 0
             AND (
-              COUNT(DISTINCT CASE WHEN d.channel = 'meta_pixel' THEN d.external_event_id END) <> 1
-              OR COUNT(DISTINCT CASE WHEN d.channel = 'meta_capi' THEN d.external_event_id END) <> 1
+              COUNT(DISTINCT CASE WHEN d.transport = 'browser' THEN d.external_event_id END) <> 1
+              OR COUNT(DISTINCT CASE WHEN d.transport = 'server' THEN d.external_event_id END) <> 1
               OR COUNT(DISTINCT d.external_event_id) <> 1
             )
         ) mismatches
@@ -740,7 +826,7 @@ async function buildReadinessResponse(c: AdminAttributionContext) {
         SELECT COUNT(*) AS pending_too_long_count
         FROM analytics_conversion_deliveries d
         JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
-        WHERE d.channel = 'meta_capi'
+        WHERE d.transport = 'server'
           AND d.provider = 'meta'
           AND d.transport = 'server'
           AND d.status = 'pending'
@@ -752,7 +838,7 @@ async function buildReadinessResponse(c: AdminAttributionContext) {
         SELECT COUNT(*) AS permanent_failure_count
         FROM analytics_conversion_deliveries d
         JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
-        WHERE d.channel = 'meta_capi'
+        WHERE d.transport = 'server'
           AND d.provider = 'meta'
           AND d.transport = 'server'
           AND d.status = 'failed'
@@ -784,7 +870,7 @@ async function buildReadinessResponse(c: AdminAttributionContext) {
           END), 0) AS fbc_matched_count
         FROM analytics_conversion_deliveries d
         JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
-        WHERE d.channel = 'meta_capi'
+        WHERE d.transport = 'server'
           AND d.provider = 'meta'
           AND d.transport = 'server'
           AND a.date BETWEEN ? AND ?
@@ -792,8 +878,8 @@ async function buildReadinessResponse(c: AdminAttributionContext) {
       `, [range.from, range.to]),
       queryFirst(c.env.DB, `
         SELECT
-          COALESCE(SUM(CASE WHEN channel = 'meta_pixel' AND status = 'attempted' THEN delivery_count ELSE 0 END), 0) AS pixel_attempted_count,
-          COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'sent' THEN delivery_count ELSE 0 END), 0) AS capi_sent_count
+          COALESCE(SUM(CASE WHEN transport = 'browser' AND status = 'attempted' THEN delivery_count ELSE 0 END), 0) AS pixel_attempted_count,
+          COALESCE(SUM(CASE WHEN transport = 'server' AND status = 'sent' THEN delivery_count ELSE 0 END), 0) AS capi_sent_count
         FROM analytics_conversion_delivery_daily
         WHERE date BETWEEN ? AND ?
           AND provider = 'meta'
@@ -832,13 +918,13 @@ async function buildReadinessResponse(c: AdminAttributionContext) {
     ]
 
   const settingMap = serializeSettings(settings.rows)
-  const mode = normalizeMetaTrackingMode(settingMap.meta_tracking_mode)
+  const mode = normalizeMetaTrackingMode(settingMap.mode)
   const modeRequiresMeta = mode === 'test' || mode === 'production'
   const secretPresent = hasConfiguredValue(c.env.META_CAPI_ACCESS_TOKEN)
   const testEventCodePresent = hasConfiguredValue(c.env.META_CAPI_TEST_EVENT_CODE)
-  const pixelEnabled = settingMap.facebook_pixel_enabled === true
-  const capiEnabled = settingMap.meta_capi_enabled === true
-  const pixelIdPresent = /^\d{5,30}$/.test(String(settingMap.facebook_pixel_id || '').trim())
+  const pixelEnabled = settingMap.enabled === true && settingMap.browser_enabled === true
+  const capiEnabled = settingMap.enabled === true && settingMap.server_enabled === true
+  const pixelIdPresent = settingMap.destination_configured === true
   const verificationMap = Object.fromEntries(releaseVerifications.rows.map(row => [String(row.verification_type || ''), row]))
   const liveVerification = verificationMap.meta_live
   const resourcesVerification = verificationMap.meta_resources
@@ -1069,27 +1155,22 @@ adminAttributionRoutes.post('/meta/rollout', async (c) => {
     blockers: body.force ? snapshot.promotion.blockers : [],
     environment: snapshot.environment,
   }
-  const nextRaw = JSON.stringify(body.percentage)
   const requireProductionModeCas = snapshot.environment === 'production'
     && current === 0
     && body.percentage === 10
   const productionModeCondition = requireProductionModeCas
-    ? `AND EXISTS (
-        SELECT 1 FROM site_settings AS tracking_mode
-        WHERE tracking_mode.key = 'meta_tracking_mode'
-          AND tracking_mode.value = ?
-      )`
+    ? `AND mode = ?`
     : ''
   const update = c.env.DB.prepare(`
-    UPDATE site_settings
-    SET value = ?, updated_at = datetime('now')
-    WHERE key = 'meta_capi_rollout_percentage'
-      AND value = ?
+    UPDATE ad_platform_connections
+    SET rollout_percentage = ?, updated_at = datetime('now')
+    WHERE provider = 'meta'
+      AND rollout_percentage = ?
       ${productionModeCondition}
   `).bind(
-    nextRaw,
-    snapshot.rawTargetValue,
-    ...(requireProductionModeCas ? [JSON.stringify('production')] : []),
+    body.percentage,
+    current,
+    ...(requireProductionModeCas ? ['production'] : []),
   )
   const audit = c.env.DB.prepare(`
     INSERT INTO admin_audit_logs (
@@ -1102,7 +1183,7 @@ adminAttributionRoutes.post('/meta/rollout', async (c) => {
     c.get('userId') ?? 0,
     'attribution.meta_rollout_update',
     'attribution',
-    'meta_capi_rollout_percentage',
+    'meta:rollout_percentage',
     JSON.stringify(beforeValue),
     JSON.stringify(afterValue),
   )
@@ -1278,22 +1359,15 @@ async function readMetaRolloutSnapshotWithUsage(
   force = false,
   knownConnectionVerified?: boolean,
 ): Promise<{ snapshot: MetaRolloutSnapshot; usage: D1Usage }> {
-  const [targetResult, trackingModeResult] = await Promise.all([
-    queryFirstWithUsage<{ value: string }>(c.env.DB.prepare(`
-      SELECT value FROM site_settings
-      WHERE key = 'meta_capi_rollout_percentage' LIMIT 1
-    `)),
-    queryFirstWithUsage<{ value: string }>(c.env.DB.prepare(`
-      SELECT value FROM site_settings
-      WHERE key = 'meta_tracking_mode' LIMIT 1
-    `)),
-  ])
-  const rawTargetValue = String(targetResult.row?.value ?? '')
-  const targetPercentage = normalizeMetaCapiRollout(
-    parseStoredSettingValue(rawTargetValue, undefined),
-  )
+  const configurationResult = await queryFirstWithUsage<{ rollout_percentage: number; mode: string }>(c.env.DB.prepare(`
+    SELECT rollout_percentage, mode
+    FROM ad_platform_connections
+    WHERE provider = 'meta' LIMIT 1
+  `))
+  const rawTargetValue = String(configurationResult.row?.rollout_percentage ?? '')
+  const targetPercentage = normalizeMetaCapiRollout(configurationResult.row?.rollout_percentage)
   const environment = auditEnvironment(c.env.APP_ENV)
-  const trackingMode = normalizeMetaTrackingMode(parseStoredSettingValue(String(trackingModeResult.row?.value || ''), ''))
+  const trackingMode = normalizeMetaTrackingMode(configurationResult.row?.mode)
   const releaseCommit = normalizeReleaseCommit(c.env.RELEASE_COMMIT)
   const [connectionResult, incidentResult, evidenceResult, metricsResult] = await Promise.all([
     knownConnectionVerified === undefined
@@ -1348,8 +1422,7 @@ async function readMetaRolloutSnapshotWithUsage(
       },
     },
     usage: mergeD1Usage(
-      targetResult.usage,
-      trackingModeResult.usage,
+      configurationResult.usage,
       connectionResult.usage,
       incidentResult.usage,
       evidenceResult.usage,
@@ -1523,7 +1596,8 @@ async function readMetaRolloutMetricsWithUsage(
             OR error_code LIKE '%permission%'
           ) THEN 1 ELSE 0 END), 0) AS critical_quality_diagnostic_count
       FROM analytics_conversion_deliveries
-      WHERE channel = 'meta_capi'
+      WHERE provider = 'meta'
+        AND transport = 'server'
         AND provider = 'meta'
         AND transport = 'server'
         AND rollout_target_percentage = ?
@@ -1932,7 +2006,7 @@ function serializeAttributionLink(row: Row) {
     id: String(row.id ?? ''),
     name: String(row.name ?? ''),
     sourceLabel: String(row.name ?? ''),
-    channel: String(row.channel ?? ''),
+    transport: String(row.transport ?? ''),
     slug: String(row.slug ?? ''),
     sourceCode: String(row.slug ?? ''),
     targetPath: String(row.target_path ?? '/'),

@@ -43,7 +43,7 @@ describe('facebook-pixel plugin', () => {
   })
 
   it('设置、授权和路由变化都只委托 Tracking Facade 重新判断 PageView', async () => {
-    const plugin = (await import('./facebook-pixel.client')).default
+    const plugin = (await import('./ad-platform.client')).default
 
     await plugin({} as never)
     expect(fetchSettings).toHaveBeenCalledOnce()
@@ -73,7 +73,7 @@ describe('facebook-pixel plugin', () => {
     trackPageView.mockClear()
     teardownPixel.mockClear()
     refreshMarketingConsent.mockRejectedValueOnce(new Error('receipt unavailable'))
-    const plugin = (await import('./facebook-pixel.client')).default
+    const plugin = (await import('./ad-platform.client')).default
 
     await expect(plugin({} as never)).resolves.toBeUndefined()
 

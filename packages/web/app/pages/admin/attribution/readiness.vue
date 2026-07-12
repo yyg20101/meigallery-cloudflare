@@ -89,10 +89,10 @@ function checkClass(check: ReadinessData['checks'][number]) {
         <div class="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div class="min-w-0 [overflow-wrap:anywhere]">
             <h2 class="min-w-0 text-sm font-semibold text-gray-900">相关配置</h2>
-            <p class="mt-1 min-w-0 text-sm text-gray-500">这里只展示状态，配置修改请进入站点设置。</p>
+            <p class="mt-1 min-w-0 text-sm text-gray-500">这里只展示状态，配置修改请返回归因看板。</p>
           </div>
-          <NuxtLink v-if="isOwner" to="/admin/settings" class="max-w-full rounded-lg border border-gray-200 bg-white px-3 py-2 [overflow-wrap:anywhere] text-sm text-gray-700 hover:bg-gray-50">
-            前往站点设置
+          <NuxtLink v-if="isOwner" to="/admin/attribution" class="max-w-full rounded-lg border border-gray-200 bg-white px-3 py-2 [overflow-wrap:anywhere] text-sm text-gray-700 hover:bg-gray-50">
+            返回归因看板
           </NuxtLink>
         </div>
         <div class="grid min-w-0 grid-cols-[minmax(0,1fr)] border-y border-gray-200 md:grid-cols-[repeat(2,minmax(0,1fr))]">

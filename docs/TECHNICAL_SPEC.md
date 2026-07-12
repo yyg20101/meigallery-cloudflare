@@ -633,12 +633,12 @@ INSERT INTO site_settings (key, value) VALUES
 | `analytics_conversion_actions` | `[当前实现]` | 站内转化事实；新写入只由 `recordContact()`、`recordRegistration()` 和注册事实修复函数创建 `contact` / `complete_registration`。历史 schema 继续只读兼容 `lead`、`start_trial` 和既有 `membership_grant`，不删除存量数据。 |
 | `analytics_conversion_deliveries` | `[当前实现]` | 广告平台投递账本，记录 provider、transport、`external_event_id`、连接版本、状态、跳过原因、失败错误、重试次数和发送时间。 |
 | `analytics_conversion_daily` | `[当前实现]` | 按日期、事件、来源、campaign、utm_content 等维度聚合站内转化，用于后台趋势和投放对比。 |
-| `analytics_conversion_delivery_daily` | `[当前实现]` | 按日期、channel、事件和 delivery 状态聚合同步结果，用于 Meta 同步健康和发布检查。 |
+| `analytics_conversion_delivery_daily` | `[当前实现]` | 按日期、provider、transport、事件和 delivery 状态聚合同步结果，用于平台同步健康和发布检查。 |
 
 实现约束：
 
-- migration `0047_ad_platform_delivery_core.sql` 为 delivery 增加通用 `provider`、`transport`、`connection_revision`，并将唯一目标约束改为 `conversion_action_id + provider + transport`。旧 `channel` / `meta_connection_revision` 只在兼容期保留；新增平台必须通过 adapter registry 接入，不得复制业务事实服务。
-- API 优先返回 provider-aware `trackingInstructions`，前端通过广告平台 adapter registry 执行。`pixelEvents` 仅为 Meta 兼容字段，后续在调用方全部迁移后单独删除。
+- migration `0047_ad_platform_delivery_core.sql` 建立统一连接表和最终 delivery schema，将唯一目标约束改为 `conversion_action_id + provider + transport`，并清空旧投递技术数据。旧 `channel`、`meta_connection_revision` 和旧 Meta 站点设置键已删除；新增平台必须通过 adapter registry 接入，不得复制业务事实服务。
+- API 只返回 provider-aware `trackingInstructions`，前端通过广告平台 adapter registry 执行，不保留 `pixelEvents` 兼容响应。
 
 - 正式活动 Meta 事件严格限定为 `Contact`、`CompleteRegistration`；`Lead`、`StartTrial` 仅为历史读取值，sender 与 recovery 均不得再次发送。
 - `/api/conversions/events` 为公开联系命令入口，仅允许提交 `contact`；完成注册由注册 API 的服务端事务创建。`lead`、`complete_registration`、`start_trial` 和 `membership_grant` 的公开提交均返回明确 4xx。
@@ -663,9 +663,9 @@ Meta CAPI v2 远端证据链：
 
 #### Meta 生产放行与回滚 `[当前实现 / 运维前置]`
 
-`0034_meta_production_readiness.sql` 在迁移后将不受支持的 tracking mode 收敛为 `disabled`；生产放行必须确认 `meta_capi_enabled=false`、rollout `0`，直至 Owner 按顺序显式开启。`0044` 将 Dataset Quality 快照绑定批准契约 digest，`0045` 将 live challenge 唯一环境收口为 production，`0046` 将 live 增强匹配证明收口到当前 challenge。Pixel 与 CAPI 都必须绑定当前有效 MetaConnection revision；连接失效时两条渠道均 fail closed。顺序固定为：代码关闭态 -> production bootstrap -> 生产部署 -> post-deploy attestation -> test mode MetaConnection -> production live evidence -> Dataset Quality full gate -> production mode -> CAPI 开关 -> `0 -> 10 -> 50 -> 100` 人工放量与观察。
+`0047_ad_platform_delivery_core.sql` 将运行配置收口到 `ad_platform_connections`；生产放行必须确认 `server_enabled=false`、rollout `0`，直至 Owner 按顺序显式开启。`0044` 将 Dataset Quality 快照绑定批准契约 digest，`0045` 将 live challenge 唯一环境收口为 production，`0046` 将 live 增强匹配证明收口到当前 challenge。Browser 与 Server 投递都必须绑定当前有效 MetaConnection revision；连接失效时两条路径均 fail closed。顺序固定为：代码关闭态 -> production bootstrap -> 生产部署 -> post-deploy attestation -> test mode MetaConnection -> production live evidence -> Dataset Quality full gate -> production mode -> Server 开关 -> `0 -> 10 -> 50 -> 100` 人工放量与观察。
 
-严格 Test Event 必须只包含 `Contact`、`CompleteRegistration`，出现 `Lead` 或 `StartTrial` 必须阻断，并且 CAPI 的 `sent` 与 `events_received=1` 同时成立。由用户营销授权门禁控制的 Pixel 只能写入 `attempted`，不能替代这项确认。任何阶段失败都必须将 mode 切回 `disabled` 并保持 `meta_capi_enabled=false`；先关闭 CAPI、再关闭 mode，保留 Queue/DLQ、D1 migration 和账本用于诊断。
+严格 Test Event 必须只包含 `Contact`、`CompleteRegistration`，出现 `Lead` 或 `StartTrial` 必须阻断，并且 CAPI 的 `sent` 与 `events_received=1` 同时成立。由用户营销授权门禁控制的 Pixel 只能写入 `attempted`，不能替代这项确认。任何阶段失败都必须将 mode 切回 `disabled` 并保持 `server_enabled=false`；先关闭 Server 投递、再关闭 mode，保留 Queue/DLQ、D1 migration 和账本用于诊断。
 
 当前外部 blocker 以后台实时状态为准：最终 production commit 必须具有未过期的 Meta live、resource attestation 与 Dataset Quality 快照。首次 bootstrap 可以在 rollout `0` 且 CAPI 关闭时执行；在 post-deploy/full gate 全部通过前不得提高 rollout。
 
