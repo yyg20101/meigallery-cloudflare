@@ -925,6 +925,7 @@ function createRolloutDb(options: RolloutDbOptions = {}) {
     }
     if (sql.includes('FROM analytics_release_verifications')) {
       if (options.liveEvidence === false || options.resourceIsolation === false) return []
+      if (sql.includes("verification_type = 'meta_live'")) return [{ id: 'verification_meta_live' } as T]
       if (sql.includes("environment = 'production'")) {
         return [{
           summary: JSON.stringify(options.resourceSummary ?? fullResourceSummary()),
@@ -1058,7 +1059,7 @@ function createRolloutDb(options: RolloutDbOptions = {}) {
 }
 
 const VALID_ROLLOUT_ENV = {
-  APP_ENV: 'dev',
+  APP_ENV: 'production',
   META_CAPI_ACCESS_TOKEN: 'rollout-token',
   META_CAPI_TEST_EVENT_CODE: 'test-code',
   RELEASE_COMMIT: VALID_RELEASE_COMMIT,
@@ -2458,7 +2459,7 @@ describe('后台归因中心 API', () => {
         force: true,
         reason,
         blockers: ['insufficient_attempts'],
-        environment: 'dev',
+        environment: 'production',
       },
     })
     expect(JSON.stringify(forced.db.audits)).not.toContain('rollout-token')
@@ -2756,16 +2757,16 @@ describe('Meta CAPI v2 质量运维看板契约', () => {
     const res = await createApp('admin').request(
       `/api/admin/attribution/meta/status?${singleDay}`,
       {},
-      { DB: db, ...VALID_READINESS_ENV } as unknown as Bindings,
+      { DB: db, ...VALID_READINESS_ENV, APP_ENV: 'production' } as unknown as Bindings,
     )
     const body = await res.json()
 
     expect(res.status).toBe(200)
-    expect(body.usage).toEqual({ rowsRead: 163, rowsWritten: 0, durationMs: 31 })
+    expect(body.usage).toEqual({ rowsRead: 176, rowsWritten: 0, durationMs: 31 })
     expect(db.calls.filter(call => call.sql.includes("key = 'facebook_pixel_id'"))).toHaveLength(1)
     expect(db.calls.filter(call => call.sql.includes("key = 'meta_tracking_mode'"))).toHaveLength(2)
     expect(db.calls.filter(call => call.sql.includes('FROM meta_connection_verifications'))).toHaveLength(1)
-    expect(db.calls).toHaveLength(12)
+    expect(db.calls).toHaveLength(13)
   })
 
   it('breakdown 以 conversion fact 为 action 基数，双通道不会翻倍', async () => {

@@ -53,7 +53,7 @@ async function verifyConnection() {
 
 async function runLiveEvidence() {
   if (busy.value) return
-  if (props.connection?.environment !== 'dev') return
+  if (props.connection?.environment !== 'production') return
   evidencing.value = true
   message.value = ''
   try {
@@ -108,7 +108,7 @@ async function runLiveEvidence() {
           {{ verifying ? '验证中...' : '验证连接' }}
         </button>
         <button
-          v-if="connection?.environment === 'dev'"
+          v-if="connection?.environment === 'production'"
           data-meta-live-evidence
           class="rounded-md bg-gray-950 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60"
           type="button"

@@ -31,6 +31,7 @@ beforeAll(async () => {
     CREATE TABLE site_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
   `)
   await applyMigration('0041_meta_live_challenges.sql')
+  await applyMigration('0045_meta_live_production.sql')
 }, 30_000)
 
 beforeEach(async () => {
@@ -55,9 +56,9 @@ afterAll(async () => {
 })
 
 describe('Meta live Worker challenge', () => {
-  it('由 dev Worker 持久化恰好两组 opaque ID，Browser 与 CAPI 使用同组 ID', async () => {
+  it('由 production Worker 持久化恰好两组 opaque ID，Browser 与 CAPI 使用同组 ID', async () => {
     const challenge = await createMetaLiveChallenge(env(), 1)
-    expect(challenge.environment).toBe('dev')
+    expect(challenge.environment).toBe('production')
     expect(challenge.commitSha).toBe(COMMIT)
     expect(Object.keys(challenge.eventIds).sort()).toEqual(['CompleteRegistration', 'Contact'])
     expect(Object.values(challenge.eventIds).every(isOpaqueSyntheticEventId)).toBe(true)
@@ -131,9 +132,9 @@ describe('Meta live Worker challenge', () => {
 
 function env(overrides: Partial<Bindings> = {}) {
   return {
-    APP_ENV: 'dev',
+    APP_ENV: 'production',
     DB: db,
-    META_CAPI_ACCESS_TOKEN: 'dev-token',
+    META_CAPI_ACCESS_TOKEN: 'production-token',
     META_CAPI_TEST_EVENT_CODE: 'test-code',
     META_CAPI_DATA_KEY_CURRENT: DATA_KEY,
     META_CAPI_QUEUE: { send: vi.fn() },

@@ -652,18 +652,18 @@ INSERT INTO site_settings (key, value) VALUES
 
 Meta CAPI v2 远端证据链：
 
-- migration `0041_meta_live_challenges.sql` 保存绑定 environment、40 字符 commit 和有效期的一次性 dev challenge；Browser `fbq` 与 Server CAPI 只允许 `Contact`、`CompleteRegistration`，共享 opaque external event ID，消费后不得恢复原始 ID。
+- migrations `0041_meta_live_challenges.sql` 与 `0045_meta_live_production.sql` 保存绑定 production、40 字符 commit 和有效期的一次性 challenge；正式域名 Browser `fbq` 与 production CAPI 只允许 `Contact`、`CompleteRegistration`，共享 opaque external event ID，消费后不得恢复原始 ID。
 - migration `0042_meta_resource_attestation_tickets.sql` 保存 60 秒 D1 原子一次性 ticket。Owner Cookie 只能在固定可信 API origin 换取 ticket；`/api/meta/resource-attestation` 只接受 ticket 并返回 HMAC 摘要，最终请求不携带 Cookie，ticket 响应和审计均不得回显凭据。
 - production 冷启动 gate 分为 `bootstrap`、`post-deploy`、`full`：当前 commit 与未过期 D1 bootstrap permit 决定首次部署资格；部署后必须通过资源 attestation 和 `trackingMode=test` 的真实 Test Event；完整 gate 通过后才能切换 production，并由 Owner 将 rollout 从 `0` 手动升至 `10`。系统不得自动升级，只能因 incident 自动降至 `0`。
-- Dataset Quality 使用唯一 production Dataset：批准契约固定 `GET /v25.0/dataset_quality` 的字段白名单，collector 只在 production 每日执行并写入契约 version/digest。dev live evidence 不依赖或复制 production 质量快照；首次 production bootstrap 保持 rollout `0`，部署后的 full gate 必须验证 production collector 的两项活动事件快照与 24 小时新鲜度。
+- Dataset Quality 使用唯一 production Dataset：批准契约固定 `GET /v25.0/dataset_quality` 的字段白名单，collector 只在 production 每日执行并写入契约 version/digest。production live evidence 不直接读取质量快照；首次 bootstrap 保持 rollout `0`，full gate 必须同时验证 live evidence 与两项活动事件快照的 24 小时新鲜度。
 
 #### Meta 生产放行与回滚 `[当前实现 / 运维前置]`
 
-`0034_meta_production_readiness.sql` 在迁移后将不受支持的 tracking mode 收敛为 `disabled`；生产放行必须确认 `meta_tracking_mode=disabled`、`meta_capi_enabled=false`，直至 Owner 按顺序显式开启。`0044_meta_dataset_quality_contract_digest.sql` 将每条 Dataset Quality 快照绑定 Git tracked approved contract 的精确 SHA-256 digest，版本相同但内容不同不得复用旧 collector 结果。Pixel 与 CAPI 都必须绑定当前有效 MetaConnection revision；连接失效时两条渠道均 fail closed。生产 `event_id` 由服务端 `SESSION_SECRET` 对规范化业务去重基础做 HMAC，外部值不包含用户 ID、session 或联系方式输入。顺序固定为：代码关闭态 -> dev live evidence -> 生产资源与 migrations `0036..0044` -> 最终 main HEAD 重新部署 dev 并生成同 commit evidence -> `bootstrap` gate -> production deploy 强制 fresh `verify:release` 并校验新报告 -> 生产部署 -> `post-deploy` attestation -> `test` mode Owner Test Event -> `full` gate -> `production` mode -> CAPI 开关 -> `0 -> 10 -> 50 -> 100` 人工放量与观察。
+`0034_meta_production_readiness.sql` 在迁移后将不受支持的 tracking mode 收敛为 `disabled`；生产放行必须确认 `meta_capi_enabled=false`、rollout `0`，直至 Owner 按顺序显式开启。`0044` 将 Dataset Quality 快照绑定批准契约 digest，`0045` 将 live challenge 唯一环境收口为 production。Pixel 与 CAPI 都必须绑定当前有效 MetaConnection revision；连接失效时两条渠道均 fail closed。顺序固定为：代码关闭态 -> production bootstrap -> 生产部署 -> post-deploy attestation -> test mode MetaConnection -> production live evidence -> Dataset Quality full gate -> production mode -> CAPI 开关 -> `0 -> 10 -> 50 -> 100` 人工放量与观察。
 
 严格 Test Event 必须只包含 `Contact`、`CompleteRegistration`，出现 `Lead` 或 `StartTrial` 必须阻断，并且 CAPI 的 `sent` 与 `events_received=1` 同时成立。由用户营销授权门禁控制的 Pixel 只能写入 `attempted`，不能替代这项确认。任何阶段失败都必须将 mode 切回 `disabled` 并保持 `meta_capi_enabled=false`；先关闭 CAPI、再关闭 mode，保留 Queue/DLQ、D1 migration 和账本用于诊断。
 
-当前外部 blocker：仍缺少当前最终 commit 的真实远端 dev challenge、Meta live、resource attestation，以及 production 部署后生成的 Dataset Quality 快照。首次 production bootstrap 可以在 rollout `0` 且 CAPI 关闭时执行；在 post-deploy/full gate 全部通过前不得提高 rollout。
+当前外部 blocker 以后台实时状态为准：最终 production commit 必须具有未过期的 Meta live、resource attestation 与 Dataset Quality 快照。首次 bootstrap 可以在 rollout `0` 且 CAPI 关闭时执行；在 post-deploy/full gate 全部通过前不得提高 rollout。
 
 成本与索引口径：
 

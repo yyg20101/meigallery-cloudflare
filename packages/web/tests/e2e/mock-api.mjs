@@ -161,7 +161,7 @@ let adminAttributionRolloutTarget = 10
 let adminAttributionIncidentOpen = true
 let adminAttributionRolloutScenario = 'hard'
 let adminAttributionDatasetScenario = 'unavailable'
-let adminAttributionEnvironment = 'dev'
+let adminAttributionEnvironment = 'production'
 const adminAttributionRequests = []
 const adminAttributionActions = []
 
@@ -184,7 +184,7 @@ function resetPublicSettings() {
   adminAttributionIncidentOpen = true
   adminAttributionRolloutScenario = 'hard'
   adminAttributionDatasetScenario = 'unavailable'
-  adminAttributionEnvironment = 'dev'
+  adminAttributionEnvironment = 'production'
   adminAttributionRequests.length = 0
   adminAttributionActions.length = 0
 }
@@ -644,7 +644,7 @@ function adminAttributionResponse(pathname, searchParams) {
         queueBindingPresent: true,
         connection: {
           state: 'unverified',
-          environment: 'dev',
+          environment: 'production',
           pixelIdConfigured: true,
           tokenConfigured: true,
           testEventCodeConfigured: true,
@@ -709,7 +709,7 @@ function adminAttributionResponse(pathname, searchParams) {
           meta_tracking_mode: mutablePublicSettings.meta_tracking_mode,
         },
         verifications: {
-          environment: 'dev',
+          environment: 'production',
           releaseCommitPresent: true,
           metaLive: { present: true, verifiedAt: '2026-07-10T08:00:00.000Z', expiresAt: '2026-07-11T08:00:00.000Z' },
           metaResources: { present: true, verifiedAt: '2026-07-10T08:05:00.000Z', expiresAt: '2026-07-11T08:05:00.000Z' },
@@ -1011,7 +1011,7 @@ function handleApi(req, res) {
     return json(res, {
       data: {
         challengeId: `mlc_${'c'.repeat(32)}`,
-        environment: 'dev',
+        environment: 'production',
         commitSha: 'a'.repeat(40),
         pixelId: '1234567890',
         expiresAt: '2026-07-11T01:00:00.000Z',

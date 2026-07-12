@@ -8,7 +8,7 @@ import {
   createProductionPostDeployMetaResourcesSummary,
   PRODUCTION_POST_DEPLOY_META_RESOURCES_FIELDS,
 } from './meta-resources-summary-fixture.mjs'
-import { readRemoteDevGate } from './verify-release.mjs'
+import { readRemoteProductionLiveGate } from './verify-release.mjs'
 
 const COMMIT = '18dc11e0b0e4797683d4551a93a1f22e53dc4628'
 
@@ -58,15 +58,15 @@ describe('发布验证 D1 摘要存储', () => {
     assert.deepEqual(args.slice(args.indexOf('meigallery-db-dev') + 1, args.indexOf('meigallery-db-dev') + 3), ['--env', 'dev'])
   })
 
-  it('真实 store 接受严格 V2 meta_live 摘要，写入后可由远端 gate 读取通过', async () => {
+  it('真实 production store 接受严格 V2 meta_live 摘要，写入后可由远端 gate 读取通过', async () => {
     let storedSummary = ''
     const contract = { version: 3, digest: `sha256:${'9'.repeat(64)}` }
     const result = await recordReleaseVerificationSummary({
-      environment: 'dev',
+      environment: 'production',
       verificationType: 'meta_live',
       commit: COMMIT,
       verifiedAt: '2026-07-10T00:00:00.000Z',
-      summary: metaLiveSummary('dev', contract),
+      summary: metaLiveSummary('production', contract),
       runCommand: async (_command, args, options) => {
         const sql = args[args.indexOf('--command') + 1]
         const match = sql.match(/'((?:[^']|'')*)', '2026-07-10T00:00:00\.000Z'/)
@@ -77,7 +77,7 @@ describe('发布验证 D1 摘要存储', () => {
     })
     assert.equal(result.status, 'passed')
 
-    const gate = await readRemoteDevGate({
+    const gate = await readRemoteProductionLiveGate({
       commit: COMMIT,
       contract,
       now: '2026-07-10T12:00:00.000Z',
@@ -96,23 +96,23 @@ describe('发布验证 D1 摘要存储', () => {
     assert.equal(gate.status, 'passed')
   })
 
-  it('远端 dev gate 先拒绝非 40 位 commit，且不执行 D1 查询', async () => {
-    await assert.rejects(readRemoteDevGate({
+  it('远端 production gate 先拒绝非 40 位 commit，且不执行 D1 查询', async () => {
+    await assert.rejects(readRemoteProductionLiveGate({
       commit: "a' OR 1=1 --",
       contract: { version: 3, digest: `sha256:${'9'.repeat(64)}` },
       runCommand: async () => assert.fail('非法 commit 不得进入 SQL'),
     }), /40 位 commit/)
   })
 
-  it('远端 dev gate 复用 store schema，拒绝 false、乱序、raw ID 和额外字段', async () => {
+  it('远端 production gate 复用 store schema，拒绝 false、乱序、raw ID 和额外字段', async () => {
     const contract = { version: 3, digest: `sha256:${'9'.repeat(64)}` }
     for (const summary of [
-      { ...metaLiveSummary('dev', contract), eventsVerified: false },
-      { ...metaLiveSummary('dev', contract), events: ['CompleteRegistration', 'Contact'] },
-      { ...metaLiveSummary('dev', contract), browserEventId: `mlv_${'a'.repeat(32)}` },
-      { ...metaLiveSummary('dev', contract), raw: { eventId: 'raw-id' } },
+      { ...metaLiveSummary('production', contract), eventsVerified: false },
+      { ...metaLiveSummary('production', contract), events: ['CompleteRegistration', 'Contact'] },
+      { ...metaLiveSummary('production', contract), browserEventId: `mlv_${'a'.repeat(32)}` },
+      { ...metaLiveSummary('production', contract), raw: { eventId: 'raw-id' } },
     ]) {
-      const gate = await readRemoteDevGate({
+      const gate = await readRemoteProductionLiveGate({
         commit: COMMIT,
         contract,
         now: '2026-07-10T12:00:00.000Z',
@@ -130,7 +130,7 @@ describe('发布验证 D1 摘要存储', () => {
     }
   })
 
-  it('远端 dev gate 应用层严格校验 verified_at/expires_at 及固定 TTL', async () => {
+  it('远端 production gate 应用层严格校验 verified_at/expires_at 及固定 TTL', async () => {
     const contract = { version: 3, digest: `sha256:${'9'.repeat(64)}` }
     for (const [verifiedAt, expiresAt, now] of [
       ['2026-07-10T00:00:00.000Z', '2026-07-11T00:00:00.000Z', '2026-07-11T00:00:00.000Z'],
@@ -138,7 +138,7 @@ describe('发布验证 D1 摘要存储', () => {
       ['2026-07-10T00:00:00.000Z', '2026-07-10T23:59:59.000Z', '2026-07-10T12:00:00.000Z'],
       ['not-a-date', '2026-07-11T00:00:00.000Z', '2026-07-10T12:00:00.000Z'],
     ]) {
-      const gate = await readRemoteDevGate({
+      const gate = await readRemoteProductionLiveGate({
         commit: COMMIT,
         contract,
         now,
@@ -146,7 +146,7 @@ describe('发布验证 D1 摘要存储', () => {
           name: options.name,
           status: 'passed',
           stdout: JSON.stringify([{ results: [{
-            summary: JSON.stringify(metaLiveSummary('dev', contract)),
+            summary: JSON.stringify(metaLiveSummary('production', contract)),
             verified_at: verifiedAt,
             expires_at: expiresAt,
           }] }]),

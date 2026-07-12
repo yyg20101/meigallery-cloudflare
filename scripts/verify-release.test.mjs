@@ -278,19 +278,13 @@ describe('发布验证 CLI', () => {
         assertReportCanGateProduction: () => {},
         collectTrustedProductionGateFacts: options => collectTrustedProductionGateFacts({
           ...options,
-          verifyDevReleaseIdentity: async () => {},
+          verifyProductionReleaseIdentity: async () => {},
           verifyApprovedMetaDatasetQualityContract: async () => ({ version: 3, digest: `sha256:${'9'.repeat(64)}` }),
-          readRemoteDevGate: async () => ({ status: 'passed' }),
+          readRemoteProductionLiveGate: async () => ({ status: 'passed' }),
           readTrustedProductionBootstrapPermit: async () => permitPresent,
           runMetaResourceVerification: async input => {
             if (input.environment === 'production') phases.push(input.phase)
-            return input.environment === 'dev'
-              ? {
-                  status: 'passed', connectionVerified: true, openCriticalIncidentCount: 0,
-                  datasetQualityCollectorCurrent: true, datasetQualityContractVersion: 3,
-                  datasetQualityContractDigest: `sha256:${'9'.repeat(64)}`,
-                }
-              : {
+            return {
                   status: 'passed', openCriticalIncidentCount: 0,
                   targetRolloutPercentage: 0, effectiveRolloutPercentage: 0,
                   datasetQualityCollectorCurrent: true,
@@ -310,9 +304,9 @@ describe('发布验证 CLI', () => {
     await collectTrustedProductionGateFacts({
       commit: RELEASE_COMMIT,
       now: '2026-07-11T12:00:00.000Z',
-      verifyDevReleaseIdentity: async () => {},
+      verifyProductionReleaseIdentity: async () => {},
       verifyApprovedMetaDatasetQualityContract: async () => ({ version: 3, digest: `sha256:${'9'.repeat(64)}` }),
-      readRemoteDevGate: async () => ({ status: 'passed' }),
+      readRemoteProductionLiveGate: async () => ({ status: 'passed' }),
       runCommand: async (_command, args, options) => {
         permitQuery = args[args.indexOf('--command') + 1]
         return {
@@ -326,13 +320,7 @@ describe('发布验证 CLI', () => {
       },
       runMetaResourceVerification: async input => {
         if (input.environment === 'production') phases.push(input.phase)
-        return input.environment === 'dev'
-          ? {
-              status: 'passed', connectionVerified: true, openCriticalIncidentCount: 0,
-              datasetQualityCollectorCurrent: true, datasetQualityContractVersion: 3,
-              datasetQualityContractDigest: `sha256:${'9'.repeat(64)}`,
-            }
-          : { status: 'passed', openCriticalIncidentCount: 0, targetRolloutPercentage: 0, effectiveRolloutPercentage: 0 }
+        return { status: 'passed', openCriticalIncidentCount: 0, targetRolloutPercentage: 0, effectiveRolloutPercentage: 0 }
       },
     })
     assert.deepEqual(phases, ['bootstrap'])
@@ -632,7 +620,7 @@ describe('发布验证 CLI', () => {
       readLatestMetaLiveEvidence: async () => ({
         schemaVersion: 2,
         commitSha: RELEASE_COMMIT,
-        environment: 'dev',
+        environment: 'production',
         capturedAt: '2026-07-10T00:00:00.000Z',
         expiresAt: '2026-07-11T00:00:00.000Z',
         events: ['Contact', 'CompleteRegistration'].map(eventName => ({ eventName })),
@@ -717,7 +705,7 @@ describe('发布验证 CLI', () => {
       readLatestMetaLiveEvidence: async () => ({
         schemaVersion: 2,
         commitSha: RELEASE_COMMIT,
-        environment: 'dev',
+        environment: 'production',
         capturedAt: '2026-07-10T00:00:00.000Z',
         expiresAt: '2026-07-11T00:00:00.000Z',
         events: ['Contact', 'CompleteRegistration'].map(eventName => ({ eventName })),
@@ -767,7 +755,7 @@ describe('发布验证 CLI', () => {
       readLatestMetaLiveEvidence: async () => ({
         schemaVersion: 2,
         commitSha: RELEASE_COMMIT,
-        environment: 'dev',
+        environment: 'production',
         capturedAt: '2026-07-10T00:00:00.000Z',
         expiresAt: '2026-07-11T00:00:00.000Z',
         events: ['Contact', 'CompleteRegistration'].map(eventName => ({ eventName })),

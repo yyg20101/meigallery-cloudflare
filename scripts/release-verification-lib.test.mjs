@@ -90,7 +90,7 @@ function createValidReleaseReport() {
     metaLiveVerification: {
       status: 'passed',
       commit: RELEASE_COMMIT,
-      environment: 'dev',
+      environment: 'production',
       verifiedAt: '2026-07-09T00:00:00.000Z',
       expiresAt: '2026-07-10T00:00:00.000Z',
       events: ['Contact', 'CompleteRegistration'],
@@ -102,7 +102,7 @@ function createValidReleaseReport() {
     metaResources: {
       dev: {
         status: 'passed',
-        environment: 'dev',
+        environment: 'production',
         commit: RELEASE_COMMIT,
         capiEnabled: true,
         connectionVerified: true,
@@ -780,7 +780,7 @@ describe('发布验证基础库', () => {
     }, /artifacts\[1\]/)
   })
 
-  it('assertReportCanGateProduction 强制同 commit live evidence 与两套资源摘要', () => {
+  it('assertReportCanGateProduction 强制同 commit production live evidence 与资源摘要', () => {
     const base = createValidReleaseReport()
 
     for (const report of [
@@ -788,7 +788,6 @@ describe('发布验证基础库', () => {
       { ...base, metaLiveVerification: { ...base.metaLiveVerification, status: 'failed' } },
       { ...base, metaLiveVerification: { ...base.metaLiveVerification, events: ['Contact', 'Lead', 'CompleteRegistration'] } },
       { ...base, metaLiveVerification: { ...base.metaLiveVerification, events: ['Contact', 'CompleteRegistration', 'StartTrial'] } },
-      { ...base, metaResources: { ...base.metaResources, dev: { ...base.metaResources.dev, status: 'failed' } } },
       { ...base, metaResources: { ...base.metaResources, production: { ...base.metaResources.production, status: 'failed' } } },
     ]) {
       assert.throws(() => {

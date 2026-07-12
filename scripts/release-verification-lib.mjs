@@ -527,7 +527,7 @@ function validateMetaReleaseSummary(report, reasons, now) {
   } else {
     if (live.status !== 'passed') reasons.push('Meta live evidence 未通过')
     if (live.commit !== report.git?.commit) reasons.push('Meta live evidence commit 与报告 commit 不一致')
-    if (live.environment !== 'dev') reasons.push('Meta live evidence 必须来自 dev')
+    if (live.environment !== 'production') reasons.push('Meta live evidence 必须来自 production')
     if (!Array.isArray(live.events) || live.events.length !== 2 || !['Contact', 'CompleteRegistration'].every(name => live.events.includes(name))) {
       reasons.push('Meta live evidence 事件集合不完整')
     }
@@ -550,9 +550,8 @@ function validateMetaReleaseSummary(report, reasons, now) {
     reasons.push('Dataset Quality tracked approved contract/digest 未通过')
   }
 
-  for (const environment of ['dev', 'production']) {
+  for (const environment of ['production']) {
     const resource = report.metaResources?.[environment]
-    if (bootstrap && environment === 'dev' && resource?.status === 'skipped') continue
     if (!resource || typeof resource !== 'object' || resource.status !== 'passed' || resource.environment !== environment) {
       reasons.push(`Meta ${environment} 资源检查未通过`)
     } else if (resource.commit !== report.git?.commit) {
@@ -570,11 +569,11 @@ function validateMetaReleaseSummary(report, reasons, now) {
           reasons.push('Meta production bootstrap 资源或环境隔离证明不完整')
         }
       }
-      if (!bootstrap && environment === 'dev') {
+      if (!bootstrap && environment === 'production') {
         if (resource.datasetQualityContractVersion !== contract?.version
           || resource.datasetQualityContractDigest !== contract?.digest
           || resource.datasetQualityCollectorCurrent !== true) {
-          reasons.push('dev Dataset Quality collector/contract digest 不是当前状态')
+          reasons.push('production Dataset Quality collector/contract digest 不是当前状态')
         }
       }
     }

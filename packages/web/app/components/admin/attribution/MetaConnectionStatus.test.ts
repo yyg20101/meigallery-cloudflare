@@ -42,7 +42,7 @@ describe('MetaConnectionStatus', () => {
     let release!: () => void
     const pending = new Promise(resolve => { release = () => resolve({ data: { status: 'verified', eventsReceived: 1 } }) })
     const api = vi.fn(() => pending)
-    const wrapper = mountStatus('dev', api)
+    const wrapper = mountStatus('production', api)
     const vm = wrapper.vm as unknown as {
       verifyConnection: () => Promise<void>
       runLiveEvidence: () => Promise<void>
@@ -68,7 +68,7 @@ describe('MetaConnectionStatus', () => {
     expect(wrapper.get('[role="status"]').text()).toBe('MetaConnection 验证成功')
   })
 
-  it('dev 单独显示 Live Evidence 按钮并执行两事件 challenge', async () => {
+  it('production 显示 Live Evidence 按钮并执行两事件 challenge', async () => {
     const challenge = {
       data: {
         challengeId: 'challenge_1',
@@ -80,7 +80,7 @@ describe('MetaConnectionStatus', () => {
       .mockResolvedValueOnce(challenge)
       .mockResolvedValueOnce({ data: { status: 'server_sent', eventsReceived: 2 } })
     const sendMetaLiveChallenge = vi.fn(() => true)
-    const wrapper = mountStatus('dev', api, sendMetaLiveChallenge)
+    const wrapper = mountStatus('production', api, sendMetaLiveChallenge)
 
     await wrapper.get('[data-meta-live-evidence]').trigger('click')
 
@@ -100,7 +100,7 @@ describe('MetaConnectionStatus', () => {
 
     await vi.waitFor(() => expect(api).toHaveBeenCalledWith('/api/admin/attribution/meta/test-event', { method: 'POST' }))
     expect(wrapper.get('[role="status"]').text()).toBe('MetaConnection 验证成功')
-    expect(wrapper.find('[data-meta-live-evidence]').exists()).toBe(false)
+    expect(wrapper.find('[data-meta-live-evidence]').exists()).toBe(true)
   })
 
   it('production Test Event 的后端 blocker 原文直接展示', async () => {

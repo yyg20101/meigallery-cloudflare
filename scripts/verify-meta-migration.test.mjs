@@ -56,6 +56,7 @@ function mockJsonFor(name, options = {}) {
       delivery_unique_index: 1,
       circuit_index_count: 4,
       challenge_table: 1,
+      challenge_table_sql: "CREATE TABLE meta_live_challenges (... CHECK (environment = 'production'))",
       challenge_index: 1,
       ticket_table: 1,
       ticket_index: 1,
@@ -89,10 +90,11 @@ describe('Meta migration 演练', () => {
     'meta-migration-apply-0042',
     'meta-migration-apply-0043',
     'meta-migration-apply-0044',
+    'meta-migration-apply-0045',
     'meta-migration-query-history',
     'meta-migration-query-schema',
     'meta-migration-query-setting',
-    'meta-migration-empty-apply-0001-0044',
+    'meta-migration-empty-apply-0001-0045',
     'meta-migration-empty-query-schema',
   ]) {
     it(`当 ${name} 命令失败时演练失败`, async () => {
@@ -181,7 +183,8 @@ describe('Meta migration 演练', () => {
     assert.ok(names.indexOf('meta-migration-apply-0041') < names.indexOf('meta-migration-apply-0042'))
     assert.ok(names.indexOf('meta-migration-apply-0042') < names.indexOf('meta-migration-apply-0043'))
     assert.ok(names.indexOf('meta-migration-apply-0043') < names.indexOf('meta-migration-apply-0044'))
-    assert.ok(names.includes('meta-migration-empty-apply-0001-0044'))
+    assert.ok(names.indexOf('meta-migration-apply-0044') < names.indexOf('meta-migration-apply-0045'))
+    assert.ok(names.includes('meta-migration-empty-apply-0001-0045'))
     assert.ok(names.includes('meta-migration-empty-query-schema'))
   })
 
@@ -207,7 +210,7 @@ describe('Meta migration 演练', () => {
 
       const result = await runMetaMigrationVerification({ runCommand })
       assert.equal(result.status, 'failed')
-      assert.match(result.error, /0040-0044 schema/)
+      assert.match(result.error, /0040-0045 schema/)
     })
   }
 

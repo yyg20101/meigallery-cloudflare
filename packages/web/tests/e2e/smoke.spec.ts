@@ -478,7 +478,7 @@ test.describe('核心页面 smoke', () => {
     await expect(connection.getByText('CAPI token', { exact: true })).toBeVisible()
     await expect(connection.getByText('已配置', { exact: true })).toHaveCount(2)
     await expect(connection.getByText('v25.0', { exact: true })).toBeVisible()
-    await expect(connection.getByText('连接配置与验证记录一致 · dev', { exact: true })).toBeVisible()
+    await expect(connection.getByText('连接配置与验证记录一致 · production', { exact: true })).toBeVisible()
 
     const rollout = page.locator('[data-meta-rollout-control]')
     await expect(rollout.getByText('critical incident 已打开，effective 强制为 0%；target 10% 保留。')).toBeVisible()
