@@ -626,7 +626,8 @@ function toUnixSeconds(value: string) {
 }
 
 function buildEventSourceUrl(siteUrl: string | undefined, path: string) {
-  const base = String(siteUrl || 'https://616618.xyz').trim() || 'https://616618.xyz'
+  const base = String(siteUrl || '').trim()
+  if (!base) return ''
   try {
     const baseUrl = new URL(base)
     const url = new URL(path || '/', baseUrl)

@@ -8,35 +8,8 @@ import {
 } from './release-verification-store.mjs'
 import { fetchWithTimeout, runCommand } from './release-verification-lib.mjs'
 import { verifyApprovedMetaDatasetQualityContract } from './meta-dataset-quality-contract-lib.mjs'
+import { loadWranglerResourceConfig } from './verify-dev-resources.mjs'
 
-const RESOURCE_CONFIG = {
-  production: {
-    envArgs: ['--env', ''],
-    database: 'meigallery-db',
-    d1Id: '714929cb-003b-4cb1-bd9f-545fa1895e8c',
-    worker: 'meigallery-api',
-    mainQueue: 'meigallery-meta-capi',
-    dlq: 'meigallery-meta-capi-dlq',
-    r2: 'meigallery-media',
-    mainConsumer: { batchSize: 10, maxWaitTimeMs: 30_000, maxRetries: 5, retryDelay: 60 },
-    dlqConsumer: { batchSize: 10, maxWaitTimeMs: 5_000 },
-  },
-  dev: {
-    envArgs: ['--env', 'dev'],
-    database: 'meigallery-db-dev',
-    d1Id: '9ff61317-0c62-491b-8b29-e0d119f306c9',
-    worker: 'meigallery-api-dev',
-    mainQueue: 'meigallery-meta-capi-dev',
-    dlq: 'meigallery-meta-capi-dev-dlq',
-    r2: 'meigallery-media-dev',
-    mainConsumer: { batchSize: 5, maxWaitTimeMs: 30_000, maxRetries: 5, retryDelay: 60 },
-    dlqConsumer: { batchSize: 5, maxWaitTimeMs: 5_000 },
-  },
-}
-const TRUSTED_ATTESTATION_ORIGINS = {
-  dev: 'https://meigallery-api-dev.wajie.workers.dev',
-  production: 'https://api.616618.xyz',
-}
 const ATTESTATION_TICKET_PATH = '/api/admin/attribution/meta/resource-attestation-ticket'
 const ATTESTATION_PATH = '/api/meta/resource-attestation'
 const ALWAYS_REQUIRED_SECRETS = ['META_CAPI_ACCESS_TOKEN', 'META_CAPI_DATA_KEY_CURRENT']
@@ -110,14 +83,13 @@ function metaConnectionSql(environment) {
 }
 
 export async function runMetaResourceVerification(options = {}) {
-  const environment = String(options.environment || '')
-  const config = RESOURCE_CONFIG[environment]
-  if (!config) throw new Error('--env 只允许 dev 或 production')
+  const environment = String(options.environment || 'production')
+  if (environment !== 'production') throw new Error('Meta 远端资源检查仅支持 production；dev 只执行本地逻辑验证')
+  const config = options.resourceConfig || await readProductionResourceConfig(options)
   const expectedDatasetQualityContract = options.expectedDatasetQualityContract
   if (options.initialMetaRollout !== undefined && typeof options.initialMetaRollout !== 'boolean') throw new Error('initialMetaRollout 必须为布尔值')
   const phase = options.phase || (options.initialMetaRollout === true && environment === 'production' ? 'bootstrap' : 'full')
-  if (!['bootstrap', 'post-deploy', 'full'].includes(phase)
-    || ((phase === 'bootstrap' || phase === 'post-deploy') && environment !== 'production')) {
+  if (!['bootstrap', 'post-deploy', 'full'].includes(phase)) {
     throw new Error('phase 只允许 production bootstrap、post-deploy 或 full')
   }
   const runCommandFn = options.runCommand || runCommand
@@ -136,7 +108,7 @@ export async function runMetaResourceVerification(options = {}) {
     command('meta-connection', ['d1', 'execute', config.database, ...config.envArgs, '--remote', '--command', metaConnectionSql(environment), '--json']),
     command('meta-operations', ['d1', 'execute', config.database, ...config.envArgs, '--remote', '--command', META_OPERATIONS_SQL, '--json']),
   ]
-  if (environment === 'production' && phase === 'full') {
+  if (phase === 'full') {
     datasetQualitySql(expectedDatasetQualityContract)
     calls.push(command('dataset-quality', ['d1', 'execute', config.database, ...config.envArgs, '--remote', '--command', datasetQualitySql(expectedDatasetQualityContract), '--json']))
   }
@@ -193,7 +165,7 @@ export async function runMetaResourceVerification(options = {}) {
     && (operations.previousKeyActiveCount === 0 || (operations.activeKeyCount === 2 && previousSecretPresent))
   const incidentReady = operations?.openCriticalIncidentCount === 0
   let secretIsolation = { pixel: false, token: false, testEventCode: false, dataKey: false }
-  if (environment === 'production' && phase !== 'bootstrap') {
+  if (phase !== 'bootstrap') {
     try {
       secretIsolation = await (options.requestResourceAttestations || requestLiveResourceAttestations)({
         ...options,
@@ -213,10 +185,10 @@ export async function runMetaResourceVerification(options = {}) {
   }
   const isolationReady = d1Identity && r2Identity && queueMainIdentity && queueDlqIdentity
     && (environment !== 'production' || phase === 'bootstrap' || Object.values(secretIsolation).every(Boolean))
-  const datasetQuality = environment === 'production' && phase === 'full'
+  const datasetQuality = phase === 'full'
     ? parseDatasetQuality(byName.get('dataset-quality')?.stdout, expectedDatasetQualityContract)
     : null
-  const datasetQualityReady = environment !== 'production' || phase !== 'full' || datasetQuality?.collectorCurrent === true
+  const datasetQualityReady = phase !== 'full' || datasetQuality?.collectorCurrent === true
   const initialStateReady = !initialMetaRollout || (
     capiEnabled === false
     && operations?.targetRolloutPercentage === 0
@@ -248,7 +220,7 @@ export async function runMetaResourceVerification(options = {}) {
         schemaVersion: 2,
         verificationPhase: phase,
         bootstrapReady: phase === 'bootstrap',
-        liveAttestation: environment === 'production' && phase !== 'bootstrap' && Object.values(environmentIsolation).every(Boolean),
+        liveAttestation: phase !== 'bootstrap' && Object.values(environmentIsolation).every(Boolean),
         migrationsReady: migrationsCurrent && migrationsApplied,
         d1Ready: settings !== null && operations !== null,
         r2Ready: r2Present,
@@ -365,14 +337,13 @@ export async function requestLiveResourceAttestations(options = {}) {
   const nonce = options.nonce || `nonce_${randomBytes(32).toString('hex')}`
   if (!/^nonce_[0-9a-f]{32,128}$/.test(nonce)) throw new Error('live resource attestation nonce 非法')
   const fetchFn = options.fetch || fetch
-  const definitions = [
-    ['dev', 'VERIFY_DEV_OWNER_SESSION_COOKIE'],
-    ['production', 'VERIFY_PRODUCTION_OWNER_SESSION_COOKIE'],
-  ]
-  const attestations = await Promise.all(definitions.map(async ([environment, cookieKey]) => {
-    const origin = new URL(TRUSTED_ATTESTATION_ORIGINS[environment])
-    const cookie = String(env[cookieKey] || '').trim()
-    if (!cookie) throw new Error(`${environment} attestation 凭据不完整`)
+  const environment = 'production'
+  const configured = options.resourceConfig || await readProductionResourceConfig(options)
+  const origin = new URL(String(env.VERIFY_META_API_URL || env.VERIFY_PRODUCTION_API_URL || configured.apiOrigin))
+  if (origin.protocol !== 'https:' || origin.username || origin.password) throw new Error('production attestation origin 非法')
+  const cookie = String(env.VERIFY_PRODUCTION_OWNER_SESSION_COOKIE || '').trim()
+  if (!cookie) throw new Error('production attestation 凭据不完整')
+  const attestation = await (async () => {
     const ticketUrl = new URL(ATTESTATION_TICKET_PATH, origin)
     const ticketResponse = await fetchWithTimeout(fetchFn, ticketUrl, {
       method: 'POST',
@@ -395,8 +366,26 @@ export async function requestLiveResourceAttestations(options = {}) {
     assertExactResponseUrl(response, attestationUrl, environment, 'attestation')
     if (!response.ok) throw new Error(`${environment} live resource attestation 请求失败`)
     return (await response.json())?.data
-  }))
-  return compareLiveAttestations(attestations[0], attestations[1], { commit, nonce, now: options.now })
+  })()
+  return validateProductionAttestation(attestation, { commit, nonce, now: options.now })
+}
+
+async function readProductionResourceConfig(options = {}) {
+  const source = (await (options.loadResourceConfig || loadWranglerResourceConfig)({
+    wranglerPath: options.wranglerPath,
+  })).production
+  return {
+    envArgs: ['--env', ''],
+    database: source.d1.databaseName,
+    d1Id: source.d1.databaseId,
+    worker: source.workerName,
+    mainQueue: source.queue.producerName,
+    dlq: source.queue.deadLetterQueueName,
+    r2: source.r2.bucketName,
+    apiOrigin: source.apiOrigin,
+    mainConsumer: { batchSize: 10, maxWaitTimeMs: 30_000, maxRetries: source.queue.maxRetries, retryDelay: source.queue.retryDelay },
+    dlqConsumer: { batchSize: 10, maxWaitTimeMs: 5_000 },
+  }
 }
 
 function assertExactResponseUrl(response, expectedUrl, environment, kind) {
@@ -436,10 +425,12 @@ export function hasNoPendingMigrations(stdout) {
   return matches.length === 1 && lines.every(line => terminal.test(line) || banner.test(line) || location.test(line) || separator.test(line))
 }
 
-export function compareLiveAttestations(dev, production, expected) {
+export function validateProductionAttestation(production, expected) {
   const now = new Date(expected.now ?? Date.now()).getTime()
   const fields = ['pixel', 'token', 'testEventCode', 'dataKey']
-  for (const [environment, value] of [['dev', dev], ['production', production]]) {
+  const environment = 'production'
+  const value = production
+  {
     if (!isPlainRecord(value) || value.schemaVersion !== 1 || value.environment !== environment
       || value.commitSha !== expected.commit || value.nonce !== expected.nonce) {
       throw new Error(`${environment} live resource attestation 身份不一致`)
@@ -455,9 +446,7 @@ export function compareLiveAttestations(dev, production, expected) {
       throw new Error(`${environment} live resource attestation 摘要非法`)
     }
   }
-  const isolation = Object.fromEntries(fields.map(field => [field, dev.identities[field] !== production.identities[field]]))
-  if (!Object.values(isolation).every(Boolean)) throw new Error('live resource attestation 环境隔离失败')
-  return isolation
+  return Object.fromEntries(fields.map(field => [field, true]))
 }
 
 function hasNamedResource(stdout, expectedName) {
@@ -706,16 +695,16 @@ async function readCommit(options = {}) {
 
 export async function main(argv = process.argv.slice(2), options = {}) {
   const environmentIndex = argv.indexOf('--env')
-  const environment = environmentIndex >= 0 ? argv[environmentIndex + 1] : ''
+  const environment = environmentIndex >= 0 ? argv[environmentIndex + 1] : 'production'
   const reportOnly = argv.includes('--report-only')
   const initialMetaRollout = argv.includes('--initial-meta-rollout')
   const postDeployIsolation = argv.includes('--post-deploy-isolation')
   const allowed = new Set(['--env', environment, '--report-only', '--initial-meta-rollout', '--post-deploy-isolation'])
-  if (!environment || (initialMetaRollout && postDeployIsolation) || argv.some(argument => !allowed.has(argument))) {
-    throw new Error('用法：verify-meta-resources.mjs --env dev|production [--initial-meta-rollout|--post-deploy-isolation] [--report-only]')
+  if (environment !== 'production' || (initialMetaRollout && postDeployIsolation) || argv.some(argument => !allowed.has(argument))) {
+    throw new Error('用法：verify-meta-resources.mjs [--env production] [--initial-meta-rollout|--post-deploy-isolation] [--report-only]')
   }
   const commit = reportOnly ? undefined : await readCommit(options)
-  const expectedDatasetQualityContract = environment === 'production' && !initialMetaRollout && !postDeployIsolation
+  const expectedDatasetQualityContract = !initialMetaRollout && !postDeployIsolation
     ? await (options.verifyDatasetQualityContract || verifyApprovedMetaDatasetQualityContract)({
         cwd: options.cwd || process.cwd(),
       })

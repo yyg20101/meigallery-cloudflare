@@ -149,6 +149,7 @@ describe('Meta live Worker challenge', () => {
 function env(overrides: Partial<Bindings> = {}) {
   return {
     APP_ENV: 'production',
+    SITE_URL: 'https://production.example',
     DB: db,
     META_CAPI_ACCESS_TOKEN: 'production-token',
     META_CAPI_TEST_EVENT_CODE: 'test-code',

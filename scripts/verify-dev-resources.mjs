@@ -27,20 +27,12 @@ export async function main(options = {}) {
   assert.equal(config.dev.r2.bucketName, 'meigallery-media-dev', '开发 R2 名称必须为 meigallery-media-dev')
   assert.notEqual(config.production.d1.databaseId, config.dev.d1.databaseId, '开发 D1 database_id 不得与生产相同')
   assert.notEqual(config.production.r2.bucketName, config.dev.r2.bucketName, '开发 R2 bucket 不得与生产相同')
-  assert.notEqual(config.production.queue.producerName, config.dev.queue.producerName, '开发主 Queue 不得与生产相同')
-  assert.notEqual(config.production.queue.deadLetterQueueName, config.dev.queue.deadLetterQueueName, '开发 DLQ 不得与生产相同')
   assert.equal(config.production.queue.producerName, 'meigallery-meta-capi', '生产 Queue 名称必须保持 meigallery-meta-capi')
   assert.equal(config.production.queue.mainConsumerName, config.production.queue.producerName, '生产 Queue producer/consumer 必须一致')
   assert.equal(config.production.queue.deadLetterQueueName, 'meigallery-meta-capi-dlq', '生产 DLQ 名称必须保持 meigallery-meta-capi-dlq')
   assert.equal(config.production.queue.dlqConsumerName, config.production.queue.deadLetterQueueName, '生产 DLQ 必须配置 consumer')
-  assert.equal(config.dev.queue.producerName, 'meigallery-meta-capi-dev', '开发 Queue 名称必须为 meigallery-meta-capi-dev')
-  assert.equal(config.dev.queue.mainConsumerName, config.dev.queue.producerName, '开发 Queue producer/consumer 必须一致')
-  assert.equal(config.dev.queue.deadLetterQueueName, 'meigallery-meta-capi-dev-dlq', '开发 DLQ 名称必须为 meigallery-meta-capi-dev-dlq')
-  assert.equal(config.dev.queue.dlqConsumerName, config.dev.queue.deadLetterQueueName, '开发 DLQ 必须配置 consumer')
   assert.equal(config.production.queue.maxRetries, 5, '生产 Queue max_retries 必须为 5')
   assert.equal(config.production.queue.retryDelay, 60, '生产 Queue retry_delay 必须为 60')
-  assert.equal(config.dev.queue.maxRetries, 5, '开发 Queue max_retries 必须为 5')
-  assert.equal(config.dev.queue.retryDelay, 60, '开发 Queue retry_delay 必须为 60')
 
   return config
 }
@@ -51,6 +43,8 @@ export async function loadWranglerResourceConfig(options = {}) {
 
   return {
     production: {
+      workerName: extractRootQuotedField(source, 'name'),
+      apiOrigin: extractCustomDomainOrigin(source),
       d1: extractNamedFields(source, '[[d1_databases]]', ['database_name', 'database_id']),
       r2: extractNamedFields(source, '[[r2_buckets]]', ['bucket_name']),
       queue: extractQueueConfig(source, ''),
@@ -58,9 +52,19 @@ export async function loadWranglerResourceConfig(options = {}) {
     dev: {
       d1: extractNamedFields(source, '[[env.dev.d1_databases]]', ['database_name', 'database_id']),
       r2: extractNamedFields(source, '[[env.dev.r2_buckets]]', ['bucket_name']),
-      queue: extractQueueConfig(source, 'env.dev.'),
     },
   }
+}
+
+function extractRootQuotedField(source, fieldName) {
+  const root = source.split(/^\s*\[/m, 1)[0]
+  return extractQuotedField(root, fieldName, 'root')
+}
+
+function extractCustomDomainOrigin(source) {
+  const match = source.match(/\{\s*pattern\s*=\s*"([^"]+)"\s*,\s*custom_domain\s*=\s*true\s*\}/)
+  if (!match) throw new Error('未找到 production API custom domain')
+  return `https://${match[1]}`
 }
 
 function extractQueueConfig(source, prefix) {

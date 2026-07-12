@@ -18,14 +18,9 @@ afterEach(async () => {
 
 describe('Cloudflare setup Queue 初始化', () => {
   for (const [environment, expected] of [
-    ['dev', ['meigallery-meta-capi-dev', 'meigallery-meta-capi-dev-dlq']],
+    ['dev', []],
     ['production', ['meigallery-meta-capi', 'meigallery-meta-capi-dlq']],
-    ['all', [
-      'meigallery-meta-capi',
-      'meigallery-meta-capi-dlq',
-      'meigallery-meta-capi-dev',
-      'meigallery-meta-capi-dev-dlq',
-    ]],
+    ['all', ['meigallery-meta-capi', 'meigallery-meta-capi-dlq']],
   ]) {
     it(`${environment} 真正创建期望 Queue`, async () => {
       const result = await runSetup(environment)
@@ -42,14 +37,10 @@ describe('Cloudflare setup Queue 初始化', () => {
     assert.deepEqual(await createdQueues(result.logFile), [
       'meigallery-meta-capi',
       'meigallery-meta-capi-dlq',
-      'meigallery-meta-capi-dev',
-      'meigallery-meta-capi-dev-dlq',
     ])
     assert.deepEqual(await inspectedQueues(result.logFile), [
       'meigallery-meta-capi',
       'meigallery-meta-capi-dlq',
-      'meigallery-meta-capi-dev',
-      'meigallery-meta-capi-dev-dlq',
     ])
     assert.match(result.stdout, /已确认存在/)
     assert.equal(`${result.stdout}${result.stderr}`.includes(FIXTURE_SECRET), false)
@@ -57,7 +48,7 @@ describe('Cloudflare setup Queue 初始化', () => {
 
   it('create 权限错误即使含 exists 字样，info 失败仍通用报错退出', async () => {
     await assert.rejects(
-      runSetup('dev', 'permission-exists-info-failed'),
+      runSetup('production', 'permission-exists-info-failed'),
       (error) => {
         assert.equal(error.code, 1)
         assert.match(error.stdout, /创建 Queue .*失败/)
@@ -68,7 +59,7 @@ describe('Cloudflare setup Queue 初始化', () => {
   })
 
   it('create 成功后仍以 info 验证，info 失败时退出', async () => {
-    await assert.rejects(runSetup('dev', 'create-passed-info-failed'), error => {
+    await assert.rejects(runSetup('production', 'create-passed-info-failed'), error => {
       assert.equal(error.code, 1)
       assert.match(error.stdout, /创建 Queue .*失败/)
       assert.equal(`${error.stdout}${error.stderr}`.includes(FIXTURE_SECRET), false)

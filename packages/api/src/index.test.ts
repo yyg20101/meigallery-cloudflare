@@ -303,9 +303,9 @@ describe('Meta CAPI scheduled recovery', () => {
     expect(wholeHour.sent).toEqual([wholeHour.expectedMessage])
   })
 
-  it('Wrangler 主环境与 dev 都只注册一个每分钟恢复 Cron', () => {
+  it('Wrangler 仅 production 注册 Meta 恢复 Cron', () => {
     const config = readFileSync(new URL('../wrangler.toml', import.meta.url), 'utf8')
     expect(config).not.toContain('*/5 * * * *')
-    expect(config.match(/\* \* \* \* \*/g)).toHaveLength(2)
+    expect(config.match(/\* \* \* \* \*/g)).toHaveLength(1)
   })
 })
