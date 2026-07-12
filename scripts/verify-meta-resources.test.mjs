@@ -595,13 +595,12 @@ describe('Meta Cloudflare 资源检查', () => {
       environment: 'dev', commit: COMMIT, reportOnly: true,
       runCommand: createPassingRunner([], {
         capiEnabled: false,
-        migrationOutput: '\u001b[32m✅ No migrations to apply!\u001b[0m',
+        migrationOutput: '\u001b[32m⛅️ wrangler 4.103.0\u001b[0m\n────────\nResource location: remote\n\n✅ No migrations to apply!',
       }),
     })
     assert.equal(actual.status, 'passed')
 
     for (const migrationOutput of [
-      '⛅️ wrangler 4.103.0\n✅ No migrations to apply!',
       '✅ No migrations to apply!\nMigrations to be applied:\n0043_pending.sql',
       'No migrations to apply, probably',
       'migration status unavailable',

@@ -428,9 +428,10 @@ export function hasNoPendingMigrations(stdout) {
   const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
   const terminal = /^(?:✅\s*)?No migrations to apply!$/i
   const banner = /^(?:⛅️?\s*)?wrangler\s+\d+\.\d+\.\d+(?:\s+\([^)]+\))?$/i
-  const separator = /^-{3,}$/
+  const location = /^Resource location:\s+(?:remote|local)$/i
+  const separator = /^(?:-{3,}|[─━]{3,})$/
   const matches = lines.filter(line => terminal.test(line))
-  return matches.length === 1 && lines.every(line => terminal.test(line) || banner.test(line) || separator.test(line))
+  return matches.length === 1 && lines.every(line => terminal.test(line) || banner.test(line) || location.test(line) || separator.test(line))
 }
 
 export function compareLiveAttestations(dev, production, expected) {
