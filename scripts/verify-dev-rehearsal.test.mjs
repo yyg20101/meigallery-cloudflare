@@ -78,6 +78,7 @@ describe('开发环境发布预演验证', () => {
     assert.deepEqual(conversionBodies.map(body => body.actionType), ['contact'])
     assert.equal(registrationBodies.length, 1)
     assert.ok(registrationBodies[0].username.length <= 20)
+    assert.match(registrationBodies[0].username, /^[A-Za-z0-9]+$/)
     assert.equal(registrationBodies[0].actionType, undefined)
     assert.equal(registrationBodies[0].userId, undefined)
     assert.equal(registrationBodies[0].attribution.consentState, 'granted')
