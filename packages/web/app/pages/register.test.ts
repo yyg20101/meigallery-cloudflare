@@ -10,7 +10,7 @@ const api = vi.fn()
 const push = vi.fn()
 const replace = vi.fn()
 const track = vi.fn()
-const executePixelInstructions = vi.fn()
+const executeBrowserInstructions = vi.fn()
 const buildRegistrationAttributionContext = vi.fn()
 
 describe('register page', () => {
@@ -18,7 +18,8 @@ describe('register page', () => {
     register.mockReset()
     register.mockResolvedValue({
       id: 1,
-      pixelEvents: [{
+      trackingInstructions: [{
+        provider: 'meta',
         deliveryId: 'cdlv_registration_1',
         eventName: 'CompleteRegistration',
         eventId: 'meta:CompleteRegistration:complete_registration:user:1',
@@ -34,8 +35,8 @@ describe('register page', () => {
     push.mockReset()
     replace.mockReset()
     track.mockReset()
-    executePixelInstructions.mockReset()
-    executePixelInstructions.mockResolvedValue(undefined)
+    executeBrowserInstructions.mockReset()
+    executeBrowserInstructions.mockResolvedValue(undefined)
     buildRegistrationAttributionContext.mockReset()
     buildRegistrationAttributionContext.mockReturnValue({
       visitorId: 'visitor_1',
@@ -79,7 +80,7 @@ describe('register page', () => {
         },
       }),
     }))
-    vi.stubGlobal('useTracking', () => ({ executePixelInstructions, buildRegistrationAttributionContext }))
+    vi.stubGlobal('useTracking', () => ({ executeBrowserInstructions, buildRegistrationAttributionContext }))
     vi.stubGlobal('useMarketingConsent', () => ({
       state: ref('granted'),
       canTrackMarketing: ref(true),
@@ -142,7 +143,7 @@ describe('register page', () => {
     expect(buildRegistrationAttributionContext).toHaveBeenCalledOnce()
     expect(register.mock.calls[0]?.[0]).not.toHaveProperty('actionType')
     expect(register.mock.calls[0]?.[0]).not.toHaveProperty('userId')
-    expect(executePixelInstructions).toHaveBeenCalledWith([
+    expect(executeBrowserInstructions).toHaveBeenCalledWith([
       expect.objectContaining({ eventName: 'CompleteRegistration' }),
     ])
     expect(push).toHaveBeenCalledWith('/')
@@ -150,7 +151,7 @@ describe('register page', () => {
   })
 
   it('Pixel 指令执行失败不误记注册失败且仍跳转首页', async () => {
-    executePixelInstructions.mockRejectedValueOnce(new Error('pixel failed'))
+    executeBrowserInstructions.mockRejectedValueOnce(new Error('pixel failed'))
     const wrapper = mount(RegisterPage, {
       global: {
         stubs: {

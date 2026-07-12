@@ -21,13 +21,13 @@ beforeAll(async () => {
     insertAction('action_registration', 'complete_registration', ''),
     db.prepare(`
       INSERT INTO analytics_conversion_deliveries (
-        id, conversion_action_id, channel, status
-      ) VALUES ('delivery_contact_pixel', 'action_contact', 'meta_pixel', 'attempted')
+        id, conversion_action_id, transport, status
+      ) VALUES ('delivery_contact_pixel', 'action_contact', 'browser', 'attempted')
     `),
     db.prepare(`
       INSERT INTO analytics_conversion_deliveries (
-        id, conversion_action_id, channel, status
-      ) VALUES ('delivery_registration_capi', 'action_registration', 'meta_capi', 'sent')
+        id, conversion_action_id, transport, status
+      ) VALUES ('delivery_registration_capi', 'action_registration', 'server', 'sent')
     `),
   ])
 })
@@ -80,7 +80,8 @@ function schemaSql() {
     );
     CREATE TABLE analytics_conversion_deliveries (
       id TEXT PRIMARY KEY, conversion_action_id TEXT NOT NULL,
-      channel TEXT NOT NULL, status TEXT NOT NULL
+      provider TEXT NOT NULL DEFAULT 'meta', transport TEXT NOT NULL DEFAULT 'server',
+      status TEXT NOT NULL
     );
   `
 }

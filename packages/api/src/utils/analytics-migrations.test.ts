@@ -8,13 +8,13 @@ async function readMigration(name: string) {
 }
 
 describe('analytics migrations', () => {
-  it('migration 索引从 0001 到 0046 连续且编号唯一', async () => {
+  it('migration 索引从 0001 到 0047 连续且编号唯一', async () => {
     const names = (await readdir(MIGRATION_DIR))
       .filter(name => /^\d{4}_.+\.sql$/.test(name))
       .sort()
     const indexes = names.map(name => Number(name.slice(0, 4)))
 
-    expect(indexes).toEqual(Array.from({ length: 46 }, (_, index) => index + 1))
+    expect(indexes).toEqual(Array.from({ length: 47 }, (_, index) => index + 1))
     expect(new Set(indexes).size).toBe(indexes.length)
   })
 
@@ -208,7 +208,7 @@ describe('analytics migrations', () => {
     expect(sql).toContain("('meta_capi_rollout_percentage', '0'")
     expect(sql).toContain('INSERT OR IGNORE INTO site_settings')
     expect(sql).not.toMatch(/DELETE\s+FROM\s+analytics_conversion_(actions|deliveries)/i)
-    expect(sql).not.toMatch(/UPDATE\s+site_settings[\s\S]+meta_capi_rollout_percentage/i)
+    expect(sql).not.toMatch(/UPDATE\s+site_settings[\s\S]+rollout_percentage/i)
   })
 
   it('0040 为 CAPI 15 分钟熔断窗口建立覆盖时间索引', async () => {
@@ -261,5 +261,19 @@ describe('analytics migrations', () => {
     expect(sql).toContain('ADD COLUMN contract_digest TEXT NOT NULL')
     expect(sql).toContain("substr(contract_digest, 1, 7) = 'sha256:'")
     expect(sql).toContain('idx_meta_dataset_quality_contract')
+  })
+
+  it('0047 建立最终广告平台连接与投递模型并删除旧配置', async () => {
+    const sql = await readMigration('0047_ad_platform_delivery_core.sql')
+    expect(sql).toContain('CREATE TABLE ad_platform_connections')
+    expect(sql).toContain('provider TEXT PRIMARY KEY')
+    expect(sql).toContain('transport TEXT NOT NULL')
+    expect(sql).toContain('connection_revision TEXT')
+    expect(sql).toContain('DROP TABLE analytics_conversion_deliveries')
+    expect(sql).toContain('DROP TABLE analytics_conversion_delivery_daily')
+    expect(sql).toContain('DELETE FROM site_settings')
+    expect(sql).toContain("'facebook_pixel_id'")
+    expect(sql).toContain("'meta_capi_rollout_percentage'")
+    expect(sql).not.toMatch(/\bchannel\s+TEXT|meta_connection_revision\s+TEXT/)
   })
 })

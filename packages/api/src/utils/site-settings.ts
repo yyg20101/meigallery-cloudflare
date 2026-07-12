@@ -1,14 +1,11 @@
-export const PROTECTED_ADMIN_SETTING_KEYS = [
-  'meta_capi_rollout_percentage',
-] as const
+export const PROTECTED_ADMIN_SETTING_KEYS = [] as const
 
 export const ADMIN_SETTING_KEYS = [
   'site_name', 'seo_title', 'seo_keywords', 'site_description', 'site_icon',
   'og_title', 'og_description', 'og_image',
   'footer_text', 'membership_description', 'email_verification_enabled',
-  'video_enabled', 'facebook_pixel_enabled', 'facebook_pixel_id', 'facebook_pixel_debug_enabled',
+  'video_enabled',
   'analytics_enabled', 'analytics_sample_rate', 'analytics_consent_mode',
-  'meta_tracking_mode', 'meta_capi_enabled',
   ...PROTECTED_ADMIN_SETTING_KEYS,
   'home_hero_title', 'home_hero_subtitle',
   'home_featured_region_slugs', 'home_hot_tag_limit',
@@ -24,9 +21,8 @@ export const PUBLIC_SETTING_KEYS = [
   'site_name', 'seo_title', 'seo_keywords', 'site_description', 'site_icon',
   'og_title', 'og_description', 'og_image',
   'footer_text', 'membership_description', 'email_verification_enabled',
-  'video_enabled', 'facebook_pixel_enabled', 'facebook_pixel_id', 'facebook_pixel_debug_enabled',
+  'video_enabled',
   'analytics_enabled', 'analytics_sample_rate', 'analytics_consent_mode',
-  'meta_tracking_mode',
   'home_hero_title', 'home_hero_subtitle',
   'home_featured_region_slugs', 'home_hot_tag_limit',
   'home_ad_enabled', 'home_ad_eyebrow', 'home_ad_title',

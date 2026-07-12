@@ -6,6 +6,24 @@ export type EvidenceLayer = 'business' | 'pixel' | 'capi' | 'quality'
 export type MetaConnectionState = 'not_configured' | 'unverified' | 'verified' | 'configuration_changed'
 export type MetaCapiRolloutPercentage = 0 | 10 | 50 | 100
 
+export interface AdPlatformConnectionStatusData {
+  provider: 'meta' | 'tiktok' | 'google'
+  environment: 'production'
+  enabled: boolean
+  browserEnabled: boolean
+  serverEnabled: boolean
+  destinationId: string
+  debugEnabled: boolean
+  rolloutPercentage: MetaCapiRolloutPercentage
+  destinationConfigured: boolean
+  serverCredentialConfigured: boolean
+  testCredentialConfigured: boolean
+  mode: 'disabled' | 'test' | 'production'
+  state: 'not_configured' | 'unverified' | 'verified' | 'invalidated'
+  verifiedAt: string
+  verifiedCommit: string
+}
+
 export interface MetaConnectionStatusData {
   state: MetaConnectionState
   environment: 'dev' | 'production'
@@ -18,9 +36,6 @@ export interface MetaConnectionStatusData {
   datasetQualityStatus: 'not_checked' | 'available' | 'permission_denied' | 'error'
   invalidationReason: string
 }
-
-// 保留旧类型名，避免既有调用方在迁移期中断。
-export type MetaConnectionStatus = MetaConnectionStatusData
 
 export interface AttributionDeliveryMetrics {
   pixelAttempted: number

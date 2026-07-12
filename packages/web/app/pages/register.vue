@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { validateUsername } from '@meigallery/shared/utils'
-import type { InviteCodeStatusResponse, MetaPixelInstruction } from '@meigallery/shared'
+import type { AdBrowserInstruction, InviteCodeStatusResponse } from '@meigallery/shared'
 
 const { register, sendCode, checkUsername, isLoggedIn } = useAuth()
 const { api } = useApi()
@@ -201,7 +201,7 @@ async function onDirectRegister() {
       ...buildInviteRegistrationContext(),
       attribution: tracking.buildRegistrationAttributionContext(),
     })
-    await completeRegistration(result.pixelEvents)
+    await completeRegistration(result.trackingInstructions)
     router.push('/')
   } catch (e: any) {
     analytics.track('register_failed', {
@@ -265,7 +265,7 @@ async function onSubmitWithCode() {
       ...buildInviteRegistrationContext(),
       attribution: tracking.buildRegistrationAttributionContext(),
     })
-    await completeRegistration(result.pixelEvents)
+    await completeRegistration(result.trackingInstructions)
     router.push('/')
   } catch (e: any) {
     analytics.track('register_failed', {
@@ -352,9 +352,9 @@ function trackRegisterSubmit() {
   })
 }
 
-async function completeRegistration(pixelEvents: MetaPixelInstruction[]) {
+async function completeRegistration(trackingInstructions: AdBrowserInstruction[]) {
   analytics.track('register_success', {
-    eventId: pixelEvents[0]?.eventId || '',
+    eventId: trackingInstructions[0]?.eventId || '',
     entityType: 'auth',
     flush: true,
     props: {
@@ -363,7 +363,7 @@ async function completeRegistration(pixelEvents: MetaPixelInstruction[]) {
     },
   })
   try {
-    await tracking.executePixelInstructions(pixelEvents)
+    await tracking.executeBrowserInstructions(trackingInstructions)
   } catch {
     // 注册已成功时，Pixel 执行失败不能影响跳转或误记注册失败。
   }

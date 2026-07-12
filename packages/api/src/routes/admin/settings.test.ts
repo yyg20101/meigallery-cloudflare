@@ -53,27 +53,25 @@ function hasSettingWrite(executed: ExecutedSql, key: string, jsonValue?: string)
 }
 
 describe('后台站点设置 API', () => {
-  it('站长更新 Meta 追踪模式时归一化历史值', async () => {
-    const executed: ExecutedSql = []
+  it('通用站点设置拒绝广告平台配置', async () => {
     const app = createApp()
     const env = {
       DB: createDb({
         all: () => [],
-        run: (sql, params) => {
-          executed.push({ sql, params })
-          return { success: true }
-        },
       }),
     } as unknown as Bindings
 
     const res = await app.request('/api/admin/settings', {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ meta_tracking_mode: 'legacy_mode' }),
+      body: JSON.stringify({ mode: 'legacy_mode' }),
     }, env)
 
-    expect(res.status).toBe(200)
-    expect(hasSettingWrite(executed, 'meta_tracking_mode', '"disabled"')).toBe(true)
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({
+      code: 'ADMIN_SETTING_UNKNOWN',
+      unknownKeys: ['mode'],
+    })
   })
 
   it('站长读取设置时单条历史损坏 JSON 不阻断页面打开', async () => {
@@ -102,33 +100,6 @@ describe('后台站点设置 API', () => {
     expect(body.data.home_ad_enabled.value).toBe(true)
   })
 
-  it('站长读取设置时仍可看到 Meta CAPI 灰度比例', async () => {
-    const app = createApp()
-    const env = {
-      DB: createDb({
-        all: (sql) => {
-          if (sql.includes('SELECT key, value, updated_at FROM site_settings')) {
-            return [{
-              key: 'meta_capi_rollout_percentage',
-              value: JSON.stringify(50),
-              updated_at: '2026-07-11 00:00:00',
-            }]
-          }
-          return []
-        },
-      }),
-    } as unknown as Bindings
-
-    const res = await app.request('/api/admin/settings', {}, env)
-    const body = await res.json()
-
-    expect(res.status).toBe(200)
-    expect(body.data.meta_capi_rollout_percentage).toEqual({
-      value: 50,
-      updatedAt: '2026-07-11 00:00:00',
-    })
-  })
-
   it.each([
     0,
     10,
@@ -154,15 +125,15 @@ describe('后台站点设置 API', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         site_name: '不应部分写入',
-        meta_capi_rollout_percentage: rolloutPercentage,
+        rollout_percentage: rolloutPercentage,
       }),
     }, env)
     const body = await res.json()
 
     expect(res.status).toBe(400)
     expect(body).toMatchObject({
-      code: 'ADMIN_SETTING_PROTECTED',
-      protectedKeys: ['meta_capi_rollout_percentage'],
+      code: 'ADMIN_SETTING_UNKNOWN',
+      unknownKeys: ['rollout_percentage'],
     })
   })
 

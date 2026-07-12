@@ -41,10 +41,10 @@ function createDb(options: {
           if (sql.includes('FROM analytics_events WHERE id = ?')) {
             return insertedEvents.has(String(call.params[0])) ? ({ id: call.params[0] } as T) : null
           }
-          if (sql.includes("WHERE key = 'facebook_pixel_enabled'")) return { value: JSON.stringify(options.facebookPixelEnabled ?? false) } as T
-          if (sql.includes("WHERE key = 'facebook_pixel_id'")) return { value: JSON.stringify(options.facebookPixelId ?? '') } as T
-          if (sql.includes("WHERE key = 'meta_capi_enabled'")) return { value: JSON.stringify(options.metaCapiEnabled ?? false) } as T
-          if (sql.includes("WHERE key = 'meta_tracking_mode'")) return { value: JSON.stringify(options.metaTrackingMode ?? 'disabled') } as T
+          if (sql.includes("WHERE key = 'browser_enabled'")) return { value: JSON.stringify(options.facebookPixelEnabled ?? false) } as T
+          if (sql.includes("WHERE key = 'destination_id'")) return { value: JSON.stringify(options.facebookPixelId ?? '') } as T
+          if (sql.includes("WHERE key = 'server_enabled'")) return { value: JSON.stringify(options.metaCapiEnabled ?? false) } as T
+          if (sql.includes("WHERE key = 'mode'")) return { value: JSON.stringify(options.metaTrackingMode ?? 'disabled') } as T
           return null
         },
         async run() {

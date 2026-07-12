@@ -10,7 +10,7 @@ function createDb() {
       const statement = {
         values: [] as unknown[],
         bind(...values: unknown[]) { this.values = values; return this },
-        async first<T>() { return { value: JSON.stringify(DATASET_ID) } as T },
+        async first<T>() { return { destination_id: DATASET_ID } as T },
         async run() { statements.push({ sql, values: this.values }); return { meta: { changes: 1 } } },
       }
       return statement

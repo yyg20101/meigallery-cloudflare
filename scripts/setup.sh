@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # MeiGallery 首次部署初始化
-# 创建 Cloudflare 资源并提示配置生产/dev secrets
+# 创建 Cloudflare 资源并提示配置 production/dev secrets
 # 用法: ./scripts/setup.sh [dev|production|all]
 
 ENV="${1:-all}"
@@ -77,11 +77,7 @@ print_dev_resources() {
   echo "执行: ${WRANGLER_CMD} r2 bucket create meigallery-media-dev"
   echo ""
 
-  echo "--- 创建 dev Meta CAPI Queue（启用 CAPI 或发布预演时需要） ---"
-  create_queue "meigallery-meta-capi-dev"
-  create_queue "meigallery-meta-capi-dev-dlq"
-  echo ""
-  echo "当前 dev Worker 使用独立 D1/R2/Queue，不再复用生产资源。"
+  echo "dev 仅用于代码与通用业务逻辑验证，不创建或绑定 Meta 资源。"
   echo ""
 }
 
@@ -103,11 +99,13 @@ print_secrets() {
   echo "  ${WRANGLER_CMD} secret put TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT ${env_flag}"
   echo "  # 可选：sourceBotKey=ops_case_bot 时配置"
   echo "  ${WRANGLER_CMD} secret put TELEGRAM_BOT_TOKEN_OPS_CASE_BOT ${env_flag}"
-  echo "  ${WRANGLER_CMD} secret put META_CAPI_ACCESS_TOKEN ${env_flag}"
-  echo "  ${WRANGLER_CMD} secret put META_CAPI_TEST_EVENT_CODE ${env_flag}"
-  echo "  ${WRANGLER_CMD} secret put META_CAPI_DATA_KEY_CURRENT ${env_flag}"
-  echo "  # 仅密钥轮换窗口配置"
-  echo "  ${WRANGLER_CMD} secret put META_CAPI_DATA_KEY_PREVIOUS ${env_flag}"
+  if [ "$env_name" = "production" ]; then
+    echo "  ${WRANGLER_CMD} secret put META_CAPI_ACCESS_TOKEN ${env_flag}"
+    echo "  ${WRANGLER_CMD} secret put META_CAPI_TEST_EVENT_CODE ${env_flag}"
+    echo "  ${WRANGLER_CMD} secret put META_CAPI_DATA_KEY_CURRENT ${env_flag}"
+    echo "  # 仅密钥轮换窗口配置"
+    echo "  ${WRANGLER_CMD} secret put META_CAPI_DATA_KEY_PREVIOUS ${env_flag}"
+  fi
   echo ""
 }
 

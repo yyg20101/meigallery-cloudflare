@@ -27,7 +27,13 @@ beforeAll(async () => {
   })
   db = (await miniflare.getBindings<{ DB: D1Database }>()).DB
   await execSql(`
-    CREATE TABLE site_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT);
+    CREATE TABLE ad_platform_connections (
+      provider TEXT PRIMARY KEY, enabled INTEGER NOT NULL, mode TEXT NOT NULL,
+      browser_enabled INTEGER NOT NULL, server_enabled INTEGER NOT NULL,
+      destination_id TEXT NOT NULL, debug_enabled INTEGER NOT NULL,
+      rollout_percentage INTEGER NOT NULL, credential_secret_name TEXT NOT NULL,
+      revision TEXT, created_at TEXT, updated_at TEXT
+    );
     CREATE TABLE meta_capi_incidents (
       id TEXT PRIMARY KEY, environment TEXT, status TEXT, severity TEXT, trigger_code TEXT,
       target_rollout_percentage INTEGER, effective_rollout_percentage INTEGER,
@@ -41,7 +47,8 @@ beforeAll(async () => {
       status TEXT, summary TEXT, verified_at TEXT, expires_at TEXT
     );
     CREATE TABLE analytics_conversion_deliveries (
-      id TEXT PRIMARY KEY, channel TEXT, status TEXT, error_code TEXT,
+      id TEXT PRIMARY KEY, provider TEXT NOT NULL DEFAULT 'meta',
+      transport TEXT NOT NULL DEFAULT 'server', status TEXT, error_code TEXT,
       created_at TEXT, rollout_target_percentage INTEGER
     );
     CREATE TABLE admin_audit_logs (
@@ -59,7 +66,7 @@ describe('production rollout D1 原子条件', () => {
     const dbWithConcurrentModeChange = {
       prepare: db.prepare.bind(db),
       async batch(statements: D1PreparedStatement[]) {
-        await db.prepare("UPDATE site_settings SET value = '\"test\"' WHERE key = 'meta_tracking_mode'").run()
+        await db.prepare("UPDATE ad_platform_connections SET mode = 'test' WHERE provider = 'meta'").run()
         return db.batch(statements)
       },
     } as unknown as D1Database
@@ -83,15 +90,15 @@ describe('production rollout D1 原子条件', () => {
 
     expect(response.status).toBe(409)
     expect((await response.json()).code).toBe('META_CAPI_ROLLOUT_CONFLICT')
-    expect(await setting('meta_capi_rollout_percentage')).toBe('0')
-    expect(await setting('meta_tracking_mode')).toBe('"test"')
+    expect(await connectionValue('rollout_percentage')).toBe(0)
+    expect(await connectionValue('mode')).toBe('test')
     expect((await db.prepare('SELECT COUNT(*) AS count FROM admin_audit_logs').first<{ count: number }>())?.count).toBe(0)
   })
 })
 
 async function seedProductionGate() {
   await db.exec(`
-    DELETE FROM site_settings;
+    DELETE FROM ad_platform_connections;
     DELETE FROM meta_capi_incidents;
     DELETE FROM meta_connection_verifications;
     DELETE FROM analytics_release_verifications;
@@ -99,11 +106,12 @@ async function seedProductionGate() {
     DELETE FROM admin_audit_logs;
   `)
   await db.prepare(`
-    INSERT INTO site_settings (key, value) VALUES
-      ('meta_capi_rollout_percentage', '0'),
-      ('meta_tracking_mode', '"production"'),
-      ('facebook_pixel_id', '"1234567890"')
-  `).run()
+    INSERT INTO ad_platform_connections
+      (provider, enabled, mode, browser_enabled, server_enabled, destination_id,
+       debug_enabled, rollout_percentage, credential_secret_name, revision)
+    VALUES ('meta', 1, 'production', 1, 1, '1234567890', 0, 0,
+            'META_CAPI_ACCESS_TOKEN', ?)
+  `).bind('1'.repeat(32)).run()
   await db.prepare(`
     INSERT INTO meta_connection_verifications (environment, verified_commit, invalidated_at, revision)
     VALUES ('production', ?, NULL, ?)
@@ -121,15 +129,15 @@ async function seedProductionGate() {
   const inserts = Array.from({ length: 100 }, (_, index) => (
     db.prepare(`
       INSERT INTO analytics_conversion_deliveries
-        (id, channel, status, error_code, created_at, rollout_target_percentage)
-      VALUES (?, 'meta_capi', 'sent', '', datetime('now'), 0)
+        (id, provider, transport, status, error_code, created_at, rollout_target_percentage)
+      VALUES (?, 'meta', 'server', 'sent', '', datetime('now'), 0)
     `).bind(`delivery_${index}`)
   ))
   await db.batch(inserts)
 }
 
-async function setting(key: string) {
-  return (await db.prepare('SELECT value FROM site_settings WHERE key = ?').bind(key).first<{ value: string }>())?.value
+async function connectionValue(key: 'rollout_percentage' | 'mode') {
+  return (await db.prepare(`SELECT ${key} AS value FROM ad_platform_connections WHERE provider = 'meta'`).first<{ value: number | string }>())?.value
 }
 
 async function execSql(sql: string) {

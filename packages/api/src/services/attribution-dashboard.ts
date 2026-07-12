@@ -64,7 +64,9 @@ export async function queryAttributionSummary(db: D1Database, range: AnalyticsDa
       JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
       WHERE a.date BETWEEN ? AND ?
         AND a.action_type IN ${ACTIVE_ACTION_SQL}
-        AND d.channel = 'meta_capi'
+        AND d.provider = 'meta'
+        AND d.transport = 'server'
+        AND d.transport = 'server'
         AND d.status = 'failed'
         AND d.error_code = 'retry_exhausted'
     `, [range.from, range.to]),
@@ -104,7 +106,9 @@ export async function queryAttributionTrends(db: D1Database, range: AnalyticsDat
       JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
       WHERE a.date BETWEEN ? AND ?
         AND a.action_type IN ${ACTIVE_ACTION_SQL}
-        AND d.channel = 'meta_capi'
+        AND d.provider = 'meta'
+        AND d.transport = 'server'
+        AND d.transport = 'server'
         AND d.status = 'failed'
         AND d.error_code = 'retry_exhausted'
       GROUP BY a.date
@@ -168,7 +172,9 @@ export async function queryAttributionQuality(
       JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
       WHERE a.date BETWEEN ? AND ?
         AND a.action_type IN ${ACTIVE_ACTION_SQL}
-        AND d.channel = 'meta_capi'
+        AND d.provider = 'meta'
+        AND d.transport = 'server'
+        AND d.transport = 'server'
         AND d.status IN ${PLANNED_CAPI_STATUS_SQL}
       GROUP BY a.date
       ORDER BY a.date ASC
@@ -237,13 +243,14 @@ export async function queryAttributionBreakdown(
     delivery_per_action AS (
       SELECT
         d.conversion_action_id,
-        MAX(CASE WHEN d.channel = 'meta_pixel' AND d.status = 'attempted' THEN 1 ELSE 0 END) AS pixel_attempted,
-        MAX(CASE WHEN d.channel = 'meta_capi' AND d.status = 'sent' THEN 1 ELSE 0 END) AS capi_sent,
-        MAX(CASE WHEN d.channel = 'meta_capi' AND d.status = 'failed' THEN 1 ELSE 0 END) AS failed,
+        MAX(CASE WHEN d.transport = 'browser' AND d.status = 'attempted' THEN 1 ELSE 0 END) AS pixel_attempted,
+        MAX(CASE WHEN d.transport = 'server' AND d.status = 'sent' THEN 1 ELSE 0 END) AS capi_sent,
+        MAX(CASE WHEN d.transport = 'server' AND d.status = 'failed' THEN 1 ELSE 0 END) AS failed,
         MAX(CASE WHEN d.status = 'skipped' THEN 1 ELSE 0 END) AS skipped,
         MAX(CASE WHEN d.status = 'pending' THEN 1 ELSE 0 END) AS pending
       FROM analytics_conversion_deliveries d
       JOIN action_facts af ON af.id = d.conversion_action_id
+      WHERE d.provider = 'meta'
       GROUP BY d.conversion_action_id
     )
     SELECT
@@ -282,13 +289,14 @@ function deliveryAggregateSql() {
   return `
     SELECT
       date,
-      COALESCE(SUM(CASE WHEN channel = 'meta_pixel' AND status = 'attempted' THEN delivery_count ELSE 0 END), 0) AS pixel_attempted_count,
-      COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'sent' THEN delivery_count ELSE 0 END), 0) AS capi_sent_count,
-      COALESCE(SUM(CASE WHEN channel = 'meta_capi' AND status = 'failed' THEN delivery_count ELSE 0 END), 0) AS failed_count,
+      COALESCE(SUM(CASE WHEN transport = 'browser' AND status = 'attempted' THEN delivery_count ELSE 0 END), 0) AS pixel_attempted_count,
+      COALESCE(SUM(CASE WHEN transport = 'server' AND status = 'sent' THEN delivery_count ELSE 0 END), 0) AS capi_sent_count,
+      COALESCE(SUM(CASE WHEN transport = 'server' AND status = 'failed' THEN delivery_count ELSE 0 END), 0) AS failed_count,
       COALESCE(SUM(CASE WHEN status = 'skipped' THEN delivery_count ELSE 0 END), 0) AS skipped_count,
       COALESCE(SUM(CASE WHEN status = 'pending' THEN delivery_count ELSE 0 END), 0) AS pending_count
     FROM analytics_conversion_delivery_daily
     WHERE date BETWEEN ? AND ?
+      AND provider = 'meta'
       AND event_name IN ${ACTIVE_EVENT_SQL}`
 }
 

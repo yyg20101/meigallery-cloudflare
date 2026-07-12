@@ -28,7 +28,7 @@ beforeAll(async () => {
   await db.exec(`
     PRAGMA foreign_keys = ON;
     CREATE TABLE users (id INTEGER PRIMARY KEY);
-    CREATE TABLE site_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE ad_platform_connections (provider TEXT PRIMARY KEY, destination_id TEXT NOT NULL, mode TEXT NOT NULL);
   `)
   await applyMigration('0041_meta_live_challenges.sql')
   await applyMigration('0045_meta_live_production.sql')
@@ -37,13 +37,12 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await db.prepare('DELETE FROM meta_live_challenges').run()
-  await db.prepare('DELETE FROM site_settings').run()
+  await db.prepare('DELETE FROM ad_platform_connections').run()
   await db.prepare('DELETE FROM users').run()
   await db.prepare('INSERT INTO users (id) VALUES (1)').run()
   await db.prepare(`
-    INSERT INTO site_settings (key, value) VALUES
-      ('facebook_pixel_id', '"1234567890"'),
-      ('meta_tracking_mode', '"test"')
+    INSERT INTO ad_platform_connections (provider, destination_id, mode)
+    VALUES ('meta', '1234567890', 'test')
   `).run()
 })
 
@@ -149,6 +148,7 @@ describe('Meta live Worker challenge', () => {
 function env(overrides: Partial<Bindings> = {}) {
   return {
     APP_ENV: 'production',
+    SITE_URL: 'https://production.example',
     DB: db,
     META_CAPI_ACCESS_TOKEN: 'production-token',
     META_CAPI_TEST_EVENT_CODE: 'test-code',

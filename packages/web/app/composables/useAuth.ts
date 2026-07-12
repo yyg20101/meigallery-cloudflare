@@ -2,7 +2,7 @@
  * 认证 composable
  * 管理用户状态、登录、注册、登出、验证码、密码重置
  */
-import type { AnalyticsConsentState, MetaPixelInstruction } from '@meigallery/shared'
+import type { AdBrowserInstruction, AnalyticsConsentState } from '@meigallery/shared'
 
 type RegistrationAttributionContext = {
   visitorId?: string
@@ -102,7 +102,7 @@ export function useAuth() {
     turnstileToken?: string
     attribution?: RegistrationAttributionContext
   }) {
-    const result = await api<UserInfo & { pixelEvents: MetaPixelInstruction[] }>('/api/auth/register', {
+    const result = await api<UserInfo & { trackingInstructions: AdBrowserInstruction[] }>('/api/auth/register', {
       method: 'POST',
       body: params,
     })

@@ -1,6 +1,6 @@
 # 项目当前状态
 
-更新时间：2026-07-11
+更新时间：2026-07-12
 
 本文是当前实现、部署和文档入口索引。若旧提交、历史计划或早期文档与本文冲突，以 `AGENTS.md`、本文、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md` 和 `docs/GIT_WORKFLOW.md` 为准。
 
@@ -27,7 +27,7 @@
 - 开发 Worker：`meigallery-web-dev` / `meigallery-api-dev`，不绑定生产域名；当前真实地址为 `https://meigallery-web-dev.wajie.workers.dev` / `https://meigallery-api-dev.wajie.workers.dev`。
 - 数据库：生产为 Cloudflare D1 `meigallery-db`，开发环境已隔离到 `meigallery-db-dev`；迁移文件位于 `packages/api/migrations/`。
 - 对象存储：生产为 Cloudflare R2 `meigallery-media`，开发环境已隔离到 `meigallery-media-dev`。
-- Queue：生产主 Queue / DLQ 为 `meigallery-meta-capi` / `meigallery-meta-capi-dlq`，开发环境已隔离到 `meigallery-meta-capi-dev` / `meigallery-meta-capi-dev-dlq`。
+- Queue：仅 production 绑定 `meigallery-meta-capi` / `meigallery-meta-capi-dlq`；dev 不配置 Meta Queue 或 Meta secret。
 - 视频：Cloudflare Stream 仍未接入生产链路；相关字段和密钥按规划保留。
 - 生产部署：通过 PR 合入 `main` 后手动执行 `./scripts/deploy.sh production`；脚本会强制重新运行完整 `verify:release` 并只断言本次新报告，之后才允许 migration 或 Worker deploy。
 - CI：`.github/workflows/ci.yml` 只做 PR 和 dev 推送验证，不自动部署生产。
@@ -40,8 +40,8 @@
 - 已提供四层命令：`verify:quick`、`verify:local-runtime`、`verify:dev-rehearsal`、`verify:release`。
 - `verify:quick` 适合日常提交前自检，先检查 dev/production 资源隔离与 Meta secret 泄漏。
 - `verify:local-runtime` 用于本地 Cloudflare 运行时验证 D1、Queue、归因和降级链路。
-- `verify:dev-rehearsal` 依赖独立 dev 资源和当前 dev Workers URL，作为上线前远端演练；Meta 链路只接受 Owner 生成 `Contact`、`CompleteRegistration` 的同 commit live evidence，出现历史 `Lead` 或 `StartTrial` 证据必须阻断。
-- `verify:release` 是生产放行前最终校验，但当前仓库尚未真实跑完整 release 报告；生产前必须在干净工作区、带 `VERIFY_DEV_API_URL` / `VERIFY_DEV_WEB_URL` 运行并生成同一 commit 的通过报告。最终 `main` HEAD 必须重新部署 dev、重做 evidence，不能复用其他 commit 的结果。
+- `verify:dev-rehearsal` 依赖独立 dev D1/R2 和 dev Workers URL，只验证 migration、站内转化、注册、分析与页面逻辑，不调用 Meta。
+- `verify:release` 是生产放行前最终校验；Meta 远端验证默认基于 production，同一 `main` HEAD 的 evidence 不得复用旧 commit 结果。
 - `scripts/deploy.sh production` 已在远端 migration 前接入 fresh production gate；旧 `latest.json` 不能跳过 lint、API/Web coverage、scripts、tsc、build、local-runtime 和 remote gates。部署路径只负责验证、preflight、migration 与 Worker 部署，不写 setting、不关闭 incident、不调整 rollout。
 
 ## 当前已实现能力
@@ -52,6 +52,8 @@
 - Telegram 外部导入 API：项目只提供对外 API 接收能力，不内置 Telegram Bot 本体；对接契约见 `docs/TELEGRAM_IMPORT_API.md`。
 - 数据分析：已实现一方数据采集、来源归因、邀请码、联系点击、趋势和后台 `/admin/analytics` 系列看板；后台 UI 口径见 `docs/UI_DATA_ANALYTICS_DASHBOARD.md`。
 - 归因中心：已实现站内转化账本、投放追踪链接、有效联系 / 完成注册活动趋势、历史 Lead 只读对照、Meta Pixel / CAPI 同步健康、重复诊断和分级发布检查；历史 Lead 与会员发放辅助指标均不参与活动漏斗、比率或链接排序，会员发放仅保留在 `operations` 辅助结构。后台分别展示 blocker 与 warning，warning 不改变生产阻断状态；入口为 `/admin/attribution`。
+- 广告平台扩展内核：delivery 仅使用 `provider + transport + connection_revision`，Meta 通过 adapter registry 运行；前端仅消费通用 `trackingInstructions`，后台以统一平台连接为配置入口。旧 Meta 设置键、旧投递列和响应兼容字段已删除，新增 TikTok/Google 不再修改联系和注册事实逻辑。
+- 2026-07-12 广告平台架构收口：本地 migration 实跑确认旧投递/outbox 清空、统一连接迁移成功、业务转化事实与连接验证/诊断保留；API `1064` 条测试、Web 测试、TypeScript、Lint 和 Nuxt production build 均通过，production 只读 duplicate preflight 为 `ready`。
 - Meta CAPI v2：production Dataset Quality v1 契约已由 Owner 批准，真实 Meta `v25.0 /dataset_quality` capture 已验证；collector 与两事件 live evidence 均绑定唯一 production Dataset。正式域名 Browser 与 production CAPI 通过同组 opaque event ID 验证 `Contact`、`CompleteRegistration` 去重；bootstrap 允许快照尚未生成但强制 rollout `0`，full gate 必须验证 production live evidence、collector 快照与 24 小时新鲜度。
 - SEO：已实现基础 SEO 设置、关键词池、sitemap、robots、结构化数据和生产校验脚本；运营配置见 `docs/SEO_CONFIGURATION.md`。
 
@@ -72,12 +74,11 @@
 - `docs/UI_DATA_ANALYTICS_DASHBOARD.md`：后台数据分析看板设计。
 - `docs/TELEGRAM_IMPORT_API.md`：Telegram 外部导入 API 对接契约。
 - `docs/SEO_CONFIGURATION.md`：SEO 关键词和运营配置说明。
+- `docs/META_PRODUCTION_ROLLOUT_PLAN.md`：Meta production 证据、发布、放量和同步确认计划。
+- `docs/AD_PLATFORM_ARCHITECTURE.md`：Meta、TikTok、Google 等 Pixel/API 的统一事实、投递和 adapter 架构。
 - `docs/codebase/*.md`：代码库结构、架构、集成、测试和风险分析。
 - `docs/superpowers/specs/2026-07-08-attribution-center-clean-design.md`：归因中心、后台归因 UI、测试矩阵和发布闸门的设计背景。
-- `docs/superpowers/specs/2026-07-08-meta-capi-attribution-layer-design.md`：Meta 归因与转化事件账本的设计背景。
-- `docs/superpowers/plans/2026-07-10-meta-capi-v2-domain-consolidation.md`：Meta CAPI v2 阶段 1 业务事实收口计划。
-- `docs/superpowers/plans/2026-07-10-meta-capi-v2-secure-delivery.md`：Meta CAPI v2 安全交付计划。
-- `docs/superpowers/plans/2026-07-10-meta-capi-v2-quality-operations.md`：Meta CAPI v2 质量运营计划。
+- `docs/superpowers/specs/2026-07-10-meta-dataset-quality-contract.md`：Meta Dataset Quality 已批准契约。
 
 ## Git 状态
 

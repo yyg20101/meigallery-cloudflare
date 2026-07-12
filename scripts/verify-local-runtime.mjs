@@ -439,7 +439,7 @@ async function postRegistration(fetchFn, payload) {
     body: JSON.stringify(payload),
   }, (body) => {
     if (!Number.isInteger(body?.id) || Number(body.id) <= 0) throw new Error('注册响应缺少合法用户 ID')
-    if (!Array.isArray(body?.pixelEvents)) throw new Error('注册响应缺少 Pixel 指令数组')
+    if (!Array.isArray(body?.trackingInstructions)) throw new Error('注册响应缺少浏览器追踪指令数组')
     return '真实注册 API 已创建用户和 CompleteRegistration 第一方事实'
   })
 }
@@ -565,9 +565,9 @@ async function smokeMetaDelivery(fetchFn, sessionToken) {
   }, (body) => {
     const settings = body?.data?.settings || {}
     const deliveries = Array.isArray(body?.data?.deliveries) ? body.data.deliveries : []
-    if (settings.meta_capi_enabled !== false) throw new Error('meta_capi_enabled 不是 false')
-    if (deliveries.some(row => row?.channel === 'meta_capi')) throw new Error('CAPI 关闭时仍创建了 meta_capi delivery')
-    return 'meta-capi-disabled-in-local'
+    if (settings.server_enabled !== false) throw new Error('本地 Meta Server 投递未关闭')
+    if (deliveries.some(row => row?.provider === 'meta' && row?.transport === 'server')) throw new Error('Server 投递关闭时仍创建了 Meta delivery')
+    return 'meta-server-delivery-disabled-in-local'
   })
 }
 

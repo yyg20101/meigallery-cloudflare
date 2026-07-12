@@ -46,9 +46,9 @@ function createConnectionDb(options: {
   productionIncidentCount?: number
 } = {}) {
   const settings = new Map<string, string>([
-    ['facebook_pixel_id', JSON.stringify(options.pixelId ?? PIXEL_ID)],
-    ['meta_tracking_mode', JSON.stringify(options.trackingMode ?? 'test')],
-    ['meta_capi_rollout_percentage', String(options.productionRollout ?? 0)],
+    ['destination_id', JSON.stringify(options.pixelId ?? PIXEL_ID)],
+    ['mode', JSON.stringify(options.trackingMode ?? 'test')],
+    ['rollout_percentage', String(options.productionRollout ?? 0)],
   ])
   const verifications = new Map<string, VerificationRow>()
   const calls: DbCall[] = []
@@ -79,6 +79,18 @@ function createConnectionDb(options: {
                 }) as T | null
           }
           if (sql.includes('FROM meta_capi_incidents')) return { incident_count: options.productionIncidentCount ?? 0 } as T
+          if (sql.includes('FROM ad_platform_connections')) {
+            if (sql.includes('SELECT rollout_percentage')) {
+              return { rollout_percentage: Number(settings.get('rollout_percentage') ?? 0) } as T
+            }
+            return {
+              provider: 'meta', enabled: 1, mode: JSON.parse(settings.get('mode') ?? '"disabled"'),
+              browser_enabled: 1, server_enabled: 1,
+              destination_id: JSON.parse(settings.get('destination_id') ?? '""'),
+              debug_enabled: 0, rollout_percentage: Number(settings.get('rollout_percentage') ?? 0),
+              credential_secret_name: 'META_CAPI_ACCESS_TOKEN', revision: null,
+            } as T
+          }
           if (sql.includes('FROM site_settings')) {
             const literalKey = sql.match(/key\s*=\s*'([^']+)'/)?.[1]
             const key = literalKey || String(call.params[0] ?? '')
@@ -162,6 +174,9 @@ function createConnectionDb(options: {
             } else {
               changes = 0
             }
+          }
+          if (sql.includes('UPDATE ad_platform_connections')) {
+            settings.set('revision', String(call.params[0] ?? ''))
           }
           return { meta: { changes, rows_written: changes, rows_read: 0, duration: 1 } }
         },
@@ -302,8 +317,8 @@ describe('MetaConnection', () => {
 
   it('Graph 期间 Pixel 或 tracking mode 变化时不写 verification', async () => {
     for (const mutate of [
-      (db: ReturnType<typeof createConnectionDb>) => db.settings.set('facebook_pixel_id', JSON.stringify('9988776655')),
-      (db: ReturnType<typeof createConnectionDb>) => db.settings.set('meta_tracking_mode', JSON.stringify('production')),
+      (db: ReturnType<typeof createConnectionDb>) => db.settings.set('destination_id', JSON.stringify('9988776655')),
+      (db: ReturnType<typeof createConnectionDb>) => db.settings.set('mode', JSON.stringify('production')),
     ]) {
       const db = createConnectionDb()
       const pending = deferredResponse()
@@ -350,7 +365,7 @@ describe('MetaConnection', () => {
   })
 
   it.each([
-    ['pixel_id_changed', async (db: ReturnType<typeof createConnectionDb>) => db.settings.set('facebook_pixel_id', JSON.stringify('9988776655'))],
+    ['pixel_id_changed', async (db: ReturnType<typeof createConnectionDb>) => db.settings.set('destination_id', JSON.stringify('9988776655'))],
     ['access_token_changed', async (_db: ReturnType<typeof createConnectionDb>, env: Bindings) => { env.META_CAPI_ACCESS_TOKEN = 'rotated-token' }],
     ['graph_api_version_changed', async (db: ReturnType<typeof createConnectionDb>) => { db.verifications.get('dev')!.graph_api_version = 'v24.0' }],
     ['release_commit_changed', async (_db: ReturnType<typeof createConnectionDb>, env: Bindings) => { env.RELEASE_COMMIT = 'b'.repeat(40) }],
@@ -373,7 +388,7 @@ describe('MetaConnection', () => {
       const db = createConnectionDb()
       await seedVerification(db)
       const env = connectionEnv(db)
-      if (reason === 'pixel_id_changed') db.settings.set('facebook_pixel_id', JSON.stringify('9988776655'))
+      if (reason === 'pixel_id_changed') db.settings.set('destination_id', JSON.stringify('9988776655'))
       else env.META_CAPI_ACCESS_TOKEN = 'rotated-token'
 
       await expect(requireVerifiedMetaConnection(env)).rejects.toMatchObject({
@@ -434,7 +449,7 @@ describe('MetaConnection', () => {
       },
     })
     await seedVerification(db)
-    db.settings.set('facebook_pixel_id', JSON.stringify(replacementPixelId))
+    db.settings.set('destination_id', JSON.stringify(replacementPixelId))
 
     const status = await getMetaConnectionStatus(connectionEnv(db))
 

@@ -149,12 +149,12 @@ describe('conversion utils', () => {
       preview_path: '/admin/imports/jobs/1',
       media_path: '/api/media/protected/asset_1/access',
       asset_code: 'asset_1',
-      channel: 'meta_capi',
+      transport: 'server',
     })
 
     expect(sanitized).toEqual({
       asset_code: 'asset_1',
-      channel: 'meta_capi',
+      transport: 'server',
     })
   })
 

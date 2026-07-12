@@ -91,10 +91,10 @@ INSERT OR REPLACE INTO site_settings (key, value, updated_at)
 VALUES
   ('analytics_enabled', 'true', datetime('now')),
   ('analytics_sample_rate', '1', datetime('now')),
-  ('analytics_consent_mode', '"limited"', datetime('now')),
-  ('facebook_pixel_enabled', 'true', datetime('now')),
-  ('facebook_pixel_id', '"1234567890"', datetime('now')),
-  ('facebook_pixel_debug_enabled', 'false', datetime('now')),
-  ('meta_capi_enabled', 'false', datetime('now')),
-  ('meta_capi_test_event_enabled', 'false', datetime('now')),
-  ('meta_tracking_mode', '"pixel_only"', datetime('now'));
+  ('analytics_consent_mode', '"limited"', datetime('now'));
+
+INSERT OR REPLACE INTO ad_platform_connections
+  (provider, enabled, mode, browser_enabled, server_enabled, destination_id,
+   debug_enabled, rollout_percentage, credential_secret_name, revision)
+VALUES ('meta', 1, 'test', 1, 0, '1234567890', 0, 0,
+        'META_CAPI_ACCESS_TOKEN', NULL);

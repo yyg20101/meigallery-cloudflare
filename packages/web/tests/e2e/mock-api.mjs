@@ -127,10 +127,7 @@ const defaultPublicSettings = {
   og_description: '测试站点 OG 描述',
   footer_text: '测试环境',
   video_enabled: 'false',
-  facebook_pixel_enabled: 'false',
-  facebook_pixel_id: '1234567890',
-  meta_capi_enabled: 'false',
-  meta_tracking_mode: 'test',
+  ad_platform_browser_connections: [],
   analytics_enabled: 'true',
   analytics_sample_rate: '0',
   analytics_consent_mode: 'granted',
@@ -555,6 +552,7 @@ function adminAttributionResponse(pathname, searchParams) {
     return { range, usage, data: { match: { summary: { fbp: metric(8, 9), fbc: metric(0, 0), email: metric(9, 9), externalId: metric(7, 9) }, rows: dates.map((date, index) => ({ date, fbp: index === 1 ? metric(0, 0) : metric(6 + index, 9), fbc: metric(0, 0), email: metric(8 + index, 9), externalId: metric(5 + index, 9) })) }, datasetQuality } }
   }
   if (pathname.endsWith('/breakdown')) return { range, usage, data: { dimension: searchParams.get('dimension') || 'utm_campaign', rows: [{ value: 'july-contact', actionCount: 6, contactCount: 4, completeRegistrationCount: 2, delivery: { pixelAttempted: 6, capiSent: 5, failed: 1, skipped: 0, pending: 0, retryExhausted: 0 } }] } }
+  if (pathname.endsWith('/platforms')) return { data: [{ provider: 'meta', environment: 'production', enabled: true, browserEnabled: true, serverEnabled: false, destinationId: '1234567890', destinationConfigured: true, debugEnabled: false, rolloutPercentage: 0, serverCredentialConfigured: true, testCredentialConfigured: true, mode: 'test', state: 'verified', verifiedAt: '2026-07-12T00:00:00.000Z', verifiedCommit: 'a'.repeat(40) }] }
   if (pathname.endsWith('/meta/status')) return { range, usage, data: { connection, rollout, activity: { business: { contactCount: 6, completeRegistrationCount: 3, actionCount: 9 }, historical: { leadCount: 7 }, delivery: { pixelAttempted: 12, capiSent: 9, failed: 1, skipped: 3, pending: 1, retryExhausted: 0 } } } }
   if (pathname.endsWith('/meta/incidents')) return { range, usage, data: { items: rollout.openIncident ? [rollout.openIncident] : [], pagination: { limit: 20, offset: 0, hasMore: false } } }
 
@@ -635,10 +633,10 @@ function adminAttributionResponse(pathname, searchParams) {
           duplicate_suppressed_count: 1,
         },
         deliveries: [
-          { channel: 'meta_pixel', event_name: 'Contact', status: 'attempted', skip_reason: '', delivery_count: 8 },
-          { channel: 'meta_capi', event_name: 'Contact', status: 'sent', skip_reason: '', delivery_count: 6 },
-          { channel: 'meta_capi', event_name: 'CompleteRegistration', status: 'failed', skip_reason: 'retry_exhausted', delivery_count: 2 },
-          { channel: 'meta_capi', event_name: 'Contact', status: 'skipped', skip_reason: 'queue_not_configured', delivery_count: 1 },
+          { provider: 'meta', transport: 'browser', event_name: 'Contact', status: 'attempted', skip_reason: '', delivery_count: 8 },
+          { provider: 'meta', transport: 'server', event_name: 'Contact', status: 'sent', skip_reason: '', delivery_count: 6 },
+          { provider: 'meta', transport: 'server', event_name: 'CompleteRegistration', status: 'failed', skip_reason: 'retry_exhausted', delivery_count: 2 },
+          { provider: 'meta', transport: 'server', event_name: 'Contact', status: 'skipped', skip_reason: 'queue_not_configured', delivery_count: 1 },
         ],
         lastSentAt: '2026-07-09T09:30:00.000Z',
         queueBindingPresent: true,
@@ -664,10 +662,10 @@ function adminAttributionResponse(pathname, searchParams) {
           canRemovePrevious: true,
         },
         settings: {
-          facebook_pixel_enabled: true,
-          facebook_pixel_id: '1234567890',
-          meta_capi_enabled: true,
-          meta_tracking_mode: 'test',
+          enabled: true,
+          browser_enabled: true,
+          server_enabled: false,
+          mode: 'test',
         },
       },
     }
@@ -703,10 +701,11 @@ function adminAttributionResponse(pathname, searchParams) {
         ],
         settings: {
           analytics_enabled: true,
-          facebook_pixel_enabled: true,
-          facebook_pixel_id: '1234567890',
-          meta_capi_enabled: mutablePublicSettings.meta_capi_enabled === true || mutablePublicSettings.meta_capi_enabled === 'true',
-          meta_tracking_mode: mutablePublicSettings.meta_tracking_mode,
+          enabled: true,
+          browser_enabled: true,
+          server_enabled: false,
+          destination_configured: true,
+          mode: 'test',
         },
         verifications: {
           environment: 'production',
@@ -919,7 +918,8 @@ function handleApi(req, res) {
           role: 'user',
           membershipRank: 0,
           membershipName: 'free',
-          pixelEvents: [{
+          trackingInstructions: [{
+            provider: 'meta',
             deliveryId: 'cdlv_registration_22',
             eventName: 'CompleteRegistration',
             eventId: 'meta:CompleteRegistration:complete_registration:user:22',
@@ -935,7 +935,7 @@ function handleApi(req, res) {
   }
   if (url.pathname === '/api/conversions/events' && req.method === 'POST') {
     receiptProtectedRequests.push({ endpoint: '/api/conversions/events', cookie: req.headers.cookie || '' })
-    return json(res, { data: { pixelEvents: [] } })
+    return json(res, { data: { trackingInstructions: [] } })
   }
   if (url.pathname === '/api/cases') return json(res, { data: cases, total: cases.length })
   if (url.pathname === '/api/tags') {
@@ -1024,6 +1024,12 @@ function handleApi(req, res) {
   }
   if (url.pathname === '/api/admin/attribution/meta/live-challenge/consume' && req.method === 'POST') {
     return json(res, { data: { status: 'server_sent', eventsReceived: 2 } })
+  }
+  if (url.pathname === '/api/admin/attribution/platforms/meta' && req.method === 'PATCH') {
+    readJsonBody(req)
+      .then(() => json(res, adminAttributionResponse('/api/admin/attribution/platforms', new URLSearchParams())))
+      .catch(() => json(res, { statusCode: 400, message: '连接配置请求无效' }, 400))
+    return
   }
   if (url.pathname === '/api/admin/attribution/meta/rollout' && req.method === 'POST') {
     readJsonBody(req).then((body) => {

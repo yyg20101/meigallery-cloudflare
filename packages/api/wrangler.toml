@@ -83,30 +83,17 @@ bucket_name = "meigallery-media-dev"
 name = "EMAIL"
 
 [env.dev.triggers]
-crons = ["* * * * *"]  # dev 每分钟评估熔断并恢复 Meta outbox，不运行每日聚合
+crons = []
 
-[[env.dev.queues.producers]]
-binding = "META_CAPI_QUEUE"
-queue = "meigallery-meta-capi-dev"
-
-[[env.dev.queues.consumers]]
-queue = "meigallery-meta-capi-dev"
-max_batch_size = 5
-max_batch_timeout = 30
-max_retries = 5
-retry_delay = 60
-dead_letter_queue = "meigallery-meta-capi-dev-dlq"
-
-[[env.dev.queues.consumers]]
-queue = "meigallery-meta-capi-dev-dlq"
-max_batch_size = 5
-max_batch_timeout = 5
+[env.dev.queues]
+producers = []
+consumers = []
 
 [env.dev.vars]
 APP_ENV = "dev"
 CORS_ORIGIN = ""
 EMAIL_FROM = "noreply@616618.xyz"
-SITE_URL = "https://616618.xyz"
+SITE_URL = ""
 IMAGE_RESIZING_ENABLED = "false"
 IMPORT_TOKEN_DAILY_LIMIT = "100"
 

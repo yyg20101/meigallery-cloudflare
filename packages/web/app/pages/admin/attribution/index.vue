@@ -10,6 +10,7 @@ import type {
   AttributionReadinessData,
   AttributionSummaryData,
   AttributionTrendsData,
+  AdPlatformConnectionStatusData,
   MetaIncident,
   MetaStatusData,
 } from '~/composables/useAdminAttribution'
@@ -41,6 +42,7 @@ interface IncidentData {
 }
 
 const { isOwner } = useAuth()
+const { api } = useApi()
 const rangeState = useAdminAttributionRange('7d')
 const requestOptions = { rangeState, autoRefresh: false }
 const summary = useAdminAttribution<AttributionSummaryData>('/api/admin/attribution/summary', requestOptions)
@@ -54,6 +56,7 @@ const breakdown = useAdminAttribution<BreakdownData>('/api/admin/attribution/bre
   query: { dimension: 'utm_campaign', limit: 8 },
 })
 const metaStatus = useAdminAttribution<MetaStatusData>('/api/admin/attribution/meta/status', requestOptions)
+const platforms = useAdminAttribution<AdPlatformConnectionStatusData[]>('/api/admin/attribution/platforms', requestOptions)
 const readiness = useAdminAttribution<AttributionReadinessData>('/api/admin/attribution/readiness', requestOptions)
 const duplicates = useAdminAttribution<DuplicateData>('/api/admin/attribution/duplicates', requestOptions)
 const incidents = useAdminAttribution<IncidentData>('/api/admin/attribution/meta/incidents', {
@@ -61,7 +64,7 @@ const incidents = useAdminAttribution<IncidentData>('/api/admin/attribution/meta
   query: { status: 'all', limit: 20 },
 })
 
-const sources = [summary, trends, quality, breakdown, metaStatus, readiness, duplicates, incidents]
+const sources = [summary, trends, quality, breakdown, platforms, metaStatus, readiness, duplicates, incidents]
 const loading = computed(() => sources.some(source => source.loading.value))
 const error = computed(() => sources.map(source => source.error.value).find(Boolean) || '')
 const business = computed(() => summary.data.value?.business ?? { contactCount: 0, completeRegistrationCount: 0, actionCount: 0 })
@@ -93,6 +96,29 @@ const qualityRows = computed(() => quality.data.value?.match.rows as unknown as 
 const datasetQuality = computed(() => quality.data.value?.datasetQuality)
 const blockerCount = computed(() => readiness.data.value?.checks.filter(check => check.level === 'blocker' && !check.ok).length ?? 0)
 const warningCount = computed(() => readiness.data.value?.checks.filter(check => check.level === 'warning' && !check.ok).length ?? 0)
+const connectionSaving = ref(false)
+const connectionMessage = ref('')
+const metaConnectionForm = reactive({
+  enabled: false,
+  browserEnabled: false,
+  serverEnabled: false,
+  destinationId: '',
+  debugEnabled: false,
+  mode: 'disabled' as 'disabled' | 'test' | 'production',
+  rolloutPercentage: 0 as 0 | 10 | 50 | 100,
+})
+watch(() => platforms.data.value?.find(item => item.provider === 'meta'), (connection) => {
+  if (!connection) return
+  Object.assign(metaConnectionForm, {
+    enabled: connection.enabled,
+    browserEnabled: connection.browserEnabled,
+    serverEnabled: connection.serverEnabled,
+    destinationId: connection.destinationId,
+    debugEnabled: connection.debugEnabled,
+    mode: connection.mode,
+    rolloutPercentage: connection.rolloutPercentage,
+  })
+}, { immediate: true })
 const linkRoute = computed(() => ({ path: '/admin/attribution/links', query: attributionRouteQuery(rangeState.range.value, rangeState.date.value) }))
 
 const businessSeries = [
@@ -116,6 +142,25 @@ const evidenceLayers = [
 
 async function refreshAll() {
   await Promise.all(sources.map(source => source.refresh()))
+}
+
+async function saveMetaConnection() {
+  connectionSaving.value = true
+  connectionMessage.value = ''
+  try {
+    await api('/api/admin/attribution/platforms/meta', {
+      method: 'PATCH',
+      body: { ...metaConnectionForm },
+    })
+    connectionMessage.value = 'Meta 连接已保存'
+    await refreshAll()
+  }
+  catch (error) {
+    connectionMessage.value = resolveApiErrorMessage(error, 'Meta 连接保存失败')
+  }
+  finally {
+    connectionSaving.value = false
+  }
 }
 
 watch(rangeState.queryKey, () => void refreshAll())
@@ -143,8 +188,8 @@ function formatCount(value: unknown) {
   <AttributionPageShell
     v-model:range="rangeState.range.value"
     v-model:date="rangeState.date.value"
-    title="Meta 归因质量"
-    description="按时间比较站内事实、Pixel 尝试、CAPI 接收与 Meta 质量，定位投放和投递问题。"
+    title="广告归因质量"
+    description="按平台比较站内事实、浏览器尝试、服务器接收与平台质量，定位投放和投递问题。"
     :loading="loading"
     :error="error"
     :usage="summary.usage.value"
@@ -164,8 +209,49 @@ function formatCount(value: unknown) {
       <section data-attribution-section="connection" class="min-w-0 border-b border-gray-200 px-3 py-5 sm:px-5">
         <div class="mb-4">
           <p class="text-xs font-medium text-gray-400">01 · 连接状态</p>
-          <h2 class="mt-1 text-base font-semibold text-gray-900">Meta 连接与当前活动</h2>
+          <h2 class="mt-1 text-base font-semibold text-gray-900">广告平台连接</h2>
+          <p class="mt-1 text-sm text-gray-500">ID 与凭证状态按同一连接展示，凭证值不会返回前端。</p>
         </div>
+        <div class="mb-5 divide-y divide-gray-200 border-y border-gray-200">
+          <div v-for="connection in platforms.data.value || []" :key="connection.provider" class="grid gap-2 px-1 py-3 text-sm sm:grid-cols-[8rem_1fr_auto] sm:items-center">
+            <strong class="uppercase text-gray-900">{{ connection.provider }}</strong>
+            <span class="text-gray-500">目标 ID {{ connection.destinationConfigured ? '已配置' : '未配置' }} · Server 凭证 {{ connection.serverCredentialConfigured ? '已配置' : '未配置' }} · {{ connection.mode }}</span>
+            <span :class="connection.state === 'verified' ? 'text-emerald-700' : 'text-amber-700'" class="font-medium">{{ connection.state === 'verified' ? '已验证' : '待验证' }}</span>
+          </div>
+          <p v-if="!platforms.data.value?.length" class="px-1 py-4 text-sm text-gray-500">尚未取得平台连接状态</p>
+        </div>
+        <form v-if="isOwner" class="mb-6 grid gap-4 border-b border-gray-200 pb-6 sm:grid-cols-2 lg:grid-cols-4" @submit.prevent="saveMetaConnection">
+          <label class="sm:col-span-2">
+            <span class="mb-1 block text-xs font-medium text-gray-600">Meta Dataset ID</span>
+            <input v-model="metaConnectionForm.destinationId" inputmode="numeric" pattern="[0-9]{5,30}" required class="w-full border border-gray-300 px-3 py-2 text-sm" />
+          </label>
+          <label>
+            <span class="mb-1 block text-xs font-medium text-gray-600">运行模式</span>
+            <select v-model="metaConnectionForm.mode" class="w-full border border-gray-300 px-3 py-2 text-sm">
+              <option value="disabled">关闭</option>
+              <option value="test">测试</option>
+              <option value="production">生产</option>
+            </select>
+          </label>
+          <label>
+            <span class="mb-1 block text-xs font-medium text-gray-600">Server 放量</span>
+            <select v-model="metaConnectionForm.rolloutPercentage" class="w-full border border-gray-300 px-3 py-2 text-sm">
+              <option :value="0">0%</option>
+              <option :value="10">10%</option>
+              <option :value="50">50%</option>
+              <option :value="100">100%</option>
+            </select>
+          </label>
+          <label class="flex items-center gap-2 text-sm"><input v-model="metaConnectionForm.enabled" type="checkbox" />启用连接</label>
+          <label class="flex items-center gap-2 text-sm"><input v-model="metaConnectionForm.browserEnabled" type="checkbox" />Browser Pixel</label>
+          <label class="flex items-center gap-2 text-sm"><input v-model="metaConnectionForm.serverEnabled" type="checkbox" />Server API</label>
+          <label class="flex items-center gap-2 text-sm"><input v-model="metaConnectionForm.debugEnabled" type="checkbox" />调试日志</label>
+          <div class="flex items-center gap-3 sm:col-span-2 lg:col-span-4">
+            <button type="submit" :disabled="connectionSaving" class="bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">保存连接</button>
+            <span class="text-sm text-gray-500">{{ connectionMessage }}</span>
+          </div>
+        </form>
+        <h3 class="mb-3 text-sm font-semibold text-gray-900">Meta 运维状态</h3>
         <MetaConnectionStatus
           :connection="metaStatus.data.value?.connection || null"
           :activity="metaStatus.data.value?.activity || null"

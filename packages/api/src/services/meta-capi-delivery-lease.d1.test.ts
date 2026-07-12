@@ -29,8 +29,12 @@ beforeAll(async () => {
   }
   const fingerprint = await metaConnectionFingerprint(PIXEL_ID, ACCESS_TOKEN)
   await db.batch([
-    db.prepare("INSERT INTO site_settings (key, value) VALUES ('facebook_pixel_id', ?)").bind(JSON.stringify(PIXEL_ID)),
-    db.prepare("INSERT INTO site_settings (key, value) VALUES ('meta_tracking_mode', '" + '"production"' + "')"),
+    db.prepare(`
+      INSERT INTO ad_platform_connections
+        (provider, enabled, mode, browser_enabled, server_enabled, destination_id,
+         debug_enabled, rollout_percentage, credential_secret_name, revision)
+      VALUES ('meta', 1, 'production', 1, 1, ?, 0, 100, 'META_CAPI_ACCESS_TOKEN', ?)
+    `).bind(PIXEL_ID, REVISION),
     db.prepare(`
       INSERT INTO meta_connection_verifications (
         environment, pixel_id, token_fingerprint, graph_api_version,
@@ -187,15 +191,15 @@ async function seedDelivery(deliveryId: string, eventId: string) {
     `).bind(actionId),
     db.prepare(`
       INSERT INTO analytics_conversion_deliveries (
-        id, conversion_action_id, channel, external_event_id, event_name,
-        status, tracking_mode, meta_connection_revision, created_at, updated_at
-      ) VALUES (?, ?, 'meta_capi', ?, 'Contact', 'pending', 'production', ?, datetime('now'), datetime('now'))
+        id, conversion_action_id, transport, external_event_id, event_name,
+        status, tracking_mode, connection_revision, created_at, updated_at
+      ) VALUES (?, ?, 'server', ?, 'Contact', 'pending', 'production', ?, datetime('now'), datetime('now'))
     `).bind(deliveryId, actionId, eventId, REVISION),
     db.prepare(`
       INSERT INTO analytics_conversion_delivery_daily (
-        date, channel, event_name, status, skip_reason, delivery_count
-      ) VALUES ('2026-07-11', 'meta_capi', 'Contact', 'pending', '', 1)
-      ON CONFLICT(date, channel, event_name, status, skip_reason)
+        date, provider, transport, event_name, status, skip_reason, delivery_count
+      ) VALUES ('2026-07-11', 'meta', 'server', 'Contact', 'pending', '', 1)
+      ON CONFLICT(date, provider, transport, event_name, status, skip_reason)
       DO UPDATE SET delivery_count = delivery_count + 1
     `),
   ])
@@ -274,7 +278,13 @@ function deliveryEnv() {
 
 function schemaSql() {
   return `
-    CREATE TABLE site_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE ad_platform_connections (
+      provider TEXT PRIMARY KEY, enabled INTEGER NOT NULL, mode TEXT NOT NULL,
+      browser_enabled INTEGER NOT NULL, server_enabled INTEGER NOT NULL,
+      destination_id TEXT NOT NULL, debug_enabled INTEGER NOT NULL,
+      rollout_percentage INTEGER NOT NULL, credential_secret_name TEXT NOT NULL,
+      revision TEXT
+    );
     CREATE TABLE meta_connection_verifications (
       environment TEXT PRIMARY KEY, pixel_id TEXT NOT NULL, token_fingerprint TEXT NOT NULL,
       graph_api_version TEXT NOT NULL, verified_event_name TEXT NOT NULL, verified_commit TEXT NOT NULL,
@@ -286,11 +296,12 @@ function schemaSql() {
       path TEXT NOT NULL DEFAULT '', metadata TEXT NOT NULL DEFAULT '{}'
     );
     CREATE TABLE analytics_conversion_deliveries (
-      id TEXT PRIMARY KEY, conversion_action_id TEXT NOT NULL, channel TEXT NOT NULL,
+      id TEXT PRIMARY KEY, conversion_action_id TEXT NOT NULL,
+      provider TEXT NOT NULL DEFAULT 'meta', transport TEXT NOT NULL DEFAULT 'server',
       external_event_id TEXT NOT NULL, event_name TEXT NOT NULL, status TEXT NOT NULL,
       skip_reason TEXT NOT NULL DEFAULT '', error_code TEXT NOT NULL DEFAULT '',
       error_message TEXT NOT NULL DEFAULT '', attempt_count INTEGER NOT NULL DEFAULT 0,
-      tracking_mode TEXT NOT NULL, meta_connection_revision TEXT,
+      tracking_mode TEXT NOT NULL, connection_revision TEXT,
       duplicate_suppressed_at TEXT, encryption_key_id TEXT NOT NULL DEFAULT '',
       delivery_lease_token TEXT NOT NULL DEFAULT '', delivery_lease_expires_at TEXT,
       last_attempt_at TEXT, sent_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
@@ -300,10 +311,11 @@ function schemaSql() {
       iv TEXT NOT NULL, ciphertext TEXT NOT NULL, tag TEXT NOT NULL, expires_at TEXT NOT NULL
     );
     CREATE TABLE analytics_conversion_delivery_daily (
-      date TEXT NOT NULL, channel TEXT NOT NULL, event_name TEXT NOT NULL,
+      date TEXT NOT NULL, provider TEXT NOT NULL DEFAULT 'meta', transport TEXT NOT NULL DEFAULT 'server',
+      event_name TEXT NOT NULL,
       status TEXT NOT NULL, skip_reason TEXT NOT NULL DEFAULT '', delivery_count INTEGER NOT NULL,
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-      UNIQUE(date, channel, event_name, status, skip_reason)
+      UNIQUE(date, provider, transport, event_name, status, skip_reason)
     );
   `
 }

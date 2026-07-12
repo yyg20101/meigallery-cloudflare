@@ -13,7 +13,10 @@ import { verifyApprovedMetaDatasetQualityContract } from './meta-dataset-quality
 const YES_VALUES = new Set(['y', 'yes', '是'])
 const EVIDENCE_TTL_MS = 24 * 60 * 60 * 1000
 const VERIFY_TIMEOUT_MS = 20_000
-const REQUIRED_VERIFY_URLS = ['VERIFY_PRODUCTION_API_URL', 'VERIFY_PRODUCTION_WEB_URL']
+const DEFAULT_PRODUCTION_URLS = {
+  VERIFY_PRODUCTION_API_URL: 'https://api.616618.xyz',
+  VERIFY_PRODUCTION_WEB_URL: 'https://616618.xyz',
+}
 const DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/
 const CHALLENGE_PATTERN = /^mlc_[0-9a-f]{32}$/
 
@@ -75,7 +78,8 @@ export async function recordMetaLiveVerification(options = {}) {
   await verifyProductionReleaseIdentity({ ...options, commit })
   const readiness = await readReadiness({ ...options, commit, expectedDatasetQualityContract: contract })
   assertReadinessCanRecord(readiness, commit, options.now, contract)
-  const ask = options.ask || createCliPrompter()
+  const cliPrompter = options.ask ? null : createCliPrompter()
+  const ask = options.ask || cliPrompter.ask
 
   try {
     const eventResults = []
@@ -108,6 +112,7 @@ export async function recordMetaLiveVerification(options = {}) {
     return { evidence, ...files }
   }
   finally {
+    cliPrompter?.close()
     await destroyChallenge(readiness.challengeId, { ...options, commit })
   }
 }
@@ -175,15 +180,15 @@ export async function verifyProductionReleaseIdentity(options = {}) {
   if (!/^[0-9a-f]{40}$/i.test(commit)) throw new Error('本地 Git HEAD 必须为 40 位 SHA')
   const env = options.env || process.env
   const fetchFn = options.fetch || fetch
-  await Promise.all(REQUIRED_VERIFY_URLS.map(async key => {
-    const value = String(env[key] || '').trim()
+  await Promise.all(Object.keys(DEFAULT_PRODUCTION_URLS).map(async key => {
+    const value = String(env[key] || DEFAULT_PRODUCTION_URLS[key]).trim()
     let origin
     try { origin = new URL(value) } catch { throw new Error(`${key} 必须是合法的 production Worker HTTPS 地址`) }
     if (origin.protocol !== 'https:' || origin.username || origin.password) throw new Error(`${key} 必须是不含凭证的 production Worker HTTPS 地址`)
     const endpoint = key === 'VERIFY_PRODUCTION_API_URL' ? '/api/health' : '/__release'
     const response = await fetchWithTimeout(fetchFn, new URL(endpoint, origin), { headers: { Accept: 'application/json' } }, options.requestTimeoutMs ?? VERIFY_TIMEOUT_MS)
     const body = response.ok ? await response.json().catch(() => null) : null
-    const name = key === 'VERIFY_DEV_API_URL' ? 'API' : 'Web'
+    const name = key === 'VERIFY_PRODUCTION_API_URL' ? 'API' : 'Web'
     if (!body || body.status !== 'ok' || body.environment !== 'production' || body.commit !== commit) throw new Error(`${name} 发布 commit 与本地 Git HEAD 不一致`)
   }))
 }
@@ -245,7 +250,10 @@ function isYes(value) {
 
 function createCliPrompter() {
   const readline = createInterface({ input: process.stdin, output: process.stdout })
-  return prompt => readline.question(prompt)
+  return {
+    ask: prompt => readline.question(prompt),
+    close: () => readline.close(),
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

@@ -72,6 +72,7 @@ beforeAll(async () => {
     '0037_meta_connection_revision.sql',
     '0038_conversion_dedupe_claims.sql',
     '0039_meta_capi_v2_operations.sql',
+    '0047_ad_platform_delivery_core.sql',
   ]) await applyMigration(name)
 }, 30_000)
 
@@ -155,7 +156,7 @@ describe('conversion dedupe claim 真实 D1 并发', () => {
     const loser = await loserPromise
 
     expect(winner).toMatchObject({ created: true, duplicateOf: '' })
-    expect(loser).toMatchObject({ id: winner.id, created: false, duplicateOf: winner.id, pixelEvents: [] })
+    expect(loser).toMatchObject({ id: winner.id, created: false, duplicateOf: winner.id, trackingInstructions: [] })
     expect(winnerBrowser).toHaveBeenCalledOnce()
     expect(winnerSensitive).toHaveBeenCalledOnce()
     expect(loserBrowser).not.toHaveBeenCalled()
@@ -352,44 +353,44 @@ describe('conversion dedupe claim 真实 D1 并发', () => {
         getRegistrationSensitiveInput: sensitive,
       })
       const deliveries = await realDb.prepare(`
-        SELECT channel, status, skip_reason, has_fbp, has_fbc, has_email,
-          has_external_id, meta_connection_revision
+        SELECT transport, status, skip_reason, has_fbp, has_fbc, has_email,
+          has_external_id, connection_revision
         FROM analytics_conversion_deliveries
-        ORDER BY channel
+        ORDER BY transport DESC
       `).all<Record<string, unknown>>()
       const daily = await realDb.prepare(`
-        SELECT channel, status, skip_reason, delivery_count
+        SELECT transport, status, skip_reason, delivery_count
         FROM analytics_conversion_delivery_daily
-        ORDER BY channel
+        ORDER BY transport DESC
       `).all<Record<string, unknown>>()
 
       expect(result).toMatchObject({ created: true })
-      expect(result.pixelEvents).toHaveLength(1)
+      expect(result.trackingInstructions).toHaveLength(1)
       expect(deliveries.results).toEqual([
         {
-          channel: 'meta_capi',
+          transport: 'server',
           status: 'skipped',
           skip_reason: 'invalid_sensitive_context',
           has_fbp: 0,
           has_fbc: 0,
           has_email: 0,
           has_external_id: 0,
-          meta_connection_revision: CONNECTION_REVISION,
+          connection_revision: CONNECTION_REVISION,
         },
         {
-          channel: 'meta_pixel',
+          transport: 'browser',
           status: 'pending',
           skip_reason: '',
           has_fbp: 0,
           has_fbc: 0,
           has_email: 0,
           has_external_id: 0,
-          meta_connection_revision: CONNECTION_REVISION,
+          connection_revision: CONNECTION_REVISION,
         },
       ])
       expect(daily.results).toEqual([
-        { channel: 'meta_capi', status: 'skipped', skip_reason: 'invalid_sensitive_context', delivery_count: 1 },
-        { channel: 'meta_pixel', status: 'pending', skip_reason: '', delivery_count: 1 },
+        { transport: 'server', status: 'skipped', skip_reason: 'invalid_sensitive_context', delivery_count: 1 },
+        { transport: 'browser', status: 'pending', skip_reason: '', delivery_count: 1 },
       ])
       expect(await scalar('SELECT action_count AS value FROM analytics_conversion_daily')).toBe(1)
       expect(await scalar('SELECT count(*) AS value FROM meta_capi_secure_outbox')).toBe(0)
@@ -411,8 +412,8 @@ describe('conversion dedupe claim 真实 D1 并发', () => {
   ) => {
     if (reason === 'rollout_excluded') {
       await realDb.prepare(`
-        UPDATE site_settings SET value = '0'
-        WHERE key = 'meta_capi_rollout_percentage'
+        UPDATE ad_platform_connections SET rollout_percentage = 0
+        WHERE provider = 'meta'
       `).run()
     }
     if (circuitOpen) {
@@ -441,7 +442,7 @@ describe('conversion dedupe claim 真实 D1 并发', () => {
       SELECT status, skip_reason, rollout_target_percentage,
         rollout_effective_percentage, rollout_bucket
       FROM analytics_conversion_deliveries
-      WHERE channel = 'meta_capi'
+      WHERE provider = 'meta' AND transport = 'server'
     `).first<Record<string, unknown>>()
     expect(delivery).toMatchObject({
       status: 'skipped',
@@ -455,7 +456,7 @@ describe('conversion dedupe claim 真实 D1 并发', () => {
     expect(await scalar(`
       SELECT delivery_count AS value
       FROM analytics_conversion_delivery_daily
-      WHERE channel = 'meta_capi' AND status = 'skipped' AND skip_reason = '${reason}'
+      WHERE provider = 'meta' AND transport = 'server' AND status = 'skipped' AND skip_reason = '${reason}'
     `)).toBe(1)
   })
 })
@@ -478,13 +479,11 @@ async function seedRuntime() {
       VALUES (42, 'stored@example.test', 'hash', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
     `),
     realDb.prepare(`
-      INSERT INTO site_settings (key, value) VALUES
-        ('facebook_pixel_id', ?),
-        ('facebook_pixel_enabled', 'true'),
-        ('meta_capi_enabled', 'true'),
-        ('meta_tracking_mode', '"production"'),
-        ('meta_capi_rollout_percentage', '100')
-    `).bind(JSON.stringify(PIXEL_ID)),
+      UPDATE ad_platform_connections
+      SET enabled = 1, mode = 'production', browser_enabled = 1, server_enabled = 1,
+        destination_id = ?, rollout_percentage = 100, revision = ?
+      WHERE provider = 'meta'
+    `).bind(PIXEL_ID, CONNECTION_REVISION),
     realDb.prepare(`
       INSERT INTO meta_connection_verifications (
         environment, pixel_id, token_fingerprint, graph_api_version,
@@ -561,7 +560,7 @@ function wrapDb(db: D1Database, options: {
         return wrapStatement(inner.bind(...boundValues), sql)
       },
       async first<T>(columnName?: string) {
-        if (settingsFailurePending && sql.includes('FROM site_settings')) {
+        if (settingsFailurePending && sql.includes('FROM ad_platform_connections')) {
           settingsFailurePending = false
           throw new Error('CONVERSION_PLAN_BUILD_FAILED')
         }

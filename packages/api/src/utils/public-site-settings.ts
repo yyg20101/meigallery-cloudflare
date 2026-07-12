@@ -1,5 +1,4 @@
-import { normalizeMetaTrackingMode } from '@meigallery/shared/utils'
-import { normalizeBooleanSetting, normalizeFacebookPixelId } from './facebook-pixel-settings'
+import { normalizeBooleanSetting } from './setting-normalization'
 import { normalizeAnalyticsConsentMode, safeAnalyticsSampleRate } from './analytics-settings'
 import { isHomeAdActive, normalizeHomeAdScheduleValue } from './home-ad-schedule'
 import { normalizeHomeAdUrl, safeHomeAdText } from './home-ad-settings'
@@ -51,19 +50,9 @@ export function sanitizePublicSiteSetting(key: string, value: unknown) {
     return safeSiteTextSetting(key, value)
   }
 
-  if (key === 'facebook_pixel_id') {
-    try {
-      return normalizeFacebookPixelId(value)
-    } catch {
-      return ''
-    }
-  }
-
   if (key === 'analytics_sample_rate') return safeAnalyticsSampleRate(value)
   if (key === 'analytics_consent_mode') return normalizeAnalyticsConsentMode(value)
-  if (key === 'meta_tracking_mode') return normalizeMetaTrackingMode(value)
-
-  if (key === 'facebook_pixel_enabled' || key === 'facebook_pixel_debug_enabled' || key === 'home_ad_enabled' || key === 'analytics_enabled') {
+  if (key === 'home_ad_enabled' || key === 'analytics_enabled') {
     return normalizeBooleanSetting(value)
   }
 

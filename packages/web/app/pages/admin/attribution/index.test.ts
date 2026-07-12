@@ -54,6 +54,17 @@ function mountPage(datasetAvailable = false) {
       rollout: { targetPercentage: 10, effectivePercentage: 10, openIncident: null },
       activity: {},
     }),
+    '/api/admin/attribution/platforms': state([{
+      provider: 'meta',
+      environment: 'production',
+      destinationConfigured: true,
+      serverCredentialConfigured: true,
+      testCredentialConfigured: true,
+      mode: 'test',
+      state: 'verified',
+      verifiedAt: '2026-07-12T00:00:00.000Z',
+      verifiedCommit: 'a'.repeat(40),
+    }]),
     '/api/admin/attribution/readiness': state({ ready: true, checks: [], settings: {}, verifications: {} }),
     '/api/admin/attribution/breakdown': state({ dimension: 'utm_campaign', rows: [] }),
     '/api/admin/attribution/duplicates': state({ duplicateRate: 0, samples: [] }),
@@ -68,6 +79,7 @@ function mountPage(datasetAvailable = false) {
     queryKey: computed(() => '7d'),
   }))
   vi.stubGlobal('useAuth', () => ({ isOwner: ref(true) }))
+  vi.stubGlobal('useApi', () => ({ api: vi.fn().mockResolvedValue({}) }))
   vi.stubGlobal('formatAnalyticsNumber', (value: unknown) => String(value ?? 0))
   vi.stubGlobal('formatAnalyticsPercent', (numerator: unknown, denominator?: unknown) => denominator === undefined ? `${Number(numerator) * 100}%` : `${Number(numerator) / Math.max(1, Number(denominator)) * 100}%`)
 

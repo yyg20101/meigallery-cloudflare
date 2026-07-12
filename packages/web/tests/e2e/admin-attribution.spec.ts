@@ -11,6 +11,7 @@ const singleDayEndpointQueries = new Map<string, Record<string, string>>([
   ['/api/admin/attribution/quality', { from: '2026-07-10', to: '2026-07-10' }],
   ['/api/admin/attribution/breakdown', { from: '2026-07-10', to: '2026-07-10', dimension: 'utm_campaign', limit: '8' }],
   ['/api/admin/attribution/meta/status', { from: '2026-07-10', to: '2026-07-10' }],
+  ['/api/admin/attribution/platforms', { from: '2026-07-10', to: '2026-07-10' }],
   ['/api/admin/attribution/readiness', { from: '2026-07-10', to: '2026-07-10' }],
   ['/api/admin/attribution/duplicates', { from: '2026-07-10', to: '2026-07-10' }],
   ['/api/admin/attribution/meta/incidents', { from: '2026-07-10', to: '2026-07-10', status: 'all', limit: '20' }],

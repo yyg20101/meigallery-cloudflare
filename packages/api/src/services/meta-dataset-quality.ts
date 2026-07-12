@@ -1,5 +1,4 @@
 import type { Bindings } from '../index'
-import { parseStoredSettingValue } from '../utils/stored-setting-value'
 import { META_GRAPH_API_VERSION, metaGraphRequestInit } from './meta-graph'
 
 const CONTRACT_VERSION = 1
@@ -92,9 +91,9 @@ export function parseQualityResponse(input: unknown): DatasetQualityMetric[] {
 }
 
 async function readDatasetId(db: D1Database) {
-  const row = await db.prepare("SELECT value FROM site_settings WHERE key = 'facebook_pixel_id'").first<{ value: string }>()
-  const value = row ? parseStoredSettingValue(row.value) : ''
-  const datasetId = typeof value === 'string' ? value.trim() : ''
+  const row = await db.prepare("SELECT destination_id FROM ad_platform_connections WHERE provider = 'meta'")
+    .first<{ destination_id: string }>()
+  const datasetId = String(row?.destination_id ?? '').trim()
   return /^\d{5,30}$/.test(datasetId) ? datasetId : ''
 }
 

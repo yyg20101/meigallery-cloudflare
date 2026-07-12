@@ -68,38 +68,21 @@ describe('site settings keys', () => {
     }
   })
 
-  it('allows Facebook Pixel settings in admin and public settings', () => {
-    const pixelKeys = [
-      'facebook_pixel_enabled',
-      'facebook_pixel_id',
-      'facebook_pixel_debug_enabled',
+  it('广告平台配置不进入通用站点设置', () => {
+    const adPlatformKeys = [
+      'browser_enabled',
+      'destination_id',
+      'debug_enabled',
+      'mode',
+      'server_enabled',
+      'rollout_percentage',
     ]
 
-    for (const key of pixelKeys) {
-      expect(ADMIN_SETTING_KEYS).toContain(key)
-      expect(PUBLIC_SETTING_KEYS).toContain(key)
+    for (const key of adPlatformKeys) {
+      expect(ADMIN_SETTING_KEYS).not.toContain(key)
+      expect(PUBLIC_SETTING_KEYS).not.toContain(key)
     }
-  })
-
-  it('keeps Meta CAPI switch admin-only', () => {
-    expect(ADMIN_SETTING_KEYS).toContain('meta_tracking_mode')
-    expect(PUBLIC_SETTING_KEYS).toContain('meta_tracking_mode')
-    expect(ADMIN_SETTING_KEYS).toContain('meta_capi_enabled')
-    expect(PUBLIC_SETTING_KEYS).not.toContain('meta_capi_enabled')
-    expect(ADMIN_SETTING_KEYS).not.toContain('META_CAPI_ACCESS_TOKEN')
-    expect(PUBLIC_SETTING_KEYS).not.toContain('META_CAPI_ACCESS_TOKEN')
-    expect(ADMIN_SETTING_KEYS).not.toContain('META_CAPI_TEST_EVENT_CODE')
-    expect(PUBLIC_SETTING_KEYS).not.toContain('META_CAPI_TEST_EVENT_CODE')
-  })
-
-  it('keeps Meta CAPI rollout admin-only', () => {
-    expect(ADMIN_SETTING_KEYS).toContain('meta_capi_rollout_percentage')
-    expect(PUBLIC_SETTING_KEYS).not.toContain('meta_capi_rollout_percentage')
-    expect(PROTECTED_ADMIN_SETTING_KEYS).toEqual(['meta_capi_rollout_percentage'])
-    expect(findProtectedAdminSettingKeys([
-      'site_name',
-      'meta_capi_rollout_percentage',
-      'home_hero_title',
-    ])).toEqual(['meta_capi_rollout_percentage'])
+    expect(PROTECTED_ADMIN_SETTING_KEYS).toEqual([])
+    expect(findProtectedAdminSettingKeys(adPlatformKeys)).toEqual([])
   })
 })

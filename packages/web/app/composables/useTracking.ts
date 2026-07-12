@@ -1,8 +1,14 @@
-import type { MetaPixelInstruction } from '@meigallery/shared'
-import { metaPixelAdapter } from '~/adapters/metaPixel.client'
+import type { AdBrowserInstruction } from '@meigallery/shared'
+import {
+  executeAdBrowserInstruction,
+  initializeAdBrowserProvider,
+  teardownAdBrowserProvider,
+  trackAdBrowserPageView,
+  trackAdBrowserStandardEvent,
+} from '~/adapters/adPlatformBrowser.client'
 import { sanitizeAnalyticsPath } from '~/utils/analyticsSanitizer'
 import { resolveConversionIdentity } from '~/utils/conversionIdentity'
-import { hasSensitiveAnalyticsUrl, isAdminPath, resolveFacebookPixelConfig, sanitizeAnalyticsText } from '~/utils/trackingSanitizer'
+import { hasSensitiveAnalyticsUrl, isAdminPath, sanitizeAnalyticsText } from '~/utils/trackingSanitizer'
 import { readMetaBrowserIdentifiers } from '~/utils/metaBrowserIdentifiers'
 
 export interface TrackContactInput {
@@ -52,7 +58,6 @@ let lastTrackedPageKey = ''
 export function useTracking() {
   const { api } = useApi()
   const route = useRoute()
-  const runtimeConfig = useRuntimeConfig()
   const analytics = useAnalytics()
   const siteSettings = useSiteSettings()
   const marketingConsent = useMarketingConsent()
@@ -83,11 +88,11 @@ export function useTracking() {
     const send = async () => {
       const body = consentScopedBody(baseBody, marketingConsent, route.query.fbclid, activationConsentScope)
       const response = await api('/api/conversions/events', { method: 'POST', body })
-      return pixelEventsFromResponse(response)
+      return trackingInstructionsFromResponse(response)
     }
     const complete = (instructions: unknown[]) => {
       trackContactAnalytics(analytics, input, firstInstructionEventId(instructions))
-      executePixelInstructionsWithinScope(instructions as MetaPixelInstruction[], activationConsentScope)
+      executeBrowserInstructionsWithinScope(instructions as AdBrowserInstruction[], activationConsentScope)
     }
 
     let instructions: unknown[]
@@ -100,26 +105,27 @@ export function useTracking() {
     completeLocally(complete, instructions)
   }
 
-  function executePixelInstructions(instructions: MetaPixelInstruction[]) {
-    executePixelInstructionsWithinScope(instructions, 'granted')
+  function executeBrowserInstructions(instructions: AdBrowserInstruction[]) {
+    executeBrowserInstructionsWithinScope(instructions, 'granted')
   }
 
-  function executePixelInstructionsWithinScope(
-    instructions: MetaPixelInstruction[],
+  function executeBrowserInstructionsWithinScope(
+    instructions: AdBrowserInstruction[],
     maximumConsentScope: MarketingConsentScope,
   ) {
     if (!ensureCurrentMarketingRouteAllowed()) return
     if (scopedMarketingConsent(marketingConsent, maximumConsentScope) !== 'granted' || !Array.isArray(instructions)) return
     for (const value of instructions) {
-      if (!isMetaPixelInstruction(value)) continue
-      const attempted = metaPixelAdapter.standardEvent(value.eventName, value.payload, { eventID: value.eventId })
+      const instruction = normalizeBrowserInstruction(value)
+      if (!instruction) continue
+      const attempted = executeAdBrowserInstruction(instruction)
       if (!attempted) continue
       reportPixelAttempted(() => api('/api/conversions/pixel-receipts', {
         method: 'POST',
         body: {
-          deliveryId: value.deliveryId,
+          deliveryId: instruction.deliveryId,
           attempted: true,
-          receiptToken: value.receiptToken,
+          receiptToken: instruction.receiptToken,
         },
       }))
     }
@@ -132,23 +138,19 @@ export function useTracking() {
       return
     }
 
-    const config = resolveFacebookPixelConfig({
-      enabled: siteSettings.facebookPixelEnabled.value,
-      pixelId: siteSettings.facebookPixelId.value,
-      debugEnabled: siteSettings.facebookPixelDebugEnabled.value,
-    }, runtimeConfig)
-    if (!config.enabled) {
+    const connection = siteSettings.metaBrowserConnection.value
+    if (!connection?.destinationId) {
       teardownPixel()
       return
     }
-    const pageKey = `${config.pixelId}|${route.fullPath}`
+    const pageKey = `${connection.destinationId}|${route.fullPath}`
     if (lastTrackedPageKey === pageKey) return
-    if (!metaPixelAdapter.initialize(config.pixelId)) return
-    if (metaPixelAdapter.pageView()) lastTrackedPageKey = pageKey
+    if (!initializeAdBrowserProvider('meta', connection.destinationId)) return
+    if (trackAdBrowserPageView('meta')) lastTrackedPageKey = pageKey
   }
 
   function teardownPixel() {
-    metaPixelAdapter.teardown()
+    teardownAdBrowserProvider('meta')
     lastTrackedPageKey = ''
   }
 
@@ -160,12 +162,12 @@ export function useTracking() {
 
   function trackViewContent(payload: Record<string, string | number | boolean>) {
     if (!ensureCurrentMarketingRouteAllowed() || !canDeliverMarketing(marketingConsent)) return
-    metaPixelAdapter.standardEvent('ViewContent', payload)
+    trackAdBrowserStandardEvent('meta', 'ViewContent', payload)
   }
 
   function trackSearch(input: TrackSearchInput) {
     if (!ensureCurrentMarketingRouteAllowed() || !canDeliverMarketing(marketingConsent)) return
-    metaPixelAdapter.standardEvent('Search', {
+    trackAdBrowserStandardEvent('meta', 'Search', {
       search_string: sanitizeAnalyticsText(input.searchString, 80),
       result_count: Number.isFinite(input.resultCount) ? input.resultCount : 0,
     })
@@ -201,16 +203,18 @@ export function useTracking() {
     if (!/^mlv_contact_[0-9a-f]{32}$/.test(contactId)
       || !/^mlv_registration_[0-9a-f]{32}$/.test(registrationId)
       || contactId === registrationId) return false
-    if (!metaPixelAdapter.initialize(input.pixelId)) return false
-    const contactSent = metaPixelAdapter.standardEvent(
+    if (!initializeAdBrowserProvider('meta', input.pixelId)) return false
+    const contactSent = trackAdBrowserStandardEvent(
+      'meta',
       'Contact',
       { content_category: 'meta_live_synthetic_test' },
-      { eventID: contactId },
+      contactId,
     )
-    const registrationSent = metaPixelAdapter.standardEvent(
+    const registrationSent = trackAdBrowserStandardEvent(
+      'meta',
       'CompleteRegistration',
       { content_category: 'meta_live_synthetic_test' },
-      { eventID: registrationId },
+      registrationId,
     )
     return contactSent && registrationSent
   }
@@ -218,7 +222,7 @@ export function useTracking() {
   return {
     trackAnalytics: analytics.track,
     trackContact,
-    executePixelInstructions,
+    executeBrowserInstructions,
     trackPageView,
     teardownPixel,
     trackViewContent,
@@ -264,10 +268,11 @@ function scopedMarketingConsent(
   return rank[currentScope] <= rank[maximumConsentScope] ? currentScope : maximumConsentScope
 }
 
-function isMetaPixelInstruction(value: unknown): value is MetaPixelInstruction {
+function isAdBrowserInstruction(value: unknown): value is AdBrowserInstruction {
   if (!value || typeof value !== 'object') return false
-  const event = value as Partial<MetaPixelInstruction> & { eventName?: unknown }
-  return typeof event.deliveryId === 'string'
+  const event = value as Partial<AdBrowserInstruction> & { eventName?: unknown }
+  return (event.provider === 'meta' || event.provider === 'tiktok' || event.provider === 'google')
+    && typeof event.deliveryId === 'string'
     && event.deliveryId.length > 0
     && (event.eventName === 'Contact' || event.eventName === 'CompleteRegistration')
     && typeof event.eventId === 'string'
@@ -275,6 +280,10 @@ function isMetaPixelInstruction(value: unknown): value is MetaPixelInstruction {
     && Boolean(event.payload && typeof event.payload === 'object' && !Array.isArray(event.payload))
     && typeof event.receiptToken === 'string'
     && event.receiptToken.length > 0
+}
+
+function normalizeBrowserInstruction(value: unknown): AdBrowserInstruction | null {
+  return isAdBrowserInstruction(value) ? value : null
 }
 
 function isMarketingRouteAllowed(fullPath: string) {
@@ -357,9 +366,9 @@ async function retryFailedPixelReceipts() {
   scheduleFailedPixelReceiptRetry()
 }
 
-function pixelEventsFromResponse(response: unknown): unknown[] {
-  const events = (response as { data?: { pixelEvents?: unknown } } | null)?.data?.pixelEvents
-  return Array.isArray(events) ? events : []
+function trackingInstructionsFromResponse(response: unknown): unknown[] {
+  const instructions = (response as { data?: { trackingInstructions?: unknown } } | null)?.data?.trackingInstructions
+  return Array.isArray(instructions) ? instructions : []
 }
 
 function firstInstructionEventId(instructions: unknown[]) {

@@ -52,7 +52,8 @@ describe('Meta CAPI Queue consumer', () => {
     const delivery = {
       id: 'cdlv_1',
       conversion_action_id: 'conv_1',
-      channel: 'meta_capi',
+      provider: 'meta',
+      transport: 'server',
       external_event_id: 'event_1',
       event_name: 'Contact',
       status: 'pending',
@@ -61,7 +62,7 @@ describe('Meta CAPI Queue consumer', () => {
       error_message: '',
       attempt_count: 0,
       tracking_mode: 'production',
-      meta_connection_revision: META_CONNECTION_REVISION,
+      connection_revision: META_CONNECTION_REVISION,
       duplicate_suppressed_at: null,
       encryption_key_id: '',
       created_at: new Date().toISOString(),
@@ -76,8 +77,12 @@ describe('Meta CAPI Queue consumer', () => {
           bind() { return this },
           async first<T>() {
             if (sql.includes('FROM analytics_conversion_deliveries')) return delivery as T
-            if (sql.includes("WHERE key = 'facebook_pixel_id'")) return { value: JSON.stringify('1234567890') } as T
-            if (sql.includes("WHERE key = 'meta_tracking_mode'")) return { value: JSON.stringify('production') } as T
+            if (sql.includes('FROM ad_platform_connections')) return {
+              provider: 'meta', enabled: 1, mode: 'production', browser_enabled: 1,
+              server_enabled: 1, destination_id: '1234567890', debug_enabled: 0,
+              rollout_percentage: 100, credential_secret_name: 'META_CAPI_ACCESS_TOKEN',
+              revision: META_CONNECTION_REVISION,
+            } as T
             if (sql.includes('FROM meta_connection_verifications')) {
               return {
                 environment: 'dev',
@@ -303,9 +308,9 @@ describe('Meta CAPI scheduled recovery', () => {
     expect(wholeHour.sent).toEqual([wholeHour.expectedMessage])
   })
 
-  it('Wrangler 主环境与 dev 都只注册一个每分钟恢复 Cron', () => {
+  it('Wrangler 仅 production 注册 Meta 恢复 Cron', () => {
     const config = readFileSync(new URL('../wrangler.toml', import.meta.url), 'utf8')
     expect(config).not.toContain('*/5 * * * *')
-    expect(config.match(/\* \* \* \* \*/g)).toHaveLength(2)
+    expect(config.match(/\* \* \* \* \*/g)).toHaveLength(1)
   })
 })

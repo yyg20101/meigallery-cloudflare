@@ -417,8 +417,8 @@ test.describe('核心页面 smoke', () => {
 
   test('后台 Meta 归因质量总览可查看五区、单日归因和投放链接', async ({ page }, testInfo) => {
     await page.goto('/admin/attribution')
-    await expect(page.locator('main h1')).toHaveText('Meta 归因质量')
-    await expect(page.getByText('按时间比较站内事实、Pixel 尝试、CAPI 接收与 Meta 质量，定位投放和投递问题。')).toBeVisible()
+    await expect(page.locator('main h1')).toHaveText('广告归因质量')
+    await expect(page.getByText('按平台比较站内事实、浏览器尝试、服务器接收与平台质量，定位投放和投递问题。')).toBeVisible()
 
     const sections = page.locator('[data-attribution-section]')
     await expect(sections).toHaveCount(5)
@@ -430,9 +430,10 @@ test.describe('核心页面 smoke', () => {
     }
 
     const connectionSection = page.locator('[data-attribution-section="connection"]')
-    await expect(connectionSection.getByRole('heading', { name: 'Meta 连接与当前活动' })).toBeVisible()
-    await expect(connectionSection.getByText('已验证', { exact: true })).toBeVisible()
-    await expect(connectionSection.getByText('已配置', { exact: true })).toHaveCount(2)
+    await expect(connectionSection.getByRole('heading', { name: '广告平台连接' })).toBeVisible()
+    await expect(connectionSection.getByText('已验证', { exact: true }).first()).toBeVisible()
+    await expect(connectionSection).toContainText('目标 ID 已配置')
+    await expect(connectionSection).toContainText('Server 凭证 已配置')
 
     const deliverySection = page.locator('[data-attribution-section="delivery"]')
     await expect(deliverySection.getByRole('heading', { name: 'Pixel 与 CAPI delivery' })).toBeVisible()
@@ -462,13 +463,6 @@ test.describe('核心页面 smoke', () => {
   })
 
   test('后台归因 Meta 控制面按生产检查保守启用并验证连接与投递口径', async ({ page }) => {
-    await page.goto('/admin/settings')
-
-    await expect(page.getByLabel('Meta 运行模式')).toHaveValue('test')
-    await expect(page.getByLabel('启用 Meta CAPI')).toBeDisabled()
-    await expect(page.getByRole('link', { name: '查看发布检查' })).toHaveAttribute('href', '/admin/attribution/readiness')
-    await expectAdminContainersWithinViewport(page)
-
     await page.goto('/admin/attribution/meta')
     await expect(page.locator('main h1')).toHaveText('Meta 运维')
     const connection = page.locator('[data-meta-connection-status]')
@@ -536,49 +530,16 @@ test.describe('核心页面 smoke', () => {
     await expect(connection.getByRole('status')).toHaveText('production 资源验证尚未通过')
   })
 
-  test('后台归因设置始终允许关闭已开启的 CAPI', async ({ request, page }) => {
-    await request.patch(`${apiURL}/api/test/admin-attribution-readiness`, { data: { blocked: false } })
-    await request.patch(`${apiURL}/api/admin/settings`, { data: { meta_tracking_mode: 'test', meta_capi_enabled: true } })
-
-    await page.goto('/admin/settings')
-    const capi = page.getByLabel('启用 Meta CAPI')
-    await expect(capi).toBeChecked()
-    await expect(capi).toBeEnabled()
-    await capi.uncheck()
-    await submitAdminSettings(page)
-
-    const settings = await (await request.get(`${apiURL}/api/settings/public`)).json()
-    expect(settings.meta_capi_enabled).toBe(false)
-  })
-
-  test('后台归因设置在 blocker 失败时清除旧 CAPI true 并保存 false', async ({ request, page }) => {
-    await request.patch(`${apiURL}/api/admin/settings`, { data: { meta_tracking_mode: 'test', meta_capi_enabled: true } })
-
-    await page.goto('/admin/settings')
-    const capi = page.getByLabel('启用 Meta CAPI')
-    await expect(capi).not.toBeChecked()
-    await expect(capi).toBeDisabled()
-    await submitAdminSettings(page)
-
-    const settings = await (await request.get(`${apiURL}/api/settings/public`)).json()
-    expect(settings.meta_capi_enabled).toBe(false)
-  })
-
-  test('后台归因设置不会把 test 的 CAPI true 带入 production', async ({ request, page }) => {
-    await request.patch(`${apiURL}/api/test/admin-attribution-readiness`, { data: { blocked: false } })
-    await request.patch(`${apiURL}/api/admin/settings`, { data: { meta_tracking_mode: 'test', meta_capi_enabled: true } })
-
-    await page.goto('/admin/settings')
-    const capi = page.getByLabel('启用 Meta CAPI')
-    await expect(capi).toBeChecked()
-    await page.getByLabel('Meta 运行模式').selectOption('production')
-    await expect(capi).not.toBeChecked()
-    await expect(capi).toBeDisabled()
-    await submitAdminSettings(page)
-
-    const settings = await (await request.get(`${apiURL}/api/settings/public`)).json()
-    expect(settings.meta_tracking_mode).toBe('production')
-    expect(settings.meta_capi_enabled).toBe(false)
+  test('后台归因通过统一连接表单保存 Meta 配置', async ({ page }) => {
+    await page.goto('/admin/attribution')
+    await expect(page.getByLabel('Meta Dataset ID')).toHaveValue('1234567890')
+    await expect(page.getByLabel('Server API')).not.toBeChecked()
+    const [response] = await Promise.all([
+      page.waitForResponse(candidate => candidate.url().endsWith('/api/admin/attribution/platforms/meta') && candidate.request().method() === 'PATCH'),
+      page.getByRole('button', { name: '保存连接' }).click(),
+    ])
+    expect(response.status()).toBe(200)
+    await expect(page.getByText('Meta 连接已保存')).toBeVisible()
   })
 
   test('后台归因发布检查区分阻断项和警告项且警告不改变阻断口径', async ({ page }) => {

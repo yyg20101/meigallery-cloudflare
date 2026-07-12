@@ -20,7 +20,7 @@ import { mergeD1Usage, readD1UsageMeta, type D1Usage } from '../utils/analytics-
 import { normalizeAnalyticsConsentMode, safeAnalyticsSampleRate } from '../utils/analytics-settings'
 import { clampActiveSeconds, toOperationDateShanghai } from '../utils/analytics-time'
 import { deriveSourceAttribution, sanitizeAnalyticsPath, sanitizeReferrer } from '../utils/analytics-url'
-import { normalizeBooleanSetting } from '../utils/facebook-pixel-settings'
+import { normalizeBooleanSetting } from '../utils/setting-normalization'
 import { parseStoredSettingValue } from '../utils/stored-setting-value'
 
 type AnalyticsDb = Pick<D1Database, 'prepare'>

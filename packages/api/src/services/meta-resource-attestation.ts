@@ -1,5 +1,4 @@
 import type { Bindings } from '../index'
-import { parseStoredSettingValue } from '../utils/stored-setting-value'
 
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/i
 const NONCE_PATTERN = /^nonce_[0-9a-f]{32,128}$/
@@ -66,14 +65,14 @@ export async function createRuntimeMetaResourceAttestation(
   now?: string | number | Date,
 ) {
   if (env.APP_ENV !== 'dev' && env.APP_ENV !== 'production') throw new Error('Meta resource attestation 环境非法')
-  const pixelRow = await env.DB.prepare("SELECT value FROM site_settings WHERE key = 'facebook_pixel_id' LIMIT 1")
-    .first<{ value: string }>()
+  const connection = await env.DB.prepare("SELECT destination_id FROM ad_platform_connections WHERE provider = 'meta' LIMIT 1")
+    .first<{ destination_id: string }>()
   return createMetaResourceAttestation({
     environment: env.APP_ENV,
     commitSha: String(env.RELEASE_COMMIT || ''),
     nonce,
     now,
-    pixelId: String(parseStoredSettingValue(pixelRow?.value || '""', '') || ''),
+    pixelId: String(connection?.destination_id || ''),
     accessToken: String(env.META_CAPI_ACCESS_TOKEN || ''),
     testEventCode: String(env.META_CAPI_TEST_EVENT_CODE || ''),
     dataKey: String(env.META_CAPI_DATA_KEY_CURRENT || ''),

@@ -1,5 +1,4 @@
 import type { Bindings } from '../index'
-import { parseStoredSettingValue } from '../utils/stored-setting-value'
 import { META_GRAPH_API_VERSION, metaEventsEndpoint, metaGraphRequestInit, readMetaEventsResponse } from './meta-graph'
 
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/i
@@ -12,7 +11,7 @@ const REGISTRATION_EXTERNAL_ID_HASH = 'fef50236caaad5477b9d7f64fa68ff922b09cbca7
 
 type ChallengeEnv = Pick<
   Bindings,
-  'DB' | 'APP_ENV' | 'META_CAPI_ACCESS_TOKEN' | 'META_CAPI_TEST_EVENT_CODE' | 'RELEASE_COMMIT'
+  'DB' | 'APP_ENV' | 'SITE_URL' | 'META_CAPI_ACCESS_TOKEN' | 'META_CAPI_TEST_EVENT_CODE' | 'RELEASE_COMMIT'
 >
 
 type ChallengeRow = {
@@ -116,7 +115,7 @@ export async function consumeMetaLiveChallenge(env: ChallengeEnv, ownerUserId: n
   ).run()
   if (!d1ChangedExactlyOnce(claim)) throw new MetaLiveChallengeError('META_LIVE_CHALLENGE_INVALID')
 
-  const payload = buildChallengePayload(contactEventId, registrationEventId, config.testEventCode)
+  const payload = buildChallengePayload(contactEventId, registrationEventId, config.testEventCode, config.siteOrigin)
   try {
     const response = await fetchChallengeEvents(config.pixelId, config.accessToken, payload)
     if (!response.ok || response.eventsReceived !== 2) {
@@ -158,16 +157,16 @@ async function requireChallengeConfiguration(env: ChallengeEnv, ownerUserId: num
   const commitSha = normalizeCommit(env.RELEASE_COMMIT)
   const accessToken = configuredValue(env.META_CAPI_ACCESS_TOKEN)
   const testEventCode = configuredValue(env.META_CAPI_TEST_EVENT_CODE)
-  const [pixelRow, modeRow] = await Promise.all([
-    env.DB.prepare("SELECT value FROM site_settings WHERE key = 'facebook_pixel_id' LIMIT 1").first<{ value: string }>(),
-    env.DB.prepare("SELECT value FROM site_settings WHERE key = 'meta_tracking_mode' LIMIT 1").first<{ value: string }>(),
-  ])
-  const pixelId = String(parseStoredSettingValue(pixelRow?.value || '""', '') || '').trim()
-  const trackingMode = parseStoredSettingValue(modeRow?.value || '"disabled"', 'disabled')
-  if (!commitSha || !/^\d{5,30}$/.test(pixelId) || trackingMode !== 'test' || !accessToken || !testEventCode) {
+  const connection = await env.DB.prepare(`
+    SELECT destination_id, mode FROM ad_platform_connections WHERE provider = 'meta' LIMIT 1
+  `).first<{ destination_id: string; mode: string }>()
+  const pixelId = String(connection?.destination_id || '').trim()
+  const trackingMode = connection?.mode || 'disabled'
+  const siteOrigin = productionSiteOrigin(env.SITE_URL)
+  if (!commitSha || !/^\d{5,30}$/.test(pixelId) || trackingMode !== 'test' || !accessToken || !testEventCode || !siteOrigin) {
     throw new MetaLiveChallengeError('META_LIVE_CHALLENGE_NOT_CONFIGURED', 503)
   }
-  return { commitSha, pixelId, accessToken, testEventCode }
+  return { commitSha, pixelId, accessToken, testEventCode, siteOrigin }
 }
 
 function validPendingChallenge(row: ChallengeRow | null, commitSha: string, ownerUserId: number) {
@@ -185,23 +184,23 @@ function validPendingChallenge(row: ChallengeRow | null, commitSha: string, owne
     && row.contact_event_id !== row.complete_registration_event_id
 }
 
-function buildChallengePayload(contactEventId: string, registrationEventId: string, testEventCode: string) {
+function buildChallengePayload(contactEventId: string, registrationEventId: string, testEventCode: string, siteOrigin: string) {
   const eventTime = Math.floor(Date.now() / 1000)
   return {
     data: [
-      syntheticEvent('Contact', contactEventId, eventTime),
-      syntheticEvent('CompleteRegistration', registrationEventId, eventTime),
+      syntheticEvent('Contact', contactEventId, eventTime, siteOrigin),
+      syntheticEvent('CompleteRegistration', registrationEventId, eventTime, siteOrigin),
     ],
     test_event_code: testEventCode,
   }
 }
 
-function syntheticEvent(eventName: 'Contact' | 'CompleteRegistration', eventId: string, eventTime: number) {
+function syntheticEvent(eventName: 'Contact' | 'CompleteRegistration', eventId: string, eventTime: number, siteOrigin: string) {
   return {
     event_name: eventName,
     event_time: eventTime,
     event_id: eventId,
-    event_source_url: 'https://616618.xyz/meta-live-verification',
+    event_source_url: `${siteOrigin}/meta-live-verification`,
     action_source: 'website',
     user_data: {
       client_ip_address: '192.0.2.1',
@@ -214,6 +213,15 @@ function syntheticEvent(eventName: 'Contact' | 'CompleteRegistration', eventId: 
         : {}),
     },
     custom_data: { content_category: 'meta_live_synthetic_test' },
+  }
+}
+
+function productionSiteOrigin(value: unknown) {
+  try {
+    const url = new URL(String(value || '').trim())
+    return url.protocol === 'https:' && !url.username && !url.password ? url.origin : ''
+  } catch {
+    return ''
   }
 }
 

@@ -91,9 +91,15 @@ export type ActiveMetaEventName = Extract<
   'Contact' | 'CompleteRegistration'
 >
 
-export type ConversionDeliveryChannel = 'meta_pixel' | 'meta_capi'
+export type AdPlatformProvider = 'meta' | 'tiktok' | 'google'
 
-export type MetaTrackingMode = 'disabled' | 'test' | 'production'
+export type AdDeliveryTransport = 'browser' | 'server'
+
+export type ActiveAdPlatformEventName = ActiveMetaEventName
+
+export type AdPlatformTrackingMode = 'disabled' | 'test' | 'production'
+
+export type MetaTrackingMode = AdPlatformTrackingMode
 
 export type MetaCapiRolloutPercentage = 0 | 10 | 50 | 100
 
@@ -113,9 +119,10 @@ export type PublicConversionActionType = Extract<ActiveConversionActionType, 'co
 
 export type ConversionDeliveryStatus = 'pending' | 'attempted' | 'sent' | 'failed' | 'skipped' | 'duplicate_suppressed'
 
-export interface MetaPixelInstruction {
+export interface AdBrowserInstruction {
+  provider: AdPlatformProvider
   deliveryId: string
-  eventName: ActiveMetaEventName
+  eventName: string
   eventId: string
   payload: Record<string, string | number | boolean>
   receiptToken: string

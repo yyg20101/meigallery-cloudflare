@@ -54,12 +54,22 @@ beforeAll(async () => {
   })
   realDb = (await miniflare.getBindings<{ DB: D1Database }>()).DB
 
-  await realDb.exec(`
+  const bootstrapSchema = `
     PRAGMA foreign_keys = ON;
     CREATE TABLE users (id INTEGER PRIMARY KEY);
     CREATE TABLE site_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     CREATE TABLE analytics_conversion_deliveries (id TEXT PRIMARY KEY);
-  `)
+    CREATE TABLE ad_platform_connections (
+      provider TEXT PRIMARY KEY, enabled INTEGER NOT NULL, mode TEXT NOT NULL,
+      browser_enabled INTEGER NOT NULL, server_enabled INTEGER NOT NULL,
+      destination_id TEXT NOT NULL, debug_enabled INTEGER NOT NULL,
+      rollout_percentage INTEGER NOT NULL, credential_secret_name TEXT NOT NULL,
+      revision TEXT, created_at TEXT, updated_at TEXT
+    );
+  `
+  for (const statement of unstable_splitSqlQuery(bootstrapSchema)) {
+    await realDb.prepare(statement).run()
+  }
   await applyMigration('0036_meta_capi_v2_secure_delivery.sql')
   await applyMigration('0037_meta_connection_revision.sql')
 }, 30_000)
@@ -108,7 +118,10 @@ describe('MetaConnection 真实 D1 CAS', () => {
     await expect(older).rejects.toMatchObject({ code: 'META_CONNECTION_VERIFICATION_WRITE_FAILED' })
 
     expect(graph.fetchMock).toHaveBeenCalledTimes(2)
-    expect(newerDb.runs).toEqual([expect.objectContaining({ changes: 1 })])
+    expect(newerDb.runs).toEqual([
+      expect.objectContaining({ changes: 1 }),
+      expect.objectContaining({ changes: 1 }),
+    ])
     expect(olderDb.runs).toEqual([expect.objectContaining({ changes: 0 })])
     await expectWinnerToRemainValid(winner, {
       pixelId: PIXEL_ID,
@@ -135,7 +148,10 @@ describe('MetaConnection 真实 D1 CAS', () => {
 
     await expect(older).rejects.toMatchObject({ code: 'META_CONNECTION_VERIFICATION_WRITE_FAILED' })
     expect(graph.fetchMock).toHaveBeenCalledTimes(2)
-    expect(newerDb.runs).toEqual([expect.objectContaining({ changes: 1 })])
+    expect(newerDb.runs).toEqual([
+      expect.objectContaining({ changes: 1 }),
+      expect.objectContaining({ changes: 1 }),
+    ])
     expect(olderDb.runs).toEqual([expect.objectContaining({ changes: 0 })])
     await expectWinnerToRemainValid(winner, {
       pixelId: PIXEL_ID,
@@ -162,7 +178,10 @@ describe('MetaConnection 真实 D1 CAS', () => {
 
     await expect(older).rejects.toMatchObject({ code: 'META_CONNECTION_VERIFICATION_WRITE_FAILED' })
     expect(graph.fetchMock).toHaveBeenCalledTimes(2)
-    expect(newerDb.runs).toEqual([expect.objectContaining({ changes: 1 })])
+    expect(newerDb.runs).toEqual([
+      expect.objectContaining({ changes: 1 }),
+      expect.objectContaining({ changes: 1 }),
+    ])
     expect(olderDb.runs).toEqual([expect.objectContaining({ changes: 0 })])
     expect(winner.revision).not.toBe(INITIAL_REVISION)
     await expectWinnerToRemainValid(winner, {
@@ -206,7 +225,10 @@ describe('MetaConnection 真实 D1 CAS', () => {
     })
 
     expect(graph.fetchMock).toHaveBeenCalledOnce()
-    expect(bootstrapDb.runs).toEqual([expect.objectContaining({ changes: 1 })])
+    expect(bootstrapDb.runs).toEqual([
+      expect.objectContaining({ changes: 1 }),
+      expect.objectContaining({ changes: 1 }),
+    ])
     expect(staleDb.runs).toEqual([expect.objectContaining({ changes: 0 })])
     await expectWinnerToRemainValid(winner, {
       pixelId: REPLACEMENT_PIXEL_ID,
@@ -240,11 +262,12 @@ function connectionEnv(db: D1Database): Bindings {
 
 async function setConnectionSettings(pixelId: string) {
   await realDb.prepare(`
-    INSERT INTO site_settings (key, value) VALUES
-      ('facebook_pixel_id', ?),
-      ('meta_tracking_mode', '"test"')
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value
-  `).bind(JSON.stringify(pixelId)).run()
+    INSERT INTO ad_platform_connections
+      (provider, enabled, mode, browser_enabled, server_enabled, destination_id,
+       debug_enabled, rollout_percentage, credential_secret_name, revision)
+    VALUES ('meta', 1, 'test', 1, 1, ?, 0, 100, 'META_CAPI_ACCESS_TOKEN', NULL)
+    ON CONFLICT(provider) DO UPDATE SET destination_id = excluded.destination_id, mode = excluded.mode
+  `).bind(pixelId).run()
 }
 
 async function seedVerification({ revision }: { revision: string | null }) {

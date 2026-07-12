@@ -631,11 +631,14 @@ INSERT INTO site_settings (key, value) VALUES
 | 表 | 状态 | 用途 |
 |------|------|------|
 | `analytics_conversion_actions` | `[当前实现]` | 站内转化事实；新写入只由 `recordContact()`、`recordRegistration()` 和注册事实修复函数创建 `contact` / `complete_registration`。历史 schema 继续只读兼容 `lead`、`start_trial` 和既有 `membership_grant`，不删除存量数据。 |
-| `analytics_conversion_deliveries` | `[当前实现]` | Pixel / Meta CAPI delivery 账本，记录 channel、`external_event_id`、状态、跳过原因、失败错误、重试次数和发送时间。 |
+| `analytics_conversion_deliveries` | `[当前实现]` | 广告平台投递账本，记录 provider、transport、`external_event_id`、连接版本、状态、跳过原因、失败错误、重试次数和发送时间。 |
 | `analytics_conversion_daily` | `[当前实现]` | 按日期、事件、来源、campaign、utm_content 等维度聚合站内转化，用于后台趋势和投放对比。 |
-| `analytics_conversion_delivery_daily` | `[当前实现]` | 按日期、channel、事件和 delivery 状态聚合同步结果，用于 Meta 同步健康和发布检查。 |
+| `analytics_conversion_delivery_daily` | `[当前实现]` | 按日期、provider、transport、事件和 delivery 状态聚合同步结果，用于平台同步健康和发布检查。 |
 
 实现约束：
+
+- migration `0047_ad_platform_delivery_core.sql` 建立统一连接表和最终 delivery schema，将唯一目标约束改为 `conversion_action_id + provider + transport`，并清空旧投递技术数据。旧 `channel`、`meta_connection_revision` 和旧 Meta 站点设置键已删除；新增平台必须通过 adapter registry 接入，不得复制业务事实服务。
+- API 只返回 provider-aware `trackingInstructions`，前端通过广告平台 adapter registry 执行，不保留 `pixelEvents` 兼容响应。
 
 - 正式活动 Meta 事件严格限定为 `Contact`、`CompleteRegistration`；`Lead`、`StartTrial` 仅为历史读取值，sender 与 recovery 均不得再次发送。
 - `/api/conversions/events` 为公开联系命令入口，仅允许提交 `contact`；完成注册由注册 API 的服务端事务创建。`lead`、`complete_registration`、`start_trial` 和 `membership_grant` 的公开提交均返回明确 4xx。
@@ -644,7 +647,7 @@ INSERT INTO site_settings (key, value) VALUES
 - `consent_state=denied` 时只保留站内必要事实，不创建 Meta Pixel / CAPI delivery；服务端解析后的 `consent_state` 仅用于当次 delivery 判断，不作为 D1 字段持久化。浏览器 Pixel 以公开授权 API 返回状态为准，服务端 CAPI 始终独立验证 receipt。
 - Pixel 与 CAPI 使用同一 `external_event_id` / `eventID`，方便 Meta 后台去重；Pixel `attempted` 仅说明浏览器已尝试调用，不代表 Meta 接收。只有 CAPI `sent` 且 Graph API 返回 `events_received=1` 才代表接收成功；站内重复诊断不依赖 Meta 回传数据。
 - `/api/admin/attribution/*` 需要 admin+；`/api/admin/attribution/meta/test-event` 需要 owner，并写入 `admin_audit_logs`。
-- Meta CAPI 通过 Cloudflare Queue `META_CAPI_QUEUE` 异步投递，使用 Worker secret `META_CAPI_ACCESS_TOKEN`、`META_CAPI_DATA_KEY_CURRENT`；`META_CAPI_TEST_EVENT_CODE` 仅在 test mode 必需，`META_CAPI_DATA_KEY_PREVIOUS` 仅用于轮换窗口。dev 主 Queue / DLQ 固定为 `meigallery-meta-capi-dev` / `meigallery-meta-capi-dev-dlq`，生产为 `meigallery-meta-capi` / `meigallery-meta-capi-dlq`。Graph token 只通过 Bearer header 发送。secret 不写入 D1、不返回前端，也不写入审计日志。
+- Meta CAPI 仅在 production 通过 Cloudflare Queue `META_CAPI_QUEUE` 异步投递，使用 Worker secret `META_CAPI_ACCESS_TOKEN`、`META_CAPI_DATA_KEY_CURRENT`；`META_CAPI_TEST_EVENT_CODE` 仅在 production test mode 必需，`META_CAPI_DATA_KEY_PREVIOUS` 仅用于轮换窗口。生产主 Queue / DLQ 固定为 `meigallery-meta-capi` / `meigallery-meta-capi-dlq`。dev/local 不绑定 Meta Queue、不配置 Meta secret、不调用 Meta Graph API，只执行单元测试、契约测试、migration、类型检查和构建验证。Graph token 只通过 Bearer header 发送。secret 不写入 D1、不返回前端，也不写入审计日志。
 - `/api/admin/attribution/meta` 仅返回 current/previous 有效性布尔值、previous outbox 计数、previous `pending/failed` delivery 计数和可移除状态；不返回 key ID、Base64、fingerprint 或错误 cause。
 - `corepack pnpm verify:meta-secrets` 扫描 tracked 文件与 ignored release evidence；`corepack pnpm verify:quick` 在单元测试和构建前执行该检查。production bootstrap、rollout 与最终 evidence 已由本地代码门禁强绑定，但没有外部证据时始终 fail closed。
 - Queue 发送失败不得阻塞站内转化账本写入；delivery 必须显示 `sent`、`failed`、`skipped`、`missing_queue`、`missing_secret`、`disabled` 等可诊断状态。
@@ -655,13 +658,14 @@ Meta CAPI v2 远端证据链：
 - migrations `0041_meta_live_challenges.sql`、`0045_meta_live_production.sql` 与 `0046_meta_live_match_coverage.sql` 保存绑定 production、40 字符 commit 和有效期的一次性 challenge；正式域名 Browser `fbq` 与 production CAPI 只允许 `Contact`、`CompleteRegistration`，共享 opaque external event ID，消费后不得恢复原始 ID。challenge 仅保存增强匹配覆盖布尔值：`CompleteRegistration` 必须覆盖 email hash 与 `external_id` hash，`Contact` 必须不含注册身份；正式证据不得从历史业务 delivery 推断这些口径。
 - migration `0042_meta_resource_attestation_tickets.sql` 保存 60 秒 D1 原子一次性 ticket。Owner Cookie 只能在固定可信 API origin 换取 ticket；`/api/meta/resource-attestation` 只接受 ticket 并返回 HMAC 摘要，最终请求不携带 Cookie，ticket 响应和审计均不得回显凭据。
 - production 冷启动 gate 分为 `bootstrap`、`post-deploy`、`full`：当前 commit 与未过期 D1 bootstrap permit 决定首次部署资格；部署后必须通过资源 attestation 和 `trackingMode=test` 的真实 Test Event；完整 gate 通过后才能切换 production，并由 Owner 将 rollout 从 `0` 手动升至 `10`。系统不得自动升级，只能因 incident 自动降至 `0`。
+- Meta 远端验证 CLI 默认目标为 production；`--env production` 仅为兼容显式调用。不得再创建 dev Owner 会话、dev Meta attestation、dev Meta Queue 或 dev Meta secret 来模拟生产验证。production URL 可通过 `VERIFY_PRODUCTION_API_URL`、`VERIFY_PRODUCTION_WEB_URL` 覆盖，未提供时使用生产部署默认地址。
 - Dataset Quality 使用唯一 production Dataset：批准契约固定 `GET /v25.0/dataset_quality` 的字段白名单，collector 只在 production 每日执行并写入契约 version/digest。production live evidence 不直接读取质量快照；首次 bootstrap 保持 rollout `0`，full gate 必须同时验证 live evidence 与两项活动事件快照的 24 小时新鲜度。
 
 #### Meta 生产放行与回滚 `[当前实现 / 运维前置]`
 
-`0034_meta_production_readiness.sql` 在迁移后将不受支持的 tracking mode 收敛为 `disabled`；生产放行必须确认 `meta_capi_enabled=false`、rollout `0`，直至 Owner 按顺序显式开启。`0044` 将 Dataset Quality 快照绑定批准契约 digest，`0045` 将 live challenge 唯一环境收口为 production，`0046` 将 live 增强匹配证明收口到当前 challenge。Pixel 与 CAPI 都必须绑定当前有效 MetaConnection revision；连接失效时两条渠道均 fail closed。顺序固定为：代码关闭态 -> production bootstrap -> 生产部署 -> post-deploy attestation -> test mode MetaConnection -> production live evidence -> Dataset Quality full gate -> production mode -> CAPI 开关 -> `0 -> 10 -> 50 -> 100` 人工放量与观察。
+`0047_ad_platform_delivery_core.sql` 将运行配置收口到 `ad_platform_connections`；生产放行必须确认 `server_enabled=false`、rollout `0`，直至 Owner 按顺序显式开启。`0044` 将 Dataset Quality 快照绑定批准契约 digest，`0045` 将 live challenge 唯一环境收口为 production，`0046` 将 live 增强匹配证明收口到当前 challenge。Browser 与 Server 投递都必须绑定当前有效 MetaConnection revision；连接失效时两条路径均 fail closed。顺序固定为：代码关闭态 -> production bootstrap -> 生产部署 -> post-deploy attestation -> test mode MetaConnection -> production live evidence -> Dataset Quality full gate -> production mode -> Server 开关 -> `0 -> 10 -> 50 -> 100` 人工放量与观察。
 
-严格 Test Event 必须只包含 `Contact`、`CompleteRegistration`，出现 `Lead` 或 `StartTrial` 必须阻断，并且 CAPI 的 `sent` 与 `events_received=1` 同时成立。由用户营销授权门禁控制的 Pixel 只能写入 `attempted`，不能替代这项确认。任何阶段失败都必须将 mode 切回 `disabled` 并保持 `meta_capi_enabled=false`；先关闭 CAPI、再关闭 mode，保留 Queue/DLQ、D1 migration 和账本用于诊断。
+严格 Test Event 必须只包含 `Contact`、`CompleteRegistration`，出现 `Lead` 或 `StartTrial` 必须阻断，并且 CAPI 的 `sent` 与 `events_received=1` 同时成立。由用户营销授权门禁控制的 Pixel 只能写入 `attempted`，不能替代这项确认。任何阶段失败都必须将 mode 切回 `disabled` 并保持 `server_enabled=false`；先关闭 Server 投递、再关闭 mode，保留 Queue/DLQ、D1 migration 和账本用于诊断。
 
 当前外部 blocker 以后台实时状态为准：最终 production commit 必须具有未过期的 Meta live、resource attestation 与 Dataset Quality 快照。首次 bootstrap 可以在 rollout `0` 且 CAPI 关闭时执行；在 post-deploy/full gate 全部通过前不得提高 rollout。
 
