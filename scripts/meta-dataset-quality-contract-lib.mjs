@@ -31,9 +31,9 @@ export async function verifyApprovedMetaDatasetQualityContract(options = {}) {
   const document = await readFile(contractPath, 'utf8')
   const version = Number(document.match(/^- Contract version：`([1-9]\d*)`$/m)?.[1] || 0)
   const approved = /^- Review status：`approved`$/m.test(document)
-  const dev = /^- 环境：`dev`$/m.test(document)
+  const production = /^- 环境：`production`$/m.test(document)
   const graphVersion = /^- Graph version：`v25\.0`$/m.test(document)
-  if (!approved || !Number.isSafeInteger(version) || version < 1 || !dev || !graphVersion) {
+  if (!approved || !Number.isSafeInteger(version) || version < 1 || !production || !graphVersion) {
     throw new Error('Dataset Quality contract 尚未 approved 或契约元数据非法')
   }
 

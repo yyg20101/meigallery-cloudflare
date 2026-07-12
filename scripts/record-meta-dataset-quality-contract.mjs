@@ -17,11 +17,12 @@ const MAX_JSON_DEPTH = 32
 const MAX_SCHEMA_PATHS = 10_000
 const FIELD_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_-]{0,63}$/
 const JSON_PATH_PATTERN = /^\$(?:(?:\.[A-Za-z_][A-Za-z0-9_-]{0,63})|\[\])+$/
-const ENDPOINT_PATH_PATTERN = /^\/\{dataset_id\}\/[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._~-]+)*$/
+const ENDPOINT_PATH_PATTERN = /^\/dataset_quality$/
 const PERMISSION_PATTERN = /^[a-z][a-z0-9_]{1,63}$/
 const OFFICIAL_META_HOSTS = new Set([
   'business.facebook.com',
   'developers.facebook.com',
+  'eventsmanager.facebook.com',
   'facebook.com',
   'graph.facebook.com',
   'www.facebook.com',
@@ -54,7 +55,7 @@ const ERROR_MESSAGES = Object.freeze({
   MANIFEST_TOO_LARGE: 'manifest 文件超过大小限制',
   MANIFEST_NOT_JSON: 'manifest 文件不是合法 JSON',
   MANIFEST_INVALID: 'manifest 契约非法',
-  ENVIRONMENT_INVALID: '只允许 dev capture',
+  ENVIRONMENT_INVALID: '只允许 production Dataset capture',
   GRAPH_VERSION_INVALID: '只允许 Graph API v25.0',
   COMMIT_INVALID: 'release commit 非法或不是当前 HEAD',
   COMMIT_UNAVAILABLE: '无法读取当前 Git HEAD',
@@ -163,6 +164,8 @@ export function buildContractDocument(manifestInput, raw, options = {}) {
   const officialUrls = manifest.officialUrls
 
   const renderInput = {
+    contractVersion: manifest.contractVersion,
+    reviewStatus: manifest.reviewStatus,
     environment: manifest.environment,
     graphVersion: manifest.graphVersion,
     releaseCommit: manifest.releaseCommit,
@@ -228,6 +231,8 @@ export async function main(options = {}) {
 function validateManifest(input, currentCommit) {
   assertRecordWithKeys(input, [
     'schemaVersion',
+    'contractVersion',
+    'reviewStatus',
     'environment',
     'graphVersion',
     'releaseCommit',
@@ -238,7 +243,11 @@ function validateManifest(input, currentCommit) {
     'errorClassifications',
   ], 'MANIFEST_INVALID')
   if (input.schemaVersion !== 1) throw new ContractRecorderError('MANIFEST_INVALID')
-  if (input.environment !== 'dev') throw new ContractRecorderError('ENVIRONMENT_INVALID')
+  if (!Number.isSafeInteger(input.contractVersion) || input.contractVersion < 1) {
+    throw new ContractRecorderError('MANIFEST_INVALID')
+  }
+  if (input.reviewStatus !== 'approved') throw new ContractRecorderError('MANIFEST_INVALID')
+  if (input.environment !== 'production') throw new ContractRecorderError('ENVIRONMENT_INVALID')
   if (input.graphVersion !== 'v25.0') throw new ContractRecorderError('GRAPH_VERSION_INVALID')
   if (!/^[0-9a-f]{40}$/.test(input.releaseCommit) || input.releaseCommit !== currentCommit) {
     throw new ContractRecorderError('COMMIT_INVALID')
@@ -380,6 +389,8 @@ function renderContract(input) {
     : '- 无；本次 capture 未发现 allowlist 之外的字段路径。'
 
   return `# Meta Dataset Quality 官方契约\n\n` +
+    `- Review status：\`${input.reviewStatus}\`\n` +
+    `- Contract version：\`${input.contractVersion}\`\n\n` +
     `## 1. 验证环境与 commit\n\n` +
     `- 环境：\`${input.environment}\`\n` +
     `- Graph version：\`${input.graphVersion}\`\n` +
@@ -598,10 +609,7 @@ function sanitizeOfficialUrl(value, datasetId) {
   const datasetMask = maskDatasetId(datasetId)
   const pathSegments = decodedPath.split('/')
   const datasetSegments = pathSegments.filter(segment => segment === datasetId)
-  if (
-    datasetSegments.length === 0 ||
-    pathSegments.some(segment => segment !== datasetId && segment.includes(datasetId))
-  ) {
+  if (pathSegments.some(segment => segment !== datasetId && segment.includes(datasetId))) {
     throw new ContractRecorderError('OFFICIAL_URL_INVALID')
   }
 

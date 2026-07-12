@@ -27,16 +27,18 @@ afterEach(async () => {
 function manifest(overrides = {}) {
   const base = {
     schemaVersion: 1,
-    environment: 'dev',
+    contractVersion: 1,
+    reviewStatus: 'approved',
+    environment: 'production',
     graphVersion: 'v25.0',
     releaseCommit: COMMIT,
     capturedAt: '2026-07-11T00:00:00.000Z',
     officialUrls: [`https://business.facebook.com/events_manager2/list/dataset/${DATASET_ID}/?asset_id=${DATASET_ID}`],
     request: {
       method: 'GET',
-      endpointPath: '/{dataset_id}/quality_fixture',
-      queryKeys: ['fields'],
-      permissions: ['ads_read'],
+      endpointPath: '/dataset_quality',
+      queryKeys: ['dataset_id', 'fields'],
+      permissions: ['ads_read', 'business_management'],
       datasetId: DATASET_ID,
     },
     ownerAllowlist: {
@@ -111,6 +113,8 @@ describe('Dataset Quality 契约记录器', () => {
     const document = await readFile(files.outputPath, 'utf8')
 
     assert.equal((document.match(/^## [1-9]\. /gm) || []).length, 9)
+    assert.match(document, /^- Review status：`approved`$/m)
+    assert.match(document, /^- Contract version：`1`$/m)
     assert.match(document, /1234\.\.\.6789/)
     assert.match(document, /\$\.data\[\]\.score.*number.*否/)
     assert.match(document, /\$\.data\[\]\.nullable_note.*unknown.*是/)
@@ -126,9 +130,10 @@ describe('Dataset Quality 契约记录器', () => {
     const baseManifest = manifest()
     const allowlistedLeakPath = `$.data[].allowlisted_${DATASET_ID}`
     const cases = [
-      { manifest: manifest({ request: { endpointPath: `/{dataset_id}/quality_${DATASET_ID}` } }) },
-      { manifest: manifest({ request: { permissions: [`ads_${DATASET_ID}`] } }) },
+      { expectedCode: 'REQUEST_INVALID', manifest: manifest({ request: { endpointPath: `/dataset_quality_${DATASET_ID}` } }) },
+      { expectedCode: 'CONTRACT_REDACTION_FAILED', manifest: manifest({ request: { permissions: [`ads_${DATASET_ID}`] } }) },
       {
+        expectedCode: 'CONTRACT_REDACTION_FAILED',
         manifest: manifest({
           ownerAllowlist: {
             responsePaths: [...baseManifest.ownerAllowlist.responsePaths, allowlistedLeakPath],
@@ -151,7 +156,7 @@ describe('Dataset Quality 契约记录器', () => {
         },
       }))
 
-      assert.equal(error.code, 'CONTRACT_REDACTION_FAILED')
+      assert.equal(error.code, input.expectedCode)
       assert.equal(error.message.includes(DATASET_ID), false)
       assert.equal(stageCalled, false)
       await assertMissing(files.rawPath)
@@ -325,7 +330,6 @@ describe('Dataset Quality 契约记录器', () => {
       [manifest({ officialUrls: ['https://developers.facebook.com.evil.test/docs'] }), 'OFFICIAL_URL_INVALID'],
       [manifest({ officialUrls: [`https://business.facebook.com/events_manager2/list/dataset/${DATASET_ID}%/`] }), 'OFFICIAL_URL_INVALID'],
       [manifest({ officialUrls: [`https://business.facebook.com/events_manager2/list/dataset/${DOUBLE_ENCODED_DATASET_ID}/`] }), 'OFFICIAL_URL_INVALID'],
-      [manifest({ officialUrls: [`https://business.facebook.com/events_manager2/list/dataset/?asset_id=${DATASET_ID}`] }), 'OFFICIAL_URL_INVALID'],
       [manifest({ officialUrls: [`https://business.facebook.com/events_manager2/list/dataset/prefix${DATASET_ID}/`] }), 'OFFICIAL_URL_INVALID'],
       [manifest({ officialUrls: [`https://business.facebook.com/events_manager2/list/dataset/${DATASET_ID}/asset_${ENCODED_DATASET_ID}`] }), 'OFFICIAL_URL_INVALID'],
       [manifest({ officialUrls: [`https://business.facebook.com/events_manager2/list/dataset/${DATASET_ID}/?asset_${ENCODED_DATASET_ID}=score`] }), 'OFFICIAL_URL_INVALID'],
@@ -361,6 +365,33 @@ describe('Dataset Quality 契约记录器', () => {
     assert.equal(decodeURIComponent(document).includes(DATASET_ID), false)
     assert.equal(document.includes('asset_id='), false)
     assert.equal(document.includes('fields='), false)
+  })
+
+  it('允许不含 Dataset ID 的 Meta 公共官方文档 URL', async () => {
+    const files = await fixture({
+      manifest: manifest({
+        officialUrls: [
+          'https://developers.facebook.com/documentation/ads-commerce/conversions-api/dataset-quality-api',
+        ],
+      }),
+    })
+    await record(files)
+    const document = await readFile(files.outputPath, 'utf8')
+    assert.match(document, /developers\.facebook\.com\/documentation\/ads-commerce\/conversions-api\/dataset-quality-api/)
+  })
+
+  it('允许 Meta Events Manager 当前官方域名并遮罩 Dataset ID', async () => {
+    const files = await fixture({
+      manifest: manifest({
+        officialUrls: [
+          `https://eventsmanager.facebook.com/events_manager2/list/dataset/${DATASET_ID}/settings?business_id=123456789`,
+        ],
+      }),
+    })
+    await record(files)
+    const document = await readFile(files.outputPath, 'utf8')
+    assert.match(document, /eventsmanager\.facebook\.com\/events_manager2\/list\/dataset\/1234\.\.\.6789\/settings\?business_id/)
+    assert.equal(document.includes(DATASET_ID), false)
   })
 
   it('拒绝 raw symlink 且只删除链接，不删除目标', async () => {

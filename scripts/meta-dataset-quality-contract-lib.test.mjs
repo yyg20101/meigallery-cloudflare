@@ -20,7 +20,7 @@ describe('Dataset Quality approved contract gate', () => {
     )
   })
 
-  it('只接受 Git tracked、approved、带版本的 dev v25.0 artifact，并计算内容 digest', async () => {
+  it('只接受 Git tracked、approved、带版本的 production v25.0 artifact，并计算内容 digest', async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), 'meta-contract-gate-'))
     try {
       await execFile('git', ['init'], { cwd })
@@ -31,7 +31,7 @@ describe('Dataset Quality approved contract gate', () => {
         '',
         '- Review status：`approved`',
         '- Contract version：`3`',
-        '- 环境：`dev`',
+        '- 环境：`production`',
         '- Graph version：`v25.0`',
         '',
       ].join('\n'))
