@@ -79,6 +79,7 @@ function mountPage(datasetAvailable = false) {
     queryKey: computed(() => '7d'),
   }))
   vi.stubGlobal('useAuth', () => ({ isOwner: ref(true) }))
+  vi.stubGlobal('useApi', () => ({ api: vi.fn().mockResolvedValue({}) }))
   vi.stubGlobal('formatAnalyticsNumber', (value: unknown) => String(value ?? 0))
   vi.stubGlobal('formatAnalyticsPercent', (numerator: unknown, denominator?: unknown) => denominator === undefined ? `${Number(numerator) * 100}%` : `${Number(numerator) / Math.max(1, Number(denominator)) * 100}%`)
 

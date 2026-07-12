@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 const adapter = vi.hoisted(() => ({
   initialize: vi.fn(),
@@ -8,7 +8,15 @@ const adapter = vi.hoisted(() => ({
   teardown: vi.fn(),
 }))
 
-vi.mock('~/adapters/metaPixel.client', () => ({ metaPixelAdapter: adapter }))
+vi.mock('~/adapters/adPlatformBrowser.client', () => ({
+  initializeAdBrowserProvider: (_provider: string, destinationId: string) => adapter.initialize(destinationId),
+  trackAdBrowserPageView: () => adapter.pageView(),
+  trackAdBrowserStandardEvent: (_provider: string, eventName: string, payload: unknown, eventId?: string) => eventId
+    ? adapter.standardEvent(eventName, payload, { eventID: eventId })
+    : adapter.standardEvent(eventName, payload),
+  executeAdBrowserInstruction: (instruction: { eventName: string; payload: unknown; eventId: string }) => adapter.standardEvent(instruction.eventName, instruction.payload, { eventID: instruction.eventId }),
+  teardownAdBrowserProvider: () => adapter.teardown(),
+}))
 
 import { useTracking } from './useTracking'
 
@@ -19,6 +27,9 @@ const canTrackMarketing = ref(true)
 const facebookPixelEnabled = ref(true)
 const facebookPixelId = ref('123456789')
 const facebookPixelDebugEnabled = ref(false)
+const metaBrowserConnection = computed(() => facebookPixelEnabled.value && facebookPixelId.value
+  ? { provider: 'meta', destinationId: facebookPixelId.value, debugEnabled: facebookPixelDebugEnabled.value }
+  : null)
 let analyticsVisitorId = 'visitor_1'
 let analyticsSessionId = 'session_1'
 let route = {
@@ -60,9 +71,7 @@ describe('useTracking', () => {
     vi.stubGlobal('useRoute', () => route)
     vi.stubGlobal('useRuntimeConfig', () => ({ public: { appEnv: 'production' } }))
     vi.stubGlobal('useSiteSettings', () => ({
-      facebookPixelEnabled,
-      facebookPixelId,
-      facebookPixelDebugEnabled,
+      metaBrowserConnection,
     }))
     vi.stubGlobal('useAnalytics', () => ({
       getContext: () => ({
@@ -546,6 +555,7 @@ describe('useTracking', () => {
 
 function instruction(eventName: 'Contact' | 'Lead' | 'CompleteRegistration') {
   return {
+    provider: 'meta',
     deliveryId: 'cdlv_1',
     eventName,
     eventId: `meta:${eventName}:contact_1`,

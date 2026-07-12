@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, nextTick, ref } from 'vue'
 
-describe('facebook-pixel plugin', () => {
+describe('广告平台浏览器插件', () => {
   const afterEachHandlers: Array<() => void> = []
   const fetchSettings = vi.fn()
   const trackPageView = vi.fn()
@@ -11,6 +11,9 @@ describe('facebook-pixel plugin', () => {
   const facebookPixelEnabled = ref(true)
   const facebookPixelId = ref('123456789')
   const facebookPixelDebugEnabled = ref(false)
+  const metaBrowserConnection = computed(() => facebookPixelEnabled.value && facebookPixelId.value
+    ? { provider: 'meta', destinationId: facebookPixelId.value, debugEnabled: facebookPixelDebugEnabled.value }
+    : null)
 
   beforeEach(() => {
     vi.resetModules()
@@ -27,9 +30,7 @@ describe('facebook-pixel plugin', () => {
     vi.stubGlobal('useRouter', () => ({ afterEach: (handler: () => void) => afterEachHandlers.push(handler) }))
     vi.stubGlobal('useSiteSettings', () => ({
       fetchSettings,
-      facebookPixelEnabled,
-      facebookPixelId,
-      facebookPixelDebugEnabled,
+      metaBrowserConnection,
     }))
     vi.stubGlobal('useMarketingConsent', () => ({
       canTrackMarketing: computed(() => consent.value === 'granted'),

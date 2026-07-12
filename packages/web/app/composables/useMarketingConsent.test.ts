@@ -13,7 +13,7 @@ beforeEach(() => {
     return stateStore.get(key)
   })
   vi.stubGlobal('useApi', () => ({ api }))
-  vi.stubGlobal('useSiteSettings', () => ({ metaTrackingMode: ref('production') }))
+  vi.stubGlobal('useSiteSettings', () => ({ marketingTrackingMode: ref('production') }))
 })
 
 afterEach(() => vi.unstubAllGlobals())
