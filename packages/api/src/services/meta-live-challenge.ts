@@ -207,7 +207,10 @@ function syntheticEvent(eventName: 'Contact' | 'CompleteRegistration', eventId: 
       client_ip_address: '192.0.2.1',
       client_user_agent: 'MeiGallery Meta Live Synthetic Test/2.0',
       ...(eventName === 'CompleteRegistration'
-        ? { em: [REGISTRATION_EMAIL_HASH], external_id: [REGISTRATION_EXTERNAL_ID_HASH] }
+        ? {
+            em: validSha256(REGISTRATION_EMAIL_HASH) ? [REGISTRATION_EMAIL_HASH] : undefined,
+            external_id: validSha256(REGISTRATION_EXTERNAL_ID_HASH) ? [REGISTRATION_EXTERNAL_ID_HASH] : undefined,
+          }
         : {}),
     },
     custom_data: { content_category: 'meta_live_synthetic_test' },
@@ -272,6 +275,10 @@ function normalizeCommit(value: unknown) {
 function configuredValue(value: unknown) {
   const normalized = String(value ?? '')
   return normalized && normalized.trim() === normalized ? normalized : ''
+}
+
+function validSha256(value: unknown): value is string {
+  return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value)
 }
 
 function d1ChangedExactlyOnce(result: D1Result<unknown>) {
