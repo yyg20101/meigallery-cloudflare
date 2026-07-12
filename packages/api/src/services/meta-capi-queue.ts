@@ -111,7 +111,7 @@ async function handleMetaCapiMessage(
   } catch {
     console.error('[meta-capi] Queue 消息安全终止', {
       deliveryId: UNKNOWN_DELIVERY_ID,
-      errorCode: 'legacy_message_unsupported',
+      errorCode: 'queue_message_invalid',
     })
     ackMessage(message)
     return
@@ -150,7 +150,7 @@ async function terminateInvalidQueueMessage(
         }
         await deleteSecureMetaCapiOutbox(db, delivery.id)
       } else {
-        await terminateUnsupportedMessage(db, delivery)
+        await terminateInvalidMessage(db, delivery)
       }
     }
     console.error('[meta-capi] Queue 消息安全终止', {
@@ -317,10 +317,10 @@ async function consumeSecureMessage(
   }
 }
 
-async function terminateUnsupportedMessage(db: D1Database, delivery: MetaCapiDeliveryRow) {
+async function terminateInvalidMessage(db: D1Database, delivery: MetaCapiDeliveryRow) {
   if (delivery.status === 'sent') await recordDuplicateSuppressed(db, delivery)
   else if (!isTerminalDelivery(delivery)) {
-    await markSkipped(db, delivery, 'legacy_message_unsupported')
+    await markSkipped(db, delivery, 'queue_message_invalid')
   }
   await deleteSecureMetaCapiOutbox(db, delivery.id)
 }
@@ -388,17 +388,17 @@ async function confirmQueueTerminalTransition(
 
 type QueueMessageParseResult = {
   deliveryId: string
-  errorCode: 'legacy_message_unsupported' | typeof SECURE_CONTEXT_PAYLOAD_INVALID
+  errorCode: 'queue_message_invalid' | typeof SECURE_CONTEXT_PAYLOAD_INVALID
   message?: MetaCapiQueueMessage
 }
 
 function parseQueueMessage(value: unknown): QueueMessageParseResult {
   try {
-    if (!isPlainRecord(value)) return { deliveryId: '', errorCode: 'legacy_message_unsupported' }
+    if (!isPlainRecord(value)) return { deliveryId: '', errorCode: 'queue_message_invalid' }
     const deliveryId = safeDeliveryId(readOwnDataProperty(value, 'deliveryId'))
     const schemaVersion = readOwnDataProperty(value, 'schemaVersion')
     if (schemaVersion !== 2 || !deliveryId) {
-      return { deliveryId, errorCode: 'legacy_message_unsupported' }
+      return { deliveryId, errorCode: 'queue_message_invalid' }
     }
     const envelope = readOwnDataProperty(value, 'envelope')
     if (!hasExactFields(value, QUEUE_MESSAGE_FIELDS) || !isPlainRecord(envelope)) {
@@ -430,7 +430,7 @@ function parseQueueMessage(value: unknown): QueueMessageParseResult {
       },
     }
   } catch {
-    return { deliveryId: '', errorCode: 'legacy_message_unsupported' }
+    return { deliveryId: '', errorCode: 'queue_message_invalid' }
   }
 }
 

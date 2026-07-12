@@ -337,7 +337,7 @@ describe('meta-capi', () => {
       'invalid_sensitive_context',
       'secure_context_expired',
       'secure_context_invalid',
-      'legacy_message_unsupported',
+      'queue_message_invalid',
     ]
 
     expect(reasons).toHaveLength(7)

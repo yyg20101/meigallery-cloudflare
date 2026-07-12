@@ -619,13 +619,13 @@ describe('Meta CAPI Queue V2', () => {
     expect(db.outbox).toBeNull()
   })
 
-  it.each([1, 7])('V1/未知 schema %s 不读取 userData，安全 ack 并终止可识别 delivery', async schemaVersion => {
+  it.each([1, 7])('非 V2 schema %s 不读取额外字段，安全 ack 并终止可识别 delivery', async schemaVersion => {
     const db = createQueueDb()
     const body = {
       schemaVersion,
       deliveryId: db.delivery.id,
       get userData(): never {
-        throw new Error('consumer 读取了旧明文 userData')
+        throw new Error('consumer 读取了非法消息额外字段')
       },
     }
     db.outbox = {
@@ -646,7 +646,7 @@ describe('Meta CAPI Queue V2', () => {
     expect(fetchMock).not.toHaveBeenCalled()
     expect(message.ack).toHaveBeenCalledOnce()
     expect(message.retry).not.toHaveBeenCalled()
-    expect(db.delivery).toMatchObject({ status: 'skipped', skip_reason: 'legacy_message_unsupported' })
+    expect(db.delivery).toMatchObject({ status: 'skipped', skip_reason: 'queue_message_invalid' })
     expect(db.outbox).toBeNull()
   })
 

@@ -163,7 +163,7 @@ export type ConversionSkipReason =
   | 'missing_stable_id'
   | 'secure_context_expired'
   | 'secure_context_invalid'
-  | 'legacy_message_unsupported'
+  | 'queue_message_invalid'
 
 /** 分析设备类型 */
 export type AnalyticsDeviceType = 'desktop' | 'tablet' | 'mobile' | 'unknown'
