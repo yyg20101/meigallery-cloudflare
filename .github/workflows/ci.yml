@@ -59,7 +59,7 @@ jobs:
           name: api-coverage
           path: packages/api/coverage/
           if-no-files-found: ignore
-          retention-days: 3
+          retention-days: 7
 
       - name: 安装 Playwright 浏览器
         run: pnpm --filter @meigallery/web exec playwright install --with-deps chromium

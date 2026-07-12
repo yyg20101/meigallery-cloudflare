@@ -401,6 +401,8 @@ head_sampling_rate = 1
 - [ ] `0036_meta_capi_v2_secure_delivery.sql`、`0037_meta_connection_revision.sql` 与 `0038_conversion_dedupe_claims.sql` 已应用；`meta_tracking_mode=disabled`、`meta_capi_enabled=false`
 - [ ] 当前 `main` HEAD 已重做 dev live evidence；`Contact` / `CompleteRegistration` 均完成 Browser/Server 同 ID 去重，且无 `Lead` / `StartTrial`
 - [ ] `/admin/attribution/meta` 将 Pixel `attempted` 与 CAPI `sent` 分开显示；Owner Test Event 返回 `events_received=1` 后才允许 production mode 和 `meta_capi_enabled`
+- [ ] 如接入 Ops Hub 自动导入，Ops Hub 侧 `sourceBotKey` 与 MeiGallery Import Token allowlist 完全一致，且只提交 `metadata.type=gallery/case`
+- [ ] 已用 Ops Hub 或等价脚本完成 `#gallery` 单图、`#case` 相册、重复 `externalMessageId`、未授权 `sourceBotKey` 和旧 `testimonial_case` 拒绝验收
 - [ ] WAF 和基本 rate limiting 已启用
 - [ ] 登录、搜索、详情、媒体权限、导入流程通过验收
 - [ ] 数据分析 migrations、API、Web、后台页面和 Owner 开关顺序已完成；默认关闭态和回滚 disabled 响应已验证

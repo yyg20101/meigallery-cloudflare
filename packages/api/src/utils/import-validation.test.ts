@@ -42,6 +42,59 @@ describe('validateTelegramImportPayload', () => {
     expect(result).toThrow('案例导入需要 2-9 张图片')
   })
 
+  it('接受有效 case 导入 payload 并按 sortOrder 排序', () => {
+    const result = validateTelegramImportPayload({
+      ...basePayload,
+      metadata: {
+        ...basePayload.metadata,
+        type: 'case',
+        requiredLevelRank: undefined,
+        featured: true,
+      },
+      files: [
+        { fileId: 'AgACAg2', fileUniqueId: 'AQAD2', filename: '002.jpg', mimeType: 'image/png', sortOrder: 1 },
+        { fileId: 'AgACAg1', fileUniqueId: 'AQAD1', filename: '001.jpg', mimeType: 'image/jpeg', sortOrder: 0 },
+      ],
+    })
+
+    expect(result.metadata.type).toBe('case')
+    expect(result.metadata.featured).toBe(true)
+    expect(result.files.map(file => file.fileId)).toEqual(['AgACAg1', 'AgACAg2'])
+  })
+
+  it('拒绝 case 超过 9 张图片和 gallery 超过 30 张图片', () => {
+    expect(() => validateTelegramImportPayload({
+      ...basePayload,
+      metadata: { ...basePayload.metadata, type: 'case', requiredLevelRank: undefined },
+      files: Array.from({ length: 10 }, (_, index) => ({
+        fileId: `AgACAgCase${index}`,
+        mimeType: 'image/jpeg',
+        sortOrder: index,
+      })),
+    })).toThrow('案例导入需要 2-9 张图片')
+
+    expect(() => validateTelegramImportPayload({
+      ...basePayload,
+      files: Array.from({ length: 31 }, (_, index) => ({
+        fileId: `AgACAgGallery${index}`,
+        mimeType: 'image/jpeg',
+        sortOrder: index,
+      })),
+    })).toThrow('图库导入需要 1-30 张图片')
+  })
+
+  it('接受 requiredLevelRank=20 并拒绝非法等级', () => {
+    expect(validateTelegramImportPayload({
+      ...basePayload,
+      metadata: { ...basePayload.metadata, requiredLevelRank: 20 },
+    }).metadata.requiredLevelRank).toBe(20)
+
+    expect(() => validateTelegramImportPayload({
+      ...basePayload,
+      metadata: { ...basePayload.metadata, requiredLevelRank: 15 },
+    })).toThrow('requiredLevelRank 只能是 0、10 或 20')
+  })
+
   it('拒绝旧 testimonial_case 导入类型', () => {
     const result = () => validateTelegramImportPayload({
       ...basePayload,
