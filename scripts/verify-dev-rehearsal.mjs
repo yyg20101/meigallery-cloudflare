@@ -20,6 +20,7 @@ export async function runDevRehearsalVerification(options = {}) {
   const env = options.env || process.env
   const apiUrl = readRequiredEnv(env, 'VERIFY_DEV_API_URL')
   const webUrl = readRequiredEnv(env, 'VERIFY_DEV_WEB_URL')
+  const requireMetaDelivery = env.META_INITIAL_ROLLOUT !== '1'
   const releaseCommit = String(options.releaseCommit || '').trim()
   if (!/^[0-9a-f]{40}$/i.test(releaseCommit)) throw new Error('dev rehearsal 需要 40 位 RELEASE_COMMIT')
   const steps = []
@@ -147,9 +148,15 @@ export async function runDevRehearsalVerification(options = {}) {
     steps.push(webHealthStep)
     if (webHealthStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
-    const baselineResult = await readMetaDeliveryBaseline(boundedFetch, apiUrl, sessionToken, today)
-    steps.push(baselineResult.step)
-    if (baselineResult.step.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
+    const baselineResult = requireMetaDelivery
+      ? await readMetaDeliveryBaseline(boundedFetch, apiUrl, sessionToken, today)
+      : { counts: null, step: null }
+    if (baselineResult.step) {
+      steps.push(baselineResult.step)
+      if (baselineResult.step.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
+    } else {
+      notes.push('dev-meta-delivery-deferred-to-production')
+    }
 
     const conversionVisitorId = `visitor_release_dev_${runSuffix}`
     const conversionSessionId = `session_release_dev_${runSuffix}`
@@ -224,7 +231,7 @@ export async function runDevRehearsalVerification(options = {}) {
         utmContent: 'release-dev-registration',
         consentState: 'granted',
       },
-    })
+    }, { requirePixelEvent: requireMetaDelivery })
     steps.push(registrationStep.step)
     if (registrationStep.step.status !== 'passed') {
       return { steps, notes, artifacts, sensitiveValues }
@@ -282,13 +289,15 @@ export async function runDevRehearsalVerification(options = {}) {
     steps.push(attributionStep)
     if (attributionStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
-    const metaDeliveryStep = await pollMetaDeliveries(boundedFetch, apiUrl, sessionToken, today, {
-      timeoutMs: options.pollTimeoutMs ?? META_POLL_TIMEOUT_MS,
-      intervalMs: options.pollIntervalMs ?? META_POLL_INTERVAL_MS,
-      baseline: baselineResult.counts,
-    })
-    steps.push(metaDeliveryStep)
-    if (metaDeliveryStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
+    if (requireMetaDelivery) {
+      const metaDeliveryStep = await pollMetaDeliveries(boundedFetch, apiUrl, sessionToken, today, {
+        timeoutMs: options.pollTimeoutMs ?? META_POLL_TIMEOUT_MS,
+        intervalMs: options.pollIntervalMs ?? META_POLL_INTERVAL_MS,
+        baseline: baselineResult.counts,
+      })
+      steps.push(metaDeliveryStep)
+      if (metaDeliveryStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
+    }
 
     return { steps, notes, artifacts, sensitiveValues }
   } finally {
@@ -375,18 +384,20 @@ async function postConversion(fetchFn, apiUrl, stepName, payload) {
   })
 }
 
-async function postRegistration(fetchFn, apiUrl, payload) {
+async function postRegistration(fetchFn, apiUrl, payload, options = {}) {
   const step = await requestJsonStep(fetchFn, 'dev-auth-register', `${apiUrl}/api/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   }, (body) => {
     if (!Number.isInteger(body?.id) || Number(body.id) <= 0) throw new Error('注册响应缺少合法用户 ID')
-    if (!Array.isArray(body?.pixelEvents)) throw new Error('注册响应缺少 Pixel 指令数组')
-    if (!body.pixelEvents.some(event => event?.eventName === 'CompleteRegistration')) {
+    if (options.requirePixelEvent && !Array.isArray(body?.pixelEvents)) throw new Error('注册响应缺少 Pixel 指令数组')
+    if (options.requirePixelEvent && !body.pixelEvents.some(event => event?.eventName === 'CompleteRegistration')) {
       throw new Error('注册响应缺少 CompleteRegistration Pixel 指令')
     }
-    return '真实注册 API 已创建用户并返回 CompleteRegistration Pixel 指令'
+    return options.requirePixelEvent
+      ? '真实注册 API 已创建用户并返回 CompleteRegistration Pixel 指令'
+      : '真实注册 API 已创建用户，Meta delivery 延后到 production Test Event'
   })
   return { step }
 }
