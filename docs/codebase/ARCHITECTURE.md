@@ -20,7 +20,7 @@
 
 典型请求流程：
 
-1. 前端通过 `useApi()` 或 SSR 相对 `/api/...` 请求 API；SSR 环境由 `packages/web/server/api/[...].ts` 使用 `API_SERVICE` Service Binding 转发。
+1. 浏览器通过 `useApi()` 统一请求 Web 同源 `/api/...` 代理；SSR 使用 `API_SERVICE` Service Binding 直连 API Worker，本地服务端代理回退到配置的 API 地址。
 2. API Worker 在 `packages/api/src/index.ts` 先应用 logger、secure headers、CORS、noindex、速率限制和 `authMiddleware`。
 3. 公开路由如 `/api/galleries`、`/api/cases`、`/api/media` 在入口文件直接挂载；后台路由统一挂载到 `/api/admin`。
 4. `packages/api/src/routes/admin/index.ts` 对所有后台路由应用 `requireAdmin`，再分发到图库、标签、用户、设置、案例等子路由。
@@ -54,7 +54,7 @@
 ## 5. 已知架构风险
 
 - API 路由文件中存在多个超过 400 行的文件，例如 `admin/galleries.ts`、`auth.ts`、`admin/users.ts`、`admin/media.ts`；继续增长会提高修改风险。
-- Dev 环境配置复用正式 D1/R2 资源，便于真实数据验收，但后台写操作可能影响正式数据。
+- Dev 环境已配置独立 D1/R2/Queue 资源，用于真实 dev Worker 预演；后台写操作只应影响 dev 测试数据。
 - Cloudflare Stream 相关字段和签名逻辑存在，但生产视频上传/编码链路未接入；文档和 UI 需要持续避免暗示视频已完整可用。
 - 当前已有 Web Playwright smoke 覆盖核心页面和多视口响应式，并扩展了 Vitest 组件测试；后台复杂组件局部状态仍需要继续补充测试覆盖。
 

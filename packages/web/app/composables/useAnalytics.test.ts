@@ -6,7 +6,7 @@ const apiMock = vi.fn()
 const stateStore = new Map<string, ReturnType<typeof ref>>()
 let route = { fullPath: '/', path: '/', params: {} }
 
-vi.stubGlobal('useApi', () => ({ api: apiMock, baseURL: 'https://api.example.com' }))
+vi.stubGlobal('useApi', () => ({ api: apiMock, baseURL: '' }))
 vi.stubGlobal('useRoute', () => route)
 vi.stubGlobal('useState', <T>(key: string, init: () => T) => {
   if (!stateStore.has(key)) stateStore.set(key, ref(init()))
@@ -106,13 +106,41 @@ describe('useAnalytics', () => {
     ]))
   })
 
+  it('允许外部传入 eventId 并随 flush 上报', async () => {
+    const analytics = useAnalytics()
+    analytics.initialize({ enabled: true, consentState: 'granted', route })
+    analytics.track('contact_method_click', {
+      eventId: 'conv_event_1',
+      entityType: 'contact',
+      flush: true,
+      props: { method_type: 'telegram' },
+    })
+
+    await vi.waitFor(() => {
+      expect(apiMock).toHaveBeenCalled()
+    })
+
+    const events = apiMock.mock.calls[0]?.[1]?.body?.events
+    expect(events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        eventId: 'conv_event_1',
+        eventName: 'contact_method_click',
+      }),
+    ]))
+  })
+
   it('limited consent 会跳过非必要点击和曝光事件', () => {
     const analytics = useAnalytics()
     analytics.initialize({ enabled: true, consentState: 'limited', route })
     analytics.track('home_ad_click', { props: { ad_id: 'ad_1' } })
+    analytics.track('contact_qr_expand', {
+      entityType: 'contact',
+      props: { method_type: 'telegram', action_type: 'qr_expand', location: 'floating_contact_panel' },
+    })
     analytics.track('register_submit', { props: { email_verification_enabled: false } })
 
     expect(analytics.state.value.queue.some(event => event.eventName === 'home_ad_click')).toBe(false)
+    expect(analytics.state.value.queue.some(event => event.eventName === 'contact_qr_expand')).toBe(false)
     expect(analytics.state.value.queue.some(event => event.eventName === 'register_submit')).toBe(true)
   })
 
@@ -141,8 +169,8 @@ describe('useAnalytics', () => {
     await analytics.flush({ beacon: true })
     analytics.sendSessionEnd({ beacon: true })
 
-    expect(sendBeacon).toHaveBeenCalledWith('https://api.example.com/api/analytics/events', expect.any(Blob))
-    expect(sendBeacon).toHaveBeenCalledWith('https://api.example.com/api/analytics/session/end', expect.any(Blob))
+    expect(sendBeacon).toHaveBeenCalledWith('/api/analytics/events', expect.any(Blob))
+    expect(sendBeacon).toHaveBeenCalledWith('/api/analytics/session/end', expect.any(Blob))
   })
 
   it('flush 失败会把事件放回队列并持久化到 localStorage', async () => {

@@ -29,14 +29,13 @@ contactMethodRoutes.get('/', async (c) => {
       sort_order: number
     }>()
 
-  const apiBase = new URL(c.req.url).origin
   const data = result.results.map((row) => ({
     id: row.id,
     platform: row.platform,
     label: row.label,
     value: row.value,
     linkUrl: safeContactLinkUrl(row.link_url) || generateContactLink(row.platform, row.value),
-    qrCodeUrl: row.qr_code_key ? `${apiBase}/api/contact-methods/${row.id}/qrcode` : null,
+    qrCodeUrl: row.qr_code_key ? `/api/contact-methods/${row.id}/qrcode` : null,
     sortOrder: row.sort_order,
   }))
 

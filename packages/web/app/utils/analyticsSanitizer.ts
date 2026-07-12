@@ -1,5 +1,5 @@
 import type { AnalyticsConsentState, AnalyticsDeviceType, AnalyticsPropValue, AnalyticsSourceChannel } from '@meigallery/shared'
-import { hasSensitiveAnalyticsUrl } from './facebookPixel'
+import { hasSensitiveAnalyticsUrl } from './trackingSanitizer'
 
 const SAFE_QUERY_KEYS = new Set([
   'city',

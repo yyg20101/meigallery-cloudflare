@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { ADMIN_SETTING_KEYS, PUBLIC_SETTING_KEYS } from './site-settings'
+import {
+  ADMIN_SETTING_KEYS,
+  findProtectedAdminSettingKeys,
+  PROTECTED_ADMIN_SETTING_KEYS,
+  PUBLIC_SETTING_KEYS,
+} from './site-settings'
 
 describe('site settings keys', () => {
   it('does not expose removed about page settings', () => {
@@ -74,5 +79,27 @@ describe('site settings keys', () => {
       expect(ADMIN_SETTING_KEYS).toContain(key)
       expect(PUBLIC_SETTING_KEYS).toContain(key)
     }
+  })
+
+  it('keeps Meta CAPI switch admin-only', () => {
+    expect(ADMIN_SETTING_KEYS).toContain('meta_tracking_mode')
+    expect(PUBLIC_SETTING_KEYS).toContain('meta_tracking_mode')
+    expect(ADMIN_SETTING_KEYS).toContain('meta_capi_enabled')
+    expect(PUBLIC_SETTING_KEYS).not.toContain('meta_capi_enabled')
+    expect(ADMIN_SETTING_KEYS).not.toContain('META_CAPI_ACCESS_TOKEN')
+    expect(PUBLIC_SETTING_KEYS).not.toContain('META_CAPI_ACCESS_TOKEN')
+    expect(ADMIN_SETTING_KEYS).not.toContain('META_CAPI_TEST_EVENT_CODE')
+    expect(PUBLIC_SETTING_KEYS).not.toContain('META_CAPI_TEST_EVENT_CODE')
+  })
+
+  it('keeps Meta CAPI rollout admin-only', () => {
+    expect(ADMIN_SETTING_KEYS).toContain('meta_capi_rollout_percentage')
+    expect(PUBLIC_SETTING_KEYS).not.toContain('meta_capi_rollout_percentage')
+    expect(PROTECTED_ADMIN_SETTING_KEYS).toEqual(['meta_capi_rollout_percentage'])
+    expect(findProtectedAdminSettingKeys([
+      'site_name',
+      'meta_capi_rollout_percentage',
+      'home_hero_title',
+    ])).toEqual(['meta_capi_rollout_percentage'])
   })
 })

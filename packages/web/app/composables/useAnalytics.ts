@@ -60,6 +60,7 @@ export interface AnalyticsSourceContext {
 }
 
 interface TrackOptions {
+  eventId?: string
   route?: AnalyticsRouteLike
   props?: Record<string, AnalyticsPropValue | undefined>
   value?: number
@@ -91,6 +92,7 @@ const NON_ESSENTIAL_LIMITED_EVENTS = new Set<AnalyticsEventName>([
   'filter_removed',
   'sort_changed',
   'load_more',
+  'contact_qr_expand',
 ])
 
 let analyticsApi: AnalyticsApi | null = null
@@ -145,7 +147,7 @@ export function useAnalytics() {
     if (normalizedRoute.skip) return
 
     const event: AnalyticsEventPayload = {
-      eventId: createAnalyticsId(eventName),
+      eventId: options.eventId || createAnalyticsId(eventName),
       eventName,
       occurredAt: new Date().toISOString(),
       routeName: normalizedRoute.routeName,
@@ -287,6 +289,7 @@ export function useAnalytics() {
       visitorId: state.value.visitorId,
       sessionId: state.value.sessionId,
       consentState: state.value.consentState,
+      sourceChannel: state.value.sourceChannel,
       sourceContext: state.value.sourceContext,
     }
   }
@@ -467,7 +470,7 @@ function persistFailedQueue(events: AnalyticsEventPayload[]) {
 }
 
 function sendBeacon(path: string, body: unknown) {
-  if (!isBrowser() || !navigator.sendBeacon || !analyticsBaseURL) return false
+  if (!isBrowser() || !navigator.sendBeacon) return false
   const blob = new Blob([JSON.stringify(body)], { type: 'application/json' })
   return navigator.sendBeacon(`${analyticsBaseURL}${path}`, blob)
 }

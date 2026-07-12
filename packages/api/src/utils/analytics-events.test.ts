@@ -10,11 +10,27 @@ import {
 describe('analytics-events', () => {
   it('识别白名单事件、实体和来源渠道', () => {
     expect(isAnalyticsEventName('page_view')).toBe(true)
+    expect(isAnalyticsEventName('contact_qr_expand')).toBe(true)
     expect(isAnalyticsEventName('unknown_event')).toBe(false)
     expect(isAnalyticsEntityType('gallery')).toBe(true)
     expect(isAnalyticsEntityType('private_bucket')).toBe(false)
     expect(isAnalyticsSourceChannel('invite')).toBe(true)
     expect(isAnalyticsSourceChannel('paid_secret')).toBe(false)
+  })
+
+  it('二维码展开事件仅保留非敏感分析属性', () => {
+    const props = sanitizeAnalyticsProps('contact_qr_expand', {
+      method_type: 'telegram',
+      action_type: 'qr_expand',
+      location: 'floating_contact_panel',
+      contact_value: '@secret',
+    })
+
+    expect(props).toEqual({
+      method_type: 'telegram',
+      action_type: 'qr_expand',
+      location: 'floating_contact_panel',
+    })
   })
 
   it('按事件白名单清洗 props', () => {

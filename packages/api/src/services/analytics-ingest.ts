@@ -59,6 +59,8 @@ interface NormalizedAnalyticsEvent {
   utmSource: string
   utmMedium: string
   utmCampaign: string
+  utmContent: string
+  trackingSourceSlug: string
   sourceChannel: AnalyticsSourceChannel
   sourceName: string
   deviceType: AnalyticsDeviceType
@@ -78,6 +80,7 @@ interface NormalizedAnalyticsEvent {
 interface AcceptedAnalyticsEvent {
   event: NormalizedAnalyticsEvent
   storedRaw: boolean
+  rawDuplicate?: boolean
 }
 
 export class AnalyticsIngestError extends Error {
@@ -104,6 +107,7 @@ const CLICK_EVENTS = new Set<AnalyticsEventName>([
   'sort_changed',
   'load_more',
   'contact_method_click',
+  'contact_qr_expand',
   'rules_page_click',
   'membership_cta_click',
 ])
@@ -123,7 +127,7 @@ const CRITICAL_RAW_EVENTS = new Set<AnalyticsEventName>([
 ])
 
 export async function ingestAnalyticsBatch(
-  env: Pick<Bindings, 'DB' | 'APP_ENV'>,
+  env: Pick<Bindings, 'DB' | 'APP_ENV' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>,
   context: AnalyticsIngestContext,
 ): Promise<AnalyticsBatchResponse & { usage: D1Usage }> {
   if (context.bodySizeBytes > ANALYTICS_LIMITS.BATCH_BODY_LIMIT_BYTES) {
@@ -188,7 +192,7 @@ export async function ingestAnalyticsBatch(
 }
 
 export async function recordTrustedAnalyticsEvent(
-  env: Pick<Bindings, 'DB' | 'APP_ENV'>,
+  env: Pick<Bindings, 'DB' | 'APP_ENV' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>,
   input: {
     eventName: AnalyticsEventName
     userId: number | null
@@ -348,6 +352,7 @@ function normalizeAnalyticsEvent(
   const utmSource = readOptionalString(raw, 'utmSource', 'utm_source') || stringProp(props.utm_source)
   const utmMedium = readOptionalString(raw, 'utmMedium', 'utm_medium') || stringProp(props.utm_medium)
   const utmCampaign = readOptionalString(raw, 'utmCampaign', 'utm_campaign') || stringProp(props.utm_campaign)
+  const utmContent = readOptionalString(raw, 'utmContent', 'utm_content') || stringProp(props.utm_content)
   const sourceNameFromProps = stringProp(props.source_name)
   const derivedSource = deriveSourceAttribution({
     inviteCodeId,
@@ -382,6 +387,8 @@ function normalizeAnalyticsEvent(
     utmSource: truncateAnalyticsString(utmSource, 120),
     utmMedium: truncateAnalyticsString(utmMedium, 120),
     utmCampaign: truncateAnalyticsString(utmCampaign, 120),
+    utmContent: truncateAnalyticsString(utmContent, 120),
+    trackingSourceSlug: truncateAnalyticsString(trackingSourceSlug, 120),
     sourceChannel,
     sourceName: truncateAnalyticsString(sourceNameFromProps || derivedSource.name, 120),
     deviceType,
@@ -1052,7 +1059,8 @@ async function writeRawEventsBatch(
   context: AnalyticsIngestContext,
   response: AnalyticsBatchResponse & { usage: D1Usage },
 ) {
-  for (const { event, storedRaw } of accepted) {
+  for (const item of accepted) {
+    const { event, storedRaw } = item
     if (!storedRaw) continue
     const result = await runAndTrack(db, response, `
       INSERT OR IGNORE INTO analytics_events (
@@ -1085,7 +1093,12 @@ async function writeRawEventsBatch(
       event.dedupeKey,
       event.sampled ? 1 : 0,
     ])
-    if ((result.meta?.changes ?? 1) === 0) response.duplicate += 1
+    if ((result.meta?.changes ?? 1) === 0) {
+      item.rawDuplicate = true
+      response.duplicate += 1
+    } else {
+      item.rawDuplicate = false
+    }
   }
 }
 

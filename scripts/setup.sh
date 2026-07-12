@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # MeiGallery 首次部署初始化
-# 创建共享 Cloudflare 资源并提示配置生产/dev secrets
+# 创建 Cloudflare 资源并提示配置生产/dev secrets
 # 用法: ./scripts/setup.sh [dev|production|all]
 
 ENV="${1:-all}"
@@ -31,16 +31,57 @@ if ! "${WRANGLER[@]}" whoami &> /dev/null; then
   exit 1
 fi
 
-print_shared_resources() {
+create_queue() {
+  local queue_name=$1
+
+  if "${WRANGLER[@]}" queues create "$queue_name" &> /dev/null; then
+    :
+  else
+    :
+  fi
+
+  if "${WRANGLER[@]}" queues info "$queue_name" &> /dev/null; then
+    echo "Queue ${queue_name} 已确认存在"
+    return 0
+  fi
+
+  echo "错误: 创建 Queue ${queue_name} 失败"
+  return 1
+}
+
+print_production_resources() {
   echo ""
-  echo "--- 创建共享 D1 数据库 ---"
+  echo "--- 创建生产 D1 数据库 ---"
   echo "执行: ${WRANGLER_CMD} d1 create meigallery-db"
-  echo "⚠ 将返回的 database_id 同时填入 packages/api/wrangler.toml 的顶层 [[d1_databases]] 和 [env.dev.d1_databases]"
+  echo "⚠ 将返回的 database_id 填入 packages/api/wrangler.toml 的顶层 [[d1_databases]]"
   echo ""
 
-  echo "--- 创建共享 R2 存储桶 ---"
+  echo "--- 创建生产 R2 存储桶 ---"
   echo "执行: ${WRANGLER_CMD} r2 bucket create meigallery-media"
-  echo "⚠ 当前 dev 和 production 复用同一个 R2 bucket，以便使用真实内容验证 UI。"
+  echo ""
+
+  echo "--- 创建生产 Meta CAPI Queue（启用 CAPI 时需要） ---"
+  create_queue "meigallery-meta-capi"
+  create_queue "meigallery-meta-capi-dlq"
+  echo ""
+}
+
+print_dev_resources() {
+  echo ""
+  echo "--- 创建 dev D1 数据库 ---"
+  echo "执行: ${WRANGLER_CMD} d1 create meigallery-db-dev"
+  echo "⚠ 将返回的 database_id 填入 packages/api/wrangler.toml 的 [env.dev] [[d1_databases]]"
+  echo ""
+
+  echo "--- 创建 dev R2 存储桶 ---"
+  echo "执行: ${WRANGLER_CMD} r2 bucket create meigallery-media-dev"
+  echo ""
+
+  echo "--- 创建 dev Meta CAPI Queue（启用 CAPI 或发布预演时需要） ---"
+  create_queue "meigallery-meta-capi-dev"
+  create_queue "meigallery-meta-capi-dev-dlq"
+  echo ""
+  echo "当前 dev Worker 使用独立 D1/R2/Queue，不再复用生产资源。"
   echo ""
 }
 
@@ -62,20 +103,21 @@ print_secrets() {
   echo "  ${WRANGLER_CMD} secret put TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT ${env_flag}"
   echo "  # 可选：sourceBotKey=ops_case_bot 时配置"
   echo "  ${WRANGLER_CMD} secret put TELEGRAM_BOT_TOKEN_OPS_CASE_BOT ${env_flag}"
+  echo "  ${WRANGLER_CMD} secret put META_CAPI_ACCESS_TOKEN ${env_flag}"
+  echo "  ${WRANGLER_CMD} secret put META_CAPI_TEST_EVENT_CODE ${env_flag}"
+  echo "  ${WRANGLER_CMD} secret put META_CAPI_DATA_KEY_CURRENT ${env_flag}"
+  echo "  # 仅密钥轮换窗口配置"
+  echo "  ${WRANGLER_CMD} secret put META_CAPI_DATA_KEY_PREVIOUS ${env_flag}"
   echo ""
 }
 
 if [ "$ENV" = "all" ] || [ "$ENV" = "production" ]; then
-  print_shared_resources
+  print_production_resources
   print_secrets "production"
 fi
 
 if [ "$ENV" = "all" ] || [ "$ENV" = "dev" ]; then
-  if [ "$ENV" = "dev" ]; then
-    echo ""
-    echo "--- dev 资源说明 ---"
-    echo "当前 dev Worker 复用生产 D1/R2 资源；无需创建 meigallery-db-dev 或 meigallery-media-dev。"
-  fi
+  print_dev_resources
   print_secrets "dev"
 fi
 

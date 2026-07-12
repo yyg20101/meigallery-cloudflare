@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Suspense, computed, h, ref } from 'vue'
 import ContactPanel from './ContactPanel.vue'
 
@@ -10,24 +10,27 @@ const nuxtLinkStub = {
 
 const contactMethodItemStub = {
   props: ['method'],
-  emits: ['activate'],
-  template: '<button class="contact-method" type="button" @click="$emit(\'activate\', method.platform, \'open_link\')">{{ method.label }}</button>',
+  emits: ['activate', 'inspect'],
+  template: `
+    <div>
+      <button class="contact-method" type="button" @click="$emit('activate', method.platform, 'open_link')">{{ method.label }}</button>
+      <button class="contact-qr" type="button" @click="$emit('inspect', method.platform, 'qr_expand')">二维码</button>
+    </div>
+  `,
 }
 
 async function mountPanel() {
-  const contactMethods = ref([
-    {
-      id: 'contact-1',
-      platform: 'telegram',
-      label: 'Telegram',
-      value: '@meigallery',
-      linkUrl: 'https://t.me/meigallery',
-      qrCodeUrl: null,
-      sortOrder: 0,
-    },
-  ])
-  const trackContactClick = vi.fn()
-  const track = vi.fn()
+  const contactMethods = ref([{
+    id: 'contact-1',
+    platform: 'telegram',
+    label: 'Telegram',
+    value: '@meigallery',
+    linkUrl: 'https://t.me/meigallery',
+    qrCodeUrl: '/api/contact-methods/contact-1/qrcode',
+    sortOrder: 0,
+  }])
+  const trackContact = vi.fn()
+  const trackAnalytics = vi.fn()
 
   vi.stubGlobal('useContactMethods', () => ({
     contactMethods,
@@ -41,34 +44,24 @@ async function mountPanel() {
     rulesModalContent: ref('## 服务流程\n\n- 看规则\n- 联系站长\n- 开通访问'),
     rulesPageUrl: ref('/rules'),
   }))
-  vi.stubGlobal('useFacebookPixel', () => ({ trackContactClick }))
-  vi.stubGlobal('useAnalytics', () => ({ track }))
+  vi.stubGlobal('useTracking', () => ({ trackContact, trackAnalytics }))
 
   const wrapper = mount({
     render: () => h(Suspense, null, { default: () => h(ContactPanel) }),
   }, {
-    global: {
-      stubs: {
-        ContactMethodItem: contactMethodItemStub,
-        NuxtLink: nuxtLinkStub,
-      },
-    },
+    global: { stubs: { ContactMethodItem: contactMethodItemStub, NuxtLink: nuxtLinkStub } },
   })
 
   await flushPromises()
-  return { wrapper, trackContactClick, track }
+  return { wrapper, trackContact, trackAnalytics }
 }
 
 describe('ContactPanel', () => {
-  beforeEach(() => {
-    vi.useRealTimers()
-  })
-
   afterEach(() => {
     vi.unstubAllGlobals()
   })
 
-  it('突出展示服务流程和有新消息入口', async () => {
+  it('保留服务流程与联系入口的可见信息', async () => {
     const { wrapper } = await mountPanel()
 
     expect(wrapper.text()).toContain('服务流程')
@@ -79,44 +72,56 @@ describe('ContactPanel', () => {
     expect(wrapper.text()).toContain('Telegram · 1 种方式 · 站长在线回复')
   })
 
-  it('点击入口后展示对应弹层并记录站内联系入口', async () => {
-    const { wrapper, trackContactClick, track } = await mountPanel()
-
-    await wrapper.get('button[aria-label="打开服务流程"]').trigger('click')
-    expect(wrapper.text()).toContain('查看完整规则')
-    expect(track).toHaveBeenCalledWith('rules_panel_open', expect.objectContaining({
-      props: { location: 'floating_rules_panel' },
-    }))
+  it('打开联系面板只记录面板分析，不创建 Contact', async () => {
+    const { wrapper, trackContact, trackAnalytics } = await mountPanel()
 
     await wrapper.get('button[aria-label="打开联系方式"]').trigger('click')
-    expect(wrapper.text()).toContain('站长在线回复')
-    expect(wrapper.text()).toContain('Telegram')
-    expect(trackContactClick).not.toHaveBeenCalled()
-    expect(track).toHaveBeenCalledWith('contact_panel_open', expect.objectContaining({
+
+    expect(trackContact).not.toHaveBeenCalled()
+    expect(trackAnalytics).toHaveBeenCalledWith('contact_panel_open', expect.objectContaining({
       props: { location: 'floating_contact_panel' },
     }))
   })
 
-  it('点击联系方式才记录 Meta 有效联系点击，且不记录联系值', async () => {
-    const { wrapper, trackContactClick, track } = await mountPanel()
+  it('收到已确认的原生链接 activation 后才创建 Contact', async () => {
+    const { wrapper, trackContact } = await mountPanel()
 
     await wrapper.get('button[aria-label="打开联系方式"]').trigger('click')
     await wrapper.get('.contact-method').trigger('click')
 
-    expect(trackContactClick).toHaveBeenCalledWith({
-      location: 'floating_contact_panel',
+    expect(trackContact).toHaveBeenCalledWith({
       methodType: 'telegram',
+      actionTarget: 'floating_contact_panel',
       actionType: 'open_link',
     })
-    expect(track).toHaveBeenCalledWith('contact_method_click', expect.objectContaining({
+    expect(JSON.stringify(trackContact.mock.calls)).not.toContain('@meigallery')
+  })
+
+  it('二维码展开只记录分析且不创建 Contact', async () => {
+    const { wrapper, trackContact, trackAnalytics } = await mountPanel()
+
+    await wrapper.get('button[aria-label="打开联系方式"]').trigger('click')
+    await wrapper.get('.contact-qr').trigger('click')
+
+    expect(trackAnalytics).toHaveBeenCalledWith('contact_qr_expand', {
       entityType: 'contact',
       props: {
         method_type: 'telegram',
-        action_type: 'open_link',
+        action_type: 'qr_expand',
         location: 'floating_contact_panel',
       },
-    }))
-    expect(JSON.stringify(trackContactClick.mock.calls)).not.toContain('@meigallery')
-    expect(JSON.stringify(track.mock.calls)).not.toContain('@meigallery')
+    })
+    expect(trackContact).not.toHaveBeenCalled()
+  })
+
+  it('Contact 上报 reject 时调用方不会抛出未处理异常', async () => {
+    const { wrapper, trackContact } = await mountPanel()
+    trackContact.mockRejectedValueOnce(new Error('conversion api failed'))
+
+    await wrapper.get('button[aria-label="打开联系方式"]').trigger('click')
+    await expect(wrapper.get('.contact-method').trigger('click')).resolves.toBeUndefined()
+    await flushPromises()
+
+    expect(trackContact).toHaveBeenCalledOnce()
   })
 })

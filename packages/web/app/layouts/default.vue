@@ -115,6 +115,7 @@ function isActive(to: string) {
 
     <!-- 全局联系方式 -->
     <ContactPanel />
+    <MarketingConsentBanner />
 
     <!-- 桌面端底部 copyright -->
     <footer class="hidden lg:block">

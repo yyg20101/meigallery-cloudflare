@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { normalizeMetaTrackingMode } from '@meigallery/shared/utils'
+import { canEnableMetaCapi, clampMetaCapiEnabled, isMetaCapiToggleDisabled } from '~/utils/attributionReadiness'
 import { normalizePublicImageSettingUrl, normalizeSeoKeywords, safeSiteText } from '~/utils/siteSettingsSecurity'
 
 definePageMeta({ layout: 'admin' })
@@ -51,6 +53,8 @@ const emailVerificationEnabled = ref(false)
 const videoEnabledToggle = ref(false)
 const facebookPixelEnabled = ref(false)
 const facebookPixelDebugEnabled = ref(false)
+const metaCapiEnabled = ref(false)
+const metaTrackingMode = ref<'disabled' | 'test' | 'production'>('disabled')
 const homeAdEnabled = ref(false)
 const loading = ref(false)
 const iconUploadLoading = ref(false)
@@ -116,6 +120,15 @@ const publicSeoStatus = computed(() => {
 const { data: settings } = await useAsyncData('admin-settings', () =>
   api<{ data: Record<string, { value: unknown; updatedAt: string }> }>('/api/admin/settings'),
 )
+const { data: metaReadiness } = await useAsyncData('admin-settings-meta-readiness', () =>
+  api<{ data: { checks: Array<{ level: 'blocker' | 'warning'; ok: boolean }>; settings: Record<string, unknown> } }>('/api/admin/attribution/readiness'),
+)
+const metaCapiCanEnable = computed(() => {
+  const readiness = metaReadiness.value?.data
+  if (!readiness || metaTrackingMode.value === 'disabled') return false
+  const checkedMode = normalizeMetaTrackingMode(readiness.settings.meta_tracking_mode)
+  return checkedMode === metaTrackingMode.value && canEnableMetaCapi(readiness.checks)
+})
 
 function parseBooleanSetting(value: unknown) {
   return value === true || value === 'true'
@@ -189,11 +202,22 @@ if (settings.value?.data) {
     if (key === 'facebook_pixel_debug_enabled') {
       facebookPixelDebugEnabled.value = parseBooleanSetting(val.value)
     }
+    if (key === 'meta_capi_enabled') {
+      metaCapiEnabled.value = parseBooleanSetting(val.value)
+    }
+    if (key === 'meta_tracking_mode') {
+      metaTrackingMode.value = normalizeMetaTrackingMode(val.value)
+    }
     if (key === 'home_ad_enabled') {
       homeAdEnabled.value = parseBooleanSetting(val.value)
     }
   }
 }
+
+metaCapiEnabled.value = clampMetaCapiEnabled(metaCapiEnabled.value, metaCapiCanEnable.value)
+watch(metaCapiCanEnable, (allowed) => {
+  if (!allowed) metaCapiEnabled.value = false
+}, { flush: 'sync' })
 
 async function onSave() {
   loading.value = true
@@ -206,6 +230,9 @@ async function onSave() {
       return Number.isNaN(parsed.getTime()) ? trimmed : parsed.toISOString()
     }
 
+    const safeMetaCapiEnabled = clampMetaCapiEnabled(metaCapiEnabled.value, metaCapiCanEnable.value)
+    metaCapiEnabled.value = safeMetaCapiEnabled
+
     await api('/api/admin/settings', {
       method: 'PATCH',
       body: {
@@ -214,6 +241,8 @@ async function onSave() {
         home_ad_ends_at: normalizeScheduleInput(form.home_ad_ends_at),
         facebook_pixel_enabled: facebookPixelEnabled.value,
         facebook_pixel_debug_enabled: facebookPixelDebugEnabled.value,
+        meta_capi_enabled: safeMetaCapiEnabled,
+        meta_tracking_mode: metaTrackingMode.value,
         home_ad_enabled: homeAdEnabled.value,
       },
     })
@@ -292,14 +321,14 @@ async function toggleVideo() {
 </script>
 
 <template>
-  <div class="max-w-5xl">
+  <div data-settings-page class="w-full min-w-0 max-w-5xl">
     <h1 class="text-xl font-bold text-gray-900 mb-6">站点设置</h1>
 
     <div v-if="!isOwner" class="rounded-lg bg-yellow-50 p-4 text-sm text-yellow-800 mb-6">
       仅站长可修改站点设置
     </div>
 
-    <form v-else class="space-y-8" @submit.prevent="onSave">
+    <form v-else data-settings-form class="w-full min-w-0 max-w-full space-y-8" @submit.prevent="onSave">
       <!-- 基础信息 -->
       <fieldset class="space-y-4">
         <legend class="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-2 w-full">基础信息</legend>
@@ -534,6 +563,15 @@ async function toggleVideo() {
       <fieldset class="space-y-4">
         <legend class="w-full border-b border-gray-200 pb-2 text-sm font-semibold text-gray-900">Facebook 广告归因</legend>
         <div>
+          <label for="meta-tracking-mode" class="mb-1 block text-sm font-medium text-gray-700">Meta 运行模式</label>
+          <select id="meta-tracking-mode" v-model="metaTrackingMode" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            <option value="disabled">关闭</option>
+            <option value="test">测试</option>
+            <option value="production">生产</option>
+          </select>
+          <p class="mt-1 text-xs text-gray-500">测试模式仅用于 Test Event；生产模式仍受发布检查和访客营销授权约束。</p>
+        </div>
+        <div>
           <label class="mb-1 block text-sm font-medium text-gray-700">Meta Pixel ID</label>
           <input v-model="form.facebook_pixel_id" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="例如 123456789012345" />
           <p class="mt-1 text-xs text-gray-400">只填写数字 Pixel ID；留空或关闭开关时前台不会加载 Facebook Pixel。</p>
@@ -552,6 +590,14 @@ async function toggleVideo() {
             <span class="mt-0.5 block text-xs text-gray-500">仅在浏览器控制台输出已脱敏事件；dev 加载测试 Pixel 仍需环境变量显式允许。</span>
           </span>
         </label>
+        <div class="flex items-start gap-3 rounded-lg border border-gray-200 p-4">
+          <input id="meta-capi-enabled" v-model="metaCapiEnabled" type="checkbox" :disabled="isMetaCapiToggleDisabled(metaCapiEnabled, metaCapiCanEnable)" class="mt-1 h-4 w-4 rounded border-gray-300 disabled:cursor-not-allowed disabled:opacity-50" />
+          <span class="min-w-0">
+            <label for="meta-capi-enabled" class="block text-sm font-medium text-gray-700">启用 Meta CAPI</label>
+            <span class="mt-0.5 block text-xs text-gray-500">仅控制服务端 Queue 投递；全部生产阻断项通过后才可开启。</span>
+            <NuxtLink to="/admin/attribution/readiness" class="mt-2 inline-flex text-xs font-medium text-blue-700 hover:text-blue-900">查看发布检查</NuxtLink>
+          </span>
+        </div>
       </fieldset>
 
       <!-- 功能开关 -->

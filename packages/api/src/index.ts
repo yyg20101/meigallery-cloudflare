@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import type { MetaCapiQueueMessage } from '@meigallery/shared'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { secureHeaders } from 'hono/secure-headers'
@@ -13,11 +14,14 @@ import { contactMethodRoutes } from './routes/contact-methods'
 import { caseRoutes } from './routes/cases'
 import { importRoutes } from './routes/imports'
 import { analyticsRoutes } from './routes/analytics'
+import { conversionRoutes } from './routes/conversions'
+import { marketingConsentRoutes } from './routes/marketing-consent'
 import { inviteRoutes } from './routes/invites'
 import { PUBLIC_SETTING_KEYS } from './utils/site-settings'
 import { sanitizePublicSiteSetting, sanitizePublicSiteSettings } from './utils/public-site-settings'
 import { HOME_AD_PLACEMENT, type HomeAdRow, serializePublicHomeAd } from './utils/home-ads'
 import { adminRoutes } from './routes/admin'
+import { metaResourceAttestationRoutes } from './routes/meta-resource-attestation'
 import { healthRoutes } from './routes/health'
 import { authMiddleware } from './middleware/auth'
 import { rateLimiter } from './middleware/rate-limit'
@@ -29,6 +33,11 @@ import {
   aggregatePathEdges,
   cleanupAnalyticsRetention,
 } from './services/analytics-aggregate'
+import { recoverPendingMetaCapiDeliveries } from './services/meta-capi-queue'
+import { purgeExpiredMetaCapiOutbox } from './services/meta-capi-secure-outbox'
+import { recoverRegistrationConversionFacts } from './services/registration-conversion-recovery'
+import { runMetaCapiCircuitEvaluation } from './services/meta-capi-circuit-breaker'
+import { collectMetaDatasetQuality } from './services/meta-dataset-quality'
 
 /** Hono 应用绑定类型 */
 export type Bindings = {
@@ -46,6 +55,12 @@ export type Bindings = {
   IMPORT_TOKEN_DAILY_LIMIT?: string
   TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT?: string
   TELEGRAM_BOT_TOKEN_OPS_CASE_BOT?: string
+  META_CAPI_QUEUE?: Queue<MetaCapiQueueMessage>
+  META_CAPI_ACCESS_TOKEN?: string
+  META_CAPI_TEST_EVENT_CODE?: string
+  META_CAPI_DATA_KEY_CURRENT?: string
+  META_CAPI_DATA_KEY_PREVIOUS?: string
+  RELEASE_COMMIT?: string
 }
 
 /** 应用级变量 */
@@ -110,6 +125,16 @@ app.use('/api/auth/*', rateLimiter({
   windowMs: rateLimitWindowMs(authRateLimit.window),
 }))
 
+app.use('/api/meta/resource-attestation', async (c, next) => {
+  c.header('Cache-Control', 'no-store')
+  await next()
+})
+
+app.use('/api/admin/attribution/meta/resource-attestation-ticket', async (c, next) => {
+  c.header('Cache-Control', 'no-store')
+  await next()
+})
+
 // 公开 API 速率限制兜底：每 IP 每分钟 60 次
 for (const path of [
   '/api/galleries',
@@ -124,6 +149,8 @@ for (const path of [
   '/api/contact-methods/*',
   '/api/invites/*',
   '/api/settings/public',
+  '/api/meta/resource-attestation',
+  '/api/marketing-consent',
 ]) {
   app.use(path, rateLimiter({
     name: 'public-api',
@@ -160,6 +187,14 @@ app.use('/api/analytics/*', rateLimiter({
   limit: analyticsSessionRateLimit.requests,
   windowMs: rateLimitWindowMs(analyticsSessionRateLimit.window),
 }))
+
+// 公开转化事件入口限流：沿用分析采集 IP 预算
+app.use('/api/conversions/*', rateLimiter({
+  name: 'conversions-ip',
+  keyBy: 'ip',
+  limit: analyticsIpRateLimit.requests,
+  windowMs: rateLimitWindowMs(analyticsIpRateLimit.window),
+}))
 app.use('*', authMiddleware)
 
 // 管理员 API 速率限制兜底：每 session 每分钟 120 次
@@ -190,6 +225,8 @@ app.route('/api/contact-methods', contactMethodRoutes)
 app.route('/api/cases', caseRoutes)
 app.route('/api/imports', importRoutes)
 app.route('/api/analytics', analyticsRoutes)
+app.route('/api/conversions', conversionRoutes)
+app.route('/api/marketing-consent', marketingConsentRoutes)
 app.route('/api/invites', inviteRoutes)
 // 公开站点信息（不需要登录）
 app.get('/api/settings/public', async (c) => {
@@ -224,6 +261,7 @@ app.get('/api/settings/public', async (c) => {
   return c.json(sanitizePublicSiteSettings(settings))
 })
 
+app.route('/api/meta', metaResourceAttestationRoutes)
 app.route('/api/admin', adminRoutes)
 
 // 404 fallback
@@ -239,11 +277,61 @@ app.onError((err, c) => {
 
 // ============================================================
 // Scheduled Handler（Cron Trigger）
-// 每天 UTC 00:00（北京时间 08:00）执行
+// minute trigger 执行高频公共任务；daily trigger 只执行完整维护任务。
 // ============================================================
 
-async function handleScheduled(env: Bindings): Promise<void> {
+const MINUTE_MAINTENANCE_CRON = '* * * * *'
+const DAILY_MAINTENANCE_CRON = '0 0 * * *'
+
+async function handleScheduled(event: ScheduledEvent, env: Bindings): Promise<void> {
   const db = env.DB
+
+  if (event.cron === MINUTE_MAINTENANCE_CRON) {
+    try {
+      const circuit = await runMetaCapiCircuitEvaluation(env)
+      console.log('[cron] Meta CAPI Circuit Breaker 评估完成:', {
+        criticalCount: circuit.criticalTriggers.length,
+        warningCount: circuit.warnings.length,
+      })
+    } catch {
+      console.error('[cron] Meta CAPI Circuit Breaker 评估失败:', {
+        errorCode: 'meta_circuit_evaluation_failed',
+      })
+    }
+
+    try {
+      const purge = await purgeExpiredMetaCapiOutbox(db, 100)
+      console.log('[cron] Meta CAPI 过期密文清理完成:', purge)
+    } catch {
+      console.error('[cron] Meta CAPI 过期密文清理失败:', {
+        errorCode: 'secure_outbox_purge_failed',
+      })
+    }
+
+    try {
+      const recovery = await recoverPendingMetaCapiDeliveries(env)
+      console.log('[cron] Meta CAPI Queue 恢复完成:', recovery)
+    } catch (error) {
+      console.error('[cron] Meta CAPI Queue 恢复失败:', error)
+    }
+
+    if (shouldRecoverRegistrationConversions(event)) {
+      try {
+        const recovery = await recoverRegistrationConversionFacts(db, new Date(event.scheduledTime))
+        console.log('[cron] 注册转化事实修复完成:', recovery)
+      } catch {
+        console.error('[cron.registration-recovery] 注册事实修复任务失败', {
+          code: 'REGISTRATION_CONVERSION_RECOVERY_JOB_FAILED',
+        })
+      }
+    }
+    return
+  }
+
+  if (event.cron !== DAILY_MAINTENANCE_CRON) {
+    console.log('[cron] 未知 trigger，跳过定时任务:', event.cron || 'unknown')
+    return
+  }
 
   // 1. 清理过期验证码（超过 1 小时的记录）
   const cleaned = await db
@@ -306,6 +394,22 @@ async function handleScheduled(env: Bindings): Promise<void> {
   } catch (e) {
     console.error('[cron] 数据分析聚合任务失败:', e)
   }
+
+  // 4. Dataset Quality 只读采集独立于 CAPI 投递，失败不阻断其他维护任务。
+  try {
+    const quality = await collectMetaDatasetQuality(env, new Date(event.scheduledTime))
+    console.log('[cron] Meta Dataset Quality 采集完成:', quality)
+  } catch {
+    console.error('[cron] Meta Dataset Quality 采集失败:', {
+      errorCode: 'meta_dataset_quality_collection_failed',
+    })
+  }
+}
+
+function shouldRecoverRegistrationConversions(event: ScheduledEvent) {
+  if (event.cron !== MINUTE_MAINTENANCE_CRON) return false
+  const scheduledAt = new Date(event.scheduledTime)
+  return !Number.isNaN(scheduledAt.getTime()) && scheduledAt.getUTCMinutes() === 0
 }
 
 function operationDate(now = new Date()) {
@@ -326,6 +430,10 @@ function addDays(date: string, delta: number) {
 export default {
   fetch: app.fetch,
   scheduled: async (event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) => {
-    ctx.waitUntil(handleScheduled(env))
+    ctx.waitUntil(handleScheduled(event, env))
+  },
+  queue: async (batch: MessageBatch<MetaCapiQueueMessage>, env: Bindings) => {
+    const { handleMetaCapiBatch } = await import('./services/meta-capi-queue')
+    await handleMetaCapiBatch(batch, env)
   },
 }

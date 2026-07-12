@@ -5,6 +5,7 @@ const { siteName } = useSiteSettings()
 const config = useRuntimeConfig()
 
 const sidebarCollapsed = ref(false)
+const sidebarReady = ref(false)
 const showDevDataWarning = computed(() =>
   config.public.appEnv === 'dev' || String(config.public.devAdminDataWarning) === 'true',
 )
@@ -15,8 +16,10 @@ function checkWidth() {
     sidebarCollapsed.value = window.innerWidth < 1024
   }
 }
-onMounted(() => {
+onMounted(async () => {
   checkWidth()
+  await nextTick()
+  sidebarReady.value = true
   window.addEventListener('resize', checkWidth)
 })
 onUnmounted(() => {
@@ -35,6 +38,7 @@ const navItems = [
   { to: '/admin/cases', label: '真实案例', icon: 'message' },
   { to: '/admin/ads', label: '广告位', icon: 'megaphone' },
   { to: '/admin/analytics', label: '数据分析', icon: 'chart' },
+  { to: '/admin/attribution', label: 'Meta 归因', icon: 'chart' },
   { to: '/admin/invite-codes', label: '邀请码', icon: 'ticket' },
   { to: '/admin/settings', label: '站点设置', icon: 'gear' },
   { to: '/admin/contact-methods', label: '联系方式', icon: 'message' },
@@ -59,10 +63,11 @@ async function handleLogout() {
 </script>
 
 <template>
-  <div class="flex min-h-screen">
+  <div data-admin-layout class="flex min-h-screen min-w-0">
     <aside
       :class="[
-        'bg-[#111] text-gray-300 flex flex-col shrink-0 transition-all duration-200',
+        'bg-[#111] text-gray-300 flex flex-col shrink-0',
+        sidebarReady ? 'transition-all duration-200' : '',
         sidebarCollapsed ? 'w-14' : 'w-48',
       ]"
     >
@@ -114,21 +119,21 @@ async function handleLogout() {
       </div>
     </aside>
 
-    <div class="flex-1 flex flex-col overflow-x-hidden">
-      <header class="border-b border-gray-200 bg-white">
-        <div v-if="showDevDataWarning" class="border-b border-amber-200 bg-amber-50 px-8 py-2 text-sm text-amber-900">
+    <div data-admin-content class="flex w-0 min-w-0 flex-1 flex-col">
+      <header data-admin-header class="min-w-0 border-b border-gray-200 bg-white">
+        <div v-if="showDevDataWarning" data-admin-dev-warning class="min-w-0 border-b border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-900 [overflow-wrap:anywhere] sm:px-5 lg:px-8">
           <span class="font-semibold">DEV 测试环境：</span>
-          当前后台连接正式 D1/R2 数据，发布、导入、上传、会员和设置修改会影响真实内容；写操作会弹出二次确认并写入审计日志。
+          当前后台连接独立 dev D1/R2/Queue 资源，发布、导入、上传、会员和设置修改会影响 dev 测试数据；写操作会弹出二次确认并写入审计日志。
         </div>
-        <div class="px-8 py-3 flex items-center justify-between">
-          <h2 class="text-base font-semibold text-gray-900">{{ pageTitle }}</h2>
-          <div class="flex items-center gap-4 text-sm text-gray-600">
-            <span v-if="user">{{ user.email }}</span>
+        <div data-admin-header-row class="flex min-w-0 items-center justify-between gap-3 px-3 py-3 sm:px-5 lg:px-8">
+          <h2 data-admin-header-title class="min-w-0 [overflow-wrap:anywhere] text-base font-semibold text-gray-900">{{ pageTitle }}</h2>
+          <div class="flex min-w-0 items-center gap-3 text-sm text-gray-600">
+            <span v-if="user" class="hidden min-w-0 truncate sm:inline">{{ user.email }}</span>
             <button class="text-gray-500 hover:text-red-600" @click="handleLogout">登出</button>
           </div>
         </div>
       </header>
-      <main class="flex-1 p-8 bg-gray-50">
+      <main data-admin-main class="min-w-0 flex-1 bg-gray-50 p-3 sm:p-5 lg:p-8">
         <slot />
       </main>
     </div>

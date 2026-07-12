@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { normalizeMetaTrackingMode } from '@meigallery/shared/utils'
 import type { Bindings, Variables } from '../../index'
 import { requireOwner } from '../../middleware/auth'
 import { normalizeAnalyticsConsentMode, normalizeAnalyticsSampleRate } from '../../utils/analytics-settings'
@@ -9,7 +10,7 @@ import { isHomeAdTextKey, normalizeHomeAdText, normalizeHomeAdUrl } from '../../
 import { writeAuditLog } from '../../utils/permission'
 import { LEGACY_DEFAULT_SEO_TITLE, LEGACY_DEFAULT_SITE_NAME } from '../../utils/public-site-settings'
 import { normalizeInternalPathSetting, normalizePublicImageSettingUrl } from '../../utils/public-setting-url'
-import { ADMIN_SETTING_KEYS } from '../../utils/site-settings'
+import { ADMIN_SETTING_KEYS, findProtectedAdminSettingKeys } from '../../utils/site-settings'
 import { normalizeFeaturedRegionSlugs, normalizeHomeHotTagLimit, normalizeRulesMarkdown } from '../../utils/site-content-settings'
 import { isSiteTextSettingKey, normalizeSiteTextSetting } from '../../utils/site-text-settings'
 import { parseStoredSettingValue } from '../../utils/stored-setting-value'
@@ -67,6 +68,15 @@ adminSettingsRoutes.patch('/', requireOwner, async (c) => {
   const db = c.env.DB
   const rawBody = await c.req.json<Record<string, unknown>>()
   const body: Record<string, unknown> = { ...rawBody }
+  const protectedKeys = findProtectedAdminSettingKeys(Object.keys(body))
+  if (protectedKeys.length > 0) {
+    return c.json({
+      statusCode: 400,
+      code: 'ADMIN_SETTING_PROTECTED',
+      message: '受保护设置必须通过专用管理接口修改',
+      protectedKeys,
+    }, 400)
+  }
 
   if ('facebook_pixel_id' in body) {
     try {
@@ -81,6 +91,9 @@ adminSettingsRoutes.patch('/', requireOwner, async (c) => {
   if ('facebook_pixel_debug_enabled' in body) {
     body.facebook_pixel_debug_enabled = normalizeBooleanSetting(body.facebook_pixel_debug_enabled)
   }
+  if ('meta_tracking_mode' in body) {
+    body.meta_tracking_mode = normalizeMetaTrackingMode(body.meta_tracking_mode)
+  }
   if ('analytics_enabled' in body) {
     body.analytics_enabled = normalizeBooleanSetting(body.analytics_enabled)
   }
@@ -93,6 +106,9 @@ adminSettingsRoutes.patch('/', requireOwner, async (c) => {
   }
   if ('analytics_consent_mode' in body) {
     body.analytics_consent_mode = normalizeAnalyticsConsentMode(body.analytics_consent_mode)
+  }
+  if ('meta_capi_enabled' in body) {
+    body.meta_capi_enabled = normalizeBooleanSetting(body.meta_capi_enabled)
   }
   if ('home_ad_enabled' in body) {
     body.home_ad_enabled = normalizeBooleanSetting(body.home_ad_enabled)

@@ -4,7 +4,7 @@
 
 | 严重度 | 关注点 | 证据 | 影响 | 建议动作 |
 |--------|--------|------|------|----------|
-| 中 | Dev 环境复用正式 D1/R2 数据 | `docs/DEPLOYMENT.md`、`packages/api/wrangler.toml`、`packages/web/app/layouts/admin.vue`、`packages/web/app/composables/useApi.ts` | dev 后台写操作可能修改真实内容；当前已有后台风险标识和写操作二次确认降低误操作概率 | 为 dev 写操作建立固定测试账号和测试数据标记；如需更强隔离再拆分 dev D1/R2 |
+| 低 | Dev 环境资源隔离口径需持续同步 | `docs/DEPLOYMENT.md`、`packages/api/wrangler.toml`、`packages/web/app/layouts/admin.vue`、`packages/web/app/composables/useApi.ts`、`scripts/setup.sh` | dev 已使用独立 D1/R2/Queue；历史提示若回退会误导操作者 | 保持 `verify-dev-resources`、部署文档、前端提示和初始化脚本同步，禁止 dev 回连生产 D1/R2/Queue |
 | 高 | 受保护媒体和视频能力必须持续避免前端信任 | `packages/api/src/routes/media.ts`、`docs/PROJECT_STATUS.md` | 权限绕过会导致资源泄露；Stream 未接入时更容易出现文档/UI误导 | 保持服务端 rank 校验为唯一依据；Stream 接入前为视频 UI 保持关闭或显式规划状态 |
 | 中 | 多个路由文件仍偏大 | `admin/galleries.ts` 624 行、`admin/users.ts` 约 420 行、`admin/media.ts` 430 行 | 后续改动容易引入回归 | 继续把批量操作、媒体上传、用户写操作和活动查询抽成 service/helper 并保持测试 |
 | 中 | 前端复杂组件测试覆盖仍少 | `packages/web` 已有 Playwright smoke 和 Vitest 组件测试，当前覆盖 `MembershipBadge`、`MediaLock`、`SearchInput`、`TagChip` | 后台表单、上传态和复杂筛选状态仍主要依赖页面级 smoke 与人工检查 | 继续补 Vitest 组件测试覆盖上传态、筛选态和后台表单 |
@@ -53,7 +53,7 @@
 
 ## 6. `[ASK USER]` 问题
 
-1. [RESOLVED] dev 环境复用正式 D1/R2 的代码侧误操作防护已完成；是否拆出独立 dev 数据库和 bucket 留作后续运维增强。
+1. [RESOLVED] dev 环境已拆出独立 D1/R2/Queue，并通过 `verify-dev-resources` 阻断回连生产资源。
 2. [RESOLVED] 前端自动化测试已接入 Playwright smoke 和 Vitest 组件测试基线；后续继续扩大组件覆盖。
 3. [ASK USER] Cloudflare Stream 接入的优先级是否仍低于图片/图库/案例运营能力？
 4. [RESOLVED] CI 已加入 lint 和 API coverage 阈值；format 目前用 `.editorconfig` 作为轻量基线，暂未引入 Prettier。

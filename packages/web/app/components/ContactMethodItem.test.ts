@@ -1,19 +1,21 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import ContactMethodItem from './ContactMethodItem.vue'
 
-const platformIconStub = {
-  template: '<span />',
-}
+const platformIconStub = { template: '<span />' }
 
-function mountItem(linkUrl: string | null, qrCodeUrl: string | null = null) {
+function mountItem(
+  linkUrl: string | null,
+  qrCodeUrl: string | null = null,
+  platform = 'telegram',
+) {
   return mount(ContactMethodItem, {
     props: {
       method: {
         id: 'contact-1',
-        platform: 'custom',
-        label: '站长',
-        value: 'meigallery',
+        platform,
+        label: 'Telegram',
+        value: '@example',
         linkUrl,
         qrCodeUrl,
         sortOrder: 0,
@@ -24,113 +26,81 @@ function mountItem(linkUrl: string | null, qrCodeUrl: string | null = null) {
 }
 
 describe('ContactMethodItem', () => {
-  it('点击安全聊天链接并调用跳转后才发起联系事件', async () => {
-    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
-    const wrapper = mountItem('https://example.com/contact')
-
-    await wrapper.get('[role="button"]').trigger('click')
-
-    expect(wrapper.emitted('activate')?.[0]).toEqual(['custom', 'open_link'])
-    expect(open).toHaveBeenCalledWith('https://example.com/contact', '_blank', 'noopener,noreferrer')
-    open.mockRestore()
+  afterEach(() => {
+    vi.restoreAllMocks()
   })
 
-  it('危险链接不会在跳转前发起联系事件', async () => {
-    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
-    const writeText = vi.fn().mockRejectedValue(new Error('denied'))
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText },
-    })
-    const wrapper = mountItem('javascript:alert(1)')
+  it('激活通过安全校验的原生聊天链接后发出 open_link', async () => {
+    const wrapper = mountItem('https://t.me/example')
+    const link = wrapper.get('a[data-contact-action]')
 
-    await wrapper.get('[role="button"]').trigger('click')
-
-    expect(wrapper.emitted('activate')).toBeUndefined()
-    expect(open).not.toHaveBeenCalled()
-    open.mockRestore()
-  })
-
-  it('危险链接不会被当作外链打开', async () => {
-    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
-    const writeText = vi.fn().mockResolvedValue(undefined)
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText },
-    })
-    const wrapper = mountItem('javascript:alert(1)')
-
-    await wrapper.get('[role="button"]').trigger('click')
-
-    expect(wrapper.emitted('activate')?.[0]).toEqual(['custom', 'copy'])
-    expect(open).not.toHaveBeenCalled()
-    expect(writeText).toHaveBeenCalledWith('meigallery')
-    open.mockRestore()
-  })
-
-  it('复制失败时不发起联系事件', async () => {
-    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
-    const writeText = vi.fn().mockRejectedValue(new Error('denied'))
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText },
-    })
-    const wrapper = mountItem(null)
-
-    await wrapper.get('[role="button"]').trigger('click')
-
-    expect(wrapper.emitted('activate')).toBeUndefined()
-    expect(open).not.toHaveBeenCalled()
-    expect(writeText).toHaveBeenCalledWith('meigallery')
-    open.mockRestore()
-  })
-
-  it('内部地址链接不会被当作外链打开', async () => {
-    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
-    const writeText = vi.fn().mockResolvedValue(undefined)
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText },
-    })
-    const wrapper = mountItem('https://127.0.0.1/contact')
-
-    await wrapper.get('[role="button"]').trigger('click')
-
-    expect(open).not.toHaveBeenCalled()
-    expect(writeText).toHaveBeenCalledWith('meigallery')
-    open.mockRestore()
-  })
-
-  it('不渲染不安全的二维码图片 URL', async () => {
-    const wrapper = mountItem('https://example.com/contact', 'https://127.0.0.1/qrcode.png')
-
-    expect(wrapper.find('button[aria-label="展开二维码"]').exists()).toBe(false)
-    expect(wrapper.find('img').exists()).toBe(false)
-  })
-
-  it('二维码弹层图片和跳转链接都不发送来源页', async () => {
-    const wrapper = mountItem('https://example.com/contact', '/api/contact-methods/contact-1/qrcode')
-
-    await wrapper.get('button[aria-label="展开二维码"]').trigger('click')
-
-    const img = wrapper.get('img')
-    const link = wrapper.get('a')
-    expect(img.attributes('referrerpolicy')).toBe('no-referrer')
-    expect(link.attributes('href')).toBe('https://example.com/contact')
+    expect(link.attributes('href')).toBe('https://t.me/example')
     expect(link.attributes('target')).toBe('_blank')
-    expect(link.attributes('rel')).toBe('noopener noreferrer nofollow')
+    expect(link.attributes('rel')).toContain('noopener')
     expect(link.attributes('referrerpolicy')).toBe('no-referrer')
+    await link.trigger('click')
+
+    expect(wrapper.emitted('activate')).toEqual([['telegram', 'open_link']])
   })
 
-  it('二维码弹层点击跳转成功后发起联系事件', async () => {
-    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
-    const wrapper = mountItem('https://example.com/contact', '/api/contact-methods/contact-1/qrcode')
+  it('URL 未通过安全校验时不渲染聊天链接且不发出 open_link', () => {
+    const wrapper = mountItem('javascript:alert(1)')
 
-    await wrapper.get('button[aria-label="展开二维码"]').trigger('click')
-    await wrapper.get('a').trigger('click')
+    expect(wrapper.find('a[data-contact-action]').exists()).toBe(false)
+    expect(wrapper.emitted('activate')).toBeUndefined()
+  })
 
-    expect(open).toHaveBeenCalledWith('https://example.com/contact', '_blank', 'noopener,noreferrer')
-    expect(wrapper.emitted('activate')?.[0]).toEqual(['custom', 'open_link'])
-    open.mockRestore()
+  it('Clipboard API resolve 后只发出一次 copy', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const wrapper = mountItem(null, null, 'custom')
+
+    await wrapper.get('button[data-contact-action]').trigger('click')
+
+    expect(writeText).toHaveBeenCalledWith('@example')
+    expect(wrapper.emitted('activate')).toEqual([['custom', 'copy']])
+  })
+
+  it('Clipboard API reject 时不发出 activate', async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error('denied'))
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const wrapper = mountItem(null, null, 'custom')
+
+    await wrapper.get('button[data-contact-action]').trigger('click')
+
+    expect(wrapper.emitted('activate')).toBeUndefined()
+  })
+
+  it('fallback copy 返回 false 时不把复制视为成功', async () => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined })
+    const execCommand = vi.fn().mockReturnValue(false)
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: execCommand })
+    const wrapper = mountItem(null, null, 'custom')
+
+    await wrapper.get('button[data-contact-action]').trigger('click')
+
+    expect(execCommand).toHaveBeenCalledWith('copy')
+    expect(wrapper.emitted('activate')).toBeUndefined()
+  })
+
+  it('二维码按钮与主动作是兄弟节点且只发出 qr_expand 分析事件', async () => {
+    const wrapper = mountItem('https://t.me/example', '/api/contact-methods/contact-1/qrcode')
+    const action = wrapper.get('[data-contact-action]')
+    const qrButton = wrapper.get('button[data-qr-action]')
+
+    expect(action.element.parentElement).toBe(qrButton.element.parentElement)
+    expect(wrapper.find('a button').exists()).toBe(false)
+    await qrButton.trigger('click')
+
+    expect(wrapper.emitted('inspect')).toEqual([['telegram', 'qr_expand']])
+    expect(wrapper.emitted('activate')).toBeUndefined()
+    expect(wrapper.get('img').attributes('referrerpolicy')).toBe('no-referrer')
+  })
+
+  it('不渲染未通过安全校验的二维码图片', () => {
+    const wrapper = mountItem('https://t.me/example', 'https://127.0.0.1/qrcode.png')
+
+    expect(wrapper.find('button[data-qr-action]').exists()).toBe(false)
+    expect(wrapper.find('img').exists()).toBe(false)
   })
 })

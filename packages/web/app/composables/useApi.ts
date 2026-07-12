@@ -4,13 +4,14 @@
  *
  * SSR（Cloudflare）：通过 useRequestEvent() 获取 Service Binding，直连 API Worker（零网络开销）
  * SSR（本地开发）：$fetch 直接请求 localhost:8787
- * CSR（浏览器）：$fetch 直连 API Worker 完整 URL
+ * CSR（浏览器）：统一请求 Web 同源 /api 代理
  *
  * 解决 Cloudflare 同账户 *.workers.dev 域名互访限制（error 1042）
  */
+import { apiProxyResponseHeaderEntries } from '~/utils/apiProxyHeaders'
+
 export function useApi() {
   const config = useRuntimeConfig()
-  const clientBaseURL = config.public.apiBaseUrl as string
   const appEnv = String(config.public.appEnv || 'development')
   const mutatingMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 
@@ -46,8 +47,8 @@ export function useApi() {
     if (!shouldConfirmDevAdminWrite(path, method)) return
 
     const confirmed = window.confirm([
-      '当前 DEV 后台连接正式 D1/R2 数据。',
-      `即将执行 ${method.toUpperCase()} ${path}，可能修改真实内容、会员或媒体文件，并会写入审计日志。`,
+      '当前 DEV 后台连接独立 dev D1/R2 数据。',
+      `即将执行 ${method.toUpperCase()} ${path}，会修改 dev 测试数据、会员或媒体文件，并会写入审计日志。`,
       '确认继续执行？',
     ].join('\n\n'))
 
@@ -65,6 +66,7 @@ export function useApi() {
     const event = useRequestEvent()
     const apiBinding = (event?.context as Record<string, any>)?.cloudflare?.env?.API_SERVICE
     const isTestEnvironment = config.public.appEnv === 'test'
+    const requestHeaders = useRequestHeaders(['cookie'])
 
     if (apiBinding && !isTestEnvironment) {
       // Cloudflare Workers 环境：Service Binding 直连（域名仅占位，路由取决于路径）
@@ -78,31 +80,16 @@ export function useApi() {
         init.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body)
       }
       // 转发原始请求的 cookie（用于认证场景）
-      const reqHeaders = useRequestHeaders(['cookie'])
-      if (reqHeaders.cookie) {
-        (init as any).headers = { ...(init.headers as Record<string, string> || {}), cookie: reqHeaders.cookie }
+      if (requestHeaders.cookie) {
+        (init as any).headers = { ...(init.headers as Record<string, string> || {}), cookie: requestHeaders.cookie }
       }
 
-      const response = await apiBinding.fetch(
-        new Request(`https://api.internal${fullPath}`, init),
-      )
-
-      if (!response.ok) {
-        // 模拟 $fetch 的行为：非 2xx 抛出错误
-        const errorBody = await response.text().catch(() => '')
-        const err = new Error(`[${init.method}] "${fullPath}": ${response.status} ${response.statusText}`)
-        ;(err as any).statusCode = response.status
-        ;(err as any).statusMessage = response.statusText
-        ;(err as any).data = errorBody
-        throw err
-      }
-
-      return response.json() as Promise<T>
+      return fetchViaApiServiceBinding<T>(event, apiBinding, fullPath, init)
     }
 
     // 本地开发回退：直接 HTTP 请求 API 开发服务器（无 Worker-to-Worker 限制）
     const apiBaseUrl = config.public.apiBaseUrl as string
-    const fetchOpts: Record<string, unknown> = {
+    const fetchOpts: RequestInit = {
       method: options?.method || 'GET',
     }
     if (isFormDataBody(options?.body)) {
@@ -111,7 +98,20 @@ export function useApi() {
       fetchOpts.headers = { 'Content-Type': 'application/json' }
       fetchOpts.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body)
     }
-    return $fetch<T>(`${apiBaseUrl}${fullPath}`, fetchOpts as any)
+    if (requestHeaders.cookie) {
+      fetchOpts.headers = { ...(fetchOpts.headers as Record<string, string> || {}), cookie: requestHeaders.cookie }
+    }
+    const response = await fetch(`${apiBaseUrl}${fullPath}`, fetchOpts)
+    forwardSsrResponseCookies(event, response)
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => '')
+      const err = new Error(`[${fetchOpts.method}] "${fullPath}": ${response.status} ${response.statusText}`)
+      ;(err as any).statusCode = response.status
+      ;(err as any).statusMessage = response.statusText
+      ;(err as any).data = errorBody
+      throw err
+    }
+    return response.json() as Promise<T>
   }
 
   async function api<T = unknown>(
@@ -132,7 +132,7 @@ export function useApi() {
       return ssrFetch<T>(fullPath, options)
     }
 
-    // CSR: 浏览器直连 API Worker
+    // 浏览器统一走 Web 同源代理，保证 session 与授权 receipt 共用同一 host-only cookie 域。
     const fetchOptions: Record<string, unknown> = {
       method,
       credentials: 'include',
@@ -143,8 +143,34 @@ export function useApi() {
       fetchOptions.headers = { 'Content-Type': 'application/json' }
       fetchOptions.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body)
     }
-    return $fetch<T>(`${clientBaseURL}${fullPath}`, fetchOptions as any)
+    return $fetch<T>(fullPath, fetchOptions as any)
   }
 
-  return { api, baseURL: clientBaseURL }
+  return { api, baseURL: '' }
+}
+
+function forwardSsrResponseCookies(event: ReturnType<typeof useRequestEvent>, response: Response) {
+  if (!event) return
+  for (const [name, value] of apiProxyResponseHeaderEntries(response.headers)) {
+    if (name === 'set-cookie') appendResponseHeader(event, name, value)
+  }
+}
+
+export async function fetchViaApiServiceBinding<T>(
+  event: ReturnType<typeof useRequestEvent>,
+  apiBinding: { fetch: (input: string, init?: RequestInit) => Promise<Response> },
+  fullPath: string,
+  init: RequestInit,
+): Promise<T> {
+  const response = await apiBinding.fetch(`https://api.internal${fullPath}`, init)
+  forwardSsrResponseCookies(event, response)
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => '')
+    const err = new Error(`[${init.method}] "${fullPath}": ${response.status} ${response.statusText}`)
+    ;(err as any).statusCode = response.status
+    ;(err as any).statusMessage = response.statusText
+    ;(err as any).data = errorBody
+    throw err
+  }
+  return response.json() as Promise<T>
 }

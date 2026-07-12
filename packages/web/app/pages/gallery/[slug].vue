@@ -7,7 +7,7 @@ const config = useRuntimeConfig()
 const { api } = useApi()
 const { isLoggedIn, membershipRank } = useAuth()
 const { siteName, seoKeywords, videoEnabled } = useSiteSettings()
-const { trackViewContent } = useFacebookPixel()
+const { trackViewContent } = useTracking()
 const analytics = useAnalytics()
 
 
@@ -196,10 +196,10 @@ watch(
 onMounted(() => {
   if (!gallery.value || gallery.value.status !== 'published') return
   trackViewContent({
-    id: gallery.value.id,
-    title: gallery.value.title,
-    requiredRank: gallery.value.requiredLevelRank,
-    tags: gallery.value.tags.map(tag => tag.slug),
+    content_id: gallery.value.id,
+    content_name: gallery.value.title,
+    required_rank: gallery.value.requiredLevelRank,
+    tag_count: gallery.value.tags.length,
   })
   analytics.track('gallery_detail_view', {
     entityType: 'gallery',

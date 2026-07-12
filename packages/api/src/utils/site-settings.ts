@@ -1,9 +1,15 @@
+export const PROTECTED_ADMIN_SETTING_KEYS = [
+  'meta_capi_rollout_percentage',
+] as const
+
 export const ADMIN_SETTING_KEYS = [
   'site_name', 'seo_title', 'seo_keywords', 'site_description', 'site_icon',
   'og_title', 'og_description', 'og_image',
   'footer_text', 'membership_description', 'email_verification_enabled',
   'video_enabled', 'facebook_pixel_enabled', 'facebook_pixel_id', 'facebook_pixel_debug_enabled',
   'analytics_enabled', 'analytics_sample_rate', 'analytics_consent_mode',
+  'meta_tracking_mode', 'meta_capi_enabled',
+  ...PROTECTED_ADMIN_SETTING_KEYS,
   'home_hero_title', 'home_hero_subtitle',
   'home_featured_region_slugs', 'home_hot_tag_limit',
   'home_ad_enabled', 'home_ad_eyebrow', 'home_ad_title',
@@ -20,6 +26,7 @@ export const PUBLIC_SETTING_KEYS = [
   'footer_text', 'membership_description', 'email_verification_enabled',
   'video_enabled', 'facebook_pixel_enabled', 'facebook_pixel_id', 'facebook_pixel_debug_enabled',
   'analytics_enabled', 'analytics_sample_rate', 'analytics_consent_mode',
+  'meta_tracking_mode',
   'home_hero_title', 'home_hero_subtitle',
   'home_featured_region_slugs', 'home_hot_tag_limit',
   'home_ad_enabled', 'home_ad_eyebrow', 'home_ad_title',
@@ -29,3 +36,9 @@ export const PUBLIC_SETTING_KEYS = [
   'rules_entry_icon', 'rules_modal_content', 'rules_page_title',
   'rules_page_summary', 'rules_page_content', 'rules_page_url',
 ] as const
+
+const PROTECTED_ADMIN_SETTING_KEY_SET = new Set<string>(PROTECTED_ADMIN_SETTING_KEYS)
+
+export function findProtectedAdminSettingKeys(keys: Iterable<string>): string[] {
+  return Array.from(keys).filter(key => PROTECTED_ADMIN_SETTING_KEY_SET.has(key))
+}

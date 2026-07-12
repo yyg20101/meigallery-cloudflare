@@ -23,25 +23,40 @@ main (生产)
 
 1. 从 `dev` 创建功能分支：`git checkout -b feature/xxx dev`
 2. 在功能分支上开发和提交
-3. 需要联调或验收时，先部署到 Workers dev 子域，使用真实数据验证但不影响生产主域
+3. 需要联调或验收时，先部署到 Workers dev 子域，使用独立 dev Cloudflare 资源验证，不影响生产主域和生产数据
 4. 完成后合并回 `dev`：`git checkout dev && git merge feature/xxx`
 5. 删除已合并的功能分支
+
+### 提交和推送节奏
+
+- 每个可回滚阶段都应及时本地提交，避免未提交改动长时间堆积。
+- 非关键、非关联或阶段性文档/整理提交默认不单独推送远端，先保留在本地分支。
+- 一个功能闭环完成、需要远端 CI/协作、准备部署，或用户明确要求时，再统一推送到远端。
+- 不得为了减少推送而混合无关改动；如果本地已有多个 commit，推送前应确认它们属于同一功能闭环或同一发布批次。
+- 生产发布、部署、PR、远端 CI 验证相关变更仍必须按发布流程推送。
 
 ### 上线后开发测试
 
 - 已正式上线后，未完成或未验收功能不得直接部署到 `616618.xyz` / `api.616618.xyz`。
 - 开发测试使用 `meigallery-web-dev` / `meigallery-api-dev` Worker 和 Workers dev 子域。
-- Dev 环境允许读取正式 D1/R2 数据以复现真实内容，但后台写操作必须谨慎执行，并保留审计日志。
+- Dev 环境使用独立的 `meigallery-db-dev`、`meigallery-media-dev`、`meigallery-meta-capi-dev` 和 `meigallery-meta-capi-dev-dlq`，不得回连生产 D1/R2/Queue/DLQ。
 - Dev 页面必须带测试环境标识，并避免被生产页面、公开导航、sitemap 或搜索引擎收录。
 
 ### 发布上线
 
-1. 从 `dev` 创建发布分支：`git checkout -b release/v0.x.0 dev`
-2. 在发布分支上做最终验证和修复
-3. 验证通过后，创建 PR 合入 `main`
-4. 合入后打 tag：`git tag v0.x.0`
-5. 将 `main` 合并回 `dev`：`git checkout dev && git merge main`
-6. 删除发布分支
+常规发布遵循既有 release 流程。涉及 Meta 正式投放时，以下顺序是额外且强制的放行链，`Contact`、`Lead`、`CompleteRegistration` 是唯一正式 Meta 事件，`StartTrial` 不支持：
+
+1. 从 `dev` 创建发布分支：`git checkout -b release/v0.x.0 dev`，保持 `meta_tracking_mode=disabled`、`meta_capi_enabled=false` 的代码关闭态。
+2. 在发布分支完成本地 migration、测试、dry-run；在独立 dev 主 Queue/DLQ 与独立 secret 上部署当前 commit，生成三项正式事件的 strict dev live evidence。
+3. 只有明确获得上线授权后才创建或核验 production Queue `meigallery-meta-capi`、DLQ `meigallery-meta-capi-dlq`、consumer 与独立 secret；不得复制 dev token 或 Test Event Code 到 production。
+4. 创建 PR 合入 `main`，并对 production D1 应用 migration；迁移后仍保持 mode `disabled` 和 CAPI 开关 `false`。
+5. 切到最终 `main` HEAD，重新部署 dev 并重新生成**同一 commit**的 live evidence；合入前或其他分支的 evidence 不能复用。
+6. 在最终 `main` HEAD 的干净工作区设置 `VERIFY_DEV_API_URL`、`VERIFY_DEV_WEB_URL` 后运行 `META_INITIAL_ROLLOUT=1 corepack pnpm verify:release`；Evidence V1、非当前 commit、超过 24 小时、Q5 contract/collector pending、open incident 或 production rollout 非 0 均必须阻断。不得用 `VERIFY_RELEASE_ALLOW_BRANCH` 替代生产放行。
+7. 确认 `./scripts/deploy.sh production` 的 production gate 读取到同 commit 通过报告后，部署生产 API 和 Web。
+8. Owner 在 production 部署后执行 synthetic Test Event；只有硬门禁通过且 Meta 返回 `events_received=1`，才允许从 rollout `0` 手动升到 `10`。部署本身不修改 setting、incident 或 rollout。
+9. 小流量观察 Pixel `attempted`、CAPI `sent`、failed/skipped、DLQ 与去重诊断。`attempted` 只表示浏览器尝试，不能作为 Meta 接收证据。
+10. 任一步失败先关闭 `meta_capi_enabled`，再切回 `meta_tracking_mode=disabled`；保留 Queue/DLQ、D1 账本和 migration，修复后从 test mode 重新验证。
+11. 部署稳定后打 tag：`git tag v0.x.0`，再将 `main` 合并回 `dev` 并删除发布分支。
 
 ### 紧急修复
 

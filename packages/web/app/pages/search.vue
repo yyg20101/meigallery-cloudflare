@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import type { TrackSearchInput } from '~/composables/useTracking'
+
 const route = useRoute()
 const router = useRouter()
 const { api } = useApi()
 const analytics = useAnalytics()
-const { trackSearch, trackFilterSelected } = useFacebookPixel()
+const { trackSearch } = useTracking()
 const { siteName } = useSiteSettings()
 
 interface GallerySummary {
@@ -63,10 +65,11 @@ watch(searchResult, (result) => {
   const key = getSearchTrackingKey()
   if (lastTrackedSearchKey.value === key) return
   lastTrackedSearchKey.value = key
-  trackSearch({
+  const trackingInput: TrackSearchInput = {
     searchString: `has_query=${keyword.value.trim() ? 'true' : 'false'} tag_count=${selectedTags.value.length} sort=${sort.value}`,
     resultCount: result.total,
-  })
+  }
+  trackSearch(trackingInput)
   analytics.track(result.total > 0 ? 'search_results_view' : 'search_no_results', {
     entityType: 'page',
     props: result.total > 0
@@ -109,7 +112,6 @@ function toggleTag(slug: string) {
   }
   page.value = 1
   updateUrl()
-  trackFilterSelected({ tagSlug: slug, tagType: findTagType(slug), location: 'search_filter' })
   analytics.track(selected ? 'filter_selected' : 'filter_removed', {
     entityType: 'tag',
     entityId: slug,
@@ -154,7 +156,6 @@ function updateUrl() {
 }
 
 function goToTag(slug: string) {
-  trackFilterSelected({ tagSlug: slug, tagType: findTagType(slug), location: 'search_related_tag' })
   analytics.track('filter_selected', {
     entityType: 'tag',
     entityId: slug,

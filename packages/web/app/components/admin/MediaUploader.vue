@@ -14,8 +14,6 @@ const emit = defineEmits<{
   uploaded: [assets: Array<{ assetId: string; r2Key: string; thumbnailUrl: string; sortOrder: number }>]
 }>()
 
-const { baseURL } = useApi()
-
 const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp']
 const MAX_SIZE = 10 * 1024 * 1024 // 10MB
 const MAX_CONCURRENT = 3
@@ -90,7 +88,7 @@ async function processQueue() {
       formData.append('files', next.file)
 
       const response = await fetch(
-        `${baseURL}/api/admin/galleries/${props.galleryId}/media/upload`,
+        `/api/admin/galleries/${props.galleryId}/media/upload`,
         {
           method: 'POST',
           body: formData,

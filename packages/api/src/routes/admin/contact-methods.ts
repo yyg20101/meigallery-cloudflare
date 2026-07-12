@@ -33,7 +33,6 @@ adminContactMethodRoutes.get('/', requireOwner, async (c) => {
       updated_at: string
     }>()
 
-  const apiBase = new URL(c.req.url).origin
   const data = result.results.map((row) => ({
     id: row.id,
     platform: row.platform,
@@ -41,7 +40,7 @@ adminContactMethodRoutes.get('/', requireOwner, async (c) => {
     value: row.value,
     linkUrl: row.link_url,
     qrCodeKey: row.qr_code_key,
-    qrCodeUrl: row.qr_code_key ? `${apiBase}/api/contact-methods/${row.id}/qrcode` : null,
+    qrCodeUrl: row.qr_code_key ? `/api/contact-methods/${row.id}/qrcode` : null,
     sortOrder: row.sort_order,
     enabled: row.enabled === 1,
     createdAt: row.created_at,

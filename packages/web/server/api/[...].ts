@@ -8,13 +8,13 @@
  * - Cloudflare 环境：通过 Service Binding（API_SERVICE）零网络开销直连 API Worker
  * - 本地开发：回退到 HTTP 代理转发至 API 开发服务器
  *
- * useApi() 在 SSR 期间使用相对路径 '/api/...'，Nitro 直接调用此 handler（无 HTTP 开销）；
- * 在 CSR 期间使用完整 API URL，浏览器直连 API Worker，不经过此代理。
+ * 浏览器统一请求相对路径 '/api/...'，由此 handler 转发；SSR 则由 useApi() 直接使用
+ * Service Binding。认证 session 与营销授权 receipt 因此始终归属于 Web host。
  */
 
 import {
+  apiProxyResponseHeaderEntries,
   filterApiProxyRequestHeaders,
-  shouldForwardApiProxyResponseHeader,
 } from '../../app/utils/apiProxyHeaders'
 
 interface CloudflareEnv {
@@ -25,7 +25,8 @@ interface CloudflareEnv {
 
 export default defineEventHandler(async (event) => {
   const cloudflareEnv = (event.context as Record<string, any>).cloudflare?.env as CloudflareEnv | undefined
-  const apiBinding = cloudflareEnv?.API_SERVICE
+  const config = useRuntimeConfig()
+  const apiBinding = config.public.appEnv === 'test' ? undefined : cloudflareEnv?.API_SERVICE
 
   // 构建目标 URL
   const path = event.path // 完整路径，如 /api/galleries/summer-fresh-guangzhou?page=1
@@ -33,9 +34,10 @@ export default defineEventHandler(async (event) => {
   const forwardHeaders = filterApiProxyRequestHeaders(getRequestHeaders(event))
 
   // 读取请求体（仅 POST/PUT/PATCH/DELETE）
-  let body: string | undefined
+  let body: BodyInit | undefined
   if (!['GET', 'HEAD'].includes(method)) {
-    body = (await readRawBody(event)) ?? undefined
+    const rawBody = await readRawBody(event, false)
+    body = rawBody ? new Uint8Array(rawBody).buffer : undefined
   }
 
   let response: Response
@@ -43,16 +45,13 @@ export default defineEventHandler(async (event) => {
   if (apiBinding) {
     // Cloudflare Workers 环境：Service Binding 直连
     // Service Binding 忽略域名，仅使用路径路由到目标 Worker
-    response = await apiBinding.fetch(
-      new Request(`https://api.internal${path}`, {
-        method,
-        headers: forwardHeaders,
-        body,
-      }),
-    )
+    response = await apiBinding.fetch(`https://api.internal${path}`, {
+      method,
+      headers: forwardHeaders,
+      body,
+    })
   } else {
     // 本地开发回退：代理到 API 开发服务器
-    const config = useRuntimeConfig()
     const apiBaseUrl = config.public.apiBaseUrl as string
     response = await fetch(`${apiBaseUrl}${path}`, {
       method,
@@ -65,11 +64,10 @@ export default defineEventHandler(async (event) => {
   setResponseStatus(event, response.status, response.statusText)
 
   // 转发响应头（仅保留前端确实需要感知的业务头）
-  response.headers.forEach((value, key) => {
-    if (shouldForwardApiProxyResponseHeader(key)) {
-      setResponseHeader(event, key, value)
-    }
-  })
+  for (const [name, value] of apiProxyResponseHeaderEntries(response.headers)) {
+    if (name === 'set-cookie') appendResponseHeader(event, name, value)
+    else setResponseHeader(event, name, value)
+  }
 
   // 返回响应体
   const contentType = response.headers.get('content-type') || ''

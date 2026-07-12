@@ -110,5 +110,34 @@ export const ANALYTICS_DEFAULT_SETTINGS = {
   CONSENT_MODE: 'limited',
 } as const
 
+export const HISTORICAL_CONVERSION_ACTIONS = [
+  'contact',
+  'lead',
+  'complete_registration',
+  'start_trial',
+  'membership_grant',
+] as const
+
+/** @deprecated 仅用于兼容历史转化读取，新写入必须使用 ACTIVE_CONVERSION_ACTIONS。 */
+export const CONVERSION_ACTIONS = HISTORICAL_CONVERSION_ACTIONS
+
+export const ACTIVE_CONVERSION_ACTIONS = ['contact', 'complete_registration'] as const
+export const ACTIVE_META_EVENTS = ['Contact', 'CompleteRegistration'] as const
+
+export const META_EVENT_BY_CONVERSION = {
+  contact: 'Contact',
+  lead: null,
+  complete_registration: 'CompleteRegistration',
+  start_trial: null,
+  membership_grant: null,
+} as const
+
+export const ATTRIBUTION_LIMITS = {
+  METADATA_MAX_KEYS: 24,
+  METADATA_VALUE_MAX_LENGTH: 120,
+  DELIVERY_ERROR_MAX_LENGTH: 500,
+  CONVERSION_DETAIL_SAMPLE_LIMIT: 200,
+} as const
+
 export { CONTACT_PLATFORMS, CONTACT_PLATFORM_KEYS, canGenerateContactLink, generateContactLink } from './contact-platforms'
 export type { ContactPlatformConfig } from './contact-platforms'

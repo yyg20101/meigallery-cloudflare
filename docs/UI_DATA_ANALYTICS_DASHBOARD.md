@@ -5,7 +5,7 @@
 - 状态：后台数据分析大盘 UI / UX 设计基线，已用于当前 `/admin/analytics` 首版实现。
 - 日期：2026-06-07。
 - 范围：`/admin/analytics` 及其子页面的数据结构、布局、组件、交互状态、权限边界、验收标准和后续增强路线。
-- 前置文档：`docs/PRD_DATA_ANALYTICS.md`、`plan/feature-data-analytics-implementation-1.md`。
+- 关联文档：`docs/PROJECT_STATUS.md`、`docs/TECHNICAL_SPEC.md`、`docs/UI_DESIGN.md`。
 - 当前说明：本文记录当前首版大盘的设计口径和后续增强方向；标注为后续增强的内容不代表当前生产能力。
 - 2026-06-08 更新：总览页已重做为工作台式大盘，补齐采集健康条、趋势面板、转化漏斗、Top 列表、风险队列和空数据状态；健康详情页不再在无日报时显示空白。
 
@@ -85,6 +85,14 @@
 | 时长 | `/admin/analytics/durations` | `[当前实现]` | 哪些内容停留久，哪些页面跳出高 | `/api/admin/analytics/durations` |
 | 邀请 | `/admin/analytics/invites` | `[当前实现]` | 邀请码带来多少注册和会员发放 | `/api/admin/analytics/invites`、`/api/admin/invite-codes` |
 | 健康 | `/admin/analytics/health` | `[当前实现]` | 采集、聚合、成本和采样是否正常 | `/api/admin/analytics/health` |
+
+### 2.3.1 与归因中心边界
+
+`/admin/analytics` 是一方行为分析大盘，回答“站内访问、内容、点击、邀请和采集健康如何”。其中来源中的 `fb`、`facebook`、`meta` 只表示站内 UTM、推广链接或 referrer 归因，不等同于 Meta Pixel 或 CAPI 回传数据。
+
+广告投放相关能力统一进入 `/admin/attribution`：创建投放追踪链接、对比 `utm_content`、查看有效联系 / 完成注册、检查 Pixel / CAPI delivery、排查重复事件和执行发布检查。活动 Meta 事件仅为 `Contact`、`CompleteRegistration`；`Lead` 只在独立历史对象中作只读对照，不进入活动漏斗、比率、排序、delivery 健康或 readiness，`StartTrial` 不支持。数据大盘可以提供跳转入口，但不在本页面内维护 Pixel 地址、CAPI secret 或 Test Event。
+
+归因中心的交付状态必须避免夸大：Pixel `attempted` 只表示浏览器按指令尝试发送，不能显示为“Meta 已接收”；CAPI 只有 `sent` 且严格 Test Event 返回 `events_received=1` 才能显示为接收成功。运营页仅展示 secret、Test Event Code、Queue binding 的存在状态，不展示值、原始 event ID、`fbp`、`fbc`、IP 或用户代理。
 
 ### 2.4 Global Layout
 
@@ -191,6 +199,7 @@
 - 不提供无条件全量原始事件列表。
 - 不用图表动效替代可排序表格和明确指标定义。
 - 不把 Facebook Pixel 事件作为后台大盘的唯一数据源。
+- 不在 `/admin/analytics` 创建投放追踪链接或展示 Meta CAPI delivery 明细；这些由 `/admin/attribution` 维护。
 
 ## 3. AI System Requirements
 
@@ -211,6 +220,29 @@ Nuxt 后台页面
   -> 响应 KPI、趋势、表格、健康状态
   -> 页面渲染卡片、趋势、漏斗、路径边和可排序表格
 ```
+
+广告归因链路：
+
+```text
+Nuxt 后台归因中心
+  -> AttributionPageShell 读取日期筛选
+  -> useAdminAttribution composable 请求 admin attribution API
+  -> API Worker 校验 admin/owner 权限
+  -> D1 转化账本和 delivery 聚合表
+  -> Cloudflare Queue / DLQ 异步投递 Meta CAPI
+  -> 页面渲染投放链接、转化趋势、Meta 同步和重复诊断
+```
+
+#### `/admin/attribution` Meta 放行面板
+
+- `[当前实现]` Meta 健康条分别显示 Pixel attempted、CAPI sent、failed、skipped；不得合并为“已同步”总数。
+- `[当前实现]` readiness 按 blocker 与 warning 分区。blocker 未通过时，`meta_capi_enabled` 保持不可开启；warning 只提示观察项，不伪装为生产放行。
+- `[当前实现]` Owner 仅能在 `meta_tracking_mode=test` 发起严格 Test Event；成功条件为 CAPI `sent` 和 `events_received=1`，不是仅创建审计记录。
+- `[当前实现]` dev live evidence 通过 migration `0041` 的一次性 challenge 绑定 environment 与当前 commit；Browser/CAPI 使用同组 opaque ID，UI 和 CLI 不展示原始 event ID。
+- `[当前实现]` 资源 attestation 通过 migration `0042` 的 60 秒 D1 原子一次性 ticket 完成；Owner Cookie 只用于向固定可信 API origin 换票，最终 HMAC attestation 请求不携带 Cookie。
+- `[运维前置]` 发布 UI 的执行顺序为关闭态 -> dev evidence -> migrations `0036..0044` 与资源检查（含 approved contract digest）-> 最终 main commit evidence -> `bootstrap` gate -> fresh `verify:release` 与新报告断言 -> production 部署 -> `post-deploy` attestation -> test -> `full` gate -> production -> CAPI 开关 -> `0 -> 10 -> 50 -> 100` 人工放量与观察。任一步失败先关闭 CAPI，再切 mode 为 `disabled`；系统只能自动降至 `0`。
+- `[外部阻断]` Q5 当前为 `contract_pending`，缺少真实 dev capture、Owner 批准 contract、collector 补充计划及其执行，也缺少当前最终 commit 的真实远端 dev evidence。readiness 必须显示 blocked，不得展示“满足生产候选条件”。
+- `[运维前置]` Queue 名称在页面与交接中明确为 dev `meigallery-meta-capi-dev` / `meigallery-meta-capi-dev-dlq`、production `meigallery-meta-capi` / `meigallery-meta-capi-dlq`，但页面不显示 Cloudflare resource ID 或命令原始输出。
 
 ### 4.2 Page Composition
 
@@ -455,7 +487,7 @@ Nuxt 后台页面
 
 ### 4.11 性能、成本与 Cloudflare 约束
 
-本设计延续 `docs/PRD_DATA_ANALYTICS.md` 第 8 节的 Cloudflare 成本策略。实现后台大盘时必须遵守：
+本设计延续当前 Cloudflare 成本约束和 D1 聚合优先策略。实现后台大盘时必须遵守：
 
 | 约束 | UI / API 设计动作 |
 |------|------|
@@ -546,10 +578,6 @@ Nuxt 后台页面
 
 ## 7. Related Specifications / Further Reading
 
-- `docs/PRD_DATA_ANALYTICS.md`
-- `plan/feature-data-analytics-implementation-1.md`
-- `docs/UI_DESIGN.md`
-- `docs/UI_QUALITY_REVIEW.md`
-- `docs/ui/wireframes/2026-06-07-admin-analytics-dashboard-wireframe.md`
-- `docs/TECHNICAL_SPEC.md`
 - `docs/PROJECT_STATUS.md`
+- `docs/TECHNICAL_SPEC.md`
+- `docs/UI_DESIGN.md`

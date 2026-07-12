@@ -53,6 +53,29 @@ function hasSettingWrite(executed: ExecutedSql, key: string, jsonValue?: string)
 }
 
 describe('后台站点设置 API', () => {
+  it('站长更新 Meta 追踪模式时归一化历史值', async () => {
+    const executed: ExecutedSql = []
+    const app = createApp()
+    const env = {
+      DB: createDb({
+        all: () => [],
+        run: (sql, params) => {
+          executed.push({ sql, params })
+          return { success: true }
+        },
+      }),
+    } as unknown as Bindings
+
+    const res = await app.request('/api/admin/settings', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ meta_tracking_mode: 'legacy_mode' }),
+    }, env)
+
+    expect(res.status).toBe(200)
+    expect(hasSettingWrite(executed, 'meta_tracking_mode', '"disabled"')).toBe(true)
+  })
+
   it('站长读取设置时单条历史损坏 JSON 不阻断页面打开', async () => {
     const app = createApp()
     const env = {
@@ -77,6 +100,70 @@ describe('后台站点设置 API', () => {
     expect(body.data.site_name.value).toBe('测试图库')
     expect(body.data.seo_title.value).toBe('')
     expect(body.data.home_ad_enabled.value).toBe(true)
+  })
+
+  it('站长读取设置时仍可看到 Meta CAPI 灰度比例', async () => {
+    const app = createApp()
+    const env = {
+      DB: createDb({
+        all: (sql) => {
+          if (sql.includes('SELECT key, value, updated_at FROM site_settings')) {
+            return [{
+              key: 'meta_capi_rollout_percentage',
+              value: JSON.stringify(50),
+              updated_at: '2026-07-11 00:00:00',
+            }]
+          }
+          return []
+        },
+      }),
+    } as unknown as Bindings
+
+    const res = await app.request('/api/admin/settings', {}, env)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.data.meta_capi_rollout_percentage).toEqual({
+      value: 50,
+      updatedAt: '2026-07-11 00:00:00',
+    })
+  })
+
+  it.each([
+    0,
+    10,
+    50,
+    100,
+    '10',
+    null,
+    true,
+    {},
+    [],
+  ])('通用 PATCH 前置拒绝 Meta CAPI 灰度值 %j 且不访问数据库', async (rolloutPercentage) => {
+    const app = createApp()
+    const env = {
+      DB: {
+        prepare() {
+          throw new Error('受保护设置被拒绝前不得访问数据库')
+        },
+      },
+    } as unknown as Bindings
+
+    const res = await app.request('/api/admin/settings', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        site_name: '不应部分写入',
+        meta_capi_rollout_percentage: rolloutPercentage,
+      }),
+    }, env)
+    const body = await res.json()
+
+    expect(res.status).toBe(400)
+    expect(body).toMatchObject({
+      code: 'ADMIN_SETTING_PROTECTED',
+      protectedKeys: ['meta_capi_rollout_percentage'],
+    })
   })
 
   it('站长读取设置时清空旧脚手架品牌默认值', async () => {

@@ -8,6 +8,10 @@ function createDb(options: {
   enabled?: boolean
   sampleRate?: number
   existingEvents?: string[]
+  facebookPixelEnabled?: boolean
+  facebookPixelId?: string
+  metaCapiEnabled?: boolean
+  metaTrackingMode?: 'disabled' | 'test' | 'production'
 } = {}) {
   const calls: Call[] = []
   const insertedEvents = new Set(options.existingEvents ?? [])
@@ -37,6 +41,10 @@ function createDb(options: {
           if (sql.includes('FROM analytics_events WHERE id = ?')) {
             return insertedEvents.has(String(call.params[0])) ? ({ id: call.params[0] } as T) : null
           }
+          if (sql.includes("WHERE key = 'facebook_pixel_enabled'")) return { value: JSON.stringify(options.facebookPixelEnabled ?? false) } as T
+          if (sql.includes("WHERE key = 'facebook_pixel_id'")) return { value: JSON.stringify(options.facebookPixelId ?? '') } as T
+          if (sql.includes("WHERE key = 'meta_capi_enabled'")) return { value: JSON.stringify(options.metaCapiEnabled ?? false) } as T
+          if (sql.includes("WHERE key = 'meta_tracking_mode'")) return { value: JSON.stringify(options.metaTrackingMode ?? 'disabled') } as T
           return null
         },
         async run() {
@@ -49,6 +57,9 @@ function createDb(options: {
           return { meta: { changes: 1, rows_written: 1, rows_read: 0, duration: 1 } }
         },
       }
+    },
+    async batch(statements: Array<{ run: () => Promise<unknown> }>) {
+      return Promise.all(statements.map(statement => statement.run()))
     },
   }
   return db
@@ -286,6 +297,158 @@ describe('analytics-ingest', () => {
     expect(result.accepted).toBe(0)
     expect(result.duplicate).toBe(1)
     expect(db.calls.some(call => call.sql.includes('analytics_sessions'))).toBe(false)
+  })
+
+  it('contact_method_click 更新 Analytics 联系统计但不写入转化账本', async () => {
+    const db = createDb()
+    await ingestAnalyticsBatch(envFor(db), {
+      body: baseBatch({
+        eventId: 'event_contact_1',
+        eventName: 'contact_method_click',
+        entityType: 'contact',
+        trackingSourceSlug: 'telegram-june',
+        utmSource: 'telegram-june',
+        utmMedium: 'social',
+        utmCampaign: 'june',
+        utmContent: 'chat-a',
+        sourceChannel: 'ad',
+        props: {
+          method_type: 'telegram',
+          action_type: 'open_link',
+          location: 'floating_contact_panel',
+          contactValue: '@secret',
+        },
+      }),
+      bodySizeBytes: 512,
+      userId: null,
+      currentHost: '616618.xyz',
+    })
+
+    const sourceAggregate = db.calls.find(call => call.sql.includes('INSERT INTO analytics_daily_sources'))
+    expect(sourceAggregate?.params[8]).toBe(1)
+    expect(db.calls.some(call => call.sql.includes('analytics_conversion_actions'))).toBe(false)
+  })
+
+  it('重复分析批次不会创建任何 Meta delivery', async () => {
+    const db = createDb({
+      facebookPixelEnabled: true,
+      facebookPixelId: '1234567890',
+      metaCapiEnabled: true,
+      metaTrackingMode: 'production',
+    })
+    const sent: unknown[] = []
+    const env = {
+      APP_ENV: 'test',
+      DB: db,
+      SESSION_SECRET: 'test-session-secret',
+      META_CAPI_QUEUE: { send: async message => { sent.push(message) } },
+    } as unknown as Pick<Bindings, 'APP_ENV' | 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>
+    const context = {
+      body: baseBatch({
+        eventId: 'event_contact_duplicate_1',
+        eventName: 'contact_method_click',
+        entityType: 'contact',
+        consentState: 'granted',
+        props: { method_type: 'telegram', location: 'floating_contact_panel' },
+      }),
+      bodySizeBytes: 512,
+      userId: null,
+      currentHost: '616618.xyz',
+    }
+    await ingestAnalyticsBatch(env, context)
+    const duplicate = await ingestAnalyticsBatch(env, context)
+
+    expect(duplicate.duplicate).toBe(1)
+    expect(db.calls.some(call => call.sql.includes('analytics_conversion_deliveries'))).toBe(false)
+    expect(sent).toEqual([])
+  })
+
+  it('register_success 更新 Analytics 注册统计但不写入转化账本', async () => {
+    const db = createDb()
+    await ingestAnalyticsBatch(envFor(db), {
+      body: baseBatch({
+        eventId: 'event_register_2',
+        eventName: 'register_success',
+        entityType: 'auth',
+        props: { invite_code_id: 'inv_1' },
+      }),
+      bodySizeBytes: 512,
+      userId: 42,
+      currentHost: '616618.xyz',
+    })
+
+    const sourceAggregate = db.calls.find(call => call.sql.includes('INSERT INTO analytics_daily_sources'))
+    expect(sourceAggregate?.params[9]).toBe(1)
+    expect(db.calls.some(call => call.sql.includes('analytics_conversion_actions'))).toBe(false)
+  })
+
+  it('被拒绝事件和 raw duplicate 不写入转化账本', async () => {
+    const rejectedDb = createDb()
+    await ingestAnalyticsBatch(envFor(rejectedDb), {
+      body: baseBatch({
+        eventId: 'event_contact_bad_1',
+        eventName: 'contact_method_click',
+        path: '/gallery/demo?token=secret',
+        entityType: 'contact',
+        props: { method_type: 'telegram', location: 'floating_contact_panel' },
+      }),
+      bodySizeBytes: 512,
+      userId: null,
+      currentHost: '616618.xyz',
+    })
+    expect(rejectedDb.calls.some(call => call.sql.includes('analytics_conversion_actions'))).toBe(false)
+
+    const duplicateDb = createDb({ existingEvents: ['event_contact_dup_1'] })
+    await ingestAnalyticsBatch(envFor(duplicateDb), {
+      body: baseBatch({
+        eventId: 'event_contact_dup_1',
+        eventName: 'contact_method_click',
+        entityType: 'contact',
+        props: { method_type: 'telegram', location: 'floating_contact_panel' },
+      }),
+      bodySizeBytes: 512,
+      userId: null,
+      currentHost: '616618.xyz',
+    })
+    expect(duplicateDb.calls.some(call => call.sql.includes('analytics_conversion_actions'))).toBe(false)
+  })
+
+  it('批内 raw duplicate 不写入转化账本', async () => {
+    const db = createDb()
+    const result = await ingestAnalyticsBatch(envFor(db), {
+      body: {
+        visitorId: 'visitor_123456',
+        sessionId: 'session_123456',
+        events: [
+          baseBatch({
+            eventId: 'event_contact_same',
+            eventName: 'contact_method_click',
+            entityType: 'contact',
+            entityId: 'contact-a',
+            props: {
+              method_type: 'telegram',
+              location: 'floating_contact_panel',
+            },
+          }).events[0],
+          baseBatch({
+            eventId: 'event_contact_same',
+            eventName: 'contact_method_click',
+            entityType: 'contact',
+            entityId: 'contact-b',
+            props: {
+              method_type: 'wechat',
+              location: 'gallery_detail_sidebar',
+            },
+          }).events[0],
+        ],
+      },
+      bodySizeBytes: 1024,
+      userId: null,
+      currentHost: '616618.xyz',
+    })
+
+    expect(result.duplicate).toBe(1)
+    expect(db.calls.some(call => call.sql.includes('analytics_conversion_actions'))).toBe(false)
   })
 
   it('把 sendBeacon session/end 简写 payload 转成批量事件', () => {

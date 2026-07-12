@@ -97,5 +97,8 @@ function createRegisterDb(activeHash: string) {
         },
       }
     },
+    async batch(statements: Array<{ run: () => Promise<unknown> }>) {
+      return Promise.all(statements.map(statement => statement.run()))
+    },
   }
 }

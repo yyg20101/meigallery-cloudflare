@@ -9,8 +9,7 @@ const {
   rulesModalContent,
   rulesPageUrl,
 } = useSiteSettings()
-const { trackContactClick } = useFacebookPixel()
-const analytics = useAnalytics()
+const { trackContact, trackAnalytics } = useTracking()
 
 await fetchContactMethods()
 
@@ -31,10 +30,18 @@ function toggleOpen() {
 }
 
 function trackContactMethod(methodType: string, actionType = 'unknown') {
-  trackContactClick({ location: 'floating_contact_panel', methodType, actionType })
-  analytics.track('contact_method_click', {
+  if (actionType !== 'open_link' && actionType !== 'copy') return
+  void Promise.resolve(trackContact({
+    methodType,
+    actionTarget: 'floating_contact_panel',
+    actionType,
+  })).catch(() => {})
+}
+
+function trackContactInspection(methodType: string, actionType: string) {
+  if (actionType !== 'qr_expand') return
+  trackAnalytics('contact_qr_expand', {
     entityType: 'contact',
-    flush: true,
     props: {
       method_type: methodType,
       action_type: actionType,
@@ -62,7 +69,7 @@ function toggleRules() {
   rulesOpen.value = !rulesOpen.value
   if (rulesOpen.value) contactOpen.value = false
   if (rulesOpen.value) {
-    analytics.track('rules_panel_open', {
+    trackAnalytics('rules_panel_open', {
       entityType: 'page',
       props: { location: 'floating_rules_panel' },
     })
@@ -70,7 +77,7 @@ function toggleRules() {
 }
 
 function trackContactPanelOpen() {
-  analytics.track('contact_panel_open', {
+  trackAnalytics('contact_panel_open', {
     entityType: 'contact',
     flush: true,
     props: { location: 'floating_contact_panel' },
@@ -78,7 +85,7 @@ function trackContactPanelOpen() {
 }
 
 function trackRulesPageClick() {
-  analytics.track('rules_page_click', {
+  trackAnalytics('rules_page_click', {
     entityType: 'page',
     props: { location: 'floating_rules_panel' },
   })
@@ -176,6 +183,7 @@ function trackRulesPageClick() {
             :key="method.id"
             :method="method"
             @activate="trackContactMethod"
+            @inspect="trackContactInspection"
           />
         </div>
 

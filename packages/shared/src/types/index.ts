@@ -69,6 +69,102 @@ export type AnalyticsEntityType =
 /** 分析授权/采集状态 */
 export type AnalyticsConsentState = 'granted' | 'limited' | 'denied'
 
+export type ConversionActionType =
+  | 'contact'
+  | 'lead'
+  | 'complete_registration'
+  | 'start_trial'
+  | 'membership_grant'
+
+export type ActiveConversionActionType = Extract<
+  ConversionActionType,
+  'contact' | 'complete_registration'
+>
+
+export type ConversionMetaEventName =
+  | 'Contact'
+  | 'Lead'
+  | 'CompleteRegistration'
+
+export type ActiveMetaEventName = Extract<
+  ConversionMetaEventName,
+  'Contact' | 'CompleteRegistration'
+>
+
+export type ConversionDeliveryChannel = 'meta_pixel' | 'meta_capi'
+
+export type MetaTrackingMode = 'disabled' | 'test' | 'production'
+
+export type MetaCapiRolloutPercentage = 0 | 10 | 50 | 100
+
+export type MetaCapiIncidentStatus = 'open' | 'closed'
+
+export type MetaCapiIncidentSeverity = 'warning' | 'critical'
+
+export interface MetaCapiRolloutDecision {
+  targetPercentage: MetaCapiRolloutPercentage
+  effectivePercentage: MetaCapiRolloutPercentage
+  bucket: number | null
+  included: boolean
+  reason: 'included' | 'rollout_excluded' | 'circuit_open' | 'missing_stable_id'
+}
+
+export type PublicConversionActionType = Extract<ActiveConversionActionType, 'contact'>
+
+export type ConversionDeliveryStatus = 'pending' | 'attempted' | 'sent' | 'failed' | 'skipped' | 'duplicate_suppressed'
+
+export interface MetaPixelInstruction {
+  deliveryId: string
+  eventName: ActiveMetaEventName
+  eventId: string
+  payload: Record<string, string | number | boolean>
+  receiptToken: string
+}
+
+/** 仅允许在内存中短暂持有的 CAPI 用户匹配上下文。 */
+export interface MetaCapiSensitiveContext {
+  fbp?: string
+  fbc?: string
+  clientIpAddress?: string
+  clientUserAgent?: string
+  emailSha256?: string
+  externalIdSha256?: string
+}
+
+export interface MetaCapiEncryptedEnvelope {
+  keyId: string
+  iv: string
+  ciphertext: string
+  tag: string
+  expiresAt: string
+}
+
+export interface MetaCapiQueueMessage {
+  schemaVersion: 2
+  deliveryId: string
+  envelope: MetaCapiEncryptedEnvelope
+}
+
+export type ConversionSkipReason =
+  | 'disabled'
+  | 'missing_secret'
+  | 'missing_pixel_id'
+  | 'missing_queue'
+  | 'queue_send_failed'
+  | 'unsupported_event'
+  | 'consent_denied'
+  | 'invalid_payload'
+  | 'connection_unverified'
+  | 'missing_data_key'
+  | 'invalid_data_key'
+  | 'invalid_sensitive_context'
+  | 'rollout_excluded'
+  | 'circuit_open'
+  | 'missing_stable_id'
+  | 'secure_context_expired'
+  | 'secure_context_invalid'
+  | 'queue_message_invalid'
+
 /** 分析设备类型 */
 export type AnalyticsDeviceType = 'desktop' | 'tablet' | 'mobile' | 'unknown'
 
@@ -110,6 +206,7 @@ export type AnalyticsEventName =
   | 'load_more'
   | 'contact_panel_open'
   | 'contact_method_click'
+  | 'contact_qr_expand'
   | 'rules_panel_open'
   | 'rules_page_click'
   | 'membership_cta_click'

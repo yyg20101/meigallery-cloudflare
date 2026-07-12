@@ -229,6 +229,7 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/media/:assetId/thumbnail` | 缩略图（公开） |
 | POST | `/api/analytics/events` | 站内一方数据分析批量采集，默认受 `analytics_enabled` 关闭态保护 |
 | POST | `/api/analytics/session/end` | session 结束兜底采集，兼容 `sendBeacon` 简写 payload |
+| POST | `/api/conversions/events` | 公开转化事件入口，仅接受有效联系；受限流保护，服务端清洗 metadata，明确拒绝完成注册、`Lead`、`StartTrial`、会员发放或敏感字段 |
 | GET | `/api/invites/:code/status` | 公开校验邀请码状态，只返回可展示字段和失败原因，不泄露 `code_hash` |
 | GET | `/api/settings/public` | 公开站点设置和过滤后的首页广告数组 `home_ads` |
 
@@ -299,6 +300,17 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/admin/analytics/sessions/:id` | 单 session 脱敏事件明细，写审计日志 | owner |
 | POST | `/api/admin/analytics/exports` | 创建 CSV 导出任务并写入 R2，写审计日志 | owner |
 | GET | `/api/admin/analytics/exports/:id` | 查看导出任务状态 | owner |
+| GET | `/api/admin/attribution/overview` | 归因中心总览，展示站内转化、广告来源、Pixel / CAPI 同步和重复诊断摘要 | admin+ |
+| GET | `/api/admin/attribution/conversions` | 转化账本趋势、来源分组、事件分组和样本明细 | admin+ |
+| GET | `/api/admin/attribution/links` | 投放追踪链接分析列表，返回可复制 URL、UTM 参数和转化统计；创建和修改仍复用 `/api/admin/tracking-sources` | admin+ |
+| GET | `/api/admin/attribution/meta` | Meta Pixel / CAPI 同步状态，只返回配置存在状态和 delivery 统计，不泄露 secret | admin+ |
+| POST | `/api/admin/attribution/meta/test-event` | 创建 Meta CAPI Test Event delivery 并写入审计日志，不返回 token 或 test code | owner |
+| POST | `/api/admin/attribution/meta/live-challenge` | 由 dev Worker 创建绑定当前 commit 的一次性 Browser/CAPI 双事件 challenge | owner |
+| POST | `/api/admin/attribution/meta/live-challenge/consume` | 原子消费 challenge，并使用 Browser 同组 ID 真实发送两条 CAPI Test Event | owner |
+| POST | `/api/admin/attribution/meta/resource-attestation-ticket` | Owner Cookie 仅在固定可信 API origin 换取绑定环境、commit、nonce 的 60 秒一次性 ticket | owner |
+| POST | `/api/meta/resource-attestation` | 原子消费一次性 ticket 并返回当前 Worker Meta 资源 HMAC 摘要；不接受 Owner Cookie 作为凭据 | ticket |
+| GET | `/api/admin/attribution/duplicates` | 查看重复点击、重复转化和 Pixel / CAPI 去重诊断 | admin+ |
+| GET | `/api/admin/attribution/readiness` | 归因发布检查，展示允许公开的配置项、开关和阻断项 | admin+ |
 | POST | `/api/admin/legacy-import/sources` | 创建旧站来源 | admin+ |
 | POST | `/api/admin/legacy-import/jobs` | 启动旧站迁移 | admin+ |
 | GET | `/api/admin/legacy-import/jobs/:id` | 迁移任务详情 | admin+ |
@@ -309,9 +321,11 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | POST | `/api/admin/legacy-import/migrate/retry-failed` | 重置旧站下载失败图片 | admin+ |
 | POST | `/api/admin/legacy-import/migrate/set-covers` | 批量设置旧站迁移图库封面 | admin+ |
 
+`/api/meta/resource-attestation` 复用公开 API 的 IP 应用内限流，并要求生产 WAF 配置独立 IP Rate Limiting Rule。ticket 签发与消费响应统一使用 `Cache-Control: no-store`，响应、审计和错误信息均不得回显已消费 ticket。
+
 ## 8. D1 数据库 Schema `[当前实现]`
 
-以下为当前核心表摘要，完整结构以 `packages/api/migrations/` 中的顺序迁移为准。数据分析相关表已通过 `0023` 到 `0027` 建立 schema，并已接入公开采集 API、邀请码转化闭环、推广来源管理、Web 轻量 SDK、核心业务埋点、Cron 聚合任务、后台分析 API、后台分析页面、端到端 smoke、性能成本 fixtures、上线顺序和回滚文档。Cloudflare Queues 与 Workers Analytics Engine 仍按 Phase 9 阈值触发后再评估，不是当前 MVP 默认依赖。
+以下为当前核心表摘要，完整结构以 `packages/api/migrations/` 中的顺序迁移为准。数据分析相关表已通过 `0023` 到 `0027` 建立 schema，并已接入公开采集 API、邀请码转化闭环、推广来源管理、Web 轻量 SDK、核心业务埋点、Cron 聚合任务、后台分析 API、后台分析页面、端到端 smoke、性能成本 fixtures、上线顺序和回滚文档。站内行为分析采集仍不依赖 Cloudflare Queues 或 Workers Analytics Engine；广告归因的 Meta CAPI 投递已独立使用 Cloudflare Queues，队列绑定为 `META_CAPI_QUEUE`。
 
 ### users
 
@@ -543,7 +557,7 @@ CREATE INDEX idx_audit_logs_admin ON admin_audit_logs(admin_id);
 CREATE INDEX idx_audit_logs_time ON admin_audit_logs(created_at);
 ```
 
-当前后台写操作审计覆盖矩阵维护在 `docs/CODE_AND_DOC_REVIEW_ISSUES.md` 的 P2-07 小节；新增 `POST` / `PUT` / `PATCH` / `DELETE` 管理端路由时必须同步补充 `writeAuditLog` 和测试断言。
+后台写操作必须在对应 service 或 route 内调用 `writeAuditLog` 并补测试；新增 `POST` / `PUT` / `PATCH` / `DELETE` 管理端路由时必须同步添加审计日志断言。
 
 ### site_settings
 
@@ -597,6 +611,59 @@ INSERT INTO site_settings (key, value) VALUES
 | `analytics_invite_daily` | `[部分实现]` | 按日期和邀请码聚合落地、注册、联系和会员发放。 |
 | `analytics_click_daily` | `[部分实现]` | 按日期、元素和目标聚合 raw/effective/duplicate 点击。 |
 | `analytics_export_jobs` | `[当前实现]` | Owner-only CSV 导出任务元数据，导出文件写入 R2 并设置过期时间。 |
+
+### 转化账本与归因中心表 `[当前实现]`
+
+归因中心把“站内可信事实”和“外部广告平台同步”分开维护：`analytics_conversion_actions` 是事实源，Pixel / CAPI 只是 delivery 渠道。后台 `/admin/analytics` 仍是一方行为分析大盘；广告投放追踪链接、有效联系、完成注册、历史 Lead 对照、Pixel / CAPI 同步、重复诊断和发布检查统一放在 `/admin/attribution`。
+
+#### 归因事实所有权 `[当前实现]`
+
+| 事实 | 唯一所有者与命名入口 | 可信触发 | 派生与投递关系 |
+|------|------|------|------|
+| `Contact` | API conversion service 的 `recordContact()` | URL 通过安全校验后发起原生联系跳转，或复制联系方式明确成功后，由公开联系命令进入服务端校验 | 写入 `contact` 事实；不派生 `Lead`。授权允许时可生成同一 `eventID` 的 Pixel / CAPI delivery。二维码展开、复制失败和无效 URL 不创建 Contact。 |
+| `CompleteRegistration` | 注册 API 在用户、邀请码和 session 事务成功后调用 `recordRegistration()`；事实修复只允许 `recordRegistrationFactOnly()` | 服务端已持久化的正整数 `userId`，客户端不能声明事件类型或注册成功 | 写入 `complete_registration` 事实并以 `userId` 去重；注册响应可携带 Pixel 指令，浏览器只能执行指令，不能通过公开 conversion API 创建注册事实。 |
+| QR 展开 | Web `ContactPanel` 通过 `useAnalytics()` 记录 `contact_qr_expand`，由 analytics ingest 所有 | 用户展开通过安全 URL 校验的二维码 | 仅是一方行为分析事件；不创建 Contact、不进入 conversion 账本，也不生成 Pixel / CAPI delivery。 |
+
+历史 D1 中的 `lead` / `Lead` 保留读取，不删除数据。后台只通过 `historical.leadCount` 展示“历史 Lead”，不得将其用于活动漏斗、联系率、注册率、链接排序、Meta delivery 健康或 readiness。
+
+归因 API 的活动 `totals`、趋势、风险空态和比率只使用 Contact / CompleteRegistration。既有会员发放聚合若需保留，只能放在 `operations.membershipGrantCount` 等明确辅助结构中，不得进入活动卡片、活动总数、发放注册率或投放效果排序。
+
+| 表 | 状态 | 用途 |
+|------|------|------|
+| `analytics_conversion_actions` | `[当前实现]` | 站内转化事实；新写入只由 `recordContact()`、`recordRegistration()` 和注册事实修复函数创建 `contact` / `complete_registration`。历史 schema 继续只读兼容 `lead`、`start_trial` 和既有 `membership_grant`，不删除存量数据。 |
+| `analytics_conversion_deliveries` | `[当前实现]` | Pixel / Meta CAPI delivery 账本，记录 channel、`external_event_id`、状态、跳过原因、失败错误、重试次数和发送时间。 |
+| `analytics_conversion_daily` | `[当前实现]` | 按日期、事件、来源、campaign、utm_content 等维度聚合站内转化，用于后台趋势和投放对比。 |
+| `analytics_conversion_delivery_daily` | `[当前实现]` | 按日期、channel、事件和 delivery 状态聚合同步结果，用于 Meta 同步健康和发布检查。 |
+
+实现约束：
+
+- 正式活动 Meta 事件严格限定为 `Contact`、`CompleteRegistration`；`Lead`、`StartTrial` 仅为历史读取值，sender 与 recovery 均不得再次发送。
+- `/api/conversions/events` 为公开联系命令入口，仅允许提交 `contact`；完成注册由注册 API 的服务端事务创建。`lead`、`complete_registration`、`start_trial` 和 `membership_grant` 的公开提交均返回明确 4xx。
+- 公开转化入口复用应用内兜底限流，并在服务端白名单清洗 metadata；请求不得携带邮箱、手机号、联系方式明文、token、私有 R2 key、完整敏感 URL 或任意广告账户密钥。
+- 浏览器通过 `PUT /api/marketing-consent` 授权或撤销；API 使用 `SESSION_SECRET` 与 Web Crypto 签发 30 分钟 `HttpOnly`、`SameSite=Lax` receipt cookie，HTTPS 环境同时设置 `Secure`。授权 GET/PUT、Contact conversion、registration 和 Pixel receipt 重试显式通过 Web 同源 `/api` 代理：Cloudflare 环境使用 `API_SERVICE`，本地回退 API URL，代理逐条转发 `Set-Cookie` 和后续请求 cookie；其余浏览器 API 保持既有直连策略。前端 body 只能把服务端 receipt 的授权降级，缺失、篡改、过期或 denied receipt 都不能由 `consentState=granted` 升级。receipt、签名、nonce 和 cookie 值不得进入日志、D1、API 响应、审计或发布报告。
+- `consent_state=denied` 时只保留站内必要事实，不创建 Meta Pixel / CAPI delivery；服务端解析后的 `consent_state` 仅用于当次 delivery 判断，不作为 D1 字段持久化。浏览器 Pixel 以公开授权 API 返回状态为准，服务端 CAPI 始终独立验证 receipt。
+- Pixel 与 CAPI 使用同一 `external_event_id` / `eventID`，方便 Meta 后台去重；Pixel `attempted` 仅说明浏览器已尝试调用，不代表 Meta 接收。只有 CAPI `sent` 且 Graph API 返回 `events_received=1` 才代表接收成功；站内重复诊断不依赖 Meta 回传数据。
+- `/api/admin/attribution/*` 需要 admin+；`/api/admin/attribution/meta/test-event` 需要 owner，并写入 `admin_audit_logs`。
+- Meta CAPI 通过 Cloudflare Queue `META_CAPI_QUEUE` 异步投递，使用 Worker secret `META_CAPI_ACCESS_TOKEN`、`META_CAPI_DATA_KEY_CURRENT`；`META_CAPI_TEST_EVENT_CODE` 仅在 test mode 必需，`META_CAPI_DATA_KEY_PREVIOUS` 仅用于轮换窗口。dev 主 Queue / DLQ 固定为 `meigallery-meta-capi-dev` / `meigallery-meta-capi-dev-dlq`，生产为 `meigallery-meta-capi` / `meigallery-meta-capi-dlq`。Graph token 只通过 Bearer header 发送。secret 不写入 D1、不返回前端，也不写入审计日志。
+- `/api/admin/attribution/meta` 仅返回 current/previous 有效性布尔值、previous outbox 计数、previous `pending/failed` delivery 计数和可移除状态；不返回 key ID、Base64、fingerprint 或错误 cause。
+- `corepack pnpm verify:meta-secrets` 扫描 tracked 文件与 ignored release evidence；`corepack pnpm verify:quick` 在单元测试和构建前执行该检查。production bootstrap、rollout 与最终 evidence 已由本地代码门禁强绑定，但没有外部证据时始终 fail closed。
+- Queue 发送失败不得阻塞站内转化账本写入；delivery 必须显示 `sent`、`failed`、`skipped`、`missing_queue`、`missing_secret`、`disabled` 等可诊断状态。
+- migration `0043_meta_capi_delivery_lease.sql` 为每条 CAPI delivery 增加短期发送 lease。Queue consumer 必须在 Graph fetch 前用 D1 CAS 获取 lease，loser 不发请求；持 token 的发送结果只匹配自身 token，所有无 token 的 Queue、DLQ、安全终止和过期清理终态写都在同一 delivery `UPDATE` CAS 中要求 lease 为空或已过期，冲突时保留 outbox 并安全重试。网络、Meta 或状态写回失败按 token 释放 lease，进程崩溃则由 TTL 到期接管，重试始终复用原 `external_event_id`；`sent` 不可回归。lease token 不得进入日志、响应或报告。
+
+Meta CAPI v2 远端证据链：
+
+- migration `0041_meta_live_challenges.sql` 保存绑定 environment、40 字符 commit 和有效期的一次性 dev challenge；Browser `fbq` 与 Server CAPI 只允许 `Contact`、`CompleteRegistration`，共享 opaque external event ID，消费后不得恢复原始 ID。
+- migration `0042_meta_resource_attestation_tickets.sql` 保存 60 秒 D1 原子一次性 ticket。Owner Cookie 只能在固定可信 API origin 换取 ticket；`/api/meta/resource-attestation` 只接受 ticket 并返回 HMAC 摘要，最终请求不携带 Cookie，ticket 响应和审计均不得回显凭据。
+- production 冷启动 gate 分为 `bootstrap`、`post-deploy`、`full`：当前 commit 与未过期 D1 bootstrap permit 决定首次部署资格；部署后必须通过资源 attestation 和 `trackingMode=test` 的真实 Test Event；完整 gate 通过后才能切换 production，并由 Owner 将 rollout 从 `0` 手动升至 `10`。系统不得自动升级，只能因 incident 自动降至 `0`。
+- Dataset Quality 使用唯一 production Dataset：批准契约固定 `GET /v25.0/dataset_quality` 的字段白名单，collector 只在 production 每日执行并写入契约 version/digest。dev live evidence 不依赖或复制 production 质量快照；首次 production bootstrap 保持 rollout `0`，部署后的 full gate 必须验证 production collector 的两项活动事件快照与 24 小时新鲜度。
+
+#### Meta 生产放行与回滚 `[当前实现 / 运维前置]`
+
+`0034_meta_production_readiness.sql` 在迁移后将不受支持的 tracking mode 收敛为 `disabled`；生产放行必须确认 `meta_tracking_mode=disabled`、`meta_capi_enabled=false`，直至 Owner 按顺序显式开启。`0044_meta_dataset_quality_contract_digest.sql` 将每条 Dataset Quality 快照绑定 Git tracked approved contract 的精确 SHA-256 digest，版本相同但内容不同不得复用旧 collector 结果。Pixel 与 CAPI 都必须绑定当前有效 MetaConnection revision；连接失效时两条渠道均 fail closed。生产 `event_id` 由服务端 `SESSION_SECRET` 对规范化业务去重基础做 HMAC，外部值不包含用户 ID、session 或联系方式输入。顺序固定为：代码关闭态 -> dev live evidence -> 生产资源与 migrations `0036..0044` -> 最终 main HEAD 重新部署 dev 并生成同 commit evidence -> `bootstrap` gate -> production deploy 强制 fresh `verify:release` 并校验新报告 -> 生产部署 -> `post-deploy` attestation -> `test` mode Owner Test Event -> `full` gate -> `production` mode -> CAPI 开关 -> `0 -> 10 -> 50 -> 100` 人工放量与观察。
+
+严格 Test Event 必须只包含 `Contact`、`CompleteRegistration`，出现 `Lead` 或 `StartTrial` 必须阻断，并且 CAPI 的 `sent` 与 `events_received=1` 同时成立。由用户营销授权门禁控制的 Pixel 只能写入 `attempted`，不能替代这项确认。任何阶段失败都必须将 mode 切回 `disabled` 并保持 `meta_capi_enabled=false`；先关闭 CAPI、再关闭 mode，保留 Queue/DLQ、D1 migration 和账本用于诊断。
+
+当前外部 blocker：仍缺少当前最终 commit 的真实远端 dev challenge、Meta live、resource attestation，以及 production 部署后生成的 Dataset Quality 快照。首次 production bootstrap 可以在 rollout `0` 且 CAPI 关闭时执行；在 post-deploy/full gate 全部通过前不得提高 rollout。
 
 成本与索引口径：
 

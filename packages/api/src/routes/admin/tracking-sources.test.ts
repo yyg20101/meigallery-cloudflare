@@ -67,6 +67,7 @@ function trackingSourceRow() {
     utm_source: 'telegram-june',
     utm_medium: 'social',
     utm_campaign: 'telegram-june',
+    utm_content: '',
     status: 'active',
     note: '',
     created_by: 1,
@@ -109,6 +110,29 @@ describe('后台推广来源 API', () => {
     expect(code).toMatch(/^social-[a-z0-9]{3,}$/)
     expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_tracking_sources'))).toBe(true)
     expect(db.calls.some(call => call.sql.includes('INSERT INTO admin_audit_logs') && call.params[2] === 'tracking_source.create')).toBe(true)
+  })
+
+  it('创建广告投放链接时支持 utm_content 并写审计日志', async () => {
+    const db = createDb()
+    const res = await createApp('admin').request('/api/admin/tracking-sources', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        sourceLabel: 'Meta 广告 A',
+        channel: 'ad',
+        targetPath: '/',
+        utmMedium: 'paid_social',
+        utmCampaign: 'july',
+        utmContent: 'chat-a',
+      }),
+    }, { DB: db } as unknown as Bindings)
+    const body = await res.json()
+
+    expect(res.status).toBe(201)
+    expect(body.data.utmContent).toBe('chat-a')
+    expect(body.data.trackingPath).toContain('utm_content=chat-a')
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_tracking_sources') && call.params[8] === 'chat-a')).toBe(true)
+    expect(JSON.stringify(db.calls)).not.toContain('Meta 像素测试地址')
   })
 
   it('创建时不允许手动填写 code', async () => {

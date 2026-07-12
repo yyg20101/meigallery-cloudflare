@@ -1,149 +1,92 @@
 # 项目当前状态
 
-更新时间：2026-06-23
+更新时间：2026-07-11
 
-本文档是当前实现和部署状态的索引。若历史计划或早期 PRD 与本文冲突，以本文、`AGENTS.md`、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md`、`docs/GIT_WORKFLOW.md` 为准。
+本文是当前实现、部署和文档入口索引。若旧提交、历史计划或早期文档与本文冲突，以 `AGENTS.md`、本文、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md` 和 `docs/GIT_WORKFLOW.md` 为准。
+
+## 文档边界
+
+- 已清理历史 PRD、旧计划、旧评审台账、旧线框图和过期 Superpowers 方案，避免后续开发继续引用历史口径。
+- 当前保留 `docs/superpowers/specs/2026-07-08-attribution-center-clean-design.md` 作为归因中心、后台 UI、测试矩阵和发布闸门的设计背景；当前实现事实以代码、`docs/TECHNICAL_SPEC.md` 和本文为准。
+- 当前保留 `docs/superpowers/specs/2026-07-08-meta-capi-attribution-layer-design.md` 作为 Meta Pixel / CAPI、转化事件账本和去重层的历史技术输入；核心架构已实现，当前生产放行口径由 Meta CAPI v2 三阶段计划和本状态文档覆盖。
+- 新需求进入实施时，应直接更新当前 PRD、技术规格、UI 设计或专项文档，不再恢复历史归档目录。
 
 ## 技术栈现状
 
 - Monorepo：pnpm workspace，包为 `@meigallery/web`、`@meigallery/api`、`@meigallery/shared`。
-- 前端：`packages/web` 当前依赖 `nuxt@4.4.4`、`@nuxt/ui@4.7.1`、`tailwindcss@4.2.4`，Nitro preset 为 `cloudflare-module`。
-- 后端：`packages/api` 使用 Hono，入口为 `packages/api/src/index.ts`，通过 Cloudflare Worker bindings 访问 D1/R2/Email。
+- 前端：`packages/web` 使用 Nuxt 4、Nuxt UI、Tailwind CSS v4，Nitro preset 为 `cloudflare-module`。
+- 后端：`packages/api` 使用 Hono，入口为 `packages/api/src/index.ts`，通过 Cloudflare Worker bindings 访问 D1、R2 等资源。
 - 共享包：`packages/shared` 提供共享类型、会员 rank、标签类型、联系方式平台和用户名工具。
-- 组件预览：仓库当前没有 Histoire 依赖或配置；历史文档中的 Histoire 是规划项。
+- 组件预览：当前未配置 Histoire。
 
 ## 运行时和部署
 
 - 运行平台：仅使用 Cloudflare Workers + Workers Assets，不使用 Cloudflare Pages。
 - 前端 Worker：`meigallery-web`，生产域名 `616618.xyz` / `www.616618.xyz`。
 - API Worker：`meigallery-api`，生产域名 `api.616618.xyz`。
-- 开发 Worker：`meigallery-web-dev` / `meigallery-api-dev`，仅使用 Workers dev 子域，不绑定生产域名。
-- 数据库：Cloudflare D1 `meigallery-db`。
-- D1 migrations：仓库当前维护到 `0031_seed_seo_keywords.sql`；部署前需按目标环境执行所有未应用迁移。
-- 对象存储：Cloudflare R2 `meigallery-media`。
-- 视频：Cloudflare Stream 仍未接入，相关 secrets 为占位符，视频能力按规划保留；API 在缺少 Stream secrets 时返回 503 `STREAM_NOT_CONFIGURED`。
-- 生产部署：PR 合入 `main` 后手动执行 `./scripts/deploy.sh production` 或等价 wrangler 命令。
-- CI：`.github/workflows/ci.yml` 只做 PR/dev 推送的测试、类型检查和构建验证，不自动部署生产。
-- 成本与性能：Cloudflare 官方费用口径、当前优化项和监控阈值见 `docs/CLOUDFLARE_COST_PERFORMANCE_OPTIMIZATION.md`；生产 Workers Logs 采样已下调，公开设置使用短缓存。
+- 开发 Worker：`meigallery-web-dev` / `meigallery-api-dev`，不绑定生产域名；当前真实地址为 `https://meigallery-web-dev.wajie.workers.dev` / `https://meigallery-api-dev.wajie.workers.dev`。
+- 数据库：生产为 Cloudflare D1 `meigallery-db`，开发环境已隔离到 `meigallery-db-dev`；迁移文件位于 `packages/api/migrations/`。
+- 对象存储：生产为 Cloudflare R2 `meigallery-media`，开发环境已隔离到 `meigallery-media-dev`。
+- Queue：生产主 Queue / DLQ 为 `meigallery-meta-capi` / `meigallery-meta-capi-dlq`，开发环境已隔离到 `meigallery-meta-capi-dev` / `meigallery-meta-capi-dev-dlq`。
+- 视频：Cloudflare Stream 仍未接入生产链路；相关字段和密钥按规划保留。
+- 生产部署：通过 PR 合入 `main` 后手动执行 `./scripts/deploy.sh production`；脚本会强制重新运行完整 `verify:release` 并只断言本次新报告，之后才允许 migration 或 Worker deploy。
+- CI：`.github/workflows/ci.yml` 只做 PR 和 dev 推送验证，不自动部署生产。
+- 发布快速校验：`corepack pnpm verify:quick` 先执行 `dev-resource-isolation` 与 `meta-secret-leaks`，阻断 dev 误用生产资源及 tracked/release evidence 静态泄漏。
 
-## 功能实现现状
+## 发布验证体系状态
 
-- 已实现：公开图库/标签/搜索/真实案例、登录注册、用户名登录、邮箱验证开关、用户中心、个人设置、后台图库/标签/用户/设置/审计、独立首页广告位管理、多广告排序、大图上传、首页广告轮播、广告排期与安全清洗、首页内容配置保存校验和公开读取兜底、右下角服务流程/消息悬浮入口强化、图库批量操作、图片上传、封面设置、单媒体 rank 配置、WordPress 迁移辅助、Telegram `gallery` / `case` 外部导入、Facebook Pixel 设置。
-- Telegram 外部导入当前边界明确为平台提供 API 接收端，不内置 Telegram Bot 本体；已支持 Import Token 管理、`file_id` 接收、幂等、异步拉取、R2 入库、草稿创建、Bot 侧重试、后台记录查看和后台失败重试。Ops Hub 自动导入由上游解析 caption 后提交标准 JSON，平台只接受 `gallery` / `case`，对接契约见 `docs/TELEGRAM_IMPORT_API.md`。
-- 部分实现：zip 导入任务有 API 和后台入口，但当前重点实现和测试集中在解析/校验与任务记录；大文件异步完整处理仍需按后续阶段继续收敛。
-- 未接入：Cloudflare Stream 生产视频上传、编码和播放链路；相关字段、secret、媒体签名逻辑保留为规划能力。
-- 当前实现：站内一方数据分析能力已形成可落地需求方案、实施计划和后台数据大盘 UI 设计；当前已落地 Phase 0 基础契约、Phase 1 D1 schema、Phase 2 公开采集 API、Phase 3 邀请码转化闭环、Phase 4 Web 轻量 SDK、Phase 5 核心业务事件、Phase 6 API 侧聚合/报表能力、Phase 7 后台页面/导航和 Phase 8 验证/上线护栏，并已补齐推广来源创建与追踪链接管理。已覆盖共享分析类型/常量、事件 props 白名单、URL/referrer 清洗、来源归因、运营时区日期、D1 rows read/write 预算读取、公开分析开关读取，`analytics_*`、`analytics_tracking_sources`、`invite_codes`、`invite_registrations`、聚合日报和导出任务迁移，`/api/analytics/events`、`/api/analytics/session/end`、关闭态 disabled 响应、IP/visitor/session 三维兜底限流、采集健康日报写入，`/api/invites/:code/status` 公开状态查询，`/api/admin/invite-codes` 后台管理、`/api/admin/tracking-sources` 推广来源管理、注册成功绑定邀请上下文，管理员首次发放 rank > 0 会员时回填邀请转化，Web 端 URL 预清洗、route 归一化、visitor/session 队列、UTM/referrer/`mg_source` 来源上下文、`sendBeacon` 兜底、15 秒本地时长累计、注册邀请码校验、登录/注册关键事件、首页广告曝光/点击、图库卡片曝光/点击、图库详情浏览、图片查看器打开、会员 CTA、点赞成功、搜索/筛选/排序/加载更多、联系与规则入口事件，API Worker 侧可信 `media_access_granted` / `media_access_denied` 媒体授权事件，Cron 日报聚合与保留期清理，`/api/admin/analytics/*` 后台分析查询、owner-only session 脱敏明细和 owner-only CSV 导出到 R2。后台已新增 `/admin/analytics` 及来源、内容、链路、点击、时长、邀请、健康子页，`/admin/invite-codes` 跳转入口，统一时间范围、加载、错误、空数据、D1 usage 状态，owner-only 导出按钮，以及邀请码创建、禁用和创建后复制完整邀请链接；来源页已支持创建推广来源、复制标准追踪链接、停用来源，并在来源报表中展示已创建来源表现。Phase 8 已补 Playwright smoke、mock API、10,000 sessions/day 写入成本 fixture、100,000 事件规模后台报表性能 fixture、部署上线顺序和回滚说明；采集开关默认关闭，生产启用必须按 D1 migrations -> API -> Web SDK -> 后台 -> Owner 开关顺序执行。
-- 已完成迁移口径：真实案例当前统一为 `cases` / `case_images`、`/cases`、`/api/cases`、`case:create`；旧 `testimonial_*` 仅存在于历史文档、迁移脚本说明或兼容拒绝测试中。
+- 已提供四层命令：`verify:quick`、`verify:local-runtime`、`verify:dev-rehearsal`、`verify:release`。
+- `verify:quick` 适合日常提交前自检，先检查 dev/production 资源隔离与 Meta secret 泄漏。
+- `verify:local-runtime` 用于本地 Cloudflare 运行时验证 D1、Queue、归因和降级链路。
+- `verify:dev-rehearsal` 依赖独立 dev 资源和当前 dev Workers URL，作为上线前远端演练；Meta 链路只接受 Owner 生成 `Contact`、`CompleteRegistration` 的同 commit live evidence，出现历史 `Lead` 或 `StartTrial` 证据必须阻断。
+- `verify:release` 是生产放行前最终校验，但当前仓库尚未真实跑完整 release 报告；生产前必须在干净工作区、带 `VERIFY_DEV_API_URL` / `VERIFY_DEV_WEB_URL` 运行并生成同一 commit 的通过报告。最终 `main` HEAD 必须重新部署 dev、重做 evidence，不能复用其他 commit 的结果。
+- `scripts/deploy.sh production` 已在远端 migration 前接入 fresh production gate；旧 `latest.json` 不能跳过 lint、API/Web coverage、scripts、tsc、build、local-runtime 和 remote gates。部署路径只负责验证、preflight、migration 与 Worker 部署，不写 setting、不关闭 incident、不调整 rollout。
 
-## PRD 质量状态
+## 当前已实现能力
 
-- 当前 PRD 质量审阅和整改索引见 `docs/PRD_QUALITY_REVIEW.md`。
-- 数据分析需求方案见 `docs/PRD_DATA_ANALYTICS.md`，实施计划见 `plan/feature-data-analytics-implementation-1.md`；当前已实施到后台数据大盘、端到端 smoke、性能预算、成本护栏、上线顺序和回滚路径。Phase 9 的 Cloudflare Queues / Workers Analytics Engine 仍仅在阈值触发后评估。
-- 数据分析来源归因与日报聚合修复设计见 `docs/superpowers/specs/2026-06-09-analytics-source-attribution-fix-design.md`：已确认采用会话首触来源归因，来源创建区分稳定 `code` 与可编辑自定义文案，补齐批量采集到日报聚合表的断点，新增页面/点击来源维度和流量漏斗效果图设计，后续实现需按该设计修复后台全 0 问题。
-- 当前可验收能力、部分实现能力和规划能力必须按 `docs/PRD_QUALITY_REVIEW.md` 的需求状态矩阵区分，不得把历史 PRD 中的规划项当作上线阻断项。
-- Cloudflare Stream、Email Service、zip 大文件异步导入、旧站内容审核状态机属于需要单独补齐验收标准的重点区域。
-- 后续新增或修改 PRD 时，必须为成功指标补充测试环境、数据规模、采样方法和失败路径。
+- 公开浏览：图库、标签、搜索、真实案例、首页广告位、右下角服务流程与联系方式入口。
+- 用户体系：注册、登录、用户名登录、邮箱验证开关、用户中心、个人设置、会员状态展示。
+- 后台管理：图库、媒体、标签、用户、会员发放、站点设置、联系方式、首页广告、真实案例、导入任务、审计日志。
+- Telegram 外部导入 API：项目只提供对外 API 接收能力，不内置 Telegram Bot 本体；对接契约见 `docs/TELEGRAM_IMPORT_API.md`。
+- 数据分析：已实现一方数据采集、来源归因、邀请码、联系点击、趋势和后台 `/admin/analytics` 系列看板；后台 UI 口径见 `docs/UI_DATA_ANALYTICS_DASHBOARD.md`。
+- 归因中心：已实现站内转化账本、投放追踪链接、有效联系 / 完成注册活动趋势、历史 Lead 只读对照、Meta Pixel / CAPI 同步健康、重复诊断和分级发布检查；历史 Lead 与会员发放辅助指标均不参与活动漏斗、比率或链接排序，会员发放仅保留在 `operations` 辅助结构。后台分别展示 blocker 与 warning，warning 不改变生产阻断状态；入口为 `/admin/attribution`。
+- Meta CAPI v2：production Dataset Quality v1 契约已由 Owner 批准，真实 Meta `v25.0 /dataset_quality` capture 已验证；production-only collector 已实现，只采集 `Contact`、`CompleteRegistration` 的 EMQ 与匹配键覆盖率，并绑定契约 digest。dev 只负责两事件 live evidence，不保存或伪造 production Dataset 快照；production bootstrap 允许快照尚未生成但强制 rollout `0`，部署后的 full gate 必须验证最新 production collector 快照。当前仍需完成远端 migrations、dev live evidence、production collector 首次执行与 post-deploy/full attestation，完成前不满足正式放量条件。
+- SEO：已实现基础 SEO 设置、关键词池、sitemap、robots、结构化数据和生产校验脚本；运营配置见 `docs/SEO_CONFIGURATION.md`。
 
-## UI 质量状态
+## 规划和未接入
 
-- 当前 UI 质量审阅和页面/组件验收清单见 `docs/UI_QUALITY_REVIEW.md`。
-- `docs/UI_DESIGN.md` 已补充页面级完成定义、组件状态矩阵、响应式验收和可访问性检查方法。
-- 数据分析后台大盘设计见 `docs/UI_DATA_ANALYTICS_DASHBOARD.md`，已用于首版 `/admin/analytics`、来源、内容、链路、点击、时长、邀请和采集健康页面实现；当前已补分析链路 Playwright smoke 和性能成本 fixtures，后续可按运营反馈扩展图表形态与多视口专项截图验收。
-- Stream 接入前，视频入口、视频专区、视频角标和播放器均按规划能力处理，不作为当前上线阻断项。
-- 线框图留存规则见 `docs/ui/wireframes/README.md`，后续关键线框图需导出到该目录或以截图、PDF、HTML 快照形式保存。
+- Cloudflare Stream 视频上传、编码、播放和受保护视频访问链路。
+- 完整 zip 大文件上传、解压和异步导入处理。
+- Meta Marketing API 广告花费、campaign、ad set、ad 数据导入暂不属于当前实现范围；当前只维护站内转化事实和 Pixel / CAPI 同步状态。
 
-## 代码质量整改状态
+## 当前文档入口
 
-- 当前整改执行计划见 `plan/process-code-review-remediation-1.md`。
-- `P1-01 Web 类型检查失败且 CI 未覆盖` 已完成：shared 不再暴露 Worker binding 类型给 Web，前端严格类型错误已修复，CI 已新增 Web typecheck。
-- `P1-02 生产速率限制与文档承诺不一致` 已完成：API 内置兜底限流已对齐常量和技术文档，部署文档已补生产 Cloudflare WAF / Rate Limiting Rules 配置口径。
-- `P1-03 密码哈希实现与 PRD/技术文档不一致` 已完成：当前正式策略为 Workers 原生 Web Crypto PBKDF2，文档已同步参数和升级口径，密码校验已改为固定轮次字节比较并补测试。
-- `P2-01 Worker 配置缺少生产可观测性，compatibility_date 偏旧` 已完成：API/Web 已启用 Workers Logs，生产和 dev 配置均显式设置 observability，Worker `compatibility_date` 与 Web `compatibilityDate` 已更新到 `2026-05-26`，部署文档已记录更新和 dry-run 验证流程。
-- `P2-02 zip 批量导入文档明显超前于当前实现` 已完成：PRD 和技术设计已拆分当前任务记录、manifest 解析、JSON `galleries` 处理能力，以及后续 R2 直传异步 zip 导入设计。
-- `P2-03 媒体访问文档写 R2 presigned URL，但代码实际为 Worker 代理` 已完成：受保护图片访问已统一为服务端权限校验后 Worker 代理返回 R2 对象，文档、常量、路由注释和测试均已同步。
-- `P2-04 前端自动化测试缺失` 已完成：Web 已接入 Playwright smoke，使用本地 mock API 覆盖首页、搜索、图库详情、登录、用户中心和后台首页，并在 360/768/1024/1440 视口检查核心渲染、私有 key 不泄露和横向溢出。
-- `P2-05 dev 环境复用正式 D1/R2 数据` 已完成代码侧防护：dev 后台显示正式数据风险标识，管理端写请求统一弹出二次确认；后续如需更强隔离再拆分独立 dev D1/R2 资源。
-- `P2-06 文档中的 Turnstile 覆盖范围与当前实现不一致` 已完成：后台复用普通登录入口，后台导入任务创建/处理已补 Turnstile 校验并更新文档口径。
-- `P2-07 审计日志覆盖整体较好，但旧站迁移批量入口仍需补齐确认` 已完成：已建立后台写操作审计覆盖矩阵，旧站迁移批量下载入口和导入任务处理完成态已补审计日志与单元测试。
-- `P2-08 公开 API、错误响应和前端错误处理格式不统一` 已完成：API 已新增统一错误 helper，后台图库/媒体/旧站迁移、鉴权、限流、全局 404/500 和外部导入错误均输出 `{ statusCode, message, code?, detail? }`。
-- `P3-01 文档中规划态、当前态和历史态混写` 已完成：PRD 和技术设计文档已增加统一状态标签说明，并对主要章节标注当前实现、部分实现、后续规划或历史参考。
-- `P3-02 文档中的文件大小和上传限制不统一` 已完成：当前内容图片上传口径统一为 10MB；头像 2MB、联系方式二维码 2MB、站点图标 1MB 按独立入口限制记录。
-- `P3-03 缺少 lint / format 配置和 CI 约束` 已完成：根级 ESLint flat config、`.editorconfig`、`pnpm lint` 和 CI lint 步骤已接入，当前 lint 以 `--max-warnings=0` 零 warning 通过。
-- `P3-04 覆盖率未知` 已完成首轮收敛：API 已接入 Vitest v8 coverage，核心安全/导入模块设置基线阈值，CI 上传覆盖率 artifact。
-- `P3-05 后端路由文件过大，业务逻辑集中在路由层` 持续收敛中：认证路由中的邮箱验证码业务已抽到 `services/email-verification.ts`，后台用户列表/详情/活动、资料修改、密码重置、会员发放、角色和状态修改已抽到 `services/admin-users.ts`，后台图库列表/详情/创建/更新/发布/下架/归档/批量操作已抽到 `services/admin-galleries.ts`，后台媒体列表/上传/封面/排序/更新/删除已抽到 `services/admin-media.ts`，均已补 service 单测；后续继续拆分仍集中在路由层的后台设置、标签、导入和审计日志能力。
-- `P3-06 Stream 字段和签名逻辑存在，但生产视频链路未接入` 已完成收敛：Stream 接入前 UI 继续默认隐藏视频入口，API 缺少 Stream secrets 时返回 503 `STREAM_NOT_CONFIGURED`，不触发未配置的签名请求。
-- `corepack pnpm --filter @meigallery/web typecheck` 当前通过，但仍打印 `vue-router/volar/sfc-route-blocks` package export 非阻断警告，后续依赖升级阶段继续跟踪。
-- P1/P2/P3 当前台账项已全部完成或完成首轮收敛；持续增强已推进 lint 零 warning、后台用户服务化、后台图库服务化、后台媒体服务化、Web 组件测试扩展、公开封面外链安全、后台媒体外链展示安全、邮件模板注入防护、规则 Markdown 链接安全、站点设置公开 URL 内部地址拦截、首页 SEO 读取后台站点设置、首页 SSR 原始 HTML 级 SEO 回归验收、生产部署后 SEO head 自动校验、后台保存站点 SEO 后即时刷新前台公开设置、后台强制刷新公开设置失败时提示当前会话可能仍为旧值、公开站点设置接口 no-store 避免 SEO/广告位配置旧值缓存、公开站点设置首次失败允许后续普通请求重试、公开站点设置单条历史损坏 JSON 容错、后台站点设置读取/保存历史损坏 JSON 容错、邮箱验证开关历史损坏 JSON 容错、首页广告位链接/排期/文案长度安全收敛、首页广告组件边界文案二次清洗、公开读取侧历史异常广告设置清洗、后台实时预览同款清洗、后台广告预览异常文案可感知提示、首页内容配置数量/slug/规则 Markdown 输入归一化和历史异常读取兜底、首页广告位四断点溢出验收、首页广告位含凭据 URL 拒绝、首页广告位反斜杠歧义 URL 拒绝、首页广告位后台/API/资源路径拒绝、真实案例图片 R2 key 所属校验、联系方式链接/二维码安全收敛、后台联系方式二维码预览安全兜底、图库媒体 R2 key 所属校验、后台旧站迁移外链安全兜底、导入错误报告 R2 key 所属校验和 Import Token 禁用审计收敛，后续工作以继续路由服务化、扩展后台复杂组件测试和按需收紧格式规则为主。
-- 发布 PR #8 的 Playwright smoke 已补 mock API 站点设置重置入口，避免后台 SEO 保存测试污染后续断点的首页 SSR SEO 基线；由于 smoke 四个 viewport 共用同一个 mock API 可变状态，Playwright 当前固定单 worker 串行执行，避免跨 viewport 的 reset / PATCH 竞争。
-- 首页广告位外链持续增强：前台 CTA 已补离站可感知名称、离站/隐私提示，并将广告外链 `rel` 扩展为 `noopener noreferrer nofollow sponsored`；Playwright smoke 已覆盖最终浏览器 DOM 中的外链安全属性、`no-referrer` 和离站提示。
-- 规则 Markdown 外链持续增强：规则页和悬浮规则面板渲染的外链已统一输出 `noopener noreferrer nofollow` 与 `referrerpolicy="no-referrer"`，并拒绝带用户名/密码或反斜杠歧义的 URL。
-- 联系方式链接持续增强：前台联系方式跳转和二维码弹层外链已拒绝带凭据、反斜杠歧义 URL，并统一输出 `noopener noreferrer nofollow` 与 `referrerpolicy="no-referrer"`。
-- 联系方式二维码来源页保护增强：前台联系方式二维码图片预览已统一设置 `referrerpolicy="no-referrer"`，避免外部二维码图床收到当前页面路径。
-- 后台安全外链持续增强：后台旧站迁移等共用外链展示已统一输出 `noopener noreferrer nofollow` 与 `referrerpolicy="no-referrer"`，媒体 URL 清洗同步拒绝带凭据和反斜杠歧义地址。
-- 后台安全外链透明度增强：后台共用外链组件已补目标域名与不发送来源页提示，外链无障碍名称同步包含清洗后的目标域名，并允许长 URL/长域名在表格中自然断行。
-- 旧站迁移来源展示增强：后台旧站迁移来源列表已兼容 API 返回的 `base_url` 字段并复用安全外链组件，避免来源地址显示为空，同时提供目标域名、不发送来源页和长 URL 断行提示。
-- 后台错误提示持续增强：旧站迁移执行/下载媒体和图库媒体上传已统一优先读取 API 标准错误体 `message`，避免服务端安全校验原因被旧 `{ error }` 格式兼容逻辑吞掉；前端已无 `e.data.error` 读取残留。
-- 图片类站点设置持续增强：`site_icon` 和 `og_image` 已从普通公开 URL 中拆分为图片类公开设置 URL，仅允许安全 HTTPS 图片地址或 `/api/media/public/site/` 站点公开媒体路径，避免 favicon/OG 图加载普通页面或非站点公开媒体路径。
-- 非公网 IPv4 外链持续增强：旧站导入下载、公开站点设置、联系方式链接、前端媒体预览和规则 Markdown 外链已从传统 localhost/私网拦截扩展到运营商共享地址、文档/测试地址、链路本地、组播和保留 IPv4 段，避免外链配置指向非普通公网目标。
-- 站点 SEO 保存持续增强：后台站点设置写入已改为 upsert，缺失 `site_settings` 行时也会自动补齐，避免后台显示保存成功但公开 SEO 仍回退默认标题。
-- 生产 SEO 校验持续增强：`verify:seo:production` 已新增 API 侧默认 SEO 防回归和显式期望值校验，CI 已接入脚本测试，避免公开设置与首页同时回退到 `MeiGallery - 精选写真图库` 时误判通过。
-- 公开 SEO 读取持续增强：`/api/settings/public` 会在整包公开设置响应阶段清空历史迁移写入的 `MeiGallery - 精选写真图库` SEO 默认值，前台改为回退到当前站点名；后台 SEO 输入框也已改为示例式 placeholder，避免旧标题再次误导保存。
-- 站点品牌默认值持续增强：前台、后台设置页、公开设置 API、邮件模板和 D1 默认迁移已清理旧脚手架站名；用户可见站名统一读取后台 `site_settings.site_name`，缺失或旧默认值时仅使用中性“图库站”兜底。
-- SEO 基础设施增强：Web Worker 已新增运行时 `robots.txt` 和 `sitemap.xml`，生产环境允许公开页抓取并屏蔽后台、API、登录注册和个人中心；sitemap 覆盖首页、发现页、真实案例、标签页、规则页、已发布图库、已发布真实案例和标签筛选落地页，非生产环境继续 noindex/no-store。
-- 结构化 SEO 增强：前台已统一生成 canonical URL、绝对 OG 图片 URL 和安全 JSON-LD；首页输出 `WebSite`/`Organization`，图库详情输出 `ImageGallery`，真实案例详情输出 `Article`，并通过单元测试和首页 SSR smoke 防回归。
-- SEO 关键词池增强：后台站点设置已新增 `seo_keywords`，支持中英文分隔、去重、最多 30 个关键词和单词长度限制；前台首页、图库详情和真实案例详情会将关键词池合并页面语境后写入 JSON-LD `keywords`，并兼容输出页面级 `meta keywords`。`0031_seed_seo_keywords.sql` 会在空值时写入当前项目首版关键词池，运营配置说明见 `docs/SEO_CONFIGURATION.md`。
-- 后台图库图片预览持续增强：编辑/新建图库的媒体网格和封面预览已改走管理员鉴权预览接口，不再受公开缩略图“仅发布且免费内容可访问”的规则影响；管理员预览仍保留 R2 key 所属校验和安全外链清洗。
-- 后台图库预览来源页保护增强：编辑/新建图库的媒体网格和封面预览图片已统一设置 `referrerpolicy="no-referrer"`，避免后台页面路径在加载外部图片或跨域 API 预览时作为来源页带出。
-- 首页广告位语义持续增强：前台广告组件已补“推广”标识，外链 CTA 通过 `aria-describedby` 关联离站和不发送来源页提示；组件测试与 Playwright smoke 同步覆盖站内/外链差异，避免安全提示仅停留在视觉文本。
-- 后台广告预览持续增强：站点设置页的首页广告实时预览已使用不可跳转预览模式，保留前台同款广告视觉和外链安全提示，但不渲染可点击链接，避免运营编辑配置时误点离开后台。
-- 公开 URL 混淆地址回归增强：公开站点设置 URL、首页广告 URL 和广告组件边界测试已覆盖十进制、十六进制、八进制、短写 IPv4 与 IPv6 地址写法，确保浏览器归一化后的本机/非公网地址不会被误放行。
-- CI 运行时持续增强：GitHub Actions 已升级到原生 Node 24 action runtime 的 checkout、setup-node 和 upload-artifact 版本；pnpm 安装改为 `corepack enable` shell 步骤，避免继续加载 Node 20 action。项目命令自身已由 `setup-node` 固定使用 Node 24，并与当前 Nuxt/Wrangler 的 Node engines 要求对齐。
-- 首页广告位外链透明度增强：前台广告 CTA 和后台实时预览已在离站提示中展示清洗后的目标域名，并将域名写入外链按钮无障碍名称，避免泛化按钮文案掩盖实际跳转目标。
-- 首页广告位长域名响应式增强：前台广告离站提示、赞助来源和后台预览链接已允许长域名/长 URL 断行，Playwright smoke 使用长外链域名覆盖四个视口，避免安全提示本身造成横向溢出。
-- 前端 API 错误解析持续增强：新增统一错误消息解析工具，注册、忘记密码和后台图库批量操作已移除内联 `JSON.parse(e.data)`，统一优先展示标准错误体 `message` 并兼容历史 `error` 字段。
-- 后台 SEO 同步状态增强：站点设置页已展示首页公开读取到的站点名、SEO 标题、站点描述和 OG 信息，并在保存后即时刷新校验，Playwright smoke 覆盖“待同步 → 已同步 → 首页 head 更新”链路。
-- 前端错误提示持续增强：登录、个人设置、后台图库/真实案例/标签/用户/站点设置/导入/联系方式/Import Token 等页面已统一使用 `resolveApiErrorMessage`，避免标准错误体、历史 `error` 字段或字符串 JSON 错误在页面层被吞掉。
-- 首页广告位站内跳转透明度增强：站内广告 CTA 已补目标页面提示和包含精确路径的无障碍名称，前台 smoke 与组件测试覆盖站内/外链两类提示，避免外链有安全说明而站内跳转去向不明确。
-- 首页广告位公开状态增强：`/api/settings/public` 已新增只读派生字段 `home_ad_active`，由服务端基于广告开关与排期统一判断当前是否展示；前台优先使用该字段，旧公开响应继续保留本地排期计算兜底。
-- 首页广告位管理增强：后台已新增独立 `/admin/ads` 管理页和 `home_ads` D1 表，支持多个首页广告的新增、编辑、启停、排序、排期、大图上传/删除和 Owner 审计日志；站点设置页旧单广告配置已降级为兼容提示与入口跳转。
-- 首页广告位展示增强：`/api/settings/public` 已返回过滤后的 `home_ads` 数组，前台优先渲染安全、启用且排期有效的多广告大图轮播；旧 `home_ad_*` 配置仅在新广告为空时作为兼容兜底。
-- 右下角悬浮入口增强：前台联系面板已重做为“服务流程 / 有新消息”双 CTA，突出看规则、联系站长、开通访问流程，并保留联系弹层、规则弹层和线索埋点。
-- 公开 URL 凭证参数持续增强：站点图标、OG 封面图、首页广告链接和规则页链接已拒绝 `token`、`api_key`、`signature`、`access_token` 等凭证类 URL 参数，覆盖 query 与 hash 片段，API 写入、公开读取和前端预览同款兜底。
-- 首页广告跳转参数持续增强：站内广告链接中的 `redirect`、`next`、`return_to` 等跳转目标已限制为公开前台路径，拒绝空目标、后台/API/资源路径、外站和嵌套危险跳转；登录页成功后的 `redirect` 参数已增加站内安全兜底，并保留后台正常登录回跳。
-- Facebook Pixel 隐私持续增强：前端埋点在当前 URL query 或 hash 含 `token`、`api_key`、`signature`、`access_token` 等凭证类参数时会跳过 Pixel 初始化和事件上报，埋点文本清洗同步覆盖凭证参数，避免敏感 URL 被第三方脚本带出。
-- Facebook Pixel 脚本加载隐私增强：前端加载 `fbevents.js` 时已统一设置 `referrerPolicy="no-referrer"`，减少第三方脚本请求携带当前页面 URL 的风险；工具测试覆盖脚本地址、异步加载和来源页策略。
-- Facebook Pixel 联系点击口径增强：右下角联系面板展开只保留站内漏斗事件，Meta 标准事件 `Contact` 和准确 `Lead` 仅在用户点击具体联系方式且安全聊天链接已调用跳转或联系值复制成功后触发，参数只包含 `location`、`method_type`、`action_type`，不发送联系方式值、二维码 URL 或外链。
-- Facebook Pixel 注册/试用事件增强：注册 API 成功后同时上报 Meta 标准事件 `CompleteRegistration` 和 `StartTrial`，其中 `StartTrial` 使用 `trial_type=free_membership`、`method=email`，不包含邮箱、用户名或邀请码明文。
-- 数据分析联系点击口径增强：后台总览和点击分析页已新增“有效联系”展示，直接读取 `contact_method_click` 的有效点击聚合；旧 `contact_click_count` 保留为联系入口漏斗口径，避免面板展开和具体联系方式点击混在同一指标中。
-- 数据分析 FB 来源口径明确：后台总览、来源、来源内容和来源点击页已提示 `fb` / `facebook` / `meta` 属于站内 UTM、推广链接或 referrer 归因，不是 Meta Pixel 回传；后端展示层会把常见 FB 来源规范为“Facebook UTM 来源”或“Facebook referrer 来源”。
-- Web Worker 安全响应头增强：前端 Worker 已通过 Nuxt routeRules 为全站响应补充 `X-Frame-Options: DENY`、`X-Content-Type-Options: nosniff`、`Referrer-Policy: strict-origin-when-cross-origin` 和收紧的 `Permissions-Policy`，降低页面被嵌入、MIME 嗅探、来源页过度泄露和无关浏览器能力调用风险。
-- Web SSR API 代理头部安全增强：`/api/**` 代理请求头已改为显式白名单，仅转发认证、内容协商和限流识别需要的头；API 响应头也只透传登录、限流、缓存、下载和跳转相关业务头，避免 `Origin`、`Referer`、`Sec-*`、`Server`、压缩和连接类头在 Web Worker 与 API Worker 之间不必要穿透。
-- Web 图片来源页保护增强：公开图库、真实案例、首页媒体、用户头像、联系方式二维码和后台预览类 `<img>` 已统一设置 `referrerpolicy="no-referrer"`，避免图片请求携带当前页面路径；新增 Vue 模板静态回归测试，后续新增图片标签缺少该策略会直接失败。
-- 后台导入下载链接安全增强：导入错误报告 CSV 下载地址已改为通过工具函数生成，任务 ID 仅允许安全字符并做路径编码，异常 API 基地址不渲染下载链接，下载请求统一设置 `referrerpolicy="no-referrer"`。
-- 后台导入 manifest 解析增强：导入任务详情页已从 `line.split(',')` 简易解析升级为专用 CSV 解析工具，支持 quoted 逗号字段、CRLF、空行和转义引号；符合导入标准的 `"长发,户外,视频"` 标签字段不会再被前端拆坏。
-- 后台媒体上传错误提示增强：媒体上传组件已复用统一 API 错误解析工具，上传失败优先展示标准错误体 `message`，兼容历史 `error` 字段，并补充不支持格式本地拦截测试，避免无效文件触发后台上传请求。
-- 后台图库图片同源预览修复：编辑/新建图库页的封面和图片网格内部预览已改用 Web 同源 `/api/admin/...` 代理路径，避免 `www.616618.xyz` 页面跨源加载 `api.616618.xyz` 图片时被 API `Cross-Origin-Resource-Policy: same-origin` 拦截；安全 HTTPS 外链仍按原规则直通。
+- `AGENTS.md`：项目开发指南、分支策略、部署流程和任务完成要求。
+- `docs/PRD.md`：产品需求、边界和验收口径。
+- `docs/TECHNICAL_SPEC.md`：API、数据模型、权限、安全和迁移设计。
+- `docs/DEPLOYMENT.md`：Cloudflare 部署、环境变量和生产发布说明。
+- `docs/GIT_WORKFLOW.md`：分支、PR、tag 和发布规范。
+- `docs/UI_DESIGN.md`：全站 UI 设计约束。
+- `docs/UI_DATA_ANALYTICS_DASHBOARD.md`：后台数据分析看板设计。
+- `docs/TELEGRAM_IMPORT_API.md`：Telegram 外部导入 API 对接契约。
+- `docs/SEO_CONFIGURATION.md`：SEO 关键词和运营配置说明。
+- `docs/codebase/*.md`：代码库结构、架构、集成、测试和风险分析。
+- `docs/superpowers/specs/2026-07-08-attribution-center-clean-design.md`：归因中心、后台归因 UI、测试矩阵和发布闸门的设计背景。
+- `docs/superpowers/specs/2026-07-08-meta-capi-attribution-layer-design.md`：Meta 归因与转化事件账本的设计背景。
+- `docs/superpowers/plans/2026-07-10-meta-capi-v2-domain-consolidation.md`：Meta CAPI v2 阶段 1 业务事实收口计划。
+- `docs/superpowers/plans/2026-07-10-meta-capi-v2-secure-delivery.md`：Meta CAPI v2 安全交付计划。
+- `docs/superpowers/plans/2026-07-10-meta-capi-v2-quality-operations.md`：Meta CAPI v2 质量运营计划。
 
 ## Git 状态
 
 - `main`：生产分支，必须通过 PR 合入，禁止直接推送。
-- `dev`：开发主线，当前变更先推送到 `origin/dev`。
-- 合入生产：从 `dev` 创建 PR 到 `main`，验证通过后合并。
+- `dev`：开发主线，日常开发在此汇总；非关键、非关联或阶段性提交默认先保留本地，功能闭环、需要 CI/协作或准备部署时再统一推送到 `origin/dev`。
+- `feature/*`、`fix/*`：只保留必要工作分支，完成合并后及时删除。
 
-## 真实案例命名和路径
+## 当前命名
 
-- 当前业务命名：`cases` / `case_images`。
-- 当前公开路由：`/cases`、`/cases/:slug`。
-- 当前公开 API：`/api/cases`、`/api/cases/:slug`、`/api/cases/images/:imageId`。
-- 当前后台路由：`/admin/cases`。
-- 当前 R2 key：`cases/{caseId}/{imageId}.{ext}`。
-- 旧 `testimonial_*` 表已迁移并删除；旧 `testimonials/` R2 对象可以作为回滚备份保留，不参与当前读取。
-
-## 文档说明
-
-- 当前状态权威文档：`AGENTS.md`、本文档、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md`、`docs/GIT_WORKFLOW.md`。
-- 产品和设计文档：`docs/PRD*.md`、`docs/PRD_QUALITY_REVIEW.md` 与 `docs/UI_DESIGN.md` 保留产品需求、路线图、验收口径和设计约束；其中标注为草案、规划或后续阶段的内容不代表当前生产状态。数据分析专项需求以 `docs/PRD_DATA_ANALYTICS.md` 为入口。
-- 代码与文档 review 问题台账：`docs/CODE_AND_DOC_REVIEW_ISSUES.md` 记录全项目代码、配置和文档审查发现的问题、影响和修复方案。
-- Cloudflare 成本与性能优化记录：`docs/CLOUDFLARE_COST_PERFORMANCE_OPTIMIZATION.md` 记录 Workers、Workers Logs、D1、R2、Images Transformations 和 Stream 的官方费用依据、已落地优化和后续监控阈值。
-- 代码库分析文档：`docs/codebase/*.md` 记录从代码和配置验证出的栈、结构、架构、约定、集成、测试和风险。
-- 历史归档：`docs/plans/**` 与 `docs/superpowers/**` 为历史计划、规格和实现记录，可能包含 Nuxt 3、`testimonial_*`、旧路由或旧权限名，不代表当前生产状态。
+- 真实案例统一使用 `cases` / `case_images`。
+- 公开路由为 `/cases`、`/cases/:slug`。
+- 公开 API 为 `/api/cases`、`/api/cases/:slug`、`/api/cases/images/:imageId`。
+- 后台路由为 `/admin/cases`。
+- 旧 `testimonial_*` 仅作为历史迁移背景，不参与当前读取。

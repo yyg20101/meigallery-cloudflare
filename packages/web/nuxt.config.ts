@@ -12,6 +12,7 @@ export default defineNuxtConfig({
   nitro: {
     preset: 'cloudflare-module',
     handlers: [
+      { route: '/__release', handler: '~/server/routes/__release' },
       { route: '/robots.txt', handler: '~/server/routes/robots' },
       { route: '/sitemap.xml', handler: '~/server/routes/sitemap' },
     ],
@@ -37,6 +38,7 @@ export default defineNuxtConfig({
   routeRules: {
     '/**': { headers: WEB_SECURITY_HEADERS },
     '/admin/**': { ssr: false, headers: WEB_SECURITY_HEADERS },
+    '/admin/attribution/duplicates': { redirect: '/admin/attribution', ssr: false, headers: WEB_SECURITY_HEADERS },
   },
 
   // 运行时配置

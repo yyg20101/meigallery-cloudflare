@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { validateUsername } from '@meigallery/shared/utils'
-import type { InviteCodeStatusResponse } from '@meigallery/shared'
+import type { InviteCodeStatusResponse, MetaPixelInstruction } from '@meigallery/shared'
 
 const { register, sendCode, checkUsername, isLoggedIn } = useAuth()
 const { api } = useApi()
 const router = useRouter()
 const route = useRoute()
 const analytics = useAnalytics()
-const { trackCompleteRegistration, trackStartTrialOnce } = useFacebookPixel()
+const tracking = useTracking()
 const { siteName } = useSiteSettings()
 
 // 表单数据
@@ -193,19 +193,15 @@ async function onDirectRegister() {
   loading.value = true
   try {
     trackRegisterSubmit()
-    await register({
+    const result = await register({
       email: email.value,
       password: password.value,
       username: username.value,
       turnstileToken: hasTurnstile.value ? turnstileToken.value : undefined,
       ...buildInviteRegistrationContext(),
+      attribution: tracking.buildRegistrationAttributionContext(),
     })
-    trackCompleteRegistration()
-    trackStartTrialOnce({ trialType: 'free_membership', method: 'email' })
-    analytics.track('register_success', {
-      props: { invite_code_id: validInviteCodeId.value || undefined },
-      entityType: 'auth',
-    })
+    await completeRegistration(result.pixelEvents)
     router.push('/')
   } catch (e: any) {
     analytics.track('register_failed', {
@@ -260,20 +256,16 @@ async function onSubmitWithCode() {
   loading.value = true
   try {
     trackRegisterSubmit()
-    await register({
+    const result = await register({
       email: email.value,
       password: password.value,
       username: username.value,
       code: verificationCode.value,
       turnstileToken: hasTurnstile.value ? turnstileToken.value : undefined,
       ...buildInviteRegistrationContext(),
+      attribution: tracking.buildRegistrationAttributionContext(),
     })
-    trackCompleteRegistration()
-    trackStartTrialOnce({ trialType: 'free_membership', method: 'email' })
-    analytics.track('register_success', {
-      props: { invite_code_id: validInviteCodeId.value || undefined },
-      entityType: 'auth',
-    })
+    await completeRegistration(result.pixelEvents)
     router.push('/')
   } catch (e: any) {
     analytics.track('register_failed', {
@@ -358,6 +350,23 @@ function trackRegisterSubmit() {
     },
     entityType: 'auth',
   })
+}
+
+async function completeRegistration(pixelEvents: MetaPixelInstruction[]) {
+  analytics.track('register_success', {
+    eventId: pixelEvents[0]?.eventId || '',
+    entityType: 'auth',
+    flush: true,
+    props: {
+      method: 'email',
+      invite_code_id: validInviteCodeId.value || undefined,
+    },
+  })
+  try {
+    await tracking.executePixelInstructions(pixelEvents)
+  } catch {
+    // 注册已成功时，Pixel 执行失败不能影响跳转或误记注册失败。
+  }
 }
 
 function normalizeInviteCode(value: unknown) {

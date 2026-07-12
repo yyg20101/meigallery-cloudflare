@@ -1,6 +1,6 @@
 # UI 设计规范
 
-当前 UI 质量验收和状态矩阵见 `docs/UI_QUALITY_REVIEW.md`。后台数据分析大盘专项设计见 `docs/UI_DATA_ANALYTICS_DASHBOARD.md`。若本文中的历史规划与当前实现状态冲突，以 `docs/PROJECT_STATUS.md`、`docs/PRD_QUALITY_REVIEW.md` 和 `docs/UI_QUALITY_REVIEW.md` 为准。
+当前 UI 状态以 `docs/PROJECT_STATUS.md`、`docs/TECHNICAL_SPEC.md` 和本文为准。后台数据分析大盘专项设计见 `docs/UI_DATA_ANALYTICS_DASHBOARD.md`。
 
 ## 1. 设计目标
 
@@ -536,16 +536,6 @@
 - 优化统计卡、表格 hover、批量操作栏、弹窗、表单 focus、上传区和空状态。
 - 后台色彩以灰白黑为主，仅对状态使用绿/黄/红/紫。
 
-## 14. 线框图索引
+## 14. 设计留存规则
 
-首页真实案例、标签导航和悬浮入口的开发细节以 `docs/superpowers/specs/2026-05-06-homepage-trust-navigation-ui-implementation-notes.md` 为补充依据。该文件锁定字体策略、URL 参数、轮播状态、空态、后台上传排序和响应式验收点。
-
-历史线框图位于 `.superpowers/brainstorm/` 目录（不纳入版本管理），不可作为长期唯一依据。关键线框图的导出和留存规则见 `docs/ui/wireframes/README.md`。
-
-1. `01-homepage-layout.html` — 首页布局（桌面+移动）
-2. `02-gallery-detail.html` — 图库详情页（桌面+移动）
-3. `03-discover-search.html` — 发现页+搜索页
-4. `04-auth-user-center.html` — 登录/注册/用户中心
-5. `05-admin-console.html` — 后台管理控制台（Dashboard/图库管理/导入任务）
-
-查看线框图：在项目根目录运行 brainstorming visual companion 后访问 http://localhost:57636
+历史线框图和旧实现备注已清理。后续关键 UI 设计应直接更新本文或对应专项设计文档，并在实现 PR 中附带必要截图或验证说明。

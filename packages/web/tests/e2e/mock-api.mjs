@@ -128,6 +128,9 @@ const defaultPublicSettings = {
   footer_text: '测试环境',
   video_enabled: 'false',
   facebook_pixel_enabled: 'false',
+  facebook_pixel_id: '1234567890',
+  meta_capi_enabled: 'false',
+  meta_tracking_mode: 'test',
   analytics_enabled: 'true',
   analytics_sample_rate: '0',
   analytics_consent_mode: 'granted',
@@ -147,8 +150,20 @@ const mutablePublicSettings = { ...defaultPublicSettings }
 const analyticsBatches = []
 const sessionEndBatches = []
 const registrations = []
+const receiptProtectedRequests = []
 let authenticated = true
+let sessionCookieRequired = false
+let marketingConsentState = 'granted'
 let adminAnalyticsEmpty = false
+let adminAttributionReadinessBlocked = true
+let adminAttributionActionMode = 'success'
+let adminAttributionRolloutTarget = 10
+let adminAttributionIncidentOpen = true
+let adminAttributionRolloutScenario = 'hard'
+let adminAttributionDatasetScenario = 'unavailable'
+let adminAttributionEnvironment = 'dev'
+const adminAttributionRequests = []
+const adminAttributionActions = []
 
 function resetPublicSettings() {
   for (const key of Object.keys(mutablePublicSettings)) {
@@ -158,11 +173,23 @@ function resetPublicSettings() {
   analyticsBatches.length = 0
   sessionEndBatches.length = 0
   registrations.length = 0
+  receiptProtectedRequests.length = 0
   authenticated = true
+  sessionCookieRequired = false
+  marketingConsentState = 'granted'
   adminAnalyticsEmpty = false
+  adminAttributionReadinessBlocked = true
+  adminAttributionActionMode = 'success'
+  adminAttributionRolloutTarget = 10
+  adminAttributionIncidentOpen = true
+  adminAttributionRolloutScenario = 'hard'
+  adminAttributionDatasetScenario = 'unavailable'
+  adminAttributionEnvironment = 'dev'
+  adminAttributionRequests.length = 0
+  adminAttributionActions.length = 0
 }
 
-function json(res, data, status = 200) {
+function json(res, data, status = 200, extraHeaders = {}) {
   const body = JSON.stringify(data)
   res.writeHead(status, {
     'Access-Control-Allow-Origin': allowedOrigin,
@@ -171,6 +198,7 @@ function json(res, data, status = 200) {
     'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': Buffer.byteLength(body),
+    ...extraHeaders,
   })
   res.end(body)
 }
@@ -189,11 +217,15 @@ function adminSettings() {
 }
 
 async function readJsonBody(req) {
-  const chunks = []
-  for await (const chunk of req) chunks.push(chunk)
-  const raw = Buffer.concat(chunks).toString('utf8')
+  const raw = (await readRawBodyBuffer(req)).toString('utf8')
   if (!raw) return {}
   return JSON.parse(raw)
+}
+
+async function readRawBodyBuffer(req) {
+  const chunks = []
+  for await (const chunk of req) chunks.push(chunk)
+  return Buffer.concat(chunks)
 }
 
 function galleryDetail(slug) {
@@ -449,6 +481,246 @@ function adminAnalyticsResponse(pathname, searchParams) {
   }
 }
 
+function adminAttributionResponse(pathname, searchParams) {
+  const range = analyticsRange(searchParams)
+  const usage = { rowsRead: 86, rowsWritten: 0, durationMs: 9 }
+  const links = [
+    {
+      id: 'ats_meta_a',
+      name: 'Meta 广告 A',
+      sourceLabel: 'Meta 广告 A',
+      channel: 'ad',
+      slug: 'meta-ad-a',
+      sourceCode: 'meta-ad-a',
+      targetPath: '/',
+      utmSource: 'meta-ad-a',
+      utmMedium: 'paid_social',
+      utmCampaign: 'july-contact',
+      utmContent: 'chat-a',
+      status: 'active',
+      note: '测试广告 A',
+      trackingPath: '/?mg_source=meta-ad-a&utm_source=meta-ad-a&utm_medium=paid_social&utm_campaign=july-contact&utm_content=chat-a',
+      sessionCount: 18,
+      pageViewCount: 44,
+      galleryDetailCount: 12,
+      contactClickCount: 4,
+      registerCount: 2,
+      membershipGrantCount: 1,
+      activeSecondsTotal: 820,
+      contactCount: 4,
+      leadCount: 3,
+      completeRegistrationCount: 2,
+      startTrialCount: 0,
+      conversionMembershipGrantCount: 1,
+    },
+  ]
+
+  const dates = range.days === 1 ? [range.from] : ['2026-07-08', '2026-07-09', '2026-07-10']
+  const trendRows = dates.map((date, index) => ({
+    date,
+    business: { contactCount: index + 1, completeRegistrationCount: index, actionCount: index * 2 + 1 },
+    delivery: { pixelAttempted: index + 3, capiSent: index + 2, failed: index === 1 ? 1 : 0, skipped: 1, pending: index === 2 ? 1 : 0, retryExhausted: 0 },
+  }))
+  const rollout = {
+    environment: adminAttributionEnvironment,
+    targetPercentage: adminAttributionRolloutTarget,
+    effectivePercentage: adminAttributionIncidentOpen ? 0 : adminAttributionRolloutTarget,
+    connectionVerified: true,
+    liveEvidencePresent: true,
+    openIncident: adminAttributionIncidentOpen ? {
+      id: 'incident-1', environment: 'dev', status: 'open', severity: 'critical', triggerCode: 'retry_exhausted', triggerSummary: 'CAPI 重试耗尽', targetPercentage: adminAttributionRolloutTarget, effectivePercentage: 0, evidence: {}, openedAt: '2026-07-09T08:00:00Z', lastObservedAt: '2026-07-10T08:00:00Z', closedAt: null, resolution: '',
+    } : null,
+    metrics: { sent: 42, failed: 1, permissionErrors: 0, retryExhausted: 0, stalePending: 0, criticalQualityDiagnostics: 0 },
+    metricsStatus: { available: true, errorCode: null },
+    promotion: {
+      from: adminAttributionRolloutTarget,
+      to: adminAttributionRolloutTarget === 10 ? 50 : 100,
+      allowed: adminAttributionRolloutScenario === 'none',
+      requiresOverrideReason: adminAttributionRolloutScenario === 'metric-only',
+      blockers: adminAttributionRolloutScenario === 'metric-only' ? ['insufficient_attempts'] : [],
+      hardBlockers: adminAttributionIncidentOpen ? ['circuit_open'] : [],
+    },
+  }
+  const connection = {
+    state: 'verified', environment: adminAttributionEnvironment, pixelIdConfigured: true, tokenConfigured: true, testEventCodeConfigured: true, verifiedAt: '2026-07-10T07:00:00Z', verifiedCommit: 'a'.repeat(40), graphApiVersion: 'v25.0', datasetQualityStatus: 'not_checked', invalidationReason: '',
+  }
+
+  if (pathname.endsWith('/summary')) return { range, usage, data: { business: { contactCount: 6, completeRegistrationCount: 3, actionCount: 9 }, historical: { leadCount: 7 }, delivery: { pixelAttempted: 12, capiSent: 9, failed: 1, skipped: 3, pending: 1, retryExhausted: 0 } } }
+  if (pathname.endsWith('/trends')) return { range, usage, data: { granularity: 'day', rows: trendRows } }
+  if (pathname.endsWith('/quality')) {
+    const metric = (numerator, denominator) => ({ availability: denominator ? 'available' : 'unavailable', numerator, denominator, rate: denominator ? numerator / denominator : null })
+    const datasetQuality = adminAttributionDatasetScenario === 'error'
+      ? { availability: 'error', latest: { availability: 'error', value: null, status: 'error', errorCategory: 'permission_denied' }, rows: [] }
+      : { availability: 'unavailable', latest: null, rows: [] }
+    return { range, usage, data: { match: { summary: { fbp: metric(8, 9), fbc: metric(0, 0), email: metric(9, 9), externalId: metric(7, 9) }, rows: dates.map((date, index) => ({ date, fbp: index === 1 ? metric(0, 0) : metric(6 + index, 9), fbc: metric(0, 0), email: metric(8 + index, 9), externalId: metric(5 + index, 9) })) }, datasetQuality } }
+  }
+  if (pathname.endsWith('/breakdown')) return { range, usage, data: { dimension: searchParams.get('dimension') || 'utm_campaign', rows: [{ value: 'july-contact', actionCount: 6, contactCount: 4, completeRegistrationCount: 2, delivery: { pixelAttempted: 6, capiSent: 5, failed: 1, skipped: 0, pending: 0, retryExhausted: 0 } }] } }
+  if (pathname.endsWith('/meta/status')) return { range, usage, data: { connection, rollout, activity: { business: { contactCount: 6, completeRegistrationCount: 3, actionCount: 9 }, historical: { leadCount: 7 }, delivery: { pixelAttempted: 12, capiSent: 9, failed: 1, skipped: 3, pending: 1, retryExhausted: 0 } } } }
+  if (pathname.endsWith('/meta/incidents')) return { range, usage, data: { items: rollout.openIncident ? [rollout.openIncident] : [], pagination: { limit: 20, offset: 0, hasMore: false } } }
+
+  if (pathname.endsWith('/overview')) {
+    return {
+      range,
+      usage,
+      data: {
+        totals: {
+          contact_count: 4,
+          lead_count: 3,
+          complete_registration_count: 2,
+          start_trial_count: 0,
+          membership_grant_count: 1,
+        },
+        trend: [
+          { date: '2026-07-07', contact_count: 1, lead_count: 1, complete_registration_count: 0, start_trial_count: 0, membership_grant_count: 0 },
+          { date: '2026-07-08', contact_count: 1, lead_count: 1, complete_registration_count: 1, start_trial_count: 0, membership_grant_count: 0 },
+          { date: '2026-07-09', contact_count: 2, lead_count: 1, complete_registration_count: 1, start_trial_count: 0, membership_grant_count: 1 },
+        ],
+        meta: {
+          sent_count: 6,
+          failed_count: 0,
+          skipped_count: 1,
+          duplicate_suppressed_count: 1,
+          last_sent_at: '2026-07-09T09:30:00.000Z',
+        },
+        metaTrend: [
+          { date: '2026-07-07', sent_count: 2, failed_count: 0, skipped_count: 0, duplicate_suppressed_count: 0 },
+          { date: '2026-07-08', sent_count: 2, failed_count: 0, skipped_count: 1, duplicate_suppressed_count: 0 },
+          { date: '2026-07-09', sent_count: 2, failed_count: 0, skipped_count: 0, duplicate_suppressed_count: 1 },
+        ],
+        duplicates: {
+          duplicate_suppressed_count: 1,
+          duplicate_action_count: 1,
+          duplicate_rate: 0.125,
+        },
+        risks: [{ key: 'meta_skipped', level: 'info', message: '部分 Meta 投递被跳过' }],
+      },
+    }
+  }
+
+  if (pathname.endsWith('/conversions')) {
+    return {
+      range,
+      usage,
+      data: {
+        byAction: [
+          { action_type: 'contact', action_count: 4, unique_session_count: 4 },
+          { action_type: 'lead', action_count: 3, unique_session_count: 3 },
+          { action_type: 'complete_registration', action_count: 2, unique_session_count: 2 },
+        ],
+        bySource: [
+          { source_channel: 'ad', source_name: 'meta-ad-a', utm_campaign: 'july-contact', utm_content: 'chat-a', contact_count: 4, lead_count: 3, complete_registration_count: 2, start_trial_count: 0, membership_grant_count: 1 },
+        ],
+        samples: [
+          { id: 'conv_1', action_type: 'contact', occurred_at: '2026-07-09T09:10:00.000Z', source_channel: 'ad', source_name: 'meta-ad-a', tracking_source_slug: 'meta-ad-a', utm_campaign: 'july-contact', utm_content: 'chat-a', method_type: 'telegram', action_target: 'floating_contact_panel', route_name: 'gallery-detail', path: '/gallery/summer-portrait', duplicate_of: '' },
+        ],
+      },
+    }
+  }
+
+  if (pathname.endsWith('/links')) return { range, usage, data: { links } }
+
+  if (pathname.endsWith('/meta')) {
+    return {
+      range,
+      usage,
+      data: {
+        totals: {
+          pixel_attempted_count: 8,
+          pixel_pending_count: 0,
+          pixel_skipped_count: 1,
+          capi_sent_count: 6,
+          capi_failed_count: 2,
+          capi_skipped_count: 1,
+          retry_exhausted_count: 1,
+          duplicate_suppressed_count: 1,
+        },
+        deliveries: [
+          { channel: 'meta_pixel', event_name: 'Contact', status: 'attempted', skip_reason: '', delivery_count: 8 },
+          { channel: 'meta_capi', event_name: 'Contact', status: 'sent', skip_reason: '', delivery_count: 6 },
+          { channel: 'meta_capi', event_name: 'CompleteRegistration', status: 'failed', skip_reason: 'retry_exhausted', delivery_count: 2 },
+          { channel: 'meta_capi', event_name: 'Contact', status: 'skipped', skip_reason: 'queue_not_configured', delivery_count: 1 },
+        ],
+        lastSentAt: '2026-07-09T09:30:00.000Z',
+        queueBindingPresent: true,
+        connection: {
+          state: 'unverified',
+          environment: 'dev',
+          pixelIdConfigured: true,
+          tokenConfigured: true,
+          testEventCodeConfigured: true,
+          verifiedAt: null,
+          verifiedCommit: null,
+          graphApiVersion: 'v25.0',
+          datasetQualityStatus: 'not_checked',
+          invalidationReason: 'verification_missing',
+        },
+        keyRotation: {
+          currentKeyValid: true,
+          previousKeyConfigured: true,
+          previousKeyValid: true,
+          previousSameAsCurrent: false,
+          previousOutboxCount: 0,
+          previousActiveDeliveryCount: 0,
+          canRemovePrevious: true,
+        },
+        settings: {
+          facebook_pixel_enabled: true,
+          facebook_pixel_id: '1234567890',
+          meta_capi_enabled: true,
+          meta_tracking_mode: 'test',
+        },
+      },
+    }
+  }
+
+  if (pathname.endsWith('/duplicates')) {
+    return {
+      range,
+      usage,
+      data: {
+        duplicateSuppressedCount: 1,
+        duplicateActionCount: 1,
+        duplicateRate: 0.125,
+        samples: [
+          { id: 'convdup_1', action_type: 'contact', occurred_at: '2026-07-09T09:11:00.000Z', source_channel: 'ad', source_name: 'meta-ad-a', tracking_source_slug: 'meta-ad-a', utm_campaign: 'july-contact', utm_content: 'chat-a', method_type: 'telegram', action_target: 'floating_contact_panel', duplicate_of: 'conv_1' },
+        ],
+      },
+    }
+  }
+
+  if (pathname.endsWith('/readiness')) {
+    return {
+      range,
+      usage,
+      data: {
+        ready: !adminAttributionReadinessBlocked,
+        checks: [
+          { key: 'analytics_enabled', label: '站内分析已开启', level: 'blocker', ok: true, detail: 'analytics_enabled 已开启' },
+          { key: 'conversion_ledger', label: '转化账本有近期数据', level: 'blocker', ok: true, detail: '当前范围记录 9 次转化' },
+          { key: 'retry_exhausted', label: '最近 24 小时无重试耗尽', level: 'blocker', ok: !adminAttributionReadinessBlocked, detail: adminAttributionReadinessBlocked ? '发现 1 条 retry_exhausted' : '发现 0 条 retry_exhausted' },
+          { key: 'pending_too_long', label: '无超过 10 分钟的 CAPI pending', level: 'warning', ok: false, detail: '发现 2 条超时 pending' },
+          { key: 'fbp_coverage', label: '近 7 天 fbp 覆盖率', level: 'warning', ok: true, detail: '覆盖率 92.0%' },
+        ],
+        settings: {
+          analytics_enabled: true,
+          facebook_pixel_enabled: true,
+          facebook_pixel_id: '1234567890',
+          meta_capi_enabled: mutablePublicSettings.meta_capi_enabled === true || mutablePublicSettings.meta_capi_enabled === 'true',
+          meta_tracking_mode: mutablePublicSettings.meta_tracking_mode,
+        },
+        verifications: {
+          environment: 'dev',
+          releaseCommitPresent: true,
+          metaLive: { present: true, verifiedAt: '2026-07-10T08:00:00.000Z', expiresAt: '2026-07-11T08:00:00.000Z' },
+          metaResources: { present: true, verifiedAt: '2026-07-10T08:05:00.000Z', expiresAt: '2026-07-11T08:05:00.000Z' },
+        },
+      },
+    }
+  }
+
+  return { range, usage, data: {} }
+}
+
 function handleApi(req, res) {
   const url = new URL(req.url || '/', `http://${req.headers.host || `${host}:${port}`}`)
 
@@ -457,7 +729,7 @@ function handleApi(req, res) {
       'Access-Control-Allow-Origin': allowedOrigin,
       'Access-Control-Allow-Credentials': 'true',
       'Access-Control-Allow-Headers': 'content-type',
-      'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
+      'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
     })
     res.end()
     return
@@ -477,13 +749,76 @@ function handleApi(req, res) {
       .catch(() => json(res, { statusCode: 400, message: '测试设置请求无效' }, 400))
     return
   }
+  if (url.pathname === '/api/test/admin-attribution-readiness' && req.method === 'PATCH') {
+    readJsonBody(req)
+      .then((body) => {
+        adminAttributionReadinessBlocked = body.blocked !== false
+        json(res, { ok: true, blocked: adminAttributionReadinessBlocked })
+      })
+      .catch(() => json(res, { statusCode: 400, message: '归因 readiness 测试请求无效' }, 400))
+    return
+  }
+  if (url.pathname === '/api/test/admin-attribution-requests') {
+    return json(res, { requests: adminAttributionRequests })
+  }
+  if (url.pathname === '/api/test/admin-attribution-requests/clear' && req.method === 'POST') {
+    adminAttributionRequests.length = 0
+    return json(res, { ok: true })
+  }
+  if (url.pathname === '/api/test/admin-attribution-actions') {
+    return json(res, { actions: adminAttributionActions })
+  }
+  if (url.pathname === '/api/test/admin-attribution-rollout-scenario' && req.method === 'PATCH') {
+    readJsonBody(req).then((body) => {
+      adminAttributionRolloutScenario = String(body.scenario || 'hard')
+      adminAttributionRolloutTarget = Number(body.target ?? 10)
+      adminAttributionIncidentOpen = adminAttributionRolloutScenario === 'hard'
+      json(res, { ok: true, scenario: adminAttributionRolloutScenario })
+    }).catch(() => json(res, { statusCode: 400, message: 'rollout 场景无效' }, 400))
+    return
+  }
+  if (url.pathname === '/api/test/admin-attribution-dataset-scenario' && req.method === 'PATCH') {
+    readJsonBody(req).then((body) => {
+      adminAttributionDatasetScenario = String(body.scenario || 'unavailable')
+      json(res, { ok: true, scenario: adminAttributionDatasetScenario })
+    }).catch(() => json(res, { statusCode: 400, message: 'Dataset 场景无效' }, 400))
+    return
+  }
+  if (url.pathname === '/api/test/admin-attribution-action-mode' && req.method === 'PATCH') {
+    readJsonBody(req).then((body) => {
+      adminAttributionActionMode = String(body.mode || 'success')
+      json(res, { ok: true, mode: adminAttributionActionMode })
+    }).catch(() => json(res, { statusCode: 400, message: '测试模式请求无效' }, 400))
+    return
+  }
+  if (url.pathname === '/api/test/admin-attribution-environment' && req.method === 'PATCH') {
+    readJsonBody(req).then((body) => {
+      adminAttributionEnvironment = body.environment === 'production' ? 'production' : 'dev'
+      json(res, { ok: true, environment: adminAttributionEnvironment })
+    }).catch(() => json(res, { statusCode: 400, message: '归因环境无效' }, 400))
+    return
+  }
   if (url.pathname === '/api/test/analytics-events') {
     return json(res, {
       batches: analyticsBatches,
       sessionEnds: sessionEndBatches,
       registrations,
+      receiptProtectedRequests,
       events: analyticsBatches.flatMap(batch => Array.isArray(batch.events) ? batch.events : []),
     })
+  }
+  if (url.pathname === '/api/test/receipt-protected-requests/clear' && req.method === 'POST') {
+    receiptProtectedRequests.length = 0
+    return json(res, { ok: true })
+  }
+  if (url.pathname === '/api/test/binary-upload' && req.method === 'POST') {
+    readRawBodyBuffer(req)
+      .then((body) => {
+        const marker = Buffer.from([0x00, 0xff, 0xfe, 0x80, 0x41, 0x42, 0x43])
+        json(res, { preserved: body.includes(marker), bytes: body.length })
+      })
+      .catch(() => json(res, { statusCode: 400, message: '二进制上传读取失败' }, 400))
+    return
   }
   if (url.pathname === '/api/test/auth' && req.method === 'PATCH') {
     readJsonBody(req)
@@ -494,10 +829,44 @@ function handleApi(req, res) {
       .catch(() => json(res, { statusCode: 400, message: '认证状态请求无效' }, 400))
     return
   }
+  if (url.pathname === '/api/test/marketing-consent-state' && req.method === 'PATCH') {
+    readJsonBody(req)
+      .then((body) => {
+        marketingConsentState = body.state === 'granted' || body.state === 'denied' ? body.state : 'limited'
+        json(res, { state: marketingConsentState })
+      })
+      .catch(() => json(res, { statusCode: 400, message: '营销授权测试状态无效' }, 400))
+    return
+  }
   if (url.pathname === '/api/settings/public') return json(res, publicSettings())
+  if (url.pathname === '/api/marketing-consent' && req.method === 'GET') {
+    return json(res, { state: marketingConsentState })
+  }
+  if (url.pathname === '/api/marketing-consent' && req.method === 'PUT') {
+    readJsonBody(req)
+      .then((body) => {
+        if (body.state !== 'granted' && body.state !== 'denied') {
+          json(res, { code: 'MARKETING_CONSENT_INVALID', message: '营销授权状态无效' }, 400)
+          return
+        }
+        marketingConsentState = body.state
+        json(res, { state: marketingConsentState }, 200, {
+          'Set-Cookie': `mei_marketing_consent_receipt=mock-${marketingConsentState}; Path=/; HttpOnly; SameSite=Lax`,
+        })
+      })
+      .catch(() => json(res, { code: 'MARKETING_CONSENT_INVALID', message: '营销授权请求无效' }, 400))
+    return
+  }
   if (url.pathname === '/api/me') {
-    return authenticated
-      ? json(res, user)
+    const cookie = String(req.headers.cookie || '')
+    receiptProtectedRequests.push({ endpoint: '/api/me', cookie })
+    const hasRequiredSession = !sessionCookieRequired
+      || cookie.includes('mei_session=mock-session')
+      || cookie.includes('mei_session=renewed-session')
+    return authenticated && hasRequiredSession
+      ? json(res, user, 200, cookie.includes('mei_session=mock-session')
+          ? { 'Set-Cookie': 'mei_session=renewed-session; Path=/; HttpOnly; SameSite=Lax' }
+          : {})
       : json(res, { statusCode: 401, message: '未登录', code: 'AUTH_REQUIRED' }, 401)
   }
   if (url.pathname === '/api/contact-methods') return json(res, { data: contactMethods })
@@ -538,8 +907,10 @@ function handleApi(req, res) {
   if (url.pathname === '/api/auth/register' && req.method === 'POST') {
     readJsonBody(req)
       .then((body) => {
+        receiptProtectedRequests.push({ endpoint: '/api/auth/register', cookie: req.headers.cookie || '' })
         registrations.push(body)
         authenticated = true
+        sessionCookieRequired = true
         json(res, {
           ...user,
           id: 22,
@@ -548,10 +919,23 @@ function handleApi(req, res) {
           role: 'user',
           membershipRank: 0,
           membershipName: 'free',
+          pixelEvents: [{
+            deliveryId: 'cdlv_registration_22',
+            eventName: 'CompleteRegistration',
+            eventId: 'meta:CompleteRegistration:complete_registration:user:22',
+            payload: { method: 'email' },
+            receiptToken: 'receipt_registration_22',
+          }],
+        }, 200, {
+          'Set-Cookie': 'mei_session=mock-session; Path=/; HttpOnly; SameSite=Lax',
         })
       })
       .catch(() => json(res, { statusCode: 400, message: '注册请求无效' }, 400))
     return
+  }
+  if (url.pathname === '/api/conversions/events' && req.method === 'POST') {
+    receiptProtectedRequests.push({ endpoint: '/api/conversions/events', cookie: req.headers.cookie || '' })
+    return json(res, { data: { pixelEvents: [] } })
   }
   if (url.pathname === '/api/cases') return json(res, { data: cases, total: cases.length })
   if (url.pathname === '/api/tags') {
@@ -594,6 +978,117 @@ function handleApi(req, res) {
   }
   if (url.pathname.startsWith('/api/admin/analytics/')) {
     return json(res, adminAnalyticsResponse(url.pathname, url.searchParams))
+  }
+  if (url.pathname === '/api/admin/attribution/meta/test-event' && req.method === 'POST') {
+    if (adminAttributionActionMode === 'conflict') {
+      return json(res, {
+        statusCode: 409,
+        message: 'production 资源验证尚未通过',
+        code: 'META_TEST_EVENT_BOOTSTRAP_BLOCKED',
+        detail: { blockers: ['meta_resources_verification_missing'] },
+      }, 409)
+    }
+    return json(res, {
+      data: {
+        status: 'verified',
+        eventsReceived: 1,
+        connection: {
+          state: 'verified',
+          environment: adminAttributionEnvironment,
+          pixelIdConfigured: true,
+          tokenConfigured: true,
+          testEventCodeConfigured: true,
+          verifiedAt: '2026-07-09T09:30:00.000Z',
+          verifiedCommit: 'a'.repeat(40),
+          graphApiVersion: 'v25.0',
+          datasetQualityStatus: 'not_checked',
+          invalidationReason: '',
+        },
+      },
+    })
+  }
+  if (url.pathname === '/api/admin/attribution/meta/live-challenge' && req.method === 'POST') {
+    return json(res, {
+      data: {
+        challengeId: `mlc_${'c'.repeat(32)}`,
+        environment: 'dev',
+        commitSha: 'a'.repeat(40),
+        pixelId: '1234567890',
+        expiresAt: '2026-07-11T01:00:00.000Z',
+        eventIds: {
+          Contact: `mlv_contact_${'a'.repeat(32)}`,
+          CompleteRegistration: `mlv_registration_${'b'.repeat(32)}`,
+        },
+      },
+    })
+  }
+  if (url.pathname === '/api/admin/attribution/meta/live-challenge/consume' && req.method === 'POST') {
+    return json(res, { data: { status: 'server_sent', eventsReceived: 2 } })
+  }
+  if (url.pathname === '/api/admin/attribution/meta/rollout' && req.method === 'POST') {
+    readJsonBody(req).then((body) => {
+      adminAttributionActions.push({ type: 'rollout', body })
+      const percentage = Number(body.percentage)
+      const upgrading = percentage > adminAttributionRolloutTarget
+      const blockers = adminAttributionIncidentOpen ? ['circuit_open'] : ['insufficient_attempts']
+      if (upgrading && adminAttributionIncidentOpen) {
+        return json(res, { statusCode: 409, message: 'CAPI rollout 升级门禁未通过', code: 'META_CAPI_ROLLOUT_PROMOTION_BLOCKED', detail: { blockers } }, 409)
+      }
+      if (upgrading && adminAttributionRolloutScenario === 'metric-only' && body.force !== true) {
+        return json(res, { statusCode: 409, message: 'CAPI rollout 升级门禁未通过', code: 'META_CAPI_ROLLOUT_PROMOTION_BLOCKED', detail: { blockers } }, 409)
+      }
+      if (body.force === true) {
+        const hanCount = String(body.reason || '').match(/[\u3400-\u9fff]/g)?.length ?? 0
+        if (!upgrading || adminAttributionRolloutScenario !== 'metric-only') return json(res, { statusCode: 400, message: '当前升级不能 force', code: 'META_CAPI_ROLLOUT_FORCE_NOT_APPLICABLE' }, 400)
+        if (hanCount < 20) return json(res, { statusCode: 400, message: 'force 理由至少需要 20 个汉字', code: 'META_CAPI_ROLLOUT_FORCE_REASON_INVALID' }, 400)
+      }
+      if (adminAttributionActionMode === 'conflict') return json(res, { statusCode: 409, message: 'CAPI rollout 升级门禁未通过' }, 409)
+      if (adminAttributionActionMode === 'forbidden') return json(res, { statusCode: 403, message: '需要站长权限' }, 403)
+      if (adminAttributionActionMode === 'network') return json(res, { statusCode: 503, message: '服务暂时不可用' }, 503)
+      adminAttributionRolloutTarget = percentage
+      json(res, { data: { targetPercentage: adminAttributionRolloutTarget, effectivePercentage: adminAttributionIncidentOpen ? 0 : adminAttributionRolloutTarget, changed: true } })
+    }).catch(() => json(res, { statusCode: 400, message: 'rollout 请求无效' }, 400))
+    return
+  }
+  if (/^\/api\/admin\/attribution\/meta\/incidents\/[^/]+\/close$/.test(url.pathname) && req.method === 'POST') {
+    readJsonBody(req).then(() => {
+      if (adminAttributionActionMode === 'conflict') return json(res, { statusCode: 409, message: 'incident 关闭门禁未通过' }, 409)
+      if (adminAttributionActionMode === 'forbidden') return json(res, { statusCode: 403, message: '需要站长权限' }, 403)
+      if (adminAttributionActionMode === 'network') return json(res, { statusCode: 503, message: '服务暂时不可用' }, 503)
+      adminAttributionIncidentOpen = false
+      json(res, { data: { id: 'incident-1', status: 'closed' } })
+    }).catch(() => json(res, { statusCode: 400, message: 'incident 请求无效' }, 400))
+    return
+  }
+  if (url.pathname.startsWith('/api/admin/attribution/')) {
+    adminAttributionRequests.push({ path: url.pathname, query: Object.fromEntries(url.searchParams.entries()) })
+    return json(res, adminAttributionResponse(url.pathname, url.searchParams))
+  }
+  if (url.pathname === '/api/admin/tracking-sources' && req.method === 'POST') {
+    readJsonBody(req)
+      .then((body) => {
+        const slug = String(body.sourceLabel || 'tracking-source').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'tracking-source'
+        json(res, {
+          data: {
+            id: `ats_${slug}`,
+            name: body.sourceLabel || '测试投放链接',
+            sourceLabel: body.sourceLabel || '测试投放链接',
+            channel: body.channel || 'ad',
+            slug,
+            sourceCode: slug,
+            targetPath: body.targetPath || '/',
+            utmSource: slug,
+            utmMedium: body.utmMedium || 'paid_social',
+            utmCampaign: body.utmCampaign || '',
+            utmContent: body.utmContent || '',
+            status: 'active',
+            note: body.note || '',
+            trackingPath: `${body.targetPath || '/'}?mg_source=${slug}&utm_source=${slug}&utm_medium=${body.utmMedium || 'paid_social'}${body.utmCampaign ? `&utm_campaign=${body.utmCampaign}` : ''}${body.utmContent ? `&utm_content=${body.utmContent}` : ''}`,
+          },
+        }, 201)
+      })
+      .catch(() => json(res, { statusCode: 400, message: '追踪来源请求无效' }, 400))
+    return
   }
   if (url.pathname === '/api/admin/invite-codes') {
     return json(res, {

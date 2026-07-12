@@ -20,14 +20,12 @@ IS_PRODUCTION=false
 if [ "$ENV" = "production" ]; then
   IS_PRODUCTION=true
 fi
+GIT_COMMIT="$(git rev-parse HEAD)"
 
 echo "=== MeiGallery 部署 (环境: $ENV) ==="
 
-if command -v pnpm >/dev/null 2>&1; then
-  PNPM=(pnpm)
-else
-  PNPM=(corepack pnpm)
-fi
+# 始终使用 packageManager 锁定的 pnpm，避免 PATH 中的其他主版本污染发布。
+PNPM=(corepack pnpm)
 
 # 检查是否已登录
 if ! "${PNPM[@]}" --filter @meigallery/api exec wrangler whoami &> /dev/null; then
@@ -38,8 +36,8 @@ fi
 # 根据环境设置 wrangler 参数
 if [ "$IS_PRODUCTION" = "false" ]; then
   ENV_ARGS=(--env dev)
-  D1_DB="meigallery-db"
-  echo "⚠ 开发环境部署 — Worker 名称带 -dev 后缀"
+  D1_DB="meigallery-db-dev"
+  echo "⚠ 开发环境部署 — Worker 名称带 -dev 后缀，D1/R2/Queue 使用独立 dev 资源"
 else
   ENV_ARGS=(--env "")
   D1_DB="meigallery-db"
@@ -50,6 +48,18 @@ else
   if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     echo "已取消"
     exit 0
+  fi
+
+  echo "重新执行完整生产发布验证..."
+  if ! env -u VERIFY_RELEASE_ALLOW_BRANCH "${PNPM[@]}" verify:release; then
+    echo "生产部署被 fresh verify:release 阻断。旧 latest 报告不能替代本次完整验证。"
+    exit 1
+  fi
+
+  echo "校验本次新生成的生产发布报告..."
+  if ! env -u VERIFY_RELEASE_ALLOW_BRANCH node scripts/verify-release.mjs assert-production-allowed; then
+    echo "生产部署被发布验证闸门阻断。本次 fresh verify:release 报告未获放行。"
+    exit 1
   fi
 fi
 
@@ -78,15 +88,16 @@ if [ "$IS_PRODUCTION" = "true" ] && [ -f "packages/api/migrations/0017_cases_cle
   fi
   echo "0017_cases_cleanup.sql 已应用或不在待执行列表中，继续生产迁移检查。"
 fi
+node scripts/verify-meta-migration.mjs preflight --env "$ENV"
 "${PNPM[@]}" --filter @meigallery/api exec wrangler d1 migrations apply "$D1_DB" "${ENV_ARGS[@]}" --remote
 
 echo ""
 echo "--- 步骤 5/7: 部署 API Worker ---"
-"${PNPM[@]}" --filter @meigallery/api exec wrangler deploy "${ENV_ARGS[@]}"
+"${PNPM[@]}" --filter @meigallery/api exec wrangler deploy "${ENV_ARGS[@]}" --var "RELEASE_COMMIT:${GIT_COMMIT}"
 
 echo ""
 echo "--- 步骤 6/7: 部署 Web Worker ---"
-"${PNPM[@]}" --filter @meigallery/web exec wrangler deploy "${ENV_ARGS[@]}"
+"${PNPM[@]}" --filter @meigallery/web exec wrangler deploy "${ENV_ARGS[@]}" --var "RELEASE_COMMIT:${GIT_COMMIT}"
 
 echo ""
 echo "--- 步骤 7/7: 部署后 SEO 校验 ---"
