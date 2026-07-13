@@ -41,7 +41,7 @@
 - `verify:quick` 适合日常提交前自检，先检查 dev/production 资源隔离与 Meta secret 泄漏。
 - `verify:local-runtime` 用于本地 Cloudflare 运行时验证 D1、Queue、归因和降级链路。
 - `verify:dev-rehearsal` 依赖独立 dev D1/R2 和 dev Workers URL，只验证 migration、站内转化、注册、分析与页面逻辑，不调用 Meta。
-- `verify:release` 是生产放行前最终校验；Meta 远端验证默认基于 production，同一 `main` HEAD 的 evidence 不得复用旧 commit 结果。
+- `verify:release` 是生产放行前最终校验；Meta 远端验证默认基于 production。`RELEASE_COMMIT` 仅用于发布追溯，普通业务发布不再使已验证的 Meta 连接失效。
 - `scripts/deploy.sh production` 已在远端 migration 前接入 fresh production gate；旧 `latest.json` 不能跳过 lint、API/Web coverage、scripts、tsc、build、local-runtime 和 remote gates。部署路径只负责验证、preflight、migration 与 Worker 部署，不写 setting、不关闭 incident、不调整 rollout。
 
 ## 当前已实现能力
@@ -56,7 +56,7 @@
 - TikTok Pixel：`0048` 初始化默认关闭的 TikTok 连接；生产后台可统一配置 Pixel ID、模式和 Browser Pixel 开关。已接入 PageView、ViewContent、Search、Contact、CompleteRegistration，并复用营销同意、站内事实去重、provider 投递账本和浏览器尝试回执。TikTok Events API 尚未接入，服务端开关固定关闭。
 - 2026-07-13 TikTok 官方文档复核与本地验收：按当前标准事件、参数、Test Events、Diagnostics 和 Pixel Helper 说明复核实现；修复仅配置 TikTok 时营销模式仍错误读取 Meta 的问题。API `1070`、Web `257`、Playwright 五视口 `125` 项、Lint、TypeScript 和 Nuxt production build 均通过；浏览器测试确认授权后才向 TikTok CDN 发起请求、脚本位于 `head`、首次 PageView 只入队一次，进入后台后卸载。
 - 2026-07-12 广告平台架构收口：本地 migration 实跑确认旧投递/outbox 清空、统一连接迁移成功、业务转化事实与连接验证/诊断保留；API `1064` 条测试、Web 测试、TypeScript、Lint 和 Nuxt production build 均通过，production 只读 duplicate preflight 为 `ready`。
-- Meta CAPI v2：production Dataset Quality v1 契约已由 Owner 批准，真实 Meta `v25.0 /dataset_quality` capture 已验证；collector 与两事件 live evidence 均绑定唯一 production Dataset。正式域名 Browser 与 production CAPI 通过同组 opaque event ID 验证 `Contact`、`CompleteRegistration` 去重；bootstrap 允许快照尚未生成但强制 rollout `0`，full gate 必须验证 production live evidence、collector 快照与 24 小时新鲜度。
+- Meta CAPI v2：production Dataset Quality v1 契约已由 Owner 批准，真实 Meta `v25.0 /dataset_quality` capture 已验证；collector 与两事件 live evidence 均绑定唯一 production Dataset。正式域名 Browser 与 production CAPI 通过同组 opaque event ID 验证 `Contact`、`CompleteRegistration` 去重；连接有效性由 Pixel ID、Token 指纹、Graph API 版本和 revision 决定，commit 只作审计追溯。bootstrap 强制 rollout `0`，首次放量仍要求有效 production live evidence、资源隔离证据和无 critical incident。
 - SEO：已实现基础 SEO 设置、关键词池、sitemap、robots、结构化数据和生产校验脚本；运营配置见 `docs/SEO_CONFIGURATION.md`。
 
 ## 规划和未接入

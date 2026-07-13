@@ -269,7 +269,7 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
               meta: { rows_read: 1, rows_written: 0, duration: 1 },
             }
           }
-          if (sql.includes('FROM analytics_release_verifications') && sql.includes('GROUP BY verification_type')) {
+          if (sql.includes('FROM analytics_release_verifications') && sql.includes("verification_type IN ('meta_live', 'meta_resources')")) {
             const results = []
             if (readiness.liveVerificationPresent && isFutureIsoTimestamp(readiness.liveVerificationExpiresAt)) {
               results.push({ verification_type: 'meta_live', verified_at: '2026-07-10T00:00:00.000Z', expires_at: readiness.liveVerificationExpiresAt })
@@ -1932,7 +1932,7 @@ describe('后台归因中心 API', () => {
     })
     const live = body.data.checks.find((item: { key: string }) => item.key === 'meta_live_verification')
     const resources = body.data.checks.find((item: { key: string }) => item.key === 'meta_resources_verification')
-    const verificationSql = db.calls.find(call => call.sql.includes('FROM analytics_release_verifications') && call.sql.includes('GROUP BY verification_type'))?.sql ?? ''
+    const verificationSql = db.calls.find(call => call.sql.includes('FROM analytics_release_verifications') && call.sql.includes("verification_type IN ('meta_live', 'meta_resources')"))?.sql ?? ''
 
     expect(live.ok).toBe(expected)
     expect(resources.ok).toBe(expected)
@@ -1994,7 +1994,6 @@ describe('后台归因中心 API', () => {
     ['capi_secret', {}, { META_CAPI_ACCESS_TOKEN: undefined }],
     ['test_event_code', {}, { META_CAPI_TEST_EVENT_CODE: undefined }],
     ['queue_binding', {}, { META_CAPI_QUEUE: undefined }],
-    ['meta_live_verification', {}, { RELEASE_COMMIT: 'not-a-full-commit' }],
     ['meta_live_verification', { readiness: { liveVerificationPresent: false } }, {}],
     ['meta_resources_verification', { readiness: { resourcesVerificationPresent: false } }, {}],
     ['retry_exhausted', { readiness: { retryExhaustedCount: 1 } }, {}],
@@ -2456,7 +2455,6 @@ describe('后台归因中心 API', () => {
   it.each([
     ['connection_unverified', { connectionVerified: false }, {}],
     ['meta_live_verification_missing', { liveEvidence: false }, {}],
-    ['release_commit_invalid', {}, { RELEASE_COMMIT: 'invalid' }],
   ] as const)('0 -> 10 不允许绕过硬门禁 %s', async (blocker, dbOptions, envOverrides) => {
     const { db, res, body } = await requestRollout('owner', { target: 0, ...dbOptions }, {
       method: 'POST',
@@ -2514,11 +2512,7 @@ describe('后台归因中心 API', () => {
   })
 
   it.each([
-    [10, 50, 'RELEASE_COMMIT 缺失', {}, { RELEASE_COMMIT: undefined }],
-    [10, 50, 'RELEASE_COMMIT 非法', {}, { RELEASE_COMMIT: 'invalid' }],
     [10, 50, 'MetaConnection 未验证', { connectionVerified: false }, {}],
-    [50, 100, 'RELEASE_COMMIT 缺失', {}, { RELEASE_COMMIT: undefined }],
-    [50, 100, 'RELEASE_COMMIT 非法', {}, { RELEASE_COMMIT: 'invalid' }],
     [50, 100, 'MetaConnection 未验证', { connectionVerified: false }, {}],
   ] as const)('普通 %i -> %i 在%s时仍要求当前 verified connection', async (
     target,
@@ -2541,8 +2535,7 @@ describe('后台归因中心 API', () => {
 
   it.each([
     ['meta_live_verification_missing', { liveEvidence: false }, {}],
-    ['release_commit_invalid', {}, { RELEASE_COMMIT: 'invalid' }],
-  ] as const)('force 升级仍要求当前 commit 的 dev meta_live 门禁：%s', async (
+  ] as const)('force 升级仍要求当前 Meta live 门禁：%s', async (
     blocker,
     dbOptions,
     envOverrides,
@@ -2562,6 +2555,17 @@ describe('后台归因中心 API', () => {
     expect(body.code).toBe('META_CAPI_ROLLOUT_PROMOTION_BLOCKED')
     expect(body.detail.blockers).toContain(blocker)
     expect(db.batchCount).toBe(0)
+  })
+
+  it.each([undefined, 'invalid'] as const)('rollout 不因 RELEASE_COMMIT=%s 失效', async (releaseCommit) => {
+    const { res, body } = await requestRollout('owner', { target: 0 }, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ percentage: 10, force: false }),
+    }, { RELEASE_COMMIT: releaseCommit })
+
+    expect(res.status).toBe(200)
+    expect(body.data.targetPercentage).toBe(10)
   })
 
   it('GET 暴露证据缺失状态，但普通 10 -> 50 晋级检查不把它列为 blocker', async () => {

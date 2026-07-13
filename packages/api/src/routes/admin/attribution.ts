@@ -932,19 +932,15 @@ async function buildReadinessResponse(c: AdminAttributionContext) {
           AND provider = 'meta'
           AND event_name IN ('Contact', 'CompleteRegistration')
       `, [range.from, range.to]),
-      releaseCommit
-        ? queryAll(c.env.DB, `
+      queryAll(c.env.DB, `
           SELECT verification_type, verified_at, expires_at
           FROM analytics_release_verifications
-          WHERE commit_sha = ?
-            AND environment = ?
+          WHERE environment = ?
             AND verification_type IN ('meta_live', 'meta_resources')
             AND status = 'passed'
             AND datetime(expires_at) > datetime('now')
-          GROUP BY verification_type
           ORDER BY verified_at DESC
-        `, [releaseCommit, releaseEnvironment])
-        : emptyQueryResult(),
+        `, [releaseEnvironment]),
       queryFirst(c.env.DB, `
         SELECT MAX(verified_at) AS last_manual_confirmation_at
         FROM analytics_release_verifications
@@ -972,7 +968,7 @@ async function buildReadinessResponse(c: AdminAttributionContext) {
   const pixelEnabled = settingMap.enabled === true && settingMap.browser_enabled === true
   const capiEnabled = settingMap.enabled === true && settingMap.server_enabled === true
   const pixelIdPresent = settingMap.destination_configured === true
-  const verificationMap = Object.fromEntries(releaseVerifications.rows.map(row => [String(row.verification_type || ''), row]))
+  const verificationMap = Object.fromEntries([...releaseVerifications.rows].reverse().map(row => [String(row.verification_type || ''), row]))
   const liveVerification = verificationMap.meta_live
   const resourcesVerification = verificationMap.meta_resources
   const retryExhaustedCount = numberValue((retryExhausted.rows[0] ?? {}).retry_exhausted_count)
@@ -1002,8 +998,8 @@ async function buildReadinessResponse(c: AdminAttributionContext) {
     blockerCheck('capi_secret', 'CAPI token 已配置', !modeRequiresMeta || secretPresent, presenceDetail(modeRequiresMeta, secretPresent)),
     blockerCheck('test_event_code', 'Test Event Code 已配置', !modeRequiresMeta || testEventCodePresent, presenceDetail(modeRequiresMeta, testEventCodePresent)),
     blockerCheck('queue_binding', 'CAPI Queue binding 已配置', !modeRequiresMeta || Boolean(c.env.META_CAPI_QUEUE), presenceDetail(modeRequiresMeta, Boolean(c.env.META_CAPI_QUEUE))),
-    blockerCheck('meta_live_verification', '当前发布已通过 Meta live 验证', Boolean(releaseCommit && liveVerification), verificationDetail(releaseCommit, liveVerification)),
-    blockerCheck('meta_resources_verification', '当前发布已通过 Meta 资源验证', Boolean(releaseCommit && resourcesVerification), verificationDetail(releaseCommit, resourcesVerification)),
+    blockerCheck('meta_live_verification', '当前 Meta 连接已通过 live 验证', Boolean(liveVerification), verificationDetail(liveVerification)),
+    blockerCheck('meta_resources_verification', '当前 Meta 资源已通过验证', Boolean(resourcesVerification), verificationDetail(resourcesVerification)),
     blockerCheck('retry_exhausted', '当前范围无重试耗尽', schemaReady && retryExhaustedCount === 0, schemaReady ? `发现 ${retryExhaustedCount} 条 retry_exhausted` : '归因迁移表不可用'),
     blockerCheck('external_event_id_consistency', 'Pixel/CAPI 事件 ID 一致', schemaReady && externalEventIdMismatchCount === 0, schemaReady ? `发现 ${externalEventIdMismatchCount} 组事件 ID 不一致` : '归因迁移表不可用'),
     warningCheck('pending_too_long', '无超过 10 分钟的 CAPI pending', schemaReady && pendingTooLongCount === 0, schemaReady ? `发现 ${pendingTooLongCount} 条超时 pending` : '归因迁移表不可用'),
@@ -1415,13 +1411,12 @@ async function readMetaRolloutSnapshotWithUsage(
   const targetPercentage = normalizeMetaCapiRollout(configurationResult.row?.rollout_percentage)
   const environment = auditEnvironment(c.env.APP_ENV)
   const trackingMode = normalizeMetaTrackingMode(configurationResult.row?.mode)
-  const releaseCommit = normalizeReleaseCommit(c.env.RELEASE_COMMIT)
   const [connectionResult, incidentResult, evidenceResult, metricsResult] = await Promise.all([
     knownConnectionVerified === undefined
       ? readConnectionVerifiedWithUsage(c)
       : Promise.resolve({ value: knownConnectionVerified, usage: EMPTY_USAGE }),
     readOpenCriticalIncidentWithUsage(c.env.DB, environment),
-    readCurrentMetaPromotionEvidenceWithUsage(c.env.DB, environment, releaseCommit, knownConnectionVerified),
+    readCurrentMetaPromotionEvidenceWithUsage(c.env.DB, environment, knownConnectionVerified),
     readMetaRolloutMetricsWithUsage(c.env.DB, targetPercentage),
   ])
   const connectionVerified = connectionResult.value
@@ -1433,8 +1428,7 @@ async function readMetaRolloutSnapshotWithUsage(
   if (to > targetPercentage) {
     if (!connectionVerified) hardBlockers.push('connection_unverified')
     if ((targetPercentage === 0 && to === 10) || force) {
-      if (!releaseCommit) hardBlockers.push('release_commit_invalid')
-      else if (!liveEvidencePresent) hardBlockers.push('meta_live_verification_missing')
+      if (!liveEvidencePresent) hardBlockers.push('meta_live_verification_missing')
     }
     if (environment === 'production' && targetPercentage === 0 && to === 10 && trackingMode !== 'production') {
       hardBlockers.push('tracking_mode_not_production')
@@ -1521,10 +1515,8 @@ async function readOpenCriticalIncidentWithUsage(
 async function readCurrentMetaPromotionEvidenceWithUsage(
   db: D1Database,
   environment: MetaRolloutSnapshot['environment'],
-  releaseCommit: string,
   knownConnectionVerified?: boolean,
 ) {
-  if (!releaseCommit) return { value: false, usage: EMPTY_USAGE }
   try {
     if (environment === 'production') {
       const [connection, resources, live] = await Promise.all([
@@ -1532,33 +1524,30 @@ async function readCurrentMetaPromotionEvidenceWithUsage(
           SELECT revision
           FROM meta_connection_verifications
           WHERE environment = ?
-            AND verified_commit = ?
             AND invalidated_at IS NULL
             AND length(revision) = 32
           LIMIT 1
-        `).bind('production', releaseCommit)) : Promise.resolve({ row: knownConnectionVerified ? { revision: 'verified' } : null, usage: EMPTY_USAGE }),
+        `).bind('production')) : Promise.resolve({ row: knownConnectionVerified ? { revision: 'verified' } : null, usage: EMPTY_USAGE }),
         queryFirstWithUsage<{ summary: string }>(db.prepare(`
           SELECT summary
           FROM analytics_release_verifications
           WHERE environment = 'production'
             AND verification_type = 'meta_resources'
             AND status = 'passed'
-            AND commit_sha = ?
             AND datetime(expires_at) > datetime('now')
           ORDER BY verified_at DESC
           LIMIT 1
-        `).bind(releaseCommit)),
+        `)),
         queryFirstWithUsage<{ id: string }>(db.prepare(`
           SELECT id
           FROM analytics_release_verifications
           WHERE environment = 'production'
             AND verification_type = 'meta_live'
             AND status = 'passed'
-            AND commit_sha = ?
             AND datetime(expires_at) > datetime('now')
           ORDER BY verified_at DESC
           LIMIT 1
-        `).bind(releaseCommit)),
+        `)),
       ])
       return {
         value: Boolean(connection.row) && hasCurrentProductionIsolation(resources.row?.summary) && Boolean(live.row),
@@ -1739,11 +1728,6 @@ function nextRolloutPercentage(value: MetaCapiRolloutPercentage): MetaCapiRollou
   return 100
 }
 
-function normalizeReleaseCommit(value: unknown) {
-  const commit = String(value ?? '').trim().toLowerCase()
-  return /^[0-9a-f]{40}$/.test(commit) ? commit : ''
-}
-
 function hanCharacterCount(value: string) {
   return value.match(/\p{Script=Han}/gu)?.length ?? 0
 }
@@ -1803,9 +1787,8 @@ function presenceDetail(required: boolean, present: boolean) {
   return present ? '已配置，仅返回存在状态' : '尚未配置'
 }
 
-function verificationDetail(releaseCommit: string, row: Row | undefined) {
-  if (!releaseCommit) return '当前 Worker 未提供 RELEASE_COMMIT'
-  if (!row) return '当前 commit 没有未过期的通过记录'
+function verificationDetail(row: Row | undefined) {
+  if (!row) return '当前 Meta 连接没有未过期的通过记录'
   return `验证时间：${String(row.verified_at || '')}；有效期至：${String(row.expires_at || '')}`
 }
 

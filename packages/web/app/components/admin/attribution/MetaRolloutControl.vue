@@ -27,8 +27,7 @@ const forceReasonValid = computed(() => (forceReason.value.match(/[\u3400-\u9fff
 const modalTitle = computed(() => modalMode.value === 'force' ? '强制升级 CAPI rollout' : '确认调整 CAPI rollout')
 const blockerLabels: Record<string, string> = {
   connection_unverified: 'Meta 连接尚未验证',
-  release_commit_invalid: '当前 RELEASE_COMMIT 无效',
-  meta_live_verification_missing: '当前 commit 缺少 Meta live 验证',
+  meta_live_verification_missing: '当前 Meta 连接缺少 live 验证',
   tracking_mode_not_production: 'production rollout 要求 Meta 运行模式为 production',
   circuit_open: 'critical incident 尚未关闭',
   metrics_unavailable: 'rollout 指标暂不可用',
