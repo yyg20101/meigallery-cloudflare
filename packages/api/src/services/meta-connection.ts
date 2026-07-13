@@ -26,7 +26,6 @@ const STABLE_INVALIDATION_REASONS = new Set([
   'pixel_id_changed',
   'access_token_changed',
   'graph_api_version_changed',
-  'release_commit_changed',
   'verification_revision_missing',
   'verification_invalidated',
 ])
@@ -200,7 +199,7 @@ export async function bootstrapMetaConnectionVerification(
 
   const fingerprint = await metaConnectionFingerprint(pixelId, accessToken)
   if (environment === 'production') {
-    await assertProductionBootstrapGate(env.DB, releaseCommit)
+    await assertProductionBootstrapGate(env.DB)
   }
   const initialVerification = await readVerification(env.DB, environment)
   const deliveryId = createSyntheticDeliveryId()
@@ -261,17 +260,16 @@ export async function bootstrapMetaConnectionVerification(
 
 async function assertProductionBootstrapGate(
   db: D1Database,
-  releaseCommit: string,
 ) {
   try {
     const [resource, rollout, incident] = await Promise.all([
       db.prepare(`
         SELECT id, summary FROM analytics_release_verifications
         WHERE environment = 'production' AND verification_type = 'meta_resources'
-          AND status = 'passed' AND commit_sha = ?
+          AND status = 'passed'
           AND datetime(expires_at) > datetime('now')
         ORDER BY verified_at DESC LIMIT 1
-      `).bind(releaseCommit).first<{ id: string; summary: string }>(),
+      `).first<{ id: string; summary: string }>(),
       db.prepare("SELECT rollout_percentage FROM ad_platform_connections WHERE provider = 'meta' LIMIT 1")
         .first<{ rollout_percentage: number }>(),
       db.prepare(`
@@ -433,16 +431,6 @@ async function evaluateMetaConnection(env: MetaConnectionEnv): Promise<Evaluated
       releaseCommit,
     })
   }
-  if (!releaseCommit) {
-    return evaluatedResult(baseStatus(base, 'unverified', 'release_commit_invalid'), {
-      pixelId,
-      accessToken,
-      testEventCode,
-      trackingMode: settings.trackingMode,
-      releaseCommit,
-    })
-  }
-
   const row = await readVerification(env.DB, environment)
   if (!row) {
     return evaluatedResult(baseStatus(base, 'unverified', 'verification_missing'), {
@@ -455,7 +443,7 @@ async function evaluateMetaConnection(env: MetaConnectionEnv): Promise<Evaluated
   }
 
   const fingerprint = await metaConnectionFingerprint(pixelId, accessToken)
-  const invalidationReason = connectionInvalidationReason(row, pixelId, fingerprint, releaseCommit)
+  const invalidationReason = connectionInvalidationReason(row, pixelId, fingerprint)
   if (invalidationReason) {
     await persistInvalidation(env.DB, environment, row.revision, invalidationReason)
     return {
@@ -524,14 +512,14 @@ function connectionInvalidationReason(
   row: VerificationRow,
   pixelId: string,
   fingerprint: string,
-  releaseCommit: string,
 ) {
-  if (row.invalidated_at) return stableInvalidationReason(row.invalidation_reason)
+  if (row.invalidated_at && row.invalidation_reason !== 'release_commit_changed') {
+    return stableInvalidationReason(row.invalidation_reason)
+  }
   if (!normalizeVerificationRevision(row.revision)) return 'verification_revision_missing'
   if (row.pixel_id !== pixelId) return 'pixel_id_changed'
   if (row.token_fingerprint !== fingerprint) return 'access_token_changed'
   if (row.graph_api_version !== META_GRAPH_API_VERSION) return 'graph_api_version_changed'
-  if (normalizeReleaseCommit(row.verified_commit) !== releaseCommit) return 'release_commit_changed'
   return ''
 }
 
