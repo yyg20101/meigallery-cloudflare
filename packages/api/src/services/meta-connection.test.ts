@@ -315,6 +315,23 @@ describe('MetaConnection', () => {
     expect(payload.data[0].user_data).not.toHaveProperty('external_id')
   })
 
+  it('相同连接重复验证时真实调用 Meta 但复用原 revision', async () => {
+    const db = createConnectionDb()
+    const originalRevision = '1'.repeat(32)
+    await seedVerification(db, { revision: originalRevision })
+    const fetchMock = vi.fn(async () => successfulMetaResponse())
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(verifyMetaConnection(connectionEnv(db), 42, 'Contact'))
+      .resolves.toMatchObject({ state: 'verified' })
+    await expect(verifyMetaConnection(connectionEnv(db), 42, 'Contact'))
+      .resolves.toMatchObject({ state: 'verified' })
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(db.verifications.get('dev')?.revision).toBe(originalRevision)
+    expect(db.settings.get('revision')).toBe(originalRevision)
+  })
+
   it('Graph 期间 Pixel 或 tracking mode 变化时不写 verification', async () => {
     for (const mutate of [
       (db: ReturnType<typeof createConnectionDb>) => db.settings.set('destination_id', JSON.stringify('9988776655')),
@@ -335,7 +352,7 @@ describe('MetaConnection', () => {
     }
   })
 
-  it('后发 bootstrap 先完成时，旧 bootstrap 的 CAS 不能覆盖新 revision', async () => {
+  it('token 变化后的 bootstrap 先完成时，旧 token bootstrap 的 CAS 不能覆盖新 revision', async () => {
     const db = createConnectionDb()
     await seedVerification(db)
     const first = deferredResponse()
@@ -347,7 +364,9 @@ describe('MetaConnection', () => {
 
     const older = verifyMetaConnection(connectionEnv(db), 41, 'Contact')
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
-    const newer = verifyMetaConnection(connectionEnv(db), 42, 'CompleteRegistration')
+    const newer = verifyMetaConnection(connectionEnv(db, {
+      META_CAPI_ACCESS_TOKEN: 'rotated-token',
+    }), 42, 'CompleteRegistration')
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
 
     second.resolve(successfulMetaResponse())
