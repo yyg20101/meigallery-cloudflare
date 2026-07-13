@@ -99,16 +99,25 @@ export async function main(options = {}) {
 
 async function readTrackedFiles(rootDir) {
   try {
-    const { stdout } = await execFile('git', ['ls-files', '-z'], {
+    const gitOptions = {
       cwd: rootDir,
       encoding: null,
       maxBuffer: 16 * 1024 * 1024,
-    })
-    return Buffer.from(stdout).toString('utf8').split('\0').filter(Boolean)
+    }
+    const [{ stdout: trackedOutput }, { stdout: deletedOutput }] = await Promise.all([
+      execFile('git', ['ls-files', '-z'], gitOptions),
+      execFile('git', ['ls-files', '-z', '--deleted'], gitOptions),
+    ])
+    const deletedFiles = new Set(parseNullSeparatedPaths(deletedOutput))
+    return parseNullSeparatedPaths(trackedOutput).filter(file => !deletedFiles.has(file))
   }
   catch {
     return ['.meta-git-files-unavailable']
   }
+}
+
+function parseNullSeparatedPaths(output) {
+  return Buffer.from(output).toString('utf8').split('\0').filter(Boolean)
 }
 
 async function collectEvidenceFiles(rootDir, relativeDirectory, candidates, findings) {

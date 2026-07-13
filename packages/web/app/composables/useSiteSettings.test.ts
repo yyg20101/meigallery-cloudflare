@@ -84,8 +84,9 @@ describe('useSiteSettings', () => {
     const siteSettings = useSiteSettings()
     await siteSettings.fetchSettings()
 
-    expect(siteSettings.metaBrowserConnection.value).toBeNull()
-    expect(siteSettings.tiktokBrowserConnection.value?.destinationId).toBe('C123456789ABCDEF')
+    expect(siteSettings.browserConnections.value).toEqual([
+      expect.objectContaining({ provider: 'tiktok', destinationId: 'C123456789ABCDEF' }),
+    ])
     expect(siteSettings.marketingTrackingMode.value).toBe('test')
   })
 

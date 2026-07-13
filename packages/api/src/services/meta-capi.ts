@@ -1,5 +1,10 @@
-import type { ActiveMetaEventName, ConversionDeliveryStatus, MetaCapiSensitiveContext, MetaTrackingMode } from '@meigallery/shared'
-import { ACTIVE_META_EVENTS, ATTRIBUTION_LIMITS } from '@meigallery/shared/constants'
+import type {
+  AdPlatformConversionEventName,
+  AdPlatformTrackingMode,
+  ConversionDeliveryStatus,
+  MetaCapiSensitiveContext,
+} from '@meigallery/shared'
+import { ACTIVE_AD_PLATFORM_CONVERSION_EVENTS, ATTRIBUTION_LIMITS } from '@meigallery/shared/constants'
 import type { Bindings } from '../index'
 import { normalizeMetaCapiUserData } from '../utils/meta-browser-identifiers'
 import { requireVerifiedMetaConnection } from './meta-connection'
@@ -15,7 +20,7 @@ type MetaCapiEnv = Pick<
 >
 
 export type MetaCapiPayloadInput = {
-  eventName: ActiveMetaEventName
+  eventName: AdPlatformConversionEventName
   eventId: string
   eventTime: number
   eventSourceUrl: string
@@ -41,7 +46,7 @@ export type MetaCapiDeliveryRow = ConversionDeliverySnapshot & {
   error_code: string
   error_message: string
   attempt_count: number
-  tracking_mode: MetaTrackingMode
+  tracking_mode: AdPlatformTrackingMode
   connection_revision: string | null
   duplicate_suppressed_at: string | null
   encryption_key_id: string
@@ -91,7 +96,7 @@ const META_CAPI_ERROR_MESSAGE = 'Meta CAPI 请求失败'
 const META_CAPI_TIMEOUT_MESSAGE = 'Meta CAPI 请求超时'
 const META_CAPI_STATE_ERROR_CODE = 'meta_delivery_state_conflict'
 const META_CAPI_DELIVERY_LEASE_SECONDS = 60
-const ACTIVE_META_EVENT_NAMES = new Set<string>(ACTIVE_META_EVENTS)
+const ACTIVE_META_EVENT_NAMES = new Set<string>(ACTIVE_AD_PLATFORM_CONVERSION_EVENTS)
 const CUSTOM_DATA_ALLOWLIST = new Set([
   'method_type',
   'action_type',
@@ -343,7 +348,7 @@ export async function releaseMetaCapiDeliveryLease(
   `).bind(deliveryId, leaseToken).run()
 }
 
-function isActiveMetaEventName(value: string): value is ActiveMetaEventName {
+function isActiveMetaEventName(value: string): value is AdPlatformConversionEventName {
   return ACTIVE_META_EVENT_NAMES.has(value)
 }
 

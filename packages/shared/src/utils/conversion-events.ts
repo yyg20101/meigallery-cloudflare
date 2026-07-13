@@ -1,10 +1,13 @@
 import type {
   ActiveConversionActionType,
-  ActiveMetaEventName,
+  AdPlatformConversionEventName,
+  AdPlatformTrackingMode,
   ConversionActionType,
-  MetaTrackingMode,
 } from '../types'
-import { ACTIVE_CONVERSION_ACTIONS, ACTIVE_META_EVENTS } from '../constants'
+import {
+  ACTIVE_AD_PLATFORM_CONVERSION_EVENTS,
+  ACTIVE_CONVERSION_ACTIONS,
+} from '../constants'
 
 export interface ConversionDedupeInput {
   actionType: ConversionActionType
@@ -33,17 +36,19 @@ export function buildConversionDedupeKey(input: ConversionDedupeInput) {
   return `historical:${input.actionType}:${input.visitorId}:${input.sessionId}:${input.occurredDate}`
 }
 
-export function buildExternalEventIdBasis(input: ActiveConversionDedupeInput & { metaEventName: ActiveMetaEventName }) {
+export function buildExternalEventIdBasis(
+  input: ActiveConversionDedupeInput & { eventName: AdPlatformConversionEventName },
+) {
   if (
     !ACTIVE_CONVERSION_ACTIONS.includes(input.actionType)
-    || !ACTIVE_META_EVENTS.includes(input.metaEventName)
+    || !ACTIVE_AD_PLATFORM_CONVERSION_EVENTS.includes(input.eventName)
   ) {
     throw new Error('外部投递只允许活动转化事件')
   }
-  return `${input.metaEventName}:${buildConversionDedupeKey(input)}`
+  return `${input.eventName}:${buildConversionDedupeKey(input)}`
 }
 
-export function normalizeMetaTrackingMode(value: unknown): MetaTrackingMode {
+export function normalizeAdPlatformTrackingMode(value: unknown): AdPlatformTrackingMode {
   return value === 'test' || value === 'production' ? value : 'disabled'
 }
 

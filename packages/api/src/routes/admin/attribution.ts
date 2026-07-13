@@ -1,5 +1,6 @@
 import { Hono, type Context } from 'hono'
-import { normalizeMetaTrackingMode } from '@meigallery/shared/utils'
+import type { AdPlatformRolloutPercentage } from '@meigallery/shared'
+import { normalizeAdPlatformTrackingMode } from '@meigallery/shared/utils'
 import type { Bindings, Variables } from '../../index'
 import {
   bootstrapMetaConnectionVerification,
@@ -11,7 +12,6 @@ import { getMetaCapiKeyRotationStatus } from '../../services/meta-capi-key-rotat
 import {
   evaluateRolloutPromotion,
   normalizeMetaCapiRollout,
-  type MetaCapiRolloutPercentage,
   type RolloutPromotionInput,
 } from '../../services/meta-capi-rollout'
 import { errorJson } from '../../utils/api-error'
@@ -40,7 +40,7 @@ import {
   MetaLiveChallengeError,
 } from '../../services/meta-live-challenge'
 import { issueMetaResourceAttestationTicket } from '../../services/meta-resource-attestation-ticket'
-import { listAdPlatformConnections } from '../../services/ad-platform/status'
+import { adminAdPlatformRoutes } from './ad-platforms'
 
 export const adminAttributionRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -66,141 +66,7 @@ const META_CAPI_CRITICAL_QUALITY_ERROR_CODES = [
   'retry_exhausted',
 ] as const
 
-adminAttributionRoutes.get('/platforms', async (c) => {
-  try {
-    return c.json({ data: await listAdPlatformConnections(c.env) })
-  }
-  catch {
-    return dashboardUnavailable(c)
-  }
-})
-
-adminAttributionRoutes.patch('/platforms/meta', async (c) => {
-  if (c.get('userRole') !== 'owner') {
-    return errorJson(c, 403, '需要站长权限', { code: 'OWNER_REQUIRED' })
-  }
-  if (c.env.APP_ENV !== 'production') {
-    return errorJson(c, 409, 'Meta 连接只允许在生产环境配置', { code: 'AD_PLATFORM_PRODUCTION_ONLY' })
-  }
-  const body = await c.req.json<Record<string, unknown>>()
-  const destinationId = String(body.destinationId ?? '').trim()
-  const mode = String(body.mode ?? '')
-  const rolloutPercentage = Number(body.rolloutPercentage)
-  if (!/^\d{5,30}$/.test(destinationId)) {
-    return errorJson(c, 400, 'Meta Dataset ID 无效', { code: 'AD_PLATFORM_DESTINATION_INVALID' })
-  }
-  if (mode !== 'disabled' && mode !== 'test' && mode !== 'production') {
-    return errorJson(c, 400, 'Meta 运行模式无效', { code: 'AD_PLATFORM_MODE_INVALID' })
-  }
-  if (![0, 10, 50, 100].includes(rolloutPercentage)) {
-    return errorJson(c, 400, 'Meta 服务端放量比例无效', { code: 'AD_PLATFORM_ROLLOUT_INVALID' })
-  }
-  const enabled = body.enabled === true
-  const browserEnabled = body.browserEnabled === true
-  const serverEnabled = body.serverEnabled === true
-  const debugEnabled = body.debugEnabled === true
-  const before = await c.env.DB.prepare(`
-    SELECT enabled, mode, browser_enabled, server_enabled, destination_id,
-      debug_enabled, rollout_percentage, revision
-    FROM ad_platform_connections WHERE provider = 'meta'
-  `).first<Record<string, unknown>>()
-  if (!before) return errorJson(c, 409, 'Meta 连接尚未初始化', { code: 'AD_PLATFORM_CONNECTION_MISSING' })
-
-  const identityChanged = before.destination_id !== destinationId
-  const after = { enabled, mode, browserEnabled, serverEnabled, destinationId, debugEnabled, rolloutPercentage }
-  if (serverEnabled) {
-    const status = await getMetaConnectionStatus(c.env)
-    if (identityChanged || status.state !== 'verified' || mode !== 'production') {
-      return errorJson(c, 409, '必须先以当前连接完成验证并切换生产模式，才能启用 Server API', {
-        code: 'AD_PLATFORM_SERVER_GATE_BLOCKED',
-      })
-    }
-  }
-  await c.env.DB.batch([
-    c.env.DB.prepare(`
-      UPDATE ad_platform_connections
-      SET enabled = ?, mode = ?, browser_enabled = ?, server_enabled = ?,
-        destination_id = ?, debug_enabled = ?, rollout_percentage = ?,
-        revision = CASE WHEN ? THEN NULL ELSE revision END,
-        updated_at = datetime('now')
-      WHERE provider = 'meta'
-    `).bind(
-      enabled ? 1 : 0,
-      mode,
-      browserEnabled ? 1 : 0,
-      serverEnabled ? 1 : 0,
-      destinationId,
-      debugEnabled ? 1 : 0,
-      rolloutPercentage,
-      identityChanged ? 1 : 0,
-    ),
-    c.env.DB.prepare(`
-      UPDATE meta_connection_verifications
-      SET invalidated_at = CASE WHEN ? THEN datetime('now') ELSE invalidated_at END,
-        invalidation_reason = CASE WHEN ? THEN 'connection_configuration_changed' ELSE invalidation_reason END,
-        updated_at = datetime('now')
-      WHERE environment = 'production' AND ?
-    `).bind(identityChanged ? 1 : 0, identityChanged ? 1 : 0, identityChanged ? 1 : 0),
-    c.env.DB.prepare(`
-      INSERT INTO admin_audit_logs
-        (id, admin_id, action, target_type, target_id, before_value, after_value)
-      VALUES (?, ?, 'update_ad_platform_connection', 'ad_platform_connection', 'meta', ?, ?)
-    `).bind(
-      generateId('log'),
-      c.get('userId')!,
-      JSON.stringify(before),
-      JSON.stringify(after),
-    ),
-  ])
-  return c.json({ data: await listAdPlatformConnections(c.env) })
-})
-
-adminAttributionRoutes.patch('/platforms/tiktok', async (c) => {
-  if (c.get('userRole') !== 'owner') {
-    return errorJson(c, 403, '需要站长权限', { code: 'OWNER_REQUIRED' })
-  }
-  if (c.env.APP_ENV !== 'production') {
-    return errorJson(c, 409, 'TikTok 连接只允许在生产环境配置', { code: 'AD_PLATFORM_PRODUCTION_ONLY' })
-  }
-  const body = await c.req.json<Record<string, unknown>>()
-  const destinationId = String(body.destinationId ?? '').trim().toUpperCase()
-  const mode = String(body.mode ?? '')
-  if (!/^[A-Z0-9]{10,30}$/.test(destinationId)) {
-    return errorJson(c, 400, 'TikTok Pixel ID 无效', { code: 'AD_PLATFORM_DESTINATION_INVALID' })
-  }
-  if (mode !== 'disabled' && mode !== 'test' && mode !== 'production') {
-    return errorJson(c, 400, 'TikTok 运行模式无效', { code: 'AD_PLATFORM_MODE_INVALID' })
-  }
-  if (body.serverEnabled === true) {
-    return errorJson(c, 409, 'TikTok Events API 尚未启用', { code: 'AD_PLATFORM_SERVER_UNSUPPORTED' })
-  }
-  const enabled = body.enabled === true
-  const browserEnabled = body.browserEnabled === true
-  const debugEnabled = body.debugEnabled === true
-  const before = await c.env.DB.prepare(`
-    SELECT enabled, mode, browser_enabled, server_enabled, destination_id,
-      debug_enabled, rollout_percentage, revision
-    FROM ad_platform_connections WHERE provider = 'tiktok'
-  `).first<Record<string, unknown>>()
-  if (!before) return errorJson(c, 409, 'TikTok 连接尚未初始化', { code: 'AD_PLATFORM_CONNECTION_MISSING' })
-
-  const after = { enabled, mode, browserEnabled, serverEnabled: false, destinationId, debugEnabled, rolloutPercentage: 0 }
-  await c.env.DB.batch([
-    c.env.DB.prepare(`
-      UPDATE ad_platform_connections
-      SET enabled = ?, mode = ?, browser_enabled = ?, server_enabled = 0,
-        destination_id = ?, debug_enabled = ?, rollout_percentage = 0,
-        revision = NULL, updated_at = datetime('now')
-      WHERE provider = 'tiktok'
-    `).bind(enabled ? 1 : 0, mode, browserEnabled ? 1 : 0, destinationId, debugEnabled ? 1 : 0),
-    c.env.DB.prepare(`
-      INSERT INTO admin_audit_logs
-        (id, admin_id, action, target_type, target_id, before_value, after_value)
-      VALUES (?, ?, 'update_ad_platform_connection', 'ad_platform_connection', 'tiktok', ?, ?)
-    `).bind(generateId('log'), c.get('userId')!, JSON.stringify(before), JSON.stringify(after)),
-  ])
-  return c.json({ data: await listAdPlatformConnections(c.env) })
-})
+adminAttributionRoutes.route('/platforms', adminAdPlatformRoutes)
 
 adminAttributionRoutes.get('/summary', async (c) => {
   const range = parseRangeOrError(c)
@@ -961,7 +827,7 @@ async function buildReadinessResponse(c: AdminAttributionContext) {
     ]
 
   const settingMap = serializeSettings(settings.rows)
-  const mode = normalizeMetaTrackingMode(settingMap.mode)
+  const mode = normalizeAdPlatformTrackingMode(settingMap.mode)
   const modeRequiresMeta = mode === 'test' || mode === 'production'
   const secretPresent = hasConfiguredValue(c.env.META_CAPI_ACCESS_TOKEN)
   const testEventCodePresent = hasConfiguredValue(c.env.META_CAPI_TEST_EVENT_CODE)
@@ -1387,16 +1253,16 @@ type OpenMetaIncident = {
 type MetaRolloutSnapshot = {
   environment: 'dev' | 'production' | 'invalid'
   rawTargetValue: string
-  targetPercentage: MetaCapiRolloutPercentage
-  effectivePercentage: MetaCapiRolloutPercentage
+  targetPercentage: AdPlatformRolloutPercentage
+  effectivePercentage: AdPlatformRolloutPercentage
   connectionVerified: boolean
   liveEvidencePresent: boolean
   openIncident: OpenMetaIncident | null
   metrics: MetaRolloutMetrics
   metricsStatus: MetaRolloutMetricsStatus
   promotion: {
-    from: MetaCapiRolloutPercentage
-    to: MetaCapiRolloutPercentage
+    from: AdPlatformRolloutPercentage
+    to: AdPlatformRolloutPercentage
     allowed: boolean
     requiresOverrideReason: boolean
     blockers: string[]
@@ -1406,7 +1272,7 @@ type MetaRolloutSnapshot = {
 
 async function readMetaRolloutSnapshot(
   c: AdminAttributionContext,
-  requestedPercentage?: MetaCapiRolloutPercentage,
+  requestedPercentage?: AdPlatformRolloutPercentage,
   force = false,
 ): Promise<MetaRolloutSnapshot> {
   return (await readMetaRolloutSnapshotWithUsage(c, requestedPercentage, force)).snapshot
@@ -1414,7 +1280,7 @@ async function readMetaRolloutSnapshot(
 
 async function readMetaRolloutSnapshotWithUsage(
   c: AdminAttributionContext,
-  requestedPercentage?: MetaCapiRolloutPercentage,
+  requestedPercentage?: AdPlatformRolloutPercentage,
   force = false,
   knownConnectionVerified?: boolean,
 ): Promise<{ snapshot: MetaRolloutSnapshot; usage: D1Usage }> {
@@ -1426,7 +1292,7 @@ async function readMetaRolloutSnapshotWithUsage(
   const rawTargetValue = String(configurationResult.row?.rollout_percentage ?? '')
   const targetPercentage = normalizeMetaCapiRollout(configurationResult.row?.rollout_percentage)
   const environment = auditEnvironment(c.env.APP_ENV)
-  const trackingMode = normalizeMetaTrackingMode(configurationResult.row?.mode)
+  const trackingMode = normalizeAdPlatformTrackingMode(configurationResult.row?.mode)
   const [connectionResult, incidentResult, evidenceResult, metricsResult] = await Promise.all([
     knownConnectionVerified === undefined
       ? readConnectionVerifiedWithUsage(c)
@@ -1624,7 +1490,7 @@ function hasExactKeys(value: Record<string, unknown>, expected: string[]) {
 
 async function readMetaRolloutMetricsWithUsage(
   db: D1Database,
-  targetPercentage: MetaCapiRolloutPercentage,
+  targetPercentage: AdPlatformRolloutPercentage,
 ): Promise<{ metrics: MetaRolloutMetrics; status: MetaRolloutMetricsStatus; usage: D1Usage }> {
   try {
     const result = await queryFirstWithUsage<Row>(db.prepare(`
@@ -1713,7 +1579,7 @@ function serializeMetaRolloutSnapshot(snapshot: MetaRolloutSnapshot) {
 }
 
 async function readRolloutRequest(c: AdminAttributionContext): Promise<{
-  percentage: MetaCapiRolloutPercentage
+  percentage: AdPlatformRolloutPercentage
   force: boolean
   reason: string
 } | Response> {
@@ -1732,13 +1598,13 @@ async function readRolloutRequest(c: AdminAttributionContext): Promise<{
     return errorJson(c, 400, 'rollout 档位或 force 无效', { code: 'META_CAPI_ROLLOUT_REQUEST_INVALID' })
   }
   return {
-    percentage: input.percentage as MetaCapiRolloutPercentage,
+    percentage: input.percentage as AdPlatformRolloutPercentage,
     force: input.force,
     reason: typeof input.reason === 'string' ? input.reason.trim() : '',
   }
 }
 
-function nextRolloutPercentage(value: MetaCapiRolloutPercentage): MetaCapiRolloutPercentage {
+function nextRolloutPercentage(value: AdPlatformRolloutPercentage): AdPlatformRolloutPercentage {
   if (value === 0) return 10
   if (value === 10) return 50
   return 100

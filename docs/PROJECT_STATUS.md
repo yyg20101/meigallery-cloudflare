@@ -6,9 +6,8 @@
 
 ## 文档边界
 
-- 已清理历史 PRD、旧计划、旧评审台账、旧线框图和过期 Superpowers 方案，避免后续开发继续引用历史口径。
-- 当前保留 `docs/superpowers/specs/2026-07-08-attribution-center-clean-design.md` 作为归因中心、后台 UI、测试矩阵和发布闸门的设计背景；当前实现事实以代码、`docs/TECHNICAL_SPEC.md` 和本文为准。
-- 当前保留 `docs/superpowers/specs/2026-07-08-meta-capi-attribution-layer-design.md` 作为 Meta Pixel / CAPI、转化事件账本和去重层的历史技术输入；核心架构已实现，当前生产放行口径由 Meta CAPI v2 三阶段计划和本状态文档覆盖。
+- 已清理历史 PRD、旧计划、旧评审台账、代码库镜像文档和已完成的 Superpowers 设计稿，避免重复口径污染后续开发。
+- `docs/superpowers/specs/` 仅保留被发布校验脚本直接读取的 Meta Dataset Quality 批准契约；实现事实以代码、`docs/TECHNICAL_SPEC.md` 和本文为准。
 - 新需求进入实施时，应直接更新当前 PRD、技术规格、UI 设计或专项文档，不再恢复历史归档目录。
 
 ## 技术栈现状
@@ -54,6 +53,7 @@
 - 归因中心：已实现站内转化账本、投放追踪链接、有效联系 / 完成注册活动趋势、历史 Lead 只读对照、Meta Pixel / CAPI 同步健康、重复诊断和分级发布检查；历史 Lead 与会员发放辅助指标均不参与活动漏斗、比率或链接排序，会员发放仅保留在 `operations` 辅助结构。后台分别展示 blocker 与 warning，warning 不改变生产阻断状态；入口为 `/admin/attribution`。
 - 广告平台扩展内核：delivery 仅使用 `provider + transport + connection_revision`，Meta 与 TikTok 通过 adapter registry 运行；前端仅消费通用 `trackingInstructions`，后台以统一平台连接为配置入口。旧 Meta 设置键、旧投递列和响应兼容字段已删除，新增平台不再修改联系和注册事实逻辑。
 - TikTok Pixel：`0048` 初始化默认关闭的 TikTok 连接；生产后台可统一配置 Pixel ID、模式和 Browser Pixel 开关。已接入 PageView、ViewContent、Search、Contact、CompleteRegistration，并复用营销同意、站内事实去重、provider 投递账本和浏览器尝试回执。TikTok Events API 尚未接入，服务端开关固定关闭。
+- 2026-07-13 广告平台开发前瘦身：移除 19 个未使用的 Tiptap 直接依赖、代码库镜像和已完成历史设计稿；共享类型、连接状态、Browser adapter 与 Meta/TikTok 投递统一改由广告平台 registry 驱动，平台连接路由从归因大文件独立。未新增 migration、未修改生产数据或 Meta 事件 ID 协议。API `1077`、Web `259`、Playwright 五视口 `125` 项、scripts/migration、Lint、TypeScript、Nuxt production build、secret scan 与 `verify:quick` 均通过。
 - 2026-07-13 TikTok 官方文档复核与本地验收：按当前标准事件、参数、Test Events、Diagnostics 和 Pixel Helper 说明复核实现；修复仅配置 TikTok 时营销模式仍错误读取 Meta 的问题。API `1070`、Web `257`、Playwright 五视口 `125` 项、Lint、TypeScript 和 Nuxt production build 均通过；浏览器测试确认授权后才向 TikTok CDN 发起请求、脚本位于 `head`、首次 PageView 只入队一次，进入后台后卸载。
 - 2026-07-12 广告平台架构收口：本地 migration 实跑确认旧投递/outbox 清空、统一连接迁移成功、业务转化事实与连接验证/诊断保留；API `1064` 条测试、Web 测试、TypeScript、Lint 和 Nuxt production build 均通过，production 只读 duplicate preflight 为 `ready`。
 - Meta CAPI v2：production Dataset Quality v1 契约已由 Owner 批准，真实 Meta `v25.0 /dataset_quality` capture 已验证；collector 与两事件 live evidence 均绑定唯一 production Dataset。正式域名 Browser 与 production CAPI 通过同组 opaque event ID 验证 `Contact`、`CompleteRegistration` 去重；连接有效性由 Pixel ID、Token 指纹、Graph API 版本和 revision 决定，commit 只作审计追溯。bootstrap 强制 rollout `0`，首次放量仍要求有效 production live evidence、资源隔离证据和无 critical incident。
@@ -82,8 +82,6 @@
 - `docs/SEO_CONFIGURATION.md`：SEO 关键词和运营配置说明。
 - `docs/META_PRODUCTION_ROLLOUT_PLAN.md`：Meta production 证据、发布、放量和同步确认计划。
 - `docs/AD_PLATFORM_ARCHITECTURE.md`：Meta、TikTok、Google 等 Pixel/API 的统一事实、投递和 adapter 架构。
-- `docs/codebase/*.md`：代码库结构、架构、集成、测试和风险分析。
-- `docs/superpowers/specs/2026-07-08-attribution-center-clean-design.md`：归因中心、后台归因 UI、测试矩阵和发布闸门的设计背景。
 - `docs/superpowers/specs/2026-07-10-meta-dataset-quality-contract.md`：Meta Dataset Quality 已批准契约。
 
 ## Git 状态

@@ -5,7 +5,7 @@ const adapter = vi.hoisted(() => ({
   initialize: vi.fn(),
   pageView: vi.fn(),
   standardEvent: vi.fn(),
-  teardown: vi.fn(),
+  teardownAll: vi.fn(),
 }))
 
 vi.mock('~/adapters/adPlatformBrowser.client', () => ({
@@ -15,7 +15,8 @@ vi.mock('~/adapters/adPlatformBrowser.client', () => ({
     ? adapter.standardEvent(eventName, payload, { eventID: eventId })
     : adapter.standardEvent(eventName, payload),
   executeAdBrowserInstruction: (instruction: { eventName: string; payload: unknown; eventId: string }) => adapter.standardEvent(instruction.eventName, instruction.payload, { eventID: instruction.eventId }),
-  teardownAdBrowserProvider: () => adapter.teardown(),
+  isRegisteredAdBrowserProvider: (provider: string) => provider === 'meta' || provider === 'tiktok',
+  teardownAllAdBrowserProviders: adapter.teardownAll,
 }))
 
 import { useTracking } from './useTracking'
@@ -27,10 +28,9 @@ const canTrackMarketing = ref(true)
 const facebookPixelEnabled = ref(true)
 const facebookPixelId = ref('123456789')
 const facebookPixelDebugEnabled = ref(false)
-const metaBrowserConnection = computed(() => facebookPixelEnabled.value && facebookPixelId.value
-  ? { provider: 'meta', destinationId: facebookPixelId.value, debugEnabled: facebookPixelDebugEnabled.value }
-  : null)
-const browserConnections = computed(() => metaBrowserConnection.value ? [metaBrowserConnection.value] : [])
+const browserConnections = computed(() => facebookPixelEnabled.value && facebookPixelId.value
+  ? [{ provider: 'meta', destinationId: facebookPixelId.value, debugEnabled: facebookPixelDebugEnabled.value }]
+  : [])
 let analyticsVisitorId = 'visitor_1'
 let analyticsSessionId = 'session_1'
 let route = {
@@ -53,7 +53,7 @@ describe('useTracking', () => {
     adapter.pageView.mockReturnValue(true)
     adapter.standardEvent.mockReset()
     adapter.standardEvent.mockReturnValue(true)
-    adapter.teardown.mockReset()
+    adapter.teardownAll.mockReset()
     marketingConsentState.value = 'granted'
     canTrackMarketing.value = true
     facebookPixelEnabled.value = true
@@ -72,7 +72,6 @@ describe('useTracking', () => {
     vi.stubGlobal('useRoute', () => route)
     vi.stubGlobal('useRuntimeConfig', () => ({ public: { appEnv: 'production' } }))
     vi.stubGlobal('useSiteSettings', () => ({
-      metaBrowserConnection,
       browserConnections,
     }))
     vi.stubGlobal('useAnalytics', () => ({
@@ -449,7 +448,7 @@ describe('useTracking', () => {
     facebookPixelEnabled.value = true
     tracking.trackPageView()
 
-    expect(adapter.teardown).toHaveBeenCalledTimes(2)
+    expect(adapter.teardownAll).toHaveBeenCalledOnce()
     expect(adapter.initialize).toHaveBeenCalledTimes(2)
     expect(adapter.pageView).toHaveBeenCalledTimes(2)
   })
@@ -504,12 +503,12 @@ describe('useTracking', () => {
     expect(adapter.pageView).not.toHaveBeenCalled()
   })
 
-  it('导航到敏感 URL 后 Contact 只写第一方事实并 teardown Pixel', async () => {
+  it('导航到敏感 URL 后 Contact 只写第一方事实并卸载广告平台', async () => {
     route.fullPath = '/gallery/public-before-sensitive'
     route.path = '/gallery/public-before-sensitive'
     const tracking = useTracking()
     tracking.trackPageView()
-    adapter.teardown.mockClear()
+    adapter.teardownAll.mockClear()
     adapter.standardEvent.mockClear()
     api.mockResolvedValueOnce({ data: { trackingInstructions: [instruction('Contact')] } })
 
@@ -523,19 +522,19 @@ describe('useTracking', () => {
 
     expect(adapter.initialize).toHaveBeenCalledWith('123456789')
     expect(adapter.pageView).toHaveBeenCalledOnce()
-    expect(adapter.teardown).toHaveBeenCalledTimes(2)
+    expect(adapter.teardownAll).toHaveBeenCalledOnce()
     expect(adapter.standardEvent).not.toHaveBeenCalled()
     expect(api.mock.calls.filter(call => call[0] === '/api/conversions/events')).toHaveLength(1)
     expect(api.mock.calls.filter(call => call[0] === '/api/conversions/pixel-receipts')).toHaveLength(0)
     expect(trackAnalytics).toHaveBeenCalledWith('contact_method_click', expect.objectContaining({ flush: true }))
   })
 
-  it('admin route 的 Contact 只写第一方事实并 teardown Pixel', async () => {
+  it('admin route 的 Contact 只写第一方事实并卸载广告平台', async () => {
     route.fullPath = '/gallery/public-before-admin'
     route.path = '/gallery/public-before-admin'
     const tracking = useTracking()
     tracking.trackPageView()
-    adapter.teardown.mockClear()
+    adapter.teardownAll.mockClear()
     adapter.standardEvent.mockClear()
     api.mockResolvedValueOnce({ data: { trackingInstructions: [instruction('Contact')] } })
 
@@ -547,7 +546,7 @@ describe('useTracking', () => {
       actionType: 'copy',
     })
 
-    expect(adapter.teardown).toHaveBeenCalledTimes(2)
+    expect(adapter.teardownAll).toHaveBeenCalledOnce()
     expect(adapter.standardEvent).not.toHaveBeenCalled()
     expect(api.mock.calls.filter(call => call[0] === '/api/conversions/events')).toHaveLength(1)
     expect(api.mock.calls.filter(call => call[0] === '/api/conversions/pixel-receipts')).toHaveLength(0)

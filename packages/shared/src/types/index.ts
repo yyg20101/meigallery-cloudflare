@@ -81,41 +81,15 @@ export type ActiveConversionActionType = Extract<
   'contact' | 'complete_registration'
 >
 
-export type ConversionMetaEventName =
-  | 'Contact'
-  | 'Lead'
-  | 'CompleteRegistration'
-
-export type ActiveMetaEventName = Extract<
-  ConversionMetaEventName,
-  'Contact' | 'CompleteRegistration'
->
-
-export type ActiveTikTokEventName = 'Contact' | 'CompleteRegistration'
-
 export type AdPlatformProvider = 'meta' | 'tiktok' | 'google'
 
 export type AdDeliveryTransport = 'browser' | 'server'
 
-export type ActiveAdPlatformEventName = ActiveMetaEventName | ActiveTikTokEventName
+export type AdPlatformConversionEventName = 'Contact' | 'CompleteRegistration'
 
 export type AdPlatformTrackingMode = 'disabled' | 'test' | 'production'
 
-export type MetaTrackingMode = AdPlatformTrackingMode
-
-export type MetaCapiRolloutPercentage = 0 | 10 | 50 | 100
-
-export type MetaCapiIncidentStatus = 'open' | 'closed'
-
-export type MetaCapiIncidentSeverity = 'warning' | 'critical'
-
-export interface MetaCapiRolloutDecision {
-  targetPercentage: MetaCapiRolloutPercentage
-  effectivePercentage: MetaCapiRolloutPercentage
-  bucket: number | null
-  included: boolean
-  reason: 'included' | 'rollout_excluded' | 'circuit_open' | 'missing_stable_id'
-}
+export type AdPlatformRolloutPercentage = 0 | 10 | 50 | 100
 
 export type PublicConversionActionType = Extract<ActiveConversionActionType, 'contact'>
 

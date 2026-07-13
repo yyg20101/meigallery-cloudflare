@@ -1,30 +1,29 @@
 import { describe, expect, expectTypeOf, it } from 'vitest'
-import type { ActiveConversionActionType, ActiveMetaEventName } from '@meigallery/shared'
+import type { ActiveConversionActionType, AdPlatformConversionEventName } from '@meigallery/shared'
 import {
   buildConversionDedupeKey,
   buildExternalEventIdBasis,
-  normalizeMetaTrackingMode,
+  normalizeAdPlatformTrackingMode,
 } from '@meigallery/shared/utils'
 import {
   buildExternalEventId,
   sanitizeConversionMetadata,
-  metaEventForConversion,
 } from './conversions'
 import {
+  ACTIVE_AD_PLATFORM_CONVERSION_EVENTS,
   ACTIVE_CONVERSION_ACTIONS,
-  ACTIVE_META_EVENTS,
   ATTRIBUTION_LIMITS,
 } from '@meigallery/shared/constants'
 
 describe('conversion utils', () => {
-  it('外部投递事件 ID 输入只接受活动动作和活动 Meta 事件', async () => {
+  it('外部投递事件 ID 输入只接受活动动作和平台转化事件', async () => {
     type ExternalEventInput = Parameters<typeof buildExternalEventIdBasis>[0]
     expectTypeOf<ExternalEventInput['actionType']>().toEqualTypeOf<ActiveConversionActionType>()
-    expectTypeOf<ExternalEventInput['metaEventName']>().toEqualTypeOf<ActiveMetaEventName>()
+    expectTypeOf<ExternalEventInput['eventName']>().toEqualTypeOf<AdPlatformConversionEventName>()
 
     const eventId = await buildExternalEventId('stable-server-secret', {
       actionType: 'complete_registration',
-      metaEventName: 'CompleteRegistration',
+      eventName: 'CompleteRegistration',
       userId: 42,
       sessionId: 'session_a',
       visitorId: 'visitor_a',
@@ -35,14 +34,14 @@ describe('conversion utils', () => {
 
     expect(() => buildExternalEventIdBasis({
       actionType: 'lead',
-      metaEventName: 'Lead',
+      eventName: 'Lead',
       sessionId: 'session_a',
       visitorId: 'visitor_a',
       occurredDate: '2026-07-10',
     } as never)).toThrow('外部投递只允许活动转化事件')
   })
 
-  it('共享契约生成稳定事件 ID 并保守归一化 Meta 模式', async () => {
+  it('共享契约生成稳定事件 ID 并保守归一化平台模式', async () => {
     const input = {
       actionType: 'contact' as const,
       sessionId: 'session_abc',
@@ -52,28 +51,23 @@ describe('conversion utils', () => {
       actionTarget: 'floating_contact_panel',
     }
     expect(buildConversionDedupeKey(input)).toBe('contact:session_abc:telegram:floating_contact_panel')
-    expect(buildExternalEventIdBasis({ ...input, metaEventName: 'Contact' })).toBe(
+    expect(buildExternalEventIdBasis({ ...input, eventName: 'Contact' })).toBe(
       'Contact:contact:session_abc:telegram:floating_contact_panel',
     )
-    const first = await buildExternalEventId('stable-server-secret', { ...input, metaEventName: 'Contact' })
-    const second = await buildExternalEventId('stable-server-secret', { ...input, metaEventName: 'Contact' })
+    const first = await buildExternalEventId('stable-server-secret', { ...input, eventName: 'Contact' })
+    const second = await buildExternalEventId('stable-server-secret', { ...input, eventName: 'Contact' })
     expect(first).toBe(second)
     expect(first).not.toContain('session_abc')
-    expect(normalizeMetaTrackingMode('production')).toBe('production')
-    expect(normalizeMetaTrackingMode('hybrid')).toBe('disabled')
-    expect(normalizeMetaTrackingMode('limited')).toBe('disabled')
+    expect(normalizeAdPlatformTrackingMode('production')).toBe('production')
+    expect(normalizeAdPlatformTrackingMode('hybrid')).toBe('disabled')
+    expect(normalizeAdPlatformTrackingMode('limited')).toBe('disabled')
   })
 
-  it('活动 Meta 契约只包含联系和注册', () => {
+  it('活动广告平台契约只包含联系和注册', () => {
     expectTypeOf<ActiveConversionActionType>().toEqualTypeOf<'contact' | 'complete_registration'>()
-    expectTypeOf<ActiveMetaEventName>().toEqualTypeOf<'Contact' | 'CompleteRegistration'>()
+    expectTypeOf<AdPlatformConversionEventName>().toEqualTypeOf<'Contact' | 'CompleteRegistration'>()
     expect(ACTIVE_CONVERSION_ACTIONS).toEqual(['contact', 'complete_registration'])
-    expect(ACTIVE_META_EVENTS).toEqual(['Contact', 'CompleteRegistration'])
-    expect(metaEventForConversion('contact')).toBe('Contact')
-    expect(metaEventForConversion('complete_registration')).toBe('CompleteRegistration')
-    expect(metaEventForConversion('lead')).toBeNull()
-    expect(metaEventForConversion('start_trial')).toBeNull()
-    expect(metaEventForConversion('membership_grant')).toBeNull()
+    expect(ACTIVE_AD_PLATFORM_CONVERSION_EVENTS).toEqual(['Contact', 'CompleteRegistration'])
   })
 
   it('注册事件按服务端用户 ID 生成稳定去重键', () => {

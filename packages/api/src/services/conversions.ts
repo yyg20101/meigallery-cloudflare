@@ -1,20 +1,20 @@
 import type {
   ActiveConversionActionType,
   AdDeliveryTransport,
+  AdPlatformConversionEventName,
   AdPlatformProvider,
+  AdPlatformTrackingMode,
   AnalyticsConsentState,
   AnalyticsSourceChannel,
   AdBrowserInstruction,
   ConversionSkipReason,
   MetaCapiSensitiveContext,
-  MetaTrackingMode,
 } from '@meigallery/shared'
 import type { Bindings } from '../index'
 import { generateId } from '../utils/db'
 import {
   buildConversionDedupeKey,
   buildExternalEventId,
-  metaEventForConversion,
   sanitizeConversionMetadata,
 } from '../utils/conversions'
 import { createPixelReceiptToken, type PixelReceiptClaims } from '../utils/pixel-receipt'
@@ -30,7 +30,7 @@ import {
   type MetaCapiEncryptedEnvelope,
 } from '../utils/meta-capi-crypto'
 import { transitionDeliveryStatus } from './meta-capi'
-import { mapConversionToPlatformEvent } from './ad-platform/registry'
+import { hasAdPlatformAdapter, mapConversionToPlatformEvent } from './ad-platform/registry'
 import { listAdPlatformConnections, readAdPlatformConnection } from './ad-platform/connections'
 import { createSecureOutboxStatement, enqueueSecureMetaCapiDelivery } from './meta-capi-secure-outbox'
 import { requireVerifiedMetaConnection } from './meta-connection'
@@ -142,7 +142,7 @@ type PlannedDelivery = {
   deliveryId: string
   provider: AdPlatformProvider
   transport: AdDeliveryTransport
-  eventName: NonNullable<ReturnType<typeof metaEventForConversion>>
+  eventName: AdPlatformConversionEventName
   eventId: string
   browserInstruction?: AdBrowserInstruction
   status: 'pending' | 'skipped'
@@ -162,7 +162,7 @@ type PlannedDelivery = {
   hasEmail: 0 | 1
   hasExternalId: 0 | 1
   encryptionKeyId: string
-  trackingMode: MetaTrackingMode
+  trackingMode: AdPlatformTrackingMode
   connectionRevision: string | null
   rolloutTargetPercentage: number
   rolloutEffectivePercentage: number
@@ -421,7 +421,7 @@ export async function markPixelAttempted(
   }>()
 
   if (!delivery
-    || (delivery.provider !== 'meta' && delivery.provider !== 'tiktok')
+    || !hasAdPlatformAdapter(delivery.provider)
     || delivery.transport !== 'browser'
     || delivery.external_event_id !== claims.eventId) {
     throw new Error('Pixel 回执无效')
@@ -445,7 +445,7 @@ export async function markPixelAttempted(
       WHERE id = ?
       LIMIT 1
     `).bind(delivery.id).first<{ provider: string; transport: string; external_event_id: string; status: string }>()
-    if ((current?.provider === 'meta' || current?.provider === 'tiktok')
+    if (hasAdPlatformAdapter(current?.provider)
       && current.transport === 'browser'
       && current.external_event_id === claims.eventId
       && current.status === 'attempted') {
@@ -723,7 +723,7 @@ async function planMetaDeliveries(
     userId: input.userId ?? undefined,
     methodType: input.methodType,
     actionTarget: input.actionTarget,
-    metaEventName: eventName,
+    eventName,
   })
   const transports = [
     ...(settings.pixelEnabled ? ['browser' as const] : []),
@@ -820,7 +820,7 @@ async function planBrowserPlatformDelivery(
     userId: input.userId ?? undefined,
     methodType: input.methodType,
     actionTarget: input.actionTarget,
-    metaEventName: eventName,
+    eventName,
   })
   const deliveryId = generateId('cdlv')
   return [{
@@ -909,7 +909,6 @@ function shouldCreateMetaDelivery(settings: MetaDeliverySettings, input: RecordC
     && (settings.mode === 'test' || settings.mode === 'production')
     && Boolean(settings.pixelId)
     && (settings.pixelEnabled || settings.capiEnabled)
-    && Boolean(metaEventForConversion(input.actionType))
 }
 
 function shouldCreateMetaCapiDelivery(settings: MetaDeliverySettings, input: RecordConversionInput) {

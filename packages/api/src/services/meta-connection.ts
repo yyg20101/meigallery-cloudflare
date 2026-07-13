@@ -1,4 +1,4 @@
-import type { ActiveMetaEventName, MetaTrackingMode } from '@meigallery/shared'
+import type { AdPlatformConversionEventName, AdPlatformTrackingMode } from '@meigallery/shared'
 import type { Bindings } from '../index'
 import { mergeD1Usage, readD1UsageMeta, type D1Usage } from '../utils/analytics-cost'
 import { loadMetaCapiCryptoKeys, metaConnectionFingerprint } from '../utils/meta-capi-crypto'
@@ -84,7 +84,7 @@ type EvaluatedConnection = {
   pixelId: string
   accessToken: string
   testEventCode: string
-  trackingMode: MetaTrackingMode
+  trackingMode: AdPlatformTrackingMode
   releaseCommit: string
   fingerprint: string
   verificationRevision: string
@@ -147,7 +147,7 @@ export async function requireVerifiedMetaConnection(
 export async function verifyMetaConnection(
   env: MetaConnectionEnv,
   ownerUserId: number,
-  eventName: ActiveMetaEventName,
+  eventName: AdPlatformConversionEventName,
   testEventCode: string,
 ): Promise<MetaConnectionStatus> {
   return (await bootstrapMetaConnectionVerification(env, ownerUserId, eventName, testEventCode)).connection
@@ -156,7 +156,7 @@ export async function verifyMetaConnection(
 export async function bootstrapMetaConnectionVerification(
   env: MetaConnectionEnv,
   ownerUserId: number,
-  eventName: ActiveMetaEventName,
+  eventName: AdPlatformConversionEventName,
   testEventCodeInput: string,
 ): Promise<MetaConnectionBootstrapResult> {
   const environment = requireRuntimeEnvironment(env.APP_ENV)
@@ -342,7 +342,7 @@ function persistVerificationCas(
     environment: MetaConnectionEnvironment
     pixelId: string
     fingerprint: string
-    eventName: ActiveMetaEventName
+    eventName: AdPlatformConversionEventName
     releaseCommit: string
     ownerUserId: number
     revision: string
@@ -684,7 +684,7 @@ function createVerificationRevision() {
 }
 
 function buildSyntheticBootstrapPayload(
-  eventName: ActiveMetaEventName,
+  eventName: AdPlatformConversionEventName,
   deliveryId: string,
   testEventCode: string,
 ) {

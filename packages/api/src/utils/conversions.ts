@@ -1,5 +1,4 @@
-import type { ActiveMetaEventName, ConversionActionType } from '@meigallery/shared'
-import { ATTRIBUTION_LIMITS, META_EVENT_BY_CONVERSION } from '@meigallery/shared/constants'
+import { ATTRIBUTION_LIMITS } from '@meigallery/shared/constants'
 import { buildConversionDedupeKey, buildExternalEventIdBasis } from '@meigallery/shared/utils'
 
 export { buildConversionDedupeKey }
@@ -18,9 +17,10 @@ export async function buildExternalEventId(
     ['sign'],
   )
   const basis = buildExternalEventIdBasis(input)
+  // 该命名空间已经进入生产事件 ID 协议，重命名会改变同一事实的确定性 ID。
   const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`meigallery:meta-event:v2:${basis}`))
   const digest = Array.from(new Uint8Array(signature), byte => byte.toString(16).padStart(2, '0')).join('')
-  return `mg:v2:${input.metaEventName}:${digest}`
+  return `mg:v2:${input.eventName}:${digest}`
 }
 
 const SENSITIVE_KEYS = new Set([
@@ -90,10 +90,6 @@ const BLOCKED_CREDENTIAL_PARAM_NAMES = new Set([
 ])
 
 const REDACTED_ONLY_PATTERN = /^(?:[\s,，;；:/：|、-]*\[redacted_(?:email|phone|url|credential|contact)\])+[\s,，;；:/：|、-]*$/
-
-export function metaEventForConversion(actionType: ConversionActionType): ActiveMetaEventName | null {
-  return META_EVENT_BY_CONVERSION[actionType]
-}
 
 export function sanitizeConversionMetadata(input: Record<string, unknown>) {
   const output: Record<string, string | number | boolean> = {}

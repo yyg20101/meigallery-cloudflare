@@ -1,13 +1,13 @@
 import type {
   ActiveConversionActionType,
   AdDeliveryTransport,
+  AdPlatformConversionEventName,
   AdPlatformProvider,
-  ActiveAdPlatformEventName,
 } from '@meigallery/shared'
 
 export interface AdPlatformAdapterDefinition {
   provider: AdPlatformProvider
-  eventNames: Readonly<Record<ActiveConversionActionType, ActiveAdPlatformEventName>>
+  eventNames: Readonly<Record<ActiveConversionActionType, AdPlatformConversionEventName>>
   transports: readonly AdDeliveryTransport[]
 }
 
@@ -38,6 +38,14 @@ export function getAdPlatformAdapter(provider: AdPlatformProvider) {
   const adapter = ADAPTERS.get(provider)
   if (!adapter) throw new Error(`AD_PLATFORM_ADAPTER_NOT_REGISTERED:${provider}`)
   return adapter
+}
+
+export function hasAdPlatformAdapter(provider: unknown): provider is AdPlatformProvider {
+  return typeof provider === 'string' && ADAPTERS.has(provider as AdPlatformProvider)
+}
+
+export function listAdPlatformProviders(): AdPlatformProvider[] {
+  return [...ADAPTERS.keys()]
 }
 
 export function mapConversionToPlatformEvent(

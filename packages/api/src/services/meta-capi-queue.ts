@@ -1,4 +1,5 @@
 import type { MetaCapiQueueMessage } from '@meigallery/shared'
+import { ACTIVE_AD_PLATFORM_CONVERSION_EVENTS } from '@meigallery/shared/constants'
 import type { Bindings } from '../index'
 import {
   decryptMetaCapiContext,
@@ -30,7 +31,7 @@ const META_RETRY_DELAYS = [60, 300, 900, 1800] as const
 const META_RECOVERY_STALE_MINUTES = 5
 const META_RECOVERY_BATCH_SIZE = 25
 const SECURE_CONTEXT_TTL_MS = 24 * 60 * 60 * 1000
-const ACTIVE_META_EVENTS = new Set(['Contact', 'CompleteRegistration'])
+const META_CAPI_EVENT_NAMES = new Set<string>(ACTIVE_AD_PLATFORM_CONVERSION_EVENTS)
 const QUEUE_MESSAGE_FIELDS = new Set(['schemaVersion', 'deliveryId', 'envelope'])
 const ENVELOPE_FIELDS = new Set(['keyId', 'iv', 'ciphertext', 'tag', 'expiresAt'])
 const QUEUE_TRANSITION_MAX_ATTEMPTS = 3
@@ -215,7 +216,7 @@ async function consumeSecureMessage(
       ackMessage(queueMessage)
       return
     }
-    if (!ACTIVE_META_EVENTS.has(delivery.event_name)) {
+    if (!META_CAPI_EVENT_NAMES.has(delivery.event_name)) {
       await markSkipped(env.DB, delivery, 'unsupported_event')
       await deleteSecureMetaCapiOutbox(env.DB, deliveryId)
       ackMessage(queueMessage)

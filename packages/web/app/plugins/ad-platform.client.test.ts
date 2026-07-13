@@ -5,16 +5,15 @@ describe('广告平台浏览器插件', () => {
   const afterEachHandlers: Array<() => void> = []
   const fetchSettings = vi.fn()
   const trackPageView = vi.fn()
-  const teardownPixel = vi.fn()
+  const teardownAdBrowserTracking = vi.fn()
   const refreshMarketingConsent = vi.fn()
   const consent = ref<'limited' | 'granted' | 'denied'>('limited')
   const facebookPixelEnabled = ref(true)
   const facebookPixelId = ref('123456789')
   const facebookPixelDebugEnabled = ref(false)
-  const metaBrowserConnection = computed(() => facebookPixelEnabled.value && facebookPixelId.value
-    ? { provider: 'meta', destinationId: facebookPixelId.value, debugEnabled: facebookPixelDebugEnabled.value }
-    : null)
-  const browserConnections = computed(() => metaBrowserConnection.value ? [metaBrowserConnection.value] : [])
+  const browserConnections = computed(() => facebookPixelEnabled.value && facebookPixelId.value
+    ? [{ provider: 'meta', destinationId: facebookPixelId.value, debugEnabled: facebookPixelDebugEnabled.value }]
+    : [])
 
   beforeEach(() => {
     vi.resetModules()
@@ -23,7 +22,7 @@ describe('广告平台浏览器插件', () => {
     fetchSettings.mockReset()
     fetchSettings.mockResolvedValue(undefined)
     trackPageView.mockReset()
-    teardownPixel.mockReset()
+    teardownAdBrowserTracking.mockReset()
     refreshMarketingConsent.mockReset()
     refreshMarketingConsent.mockResolvedValue(undefined)
 
@@ -31,14 +30,13 @@ describe('广告平台浏览器插件', () => {
     vi.stubGlobal('useRouter', () => ({ afterEach: (handler: () => void) => afterEachHandlers.push(handler) }))
     vi.stubGlobal('useSiteSettings', () => ({
       fetchSettings,
-      metaBrowserConnection,
       browserConnections,
     }))
     vi.stubGlobal('useMarketingConsent', () => ({
       canTrackMarketing: computed(() => consent.value === 'granted'),
       refresh: refreshMarketingConsent,
     }))
-    vi.stubGlobal('useTracking', () => ({ trackPageView, teardownPixel }))
+    vi.stubGlobal('useTracking', () => ({ trackPageView, teardownAdBrowserTracking }))
   })
 
   afterEach(() => {
@@ -50,7 +48,7 @@ describe('广告平台浏览器插件', () => {
 
     await plugin({} as never)
     expect(fetchSettings).toHaveBeenCalledOnce()
-    expect(teardownPixel).toHaveBeenCalledTimes(1)
+    expect(teardownAdBrowserTracking).toHaveBeenCalledTimes(1)
     expect(trackPageView).not.toHaveBeenCalled()
 
     consent.value = 'granted'
@@ -66,7 +64,7 @@ describe('广告平台浏览器插件', () => {
 
     consent.value = 'denied'
     await nextTick()
-    expect(teardownPixel).toHaveBeenCalledTimes(2)
+    expect(teardownAdBrowserTracking).toHaveBeenCalledTimes(2)
     expect(trackPageView).toHaveBeenCalledTimes(3)
   })
 
@@ -74,14 +72,14 @@ describe('广告平台浏览器插件', () => {
     consent.value = 'granted'
     await nextTick()
     trackPageView.mockClear()
-    teardownPixel.mockClear()
+    teardownAdBrowserTracking.mockClear()
     refreshMarketingConsent.mockRejectedValueOnce(new Error('receipt unavailable'))
     const plugin = (await import('./ad-platform.client')).default
 
     await expect(plugin({} as never)).resolves.toBeUndefined()
 
     expect(trackPageView).not.toHaveBeenCalled()
-    expect(teardownPixel).toHaveBeenCalledOnce()
+    expect(teardownAdBrowserTracking).toHaveBeenCalledOnce()
     expect(afterEachHandlers).toHaveLength(0)
   })
 })

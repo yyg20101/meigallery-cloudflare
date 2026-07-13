@@ -8,13 +8,13 @@ export default defineNuxtPlugin(async () => {
     await Promise.all([fetchSettings(), refreshMarketingConsent()])
   }
   catch {
-    tracking.teardownPixel()
+    tracking.teardownAdBrowserTracking()
     return
   }
 
   function syncBrowserTracking() {
     if (!canTrackMarketing.value || !browserConnections.value.some(connection => connection.destinationId)) {
-      tracking.teardownPixel()
+      tracking.teardownAdBrowserTracking()
       return
     }
     tracking.trackPageView()

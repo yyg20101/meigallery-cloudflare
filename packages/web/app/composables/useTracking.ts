@@ -2,7 +2,8 @@ import type { AdBrowserInstruction } from '@meigallery/shared'
 import {
   executeAdBrowserInstruction,
   initializeAdBrowserProvider,
-  teardownAdBrowserProvider,
+  isRegisteredAdBrowserProvider,
+  teardownAllAdBrowserProviders,
   trackAdBrowserPageView,
   trackAdBrowserStandardEvent,
 } from '~/adapters/adPlatformBrowser.client'
@@ -134,15 +135,15 @@ export function useTracking() {
   function trackPageView() {
     if (!ensureCurrentMarketingRouteAllowed()) return
     if (!canDeliverMarketing(marketingConsent)) {
-      teardownPixel()
+      teardownAdBrowserTracking()
       return
     }
 
     const connections = siteSettings.browserConnections.value.filter(
-      connection => isSupportedBrowserProvider(connection.provider) && Boolean(connection.destinationId),
+      connection => isRegisteredAdBrowserProvider(connection.provider) && Boolean(connection.destinationId),
     )
     if (!connections.length) {
-      teardownPixel()
+      teardownAdBrowserTracking()
       return
     }
     for (const connection of connections) {
@@ -155,14 +156,14 @@ export function useTracking() {
     }
   }
 
-  function teardownPixel() {
-    for (const provider of ['meta', 'tiktok'] as const) teardownAdBrowserProvider(provider)
+  function teardownAdBrowserTracking() {
+    teardownAllAdBrowserProviders()
     lastTrackedPageKeys.clear()
   }
 
   function ensureCurrentMarketingRouteAllowed() {
     if (isMarketingRouteAllowed(route.fullPath)) return true
-    teardownPixel()
+    teardownAdBrowserTracking()
     return false
   }
 
@@ -184,7 +185,7 @@ export function useTracking() {
     payload: Record<string, string | number | boolean>,
   ) {
     for (const connection of siteSettings.browserConnections.value) {
-      if (!isSupportedBrowserProvider(connection.provider) || !connection.destinationId) continue
+      if (!isRegisteredAdBrowserProvider(connection.provider) || !connection.destinationId) continue
       if (!initializeAdBrowserProvider(connection.provider, connection.destinationId)) continue
       trackAdBrowserStandardEvent(connection.provider, eventName, payload)
     }
@@ -241,7 +242,7 @@ export function useTracking() {
     trackContact,
     executeBrowserInstructions,
     trackPageView,
-    teardownPixel,
+    teardownAdBrowserTracking,
     trackViewContent,
     trackSearch,
     buildRegistrationAttributionContext,
@@ -288,7 +289,7 @@ function scopedMarketingConsent(
 function isAdBrowserInstruction(value: unknown): value is AdBrowserInstruction {
   if (!value || typeof value !== 'object') return false
   const event = value as Partial<AdBrowserInstruction> & { eventName?: unknown }
-  return (event.provider === 'meta' || event.provider === 'tiktok' || event.provider === 'google')
+  return isRegisteredAdBrowserProvider(event.provider)
     && typeof event.deliveryId === 'string'
     && event.deliveryId.length > 0
     && (event.eventName === 'Contact' || event.eventName === 'CompleteRegistration')
@@ -297,10 +298,6 @@ function isAdBrowserInstruction(value: unknown): value is AdBrowserInstruction {
     && Boolean(event.payload && typeof event.payload === 'object' && !Array.isArray(event.payload))
     && typeof event.receiptToken === 'string'
     && event.receiptToken.length > 0
-}
-
-function isSupportedBrowserProvider(value: unknown): value is 'meta' | 'tiktok' {
-  return value === 'meta' || value === 'tiktok'
 }
 
 function normalizeBrowserInstruction(value: unknown): AdBrowserInstruction | null {

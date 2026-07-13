@@ -42,6 +42,19 @@ describe('Meta secret 静态泄漏扫描', () => {
     assert.deepEqual(report.findings, [])
   })
 
+  it('按当前工作树扫描时忽略已删除但尚未提交的 tracked 文件', async () => {
+    const rootDir = await createRepository()
+    const deletedPath = path.join(rootDir, 'docs', 'obsolete.md')
+    await writeTracked(rootDir, 'docs/obsolete.md', '历史说明')
+    await gitAdd(rootDir, ['.gitignore', 'docs/obsolete.md'])
+    await rm(deletedPath)
+
+    const report = await scanMetaSecretLeaks({ rootDir })
+
+    assert.equal(report.status, 'passed')
+    assert.deepEqual(report.findings, [])
+  })
+
   it('扫描 tracked 文件和 ignored release evidence，按稳定 rule ID 失败且不回显原值', async () => {
     const rootDir = await createRepository()
     await writeTracked(rootDir, 'src/runtime.ts', `

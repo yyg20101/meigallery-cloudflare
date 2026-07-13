@@ -1224,6 +1224,32 @@ describe('后台归因中心 API', () => {
     expect((await server.json()).code).toBe('AD_PLATFORM_SERVER_UNSUPPORTED')
   })
 
+  it('TikTok 连接配置统一规范 Pixel ID 并写入审计日志', async () => {
+    const db = createAttributionDb()
+    const response = await createApp('owner').request('/api/admin/attribution/platforms/tiktok', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        enabled: true,
+        browserEnabled: true,
+        serverEnabled: false,
+        destinationId: 'c123456789abcdef',
+        debugEnabled: true,
+        mode: 'test',
+      }),
+    }, { DB: db, APP_ENV: 'production' } as unknown as Bindings)
+
+    expect(response.status).toBe(200)
+    const connectionUpdate = db.calls.find(call => call.sql.includes('UPDATE ad_platform_connections'))
+    const auditInsert = db.calls.find(call => call.sql.includes('INSERT INTO admin_audit_logs'))
+    expect(connectionUpdate?.params).toEqual([1, 'test', 1, 'C123456789ABCDEF', 1])
+    expect(auditInsert?.params[2]).toBe('tiktok')
+    expect(JSON.parse(String(auditInsert?.params[4]))).toMatchObject({
+      destinationId: 'C123456789ABCDEF',
+      serverEnabled: false,
+    })
+  })
+
   it('Meta 从测试模式切换生产模式时保留当前连接验证', async () => {
     const db = createAttributionDb({ connectionVerified: true })
     const response = await createApp('owner').request('/api/admin/attribution/platforms/meta', {

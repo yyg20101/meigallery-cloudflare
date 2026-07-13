@@ -1,16 +1,16 @@
-export type MetaCapiRolloutPercentage = 0 | 10 | 50 | 100
+import type { AdPlatformRolloutPercentage } from '@meigallery/shared'
 
 export interface MetaCapiRolloutDecision {
-  targetPercentage: MetaCapiRolloutPercentage
-  effectivePercentage: MetaCapiRolloutPercentage
+  targetPercentage: AdPlatformRolloutPercentage
+  effectivePercentage: AdPlatformRolloutPercentage
   bucket: number | null
   included: boolean
   reason: 'included' | 'rollout_excluded' | 'circuit_open' | 'missing_stable_id'
 }
 
 export interface RolloutPromotionInput {
-  from: MetaCapiRolloutPercentage
-  to: MetaCapiRolloutPercentage
+  from: AdPlatformRolloutPercentage
+  to: AdPlatformRolloutPercentage
   sent: number
   failed: number
   permissionErrors: number
@@ -20,15 +20,15 @@ export interface RolloutPromotionInput {
 }
 
 const ROLLOUT_PERCENTAGES = new Set<unknown>([0, 10, 50, 100])
-const NEXT_PERCENTAGE: Partial<Record<MetaCapiRolloutPercentage, MetaCapiRolloutPercentage>> = {
+const NEXT_PERCENTAGE: Partial<Record<AdPlatformRolloutPercentage, AdPlatformRolloutPercentage>> = {
   0: 10,
   10: 50,
   50: 100,
 }
 
-export function normalizeMetaCapiRollout(value: unknown): MetaCapiRolloutPercentage {
+export function normalizeMetaCapiRollout(value: unknown): AdPlatformRolloutPercentage {
   return typeof value === 'number' && ROLLOUT_PERCENTAGES.has(value)
-    ? value as MetaCapiRolloutPercentage
+    ? value as AdPlatformRolloutPercentage
     : 0
 }
 
@@ -43,7 +43,7 @@ export async function rolloutBucket(stableId: string): Promise<number> {
 }
 
 export async function decideMetaCapiRollout(input: {
-  targetPercentage: MetaCapiRolloutPercentage
+  targetPercentage: AdPlatformRolloutPercentage
   stableId: string
   circuitOpen: boolean
 }): Promise<MetaCapiRolloutDecision> {

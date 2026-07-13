@@ -3,6 +3,7 @@
  * 从 /api/settings/public 获取站点配置
  * 数据全局缓存，避免重复请求
  */
+import type { AdPlatformProvider, AdPlatformTrackingMode } from '@meigallery/shared'
 import { isScheduledSiteFeatureActive, normalizeAnalyticsConsentMode, normalizeAnalyticsSampleRate, normalizeBooleanSetting, normalizeFeaturedRegionSlugs, normalizeHomeAdImageUrl, normalizeHomeAdUrl, normalizeHomeHotTagLimit, normalizeInternalPath, normalizePublicImageSettingUrl, normalizeSeoKeywords, normalizeSiteSettingDateTime, safeHomeAdText, safeRulesMarkdown, safeSiteText } from '~/utils/siteSettingsSecurity'
 
 const DEFAULT_SITE_NAME = '图库站'
@@ -67,10 +68,10 @@ export function useSiteSettings() {
   }
 
   interface BrowserConnectionSetting {
-    provider?: string
+    provider?: AdPlatformProvider
     destinationId?: string
     debugEnabled?: boolean
-    mode?: 'disabled' | 'test' | 'production'
+    mode?: AdPlatformTrackingMode
   }
 
   interface NormalizedHomeAd {
@@ -162,8 +163,6 @@ export function useSiteSettings() {
   const browserConnections = computed(() => Array.isArray(settings.value.ad_platform_browser_connections)
     ? settings.value.ad_platform_browser_connections
     : [])
-  const metaBrowserConnection = computed(() => browserConnections.value.find(row => row.provider === 'meta') ?? null)
-  const tiktokBrowserConnection = computed(() => browserConnections.value.find(row => row.provider === 'tiktok') ?? null)
   const marketingTrackingMode = computed(() => {
     const modes = browserConnections.value.map(connection => connection.mode)
     if (modes.includes('production')) return 'production'
@@ -221,8 +220,6 @@ export function useSiteSettings() {
     homeAds,
     videoEnabled,
     browserConnections,
-    metaBrowserConnection,
-    tiktokBrowserConnection,
     marketingTrackingMode,
     analyticsEnabled,
     analyticsSampleRate,

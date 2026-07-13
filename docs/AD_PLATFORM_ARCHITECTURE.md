@@ -62,7 +62,7 @@ interface AdBrowserInstruction {
 
 - destination / Pixel ID：可保存在 D1。
 - Access Token：只保存在 production secret 或受控加密凭证存储中，禁止回显。
-- 任一配置变化都会使 connection revision 失效并要求重新验证。
+- destination、凭证指纹或平台 API 版本等连接身份变化时，connection revision 失效并要求重新验证；普通开关、运行模式和 rollout 调整不轮换连接身份。
 
 统一只读入口为 `GET /api/admin/attribution/platforms`。Meta 连接通过 `PATCH /api/admin/attribution/platforms/meta` 原子管理公开标识、Browser/Server 开关、运行模式和灰度；token 仍只由 Worker secret 管理。
 
@@ -80,7 +80,7 @@ interface AdBrowserInstruction {
 3. 实现 Browser adapter。
 4. 实现 Server API adapter、Queue 与 DLQ。
 5. 实现连接验证、测试事件和凭证状态。
-6. 将 provider 加入统一后台连接列表和趋势查询。
+6. 将 provider 注册到统一后台连接列表，并补充平台专属趋势查询。
 7. 验证 Browser/Server 同 event ID 去重。
 8. 通过独立 rollout 放量。
 
@@ -91,4 +91,5 @@ interface AdBrowserInstruction {
 - 已完成：统一连接表、通用 provider/transport schema、事件 registry、统一连接管理 API、浏览器 adapter registry、通用 tracking instruction 响应。
 - 已清理：旧 Meta 站点设置键、`channel`、`meta_connection_revision`、`pixelEvents`、旧投递数据和旧投递日聚合。
 - 保留：Meta adapter、Queue、secure outbox、incident、Dataset Quality 和 live challenge。这些是当前 Meta 实现，不是兼容层。
-- 下一平台：TikTok Pixel + Events API，通过新 adapter 接入。
+- 已完成：TikTok Browser Pixel、统一连接配置和浏览器投递账本。
+- 下一阶段：TikTok Events API、独立凭证、Queue/DLQ、连接验证和 rollout。

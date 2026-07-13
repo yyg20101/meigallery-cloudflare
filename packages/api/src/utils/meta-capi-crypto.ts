@@ -1,8 +1,9 @@
 import type {
-  ActiveMetaEventName,
+  AdPlatformConversionEventName,
   MetaCapiEncryptedEnvelope as SharedMetaCapiEncryptedEnvelope,
   MetaCapiSensitiveContext as SharedMetaCapiSensitiveContext,
 } from '@meigallery/shared'
+import { ACTIVE_AD_PLATFORM_CONVERSION_EVENTS } from '@meigallery/shared/constants'
 
 const DATA_KEY_ERROR = 'META_CAPI_DATA_KEY_INVALID'
 const CONTEXT_ERROR = 'META_CAPI_CONTEXT_INVALID'
@@ -18,7 +19,7 @@ const BASE64_URL_PATTERN = /^[A-Za-z0-9_-]+$/
 const CONTROL_CHARACTER_PATTERN = /\p{Cc}/u
 const FBP_PATTERN = /^fb\.1\.\d{10,16}\.[A-Za-z0-9._-]{1,128}$/
 const FBC_PATTERN = /^fb\.1\.\d{10,16}\.[A-Za-z0-9._-]{1,128}$/
-const ACTIVE_EVENT_NAMES = new Set<ActiveMetaEventName>(['Contact', 'CompleteRegistration'])
+const ACTIVE_EVENT_NAMES = new Set<AdPlatformConversionEventName>(ACTIVE_AD_PLATFORM_CONVERSION_EVENTS)
 const CONTEXT_FIELDS = [
   'fbp',
   'fbc',
@@ -40,7 +41,7 @@ export interface MetaCapiSensitiveContext extends SharedMetaCapiSensitiveContext
 export interface MetaCapiEnvelopeAad {
   deliveryId: string
   externalEventId: string
-  eventName: ActiveMetaEventName
+  eventName: AdPlatformConversionEventName
 }
 
 export interface MetaCapiEncryptedEnvelope extends Omit<SharedMetaCapiEncryptedEnvelope, 'expiresAt'> {
@@ -206,7 +207,7 @@ function encodeAad(value: MetaCapiEnvelopeAad) {
   if (!isNonEmptyIdentifier(deliveryId) || !isNonEmptyIdentifier(externalEventId)) {
     throw stableError(CONTEXT_ERROR)
   }
-  if (typeof eventName !== 'string' || !ACTIVE_EVENT_NAMES.has(eventName as ActiveMetaEventName)) {
+  if (typeof eventName !== 'string' || !ACTIVE_EVENT_NAMES.has(eventName as AdPlatformConversionEventName)) {
     throw stableError(CONTEXT_ERROR)
   }
   return new TextEncoder().encode(JSON.stringify({

@@ -2,65 +2,51 @@
 
 ## 当前状态
 
-- 当前阶段：等待 Dataset Quality 首份有效 production 快照。
-- 当前模式：`ad_platform_connections.mode=test`。
-- CAPI：关闭，target/effective rollout 均为 `0%`。
+- 当前阶段：production CAPI `10%` 观察期，开始时间为 2026-07-13。
+- 当前模式：`ad_platform_connections.mode=production`。
+- Browser Pixel 与 Server API 均已启用，target/effective rollout 均为 `10%`。
+- 进入 `10%` 时连接、Dataset Quality、live evidence 与资源证明均有效，发布检查为 0 个阻断、0 个警告，未关闭 incident、pending、failed 和 secure outbox 均为 0。
+- 放量后尚需积累真实生产投递样本；样本不足时不得提升至 `50%`。
 - Meta 远端资源和验证仅存在于 production；dev/local 只做代码、契约、migration、类型和构建验证。
-- delivery 已迁移到通用广告平台内核；本计划仍只控制 Meta adapter，TikTok/Google 使用独立连接和 rollout。
-- 后续每个阶段开始前先同步确认，不自动开启 CAPI，不自动提高 rollout。
+- delivery 已迁移到通用广告平台内核；本计划只控制 Meta adapter，其他平台使用独立连接、凭证、Queue 和 rollout。
+- 后续每次提升前必须同步确认，不自动提高 rollout。
 
-## 一、等待 Dataset Quality
+## 一、当前生产基线
 
-待确认：
+以下项目已经完成，任一失效时必须停止升级并降回 `0%`：
 
-1. production 每日 Dataset Quality collector 已执行。
-2. `Contact`、`CompleteRegistration` 均有 `success` 快照。
-3. 快照 contract version/digest 与仓库批准契约一致。
-4. 两项快照均在 24 小时新鲜度窗口内。
+1. production Dataset Quality 中 `Contact`、`CompleteRegistration` 均有符合批准契约的 `success` 快照。
+2. production Browser/CAPI live evidence 已验证同组 event ID 与事件去重。
+3. production 资源证明、连接验证、Queue/DLQ 和加密数据 key 均有效。
+4. 连接身份与验证记录一致，运行模式为 `production`。
 
-停止条件：快照缺失、过期、权限不足或结构不符合批准契约时，保持 test 模式、CAPI 关闭和 rollout `0%`。
+Dataset Quality 过期、连接失效、资源证明失效、出现 critical incident 或永久失败时，立即回退 rollout `0%`，必要时关闭 Server API。
 
-## 二、同步代码并发布
+## 二、普通业务发布
 
-Dataset Quality 通过后：
+Meta 连接身份由 Dataset ID、Access Token 指纹和 Graph API 版本决定，普通业务 commit 只用于发布追溯，不使已验证连接自动失效。
 
-1. 确认 `dev` 工作区干净，测试和构建通过。
-2. 将当前功能闭环提交统一推送到 `origin/dev`。
-3. 从 `dev` 创建 release 分支。
-4. 通过 PR 合入 `main`，禁止直接推送 `main`。
-5. 在最终 `main` HEAD 运行生产发布门禁并部署 production API/Web。
+每次生产发布仍必须：
 
-新 commit 会使旧 Meta live evidence 和资源摘要失效。dev 不创建 Meta Queue、Meta secret、Meta attestation 或真实 Graph API 事件。
+1. 从 `dev` 创建 release 分支并通过 PR 合入 `main`。
+2. 运行完整 production release gate 后部署 API/Web。
+3. 部署后核对连接状态、rollout、incident、pending、failed、Queue/DLQ 和 secure outbox。
+4. 发布流程不得自动修改连接模式、Server API 开关或 rollout。
 
-## 三、重新生成正式证据
+## 三、需要重新验证的变更
 
-最终 production commit 部署后：
+只有以下变更需要重新完成连接或资源验证：
 
-1. 保持 `ad_platform_connections.mode=test`、CAPI 关闭、rollout `0%`。
-2. 运行 production post-deploy resource attestation。
-3. 在 production 后台输入 Events Manager 当前显示的 Test Event Code。
-4. 触发 production synthetic Test Event，要求 Meta 返回 `events_received=1`；连接验证与 `Live Evidence` 必须共用上述页面内存值。
-5. 在 production 后台触发 `Live Evidence`。
-6. 在 Meta Events Manager 确认：
-   - `Contact` 同时存在 Browser/Server，且 event ID 相同。
-   - `CompleteRegistration` 同时存在 Browser/Server，且 event ID 相同。
-   - 两项事件均正确去重为一条转化。
-   - `CompleteRegistration` 包含 email、external ID、IP、User-Agent。
-   - `Contact` 包含 IP、User-Agent，不伪造 email、手机号或注册用户 ID。
-   - 没有活动 `Lead` 或 `StartTrial`。
-7. 运行 `corepack pnpm verify:meta-live`，一次完成本地脱敏报告和 production D1 `meta_live` 门禁摘要写入。
-8. 运行 `corepack pnpm verify:meta-resources` 写入完整 production 摘要。
-9. 确认后台发布检查没有阻断项。
+1. Dataset ID、Access Token 或 Graph API 版本变化。
+2. Queue、DLQ、D1、R2、secret 或加密数据 key 绑定变化。
+3. Meta Browser/CAPI event ID、payload、去重或增强匹配实现变化。
+4. Dataset Quality 批准契约变化。
 
-## 四、切换 Production 模式
+重新验证时先降回 rollout `0%`，再按“连接验证 -> Live Evidence -> Dataset Quality -> 资源证明 -> 发布检查”的顺序完成，不复用过期 ticket 或 challenge。
 
-全部正式证据通过后：
+## 四、当前观察要求
 
-1. 将 `ad_platform_connections.mode` 从 `test` 调整为 `production`。
-2. 保持 CAPI rollout `0%`，观察连接、incident、Queue/DLQ 和永久失败。
-3. 确认 production payload 不再携带 `test_event_code`。
-
-出现连接失效、critical incident、retry exhausted、永久 4xx、事件 ID 不一致或重复上报时，不允许进入放量。
+在 `10%` 阶段至少观察 24 小时，并积累不少于 10 次 Server 投递尝试；成功率低于 98%、出现权限错误、retry exhausted、stale pending、DLQ、重复上报或匹配数据异常时，不允许提升至 `50%`。
 
 ## 五、分阶段放量
 
@@ -88,10 +74,8 @@ Dataset Quality 通过后：
 
 ## 七、同步确认点
 
-- 确认点 A：Dataset Quality 首份有效快照已产生。
-- 确认点 B：`dev` 提交可以推送并进入 release 流程。
-- 确认点 C：最终 `main` 已部署，可以重新执行 production live evidence。
-- 确认点 D：完整 production 门禁通过，可以切换 production 模式。
-- 确认点 E：每次 rollout 从 `0%`、`10%`、`50%` 向上调整前。
+- 当前已完成：连接验证、production 模式与 `0% -> 10%`。
+- 下一确认点：`10% -> 50%`，必须同时满足观察时间、最小样本、成功率和零关键异常。
+- 后续确认点：`50% -> 100%`，必须满足 Dataset Quality、匹配覆盖和广告归因趋势稳定。
 
 未获得对应确认前，不进入下一阶段。

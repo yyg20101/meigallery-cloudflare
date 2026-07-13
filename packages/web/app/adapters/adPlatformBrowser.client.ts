@@ -12,7 +12,7 @@ type BrowserAdapter = {
   execute: (instruction: AdBrowserInstruction) => boolean
 }
 
-const adapters: Partial<Record<AdBrowserInstruction['provider'], BrowserAdapter>> = {
+const adapters = {
   meta: {
     initialize: destinationId => metaPixelAdapter.initialize(destinationId),
     pageView: () => metaPixelAdapter.pageView(),
@@ -41,18 +41,20 @@ const adapters: Partial<Record<AdBrowserInstruction['provider'], BrowserAdapter>
       instruction.eventId,
     ),
   },
-}
+} satisfies Partial<Record<AdBrowserInstruction['provider'], BrowserAdapter>>
+
+type RegisteredBrowserProvider = keyof typeof adapters
 
 export function executeAdBrowserInstruction(instruction: AdBrowserInstruction) {
-  return adapters[instruction.provider]?.execute(instruction) ?? false
+  return browserAdapter(instruction.provider)?.execute(instruction) ?? false
 }
 
 export function initializeAdBrowserProvider(provider: AdBrowserInstruction['provider'], destinationId: string) {
-  return adapters[provider]?.initialize(destinationId) ?? false
+  return browserAdapter(provider)?.initialize(destinationId) ?? false
 }
 
 export function trackAdBrowserPageView(provider: AdBrowserInstruction['provider']) {
-  return adapters[provider]?.pageView() ?? false
+  return browserAdapter(provider)?.pageView() ?? false
 }
 
 export function trackAdBrowserStandardEvent(
@@ -61,9 +63,17 @@ export function trackAdBrowserStandardEvent(
   payload?: BrowserEventPayload,
   eventId?: string,
 ) {
-  return adapters[provider]?.standardEvent(eventName, payload, eventId) ?? false
+  return browserAdapter(provider)?.standardEvent(eventName, payload, eventId) ?? false
 }
 
-export function teardownAdBrowserProvider(provider: AdBrowserInstruction['provider']) {
-  adapters[provider]?.teardown()
+export function teardownAllAdBrowserProviders() {
+  for (const adapter of Object.values(adapters)) adapter.teardown()
+}
+
+export function isRegisteredAdBrowserProvider(value: unknown): value is RegisteredBrowserProvider {
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(adapters, value)
+}
+
+function browserAdapter(provider: AdBrowserInstruction['provider']): BrowserAdapter | undefined {
+  return isRegisteredAdBrowserProvider(provider) ? adapters[provider] : undefined
 }

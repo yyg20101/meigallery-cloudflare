@@ -1,8 +1,9 @@
 import type {
   AdPlatformProvider,
+  AdPlatformRolloutPercentage,
   AdPlatformTrackingMode,
-  MetaCapiRolloutPercentage,
 } from '@meigallery/shared'
+import { hasAdPlatformAdapter } from './registry'
 
 export interface AdPlatformConnection {
   provider: AdPlatformProvider
@@ -12,7 +13,7 @@ export interface AdPlatformConnection {
   serverEnabled: boolean
   destinationId: string
   debugEnabled: boolean
-  rolloutPercentage: MetaCapiRolloutPercentage
+  rolloutPercentage: AdPlatformRolloutPercentage
   credentialSecretName: string
   revision: string | null
 }
@@ -52,7 +53,7 @@ export async function listAdPlatformConnections(db: D1Database): Promise<AdPlatf
     ORDER BY provider
   `).all<ConnectionRow>()
   return result.results
-    .filter(row => row.provider === 'meta' || row.provider === 'tiktok' || row.provider === 'google')
+    .filter(row => hasAdPlatformAdapter(row.provider))
     .map(serializeConnection)
 }
 
@@ -65,7 +66,7 @@ function serializeConnection(row: ConnectionRow): AdPlatformConnection {
     serverEnabled: row.server_enabled === 1,
     destinationId: row.destination_id,
     debugEnabled: row.debug_enabled === 1,
-    rolloutPercentage: row.rollout_percentage as MetaCapiRolloutPercentage,
+    rolloutPercentage: row.rollout_percentage as AdPlatformRolloutPercentage,
     credentialSecretName: row.credential_secret_name,
     revision: row.revision,
   }

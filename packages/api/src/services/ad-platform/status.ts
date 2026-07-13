@@ -1,7 +1,11 @@
 import type { AdPlatformProvider, AdPlatformTrackingMode } from '@meigallery/shared'
 import type { MetaConnectionStatus, MetaConnectionEnv } from '../meta-connection'
 import { getMetaConnectionStatus } from '../meta-connection'
-import { readAdPlatformConnection } from './connections'
+import {
+  listAdPlatformConnections as readAdPlatformConnections,
+  type AdPlatformConnection,
+} from './connections'
+import { listAdPlatformProviders } from './registry'
 
 export interface AdPlatformConnectionStatus {
   provider: AdPlatformProvider
@@ -22,20 +26,19 @@ export interface AdPlatformConnectionStatus {
 }
 
 export async function listAdPlatformConnections(env: MetaConnectionEnv) {
-  const [meta, metaConnection, tiktokConnection] = await Promise.all([
+  const [meta, connections] = await Promise.all([
     getMetaConnectionStatus(env),
-    readAdPlatformConnection(env.DB, 'meta'),
-    readAdPlatformConnection(env.DB, 'tiktok'),
+    readAdPlatformConnections(env.DB),
   ])
-  return [
-    fromMetaConnection(meta, metaConnection),
-    fromBrowserConnection('tiktok', tiktokConnection),
-  ]
+  const byProvider = new Map(connections.map(connection => [connection.provider, connection]))
+  return listAdPlatformProviders().map(provider => provider === 'meta'
+    ? fromMetaConnection(meta, byProvider.get(provider) ?? null)
+    : fromBrowserConnection(provider, byProvider.get(provider) ?? null))
 }
 
 function fromBrowserConnection(
   provider: AdPlatformProvider,
-  connection: Awaited<ReturnType<typeof readAdPlatformConnection>>,
+  connection: AdPlatformConnection | null,
 ): AdPlatformConnectionStatus {
   const configured = Boolean(connection?.destinationId)
   return {
@@ -59,7 +62,7 @@ function fromBrowserConnection(
 
 function fromMetaConnection(
   status: MetaConnectionStatus,
-  connection: Awaited<ReturnType<typeof readAdPlatformConnection>>,
+  connection: AdPlatformConnection | null,
 ): AdPlatformConnectionStatus {
   return {
     provider: 'meta',
