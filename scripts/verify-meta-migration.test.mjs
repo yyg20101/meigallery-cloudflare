@@ -39,7 +39,10 @@ function mockJsonFor(name, options = {}) {
       action_count: 1,
       delivery_count: 0,
       verification_count: 1,
-      outbox_count: 0,
+      outbox_count: 1,
+      bridge_outbox_count: 1,
+      bridge_identity_count: 3,
+      bridge_outbox_match: 1,
       claim_count: 1,
       incident_count: 1,
       quality_count: 1,
@@ -59,9 +62,10 @@ function mockJsonFor(name, options = {}) {
       secure_outbox_table: 1,
       secure_outbox_provider_column: 1,
       secure_outbox_index: 1,
-      legacy_secure_outbox_table: 0,
+      legacy_secure_outbox_table: 1,
       conversion_external_id_column: 1,
-      legacy_meta_external_id_column: 0,
+      legacy_meta_external_id_column: 1,
+      bridge_trigger_count: 8,
       conversion_external_id_index: 1,
       legacy_delivery_columns: 0,
       challenge_table: 1,
@@ -101,7 +105,9 @@ describe('Meta migration 演练', () => {
     'meta-migration-apply-0046',
     'meta-migration-apply-0047',
     'meta-migration-apply-0048',
+    'meta-migration-seed-0049-bridge',
     'meta-migration-apply-0049',
+    'meta-migration-exercise-0049-bridge',
     'meta-migration-query-history',
     'meta-migration-query-schema',
     'meta-migration-empty-apply-0001-0049',
@@ -193,7 +199,9 @@ describe('Meta migration 演练', () => {
     assert.ok(names.indexOf('meta-migration-apply-0045') < names.indexOf('meta-migration-apply-0046'))
     assert.ok(names.indexOf('meta-migration-apply-0046') < names.indexOf('meta-migration-apply-0047'))
     assert.ok(names.indexOf('meta-migration-apply-0047') < names.indexOf('meta-migration-apply-0048'))
-    assert.ok(names.indexOf('meta-migration-apply-0048') < names.indexOf('meta-migration-apply-0049'))
+    assert.ok(names.indexOf('meta-migration-apply-0048') < names.indexOf('meta-migration-seed-0049-bridge'))
+    assert.ok(names.indexOf('meta-migration-seed-0049-bridge') < names.indexOf('meta-migration-apply-0049'))
+    assert.ok(names.indexOf('meta-migration-apply-0049') < names.indexOf('meta-migration-exercise-0049-bridge'))
     assert.ok(names.includes('meta-migration-empty-apply-0001-0049'))
     assert.ok(names.includes('meta-migration-empty-query-schema'))
   })
@@ -215,9 +223,10 @@ describe('Meta migration 演练', () => {
     ['统一加密 Outbox 表', 'secure_outbox_table', 0],
     ['统一加密 Outbox provider 列', 'secure_outbox_provider_column', 0],
     ['统一加密 Outbox 索引', 'secure_outbox_index', 0],
-    ['旧 Meta 加密 Outbox 表', 'legacy_secure_outbox_table', 1],
+    ['Meta Outbox 桥接表', 'legacy_secure_outbox_table', 0],
     ['通用转化用户标识列', 'conversion_external_id_column', 0],
-    ['旧 Meta 用户标识列', 'legacy_meta_external_id_column', 1],
+    ['Meta 用户标识桥接列', 'legacy_meta_external_id_column', 0],
+    ['0049 桥接触发器', 'bridge_trigger_count', 7],
     ['通用转化用户标识索引', 'conversion_external_id_index', 0],
     ['旧投递列', 'legacy_delivery_columns', 1],
   ]) {

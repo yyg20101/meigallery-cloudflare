@@ -50,18 +50,21 @@ corepack pnpm --filter @meigallery/web exec nuxt build
 GIT_COMMIT="$(git rev-parse HEAD)"
 env -u VERIFY_RELEASE_ALLOW_BRANCH node scripts/verify-release.mjs assert-production-allowed
 
-# 4. D1 迁移
+# 4. 只读确认 production 广告平台 Queue；任一缺失时禁止执行 D1 migration
+node scripts/verify-ad-platform-queues.mjs production
+
+# 5. D1 迁移
 # 重要警告：如果待执行 migrations 包含 0017_cases_cleanup.sql，必须先完成：
 # 构建预检 -> R2 Cases dry-run -> R2 复制和目标对象验证，再执行此 D1 remote migration。
 corepack pnpm --filter @meigallery/api exec wrangler d1 migrations apply meigallery-db --env="" --remote
 
-# 5. 部署 API Worker
+# 6. 部署 API Worker
 corepack pnpm --filter @meigallery/api exec wrangler deploy --env="" --var "RELEASE_COMMIT:${GIT_COMMIT}"
 
-# 6. 部署 Web Worker
+# 7. 部署 Web Worker
 corepack pnpm --filter @meigallery/web exec wrangler deploy --env="" --var "RELEASE_COMMIT:${GIT_COMMIT}"
 
-# 7. 部署后 SEO 校验
+# 8. 部署后 SEO 校验
 corepack pnpm verify:seo:production
 ```
 
@@ -95,9 +98,17 @@ corepack pnpm verify:seo:production -- --expect-site-name 星耀传媒 --expect-
 
 - `./scripts/deploy.sh production` 每次都必须重新执行完整、不可跳过的 `verify:release`，随后只校验本次新生成的同 commit 报告；本地旧 `latest.json` 即使内容显示通过也不能跳过 fresh gate。
 - 合入 `main` 后，只要最新待发布 HEAD 与现有 release 报告中的 commit 不完全一致，就必须在 `main` 上重新运行 `corepack pnpm verify:release`；任何旧 commit 报告都不能放行新的生产 HEAD。
-- `scripts/deploy.sh production` 会在远端 migration 前依次执行 fresh `verify:release` 和 `env -u VERIFY_RELEASE_ALLOW_BRANCH node scripts/verify-release.mjs assert-production-allowed`。
+- `scripts/deploy.sh production` 会在远端 migration 前依次执行 fresh `verify:release`、`env -u VERIFY_RELEASE_ALLOW_BRANCH node scripts/verify-release.mjs assert-production-allowed` 和 `node scripts/verify-ad-platform-queues.mjs production`。Queue 检查只读取资源状态，不创建或修改资源。
+- production 必须预先存在 `meigallery-meta-capi`、`meigallery-meta-capi-dlq`、`meigallery-tiktok-events`、`meigallery-tiktok-events-dlq`；任一缺失时部署在 migration 和 Worker deploy 前 fail closed。首次创建或补齐资源使用 `./scripts/setup.sh production`，完成后重新执行部署。
+- `corepack pnpm --filter @meigallery/api db:migrate:remote` 也强制先执行相同 Queue 门禁和 duplicate preflight；不得用裸 `wrangler d1 migrations apply` 绕过仓库发布保护。
 - 缺少通过报告、报告 commit 与当前待发 commit 不一致、工作区不干净，或分支不满足放行条件时，生产部署必须阻断。
 - `VERIFY_RELEASE_ALLOW_BRANCH` 仅用于非生产分支演练 release gate，不能替代正式生产放行。
+
+### 广告平台 schema 发布窗口
+
+- 广告平台 schema 采用 expand/contract 两阶段发布。expand migration 必须同时兼容当前 production Worker、待发布 Worker 和 API Worker 回滚，不得先删除旧 Worker 仍会访问的列或表。
+- contract migration 必须推迟到后续独立版本；确认 production 已稳定运行新结构、桥接数据无差异并关闭旧 Worker 回滚窗口后才能加入。expand 与 contract 不得在同一次 `wrangler d1 migrations apply` 中执行。
+- 当前 `0049_tiktok_events_api.sql` 属于 expand：应用代码只使用通用结构，旧 Meta 结构仅由 `trg_0049_bridge_*` 在数据库层维持。后续 contract 删除前必须重新运行 `node --test scripts/verify-meta-migration.test.mjs`，并加入针对 contract 后 schema 的新演练断言。
 
 ### 推荐执行顺序
 
@@ -435,7 +446,8 @@ head_sampling_rate = 1
 - [ ] 每个 `sourceBotKey` 对应的 `TELEGRAM_BOT_TOKEN_<SOURCE_BOT_KEY>` secret 已配置
 - [ ] 生产 `meigallery-meta-capi` 和 `meigallery-meta-capi-dlq` 已创建，API Worker producer / consumer dry-run 通过
 - [ ] `META_CAPI_ACCESS_TOKEN`、`META_CAPI_TEST_EVENT_CODE` 和 `META_CAPI_DATA_KEY_CURRENT` 已作为 production secret 配置；dev 不配置
-- [ ] 如准备启用 TikTok，生产 `meigallery-tiktok-events` / DLQ 与 `TIKTOK_EVENTS_ACCESS_TOKEN`、独立 data key 已配置；dev 不配置
+- [ ] 生产 `meigallery-tiktok-events` / `meigallery-tiktok-events-dlq` 已创建，并通过 `node scripts/verify-ad-platform-queues.mjs production`；即使 TikTok 保持关闭也必须在 `0049` 前满足
+- [ ] 如准备启用 TikTok，`TIKTOK_EVENTS_ACCESS_TOKEN` 与独立 data key 已作为 production secret 配置；dev 不配置
 - [ ] `0047_ad_platform_delivery_core.sql`、`0048_tiktok_pixel_connection.sql` 与 `0049_tiktok_events_api.sql` 已应用；新平台保持 mode `disabled`、Server 关闭、rollout `0`
 - [ ] 当前 `main` HEAD 已重做 production live evidence；`Contact` / `CompleteRegistration` 均完成 Browser/Server 同 ID 去重，且无 `Lead` / `StartTrial`
 - [ ] `/admin/attribution` 可按 Meta / TikTok 分别查看 Pixel `attempted`、Server `sent` 和匹配覆盖；平台 Test Events 严格成功后才允许对应 Server 开关与 rollout

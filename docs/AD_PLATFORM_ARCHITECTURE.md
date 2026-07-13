@@ -74,6 +74,7 @@ interface AdBrowserInstruction {
 - dev/local 只运行 adapter 单元测试、契约测试、migration、类型检查和构建。
 - 每个平台使用独立 Queue、DLQ、secret、连接状态、incident 和 rollout。
 - 平台之间共享业务事实，但不共享凭证或投递状态。
+- production 发布在任何 D1 migration 前只读确认 Meta/TikTok 的主 Queue 与 DLQ 全部存在；缺失资源时直接阻断，不允许先改变 schema。
 
 ## 新平台接入步骤
 
@@ -93,7 +94,8 @@ interface AdBrowserInstruction {
 - 已完成：统一连接表、通用 provider/transport schema、事件 registry、统一连接管理 API、浏览器 adapter registry、通用 tracking instruction 响应。
 - 已清理：旧 Meta 站点设置键、`channel`、`meta_connection_revision`、`pixelEvents`、旧投递数据和旧投递日聚合。
 - 保留：Meta adapter、Queue、incident、Dataset Quality 和 live challenge。这些是当前 Meta 实现，不是兼容层。
-- migration `0049_tiktok_events_api.sql` 已把旧 Meta 专属 outbox 收口为 `ad_platform_secure_outbox`，并增加 TikTok 匹配覆盖字段与 production 连接验证表；旧表不再保留。
+- migration `0049_tiktok_events_api.sql` 以 expand 方式建立 `ad_platform_secure_outbox`、通用用户转化标识、TikTok 匹配覆盖字段与 production 连接验证表。旧 Meta outbox 和用户标识列仅在发布/回滚窗口由数据库 trigger 双向桥接，应用代码已完全收口到通用结构。
+- contract 清理必须在后续独立版本进行：production 新 Worker 稳定、桥接一致性为零差异且旧 Worker 回滚窗口关闭后，才删除旧表、旧列和桥接 trigger；不得把 expand 与 contract 放进同一次迁移批次。
 - 已完成：TikTok Browser Pixel、Events API v1.3、独立凭证、Queue/DLQ、加密 outbox、连接验证、rollout、真实 D1 测试和统一后台数据看板。
 - 生产状态：TikTok 默认 `disabled`、Server rollout `0`；只有 production 配置完成并通过 TikTok Test Events 验证后才能人工开启。dev/local 不连接真实 TikTok 资源。
 

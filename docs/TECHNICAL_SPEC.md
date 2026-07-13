@@ -646,7 +646,8 @@ INSERT INTO site_settings (key, value) VALUES
 
 - migration `0047_ad_platform_delivery_core.sql` 建立统一连接表和最终 delivery schema，将唯一目标约束改为 `conversion_action_id + provider + transport`，并清空旧投递技术数据。旧 `channel`、`meta_connection_revision` 和旧 Meta 站点设置键已删除；新增平台必须通过 adapter registry 接入，不得复制业务事实服务。
 - migration `0048_tiktok_pixel_connection.sql` 增加默认关闭的 TikTok 连接。TikTok Browser Pixel 复用统一连接、营销同意、Contact / CompleteRegistration 事实和 delivery 回执；PageView、ViewContent、Search 由前端 provider adapter 发送。
-- migration `0049_tiktok_events_api.sql` 增加 `has_ttclid` / `has_ttp`、TikTok production 连接验证，并将旧 `meta_capi_secure_outbox` 一次性迁移到按 provider 隔离的 `ad_platform_secure_outbox` 后删除旧表。通用 outbox schema 固定为 v2，不保留双写或读取兼容路径。
+- migration `0049_tiktok_events_api.sql` 是 expand 阶段：增加 `has_ttclid` / `has_ttp`、TikTok production 连接验证和按 provider 隔离的 `ad_platform_secure_outbox`，回填通用 `conversion_external_id`。为保证“先迁移、后部署”窗口以及 API Worker 回滚安全，旧 `meta_external_id`、`meta_capi_secure_outbox` 暂时保留，并由 migration trigger 双向同步；应用代码只允许读写通用结构，不得新增兼容分支。
+- contract 阶段必须作为后续独立版本执行，不能与 `0049` 同批部署。只有 production 已稳定运行通用结构、桥接两侧无差异、旧 Worker 回滚窗口关闭且前一版本可用其他方式恢复后，才允许新增 migration 删除旧列、旧表和 `trg_0049_bridge_*`。删除前必须再次通过真实 D1 历史库与空库演练。
 - TikTok Events API 使用官方 v1.3 Web Events endpoint、`Access-Token` header、`event_source=web`、Pixel ID、`event/event_time/event_id/user/page` 契约；生产 payload 不带 `test_event_code`。Browser Pixel 与 Events API 对同一业务事实使用相同 event name 与 event ID 进行去重。
 - API 只返回 provider-aware `trackingInstructions`，前端通过广告平台 adapter registry 执行，不保留 `pixelEvents` 兼容响应。
 
@@ -660,6 +661,7 @@ INSERT INTO site_settings (key, value) VALUES
 - Meta CAPI 仅在 production 通过 Cloudflare Queue `META_CAPI_QUEUE` 异步投递，使用 Worker secret `META_CAPI_ACCESS_TOKEN`、`META_CAPI_DATA_KEY_CURRENT`；`META_CAPI_DATA_KEY_PREVIOUS` 仅用于轮换窗口。生产主 Queue / DLQ 固定为 `meigallery-meta-capi` / `meigallery-meta-capi-dlq`。dev/local 不绑定 Meta Queue、不配置 Meta secret、不调用 Meta Graph API，只执行单元测试、契约测试、migration、类型检查和构建验证。Graph token 只通过 Bearer header 发送。secret 不写入 D1、不返回前端，也不写入审计日志。
 - TikTok Events API 仅在 production 通过 `TIKTOK_EVENTS_QUEUE` 异步投递，使用 `TIKTOK_EVENTS_ACCESS_TOKEN`、`TIKTOK_EVENTS_DATA_KEY_CURRENT`；previous key 仅用于轮换。生产主 Queue / DLQ 固定为 `meigallery-tiktok-events` / `meigallery-tiktok-events-dlq`。Test Event Code 只存在于 Owner 验证请求内存中。dev/local 不绑定 TikTok Queue、不配置 TikTok secret、不调用 TikTok API。
 - Meta 与 TikTok 共享 `ad_platform_secure_outbox`、lease、CAS 状态机和恢复算法，但所有读写必须同时限定 `provider`；两个平台使用独立密钥、Queue、DLQ、连接 revision 和 rollout namespace，禁止交叉解密、投递或恢复。
+- production 部署必须在任何远端 D1 migration 前只读确认 `meigallery-meta-capi`、`meigallery-meta-capi-dlq`、`meigallery-tiktok-events`、`meigallery-tiktok-events-dlq` 全部存在；任一 Queue 缺失必须 fail closed，禁止留下“schema 已升级、Worker 未部署”的半完成状态。
 - Meta Events Manager 的 Test Event Code 是短期会话值，不属于 Pixel / CAPI 长期连接凭据。Owner 在后台输入当前 `TEST...` 代码，验证连接与 Live Evidence 共用该页面内存值；状态数据刷新不得清空该值，离开页面或重新加载后必须重新输入。API 只接受请求级代码并严格校验，代码不落 D1、不进入审计和响应。当前 V2 资源 attestation 仍保留 `META_CAPI_TEST_EVENT_CODE` 的 secret 存在性字段，待资源摘要 schema 独立升级后删除；该旧字段不得再作为 Test Event payload 来源。
 - `/api/admin/attribution/meta` 仅返回 current/previous 有效性布尔值、previous outbox 计数、previous `pending/failed` delivery 计数和可移除状态；不返回 key ID、Base64、fingerprint 或错误 cause。
 - `corepack pnpm verify:meta-secrets` 扫描 tracked 文件与 ignored release evidence；`corepack pnpm verify:quick` 在单元测试和构建前执行该检查。production bootstrap、rollout 与最终 evidence 已由本地代码门禁强绑定，但没有外部证据时始终 fail closed。

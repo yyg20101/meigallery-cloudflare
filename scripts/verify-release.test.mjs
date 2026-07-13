@@ -100,7 +100,7 @@ describe('发布验证 CLI', () => {
     assert.doesNotMatch(devBlock[1], /D1_DB="meigallery-db"\s*(?:\n|$)/)
   })
 
-  it('deploy 将当前 commit 传给 API Worker，且生产 gate/preflight 均早于 D1 migration', async () => {
+  it('deploy 将当前 commit 传给 API Worker，且生产 gate/Queue/preflight 均早于 D1 migration', async () => {
     const deployScript = await readFile(DEPLOY_SCRIPT_PATH, 'utf8')
     assert.match(deployScript, /GIT_COMMIT="\$\(git rev-parse HEAD\)"/)
     const deployLines = deployScript.split('\n').filter(line => /wrangler deploy "\$\{ENV_ARGS\[@\]\}" --var/.test(line))
@@ -113,6 +113,7 @@ describe('发布验证 CLI', () => {
 
     const freshGateIndex = deployScript.indexOf('"${PNPM[@]}" verify:release')
     const gateIndex = deployScript.indexOf('verify-release.mjs assert-production-allowed')
+    const queuePreflightIndex = deployScript.indexOf('verify-ad-platform-queues.mjs production')
     const preflightIndex = deployScript.indexOf('verify-meta-migration.mjs preflight --env "$ENV"')
     const migrationIndex = deployScript.indexOf('wrangler d1 migrations apply')
     const deployIndex = deployScript.indexOf('wrangler deploy "${ENV_ARGS[@]}" --var')
@@ -120,10 +121,43 @@ describe('发布验证 CLI', () => {
     const identityIndex = deployScript.indexOf('verify-release.mjs assert-production-identity')
     assert.ok(freshGateIndex >= 0)
     assert.ok(gateIndex > freshGateIndex)
+    assert.ok(queuePreflightIndex > gateIndex)
+    assert.ok(preflightIndex > queuePreflightIndex)
     assert.ok(preflightIndex > gateIndex)
     assert.ok(migrationIndex > preflightIndex)
     assert.ok(deployIndex > gateIndex)
     assert.ok(identityIndex > webDeployIndex)
+  })
+
+  it('production Queue 前置检查失败时不执行 D1 migration 或 Worker deploy', async () => {
+    const tempDir = await mkdtemp(path.join(tmpdir(), 'meigallery-deploy-queue-gate-'))
+    const binDir = path.join(tempDir, 'bin')
+    const logFile = path.join(tempDir, 'commands.log')
+    await mkdir(binDir)
+    await Promise.all([
+      writeExecutable(path.join(binDir, 'git'), '#!/usr/bin/env bash\necho 18dc11e0b0e4797683d4551a93a1f22e53dc4628\n'),
+      writeExecutable(path.join(binDir, 'corepack'), `#!/usr/bin/env bash\necho "corepack $*" >> "${logFile}"\nexit 0\n`),
+      writeExecutable(path.join(binDir, 'node'), `#!/usr/bin/env bash\necho "node $*" >> "${logFile}"\nif [ "$*" = "scripts/verify-ad-platform-queues.mjs production" ]; then exit 7; fi\nexit 0\n`),
+    ])
+
+    try {
+      const result = await runProcess('bash', [DEPLOY_SCRIPT_PATH, 'production'], {
+        cwd: ROOT_DIR,
+        env: { ...process.env, PATH: `${binDir}:${process.env.PATH}` },
+        input: 'y\n',
+      })
+      const commands = await readFile(logFile, 'utf8')
+
+      assert.notEqual(result.code, 0)
+      assert.match(commands, /verify:release/)
+      assert.match(commands, /assert-production-allowed/)
+      assert.match(commands, /verify-ad-platform-queues\.mjs production/)
+      assert.doesNotMatch(commands, /--filter @meigallery\/api test|migrations apply|--var RELEASE_COMMIT/)
+      assert.match(result.output, /广告平台 Queue 前置检查阻断/)
+    }
+    finally {
+      await rm(tempDir, { recursive: true, force: true })
+    }
   })
 
   it('所有部署路径都不写 site setting、rollout 或 incident', async () => {
@@ -138,14 +172,17 @@ describe('发布验证 CLI', () => {
     assert.doesNotMatch(deploymentPaths, /wrangler d1 execute[^\n]*(?:meta_capi_rollout_percentage|meta_capi_incidents)/i)
   })
 
-  it('API remote migration package script 在 production apply 前执行只读 preflight', async () => {
+  it('API remote migration package script 在 production apply 前执行 Queue 与数据 preflight', async () => {
     const packageJson = JSON.parse(await readFile(API_PACKAGE_JSON_PATH, 'utf8'))
     const command = packageJson.scripts['db:migrate:remote']
 
+    const queuePreflightIndex = command.indexOf('verify-ad-platform-queues.mjs production')
     const preflightIndex = command.indexOf('verify-meta-migration.mjs preflight --env production')
     const migrationIndex = command.indexOf('wrangler d1 migrations apply meigallery-db --env="" --remote')
-    assert.ok(preflightIndex >= 0)
+    assert.ok(queuePreflightIndex >= 0)
+    assert.ok(preflightIndex > queuePreflightIndex)
     assert.ok(migrationIndex > preflightIndex)
+    assert.match(command.slice(queuePreflightIndex, preflightIndex), /&&/)
     assert.match(command.slice(preflightIndex, migrationIndex), /&&/)
   })
 

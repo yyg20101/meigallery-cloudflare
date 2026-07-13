@@ -61,6 +61,12 @@ else
     echo "生产部署被发布验证闸门阻断。本次 fresh verify:release 报告未获放行。"
     exit 1
   fi
+
+  echo "校验 production 广告平台 Queue..."
+  if ! node scripts/verify-ad-platform-queues.mjs production; then
+    echo "生产部署被广告平台 Queue 前置检查阻断。请先运行 ./scripts/setup.sh production。"
+    exit 1
+  fi
 fi
 
 echo ""

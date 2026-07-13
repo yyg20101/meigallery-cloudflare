@@ -26,9 +26,9 @@
 - 开发 Worker：`meigallery-web-dev` / `meigallery-api-dev`，不绑定生产域名；当前真实地址为 `https://meigallery-web-dev.wajie.workers.dev` / `https://meigallery-api-dev.wajie.workers.dev`。
 - 数据库：生产为 Cloudflare D1 `meigallery-db`，开发环境已隔离到 `meigallery-db-dev`；迁移文件位于 `packages/api/migrations/`。
 - 对象存储：生产为 Cloudflare R2 `meigallery-media`，开发环境已隔离到 `meigallery-media-dev`。
-- Queue：仅 production 绑定 `meigallery-meta-capi` / `meigallery-meta-capi-dlq` 与 `meigallery-tiktok-events` / `meigallery-tiktok-events-dlq`；dev 不配置广告平台 Queue 或 secret。
+- Queue：仅 production 配置 `meigallery-meta-capi` / `meigallery-meta-capi-dlq` 与 `meigallery-tiktok-events` / `meigallery-tiktok-events-dlq` 绑定；dev 不配置广告平台 Queue 或 secret。2026-07-13 只读检查已确认两条 Meta Queue 存在，`meigallery-tiktok-events` 尚未创建，TikTok DLQ 因 fail-fast 未继续检查；补齐前生产部署会在 migration 前阻断。
 - 视频：Cloudflare Stream 仍未接入生产链路；相关字段和密钥按规划保留。
-- 生产部署：通过 PR 合入 `main` 后手动执行 `./scripts/deploy.sh production`；脚本会强制重新运行完整 `verify:release` 并只断言本次新报告，之后才允许 migration 或 Worker deploy。
+- 生产部署：通过 PR 合入 `main` 后手动执行 `./scripts/deploy.sh production`；脚本会强制重新运行完整 `verify:release`、断言本次新报告并只读确认四条广告平台 Queue，之后才允许 migration 或 Worker deploy。
 - CI：`.github/workflows/ci.yml` 只做 PR 和 dev 推送验证，不自动部署生产。
 - 发布快速校验：`corepack pnpm verify:quick` 先执行 `dev-resource-isolation` 与 `meta-secret-leaks`，阻断 dev 误用生产资源及 tracked/release evidence 静态泄漏。
 
@@ -53,6 +53,7 @@
 - 归因中心：已实现站内转化账本、投放追踪链接、有效联系 / 完成注册活动趋势、历史 Lead 只读对照、Meta / TikTok Pixel 与 Server API 同步健康、匹配覆盖、重复诊断和分级发布检查；总览、趋势和 campaign 拆分按明确 provider 隔离。历史 Lead 与会员发放辅助指标均不参与活动漏斗、比率或链接排序，会员发放仅保留在 `operations` 辅助结构。后台分别展示 blocker 与 warning，warning 不改变生产阻断状态；入口为 `/admin/attribution`。
 - 广告平台扩展内核：delivery 仅使用 `provider + transport + connection_revision`，Meta 与 TikTok 通过 adapter registry 运行；前端仅消费通用 `trackingInstructions`，后台以统一平台连接为配置入口。旧 Meta 设置键、旧投递列和响应兼容字段已删除，新增平台不再修改联系和注册事实逻辑。
 - TikTok Pixel / Events API：`0048` 初始化默认关闭的连接，`0049` 增加 TikTok 匹配字段、production 连接验证和通用加密 outbox。Browser 已接入 PageView、ViewContent、Search、Contact、CompleteRegistration；Server 使用 Events API v1.3、独立 token/data key、Queue/DLQ、lease、重试与 rollout。Contact / CompleteRegistration 的 Browser/Server 共用平台 event ID；Test Event Code 仅存在于 Owner 单次验证请求。生产仍默认关闭，待 production Pixel ID、secret、Queue 和 TikTok Test Events 人工验证后再放量。
+- 2026-07-13 广告平台安全迁移收口：`0049` 改为 expand 迁移，保留旧 Meta 用户标识与加密 outbox，并仅由八个数据库 trigger 在发布/回滚窗口双向桥接；应用代码仍只使用通用结构。production 部署与远端 migration 包命令均新增四条 Queue 的 migration 前只读门禁，Queue 缺失时不执行 D1 migration 或 Worker deploy；contract 清理推迟到独立后续版本。历史库、空库与递归 trigger 真实 D1 演练通过，API `1125` 项、Web `261` 项、scripts/migration `261` 项、Lint、API TypeScript、API Worker dry-run、Nuxt production build 与 secret scan 全部通过。未修改 production 资源、D1、配置或 Meta rollout。
 - 2026-07-13 TikTok Events API 本地实现：完成官方 payload/header 契约、连接指纹验证、凭证失效、加密临时匹配上下文、Queue/DLQ 恢复、注册/联系身份口径、后台统一配置与 Meta/TikTok 数据切换。真实 D1 已验证 provider 隔离、`fbp/fbc` 与 `_ttp/ttclid` 覆盖、旧 outbox 迁移和空库 0001-0049 全链；API `1125` 项及高阈值 coverage、Web `261` 项、scripts/migration `253` 项、Lint、TypeScript、Nuxt production build、API Worker dry-run 均通过。生产资源、配置和开关均未修改。
 - 2026-07-13 广告平台开发前瘦身：移除 19 个未使用的 Tiptap 直接依赖、代码库镜像和已完成历史设计稿；共享类型、连接状态、Browser adapter 与 Meta/TikTok 投递统一改由广告平台 registry 驱动，平台连接路由从归因大文件独立。未新增 migration、未修改生产数据或 Meta 事件 ID 协议。API `1077`、Web `259`、Playwright 五视口 `125` 项、scripts/migration、Lint、TypeScript、Nuxt production build、secret scan 与 `verify:quick` 均通过。
 - 2026-07-13 TikTok 官方文档复核与本地验收：按当前标准事件、参数、Test Events、Diagnostics 和 Pixel Helper 说明复核实现；修复仅配置 TikTok 时营销模式仍错误读取 Meta 的问题。API `1070`、Web `257`、Playwright 五视口 `125` 项、Lint、TypeScript 和 Nuxt production build 均通过；浏览器测试确认授权后才向 TikTok CDN 发起请求、脚本位于 `head`、首次 PageView 只入队一次，进入后台后卸载。
