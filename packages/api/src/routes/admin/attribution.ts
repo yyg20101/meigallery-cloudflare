@@ -106,7 +106,7 @@ adminAttributionRoutes.patch('/platforms/meta', async (c) => {
   `).first<Record<string, unknown>>()
   if (!before) return errorJson(c, 409, 'Meta 连接尚未初始化', { code: 'AD_PLATFORM_CONNECTION_MISSING' })
 
-  const identityChanged = before.destination_id !== destinationId || before.mode !== mode
+  const identityChanged = before.destination_id !== destinationId
   const after = { enabled, mode, browserEnabled, serverEnabled, destinationId, debugEnabled, rolloutPercentage }
   if (serverEnabled) {
     const status = await getMetaConnectionStatus(c.env)
