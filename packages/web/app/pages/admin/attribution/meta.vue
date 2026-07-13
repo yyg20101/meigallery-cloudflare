@@ -18,7 +18,10 @@ const rangeState = useAdminAttributionRange('7d')
 const metaTestEventCode = ref('')
 const requestOptions = { rangeState, autoRefresh: false }
 const status = useAdminAttribution<MetaStatusData>('/api/admin/attribution/meta/status', requestOptions)
-const quality = useAdminAttribution<AttributionQualityData>('/api/admin/attribution/quality', requestOptions)
+const quality = useAdminAttribution<AttributionQualityData>('/api/admin/attribution/quality', {
+  ...requestOptions,
+  query: { provider: 'meta' },
+})
 const incidents = useAdminAttribution<IncidentData>('/api/admin/attribution/meta/incidents', {
   ...requestOptions,
   query: { status: 'all', limit: 50 },
@@ -26,12 +29,13 @@ const incidents = useAdminAttribution<IncidentData>('/api/admin/attribution/meta
 const sources = [status, quality, incidents]
 const qualitySeries = computed(() => {
   const summary = quality.data.value?.match.summary
-  if (!summary) return []
+  const labels = quality.data.value?.match.labels
+  if (!summary || !labels) return []
   return [
-    { key: 'fbp', label: 'fbp' },
-    { key: 'fbc', label: 'fbc' },
-    { key: 'email', label: 'email' },
-    { key: 'externalId', label: 'external_id' },
+    { key: 'browserId' as const, label: labels.browserId },
+    { key: 'clickId' as const, label: labels.clickId },
+    { key: 'email' as const, label: labels.email },
+    { key: 'externalId' as const, label: labels.externalId },
   ].filter(item => summary[item.key as keyof typeof summary].availability === 'available')
     .map(item => ({
       key: `${item.key}.rate`,
@@ -76,8 +80,8 @@ onMounted(() => void refreshAll())
       </section>
       <section class="border-b border-gray-200 px-3 py-5 sm:px-5">
         <h2 class="text-sm font-semibold text-gray-900">Meta 质量</h2>
-        <p v-if="quality.data.value?.datasetQuality.availability === 'error'" class="mt-2 text-sm text-red-700">Meta 质量数据采集失败</p>
-        <p v-else-if="quality.data.value?.datasetQuality.availability !== 'available'" class="mt-2 text-sm text-gray-600">尚未取得 Meta 质量数据</p>
+        <p v-if="quality.data.value?.platformQuality.availability === 'error'" class="mt-2 text-sm text-red-700">Meta 质量数据采集失败</p>
+        <p v-else-if="quality.data.value?.platformQuality.availability !== 'available'" class="mt-2 text-sm text-gray-600">尚未取得 Meta 质量数据</p>
         <AttributionTrendPanel v-if="qualitySeries.length" class="mt-4" title="匹配质量趋势" :rows="quality.data.value?.match.rows as unknown as Array<Record<string, unknown>> || []" :series="qualitySeries" />
       </section>
       <section class="px-3 py-5 sm:px-5">

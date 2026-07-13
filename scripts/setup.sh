@@ -60,9 +60,11 @@ print_production_resources() {
   echo "执行: ${WRANGLER_CMD} r2 bucket create meigallery-media"
   echo ""
 
-  echo "--- 创建生产 Meta CAPI Queue（启用 CAPI 时需要） ---"
+  echo "--- 创建生产广告平台 Events API Queue ---"
   create_queue "meigallery-meta-capi"
   create_queue "meigallery-meta-capi-dlq"
+  create_queue "meigallery-tiktok-events"
+  create_queue "meigallery-tiktok-events-dlq"
   echo ""
 }
 
@@ -77,7 +79,7 @@ print_dev_resources() {
   echo "执行: ${WRANGLER_CMD} r2 bucket create meigallery-media-dev"
   echo ""
 
-  echo "dev 仅用于代码与通用业务逻辑验证，不创建或绑定 Meta 资源。"
+  echo "dev 仅用于代码与通用业务逻辑验证，不创建或绑定广告平台资源。"
   echo ""
 }
 
@@ -105,6 +107,10 @@ print_secrets() {
     echo "  ${WRANGLER_CMD} secret put META_CAPI_DATA_KEY_CURRENT ${env_flag}"
     echo "  # 仅密钥轮换窗口配置"
     echo "  ${WRANGLER_CMD} secret put META_CAPI_DATA_KEY_PREVIOUS ${env_flag}"
+    echo "  ${WRANGLER_CMD} secret put TIKTOK_EVENTS_ACCESS_TOKEN ${env_flag}"
+    echo "  ${WRANGLER_CMD} secret put TIKTOK_EVENTS_DATA_KEY_CURRENT ${env_flag}"
+    echo "  # TikTok 密钥轮换窗口："
+    echo "  ${WRANGLER_CMD} secret put TIKTOK_EVENTS_DATA_KEY_PREVIOUS ${env_flag}"
   fi
   echo ""
 }

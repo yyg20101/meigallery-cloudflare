@@ -26,7 +26,7 @@ const TIKTOK_ADAPTER: AdPlatformAdapterDefinition = {
     contact: 'Contact',
     complete_registration: 'CompleteRegistration',
   },
-  transports: ['browser'],
+  transports: ['browser', 'server'],
 }
 
 const ADAPTERS: ReadonlyMap<AdPlatformProvider, AdPlatformAdapterDefinition> = new Map([

@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { MetaCapiEncryptedEnvelope, MetaCapiQueueMessage } from '@meigallery/shared'
+import type { AdPlatformEncryptedEnvelope, AdPlatformQueueMessage } from '@meigallery/shared'
 import {
-  createSecureOutboxStatement,
-  enqueueSecureMetaCapiDelivery,
-  purgeExpiredMetaCapiOutbox,
-} from './meta-capi-secure-outbox'
+  createAdPlatformSecureOutboxStatement,
+  enqueueAdPlatformSecureDelivery,
+  purgeExpiredAdPlatformOutbox,
+} from './secure-outbox'
 
 type Call = { sql: string; params: unknown[] }
 
@@ -22,18 +22,30 @@ type Delivery = {
   deliveryLeaseExpiresAt: string | null
 }
 
-type Outbox = MetaCapiEncryptedEnvelope & {
+type Outbox = AdPlatformEncryptedEnvelope & {
   deliveryId: string
   schemaVersion: number
   expiresAt: string
 }
 
-const ENVELOPE: MetaCapiEncryptedEnvelope = {
+const ENVELOPE: AdPlatformEncryptedEnvelope = {
   keyId: '0123456789abcdef',
   iv: 'AQIDBAUGBwgJCgsM',
   ciphertext: 'c2VjdXJlLWNpcGhlcnRleHQ',
   tag: 'AQIDBAUGBwgJCgsMDQ4PEA',
   expiresAt: '2099-01-02T00:00:00.000Z',
+}
+
+function enqueueMetaSecureDelivery(
+  env: { DB: D1Database; META_CAPI_QUEUE?: Queue<AdPlatformQueueMessage> },
+  deliveryId: string,
+) {
+  return enqueueAdPlatformSecureDelivery(env, {
+    provider: 'meta',
+    queue: env.META_CAPI_QUEUE,
+    deliveryId,
+    queueLabel: 'Meta CAPI',
+  })
 }
 
 function createOutboxDb(options: {
@@ -78,13 +90,14 @@ function createOutboxDb(options: {
             const delivery = deliveries.get(String(call.params[0]))
             return delivery ? { status: delivery.status, error_code: delivery.errorCode } as T : null
           }
-          if (!sql.includes('FROM meta_capi_secure_outbox')) return null
+          if (!sql.includes('FROM ad_platform_secure_outbox')) return null
           const deliveryId = String(call.params[0])
           const outbox = outboxes.get(deliveryId)
           const delivery = deliveries.get(deliveryId)
           if (!outbox || !delivery) return null
           return {
             delivery_id: deliveryId,
+            provider: 'meta',
             schema_version: outbox.schemaVersion,
             key_id: outbox.keyId,
             iv: outbox.iv,
@@ -111,6 +124,7 @@ function createOutboxDb(options: {
               const delivery = deliveries.get(row.deliveryId)
               return {
                 delivery_id: row.deliveryId,
+                provider: 'meta',
                 status: delivery?.status ?? '',
                 skip_reason: delivery?.skipReason ?? '',
                 error_code: delivery?.errorCode ?? '',
@@ -181,8 +195,8 @@ function createOutboxDb(options: {
     } else if (call.sql.includes('INSERT INTO analytics_conversion_deliveries')) {
       const id = String(call.params[0])
       target.deliveries.set(id, delivery(id))
-    } else if (call.sql.includes('INSERT INTO meta_capi_secure_outbox')) {
-      const [deliveryId, schemaVersion, keyId, iv, ciphertext, tag, expiresAt] = call.params
+    } else if (call.sql.includes('INSERT INTO ad_platform_secure_outbox')) {
+      const [deliveryId, , schemaVersion, keyId, iv, ciphertext, tag, expiresAt] = call.params
       target.outboxes.set(String(deliveryId), {
         deliveryId: String(deliveryId),
         schemaVersion: Number(schemaVersion),
@@ -195,7 +209,7 @@ function createOutboxDb(options: {
     } else if (call.sql.includes('queue_attempt_count = queue_attempt_count + 1')) {
       const row = target.deliveries.get(String(call.params[0]))
       if (!row || row.status !== 'pending' || row.queueEnqueuedAt || !target.outboxes.has(row.id)) return result(0)
-      if (row.queueAttemptCount !== Number(call.params[1])) return result(0)
+      if (row.queueAttemptCount !== Number(call.params[2])) return result(0)
       row.queueAttemptCount += 1
       row.updatedAt = new Date().toISOString()
     } else if (call.sql.includes('queue_enqueued_at = datetime')) {
@@ -207,7 +221,7 @@ function createOutboxDb(options: {
     } else if (call.sql.includes("error_code = 'missing_queue'")) {
       const row = target.deliveries.get(String(call.params[0]))
       if (row) row.errorCode = 'missing_queue'
-    } else if (call.sql.includes('DELETE FROM meta_capi_secure_outbox')) {
+    } else if (call.sql.includes('DELETE FROM ad_platform_secure_outbox')) {
       target.outboxes.delete(String(call.params[0]))
     } else if (call.sql.includes('UPDATE analytics_conversion_deliveries') && /SET\s+status\s*=\s*\?/m.test(call.sql)) {
       const row = target.deliveries.get(String(call.params[5]))
@@ -270,12 +284,13 @@ function dailyKey(status: string, skipReason = '') {
   return `${status}:${skipReason}`
 }
 
-describe('Meta CAPI secure outbox', () => {
+describe('广告平台 secure outbox', () => {
   it('业务事实、delivery 与密文 outbox 在同一 D1 batch 原子提交', async () => {
-    const db = createOutboxDb({ failBatchOn: 'meta_capi_secure_outbox' })
+    const db = createOutboxDb({ failBatchOn: 'ad_platform_secure_outbox' })
     const action = db.prepare('INSERT INTO analytics_conversion_actions (id) VALUES (?)').bind('conv_1')
     const capiDelivery = db.prepare('INSERT INTO analytics_conversion_deliveries (id) VALUES (?)').bind('cdlv_1')
-    const secureOutbox = createSecureOutboxStatement(db as unknown as D1Database, {
+    const secureOutbox = createAdPlatformSecureOutboxStatement(db as unknown as D1Database, {
+      provider: 'meta',
       deliveryId: 'cdlv_1',
       envelope: { schemaVersion: 2, ...ENVELOPE },
       expiresAt: ENVELOPE.expiresAt,
@@ -289,7 +304,7 @@ describe('Meta CAPI secure outbox', () => {
 
   it('只发送 V2 密文消息，成功后原子标记入队并删除 D1 密文', async () => {
     const db = createOutboxDb({ deliveries: [delivery()], outboxes: [outbox()] })
-    const sent: MetaCapiQueueMessage[] = []
+    const sent: AdPlatformQueueMessage[] = []
     const sensitive = [
       '203.0.113.24',
       'MeiGallery Test Browser/1.0',
@@ -299,9 +314,9 @@ describe('Meta CAPI secure outbox', () => {
       'b'.repeat(64),
     ]
 
-    const outcome = await enqueueSecureMetaCapiDelivery({
+    const outcome = await enqueueMetaSecureDelivery({
       DB: db as unknown as D1Database,
-      META_CAPI_QUEUE: { send: async message => { sent.push(message) } } as Queue<MetaCapiQueueMessage>,
+      META_CAPI_QUEUE: { send: async message => { sent.push(message) } } as Queue<AdPlatformQueueMessage>,
     }, 'cdlv_1')
 
     expect(outcome).toBe('enqueued')
@@ -318,24 +333,24 @@ describe('Meta CAPI secure outbox', () => {
       outboxes: [outbox()],
       failCleanupBatches: 1,
     })
-    const sent: MetaCapiQueueMessage[] = []
+    const sent: AdPlatformQueueMessage[] = []
     const queue = {
-      send: vi.fn(async (message: MetaCapiQueueMessage) => {
+      send: vi.fn(async (message: AdPlatformQueueMessage) => {
         sent.push(message)
       }),
-    } as unknown as Queue<MetaCapiQueueMessage>
+    } as unknown as Queue<AdPlatformQueueMessage>
 
-    await expect(enqueueSecureMetaCapiDelivery({ DB: db as unknown as D1Database, META_CAPI_QUEUE: {
+    await expect(enqueueMetaSecureDelivery({ DB: db as unknown as D1Database, META_CAPI_QUEUE: {
       send: vi.fn().mockRejectedValueOnce(new Error('private queue failure')),
-    } as unknown as Queue<MetaCapiQueueMessage> }, 'cdlv_1')).resolves.toBe('failed')
+    } as unknown as Queue<AdPlatformQueueMessage> }, 'cdlv_1')).resolves.toBe('failed')
     expect(db.outboxes.has('cdlv_1')).toBe(true)
 
     db.deliveries.get('cdlv_1')!.updatedAt = '2026-07-10 00:00:00'
-    await expect(enqueueSecureMetaCapiDelivery({ DB: db as unknown as D1Database, META_CAPI_QUEUE: queue }, 'cdlv_1')).resolves.toBe('failed')
+    await expect(enqueueMetaSecureDelivery({ DB: db as unknown as D1Database, META_CAPI_QUEUE: queue }, 'cdlv_1')).resolves.toBe('failed')
     expect(db.outboxes.has('cdlv_1')).toBe(true)
 
     db.deliveries.get('cdlv_1')!.updatedAt = '2026-07-10 00:00:00'
-    await expect(enqueueSecureMetaCapiDelivery({ DB: db as unknown as D1Database, META_CAPI_QUEUE: queue }, 'cdlv_1')).resolves.toBe('enqueued')
+    await expect(enqueueMetaSecureDelivery({ DB: db as unknown as D1Database, META_CAPI_QUEUE: queue }, 'cdlv_1')).resolves.toBe('enqueued')
     expect(sent).toHaveLength(2)
     expect(sent[0]).toEqual(sent[1])
     expect(db.outboxes.has('cdlv_1')).toBe(false)
@@ -346,12 +361,12 @@ describe('Meta CAPI secure outbox', () => {
     const send = vi.fn().mockResolvedValue(undefined)
     const secureEnv = {
       DB: db as unknown as D1Database,
-      META_CAPI_QUEUE: { send } as unknown as Queue<MetaCapiQueueMessage>,
+      META_CAPI_QUEUE: { send } as unknown as Queue<AdPlatformQueueMessage>,
     }
 
     const outcomes = await Promise.all([
-      enqueueSecureMetaCapiDelivery(secureEnv, 'cdlv_1'),
-      enqueueSecureMetaCapiDelivery(secureEnv, 'cdlv_1'),
+      enqueueMetaSecureDelivery(secureEnv, 'cdlv_1'),
+      enqueueMetaSecureDelivery(secureEnv, 'cdlv_1'),
     ])
 
     expect(outcomes.sort()).toEqual(['enqueued', 'not_pending'])
@@ -367,9 +382,9 @@ describe('Meta CAPI secure outbox', () => {
     })
     const send = vi.fn()
 
-    const outcome = await enqueueSecureMetaCapiDelivery({
+    const outcome = await enqueueMetaSecureDelivery({
       DB: db as unknown as D1Database,
-      META_CAPI_QUEUE: { send } as unknown as Queue<MetaCapiQueueMessage>,
+      META_CAPI_QUEUE: { send } as unknown as Queue<AdPlatformQueueMessage>,
     }, 'cdlv_1')
 
     expect(outcome).toBe('expired')
@@ -390,7 +405,7 @@ describe('Meta CAPI secure outbox', () => {
       },
     })
 
-    const outcome = await purgeExpiredMetaCapiOutbox(db as unknown as D1Database)
+    const outcome = await purgeExpiredAdPlatformOutbox(db as unknown as D1Database)
 
     expect(outcome).toEqual({ purged: 1, skipped: 0 })
     expect(db.deliveries.get('cdlv_1')).toMatchObject({ status: 'failed', errorCode: 'meta_http_400' })
@@ -417,7 +432,7 @@ describe('Meta CAPI secure outbox', () => {
       },
     })
 
-    const outcome = await purgeExpiredMetaCapiOutbox(db as unknown as D1Database)
+    const outcome = await purgeExpiredAdPlatformOutbox(db as unknown as D1Database)
 
     expect(outcome).toEqual({ purged: 1, skipped: 0 })
     expect(db.deliveries.get('cdlv_1')).toMatchObject({ status: 'skipped', skipReason: 'missing_secret' })
@@ -439,7 +454,7 @@ describe('Meta CAPI secure outbox', () => {
       outboxes: [outbox('cdlv_1', { expiresAt: '2026-07-11T00:00:00.000Z' })],
     })
 
-    const outcome = await purgeExpiredMetaCapiOutbox(db as unknown as D1Database)
+    const outcome = await purgeExpiredAdPlatformOutbox(db as unknown as D1Database)
 
     expect(outcome).toEqual({ purged: 0, skipped: 0 })
     expect(db.deliveries.get('cdlv_1')?.status).toBe('pending')
@@ -456,12 +471,12 @@ describe('Meta CAPI secure outbox', () => {
     const outboxes = deliveries.map(item => outbox(item.id, { expiresAt: '2026-07-11T00:00:00.000Z' }))
     const db = createOutboxDb({ deliveries, outboxes })
 
-    const outcome = await purgeExpiredMetaCapiOutbox(db as unknown as D1Database, 999)
+    const outcome = await purgeExpiredAdPlatformOutbox(db as unknown as D1Database, 999)
 
     expect(outcome).toEqual({ purged: 100, skipped: 99 })
     expect(db.deliveries.get('cdlv_0')?.status).toBe('sent')
     expect(db.outboxes.size).toBe(1)
-    const scan = db.calls.find(call => call.sql.includes('FROM meta_capi_secure_outbox'))
+    const scan = db.calls.find(call => call.sql.includes('FROM ad_platform_secure_outbox'))
     expect(scan?.params).toEqual([100])
     expect(scan?.sql).toContain("datetime(o.expires_at) <= datetime('now')")
     vi.useRealTimers()

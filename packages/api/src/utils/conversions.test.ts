@@ -105,10 +105,12 @@ describe('conversion utils', () => {
     })
   })
 
-  it('清洗 payload 时移除 Meta 标识与客户端网络标识', () => {
+  it('清洗 payload 时移除广告平台标识与客户端网络标识', () => {
     const sanitized = sanitizeConversionMetadata({
       fbp: 'fb.1.123',
       fbc: 'fb.1.456',
+      ttclid: 'tiktok-click-private',
+      ttp: 'tiktok-browser-private',
       client_ip_address: '203.0.113.8',
       clientIpAddress: '203.0.113.9',
       client_user_agent: 'browser-a',

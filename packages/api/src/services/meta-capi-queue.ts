@@ -1,4 +1,4 @@
-import type { MetaCapiQueueMessage } from '@meigallery/shared'
+import type { AdPlatformQueueMessage } from '@meigallery/shared'
 import { ACTIVE_AD_PLATFORM_CONVERSION_EVENTS } from '@meigallery/shared/constants'
 import type { Bindings } from '../index'
 import {
@@ -10,38 +10,44 @@ import {
   MetaCapiDeliveryError,
   isRetryableMetaCapiErrorCode,
   readMetaCapiDelivery,
-  recordDuplicateSuppressed,
   sendMetaCapiEvent,
-  transitionDeliveryStatus,
   type MetaCapiDeliveryRow,
-  type TransitionDeliveryStatusInput,
 } from './meta-capi'
 import {
-  deleteSecureMetaCapiOutbox,
-  enqueueSecureMetaCapiDelivery,
+  recordDuplicateSuppressed,
+  transitionDeliveryStatus,
+  type TransitionDeliveryStatusInput,
+} from './ad-platform/delivery-store'
+import {
+  deleteAdPlatformSecureOutbox,
+  enqueueAdPlatformSecureDelivery,
   type SecureOutboxEnv,
-} from './meta-capi-secure-outbox'
+} from './ad-platform/secure-outbox'
 import { requireVerifiedMetaConnection } from './meta-connection'
 import {
   createMetaIncidentTrigger,
   openMetaCapiIncidentSafely,
 } from './meta-capi-circuit-breaker'
+import {
+  isSecureContextExpired,
+  parseAdPlatformQueueMessage,
+  safeQueueAck,
+  safeQueueAttempts,
+  safeQueueRetry,
+  type AdPlatformQueueMessageParseResult,
+} from './ad-platform/queue-message'
 
 const META_RETRY_DELAYS = [60, 300, 900, 1800] as const
 const META_RECOVERY_STALE_MINUTES = 5
 const META_RECOVERY_BATCH_SIZE = 25
 const SECURE_CONTEXT_TTL_MS = 24 * 60 * 60 * 1000
 const META_CAPI_EVENT_NAMES = new Set<string>(ACTIVE_AD_PLATFORM_CONVERSION_EVENTS)
-const QUEUE_MESSAGE_FIELDS = new Set(['schemaVersion', 'deliveryId', 'envelope'])
-const ENVELOPE_FIELDS = new Set(['keyId', 'iv', 'ciphertext', 'tag', 'expiresAt'])
 const QUEUE_TRANSITION_MAX_ATTEMPTS = 3
 const UNKNOWN_DELIVERY_ID = 'unknown'
 const SECURE_CONTEXT_AUTHENTICATION_FAILED = 'secure_context_authentication_failed'
 const SECURE_CONTEXT_PAYLOAD_INVALID = 'secure_context_payload_invalid'
-const INTERNAL_DELIVERY_ID_PATTERN = /^cdlv_[a-z0-9]+(?:_[a-z0-9]+)*$/
-const MISSING_DATA_PROPERTY = Symbol('missing_data_property')
 
-type MetaCapiQueueEnv = SecureOutboxEnv
+type MetaCapiQueueEnv = SecureOutboxEnv & Pick<Bindings, 'META_CAPI_QUEUE'>
 type SecureContextFailureCode =
   | typeof SECURE_CONTEXT_AUTHENTICATION_FAILED
   | typeof SECURE_CONTEXT_PAYLOAD_INVALID
@@ -67,7 +73,8 @@ export async function recoverPendingMetaCapiDeliveries(
   const stale = await env.DB.prepare(`
     SELECT d.id
     FROM analytics_conversion_deliveries d
-    JOIN meta_capi_secure_outbox o ON o.delivery_id = d.id AND o.schema_version = 2
+    JOIN ad_platform_secure_outbox o
+      ON o.delivery_id = d.id AND o.provider = 'meta' AND o.schema_version = 2
     WHERE d.provider = 'meta'
       AND d.transport = 'server'
       AND d.status = 'pending'
@@ -81,7 +88,13 @@ export async function recoverPendingMetaCapiDeliveries(
   let enqueued = 0
   let failed = 0
   for (const delivery of stale.results) {
-    const result = await enqueueSecureMetaCapiDelivery(env, delivery.id, { requireStale: true })
+    const result = await enqueueAdPlatformSecureDelivery(env, {
+      provider: 'meta',
+      queue: env.META_CAPI_QUEUE,
+      deliveryId: delivery.id,
+      queueLabel: 'Meta CAPI',
+      requireStale: true,
+    })
     if (result === 'enqueued') enqueued += 1
     else if (result === 'failed') failed += 1
   }
@@ -89,7 +102,7 @@ export async function recoverPendingMetaCapiDeliveries(
 }
 
 export async function handleMetaCapiBatch(
-  batch: MessageBatch<MetaCapiQueueMessage>,
+  batch: MessageBatch<AdPlatformQueueMessage>,
   env: Bindings,
 ) {
   const isDeadLetterQueue = batch.queue.endsWith('-dlq')
@@ -103,7 +116,7 @@ export async function handleMetaCapiBatch(
 }
 
 async function handleMetaCapiMessage(
-  message: Message<MetaCapiQueueMessage>,
+  message: Message<AdPlatformQueueMessage>,
   env: Bindings,
   isDeadLetterQueue: boolean,
 ) {
@@ -119,7 +132,7 @@ async function handleMetaCapiMessage(
     return
   }
 
-  const parsed = parseQueueMessage(body)
+  const parsed = parseAdPlatformQueueMessage(body)
   if (!parsed.message) {
     await terminateInvalidQueueMessage(message, env.DB, parsed)
     return
@@ -134,9 +147,9 @@ async function handleMetaCapiMessage(
 }
 
 async function terminateInvalidQueueMessage(
-  message: Message<MetaCapiQueueMessage>,
+  message: Message<AdPlatformQueueMessage>,
   db: D1Database,
-  parsed: QueueMessageParseResult,
+  parsed: AdPlatformQueueMessageParseResult,
 ) {
   let logDeliveryId = UNKNOWN_DELIVERY_ID
   try {
@@ -150,7 +163,7 @@ async function terminateInvalidQueueMessage(
         else if (!isTerminalDelivery(delivery)) {
           await markSecureContextFailure(db, delivery, SECURE_CONTEXT_PAYLOAD_INVALID)
         }
-        await deleteSecureMetaCapiOutbox(db, delivery.id)
+        await deleteAdPlatformSecureOutbox(db, 'meta', delivery.id)
       } else {
         await terminateInvalidMessage(db, delivery)
       }
@@ -166,7 +179,7 @@ async function terminateInvalidQueueMessage(
 }
 
 async function consumeDeadLetterMessage(
-  message: Message<MetaCapiQueueMessage>,
+  message: Message<AdPlatformQueueMessage>,
   db: D1Database,
   candidateDeliveryId: string,
 ) {
@@ -176,7 +189,7 @@ async function consumeDeadLetterMessage(
     if (delivery) {
       logDeliveryId = delivery.id
       await markRetryExhausted(db, delivery)
-      await deleteSecureMetaCapiOutbox(db, delivery.id)
+      await deleteAdPlatformSecureOutbox(db, 'meta', delivery.id)
     }
     ackMessage(message)
   } catch {
@@ -185,9 +198,9 @@ async function consumeDeadLetterMessage(
 }
 
 async function consumeSecureMessage(
-  queueMessage: Message<MetaCapiQueueMessage>,
+  queueMessage: Message<AdPlatformQueueMessage>,
   env: Bindings,
-  body: MetaCapiQueueMessage,
+  body: AdPlatformQueueMessage,
 ) {
   let logDeliveryId = UNKNOWN_DELIVERY_ID
   try {
@@ -201,24 +214,24 @@ async function consumeSecureMessage(
 
     if (delivery.status === 'sent') {
       await recordDuplicateSuppressed(env.DB, delivery)
-      await deleteSecureMetaCapiOutbox(env.DB, deliveryId)
+      await deleteAdPlatformSecureOutbox(env.DB, 'meta', deliveryId)
       ackMessage(queueMessage)
       return
     }
     if (isTerminalDelivery(delivery)) {
-      await deleteSecureMetaCapiOutbox(env.DB, deliveryId)
+      await deleteAdPlatformSecureOutbox(env.DB, 'meta', deliveryId)
       ackMessage(queueMessage)
       return
     }
-    if (isSecureContextExpired(delivery.created_at)) {
+    if (isSecureContextExpired(delivery.created_at, SECURE_CONTEXT_TTL_MS)) {
       await markSkipped(env.DB, delivery, 'secure_context_expired')
-      await deleteSecureMetaCapiOutbox(env.DB, deliveryId)
+      await deleteAdPlatformSecureOutbox(env.DB, 'meta', deliveryId)
       ackMessage(queueMessage)
       return
     }
     if (!META_CAPI_EVENT_NAMES.has(delivery.event_name)) {
       await markSkipped(env.DB, delivery, 'unsupported_event')
-      await deleteSecureMetaCapiOutbox(env.DB, deliveryId)
+      await deleteAdPlatformSecureOutbox(env.DB, 'meta', deliveryId)
       ackMessage(queueMessage)
       return
     }
@@ -231,7 +244,7 @@ async function consumeSecureMessage(
     }
     catch {
       await markSkipped(env.DB, delivery, 'connection_unverified')
-      await deleteSecureMetaCapiOutbox(env.DB, deliveryId)
+      await deleteAdPlatformSecureOutbox(env.DB, 'meta', deliveryId)
       ackMessage(queueMessage)
       return
     }
@@ -245,7 +258,7 @@ async function consumeSecureMessage(
       keys = await loadMetaCapiCryptoKeys(env)
     } catch {
       await markSecureContextFailure(env.DB, delivery, SECURE_CONTEXT_PAYLOAD_INVALID)
-      await deleteSecureMetaCapiOutbox(env.DB, deliveryId)
+      await deleteAdPlatformSecureOutbox(env.DB, 'meta', deliveryId)
       console.error('[meta-capi] Queue 消息安全终止', {
         deliveryId: logDeliveryId,
         errorCode: SECURE_CONTEXT_PAYLOAD_INVALID,
@@ -282,7 +295,7 @@ async function consumeSecureMessage(
         )
       }
       await markSecureContextFailure(env.DB, delivery, errorCode)
-      await deleteSecureMetaCapiOutbox(env.DB, deliveryId)
+      await deleteAdPlatformSecureOutbox(env.DB, 'meta', deliveryId)
       console.error('[meta-capi] Queue 消息安全终止', {
         deliveryId: logDeliveryId,
         errorCode,
@@ -297,14 +310,14 @@ async function consumeSecureMessage(
         || result.status === 'skipped'
         || result.status === 'failed'
         || result.status === 'duplicate_suppressed') {
-        await deleteSecureMetaCapiOutbox(env.DB, deliveryId)
+        await deleteAdPlatformSecureOutbox(env.DB, 'meta', deliveryId)
         ackMessage(queueMessage)
         return
       }
       retryMessage(queueMessage, deliveryId, 'meta_delivery_state_conflict')
     } catch (error) {
       if (error instanceof MetaCapiDeliveryError && !error.retryable) {
-        await deleteSecureMetaCapiOutbox(env.DB, deliveryId)
+        await deleteAdPlatformSecureOutbox(env.DB, 'meta', deliveryId)
         ackMessage(queueMessage)
         return
       }
@@ -324,7 +337,7 @@ async function terminateInvalidMessage(db: D1Database, delivery: MetaCapiDeliver
   else if (!isTerminalDelivery(delivery)) {
     await markSkipped(db, delivery, 'queue_message_invalid')
   }
-  await deleteSecureMetaCapiOutbox(db, delivery.id)
+  await deleteAdPlatformSecureOutbox(db, 'meta', delivery.id)
 }
 
 async function markSecureContextFailure(
@@ -388,61 +401,8 @@ async function confirmQueueTerminalTransition(
   throw new Error('meta_delivery_state_conflict')
 }
 
-type QueueMessageParseResult = {
-  deliveryId: string
-  errorCode: 'queue_message_invalid' | typeof SECURE_CONTEXT_PAYLOAD_INVALID
-  message?: MetaCapiQueueMessage
-}
-
-function parseQueueMessage(value: unknown): QueueMessageParseResult {
-  try {
-    if (!isPlainRecord(value)) return { deliveryId: '', errorCode: 'queue_message_invalid' }
-    const deliveryId = safeDeliveryId(readOwnDataProperty(value, 'deliveryId'))
-    const schemaVersion = readOwnDataProperty(value, 'schemaVersion')
-    if (schemaVersion !== 2 || !deliveryId) {
-      return { deliveryId, errorCode: 'queue_message_invalid' }
-    }
-    const envelope = readOwnDataProperty(value, 'envelope')
-    if (!hasExactFields(value, QUEUE_MESSAGE_FIELDS) || !isPlainRecord(envelope)) {
-      return { deliveryId, errorCode: SECURE_CONTEXT_PAYLOAD_INVALID }
-    }
-    if (!hasExactFields(envelope, ENVELOPE_FIELDS)) {
-      return { deliveryId, errorCode: SECURE_CONTEXT_PAYLOAD_INVALID }
-    }
-
-    const keyId = readOwnDataProperty(envelope, 'keyId')
-    const iv = readOwnDataProperty(envelope, 'iv')
-    const ciphertext = readOwnDataProperty(envelope, 'ciphertext')
-    const tag = readOwnDataProperty(envelope, 'tag')
-    const expiresAt = readOwnDataProperty(envelope, 'expiresAt')
-    if (
-      typeof keyId !== 'string'
-      || typeof iv !== 'string'
-      || typeof ciphertext !== 'string'
-      || typeof tag !== 'string'
-      || typeof expiresAt !== 'string'
-    ) return { deliveryId, errorCode: SECURE_CONTEXT_PAYLOAD_INVALID }
-    return {
-      deliveryId,
-      errorCode: SECURE_CONTEXT_PAYLOAD_INVALID,
-      message: {
-        schemaVersion: 2,
-        deliveryId,
-        envelope: { keyId, iv, ciphertext, tag, expiresAt },
-      },
-    }
-  } catch {
-    return { deliveryId: '', errorCode: 'queue_message_invalid' }
-  }
-}
-
-function retryMessage(message: Message<MetaCapiQueueMessage>, deliveryId: string, errorCode: string) {
-  let attempts = 1
-  try {
-    if (typeof message.attempts === 'number') attempts = message.attempts
-  } catch {
-    // 毒消息的访问器不能中断同批次后续消息。
-  }
+function retryMessage(message: Message<AdPlatformQueueMessage>, deliveryId: string, errorCode: string) {
+  const attempts = safeQueueAttempts(message)
   const delaySeconds = computeMetaRetryDelay(attempts)
   console.error('[meta-capi] Queue 安排重试', {
     deliveryId,
@@ -450,55 +410,15 @@ function retryMessage(message: Message<MetaCapiQueueMessage>, deliveryId: string
     attempts,
     delaySeconds,
   })
-  try {
-    message.retry({ delaySeconds })
-  } catch {
-    // Queue runtime 无法操作该消息时继续处理同批次其余消息。
-  }
+  safeQueueRetry(message, delaySeconds)
 }
 
-function ackMessage(message: Message<MetaCapiQueueMessage>) {
-  try {
-    message.ack()
-  } catch {
-    // Queue runtime 无法操作该消息时继续处理同批次其余消息。
-  }
+function ackMessage(message: Message<AdPlatformQueueMessage>) {
+  safeQueueAck(message)
 }
 
 function isTerminalDelivery(delivery: MetaCapiDeliveryRow) {
   if (delivery.status === 'skipped' || delivery.status === 'duplicate_suppressed') return true
   if (delivery.status !== 'failed') return false
   return !isRetryableMetaCapiErrorCode(delivery.error_code)
-}
-
-function isSecureContextExpired(createdAt: string) {
-  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(createdAt)
-    ? `${createdAt.replace(' ', 'T')}Z`
-    : createdAt
-  const timestamp = Date.parse(normalized)
-  return !Number.isFinite(timestamp) || Date.now() - timestamp >= SECURE_CONTEXT_TTL_MS
-}
-
-function safeDeliveryId(value: unknown) {
-  return typeof value === 'string' && value.length <= 96 && INTERNAL_DELIVERY_ID_PATTERN.test(value)
-    ? value
-    : ''
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
-  const prototype = Object.getPrototypeOf(value)
-  return prototype === Object.prototype || prototype === null
-}
-
-function hasExactFields(value: object, expected: Set<string>) {
-  const keys = Reflect.ownKeys(value)
-  return keys.length === expected.size && keys.every(key => typeof key === 'string' && expected.has(key))
-}
-
-function readOwnDataProperty(value: object, key: string) {
-  const descriptor = Object.getOwnPropertyDescriptor(value, key)
-  return descriptor && Object.prototype.hasOwnProperty.call(descriptor, 'value')
-    ? descriptor.value
-    : MISSING_DATA_PROPERTY
 }

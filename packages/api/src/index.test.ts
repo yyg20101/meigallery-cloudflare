@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import app from './index'
 import type { Bindings } from './index'
-import type { MetaCapiQueueMessage } from '@meigallery/shared'
+import type { AdPlatformQueueMessage } from '@meigallery/shared'
 import { encryptMetaCapiContext, loadMetaCapiCryptoKeys } from './utils/meta-capi-crypto'
 
 const DATA_KEY = Buffer.alloc(32, 7).toString('base64')
@@ -125,7 +125,7 @@ describe('Meta CAPI Queue consumer', () => {
       },
     })
     delivery.encryption_key_id = sealed.keyId
-    const body: MetaCapiQueueMessage = {
+    const body: AdPlatformQueueMessage = {
       schemaVersion: 2,
       deliveryId: delivery.id,
       envelope: {
@@ -139,7 +139,7 @@ describe('Meta CAPI Queue consumer', () => {
     const message = { body, ack: vi.fn(), retry: vi.fn() }
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }))
 
-    await app.queue({ queue: 'meigallery-meta-capi', messages: [message] } as unknown as MessageBatch<MetaCapiQueueMessage>, {
+    await app.queue({ queue: 'meigallery-meta-capi', messages: [message] } as unknown as MessageBatch<AdPlatformQueueMessage>, {
       APP_ENV: 'dev',
       SITE_URL: 'https://616618.xyz',
       META_CAPI_ACCESS_TOKEN: 'token_1',
@@ -161,7 +161,7 @@ describe('Meta CAPI Queue consumer', () => {
     const sensitive = 'fb.1.1700000000000.123456789|fb.1.1700000000000.CLICK_abc-123|203.0.113.24|MeiGallery Test Browser/1.0|token_private'
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     fetchMock.mockRejectedValueOnce(new Error(sensitive))
-    await app.queue({ queue: 'meigallery-meta-capi', messages: [message] } as unknown as MessageBatch<MetaCapiQueueMessage>, {
+    await app.queue({ queue: 'meigallery-meta-capi', messages: [message] } as unknown as MessageBatch<AdPlatformQueueMessage>, {
       APP_ENV: 'dev',
       SITE_URL: 'https://616618.xyz',
       META_CAPI_ACCESS_TOKEN: 'token_1',
@@ -177,7 +177,7 @@ describe('Meta CAPI Queue consumer', () => {
 
 describe('Meta CAPI scheduled recovery', () => {
   function createScheduledHarness() {
-    const sent: MetaCapiQueueMessage[] = []
+    const sent: AdPlatformQueueMessage[] = []
     const sqlCalls: string[] = []
     const envelope = {
       keyId: '0123456789abcdef',
@@ -192,9 +192,10 @@ describe('Meta CAPI scheduled recovery', () => {
         return {
           bind() { return this },
           async first() {
-            if (sql.includes('FROM meta_capi_secure_outbox')) {
+            if (sql.includes('FROM ad_platform_secure_outbox')) {
               return {
                 delivery_id: 'cdlv_stale',
+                provider: 'meta',
                 schema_version: 2,
                 key_id: envelope.keyId,
                 iv: envelope.iv,
@@ -232,7 +233,7 @@ describe('Meta CAPI scheduled recovery', () => {
       APP_ENV: 'production',
       DB: db,
       META_CAPI_QUEUE: {
-        async send(message: MetaCapiQueueMessage) {
+        async send(message: AdPlatformQueueMessage) {
           sent.push(message)
         },
       },
@@ -241,7 +242,7 @@ describe('Meta CAPI scheduled recovery', () => {
     return {
       sent,
       sqlCalls,
-      expectedMessage: { schemaVersion: 2, deliveryId: 'cdlv_stale', envelope } as MetaCapiQueueMessage,
+      expectedMessage: { schemaVersion: 2, deliveryId: 'cdlv_stale', envelope } as AdPlatformQueueMessage,
       async run(cron: string, scheduledTime = Date.parse('2026-07-10T09:00:00.000Z')) {
         await app.scheduled({ cron, scheduledTime } as ScheduledEvent, scheduledEnv, ctx)
         await scheduledWork

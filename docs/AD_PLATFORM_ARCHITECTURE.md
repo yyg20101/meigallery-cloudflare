@@ -37,7 +37,7 @@ Meta Adapter / TikTok Adapter / Google Adapter
 
 ### Adapter 层
 
-每个平台 adapter 只负责事件映射、Browser 指令、Server API payload、连接验证、测试事件和平台专属诊断。adapter 不负责创建业务事实，也不得读取其他平台的 token、Queue 或 rollout。
+每个平台 adapter 只负责事件映射、Browser 指令、Server API payload、连接验证、测试事件和平台专属诊断。adapter 不负责创建业务事实，也不得读取其他平台的 token、Queue 或 rollout。Server transport 共用加密、outbox、lease、重试与 DLQ 状态机，但必须通过 `provider` 隔离数据、密钥和消息。
 
 ### 浏览器指令
 
@@ -64,7 +64,9 @@ interface AdBrowserInstruction {
 - Access Token：只保存在 production secret 或受控加密凭证存储中，禁止回显。
 - destination、凭证指纹或平台 API 版本等连接身份变化时，connection revision 失效并要求重新验证；普通开关、运行模式和 rollout 调整不轮换连接身份。
 
-统一只读入口为 `GET /api/admin/attribution/platforms`。Meta 连接通过 `PATCH /api/admin/attribution/platforms/meta` 原子管理公开标识、Browser/Server 开关、运行模式和灰度；token 仍只由 Worker secret 管理。
+统一只读入口为 `GET /api/admin/attribution/platforms`。Meta 与 TikTok 分别通过 `PATCH /api/admin/attribution/platforms/meta`、`PATCH /api/admin/attribution/platforms/tiktok` 原子管理公开标识、Browser/Server 开关、运行模式和灰度；token 仍只由对应 Worker secret 管理。TikTok Test Event Code 只通过 `POST /api/admin/attribution/platforms/tiktok/verify` 的单次请求使用，不持久化、不审计、不回显。
+
+后台总览、趋势、匹配覆盖和 campaign 拆分必须显式携带 `provider=meta|tiktok`。通用响应使用 `serverSent`、`browserId`、`clickId`；平台 adapter 再把匹配标识解释为 Meta 的 `fbp/fbc` 或 TikTok 的 `_ttp/ttclid`。Meta Dataset Quality 只属于 Meta，不得伪装为 TikTok 质量数据。
 
 ## 环境规则
 
@@ -90,6 +92,16 @@ interface AdBrowserInstruction {
 
 - 已完成：统一连接表、通用 provider/transport schema、事件 registry、统一连接管理 API、浏览器 adapter registry、通用 tracking instruction 响应。
 - 已清理：旧 Meta 站点设置键、`channel`、`meta_connection_revision`、`pixelEvents`、旧投递数据和旧投递日聚合。
-- 保留：Meta adapter、Queue、secure outbox、incident、Dataset Quality 和 live challenge。这些是当前 Meta 实现，不是兼容层。
-- 已完成：TikTok Browser Pixel、统一连接配置和浏览器投递账本。
-- 下一阶段：TikTok Events API、独立凭证、Queue/DLQ、连接验证和 rollout。
+- 保留：Meta adapter、Queue、incident、Dataset Quality 和 live challenge。这些是当前 Meta 实现，不是兼容层。
+- migration `0049_tiktok_events_api.sql` 已把旧 Meta 专属 outbox 收口为 `ad_platform_secure_outbox`，并增加 TikTok 匹配覆盖字段与 production 连接验证表；旧表不再保留。
+- 已完成：TikTok Browser Pixel、Events API v1.3、独立凭证、Queue/DLQ、加密 outbox、连接验证、rollout、真实 D1 测试和统一后台数据看板。
+- 生产状态：TikTok 默认 `disabled`、Server rollout `0`；只有 production 配置完成并通过 TikTok Test Events 验证后才能人工开启。dev/local 不连接真实 TikTok 资源。
+
+## 官方参考
+
+- [TikTok Events API Web Events](https://business-api.tiktok.com/portal/docs/report-app-web-offline-or-crm-events/v1.3)
+- [TikTok Events API 概览](https://ads.tiktok.com/help/article/events-api?lang=en)
+- [TikTok 标准事件与参数](https://ads.tiktok.com/help/article/standard-events-parameters?lang=en)
+- [TikTok Web Lead 事件口径](https://ads.tiktok.com/help/article/available-events-for-web-lead-generation?lang=en)
+- [TikTok Browser / Server 事件去重](https://ads.tiktok.com/help/article/event-deduplication)
+- [TikTok Events API 匹配参数](https://ads.tiktok.com/help/article/how-to-set-up-matching-events-with-events-api)

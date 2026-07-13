@@ -16,7 +16,7 @@ import { getTurnstileConfigError, validateTurnstile } from '../utils/turnstile'
 import { consumeInviteCodeForRegistration } from '../services/invite-codes'
 import type { AnalyticsConsentState } from '@meigallery/shared'
 import { recordRegistration } from '../services/conversions'
-import { buildMetaCapiUserData } from '../utils/meta-browser-identifiers'
+import { buildAdPlatformUserData } from '../utils/ad-platform-identifiers'
 import { getCookie } from 'hono/cookie'
 import { MARKETING_CONSENT_RECEIPT_COOKIE } from './marketing-consent'
 import { resolveTrustedMarketingConsent } from '../utils/marketing-consent-receipt'
@@ -241,7 +241,7 @@ authRoutes.post('/register', async (c) => {
 
   const insertResult = await db
     .prepare(
-      `INSERT INTO users (email, username, nickname, password_hash, role, status, email_verified, meta_external_id)
+      `INSERT INTO users (email, username, nickname, password_hash, role, status, email_verified, conversion_external_id)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(email, username, body.nickname?.trim() || null, passwordHash, 'user', 'active', emailVerified, metaExternalId)
@@ -295,7 +295,7 @@ authRoutes.post('/register', async (c) => {
       consentState: attribution.consentState,
       metadata: { method: 'email' },
     }, {
-      getMetaCapiUserData: () => buildMetaCapiUserData(c.req.raw, attribution.browserIdentifiers),
+      getAdPlatformUserData: () => buildAdPlatformUserData(c.req.raw, attribution.browserIdentifiers),
       getRegistrationSensitiveInput: async () => readRegistrationSensitiveInput(db, userId),
     })
     trackingInstructions = registration.trackingInstructions
@@ -326,23 +326,23 @@ function generateMetaExternalId() {
 
 async function readRegistrationSensitiveInput(db: D1Database, userId: number) {
   const user = await db.prepare(`
-    SELECT id, email, meta_external_id
+    SELECT id, email, conversion_external_id
     FROM users
     WHERE id = ?
     LIMIT 1
   `).bind(userId).first<{
     id: number
     email: string
-    meta_external_id: string | null
+    conversion_external_id: string | null
   }>()
   if (user?.id !== userId
     || typeof user.email !== 'string'
     || !user.email.trim()
-    || typeof user.meta_external_id !== 'string'
-    || !/^[0-9a-f]{32}$/.test(user.meta_external_id)) {
+    || typeof user.conversion_external_id !== 'string'
+    || !/^[0-9a-f]{32}$/.test(user.conversion_external_id)) {
     throw new Error('REGISTRATION_MATCH_DATA_UNAVAILABLE')
   }
-  return { email: user.email, metaExternalId: user.meta_external_id }
+  return { email: user.email, externalId: user.conversion_external_id }
 }
 
 function normalizeRegistrationAttribution(value: unknown, userId: number) {

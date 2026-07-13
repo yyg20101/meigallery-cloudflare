@@ -1,3 +1,4 @@
+import type { AdPlatformProvider } from '@meigallery/shared'
 import type { D1Usage } from '../utils/analytics-cost'
 import { mergeD1Usage, readD1UsageMeta } from '../utils/analytics-cost'
 import type { AnalyticsDateRange } from '../utils/analytics-time'
@@ -12,10 +13,11 @@ export const ATTRIBUTION_BREAKDOWN_DIMENSIONS = [
 ] as const
 
 export type AttributionBreakdownDimension = typeof ATTRIBUTION_BREAKDOWN_DIMENSIONS[number]
+export type AttributionDashboardProvider = Extract<AdPlatformProvider, 'meta' | 'tiktok'>
 
 type DeliveryMetrics = {
   pixelAttempted: number
-  capiSent: number
+  serverSent: number
   failed: number
   skipped: number
   pending: number
@@ -32,7 +34,7 @@ type MatchMetric = {
 const EMPTY_USAGE: D1Usage = { rowsRead: 0, rowsWritten: 0, durationMs: 0 }
 const ACTIVE_ACTION_SQL = "('contact', 'complete_registration')"
 const ACTIVE_EVENT_SQL = "('Contact', 'CompleteRegistration')"
-const PLANNED_CAPI_STATUS_SQL = "('pending', 'sent', 'failed', 'duplicate_suppressed')"
+const PLANNED_SERVER_STATUS_SQL = "('pending', 'sent', 'failed', 'duplicate_suppressed')"
 
 export function isAttributionBreakdownDimension(
   value: string | undefined,
@@ -40,7 +42,17 @@ export function isAttributionBreakdownDimension(
   return ATTRIBUTION_BREAKDOWN_DIMENSIONS.includes(value as AttributionBreakdownDimension)
 }
 
-export async function queryAttributionSummary(db: D1Database, range: AnalyticsDateRange) {
+export function isAttributionDashboardProvider(
+  value: string | undefined,
+): value is AttributionDashboardProvider {
+  return value === 'meta' || value === 'tiktok'
+}
+
+export async function queryAttributionSummary(
+  db: D1Database,
+  range: AnalyticsDateRange,
+  provider: AttributionDashboardProvider,
+) {
   const [business, historical, delivery, retryExhausted] = await Promise.all([
     queryFirst(db, `
       SELECT
@@ -57,25 +69,25 @@ export async function queryAttributionSummary(db: D1Database, range: AnalyticsDa
       WHERE date BETWEEN ? AND ?
         AND action_type = 'lead'
     `, [range.from, range.to]),
-    queryFirst(db, deliveryAggregateSql(), [range.from, range.to]),
+    queryFirst(db, deliveryAggregateSql(), [range.from, range.to, provider]),
     queryFirst(db, `
       SELECT COUNT(*) AS retry_exhausted_count
       FROM analytics_conversion_deliveries d
       JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
       WHERE a.date BETWEEN ? AND ?
         AND a.action_type IN ${ACTIVE_ACTION_SQL}
-        AND d.provider = 'meta'
-        AND d.transport = 'server'
+        AND d.provider = ?
         AND d.transport = 'server'
         AND d.status = 'failed'
         AND d.error_code = 'retry_exhausted'
-    `, [range.from, range.to]),
+    `, [range.from, range.to, provider]),
   ])
 
   const businessRow = business.rows[0] ?? {}
   return {
     usage: mergeUsage(business, historical, delivery, retryExhausted),
     data: {
+      provider,
       business: serializeBusiness(businessRow),
       historical: { leadCount: count((historical.rows[0] ?? {}).historical_lead_count) },
       delivery: serializeDelivery(delivery.rows[0] ?? {}, retryExhausted.rows[0] ?? {}),
@@ -83,7 +95,11 @@ export async function queryAttributionSummary(db: D1Database, range: AnalyticsDa
   }
 }
 
-export async function queryAttributionTrends(db: D1Database, range: AnalyticsDateRange) {
+export async function queryAttributionTrends(
+  db: D1Database,
+  range: AnalyticsDateRange,
+  provider: AttributionDashboardProvider,
+) {
   const [business, delivery, retryExhausted] = await Promise.all([
     queryAll(db, `
       SELECT
@@ -99,21 +115,20 @@ export async function queryAttributionTrends(db: D1Database, range: AnalyticsDat
     queryAll(db, `${deliveryAggregateSql()}
       GROUP BY date
       ORDER BY date ASC
-    `, [range.from, range.to]),
+    `, [range.from, range.to, provider]),
     queryAll(db, `
       SELECT a.date, COUNT(*) AS retry_exhausted_count
       FROM analytics_conversion_deliveries d
       JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
       WHERE a.date BETWEEN ? AND ?
         AND a.action_type IN ${ACTIVE_ACTION_SQL}
-        AND d.provider = 'meta'
-        AND d.transport = 'server'
+        AND d.provider = ?
         AND d.transport = 'server'
         AND d.status = 'failed'
         AND d.error_code = 'retry_exhausted'
       GROUP BY a.date
       ORDER BY a.date ASC
-    `, [range.from, range.to]),
+    `, [range.from, range.to, provider]),
   ])
   const businessByDate = rowsByDate(business.rows)
   const deliveryByDate = rowsByDate(delivery.rows)
@@ -122,6 +137,7 @@ export async function queryAttributionTrends(db: D1Database, range: AnalyticsDat
   return {
     usage: mergeUsage(business, delivery, retryExhausted),
     data: {
+      provider,
       granularity: 'day' as const,
       rows: rangeDates(range).map((date) => {
         const businessRow = businessByDate.get(date) ?? {}
@@ -148,22 +164,24 @@ export async function queryAttributionQuality(
   db: D1Database,
   range: AnalyticsDateRange,
   environment: 'dev' | 'production',
+  provider: AttributionDashboardProvider,
 ) {
-  const [match, datasetQuality] = await Promise.all([
+  const identifiers = matchIdentifierContract(provider)
+  const [match, platformQualitySnapshots] = await Promise.all([
     queryAll(db, `
       SELECT
         a.date,
-        COALESCE(SUM(CASE WHEN d.has_fbp = 1 THEN 1 ELSE 0 END), 0) AS fbp_numerator,
-        COUNT(*) AS fbp_denominator,
+        COALESCE(SUM(CASE WHEN ${identifiers.browserColumn} = 1 THEN 1 ELSE 0 END), 0) AS browser_id_numerator,
+        COUNT(*) AS browser_id_denominator,
         COALESCE(SUM(CASE
           WHEN a.source_channel = 'ad'
-            AND lower(a.utm_source) IN ('facebook', 'fb', 'meta', 'instagram')
-            AND d.has_fbc = 1
-          THEN 1 ELSE 0 END), 0) AS fbc_numerator,
+            AND lower(a.utm_source) IN ${identifiers.sourceSql}
+            AND ${identifiers.clickColumn} = 1
+          THEN 1 ELSE 0 END), 0) AS click_id_numerator,
         COALESCE(SUM(CASE
           WHEN a.source_channel = 'ad'
-            AND lower(a.utm_source) IN ('facebook', 'fb', 'meta', 'instagram')
-          THEN 1 ELSE 0 END), 0) AS fbc_denominator,
+            AND lower(a.utm_source) IN ${identifiers.sourceSql}
+          THEN 1 ELSE 0 END), 0) AS click_id_denominator,
         COALESCE(SUM(CASE WHEN d.has_email = 1 THEN 1 ELSE 0 END), 0) AS email_numerator,
         COUNT(*) AS email_denominator,
         COALESCE(SUM(CASE WHEN d.has_external_id = 1 THEN 1 ELSE 0 END), 0) AS external_id_numerator,
@@ -172,14 +190,13 @@ export async function queryAttributionQuality(
       JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
       WHERE a.date BETWEEN ? AND ?
         AND a.action_type IN ${ACTIVE_ACTION_SQL}
-        AND d.provider = 'meta'
+        AND d.provider = ?
         AND d.transport = 'server'
-        AND d.transport = 'server'
-        AND d.status IN ${PLANNED_CAPI_STATUS_SQL}
+        AND d.status IN ${PLANNED_SERVER_STATUS_SQL}
       GROUP BY a.date
       ORDER BY a.date ASC
-    `, [range.from, range.to]),
-    queryAll(db, `
+    `, [range.from, range.to, provider]),
+    provider === 'meta' ? queryAll(db, `
       SELECT
         date(datetime(collected_at, '+8 hours')) AS date,
         event_name,
@@ -196,24 +213,27 @@ export async function queryAttributionQuality(
         AND date(datetime(collected_at, '+8 hours')) BETWEEN ? AND ?
         AND event_name IN ${ACTIVE_EVENT_SQL}
       ORDER BY collected_at DESC, id DESC
-    `, [environment, range.from, range.to]),
+    `, [environment, range.from, range.to]) : Promise.resolve({ rows: [], usage: EMPTY_USAGE }),
   ])
   const matchByDate = rowsByDate(match.rows)
   const matchRows = rangeDates(range).map(date => ({
     date,
     ...serializeMatchRow(matchByDate.get(date) ?? {}),
   }))
-  const datasetRows = datasetQuality.rows.map(serializeDatasetQualityRow)
+  const datasetRows = platformQualitySnapshots.rows.map(serializeDatasetQualityRow)
   const latestDatasetRow = datasetRows[0] ?? null
 
   return {
-    usage: mergeUsage(match, datasetQuality),
+    usage: mergeUsage(match, platformQualitySnapshots),
     data: {
+      provider,
       match: {
+        labels: identifiers.labels,
         summary: summarizeMatch(match.rows),
         rows: matchRows,
       },
-      datasetQuality: {
+      platformQuality: {
+        source: provider === 'meta' ? 'meta_dataset_quality' as const : 'not_supported' as const,
         availability: latestDatasetRow?.availability ?? 'unavailable' as const,
         latest: latestDatasetRow,
         rows: datasetRows,
@@ -227,6 +247,7 @@ export async function queryAttributionBreakdown(
   range: AnalyticsDateRange,
   dimension: AttributionBreakdownDimension,
   limit: number,
+  provider: AttributionDashboardProvider,
 ) {
   const dimensionExpression = breakdownDimensionExpression(dimension)
   const result = await queryAll(db, `
@@ -244,13 +265,13 @@ export async function queryAttributionBreakdown(
       SELECT
         d.conversion_action_id,
         MAX(CASE WHEN d.transport = 'browser' AND d.status = 'attempted' THEN 1 ELSE 0 END) AS pixel_attempted,
-        MAX(CASE WHEN d.transport = 'server' AND d.status = 'sent' THEN 1 ELSE 0 END) AS capi_sent,
+        MAX(CASE WHEN d.transport = 'server' AND d.status = 'sent' THEN 1 ELSE 0 END) AS server_sent,
         MAX(CASE WHEN d.transport = 'server' AND d.status = 'failed' THEN 1 ELSE 0 END) AS failed,
         MAX(CASE WHEN d.status = 'skipped' THEN 1 ELSE 0 END) AS skipped,
         MAX(CASE WHEN d.status = 'pending' THEN 1 ELSE 0 END) AS pending
       FROM analytics_conversion_deliveries d
       JOIN action_facts af ON af.id = d.conversion_action_id
-      WHERE d.provider = 'meta'
+      WHERE d.provider = ?
       GROUP BY d.conversion_action_id
     )
     SELECT
@@ -259,7 +280,7 @@ export async function queryAttributionBreakdown(
       SUM(CASE WHEN af.action_type = 'contact' THEN 1 ELSE 0 END) AS contact_count,
       SUM(CASE WHEN af.action_type = 'complete_registration' THEN 1 ELSE 0 END) AS complete_registration_count,
       COALESCE(SUM(dp.pixel_attempted), 0) AS pixel_attempted_count,
-      COALESCE(SUM(dp.capi_sent), 0) AS capi_sent_count,
+      COALESCE(SUM(dp.server_sent), 0) AS server_sent_count,
       COALESCE(SUM(dp.failed), 0) AS failed_count,
       COALESCE(SUM(dp.skipped), 0) AS skipped_count,
       COALESCE(SUM(dp.pending), 0) AS pending_count
@@ -268,11 +289,12 @@ export async function queryAttributionBreakdown(
     GROUP BY af.dimension_value
     ORDER BY action_count DESC, af.dimension_value ASC
     LIMIT ?
-  `, [range.from, range.to, limit])
+  `, [range.from, range.to, provider, limit])
 
   return {
     usage: result.usage,
     data: {
+      provider,
       dimension,
       rows: result.rows.map(row => ({
         value: String(row.dimension_value || '未标记'),
@@ -290,13 +312,13 @@ function deliveryAggregateSql() {
     SELECT
       date,
       COALESCE(SUM(CASE WHEN transport = 'browser' AND status = 'attempted' THEN delivery_count ELSE 0 END), 0) AS pixel_attempted_count,
-      COALESCE(SUM(CASE WHEN transport = 'server' AND status = 'sent' THEN delivery_count ELSE 0 END), 0) AS capi_sent_count,
+      COALESCE(SUM(CASE WHEN transport = 'server' AND status = 'sent' THEN delivery_count ELSE 0 END), 0) AS server_sent_count,
       COALESCE(SUM(CASE WHEN transport = 'server' AND status = 'failed' THEN delivery_count ELSE 0 END), 0) AS failed_count,
       COALESCE(SUM(CASE WHEN status = 'skipped' THEN delivery_count ELSE 0 END), 0) AS skipped_count,
       COALESCE(SUM(CASE WHEN status = 'pending' THEN delivery_count ELSE 0 END), 0) AS pending_count
     FROM analytics_conversion_delivery_daily
     WHERE date BETWEEN ? AND ?
-      AND provider = 'meta'
+      AND provider = ?
       AND event_name IN ${ACTIVE_EVENT_SQL}`
 }
 
@@ -309,10 +331,27 @@ function breakdownDimensionExpression(dimension: AttributionBreakdownDimension) 
   return expressions[dimension]
 }
 
+function matchIdentifierContract(provider: AttributionDashboardProvider) {
+  if (provider === 'tiktok') {
+    return {
+      browserColumn: 'd.has_ttp',
+      clickColumn: 'd.has_ttclid',
+      sourceSql: "('tiktok', 'tt')",
+      labels: { browserId: '_ttp', clickId: 'ttclid', email: 'email', externalId: 'external_id' },
+    }
+  }
+  return {
+    browserColumn: 'd.has_fbp',
+    clickColumn: 'd.has_fbc',
+    sourceSql: "('facebook', 'fb', 'meta', 'instagram')",
+    labels: { browserId: 'fbp', clickId: 'fbc', email: 'email', externalId: 'external_id' },
+  }
+}
+
 function summarizeMatch(rows: Row[]) {
   return serializeMatchRow(rows.reduce<Row>((total, row) => {
     for (const key of [
-      'fbp_numerator', 'fbp_denominator', 'fbc_numerator', 'fbc_denominator',
+      'browser_id_numerator', 'browser_id_denominator', 'click_id_numerator', 'click_id_denominator',
       'email_numerator', 'email_denominator', 'external_id_numerator', 'external_id_denominator',
     ]) {
       total[key] = count(total[key]) + count(row[key])
@@ -323,8 +362,8 @@ function summarizeMatch(rows: Row[]) {
 
 function serializeMatchRow(row: Row) {
   return {
-    fbp: matchMetric(row.fbp_numerator, row.fbp_denominator),
-    fbc: matchMetric(row.fbc_numerator, row.fbc_denominator),
+    browserId: matchMetric(row.browser_id_numerator, row.browser_id_denominator),
+    clickId: matchMetric(row.click_id_numerator, row.click_id_denominator),
     email: matchMetric(row.email_numerator, row.email_denominator),
     externalId: matchMetric(row.external_id_numerator, row.external_id_denominator),
   }
@@ -380,7 +419,7 @@ function serializeBusiness(row: Row) {
 function serializeDelivery(row: Row, retryRow: Row): DeliveryMetrics {
   return {
     pixelAttempted: count(row.pixel_attempted_count),
-    capiSent: count(row.capi_sent_count),
+    serverSent: count(row.server_sent_count),
     failed: count(row.failed_count),
     skipped: count(row.skipped_count),
     pending: count(row.pending_count),

@@ -5,13 +5,25 @@ import type { Bindings, Variables } from '../../index'
 import { adminRoutes } from './index'
 import { MetaCapiCircuitError } from '../../services/meta-capi-circuit-breaker'
 
-const { closeIncidentMock } = vi.hoisted(() => ({
+const {
+  closeIncidentMock,
+  requireVerifiedTikTokConnectionMock,
+  verifyTikTokConnectionMock,
+} = vi.hoisted(() => ({
   closeIncidentMock: vi.fn(),
+  requireVerifiedTikTokConnectionMock: vi.fn(),
+  verifyTikTokConnectionMock: vi.fn(),
 }))
 
 vi.mock('../../services/meta-capi-circuit-breaker', async importOriginal => ({
   ...await importOriginal<typeof import('../../services/meta-capi-circuit-breaker')>(),
   closeMetaCapiIncident: closeIncidentMock,
+}))
+
+vi.mock('../../services/tiktok-connection', async importOriginal => ({
+  ...await importOriginal<typeof import('../../services/tiktok-connection')>(),
+  requireVerifiedTikTokConnection: requireVerifiedTikTokConnectionMock,
+  verifyTikTokConnection: verifyTikTokConnectionMock,
 }))
 
 type DbCall = { sql: string; params: unknown[] }
@@ -567,7 +579,7 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
         },
         async first<T>() {
           calls.push(call)
-          if (sql.includes('FROM meta_capi_secure_outbox')) {
+          if (sql.includes('FROM ad_platform_secure_outbox')) {
             return { reference_count: options.previousOutboxCount ?? 0 } as T
           }
           if (sql.includes('FROM analytics_conversion_deliveries') && sql.includes('encryption_key_id')) {
@@ -742,7 +754,7 @@ function createDashboardDb(options: DashboardDbOptions = {}) {
             contact_count: 3,
             complete_registration_count: 2,
             pixel_attempted_count: 5,
-            capi_sent_count: 4,
+            server_sent_count: 4,
             failed_count: 1,
             skipped_count: 0,
             pending_count: 0,
@@ -767,7 +779,7 @@ function createDashboardDb(options: DashboardDbOptions = {}) {
     if (sql.includes('AS pixel_attempted_count') && !sql.includes('GROUP BY date')) {
       return [{
         pixel_attempted_count: options.empty ? 0 : 5,
-        capi_sent_count: options.empty ? 0 : 4,
+        server_sent_count: options.empty ? 0 : 4,
         failed_count: options.empty ? 0 : 1,
         skipped_count: options.empty ? 0 : 2,
         pending_count: options.empty ? 0 : 3,
@@ -784,19 +796,19 @@ function createDashboardDb(options: DashboardDbOptions = {}) {
         : [{
             date: '2026-07-10',
             pixel_attempted_count: 5,
-            capi_sent_count: 4,
+            server_sent_count: 4,
             failed_count: 1,
             skipped_count: 2,
             pending_count: 3,
           }]
     }
-    if (sql.includes('AS fbp_numerator')) {
+    if (sql.includes('AS browser_id_numerator')) {
       return [{
         date: '2026-07-10',
-        fbp_numerator: matchDenominator > 0 ? 3 : 0,
-        fbp_denominator: matchDenominator,
-        fbc_numerator: matchDenominator > 0 ? 2 : 0,
-        fbc_denominator: matchDenominator,
+        browser_id_numerator: matchDenominator > 0 ? 3 : 0,
+        browser_id_denominator: matchDenominator,
+        click_id_numerator: matchDenominator > 0 ? 2 : 0,
+        click_id_denominator: matchDenominator,
         email_numerator: matchDenominator > 0 ? 4 : 0,
         email_denominator: matchDenominator,
         external_id_numerator: matchDenominator > 0 ? 1 : 0,
@@ -1202,7 +1214,7 @@ describe('后台归因中心 API', () => {
     const dev = await createApp('owner').request('/api/admin/attribution/platforms/tiktok', {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ destinationId: 'C123456789ABCDEF', mode: 'test' }),
+      body: JSON.stringify({ destinationId: 'C123456789ABCDEF', mode: 'test', rolloutPercentage: 0 }),
     }, { APP_ENV: 'dev' } as Bindings)
     expect(dev.status).toBe(409)
     expect((await dev.json()).code).toBe('AD_PLATFORM_PRODUCTION_ONLY')
@@ -1210,7 +1222,7 @@ describe('后台归因中心 API', () => {
     const invalid = await createApp('owner').request('/api/admin/attribution/platforms/tiktok', {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ destinationId: '<script>', mode: 'test' }),
+      body: JSON.stringify({ destinationId: '<script>', mode: 'test', rolloutPercentage: 0 }),
     }, { APP_ENV: 'production' } as Bindings)
     expect(invalid.status).toBe(400)
     expect((await invalid.json()).code).toBe('AD_PLATFORM_DESTINATION_INVALID')
@@ -1218,10 +1230,33 @@ describe('后台归因中心 API', () => {
     const server = await createApp('owner').request('/api/admin/attribution/platforms/tiktok', {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ destinationId: 'C123456789ABCDEF', mode: 'test', serverEnabled: true }),
-    }, { APP_ENV: 'production' } as Bindings)
+      body: JSON.stringify({ destinationId: 'C123456789ABCDEF', mode: 'test', serverEnabled: true, rolloutPercentage: 0 }),
+    }, { DB: createAttributionDb(), APP_ENV: 'production' } as unknown as Bindings)
     expect(server.status).toBe(409)
-    expect((await server.json()).code).toBe('AD_PLATFORM_SERVER_UNSUPPORTED')
+    expect((await server.json()).code).toBe('AD_PLATFORM_SERVER_GATE_BLOCKED')
+  })
+
+  it.each([
+    [{ destinationId: 'C123456789ABCDEF', mode: 'legacy', rolloutPercentage: 0 }, 'AD_PLATFORM_MODE_INVALID'],
+    [{ destinationId: 'C123456789ABCDEF', mode: 'test', rolloutPercentage: 25 }, 'AD_PLATFORM_ROLLOUT_INVALID'],
+  ] as const)('TikTok 连接配置拒绝非法模式和放量 %#', async (body, code) => {
+    const response = await createApp('owner').request('/api/admin/attribution/platforms/tiktok', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }, { APP_ENV: 'production' } as Bindings)
+    expect(response.status).toBe(400)
+    expect((await response.json()).code).toBe(code)
+  })
+
+  it('拒绝修改未注册的广告平台', async () => {
+    const response = await createApp('owner').request('/api/admin/attribution/platforms/google', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    }, { APP_ENV: 'production' } as Bindings)
+    expect(response.status).toBe(404)
+    expect((await response.json()).code).toBe('AD_PLATFORM_NOT_SUPPORTED')
   })
 
   it('TikTok 连接配置统一规范 Pixel ID 并写入审计日志', async () => {
@@ -1236,18 +1271,122 @@ describe('后台归因中心 API', () => {
         destinationId: 'c123456789abcdef',
         debugEnabled: true,
         mode: 'test',
+        rolloutPercentage: 0,
       }),
     }, { DB: db, APP_ENV: 'production' } as unknown as Bindings)
 
     expect(response.status).toBe(200)
     const connectionUpdate = db.calls.find(call => call.sql.includes('UPDATE ad_platform_connections'))
     const auditInsert = db.calls.find(call => call.sql.includes('INSERT INTO admin_audit_logs'))
-    expect(connectionUpdate?.params).toEqual([1, 'test', 1, 'C123456789ABCDEF', 1])
+    expect(connectionUpdate?.params).toEqual([1, 'test', 1, 0, 'C123456789ABCDEF', 1, 0, 1])
     expect(auditInsert?.params[2]).toBe('tiktok')
     expect(JSON.parse(String(auditInsert?.params[4]))).toMatchObject({
       destinationId: 'C123456789ABCDEF',
       serverEnabled: false,
     })
+  })
+
+  it('TikTok Events API 仅在当前连接、Queue 和数据密钥均就绪时启用', async () => {
+    requireVerifiedTikTokConnectionMock.mockResolvedValueOnce({
+      pixelId: 'C123456789ABCDEF',
+      accessToken: '仅用于测试的占位凭证',
+      revision: '2'.repeat(32),
+      trackingMode: 'production',
+    })
+    const db = createAttributionDb({ settings: { destination_id: 'C123456789ABCDEF' } })
+    const response = await createApp('owner').request('/api/admin/attribution/platforms/tiktok', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        enabled: true,
+        browserEnabled: true,
+        serverEnabled: true,
+        destinationId: 'C123456789ABCDEF',
+        debugEnabled: false,
+        mode: 'production',
+        rolloutPercentage: 10,
+      }),
+    }, {
+      DB: db,
+      APP_ENV: 'production',
+      TIKTOK_EVENTS_QUEUE: { send: vi.fn() },
+      TIKTOK_EVENTS_DATA_KEY_CURRENT: Buffer.alloc(32, 7).toString('base64'),
+    } as unknown as Bindings)
+
+    expect(response.status).toBe(200)
+    const connectionUpdate = db.calls.find(call => call.sql.includes('UPDATE ad_platform_connections'))
+    expect(connectionUpdate?.params).toEqual([1, 'production', 1, 1, 'C123456789ABCDEF', 0, 10, 0])
+  })
+
+  it('TikTok 验证入口执行权限、环境和平台边界', async () => {
+    const admin = await createApp('admin').request('/api/admin/attribution/platforms/tiktok/verify', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ testEventCode: 'TEST_1234' }),
+    }, { APP_ENV: 'production' } as Bindings)
+    expect(admin.status).toBe(403)
+
+    const dev = await createApp('owner').request('/api/admin/attribution/platforms/tiktok/verify', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ testEventCode: 'TEST_1234' }),
+    }, { APP_ENV: 'dev' } as Bindings)
+    expect(dev.status).toBe(409)
+
+    const meta = await createApp('owner').request('/api/admin/attribution/platforms/meta/verify', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ testEventCode: 'TEST_1234' }),
+    }, { APP_ENV: 'production' } as Bindings)
+    expect(meta.status).toBe(404)
+  })
+
+  it.each([
+    ['TIKTOK_TEST_EVENT_CODE_INVALID', 400],
+    ['TIKTOK_VERIFICATION_REJECTED', 502],
+    ['TIKTOK_VERIFICATION_NETWORK_ERROR', 502],
+    ['TIKTOK_CONNECTION_NOT_CONFIGURED', 409],
+  ] as const)('TikTok 验证稳定映射 %s', async (code, status) => {
+    verifyTikTokConnectionMock.mockRejectedValueOnce(new Error(code))
+    const response = await createApp('owner').request('/api/admin/attribution/platforms/tiktok/verify', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ testEventCode: 'TEST_1234' }),
+    }, { DB: createAttributionDb(), APP_ENV: 'production' } as unknown as Bindings)
+    expect(response.status).toBe(status)
+    expect((await response.json()).code).toBe(code)
+  })
+
+  it('TikTok 首次验证写审计，幂等复验不重复写审计', async () => {
+    const firstDb = createAttributionDb()
+    verifyTikTokConnectionMock.mockResolvedValueOnce({
+      verified: true,
+      idempotent: false,
+      revision: '3'.repeat(32),
+      verifiedAt: '2026-07-13T12:00:00.000Z',
+    })
+    const first = await createApp('owner').request('/api/admin/attribution/platforms/tiktok/verify', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ testEventCode: 'TEST_1234' }),
+    }, { DB: firstDb, APP_ENV: 'production' } as unknown as Bindings)
+    expect(first.status).toBe(200)
+    expect(firstDb.calls.some(call => call.sql.includes('verify_ad_platform_connection'))).toBe(true)
+
+    const repeatedDb = createAttributionDb()
+    verifyTikTokConnectionMock.mockResolvedValueOnce({
+      verified: true,
+      idempotent: true,
+      revision: '3'.repeat(32),
+      verifiedAt: '2026-07-13T12:00:00.000Z',
+    })
+    const repeated = await createApp('owner').request('/api/admin/attribution/platforms/tiktok/verify', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ testEventCode: 'TEST_1234' }),
+    }, { DB: repeatedDb, APP_ENV: 'production' } as unknown as Bindings)
+    expect(repeated.status).toBe(200)
+    expect(repeatedDb.calls.some(call => call.sql.includes('verify_ad_platform_connection'))).toBe(false)
   })
 
   it('Meta 从测试模式切换生产模式时保留当前连接验证', async () => {
@@ -1709,7 +1848,7 @@ describe('后台归因中心 API', () => {
       previousActiveDeliveryCount: 2,
       canRemovePrevious: false,
     })
-    const outboxSql = db.calls.find(call => call.sql.includes('FROM meta_capi_secure_outbox'))?.sql ?? ''
+    const outboxSql = db.calls.find(call => call.sql.includes('FROM ad_platform_secure_outbox'))?.sql ?? ''
     const deliverySql = db.calls.find(call => call.sql.includes('encryption_key_id'))?.sql ?? ''
     expect(outboxSql).not.toContain('expires_at')
     expect(deliverySql).toContain("status IN ('pending', 'failed')")
@@ -2841,7 +2980,7 @@ function fullResourceSummary(): Record<string, unknown> {
 }
 
 describe('Meta CAPI v2 质量运维看板契约', () => {
-  const singleDay = 'from=2026-07-10&to=2026-07-10'
+  const singleDay = 'from=2026-07-10&to=2026-07-10&provider=meta'
 
   it('summary 单日只汇总活动业务 action，并将 Lead 放入 historical', async () => {
     const db = createDashboardDb()
@@ -2857,6 +2996,7 @@ describe('Meta CAPI v2 质量运维看板契约', () => {
       range: { from: '2026-07-10', to: '2026-07-10', days: 1 },
       usage: { rowsRead: expect.any(Number), rowsWritten: 0, durationMs: expect.any(Number) },
       data: {
+        provider: 'meta',
         business: {
           contactCount: 3,
           completeRegistrationCount: 2,
@@ -2865,7 +3005,7 @@ describe('Meta CAPI v2 质量运维看板契约', () => {
         historical: { leadCount: 9 },
         delivery: {
           pixelAttempted: 5,
-          capiSent: 4,
+          serverSent: 4,
           failed: 1,
           skipped: 2,
           pending: 3,
@@ -2875,6 +3015,35 @@ describe('Meta CAPI v2 质量运维看板契约', () => {
     })
     expect(body.data.business).not.toHaveProperty('leadCount')
     expect(JSON.stringify(body.data)).not.toContain('Meta 归因成功')
+  })
+
+  it('summary 按 provider 隔离 TikTok 投递事实', async () => {
+    const db = createDashboardDb()
+    const res = await createApp('admin').request(
+      '/api/admin/attribution/summary?from=2026-07-10&to=2026-07-10&provider=tiktok',
+      {},
+      { DB: db } as unknown as Bindings,
+    )
+    const body = await res.json()
+    const deliveryQuery = db.calls.find(call => call.sql.includes('FROM analytics_conversion_delivery_daily'))
+
+    expect(res.status).toBe(200)
+    expect(body.data.provider).toBe('tiktok')
+    expect(deliveryQuery?.params).toEqual(['2026-07-10', '2026-07-10', 'tiktok'])
+  })
+
+  it('通用归因看板要求明确的平台参数', async () => {
+    const db = createDashboardDb()
+    const res = await createApp('admin').request(
+      '/api/admin/attribution/summary?from=2026-07-10&to=2026-07-10',
+      {},
+      { DB: db } as unknown as Bindings,
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(400)
+    expect(body.code).toBe('ATTRIBUTION_PROVIDER_INVALID')
+    expect(db.calls).toHaveLength(0)
   })
 
   it('trends 对指定单日恰好返回一行并保持业务与投递证据分层', async () => {
@@ -2893,7 +3062,7 @@ describe('Meta CAPI v2 质量运维看板契约', () => {
       business: { contactCount: 3, completeRegistrationCount: 2, actionCount: 5 },
       delivery: {
         pixelAttempted: 5,
-        capiSent: 4,
+        serverSent: 4,
         failed: 1,
         skipped: 2,
         pending: 3,
@@ -2904,7 +3073,7 @@ describe('Meta CAPI v2 质量运维看板契约', () => {
 
   it('trends 对无数据范围按上海业务日期逐日补零', async () => {
     const res = await createApp('admin').request(
-      '/api/admin/attribution/trends?from=2026-07-09&to=2026-07-11&granularity=day',
+      '/api/admin/attribution/trends?from=2026-07-09&to=2026-07-11&provider=meta&granularity=day',
       {},
       { DB: createDashboardDb({ empty: true }) } as unknown as Bindings,
     )
@@ -2916,8 +3085,8 @@ describe('Meta CAPI v2 质量运维看板契约', () => {
       '2026-07-10',
       '2026-07-11',
     ])
-    expect(body.data.rows.every((row: { business: { actionCount: number }; delivery: { capiSent: number } }) => (
-      row.business.actionCount === 0 && row.delivery.capiSent === 0
+    expect(body.data.rows.every((row: { business: { actionCount: number }; delivery: { serverSent: number } }) => (
+      row.business.actionCount === 0 && row.delivery.serverSent === 0
     ))).toBe(true)
   })
 
@@ -2930,14 +3099,21 @@ describe('Meta CAPI v2 质量运维看板契约', () => {
     const body = await res.json()
 
     expect(res.status).toBe(200)
+    expect(body.data.match.labels).toEqual({
+      browserId: 'fbp',
+      clickId: 'fbc',
+      email: 'email',
+      externalId: 'external_id',
+    })
     expect(body.data.match.summary).toEqual({
-      fbp: { availability: 'available', numerator: 3, denominator: 4, rate: 0.75 },
-      fbc: { availability: 'available', numerator: 2, denominator: 4, rate: 0.5 },
+      browserId: { availability: 'available', numerator: 3, denominator: 4, rate: 0.75 },
+      clickId: { availability: 'available', numerator: 2, denominator: 4, rate: 0.5 },
       email: { availability: 'available', numerator: 4, denominator: 4, rate: 1 },
       externalId: { availability: 'available', numerator: 1, denominator: 4, rate: 0.25 },
     })
     expect(body.data.match.rows).toHaveLength(1)
-    expect(body.data.datasetQuality).toEqual({
+    expect(body.data.platformQuality).toEqual({
+      source: 'meta_dataset_quality',
       availability: 'unavailable',
       latest: null,
       rows: [],
@@ -2953,13 +3129,42 @@ describe('Meta CAPI v2 质量运维看板契约', () => {
     const body = await res.json()
 
     expect(res.status).toBe(200)
-    expect(body.data.match.summary.fbp).toEqual({
+    expect(body.data.match.summary.browserId).toEqual({
       availability: 'unavailable',
       numerator: 0,
       denominator: 0,
       rate: null,
     })
-    expect(body.data.match.rows[0].fbp.rate).toBeNull()
+    expect(body.data.match.rows[0].browserId.rate).toBeNull()
+  })
+
+  it('quality 为 TikTok 使用 _ttp/ttclid 且不伪造 Meta Dataset Quality', async () => {
+    const db = createDashboardDb()
+    const res = await createApp('admin').request(
+      '/api/admin/attribution/quality?from=2026-07-10&to=2026-07-10&provider=tiktok',
+      {},
+      { DB: db } as unknown as Bindings,
+    )
+    const body = await res.json()
+    const matchQuery = db.calls.find(call => call.sql.includes('AS browser_id_numerator'))
+
+    expect(res.status).toBe(200)
+    expect(body.data).toMatchObject({
+      provider: 'tiktok',
+      match: {
+        labels: { browserId: '_ttp', clickId: 'ttclid' },
+      },
+      platformQuality: {
+        source: 'not_supported',
+        availability: 'unavailable',
+        latest: null,
+        rows: [],
+      },
+    })
+    expect(matchQuery?.sql).toContain('d.has_ttp')
+    expect(matchQuery?.sql).toContain('d.has_ttclid')
+    expect(matchQuery?.params).toEqual(['2026-07-10', '2026-07-10', 'tiktok'])
+    expect(db.calls.some(call => call.sql.includes('meta_dataset_quality_snapshots'))).toBe(false)
   })
 
   it.each([
@@ -2989,8 +3194,8 @@ describe('Meta CAPI v2 质量运维看板契约', () => {
     const body = await res.json()
 
     expect(res.status).toBe(200)
-    expect(body.data.datasetQuality.availability).toBe(availability)
-    expect(body.data.datasetQuality.latest).toMatchObject({
+    expect(body.data.platformQuality.availability).toBe(availability)
+    expect(body.data.platformQuality.latest).toMatchObject({
       availability,
       value: null,
       status: collectionStatus,
@@ -3030,11 +3235,11 @@ describe('Meta CAPI v2 质量运维看板契约', () => {
       actionCount: 5,
       contactCount: 3,
       completeRegistrationCount: 2,
-      delivery: { pixelAttempted: 5, capiSent: 4, failed: 1 },
+      delivery: { pixelAttempted: 5, serverSent: 4, failed: 1 },
     })
     expect(query?.sql).toContain('delivery_per_action')
     expect(query?.sql).toContain('COUNT(*) AS action_count')
-    expect(query?.params).toEqual(['2026-07-10', '2026-07-10', 50])
+    expect(query?.params).toEqual(['2026-07-10', '2026-07-10', 'meta', 50])
   })
 
   it.each(['utm_campaign', 'utm_content', 'tracking_link'] as const)(

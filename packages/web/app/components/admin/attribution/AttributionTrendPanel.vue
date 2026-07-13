@@ -25,7 +25,7 @@ const props = withDefaults(defineProps<{
 const layerStyles: Record<EvidenceLayer, { stroke: string; text: string; bg: string }> = {
   business: { stroke: '#047857', text: 'text-emerald-700', bg: 'bg-emerald-50' },
   pixel: { stroke: '#d97706', text: 'text-amber-700', bg: 'bg-amber-50' },
-  capi: { stroke: '#2563eb', text: 'text-blue-700', bg: 'bg-blue-50' },
+  server: { stroke: '#2563eb', text: 'text-blue-700', bg: 'bg-blue-50' },
   quality: { stroke: '#be123c', text: 'text-rose-700', bg: 'bg-rose-50' },
 }
 const chart = { width: 720, height: 240, left: 46, right: 18, top: 18, bottom: 38 }

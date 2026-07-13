@@ -1,6 +1,8 @@
 import type { AdPlatformProvider, AdPlatformTrackingMode } from '@meigallery/shared'
 import type { MetaConnectionStatus, MetaConnectionEnv } from '../meta-connection'
 import { getMetaConnectionStatus } from '../meta-connection'
+import type { TikTokConnectionEnv } from '../tiktok-connection'
+import { getTikTokConnectionStatus } from '../tiktok-connection'
 import {
   listAdPlatformConnections as readAdPlatformConnections,
   type AdPlatformConnection,
@@ -25,15 +27,41 @@ export interface AdPlatformConnectionStatus {
   verifiedCommit: string
 }
 
-export async function listAdPlatformConnections(env: MetaConnectionEnv) {
-  const [meta, connections] = await Promise.all([
+export async function listAdPlatformConnections(env: MetaConnectionEnv & TikTokConnectionEnv) {
+  const [meta, tiktok, connections] = await Promise.all([
     getMetaConnectionStatus(env),
+    getTikTokConnectionStatus(env),
     readAdPlatformConnections(env.DB),
   ])
   const byProvider = new Map(connections.map(connection => [connection.provider, connection]))
   return listAdPlatformProviders().map(provider => provider === 'meta'
     ? fromMetaConnection(meta, byProvider.get(provider) ?? null)
-    : fromBrowserConnection(provider, byProvider.get(provider) ?? null))
+    : provider === 'tiktok'
+      ? fromTikTokConnection(tiktok, byProvider.get(provider) ?? null)
+      : fromBrowserConnection(provider, byProvider.get(provider) ?? null))
+}
+
+function fromTikTokConnection(
+  status: Awaited<ReturnType<typeof getTikTokConnectionStatus>>,
+  connection: AdPlatformConnection | null,
+): AdPlatformConnectionStatus {
+  return {
+    provider: 'tiktok',
+    environment: 'production',
+    enabled: connection?.enabled ?? false,
+    browserEnabled: connection?.browserEnabled ?? false,
+    serverEnabled: connection?.serverEnabled ?? false,
+    destinationId: connection?.destinationId ?? '',
+    debugEnabled: connection?.debugEnabled ?? false,
+    rolloutPercentage: connection?.rolloutPercentage ?? 0,
+    destinationConfigured: status.pixelIdConfigured,
+    serverCredentialConfigured: status.tokenConfigured,
+    testCredentialConfigured: false,
+    mode: connection?.mode ?? 'disabled',
+    state: normalizeState(status.state),
+    verifiedAt: status.verifiedAt,
+    verifiedCommit: '',
+  }
 }
 
 function fromBrowserConnection(
@@ -83,7 +111,9 @@ function fromMetaConnection(
   }
 }
 
-function normalizeState(state: MetaConnectionStatus['state']): AdPlatformConnectionStatus['state'] {
+function normalizeState(
+  state: MetaConnectionStatus['state'] | Awaited<ReturnType<typeof getTikTokConnectionStatus>>['state'],
+): AdPlatformConnectionStatus['state'] {
   if (state === 'verified') return 'verified'
   if (state === 'not_configured') return 'not_configured'
   if (state === 'configuration_changed') return 'invalidated'

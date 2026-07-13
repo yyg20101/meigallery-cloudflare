@@ -27,12 +27,8 @@ export async function main(options = {}) {
   assert.equal(config.dev.r2.bucketName, 'meigallery-media-dev', '开发 R2 名称必须为 meigallery-media-dev')
   assert.notEqual(config.production.d1.databaseId, config.dev.d1.databaseId, '开发 D1 database_id 不得与生产相同')
   assert.notEqual(config.production.r2.bucketName, config.dev.r2.bucketName, '开发 R2 bucket 不得与生产相同')
-  assert.equal(config.production.queue.producerName, 'meigallery-meta-capi', '生产 Queue 名称必须保持 meigallery-meta-capi')
-  assert.equal(config.production.queue.mainConsumerName, config.production.queue.producerName, '生产 Queue producer/consumer 必须一致')
-  assert.equal(config.production.queue.deadLetterQueueName, 'meigallery-meta-capi-dlq', '生产 DLQ 名称必须保持 meigallery-meta-capi-dlq')
-  assert.equal(config.production.queue.dlqConsumerName, config.production.queue.deadLetterQueueName, '生产 DLQ 必须配置 consumer')
-  assert.equal(config.production.queue.maxRetries, 5, '生产 Queue max_retries 必须为 5')
-  assert.equal(config.production.queue.retryDelay, 60, '生产 Queue retry_delay 必须为 60')
+  assertQueueConfig(config.production.queues.meta, 'meigallery-meta-capi', 'meigallery-meta-capi-dlq', 'Meta CAPI')
+  assertQueueConfig(config.production.queues.tiktok, 'meigallery-tiktok-events', 'meigallery-tiktok-events-dlq', 'TikTok Events')
 
   return config
 }
@@ -47,7 +43,10 @@ export async function loadWranglerResourceConfig(options = {}) {
       apiOrigin: extractCustomDomainOrigin(source),
       d1: extractNamedFields(source, '[[d1_databases]]', ['database_name', 'database_id']),
       r2: extractNamedFields(source, '[[r2_buckets]]', ['bucket_name']),
-      queue: extractQueueConfig(source, ''),
+      queues: {
+        meta: extractQueueConfig(source, '', 'META_CAPI_QUEUE'),
+        tiktok: extractQueueConfig(source, '', 'TIKTOK_EVENTS_QUEUE'),
+      },
     },
     dev: {
       d1: extractNamedFields(source, '[[env.dev.d1_databases]]', ['database_name', 'database_id']),
@@ -67,10 +66,22 @@ function extractCustomDomainOrigin(source) {
   return `https://${match[1]}`
 }
 
-function extractQueueConfig(source, prefix) {
+function assertQueueConfig(queue, expectedMain, expectedDlq, label) {
+  assert.equal(queue.producerName, expectedMain, `${label} 生产 Queue 名称不正确`)
+  assert.equal(queue.mainConsumerName, queue.producerName, `${label} Queue producer/consumer 必须一致`)
+  assert.equal(queue.deadLetterQueueName, expectedDlq, `${label} 生产 DLQ 名称不正确`)
+  assert.equal(queue.dlqConsumerName, queue.deadLetterQueueName, `${label} DLQ 必须配置 consumer`)
+  assert.equal(queue.maxRetries, 5, `${label} Queue max_retries 必须为 5`)
+  assert.equal(queue.retryDelay, 60, `${label} Queue retry_delay 必须为 60`)
+}
+
+function extractQueueConfig(source, prefix, binding) {
   const producerHeader = `[[${prefix}queues.producers]]`
   const consumerHeader = `[[${prefix}queues.consumers]]`
-  const producerName = extractQuotedField(extractSection(source, producerHeader), 'queue', producerHeader)
+  const producerSection = extractSections(source, producerHeader)
+    .find(section => extractOptionalQuotedField(section, 'binding') === binding)
+  if (!producerSection) throw new Error(`未找到 ${producerHeader} binding=${binding}`)
+  const producerName = extractQuotedField(producerSection, 'queue', `${producerHeader} binding=${binding}`)
   const consumerSections = extractSections(source, consumerHeader)
   const consumers = consumerSections.map(section => ({
     queueName: extractQuotedField(section, 'queue', consumerHeader),

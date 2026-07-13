@@ -8,13 +8,13 @@ async function readMigration(name: string) {
 }
 
 describe('analytics migrations', () => {
-  it('migration 索引从 0001 到 0048 连续且编号唯一', async () => {
+  it('migration 索引从 0001 到 0049 连续且编号唯一', async () => {
     const names = (await readdir(MIGRATION_DIR))
       .filter(name => /^\d{4}_.+\.sql$/.test(name))
       .sort()
     const indexes = names.map(name => Number(name.slice(0, 4)))
 
-    expect(indexes).toEqual(Array.from({ length: 48 }, (_, index) => index + 1))
+    expect(indexes).toEqual(Array.from({ length: 49 }, (_, index) => index + 1))
     expect(new Set(indexes).size).toBe(indexes.length)
   })
 
@@ -275,5 +275,19 @@ describe('analytics migrations', () => {
     expect(sql).toContain("'facebook_pixel_id'")
     expect(sql).toContain("'meta_capi_rollout_percentage'")
     expect(sql).not.toMatch(/\bchannel\s+TEXT|meta_connection_revision\s+TEXT/)
+  })
+
+  it('0049 将匹配标识与密文 Outbox 收口为平台无关结构并建立 TikTok 验证账本', async () => {
+    const sql = await readMigration('0049_tiktok_events_api.sql')
+    expect(sql).toContain('ALTER TABLE users RENAME COLUMN meta_external_id TO conversion_external_id')
+    expect(sql).toContain('ADD COLUMN has_ttclid INTEGER NOT NULL DEFAULT 0')
+    expect(sql).toContain('ADD COLUMN has_ttp INTEGER NOT NULL DEFAULT 0')
+    expect(sql).toContain('CREATE TABLE ad_platform_secure_outbox')
+    expect(sql).toContain("o.delivery_id, 'meta', o.schema_version")
+    expect(sql).toContain('DROP TABLE meta_capi_secure_outbox')
+    expect(sql).toContain('CREATE TABLE tiktok_connection_verifications')
+    expect(sql).toContain("CHECK (environment = 'production')")
+    expect(sql).toContain("credential_secret_name = 'TIKTOK_EVENTS_ACCESS_TOKEN'")
+    expect(sql).not.toMatch(/access_token\s+TEXT|test_event_code\s+TEXT|client_ip|user_agent|\bemail\s+TEXT/i)
   })
 })

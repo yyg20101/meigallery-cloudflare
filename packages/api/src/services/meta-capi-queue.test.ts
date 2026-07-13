@@ -1,13 +1,13 @@
 import { Buffer } from 'node:buffer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ConversionDeliveryStatus, MetaCapiQueueMessage } from '@meigallery/shared'
+import type { AdPlatformQueueMessage, ConversionDeliveryStatus } from '@meigallery/shared'
 import type { Bindings } from '../index'
 import {
   encryptMetaCapiContext,
   loadMetaCapiCryptoKeys,
   type MetaCapiSensitiveContext,
 } from '../utils/meta-capi-crypto'
-import { enqueueSecureMetaCapiDelivery } from './meta-capi-secure-outbox'
+import { enqueueAdPlatformSecureDelivery } from './ad-platform/secure-outbox'
 import { computeMetaRetryDelay, handleMetaCapiBatch, recoverPendingMetaCapiDeliveries } from './meta-capi-queue'
 
 const CURRENT_KEY = Buffer.alloc(32, 7).toString('base64')
@@ -16,6 +16,15 @@ const EXPIRES_AT = '2026-07-12T10:00:00.000Z'
 const RELEASE_COMMIT = 'a'.repeat(40)
 const TOKEN_FINGERPRINT = 'c144f7bade446c762abc027132d8c31d80270f7ba5c41cd4ff9437655f939512'
 const CONNECTION_REVISION = '1'.repeat(32)
+
+function enqueueMetaSecureDelivery(env: Bindings, deliveryId: string) {
+  return enqueueAdPlatformSecureDelivery(env, {
+    provider: 'meta',
+    queue: env.META_CAPI_QUEUE,
+    deliveryId,
+    queueLabel: 'Meta CAPI',
+  })
+}
 
 type Call = { sql: string; params: unknown[] }
 type Delivery = {
@@ -46,7 +55,7 @@ type Delivery = {
   delivery_lease_expires_at: string | null
 }
 
-type Outbox = MetaCapiQueueMessage['envelope'] & {
+type Outbox = AdPlatformQueueMessage['envelope'] & {
   delivery_id: string
   schema_version: 2
   expires_at: string
@@ -112,10 +121,11 @@ function createQueueDb(options: {
         },
         async first<T>() {
           calls.push(call)
-          if (sql.includes('FROM meta_capi_secure_outbox')) {
+          if (sql.includes('FROM ad_platform_secure_outbox')) {
             if (!outbox || call.params[0] !== delivery.id) return null
             return {
               delivery_id: outbox.delivery_id,
+              provider: 'meta',
               schema_version: outbox.schema_version,
               key_id: outbox.keyId,
               iv: outbox.iv,
@@ -200,7 +210,7 @@ function createQueueDb(options: {
       return result(1)
     }
     if (sql.includes("SET delivery_lease_token = ''")) {
-      const matches = delivery.delivery_lease_token === String(params[1])
+      const matches = delivery.delivery_lease_token === String(params[2])
       if (matches) {
         delivery.delivery_lease_token = ''
         delivery.delivery_lease_expires_at = null
@@ -209,7 +219,7 @@ function createQueueDb(options: {
     }
     if (sql.includes('queue_attempt_count = queue_attempt_count + 1')) {
       if (!outbox || delivery.status !== 'pending' || delivery.queue_enqueued_at) return result(0)
-      if (delivery.queue_attempt_count !== Number(params[1])) return result(0)
+      if (delivery.queue_attempt_count !== Number(params[2])) return result(0)
       delivery.queue_attempt_count += 1
       delivery.updated_at = '2026-07-11 10:01:00'
       return result(1)
@@ -227,7 +237,7 @@ function createQueueDb(options: {
       delivery.error_code = 'missing_queue'
       return result(1)
     }
-    if (sql.includes('DELETE FROM meta_capi_secure_outbox')) {
+    if (sql.includes('DELETE FROM ad_platform_secure_outbox')) {
       if (String(params[0]) === delivery.id) outbox = null
       return result(1)
     }
@@ -318,7 +328,7 @@ async function encryptedMessage(
     expires_at: EXPIRES_AT,
     ...envelope,
   }
-  return { schemaVersion: 2, deliveryId: db.delivery.id, envelope } satisfies MetaCapiQueueMessage
+  return { schemaVersion: 2, deliveryId: db.delivery.id, envelope } satisfies AdPlatformQueueMessage
 }
 
 async function encryptedRawMessage(
@@ -353,7 +363,7 @@ async function encryptedRawMessage(
     expires_at: EXPIRES_AT,
     ...envelope,
   }
-  return { schemaVersion: 2, deliveryId: db.delivery.id, envelope } satisfies MetaCapiQueueMessage
+  return { schemaVersion: 2, deliveryId: db.delivery.id, envelope } satisfies AdPlatformQueueMessage
 }
 
 function bytesToBase64Url(bytes: Uint8Array) {
@@ -362,7 +372,7 @@ function bytesToBase64Url(bytes: Uint8Array) {
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
 }
 
-function queueMessage(body: MetaCapiQueueMessage, attempts = 1) {
+function queueMessage(body: AdPlatformQueueMessage, attempts = 1) {
   return { body, attempts, ack: vi.fn(), retry: vi.fn() }
 }
 
@@ -371,7 +381,7 @@ function batch(message: ReturnType<typeof queueMessage>, queue = 'meigallery-met
 }
 
 function messageBatch(messages: Array<ReturnType<typeof queueMessage>>, queue = 'meigallery-meta-capi') {
-  return { queue, messages } as unknown as MessageBatch<MetaCapiQueueMessage>
+  return { queue, messages } as unknown as MessageBatch<AdPlatformQueueMessage>
 }
 
 function env(db: ReturnType<typeof createQueueDb>, overrides: Partial<Bindings> = {}) {
@@ -517,7 +527,7 @@ describe('Meta CAPI Queue V2', () => {
     const malformed = {
       ...body,
       envelope: { ...body.envelope, tag: 42 },
-    } as unknown as MetaCapiQueueMessage
+    } as unknown as AdPlatformQueueMessage
     const message = queueMessage(malformed)
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
@@ -545,7 +555,7 @@ describe('Meta CAPI Queue V2', () => {
     const message = queueMessage({
       ...body,
       envelope: { ...body.envelope, tag: 42 },
-    } as unknown as MetaCapiQueueMessage)
+    } as unknown as AdPlatformQueueMessage)
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
     await handleMetaCapiBatch(batch(message), env(db))
@@ -649,7 +659,7 @@ describe('Meta CAPI Queue V2', () => {
       expiresAt: EXPIRES_AT,
       expires_at: EXPIRES_AT,
     }
-    const message = queueMessage(body as unknown as MetaCapiQueueMessage)
+    const message = queueMessage(body as unknown as AdPlatformQueueMessage)
     const fetchMock = vi.spyOn(globalThis, 'fetch')
 
     await handleMetaCapiBatch(batch(message), env(db))
@@ -673,7 +683,7 @@ describe('Meta CAPI Queue V2', () => {
       schemaVersion: 1,
       deliveryId,
       userData: {},
-    } as unknown as MetaCapiQueueMessage))
+    } as unknown as AdPlatformQueueMessage))
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
     await handleMetaCapiBatch(messageBatch(messages), env(db))
@@ -702,7 +712,7 @@ describe('Meta CAPI Queue V2', () => {
       },
       envelope: validBody.envelope,
     }
-    const poisoned = queueMessage(poisonedBody as unknown as MetaCapiQueueMessage)
+    const poisoned = queueMessage(poisonedBody as unknown as AdPlatformQueueMessage)
     const valid = queueMessage(validBody)
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }))
@@ -733,11 +743,11 @@ describe('Meta CAPI Queue V2', () => {
     const poisoned = [
       queueMessage(new Proxy({}, {
         getPrototypeOf() { throw new Error('poison getPrototypeOf') },
-      }) as unknown as MetaCapiQueueMessage),
+      }) as unknown as AdPlatformQueueMessage),
       queueMessage(new Proxy({}, {
         ownKeys() { throw new Error('poison ownKeys') },
-      }) as unknown as MetaCapiQueueMessage),
-      queueMessage(inherited as unknown as MetaCapiQueueMessage),
+      }) as unknown as AdPlatformQueueMessage),
+      queueMessage(inherited as unknown as AdPlatformQueueMessage),
     ]
     const valid = queueMessage(validBody)
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
@@ -889,7 +899,7 @@ describe('Meta CAPI Queue V2', () => {
     const malformedMessage = queueMessage({
       ...skippedBody,
       envelope: { ...skippedBody.envelope, tag: 42 },
-    } as unknown as MetaCapiQueueMessage)
+    } as unknown as AdPlatformQueueMessage)
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
     await handleMetaCapiBatch(batch(malformedMessage), env(skippedDb))
@@ -902,11 +912,11 @@ describe('Meta CAPI Queue V2', () => {
   it('scheduled recovery 从 D1 重放原密文，不再构造空匹配对象', async () => {
     const db = createQueueDb()
     const expected = await encryptedMessage(db)
-    const sent: MetaCapiQueueMessage[] = []
+    const sent: AdPlatformQueueMessage[] = []
 
     const result = await recoverPendingMetaCapiDeliveries({
       DB: db as unknown as D1Database,
-      META_CAPI_QUEUE: { send: async message => { sent.push(message) } } as Queue<MetaCapiQueueMessage>,
+      META_CAPI_QUEUE: { send: async message => { sent.push(message) } } as Queue<AdPlatformQueueMessage>,
     })
 
     expect(result).toEqual({ scanned: 1, enqueued: 1, failed: 0 })
@@ -919,15 +929,15 @@ describe('Meta CAPI Queue V2', () => {
     vi.setSystemTime(new Date('2026-07-11T12:00:00.000Z'))
     const db = createQueueDb({ cleanupBatchFailures: 1 })
     await encryptedMessage(db)
-    const queued: MetaCapiQueueMessage[] = []
+    const queued: AdPlatformQueueMessage[] = []
     const producerEnv = {
       DB: db as unknown as D1Database,
-      META_CAPI_QUEUE: { send: async message => { queued.push(message) } } as Queue<MetaCapiQueueMessage>,
+      META_CAPI_QUEUE: { send: async message => { queued.push(message) } } as Queue<AdPlatformQueueMessage>,
     }
 
-    expect(await enqueueSecureMetaCapiDelivery(producerEnv, db.delivery.id)).toBe('failed')
+    expect(await enqueueMetaSecureDelivery(producerEnv, db.delivery.id)).toBe('failed')
     db.delivery.updated_at = '2026-07-11 10:00:00'
-    expect(await enqueueSecureMetaCapiDelivery(producerEnv, db.delivery.id)).toBe('enqueued')
+    expect(await enqueueMetaSecureDelivery(producerEnv, db.delivery.id)).toBe('enqueued')
     expect(queued).toHaveLength(2)
     expect(queued[0]).toEqual(queued[1])
 

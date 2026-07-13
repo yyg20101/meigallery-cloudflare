@@ -7,7 +7,8 @@ import type {
 import type { ComputedRef, Ref } from 'vue'
 
 export type AttributionRangePreset = '7d' | '30d' | '90d' | 'day'
-export type EvidenceLayer = 'business' | 'pixel' | 'capi' | 'quality'
+export type AttributionDashboardProvider = Extract<AdPlatformProvider, 'meta' | 'tiktok'>
+export type EvidenceLayer = 'business' | 'pixel' | 'server' | 'quality'
 export type MetaConnectionState = 'not_configured' | 'unverified' | 'verified' | 'configuration_changed'
 
 export interface AdPlatformConnectionStatusData {
@@ -43,7 +44,7 @@ export interface MetaConnectionStatusData {
 
 export interface AttributionDeliveryMetrics {
   pixelAttempted: number
-  capiSent: number
+  serverSent: number
   failed: number
   skipped: number
   pending: number
@@ -57,6 +58,7 @@ export interface AttributionBusinessMetrics {
 }
 
 export interface AttributionSummaryData {
+  provider: AttributionDashboardProvider
   business: AttributionBusinessMetrics
   historical: { leadCount: number }
   delivery: AttributionDeliveryMetrics
@@ -69,6 +71,7 @@ export interface AttributionTrendRow {
 }
 
 export interface AttributionTrendsData {
+  provider: AttributionDashboardProvider
   granularity: 'day'
   rows: AttributionTrendRow[]
 }
@@ -82,8 +85,8 @@ export interface AttributionMatchMetric {
 
 export interface AttributionMatchRow {
   date: string
-  fbp: AttributionMatchMetric
-  fbc: AttributionMatchMetric
+  browserId: AttributionMatchMetric
+  clickId: AttributionMatchMetric
   email: AttributionMatchMetric
   externalId: AttributionMatchMetric
 }
@@ -103,11 +106,14 @@ export interface DatasetQualityRow {
 }
 
 export interface AttributionQualityData {
+  provider: AttributionDashboardProvider
   match: {
-    summary: Record<'fbp' | 'fbc' | 'email' | 'externalId', AttributionMatchMetric>
+    labels: Record<'browserId' | 'clickId' | 'email' | 'externalId', string>
+    summary: Record<'browserId' | 'clickId' | 'email' | 'externalId', AttributionMatchMetric>
     rows: AttributionMatchRow[]
   }
-  datasetQuality: {
+  platformQuality: {
+    source: 'meta_dataset_quality' | 'not_supported'
     availability: 'available' | 'error' | 'unavailable'
     latest: DatasetQualityRow | null
     rows: DatasetQualityRow[]

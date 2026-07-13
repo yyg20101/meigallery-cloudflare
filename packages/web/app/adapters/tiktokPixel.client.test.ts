@@ -30,8 +30,11 @@ describe('TikTok Pixel adapter', () => {
 
     expect(window.ttq).toEqual(expect.arrayContaining([
       ['page'],
-      ['track', 'Contact', { method_type: 'telegram', event_id: 'event_1' }],
+      ['track', 'Contact', { method_type: 'telegram' }, { event_id: 'event_1' }],
     ]))
+    expect(window.ttq?.methods).toContain('grantConsent')
+    expect(window.ttq?._i?.C123456789ABCDEF?._u).toBe('https://analytics.tiktok.com/i18n/pixel/events.js')
+    expect(window.ttq?.instance?.('C123456789ABCDEF').track).toBeTypeOf('function')
     expect(script?.src).toContain('https://analytics.tiktok.com/i18n/pixel/events.js?sdkid=C123456789ABCDEF&lib=ttq')
     expect(script?.referrerPolicy).toBe('no-referrer')
   })

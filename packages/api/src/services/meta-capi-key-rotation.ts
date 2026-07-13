@@ -45,13 +45,15 @@ export async function getMetaCapiKeyRotationStatus(
     const [previousOutboxCount, previousActiveDeliveryCount] = await Promise.all([
       readReferenceCount(env.DB, `
         SELECT COUNT(*) AS reference_count
-        FROM meta_capi_secure_outbox
-        WHERE key_id = ?
+        FROM ad_platform_secure_outbox
+        WHERE provider = 'meta' AND key_id = ?
       `, previous.id),
       readReferenceCount(env.DB, `
         SELECT COUNT(*) AS reference_count
         FROM analytics_conversion_deliveries
         WHERE encryption_key_id = ?
+          AND provider = 'meta'
+          AND transport = 'server'
           AND status IN ('pending', 'failed')
       `, previous.id),
     ])

@@ -149,19 +149,26 @@ describe('发布验证 CLI', () => {
     assert.match(command.slice(preflightIndex, migrationIndex), /&&/)
   })
 
-  it('API coverage 显式包含八个 Meta 文件和独立阈值', async () => {
+  it('API coverage 显式包含广告平台关键文件和独立阈值', async () => {
     const config = await readFile(VITEST_CONFIG_PATH, 'utf8')
     for (const file of [
       'src/utils/conversions.ts',
       'src/utils/pixel-receipt.ts',
-      'src/utils/meta-browser-identifiers.ts',
+      'src/utils/ad-platform-identifiers.ts',
+      'src/utils/secure-context-crypto.ts',
+      'src/services/ad-platform/secure-outbox.ts',
       'src/services/conversions.ts',
       'src/services/meta-capi.ts',
       'src/services/meta-capi-queue.ts',
+      'src/services/tiktok-connection.ts',
+      'src/services/tiktok-events.ts',
+      'src/services/tiktok-events-delivery.ts',
+      'src/services/tiktok-events-queue.ts',
       'src/routes/conversions.ts',
+      'src/routes/admin/ad-platforms.ts',
       'src/routes/admin/attribution.ts',
     ]) assert.match(config, new RegExp(file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
-    assert.match(config, /META_COVERAGE_GLOB/)
+    assert.match(config, /AD_PLATFORM_COVERAGE_GLOB/)
     assert.match(config, /statements:\s*85/)
     assert.match(config, /branches:\s*80/)
     assert.match(config, /functions:\s*85/)

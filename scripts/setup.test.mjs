@@ -19,8 +19,8 @@ afterEach(async () => {
 describe('Cloudflare setup Queue 初始化', () => {
   for (const [environment, expected] of [
     ['dev', []],
-    ['production', ['meigallery-meta-capi', 'meigallery-meta-capi-dlq']],
-    ['all', ['meigallery-meta-capi', 'meigallery-meta-capi-dlq']],
+    ['production', ['meigallery-meta-capi', 'meigallery-meta-capi-dlq', 'meigallery-tiktok-events', 'meigallery-tiktok-events-dlq']],
+    ['all', ['meigallery-meta-capi', 'meigallery-meta-capi-dlq', 'meigallery-tiktok-events', 'meigallery-tiktok-events-dlq']],
   ]) {
     it(`${environment} 真正创建期望 Queue`, async () => {
       const result = await runSetup(environment)
@@ -37,10 +37,14 @@ describe('Cloudflare setup Queue 初始化', () => {
     assert.deepEqual(await createdQueues(result.logFile), [
       'meigallery-meta-capi',
       'meigallery-meta-capi-dlq',
+      'meigallery-tiktok-events',
+      'meigallery-tiktok-events-dlq',
     ])
     assert.deepEqual(await inspectedQueues(result.logFile), [
       'meigallery-meta-capi',
       'meigallery-meta-capi-dlq',
+      'meigallery-tiktok-events',
+      'meigallery-tiktok-events-dlq',
     ])
     assert.match(result.stdout, /已确认存在/)
     assert.equal(`${result.stdout}${result.stderr}`.includes(FIXTURE_SECRET), false)

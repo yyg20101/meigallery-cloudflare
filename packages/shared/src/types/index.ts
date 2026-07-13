@@ -104,17 +104,19 @@ export interface AdBrowserInstruction {
   receiptToken: string
 }
 
-/** 仅允许在内存中短暂持有的 CAPI 用户匹配上下文。 */
-export interface MetaCapiSensitiveContext {
+/** 仅允许在内存或短期密文中持有的广告平台用户匹配上下文。 */
+export interface AdPlatformSensitiveContext {
   fbp?: string
   fbc?: string
+  ttclid?: string
+  ttp?: string
   clientIpAddress?: string
   clientUserAgent?: string
   emailSha256?: string
   externalIdSha256?: string
 }
 
-export interface MetaCapiEncryptedEnvelope {
+export interface AdPlatformEncryptedEnvelope {
   keyId: string
   iv: string
   ciphertext: string
@@ -122,10 +124,10 @@ export interface MetaCapiEncryptedEnvelope {
   expiresAt: string
 }
 
-export interface MetaCapiQueueMessage {
+export interface AdPlatformQueueMessage {
   schemaVersion: 2
   deliveryId: string
-  envelope: MetaCapiEncryptedEnvelope
+  envelope: AdPlatformEncryptedEnvelope
 }
 
 export type ConversionSkipReason =

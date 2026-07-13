@@ -10,7 +10,11 @@ import {
 import { sanitizeAnalyticsPath } from '~/utils/analyticsSanitizer'
 import { resolveConversionIdentity } from '~/utils/conversionIdentity'
 import { hasSensitiveAnalyticsUrl, isAdminPath, sanitizeAnalyticsText } from '~/utils/trackingSanitizer'
-import { readMetaBrowserIdentifiers } from '~/utils/metaBrowserIdentifiers'
+import {
+  clearTikTokClickIdCookie,
+  readAdPlatformBrowserIdentifiers,
+  tikTokClickIdCookie,
+} from '~/utils/adPlatformBrowserIdentifiers'
 
 export interface TrackContactInput {
   methodType: string
@@ -87,7 +91,7 @@ export function useTracking() {
     }
 
     const send = async () => {
-      const body = consentScopedBody(baseBody, marketingConsent, route.query.fbclid, activationConsentScope)
+      const body = consentScopedBody(baseBody, marketingConsent, route.query, activationConsentScope)
       const response = await api('/api/conversions/events', { method: 'POST', body })
       return trackingInstructionsFromResponse(response)
     }
@@ -135,6 +139,7 @@ export function useTracking() {
   function trackPageView() {
     if (!ensureCurrentMarketingRouteAllowed()) return
     if (!canDeliverMarketing(marketingConsent)) {
+      clearPersistedAdClickIdentifiers()
       teardownAdBrowserTracking()
       return
     }
@@ -195,6 +200,7 @@ export function useTracking() {
     const context = analytics.getContext() as AnalyticsContext
     const sourceContext = context.sourceContext || {}
     const consentScope = currentMarketingConsentScope(marketingConsent)
+    if (consentScope !== 'granted') clearPersistedAdClickIdentifiers()
     return {
       visitorId: normalizeText(context.visitorId, 120) || undefined,
       sessionId: normalizeText(context.sessionId, 120) || undefined,
@@ -210,7 +216,7 @@ export function useTracking() {
       utmContent: queryValue(route.query.utm_content),
       consentState: consentScope,
       ...(consentScope === 'granted' && typeof document !== 'undefined'
-        ? { browserIdentifiers: readMetaBrowserIdentifiers(document.cookie, route.query.fbclid) }
+        ? { browserIdentifiers: readBrowserIdentifiers(route.query) }
         : {}),
     }
   }
@@ -253,17 +259,28 @@ export function useTracking() {
 function consentScopedBody<T extends Record<string, unknown>>(
   baseBody: T,
   marketingConsent: ReturnType<typeof useMarketingConsent>,
-  fbclid: unknown,
+  clickIds: { fbclid?: unknown; ttclid?: unknown },
   maximumConsentScope: MarketingConsentScope,
 ) {
   const consentScope = scopedMarketingConsent(marketingConsent, maximumConsentScope)
+  if (consentScope !== 'granted') clearPersistedAdClickIdentifiers()
   return {
     ...baseBody,
     consentState: consentScope,
     ...(consentScope === 'granted' && typeof document !== 'undefined'
-      ? { browserIdentifiers: readMetaBrowserIdentifiers(document.cookie, fbclid) }
+      ? { browserIdentifiers: readBrowserIdentifiers(clickIds) }
       : {}),
   }
+}
+
+function readBrowserIdentifiers(clickIds: { fbclid?: unknown; ttclid?: unknown }) {
+  const persisted = tikTokClickIdCookie(clickIds.ttclid)
+  if (persisted) document.cookie = persisted
+  return readAdPlatformBrowserIdentifiers(document.cookie, clickIds)
+}
+
+function clearPersistedAdClickIdentifiers() {
+  if (typeof document !== 'undefined') document.cookie = clearTikTokClickIdCookie()
 }
 
 function canDeliverMarketing(marketingConsent: ReturnType<typeof useMarketingConsent>) {

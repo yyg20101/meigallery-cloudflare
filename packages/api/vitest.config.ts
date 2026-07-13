@@ -1,18 +1,25 @@
 import { defineConfig } from 'vitest/config'
 import { resolve } from 'path'
 
-const META_COVERAGE_FILES = [
+const AD_PLATFORM_COVERAGE_FILES = [
   'src/utils/conversions.ts',
   'src/utils/pixel-receipt.ts',
-  'src/utils/meta-browser-identifiers.ts',
+  'src/utils/ad-platform-identifiers.ts',
+  'src/utils/secure-context-crypto.ts',
+  'src/services/ad-platform/secure-outbox.ts',
   'src/services/conversions.ts',
   'src/services/meta-capi.ts',
   'src/services/meta-capi-queue.ts',
+  'src/services/tiktok-connection.ts',
+  'src/services/tiktok-events.ts',
+  'src/services/tiktok-events-delivery.ts',
+  'src/services/tiktok-events-queue.ts',
   'src/routes/conversions.ts',
+  'src/routes/admin/ad-platforms.ts',
   'src/routes/admin/attribution.ts',
 ]
 
-const META_COVERAGE_GLOB = 'src/{utils/conversions,utils/pixel-receipt,utils/meta-browser-identifiers,services/conversions,services/meta-capi,services/meta-capi-queue,routes/conversions,routes/admin/attribution}.ts'
+const AD_PLATFORM_COVERAGE_GLOB = 'src/{utils/conversions,utils/pixel-receipt,utils/ad-platform-identifiers,utils/secure-context-crypto,services/ad-platform/secure-outbox,services/conversions,services/meta-capi,services/meta-capi-queue,services/tiktok-connection,services/tiktok-events,services/tiktok-events-delivery,services/tiktok-events-queue,routes/conversions,routes/admin/ad-platforms,routes/admin/attribution}.ts'
 
 export default defineConfig({
   test: {
@@ -34,14 +41,14 @@ export default defineConfig({
         'src/services/email-verification.ts',
         'src/middleware/auth.ts',
         'src/middleware/rate-limit.ts',
-        ...META_COVERAGE_FILES,
+        ...AD_PLATFORM_COVERAGE_FILES,
       ],
       thresholds: {
         statements: 70,
         branches: 65,
         functions: 75,
         lines: 75,
-        [META_COVERAGE_GLOB]: {
+        [AD_PLATFORM_COVERAGE_GLOB]: {
           statements: 85,
           branches: 80,
           functions: 85,

@@ -192,7 +192,7 @@ dev 不执行上述操作。后台只展示有效性布尔值、引用计数和�
 1. 保持代码关闭态：`ad_platform_connections.mode=disabled`、`ad_platform_connections.server_enabled=false`，并完成本地 migration、测试、类型检查和 Worker dry-run。
 2. 在 production 保持 `ad_platform_connections.mode=test`、CAPI rollout `0`，完成严格 production live evidence：`Contact`、`CompleteRegistration` 均有 Browser/Server、同一 event ID、去重成功，且没有 `Lead`、`StartTrial`。
 3. 先执行 `corepack pnpm verify:meta-secrets`，再执行 `corepack pnpm verify:meta-resources --report-only`。该命令默认检查 production，并从 Wrangler/Cloudflare 响应核对 migrations、D1、R2、Queue、DLQ 与 secret 名称，不接受本地 JSON 自证。dev 只运行代码、契约和构建验证。
-4. 对生产 D1 依次应用 `0001` 到 `0047`，每次 remote apply 前必须先执行 duplicate preflight。保持 production target/effective rollout 为 `0`；`--initial-meta-rollout` 还要求无过期 secure outbox，previous key 活动引用可由 secret 状态解释，并为当前 commit 写入未过期的 production D1 bootstrap permit。
+4. 对生产 D1 依次应用 `0001` 到当前最新 migration（当前为 `0049`），每次 remote apply 前必须先执行 duplicate preflight。保持 production target/effective rollout 为 `0`；`--initial-meta-rollout` 还要求无过期 secure outbox，previous key 活动引用可由 secret 状态解释，并为当前 commit 写入未过期的 production D1 bootstrap permit。`0049` 只迁移 Meta 加密 outbox 的存储表名，不改变 Meta event ID、连接 revision 或 rollout。
 5. PR 合入 `main` 后，以最终 `main` HEAD 重新部署 production，并重新生成该 commit 的 production live evidence；此前任何 commit 的 evidence 都失效。
 6. 在最终 `main` HEAD、干净工作区运行同 commit release 作预检：首次 Meta 上线使用 `META_INITIAL_ROLLOUT=1 corepack pnpm verify:release`，该约束只要求 production `ad_platform_connections.server_enabled=false`，不约束 dev；后续常规发布使用 `corepack pnpm verify:release`。执行 `./scripts/deploy.sh production` 时脚本仍会强制重跑完整 release，不能复用这份旧报告跳过验证。
 7. 部署生产 API，再部署生产 Web；部署不等同于开启营销投放。
@@ -214,6 +214,37 @@ production live evidence 必须由后台 Owner 按钮创建 Worker challenge：�
 4. Queue 或外部失败异常时记录 backlog、DLQ、failed 原因并暂停投递；修复后先在 `test` mode 重做 Owner Test Event，再依序恢复 production mode 与 CAPI 开关。
 5. 如必须回退 Worker，先完成前述关闭态，再部署旧版本；保留 schema 和 delivery 账本用于核对损失窗口与恢复验证。
 
+### TikTok Pixel / Events API 上线顺序
+
+TikTok 与 Meta 共享站内转化事实和通用投递状态机，但不共享 Queue、密钥、凭证、连接 revision 或 rollout。代码部署不会自动启用 TikTok；migration `0048` / `0049` 的初始状态为 `disabled`、Browser/Server 关闭、rollout `0`。
+
+生产资源：
+
+| 环境 | 主 Queue | DLQ |
+|------|----------|-----|
+| production | `meigallery-tiktok-events` | `meigallery-tiktok-events-dlq` |
+
+首次配置使用交互式命令，凭证值不得进入 shell history、文档或日志：
+
+```bash
+corepack pnpm --filter @meigallery/api exec wrangler queues create meigallery-tiktok-events
+corepack pnpm --filter @meigallery/api exec wrangler queues create meigallery-tiktok-events-dlq
+corepack pnpm --filter @meigallery/api exec wrangler secret put TIKTOK_EVENTS_ACCESS_TOKEN --env=""
+corepack pnpm --filter @meigallery/api exec wrangler secret put TIKTOK_EVENTS_DATA_KEY_CURRENT --env=""
+```
+
+上线顺序固定为：
+
+1. 本地通过 migration `0001..0049`、API/Web 全量测试、类型检查、Nuxt production build、Worker dry-run 和 secret scan。
+2. 在 production 创建两条 TikTok Queue，写入 Access Token 与独立 AES-256-GCM data key；dev/local 不创建或绑定这些资源。
+3. 部署关闭态代码和 migration，在 `/admin/attribution` 保存 TikTok Pixel ID，保持 Server 关闭且 rollout `0`。
+4. 在 TikTok Events Manager 打开 Test Events，输入当次 Test Event Code 后点击“验证 Events API”。API 只在该请求中发送 `Contact` 与 `CompleteRegistration`；代码不会写入 D1、审计或长期 secret。
+5. 确认两项服务器测试事件均被接收，且 `Contact` 不携带注册身份，`CompleteRegistration` 包含允许的匹配标识。连接身份变化后必须重新验证。
+6. 先开启 Browser Pixel 并观察，再开启 Server API，从 `10%` 开始人工放量；后台按 TikTok 平台查看 Pixel、Server API、失败、等待、重试耗尽及 `_ttp/ttclid` 覆盖。
+7. 在 TikTok Events Manager 检查 Browser / Server 使用相同 event name 与 event ID 后的去重结果。未确认去重前不得提高到 `50%` 或 `100%`。
+
+回滚时先关闭 TikTok `server_enabled` 并将 rollout 降为 `0`，再把 mode 切为 `disabled`，最后按需关闭 Browser Pixel。保留 Queue、DLQ、D1 delivery 和加密 outbox 用于诊断，不删除已应用 migration。
+
 ## 6. 环境变量
 
 | 变量 | 位置 | 说明 |
@@ -230,6 +261,9 @@ production live evidence 必须由后台 Owner 按钮创建 Worker challenge：�
 | `META_CAPI_TEST_EVENT_CODE` | API Worker secret | 仅供现有 V2 资源 attestation 的隔离字段使用；Test Event 与 Live Evidence 已改用 Owner 请求级会话码，待资源摘要 schema 升级后删除该 secret |
 | `META_CAPI_DATA_KEY_CURRENT` | API Worker secret | AES-256-GCM 当前数据密钥；所有 mode 的 CAPI readiness 必需 |
 | `META_CAPI_DATA_KEY_PREVIOUS` | API Worker secret | 仅轮换窗口使用的上一把数据密钥 |
+| `TIKTOK_EVENTS_ACCESS_TOKEN` | API Worker secret | TikTok Events API Access Token，只通过 `Access-Token` header 发送 |
+| `TIKTOK_EVENTS_DATA_KEY_CURRENT` | API Worker secret | TikTok Events API 临时匹配上下文的 AES-256-GCM 当前密钥 |
+| `TIKTOK_EVENTS_DATA_KEY_PREVIOUS` | API Worker secret | 仅 TikTok data key 轮换窗口使用 |
 | `NUXT_PUBLIC_API_BASE_URL` | Web Worker vars | API 地址（如 `https://api.616618.xyz`） |
 
 设置 secret：
@@ -247,6 +281,10 @@ corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_TEST_E
 corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_DATA_KEY_CURRENT
 # 仅轮换窗口执行：
 corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_DATA_KEY_PREVIOUS
+corepack pnpm --filter @meigallery/api exec wrangler secret put TIKTOK_EVENTS_ACCESS_TOKEN
+corepack pnpm --filter @meigallery/api exec wrangler secret put TIKTOK_EVENTS_DATA_KEY_CURRENT
+# 仅轮换窗口执行：
+corepack pnpm --filter @meigallery/api exec wrangler secret put TIKTOK_EVENTS_DATA_KEY_PREVIOUS
 ```
 
 ## 7. Cloudflare 产品绑定
@@ -257,7 +295,8 @@ corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_DATA_K
 - Zone ID: `2f7f49183fa463345e09432719af2c7d`（616618.xyz，Free 计划）
 - D1 Database ID: `714929cb-003b-4cb1-bd9f-545fa1895e8c`
 - R2 Bucket: `meigallery-media`
-- Queue: `meigallery-meta-capi`（生产 Meta CAPI 投递）
+- Queue: `meigallery-meta-capi` / `meigallery-meta-capi-dlq`（生产 Meta CAPI）
+- Queue: `meigallery-tiktok-events` / `meigallery-tiktok-events-dlq`（生产 TikTok Events API）
 - D1 Database（dev）: `meigallery-db-dev`
 - R2 Bucket（dev）: `meigallery-media-dev`
 
@@ -266,7 +305,7 @@ corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_DATA_K
 - `meigallery-api-dev` / `meigallery-web-dev`：用于正式上线后的开发测试环境。
 - Dev Worker 使用 Workers dev 子域访问，不接入 `616618.xyz` 主域，不进入 sitemap、导航或公开链接。
 - 当前真实 dev 地址：`https://meigallery-api-dev.wajie.workers.dev`、`https://meigallery-web-dev.wajie.workers.dev`。
-- Dev 环境使用独立 D1/R2，不连接生产资源，也不绑定任何 Meta Queue。
+- Dev 环境使用独立 D1/R2，不连接生产资源，也不绑定任何广告平台 Queue。
 - Dev 页面必须带测试环境标识，并建议设置 `X-Robots-Tag: noindex, nofollow` 或等价 meta，避免搜索引擎收录。
 
 ### Dev / Production 资源隔离
@@ -279,11 +318,11 @@ corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_DATA_K
 | API 域名 | `https://api.616618.xyz` | `https://meigallery-api-dev.wajie.workers.dev` |
 | D1 | `meigallery-db` | `meigallery-db-dev` |
 | R2 | `meigallery-media` | `meigallery-media-dev` |
-| Queue（主 / DLQ） | `meigallery-meta-capi` / `meigallery-meta-capi-dlq` | 不配置 |
+| Queue（主 / DLQ） | Meta 与 TikTok 各自独立的 production Queue / DLQ | 不配置 |
 
 要求：
 
-- dev 的 D1、R2 必须与 production 完全隔离；Meta Queue 仅允许 production 配置。
+- dev 的 D1、R2 必须与 production 完全隔离；Meta / TikTok Queue 与凭证仅允许 production 配置。
 - `verify:quick` 的 `dev-resource-isolation` 必须持续通过，确保 `env.dev` 绑定不会回退到生产资源。
 - 任何“dev 可连接生产 D1/R2”口径均视为历史策略，当前不再适用。
 
@@ -385,7 +424,7 @@ head_sampling_rate = 1
 - [ ] 域名 DNS 已接入 Cloudflare
 - [ ] `meigallery-web` Worker 已部署并绑定 `616618.xyz`
 - [ ] `meigallery-api` Worker 已部署并绑定 `api.616618.xyz`
-- [ ] D1 数据库 `meigallery-db` 已创建，`0001` 到 `0038` migrations 已依次执行
+- [ ] D1 数据库 `meigallery-db` 已创建，`0001` 到 `0049` migrations 已依次执行
 - [ ] R2 bucket `meigallery-media` 已创建并设置私有访问策略
 - [ ] Stream 上传和播放流程验证通过（当前未接入）
 - [ ] 所有 Worker secrets 已配置（SESSION_SECRET、TURNSTILE_SECRET_KEY、STREAM_ACCOUNT_ID、STREAM_API_TOKEN）
@@ -395,10 +434,11 @@ head_sampling_rate = 1
 - [ ] 外部导入所需 Import Token 已在后台创建，权限、过期时间和 `allowedSourceBotKeys` 已确认
 - [ ] 每个 `sourceBotKey` 对应的 `TELEGRAM_BOT_TOKEN_<SOURCE_BOT_KEY>` secret 已配置
 - [ ] 生产 `meigallery-meta-capi` 和 `meigallery-meta-capi-dlq` 已创建，API Worker producer / consumer dry-run 通过
-- [ ] `META_CAPI_ACCESS_TOKEN`、`META_CAPI_TEST_EVENT_CODE` 和 `META_CAPI_DATA_KEY_CURRENT` 已作为独立 production secret 配置；dev 使用不同值
-- [ ] `0036_meta_capi_v2_secure_delivery.sql`、`0037_meta_connection_revision.sql` 与 `0038_conversion_dedupe_claims.sql` 已应用；`ad_platform_connections.mode=disabled`、`ad_platform_connections.server_enabled=false`
+- [ ] `META_CAPI_ACCESS_TOKEN`、`META_CAPI_TEST_EVENT_CODE` 和 `META_CAPI_DATA_KEY_CURRENT` 已作为 production secret 配置；dev 不配置
+- [ ] 如准备启用 TikTok，生产 `meigallery-tiktok-events` / DLQ 与 `TIKTOK_EVENTS_ACCESS_TOKEN`、独立 data key 已配置；dev 不配置
+- [ ] `0047_ad_platform_delivery_core.sql`、`0048_tiktok_pixel_connection.sql` 与 `0049_tiktok_events_api.sql` 已应用；新平台保持 mode `disabled`、Server 关闭、rollout `0`
 - [ ] 当前 `main` HEAD 已重做 production live evidence；`Contact` / `CompleteRegistration` 均完成 Browser/Server 同 ID 去重，且无 `Lead` / `StartTrial`
-- [ ] `/admin/attribution/meta` 将 Pixel `attempted` 与 CAPI `sent` 分开显示；Owner Test Event 返回 `events_received=1` 后才允许 production mode 和 `ad_platform_connections.server_enabled`
+- [ ] `/admin/attribution` 可按 Meta / TikTok 分别查看 Pixel `attempted`、Server `sent` 和匹配覆盖；平台 Test Events 严格成功后才允许对应 Server 开关与 rollout
 - [ ] 如接入 Ops Hub 自动导入，Ops Hub 侧 `sourceBotKey` 与 MeiGallery Import Token allowlist 完全一致，且只提交 `metadata.type=gallery/case`
 - [ ] 已用 Ops Hub 或等价脚本完成 `#gallery` 单图、`#case` 相册、重复 `externalMessageId`、未授权 `sourceBotKey` 和旧 `testimonial_case` 拒绝验收
 - [ ] WAF 和基本 rate limiting 已启用

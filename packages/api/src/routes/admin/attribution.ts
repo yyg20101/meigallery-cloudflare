@@ -29,6 +29,7 @@ import {
 } from '../../services/meta-capi-incident-evidence'
 import {
   isAttributionBreakdownDimension,
+  isAttributionDashboardProvider,
   queryAttributionBreakdown,
   queryAttributionQuality,
   queryAttributionSummary,
@@ -71,8 +72,10 @@ adminAttributionRoutes.route('/platforms', adminAdPlatformRoutes)
 adminAttributionRoutes.get('/summary', async (c) => {
   const range = parseRangeOrError(c)
   if (range instanceof Response) return range
+  const provider = parseDashboardProviderOrError(c)
+  if (provider instanceof Response) return provider
   try {
-    const result = await queryAttributionSummary(c.env.DB, range)
+    const result = await queryAttributionSummary(c.env.DB, range, provider)
     return c.json({ range, ...result })
   }
   catch {
@@ -83,13 +86,15 @@ adminAttributionRoutes.get('/summary', async (c) => {
 adminAttributionRoutes.get('/trends', async (c) => {
   const range = parseRangeOrError(c)
   if (range instanceof Response) return range
+  const provider = parseDashboardProviderOrError(c)
+  if (provider instanceof Response) return provider
   if ((c.req.query('granularity') || 'day') !== 'day') {
     return errorJson(c, 400, '归因趋势粒度无效', {
       code: 'ATTRIBUTION_TREND_GRANULARITY_INVALID',
     })
   }
   try {
-    const result = await queryAttributionTrends(c.env.DB, range)
+    const result = await queryAttributionTrends(c.env.DB, range, provider)
     return c.json({ range, ...result })
   }
   catch {
@@ -100,11 +105,14 @@ adminAttributionRoutes.get('/trends', async (c) => {
 adminAttributionRoutes.get('/quality', async (c) => {
   const range = parseRangeOrError(c)
   if (range instanceof Response) return range
+  const provider = parseDashboardProviderOrError(c)
+  if (provider instanceof Response) return provider
   try {
     const result = await queryAttributionQuality(
       c.env.DB,
       range,
       c.env.APP_ENV === 'production' ? 'production' : 'dev',
+      provider,
     )
     return c.json({ range, ...result })
   }
@@ -116,6 +124,8 @@ adminAttributionRoutes.get('/quality', async (c) => {
 adminAttributionRoutes.get('/breakdown', async (c) => {
   const range = parseRangeOrError(c)
   if (range instanceof Response) return range
+  const provider = parseDashboardProviderOrError(c)
+  if (provider instanceof Response) return provider
   const dimension = c.req.query('dimension')
   if (!isAttributionBreakdownDimension(dimension)) {
     return errorJson(c, 400, '归因拆分维度无效', {
@@ -129,7 +139,7 @@ adminAttributionRoutes.get('/breakdown', async (c) => {
     })
   }
   try {
-    const result = await queryAttributionBreakdown(c.env.DB, range, dimension, limit)
+    const result = await queryAttributionBreakdown(c.env.DB, range, dimension, limit, provider)
     return c.json({ range, ...result })
   }
   catch {
@@ -143,7 +153,7 @@ adminAttributionRoutes.get('/meta/status', async (c) => {
   try {
     const [connectionResult, activity] = await Promise.all([
       getMetaConnectionStatusWithUsage(c.env),
-      queryAttributionSummary(c.env.DB, range),
+      queryAttributionSummary(c.env.DB, range, 'meta'),
     ])
     const rolloutResult = await readMetaRolloutSnapshotWithUsage(
       c,
@@ -1790,6 +1800,13 @@ function parseRangeOrError(c: AdminAttributionContext): AnalyticsDateRange | Res
       code: 'ANALYTICS_RANGE_INVALID',
     })
   }
+}
+
+function parseDashboardProviderOrError(c: AdminAttributionContext) {
+  const provider = c.req.query('provider')
+  return isAttributionDashboardProvider(provider)
+    ? provider
+    : errorJson(c, 400, '归因平台无效', { code: 'ATTRIBUTION_PROVIDER_INVALID' })
 }
 
 function dashboardUnavailable(c: AdminAttributionContext) {

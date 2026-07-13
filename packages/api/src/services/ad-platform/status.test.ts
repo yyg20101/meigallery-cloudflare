@@ -14,6 +14,17 @@ vi.mock('../meta-connection', () => ({
   })),
 }))
 
+vi.mock('../tiktok-connection', () => ({
+  getTikTokConnectionStatus: vi.fn(async () => ({
+    state: 'unverified',
+    pixelIdConfigured: true,
+    tokenConfigured: false,
+    trackingMode: 'test',
+    verifiedAt: '',
+    revision: '',
+  })),
+}))
+
 describe('广告平台连接状态', () => {
   it('通过统一契约暴露 Meta 状态而不泄漏凭证', async () => {
     const result = await listAdPlatformConnections({

@@ -3,8 +3,14 @@ import { readFileSync } from 'node:fs'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Miniflare } from 'miniflare'
 import { unstable_splitSqlQuery } from 'wrangler'
+import type { AdPlatformQueueMessage } from '@meigallery/shared'
 import type { Bindings } from '../index'
 import { metaConnectionFingerprint } from '../utils/meta-capi-crypto'
+import {
+  decryptTikTokEventsContext,
+  loadTikTokEventsCryptoKeys,
+  tiktokConnectionFingerprint,
+} from '../utils/tiktok-events-crypto'
 import { recordContact, recordRegistration } from './conversions'
 
 const hashMocks = vi.hoisted(() => ({
@@ -12,14 +18,14 @@ const hashMocks = vi.hoisted(() => ({
   externalId: vi.fn(),
 }))
 
-vi.mock('../utils/meta-browser-identifiers', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../utils/meta-browser-identifiers')>()
-  hashMocks.email.mockImplementation(actual.hashMetaEmail)
-  hashMocks.externalId.mockImplementation(actual.hashMetaExternalId)
+vi.mock('../utils/ad-platform-identifiers', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils/ad-platform-identifiers')>()
+  hashMocks.email.mockImplementation(actual.hashAdPlatformEmail)
+  hashMocks.externalId.mockImplementation(actual.hashAdPlatformExternalId)
   return {
     ...actual,
-    hashMetaEmail: hashMocks.email,
-    hashMetaExternalId: hashMocks.externalId,
+    hashAdPlatformEmail: hashMocks.email,
+    hashAdPlatformExternalId: hashMocks.externalId,
   }
 })
 
@@ -28,6 +34,10 @@ const META_TOKEN = 'conversion-d1-token'
 const RELEASE_COMMIT = 'a'.repeat(40)
 const CONNECTION_REVISION = '1'.repeat(32)
 const DATA_KEY = Buffer.alloc(32, 7).toString('base64')
+const TIKTOK_PIXEL_ID = 'C123456789ABCDEF'
+const TIKTOK_TOKEN = 'conversion-d1-tiktok-token'
+const TIKTOK_REVISION = '2'.repeat(32)
+const TIKTOK_DATA_KEY = Buffer.alloc(32, 11).toString('base64')
 
 type ClaimRun = { sql: string; changes: number }
 type WrappedStatement = D1PreparedStatement & { __inner: D1PreparedStatement }
@@ -38,9 +48,9 @@ let actualHashEmail: (email: string) => Promise<string>
 let actualHashExternalId: (externalId: string) => Promise<string>
 
 beforeAll(async () => {
-  const identifiers = await vi.importActual<typeof import('../utils/meta-browser-identifiers')>('../utils/meta-browser-identifiers')
-  actualHashEmail = identifiers.hashMetaEmail
-  actualHashExternalId = identifiers.hashMetaExternalId
+  const identifiers = await vi.importActual<typeof import('../utils/ad-platform-identifiers')>('../utils/ad-platform-identifiers')
+  actualHashEmail = identifiers.hashAdPlatformEmail
+  actualHashExternalId = identifiers.hashAdPlatformExternalId
   miniflare = new Miniflare({
     modules: true,
     script: 'export default { fetch() { return new Response("ok") } }',
@@ -73,6 +83,8 @@ beforeAll(async () => {
     '0038_conversion_dedupe_claims.sql',
     '0039_meta_capi_v2_operations.sql',
     '0047_ad_platform_delivery_core.sql',
+    '0048_tiktok_pixel_connection.sql',
+    '0049_tiktok_events_api.sql',
   ]) await applyMigration(name)
 }, 30_000)
 
@@ -80,7 +92,7 @@ beforeEach(async () => {
   hashMocks.email.mockReset().mockImplementation(actualHashEmail)
   hashMocks.externalId.mockReset().mockImplementation(actualHashExternalId)
   await realDb.exec(`
-    DELETE FROM meta_capi_secure_outbox;
+    DELETE FROM ad_platform_secure_outbox;
     DELETE FROM analytics_conversion_deliveries;
     DELETE FROM analytics_conversion_delivery_daily;
     DELETE FROM analytics_conversion_daily;
@@ -88,6 +100,7 @@ beforeEach(async () => {
     DELETE FROM analytics_conversion_dedupe_claims;
     DELETE FROM meta_capi_incidents;
     DELETE FROM meta_connection_verifications;
+    DELETE FROM tiktok_connection_verifications;
     DELETE FROM site_settings;
     DELETE FROM users;
   `)
@@ -111,13 +124,13 @@ describe('conversion dedupe claim 真实 D1 并发', () => {
       await releaseSensitive.promise
       return {
         email: 'winner-only@example.test',
-        metaExternalId: '0123456789abcdef0123456789abcdef',
+        externalId: '0123456789abcdef0123456789abcdef',
       }
     })
     const loserBrowser = vi.fn(async () => ({ fbp: 'fb.1.must-not-read' }))
     const loserSensitive = vi.fn(async () => ({
       email: 'loser-must-not-read@example.test',
-      metaExternalId: 'fedcba9876543210fedcba9876543210',
+      externalId: 'fedcba9876543210fedcba9876543210',
     }))
     const loserDb = wrapDb(realDb, {
       afterClaimInsert: async (changes) => {
@@ -128,7 +141,7 @@ describe('conversion dedupe claim 真实 D1 并发', () => {
     })
 
     const winnerPromise = recordRegistration(conversionEnv(realDb, queueSend), registrationInput(), {
-      getMetaCapiUserData: winnerBrowser,
+      getAdPlatformUserData: winnerBrowser,
       getRegistrationSensitiveInput: winnerSensitive,
     })
     await sensitiveEntered.promise
@@ -145,7 +158,7 @@ describe('conversion dedupe claim 真实 D1 并发', () => {
     expect(serializedClaims).not.toContain('0123456789abcdef0123456789abcdef')
     expect(serializedClaims).not.toContain('floating_contact_panel')
     const loserPromise = recordRegistration(conversionEnv(loserDb, queueSend), registrationInput(), {
-      getMetaCapiUserData: loserBrowser,
+      getAdPlatformUserData: loserBrowser,
       getRegistrationSensitiveInput: loserSensitive,
     })
     await loserClaimConflict.promise
@@ -175,11 +188,11 @@ describe('conversion dedupe claim 真实 D1 并发', () => {
     const browser = vi.fn(async () => ({ fbp: 'fb.1.must-not-persist' }))
     const sensitive = vi.fn(async () => ({
       email: 'failure@example.test',
-      metaExternalId: '0123456789abcdef0123456789abcdef',
+      externalId: '0123456789abcdef0123456789abcdef',
     }))
 
     await expect(recordRegistration(conversionEnv(db), registrationInput(), {
-      getMetaCapiUserData: browser,
+      getAdPlatformUserData: browser,
       getRegistrationSensitiveInput: sensitive,
     })).rejects.toThrow()
 
@@ -201,10 +214,10 @@ describe('conversion dedupe claim 真实 D1 并发', () => {
         await releaseOldBatch.promise
       },
     })), input, {
-      getMetaCapiUserData: async () => ({ fbp: 'fb.1.1700000000000.old-owner' }),
+      getAdPlatformUserData: async () => ({ fbp: 'fb.1.1700000000000.old-owner' }),
       getRegistrationSensitiveInput: async () => ({
         email: 'old-owner@example.test',
-        metaExternalId: '0123456789abcdef0123456789abcdef',
+        externalId: '0123456789abcdef0123456789abcdef',
       }),
     })
     await oldBatchReady.promise
@@ -218,13 +231,13 @@ describe('conversion dedupe claim 真实 D1 并发', () => {
     `).bind(dedupeDigest).run()
 
     const newPromise = recordRegistration(conversionEnv(realDb, queueSend), input, {
-      getMetaCapiUserData: async () => ({ fbp: 'fb.1.1700000000000.new-owner' }),
+      getAdPlatformUserData: async () => ({ fbp: 'fb.1.1700000000000.new-owner' }),
       getRegistrationSensitiveInput: async () => {
         newSensitiveEntered.resolve()
         await releaseNewSensitive.promise
         return {
           email: 'new-owner@example.test',
-          metaExternalId: 'fedcba9876543210fedcba9876543210',
+          externalId: 'fedcba9876543210fedcba9876543210',
         }
       },
     })
@@ -263,10 +276,10 @@ describe('conversion dedupe claim 真实 D1 并发', () => {
         await releaseBatch.promise
       },
     })), registrationInput(), {
-      getMetaCapiUserData: async () => ({ fbp: 'fb.1.1700000000000.expired-lease' }),
+      getAdPlatformUserData: async () => ({ fbp: 'fb.1.1700000000000.expired-lease' }),
       getRegistrationSensitiveInput: async () => ({
         email: 'expired-lease@example.test',
-        metaExternalId: '0123456789abcdef0123456789abcdef',
+        externalId: '0123456789abcdef0123456789abcdef',
       }),
     })
     await batchReady.promise
@@ -312,7 +325,7 @@ describe('conversion dedupe claim 真实 D1 并发', () => {
     const requests = suppliers.map(supplier => recordContact(
       conversionEnv(wrapDb(realDb, { claimRuns }), queueSend),
       input,
-      { getMetaCapiUserData: supplier },
+      { getAdPlatformUserData: supplier },
     ))
     await entered.promise
     release.resolve()
@@ -343,13 +356,13 @@ describe('conversion dedupe claim 真实 D1 并发', () => {
         if (failurePoint === 'sensitive') throw new Error(sensitiveRaw)
         return {
           email: `private-${failurePoint}@example.test`,
-          metaExternalId: '0123456789abcdef0123456789abcdef',
+          externalId: '0123456789abcdef0123456789abcdef',
         }
       })
       if (failurePoint === 'hash') hashMocks.email.mockRejectedValueOnce(new Error(sensitiveRaw))
 
       const result = await recordRegistration(conversionEnv(realDb), registrationInput(), {
-        getMetaCapiUserData: browser,
+        getAdPlatformUserData: browser,
         getRegistrationSensitiveInput: sensitive,
       })
       const deliveries = await realDb.prepare(`
@@ -393,13 +406,119 @@ describe('conversion dedupe claim 真实 D1 并发', () => {
         { transport: 'browser', status: 'pending', skip_reason: '', delivery_count: 1 },
       ])
       expect(await scalar('SELECT action_count AS value FROM analytics_conversion_daily')).toBe(1)
-      expect(await scalar('SELECT count(*) AS value FROM meta_capi_secure_outbox')).toBe(0)
+      expect(await scalar('SELECT count(*) AS value FROM ad_platform_secure_outbox')).toBe(0)
       expect(await scalar('SELECT count(*) AS value FROM analytics_conversion_dedupe_claims')).toBe(0)
       expect(JSON.stringify([...consoleError.mock.calls, ...consoleWarn.mock.calls])).not.toContain(sensitiveRaw)
       consoleError.mockRestore()
       consoleWarn.mockRestore()
     },
   )
+
+  it('TikTok Pixel 与 Events API 共享 event_id，匹配数据只进入短期密文', async () => {
+    const fingerprint = await tiktokConnectionFingerprint(TIKTOK_PIXEL_ID, TIKTOK_TOKEN)
+    await realDb.batch([
+      realDb.prepare(`
+        UPDATE ad_platform_connections
+        SET enabled = 0, mode = 'disabled', browser_enabled = 0, server_enabled = 0,
+          rollout_percentage = 0, revision = NULL
+        WHERE provider = 'meta'
+      `),
+      realDb.prepare(`
+        UPDATE ad_platform_connections
+        SET enabled = 1, mode = 'production', browser_enabled = 1, server_enabled = 1,
+          destination_id = ?, rollout_percentage = 100, revision = ?
+        WHERE provider = 'tiktok'
+      `).bind(TIKTOK_PIXEL_ID, TIKTOK_REVISION),
+      realDb.prepare(`
+        INSERT INTO tiktok_connection_verifications (
+          environment, pixel_id, credential_fingerprint, revision, verified_at,
+          invalidated_at, invalidation_reason
+        ) VALUES ('production', ?, ?, ?, '2026-07-13T00:00:00.000Z', NULL, '')
+      `).bind(TIKTOK_PIXEL_ID, fingerprint, TIKTOK_REVISION),
+    ])
+    let queuedMessage: AdPlatformQueueMessage | undefined
+    const queueSend = vi.fn(async (message: AdPlatformQueueMessage) => { queuedMessage = message })
+    const browserContext = {
+      ttclid: 'ttclid-conversion-d1',
+      ttp: 'ttp-conversion-d1',
+      clientIpAddress: '203.0.113.30',
+      clientUserAgent: 'Mozilla/5.0 TikTokConversionD1/1.0',
+    }
+    const registrationEmail = 'tiktok-registration@example.test'
+    const registrationExternalId = 'fedcba9876543210fedcba9876543210'
+
+    const result = await recordRegistration(tiktokConversionEnv(queueSend), registrationInput(), {
+      getAdPlatformUserData: async () => browserContext,
+      getRegistrationSensitiveInput: async () => ({
+        email: registrationEmail,
+        externalId: registrationExternalId,
+      }),
+    })
+
+    const deliveries = await realDb.prepare(`
+      SELECT id, transport, external_event_id, status, has_ttclid, has_ttp,
+        has_email, has_external_id, encryption_key_id
+      FROM analytics_conversion_deliveries
+      WHERE provider = 'tiktok'
+      ORDER BY transport
+    `).all<Record<string, unknown>>()
+    expect(deliveries.results).toHaveLength(2)
+    expect(deliveries.results.map(row => row.transport)).toEqual(['browser', 'server'])
+    expect(new Set(deliveries.results.map(row => row.external_event_id)).size).toBe(1)
+    expect(result.trackingInstructions).toEqual([
+      expect.objectContaining({
+        provider: 'tiktok',
+        eventName: 'CompleteRegistration',
+        eventId: deliveries.results[0]?.external_event_id,
+      }),
+    ])
+    expect(deliveries.results[1]).toMatchObject({
+      transport: 'server',
+      status: 'pending',
+      has_ttclid: 1,
+      has_ttp: 1,
+      has_email: 1,
+      has_external_id: 1,
+      encryption_key_id: expect.stringMatching(/^[0-9a-f]{16}$/),
+    })
+    expect(queueSend).toHaveBeenCalledOnce()
+    expect(queuedMessage).toBeDefined()
+
+    const server = deliveries.results[1]!
+    const { expiresAt: _expiresAt, ...encrypted } = queuedMessage!.envelope
+    const context = await decryptTikTokEventsContext({
+      keys: await loadTikTokEventsCryptoKeys({ TIKTOK_EVENTS_DATA_KEY_CURRENT: TIKTOK_DATA_KEY }),
+      aad: {
+        deliveryId: String(server.id),
+        externalEventId: String(server.external_event_id),
+        eventName: 'CompleteRegistration',
+      },
+      envelope: { schemaVersion: 2, ...encrypted },
+    })
+    expect(context).toEqual({
+      ...browserContext,
+      emailSha256: await actualHashEmail(registrationEmail),
+      externalIdSha256: await actualHashExternalId(registrationExternalId),
+    })
+    expect(await scalar(`
+      SELECT count(*) AS value FROM ad_platform_secure_outbox WHERE provider = 'tiktok'
+    `)).toBe(0)
+    const persisted = JSON.stringify({
+      actions: (await realDb.prepare('SELECT * FROM analytics_conversion_actions').all()).results,
+      deliveries: deliveries.results,
+      daily: (await realDb.prepare(`
+        SELECT * FROM analytics_conversion_delivery_daily WHERE provider = 'tiktok'
+      `).all()).results,
+    })
+    for (const forbidden of [
+      browserContext.ttclid,
+      browserContext.ttp,
+      browserContext.clientIpAddress,
+      browserContext.clientUserAgent,
+      registrationEmail,
+      registrationExternalId,
+    ]) expect(persisted).not.toContain(forbidden)
+  })
 
   it.each([
     ['rollout_excluded', false, 'visitor_rollout_d1'],
@@ -436,7 +555,7 @@ describe('conversion dedupe claim 真实 D1 并发', () => {
       methodType: 'telegram',
       actionTarget: `target_${reason}`,
       metadata: {},
-    }, { getMetaCapiUserData: provider })
+    }, { getAdPlatformUserData: provider })
 
     const delivery = await realDb.prepare(`
       SELECT status, skip_reason, rollout_target_percentage,
@@ -452,7 +571,7 @@ describe('conversion dedupe claim 真实 D1 并发', () => {
       rollout_bucket: reason === 'missing_stable_id' ? null : expect.any(Number),
     })
     expect(provider).not.toHaveBeenCalled()
-    expect(await scalar('SELECT count(*) AS value FROM meta_capi_secure_outbox')).toBe(0)
+    expect(await scalar('SELECT count(*) AS value FROM ad_platform_secure_outbox')).toBe(0)
     expect(await scalar(`
       SELECT delivery_count AS value
       FROM analytics_conversion_delivery_daily
@@ -475,7 +594,7 @@ async function seedRuntime() {
   const fingerprint = await metaConnectionFingerprint(PIXEL_ID, META_TOKEN)
   await realDb.batch([
     realDb.prepare(`
-      INSERT INTO users (id, email, password_hash, meta_external_id)
+      INSERT INTO users (id, email, password_hash, conversion_external_id)
       VALUES (42, 'stored@example.test', 'hash', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
     `),
     realDb.prepare(`
@@ -494,6 +613,12 @@ async function seedRuntime() {
         '2026-07-11T00:00:00.000Z', '', ?
       )
     `).bind(PIXEL_ID, fingerprint, RELEASE_COMMIT, CONNECTION_REVISION),
+    realDb.prepare(`
+      UPDATE ad_platform_connections
+      SET enabled = 0, mode = 'disabled', browser_enabled = 0, server_enabled = 0,
+        destination_id = '', rollout_percentage = 0, revision = NULL
+      WHERE provider = 'tiktok'
+    `),
   ])
 }
 
@@ -537,6 +662,16 @@ function conversionEnv(
     | 'META_CAPI_TEST_EVENT_CODE'
     | 'RELEASE_COMMIT'
   >
+}
+
+function tiktokConversionEnv(queueSend: (message: AdPlatformQueueMessage) => Promise<void>) {
+  return {
+    ...conversionEnv(realDb),
+    APP_ENV: 'production',
+    TIKTOK_EVENTS_QUEUE: { send: queueSend },
+    TIKTOK_EVENTS_ACCESS_TOKEN: TIKTOK_TOKEN,
+    TIKTOK_EVENTS_DATA_KEY_CURRENT: TIKTOK_DATA_KEY,
+  } as unknown as Parameters<typeof recordRegistration>[0]
 }
 
 function wrapDb(db: D1Database, options: {
@@ -634,7 +769,7 @@ async function expectLedgerCounts(expected: {
 }) {
   expect(await scalar('SELECT count(*) AS value FROM analytics_conversion_actions')).toBe(expected.actions)
   expect(await scalar('SELECT count(*) AS value FROM analytics_conversion_deliveries')).toBe(expected.deliveries)
-  expect(await scalar('SELECT count(*) AS value FROM meta_capi_secure_outbox')).toBe(expected.outboxes)
+  expect(await scalar('SELECT count(*) AS value FROM ad_platform_secure_outbox')).toBe(expected.outboxes)
   expect(await scalar('SELECT count(*) AS value FROM analytics_conversion_dedupe_claims')).toBe(expected.claims)
 }
 

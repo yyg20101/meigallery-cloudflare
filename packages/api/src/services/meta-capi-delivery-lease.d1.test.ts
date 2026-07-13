@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { Miniflare } from 'miniflare'
-import type { MetaCapiQueueMessage } from '@meigallery/shared'
+import type { AdPlatformQueueMessage } from '@meigallery/shared'
 import type { Bindings } from '../index'
 import { metaConnectionFingerprint } from '../utils/meta-capi-crypto'
 import {
@@ -207,13 +207,13 @@ async function seedDelivery(deliveryId: string, eventId: string) {
 
 async function seedOutbox(deliveryId: string) {
   await db.prepare(`
-    INSERT INTO meta_capi_secure_outbox (
-      delivery_id, schema_version, key_id, iv, ciphertext, tag, expires_at
-    ) VALUES (?, 2, '0123456789abcdef', 'iv', 'ciphertext', 'tag', '2099-01-01T00:00:00.000Z')
+    INSERT INTO ad_platform_secure_outbox (
+      delivery_id, provider, schema_version, key_id, iv, ciphertext, tag, expires_at
+    ) VALUES (?, 'meta', 2, '0123456789abcdef', 'iv', 'ciphertext', 'tag', '2099-01-01T00:00:00.000Z')
   `).bind(deliveryId).run()
 }
 
-function validBody(deliveryId: string): MetaCapiQueueMessage {
+function validBody(deliveryId: string): AdPlatformQueueMessage {
   return {
     schemaVersion: 2,
     deliveryId,
@@ -228,19 +228,19 @@ function validBody(deliveryId: string): MetaCapiQueueMessage {
 }
 
 function loserBody(deliveryId: string, scenario: 'dlq' | 'connection_drift' | 'legacy' | 'security') {
-  if (scenario === 'legacy') return { schemaVersion: 1, deliveryId } as unknown as MetaCapiQueueMessage
+  if (scenario === 'legacy') return { schemaVersion: 1, deliveryId } as unknown as AdPlatformQueueMessage
   if (scenario === 'security') {
-    return { ...validBody(deliveryId), envelope: { ...validBody(deliveryId).envelope, tag: 42 } } as unknown as MetaCapiQueueMessage
+    return { ...validBody(deliveryId), envelope: { ...validBody(deliveryId).envelope, tag: 42 } } as unknown as AdPlatformQueueMessage
   }
   return validBody(deliveryId)
 }
 
-function queueMessage(body: MetaCapiQueueMessage, attempts = 1) {
+function queueMessage(body: AdPlatformQueueMessage, attempts = 1) {
   return { body, attempts, ack: vi.fn(), retry: vi.fn() }
 }
 
 function messageBatch(message: ReturnType<typeof queueMessage>, queue: string) {
-  return { queue, messages: [message] } as unknown as MessageBatch<MetaCapiQueueMessage>
+  return { queue, messages: [message] } as unknown as MessageBatch<AdPlatformQueueMessage>
 }
 
 function queueEnv() {
@@ -254,8 +254,8 @@ async function deliveryLedger(deliveryId: string) {
 }
 
 async function outboxCount(deliveryId: string) {
-  const row = await db.prepare('SELECT COUNT(*) AS count FROM meta_capi_secure_outbox WHERE delivery_id = ?')
-    .bind(deliveryId).first<{ count: number }>()
+  const row = await db.prepare('SELECT COUNT(*) AS count FROM ad_platform_secure_outbox WHERE delivery_id = ? AND provider = ?')
+    .bind(deliveryId, 'meta').first<{ count: number }>()
   return row?.count ?? 0
 }
 
@@ -306,8 +306,8 @@ function schemaSql() {
       delivery_lease_token TEXT NOT NULL DEFAULT '', delivery_lease_expires_at TEXT,
       last_attempt_at TEXT, sent_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
     );
-    CREATE TABLE meta_capi_secure_outbox (
-      delivery_id TEXT PRIMARY KEY, schema_version INTEGER NOT NULL, key_id TEXT NOT NULL,
+    CREATE TABLE ad_platform_secure_outbox (
+      delivery_id TEXT PRIMARY KEY, provider TEXT NOT NULL, schema_version INTEGER NOT NULL, key_id TEXT NOT NULL,
       iv TEXT NOT NULL, ciphertext TEXT NOT NULL, tag TEXT NOT NULL, expires_at TEXT NOT NULL
     );
     CREATE TABLE analytics_conversion_delivery_daily (

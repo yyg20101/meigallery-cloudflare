@@ -10,6 +10,7 @@ import type {
   AttributionReadinessData,
   AttributionSummaryData,
   AttributionTrendsData,
+  AttributionDashboardProvider,
   AdPlatformConnectionStatusData,
   MetaIncident,
   MetaStatusData,
@@ -19,13 +20,14 @@ import { attributionRouteQuery } from '~/composables/useAdminAttribution'
 definePageMeta({ layout: 'admin' })
 
 interface BreakdownData {
+  provider: AttributionDashboardProvider
   dimension: string
   rows: Array<{
     value: string
     actionCount: number
     contactCount: number
     completeRegistrationCount: number
-    delivery: { pixelAttempted: number; capiSent: number; failed: number }
+    delivery: { pixelAttempted: number; serverSent: number; failed: number }
   }>
 }
 
@@ -43,18 +45,24 @@ interface IncidentData {
 
 const { isOwner } = useAuth()
 const { api } = useApi()
+const route = useRoute()
+const router = useRouter()
 const rangeState = useAdminAttributionRange('7d')
 const metaTestEventCode = ref('')
+const selectedProvider = ref<AttributionDashboardProvider>(normalizeDashboardProvider(route.query.provider))
+const dashboardProviderOptions: AttributionDashboardProvider[] = ['meta', 'tiktok']
+const platformQuery = computed(() => ({ provider: selectedProvider.value }))
 const requestOptions = { rangeState, autoRefresh: false }
-const summary = useAdminAttribution<AttributionSummaryData>('/api/admin/attribution/summary', requestOptions)
+const platformRequestOptions = { ...requestOptions, query: platformQuery }
+const summary = useAdminAttribution<AttributionSummaryData>('/api/admin/attribution/summary', platformRequestOptions)
 const trends = useAdminAttribution<AttributionTrendsData>('/api/admin/attribution/trends', {
   ...requestOptions,
-  query: { granularity: 'day' },
+  query: computed(() => ({ provider: selectedProvider.value, granularity: 'day' })),
 })
-const quality = useAdminAttribution<AttributionQualityData>('/api/admin/attribution/quality', requestOptions)
+const quality = useAdminAttribution<AttributionQualityData>('/api/admin/attribution/quality', platformRequestOptions)
 const breakdown = useAdminAttribution<BreakdownData>('/api/admin/attribution/breakdown', {
   ...requestOptions,
-  query: { dimension: 'utm_campaign', limit: 8 },
+  query: computed(() => ({ provider: selectedProvider.value, dimension: 'utm_campaign', limit: 8 })),
 })
 const metaStatus = useAdminAttribution<MetaStatusData>('/api/admin/attribution/meta/status', requestOptions)
 const platforms = useAdminAttribution<AdPlatformConnectionStatusData[]>('/api/admin/attribution/platforms', requestOptions)
@@ -66,18 +74,19 @@ const incidents = useAdminAttribution<IncidentData>('/api/admin/attribution/meta
 })
 
 const sources = [summary, trends, quality, breakdown, platforms, metaStatus, readiness, duplicates, incidents]
+const platformSources = [summary, trends, quality, breakdown]
 const loading = computed(() => sources.some(source => source.loading.value))
 const error = computed(() => sources.map(source => source.error.value).find(Boolean) || '')
 const business = computed(() => summary.data.value?.business ?? { contactCount: 0, completeRegistrationCount: 0, actionCount: 0 })
-const delivery = computed(() => summary.data.value?.delivery ?? { pixelAttempted: 0, capiSent: 0, failed: 0, skipped: 0, pending: 0, retryExhausted: 0 })
+const delivery = computed(() => summary.data.value?.delivery ?? { pixelAttempted: 0, serverSent: 0, failed: 0, skipped: 0, pending: 0, retryExhausted: 0 })
 const matchEntries = computed(() => {
-  const values = quality.data.value?.match.summary
-  if (!values) return []
+  const match = quality.data.value?.match
+  if (!match) return []
   return [
-    { key: 'fbp', label: 'fbp', metric: values.fbp },
-    { key: 'fbc', label: 'fbc', metric: values.fbc },
-    { key: 'email', label: 'email', metric: values.email },
-    { key: 'externalId', label: 'external_id', metric: values.externalId },
+    { key: 'browserId', label: match.labels.browserId, metric: match.summary.browserId },
+    { key: 'clickId', label: match.labels.clickId, metric: match.summary.clickId },
+    { key: 'email', label: match.labels.email, metric: match.summary.email },
+    { key: 'externalId', label: match.labels.externalId, metric: match.summary.externalId },
   ]
 })
 const qualitySeries = computed(() => matchEntries.value
@@ -94,7 +103,8 @@ const qualitySeries = computed(() => matchEntries.value
     },
   })))
 const qualityRows = computed(() => quality.data.value?.match.rows as unknown as Array<Record<string, unknown>> ?? [])
-const datasetQuality = computed(() => quality.data.value?.datasetQuality)
+const platformQuality = computed(() => quality.data.value?.platformQuality)
+const platformLabel = computed(() => selectedProvider.value === 'meta' ? 'Meta' : 'TikTok')
 const blockerCount = computed(() => readiness.data.value?.checks.filter(check => check.level === 'blocker' && !check.ok).length ?? 0)
 const warningCount = computed(() => readiness.data.value?.checks.filter(check => check.level === 'warning' && !check.ok).length ?? 0)
 const connectionSaving = ref(false)
@@ -109,7 +119,9 @@ const metaConnectionForm = reactive({
   rolloutPercentage: 0 as 0 | 10 | 50 | 100,
 })
 const tiktokConnectionSaving = ref(false)
+const tiktokConnectionVerifying = ref(false)
 const tiktokConnectionMessage = ref('')
+const tiktokTestEventCode = ref('')
 const tiktokConnectionForm = reactive({
   enabled: false,
   browserEnabled: false,
@@ -117,7 +129,7 @@ const tiktokConnectionForm = reactive({
   destinationId: '',
   debugEnabled: false,
   mode: 'disabled' as 'disabled' | 'test' | 'production',
-  rolloutPercentage: 0 as const,
+  rolloutPercentage: 0 as 0 | 10 | 50 | 100,
 })
 watch(() => platforms.data.value?.find(item => item.provider === 'meta'), (connection) => {
   if (!connection) return
@@ -136,11 +148,11 @@ watch(() => platforms.data.value?.find(item => item.provider === 'tiktok'), (con
   Object.assign(tiktokConnectionForm, {
     enabled: connection.enabled,
     browserEnabled: connection.browserEnabled,
-    serverEnabled: false,
+    serverEnabled: connection.serverEnabled,
     destinationId: connection.destinationId,
     debugEnabled: connection.debugEnabled,
     mode: connection.mode,
-    rolloutPercentage: 0,
+    rolloutPercentage: connection.rolloutPercentage,
   })
 }, { immediate: true })
 const linkRoute = computed(() => ({ path: '/admin/attribution/links', query: attributionRouteQuery(rangeState.range.value, rangeState.date.value) }))
@@ -151,17 +163,17 @@ const businessSeries = [
 ]
 const deliverySeries = [
   { key: 'delivery.pixelAttempted', label: 'Pixel 尝试', layer: 'pixel' as const, aggregation: { type: 'sum' as const } },
-  { key: 'delivery.capiSent', label: 'CAPI 接收', layer: 'capi' as const, aggregation: { type: 'sum' as const } },
-  { key: 'delivery.failed', label: '失败', layer: 'capi' as const, aggregation: { type: 'sum' as const } },
-  { key: 'delivery.skipped', label: '跳过', layer: 'capi' as const, aggregation: { type: 'sum' as const } },
-  { key: 'delivery.pending', label: '等待', layer: 'capi' as const, aggregation: { type: 'sum' as const } },
-  { key: 'delivery.retryExhausted', label: '重试耗尽', layer: 'capi' as const, aggregation: { type: 'sum' as const } },
+  { key: 'delivery.serverSent', label: 'Server API 接收', layer: 'server' as const, aggregation: { type: 'sum' as const } },
+  { key: 'delivery.failed', label: '失败', layer: 'server' as const, aggregation: { type: 'sum' as const } },
+  { key: 'delivery.skipped', label: '跳过', layer: 'server' as const, aggregation: { type: 'sum' as const } },
+  { key: 'delivery.pending', label: '等待', layer: 'server' as const, aggregation: { type: 'sum' as const } },
+  { key: 'delivery.retryExhausted', label: '重试耗尽', layer: 'server' as const, aggregation: { type: 'sum' as const } },
 ]
 const evidenceLayers = [
   { label: '站内事实', detail: '联系与完成注册', class: 'bg-emerald-50 text-emerald-800', dot: '#047857' },
   { label: 'Pixel 尝试', detail: '浏览器已尝试发送', class: 'bg-amber-50 text-amber-800', dot: '#d97706' },
-  { label: 'CAPI 接收', detail: 'API 已接收，不代表广告归因', class: 'bg-blue-50 text-blue-800', dot: '#2563eb' },
-  { label: 'Meta 质量', detail: '仅使用已取得的 Meta 快照', class: 'bg-rose-50 text-rose-800', dot: '#be123c' },
+  { label: 'Server API 接收', detail: 'API 已接收，不代表广告归因', class: 'bg-blue-50 text-blue-800', dot: '#2563eb' },
+  { label: '平台质量', detail: '仅展示平台已提供的质量证据', class: 'bg-rose-50 text-rose-800', dot: '#be123c' },
 ]
 
 async function refreshAll() {
@@ -206,8 +218,43 @@ async function saveTikTokConnection() {
   }
 }
 
+async function verifyTikTokConnection() {
+  tiktokConnectionVerifying.value = true
+  tiktokConnectionMessage.value = ''
+  try {
+    await api('/api/admin/attribution/platforms/tiktok/verify', {
+      method: 'POST',
+      body: { testEventCode: tiktokTestEventCode.value },
+    })
+    tiktokTestEventCode.value = ''
+    tiktokConnectionMessage.value = 'TikTok Events API 已验证'
+    await refreshAll()
+  }
+  catch (error) {
+    tiktokConnectionMessage.value = resolveApiErrorMessage(error, 'TikTok Events API 验证失败')
+  }
+  finally {
+    tiktokConnectionVerifying.value = false
+  }
+}
+
 watch(rangeState.queryKey, () => void refreshAll())
+watch(() => route.query.provider, (value) => {
+  const provider = normalizeDashboardProvider(value)
+  if (provider !== selectedProvider.value) selectedProvider.value = provider
+})
+watch(selectedProvider, async (provider) => {
+  if (route.query.provider !== provider) {
+    await router.replace({ query: { ...route.query, provider } })
+  }
+  await Promise.all(platformSources.map(source => source.refresh()))
+})
 onMounted(() => void refreshAll())
+
+function normalizeDashboardProvider(value: unknown): AttributionDashboardProvider {
+  const raw = Array.isArray(value) ? value[0] : value
+  return raw === 'tiktok' ? 'tiktok' : 'meta'
+}
 
 function metricRate(metric: { availability: string; rate: number | null }) {
   return metric.availability === 'available' && metric.rate !== null
@@ -215,8 +262,8 @@ function metricRate(metric: { availability: string; rate: number | null }) {
     : '暂无可发送样本'
 }
 
-function datasetQualityValue() {
-  const value = datasetQuality.value?.latest?.value
+function platformQualityValue() {
+  const value = platformQuality.value?.latest?.value
   if (value === null || value === undefined) return ''
   return value >= 0 && value <= 1 ? `${Math.round(value * 10_000) / 100}%` : String(value)
 }
@@ -238,6 +285,26 @@ function formatCount(value: unknown) {
     :usage="summary.usage.value"
     @refresh="refreshAll"
   >
+    <div class="flex items-center justify-between gap-3 border-b border-gray-200 bg-white px-3 py-3 sm:px-5">
+      <div>
+        <p class="text-xs font-medium text-gray-500">当前分析平台</p>
+        <p class="mt-0.5 text-sm font-semibold text-gray-900">{{ platformLabel }}</p>
+      </div>
+      <div class="inline-flex border border-gray-300 bg-gray-50 p-0.5" role="group" aria-label="选择归因平台">
+        <button
+          v-for="provider in dashboardProviderOptions"
+          :key="provider"
+          type="button"
+          :aria-pressed="selectedProvider === provider"
+          :class="selectedProvider === provider ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-white'"
+          class="min-w-20 px-3 py-1.5 text-sm font-medium"
+          @click="selectedProvider = provider"
+        >
+          {{ provider === 'meta' ? 'Meta' : 'TikTok' }}
+        </button>
+      </div>
+    </div>
+
     <div data-evidence-rail class="min-w-0 overflow-x-auto border-y border-gray-200 bg-white py-2">
       <div class="flex min-w-max gap-2 px-3">
         <div v-for="layer in evidenceLayers" :key="layer.label" :class="['flex items-center gap-2 rounded-md px-3 py-2 text-xs', layer.class]">
@@ -307,13 +374,29 @@ function formatCount(value: unknown) {
               <option value="production">生产</option>
             </select>
           </label>
-          <div class="text-xs text-gray-500 lg:self-end lg:pb-2">Events API 将在独立验收后启用</div>
+          <label>
+            <span class="mb-1 block text-xs font-medium text-gray-600">Server 放量</span>
+            <select v-model="tiktokConnectionForm.rolloutPercentage" class="w-full border border-gray-300 px-3 py-2 text-sm">
+              <option :value="0">0%</option>
+              <option :value="10">10%</option>
+              <option :value="50">50%</option>
+              <option :value="100">100%</option>
+            </select>
+          </label>
           <label class="flex items-center gap-2 text-sm"><input v-model="tiktokConnectionForm.enabled" type="checkbox" />启用连接</label>
           <label class="flex items-center gap-2 text-sm"><input v-model="tiktokConnectionForm.browserEnabled" type="checkbox" />Browser Pixel</label>
+          <label class="flex items-center gap-2 text-sm"><input v-model="tiktokConnectionForm.serverEnabled" type="checkbox" />Events API</label>
           <label class="flex items-center gap-2 text-sm"><input v-model="tiktokConnectionForm.debugEnabled" type="checkbox" />调试日志</label>
           <div class="flex items-center gap-3 sm:col-span-2 lg:col-span-4">
             <button type="submit" :disabled="tiktokConnectionSaving" class="bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">保存 TikTok</button>
             <span class="text-sm text-gray-500">{{ tiktokConnectionMessage }}</span>
+          </div>
+          <div class="grid gap-3 border-t border-gray-200 pt-4 sm:col-span-2 sm:grid-cols-[minmax(0,1fr)_auto] lg:col-span-4">
+            <label>
+              <span class="mb-1 block text-xs font-medium text-gray-600">Test Event Code</span>
+              <input v-model.trim="tiktokTestEventCode" type="password" autocomplete="new-password" maxlength="128" class="w-full border border-gray-300 px-3 py-2 text-sm" />
+            </label>
+            <button type="button" :disabled="tiktokConnectionVerifying || !tiktokTestEventCode" class="self-end border border-gray-900 px-4 py-2 text-sm font-medium text-gray-900 disabled:opacity-50" @click="verifyTikTokConnection">验证 Events API</button>
           </div>
         </form>
         <h3 class="mb-3 text-sm font-semibold text-gray-900">Meta 运维状态</h3>
@@ -346,8 +429,8 @@ function formatCount(value: unknown) {
           <h3 class="text-sm font-semibold text-gray-900">campaign 拆分</h3>
           <div class="mt-2 overflow-x-auto">
             <table class="w-full min-w-[42rem] text-left text-sm">
-              <thead class="border-y border-gray-200 bg-gray-50 text-xs text-gray-500"><tr><th class="px-3 py-2 font-medium">campaign</th><th class="px-3 py-2 font-medium">action</th><th class="px-3 py-2 font-medium">有效联系</th><th class="px-3 py-2 font-medium">完成注册</th><th class="px-3 py-2 font-medium">Pixel 尝试</th><th class="px-3 py-2 font-medium">CAPI 接收</th></tr></thead>
-              <tbody class="divide-y divide-gray-100"><tr v-for="row in breakdown.data.value?.rows || []" :key="row.value"><td class="px-3 py-2.5 font-medium text-gray-900">{{ row.value }}</td><td class="px-3 py-2.5 tabular-nums">{{ row.actionCount }}</td><td class="px-3 py-2.5 tabular-nums">{{ row.contactCount }}</td><td class="px-3 py-2.5 tabular-nums">{{ row.completeRegistrationCount }}</td><td class="px-3 py-2.5 tabular-nums text-amber-700">{{ row.delivery.pixelAttempted }}</td><td class="px-3 py-2.5 tabular-nums text-blue-700">{{ row.delivery.capiSent }}</td></tr><tr v-if="!breakdown.data.value?.rows.length"><td colspan="6" class="px-3 py-6 text-center text-gray-500">当前范围没有 campaign 转化</td></tr></tbody>
+              <thead class="border-y border-gray-200 bg-gray-50 text-xs text-gray-500"><tr><th class="px-3 py-2 font-medium">campaign</th><th class="px-3 py-2 font-medium">action</th><th class="px-3 py-2 font-medium">有效联系</th><th class="px-3 py-2 font-medium">完成注册</th><th class="px-3 py-2 font-medium">Pixel 尝试</th><th class="px-3 py-2 font-medium">Server API 接收</th></tr></thead>
+              <tbody class="divide-y divide-gray-100"><tr v-for="row in breakdown.data.value?.rows || []" :key="row.value"><td class="px-3 py-2.5 font-medium text-gray-900">{{ row.value }}</td><td class="px-3 py-2.5 tabular-nums">{{ row.actionCount }}</td><td class="px-3 py-2.5 tabular-nums">{{ row.contactCount }}</td><td class="px-3 py-2.5 tabular-nums">{{ row.completeRegistrationCount }}</td><td class="px-3 py-2.5 tabular-nums text-amber-700">{{ row.delivery.pixelAttempted }}</td><td class="px-3 py-2.5 tabular-nums text-blue-700">{{ row.delivery.serverSent }}</td></tr><tr v-if="!breakdown.data.value?.rows.length"><td colspan="6" class="px-3 py-6 text-center text-gray-500">当前范围没有 campaign 转化</td></tr></tbody>
             </table>
           </div>
         </div>
@@ -356,12 +439,12 @@ function formatCount(value: unknown) {
       <section data-attribution-section="delivery" class="min-w-0 border-b border-gray-200 px-3 py-5 sm:px-5">
         <div class="mb-4">
           <p class="text-xs font-medium text-gray-400">03 · 投递趋势</p>
-          <h2 class="mt-1 text-base font-semibold text-gray-900">Pixel 与 CAPI delivery</h2>
-          <p class="mt-1 text-sm text-gray-500">CAPI 接收只表示 API 接收，不表示 Meta 已归因。</p>
+          <h2 class="mt-1 text-base font-semibold text-gray-900">{{ platformLabel }} Pixel 与 Server API delivery</h2>
+          <p class="mt-1 text-sm text-gray-500">Server API 接收只表示平台 API 已接收，不表示广告已完成归因。</p>
         </div>
         <dl class="mb-5 grid grid-cols-2 border-y border-gray-200 md:grid-cols-3 xl:grid-cols-6">
           <div class="px-3 py-3"><dt class="text-xs text-amber-700">Pixel 尝试</dt><dd class="mt-1 text-lg font-semibold tabular-nums">{{ delivery.pixelAttempted }}</dd></div>
-          <div class="px-3 py-3"><dt class="text-xs text-blue-700">CAPI 接收</dt><dd class="mt-1 text-lg font-semibold tabular-nums">{{ delivery.capiSent }}</dd></div>
+          <div class="px-3 py-3"><dt class="text-xs text-blue-700">Server API 接收</dt><dd class="mt-1 text-lg font-semibold tabular-nums">{{ delivery.serverSent }}</dd></div>
           <div class="px-3 py-3"><dt class="text-xs text-gray-500">失败</dt><dd class="mt-1 text-lg font-semibold tabular-nums">{{ delivery.failed }}</dd></div>
           <div class="px-3 py-3"><dt class="text-xs text-gray-500">跳过</dt><dd class="mt-1 text-lg font-semibold tabular-nums">{{ delivery.skipped }}</dd></div>
           <div class="px-3 py-3"><dt class="text-xs text-gray-500">等待</dt><dd class="mt-1 text-lg font-semibold tabular-nums">{{ delivery.pending }}</dd></div>
@@ -373,7 +456,7 @@ function formatCount(value: unknown) {
       <section data-attribution-section="quality" class="min-w-0 border-b border-gray-200 px-3 py-5 sm:px-5">
         <div class="mb-4">
           <p class="text-xs font-medium text-gray-400">04 · 质量趋势</p>
-          <h2 class="mt-1 text-base font-semibold text-gray-900">匹配覆盖与 Meta 质量</h2>
+          <h2 class="mt-1 text-base font-semibold text-gray-900">{{ platformLabel }} 匹配覆盖与平台质量</h2>
         </div>
         <div class="grid grid-cols-2 border-y border-gray-200 lg:grid-cols-5">
           <div v-for="item in matchEntries" :key="item.key" class="min-w-0 px-3 py-3 lg:border-r">
@@ -382,13 +465,14 @@ function formatCount(value: unknown) {
             <p v-if="item.metric.availability === 'available'" class="mt-1 text-xs tabular-nums text-gray-400">{{ item.metric.numerator }} / {{ item.metric.denominator }}</p>
           </div>
           <div class="col-span-2 min-w-0 px-3 py-3 lg:col-span-1">
-            <p class="text-xs text-gray-500">Meta Dataset Quality</p>
-            <p v-if="datasetQuality?.availability === 'available'" class="mt-1 text-base font-semibold text-rose-700">{{ datasetQualityValue() }}</p>
-            <p v-else-if="datasetQuality?.availability === 'error'" class="mt-1 text-sm font-medium text-red-700">Meta 质量数据采集失败</p>
-            <p v-else class="mt-1 text-sm font-medium text-gray-600">尚未取得 Meta 质量数据</p>
+            <p class="text-xs text-gray-500">{{ platformLabel }} 平台质量</p>
+            <p v-if="platformQuality?.availability === 'available'" class="mt-1 text-base font-semibold text-rose-700">{{ platformQualityValue() }}</p>
+            <p v-else-if="platformQuality?.availability === 'error'" class="mt-1 text-sm font-medium text-red-700">平台质量数据采集失败</p>
+            <p v-else-if="platformQuality?.source === 'not_supported'" class="mt-1 text-sm font-medium text-gray-600">当前未接入平台质量诊断 API</p>
+            <p v-else class="mt-1 text-sm font-medium text-gray-600">尚未取得平台质量数据</p>
           </div>
         </div>
-        <AttributionTrendPanel v-if="qualitySeries.length" class="mt-5" title="匹配质量趋势" description="分母只取对应可发送或已规划的 CAPI 样本。" :rows="qualityRows" :series="qualitySeries" />
+        <AttributionTrendPanel v-if="qualitySeries.length" class="mt-5" title="匹配质量趋势" description="分母只取对应可发送或已规划的 Server API 样本。" :rows="qualityRows" :series="qualitySeries" />
         <div class="mt-5 border-t border-gray-200 pt-4">
           <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
             <div><h3 class="text-sm font-semibold text-gray-900">重复诊断</h3><p class="mt-1 text-xs text-gray-500">重复 warning 与样本已合并到质量区，不计入活动转化。</p></div>

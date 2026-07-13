@@ -1,11 +1,15 @@
 type TikTokPixelPayload = Record<string, string | number | boolean>
 type TikTokQueue = unknown[] & {
-  _i?: Record<string, unknown[]>
+  _i?: Record<string, TikTokQueue>
   _o?: Record<string, unknown>
   _t?: Record<string, number>
+  _u?: string
+  methods?: readonly string[]
+  setAndDefer?: (target: TikTokQueue, method: string) => void
+  instance?: (pixelId: string) => TikTokQueue
   load?: (pixelId: string, options?: Record<string, unknown>) => void
   page?: () => void
-  track?: (eventName: string, payload?: TikTokPixelPayload) => void
+  track?: (eventName: string, payload?: TikTokPixelPayload, options?: { event_id: string }) => void
 }
 
 declare global {
@@ -16,6 +20,10 @@ declare global {
 }
 
 const TIKTOK_SCRIPT_ORIGIN = 'https://analytics.tiktok.com/i18n/pixel/events.js'
+const TIKTOK_DEFERRED_METHODS = [
+  'page', 'track', 'identify', 'instances', 'debug', 'on', 'off', 'once', 'ready',
+  'alias', 'group', 'enableCookie', 'disableCookie', 'holdConsent', 'revokeConsent', 'grantConsent',
+] as const
 
 export function createTikTokPixelAdapter() {
   let activePixelId = ''
@@ -39,10 +47,13 @@ export function createTikTokPixelAdapter() {
         queue._i ||= {}
         queue._o ||= {}
         queue._t ||= {}
-        queue._i[id] = []
+        const instance = [] as TikTokQueue
+        instance._u = TIKTOK_SCRIPT_ORIGIN
+        queue._i[id] = instance
         queue._o[id] = options
         queue._t[id] = Date.now()
         const element = document.createElement('script')
+        element.type = 'text/javascript'
         element.async = true
         element.referrerPolicy = 'no-referrer'
         element.src = `${TIKTOK_SCRIPT_ORIGIN}?sdkid=${encodeURIComponent(id)}&lib=ttq`
@@ -65,7 +76,8 @@ export function createTikTokPixelAdapter() {
 
   function standardEvent(eventName: string, payload: TikTokPixelPayload = {}, eventId?: string) {
     if (!window.ttq || !activePixelId) return false
-    window.ttq.track?.(eventName, eventId ? { ...payload, event_id: eventId } : payload)
+    if (eventId) window.ttq.track?.(eventName, payload, { event_id: eventId })
+    else window.ttq.track?.(eventName, payload)
     return true
   }
 
@@ -87,8 +99,16 @@ export function createTikTokPixelAdapter() {
 export const tiktokPixelAdapter = createTikTokPixelAdapter()
 
 function installQueueMethods(queue: TikTokQueue) {
-  for (const method of ['page', 'track'] as const) {
-    queue[method] = (...args: unknown[]) => queue.push([method, ...args])
+  queue.methods = TIKTOK_DEFERRED_METHODS
+  queue.setAndDefer = (target, method) => {
+    const methods = target as unknown as Record<string, unknown>
+    methods[method] = (...args: unknown[]) => target.push([method, ...args])
+  }
+  for (const method of TIKTOK_DEFERRED_METHODS) queue.setAndDefer(queue, method)
+  queue.instance = (pixelId) => {
+    const instance = queue._i?.[pixelId] ?? [] as TikTokQueue
+    for (const method of TIKTOK_DEFERRED_METHODS) queue.setAndDefer?.(instance, method)
+    return instance
   }
 }
 

@@ -50,7 +50,7 @@ describe('Meta CAPI data key 轮换状态', () => {
     const sqlCalls: Array<{ sql: string; params: unknown[] }> = []
     const db = queryDb((sql, params) => {
       sqlCalls.push({ sql, params })
-      if (sql.includes('meta_capi_secure_outbox')) return { reference_count: 3 }
+      if (sql.includes('ad_platform_secure_outbox')) return { reference_count: 3 }
       if (sql.includes('analytics_conversion_deliveries')) return { reference_count: 2 }
       throw new Error('未知查询')
     })
@@ -69,7 +69,7 @@ describe('Meta CAPI data key 轮换状态', () => {
       previousActiveDeliveryCount: 2,
       canRemovePrevious: false,
     })
-    expect(sqlCalls[0]?.sql).toContain('FROM meta_capi_secure_outbox')
+    expect(sqlCalls[0]?.sql).toContain('FROM ad_platform_secure_outbox')
     expect(sqlCalls[0]?.sql).not.toContain('expires_at')
     expect(sqlCalls[1]?.sql).toContain("status IN ('pending', 'failed')")
     expect(sqlCalls.every(call => call.params.length === 1)).toBe(true)
@@ -104,7 +104,7 @@ describe('Meta CAPI data key 轮换状态', () => {
   it('任一引用查询失败时 fail closed，且响应不包含错误 cause 或密钥派生值', async () => {
     const status = await getMetaCapiKeyRotationStatus({
       DB: queryDb((sql) => {
-        if (sql.includes('meta_capi_secure_outbox')) return { reference_count: 0 }
+        if (sql.includes('ad_platform_secure_outbox')) return { reference_count: 0 }
         throw new Error(`query failed with ${PREVIOUS_KEY}`)
       }),
       META_CAPI_DATA_KEY_CURRENT: CURRENT_KEY,

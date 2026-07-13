@@ -1,15 +1,19 @@
-import type { MetaCapiQueueMessage } from '@meigallery/shared'
-import type { Bindings } from '../index'
-import type { MetaCapiEncryptedEnvelope } from '../utils/meta-capi-crypto'
-import { transitionDeliveryStatus } from './meta-capi'
+import type {
+  AdPlatformEncryptedEnvelope,
+  AdPlatformProvider,
+  AdPlatformQueueMessage,
+} from '@meigallery/shared'
+import { transitionDeliveryStatus } from './delivery-store'
+import { isRetryableAdPlatformDeliveryErrorCode } from './delivery-errors'
 
-const META_RECOVERY_STALE_MINUTES = 5
+const RECOVERY_STALE_MINUTES = 5
 const MAX_PURGE_LIMIT = 100
 
-export type SecureOutboxEnv = Pick<Bindings, 'DB' | 'META_CAPI_QUEUE'>
+export type SecureOutboxEnv = { DB: D1Database }
 
 type SecureOutboxRow = {
   delivery_id: string
+  provider: string
   schema_version: number
   key_id: string
   iv: string
@@ -28,25 +32,31 @@ type SecureOutboxRow = {
 
 type ExpiredOutboxRow = Pick<
   SecureOutboxRow,
-  'delivery_id' | 'status' | 'skip_reason' | 'error_code' | 'date' | 'event_name'
+  'delivery_id' | 'provider' | 'status' | 'skip_reason' | 'error_code' | 'date' | 'event_name'
 >
 
-export function createSecureOutboxStatement(
+export function createAdPlatformSecureOutboxStatement(
   db: D1Database,
-  input: { deliveryId: string; envelope: MetaCapiEncryptedEnvelope; expiresAt: string },
+  input: {
+    provider: AdPlatformProvider
+    deliveryId: string
+    envelope: Omit<AdPlatformEncryptedEnvelope, 'expiresAt'> & { schemaVersion: 2 }
+    expiresAt: string
+  },
 ): D1PreparedStatement {
   return db.prepare(`
-    INSERT INTO meta_capi_secure_outbox (
-      delivery_id, schema_version, key_id, iv, ciphertext, tag, expires_at, updated_at
+    INSERT INTO ad_platform_secure_outbox (
+      delivery_id, provider, schema_version, key_id, iv, ciphertext, tag, expires_at, updated_at
     )
-    SELECT ?, ?, ?, ?, ?, ?, ?, datetime('now')
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')
     WHERE EXISTS (
       SELECT 1
       FROM analytics_conversion_deliveries
-      WHERE id = ? AND provider = 'meta' AND transport = 'server' AND status = 'pending'
+      WHERE id = ? AND provider = ? AND transport = 'server' AND status = 'pending'
     )
   `).bind(
     input.deliveryId,
+    input.provider,
     input.envelope.schemaVersion,
     input.envelope.keyId,
     input.envelope.iv,
@@ -54,28 +64,34 @@ export function createSecureOutboxStatement(
     input.envelope.tag,
     input.expiresAt,
     input.deliveryId,
+    input.provider,
   )
 }
 
-export async function enqueueSecureMetaCapiDelivery(
+export async function enqueueAdPlatformSecureDelivery(
   env: SecureOutboxEnv,
-  deliveryId: string,
-  options: { requireStale?: boolean } = {},
+  input: {
+    provider: AdPlatformProvider
+    queue?: Queue<AdPlatformQueueMessage>
+    deliveryId: string
+    queueLabel: string
+    requireStale?: boolean
+  },
 ): Promise<'enqueued' | 'failed' | 'expired' | 'not_pending'> {
-  if (!env.META_CAPI_QUEUE) {
-    await markQueueUnavailable(env.DB, deliveryId)
+  if (!input.queue) {
+    await markQueueUnavailable(env.DB, input.provider, input.deliveryId)
     return 'failed'
   }
 
-  const row = await readSecureOutbox(env.DB, deliveryId)
+  const row = await readSecureOutbox(env.DB, input.provider, input.deliveryId)
   if (!row || row.status !== 'pending' || row.queue_enqueued_at) return 'not_pending'
   if (isExpired(row.expires_at)) {
     await expireOutboxRows(env.DB, [row])
     return 'expired'
   }
 
-  const staleCondition = options.requireStale
-    ? `AND updated_at <= datetime('now', '-${META_RECOVERY_STALE_MINUTES} minutes')`
+  const staleCondition = input.requireStale
+    ? `AND updated_at <= datetime('now', '-${RECOVERY_STALE_MINUTES} minutes')`
     : ''
   const claimed = await env.DB.prepare(`
     UPDATE analytics_conversion_deliveries
@@ -85,23 +101,24 @@ export async function enqueueSecureMetaCapiDelivery(
       error_message = '',
       updated_at = datetime('now')
     WHERE id = ?
-      AND provider = 'meta'
+      AND provider = ?
       AND transport = 'server'
       AND status = 'pending'
       AND queue_enqueued_at IS NULL
       AND queue_attempt_count = ?
       ${staleCondition}
       AND EXISTS (
-        SELECT 1 FROM meta_capi_secure_outbox
+        SELECT 1 FROM ad_platform_secure_outbox
         WHERE delivery_id = analytics_conversion_deliveries.id
+          AND provider = ?
           AND schema_version = 2
       )
-  `).bind(deliveryId, row.queue_attempt_count).run()
+  `).bind(input.deliveryId, input.provider, row.queue_attempt_count, input.provider).run()
   if (!d1Changed(claimed)) return 'not_pending'
 
-  const message: MetaCapiQueueMessage = {
+  const message: AdPlatformQueueMessage = {
     schemaVersion: 2,
-    deliveryId,
+    deliveryId: input.deliveryId,
     envelope: {
       keyId: row.key_id,
       iv: row.iv,
@@ -112,9 +129,10 @@ export async function enqueueSecureMetaCapiDelivery(
   }
 
   try {
-    await env.META_CAPI_QUEUE.send(message)
-  } catch {
-    await markQueueSendFailed(env.DB, deliveryId)
+    await input.queue.send(message)
+  }
+  catch {
+    await markQueueSendFailed(env.DB, input.provider, input.deliveryId, input.queueLabel)
     return 'failed'
   }
 
@@ -128,20 +146,21 @@ export async function enqueueSecureMetaCapiDelivery(
           error_message = '',
           updated_at = datetime('now')
         WHERE id = ?
-          AND provider = 'meta'
+          AND provider = ?
           AND transport = 'server'
           AND status = 'pending'
           AND queue_enqueued_at IS NULL
-      `).bind(deliveryId),
-      secureOutboxDeleteStatement(env.DB, deliveryId),
+      `).bind(input.deliveryId, input.provider),
+      secureOutboxDeleteStatement(env.DB, input.provider, input.deliveryId),
     ])
     return 'enqueued'
-  } catch {
+  }
+  catch {
     return 'failed'
   }
 }
 
-export async function purgeExpiredMetaCapiOutbox(
+export async function purgeExpiredAdPlatformOutbox(
   db: D1Database,
   limit = MAX_PURGE_LIMIT,
 ): Promise<{ purged: number; skipped: number }> {
@@ -152,13 +171,14 @@ export async function purgeExpiredMetaCapiOutbox(
   const expired = await db.prepare(`
     SELECT
       o.delivery_id,
+      o.provider,
       d.status,
       d.skip_reason,
       d.error_code,
       a.date,
       d.event_name
-    FROM meta_capi_secure_outbox o
-    LEFT JOIN analytics_conversion_deliveries d ON d.id = o.delivery_id
+    FROM ad_platform_secure_outbox o
+    LEFT JOIN analytics_conversion_deliveries d ON d.id = o.delivery_id AND d.provider = o.provider
     LEFT JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
     WHERE datetime(o.expires_at) <= datetime('now')
     ORDER BY o.expires_at ASC, o.delivery_id ASC
@@ -169,14 +189,19 @@ export async function purgeExpiredMetaCapiOutbox(
   return expireOutboxRows(db, expired.results)
 }
 
-export async function deleteSecureMetaCapiOutbox(db: D1Database, deliveryId: string) {
-  await secureOutboxDeleteStatement(db, deliveryId).run()
+export async function deleteAdPlatformSecureOutbox(
+  db: D1Database,
+  provider: AdPlatformProvider,
+  deliveryId: string,
+) {
+  await secureOutboxDeleteStatement(db, provider, deliveryId).run()
 }
 
-function readSecureOutbox(db: D1Database, deliveryId: string) {
+function readSecureOutbox(db: D1Database, provider: AdPlatformProvider, deliveryId: string) {
   return db.prepare(`
     SELECT
       o.delivery_id,
+      o.provider,
       o.schema_version,
       o.key_id,
       o.iv,
@@ -191,26 +216,28 @@ function readSecureOutbox(db: D1Database, deliveryId: string) {
       d.updated_at,
       a.date,
       d.event_name
-    FROM meta_capi_secure_outbox o
-    JOIN analytics_conversion_deliveries d ON d.id = o.delivery_id
+    FROM ad_platform_secure_outbox o
+    JOIN analytics_conversion_deliveries d ON d.id = o.delivery_id AND d.provider = o.provider
     JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
     WHERE o.delivery_id = ?
+      AND o.provider = ?
       AND o.schema_version = 2
-      AND d.provider = 'meta'
       AND d.transport = 'server'
     LIMIT 1
-  `).bind(deliveryId).first<SecureOutboxRow>()
+  `).bind(deliveryId, provider).first<SecureOutboxRow>()
 }
 
 async function expireOutboxRows(db: D1Database, rows: ExpiredOutboxRow[]) {
   let purged = 0
   let skipped = 0
   for (const row of rows) {
+    const provider = normalizeProvider(row.provider)
+    if (!provider) continue
     let canDeleteOutbox = !isNonTerminalDelivery(row.status, row.error_code)
     if (isNonTerminalDelivery(row.status, row.error_code)) {
       const transition = await transitionDeliveryStatus(db, {
         id: row.delivery_id,
-        provider: 'meta',
+        provider,
         transport: 'server',
         event_name: row.event_name,
         status: row.status as never,
@@ -226,65 +253,61 @@ async function expireOutboxRows(db: D1Database, rows: ExpiredOutboxRow[]) {
         canDeleteOutbox = true
       }
       else {
-        const current = await readDeliveryTerminalState(db, row.delivery_id)
+        const current = await readDeliveryTerminalState(db, provider, row.delivery_id)
         canDeleteOutbox = !current || !isNonTerminalDelivery(current.status, current.error_code)
       }
     }
     if (canDeleteOutbox) {
-      const deleted = await secureOutboxDeleteStatement(db, row.delivery_id).run()
+      const deleted = await secureOutboxDeleteStatement(db, provider, row.delivery_id).run()
       if (d1Changed(deleted)) purged += 1
     }
   }
   return { purged, skipped }
 }
 
-function readDeliveryTerminalState(db: D1Database, deliveryId: string) {
+function readDeliveryTerminalState(db: D1Database, provider: AdPlatformProvider, deliveryId: string) {
   return db.prepare(`
     SELECT status, error_code
     FROM analytics_conversion_deliveries
-    WHERE id = ? AND provider = 'meta' AND transport = 'server'
+    WHERE id = ? AND provider = ? AND transport = 'server'
     LIMIT 1
-  `).bind(deliveryId).first<{ status: string; error_code: string }>()
+  `).bind(deliveryId, provider).first<{ status: string; error_code: string }>()
 }
 
-function secureOutboxDeleteStatement(db: D1Database, deliveryId: string) {
-  return db.prepare('DELETE FROM meta_capi_secure_outbox WHERE delivery_id = ?').bind(deliveryId)
+function secureOutboxDeleteStatement(db: D1Database, provider: AdPlatformProvider, deliveryId: string) {
+  return db.prepare('DELETE FROM ad_platform_secure_outbox WHERE delivery_id = ? AND provider = ?')
+    .bind(deliveryId, provider)
 }
 
-async function markQueueUnavailable(db: D1Database, deliveryId: string) {
+async function markQueueUnavailable(db: D1Database, provider: AdPlatformProvider, deliveryId: string) {
   try {
     await db.prepare(`
       UPDATE analytics_conversion_deliveries
-      SET
-        error_code = 'missing_queue',
-        error_message = '',
-        updated_at = datetime('now')
-      WHERE id = ?
-        AND provider = 'meta'
-        AND transport = 'server'
-        AND status = 'pending'
-        AND queue_enqueued_at IS NULL
-    `).bind(deliveryId).run()
-  } catch {
+      SET error_code = 'missing_queue', error_message = '', updated_at = datetime('now')
+      WHERE id = ? AND provider = ? AND transport = 'server'
+        AND status = 'pending' AND queue_enqueued_at IS NULL
+    `).bind(deliveryId, provider).run()
+  }
+  catch {
     // 诊断写入失败不能改变已提交业务事实。
   }
 }
 
-async function markQueueSendFailed(db: D1Database, deliveryId: string) {
+async function markQueueSendFailed(
+  db: D1Database,
+  provider: AdPlatformProvider,
+  deliveryId: string,
+  queueLabel: string,
+) {
   try {
     await db.prepare(`
       UPDATE analytics_conversion_deliveries
-      SET
-        error_code = 'queue_send_failed',
-        error_message = 'Meta CAPI Queue 发送失败',
-        updated_at = datetime('now')
-      WHERE id = ?
-        AND provider = 'meta'
-        AND transport = 'server'
-        AND status = 'pending'
-        AND queue_enqueued_at IS NULL
-    `).bind(deliveryId).run()
-  } catch {
+      SET error_code = 'queue_send_failed', error_message = ?, updated_at = datetime('now')
+      WHERE id = ? AND provider = ? AND transport = 'server'
+        AND status = 'pending' AND queue_enqueued_at IS NULL
+    `).bind(`${queueLabel} Queue 发送失败`, deliveryId, provider).run()
+  }
+  catch {
     // 外部 Queue 失败后的诊断补记不能改变已提交转化的响应。
   }
 }
@@ -296,12 +319,11 @@ function isExpired(value: string) {
 
 function isNonTerminalDelivery(status: string, errorCode: string) {
   if (status === 'pending' || status === 'attempted') return true
-  if (status !== 'failed') return false
-  return errorCode === 'meta_timeout'
-    || errorCode === 'meta_network_error'
-    || errorCode === 'meta_delivery_state_conflict'
-    || errorCode === 'meta_http_429'
-    || /^meta_http_5\d\d$/.test(errorCode)
+  return status === 'failed' && isRetryableAdPlatformDeliveryErrorCode(errorCode)
+}
+
+function normalizeProvider(value: string): AdPlatformProvider | null {
+  return value === 'meta' || value === 'tiktok' || value === 'google' ? value : null
 }
 
 function d1Changed(result: D1Result<unknown>) {

@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer'
 import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
-import type { MetaCapiQueueMessage } from '@meigallery/shared'
+import type { AdPlatformQueueMessage } from '@meigallery/shared'
 import type { Bindings } from '../index'
 import { decryptMetaCapiContext, loadMetaCapiCryptoKeys } from '../utils/meta-capi-crypto'
 import {
@@ -22,14 +22,14 @@ const metaCryptoMocks = vi.hoisted(() => ({
   loadKeys: vi.fn(),
 }))
 
-vi.mock('../utils/meta-browser-identifiers', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../utils/meta-browser-identifiers')>()
-  metaHashMocks.email.mockImplementation(actual.hashMetaEmail)
-  metaHashMocks.externalId.mockImplementation(actual.hashMetaExternalId)
+vi.mock('../utils/ad-platform-identifiers', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils/ad-platform-identifiers')>()
+  metaHashMocks.email.mockImplementation(actual.hashAdPlatformEmail)
+  metaHashMocks.externalId.mockImplementation(actual.hashAdPlatformExternalId)
   return {
     ...actual,
-    hashMetaEmail: metaHashMocks.email,
-    hashMetaExternalId: metaHashMocks.externalId,
+    hashAdPlatformEmail: metaHashMocks.email,
+    hashAdPlatformExternalId: metaHashMocks.externalId,
   }
 })
 
@@ -60,6 +60,8 @@ type InsertedDelivery = {
   queueEnqueuedAt: string | null
   hasFbp: number
   hasFbc: number
+  hasTtclid: number
+  hasTtp: number
   hasEmail: number
   hasExternalId: number
   rolloutTargetPercentage: number
@@ -100,7 +102,7 @@ function createConversionDb(options: {
   metaConnectionVerified?: boolean
   metaRolloutPercentage?: unknown
   criticalIncidentOpen?: boolean
-  userMetaExternalId?: string | null
+  userConversionExternalId?: string | null
   rolloutSettingQueryError?: boolean
   stableIdQueryError?: boolean
   incidentQueryError?: boolean
@@ -224,27 +226,29 @@ function createConversionDb(options: {
         eventId: String(call.params[4]),
         status: String(call.params[6]),
         skipReason: String(call.params[7]),
-        encryptionKeyId: String(call.params[12]),
-        connectionRevision: call.params[14] == null ? null : String(call.params[14]),
+        encryptionKeyId: String(call.params[14]),
+        connectionRevision: call.params[16] == null ? null : String(call.params[16]),
         queueEnqueuedAt: null,
         hasFbp: Number(call.params[8]),
         hasFbc: Number(call.params[9]),
-        hasEmail: Number(call.params[10]),
-        hasExternalId: Number(call.params[11]),
-        rolloutTargetPercentage: Number(call.params[15]),
-        rolloutEffectivePercentage: Number(call.params[16]),
-        rolloutBucket: call.params[17] == null ? null : Number(call.params[17]),
+        hasTtclid: Number(call.params[10]),
+        hasTtp: Number(call.params[11]),
+        hasEmail: Number(call.params[12]),
+        hasExternalId: Number(call.params[13]),
+        rolloutTargetPercentage: Number(call.params[17]),
+        rolloutEffectivePercentage: Number(call.params[18]),
+        rolloutBucket: call.params[19] == null ? null : Number(call.params[19]),
       })
     }
-    if (call.sql.includes('INSERT INTO meta_capi_secure_outbox')) {
+    if (call.sql.includes('INSERT INTO ad_platform_secure_outbox')) {
       target.insertedOutboxes.push({
         deliveryId: String(call.params[0]),
-        schemaVersion: Number(call.params[1]),
-        keyId: String(call.params[2]),
-        iv: String(call.params[3]),
-        ciphertext: String(call.params[4]),
-        tag: String(call.params[5]),
-        expiresAt: String(call.params[6]),
+        schemaVersion: Number(call.params[2]),
+        keyId: String(call.params[3]),
+        iv: String(call.params[4]),
+        ciphertext: String(call.params[5]),
+        tag: String(call.params[6]),
+        expiresAt: String(call.params[7]),
       })
     }
     if (call.sql.includes('queue_attempt_count = queue_attempt_count + 1')) {
@@ -256,7 +260,7 @@ function createConversionDb(options: {
       const delivery = target.insertedDeliveries.find(item => item.id === String(call.params[0]))
       if (delivery) delivery.queueEnqueuedAt = '2026-07-11 00:00:00'
     }
-    if (call.sql.includes('DELETE FROM meta_capi_secure_outbox')) {
+    if (call.sql.includes('DELETE FROM ad_platform_secure_outbox')) {
       const index = target.insertedOutboxes.findIndex(item => item.deliveryId === String(call.params[0]))
       if (index >= 0) target.insertedOutboxes.splice(index, 1)
     }
@@ -325,11 +329,11 @@ function createConversionDb(options: {
               ? ({ id: 'incident_open' } as T)
               : null
           }
-          if (sql.includes('SELECT meta_external_id') && sql.includes('FROM users')) {
+          if (sql.includes('SELECT conversion_external_id') && sql.includes('FROM users')) {
             if (options.stableIdQueryError) throw new Error('模拟 stable ID 查询失败')
-            return options.userMetaExternalId == null
+            return options.userConversionExternalId == null
               ? null
-              : ({ meta_external_id: options.userMetaExternalId } as T)
+              : ({ conversion_external_id: options.userConversionExternalId } as T)
           }
           if (sql.includes('FROM meta_connection_verifications')) {
             if (options.metaConnectionVerified === false) return null
@@ -348,13 +352,14 @@ function createConversionDb(options: {
               revision: CONNECTION_REVISION,
             } as T
           }
-          if (sql.includes('FROM meta_capi_secure_outbox')) {
+          if (sql.includes('FROM ad_platform_secure_outbox')) {
             const deliveryId = String(call.params[0])
             const outbox = insertedOutboxes.find(item => item.deliveryId === deliveryId)
             const delivery = insertedDeliveries.find(item => item.id === deliveryId)
             if (!outbox || !delivery) return null
             return {
               delivery_id: deliveryId,
+              provider: delivery.provider,
               schema_version: outbox.schemaVersion,
               key_id: outbox.keyId,
               iv: outbox.iv,
@@ -454,7 +459,7 @@ function envFor(db: ReturnType<typeof createConversionDb>, overrides: Partial<Bi
   } as unknown as Pick<Bindings, 'APP_ENV' | 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE' | 'META_CAPI_ACCESS_TOKEN' | 'META_CAPI_TEST_EVENT_CODE' | 'META_CAPI_DATA_KEY_CURRENT' | 'META_CAPI_DATA_KEY_PREVIOUS' | 'RELEASE_COMMIT'>
 }
 
-function envWithQueueFor(db: ReturnType<typeof createConversionDb>, sent: MetaCapiQueueMessage[]) {
+function envWithQueueFor(db: ReturnType<typeof createConversionDb>, sent: AdPlatformQueueMessage[]) {
   return {
     APP_ENV: 'dev',
     DB: db,
@@ -464,7 +469,7 @@ function envWithQueueFor(db: ReturnType<typeof createConversionDb>, sent: MetaCa
     META_CAPI_TEST_EVENT_CODE: 'test-code',
     RELEASE_COMMIT,
     META_CAPI_QUEUE: {
-      async send(message: MetaCapiQueueMessage) {
+      async send(message: AdPlatformQueueMessage) {
         sent.push(message)
         return { metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } } }
       },
@@ -585,10 +590,10 @@ describe('conversion ledger service', () => {
       metaMode: 'production',
       metaServerEnabled: true,
     })
-    const sent: MetaCapiQueueMessage[] = []
+    const sent: AdPlatformQueueMessage[] = []
     let supplierCalls = 0
     const result = await recordContact(envWithQueueFor(db, sent), { ...grantedContactInput(), consentState }, {
-      getMetaCapiUserData: () => {
+      getAdPlatformUserData: () => {
         supplierCalls += 1
         return { fbp: 'fb.1.1700000000000.123456789', clientIpAddress: '203.0.113.24' }
       },
@@ -607,10 +612,10 @@ describe('conversion ledger service', () => {
       metaMode: 'disabled',
       metaServerEnabled: true,
     })
-    const sent: MetaCapiQueueMessage[] = []
+    const sent: AdPlatformQueueMessage[] = []
     let supplierCalls = 0
     const result = await recordContact(envWithQueueFor(db, sent), grantedContactInput(), {
-      getMetaCapiUserData: () => {
+      getAdPlatformUserData: () => {
         supplierCalls += 1
         return { fbp: 'fb.1.1700000000000.123456789', clientIpAddress: '203.0.113.24' }
       },
@@ -702,7 +707,7 @@ describe('conversion ledger service', () => {
     const browserSupplier = vi.fn(async () => ({ fbp: 'fb.1.must-not-read' }))
     const sensitiveSupplier = vi.fn(async () => ({
       email: 'limited-private@example.test',
-      metaExternalId: '0123456789abcdef0123456789abcdef',
+      externalId: '0123456789abcdef0123456789abcdef',
     }))
 
     await recordRegistration(envFor(db), {
@@ -713,7 +718,7 @@ describe('conversion ledger service', () => {
       consentState,
       metadata: { method: 'email' },
     }, {
-      getMetaCapiUserData: browserSupplier,
+      getAdPlatformUserData: browserSupplier,
       getRegistrationSensitiveInput: sensitiveSupplier,
     })
 
@@ -732,10 +737,10 @@ describe('conversion ledger service', () => {
       metaServerEnabled: true,
       metaMode: 'production',
     })
-    const sent: MetaCapiQueueMessage[] = []
+    const sent: AdPlatformQueueMessage[] = []
     const env = envWithQueueFor(db, sent)
     const email = '  Granted.Unique+S5@Example.Test  '
-    const metaExternalId = 'abcdef0123456789abcdef0123456789'
+    const externalId = 'abcdef0123456789abcdef0123456789'
     const browser = {
       fbp: 'fb.1.1700000000000.987654321',
       fbc: 'fb.1.1700000000000.CLICK_s5-unique',
@@ -750,7 +755,7 @@ describe('conversion ledger service', () => {
       )).length
       return browser
     })
-    const sensitiveSupplier = vi.fn(async () => ({ email, metaExternalId }))
+    const sensitiveSupplier = vi.fn(async () => ({ email, externalId }))
 
     await recordRegistration(env, {
       visitorId: 'visitor_registration_s5',
@@ -760,7 +765,7 @@ describe('conversion ledger service', () => {
       consentState: 'granted',
       metadata: { method: 'email' },
     }, {
-      getMetaCapiUserData: browserSupplier,
+      getAdPlatformUserData: browserSupplier,
       getRegistrationSensitiveInput: sensitiveSupplier,
     })
 
@@ -768,7 +773,7 @@ describe('conversion ledger service', () => {
     expect(renewCountBeforeBrowser).toBe(1)
     expect(sensitiveSupplier).toHaveBeenCalledOnce()
     expect(metaHashMocks.email).toHaveBeenCalledWith(email)
-    expect(metaHashMocks.externalId).toHaveBeenCalledWith(metaExternalId)
+    expect(metaHashMocks.externalId).toHaveBeenCalledWith(externalId)
     const delivery = db.insertedDeliveries.find(item => (
       item.eventName === 'CompleteRegistration' && item.transport === 'server'
     ))!
@@ -789,11 +794,11 @@ describe('conversion ledger service', () => {
     expect(decrypted).toEqual({
       ...browser,
       emailSha256: await sha256Hex(email.trim().toLowerCase()),
-      externalIdSha256: await sha256Hex(metaExternalId),
+      externalIdSha256: await sha256Hex(externalId),
     })
     const serializedPersistentBoundaries = JSON.stringify({ calls: db.calls, sent })
     expect(serializedPersistentBoundaries).not.toContain(email)
-    expect(serializedPersistentBoundaries).not.toContain(metaExternalId)
+    expect(serializedPersistentBoundaries).not.toContain(externalId)
     expect(serializedPersistentBoundaries).not.toContain(browser.fbp)
     expect(serializedPersistentBoundaries).not.toContain(browser.fbc)
     expect(serializedPersistentBoundaries).not.toContain(browser.clientIpAddress)
@@ -811,7 +816,7 @@ describe('conversion ledger service', () => {
     const browserSupplier = vi.fn(async () => ({ fbp: 'fb.1.1700000000000.gated-private' }))
     const sensitiveSupplier = vi.fn(async () => ({
       email: 'gated-private@example.test',
-      metaExternalId: '22222222222222222222222222222222',
+      externalId: '22222222222222222222222222222222',
     }))
 
     await recordRegistration({
@@ -825,7 +830,7 @@ describe('conversion ledger service', () => {
       consentState: 'granted',
       metadata: {},
     }, {
-      getMetaCapiUserData: browserSupplier,
+      getAdPlatformUserData: browserSupplier,
       getRegistrationSensitiveInput: sensitiveSupplier,
     })
 
@@ -852,7 +857,7 @@ describe('conversion ledger service', () => {
       consentState: 'granted',
       metadata: {},
     }, {
-      getMetaCapiUserData: async () => ({ fbp: 'fb.1.1700000000000.supplier-private' }),
+      getAdPlatformUserData: async () => ({ fbp: 'fb.1.1700000000000.supplier-private' }),
       getRegistrationSensitiveInput: async () => { throw new Error(sensitive) },
     })
 
@@ -887,7 +892,7 @@ describe('conversion ledger service', () => {
     }))
 
     await recordContact(envFor(db), { ...grantedContactInput(), userId: 421 }, {
-      getMetaCapiUserData: browserSupplier,
+      getAdPlatformUserData: browserSupplier,
     })
 
     expect(browserSupplier).toHaveBeenCalledOnce()
@@ -906,7 +911,7 @@ describe('conversion ledger service', () => {
       metaServerEnabled: true,
       metaMode: 'production',
     })
-    const sent: MetaCapiQueueMessage[] = []
+    const sent: AdPlatformQueueMessage[] = []
     const input = {
       visitorId: 'visitor_first',
       sessionId: 'session_first',
@@ -935,7 +940,7 @@ describe('conversion ledger service', () => {
     const browserSupplier = vi.fn(async () => ({ fbp: 'fb.1.duplicate-private' }))
     const sensitiveSupplier = vi.fn(async () => ({
       email: 'duplicate-private@example.test',
-      metaExternalId: '11111111111111111111111111111111',
+      externalId: '11111111111111111111111111111111',
     }))
 
     await recordRegistration(envFor(db), {
@@ -946,7 +951,7 @@ describe('conversion ledger service', () => {
       consentState: 'granted',
       metadata: {},
     }, {
-      getMetaCapiUserData: browserSupplier,
+      getAdPlatformUserData: browserSupplier,
       getRegistrationSensitiveInput: sensitiveSupplier,
     })
 
@@ -1019,7 +1024,7 @@ describe('conversion ledger service', () => {
   })
 
   it('CAPI 开启且 Queue 存在时只发送 V2 密文消息', async () => {
-    const sent: MetaCapiQueueMessage[] = []
+    const sent: AdPlatformQueueMessage[] = []
     const db = createConversionDb({ metaServerEnabled: true, metaMode: 'test', metaDestinationId: '1234567890' })
 
     await recordRegistration(envWithQueueFor(db, sent), {
@@ -1061,7 +1066,7 @@ describe('conversion ledger service', () => {
 
   it('只将临时匹配数据加密后投递，并仅以 0|1 写入 delivery 覆盖率', async () => {
     const db = createConversionDb({ metaServerEnabled: true, metaMode: 'test', metaDestinationId: '1234567890' })
-    const sent: MetaCapiQueueMessage[] = []
+    const sent: AdPlatformQueueMessage[] = []
     const userData = {
       fbp: 'fb.1.1700000000000.123456789',
       fbc: 'fb.1.1700000000000.CLICK_abc-123',
@@ -1075,7 +1080,7 @@ describe('conversion ledger service', () => {
       ...grantedContactInput(),
       metadata: { fbp: 'metadata-fbp', fbc: 'metadata-fbc' },
     }, {
-      getMetaCapiUserData: () => {
+      getAdPlatformUserData: () => {
         supplierCalls += 1
         return userData
       },
@@ -1105,7 +1110,7 @@ describe('conversion ledger service', () => {
     let supplierCalls = 0
 
     await recordContact(envFor(db), grantedContactInput(), {
-      getMetaCapiUserData: () => {
+      getAdPlatformUserData: () => {
         supplierCalls += 1
         return { fbp: 'fb.1.1700000000000.123456789' }
       },
@@ -1119,7 +1124,7 @@ describe('conversion ledger service', () => {
     let supplierCalls = 0
 
     await recordContact(envFor(db), grantedContactInput(), {
-      getMetaCapiUserData: () => {
+      getAdPlatformUserData: () => {
         supplierCalls += 1
         return { fbp: 'fb.1.1700000000000.123456789' }
       },
@@ -1180,7 +1185,7 @@ describe('conversion ledger service', () => {
     })
 
     await expect(recordContact(envFor(db), grantedContactInput(), {
-      getMetaCapiUserData: () => ({
+      getAdPlatformUserData: () => ({
         fbp: 'fb.1.1700000000000.123456789',
         clientIpAddress: '203.0.113.24',
       }),
@@ -1201,7 +1206,7 @@ describe('conversion ledger service', () => {
       metaServerEnabled: true,
       metaMode: 'test',
     })
-    const sent: MetaCapiQueueMessage[] = []
+    const sent: AdPlatformQueueMessage[] = []
     let supplierCalls = 0
     const conversionEnv = {
       ...envWithQueueFor(db, sent),
@@ -1209,7 +1214,7 @@ describe('conversion ledger service', () => {
     }
 
     const result = await recordContact(conversionEnv, grantedContactInput(), {
-      getMetaCapiUserData: () => {
+      getAdPlatformUserData: () => {
         supplierCalls += 1
         return { fbp: 'fb.1.1700000000000.123456789' }
       },
@@ -1234,7 +1239,7 @@ describe('conversion ledger service', () => {
       metaServerEnabled: true,
       metaMode: 'test',
     })
-    const sent: MetaCapiQueueMessage[] = []
+    const sent: AdPlatformQueueMessage[] = []
     let supplierCalls = 0
 
     const result = await recordContact({
@@ -1244,7 +1249,7 @@ describe('conversion ledger service', () => {
       META_CAPI_TEST_EVENT_CODE: 'test-code',
       RELEASE_COMMIT: 'a'.repeat(40),
     } as unknown as Parameters<typeof recordContact>[0], grantedContactInput(), {
-      getMetaCapiUserData: () => {
+      getAdPlatformUserData: () => {
         supplierCalls += 1
         return { fbp: 'fb.1.1700000000000.123456789' }
       },
@@ -1290,7 +1295,7 @@ describe('conversion ledger service', () => {
     const result = await recordContact(envFor(db), {
       ...grantedContactInput(),
       visitorId,
-    }, { getMetaCapiUserData: browserProvider })
+    }, { getAdPlatformUserData: browserProvider })
 
     expect(result.trackingInstructions).toHaveLength(1)
     expect(browserProvider).not.toHaveBeenCalled()
@@ -1324,7 +1329,7 @@ describe('conversion ledger service', () => {
     const browserProvider = vi.fn(async () => ({ fbp: 'fb.1.must-not-read' }))
     const sensitiveProvider = vi.fn(async () => ({
       email: 'must-not-hash@example.test',
-      metaExternalId: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      externalId: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
     }))
 
     const result = await recordRegistration(envFor(db), {
@@ -1335,7 +1340,7 @@ describe('conversion ledger service', () => {
       consentState: 'granted',
       metadata: {},
     }, {
-      getMetaCapiUserData: browserProvider,
+      getAdPlatformUserData: browserProvider,
       getRegistrationSensitiveInput: sensitiveProvider,
     })
 
@@ -1374,7 +1379,7 @@ describe('conversion ledger service', () => {
     await expect(recordContact(
       envFor(db),
       { ...grantedContactInput(), visitorId: 'visitor_rollout_setting_query_error' },
-      { getMetaCapiUserData: browserProvider },
+      { getAdPlatformUserData: browserProvider },
     )).rejects.toThrow('模拟 rollout setting 查询失败')
 
     expect(db.insertedConversions).toHaveLength(0)
@@ -1399,7 +1404,7 @@ describe('conversion ledger service', () => {
     const result = await recordContact(
       envFor(db),
       { ...grantedContactInput(), visitorId: 'visitor_incident_query_error' },
-      { getMetaCapiUserData: browserProvider },
+      { getAdPlatformUserData: browserProvider },
     )
 
     expect(result.created).toBe(true)
@@ -1442,7 +1447,7 @@ describe('conversion ledger service', () => {
       const result = await recordContact(
         envFor(db),
         { ...grantedContactInput(), visitorId: 'visitor_digest_error' },
-        { getMetaCapiUserData: browserProvider },
+        { getAdPlatformUserData: browserProvider },
       )
 
       expect(result.created).toBe(true)
@@ -1472,7 +1477,7 @@ describe('conversion ledger service', () => {
       metaServerEnabled: true,
       metaMode: 'test',
       metaRolloutPercentage: 100,
-      userMetaExternalId: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      userConversionExternalId: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
     })
     const browserProvider = vi.fn(async () => ({ fbp: 'fb.1.must-not-read' }))
 
@@ -1480,11 +1485,11 @@ describe('conversion ledger service', () => {
       ...grantedContactInput(),
       visitorId: ' ',
       userId: 42,
-    }, { getMetaCapiUserData: browserProvider })
+    }, { getAdPlatformUserData: browserProvider })
 
     expect(browserProvider).not.toHaveBeenCalled()
     expect(metaCryptoMocks.encrypt).not.toHaveBeenCalled()
-    expect(db.readCalls.some(call => call.sql.includes('SELECT meta_external_id'))).toBe(false)
+    expect(db.readCalls.some(call => call.sql.includes('SELECT conversion_external_id'))).toBe(false)
     expect(db.insertedDeliveries.find(item => item.transport === 'server')).toMatchObject({
       status: 'skipped',
       skipReason: 'missing_stable_id',
@@ -1492,7 +1497,7 @@ describe('conversion ledger service', () => {
     })
   })
 
-  it('CompleteRegistration 缺 visitorId 时只按 userId 查询 meta_external_id 作为 stable ID', async () => {
+  it('CompleteRegistration 缺 visitorId 时只按 userId 查询 conversion_external_id 作为 stable ID', async () => {
     const stableId = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
     const db = createConversionDb({
       metaBrowserEnabled: true,
@@ -1500,12 +1505,12 @@ describe('conversion ledger service', () => {
       metaServerEnabled: true,
       metaMode: 'test',
       metaRolloutPercentage: 100,
-      userMetaExternalId: stableId,
+      userConversionExternalId: stableId,
     })
     const browserProvider = vi.fn(async () => ({ fbp: 'fb.1.1700000000000.registration' }))
     const sensitiveProvider = vi.fn(async () => ({
       email: 'registration@example.test',
-      metaExternalId: stableId,
+      externalId: stableId,
     }))
 
     await recordRegistration(envFor(db), {
@@ -1516,13 +1521,13 @@ describe('conversion ledger service', () => {
       consentState: 'granted',
       metadata: {},
     }, {
-      getMetaCapiUserData: browserProvider,
+      getAdPlatformUserData: browserProvider,
       getRegistrationSensitiveInput: sensitiveProvider,
     })
 
     expect(browserProvider).toHaveBeenCalledOnce()
     expect(sensitiveProvider).toHaveBeenCalledOnce()
-    expect(db.readCalls.find(call => call.sql.includes('SELECT meta_external_id'))?.params).toEqual([42])
+    expect(db.readCalls.find(call => call.sql.includes('SELECT conversion_external_id'))?.params).toEqual([42])
     expect(db.insertedDeliveries.find(item => item.transport === 'server')).toMatchObject({
       status: 'pending',
       rolloutTargetPercentage: 100,
@@ -1531,19 +1536,19 @@ describe('conversion ledger service', () => {
     })
   })
 
-  it('CompleteRegistration 同时缺 visitorId 与 meta_external_id 时不读取或 hash 敏感值', async () => {
+  it('CompleteRegistration 同时缺 visitorId 与 conversion_external_id 时不读取或 hash 敏感值', async () => {
     const db = createConversionDb({
       metaBrowserEnabled: true,
       metaDestinationId: '1234567890',
       metaServerEnabled: true,
       metaMode: 'test',
       metaRolloutPercentage: 100,
-      userMetaExternalId: null,
+      userConversionExternalId: null,
     })
     const browserProvider = vi.fn(async () => ({ fbp: 'fb.1.must-not-read' }))
     const sensitiveProvider = vi.fn(async () => ({
       email: 'must-not-hash@example.test',
-      metaExternalId: 'cccccccccccccccccccccccccccccccc',
+      externalId: 'cccccccccccccccccccccccccccccccc',
     }))
 
     await recordRegistration(envFor(db), {
@@ -1554,7 +1559,7 @@ describe('conversion ledger service', () => {
       consentState: 'granted',
       metadata: {},
     }, {
-      getMetaCapiUserData: browserProvider,
+      getAdPlatformUserData: browserProvider,
       getRegistrationSensitiveInput: sensitiveProvider,
     })
 

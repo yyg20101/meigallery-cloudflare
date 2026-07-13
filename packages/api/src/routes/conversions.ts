@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { Bindings, Variables } from '../index'
 import { ConversionInProgressError, markPixelAttempted, recordContact } from '../services/conversions'
 import { errorJson } from '../utils/api-error'
-import { buildMetaCapiUserData } from '../utils/meta-browser-identifiers'
+import { buildAdPlatformUserData } from '../utils/ad-platform-identifiers'
 import { verifyPixelReceiptToken } from '../utils/pixel-receipt'
 import { getCookie } from 'hono/cookie'
 import { MARKETING_CONSENT_RECEIPT_COOKIE } from './marketing-consent'
@@ -64,7 +64,7 @@ conversionRoutes.post('/events', async (c) => {
       actionTarget,
       metadata: isPlainRecord(body.metadata) ? body.metadata : {},
     }, {
-      getMetaCapiUserData: () => buildMetaCapiUserData(c.req.raw, body.browserIdentifiers),
+      getAdPlatformUserData: () => buildAdPlatformUserData(c.req.raw, body.browserIdentifiers),
     })
   }
   catch (error) {

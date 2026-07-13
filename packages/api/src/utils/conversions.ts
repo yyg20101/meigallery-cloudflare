@@ -39,6 +39,8 @@ const SENSITIVE_KEYS = new Set([
   'operator_note_text',
   'fbp',
   'fbc',
+  'ttclid',
+  'ttp',
   'client_ip_address',
   'client_user_agent',
   'user_agent',
