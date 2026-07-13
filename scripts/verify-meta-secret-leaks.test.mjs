@@ -731,12 +731,13 @@ describe('Meta secret 静态泄漏扫描', () => {
     assertNoFixtureValue(report)
   })
 
-  it('部署文档说明普通 test mode 事件不自动携带 Test Event Code', async () => {
+  it('部署文档说明普通事件不携带代码，测试会话码只按 Owner 请求使用', async () => {
     const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
     const deployment = await readFile(path.join(rootDir, 'docs/DEPLOYMENT.md'), 'utf8')
 
     assert.match(deployment, /普通 test mode 的 `Contact`、`CompleteRegistration` 不自动携带 `test_event_code`/)
-    assert.match(deployment, /只有 Owner 显式触发的 Test Event\/bootstrap 路径使用 `META_CAPI_TEST_EVENT_CODE`/)
+    assert.match(deployment, /Owner 在 `\/admin\/attribution\/meta` 输入 Events Manager 当前显示的 `TEST\.\.\.` 会话码/)
+    assert.match(deployment, /服务端不持久化、不审计、不回显/)
   })
 })
 

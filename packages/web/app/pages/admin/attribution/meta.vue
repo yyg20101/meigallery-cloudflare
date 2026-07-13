@@ -15,6 +15,7 @@ interface IncidentData {
 
 const { isOwner } = useAuth()
 const rangeState = useAdminAttributionRange('7d')
+const metaTestEventCode = ref('')
 const requestOptions = { rangeState, autoRefresh: false }
 const status = useAdminAttribution<MetaStatusData>('/api/admin/attribution/meta/status', requestOptions)
 const quality = useAdminAttribution<AttributionQualityData>('/api/admin/attribution/quality', requestOptions)
@@ -67,7 +68,7 @@ onMounted(() => void refreshAll())
     <div class="space-y-0 bg-white">
       <section class="border-b border-gray-200 px-3 py-5 sm:px-5">
         <h2 class="mb-4 text-sm font-semibold text-gray-900">连接状态</h2>
-        <MetaConnectionStatus :connection="status.data.value?.connection || null" :activity="status.data.value?.activity || null" :is-owner="isOwner" @refreshed="refreshAll" />
+        <MetaConnectionStatus v-model:test-event-code="metaTestEventCode" :connection="status.data.value?.connection || null" :activity="status.data.value?.activity || null" :is-owner="isOwner" @refreshed="refreshAll" />
       </section>
       <section class="border-b border-gray-200 px-3 py-5 sm:px-5">
         <h2 class="mb-4 text-sm font-semibold text-gray-900">发布控制</h2>

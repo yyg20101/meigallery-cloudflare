@@ -16,7 +16,7 @@ const PIXEL_ID = '1234567890'
 const REPLACEMENT_PIXEL_ID = '9988776655'
 const TOKEN = 'meta-token-sensitive'
 const ROTATED_TOKEN = 'rotated-meta-token-sensitive'
-const TEST_EVENT_CODE = 'meta-test-code-sensitive'
+const TEST_EVENT_CODE = 'TEST25401'
 const RELEASE_COMMIT = 'a'.repeat(40)
 const DATA_KEY = Buffer.alloc(32, 7).toString('base64')
 const INITIAL_REVISION = 'f'.repeat(32)
@@ -106,9 +106,9 @@ describe('MetaConnection 真实 D1 CAS', () => {
     const olderDb = observeRuns(realDb)
     const newerDb = observeRuns(realDb)
 
-    const older = bootstrapMetaConnectionVerification(connectionEnv(olderDb.db), 41, 'Contact')
+    const older = bootstrapMetaConnectionVerification(connectionEnv(olderDb.db), 41, 'Contact', TEST_EVENT_CODE)
     await graph.requests[0]!.entered.promise
-    const newer = bootstrapMetaConnectionVerification(connectionEnv(newerDb.db), 42, 'CompleteRegistration')
+    const newer = bootstrapMetaConnectionVerification(connectionEnv(newerDb.db), 42, 'CompleteRegistration', TEST_EVENT_CODE)
     await graph.requests[1]!.entered.promise
 
     graph.requests[1]!.response.resolve(successfulMetaResponse())
@@ -137,9 +137,9 @@ describe('MetaConnection 真实 D1 CAS', () => {
     const olderDb = observeRuns(realDb)
     const newerDb = observeRuns(realDb)
 
-    const older = bootstrapMetaConnectionVerification(connectionEnv(olderDb.db), 41, 'Contact')
+    const older = bootstrapMetaConnectionVerification(connectionEnv(olderDb.db), 41, 'Contact', TEST_EVENT_CODE)
     await graph.requests[0]!.entered.promise
-    const newer = bootstrapMetaConnectionVerification(connectionEnv(newerDb.db), 42, 'CompleteRegistration')
+    const newer = bootstrapMetaConnectionVerification(connectionEnv(newerDb.db), 42, 'CompleteRegistration', TEST_EVENT_CODE)
     await graph.requests[1]!.entered.promise
 
     graph.requests[1]!.response.resolve(successfulMetaResponse())
@@ -167,12 +167,13 @@ describe('MetaConnection 真实 D1 CAS', () => {
     const olderDb = observeRuns(realDb)
     const newerDb = observeRuns(realDb)
 
-    const older = bootstrapMetaConnectionVerification(connectionEnv(olderDb.db), 41, 'Contact')
+    const older = bootstrapMetaConnectionVerification(connectionEnv(olderDb.db), 41, 'Contact', TEST_EVENT_CODE)
     await graph.requests[0]!.entered.promise
     const newer = bootstrapMetaConnectionVerification(
       connectionEnv(newerDb.db, ROTATED_TOKEN),
       42,
       'CompleteRegistration',
+      TEST_EVENT_CODE,
     )
     await graph.requests[1]!.entered.promise
 
@@ -218,6 +219,7 @@ describe('MetaConnection 真实 D1 CAS', () => {
       connectionEnv(bootstrapDb.db),
       42,
       'CompleteRegistration',
+      TEST_EVENT_CODE,
     )
     await graph.requests[0]!.entered.promise
     graph.requests[0]!.response.resolve(successfulMetaResponse())

@@ -39,17 +39,18 @@ Dataset Quality 通过后：
 1. 保持 `ad_platform_connections.mode=test`、CAPI 关闭、rollout `0%`。
 2. 运行 production post-deploy resource attestation。
 3. 触发 production synthetic Test Event，要求 Meta 返回 `events_received=1`。
-4. 在 production 后台触发 `Live Evidence`。
-5. 在 Meta Events Manager 确认：
+4. 在 production 后台输入 Events Manager 当前显示的 Test Event Code；验证连接与 `Live Evidence` 必须共用该页面内存值。
+5. 在 production 后台触发 `Live Evidence`。
+6. 在 Meta Events Manager 确认：
    - `Contact` 同时存在 Browser/Server，且 event ID 相同。
    - `CompleteRegistration` 同时存在 Browser/Server，且 event ID 相同。
    - 两项事件均正确去重为一条转化。
    - `CompleteRegistration` 包含 email、external ID、IP、User-Agent。
    - `Contact` 包含 IP、User-Agent，不伪造 email、手机号或注册用户 ID。
    - 没有活动 `Lead` 或 `StartTrial`。
-6. 运行 `corepack pnpm verify:meta-live`。
-7. 运行 `corepack pnpm verify:meta-resources` 写入完整 production 摘要。
-8. 确认后台发布检查没有阻断项。
+7. 运行 `corepack pnpm verify:meta-live`。
+8. 运行 `corepack pnpm verify:meta-resources` 写入完整 production 摘要。
+9. 确认后台发布检查没有阻断项。
 
 ## 四、切换 Production 模式
 

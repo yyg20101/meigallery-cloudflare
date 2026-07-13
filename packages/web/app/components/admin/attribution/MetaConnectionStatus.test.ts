@@ -21,6 +21,10 @@ function mountStatus(environment: 'dev' | 'production', api = vi.fn(), sendMetaL
   })
 }
 
+async function enterTestEventCode(wrapper: ReturnType<typeof mountStatus>, value = ' test25401 ') {
+  await wrapper.get('[data-meta-test-event-code]').setValue(value)
+}
+
 afterEach(() => vi.unstubAllGlobals())
 
 describe('MetaConnectionStatus', () => {
@@ -29,6 +33,7 @@ describe('MetaConnectionStatus', () => {
     const pending = new Promise(resolve => { release = () => resolve({ data: { status: 'verified', eventsReceived: 1 } }) })
     const api = vi.fn(() => pending)
     const wrapper = mountStatus('production', api)
+    await enterTestEventCode(wrapper)
     const verifyConnection = (wrapper.vm as unknown as { verifyConnection: () => Promise<void> }).verifyConnection
 
     const first = verifyConnection()
@@ -43,6 +48,7 @@ describe('MetaConnectionStatus', () => {
     const pending = new Promise(resolve => { release = () => resolve({ data: { status: 'verified', eventsReceived: 1 } }) })
     const api = vi.fn(() => pending)
     const wrapper = mountStatus('production', api)
+    await enterTestEventCode(wrapper)
     const vm = wrapper.vm as unknown as {
       verifyConnection: () => Promise<void>
       runLiveEvidence: () => Promise<void>
@@ -59,10 +65,14 @@ describe('MetaConnectionStatus', () => {
     const api = vi.fn().mockResolvedValue({ data: { status: 'verified', eventsReceived: 1 } })
     const sendMetaLiveChallenge = vi.fn(() => true)
     const wrapper = mountStatus('dev', api, sendMetaLiveChallenge)
+    await enterTestEventCode(wrapper)
 
     await wrapper.get('[data-meta-connection-verify]').trigger('click')
 
-    await vi.waitFor(() => expect(api).toHaveBeenCalledWith('/api/admin/attribution/meta/test-event', { method: 'POST' }))
+    await vi.waitFor(() => expect(api).toHaveBeenCalledWith('/api/admin/attribution/meta/test-event', {
+      method: 'POST',
+      body: { testEventCode: 'TEST25401' },
+    }))
     expect(api).not.toHaveBeenCalledWith('/api/admin/attribution/meta/live-challenge', expect.anything())
     expect(sendMetaLiveChallenge).not.toHaveBeenCalled()
     expect(wrapper.get('[role="status"]').text()).toBe('MetaConnection 验证成功')
@@ -81,6 +91,7 @@ describe('MetaConnectionStatus', () => {
       .mockResolvedValueOnce({ data: { status: 'server_sent', eventsReceived: 2 } })
     const sendMetaLiveChallenge = vi.fn(() => true)
     const wrapper = mountStatus('production', api, sendMetaLiveChallenge)
+    await enterTestEventCode(wrapper)
 
     await wrapper.get('[data-meta-live-evidence]').trigger('click')
 
@@ -88,7 +99,7 @@ describe('MetaConnectionStatus', () => {
     expect(sendMetaLiveChallenge).toHaveBeenCalledWith(challenge.data)
     expect(api).toHaveBeenNthCalledWith(2, '/api/admin/attribution/meta/live-challenge/consume', {
       method: 'POST',
-      body: { challengeId: 'challenge_1' },
+      body: { challengeId: 'challenge_1', testEventCode: 'TEST25401' },
     })
     expect(wrapper.get('[role="status"]').text()).toContain('Browser 与 Server 测试事件已发送')
   })
@@ -96,9 +107,13 @@ describe('MetaConnectionStatus', () => {
   it('production Owner 可见验证按钮并直接调用受后端门禁保护的 Test Event', async () => {
     const api = vi.fn().mockResolvedValue({ data: { status: 'verified', eventsReceived: 1 } })
     const wrapper = mountStatus('production', api)
+    await enterTestEventCode(wrapper)
     await wrapper.get('[data-meta-connection-verify]').trigger('click')
 
-    await vi.waitFor(() => expect(api).toHaveBeenCalledWith('/api/admin/attribution/meta/test-event', { method: 'POST' }))
+    await vi.waitFor(() => expect(api).toHaveBeenCalledWith('/api/admin/attribution/meta/test-event', {
+      method: 'POST',
+      body: { testEventCode: 'TEST25401' },
+    }))
     expect(wrapper.get('[role="status"]').text()).toBe('MetaConnection 验证成功')
     expect(wrapper.find('[data-meta-live-evidence]').exists()).toBe(true)
   })
@@ -106,8 +121,23 @@ describe('MetaConnectionStatus', () => {
   it('production Test Event 的后端 blocker 原文直接展示', async () => {
     const api = vi.fn().mockRejectedValue({ data: { message: 'production 资源验证尚未通过' } })
     const wrapper = mountStatus('production', api)
+    await enterTestEventCode(wrapper)
     await wrapper.get('[data-meta-connection-verify]').trigger('click')
 
     await vi.waitFor(() => expect(wrapper.get('[role="status"]').text()).toBe('production 资源验证尚未通过'))
+  })
+
+  it('Test Event Code 未填写或格式非法时禁用两项远端操作，失焦后统一大写', async () => {
+    const wrapper = mountStatus('production')
+    const verify = wrapper.get('[data-meta-connection-verify]')
+    const evidence = wrapper.get('[data-meta-live-evidence]')
+
+    expect(verify.attributes('disabled')).toBeDefined()
+    expect(evidence.attributes('disabled')).toBeDefined()
+    await enterTestEventCode(wrapper, ' test25401 ')
+    await wrapper.get('[data-meta-test-event-code]').trigger('blur')
+    expect((wrapper.get('[data-meta-test-event-code]').element as HTMLInputElement).value).toBe('TEST25401')
+    expect(verify.attributes('disabled')).toBeUndefined()
+    expect(evidence.attributes('disabled')).toBeUndefined()
   })
 })

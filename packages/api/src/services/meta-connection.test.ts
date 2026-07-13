@@ -16,7 +16,8 @@ import {
 
 const PIXEL_ID = '1234567890'
 const TOKEN = 'meta-token-sensitive'
-const TEST_EVENT_CODE = 'meta-test-code-sensitive'
+const TEST_EVENT_CODE = 'TEST25401'
+const CONFIGURED_TEST_EVENT_CODE = 'TEST17298'
 const RELEASE_COMMIT = 'a'.repeat(40)
 const DATA_KEY = Buffer.alloc(32, 7).toString('base64')
 
@@ -194,7 +195,7 @@ function connectionEnv(
     APP_ENV: 'dev',
     DB: db,
     META_CAPI_ACCESS_TOKEN: TOKEN,
-    META_CAPI_TEST_EVENT_CODE: TEST_EVENT_CODE,
+    META_CAPI_TEST_EVENT_CODE: CONFIGURED_TEST_EVENT_CODE,
     META_CAPI_DATA_KEY_CURRENT: DATA_KEY,
     META_CAPI_QUEUE: { send: vi.fn() },
     RELEASE_COMMIT,
@@ -274,7 +275,7 @@ describe('MetaConnection', () => {
     }), { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
 
-    const status = await verifyMetaConnection(connectionEnv(db), 42, 'Contact')
+    const status = await verifyMetaConnection(connectionEnv(db), 42, 'Contact', TEST_EVENT_CODE)
 
     expect(status).toMatchObject({
       state: 'verified',
@@ -295,6 +296,7 @@ describe('MetaConnection', () => {
     const serializedD1Calls = JSON.stringify(db.calls)
     expect(serializedD1Calls).not.toContain(TOKEN)
     expect(serializedD1Calls).not.toContain(TEST_EVENT_CODE)
+    expect(serializedD1Calls).not.toContain(CONFIGURED_TEST_EVENT_CODE)
     expect(serializedD1Calls).not.toContain(DATA_KEY)
     expect(serializedD1Calls).not.toContain('must-not-leave-service')
 
@@ -315,6 +317,17 @@ describe('MetaConnection', () => {
     expect(payload.data[0].user_data).not.toHaveProperty('external_id')
   })
 
+  it.each(['', 'TEST', 'invalid-code', 'TEST123456789012345678901'])('请求级 Test Event Code=%s 非法时不调用 Graph', async testEventCode => {
+    const db = createConnectionDb()
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(verifyMetaConnection(connectionEnv(db), 42, 'Contact', testEventCode))
+      .rejects.toMatchObject({ code: 'META_TEST_EVENT_CODE_INVALID', httpStatus: 400 })
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(db.verifications.size).toBe(0)
+  })
+
   it('相同连接重复验证时真实调用 Meta 但复用原 revision', async () => {
     const db = createConnectionDb()
     const originalRevision = '1'.repeat(32)
@@ -322,9 +335,9 @@ describe('MetaConnection', () => {
     const fetchMock = vi.fn(async () => successfulMetaResponse())
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(verifyMetaConnection(connectionEnv(db), 42, 'Contact'))
+    await expect(verifyMetaConnection(connectionEnv(db), 42, 'Contact', TEST_EVENT_CODE))
       .resolves.toMatchObject({ state: 'verified' })
-    await expect(verifyMetaConnection(connectionEnv(db), 42, 'Contact'))
+    await expect(verifyMetaConnection(connectionEnv(db), 42, 'Contact', TEST_EVENT_CODE))
       .resolves.toMatchObject({ state: 'verified' })
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
@@ -341,7 +354,7 @@ describe('MetaConnection', () => {
       const pending = deferredResponse()
       vi.stubGlobal('fetch', vi.fn(() => pending.promise))
 
-      const verification = verifyMetaConnection(connectionEnv(db), 42, 'Contact')
+      const verification = verifyMetaConnection(connectionEnv(db), 42, 'Contact', TEST_EVENT_CODE)
       await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce())
       mutate(db)
       pending.resolve(successfulMetaResponse())
@@ -362,11 +375,11 @@ describe('MetaConnection', () => {
       .mockImplementationOnce(() => second.promise)
     vi.stubGlobal('fetch', fetchMock)
 
-    const older = verifyMetaConnection(connectionEnv(db), 41, 'Contact')
+    const older = verifyMetaConnection(connectionEnv(db), 41, 'Contact', TEST_EVENT_CODE)
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
     const newer = verifyMetaConnection(connectionEnv(db, {
       META_CAPI_ACCESS_TOKEN: 'rotated-token',
-    }), 42, 'CompleteRegistration')
+    }), 42, 'CompleteRegistration', TEST_EVENT_CODE)
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
 
     second.resolve(successfulMetaResponse())
@@ -513,7 +526,7 @@ describe('MetaConnection', () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(verifyMetaConnection(connectionEnv(db, { RELEASE_COMMIT: releaseCommit }), 1, 'Contact'))
+    await expect(verifyMetaConnection(connectionEnv(db, { RELEASE_COMMIT: releaseCommit }), 1, 'Contact', TEST_EVENT_CODE))
       .rejects.toMatchObject({ code: 'META_RELEASE_COMMIT_INVALID' })
 
     expect(fetchMock).not.toHaveBeenCalled()
@@ -530,7 +543,7 @@ describe('MetaConnection', () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(verifyMetaConnection(connectionEnv(db, overrides as Partial<Bindings>), 1, 'Contact'))
+    await expect(verifyMetaConnection(connectionEnv(db, overrides as Partial<Bindings>), 1, 'Contact', TEST_EVENT_CODE))
       .rejects.toBeInstanceOf(MetaConnectionError)
 
     expect(fetchMock).not.toHaveBeenCalled()
@@ -542,7 +555,7 @@ describe('MetaConnection', () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(verifyMetaConnection(connectionEnv(db, { APP_ENV: 'production' }), 1, 'Contact'))
+    await expect(verifyMetaConnection(connectionEnv(db, { APP_ENV: 'production' }), 1, 'Contact', TEST_EVENT_CODE))
       .rejects.toMatchObject({ code: 'META_PRODUCTION_TEST_GATE_BLOCKED', httpStatus: 409 })
 
     expect(db.calls.some(call => call.sql.includes('INSERT INTO meta_connection_verifications'))).toBe(false)
@@ -558,7 +571,7 @@ describe('MetaConnection', () => {
     const fetchMock = vi.fn(async () => successfulMetaResponse())
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(verifyMetaConnection(connectionEnv(db, { APP_ENV: 'production' }), 1, 'Contact'))
+    await expect(verifyMetaConnection(connectionEnv(db, { APP_ENV: 'production' }), 1, 'Contact', TEST_EVENT_CODE))
       .resolves.toMatchObject({ state: 'verified', environment: 'production' })
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -577,7 +590,7 @@ describe('MetaConnection', () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(verifyMetaConnection(connectionEnv(db, { APP_ENV: 'production' }), 1, 'Contact'))
+    await expect(verifyMetaConnection(connectionEnv(db, { APP_ENV: 'production' }), 1, 'Contact', TEST_EVENT_CODE))
       .rejects.toMatchObject({ code: 'META_PRODUCTION_TEST_GATE_BLOCKED', httpStatus: 409 })
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -607,7 +620,7 @@ describe('MetaConnection', () => {
       const db = createConnectionDb({ trackingMode: 'test', ...options })
       const fetchMock = vi.fn()
       vi.stubGlobal('fetch', fetchMock)
-      await expect(verifyMetaConnection(connectionEnv(db, { APP_ENV: 'production' }), 1, 'Contact'))
+      await expect(verifyMetaConnection(connectionEnv(db, { APP_ENV: 'production' }), 1, 'Contact', TEST_EVENT_CODE))
         .rejects.toMatchObject({ code: 'META_PRODUCTION_TEST_GATE_BLOCKED', httpStatus: 409 })
       expect(fetchMock).not.toHaveBeenCalled()
       expect(db.verifications.size).toBe(0)
@@ -625,7 +638,7 @@ describe('MetaConnection', () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(verifyMetaConnection(connectionEnv(db, { APP_ENV: 'production' }), 1, 'Contact'))
+    await expect(verifyMetaConnection(connectionEnv(db, { APP_ENV: 'production' }), 1, 'Contact', TEST_EVENT_CODE))
       .rejects.toMatchObject({ code: 'META_PRODUCTION_TEST_GATE_BLOCKED', httpStatus: 409 })
     expect(fetchMock).not.toHaveBeenCalled()
     expect(db.verifications.size).toBe(0)
@@ -665,13 +678,14 @@ describe('MetaConnection', () => {
       events_received: 0,
       fbtrace_id: 'graph-trace-must-not-leak',
     }), { status: 200 })))
-    const error = await verifyMetaConnection(connectionEnv(createConnectionDb()), 1, 'Contact')
+    const error = await verifyMetaConnection(connectionEnv(createConnectionDb()), 1, 'Contact', TEST_EVENT_CODE)
       .catch(value => value as MetaConnectionError)
     const serialized = JSON.stringify({ status, error })
     const fingerprint = await metaConnectionFingerprint(PIXEL_ID, TOKEN)
 
     expect(serialized).not.toContain(TOKEN)
     expect(serialized).not.toContain(TEST_EVENT_CODE)
+    expect(serialized).not.toContain(CONFIGURED_TEST_EVENT_CODE)
     expect(serialized).not.toContain(DATA_KEY)
     expect(serialized).not.toContain(fingerprint)
     expect(serialized).not.toContain('graph-trace-must-not-leak')

@@ -1219,9 +1219,15 @@ adminAttributionRoutes.post('/meta/live-challenge', async (c) => {
 adminAttributionRoutes.post('/meta/live-challenge/consume', async (c) => {
   const adminId = c.get('userId') ?? 0
   if (c.get('userRole') !== 'owner') return errorJson(c, 403, '需要站长权限', { code: 'OWNER_REQUIRED' })
-  const body: { challengeId?: unknown } = await c.req.json<{ challengeId?: unknown }>().catch(() => ({}))
+  const body: { challengeId?: unknown; testEventCode?: unknown }
+    = await c.req.json<{ challengeId?: unknown; testEventCode?: unknown }>().catch(() => ({}))
   try {
-    const result = await consumeMetaLiveChallenge(c.env, adminId, String(body.challengeId || ''))
+    const result = await consumeMetaLiveChallenge(
+      c.env,
+      adminId,
+      String(body.challengeId || ''),
+      String(body.testEventCode || ''),
+    )
     await writeAuditLog(c.env.DB, {
       adminId,
       action: 'attribution.meta_live_challenge_consume',
@@ -1235,7 +1241,10 @@ adminAttributionRoutes.post('/meta/live-challenge/consume', async (c) => {
     const failure = error instanceof MetaLiveChallengeError
       ? error
       : new MetaLiveChallengeError('META_LIVE_CHALLENGE_UNAVAILABLE', 503)
-    return errorJson(c, failure.httpStatus, 'Meta live challenge 验证失败', { code: failure.code })
+    const message = failure.code === 'META_TEST_EVENT_CODE_INVALID'
+      ? 'Test Event Code 格式无效'
+      : 'Meta live challenge 验证失败'
+    return errorJson(c, failure.httpStatus, message, { code: failure.code })
   }
 })
 
@@ -1273,7 +1282,13 @@ adminAttributionRoutes.post('/meta/test-event', async (c) => {
   }
 
   try {
-    const result = await bootstrapMetaConnectionVerification(c.env, adminId, 'Contact')
+    const body: { testEventCode?: unknown } = await c.req.json<{ testEventCode?: unknown }>().catch(() => ({}))
+    const result = await bootstrapMetaConnectionVerification(
+      c.env,
+      adminId,
+      'Contact',
+      String(body.testEventCode || ''),
+    )
     await auditMetaTestEvent(c, adminId, result.deliveryId, {
       code: 'META_CONNECTION_VERIFIED',
       success: true,
@@ -1799,6 +1814,7 @@ function auditEnvironment(value: unknown) {
 function metaConnectionErrorMessage(code: string) {
   if (code === 'META_PRODUCTION_TEST_GATE_PENDING' || code === 'META_PRODUCTION_TEST_GATE_BLOCKED') return 'production Test Event 发布门禁未通过'
   if (code === 'META_TEST_MODE_REQUIRED') return '仅 dev 测试模式可验证 MetaConnection'
+  if (code === 'META_TEST_EVENT_CODE_INVALID') return 'Test Event Code 格式无效'
   if (code === 'META_TEST_EVENT_NOT_CONFIGURED' || code === 'META_RELEASE_COMMIT_INVALID') {
     return 'MetaConnection 验证配置不完整'
   }
