@@ -219,7 +219,8 @@ export async function bootstrapMetaConnectionVerification(
     throw new MetaConnectionError('META_CONNECTION_CONFIGURATION_CHANGED', 409)
   }
 
-  const revision = createVerificationRevision()
+  const revision = reusableVerificationRevision(initialVerification, pixelId, fingerprint)
+    || createVerificationRevision()
   let writeResult: D1Result<unknown>
   try {
     writeResult = await persistVerificationCas(env.DB, {
@@ -525,6 +526,15 @@ function connectionInvalidationReason(
   if (row.token_fingerprint !== fingerprint) return 'access_token_changed'
   if (row.graph_api_version !== META_GRAPH_API_VERSION) return 'graph_api_version_changed'
   return ''
+}
+
+function reusableVerificationRevision(
+  row: VerificationRow | null,
+  pixelId: string,
+  fingerprint: string,
+) {
+  if (!row || connectionInvalidationReason(row, pixelId, fingerprint)) return ''
+  return normalizeVerificationRevision(row.revision)
 }
 
 async function persistInvalidation(

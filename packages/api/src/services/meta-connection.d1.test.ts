@@ -15,6 +15,7 @@ import { META_GRAPH_API_VERSION } from './meta-graph'
 const PIXEL_ID = '1234567890'
 const REPLACEMENT_PIXEL_ID = '9988776655'
 const TOKEN = 'meta-token-sensitive'
+const ROTATED_TOKEN = 'rotated-meta-token-sensitive'
 const TEST_EVENT_CODE = 'meta-test-code-sensitive'
 const RELEASE_COMMIT = 'a'.repeat(40)
 const DATA_KEY = Buffer.alloc(32, 7).toString('base64')
@@ -160,7 +161,7 @@ describe('MetaConnection 真实 D1 CAS', () => {
     })
   })
 
-  it('同一非空 revision 并发更新时陈旧请求不能覆盖胜者', async () => {
+  it('token 变化并轮换 revision 时陈旧请求不能覆盖胜者', async () => {
     await seedVerification({ revision: INITIAL_REVISION })
     const graph = installDeferredGraph(2)
     const olderDb = observeRuns(realDb)
@@ -168,7 +169,11 @@ describe('MetaConnection 真实 D1 CAS', () => {
 
     const older = bootstrapMetaConnectionVerification(connectionEnv(olderDb.db), 41, 'Contact')
     await graph.requests[0]!.entered.promise
-    const newer = bootstrapMetaConnectionVerification(connectionEnv(newerDb.db), 42, 'CompleteRegistration')
+    const newer = bootstrapMetaConnectionVerification(
+      connectionEnv(newerDb.db, ROTATED_TOKEN),
+      42,
+      'CompleteRegistration',
+    )
     await graph.requests[1]!.entered.promise
 
     graph.requests[1]!.response.resolve(successfulMetaResponse())
@@ -188,6 +193,7 @@ describe('MetaConnection 真实 D1 CAS', () => {
       pixelId: PIXEL_ID,
       eventName: 'CompleteRegistration',
       ownerUserId: 42,
+      token: ROTATED_TOKEN,
     })
   })
 
@@ -248,11 +254,11 @@ async function applyMigration(name: string) {
   }
 }
 
-function connectionEnv(db: D1Database): Bindings {
+function connectionEnv(db: D1Database, token = TOKEN): Bindings {
   return {
     APP_ENV: 'dev',
     DB: db,
-    META_CAPI_ACCESS_TOKEN: TOKEN,
+    META_CAPI_ACCESS_TOKEN: token,
     META_CAPI_TEST_EVENT_CODE: TEST_EVENT_CODE,
     META_CAPI_DATA_KEY_CURRENT: DATA_KEY,
     META_CAPI_QUEUE: { send: vi.fn() },
@@ -298,10 +304,11 @@ async function readVerification() {
 
 async function expectWinnerToRemainValid(
   winner: VerificationRow,
-  expected: { pixelId: string; eventName: string; ownerUserId: number },
+  expected: { pixelId: string; eventName: string; ownerUserId: number; token?: string },
 ) {
   const finalRow = await readVerification()
-  const fingerprint = await metaConnectionFingerprint(expected.pixelId, TOKEN)
+  const token = expected.token ?? TOKEN
+  const fingerprint = await metaConnectionFingerprint(expected.pixelId, token)
 
   expect(finalRow).toEqual(winner)
   expect(finalRow).toMatchObject({
@@ -317,12 +324,12 @@ async function expectWinnerToRemainValid(
     invalidation_reason: '',
     revision: expect.stringMatching(/^[0-9a-f]{32}$/),
   })
-  await expect(requireVerifiedMetaConnection(connectionEnv(realDb))).resolves.toEqual({
+  await expect(requireVerifiedMetaConnection(connectionEnv(realDb, token))).resolves.toEqual({
     pixelId: expected.pixelId,
     trackingMode: 'test',
     revision: finalRow.revision,
   })
-  await expect(getMetaConnectionStatus(connectionEnv(realDb))).resolves.toMatchObject({
+  await expect(getMetaConnectionStatus(connectionEnv(realDb, token))).resolves.toMatchObject({
     state: 'verified',
     invalidationReason: '',
   })
