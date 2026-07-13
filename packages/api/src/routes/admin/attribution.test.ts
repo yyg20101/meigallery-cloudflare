@@ -1197,6 +1197,29 @@ describe('后台归因中心 API', () => {
     expect((await response.json()).code).toBe(code)
   })
 
+  it('Meta 从测试模式切换生产模式时保留当前连接验证', async () => {
+    const db = createAttributionDb({ connectionVerified: true })
+    const response = await createApp('owner').request('/api/admin/attribution/platforms/meta', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        enabled: true,
+        browserEnabled: true,
+        serverEnabled: false,
+        destinationId: '1234567890',
+        debugEnabled: false,
+        mode: 'production',
+        rolloutPercentage: 0,
+      }),
+    }, { DB: db, APP_ENV: 'production' } as unknown as Bindings)
+
+    expect(response.status).toBe(200)
+    const connectionUpdate = db.calls.find(call => call.sql.includes('UPDATE ad_platform_connections'))
+    const verificationUpdate = db.calls.find(call => call.sql.includes('UPDATE meta_connection_verifications'))
+    expect(connectionUpdate?.params.at(-1)).toBe(0)
+    expect(verificationUpdate?.params).toEqual([0, 0, 0])
+  })
+
   it('incident 列表拒绝未知 status，避免无界或歧义查询', async () => {
     const res = await createApp('admin').request(
       '/api/admin/attribution/meta/incidents?status=broken',
