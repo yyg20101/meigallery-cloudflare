@@ -2045,6 +2045,27 @@ describe('后台归因中心 API', () => {
   })
 
   it.each([
+    ['/api/admin/attribution/meta/test-event', 'META_TEST_EVENT_CODE_INVALID'],
+    ['/api/admin/attribution/meta/live-challenge/consume', 'META_LIVE_CHALLENGE_INVALID'],
+  ])('%s 收到非对象 JSON 时稳定返回 400', async (path, expectedCode) => {
+    const db = createAttributionDb()
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    for (const value of [null, []]) {
+      const res = await createApp('owner').request(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(value),
+      }, { DB: db, ...VALID_READINESS_ENV } as unknown as Bindings)
+      const body = await res.json()
+      expect(res.status).toBe(400)
+      expect(body.code).toBe(expectedCode)
+    }
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it.each([
     '/api/admin/attribution/meta/live-challenge',
     '/api/admin/attribution/meta/live-challenge/consume',
     '/api/admin/attribution/meta/resource-attestation-ticket',

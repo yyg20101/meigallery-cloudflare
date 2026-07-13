@@ -38,8 +38,8 @@ Dataset Quality 通过后：
 
 1. 保持 `ad_platform_connections.mode=test`、CAPI 关闭、rollout `0%`。
 2. 运行 production post-deploy resource attestation。
-3. 触发 production synthetic Test Event，要求 Meta 返回 `events_received=1`。
-4. 在 production 后台输入 Events Manager 当前显示的 Test Event Code；验证连接与 `Live Evidence` 必须共用该页面内存值。
+3. 在 production 后台输入 Events Manager 当前显示的 Test Event Code。
+4. 触发 production synthetic Test Event，要求 Meta 返回 `events_received=1`；连接验证与 `Live Evidence` 必须共用上述页面内存值。
 5. 在 production 后台触发 `Live Evidence`。
 6. 在 Meta Events Manager 确认：
    - `Contact` 同时存在 Browser/Server，且 event ID 相同。

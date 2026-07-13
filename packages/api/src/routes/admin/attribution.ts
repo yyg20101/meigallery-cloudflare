@@ -1219,9 +1219,9 @@ adminAttributionRoutes.post('/meta/live-challenge', async (c) => {
 adminAttributionRoutes.post('/meta/live-challenge/consume', async (c) => {
   const adminId = c.get('userId') ?? 0
   if (c.get('userRole') !== 'owner') return errorJson(c, 403, '需要站长权限', { code: 'OWNER_REQUIRED' })
-  const body: { challengeId?: unknown; testEventCode?: unknown }
-    = await c.req.json<{ challengeId?: unknown; testEventCode?: unknown }>().catch(() => ({}))
   try {
+    const body = jsonObject(await c.req.json<unknown>().catch(() => null))
+    if (!body) throw new MetaLiveChallengeError('META_LIVE_CHALLENGE_INVALID', 400)
     const result = await consumeMetaLiveChallenge(
       c.env,
       adminId,
@@ -1282,7 +1282,8 @@ adminAttributionRoutes.post('/meta/test-event', async (c) => {
   }
 
   try {
-    const body: { testEventCode?: unknown } = await c.req.json<{ testEventCode?: unknown }>().catch(() => ({}))
+    const body = jsonObject(await c.req.json<unknown>().catch(() => null))
+    if (!body) throw new MetaConnectionError('META_TEST_EVENT_CODE_INVALID', 400)
     const result = await bootstrapMetaConnectionVerification(
       c.env,
       adminId,
@@ -2072,6 +2073,12 @@ function readAttributionSourceFilter(c: AdminAttributionContext) {
 function normalizedQueryValue(value: string | undefined) {
   const text = String(value ?? '').trim()
   return text && text !== 'all' ? text : ''
+}
+
+function jsonObject(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
 }
 
 function numberValue(value: unknown) {
