@@ -199,7 +199,7 @@ async function onDirectRegister() {
       username: username.value,
       turnstileToken: hasTurnstile.value ? turnstileToken.value : undefined,
       ...buildInviteRegistrationContext(),
-      attribution: tracking.buildRegistrationAttributionContext(),
+      attribution: await tracking.buildRegistrationAttributionContext(),
     })
     await completeRegistration(result.trackingInstructions)
     router.push('/')
@@ -263,7 +263,7 @@ async function onSubmitWithCode() {
       code: verificationCode.value,
       turnstileToken: hasTurnstile.value ? turnstileToken.value : undefined,
       ...buildInviteRegistrationContext(),
-      attribution: tracking.buildRegistrationAttributionContext(),
+      attribution: await tracking.buildRegistrationAttributionContext(),
     })
     await completeRegistration(result.trackingInstructions)
     router.push('/')

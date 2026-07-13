@@ -7,6 +7,8 @@ import { verifyPixelReceiptToken } from '../utils/pixel-receipt'
 import { getCookie } from 'hono/cookie'
 import { MARKETING_CONSENT_RECEIPT_COOKIE } from './marketing-consent'
 import { resolveTrustedMarketingConsent } from '../utils/marketing-consent-receipt'
+import { AD_ATTRIBUTION_RECEIPT_COOKIE } from './ad-attribution'
+import { resolveTrustedAdAttributionProvider } from '../utils/ad-attribution-receipt'
 
 const PUBLIC_CONVERSION_ACTIONS = new Set(['contact'])
 const CONVERSION_ID_RE = /^[A-Za-z0-9_-]{8,120}$/
@@ -43,6 +45,12 @@ conversionRoutes.post('/events', async (c) => {
     getCookie(c, MARKETING_CONSENT_RECEIPT_COOKIE),
     body.consentState,
   )
+  const attributionProvider = consentState === 'granted' && body.adAttributionState === 'resolved'
+    ? await resolveTrustedAdAttributionProvider(
+        c.env.SESSION_SECRET,
+        getCookie(c, AD_ATTRIBUTION_RECEIPT_COOKIE),
+      )
+    : null
   let result
   try {
     result = await recordContact(c.env, {
@@ -60,6 +68,7 @@ conversionRoutes.post('/events', async (c) => {
       utmCampaign: String(body.utmCampaign || ''),
       utmContent: String(body.utmContent || ''),
       consentState,
+      attributionProvider: attributionProvider ?? '',
       methodType,
       actionTarget,
       metadata: isPlainRecord(body.metadata) ? body.metadata : {},

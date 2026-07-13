@@ -16,6 +16,7 @@ import { importRoutes } from './routes/imports'
 import { analyticsRoutes } from './routes/analytics'
 import { conversionRoutes } from './routes/conversions'
 import { marketingConsentRoutes } from './routes/marketing-consent'
+import { adAttributionRoutes } from './routes/ad-attribution'
 import { inviteRoutes } from './routes/invites'
 import { PUBLIC_SETTING_KEYS } from './utils/site-settings'
 import { sanitizePublicSiteSetting, sanitizePublicSiteSettings } from './utils/public-site-settings'
@@ -232,6 +233,7 @@ app.route('/api/imports', importRoutes)
 app.route('/api/analytics', analyticsRoutes)
 app.route('/api/conversions', conversionRoutes)
 app.route('/api/marketing-consent', marketingConsentRoutes)
+app.route('/api/ad-attribution', adAttributionRoutes)
 app.route('/api/invites', inviteRoutes)
 // 公开站点信息（不需要登录）
 app.get('/api/settings/public', async (c) => {

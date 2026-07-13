@@ -1,5 +1,6 @@
 import type {
   ActiveConversionActionType,
+  AdAttributionProvider,
   AdDeliveryTransport,
   AdPlatformConversionEventName,
   AdPlatformEncryptedEnvelope,
@@ -38,7 +39,7 @@ import {
 } from '../utils/tiktok-events-crypto'
 import { transitionDeliveryStatus } from './ad-platform/delivery-store'
 import { hasAdPlatformAdapter, mapConversionToPlatformEvent } from './ad-platform/registry'
-import { listAdPlatformConnections, readAdPlatformConnection } from './ad-platform/connections'
+import { readAdPlatformConnection } from './ad-platform/connections'
 import {
   createAdPlatformSecureOutboxStatement,
   enqueueAdPlatformSecureDelivery,
@@ -99,6 +100,7 @@ export interface RecordConversionInput {
   utmCampaign?: string
   utmContent?: string
   consentState?: AnalyticsConsentState | string
+  attributionProvider?: AdAttributionProvider | string
   methodType?: string
   actionTarget?: string
   metadata?: Record<string, unknown>
@@ -507,6 +509,7 @@ function normalizeConversionInput(input: RecordConversionInput): RecordConversio
     routeName: normalizeText(input.routeName || '', 120),
     path: normalizeText(input.path || '', 240),
     consentState: normalizeText(input.consentState || 'limited', 20) || 'limited',
+    attributionProvider: normalizeAttributionProvider(input.attributionProvider),
   }
 }
 
@@ -529,9 +532,9 @@ async function insertConversion(
       id, action_type, dedupe_key, occurred_at, date, visitor_id, session_id, user_id,
       source_channel, source_name, tracking_source_slug, utm_source, utm_medium,
       utm_campaign, utm_content, method_type, action_target, route_name, path,
-      metadata, duplicate_of
+      attribution_provider, metadata, duplicate_of
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     id,
     input.actionType,
@@ -552,6 +555,7 @@ async function insertConversion(
     input.actionTarget || '',
     input.routeName || '',
     input.path || '',
+    input.attributionProvider || '',
     JSON.stringify(sanitizeConversionMetadata(input.metadata || {})),
     duplicateOf,
   ).run()
@@ -644,12 +648,11 @@ async function buildConversionBatchPlan(
   context: RecordConversionContext,
   beforeSensitiveAccess: () => Promise<void>,
 ) {
-  const statements: D1PreparedStatement[] = []
+  const statements: D1PreparedStatement[] = [conversionDailyStatement(env.DB, input, date, actionId)]
   const deliveries: PlannedDelivery[] = []
-  const [settings, platformConnections] = await Promise.all([
-    readMetaDeliverySettings(env.DB),
-    listAdPlatformConnections(env.DB),
-  ])
+  const provider = normalizeAttributionProvider(input.attributionProvider)
+  if (!provider) return { statements, deliveries }
+
   let sensitiveContextPromise: Promise<AdPlatformSensitiveContext> | undefined
   const loadSensitiveContext = () => {
     sensitiveContextPromise ??= (async () => {
@@ -658,14 +661,16 @@ async function buildConversionBatchPlan(
     })()
     return sensitiveContextPromise
   }
-  const tiktokConnection = platformConnections.find(connection => connection.provider === 'tiktok') ?? null
-  const [capiEncryption, tiktokEncryption] = await Promise.all([
-    buildCapiEncryptionPlan(env, settings, input, loadSensitiveContext),
-    buildTikTokEncryptionPlan(env, tiktokConnection, input, loadSensitiveContext),
-  ])
-  statements.push(conversionDailyStatement(env.DB, input, date, actionId))
-  deliveries.push(...await planMetaDeliveries(env, settings, input, date, capiEncryption))
-  deliveries.push(...await planTikTokDeliveries(env, tiktokConnection, input, date, tiktokEncryption))
+  if (provider === 'meta') {
+    const settings = await readMetaDeliverySettings(env.DB)
+    const capiEncryption = await buildCapiEncryptionPlan(env, settings, input, loadSensitiveContext)
+    deliveries.push(...await planMetaDeliveries(env, settings, input, date, capiEncryption))
+  }
+  else {
+    const connection = await readAdPlatformConnection(env.DB, 'tiktok')
+    const encryption = await buildTikTokEncryptionPlan(env, connection, input, loadSensitiveContext)
+    deliveries.push(...await planTikTokDeliveries(env, connection, input, date, encryption))
+  }
   for (const delivery of deliveries) {
     delivery.statementIndex = statements.push(conversionDeliveryStatement(env.DB, delivery, actionId)) - 1
     statements.push(deliveryDailyStatement(env.DB, delivery, date))
@@ -697,9 +702,9 @@ function fencedConversionActionStatement(
       id, action_type, dedupe_key, occurred_at, date, visitor_id, session_id, user_id,
       source_channel, source_name, tracking_source_slug, utm_source, utm_medium,
       utm_campaign, utm_content, method_type, action_target, route_name, path,
-      metadata, duplicate_of
+      attribution_provider, metadata, duplicate_of
     )
-    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     WHERE EXISTS (
       SELECT 1 FROM analytics_conversion_dedupe_claims
       WHERE dedupe_digest = ?
@@ -729,9 +734,9 @@ function conversionActionStatement(
       id, action_type, dedupe_key, occurred_at, date, visitor_id, session_id, user_id,
       source_channel, source_name, tracking_source_slug, utm_source, utm_medium,
       utm_campaign, utm_content, method_type, action_target, route_name, path,
-      metadata, duplicate_of
+      attribution_provider, metadata, duplicate_of
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(...values)
 }
 
@@ -746,7 +751,8 @@ function conversionActionValues(
     id, input.actionType, dedupeKey, occurredAt, date, input.visitorId || '', input.sessionId || '', input.userId ?? null,
     input.sourceChannel || 'unknown', input.sourceName || '', input.trackingSourceSlug || '', input.utmSource || '',
     input.utmMedium || '', input.utmCampaign || '', input.utmContent || '', input.methodType || '', input.actionTarget || '',
-    input.routeName || '', input.path || '', JSON.stringify(sanitizeConversionMetadata(input.metadata || {})), '',
+    input.routeName || '', input.path || '', input.attributionProvider || '',
+    JSON.stringify(sanitizeConversionMetadata(input.metadata || {})), '',
   ]
 }
 
@@ -757,7 +763,10 @@ async function planMetaDeliveries(
   date: string,
   capiEncryption: CapiEncryptionPlan,
 ): Promise<PlannedDelivery[]> {
-  if (input.consentState !== 'granted' || settings.mode === 'disabled' || !settings.pixelId) return []
+  if (input.attributionProvider !== 'meta'
+    || input.consentState !== 'granted'
+    || settings.mode === 'disabled'
+    || !settings.pixelId) return []
   const eventName = mapConversionToPlatformEvent('meta', input.actionType)
   const eventId = await buildExternalEventId(env.SESSION_SECRET, {
     actionType: input.actionType,
@@ -852,6 +861,7 @@ async function planTikTokDeliveries(
 ): Promise<PlannedDelivery[]> {
   if (!connection
     || connection.provider !== 'tiktok'
+    || input.attributionProvider !== 'tiktok'
     || input.consentState !== 'granted'
     || !connection.enabled
     || connection.mode === 'disabled'
@@ -949,7 +959,11 @@ function conversionDeliveryStatement(db: D1Database, delivery: PlannedDelivery, 
       rollout_target_percentage, rollout_effective_percentage, rollout_bucket, updated_at
     )
     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')
-    WHERE EXISTS (SELECT 1 FROM analytics_conversion_actions WHERE id = ?)
+    WHERE EXISTS (
+      SELECT 1
+      FROM analytics_conversion_actions
+      WHERE id = ? AND attribution_provider = ?
+    )
   `).bind(
     delivery.deliveryId,
     actionId,
@@ -972,6 +986,7 @@ function conversionDeliveryStatement(db: D1Database, delivery: PlannedDelivery, 
     delivery.rolloutEffectivePercentage,
     delivery.rolloutBucket,
     actionId,
+    delivery.provider,
   )
 }
 
@@ -1005,7 +1020,8 @@ async function finalizeCapiDeliveries(
 }
 
 function shouldCreateMetaDelivery(settings: MetaDeliverySettings, input: RecordConversionInput) {
-  return input.consentState === 'granted'
+  return input.attributionProvider === 'meta'
+    && input.consentState === 'granted'
     && (settings.mode === 'test' || settings.mode === 'production')
     && Boolean(settings.pixelId)
     && (settings.pixelEnabled || settings.capiEnabled)
@@ -1335,6 +1351,10 @@ function conversionDedupeKey(input: RecordConversionInput, occurredDate: string)
     methodType: input.methodType,
     actionTarget: input.actionTarget,
   })
+}
+
+function normalizeAttributionProvider(value: unknown): AdAttributionProvider | '' {
+  return value === 'meta' || value === 'tiktok' ? value : ''
 }
 
 function normalizeText(value: unknown, maxLength: number) {

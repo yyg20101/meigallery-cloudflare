@@ -18,6 +18,7 @@ type RegistrationAttributionContext = {
   utmCampaign?: string
   utmContent?: string
   consentState?: AnalyticsConsentState
+  adAttributionState?: 'resolved' | 'suppress'
   browserIdentifiers?: unknown
 }
 

@@ -53,16 +53,18 @@ export async function queryAttributionSummary(
   range: AnalyticsDateRange,
   provider: AttributionDashboardProvider,
 ) {
-  const [business, historical, delivery, retryExhausted] = await Promise.all([
+  const [business, historical, delivery, retryExhausted, routing] = await Promise.all([
     queryFirst(db, `
       SELECT
-        COALESCE(SUM(CASE WHEN action_type = 'contact' THEN action_count ELSE 0 END), 0) AS contact_count,
-        COALESCE(SUM(CASE WHEN action_type = 'complete_registration' THEN action_count ELSE 0 END), 0) AS complete_registration_count,
-        COALESCE(SUM(action_count), 0) AS total_action_count
-      FROM analytics_conversion_daily
+        COALESCE(SUM(CASE WHEN action_type = 'contact' THEN 1 ELSE 0 END), 0) AS contact_count,
+        COALESCE(SUM(CASE WHEN action_type = 'complete_registration' THEN 1 ELSE 0 END), 0) AS complete_registration_count,
+        COUNT(*) AS total_action_count
+      FROM analytics_conversion_actions
       WHERE date BETWEEN ? AND ?
         AND action_type IN ${ACTIVE_ACTION_SQL}
-    `, [range.from, range.to]),
+        AND duplicate_of = ''
+        AND attribution_provider = ?
+    `, [range.from, range.to, provider]),
     queryFirst(db, `
       SELECT COALESCE(SUM(action_count), 0) AS historical_lead_count
       FROM analytics_conversion_daily
@@ -81,16 +83,32 @@ export async function queryAttributionSummary(
         AND d.status = 'failed'
         AND d.error_code = 'retry_exhausted'
     `, [range.from, range.to, provider]),
+    queryFirst(db, `
+      SELECT
+        COUNT(DISTINCT CASE WHEN a.attribution_provider = '' THEN a.id END) AS unrouted_action_count,
+        COUNT(DISTINCT CASE
+          WHEN a.attribution_provider <> '' AND a.attribution_provider <> d.provider THEN a.id
+        END) AS mismatch_count
+      FROM analytics_conversion_actions a
+      LEFT JOIN analytics_conversion_deliveries d ON d.conversion_action_id = a.id
+      WHERE a.date BETWEEN ? AND ?
+        AND a.action_type IN ${ACTIVE_ACTION_SQL}
+        AND a.duplicate_of = ''
+    `, [range.from, range.to]),
   ])
 
   const businessRow = business.rows[0] ?? {}
   return {
-    usage: mergeUsage(business, historical, delivery, retryExhausted),
+    usage: mergeUsage(business, historical, delivery, retryExhausted, routing),
     data: {
       provider,
       business: serializeBusiness(businessRow),
       historical: { leadCount: count((historical.rows[0] ?? {}).historical_lead_count) },
       delivery: serializeDelivery(delivery.rows[0] ?? {}, retryExhausted.rows[0] ?? {}),
+      routing: {
+        mismatchCount: count((routing.rows[0] ?? {}).mismatch_count),
+        unroutedActionCount: count((routing.rows[0] ?? {}).unrouted_action_count),
+      },
     },
   }
 }
@@ -104,14 +122,16 @@ export async function queryAttributionTrends(
     queryAll(db, `
       SELECT
         date,
-        COALESCE(SUM(CASE WHEN action_type = 'contact' THEN action_count ELSE 0 END), 0) AS contact_count,
-        COALESCE(SUM(CASE WHEN action_type = 'complete_registration' THEN action_count ELSE 0 END), 0) AS complete_registration_count
-      FROM analytics_conversion_daily
+        COALESCE(SUM(CASE WHEN action_type = 'contact' THEN 1 ELSE 0 END), 0) AS contact_count,
+        COALESCE(SUM(CASE WHEN action_type = 'complete_registration' THEN 1 ELSE 0 END), 0) AS complete_registration_count
+      FROM analytics_conversion_actions
       WHERE date BETWEEN ? AND ?
         AND action_type IN ${ACTIVE_ACTION_SQL}
+        AND duplicate_of = ''
+        AND attribution_provider = ?
       GROUP BY date
       ORDER BY date ASC
-    `, [range.from, range.to]),
+    `, [range.from, range.to, provider]),
     queryAll(db, `${deliveryAggregateSql()}
       GROUP BY date
       ORDER BY date ASC
@@ -173,15 +193,8 @@ export async function queryAttributionQuality(
         a.date,
         COALESCE(SUM(CASE WHEN ${identifiers.browserColumn} = 1 THEN 1 ELSE 0 END), 0) AS browser_id_numerator,
         COUNT(*) AS browser_id_denominator,
-        COALESCE(SUM(CASE
-          WHEN a.source_channel = 'ad'
-            AND lower(a.utm_source) IN ${identifiers.sourceSql}
-            AND ${identifiers.clickColumn} = 1
-          THEN 1 ELSE 0 END), 0) AS click_id_numerator,
-        COALESCE(SUM(CASE
-          WHEN a.source_channel = 'ad'
-            AND lower(a.utm_source) IN ${identifiers.sourceSql}
-          THEN 1 ELSE 0 END), 0) AS click_id_denominator,
+        COALESCE(SUM(CASE WHEN ${identifiers.clickColumn} = 1 THEN 1 ELSE 0 END), 0) AS click_id_numerator,
+        COUNT(*) AS click_id_denominator,
         COALESCE(SUM(CASE WHEN d.has_email = 1 THEN 1 ELSE 0 END), 0) AS email_numerator,
         COUNT(*) AS email_denominator,
         COALESCE(SUM(CASE WHEN d.has_external_id = 1 THEN 1 ELSE 0 END), 0) AS external_id_numerator,
@@ -190,12 +203,13 @@ export async function queryAttributionQuality(
       JOIN analytics_conversion_actions a ON a.id = d.conversion_action_id
       WHERE a.date BETWEEN ? AND ?
         AND a.action_type IN ${ACTIVE_ACTION_SQL}
+        AND a.attribution_provider = ?
         AND d.provider = ?
         AND d.transport = 'server'
         AND d.status IN ${PLANNED_SERVER_STATUS_SQL}
       GROUP BY a.date
       ORDER BY a.date ASC
-    `, [range.from, range.to, provider]),
+    `, [range.from, range.to, provider, provider]),
     provider === 'meta' ? queryAll(db, `
       SELECT
         date(datetime(collected_at, '+8 hours')) AS date,
@@ -260,6 +274,7 @@ export async function queryAttributionBreakdown(
       WHERE a.date BETWEEN ? AND ?
         AND a.action_type IN ${ACTIVE_ACTION_SQL}
         AND a.duplicate_of = ''
+        AND a.attribution_provider = ?
     ),
     delivery_per_action AS (
       SELECT
@@ -289,7 +304,7 @@ export async function queryAttributionBreakdown(
     GROUP BY af.dimension_value
     ORDER BY action_count DESC, af.dimension_value ASC
     LIMIT ?
-  `, [range.from, range.to, provider, limit])
+  `, [range.from, range.to, provider, provider, limit])
 
   return {
     usage: result.usage,
@@ -336,14 +351,12 @@ function matchIdentifierContract(provider: AttributionDashboardProvider) {
     return {
       browserColumn: 'd.has_ttp',
       clickColumn: 'd.has_ttclid',
-      sourceSql: "('tiktok', 'tt')",
       labels: { browserId: '_ttp', clickId: 'ttclid', email: 'email', externalId: 'external_id' },
     }
   }
   return {
     browserColumn: 'd.has_fbp',
     clickColumn: 'd.has_fbc',
-    sourceSql: "('facebook', 'fb', 'meta', 'instagram')",
     labels: { browserId: 'fbp', clickId: 'fbc', email: 'email', externalId: 'external_id' },
   }
 }

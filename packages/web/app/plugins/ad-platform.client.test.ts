@@ -6,6 +6,7 @@ describe('广告平台浏览器插件', () => {
   const fetchSettings = vi.fn()
   const trackPageView = vi.fn()
   const teardownAdBrowserTracking = vi.fn()
+  const clearAdAttribution = vi.fn()
   const refreshMarketingConsent = vi.fn()
   const consent = ref<'limited' | 'granted' | 'denied'>('limited')
   const facebookPixelEnabled = ref(true)
@@ -23,6 +24,8 @@ describe('广告平台浏览器插件', () => {
     fetchSettings.mockResolvedValue(undefined)
     trackPageView.mockReset()
     teardownAdBrowserTracking.mockReset()
+    clearAdAttribution.mockReset()
+    clearAdAttribution.mockResolvedValue(undefined)
     refreshMarketingConsent.mockReset()
     refreshMarketingConsent.mockResolvedValue(undefined)
 
@@ -36,7 +39,7 @@ describe('广告平台浏览器插件', () => {
       canTrackMarketing: computed(() => consent.value === 'granted'),
       refresh: refreshMarketingConsent,
     }))
-    vi.stubGlobal('useTracking', () => ({ trackPageView, teardownAdBrowserTracking }))
+    vi.stubGlobal('useTracking', () => ({ trackPageView, teardownAdBrowserTracking, clearAdAttribution }))
   })
 
   afterEach(() => {
@@ -47,8 +50,9 @@ describe('广告平台浏览器插件', () => {
     const plugin = (await import('./ad-platform.client')).default
 
     await plugin({} as never)
+    await nextTick()
     expect(fetchSettings).toHaveBeenCalledOnce()
-    expect(teardownAdBrowserTracking).toHaveBeenCalledTimes(1)
+    expect(clearAdAttribution).toHaveBeenCalledTimes(1)
     expect(trackPageView).not.toHaveBeenCalled()
 
     consent.value = 'granted'
@@ -64,7 +68,7 @@ describe('广告平台浏览器插件', () => {
 
     consent.value = 'denied'
     await nextTick()
-    expect(teardownAdBrowserTracking).toHaveBeenCalledTimes(2)
+    expect(clearAdAttribution).toHaveBeenCalledTimes(2)
     expect(trackPageView).toHaveBeenCalledTimes(3)
   })
 

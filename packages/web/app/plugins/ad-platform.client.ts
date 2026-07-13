@@ -12,14 +12,14 @@ export default defineNuxtPlugin(async () => {
     return
   }
 
-  function syncBrowserTracking() {
+  async function syncBrowserTracking() {
     if (!canTrackMarketing.value || !browserConnections.value.some(connection => connection.destinationId)) {
-      tracking.teardownAdBrowserTracking()
+      await tracking.clearAdAttribution()
       return
     }
-    tracking.trackPageView()
+    await tracking.trackPageView()
   }
 
-  watch([browserConnections, canTrackMarketing], syncBrowserTracking, { immediate: true, deep: true })
-  router.afterEach(syncBrowserTracking)
+  watch([browserConnections, canTrackMarketing], () => void syncBrowserTracking(), { immediate: true, deep: true })
+  router.afterEach(() => void syncBrowserTracking())
 })

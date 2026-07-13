@@ -4,8 +4,8 @@ import type { AdPlatformQueueMessage } from '@meigallery/shared'
 import type { Bindings } from '../index'
 import { decryptMetaCapiContext, loadMetaCapiCryptoKeys } from '../utils/meta-capi-crypto'
 import {
-  recordContact,
-  recordRegistration,
+  recordContact as recordContactService,
+  recordRegistration as recordRegistrationService,
   recordRegistrationFactOnly,
   type RecordContactInput,
   type RecordRegistrationInput,
@@ -21,6 +21,17 @@ const metaCryptoMocks = vi.hoisted(() => ({
   encrypt: vi.fn(),
   loadKeys: vi.fn(),
 }))
+
+const recordContact: typeof recordContactService = (env, input, context) => recordContactService(
+  env,
+  { attributionProvider: 'meta', ...input },
+  context,
+)
+const recordRegistration: typeof recordRegistrationService = (env, input, context) => recordRegistrationService(
+  env,
+  { attributionProvider: 'meta', ...input },
+  context,
+)
 
 vi.mock('../utils/ad-platform-identifiers', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../utils/ad-platform-identifiers')>()
@@ -203,12 +214,12 @@ function createConversionDb(options: {
       const dedupeKey = String(call.params[2])
       const sessionId = String(call.params[6])
       if (call.sql.includes('FROM analytics_conversion_dedupe_claims')) {
-        const claim = target.claims.get(String(call.params[21]))
+        const claim = target.claims.get(String(call.params[22]))
         if (!claim
-          || claim.ownerActionId !== String(call.params[22])
-          || claim.claimToken !== String(call.params[23])
-          || claim.claimedAt !== String(call.params[24])
-          || claim.expiresAt !== String(call.params[25])) {
+          || claim.ownerActionId !== String(call.params[23])
+          || claim.claimToken !== String(call.params[24])
+          || claim.claimedAt !== String(call.params[25])
+          || claim.expiresAt !== String(call.params[26])) {
           return { meta: { changes: 0, rows_written: 0, rows_read: 0, duration: 1 } }
         }
       }
@@ -542,7 +553,7 @@ describe('conversion ledger service', () => {
     ))).toHaveLength(1)
   })
 
-  it('同一联系事实为 Meta 与 TikTok 生成独立浏览器投递', async () => {
+  it('同时启用 Meta 与 TikTok 时仍只向可信来源对应平台投递', async () => {
     const db = createConversionDb({
       metaBrowserEnabled: true,
       metaDestinationId: '1234567890',
@@ -551,12 +562,33 @@ describe('conversion ledger service', () => {
       tiktokDestinationId: 'C123456789ABCDEF',
       tiktokMode: 'test',
     })
-    const result = await recordContact(envFor(db), grantedContactInput())
+    const metaResult = await recordContact(envFor(db), grantedContactInput())
+    const tiktokResult = await recordContact(envFor(db), {
+      ...grantedContactInput(),
+      sessionId: 'session_tiktok',
+      attributionProvider: 'tiktok',
+    })
 
-    expect(result.trackingInstructions).toHaveLength(2)
-    expect(result.trackingInstructions.map(item => item.provider)).toEqual(['meta', 'tiktok'])
-    expect(result.trackingInstructions.every(item => item.eventName === 'Contact')).toBe(true)
+    expect(metaResult.trackingInstructions.map(item => item.provider)).toEqual(['meta'])
+    expect(tiktokResult.trackingInstructions.map(item => item.provider)).toEqual(['tiktok'])
     expect(db.insertedDeliveries.map(item => item.provider)).toEqual(['meta', 'tiktok'])
+  })
+
+  it('未知来源不创建任何广告平台投递', async () => {
+    const db = createConversionDb({
+      metaBrowserEnabled: true,
+      metaDestinationId: '1234567890',
+      metaMode: 'test',
+      tiktokBrowserEnabled: true,
+      tiktokDestinationId: 'C123456789ABCDEF',
+      tiktokMode: 'test',
+    })
+
+    const result = await recordContactService(envFor(db), grantedContactInput())
+
+    expect(result.created).toBe(true)
+    expect(result.trackingInstructions).toEqual([])
+    expect(db.insertedDeliveries).toEqual([])
   })
 
   it('公开 metadata 中的 Meta 标识和网络标识不进入 SQL 参数', async () => {
@@ -678,7 +710,7 @@ describe('conversion ledger service', () => {
     expect(db.calls.some(call => (
       call.sql.includes('INSERT OR IGNORE INTO analytics_conversion_actions') &&
       String(call.params[2]).startsWith('duplicate:contact:session_1:telegram:floating_contact_panel:') &&
-      call.params[20] === 'existing_contact:session_1:telegram:floating_contact_panel'
+      call.params[21] === 'existing_contact:session_1:telegram:floating_contact_panel'
     ))).toBe(true)
     expect(db.calls.some(call => call.sql.includes('analytics_conversion_daily'))).toBe(false)
     expect(db.calls.some(call => call.sql.includes('analytics_conversion_deliveries'))).toBe(false)
@@ -744,6 +776,8 @@ describe('conversion ledger service', () => {
     const browser = {
       fbp: 'fb.1.1700000000000.987654321',
       fbc: 'fb.1.1700000000000.CLICK_s5-unique',
+      ttclid: 'ttclid-must-not-reach-meta',
+      ttp: 'ttp-must-not-reach-meta',
       clientIpAddress: '203.0.113.211',
       clientUserAgent: 'S5 Registration Browser/5.0',
     }
@@ -792,10 +826,15 @@ describe('conversion ledger service', () => {
       },
     })
     expect(decrypted).toEqual({
-      ...browser,
+      fbp: browser.fbp,
+      fbc: browser.fbc,
+      clientIpAddress: browser.clientIpAddress,
+      clientUserAgent: browser.clientUserAgent,
       emailSha256: await sha256Hex(email.trim().toLowerCase()),
       externalIdSha256: await sha256Hex(externalId),
     })
+    expect(decrypted).not.toHaveProperty('ttclid')
+    expect(decrypted).not.toHaveProperty('ttp')
     const serializedPersistentBoundaries = JSON.stringify({ calls: db.calls, sent })
     expect(serializedPersistentBoundaries).not.toContain(email)
     expect(serializedPersistentBoundaries).not.toContain(externalId)

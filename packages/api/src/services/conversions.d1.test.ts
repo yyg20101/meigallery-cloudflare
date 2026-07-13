@@ -11,7 +11,10 @@ import {
   loadTikTokEventsCryptoKeys,
   tiktokConnectionFingerprint,
 } from '../utils/tiktok-events-crypto'
-import { recordContact, recordRegistration } from './conversions'
+import {
+  recordContact as recordContactService,
+  recordRegistration as recordRegistrationService,
+} from './conversions'
 
 const hashMocks = vi.hoisted(() => ({
   email: vi.fn(),
@@ -38,6 +41,17 @@ const TIKTOK_PIXEL_ID = 'C123456789ABCDEF'
 const TIKTOK_TOKEN = 'conversion-d1-tiktok-token'
 const TIKTOK_REVISION = '2'.repeat(32)
 const TIKTOK_DATA_KEY = Buffer.alloc(32, 11).toString('base64')
+
+const recordContact: typeof recordContactService = (env, input, context) => recordContactService(
+  env,
+  { attributionProvider: 'meta', ...input },
+  context,
+)
+const recordRegistration: typeof recordRegistrationService = (env, input, context) => recordRegistrationService(
+  env,
+  { attributionProvider: 'meta', ...input },
+  context,
+)
 
 type ClaimRun = { sql: string; changes: number }
 type WrappedStatement = D1PreparedStatement & { __inner: D1PreparedStatement }
@@ -75,6 +89,7 @@ beforeAll(async () => {
     await realDb.prepare(statement).run()
   }
   for (const name of [
+    '0027_analytics_tracking_sources.sql',
     '0032_attribution_conversions.sql',
     '0034_meta_production_readiness.sql',
     '0035_meta_capi_delivery_recovery.sql',
@@ -85,6 +100,7 @@ beforeAll(async () => {
     '0047_ad_platform_delivery_core.sql',
     '0048_tiktok_pixel_connection.sql',
     '0049_tiktok_events_api.sql',
+    '0050_strict_ad_source_routing.sql',
   ]) await applyMigration(name)
 }, 30_000)
 
@@ -441,13 +457,18 @@ describe('conversion dedupe claim 真实 D1 并发', () => {
     const browserContext = {
       ttclid: 'ttclid-conversion-d1',
       ttp: 'ttp-conversion-d1',
+      fbp: 'fb.1.1700000000000.must-not-reach-tiktok',
+      fbc: 'fb.1.1700000000000.must-not-reach-tiktok',
       clientIpAddress: '203.0.113.30',
       clientUserAgent: 'Mozilla/5.0 TikTokConversionD1/1.0',
     }
     const registrationEmail = 'tiktok-registration@example.test'
     const registrationExternalId = 'fedcba9876543210fedcba9876543210'
 
-    const result = await recordRegistration(tiktokConversionEnv(queueSend), registrationInput(), {
+    const result = await recordRegistration(tiktokConversionEnv(queueSend), {
+      ...registrationInput(),
+      attributionProvider: 'tiktok',
+    }, {
       getAdPlatformUserData: async () => browserContext,
       getRegistrationSensitiveInput: async () => ({
         email: registrationEmail,
@@ -496,10 +517,15 @@ describe('conversion dedupe claim 真实 D1 并发', () => {
       envelope: { schemaVersion: 2, ...encrypted },
     })
     expect(context).toEqual({
-      ...browserContext,
+      ttclid: browserContext.ttclid,
+      ttp: browserContext.ttp,
+      clientIpAddress: browserContext.clientIpAddress,
+      clientUserAgent: browserContext.clientUserAgent,
       emailSha256: await actualHashEmail(registrationEmail),
       externalIdSha256: await actualHashExternalId(registrationExternalId),
     })
+    expect(context).not.toHaveProperty('fbp')
+    expect(context).not.toHaveProperty('fbc')
     expect(await scalar(`
       SELECT count(*) AS value FROM ad_platform_secure_outbox WHERE provider = 'tiktok'
     `)).toBe(0)

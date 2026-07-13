@@ -62,6 +62,10 @@ export interface AttributionSummaryData {
   business: AttributionBusinessMetrics
   historical: { leadCount: number }
   delivery: AttributionDeliveryMetrics
+  routing: {
+    mismatchCount: number
+    unroutedActionCount: number
+  }
 }
 
 export interface AttributionTrendRow {

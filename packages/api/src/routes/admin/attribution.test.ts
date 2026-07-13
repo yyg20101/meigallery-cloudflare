@@ -763,6 +763,11 @@ function createDashboardDb(options: DashboardDbOptions = {}) {
     if (sql.includes('AS historical_lead_count')) {
       return [{ historical_lead_count: options.empty ? 0 : 9 }]
     }
+    if (sql.includes('FROM analytics_conversion_actions') && sql.includes('GROUP BY date')) {
+      return options.empty
+        ? []
+        : [{ date: '2026-07-10', contact_count: 3, complete_registration_count: 2 }]
+    }
     if (sql.includes('AS total_action_count')) {
       return [{
         contact_count: options.empty ? 0 : 3,
@@ -3163,7 +3168,7 @@ describe('Meta CAPI v2 质量运维看板契约', () => {
     })
     expect(matchQuery?.sql).toContain('d.has_ttp')
     expect(matchQuery?.sql).toContain('d.has_ttclid')
-    expect(matchQuery?.params).toEqual(['2026-07-10', '2026-07-10', 'tiktok'])
+    expect(matchQuery?.params).toEqual(['2026-07-10', '2026-07-10', 'tiktok', 'tiktok'])
     expect(db.calls.some(call => call.sql.includes('meta_dataset_quality_snapshots'))).toBe(false)
   })
 
@@ -3215,7 +3220,7 @@ describe('Meta CAPI v2 质量运维看板契约', () => {
     expect(body.usage).toEqual({ rowsRead: 171, rowsWritten: 0, durationMs: 31 })
     expect(db.calls.filter(call => call.sql.includes('FROM ad_platform_connections'))).toHaveLength(2)
     expect(db.calls.filter(call => call.sql.includes('FROM meta_connection_verifications'))).toHaveLength(1)
-    expect(db.calls).toHaveLength(11)
+    expect(db.calls).toHaveLength(12)
   })
 
   it('breakdown 以 conversion fact 为 action 基数，双通道不会翻倍', async () => {
@@ -3239,7 +3244,7 @@ describe('Meta CAPI v2 质量运维看板契约', () => {
     })
     expect(query?.sql).toContain('delivery_per_action')
     expect(query?.sql).toContain('COUNT(*) AS action_count')
-    expect(query?.params).toEqual(['2026-07-10', '2026-07-10', 'meta', 50])
+    expect(query?.params).toEqual(['2026-07-10', '2026-07-10', 'meta', 'meta', 50])
   })
 
   it.each(['utm_campaign', 'utm_content', 'tracking_link'] as const)(

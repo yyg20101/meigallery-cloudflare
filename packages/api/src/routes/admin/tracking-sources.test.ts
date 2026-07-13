@@ -68,6 +68,7 @@ function trackingSourceRow() {
     utm_medium: 'social',
     utm_campaign: 'telegram-june',
     utm_content: '',
+    ad_provider: '',
     status: 'active',
     note: '',
     created_by: 1,
@@ -120,6 +121,7 @@ describe('后台推广来源 API', () => {
       body: JSON.stringify({
         sourceLabel: 'Meta 广告 A',
         channel: 'ad',
+        adProvider: 'meta',
         targetPath: '/',
         utmMedium: 'paid_social',
         utmCampaign: 'july',
@@ -130,8 +132,10 @@ describe('后台推广来源 API', () => {
 
     expect(res.status).toBe(201)
     expect(body.data.utmContent).toBe('chat-a')
+    expect(body.data.adProvider).toBe('meta')
     expect(body.data.trackingPath).toContain('utm_content=chat-a')
     expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_tracking_sources') && call.params[8] === 'chat-a')).toBe(true)
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_tracking_sources') && call.params[9] === 'meta')).toBe(true)
     expect(JSON.stringify(db.calls)).not.toContain('Meta 像素测试地址')
   })
 

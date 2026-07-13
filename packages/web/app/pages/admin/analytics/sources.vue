@@ -20,6 +20,7 @@ interface TrackingSourceMetric {
   utmSource: string
   utmMedium: string
   utmCampaign: string
+  adProvider: 'meta' | 'tiktok' | ''
   status: 'active' | 'disabled'
   note: string
   trackingPath: string
@@ -43,6 +44,7 @@ const savingId = ref('')
 const form = reactive({
   sourceLabel: '',
   channel: 'referral',
+  adProvider: '',
   targetPath: '/',
   utmMedium: 'referral',
   utmCampaign: '',
@@ -67,6 +69,7 @@ watch(() => form.channel, (channel) => {
   if (option && (!form.utmMedium || channelOptions.some(item => item.medium === form.utmMedium))) {
     form.utmMedium = option.medium
   }
+  form.adProvider = channel === 'ad' ? (form.adProvider || 'meta') : ''
 })
 
 async function createTrackingSource() {
@@ -82,6 +85,7 @@ async function createTrackingSource() {
       body: {
         sourceLabel: form.sourceLabel,
         channel: form.channel,
+        adProvider: form.adProvider || undefined,
         targetPath: form.targetPath,
         utmMedium: form.utmMedium,
         utmCampaign: form.utmCampaign || undefined,
@@ -246,6 +250,10 @@ async function copyTrackingLink(item: Pick<TrackingSourceMetric, 'trackingPath'>
             <select v-model="form.channel" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
               <option v-for="option in channelOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
             </select>
+            <select v-if="form.channel === 'ad'" v-model="form.adProvider" required class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+              <option value="meta">Meta</option>
+              <option value="tiktok">TikTok</option>
+            </select>
             <input v-model="form.sourceLabel" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="自定义文案，例如 FB 六月投放" />
             <input v-model="form.targetPath" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" placeholder="落地页，例如 / 或 /discover" />
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -273,6 +281,8 @@ async function copyTrackingLink(item: Pick<TrackingSourceMetric, 'trackingPath'>
                 <div class="min-w-0">
                   <p class="truncate text-sm font-medium text-gray-900">{{ item.sourceLabel || item.name }}</p>
                   <p class="mt-1 font-mono text-xs text-gray-500">code: {{ item.sourceCode || item.slug }}</p>
+                  <p v-if="item.adProvider" class="mt-1 text-xs font-medium text-gray-600">广告平台：{{ item.adProvider === 'meta' ? 'Meta' : 'TikTok' }}</p>
+                  <p v-else-if="item.channel === 'ad'" class="mt-1 text-xs font-medium text-red-600">广告平台：未绑定（不投递）</p>
                   <p class="mt-1 break-all font-mono text-xs text-gray-500">{{ item.trackingPath }}</p>
                 </div>
                 <span :class="['shrink-0 rounded-full px-2 py-0.5 text-xs', item.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500']">{{ item.status }}</span>

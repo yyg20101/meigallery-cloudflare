@@ -83,6 +83,9 @@ export type ActiveConversionActionType = Extract<
 
 export type AdPlatformProvider = 'meta' | 'tiktok' | 'google'
 
+/** 当前已具备可信来源路由能力的广告平台。 */
+export type AdAttributionProvider = Extract<AdPlatformProvider, 'meta' | 'tiktok'>
+
 export type AdDeliveryTransport = 'browser' | 'server'
 
 export type AdPlatformConversionEventName = 'Contact' | 'CompleteRegistration'

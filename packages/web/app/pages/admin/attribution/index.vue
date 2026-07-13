@@ -79,6 +79,7 @@ const loading = computed(() => sources.some(source => source.loading.value))
 const error = computed(() => sources.map(source => source.error.value).find(Boolean) || '')
 const business = computed(() => summary.data.value?.business ?? { contactCount: 0, completeRegistrationCount: 0, actionCount: 0 })
 const delivery = computed(() => summary.data.value?.delivery ?? { pixelAttempted: 0, serverSent: 0, failed: 0, skipped: 0, pending: 0, retryExhausted: 0 })
+const routing = computed(() => summary.data.value?.routing ?? { mismatchCount: 0, unroutedActionCount: 0 })
 const matchEntries = computed(() => {
   const match = quality.data.value?.match
   if (!match) return []
@@ -410,11 +411,18 @@ function formatCount(value: unknown) {
       </section>
 
       <section data-attribution-section="business" class="min-w-0 border-b border-gray-200 px-3 py-5 sm:px-5">
+        <div
+          v-if="routing.mismatchCount > 0"
+          class="mb-4 border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800"
+          role="alert"
+        >
+          检测到 {{ formatCount(routing.mismatchCount) }} 条来源与投递平台不一致的数据，已阻断后续跨平台写入。
+        </div>
         <div class="mb-4 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p class="text-xs font-medium text-gray-400">02 · 业务转化趋势</p>
             <h2 class="mt-1 text-base font-semibold text-gray-900">站内事实</h2>
-            <p class="mt-1 text-sm text-gray-500">活动口径仅包含有效联系与完成注册；历史 Lead 只作对照。</p>
+            <p class="mt-1 text-sm text-gray-500">仅统计归属于当前平台的有效联系与完成注册；未识别来源 {{ formatCount(routing.unroutedActionCount) }} 条。</p>
           </div>
           <NuxtLink :to="linkRoute" class="text-sm font-medium text-emerald-700 hover:text-emerald-900">查看当前范围投放链接</NuxtLink>
         </div>

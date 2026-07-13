@@ -21,13 +21,15 @@ beforeAll(async () => {
     await db.prepare(statement).run()
   }
   await db.batch([
-    insertAction('action_contact', 'contact', ''),
-    insertAction('action_contact_duplicate', 'contact', 'action_contact'),
-    insertAction('action_registration', 'complete_registration', ''),
+    insertAction('action_contact_meta', 'contact', '', 'meta'),
+    insertAction('action_contact_duplicate', 'contact', 'action_contact_meta', 'meta'),
+    insertAction('action_registration', 'complete_registration', '', 'meta'),
+    insertAction('action_contact_tiktok', 'contact', '', 'tiktok'),
+    insertAction('action_unrouted', 'contact', '', ''),
     db.prepare(`
       INSERT INTO analytics_conversion_deliveries (
         id, conversion_action_id, transport, status
-      ) VALUES ('delivery_contact_pixel', 'action_contact', 'browser', 'attempted')
+      ) VALUES ('delivery_contact_pixel', 'action_contact_meta', 'browser', 'attempted')
     `),
     db.prepare(`
       INSERT INTO analytics_conversion_deliveries (
@@ -37,7 +39,13 @@ beforeAll(async () => {
     db.prepare(`
       INSERT INTO analytics_conversion_deliveries (
         id, conversion_action_id, provider, transport, status, has_ttclid, has_ttp, has_email
-      ) VALUES ('delivery_contact_tiktok', 'action_contact', 'tiktok', 'server', 'sent', 1, 1, 1)
+      ) VALUES ('delivery_contact_tiktok', 'action_contact_tiktok', 'tiktok', 'server', 'sent', 1, 1, 1)
+    `),
+    db.prepare(`
+      INSERT INTO analytics_conversion_deliveries (id, conversion_action_id, provider, transport, status)
+      VALUES
+        ('delivery_unrouted_browser', 'action_unrouted', 'meta', 'browser', 'attempted'),
+        ('delivery_unrouted_server', 'action_unrouted', 'meta', 'server', 'sent')
     `),
     db.prepare(`INSERT INTO analytics_conversion_daily (date, action_type, action_count) VALUES
       ('2026-07-11', 'contact', 1),
@@ -97,7 +105,7 @@ describe('attribution breakdown 真实事实口径', () => {
     expect(result.data).toMatchObject({
       provider: 'tiktok',
       rows: [{
-        actionCount: 2,
+        actionCount: 1,
         delivery: { pixelAttempted: 0, serverSent: 1 },
       }],
     })
@@ -118,10 +126,13 @@ describe('attribution breakdown 真实事实口径', () => {
       business: { actionCount: 2 },
       historical: { leadCount: 3 },
       delivery: { pixelAttempted: 1, serverSent: 1 },
+      routing: { mismatchCount: 0, unroutedActionCount: 1 },
     })
     expect(tiktokSummary.data).toMatchObject({
       provider: 'tiktok',
+      business: { actionCount: 1 },
       delivery: { pixelAttempted: 0, serverSent: 1 },
+      routing: { mismatchCount: 0, unroutedActionCount: 1 },
     })
     expect(tiktokTrends.data.rows[0]?.delivery).toMatchObject({ pixelAttempted: 0, serverSent: 1 })
     expect(metaQuality.data.match).toMatchObject({
@@ -144,13 +155,13 @@ describe('attribution breakdown 真实事实口径', () => {
   })
 })
 
-function insertAction(id: string, actionType: string, duplicateOf: string) {
+function insertAction(id: string, actionType: string, duplicateOf: string, attributionProvider: 'meta' | 'tiktok' | '') {
   return db.prepare(`
     INSERT INTO analytics_conversion_actions (
       id, action_type, date, source_channel, utm_source,
-      utm_campaign, utm_content, tracking_source_slug, duplicate_of
-    ) VALUES (?, ?, '2026-07-11', 'ad', ?, 'campaign-a', 'content-a', 'link-a', ?)
-  `).bind(id, actionType, actionType === 'contact' ? 'tiktok' : 'meta', duplicateOf)
+      utm_campaign, utm_content, tracking_source_slug, duplicate_of, attribution_provider
+    ) VALUES (?, ?, '2026-07-11', 'ad', ?, 'campaign-a', 'content-a', 'link-a', ?, ?)
+  `).bind(id, actionType, attributionProvider, duplicateOf, attributionProvider)
 }
 
 function schemaSql() {
@@ -159,7 +170,8 @@ function schemaSql() {
       id TEXT PRIMARY KEY, action_type TEXT NOT NULL, date TEXT NOT NULL,
       source_channel TEXT NOT NULL DEFAULT '', utm_source TEXT NOT NULL DEFAULT '',
       utm_campaign TEXT NOT NULL DEFAULT '', utm_content TEXT NOT NULL DEFAULT '',
-      tracking_source_slug TEXT NOT NULL DEFAULT '', duplicate_of TEXT NOT NULL DEFAULT ''
+      tracking_source_slug TEXT NOT NULL DEFAULT '', duplicate_of TEXT NOT NULL DEFAULT '',
+      attribution_provider TEXT NOT NULL DEFAULT ''
     );
     CREATE TABLE analytics_conversion_deliveries (
       id TEXT PRIMARY KEY, conversion_action_id TEXT NOT NULL,

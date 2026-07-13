@@ -289,6 +289,8 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/admin/tracking-sources` | 推广来源列表，返回可复制追踪链接 | admin+ |
 | POST | `/api/admin/tracking-sources` | 创建推广来源，写入审计日志 | admin+ |
 | PATCH | `/api/admin/tracking-sources/:id` | 修改或停用推广来源，写入审计日志 | admin+ |
+| PUT | `/api/ad-attribution` | 在可信营销授权下解析 click ID 或后台投放来源，签发单一平台 HttpOnly 来源 receipt；冲突或未知来源清除 receipt | public |
+| DELETE | `/api/ad-attribution` | 清除当前广告来源 receipt | public |
 | GET | `/api/admin/analytics/overview` | 数据分析总览，读取聚合表和健康摘要 | admin+ |
 | GET | `/api/admin/analytics/sources` | 来源质量报表，包含已创建推广来源表现 | admin+ |
 | GET | `/api/admin/analytics/pages` | 页面和内容表现报表 | admin+ |
@@ -627,7 +629,7 @@ INSERT INTO site_settings (key, value) VALUES
 
 | 事实 | 唯一所有者与命名入口 | 可信触发 | 派生与投递关系 |
 |------|------|------|------|
-| `Contact` | API conversion service 的 `recordContact()` | URL 通过安全校验后发起原生联系跳转，或复制联系方式明确成功后，由公开联系命令进入服务端校验 | 写入 `contact` 事实；不派生 `Lead`。授权允许时可为各平台生成同一 event ID 的 Browser / Server delivery。二维码展开、复制失败和无效 URL 不创建 Contact。 |
+| `Contact` | API conversion service 的 `recordContact()` | URL 通过安全校验后发起原生联系跳转，或复制联系方式明确成功后，由公开联系命令进入服务端校验 | 写入 `contact` 事实；不派生 `Lead`。只有服务端签名来源命中的单一平台可生成同平台 Browser / Server delivery。二维码展开、复制失败和无效 URL 不创建 Contact。 |
 | `CompleteRegistration` | 注册 API 在用户、邀请码和 session 事务成功后调用 `recordRegistration()`；事实修复只允许 `recordRegistrationFactOnly()` | 服务端已持久化的正整数 `userId`，客户端不能声明事件类型或注册成功 | 写入 `complete_registration` 事实并以 `userId` 去重；注册响应可携带 Pixel 指令，浏览器只能执行指令，不能通过公开 conversion API 创建注册事实。 |
 | QR 展开 | Web `ContactPanel` 通过 `useAnalytics()` 记录 `contact_qr_expand`，由 analytics ingest 所有 | 用户展开通过安全 URL 校验的二维码 | 仅是一方行为分析事件；不创建 Contact、不进入 conversion 账本，也不生成广告平台 delivery。 |
 
@@ -637,7 +639,7 @@ INSERT INTO site_settings (key, value) VALUES
 
 | 表 | 状态 | 用途 |
 |------|------|------|
-| `analytics_conversion_actions` | `[当前实现]` | 站内转化事实；新写入只由 `recordContact()`、`recordRegistration()` 和注册事实修复函数创建 `contact` / `complete_registration`。历史 schema 继续只读兼容 `lead`、`start_trial` 和既有 `membership_grant`，不删除存量数据。 |
+| `analytics_conversion_actions` | `[当前实现]` | 站内转化事实；新写入只由 `recordContact()`、`recordRegistration()` 和注册事实修复函数创建 `contact` / `complete_registration`。`attribution_provider` 保存服务端确认的唯一广告平台或空值，写入后不可修改。历史 schema 继续只读兼容 `lead`、`start_trial` 和既有 `membership_grant`，不删除存量数据。 |
 | `analytics_conversion_deliveries` | `[当前实现]` | 广告平台投递账本，记录 provider、transport、`external_event_id`、连接版本、状态、跳过原因、失败错误、重试次数和发送时间。 |
 | `analytics_conversion_daily` | `[当前实现]` | 按日期、事件、来源、campaign、utm_content 等维度聚合站内转化，用于后台趋势和投放对比。 |
 | `analytics_conversion_delivery_daily` | `[当前实现]` | 按日期、provider、transport、事件和 delivery 状态聚合同步结果，用于平台同步健康和发布检查。 |
@@ -647,9 +649,13 @@ INSERT INTO site_settings (key, value) VALUES
 - migration `0047_ad_platform_delivery_core.sql` 建立统一连接表和最终 delivery schema，将唯一目标约束改为 `conversion_action_id + provider + transport`，并清空旧投递技术数据。旧 `channel`、`meta_connection_revision` 和旧 Meta 站点设置键已删除；新增平台必须通过 adapter registry 接入，不得复制业务事实服务。
 - migration `0048_tiktok_pixel_connection.sql` 增加默认关闭的 TikTok 连接。TikTok Browser Pixel 复用统一连接、营销同意、Contact / CompleteRegistration 事实和 delivery 回执；PageView、ViewContent、Search 由前端 provider adapter 发送。
 - migration `0049_tiktok_events_api.sql` 是 expand 阶段：增加 `has_ttclid` / `has_ttp`、TikTok production 连接验证和按 provider 隔离的 `ad_platform_secure_outbox`，回填通用 `conversion_external_id`。为保证“先迁移、后部署”窗口以及 API Worker 回滚安全，旧 `meta_external_id`、`meta_capi_secure_outbox` 暂时保留，并由 migration trigger 双向同步；应用代码只允许读写通用结构，不得新增兼容分支。
+- migration `0050_strict_ad_source_routing.sql` 为后台投放来源增加必选 `ad_provider`，为转化事实增加不可变 `attribution_provider`，并通过 D1 trigger 拒绝已明确归因事实与 delivery 平台不一致的插入和更新。为兼容“先 migration、后 Worker”的短暂发布窗口，旧 Worker 写入的空来源事实可完成原投递；新 Worker 对空来源始终零投递。既有未绑定平台的广告来源不会被名称猜测或自动归类，迁移时停用，必须明确重建后才能参与广告平台归因。
 - contract 阶段必须作为后续独立版本执行，不能与 `0049` 同批部署。只有 production 已稳定运行通用结构、桥接两侧无差异、旧 Worker 回滚窗口关闭且前一版本可用其他方式恢复后，才允许新增 migration 删除旧列、旧表和 `trg_0049_bridge_*`。删除前必须再次通过真实 D1 历史库与空库演练。
 - TikTok Events API 使用官方 v1.3 Web Events endpoint、`Access-Token` header、`event_source=web`、Pixel ID、`event/event_time/event_id/user/page` 契约；生产 payload 不带 `test_event_code`。Browser Pixel 与 Events API 对同一业务事实使用相同 event name 与 event ID 进行去重。
 - API 只返回 provider-aware `trackingInstructions`，前端通过广告平台 adapter registry 执行，不保留 `pixelEvents` 兼容响应。
+- 广告来源解析只接受 `fbclid`、`ttclid`、明确平台 UTM 别名或后台 `analytics_tracking_sources.ad_provider`。Meta 与 TikTok 信号同时出现、显式来源未知、来源超长、包含控制字符或 D1 查询失败时均 fail closed，不创建任何平台 delivery。
+- `PUT /api/ad-attribution` 只在营销授权 receipt 有效时签发 30 分钟 `HttpOnly` 来源 receipt；前端不能通过 body 声明 provider。Contact 和注册请求还必须携带只能降级的 `adAttributionState=resolved`，缺失、冲突或校验失败一律忽略旧 receipt。
+- 一个 `analytics_conversion_actions` 最多属于一个广告平台。`meta` 事实只读取 Meta 连接、Meta 密钥与 Meta Queue；`tiktok` 事实只读取 TikTok 连接、TikTok 密钥与 TikTok Queue；空来源事实只写入一方账本。禁止 fan-out、广播或按“哪些平台已启用”决定投递目标。
 
 - 正式活动 Meta 事件严格限定为 `Contact`、`CompleteRegistration`；`Lead`、`StartTrial` 仅为历史读取值，sender 与 recovery 均不得再次发送。
 - `/api/conversions/events` 为公开联系命令入口，仅允许提交 `contact`；完成注册由注册 API 的服务端事务创建。`lead`、`complete_registration`、`start_trial` 和 `membership_grant` 的公开提交均返回明确 4xx。

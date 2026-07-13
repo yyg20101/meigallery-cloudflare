@@ -5,6 +5,7 @@ import type { AdPlatformQueueMessage } from '@meigallery/shared'
 import type { Bindings, Variables } from '../index'
 import { createPixelReceiptToken } from '../utils/pixel-receipt'
 import { createMarketingConsentReceipt } from '../utils/marketing-consent-receipt'
+import { createAdAttributionReceipt } from '../utils/ad-attribution-receipt'
 import { conversionRoutes } from './conversions'
 
 type Call = { sql: string; params: unknown[] }
@@ -518,13 +519,14 @@ describe('conversion routes', () => {
       clientUserAgent: 'MeiGallery Test Browser/1.0',
     }
     const receipt = await createMarketingConsentReceipt('test-session-secret', 'granted')
+    const attributionReceipt = await createAdAttributionReceipt('test-session-secret', 'meta')
     const res = await createApp().request('/api/conversions/events', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
         'CF-Connecting-IP': raw.clientIpAddress,
         'User-Agent': raw.clientUserAgent,
-        Cookie: `mei_marketing_consent_receipt=${receipt}`,
+        Cookie: `mei_marketing_consent_receipt=${receipt}; mei_ad_attribution_receipt=${attributionReceipt}`,
       },
       body: JSON.stringify({
         actionType: 'contact',
@@ -532,6 +534,7 @@ describe('conversion routes', () => {
         sessionId: 'session_1',
         occurredAt: '2026-07-09T10:00:00.000Z',
         consentState: 'granted',
+        adAttributionState: 'resolved',
         methodType: 'telegram',
         actionTarget: 'floating_contact_panel',
         browserIdentifiers: { fbp: raw.fbp, fbc: raw.fbc },
@@ -570,6 +573,34 @@ describe('conversion routes', () => {
     expect(JSON.stringify(await res.clone().json())).not.toContain(raw.fbc)
   })
 
+  it('客户端 suppress 只能关闭投递，不能沿用已有 Meta 来源 receipt', async () => {
+    const db = createConversionDb({ metaCapiEnabled: true, metaTrackingMode: 'test', facebookPixelId: '1234567890' })
+    const sent: AdPlatformQueueMessage[] = []
+    const consentReceipt = await createMarketingConsentReceipt('test-session-secret', 'granted')
+    const attributionReceipt = await createAdAttributionReceipt('test-session-secret', 'meta')
+    const res = await createApp().request('/api/conversions/events', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        Cookie: `mei_marketing_consent_receipt=${consentReceipt}; mei_ad_attribution_receipt=${attributionReceipt}`,
+      },
+      body: JSON.stringify({
+        actionType: 'contact',
+        visitorId: 'visitor_suppressed',
+        sessionId: 'session_suppressed',
+        consentState: 'granted',
+        adAttributionState: 'suppress',
+        methodType: 'telegram',
+        actionTarget: 'floating_contact_panel',
+      }),
+    }, conversionEnv(db, sent))
+
+    expect(res.status).toBe(201)
+    expect(sent).toHaveLength(0)
+    const conversionInsert = db.calls.find(call => call.sql.includes('analytics_conversion_actions'))
+    expect(conversionInsert?.params[19]).toBe('')
+  })
+
   it.each([
     ['伪造 body', ''],
     ['篡改 receipt', 'mei_marketing_consent_receipt=tampered.receipt'],
@@ -584,6 +615,8 @@ describe('conversion routes', () => {
         visitorId: 'visitor_untrusted',
         sessionId: 'session_untrusted',
         consentState: 'granted',
+        adAttributionState: 'resolved',
+        attributionProvider: 'tiktok',
         methodType: 'telegram',
         actionTarget: 'floating_contact_panel',
         browserIdentifiers: { fbp: 'fb.1.1700000000000.private' },

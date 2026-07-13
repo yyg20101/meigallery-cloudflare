@@ -4,6 +4,7 @@ import type { Bindings, Variables } from '../index'
 import { recordRegistration } from '../services/conversions'
 import { hashInviteCode } from '../services/invite-codes'
 import { createMarketingConsentReceipt } from '../utils/marketing-consent-receipt'
+import { createAdAttributionReceipt } from '../utils/ad-attribution-receipt'
 import { authRoutes } from './auth'
 
 vi.mock('../services/conversions', () => ({
@@ -63,6 +64,7 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
       visitorId: 'visitor_registration_42',
       sessionId: 'session_registration_42',
       consentState: 'granted',
+      attributionProvider: 'meta',
       metadata: { method: 'email' },
     }), expect.objectContaining({
       getAdPlatformUserData: expect.any(Function),
@@ -142,6 +144,32 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
     await register(db, { attribution: { ...grantedAttribution(), consentState: 'limited' } })
 
     expect(db.calls.some(call => call.sql.includes('SELECT id, email, conversion_external_id'))).toBe(false)
+  })
+
+  it('只有营销授权但缺少来源 receipt 时不能由客户端伪造广告平台', async () => {
+    const db = createRegisterDb()
+
+    await register(db, {
+      attribution: { ...grantedAttribution(), attributionProvider: 'tiktok' },
+    }, true, false)
+
+    expect(recordRegistrationMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      consentState: 'granted',
+      attributionProvider: '',
+    }), expect.anything())
+  })
+
+  it('注册 attribution suppress 会忽略已有来源 receipt', async () => {
+    const db = createRegisterDb()
+
+    await register(db, {
+      attribution: { ...grantedAttribution(), adAttributionState: 'suppress' },
+    })
+
+    expect(recordRegistrationMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      consentState: 'granted',
+      attributionProvider: '',
+    }), expect.anything())
   })
 
   it('邀请码绑定异常只记录稳定 code，不记录 Error 或注册敏感值', async () => {
@@ -228,6 +256,7 @@ function grantedAttribution() {
     utmCampaign: 'registration',
     utmContent: 'hero',
     consentState: 'granted',
+    adAttributionState: 'resolved',
     browserIdentifiers: { fbp: 'fb.1.1700000000000.123456789' },
   }
 }
@@ -236,17 +265,23 @@ async function register(
   db: ReturnType<typeof createRegisterDb>,
   extra: Record<string, unknown>,
   withTrustedReceipt = true,
+  withTrustedAttributionReceipt = true,
 ) {
   const requestedConsent = (extra.attribution as { consentState?: unknown } | undefined)?.consentState
   const receipt = withTrustedReceipt && requestedConsent === 'granted'
     ? await createMarketingConsentReceipt('test-session-secret', 'granted')
+    : ''
+  const attributionReceipt = receipt && withTrustedAttributionReceipt
+    ? await createAdAttributionReceipt('test-session-secret', 'meta')
     : ''
   return createApp().request('/api/auth/register', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'User-Agent': 'unit-test-browser',
-      ...(receipt ? { Cookie: `mei_marketing_consent_receipt=${receipt}` } : {}),
+      ...(receipt ? {
+        Cookie: `mei_marketing_consent_receipt=${receipt}; mei_ad_attribution_receipt=${attributionReceipt}`,
+      } : {}),
     },
     body: JSON.stringify({
       email: 'new@example.com',

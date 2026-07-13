@@ -450,7 +450,7 @@ adminAttributionRoutes.get('/links', async (c) => {
     )
     SELECT
       ats.id, ats.name, ats.channel, ats.slug, ats.target_path, ats.utm_source,
-      ats.utm_medium, ats.utm_campaign, ats.utm_content, ats.status, ats.note,
+      ats.utm_medium, ats.utm_campaign, ats.utm_content, ats.ad_provider, ats.status, ats.note,
       ats.created_by, ats.created_at, ats.updated_at,
       COALESCE(SUM(ads.visitor_count), 0) AS visitor_count,
       COALESCE(SUM(ads.session_count), 0) AS session_count,
@@ -477,7 +477,7 @@ adminAttributionRoutes.get('/links', async (c) => {
     ${linksSourceWhere}
     GROUP BY
       ats.id, ats.name, ats.channel, ats.slug, ats.target_path, ats.utm_source,
-      ats.utm_medium, ats.utm_campaign, ats.utm_content, ats.status, ats.note,
+      ats.utm_medium, ats.utm_campaign, ats.utm_content, ats.ad_provider, ats.status, ats.note,
       ats.created_by, ats.created_at, ats.updated_at
     ORDER BY contact_count DESC, complete_registration_count DESC, session_count DESC, ats.created_at DESC
   `, queryParams)
@@ -1944,6 +1944,7 @@ function serializeAttributionLink(row: Row) {
     utmMedium: String(row.utm_medium ?? ''),
     utmCampaign: String(row.utm_campaign ?? ''),
     utmContent: String(row.utm_content ?? ''),
+    adProvider: String(row.ad_provider ?? ''),
     status: String(row.status ?? 'active'),
     note: String(row.note ?? ''),
     createdBy: numberValue(row.created_by),

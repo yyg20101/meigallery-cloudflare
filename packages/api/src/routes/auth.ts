@@ -20,6 +20,8 @@ import { buildAdPlatformUserData } from '../utils/ad-platform-identifiers'
 import { getCookie } from 'hono/cookie'
 import { MARKETING_CONSENT_RECEIPT_COOKIE } from './marketing-consent'
 import { resolveTrustedMarketingConsent } from '../utils/marketing-consent-receipt'
+import { AD_ATTRIBUTION_RECEIPT_COOKIE } from './ad-attribution'
+import { resolveTrustedAdAttributionProvider } from '../utils/ad-attribution-receipt'
 
 type RegistrationAttributionContext = {
   visitorId?: string
@@ -35,6 +37,7 @@ type RegistrationAttributionContext = {
   utmCampaign?: string
   utmContent?: string
   consentState?: AnalyticsConsentState
+  adAttributionState?: 'resolved' | 'suppress'
   browserIdentifiers?: unknown
 }
 
@@ -253,6 +256,13 @@ authRoutes.post('/register', async (c) => {
     getCookie(c, MARKETING_CONSENT_RECEIPT_COOKIE),
     attribution.consentState,
   )
+  const attributionProvider = attribution.consentState === 'granted'
+    && attribution.adAttributionState !== 'suppress'
+    ? await resolveTrustedAdAttributionProvider(
+        c.env.SESSION_SECRET,
+        getCookie(c, AD_ATTRIBUTION_RECEIPT_COOKIE),
+      )
+    : null
   const hasAttribution = isPlainRecord(body.attribution)
 
   if (body.inviteCode) {
@@ -293,6 +303,7 @@ authRoutes.post('/register', async (c) => {
       utmCampaign: attribution.utmCampaign,
       utmContent: attribution.utmContent,
       consentState: attribution.consentState,
+      attributionProvider: attributionProvider ?? '',
       metadata: { method: 'email' },
     }, {
       getAdPlatformUserData: () => buildAdPlatformUserData(c.req.raw, attribution.browserIdentifiers),
@@ -362,6 +373,7 @@ function normalizeRegistrationAttribution(value: unknown, userId: number) {
     utmCampaign: normalizeText(input.utmCampaign, 120),
     utmContent: normalizeText(input.utmContent, 120),
     consentState: normalizeConsentState(input.consentState),
+    adAttributionState: input.adAttributionState === 'resolved' ? 'resolved' as const : 'suppress' as const,
     browserIdentifiers: input.browserIdentifiers,
   }
 }

@@ -68,6 +68,11 @@ function mockJsonFor(name, options = {}) {
       bridge_trigger_count: 8,
       conversion_external_id_index: 1,
       legacy_delivery_columns: 0,
+      tracking_source_provider_column: 1,
+      action_attribution_provider_column: 1,
+      tracking_source_provider_index: 1,
+      action_attribution_provider_index: 1,
+      strict_routing_trigger_count: 3,
       challenge_table: 1,
       challenge_table_sql: "CREATE TABLE meta_live_challenges (... CHECK (environment = 'production'))",
       challenge_index: 1,
@@ -108,9 +113,10 @@ describe('Meta migration 演练', () => {
     'meta-migration-seed-0049-bridge',
     'meta-migration-apply-0049',
     'meta-migration-exercise-0049-bridge',
+    'meta-migration-apply-0050',
     'meta-migration-query-history',
     'meta-migration-query-schema',
-    'meta-migration-empty-apply-0001-0049',
+    'meta-migration-empty-apply-0001-0050',
     'meta-migration-empty-query-schema',
   ]) {
     it(`当 ${name} 命令失败时演练失败`, async () => {
@@ -202,7 +208,8 @@ describe('Meta migration 演练', () => {
     assert.ok(names.indexOf('meta-migration-apply-0048') < names.indexOf('meta-migration-seed-0049-bridge'))
     assert.ok(names.indexOf('meta-migration-seed-0049-bridge') < names.indexOf('meta-migration-apply-0049'))
     assert.ok(names.indexOf('meta-migration-apply-0049') < names.indexOf('meta-migration-exercise-0049-bridge'))
-    assert.ok(names.includes('meta-migration-empty-apply-0001-0049'))
+    assert.ok(names.indexOf('meta-migration-exercise-0049-bridge') < names.indexOf('meta-migration-apply-0050'))
+    assert.ok(names.includes('meta-migration-empty-apply-0001-0050'))
     assert.ok(names.includes('meta-migration-empty-query-schema'))
   })
 
@@ -229,6 +236,11 @@ describe('Meta migration 演练', () => {
     ['0049 桥接触发器', 'bridge_trigger_count', 7],
     ['通用转化用户标识索引', 'conversion_external_id_index', 0],
     ['旧投递列', 'legacy_delivery_columns', 1],
+    ['推广来源平台列', 'tracking_source_provider_column', 0],
+    ['转化事实归因平台列', 'action_attribution_provider_column', 0],
+    ['推广来源平台索引', 'tracking_source_provider_index', 0],
+    ['转化事实归因平台索引', 'action_attribution_provider_index', 0],
+    ['严格来源路由触发器', 'strict_routing_trigger_count', 2],
   ]) {
     it(`${label} 不精确时旧库演练 fail closed`, async () => {
       const runCommand = async (_command, _args, options = {}) => {
@@ -243,7 +255,7 @@ describe('Meta migration 演练', () => {
 
       const result = await runMetaMigrationVerification({ runCommand })
       assert.equal(result.status, 'failed')
-      assert.match(result.error, /0040-0049 schema/)
+      assert.match(result.error, /0040-0050 schema/)
     })
   }
 
