@@ -44,6 +44,7 @@ interface IncidentData {
 const { isOwner } = useAuth()
 const { api } = useApi()
 const rangeState = useAdminAttributionRange('7d')
+const metaTestEventCode = ref('')
 const requestOptions = { rangeState, autoRefresh: false }
 const summary = useAdminAttribution<AttributionSummaryData>('/api/admin/attribution/summary', requestOptions)
 const trends = useAdminAttribution<AttributionTrendsData>('/api/admin/attribution/trends', {
@@ -253,6 +254,7 @@ function formatCount(value: unknown) {
         </form>
         <h3 class="mb-3 text-sm font-semibold text-gray-900">Meta 运维状态</h3>
         <MetaConnectionStatus
+          v-model:test-event-code="metaTestEventCode"
           :connection="metaStatus.data.value?.connection || null"
           :activity="metaStatus.data.value?.activity || null"
           :is-owner="isOwner"

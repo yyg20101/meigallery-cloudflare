@@ -159,7 +159,7 @@ Dataset Quality 使用唯一 production Dataset。Owner 已批准九章节 produ
 
 后台与证据的状态口径必须严格区分：Pixel `attempted` 只表示浏览器已按服务端指令尝试调用，**不代表 Meta 已接收**；只有 CAPI delivery 为 `sent` 且 Graph API 返回 `events_received=1`，才可表述为 Meta 已接收。两项正式事件的 Browser/Server 同 ID 与 Meta 去重结果，必须由 Owner 在 Events Manager 中确认并生成脱敏 live evidence。
 
-普通 test mode 的 `Contact`、`CompleteRegistration` 不自动携带 `test_event_code`。只有 Owner 显式触发的 Test Event/bootstrap 路径使用 `META_CAPI_TEST_EVENT_CODE`，且只读取当前环境 Worker secret，不接受调用参数覆盖。`ad_platform_connections.mode=production` 时，即使环境中仍配置 Test Event Code，CAPI payload 也绝不携带 `test_event_code`。
+普通 test mode 的 `Contact`、`CompleteRegistration` 不自动携带 `test_event_code`。Owner 在 `/admin/attribution/meta` 输入 Events Manager 当前显示的 `TEST...` 会话码，验证连接与 Live Evidence 只在该次请求中使用并共用同一值；服务端不持久化、不审计、不回显。`ad_platform_connections.mode=production` 时，CAPI payload 绝不携带 `test_event_code`。
 
 Meta 远端资源只存在于 production：
 
@@ -227,7 +227,7 @@ production live evidence 必须由后台 Owner 按钮创建 Worker challenge：�
 | `IMPORT_TOKEN_DAILY_LIMIT` | API Worker vars | 单个 Import Token 每日可创建的外部导入记录上限，未设置时 API 默认 100 |
 | `TELEGRAM_BOT_TOKEN_<SOURCE_BOT_KEY>` | API Worker secret | Telegram 外部导入拉取 file_id 所需 Bot Token，例如 `ops_gallery_bot` 对应 `TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT` |
 | `META_CAPI_ACCESS_TOKEN` | API Worker secret | Meta Conversions API 访问令牌，只存 Worker secret，不进入 D1 或前端 |
-| `META_CAPI_TEST_EVENT_CODE` | API Worker secret | 当前环境 Meta Events Manager Test Events 调试码；仅供 Owner 显式 Test Event/bootstrap 使用，普通 test mode 正式事件不自动携带，production payload 永不携带 |
+| `META_CAPI_TEST_EVENT_CODE` | API Worker secret | 仅供现有 V2 资源 attestation 的隔离字段使用；Test Event 与 Live Evidence 已改用 Owner 请求级会话码，待资源摘要 schema 升级后删除该 secret |
 | `META_CAPI_DATA_KEY_CURRENT` | API Worker secret | AES-256-GCM 当前数据密钥；所有 mode 的 CAPI readiness 必需 |
 | `META_CAPI_DATA_KEY_PREVIOUS` | API Worker secret | 仅轮换窗口使用的上一把数据密钥 |
 | `NUXT_PUBLIC_API_BASE_URL` | Web Worker vars | API 地址（如 `https://api.616618.xyz`） |

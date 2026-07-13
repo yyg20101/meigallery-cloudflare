@@ -2,6 +2,7 @@ import type { Bindings } from '../index'
 import { META_GRAPH_API_VERSION, metaEventsEndpoint, metaGraphRequestInit, readMetaEventsResponse } from './meta-graph'
 
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/i
+const TEST_EVENT_CODE_PATTERN = /^TEST\d{1,20}$/
 const CHALLENGE_ID_PATTERN = /^mlc_[0-9a-f]{32}$/
 const EVENT_ID_PATTERN = /^mlv_[a-z]+_[0-9a-f]{32}$/
 const CHALLENGE_TTL_MS = 60 * 60 * 1000
@@ -11,7 +12,7 @@ const REGISTRATION_EXTERNAL_ID_HASH = 'fef50236caaad5477b9d7f64fa68ff922b09cbca7
 
 type ChallengeEnv = Pick<
   Bindings,
-  'DB' | 'APP_ENV' | 'SITE_URL' | 'META_CAPI_ACCESS_TOKEN' | 'META_CAPI_TEST_EVENT_CODE' | 'RELEASE_COMMIT'
+  'DB' | 'APP_ENV' | 'SITE_URL' | 'META_CAPI_ACCESS_TOKEN' | 'RELEASE_COMMIT'
 >
 
 type ChallengeRow = {
@@ -71,8 +72,13 @@ export async function createMetaLiveChallenge(env: ChallengeEnv, ownerUserId: nu
   }
 }
 
-export async function consumeMetaLiveChallenge(env: ChallengeEnv, ownerUserId: number, challengeId: string) {
-  const config = await requireChallengeConfiguration(env, ownerUserId)
+export async function consumeMetaLiveChallenge(
+  env: ChallengeEnv,
+  ownerUserId: number,
+  challengeId: string,
+  testEventCodeInput: string,
+) {
+  const config = await requireChallengeConfiguration(env, ownerUserId, testEventCodeInput)
   if (!CHALLENGE_ID_PATTERN.test(challengeId)) throw new MetaLiveChallengeError('META_LIVE_CHALLENGE_INVALID', 400)
   const row = await env.DB.prepare(`
     SELECT id, environment, commit_sha, owner_user_id, status,
@@ -150,20 +156,23 @@ export function isOpaqueSyntheticEventId(value: string) {
   return !value.includes('@') && !/fb\.1\.|access[_-]?token|test[_-]?event[_-]?code|client[_-]?ip/i.test(value)
 }
 
-async function requireChallengeConfiguration(env: ChallengeEnv, ownerUserId: number) {
+async function requireChallengeConfiguration(env: ChallengeEnv, ownerUserId: number, testEventCodeInput?: string) {
   if (env.APP_ENV !== 'production' || !Number.isSafeInteger(ownerUserId) || ownerUserId <= 0) {
     throw new MetaLiveChallengeError('META_LIVE_CHALLENGE_INVALID')
   }
   const commitSha = normalizeCommit(env.RELEASE_COMMIT)
   const accessToken = configuredValue(env.META_CAPI_ACCESS_TOKEN)
-  const testEventCode = configuredValue(env.META_CAPI_TEST_EVENT_CODE)
+  const testEventCode = testEventCodeInput === undefined ? '' : normalizeTestEventCode(testEventCodeInput)
+  if (testEventCodeInput !== undefined && !testEventCode) {
+    throw new MetaLiveChallengeError('META_TEST_EVENT_CODE_INVALID', 400)
+  }
   const connection = await env.DB.prepare(`
     SELECT destination_id, mode FROM ad_platform_connections WHERE provider = 'meta' LIMIT 1
   `).first<{ destination_id: string; mode: string }>()
   const pixelId = String(connection?.destination_id || '').trim()
   const trackingMode = connection?.mode || 'disabled'
   const siteOrigin = productionSiteOrigin(env.SITE_URL)
-  if (!commitSha || !/^\d{5,30}$/.test(pixelId) || trackingMode !== 'test' || !accessToken || !testEventCode || !siteOrigin) {
+  if (!commitSha || !/^\d{5,30}$/.test(pixelId) || trackingMode !== 'test' || !accessToken || !siteOrigin) {
     throw new MetaLiveChallengeError('META_LIVE_CHALLENGE_NOT_CONFIGURED', 503)
   }
   return { commitSha, pixelId, accessToken, testEventCode, siteOrigin }
@@ -182,6 +191,11 @@ function validPendingChallenge(row: ChallengeRow | null, commitSha: string, owne
     && isOpaqueSyntheticEventId(String(row.contact_event_id || ''))
     && isOpaqueSyntheticEventId(String(row.complete_registration_event_id || ''))
     && row.contact_event_id !== row.complete_registration_event_id
+}
+
+function normalizeTestEventCode(value: unknown) {
+  const normalized = String(value ?? '').trim().toUpperCase()
+  return TEST_EVENT_CODE_PATTERN.test(normalized) ? normalized : ''
 }
 
 function buildChallengePayload(contactEventId: string, registrationEventId: string, testEventCode: string, siteOrigin: string) {

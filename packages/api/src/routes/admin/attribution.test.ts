@@ -926,9 +926,10 @@ function isFutureIsoTimestamp(value: string) {
 }
 
 const VALID_RELEASE_COMMIT = 'a'.repeat(40)
+const REQUEST_TEST_EVENT_CODE = 'TEST25401'
 const VALID_READINESS_ENV = {
   META_CAPI_ACCESS_TOKEN: 'secret-token',
-  META_CAPI_TEST_EVENT_CODE: 'test-code',
+  META_CAPI_TEST_EVENT_CODE: 'TEST17298',
   META_CAPI_QUEUE: { send: async () => undefined },
   RELEASE_COMMIT: VALID_RELEASE_COMMIT,
   APP_ENV: 'dev',
@@ -2016,12 +2017,52 @@ describe('后台归因中心 API', () => {
 
   it('非 owner 不能触发 Test Event', async () => {
     const db = createAttributionDb()
-    const res = await createApp('admin').request('/api/admin/attribution/meta/test-event', { method: 'POST' }, { DB: db } as unknown as Bindings)
+    const res = await createApp('admin').request('/api/admin/attribution/meta/test-event', {
+      method: 'POST',
+      body: JSON.stringify({ testEventCode: REQUEST_TEST_EVENT_CODE }),
+    }, { DB: db } as unknown as Bindings)
     expect(res.status).toBe(403)
     expect(db.calls.some(call => (
       call.sql.includes('INSERT INTO admin_audit_logs')
       && call.params[2] === 'attribution.meta_test_event'
     ))).toBe(true)
+  })
+
+  it.each(['', 'oops', 'bad-code'])('Owner 请求级 Test Event Code=%s 非法时返回 400，且审计不记录原值', async testEventCode => {
+    const db = createAttributionDb()
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const res = await createApp('owner').request('/api/admin/attribution/meta/test-event', {
+      method: 'POST',
+      body: JSON.stringify({ testEventCode }),
+    }, { DB: db, ...VALID_READINESS_ENV } as unknown as Bindings)
+    const body = await res.json()
+
+    expect(res.status).toBe(400)
+    expect(body.code).toBe('META_TEST_EVENT_CODE_INVALID')
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(JSON.stringify(db.calls)).not.toContain(testEventCode || 'unreachable-empty-value')
+  })
+
+  it.each([
+    ['/api/admin/attribution/meta/test-event', 'META_TEST_EVENT_CODE_INVALID'],
+    ['/api/admin/attribution/meta/live-challenge/consume', 'META_LIVE_CHALLENGE_INVALID'],
+  ])('%s 收到非对象 JSON 时稳定返回 400', async (path, expectedCode) => {
+    const db = createAttributionDb()
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    for (const value of [null, []]) {
+      const res = await createApp('owner').request(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(value),
+      }, { DB: db, ...VALID_READINESS_ENV } as unknown as Bindings)
+      const body = await res.json()
+      expect(res.status).toBe(400)
+      expect(body.code).toBe(expectedCode)
+    }
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it.each([
@@ -2066,7 +2107,10 @@ describe('后台归因中心 API', () => {
     const db = createAttributionDb({ settings: { mode: 'test' } })
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
-    const res = await createApp('owner').request('/api/admin/attribution/meta/test-event', { method: 'POST' }, {
+    const res = await createApp('owner').request('/api/admin/attribution/meta/test-event', {
+      method: 'POST',
+      body: JSON.stringify({ testEventCode: REQUEST_TEST_EVENT_CODE }),
+    }, {
       DB: db,
       ...VALID_READINESS_ENV,
       APP_ENV: 'production',
@@ -2090,7 +2134,10 @@ describe('后台归因中心 API', () => {
     const db = createAttributionDb()
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
-    const res = await createApp('owner').request('/api/admin/attribution/meta/test-event', { method: 'POST' }, {
+    const res = await createApp('owner').request('/api/admin/attribution/meta/test-event', {
+      method: 'POST',
+      body: JSON.stringify({ testEventCode: REQUEST_TEST_EVENT_CODE }),
+    }, {
       DB: db,
       ...VALID_READINESS_ENV,
       META_CAPI_DATA_KEY_CURRENT: Buffer.alloc(32, 7).toString('base64'),
@@ -2119,7 +2166,8 @@ describe('后台归因中心 API', () => {
       body: JSON.stringify({
         email: 'owner@example.test',
         externalId: 'owner-42',
-        test_event_code: 'request-code-must-not-win',
+        testEventCode: ` ${REQUEST_TEST_EVENT_CODE.toLowerCase()} `,
+        test_event_code: 'legacy-request-code-must-not-win',
       }),
     }, {
       DB: db,
@@ -2138,7 +2186,9 @@ describe('后台归因中心 API', () => {
     expect(serialized).not.toContain('owner-42')
     expect(serialized).not.toContain('203.0.113.24')
     expect(serialized).not.toContain('Owner-Request-Agent/1.0')
-    expect(serialized).not.toContain('request-code-must-not-win')
+    expect(payload.test_event_code).toBe(REQUEST_TEST_EVENT_CODE)
+    expect(serialized).not.toContain('legacy-request-code-must-not-win')
+    expect(JSON.stringify(db.calls)).not.toContain(REQUEST_TEST_EVENT_CODE)
     expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_conversion_actions'))).toBe(false)
     expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_conversion_deliveries'))).toBe(false)
     expect(db.calls.some(call => call.sql.includes('INSERT INTO meta_connection_verifications'))).toBe(true)
@@ -2147,12 +2197,13 @@ describe('后台归因中心 API', () => {
   it.each([
     ['token', {}, { META_CAPI_ACCESS_TOKEN: undefined }],
     ['空白 token', {}, { META_CAPI_ACCESS_TOKEN: ' \n\t ' }],
-    ['Test Event Code', {}, { META_CAPI_TEST_EVENT_CODE: undefined }],
-    ['空白 Test Event Code', {}, { META_CAPI_TEST_EVENT_CODE: '\n  ' }],
     ['Pixel ID', { settings: { destination_id: '' } }, {}],
   ])('缺少 %s 时 Test Event 返回 503 并审计', async (_label, dbOptions, envOverrides) => {
     const db = createAttributionDb(dbOptions as AttributionDbOptions)
-    const res = await createApp('owner').request('/api/admin/attribution/meta/test-event', { method: 'POST' }, {
+    const res = await createApp('owner').request('/api/admin/attribution/meta/test-event', {
+      method: 'POST',
+      body: JSON.stringify({ testEventCode: REQUEST_TEST_EVENT_CODE }),
+    }, {
       DB: db,
       ...VALID_READINESS_ENV,
       ...envOverrides,
@@ -2170,9 +2221,11 @@ describe('后台归因中心 API', () => {
     const res = await createApp('owner').request('/api/admin/attribution/meta/test-event', {
       method: 'POST',
       headers: {
+        'Content-Type': 'application/json',
         'CF-Connecting-IP': '203.0.113.24',
         'User-Agent': 'Task7-Test-Agent/1.0',
       },
+      body: JSON.stringify({ testEventCode: REQUEST_TEST_EVENT_CODE }),
     }, {
       DB: db,
       ...VALID_READINESS_ENV,
@@ -2199,6 +2252,7 @@ describe('后台归因中心 API', () => {
     const serialized = JSON.stringify({ body, calls: db.calls })
     expect(serialized).not.toContain('secret-token')
     expect(serialized).not.toContain('test-code')
+    expect(serialized).not.toContain(REQUEST_TEST_EVENT_CODE)
     expect(serialized).not.toContain('203.0.113.24')
     expect(serialized).not.toContain('Task7-Test-Agent/1.0')
     expect(serialized).not.toContain('trace-safe')
@@ -2304,9 +2358,11 @@ describe('后台归因中心 API', () => {
     const res = await createApp('owner').request('/api/admin/attribution/meta/test-event', {
       method: 'POST',
       headers: {
+        'Content-Type': 'application/json',
         'CF-Connecting-IP': '203.0.113.24',
         'User-Agent': 'Task7-Test-Agent/1.0',
       },
+      body: JSON.stringify({ testEventCode: REQUEST_TEST_EVENT_CODE }),
     }, {
       DB: db,
       ...VALID_READINESS_ENV,
@@ -2327,7 +2383,10 @@ describe('后台归因中心 API', () => {
       { status: metaStatus },
     )))
     const db = createAttributionDb()
-    const res = await createApp('owner').request('/api/admin/attribution/meta/test-event', { method: 'POST' }, {
+    const res = await createApp('owner').request('/api/admin/attribution/meta/test-event', {
+      method: 'POST',
+      body: JSON.stringify({ testEventCode: REQUEST_TEST_EVENT_CODE }),
+    }, {
       DB: db,
       ...VALID_READINESS_ENV,
     } as unknown as Bindings)

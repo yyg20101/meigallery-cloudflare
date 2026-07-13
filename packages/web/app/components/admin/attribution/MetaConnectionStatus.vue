@@ -15,6 +15,7 @@ const props = withDefaults(defineProps<{
   isOwner: false,
 })
 const emit = defineEmits<{ refreshed: [] }>()
+const testEventCode = defineModel<string>('testEventCode', { default: '' })
 const { api } = useApi()
 const { sendMetaLiveChallenge } = useTracking()
 const verifying = ref(false)
@@ -23,6 +24,12 @@ const message = ref('')
 const messageTone = ref<'success' | 'error'>('success')
 const canVerify = computed(() => canVerifyMetaConnection(props.connection, props.isOwner))
 const busy = computed(() => verifying.value || evidencing.value)
+const normalizedTestEventCode = computed(() => testEventCode.value.trim().toUpperCase())
+const testEventCodeValid = computed(() => /^TEST\d{1,20}$/.test(normalizedTestEventCode.value))
+
+function normalizeTestEventCodeInput() {
+  testEventCode.value = normalizedTestEventCode.value
+}
 
 const connectionItems = computed(() => [
   { label: '连接验证', value: props.connection ? metaConnectionStateLabel(props.connection.state) : '未确认', ok: props.connection?.state === 'verified' },
@@ -36,7 +43,10 @@ async function verifyConnection() {
   verifying.value = true
   message.value = ''
   try {
-    const response = await api<{ data: { status?: string; eventsReceived?: number } }>('/api/admin/attribution/meta/test-event', { method: 'POST' })
+    const response = await api<{ data: { status?: string; eventsReceived?: number } }>('/api/admin/attribution/meta/test-event', {
+      method: 'POST',
+      body: { testEventCode: normalizedTestEventCode.value },
+    })
     if (response.data.status !== 'verified' || response.data.eventsReceived !== 1) throw new Error('Meta 未确认接收测试事件')
     messageTone.value = 'success'
     message.value = 'MetaConnection 验证成功'
@@ -65,7 +75,13 @@ async function runLiveEvidence() {
     if (!sendMetaLiveChallenge(challenge.data)) throw new Error('浏览器 Pixel 事件发送失败')
     const consumed = await api<{ data: { status?: string; eventsReceived?: number } }>(
       '/api/admin/attribution/meta/live-challenge/consume',
-      { method: 'POST', body: { challengeId: challenge.data.challengeId } },
+      {
+        method: 'POST',
+        body: {
+          challengeId: challenge.data.challengeId,
+          testEventCode: normalizedTestEventCode.value,
+        },
+      },
     )
     if (consumed.data.status !== 'server_sent' || consumed.data.eventsReceived !== 2) {
       throw new Error('Meta 未确认接收两条服务端测试事件')
@@ -97,12 +113,27 @@ async function runLiveEvidence() {
         {{ connection ? metaConnectionReasonLabel(connection.invalidationReason) : '连接状态未返回' }}
         <span v-if="connection"> · {{ connection.environment }}</span>
       </p>
-      <div v-if="canVerify" class="flex shrink-0 gap-2">
+      <div v-if="canVerify" class="flex min-w-0 shrink-0 flex-wrap items-end gap-2">
+        <label class="block min-w-0">
+          <span class="mb-1 block text-xs font-medium text-gray-600">Test Event Code</span>
+          <input
+            v-model="testEventCode"
+            data-meta-test-event-code
+            autocomplete="off"
+            autocapitalize="characters"
+            class="h-10 w-36 rounded-md border border-gray-300 bg-white px-3 font-mono text-sm text-gray-900 outline-none focus:border-gray-500 focus:ring-2 focus:ring-gray-200"
+            maxlength="24"
+            placeholder="TEST12345"
+            spellcheck="false"
+            type="text"
+            @blur="normalizeTestEventCodeInput"
+          >
+        </label>
         <button
           data-meta-connection-verify
           class="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
           type="button"
-          :disabled="busy"
+          :disabled="busy || !testEventCodeValid"
           @click="verifyConnection"
         >
           {{ verifying ? '验证中...' : '验证连接' }}
@@ -112,7 +143,7 @@ async function runLiveEvidence() {
           data-meta-live-evidence
           class="rounded-md bg-gray-950 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60"
           type="button"
-          :disabled="busy"
+          :disabled="busy || !testEventCodeValid"
           @click="runLiveEvidence"
         >
           {{ evidencing ? '执行中...' : 'Live Evidence' }}
