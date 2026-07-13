@@ -4,6 +4,7 @@ import { describe, it } from 'node:test'
 import {
   buildProductionMetaLiveReadinessSql,
   buildMetaLiveEvidence,
+  normalizeD1UtcTimestamp,
   recordMetaLiveVerification,
 } from './record-meta-live-verification.mjs'
 
@@ -61,6 +62,7 @@ function runtime(overrides = {}) {
     verifyContract: async () => CONTRACT,
     readReadiness: async () => readiness(),
     destroyChallenge: async () => {},
+    recordSummary: async () => ({ status: 'passed' }),
     output: () => {},
     now: '2026-07-10T00:00:00.000Z',
     ...overrides,
@@ -115,6 +117,7 @@ describe('Meta live evidence V2 Worker challenge 录入', () => {
   it('不再询问或生成 event ID，只逐项确认 Browser/Server/去重并在成功后销毁 challenge', async () => {
     const prompts = []
     let destroyed = 0
+    const summaries = []
     const result = await recordMetaLiveVerification(runtime({
       ask: async prompt => { prompts.push(prompt); return 'yes' },
       destroyChallenge: async challengeId => {
@@ -122,11 +125,37 @@ describe('Meta live evidence V2 Worker challenge 录入', () => {
         assert.equal(challengeId, readiness().challengeId)
       },
       writeEvidence: async () => ({ evidenceFile: '/tmp/evidence.json', latestFile: '/tmp/latest.json' }),
+      recordSummary: async options => {
+        summaries.push(options)
+        return { status: 'passed' }
+      },
     }))
     assert.equal(result.evidence.schemaVersion, 2)
+    assert.equal(result.summaryRecorded, true)
     assert.equal(prompts.some(prompt => /event ID/i.test(prompt)), false)
     assert.equal(prompts.length, 10)
     assert.equal(destroyed, 1)
+    assert.equal(summaries.length, 1)
+    assert.deepEqual(summaries[0].summary.events, ['Contact', 'CompleteRegistration'])
+    assert.equal(summaries[0].summary.datasetQualityContractDigest, CONTRACT.digest)
+  })
+
+  it('D1 摘要写入失败时拒绝成功并仍销毁 challenge', async () => {
+    let destroyed = 0
+    await assert.rejects(recordMetaLiveVerification(runtime({
+      ask: async () => 'yes',
+      destroyChallenge: async () => { destroyed += 1 },
+      writeEvidence: async () => ({ evidenceFile: '/tmp/evidence.json', latestFile: '/tmp/latest.json' }),
+      recordSummary: async () => ({ status: 'failed' }),
+    })), /脱敏摘要写入失败/)
+    assert.equal(destroyed, 1)
+  })
+
+  it('将 D1 无时区时间按 UTC 规范化，避免本地时区偏移', () => {
+    assert.equal(normalizeD1UtcTimestamp('2026-07-13 09:07:35'), '2026-07-13T09:07:35.000Z')
+    assert.equal(normalizeD1UtcTimestamp('2026-07-13T09:07:35.123'), '2026-07-13T09:07:35.123Z')
+    assert.equal(normalizeD1UtcTimestamp('2026-07-13T09:07:35.000Z'), '2026-07-13T09:07:35.000Z')
+    assert.equal(normalizeD1UtcTimestamp('2026-99-13 09:07:35'), '2026-99-13 09:07:35')
   })
 
   it('Owner 任一确认失败时仍销毁 challenge 且不写 evidence', async () => {

@@ -7,6 +7,7 @@ import {
   META_LIVE_EVENTS,
   writeMetaLiveEvidence,
 } from './meta-live-verification-lib.mjs'
+import { recordReleaseVerificationSummary } from './release-verification-store.mjs'
 import { fetchWithTimeout, runCommand } from './release-verification-lib.mjs'
 import { verifyApprovedMetaDatasetQualityContract } from './meta-dataset-quality-contract-lib.mjs'
 
@@ -73,6 +74,7 @@ export async function recordMetaLiveVerification(options = {}) {
   const writeEvidence = options.writeEvidence || writeMetaLiveEvidence
   const readReadiness = options.readReadiness || readProductionMetaLiveReadiness
   const destroyChallenge = options.destroyChallenge || destroyRemoteChallenge
+  const recordSummary = options.recordSummary || recordReleaseVerificationSummary
   const commit = await getCommit(options)
   const contract = await (options.verifyContract || verifyApprovedMetaDatasetQualityContract)({ cwd: options.cwd || process.cwd() })
   await verifyProductionReleaseIdentity({ ...options, commit })
@@ -108,8 +110,28 @@ export async function recordMetaLiveVerification(options = {}) {
       expectedEnvironment: 'production',
       now: options.now,
     })
+    const summaryStep = await recordSummary({
+      environment: 'production',
+      verificationType: 'meta_live',
+      commit,
+      verifiedAt: evidence.capturedAt,
+      summary: {
+        schemaVersion: 2,
+        commitSha: commit,
+        environment: 'production',
+        events: [...META_LIVE_EVENTS],
+        eventsVerified: true,
+        forbiddenEventsAbsent: true,
+        datasetQualityContractVersion: contract.version,
+        datasetQualityContractDigest: contract.digest,
+      },
+      cwd: options.cwd,
+      runCommand: options.runCommand,
+    })
+    if (summaryStep?.status !== 'passed') throw new Error('production Meta live 脱敏摘要写入失败')
     options.output?.(`Meta live evidence 已写入：${files.evidenceFile}`)
-    return { evidence, ...files }
+    options.output?.('production Meta live 脱敏摘要已写入 D1')
+    return { evidence, ...files, summaryRecorded: true }
   }
   finally {
     cliPrompter?.close()
@@ -138,7 +160,7 @@ export async function readProductionMetaLiveReadiness(options = {}) {
     environment: row.environment,
     commitSha: String(row.verified_commit || '').toLowerCase(),
     pixelId: String(row.pixel_id || ''),
-    connectionVerifiedAt: row.connection_verified_at,
+    connectionVerifiedAt: normalizeD1UtcTimestamp(row.connection_verified_at),
     challengeId: row.challenge_id,
     eventDigests: {
       Contact: row.contact_event_digest,
@@ -153,6 +175,14 @@ export async function readProductionMetaLiveReadiness(options = {}) {
     datasetQualityContractDigest: contract.digest,
     datasetQualityCollectorCurrent: false,
   }
+}
+
+export function normalizeD1UtcTimestamp(value) {
+  const raw = String(value || '').trim()
+  const match = raw.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(\.\d{1,3})?$/)
+  if (!match) return raw
+  const parsed = new Date(`${match[1]}T${match[2]}${match[3] || ''}Z`)
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : raw
 }
 
 export function buildProductionMetaLiveReadinessSql(commit, contract) {
@@ -257,7 +287,7 @@ function createCliPrompter() {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  try { await recordMetaLiveVerification() }
+  try { await recordMetaLiveVerification({ output: message => console.log(message) }) }
   catch (error) {
     console.error(error instanceof Error ? error.message : String(error))
     process.exitCode = 1

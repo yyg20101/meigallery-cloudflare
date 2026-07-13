@@ -198,7 +198,7 @@ dev 不执行上述操作。后台只展示有效性布尔值、引用计数和�
 7. 部署生产 API，再部署生产 Web；部署不等同于开启营销投放。
 8. production Worker 部署后，将 `ad_platform_connections.mode` 设为 `test`。CLI 只向 production origin 携带 Owner Cookie 换取 60 秒一次性 ticket；最终 attestation 请求不携带 Cookie，且禁止 redirect。执行 `corepack pnpm verify:meta-resources --post-deploy-isolation`，确认 production Worker、commit、nonce、TTL 与 Pixel/token/Test Event Code/data key 摘要完整。bootstrap 阶段不要求该 endpoint，避免首次部署死锁。
 9. post-deploy isolation 摘要通过后，Owner 才能触发 production synthetic Test Event。API 会在 fetch 前检查当前 commit、target/effective rollout `0`、无 open critical incident和完整 isolation；`disabled` 或 `production` mode 均拒绝。Meta 返回 `events_received=1` 后写入当前 production connection verification。
-10. 在 production 后台创建 live challenge，由正式域名浏览器发送 Pixel 事件、production Worker 发送同 ID CAPI 测试事件；在 Events Manager 人工确认去重后运行 `corepack pnpm verify:meta-live`。命令默认使用 production 地址，必要时才通过 `VERIFY_PRODUCTION_API_URL` / `VERIFY_PRODUCTION_WEB_URL` 覆盖。随后执行 `corepack pnpm verify:meta-resources` 写入 full 摘要，再把 `ad_platform_connections.mode` 切为 `production`。
+10. 在 production 后台创建 live challenge，由正式域名浏览器发送 Pixel 事件、production Worker 发送同 ID CAPI 测试事件；在 Events Manager 人工确认去重后运行 `corepack pnpm verify:meta-live`。命令默认使用 production 地址，必要时才通过 `VERIFY_PRODUCTION_API_URL` / `VERIFY_PRODUCTION_WEB_URL` 覆盖；成功后会同时写入本地脱敏报告和 production D1 `meta_live` 门禁摘要。随后执行 `corepack pnpm verify:meta-resources` 写入 full 摘要，再把 `ad_platform_connections.mode` 切为 `production`。
 
 production live evidence 必须由后台 Owner 按钮创建 Worker challenge：正式域名浏览器通过真实 `fbq` 发送 `Contact` 与 `CompleteRegistration`，随后 production Worker 使用同组 opaque event ID 发送 CAPI。`corepack pnpm verify:meta-live` 只读取生产 D1 中已销毁原始 ID 的摘要并记录 Events Manager 人工确认，不在本地生成 session 或 event ID；成功或失败都会清理短期 challenge 摘要。
 

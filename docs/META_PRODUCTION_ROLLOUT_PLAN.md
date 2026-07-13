@@ -48,7 +48,7 @@ Dataset Quality 通过后：
    - `CompleteRegistration` 包含 email、external ID、IP、User-Agent。
    - `Contact` 包含 IP、User-Agent，不伪造 email、手机号或注册用户 ID。
    - 没有活动 `Lead` 或 `StartTrial`。
-7. 运行 `corepack pnpm verify:meta-live`。
+7. 运行 `corepack pnpm verify:meta-live`，一次完成本地脱敏报告和 production D1 `meta_live` 门禁摘要写入。
 8. 运行 `corepack pnpm verify:meta-resources` 写入完整 production 摘要。
 9. 确认后台发布检查没有阻断项。
 

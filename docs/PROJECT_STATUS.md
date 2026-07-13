@@ -60,6 +60,7 @@
 - Meta Test Event 门禁按最新有效的 `post-deploy` V2 资源证据判定；更新的 bootstrap 发布记录不得遮挡仍在有效期内的 post-deploy 证据。
 - Meta 连接验证为状态幂等操作：配置身份未变化时仍真实发送 Test Event，但复用现有 connection revision，不使已绑定的 Live Evidence 失效；仅 Pixel ID、token 指纹或 Graph API 版本变化时轮换 revision。
 - Meta Test Event Code 已改为 Owner 页面内存中的请求级会话值，验证连接与 Live Evidence 共用当前 `TEST...` 代码；服务端不从长期 secret 读取 payload 代码，也不将该值写入 D1、审计或响应，避免 Meta 换码后服务器事件进入旧 Test Events 会话。
+- Meta live 录入命令在人工确认通过后同时写入本地脱敏报告与 production D1 门禁摘要，并将 D1 无时区时间按 UTC 规范化；失败仍销毁一次性 challenge，避免残留记录被后续误用。
 - SEO：已实现基础 SEO 设置、关键词池、sitemap、robots、结构化数据和生产校验脚本；运营配置见 `docs/SEO_CONFIGURATION.md`。
 
 ## 规划和未接入
