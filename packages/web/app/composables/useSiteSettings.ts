@@ -164,7 +164,12 @@ export function useSiteSettings() {
     : [])
   const metaBrowserConnection = computed(() => browserConnections.value.find(row => row.provider === 'meta') ?? null)
   const tiktokBrowserConnection = computed(() => browserConnections.value.find(row => row.provider === 'tiktok') ?? null)
-  const marketingTrackingMode = computed(() => metaBrowserConnection.value?.mode ?? 'disabled')
+  const marketingTrackingMode = computed(() => {
+    const modes = browserConnections.value.map(connection => connection.mode)
+    if (modes.includes('production')) return 'production'
+    if (modes.includes('test')) return 'test'
+    return 'disabled'
+  })
   const analyticsEnabled = computed(() => {
     return normalizeBooleanSetting(settings.value.analytics_enabled)
   })
