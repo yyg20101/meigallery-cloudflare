@@ -349,21 +349,18 @@ export async function closeMetaCapiIncident(
     blockers.push('connection_unverified')
   }
 
-  const releaseCommit = normalizeReleaseCommit(env.RELEASE_COMMIT)
-  if (incident && connection && releaseCommit) {
+  if (incident && connection) {
     const verification = await env.DB.prepare(`
       SELECT environment
       FROM meta_connection_verifications
       WHERE environment = ?
         AND revision = ?
-        AND verified_commit = ?
         AND invalidated_at IS NULL
         AND datetime(verified_at) > datetime(?)
       LIMIT 1
     `).bind(
       environment,
       connection.revision,
-      releaseCommit,
       incident.opened_at,
     ).first<{ environment: string }>()
     if (!verification) blockers.push('test_event_after_incident_missing')
@@ -392,26 +389,18 @@ export async function closeMetaCapiIncident(
     blockers.push('queue_binding_missing')
   }
 
-  let resourcesVerified = false
-  if (releaseCommit) {
-    try {
-      const resource = await env.DB.prepare(`
+  const resourcesVerified = await env.DB.prepare(`
         SELECT id
         FROM analytics_release_verifications
-        WHERE commit_sha = ?
-          AND environment = ?
+        WHERE environment = ?
           AND verification_type = 'meta_resources'
           AND status = 'passed'
           AND datetime(expires_at) > datetime('now')
         ORDER BY verified_at DESC
         LIMIT 1
-      `).bind(releaseCommit, environment).first<{ id: string }>()
-      resourcesVerified = Boolean(resource)
-    }
-    catch {
-      resourcesVerified = false
-    }
-  }
+      `).bind(environment).first<{ id: string }>()
+    .then(Boolean)
+    .catch(() => false)
   if (!resourcesVerified) blockers.push('meta_resources_verification_missing')
 
   if (blockers.length > 0 || !incident) {
@@ -508,11 +497,6 @@ function count(value: unknown) {
 
 function roundRate(value: number) {
   return Math.round(value * 10_000) / 10_000
-}
-
-function normalizeReleaseCommit(value: unknown) {
-  const commit = String(value ?? '').trim().toLowerCase()
-  return /^[0-9a-f]{40}$/.test(commit) ? commit : ''
 }
 
 function d1ChangedOnce(result: D1Result<unknown> | undefined) {

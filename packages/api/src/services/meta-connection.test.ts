@@ -368,7 +368,6 @@ describe('MetaConnection', () => {
     ['pixel_id_changed', async (db: ReturnType<typeof createConnectionDb>) => db.settings.set('destination_id', JSON.stringify('9988776655'))],
     ['access_token_changed', async (_db: ReturnType<typeof createConnectionDb>, env: Bindings) => { env.META_CAPI_ACCESS_TOKEN = 'rotated-token' }],
     ['graph_api_version_changed', async (db: ReturnType<typeof createConnectionDb>) => { db.verifications.get('dev')!.graph_api_version = 'v24.0' }],
-    ['release_commit_changed', async (_db: ReturnType<typeof createConnectionDb>, env: Bindings) => { env.RELEASE_COMMIT = 'b'.repeat(40) }],
   ])('%s 时立即 configuration_changed', async (reason, mutate) => {
     const db = createConnectionDb()
     await seedVerification(db)
@@ -380,6 +379,35 @@ describe('MetaConnection', () => {
     expect(status).toMatchObject({ state: 'configuration_changed', invalidationReason: reason })
     expect(db.verifications.get('dev')).toMatchObject({ invalidation_reason: reason })
     await expect(requireVerifiedMetaConnection(env)).rejects.toMatchObject({ code: 'META_CONNECTION_UNVERIFIED' })
+  })
+
+  it('发布 commit 变化时保持当前 Meta 连接有效', async () => {
+    const db = createConnectionDb()
+    await seedVerification(db)
+    const env = connectionEnv(db)
+    env.RELEASE_COMMIT = 'b'.repeat(40)
+
+    await expect(getMetaConnectionStatus(env)).resolves.toMatchObject({ state: 'verified', invalidationReason: '' })
+    await expect(requireVerifiedMetaConnection(env)).resolves.toMatchObject({ pixelId: PIXEL_ID })
+  })
+
+  it('兼容恢复历史 release_commit_changed，不恢复其他失效原因', async () => {
+    const db = createConnectionDb()
+    await seedVerification(db)
+    const row = db.verifications.get('dev')!
+    row.invalidated_at = '2026-07-13T00:00:00.000Z'
+    row.invalidation_reason = 'release_commit_changed'
+
+    await expect(getMetaConnectionStatus(connectionEnv(db))).resolves.toMatchObject({
+      state: 'verified',
+      invalidationReason: '',
+    })
+
+    row.invalidation_reason = 'access_token_changed'
+    await expect(getMetaConnectionStatus(connectionEnv(db))).resolves.toMatchObject({
+      state: 'configuration_changed',
+      invalidationReason: 'access_token_changed',
+    })
   })
 
   it.each(['pixel_id_changed', 'access_token_changed'] as const)(
