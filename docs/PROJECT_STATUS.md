@@ -1,6 +1,6 @@
 # 项目当前状态
 
-更新时间：2026-07-12
+更新时间：2026-07-13
 
 本文是当前实现、部署和文档入口索引。若旧提交、历史计划或早期文档与本文冲突，以 `AGENTS.md`、本文、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md` 和 `docs/GIT_WORKFLOW.md` 为准。
 
@@ -57,6 +57,7 @@
 - 2026-07-13 TikTok 官方文档复核与本地验收：按当前标准事件、参数、Test Events、Diagnostics 和 Pixel Helper 说明复核实现；修复仅配置 TikTok 时营销模式仍错误读取 Meta 的问题。API `1070`、Web `257`、Playwright 五视口 `125` 项、Lint、TypeScript 和 Nuxt production build 均通过；浏览器测试确认授权后才向 TikTok CDN 发起请求、脚本位于 `head`、首次 PageView 只入队一次，进入后台后卸载。
 - 2026-07-12 广告平台架构收口：本地 migration 实跑确认旧投递/outbox 清空、统一连接迁移成功、业务转化事实与连接验证/诊断保留；API `1064` 条测试、Web 测试、TypeScript、Lint 和 Nuxt production build 均通过，production 只读 duplicate preflight 为 `ready`。
 - Meta CAPI v2：production Dataset Quality v1 契约已由 Owner 批准，真实 Meta `v25.0 /dataset_quality` capture 已验证；collector 与两事件 live evidence 均绑定唯一 production Dataset。正式域名 Browser 与 production CAPI 通过同组 opaque event ID 验证 `Contact`、`CompleteRegistration` 去重；连接有效性由 Pixel ID、Token 指纹、Graph API 版本和 revision 决定，commit 只作审计追溯。bootstrap 强制 rollout `0`，首次放量仍要求有效 production live evidence、资源隔离证据和无 critical incident。
+- Meta Test Event 门禁按最新有效的 `post-deploy` V2 资源证据判定；更新的 bootstrap 发布记录不得遮挡仍在有效期内的 post-deploy 证据。
 - SEO：已实现基础 SEO 设置、关键词池、sitemap、robots、结构化数据和生产校验脚本；运营配置见 `docs/SEO_CONFIGURATION.md`。
 
 ## 规划和未接入

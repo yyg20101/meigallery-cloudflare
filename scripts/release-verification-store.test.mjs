@@ -96,12 +96,28 @@ describe('发布验证 D1 摘要存储', () => {
     assert.equal(gate.status, 'passed')
   })
 
-  it('远端 production gate 先拒绝非 40 位 commit，且不执行 D1 查询', async () => {
-    await assert.rejects(readRemoteProductionLiveGate({
+  it('远端 production gate 不把待发布 commit 写入 D1 查询', async () => {
+    const gate = await readRemoteProductionLiveGate({
       commit: "a' OR 1=1 --",
       contract: { version: 3, digest: `sha256:${'9'.repeat(64)}` },
-      runCommand: async () => assert.fail('非法 commit 不得进入 SQL'),
-    }), /40 位 commit/)
+      now: '2026-07-10T12:00:00.000Z',
+      runCommand: async (_command, args, options) => {
+        const sql = args[args.indexOf('--command') + 1]
+        assert.doesNotMatch(sql, /OR 1=1|commit_sha\s*=/)
+        return {
+          name: options.name,
+          status: 'passed',
+          stdout: JSON.stringify([{ results: [{
+            summary: JSON.stringify(metaLiveSummary('production', { version: 3, digest: `sha256:${'9'.repeat(64)}` })),
+            verified_at: '2026-07-10T00:00:00.000Z',
+            expires_at: '2026-07-11T00:00:00.000Z',
+          }] }]),
+          stderr: '',
+          exitCode: 0,
+        }
+      },
+    })
+    assert.equal(gate.status, 'passed')
   })
 
   it('远端 production gate 复用 store schema，拒绝 false、乱序、raw ID 和额外字段', async () => {

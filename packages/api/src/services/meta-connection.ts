@@ -268,6 +268,10 @@ async function assertProductionBootstrapGate(
         WHERE environment = 'production' AND verification_type = 'meta_resources'
           AND status = 'passed'
           AND datetime(expires_at) > datetime('now')
+          AND CASE WHEN json_valid(summary) THEN
+            json_extract(summary, '$.schemaVersion') = 2
+            AND json_extract(summary, '$.verificationPhase') = 'post-deploy'
+          ELSE 0 END
         ORDER BY verified_at DESC LIMIT 1
       `).first<{ id: string; summary: string }>(),
       db.prepare("SELECT rollout_percentage FROM ad_platform_connections WHERE provider = 'meta' LIMIT 1")

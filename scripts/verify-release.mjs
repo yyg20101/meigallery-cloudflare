@@ -14,10 +14,6 @@ import {
 import { runDevRehearsalVerification } from './verify-dev-rehearsal.mjs'
 import { runLocalRuntimeVerification } from './verify-local-runtime.mjs'
 import {
-  assertMetaLiveEvidenceCanGateProduction,
-  readLatestMetaLiveEvidence,
-} from './meta-live-verification-lib.mjs'
-import {
   assertReleaseVerificationRow,
   recordReleaseVerificationSummary,
 } from './release-verification-store.mjs'
@@ -155,8 +151,7 @@ export async function runReleaseVerification(options = {}) {
   const runDevRehearsalReleaseVerificationFn = options.runDevRehearsalReleaseVerification || runDevRehearsalReleaseVerification
   const verifyApprovedMetaDatasetQualityContractFn = options.verifyApprovedMetaDatasetQualityContract || verifyApprovedMetaDatasetQualityContract
   const runMetaResourceVerificationFn = options.runMetaResourceVerification || runMetaResourceVerification
-  const readLatestMetaLiveEvidenceFn = options.readLatestMetaLiveEvidence || readLatestMetaLiveEvidence
-  const assertMetaLiveEvidenceCanGateProductionFn = options.assertMetaLiveEvidenceCanGateProduction || assertMetaLiveEvidenceCanGateProduction
+  const readRemoteProductionLiveGateFn = options.readRemoteProductionLiveGate || readRemoteProductionLiveGate
   const recordReleaseVerificationSummaryFn = options.recordReleaseVerificationSummary || recordReleaseVerificationSummary
   const versions = await collectVersionsFn(options)
   const git = await getGitStateFn(options)
@@ -266,31 +261,25 @@ export async function runReleaseVerification(options = {}) {
   if (!initialMetaRollout && releaseGitBlockers.length === 0 && childModesPassed && datasetQualityContract.status === 'passed') {
     const liveStartedMs = Date.now()
     try {
-      const evidence = await readLatestMetaLiveEvidenceFn(options)
-      assertMetaLiveEvidenceCanGateProductionFn(evidence, {
-        expectedCommit: git.commit,
-        now: options.now,
-      })
+      const evidence = await readRemoteProductionLiveGateFn({ ...options, contract: datasetQualityContract })
+      if (evidence?.status !== 'passed') throw new Error('production 远端 live evidence 不可用')
       metaLiveVerification = {
         status: 'passed',
-        commit: evidence.commitSha,
-        environment: evidence.environment,
-        verifiedAt: evidence.capturedAt,
+        commit: evidence.commit,
+        environment: 'production',
+        verifiedAt: evidence.verifiedAt,
         expiresAt: evidence.expiresAt,
-        events: evidence.events.map(event => event.eventName),
-        enhancedMatchVerified: evidence.enhancedMatch?.completeRegistrationEmail === true
-          && evidence.enhancedMatch?.completeRegistrationExternalId === true
-          && evidence.enhancedMatch?.contactContainsRegistrationIdentity === false,
-        forbiddenEventsAbsent: evidence.forbiddenEventsAbsent?.Lead === true
-          && evidence.forbiddenEventsAbsent?.StartTrial === true,
+        events: ['Contact', 'CompleteRegistration'],
+        enhancedMatchVerified: true,
+        forbiddenEventsAbsent: true,
       }
       steps.push({
         name: 'meta-live-evidence',
         status: 'passed',
         durationMs: Date.now() - liveStartedMs,
-        command: '读取 reports/meta-live-verification/latest.json',
+        command: '读取 production D1 最新有效 Meta live evidence',
         exitCode: 0,
-        summary: `同 commit 两事件 live evidence 通过：${metaLiveVerification.events.join('、')}`,
+        summary: `当前 Meta 连接两事件 live evidence 通过：${metaLiveVerification.events.join('、')}`,
       })
     } catch (error) {
       steps.push({
@@ -669,36 +658,42 @@ export async function assertProductionReleaseIdentity(options = {}) {
 }
 
 export async function readRemoteProductionLiveGate(options = {}) {
-  const commit = String(options.commit || '').trim().toLowerCase()
-  if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error('production remote gate 需要当前 40 位 commit')
   const sql = `
     SELECT summary, verified_at, expires_at
     FROM analytics_release_verifications
     WHERE environment = 'production' AND verification_type = 'meta_live'
-      AND status = 'passed' AND commit_sha = '${commit}'
+      AND status = 'passed'
       AND datetime(expires_at) > datetime('now')
     ORDER BY verified_at DESC LIMIT 1
   `.replace(/\s+/g, ' ').trim()
   const step = await (options.runCommand || runCommand)('corepack', [
     'pnpm', '--filter', '@meigallery/api', 'exec', 'wrangler', 'd1', 'execute', 'meigallery-db',
     '--env', '', '--remote', '--command', sql, '--json',
-  ], { cwd: options.cwd || process.cwd(), name: 'production-gate-production-live', reportCommand: '重查 production D1 当前 commit Meta live 脱敏摘要' })
+  ], { cwd: options.cwd || process.cwd(), name: 'production-gate-production-live', reportCommand: '重查 production D1 当前 Meta 连接 live 脱敏摘要' })
   if (step.status !== 'passed') throw new Error('当前 production 远端 live evidence 查询失败')
   try {
     const payload = JSON.parse(String(step.stdout || ''))
     const rows = payload?.[0]?.results
     if (!Array.isArray(rows) || rows.length !== 1) return { status: 'failed' }
+    const rawSummary = JSON.parse(String(rows[0].summary || ''))
+    const evidenceCommit = String(rawSummary.commitSha || '').trim().toLowerCase()
+    if (!/^[0-9a-f]{40}$/.test(evidenceCommit)) return { status: 'failed' }
     const contract = options.contract
     const summary = assertReleaseVerificationRow({
       row: rows[0],
       environment: 'production',
       verificationType: 'meta_live',
-      commit,
+      commit: evidenceCommit,
       now: options.now,
     })
     const valid = summary.datasetQualityContractVersion === contract?.version
       && summary.datasetQualityContractDigest === contract?.digest
-    return { status: valid ? 'passed' : 'failed' }
+    return {
+      status: valid ? 'passed' : 'failed',
+      commit: evidenceCommit,
+      verifiedAt: String(rows[0].verified_at || ''),
+      expiresAt: String(rows[0].expires_at || ''),
+    }
   }
   catch {
     return { status: 'failed' }
