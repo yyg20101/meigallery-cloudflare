@@ -531,7 +531,7 @@ describe('MetaConnection', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('production Test Event 只信当前 commit 未过期的完整 post-deploy V2 摘要，且绝不查询 production D1 的 dev row', async () => {
+  it('production Test Event 只信未过期的完整 post-deploy V2 摘要，且由 SQL 排除更新的 bootstrap 摘要', async () => {
     const db = createConnectionDb({
       trackingMode: 'test',
       productionBootstrapEvidence: createProductionPostDeployMetaResourcesSummary(),
@@ -544,6 +544,10 @@ describe('MetaConnection', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(db.calls.some(call => call.sql.includes("environment = 'dev'"))).toBe(false)
+    const resourceQuery = db.calls.find(call => call.sql.includes('FROM analytics_release_verifications'))
+    expect(resourceQuery?.sql).toContain('CASE WHEN json_valid(summary)')
+    expect(resourceQuery?.sql).toContain("json_extract(summary, '$.schemaVersion') = 2")
+    expect(resourceQuery?.sql).toContain("json_extract(summary, '$.verificationPhase') = 'post-deploy'")
   })
 
   it.each(['disabled', 'production'] as const)('production bootstrap 在 trackingMode=%s 时于 fetch 前阻断', async trackingMode => {
