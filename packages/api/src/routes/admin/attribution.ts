@@ -155,6 +155,53 @@ adminAttributionRoutes.patch('/platforms/meta', async (c) => {
   return c.json({ data: await listAdPlatformConnections(c.env) })
 })
 
+adminAttributionRoutes.patch('/platforms/tiktok', async (c) => {
+  if (c.get('userRole') !== 'owner') {
+    return errorJson(c, 403, '需要站长权限', { code: 'OWNER_REQUIRED' })
+  }
+  if (c.env.APP_ENV !== 'production') {
+    return errorJson(c, 409, 'TikTok 连接只允许在生产环境配置', { code: 'AD_PLATFORM_PRODUCTION_ONLY' })
+  }
+  const body = await c.req.json<Record<string, unknown>>()
+  const destinationId = String(body.destinationId ?? '').trim().toUpperCase()
+  const mode = String(body.mode ?? '')
+  if (!/^[A-Z0-9]{10,30}$/.test(destinationId)) {
+    return errorJson(c, 400, 'TikTok Pixel ID 无效', { code: 'AD_PLATFORM_DESTINATION_INVALID' })
+  }
+  if (mode !== 'disabled' && mode !== 'test' && mode !== 'production') {
+    return errorJson(c, 400, 'TikTok 运行模式无效', { code: 'AD_PLATFORM_MODE_INVALID' })
+  }
+  if (body.serverEnabled === true) {
+    return errorJson(c, 409, 'TikTok Events API 尚未启用', { code: 'AD_PLATFORM_SERVER_UNSUPPORTED' })
+  }
+  const enabled = body.enabled === true
+  const browserEnabled = body.browserEnabled === true
+  const debugEnabled = body.debugEnabled === true
+  const before = await c.env.DB.prepare(`
+    SELECT enabled, mode, browser_enabled, server_enabled, destination_id,
+      debug_enabled, rollout_percentage, revision
+    FROM ad_platform_connections WHERE provider = 'tiktok'
+  `).first<Record<string, unknown>>()
+  if (!before) return errorJson(c, 409, 'TikTok 连接尚未初始化', { code: 'AD_PLATFORM_CONNECTION_MISSING' })
+
+  const after = { enabled, mode, browserEnabled, serverEnabled: false, destinationId, debugEnabled, rolloutPercentage: 0 }
+  await c.env.DB.batch([
+    c.env.DB.prepare(`
+      UPDATE ad_platform_connections
+      SET enabled = ?, mode = ?, browser_enabled = ?, server_enabled = 0,
+        destination_id = ?, debug_enabled = ?, rollout_percentage = 0,
+        revision = NULL, updated_at = datetime('now')
+      WHERE provider = 'tiktok'
+    `).bind(enabled ? 1 : 0, mode, browserEnabled ? 1 : 0, destinationId, debugEnabled ? 1 : 0),
+    c.env.DB.prepare(`
+      INSERT INTO admin_audit_logs
+        (id, admin_id, action, target_type, target_id, before_value, after_value)
+      VALUES (?, ?, 'update_ad_platform_connection', 'ad_platform_connection', 'tiktok', ?, ?)
+    `).bind(generateId('log'), c.get('userId')!, JSON.stringify(before), JSON.stringify(after)),
+  ])
+  return c.json({ data: await listAdPlatformConnections(c.env) })
+})
+
 adminAttributionRoutes.get('/summary', async (c) => {
   const range = parseRangeOrError(c)
   if (range instanceof Response) return range

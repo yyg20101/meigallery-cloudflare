@@ -264,7 +264,7 @@ app.get('/api/settings/public', async (c) => {
     .map(row => serializePublicHomeAd(row))
     .filter((ad): ad is NonNullable<typeof ad> => Boolean(ad))
   settings.ad_platform_browser_connections = browserConnectionsResult.results
-    .filter(row => /^(meta|tiktok|google)$/.test(row.provider) && /^\d{5,30}$/.test(row.destination_id))
+    .filter(row => isPublicAdDestination(row.provider, row.destination_id))
     .map(row => ({
       provider: row.provider,
       destinationId: row.destination_id,
@@ -274,6 +274,12 @@ app.get('/api/settings/public', async (c) => {
   c.header('Cache-Control', c.env.APP_ENV === 'production' ? PUBLIC_SETTINGS_CACHE_CONTROL : 'no-store')
   return c.json(sanitizePublicSiteSettings(settings))
 })
+
+function isPublicAdDestination(provider: string, destinationId: string) {
+  if (provider === 'meta') return /^\d{5,30}$/.test(destinationId)
+  if (provider === 'tiktok') return /^[A-Z0-9]{10,30}$/i.test(destinationId)
+  return false
+}
 
 app.route('/api/meta', metaResourceAttestationRoutes)
 app.route('/api/admin', adminRoutes)

@@ -1,5 +1,6 @@
 import type { AdBrowserInstruction } from '@meigallery/shared'
 import { metaPixelAdapter } from './metaPixel.client'
+import { tiktokPixelAdapter } from './tiktokPixel.client'
 
 type BrowserEventPayload = Record<string, string | number | boolean>
 
@@ -27,6 +28,17 @@ const adapters: Partial<Record<AdBrowserInstruction['provider'], BrowserAdapter>
       instruction.eventName as 'Contact' | 'CompleteRegistration',
       instruction.payload,
       { eventID: instruction.eventId },
+    ),
+  },
+  tiktok: {
+    initialize: destinationId => tiktokPixelAdapter.initialize(destinationId),
+    pageView: () => tiktokPixelAdapter.pageView(),
+    teardown: () => tiktokPixelAdapter.teardown(),
+    standardEvent: (eventName, payload, eventId) => tiktokPixelAdapter.standardEvent(eventName, payload, eventId),
+    execute: instruction => tiktokPixelAdapter.standardEvent(
+      instruction.eventName,
+      instruction.payload,
+      instruction.eventId,
     ),
   },
 }

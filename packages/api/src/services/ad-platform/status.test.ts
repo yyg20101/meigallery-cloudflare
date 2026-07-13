@@ -29,14 +29,17 @@ describe('广告平台连接状态', () => {
         }),
       },
     } as never)
-    expect(result).toEqual([expect.objectContaining({
+    expect(result).toEqual(expect.arrayContaining([expect.objectContaining({
       provider: 'meta',
       environment: 'production',
       destinationConfigured: true,
       serverCredentialConfigured: true,
       state: 'verified',
       mode: 'test',
-    })])
+    }), expect.objectContaining({
+      provider: 'tiktok',
+      state: 'unverified',
+    })]))
     expect(JSON.stringify(result)).not.toMatch(/accessToken|credentialValue/i)
   })
 })

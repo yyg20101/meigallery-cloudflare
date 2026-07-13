@@ -30,6 +30,7 @@ const facebookPixelDebugEnabled = ref(false)
 const metaBrowserConnection = computed(() => facebookPixelEnabled.value && facebookPixelId.value
   ? { provider: 'meta', destinationId: facebookPixelId.value, debugEnabled: facebookPixelDebugEnabled.value }
   : null)
+const browserConnections = computed(() => metaBrowserConnection.value ? [metaBrowserConnection.value] : [])
 let analyticsVisitorId = 'visitor_1'
 let analyticsSessionId = 'session_1'
 let route = {
@@ -72,6 +73,7 @@ describe('useTracking', () => {
     vi.stubGlobal('useRuntimeConfig', () => ({ public: { appEnv: 'production' } }))
     vi.stubGlobal('useSiteSettings', () => ({
       metaBrowserConnection,
+      browserConnections,
     }))
     vi.stubGlobal('useAnalytics', () => ({
       getContext: () => ({
@@ -447,7 +449,7 @@ describe('useTracking', () => {
     facebookPixelEnabled.value = true
     tracking.trackPageView()
 
-    expect(adapter.teardown).toHaveBeenCalledOnce()
+    expect(adapter.teardown).toHaveBeenCalledTimes(2)
     expect(adapter.initialize).toHaveBeenCalledTimes(2)
     expect(adapter.pageView).toHaveBeenCalledTimes(2)
   })
@@ -521,7 +523,7 @@ describe('useTracking', () => {
 
     expect(adapter.initialize).toHaveBeenCalledWith('123456789')
     expect(adapter.pageView).toHaveBeenCalledOnce()
-    expect(adapter.teardown).toHaveBeenCalledOnce()
+    expect(adapter.teardown).toHaveBeenCalledTimes(2)
     expect(adapter.standardEvent).not.toHaveBeenCalled()
     expect(api.mock.calls.filter(call => call[0] === '/api/conversions/events')).toHaveLength(1)
     expect(api.mock.calls.filter(call => call[0] === '/api/conversions/pixel-receipts')).toHaveLength(0)
@@ -545,7 +547,7 @@ describe('useTracking', () => {
       actionType: 'copy',
     })
 
-    expect(adapter.teardown).toHaveBeenCalledOnce()
+    expect(adapter.teardown).toHaveBeenCalledTimes(2)
     expect(adapter.standardEvent).not.toHaveBeenCalled()
     expect(api.mock.calls.filter(call => call[0] === '/api/conversions/events')).toHaveLength(1)
     expect(api.mock.calls.filter(call => call[0] === '/api/conversions/pixel-receipts')).toHaveLength(0)

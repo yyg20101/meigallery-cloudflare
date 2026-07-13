@@ -44,6 +44,18 @@ export async function readAdPlatformConnection(
   return row ? serializeConnection(row) : null
 }
 
+export async function listAdPlatformConnections(db: D1Database): Promise<AdPlatformConnection[]> {
+  const result = await db.prepare(`
+    SELECT provider, enabled, mode, browser_enabled, server_enabled, destination_id,
+      debug_enabled, rollout_percentage, credential_secret_name, revision
+    FROM ad_platform_connections
+    ORDER BY provider
+  `).all<ConnectionRow>()
+  return result.results
+    .filter(row => row.provider === 'meta' || row.provider === 'tiktok' || row.provider === 'google')
+    .map(serializeConnection)
+}
+
 function serializeConnection(row: ConnectionRow): AdPlatformConnection {
   return {
     provider: row.provider as AdPlatformProvider,

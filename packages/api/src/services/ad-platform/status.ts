@@ -22,11 +22,39 @@ export interface AdPlatformConnectionStatus {
 }
 
 export async function listAdPlatformConnections(env: MetaConnectionEnv) {
-  const [meta, connection] = await Promise.all([
+  const [meta, metaConnection, tiktokConnection] = await Promise.all([
     getMetaConnectionStatus(env),
     readAdPlatformConnection(env.DB, 'meta'),
+    readAdPlatformConnection(env.DB, 'tiktok'),
   ])
-  return [fromMetaConnection(meta, connection)]
+  return [
+    fromMetaConnection(meta, metaConnection),
+    fromBrowserConnection('tiktok', tiktokConnection),
+  ]
+}
+
+function fromBrowserConnection(
+  provider: AdPlatformProvider,
+  connection: Awaited<ReturnType<typeof readAdPlatformConnection>>,
+): AdPlatformConnectionStatus {
+  const configured = Boolean(connection?.destinationId)
+  return {
+    provider,
+    environment: 'production',
+    enabled: connection?.enabled ?? false,
+    browserEnabled: connection?.browserEnabled ?? false,
+    serverEnabled: false,
+    destinationId: connection?.destinationId ?? '',
+    debugEnabled: connection?.debugEnabled ?? false,
+    rolloutPercentage: 0,
+    destinationConfigured: configured,
+    serverCredentialConfigured: false,
+    testCredentialConfigured: false,
+    mode: connection?.mode ?? 'disabled',
+    state: configured ? 'unverified' : 'not_configured',
+    verifiedAt: '',
+    verifiedCommit: '',
+  }
 }
 
 function fromMetaConnection(

@@ -107,6 +107,17 @@ const metaConnectionForm = reactive({
   mode: 'disabled' as 'disabled' | 'test' | 'production',
   rolloutPercentage: 0 as 0 | 10 | 50 | 100,
 })
+const tiktokConnectionSaving = ref(false)
+const tiktokConnectionMessage = ref('')
+const tiktokConnectionForm = reactive({
+  enabled: false,
+  browserEnabled: false,
+  serverEnabled: false,
+  destinationId: '',
+  debugEnabled: false,
+  mode: 'disabled' as 'disabled' | 'test' | 'production',
+  rolloutPercentage: 0 as const,
+})
 watch(() => platforms.data.value?.find(item => item.provider === 'meta'), (connection) => {
   if (!connection) return
   Object.assign(metaConnectionForm, {
@@ -117,6 +128,18 @@ watch(() => platforms.data.value?.find(item => item.provider === 'meta'), (conne
     debugEnabled: connection.debugEnabled,
     mode: connection.mode,
     rolloutPercentage: connection.rolloutPercentage,
+  })
+}, { immediate: true })
+watch(() => platforms.data.value?.find(item => item.provider === 'tiktok'), (connection) => {
+  if (!connection) return
+  Object.assign(tiktokConnectionForm, {
+    enabled: connection.enabled,
+    browserEnabled: connection.browserEnabled,
+    serverEnabled: false,
+    destinationId: connection.destinationId,
+    debugEnabled: connection.debugEnabled,
+    mode: connection.mode,
+    rolloutPercentage: 0,
   })
 }, { immediate: true })
 const linkRoute = computed(() => ({ path: '/admin/attribution/links', query: attributionRouteQuery(rangeState.range.value, rangeState.date.value) }))
@@ -160,6 +183,25 @@ async function saveMetaConnection() {
   }
   finally {
     connectionSaving.value = false
+  }
+}
+
+async function saveTikTokConnection() {
+  tiktokConnectionSaving.value = true
+  tiktokConnectionMessage.value = ''
+  try {
+    await api('/api/admin/attribution/platforms/tiktok', {
+      method: 'PATCH',
+      body: { ...tiktokConnectionForm },
+    })
+    tiktokConnectionMessage.value = 'TikTok 连接已保存'
+    await refreshAll()
+  }
+  catch (error) {
+    tiktokConnectionMessage.value = resolveApiErrorMessage(error, 'TikTok 连接保存失败')
+  }
+  finally {
+    tiktokConnectionSaving.value = false
   }
 }
 
@@ -249,6 +291,28 @@ function formatCount(value: unknown) {
           <div class="flex items-center gap-3 sm:col-span-2 lg:col-span-4">
             <button type="submit" :disabled="connectionSaving" class="bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">保存连接</button>
             <span class="text-sm text-gray-500">{{ connectionMessage }}</span>
+          </div>
+        </form>
+        <form v-if="isOwner" class="mb-6 grid gap-4 border-b border-gray-200 pb-6 sm:grid-cols-2 lg:grid-cols-4" @submit.prevent="saveTikTokConnection">
+          <label class="sm:col-span-2">
+            <span class="mb-1 block text-xs font-medium text-gray-600">TikTok Pixel ID</span>
+            <input v-model.trim="tiktokConnectionForm.destinationId" autocomplete="off" pattern="[A-Za-z0-9]{10,30}" required class="w-full border border-gray-300 px-3 py-2 text-sm uppercase" />
+          </label>
+          <label>
+            <span class="mb-1 block text-xs font-medium text-gray-600">运行模式</span>
+            <select v-model="tiktokConnectionForm.mode" class="w-full border border-gray-300 px-3 py-2 text-sm">
+              <option value="disabled">关闭</option>
+              <option value="test">测试</option>
+              <option value="production">生产</option>
+            </select>
+          </label>
+          <div class="text-xs text-gray-500 lg:self-end lg:pb-2">Events API 将在独立验收后启用</div>
+          <label class="flex items-center gap-2 text-sm"><input v-model="tiktokConnectionForm.enabled" type="checkbox" />启用连接</label>
+          <label class="flex items-center gap-2 text-sm"><input v-model="tiktokConnectionForm.browserEnabled" type="checkbox" />Browser Pixel</label>
+          <label class="flex items-center gap-2 text-sm"><input v-model="tiktokConnectionForm.debugEnabled" type="checkbox" />调试日志</label>
+          <div class="flex items-center gap-3 sm:col-span-2 lg:col-span-4">
+            <button type="submit" :disabled="tiktokConnectionSaving" class="bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">保存 TikTok</button>
+            <span class="text-sm text-gray-500">{{ tiktokConnectionMessage }}</span>
           </div>
         </form>
         <h3 class="mb-3 text-sm font-semibold text-gray-900">Meta 运维状态</h3>

@@ -542,6 +542,18 @@ test.describe('核心页面 smoke', () => {
     await expect(page.getByText('Meta 连接已保存')).toBeVisible()
   })
 
+  test('后台归因通过统一连接表单保存 TikTok Pixel 配置', async ({ page }) => {
+    await page.goto('/admin/attribution')
+    const form = page.locator('form').filter({ hasText: 'TikTok Pixel ID' })
+    await form.locator('input[pattern="[A-Za-z0-9]{10,30}"]').fill('C123456789ABCDEF')
+    await form.getByLabel('启用连接').check()
+    await form.getByLabel('Browser Pixel').check()
+    const response = page.waitForResponse(candidate => candidate.url().endsWith('/api/admin/attribution/platforms/tiktok') && candidate.request().method() === 'PATCH')
+    await form.getByRole('button', { name: '保存 TikTok' }).click()
+    expect((await response).ok()).toBeTruthy()
+    await expect(form.getByText('TikTok 连接已保存')).toBeVisible()
+  })
+
   test('后台归因发布检查区分阻断项和警告项且警告不改变阻断口径', async ({ page }) => {
     await page.goto('/admin/attribution/readiness')
 
@@ -678,6 +690,54 @@ test.describe('核心页面 smoke', () => {
     expect(protectedRequestUrls.length).toBeGreaterThanOrEqual(5)
     expect(protectedRequestUrls.every(url => new URL(url).origin === new URL(page.url()).origin)).toBe(true)
     expect(protectedRequestUrls.some(url => url.includes('meigallery-api-dev.wajie.workers.dev'))).toBe(false)
+  })
+
+  test('TikTok Pixel 仅在授权后的公开页面加载并发送首次 PageView', async ({ request, page }) => {
+    const pixelId = 'C123456789ABCDEF'
+    const scriptRequests: string[] = []
+    await request.patch(`${apiURL}/api/admin/settings`, {
+      data: {
+        ad_platform_browser_connections: [{
+          provider: 'tiktok',
+          destinationId: pixelId,
+          debugEnabled: false,
+          mode: 'test',
+        }],
+      },
+    })
+    await request.patch(`${apiURL}/api/test/marketing-consent-state`, { data: { state: 'granted' } })
+    await page.route('https://analytics.tiktok.com/**', async (route) => {
+      scriptRequests.push(route.request().url())
+      await route.fulfill({ contentType: 'application/javascript', body: 'window.__tiktokSdkTestLoaded = true' })
+    })
+
+    try {
+      await page.goto('/')
+      await expect.poll(() => scriptRequests.length).toBe(1)
+      expect(scriptRequests[0]).toContain(`sdkid=${pixelId}`)
+      expect(scriptRequests[0]).toContain('lib=ttq')
+      await expect.poll(() => page.evaluate(() => Boolean((window as Window & { __tiktokSdkTestLoaded?: boolean }).__tiktokSdkTestLoaded))).toBe(true)
+
+      const state = await page.evaluate(() => {
+        const script = document.head.querySelector<HTMLScriptElement>('script[src*="analytics.tiktok.com/i18n/pixel/events.js"]')
+        const queue = window.ttq as unknown as unknown[] | undefined
+        return {
+          inHead: Boolean(script),
+          async: script?.async,
+          referrerPolicy: script?.referrerPolicy,
+          queuedPageViews: queue?.filter(item => Array.isArray(item) && item[0] === 'page').length ?? 0,
+        }
+      })
+      expect(state).toEqual({ inHead: true, async: true, referrerPolicy: 'no-referrer', queuedPageViews: 1 })
+
+      await page.goto('/admin')
+      await expect.poll(() => scriptRequests.length).toBe(1)
+      await expect(page.locator('head script[src*="analytics.tiktok.com"]')).toHaveCount(0)
+    }
+    finally {
+      await request.patch(`${apiURL}/api/admin/settings`, { data: { ad_platform_browser_connections: [] } })
+      await request.patch(`${apiURL}/api/test/marketing-consent-state`, { data: { state: 'limited' } })
+    }
   })
 
   test('Web 同源代理完整保留 multipart 二进制字节', async ({ page }) => {
