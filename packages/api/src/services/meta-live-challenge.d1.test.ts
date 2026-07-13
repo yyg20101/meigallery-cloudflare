@@ -11,6 +11,7 @@ import {
 } from './meta-live-challenge'
 
 const COMMIT = 'a'.repeat(40)
+const TEST_EVENT_CODE = 'TEST25401'
 const DATA_KEY = Buffer.alloc(32, 7).toString('base64')
 
 let miniflare: Miniflare
@@ -70,7 +71,7 @@ describe('Meta live Worker challenge', () => {
         .toEqual(['CompleteRegistration', 'Contact'])
       expect(payload.data.map((event: { event_id: string }) => event.event_id).sort())
         .toEqual(Object.values(challenge.eventIds).sort())
-      expect(payload.test_event_code).toBe('test-code')
+      expect(payload.test_event_code).toBe(TEST_EVENT_CODE)
       const contact = payload.data.find((event: { event_name: string }) => event.event_name === 'Contact')
       const registration = payload.data.find((event: { event_name: string }) => event.event_name === 'CompleteRegistration')
       expect(contact.user_data).not.toHaveProperty('em')
@@ -83,7 +84,7 @@ describe('Meta live Worker challenge', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(consumeMetaLiveChallenge(env(), 1, challenge.challengeId)).resolves.toMatchObject({
+    await expect(consumeMetaLiveChallenge(env(), 1, challenge.challengeId, TEST_EVENT_CODE)).resolves.toMatchObject({
       challengeId: challenge.challengeId,
       eventsReceived: 2,
       eventDigests: {
@@ -116,17 +117,29 @@ describe('Meta live Worker challenge', () => {
     expect(isOpaqueSyntheticEventId(value)).toBe(false)
   })
 
+  it('非法请求级 Test Event Code 在 claim 和 Graph fetch 前被拒绝，challenge 仍可重试', async () => {
+    const challenge = await createMetaLiveChallenge(env(), 1)
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(consumeMetaLiveChallenge(env(), 1, challenge.challengeId, 'TEST'))
+      .rejects.toMatchObject({ code: 'META_TEST_EVENT_CODE_INVALID', httpStatus: 400 })
+    expect(fetchMock).not.toHaveBeenCalled()
+    await expect(db.prepare('SELECT status FROM meta_live_challenges WHERE id = ?').bind(challenge.challengeId).first())
+      .resolves.toMatchObject({ status: 'pending' })
+  })
+
   it('重放、错误 commit、过期和非会话 ID 均 fail closed 且不再次 fetch', async () => {
     const challenge = await createMetaLiveChallenge(env(), 1)
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ events_received: 2 }), { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
-    await consumeMetaLiveChallenge(env(), 1, challenge.challengeId)
+    await consumeMetaLiveChallenge(env(), 1, challenge.challengeId, TEST_EVENT_CODE)
 
-    await expect(consumeMetaLiveChallenge(env(), 1, challenge.challengeId))
+    await expect(consumeMetaLiveChallenge(env(), 1, challenge.challengeId, TEST_EVENT_CODE))
       .rejects.toMatchObject({ code: 'META_LIVE_CHALLENGE_INVALID' })
-    await expect(consumeMetaLiveChallenge(env({ RELEASE_COMMIT: 'b'.repeat(40) }), 1, challenge.challengeId))
+    await expect(consumeMetaLiveChallenge(env({ RELEASE_COMMIT: 'b'.repeat(40) }), 1, challenge.challengeId, TEST_EVENT_CODE))
       .rejects.toMatchObject({ code: 'META_LIVE_CHALLENGE_INVALID' })
-    await expect(consumeMetaLiveChallenge(env(), 1, 'not-a-session-id'))
+    await expect(consumeMetaLiveChallenge(env(), 1, 'not-a-session-id', TEST_EVENT_CODE))
       .rejects.toMatchObject({ code: 'META_LIVE_CHALLENGE_INVALID' })
     expect(fetchMock).toHaveBeenCalledOnce()
   })
@@ -136,10 +149,10 @@ describe('Meta live Worker challenge', () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ events_received: 0 }), { status: 503 }))
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(consumeMetaLiveChallenge(env(), 1, challenge.challengeId))
+    await expect(consumeMetaLiveChallenge(env(), 1, challenge.challengeId, TEST_EVENT_CODE))
       .rejects.toMatchObject({ code: 'META_LIVE_CHALLENGE_DELIVERY_FAILED' })
     expect(await db.prepare('SELECT id FROM meta_live_challenges WHERE id = ?').bind(challenge.challengeId).first()).toBeNull()
-    await expect(consumeMetaLiveChallenge(env(), 1, challenge.challengeId))
+    await expect(consumeMetaLiveChallenge(env(), 1, challenge.challengeId, TEST_EVENT_CODE))
       .rejects.toMatchObject({ code: 'META_LIVE_CHALLENGE_INVALID' })
     expect(fetchMock).toHaveBeenCalledOnce()
   })
@@ -151,7 +164,7 @@ function env(overrides: Partial<Bindings> = {}) {
     SITE_URL: 'https://production.example',
     DB: db,
     META_CAPI_ACCESS_TOKEN: 'production-token',
-    META_CAPI_TEST_EVENT_CODE: 'test-code',
+    META_CAPI_TEST_EVENT_CODE: 'TEST17298',
     META_CAPI_DATA_KEY_CURRENT: DATA_KEY,
     META_CAPI_QUEUE: { send: vi.fn() },
     RELEASE_COMMIT: COMMIT,

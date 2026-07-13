@@ -10,6 +10,7 @@ import {
 } from './meta-capi-circuit-breaker'
 
 const PIXEL_ID_PATTERN = /^\d{5,30}$/
+const TEST_EVENT_CODE_PATTERN = /^TEST\d{1,20}$/
 const RELEASE_COMMIT_PATTERN = /^[0-9a-f]{40}$/i
 const VERIFICATION_REVISION_PATTERN = /^[0-9a-f]{32}$/
 const META_BOOTSTRAP_TIMEOUT_MS = 8_000
@@ -147,14 +148,16 @@ export async function verifyMetaConnection(
   env: MetaConnectionEnv,
   ownerUserId: number,
   eventName: ActiveMetaEventName,
+  testEventCode: string,
 ): Promise<MetaConnectionStatus> {
-  return (await bootstrapMetaConnectionVerification(env, ownerUserId, eventName)).connection
+  return (await bootstrapMetaConnectionVerification(env, ownerUserId, eventName, testEventCode)).connection
 }
 
 export async function bootstrapMetaConnectionVerification(
   env: MetaConnectionEnv,
   ownerUserId: number,
   eventName: ActiveMetaEventName,
+  testEventCodeInput: string,
 ): Promise<MetaConnectionBootstrapResult> {
   const environment = requireRuntimeEnvironment(env.APP_ENV)
   if (!Number.isSafeInteger(ownerUserId) || ownerUserId <= 0) {
@@ -167,8 +170,12 @@ export async function bootstrapMetaConnectionVerification(
   const settings = await readMetaConnectionSettings(env.DB)
   const pixelId = normalizePixelId(settings.pixelId)
   const accessToken = configuredValue(env.META_CAPI_ACCESS_TOKEN)
-  const testEventCode = configuredValue(env.META_CAPI_TEST_EVENT_CODE)
+  const testEventCode = normalizeTestEventCode(testEventCodeInput)
   const releaseCommit = normalizeReleaseCommit(env.RELEASE_COMMIT)
+
+  if (!testEventCode) {
+    throw new MetaConnectionError('META_TEST_EVENT_CODE_INVALID', 400)
+  }
 
   if (environment === 'dev' && settings.trackingMode !== 'test') {
     throw new MetaConnectionError('META_TEST_MODE_REQUIRED', 409)
@@ -180,7 +187,7 @@ export async function bootstrapMetaConnectionVerification(
     if (environment === 'production') throw new MetaConnectionError('META_PRODUCTION_TEST_GATE_BLOCKED', 409)
     throw new MetaConnectionError('META_RELEASE_COMMIT_INVALID', 503)
   }
-  if (!pixelId || !accessToken || !testEventCode || !env.META_CAPI_QUEUE) {
+  if (!pixelId || !accessToken || !env.META_CAPI_QUEUE) {
     if (environment === 'production') throw new MetaConnectionError('META_PRODUCTION_TEST_GATE_BLOCKED', 409)
     throw new MetaConnectionError('META_TEST_EVENT_NOT_CONFIGURED', 503)
   }
@@ -590,6 +597,11 @@ function normalizePixelId(value: unknown) {
 
 function configuredValue(value: unknown) {
   return String(value ?? '').trim()
+}
+
+function normalizeTestEventCode(value: unknown) {
+  const normalized = String(value ?? '').trim().toUpperCase()
+  return TEST_EVENT_CODE_PATTERN.test(normalized) ? normalized : ''
 }
 
 function normalizeReleaseCommit(value: unknown) {
