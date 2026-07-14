@@ -28,6 +28,10 @@ describe('开发环境发布预演边界', () => {
     assert.match(source, /postConversion/)
     assert.match(source, /postRegistration/)
     assert.match(source, /dev-admin-attribution/)
+    assert.match(source, /api\/marketing-consent/)
+    assert.match(source, /api\/ad-attribution/)
+    assert.match(source, /adAttributionState: 'resolved'/)
+    assert.match(source, /conversions\?provider=meta&from=/)
   })
 
   it('部署身份传播期间轮询到新 commit 后通过', async () => {
