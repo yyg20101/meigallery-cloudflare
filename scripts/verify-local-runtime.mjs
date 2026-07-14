@@ -147,6 +147,10 @@ export async function runLocalRuntimeVerification(options = {}) {
     steps.push(cleanForReport(healthStep.step))
     if (healthStep.step.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
+    const attributionReceipt = await establishMetaAttribution(boundedFetch)
+    steps.push(attributionReceipt.step)
+    if (attributionReceipt.step.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
+
     const contactStep = await postConversion(boundedFetch, 'local-conversion-contact', {
       actionType: 'contact',
       visitorId: 'visitor_release_local',
@@ -161,14 +165,15 @@ export async function runLocalRuntimeVerification(options = {}) {
       utmMedium: 'paid_social',
       utmCampaign: 'release-local-runtime',
       utmContent: 'release-local-chat',
-      consentState: 'limited',
+      consentState: 'granted',
+      adAttributionState: 'resolved',
       methodType: 'telegram',
       actionTarget: 'floating_contact_panel',
       metadata: {
         fbclid: 'release-local-fbclid',
         placement: 'local-runtime-smoke',
       },
-    })
+    }, attributionReceipt.cookieHeader)
     steps.push(contactStep)
     if (contactStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
@@ -190,9 +195,10 @@ export async function runLocalRuntimeVerification(options = {}) {
         utmMedium: 'paid_social',
         utmCampaign: 'release-local-runtime',
         utmContent: 'release-local-chat',
-        consentState: 'limited',
+        consentState: 'granted',
+        adAttributionState: 'resolved',
       },
-    })
+    }, attributionReceipt.cookieHeader)
     steps.push(completeRegistrationStep)
     if (completeRegistrationStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
@@ -416,10 +422,82 @@ async function readCurrentCommit(options = {}) {
   return String(step.stdout || '').trim()
 }
 
-async function postConversion(fetchFn, stepName, payload) {
+async function establishMetaAttribution(fetchFn) {
+  const startedAt = Date.now()
+  const command = 'PUT /api/marketing-consent -> PUT /api/ad-attribution'
+  try {
+    const consentResponse = await fetchFn(`${LOCAL_API_URL}/api/marketing-consent`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ state: 'granted' }),
+    })
+    if (!consentResponse.ok) throw new Error(`营销授权 HTTP ${consentResponse.status}`)
+    const consentBody = await consentResponse.json()
+    if (consentBody?.state !== 'granted') throw new Error('营销授权未进入 granted')
+    const consentCookie = readResponseCookie(consentResponse, 'mei_marketing_consent_receipt')
+
+    const attributionResponse = await fetchFn(`${LOCAL_API_URL}/api/ad-attribution`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: consentCookie,
+      },
+      body: JSON.stringify({
+        fbclid: 'release-local-fbclid',
+        utmSource: 'facebook',
+        trackingSourceSlug: 'release-local-fb',
+      }),
+    })
+    if (!attributionResponse.ok) throw new Error(`广告来源验证 HTTP ${attributionResponse.status}`)
+    const attributionBody = await attributionResponse.json()
+    if (attributionBody?.provider !== 'meta' || attributionBody?.resolution !== 'matched') {
+      throw new Error('广告来源未解析为 Meta')
+    }
+    const attributionCookie = readResponseCookie(attributionResponse, 'mei_ad_attribution_receipt')
+
+    return {
+      cookieHeader: `${consentCookie}; ${attributionCookie}`,
+      step: {
+        ...createStep('local-meta-attribution-receipt'),
+        status: 'passed',
+        durationMs: Date.now() - startedAt,
+        command,
+        exitCode: 200,
+        summary: '营销授权和 Meta 来源 receipt 已由本地 Worker 签发',
+      },
+    }
+  }
+  catch (error) {
+    return {
+      cookieHeader: '',
+      step: {
+        ...createStep('local-meta-attribution-receipt'),
+        status: 'failed',
+        durationMs: Date.now() - startedAt,
+        command,
+        exitCode: null,
+        summary: truncateSummary(error instanceof Error ? error.message : 'Meta 来源 receipt 创建失败'),
+      },
+    }
+  }
+}
+
+function readResponseCookie(response, name) {
+  const setCookie = response.headers.get('set-cookie') || ''
+  const cookiePair = setCookie.split(';', 1)[0]
+  if (!cookiePair.startsWith(`${name}=`) || cookiePair.length <= name.length + 1) {
+    throw new Error(`${name} 未签发`)
+  }
+  return cookiePair
+}
+
+async function postConversion(fetchFn, stepName, payload, cookieHeader = '') {
   return requestStep(fetchFn, stepName, '/api/conversions/events', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+    },
     body: JSON.stringify(payload),
   }, (body) => {
     if (!body?.data?.id) {
@@ -432,10 +510,13 @@ async function postConversion(fetchFn, stepName, payload) {
   })
 }
 
-async function postRegistration(fetchFn, payload) {
+async function postRegistration(fetchFn, payload, cookieHeader = '') {
   return requestStep(fetchFn, 'local-auth-register', '/api/auth/register', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+    },
     body: JSON.stringify(payload),
   }, (body) => {
     if (!Number.isInteger(body?.id) || Number(body.id) <= 0) throw new Error('注册响应缺少合法用户 ID')
@@ -543,7 +624,7 @@ async function smokeAdminAnalytics(fetchFn, sessionToken) {
 }
 
 async function smokeAdminAttribution(fetchFn, sessionToken) {
-  return requestStep(fetchFn, 'local-admin-attribution', '/api/admin/attribution/conversions?range=7d', {
+  return requestStep(fetchFn, 'local-admin-attribution', '/api/admin/attribution/conversions?provider=meta&range=7d', {
     headers: {
       Cookie: `${SESSION_COOKIE}=${sessionToken}`,
     },
