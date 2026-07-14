@@ -40,7 +40,8 @@ beforeAll(async () => {
       opened_at TEXT, last_observed_at TEXT
     );
     CREATE TABLE meta_connection_verifications (
-      environment TEXT PRIMARY KEY, verified_commit TEXT, invalidated_at TEXT, revision TEXT
+      environment TEXT PRIMARY KEY, verified_commit TEXT, verified_at TEXT,
+      invalidated_at TEXT, revision TEXT
     );
     CREATE TABLE analytics_release_verifications (
       id TEXT PRIMARY KEY, commit_sha TEXT, environment TEXT, verification_type TEXT,
@@ -113,8 +114,9 @@ async function seedProductionGate() {
             'META_CAPI_ACCESS_TOKEN', ?)
   `).bind('1'.repeat(32)).run()
   await db.prepare(`
-    INSERT INTO meta_connection_verifications (environment, verified_commit, invalidated_at, revision)
-    VALUES ('production', ?, NULL, ?)
+    INSERT INTO meta_connection_verifications
+      (environment, verified_commit, verified_at, invalidated_at, revision)
+    VALUES ('production', ?, datetime('now'), NULL, ?)
   `).bind(COMMIT, '1'.repeat(32)).run()
   await db.prepare(`
     INSERT INTO analytics_release_verifications
@@ -124,8 +126,8 @@ async function seedProductionGate() {
   await db.prepare(`
     INSERT INTO analytics_release_verifications
       (id, commit_sha, environment, verification_type, status, summary, verified_at, expires_at)
-    VALUES ('live', ?, 'production', 'meta_live', 'passed', '{}', datetime('now'), datetime('now', '+1 day'))
-  `).bind(COMMIT).run()
+    VALUES ('live', ?, 'production', 'meta_live', 'passed', ?, datetime('now'), datetime('now', '+1 day'))
+  `).bind(COMMIT, JSON.stringify({ commitSha: COMMIT })).run()
   const inserts = Array.from({ length: 100 }, (_, index) => (
     db.prepare(`
       INSERT INTO analytics_conversion_deliveries
