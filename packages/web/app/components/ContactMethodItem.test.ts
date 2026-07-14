@@ -38,8 +38,19 @@ describe('ContactMethodItem', () => {
     expect(link.attributes('target')).toBe('_blank')
     expect(link.attributes('rel')).toContain('noopener')
     expect(link.attributes('referrerpolicy')).toBe('no-referrer')
+    link.element.addEventListener('click', event => event.preventDefault(), { capture: true })
     await link.trigger('click')
 
+    expect(wrapper.emitted('activate')).toEqual([['telegram', 'open_link']])
+  })
+
+  it('原样使用 telegram.me 链接且不访问外网', async () => {
+    const wrapper = mountItem('https://telegram.me/example')
+    const link = wrapper.get('a[data-contact-action]')
+    link.element.addEventListener('click', event => event.preventDefault(), { capture: true })
+
+    expect(link.attributes('href')).toBe('https://telegram.me/example')
+    await link.trigger('click')
     expect(wrapper.emitted('activate')).toEqual([['telegram', 'open_link']])
   })
 
