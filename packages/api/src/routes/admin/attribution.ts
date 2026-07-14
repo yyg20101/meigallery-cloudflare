@@ -786,13 +786,28 @@ async function buildReadinessResponse(c: AdminAttributionContext) {
           AND event_name IN ('Contact', 'CompleteRegistration')
       `, [range.from, range.to]),
       queryAll(c.env.DB, `
-          SELECT verification_type, verified_at, expires_at
-          FROM analytics_release_verifications
-          WHERE environment = ?
-            AND verification_type IN ('meta_live', 'meta_resources')
-            AND status = 'passed'
-            AND datetime(expires_at) > datetime('now')
-          ORDER BY verified_at DESC
+          SELECT rv.verification_type, rv.verified_at, rv.expires_at
+          FROM analytics_release_verifications rv
+          WHERE rv.environment = ?
+            AND rv.verification_type IN ('meta_live', 'meta_resources')
+            AND rv.status = 'passed'
+            AND (
+              (rv.verification_type = 'meta_resources' AND datetime(rv.expires_at) > datetime('now'))
+              OR (
+                rv.verification_type = 'meta_live'
+                AND datetime(rv.verified_at) > datetime('now', '-30 days')
+                AND EXISTS (
+                  SELECT 1
+                  FROM meta_connection_verifications c
+                  WHERE c.environment = rv.environment
+                    AND c.invalidated_at IS NULL
+                    AND length(c.revision) = 32
+                    AND c.verified_commit = json_extract(rv.summary, '$.commitSha')
+                    AND datetime(rv.verified_at) >= datetime(c.verified_at)
+                )
+              )
+            )
+          ORDER BY rv.verified_at DESC
         `, [releaseEnvironment]),
       queryFirst(c.env.DB, `
         SELECT MAX(verified_at) AS last_manual_confirmation_at
@@ -1406,13 +1421,18 @@ async function readCurrentMetaPromotionEvidenceWithUsage(
           LIMIT 1
         `)),
         queryFirstWithUsage<{ id: string }>(db.prepare(`
-          SELECT id
-          FROM analytics_release_verifications
-          WHERE environment = 'production'
-            AND verification_type = 'meta_live'
-            AND status = 'passed'
-            AND datetime(expires_at) > datetime('now')
-          ORDER BY verified_at DESC
+          SELECT v.id
+          FROM analytics_release_verifications v
+          JOIN meta_connection_verifications c ON c.environment = v.environment
+          WHERE v.environment = 'production'
+            AND v.verification_type = 'meta_live'
+            AND v.status = 'passed'
+            AND c.invalidated_at IS NULL
+            AND length(c.revision) = 32
+            AND c.verified_commit = json_extract(v.summary, '$.commitSha')
+            AND datetime(v.verified_at) >= datetime(c.verified_at)
+            AND datetime(v.verified_at) > datetime('now', '-30 days')
+          ORDER BY v.verified_at DESC
           LIMIT 1
         `)),
       ])

@@ -204,14 +204,14 @@ dev 不执行上述操作。后台只展示有效性布尔值、引用计数和�
 1. 在 release 分支完成 migration 演练、测试、类型检查、构建和 Worker dry-run，通过 GitHub CI 后以 PR 合入 `main`。
 2. 在干净的 `main` 执行 `./scripts/deploy.sh production`；脚本首先核对四条广告平台 Queue 并运行 fresh `verify:quick`，失败时不修改 production D1。
 3. 快速验证通过后应用当前最新 migration（当前为 `0050`）。`0049` 的数据库桥接和 `0050` 对未标记历史事实的兼容保证旧 Worker 在发布窗口可继续处理 Meta。
-4. migration 后执行 fresh `verify:release`，核验当前 Meta 连接 revision、有效 production live evidence、Dataset Quality、无 critical incident 和既有 rollout。Meta evidence 绑定连接身份，不因普通业务 commit 变化而失效。
+4. migration 后执行 fresh `verify:release`，核验当前 Meta 连接 revision、有效 production live evidence、Dataset Quality、无 critical incident 和既有 rollout。Meta live challenge 必须在 24 小时内完成人工确认；确认结果在连接 revision 未变化且未失效时可复用 30 天，不因普通业务 commit 变化而失效。
 5. release 报告仍必须绑定当前 `main` HEAD，以证明本次代码完成全部本地、运行时和生产资源验证；旧 commit 的 release 报告不能放行新 HEAD。
 6. 完整门禁通过后部署 API，再部署 Web。脚本不修改任何平台的 enabled、mode、rollout、incident 或 secret。
 7. Worker 部署后执行 `assert-production-identity`，确认 production API/Web 都是当前 `main` HEAD；随后执行生产 SEO 校验。
 8. 对比部署前后 Meta 连接、rollout、incident、Queue/DLQ 和投递积压，必须保持业务状态不变；同时确认新 TikTok 连接为 `disabled`、Browser/Server 关闭、rollout `0`。
 9. 只有修改 Meta 连接身份、事件契约或质量证据本身时，才重新执行 production Live Evidence；普通功能发布不要求重复发送 Meta 测试事件。
 
-production live evidence 必须由后台 Owner 按钮创建 Worker challenge：正式域名浏览器通过真实 `fbq` 发送 `Contact` 与 `CompleteRegistration`，随后 production Worker 使用同组 opaque event ID 发送 CAPI。`corepack pnpm verify:meta-live` 只读取生产 D1 中已销毁原始 ID 的摘要并记录 Events Manager 人工确认，不在本地生成 session 或 event ID；成功或失败都会清理短期 challenge 摘要。
+production live evidence 必须由后台 Owner 按钮创建 Worker challenge：正式域名浏览器通过真实 `fbq` 发送 `Contact` 与 `CompleteRegistration`，随后 production Worker 使用同组 opaque event ID 发送 CAPI。`corepack pnpm verify:meta-live` 只读取生产 D1 中已销毁原始 ID 的摘要并记录 Events Manager 人工确认，不在本地生成 session 或 event ID；成功或失败都会清理短期 challenge 摘要。challenge 本身严格 24 小时有效，完成后的人工确认按当前连接身份最多复用 30 天；连接重新验证、失效或身份变化后必须重新确认。
 
 若失败发生在 Worker 部署前，保持既有 production Meta 设置不变；若部署后确认 Meta 出现回归，才按下述回滚顺序先关闭 Server 投递并切回安全模式。不得伪造 live evidence 或绕过当前 HEAD 的 release 报告。
 
@@ -449,7 +449,7 @@ head_sampling_rate = 1
 - [ ] 生产 `meigallery-tiktok-events` / `meigallery-tiktok-events-dlq` 已创建，并通过 `node scripts/verify-ad-platform-queues.mjs production`；即使 TikTok 保持关闭也必须在 `0049` 前满足
 - [ ] 如准备启用 TikTok，`TIKTOK_EVENTS_ACCESS_TOKEN` 与独立 data key 已作为 production secret 配置；dev 不配置
 - [ ] `0047_ad_platform_delivery_core.sql`、`0048_tiktok_pixel_connection.sql`、`0049_tiktok_events_api.sql` 与 `0050_strict_ad_source_routing.sql` 已应用；新平台保持 mode `disabled`、Server 关闭、rollout `0`
-- [ ] 当前 Meta 连接具有未过期的 production live evidence；`Contact` / `CompleteRegistration` 均完成 Browser/Server 同 ID 去重，且无 `Lead` / `StartTrial`
+- [ ] 当前 Meta 连接具有 30 天内、且晚于该连接最后验证时间的 production live 人工确认；`Contact` / `CompleteRegistration` 均完成 Browser/Server 同 ID 去重，且无 `Lead` / `StartTrial`
 - [ ] `/admin/attribution` 可按 Meta / TikTok 分别查看 Pixel `attempted`、Server `sent` 和匹配覆盖；平台 Test Events 严格成功后才允许对应 Server 开关与 rollout
 - [ ] 如接入 Ops Hub 自动导入，Ops Hub 侧 `sourceBotKey` 与 MeiGallery Import Token allowlist 完全一致，且只提交 `metadata.type=gallery/case`
 - [ ] 已用 Ops Hub 或等价脚本完成 `#gallery` 单图、`#case` 相册、重复 `externalMessageId`、未授权 `sourceBotKey` 和旧 `testimonial_case` 拒绝验收
