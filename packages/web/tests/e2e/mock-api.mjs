@@ -490,6 +490,7 @@ function adminAttributionResponse(pathname, searchParams) {
       channel: 'ad',
       slug: 'meta-ad-a',
       sourceCode: 'meta-ad-a',
+      adProvider: 'meta',
       targetPath: '/',
       utmSource: 'meta-ad-a',
       utmMedium: 'paid_social',
@@ -845,6 +846,26 @@ function handleApi(req, res) {
     return
   }
   if (url.pathname === '/api/settings/public') return json(res, publicSettings())
+  if (url.pathname === '/api/ad-attribution' && req.method === 'PUT') {
+    readJsonBody(req)
+      .then((body) => {
+        const hasMetaClick = Boolean(String(body.fbclid || '').trim())
+        const hasTikTokClick = Boolean(String(body.ttclid || '').trim())
+        const provider = hasMetaClick === hasTikTokClick
+          ? null
+          : hasMetaClick ? 'meta' : 'tiktok'
+        json(res, {
+          provider,
+          resolution: hasMetaClick && hasTikTokClick ? 'conflict' : provider ? 'matched' : 'none',
+          expiresInSeconds: 1_800,
+        })
+      })
+      .catch(() => json(res, { statusCode: 400, message: '广告来源请求无效' }, 400))
+    return
+  }
+  if (url.pathname === '/api/ad-attribution' && req.method === 'DELETE') {
+    return json(res, { provider: null, resolution: 'none', expiresInSeconds: 1_800 })
+  }
   if (url.pathname === '/api/marketing-consent' && req.method === 'GET') {
     return json(res, { state: marketingConsentState })
   }
