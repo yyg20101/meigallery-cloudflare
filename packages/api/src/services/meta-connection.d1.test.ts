@@ -17,7 +17,6 @@ const REPLACEMENT_PIXEL_ID = '9988776655'
 const TOKEN = 'meta-token-sensitive'
 const ROTATED_TOKEN = 'rotated-meta-token-sensitive'
 const TEST_EVENT_CODE = 'TEST25401'
-const CONFIGURED_TEST_EVENT_CODE = 'TEST17298'
 const RELEASE_COMMIT = 'a'.repeat(40)
 const DATA_KEY = Buffer.alloc(32, 7).toString('base64')
 const INITIAL_REVISION = 'f'.repeat(32)
@@ -262,7 +261,6 @@ function connectionEnv(db: D1Database, token = TOKEN): Bindings {
     APP_ENV: 'dev',
     DB: db,
     META_CAPI_ACCESS_TOKEN: token,
-    META_CAPI_TEST_EVENT_CODE: CONFIGURED_TEST_EVENT_CODE,
     META_CAPI_DATA_KEY_CURRENT: DATA_KEY,
     META_CAPI_QUEUE: { send: vi.fn() },
     RELEASE_COMMIT,

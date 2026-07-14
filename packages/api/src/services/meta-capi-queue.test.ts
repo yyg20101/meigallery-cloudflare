@@ -389,7 +389,6 @@ function env(db: ReturnType<typeof createQueueDb>, overrides: Partial<Bindings> 
     APP_ENV: 'dev',
     SITE_URL: 'https://616618.xyz',
     META_CAPI_ACCESS_TOKEN: 'token_private',
-    META_CAPI_TEST_EVENT_CODE: 'test-code',
     META_CAPI_DATA_KEY_CURRENT: CURRENT_KEY,
     RELEASE_COMMIT,
     DB: db,

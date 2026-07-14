@@ -24,7 +24,6 @@ export interface AdPlatformConnectionStatusData {
   serverCredentialConfigured: boolean
   serverQueueConfigured: boolean
   serverDataKeyConfigured: boolean
-  testCredentialConfigured: boolean
   mode: AdPlatformTrackingMode
   state: 'not_configured' | 'unverified' | 'verified' | 'invalidated'
   verifiedAt: string
@@ -36,7 +35,6 @@ export interface MetaConnectionStatusData {
   environment: 'dev' | 'production'
   pixelIdConfigured: boolean
   tokenConfigured: boolean
-  testEventCodeConfigured: boolean
   verifiedAt: string | null
   verifiedCommit: string | null
   graphApiVersion: 'v25.0'
@@ -361,7 +359,6 @@ export function metaConnectionReasonLabel(reason: string) {
   const labels: Record<string, string> = {
     pixel_id_missing: 'Pixel ID 未配置',
     access_token_missing: 'CAPI token 未配置',
-    test_event_code_missing: 'Test Event Code 未配置',
     tracking_mode_disabled: 'Meta tracking mode 已关闭',
     release_commit_invalid: '当前 release commit 无效',
     verification_missing: '尚未完成连接验证',

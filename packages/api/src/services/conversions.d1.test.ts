@@ -675,7 +675,6 @@ function conversionEnv(
     META_CAPI_QUEUE: { send: queueSend },
     META_CAPI_DATA_KEY_CURRENT: DATA_KEY,
     META_CAPI_ACCESS_TOKEN: META_TOKEN,
-    META_CAPI_TEST_EVENT_CODE: 'conversion-d1-test-code',
     RELEASE_COMMIT,
   } as unknown as Pick<Bindings,
     | 'APP_ENV'
@@ -685,7 +684,6 @@ function conversionEnv(
     | 'META_CAPI_DATA_KEY_CURRENT'
     | 'META_CAPI_DATA_KEY_PREVIOUS'
     | 'META_CAPI_ACCESS_TOKEN'
-    | 'META_CAPI_TEST_EVENT_CODE'
     | 'RELEASE_COMMIT'
   >
 }

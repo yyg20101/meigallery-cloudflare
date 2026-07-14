@@ -20,7 +20,7 @@ beforeEach(() => {
   consumeTicketMock.mockReset()
   consumeTicketMock.mockResolvedValue({
     attestation: {
-      schemaVersion: 1,
+      schemaVersion: 2,
       environment: 'production',
       commitSha: 'c'.repeat(40),
       nonce: NONCE,
@@ -29,7 +29,6 @@ beforeEach(() => {
       identities: {
         pixel: `hmac-sha256:${'1'.repeat(64)}`,
         token: `hmac-sha256:${'2'.repeat(64)}`,
-        testEventCode: `hmac-sha256:${'3'.repeat(64)}`,
         dataKey: `hmac-sha256:${'4'.repeat(64)}`,
       },
     },

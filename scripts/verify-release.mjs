@@ -475,7 +475,7 @@ function sanitizeMetaResourceSummary(result, environment, commit) {
 }
 
 function sanitizeEnvironmentIsolation(value) {
-  const fields = ['d1', 'r2', 'queue', 'dlq', 'pixel', 'token', 'testEventCode', 'dataKey']
+  const fields = ['d1', 'r2', 'queue', 'dlq', 'pixel', 'token', 'dataKey']
   return Object.fromEntries(fields.map(field => [field, value?.[field] === true]))
 }
 

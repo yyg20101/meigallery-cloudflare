@@ -840,7 +840,6 @@ async function buildReadinessResponse(c: AdminAttributionContext) {
   const mode = normalizeAdPlatformTrackingMode(settingMap.mode)
   const modeRequiresMeta = mode === 'test' || mode === 'production'
   const secretPresent = hasConfiguredValue(c.env.META_CAPI_ACCESS_TOKEN)
-  const testEventCodePresent = hasConfiguredValue(c.env.META_CAPI_TEST_EVENT_CODE)
   const pixelEnabled = settingMap.enabled === true && settingMap.browser_enabled === true
   const capiEnabled = settingMap.enabled === true && settingMap.server_enabled === true
   const pixelIdPresent = settingMap.destination_configured === true
@@ -872,7 +871,6 @@ async function buildReadinessResponse(c: AdminAttributionContext) {
     blockerCheck('conversion_ledger', '转化账本有近期数据', schemaReady && numberValue((conversions.rows[0] ?? {}).action_count) > 0, schemaReady ? `当前范围记录 ${numberValue((conversions.rows[0] ?? {}).action_count)} 次转化` : '归因迁移表不可用'),
     blockerCheck('pixel_mode_consistency', 'Pixel ID 与运行模式一致', pixelModeConsistent, pixelModeDetail(mode, pixelEnabled, capiEnabled, pixelIdPresent)),
     blockerCheck('capi_secret', 'CAPI token 已配置', !modeRequiresMeta || secretPresent, presenceDetail(modeRequiresMeta, secretPresent)),
-    blockerCheck('test_event_code', 'Test Event Code 已配置', !modeRequiresMeta || testEventCodePresent, presenceDetail(modeRequiresMeta, testEventCodePresent)),
     blockerCheck('queue_binding', 'CAPI Queue binding 已配置', !modeRequiresMeta || Boolean(c.env.META_CAPI_QUEUE), presenceDetail(modeRequiresMeta, Boolean(c.env.META_CAPI_QUEUE))),
     blockerCheck('meta_live_verification', '当前 Meta 连接已通过 live 验证', Boolean(liveVerification), verificationDetail(liveVerification)),
     blockerCheck('meta_resources_verification', '当前 Meta 资源已通过验证', Boolean(resourcesVerification), verificationDetail(resourcesVerification)),
@@ -1465,7 +1463,7 @@ function hasCurrentProductionIsolation(value: unknown) {
       'environmentIsolation',
     ]
     if (!hasExactKeys(summary, fields)
-      || summary.schemaVersion !== 2
+      || summary.schemaVersion !== 3
       || summary.verificationPhase !== 'full'
       || summary.bootstrapReady !== false
       || summary.liveAttestation !== true
@@ -1481,7 +1479,7 @@ function hasCurrentProductionIsolation(value: unknown) {
       if (summary[field] !== true) return false
     }
     const isolation = summary.environmentIsolation as Record<string, unknown> | undefined
-    const isolationFields = ['d1', 'r2', 'queue', 'dlq', 'pixel', 'token', 'testEventCode', 'dataKey']
+    const isolationFields = ['d1', 'r2', 'queue', 'dlq', 'pixel', 'token', 'dataKey']
     return Boolean(isolation
       && hasExactKeys(isolation, isolationFields)
       && isolationFields.every(key => isolation[key] === true))

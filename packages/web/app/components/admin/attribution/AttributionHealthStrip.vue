@@ -8,7 +8,6 @@ const props = withDefaults(defineProps<{
   skippedCount?: number
   lastSentAt?: string
   secretPresent?: boolean
-  testEventCodePresent?: boolean
   queueBindingPresent?: boolean
   showPresenceSummary?: boolean
 }>(), {
@@ -56,7 +55,7 @@ const items = computed(() => [
 const presenceSummary = computed(() => {
   if (!props.showPresenceSummary) return ''
   const label = (value: boolean | undefined) => value === true ? '存在' : value === false ? '缺失' : '未确认'
-  return `CAPI 配置：token ${label(props.secretPresent)} · Test Event Code ${label(props.testEventCodePresent)} · Queue binding ${label(props.queueBindingPresent)}`
+  return `CAPI 配置：token ${label(props.secretPresent)} · Queue binding ${label(props.queueBindingPresent)}`
 })
 
 function toneClass(tone: string) {

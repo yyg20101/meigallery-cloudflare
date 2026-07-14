@@ -271,7 +271,6 @@ function deliveryEnv() {
     APP_ENV: 'dev',
     SITE_URL: 'https://616618.xyz',
     META_CAPI_ACCESS_TOKEN: ACCESS_TOKEN,
-    META_CAPI_TEST_EVENT_CODE: 'unused-test-code',
     RELEASE_COMMIT,
   }
 }

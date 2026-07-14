@@ -7,7 +7,6 @@ vi.mock('../meta-connection', () => ({
     environment: 'production',
     pixelIdConfigured: true,
     tokenConfigured: true,
-    testEventCodeConfigured: true,
     trackingMode: 'test',
     verifiedAt: '2026-07-12T00:00:00.000Z',
     verifiedCommit: 'a'.repeat(40),

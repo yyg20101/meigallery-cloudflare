@@ -13,10 +13,10 @@ describe('Meta resource live HMAC attestation', () => {
     const dev = await createMetaResourceAttestation(input('dev', 'dev'))
     const production = await createMetaResourceAttestation(input('production', 'production'))
 
-    expect(dev).toMatchObject({ schemaVersion: 1, environment: 'dev', commitSha: COMMIT, nonce: NONCE })
+    expect(dev).toMatchObject({ schemaVersion: 2, environment: 'dev', commitSha: COMMIT, nonce: NONCE })
     expect(Date.parse(dev.expiresAt) - Date.parse(dev.issuedAt)).toBe(5 * 60 * 1000)
     expect(resourceAttestationsAreIsolated(dev, production, { nonce: NONCE, commitSha: COMMIT, now: '2026-07-11T00:01:00.000Z' }))
-      .toEqual({ pixel: true, token: true, testEventCode: true, dataKey: true })
+      .toEqual({ pixel: true, token: true, dataKey: true })
     expect(JSON.stringify([dev, production])).not.toContain('dev-token')
     expect(JSON.stringify([dev, production])).not.toContain('production-token')
   })
@@ -57,7 +57,6 @@ function input(environment: 'dev' | 'production', identity: string) {
     now: '2026-07-11T00:00:00.000Z',
     pixelId: identity === 'shared' ? '1234567890' : environment === 'dev' ? '1234567890' : '9988776655',
     accessToken: `${identity}-token`,
-    testEventCode: `${identity}-test-code`,
     dataKey: Buffer.alloc(32, identity === 'shared' ? 1 : environment === 'dev' ? 2 : 3).toString('base64'),
   }
 }

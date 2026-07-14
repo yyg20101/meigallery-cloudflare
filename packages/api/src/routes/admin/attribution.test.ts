@@ -946,7 +946,6 @@ const VALID_RELEASE_COMMIT = 'a'.repeat(40)
 const REQUEST_TEST_EVENT_CODE = 'TEST25401'
 const VALID_READINESS_ENV = {
   META_CAPI_ACCESS_TOKEN: 'secret-token',
-  META_CAPI_TEST_EVENT_CODE: 'TEST17298',
   META_CAPI_QUEUE: { send: async () => undefined },
   RELEASE_COMMIT: VALID_RELEASE_COMMIT,
   APP_ENV: 'dev',
@@ -1154,7 +1153,6 @@ function createRolloutDb(options: RolloutDbOptions = {}) {
 const VALID_ROLLOUT_ENV = {
   APP_ENV: 'production',
   META_CAPI_ACCESS_TOKEN: 'rollout-token',
-  META_CAPI_TEST_EVENT_CODE: 'test-code',
   RELEASE_COMMIT: VALID_RELEASE_COMMIT,
 }
 
@@ -1826,7 +1824,6 @@ describe('后台归因中心 API', () => {
     expect(body.data.deliveries[0]).toMatchObject({ transport: 'browser', event_name: 'Contact' })
     expect(body.data.settings).not.toHaveProperty('destination_id')
     expect(body.data.connection.tokenConfigured).toBe(true)
-    expect(body.data.connection.testEventCodeConfigured).toBe(true)
     expect(body.data.queueBindingPresent).toBe(true)
     expect(body.data.keyRotation).toEqual({
       currentKeyValid: true,
@@ -1839,7 +1836,6 @@ describe('后台归因中心 API', () => {
     })
     expect(Object.keys(body.data.keyRotation)).toHaveLength(7)
     expect(JSON.stringify(body)).not.toContain('secret-token')
-    expect(JSON.stringify(body)).not.toContain('test-code')
     expect(JSON.stringify(body)).not.toContain(VALID_READINESS_ENV.META_CAPI_DATA_KEY_CURRENT)
     expect(JSON.stringify(body)).not.toContain(VALID_READINESS_ENV.META_CAPI_DATA_KEY_PREVIOUS)
   })
@@ -1864,19 +1860,17 @@ describe('后台归因中心 API', () => {
     expect(deliverySql).toContain("status IN ('pending', 'failed')")
   })
 
-  it('Meta 配置存在状态将纯空白 token 和 Test Event Code 视为缺失', async () => {
+  it('Meta 配置存在状态将纯空白 token 视为缺失', async () => {
     const res = await createApp('admin').request('/api/admin/attribution/meta?from=2026-07-09&to=2026-07-09', {}, {
       DB: createAttributionDb(),
       APP_ENV: 'dev',
       RELEASE_COMMIT: VALID_RELEASE_COMMIT,
       META_CAPI_ACCESS_TOKEN: ' \n\t ',
-      META_CAPI_TEST_EVENT_CODE: '\n  ',
     } as unknown as Bindings)
     const body = await res.json()
 
     expect(res.status).toBe(200)
     expect(body.data.connection.tokenConfigured).toBe(false)
-    expect(body.data.connection.testEventCodeConfigured).toBe(false)
     expect(body.data).not.toHaveProperty('secretPresent')
     expect(body.data).not.toHaveProperty('testEventCodePresent')
   })
@@ -1896,7 +1890,6 @@ describe('后台归因中心 API', () => {
       environment: 'dev',
       pixelIdConfigured: true,
       tokenConfigured: true,
-      testEventCodeConfigured: true,
       verifiedAt: null,
       verifiedCommit: null,
       graphApiVersion: 'v25.0',
@@ -1907,7 +1900,6 @@ describe('后台归因中心 API', () => {
     expect(body.data.connection).not.toHaveProperty('fingerprint')
     expect(body.data.connection).not.toHaveProperty('traceId')
     expect(serialized).not.toContain('secret-token')
-    expect(serialized).not.toContain('test-code')
   })
 
   it('Meta 匹配覆盖率固定使用近 7 天合格 CAPI 与 Meta 付费样本', async () => {
@@ -2119,7 +2111,6 @@ describe('后台归因中心 API', () => {
 
   it.each([
     ['capi_secret', { META_CAPI_ACCESS_TOKEN: ' \n\t ' }],
-    ['test_event_code', { META_CAPI_TEST_EVENT_CODE: '\n   ' }],
   ] as const)('readiness 将纯空白配置判定为 %s 缺失', async (key, envOverrides) => {
     const { body } = await requestReadiness({}, envOverrides)
     const check = body.data.checks.find((item: { key: string }) => item.key === key)
@@ -2168,7 +2159,6 @@ describe('后台归因中心 API', () => {
     ['conversion_ledger', { readiness: { actionCount: 0 } }, {}],
     ['pixel_mode_consistency', { settings: { browser_enabled: false } }, {}],
     ['capi_secret', {}, { META_CAPI_ACCESS_TOKEN: undefined }],
-    ['test_event_code', {}, { META_CAPI_TEST_EVENT_CODE: undefined }],
     ['queue_binding', {}, { META_CAPI_QUEUE: undefined }],
     ['meta_live_verification', { readiness: { liveVerificationPresent: false } }, {}],
     ['meta_resources_verification', { readiness: { resourcesVerificationPresent: false } }, {}],
@@ -2963,7 +2953,7 @@ describe('后台归因中心 API', () => {
 
 function fullResourceSummary(): Record<string, unknown> {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     verificationPhase: 'full',
     bootstrapReady: false,
     liveAttestation: true,
@@ -2984,7 +2974,7 @@ function fullResourceSummary(): Record<string, unknown> {
     rolloutZero: true,
     environmentIsolation: {
       d1: true, r2: true, queue: true, dlq: true,
-      pixel: true, token: true, testEventCode: true, dataKey: true,
+      pixel: true, token: true, dataKey: true,
     },
   }
 }

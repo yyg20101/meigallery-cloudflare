@@ -17,7 +17,6 @@ import {
 const PIXEL_ID = '1234567890'
 const TOKEN = 'meta-token-sensitive'
 const TEST_EVENT_CODE = 'TEST25401'
-const CONFIGURED_TEST_EVENT_CODE = 'TEST17298'
 const RELEASE_COMMIT = 'a'.repeat(40)
 const DATA_KEY = Buffer.alloc(32, 7).toString('base64')
 
@@ -195,7 +194,6 @@ function connectionEnv(
     APP_ENV: 'dev',
     DB: db,
     META_CAPI_ACCESS_TOKEN: TOKEN,
-    META_CAPI_TEST_EVENT_CODE: CONFIGURED_TEST_EVENT_CODE,
     META_CAPI_DATA_KEY_CURRENT: DATA_KEY,
     META_CAPI_QUEUE: { send: vi.fn() },
     RELEASE_COMMIT,
@@ -261,7 +259,6 @@ describe('MetaConnection', () => {
       environment: 'dev',
       pixelIdConfigured: true,
       tokenConfigured: true,
-      testEventCodeConfigured: true,
       graphApiVersion: 'v25.0',
       invalidationReason: 'verification_missing',
     })
@@ -296,7 +293,6 @@ describe('MetaConnection', () => {
     const serializedD1Calls = JSON.stringify(db.calls)
     expect(serializedD1Calls).not.toContain(TOKEN)
     expect(serializedD1Calls).not.toContain(TEST_EVENT_CODE)
-    expect(serializedD1Calls).not.toContain(CONFIGURED_TEST_EVENT_CODE)
     expect(serializedD1Calls).not.toContain(DATA_KEY)
     expect(serializedD1Calls).not.toContain('must-not-leave-service')
 
@@ -458,23 +454,14 @@ describe('MetaConnection', () => {
     },
   )
 
-  it('Test Event Code 变化不改变 fingerprint，但 test mode 仍要求非空', async () => {
+  it('连接状态不依赖长期 Test Event Code 配置', async () => {
     const db = createConnectionDb()
     await seedVerification(db)
 
-    const changed = await getMetaConnectionStatus(connectionEnv(db, {
-      META_CAPI_TEST_EVENT_CODE: 'another-test-code',
-    }))
-    const missing = await getMetaConnectionStatus(connectionEnv(db, {
-      META_CAPI_TEST_EVENT_CODE: '  ',
-    }))
+    const status = await getMetaConnectionStatus(connectionEnv(db))
 
-    expect(changed.state).toBe('verified')
-    expect(missing).toMatchObject({
-      state: 'not_configured',
-      testEventCodeConfigured: false,
-      invalidationReason: 'test_event_code_missing',
-    })
+    expect(status.state).toBe('verified')
+    expect(status.invalidationReason).toBe('')
   })
 
   it('历史空 revision 保持可读取但必须重新验证后才能投递', async () => {
@@ -563,7 +550,7 @@ describe('MetaConnection', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('production Test Event 只信未过期的完整 post-deploy V2 摘要，且由 SQL 排除更新的 bootstrap 摘要', async () => {
+  it('production Test Event 只信未过期的完整 post-deploy V3 摘要，且由 SQL 排除更新的 bootstrap 摘要', async () => {
     const db = createConnectionDb({
       trackingMode: 'test',
       productionBootstrapEvidence: createProductionPostDeployMetaResourcesSummary(),
@@ -578,7 +565,7 @@ describe('MetaConnection', () => {
     expect(db.calls.some(call => call.sql.includes("environment = 'dev'"))).toBe(false)
     const resourceQuery = db.calls.find(call => call.sql.includes('FROM analytics_release_verifications'))
     expect(resourceQuery?.sql).toContain('CASE WHEN json_valid(summary)')
-    expect(resourceQuery?.sql).toContain("json_extract(summary, '$.schemaVersion') = 2")
+    expect(resourceQuery?.sql).toContain("json_extract(summary, '$.schemaVersion') = 3")
     expect(resourceQuery?.sql).toContain("json_extract(summary, '$.verificationPhase') = 'post-deploy'")
   })
 
@@ -685,7 +672,6 @@ describe('MetaConnection', () => {
 
     expect(serialized).not.toContain(TOKEN)
     expect(serialized).not.toContain(TEST_EVENT_CODE)
-    expect(serialized).not.toContain(CONFIGURED_TEST_EVENT_CODE)
     expect(serialized).not.toContain(DATA_KEY)
     expect(serialized).not.toContain(fingerprint)
     expect(serialized).not.toContain('graph-trace-must-not-leak')

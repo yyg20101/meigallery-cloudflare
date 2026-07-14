@@ -1159,7 +1159,7 @@ describe('发布验证 CLI', () => {
 
 function bootstrapResourceSummary() {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     verificationPhase: 'bootstrap',
     bootstrapReady: true,
     liveAttestation: false,
@@ -1180,7 +1180,7 @@ function bootstrapResourceSummary() {
     rolloutZero: true,
     environmentIsolation: {
       d1: true, r2: true, queue: true, dlq: true,
-      pixel: false, token: false, testEventCode: false, dataKey: false,
+      pixel: false, token: false, dataKey: false,
     },
   }
 }

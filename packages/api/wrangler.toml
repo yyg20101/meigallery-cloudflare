@@ -124,7 +124,6 @@ IMPORT_TOKEN_DAILY_LIMIT = "100"
 # corepack pnpm --filter @meigallery/api exec wrangler secret put TELEGRAM_BOT_TOKEN_OPS_CASE_BOT
 # Meta CAPI：
 # corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_ACCESS_TOKEN
-# corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_TEST_EVENT_CODE
 # corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_DATA_KEY_CURRENT
 # 仅密钥轮换窗口配置：
 # corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_DATA_KEY_PREVIOUS

@@ -4,13 +4,13 @@ const COMMIT_PATTERN = /^[0-9a-f]{40}$/i
 const NONCE_PATTERN = /^nonce_[0-9a-f]{32,128}$/
 const IDENTITY_PATTERN = /^hmac-sha256:[0-9a-f]{64}$/
 const ATTESTATION_TTL_MS = 5 * 60 * 1000
-const RESOURCE_FIELDS = ['pixel', 'token', 'testEventCode', 'dataKey'] as const
+const RESOURCE_FIELDS = ['pixel', 'token', 'dataKey'] as const
 
 type AttestationEnvironment = 'dev' | 'production'
 type ResourceField = typeof RESOURCE_FIELDS[number]
 
 export type MetaResourceAttestation = {
-  schemaVersion: 1
+  schemaVersion: 2
   environment: AttestationEnvironment
   commitSha: string
   nonce: string
@@ -26,7 +26,6 @@ export async function createMetaResourceAttestation(input: {
   now?: string | number | Date
   pixelId: string
   accessToken: string
-  testEventCode: string
   dataKey: string
 }): Promise<MetaResourceAttestation> {
   const commitSha = normalizeCommit(input.commitSha)
@@ -40,7 +39,6 @@ export async function createMetaResourceAttestation(input: {
   const rawIdentities: Record<ResourceField, string> = {
     pixel: requiredIdentity(input.pixelId, 'Pixel'),
     token: requiredIdentity(input.accessToken, 'token'),
-    testEventCode: requiredIdentity(input.testEventCode, 'Test Event Code'),
     dataKey: requiredIdentity(input.dataKey, 'data key'),
   }
   const entries = await Promise.all(RESOURCE_FIELDS.map(async field => [
@@ -49,7 +47,7 @@ export async function createMetaResourceAttestation(input: {
   ] as const))
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     environment: input.environment,
     commitSha,
     nonce,
@@ -60,7 +58,7 @@ export async function createMetaResourceAttestation(input: {
 }
 
 export async function createRuntimeMetaResourceAttestation(
-  env: Pick<Bindings, 'DB' | 'APP_ENV' | 'RELEASE_COMMIT' | 'META_CAPI_ACCESS_TOKEN' | 'META_CAPI_TEST_EVENT_CODE' | 'META_CAPI_DATA_KEY_CURRENT'>,
+  env: Pick<Bindings, 'DB' | 'APP_ENV' | 'RELEASE_COMMIT' | 'META_CAPI_ACCESS_TOKEN' | 'META_CAPI_DATA_KEY_CURRENT'>,
   nonce: string,
   now?: string | number | Date,
 ) {
@@ -74,7 +72,6 @@ export async function createRuntimeMetaResourceAttestation(
     now,
     pixelId: String(connection?.destination_id || ''),
     accessToken: String(env.META_CAPI_ACCESS_TOKEN || ''),
-    testEventCode: String(env.META_CAPI_TEST_EVENT_CODE || ''),
     dataKey: String(env.META_CAPI_DATA_KEY_CURRENT || ''),
   })
 }
@@ -104,7 +101,7 @@ function assertAttestation(
   commitSha: string,
   nowValue?: string | number | Date,
 ) {
-  if (!value || value.schemaVersion !== 1 || value.environment !== environment) {
+  if (!value || value.schemaVersion !== 2 || value.environment !== environment) {
     throw new Error(`Meta resource attestation ${environment} 环境非法`)
   }
   if (value.commitSha !== commitSha) throw new Error(`Meta resource attestation ${environment} commit 不一致`)
