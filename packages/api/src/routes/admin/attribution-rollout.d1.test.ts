@@ -146,7 +146,7 @@ async function execSql(sql: string) {
 
 function fullResourceSummary() {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     verificationPhase: 'full',
     bootstrapReady: false,
     liveAttestation: true,
@@ -167,7 +167,7 @@ function fullResourceSummary() {
     rolloutZero: true,
     environmentIsolation: {
       d1: true, r2: true, queue: true, dlq: true,
-      pixel: true, token: true, testEventCode: true, dataKey: true,
+      pixel: true, token: true, dataKey: true,
     },
   }
 }

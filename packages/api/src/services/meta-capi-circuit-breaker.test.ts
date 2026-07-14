@@ -426,7 +426,6 @@ function circuitEnv(overrides: Partial<Bindings> = {}) {
     DB: db,
     APP_ENV: 'dev',
     META_CAPI_ACCESS_TOKEN: ACCESS_TOKEN,
-    META_CAPI_TEST_EVENT_CODE: 'test-code',
     META_CAPI_DATA_KEY_CURRENT: DATA_KEY,
     META_CAPI_QUEUE: { send: async () => undefined },
     RELEASE_COMMIT,

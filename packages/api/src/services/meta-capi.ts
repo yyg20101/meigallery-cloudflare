@@ -25,7 +25,7 @@ import {
 
 type MetaCapiEnv = Pick<
   Bindings,
-  'DB' | 'SITE_URL' | 'APP_ENV' | 'META_CAPI_ACCESS_TOKEN' | 'META_CAPI_TEST_EVENT_CODE' | 'RELEASE_COMMIT'
+  'DB' | 'SITE_URL' | 'APP_ENV' | 'META_CAPI_ACCESS_TOKEN' | 'RELEASE_COMMIT'
 >
 
 export type MetaCapiPayloadInput = {

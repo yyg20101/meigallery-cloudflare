@@ -464,10 +464,9 @@ function envFor(db: ReturnType<typeof createConversionDb>, overrides: Partial<Bi
     SESSION_SECRET: 'test-session-secret',
     META_CAPI_DATA_KEY_CURRENT: DATA_KEY,
     META_CAPI_ACCESS_TOKEN: META_TOKEN,
-    META_CAPI_TEST_EVENT_CODE: 'test-code',
     RELEASE_COMMIT,
     ...overrides,
-  } as unknown as Pick<Bindings, 'APP_ENV' | 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE' | 'META_CAPI_ACCESS_TOKEN' | 'META_CAPI_TEST_EVENT_CODE' | 'META_CAPI_DATA_KEY_CURRENT' | 'META_CAPI_DATA_KEY_PREVIOUS' | 'RELEASE_COMMIT'>
+  } as unknown as Pick<Bindings, 'APP_ENV' | 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE' | 'META_CAPI_ACCESS_TOKEN' | 'META_CAPI_DATA_KEY_CURRENT' | 'META_CAPI_DATA_KEY_PREVIOUS' | 'RELEASE_COMMIT'>
 }
 
 function envWithQueueFor(db: ReturnType<typeof createConversionDb>, sent: AdPlatformQueueMessage[]) {
@@ -477,7 +476,6 @@ function envWithQueueFor(db: ReturnType<typeof createConversionDb>, sent: AdPlat
     SESSION_SECRET: 'test-session-secret',
     META_CAPI_DATA_KEY_CURRENT: DATA_KEY,
     META_CAPI_ACCESS_TOKEN: META_TOKEN,
-    META_CAPI_TEST_EVENT_CODE: 'test-code',
     RELEASE_COMMIT,
     META_CAPI_QUEUE: {
       async send(message: AdPlatformQueueMessage) {
@@ -485,7 +483,7 @@ function envWithQueueFor(db: ReturnType<typeof createConversionDb>, sent: AdPlat
         return { metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } } }
       },
     },
-  } as unknown as Pick<Bindings, 'APP_ENV' | 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE' | 'META_CAPI_ACCESS_TOKEN' | 'META_CAPI_TEST_EVENT_CODE' | 'META_CAPI_DATA_KEY_CURRENT' | 'META_CAPI_DATA_KEY_PREVIOUS' | 'RELEASE_COMMIT'>
+  } as unknown as Pick<Bindings, 'APP_ENV' | 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE' | 'META_CAPI_ACCESS_TOKEN' | 'META_CAPI_DATA_KEY_CURRENT' | 'META_CAPI_DATA_KEY_PREVIOUS' | 'RELEASE_COMMIT'>
 }
 
 function grantedContactInput() {
@@ -1285,7 +1283,6 @@ describe('conversion ledger service', () => {
       ...envWithQueueFor(db, sent),
       APP_ENV: 'dev',
       META_CAPI_ACCESS_TOKEN: 'unverified-token',
-      META_CAPI_TEST_EVENT_CODE: 'test-code',
       RELEASE_COMMIT: 'a'.repeat(40),
     } as unknown as Parameters<typeof recordContact>[0], grantedContactInput(), {
       getAdPlatformUserData: () => {

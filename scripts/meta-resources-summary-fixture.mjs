@@ -8,12 +8,12 @@ export const PRODUCTION_POST_DEPLOY_META_RESOURCES_FIELDS = [
 ]
 
 export const META_RESOURCES_ISOLATION_FIELDS = [
-  'd1', 'r2', 'queue', 'dlq', 'pixel', 'token', 'testEventCode', 'dataKey',
+  'd1', 'r2', 'queue', 'dlq', 'pixel', 'token', 'dataKey',
 ]
 
 export function createProductionPostDeployMetaResourcesSummary(overrides = {}) {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     verificationPhase: 'post-deploy',
     bootstrapReady: false,
     liveAttestation: true,

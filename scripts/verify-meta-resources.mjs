@@ -145,9 +145,7 @@ export async function runMetaResourceVerification(options = {}) {
     deadLetterQueue: null,
   })
   const settings = parseMetaSettings(byName.get('meta-settings')?.stdout)
-  const requiredSecretNames = settings
-    ? [...ALWAYS_REQUIRED_SECRETS, ...((phase === 'bootstrap' || settings.trackingMode === 'test') ? ['META_CAPI_TEST_EVENT_CODE'] : [])]
-    : []
+  const requiredSecretNames = settings ? ALWAYS_REQUIRED_SECRETS : []
   const requiredSecretsPresent = settings !== null
     && hasRequiredSecrets(byName.get('secrets')?.stdout, requiredSecretNames)
   const migrations = byName.get('migrations')
@@ -167,7 +165,7 @@ export async function runMetaResourceVerification(options = {}) {
     && operations.activeKeyCount <= 2
     && (operations.previousKeyActiveCount === 0 || (operations.activeKeyCount === 2 && previousSecretPresent))
   const incidentReady = operations?.openCriticalIncidentCount === 0
-  let secretIsolation = { pixel: false, token: false, testEventCode: false, dataKey: false }
+  let secretIsolation = { pixel: false, token: false, dataKey: false }
   if (phase === 'full') {
     secretIsolation = resolveFullSecretIsolation(byName.get('secrets')?.stdout, connectionVerified)
   } else if (phase === 'post-deploy') {
@@ -178,7 +176,7 @@ export async function runMetaResourceVerification(options = {}) {
       })
     }
     catch {
-      secretIsolation = { pixel: false, token: false, testEventCode: false, dataKey: false }
+      secretIsolation = { pixel: false, token: false, dataKey: false }
     }
   }
   const environmentIsolation = {
@@ -222,7 +220,7 @@ export async function runMetaResourceVerification(options = {}) {
       status = 'failed'
     } else {
       const summary = {
-        schemaVersion: 2,
+        schemaVersion: 3,
         verificationPhase: phase,
         bootstrapReady: phase === 'bootstrap',
         liveAttestation: phase === 'post-deploy' && Object.values(environmentIsolation).every(Boolean),
@@ -432,11 +430,11 @@ export function hasNoPendingMigrations(stdout) {
 
 export function validateProductionAttestation(production, expected) {
   const now = new Date(expected.now ?? Date.now()).getTime()
-  const fields = ['pixel', 'token', 'testEventCode', 'dataKey']
+  const fields = ['pixel', 'token', 'dataKey']
   const environment = 'production'
   const value = production
   {
-    if (!isPlainRecord(value) || value.schemaVersion !== 1 || value.environment !== environment
+    if (!isPlainRecord(value) || value.schemaVersion !== 2 || value.environment !== environment
       || value.commitSha !== expected.commit || value.nonce !== expected.nonce) {
       throw new Error(`${environment} live resource attestation 身份不一致`)
     }
@@ -611,7 +609,6 @@ export function resolveFullSecretIsolation(secretsOutput, connectionVerified) {
   return {
     pixel: connectionVerified === true,
     token: connectionVerified === true,
-    testEventCode: hasRequiredSecrets(secretsOutput, ['META_CAPI_TEST_EVENT_CODE']),
     dataKey: hasRequiredSecrets(secretsOutput, ['META_CAPI_DATA_KEY_CURRENT']),
   }
 }

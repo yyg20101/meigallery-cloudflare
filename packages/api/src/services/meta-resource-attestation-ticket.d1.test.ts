@@ -75,7 +75,6 @@ function env(overrides: Partial<Bindings> = {}) {
     APP_ENV: 'production',
     RELEASE_COMMIT: COMMIT,
     META_CAPI_ACCESS_TOKEN: 'production-token',
-    META_CAPI_TEST_EVENT_CODE: 'production-code',
     META_CAPI_DATA_KEY_CURRENT: Buffer.alloc(32, 7).toString('base64'),
     ...overrides,
   } as unknown as Bindings

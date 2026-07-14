@@ -21,6 +21,9 @@ import { runMetaResourceVerification } from './verify-meta-resources.mjs'
 import { verifyApprovedMetaDatasetQualityContract } from './meta-dataset-quality-contract-lib.mjs'
 import { verifyProductionReleaseIdentity } from './record-meta-live-verification.mjs'
 
+const PRODUCTION_IDENTITY_MAX_ATTEMPTS = 31
+const PRODUCTION_IDENTITY_RETRY_DELAY_MS = 3_000
+
 const QUICK_STEPS = [
   {
     name: 'dependency-install',
@@ -472,7 +475,7 @@ function sanitizeMetaResourceSummary(result, environment, commit) {
 }
 
 function sanitizeEnvironmentIsolation(value) {
-  const fields = ['d1', 'r2', 'queue', 'dlq', 'pixel', 'token', 'testEventCode', 'dataKey']
+  const fields = ['d1', 'r2', 'queue', 'dlq', 'pixel', 'token', 'dataKey']
   return Object.fromEntries(fields.map(field => [field, value?.[field] === true]))
 }
 
@@ -652,7 +655,28 @@ export async function assertProductionReleaseIdentity(options = {}) {
   if (git.branch !== 'main' || git.isClean !== true || !isValidCommit(git.commit)) {
     throw new Error('production 发布后 identity 校验只允许干净的 main 40 位 commit')
   }
-  await verifyProductionReleaseIdentityFn({ ...options, commit: git.commit.toLowerCase() })
+
+  const maxAttempts = Number.isSafeInteger(options.identityMaxAttempts) && options.identityMaxAttempts > 0
+    ? options.identityMaxAttempts
+    : PRODUCTION_IDENTITY_MAX_ATTEMPTS
+  const retryDelayMs = Number.isFinite(options.identityRetryDelayMs) && options.identityRetryDelayMs >= 0
+    ? options.identityRetryDelayMs
+    : PRODUCTION_IDENTITY_RETRY_DELAY_MS
+  const sleepFn = options.sleep || (delayMs => new Promise(resolve => setTimeout(resolve, delayMs)))
+  let lastError
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await verifyProductionReleaseIdentityFn({ ...options, commit: git.commit.toLowerCase() })
+      return
+    } catch (error) {
+      lastError = error
+      if (attempt < maxAttempts) await sleepFn(retryDelayMs)
+    }
+  }
+
+  const reason = lastError instanceof Error ? lastError.message : String(lastError)
+  throw new Error(`${reason}；连续 ${maxAttempts} 次检查仍未完成 Cloudflare 发布传播`)
 }
 
 export async function readRemoteProductionLiveGate(options = {}) {

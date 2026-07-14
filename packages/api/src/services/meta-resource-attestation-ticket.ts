@@ -10,7 +10,7 @@ const TICKET_PATTERN = /^mrat_[0-9a-f]{64}$/
 const TICKET_TTL_MS = 60_000
 
 type TicketEnv = Pick<Bindings,
-  'DB' | 'APP_ENV' | 'RELEASE_COMMIT' | 'META_CAPI_ACCESS_TOKEN' | 'META_CAPI_TEST_EVENT_CODE' | 'META_CAPI_DATA_KEY_CURRENT'>
+  'DB' | 'APP_ENV' | 'RELEASE_COMMIT' | 'META_CAPI_ACCESS_TOKEN' | 'META_CAPI_DATA_KEY_CURRENT'>
 
 export type MetaResourceAttestationTicket = {
   schemaVersion: 1

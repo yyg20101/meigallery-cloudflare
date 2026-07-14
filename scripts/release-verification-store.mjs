@@ -124,14 +124,14 @@ function assertMetaResourcesSummary(value, expected) {
     'initialRolloutZero', 'secureOutboxReady', 'previousKeyReferencesExplainable', 'rolloutZero',
   ]
   assertExactRecord(value, ['schemaVersion', 'verificationPhase', ...booleanFields, 'environmentIsolation'], 'summary')
-  if (value.schemaVersion !== 2) throw new Error('summary.schemaVersion 必须为 2')
+  if (value.schemaVersion !== 3) throw new Error('summary.schemaVersion 必须为 3')
   if (!['bootstrap', 'post-deploy', 'full'].includes(value.verificationPhase)) {
     throw new Error('summary.verificationPhase 非法')
   }
   for (const field of booleanFields) {
     if (typeof value[field] !== 'boolean') throw new Error(`summary.${field} 只允许布尔值`)
   }
-  const isolationFields = ['d1', 'r2', 'queue', 'dlq', 'pixel', 'token', 'testEventCode', 'dataKey']
+  const isolationFields = ['d1', 'r2', 'queue', 'dlq', 'pixel', 'token', 'dataKey']
   assertExactRecord(value.environmentIsolation, isolationFields, 'summary.environmentIsolation')
   for (const field of isolationFields) {
     if (typeof value.environmentIsolation[field] !== 'boolean') {
@@ -157,7 +157,7 @@ function assertMetaResourcesSummary(value, expected) {
       || value.rolloutZero !== true) {
       throw new Error('summary bootstrap 语义门禁未通过')
     }
-    for (const field of ['pixel', 'token', 'testEventCode', 'dataKey']) {
+    for (const field of ['pixel', 'token', 'dataKey']) {
       if (value.environmentIsolation[field] !== false) throw new Error('summary bootstrap 隔离语义非法')
     }
     return
@@ -167,7 +167,7 @@ function assertMetaResourcesSummary(value, expected) {
     throw new Error(`summary ${value.verificationPhase} 语义门禁未通过`)
   }
   if (expected.environment === 'production') {
-    requireTrueFields(value.environmentIsolation, ['pixel', 'token', 'testEventCode', 'dataKey'], `${value.verificationPhase}.environmentIsolation`)
+    requireTrueFields(value.environmentIsolation, ['pixel', 'token', 'dataKey'], `${value.verificationPhase}.environmentIsolation`)
   }
   if (value.verificationPhase === 'post-deploy') {
     if (expected.environment !== 'production'

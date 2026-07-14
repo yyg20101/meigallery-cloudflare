@@ -123,7 +123,6 @@ async function runLiveEvidence() {
             autocapitalize="characters"
             class="h-10 w-36 rounded-md border border-gray-300 bg-white px-3 font-mono text-sm text-gray-900 outline-none focus:border-gray-500 focus:ring-2 focus:ring-gray-200"
             maxlength="24"
-            placeholder="TEST12345"
             spellcheck="false"
             type="text"
             @blur="normalizeTestEventCodeInput"

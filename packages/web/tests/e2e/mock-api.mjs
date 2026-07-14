@@ -541,7 +541,7 @@ function adminAttributionResponse(pathname, searchParams) {
     },
   }
   const connection = {
-    state: 'verified', environment: adminAttributionEnvironment, pixelIdConfigured: true, tokenConfigured: true, testEventCodeConfigured: true, verifiedAt: '2026-07-10T07:00:00Z', verifiedCommit: 'a'.repeat(40), graphApiVersion: 'v25.0', datasetQualityStatus: 'not_checked', invalidationReason: '',
+    state: 'verified', environment: adminAttributionEnvironment, pixelIdConfigured: true, tokenConfigured: true, verifiedAt: '2026-07-10T07:00:00Z', verifiedCommit: 'a'.repeat(40), graphApiVersion: 'v25.0', datasetQualityStatus: 'not_checked', invalidationReason: '',
   }
 
   if (pathname.endsWith('/summary')) return { range, usage, data: { provider, business: { contactCount: 6, completeRegistrationCount: 3, actionCount: 9 }, historical: { leadCount: 7 }, delivery: { pixelAttempted: 12, serverSent: 9, failed: 1, skipped: 3, pending: 1, retryExhausted: 0 }, routing: { mismatchCount: 0, unroutedActionCount: 1 } } }
@@ -558,8 +558,8 @@ function adminAttributionResponse(pathname, searchParams) {
   }
   if (pathname.endsWith('/breakdown')) return { range, usage, data: { provider, dimension: searchParams.get('dimension') || 'utm_campaign', rows: [{ value: 'july-contact', actionCount: 6, contactCount: 4, completeRegistrationCount: 2, delivery: { pixelAttempted: 6, serverSent: 5, failed: 1, skipped: 0, pending: 0, retryExhausted: 0 } }] } }
   if (pathname.endsWith('/platforms')) return { data: [
-    { provider: 'meta', environment: 'production', enabled: true, browserEnabled: true, serverEnabled: false, destinationId: '1234567890', destinationConfigured: true, debugEnabled: false, rolloutPercentage: 0, serverCredentialConfigured: true, serverQueueConfigured: true, serverDataKeyConfigured: true, testCredentialConfigured: true, mode: 'test', state: 'verified', verifiedAt: '2026-07-12T00:00:00.000Z', verifiedCommit: 'a'.repeat(40) },
-    { provider: 'tiktok', environment: 'production', enabled: false, browserEnabled: false, serverEnabled: false, destinationId: '', destinationConfigured: false, debugEnabled: false, rolloutPercentage: 0, serverCredentialConfigured: false, serverQueueConfigured: false, serverDataKeyConfigured: false, testCredentialConfigured: false, mode: 'disabled', state: 'not_configured', verifiedAt: '', verifiedCommit: '' },
+    { provider: 'meta', environment: 'production', enabled: true, browserEnabled: true, serverEnabled: false, destinationId: '1234567890', destinationConfigured: true, debugEnabled: false, rolloutPercentage: 0, serverCredentialConfigured: true, serverQueueConfigured: true, serverDataKeyConfigured: true, mode: 'test', state: 'verified', verifiedAt: '2026-07-12T00:00:00.000Z', verifiedCommit: 'a'.repeat(40) },
+    { provider: 'tiktok', environment: 'production', enabled: false, browserEnabled: false, serverEnabled: false, destinationId: '', destinationConfigured: false, debugEnabled: false, rolloutPercentage: 0, serverCredentialConfigured: false, serverQueueConfigured: false, serverDataKeyConfigured: false, mode: 'disabled', state: 'not_configured', verifiedAt: '', verifiedCommit: '' },
   ] }
   if (pathname.endsWith('/meta/status')) return { range, usage, data: { connection, rollout, activity: { provider: 'meta', business: { contactCount: 6, completeRegistrationCount: 3, actionCount: 9 }, historical: { leadCount: 7 }, delivery: { pixelAttempted: 12, serverSent: 9, failed: 1, skipped: 3, pending: 1, retryExhausted: 0 }, routing: { mismatchCount: 0, unroutedActionCount: 1 } } } }
   if (pathname.endsWith('/meta/incidents')) return { range, usage, data: { items: rollout.openIncident ? [rollout.openIncident] : [], pagination: { limit: 20, offset: 0, hasMore: false } } }
@@ -653,7 +653,6 @@ function adminAttributionResponse(pathname, searchParams) {
           environment: 'production',
           pixelIdConfigured: true,
           tokenConfigured: true,
-          testEventCodeConfigured: true,
           verifiedAt: null,
           verifiedCommit: null,
           graphApiVersion: 'v25.0',
@@ -1025,7 +1024,6 @@ function handleApi(req, res) {
           environment: adminAttributionEnvironment,
           pixelIdConfigured: true,
           tokenConfigured: true,
-          testEventCodeConfigured: true,
           verifiedAt: '2026-07-09T09:30:00.000Z',
           verifiedCommit: 'a'.repeat(40),
           graphApiVersion: 'v25.0',

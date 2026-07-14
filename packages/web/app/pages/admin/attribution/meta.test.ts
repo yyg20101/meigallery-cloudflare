@@ -22,7 +22,6 @@ function mountPage() {
       environment: 'dev',
       pixelIdConfigured: true,
       tokenConfigured: true,
-      testEventCodeConfigured: true,
       graphApiVersion: 'v25.0',
       verifiedAt: '2026-07-10T08:00:00.000Z',
       verifiedCommit: 'a'.repeat(40),

@@ -22,7 +22,6 @@ export interface AdPlatformConnectionStatus {
   serverCredentialConfigured: boolean
   serverQueueConfigured: boolean
   serverDataKeyConfigured: boolean
-  testCredentialConfigured: boolean
   mode: AdPlatformTrackingMode
   state: 'not_configured' | 'unverified' | 'verified' | 'invalidated'
   verifiedAt: string
@@ -61,7 +60,6 @@ function fromTikTokConnection(
     serverCredentialConfigured: status.tokenConfigured,
     serverQueueConfigured: Boolean(env.TIKTOK_EVENTS_QUEUE),
     serverDataKeyConfigured: hasConfiguredValue(env.TIKTOK_EVENTS_DATA_KEY_CURRENT),
-    testCredentialConfigured: false,
     mode: connection?.mode ?? 'disabled',
     state: normalizeState(status.state),
     verifiedAt: status.verifiedAt,
@@ -87,7 +85,6 @@ function fromBrowserConnection(
     serverCredentialConfigured: false,
     serverQueueConfigured: false,
     serverDataKeyConfigured: false,
-    testCredentialConfigured: false,
     mode: connection?.mode ?? 'disabled',
     state: configured ? 'unverified' : 'not_configured',
     verifiedAt: '',
@@ -113,7 +110,6 @@ function fromMetaConnection(
     serverCredentialConfigured: status.tokenConfigured,
     serverQueueConfigured: Boolean(env.META_CAPI_QUEUE),
     serverDataKeyConfigured: hasConfiguredValue(env.META_CAPI_DATA_KEY_CURRENT),
-    testCredentialConfigured: status.testEventCodeConfigured,
     mode: connection?.mode ?? 'disabled',
     state: normalizeState(status.state),
     verifiedAt: status.verifiedAt || '',

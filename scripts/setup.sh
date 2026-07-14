@@ -103,7 +103,6 @@ print_secrets() {
   echo "  ${WRANGLER_CMD} secret put TELEGRAM_BOT_TOKEN_OPS_CASE_BOT ${env_flag}"
   if [ "$env_name" = "production" ]; then
     echo "  ${WRANGLER_CMD} secret put META_CAPI_ACCESS_TOKEN ${env_flag}"
-    echo "  ${WRANGLER_CMD} secret put META_CAPI_TEST_EVENT_CODE ${env_flag}"
     echo "  ${WRANGLER_CMD} secret put META_CAPI_DATA_KEY_CURRENT ${env_flag}"
     echo "  # 仅密钥轮换窗口配置"
     echo "  ${WRANGLER_CMD} secret put META_CAPI_DATA_KEY_PREVIOUS ${env_flag}"

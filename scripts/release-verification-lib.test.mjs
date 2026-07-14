@@ -122,7 +122,7 @@ function createValidReleaseReport() {
         secretsPresent: true,
         environmentIsolation: {
           d1: true, r2: true, queue: true, dlq: true,
-          pixel: true, token: true, testEventCode: true, dataKey: true,
+          pixel: true, token: true, dataKey: true,
         },
         openCriticalIncidentCount: 0,
         targetRolloutPercentage: 0,

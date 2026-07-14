@@ -6,7 +6,7 @@ import MetaConnectionStatus from './MetaConnectionStatus.vue'
 function connection(environment: 'dev' | 'production'): MetaConnectionStatusData {
   return {
     state: 'unverified', environment,
-    pixelIdConfigured: true, tokenConfigured: true, testEventCodeConfigured: true,
+    pixelIdConfigured: true, tokenConfigured: true,
     verifiedAt: null, verifiedCommit: null, graphApiVersion: 'v25.0',
     datasetQualityStatus: 'not_checked', invalidationReason: 'verification_missing',
   }

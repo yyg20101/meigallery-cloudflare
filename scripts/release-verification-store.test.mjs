@@ -255,7 +255,7 @@ function metaResourcesSummary(phase = 'full') {
   const bootstrap = phase === 'bootstrap'
   const postDeploy = phase === 'post-deploy'
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     verificationPhase: phase,
     bootstrapReady: bootstrap,
     liveAttestation: postDeploy,
@@ -276,7 +276,7 @@ function metaResourcesSummary(phase = 'full') {
     rolloutZero: true,
     environmentIsolation: {
       d1: true, r2: true, queue: true, dlq: true,
-      pixel: !bootstrap, token: !bootstrap, testEventCode: !bootstrap, dataKey: !bootstrap,
+      pixel: !bootstrap, token: !bootstrap, dataKey: !bootstrap,
     },
   }
 }

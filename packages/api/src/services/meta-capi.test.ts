@@ -326,11 +326,10 @@ function envFor(db: ReturnType<typeof createMetaCapiDb>, overrides: Partial<Bind
     APP_ENV: 'dev',
     SITE_URL: 'https://616618.xyz',
     META_CAPI_ACCESS_TOKEN: 'token_1',
-    META_CAPI_TEST_EVENT_CODE: 'test-code',
     RELEASE_COMMIT,
     DB: db,
     ...overrides,
-  } as unknown as Pick<Bindings, 'APP_ENV' | 'SITE_URL' | 'META_CAPI_ACCESS_TOKEN' | 'META_CAPI_TEST_EVENT_CODE' | 'RELEASE_COMMIT' | 'DB'>
+  } as unknown as Pick<Bindings, 'APP_ENV' | 'SITE_URL' | 'META_CAPI_ACCESS_TOKEN' | 'RELEASE_COMMIT' | 'DB'>
 }
 
 afterEach(() => {
@@ -604,7 +603,7 @@ describe('meta-capi', () => {
     })
     const fetchFn = vi.fn().mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }))
 
-    await sendMetaCapiEvent(envFor(db, { META_CAPI_TEST_EVENT_CODE: 'test-code-from-env' } as Partial<Bindings>), 'cdlv_1', { fetchFn })
+    await sendMetaCapiEvent(envFor(db), 'cdlv_1', { fetchFn })
 
     const payload = JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body))
     expect(payload.data[0].event_name).toBe(eventName)
@@ -625,28 +624,28 @@ describe('meta-capi', () => {
     expect(fetchFn).not.toHaveBeenCalled()
   })
 
-  it('test 模式缺少 Test Event Code 时 fail closed 且绝不请求 Graph', async () => {
+  it('普通 test 模式不依赖长期 Test Event Code 且 payload 不携带该字段', async () => {
     const db = createMetaCapiDb({
       pixelId: '1234567890',
       delivery: { tracking_mode: 'test' },
     })
-    const fetchFn = vi.fn()
+    const fetchFn = vi.fn().mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }))
 
-    const result = await sendMetaCapiEvent(envFor(db, { META_CAPI_TEST_EVENT_CODE: '  ' } as Partial<Bindings>), 'cdlv_1', { fetchFn })
+    const result = await sendMetaCapiEvent(envFor(db), 'cdlv_1', { fetchFn })
 
-    expect(result).toEqual({ deliveryId: 'cdlv_1', status: 'skipped', reason: 'connection_unverified' })
-    expect(db.delivery).toMatchObject({ status: 'skipped', skip_reason: 'connection_unverified' })
-    expect(fetchFn).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ deliveryId: 'cdlv_1', status: 'sent', eventsReceived: 1 })
+    const payload = JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body))
+    expect(payload).not.toHaveProperty('test_event_code')
   })
 
-  it('production 模式即使环境和调用参数有 Test Event Code 也绝不附带', async () => {
+  it('production 模式绝不附带 Test Event Code', async () => {
     const db = createMetaCapiDb({
       pixelId: '1234567890',
       delivery: { tracking_mode: 'production' },
     })
     const fetchFn = vi.fn().mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }))
 
-    await sendMetaCapiEvent(envFor(db, { META_CAPI_TEST_EVENT_CODE: 'environment-test-code' } as Partial<Bindings>), 'cdlv_1', { fetchFn })
+    await sendMetaCapiEvent(envFor(db), 'cdlv_1', { fetchFn })
 
     const payload = JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body))
     expect(payload).not.toHaveProperty('test_event_code')

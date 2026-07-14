@@ -22,7 +22,7 @@ const PRODUCTION_POST_DEPLOY_SUMMARY_FIELDS = [
   'secureOutboxReady', 'previousKeyReferencesExplainable', 'rolloutZero',
   'environmentIsolation',
 ]
-const PRODUCTION_POST_DEPLOY_ISOLATION_FIELDS = ['d1', 'r2', 'queue', 'dlq', 'pixel', 'token', 'testEventCode', 'dataKey']
+const PRODUCTION_POST_DEPLOY_ISOLATION_FIELDS = ['d1', 'r2', 'queue', 'dlq', 'pixel', 'token', 'dataKey']
 const STABLE_INVALIDATION_REASONS = new Set([
   'pixel_id_changed',
   'access_token_changed',
@@ -42,7 +42,6 @@ export interface MetaConnectionStatus {
   environment: 'dev' | 'production'
   pixelIdConfigured: boolean
   tokenConfigured: boolean
-  testEventCodeConfigured: boolean
   verifiedAt: string | null
   verifiedCommit: string | null
   graphApiVersion: typeof META_GRAPH_API_VERSION
@@ -55,7 +54,6 @@ export type MetaConnectionEnv = Pick<
   | 'DB'
   | 'APP_ENV'
   | 'META_CAPI_ACCESS_TOKEN'
-  | 'META_CAPI_TEST_EVENT_CODE'
   | 'META_CAPI_DATA_KEY_CURRENT'
   | 'META_CAPI_QUEUE'
   | 'RELEASE_COMMIT'
@@ -83,7 +81,6 @@ type EvaluatedConnection = {
   status: MetaConnectionStatus
   pixelId: string
   accessToken: string
-  testEventCode: string
   trackingMode: AdPlatformTrackingMode
   releaseCommit: string
   fingerprint: string
@@ -277,7 +274,7 @@ async function assertProductionBootstrapGate(
           AND status = 'passed'
           AND datetime(expires_at) > datetime('now')
           AND CASE WHEN json_valid(summary) THEN
-            json_extract(summary, '$.schemaVersion') = 2
+            json_extract(summary, '$.schemaVersion') = 3
             AND json_extract(summary, '$.verificationPhase') = 'post-deploy'
           ELSE 0 END
         ORDER BY verified_at DESC LIMIT 1
@@ -311,7 +308,7 @@ function parseProductionPostDeploySummary(value: unknown) {
       'initialRolloutZero', 'secureOutboxReady', 'previousKeyReferencesExplainable', 'rolloutZero',
     ]
     return hasExactKeys(summary, PRODUCTION_POST_DEPLOY_SUMMARY_FIELDS)
-      && summary.schemaVersion === 2
+      && summary.schemaVersion === 3
       && summary.verificationPhase === 'post-deploy'
       && summary.bootstrapReady === false
       && summary.connectionVerified === false
@@ -408,13 +405,11 @@ async function evaluateMetaConnection(env: MetaConnectionEnv): Promise<Evaluated
   const settings = await readMetaConnectionSettings(env.DB)
   const pixelId = normalizePixelId(settings.pixelId)
   const accessToken = configuredValue(env.META_CAPI_ACCESS_TOKEN)
-  const testEventCode = configuredValue(env.META_CAPI_TEST_EVENT_CODE)
   const releaseCommit = normalizeReleaseCommit(env.RELEASE_COMMIT)
   const base = {
     environment,
     pixelIdConfigured: Boolean(pixelId),
     tokenConfigured: Boolean(accessToken),
-    testEventCodeConfigured: Boolean(testEventCode),
     graphApiVersion: META_GRAPH_API_VERSION,
   }
 
@@ -422,14 +417,11 @@ async function evaluateMetaConnection(env: MetaConnectionEnv): Promise<Evaluated
     ? 'pixel_id_missing'
     : !accessToken
       ? 'access_token_missing'
-      : settings.trackingMode === 'test' && !testEventCode
-        ? 'test_event_code_missing'
-        : ''
+      : ''
   if (configuredReason) {
     return evaluatedResult(baseStatus(base, 'not_configured', configuredReason), {
       pixelId,
       accessToken,
-      testEventCode,
       trackingMode: settings.trackingMode,
       releaseCommit,
     })
@@ -438,7 +430,6 @@ async function evaluateMetaConnection(env: MetaConnectionEnv): Promise<Evaluated
     return evaluatedResult(baseStatus(base, 'unverified', 'tracking_mode_disabled'), {
       pixelId,
       accessToken,
-      testEventCode,
       trackingMode: settings.trackingMode,
       releaseCommit,
     })
@@ -448,7 +439,6 @@ async function evaluateMetaConnection(env: MetaConnectionEnv): Promise<Evaluated
     return evaluatedResult(baseStatus(base, 'unverified', 'verification_missing'), {
       pixelId,
       accessToken,
-      testEventCode,
       trackingMode: settings.trackingMode,
       releaseCommit,
     })
@@ -462,7 +452,6 @@ async function evaluateMetaConnection(env: MetaConnectionEnv): Promise<Evaluated
       status: statusFromRow(base, row, 'configuration_changed', invalidationReason),
       pixelId,
       accessToken,
-      testEventCode,
       trackingMode: settings.trackingMode,
       releaseCommit,
       fingerprint,
@@ -474,7 +463,6 @@ async function evaluateMetaConnection(env: MetaConnectionEnv): Promise<Evaluated
     status: statusFromRow(base, row, 'verified', ''),
     pixelId,
     accessToken,
-    testEventCode,
     trackingMode: settings.trackingMode,
     releaseCommit,
     fingerprint,
@@ -490,7 +478,7 @@ function evaluatedResult(
 }
 
 function baseStatus(
-  base: Pick<MetaConnectionStatus, 'environment' | 'pixelIdConfigured' | 'tokenConfigured' | 'testEventCodeConfigured' | 'graphApiVersion'>,
+  base: Pick<MetaConnectionStatus, 'environment' | 'pixelIdConfigured' | 'tokenConfigured' | 'graphApiVersion'>,
   state: MetaConnectionState,
   invalidationReason: string,
 ): MetaConnectionStatus {
@@ -505,7 +493,7 @@ function baseStatus(
 }
 
 function statusFromRow(
-  base: Pick<MetaConnectionStatus, 'environment' | 'pixelIdConfigured' | 'tokenConfigured' | 'testEventCodeConfigured' | 'graphApiVersion'>,
+  base: Pick<MetaConnectionStatus, 'environment' | 'pixelIdConfigured' | 'tokenConfigured' | 'graphApiVersion'>,
   row: VerificationRow,
   state: MetaConnectionState,
   invalidationReason: string,

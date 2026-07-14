@@ -172,6 +172,8 @@ Dataset Quality 使用唯一 production Dataset。Owner 已批准九章节 produ
 
 普通 test mode 的 `Contact`、`CompleteRegistration` 不自动携带 `test_event_code`。Owner 在 `/admin/attribution/meta` 输入 Events Manager 当前显示的 `TEST...` 会话码，验证连接与 Live Evidence 只在该次请求中使用并共用同一值；服务端不持久化、不审计、不回显。`ad_platform_connections.mode=production` 时，CAPI payload 绝不携带 `test_event_code`。
 
+历史版本若曾配置 `META_CAPI_TEST_EVENT_CODE`，必须先部署已使用资源 attestation V2 / 资源摘要 V3 的 API Worker，并完成一次新的 production 资源验证；确认后台不再依赖该值后，再执行 `corepack pnpm --filter @meigallery/api exec wrangler secret delete META_CAPI_TEST_EVENT_CODE --env=""`。禁止在旧 Worker 仍运行时提前删除。
+
 Meta 远端资源只存在于 production：
 
 | 环境 | 主 Queue | DLQ |
@@ -185,7 +187,6 @@ Meta 远端资源只存在于 production：
 corepack pnpm --filter @meigallery/api exec wrangler queues create meigallery-meta-capi
 corepack pnpm --filter @meigallery/api exec wrangler queues create meigallery-meta-capi-dlq
 corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_ACCESS_TOKEN --env=""
-corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_TEST_EVENT_CODE --env=""
 corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_DATA_KEY_CURRENT --env=""
 ```
 
@@ -270,7 +271,6 @@ corepack pnpm --filter @meigallery/api exec wrangler secret put TIKTOK_EVENTS_DA
 | `IMPORT_TOKEN_DAILY_LIMIT` | API Worker vars | 单个 Import Token 每日可创建的外部导入记录上限，未设置时 API 默认 100 |
 | `TELEGRAM_BOT_TOKEN_<SOURCE_BOT_KEY>` | API Worker secret | Telegram 外部导入拉取 file_id 所需 Bot Token，例如 `ops_gallery_bot` 对应 `TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT` |
 | `META_CAPI_ACCESS_TOKEN` | API Worker secret | Meta Conversions API 访问令牌，只存 Worker secret，不进入 D1 或前端 |
-| `META_CAPI_TEST_EVENT_CODE` | API Worker secret | 仅供现有 V2 资源 attestation 的隔离字段使用；Test Event 与 Live Evidence 已改用 Owner 请求级会话码，待资源摘要 schema 升级后删除该 secret |
 | `META_CAPI_DATA_KEY_CURRENT` | API Worker secret | AES-256-GCM 当前数据密钥；所有 mode 的 CAPI readiness 必需 |
 | `META_CAPI_DATA_KEY_PREVIOUS` | API Worker secret | 仅轮换窗口使用的上一把数据密钥 |
 | `TIKTOK_EVENTS_ACCESS_TOKEN` | API Worker secret | TikTok Events API Access Token，只通过 `Access-Token` header 发送 |
@@ -289,7 +289,6 @@ corepack pnpm --filter @meigallery/api exec wrangler secret put TELEGRAM_BOT_TOK
 # 如有独立案例导入 Bot：
 corepack pnpm --filter @meigallery/api exec wrangler secret put TELEGRAM_BOT_TOKEN_OPS_CASE_BOT
 corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_ACCESS_TOKEN
-corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_TEST_EVENT_CODE
 corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_DATA_KEY_CURRENT
 # 仅轮换窗口执行：
 corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_DATA_KEY_PREVIOUS
@@ -446,7 +445,7 @@ head_sampling_rate = 1
 - [ ] 外部导入所需 Import Token 已在后台创建，权限、过期时间和 `allowedSourceBotKeys` 已确认
 - [ ] 每个 `sourceBotKey` 对应的 `TELEGRAM_BOT_TOKEN_<SOURCE_BOT_KEY>` secret 已配置
 - [ ] 生产 `meigallery-meta-capi` 和 `meigallery-meta-capi-dlq` 已创建，API Worker producer / consumer dry-run 通过
-- [ ] `META_CAPI_ACCESS_TOKEN`、`META_CAPI_TEST_EVENT_CODE` 和 `META_CAPI_DATA_KEY_CURRENT` 已作为 production secret 配置；dev 不配置
+- [ ] `META_CAPI_ACCESS_TOKEN` 和 `META_CAPI_DATA_KEY_CURRENT` 已作为 production secret 配置；dev 不配置
 - [ ] 生产 `meigallery-tiktok-events` / `meigallery-tiktok-events-dlq` 已创建，并通过 `node scripts/verify-ad-platform-queues.mjs production`；即使 TikTok 保持关闭也必须在 `0049` 前满足
 - [ ] 如准备启用 TikTok，`TIKTOK_EVENTS_ACCESS_TOKEN` 与独立 data key 已作为 production secret 配置；dev 不配置
 - [ ] `0047_ad_platform_delivery_core.sql`、`0048_tiktok_pixel_connection.sql`、`0049_tiktok_events_api.sql` 与 `0050_strict_ad_source_routing.sql` 已应用；新平台保持 mode `disabled`、Server 关闭、rollout `0`

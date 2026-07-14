@@ -1,6 +1,6 @@
 # 项目当前状态
 
-更新时间：2026-07-13
+更新时间：2026-07-14
 
 本文是当前实现、部署和文档入口索引。若旧提交、历史计划或早期文档与本文冲突，以 `AGENTS.md`、本文、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md` 和 `docs/GIT_WORKFLOW.md` 为准。
 
@@ -53,6 +53,7 @@
 - 归因中心：已实现站内转化账本、投放追踪链接、有效联系 / 完成注册活动趋势、历史 Lead 只读对照、Meta / TikTok Pixel 与 Server API 同步健康、匹配覆盖、重复诊断和分级发布检查；总览、趋势和 campaign 拆分按明确 provider 隔离。历史 Lead 与会员发放辅助指标均不参与活动漏斗、比率或链接排序，会员发放仅保留在 `operations` 辅助结构。后台分别展示 blocker 与 warning，warning 不改变生产阻断状态；入口为 `/admin/attribution`。
 - 广告平台扩展内核：delivery 仅使用 `provider + transport + connection_revision`，Meta 与 TikTok 通过 adapter registry 运行；前端仅消费通用 `trackingInstructions`，后台以统一平台连接为配置入口。旧 Meta 设置键、旧投递列和响应兼容字段已删除，新增平台不再修改联系和注册事实逻辑。
 - TikTok Pixel / Events API：`0048` 初始化默认关闭的连接，`0049` 增加 TikTok 匹配字段、production 连接验证和通用加密 outbox。Browser 已接入 PageView、ViewContent、Search、Contact、CompleteRegistration；Server 使用 Events API v1.3、独立 token/data key、Queue/DLQ、lease、重试与 rollout。Contact / CompleteRegistration 的 Browser/Server 共用平台 event ID；Test Event Code 仅存在于 Owner 单次验证请求。生产仍默认关闭，待 production Pixel ID、secret、Queue 和 TikTok Test Events 人工验证后再放量。
+- 2026-07-14 Meta Test Event Code 清理：删除 `META_CAPI_TEST_EVENT_CODE` 的 Worker binding、配置说明、连接状态、readiness、资源证明和发布摘要依赖；Meta Test Event Code 仅由 Owner 在验证请求中临时提交，正式 `Contact` / `CompleteRegistration` payload 禁止携带。资源 attestation 升级为 V2，Meta 资源摘要升级为 V3，旧摘要不能通过新门禁。API `1156` 项、Web `275` 项、scripts/migration `281` 项、Lint、API TypeScript、Nuxt production build 与 secret scan 全部通过。代码尚未部署 production；必须先发布新 Worker 并重新生成 V3 资源证明，之后才可删除 production 中遗留的同名 Secret。
 - 2026-07-14 Meta 收尾与 TikTok 接入准备：production Meta 只读核验确认连接有效、无 open incident、无 Server pending/retry 积压，继续保持 10% rollout；唯一近期 `attempted` 为 Browser Pixel 记录。TikTok 重复验证会按当次 Test Event Code 重新发送 `Contact` 与 `CompleteRegistration`，但保持已验证 revision 幂等；每次发送写脱敏审计，测试码不落库。归因后台按选中平台隔离配置和发布控制，TikTok 独立展示 token、Queue、数据密钥、连接、Browser/Server 与 rollout 检查。API `1156` 项、Web `275` 项、scripts/migration `273` 项及 Playwright 五视口 `15` 项已通过。production 仍缺两条 TikTok Queue、TikTok token/data key secret 与 `0048–0050` migration，未部署、未启用 TikTok，未修改 Meta 配置或 rollout。
 - 2026-07-14 广告来源严格隔离：新增 `0050_strict_ad_source_routing.sql`、服务端签名来源 receipt 和后台广告平台必选项。Meta click ID/投放链接只创建 Meta Pixel/CAPI delivery，TikTok 来源只创建 TikTok Pixel/Events API delivery；冲突、未知、过期、校验失败或无来源均为零广告投递，只保留站内事实。浏览器来源校验串行执行并使旧响应失效，平台切换会先卸载旧 Pixel。D1 对已明确归因事实实施同平台写入约束，历史未绑定平台的广告链接自动停用且不做名称猜测。归因看板按 provider 读取事实并显示不一致/未路由数量。API `1156` 项、Web `274` 项、`0050` 真实 D1 `6` 项、`0001–0050` 发布演练 `61` 项、Lint、API TypeScript、API Worker dry-run 与 Nuxt production build 已通过；未修改 production 资源、配置、数据或 Meta rollout。
 - 2026-07-13 广告平台安全迁移收口：`0049` 改为 expand 迁移，保留旧 Meta 用户标识与加密 outbox，并仅由八个数据库 trigger 在发布/回滚窗口双向桥接；应用代码仍只使用通用结构。production 部署与远端 migration 包命令均新增四条 Queue 的 migration 前只读门禁，Queue 缺失时不执行 D1 migration 或 Worker deploy；contract 清理推迟到独立后续版本。历史库、空库与递归 trigger 真实 D1 演练通过，API `1125` 项、Web `261` 项、scripts/migration `261` 项、Lint、API TypeScript、API Worker dry-run、Nuxt production build 与 secret scan 全部通过。未修改 production 资源、D1、配置或 Meta rollout。
@@ -61,7 +62,7 @@
 - 2026-07-13 TikTok 官方文档复核与本地验收：按当前标准事件、参数、Test Events、Diagnostics 和 Pixel Helper 说明复核实现；修复仅配置 TikTok 时营销模式仍错误读取 Meta 的问题。API `1070`、Web `257`、Playwright 五视口 `125` 项、Lint、TypeScript 和 Nuxt production build 均通过；浏览器测试确认授权后才向 TikTok CDN 发起请求、脚本位于 `head`、首次 PageView 只入队一次，进入后台后卸载。
 - 2026-07-12 广告平台架构收口：本地 migration 实跑确认旧投递/outbox 清空、统一连接迁移成功、业务转化事实与连接验证/诊断保留；API `1064` 条测试、Web 测试、TypeScript、Lint 和 Nuxt production build 均通过，production 只读 duplicate preflight 为 `ready`。
 - Meta CAPI v2：production Dataset Quality v1 契约已由 Owner 批准，真实 Meta `v25.0 /dataset_quality` capture 已验证；collector 与两事件 live evidence 均绑定唯一 production Dataset。正式域名 Browser 与 production CAPI 通过同组 opaque event ID 验证 `Contact`、`CompleteRegistration` 去重；连接有效性由 Pixel ID、Token 指纹、Graph API 版本和 revision 决定，commit 只作审计追溯。bootstrap 强制 rollout `0`，首次放量仍要求有效 production live evidence、资源隔离证据和无 critical incident。
-- Meta Test Event 门禁按最新有效的 `post-deploy` V2 资源证据判定；更新的 bootstrap 发布记录不得遮挡仍在有效期内的 post-deploy 证据。
+- Meta Test Event 门禁按最新有效的 `post-deploy` V3 资源摘要判定；摘要引用资源 attestation V2，更新的 bootstrap 发布记录不得遮挡仍在有效期内的 post-deploy 证据。
 - Meta 连接验证为状态幂等操作：配置身份未变化时仍真实发送 Test Event，但复用现有 connection revision，不使已绑定的 Live Evidence 失效；仅 Pixel ID、token 指纹或 Graph API 版本变化时轮换 revision。
 - Meta Test Event Code 已改为 Owner 页面内存中的请求级会话值，验证连接与 Live Evidence 共用当前 `TEST...` 代码；服务端不从长期 secret 读取 payload 代码，也不将该值写入 D1、审计或响应，避免 Meta 换码后服务器事件进入旧 Test Events 会话。
 - Meta live 录入命令在人工确认通过后同时写入本地脱敏报告与 production D1 门禁摘要，并将 D1 无时区时间按 UTC 规范化；失败仍销毁一次性 challenge，避免残留记录被后续误用。
