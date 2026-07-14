@@ -62,14 +62,14 @@ describe('发布验证 CLI', () => {
     )
   })
 
-  it('旧伪造 latest 即使可通过 assert，fresh release 失败也不能进入 migration 或 deploy', async () => {
+  it('迁移前快速验证失败时不能进入 production migration 或 deploy', async () => {
     const tempDir = await mkdtemp(path.join(tmpdir(), 'meigallery-deploy-gate-'))
     const binDir = path.join(tempDir, 'bin')
     const logFile = path.join(tempDir, 'commands.log')
     await mkdir(binDir)
     await Promise.all([
       writeExecutable(path.join(binDir, 'git'), '#!/usr/bin/env bash\necho 18dc11e0b0e4797683d4551a93a1f22e53dc4628\n'),
-      writeExecutable(path.join(binDir, 'corepack'), `#!/usr/bin/env bash\necho "$*" >> "${logFile}"\nif [ "$*" = "pnpm verify:release" ]; then exit 9; fi\nexit 0\n`),
+      writeExecutable(path.join(binDir, 'corepack'), `#!/usr/bin/env bash\necho "$*" >> "${logFile}"\nif [ "$*" = "pnpm verify:quick" ]; then exit 9; fi\nexit 0\n`),
       writeExecutable(path.join(binDir, 'node'), `#!/usr/bin/env bash\necho "node $*" >> "${logFile}"\nexit 0\n`),
     ])
 
@@ -82,9 +82,10 @@ describe('发布验证 CLI', () => {
       const commands = await readFile(logFile, 'utf8')
 
       assert.notEqual(result.code, 0)
-      assert.match(commands, /pnpm verify:release/)
+      assert.match(commands, /pnpm verify:quick/)
+      assert.doesNotMatch(commands, /pnpm verify:release/)
       assert.doesNotMatch(commands, /assert-production-allowed|migrations apply|wrangler deploy/)
-      assert.match(result.output, /旧 latest 报告不能替代本次完整验证/)
+      assert.match(result.output, /尚未修改 production D1/)
     }
     finally {
       await rm(tempDir, { recursive: true, force: true })
@@ -100,7 +101,7 @@ describe('发布验证 CLI', () => {
     assert.doesNotMatch(devBlock[1], /D1_DB="meigallery-db"\s*(?:\n|$)/)
   })
 
-  it('deploy 将当前 commit 传给 API Worker，且生产 gate/Queue/preflight 均早于 D1 migration', async () => {
+  it('deploy 将当前 commit 传给 Worker，并按 Queue、快速验证、兼容迁移、完整门禁、部署后身份校验排序', async () => {
     const deployScript = await readFile(DEPLOY_SCRIPT_PATH, 'utf8')
     assert.match(deployScript, /GIT_COMMIT="\$\(git rev-parse HEAD\)"/)
     const deployLines = deployScript.split('\n').filter(line => /wrangler deploy "\$\{ENV_ARGS\[@\]\}" --var/.test(line))
@@ -112,6 +113,7 @@ describe('发布验证 CLI', () => {
     assert.match(deployScript, /ENV_ARGS=\(--env ""\)/)
 
     const freshGateIndex = deployScript.indexOf('"${PNPM[@]}" verify:release')
+    const quickGateIndex = deployScript.indexOf('"${PNPM[@]}" verify:quick')
     const gateIndex = deployScript.indexOf('verify-release.mjs assert-production-allowed')
     const queuePreflightIndex = deployScript.indexOf('verify-ad-platform-queues.mjs production')
     const preflightIndex = deployScript.indexOf('verify-meta-migration.mjs preflight --env "$ENV"')
@@ -120,11 +122,12 @@ describe('发布验证 CLI', () => {
     const webDeployIndex = deployScript.lastIndexOf('wrangler deploy "${ENV_ARGS[@]}" --var')
     const identityIndex = deployScript.indexOf('verify-release.mjs assert-production-identity')
     assert.ok(freshGateIndex >= 0)
-    assert.ok(gateIndex > freshGateIndex)
-    assert.ok(queuePreflightIndex > gateIndex)
-    assert.ok(preflightIndex > queuePreflightIndex)
-    assert.ok(preflightIndex > gateIndex)
+    assert.ok(queuePreflightIndex >= 0)
+    assert.ok(quickGateIndex > queuePreflightIndex)
+    assert.ok(preflightIndex > quickGateIndex)
     assert.ok(migrationIndex > preflightIndex)
+    assert.ok(freshGateIndex > migrationIndex)
+    assert.ok(gateIndex > freshGateIndex)
     assert.ok(deployIndex > gateIndex)
     assert.ok(identityIndex > webDeployIndex)
   })
@@ -149,10 +152,8 @@ describe('发布验证 CLI', () => {
       const commands = await readFile(logFile, 'utf8')
 
       assert.notEqual(result.code, 0)
-      assert.match(commands, /verify:release/)
-      assert.match(commands, /assert-production-allowed/)
       assert.match(commands, /verify-ad-platform-queues\.mjs production/)
-      assert.doesNotMatch(commands, /--filter @meigallery\/api test|migrations apply|--var RELEASE_COMMIT/)
+      assert.doesNotMatch(commands, /verify:quick|verify:release|assert-production-allowed|--filter @meigallery\/api test|migrations apply|--var RELEASE_COMMIT/)
       assert.match(result.output, /广告平台 Queue 前置检查阻断/)
     }
     finally {
@@ -320,14 +321,13 @@ describe('发布验证 CLI', () => {
       [true, false, 'full'],
     ]) {
       const phases = []
-      let identityChecks = 0
       await assertProductionAllowed({
         getGitState: async () => ({ branch: 'main', commit: RELEASE_COMMIT, isClean: true, remote: 'origin' }),
         readLatestReport: async () => ({ initialMetaRollout: reportFlag }),
         assertReportCanGateProduction: () => {},
         collectTrustedProductionGateFacts: options => collectTrustedProductionGateFacts({
           ...options,
-          verifyProductionReleaseIdentity: async () => { identityChecks += 1 },
+          verifyProductionReleaseIdentity: async () => assert.fail('部署前不得要求线上已是待发布 commit'),
           verifyApprovedMetaDatasetQualityContract: async () => ({ version: 3, digest: `sha256:${'9'.repeat(64)}` }),
           readRemoteProductionLiveGate: async () => ({ status: 'passed' }),
           readTrustedProductionBootstrapPermit: async () => permitPresent,
@@ -344,8 +344,29 @@ describe('发布验证 CLI', () => {
         }),
       })
       assert.deepEqual(phases, [expectedPhase])
-      assert.equal(identityChecks, permitPresent ? 0 : 1)
     }
+  })
+
+  it('常规生产门禁验证 Meta 连接事实，不在部署前要求线上已是待发布 commit', async () => {
+    let liveChecks = 0
+    await collectTrustedProductionGateFacts({
+      commit: RELEASE_COMMIT,
+      verifyProductionReleaseIdentity: async () => assert.fail('部署前不应执行 release identity 校验'),
+      verifyApprovedMetaDatasetQualityContract: async () => ({ version: 3, digest: `sha256:${'9'.repeat(64)}` }),
+      readTrustedProductionBootstrapPermit: async () => false,
+      readRemoteProductionLiveGate: async () => {
+        liveChecks += 1
+        return { status: 'passed' }
+      },
+      runMetaResourceVerification: async () => ({
+        status: 'passed',
+        openCriticalIncidentCount: 0,
+        datasetQualityCollectorCurrent: true,
+        datasetQualityContractVersion: 3,
+        datasetQualityContractDigest: `sha256:${'9'.repeat(64)}`,
+      }),
+    })
+    assert.equal(liveChecks, 1)
   })
 
   it('production 发布后 identity 校验要求干净 main，并绑定当前 commit', async () => {

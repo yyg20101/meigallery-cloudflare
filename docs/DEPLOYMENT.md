@@ -27,53 +27,53 @@
 
 ## 3. 部署命令
 
-本项目使用 pnpm workspace，推荐通过 `corepack pnpm` 调用仓库锁定的 pnpm 版本；`scripts/deploy.sh` 会自动检测裸 `pnpm`，不存在时回退到 `corepack pnpm`。
+本项目使用 pnpm workspace，统一通过 `corepack pnpm` 调用仓库锁定的 pnpm 版本。
 
 ```bash
 # 首次初始化
 ./scripts/setup.sh
 
-# 生产部署（推荐；脚本会在远端 migration 前执行 production gate，并向 API/Web 注入当前 commit）
+# 生产部署（推荐；脚本先验证 Queue 和本地代码，再应用兼容 migration、执行 production gate）
 # 重要警告：生产环境中，当待发布包含 0017_cases_cleanup.sql 时，禁止直接运行一键部署。
 # 必须先完成本地或 CI 构建预检，再按“R2 Cases 对象迁移”专项顺序完成
 # dry-run、复制和目标对象验证，然后才执行 D1 remote migration 和部署。
 ./scripts/deploy.sh production
 
 # 或以下安全等价手动步骤：
-# 1. API Worker 构建预检，不部署
-corepack pnpm --filter @meigallery/api exec wrangler deploy --env="" --dry-run --outdir=dist
-
-# 2. 构建前端
-corepack pnpm --filter @meigallery/web exec nuxt build
-
-# 3. 记录当前 commit，并在任何 remote migration 前执行 production gate。
-GIT_COMMIT="$(git rev-parse HEAD)"
-env -u VERIFY_RELEASE_ALLOW_BRANCH node scripts/verify-release.mjs assert-production-allowed
-
-# 4. 只读确认 production 广告平台 Queue；任一缺失时禁止执行 D1 migration
+# 1. 只读确认 production 广告平台 Queue；任一缺失时禁止执行 D1 migration
 node scripts/verify-ad-platform-queues.mjs production
 
-# 5. D1 迁移
+# 2. 迁移前完整本地快速验证
+corepack pnpm verify:quick
+
+# 3. D1 兼容迁移
 # 重要警告：如果待执行 migrations 包含 0017_cases_cleanup.sql，必须先完成：
 # 构建预检 -> R2 Cases dry-run -> R2 复制和目标对象验证，再执行此 D1 remote migration。
+node scripts/verify-meta-migration.mjs preflight --env production
 corepack pnpm --filter @meigallery/api exec wrangler d1 migrations apply meigallery-db --env="" --remote
 
-# 6. 部署 API Worker
+# 4. 迁移后执行完整放行并校验本次 main 报告
+corepack pnpm verify:release
+node scripts/verify-release.mjs assert-production-allowed
+
+# 5. 记录当前 commit，部署 API Worker
+GIT_COMMIT="$(git rev-parse HEAD)"
 corepack pnpm --filter @meigallery/api exec wrangler deploy --env="" --var "RELEASE_COMMIT:${GIT_COMMIT}"
 
-# 7. 部署 Web Worker
+# 6. 部署 Web Worker
 corepack pnpm --filter @meigallery/web exec wrangler deploy --env="" --var "RELEASE_COMMIT:${GIT_COMMIT}"
 
-# 8. 部署后 SEO 校验
+# 7. 部署后校验两个 Worker 的 commit 身份和 SEO
+node scripts/verify-release.mjs assert-production-identity
 corepack pnpm verify:seo:production
 ```
 
 ## 4. CI/CD
 
-**手动部署**：生产部署推荐只通过 `./scripts/deploy.sh production` 执行。该脚本会在任何远端 migration 前执行 production gate，并为 API/Web 注入当前 `RELEASE_COMMIT`。GitHub Actions 不负责生产部署，避免合入分支后自动影响线上用户。
+**手动部署**：生产部署推荐只通过 `./scripts/deploy.sh production` 执行。脚本在修改 production D1 前完成 Queue 和本地快速验证，migration 后重新执行完整生产门禁，并为 API/Web 注入当前 `RELEASE_COMMIT`。GitHub Actions 不负责生产部署，避免合入分支后自动影响线上用户。
 
 ```bash
-# 已完成同 commit release 验证后的生产发布。
+# 已通过 PR 合入 main 后执行生产发布。
 ./scripts/deploy.sh production
 corepack pnpm verify:seo:production
 # 已知生产站点名称和 SEO 标题时，建议显式写入期望值，避免 API 与 Web 同时回退默认标题仍误判通过。
@@ -98,7 +98,7 @@ corepack pnpm verify:seo:production -- --expect-site-name 星耀传媒 --expect-
 
 - `./scripts/deploy.sh production` 每次都必须重新执行完整、不可跳过的 `verify:release`，随后只校验本次新生成的同 commit 报告；本地旧 `latest.json` 即使内容显示通过也不能跳过 fresh gate。
 - 合入 `main` 后，只要最新待发布 HEAD 与现有 release 报告中的 commit 不完全一致，就必须在 `main` 上重新运行 `corepack pnpm verify:release`；任何旧 commit 报告都不能放行新的生产 HEAD。
-- `scripts/deploy.sh production` 会在远端 migration 前依次执行 fresh `verify:release`、`env -u VERIFY_RELEASE_ALLOW_BRANCH node scripts/verify-release.mjs assert-production-allowed` 和 `node scripts/verify-ad-platform-queues.mjs production`。Queue 检查只读取资源状态，不创建或修改资源。
+- `scripts/deploy.sh production` 依次执行 Queue 只读检查、fresh `verify:quick`、兼容 migration、fresh `verify:release` 和 `assert-production-allowed`。完整门禁失败时不得部署 Worker，已应用的 expand migration 保持对旧 Worker 兼容。
 - production 必须预先存在 `meigallery-meta-capi`、`meigallery-meta-capi-dlq`、`meigallery-tiktok-events`、`meigallery-tiktok-events-dlq`；任一缺失时部署在 migration 和 Worker deploy 前 fail closed。首次创建或补齐资源使用 `./scripts/setup.sh production`，完成后重新执行部署。
 - `corepack pnpm --filter @meigallery/api db:migrate:remote` 也强制先执行相同 Queue 门禁和 duplicate preflight；不得用裸 `wrangler d1 migrations apply` 绕过仓库发布保护。
 - 缺少通过报告、报告 commit 与当前待发 commit 不一致、工作区不干净，或分支不满足放行条件时，生产部署必须阻断。
@@ -108,7 +108,7 @@ corepack pnpm verify:seo:production -- --expect-site-name 星耀传媒 --expect-
 
 - 广告平台 schema 采用 expand/contract 两阶段发布。expand migration 必须同时兼容当前 production Worker、待发布 Worker 和 API Worker 回滚，不得先删除旧 Worker 仍会访问的列或表。
 - contract migration 必须推迟到后续独立版本；确认 production 已稳定运行新结构、桥接数据无差异并关闭旧 Worker 回滚窗口后才能加入。expand 与 contract 不得在同一次 `wrangler d1 migrations apply` 中执行。
-- 当前 `0049_tiktok_events_api.sql` 属于 expand：应用代码只使用通用结构，旧 Meta 结构仅由 `trg_0049_bridge_*` 在数据库层维持。后续 contract 删除前必须重新运行 `node --test scripts/verify-meta-migration.test.mjs`，并加入针对 contract 后 schema 的新演练断言。
+- 当前 `0049_tiktok_events_api.sql` 与 `0050_strict_ad_source_routing.sql` 属于 expand：应用代码只使用通用结构，旧 Meta 结构仅由 `trg_0049_bridge_*` 在数据库层维持；`0050` 仅对已明确来源的事实执行同平台约束。后续 contract 删除前必须重新运行 `node --test scripts/verify-meta-migration.test.mjs`，并加入针对 contract 后 schema 的新演练断言。
 
 ### 推荐执行顺序
 
@@ -198,22 +198,21 @@ corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_DATA_K
 
 dev 不执行上述操作。后台只展示有效性布尔值、引用计数和可移除状态，不展示 key ID 或派生值。
 
-正式发布必须按下列顺序完成，不能以旧 commit 的 evidence 或 release 报告放行新 HEAD：
+正式发布必须按下列顺序完成：
 
-1. 保持代码关闭态：`ad_platform_connections.mode=disabled`、`ad_platform_connections.server_enabled=false`，并完成本地 migration、测试、类型检查和 Worker dry-run。
-2. 在 production 保持 `ad_platform_connections.mode=test`、CAPI rollout `0`，完成严格 production live evidence：`Contact`、`CompleteRegistration` 均有 Browser/Server、同一 event ID、去重成功，且没有 `Lead`、`StartTrial`。
-3. 先执行 `corepack pnpm verify:meta-secrets`，再执行 `corepack pnpm verify:meta-resources --report-only`。该命令默认检查 production，并从 Wrangler/Cloudflare 响应核对 migrations、D1、R2、Queue、DLQ 与 secret 名称，不接受本地 JSON 自证。dev 只运行代码、契约和构建验证。
-4. 对生产 D1 依次应用 `0001` 到当前最新 migration（当前为 `0049`），每次 remote apply 前必须先执行 duplicate preflight。保持 production target/effective rollout 为 `0`；`--initial-meta-rollout` 还要求无过期 secure outbox，previous key 活动引用可由 secret 状态解释，并为当前 commit 写入未过期的 production D1 bootstrap permit。`0049` 只迁移 Meta 加密 outbox 的存储表名，不改变 Meta event ID、连接 revision 或 rollout。
-5. PR 合入 `main` 后，以最终 `main` HEAD 重新部署 production，并重新生成该 commit 的 production live evidence；此前任何 commit 的 evidence 都失效。
-6. 在最终 `main` HEAD、干净工作区运行同 commit release 作预检：首次 Meta 上线使用 `META_INITIAL_ROLLOUT=1 corepack pnpm verify:release`，该约束只要求 production `ad_platform_connections.server_enabled=false`，不约束 dev；后续常规发布使用 `corepack pnpm verify:release`。执行 `./scripts/deploy.sh production` 时脚本仍会强制重跑完整 release，不能复用这份旧报告跳过验证。
-7. 部署生产 API，再部署生产 Web；部署不等同于开启营销投放。
-8. production Worker 部署后，将 `ad_platform_connections.mode` 设为 `test`。CLI 只向 production origin 携带 Owner Cookie 换取 60 秒一次性 ticket；最终 attestation 请求不携带 Cookie，且禁止 redirect。执行 `corepack pnpm verify:meta-resources --post-deploy-isolation`，确认 production Worker、commit、nonce、TTL 与 Pixel/token/Test Event Code/data key 摘要完整。bootstrap 阶段不要求该 endpoint，避免首次部署死锁。
-9. post-deploy isolation 摘要通过后，Owner 才能触发 production synthetic Test Event。API 会在 fetch 前检查当前 commit、target/effective rollout `0`、无 open critical incident和完整 isolation；`disabled` 或 `production` mode 均拒绝。Meta 返回 `events_received=1` 后写入当前 production connection verification。
-10. 在 production 后台创建 live challenge，由正式域名浏览器发送 Pixel 事件、production Worker 发送同 ID CAPI 测试事件；在 Events Manager 人工确认去重后运行 `corepack pnpm verify:meta-live`。命令默认使用 production 地址，必要时才通过 `VERIFY_PRODUCTION_API_URL` / `VERIFY_PRODUCTION_WEB_URL` 覆盖；成功后会同时写入本地脱敏报告和 production D1 `meta_live` 门禁摘要。随后执行 `corepack pnpm verify:meta-resources` 写入 full 摘要，再把 `ad_platform_connections.mode` 切为 `production`。
+1. 在 release 分支完成 migration 演练、测试、类型检查、构建和 Worker dry-run，通过 GitHub CI 后以 PR 合入 `main`。
+2. 在干净的 `main` 执行 `./scripts/deploy.sh production`；脚本首先核对四条广告平台 Queue 并运行 fresh `verify:quick`，失败时不修改 production D1。
+3. 快速验证通过后应用当前最新 migration（当前为 `0050`）。`0049` 的数据库桥接和 `0050` 对未标记历史事实的兼容保证旧 Worker 在发布窗口可继续处理 Meta。
+4. migration 后执行 fresh `verify:release`，核验当前 Meta 连接 revision、有效 production live evidence、Dataset Quality、无 critical incident 和既有 rollout。Meta evidence 绑定连接身份，不因普通业务 commit 变化而失效。
+5. release 报告仍必须绑定当前 `main` HEAD，以证明本次代码完成全部本地、运行时和生产资源验证；旧 commit 的 release 报告不能放行新 HEAD。
+6. 完整门禁通过后部署 API，再部署 Web。脚本不修改任何平台的 enabled、mode、rollout、incident 或 secret。
+7. Worker 部署后执行 `assert-production-identity`，确认 production API/Web 都是当前 `main` HEAD；随后执行生产 SEO 校验。
+8. 对比部署前后 Meta 连接、rollout、incident、Queue/DLQ 和投递积压，必须保持业务状态不变；同时确认新 TikTok 连接为 `disabled`、Browser/Server 关闭、rollout `0`。
+9. 只有修改 Meta 连接身份、事件契约或质量证据本身时，才重新执行 production Live Evidence；普通功能发布不要求重复发送 Meta 测试事件。
 
 production live evidence 必须由后台 Owner 按钮创建 Worker challenge：正式域名浏览器通过真实 `fbq` 发送 `Contact` 与 `CompleteRegistration`，随后 production Worker 使用同组 opaque event ID 发送 CAPI。`corepack pnpm verify:meta-live` 只读取生产 D1 中已销毁原始 ID 的摘要并记录 Events Manager 人工确认，不在本地生成 session 或 event ID；成功或失败都会清理短期 challenge 摘要。
 
-任何一步失败都回到 `ad_platform_connections.mode=disabled` 并保持 `ad_platform_connections.server_enabled=false`，不得伪造 live evidence 或跳过同 commit 重验。
+若失败发生在 Worker 部署前，保持既有 production Meta 设置不变；若部署后确认 Meta 出现回归，才按下述回滚顺序先关闭 Server 投递并切回安全模式。不得伪造 live evidence 或绕过当前 HEAD 的 release 报告。
 
 ### Meta 回滚顺序
 
@@ -450,8 +449,8 @@ head_sampling_rate = 1
 - [ ] `META_CAPI_ACCESS_TOKEN`、`META_CAPI_TEST_EVENT_CODE` 和 `META_CAPI_DATA_KEY_CURRENT` 已作为 production secret 配置；dev 不配置
 - [ ] 生产 `meigallery-tiktok-events` / `meigallery-tiktok-events-dlq` 已创建，并通过 `node scripts/verify-ad-platform-queues.mjs production`；即使 TikTok 保持关闭也必须在 `0049` 前满足
 - [ ] 如准备启用 TikTok，`TIKTOK_EVENTS_ACCESS_TOKEN` 与独立 data key 已作为 production secret 配置；dev 不配置
-- [ ] `0047_ad_platform_delivery_core.sql`、`0048_tiktok_pixel_connection.sql` 与 `0049_tiktok_events_api.sql` 已应用；新平台保持 mode `disabled`、Server 关闭、rollout `0`
-- [ ] 当前 `main` HEAD 已重做 production live evidence；`Contact` / `CompleteRegistration` 均完成 Browser/Server 同 ID 去重，且无 `Lead` / `StartTrial`
+- [ ] `0047_ad_platform_delivery_core.sql`、`0048_tiktok_pixel_connection.sql`、`0049_tiktok_events_api.sql` 与 `0050_strict_ad_source_routing.sql` 已应用；新平台保持 mode `disabled`、Server 关闭、rollout `0`
+- [ ] 当前 Meta 连接具有未过期的 production live evidence；`Contact` / `CompleteRegistration` 均完成 Browser/Server 同 ID 去重，且无 `Lead` / `StartTrial`
 - [ ] `/admin/attribution` 可按 Meta / TikTok 分别查看 Pixel `attempted`、Server `sent` 和匹配覆盖；平台 Test Events 严格成功后才允许对应 Server 开关与 rollout
 - [ ] 如接入 Ops Hub 自动导入，Ops Hub 侧 `sourceBotKey` 与 MeiGallery Import Token allowlist 完全一致，且只提交 `metadata.type=gallery/case`
 - [ ] 已用 Ops Hub 或等价脚本完成 `#gallery` 单图、`#case` 相册、重复 `externalMessageId`、未授权 `sourceBotKey` 和旧 `testimonial_case` 拒绝验收

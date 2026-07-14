@@ -28,7 +28,7 @@
 - 对象存储：生产为 Cloudflare R2 `meigallery-media`，开发环境已隔离到 `meigallery-media-dev`。
 - Queue：仅 production 配置 `meigallery-meta-capi` / `meigallery-meta-capi-dlq` 与 `meigallery-tiktok-events` / `meigallery-tiktok-events-dlq` 绑定；dev 不配置广告平台 Queue 或 secret。2026-07-13 只读检查已确认两条 Meta Queue 存在，`meigallery-tiktok-events` 尚未创建，TikTok DLQ 因 fail-fast 未继续检查；补齐前生产部署会在 migration 前阻断。
 - 视频：Cloudflare Stream 仍未接入生产链路；相关字段和密钥按规划保留。
-- 生产部署：通过 PR 合入 `main` 后手动执行 `./scripts/deploy.sh production`；脚本会强制重新运行完整 `verify:release`、断言本次新报告并只读确认四条广告平台 Queue，之后才允许 migration 或 Worker deploy。
+- 生产部署：通过 PR 合入 `main` 后手动执行 `./scripts/deploy.sh production`；脚本先只读确认四条广告平台 Queue 并运行 `verify:quick`，再应用向后兼容 migration、执行完整 `verify:release`，最后部署 Worker 并校验 production release identity。普通功能 commit 不使已验证的 Meta 连接失效。
 - CI：`.github/workflows/ci.yml` 只做 PR 和 dev 推送验证，不自动部署生产。
 - 发布快速校验：`corepack pnpm verify:quick` 先执行 `dev-resource-isolation` 与 `meta-secret-leaks`，阻断 dev 误用生产资源及 tracked/release evidence 静态泄漏。
 

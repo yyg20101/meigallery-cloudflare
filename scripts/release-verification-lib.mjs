@@ -526,7 +526,7 @@ function validateMetaReleaseSummary(report, reasons, now) {
     reasons.push('release 报告缺少 Meta live evidence 摘要')
   } else {
     if (live.status !== 'passed') reasons.push('Meta live evidence 未通过')
-    if (live.commit !== report.git?.commit) reasons.push('Meta live evidence commit 与报告 commit 不一致')
+    if (!/^[0-9a-f]{40}$/i.test(String(live.commit || '').trim())) reasons.push('Meta live evidence 来源 commit 非法')
     if (live.environment !== 'production') reasons.push('Meta live evidence 必须来自 production')
     if (!Array.isArray(live.events) || live.events.length !== 2 || !['Contact', 'CompleteRegistration'].every(name => live.events.includes(name))) {
       reasons.push('Meta live evidence 事件集合不完整')

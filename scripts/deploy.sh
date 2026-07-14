@@ -50,9 +50,37 @@ else
     exit 0
   fi
 
+  echo "校验 production 广告平台 Queue..."
+  if ! node scripts/verify-ad-platform-queues.mjs production; then
+    echo "生产部署被广告平台 Queue 前置检查阻断。请先运行 ./scripts/setup.sh production。"
+    exit 1
+  fi
+
+  echo "执行生产迁移前本地快速验证..."
+  if ! "${PNPM[@]}" verify:quick; then
+    echo "生产部署被迁移前本地快速验证阻断，尚未修改 production D1。"
+    exit 1
+  fi
+
+  if [ -f "packages/api/migrations/0017_cases_cleanup.sql" ] && [ "${ALLOW_CASES_CLEANUP_MIGRATION:-}" != "true" ]; then
+    UNAPPLIED_MIGRATIONS="$("${PNPM[@]}" --filter @meigallery/api exec wrangler d1 migrations list "$D1_DB" "${ENV_ARGS[@]}" --remote 2>&1)"
+    if [[ "$UNAPPLIED_MIGRATIONS" == *"0017_cases_cleanup"* ]]; then
+      echo "错误: 0017_cases_cleanup.sql 仍在待执行迁移列表中。"
+      echo "此迁移会将真实案例 R2 key 从 testimonials/ 切换到 cases/。"
+      echo "请先执行 R2 Cases dry-run、复制和目标对象验证，再执行 D1 migration。"
+      echo "如果已完成 R2 复制验证并准备执行迁移，可显式设置 ALLOW_CASES_CLEANUP_MIGRATION=true 绕过。"
+      exit 1
+    fi
+    echo "0017_cases_cleanup.sql 已应用或不在待执行列表中，继续生产迁移检查。"
+  fi
+
+  echo "执行 production D1 兼容迁移..."
+  node scripts/verify-meta-migration.mjs preflight --env "$ENV"
+  "${PNPM[@]}" --filter @meigallery/api exec wrangler d1 migrations apply "$D1_DB" "${ENV_ARGS[@]}" --remote
+
   echo "重新执行完整生产发布验证..."
   if ! env -u VERIFY_RELEASE_ALLOW_BRANCH "${PNPM[@]}" verify:release; then
-    echo "生产部署被 fresh verify:release 阻断。旧 latest 报告不能替代本次完整验证。"
+    echo "生产部署被 fresh verify:release 阻断。兼容迁移已保留，Worker 尚未部署。"
     exit 1
   fi
 
@@ -62,11 +90,6 @@ else
     exit 1
   fi
 
-  echo "校验 production 广告平台 Queue..."
-  if ! node scripts/verify-ad-platform-queues.mjs production; then
-    echo "生产部署被广告平台 Queue 前置检查阻断。请先运行 ./scripts/setup.sh production。"
-    exit 1
-  fi
 fi
 
 echo ""
@@ -83,19 +106,12 @@ echo "--- 步骤 3/7: 构建前端 ---"
 
 echo ""
 echo "--- 步骤 4/7: 执行 D1 数据库迁移 ---"
-if [ "$IS_PRODUCTION" = "true" ] && [ -f "packages/api/migrations/0017_cases_cleanup.sql" ] && [ "${ALLOW_CASES_CLEANUP_MIGRATION:-}" != "true" ]; then
-  UNAPPLIED_MIGRATIONS="$("${PNPM[@]}" --filter @meigallery/api exec wrangler d1 migrations list "$D1_DB" "${ENV_ARGS[@]}" --remote 2>&1)"
-  if [[ "$UNAPPLIED_MIGRATIONS" == *"0017_cases_cleanup"* ]]; then
-    echo "错误: 0017_cases_cleanup.sql 仍在待执行迁移列表中。"
-    echo "此迁移会将真实案例 R2 key 从 testimonials/ 切换到 cases/。"
-    echo "请先执行 R2 Cases dry-run、复制和目标对象验证，再执行 D1 migration。"
-    echo "如果已完成 R2 复制验证并准备执行迁移，可显式设置 ALLOW_CASES_CLEANUP_MIGRATION=true 绕过。"
-    exit 1
-  fi
-  echo "0017_cases_cleanup.sql 已应用或不在待执行列表中，继续生产迁移检查。"
+if [ "$IS_PRODUCTION" = "true" ]; then
+  echo "production D1 兼容迁移已在完整发布门禁前执行并验证。"
+else
+  node scripts/verify-meta-migration.mjs preflight --env "$ENV"
+  "${PNPM[@]}" --filter @meigallery/api exec wrangler d1 migrations apply "$D1_DB" "${ENV_ARGS[@]}" --remote
 fi
-node scripts/verify-meta-migration.mjs preflight --env "$ENV"
-"${PNPM[@]}" --filter @meigallery/api exec wrangler d1 migrations apply "$D1_DB" "${ENV_ARGS[@]}" --remote
 
 echo ""
 echo "--- 步骤 5/7: 部署 API Worker ---"

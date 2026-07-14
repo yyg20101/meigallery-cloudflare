@@ -780,11 +780,11 @@ describe('发布验证基础库', () => {
     }, /artifacts\[1\]/)
   })
 
-  it('assertReportCanGateProduction 强制同 commit production live evidence 与资源摘要', () => {
+  it('assertReportCanGateProduction 强制完整 production live evidence 与当前 commit 资源摘要', () => {
     const base = createValidReleaseReport()
 
     for (const report of [
-      { ...base, metaLiveVerification: { ...base.metaLiveVerification, commit: 'other-commit' } },
+      { ...base, metaLiveVerification: { ...base.metaLiveVerification, commit: 'invalid-commit' } },
       { ...base, metaLiveVerification: { ...base.metaLiveVerification, status: 'failed' } },
       { ...base, metaLiveVerification: { ...base.metaLiveVerification, events: ['Contact', 'Lead', 'CompleteRegistration'] } },
       { ...base, metaLiveVerification: { ...base.metaLiveVerification, events: ['Contact', 'CompleteRegistration', 'StartTrial'] } },
@@ -797,6 +797,22 @@ describe('发布验证基础库', () => {
         })
       }, /Meta|meta|资源|evidence|commit/)
     }
+  })
+
+  it('assertReportCanGateProduction 允许复用未过期且连接身份未变的历史 Meta evidence', () => {
+    const base = createValidReleaseReport()
+    assert.doesNotThrow(() => {
+      assertReportCanGateProduction({
+        ...base,
+        metaLiveVerification: {
+          ...base.metaLiveVerification,
+          commit: 'a'.repeat(40),
+        },
+      }, {
+        now: '2026-07-09T01:00:00.000Z',
+        expectedCommit: base.git.commit,
+      })
+    })
   })
 
   it('assertReportCanGateProduction 在首次上线时强制生产 CAPI 关闭', () => {

@@ -2,8 +2,10 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   hasNoPendingMigrations,
+  hasVerifiedMetaConnection,
   main,
   requestLiveResourceAttestations,
+  resolveFullSecretIsolation,
   runMetaResourceVerification,
   validateProductionAttestation,
 } from './verify-meta-resources.mjs'
@@ -110,6 +112,36 @@ describe('Meta production 资源检查', () => {
     assert.equal(hasNoPendingMigrations('No migrations to apply!'), true)
     assert.equal(hasNoPendingMigrations('0046_meta_live_match_coverage.sql'), false)
     assert.equal(hasNoPendingMigrations('warning: unknown state'), false)
+  })
+
+  it('常规发布复用有效 Meta 连接，不要求 verification commit 等于待发布 commit', () => {
+    const pixelId = '1234567890'
+    const output = JSON.stringify([{ results: [{
+      environment: 'production',
+      pixel_id: pixelId,
+      graph_api_version: 'v25.0',
+      verified_commit: 'a'.repeat(40),
+      verified_at: '2026-07-13 09:07:35',
+      invalidated_at: null,
+      invalidation_reason: '',
+      revision: 'b'.repeat(32),
+    }] }])
+
+    assert.equal(hasVerifiedMetaConnection(output, 'production', pixelId), true)
+  })
+
+  it('常规发布只从有效连接和 Cloudflare secret 名称推导隔离状态', () => {
+    const secrets = JSON.stringify([
+      { name: 'META_CAPI_TEST_EVENT_CODE' },
+      { name: 'META_CAPI_DATA_KEY_CURRENT' },
+    ])
+    assert.deepEqual(resolveFullSecretIsolation(secrets, true), {
+      pixel: true,
+      token: true,
+      testEventCode: true,
+      dataKey: true,
+    })
+    assert.equal(resolveFullSecretIsolation(secrets, false).token, false)
   })
 })
 
