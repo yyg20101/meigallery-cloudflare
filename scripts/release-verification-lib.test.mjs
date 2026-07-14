@@ -92,7 +92,7 @@ function createValidReleaseReport() {
       commit: RELEASE_COMMIT,
       environment: 'production',
       verifiedAt: '2026-07-09T00:00:00.000Z',
-      expiresAt: '2026-07-10T00:00:00.000Z',
+      expiresAt: '2026-08-08T00:00:00.000Z',
       events: ['Contact', 'CompleteRegistration'],
       enhancedMatchVerified: true,
       forbiddenEventsAbsent: true,
@@ -799,7 +799,7 @@ describe('发布验证基础库', () => {
     }
   })
 
-  it('assertReportCanGateProduction 允许复用未过期且连接身份未变的历史 Meta evidence', () => {
+  it('assertReportCanGateProduction 允许复用 30 天内且连接身份未变的历史 Meta evidence', () => {
     const base = createValidReleaseReport()
     assert.doesNotThrow(() => {
       assertReportCanGateProduction({

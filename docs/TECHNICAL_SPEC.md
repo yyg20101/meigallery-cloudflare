@@ -682,7 +682,7 @@ Meta CAPI v2 远端证据链：
 - migration `0042_meta_resource_attestation_tickets.sql` 保存 60 秒 D1 原子一次性 ticket。Owner Cookie 只能在固定可信 API origin 换取 ticket；`/api/meta/resource-attestation` 只接受 ticket 并返回 HMAC 摘要，最终请求不携带 Cookie，ticket 响应和审计均不得回显凭据。
 - production 冷启动 gate 分为 `bootstrap`、`post-deploy`、`full`：当前 commit 与未过期 D1 bootstrap permit 决定首次部署资格；部署后必须通过资源 attestation 和 `trackingMode=test` 的真实 Test Event；完整 gate 通过后才能切换 production，并由 Owner 将 rollout 从 `0` 手动升至 `10`。系统不得自动升级，只能因 incident 自动降至 `0`。
 - Meta 远端验证 CLI 默认目标为 production；`--env production` 仅为兼容显式调用。不得再创建 dev Owner 会话、dev Meta attestation、dev Meta Queue 或 dev Meta secret 来模拟生产验证。production URL 可通过 `VERIFY_PRODUCTION_API_URL`、`VERIFY_PRODUCTION_WEB_URL` 覆盖，未提供时使用生产部署默认地址。
-- Dataset Quality 使用唯一 production Dataset：批准契约固定 `GET /v25.0/dataset_quality` 的字段白名单，collector 只在 production 每日执行并写入契约 version/digest。production live evidence 不直接读取质量快照；首次 bootstrap 保持 rollout `0`，full gate 必须同时验证 live evidence 与两项活动事件快照的 24 小时新鲜度。
+- Dataset Quality 使用唯一 production Dataset：批准契约固定 `GET /v25.0/dataset_quality` 的字段白名单，collector 只在 production 每日执行并写入契约 version/digest。production live challenge 必须在 24 小时内完成；人工确认在连接 revision 未变化、未失效且 Dataset Quality 契约一致时可复用 30 天。首次 bootstrap 保持 rollout `0`，full gate 仍要求两项活动事件质量快照满足 24 小时新鲜度。
 
 #### Meta 生产放行与回滚 `[当前实现 / 运维前置]`
 

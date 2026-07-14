@@ -130,6 +130,7 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
     capiSentCount: 1,
     liveVerificationPresent: true,
     resourcesVerificationPresent: true,
+    liveVerificationVerifiedAt: new Date().toISOString(),
     liveVerificationExpiresAt: '2099-01-01T00:00:00.000Z',
     resourcesVerificationExpiresAt: '2099-01-01T00:00:00.000Z',
     lastManualConfirmationAt: new Date().toISOString(),
@@ -283,8 +284,8 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
           }
           if (sql.includes('FROM analytics_release_verifications') && sql.includes("verification_type IN ('meta_live', 'meta_resources')")) {
             const results = []
-            if (readiness.liveVerificationPresent && isFutureIsoTimestamp(readiness.liveVerificationExpiresAt)) {
-              results.push({ verification_type: 'meta_live', verified_at: '2026-07-10T00:00:00.000Z', expires_at: readiness.liveVerificationExpiresAt })
+            if (readiness.liveVerificationPresent && isRecentIsoTimestamp(readiness.liveVerificationVerifiedAt, 30)) {
+              results.push({ verification_type: 'meta_live', verified_at: readiness.liveVerificationVerifiedAt, expires_at: readiness.liveVerificationExpiresAt })
             }
             if (readiness.resourcesVerificationPresent && isFutureIsoTimestamp(readiness.resourcesVerificationExpiresAt)) {
               results.push({ verification_type: 'meta_resources', verified_at: '2026-07-10T00:00:00.000Z', expires_at: readiness.resourcesVerificationExpiresAt })
@@ -963,6 +964,12 @@ function externalEventIdMismatch(input: { sourceChannel?: string; pixel: readonl
 function isFutureIsoTimestamp(value: string) {
   const timestamp = new Date(value).getTime()
   return Number.isFinite(timestamp) && timestamp > Date.now()
+}
+
+function isRecentIsoTimestamp(value: string, days: number) {
+  const timestamp = new Date(value).getTime()
+  const age = Date.now() - timestamp
+  return Number.isFinite(timestamp) && age >= 0 && age < days * 24 * 60 * 60 * 1000
 }
 
 const VALID_RELEASE_COMMIT = 'a'.repeat(40)
@@ -2112,7 +2119,7 @@ describe('后台归因中心 API', () => {
     ['2026-07-10T12:00:01.000Z', true],
     ['invalid', false],
     ['', false],
-  ] as const)('release verification expires_at=%s 时有效状态为 %s', async (expiresAt, expected) => {
+  ] as const)('resource verification expires_at=%s 时有效状态为 %s', async (expiresAt, expected) => {
     vi.useFakeTimers()
     vi.setSystemTime('2026-07-10T12:00:00.000Z')
     const { db, body } = await requestReadiness({
@@ -2125,11 +2132,28 @@ describe('后台归因中心 API', () => {
     const resources = body.data.checks.find((item: { key: string }) => item.key === 'meta_resources_verification')
     const verificationSql = db.calls.find(call => call.sql.includes('FROM analytics_release_verifications') && call.sql.includes("verification_type IN ('meta_live', 'meta_resources')"))?.sql ?? ''
 
-    expect(live.ok).toBe(expected)
+    expect(live.ok).toBe(true)
     expect(resources.ok).toBe(expected)
     expect(body.data.ready).toBe(expected)
-    expect(verificationSql).toContain("datetime(expires_at) > datetime('now')")
+    expect(verificationSql).toContain("datetime(rv.expires_at) > datetime('now')")
+    expect(verificationSql).toContain("datetime(rv.verified_at) > datetime('now', '-30 days')")
+    expect(verificationSql).toContain("c.verified_commit = json_extract(rv.summary, '$.commitSha')")
     expect(verificationSql).not.toContain("AND expires_at > datetime('now')")
+  })
+
+  it('Meta 人工确认超过 30 天时独立阻断 readiness', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime('2026-07-31T00:00:00.000Z')
+    const { body } = await requestReadiness({
+      readiness: {
+        liveVerificationVerifiedAt: '2026-07-01T00:00:00.000Z',
+        resourcesVerificationExpiresAt: '2026-08-01T00:00:00.000Z',
+      },
+    })
+
+    expect(body.data.checks.find((item: { key: string }) => item.key === 'meta_live_verification')?.ok).toBe(false)
+    expect(body.data.checks.find((item: { key: string }) => item.key === 'meta_resources_verification')?.ok).toBe(true)
+    expect(body.data.ready).toBe(false)
   })
 
   it.each([
@@ -2492,6 +2516,9 @@ describe('后台归因中心 API', () => {
     ))
     expect(verificationQueries.some(call => call.sql.includes("environment = 'dev'"))).toBe(false)
     expect(verificationQueries.some(call => call.params.includes('production'))).toBe(true)
+    const liveQuery = verificationQueries.find(call => call.sql.includes("verification_type = 'meta_live'"))?.sql ?? ''
+    expect(liveQuery).toContain("datetime(v.verified_at) > datetime('now', '-30 days')")
+    expect(liveQuery).toContain("c.verified_commit = json_extract(v.summary, '$.commitSha')")
   })
 
   it('production 0 -> 10 缺当前 full isolation attestation 时在 rollout UPDATE 前阻断', async () => {

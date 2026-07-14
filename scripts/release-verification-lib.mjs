@@ -48,6 +48,7 @@ const SANITIZED_PRIVATE_VALUES = new Set([PRIVACY_REDACTION, '[REDACTED]'])
 const PUBLIC_DIGEST_CONTEXT_KEYS = new Set(['digest', 'datasetqualitycontractdigest'])
 const SUMMARY_LIMIT = 1200
 const REPORT_MAX_AGE_MS = 24 * 60 * 60 * 1000
+const META_LIVE_CONFIRMATION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
 const VALID_REPORT_MODES = new Set(['quick', 'local-runtime', 'dev-rehearsal', 'release'])
 const VALID_REPORT_STATUSES = new Set(['passed', 'failed', 'skipped'])
 const RELEASE_CHILD_MODES = ['quick', 'local-runtime', 'dev-rehearsal']
@@ -538,7 +539,7 @@ function validateMetaReleaseSummary(report, reasons, now) {
     if (Number.isNaN(verifiedAt) || Number.isNaN(expiresAt)) {
       reasons.push('Meta live evidence 时间格式非法')
     } else {
-      if (expiresAt - verifiedAt !== 24 * 60 * 60 * 1000) reasons.push('Meta live evidence 有效期不是严格 24 小时')
+      if (expiresAt - verifiedAt !== META_LIVE_CONFIRMATION_MAX_AGE_MS) reasons.push('Meta live 人工确认有效期不是严格 30 天')
       if (now >= expiresAt) reasons.push('Meta live evidence 已过期')
     }
   }

@@ -15,6 +15,7 @@ import { runDevRehearsalVerification } from './verify-dev-rehearsal.mjs'
 import { runLocalRuntimeVerification } from './verify-local-runtime.mjs'
 import {
   assertReleaseVerificationRow,
+  assertReleaseVerificationSummary,
   recordReleaseVerificationSummary,
 } from './release-verification-store.mjs'
 import { runMetaResourceVerification } from './verify-meta-resources.mjs'
@@ -23,6 +24,8 @@ import { verifyProductionReleaseIdentity } from './record-meta-live-verification
 
 const PRODUCTION_IDENTITY_MAX_ATTEMPTS = 31
 const PRODUCTION_IDENTITY_RETRY_DELAY_MS = 3_000
+const META_LIVE_CONFIRMATION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
+const META_LIVE_SOURCE_TTL_MS = 24 * 60 * 60 * 1000
 
 const QUICK_STEPS = [
   {
@@ -681,12 +684,19 @@ export async function assertProductionReleaseIdentity(options = {}) {
 
 export async function readRemoteProductionLiveGate(options = {}) {
   const sql = `
-    SELECT summary, verified_at, expires_at
-    FROM analytics_release_verifications
-    WHERE environment = 'production' AND verification_type = 'meta_live'
-      AND status = 'passed'
-      AND datetime(expires_at) > datetime('now')
-    ORDER BY verified_at DESC LIMIT 1
+    SELECT v.summary, v.verified_at, v.expires_at,
+      c.verified_commit AS connection_verified_commit,
+      c.verified_at AS connection_verified_at
+    FROM analytics_release_verifications v
+    JOIN meta_connection_verifications c ON c.environment = v.environment
+    WHERE v.environment = 'production' AND v.verification_type = 'meta_live'
+      AND v.status = 'passed'
+      AND c.invalidated_at IS NULL
+      AND length(c.revision) = 32
+      AND json_extract(v.summary, '$.commitSha') = c.verified_commit
+      AND datetime(v.verified_at) >= datetime(c.verified_at)
+      AND datetime(v.verified_at) > datetime('now', '-30 days')
+    ORDER BY v.verified_at DESC LIMIT 1
   `.replace(/\s+/g, ' ').trim()
   const step = await (options.runCommand || runCommand)('corepack', [
     'pnpm', '--filter', '@meigallery/api', 'exec', 'wrangler', 'd1', 'execute', 'meigallery-db',
@@ -700,26 +710,46 @@ export async function readRemoteProductionLiveGate(options = {}) {
     const rawSummary = JSON.parse(String(rows[0].summary || ''))
     const evidenceCommit = String(rawSummary.commitSha || '').trim().toLowerCase()
     if (!/^[0-9a-f]{40}$/.test(evidenceCommit)) return { status: 'failed' }
+    const connectionCommit = String(rows[0].connection_verified_commit || '').trim().toLowerCase()
+    const verifiedAtMs = parseTrustedUtcTimestamp(rows[0].verified_at)
+    const sourceExpiresAtMs = parseTrustedUtcTimestamp(rows[0].expires_at)
+    const connectionVerifiedAtMs = parseTrustedUtcTimestamp(rows[0].connection_verified_at)
+    const nowMs = new Date(options.now ?? Date.now()).getTime()
+    if (!Number.isFinite(nowMs)
+      || evidenceCommit !== connectionCommit
+      || sourceExpiresAtMs - verifiedAtMs !== META_LIVE_SOURCE_TTL_MS
+      || verifiedAtMs < connectionVerifiedAtMs
+      || verifiedAtMs > nowMs
+      || nowMs - verifiedAtMs >= META_LIVE_CONFIRMATION_MAX_AGE_MS) {
+      return { status: 'failed' }
+    }
     const contract = options.contract
-    const summary = assertReleaseVerificationRow({
-      row: rows[0],
+    assertReleaseVerificationSummary({
       environment: 'production',
       verificationType: 'meta_live',
       commit: evidenceCommit,
-      now: options.now,
+      summary: rawSummary,
     })
-    const valid = summary.datasetQualityContractVersion === contract?.version
-      && summary.datasetQualityContractDigest === contract?.digest
+    const valid = rawSummary.datasetQualityContractVersion === contract?.version
+      && rawSummary.datasetQualityContractDigest === contract?.digest
     return {
       status: valid ? 'passed' : 'failed',
       commit: evidenceCommit,
-      verifiedAt: String(rows[0].verified_at || ''),
-      expiresAt: String(rows[0].expires_at || ''),
+      verifiedAt: new Date(verifiedAtMs).toISOString(),
+      expiresAt: new Date(verifiedAtMs + META_LIVE_CONFIRMATION_MAX_AGE_MS).toISOString(),
     }
   }
   catch {
     return { status: 'failed' }
   }
+}
+
+function parseTrustedUtcTimestamp(value) {
+  const raw = String(value || '').trim()
+  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{1,3})?$/.test(raw)
+    ? `${raw.replace(' ', 'T')}Z`
+    : raw
+  return Date.parse(normalized)
 }
 
 export async function readTrustedProductionBootstrapPermit(options = {}) {
