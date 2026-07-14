@@ -1,8 +1,9 @@
 import type {
   AdPlatformProvider,
+  AdPlatformRolloutPercentage,
   AdPlatformTrackingMode,
-  MetaCapiRolloutPercentage,
 } from '@meigallery/shared'
+import { hasAdPlatformAdapter } from './registry'
 
 export interface AdPlatformConnection {
   provider: AdPlatformProvider
@@ -12,7 +13,7 @@ export interface AdPlatformConnection {
   serverEnabled: boolean
   destinationId: string
   debugEnabled: boolean
-  rolloutPercentage: MetaCapiRolloutPercentage
+  rolloutPercentage: AdPlatformRolloutPercentage
   credentialSecretName: string
   revision: string | null
 }
@@ -44,6 +45,18 @@ export async function readAdPlatformConnection(
   return row ? serializeConnection(row) : null
 }
 
+export async function listAdPlatformConnections(db: D1Database): Promise<AdPlatformConnection[]> {
+  const result = await db.prepare(`
+    SELECT provider, enabled, mode, browser_enabled, server_enabled, destination_id,
+      debug_enabled, rollout_percentage, credential_secret_name, revision
+    FROM ad_platform_connections
+    ORDER BY provider
+  `).all<ConnectionRow>()
+  return result.results
+    .filter(row => hasAdPlatformAdapter(row.provider))
+    .map(serializeConnection)
+}
+
 function serializeConnection(row: ConnectionRow): AdPlatformConnection {
   return {
     provider: row.provider as AdPlatformProvider,
@@ -53,7 +66,7 @@ function serializeConnection(row: ConnectionRow): AdPlatformConnection {
     serverEnabled: row.server_enabled === 1,
     destinationId: row.destination_id,
     debugEnabled: row.debug_enabled === 1,
-    rolloutPercentage: row.rollout_percentage as MetaCapiRolloutPercentage,
+    rolloutPercentage: row.rollout_percentage as AdPlatformRolloutPercentage,
     credentialSecretName: row.credential_secret_name,
     revision: row.revision,
   }

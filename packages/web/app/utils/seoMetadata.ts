@@ -37,6 +37,7 @@ interface ArticleJsonLdInput {
 const DEFAULT_SITE_URL = 'https://616618.xyz'
 const TRACKING_PARAMS = new Set([
   'fbclid',
+  'ttclid',
   'gclid',
   'gbraid',
   'wbraid',

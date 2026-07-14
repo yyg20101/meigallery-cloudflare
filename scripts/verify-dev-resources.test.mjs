@@ -31,6 +31,19 @@ dead_letter_queue = "meigallery-meta-capi-dlq"
 [[queues.consumers]]
 queue = "meigallery-meta-capi-dlq"
 
+[[queues.producers]]
+binding = "TIKTOK_EVENTS_QUEUE"
+queue = "meigallery-tiktok-events"
+
+[[queues.consumers]]
+queue = "meigallery-tiktok-events"
+max_retries = 5
+retry_delay = 60
+dead_letter_queue = "meigallery-tiktok-events-dlq"
+
+[[queues.consumers]]
+queue = "meigallery-tiktok-events-dlq"
+
 [[env.dev.d1_databases]]
 binding = "DB"
 database_name = "meigallery-db-dev"
@@ -43,7 +56,7 @@ bucket_name = "meigallery-media-dev"
 `.trim()
 
 describe('开发环境资源校验', () => {
-  it('能读取 production Meta Queue 与 dev 通用 D1/R2 配置', async () => {
+  it('能读取 production 广告平台 Queue 与 dev 通用 D1/R2 配置', async () => {
     const wranglerPath = await writeTempWranglerToml(VALID_WRANGLER_TOML)
 
     try {
@@ -60,13 +73,23 @@ describe('开发环境资源校验', () => {
           r2: {
             bucketName: 'meigallery-media',
           },
-          queue: {
-            producerName: 'meigallery-meta-capi',
-            mainConsumerName: 'meigallery-meta-capi',
-            deadLetterQueueName: 'meigallery-meta-capi-dlq',
-            dlqConsumerName: 'meigallery-meta-capi-dlq',
-            maxRetries: 5,
-            retryDelay: 60,
+          queues: {
+            meta: {
+              producerName: 'meigallery-meta-capi',
+              mainConsumerName: 'meigallery-meta-capi',
+              deadLetterQueueName: 'meigallery-meta-capi-dlq',
+              dlqConsumerName: 'meigallery-meta-capi-dlq',
+              maxRetries: 5,
+              retryDelay: 60,
+            },
+            tiktok: {
+              producerName: 'meigallery-tiktok-events',
+              mainConsumerName: 'meigallery-tiktok-events',
+              deadLetterQueueName: 'meigallery-tiktok-events-dlq',
+              dlqConsumerName: 'meigallery-tiktok-events-dlq',
+              maxRetries: 5,
+              retryDelay: 60,
+            },
           },
         },
         dev: {

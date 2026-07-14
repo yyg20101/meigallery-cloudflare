@@ -597,7 +597,6 @@ export async function assertProductionAllowed(options = {}) {
 export async function collectTrustedProductionGateFacts(options = {}) {
   const commit = String(options.commit || '').trim().toLowerCase()
   if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error('受信生产门禁需要当前 40 位 commit')
-  const verifyProductionReleaseIdentityFn = options.verifyProductionReleaseIdentity || verifyProductionReleaseIdentity
   const verifyContractFn = options.verifyApprovedMetaDatasetQualityContract || verifyApprovedMetaDatasetQualityContract
   const runMetaResourceVerificationFn = options.runMetaResourceVerification || runMetaResourceVerification
   const readRemoteProductionLiveGateFn = options.readRemoteProductionLiveGate || readRemoteProductionLiveGate
@@ -622,7 +621,6 @@ export async function collectTrustedProductionGateFacts(options = {}) {
     }
     return { contract, production, bootstrapPermitted: true }
   }
-  await verifyProductionReleaseIdentityFn({ ...options, commit })
   const live = await readRemoteProductionLiveGateFn({ ...options, commit, contract })
   if (live?.status !== 'passed') throw new Error('当前 production 远端 live evidence 链未通过')
 

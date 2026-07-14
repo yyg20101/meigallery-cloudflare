@@ -167,11 +167,11 @@ function assertMetaResourcesSummary(value, expected) {
     throw new Error(`summary ${value.verificationPhase} 语义门禁未通过`)
   }
   if (expected.environment === 'production') {
-    if (value.liveAttestation !== true) throw new Error(`summary ${value.verificationPhase} live attestation 未通过`)
     requireTrueFields(value.environmentIsolation, ['pixel', 'token', 'testEventCode', 'dataKey'], `${value.verificationPhase}.environmentIsolation`)
   }
   if (value.verificationPhase === 'post-deploy') {
     if (expected.environment !== 'production'
+      || value.liveAttestation !== true
       || value.connectionVerified !== false
       || value.capiEnabled !== false
       || value.rolloutZero !== true) {
@@ -179,6 +179,7 @@ function assertMetaResourcesSummary(value, expected) {
     }
     return
   }
+  if (value.liveAttestation !== false) throw new Error('summary full 不应伪装为 post-deploy live attestation')
   if (value.connectionVerified !== true) throw new Error('summary full connection 门禁未通过')
 }
 

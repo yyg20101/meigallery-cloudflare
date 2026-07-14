@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import type { MetaCapiQueueMessage } from '@meigallery/shared'
+import type { AdPlatformQueueMessage } from '@meigallery/shared'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { secureHeaders } from 'hono/secure-headers'
@@ -16,6 +16,7 @@ import { importRoutes } from './routes/imports'
 import { analyticsRoutes } from './routes/analytics'
 import { conversionRoutes } from './routes/conversions'
 import { marketingConsentRoutes } from './routes/marketing-consent'
+import { adAttributionRoutes } from './routes/ad-attribution'
 import { inviteRoutes } from './routes/invites'
 import { PUBLIC_SETTING_KEYS } from './utils/site-settings'
 import { sanitizePublicSiteSetting, sanitizePublicSiteSettings } from './utils/public-site-settings'
@@ -34,7 +35,8 @@ import {
   cleanupAnalyticsRetention,
 } from './services/analytics-aggregate'
 import { recoverPendingMetaCapiDeliveries } from './services/meta-capi-queue'
-import { purgeExpiredMetaCapiOutbox } from './services/meta-capi-secure-outbox'
+import { recoverPendingTikTokEventsDeliveries } from './services/tiktok-events-queue'
+import { purgeExpiredAdPlatformOutbox } from './services/ad-platform/secure-outbox'
 import { recoverRegistrationConversionFacts } from './services/registration-conversion-recovery'
 import { runMetaCapiCircuitEvaluation } from './services/meta-capi-circuit-breaker'
 import { collectMetaDatasetQuality } from './services/meta-dataset-quality'
@@ -55,11 +57,15 @@ export type Bindings = {
   IMPORT_TOKEN_DAILY_LIMIT?: string
   TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT?: string
   TELEGRAM_BOT_TOKEN_OPS_CASE_BOT?: string
-  META_CAPI_QUEUE?: Queue<MetaCapiQueueMessage>
+  META_CAPI_QUEUE?: Queue<AdPlatformQueueMessage>
   META_CAPI_ACCESS_TOKEN?: string
   META_CAPI_TEST_EVENT_CODE?: string
   META_CAPI_DATA_KEY_CURRENT?: string
   META_CAPI_DATA_KEY_PREVIOUS?: string
+  TIKTOK_EVENTS_QUEUE?: Queue<AdPlatformQueueMessage>
+  TIKTOK_EVENTS_ACCESS_TOKEN?: string
+  TIKTOK_EVENTS_DATA_KEY_CURRENT?: string
+  TIKTOK_EVENTS_DATA_KEY_PREVIOUS?: string
   RELEASE_COMMIT?: string
 }
 
@@ -227,6 +233,7 @@ app.route('/api/imports', importRoutes)
 app.route('/api/analytics', analyticsRoutes)
 app.route('/api/conversions', conversionRoutes)
 app.route('/api/marketing-consent', marketingConsentRoutes)
+app.route('/api/ad-attribution', adAttributionRoutes)
 app.route('/api/invites', inviteRoutes)
 // 公开站点信息（不需要登录）
 app.get('/api/settings/public', async (c) => {
@@ -264,7 +271,7 @@ app.get('/api/settings/public', async (c) => {
     .map(row => serializePublicHomeAd(row))
     .filter((ad): ad is NonNullable<typeof ad> => Boolean(ad))
   settings.ad_platform_browser_connections = browserConnectionsResult.results
-    .filter(row => /^(meta|tiktok|google)$/.test(row.provider) && /^\d{5,30}$/.test(row.destination_id))
+    .filter(row => isPublicAdDestination(row.provider, row.destination_id))
     .map(row => ({
       provider: row.provider,
       destinationId: row.destination_id,
@@ -274,6 +281,12 @@ app.get('/api/settings/public', async (c) => {
   c.header('Cache-Control', c.env.APP_ENV === 'production' ? PUBLIC_SETTINGS_CACHE_CONTROL : 'no-store')
   return c.json(sanitizePublicSiteSettings(settings))
 })
+
+function isPublicAdDestination(provider: string, destinationId: string) {
+  if (provider === 'meta') return /^\d{5,30}$/.test(destinationId)
+  if (provider === 'tiktok') return /^[A-Z0-9]{10,30}$/i.test(destinationId)
+  return false
+}
 
 app.route('/api/meta', metaResourceAttestationRoutes)
 app.route('/api/admin', adminRoutes)
@@ -296,6 +309,8 @@ app.onError((err, c) => {
 
 const MINUTE_MAINTENANCE_CRON = '* * * * *'
 const DAILY_MAINTENANCE_CRON = '0 0 * * *'
+const META_QUEUE_NAMES = new Set(['meigallery-meta-capi', 'meigallery-meta-capi-dlq'])
+const TIKTOK_QUEUE_NAMES = new Set(['meigallery-tiktok-events', 'meigallery-tiktok-events-dlq'])
 
 async function handleScheduled(event: ScheduledEvent, env: Bindings): Promise<void> {
   const db = env.DB
@@ -314,10 +329,10 @@ async function handleScheduled(event: ScheduledEvent, env: Bindings): Promise<vo
     }
 
     try {
-      const purge = await purgeExpiredMetaCapiOutbox(db, 100)
-      console.log('[cron] Meta CAPI 过期密文清理完成:', purge)
+      const purge = await purgeExpiredAdPlatformOutbox(db, 100)
+      console.log('[cron] 广告平台过期密文清理完成:', purge)
     } catch {
-      console.error('[cron] Meta CAPI 过期密文清理失败:', {
+      console.error('[cron] 广告平台过期密文清理失败:', {
         errorCode: 'secure_outbox_purge_failed',
       })
     }
@@ -327,6 +342,14 @@ async function handleScheduled(event: ScheduledEvent, env: Bindings): Promise<vo
       console.log('[cron] Meta CAPI Queue 恢复完成:', recovery)
     } catch (error) {
       console.error('[cron] Meta CAPI Queue 恢复失败:', error)
+    }
+
+    try {
+      const recovery = await recoverPendingTikTokEventsDeliveries(env)
+      console.log('[cron] TikTok Events Queue 恢复完成:', recovery)
+    }
+    catch (error) {
+      console.error('[cron] TikTok Events Queue 恢复失败:', error)
     }
 
     if (shouldRecoverRegistrationConversions(event)) {
@@ -452,8 +475,21 @@ export default {
   scheduled: async (event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) => {
     ctx.waitUntil(handleScheduled(event, env))
   },
-  queue: async (batch: MessageBatch<MetaCapiQueueMessage>, env: Bindings) => {
-    const { handleMetaCapiBatch } = await import('./services/meta-capi-queue')
-    await handleMetaCapiBatch(batch, env)
+  queue: async (batch: MessageBatch<AdPlatformQueueMessage>, env: Bindings) => {
+    if (META_QUEUE_NAMES.has(batch.queue)) {
+      const { handleMetaCapiBatch } = await import('./services/meta-capi-queue')
+      await handleMetaCapiBatch(batch, env)
+      return
+    }
+    if (TIKTOK_QUEUE_NAMES.has(batch.queue)) {
+      const { handleTikTokEventsBatch } = await import('./services/tiktok-events-queue')
+      await handleTikTokEventsBatch(batch, env)
+      return
+    }
+    console.error('[queue] 未注册的 Queue，消息已安全终止:', { queue: batch.queue })
+    for (const message of batch.messages) {
+      try { message.ack() }
+      catch { /* 单条消息错误不影响同批次后续消息。 */ }
+    }
   },
 }

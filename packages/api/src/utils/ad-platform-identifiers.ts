@@ -1,27 +1,35 @@
-import type { MetaCapiSensitiveContext } from '@meigallery/shared'
+import type { AdPlatformSensitiveContext } from '@meigallery/shared'
 
 const FBP_PATTERN = /^fb\.1\.\d{10,16}\.[A-Za-z0-9._-]{1,128}$/
 const FBC_PATTERN = /^fb\.1\.\d{10,16}\.[A-Za-z0-9._-]{1,128}$/
 const CONTROL_CHARACTER_PATTERN = /\p{Cc}/u
 const IP_MAX_LENGTH = 64
 const USER_AGENT_MAX_LENGTH = 512
-const IDENTIFIER_ERROR = 'META_CAPI_IDENTIFIER_INVALID'
+const TTCLID_MAX_LENGTH = 1_000
+const TTP_MAX_LENGTH = 256
+const IDENTIFIER_ERROR = 'AD_PLATFORM_IDENTIFIER_INVALID'
 
-export function normalizeMetaBrowserIdentifiers(value: unknown): Pick<MetaCapiSensitiveContext, 'fbp' | 'fbc'> {
+export function normalizeAdPlatformBrowserIdentifiers(
+  value: unknown,
+): Pick<AdPlatformSensitiveContext, 'fbp' | 'fbc' | 'ttclid' | 'ttp'> {
   if (!isPlainRecord(value)) return {}
   const fbp = textValue(value.fbp)
   const fbc = textValue(value.fbc)
+  const ttclid = safeText(value.ttclid, TTCLID_MAX_LENGTH)
+  const ttp = safeText(value.ttp, TTP_MAX_LENGTH)
   return {
     ...(FBP_PATTERN.test(fbp) ? { fbp } : {}),
     ...(FBC_PATTERN.test(fbc) ? { fbc } : {}),
+    ...(ttclid ? { ttclid } : {}),
+    ...(ttp ? { ttp } : {}),
   }
 }
 
-export function normalizeMetaCapiUserData(value: unknown): MetaCapiSensitiveContext {
+export function normalizeAdPlatformUserData(value: unknown): AdPlatformSensitiveContext {
   if (!isPlainRecord(value)) return {}
-  const identifiers = normalizeMetaBrowserIdentifiers(value)
-  const clientIpAddress = safeHeaderValue(value.clientIpAddress, IP_MAX_LENGTH)
-  const clientUserAgent = safeHeaderValue(value.clientUserAgent, USER_AGENT_MAX_LENGTH)
+  const identifiers = normalizeAdPlatformBrowserIdentifiers(value)
+  const clientIpAddress = safeText(value.clientIpAddress, IP_MAX_LENGTH)
+  const clientUserAgent = safeText(value.clientUserAgent, USER_AGENT_MAX_LENGTH)
   return {
     ...identifiers,
     ...(clientIpAddress ? { clientIpAddress } : {}),
@@ -29,15 +37,15 @@ export function normalizeMetaCapiUserData(value: unknown): MetaCapiSensitiveCont
   }
 }
 
-export function buildMetaCapiUserData(request: Request, bodyIdentifiers: unknown): MetaCapiSensitiveContext {
-  return normalizeMetaCapiUserData({
-    ...normalizeMetaBrowserIdentifiers(bodyIdentifiers),
+export function buildAdPlatformUserData(request: Request, bodyIdentifiers: unknown): AdPlatformSensitiveContext {
+  return normalizeAdPlatformUserData({
+    ...normalizeAdPlatformBrowserIdentifiers(bodyIdentifiers),
     clientIpAddress: request.headers.get('CF-Connecting-IP'),
     clientUserAgent: request.headers.get('User-Agent'),
   })
 }
 
-export async function hashMetaEmail(email: string): Promise<string> {
+export async function hashAdPlatformEmail(email: string): Promise<string> {
   try {
     if (typeof email !== 'string') throw new Error(IDENTIFIER_ERROR)
     const normalized = email.trim().toLowerCase()
@@ -49,9 +57,7 @@ export async function hashMetaEmail(email: string): Promise<string> {
   }
 }
 
-export const normalizeAndHashEmail = hashMetaEmail
-
-export async function hashMetaExternalId(externalId: string): Promise<string> {
+export async function hashAdPlatformExternalId(externalId: string): Promise<string> {
   try {
     if (typeof externalId !== 'string' || !externalId) throw new Error(IDENTIFIER_ERROR)
     return await sha256Hex(externalId)
@@ -66,7 +72,7 @@ async function sha256Hex(value: string) {
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
 }
 
-function safeHeaderValue(value: unknown, maxLength: number) {
+function safeText(value: unknown, maxLength: number) {
   const text = textValue(value)
   return text && text.length <= maxLength && !CONTROL_CHARACTER_PATTERN.test(text) ? text : ''
 }
@@ -76,5 +82,7 @@ function textValue(value: unknown) {
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
 }

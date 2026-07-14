@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
-import type { ActiveMetaEventName, ConversionSkipReason } from '@meigallery/shared'
+import type { AdPlatformConversionEventName, ConversionSkipReason } from '@meigallery/shared'
 import type { Bindings } from '../index'
 import {
   MetaCapiDeliveryError,
@@ -353,7 +353,7 @@ describe('meta-capi', () => {
   })
 
   it('CAPI payload 事件名使用活动 Meta 事件类型', () => {
-    expectTypeOf<MetaCapiPayloadInput['eventName']>().toEqualTypeOf<ActiveMetaEventName>()
+    expectTypeOf<MetaCapiPayloadInput['eventName']>().toEqualTypeOf<AdPlatformConversionEventName>()
   })
 
   it('payload 只包含白名单字段', () => {

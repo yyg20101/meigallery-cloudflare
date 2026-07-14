@@ -15,6 +15,7 @@ interface AttributionLink {
   utmMedium: string
   utmCampaign: string
   utmContent: string
+  adProvider: 'meta' | 'tiktok' | ''
   status: string
   note: string
   trackingPath: string
@@ -35,6 +36,7 @@ const createError = ref('')
 const form = reactive({
   sourceLabel: '',
   channel: 'ad',
+  adProvider: 'meta',
   targetPath: '/',
   utmMedium: 'paid_social',
   utmCampaign: '',
@@ -53,14 +55,22 @@ const channelOptions = [
 watch(() => form.channel, (channel) => {
   const option = channelOptions.find(item => item.value === channel)
   if (option) form.utmMedium = option.medium
+  form.adProvider = channel === 'ad' ? (form.adProvider || 'meta') : ''
 })
 
 const linkRows = computed(() => (attribution.data.value?.links ?? []).map(item => ({
   ...item,
+  adProviderLabel: adProviderLabel(item),
   historicalLeadCount: Number(item.historical?.leadCount ?? 0),
   contactRate: Number(item.contactCount ?? 0) / Math.max(1, Number(item.sessionCount ?? 0)),
   registerRate: Number(item.completeRegistrationCount ?? 0) / Math.max(1, Number(item.sessionCount ?? 0)),
 })))
+
+function adProviderLabel(item: Pick<AttributionLink, 'channel' | 'adProvider'>) {
+  if (item.adProvider === 'meta') return 'Meta'
+  if (item.adProvider === 'tiktok') return 'TikTok'
+  return item.channel === 'ad' ? '未绑定（不投递）' : '非广告'
+}
 
 const previewPath = computed(() => buildTrackingPathPreview({
   targetPath: form.targetPath,
@@ -83,6 +93,7 @@ async function createTrackingLink() {
       body: {
         sourceLabel: form.sourceLabel,
         channel: form.channel,
+        adProvider: form.adProvider || undefined,
         targetPath: form.targetPath,
         utmMedium: form.utmMedium,
         utmCampaign: form.utmCampaign || undefined,
@@ -152,14 +163,14 @@ function normalizeUtmValue(value: string) {
     v-model:range="rangeState.range.value"
     v-model:date="rangeState.date.value"
     title="投放追踪链接"
-    description="为 Facebook 广告测试创建 UTM / mg_source 链接，按广告版本查看有效联系和注册。"
+    description="为 Meta、TikTok 等渠道创建明确绑定平台的投放链接，按广告版本查看有效联系和注册。"
     :loading="attribution.loading.value"
     :error="attribution.error.value"
     :usage="attribution.usage.value"
     @refresh="attribution.refresh"
   >
     <section class="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-900">
-      这是 UTM / mg_source 投放链接，不是 Pixel 地址。
+      广告链接必须绑定唯一平台；链接来源只会进入对应平台的 Pixel 与 Server API。
     </section>
 
     <div class="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5 xl:grid-cols-[minmax(0,1fr)_24rem]">
@@ -173,6 +184,7 @@ function normalizeUtmValue(value: string) {
           empty-text="当前还没有投放追踪链接。创建链接后，可按广告版本查看有效联系和注册。"
           :columns="[
             { key: 'sourceLabel', label: '链接', sortable: true },
+            { key: 'adProviderLabel', label: '广告平台', sortable: true },
             { key: 'channel', label: '渠道', sortable: true },
             { key: 'utmCampaign', label: 'campaign', sortable: true },
             { key: 'utmContent', label: 'content', sortable: true },
@@ -200,6 +212,7 @@ function normalizeUtmValue(value: string) {
             <div class="mt-3 flex flex-wrap gap-3 text-xs text-gray-500">
               <span>有效联系 {{ formatAnalyticsNumber(item.contactCount) }}</span>
               <span>注册 {{ formatAnalyticsNumber(item.completeRegistrationCount) }}</span>
+              <span>平台 {{ adProviderLabel(item) }}</span>
               <span>content {{ item.utmContent || '-' }}</span>
             </div>
             <button class="mt-3 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 hover:bg-gray-50" type="button" @click="copyTrackingLink(item)">
@@ -221,6 +234,13 @@ function normalizeUtmValue(value: string) {
               <span class="mb-1 block text-xs font-medium text-gray-600">渠道</span>
               <select v-model="form.channel" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
                 <option v-for="option in channelOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+              </select>
+            </label>
+            <label v-if="form.channel === 'ad'" class="block">
+              <span class="mb-1 block text-xs font-medium text-gray-600">广告平台</span>
+              <select v-model="form.adProvider" required class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                <option value="meta">Meta</option>
+                <option value="tiktok">TikTok</option>
               </select>
             </label>
             <label class="block">

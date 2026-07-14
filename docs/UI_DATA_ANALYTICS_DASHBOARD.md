@@ -88,11 +88,11 @@
 
 ### 2.3.1 与归因中心边界
 
-`/admin/analytics` 是一方行为分析大盘，回答“站内访问、内容、点击、邀请和采集健康如何”。其中来源中的 `fb`、`facebook`、`meta` 只表示站内 UTM、推广链接或 referrer 归因，不等同于 Meta Pixel 或 CAPI 回传数据。
+`/admin/analytics` 是一方行为分析大盘，回答“站内访问、内容、点击、邀请和采集健康如何”。其中来源中的 `fb`、`facebook`、`meta`、`tiktok` 只表示站内 UTM、推广链接或 referrer 归因，不等同于广告平台 Pixel 或 Server API 回传数据。
 
-广告投放相关能力统一进入 `/admin/attribution`：创建投放追踪链接、对比 `utm_content`、查看有效联系 / 完成注册、检查 Pixel / CAPI delivery、排查重复事件和执行发布检查。活动 Meta 事件仅为 `Contact`、`CompleteRegistration`；`Lead` 只在独立历史对象中作只读对照，不进入活动漏斗、比率、排序、delivery 健康或 readiness，`StartTrial` 不支持。数据大盘可以提供跳转入口，但不在本页面内维护 Pixel 地址、CAPI secret 或 Test Event。
+广告投放相关能力统一进入 `/admin/attribution`：创建投放追踪链接、对比 `utm_content`、按 Meta / TikTok 查看有效联系、完成注册、Pixel / Server API delivery 与匹配覆盖，排查重复事件并执行发布检查。活动转化事件仅为 `Contact`、`CompleteRegistration`；`Lead` 只在独立历史对象中作只读对照，不进入活动漏斗、比率、排序、delivery 健康或 readiness，`StartTrial` 不支持。数据大盘可以提供跳转入口，但不在本页面内维护 Pixel ID、token 或 Test Event Code。
 
-归因中心的交付状态必须避免夸大：Pixel `attempted` 只表示浏览器按指令尝试发送，不能显示为“Meta 已接收”；CAPI 只有 `sent` 且严格 Test Event 返回 `events_received=1` 才能显示为接收成功。运营页仅展示 secret、Test Event Code、Queue binding 的存在状态，不展示值、原始 event ID、`fbp`、`fbc`、IP 或用户代理。
+归因中心的交付状态必须避免夸大：Pixel `attempted` 只表示浏览器按指令尝试发送，不能显示为“平台已接收”；Server API 只有通过对应平台严格成功契约后才能记为 `sent`，且仍不等于广告归因成功。运营页仅展示 secret、Queue binding 与连接验证的存在状态，不展示凭证值、Test Event Code、原始 event ID、`fbp/fbc`、`_ttp/ttclid`、IP 或用户代理。
 
 ### 2.4 Global Layout
 
@@ -199,7 +199,7 @@
 - 不提供无条件全量原始事件列表。
 - 不用图表动效替代可排序表格和明确指标定义。
 - 不把 Facebook Pixel 事件作为后台大盘的唯一数据源。
-- 不在 `/admin/analytics` 创建投放追踪链接或展示 Meta CAPI delivery 明细；这些由 `/admin/attribution` 维护。
+- 不在 `/admin/analytics` 创建投放追踪链接或展示广告平台 delivery 明细；这些由 `/admin/attribution` 维护。
 
 ## 3. AI System Requirements
 
@@ -229,20 +229,21 @@ Nuxt 后台归因中心
   -> useAdminAttribution composable 请求 admin attribution API
   -> API Worker 校验 admin/owner 权限
   -> D1 转化账本和 delivery 聚合表
-  -> Cloudflare Queue / DLQ 异步投递 Meta CAPI
-  -> 页面渲染投放链接、转化趋势、Meta 同步和重复诊断
+  -> 按 provider 进入独立 Cloudflare Queue / DLQ
+  -> 页面渲染投放链接、转化趋势、平台同步、匹配覆盖和重复诊断
 ```
 
-#### `/admin/attribution` Meta 放行面板
+#### `/admin/attribution` 平台归因与 Meta 放行面板
 
-- `[当前实现]` Meta 健康条分别显示 Pixel attempted、CAPI sent、failed、skipped；不得合并为“已同步”总数。
+- `[当前实现]` 顶部使用 Meta / TikTok 分段控制；summary、trend、campaign breakdown 和匹配覆盖必须携带明确 provider，切换后同步刷新。
+- `[当前实现]` 平台健康分别显示 Pixel attempted、Server API sent、failed、skipped、pending、retry exhausted；不得合并为“已同步”总数。
+- `[当前实现]` 匹配质量使用通用 `browserId` / `clickId`，UI 显示 Meta `fbp/fbc` 或 TikTok `_ttp/ttclid`。Meta Dataset Quality 不得显示为 TikTok 质量数据。
 - `[当前实现]` readiness 按 blocker 与 warning 分区。blocker 未通过时，`ad_platform_connections.server_enabled` 保持不可开启；warning 只提示观察项，不伪装为生产放行。
 - `[当前实现]` Owner 仅能在 `ad_platform_connections.mode=test` 发起严格 Test Event；成功条件为 CAPI `sent` 和 `events_received=1`，不是仅创建审计记录。
 - `[当前实现]` production live evidence 通过 migrations `0041`、`0045`、`0046` 的一次性 challenge 绑定正式环境、当前 commit 与增强匹配覆盖证明；正式域名 Browser/CAPI 使用同组 opaque ID，UI 和 CLI 不展示原始 event ID。
 - `[当前实现]` 资源 attestation 通过 migration `0042` 的 60 秒 D1 原子一次性 ticket 完成；Owner Cookie 只用于向固定可信 API origin 换票，最终 HMAC attestation 请求不携带 Cookie。
-- `[运维前置]` 发布 UI 的执行顺序为关闭态 -> dev evidence -> migrations `0036..0044` 与资源检查（含 approved contract digest）-> 最终 main commit evidence -> `bootstrap` gate -> fresh `verify:release` 与新报告断言 -> production 部署 -> `post-deploy` attestation -> test -> `full` gate -> production -> CAPI 开关 -> `0 -> 10 -> 50 -> 100` 人工放量与观察。任一步失败先关闭 CAPI，再切 mode 为 `disabled`；系统只能自动降至 `0`。
-- `[外部阻断]` Q5 当前为 `contract_pending`，缺少真实 dev capture、Owner 批准 contract、collector 补充计划及其执行，也缺少当前最终 commit 的真实远端 dev evidence。readiness 必须显示 blocked，不得展示“满足生产候选条件”。
-- `[运维前置]` Meta 只使用 production `meigallery-meta-capi` / `meigallery-meta-capi-dlq`；dev 不创建 Meta Queue。页面不显示 Cloudflare resource ID 或命令原始输出。
+- `[运维前置]` Meta 发布遵循 production bootstrap -> 部署 -> post-deploy attestation -> Test Event -> live evidence -> full gate -> production mode -> `0 -> 10 -> 50 -> 100` 人工放量。TikTok 独立完成 production Test Events 验证后从 `10%` 起人工放量。任一步失败先关闭对应 Server transport、rollout 降为 `0`，再切 mode 为 `disabled`。
+- `[运维前置]` Meta 与 TikTok 只使用各自 production Queue / DLQ；dev 不创建广告平台 Queue。页面不显示 Cloudflare resource ID 或命令原始输出。
 
 ### 4.2 Page Composition
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { MetaCapiRolloutPercentage, MetaRolloutSnapshot } from '~/composables/useAdminAttribution'
+import type { AdPlatformRolloutPercentage } from '@meigallery/shared'
+import type { MetaRolloutSnapshot } from '~/composables/useAdminAttribution'
 
 const props = withDefaults(defineProps<{
   rollout: MetaRolloutSnapshot | null
@@ -9,8 +10,8 @@ const props = withDefaults(defineProps<{
 })
 const emit = defineEmits<{ refreshed: [] }>()
 const { api } = useApi()
-const percentages: MetaCapiRolloutPercentage[] = [0, 10, 50, 100]
-const requested = ref<MetaCapiRolloutPercentage | null>(null)
+const percentages: AdPlatformRolloutPercentage[] = [0, 10, 50, 100]
+const requested = ref<AdPlatformRolloutPercentage | null>(null)
 const modalMode = ref<'standard' | 'force' | null>(null)
 const forceReason = ref('')
 const submitting = ref(false)
@@ -34,11 +35,11 @@ const blockerLabels: Record<string, string> = {
   non_adjacent_promotion: '只允许升级到相邻档位',
 }
 
-function upgradeBlocked(value: MetaCapiRolloutPercentage) {
+function upgradeBlocked(value: AdPlatformRolloutPercentage) {
   return value > target.value && hasHardBlockers.value
 }
 
-function choosePercentage(value: MetaCapiRolloutPercentage) {
+function choosePercentage(value: AdPlatformRolloutPercentage) {
   if (!props.isOwner || submitting.value || value === target.value || upgradeBlocked(value)) return
   requested.value = value
   forceReason.value = ''

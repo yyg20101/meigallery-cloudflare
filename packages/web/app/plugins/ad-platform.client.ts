@@ -1,6 +1,6 @@
 export default defineNuxtPlugin(async () => {
   const router = useRouter()
-  const { fetchSettings, metaBrowserConnection } = useSiteSettings()
+  const { fetchSettings, browserConnections } = useSiteSettings()
   const { canTrackMarketing, refresh: refreshMarketingConsent } = useMarketingConsent()
   const tracking = useTracking()
 
@@ -8,18 +8,18 @@ export default defineNuxtPlugin(async () => {
     await Promise.all([fetchSettings(), refreshMarketingConsent()])
   }
   catch {
-    tracking.teardownPixel()
+    tracking.teardownAdBrowserTracking()
     return
   }
 
-  function syncBrowserTracking() {
-    if (!canTrackMarketing.value || !metaBrowserConnection.value?.destinationId) {
-      tracking.teardownPixel()
+  async function syncBrowserTracking() {
+    if (!canTrackMarketing.value || !browserConnections.value.some(connection => connection.destinationId)) {
+      await tracking.clearAdAttribution()
       return
     }
-    tracking.trackPageView()
+    await tracking.trackPageView()
   }
 
-  watch([metaBrowserConnection, canTrackMarketing], syncBrowserTracking, { immediate: true })
-  router.afterEach(syncBrowserTracking)
+  watch([browserConnections, canTrackMarketing], () => void syncBrowserTracking(), { immediate: true, deep: true })
+  router.afterEach(() => void syncBrowserTracking())
 })

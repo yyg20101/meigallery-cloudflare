@@ -480,6 +480,7 @@ function adminAnalyticsResponse(pathname, searchParams) {
 
 function adminAttributionResponse(pathname, searchParams) {
   const range = analyticsRange(searchParams)
+  const provider = searchParams.get('provider') === 'tiktok' ? 'tiktok' : 'meta'
   const usage = { rowsRead: 86, rowsWritten: 0, durationMs: 9 }
   const links = [
     {
@@ -489,6 +490,7 @@ function adminAttributionResponse(pathname, searchParams) {
       channel: 'ad',
       slug: 'meta-ad-a',
       sourceCode: 'meta-ad-a',
+      adProvider: 'meta',
       targetPath: '/',
       utmSource: 'meta-ad-a',
       utmMedium: 'paid_social',
@@ -516,7 +518,7 @@ function adminAttributionResponse(pathname, searchParams) {
   const trendRows = dates.map((date, index) => ({
     date,
     business: { contactCount: index + 1, completeRegistrationCount: index, actionCount: index * 2 + 1 },
-    delivery: { pixelAttempted: index + 3, capiSent: index + 2, failed: index === 1 ? 1 : 0, skipped: 1, pending: index === 2 ? 1 : 0, retryExhausted: 0 },
+    delivery: { pixelAttempted: index + 3, serverSent: index + 2, failed: index === 1 ? 1 : 0, skipped: 1, pending: index === 2 ? 1 : 0, retryExhausted: 0 },
   }))
   const rollout = {
     environment: adminAttributionEnvironment,
@@ -542,18 +544,24 @@ function adminAttributionResponse(pathname, searchParams) {
     state: 'verified', environment: adminAttributionEnvironment, pixelIdConfigured: true, tokenConfigured: true, testEventCodeConfigured: true, verifiedAt: '2026-07-10T07:00:00Z', verifiedCommit: 'a'.repeat(40), graphApiVersion: 'v25.0', datasetQualityStatus: 'not_checked', invalidationReason: '',
   }
 
-  if (pathname.endsWith('/summary')) return { range, usage, data: { business: { contactCount: 6, completeRegistrationCount: 3, actionCount: 9 }, historical: { leadCount: 7 }, delivery: { pixelAttempted: 12, capiSent: 9, failed: 1, skipped: 3, pending: 1, retryExhausted: 0 } } }
-  if (pathname.endsWith('/trends')) return { range, usage, data: { granularity: 'day', rows: trendRows } }
+  if (pathname.endsWith('/summary')) return { range, usage, data: { provider, business: { contactCount: 6, completeRegistrationCount: 3, actionCount: 9 }, historical: { leadCount: 7 }, delivery: { pixelAttempted: 12, serverSent: 9, failed: 1, skipped: 3, pending: 1, retryExhausted: 0 }, routing: { mismatchCount: 0, unroutedActionCount: 1 } } }
+  if (pathname.endsWith('/trends')) return { range, usage, data: { provider, granularity: 'day', rows: trendRows } }
   if (pathname.endsWith('/quality')) {
     const metric = (numerator, denominator) => ({ availability: denominator ? 'available' : 'unavailable', numerator, denominator, rate: denominator ? numerator / denominator : null })
-    const datasetQuality = adminAttributionDatasetScenario === 'error'
-      ? { availability: 'error', latest: { availability: 'error', value: null, status: 'error', errorCategory: 'permission_denied' }, rows: [] }
-      : { availability: 'unavailable', latest: null, rows: [] }
-    return { range, usage, data: { match: { summary: { fbp: metric(8, 9), fbc: metric(0, 0), email: metric(9, 9), externalId: metric(7, 9) }, rows: dates.map((date, index) => ({ date, fbp: index === 1 ? metric(0, 0) : metric(6 + index, 9), fbc: metric(0, 0), email: metric(8 + index, 9), externalId: metric(5 + index, 9) })) }, datasetQuality } }
+    const platformQuality = provider === 'meta' && adminAttributionDatasetScenario === 'error'
+      ? { source: 'meta_dataset_quality', availability: 'error', latest: { availability: 'error', value: null, status: 'error', errorCategory: 'permission_denied' }, rows: [] }
+      : { source: provider === 'meta' ? 'meta_dataset_quality' : 'not_supported', availability: 'unavailable', latest: null, rows: [] }
+    const labels = provider === 'meta'
+      ? { browserId: 'fbp', clickId: 'fbc', email: 'email', externalId: 'external_id' }
+      : { browserId: '_ttp', clickId: 'ttclid', email: 'email', externalId: 'external_id' }
+    return { range, usage, data: { provider, match: { labels, summary: { browserId: metric(8, 9), clickId: metric(0, 0), email: metric(9, 9), externalId: metric(7, 9) }, rows: dates.map((date, index) => ({ date, browserId: index === 1 ? metric(0, 0) : metric(6 + index, 9), clickId: metric(0, 0), email: metric(8 + index, 9), externalId: metric(5 + index, 9) })) }, platformQuality } }
   }
-  if (pathname.endsWith('/breakdown')) return { range, usage, data: { dimension: searchParams.get('dimension') || 'utm_campaign', rows: [{ value: 'july-contact', actionCount: 6, contactCount: 4, completeRegistrationCount: 2, delivery: { pixelAttempted: 6, capiSent: 5, failed: 1, skipped: 0, pending: 0, retryExhausted: 0 } }] } }
-  if (pathname.endsWith('/platforms')) return { data: [{ provider: 'meta', environment: 'production', enabled: true, browserEnabled: true, serverEnabled: false, destinationId: '1234567890', destinationConfigured: true, debugEnabled: false, rolloutPercentage: 0, serverCredentialConfigured: true, testCredentialConfigured: true, mode: 'test', state: 'verified', verifiedAt: '2026-07-12T00:00:00.000Z', verifiedCommit: 'a'.repeat(40) }] }
-  if (pathname.endsWith('/meta/status')) return { range, usage, data: { connection, rollout, activity: { business: { contactCount: 6, completeRegistrationCount: 3, actionCount: 9 }, historical: { leadCount: 7 }, delivery: { pixelAttempted: 12, capiSent: 9, failed: 1, skipped: 3, pending: 1, retryExhausted: 0 } } } }
+  if (pathname.endsWith('/breakdown')) return { range, usage, data: { provider, dimension: searchParams.get('dimension') || 'utm_campaign', rows: [{ value: 'july-contact', actionCount: 6, contactCount: 4, completeRegistrationCount: 2, delivery: { pixelAttempted: 6, serverSent: 5, failed: 1, skipped: 0, pending: 0, retryExhausted: 0 } }] } }
+  if (pathname.endsWith('/platforms')) return { data: [
+    { provider: 'meta', environment: 'production', enabled: true, browserEnabled: true, serverEnabled: false, destinationId: '1234567890', destinationConfigured: true, debugEnabled: false, rolloutPercentage: 0, serverCredentialConfigured: true, serverQueueConfigured: true, serverDataKeyConfigured: true, testCredentialConfigured: true, mode: 'test', state: 'verified', verifiedAt: '2026-07-12T00:00:00.000Z', verifiedCommit: 'a'.repeat(40) },
+    { provider: 'tiktok', environment: 'production', enabled: false, browserEnabled: false, serverEnabled: false, destinationId: '', destinationConfigured: false, debugEnabled: false, rolloutPercentage: 0, serverCredentialConfigured: false, serverQueueConfigured: false, serverDataKeyConfigured: false, testCredentialConfigured: false, mode: 'disabled', state: 'not_configured', verifiedAt: '', verifiedCommit: '' },
+  ] }
+  if (pathname.endsWith('/meta/status')) return { range, usage, data: { connection, rollout, activity: { provider: 'meta', business: { contactCount: 6, completeRegistrationCount: 3, actionCount: 9 }, historical: { leadCount: 7 }, delivery: { pixelAttempted: 12, serverSent: 9, failed: 1, skipped: 3, pending: 1, retryExhausted: 0 }, routing: { mismatchCount: 0, unroutedActionCount: 1 } } } }
   if (pathname.endsWith('/meta/incidents')) return { range, usage, data: { items: rollout.openIncident ? [rollout.openIncident] : [], pagination: { limit: 20, offset: 0, hasMore: false } } }
 
   if (pathname.endsWith('/overview')) {
@@ -838,6 +846,26 @@ function handleApi(req, res) {
     return
   }
   if (url.pathname === '/api/settings/public') return json(res, publicSettings())
+  if (url.pathname === '/api/ad-attribution' && req.method === 'PUT') {
+    readJsonBody(req)
+      .then((body) => {
+        const hasMetaClick = Boolean(String(body.fbclid || '').trim())
+        const hasTikTokClick = Boolean(String(body.ttclid || '').trim())
+        const provider = hasMetaClick === hasTikTokClick
+          ? null
+          : hasMetaClick ? 'meta' : 'tiktok'
+        json(res, {
+          provider,
+          resolution: hasMetaClick && hasTikTokClick ? 'conflict' : provider ? 'matched' : 'none',
+          expiresInSeconds: 1_800,
+        })
+      })
+      .catch(() => json(res, { statusCode: 400, message: '广告来源请求无效' }, 400))
+    return
+  }
+  if (url.pathname === '/api/ad-attribution' && req.method === 'DELETE') {
+    return json(res, { provider: null, resolution: 'none', expiresInSeconds: 1_800 })
+  }
   if (url.pathname === '/api/marketing-consent' && req.method === 'GET') {
     return json(res, { state: marketingConsentState })
   }
@@ -1026,6 +1054,12 @@ function handleApi(req, res) {
     return json(res, { data: { status: 'server_sent', eventsReceived: 2 } })
   }
   if (url.pathname === '/api/admin/attribution/platforms/meta' && req.method === 'PATCH') {
+    readJsonBody(req)
+      .then(() => json(res, adminAttributionResponse('/api/admin/attribution/platforms', new URLSearchParams())))
+      .catch(() => json(res, { statusCode: 400, message: '连接配置请求无效' }, 400))
+    return
+  }
+  if (url.pathname === '/api/admin/attribution/platforms/tiktok' && req.method === 'PATCH') {
     readJsonBody(req)
       .then(() => json(res, adminAttributionResponse('/api/admin/attribution/platforms', new URLSearchParams())))
       .catch(() => json(res, { statusCode: 400, message: '连接配置请求无效' }, 400))

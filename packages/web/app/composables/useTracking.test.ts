@@ -5,7 +5,7 @@ const adapter = vi.hoisted(() => ({
   initialize: vi.fn(),
   pageView: vi.fn(),
   standardEvent: vi.fn(),
-  teardown: vi.fn(),
+  teardownAll: vi.fn(),
 }))
 
 vi.mock('~/adapters/adPlatformBrowser.client', () => ({
@@ -15,7 +15,8 @@ vi.mock('~/adapters/adPlatformBrowser.client', () => ({
     ? adapter.standardEvent(eventName, payload, { eventID: eventId })
     : adapter.standardEvent(eventName, payload),
   executeAdBrowserInstruction: (instruction: { eventName: string; payload: unknown; eventId: string }) => adapter.standardEvent(instruction.eventName, instruction.payload, { eventID: instruction.eventId }),
-  teardownAdBrowserProvider: () => adapter.teardown(),
+  isRegisteredAdBrowserProvider: (provider: string) => provider === 'meta' || provider === 'tiktok',
+  teardownAllAdBrowserProviders: adapter.teardownAll,
 }))
 
 import { useTracking } from './useTracking'
@@ -26,10 +27,21 @@ const marketingConsentState = ref<'granted' | 'limited' | 'denied'>('granted')
 const canTrackMarketing = ref(true)
 const facebookPixelEnabled = ref(true)
 const facebookPixelId = ref('123456789')
+const tiktokPixelId = ref('C123TIKTOK')
 const facebookPixelDebugEnabled = ref(false)
-const metaBrowserConnection = computed(() => facebookPixelEnabled.value && facebookPixelId.value
-  ? { provider: 'meta', destinationId: facebookPixelId.value, debugEnabled: facebookPixelDebugEnabled.value }
-  : null)
+const browserConnections = computed(() => [
+  ...(facebookPixelEnabled.value && facebookPixelId.value
+    ? [{ provider: 'meta' as const, destinationId: facebookPixelId.value, debugEnabled: facebookPixelDebugEnabled.value }]
+    : []),
+  { provider: 'tiktok' as const, destinationId: tiktokPixelId.value, debugEnabled: false },
+])
+const attributionProvider = ref<'meta' | 'tiktok' | null>('meta')
+const attributionResolution = ref<'matched' | 'inherited' | 'none' | 'conflict'>('matched')
+const resolveAdAttribution = vi.fn(async () => attributionProvider.value)
+const clearAdAttribution = vi.fn(async () => {
+  attributionProvider.value = null
+  attributionResolution.value = 'none'
+})
 let analyticsVisitorId = 'visitor_1'
 let analyticsSessionId = 'session_1'
 let route = {
@@ -52,12 +64,17 @@ describe('useTracking', () => {
     adapter.pageView.mockReturnValue(true)
     adapter.standardEvent.mockReset()
     adapter.standardEvent.mockReturnValue(true)
-    adapter.teardown.mockReset()
+    adapter.teardownAll.mockReset()
     marketingConsentState.value = 'granted'
     canTrackMarketing.value = true
     facebookPixelEnabled.value = true
     facebookPixelId.value = '123456789'
+    tiktokPixelId.value = 'C123TIKTOK'
     facebookPixelDebugEnabled.value = false
+    attributionProvider.value = 'meta'
+    attributionResolution.value = 'matched'
+    resolveAdAttribution.mockClear()
+    clearAdAttribution.mockClear()
     analyticsVisitorId = 'visitor_1'
     analyticsSessionId = 'session_1'
     route = {
@@ -71,7 +88,7 @@ describe('useTracking', () => {
     vi.stubGlobal('useRoute', () => route)
     vi.stubGlobal('useRuntimeConfig', () => ({ public: { appEnv: 'production' } }))
     vi.stubGlobal('useSiteSettings', () => ({
-      metaBrowserConnection,
+      browserConnections,
     }))
     vi.stubGlobal('useAnalytics', () => ({
       getContext: () => ({
@@ -92,10 +109,17 @@ describe('useTracking', () => {
       state: marketingConsentState,
       canTrackMarketing,
     }))
+    vi.stubGlobal('useAdAttribution', () => ({
+      provider: attributionProvider,
+      resolution: attributionResolution,
+      resolve: resolveAdAttribution,
+      clear: clearAdAttribution,
+    }))
   })
 
   afterEach(async () => {
     await vi.runOnlyPendingTimersAsync()
+    useTracking().teardownAdBrowserTracking()
     vi.useRealTimers()
     vi.unstubAllGlobals()
   })
@@ -115,6 +139,7 @@ describe('useTracking', () => {
         methodType: 'telegram',
         actionTarget: 'floating_contact_panel',
         metadata: { action_type: 'open_link' },
+        adAttributionState: 'resolved',
       }),
     }))
     expect(trackAnalytics).toHaveBeenCalledWith('contact_method_click', expect.objectContaining({
@@ -392,11 +417,11 @@ describe('useTracking', () => {
     expect(api).not.toHaveBeenCalled()
   })
 
-  it('trackPageView、trackViewContent 和 trackSearch 只委托 adapter', () => {
+  it('trackPageView、trackViewContent 和 trackSearch 只委托可信来源对应 adapter', async () => {
     const tracking = useTracking()
-    tracking.trackPageView()
-    tracking.trackViewContent({ content_id: 'gallery_1', required_rank: 10 })
-    tracking.trackSearch({ searchString: 'has_query=true', resultCount: 12 })
+    await tracking.trackPageView()
+    await tracking.trackViewContent({ content_id: 'gallery_1', required_rank: 10 })
+    await tracking.trackSearch({ searchString: 'has_query=true', resultCount: 12 })
 
     expect(adapter.initialize).toHaveBeenCalledWith('123456789')
     expect(adapter.pageView).toHaveBeenCalledOnce()
@@ -412,8 +437,8 @@ describe('useTracking', () => {
     )
   })
 
-  it('Search 统一清洗并发送 snake_case payload', () => {
-    useTracking().trackSearch({
+  it('Search 统一清洗并发送 snake_case payload', async () => {
+    await useTracking().trackSearch({
       searchString: '联系 me@example.com',
       resultCount: 7,
     })
@@ -424,35 +449,91 @@ describe('useTracking', () => {
     })
   })
 
-  it('同页 Pixel ID 变化会重新初始化并补发 PageView', () => {
+  it('同页 Pixel ID 变化会重新初始化并补发 PageView', async () => {
     route.fullPath = '/gallery/pixel-id-change'
     route.path = '/gallery/pixel-id-change'
     const tracking = useTracking()
-    tracking.trackPageView()
+    await tracking.trackPageView()
     facebookPixelId.value = '987654321'
-    tracking.trackPageView()
+    await tracking.trackPageView()
 
     expect(adapter.initialize).toHaveBeenNthCalledWith(1, '123456789')
     expect(adapter.initialize).toHaveBeenNthCalledWith(2, '987654321')
     expect(adapter.pageView).toHaveBeenCalledTimes(2)
   })
 
-  it('配置禁用会 teardown，再启用同页会补发 PageView', () => {
+  it('同时配置两个平台时只初始化可信来源对应的 Pixel', async () => {
+    route.fullPath = '/gallery/provider-meta'
+    route.path = '/gallery/provider-meta'
+    const tracking = useTracking()
+    await tracking.trackPageView()
+
+    expect(adapter.initialize).toHaveBeenLastCalledWith('123456789')
+
+    adapter.initialize.mockClear()
+    route.fullPath = '/gallery/provider-tiktok'
+    route.path = '/gallery/provider-tiktok'
+    attributionProvider.value = 'tiktok'
+    await tracking.trackPageView()
+
+    expect(adapter.teardownAll).toHaveBeenCalledOnce()
+    expect(adapter.initialize).toHaveBeenCalledOnce()
+    expect(adapter.initialize).toHaveBeenCalledWith('C123TIKTOK')
+  })
+
+  it('Meta 来源拒绝执行服务端返回的 TikTok 浏览器指令', async () => {
+    api.mockResolvedValueOnce({
+      data: {
+        trackingInstructions: [{
+          ...instruction('Contact'),
+          provider: 'tiktok',
+          eventId: 'tiktok:Contact:contact_1',
+        }],
+      },
+    })
+
+    await useTracking().trackContact({
+      methodType: 'telegram',
+      actionTarget: 'floating_contact_panel',
+      actionType: 'open_link',
+    })
+
+    expect(adapter.standardEvent).not.toHaveBeenCalled()
+    expect(api.mock.calls.some(call => call[0] === '/api/conversions/pixel-receipts')).toBe(false)
+  })
+
+  it('来源冲突时联系请求显式 suppress 广告投递', async () => {
+    attributionProvider.value = null
+    attributionResolution.value = 'conflict'
+
+    await useTracking().trackContact({
+      methodType: 'telegram',
+      actionTarget: 'floating_contact_panel',
+      actionType: 'open_link',
+    })
+
+    expect(api).toHaveBeenCalledWith('/api/conversions/events', expect.objectContaining({
+      body: expect.objectContaining({ adAttributionState: 'suppress' }),
+    }))
+  })
+
+  it('配置禁用会 teardown，再启用同页会补发 PageView', async () => {
     route.fullPath = '/gallery/pixel-reenable'
     route.path = '/gallery/pixel-reenable'
     const tracking = useTracking()
-    tracking.trackPageView()
+    await tracking.trackPageView()
     facebookPixelEnabled.value = false
-    tracking.trackPageView()
+    await tracking.trackPageView()
     facebookPixelEnabled.value = true
-    tracking.trackPageView()
+    attributionProvider.value = 'meta'
+    await tracking.trackPageView()
 
-    expect(adapter.teardown).toHaveBeenCalledOnce()
+    expect(adapter.teardownAll).toHaveBeenCalledOnce()
     expect(adapter.initialize).toHaveBeenCalledTimes(2)
     expect(adapter.pageView).toHaveBeenCalledTimes(2)
   })
 
-  it('注册归因只在 granted 范围读取 browser identifiers', () => {
+  it('注册归因只在 granted 范围读取 browser identifiers', async () => {
     route = {
       name: 'register',
       path: '/register',
@@ -461,8 +542,9 @@ describe('useTracking', () => {
     }
     document.cookie = '_fbp=fb.1.1700000000000.123456789; path=/'
 
-    const attribution = useTracking().buildRegistrationAttributionContext()
+    const attribution = await useTracking().buildRegistrationAttributionContext()
 
+    expect(resolveAdAttribution).toHaveBeenCalledOnce()
     expect(attribution).toMatchObject({
       visitorId: 'visitor_1',
       sessionId: 'session_1',
@@ -470,6 +552,7 @@ describe('useTracking', () => {
       path: '/register',
       utmContent: 'hero',
       consentState: 'granted',
+      adAttributionState: 'resolved',
       browserIdentifiers: {
         fbp: 'fb.1.1700000000000.123456789',
         fbc: `fb.1.${new Date('2026-07-10T08:00:00.000Z').getTime()}.CLICK_abc-123`,
@@ -477,37 +560,37 @@ describe('useTracking', () => {
     })
   })
 
-  it('注册归因在 limited 时不读取 browser identifiers', () => {
+  it('注册归因在 limited 时不读取 browser identifiers', async () => {
     marketingConsentState.value = 'limited'
     canTrackMarketing.value = false
     route.query.fbclid = 'CLICK_abc-123'
 
-    const attribution = useTracking().buildRegistrationAttributionContext()
+    const attribution = await useTracking().buildRegistrationAttributionContext()
 
-    expect(attribution).toMatchObject({ consentState: 'limited' })
+    expect(attribution).toMatchObject({ consentState: 'limited', adAttributionState: 'suppress' })
     expect(attribution).not.toHaveProperty('browserIdentifiers')
   })
 
-  it('后台与敏感 URL 不委托 adapter', () => {
+  it('后台与敏感 URL 不委托 adapter', async () => {
     const tracking = useTracking()
 
     route.fullPath = '/admin/analytics'
     route.path = '/admin/analytics'
-    tracking.trackPageView()
+    await tracking.trackPageView()
     route.fullPath = '/gallery/summer?token=secret'
     route.path = '/gallery/summer'
-    tracking.trackPageView()
+    await tracking.trackPageView()
 
     expect(adapter.initialize).not.toHaveBeenCalled()
     expect(adapter.pageView).not.toHaveBeenCalled()
   })
 
-  it('导航到敏感 URL 后 Contact 只写第一方事实并 teardown Pixel', async () => {
+  it('导航到敏感 URL 后 Contact 只写第一方事实并卸载广告平台', async () => {
     route.fullPath = '/gallery/public-before-sensitive'
     route.path = '/gallery/public-before-sensitive'
     const tracking = useTracking()
-    tracking.trackPageView()
-    adapter.teardown.mockClear()
+    await tracking.trackPageView()
+    adapter.teardownAll.mockClear()
     adapter.standardEvent.mockClear()
     api.mockResolvedValueOnce({ data: { trackingInstructions: [instruction('Contact')] } })
 
@@ -521,19 +604,19 @@ describe('useTracking', () => {
 
     expect(adapter.initialize).toHaveBeenCalledWith('123456789')
     expect(adapter.pageView).toHaveBeenCalledOnce()
-    expect(adapter.teardown).toHaveBeenCalledOnce()
+    expect(adapter.teardownAll).toHaveBeenCalledOnce()
     expect(adapter.standardEvent).not.toHaveBeenCalled()
     expect(api.mock.calls.filter(call => call[0] === '/api/conversions/events')).toHaveLength(1)
     expect(api.mock.calls.filter(call => call[0] === '/api/conversions/pixel-receipts')).toHaveLength(0)
     expect(trackAnalytics).toHaveBeenCalledWith('contact_method_click', expect.objectContaining({ flush: true }))
   })
 
-  it('admin route 的 Contact 只写第一方事实并 teardown Pixel', async () => {
+  it('admin route 的 Contact 只写第一方事实并卸载广告平台', async () => {
     route.fullPath = '/gallery/public-before-admin'
     route.path = '/gallery/public-before-admin'
     const tracking = useTracking()
-    tracking.trackPageView()
-    adapter.teardown.mockClear()
+    await tracking.trackPageView()
+    adapter.teardownAll.mockClear()
     adapter.standardEvent.mockClear()
     api.mockResolvedValueOnce({ data: { trackingInstructions: [instruction('Contact')] } })
 
@@ -545,7 +628,7 @@ describe('useTracking', () => {
       actionType: 'copy',
     })
 
-    expect(adapter.teardown).toHaveBeenCalledOnce()
+    expect(adapter.teardownAll).toHaveBeenCalledOnce()
     expect(adapter.standardEvent).not.toHaveBeenCalled()
     expect(api.mock.calls.filter(call => call[0] === '/api/conversions/events')).toHaveLength(1)
     expect(api.mock.calls.filter(call => call[0] === '/api/conversions/pixel-receipts')).toHaveLength(0)

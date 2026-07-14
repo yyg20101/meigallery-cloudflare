@@ -289,6 +289,8 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/admin/tracking-sources` | 推广来源列表，返回可复制追踪链接 | admin+ |
 | POST | `/api/admin/tracking-sources` | 创建推广来源，写入审计日志 | admin+ |
 | PATCH | `/api/admin/tracking-sources/:id` | 修改或停用推广来源，写入审计日志 | admin+ |
+| PUT | `/api/ad-attribution` | 在可信营销授权下解析 click ID 或后台投放来源，签发单一平台 HttpOnly 来源 receipt；冲突或未知来源清除 receipt | public |
+| DELETE | `/api/ad-attribution` | 清除当前广告来源 receipt | public |
 | GET | `/api/admin/analytics/overview` | 数据分析总览，读取聚合表和健康摘要 | admin+ |
 | GET | `/api/admin/analytics/sources` | 来源质量报表，包含已创建推广来源表现 | admin+ |
 | GET | `/api/admin/analytics/pages` | 页面和内容表现报表 | admin+ |
@@ -300,12 +302,19 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/admin/analytics/sessions/:id` | 单 session 脱敏事件明细，写审计日志 | owner |
 | POST | `/api/admin/analytics/exports` | 创建 CSV 导出任务并写入 R2，写审计日志 | owner |
 | GET | `/api/admin/analytics/exports/:id` | 查看导出任务状态 | owner |
-| GET | `/api/admin/attribution/overview` | 归因中心总览，展示站内转化、广告来源、Pixel / CAPI 同步和重复诊断摘要 | admin+ |
+| GET | `/api/admin/attribution/summary?provider=meta\|tiktok` | 按平台返回站内事实、Pixel 与 Server API 投递摘要；`provider` 必填 | admin+ |
+| GET | `/api/admin/attribution/trends?provider=meta\|tiktok` | 按平台返回逐日业务与投递趋势；`provider` 必填 | admin+ |
+| GET | `/api/admin/attribution/quality?provider=meta\|tiktok` | 按平台返回匹配标识覆盖；Meta 额外返回 Dataset Quality，TikTok 明确标记未接入平台质量 API | admin+ |
+| GET | `/api/admin/attribution/breakdown?provider=meta\|tiktok` | 按平台返回 campaign、utm_content 或追踪链接拆分 | admin+ |
+| GET | `/api/admin/attribution/overview` | 归因中心旧总览，展示站内转化、广告来源和重复诊断摘要 | admin+ |
 | GET | `/api/admin/attribution/conversions` | 转化账本趋势、来源分组、事件分组和样本明细 | admin+ |
 | GET | `/api/admin/attribution/links` | 投放追踪链接分析列表，返回可复制 URL、UTM 参数和转化统计；创建和修改仍复用 `/api/admin/tracking-sources` | admin+ |
 | GET | `/api/admin/attribution/meta` | Meta Pixel / CAPI 同步状态，只返回配置存在状态和 delivery 统计，不泄露 secret | admin+ |
+| GET | `/api/admin/attribution/platforms` | 返回 Meta / TikTok 连接、开关、凭证存在性、revision 与验证状态，不返回凭证值 | admin+ |
+| PATCH | `/api/admin/attribution/platforms/:provider` | 原子更新 Meta / TikTok 连接公开配置和开关，写入审计日志 | owner |
+| POST | `/api/admin/attribution/platforms/tiktok/verify` | 使用请求级 Test Event Code 向 TikTok 发送两项测试事件并验证当前连接；代码不持久化 | owner |
 | POST | `/api/admin/attribution/meta/test-event` | 创建 Meta CAPI Test Event delivery 并写入审计日志，不返回 token 或 test code | owner |
-| POST | `/api/admin/attribution/meta/live-challenge` | 由 dev Worker 创建绑定当前 commit 的一次性 Browser/CAPI 双事件 challenge | owner |
+| POST | `/api/admin/attribution/meta/live-challenge` | 由 production Worker 创建一次性 Browser/CAPI 双事件 challenge | owner |
 | POST | `/api/admin/attribution/meta/live-challenge/consume` | 原子消费 challenge，并使用 Browser 同组 ID 真实发送两条 CAPI Test Event | owner |
 | POST | `/api/admin/attribution/meta/resource-attestation-ticket` | Owner Cookie 仅在固定可信 API origin 换取绑定环境、commit、nonce 的 60 秒一次性 ticket | owner |
 | POST | `/api/meta/resource-attestation` | 原子消费一次性 ticket 并返回当前 Worker Meta 资源 HMAC 摘要；不接受 Owner Cookie 作为凭据 | ticket |
@@ -325,7 +334,7 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 
 ## 8. D1 数据库 Schema `[当前实现]`
 
-以下为当前核心表摘要，完整结构以 `packages/api/migrations/` 中的顺序迁移为准。数据分析相关表已通过 `0023` 到 `0027` 建立 schema，并已接入公开采集 API、邀请码转化闭环、推广来源管理、Web 轻量 SDK、核心业务埋点、Cron 聚合任务、后台分析 API、后台分析页面、端到端 smoke、性能成本 fixtures、上线顺序和回滚文档。站内行为分析采集仍不依赖 Cloudflare Queues 或 Workers Analytics Engine；广告归因的 Meta CAPI 投递已独立使用 Cloudflare Queues，队列绑定为 `META_CAPI_QUEUE`。
+以下为当前核心表摘要，完整结构以 `packages/api/migrations/` 中的顺序迁移为准。数据分析相关表已通过 `0023` 到 `0027` 建立 schema，并已接入公开采集 API、邀请码转化闭环、推广来源管理、Web 轻量 SDK、核心业务埋点、Cron 聚合任务、后台分析 API、后台分析页面、端到端 smoke、性能成本 fixtures、上线顺序和回滚文档。站内行为分析采集仍不依赖 Cloudflare Queues 或 Workers Analytics Engine；广告平台 Server API 使用独立 Cloudflare Queues，Meta 绑定为 `META_CAPI_QUEUE`，TikTok 绑定为 `TIKTOK_EVENTS_QUEUE`。
 
 ### users
 
@@ -614,15 +623,15 @@ INSERT INTO site_settings (key, value) VALUES
 
 ### 转化账本与归因中心表 `[当前实现]`
 
-归因中心把“站内可信事实”和“外部广告平台同步”分开维护：`analytics_conversion_actions` 是事实源，Pixel / CAPI 只是 delivery 渠道。后台 `/admin/analytics` 仍是一方行为分析大盘；广告投放追踪链接、有效联系、完成注册、历史 Lead 对照、Pixel / CAPI 同步、重复诊断和发布检查统一放在 `/admin/attribution`。
+归因中心把“站内可信事实”和“外部广告平台同步”分开维护：`analytics_conversion_actions` 是事实源，Pixel / Server API 只是 delivery 渠道。后台 `/admin/analytics` 仍是一方行为分析大盘；广告投放追踪链接、有效联系、完成注册、历史 Lead 对照、按平台投递与匹配覆盖、重复诊断和发布检查统一放在 `/admin/attribution`。
 
 #### 归因事实所有权 `[当前实现]`
 
 | 事实 | 唯一所有者与命名入口 | 可信触发 | 派生与投递关系 |
 |------|------|------|------|
-| `Contact` | API conversion service 的 `recordContact()` | URL 通过安全校验后发起原生联系跳转，或复制联系方式明确成功后，由公开联系命令进入服务端校验 | 写入 `contact` 事实；不派生 `Lead`。授权允许时可生成同一 `eventID` 的 Pixel / CAPI delivery。二维码展开、复制失败和无效 URL 不创建 Contact。 |
+| `Contact` | API conversion service 的 `recordContact()` | URL 通过安全校验后发起原生联系跳转，或复制联系方式明确成功后，由公开联系命令进入服务端校验 | 写入 `contact` 事实；不派生 `Lead`。只有服务端签名来源命中的单一平台可生成同平台 Browser / Server delivery。二维码展开、复制失败和无效 URL 不创建 Contact。 |
 | `CompleteRegistration` | 注册 API 在用户、邀请码和 session 事务成功后调用 `recordRegistration()`；事实修复只允许 `recordRegistrationFactOnly()` | 服务端已持久化的正整数 `userId`，客户端不能声明事件类型或注册成功 | 写入 `complete_registration` 事实并以 `userId` 去重；注册响应可携带 Pixel 指令，浏览器只能执行指令，不能通过公开 conversion API 创建注册事实。 |
-| QR 展开 | Web `ContactPanel` 通过 `useAnalytics()` 记录 `contact_qr_expand`，由 analytics ingest 所有 | 用户展开通过安全 URL 校验的二维码 | 仅是一方行为分析事件；不创建 Contact、不进入 conversion 账本，也不生成 Pixel / CAPI delivery。 |
+| QR 展开 | Web `ContactPanel` 通过 `useAnalytics()` 记录 `contact_qr_expand`，由 analytics ingest 所有 | 用户展开通过安全 URL 校验的二维码 | 仅是一方行为分析事件；不创建 Contact、不进入 conversion 账本，也不生成广告平台 delivery。 |
 
 历史 D1 中的 `lead` / `Lead` 保留读取，不删除数据。后台只通过 `historical.leadCount` 展示“历史 Lead”，不得将其用于活动漏斗、联系率、注册率、链接排序、Meta delivery 健康或 readiness。
 
@@ -630,7 +639,7 @@ INSERT INTO site_settings (key, value) VALUES
 
 | 表 | 状态 | 用途 |
 |------|------|------|
-| `analytics_conversion_actions` | `[当前实现]` | 站内转化事实；新写入只由 `recordContact()`、`recordRegistration()` 和注册事实修复函数创建 `contact` / `complete_registration`。历史 schema 继续只读兼容 `lead`、`start_trial` 和既有 `membership_grant`，不删除存量数据。 |
+| `analytics_conversion_actions` | `[当前实现]` | 站内转化事实；新写入只由 `recordContact()`、`recordRegistration()` 和注册事实修复函数创建 `contact` / `complete_registration`。`attribution_provider` 保存服务端确认的唯一广告平台或空值，写入后不可修改。历史 schema 继续只读兼容 `lead`、`start_trial` 和既有 `membership_grant`，不删除存量数据。 |
 | `analytics_conversion_deliveries` | `[当前实现]` | 广告平台投递账本，记录 provider、transport、`external_event_id`、连接版本、状态、跳过原因、失败错误、重试次数和发送时间。 |
 | `analytics_conversion_daily` | `[当前实现]` | 按日期、事件、来源、campaign、utm_content 等维度聚合站内转化，用于后台趋势和投放对比。 |
 | `analytics_conversion_delivery_daily` | `[当前实现]` | 按日期、provider、transport、事件和 delivery 状态聚合同步结果，用于平台同步健康和发布检查。 |
@@ -638,16 +647,27 @@ INSERT INTO site_settings (key, value) VALUES
 实现约束：
 
 - migration `0047_ad_platform_delivery_core.sql` 建立统一连接表和最终 delivery schema，将唯一目标约束改为 `conversion_action_id + provider + transport`，并清空旧投递技术数据。旧 `channel`、`meta_connection_revision` 和旧 Meta 站点设置键已删除；新增平台必须通过 adapter registry 接入，不得复制业务事实服务。
+- migration `0048_tiktok_pixel_connection.sql` 增加默认关闭的 TikTok 连接。TikTok Browser Pixel 复用统一连接、营销同意、Contact / CompleteRegistration 事实和 delivery 回执；PageView、ViewContent、Search 由前端 provider adapter 发送。
+- migration `0049_tiktok_events_api.sql` 是 expand 阶段：增加 `has_ttclid` / `has_ttp`、TikTok production 连接验证和按 provider 隔离的 `ad_platform_secure_outbox`，回填通用 `conversion_external_id`。为保证“先迁移、后部署”窗口以及 API Worker 回滚安全，旧 `meta_external_id`、`meta_capi_secure_outbox` 暂时保留，并由 migration trigger 双向同步；应用代码只允许读写通用结构，不得新增兼容分支。
+- migration `0050_strict_ad_source_routing.sql` 为后台投放来源增加必选 `ad_provider`，为转化事实增加不可变 `attribution_provider`，并通过 D1 trigger 拒绝已明确归因事实与 delivery 平台不一致的插入和更新。为兼容“先 migration、后 Worker”的短暂发布窗口，旧 Worker 写入的空来源事实可完成原投递；新 Worker 对空来源始终零投递。既有未绑定平台的广告来源不会被名称猜测或自动归类，迁移时停用，必须明确重建后才能参与广告平台归因。
+- contract 阶段必须作为后续独立版本执行，不能与 `0049` 同批部署。只有 production 已稳定运行通用结构、桥接两侧无差异、旧 Worker 回滚窗口关闭且前一版本可用其他方式恢复后，才允许新增 migration 删除旧列、旧表和 `trg_0049_bridge_*`。删除前必须再次通过真实 D1 历史库与空库演练。
+- TikTok Events API 使用官方 v1.3 Web Events endpoint、`Access-Token` header、`event_source=web`、Pixel ID、`event/event_time/event_id/user/page` 契约；生产 payload 不带 `test_event_code`。Browser Pixel 与 Events API 对同一业务事实使用相同 event name 与 event ID 进行去重。
 - API 只返回 provider-aware `trackingInstructions`，前端通过广告平台 adapter registry 执行，不保留 `pixelEvents` 兼容响应。
+- 广告来源解析只接受 `fbclid`、`ttclid`、明确平台 UTM 别名或后台 `analytics_tracking_sources.ad_provider`。Meta 与 TikTok 信号同时出现、显式来源未知、来源超长、包含控制字符或 D1 查询失败时均 fail closed，不创建任何平台 delivery。
+- `PUT /api/ad-attribution` 只在营销授权 receipt 有效时签发 30 分钟 `HttpOnly` 来源 receipt；前端不能通过 body 声明 provider。Contact 和注册请求还必须携带只能降级的 `adAttributionState=resolved`，缺失、冲突或校验失败一律忽略旧 receipt。
+- 一个 `analytics_conversion_actions` 最多属于一个广告平台。`meta` 事实只读取 Meta 连接、Meta 密钥与 Meta Queue；`tiktok` 事实只读取 TikTok 连接、TikTok 密钥与 TikTok Queue；空来源事实只写入一方账本。禁止 fan-out、广播或按“哪些平台已启用”决定投递目标。
 
 - 正式活动 Meta 事件严格限定为 `Contact`、`CompleteRegistration`；`Lead`、`StartTrial` 仅为历史读取值，sender 与 recovery 均不得再次发送。
 - `/api/conversions/events` 为公开联系命令入口，仅允许提交 `contact`；完成注册由注册 API 的服务端事务创建。`lead`、`complete_registration`、`start_trial` 和 `membership_grant` 的公开提交均返回明确 4xx。
 - 公开转化入口复用应用内兜底限流，并在服务端白名单清洗 metadata；请求不得携带邮箱、手机号、联系方式明文、token、私有 R2 key、完整敏感 URL 或任意广告账户密钥。
 - 浏览器通过 `PUT /api/marketing-consent` 授权或撤销；API 使用 `SESSION_SECRET` 与 Web Crypto 签发 30 分钟 `HttpOnly`、`SameSite=Lax` receipt cookie，HTTPS 环境同时设置 `Secure`。授权 GET/PUT、Contact conversion、registration 和 Pixel receipt 重试显式通过 Web 同源 `/api` 代理：Cloudflare 环境使用 `API_SERVICE`，本地回退 API URL，代理逐条转发 `Set-Cookie` 和后续请求 cookie；其余浏览器 API 保持既有直连策略。前端 body 只能把服务端 receipt 的授权降级，缺失、篡改、过期或 denied receipt 都不能由 `consentState=granted` 升级。receipt、签名、nonce 和 cookie 值不得进入日志、D1、API 响应、审计或发布报告。
-- `consent_state=denied` 时只保留站内必要事实，不创建 Meta Pixel / CAPI delivery；服务端解析后的 `consent_state` 仅用于当次 delivery 判断，不作为 D1 字段持久化。浏览器 Pixel 以公开授权 API 返回状态为准，服务端 CAPI 始终独立验证 receipt。
-- Pixel 与 CAPI 使用同一 `external_event_id` / `eventID`，方便 Meta 后台去重；Pixel `attempted` 仅说明浏览器已尝试调用，不代表 Meta 接收。只有 CAPI `sent` 且 Graph API 返回 `events_received=1` 才代表接收成功；站内重复诊断不依赖 Meta 回传数据。
+- `consent_state=denied` 时只保留站内必要事实，不创建任何广告平台 Browser / Server delivery；服务端解析后的 `consent_state` 仅用于当次 delivery 判断，不作为 D1 字段持久化。浏览器 Pixel 以公开授权 API 返回状态为准，Server API 始终独立验证 receipt。
+- 每个平台的 Browser / Server delivery 使用同一 `external_event_id`；Pixel `attempted` 仅说明浏览器已尝试调用，不代表平台接收。只有 Server delivery 为 `sent` 且平台响应满足严格成功契约，才可显示为 API 已接收；这仍不代表广告归因成功。
 - `/api/admin/attribution/*` 需要 admin+；`/api/admin/attribution/meta/test-event` 需要 owner，并写入 `admin_audit_logs`。
 - Meta CAPI 仅在 production 通过 Cloudflare Queue `META_CAPI_QUEUE` 异步投递，使用 Worker secret `META_CAPI_ACCESS_TOKEN`、`META_CAPI_DATA_KEY_CURRENT`；`META_CAPI_DATA_KEY_PREVIOUS` 仅用于轮换窗口。生产主 Queue / DLQ 固定为 `meigallery-meta-capi` / `meigallery-meta-capi-dlq`。dev/local 不绑定 Meta Queue、不配置 Meta secret、不调用 Meta Graph API，只执行单元测试、契约测试、migration、类型检查和构建验证。Graph token 只通过 Bearer header 发送。secret 不写入 D1、不返回前端，也不写入审计日志。
+- TikTok Events API 仅在 production 通过 `TIKTOK_EVENTS_QUEUE` 异步投递，使用 `TIKTOK_EVENTS_ACCESS_TOKEN`、`TIKTOK_EVENTS_DATA_KEY_CURRENT`；previous key 仅用于轮换。生产主 Queue / DLQ 固定为 `meigallery-tiktok-events` / `meigallery-tiktok-events-dlq`。Test Event Code 只存在于 Owner 验证请求内存中。dev/local 不绑定 TikTok Queue、不配置 TikTok secret、不调用 TikTok API。
+- Meta 与 TikTok 共享 `ad_platform_secure_outbox`、lease、CAS 状态机和恢复算法，但所有读写必须同时限定 `provider`；两个平台使用独立密钥、Queue、DLQ、连接 revision 和 rollout namespace，禁止交叉解密、投递或恢复。
+- production 部署必须在任何远端 D1 migration 前只读确认 `meigallery-meta-capi`、`meigallery-meta-capi-dlq`、`meigallery-tiktok-events`、`meigallery-tiktok-events-dlq` 全部存在；任一 Queue 缺失必须 fail closed，禁止留下“schema 已升级、Worker 未部署”的半完成状态。
 - Meta Events Manager 的 Test Event Code 是短期会话值，不属于 Pixel / CAPI 长期连接凭据。Owner 在后台输入当前 `TEST...` 代码，验证连接与 Live Evidence 共用该页面内存值；状态数据刷新不得清空该值，离开页面或重新加载后必须重新输入。API 只接受请求级代码并严格校验，代码不落 D1、不进入审计和响应。当前 V2 资源 attestation 仍保留 `META_CAPI_TEST_EVENT_CODE` 的 secret 存在性字段，待资源摘要 schema 独立升级后删除；该旧字段不得再作为 Test Event payload 来源。
 - `/api/admin/attribution/meta` 仅返回 current/previous 有效性布尔值、previous outbox 计数、previous `pending/failed` delivery 计数和可移除状态；不返回 key ID、Base64、fingerprint 或错误 cause。
 - `corepack pnpm verify:meta-secrets` 扫描 tracked 文件与 ignored release evidence；`corepack pnpm verify:quick` 在单元测试和构建前执行该检查。production bootstrap、rollout 与最终 evidence 已由本地代码门禁强绑定，但没有外部证据时始终 fail closed。

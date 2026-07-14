@@ -35,9 +35,9 @@ const EMBEDDED_BROWSER_ID_PATTERN = /\bfb\.1\.\d{10,}\.[A-Z0-9._-]+\b/i
 const EMBEDDED_USER_AGENT_PATTERN = /(?:\bMozilla\/5\.0\b|\b(?:curl|Wget|PostmanRuntime|okhttp)\/\d|\b(?:[A-Z][A-Z0-9._-]*)?(?:Agent|Browser|Client)\/\d)/i
 const EMBEDDED_IPV4_PATTERN = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g
 const EMBEDDED_IPV6_PATTERN = /(?<![0-9a-f:])[0-9a-f]*:[0-9a-f:.]*:[0-9a-f:.]*(?![0-9a-f:])/gi
-const SECRET_ASSIGNMENT_PATTERN = /(?:["']?)(META_CAPI_ACCESS_TOKEN|META_CAPI_TEST_EVENT_CODE|META_CAPI_DATA_KEY_CURRENT|META_CAPI_DATA_KEY_PREVIOUS)(?:["']?)\s*(?:=(?!=|\|)|:)\s*(?:(["'])([^"'\r\n]+)\2|([^\s,;}\r\n]+))/g
+const SECRET_ASSIGNMENT_PATTERN = /(?:["']?)(META_CAPI_ACCESS_TOKEN|META_CAPI_TEST_EVENT_CODE|META_CAPI_DATA_KEY_CURRENT|META_CAPI_DATA_KEY_PREVIOUS|TIKTOK_EVENTS_ACCESS_TOKEN|TIKTOK_EVENTS_DATA_KEY_CURRENT|TIKTOK_EVENTS_DATA_KEY_PREVIOUS)(?:["']?)\s*(?:=(?!=|\|)|:)\s*(?:(["'])([^"'\r\n]+)\2|([^\s,;}\r\n]+))/g
 const PERSISTENCE_PATTERN = /\b(?:CREATE|ALTER|INSERT|UPDATE)\b/i
-const MATCH_SIGNAL_PATTERN = /(?:\bclient_ip_address\b|\bclient_user_agent\b|(?<![A-Za-z0-9_])fbp(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])fbc(?![A-Za-z0-9_]))/i
+const MATCH_SIGNAL_PATTERN = /(?:\bclient_ip_address\b|\bclient_user_agent\b|(?<![A-Za-z0-9_])fbp(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])fbc(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])ttclid(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])ttp(?![A-Za-z0-9_]))/i
 const EXPLICIT_SECRET_PLACEHOLDER_PATTERN = /^(?:<[^>\r\n]{1,80}>|\$\{?[A-Z][A-Z0-9_]*\}?|configured|present|missing|unset|disabled|redacted|placeholder|not[-_ ]?configured|undefined|null)$/i
 const SANITIZED_EVIDENCE_VALUES = new Set(['[PRIVATE_REDACTED]', '[REDACTED]'])
 const BARE_VARIABLE_REFERENCE_PATTERN = /^[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*$/
@@ -99,16 +99,25 @@ export async function main(options = {}) {
 
 async function readTrackedFiles(rootDir) {
   try {
-    const { stdout } = await execFile('git', ['ls-files', '-z'], {
+    const gitOptions = {
       cwd: rootDir,
       encoding: null,
       maxBuffer: 16 * 1024 * 1024,
-    })
-    return Buffer.from(stdout).toString('utf8').split('\0').filter(Boolean)
+    }
+    const [{ stdout: trackedOutput }, { stdout: deletedOutput }] = await Promise.all([
+      execFile('git', ['ls-files', '-z'], gitOptions),
+      execFile('git', ['ls-files', '-z', '--deleted'], gitOptions),
+    ])
+    const deletedFiles = new Set(parseNullSeparatedPaths(deletedOutput))
+    return parseNullSeparatedPaths(trackedOutput).filter(file => !deletedFiles.has(file))
   }
   catch {
     return ['.meta-git-files-unavailable']
   }
+}
+
+function parseNullSeparatedPaths(output) {
+  return Buffer.from(output).toString('utf8').split('\0').filter(Boolean)
 }
 
 async function collectEvidenceFiles(rootDir, relativeDirectory, candidates, findings) {
@@ -554,7 +563,7 @@ function scanEvidence(relativePath, text, findings, approvedContractDigest) {
     if (normalizedKey.includes('useragent') && !isSanitized) {
       addFinding(findings, relativePath, 'META_EVIDENCE_RAW_USER_AGENT')
     }
-    if ((normalizedKey === 'fbp' || normalizedKey === 'fbc') && !isSanitized) {
+    if (['fbp', 'fbc', 'ttclid', 'ttp'].includes(normalizedKey) && !isSanitized) {
       addFinding(findings, relativePath, 'META_EVIDENCE_BROWSER_ID')
     }
     if (typeof value !== 'string' || value.length === 0) return
@@ -647,7 +656,7 @@ function hasUnsafePersistence(relativePath, text) {
   const statements = sources.flatMap(source => splitSqlStatements(stripSqlComments(source)))
   return statements.some((sql) => {
     if (!PERSISTENCE_PATTERN.test(sql) || !MATCH_SIGNAL_PATTERN.test(sql)) return false
-    return parseWriteTarget(sql) !== 'meta_capi_secure_outbox'
+    return parseWriteTarget(sql) !== 'ad_platform_secure_outbox'
   })
 }
 

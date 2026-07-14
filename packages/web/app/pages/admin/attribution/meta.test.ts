@@ -37,16 +37,18 @@ function mountPage() {
     activity: {},
   })
   const quality = state({
+    provider: 'meta',
     match: {
+      labels: { browserId: 'fbp', clickId: 'fbc', email: 'email', externalId: 'external_id' },
       summary: {
-        fbp: { availability: 'unavailable', numerator: 0, denominator: 0, rate: null },
-        fbc: { availability: 'unavailable', numerator: 0, denominator: 0, rate: null },
+        browserId: { availability: 'unavailable', numerator: 0, denominator: 0, rate: null },
+        clickId: { availability: 'unavailable', numerator: 0, denominator: 0, rate: null },
         email: { availability: 'unavailable', numerator: 0, denominator: 0, rate: null },
         externalId: { availability: 'unavailable', numerator: 0, denominator: 0, rate: null },
       },
       rows: [],
     },
-    datasetQuality: { availability: 'unavailable', latest: null, rows: [] },
+    platformQuality: { source: 'meta_dataset_quality', availability: 'unavailable', latest: null, rows: [] },
   })
   const incidents = state({
     items: [{ id: 'incident-1', status: 'open', severity: 'critical', resolution: '' }],

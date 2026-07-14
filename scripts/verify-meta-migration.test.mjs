@@ -39,7 +39,10 @@ function mockJsonFor(name, options = {}) {
       action_count: 1,
       delivery_count: 0,
       verification_count: 1,
-      outbox_count: 0,
+      outbox_count: 1,
+      bridge_outbox_count: 1,
+      bridge_identity_count: 3,
+      bridge_outbox_match: 1,
       claim_count: 1,
       incident_count: 1,
       quality_count: 1,
@@ -52,8 +55,24 @@ function mockJsonFor(name, options = {}) {
       delivery_unique_index: 1,
       provider_external_unique_index: 1,
       ad_platform_core_columns: 3,
+      tiktok_match_columns: 2,
       connection_table: 1,
+      tiktok_connection: 1,
+      tiktok_verification_table: 1,
+      secure_outbox_table: 1,
+      secure_outbox_provider_column: 1,
+      secure_outbox_index: 1,
+      legacy_secure_outbox_table: 1,
+      conversion_external_id_column: 1,
+      legacy_meta_external_id_column: 1,
+      bridge_trigger_count: 8,
+      conversion_external_id_index: 1,
       legacy_delivery_columns: 0,
+      tracking_source_provider_column: 1,
+      action_attribution_provider_column: 1,
+      tracking_source_provider_index: 1,
+      action_attribution_provider_index: 1,
+      strict_routing_trigger_count: 3,
       challenge_table: 1,
       challenge_table_sql: "CREATE TABLE meta_live_challenges (... CHECK (environment = 'production'))",
       challenge_index: 1,
@@ -90,9 +109,14 @@ describe('Meta migration 演练', () => {
     'meta-migration-apply-0045',
     'meta-migration-apply-0046',
     'meta-migration-apply-0047',
+    'meta-migration-apply-0048',
+    'meta-migration-seed-0049-bridge',
+    'meta-migration-apply-0049',
+    'meta-migration-exercise-0049-bridge',
+    'meta-migration-apply-0050',
     'meta-migration-query-history',
     'meta-migration-query-schema',
-    'meta-migration-empty-apply-0001-0047',
+    'meta-migration-empty-apply-0001-0050',
     'meta-migration-empty-query-schema',
   ]) {
     it(`当 ${name} 命令失败时演练失败`, async () => {
@@ -180,7 +204,12 @@ describe('Meta migration 演练', () => {
     assert.ok(names.indexOf('meta-migration-apply-0044') < names.indexOf('meta-migration-apply-0045'))
     assert.ok(names.indexOf('meta-migration-apply-0045') < names.indexOf('meta-migration-apply-0046'))
     assert.ok(names.indexOf('meta-migration-apply-0046') < names.indexOf('meta-migration-apply-0047'))
-    assert.ok(names.includes('meta-migration-empty-apply-0001-0047'))
+    assert.ok(names.indexOf('meta-migration-apply-0047') < names.indexOf('meta-migration-apply-0048'))
+    assert.ok(names.indexOf('meta-migration-apply-0048') < names.indexOf('meta-migration-seed-0049-bridge'))
+    assert.ok(names.indexOf('meta-migration-seed-0049-bridge') < names.indexOf('meta-migration-apply-0049'))
+    assert.ok(names.indexOf('meta-migration-apply-0049') < names.indexOf('meta-migration-exercise-0049-bridge'))
+    assert.ok(names.indexOf('meta-migration-exercise-0049-bridge') < names.indexOf('meta-migration-apply-0050'))
+    assert.ok(names.includes('meta-migration-empty-apply-0001-0050'))
     assert.ok(names.includes('meta-migration-empty-query-schema'))
   })
 
@@ -194,8 +223,24 @@ describe('Meta migration 演练', () => {
     ['Dataset Quality contract digest 索引', 'quality_contract_digest_index', 0],
     ['Meta live 匹配覆盖列', 'challenge_match_coverage_columns', 2],
     ['广告平台核心列', 'ad_platform_core_columns', 2],
+    ['TikTok 匹配列', 'tiktok_match_columns', 1],
     ['广告平台连接表', 'connection_table', 0],
+    ['TikTok 连接记录', 'tiktok_connection', 0],
+    ['TikTok 验证表', 'tiktok_verification_table', 0],
+    ['统一加密 Outbox 表', 'secure_outbox_table', 0],
+    ['统一加密 Outbox provider 列', 'secure_outbox_provider_column', 0],
+    ['统一加密 Outbox 索引', 'secure_outbox_index', 0],
+    ['Meta Outbox 桥接表', 'legacy_secure_outbox_table', 0],
+    ['通用转化用户标识列', 'conversion_external_id_column', 0],
+    ['Meta 用户标识桥接列', 'legacy_meta_external_id_column', 0],
+    ['0049 桥接触发器', 'bridge_trigger_count', 7],
+    ['通用转化用户标识索引', 'conversion_external_id_index', 0],
     ['旧投递列', 'legacy_delivery_columns', 1],
+    ['推广来源平台列', 'tracking_source_provider_column', 0],
+    ['转化事实归因平台列', 'action_attribution_provider_column', 0],
+    ['推广来源平台索引', 'tracking_source_provider_index', 0],
+    ['转化事实归因平台索引', 'action_attribution_provider_index', 0],
+    ['严格来源路由触发器', 'strict_routing_trigger_count', 2],
   ]) {
     it(`${label} 不精确时旧库演练 fail closed`, async () => {
       const runCommand = async (_command, _args, options = {}) => {
@@ -210,7 +255,7 @@ describe('Meta migration 演练', () => {
 
       const result = await runMetaMigrationVerification({ runCommand })
       assert.equal(result.status, 'failed')
-      assert.match(result.error, /0040-0047 schema/)
+      assert.match(result.error, /0040-0050 schema/)
     })
   }
 

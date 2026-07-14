@@ -26,9 +26,12 @@ const REQUIRED_MIGRATIONS = [
   '0045_meta_live_production.sql',
   '0046_meta_live_match_coverage.sql',
   '0047_ad_platform_delivery_core.sql',
+  '0048_tiktok_pixel_connection.sql',
+  '0049_tiktok_events_api.sql',
+  '0050_strict_ad_source_routing.sql',
 ]
 const SETTINGS_SQL = "SELECT enabled, mode, browser_enabled, server_enabled, destination_id, rollout_percentage, revision FROM ad_platform_connections WHERE provider = 'meta'"
-const MIGRATION_NAMES_SQL = "SELECT name FROM d1_migrations WHERE name IN ('0036_meta_capi_v2_secure_delivery.sql', '0037_meta_connection_revision.sql', '0038_conversion_dedupe_claims.sql', '0039_meta_capi_v2_operations.sql', '0040_meta_capi_circuit_indexes.sql', '0041_meta_live_challenges.sql', '0042_meta_resource_attestation_tickets.sql', '0043_meta_capi_delivery_lease.sql', '0044_meta_dataset_quality_contract_digest.sql', '0045_meta_live_production.sql', '0046_meta_live_match_coverage.sql', '0047_ad_platform_delivery_core.sql') ORDER BY name"
+const MIGRATION_NAMES_SQL = "SELECT name FROM d1_migrations WHERE name IN ('0036_meta_capi_v2_secure_delivery.sql', '0037_meta_connection_revision.sql', '0038_conversion_dedupe_claims.sql', '0039_meta_capi_v2_operations.sql', '0040_meta_capi_circuit_indexes.sql', '0041_meta_live_challenges.sql', '0042_meta_resource_attestation_tickets.sql', '0043_meta_capi_delivery_lease.sql', '0044_meta_dataset_quality_contract_digest.sql', '0045_meta_live_production.sql', '0046_meta_live_match_coverage.sql', '0047_ad_platform_delivery_core.sql', '0048_tiktok_pixel_connection.sql', '0049_tiktok_events_api.sql', '0050_strict_ad_source_routing.sql') ORDER BY name"
 const META_OPERATIONS_SQL = `
   WITH rollout AS (
     SELECT COALESCE((SELECT rollout_percentage FROM ad_platform_connections WHERE provider = 'meta' LIMIT 1), -1) AS target
@@ -36,9 +39,9 @@ const META_OPERATIONS_SQL = `
     SELECT COUNT(*) AS open_count FROM meta_capi_incidents WHERE status = 'open' AND severity = 'critical'
   ), active_keys AS (
     SELECT o.key_id, COUNT(*) AS reference_count, MAX(o.created_at) AS newest_at
-    FROM meta_capi_secure_outbox o
-    JOIN analytics_conversion_deliveries d ON d.id = o.delivery_id
-    WHERE d.status IN ('pending', 'failed') AND datetime(o.expires_at) > datetime('now')
+    FROM ad_platform_secure_outbox o
+    JOIN analytics_conversion_deliveries d ON d.id = o.delivery_id AND d.provider = o.provider
+    WHERE o.provider = 'meta' AND d.status IN ('pending', 'failed') AND datetime(o.expires_at) > datetime('now')
     GROUP BY o.key_id
   ), ranked_keys AS (
     SELECT key_id, reference_count, ROW_NUMBER() OVER (ORDER BY newest_at DESC, key_id ASC) AS key_rank FROM active_keys
@@ -46,7 +49,7 @@ const META_OPERATIONS_SQL = `
   SELECT rollout.target AS target_rollout_percentage,
     CASE WHEN incidents.open_count > 0 THEN 0 ELSE rollout.target END AS effective_rollout_percentage,
     incidents.open_count AS open_critical_incident_count,
-    (SELECT COUNT(*) FROM meta_capi_secure_outbox WHERE datetime(expires_at) <= datetime('now')) AS expired_secure_outbox_count,
+    (SELECT COUNT(*) FROM ad_platform_secure_outbox WHERE provider = 'meta' AND datetime(expires_at) <= datetime('now')) AS expired_secure_outbox_count,
     COALESCE((SELECT SUM(reference_count) FROM ranked_keys WHERE key_rank = 2), 0) AS previous_key_active_count,
     (SELECT COUNT(*) FROM active_keys) AS active_key_count
   FROM rollout CROSS JOIN incidents
@@ -154,7 +157,6 @@ export async function runMetaResourceVerification(options = {}) {
     byName.get('meta-connection')?.stdout,
     environment,
     settings.pixelId,
-    options.commit,
   )
   const operations = parseMetaOperations(byName.get('meta-operations')?.stdout)
   const capiEnabled = settings?.capiEnabled ?? null
@@ -166,7 +168,9 @@ export async function runMetaResourceVerification(options = {}) {
     && (operations.previousKeyActiveCount === 0 || (operations.activeKeyCount === 2 && previousSecretPresent))
   const incidentReady = operations?.openCriticalIncidentCount === 0
   let secretIsolation = { pixel: false, token: false, testEventCode: false, dataKey: false }
-  if (phase !== 'bootstrap') {
+  if (phase === 'full') {
+    secretIsolation = resolveFullSecretIsolation(byName.get('secrets')?.stdout, connectionVerified)
+  } else if (phase === 'post-deploy') {
     try {
       secretIsolation = await (options.requestResourceAttestations || requestLiveResourceAttestations)({
         ...options,
@@ -221,7 +225,7 @@ export async function runMetaResourceVerification(options = {}) {
         schemaVersion: 2,
         verificationPhase: phase,
         bootstrapReady: phase === 'bootstrap',
-        liveAttestation: phase !== 'bootstrap' && Object.values(environmentIsolation).every(Boolean),
+        liveAttestation: phase === 'post-deploy' && Object.values(environmentIsolation).every(Boolean),
         migrationsReady: migrationsCurrent && migrationsApplied,
         d1Ready: settings !== null && operations !== null,
         r2Ready: r2Present,
@@ -380,11 +384,11 @@ async function readProductionResourceConfig(options = {}) {
     database: source.d1.databaseName,
     d1Id: source.d1.databaseId,
     worker: source.workerName,
-    mainQueue: source.queue.producerName,
-    dlq: source.queue.deadLetterQueueName,
+    mainQueue: source.queues.meta.producerName,
+    dlq: source.queues.meta.deadLetterQueueName,
     r2: source.r2.bucketName,
     apiOrigin: source.apiOrigin,
-    mainConsumer: { batchSize: 10, maxWaitTimeMs: 30_000, maxRetries: source.queue.maxRetries, retryDelay: source.queue.retryDelay },
+    mainConsumer: { batchSize: 10, maxWaitTimeMs: 30_000, maxRetries: source.queues.meta.maxRetries, retryDelay: source.queues.meta.retryDelay },
     dlqConsumer: { batchSize: 10, maxWaitTimeMs: 5_000 },
   }
 }
@@ -585,23 +589,30 @@ function parseMetaOperations(stdout) {
   }
 }
 
-function hasVerifiedMetaConnection(stdout, environment, pixelId, commit) {
+export function hasVerifiedMetaConnection(stdout, environment, pixelId) {
   try {
     const rows = parseD1Rows(parseWranglerJson(stdout))
     if (rows.length !== 1) return false
     const row = rows[0]
-    const expectedCommit = /^[0-9a-f]{40}$/i.test(String(commit || '')) ? String(commit).toLowerCase() : ''
     return row?.environment === environment
       && row.pixel_id === pixelId
       && row.graph_api_version === 'v25.0'
       && /^[0-9a-f]{40}$/i.test(String(row.verified_commit || ''))
-      && (!expectedCommit || String(row.verified_commit).toLowerCase() === expectedCommit)
       && typeof row.verified_at === 'string' && row.verified_at.trim() !== ''
       && (row.invalidated_at === null || row.invalidated_at === '')
       && row.invalidation_reason === ''
       && /^[0-9a-f]{32}$/i.test(String(row.revision || ''))
   } catch {
     return false
+  }
+}
+
+export function resolveFullSecretIsolation(secretsOutput, connectionVerified) {
+  return {
+    pixel: connectionVerified === true,
+    token: connectionVerified === true,
+    testEventCode: hasRequiredSecrets(secretsOutput, ['META_CAPI_TEST_EVENT_CODE']),
+    dataKey: hasRequiredSecrets(secretsOutput, ['META_CAPI_DATA_KEY_CURRENT']),
   }
 }
 

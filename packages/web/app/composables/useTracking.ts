@@ -2,14 +2,19 @@ import type { AdBrowserInstruction } from '@meigallery/shared'
 import {
   executeAdBrowserInstruction,
   initializeAdBrowserProvider,
-  teardownAdBrowserProvider,
+  isRegisteredAdBrowserProvider,
+  teardownAllAdBrowserProviders,
   trackAdBrowserPageView,
   trackAdBrowserStandardEvent,
 } from '~/adapters/adPlatformBrowser.client'
 import { sanitizeAnalyticsPath } from '~/utils/analyticsSanitizer'
 import { resolveConversionIdentity } from '~/utils/conversionIdentity'
 import { hasSensitiveAnalyticsUrl, isAdminPath, sanitizeAnalyticsText } from '~/utils/trackingSanitizer'
-import { readMetaBrowserIdentifiers } from '~/utils/metaBrowserIdentifiers'
+import {
+  clearTikTokClickIdCookie,
+  readAdPlatformBrowserIdentifiers,
+  tikTokClickIdCookie,
+} from '~/utils/adPlatformBrowserIdentifiers'
 
 export interface TrackContactInput {
   methodType: string
@@ -53,7 +58,8 @@ const PIXEL_RECEIPT_RETRY_DELAYS = [250, 1_000, 3_000]
 const PIXEL_RECEIPT_RETRY_LIMIT = 100
 let conversionRetryTimer: ReturnType<typeof setTimeout> | null = null
 let pixelReceiptRetryTimer: ReturnType<typeof setTimeout> | null = null
-let lastTrackedPageKey = ''
+const lastTrackedPageKeys = new Map<AdBrowserInstruction['provider'], string>()
+let activeBrowserProvider: AdBrowserInstruction['provider'] | null = null
 
 export function useTracking() {
   const { api } = useApi()
@@ -61,8 +67,16 @@ export function useTracking() {
   const analytics = useAnalytics()
   const siteSettings = useSiteSettings()
   const marketingConsent = useMarketingConsent()
+  const adAttribution = useAdAttribution()
 
   async function trackContact(input: TrackContactInput) {
+    const marketingRouteAllowed = isMarketingRouteAllowed(route.fullPath)
+    if (marketingRouteAllowed && canDeliverMarketing(marketingConsent)) {
+      await adAttribution.resolve(route)
+    }
+    else if (!marketingRouteAllowed) {
+      await adAttribution.clear()
+    }
     const context = analytics.getContext() as AnalyticsContext
     const identity = resolveConversionIdentity(context)
     const activationConsentScope = currentMarketingConsentScope(marketingConsent)
@@ -82,11 +96,14 @@ export function useTracking() {
       utmContent: queryValue(route.query.utm_content),
       methodType: normalizeText(input.methodType, 80),
       actionTarget: normalizeText(input.actionTarget, 120),
+      adAttributionState: activationConsentScope === 'granted'
+        ? trustedAdAttributionState(adAttribution)
+        : 'suppress' as const,
       metadata: { action_type: input.actionType },
     }
 
     const send = async () => {
-      const body = consentScopedBody(baseBody, marketingConsent, route.query.fbclid, activationConsentScope)
+      const body = consentScopedBody(baseBody, marketingConsent, route.query, activationConsentScope)
       const response = await api('/api/conversions/events', { method: 'POST', body })
       return trackingInstructionsFromResponse(response)
     }
@@ -118,6 +135,8 @@ export function useTracking() {
     for (const value of instructions) {
       const instruction = normalizeBrowserInstruction(value)
       if (!instruction) continue
+      if (instruction.provider !== adAttribution.provider.value) continue
+      if (!activateAdBrowserProvider(instruction.provider)) continue
       const attempted = executeAdBrowserInstruction(instruction)
       if (!attempted) continue
       reportPixelAttempted(() => api('/api/conversions/pixel-receipts', {
@@ -131,52 +150,101 @@ export function useTracking() {
     }
   }
 
-  function trackPageView() {
+  async function trackPageView() {
     if (!ensureCurrentMarketingRouteAllowed()) return
     if (!canDeliverMarketing(marketingConsent)) {
-      teardownPixel()
+      clearPersistedAdClickIdentifiers()
+      await adAttribution.clear()
+      teardownAdBrowserTracking()
       return
     }
 
-    const connection = siteSettings.metaBrowserConnection.value
-    if (!connection?.destinationId) {
-      teardownPixel()
+    const provider = await adAttribution.resolve(route)
+    const connection = siteSettings.browserConnections.value.find(item => (
+      item.provider === provider
+      && isRegisteredAdBrowserProvider(item.provider)
+      && Boolean(item.destinationId)
+    ))
+    if (!provider || !connection?.destinationId) {
+      teardownAdBrowserTracking()
       return
     }
     const pageKey = `${connection.destinationId}|${route.fullPath}`
-    if (lastTrackedPageKey === pageKey) return
-    if (!initializeAdBrowserProvider('meta', connection.destinationId)) return
-    if (trackAdBrowserPageView('meta')) lastTrackedPageKey = pageKey
+    if (lastTrackedPageKeys.get(provider) === pageKey) return
+    if (!activateAdBrowserProvider(provider)) return
+    const tracked = trackAdBrowserPageView(provider)
+    if (tracked || provider === 'tiktok') lastTrackedPageKeys.set(provider, pageKey)
   }
 
-  function teardownPixel() {
-    teardownAdBrowserProvider('meta')
-    lastTrackedPageKey = ''
+  function teardownAdBrowserTracking() {
+    teardownAllAdBrowserProviders()
+    lastTrackedPageKeys.clear()
+    activeBrowserProvider = null
   }
 
   function ensureCurrentMarketingRouteAllowed() {
     if (isMarketingRouteAllowed(route.fullPath)) return true
-    teardownPixel()
+    teardownAdBrowserTracking()
     return false
   }
 
-  function trackViewContent(payload: Record<string, string | number | boolean>) {
+  async function trackViewContent(payload: Record<string, string | number | boolean>) {
     if (!ensureCurrentMarketingRouteAllowed() || !canDeliverMarketing(marketingConsent)) return
-    trackAdBrowserStandardEvent('meta', 'ViewContent', payload)
+    await trackStandardEventForAttributedProvider('ViewContent', payload)
   }
 
-  function trackSearch(input: TrackSearchInput) {
+  async function trackSearch(input: TrackSearchInput) {
     if (!ensureCurrentMarketingRouteAllowed() || !canDeliverMarketing(marketingConsent)) return
-    trackAdBrowserStandardEvent('meta', 'Search', {
+    await trackStandardEventForAttributedProvider('Search', {
       search_string: sanitizeAnalyticsText(input.searchString, 80),
       result_count: Number.isFinite(input.resultCount) ? input.resultCount : 0,
     })
   }
 
-  function buildRegistrationAttributionContext() {
+  async function trackStandardEventForAttributedProvider(
+    eventName: string,
+    payload: Record<string, string | number | boolean>,
+  ) {
+    const provider = await adAttribution.resolve(route)
+    const connection = siteSettings.browserConnections.value.find(item => item.provider === provider)
+    if (!provider || !connection?.destinationId || !isRegisteredAdBrowserProvider(connection.provider)) {
+      teardownAdBrowserTracking()
+      return
+    }
+    if (!activateAdBrowserProvider(provider)) return
+    trackAdBrowserStandardEvent(provider, eventName, payload)
+  }
+
+  function activateAdBrowserProvider(provider: AdBrowserInstruction['provider']) {
+    const connection = siteSettings.browserConnections.value.find(item => (
+      item.provider === provider
+      && isRegisteredAdBrowserProvider(item.provider)
+      && Boolean(item.destinationId)
+    ))
+    if (!connection?.destinationId) return false
+    if (activeBrowserProvider && activeBrowserProvider !== provider) teardownAdBrowserTracking()
+    if (!initializeAdBrowserProvider(provider, connection.destinationId)) return false
+    activeBrowserProvider = provider
+    return true
+  }
+
+  async function clearAdAttribution() {
+    clearPersistedAdClickIdentifiers()
+    teardownAdBrowserTracking()
+    await adAttribution.clear()
+  }
+
+  async function buildRegistrationAttributionContext() {
+    const consentScope = currentMarketingConsentScope(marketingConsent)
+    if (consentScope === 'granted' && isMarketingRouteAllowed(route.fullPath)) {
+      await adAttribution.resolve(route)
+    }
+    else if (!isMarketingRouteAllowed(route.fullPath)) {
+      await adAttribution.clear()
+    }
     const context = analytics.getContext() as AnalyticsContext
     const sourceContext = context.sourceContext || {}
-    const consentScope = currentMarketingConsentScope(marketingConsent)
+    if (consentScope !== 'granted') clearPersistedAdClickIdentifiers()
     return {
       visitorId: normalizeText(context.visitorId, 120) || undefined,
       sessionId: normalizeText(context.sessionId, 120) || undefined,
@@ -191,8 +259,11 @@ export function useTracking() {
       utmCampaign: normalizeText(sourceContext.utmCampaign, 120),
       utmContent: queryValue(route.query.utm_content),
       consentState: consentScope,
+      adAttributionState: consentScope === 'granted'
+        ? trustedAdAttributionState(adAttribution)
+        : 'suppress' as const,
       ...(consentScope === 'granted' && typeof document !== 'undefined'
-        ? { browserIdentifiers: readMetaBrowserIdentifiers(document.cookie, route.query.fbclid) }
+        ? { browserIdentifiers: readBrowserIdentifiers(route.query) }
         : {}),
     }
   }
@@ -203,7 +274,9 @@ export function useTracking() {
     if (!/^mlv_contact_[0-9a-f]{32}$/.test(contactId)
       || !/^mlv_registration_[0-9a-f]{32}$/.test(registrationId)
       || contactId === registrationId) return false
+    if (activeBrowserProvider && activeBrowserProvider !== 'meta') teardownAdBrowserTracking()
     if (!initializeAdBrowserProvider('meta', input.pixelId)) return false
+    activeBrowserProvider = 'meta'
     const contactSent = trackAdBrowserStandardEvent(
       'meta',
       'Contact',
@@ -224,7 +297,8 @@ export function useTracking() {
     trackContact,
     executeBrowserInstructions,
     trackPageView,
-    teardownPixel,
+    teardownAdBrowserTracking,
+    clearAdAttribution,
     trackViewContent,
     trackSearch,
     buildRegistrationAttributionContext,
@@ -235,21 +309,39 @@ export function useTracking() {
 function consentScopedBody<T extends Record<string, unknown>>(
   baseBody: T,
   marketingConsent: ReturnType<typeof useMarketingConsent>,
-  fbclid: unknown,
+  clickIds: { fbclid?: unknown; ttclid?: unknown },
   maximumConsentScope: MarketingConsentScope,
 ) {
   const consentScope = scopedMarketingConsent(marketingConsent, maximumConsentScope)
+  if (consentScope !== 'granted') clearPersistedAdClickIdentifiers()
   return {
     ...baseBody,
     consentState: consentScope,
     ...(consentScope === 'granted' && typeof document !== 'undefined'
-      ? { browserIdentifiers: readMetaBrowserIdentifiers(document.cookie, fbclid) }
+      ? { browserIdentifiers: readBrowserIdentifiers(clickIds) }
       : {}),
   }
 }
 
+function readBrowserIdentifiers(clickIds: { fbclid?: unknown; ttclid?: unknown }) {
+  const persisted = tikTokClickIdCookie(clickIds.ttclid)
+  if (persisted) document.cookie = persisted
+  return readAdPlatformBrowserIdentifiers(document.cookie, clickIds)
+}
+
+function clearPersistedAdClickIdentifiers() {
+  if (typeof document !== 'undefined') document.cookie = clearTikTokClickIdCookie()
+}
+
 function canDeliverMarketing(marketingConsent: ReturnType<typeof useMarketingConsent>) {
   return currentMarketingConsentScope(marketingConsent) === 'granted'
+}
+
+function trustedAdAttributionState(adAttribution: ReturnType<typeof useAdAttribution>) {
+  return adAttribution.provider.value
+    && (adAttribution.resolution.value === 'matched' || adAttribution.resolution.value === 'inherited')
+    ? 'resolved' as const
+    : 'suppress' as const
 }
 
 function currentMarketingConsentScope(
@@ -271,7 +363,7 @@ function scopedMarketingConsent(
 function isAdBrowserInstruction(value: unknown): value is AdBrowserInstruction {
   if (!value || typeof value !== 'object') return false
   const event = value as Partial<AdBrowserInstruction> & { eventName?: unknown }
-  return (event.provider === 'meta' || event.provider === 'tiktok' || event.provider === 'google')
+  return isRegisteredAdBrowserProvider(event.provider)
     && typeof event.deliveryId === 'string'
     && event.deliveryId.length > 0
     && (event.eventName === 'Contact' || event.eventName === 'CompleteRegistration')

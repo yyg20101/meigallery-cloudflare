@@ -42,6 +42,19 @@ describe('Meta secret 静态泄漏扫描', () => {
     assert.deepEqual(report.findings, [])
   })
 
+  it('按当前工作树扫描时忽略已删除但尚未提交的 tracked 文件', async () => {
+    const rootDir = await createRepository()
+    const deletedPath = path.join(rootDir, 'docs', 'obsolete.md')
+    await writeTracked(rootDir, 'docs/obsolete.md', '历史说明')
+    await gitAdd(rootDir, ['.gitignore', 'docs/obsolete.md'])
+    await rm(deletedPath)
+
+    const report = await scanMetaSecretLeaks({ rootDir })
+
+    assert.equal(report.status, 'passed')
+    assert.deepEqual(report.findings, [])
+  })
+
   it('扫描 tracked 文件和 ignored release evidence，按稳定 rule ID 失败且不回显原值', async () => {
     const rootDir = await createRepository()
     await writeTracked(rootDir, 'src/runtime.ts', `
@@ -50,7 +63,9 @@ describe('Meta secret 静态泄漏扫描', () => {
       const payload = { user_data: { em: ["${FIXTURE_VALUES[2]}"], external_id: ["${FIXTURE_VALUES[7]}"] } }
     `)
     await writeTracked(rootDir, 'migrations/unsafe.sql', `
-      CREATE TABLE unsafe_meta_match (client_ip_address TEXT, client_user_agent TEXT, fbp TEXT, fbc TEXT);
+      CREATE TABLE unsafe_ad_match (
+        client_ip_address TEXT, client_user_agent TEXT, fbp TEXT, fbc TEXT, ttclid TEXT, ttp TEXT
+      );
     `)
     await writeIgnoredEvidence(rootDir, 'reports/release-verification/latest.json', {
       rawEmail: FIXTURE_VALUES[2],
@@ -116,15 +131,20 @@ describe('Meta secret 静态泄漏扫描', () => {
     await writeTracked(rootDir, 'src/unsafe-secrets.ts', `
       const META_CAPI_ACCESS_TOKEN = "${FIXTURE_VALUES[8]}"
       const config = { "META_CAPI_DATA_KEY_CURRENT": "${FIXTURE_VALUES[0]}" }
+      const TIKTOK_EVENTS_ACCESS_TOKEN = "${FIXTURE_VALUES[1]}"
     `)
     await writeTracked(rootDir, 'src/safe-secrets.ts', `
       const META_CAPI_ACCESS_TOKEN = env.META_CAPI_ACCESS_TOKEN
       const META_CAPI_DATA_KEY_CURRENT = currentDataKey
       const status = { META_CAPI_TEST_EVENT_CODE: "configured" }
       const docs = { META_CAPI_DATA_KEY_PREVIOUS: "<set-in-secret-manager>" }
+      const TIKTOK_EVENTS_ACCESS_TOKEN = env.TIKTOK_EVENTS_ACCESS_TOKEN
+      const TIKTOK_EVENTS_DATA_KEY_CURRENT = currentTikTokDataKey
+      const tiktokDocs = { TIKTOK_EVENTS_DATA_KEY_PREVIOUS: "<set-in-secret-manager>" }
     `)
     await writeTracked(rootDir, 'config/unsafe.json', JSON.stringify({
       META_CAPI_DATA_KEY_PREVIOUS: FIXTURE_VALUES[8],
+      TIKTOK_EVENTS_DATA_KEY_CURRENT: FIXTURE_VALUES[0],
     }))
     await gitAdd(rootDir, ['.gitignore', 'src/unsafe-secrets.ts', 'src/safe-secrets.ts', 'config/unsafe.json'])
 
@@ -261,6 +281,13 @@ describe('Meta secret 静态泄漏扫描', () => {
       'src/raw-external-id-array.ts': 'const payload = { user_data: { external_id: [input.externalId] } }',
       'src/raw-getter.ts': 'const payload = { user_data: { em: getRawEmail(), external_id: [readRawExternalId()] } }',
       'src/mixed-dynamic-array.ts': 'const payload = { user_data: { em: [validatedEmailHash, rawEmail] } }',
+      'src/combined-guard.ts': [
+        'const payload = { user_data: {',
+        '  external_id: includeAdvancedMatching && validSha256(input.externalIdSha256)',
+        '    ? input.externalIdSha256',
+        '    : undefined,',
+        '} }',
+      ].join('\n'),
     }
     for (const [file, content] of Object.entries(unsafeFiles)) await writeTracked(rootDir, file, content)
     await writeTracked(rootDir, 'src/proven-hashes.ts', [
@@ -298,6 +325,20 @@ describe('Meta secret 静态泄漏扫描', () => {
     )), false)
   })
 
+  it('真实 TikTok Events API payload 的 validSha256 guard 可通过仓库 scanner', async () => {
+    const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+
+    const report = await scanMetaSecretLeaks({
+      rootDir,
+      trackedFiles: ['packages/api/src/services/tiktok-events.ts'],
+    })
+
+    assert.equal(report.findings.some(finding => (
+      finding.path === 'packages/api/src/services/tiktok-events.ts'
+      && finding.ruleId === 'META_CAPI_MATCH_UNHASHED'
+    )), false)
+  })
+
   it('SQL 仅按去注释后的写目标豁免 secure outbox', async () => {
     const rootDir = await createRepository()
     const unsafeStatements = {
@@ -308,7 +349,7 @@ describe('Meta secret 静态泄漏扫描', () => {
     }
     for (const [file, sql] of Object.entries(unsafeStatements)) await writeTracked(rootDir, file, sql)
     await writeTracked(rootDir, 'migrations/safe.sql', `
-      INSERT INTO meta_capi_secure_outbox (client_ip_address)
+      INSERT INTO ad_platform_secure_outbox (client_ip_address)
       SELECT client_ip_address FROM transient_events;
     `)
     await gitAdd(rootDir, ['.gitignore', ...Object.keys(unsafeStatements), 'migrations/safe.sql'])
@@ -325,14 +366,14 @@ describe('Meta secret 静态泄漏扫描', () => {
     const rootDir = await createRepository()
     await writeTracked(rootDir, 'src/multi-statement.ts', [
       'const sql = `',
-      '  INSERT INTO meta_capi_secure_outbox (fbp) VALUES (?);',
+      '  INSERT INTO ad_platform_secure_outbox (fbp) VALUES (?);',
       '  -- UPDATE ignored_comment SET fbc = ?;',
       '  UPDATE profiles SET fbc = ?;',
       '`',
     ].join('\n'))
     await writeTracked(rootDir, 'src/comment-only.ts', [
       'const sql = `',
-      '  INSERT INTO meta_capi_secure_outbox (client_ip_address) VALUES (?);',
+      '  INSERT INTO ad_platform_secure_outbox (client_ip_address) VALUES (?);',
       '  /* UPDATE profiles SET client_user_agent = ?; */',
       '`',
     ].join('\n'))
@@ -455,6 +496,17 @@ describe('Meta secret 静态泄漏扫描', () => {
       { path: 'reports/release-verification/contextual-match.json', ruleId: 'META_EVIDENCE_BROWSER_ID' },
       { path: 'reports/release-verification/contextual-match.json', ruleId: 'META_EVIDENCE_RAW_USER_AGENT' },
     ])
+  })
+
+  it('evidence 同样拒绝 TikTok ttclid 与 _ttp 原始值', async () => {
+    const rootDir = await createRepository()
+    await writeIgnoredEvidence(rootDir, 'reports/release-verification/tiktok.json', {
+      ttclid: 'tiktok-click-private',
+      _ttp: 'tiktok-browser-private',
+    })
+    const result = await scanMetaSecretLeaks({ rootDir })
+    assert.equal(result.status, 'failed')
+    assert.ok(result.findings.some(finding => finding.ruleId === 'META_EVIDENCE_BROWSER_ID'))
   })
 
   it('evidence 字段上下文只放行精确受控脱敏占位符', async () => {

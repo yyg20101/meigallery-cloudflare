@@ -6,10 +6,10 @@ const artifactDir = 'test-results/admin-attribution'
 type AttributionRequest = { path: string; query: Record<string, string> }
 
 const singleDayEndpointQueries = new Map<string, Record<string, string>>([
-  ['/api/admin/attribution/summary', { from: '2026-07-10', to: '2026-07-10' }],
-  ['/api/admin/attribution/trends', { from: '2026-07-10', to: '2026-07-10', granularity: 'day' }],
-  ['/api/admin/attribution/quality', { from: '2026-07-10', to: '2026-07-10' }],
-  ['/api/admin/attribution/breakdown', { from: '2026-07-10', to: '2026-07-10', dimension: 'utm_campaign', limit: '8' }],
+  ['/api/admin/attribution/summary', { from: '2026-07-10', to: '2026-07-10', provider: 'meta' }],
+  ['/api/admin/attribution/trends', { from: '2026-07-10', to: '2026-07-10', provider: 'meta', granularity: 'day' }],
+  ['/api/admin/attribution/quality', { from: '2026-07-10', to: '2026-07-10', provider: 'meta' }],
+  ['/api/admin/attribution/breakdown', { from: '2026-07-10', to: '2026-07-10', provider: 'meta', dimension: 'utm_campaign', limit: '8' }],
   ['/api/admin/attribution/meta/status', { from: '2026-07-10', to: '2026-07-10' }],
   ['/api/admin/attribution/platforms', { from: '2026-07-10', to: '2026-07-10' }],
   ['/api/admin/attribution/readiness', { from: '2026-07-10', to: '2026-07-10' }],
@@ -30,14 +30,14 @@ test('共享单日 query、五区证据轨与 Meta 操作错误态', async ({ pa
     'connection', 'business', 'delivery', 'quality', 'rollout',
   ])
   const rail = page.locator('[data-evidence-rail]')
-  for (const label of ['站内事实', 'Pixel 尝试', 'CAPI 接收', 'Meta 质量']) await expect(rail).toContainText(label)
+  for (const label of ['站内事实', 'Pixel 尝试', 'Server API 接收', '平台质量']) await expect(rail).toContainText(label)
 
-  const fbpPath = page.locator('[data-trend-path][data-series-key="fbp.rate"]')
+  const fbpPath = page.locator('[data-trend-path][data-series-key="browserId.rate"]')
   await expect(fbpPath).toHaveCount(1)
   const fbpPathData = await fbpPath.getAttribute('d') || ''
   expect(fbpPathData.match(/\bM\b/g)).toHaveLength(2)
   expect(fbpPathData).not.toMatch(/\bL\b/)
-  await expect(page.locator('[data-trend-marker][data-series-key="fbp.rate"]')).toHaveCount(2)
+  await expect(page.locator('[data-trend-marker][data-series-key="browserId.rate"]')).toHaveCount(2)
   await expect(page.locator('[data-attribution-chart]', { has: fbpPath })).toHaveAttribute('aria-label', /fbp .*缺失 1 个样本，缺失处不连线且不显示数据点/)
 
   const legendContracts = await page.locator('[data-attribution-trend]').evaluateAll(panels => panels.flatMap(panel => (
@@ -86,12 +86,12 @@ test('共享单日 query、五区证据轨与 Meta 操作错误态', async ({ pa
   expect(await paths.count()).toBeGreaterThan(0)
   for (const path of await paths.all()) expect((await path.getAttribute('d'))?.trim().length).toBeGreaterThan(2)
   await expect(page.locator('[data-trend-marker]').first()).toBeVisible()
-  await expect(page.getByText('尚未取得 Meta 质量数据')).toBeVisible()
+  await expect(page.getByText('尚未取得平台质量数据')).toBeVisible()
   await expect(page.getByText('Meta 质量 0 分')).toHaveCount(0)
 
   await request.patch(`${apiURL}/api/test/admin-attribution-dataset-scenario`, { data: { scenario: 'error' } })
   await page.reload()
-  await expect(page.getByText('Meta 质量数据采集失败')).toBeVisible()
+  await expect(page.getByText('平台质量数据采集失败')).toBeVisible()
 
   const forceReason = '当前已核对投递指标与回退方案确认由站长承担本次灰度升级风险并持续观察'
   const hardBlocked = await request.post(`${apiURL}/api/admin/attribution/meta/rollout`, {
@@ -209,4 +209,24 @@ test('多视口无 document overflow、控件重叠且保留可滚动表格', as
   expect(layout.chartScrollable).toBe(viewport!.width < 768)
   expect(layout.chartScrollMoved).toBe(viewport!.width < 768)
   await page.screenshot({ path: `${artifactDir}/${testInfo.project.name}.png`, fullPage: true })
+})
+
+test('TikTok 平台只展示独立配置、资源状态与发布检查', async ({ page }, testInfo) => {
+  mkdirSync(artifactDir, { recursive: true })
+  await page.goto('/admin/attribution?provider=tiktok&range=7d')
+
+  await expect(page.getByText('TikTok Pixel ID', { exact: true })).toBeVisible()
+  await expect(page.getByText('Events API rollout 与发布检查')).toBeVisible()
+  await expect(page.getByText('Events API Queue 已配置')).toBeVisible()
+  await expect(page.getByText('Events API 数据密钥已配置')).toBeVisible()
+  await expect(page.getByText('Meta Dataset ID')).toHaveCount(0)
+  await expect(page.getByText('Meta 运维状态')).toHaveCount(0)
+  await expect(page.getByText('incident 记录')).toHaveCount(0)
+
+  const layout = await page.evaluate(() => ({
+    viewportWidth: document.documentElement.clientWidth,
+    contentWidth: document.documentElement.scrollWidth,
+  }))
+  expect(layout.contentWidth).toBeLessThanOrEqual(layout.viewportWidth + 1)
+  await page.screenshot({ path: `${artifactDir}/${testInfo.project.name}-tiktok.png`, fullPage: true })
 })

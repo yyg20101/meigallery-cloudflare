@@ -81,39 +81,18 @@ export type ActiveConversionActionType = Extract<
   'contact' | 'complete_registration'
 >
 
-export type ConversionMetaEventName =
-  | 'Contact'
-  | 'Lead'
-  | 'CompleteRegistration'
-
-export type ActiveMetaEventName = Extract<
-  ConversionMetaEventName,
-  'Contact' | 'CompleteRegistration'
->
-
 export type AdPlatformProvider = 'meta' | 'tiktok' | 'google'
+
+/** 当前已具备可信来源路由能力的广告平台。 */
+export type AdAttributionProvider = Extract<AdPlatformProvider, 'meta' | 'tiktok'>
 
 export type AdDeliveryTransport = 'browser' | 'server'
 
-export type ActiveAdPlatformEventName = ActiveMetaEventName
+export type AdPlatformConversionEventName = 'Contact' | 'CompleteRegistration'
 
 export type AdPlatformTrackingMode = 'disabled' | 'test' | 'production'
 
-export type MetaTrackingMode = AdPlatformTrackingMode
-
-export type MetaCapiRolloutPercentage = 0 | 10 | 50 | 100
-
-export type MetaCapiIncidentStatus = 'open' | 'closed'
-
-export type MetaCapiIncidentSeverity = 'warning' | 'critical'
-
-export interface MetaCapiRolloutDecision {
-  targetPercentage: MetaCapiRolloutPercentage
-  effectivePercentage: MetaCapiRolloutPercentage
-  bucket: number | null
-  included: boolean
-  reason: 'included' | 'rollout_excluded' | 'circuit_open' | 'missing_stable_id'
-}
+export type AdPlatformRolloutPercentage = 0 | 10 | 50 | 100
 
 export type PublicConversionActionType = Extract<ActiveConversionActionType, 'contact'>
 
@@ -128,17 +107,19 @@ export interface AdBrowserInstruction {
   receiptToken: string
 }
 
-/** 仅允许在内存中短暂持有的 CAPI 用户匹配上下文。 */
-export interface MetaCapiSensitiveContext {
+/** 仅允许在内存或短期密文中持有的广告平台用户匹配上下文。 */
+export interface AdPlatformSensitiveContext {
   fbp?: string
   fbc?: string
+  ttclid?: string
+  ttp?: string
   clientIpAddress?: string
   clientUserAgent?: string
   emailSha256?: string
   externalIdSha256?: string
 }
 
-export interface MetaCapiEncryptedEnvelope {
+export interface AdPlatformEncryptedEnvelope {
   keyId: string
   iv: string
   ciphertext: string
@@ -146,10 +127,10 @@ export interface MetaCapiEncryptedEnvelope {
   expiresAt: string
 }
 
-export interface MetaCapiQueueMessage {
+export interface AdPlatformQueueMessage {
   schemaVersion: 2
   deliveryId: string
-  envelope: MetaCapiEncryptedEnvelope
+  envelope: AdPlatformEncryptedEnvelope
 }
 
 export type ConversionSkipReason =

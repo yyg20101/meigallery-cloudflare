@@ -184,6 +184,7 @@ describe('发布验证 D1 摘要存储', () => {
       { ...bootstrap, environmentIsolation: { ...bootstrap.environmentIsolation, pixel: true } },
       { ...metaResourcesSummary('post-deploy'), verificationPhase: 'bootstrap' },
       { ...metaResourcesSummary('full'), verificationPhase: 'post-deploy' },
+      { ...metaResourcesSummary('full'), liveAttestation: true },
     ]) {
       assert.throws(() => assertReleaseVerificationSummary({
         environment: 'production', verificationType: 'meta_resources', commit: COMMIT, summary,
@@ -257,7 +258,7 @@ function metaResourcesSummary(phase = 'full') {
     schemaVersion: 2,
     verificationPhase: phase,
     bootstrapReady: bootstrap,
-    liveAttestation: !bootstrap,
+    liveAttestation: postDeploy,
     migrationsReady: true,
     d1Ready: true,
     r2Ready: true,

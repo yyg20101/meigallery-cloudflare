@@ -5,7 +5,7 @@ import { runCommand } from './release-verification-lib.mjs'
 
 const ROOT_DIR = fileURLToPath(new URL('../', import.meta.url))
 const PRE_MIGRATION_FILE = 'pre-0039.sql'
-const ALL_MIGRATIONS_FILE = 'empty-0001-0047.sql'
+const ALL_MIGRATIONS_FILE = 'empty-0001-0050.sql'
 const FOLLOW_UP_MIGRATIONS = [
   '0039_meta_capi_v2_operations.sql',
   '0040_meta_capi_circuit_indexes.sql',
@@ -16,6 +16,9 @@ const FOLLOW_UP_MIGRATIONS = [
   '0045_meta_live_production.sql',
   '0046_meta_live_match_coverage.sql',
   '0047_ad_platform_delivery_core.sql',
+  '0048_tiktok_pixel_connection.sql',
+  '0049_tiktok_events_api.sql',
+  '0050_strict_ad_source_routing.sql',
 ]
 const REMOTE_PREFLIGHT_CONFIG = {
   dev: {
@@ -69,7 +72,7 @@ export async function runMetaMigrationVerification(options = {}) {
     await rm(stateDir, { recursive: true, force: true })
     await mkdir(stateDir, { recursive: true })
     await writeFile(preMigrationPath, await buildPreMigrationSql(migrationDir))
-    await writeFile(allMigrationsPath, await buildMigrationSql(migrationDir, 47))
+    await writeFile(allMigrationsPath, await buildMigrationSql(migrationDir, 50))
 
     if (!await runD1Step(runCommandFn, rootDir, oldPersistTo, 'meta-migration-apply-0001-0038', [
       '--file', preMigrationRelativePath,
@@ -115,6 +118,22 @@ export async function runMetaMigrationVerification(options = {}) {
         ['--command', seedPost0039Sql(), '--yes'],
         steps,
       )) return failedResult(steps, stateDir, undefined, duplicateGroupCount)
+      if (number === '0048' && !await runD1Step(
+        runCommandFn,
+        rootDir,
+        oldPersistTo,
+        'meta-migration-seed-0049-bridge',
+        ['--command', seedPre0049BridgeSql(), '--yes'],
+        steps,
+      )) return failedResult(steps, stateDir, undefined, duplicateGroupCount)
+      if (number === '0049' && !await runD1Step(
+        runCommandFn,
+        rootDir,
+        oldPersistTo,
+        'meta-migration-exercise-0049-bridge',
+        ['--command', exercise0049BridgeSql(), '--yes'],
+        steps,
+      )) return failedResult(steps, stateDir, undefined, duplicateGroupCount)
     }
 
     const historyStep = await runD1Step(runCommandFn, rootDir, oldPersistTo, 'meta-migration-query-history', [
@@ -136,7 +155,7 @@ export async function runMetaMigrationVerification(options = {}) {
       schema: parseWranglerResults(schemaStep.stdout, 'schema 查询'),
     })
 
-    if (!await runD1Step(runCommandFn, rootDir, emptyPersistTo, 'meta-migration-empty-apply-0001-0047', [
+    if (!await runD1Step(runCommandFn, rootDir, emptyPersistTo, 'meta-migration-empty-apply-0001-0050', [
       '--file', allMigrationsRelativePath,
       '--yes',
     ], steps)) return failedResult(steps, stateDir, undefined, duplicateGroupCount)
@@ -300,13 +319,48 @@ function seedPost0039Sql() {
   ].join('\n')
 }
 
+function seedPre0049BridgeSql() {
+  return [
+    `INSERT INTO users (email, password_hash, meta_external_id) VALUES ('bridge-existing@invalid.local', 'hash_bridge_existing', '${'1'.repeat(32)}');`,
+    "INSERT INTO analytics_conversion_actions (id, action_type, dedupe_key, occurred_at, date, visitor_id, session_id) VALUES ('action_bridge_meta', 'contact', 'contact:bridge-meta', '2026-07-13T00:00:00.000Z', '2026-07-13', 'visitor_bridge_meta', 'session_bridge_meta');",
+    "INSERT INTO analytics_conversion_deliveries (id, conversion_action_id, provider, transport, external_event_id, event_name, status, tracking_mode, encryption_key_id) VALUES ('delivery_bridge_meta', 'action_bridge_meta', 'meta', 'server', 'meta:Contact:bridge', 'Contact', 'pending', 'production', 'bridge-key');",
+    "INSERT INTO meta_capi_secure_outbox (delivery_id, schema_version, key_id, iv, ciphertext, tag, expires_at) VALUES ('delivery_bridge_meta', 2, 'bridge-key', 'legacy-iv', 'legacy-ciphertext', 'legacy-tag', '2026-07-14T00:00:00.000Z');",
+  ].join('\n')
+}
+
+function exercise0049BridgeSql() {
+  return [
+    'PRAGMA recursive_triggers = ON;',
+    `UPDATE users SET meta_external_id = '${'2'.repeat(32)}' WHERE email = 'bridge-existing@invalid.local';`,
+    `UPDATE users SET conversion_external_id = '${'3'.repeat(32)}' WHERE email = 'bridge-existing@invalid.local';`,
+    `INSERT INTO users (email, password_hash, meta_external_id) VALUES ('bridge-legacy@invalid.local', 'hash_bridge_legacy', '${'4'.repeat(32)}');`,
+    `INSERT INTO users (email, password_hash, conversion_external_id) VALUES ('bridge-current@invalid.local', 'hash_bridge_current', '${'5'.repeat(32)}');`,
+    "UPDATE meta_capi_secure_outbox SET ciphertext = 'legacy-update' WHERE delivery_id = 'delivery_bridge_meta';",
+    "UPDATE ad_platform_secure_outbox SET tag = 'current-update' WHERE delivery_id = 'delivery_bridge_meta' AND provider = 'meta';",
+    "DELETE FROM meta_capi_secure_outbox WHERE delivery_id = 'delivery_bridge_meta';",
+    "INSERT INTO ad_platform_secure_outbox (delivery_id, provider, schema_version, key_id, iv, ciphertext, tag, expires_at) VALUES ('delivery_bridge_meta', 'meta', 2, 'current-key', 'current-iv', 'current-ciphertext', 'current-tag', '2026-07-15T00:00:00.000Z');",
+    "DELETE FROM ad_platform_secure_outbox WHERE delivery_id = 'delivery_bridge_meta' AND provider = 'meta';",
+    "INSERT INTO meta_capi_secure_outbox (delivery_id, schema_version, key_id, iv, ciphertext, tag, expires_at) VALUES ('delivery_bridge_meta', 2, 'final-key', 'final-iv', 'final-ciphertext', 'final-tag', '2026-07-16T00:00:00.000Z');",
+  ].join('\n')
+}
+
 function historyQuerySql() {
   return `
 SELECT
   (SELECT COUNT(*) FROM analytics_conversion_actions WHERE id = 'action_legacy' AND action_type = 'contact') AS action_count,
   (SELECT COUNT(*) FROM analytics_conversion_deliveries WHERE conversion_action_id = 'action_legacy') AS delivery_count,
   (SELECT COUNT(*) FROM meta_connection_verifications WHERE environment = 'dev') AS verification_count,
-  (SELECT COUNT(*) FROM meta_capi_secure_outbox) AS outbox_count,
+  (SELECT COUNT(*) FROM ad_platform_secure_outbox WHERE provider = 'meta') AS outbox_count,
+  (SELECT COUNT(*) FROM meta_capi_secure_outbox) AS bridge_outbox_count,
+  (SELECT COUNT(*) FROM users WHERE email IN (
+    'bridge-existing@invalid.local', 'bridge-legacy@invalid.local', 'bridge-current@invalid.local'
+  ) AND meta_external_id = conversion_external_id) AS bridge_identity_count,
+  (SELECT COUNT(*) FROM ad_platform_secure_outbox current_outbox
+    JOIN meta_capi_secure_outbox legacy_outbox ON legacy_outbox.delivery_id = current_outbox.delivery_id
+    WHERE current_outbox.delivery_id = 'delivery_bridge_meta' AND current_outbox.provider = 'meta'
+      AND current_outbox.key_id = legacy_outbox.key_id AND current_outbox.iv = legacy_outbox.iv
+      AND current_outbox.ciphertext = legacy_outbox.ciphertext AND current_outbox.tag = legacy_outbox.tag
+      AND current_outbox.expires_at = legacy_outbox.expires_at) AS bridge_outbox_match,
   (SELECT COUNT(*) FROM analytics_conversion_dedupe_claims WHERE owner_action_id = 'action_legacy') AS claim_count,
   (SELECT COUNT(*) FROM meta_capi_incidents WHERE id = 'incident_legacy') AS incident_count,
   (SELECT COUNT(*) FROM meta_dataset_quality_snapshots WHERE id = 'quality_legacy') AS quality_count,
@@ -327,8 +381,30 @@ SELECT
   (SELECT COUNT(*) FROM pragma_index_list('analytics_conversion_deliveries') WHERE name = 'idx_conversion_delivery_action_destination' AND [unique] = 1) AS delivery_unique_index,
   (SELECT COUNT(*) FROM pragma_index_list('analytics_conversion_deliveries') WHERE name = 'idx_conversion_delivery_provider_external' AND [unique] = 1) AS provider_external_unique_index,
   (SELECT COUNT(*) FROM pragma_table_info('analytics_conversion_deliveries') WHERE name IN ('provider', 'transport', 'connection_revision')) AS ad_platform_core_columns,
+  (SELECT COUNT(*) FROM pragma_table_info('analytics_conversion_deliveries') WHERE name IN ('has_ttclid', 'has_ttp')) AS tiktok_match_columns,
   (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = 'ad_platform_connections') AS connection_table,
+  (SELECT COUNT(*) FROM ad_platform_connections WHERE provider = 'tiktok') AS tiktok_connection,
+  (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = 'tiktok_connection_verifications') AS tiktok_verification_table,
+  (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = 'ad_platform_secure_outbox') AS secure_outbox_table,
+  (SELECT COUNT(*) FROM pragma_table_info('ad_platform_secure_outbox') WHERE name = 'provider' AND upper(type) = 'TEXT' AND [notnull] = 1) AS secure_outbox_provider_column,
+  (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'index' AND name = 'idx_ad_platform_secure_outbox_provider_expiry') AS secure_outbox_index,
+  (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = 'meta_capi_secure_outbox') AS legacy_secure_outbox_table,
+  (SELECT COUNT(*) FROM pragma_table_info('users') WHERE name = 'conversion_external_id') AS conversion_external_id_column,
+  (SELECT COUNT(*) FROM pragma_table_info('users') WHERE name = 'meta_external_id') AS legacy_meta_external_id_column,
+  (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'trigger' AND name GLOB 'trg_0049_bridge_*') AS bridge_trigger_count,
+  (SELECT COUNT(*) FROM pragma_index_list('users') WHERE name = 'idx_users_conversion_external_id' AND [unique] = 1) AS conversion_external_id_index,
   (SELECT COUNT(*) FROM pragma_table_info('analytics_conversion_deliveries') WHERE name IN ('channel', 'meta_connection_revision')) AS legacy_delivery_columns,
+  (SELECT COUNT(*) FROM pragma_table_info('analytics_tracking_sources')
+    WHERE name = 'ad_provider' AND upper(type) = 'TEXT' AND [notnull] = 1 AND dflt_value = "''") AS tracking_source_provider_column,
+  (SELECT COUNT(*) FROM pragma_table_info('analytics_conversion_actions')
+    WHERE name = 'attribution_provider' AND upper(type) = 'TEXT' AND [notnull] = 1 AND dflt_value = "''") AS action_attribution_provider_column,
+  (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'index' AND name = 'idx_tracking_sources_ad_provider') AS tracking_source_provider_index,
+  (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'index' AND name = 'idx_conversion_actions_attribution_provider') AS action_attribution_provider_index,
+  (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'trigger' AND name IN (
+    'trg_0050_delivery_provider_insert_guard',
+    'trg_0050_delivery_provider_update_guard',
+    'trg_0050_action_provider_immutable'
+  )) AS strict_routing_trigger_count,
   (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = 'meta_live_challenges') AS challenge_table,
   (SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = 'meta_live_challenges') AS challenge_table_sql,
   (SELECT COUNT(*) FROM sqlite_schema WHERE type = 'index' AND name = 'idx_meta_live_challenges_expiry') AS challenge_index,
@@ -387,7 +463,10 @@ function assertMigrationResult({ history, schema }) {
     row?.connection_count,
   ].some(value => value !== 1)
   || row?.delivery_count !== 0
-  || row?.outbox_count !== 0
+  || row?.outbox_count !== 1
+  || row?.bridge_outbox_count !== 1
+  || row?.bridge_identity_count !== 3
+  || row?.bridge_outbox_match !== 1
   || row?.legacy_setting_count !== 0) {
     throw new Error('业务事实或统一广告平台迁移结果不正确')
   }
@@ -403,8 +482,24 @@ function assertSchemaResult(rows) {
     || row?.delivery_unique_index !== 1
     || row?.provider_external_unique_index !== 1
     || row?.ad_platform_core_columns !== 3
+    || row?.tiktok_match_columns !== 2
     || row?.connection_table !== 1
+    || row?.tiktok_connection !== 1
+    || row?.tiktok_verification_table !== 1
+    || row?.secure_outbox_table !== 1
+    || row?.secure_outbox_provider_column !== 1
+    || row?.secure_outbox_index !== 1
+    || row?.legacy_secure_outbox_table !== 1
+    || row?.conversion_external_id_column !== 1
+    || row?.legacy_meta_external_id_column !== 1
+    || row?.bridge_trigger_count !== 8
+    || row?.conversion_external_id_index !== 1
     || row?.legacy_delivery_columns !== 0
+    || row?.tracking_source_provider_column !== 1
+    || row?.action_attribution_provider_column !== 1
+    || row?.tracking_source_provider_index !== 1
+    || row?.action_attribution_provider_index !== 1
+    || row?.strict_routing_trigger_count !== 3
     || row?.delivery_lease_index !== 1
     || row?.delivery_lease_token_column !== 1
     || row?.delivery_lease_expires_column !== 1
@@ -417,7 +512,7 @@ function assertSchemaResult(rows) {
     || row?.challenge_match_coverage_columns !== 3
     || ['challenge_table', 'challenge_index', 'ticket_table', 'ticket_index', 'incident_table', 'quality_table']
       .some(field => row?.[field] !== 1)) {
-    throw new Error('Meta/广告平台 0040-0047 schema 不完整')
+    throw new Error('Meta/TikTok 广告平台 0040-0050 schema 不完整')
   }
 }
 

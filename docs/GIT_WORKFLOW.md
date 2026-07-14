@@ -44,19 +44,17 @@ main (生产)
 
 ### 发布上线
 
-常规发布遵循既有 release 流程。涉及 Meta 正式投放时，以下顺序是额外且强制的放行链，`Contact`、`Lead`、`CompleteRegistration` 是唯一正式 Meta 事件，`StartTrial` 不支持：
+常规发布遵循以下放行链。`Contact`、`Lead`、`CompleteRegistration` 是唯一正式 Meta 事件，`StartTrial` 不支持：
 
-1. 从 `dev` 创建发布分支：`git checkout -b release/v0.x.0 dev`，保持 `ad_platform_connections.mode=disabled`、`ad_platform_connections.server_enabled=false` 的代码关闭态。
-2. 在发布分支完成本地 migration、测试、dry-run；部署最终 production commit 后保持 test 模式与 rollout `0`，生成 `Contact`、`CompleteRegistration` 的 strict production live evidence。
-3. 只有明确获得上线授权后才创建或核验 production Queue `meigallery-meta-capi`、DLQ `meigallery-meta-capi-dlq`、consumer 与独立 secret；dev 不配置这些资源。
-4. 创建 PR 合入 `main`，并对 production D1 应用 migration；迁移后仍保持 mode `disabled` 和 CAPI 开关 `false`。
-5. 切到最终 `main` HEAD，重新部署 production 后生成**同一 commit**的 live evidence；合入前、dev 或其他分支的 evidence 不能复用。
-6. 在最终 `main` HEAD 的干净工作区运行 `META_INITIAL_ROLLOUT=1 corepack pnpm verify:release`；Meta 验证默认读取 production。非当前 commit、超过 24 小时、Dataset Quality pending、open incident 或 production rollout 非 0 均必须阻断。
-7. 确认 `./scripts/deploy.sh production` 的 production gate 读取到同 commit 通过报告后，部署生产 API 和 Web。
-8. Owner 在 production 部署后执行 synthetic Test Event；只有硬门禁通过且 Meta 返回 `events_received=1`，才允许从 rollout `0` 手动升到 `10`。部署本身不修改 setting、incident 或 rollout。
-9. 小流量观察 Pixel `attempted`、CAPI `sent`、failed/skipped、DLQ 与去重诊断。`attempted` 只表示浏览器尝试，不能作为 Meta 接收证据。
-10. 任一步失败先关闭 `ad_platform_connections.server_enabled`，再切回 `ad_platform_connections.mode=disabled`；保留 Queue/DLQ、D1 账本和 migration，修复后从 test mode 重新验证。
-11. 部署稳定后打 tag：`git tag v0.x.0`，再将 `main` 合并回 `dev` 并删除发布分支。
+1. 从 `dev` 创建 `release/vX.Y.Z`，完成本地测试、类型检查、构建和 Worker dry-run。
+2. 推送 release 分支，通过 GitHub CI 后以 PR 合入 `main`，生产部署只允许从干净的 `main` 执行。
+3. `./scripts/deploy.sh production` 先只读核验四条广告平台 Queue，再运行 `verify:quick`；任一步失败都不得修改 production D1。
+4. 快速验证通过后应用向后兼容的 expand migration，再运行完整 `verify:release`。迁移必须允许旧 Worker 在发布窗口继续处理 Meta，失败时保留兼容结构但不部署新 Worker。
+5. 完整门禁核验当前 Meta 连接 revision、有效 live evidence、Dataset Quality、新鲜度、incident 和 rollout。普通业务 commit 只绑定本次发布报告，不使已验证的 Meta 连接或证据失效。
+6. 门禁通过后依次部署 API 与 Web，并在部署后严格校验两个 Worker 的 release commit 与当前 `main` HEAD 一致。
+7. 部署脚本不得修改 Meta/TikTok 的 enabled、mode、rollout、incident 或凭证；新接入平台必须保持默认关闭，待独立验证后再人工启用。
+8. 部署后核对 Meta 连接、rollout、Queue/DLQ 和 incident 与部署前一致，并确认 TikTok 仍为关闭态。
+9. 稳定后打 tag，将 `main` 合并回 `dev`，再删除 release 分支。
 
 ### 紧急修复
 

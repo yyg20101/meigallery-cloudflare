@@ -1,4 +1,4 @@
-import type { AnalyticsSourceChannel } from '@meigallery/shared'
+import type { AdAttributionProvider, AnalyticsSourceChannel } from '@meigallery/shared'
 import { generateId } from '../utils/db'
 import { sanitizeAnalyticsPath } from '../utils/analytics-url'
 
@@ -27,6 +27,7 @@ export interface CreateTrackingSourceInput {
   utmMedium?: string
   utmCampaign?: string
   utmContent?: string
+  adProvider?: string
   note?: string | null
   createdBy: number
 }
@@ -42,6 +43,7 @@ export interface UpdateTrackingSourceInput {
   utmMedium?: string
   utmCampaign?: string
   utmContent?: string
+  adProvider?: string
   status?: TrackingSourceStatus
   note?: string | null
 }
@@ -58,6 +60,7 @@ export interface TrackingSourceItem {
   utmMedium: string
   utmCampaign: string
   utmContent: string
+  adProvider: AdAttributionProvider | ''
   status: TrackingSourceStatus
   note: string
   createdBy: number
@@ -87,6 +90,7 @@ interface TrackingSourceRow {
   utm_medium: string
   utm_campaign: string
   utm_content?: string
+  ad_provider: string
   status: TrackingSourceStatus
   note: string
   created_by: number
@@ -125,16 +129,17 @@ export async function createTrackingSource(db: TrackingSourceDb, input: CreateTr
   const utmMedium = normalizeUtmValue(input.utmMedium || defaultUtmMedium(channel), 'utm_medium')
   const utmCampaign = normalizeOptionalUtmValue(input.utmCampaign || slug, 'utm_campaign')
   const utmContent = normalizeOptionalUtmValue(input.utmContent, 'utm_content')
+  const adProvider = normalizeAdProvider(channel, input.adProvider)
   const note = normalizeOptionalText(input.note, 500)
 
   await assertUniqueTrackingSource(db, slug, utmSource)
   await db.prepare(`
     INSERT INTO analytics_tracking_sources (
       id, name, channel, slug, target_path, utm_source, utm_medium,
-      utm_campaign, utm_content, note, created_by
+      utm_campaign, utm_content, ad_provider, note, created_by
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).bind(id, name, channel, slug, targetPath, utmSource, utmMedium, utmCampaign, utmContent, note, input.createdBy).run()
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(id, name, channel, slug, targetPath, utmSource, utmMedium, utmCampaign, utmContent, adProvider, note, input.createdBy).run()
 
   return {
     id,
@@ -148,6 +153,7 @@ export async function createTrackingSource(db: TrackingSourceDb, input: CreateTr
     utmMedium,
     utmCampaign,
     utmContent,
+    adProvider,
     status: 'active',
     note,
     createdBy: input.createdBy,
@@ -160,7 +166,7 @@ export async function createTrackingSource(db: TrackingSourceDb, input: CreateTr
 export async function listTrackingSources(db: TrackingSourceDb): Promise<TrackingSourceItem[]> {
   const rows = await db.prepare(`
     SELECT id, name, channel, slug, target_path, utm_source, utm_medium,
-           utm_campaign, utm_content, status, note, created_by, created_at, updated_at
+           utm_campaign, utm_content, ad_provider, status, note, created_by, created_at, updated_at
     FROM analytics_tracking_sources
     ORDER BY created_at DESC
   `).all<TrackingSourceRow>()
@@ -175,7 +181,7 @@ export async function listTrackingSourcesWithMetrics(
   const rows = await db.prepare(`
     SELECT
       ats.id, ats.name, ats.channel, ats.slug, ats.target_path, ats.utm_source,
-      ats.utm_medium, ats.utm_campaign, ats.utm_content, ats.status, ats.note, ats.created_by,
+      ats.utm_medium, ats.utm_campaign, ats.utm_content, ats.ad_provider, ats.status, ats.note, ats.created_by,
       ats.created_at, ats.updated_at,
       COALESCE(SUM(ads.visitor_count), 0) AS visitor_count,
       COALESCE(SUM(ads.session_count), 0) AS session_count,
@@ -191,7 +197,7 @@ export async function listTrackingSourcesWithMetrics(
      AND ads.source_name = ats.utm_source
     GROUP BY
       ats.id, ats.name, ats.channel, ats.slug, ats.target_path, ats.utm_source,
-      ats.utm_medium, ats.utm_campaign, ats.utm_content, ats.status, ats.note, ats.created_by,
+      ats.utm_medium, ats.utm_campaign, ats.utm_content, ats.ad_provider, ats.status, ats.note, ats.created_by,
       ats.created_at, ats.updated_at
     ORDER BY session_count DESC, ats.created_at DESC
   `).bind(range.from, range.to).all<TrackingSourceMetricRow>()
@@ -218,17 +224,24 @@ export async function updateTrackingSource(db: TrackingSourceDb, id: string, inp
   if (input.utmSource !== undefined && normalizeUtmValue(input.utmSource, 'utm_source') !== before.utmSource) {
     throw new TrackingSourceError(400, 'utm_source 与来源 code 绑定，创建后不能修改')
   }
+  if (input.channel !== undefined && normalizeChannel(input.channel) !== before.channel) {
+    throw new TrackingSourceError(400, '来源渠道创建后不能修改；如需更换渠道，请创建新来源并停用旧来源')
+  }
+  if (input.adProvider !== undefined && normalizeAdProvider(before.channel, input.adProvider) !== before.adProvider) {
+    throw new TrackingSourceError(400, '广告平台创建后不能修改；如需更换平台，请创建新来源并停用旧来源')
+  }
   const next = {
     name: input.sourceLabel === undefined && input.name === undefined
       ? before.name
       : normalizeRequiredText(input.sourceLabel ?? input.name, '来源自定义文案', 80),
-    channel: input.channel === undefined ? before.channel : normalizeChannel(input.channel),
+    channel: before.channel,
     slug: before.slug,
     targetPath: input.targetPath === undefined ? before.targetPath : normalizeTargetPath(input.targetPath),
     utmSource: before.utmSource,
     utmMedium: input.utmMedium === undefined ? before.utmMedium : normalizeUtmValue(input.utmMedium, 'utm_medium'),
     utmCampaign: input.utmCampaign === undefined ? before.utmCampaign : normalizeOptionalUtmValue(input.utmCampaign, 'utm_campaign'),
     utmContent: input.utmContent === undefined ? before.utmContent : normalizeOptionalUtmValue(input.utmContent, 'utm_content'),
+    adProvider: before.adProvider,
     status: input.status ?? before.status,
     note: input.note === undefined ? before.note : normalizeOptionalText(input.note, 500),
   }
@@ -238,7 +251,7 @@ export async function updateTrackingSource(db: TrackingSourceDb, id: string, inp
   await db.prepare(`
     UPDATE analytics_tracking_sources
     SET name = ?, channel = ?, slug = ?, target_path = ?, utm_source = ?,
-        utm_medium = ?, utm_campaign = ?, utm_content = ?, status = ?, note = ?,
+        utm_medium = ?, utm_campaign = ?, utm_content = ?, ad_provider = ?, status = ?, note = ?,
         updated_at = datetime('now')
     WHERE id = ?
   `).bind(
@@ -250,6 +263,7 @@ export async function updateTrackingSource(db: TrackingSourceDb, id: string, inp
     next.utmMedium,
     next.utmCampaign,
     next.utmContent,
+    next.adProvider,
     next.status,
     next.note,
     id,
@@ -287,6 +301,7 @@ export function safeTrackingSourceAuditValue(source: Partial<TrackingSourceItem>
     utmMedium: source.utmMedium,
     utmCampaign: source.utmCampaign,
     utmContent: source.utmContent,
+    adProvider: source.adProvider,
     status: source.status,
     note: source.note,
   }
@@ -305,6 +320,7 @@ function serializeTrackingSource(row: TrackingSourceRow): TrackingSourceItem {
     utmMedium: row.utm_medium,
     utmCampaign: row.utm_campaign,
     utmContent: row.utm_content ?? '',
+    adProvider: normalizeStoredAdProvider(row.ad_provider),
     status: row.status,
     note: row.note,
     createdBy: row.created_by,
@@ -324,7 +340,7 @@ function serializeTrackingSource(row: TrackingSourceRow): TrackingSourceItem {
 async function getTrackingSourceById(db: TrackingSourceDb, id: string): Promise<TrackingSourceItem> {
   const row = await db.prepare(`
     SELECT id, name, channel, slug, target_path, utm_source, utm_medium,
-           utm_campaign, utm_content, status, note, created_by, created_at, updated_at
+           utm_campaign, utm_content, ad_provider, status, note, created_by, created_at, updated_at
     FROM analytics_tracking_sources
     WHERE id = ?
   `).bind(id).first<TrackingSourceRow>()
@@ -404,6 +420,20 @@ function normalizeChannel(value: unknown): TrackingSourceChannel {
   const channel = raw as TrackingSourceChannel
   if (!TRACKING_CHANNELS.has(channel)) throw new TrackingSourceError(400, '推广来源渠道无效')
   return channel
+}
+
+function normalizeAdProvider(channel: TrackingSourceChannel, value: unknown): AdAttributionProvider | '' {
+  const provider = String(value ?? '').trim().toLowerCase()
+  if (channel !== 'ad') {
+    if (provider) throw new TrackingSourceError(400, '仅广告渠道可以绑定广告平台')
+    return ''
+  }
+  if (provider === 'meta' || provider === 'tiktok') return provider
+  throw new TrackingSourceError(400, '广告渠道必须明确绑定 Meta 或 TikTok')
+}
+
+function normalizeStoredAdProvider(value: unknown): AdAttributionProvider | '' {
+  return value === 'meta' || value === 'tiktok' ? value : ''
 }
 
 function normalizeTargetPath(value: unknown) {

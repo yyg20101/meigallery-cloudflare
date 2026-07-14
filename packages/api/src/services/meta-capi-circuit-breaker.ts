@@ -1,3 +1,4 @@
+import type { AdPlatformRolloutPercentage } from '@meigallery/shared'
 import type { Bindings } from '../index'
 import { loadMetaCapiCryptoKeys } from '../utils/meta-capi-crypto'
 import { generateId } from '../utils/db'
@@ -7,7 +8,7 @@ import {
   type MetaCapiIncidentEvidence,
   type MetaIncidentTriggerCode,
 } from './meta-capi-incident-evidence'
-import { normalizeMetaCapiRollout, type MetaCapiRolloutPercentage } from './meta-capi-rollout'
+import { normalizeMetaCapiRollout } from './meta-capi-rollout'
 
 export interface MetaCircuitSnapshot {
   totalAttempts: number
@@ -472,7 +473,7 @@ function runtimeEnvironment(value: unknown): 'dev' | 'production' {
   throw new Error('Meta CAPI incident 环境无效')
 }
 
-async function readTargetRollout(db: D1Database): Promise<MetaCapiRolloutPercentage> {
+async function readTargetRollout(db: D1Database): Promise<AdPlatformRolloutPercentage> {
   const row = await db.prepare(
     "SELECT rollout_percentage FROM ad_platform_connections WHERE provider = 'meta' LIMIT 1",
   ).first<{ rollout_percentage: number }>()
