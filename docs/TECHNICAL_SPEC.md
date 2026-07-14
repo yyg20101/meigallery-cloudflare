@@ -306,9 +306,9 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/admin/attribution/trends?provider=meta\|tiktok` | 按平台返回逐日业务与投递趋势；`provider` 必填 | admin+ |
 | GET | `/api/admin/attribution/quality?provider=meta\|tiktok` | 按平台返回匹配标识覆盖；Meta 额外返回 Dataset Quality，TikTok 明确标记未接入平台质量 API | admin+ |
 | GET | `/api/admin/attribution/breakdown?provider=meta\|tiktok` | 按平台返回 campaign、utm_content 或追踪链接拆分 | admin+ |
-| GET | `/api/admin/attribution/overview` | 归因中心旧总览，展示站内转化、广告来源和重复诊断摘要 | admin+ |
-| GET | `/api/admin/attribution/conversions` | 转化账本趋势、来源分组、事件分组和样本明细 | admin+ |
-| GET | `/api/admin/attribution/links` | 投放追踪链接分析列表，返回可复制 URL、UTM 参数和转化统计；创建和修改仍复用 `/api/admin/tracking-sources` | admin+ |
+| GET | `/api/admin/attribution/overview` | 旧版聚合兼容接口，仅供存量调用迁移；新后台不再使用 | admin+ |
+| GET | `/api/admin/attribution/conversions?provider=meta\|tiktok` | 按平台返回活动转化的来源分组、事件分组和样本明细；不混入无法确认平台的历史口径 | admin+ |
+| GET | `/api/admin/attribution/links?provider=meta\|tiktok` | 按平台返回投放追踪链接、UTM 参数和转化统计；创建和修改仍复用 `/api/admin/tracking-sources` | admin+ |
 | GET | `/api/admin/attribution/meta` | Meta Pixel / CAPI 同步状态，只返回配置存在状态和 delivery 统计，不泄露 secret | admin+ |
 | GET | `/api/admin/attribution/platforms` | 返回 Meta / TikTok 连接、开关、凭证存在性、revision 与验证状态，不返回凭证值 | admin+ |
 | PATCH | `/api/admin/attribution/platforms/:provider` | 原子更新 Meta / TikTok 连接公开配置和开关，写入审计日志 | owner |
@@ -318,7 +318,7 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | POST | `/api/admin/attribution/meta/live-challenge/consume` | 原子消费 challenge，并使用 Browser 同组 ID 真实发送两条 CAPI Test Event | owner |
 | POST | `/api/admin/attribution/meta/resource-attestation-ticket` | Owner Cookie 仅在固定可信 API origin 换取绑定环境、commit、nonce 的 60 秒一次性 ticket | owner |
 | POST | `/api/meta/resource-attestation` | 原子消费一次性 ticket 并返回当前 Worker Meta 资源 HMAC 摘要；不接受 Owner Cookie 作为凭据 | ticket |
-| GET | `/api/admin/attribution/duplicates` | 查看重复点击、重复转化和 Pixel / CAPI 去重诊断 | admin+ |
+| GET | `/api/admin/attribution/duplicates?provider=meta\|tiktok` | 按平台查看 Contact / CompleteRegistration 重复事实和 Browser / Server 去重诊断 | admin+ |
 | GET | `/api/admin/attribution/readiness` | 归因发布检查，展示允许公开的配置项、开关和阻断项 | admin+ |
 | POST | `/api/admin/legacy-import/sources` | 创建旧站来源 | admin+ |
 | POST | `/api/admin/legacy-import/jobs` | 启动旧站迁移 | admin+ |
@@ -624,6 +624,8 @@ INSERT INTO site_settings (key, value) VALUES
 ### 转化账本与归因中心表 `[当前实现]`
 
 归因中心把“站内可信事实”和“外部广告平台同步”分开维护：`analytics_conversion_actions` 是事实源，Pixel / Server API 只是 delivery 渠道。后台 `/admin/analytics` 仍是一方行为分析大盘；广告投放追踪链接、有效联系、完成注册、历史 Lead 对照、按平台投递与匹配覆盖、重复诊断和发布检查统一放在 `/admin/attribution`。
+
+后台归因 UI 使用 `总览 / 转化明细 / 投放链接 / 平台接入 / 发布与诊断` 五页结构。平台选择通过 URL `provider` 显式传递；分析、链接和重复诊断 API 不提供隐式默认平台。平台接入只修改 `ad_platform_connections` 的公开配置，secret 仍由 Cloudflare Secret 管理；Meta 受控 rollout 只能在发布与诊断页通过专属门禁修改，通用连接表单不得绕过。
 
 #### 归因事实所有权 `[当前实现]`
 

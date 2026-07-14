@@ -34,9 +34,9 @@ export const CONTACT_PLATFORMS: Record<string, ContactPlatformConfig> = {
     color: '#26A5E4',
     supportsQr: false,
     supportsLink: true,
-    linkTemplate: 'https://t.me/{value}',
+    linkTemplate: 'https://telegram.me/{value}',
     placeholder: '用户名（不含 @）',
-    linkHint: 'Telegram 官方支持 t.me 用户名链接，前台会自动打开。',
+    linkHint: 'Telegram 用户名自动生成 telegram.me 链接；手动填写的完整链接保持原样。',
   },
   whatsapp: {
     name: 'WhatsApp',
@@ -138,7 +138,10 @@ function normalizeContactLinkValue(platform: string, value: string): string | nu
 
   switch (platform) {
     case 'telegram': {
-      const username = stripLeadingAt(stripUrlPrefix(rawValue, [/^https?:\/\/t\.me\//i, /^t\.me\//i]))
+      const username = stripLeadingAt(stripUrlPrefix(rawValue, [
+        /^https?:\/\/(?:www\.)?(?:t\.me|telegram\.me)\//i,
+        /^(?:www\.)?(?:t\.me|telegram\.me)\//i,
+      ]))
       return username ? encodeURIComponent(username) : null
     }
     case 'whatsapp': {
@@ -187,6 +190,10 @@ function normalizeContactLinkValue(platform: string, value: string): string | nu
 export function generateContactLink(platform: string, value: string): string | null {
   const config = CONTACT_PLATFORMS[platform]
   if (!config || !config.linkTemplate) return null
+  if (platform === 'telegram') {
+    const explicitLink = value.trim()
+    if (/^https:\/\/(?:www\.)?(?:t\.me|telegram\.me)\//i.test(explicitLink)) return explicitLink
+  }
   const normalizedValue = normalizeContactLinkValue(platform, value)
   if (!normalizedValue) return null
   return config.linkTemplate.replace('{value}', normalizedValue)

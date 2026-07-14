@@ -3,7 +3,7 @@ import { defineComponent } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
 import AttributionPageShell from './AttributionPageShell.vue'
 
-vi.stubGlobal('useRoute', () => ({ path: '/admin/attribution' }))
+vi.stubGlobal('useRoute', () => ({ path: '/admin/attribution', query: { provider: 'meta' } }))
 vi.stubGlobal('formatAnalyticsNumber', (value: unknown) => String(value ?? 0))
 
 const nuxtLinkStub = defineComponent({
@@ -32,7 +32,7 @@ describe('AttributionPageShell', () => {
     expect((input.element as HTMLInputElement).value).toBe('2026-07-09')
   })
 
-  it('展示投放链接和 Meta 运维标签', () => {
+  it('展示平台接入和发布诊断标签', () => {
     const wrapper = mount(AttributionPageShell, {
       props: {
         title: '归因中心',
@@ -42,7 +42,9 @@ describe('AttributionPageShell', () => {
     })
 
     expect(wrapper.text()).toContain('投放链接')
-    expect(wrapper.text()).toContain('Meta 运维')
+    expect(wrapper.text()).toContain('平台接入')
+    expect(wrapper.text()).toContain('发布与诊断')
+    expect(wrapper.text()).not.toContain('Meta 运维')
     expect(wrapper.text()).not.toContain('重复诊断')
   })
 
@@ -59,7 +61,7 @@ describe('AttributionPageShell', () => {
     const link = wrapper.findAll('a').find(item => item.text() === '投放链接')
     expect(link?.attributes('data-to')).toBe(JSON.stringify({
       path: '/admin/attribution/links',
-      query: { range: 'day', date: '2026-07-09' },
+      query: { range: 'day', date: '2026-07-09', provider: 'meta' },
     }))
   })
 })

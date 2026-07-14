@@ -10,6 +10,9 @@ describe('联系方式跳转链接校验', () => {
 
   it('允许常见安全联系协议', () => {
     expect(normalizeContactLinkUrl(' https://t.me/meigallery ')).toBe('https://t.me/meigallery')
+    expect(normalizeContactLinkUrl('https://telegram.me/meigallery')).toBe('https://telegram.me/meigallery')
+    expect(normalizeContactLinkUrl('https://www.telegram.me/meigallery?start=hello')).toBe('https://www.telegram.me/meigallery?start=hello')
+    expect(normalizeContactLinkUrl('https://telegram.me/MeiGallery?start=Hello')).toBe('https://telegram.me/MeiGallery?start=Hello')
     expect(normalizeContactLinkUrl('mailto:hello@616618.xyz')).toBe('mailto:hello@616618.xyz')
     expect(normalizeContactLinkUrl('tel:+8613800138000')).toBe('tel:+8613800138000')
     expect(normalizeContactLinkUrl('tg://resolve?domain=meigallery')).toBe('tg://resolve?domain=meigallery')
@@ -48,6 +51,7 @@ describe('联系方式跳转链接校验', () => {
 
   it('安全读取历史链接时丢弃危险值', () => {
     expect(safeContactLinkUrl('https://t.me/meigallery')).toBe('https://t.me/meigallery')
+    expect(safeContactLinkUrl('https://telegram.me/meigallery')).toBe('https://telegram.me/meigallery')
     expect(safeContactLinkUrl('javascript:alert(1)')).toBeNull()
     expect(safeContactLinkUrl('http://example.com')).toBeNull()
     expect(safeContactLinkUrl('https://127.0.0.1/contact')).toBeNull()

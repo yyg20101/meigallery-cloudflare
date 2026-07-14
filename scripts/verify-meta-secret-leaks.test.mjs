@@ -788,7 +788,7 @@ describe('Meta secret 静态泄漏扫描', () => {
     const deployment = await readFile(path.join(rootDir, 'docs/DEPLOYMENT.md'), 'utf8')
 
     assert.match(deployment, /普通 test mode 的 `Contact`、`CompleteRegistration` 不自动携带 `test_event_code`/)
-    assert.match(deployment, /Owner 在 `\/admin\/attribution\/meta` 输入 Events Manager 当前显示的 `TEST\.\.\.` 会话码/)
+    assert.match(deployment, /Owner 在 `\/admin\/attribution\/platforms\?provider=meta` 输入 Events Manager 当前显示的 `TEST\.\.\.` 会话码/)
     assert.match(deployment, /服务端不持久化、不审计、不回显/)
   })
 })

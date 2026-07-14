@@ -28,48 +28,35 @@ async function expectAdminContainersWithinViewport(page: import('@playwright/tes
         { selector: '[data-attribution-header-title]' },
         { selector: '[data-attribution-header-description]' },
         { selector: '[data-attribution-controls]' },
-        { selector: '[data-attribution-range-group]' },
-        { selector: '[data-attribution-range-control]', minCount: 4 },
-        { selector: '[data-attribution-control]', minCount: 5 },
         { selector: '[data-attribution-refresh]' },
         { selector: '[data-attribution-tabs]', allowHorizontalOverflow: true },
         { selector: '[data-attribution-tab-list]', allowHorizontalOverflow: true },
         { selector: '[data-attribution-tab]', exactCount: 5, allowHorizontalOverflow: true },
       )
+      if (location.pathname !== '/admin/attribution/platforms') {
+        requirements.push(
+          { selector: '[data-attribution-range-group]' },
+          { selector: '[data-attribution-range-control]', minCount: 4 },
+          { selector: '[data-attribution-control]', minCount: 5 },
+        )
+      }
     }
     if (location.pathname === '/admin/attribution') {
       requirements.push(
         { selector: '[data-evidence-rail]', allowHorizontalOverflow: true },
-        { selector: '[data-attribution-section]', exactCount: 5 },
-        { selector: '[data-meta-connection-status]' },
-        { selector: '[data-meta-rollout-control]' },
-        { selector: '[data-meta-incident-list]' },
+        { selector: '[data-attribution-section]', exactCount: 3 },
         { selector: '[data-attribution-trend]', minCount: 3 },
       )
     }
-    if (location.pathname === '/admin/attribution/meta') {
+    if (location.pathname === '/admin/attribution/platforms') {
       requirements.push(
         { selector: '[data-meta-connection-status]' },
-        { selector: '[data-meta-rollout-control]' },
-        { selector: '[data-meta-incident-list]' },
-        { selector: '[data-attribution-trend]' },
       )
     }
     if (location.pathname === '/admin/attribution/readiness') {
       requirements.push(
-        { selector: '[data-readiness-status]' },
-        { selector: '[data-readiness-section]', minCount: 2 },
-        { selector: '[data-readiness-section-intro]', minCount: 2 },
-        { selector: '[data-readiness-check-grid]', minCount: 2 },
-        { selector: '[data-readiness-check]' },
-        { selector: '[data-readiness-check-title]' },
-        { selector: '[data-readiness-check-detail]' },
-        { selector: '[data-readiness-check-key]' },
-        { selector: '[data-readiness-check-state]' },
-        { selector: '[data-readiness-settings]' },
-        { selector: '[data-readiness-setting-item]' },
-        { selector: '[data-readiness-verifications]' },
-        { selector: '[data-readiness-verification-item]' },
+        { selector: '[data-meta-rollout-control]' },
+        { selector: '[data-meta-incident-list]' },
       )
     }
 
@@ -415,34 +402,30 @@ test.describe('核心页面 smoke', () => {
     expect(hasHorizontalOverflow).toBe(false)
   })
 
-  test('后台 Meta 归因质量总览可查看五区、单日归因和投放链接', async ({ page }, testInfo) => {
+  test('后台广告归因总览可查看三层证据、单日归因和投放链接', async ({ page }, testInfo) => {
     await page.goto('/admin/attribution')
-    await expect(page.locator('main h1')).toHaveText('广告归因质量')
-    await expect(page.getByText('按平台比较站内事实、浏览器尝试、服务器接收与平台质量，定位投放和投递问题。')).toBeVisible()
+    await expect(page.locator('main h1')).toHaveText('归因总览')
+    await expect(page.getByText('按单一平台核对站内转化、浏览器投递、服务器接收和匹配质量。')).toBeVisible()
 
     const sections = page.locator('[data-attribution-section]')
-    await expect(sections).toHaveCount(5)
+    await expect(sections).toHaveCount(3)
     expect(await sections.evaluateAll(elements => elements.map(element => element.getAttribute('data-attribution-section')))).toEqual([
-      'connection', 'business', 'delivery', 'quality', 'rollout',
+      'business', 'delivery', 'quality',
     ])
     for (const label of ['站内事实', 'Pixel 尝试', 'Server API 接收', '平台质量']) {
       await expect(page.locator('[data-evidence-rail]')).toContainText(label)
     }
 
-    const connectionSection = page.locator('[data-attribution-section="connection"]')
-    await expect(connectionSection.getByRole('heading', { name: '广告平台连接' })).toBeVisible()
-    await expect(connectionSection.getByText('已验证', { exact: true }).first()).toBeVisible()
-    await expect(connectionSection).toContainText('目标 ID 已配置')
-    await expect(connectionSection).toContainText('Server 凭证 已配置')
+    await expect(page.getByText('Meta 连接 已验证', { exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: '管理平台连接' })).toBeVisible()
 
     const deliverySection = page.locator('[data-attribution-section="delivery"]')
-    await expect(deliverySection.getByRole('heading', { name: 'Meta Pixel 与 Server API delivery' })).toBeVisible()
-    await expect(deliverySection.getByText('Server API 接收只表示平台 API 已接收，不表示广告已完成归因。')).toBeVisible()
+    await expect(deliverySection.getByRole('heading', { name: 'Meta Pixel 与 Conversions API' })).toBeVisible()
+    await expect(deliverySection.getByText('Server API 接收只表示平台接口已接收，不表示广告已完成归因。')).toBeVisible()
     const deliveryItems = deliverySection.locator('dl').first().locator(':scope > div')
     await expect(deliveryItems.filter({ hasText: /^Pixel 尝试\s*12$/ })).toHaveCount(1)
-    await expect(deliveryItems.filter({ hasText: /^Server API 接收\s*9$/ })).toHaveCount(1)
+    await expect(deliveryItems.filter({ hasText: /^Conversions API 接收\s*9$/ })).toHaveCount(1)
     await expect(page.locator('[data-attribution-section="quality"]').getByRole('heading', { name: 'Meta 匹配覆盖与平台质量' })).toBeVisible()
-    await expect(page.locator('[data-attribution-section="rollout"]').getByRole('heading', { name: 'CAPI rollout 与 incident' })).toBeVisible()
     await expect(page.getByText('已同步', { exact: true })).toHaveCount(0)
     await expectAdminContainersWithinViewport(page)
     if (process.env.TASK8_SCREENSHOT_DIR) {
@@ -456,7 +439,7 @@ test.describe('核心页面 smoke', () => {
     await page.getByLabel('选择归因日期').fill('2026-07-09')
     await page.getByRole('link', { name: '投放链接', exact: true }).click()
 
-    await expect(page).toHaveURL(/\/admin\/attribution\/links\?range=day&date=2026-07-09/)
+    await expect(page).toHaveURL(/\/admin\/attribution\/links\?range=day&date=2026-07-09&provider=meta/)
     await expect(page.getByText('投放追踪链接')).toBeVisible()
     await expect(page.getByText('广告链接必须绑定唯一平台；链接来源只会进入对应平台的 Pixel 与 Server API。')).toBeVisible()
     await expect(page.getByRole('cell', { name: 'Meta', exact: true })).toBeVisible()
@@ -464,8 +447,8 @@ test.describe('核心页面 smoke', () => {
   })
 
   test('后台归因 Meta 控制面按生产检查保守启用并验证连接与投递口径', async ({ page }) => {
-    await page.goto('/admin/attribution/meta')
-    await expect(page.locator('main h1')).toHaveText('Meta 运维')
+    await page.goto('/admin/attribution/platforms?provider=meta')
+    await expect(page.locator('main h1')).toHaveText('平台接入')
     const connection = page.locator('[data-meta-connection-status]')
     await expect(connection.getByText('连接验证', { exact: true })).toBeVisible()
     await expect(connection.getByText('已验证', { exact: true })).toBeVisible()
@@ -475,12 +458,6 @@ test.describe('核心页面 smoke', () => {
     await expect(connection.getByText('v25.0', { exact: true })).toBeVisible()
     await expect(connection.getByText('连接配置与验证记录一致 · production', { exact: true })).toBeVisible()
     await connection.getByLabel('Test Event Code').fill('TEST25401')
-
-    const rollout = page.locator('[data-meta-rollout-control]')
-    await expect(rollout.getByText('critical incident 已打开，effective 强制为 0%；target 10% 保留。')).toBeVisible()
-    await expect(rollout.getByText('critical incident 尚未关闭', { exact: true })).toBeVisible()
-    await expect(page.getByText('尚未取得 Meta 质量数据')).toBeVisible()
-    await expect(page.locator('[data-meta-incident-list]')).toContainText('CAPI 重试耗尽')
 
     const [connectionResponse] = await Promise.all([
       page.waitForResponse(response => response.url().endsWith('/api/admin/attribution/meta/test-event') && response.request().method() === 'POST'),
@@ -511,16 +488,22 @@ test.describe('核心页面 smoke', () => {
     await expect(page.locator('[data-meta-connection-status]').getByText('已验证', { exact: true })).toBeVisible()
     await expectAdminContainersWithinViewport(page)
 
+    await page.goto('/admin/attribution/readiness?provider=meta')
+    const rollout = page.locator('[data-meta-rollout-control]')
+    await expect(rollout.getByText('critical incident 已打开，effective 强制为 0%；target 10% 保留。')).toBeVisible()
+    await expect(rollout.getByText('critical incident 尚未关闭', { exact: true })).toBeVisible()
+    await expect(page.locator('[data-meta-incident-list]')).toContainText('CAPI 重试耗尽')
+
     await page.getByRole('link', { name: '总览', exact: true }).click()
     const deliverySection = page.locator('[data-attribution-section="delivery"]')
-    await expect(deliverySection.getByText('Server API 接收只表示平台 API 已接收，不表示广告已完成归因。')).toBeVisible()
-    await expect(deliverySection.locator('dl').first().locator(':scope > div').filter({ hasText: /^Server API 接收\s*9$/ })).toHaveCount(1)
+    await expect(deliverySection.getByText('Server API 接收只表示平台接口已接收，不表示广告已完成归因。')).toBeVisible()
+    await expect(deliverySection.locator('dl').first().locator(':scope > div').filter({ hasText: /^Conversions API 接收\s*9$/ })).toHaveCount(1)
   })
 
   test('production Owner 可触发 Test Event，并直接看到后端 blocker', async ({ request, page }) => {
     await request.patch(`${apiURL}/api/test/admin-attribution-environment`, { data: { environment: 'production' } })
     await request.patch(`${apiURL}/api/test/admin-attribution-action-mode`, { data: { mode: 'conflict' } })
-    await page.goto('/admin/attribution/meta')
+    await page.goto('/admin/attribution/platforms?provider=meta')
 
     const connection = page.locator('[data-meta-connection-status]')
     await expect(connection).toContainText('· production')
@@ -534,9 +517,9 @@ test.describe('核心页面 smoke', () => {
   })
 
   test('后台归因通过统一连接表单保存 Meta 配置', async ({ page }) => {
-    await page.goto('/admin/attribution')
+    await page.goto('/admin/attribution/platforms?provider=meta')
     await expect(page.getByLabel('Meta Dataset ID')).toHaveValue('1234567890')
-    await expect(page.getByRole('checkbox', { name: 'Server API', exact: true })).not.toBeChecked()
+    await expect(page.getByRole('checkbox', { name: 'Conversions API', exact: true })).not.toBeChecked()
     const [response] = await Promise.all([
       page.waitForResponse(candidate => candidate.url().endsWith('/api/admin/attribution/platforms/meta') && candidate.request().method() === 'PATCH'),
       page.getByRole('button', { name: '保存连接' }).click(),
@@ -546,15 +529,14 @@ test.describe('核心页面 smoke', () => {
   })
 
   test('后台归因通过统一连接表单保存 TikTok Pixel 配置', async ({ page }) => {
-    await page.goto('/admin/attribution')
-    await page.getByRole('button', { name: 'TikTok', exact: true }).click()
+    await page.goto('/admin/attribution/platforms?provider=tiktok')
     const form = page.locator('form').filter({ hasText: 'TikTok Pixel ID' })
     await expect(form).toBeVisible()
     await form.locator('input[pattern="[A-Za-z0-9]{10,30}"]').fill('C123456789ABCDEF')
     await form.getByLabel('启用连接').check()
-    await form.getByLabel('Browser Pixel').check()
+    await form.getByRole('checkbox', { name: 'TikTok Pixel', exact: true }).check()
     const response = page.waitForResponse(candidate => candidate.url().endsWith('/api/admin/attribution/platforms/tiktok') && candidate.request().method() === 'PATCH')
-    await form.getByRole('button', { name: '保存 TikTok' }).click()
+    await form.getByRole('button', { name: '保存连接' }).click()
     expect((await response).ok()).toBeTruthy()
     await expect(form.getByText('TikTok 连接已保存')).toBeVisible()
   })
@@ -562,7 +544,7 @@ test.describe('核心页面 smoke', () => {
   test('后台归因发布检查区分阻断项和警告项且警告不改变阻断口径', async ({ page }) => {
     await page.goto('/admin/attribution/readiness')
 
-    await expect(page.getByText('生产阻断项仍需处理')).toBeVisible()
+    await expect(page.getByText('Meta 生产阻断项仍需处理')).toBeVisible()
     await expect(page.getByRole('region', { name: '阻断项' }).getByText('最近 24 小时无重试耗尽')).toBeVisible()
     await expect(page.getByRole('region', { name: '警告项' }).getByText('无超过 10 分钟的 CAPI pending')).toBeVisible()
     await expect(page.getByText('Meta 资源验证')).toBeVisible()

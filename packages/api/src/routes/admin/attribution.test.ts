@@ -308,6 +308,28 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
               meta: { rows_read: 1, rows_written: 0, duration: 1 },
             }
           }
+          if (sql.includes('FROM analytics_conversion_actions') && sql.includes('GROUP BY action_type')) {
+            return {
+              results: [
+                { action_type: 'contact', action_count: attributionTotals.contactCount, unique_session_count: attributionTotals.contactCount },
+                { action_type: 'complete_registration', action_count: attributionTotals.completeRegistrationCount, unique_session_count: attributionTotals.completeRegistrationCount },
+              ] as T[],
+              meta: { rows_read: 2, rows_written: 0, duration: 1 },
+            }
+          }
+          if (sql.includes('FROM analytics_conversion_actions') && sql.includes('GROUP BY source_channel')) {
+            return {
+              results: [{
+                source_channel: 'ad',
+                source_name: 'ad-a',
+                utm_campaign: 'july',
+                utm_content: 'chat-a',
+                contact_count: attributionTotals.contactCount,
+                complete_registration_count: attributionTotals.completeRegistrationCount,
+              }] as T[],
+              meta: { rows_read: 1, rows_written: 0, duration: 1 },
+            }
+          }
           if (sql.includes('FROM analytics_conversion_daily') && sql.includes('GROUP BY date')) {
             return {
               results: [
@@ -451,6 +473,7 @@ function createAttributionDb(options: AttributionDbOptions = {}) {
                   route_name: 'gallery-detail',
                   path: '/gallery/demo',
                   duplicate_of: '',
+                  attribution_provider: 'meta',
                 },
               ] as T[],
               meta: { rows_read: 1, rows_written: 0, duration: 1 },
@@ -1654,7 +1677,7 @@ describe('后台归因中心 API', () => {
   })
 
   it('返回转化动作、来源和最近样本', async () => {
-    const res = await createApp('admin').request('/api/admin/attribution/conversions?from=2026-07-09&to=2026-07-09', {}, { DB: createAttributionDb() } as unknown as Bindings)
+    const res = await createApp('admin').request('/api/admin/attribution/conversions?from=2026-07-09&to=2026-07-09&provider=meta', {}, { DB: createAttributionDb() } as unknown as Bindings)
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -1670,8 +1693,8 @@ describe('后台归因中心 API', () => {
     const env = { DB: db } as unknown as Bindings
     const [overviewResponse, conversionsResponse, linksResponse] = await Promise.all([
       app.request('/api/admin/attribution/overview?from=2026-07-09&to=2026-07-09', {}, env),
-      app.request('/api/admin/attribution/conversions?from=2026-07-09&to=2026-07-09', {}, env),
-      app.request('/api/admin/attribution/links?from=2026-07-09&to=2026-07-09', {}, env),
+      app.request('/api/admin/attribution/conversions?from=2026-07-09&to=2026-07-09&provider=meta', {}, env),
+      app.request('/api/admin/attribution/links?from=2026-07-09&to=2026-07-09&provider=meta', {}, env),
     ])
     const [overview, conversions, links] = await Promise.all([
       overviewResponse.json(),
@@ -1685,13 +1708,14 @@ describe('后台归因中心 API', () => {
     expect(overview.data.historical).toEqual({ leadCount: 1 })
     expect(overview.data.trend[0]).not.toHaveProperty('lead_count')
     expect(overview.data.trend[0]).not.toHaveProperty('membership_grant_count')
-    expect(conversions.data.historical).toEqual({ leadCount: 1 })
-    expect(conversions.data.operations).toEqual({ membershipGrantCount: 0 })
+    expect(conversions.data.provider).toBe('meta')
+    expect(conversions.data).not.toHaveProperty('historical')
+    expect(conversions.data).not.toHaveProperty('operations')
     expect(conversions.data.byAction.map((row: { action_type: string }) => row.action_type)).not.toContain('lead')
     expect(conversions.data.bySource[0]).not.toHaveProperty('lead_count')
     expect(conversions.data.bySource[0]).not.toHaveProperty('membership_grant_count')
-    expect(conversions.data.bySource[0].operations).toEqual({ membershipGrantCount: 0 })
-    expect(conversions.data.bySource[0].historical).toEqual({ leadCount: 1 })
+    expect(conversions.data.bySource[0]).not.toHaveProperty('operations')
+    expect(conversions.data.bySource[0]).not.toHaveProperty('historical')
     expect(links.data.links[0]).not.toHaveProperty('leadCount')
     expect(links.data.links[0]).not.toHaveProperty('conversionMembershipGrantCount')
     expect(links.data.links[0].operations).toEqual({ membershipGrantCount: 0 })
@@ -1733,8 +1757,8 @@ describe('后台归因中心 API', () => {
     const env = { DB: db } as unknown as Bindings
     const [overview, conversions, links] = await Promise.all([
       app.request('/api/admin/attribution/overview?from=2026-07-09&to=2026-07-09', {}, env),
-      app.request('/api/admin/attribution/conversions?from=2026-07-09&to=2026-07-09', {}, env),
-      app.request('/api/admin/attribution/links?from=2026-07-09&to=2026-07-09', {}, env),
+      app.request('/api/admin/attribution/conversions?from=2026-07-09&to=2026-07-09&provider=meta', {}, env),
+      app.request('/api/admin/attribution/links?from=2026-07-09&to=2026-07-09&provider=meta', {}, env),
     ])
     const bodies = await Promise.all([overview.json(), conversions.json(), links.json()])
     const currentReportCalls = db.calls.filter(call => call.sql.includes('FROM analytics_conversion_daily'))
@@ -1753,7 +1777,7 @@ describe('后台归因中心 API', () => {
 
   it('转化接口支持按 sourceCode 过滤', async () => {
     const db = createAttributionDb()
-    const res = await createApp('admin').request('/api/admin/attribution/conversions?from=2026-07-09&to=2026-07-09&sourceCode=ad-a', {}, { DB: db } as unknown as Bindings)
+    const res = await createApp('admin').request('/api/admin/attribution/conversions?from=2026-07-09&to=2026-07-09&provider=meta&sourceCode=ad-a', {}, { DB: db } as unknown as Bindings)
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -1765,7 +1789,7 @@ describe('后台归因中心 API', () => {
 
   it('返回投放追踪链接和转化指标', async () => {
     const db = createAttributionDb()
-    const res = await createApp('admin').request('/api/admin/attribution/links?from=2026-07-09&to=2026-07-09', {}, { DB: db } as unknown as Bindings)
+    const res = await createApp('admin').request('/api/admin/attribution/links?from=2026-07-09&to=2026-07-09&provider=meta', {}, { DB: db } as unknown as Bindings)
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -1786,15 +1810,16 @@ describe('后台归因中心 API', () => {
 
   it('投放链接按 sourceCode 过滤时 SQL placeholder 与 bind 顺序完全匹配', async () => {
     const db = createAttributionDb()
-    const res = await createApp('admin').request('/api/admin/attribution/links?from=2026-07-09&to=2026-07-09&sourceCode=ad-a', {}, {
+    const res = await createApp('admin').request('/api/admin/attribution/links?from=2026-07-09&to=2026-07-09&provider=meta&sourceCode=ad-a', {}, {
       DB: db,
     } as unknown as Bindings)
     const body = await res.json()
     const linkCall = db.calls.find(call => call.sql.includes('conversion_metrics AS'))
 
     expect(res.status).toBe(200)
+    expect(body.data.provider).toBe('meta')
     expect(body.data.links[0]).toMatchObject({ sourceCode: 'ad-a' })
-    expect(linkCall?.sql.match(/\?/g)).toHaveLength(7)
+    expect(linkCall?.sql.match(/\?/g)).toHaveLength(8)
     expect(linkCall?.params).toEqual([
       '2026-07-09',
       '2026-07-09',
@@ -1803,6 +1828,7 @@ describe('后台归因中心 API', () => {
       '2026-07-09',
       'ad-a',
       'ad-a',
+      'meta',
     ])
   })
 
@@ -1934,7 +1960,7 @@ describe('后台归因中心 API', () => {
   })
 
   it('返回重复诊断和重复样本', async () => {
-    const res = await createApp('admin').request('/api/admin/attribution/duplicates?from=2026-07-09&to=2026-07-09', {}, { DB: createAttributionDb() } as unknown as Bindings)
+    const res = await createApp('admin').request('/api/admin/attribution/duplicates?from=2026-07-09&to=2026-07-09&provider=meta', {}, { DB: createAttributionDb() } as unknown as Bindings)
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -1962,7 +1988,7 @@ describe('后台归因中心 API', () => {
     const [overviewResponse, metaResponse, duplicatesResponse, readinessResponse] = await Promise.all([
       app.request('/api/admin/attribution/overview?from=2026-07-09&to=2026-07-09', {}, env),
       app.request('/api/admin/attribution/meta?from=2026-07-09&to=2026-07-09', {}, env),
-      app.request('/api/admin/attribution/duplicates?from=2026-07-09&to=2026-07-09', {}, env),
+      app.request('/api/admin/attribution/duplicates?from=2026-07-09&to=2026-07-09&provider=meta', {}, env),
       app.request('/api/admin/attribution/readiness?from=2026-07-09&to=2026-07-09', {}, env),
     ])
     const [overview, meta, duplicates, historicalReadiness] = await Promise.all([
@@ -2022,7 +2048,7 @@ describe('后台归因中心 API', () => {
       call.sql.includes("a.action_type IN ('contact', 'complete_registration')")
     ))).toBe(true)
     expect(duplicateActionQueries.length).toBeGreaterThan(0)
-    expect(duplicateActionQueries.every(call => call.sql.includes("action_type IN ('contact', 'complete_registration', 'membership_grant')"))).toBe(true)
+    expect(duplicateActionQueries.every(call => call.sql.includes("action_type IN ('contact', 'complete_registration')"))).toBe(true)
   })
 
   it('当前重复诊断保留 membership_grant 且排除历史 StartTrial', async () => {
@@ -2034,26 +2060,23 @@ describe('后台归因中心 API', () => {
     const env = { DB: db } as unknown as Bindings
     const [overviewResponse, duplicatesResponse] = await Promise.all([
       app.request('/api/admin/attribution/overview?from=2026-07-09&to=2026-07-09', {}, env),
-      app.request('/api/admin/attribution/duplicates?from=2026-07-09&to=2026-07-09', {}, env),
+      app.request('/api/admin/attribution/duplicates?from=2026-07-09&to=2026-07-09&provider=meta', {}, env),
     ])
     const [overview, duplicates] = await Promise.all([
       overviewResponse.json(),
       duplicatesResponse.json(),
     ])
 
-    expect(overview.data.duplicates.duplicate_action_count).toBe(2)
-    expect(duplicates.data.duplicateActionCount).toBe(2)
-    expect(duplicates.data.samples.map((row: { action_type: string }) => row.action_type)).toEqual(expect.arrayContaining([
-      'contact',
-      'membership_grant',
-    ]))
+    expect(overview.data.duplicates.duplicate_action_count).toBe(1)
+    expect(duplicates.data.duplicateActionCount).toBe(1)
+    expect(duplicates.data.samples.map((row: { action_type: string }) => row.action_type)).toEqual(['contact'])
     expect(duplicates.data.samples.some((row: { action_type: string }) => row.action_type === 'start_trial')).toBe(false)
 
     const duplicateActionQueries = db.calls.filter(call => (
       call.sql.includes('FROM analytics_conversion_actions') && call.sql.includes("duplicate_of != ''")
     ))
     expect(duplicateActionQueries.length).toBeGreaterThan(0)
-    expect(duplicateActionQueries.every(call => call.sql.includes("action_type IN ('contact', 'complete_registration', 'membership_grant')"))).toBe(true)
+    expect(duplicateActionQueries.every(call => call.sql.includes("action_type IN ('contact', 'complete_registration')"))).toBe(true)
 
     const deliveryQueries = db.calls.filter(call => call.sql.includes('FROM analytics_conversion_deliveries'))
     expect(deliveryQueries.length).toBeGreaterThan(0)

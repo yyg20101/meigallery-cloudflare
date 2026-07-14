@@ -4,6 +4,8 @@ import { normalizeContactActionUrl, normalizeContactQrCodeUrl } from './contactU
 describe('contactUrlSecurity', () => {
   it('联系方式跳转链接允许安全联系协议', () => {
     expect(normalizeContactActionUrl(' https://example.com/contact ')).toBe('https://example.com/contact')
+    expect(normalizeContactActionUrl('https://telegram.me/meigallery')).toBe('https://telegram.me/meigallery')
+    expect(normalizeContactActionUrl('https://www.telegram.me/meigallery?start=hello')).toBe('https://www.telegram.me/meigallery?start=hello')
     expect(normalizeContactActionUrl('mailto:hello@616618.xyz')).toBe('mailto:hello@616618.xyz')
     expect(normalizeContactActionUrl('tel:+8613800138000')).toBe('tel:+8613800138000')
     expect(normalizeContactActionUrl('tg://resolve?domain=meigallery')).toBe('tg://resolve?domain=meigallery')

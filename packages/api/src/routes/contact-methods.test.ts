@@ -69,7 +69,28 @@ describe('公开联系方式 API', () => {
     const body = await res.json()
 
     expect(res.status).toBe(200)
-    expect(body.data[0].linkUrl).toBe('https://t.me/meigallery')
+    expect(body.data[0].linkUrl).toBe('https://telegram.me/meigallery')
+  })
+
+  it('原样返回历史 telegram.me 联系链接', async () => {
+    const app = createApp()
+    const env = {
+      DB: createDb([{
+        id: 'contact-1',
+        platform: 'telegram',
+        label: 'Telegram',
+        value: '@meigallery',
+        link_url: 'https://telegram.me/meigallery',
+        qr_code_key: null,
+        sort_order: 0,
+      }]),
+    } as unknown as Bindings
+
+    const res = await app.request('/api/contact-methods', {}, env)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.data[0].linkUrl).toBe('https://telegram.me/meigallery')
   })
 
   it('无安全手动链接和自动链接时返回 null', async () => {
@@ -115,7 +136,7 @@ describe('公开联系方式 API', () => {
     const body = await res.json()
 
     expect(res.status).toBe(200)
-    expect(body.data[0].linkUrl).toBe('https://t.me/meigallery')
+    expect(body.data[0].linkUrl).toBe('https://telegram.me/meigallery')
   })
 
   it('二维码代理拒绝不属于当前联系方式的 R2 key', async () => {

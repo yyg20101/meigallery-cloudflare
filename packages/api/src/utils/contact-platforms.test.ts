@@ -7,9 +7,12 @@ describe('联系方式跳转链接生成', () => {
     expect(canGenerateContactLink('wechat', 'meigallery')).toBe(false)
   })
 
-  it('生成 Telegram 官方 t.me 链接并清理 @ 前缀', () => {
-    expect(generateContactLink('telegram', '@meigallery')).toBe('https://t.me/meigallery')
+  it('自动生成 telegram.me 链接并保留用户输入的完整链接', () => {
+    expect(generateContactLink('telegram', '@meigallery')).toBe('https://telegram.me/meigallery')
     expect(generateContactLink('telegram', 'https://t.me/meigallery')).toBe('https://t.me/meigallery')
+    expect(generateContactLink('telegram', 'https://telegram.me/meigallery')).toBe('https://telegram.me/meigallery')
+    expect(generateContactLink('telegram', 'https://telegram.me/MeiGallery?start=Hello')).toBe('https://telegram.me/MeiGallery?start=Hello')
+    expect(generateContactLink('telegram', 'telegram.me/meigallery')).toBe('https://telegram.me/meigallery')
   })
 
   it('生成 WhatsApp wa.me 链接并只保留手机号数字', () => {

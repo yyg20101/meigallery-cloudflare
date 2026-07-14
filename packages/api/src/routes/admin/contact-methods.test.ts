@@ -97,6 +97,34 @@ describe('后台联系方式 API', () => {
     expect(executed.some(item => item.sql.includes('INSERT INTO admin_audit_logs'))).toBe(true)
   })
 
+  it('创建联系方式时原样保存 telegram.me 链接', async () => {
+    const executed: Array<{ sql: string; params: unknown[] }> = []
+    const app = createApp()
+    const env = {
+      DB: createDb({
+        first: () => ({ max_order: 2 }),
+        run: (sql, params) => {
+          executed.push({ sql, params })
+          return { success: true }
+        },
+      }),
+    } as unknown as Bindings
+
+    const res = await app.request('/api/admin/contact-methods', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        platform: 'telegram',
+        label: 'Telegram',
+        value: '@meigallery',
+        linkUrl: 'https://telegram.me/meigallery',
+      }),
+    }, env)
+
+    expect(res.status).toBe(201)
+    expect(executed.some(item => item.sql.includes('INSERT INTO contact_methods') && item.params[4] === 'https://telegram.me/meigallery')).toBe(true)
+  })
+
   it('创建联系方式时拒绝危险跳转链接', async () => {
     const executed: Array<{ sql: string; params: unknown[] }> = []
     const app = createApp()

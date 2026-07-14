@@ -10,24 +10,21 @@ const singleDayEndpointQueries = new Map<string, Record<string, string>>([
   ['/api/admin/attribution/trends', { from: '2026-07-10', to: '2026-07-10', provider: 'meta', granularity: 'day' }],
   ['/api/admin/attribution/quality', { from: '2026-07-10', to: '2026-07-10', provider: 'meta' }],
   ['/api/admin/attribution/breakdown', { from: '2026-07-10', to: '2026-07-10', provider: 'meta', dimension: 'utm_campaign', limit: '8' }],
-  ['/api/admin/attribution/meta/status', { from: '2026-07-10', to: '2026-07-10' }],
   ['/api/admin/attribution/platforms', { from: '2026-07-10', to: '2026-07-10' }],
-  ['/api/admin/attribution/readiness', { from: '2026-07-10', to: '2026-07-10' }],
-  ['/api/admin/attribution/duplicates', { from: '2026-07-10', to: '2026-07-10' }],
-  ['/api/admin/attribution/meta/incidents', { from: '2026-07-10', to: '2026-07-10', status: 'all', limit: '20' }],
+  ['/api/admin/attribution/duplicates', { from: '2026-07-10', to: '2026-07-10', provider: 'meta' }],
 ])
 
 test.beforeEach(async ({ request }) => {
   await request.post(`${apiURL}/api/test/reset`)
 })
 
-test('共享单日 query、五区证据轨与 Meta 操作错误态', async ({ page, request }) => {
+test('共享单日 query、三层证据区与 Meta 操作错误态', async ({ page, request }) => {
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.goto('/admin/attribution')
   await expect(page).toHaveURL(/range=7d/)
-  await expect(page.locator('[data-attribution-section]')).toHaveCount(5)
+  await expect(page.locator('[data-attribution-section]')).toHaveCount(3)
   expect(await page.locator('[data-attribution-section]').evaluateAll(elements => elements.map(element => element.getAttribute('data-attribution-section')))).toEqual([
-    'connection', 'business', 'delivery', 'quality', 'rollout',
+    'business', 'delivery', 'quality',
   ])
   const rail = page.locator('[data-evidence-rail]')
   for (const label of ['站内事实', 'Pixel 尝试', 'Server API 接收', '平台质量']) await expect(rail).toContainText(label)
@@ -93,6 +90,9 @@ test('共享单日 query、五区证据轨与 Meta 操作错误态', async ({ pa
   await page.reload()
   await expect(page.getByText('平台质量数据采集失败')).toBeVisible()
 
+  await page.goto('/admin/attribution/readiness?provider=meta&range=day&date=2026-07-10')
+  await expect(page.getByRole('heading', { name: '发布控制' })).toBeVisible()
+
   const forceReason = '当前已核对投递指标与回退方案确认由站长承担本次灰度升级风险并持续观察'
   const hardBlocked = await request.post(`${apiURL}/api/admin/attribution/meta/rollout`, {
     data: { percentage: 50, force: true, reason: forceReason },
@@ -138,7 +138,8 @@ test('多视口无 document overflow、控件重叠且保留可滚动表格', as
   const viewport = page.viewportSize()
   expect(viewport).not.toBeNull()
   await page.goto('/admin/attribution?range=day&date=2026-07-10')
-  await expect(page.locator('[data-attribution-section]')).toHaveCount(5)
+  await expect(page.locator('[data-admin-header-title]')).toHaveText('广告归因')
+  await expect(page.locator('[data-attribution-section]')).toHaveCount(3)
   await expect(page.locator('[data-trend-path]').first()).toHaveAttribute('d', /^M /)
   const marker = page.locator('[data-trend-marker]').first()
   await expect(marker).toBeVisible()
@@ -213,15 +214,18 @@ test('多视口无 document overflow、控件重叠且保留可滚动表格', as
 
 test('TikTok 平台只展示独立配置、资源状态与发布检查', async ({ page }, testInfo) => {
   mkdirSync(artifactDir, { recursive: true })
-  await page.goto('/admin/attribution?provider=tiktok&range=7d')
+  await page.goto('/admin/attribution/platforms?provider=tiktok')
 
   await expect(page.getByText('TikTok Pixel ID', { exact: true })).toBeVisible()
-  await expect(page.getByText('Events API rollout 与发布检查')).toBeVisible()
-  await expect(page.getByText('Events API Queue 已配置')).toBeVisible()
-  await expect(page.getByText('Events API 数据密钥已配置')).toBeVisible()
-  await expect(page.getByText('Meta Dataset ID')).toHaveCount(0)
-  await expect(page.getByText('Meta 运维状态')).toHaveCount(0)
-  await expect(page.getByText('incident 记录')).toHaveCount(0)
+  await expect(page.getByText('TikTok 连接', { exact: true })).toBeVisible()
+  await expect(page.getByText('Events API', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('Dataset ID')).toHaveCount(0)
+  await expect(page.getByText('Meta 连接', { exact: true })).toHaveCount(0)
+
+  await page.getByRole('link', { name: '发布与诊断', exact: true }).click()
+  await expect(page.getByText(/TikTok 生产阻断项/)).toBeVisible()
+  await expect(page.getByText('跨平台路由隔离')).toBeVisible()
+  await expect(page.getByText('Incident 记录')).toHaveCount(0)
 
   const layout = await page.evaluate(() => ({
     viewportWidth: document.documentElement.clientWidth,

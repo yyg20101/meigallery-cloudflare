@@ -2,7 +2,7 @@
 import type { AttributionRangePreset } from '~/composables/useAdminAttribution'
 import { ATTRIBUTION_RANGE_OPTIONS, attributionRouteQuery } from '~/composables/useAdminAttribution'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   title: string
   description?: string
   range: AttributionRangePreset
@@ -10,7 +10,17 @@ const props = defineProps<{
   loading?: boolean
   error?: string
   usage?: { rowsRead: number; rowsWritten: number; durationMs: number } | null
-}>()
+  showRangeControls?: boolean
+  showUsage?: boolean
+}>(), {
+  description: '',
+  date: '',
+  loading: false,
+  error: '',
+  usage: null,
+  showRangeControls: true,
+  showUsage: true,
+})
 
 const emit = defineEmits<{
   'update:range': [value: AttributionRangePreset]
@@ -22,17 +32,22 @@ const route = useRoute()
 
 const tabs = [
   { label: '总览', to: '/admin/attribution' },
-  { label: '转化', to: '/admin/attribution/conversions' },
+  { label: '转化明细', to: '/admin/attribution/conversions' },
   { label: '投放链接', to: '/admin/attribution/links' },
-  { label: 'Meta 运维', to: '/admin/attribution/meta' },
-  { label: '发布检查', to: '/admin/attribution/readiness' },
+  { label: '平台接入', to: '/admin/attribution/platforms' },
+  { label: '发布与诊断', to: '/admin/attribution/readiness' },
 ]
 
 const tabLinks = computed(() => tabs.map(tab => ({
   ...tab,
   route: {
     path: tab.to,
-    query: attributionRouteQuery(props.range, props.date || ''),
+    query: {
+      ...attributionRouteQuery(props.range, props.date || ''),
+      ...(route.query?.provider === 'meta' || route.query?.provider === 'tiktok'
+        ? { provider: route.query.provider }
+        : {}),
+    },
   },
 })))
 
@@ -50,7 +65,7 @@ function isActive(to: string) {
           <p v-if="description" data-attribution-header-description class="mt-1 min-w-0 max-w-3xl [overflow-wrap:anywhere] text-sm leading-6 text-gray-500">{{ description }}</p>
         </div>
         <div data-attribution-controls class="grid min-w-0 grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
-          <div data-attribution-range-group class="col-span-2 grid min-w-0 grid-cols-[repeat(2,minmax(0,1fr))] rounded-md border border-gray-200 bg-white p-1 sm:inline-flex sm:w-auto">
+          <div v-if="showRangeControls" data-attribution-range-group class="col-span-2 grid min-w-0 grid-cols-[repeat(2,minmax(0,1fr))] rounded-md border border-gray-200 bg-white p-1 sm:inline-flex sm:w-auto">
             <button
               v-for="option in ATTRIBUTION_RANGE_OPTIONS"
               :key="option.value"
@@ -67,7 +82,7 @@ function isActive(to: string) {
             </button>
           </div>
           <input
-            v-if="props.range === 'day'"
+            v-if="showRangeControls && props.range === 'day'"
             data-attribution-control
             :value="props.date || ''"
             aria-label="选择归因日期"
@@ -99,9 +114,9 @@ function isActive(to: string) {
       </div>
     </div>
 
-    <div v-if="usage" class="flex min-w-0 flex-wrap items-center gap-3 border-y border-gray-200 bg-white px-4 py-2 text-xs text-gray-500 [overflow-wrap:anywhere]">
-      <span class="min-w-0">Rows read {{ formatAnalyticsNumber(usage.rowsRead) }}</span>
-      <span class="min-w-0">Rows written {{ formatAnalyticsNumber(usage.rowsWritten) }}</span>
+    <div v-if="showUsage && usage" class="flex min-w-0 flex-wrap items-center gap-3 border-y border-gray-200 bg-white px-4 py-2 text-xs text-gray-500 [overflow-wrap:anywhere]">
+      <span class="min-w-0">读取 {{ formatAnalyticsNumber(usage.rowsRead) }} 行</span>
+      <span class="min-w-0">写入 {{ formatAnalyticsNumber(usage.rowsWritten) }} 行</span>
       <span class="min-w-0">查询耗时 {{ formatAnalyticsNumber(usage.durationMs) }}ms</span>
     </div>
 
