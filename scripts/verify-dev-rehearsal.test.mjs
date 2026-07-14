@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { describe, it } from 'node:test'
-import { runDevRehearsalVerification } from './verify-dev-rehearsal.mjs'
+import { requestJsonStepWithRetry, runDevRehearsalVerification } from './verify-dev-rehearsal.mjs'
 
 const COMMIT = '18dc11e0b0e4797683d4551a93a1f22e53dc4628'
 
@@ -28,5 +28,54 @@ describe('开发环境发布预演边界', () => {
     assert.match(source, /postConversion/)
     assert.match(source, /postRegistration/)
     assert.match(source, /dev-admin-attribution/)
+  })
+
+  it('部署身份传播期间轮询到新 commit 后通过', async () => {
+    let calls = 0
+    const step = await requestJsonStepWithRetry(
+      async () => {
+        calls += 1
+        return new Response(JSON.stringify({ commit: calls === 1 ? 'old' : COMMIT }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      },
+      'dev-api-health',
+      'https://dev.example.test/api/health',
+      {},
+      (body) => {
+        if (body.commit !== COMMIT) throw new Error('commit 尚未传播')
+        return 'commit 已传播'
+      },
+      { maxAttempts: 3, retryDelayMs: 0, sleep: async () => {} },
+    )
+
+    assert.equal(step.status, 'passed')
+    assert.equal(calls, 2)
+    assert.match(step.summary, /传播检查 2\/3/)
+  })
+
+  it('部署身份超过轮询上限后仍保持失败', async () => {
+    let calls = 0
+    const step = await requestJsonStepWithRetry(
+      async () => {
+        calls += 1
+        return new Response(JSON.stringify({ commit: 'old' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      },
+      'dev-web-release',
+      'https://dev.example.test/__release',
+      {},
+      () => {
+        throw new Error('commit 尚未传播')
+      },
+      { maxAttempts: 3, retryDelayMs: 0, sleep: async () => {} },
+    )
+
+    assert.equal(step.status, 'failed')
+    assert.equal(calls, 3)
+    assert.match(step.summary, /连续 3 次检查仍未传播/)
   })
 })

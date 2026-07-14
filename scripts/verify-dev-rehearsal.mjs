@@ -7,6 +7,8 @@ const DEV_SEED_FILE_RELATIVE_TO_API = '../../scripts/fixtures/release-smoke/seed
 const REQUIRED_ENV_KEYS = ['VERIFY_DEV_API_URL', 'VERIFY_DEV_WEB_URL']
 const LEGACY_DEV_WORKERS_SUBDOMAIN = '250770503'
 const DEV_REQUEST_TIMEOUT_MS = 20_000
+const DEV_IDENTITY_MAX_ATTEMPTS = 31
+const DEV_IDENTITY_RETRY_DELAY_MS = 3_000
 
 export async function runDevRehearsalVerification(options = {}) {
   const cwd = options.cwd || process.cwd()
@@ -116,16 +118,16 @@ export async function runDevRehearsalVerification(options = {}) {
     if (webDeployStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
     const [apiHealthStep, webReleaseStep] = await Promise.all([
-      requestJsonStep(boundedFetch, 'dev-api-health', `${apiUrl}/api/health`, {}, (body) => {
+      requestJsonStepWithRetry(boundedFetch, 'dev-api-health', `${apiUrl}/api/health`, {}, (body) => {
         if (body?.status !== 'ok') throw new Error(`健康检查 status 非 ok：${String(body?.status || '')}`)
         if (body?.db !== 'ok') throw new Error(`健康检查 db 非 ok：${String(body?.db || '')}`)
         assertReleaseIdentity(body, releaseCommit, 'API')
         return `API 发布身份通过，environment=dev，commit=${releaseCommit}`
-      }),
-      requestJsonStep(boundedFetch, 'dev-web-release', `${webUrl}/__release`, {}, (body) => {
+      }, identityRetryOptions(options)),
+      requestJsonStepWithRetry(boundedFetch, 'dev-web-release', `${webUrl}/__release`, {}, (body) => {
         assertReleaseIdentity(body, releaseCommit, 'Web')
         return `Web 发布身份通过，environment=dev，commit=${releaseCommit}`
-      }),
+      }, identityRetryOptions(options)),
     ])
     steps.push(apiHealthStep, webReleaseStep)
     if (apiHealthStep.status !== 'passed' || webReleaseStep.status !== 'passed') {
@@ -480,6 +482,40 @@ async function requestJsonStep(fetchFn, stepName, url, init, assertBody) {
       message,
     }
   })
+}
+
+export async function requestJsonStepWithRetry(fetchFn, stepName, url, init, assertBody, options = {}) {
+  const maxAttempts = Math.max(1, Number(options.maxAttempts || DEV_IDENTITY_MAX_ATTEMPTS))
+  const retryDelayMs = Math.max(0, Number(options.retryDelayMs ?? DEV_IDENTITY_RETRY_DELAY_MS))
+  const sleepFn = options.sleep || (delayMs => new Promise(resolve => setTimeout(resolve, delayMs)))
+  const startedAt = Date.now()
+  let lastStep = null
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    lastStep = await requestJsonStep(fetchFn, stepName, url, init, assertBody)
+    if (lastStep.status === 'passed') {
+      return {
+        ...lastStep,
+        durationMs: Date.now() - startedAt,
+        summary: truncateSummary(`${lastStep.summary}；传播检查 ${attempt}/${maxAttempts}`),
+      }
+    }
+    if (attempt < maxAttempts) await sleepFn(retryDelayMs)
+  }
+
+  return {
+    ...lastStep,
+    durationMs: Date.now() - startedAt,
+    summary: truncateSummary(`${lastStep?.summary || '发布身份检查失败'}；连续 ${maxAttempts} 次检查仍未传播`),
+  }
+}
+
+function identityRetryOptions(options) {
+  return {
+    maxAttempts: options.identityMaxAttempts,
+    retryDelayMs: options.identityRetryDelayMs,
+    sleep: options.sleep,
+  }
 }
 
 async function requestTextStep(fetchFn, stepName, url, init, assertBody) {
