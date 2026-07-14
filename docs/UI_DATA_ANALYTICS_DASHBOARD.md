@@ -233,12 +233,15 @@ Nuxt 后台归因中心
   -> 页面渲染投放链接、转化趋势、平台同步、匹配覆盖和重复诊断
 ```
 
-#### `/admin/attribution` 平台归因与 Meta 放行面板
+#### `/admin/attribution` 多平台归因工作台
 
-- `[当前实现]` 顶部使用 Meta / TikTok 分段控制；summary、trend、campaign breakdown 和匹配覆盖必须携带明确 provider，切换后同步刷新。
+- `[当前实现]` 归因中心固定为五个职责清晰的页面：`总览`、`转化明细`、`投放链接`、`平台接入`、`发布与诊断`。旧的独立 `Meta 运维` 页面已删除，连接验证、质量分析、放量与 incident 不得在多个页面重复维护。
+- `[当前实现]` 所有平台化页面顶部使用 Meta / TikTok 分段控制，并通过 URL `provider` 保留上下文；summary、trend、conversion detail、tracking links、campaign breakdown、匹配覆盖和重复诊断必须携带明确 provider，切换后同步刷新。
+- `[当前实现]` `attributionPlatforms.ts` 是前端平台展示能力注册表；新增平台先登记目标 ID、Browser/Server 名称和受控放量、incident、平台质量能力，再复用通用页面。平台专属协议仍留在 adapter 和专属组件中，不把差异塞进业务页条件分支。
+- `[当前实现]` `总览` 只展示站内事实、平台投递与匹配质量；`平台接入` 只维护目标 ID、通道开关和一次性连接验证；`发布与诊断` 只维护 blocker/warning、受控放量和 incident。Test Event Code 只存在于平台接入页内存中。
 - `[当前实现]` 平台健康分别显示 Pixel attempted、Server API sent、failed、skipped、pending、retry exhausted；不得合并为“已同步”总数。
 - `[当前实现]` 匹配质量使用通用 `browserId` / `clickId`，UI 显示 Meta `fbp/fbc` 或 TikTok `_ttp/ttclid`。Meta Dataset Quality 不得显示为 TikTok 质量数据。
-- `[当前实现]` readiness 按 blocker 与 warning 分区。blocker 未通过时，`ad_platform_connections.server_enabled` 保持不可开启；warning 只提示观察项，不伪装为生产放行。
+- `[当前实现]` 发布与诊断按选中平台分别计算 blocker 与 warning。Meta 复用服务端 production readiness、受控 rollout 和 incident；TikTok 使用自身连接、资源、路由隔离和投递状态，不读取 Meta 的验证结果。warning 只提示观察项，不伪装为生产放行。
 - `[当前实现]` Owner 仅能在 `ad_platform_connections.mode=test` 发起严格 Test Event；成功条件为 CAPI `sent` 和 `events_received=1`，不是仅创建审计记录。
 - `[当前实现]` production live evidence 通过 migrations `0041`、`0045`、`0046` 的一次性 challenge 绑定正式环境、当前 commit 与增强匹配覆盖证明；正式域名 Browser/CAPI 使用同组 opaque ID，UI 和 CLI 不展示原始 event ID。
 - `[当前实现]` 资源 attestation 通过 migration `0042` 的 60 秒 D1 原子一次性 ticket 完成；Owner Cookie 只用于向固定可信 API origin 换票，最终 HMAC attestation 请求不携带 Cookie。

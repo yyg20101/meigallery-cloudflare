@@ -608,22 +608,22 @@ function adminAttributionResponse(pathname, searchParams) {
       range,
       usage,
       data: {
+        provider,
         byAction: [
           { action_type: 'contact', action_count: 4, unique_session_count: 4 },
-          { action_type: 'lead', action_count: 3, unique_session_count: 3 },
           { action_type: 'complete_registration', action_count: 2, unique_session_count: 2 },
         ],
         bySource: [
-          { source_channel: 'ad', source_name: 'meta-ad-a', utm_campaign: 'july-contact', utm_content: 'chat-a', contact_count: 4, lead_count: 3, complete_registration_count: 2, start_trial_count: 0, membership_grant_count: 1 },
+          { source_channel: 'ad', source_name: `${provider}-ad-a`, utm_campaign: 'july-contact', utm_content: 'chat-a', contact_count: 4, complete_registration_count: 2 },
         ],
         samples: [
-          { id: 'conv_1', action_type: 'contact', occurred_at: '2026-07-09T09:10:00.000Z', source_channel: 'ad', source_name: 'meta-ad-a', tracking_source_slug: 'meta-ad-a', utm_campaign: 'july-contact', utm_content: 'chat-a', method_type: 'telegram', action_target: 'floating_contact_panel', route_name: 'gallery-detail', path: '/gallery/summer-portrait', duplicate_of: '' },
+          { id: 'conv_1', action_type: 'contact', occurred_at: '2026-07-09T09:10:00.000Z', source_channel: 'ad', source_name: `${provider}-ad-a`, tracking_source_slug: `${provider}-ad-a`, utm_campaign: 'july-contact', utm_content: 'chat-a', method_type: 'telegram', action_target: 'floating_contact_panel', route_name: 'gallery-detail', path: '/gallery/summer-portrait', duplicate_of: '', attribution_provider: provider },
         ],
       },
     }
   }
 
-  if (pathname.endsWith('/links')) return { range, usage, data: { links } }
+  if (pathname.endsWith('/links')) return { range, usage, data: { provider, links: links.filter(link => link.adProvider === provider) } }
 
   if (pathname.endsWith('/meta')) {
     return {
@@ -683,11 +683,12 @@ function adminAttributionResponse(pathname, searchParams) {
       range,
       usage,
       data: {
+        provider,
         duplicateSuppressedCount: 1,
         duplicateActionCount: 1,
         duplicateRate: 0.125,
         samples: [
-          { id: 'convdup_1', action_type: 'contact', occurred_at: '2026-07-09T09:11:00.000Z', source_channel: 'ad', source_name: 'meta-ad-a', tracking_source_slug: 'meta-ad-a', utm_campaign: 'july-contact', utm_content: 'chat-a', method_type: 'telegram', action_target: 'floating_contact_panel', duplicate_of: 'conv_1' },
+          { id: 'convdup_1', action_type: 'contact', occurred_at: '2026-07-09T09:11:00.000Z', source_channel: 'ad', source_name: `${provider}-ad-a`, tracking_source_slug: `${provider}-ad-a`, utm_campaign: 'july-contact', utm_content: 'chat-a', method_type: 'telegram', action_target: 'floating_contact_panel', duplicate_of: 'conv_1', attribution_provider: provider },
         ],
       },
     }

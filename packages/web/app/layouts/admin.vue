@@ -38,7 +38,7 @@ const navItems = [
   { to: '/admin/cases', label: '真实案例', icon: 'message' },
   { to: '/admin/ads', label: '广告位', icon: 'megaphone' },
   { to: '/admin/analytics', label: '数据分析', icon: 'chart' },
-  { to: '/admin/attribution', label: 'Meta 归因', icon: 'chart' },
+  { to: '/admin/attribution', label: '广告归因', icon: 'chart' },
   { to: '/admin/invite-codes', label: '邀请码', icon: 'ticket' },
   { to: '/admin/settings', label: '站点设置', icon: 'gear' },
   { to: '/admin/contact-methods', label: '联系方式', icon: 'message' },

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import AnalyticsDataTable from '~/components/admin/analytics/AnalyticsDataTable.vue'
 import AttributionPageShell from '~/components/admin/attribution/AttributionPageShell.vue'
+import AttributionProviderSwitch from '~/components/admin/attribution/AttributionProviderSwitch.vue'
 
 definePageMeta({ layout: 'admin' })
 
@@ -29,14 +30,27 @@ interface AttributionLink {
 const { api } = useApi()
 const toast = useToast()
 const rangeState = useAdminAttributionRange('7d')
-const attribution = useAdminAttribution<{ links: AttributionLink[] }>('/api/admin/attribution/links', { rangeState })
+const selectedProvider = useAttributionProvider()
+const attribution = useAdminAttribution<{ provider: 'meta' | 'tiktok'; links: AttributionLink[] }>('/api/admin/attribution/links', {
+  rangeState,
+  query: computed(() => ({ provider: selectedProvider.value })),
+})
 
 const creating = ref(false)
 const createError = ref('')
-const form = reactive({
+const form = reactive<{
+  sourceLabel: string
+  channel: string
+  adProvider: '' | 'meta' | 'tiktok'
+  targetPath: string
+  utmMedium: string
+  utmCampaign: string
+  utmContent: string
+  note: string
+}>({
   sourceLabel: '',
   channel: 'ad',
-  adProvider: 'meta',
+  adProvider: selectedProvider.value,
   targetPath: '/',
   utmMedium: 'paid_social',
   utmCampaign: '',
@@ -55,7 +69,11 @@ const channelOptions = [
 watch(() => form.channel, (channel) => {
   const option = channelOptions.find(item => item.value === channel)
   if (option) form.utmMedium = option.medium
-  form.adProvider = channel === 'ad' ? (form.adProvider || 'meta') : ''
+  form.adProvider = channel === 'ad' ? (form.adProvider || selectedProvider.value) : ''
+})
+
+watch(selectedProvider, (provider) => {
+  if (form.channel === 'ad') form.adProvider = provider
 })
 
 const linkRows = computed(() => (attribution.data.value?.links ?? []).map(item => ({
@@ -169,6 +187,8 @@ function normalizeUtmValue(value: string) {
     :usage="attribution.usage.value"
     @refresh="attribution.refresh"
   >
+    <AttributionProviderSwitch v-model="selectedProvider" />
+
     <section class="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-900">
       广告链接必须绑定唯一平台；链接来源只会进入对应平台的 Pixel 与 Server API。
     </section>

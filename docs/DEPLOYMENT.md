@@ -170,7 +170,7 @@ Dataset Quality 使用唯一 production Dataset。Owner 已批准九章节 produ
 
 后台与证据的状态口径必须严格区分：Pixel `attempted` 只表示浏览器已按服务端指令尝试调用，**不代表 Meta 已接收**；只有 CAPI delivery 为 `sent` 且 Graph API 返回 `events_received=1`，才可表述为 Meta 已接收。两项正式事件的 Browser/Server 同 ID 与 Meta 去重结果，必须由 Owner 在 Events Manager 中确认并生成脱敏 live evidence。
 
-普通 test mode 的 `Contact`、`CompleteRegistration` 不自动携带 `test_event_code`。Owner 在 `/admin/attribution/meta` 输入 Events Manager 当前显示的 `TEST...` 会话码，验证连接与 Live Evidence 只在该次请求中使用并共用同一值；服务端不持久化、不审计、不回显。`ad_platform_connections.mode=production` 时，CAPI payload 绝不携带 `test_event_code`。
+普通 test mode 的 `Contact`、`CompleteRegistration` 不自动携带 `test_event_code`。Owner 在 `/admin/attribution/platforms?provider=meta` 输入 Events Manager 当前显示的 `TEST...` 会话码，验证连接与 Live Evidence 只在该次请求中使用并共用同一值；服务端不持久化、不审计、不回显。`ad_platform_connections.mode=production` 时，CAPI payload 绝不携带 `test_event_code`。
 
 历史版本若曾配置 `META_CAPI_TEST_EVENT_CODE`，必须先部署已使用资源 attestation V2 / 资源摘要 V3 的 API Worker，并完成一次新的 production 资源验证；确认后台不再依赖该值后，再执行 `corepack pnpm --filter @meigallery/api exec wrangler secret delete META_CAPI_TEST_EVENT_CODE --env=""`。禁止在旧 Worker 仍运行时提前删除。
 
@@ -194,7 +194,7 @@ corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_DATA_K
 
 1. 将受控 secret manager 中的旧 current 通过交互式命令写入 previous：`corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_DATA_KEY_PREVIOUS --env=""`。
 2. 在交互式终端执行 `openssl rand -base64 32`，把生成结果通过 `corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_DATA_KEY_CURRENT --env=""` 写入新 current。
-3. 部署后在 `/admin/attribution/meta` 等待 previous outbox 与活动 delivery 计数都归零；本阶段不开放 production bootstrap 或 rollout。
+3. 部署后在 `/admin/attribution/readiness?provider=meta` 等待 previous outbox 与活动 delivery 计数都归零；本阶段不开放 production bootstrap 或 rollout。
 4. 执行 `corepack pnpm --filter @meigallery/api exec wrangler secret delete META_CAPI_DATA_KEY_PREVIOUS --env=""`，再次部署。
 
 dev 不执行上述操作。后台只展示有效性布尔值、引用计数和可移除状态，不展示 key ID 或派生值。

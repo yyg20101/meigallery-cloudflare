@@ -178,7 +178,7 @@ describe('TikTok Events Queue 真实 D1', () => {
   })
 })
 
-async function seedDelivery(deliveryId: string, createdAt = '2026-07-13 12:00:00') {
+async function seedDelivery(deliveryId: string, createdAt = new Date().toISOString()) {
   const actionId = deliveryId.replace('cdlv_', 'conv_')
   await db.batch([
     db.prepare(`

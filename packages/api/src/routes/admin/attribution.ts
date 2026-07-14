@@ -258,7 +258,7 @@ adminAttributionRoutes.get('/overview', async (c) => {
       FROM analytics_conversion_actions
       WHERE date BETWEEN ? AND ?
         AND duplicate_of != ''
-        AND action_type IN ('contact', 'complete_registration', 'membership_grant')
+        AND action_type IN ('contact', 'complete_registration')
     `, [range.from, range.to]),
   ])
 
@@ -310,94 +310,63 @@ adminAttributionRoutes.get('/overview', async (c) => {
 adminAttributionRoutes.get('/conversions', async (c) => {
   const range = parseRangeOrError(c)
   if (range instanceof Response) return range
+  const provider = parseDashboardProviderOrError(c)
+  if (provider instanceof Response) return provider
   const sourceFilter = readAttributionSourceFilter(c)
-  const dailySourceWhere = sourceFilter
-    ? "date BETWEEN ? AND ? AND action_type IN ('contact', 'complete_registration') AND source_name = ?"
-    : "date BETWEEN ? AND ? AND action_type IN ('contact', 'complete_registration')"
   const actionSourceWhere = sourceFilter
-    ? "date BETWEEN ? AND ? AND action_type IN ('contact', 'complete_registration') AND (source_name = ? OR tracking_source_slug = ?)"
-    : "date BETWEEN ? AND ? AND action_type IN ('contact', 'complete_registration')"
-  const dailySourceParams = sourceFilter ? [range.from, range.to, sourceFilter] : [range.from, range.to]
-  const actionSourceParams = sourceFilter ? [range.from, range.to, sourceFilter, sourceFilter] : [range.from, range.to]
+    ? "date BETWEEN ? AND ? AND action_type IN ('contact', 'complete_registration') AND attribution_provider = ? AND (source_name = ? OR tracking_source_slug = ?)"
+    : "date BETWEEN ? AND ? AND action_type IN ('contact', 'complete_registration') AND attribution_provider = ?"
+  const actionSourceParams = sourceFilter
+    ? [range.from, range.to, provider, sourceFilter, sourceFilter]
+    : [range.from, range.to, provider]
 
-  const [byAction, bySource, sourceHistorical, sourceOperations, samples, historical, operations] = await Promise.all([
+  const [byAction, bySource, samples] = await Promise.all([
     queryAll(c.env.DB, `
-      SELECT action_type, SUM(action_count) AS action_count, SUM(unique_session_count) AS unique_session_count
-      FROM analytics_conversion_daily
-      WHERE ${dailySourceWhere}
+      SELECT
+        action_type,
+        COUNT(*) AS action_count,
+        COUNT(DISTINCT session_id) AS unique_session_count
+      FROM analytics_conversion_actions
+      WHERE ${actionSourceWhere}
+        AND duplicate_of = ''
       GROUP BY action_type
       ORDER BY action_count DESC
-    `, dailySourceParams),
+    `, actionSourceParams),
     queryAll(c.env.DB, `
       SELECT
         source_channel,
         source_name,
         utm_campaign,
         utm_content,
-        COALESCE(SUM(CASE WHEN action_type = 'contact' THEN action_count ELSE 0 END), 0) AS contact_count,
-        COALESCE(SUM(CASE WHEN action_type = 'complete_registration' THEN action_count ELSE 0 END), 0) AS complete_registration_count
-      FROM analytics_conversion_daily
-      WHERE ${dailySourceWhere}
+        COALESCE(SUM(CASE WHEN action_type = 'contact' THEN 1 ELSE 0 END), 0) AS contact_count,
+        COALESCE(SUM(CASE WHEN action_type = 'complete_registration' THEN 1 ELSE 0 END), 0) AS complete_registration_count
+      FROM analytics_conversion_actions
+      WHERE ${actionSourceWhere}
+        AND duplicate_of = ''
       GROUP BY source_channel, source_name, utm_campaign, utm_content
       ORDER BY contact_count DESC, complete_registration_count DESC
       LIMIT 50
-    `, dailySourceParams),
-    queryAll(c.env.DB, `
-      SELECT source_channel, source_name, utm_campaign, utm_content,
-        COALESCE(SUM(action_count), 0) AS lead_count
-      FROM analytics_conversion_daily
-      WHERE date BETWEEN ? AND ?
-        AND action_type = 'lead'
-        ${sourceFilter ? 'AND source_name = ?' : ''}
-      GROUP BY source_channel, source_name, utm_campaign, utm_content
-    `, dailySourceParams),
-    queryAll(c.env.DB, `
-      SELECT source_channel, source_name, utm_campaign, utm_content,
-        COALESCE(SUM(action_count), 0) AS membership_grant_count
-      FROM analytics_conversion_daily
-      WHERE date BETWEEN ? AND ?
-        AND action_type = 'membership_grant'
-        ${sourceFilter ? 'AND source_name = ?' : ''}
-      GROUP BY source_channel, source_name, utm_campaign, utm_content
-    `, dailySourceParams),
+    `, actionSourceParams),
     queryAll(c.env.DB, `
       SELECT
         id, action_type, occurred_at, source_channel, source_name, tracking_source_slug,
-        utm_campaign, utm_content, method_type, action_target, route_name, path, duplicate_of
+        utm_campaign, utm_content, method_type, action_target, route_name, path, duplicate_of,
+        attribution_provider
       FROM analytics_conversion_actions
       WHERE ${actionSourceWhere}
       ORDER BY occurred_at DESC
       LIMIT 100
     `, actionSourceParams),
-    queryFirst(c.env.DB, `
-      SELECT COALESCE(SUM(action_count), 0) AS historical_lead_count
-      FROM analytics_conversion_daily
-      WHERE date BETWEEN ? AND ?
-        AND action_type = 'lead'
-        ${sourceFilter ? 'AND source_name = ?' : ''}
-    `, dailySourceParams),
-    queryFirst(c.env.DB, `
-      SELECT COALESCE(SUM(action_count), 0) AS membership_grant_count
-      FROM analytics_conversion_daily
-      WHERE date BETWEEN ? AND ?
-        AND action_type = 'membership_grant'
-        ${sourceFilter ? 'AND source_name = ?' : ''}
-    `, dailySourceParams),
   ])
 
   return c.json({
     range,
-    usage: mergeQueryUsage(byAction, bySource, sourceHistorical, sourceOperations, samples, historical, operations),
+    usage: mergeQueryUsage(byAction, bySource, samples),
     data: {
-      byAction: byAction.rows.filter(isActiveConversionRow),
-      bySource: mergeConversionSourceRows(bySource.rows, sourceHistorical.rows, sourceOperations.rows),
-      samples: samples.rows.filter(isActiveConversionRow),
-      historical: {
-        leadCount: numberValue((historical.rows[0] ?? {}).historical_lead_count),
-      },
-      operations: {
-        membershipGrantCount: numberValue((operations.rows[0] ?? {}).membership_grant_count),
-      },
+      provider,
+      byAction: byAction.rows,
+      bySource: bySource.rows,
+      samples: samples.rows,
     },
   })
 })
@@ -405,16 +374,18 @@ adminAttributionRoutes.get('/conversions', async (c) => {
 adminAttributionRoutes.get('/links', async (c) => {
   const range = parseRangeOrError(c)
   if (range instanceof Response) return range
+  const provider = parseDashboardProviderOrError(c)
+  if (provider instanceof Response) return provider
   const sourceFilter = readAttributionSourceFilter(c)
   const conversionMetricsWhere = sourceFilter
     ? 'date BETWEEN ? AND ? AND source_name = ?'
     : 'date BETWEEN ? AND ?'
   const linksSourceWhere = sourceFilter
-    ? 'WHERE ats.slug = ? OR ats.utm_source = ?'
-    : ''
+    ? 'WHERE (ats.slug = ? OR ats.utm_source = ?) AND ats.ad_provider = ?'
+    : 'WHERE ats.ad_provider = ?'
   const queryParams = sourceFilter
-    ? [range.from, range.to, sourceFilter, range.from, range.to, sourceFilter, sourceFilter]
-    : [range.from, range.to, range.from, range.to]
+    ? [range.from, range.to, sourceFilter, range.from, range.to, sourceFilter, sourceFilter, provider]
+    : [range.from, range.to, range.from, range.to, provider]
 
   const links = await queryAll(c.env.DB, `
     WITH scoped_conversion_facts AS (
@@ -486,6 +457,7 @@ adminAttributionRoutes.get('/links', async (c) => {
     range,
     usage: links.usage,
     data: {
+      provider,
       links: links.rows.map(serializeAttributionLink),
     },
   })
@@ -624,6 +596,8 @@ adminAttributionRoutes.get('/meta', async (c) => {
 adminAttributionRoutes.get('/duplicates', async (c) => {
   const range = parseRangeOrError(c)
   if (range instanceof Response) return range
+  const provider = parseDashboardProviderOrError(c)
+  if (provider instanceof Response) return provider
 
   const [deliveryTotals, duplicateActions, samples] = await Promise.all([
     queryFirst(c.env.DB, `
@@ -632,27 +606,29 @@ adminAttributionRoutes.get('/duplicates', async (c) => {
         COALESCE(SUM(delivery_count), 0) AS delivery_count
       FROM analytics_conversion_delivery_daily
       WHERE date BETWEEN ? AND ?
-        AND provider = 'meta'
+        AND provider = ?
         AND event_name IN ('Contact', 'CompleteRegistration')
-    `, [range.from, range.to]),
+    `, [range.from, range.to, provider]),
     queryFirst(c.env.DB, `
       SELECT COUNT(*) AS duplicate_action_count
       FROM analytics_conversion_actions
       WHERE date BETWEEN ? AND ?
         AND duplicate_of != ''
-        AND action_type IN ('contact', 'complete_registration', 'membership_grant')
-    `, [range.from, range.to]),
+        AND action_type IN ('contact', 'complete_registration')
+        AND attribution_provider = ?
+    `, [range.from, range.to, provider]),
     queryAll(c.env.DB, `
       SELECT
         id, action_type, occurred_at, source_channel, source_name, tracking_source_slug,
-        utm_campaign, utm_content, method_type, action_target, duplicate_of
+        utm_campaign, utm_content, method_type, action_target, duplicate_of, attribution_provider
       FROM analytics_conversion_actions
       WHERE date BETWEEN ? AND ?
         AND duplicate_of != ''
-        AND action_type IN ('contact', 'complete_registration', 'membership_grant')
+        AND action_type IN ('contact', 'complete_registration')
+        AND attribution_provider = ?
       ORDER BY occurred_at DESC
       LIMIT 100
-    `, [range.from, range.to]),
+    `, [range.from, range.to, provider]),
   ])
   const deliveryRow = deliveryTotals.rows[0] ?? {}
   const duplicateSuppressedCount = numberValue(deliveryRow.duplicate_suppressed_count)
@@ -662,6 +638,7 @@ adminAttributionRoutes.get('/duplicates', async (c) => {
     range,
     usage: mergeQueryUsage(deliveryTotals, duplicateActions, samples),
     data: {
+      provider,
       duplicateSuppressedCount,
       duplicateActionCount: numberValue((duplicateActions.rows[0] ?? {}).duplicate_action_count),
       duplicateRate: deliveryCount > 0 ? roundRate(duplicateSuppressedCount / deliveryCount) : 0,
@@ -1861,42 +1838,6 @@ function normalizeTrendRow(row: Row) {
   return {
     date: String(row.date ?? ''),
     ...normalizeTotals(row),
-  }
-}
-
-function isActiveConversionRow(row: Row) {
-  return row.action_type === 'contact' || row.action_type === 'complete_registration'
-}
-
-function mergeConversionSourceRows(activeRows: Row[], historicalRows: Row[], operationRows: Row[]) {
-  const historical = new Map(historicalRows.map(row => [conversionSourceKey(row), row]))
-  const operations = new Map(operationRows.map(row => [conversionSourceKey(row), row]))
-  return activeRows.map((row) => {
-    const key = conversionSourceKey(row)
-    return serializeConversionSource({
-      ...row,
-      lead_count: historical.get(key)?.lead_count,
-      membership_grant_count: operations.get(key)?.membership_grant_count,
-    })
-  })
-}
-
-function conversionSourceKey(row: Row) {
-  return [row.source_channel, row.source_name, row.utm_campaign, row.utm_content]
-    .map(value => String(value ?? ''))
-    .join('\u0000')
-}
-
-function serializeConversionSource(row: Row) {
-  const {
-    lead_count: _leadCount,
-    membership_grant_count: _membershipGrantCount,
-    ...active
-  } = row
-  return {
-    ...active,
-    historical: normalizeHistorical(row),
-    operations: normalizeOperations(row),
   }
 }
 

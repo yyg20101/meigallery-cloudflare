@@ -1,6 +1,6 @@
-import { flushPromises, shallowMount } from '@vue/test-utils'
+import { shallowMount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { computed, defineComponent, reactive, ref } from 'vue'
+import { computed, defineComponent, ref } from 'vue'
 import AttributionIndexPage from './index.vue'
 
 const TextStub = (name: string, text: string) => defineComponent({
@@ -22,18 +22,18 @@ function state(data: unknown) {
 
 function mountPage(
   datasetAvailable = false,
-  api = vi.fn().mockResolvedValue({}),
   initialProvider: 'meta' | 'tiktok' = 'meta',
 ) {
   const states: Record<string, ReturnType<typeof state>> = {
     '/api/admin/attribution/summary': state({
-      provider: 'meta',
+      provider: initialProvider,
       business: { contactCount: 3, completeRegistrationCount: 2, actionCount: 5 },
       historical: { leadCount: 9 },
       delivery: { pixelAttempted: 5, serverSent: 4, failed: 1, skipped: 0, pending: 0, retryExhausted: 0 },
+      routing: { mismatchCount: 0, unroutedActionCount: 1 },
     }),
     '/api/admin/attribution/trends': state({
-      provider: 'meta',
+      provider: initialProvider,
       granularity: 'day',
       rows: [{
         date: '2026-07-10',
@@ -42,9 +42,11 @@ function mountPage(
       }],
     }),
     '/api/admin/attribution/quality': state({
-      provider: 'meta',
+      provider: initialProvider,
       match: {
-        labels: { browserId: 'fbp', clickId: 'fbc', email: 'email', externalId: 'external_id' },
+        labels: initialProvider === 'meta'
+          ? { browserId: 'fbp', clickId: 'fbc', email: 'email', externalId: 'external_id' }
+          : { browserId: '_ttp', clickId: 'ttclid', email: 'email', externalId: 'external_id' },
         summary: {
           browserId: { availability: 'available', numerator: 3, denominator: 4, rate: 0.75 },
           clickId: { availability: 'unavailable', numerator: 0, denominator: 0, rate: null },
@@ -53,7 +55,9 @@ function mountPage(
         },
         rows: [],
       },
-      platformQuality: datasetAvailable
+      platformQuality: initialProvider === 'tiktok'
+        ? { source: 'not_supported', availability: 'unavailable', latest: null, rows: [] }
+        : datasetAvailable
         ? { source: 'meta_dataset_quality', availability: 'available', latest: { value: 0.82 }, rows: [] }
         : { source: 'meta_dataset_quality', availability: 'unavailable', latest: null, rows: [] },
     }),
@@ -101,18 +105,12 @@ function mountPage(
   }
 
   vi.stubGlobal('definePageMeta', vi.fn())
+  vi.stubGlobal('useAttributionProvider', () => ref(initialProvider))
   vi.stubGlobal('useAdminAttribution', (endpoint: string) => states[endpoint] ?? state({}))
   vi.stubGlobal('useAdminAttributionRange', () => ({
     range: states['/api/admin/attribution/summary']!.range,
     date: states['/api/admin/attribution/summary']!.date,
     queryKey: computed(() => '7d'),
-  }))
-  vi.stubGlobal('useAuth', () => ({ isOwner: ref(true) }))
-  vi.stubGlobal('useApi', () => ({ api }))
-  const route = reactive({ query: { provider: initialProvider } })
-  vi.stubGlobal('useRoute', () => route)
-  vi.stubGlobal('useRouter', () => ({
-    replace: vi.fn(async ({ query }: { query: Record<string, string> }) => Object.assign(route.query, query)),
   }))
   vi.stubGlobal('formatAnalyticsNumber', (value: unknown) => String(value ?? 0))
   vi.stubGlobal('formatAnalyticsPercent', (numerator: unknown, denominator?: unknown) => denominator === undefined ? `${Number(numerator) * 100}%` : `${Number(numerator) / Math.max(1, Number(denominator)) * 100}%`)
@@ -134,21 +132,20 @@ function mountPage(
 
 afterEach(() => vi.unstubAllGlobals())
 
-describe('Meta 归因质量总览', () => {
-  it('按固定顺序展示五个全宽区域与四层证据轨', () => {
+describe('多平台归因总览', () => {
+  it('按固定顺序展示三个分析区域与四层证据轨', () => {
     const wrapper = mountPage()
     expect(wrapper.findAll('[data-attribution-section]').map(section => section.attributes('data-attribution-section'))).toEqual([
-      'connection',
       'business',
       'delivery',
       'quality',
-      'rollout',
     ])
     expect(wrapper.get('[data-evidence-rail]').text()).toContain('站内事实')
     expect(wrapper.get('[data-evidence-rail]').text()).toContain('Pixel 尝试')
     expect(wrapper.get('[data-evidence-rail]').text()).toContain('Server API 接收')
     expect(wrapper.get('[data-evidence-rail]').text()).toContain('平台质量')
-    expect(wrapper.text()).not.toContain('Meta 归因成功')
+    expect(wrapper.text()).toContain('Meta 连接 已验证')
+    expect(wrapper.text()).not.toContain('发布控制组件')
   })
 
   it('Dataset Quality 与 match 按 availability 渲染，不把 null 显示为 0 分', () => {
@@ -159,36 +156,12 @@ describe('Meta 归因质量总览', () => {
     expect(wrapper.text()).not.toContain('fbc 0%')
   })
 
-  it('TikTok Test Event Code 仅用于单次验证请求并在成功后清空', async () => {
-    const api = vi.fn().mockResolvedValue({ data: { verified: true, idempotent: false, testEventsSent: 2 } })
-    const wrapper = mountPage(false, api, 'tiktok')
-    const tiktokForm = wrapper.findAll('form').find(form => form.text().includes('TikTok Pixel ID'))
-    expect(tiktokForm).toBeDefined()
-    const codeInput = tiktokForm!.get('input[type="password"]')
-    await codeInput.setValue('TEST_TIKTOK_2026')
-
-    await tiktokForm!.get('button[type="button"]').trigger('click')
-    await flushPromises()
-
-    expect(api).toHaveBeenCalledWith('/api/admin/attribution/platforms/tiktok/verify', {
-      method: 'POST',
-      body: { testEventCode: 'TEST_TIKTOK_2026' },
-    })
-    expect((codeInput.element as HTMLInputElement).value).toBe('')
-    expect(tiktokForm!.text()).toContain('TikTok Events API 已验证')
-  })
-
-  it('TikTok 已验证连接复测时提示 revision 保持有效并展示独立发布检查', async () => {
-    const api = vi.fn().mockResolvedValue({ data: { verified: true, idempotent: true, testEventsSent: 2 } })
-    const wrapper = mountPage(false, api, 'tiktok')
-    const tiktokForm = wrapper.findAll('form').find(form => form.text().includes('TikTok Pixel ID'))!
-    await tiktokForm.get('input[type="password"]').setValue('TEST_TIKTOK_REPEAT')
-    await tiktokForm.get('button[type="button"]').trigger('click')
-    await flushPromises()
-
-    expect(tiktokForm.text()).toContain('TikTok 测试事件已发送，连接验证保持有效')
-    expect(wrapper.text()).toContain('Events API rollout 与发布检查')
-    expect(wrapper.text()).toContain('Events API Queue 已配置')
-    expect(wrapper.text()).not.toContain('incident 记录')
+  it('切换 TikTok 后只展示 TikTok 术语和独立质量口径', () => {
+    const wrapper = mountPage(false, 'tiktok')
+    expect(wrapper.text()).toContain('TikTok 连接 待验证')
+    expect(wrapper.text()).toContain('TikTok Pixel 与 Events API')
+    expect(wrapper.text()).toContain('_ttp coverage')
+    expect(wrapper.text()).toContain('当前平台未接入质量诊断 API')
+    expect(wrapper.text()).not.toContain('Meta 匹配覆盖与平台质量')
   })
 })

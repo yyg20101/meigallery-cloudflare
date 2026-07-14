@@ -35,22 +35,19 @@ describe('归因转化页当前口径', () => {
 
   it('来源活动比率只使用有效联系和完成注册', () => {
     const conversions = attributionState({
+      provider: 'meta',
       byAction: [],
       bySource: [{
         source_name: 'Meta A',
         contact_count: 1,
         complete_registration_count: 1,
-        operations: { membershipGrantCount: 9 },
-        start_trial_count: 100,
-        historical: { leadCount: 1 },
       }],
-      historical: { leadCount: 1 },
-      operations: { membershipGrantCount: 9 },
       samples: [],
     })
     const overview = attributionState({ rows: [] })
 
     vi.stubGlobal('definePageMeta', vi.fn())
+    vi.stubGlobal('useAttributionProvider', () => ref<'meta' | 'tiktok'>('meta'))
     vi.stubGlobal('useAdminAttributionRange', () => ({ range: ref('7d'), date: ref('2026-07-10'), queryKey: computed(() => '7d') }))
     vi.stubGlobal('useAdminAttribution', (endpoint: string) => endpoint.endsWith('/trends') ? overview : conversions)
 
@@ -71,20 +68,22 @@ describe('归因转化页当前口径', () => {
 
     expect(sourceRow.contact_rate).toBe(0.5)
     expect(sourceRow.register_rate).toBe(0.5)
-    expect(sourceRow.historical_lead_count).toBe(1)
+    expect(sourceRow.platform).toBe('Meta')
+    expect(sourceRow).not.toHaveProperty('historical_lead_count')
     expect(sourceRow).not.toHaveProperty('membership_grant_count')
-    expect(tables[0]!.props('columns')).toContainEqual(expect.objectContaining({ key: 'historical_lead_count', label: '历史 Lead' }))
+    expect(tables[0]!.props('columns')).toContainEqual(expect.objectContaining({ key: 'platform', label: '广告平台' }))
+    expect(tables[0]!.props('columns')).not.toContainEqual(expect.objectContaining({ key: 'meta_status' }))
     expect(wrapper.text()).not.toContain('开始试用')
     expect(wrapper.text()).toContain('有效联系或完成注册事件上报后会出现。')
     expect(wrapper.text()).not.toContain('会员发放')
   })
 
-  it('归因页面只使用“历史 Lead”标签', () => {
-    for (const fileName of ['index.vue', 'conversions.vue', 'links.vue']) {
-      const source = readFileSync(join(cwd(), 'app/pages/admin/attribution', fileName), 'utf8')
-      expect(source).not.toMatch(/label:\s*['"]Lead['"]/)
-      expect(source).toContain('历史 Lead')
-    }
+  it('活动转化页不混入无法确认平台来源的历史口径', () => {
+    const source = readFileSync(join(cwd(), 'app/pages/admin/attribution/conversions.vue'), 'utf8')
+    expect(source).not.toContain('历史 Lead')
+    expect(source).not.toContain('membershipGrant')
+    expect(source).not.toContain('meta_status')
+    expect(source).toContain('广告平台')
   })
 
   it('归因活动 UI 不展示会员发放卡片、比率或活动列', () => {
