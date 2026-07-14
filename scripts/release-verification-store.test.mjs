@@ -12,6 +12,17 @@ import { readRemoteProductionLiveGate } from './verify-release.mjs'
 
 const COMMIT = '18dc11e0b0e4797683d4551a93a1f22e53dc4628'
 
+function liveGateRow(overrides = {}) {
+  return {
+    summary: JSON.stringify(metaLiveSummary('production')),
+    verified_at: '2026-07-10T00:00:00.000Z',
+    expires_at: '2026-07-11T00:00:00.000Z',
+    connection_verified_commit: COMMIT,
+    connection_verified_at: '2026-07-09 23:00:00',
+    ...overrides,
+  }
+}
+
 describe('发布验证 D1 摘要存储', () => {
   it('production 使用空命名环境和生产 D1，并只写布尔摘要', async () => {
     let captured
@@ -84,11 +95,7 @@ describe('发布验证 D1 摘要存储', () => {
       runCommand: async (_command, _args, options) => ({
         name: options.name,
         status: 'passed',
-        stdout: JSON.stringify([{ results: [{
-          summary: storedSummary,
-          verified_at: '2026-07-10T00:00:00.000Z',
-          expires_at: '2026-07-11T00:00:00.000Z',
-        }] }]),
+        stdout: JSON.stringify([{ results: [liveGateRow({ summary: storedSummary })] }]),
         stderr: '',
         exitCode: 0,
       }),
@@ -107,11 +114,9 @@ describe('发布验证 D1 摘要存储', () => {
         return {
           name: options.name,
           status: 'passed',
-          stdout: JSON.stringify([{ results: [{
+          stdout: JSON.stringify([{ results: [liveGateRow({
             summary: JSON.stringify(metaLiveSummary('production', { version: 3, digest: `sha256:${'9'.repeat(64)}` })),
-            verified_at: '2026-07-10T00:00:00.000Z',
-            expires_at: '2026-07-11T00:00:00.000Z',
-          }] }]),
+          })] }]),
           stderr: '',
           exitCode: 0,
         }
@@ -135,24 +140,41 @@ describe('发布验证 D1 摘要存储', () => {
         runCommand: async (_command, _args, options) => ({
           name: options.name,
           status: 'passed',
-          stdout: JSON.stringify([{ results: [{
-            summary: JSON.stringify(summary),
-            verified_at: '2026-07-10T00:00:00.000Z',
-            expires_at: '2026-07-11T00:00:00.000Z',
-          }] }]),
+          stdout: JSON.stringify([{ results: [liveGateRow({ summary: JSON.stringify(summary) })] }]),
         }),
       })
       assert.equal(gate.status, 'failed', JSON.stringify(summary))
     }
   })
 
-  it('远端 production gate 应用层严格校验 verified_at/expires_at 及固定 TTL', async () => {
+  it('远端 production gate 允许连接未变化的 30 天内人工确认复用', async () => {
     const contract = { version: 3, digest: `sha256:${'9'.repeat(64)}` }
-    for (const [verifiedAt, expiresAt, now] of [
-      ['2026-07-10T00:00:00.000Z', '2026-07-11T00:00:00.000Z', '2026-07-11T00:00:00.000Z'],
-      ['2026-07-10T12:01:00.000Z', '2026-07-11T12:01:00.000Z', '2026-07-10T12:00:00.000Z'],
-      ['2026-07-10T00:00:00.000Z', '2026-07-10T23:59:59.000Z', '2026-07-10T12:00:00.000Z'],
-      ['not-a-date', '2026-07-11T00:00:00.000Z', '2026-07-10T12:00:00.000Z'],
+    const gate = await readRemoteProductionLiveGate({
+      commit: COMMIT,
+      contract,
+      now: '2026-07-20T00:00:00.000Z',
+      runCommand: async (_command, _args, options) => ({
+        name: options.name,
+        status: 'passed',
+        stdout: JSON.stringify([{ results: [liveGateRow({
+          summary: JSON.stringify(metaLiveSummary('production', contract)),
+        })] }]),
+      }),
+    })
+
+    assert.equal(gate.status, 'passed')
+    assert.equal(gate.expiresAt, '2026-08-09T00:00:00.000Z')
+  })
+
+  it('远端 production gate 严格校验来源 TTL、30 天时效与连接身份', async () => {
+    const contract = { version: 3, digest: `sha256:${'9'.repeat(64)}` }
+    for (const [row, now] of [
+      [liveGateRow({ verified_at: '2026-07-10T12:01:00.000Z', expires_at: '2026-07-11T12:01:00.000Z' }), '2026-07-10T12:00:00.000Z'],
+      [liveGateRow({ expires_at: '2026-07-10T23:59:59.000Z' }), '2026-07-10T12:00:00.000Z'],
+      [liveGateRow({ verified_at: 'not-a-date' }), '2026-07-10T12:00:00.000Z'],
+      [liveGateRow(), '2026-08-09T00:00:00.000Z'],
+      [liveGateRow({ connection_verified_at: '2026-07-10 00:00:01' }), '2026-07-10T12:00:00.000Z'],
+      [liveGateRow({ connection_verified_commit: 'b'.repeat(40) }), '2026-07-10T12:00:00.000Z'],
     ]) {
       const gate = await readRemoteProductionLiveGate({
         commit: COMMIT,
@@ -162,13 +184,12 @@ describe('发布验证 D1 摘要存储', () => {
           name: options.name,
           status: 'passed',
           stdout: JSON.stringify([{ results: [{
+            ...row,
             summary: JSON.stringify(metaLiveSummary('production', contract)),
-            verified_at: verifiedAt,
-            expires_at: expiresAt,
           }] }]),
         }),
       })
-      assert.equal(gate.status, 'failed', `${verifiedAt} / ${expiresAt} / ${now}`)
+      assert.equal(gate.status, 'failed', `${JSON.stringify(row)} / ${now}`)
     }
   })
 
