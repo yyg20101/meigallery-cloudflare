@@ -383,6 +383,39 @@ describe('发布验证 CLI', () => {
     }), /只允许干净的 main/)
   })
 
+  it('production 发布后 identity 校验等待 Cloudflare 传播完成', async () => {
+    let attempts = 0
+    let sleeps = 0
+    await assertProductionReleaseIdentity({
+      getGitState: async () => ({ branch: 'main', commit: RELEASE_COMMIT, isClean: true, remote: 'origin' }),
+      verifyProductionReleaseIdentity: async () => {
+        attempts += 1
+        if (attempts === 1) throw new Error('Web 发布 commit 与本地 Git HEAD 不一致')
+      },
+      identityMaxAttempts: 3,
+      identityRetryDelayMs: 0,
+      sleep: async () => { sleeps += 1 },
+    })
+
+    assert.equal(attempts, 2)
+    assert.equal(sleeps, 1)
+  })
+
+  it('production 发布后 identity 持续不一致时保持失败关闭', async () => {
+    let attempts = 0
+    await assert.rejects(assertProductionReleaseIdentity({
+      getGitState: async () => ({ branch: 'main', commit: RELEASE_COMMIT, isClean: true, remote: 'origin' }),
+      verifyProductionReleaseIdentity: async () => {
+        attempts += 1
+        throw new Error('Web 发布 commit 与本地 Git HEAD 不一致')
+      },
+      identityMaxAttempts: 3,
+      identityRetryDelayMs: 0,
+      sleep: async () => {},
+    }), /连续 3 次检查仍未完成 Cloudflare 发布传播/)
+    assert.equal(attempts, 3)
+  })
+
   it('bootstrap permit 必须来自 production D1、绑定当前 commit、未过期且为严格资源摘要', async () => {
     let permitQuery = ''
     const phases = []
