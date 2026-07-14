@@ -246,13 +246,15 @@ corepack pnpm --filter @meigallery/api exec wrangler secret put TIKTOK_EVENTS_DA
 
 上线顺序固定为：
 
-1. 本地通过 migration `0001..0049`、API/Web 全量测试、类型检查、Nuxt production build、Worker dry-run 和 secret scan。
+1. 本地通过 migration `0001..0050`、API/Web 全量测试、类型检查、Nuxt production build、Worker dry-run 和 secret scan。
 2. 在 production 创建两条 TikTok Queue，写入 Access Token 与独立 AES-256-GCM data key；dev/local 不创建或绑定这些资源。
 3. 部署关闭态代码和 migration，在 `/admin/attribution` 保存 TikTok Pixel ID，保持 Server 关闭且 rollout `0`。
-4. 在 TikTok Events Manager 打开 Test Events，输入当次 Test Event Code 后点击“验证 Events API”。API 只在该请求中发送 `Contact` 与 `CompleteRegistration`；代码不会写入 D1、审计或长期 secret。
+4. 在 TikTok Events Manager 打开 Test Events，输入当次 Test Event Code 后点击“验证 Events API”。API 每次都会发送新的 `Contact` 与 `CompleteRegistration` 测试事件；连接身份未变化时复用现有 revision，不改写验证状态。Test Event Code 不写入 D1、审计或长期 secret，审计日志只记录发送数量、验证状态与 revision。
 5. 确认两项服务器测试事件均被接收，且 `Contact` 不携带注册身份，`CompleteRegistration` 包含允许的匹配标识。连接身份变化后必须重新验证。
 6. 先开启 Browser Pixel 并观察，再开启 Server API，从 `10%` 开始人工放量；后台按 TikTok 平台查看 Pixel、Server API、失败、等待、重试耗尽及 `_ttp/ttclid` 覆盖。
 7. 在 TikTok Events Manager 检查 Browser / Server 使用相同 event name 与 event ID 后的去重结果。未确认去重前不得提高到 `50%` 或 `100%`。
+
+后台切换到 TikTok 后只显示 TikTok 配置和发布检查，逐项核对 Pixel ID、Access Token、Queue、数据密钥、连接验证、Browser Pixel、Events API 与 rollout；Meta incident 和 CAPI rollout 不参与 TikTok 放量判断。
 
 回滚时先关闭 TikTok `server_enabled` 并将 rollout 降为 `0`，再把 mode 切为 `disabled`，最后按需关闭 Browser Pixel。保留 Queue、DLQ、D1 delivery 和加密 outbox 用于诊断，不删除已应用 migration。
 

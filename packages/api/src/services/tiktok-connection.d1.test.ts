@@ -109,7 +109,7 @@ describe('TikTok 生产连接验证', () => {
     expect(persisted).not.toContain(TEST_EVENT_CODE)
   })
 
-  it('已验证连接重复验证保持幂等且不重复发送测试事件', async () => {
+  it('已验证连接重复验证保持 revision 幂等并发送当次测试事件', async () => {
     const fetchFn = successfulTikTokFetch()
     const first = await verifyTikTokConnection(connectionEnv(), { testEventCode: TEST_EVENT_CODE, fetchFn })
     const second = await verifyTikTokConnection(connectionEnv(), { testEventCode: TEST_EVENT_CODE, fetchFn })
@@ -119,8 +119,10 @@ describe('TikTok 生产连接验证', () => {
       idempotent: true,
       revision: first.revision,
       verifiedAt: first.verifiedAt,
+      testEventsSent: 2,
     })
-    expect(fetchFn).toHaveBeenCalledTimes(2)
+    expect(fetchFn).toHaveBeenCalledTimes(4)
+    expect(await connectionRevision()).toBe(first.revision)
   })
 
   it('token 变化后状态变为 configuration_changed 并阻断服务端投递', async () => {

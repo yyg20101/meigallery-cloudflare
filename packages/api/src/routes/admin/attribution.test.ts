@@ -1362,13 +1362,14 @@ describe('后台归因中心 API', () => {
     expect((await response.json()).code).toBe(code)
   })
 
-  it('TikTok 首次验证写审计，幂等复验不重复写审计', async () => {
+  it('TikTok 首次验证与幂等复验分别写入验证和测试审计', async () => {
     const firstDb = createAttributionDb()
     verifyTikTokConnectionMock.mockResolvedValueOnce({
       verified: true,
       idempotent: false,
       revision: '3'.repeat(32),
       verifiedAt: '2026-07-13T12:00:00.000Z',
+      testEventsSent: 2,
     })
     const first = await createApp('owner').request('/api/admin/attribution/platforms/tiktok/verify', {
       method: 'POST',
@@ -1376,7 +1377,8 @@ describe('后台归因中心 API', () => {
       body: JSON.stringify({ testEventCode: 'TEST_1234' }),
     }, { DB: firstDb, APP_ENV: 'production' } as unknown as Bindings)
     expect(first.status).toBe(200)
-    expect(firstDb.calls.some(call => call.sql.includes('verify_ad_platform_connection'))).toBe(true)
+    const firstAudit = firstDb.calls.find(call => call.sql.includes('INSERT INTO admin_audit_logs'))
+    expect(firstAudit?.params[2]).toBe('verify_ad_platform_connection')
 
     const repeatedDb = createAttributionDb()
     verifyTikTokConnectionMock.mockResolvedValueOnce({
@@ -1384,6 +1386,7 @@ describe('后台归因中心 API', () => {
       idempotent: true,
       revision: '3'.repeat(32),
       verifiedAt: '2026-07-13T12:00:00.000Z',
+      testEventsSent: 2,
     })
     const repeated = await createApp('owner').request('/api/admin/attribution/platforms/tiktok/verify', {
       method: 'POST',
@@ -1391,7 +1394,9 @@ describe('后台归因中心 API', () => {
       body: JSON.stringify({ testEventCode: 'TEST_1234' }),
     }, { DB: repeatedDb, APP_ENV: 'production' } as unknown as Bindings)
     expect(repeated.status).toBe(200)
-    expect(repeatedDb.calls.some(call => call.sql.includes('verify_ad_platform_connection'))).toBe(false)
+    const repeatedAudit = repeatedDb.calls.find(call => call.sql.includes('INSERT INTO admin_audit_logs'))
+    expect(repeatedAudit?.params[2]).toBe('test_ad_platform_connection')
+    expect(JSON.stringify(repeatedAudit?.params)).not.toContain('TEST_1234')
   })
 
   it('Meta 从测试模式切换生产模式时保留当前连接验证', async () => {

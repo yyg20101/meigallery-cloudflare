@@ -15,7 +15,12 @@ const TEST_EVENT_CODE_PATTERN = /^[A-Za-z0-9_-]{4,128}$/
 
 export type TikTokConnectionEnv = Pick<
   Bindings,
-  'DB' | 'APP_ENV' | 'SITE_URL' | 'TIKTOK_EVENTS_ACCESS_TOKEN'
+  | 'DB'
+  | 'APP_ENV'
+  | 'SITE_URL'
+  | 'TIKTOK_EVENTS_ACCESS_TOKEN'
+  | 'TIKTOK_EVENTS_QUEUE'
+  | 'TIKTOK_EVENTS_DATA_KEY_CURRENT'
 >
 
 type VerificationRow = {
@@ -122,10 +127,6 @@ export async function verifyTikTokConnection(
   if (!TEST_EVENT_CODE_PATTERN.test(testEventCode)) throw new Error('TIKTOK_TEST_EVENT_CODE_INVALID')
 
   const current = await getTikTokConnectionStatus(env)
-  if (current.state === 'verified') {
-    return { verified: true, idempotent: true, revision: current.revision, verifiedAt: current.verifiedAt }
-  }
-
   const pageUrl = verificationPageUrl(env.SITE_URL)
   const eventTime = Math.floor(Date.now() / 1_000)
   const nonce = randomHex(16)
@@ -146,6 +147,16 @@ export async function verifyTikTokConnection(
     )
     const result = await readTikTokEventsResponse(response)
     if (!isTikTokEventsSuccess(response, result)) throw new Error('TIKTOK_VERIFICATION_REJECTED')
+  }
+
+  if (current.state === 'verified') {
+    return {
+      verified: true,
+      idempotent: true,
+      revision: current.revision,
+      verifiedAt: current.verifiedAt,
+      testEventsSent: 2,
+    }
   }
 
   const fingerprint = await tiktokConnectionFingerprint(pixelId, accessToken)
@@ -173,7 +184,7 @@ export async function verifyTikTokConnection(
       WHERE provider = 'tiktok' AND destination_id = ? AND mode = 'production'
     `).bind(revision, pixelId),
   ])
-  return { verified: true, idempotent: false, revision, verifiedAt }
+  return { verified: true, idempotent: false, revision, verifiedAt, testEventsSent: 2 }
 }
 
 function readVerification(db: D1Database) {

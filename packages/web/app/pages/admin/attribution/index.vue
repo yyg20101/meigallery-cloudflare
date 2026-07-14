@@ -106,8 +106,30 @@ const qualitySeries = computed(() => matchEntries.value
 const qualityRows = computed(() => quality.data.value?.match.rows as unknown as Array<Record<string, unknown>> ?? [])
 const platformQuality = computed(() => quality.data.value?.platformQuality)
 const platformLabel = computed(() => selectedProvider.value === 'meta' ? 'Meta' : 'TikTok')
-const blockerCount = computed(() => readiness.data.value?.checks.filter(check => check.level === 'blocker' && !check.ok).length ?? 0)
-const warningCount = computed(() => readiness.data.value?.checks.filter(check => check.level === 'warning' && !check.ok).length ?? 0)
+const tiktokConnection = computed(() => platforms.data.value?.find(item => item.provider === 'tiktok') ?? null)
+const tiktokReadinessChecks = computed<AttributionReadinessData['checks']>(() => {
+  const connection = tiktokConnection.value
+  return [
+    readinessCheck('tiktok_destination', 'TikTok Pixel ID 已配置', connection?.destinationConfigured === true),
+    readinessCheck('tiktok_token', 'Events API token 已配置', connection?.serverCredentialConfigured === true),
+    readinessCheck('tiktok_queue', 'Events API Queue 已配置', connection?.serverQueueConfigured === true),
+    readinessCheck('tiktok_data_key', 'Events API 数据密钥已配置', connection?.serverDataKeyConfigured === true),
+    readinessCheck('tiktok_connection_verified', '当前 Pixel 与 token 已验证', connection?.state === 'verified'),
+    readinessCheck('tiktok_production_mode', '运行模式为 production', connection?.mode === 'production'),
+    readinessCheck('tiktok_browser_enabled', 'Browser Pixel 已开启', connection?.enabled === true && connection.browserEnabled),
+    readinessCheck('tiktok_server_enabled', 'Events API 已开启', connection?.enabled === true && connection.serverEnabled),
+    readinessCheck('tiktok_rollout_started', 'Events API 已开始受控放量', Number(connection?.rolloutPercentage || 0) > 0),
+    readinessCheck('tiktok_source_consistency', '来源与投递平台一致', routing.value.mismatchCount === 0),
+    readinessCheck('tiktok_retry_exhausted', '当前范围无重试耗尽', delivery.value.retryExhausted === 0),
+    readinessCheck('tiktok_pending', '当前范围无等待投递', delivery.value.pending === 0, 'warning'),
+    readinessCheck('tiktok_failed', '当前范围无投递失败', delivery.value.failed === 0, 'warning'),
+  ]
+})
+const activeReadinessChecks = computed(() => selectedProvider.value === 'meta'
+  ? readiness.data.value?.checks ?? []
+  : tiktokReadinessChecks.value)
+const blockerCount = computed(() => activeReadinessChecks.value.filter(check => check.level === 'blocker' && !check.ok).length)
+const warningCount = computed(() => activeReadinessChecks.value.filter(check => check.level === 'warning' && !check.ok).length)
 const connectionSaving = ref(false)
 const connectionMessage = ref('')
 const metaConnectionForm = reactive({
@@ -223,12 +245,14 @@ async function verifyTikTokConnection() {
   tiktokConnectionVerifying.value = true
   tiktokConnectionMessage.value = ''
   try {
-    await api('/api/admin/attribution/platforms/tiktok/verify', {
+    const response = await api<{ data: { idempotent?: boolean; testEventsSent?: number } }>('/api/admin/attribution/platforms/tiktok/verify', {
       method: 'POST',
       body: { testEventCode: tiktokTestEventCode.value },
     })
     tiktokTestEventCode.value = ''
-    tiktokConnectionMessage.value = 'TikTok Events API 已验证'
+    tiktokConnectionMessage.value = response.data.idempotent
+      ? 'TikTok 测试事件已发送，连接验证保持有效'
+      : 'TikTok Events API 已验证'
     await refreshAll()
   }
   catch (error) {
@@ -272,6 +296,15 @@ function platformQualityValue() {
 function formatCount(value: unknown) {
   const number = Number(value ?? 0)
   return new Intl.NumberFormat('zh-CN').format(Number.isFinite(number) ? number : 0)
+}
+
+function readinessCheck(
+  key: string,
+  label: string,
+  ok: boolean,
+  level: 'blocker' | 'warning' = 'blocker',
+): AttributionReadinessData['checks'][number] {
+  return { key, label, level, ok, detail: ok ? '已满足' : '尚未满足' }
 }
 </script>
 
@@ -326,12 +359,12 @@ function formatCount(value: unknown) {
         <div class="mb-5 divide-y divide-gray-200 border-y border-gray-200">
           <div v-for="connection in platforms.data.value || []" :key="connection.provider" class="grid gap-2 px-1 py-3 text-sm sm:grid-cols-[8rem_1fr_auto] sm:items-center">
             <strong class="uppercase text-gray-900">{{ connection.provider }}</strong>
-            <span class="text-gray-500">目标 ID {{ connection.destinationConfigured ? '已配置' : '未配置' }} · Server 凭证 {{ connection.serverCredentialConfigured ? '已配置' : '未配置' }} · {{ connection.mode }}</span>
+            <span class="text-gray-500">目标 ID {{ connection.destinationConfigured ? '已配置' : '未配置' }} · Server 凭证 {{ connection.serverCredentialConfigured ? '已配置' : '未配置' }} · Queue {{ connection.serverQueueConfigured ? '已配置' : '未配置' }} · 数据密钥 {{ connection.serverDataKeyConfigured ? '已配置' : '未配置' }} · {{ connection.mode }}</span>
             <span :class="connection.state === 'verified' ? 'text-emerald-700' : 'text-amber-700'" class="font-medium">{{ connection.state === 'verified' ? '已验证' : '待验证' }}</span>
           </div>
           <p v-if="!platforms.data.value?.length" class="px-1 py-4 text-sm text-gray-500">尚未取得平台连接状态</p>
         </div>
-        <form v-if="isOwner" class="mb-6 grid gap-4 border-b border-gray-200 pb-6 sm:grid-cols-2 lg:grid-cols-4" @submit.prevent="saveMetaConnection">
+        <form v-if="isOwner && selectedProvider === 'meta'" class="mb-6 grid gap-4 border-b border-gray-200 pb-6 sm:grid-cols-2 lg:grid-cols-4" @submit.prevent="saveMetaConnection">
           <label class="sm:col-span-2">
             <span class="mb-1 block text-xs font-medium text-gray-600">Meta Dataset ID</span>
             <input v-model="metaConnectionForm.destinationId" inputmode="numeric" pattern="[0-9]{5,30}" required class="w-full border border-gray-300 px-3 py-2 text-sm" />
@@ -362,7 +395,7 @@ function formatCount(value: unknown) {
             <span class="text-sm text-gray-500">{{ connectionMessage }}</span>
           </div>
         </form>
-        <form v-if="isOwner" class="mb-6 grid gap-4 border-b border-gray-200 pb-6 sm:grid-cols-2 lg:grid-cols-4" @submit.prevent="saveTikTokConnection">
+        <form v-if="isOwner && selectedProvider === 'tiktok'" class="mb-6 grid gap-4 border-b border-gray-200 pb-6 sm:grid-cols-2 lg:grid-cols-4" @submit.prevent="saveTikTokConnection">
           <label class="sm:col-span-2">
             <span class="mb-1 block text-xs font-medium text-gray-600">TikTok Pixel ID</span>
             <input v-model.trim="tiktokConnectionForm.destinationId" autocomplete="off" pattern="[A-Za-z0-9]{10,30}" required class="w-full border border-gray-300 px-3 py-2 text-sm uppercase" />
@@ -400,8 +433,9 @@ function formatCount(value: unknown) {
             <button type="button" :disabled="tiktokConnectionVerifying || !tiktokTestEventCode" class="self-end border border-gray-900 px-4 py-2 text-sm font-medium text-gray-900 disabled:opacity-50" @click="verifyTikTokConnection">验证 Events API</button>
           </div>
         </form>
-        <h3 class="mb-3 text-sm font-semibold text-gray-900">Meta 运维状态</h3>
+        <h3 v-if="selectedProvider === 'meta'" class="mb-3 text-sm font-semibold text-gray-900">Meta 运维状态</h3>
         <MetaConnectionStatus
+          v-if="selectedProvider === 'meta'"
           v-model:test-event-code="metaTestEventCode"
           :connection="metaStatus.data.value?.connection || null"
           :activity="metaStatus.data.value?.activity || null"
@@ -509,19 +543,25 @@ function formatCount(value: unknown) {
         <div class="mb-4 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p class="text-xs font-medium text-gray-400">05 · 发布控制</p>
-            <h2 class="mt-1 text-base font-semibold text-gray-900">CAPI rollout 与 incident</h2>
+            <h2 class="mt-1 text-base font-semibold text-gray-900">{{ selectedProvider === 'meta' ? 'CAPI rollout 与 incident' : 'Events API rollout 与发布检查' }}</h2>
           </div>
           <p :class="blockerCount ? 'text-red-700' : warningCount ? 'text-amber-700' : 'text-emerald-700'" class="text-sm font-medium">{{ blockerCount }} 个阻断 · {{ warningCount }} 个警告</p>
         </div>
-        <MetaRolloutControl :rollout="metaStatus.data.value?.rollout || null" :is-owner="isOwner" @refreshed="refreshAll" />
-        <div class="mt-5 border-t border-gray-200 pt-4">
+        <MetaRolloutControl v-if="selectedProvider === 'meta'" :rollout="metaStatus.data.value?.rollout || null" :is-owner="isOwner" @refreshed="refreshAll" />
+        <dl v-else class="grid grid-cols-2 border-y border-gray-200 md:grid-cols-4">
+          <div class="px-3 py-3"><dt class="text-xs text-gray-500">连接状态</dt><dd class="mt-1 text-sm font-semibold text-gray-900">{{ tiktokConnection?.state === 'verified' ? '已验证' : '待验证' }}</dd></div>
+          <div class="px-3 py-3"><dt class="text-xs text-gray-500">运行模式</dt><dd class="mt-1 text-sm font-semibold text-gray-900">{{ tiktokConnection?.mode || 'disabled' }}</dd></div>
+          <div class="px-3 py-3"><dt class="text-xs text-gray-500">目标放量</dt><dd class="mt-1 text-sm font-semibold tabular-nums text-gray-900">{{ tiktokConnection?.rolloutPercentage || 0 }}%</dd></div>
+          <div class="px-3 py-3"><dt class="text-xs text-gray-500">Events API</dt><dd class="mt-1 text-sm font-semibold text-gray-900">{{ tiktokConnection?.serverEnabled ? '已开启' : '关闭' }}</dd></div>
+        </dl>
+        <div v-if="selectedProvider === 'meta'" class="mt-5 border-t border-gray-200 pt-4">
           <h3 class="mb-3 text-sm font-semibold text-gray-900">incident 记录</h3>
           <MetaIncidentList :incidents="incidents.data.value?.items || []" :is-owner="isOwner" @refreshed="refreshAll" />
         </div>
         <div class="mt-5 border-t border-gray-200 pt-4">
-          <div class="flex items-center justify-between gap-3"><h3 class="text-sm font-semibold text-gray-900">发布检查</h3><NuxtLink :to="{ path: '/admin/attribution/readiness', query: attributionRouteQuery(rangeState.range.value, rangeState.date.value) }" class="text-sm font-medium text-blue-700">查看全部检查</NuxtLink></div>
+          <div class="flex items-center justify-between gap-3"><h3 class="text-sm font-semibold text-gray-900">发布检查</h3><NuxtLink v-if="selectedProvider === 'meta'" :to="{ path: '/admin/attribution/readiness', query: attributionRouteQuery(rangeState.range.value, rangeState.date.value) }" class="text-sm font-medium text-blue-700">查看全部检查</NuxtLink></div>
           <div class="mt-3 grid gap-2 md:grid-cols-2">
-            <div v-for="check in readiness.data.value?.checks.slice(0, 6) || []" :key="check.key" class="flex min-w-0 items-start justify-between gap-3 border-b border-gray-100 px-2 py-2 text-sm"><span class="min-w-0 text-gray-700">{{ check.label }}</span><span :class="check.ok ? 'text-emerald-700' : check.level === 'blocker' ? 'text-red-700' : 'text-amber-700'" class="shrink-0 font-medium">{{ check.ok ? '通过' : check.level === 'blocker' ? '阻断' : '警告' }}</span></div>
+            <div v-for="check in activeReadinessChecks" :key="check.key" class="flex min-w-0 items-start justify-between gap-3 border-b border-gray-100 px-2 py-2 text-sm"><span class="min-w-0 text-gray-700">{{ check.label }}</span><span :class="check.ok ? 'text-emerald-700' : check.level === 'blocker' ? 'text-red-700' : 'text-amber-700'" class="shrink-0 font-medium">{{ check.ok ? '通过' : check.level === 'blocker' ? '阻断' : '警告' }}</span></div>
           </div>
         </div>
       </section>

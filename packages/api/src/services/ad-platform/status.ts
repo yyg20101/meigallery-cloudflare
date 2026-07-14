@@ -20,6 +20,8 @@ export interface AdPlatformConnectionStatus {
   rolloutPercentage: number
   destinationConfigured: boolean
   serverCredentialConfigured: boolean
+  serverQueueConfigured: boolean
+  serverDataKeyConfigured: boolean
   testCredentialConfigured: boolean
   mode: AdPlatformTrackingMode
   state: 'not_configured' | 'unverified' | 'verified' | 'invalidated'
@@ -35,15 +37,16 @@ export async function listAdPlatformConnections(env: MetaConnectionEnv & TikTokC
   ])
   const byProvider = new Map(connections.map(connection => [connection.provider, connection]))
   return listAdPlatformProviders().map(provider => provider === 'meta'
-    ? fromMetaConnection(meta, byProvider.get(provider) ?? null)
+    ? fromMetaConnection(meta, byProvider.get(provider) ?? null, env)
     : provider === 'tiktok'
-      ? fromTikTokConnection(tiktok, byProvider.get(provider) ?? null)
+      ? fromTikTokConnection(tiktok, byProvider.get(provider) ?? null, env)
       : fromBrowserConnection(provider, byProvider.get(provider) ?? null))
 }
 
 function fromTikTokConnection(
   status: Awaited<ReturnType<typeof getTikTokConnectionStatus>>,
   connection: AdPlatformConnection | null,
+  env: TikTokConnectionEnv,
 ): AdPlatformConnectionStatus {
   return {
     provider: 'tiktok',
@@ -56,6 +59,8 @@ function fromTikTokConnection(
     rolloutPercentage: connection?.rolloutPercentage ?? 0,
     destinationConfigured: status.pixelIdConfigured,
     serverCredentialConfigured: status.tokenConfigured,
+    serverQueueConfigured: Boolean(env.TIKTOK_EVENTS_QUEUE),
+    serverDataKeyConfigured: hasConfiguredValue(env.TIKTOK_EVENTS_DATA_KEY_CURRENT),
     testCredentialConfigured: false,
     mode: connection?.mode ?? 'disabled',
     state: normalizeState(status.state),
@@ -80,6 +85,8 @@ function fromBrowserConnection(
     rolloutPercentage: 0,
     destinationConfigured: configured,
     serverCredentialConfigured: false,
+    serverQueueConfigured: false,
+    serverDataKeyConfigured: false,
     testCredentialConfigured: false,
     mode: connection?.mode ?? 'disabled',
     state: configured ? 'unverified' : 'not_configured',
@@ -91,6 +98,7 @@ function fromBrowserConnection(
 function fromMetaConnection(
   status: MetaConnectionStatus,
   connection: AdPlatformConnection | null,
+  env: MetaConnectionEnv,
 ): AdPlatformConnectionStatus {
   return {
     provider: 'meta',
@@ -103,12 +111,18 @@ function fromMetaConnection(
     rolloutPercentage: connection?.rolloutPercentage ?? 0,
     destinationConfigured: status.pixelIdConfigured,
     serverCredentialConfigured: status.tokenConfigured,
+    serverQueueConfigured: Boolean(env.META_CAPI_QUEUE),
+    serverDataKeyConfigured: hasConfiguredValue(env.META_CAPI_DATA_KEY_CURRENT),
     testCredentialConfigured: status.testEventCodeConfigured,
     mode: connection?.mode ?? 'disabled',
     state: normalizeState(status.state),
     verifiedAt: status.verifiedAt || '',
     verifiedCommit: status.verifiedCommit || '',
   }
+}
+
+function hasConfiguredValue(value: unknown) {
+  return String(value ?? '').trim().length > 0
 }
 
 function normalizeState(

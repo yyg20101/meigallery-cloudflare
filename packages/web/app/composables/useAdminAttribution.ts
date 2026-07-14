@@ -22,6 +22,8 @@ export interface AdPlatformConnectionStatusData {
   rolloutPercentage: AdPlatformRolloutPercentage
   destinationConfigured: boolean
   serverCredentialConfigured: boolean
+  serverQueueConfigured: boolean
+  serverDataKeyConfigured: boolean
   testCredentialConfigured: boolean
   mode: AdPlatformTrackingMode
   state: 'not_configured' | 'unverified' | 'verified' | 'invalidated'

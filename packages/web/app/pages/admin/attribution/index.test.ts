@@ -20,7 +20,11 @@ function state(data: unknown) {
   }
 }
 
-function mountPage(datasetAvailable = false, api = vi.fn().mockResolvedValue({})) {
+function mountPage(
+  datasetAvailable = false,
+  api = vi.fn().mockResolvedValue({}),
+  initialProvider: 'meta' | 'tiktok' = 'meta',
+) {
   const states: Record<string, ReturnType<typeof state>> = {
     '/api/admin/attribution/summary': state({
       provider: 'meta',
@@ -64,6 +68,8 @@ function mountPage(datasetAvailable = false, api = vi.fn().mockResolvedValue({})
         environment: 'production',
         destinationConfigured: true,
         serverCredentialConfigured: true,
+        serverQueueConfigured: true,
+        serverDataKeyConfigured: true,
         testCredentialConfigured: true,
         mode: 'test',
         state: 'verified',
@@ -79,6 +85,8 @@ function mountPage(datasetAvailable = false, api = vi.fn().mockResolvedValue({})
         destinationId: 'C123456789ABCDEF',
         destinationConfigured: true,
         serverCredentialConfigured: true,
+        serverQueueConfigured: true,
+        serverDataKeyConfigured: true,
         testCredentialConfigured: false,
         debugEnabled: false,
         rolloutPercentage: 0,
@@ -103,7 +111,7 @@ function mountPage(datasetAvailable = false, api = vi.fn().mockResolvedValue({})
   }))
   vi.stubGlobal('useAuth', () => ({ isOwner: ref(true) }))
   vi.stubGlobal('useApi', () => ({ api }))
-  const route = reactive({ query: { provider: 'meta' } })
+  const route = reactive({ query: { provider: initialProvider } })
   vi.stubGlobal('useRoute', () => route)
   vi.stubGlobal('useRouter', () => ({
     replace: vi.fn(async ({ query }: { query: Record<string, string> }) => Object.assign(route.query, query)),
@@ -154,8 +162,8 @@ describe('Meta 归因质量总览', () => {
   })
 
   it('TikTok Test Event Code 仅用于单次验证请求并在成功后清空', async () => {
-    const api = vi.fn().mockResolvedValue({ data: { verified: true } })
-    const wrapper = mountPage(false, api)
+    const api = vi.fn().mockResolvedValue({ data: { verified: true, idempotent: false, testEventsSent: 2 } })
+    const wrapper = mountPage(false, api, 'tiktok')
     const tiktokForm = wrapper.findAll('form').find(form => form.text().includes('TikTok Pixel ID'))
     expect(tiktokForm).toBeDefined()
     const codeInput = tiktokForm!.get('input[type="password"]')
@@ -170,5 +178,19 @@ describe('Meta 归因质量总览', () => {
     })
     expect((codeInput.element as HTMLInputElement).value).toBe('')
     expect(tiktokForm!.text()).toContain('TikTok Events API 已验证')
+  })
+
+  it('TikTok 已验证连接复测时提示 revision 保持有效并展示独立发布检查', async () => {
+    const api = vi.fn().mockResolvedValue({ data: { verified: true, idempotent: true, testEventsSent: 2 } })
+    const wrapper = mountPage(false, api, 'tiktok')
+    const tiktokForm = wrapper.findAll('form').find(form => form.text().includes('TikTok Pixel ID'))!
+    await tiktokForm.get('input[type="password"]').setValue('TEST_TIKTOK_REPEAT')
+    await tiktokForm.get('button[type="button"]').trigger('click')
+    await flushPromises()
+
+    expect(tiktokForm.text()).toContain('TikTok 测试事件已发送，连接验证保持有效')
+    expect(wrapper.text()).toContain('Events API rollout 与发布检查')
+    expect(wrapper.text()).toContain('Events API Queue 已配置')
+    expect(wrapper.text()).not.toContain('incident 记录')
   })
 })

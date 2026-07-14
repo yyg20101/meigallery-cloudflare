@@ -49,10 +49,14 @@ describe('广告平台连接状态', () => {
       environment: 'production',
       destinationConfigured: true,
       serverCredentialConfigured: true,
+      serverQueueConfigured: false,
+      serverDataKeyConfigured: false,
       state: 'verified',
       mode: 'test',
     }), expect.objectContaining({
       provider: 'tiktok',
+      serverQueueConfigured: false,
+      serverDataKeyConfigured: false,
       state: 'unverified',
     })]))
     expect(result.map(connection => connection.provider)).toEqual(['meta', 'tiktok'])

@@ -41,17 +41,22 @@ adminAdPlatformRoutes.post('/:provider/verify', async (c) => {
     const result = await verifyTikTokConnection(c.env, {
       testEventCode: String(body.testEventCode || ''),
     })
-    if (!result.idempotent) {
-      await c.env.DB.prepare(`
-        INSERT INTO admin_audit_logs
-          (id, admin_id, action, target_type, target_id, before_value, after_value)
-        VALUES (?, ?, 'verify_ad_platform_connection', 'ad_platform_connection', 'tiktok', '{}', ?)
-      `).bind(
-        generateId('log'),
-        c.get('userId')!,
-        JSON.stringify({ verified: true, verifiedAt: result.verifiedAt, revision: result.revision }),
-      ).run()
-    }
+    await c.env.DB.prepare(`
+      INSERT INTO admin_audit_logs
+        (id, admin_id, action, target_type, target_id, before_value, after_value)
+      VALUES (?, ?, ?, 'ad_platform_connection', 'tiktok', '{}', ?)
+    `).bind(
+      generateId('log'),
+      c.get('userId')!,
+      result.idempotent ? 'test_ad_platform_connection' : 'verify_ad_platform_connection',
+      JSON.stringify({
+        verified: true,
+        idempotent: result.idempotent,
+        verifiedAt: result.verifiedAt,
+        revision: result.revision,
+        testEventsSent: result.testEventsSent,
+      }),
+    ).run()
     return c.json({ data: result })
   }
   catch (error) {
