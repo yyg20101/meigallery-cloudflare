@@ -59,11 +59,15 @@ describe('本地运行时发布身份', () => {
     assert.deepEqual(result.notes, ['meta-capi-disabled-in-local'])
     assert.equal(result.notes.some(note => note.startsWith('local-api-log:')), false)
     assert.deepEqual(conversionBodies.map(body => body.actionType), ['contact'])
+    assert.equal(conversionBodies[0].consentState, 'granted')
+    assert.equal(conversionBodies[0].adAttributionState, 'resolved')
     assert.equal(registrationBodies.length, 1)
     assert.match(registrationBodies[0].username, /^rl[0-9a-f]{12}$/)
     assert.ok(registrationBodies[0].username.length <= 20)
     assert.equal(registrationBodies[0].actionType, undefined)
     assert.equal(registrationBodies[0].userId, undefined)
+    assert.equal(registrationBodies[0].attribution.consentState, 'granted')
+    assert.equal(registrationBodies[0].attribution.adAttributionState, 'resolved')
     const cleanup = commands.find(item => item.name === 'local-registration-cleanup')
     assert.ok(cleanup)
     const cleanupSql = cleanup.args.join(' ')
@@ -151,11 +155,27 @@ function passedStep(name) {
 
 async function localSmokeFetch(input, init = {}) {
   const url = new URL(String(input))
+  const cookie = String(init.headers?.Cookie || '')
+  if (url.pathname === '/api/marketing-consent') {
+    return jsonResponse({ state: 'granted' }, 200, {
+      'set-cookie': 'mei_marketing_consent_receipt=marketing_receipt; Path=/; HttpOnly',
+    })
+  }
+  if (url.pathname === '/api/ad-attribution') {
+    if (!cookie.includes('mei_marketing_consent_receipt=marketing_receipt')) {
+      return jsonResponse({ code: 'MARKETING_CONSENT_REQUIRED' }, 400)
+    }
+    return jsonResponse({ provider: 'meta', resolution: 'matched' }, 200, {
+      'set-cookie': 'mei_ad_attribution_receipt=attribution_receipt; Path=/; HttpOnly',
+    })
+  }
   if (url.pathname === '/api/conversions/events') {
+    if (!hasAttributionCookies(cookie)) return jsonResponse({ code: 'ATTRIBUTION_RECEIPT_REQUIRED' }, 400)
     const body = JSON.parse(String(init.body || '{}'))
     return jsonResponse({ data: { id: `conv_${body.actionType}`, actionType: body.actionType, created: true } }, 201)
   }
   if (url.pathname === '/api/auth/register') {
+    if (!hasAttributionCookies(cookie)) return jsonResponse({ code: 'ATTRIBUTION_RECEIPT_REQUIRED' }, 400)
     return jsonResponse({ id: 42, trackingInstructions: [] }, 201)
   }
   if (url.pathname === '/api/analytics/events') return jsonResponse({ accepted: 3, rejected: 0 })
@@ -171,6 +191,9 @@ async function localSmokeFetch(input, init = {}) {
     })
   }
   if (url.pathname === '/api/admin/attribution/conversions') {
+    if (url.searchParams.get('provider') !== 'meta') {
+      return jsonResponse({ code: 'ATTRIBUTION_PROVIDER_INVALID' }, 400)
+    }
     return jsonResponse({
       data: {
         bySource: [{ source_name: 'release-local-fb', contact_count: 1, complete_registration_count: 1 }],
@@ -188,9 +211,14 @@ async function localSmokeFetch(input, init = {}) {
   return jsonResponse({ message: 'unexpected route' }, 404)
 }
 
-function jsonResponse(body, status = 200) {
+function hasAttributionCookies(cookie) {
+  return cookie.includes('mei_marketing_consent_receipt=marketing_receipt')
+    && cookie.includes('mei_ad_attribution_receipt=attribution_receipt')
+}
+
+function jsonResponse(body, status = 200, headers = {}) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...headers },
   })
 }
