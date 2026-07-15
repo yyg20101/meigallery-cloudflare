@@ -22,10 +22,57 @@ afterEach(() => {
 
 describe('useAdAttribution', () => {
   it.each([
+    ['meta', { provider: 'meta', pixelId: '123456789' }],
+    ['tiktok', { provider: 'tiktok', pixelCode: 'C123456789ABCDEF' }],
+    ['google', { provider: 'google', tagId: 'AW-123456789' }],
+  ] as const)('bootstrap 只缓存当前 %s 来源的最终 public config', async (provider, publicConfig) => {
+    api
+      .mockResolvedValueOnce({ provider, resolution: 'matched', expiresInSeconds: 1_800 })
+      .mockResolvedValueOnce({ provider, publicConfig })
+    const attribution = useAdAttribution()
+    await attribution.resolve({ path: '/gallery/source', query: provider === 'meta' ? { fbclid: 'click' } : {} })
+
+    await expect(attribution.bootstrap()).resolves.toEqual(publicConfig)
+
+    expect(api).toHaveBeenLastCalledWith('/api/ad-attribution/bootstrap')
+    expect(attribution.publicConfig.value).toEqual(publicConfig)
+  })
+
+  it.each([
+    ['跨 provider', { provider: 'tiktok', publicConfig: { provider: 'tiktok', pixelCode: 'C123456789ABCDEF' } }],
+    ['额外敏感字段', { provider: 'meta', publicConfig: { provider: 'meta', pixelId: '123456789', token: 'secret' } }],
+    ['provider 与 config 不一致', { provider: 'meta', publicConfig: { provider: 'google', tagId: 'AW-123456789' } }],
+  ])('bootstrap 拒绝%s响应', async (_label, response) => {
+    api
+      .mockResolvedValueOnce({ provider: 'meta', resolution: 'matched', expiresInSeconds: 1_800 })
+      .mockResolvedValueOnce(response)
+    const attribution = useAdAttribution()
+    await attribution.resolve({ path: '/gallery/source', query: { fbclid: 'click' } })
+
+    await expect(attribution.bootstrap()).resolves.toBeNull()
+    expect(attribution.publicConfig.value).toBeNull()
+  })
+
+  it('Google bootstrap 拒绝 customerId 等服务端字段越界', async () => {
+    api
+      .mockResolvedValueOnce({ provider: 'google', resolution: 'matched', expiresInSeconds: 1_800 })
+      .mockResolvedValueOnce({
+        provider: 'google',
+        publicConfig: { provider: 'google', tagId: 'AW-123456789', customerId: '123-456-7890' },
+      })
+    const attribution = useAdAttribution()
+    await attribution.resolve({ path: '/google-source', query: { gclid: 'click' } })
+
+    await expect(attribution.bootstrap()).resolves.toBeNull()
+    expect(attribution.publicConfig.value).toBeNull()
+  })
+
+  it.each([
     ['Meta', '/meta-source', { fbclid: 'meta-click' }, 'meta'],
     ['TikTok', '/tiktok-source', { ttclid: 'tiktok-click' }, 'tiktok'],
+    ['Google', '/google-source', { gclid: 'google-click' }, 'google'],
   ] as const)('%s 来源只采用服务端验证结果', async (_label, path, query, provider) => {
-    api.mockResolvedValueOnce({ provider, resolution: 'matched', expiresInSeconds: 1_800 })
+    api.mockResolvedValueOnce({ provider, resolution: 'matched', expiresInSeconds: 2_592_000 })
     const attribution = useAdAttribution()
 
     await expect(attribution.resolve({ path, query })).resolves.toBe(provider)
@@ -37,8 +84,32 @@ describe('useAdAttribution', () => {
     expect(attribution.resolution.value).toBe('matched')
   })
 
-  it('冲突结果不选择平台，同一路由重复调用保持幂等', async () => {
-    api.mockResolvedValueOnce({ provider: null, resolution: 'conflict', expiresInSeconds: null })
+  it('只提交三平台来源信号，不在客户端状态保留 click id', async () => {
+    api.mockResolvedValueOnce({ provider: 'google', resolution: 'matched', expiresInSeconds: 2_592_000 })
+    const attribution = useAdAttribution()
+
+    await attribution.resolve({
+      path: '/google-source',
+      query: { gclid: 'sensitive-google-click', gbraid: 'sensitive-gbraid', wbraid: 'sensitive-wbraid', mg_token: 'signed-link' },
+    })
+
+    expect(api).toHaveBeenCalledWith('/api/ad-attribution', {
+      method: 'PUT',
+      body: expect.objectContaining({
+        gclid: 'sensitive-google-click',
+        gbraid: 'sensitive-gbraid',
+        wbraid: 'sensitive-wbraid',
+        managedLinkToken: 'signed-link',
+      }),
+    })
+    expect(JSON.stringify({ provider: attribution.provider.value, resolution: attribution.resolution.value }))
+      .not.toContain('sensitive-google-click')
+  })
+
+  it('冲突结果不选择平台，重复解析也不保留来源信号', async () => {
+    api
+      .mockResolvedValueOnce({ provider: null, resolution: 'conflict', expiresInSeconds: null })
+      .mockResolvedValueOnce({ provider: null, resolution: 'conflict', expiresInSeconds: null })
     const attribution = useAdAttribution()
     const route = {
       path: '/conflict-source',
@@ -48,7 +119,7 @@ describe('useAdAttribution', () => {
     await expect(attribution.resolve(route)).resolves.toBeNull()
     await expect(attribution.resolve(route)).resolves.toBeNull()
 
-    expect(api).toHaveBeenCalledTimes(1)
+    expect(api).toHaveBeenCalledTimes(2)
     expect(attribution.resolution.value).toBe('conflict')
   })
 
@@ -174,6 +245,7 @@ describe('useAdAttribution', () => {
 
     expect(attribution.provider.value).toBeNull()
     expect(attribution.resolution.value).toBe('none')
+    expect(attribution.publicConfig.value).toBeNull()
     expect(api).toHaveBeenLastCalledWith('/api/ad-attribution', { method: 'DELETE' })
   })
 })

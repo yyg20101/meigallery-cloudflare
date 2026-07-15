@@ -9,6 +9,10 @@ const LEGACY_DEV_WORKERS_SUBDOMAIN = '250770503'
 const DEV_REQUEST_TIMEOUT_MS = 20_000
 const DEV_IDENTITY_MAX_ATTEMPTS = 31
 const DEV_IDENTITY_RETRY_DELAY_MS = 3_000
+const DEV_TRANSIENT_MAX_ATTEMPTS = 3
+const DEV_TRANSIENT_RETRY_DELAY_MS = 500
+const DEV_COMMAND_MAX_ATTEMPTS = 3
+const DEV_COMMAND_RETRY_DELAY_MS = 500
 
 export async function runDevRehearsalVerification(options = {}) {
   const cwd = options.cwd || process.cwd()
@@ -16,6 +20,13 @@ export async function runDevRehearsalVerification(options = {}) {
   const fetchFn = options.fetch || fetch
   const requestTimeoutMs = options.requestTimeoutMs ?? DEV_REQUEST_TIMEOUT_MS
   const boundedFetch = (input, init) => fetchWithTimeout(fetchFn, input, init, requestTimeoutMs)
+  const runIdempotentCommand = (command, args, commandOptions) => runIdempotentCommandWithRetry(
+    runCommandFn,
+    command,
+    args,
+    commandOptions,
+    commandRetryOptions(options),
+  )
   const env = options.env || process.env
   const apiUrl = readRequiredEnv(env, 'VERIFY_DEV_API_URL')
   const webUrl = readRequiredEnv(env, 'VERIFY_DEV_WEB_URL')
@@ -35,12 +46,12 @@ export async function runDevRehearsalVerification(options = {}) {
   const registrationCodeId = `evc_release_dev_${runSuffix}`
   const registrationSettingBackupKey = `release_dev_previous_email_verification_${runSuffix}`
   const sensitiveValues = [sessionToken, sessionHash, registrationEmail, registrationPassword, registrationCode]
-  const today = new Date().toISOString().slice(0, 10)
+  const today = toShanghaiOperationDate(options.now ?? new Date())
   let shouldCleanupDevSmokeOwner = false
   let shouldCleanupRegistrationFixture = false
 
   try {
-    const preflightStep = await runCommandFn(process.execPath, [
+    const preflightStep = await runIdempotentCommand(process.execPath, [
       'scripts/verify-meta-migration.mjs', 'preflight', '--env', 'dev',
     ], {
       cwd,
@@ -50,7 +61,7 @@ export async function runDevRehearsalVerification(options = {}) {
     steps.push(cleanForReport(preflightStep))
     if (preflightStep.status !== 'passed') return { steps, notes, artifacts }
 
-    const migrateStep = await runCommandFn('corepack', [
+    const migrateStep = await runIdempotentCommand('corepack', [
       'pnpm', '--filter', '@meigallery/api', 'exec',
       'wrangler', 'd1', 'migrations', 'apply', DEV_DB_NAME,
       '--env', 'dev',
@@ -62,7 +73,7 @@ export async function runDevRehearsalVerification(options = {}) {
     steps.push(cleanForReport(migrateStep))
     if (migrateStep.status !== 'passed') return { steps, notes, artifacts }
 
-    const seedStep = await runCommandFn('corepack', [
+    const seedStep = await runIdempotentCommand('corepack', [
       'pnpm', '--filter', '@meigallery/api', 'exec',
       'wrangler', 'd1', 'execute', DEV_DB_NAME,
       '--env', 'dev',
@@ -82,7 +93,7 @@ export async function runDevRehearsalVerification(options = {}) {
       `VALUES ('ses_release_dev_rehearsal', 1, '${sessionHash}', '${sessionExpiresAt}', datetime('now'))`,
       "ON CONFLICT(id) DO UPDATE SET token_hash = excluded.token_hash, expires_at = excluded.expires_at;",
     ].join(' ')
-    const sessionStep = await runCommandFn('corepack', [
+    const sessionStep = await runIdempotentCommand('corepack', [
       'pnpm', '--filter', '@meigallery/api', 'exec',
       'wrangler', 'd1', 'execute', DEV_DB_NAME,
       '--env', 'dev',
@@ -97,7 +108,7 @@ export async function runDevRehearsalVerification(options = {}) {
     steps.push(cleanForReport(sessionStep))
     if (sessionStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
-    const apiDeployStep = await runCommandFn('corepack', [
+    const apiDeployStep = await runIdempotentCommand('corepack', [
       'pnpm', '--filter', '@meigallery/api', 'exec',
       'wrangler', 'deploy', '--env', 'dev', '--var', `RELEASE_COMMIT:${releaseCommit}`,
     ], {
@@ -107,7 +118,7 @@ export async function runDevRehearsalVerification(options = {}) {
     steps.push(cleanForReport(apiDeployStep))
     if (apiDeployStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
-    const webDeployStep = await runCommandFn('corepack', [
+    const webDeployStep = await runIdempotentCommand('corepack', [
       'pnpm', '--filter', '@meigallery/web', 'exec',
       'wrangler', 'deploy', '--env', 'dev', '--var', `RELEASE_COMMIT:${releaseCommit}`,
     ], {
@@ -157,7 +168,8 @@ export async function runDevRehearsalVerification(options = {}) {
     }
 
     const contactStep = await postConversion(boundedFetch, apiUrl, 'dev-conversion-contact', {
-      actionType: 'contact',
+      actionType: 'open_link',
+      contactMethodId: 'contact_release_dev_telegram',
       visitorId: conversionVisitorId,
       sessionId: conversionSessionId,
       occurredAt: new Date().toISOString(),
@@ -173,7 +185,6 @@ export async function runDevRehearsalVerification(options = {}) {
       consentState: 'granted',
       adAttributionState: 'resolved',
       methodType: 'telegram',
-      actionTarget: `floating_contact_panel_${runSuffix}`,
       metadata: {
         fbclid: 'release-dev-fbclid',
         placement: 'dev-rehearsal-smoke',
@@ -190,7 +201,7 @@ export async function runDevRehearsalVerification(options = {}) {
       'INSERT INTO email_verification_codes (id, email, code, purpose, expires_at, used, attempts, created_at)',
       `VALUES ('${registrationCodeId}', '${registrationEmail}', '${registrationCode}', 'register', datetime('now', '+10 minutes'), 0, 0, datetime('now'));`,
     ].join(' ')
-    const registrationFixtureStep = await runCommandFn('corepack', [
+    const registrationFixtureStep = await runIdempotentCommand('corepack', [
       'pnpm', '--filter', '@meigallery/api', 'exec',
       'wrangler', 'd1', 'execute', DEV_DB_NAME,
       '--env', 'dev',
@@ -305,7 +316,7 @@ export async function runDevRehearsalVerification(options = {}) {
         ] : []),
         "UPDATE users SET status = 'disabled', updated_at = datetime('now') WHERE id = 1 AND email = 'release-dev-owner@example.test';",
       ].join(' ')
-      const cleanupStep = await runCommandFn('corepack', [
+      const cleanupStep = await runIdempotentCommand('corepack', [
         'pnpm', '--filter', '@meigallery/api', 'exec',
         'wrangler', 'd1', 'execute', DEV_DB_NAME,
         '--env', 'dev',
@@ -321,6 +332,17 @@ export async function runDevRehearsalVerification(options = {}) {
       if (cleanupStep.status === 'passed') notes.push('dev-smoke-owner-disabled-after-run')
     }
   }
+}
+
+export function toShanghaiOperationDate(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) throw new Error('dev rehearsal 日期无效')
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date)
 }
 
 function readRequiredEnv(env, key) {
@@ -361,7 +383,7 @@ async function establishMetaAttribution(fetchFn, apiUrl, runSuffix) {
   const startedAt = Date.now()
   const command = 'PUT /api/marketing-consent -> PUT /api/ad-attribution'
   try {
-    const consentResponse = await fetchFn(`${apiUrl}/api/marketing-consent`, {
+    const consentResponse = await fetchWithTransientRetry(fetchFn, `${apiUrl}/api/marketing-consent`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ state: 'granted' }),
@@ -371,7 +393,7 @@ async function establishMetaAttribution(fetchFn, apiUrl, runSuffix) {
     if (consentBody?.state !== 'granted') throw new Error('营销授权未进入 granted')
     const consentCookie = readResponseCookie(consentResponse, 'mei_marketing_consent_receipt')
 
-    const attributionResponse = await fetchFn(`${apiUrl}/api/ad-attribution`, {
+    const attributionResponse = await fetchWithTransientRetry(fetchFn, `${apiUrl}/api/ad-attribution`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -388,31 +410,91 @@ async function establishMetaAttribution(fetchFn, apiUrl, runSuffix) {
     if (attributionBody?.provider !== 'meta' || attributionBody?.resolution !== 'matched') {
       throw new Error('广告来源未解析为 Meta')
     }
-    const attributionCookie = readResponseCookie(attributionResponse, 'mei_ad_attribution_receipt')
+    const attributionCookie = readResponseCookie(attributionResponse, 'mei_ad_attribution')
 
     return {
       cookieHeader: `${consentCookie}; ${attributionCookie}`,
       step: {
-        ...createStep('dev-meta-attribution-receipt'),
+        ...createStep('dev-meta-attribution-context'),
         status: 'passed',
         durationMs: Date.now() - startedAt,
         command,
         exitCode: 200,
-        summary: '营销授权和 Meta 来源 receipt 已由 dev Worker 签发',
+        summary: '营销授权和 Meta 来源上下文已由 dev Worker 签发',
       },
     }
   } catch (error) {
     return {
       cookieHeader: '',
       step: {
-        ...createStep('dev-meta-attribution-receipt'),
+        ...createStep('dev-meta-attribution-context'),
         status: 'failed',
         durationMs: Date.now() - startedAt,
         command,
         exitCode: null,
-        summary: truncateSummary(error instanceof Error ? error.message : 'Meta 来源 receipt 创建失败'),
+        summary: truncateSummary(error instanceof Error ? error.message : 'Meta 来源上下文创建失败'),
       },
     }
+  }
+}
+
+export async function fetchWithTransientRetry(fetchFn, input, init, options = {}) {
+  const configuredAttempts = Number(options.maxAttempts ?? DEV_TRANSIENT_MAX_ATTEMPTS)
+  const maxAttempts = Number.isSafeInteger(configuredAttempts) && configuredAttempts > 0
+    ? configuredAttempts
+    : DEV_TRANSIENT_MAX_ATTEMPTS
+  const configuredDelay = Number(options.retryDelayMs ?? DEV_TRANSIENT_RETRY_DELAY_MS)
+  const retryDelayMs = Number.isFinite(configuredDelay) && configuredDelay >= 0
+    ? configuredDelay
+    : DEV_TRANSIENT_RETRY_DELAY_MS
+  const sleepFn = options.sleep || (delayMs => new Promise(resolve => setTimeout(resolve, delayMs)))
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const response = await fetchFn(input, init)
+      const shouldRetry = response.status === 429 || response.status >= 500
+      if (!shouldRetry || attempt === maxAttempts) return response
+      await response.body?.cancel()
+    } catch (error) {
+      if (attempt === maxAttempts) throw error
+    }
+
+    await sleepFn(retryDelayMs * attempt)
+  }
+
+  throw new Error('瞬时请求重试未返回结果')
+}
+
+export async function runIdempotentCommandWithRetry(runCommandFn, command, args, commandOptions, options = {}) {
+  const configuredAttempts = Number(options.maxAttempts ?? DEV_COMMAND_MAX_ATTEMPTS)
+  const maxAttempts = Number.isSafeInteger(configuredAttempts) && configuredAttempts > 0
+    ? configuredAttempts
+    : DEV_COMMAND_MAX_ATTEMPTS
+  const configuredDelay = Number(options.retryDelayMs ?? DEV_COMMAND_RETRY_DELAY_MS)
+  const retryDelayMs = Number.isFinite(configuredDelay) && configuredDelay >= 0
+    ? configuredDelay
+    : DEV_COMMAND_RETRY_DELAY_MS
+  const sleepFn = options.sleep || (delayMs => new Promise(resolve => setTimeout(resolve, delayMs)))
+  const startedAt = Date.now()
+  let lastStep = null
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    lastStep = await runCommandFn(command, args, commandOptions)
+    if (lastStep?.status === 'passed') {
+      if (attempt === 1) return lastStep
+      return {
+        ...lastStep,
+        durationMs: Date.now() - startedAt,
+        summary: truncateSummary(`${lastStep.summary || '命令执行成功'}；幂等命令重试 ${attempt}/${maxAttempts}`),
+      }
+    }
+    if (attempt < maxAttempts) await sleepFn(retryDelayMs * attempt)
+  }
+
+  return {
+    ...lastStep,
+    durationMs: Date.now() - startedAt,
+    summary: truncateSummary(`${lastStep?.summary || '命令执行失败'}；幂等命令连续 ${maxAttempts} 次失败`),
   }
 }
 
@@ -437,13 +519,13 @@ async function postConversion(fetchFn, apiUrl, stepName, payload, cookieHeader =
     if (!body?.data?.id) {
       throw new Error('响应缺少转化事件 ID')
     }
-    if (body?.data?.actionType !== payload.actionType) {
+    if (body?.data?.actionType !== 'contact') {
       throw new Error(`响应 actionType 不匹配：${String(body?.data?.actionType || '')}`)
     }
     if (body?.data?.created !== true) {
-      throw new Error(`${payload.actionType} 响应 created 非 true`)
+      throw new Error('Contact 响应 created 非 true')
     }
-    return `${payload.actionType} 已写入，created=${String(body?.data?.created)}`
+    return `Contact 已写入，created=${String(body?.data?.created)}`
   })
 }
 
@@ -599,6 +681,14 @@ function identityRetryOptions(options) {
     maxAttempts: options.identityMaxAttempts,
     retryDelayMs: options.identityRetryDelayMs,
     sleep: options.sleep,
+  }
+}
+
+function commandRetryOptions(options) {
+  return {
+    maxAttempts: options.commandMaxAttempts,
+    retryDelayMs: options.commandRetryDelayMs,
+    sleep: options.commandRetrySleep,
   }
 }
 

@@ -26,6 +26,41 @@ const PRODUCTION_IDENTITY_MAX_ATTEMPTS = 31
 const PRODUCTION_IDENTITY_RETRY_DELAY_MS = 3_000
 const META_LIVE_CONFIRMATION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
 const META_LIVE_SOURCE_TTL_MS = 24 * 60 * 60 * 1000
+const FORBIDDEN_DEV_PLATFORM_HOSTS = [
+  'graph.facebook.com',
+  'connect.facebook.net',
+  'business-api.tiktok.com',
+  'analytics.tiktok.com',
+  'googleads.googleapis.com',
+  'www.googletagmanager.com',
+]
+
+const LOCAL_ATTRIBUTION_GATE_STEPS = [
+  {
+    name: 'attribution-final-schema',
+    command: 'node',
+    args: ['--test', 'packages/api/migrations/0051_unified_attribution_expand.test.mjs'],
+  },
+  {
+    name: 'attribution-queue-mock',
+    command: 'corepack',
+    args: ['pnpm', '--filter', '@meigallery/api', 'exec', 'vitest', 'run',
+      'src/services/ad-platform/queue-runtime.d1.test.ts',
+      'src/services/ad-platform/recovery.test.ts'],
+  },
+  {
+    name: 'attribution-workflow-mock',
+    command: 'corepack',
+    args: ['pnpm', '--filter', '@meigallery/api', 'exec', 'vitest', 'run',
+      'src/workflows/ad-platform-verification.test.ts'],
+  },
+  {
+    name: 'attribution-browser-isolation',
+    command: 'corepack',
+    args: ['pnpm', '--filter', '@meigallery/web', 'exec', 'playwright', 'test',
+      'tests/e2e/ad-attribution-isolation.spec.ts', '--project=chromium', '--project=mobile-360'],
+  },
+]
 
 const QUICK_STEPS = [
   {
@@ -52,6 +87,11 @@ const QUICK_STEPS = [
     name: 'scripts-test',
     command: 'corepack',
     args: ['pnpm', 'test:scripts'],
+  },
+  {
+    name: 'shared-unit',
+    command: 'corepack',
+    args: ['pnpm', '--filter', '@meigallery/shared', 'test'],
   },
   {
     name: 'api-unit',
@@ -482,6 +522,71 @@ function sanitizeEnvironmentIsolation(value) {
   return Object.fromEntries(fields.map(field => [field, value?.[field] === true]))
 }
 
+export async function runLocalAttributionGates(options = {}) {
+  const runCommandFn = options.runCommand || runCommand
+  const steps = []
+  const notes = []
+  for (const definition of LOCAL_ATTRIBUTION_GATE_STEPS) {
+    const step = await runCommandFn(definition.command, definition.args, {
+      cwd: options.cwd || process.cwd(),
+      name: definition.name,
+    })
+    steps.push(step)
+    if (step.status !== 'passed') {
+      notes.push(`归因专项门禁 ${definition.name} 失败，后续专项检查与 local-runtime smoke 已停止。`)
+      break
+    }
+  }
+  return { steps, notes, artifacts: [] }
+}
+
+export async function verifyDevRehearsalPlatformIsolation(options = {}) {
+  const startedMs = Date.now()
+  const cwd = options.cwd || process.cwd()
+  const readFileFn = options.readFile || readFile
+  const command = '静态核对 dev Queue、最终归因 fixture 与真实平台域名'
+  try {
+    const [wrangler, seed, rehearsal] = await Promise.all([
+      readFileFn(new URL('packages/api/wrangler.toml', pathToFileURL(`${cwd}/`)), 'utf8'),
+      readFileFn(new URL('scripts/fixtures/release-smoke/seed-dev.sql', pathToFileURL(`${cwd}/`)), 'utf8'),
+      readFileFn(new URL('scripts/verify-dev-rehearsal.mjs', pathToFileURL(`${cwd}/`)), 'utf8'),
+    ])
+    if (!/\[env\.dev\.queues\][\s\S]*?producers\s*=\s*\[\][\s\S]*?consumers\s*=\s*\[\]/.test(wrangler)) {
+      throw new Error('dev 环境仍存在广告平台 Queue producer 或 consumer')
+    }
+    if (/\bad_platform_connections\b/.test(seed)) throw new Error('dev smoke fixture 仍写旧广告平台连接表')
+    const connectionSeed = seed.match(/INSERT OR REPLACE INTO attribution_platform_connections[\s\S]*?;/)?.[0] || ''
+    for (const provider of ['meta', 'tiktok', 'google']) {
+      const closedTransport = new RegExp(`'${provider}',\\s*1,\\s*'test',\\s*0,\\s*0`)
+      if (!closedTransport.test(connectionSeed)) throw new Error(`dev ${provider} Browser/Server 通道未同时关闭`)
+    }
+    const forbiddenHost = FORBIDDEN_DEV_PLATFORM_HOSTS.find(host => seed.includes(host) || rehearsal.includes(host))
+    if (forbiddenHost) throw new Error(`dev rehearsal 禁止请求真实平台域名：${forbiddenHost}`)
+    return {
+      name: 'dev-platform-network-isolation',
+      status: 'passed',
+      durationMs: Date.now() - startedMs,
+      command,
+      exitCode: 0,
+      summary: 'dev 三个平台 Browser/Server 与 Queue 均关闭，预演脚本不包含真实平台域名',
+    }
+  }
+  catch (error) {
+    return {
+      name: 'dev-platform-network-isolation',
+      status: 'failed',
+      durationMs: Date.now() - startedMs,
+      command,
+      exitCode: 1,
+      summary: error instanceof Error ? error.message : String(error),
+    }
+  }
+}
+
+function stripCommandOutput({ stdout, stderr, logs, ...step }) {
+  return step
+}
+
 export async function runLocalRuntimeReleaseVerification(options = {}) {
   const mode = options.mode || 'local-runtime'
   const startedAt = new Date().toISOString()
@@ -489,22 +594,33 @@ export async function runLocalRuntimeReleaseVerification(options = {}) {
   const collectVersionsFn = options.collectVersions || collectVersions
   const getGitStateFn = options.getGitState || getGitState
   const runLocalRuntimeVerificationFn = options.runLocalRuntimeVerification || runLocalRuntimeVerification
+  const runLocalAttributionGatesFn = options.runLocalAttributionGates || runLocalAttributionGates
   const writeReportFn = options.writeReport || writeReport
   const versions = await collectVersionsFn(options)
   const git = await getGitStateFn(options)
-  const { steps, notes, artifacts, sensitiveValues = [] } = await runLocalRuntimeVerificationFn(options)
-  const normalizedSteps = Array.isArray(steps) ? steps : []
+  const gates = await runLocalAttributionGatesFn(options)
+  const gateSteps = Array.isArray(gates.steps) ? gates.steps : []
+  const gatesPassed = gateSteps.length === LOCAL_ATTRIBUTION_GATE_STEPS.length
+    && gateSteps.every(step => step.status === 'passed')
+  const runtime = gatesPassed
+    ? await runLocalRuntimeVerificationFn(options)
+    : { steps: [], notes: ['归因专项门禁失败，local-runtime smoke 未执行。'], artifacts: [], sensitiveValues: [] }
+  const runtimeSteps = Array.isArray(runtime.steps) ? runtime.steps : []
+  const normalizedSteps = [...gateSteps, ...runtimeSteps]
+  const notes = [...(gates.notes || []), ...(runtime.notes || [])]
+  const artifacts = [...(gates.artifacts || []), ...(runtime.artifacts || [])]
+  const sensitiveValues = runtime.sensitiveValues || []
   const finishedAt = new Date().toISOString()
   const report = {
     schemaVersion: 1,
     mode,
-    status: normalizedSteps.length > 0 && normalizedSteps.every(step => step.status === 'passed') ? 'passed' : 'failed',
+    status: gatesPassed && runtimeSteps.length > 0 && normalizedSteps.every(step => step.status === 'passed') ? 'passed' : 'failed',
     startedAt,
     finishedAt,
     durationMs: Date.now() - startedMs,
     git,
     versions,
-    steps: normalizedSteps,
+    steps: normalizedSteps.map(stripCommandOutput),
     artifacts,
     notes,
   }
@@ -524,36 +640,44 @@ export async function runDevRehearsalReleaseVerification(options = {}) {
   const collectVersionsFn = options.collectVersions || collectVersions
   const getGitStateFn = options.getGitState || getGitState
   const runDevRehearsalVerificationFn = options.runDevRehearsalVerification || runDevRehearsalVerification
+  const verifyDevIsolationFn = options.verifyDevRehearsalPlatformIsolation || verifyDevRehearsalPlatformIsolation
   const writeReportFn = options.writeReport || writeReport
   const versions = await collectVersionsFn(options)
   const git = await getGitStateFn(options)
-  const verification = isValidCommit(git.commit)
+  const isolation = isValidCommit(git.commit)
+    ? await verifyDevIsolationFn(options)
+    : null
+  const verification = isValidCommit(git.commit) && isolation?.status === 'passed'
     ? await runDevRehearsalVerificationFn({ ...options, releaseCommit: git.commit })
     : {
         steps: [{
-          name: 'dev-release-commit',
+          name: isolation?.name || 'dev-release-commit',
           status: 'failed',
           durationMs: 0,
-          command: 'git rev-parse HEAD',
+          command: isolation?.command || 'git rev-parse HEAD',
           exitCode: 1,
-          summary: 'dev rehearsal release 路径需要 40 位 commit',
+          summary: isolation?.summary || 'dev rehearsal release 路径需要 40 位 commit',
         }],
-        notes: ['dev rehearsal release 路径缺少合法的 40 位 commit'],
+        notes: [isolation?.summary || 'dev rehearsal release 路径缺少合法的 40 位 commit'],
         artifacts: [],
       }
   const { steps, notes, artifacts, sensitiveValues = [] } = verification
-  const normalizedSteps = Array.isArray(steps) ? steps : []
+  const normalizedSteps = [
+    ...(isolation?.status === 'passed' ? [isolation] : []),
+    ...(Array.isArray(steps) ? steps : []),
+  ]
+  const rehearsalStepCount = Array.isArray(steps) ? steps.length : 0
   const finishedAt = new Date().toISOString()
   const report = {
     schemaVersion: 1,
     mode,
-    status: normalizedSteps.length > 0 && normalizedSteps.every(step => step.status === 'passed') ? 'passed' : 'failed',
+    status: isolation?.status === 'passed' && rehearsalStepCount > 0 && normalizedSteps.every(step => step.status === 'passed') ? 'passed' : 'failed',
     startedAt,
     finishedAt,
     durationMs: Date.now() - startedMs,
     git,
     versions,
-    steps: normalizedSteps,
+    steps: normalizedSteps.map(stripCommandOutput),
     artifacts,
     notes,
   }

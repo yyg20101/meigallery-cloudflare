@@ -13,8 +13,9 @@ const contactMethodItemStub = {
   emits: ['activate', 'inspect'],
   template: `
     <div>
-      <button class="contact-method" type="button" @click="$emit('activate', method.platform, 'open_link')">{{ method.label }}</button>
-      <button class="contact-qr" type="button" @click="$emit('inspect', method.platform, 'qr_expand')">二维码</button>
+      <button class="contact-method" type="button" @click="$emit('activate', method.id, method.platform, 'open_link')">{{ method.label }}</button>
+      <button class="contact-copy" type="button" @click="$emit('activate', method.id, method.platform, 'copy')">复制</button>
+      <button class="contact-qr" type="button" @click="$emit('inspect', method.id, method.platform, 'qr_expand')">二维码</button>
     </div>
   `,
 }
@@ -90,11 +91,29 @@ describe('ContactPanel', () => {
     await wrapper.get('.contact-method').trigger('click')
 
     expect(trackContact).toHaveBeenCalledWith({
+      contactMethodId: 'contact-1',
       methodType: 'telegram',
-      actionTarget: 'floating_contact_panel',
       actionType: 'open_link',
     })
     expect(JSON.stringify(trackContact.mock.calls)).not.toContain('@meigallery')
+  })
+
+  it('复制只记录 contact_value_copy 且不创建 Contact', async () => {
+    const { wrapper, trackContact, trackAnalytics } = await mountPanel()
+
+    await wrapper.get('button[aria-label="打开联系方式"]').trigger('click')
+    await wrapper.get('.contact-copy').trigger('click')
+
+    expect(trackContact).not.toHaveBeenCalled()
+    expect(trackAnalytics).toHaveBeenCalledWith('contact_value_copy', {
+      entityType: 'contact',
+      props: {
+        contact_method_id: 'contact-1',
+        method_type: 'telegram',
+        action_type: 'copy',
+        location: 'floating_contact_panel',
+      },
+    })
   })
 
   it('二维码展开只记录分析且不创建 Contact', async () => {
@@ -106,6 +125,7 @@ describe('ContactPanel', () => {
     expect(trackAnalytics).toHaveBeenCalledWith('contact_qr_expand', {
       entityType: 'contact',
       props: {
+        contact_method_id: 'contact-1',
         method_type: 'telegram',
         action_type: 'qr_expand',
         location: 'floating_contact_panel',

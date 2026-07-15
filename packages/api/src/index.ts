@@ -34,11 +34,8 @@ import {
   aggregatePathEdges,
   cleanupAnalyticsRetention,
 } from './services/analytics-aggregate'
-import { recoverPendingMetaCapiDeliveries } from './services/meta-capi-queue'
-import { recoverPendingTikTokEventsDeliveries } from './services/tiktok-events-queue'
-import { purgeExpiredAdPlatformOutbox } from './services/ad-platform/secure-outbox'
+import { recoverAttributionOutbox } from './services/ad-platform/recovery'
 import { recoverRegistrationConversionFacts } from './services/registration-conversion-recovery'
-import { runMetaCapiCircuitEvaluation } from './services/meta-capi-circuit-breaker'
 import { collectMetaDatasetQuality } from './services/meta-dataset-quality'
 
 /** Hono 应用绑定类型 */
@@ -53,18 +50,23 @@ export type Bindings = {
   EMAIL_FROM: string
   EMAIL: SendEmail
   SITE_URL?: string
+  CORS_ORIGIN?: string
   IMAGE_RESIZING_ENABLED: string // "true" | "false"
   IMPORT_TOKEN_DAILY_LIMIT?: string
   TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT?: string
   TELEGRAM_BOT_TOKEN_OPS_CASE_BOT?: string
-  META_CAPI_QUEUE?: Queue<AdPlatformQueueMessage>
   META_CAPI_ACCESS_TOKEN?: string
   META_CAPI_DATA_KEY_CURRENT?: string
   META_CAPI_DATA_KEY_PREVIOUS?: string
-  TIKTOK_EVENTS_QUEUE?: Queue<AdPlatformQueueMessage>
+  AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT: string
+  AD_PLATFORM_CREDENTIAL_MASTER_KEY_PREVIOUS?: string
   TIKTOK_EVENTS_ACCESS_TOKEN?: string
   TIKTOK_EVENTS_DATA_KEY_CURRENT?: string
   TIKTOK_EVENTS_DATA_KEY_PREVIOUS?: string
+  AD_META_QUEUE?: Queue<AdPlatformQueueMessage>
+  AD_TIKTOK_QUEUE?: Queue<AdPlatformQueueMessage>
+  AD_GOOGLE_QUEUE?: Queue<AdPlatformQueueMessage>
+  AD_PLATFORM_VERIFICATION_WORKFLOW: Workflow<{ verificationId: string }>
   RELEASE_COMMIT?: string
 }
 
@@ -156,6 +158,8 @@ for (const path of [
   '/api/settings/public',
   '/api/meta/resource-attestation',
   '/api/marketing-consent',
+  '/api/ad-attribution',
+  '/api/ad-attribution/*',
 ]) {
   app.use(path, rateLimiter({
     name: 'public-api',
@@ -239,7 +243,7 @@ app.get('/api/settings/public', async (c) => {
   const db = c.env.DB
   const keys = [...PUBLIC_SETTING_KEYS]
   const placeholders = keys.map(() => '?').join(',')
-  const [settingsResult, adsResult, browserConnectionsResult] = await Promise.all([
+  const [settingsResult, adsResult] = await Promise.all([
     db
     .prepare(`SELECT key, value FROM site_settings WHERE key IN (${placeholders})`)
     .bind(...keys)
@@ -254,12 +258,6 @@ app.get('/api/settings/public', async (c) => {
       `)
       .bind(HOME_AD_PLACEMENT)
       .all<HomeAdRow>(),
-    db.prepare(`
-      SELECT provider, destination_id, debug_enabled, mode
-      FROM ad_platform_connections
-      WHERE enabled = 1 AND browser_enabled = 1 AND destination_id <> ''
-      ORDER BY provider
-    `).all<{ provider: string; destination_id: string; debug_enabled: number; mode: string }>(),
   ])
 
   const settings: Record<string, unknown> = {}
@@ -269,23 +267,9 @@ app.get('/api/settings/public', async (c) => {
   settings.home_ads = adsResult.results
     .map(row => serializePublicHomeAd(row))
     .filter((ad): ad is NonNullable<typeof ad> => Boolean(ad))
-  settings.ad_platform_browser_connections = browserConnectionsResult.results
-    .filter(row => isPublicAdDestination(row.provider, row.destination_id))
-    .map(row => ({
-      provider: row.provider,
-      destinationId: row.destination_id,
-      debugEnabled: row.debug_enabled === 1,
-      mode: row.mode,
-    }))
   c.header('Cache-Control', c.env.APP_ENV === 'production' ? PUBLIC_SETTINGS_CACHE_CONTROL : 'no-store')
   return c.json(sanitizePublicSiteSettings(settings))
 })
-
-function isPublicAdDestination(provider: string, destinationId: string) {
-  if (provider === 'meta') return /^\d{5,30}$/.test(destinationId)
-  if (provider === 'tiktok') return /^[A-Z0-9]{10,30}$/i.test(destinationId)
-  return false
-}
 
 app.route('/api/meta', metaResourceAttestationRoutes)
 app.route('/api/admin', adminRoutes)
@@ -306,49 +290,19 @@ app.onError((err, c) => {
 // minute trigger 执行高频公共任务，并在 UTC 00:00 继续执行完整维护任务。
 // ============================================================
 
-const MINUTE_MAINTENANCE_CRON = '* * * * *'
-const DAILY_MAINTENANCE_CRON = '0 0 * * *'
-const META_QUEUE_NAMES = new Set(['meigallery-meta-capi', 'meigallery-meta-capi-dlq'])
-const TIKTOK_QUEUE_NAMES = new Set(['meigallery-tiktok-events', 'meigallery-tiktok-events-dlq'])
+const ATTRIBUTION_RECOVERY_CRON = '*/15 * * * *'
 
 async function handleScheduled(event: ScheduledEvent, env: Bindings): Promise<void> {
   const db = env.DB
 
-  if (event.cron === MINUTE_MAINTENANCE_CRON) {
+  if (event.cron === ATTRIBUTION_RECOVERY_CRON) {
     try {
-      const circuit = await runMetaCapiCircuitEvaluation(env)
-      console.log('[cron] Meta CAPI Circuit Breaker 评估完成:', {
-        criticalCount: circuit.criticalTriggers.length,
-        warningCount: circuit.warnings.length,
-      })
+      if (shouldRecoverAttributionOutbox(event)) {
+        const recovery = await recoverAttributionOutbox(env, 100)
+        console.log('[cron] 统一广告平台 Outbox 恢复完成:', recovery)
+      }
     } catch {
-      console.error('[cron] Meta CAPI Circuit Breaker 评估失败:', {
-        errorCode: 'meta_circuit_evaluation_failed',
-      })
-    }
-
-    try {
-      const purge = await purgeExpiredAdPlatformOutbox(db, 100)
-      console.log('[cron] 广告平台过期密文清理完成:', purge)
-    } catch {
-      console.error('[cron] 广告平台过期密文清理失败:', {
-        errorCode: 'secure_outbox_purge_failed',
-      })
-    }
-
-    try {
-      const recovery = await recoverPendingMetaCapiDeliveries(env)
-      console.log('[cron] Meta CAPI Queue 恢复完成:', recovery)
-    } catch (error) {
-      console.error('[cron] Meta CAPI Queue 恢复失败:', error)
-    }
-
-    try {
-      const recovery = await recoverPendingTikTokEventsDeliveries(env)
-      console.log('[cron] TikTok Events Queue 恢复完成:', recovery)
-    }
-    catch (error) {
-      console.error('[cron] TikTok Events Queue 恢复失败:', error)
+      console.error('[cron] 统一广告平台 Outbox 恢复失败:', { errorCode: 'attribution_outbox_recovery_failed' })
     }
 
     if (shouldRecoverRegistrationConversions(event)) {
@@ -363,7 +317,7 @@ async function handleScheduled(event: ScheduledEvent, env: Bindings): Promise<vo
     }
     if (!shouldRunDailyMaintenance(event)) return
   }
-  else if (event.cron !== DAILY_MAINTENANCE_CRON) {
+  else {
     console.log('[cron] 未知 trigger，跳过定时任务:', event.cron || 'unknown')
     return
   }
@@ -449,9 +403,14 @@ function shouldRunDailyMaintenance(event: ScheduledEvent) {
 }
 
 function shouldRecoverRegistrationConversions(event: ScheduledEvent) {
-  if (event.cron !== MINUTE_MAINTENANCE_CRON) return false
+  if (event.cron !== ATTRIBUTION_RECOVERY_CRON) return false
   const scheduledAt = new Date(event.scheduledTime)
   return !Number.isNaN(scheduledAt.getTime()) && scheduledAt.getUTCMinutes() === 0
+}
+
+function shouldRecoverAttributionOutbox(event: ScheduledEvent) {
+  const scheduledAt = new Date(event.scheduledTime)
+  return !Number.isNaN(scheduledAt.getTime()) && [0, 15, 30, 45].includes(scheduledAt.getUTCMinutes())
 }
 
 function operationDate(now = new Date()) {
@@ -475,20 +434,9 @@ export default {
     ctx.waitUntil(handleScheduled(event, env))
   },
   queue: async (batch: MessageBatch<AdPlatformQueueMessage>, env: Bindings) => {
-    if (META_QUEUE_NAMES.has(batch.queue)) {
-      const { handleMetaCapiBatch } = await import('./services/meta-capi-queue')
-      await handleMetaCapiBatch(batch, env)
-      return
-    }
-    if (TIKTOK_QUEUE_NAMES.has(batch.queue)) {
-      const { handleTikTokEventsBatch } = await import('./services/tiktok-events-queue')
-      await handleTikTokEventsBatch(batch, env)
-      return
-    }
-    console.error('[queue] 未注册的 Queue，消息已安全终止:', { queue: batch.queue })
-    for (const message of batch.messages) {
-      try { message.ack() }
-      catch { /* 单条消息错误不影响同批次后续消息。 */ }
-    }
+    const { handleAttributionQueueBatch } = await import('./services/ad-platform/queue-runtime')
+    await handleAttributionQueueBatch(batch, env)
   },
 }
+
+export { AdPlatformVerificationWorkflow } from './workflows/ad-platform-verification'

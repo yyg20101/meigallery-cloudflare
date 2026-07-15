@@ -1,114 +1,100 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+const consent = {
+  consentVersion: 1,
+  marketingAllowed: true,
+  adUserDataAllowed: true,
+  adPersonalizationAllowed: false,
+  decidedAt: '2026-07-15T00:00:00.000Z',
+}
+
+function instruction(provider: 'meta' | 'tiktok' = 'meta') {
+  return {
+    deliveryId: 'delivery_meta_contact_1',
+    provider,
+    canonicalEvent: 'Contact' as const,
+    externalEventId: 'mg3_meta_contact_1',
+    receiptToken: `v1.${'a'.repeat(16)}.${'b'.repeat(43)}`,
+    descriptor: {
+      provider,
+      canonicalEvent: 'Contact' as const,
+      browserEventName: 'Contact',
+      browserDestination: 'meta_pixel',
+      serverDestination: 'meta_capi',
+    },
+    payload: { method_type: 'telegram' },
+  }
+}
+
 describe('Meta Pixel adapter', () => {
   beforeEach(() => {
     vi.resetModules()
-    const pixelWindow = window as unknown as { fbq?: unknown; _fbq?: unknown }
-    delete pixelWindow.fbq
-    delete pixelWindow._fbq
+    delete window.fbq
+    delete window._fbq
     document.head.querySelectorAll('script[src*="fbevents.js"]').forEach(element => element.remove())
   })
 
   afterEach(() => {
-    const pixelWindow = window as unknown as { fbq?: unknown; _fbq?: unknown }
-    delete pixelWindow.fbq
-    delete pixelWindow._fbq
-    document.head.querySelectorAll('script[src*="fbevents.js"]').forEach(element => element.remove())
+    delete window.fbq
+    delete window._fbq
+    vi.restoreAllMocks()
   })
 
-  it('初始化后发送 PageView 和带 eventID 的标准事件', async () => {
-    const { metaPixelAdapter } = await import('./metaPixel.client')
-    let appendedScript: HTMLScriptElement | undefined
-    vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T) => {
-      appendedScript = node as unknown as HTMLScriptElement
-      return node
-    })
+  it('未同意时零脚本和零平台调用', async () => {
+    const { createMetaPixelAdapter } = await import('./metaPixel.client')
+    const adapter = createMetaPixelAdapter()
+    const append = vi.spyOn(document.head, 'appendChild')
 
-    expect(metaPixelAdapter.initialize('123456789')).toBe(true)
-    expect(metaPixelAdapter.pageView()).toBe(true)
-    expect(metaPixelAdapter.standardEvent(
-      'Contact',
-      { method_type: 'telegram' },
-      { eventID: 'meta:Contact:contact_1' },
-    )).toBe(true)
+    await expect(adapter.initialize(
+      { provider: 'meta', pixelId: '123456789' },
+      { ...consent, marketingAllowed: false },
+    )).resolves.toBe(false)
 
-    const fbq = (window as unknown as { fbq?: { queue: unknown[] } }).fbq
-    expect(fbq?.queue).toEqual([
+    expect(append).not.toHaveBeenCalled()
+    expect(window.fbq).toBeUndefined()
+  })
+
+  it('使用 externalEventId 发送 Meta eventID 并映射安全 signal', async () => {
+    const { createMetaPixelAdapter } = await import('./metaPixel.client')
+    const adapter = createMetaPixelAdapter()
+    vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T) => node)
+
+    await expect(adapter.initialize({ provider: 'meta', pixelId: '123456789' }, consent)).resolves.toBe(true)
+    await expect(adapter.trackSignal('PageView', {})).resolves.toBe(true)
+    await expect(adapter.trackSignal('ViewContent', { content_id: 'gallery_1' })).resolves.toBe(true)
+    await expect(adapter.track(instruction())).resolves.toBe(true)
+
+    expect(window.fbq?.queue).toEqual([
       ['init', '123456789'],
       ['track', 'PageView'],
-      ['track', 'Contact', { method_type: 'telegram' }, { eventID: 'meta:Contact:contact_1' }],
+      ['track', 'ViewContent', { content_id: 'gallery_1' }],
+      ['track', 'Contact', { method_type: 'telegram' }, { eventID: 'mg3_meta_contact_1' }],
     ])
-    expect(appendedScript?.src).toBe('https://connect.facebook.net/en_US/fbevents.js')
-    expect(appendedScript?.referrerPolicy).toBe('no-referrer')
   })
 
-  it('未初始化或 Pixel ID 非法时不发送事件', async () => {
-    const { createMetaPixelAdapter } = await import('./metaPixel.client')
-    const adapter = createMetaPixelAdapter()
-
-    expect(adapter.pageView()).toBe(false)
-    expect(adapter.standardEvent('Search', { result_count: 0 })).toBe(false)
-    expect(adapter.initialize('fbq("track")')).toBe(false)
-    expect((window as unknown as { fbq?: unknown }).fbq).toBeUndefined()
-  })
-
-  it('重复初始化同一实例时只排队一次 init', async () => {
-    const { metaPixelAdapter } = await import('./metaPixel.client')
-    vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T) => node)
-
-    expect(metaPixelAdapter.initialize('123456789')).toBe(true)
-    expect(metaPixelAdapter.initialize('123456789')).toBe(true)
-
-    const fbq = (window as unknown as { fbq?: { queue: unknown[] } }).fbq
-    expect(fbq?.queue).toEqual([['init', '123456789']])
-  })
-
-  it('脚本加载前 teardown 会清空队列、移除脚本并使迟到 load 失效', async () => {
-    const { createMetaPixelAdapter } = await import('./metaPixel.client')
-    const adapter = createMetaPixelAdapter()
-    let appendedScript: HTMLScriptElement | undefined
-    vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T) => {
-      appendedScript = node as unknown as HTMLScriptElement
-      return node
-    })
-
-    adapter.initialize('123456789')
-    adapter.pageView()
-    const ownedFbq = (window as unknown as { fbq?: { queue: unknown[]; callMethod?: (...args: unknown[]) => void } }).fbq!
-    const callMethod = vi.fn()
-    ownedFbq.callMethod = callMethod
-    const remove = vi.spyOn(appendedScript!, 'remove')
-    const teardown = (adapter as typeof adapter & { teardown?: () => void }).teardown
-
-    expect(teardown).toBeTypeOf('function')
-    teardown?.()
-    appendedScript?.dispatchEvent(new Event('load'))
-
-    expect(ownedFbq.queue).toEqual([])
-    expect(remove).toHaveBeenCalledOnce()
-    expect((window as unknown as { fbq?: unknown }).fbq).toBeUndefined()
-    expect((window as unknown as { _fbq?: unknown })._fbq).toBeUndefined()
-    expect(callMethod).not.toHaveBeenCalled()
-    expect(adapter.pageView()).toBe(false)
-  })
-
-  it('Pixel ID 变化会 teardown 旧实例并重新 init', async () => {
+  it('跨 provider instruction 和非法 externalEventId 均 fail closed', async () => {
     const { createMetaPixelAdapter } = await import('./metaPixel.client')
     const adapter = createMetaPixelAdapter()
     vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T) => node)
+    await adapter.initialize({ provider: 'meta', pixelId: '123456789' }, consent)
 
-    adapter.initialize('123456789')
-    adapter.pageView()
-    const firstFbq = (window as unknown as { fbq?: { queue: unknown[] } }).fbq!
-    adapter.initialize('987654321')
-    adapter.pageView()
-    const secondFbq = (window as unknown as { fbq?: { queue: unknown[] } }).fbq!
+    await expect(adapter.track(instruction('tiktok'))).resolves.toBe(false)
+    await expect(adapter.track({ ...instruction(), externalEventId: 'person@example.com' })).resolves.toBe(false)
+    expect(window.fbq?.queue).toEqual([['init', '123456789']])
+  })
 
-    expect(firstFbq.queue).toEqual([])
-    expect(secondFbq).not.toBe(firstFbq)
-    expect(secondFbq.queue).toEqual([
-      ['init', '987654321'],
-      ['track', 'PageView'],
-    ])
+  it('检测到第三方 fbq 时 fail closed 且不接管', async () => {
+    const thirdPartyFbq = Object.assign(vi.fn(), { queue: [], loaded: true, version: '2.0' })
+    window.fbq = thirdPartyFbq
+    window._fbq = thirdPartyFbq
+    const { createMetaPixelAdapter } = await import('./metaPixel.client')
+    const adapter = createMetaPixelAdapter()
+
+    await expect(adapter.initialize({ provider: 'meta', pixelId: '123456789' }, consent)).resolves.toBe(false)
+    await adapter.teardown()
+
+    expect(window.fbq).toBe(thirdPartyFbq)
+    expect(window._fbq).toBe(thirdPartyFbq)
+    expect(thirdPartyFbq).not.toHaveBeenCalled()
   })
 })

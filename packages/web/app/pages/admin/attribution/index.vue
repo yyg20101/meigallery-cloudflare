@@ -1,20 +1,17 @@
 <script setup lang="ts">
-import AnalyticsDataTable from '~/components/admin/analytics/AnalyticsDataTable.vue'
+import AttributionHealthStrip from '~/components/admin/attribution/AttributionHealthStrip.vue'
 import AttributionPageShell from '~/components/admin/attribution/AttributionPageShell.vue'
 import AttributionProviderSwitch from '~/components/admin/attribution/AttributionProviderSwitch.vue'
 import AttributionTrendPanel from '~/components/admin/attribution/AttributionTrendPanel.vue'
 import type {
-  AdPlatformConnectionStatusData,
+  AdPlatformConnectionData,
+  AttributionCapacityData,
+  AttributionDashboardProvider,
   AttributionQualityData,
   AttributionSummaryData,
   AttributionTrendsData,
 } from '~/composables/useAdminAttribution'
-import { attributionRouteQuery } from '~/composables/useAdminAttribution'
-import {
-  attributionConnectionStateLabel,
-  attributionPlatformDefinition,
-} from '~/utils/attributionPlatforms'
-import type { AttributionDashboardProvider } from '~/composables/useAdminAttribution'
+import { attributionConnectionStateLabel, attributionPlatformDefinition } from '~/utils/attributionPlatforms'
 
 definePageMeta({ layout: 'admin' })
 
@@ -23,19 +20,11 @@ interface BreakdownData {
   dimension: string
   rows: Array<{
     value: string
-    actionCount: number
+    factCount: number
     contactCount: number
     completeRegistrationCount: number
-    delivery: { pixelAttempted: number; serverSent: number; failed: number }
+    delivery: AttributionSummaryData['delivery']
   }>
-}
-
-interface DuplicateData {
-  provider: AttributionDashboardProvider
-  duplicateSuppressedCount: number
-  duplicateActionCount: number
-  duplicateRate: number
-  samples: Array<Record<string, unknown>>
 }
 
 const rangeState = useAdminAttributionRange('7d')
@@ -51,98 +40,108 @@ const trends = useAdminAttribution<AttributionTrendsData>('/api/admin/attributio
 const quality = useAdminAttribution<AttributionQualityData>('/api/admin/attribution/quality', platformRequestOptions)
 const breakdown = useAdminAttribution<BreakdownData>('/api/admin/attribution/breakdown', {
   ...requestOptions,
-  query: computed(() => ({ provider: selectedProvider.value, dimension: 'utm_campaign', limit: 8 })),
+  query: computed(() => ({ provider: selectedProvider.value, dimension: 'utm_campaign', limit: 10 })),
 })
-const duplicates = useAdminAttribution<DuplicateData>('/api/admin/attribution/duplicates', platformRequestOptions)
-const platforms = useAdminAttribution<AdPlatformConnectionStatusData[]>('/api/admin/attribution/platforms', requestOptions)
-const sources = [summary, trends, quality, breakdown, duplicates, platforms]
-const platformSources = [summary, trends, quality, breakdown, duplicates]
+const platforms = useAdminAttribution<AdPlatformConnectionData[]>('/api/admin/attribution/platforms', requestOptions)
+const capacity = useAdminAttribution<AttributionCapacityData>('/api/admin/attribution/capacity', {
+  ...requestOptions,
+  query: computed(() => ({ date: new Date().toISOString().slice(0, 10) })),
+})
+const sources = [summary, trends, quality, breakdown, platforms, capacity]
+const platformSources = [summary, trends, quality, breakdown]
 
 const loading = computed(() => sources.some(source => source.loading.value))
 const error = computed(() => sources.map(source => source.error.value).find(Boolean) || '')
 const platform = computed(() => attributionPlatformDefinition(selectedProvider.value))
-const selectedConnection = computed(() => platforms.data.value?.find(item => item.provider === selectedProvider.value) ?? null)
-const business = computed(() => summary.data.value?.business ?? { contactCount: 0, completeRegistrationCount: 0, actionCount: 0 })
-const delivery = computed(() => summary.data.value?.delivery ?? { pixelAttempted: 0, serverSent: 0, failed: 0, skipped: 0, pending: 0, retryExhausted: 0 })
-const routing = computed(() => summary.data.value?.routing ?? { mismatchCount: 0, unroutedActionCount: 0 })
-const matchEntries = computed(() => {
-  const match = quality.data.value?.match
-  if (!match) return []
-  return [
-    { key: 'browserId', label: match.labels.browserId, metric: match.summary.browserId },
-    { key: 'clickId', label: match.labels.clickId, metric: match.summary.clickId },
-    { key: 'email', label: match.labels.email, metric: match.summary.email },
-    { key: 'externalId', label: match.labels.externalId, metric: match.summary.externalId },
-  ]
+const connectionsByProvider = computed(() => Object.fromEntries((platforms.data.value || []).map(item => [item.provider, item])))
+const selectedConnection = computed(() => connectionsByProvider.value[selectedProvider.value] ?? null)
+const business = computed(() => summary.data.value?.business ?? { contactCount: 0, completeRegistrationCount: 0, factCount: 0 })
+const routing = computed(() => summary.data.value?.routing ?? {
+  totalFactCount: 0,
+  attributedFactCount: 0,
+  unattributedFactCount: 0,
+  conflictFactCount: 0,
+  byProvider: { meta: 0, tiktok: 0, google: 0 },
 })
-const qualitySeries = computed(() => matchEntries.value
-  .filter(item => item.metric.availability === 'available')
-  .map(item => ({
-    key: `${item.key}.rate`,
-    label: item.label,
-    layer: 'quality' as const,
-    format: 'percent' as const,
-    aggregation: {
-      type: 'weightedRate' as const,
-      numeratorKey: `${item.key}.numerator`,
-      denominatorKey: `${item.key}.denominator`,
-    },
-  })))
-const qualityRows = computed(() => quality.data.value?.match.rows as unknown as Array<Record<string, unknown>> ?? [])
-const platformQuality = computed(() => quality.data.value?.platformQuality)
-const linkRoute = computed(() => ({
-  path: '/admin/attribution/links',
-  query: { ...attributionRouteQuery(rangeState.range.value, rangeState.date.value), provider: selectedProvider.value },
-}))
-const platformRoute = computed(() => ({
-  path: '/admin/attribution/platforms',
-  query: { provider: selectedProvider.value },
-}))
+const delivery = computed(() => summary.data.value?.delivery ?? {
+  browserAttempted: 0,
+  server: { planned: 0, queued: 0, accepted: 0, processed: 0, retrying: 0, rejected: 0, deadLetter: 0, cancelled: 0 },
+  queueRetryCount: 0,
+  queueEnqueueCount: 0,
+})
+const serverAccepted = computed(() => delivery.value.server.accepted + delivery.value.server.processed)
+const serverPending = computed(() => delivery.value.server.planned + delivery.value.server.queued + delivery.value.server.retrying)
+const serverFailed = computed(() => delivery.value.server.rejected + delivery.value.server.deadLetter)
+const pairing = computed(() => quality.data.value?.pairing.summary ?? emptyMetric())
+const match = computed(() => quality.data.value?.match.summary ?? emptyMetric())
+const qualityTrendRows = computed(() => (quality.data.value?.pairing.rows ?? []).map(row => ({
+  date: row.date,
+  pairing: row,
+  match: quality.data.value?.match.rows.find(item => item.date === row.date) ?? emptyMetric(),
+})))
+const capacityRows = computed(() => {
+  const labels: Record<keyof AttributionCapacityData['metrics'], string> = {
+    workerRequests: 'Worker 请求',
+    queueOperations: 'Queue 操作',
+    d1RowsRead: 'D1 读取行',
+    d1RowsWritten: 'D1 写入行',
+    workflowSteps: 'Workflow 步骤',
+    serverConversions: 'Server 转化',
+  }
+  return Object.entries(capacity.data.value?.metrics ?? {}).map(([key, metric]) => ({
+    key,
+    label: labels[key as keyof typeof labels],
+    ...metric,
+  }))
+})
+const capacityWarning = computed(() => capacityRows.value.some(item => item.warning))
+const platformRoute = computed(() => ({ path: '/admin/attribution/platforms', query: { provider: selectedProvider.value } }))
 
 const businessSeries = [
   { key: 'business.contactCount', label: '有效联系', layer: 'business' as const, aggregation: { type: 'sum' as const } },
   { key: 'business.completeRegistrationCount', label: '完成注册', layer: 'business' as const, aggregation: { type: 'sum' as const } },
 ]
 const deliverySeries = [
-  { key: 'delivery.pixelAttempted', label: 'Pixel 尝试', layer: 'pixel' as const, aggregation: { type: 'sum' as const } },
-  { key: 'delivery.serverSent', label: 'Server API 接收', layer: 'server' as const, aggregation: { type: 'sum' as const } },
-  { key: 'delivery.failed', label: '失败', layer: 'server' as const, aggregation: { type: 'sum' as const } },
-  { key: 'delivery.skipped', label: '跳过', layer: 'server' as const, aggregation: { type: 'sum' as const } },
-  { key: 'delivery.pending', label: '等待', layer: 'server' as const, aggregation: { type: 'sum' as const } },
-  { key: 'delivery.retryExhausted', label: '重试耗尽', layer: 'server' as const, aggregation: { type: 'sum' as const } },
+  { key: 'delivery.browserAttempted', label: 'Browser 已尝试', layer: 'browser' as const, aggregation: { type: 'sum' as const } },
+  { key: 'delivery.server.accepted', label: 'Server 已接收', layer: 'server' as const, aggregation: { type: 'sum' as const } },
+  { key: 'delivery.server.processed', label: 'Server 已处理', layer: 'server' as const, aggregation: { type: 'sum' as const } },
+  { key: 'delivery.server.rejected', label: 'Server 已拒绝', layer: 'server' as const, aggregation: { type: 'sum' as const } },
+  { key: 'delivery.server.deadLetter', label: '死信', layer: 'server' as const, aggregation: { type: 'sum' as const } },
+]
+const qualitySeries = [
+  { key: 'pairing.rate', label: 'Browser/Server 配对率', layer: 'quality' as const, format: 'percent' as const, aggregation: { type: 'weightedRate' as const, numeratorKey: 'pairing.numerator', denominatorKey: 'pairing.denominator' } },
+  { key: 'match.rate', label: '匹配信号覆盖率', layer: 'quality' as const, format: 'percent' as const, aggregation: { type: 'weightedRate' as const, numeratorKey: 'match.numerator', denominatorKey: 'match.denominator' } },
 ]
 const evidenceLayers = [
-  { label: '站内事实', detail: '联系与完成注册', class: 'bg-emerald-50 text-emerald-800', dot: '#047857' },
-  { label: 'Pixel 尝试', detail: '浏览器已尝试发送', class: 'bg-amber-50 text-amber-800', dot: '#d97706' },
-  { label: 'Server API 接收', detail: 'API 已接收，不代表广告归因', class: 'bg-blue-50 text-blue-800', dot: '#2563eb' },
-  { label: '平台质量', detail: '仅展示平台已提供的质量证据', class: 'bg-rose-50 text-rose-800', dot: '#be123c' },
+  { label: '站内事实', detail: '不可变业务事实', class: 'bg-emerald-50 text-emerald-800', dot: '#047857' },
+  { label: 'Browser 回执', detail: '脚本实际执行成功', class: 'bg-amber-50 text-amber-800', dot: '#d97706' },
+  { label: 'Server 状态', detail: '规划至终态', class: 'bg-blue-50 text-blue-800', dot: '#2563eb' },
+  { label: '质量证据', detail: '配对与匹配信号', class: 'bg-rose-50 text-rose-800', dot: '#be123c' },
 ]
 
 watch(rangeState.queryKey, () => void refreshAll())
-watch(selectedProvider, async () => {
-  await Promise.all(platformSources.map(source => source.refresh()))
-})
+watch(selectedProvider, () => void Promise.all(platformSources.map(source => source.refresh())))
 onMounted(() => void refreshAll())
 
 async function refreshAll() {
   await Promise.all(sources.map(source => source.refresh()))
 }
 
-function metricRate(metric: { availability: string; rate: number | null }) {
-  return metric.availability === 'available' && metric.rate !== null
-    ? `${Math.round(metric.rate * 10_000) / 100}%`
-    : '暂无可发送样本'
-}
-
-function platformQualityValue() {
-  const value = platformQuality.value?.latest?.value
-  if (value === null || value === undefined) return ''
-  return value >= 0 && value <= 1 ? `${Math.round(value * 10_000) / 100}%` : String(value)
+function emptyMetric() {
+  return { availability: 'unavailable' as const, numerator: 0, denominator: 0, rate: null }
 }
 
 function formatCount(value: unknown) {
-  const number = Number(value ?? 0)
-  return new Intl.NumberFormat('zh-CN').format(Number.isFinite(number) ? number : 0)
+  const parsed = Number(value)
+  return new Intl.NumberFormat('zh-CN').format(Number.isFinite(parsed) ? parsed : 0)
+}
+
+function formatRate(value: number | null) {
+  return value === null ? '暂无样本' : `${Math.round(value * 10_000) / 100}%`
+}
+
+function serverSuccess(row: BreakdownData['rows'][number]) {
+  return row.delivery.server.accepted + row.delivery.server.processed
 }
 </script>
 
@@ -150,8 +149,8 @@ function formatCount(value: unknown) {
   <AttributionPageShell
     v-model:range="rangeState.range.value"
     v-model:date="rangeState.date.value"
-    title="归因总览"
-    description="按单一平台核对站内转化、浏览器投递、服务器接收和匹配质量。"
+    title="广告归因总览"
+    description="统一核对 Meta、TikTok 与 Google 的业务事实、投递状态、质量和容量。"
     :loading="loading"
     :error="error"
     :usage="summary.usage.value"
@@ -163,114 +162,101 @@ function formatCount(value: unknown) {
       <div class="flex min-w-0 items-center gap-3">
         <span :class="platform.accentClass" class="h-8 w-1 shrink-0 rounded-sm" aria-hidden="true" />
         <div class="min-w-0">
-          <p class="text-sm font-semibold text-gray-900">{{ platform.label }} 连接 {{ attributionConnectionStateLabel(selectedConnection?.state || 'not_configured') }}</p>
-          <p class="mt-0.5 truncate text-xs text-gray-500">
-            {{ selectedConnection?.mode || 'disabled' }} · {{ selectedConnection?.browserEnabled ? platform.browserLabel : 'Browser 关闭' }} · {{ selectedConnection?.serverEnabled ? platform.serverLabel : 'Server 关闭' }}
-          </p>
+          <p class="text-sm font-semibold text-gray-900">{{ platform.label }} · {{ attributionConnectionStateLabel(selectedConnection) }}</p>
+          <p class="mt-0.5 truncate text-xs text-gray-500">{{ selectedConnection?.mode || 'disabled' }} · rollout {{ selectedConnection?.rolloutEffectivePercentage ?? 0 }}%</p>
         </div>
       </div>
-      <NuxtLink :to="platformRoute" class="w-fit shrink-0 text-sm font-medium text-blue-700 hover:text-blue-900">管理平台连接</NuxtLink>
+      <NuxtLink :to="platformRoute" class="w-fit text-sm font-medium text-blue-700 hover:text-blue-900">管理平台连接</NuxtLink>
     </section>
 
     <div data-evidence-rail class="min-w-0 overflow-x-auto border-b border-gray-200 bg-white py-2">
       <div class="flex min-w-max gap-2 px-3 sm:px-5">
         <div v-for="layer in evidenceLayers" :key="layer.label" :class="['flex items-center gap-2 rounded-md px-3 py-2 text-xs', layer.class]">
           <span class="h-2.5 w-2.5 rounded-full" :style="{ backgroundColor: layer.dot }" />
-          <strong class="font-semibold">{{ layer.label }}</strong>
-          <span class="opacity-70">{{ layer.detail }}</span>
+          <strong>{{ layer.label }}</strong><span class="opacity-70">{{ layer.detail }}</span>
         </div>
       </div>
     </div>
 
-    <div class="space-y-0 bg-white">
-      <section data-attribution-section="business" class="min-w-0 border-b border-gray-200 px-3 py-5 sm:px-5">
-        <div v-if="routing.mismatchCount > 0" class="mb-4 border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800" role="alert">
-          检测到 {{ formatCount(routing.mismatchCount) }} 条来源与投递平台不一致的数据，后续跨平台写入已阻断。
+    <div class="bg-white">
+      <section data-attribution-section="business" class="border-b border-gray-200 px-3 py-5 sm:px-5">
+        <div v-if="routing.conflictFactCount" role="alert" class="mb-4 border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800">
+          存在 {{ formatCount(routing.conflictFactCount) }} 条来源冲突事实，未投递至任何广告平台。
         </div>
-        <div class="mb-4 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p class="text-xs font-medium text-gray-400">01 · 站内转化</p>
-            <h2 class="mt-1 text-base font-semibold text-gray-900">{{ platform.label }} 归因事实</h2>
-            <p class="mt-1 text-sm text-gray-500">只统计明确归属于当前平台的有效联系与完成注册；未识别来源 {{ formatCount(routing.unroutedActionCount) }} 条。</p>
-          </div>
-          <NuxtLink :to="linkRoute" class="text-sm font-medium text-emerald-700 hover:text-emerald-900">查看投放链接</NuxtLink>
-        </div>
-        <dl class="mb-5 grid grid-cols-2 border-y border-gray-200 md:grid-cols-3">
-          <div class="px-3 py-3 md:border-r"><dt class="text-xs text-gray-500">有效联系</dt><dd class="mt-1 text-xl font-semibold tabular-nums text-emerald-800">{{ formatCount(business.contactCount) }}</dd></div>
-          <div class="px-3 py-3 md:border-r"><dt class="text-xs text-gray-500">完成注册</dt><dd class="mt-1 text-xl font-semibold tabular-nums text-emerald-800">{{ formatCount(business.completeRegistrationCount) }}</dd></div>
-          <div class="col-span-2 px-3 py-3 md:col-span-1"><dt class="text-xs text-gray-500">转化事实</dt><dd class="mt-1 text-xl font-semibold tabular-nums text-gray-900">{{ formatCount(business.actionCount) }}</dd></div>
+        <p class="text-xs font-medium text-gray-400">01 · 业务事实</p>
+        <h2 class="mt-1 text-base font-semibold text-gray-900">{{ platform.label }} 转化</h2>
+        <dl class="my-4 grid grid-cols-2 border-y border-gray-200 lg:grid-cols-6">
+          <div class="px-3 py-3"><dt class="text-xs text-gray-500">有效联系</dt><dd class="mt-1 text-xl font-semibold tabular-nums text-emerald-800">{{ formatCount(business.contactCount) }}</dd></div>
+          <div class="px-3 py-3"><dt class="text-xs text-gray-500">完成注册</dt><dd class="mt-1 text-xl font-semibold tabular-nums text-emerald-800">{{ formatCount(business.completeRegistrationCount) }}</dd></div>
+          <div class="px-3 py-3"><dt class="text-xs text-gray-500">当前平台事实</dt><dd class="mt-1 text-xl font-semibold tabular-nums">{{ formatCount(business.factCount) }}</dd></div>
+          <div class="px-3 py-3"><dt class="text-xs text-gray-500">全部平台事实</dt><dd class="mt-1 text-xl font-semibold tabular-nums">{{ formatCount(routing.attributedFactCount) }}</dd></div>
+          <div class="px-3 py-3"><dt class="text-xs text-gray-500">未归因</dt><dd class="mt-1 text-xl font-semibold tabular-nums text-amber-700">{{ formatCount(routing.unattributedFactCount) }}</dd></div>
+          <div class="px-3 py-3"><dt class="text-xs text-gray-500">来源冲突</dt><dd class="mt-1 text-xl font-semibold tabular-nums" :class="routing.conflictFactCount ? 'text-red-700' : 'text-gray-900'">{{ formatCount(routing.conflictFactCount) }}</dd></div>
         </dl>
-        <AttributionTrendPanel title="转化趋势" description="按业务日展示站内事实，不混入平台投递数量。" :rows="trends.data.value?.rows || []" :series="businessSeries" />
-        <div class="mt-5 min-w-0">
-          <h3 class="text-sm font-semibold text-gray-900">Campaign 表现</h3>
-          <div class="mt-2 overflow-x-auto">
-            <table class="w-full min-w-[42rem] text-left text-sm">
-              <thead class="border-y border-gray-200 bg-gray-50 text-xs text-gray-500"><tr><th class="px-3 py-2 font-medium">Campaign</th><th class="px-3 py-2 font-medium">转化</th><th class="px-3 py-2 font-medium">有效联系</th><th class="px-3 py-2 font-medium">完成注册</th><th class="px-3 py-2 font-medium">Pixel 尝试</th><th class="px-3 py-2 font-medium">Server 接收</th></tr></thead>
-              <tbody class="divide-y divide-gray-100"><tr v-for="row in breakdown.data.value?.rows || []" :key="row.value"><td class="px-3 py-2.5 font-medium text-gray-900">{{ row.value }}</td><td class="px-3 py-2.5 tabular-nums">{{ row.actionCount }}</td><td class="px-3 py-2.5 tabular-nums">{{ row.contactCount }}</td><td class="px-3 py-2.5 tabular-nums">{{ row.completeRegistrationCount }}</td><td class="px-3 py-2.5 tabular-nums text-amber-700">{{ row.delivery.pixelAttempted }}</td><td class="px-3 py-2.5 tabular-nums text-blue-700">{{ row.delivery.serverSent }}</td></tr><tr v-if="!breakdown.data.value?.rows.length"><td colspan="6" class="px-3 py-6 text-center text-gray-500">当前范围没有 Campaign 转化</td></tr></tbody>
-            </table>
-          </div>
+        <AttributionTrendPanel title="业务趋势" :rows="trends.data.value?.rows || []" :series="businessSeries" />
+
+        <div class="mt-5 overflow-x-auto">
+          <table class="w-full min-w-[42rem] text-left text-sm">
+            <thead class="border-y border-gray-200 bg-gray-50 text-xs text-gray-500"><tr><th class="px-3 py-2 font-medium">Campaign</th><th class="px-3 py-2 font-medium">事实</th><th class="px-3 py-2 font-medium">有效联系</th><th class="px-3 py-2 font-medium">完成注册</th><th class="px-3 py-2 font-medium">Browser 已尝试</th><th class="px-3 py-2 font-medium">Server 已接收</th></tr></thead>
+            <tbody class="divide-y divide-gray-100"><tr v-for="row in breakdown.data.value?.rows || []" :key="row.value"><td class="px-3 py-2.5 font-medium text-gray-900">{{ row.value }}</td><td class="px-3 py-2.5 tabular-nums">{{ row.factCount }}</td><td class="px-3 py-2.5 tabular-nums">{{ row.contactCount }}</td><td class="px-3 py-2.5 tabular-nums">{{ row.completeRegistrationCount }}</td><td class="px-3 py-2.5 tabular-nums text-amber-700">{{ row.delivery.browserAttempted }}</td><td class="px-3 py-2.5 tabular-nums text-blue-700">{{ serverSuccess(row) }}</td></tr><tr v-if="!breakdown.data.value?.rows.length"><td colspan="6" class="px-3 py-6 text-center text-gray-500">当前范围没有 Campaign 转化</td></tr></tbody>
+          </table>
         </div>
       </section>
 
-      <section data-attribution-section="delivery" class="min-w-0 border-b border-gray-200 px-3 py-5 sm:px-5">
-        <div class="mb-4">
-          <p class="text-xs font-medium text-gray-400">02 · 平台投递</p>
-          <h2 class="mt-1 text-base font-semibold text-gray-900">{{ platform.browserLabel }} 与 {{ platform.serverLabel }}</h2>
-          <p class="mt-1 text-sm text-gray-500">Server API 接收只表示平台接口已接收，不表示广告已完成归因。</p>
-        </div>
-        <dl class="mb-5 grid grid-cols-2 border-y border-gray-200 md:grid-cols-3 xl:grid-cols-6">
-          <div class="px-3 py-3"><dt class="text-xs text-amber-700">Pixel 尝试</dt><dd class="mt-1 text-lg font-semibold tabular-nums">{{ delivery.pixelAttempted }}</dd></div>
-          <div class="px-3 py-3"><dt class="text-xs text-blue-700">{{ platform.serverLabel }} 接收</dt><dd class="mt-1 text-lg font-semibold tabular-nums">{{ delivery.serverSent }}</dd></div>
-          <div class="px-3 py-3"><dt class="text-xs text-gray-500">失败</dt><dd class="mt-1 text-lg font-semibold tabular-nums">{{ delivery.failed }}</dd></div>
-          <div class="px-3 py-3"><dt class="text-xs text-gray-500">跳过</dt><dd class="mt-1 text-lg font-semibold tabular-nums">{{ delivery.skipped }}</dd></div>
-          <div class="px-3 py-3"><dt class="text-xs text-gray-500">等待</dt><dd class="mt-1 text-lg font-semibold tabular-nums">{{ delivery.pending }}</dd></div>
-          <div class="px-3 py-3"><dt class="text-xs text-gray-500">重试耗尽</dt><dd :class="delivery.retryExhausted ? 'text-red-700' : 'text-gray-900'" class="mt-1 text-lg font-semibold tabular-nums">{{ delivery.retryExhausted }}</dd></div>
+      <section data-attribution-section="delivery" class="border-b border-gray-200 px-3 py-5 sm:px-5">
+        <p class="text-xs font-medium text-gray-400">02 · 投递状态</p>
+        <h2 class="mt-1 text-base font-semibold text-gray-900">{{ platform.browserLabel }} 与 {{ platform.serverLabel }}</h2>
+        <AttributionHealthStrip
+          class="mt-4"
+          :provider-label="platform.label"
+          :browser-label="platform.browserLabel"
+          :server-label="platform.serverLabel"
+          :browser-enabled="selectedConnection?.browserEnabled"
+          :server-enabled="selectedConnection?.serverEnabled"
+          :browser-attempted="delivery.browserAttempted"
+          :server-accepted="serverAccepted"
+          :server-pending="serverPending"
+          :server-failed="serverFailed"
+        />
+        <dl class="my-4 grid grid-cols-2 border-b border-gray-200 md:grid-cols-4">
+          <div class="px-3 py-3"><dt class="text-xs text-gray-500">入队次数</dt><dd class="mt-1 text-lg font-semibold tabular-nums">{{ delivery.queueEnqueueCount }}</dd></div>
+          <div class="px-3 py-3"><dt class="text-xs text-gray-500">重试次数</dt><dd class="mt-1 text-lg font-semibold tabular-nums">{{ delivery.queueRetryCount }}</dd></div>
+          <div class="px-3 py-3"><dt class="text-xs text-gray-500">已拒绝</dt><dd class="mt-1 text-lg font-semibold tabular-nums">{{ delivery.server.rejected }}</dd></div>
+          <div class="px-3 py-3"><dt class="text-xs text-gray-500">死信</dt><dd class="mt-1 text-lg font-semibold tabular-nums" :class="delivery.server.deadLetter ? 'text-red-700' : ''">{{ delivery.server.deadLetter }}</dd></div>
         </dl>
-        <AttributionTrendPanel title="投递趋势" description="六种投递状态独立统计，Pixel pending 不计为尝试。" :rows="trends.data.value?.rows || []" :series="deliverySeries" />
+        <AttributionTrendPanel title="投递趋势" :rows="trends.data.value?.rows || []" :series="deliverySeries" />
       </section>
 
-      <section data-attribution-section="quality" class="min-w-0 px-3 py-5 sm:px-5">
-        <div class="mb-4">
-          <p class="text-xs font-medium text-gray-400">03 · 匹配质量</p>
-          <h2 class="mt-1 text-base font-semibold text-gray-900">{{ platform.label }} 匹配覆盖与平台质量</h2>
+      <section data-attribution-section="quality" class="border-b border-gray-200 px-3 py-5 sm:px-5">
+        <p class="text-xs font-medium text-gray-400">03 · 投递质量</p>
+        <h2 class="mt-1 text-base font-semibold text-gray-900">配对与匹配覆盖</h2>
+        <dl class="my-4 grid grid-cols-2 border-y border-gray-200 md:grid-cols-3">
+          <div class="px-3 py-3"><dt class="text-xs text-gray-500">Browser/Server 配对率</dt><dd class="mt-1 text-lg font-semibold text-rose-700">{{ formatRate(pairing.rate) }}</dd><p class="mt-1 text-xs text-gray-400">{{ pairing.numerator }} / {{ pairing.denominator }}</p></div>
+          <div class="px-3 py-3"><dt class="text-xs text-gray-500">匹配信号覆盖率</dt><dd class="mt-1 text-lg font-semibold text-rose-700">{{ formatRate(match.rate) }}</dd><p class="mt-1 text-xs text-gray-400">{{ match.numerator }} / {{ match.denominator }}</p></div>
+          <div class="col-span-2 px-3 py-3 md:col-span-1"><dt class="text-xs text-gray-500">平台质量快照</dt><dd class="mt-1 text-sm font-semibold">{{ quality.data.value?.platformQuality.latest?.metricKey || '暂无数据' }}</dd></div>
+        </dl>
+        <AttributionTrendPanel title="质量趋势" :rows="qualityTrendRows" :series="qualitySeries" />
+        <div class="mt-5 overflow-x-auto">
+          <table class="w-full min-w-[30rem] text-left text-sm">
+            <thead class="border-y border-gray-200 bg-gray-50 text-xs text-gray-500"><tr><th class="px-3 py-2 font-medium">匹配信号</th><th class="px-3 py-2 font-medium">覆盖数</th><th class="px-3 py-2 font-medium">Server 样本</th><th class="px-3 py-2 font-medium">覆盖率</th></tr></thead>
+            <tbody class="divide-y divide-gray-100"><tr v-for="signal in quality.data.value?.match.signals || []" :key="signal.key"><td class="px-3 py-2.5 font-medium">{{ signal.key }}</td><td class="px-3 py-2.5 tabular-nums">{{ signal.numerator }}</td><td class="px-3 py-2.5 tabular-nums">{{ signal.denominator }}</td><td class="px-3 py-2.5 tabular-nums">{{ formatRate(signal.rate) }}</td></tr><tr v-if="!quality.data.value?.match.signals.length"><td colspan="4" class="px-3 py-6 text-center text-gray-500">暂无匹配信号样本</td></tr></tbody>
+          </table>
         </div>
-        <div class="grid grid-cols-2 border-y border-gray-200 lg:grid-cols-5">
-          <div v-for="item in matchEntries" :key="item.key" class="min-w-0 px-3 py-3 lg:border-r">
-            <p class="text-xs text-gray-500">{{ item.label }} coverage</p>
-            <p class="mt-1 text-base font-semibold text-rose-700">{{ metricRate(item.metric) }}</p>
-            <p v-if="item.metric.availability === 'available'" class="mt-1 text-xs tabular-nums text-gray-400">{{ item.metric.numerator }} / {{ item.metric.denominator }}</p>
-          </div>
-          <div class="col-span-2 min-w-0 px-3 py-3 lg:col-span-1">
-            <p class="text-xs text-gray-500">{{ platform.label }} 平台质量</p>
-            <p v-if="platformQuality?.availability === 'available'" class="mt-1 text-base font-semibold text-rose-700">{{ platformQualityValue() }}</p>
-            <p v-else-if="platformQuality?.availability === 'error'" class="mt-1 text-sm font-medium text-red-700">平台质量数据采集失败</p>
-            <p v-else-if="platformQuality?.source === 'not_supported'" class="mt-1 text-sm font-medium text-gray-600">当前平台未接入质量诊断 API</p>
-            <p v-else class="mt-1 text-sm font-medium text-gray-600">尚未取得平台质量数据</p>
-          </div>
+      </section>
+
+      <section data-attribution-section="capacity" class="px-3 py-5 sm:px-5">
+        <div class="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+          <div><p class="text-xs font-medium text-gray-400">04 · Free 容量</p><h2 class="mt-1 text-base font-semibold text-gray-900">UTC 配额日内部估算</h2></div>
+          <p class="text-xs tabular-nums text-gray-500">{{ capacity.data.value?.date || '-' }} · UTC</p>
         </div>
-        <AttributionTrendPanel v-if="qualitySeries.length" class="mt-5" title="匹配质量趋势" description="分母只取当前平台可发送或已规划的 Server API 样本。" :rows="qualityRows" :series="qualitySeries" />
-        <div class="mt-5 border-t border-gray-200 pt-4">
-          <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-            <div><h3 class="text-sm font-semibold text-gray-900">重复诊断</h3><p class="mt-1 text-xs text-gray-500">只检查当前平台，重复事件不计入活动转化。</p></div>
-            <p :class="Number(duplicates.data.value?.duplicateRate || 0) >= 0.1 ? 'text-amber-700' : 'text-gray-500'" class="text-sm font-medium">重复率 {{ Math.round(Number(duplicates.data.value?.duplicateRate || 0) * 1000) / 10 }}%</p>
-          </div>
-          <div class="mt-3 overflow-x-auto">
-            <AnalyticsDataTable
-              empty-title="暂无重复样本"
-              empty-text="当前平台在所选范围内没有重复转化样本。"
-              :columns="[
-                { key: 'occurred_at', label: '时间' },
-                { key: 'action_type', label: '动作' },
-                { key: 'source_name', label: '来源' },
-                { key: 'utm_campaign', label: 'Campaign' },
-                { key: 'utm_content', label: 'Content' },
-                { key: 'duplicate_of', label: '重复于' },
-              ]"
-              :rows="duplicates.data.value?.samples || []"
-              compact
-            />
-          </div>
+        <p v-if="capacityWarning" role="alert" class="mt-4 border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800">至少一项已达到项目 70% 安全线。</p>
+        <div class="mt-4 overflow-x-auto">
+          <table class="w-full min-w-[34rem] text-left text-sm">
+            <thead class="border-y border-gray-200 bg-gray-50 text-xs text-gray-500"><tr><th class="px-3 py-2 font-medium">资源</th><th class="px-3 py-2 font-medium">估算值</th><th class="px-3 py-2 font-medium">安全线</th><th class="px-3 py-2 font-medium">占用</th><th class="px-3 py-2 font-medium">状态</th></tr></thead>
+            <tbody class="divide-y divide-gray-100"><tr v-for="row in capacityRows" :key="row.key"><td class="px-3 py-2.5 font-medium">{{ row.label }}</td><td class="px-3 py-2.5 tabular-nums">{{ formatCount(row.value) }}</td><td class="px-3 py-2.5 tabular-nums">{{ formatCount(row.safetyLimit) }}</td><td class="px-3 py-2.5 tabular-nums">{{ Math.round(row.ratio * 1000) / 10 }}%</td><td class="px-3 py-2.5 font-medium" :class="row.warning ? 'text-red-700' : 'text-emerald-700'">{{ row.warning ? '预警' : '正常' }}</td></tr></tbody>
+          </table>
         </div>
+        <p class="mt-3 text-xs leading-5 text-gray-500">{{ capacity.data.value?.note }}</p>
       </section>
     </div>
   </AttributionPageShell>

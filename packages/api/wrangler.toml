@@ -28,41 +28,63 @@ name = "EMAIL"
 
 # Cron Trigger（定时任务）
 [triggers]
-crons = ["* * * * *"]  # 每分钟评估熔断；UTC 00:00 由同一 trigger 继续执行完整维护
+crons = ["*/15 * * * *"]
 
 [[queues.producers]]
-binding = "META_CAPI_QUEUE"
-queue = "meigallery-meta-capi"
+binding = "AD_META_QUEUE"
+queue = "meigallery-ad-meta"
 
 [[queues.consumers]]
-queue = "meigallery-meta-capi"
+queue = "meigallery-ad-meta"
 max_batch_size = 10
 max_batch_timeout = 30
-max_retries = 5
+max_retries = 3
 retry_delay = 60
-dead_letter_queue = "meigallery-meta-capi-dlq"
+dead_letter_queue = "meigallery-ad-meta-dlq"
 
 [[queues.consumers]]
-queue = "meigallery-meta-capi-dlq"
+queue = "meigallery-ad-meta-dlq"
 max_batch_size = 10
 max_batch_timeout = 5
 
 [[queues.producers]]
-binding = "TIKTOK_EVENTS_QUEUE"
-queue = "meigallery-tiktok-events"
+binding = "AD_TIKTOK_QUEUE"
+queue = "meigallery-ad-tiktok"
 
 [[queues.consumers]]
-queue = "meigallery-tiktok-events"
+queue = "meigallery-ad-tiktok"
 max_batch_size = 10
 max_batch_timeout = 30
-max_retries = 5
+max_retries = 3
 retry_delay = 60
-dead_letter_queue = "meigallery-tiktok-events-dlq"
+dead_letter_queue = "meigallery-ad-tiktok-dlq"
 
 [[queues.consumers]]
-queue = "meigallery-tiktok-events-dlq"
+queue = "meigallery-ad-tiktok-dlq"
 max_batch_size = 10
 max_batch_timeout = 5
+
+[[queues.producers]]
+binding = "AD_GOOGLE_QUEUE"
+queue = "meigallery-ad-google"
+
+[[queues.consumers]]
+queue = "meigallery-ad-google"
+max_batch_size = 10
+max_batch_timeout = 30
+max_retries = 3
+retry_delay = 60
+dead_letter_queue = "meigallery-ad-google-dlq"
+
+[[queues.consumers]]
+queue = "meigallery-ad-google-dlq"
+max_batch_size = 10
+max_batch_timeout = 5
+
+[[workflows]]
+binding = "AD_PLATFORM_VERIFICATION_WORKFLOW"
+name = "meigallery-ad-platform-verification"
+class_name = "AdPlatformVerificationWorkflow"
 
 # 环境变量（非敏感）— 生产默认值
 [vars]
@@ -106,6 +128,11 @@ crons = []
 producers = []
 consumers = []
 
+[[env.dev.workflows]]
+binding = "AD_PLATFORM_VERIFICATION_WORKFLOW"
+name = "meigallery-ad-platform-verification-dev"
+class_name = "AdPlatformVerificationWorkflow"
+
 [env.dev.vars]
 APP_ENV = "dev"
 CORS_ORIGIN = ""
@@ -122,7 +149,11 @@ IMPORT_TOKEN_DAILY_LIMIT = "100"
 # corepack pnpm --filter @meigallery/api exec wrangler secret put TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT
 # sourceBotKey=ops_case_bot 时：
 # corepack pnpm --filter @meigallery/api exec wrangler secret put TELEGRAM_BOT_TOKEN_OPS_CASE_BOT
-# Meta CAPI：
+# 通用广告平台凭证加密主密钥（production 必填）：
+# corepack pnpm --filter @meigallery/api exec wrangler secret put AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT --env=""
+# 仅密钥轮换窗口配置：
+# corepack pnpm --filter @meigallery/api exec wrangler secret put AD_PLATFORM_CREDENTIAL_MASTER_KEY_PREVIOUS --env=""
+# 旧 Meta CAPI（Contract 完成前保留）：
 # corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_ACCESS_TOKEN
 # corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_DATA_KEY_CURRENT
 # 仅密钥轮换窗口配置：

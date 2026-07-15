@@ -1,4 +1,6 @@
-import type { AnalyticsConsentState } from '@meigallery/shared'
+import type { AdConsentSnapshot, AnalyticsConsentState } from '@meigallery/shared'
+
+export type { AdConsentSnapshot } from '@meigallery/shared'
 
 export type MarketingConsentReceiptState = Extract<AnalyticsConsentState, 'granted' | 'denied'>
 
@@ -7,6 +9,7 @@ export interface MarketingConsentReceiptClaims {
   issuedAt: number
   expiresAt: number
   nonce: string
+  consent: AdConsentSnapshot
 }
 
 export const MARKETING_CONSENT_RECEIPT_TTL_SECONDS = 30 * 60
@@ -25,6 +28,7 @@ export async function createMarketingConsentReceipt(
     issuedAt: nowSeconds,
     expiresAt: nowSeconds + MARKETING_CONSENT_RECEIPT_TTL_SECONDS,
     nonce: randomHex(16),
+    consent: createAdConsentSnapshot(state, nowSeconds),
   }
   const payload = base64UrlEncode(new TextEncoder().encode(JSON.stringify(claims)))
   const signature = await sign(secret, payload)
@@ -85,6 +89,37 @@ export async function resolveTrustedMarketingConsent(
   return 'limited'
 }
 
+export async function resolveTrustedAdConsentSnapshot(
+  secret: string,
+  receipt: string | undefined,
+  requestedState: unknown,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): Promise<AdConsentSnapshot> {
+  const state = await resolveTrustedMarketingConsent(secret, receipt, requestedState, nowSeconds)
+  if (state !== 'granted') return createAdConsentSnapshot('denied', nowSeconds)
+  if (!receipt) return createAdConsentSnapshot('denied', nowSeconds)
+  try {
+    return (await verifyMarketingConsentReceipt(secret, receipt, nowSeconds)).consent
+  }
+  catch {
+    return createAdConsentSnapshot('denied', nowSeconds)
+  }
+}
+
+export function createAdConsentSnapshot(
+  state: MarketingConsentReceiptState,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): AdConsentSnapshot {
+  const allowed = state === 'granted'
+  return {
+    consentVersion: 1,
+    marketingAllowed: allowed,
+    adUserDataAllowed: allowed,
+    adPersonalizationAllowed: allowed,
+    decidedAt: new Date(nowSeconds * 1_000).toISOString(),
+  }
+}
+
 async function sign(secret: string, payload: string) {
   const key = await crypto.subtle.importKey(
     'raw',
@@ -103,7 +138,7 @@ async function sign(secret: string, payload: string) {
 function isValidClaims(value: unknown, nowSeconds: number): value is MarketingConsentReceiptClaims {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   const keys = Object.keys(value)
-  if (keys.length !== 4 || !keys.every(key => ['state', 'issuedAt', 'expiresAt', 'nonce'].includes(key))) return false
+  if (keys.length !== 5 || !keys.every(key => ['state', 'issuedAt', 'expiresAt', 'nonce', 'consent'].includes(key))) return false
   const claims = value as Partial<MarketingConsentReceiptClaims>
   return (claims.state === 'granted' || claims.state === 'denied')
     && Number.isInteger(claims.issuedAt)
@@ -113,6 +148,19 @@ function isValidClaims(value: unknown, nowSeconds: number): value is MarketingCo
     && Number(claims.expiresAt) - Number(claims.issuedAt) === MARKETING_CONSENT_RECEIPT_TTL_SECONDS
     && typeof claims.nonce === 'string'
     && NONCE_PATTERN.test(claims.nonce)
+    && isValidAdConsentSnapshot(claims.consent, claims.state, claims.issuedAt)
+}
+
+function isValidAdConsentSnapshot(value: unknown, state: MarketingConsentReceiptState | undefined, issuedAt: number | undefined): value is AdConsentSnapshot {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const snapshot = value as Partial<AdConsentSnapshot>
+  const allowed = state === 'granted'
+  return Object.keys(value).length === 5
+    && snapshot.consentVersion === 1
+    && snapshot.marketingAllowed === allowed
+    && snapshot.adUserDataAllowed === allowed
+    && snapshot.adPersonalizationAllowed === allowed
+    && snapshot.decidedAt === new Date(Number(issuedAt) * 1_000).toISOString()
 }
 
 function randomHex(byteLength: number) {

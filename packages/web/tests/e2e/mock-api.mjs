@@ -148,17 +148,14 @@ const analyticsBatches = []
 const sessionEndBatches = []
 const registrations = []
 const receiptProtectedRequests = []
+const conversionRequests = []
+const browserAttemptReceipts = []
 let authenticated = true
 let sessionCookieRequired = false
 let marketingConsentState = 'granted'
+let currentAttributionProvider = null
+let currentAttributionResolution = 'none'
 let adminAnalyticsEmpty = false
-let adminAttributionReadinessBlocked = true
-let adminAttributionActionMode = 'success'
-let adminAttributionRolloutTarget = 10
-let adminAttributionIncidentOpen = true
-let adminAttributionRolloutScenario = 'hard'
-let adminAttributionDatasetScenario = 'unavailable'
-let adminAttributionEnvironment = 'production'
 const adminAttributionRequests = []
 const adminAttributionActions = []
 
@@ -171,17 +168,14 @@ function resetPublicSettings() {
   sessionEndBatches.length = 0
   registrations.length = 0
   receiptProtectedRequests.length = 0
+  conversionRequests.length = 0
+  browserAttemptReceipts.length = 0
   authenticated = true
   sessionCookieRequired = false
   marketingConsentState = 'granted'
+  currentAttributionProvider = null
+  currentAttributionResolution = 'none'
   adminAnalyticsEmpty = false
-  adminAttributionReadinessBlocked = true
-  adminAttributionActionMode = 'success'
-  adminAttributionRolloutTarget = 10
-  adminAttributionIncidentOpen = true
-  adminAttributionRolloutScenario = 'hard'
-  adminAttributionDatasetScenario = 'unavailable'
-  adminAttributionEnvironment = 'production'
   adminAttributionRequests.length = 0
   adminAttributionActions.length = 0
 }
@@ -192,7 +186,7 @@ function json(res, data, status = 200, extraHeaders = {}) {
     'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Headers': 'content-type',
-    'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
+    'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': Buffer.byteLength(body),
     ...extraHeaders,
@@ -211,6 +205,43 @@ function publicSettings() {
 function adminSettings() {
   const now = new Date('2026-06-01T00:00:00.000Z').toISOString()
   return Object.fromEntries(Object.entries(mutablePublicSettings).map(([key, value]) => [key, { value, updatedAt: now }]))
+}
+
+const attributionBrowserConfigs = {
+  meta: { provider: 'meta', pixelId: '1234567890' },
+  tiktok: { provider: 'tiktok', pixelCode: 'C123456789ABCDEF' },
+  google: { provider: 'google', tagId: 'AW-123456789' },
+}
+
+function attributionBrowserInstruction(provider, canonicalEvent) {
+  const eventSlug = canonicalEvent === 'Contact' ? 'contact' : 'registration'
+  const browserDestination = provider === 'google'
+    ? `AW-123456789/${eventSlug}`
+    : `${provider}_pixel`
+  return {
+    deliveryId: `delivery_${provider}_${eventSlug}`,
+    provider,
+    canonicalEvent,
+    externalEventId: `e2e_${provider}_${eventSlug}`,
+    receiptToken: `v1.${'a'.repeat(16)}.${'b'.repeat(43)}`,
+    descriptor: {
+      provider,
+      canonicalEvent,
+      browserEventName: provider === 'google' ? 'conversion' : canonicalEvent,
+      browserDestination,
+      serverDestination: `${provider}_events_api`,
+    },
+    payload: { test_case: 'platform_isolation' },
+  }
+}
+
+function resolvedTrackingInstructions(canonicalEvent, attribution) {
+  if (marketingConsentState !== 'granted'
+    || currentAttributionResolution !== 'matched'
+    || !currentAttributionProvider
+    || attribution?.consentState !== 'granted'
+    || attribution?.adAttributionState !== 'resolved') return []
+  return [attributionBrowserInstruction(currentAttributionProvider, canonicalEvent)]
 }
 
 async function readJsonBody(req) {
@@ -480,7 +511,8 @@ function adminAnalyticsResponse(pathname, searchParams) {
 
 function adminAttributionResponse(pathname, searchParams) {
   const range = analyticsRange(searchParams)
-  const provider = searchParams.get('provider') === 'tiktok' ? 'tiktok' : 'meta'
+  const requestedProvider = searchParams.get('provider')
+  const provider = ['meta', 'tiktok', 'google'].includes(requestedProvider) ? requestedProvider : 'meta'
   const usage = { rowsRead: 86, rowsWritten: 0, durationMs: 9 }
   const links = [
     {
@@ -515,54 +547,106 @@ function adminAttributionResponse(pathname, searchParams) {
   ]
 
   const dates = range.days === 1 ? [range.from] : ['2026-07-08', '2026-07-09', '2026-07-10']
+  const deliveryMetrics = (index = 0) => ({
+    browserAttempted: index + 3,
+    server: {
+      planned: 0,
+      queued: index === 2 ? 1 : 0,
+      accepted: index + 1,
+      processed: 1,
+      retrying: 0,
+      rejected: index === 1 ? 1 : 0,
+      deadLetter: 0,
+      cancelled: 0,
+    },
+    queueRetryCount: index === 1 ? 1 : 0,
+    queueEnqueueCount: index + 2,
+  })
   const trendRows = dates.map((date, index) => ({
     date,
-    business: { contactCount: index + 1, completeRegistrationCount: index, actionCount: index * 2 + 1 },
-    delivery: { pixelAttempted: index + 3, serverSent: index + 2, failed: index === 1 ? 1 : 0, skipped: 1, pending: index === 2 ? 1 : 0, retryExhausted: 0 },
+    business: { contactCount: index + 1, completeRegistrationCount: index, factCount: index * 2 + 1 },
+    delivery: deliveryMetrics(index),
   }))
-  const rollout = {
-    environment: adminAttributionEnvironment,
-    targetPercentage: adminAttributionRolloutTarget,
-    effectivePercentage: adminAttributionIncidentOpen ? 0 : adminAttributionRolloutTarget,
-    connectionVerified: true,
-    liveEvidencePresent: true,
-    openIncident: adminAttributionIncidentOpen ? {
-      id: 'incident-1', environment: 'dev', status: 'open', severity: 'critical', triggerCode: 'retry_exhausted', triggerSummary: 'CAPI 重试耗尽', targetPercentage: adminAttributionRolloutTarget, effectivePercentage: 0, evidence: {}, openedAt: '2026-07-09T08:00:00Z', lastObservedAt: '2026-07-10T08:00:00Z', closedAt: null, resolution: '',
-    } : null,
-    metrics: { sent: 42, failed: 1, permissionErrors: 0, retryExhausted: 0, stalePending: 0, criticalQualityDiagnostics: 0 },
-    metricsStatus: { available: true, errorCode: null },
-    promotion: {
-      from: adminAttributionRolloutTarget,
-      to: adminAttributionRolloutTarget === 10 ? 50 : 100,
-      allowed: adminAttributionRolloutScenario === 'none',
-      requiresOverrideReason: adminAttributionRolloutScenario === 'metric-only',
-      blockers: adminAttributionRolloutScenario === 'metric-only' ? ['insufficient_attempts'] : [],
-      hardBlockers: adminAttributionIncidentOpen ? ['circuit_open'] : [],
-    },
-  }
-  const connection = {
-    state: 'verified', environment: adminAttributionEnvironment, pixelIdConfigured: true, tokenConfigured: true, verifiedAt: '2026-07-10T07:00:00Z', verifiedCommit: 'a'.repeat(40), graphApiVersion: 'v25.0', datasetQualityStatus: 'not_checked', invalidationReason: '',
-  }
 
-  if (pathname.endsWith('/summary')) return { range, usage, data: { provider, business: { contactCount: 6, completeRegistrationCount: 3, actionCount: 9 }, historical: { leadCount: 7 }, delivery: { pixelAttempted: 12, serverSent: 9, failed: 1, skipped: 3, pending: 1, retryExhausted: 0 }, routing: { mismatchCount: 0, unroutedActionCount: 1 } } }
+  if (pathname.endsWith('/summary')) {
+    return {
+      range,
+      usage,
+      data: {
+        provider,
+        business: { contactCount: 6, completeRegistrationCount: 3, factCount: 9 },
+        delivery: {
+          browserAttempted: 12,
+          server: { planned: 0, queued: 1, accepted: 6, processed: 3, retrying: 0, rejected: 1, deadLetter: 0, cancelled: 0 },
+          queueRetryCount: 2,
+          queueEnqueueCount: 10,
+        },
+        routing: {
+          totalFactCount: 12,
+          attributedFactCount: 9,
+          unattributedFactCount: 2,
+          conflictFactCount: 1,
+          byProvider: { meta: 5, tiktok: 3, google: 1 },
+        },
+      },
+    }
+  }
   if (pathname.endsWith('/trends')) return { range, usage, data: { provider, granularity: 'day', rows: trendRows } }
   if (pathname.endsWith('/quality')) {
     const metric = (numerator, denominator) => ({ availability: denominator ? 'available' : 'unavailable', numerator, denominator, rate: denominator ? numerator / denominator : null })
-    const platformQuality = provider === 'meta' && adminAttributionDatasetScenario === 'error'
-      ? { source: 'meta_dataset_quality', availability: 'error', latest: { availability: 'error', value: null, status: 'error', errorCategory: 'permission_denied' }, rows: [] }
-      : { source: provider === 'meta' ? 'meta_dataset_quality' : 'not_supported', availability: 'unavailable', latest: null, rows: [] }
-    const labels = provider === 'meta'
-      ? { browserId: 'fbp', clickId: 'fbc', email: 'email', externalId: 'external_id' }
-      : { browserId: '_ttp', clickId: 'ttclid', email: 'email', externalId: 'external_id' }
-    return { range, usage, data: { provider, match: { labels, summary: { browserId: metric(8, 9), clickId: metric(0, 0), email: metric(9, 9), externalId: metric(7, 9) }, rows: dates.map((date, index) => ({ date, browserId: index === 1 ? metric(0, 0) : metric(6 + index, 9), clickId: metric(0, 0), email: metric(8 + index, 9), externalId: metric(5 + index, 9) })) }, platformQuality } }
+    const qualityRow = {
+      date: dates.at(-1),
+      canonicalEvent: 'Contact',
+      metricKey: 'event_match_quality',
+      value: 0.86,
+      availability: 'available',
+      status: 'available',
+      errorCategory: '',
+      collectedAt: `${dates.at(-1)}T09:30:00.000Z`,
+    }
+    return {
+      range,
+      usage,
+      data: {
+        provider,
+        pairing: {
+          summary: metric(8, 9),
+          rows: dates.map((date, index) => ({ date, ...metric(index + 1, index + 2) })),
+        },
+        match: {
+          summary: metric(8, 9),
+          signals: [
+            { key: provider === 'meta' ? 'fbp' : provider === 'tiktok' ? 'ttp' : 'gclid', ...metric(8, 9) },
+            { key: 'external_id', ...metric(7, 9) },
+          ],
+          rows: dates.map((date, index) => ({ date, ...metric(index + 1, index + 2) })),
+        },
+        platformQuality: { availability: 'available', latest: qualityRow, rows: [qualityRow] },
+      },
+    }
   }
-  if (pathname.endsWith('/breakdown')) return { range, usage, data: { provider, dimension: searchParams.get('dimension') || 'utm_campaign', rows: [{ value: 'july-contact', actionCount: 6, contactCount: 4, completeRegistrationCount: 2, delivery: { pixelAttempted: 6, serverSent: 5, failed: 1, skipped: 0, pending: 0, retryExhausted: 0 } }] } }
-  if (pathname.endsWith('/platforms')) return { data: [
-    { provider: 'meta', environment: 'production', enabled: true, browserEnabled: true, serverEnabled: false, destinationId: '1234567890', destinationConfigured: true, debugEnabled: false, rolloutPercentage: 0, serverCredentialConfigured: true, serverQueueConfigured: true, serverDataKeyConfigured: true, mode: 'test', state: 'verified', verifiedAt: '2026-07-12T00:00:00.000Z', verifiedCommit: 'a'.repeat(40) },
-    { provider: 'tiktok', environment: 'production', enabled: false, browserEnabled: false, serverEnabled: false, destinationId: '', destinationConfigured: false, debugEnabled: false, rolloutPercentage: 0, serverCredentialConfigured: false, serverQueueConfigured: false, serverDataKeyConfigured: false, mode: 'disabled', state: 'not_configured', verifiedAt: '', verifiedCommit: '' },
-  ] }
-  if (pathname.endsWith('/meta/status')) return { range, usage, data: { connection, rollout, activity: { provider: 'meta', business: { contactCount: 6, completeRegistrationCount: 3, actionCount: 9 }, historical: { leadCount: 7 }, delivery: { pixelAttempted: 12, serverSent: 9, failed: 1, skipped: 3, pending: 1, retryExhausted: 0 }, routing: { mismatchCount: 0, unroutedActionCount: 1 } } } }
-  if (pathname.endsWith('/meta/incidents')) return { range, usage, data: { items: rollout.openIncident ? [rollout.openIncident] : [], pagination: { limit: 20, offset: 0, hasMore: false } } }
+  if (pathname.endsWith('/breakdown')) return { range, usage, data: { provider, dimension: searchParams.get('dimension') || 'utm_campaign', rows: [{ value: 'july-contact', factCount: 6, contactCount: 4, completeRegistrationCount: 2, delivery: deliveryMetrics(2) }] } }
+  if (pathname.endsWith('/capacity')) {
+    const capacityMetric = (value, safetyLimit) => ({ value, safetyLimit, ratio: value / safetyLimit, warning: value >= safetyLimit })
+    return {
+      usage,
+      data: {
+        date: searchParams.get('date') || dates.at(-1),
+        timeZone: 'UTC',
+        note: '项目内部估算，不代表 Cloudflare 官方账单。',
+        inputs: { factCount: 9, deliveryCount: 21, browserAttemptCount: 12, serverDeliveryCount: 9, adapterAttemptCount: 9, queueAttemptCount: 10, terminalServerDeliveryCount: 8, providerReceiptCount: 20, workflowStepCount: 3 },
+        metrics: {
+          workerRequests: capacityMetric(120, 70_000),
+          queueOperations: capacityMetric(30, 7_000),
+          d1RowsRead: capacityMetric(860, 3_500_000),
+          d1RowsWritten: capacityMetric(90, 70_000),
+          workflowSteps: capacityMetric(3, 2_100),
+          serverConversions: capacityMetric(9, 2_000),
+        },
+      },
+    }
+  }
+  if (pathname.endsWith('/platforms')) return { data: ['meta', 'tiktok', 'google'].map(platformConnection) }
 
   if (pathname.endsWith('/overview')) {
     return {
@@ -694,38 +778,55 @@ function adminAttributionResponse(pathname, searchParams) {
     }
   }
 
-  if (pathname.endsWith('/readiness')) {
-    return {
-      range,
-      usage,
-      data: {
-        ready: !adminAttributionReadinessBlocked,
-        checks: [
-          { key: 'analytics_enabled', label: '站内分析已开启', level: 'blocker', ok: true, detail: 'analytics_enabled 已开启' },
-          { key: 'conversion_ledger', label: '转化账本有近期数据', level: 'blocker', ok: true, detail: '当前范围记录 9 次转化' },
-          { key: 'retry_exhausted', label: '最近 24 小时无重试耗尽', level: 'blocker', ok: !adminAttributionReadinessBlocked, detail: adminAttributionReadinessBlocked ? '发现 1 条 retry_exhausted' : '发现 0 条 retry_exhausted' },
-          { key: 'pending_too_long', label: '无超过 10 分钟的 CAPI pending', level: 'warning', ok: false, detail: '发现 2 条超时 pending' },
-          { key: 'fbp_coverage', label: '近 7 天 fbp 覆盖率', level: 'warning', ok: true, detail: '覆盖率 92.0%' },
-        ],
-        settings: {
-          analytics_enabled: true,
-          enabled: true,
-          browser_enabled: true,
-          server_enabled: false,
-          destination_configured: true,
-          mode: 'test',
-        },
-        verifications: {
-          environment: 'production',
-          releaseCommitPresent: true,
-          metaLive: { present: true, verifiedAt: '2026-07-10T08:00:00.000Z', expiresAt: '2026-07-11T08:00:00.000Z' },
-          metaResources: { present: true, verifiedAt: '2026-07-10T08:05:00.000Z', expiresAt: '2026-07-11T08:05:00.000Z' },
-        },
-      },
-    }
-  }
-
   return { range, usage, data: {} }
+}
+
+function platformConnection(provider) {
+  const configs = {
+    meta: { provider: 'meta', pixelId: '123456789012345' },
+    tiktok: { provider: 'tiktok', pixelCode: 'C123456789ABCDEF' },
+    google: { provider: 'google', tagId: 'AW-123456789', customerId: '1234567890', cloudProjectId: 'meigallery-ads' },
+  }
+  const destinations = {
+    meta: [['meta_pixel', 'meta_capi'], ['meta_pixel', 'meta_capi']],
+    tiktok: [['tiktok_pixel', 'tiktok_events_api'], ['tiktok_pixel', 'tiktok_events_api']],
+    google: [['AW-123456789/ContactLabel', '1234567890'], ['AW-123456789/RegisterLabel', '1234567891']],
+  }
+  const credentialTypes = { meta: 'access_token', tiktok: 'access_token', google: 'service_account_json' }
+  return {
+    connectionId: `conn_${provider}`,
+    provider,
+    enabled: true,
+    mode: 'production',
+    browserEnabled: true,
+    serverEnabled: true,
+    publicConfig: configs[provider],
+    eventBindings: ['Contact', 'CompleteRegistration'].map((canonicalEvent, index) => ({
+      canonicalEvent,
+      enabled: true,
+      browserDestination: destinations[provider][index][0],
+      serverDestination: destinations[provider][index][1],
+    })),
+    rolloutTargetPercentage: 10,
+    rolloutEffectivePercentage: 10,
+    connectionRevision: `connection_revision_${provider}`,
+    credential: { configured: true, type: credentialTypes[provider], revision: `credential_revision_${provider}` },
+  }
+}
+
+function platformVerification(provider, attempt = 1) {
+  return {
+    id: `verify:${provider}:connection_revision_${provider}:${attempt}`,
+    provider,
+    connectionRevision: `connection_revision_${provider}`,
+    credentialRevision: `credential_revision_${provider}`,
+    attempt,
+    status: 'awaiting_human_evidence',
+    evidence: { automatic: { received: true } },
+    startedAt: '2026-07-15T08:00:00.000Z',
+    completedAt: '',
+    updatedAt: '2026-07-15T08:01:00.000Z',
+  }
 }
 
 function handleApi(req, res) {
@@ -756,15 +857,6 @@ function handleApi(req, res) {
       .catch(() => json(res, { statusCode: 400, message: '测试设置请求无效' }, 400))
     return
   }
-  if (url.pathname === '/api/test/admin-attribution-readiness' && req.method === 'PATCH') {
-    readJsonBody(req)
-      .then((body) => {
-        adminAttributionReadinessBlocked = body.blocked !== false
-        json(res, { ok: true, blocked: adminAttributionReadinessBlocked })
-      })
-      .catch(() => json(res, { statusCode: 400, message: '归因 readiness 测试请求无效' }, 400))
-    return
-  }
   if (url.pathname === '/api/test/admin-attribution-requests') {
     return json(res, { requests: adminAttributionRequests })
   }
@@ -775,36 +867,6 @@ function handleApi(req, res) {
   if (url.pathname === '/api/test/admin-attribution-actions') {
     return json(res, { actions: adminAttributionActions })
   }
-  if (url.pathname === '/api/test/admin-attribution-rollout-scenario' && req.method === 'PATCH') {
-    readJsonBody(req).then((body) => {
-      adminAttributionRolloutScenario = String(body.scenario || 'hard')
-      adminAttributionRolloutTarget = Number(body.target ?? 10)
-      adminAttributionIncidentOpen = adminAttributionRolloutScenario === 'hard'
-      json(res, { ok: true, scenario: adminAttributionRolloutScenario })
-    }).catch(() => json(res, { statusCode: 400, message: 'rollout 场景无效' }, 400))
-    return
-  }
-  if (url.pathname === '/api/test/admin-attribution-dataset-scenario' && req.method === 'PATCH') {
-    readJsonBody(req).then((body) => {
-      adminAttributionDatasetScenario = String(body.scenario || 'unavailable')
-      json(res, { ok: true, scenario: adminAttributionDatasetScenario })
-    }).catch(() => json(res, { statusCode: 400, message: 'Dataset 场景无效' }, 400))
-    return
-  }
-  if (url.pathname === '/api/test/admin-attribution-action-mode' && req.method === 'PATCH') {
-    readJsonBody(req).then((body) => {
-      adminAttributionActionMode = String(body.mode || 'success')
-      json(res, { ok: true, mode: adminAttributionActionMode })
-    }).catch(() => json(res, { statusCode: 400, message: '测试模式请求无效' }, 400))
-    return
-  }
-  if (url.pathname === '/api/test/admin-attribution-environment' && req.method === 'PATCH') {
-    readJsonBody(req).then((body) => {
-      adminAttributionEnvironment = body.environment === 'production' ? 'production' : 'dev'
-      json(res, { ok: true, environment: adminAttributionEnvironment })
-    }).catch(() => json(res, { statusCode: 400, message: '归因环境无效' }, 400))
-    return
-  }
   if (url.pathname === '/api/test/analytics-events') {
     return json(res, {
       batches: analyticsBatches,
@@ -812,6 +874,15 @@ function handleApi(req, res) {
       registrations,
       receiptProtectedRequests,
       events: analyticsBatches.flatMap(batch => Array.isArray(batch.events) ? batch.events : []),
+    })
+  }
+  if (url.pathname === '/api/test/ad-attribution-events') {
+    return json(res, {
+      provider: currentAttributionProvider,
+      resolution: currentAttributionResolution,
+      conversions: conversionRequests,
+      browserAttempts: browserAttemptReceipts,
+      registrations,
     })
   }
   if (url.pathname === '/api/test/receipt-protected-requests/clear' && req.method === 'POST') {
@@ -849,21 +920,30 @@ function handleApi(req, res) {
   if (url.pathname === '/api/ad-attribution' && req.method === 'PUT') {
     readJsonBody(req)
       .then((body) => {
-        const hasMetaClick = Boolean(String(body.fbclid || '').trim())
-        const hasTikTokClick = Boolean(String(body.ttclid || '').trim())
-        const provider = hasMetaClick === hasTikTokClick
-          ? null
-          : hasMetaClick ? 'meta' : 'tiktok'
+        const providers = [
+          Boolean(String(body.fbclid || '').trim()) && 'meta',
+          Boolean(String(body.ttclid || '').trim()) && 'tiktok',
+          Boolean(String(body.gclid || body.gbraid || body.wbraid || '').trim()) && 'google',
+        ].filter(Boolean)
+        const provider = providers.length === 1 ? providers[0] : null
+        currentAttributionProvider = provider
+        currentAttributionResolution = providers.length > 1 ? 'conflict' : provider ? 'matched' : 'none'
         json(res, {
           provider,
-          resolution: hasMetaClick && hasTikTokClick ? 'conflict' : provider ? 'matched' : 'none',
+          resolution: currentAttributionResolution,
           expiresInSeconds: 1_800,
         })
       })
       .catch(() => json(res, { statusCode: 400, message: '广告来源请求无效' }, 400))
     return
   }
+  if (url.pathname === '/api/ad-attribution/bootstrap' && req.method === 'GET') {
+    const publicConfig = currentAttributionProvider ? attributionBrowserConfigs[currentAttributionProvider] : null
+    return json(res, { provider: currentAttributionProvider, publicConfig })
+  }
   if (url.pathname === '/api/ad-attribution' && req.method === 'DELETE') {
+    currentAttributionProvider = null
+    currentAttributionResolution = 'none'
     return json(res, { provider: null, resolution: 'none', expiresInSeconds: 1_800 })
   }
   if (url.pathname === '/api/marketing-consent' && req.method === 'GET') {
@@ -946,14 +1026,7 @@ function handleApi(req, res) {
           role: 'user',
           membershipRank: 0,
           membershipName: 'free',
-          trackingInstructions: [{
-            provider: 'meta',
-            deliveryId: 'cdlv_registration_22',
-            eventName: 'CompleteRegistration',
-            eventId: 'meta:CompleteRegistration:complete_registration:user:22',
-            payload: { method: 'email' },
-            receiptToken: 'receipt_registration_22',
-          }],
+          trackingInstructions: resolvedTrackingInstructions('CompleteRegistration', body.attribution),
         }, 200, {
           'Set-Cookie': 'mei_session=mock-session; Path=/; HttpOnly; SameSite=Lax',
         })
@@ -963,7 +1036,28 @@ function handleApi(req, res) {
   }
   if (url.pathname === '/api/conversions/events' && req.method === 'POST') {
     receiptProtectedRequests.push({ endpoint: '/api/conversions/events', cookie: req.headers.cookie || '' })
-    return json(res, { data: { trackingInstructions: [] } })
+    readJsonBody(req)
+      .then((body) => {
+        conversionRequests.push(body)
+        json(res, {
+          data: {
+            id: `fact_contact_${conversionRequests.length}`,
+            created: true,
+            trackingInstructions: resolvedTrackingInstructions('Contact', body),
+          },
+        })
+      })
+      .catch(() => json(res, { statusCode: 400, message: '转化事件请求无效' }, 400))
+    return
+  }
+  if (url.pathname === '/api/conversions/browser-attempt' && req.method === 'POST') {
+    readJsonBody(req)
+      .then((body) => {
+        browserAttemptReceipts.push(body)
+        json(res, { accepted: true })
+      })
+      .catch(() => json(res, { statusCode: 400, message: '浏览器投递回执无效' }, 400))
+    return
   }
   if (url.pathname === '/api/cases') return json(res, { data: cases, total: cases.length })
   if (url.pathname === '/api/tags') {
@@ -1007,96 +1101,39 @@ function handleApi(req, res) {
   if (url.pathname.startsWith('/api/admin/analytics/')) {
     return json(res, adminAnalyticsResponse(url.pathname, url.searchParams))
   }
-  if (url.pathname === '/api/admin/attribution/meta/test-event' && req.method === 'POST') {
-    if (adminAttributionActionMode === 'conflict') {
-      return json(res, {
-        statusCode: 409,
-        message: 'production 资源验证尚未通过',
-        code: 'META_TEST_EVENT_BOOTSTRAP_BLOCKED',
-        detail: { blockers: ['meta_resources_verification_missing'] },
-      }, 409)
+  const platformConnectionMatch = url.pathname.match(/^\/api\/admin\/attribution\/platforms\/(meta|tiktok|google)$/)
+  if (platformConnectionMatch && req.method === 'PATCH') {
+    readJsonBody(req)
+      .then(body => {
+        adminAttributionActions.push({ type: 'save_connection', provider: platformConnectionMatch[1], body })
+        json(res, { data: platformConnection(platformConnectionMatch[1]) })
+      })
+      .catch(() => json(res, { statusCode: 400, message: '连接配置请求无效' }, 400))
+    return
+  }
+  const platformVerificationMatch = url.pathname.match(/^\/api\/admin\/attribution\/platforms\/(meta|tiktok|google)\/(verify|reverify|verification)$/)
+  if (platformVerificationMatch) {
+    const provider = platformVerificationMatch[1]
+    const action = platformVerificationMatch[2]
+    if (req.method === 'GET' && action === 'verification') return json(res, { data: platformVerification(provider) })
+    if (req.method === 'POST' && (action === 'verify' || action === 'reverify')) {
+      readJsonBody(req).then((body) => {
+        adminAttributionActions.push({ type: action, provider, body })
+        json(res, { data: platformVerification(provider, action === 'reverify' ? 2 : 1) }, 202)
+      }).catch(() => json(res, { statusCode: 400, message: '验证请求无效' }, 400))
+      return
     }
-    return json(res, {
-      data: {
-        status: 'verified',
-        eventsReceived: 1,
-        connection: {
-          state: 'verified',
-          environment: adminAttributionEnvironment,
-          pixelIdConfigured: true,
-          tokenConfigured: true,
-          verifiedAt: '2026-07-09T09:30:00.000Z',
-          verifiedCommit: 'a'.repeat(40),
-          graphApiVersion: 'v25.0',
-          datasetQualityStatus: 'not_checked',
-          invalidationReason: '',
-        },
-      },
-    })
   }
-  if (url.pathname === '/api/admin/attribution/meta/live-challenge' && req.method === 'POST') {
-    return json(res, {
-      data: {
-        challengeId: `mlc_${'c'.repeat(32)}`,
-        environment: 'production',
-        commitSha: 'a'.repeat(40),
-        pixelId: '1234567890',
-        expiresAt: '2026-07-11T01:00:00.000Z',
-        eventIds: {
-          Contact: `mlv_contact_${'a'.repeat(32)}`,
-          CompleteRegistration: `mlv_registration_${'b'.repeat(32)}`,
-        },
-      },
-    })
+  const platformVerificationRecordMatch = url.pathname.match(/^\/api\/admin\/attribution\/platforms\/(meta|tiktok|google)\/verifications\/([^/]+)$/)
+  if (platformVerificationRecordMatch && req.method === 'GET') {
+    return json(res, { data: platformVerification(platformVerificationRecordMatch[1]) })
   }
-  if (url.pathname === '/api/admin/attribution/meta/live-challenge/consume' && req.method === 'POST') {
-    return json(res, { data: { status: 'server_sent', eventsReceived: 2 } })
-  }
-  if (url.pathname === '/api/admin/attribution/platforms/meta' && req.method === 'PATCH') {
-    readJsonBody(req)
-      .then(() => json(res, adminAttributionResponse('/api/admin/attribution/platforms', new URLSearchParams())))
-      .catch(() => json(res, { statusCode: 400, message: '连接配置请求无效' }, 400))
-    return
-  }
-  if (url.pathname === '/api/admin/attribution/platforms/tiktok' && req.method === 'PATCH') {
-    readJsonBody(req)
-      .then(() => json(res, adminAttributionResponse('/api/admin/attribution/platforms', new URLSearchParams())))
-      .catch(() => json(res, { statusCode: 400, message: '连接配置请求无效' }, 400))
-    return
-  }
-  if (url.pathname === '/api/admin/attribution/meta/rollout' && req.method === 'POST') {
+  const platformEvidenceMatch = url.pathname.match(/^\/api\/admin\/attribution\/platforms\/(meta|tiktok|google)\/verifications\/([^/]+)\/evidence$/)
+  if (platformEvidenceMatch && req.method === 'POST') {
     readJsonBody(req).then((body) => {
-      adminAttributionActions.push({ type: 'rollout', body })
-      const percentage = Number(body.percentage)
-      const upgrading = percentage > adminAttributionRolloutTarget
-      const blockers = adminAttributionIncidentOpen ? ['circuit_open'] : ['insufficient_attempts']
-      if (upgrading && adminAttributionIncidentOpen) {
-        return json(res, { statusCode: 409, message: 'CAPI rollout 升级门禁未通过', code: 'META_CAPI_ROLLOUT_PROMOTION_BLOCKED', detail: { blockers } }, 409)
-      }
-      if (upgrading && adminAttributionRolloutScenario === 'metric-only' && body.force !== true) {
-        return json(res, { statusCode: 409, message: 'CAPI rollout 升级门禁未通过', code: 'META_CAPI_ROLLOUT_PROMOTION_BLOCKED', detail: { blockers } }, 409)
-      }
-      if (body.force === true) {
-        const hanCount = String(body.reason || '').match(/[\u3400-\u9fff]/g)?.length ?? 0
-        if (!upgrading || adminAttributionRolloutScenario !== 'metric-only') return json(res, { statusCode: 400, message: '当前升级不能 force', code: 'META_CAPI_ROLLOUT_FORCE_NOT_APPLICABLE' }, 400)
-        if (hanCount < 20) return json(res, { statusCode: 400, message: 'force 理由至少需要 20 个汉字', code: 'META_CAPI_ROLLOUT_FORCE_REASON_INVALID' }, 400)
-      }
-      if (adminAttributionActionMode === 'conflict') return json(res, { statusCode: 409, message: 'CAPI rollout 升级门禁未通过' }, 409)
-      if (adminAttributionActionMode === 'forbidden') return json(res, { statusCode: 403, message: '需要站长权限' }, 403)
-      if (adminAttributionActionMode === 'network') return json(res, { statusCode: 503, message: '服务暂时不可用' }, 503)
-      adminAttributionRolloutTarget = percentage
-      json(res, { data: { targetPercentage: adminAttributionRolloutTarget, effectivePercentage: adminAttributionIncidentOpen ? 0 : adminAttributionRolloutTarget, changed: true } })
-    }).catch(() => json(res, { statusCode: 400, message: 'rollout 请求无效' }, 400))
-    return
-  }
-  if (/^\/api\/admin\/attribution\/meta\/incidents\/[^/]+\/close$/.test(url.pathname) && req.method === 'POST') {
-    readJsonBody(req).then(() => {
-      if (adminAttributionActionMode === 'conflict') return json(res, { statusCode: 409, message: 'incident 关闭门禁未通过' }, 409)
-      if (adminAttributionActionMode === 'forbidden') return json(res, { statusCode: 403, message: '需要站长权限' }, 403)
-      if (adminAttributionActionMode === 'network') return json(res, { statusCode: 503, message: '服务暂时不可用' }, 503)
-      adminAttributionIncidentOpen = false
-      json(res, { data: { id: 'incident-1', status: 'closed' } })
-    }).catch(() => json(res, { statusCode: 400, message: 'incident 请求无效' }, 400))
+      adminAttributionActions.push({ type: 'evidence', provider: platformEvidenceMatch[1], body })
+      json(res, { data: platformVerification(platformEvidenceMatch[1]) }, 202)
+    }).catch(() => json(res, { statusCode: 400, message: '证据请求无效' }, 400))
     return
   }
   if (url.pathname.startsWith('/api/admin/attribution/')) {

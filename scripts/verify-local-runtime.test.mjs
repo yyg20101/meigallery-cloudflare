@@ -56,9 +56,10 @@ describe('本地运行时发布身份', () => {
     assert.equal(waitedForCommit, COMMIT)
     assert.equal(stopped, true)
     assert.equal(result.steps.every(step => step.status === 'passed'), true)
-    assert.deepEqual(result.notes, ['meta-capi-disabled-in-local'])
+    assert.deepEqual(result.notes, ['ad-platform-server-delivery-disabled-in-local'])
     assert.equal(result.notes.some(note => note.startsWith('local-api-log:')), false)
-    assert.deepEqual(conversionBodies.map(body => body.actionType), ['contact'])
+    assert.deepEqual(conversionBodies.map(body => body.actionType), ['open_link'])
+    assert.deepEqual(conversionBodies.map(body => body.contactMethodId), ['contact_local_telegram'])
     assert.equal(conversionBodies[0].consentState, 'granted')
     assert.equal(conversionBodies[0].adAttributionState, 'resolved')
     assert.equal(registrationBodies.length, 1)
@@ -166,13 +167,13 @@ async function localSmokeFetch(input, init = {}) {
       return jsonResponse({ code: 'MARKETING_CONSENT_REQUIRED' }, 400)
     }
     return jsonResponse({ provider: 'meta', resolution: 'matched' }, 200, {
-      'set-cookie': 'mei_ad_attribution_receipt=attribution_receipt; Path=/; HttpOnly',
+      'set-cookie': 'mei_ad_attribution=attribution_context; Path=/; HttpOnly',
     })
   }
   if (url.pathname === '/api/conversions/events') {
     if (!hasAttributionCookies(cookie)) return jsonResponse({ code: 'ATTRIBUTION_RECEIPT_REQUIRED' }, 400)
     const body = JSON.parse(String(init.body || '{}'))
-    return jsonResponse({ data: { id: `conv_${body.actionType}`, actionType: body.actionType, created: true } }, 201)
+    return jsonResponse({ data: { id: `conv_${body.actionType}`, actionType: 'contact', created: true } }, 201)
   }
   if (url.pathname === '/api/auth/register') {
     if (!hasAttributionCookies(cookie)) return jsonResponse({ code: 'ATTRIBUTION_RECEIPT_REQUIRED' }, 400)
@@ -213,7 +214,7 @@ async function localSmokeFetch(input, init = {}) {
 
 function hasAttributionCookies(cookie) {
   return cookie.includes('mei_marketing_consent_receipt=marketing_receipt')
-    && cookie.includes('mei_ad_attribution_receipt=attribution_receipt')
+    && cookie.includes('mei_ad_attribution=attribution_context')
 }
 
 function jsonResponse(body, status = 200, headers = {}) {

@@ -1,62 +1,40 @@
 <script setup lang="ts">
 const props = withDefaults(defineProps<{
-  pixelEnabled?: boolean
-  capiEnabled?: boolean
-  pixelAttemptedCount?: number
-  capiSentCount?: number
-  failedCount?: number
-  skippedCount?: number
-  lastSentAt?: string
-  secretPresent?: boolean
-  queueBindingPresent?: boolean
-  showPresenceSummary?: boolean
+  providerLabel?: string
+  browserLabel?: string
+  serverLabel?: string
+  browserEnabled?: boolean
+  serverEnabled?: boolean
+  browserAttempted?: number
+  serverAccepted?: number
+  serverPending?: number
+  serverFailed?: number
 }>(), {
-  pixelEnabled: undefined,
-  capiEnabled: undefined,
+  providerLabel: '广告平台',
+  browserLabel: 'Browser',
+  serverLabel: 'Server API',
+  browserEnabled: undefined,
+  serverEnabled: undefined,
+  browserAttempted: 0,
+  serverAccepted: 0,
+  serverPending: 0,
+  serverFailed: 0,
 })
 
-function statusItem(enabled: boolean | undefined) {
+function status(enabled: boolean | undefined) {
   if (enabled === true) return { value: '已开启', tone: 'green' }
-  if (enabled === false) return { value: '关闭', tone: 'gray' }
+  if (enabled === false) return { value: '已关闭', tone: 'gray' }
   return { value: '未确认', tone: 'gold' }
 }
 
 const items = computed(() => [
-  {
-    label: 'Pixel 状态',
-    ...statusItem(props.pixelEnabled),
-  },
-  {
-    label: 'CAPI 状态',
-    ...statusItem(props.capiEnabled),
-  },
-  {
-    label: 'Pixel 尝试',
-    value: formatAnalyticsNumber(props.pixelAttemptedCount ?? 0),
-    tone: 'blue',
-  },
-  {
-    label: 'CAPI 成功',
-    value: formatAnalyticsNumber(props.capiSentCount ?? 0),
-    tone: 'blue',
-  },
-  {
-    label: '失败',
-    value: formatAnalyticsNumber(props.failedCount ?? 0),
-    tone: (props.failedCount ?? 0) > 0 ? 'red' : 'gray',
-  },
-  {
-    label: '跳过',
-    value: formatAnalyticsNumber(props.skippedCount ?? 0),
-    tone: (props.skippedCount ?? 0) > 0 ? 'gold' : 'gray',
-  },
+  { label: `${props.browserLabel} 状态`, ...status(props.browserEnabled) },
+  { label: `${props.serverLabel} 状态`, ...status(props.serverEnabled) },
+  { label: 'Browser 已尝试', value: formatAnalyticsNumber(props.browserAttempted), tone: 'gold' },
+  { label: 'Server 已接收', value: formatAnalyticsNumber(props.serverAccepted), tone: 'blue' },
+  { label: 'Server 处理中', value: formatAnalyticsNumber(props.serverPending), tone: props.serverPending > 0 ? 'gold' : 'gray' },
+  { label: 'Server 失败', value: formatAnalyticsNumber(props.serverFailed), tone: props.serverFailed > 0 ? 'red' : 'gray' },
 ])
-
-const presenceSummary = computed(() => {
-  if (!props.showPresenceSummary) return ''
-  const label = (value: boolean | undefined) => value === true ? '存在' : value === false ? '缺失' : '未确认'
-  return `CAPI 配置：token ${label(props.secretPresent)} · Queue binding ${label(props.queueBindingPresent)}`
-})
 
 function toneClass(tone: string) {
   if (tone === 'green') return 'border-emerald-100 bg-emerald-50 text-emerald-800'
@@ -68,14 +46,12 @@ function toneClass(tone: string) {
 </script>
 
 <template>
-  <section data-attribution-health aria-label="Meta 渠道健康" class="min-w-0 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-    <div data-health-grid class="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 sm:grid-cols-[repeat(2,minmax(0,1fr))] lg:grid-cols-[repeat(6,minmax(0,1fr))]">
-      <div v-for="item in items" :key="item.label" data-health-item :class="['min-w-0 max-w-full rounded-lg border px-3 py-2 [overflow-wrap:anywhere]', toneClass(item.tone)]">
-        <p data-health-label class="min-w-0 text-xs font-medium opacity-75">{{ item.label }}</p>
-        <p data-health-value class="mt-1 min-w-0 text-sm font-semibold tabular-nums">{{ item.value }}</p>
+  <section data-attribution-health :aria-label="`${providerLabel} 投递健康`" class="min-w-0 border-y border-gray-200 bg-white py-3">
+    <div data-health-grid class="grid min-w-0 grid-cols-2 gap-2 lg:grid-cols-6">
+      <div v-for="item in items" :key="item.label" data-health-item :class="['min-w-0 border px-3 py-2 [overflow-wrap:anywhere]', toneClass(item.tone)]">
+        <p data-health-label class="text-xs font-medium opacity-75">{{ item.label }}</p>
+        <p data-health-value class="mt-1 text-sm font-semibold tabular-nums">{{ item.value }}</p>
       </div>
     </div>
-    <p data-health-summary class="mt-3 min-w-0 whitespace-normal text-xs text-gray-500 [overflow-wrap:anywhere]">最近 CAPI 成功：{{ formatAnalyticsDateTime(lastSentAt) }}</p>
-    <p v-if="presenceSummary" data-health-summary class="mt-1 min-w-0 whitespace-normal text-xs text-gray-500 [overflow-wrap:anywhere]">{{ presenceSummary }}</p>
   </section>
 </template>

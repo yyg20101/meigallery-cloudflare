@@ -2,7 +2,7 @@ import type { AdPlatformConversionEventName, AdPlatformTrackingMode } from '@mei
 import type { Bindings } from '../index'
 import { mergeD1Usage, readD1UsageMeta, type D1Usage } from '../utils/analytics-cost'
 import { loadMetaCapiCryptoKeys, metaConnectionFingerprint } from '../utils/meta-capi-crypto'
-import { readAdPlatformConnection } from './ad-platform/connections'
+import { readAttributionConnectionSnapshot } from './ad-platform/connections'
 import { META_GRAPH_API_VERSION, metaEventsEndpoint, metaGraphRequestInit, readMetaEventsResponse } from './meta-graph'
 import {
   createMetaIncidentTrigger,
@@ -55,7 +55,7 @@ export type MetaConnectionEnv = Pick<
   | 'APP_ENV'
   | 'META_CAPI_ACCESS_TOKEN'
   | 'META_CAPI_DATA_KEY_CURRENT'
-  | 'META_CAPI_QUEUE'
+  | 'AD_META_QUEUE'
   | 'RELEASE_COMMIT'
 >
 
@@ -184,7 +184,7 @@ export async function bootstrapMetaConnectionVerification(
     if (environment === 'production') throw new MetaConnectionError('META_PRODUCTION_TEST_GATE_BLOCKED', 409)
     throw new MetaConnectionError('META_RELEASE_COMMIT_INVALID', 503)
   }
-  if (!pixelId || !accessToken || !env.META_CAPI_QUEUE) {
+  if (!pixelId || !accessToken || !env.AD_META_QUEUE) {
     if (environment === 'production') throw new MetaConnectionError('META_PRODUCTION_TEST_GATE_BLOCKED', 409)
     throw new MetaConnectionError('META_TEST_EVENT_NOT_CONFIGURED', 503)
   }
@@ -244,18 +244,6 @@ export async function bootstrapMetaConnectionVerification(
   if (!d1ChangedExactlyOnce(writeResult)) {
     throw new MetaConnectionError('META_CONNECTION_VERIFICATION_WRITE_FAILED', 503)
   }
-  try {
-    const revisionResult = await env.DB.prepare(`
-      UPDATE ad_platform_connections
-      SET revision = ?, updated_at = datetime('now')
-      WHERE provider = 'meta'
-    `).bind(revision).run()
-    if (!d1ChangedExactlyOnce(revisionResult)) throw new Error('revision not persisted')
-  }
-  catch {
-    throw new MetaConnectionError('META_CONNECTION_VERIFICATION_WRITE_FAILED', 503)
-  }
-
   const evaluated = await evaluateMetaConnection(env)
   if (evaluated.status.state !== 'verified' || evaluated.verificationRevision !== revision) {
     throw new MetaConnectionError('META_CONNECTION_VERIFICATION_WRITE_FAILED', 503)
@@ -267,6 +255,7 @@ async function assertProductionBootstrapGate(
   db: D1Database,
 ) {
   try {
+    const connection = await readAttributionConnectionSnapshot(db, 'meta')
     const [resource, rollout, incident] = await Promise.all([
       db.prepare(`
         SELECT id, summary FROM analytics_release_verifications
@@ -279,14 +268,13 @@ async function assertProductionBootstrapGate(
           ELSE 0 END
         ORDER BY verified_at DESC LIMIT 1
       `).first<{ id: string; summary: string }>(),
-      db.prepare("SELECT rollout_percentage FROM ad_platform_connections WHERE provider = 'meta' LIMIT 1")
-        .first<{ rollout_percentage: number }>(),
+      Promise.resolve(connection.state === 'ready' ? connection.connection.rolloutEffectivePercentage : -1),
       db.prepare(`
         SELECT COUNT(*) AS incident_count FROM meta_capi_incidents
         WHERE environment = 'production' AND status = 'open' AND severity = 'critical'
       `).first<{ incident_count: unknown }>(),
     ])
-    const target = Number(rollout?.rollout_percentage ?? -1)
+    const target = Number(rollout)
     const incidentCount = Number(incident?.incident_count)
     const summary = parseProductionPostDeploySummary(resource?.summary)
     if (!resource || !summary || target !== 0 || incidentCount !== 0) {
@@ -555,9 +543,10 @@ async function persistInvalidation(
 }
 
 async function readMetaConnectionSettings(db: D1Database) {
-  const connection = await readAdPlatformConnection(db, 'meta')
+  const snapshot = await readAttributionConnectionSnapshot(db, 'meta')
+  const connection = snapshot.state === 'ready' ? snapshot.connection : null
   return {
-    pixelId: connection?.destinationId ?? '',
+    pixelId: connection?.publicConfig.pixelId ?? '',
     trackingMode: connection?.mode ?? 'disabled',
   }
 }

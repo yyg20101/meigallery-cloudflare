@@ -1,15 +1,21 @@
 import { Hono } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
+import type { AdAttributionProvider, AdBrowserPublicConfig } from '@meigallery/shared'
 import type { Bindings, Variables } from '../index'
 import { resolveAdAttributionRouting, type AdAttributionSignals } from '../services/ad-attribution-routing'
+import { readAttributionConnectionSnapshot } from '../services/ad-platform/connections'
 import {
-  AD_ATTRIBUTION_RECEIPT_TTL_SECONDS,
-  createAdAttributionReceipt,
-  resolveTrustedAdAttributionReceipt,
-} from '../utils/ad-attribution-receipt'
+  AD_ATTRIBUTION_CONTEXT_TTL_SECONDS,
+  createAdAttributionContext,
+  resolveTrustedAdAttributionContext,
+  sealAdAttributionContext,
+} from '../utils/ad-attribution-context'
+import { loadAttributionCryptoKeys } from '../utils/attribution-crypto'
 import { resolveTrustedMarketingConsent } from '../utils/marketing-consent-receipt'
 import { MARKETING_CONSENT_RECEIPT_COOKIE } from './marketing-consent'
 
+export const AD_ATTRIBUTION_CONTEXT_COOKIE = 'mei_ad_attribution'
+/** 旧 receipt 仅为过渡期导出；任务 4 不再签发或读取。 */
 export const AD_ATTRIBUTION_RECEIPT_COOKIE = 'mei_ad_attribution_receipt'
 
 export const adAttributionRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
@@ -19,6 +25,40 @@ adAttributionRoutes.use('*', async (c, next) => {
   await next()
 })
 
+adAttributionRoutes.get('/bootstrap', async (c) => {
+  const consentState = await resolveTrustedMarketingConsent(
+    c.env.SESSION_SECRET,
+    getCookie(c, MARKETING_CONSENT_RECEIPT_COOKIE),
+    undefined,
+  )
+  if (consentState !== 'granted') return c.json(emptyBootstrapResponse())
+
+  try {
+    const keys = await loadAttributionCryptoKeys(c.env)
+    const context = await resolveTrustedAdAttributionContext(
+      keys,
+      getCookie(c, AD_ATTRIBUTION_CONTEXT_COOKIE),
+    )
+    if (!context) return c.json(emptyBootstrapResponse())
+
+    const snapshot = await readAttributionConnectionSnapshot(c.env.DB, context.provider)
+    if (snapshot.state !== 'ready'
+      || !snapshot.connection.enabled
+      || !snapshot.connection.browserEnabled
+      || snapshot.connection.mode === 'disabled') return c.json(emptyBootstrapResponse())
+    const publicConfig = serializePublicConfig(snapshot.connection.provider, snapshot.connection.publicConfig)
+    if (!publicConfig) return c.json(emptyBootstrapResponse())
+
+    return c.json({
+      provider: snapshot.connection.provider,
+      publicConfig,
+    })
+  }
+  catch {
+    return c.json(emptyBootstrapResponse())
+  }
+})
+
 adAttributionRoutes.put('/', async (c) => {
   const consentState = await resolveTrustedMarketingConsent(
     c.env.SESSION_SECRET,
@@ -26,8 +66,8 @@ adAttributionRoutes.put('/', async (c) => {
     undefined,
   )
   if (consentState !== 'granted') {
-    clearReceiptCookie(c)
-    return c.json({ provider: null, resolution: 'none' as const, expiresInSeconds: null })
+    clearContextCookie(c)
+    return c.json(emptyResponse())
   }
 
   let body: AdAttributionSignals
@@ -35,57 +75,101 @@ adAttributionRoutes.put('/', async (c) => {
     body = await c.req.json<AdAttributionSignals>()
   }
   catch {
-    clearReceiptCookie(c)
-    return c.json({ provider: null, resolution: 'none' as const, expiresInSeconds: null }, 400)
+    clearContextCookie(c)
+    return c.json(emptyResponse(), 400)
   }
+
   const nowSeconds = Math.floor(Date.now() / 1_000)
-  const currentReceipt = await resolveTrustedAdAttributionReceipt(
-    c.env.SESSION_SECRET,
-    getCookie(c, AD_ATTRIBUTION_RECEIPT_COOKIE),
-    nowSeconds,
-  )
-  const currentProvider = currentReceipt?.provider ?? null
-  let result
+  let keys
+  let currentContext
   try {
-    result = await resolveAdAttributionRouting(c.env.DB, body, currentProvider)
+    keys = await loadAttributionCryptoKeys(c.env)
+    currentContext = await resolveTrustedAdAttributionContext(
+      keys,
+      getCookie(c, AD_ATTRIBUTION_CONTEXT_COOKIE),
+      nowSeconds,
+    )
   }
   catch {
-    clearReceiptCookie(c)
-    return c.json({ provider: null, resolution: 'none' as const, expiresInSeconds: null }, 503)
+    clearContextCookie(c)
+    return c.json(emptyResponse(), 503)
+  }
+
+  let result
+  try {
+    result = await resolveAdAttributionRouting(c.env.DB, body, currentContext?.provider ?? null, {
+      managedLinkSecret: c.env.SESSION_SECRET,
+      nowSeconds,
+    })
+  }
+  catch {
+    clearContextCookie(c)
+    return c.json(emptyResponse(), 503)
   }
 
   if (!result.provider) {
-    clearReceiptCookie(c)
-    return c.json({ ...result, expiresInSeconds: null })
+    clearContextCookie(c)
+    return c.json({ provider: null, resolution: result.resolution, expiresInSeconds: null })
   }
-  let expiresAt = currentReceipt?.expiresAt ?? null
-  if (result.provider !== currentProvider) {
-    const receipt = await createAdAttributionReceipt(c.env.SESSION_SECRET, result.provider, nowSeconds)
-    expiresAt = nowSeconds + AD_ATTRIBUTION_RECEIPT_TTL_SECONDS
-    setCookie(c, AD_ATTRIBUTION_RECEIPT_COOKIE, receipt, {
-      httpOnly: true,
-      secure: shouldUseSecureCookie(c.req.url, c.env.APP_ENV),
-      sameSite: 'Lax',
-      path: '/',
-      maxAge: AD_ATTRIBUTION_RECEIPT_TTL_SECONDS,
+  if (result.resolution === 'inherited' && currentContext) {
+    return c.json({
+      provider: currentContext.provider,
+      resolution: 'inherited' as const,
+      expiresInSeconds: currentContext.expiresAt - nowSeconds,
     })
   }
-  if (expiresAt === null) {
-    clearReceiptCookie(c)
-    return c.json({ provider: null, resolution: 'none' as const, expiresInSeconds: null }, 503)
+
+  try {
+    const context = createAdAttributionContext({
+      provider: result.provider,
+      source: result.source!,
+      identifiers: result.identifiers,
+      nowSeconds,
+    })
+    const encrypted = await sealAdAttributionContext(keys, context)
+    setCookie(c, AD_ATTRIBUTION_CONTEXT_COOKIE, encrypted, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'Lax',
+      path: '/',
+      maxAge: AD_ATTRIBUTION_CONTEXT_TTL_SECONDS,
+    })
+    return c.json({
+      provider: context.provider,
+      resolution: result.resolution,
+      expiresInSeconds: AD_ATTRIBUTION_CONTEXT_TTL_SECONDS,
+    })
   }
-  return c.json({ ...result, expiresInSeconds: expiresAt - nowSeconds })
+  catch {
+    clearContextCookie(c)
+    return c.json(emptyResponse(), 503)
+  }
 })
 
 adAttributionRoutes.delete('/', (c) => {
-  clearReceiptCookie(c)
-  return c.json({ provider: null, resolution: 'none' as const, expiresInSeconds: null })
+  clearContextCookie(c)
+  return c.json(emptyResponse())
 })
 
-function clearReceiptCookie(c: Parameters<typeof deleteCookie>[0]) {
-  deleteCookie(c, AD_ATTRIBUTION_RECEIPT_COOKIE, { path: '/' })
+export function clearContextCookie(c: Parameters<typeof deleteCookie>[0]) {
+  deleteCookie(c, AD_ATTRIBUTION_CONTEXT_COOKIE, { path: '/', secure: true, httpOnly: true, sameSite: 'Lax' })
+  deleteCookie(c, AD_ATTRIBUTION_RECEIPT_COOKIE, { path: '/', secure: true, httpOnly: true, sameSite: 'Lax' })
 }
 
-function shouldUseSecureCookie(requestUrl: string, appEnv: string) {
-  return appEnv === 'production' || new URL(requestUrl).protocol === 'https:'
+function emptyResponse() {
+  return { provider: null, resolution: 'none' as const, expiresInSeconds: null }
+}
+
+function emptyBootstrapResponse() {
+  return { provider: null, publicConfig: null }
+}
+
+function serializePublicConfig(
+  provider: AdAttributionProvider,
+  config: Record<string, string>,
+): AdBrowserPublicConfig | null {
+  if (provider === 'meta' && config.pixelId) return { provider, pixelId: config.pixelId }
+  if (provider === 'tiktok' && config.pixelCode) return { provider, pixelCode: config.pixelCode }
+  if (provider === 'google' && config.tagId) return { provider, tagId: config.tagId }
+  return null
 }

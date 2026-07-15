@@ -1,51 +1,115 @@
 import { describe, expect, it } from 'vitest'
-import { resolveAdAttributionRouting } from './ad-attribution-routing'
+import {
+  createManagedLinkToken,
+  resolveAdAttributionRouting,
+} from './ad-attribution-routing'
+
+const MANAGED_LINK_SECRET = 'managed-link-routing-test-secret'
 
 describe('广告来源严格路由', () => {
   it.each([
     ['Meta click id', { fbclid: 'IwAR_valid-click' }, 'meta'],
     ['TikTok click id', { ttclid: 'E.C.P.valid-click-id' }, 'tiktok'],
-    ['Meta UTM', { utmSource: 'instagram_ads' }, 'meta'],
-    ['TikTok UTM', { utmSource: 'tiktok-ads' }, 'tiktok'],
+    ['Google gclid', { gclid: 'google-click-id' }, 'google'],
+    ['Google gbraid', { gbraid: 'google-gbraid' }, 'google'],
+    ['Google wbraid', { wbraid: 'google-wbraid' }, 'google'],
+    ['Meta 明确广告别名', { utmSource: 'instagram_ads' }, 'meta'],
+    ['TikTok 明确广告别名', { utmSource: 'tiktok-ads' }, 'tiktok'],
+    ['Google 明确广告别名', { utmSource: 'google_ads' }, 'google'],
   ] as const)('%s 只匹配对应平台', async (_label, signals, provider) => {
-    await expect(resolveAdAttributionRouting(emptyDb(), signals, null)).resolves.toEqual({
+    await expect(resolveAdAttributionRouting(emptyDb(), signals, null)).resolves.toMatchObject({
       provider,
       resolution: 'matched',
     })
   })
 
-  it('受管投放链接以后台 ad_provider 为权威来源', async () => {
+  it('受管投放链接必须通过签名与后台来源校验', async () => {
     const db = sourceDb({ 'summer-meta': 'meta', 'summer-tiktok': 'tiktok' })
+    const managedLinkToken = await createManagedLinkToken(MANAGED_LINK_SECRET, {
+      trackingSourceSlug: 'summer-tiktok',
+      provider: 'tiktok',
+    })
 
     await expect(resolveAdAttributionRouting(
       db,
-      { trackingSourceSlug: 'summer-tiktok', utmSource: 'campaign-alias' },
+      { trackingSourceSlug: 'summer-tiktok', utmSource: 'campaign-alias', managedLinkToken },
       null,
-    )).resolves.toEqual({ provider: 'tiktok', resolution: 'matched' })
+      { managedLinkSecret: MANAGED_LINK_SECRET },
+    )).resolves.toMatchObject({ provider: 'tiktok', resolution: 'matched' })
+  })
+
+  it('未签名或篡改的受管链接不能替换已验证来源', async () => {
+    const token = await createManagedLinkToken(MANAGED_LINK_SECRET, {
+      trackingSourceSlug: 'summer-meta',
+      provider: 'meta',
+    })
+
+    await expect(resolveAdAttributionRouting(
+      sourceDb({ 'summer-meta': 'meta' }),
+      { trackingSourceSlug: 'summer-meta' },
+      'tiktok',
+      { managedLinkSecret: MANAGED_LINK_SECRET },
+    )).resolves.toMatchObject({ provider: 'tiktok', resolution: 'inherited' })
+    await expect(resolveAdAttributionRouting(
+      sourceDb({ 'summer-meta': 'meta' }),
+      { trackingSourceSlug: 'summer-meta', managedLinkToken: `${token}x` },
+      'tiktok',
+      { managedLinkSecret: MANAGED_LINK_SECRET },
+    )).resolves.toMatchObject({ provider: 'tiktok', resolution: 'inherited' })
   })
 
   it.each([
-    ['同时出现两个 click id', { fbclid: 'meta-click', ttclid: 'tiktok-click' }],
-    ['click id 与 UTM 冲突', { fbclid: 'meta-click', utmSource: 'tiktok' }],
-    ['受管来源与 UTM 冲突', { trackingSourceSlug: 'summer-meta', utmSource: 'tiktok' }],
+    ['Meta 与 TikTok click id 并存', { fbclid: 'meta-click', ttclid: 'tiktok-click' }],
+    ['Google 与 Meta click id 并存', { gclid: 'google-click', fbclid: 'meta-click' }],
   ])('%s 时拒绝全部平台', async (_label, signals) => {
     await expect(resolveAdAttributionRouting(
       sourceDb({ 'summer-meta': 'meta' }),
       signals,
       'meta',
-    )).resolves.toEqual({ provider: null, resolution: 'conflict' })
+    )).resolves.toMatchObject({ provider: null, resolution: 'conflict' })
   })
 
-  it('未知显式来源会清除继承来源', async () => {
+  it('强 click id 优先于低优先级别名', async () => {
     await expect(resolveAdAttributionRouting(
       emptyDb(),
-      { utmSource: 'unknown-network' },
-      'meta',
-    )).resolves.toEqual({ provider: null, resolution: 'none' })
+      { fbclid: 'meta-click', utmSource: 'tiktok_ads' },
+      null,
+    )).resolves.toMatchObject({ provider: 'meta', resolution: 'matched' })
   })
 
-  it('完全没有新来源信号时才允许继承已签名来源', async () => {
-    await expect(resolveAdAttributionRouting(emptyDb(), {}, 'tiktok')).resolves.toEqual({
+  it.each(['facebook', 'instagram', 'meta', 'tiktok', 'tt', 'google'])(
+    '自然或含糊来源 %s 不能归因并继承旧来源',
+    async utmSource => {
+      await expect(resolveAdAttributionRouting(emptyDb(), { utmSource }, 'meta')).resolves.toMatchObject({
+        provider: 'meta',
+        resolution: 'inherited',
+      })
+    },
+  )
+
+  it('无效、过期或不匹配的受管链接不能替换旧来源', async () => {
+    const token = await createManagedLinkToken(MANAGED_LINK_SECRET, {
+      trackingSourceSlug: 'summer-meta',
+      provider: 'meta',
+      nowSeconds: 1_700_000_000,
+    })
+
+    await expect(resolveAdAttributionRouting(
+      sourceDb({ 'summer-meta': 'meta' }),
+      { trackingSourceSlug: 'summer-other', managedLinkToken: token },
+      'tiktok',
+      { managedLinkSecret: MANAGED_LINK_SECRET, nowSeconds: 1_700_000_001 },
+    )).resolves.toMatchObject({ provider: 'tiktok', resolution: 'inherited' })
+    await expect(resolveAdAttributionRouting(
+      sourceDb({ 'summer-meta': 'meta' }),
+      { trackingSourceSlug: 'summer-meta', managedLinkToken: token },
+      'tiktok',
+      { managedLinkSecret: MANAGED_LINK_SECRET, nowSeconds: 1_702_592_000 },
+    )).resolves.toMatchObject({ provider: 'tiktok', resolution: 'inherited' })
+  })
+
+  it('完全没有新来源信号时才允许继承已验证来源', async () => {
+    await expect(resolveAdAttributionRouting(emptyDb(), {}, 'tiktok')).resolves.toMatchObject({
       provider: 'tiktok',
       resolution: 'inherited',
     })
@@ -56,10 +120,11 @@ describe('广告来源严格路由', () => {
     { ttclid: 'x'.repeat(1_001) },
     { utmSource: `meta\n` },
     { fbclid: { invalid: true } },
-  ])('非法长度、控制字符或类型不会被误识别或继承旧来源', async (signals) => {
-    await expect(resolveAdAttributionRouting(emptyDb(), signals, 'meta')).resolves.toEqual({
-      provider: null,
-      resolution: 'none',
+    { utmSource: 'unknown-network' },
+  ])('非法长度、控制字符、未知来源或类型均不能替换旧来源', async (signals) => {
+    await expect(resolveAdAttributionRouting(emptyDb(), signals, 'meta')).resolves.toMatchObject({
+      provider: 'meta',
+      resolution: 'inherited',
     })
   })
 })
@@ -68,17 +133,14 @@ function emptyDb() {
   return sourceDb({})
 }
 
-function sourceDb(sources: Record<string, 'meta' | 'tiktok'>) {
+function sourceDb(sources: Record<string, 'meta' | 'tiktok' | 'google'>) {
   return {
     prepare(_sql: string) {
       return {
         bind(...values: string[]) {
           return {
             async all<T>() {
-              const providers = [...new Set([
-                sources[values[0] || ''],
-                sources[values[2] || ''],
-              ].filter(Boolean))]
+              const providers = [...new Set([sources[values[0] || '']].filter(Boolean))]
               return { results: providers.map(provider => ({ ad_provider: provider })) as T[] }
             },
           }

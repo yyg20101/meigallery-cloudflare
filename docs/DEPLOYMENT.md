@@ -33,44 +33,31 @@
 # 首次初始化
 ./scripts/setup.sh
 
-# 生产部署（推荐；脚本先验证 Queue 和本地代码，再应用兼容 migration、执行 production gate）
+# 生产部署（唯一允许的 production migration / Worker 发布入口）
 # 重要警告：生产环境中，当待发布包含 0017_cases_cleanup.sql 时，禁止直接运行一键部署。
 # 必须先完成本地或 CI 构建预检，再按“R2 Cases 对象迁移”专项顺序完成
 # dry-run、复制和目标对象验证，然后才执行 D1 remote migration 和部署。
 ./scripts/deploy.sh production
 
-# 或以下安全等价手动步骤：
-# 1. 只读确认 production 广告平台 Queue；任一缺失时禁止执行 D1 migration
-node scripts/verify-ad-platform-queues.mjs production
-
-# 2. 迁移前完整本地快速验证
-corepack pnpm verify:quick
-
-# 3. D1 兼容迁移
-# 重要警告：如果待执行 migrations 包含 0017_cases_cleanup.sql，必须先完成：
-# 构建预检 -> R2 Cases dry-run -> R2 复制和目标对象验证，再执行此 D1 remote migration。
-node scripts/verify-meta-migration.mjs preflight --env production
-corepack pnpm --filter @meigallery/api exec wrangler d1 migrations apply meigallery-db --env="" --remote
-
-# 4. 迁移后执行完整放行并校验本次 main 报告
+# release PR 前运行完整验证；production 脚本不会再次重复整套 release 验证
 corepack pnpm verify:release
-node scripts/verify-release.mjs assert-production-allowed
 
-# 5. 记录当前 commit，部署 API Worker
-GIT_COMMIT="$(git rev-parse HEAD)"
-corepack pnpm --filter @meigallery/api exec wrangler deploy --env="" --var "RELEASE_COMMIT:${GIT_COMMIT}"
+# 一次性 0051 切换的只读预检与回填 dry-run
+corepack pnpm verify:quick
+node scripts/verify-attribution-v3-migration.mjs preflight
+node scripts/verify-attribution-v3-migration.mjs backfill
 
-# 6. 部署 Web Worker
-corepack pnpm --filter @meigallery/web exec wrangler deploy --env="" --var "RELEASE_COMMIT:${GIT_COMMIT}"
-
-# 7. 部署后校验两个 Worker 的 commit 身份和 SEO
+# 部署后只读复核
+node scripts/verify-attribution-v3-migration.mjs reconcile
 node scripts/verify-release.mjs assert-production-identity
 corepack pnpm verify:seo:production
 ```
 
+禁止单独执行 remote D1 migration。根目录和 API package 的 `db:migrate:remote` 均会以 `PRODUCTION_MIGRATION_REQUIRES_DEPLOY_SCRIPT` 失败，避免绕过备份、Worker 切换、回填和对账形成半完成状态。
+
 ## 4. CI/CD
 
-**手动部署**：生产部署推荐只通过 `./scripts/deploy.sh production` 执行。脚本在修改 production D1 前完成 Queue 和本地快速验证，migration 后重新执行完整生产门禁，并为 API/Web 注入当前 `RELEASE_COMMIT`。GitHub Actions 不负责生产部署，避免合入分支后自动影响线上用户。
+**手动部署**：生产部署只通过 `./scripts/deploy.sh production` 执行。完整测试、覆盖率、类型检查、Playwright 和构建由 release PR/CI 先完成；脚本在干净 `main` 上只执行一次 `verify:quick`，随后完成远端 preflight、必要备份、migration、API/Web 部署、回填、对账和 smoke，不再重复执行 `verify:release`。GitHub Actions 不负责生产部署，避免合入分支后自动影响线上用户。
 
 ```bash
 # 已通过 PR 合入 main 后执行生产发布。
@@ -96,19 +83,22 @@ corepack pnpm verify:seo:production -- --expect-site-name 星耀传媒 --expect-
 
 ### 生产放行要求
 
-- `./scripts/deploy.sh production` 每次都必须重新执行完整、不可跳过的 `verify:release`，随后只校验本次新生成的同 commit 报告；本地旧 `latest.json` 即使内容显示通过也不能跳过 fresh gate。
-- 合入 `main` 后，只要最新待发布 HEAD 与现有 release 报告中的 commit 不完全一致，就必须在 `main` 上重新运行 `corepack pnpm verify:release`；任何旧 commit 报告都不能放行新的生产 HEAD。
-- `scripts/deploy.sh production` 依次执行 Queue 只读检查、fresh `verify:quick`、兼容 migration、fresh `verify:release` 和 `assert-production-allowed`。完整门禁失败时不得部署 Worker，已应用的 expand migration 保持对旧 Worker 兼容。
-- production 必须预先存在 `meigallery-meta-capi`、`meigallery-meta-capi-dlq`、`meigallery-tiktok-events`、`meigallery-tiktok-events-dlq`；任一缺失时部署在 migration 和 Worker deploy 前 fail closed。首次创建或补齐资源使用 `./scripts/setup.sh production`，完成后重新执行部署。
-- `corepack pnpm --filter @meigallery/api db:migrate:remote` 也强制先执行相同 Queue 门禁和 duplicate preflight；不得用裸 `wrangler d1 migrations apply` 绕过仓库发布保护。
-- 缺少通过报告、报告 commit 与当前待发 commit 不一致、工作区不干净，或分支不满足放行条件时，生产部署必须阻断。
-- `VERIFY_RELEASE_ALLOW_BRANCH` 仅用于非生产分支演练 release gate，不能替代正式生产放行。
+- release PR/CI 必须先完成完整测试、类型检查、构建、迁移 fixture 和三平台隔离验证；生产脚本不以重复执行整套门禁代替 CI。
+- production 只允许从干净的 `main` 执行，脚本为 API/Web 注入同一 `RELEASE_COMMIT`，部署后必须通过 identity 校验。
+- `0051` 首次待应用时，脚本自动进入一次性通用归因 cutover：`verify:quick -> preflight -> D1 export + Time Travel bookmark -> Expand -> API/Web -> backfill -> reconcile -> smoke`。
+- `0051` 已应用后的普通发布跳过旧系统关闭态 preflight、D1 归因备份和历史回填，避免 Meta/TikTok 恢复放量后被一次性迁移条件误阻断。
+- production 必须预先存在 `meigallery-ad-meta`、`meigallery-ad-meta-dlq`、`meigallery-ad-tiktok`、`meigallery-ad-tiktok-dlq`、`meigallery-ad-google`、`meigallery-ad-google-dlq`；使用 `./scripts/setup.sh production` 幂等创建。
+- `AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT` 必须是 32 字节随机值的标准 Base64，并通过 `openssl rand -base64 32 | wrangler secret put ...` 或交互式 `wrangler secret put` 配置；previous 仅在主密钥轮换窗口存在。Secret 值不得进入命令参数、文档、报告或日志。
+- preflight 要求旧 Meta/TikTok Server 与 rollout 为 `0`、旧活跃 Delivery/Outbox 为 `0`、新 Google Server/rollout 为 `0`、两次 Queue 指标采样均为 `0`。任一状态无法确认都 fail closed。
+- Workflow 的 binding/name/class 在 migration 前校验；远端 `meigallery-ad-platform-verification` 在新 API Worker 部署后通过 `wrangler workflows describe` 确认。
+- 部署脚本不修改平台 enabled、mode、rollout、凭证或验证证据，也不调用 Meta、TikTok 或 Google Ads 事件 API。
 
 ### 广告平台 schema 发布窗口
 
 - 广告平台 schema 采用 expand/contract 两阶段发布。expand migration 必须同时兼容当前 production Worker、待发布 Worker 和 API Worker 回滚，不得先删除旧 Worker 仍会访问的列或表。
 - contract migration 必须推迟到后续独立版本；确认 production 已稳定运行新结构、桥接数据无差异并关闭旧 Worker 回滚窗口后才能加入。expand 与 contract 不得在同一次 `wrangler d1 migrations apply` 中执行。
-- 当前 `0049_tiktok_events_api.sql` 与 `0050_strict_ad_source_routing.sql` 属于 expand：应用代码只使用通用结构，旧 Meta 结构仅由 `trg_0049_bridge_*` 在数据库层维持；`0050` 仅对已明确来源的事实执行同平台约束。后续 contract 删除前必须重新运行 `node --test scripts/verify-meta-migration.test.mjs`，并加入针对 contract 后 schema 的新演练断言。
+- `0051_unified_attribution_expand.sql` 只创建 11 张最终 `attribution_*` 表和新表约束，不修改旧运行表。回填仅写 `Contact` / `CompleteRegistration` 历史事实，`external_event_id=NULL`、营销授权为 denied，不创建 Delivery/Outbox，因此不会重新发送历史转化。
+- 旧 `0049` bridge、旧 Meta/TikTok 技术表、Queue 和 Secret 在 Contract 版本前保留用于数据库/Worker 回滚；不得在 v0.4.0 Expand 中提前删除。
 
 ### 推荐执行顺序
 
@@ -174,42 +164,19 @@ Dataset Quality 使用唯一 production Dataset。Owner 已批准九章节 produ
 
 历史版本若曾配置 `META_CAPI_TEST_EVENT_CODE`，必须先部署已使用资源 attestation V2 / 资源摘要 V3 的 API Worker，并完成一次新的 production 资源验证；确认后台不再依赖该值后，再执行 `corepack pnpm --filter @meigallery/api exec wrangler secret delete META_CAPI_TEST_EVENT_CODE --env=""`。禁止在旧 Worker 仍运行时提前删除。
 
-Meta 远端资源只存在于 production：
-
-| 环境 | 主 Queue | DLQ |
-|------|----------|-----|
-| production | `meigallery-meta-capi` | `meigallery-meta-capi-dlq` |
-
-首次由已授权操作人创建资源时，Queue 与 secret 命令只在交互式终端执行；secret 值绝不进入 shell history、文档、报告或日志：
-
-```bash
-# 仅 production。
-corepack pnpm --filter @meigallery/api exec wrangler queues create meigallery-meta-capi
-corepack pnpm --filter @meigallery/api exec wrangler queues create meigallery-meta-capi-dlq
-corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_ACCESS_TOKEN --env=""
-corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_DATA_KEY_CURRENT --env=""
-```
-
-`META_CAPI_DATA_KEY_PREVIOUS` 只在轮换窗口配置。Cloudflare Worker secret 不可回读，旧 current 必须从受控 secret manager 取得，不能从 Wrangler、日志或报告恢复。轮换顺序固定为：
-
-1. 将受控 secret manager 中的旧 current 通过交互式命令写入 previous：`corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_DATA_KEY_PREVIOUS --env=""`。
-2. 在交互式终端执行 `openssl rand -base64 32`，把生成结果通过 `corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_DATA_KEY_CURRENT --env=""` 写入新 current。
-3. 部署后在 `/admin/attribution/readiness?provider=meta` 等待 previous outbox 与活动 delivery 计数都归零；本阶段不开放 production bootstrap 或 rollout。
-4. 执行 `corepack pnpm --filter @meigallery/api exec wrangler secret delete META_CAPI_DATA_KEY_PREVIOUS --env=""`，再次部署。
-
-dev 不执行上述操作。后台只展示有效性布尔值、引用计数和可移除状态，不展示 key ID 或派生值。
+旧 `meigallery-meta-capi*` Queue 和 `META_CAPI_*` Secret 在 v0.4.0 Contract 前只作为旧 Worker 回滚资产保留，不再创建、轮换或作为新连接配置入口。新 Meta 运行时固定使用 `meigallery-ad-meta` / `meigallery-ad-meta-dlq`，Token 由 Owner 在统一后台保存到 D1 加密凭证库；明文不进入 Worker vars、日志、响应或审计。
 
 正式发布必须按下列顺序完成：
 
 1. 在 release 分支完成 migration 演练、测试、类型检查、构建和 Worker dry-run，通过 GitHub CI 后以 PR 合入 `main`。
-2. 在干净的 `main` 执行 `./scripts/deploy.sh production`；脚本首先核对四条广告平台 Queue 并运行 fresh `verify:quick`，失败时不修改 production D1。
-3. 快速验证通过后应用当前最新 migration（当前为 `0050`）。`0049` 的数据库桥接和 `0050` 对未标记历史事实的兼容保证旧 Worker 在发布窗口可继续处理 Meta。
-4. migration 后执行 fresh `verify:release`，核验当前 Meta 连接 revision、有效 production live evidence、Dataset Quality、无 critical incident 和既有 rollout。Meta live challenge 必须在 24 小时内完成人工确认；确认结果在连接 revision 未变化且未失效时可复用 30 天，不因普通业务 commit 变化而失效。
-5. release 报告仍必须绑定当前 `main` HEAD，以证明本次代码完成全部本地、运行时和生产资源验证；旧 commit 的 release 报告不能放行新 HEAD。
-6. 完整门禁通过后部署 API，再部署 Web。脚本不修改任何平台的 enabled、mode、rollout、incident 或 secret。
-7. Worker 部署后执行 `assert-production-identity`，确认 production API/Web 都是当前 `main` HEAD；随后执行生产 SEO 校验。
-8. 对比部署前后 Meta 连接、rollout、incident、Queue/DLQ 和投递积压，必须保持业务状态不变；同时确认新 TikTok 连接为 `disabled`、Browser/Server 关闭、rollout `0`。
-9. 只有修改 Meta 连接身份、事件契约或质量证据本身时，才重新执行 production Live Evidence；普通功能发布不要求重复发送 Meta 测试事件。
+2. 在统一后台将旧 Meta/TikTok Server 与 rollout 显式降为 `0`，等待旧活跃 Delivery、Outbox、主 Queue 和 DLQ 归零。
+3. 执行 `./scripts/setup.sh production`，幂等创建 6 条新 Queue；交互式写入 `AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT`。Workflow 随新 API Worker 部署创建。
+4. 在干净 `main` 执行 `./scripts/deploy.sh production`。脚本只读 preflight 失败时不生成备份、不应用 migration、不部署 Worker。
+5. preflight 通过后导出 D1 SQL、记录 Time Travel bookmark 和 SHA-256，再应用 `0051`、部署 API/Web、确认远端 Workflow、幂等回填并对账。
+6. 对账必须证明每个旧标准事实均有新事实覆盖、映射和 provider 一致，历史 `external_event_id`、历史 Delivery、历史重投均为 `0`。
+7. Worker 部署后校验 production identity、SEO 和基础可用性；三个新平台连接仍保持 disabled / Browser 0 / Server 0 / rollout 0。
+8. 切换成功后再从统一后台重新保存平台连接并做真实 Test Event / Live Evidence；Meta 先恢复 10%，观察无跨平台、无重复和无敏感日志后再处理 TikTok/Google。
+9. 普通功能发布不会重复执行本次历史回填，也不要求重复发送 Meta 测试事件；只有连接身份、事件契约或质量证据变化才重新验证。
 
 production live evidence 必须由后台 Owner 按钮创建 Worker challenge：正式域名浏览器通过真实 `fbq` 发送 `Contact` 与 `CompleteRegistration`，随后 production Worker 使用同组 opaque event ID 发送 CAPI。`corepack pnpm verify:meta-live` 只读取生产 D1 中已销毁原始 ID 的摘要并记录 Events Manager 人工确认，不在本地生成 session 或 event ID；成功或失败都会清理短期 challenge 摘要。challenge 本身严格 24 小时有效，完成后的人工确认按当前连接身份最多复用 30 天；连接重新验证、失效或身份变化后必须重新确认。
 
@@ -229,26 +196,13 @@ production live evidence 必须由后台 Owner 按钮创建 Worker challenge：�
 
 TikTok 与 Meta 共享站内转化事实和通用投递状态机，但不共享 Queue、密钥、凭证、连接 revision 或 rollout。代码部署不会自动启用 TikTok；migration `0048` / `0049` 的初始状态为 `disabled`、Browser/Server 关闭、rollout `0`。
 
-生产资源：
-
-| 环境 | 主 Queue | DLQ |
-|------|----------|-----|
-| production | `meigallery-tiktok-events` | `meigallery-tiktok-events-dlq` |
-
-首次配置使用交互式命令，凭证值不得进入 shell history、文档或日志：
-
-```bash
-corepack pnpm --filter @meigallery/api exec wrangler queues create meigallery-tiktok-events
-corepack pnpm --filter @meigallery/api exec wrangler queues create meigallery-tiktok-events-dlq
-corepack pnpm --filter @meigallery/api exec wrangler secret put TIKTOK_EVENTS_ACCESS_TOKEN --env=""
-corepack pnpm --filter @meigallery/api exec wrangler secret put TIKTOK_EVENTS_DATA_KEY_CURRENT --env=""
-```
+旧 `meigallery-tiktok-events*` Queue 和 `TIKTOK_EVENTS_*` Secret 在 Contract 前只保留用于旧 Worker 回滚。新 TikTok 运行时使用 `meigallery-ad-tiktok` / `meigallery-ad-tiktok-dlq`，Access Token 由 Owner 在统一后台写入加密凭证库。
 
 上线顺序固定为：
 
-1. 本地通过 migration `0001..0050`、API/Web 全量测试、类型检查、Nuxt production build、Worker dry-run 和 secret scan。
-2. 在 production 创建两条 TikTok Queue，写入 Access Token 与独立 AES-256-GCM data key；dev/local 不创建或绑定这些资源。
-3. 部署关闭态代码和 migration，在 `/admin/attribution` 保存 TikTok Pixel ID，保持 Server 关闭且 rollout `0`。
+1. 本地通过 migration `0001..0051`、API/Web 全量测试、类型检查、Nuxt production build、Worker dry-run 和 secret scan。
+2. 通过 `./scripts/setup.sh production` 创建统一 Queue，并完成 v0.4.0 production cutover；dev/local 不创建或绑定广告平台资源。
+3. 在 `/admin/attribution/platforms?provider=tiktok` 保存 Pixel ID 与 Access Token，保持 Server 关闭且 rollout `0`。
 4. 在 TikTok Events Manager 打开 Test Events，输入当次 Test Event Code 后点击“验证 Events API”。API 每次都会发送新的 `Contact` 与 `CompleteRegistration` 测试事件；连接身份未变化时复用现有 revision，不改写验证状态。Test Event Code 不写入 D1、审计或长期 secret，审计日志只记录发送数量、验证状态与 revision。
 5. 确认两项服务器测试事件均被接收，且 `Contact` 不携带注册身份，`CompleteRegistration` 包含允许的匹配标识。连接身份变化后必须重新验证。
 6. 先开启 Browser Pixel 并观察，再开启 Server API，从 `10%` 开始人工放量；后台按 TikTok 平台查看 Pixel、Server API、失败、等待、重试耗尽及 `_ttp/ttclid` 覆盖。
@@ -270,12 +224,9 @@ corepack pnpm --filter @meigallery/api exec wrangler secret put TIKTOK_EVENTS_DA
 | `IMAGE_RESIZING_ENABLED` | API Worker vars | 是否启用 Cloudflare Images Transformations；启用前需在 Dashboard 打开 Images > Transformations |
 | `IMPORT_TOKEN_DAILY_LIMIT` | API Worker vars | 单个 Import Token 每日可创建的外部导入记录上限，未设置时 API 默认 100 |
 | `TELEGRAM_BOT_TOKEN_<SOURCE_BOT_KEY>` | API Worker secret | Telegram 外部导入拉取 file_id 所需 Bot Token，例如 `ops_gallery_bot` 对应 `TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT` |
-| `META_CAPI_ACCESS_TOKEN` | API Worker secret | Meta Conversions API 访问令牌，只存 Worker secret，不进入 D1 或前端 |
-| `META_CAPI_DATA_KEY_CURRENT` | API Worker secret | AES-256-GCM 当前数据密钥；所有 mode 的 CAPI readiness 必需 |
-| `META_CAPI_DATA_KEY_PREVIOUS` | API Worker secret | 仅轮换窗口使用的上一把数据密钥 |
-| `TIKTOK_EVENTS_ACCESS_TOKEN` | API Worker secret | TikTok Events API Access Token，只通过 `Access-Token` header 发送 |
-| `TIKTOK_EVENTS_DATA_KEY_CURRENT` | API Worker secret | TikTok Events API 临时匹配上下文的 AES-256-GCM 当前密钥 |
-| `TIKTOK_EVENTS_DATA_KEY_PREVIOUS` | API Worker secret | 仅 TikTok data key 轮换窗口使用 |
+| `AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT` | API Worker secret | 通用平台凭证库和 Outbox 的当前主密钥；production 必填 |
+| `AD_PLATFORM_CREDENTIAL_MASTER_KEY_PREVIOUS` | API Worker secret | 仅统一主密钥轮换窗口使用 |
+| `META_CAPI_*` / `TIKTOK_EVENTS_*` | 旧 API Worker secret | v0.4.0 Contract 前仅为旧 Worker 回滚保留；新运行时不读取，Contract 后删除 |
 | `NUXT_PUBLIC_API_BASE_URL` | Web Worker vars | API 地址（如 `https://api.616618.xyz`） |
 
 设置 secret：
@@ -288,14 +239,9 @@ corepack pnpm --filter @meigallery/api exec wrangler secret put STREAM_API_TOKEN
 corepack pnpm --filter @meigallery/api exec wrangler secret put TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT
 # 如有独立案例导入 Bot：
 corepack pnpm --filter @meigallery/api exec wrangler secret put TELEGRAM_BOT_TOKEN_OPS_CASE_BOT
-corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_ACCESS_TOKEN
-corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_DATA_KEY_CURRENT
-# 仅轮换窗口执行：
-corepack pnpm --filter @meigallery/api exec wrangler secret put META_CAPI_DATA_KEY_PREVIOUS
-corepack pnpm --filter @meigallery/api exec wrangler secret put TIKTOK_EVENTS_ACCESS_TOKEN
-corepack pnpm --filter @meigallery/api exec wrangler secret put TIKTOK_EVENTS_DATA_KEY_CURRENT
-# 仅轮换窗口执行：
-corepack pnpm --filter @meigallery/api exec wrangler secret put TIKTOK_EVENTS_DATA_KEY_PREVIOUS
+openssl rand -base64 32 | corepack pnpm --filter @meigallery/api exec wrangler secret put AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT --env=""
+# 仅统一主密钥轮换窗口执行：
+corepack pnpm --filter @meigallery/api exec wrangler secret put AD_PLATFORM_CREDENTIAL_MASTER_KEY_PREVIOUS --env=""
 ```
 
 ## 7. Cloudflare 产品绑定
@@ -306,8 +252,10 @@ corepack pnpm --filter @meigallery/api exec wrangler secret put TIKTOK_EVENTS_DA
 - Zone ID: `2f7f49183fa463345e09432719af2c7d`（616618.xyz，Free 计划）
 - D1 Database ID: `714929cb-003b-4cb1-bd9f-545fa1895e8c`
 - R2 Bucket: `meigallery-media`
-- Queue: `meigallery-meta-capi` / `meigallery-meta-capi-dlq`（生产 Meta CAPI）
-- Queue: `meigallery-tiktok-events` / `meigallery-tiktok-events-dlq`（生产 TikTok Events API）
+- Queue: `meigallery-ad-meta` / `meigallery-ad-meta-dlq`
+- Queue: `meigallery-ad-tiktok` / `meigallery-ad-tiktok-dlq`
+- Queue: `meigallery-ad-google` / `meigallery-ad-google-dlq`
+- 旧 Queue: `meigallery-meta-capi*` / `meigallery-tiktok-events*`（仅 Contract 前回滚保留）
 - D1 Database（dev）: `meigallery-db-dev`
 - R2 Bucket（dev）: `meigallery-media-dev`
 
@@ -444,11 +392,10 @@ head_sampling_rate = 1
 - [ ] 后台管理员账号已创建
 - [ ] 外部导入所需 Import Token 已在后台创建，权限、过期时间和 `allowedSourceBotKeys` 已确认
 - [ ] 每个 `sourceBotKey` 对应的 `TELEGRAM_BOT_TOKEN_<SOURCE_BOT_KEY>` secret 已配置
-- [ ] 生产 `meigallery-meta-capi` 和 `meigallery-meta-capi-dlq` 已创建，API Worker producer / consumer dry-run 通过
-- [ ] `META_CAPI_ACCESS_TOKEN` 和 `META_CAPI_DATA_KEY_CURRENT` 已作为 production secret 配置；dev 不配置
-- [ ] 生产 `meigallery-tiktok-events` / `meigallery-tiktok-events-dlq` 已创建，并通过 `node scripts/verify-ad-platform-queues.mjs production`；即使 TikTok 保持关闭也必须在 `0049` 前满足
-- [ ] 如准备启用 TikTok，`TIKTOK_EVENTS_ACCESS_TOKEN` 与独立 data key 已作为 production secret 配置；dev 不配置
-- [ ] `0047_ad_platform_delivery_core.sql`、`0048_tiktok_pixel_connection.sql`、`0049_tiktok_events_api.sql` 与 `0050_strict_ad_source_routing.sql` 已应用；新平台保持 mode `disabled`、Server 关闭、rollout `0`
+- [ ] 生产 6 条 `meigallery-ad-*` Queue 已创建，双采样 backlog 为 0
+- [ ] `AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT` 已作为 production secret 配置；dev 不配置
+- [ ] 旧 Meta/TikTok Server、rollout、活跃 Delivery、Outbox 和旧 Queue backlog 均为 0
+- [ ] `0051_unified_attribution_expand.sql` 已应用，历史事实回填和 reconcile 通过；三个新平台保持 mode `disabled`、Server 关闭、rollout `0`
 - [ ] 当前 Meta 连接具有 30 天内、且晚于该连接最后验证时间的 production live 人工确认；`Contact` / `CompleteRegistration` 均完成 Browser/Server 同 ID 去重，且无 `Lead` / `StartTrial`
 - [ ] `/admin/attribution` 可按 Meta / TikTok 分别查看 Pixel `attempted`、Server `sent` 和匹配覆盖；平台 Test Events 严格成功后才允许对应 Server 开关与 rollout
 - [ ] 如接入 Ops Hub 自动导入，Ops Hub 侧 `sourceBotKey` 与 MeiGallery Import Token allowlist 完全一致，且只提交 `metadata.type=gallery/case`
@@ -487,21 +434,14 @@ head_sampling_rate = 1
 corepack pnpm --filter @meigallery/api exec wrangler deploy --env="" --dry-run --outdir=dist
 corepack pnpm --filter @meigallery/web exec nuxt build
 
-# 1.1 在任何 remote migration 前绑定当前 commit 并执行 production gate。
-GIT_COMMIT="$(git rev-parse HEAD)"
-env -u VERIFY_RELEASE_ALLOW_BRANCH node scripts/verify-release.mjs assert-production-allowed
-
 # 2. 查看将复制和将删除的映射，不修改 R2 或 D1
 node scripts/migrate-cases-r2.mjs --dry-run --remote
 
 # 3. 复制 testimonials/ 对象到 cases/，并通过 sha256 验证新旧对象内容一致
 node scripts/migrate-cases-r2.mjs --remote
 
-# 4. 再执行 D1 远程迁移；脚本不会自动执行 migration
-corepack pnpm --filter @meigallery/api exec wrangler d1 migrations apply meigallery-db --env="" --remote
-
-# 如需改用一键部署脚本在生产环境执行包含 0017 的迁移，必须先完成 R2 dry-run、复制和验证，
-# 再显式设置以下环境变量解除 production-only 保护。
+# 4. 完成 R2 验证后，只能通过统一部署脚本执行 D1 migration 和 Worker 发布。
+# 显式变量仅解除 0017 专项保护，不绕过其他 production 门禁。
 ALLOW_CASES_CLEANUP_MIGRATION=true ./scripts/deploy.sh production
 
 # 5. 部署 API 和 Web Worker，并完成 smoke 测试

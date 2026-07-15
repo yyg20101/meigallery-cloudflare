@@ -334,7 +334,7 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 
 ## 8. D1 数据库 Schema `[当前实现]`
 
-以下为当前核心表摘要，完整结构以 `packages/api/migrations/` 中的顺序迁移为准。数据分析相关表已通过 `0023` 到 `0027` 建立 schema，并已接入公开采集 API、邀请码转化闭环、推广来源管理、Web 轻量 SDK、核心业务埋点、Cron 聚合任务、后台分析 API、后台分析页面、端到端 smoke、性能成本 fixtures、上线顺序和回滚文档。站内行为分析采集仍不依赖 Cloudflare Queues 或 Workers Analytics Engine；广告平台 Server API 使用独立 Cloudflare Queues，Meta 绑定为 `META_CAPI_QUEUE`，TikTok 绑定为 `TIKTOK_EVENTS_QUEUE`。
+以下为当前核心表摘要，完整结构以 `packages/api/migrations/` 中的顺序迁移为准。数据分析相关表已通过 `0023` 到 `0027` 建立 schema，并已接入公开采集 API、邀请码转化闭环、推广来源管理、Web 轻量 SDK、核心业务埋点、Cron 聚合任务、后台分析 API、后台分析页面、端到端 smoke、性能成本 fixtures、上线顺序和回滚文档。站内行为分析采集仍不依赖 Cloudflare Queues 或 Workers Analytics Engine；广告平台 Server API 使用 Meta/TikTok/Google 三组独立 `AD_*_QUEUE`。
 
 ### users
 
@@ -666,10 +666,10 @@ INSERT INTO site_settings (key, value) VALUES
 - `consent_state=denied` 时只保留站内必要事实，不创建任何广告平台 Browser / Server delivery；服务端解析后的 `consent_state` 仅用于当次 delivery 判断，不作为 D1 字段持久化。浏览器 Pixel 以公开授权 API 返回状态为准，Server API 始终独立验证 receipt。
 - 每个平台的 Browser / Server delivery 使用同一 `external_event_id`；Pixel `attempted` 仅说明浏览器已尝试调用，不代表平台接收。只有 Server delivery 为 `sent` 且平台响应满足严格成功契约，才可显示为 API 已接收；这仍不代表广告归因成功。
 - `/api/admin/attribution/*` 需要 admin+；`/api/admin/attribution/meta/test-event` 需要 owner，并写入 `admin_audit_logs`。
-- Meta CAPI 仅在 production 通过 Cloudflare Queue `META_CAPI_QUEUE` 异步投递，使用 Worker secret `META_CAPI_ACCESS_TOKEN`、`META_CAPI_DATA_KEY_CURRENT`；`META_CAPI_DATA_KEY_PREVIOUS` 仅用于轮换窗口。生产主 Queue / DLQ 固定为 `meigallery-meta-capi` / `meigallery-meta-capi-dlq`。dev/local 不绑定 Meta Queue、不配置 Meta secret、不调用 Meta Graph API，只执行单元测试、契约测试、migration、类型检查和构建验证。Graph token 只通过 Bearer header 发送。secret 不写入 D1、不返回前端，也不写入审计日志。
-- TikTok Events API 仅在 production 通过 `TIKTOK_EVENTS_QUEUE` 异步投递，使用 `TIKTOK_EVENTS_ACCESS_TOKEN`、`TIKTOK_EVENTS_DATA_KEY_CURRENT`；previous key 仅用于轮换。生产主 Queue / DLQ 固定为 `meigallery-tiktok-events` / `meigallery-tiktok-events-dlq`。Test Event Code 只存在于 Owner 验证请求内存中。dev/local 不绑定 TikTok Queue、不配置 TikTok secret、不调用 TikTok API。
-- Meta 与 TikTok 共享 `ad_platform_secure_outbox`、lease、CAS 状态机和恢复算法，但所有读写必须同时限定 `provider`；两个平台使用独立密钥、Queue、DLQ、连接 revision 和 rollout namespace，禁止交叉解密、投递或恢复。
-- production 部署必须在任何远端 D1 migration 前只读确认 `meigallery-meta-capi`、`meigallery-meta-capi-dlq`、`meigallery-tiktok-events`、`meigallery-tiktok-events-dlq` 全部存在；任一 Queue 缺失必须 fail closed，禁止留下“schema 已升级、Worker 未部署”的半完成状态。
+- Meta/TikTok/Google Server API 仅在 production 通过各自 `AD_META_QUEUE`、`AD_TIKTOK_QUEUE`、`AD_GOOGLE_QUEUE` 异步投递；主 Queue/DLQ 固定为 6 条 `meigallery-ad-*` 资源。dev/local 不绑定广告 Queue、不配置平台凭证、不调用真实平台 API。
+- 三个平台共享通用 Planner、Outbox、CAS 状态机和恢复算法，但物理 Queue、destination、connection revision、credential revision 和 rollout namespace 独立；所有读写必须限定唯一 provider，禁止交叉解密、投递、恢复或 fan-out。
+- 平台 Token/OAuth 凭证由 Owner 通过统一后台写入 D1 加密凭证库；Worker secret 只保存 `AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT/PREVIOUS`。凭证明文不返回前端、不写审计或日志。
+- 旧 `META_CAPI_*`、`TIKTOK_EVENTS_*` Secret 与旧 Queue 只在 v0.4.0 Contract 前作为旧 Worker 回滚资产保留，新运行时不读取。
 - Meta Events Manager 的 Test Event Code 是短期会话值，不属于 Pixel / CAPI 长期连接凭据。Owner 在后台输入当前 `TEST...` 代码，验证连接与 Live Evidence 共用该页面内存值；状态数据刷新不得清空该值，离开页面或重新加载后必须重新输入。API 只接受请求级代码并严格校验，代码不落 D1、不进入审计和响应，也不读取 Worker secret。资源 attestation V2 与资源摘要 V3 只证明 Pixel、CAPI token 和 data key 的环境隔离，正式事件 payload 禁止携带 `test_event_code`。
 - `/api/admin/attribution/meta` 仅返回 current/previous 有效性布尔值、previous outbox 计数、previous `pending/failed` delivery 计数和可移除状态；不返回 key ID、Base64、fingerprint 或错误 cause。
 - `corepack pnpm verify:meta-secrets` 扫描 tracked 文件与 ignored release evidence；`corepack pnpm verify:quick` 在单元测试和构建前执行该检查。production bootstrap、rollout 与最终 evidence 已由本地代码门禁强绑定，但没有外部证据时始终 fail closed。
@@ -687,6 +687,17 @@ Meta CAPI v2 远端证据链：
 #### Meta 生产放行与回滚 `[当前实现 / 运维前置]`
 
 `0047_ad_platform_delivery_core.sql` 将运行配置收口到 `ad_platform_connections`；生产放行必须确认 `server_enabled=false`、rollout `0`，直至 Owner 按顺序显式开启。`0044` 将 Dataset Quality 快照绑定批准契约 digest，`0045` 将 live challenge 唯一环境收口为 production，`0046` 将 live 增强匹配证明收口到当前 challenge。Browser 与 Server 投递都必须绑定当前有效 MetaConnection revision；连接失效时两条路径均 fail closed。顺序固定为：代码关闭态 -> production bootstrap -> 生产部署 -> post-deploy attestation -> test mode MetaConnection -> production live evidence -> Dataset Quality full gate -> production mode -> Server 开关 -> `0 -> 10 -> 50 -> 100` 人工放量与观察。
+
+### 通用归因 v3 production 切换
+
+- `0051_unified_attribution_expand.sql` 是纯 Expand：仅创建 `attribution_*` 最终物理表、索引和新表 trigger，不修改、桥接、回填或删除旧表。
+- 历史回填的唯一来源是 `analytics_conversion_actions`。只迁移 `contact` 和 `complete_registration`，沿用原 `id` 与 `dedupe_key`；`fact_origin=historical_backfill`、`external_event_id=NULL`，可信 provider 仅允许 `meta/tiktok/google`，其余归入 `none`。
+- 历史授权快照固定为 marketing/ad user data/ad personalization 全部 denied，确保 Planner 不会把历史事实转为 Delivery。旧 Delivery、Outbox、Receipt、verification、incident 和技术日报不迁移；业务 `analytics_conversion_daily` 原表保留供 Contract 后单独评估。
+- `scripts/attribution-v3-backfill.sql` 只包含 `INSERT OR IGNORE`，允许故障后重复执行。对账以 `dedupe_key` 覆盖为准，允许部署窗口中新 live fact 抢先占用同一业务事实，但必须保证 canonical event/provider 一致。
+- production preflight 严格只读：旧 Meta/TikTok Server/rollout、活跃 Delivery、Outbox、新 Google Server/rollout 和两次 Queue backlog 任一非零均阻断；6 条新 Queue、Workflow 配置和 `AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT` 任一缺失也阻断。
+- D1 export 默认写到 `~/.meigallery/production-backups/attribution-v3`，目录权限 `0700`、SQL/manifest 权限 `0600`。manifest 记录 database、Git commit、Time Travel bookmark、字节数和 SHA-256，不记录凭证或业务字段。
+- production 脚本识别 `0051` 是否待应用。仅首次切换运行上述 preflight、备份、回填和对账；普通后续发布不受旧系统关闭态约束。裸 remote migration package command 被禁用，避免产生“schema 已改、Worker/回填未完成”的分叉状态。
+- 停止条件：preflight/备份失败时 production 零写入；Expand 后部署失败时可回退旧 Worker；新 Worker 后回填/对账失败时三个新平台 rollout 保持 0，修复后只重跑幂等回填和对账；Contract 前不得删除旧表或旧 Queue。
 
 严格 Test Event 必须只包含 `Contact`、`CompleteRegistration`，出现 `Lead` 或 `StartTrial` 必须阻断，并且 CAPI 的 `sent` 与 `events_received=1` 同时成立。由用户营销授权门禁控制的 Pixel 只能写入 `attempted`，不能替代这项确认。任何阶段失败都必须将 mode 切回 `disabled` 并保持 `server_enabled=false`；先关闭 Server 投递、再关闭 mode，保留 Queue/DLQ、D1 migration 和账本用于诊断。
 

@@ -33,17 +33,24 @@ fi
 
 create_queue() {
   local queue_name=$1
-
-  if "${WRANGLER[@]}" queues create "$queue_name" &> /dev/null; then
-    :
-  else
-    :
-  fi
+  local attempt
 
   if "${WRANGLER[@]}" queues info "$queue_name" &> /dev/null; then
     echo "Queue ${queue_name} 已确认存在"
     return 0
   fi
+
+  if ! "${WRANGLER[@]}" queues create "$queue_name" &> /dev/null; then
+    echo "Queue ${queue_name} 创建请求未确认成功，继续检查远端状态..."
+  fi
+
+  for attempt in 1 2 3 4 5 6; do
+    if "${WRANGLER[@]}" queues info "$queue_name" &> /dev/null; then
+      echo "Queue ${queue_name} 已确认存在"
+      return 0
+    fi
+    sleep 2
+  done
 
   echo "错误: 创建 Queue ${queue_name} 失败"
   return 1
@@ -61,10 +68,12 @@ print_production_resources() {
   echo ""
 
   echo "--- 创建生产广告平台 Events API Queue ---"
-  create_queue "meigallery-meta-capi"
-  create_queue "meigallery-meta-capi-dlq"
-  create_queue "meigallery-tiktok-events"
-  create_queue "meigallery-tiktok-events-dlq"
+  create_queue "meigallery-ad-meta"
+  create_queue "meigallery-ad-meta-dlq"
+  create_queue "meigallery-ad-tiktok"
+  create_queue "meigallery-ad-tiktok-dlq"
+  create_queue "meigallery-ad-google"
+  create_queue "meigallery-ad-google-dlq"
   echo ""
 }
 
@@ -85,7 +94,7 @@ print_dev_resources() {
 
 print_secrets() {
   local env_name=$1
-  local env_flag=""
+  local env_flag='--env ""'
 
   if [ "$env_name" = "dev" ]; then
     env_flag="--env dev"
@@ -102,14 +111,11 @@ print_secrets() {
   echo "  # 可选：sourceBotKey=ops_case_bot 时配置"
   echo "  ${WRANGLER_CMD} secret put TELEGRAM_BOT_TOKEN_OPS_CASE_BOT ${env_flag}"
   if [ "$env_name" = "production" ]; then
-    echo "  ${WRANGLER_CMD} secret put META_CAPI_ACCESS_TOKEN ${env_flag}"
-    echo "  ${WRANGLER_CMD} secret put META_CAPI_DATA_KEY_CURRENT ${env_flag}"
-    echo "  # 仅密钥轮换窗口配置"
-    echo "  ${WRANGLER_CMD} secret put META_CAPI_DATA_KEY_PREVIOUS ${env_flag}"
-    echo "  ${WRANGLER_CMD} secret put TIKTOK_EVENTS_ACCESS_TOKEN ${env_flag}"
-    echo "  ${WRANGLER_CMD} secret put TIKTOK_EVENTS_DATA_KEY_CURRENT ${env_flag}"
-    echo "  # TikTok 密钥轮换窗口："
-    echo "  ${WRANGLER_CMD} secret put TIKTOK_EVENTS_DATA_KEY_PREVIOUS ${env_flag}"
+    echo "  # 生成 32 字节随机主密钥并通过标准输入写入，不在终端输出明文"
+    echo "  openssl rand -base64 32 | ${WRANGLER_CMD} secret put AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT ${env_flag}"
+    echo "  # 仅通用凭证主密钥轮换窗口配置"
+    echo "  ${WRANGLER_CMD} secret put AD_PLATFORM_CREDENTIAL_MASTER_KEY_PREVIOUS ${env_flag}"
+    echo "  # 旧 META_CAPI_* / TIKTOK_EVENTS_* 仅保留为回滚资产，不再创建或轮换"
   fi
   echo ""
 }

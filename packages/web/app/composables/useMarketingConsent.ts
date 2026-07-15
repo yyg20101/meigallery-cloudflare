@@ -3,10 +3,9 @@ import { canTrackMarketing as isMarketingTrackingAllowed, normalizeMarketingCons
 
 export function useMarketingConsent() {
   const { api } = useApi()
-  const { marketingTrackingMode } = useSiteSettings()
   const state = useState<AnalyticsConsentState>('marketing-consent-state', () => 'limited')
   const pending = useState<boolean>('marketing-consent-pending', () => false)
-  const canTrackMarketing = computed(() => isMarketingTrackingAllowed(state.value, marketingTrackingMode.value))
+  const canTrackMarketing = computed(() => isMarketingTrackingAllowed(state.value))
 
   async function refresh() {
     try {

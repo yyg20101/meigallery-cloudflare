@@ -16,12 +16,14 @@ import { getTurnstileConfigError, validateTurnstile } from '../utils/turnstile'
 import { consumeInviteCodeForRegistration } from '../services/invite-codes'
 import type { AnalyticsConsentState } from '@meigallery/shared'
 import { recordRegistration } from '../services/conversions'
-import { buildAdPlatformUserData } from '../utils/ad-platform-identifiers'
 import { getCookie } from 'hono/cookie'
 import { MARKETING_CONSENT_RECEIPT_COOKIE } from './marketing-consent'
 import { resolveTrustedMarketingConsent } from '../utils/marketing-consent-receipt'
-import { AD_ATTRIBUTION_RECEIPT_COOKIE } from './ad-attribution'
-import { resolveTrustedAdAttributionProvider } from '../utils/ad-attribution-receipt'
+import { AD_ATTRIBUTION_CONTEXT_COOKIE } from './ad-attribution'
+import { loadAttributionCryptoKeys } from '../utils/attribution-crypto'
+import { resolveTrustedAdAttributionContext } from '../utils/ad-attribution-context'
+import { resolveTrustedAdConsentSnapshot } from '../utils/marketing-consent-receipt'
+import { hashAdPlatformEmail, readAdPlatformBrowserIdentifiersFromRequest } from '../utils/ad-platform-identifiers'
 
 type RegistrationAttributionContext = {
   visitorId?: string
@@ -256,12 +258,14 @@ authRoutes.post('/register', async (c) => {
     getCookie(c, MARKETING_CONSENT_RECEIPT_COOKIE),
     attribution.consentState,
   )
-  const attributionProvider = attribution.consentState === 'granted'
+  const consentSnapshot = await resolveTrustedAdConsentSnapshot(
+    c.env.SESSION_SECRET,
+    getCookie(c, MARKETING_CONSENT_RECEIPT_COOKIE),
+    attribution.consentState,
+  )
+  const attributionContext = consentSnapshot.marketingAllowed
     && attribution.adAttributionState !== 'suppress'
-    ? await resolveTrustedAdAttributionProvider(
-        c.env.SESSION_SECRET,
-        getCookie(c, AD_ATTRIBUTION_RECEIPT_COOKIE),
-      )
+    ? await trustedRegistrationAttributionContext(c)
     : null
   const hasAttribution = isPlainRecord(body.attribution)
 
@@ -302,12 +306,12 @@ authRoutes.post('/register', async (c) => {
       utmMedium: attribution.utmMedium,
       utmCampaign: attribution.utmCampaign,
       utmContent: attribution.utmContent,
-      consentState: attribution.consentState,
-      attributionProvider: attributionProvider ?? '',
+      consentSnapshot,
+      attributionContext,
+      attributionSource: attributionContext ? 'context' : 'none',
+      browserIdentifiers: readAdPlatformBrowserIdentifiersFromRequest(c.req.raw),
+      hashedEmail: await hashAdPlatformEmail(email),
       metadata: { method: 'email' },
-    }, {
-      getAdPlatformUserData: () => buildAdPlatformUserData(c.req.raw, attribution.browserIdentifiers),
-      getRegistrationSensitiveInput: async () => readRegistrationSensitiveInput(db, userId),
     })
     trackingInstructions = registration.trackingInstructions
   } catch {
@@ -335,25 +339,12 @@ function generateMetaExternalId() {
   return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
 }
 
-async function readRegistrationSensitiveInput(db: D1Database, userId: number) {
-  const user = await db.prepare(`
-    SELECT id, email, conversion_external_id
-    FROM users
-    WHERE id = ?
-    LIMIT 1
-  `).bind(userId).first<{
-    id: number
-    email: string
-    conversion_external_id: string | null
-  }>()
-  if (user?.id !== userId
-    || typeof user.email !== 'string'
-    || !user.email.trim()
-    || typeof user.conversion_external_id !== 'string'
-    || !/^[0-9a-f]{32}$/.test(user.conversion_external_id)) {
-    throw new Error('REGISTRATION_MATCH_DATA_UNAVAILABLE')
-  }
-  return { email: user.email, externalId: user.conversion_external_id }
+async function trustedRegistrationAttributionContext(c: Parameters<typeof getCookie>[0]) {
+  try {
+    const keys = await loadAttributionCryptoKeys(c.env)
+    const context = await resolveTrustedAdAttributionContext(keys, getCookie(c, AD_ATTRIBUTION_CONTEXT_COOKIE))
+    return context
+  } catch { return null }
 }
 
 function normalizeRegistrationAttribution(value: unknown, userId: number) {

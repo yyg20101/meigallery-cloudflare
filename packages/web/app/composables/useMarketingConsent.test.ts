@@ -13,7 +13,7 @@ beforeEach(() => {
     return stateStore.get(key)
   })
   vi.stubGlobal('useApi', () => ({ api }))
-  vi.stubGlobal('useSiteSettings', () => ({ marketingTrackingMode: ref('production') }))
+  vi.stubGlobal('useSiteSettings', () => { throw new Error('营销授权禁止读取公开广告连接') })
 })
 
 afterEach(() => vi.unstubAllGlobals())

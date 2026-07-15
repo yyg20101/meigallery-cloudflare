@@ -27,8 +27,9 @@ export async function main(options = {}) {
   assert.equal(config.dev.r2.bucketName, 'meigallery-media-dev', '开发 R2 名称必须为 meigallery-media-dev')
   assert.notEqual(config.production.d1.databaseId, config.dev.d1.databaseId, '开发 D1 database_id 不得与生产相同')
   assert.notEqual(config.production.r2.bucketName, config.dev.r2.bucketName, '开发 R2 bucket 不得与生产相同')
-  assertQueueConfig(config.production.queues.meta, 'meigallery-meta-capi', 'meigallery-meta-capi-dlq', 'Meta CAPI')
-  assertQueueConfig(config.production.queues.tiktok, 'meigallery-tiktok-events', 'meigallery-tiktok-events-dlq', 'TikTok Events')
+  assertQueueConfig(config.production.queues.meta, 'meigallery-ad-meta', 'meigallery-ad-meta-dlq', 'Meta')
+  assertQueueConfig(config.production.queues.tiktok, 'meigallery-ad-tiktok', 'meigallery-ad-tiktok-dlq', 'TikTok')
+  assertQueueConfig(config.production.queues.google, 'meigallery-ad-google', 'meigallery-ad-google-dlq', 'Google')
 
   return config
 }
@@ -44,8 +45,9 @@ export async function loadWranglerResourceConfig(options = {}) {
       d1: extractNamedFields(source, '[[d1_databases]]', ['database_name', 'database_id']),
       r2: extractNamedFields(source, '[[r2_buckets]]', ['bucket_name']),
       queues: {
-        meta: extractQueueConfig(source, '', 'META_CAPI_QUEUE'),
-        tiktok: extractQueueConfig(source, '', 'TIKTOK_EVENTS_QUEUE'),
+        meta: extractQueueConfig(source, '', 'AD_META_QUEUE'),
+        tiktok: extractQueueConfig(source, '', 'AD_TIKTOK_QUEUE'),
+        google: extractQueueConfig(source, '', 'AD_GOOGLE_QUEUE'),
       },
     },
     dev: {
@@ -71,7 +73,7 @@ function assertQueueConfig(queue, expectedMain, expectedDlq, label) {
   assert.equal(queue.mainConsumerName, queue.producerName, `${label} Queue producer/consumer 必须一致`)
   assert.equal(queue.deadLetterQueueName, expectedDlq, `${label} 生产 DLQ 名称不正确`)
   assert.equal(queue.dlqConsumerName, queue.deadLetterQueueName, `${label} DLQ 必须配置 consumer`)
-  assert.equal(queue.maxRetries, 5, `${label} Queue max_retries 必须为 5`)
+  assert.equal(queue.maxRetries, 3, `${label} Queue max_retries 必须为 3`)
   assert.equal(queue.retryDelay, 60, `${label} Queue retry_delay 必须为 60`)
 }
 

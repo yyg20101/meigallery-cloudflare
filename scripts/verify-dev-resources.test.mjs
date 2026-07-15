@@ -19,30 +19,43 @@ binding = "R2"
 bucket_name = "meigallery-media"
 
 [[queues.producers]]
-binding = "META_CAPI_QUEUE"
-queue = "meigallery-meta-capi"
+binding = "AD_META_QUEUE"
+queue = "meigallery-ad-meta"
 
 [[queues.consumers]]
-queue = "meigallery-meta-capi"
-max_retries = 5
+queue = "meigallery-ad-meta"
+max_retries = 3
 retry_delay = 60
-dead_letter_queue = "meigallery-meta-capi-dlq"
+dead_letter_queue = "meigallery-ad-meta-dlq"
 
 [[queues.consumers]]
-queue = "meigallery-meta-capi-dlq"
+queue = "meigallery-ad-meta-dlq"
 
 [[queues.producers]]
-binding = "TIKTOK_EVENTS_QUEUE"
-queue = "meigallery-tiktok-events"
+binding = "AD_TIKTOK_QUEUE"
+queue = "meigallery-ad-tiktok"
 
 [[queues.consumers]]
-queue = "meigallery-tiktok-events"
-max_retries = 5
+queue = "meigallery-ad-tiktok"
+max_retries = 3
 retry_delay = 60
-dead_letter_queue = "meigallery-tiktok-events-dlq"
+dead_letter_queue = "meigallery-ad-tiktok-dlq"
 
 [[queues.consumers]]
-queue = "meigallery-tiktok-events-dlq"
+queue = "meigallery-ad-tiktok-dlq"
+
+[[queues.producers]]
+binding = "AD_GOOGLE_QUEUE"
+queue = "meigallery-ad-google"
+
+[[queues.consumers]]
+queue = "meigallery-ad-google"
+max_retries = 3
+retry_delay = 60
+dead_letter_queue = "meigallery-ad-google-dlq"
+
+[[queues.consumers]]
+queue = "meigallery-ad-google-dlq"
 
 [[env.dev.d1_databases]]
 binding = "DB"
@@ -75,19 +88,27 @@ describe('开发环境资源校验', () => {
           },
           queues: {
             meta: {
-              producerName: 'meigallery-meta-capi',
-              mainConsumerName: 'meigallery-meta-capi',
-              deadLetterQueueName: 'meigallery-meta-capi-dlq',
-              dlqConsumerName: 'meigallery-meta-capi-dlq',
-              maxRetries: 5,
+              producerName: 'meigallery-ad-meta',
+              mainConsumerName: 'meigallery-ad-meta',
+              deadLetterQueueName: 'meigallery-ad-meta-dlq',
+              dlqConsumerName: 'meigallery-ad-meta-dlq',
+              maxRetries: 3,
               retryDelay: 60,
             },
             tiktok: {
-              producerName: 'meigallery-tiktok-events',
-              mainConsumerName: 'meigallery-tiktok-events',
-              deadLetterQueueName: 'meigallery-tiktok-events-dlq',
-              dlqConsumerName: 'meigallery-tiktok-events-dlq',
-              maxRetries: 5,
+              producerName: 'meigallery-ad-tiktok',
+              mainConsumerName: 'meigallery-ad-tiktok',
+              deadLetterQueueName: 'meigallery-ad-tiktok-dlq',
+              dlqConsumerName: 'meigallery-ad-tiktok-dlq',
+              maxRetries: 3,
+              retryDelay: 60,
+            },
+            google: {
+              producerName: 'meigallery-ad-google',
+              mainConsumerName: 'meigallery-ad-google',
+              deadLetterQueueName: 'meigallery-ad-google-dlq',
+              dlqConsumerName: 'meigallery-ad-google-dlq',
+              maxRetries: 3,
               retryDelay: 60,
             },
           },

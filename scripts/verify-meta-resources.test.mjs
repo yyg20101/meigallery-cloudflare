@@ -112,6 +112,37 @@ describe('Meta production 资源检查', () => {
     assert.equal(hasNoPendingMigrations('warning: unknown state'), false)
   })
 
+  it('bootstrap 允许新迁移待应用和已有有效连接，但仍要求旧迁移基线完整', async () => {
+    const resourceConfig = {
+      envArgs: ['--env', ''],
+      database: 'meigallery-db',
+      d1Id: 'production-d1-id',
+      worker: 'meigallery-api',
+      mainQueue: 'meigallery-ad-meta',
+      dlq: 'meigallery-ad-meta-dlq',
+      r2: 'meigallery-media',
+      apiOrigin: 'https://api.example.test',
+      mainConsumer: { batchSize: 10, maxWaitTimeMs: 30_000, maxRetries: 3, retryDelay: 60 },
+      dlqConsumer: { batchSize: 10, maxWaitTimeMs: 5_000 },
+    }
+    const result = await runMetaResourceVerification({
+      environment: 'production',
+      initialMetaRollout: true,
+      reportOnly: true,
+      resourceConfig,
+      commit: COMMIT,
+      runCommand: async (_command, _args, options) => resourceStep(options.name),
+    })
+
+    assert.equal(result.status, 'passed')
+    assert.equal(result.phase, 'bootstrap')
+    assert.equal(result.migrationsCurrent, false)
+    assert.equal(result.migrationsApplied, true)
+    assert.equal(result.connectionVerified, true)
+    assert.equal(result.targetRolloutPercentage, 0)
+    assert.equal(result.effectiveRolloutPercentage, 0)
+  })
+
   it('常规发布复用有效 Meta 连接，不要求 verification commit 等于待发布 commit', () => {
     const pixelId = '1234567890'
     const output = JSON.stringify([{ results: [{
@@ -150,4 +181,68 @@ function responseAt(url, body) {
     url,
     json: async () => body,
   }
+}
+
+const REQUIRED_MIGRATIONS = [
+  '0036_meta_capi_v2_secure_delivery.sql',
+  '0037_meta_connection_revision.sql',
+  '0038_conversion_dedupe_claims.sql',
+  '0039_meta_capi_v2_operations.sql',
+  '0040_meta_capi_circuit_indexes.sql',
+  '0041_meta_live_challenges.sql',
+  '0042_meta_resource_attestation_tickets.sql',
+  '0043_meta_capi_delivery_lease.sql',
+  '0044_meta_dataset_quality_contract_digest.sql',
+  '0045_meta_live_production.sql',
+  '0046_meta_live_match_coverage.sql',
+  '0047_ad_platform_delivery_core.sql',
+  '0048_tiktok_pixel_connection.sql',
+  '0049_tiktok_events_api.sql',
+  '0050_strict_ad_source_routing.sql',
+]
+
+function resourceStep(name) {
+  const outputs = {
+    'meta-resources-production-queue-main': 'Queue: meigallery-ad-meta',
+    'meta-resources-production-queue-dlq': 'Queue: meigallery-ad-meta-dlq',
+    'meta-resources-production-d1-info': JSON.stringify({ name: 'meigallery-db', uuid: 'production-d1-id' }),
+    'meta-resources-production-r2-bucket': JSON.stringify({ name: 'meigallery-media' }),
+    'meta-resources-production-consumer-main': '[]',
+    'meta-resources-production-consumer-dlq': '[]',
+    'meta-resources-production-secrets': JSON.stringify([
+      { name: 'META_CAPI_ACCESS_TOKEN' },
+      { name: 'META_CAPI_DATA_KEY_CURRENT' },
+    ]),
+    'meta-resources-production-migrations': '0051_unified_attribution_expand.sql',
+    'meta-resources-production-meta-settings': d1Rows([{
+      server_enabled: 0,
+      mode: 'production',
+      destination_id: '1277657707436781',
+    }]),
+    'meta-resources-production-migration-names': d1Rows(REQUIRED_MIGRATIONS.map(migrationName => ({ name: migrationName }))),
+    'meta-resources-production-meta-connection': d1Rows([{
+      environment: 'production',
+      pixel_id: '1277657707436781',
+      graph_api_version: 'v25.0',
+      verified_commit: COMMIT,
+      verified_at: NOW,
+      invalidated_at: null,
+      invalidation_reason: '',
+      revision: 'b'.repeat(32),
+    }]),
+    'meta-resources-production-meta-operations': d1Rows([{
+      target_rollout_percentage: 0,
+      effective_rollout_percentage: 0,
+      open_critical_incident_count: 0,
+      expired_secure_outbox_count: 0,
+      previous_key_active_count: 0,
+      active_key_count: 0,
+    }]),
+  }
+  if (!(name in outputs)) throw new Error(`未覆盖的资源命令：${name}`)
+  return { status: 'passed', stdout: outputs[name], stderr: '', exitCode: 0 }
+}
+
+function d1Rows(results) {
+  return JSON.stringify([{ results }])
 }

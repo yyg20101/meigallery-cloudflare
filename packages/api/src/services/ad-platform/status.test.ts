@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { attributionConnectionSnapshotRows } from '../../test/ad-platform-fixture'
 import { listAdPlatformConnections } from './status'
 
 vi.mock('../meta-connection', () => ({
@@ -28,19 +29,29 @@ describe('广告平台连接状态', () => {
   it('通过统一契约暴露 Meta 状态而不泄漏凭证', async () => {
     const result = await listAdPlatformConnections({
       DB: {
-        prepare: () => ({
-          all: async () => ({
-            results: [{
-              provider: 'meta', enabled: 1, mode: 'test', browser_enabled: 1,
-              server_enabled: 1, destination_id: '1234567890', debug_enabled: 0,
-              rollout_percentage: 0, credential_secret_name: 'META_CAPI_ACCESS_TOKEN', revision: null,
-            }, {
-              provider: 'tiktok', enabled: 1, mode: 'test', browser_enabled: 1,
-              server_enabled: 0, destination_id: 'C123456789ABCDEF', debug_enabled: 0,
-              rollout_percentage: 0, credential_secret_name: '', revision: null,
-            }],
-          }),
-        }),
+        prepare: () => {
+          let provider = ''
+          return {
+            bind(value: string) { provider = value; return this },
+            async all() {
+              const configs = {
+                meta: { pixelId: '1234567890' },
+                tiktok: { pixelCode: 'C123456789ABCDEF' },
+                google: { tagId: 'AW-123456789', customerId: '1234567890', cloudProjectId: 'meigallery-ads' },
+              } as const
+              const config = configs[provider as keyof typeof configs]
+              return {
+                results: config
+                  ? attributionConnectionSnapshotRows({
+                      provider: provider as keyof typeof configs,
+                      publicConfig: config,
+                      mode: 'test',
+                    })
+                  : [],
+              }
+            },
+          }
+        },
       },
     } as never)
     expect(result).toEqual(expect.arrayContaining([expect.objectContaining({
@@ -58,7 +69,7 @@ describe('广告平台连接状态', () => {
       serverDataKeyConfigured: false,
       state: 'unverified',
     })]))
-    expect(result.map(connection => connection.provider)).toEqual(['meta', 'tiktok'])
+    expect(result.map(connection => connection.provider)).toEqual(['meta', 'tiktok', 'google'])
     expect(JSON.stringify(result)).not.toMatch(/accessToken|credentialValue/i)
   })
 })

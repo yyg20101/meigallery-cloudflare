@@ -198,12 +198,17 @@ describe('发布验证 D1 摘要存储', () => {
     assert.doesNotThrow(() => assertReleaseVerificationSummary({
       environment: 'production', verificationType: 'meta_resources', commit: COMMIT, summary: bootstrap,
     }))
+    assert.doesNotThrow(() => assertReleaseVerificationSummary({
+      environment: 'production', verificationType: 'meta_resources', commit: COMMIT,
+      summary: { ...bootstrap, connectionVerified: true },
+    }))
     for (const summary of [
       { ...bootstrap, migrationsApplied: false },
-      { ...bootstrap, connectionVerified: true },
       { ...bootstrap, liveAttestation: true },
       { ...bootstrap, environmentIsolation: { ...bootstrap.environmentIsolation, pixel: true } },
       { ...metaResourcesSummary('post-deploy'), verificationPhase: 'bootstrap' },
+      { ...metaResourcesSummary('post-deploy'), migrationsCurrent: false },
+      { ...metaResourcesSummary('full'), migrationsCurrent: false },
       { ...metaResourcesSummary('full'), verificationPhase: 'post-deploy' },
       { ...metaResourcesSummary('full'), liveAttestation: true },
     ]) {
@@ -285,7 +290,7 @@ function metaResourcesSummary(phase = 'full') {
     r2Ready: true,
     queuesReady: true,
     secretsReady: true,
-    migrationsCurrent: true,
+    migrationsCurrent: !bootstrap,
     migrationsApplied: true,
     connectionVerified: phase === 'full',
     capiEnabled: false,

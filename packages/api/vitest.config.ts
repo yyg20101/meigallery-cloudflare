@@ -3,23 +3,24 @@ import { resolve } from 'path'
 
 const AD_PLATFORM_COVERAGE_FILES = [
   'src/utils/conversions.ts',
-  'src/utils/pixel-receipt.ts',
+  'src/services/ad-platform/browser-attempt-receipt.ts',
   'src/utils/ad-platform-identifiers.ts',
   'src/utils/secure-context-crypto.ts',
   'src/services/ad-platform/secure-outbox.ts',
+  'src/services/ad-platform/queue-runtime.ts',
+  'src/services/ad-platform/recovery.ts',
+  'src/services/attribution-dashboard.ts',
   'src/services/conversions.ts',
   'src/services/meta-capi.ts',
-  'src/services/meta-capi-queue.ts',
   'src/services/tiktok-connection.ts',
   'src/services/tiktok-events.ts',
   'src/services/tiktok-events-delivery.ts',
-  'src/services/tiktok-events-queue.ts',
   'src/routes/conversions.ts',
   'src/routes/admin/ad-platforms.ts',
-  'src/routes/admin/attribution.ts',
+  'src/routes/admin/attribution-v3.ts',
 ]
 
-const AD_PLATFORM_COVERAGE_GLOB = 'src/{utils/conversions,utils/pixel-receipt,utils/ad-platform-identifiers,utils/secure-context-crypto,services/ad-platform/secure-outbox,services/conversions,services/meta-capi,services/meta-capi-queue,services/tiktok-connection,services/tiktok-events,services/tiktok-events-delivery,services/tiktok-events-queue,routes/conversions,routes/admin/ad-platforms,routes/admin/attribution}.ts'
+const AD_PLATFORM_COVERAGE_GLOB = 'src/{utils/conversions,utils/ad-platform-identifiers,utils/secure-context-crypto,services/ad-platform/browser-attempt-receipt,services/ad-platform/secure-outbox,services/ad-platform/queue-runtime,services/ad-platform/recovery,services/attribution-dashboard,services/conversions,services/meta-capi,services/tiktok-connection,services/tiktok-events,services/tiktok-events-delivery,routes/conversions,routes/admin/ad-platforms,routes/admin/attribution-v3}.ts'
 
 export default defineConfig({
   test: {
@@ -62,6 +63,7 @@ export default defineConfig({
       '@meigallery/shared/constants': resolve(__dirname, '../shared/src/constants/index.ts'),
       '@meigallery/shared/utils': resolve(__dirname, '../shared/src/utils/index.ts'),
       '@meigallery/shared': resolve(__dirname, '../shared/src/types/index.ts'),
+      'cloudflare:workers': resolve(__dirname, 'src/test/cloudflare-workers.ts'),
     },
   },
 })

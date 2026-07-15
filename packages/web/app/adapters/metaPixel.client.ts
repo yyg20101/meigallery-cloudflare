@@ -1,8 +1,13 @@
+import type {
+  AdBrowserPublicConfig,
+  AdBrowserInstruction,
+  AdBrowserSignal,
+  AdConsentSnapshot,
+} from '@meigallery/shared'
 import { createFacebookPixelScript, normalizePixelId } from '~/utils/trackingSanitizer'
 
-type MetaPixelEventName = 'ViewContent' | 'Search' | 'Contact' | 'CompleteRegistration'
+type MetaPixelEventName = AdBrowserSignal | 'Contact' | 'CompleteRegistration'
 type MetaPixelPayload = Record<string, string | number | boolean>
-type MetaPixelOptions = { eventID?: string }
 
 type FacebookQueueFunction = ((...args: unknown[]) => void) & {
   callMethod?: (...args: unknown[]) => void
@@ -18,23 +23,13 @@ declare global {
   }
 }
 
-export interface MetaPixelAdapter {
-  initialize(pixelId: string): boolean
-  teardown(): void
-  pageView(): boolean
-  standardEvent(
-    eventName: MetaPixelEventName,
-    payload?: MetaPixelPayload,
-    options?: MetaPixelOptions,
-  ): boolean
-}
+const EXTERNAL_EVENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
 
-export function createMetaPixelAdapter(): MetaPixelAdapter {
+export function createMetaPixelAdapter() {
   let initialized = false
   let activePixelId = ''
   let ownedFbq: FacebookQueueFunction | null = null
-  let pendingScript: HTMLScriptElement | null = null
-  let pendingScriptLoadHandler: (() => void) | null = null
+  let ownedScript: HTMLScriptElement | null = null
 
   function call(...args: unknown[]) {
     if (!isClientRuntime() || !initialized || !window.fbq) return false
@@ -42,79 +37,73 @@ export function createMetaPixelAdapter(): MetaPixelAdapter {
     return true
   }
 
-  function initialize(pixelId: string) {
-    const normalizedPixelId = normalizePixelId(pixelId)
-    if (!isClientRuntime() || !normalizedPixelId) return false
-    if (initialized && activePixelId === normalizedPixelId && window.fbq) return true
-    if (activePixelId && activePixelId !== normalizedPixelId) teardown()
+  async function initialize(config: AdBrowserPublicConfig, consent: AdConsentSnapshot) {
+    if (!isClientRuntime() || config.provider !== 'meta' || !consent.marketingAllowed) return false
+    const pixelId = normalizePixelId(config.pixelId)
+    if (!pixelId) return false
+    if (initialized && activePixelId === pixelId && window.fbq) return true
+    if (initialized) await teardown()
+    if (window.fbq || window._fbq) return false
 
-    if (!window.fbq) {
-      const fbq = function (...args: unknown[]) {
-        if (fbq.callMethod) fbq.callMethod(...args)
-        else fbq.queue.push(args)
-      } as FacebookQueueFunction
+    const fbq = function (...args: unknown[]) {
+      if (fbq.callMethod) fbq.callMethod(...args)
+      else fbq.queue.push(args)
+    } as FacebookQueueFunction
+    fbq.queue = []
+    fbq.loaded = true
+    fbq.version = '2.0'
+    window.fbq = fbq
+    window._fbq = fbq
+    ownedFbq = fbq
 
-      fbq.queue = []
-      fbq.loaded = true
-      fbq.version = '2.0'
-      window.fbq = fbq
-      window._fbq = fbq
-      ownedFbq = fbq
-
-      const script = createFacebookPixelScript(document)
-      const handleLoad = () => {
-        if (pendingScript === script) {
-          pendingScript = null
-          pendingScriptLoadHandler = null
-        }
-        script.removeEventListener('load', handleLoad)
-      }
-      script.addEventListener('load', handleLoad)
-      pendingScript = script
-      pendingScriptLoadHandler = handleLoad
-      document.head.appendChild(script)
-    }
+    ownedScript = createFacebookPixelScript(document)
+    document.head.appendChild(ownedScript)
 
     initialized = true
-    activePixelId = normalizedPixelId
-    return call('init', normalizedPixelId)
+    activePixelId = pixelId
+    return call('init', pixelId)
   }
 
-  function teardown() {
-    if (ownedFbq?.queue) ownedFbq.queue.length = 0
-    if (pendingScript && pendingScriptLoadHandler) {
-      pendingScript.removeEventListener('load', pendingScriptLoadHandler)
-    }
-    pendingScript?.remove()
+  async function track(instruction: AdBrowserInstruction) {
+    if (!validInstruction(instruction)) return false
+    return call(
+      'track',
+      instruction.descriptor.browserEventName,
+      instruction.payload,
+      { eventID: instruction.externalEventId },
+    )
+  }
+
+  async function trackSignal(signal: AdBrowserSignal, payload: MetaPixelPayload) {
+    if (signal === 'PageView') return call('track', 'PageView')
+    return call('track', signal satisfies MetaPixelEventName, payload)
+  }
+
+  async function teardown() {
+    if (ownedFbq) ownedFbq.queue.length = 0
+    ownedScript?.remove()
     if (isClientRuntime()) {
       if (window.fbq === ownedFbq) delete window.fbq
       if (window._fbq === ownedFbq) delete window._fbq
     }
-    pendingScript = null
-    pendingScriptLoadHandler = null
+    ownedScript = null
     ownedFbq = null
     initialized = false
     activePixelId = ''
   }
 
-  function pageView() {
-    return call('track', 'PageView')
-  }
-
-  function standardEvent(
-    eventName: MetaPixelEventName,
-    payload: MetaPixelPayload = {},
-    options: MetaPixelOptions = {},
-  ) {
-    return options.eventID
-      ? call('track', eventName, payload, { eventID: options.eventID })
-      : call('track', eventName, payload)
-  }
-
-  return { initialize, teardown, pageView, standardEvent }
+  return { initialize, track, trackSignal, teardown }
 }
 
 export const metaPixelAdapter = createMetaPixelAdapter()
+
+function validInstruction(instruction: AdBrowserInstruction) {
+  return instruction.provider === 'meta'
+    && instruction.descriptor.provider === 'meta'
+    && instruction.descriptor.canonicalEvent === instruction.canonicalEvent
+    && instruction.descriptor.browserEventName === instruction.canonicalEvent
+    && EXTERNAL_EVENT_ID_PATTERN.test(instruction.externalEventId)
+}
 
 function isClientRuntime() {
   return typeof window !== 'undefined' && typeof document !== 'undefined'

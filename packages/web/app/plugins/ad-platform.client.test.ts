@@ -3,38 +3,24 @@ import { computed, nextTick, ref } from 'vue'
 
 describe('广告平台浏览器插件', () => {
   const afterEachHandlers: Array<() => void> = []
-  const fetchSettings = vi.fn()
   const trackPageView = vi.fn()
   const teardownAdBrowserTracking = vi.fn()
   const clearAdAttribution = vi.fn()
   const refreshMarketingConsent = vi.fn()
-  const consent = ref<'limited' | 'granted' | 'denied'>('limited')
-  const facebookPixelEnabled = ref(true)
-  const facebookPixelId = ref('123456789')
-  const facebookPixelDebugEnabled = ref(false)
-  const browserConnections = computed(() => facebookPixelEnabled.value && facebookPixelId.value
-    ? [{ provider: 'meta', destinationId: facebookPixelId.value, debugEnabled: facebookPixelDebugEnabled.value }]
-    : [])
+  let consent = ref<'limited' | 'granted' | 'denied'>('limited')
 
   beforeEach(() => {
     vi.resetModules()
     afterEachHandlers.splice(0)
-    consent.value = 'limited'
-    fetchSettings.mockReset()
-    fetchSettings.mockResolvedValue(undefined)
-    trackPageView.mockReset()
-    teardownAdBrowserTracking.mockReset()
-    clearAdAttribution.mockReset()
-    clearAdAttribution.mockResolvedValue(undefined)
-    refreshMarketingConsent.mockReset()
-    refreshMarketingConsent.mockResolvedValue(undefined)
+    consent = ref<'limited' | 'granted' | 'denied'>('limited')
+    trackPageView.mockReset().mockResolvedValue(undefined)
+    teardownAdBrowserTracking.mockReset().mockResolvedValue(undefined)
+    clearAdAttribution.mockReset().mockResolvedValue(undefined)
+    refreshMarketingConsent.mockReset().mockResolvedValue(undefined)
 
     vi.stubGlobal('defineNuxtPlugin', <T>(plugin: T) => plugin)
     vi.stubGlobal('useRouter', () => ({ afterEach: (handler: () => void) => afterEachHandlers.push(handler) }))
-    vi.stubGlobal('useSiteSettings', () => ({
-      fetchSettings,
-      browserConnections,
-    }))
+    vi.stubGlobal('useSiteSettings', () => { throw new Error('禁止读取 public settings 广告连接') })
     vi.stubGlobal('useMarketingConsent', () => ({
       canTrackMarketing: computed(() => consent.value === 'granted'),
       refresh: refreshMarketingConsent,
@@ -46,37 +32,28 @@ describe('广告平台浏览器插件', () => {
     vi.unstubAllGlobals()
   })
 
-  it('设置、授权和路由变化都只委托 Tracking Facade 重新判断 PageView', async () => {
+  it('授权和路由变化只委托 Tracking Facade 从 bootstrap 同步当前 provider', async () => {
     const plugin = (await import('./ad-platform.client')).default
 
     await plugin({} as never)
     await nextTick()
-    expect(fetchSettings).toHaveBeenCalledOnce()
-    expect(clearAdAttribution).toHaveBeenCalledTimes(1)
+    expect(clearAdAttribution).toHaveBeenCalledOnce()
     expect(trackPageView).not.toHaveBeenCalled()
 
     consent.value = 'granted'
     await nextTick()
-    expect(trackPageView).toHaveBeenCalledTimes(1)
+    expect(trackPageView).toHaveBeenCalledOnce()
 
-    facebookPixelId.value = '987654321'
-    await nextTick()
+    await afterEachHandlers[0]?.()
     expect(trackPageView).toHaveBeenCalledTimes(2)
-
-    afterEachHandlers[0]?.()
-    expect(trackPageView).toHaveBeenCalledTimes(3)
 
     consent.value = 'denied'
     await nextTick()
     expect(clearAdAttribution).toHaveBeenCalledTimes(2)
-    expect(trackPageView).toHaveBeenCalledTimes(3)
   })
 
-  it('历史 granted 但初始化 refresh 失败时不启用 Pixel 且插件安全返回', async () => {
+  it('初始化 consent refresh 失败时不启用外部脚本并安全 teardown', async () => {
     consent.value = 'granted'
-    await nextTick()
-    trackPageView.mockClear()
-    teardownAdBrowserTracking.mockClear()
     refreshMarketingConsent.mockRejectedValueOnce(new Error('receipt unavailable'))
     const plugin = (await import('./ad-platform.client')).default
 

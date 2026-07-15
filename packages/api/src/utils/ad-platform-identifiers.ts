@@ -45,6 +45,20 @@ export function buildAdPlatformUserData(request: Request, bodyIdentifiers: unkno
   })
 }
 
+/** 请求 Cookie 只在本次归因规划内存中使用，调用方不得写入事实维度。 */
+export function readAdPlatformBrowserIdentifiersFromRequest(request: Request) {
+  const values = Object.fromEntries(request.headers.get('Cookie')?.split(';').map(item => {
+    const separator = item.indexOf('=')
+    return separator > 0 ? [item.slice(0, separator).trim(), item.slice(separator + 1).trim()] : []
+  }).filter((item): item is [string, string] => item.length === 2) ?? [])
+  return normalizeAdPlatformBrowserIdentifiers({
+    fbp: values._fbp,
+    fbc: values._fbc,
+    ttclid: values.ttclid,
+    ttp: values._ttp,
+  })
+}
+
 export async function hashAdPlatformEmail(email: string): Promise<string> {
   try {
     if (typeof email !== 'string') throw new Error(IDENTIFIER_ERROR)

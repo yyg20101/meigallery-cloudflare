@@ -1,8 +1,10 @@
 import { Buffer } from 'node:buffer'
+import { readFileSync } from 'node:fs'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Miniflare } from 'miniflare'
 import { unstable_splitSqlQuery } from 'wrangler'
 import type { Bindings } from '../index'
+import { seedAttributionConnection } from '../test/ad-platform-fixture'
 import { metaConnectionFingerprint } from '../utils/meta-capi-crypto'
 import {
   closeMetaCapiIncident,
@@ -112,6 +114,8 @@ beforeAll(async () => {
     );
   `
   for (const statement of unstable_splitSqlQuery(schema)) await db.prepare(statement).run()
+  const unified = readFileSync(new URL('../../migrations/0051_unified_attribution_expand.sql', import.meta.url), 'utf8')
+  for (const statement of unstable_splitSqlQuery(unified)) await db.prepare(statement).run()
 }, 30_000)
 
 beforeEach(async () => {
@@ -130,6 +134,14 @@ beforeEach(async () => {
     VALUES ('meta', 1, 'production', 1, 1, '1234567890', 0, 50,
             'META_CAPI_ACCESS_TOKEN', '${CONNECTION_REVISION}');
   `)
+  await seedAttributionConnection(db, {
+    provider: 'meta',
+    publicConfig: { pixelId: PIXEL_ID },
+    mode: 'production',
+    rolloutTargetPercentage: 50,
+    rolloutEffectivePercentage: 50,
+    connectionRevision: CONNECTION_REVISION,
+  })
 })
 
 afterAll(async () => {
@@ -353,7 +365,7 @@ describe('Meta CAPI incident 生命周期', () => {
     }],
     ['queue_binding_missing', async () => {
       await seedCloseEvidence()
-      return { env: { META_CAPI_QUEUE: undefined } }
+      return { env: { AD_META_QUEUE: undefined } }
     }],
     ['meta_resources_verification_missing', async () => {
       await seedCloseEvidence({ resources: false })
@@ -427,7 +439,7 @@ function circuitEnv(overrides: Partial<Bindings> = {}) {
     APP_ENV: 'dev',
     META_CAPI_ACCESS_TOKEN: ACCESS_TOKEN,
     META_CAPI_DATA_KEY_CURRENT: DATA_KEY,
-    META_CAPI_QUEUE: { send: async () => undefined },
+    AD_META_QUEUE: { send: async () => undefined },
     RELEASE_COMMIT,
     ...overrides,
   } as unknown as Bindings

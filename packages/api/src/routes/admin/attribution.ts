@@ -28,12 +28,8 @@ import {
   sanitizeMetaCapiIncidentEvidence,
 } from '../../services/meta-capi-incident-evidence'
 import {
-  isAttributionBreakdownDimension,
   isAttributionDashboardProvider,
-  queryAttributionBreakdown,
-  queryAttributionQuality,
   queryAttributionSummary,
-  queryAttributionTrends,
 } from '../../services/attribution-dashboard'
 import {
   consumeMetaLiveChallenge,
@@ -42,6 +38,7 @@ import {
 } from '../../services/meta-live-challenge'
 import { issueMetaResourceAttestationTicket } from '../../services/meta-resource-attestation-ticket'
 import { adminAdPlatformRoutes } from './ad-platforms'
+import { adminAttributionV3Routes } from './attribution-v3'
 
 export const adminAttributionRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -67,85 +64,8 @@ const META_CAPI_CRITICAL_QUALITY_ERROR_CODES = [
   'retry_exhausted',
 ] as const
 
+adminAttributionRoutes.route('/', adminAttributionV3Routes)
 adminAttributionRoutes.route('/platforms', adminAdPlatformRoutes)
-
-adminAttributionRoutes.get('/summary', async (c) => {
-  const range = parseRangeOrError(c)
-  if (range instanceof Response) return range
-  const provider = parseDashboardProviderOrError(c)
-  if (provider instanceof Response) return provider
-  try {
-    const result = await queryAttributionSummary(c.env.DB, range, provider)
-    return c.json({ range, ...result })
-  }
-  catch {
-    return dashboardUnavailable(c)
-  }
-})
-
-adminAttributionRoutes.get('/trends', async (c) => {
-  const range = parseRangeOrError(c)
-  if (range instanceof Response) return range
-  const provider = parseDashboardProviderOrError(c)
-  if (provider instanceof Response) return provider
-  if ((c.req.query('granularity') || 'day') !== 'day') {
-    return errorJson(c, 400, '归因趋势粒度无效', {
-      code: 'ATTRIBUTION_TREND_GRANULARITY_INVALID',
-    })
-  }
-  try {
-    const result = await queryAttributionTrends(c.env.DB, range, provider)
-    return c.json({ range, ...result })
-  }
-  catch {
-    return dashboardUnavailable(c)
-  }
-})
-
-adminAttributionRoutes.get('/quality', async (c) => {
-  const range = parseRangeOrError(c)
-  if (range instanceof Response) return range
-  const provider = parseDashboardProviderOrError(c)
-  if (provider instanceof Response) return provider
-  try {
-    const result = await queryAttributionQuality(
-      c.env.DB,
-      range,
-      c.env.APP_ENV === 'production' ? 'production' : 'dev',
-      provider,
-    )
-    return c.json({ range, ...result })
-  }
-  catch {
-    return dashboardUnavailable(c)
-  }
-})
-
-adminAttributionRoutes.get('/breakdown', async (c) => {
-  const range = parseRangeOrError(c)
-  if (range instanceof Response) return range
-  const provider = parseDashboardProviderOrError(c)
-  if (provider instanceof Response) return provider
-  const dimension = c.req.query('dimension')
-  if (!isAttributionBreakdownDimension(dimension)) {
-    return errorJson(c, 400, '归因拆分维度无效', {
-      code: 'ATTRIBUTION_BREAKDOWN_DIMENSION_INVALID',
-    })
-  }
-  const limit = parseBoundedInteger(c.req.query('limit'), 50, 1, 100)
-  if (limit === null) {
-    return errorJson(c, 400, '归因拆分数量无效', {
-      code: 'ATTRIBUTION_BREAKDOWN_LIMIT_INVALID',
-    })
-  }
-  try {
-    const result = await queryAttributionBreakdown(c.env.DB, range, dimension, limit, provider)
-    return c.json({ range, ...result })
-  }
-  catch {
-    return dashboardUnavailable(c)
-  }
-})
 
 adminAttributionRoutes.get('/meta/status', async (c) => {
   const range = parseRangeOrError(c)
@@ -303,70 +223,6 @@ adminAttributionRoutes.get('/overview', async (c) => {
       metaTrend: metaTrend.rows.map(normalizeMetaTrendRow),
       duplicates,
       risks: buildRisks(normalizeTotals(totalRow), meta, duplicates),
-    },
-  })
-})
-
-adminAttributionRoutes.get('/conversions', async (c) => {
-  const range = parseRangeOrError(c)
-  if (range instanceof Response) return range
-  const provider = parseDashboardProviderOrError(c)
-  if (provider instanceof Response) return provider
-  const sourceFilter = readAttributionSourceFilter(c)
-  const actionSourceWhere = sourceFilter
-    ? "date BETWEEN ? AND ? AND action_type IN ('contact', 'complete_registration') AND attribution_provider = ? AND (source_name = ? OR tracking_source_slug = ?)"
-    : "date BETWEEN ? AND ? AND action_type IN ('contact', 'complete_registration') AND attribution_provider = ?"
-  const actionSourceParams = sourceFilter
-    ? [range.from, range.to, provider, sourceFilter, sourceFilter]
-    : [range.from, range.to, provider]
-
-  const [byAction, bySource, samples] = await Promise.all([
-    queryAll(c.env.DB, `
-      SELECT
-        action_type,
-        COUNT(*) AS action_count,
-        COUNT(DISTINCT session_id) AS unique_session_count
-      FROM analytics_conversion_actions
-      WHERE ${actionSourceWhere}
-        AND duplicate_of = ''
-      GROUP BY action_type
-      ORDER BY action_count DESC
-    `, actionSourceParams),
-    queryAll(c.env.DB, `
-      SELECT
-        source_channel,
-        source_name,
-        utm_campaign,
-        utm_content,
-        COALESCE(SUM(CASE WHEN action_type = 'contact' THEN 1 ELSE 0 END), 0) AS contact_count,
-        COALESCE(SUM(CASE WHEN action_type = 'complete_registration' THEN 1 ELSE 0 END), 0) AS complete_registration_count
-      FROM analytics_conversion_actions
-      WHERE ${actionSourceWhere}
-        AND duplicate_of = ''
-      GROUP BY source_channel, source_name, utm_campaign, utm_content
-      ORDER BY contact_count DESC, complete_registration_count DESC
-      LIMIT 50
-    `, actionSourceParams),
-    queryAll(c.env.DB, `
-      SELECT
-        id, action_type, occurred_at, source_channel, source_name, tracking_source_slug,
-        utm_campaign, utm_content, method_type, action_target, route_name, path, duplicate_of,
-        attribution_provider
-      FROM analytics_conversion_actions
-      WHERE ${actionSourceWhere}
-      ORDER BY occurred_at DESC
-      LIMIT 100
-    `, actionSourceParams),
-  ])
-
-  return c.json({
-    range,
-    usage: mergeQueryUsage(byAction, bySource, samples),
-    data: {
-      provider,
-      byAction: byAction.rows,
-      bySource: bySource.rows,
-      samples: samples.rows,
     },
   })
 })
@@ -579,7 +435,7 @@ adminAttributionRoutes.get('/meta', async (c) => {
       },
       deliveries: rows.rows,
       lastSentAt: String((lastSentAt.rows[0] ?? {}).last_sent_at ?? ''),
-      queueBindingPresent: Boolean(c.env.META_CAPI_QUEUE),
+      queueBindingPresent: Boolean(c.env.AD_META_QUEUE),
       connection,
       keyRotation,
       matchQuality: {
@@ -863,7 +719,7 @@ async function buildReadinessResponse(c: AdminAttributionContext) {
     blockerCheck('conversion_ledger', '转化账本有近期数据', schemaReady && numberValue((conversions.rows[0] ?? {}).action_count) > 0, schemaReady ? `当前范围记录 ${numberValue((conversions.rows[0] ?? {}).action_count)} 次转化` : '归因迁移表不可用'),
     blockerCheck('pixel_mode_consistency', 'Pixel ID 与运行模式一致', pixelModeConsistent, pixelModeDetail(mode, pixelEnabled, capiEnabled, pixelIdPresent)),
     blockerCheck('capi_secret', 'CAPI token 已配置', !modeRequiresMeta || secretPresent, presenceDetail(modeRequiresMeta, secretPresent)),
-    blockerCheck('queue_binding', 'CAPI Queue binding 已配置', !modeRequiresMeta || Boolean(c.env.META_CAPI_QUEUE), presenceDetail(modeRequiresMeta, Boolean(c.env.META_CAPI_QUEUE))),
+    blockerCheck('queue_binding', 'CAPI Queue binding 已配置', !modeRequiresMeta || Boolean(c.env.AD_META_QUEUE), presenceDetail(modeRequiresMeta, Boolean(c.env.AD_META_QUEUE))),
     blockerCheck('meta_live_verification', '当前 Meta 连接已通过 live 验证', Boolean(liveVerification), verificationDetail(liveVerification)),
     blockerCheck('meta_resources_verification', '当前 Meta 资源已通过验证', Boolean(resourcesVerification), verificationDetail(resourcesVerification)),
     blockerCheck('retry_exhausted', '当前范围无重试耗尽', schemaReady && retryExhaustedCount === 0, schemaReady ? `发现 ${retryExhaustedCount} 条 retry_exhausted` : '归因迁移表不可用'),

@@ -1,79 +1,112 @@
-import type { AdBrowserInstruction } from '@meigallery/shared'
+import type {
+  AdAttributionProvider,
+  AdBrowserPublicConfig,
+  AdBrowserInstruction,
+  AdBrowserSignal,
+  AdConsentSnapshot,
+} from '@meigallery/shared'
+import { googleAdsAdapter } from './googleAds.client'
 import { metaPixelAdapter } from './metaPixel.client'
 import { tiktokPixelAdapter } from './tiktokPixel.client'
 
 type BrowserEventPayload = Record<string, string | number | boolean>
 
-type BrowserAdapter = {
-  initialize: (destinationId: string) => boolean
-  pageView: () => boolean
-  teardown: () => void
-  standardEvent: (eventName: string, payload?: BrowserEventPayload, eventId?: string) => boolean
-  execute: (instruction: AdBrowserInstruction) => boolean
+export interface BrowserTrackingAdapter {
+  initialize(config: AdBrowserPublicConfig, consent: AdConsentSnapshot): Promise<boolean>
+  track(instruction: AdBrowserInstruction): Promise<boolean>
+  trackSignal(signal: AdBrowserSignal, payload: BrowserEventPayload): Promise<boolean>
+  teardown(): Promise<void>
 }
 
-const adapters = {
-  meta: {
-    initialize: destinationId => metaPixelAdapter.initialize(destinationId),
-    pageView: () => metaPixelAdapter.pageView(),
-    teardown: () => metaPixelAdapter.teardown(),
-    standardEvent: (eventName, payload, eventId) => eventId
-      ? metaPixelAdapter.standardEvent(
-          eventName as 'Contact' | 'CompleteRegistration',
-          payload,
-          { eventID: eventId },
-        )
-      : metaPixelAdapter.standardEvent(eventName as 'Contact' | 'CompleteRegistration', payload),
-    execute: instruction => metaPixelAdapter.standardEvent(
-      instruction.eventName as 'Contact' | 'CompleteRegistration',
-      instruction.payload,
-      { eventID: instruction.eventId },
-    ),
-  },
-  tiktok: {
-    initialize: destinationId => tiktokPixelAdapter.initialize(destinationId),
-    pageView: () => tiktokPixelAdapter.pageView(),
-    teardown: () => tiktokPixelAdapter.teardown(),
-    standardEvent: (eventName, payload, eventId) => tiktokPixelAdapter.standardEvent(eventName, payload, eventId),
-    execute: instruction => tiktokPixelAdapter.standardEvent(
-      instruction.eventName,
-      instruction.payload,
-      instruction.eventId,
-    ),
-  },
-} satisfies Partial<Record<AdBrowserInstruction['provider'], BrowserAdapter>>
+const adapters: ReadonlyMap<AdAttributionProvider, BrowserTrackingAdapter> = new Map([
+  ['meta', metaPixelAdapter],
+  ['tiktok', tiktokPixelAdapter],
+  ['google', googleAdsAdapter],
+])
 
-type RegisteredBrowserProvider = keyof typeof adapters
+let activeProvider: AdAttributionProvider | null = null
+let lifecycleQueue: Promise<void> = Promise.resolve()
 
-export function executeAdBrowserInstruction(instruction: AdBrowserInstruction) {
-  return browserAdapter(instruction.provider)?.execute(instruction) ?? false
+export async function initializeAdBrowserProvider(config: AdBrowserPublicConfig, consent: AdConsentSnapshot) {
+  return serializeLifecycle(async () => {
+    if (!consent.marketingAllowed) {
+      await teardownActiveProvider()
+      return false
+    }
+    const adapter = adapters.get(config.provider)
+    if (!adapter) return false
+    if (activeProvider && activeProvider !== config.provider) await teardownActiveProvider()
+    try {
+      const initialized = await adapter.initialize(config, consent)
+      if (!initialized) {
+        activeProvider = null
+        await safeTeardown(adapter)
+        return false
+      }
+      activeProvider = config.provider
+      return true
+    }
+    catch {
+      activeProvider = null
+      await safeTeardown(adapter)
+      return false
+    }
+  })
 }
 
-export function initializeAdBrowserProvider(provider: AdBrowserInstruction['provider'], destinationId: string) {
-  return browserAdapter(provider)?.initialize(destinationId) ?? false
+export async function executeAdBrowserInstruction(instruction: AdBrowserInstruction) {
+  return serializeLifecycle(async () => {
+    if (instruction.provider !== activeProvider) return false
+    try {
+      return await adapters.get(instruction.provider)?.track(instruction) ?? false
+    }
+    catch {
+      return false
+    }
+  })
 }
 
-export function trackAdBrowserPageView(provider: AdBrowserInstruction['provider']) {
-  return browserAdapter(provider)?.pageView() ?? false
-}
-
-export function trackAdBrowserStandardEvent(
-  provider: AdBrowserInstruction['provider'],
-  eventName: string,
-  payload?: BrowserEventPayload,
-  eventId?: string,
+export async function trackAdBrowserSignal(
+  provider: AdAttributionProvider,
+  signal: AdBrowserSignal,
+  payload: BrowserEventPayload,
 ) {
-  return browserAdapter(provider)?.standardEvent(eventName, payload, eventId) ?? false
+  return serializeLifecycle(async () => {
+    if (provider !== activeProvider) return false
+    try {
+      return await adapters.get(provider)?.trackSignal(signal, payload) ?? false
+    }
+    catch {
+      return false
+    }
+  })
 }
 
-export function teardownAllAdBrowserProviders() {
-  for (const adapter of Object.values(adapters)) adapter.teardown()
+export async function teardownAllAdBrowserProviders() {
+  return serializeLifecycle(teardownActiveProvider)
 }
 
-export function isRegisteredAdBrowserProvider(value: unknown): value is RegisteredBrowserProvider {
-  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(adapters, value)
+async function teardownActiveProvider() {
+  const provider = activeProvider
+  activeProvider = null
+  if (provider) await safeTeardown(adapters.get(provider))
 }
 
-function browserAdapter(provider: AdBrowserInstruction['provider']): BrowserAdapter | undefined {
-  return isRegisteredAdBrowserProvider(provider) ? adapters[provider] : undefined
+export function isRegisteredAdBrowserProvider(value: unknown): value is AdAttributionProvider {
+  return typeof value === 'string' && adapters.has(value as AdAttributionProvider)
+}
+
+function serializeLifecycle<T>(operation: () => Promise<T>): Promise<T> {
+  const task = lifecycleQueue.then(operation, operation)
+  lifecycleQueue = task.then(() => undefined, () => undefined)
+  return task
+}
+
+async function safeTeardown(adapter: BrowserTrackingAdapter | undefined) {
+  try {
+    await adapter?.teardown()
+  }
+  catch {
+    // 卸载失败不能恢复 active provider，后续投递继续 fail closed。
+  }
 }

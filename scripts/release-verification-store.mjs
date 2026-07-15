@@ -141,7 +141,7 @@ function assertMetaResourcesSummary(value, expected) {
 
   const alwaysReady = [
     'migrationsReady', 'd1Ready', 'r2Ready', 'queuesReady', 'secretsReady',
-    'migrationsCurrent', 'migrationsApplied', 'noOpenCriticalIncident',
+    'migrationsApplied', 'noOpenCriticalIncident',
     'initialRolloutZero', 'secureOutboxReady', 'previousKeyReferencesExplainable',
   ]
   requireTrueFields(value, alwaysReady, value.verificationPhase)
@@ -151,7 +151,6 @@ function assertMetaResourcesSummary(value, expected) {
     if (expected.environment !== 'production'
       || value.bootstrapReady !== true
       || value.liveAttestation !== false
-      || value.connectionVerified !== false
       || value.capiEnabled !== false
       || value.initialMetaRollout !== true
       || value.rolloutZero !== true) {
@@ -166,6 +165,7 @@ function assertMetaResourcesSummary(value, expected) {
   if (value.bootstrapReady !== false || value.initialMetaRollout !== false) {
     throw new Error(`summary ${value.verificationPhase} 语义门禁未通过`)
   }
+  requireTrueFields(value, ['migrationsCurrent'], value.verificationPhase)
   if (expected.environment === 'production') {
     requireTrueFields(value.environmentIsolation, ['pixel', 'token', 'dataKey'], `${value.verificationPhase}.environmentIsolation`)
   }

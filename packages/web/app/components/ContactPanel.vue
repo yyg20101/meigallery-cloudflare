@@ -29,20 +29,29 @@ function toggleOpen() {
   }
 }
 
-function trackContactMethod(methodType: string, actionType = 'unknown') {
-  if (actionType !== 'open_link' && actionType !== 'copy') return
-  void Promise.resolve(trackContact({
-    methodType,
-    actionTarget: 'floating_contact_panel',
-    actionType,
-  })).catch(() => {})
+function trackContactMethod(contactMethodId: string, methodType: string, actionType = 'unknown') {
+  if (actionType === 'copy') {
+    trackAnalytics('contact_value_copy', {
+      entityType: 'contact',
+      props: {
+        contact_method_id: contactMethodId,
+        method_type: methodType,
+        action_type: 'copy',
+        location: 'floating_contact_panel',
+      },
+    })
+    return
+  }
+  if (actionType !== 'open_link') return
+  void Promise.resolve(trackContact({ contactMethodId, methodType, actionType })).catch(() => {})
 }
 
-function trackContactInspection(methodType: string, actionType: string) {
+function trackContactInspection(contactMethodId: string, methodType: string, actionType: string) {
   if (actionType !== 'qr_expand') return
   trackAnalytics('contact_qr_expand', {
     entityType: 'contact',
     props: {
+      contact_method_id: contactMethodId,
       method_type: methodType,
       action_type: actionType,
       location: 'floating_contact_panel',

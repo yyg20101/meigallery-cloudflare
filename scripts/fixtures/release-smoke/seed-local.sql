@@ -93,8 +93,48 @@ VALUES
   ('analytics_sample_rate', '1', datetime('now')),
   ('analytics_consent_mode', '"limited"', datetime('now'));
 
-INSERT OR REPLACE INTO ad_platform_connections
-  (provider, enabled, mode, browser_enabled, server_enabled, destination_id,
-   debug_enabled, rollout_percentage, credential_secret_name, revision)
-VALUES ('meta', 1, 'test', 1, 0, '1234567890', 0, 0,
-        'META_CAPI_ACCESS_TOKEN', NULL);
+INSERT OR REPLACE INTO attribution_platform_connections (
+  id, provider, enabled, mode, browser_enabled, server_enabled, public_config_json,
+  rollout_target_percentage, rollout_effective_percentage, connection_revision, credential_revision
+)
+VALUES
+  ('conn_release_local_meta', 'meta', 1, 'test', 0, 0, '{"pixelId":"1234567890"}', 0, 0,
+   '11111111111111111111111111111111', '44444444444444444444444444444444'),
+  ('conn_release_local_tiktok', 'tiktok', 1, 'test', 0, 0, '{"pixelCode":"C123456789ABCDEF"}', 0, 0,
+   '22222222222222222222222222222222', '55555555555555555555555555555555'),
+  ('conn_release_local_google', 'google', 1, 'test', 0, 0,
+   '{"tagId":"AW-123456789","customerId":"1234567890","cloudProjectId":"meigallery-local"}', 0, 0,
+   '33333333333333333333333333333333', '66666666666666666666666666666666');
+
+INSERT OR REPLACE INTO attribution_event_bindings (
+  id, connection_id, provider, canonical_event, enabled,
+  browser_destination, server_destination, mapping_revision, config_json
+)
+VALUES
+  ('binding_release_local_meta_contact', 'conn_release_local_meta', 'meta', 'Contact', 1,
+   'meta_pixel', 'meta_capi', '11111111111111111111111111111111', '{}'),
+  ('binding_release_local_meta_registration', 'conn_release_local_meta', 'meta', 'CompleteRegistration', 1,
+   'meta_pixel', 'meta_capi', '11111111111111111111111111111111', '{}'),
+  ('binding_release_local_tiktok_contact', 'conn_release_local_tiktok', 'tiktok', 'Contact', 1,
+   'tiktok_pixel', 'tiktok_events_api', '22222222222222222222222222222222', '{}'),
+  ('binding_release_local_tiktok_registration', 'conn_release_local_tiktok', 'tiktok', 'CompleteRegistration', 1,
+   'tiktok_pixel', 'tiktok_events_api', '22222222222222222222222222222222', '{}'),
+  ('binding_release_local_google_contact', 'conn_release_local_google', 'google', 'Contact', 1,
+   'AW-123456789/contact-label', '111222333', '33333333333333333333333333333333', '{}'),
+  ('binding_release_local_google_registration', 'conn_release_local_google', 'google', 'CompleteRegistration', 1,
+   'AW-123456789/registration-label', '444555666', '33333333333333333333333333333333', '{}');
+
+INSERT OR REPLACE INTO attribution_credentials (
+  id, connection_id, provider, credential_type, schema_version, key_id,
+  iv, ciphertext, tag, fingerprint, credential_revision
+)
+VALUES
+  ('credential_release_local_meta', 'conn_release_local_meta', 'meta', 'access_token', 1,
+   'aaaaaaaaaaaaaaaa', 'fixture-iv', 'fixture-ciphertext', 'fixture-tag', 'fixture-fingerprint',
+   '44444444444444444444444444444444'),
+  ('credential_release_local_tiktok', 'conn_release_local_tiktok', 'tiktok', 'access_token', 1,
+   'bbbbbbbbbbbbbbbb', 'fixture-iv', 'fixture-ciphertext', 'fixture-tag', 'fixture-fingerprint',
+   '55555555555555555555555555555555'),
+  ('credential_release_local_google', 'conn_release_local_google', 'google', 'service_account_json', 1,
+   'cccccccccccccccc', 'fixture-iv', 'fixture-ciphertext', 'fixture-tag', 'fixture-fingerprint',
+   '66666666666666666666666666666666');

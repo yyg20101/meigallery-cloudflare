@@ -10,18 +10,32 @@ import {
   assertProductionReleaseIdentity,
   collectTrustedProductionGateFacts,
   runDevRehearsalReleaseVerification,
+  runLocalAttributionGates,
   runLocalRuntimeReleaseVerification,
   runQuickVerification,
   runReleaseVerification,
+  verifyDevRehearsalPlatformIsolation,
 } from './verify-release.mjs'
 import { writeReport } from './release-verification-lib.mjs'
 
 const DEPLOY_SCRIPT_PATH = fileURLToPath(new URL('./deploy.sh', import.meta.url))
+const SETUP_SCRIPT_PATH = fileURLToPath(new URL('./setup.sh', import.meta.url))
 const VITEST_CONFIG_PATH = fileURLToPath(new URL('../packages/api/vitest.config.ts', import.meta.url))
 const PACKAGE_JSON_PATH = fileURLToPath(new URL('../package.json', import.meta.url))
 const API_PACKAGE_JSON_PATH = fileURLToPath(new URL('../packages/api/package.json', import.meta.url))
 const ROOT_DIR = fileURLToPath(new URL('../', import.meta.url))
 const RELEASE_COMMIT = '18dc11e0b0e4797683d4551a93a1f22e53dc4628'
+
+const passedLocalAttributionGates = async () => ({
+  steps: [
+    'attribution-final-schema',
+    'attribution-queue-mock',
+    'attribution-workflow-mock',
+    'attribution-browser-isolation',
+  ].map(name => ({ name, status: 'passed', durationMs: 1, command: name, exitCode: 0, summary: 'ok' })),
+  notes: [],
+  artifacts: [],
+})
 
 async function writeExecutable(file, content) {
   await writeFile(file, content)
@@ -45,21 +59,23 @@ function runProcess(command, args, options) {
 }
 
 describe('发布验证 CLI', () => {
-  it('production deploy gate 会显式清空 VERIFY_RELEASE_ALLOW_BRANCH', async () => {
+  it('production deploy 不重复执行完整 release 门禁，完整验证由 release PR/CI 承担', async () => {
     const deployScript = await readFile(DEPLOY_SCRIPT_PATH, 'utf8')
 
-    assert.match(
-      deployScript,
-      /env -u VERIFY_RELEASE_ALLOW_BRANCH "\$\{PNPM\[@\]\}" verify:release/,
-    )
-    assert.match(
-      deployScript,
-      /env -u VERIFY_RELEASE_ALLOW_BRANCH node scripts\/verify-release\.mjs assert-production-allowed/,
-    )
-    assert.ok(
-      deployScript.indexOf('"${PNPM[@]}" verify:release')
-      < deployScript.indexOf('verify-release.mjs assert-production-allowed'),
-    )
+    assert.doesNotMatch(deployScript, /verify:release|assert-production-allowed/)
+    assert.match(deployScript, /"\$\{PNPM\[@\]\}" verify:quick/)
+    assert.match(deployScript, /git branch --show-current/)
+    assert.match(deployScript, /git status --porcelain/)
+  })
+
+  it('production Queue 初始化是幂等操作，并等待新资源在 Cloudflare 可见', async () => {
+    const setupScript = await readFile(SETUP_SCRIPT_PATH, 'utf8')
+
+    assert.match(setupScript, /queues info "\$queue_name"/)
+    assert.match(setupScript, /for attempt in 1 2 3 4 5 6/)
+    assert.match(setupScript, /sleep 2/)
+    assert.match(setupScript, /local env_flag='--env ""'/)
+    assert.match(setupScript, /旧 META_CAPI_\* \/ TIKTOK_EVENTS_\* 仅保留为回滚资产/)
   })
 
   it('迁移前快速验证失败时不能进入 production migration 或 deploy', async () => {
@@ -68,7 +84,12 @@ describe('发布验证 CLI', () => {
     const logFile = path.join(tempDir, 'commands.log')
     await mkdir(binDir)
     await Promise.all([
-      writeExecutable(path.join(binDir, 'git'), '#!/usr/bin/env bash\necho 18dc11e0b0e4797683d4551a93a1f22e53dc4628\n'),
+      writeExecutable(path.join(binDir, 'git'), `#!/usr/bin/env bash
+if [ "$1" = "rev-parse" ]; then echo 18dc11e0b0e4797683d4551a93a1f22e53dc4628; exit 0; fi
+if [ "$1" = "branch" ]; then echo main; exit 0; fi
+if [ "$1" = "status" ]; then exit 0; fi
+exit 0
+`),
       writeExecutable(path.join(binDir, 'corepack'), `#!/usr/bin/env bash\necho "$*" >> "${logFile}"\nif [ "$*" = "pnpm verify:quick" ]; then exit 9; fi\nexit 0\n`),
       writeExecutable(path.join(binDir, 'node'), `#!/usr/bin/env bash\necho "node $*" >> "${logFile}"\nexit 0\n`),
     ])
@@ -101,7 +122,7 @@ describe('发布验证 CLI', () => {
     assert.doesNotMatch(devBlock[1], /D1_DB="meigallery-db"\s*(?:\n|$)/)
   })
 
-  it('deploy 将当前 commit 传给 Worker，并按 Queue、快速验证、兼容迁移、完整门禁、部署后身份校验排序', async () => {
+  it('deploy 将当前 commit 传给 Worker，并固定按预检、备份、Expand、部署、回填、对账和烟测排序', async () => {
     const deployScript = await readFile(DEPLOY_SCRIPT_PATH, 'utf8')
     assert.match(deployScript, /GIT_COMMIT="\$\(git rev-parse HEAD\)"/)
     const deployLines = deployScript.split('\n').filter(line => /wrangler deploy "\$\{ENV_ARGS\[@\]\}" --var/.test(line))
@@ -112,35 +133,45 @@ describe('发布验证 CLI', () => {
     assert.match(deployScript, /ENV_ARGS=\(--env dev\)/)
     assert.match(deployScript, /ENV_ARGS=\(--env ""\)/)
 
-    const freshGateIndex = deployScript.indexOf('"${PNPM[@]}" verify:release')
     const quickGateIndex = deployScript.indexOf('"${PNPM[@]}" verify:quick')
-    const gateIndex = deployScript.indexOf('verify-release.mjs assert-production-allowed')
-    const queuePreflightIndex = deployScript.indexOf('verify-ad-platform-queues.mjs production')
-    const preflightIndex = deployScript.indexOf('verify-meta-migration.mjs preflight --env "$ENV"')
+    const preflightIndex = deployScript.indexOf('verify-attribution-v3-migration.mjs preflight')
+    const backupIndex = deployScript.indexOf('export-attribution-production-backup.mjs')
     const migrationIndex = deployScript.indexOf('wrangler d1 migrations apply')
     const deployIndex = deployScript.indexOf('wrangler deploy "${ENV_ARGS[@]}" --var')
     const webDeployIndex = deployScript.lastIndexOf('wrangler deploy "${ENV_ARGS[@]}" --var')
+    const backfillIndex = deployScript.indexOf('verify-attribution-v3-migration.mjs backfill --apply')
+    const reconcileIndex = deployScript.indexOf('verify-attribution-v3-migration.mjs reconcile')
     const identityIndex = deployScript.indexOf('verify-release.mjs assert-production-identity')
-    assert.ok(freshGateIndex >= 0)
-    assert.ok(queuePreflightIndex >= 0)
-    assert.ok(quickGateIndex > queuePreflightIndex)
+    const seoIndex = deployScript.indexOf('verify-production-seo.mjs')
+    assert.ok(quickGateIndex >= 0)
     assert.ok(preflightIndex > quickGateIndex)
-    assert.ok(migrationIndex > preflightIndex)
-    assert.ok(freshGateIndex > migrationIndex)
-    assert.ok(gateIndex > freshGateIndex)
-    assert.ok(deployIndex > gateIndex)
-    assert.ok(identityIndex > webDeployIndex)
+    assert.ok(backupIndex > preflightIndex)
+    assert.ok(migrationIndex > backupIndex)
+    assert.ok(deployIndex > migrationIndex)
+    assert.ok(backfillIndex > webDeployIndex)
+    assert.ok(reconcileIndex > backfillIndex)
+    assert.ok(identityIndex > reconcileIndex)
+    assert.ok(seoIndex > identityIndex)
   })
 
-  it('production Queue 前置检查失败时不执行 D1 migration 或 Worker deploy', async () => {
+  it('通用归因 production preflight 失败时不执行备份、D1 migration 或 Worker deploy', async () => {
     const tempDir = await mkdtemp(path.join(tmpdir(), 'meigallery-deploy-queue-gate-'))
     const binDir = path.join(tempDir, 'bin')
     const logFile = path.join(tempDir, 'commands.log')
     await mkdir(binDir)
     await Promise.all([
-      writeExecutable(path.join(binDir, 'git'), '#!/usr/bin/env bash\necho 18dc11e0b0e4797683d4551a93a1f22e53dc4628\n'),
-      writeExecutable(path.join(binDir, 'corepack'), `#!/usr/bin/env bash\necho "corepack $*" >> "${logFile}"\nexit 0\n`),
-      writeExecutable(path.join(binDir, 'node'), `#!/usr/bin/env bash\necho "node $*" >> "${logFile}"\nif [ "$*" = "scripts/verify-ad-platform-queues.mjs production" ]; then exit 7; fi\nexit 0\n`),
+      writeExecutable(path.join(binDir, 'git'), `#!/usr/bin/env bash
+if [ "$1" = "rev-parse" ]; then echo 18dc11e0b0e4797683d4551a93a1f22e53dc4628; exit 0; fi
+if [ "$1" = "branch" ]; then echo main; exit 0; fi
+if [ "$1" = "status" ]; then exit 0; fi
+exit 0
+`),
+      writeExecutable(path.join(binDir, 'corepack'), `#!/usr/bin/env bash
+echo "corepack $*" >> "${logFile}"
+if [[ "$*" == *"d1 migrations list"* ]]; then echo "0051_unified_attribution_expand.sql"; fi
+exit 0
+`),
+      writeExecutable(path.join(binDir, 'node'), `#!/usr/bin/env bash\necho "node $*" >> "${logFile}"\nif [ "$*" = "scripts/verify-attribution-v3-migration.mjs preflight" ]; then exit 7; fi\nexit 0\n`),
     ])
 
     try {
@@ -152,9 +183,69 @@ describe('发布验证 CLI', () => {
       const commands = await readFile(logFile, 'utf8')
 
       assert.notEqual(result.code, 0)
-      assert.match(commands, /verify-ad-platform-queues\.mjs production/)
-      assert.doesNotMatch(commands, /verify:quick|verify:release|assert-production-allowed|--filter @meigallery\/api test|migrations apply|--var RELEASE_COMMIT/)
-      assert.match(result.output, /广告平台 Queue 前置检查阻断/)
+      assert.match(commands, /verify:quick/)
+      assert.match(commands, /verify-attribution-v3-migration\.mjs preflight/)
+      assert.doesNotMatch(commands, /export-attribution-production-backup|migrations apply|--var RELEASE_COMMIT/)
+      assert.match(result.output, /通用归因 production preflight 阻断/)
+    }
+    finally {
+      await rm(tempDir, { recursive: true, force: true })
+    }
+  })
+
+  it('production D1 备份失败时不执行 migration 或 Worker deploy', async () => {
+    const tempDir = await mkdtemp(path.join(tmpdir(), 'meigallery-deploy-backup-gate-'))
+    const binDir = path.join(tempDir, 'bin')
+    const logFile = path.join(tempDir, 'commands.log')
+    await mkdir(binDir)
+    await Promise.all([
+      writeExecutable(path.join(binDir, 'git'), '#!/usr/bin/env bash\nif [ "$1" = "rev-parse" ]; then echo 18dc11e0b0e4797683d4551a93a1f22e53dc4628; exit 0; fi\nif [ "$1" = "branch" ]; then echo main; exit 0; fi\nif [ "$1" = "status" ]; then exit 0; fi\nexit 0\n'),
+      writeExecutable(path.join(binDir, 'corepack'), `#!/usr/bin/env bash\necho "corepack $*" >> "${logFile}"\nif [[ "$*" == *"d1 migrations list"* ]]; then echo "0051_unified_attribution_expand.sql"; fi\nexit 0\n`),
+      writeExecutable(path.join(binDir, 'node'), `#!/usr/bin/env bash\necho "node $*" >> "${logFile}"\nif [ "$*" = "scripts/export-attribution-production-backup.mjs" ]; then exit 8; fi\nexit 0\n`),
+    ])
+
+    try {
+      const result = await runProcess('bash', [DEPLOY_SCRIPT_PATH, 'production'], {
+        cwd: ROOT_DIR,
+        env: { ...process.env, PATH: `${binDir}:${process.env.PATH}` },
+        input: 'y\n',
+      })
+      const commands = await readFile(logFile, 'utf8')
+
+      assert.notEqual(result.code, 0)
+      assert.match(commands, /verify-attribution-v3-migration\.mjs preflight/)
+      assert.match(commands, /export-attribution-production-backup\.mjs/)
+      assert.doesNotMatch(commands, /migrations apply|--var RELEASE_COMMIT/)
+    }
+    finally {
+      await rm(tempDir, { recursive: true, force: true })
+    }
+  })
+
+  it('0051 已应用后的常规 production 发布不重复 preflight、备份、回填或对账', async () => {
+    const tempDir = await mkdtemp(path.join(tmpdir(), 'meigallery-deploy-regular-'))
+    const binDir = path.join(tempDir, 'bin')
+    const logFile = path.join(tempDir, 'commands.log')
+    await mkdir(binDir)
+    await Promise.all([
+      writeExecutable(path.join(binDir, 'git'), '#!/usr/bin/env bash\nif [ "$1" = "rev-parse" ]; then echo 18dc11e0b0e4797683d4551a93a1f22e53dc4628; exit 0; fi\nif [ "$1" = "branch" ]; then echo main; exit 0; fi\nif [ "$1" = "status" ]; then exit 0; fi\nexit 0\n'),
+      writeExecutable(path.join(binDir, 'corepack'), `#!/usr/bin/env bash\necho "corepack $*" >> "${logFile}"\nexit 0\n`),
+      writeExecutable(path.join(binDir, 'node'), `#!/usr/bin/env bash\necho "node $*" >> "${logFile}"\nexit 0\n`),
+    ])
+
+    try {
+      const result = await runProcess('bash', [DEPLOY_SCRIPT_PATH, 'production'], {
+        cwd: ROOT_DIR,
+        env: { ...process.env, PATH: `${binDir}:${process.env.PATH}` },
+        input: 'y\n',
+      })
+      const commands = await readFile(logFile, 'utf8')
+
+      assert.equal(result.code, 0, result.output)
+      assert.match(commands, /migrations apply/)
+      assert.match(commands, /--var RELEASE_COMMIT/)
+      assert.doesNotMatch(commands, /verify-attribution-v3-migration\.mjs (?:preflight|backfill|reconcile)/)
+      assert.doesNotMatch(commands, /export-attribution-production-backup\.mjs/)
     }
     finally {
       await rm(tempDir, { recursive: true, force: true })
@@ -173,38 +264,33 @@ describe('发布验证 CLI', () => {
     assert.doesNotMatch(deploymentPaths, /wrangler d1 execute[^\n]*(?:meta_capi_rollout_percentage|meta_capi_incidents)/i)
   })
 
-  it('API remote migration package script 在 production apply 前执行 Queue 与数据 preflight', async () => {
+  it('API remote migration package script 禁止绕过统一 production cutover', async () => {
     const packageJson = JSON.parse(await readFile(API_PACKAGE_JSON_PATH, 'utf8'))
     const command = packageJson.scripts['db:migrate:remote']
 
-    const queuePreflightIndex = command.indexOf('verify-ad-platform-queues.mjs production')
-    const preflightIndex = command.indexOf('verify-meta-migration.mjs preflight --env production')
-    const migrationIndex = command.indexOf('wrangler d1 migrations apply meigallery-db --env="" --remote')
-    assert.ok(queuePreflightIndex >= 0)
-    assert.ok(preflightIndex > queuePreflightIndex)
-    assert.ok(migrationIndex > preflightIndex)
-    assert.match(command.slice(queuePreflightIndex, preflightIndex), /&&/)
-    assert.match(command.slice(preflightIndex, migrationIndex), /&&/)
+    assert.match(command, /PRODUCTION_MIGRATION_REQUIRES_DEPLOY_SCRIPT/)
+    assert.doesNotMatch(command, /wrangler d1 migrations apply/)
   })
 
   it('API coverage 显式包含广告平台关键文件和独立阈值', async () => {
     const config = await readFile(VITEST_CONFIG_PATH, 'utf8')
     for (const file of [
       'src/utils/conversions.ts',
-      'src/utils/pixel-receipt.ts',
+      'src/services/ad-platform/browser-attempt-receipt.ts',
       'src/utils/ad-platform-identifiers.ts',
       'src/utils/secure-context-crypto.ts',
       'src/services/ad-platform/secure-outbox.ts',
+      'src/services/ad-platform/queue-runtime.ts',
+      'src/services/ad-platform/recovery.ts',
       'src/services/conversions.ts',
       'src/services/meta-capi.ts',
-      'src/services/meta-capi-queue.ts',
       'src/services/tiktok-connection.ts',
       'src/services/tiktok-events.ts',
       'src/services/tiktok-events-delivery.ts',
-      'src/services/tiktok-events-queue.ts',
       'src/routes/conversions.ts',
       'src/routes/admin/ad-platforms.ts',
-      'src/routes/admin/attribution.ts',
+      'src/routes/admin/attribution-v3.ts',
+      'src/services/attribution-dashboard.ts',
     ]) assert.match(config, new RegExp(file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
     assert.match(config, /AD_PLATFORM_COVERAGE_GLOB/)
     assert.match(config, /statements:\s*85/)
@@ -230,8 +316,40 @@ describe('发布验证 CLI', () => {
     assert.equal(names[0], 'dependency-install')
     assert.equal(names[1], 'lint')
     assert.equal(names.includes('meta-secret-leaks'), true)
+    assert.equal(names.includes('shared-unit'), true)
     assert.equal(report.steps.some(step => step.name === 'api-coverage'), true)
     assert.equal(report.steps.some(step => step.name === 'meta-secret-leaks'), true)
+    assert.equal(report.steps.some(step => step.name === 'shared-unit'), true)
+  })
+
+  it('local-runtime 归因专项门禁固定执行最终 Schema、Queue、Workflow 和双视口隔离 E2E', async () => {
+    const calls = []
+    const result = await runLocalAttributionGates({
+      runCommand: async (command, args, options) => {
+        calls.push({ command, args, name: options.name })
+        return { name: options.name, status: 'passed', durationMs: 1, command, exitCode: 0, summary: 'ok' }
+      },
+    })
+
+    assert.deepEqual(result.steps.map(step => step.name), [
+      'attribution-final-schema',
+      'attribution-queue-mock',
+      'attribution-workflow-mock',
+      'attribution-browser-isolation',
+    ])
+    assert.match(calls[0].args.join(' '), /0051_unified_attribution_expand\.test\.mjs/)
+    assert.match(calls[1].args.join(' '), /queue-runtime\.d1\.test\.ts/)
+    assert.match(calls[2].args.join(' '), /ad-platform-verification\.test\.ts/)
+    assert.match(calls[3].args.join(' '), /ad-attribution-isolation\.spec\.ts/)
+    assert.match(calls[3].args.join(' '), /--project=chromium/)
+    assert.match(calls[3].args.join(' '), /--project=mobile-360/)
+  })
+
+  it('dev rehearsal fixture 使用最终三平台表且禁止真实平台网络', async () => {
+    const result = await verifyDevRehearsalPlatformIsolation({ cwd: ROOT_DIR })
+
+    assert.equal(result.status, 'passed', result.summary)
+    assert.equal(result.name, 'dev-platform-network-isolation')
   })
 
   it('根脚本提供 Meta secret scanner 交互命令', async () => {
@@ -525,6 +643,7 @@ describe('发布验证 CLI', () => {
 
   it('runLocalRuntimeReleaseVerification 会生成 local-runtime 报告', async () => {
     const report = await runLocalRuntimeReleaseVerification({
+      runLocalAttributionGates: passedLocalAttributionGates,
       collectVersions: async () => ({
         node: 'v24.0.0',
         pnpm: '10.0.0',
@@ -558,6 +677,7 @@ describe('发布验证 CLI', () => {
 
   it('runLocalRuntimeReleaseVerification 在 steps 为空时判定为 failed', async () => {
     const report = await runLocalRuntimeReleaseVerification({
+      runLocalAttributionGates: passedLocalAttributionGates,
       collectVersions: async () => ({
         node: 'v24.0.0',
         pnpm: '10.0.0',
@@ -582,7 +702,12 @@ describe('发布验证 CLI', () => {
 
     assert.equal(report.mode, 'local-runtime')
     assert.equal(report.status, 'failed')
-    assert.deepEqual(report.steps, [])
+    assert.deepEqual(report.steps.map(step => step.name), [
+      'attribution-final-schema',
+      'attribution-queue-mock',
+      'attribution-workflow-mock',
+      'attribution-browser-isolation',
+    ])
   })
 
   it('runDevRehearsalReleaseVerification 会生成 dev-rehearsal 报告', async () => {
@@ -648,7 +773,7 @@ describe('发布验证 CLI', () => {
 
     assert.equal(report.mode, 'dev-rehearsal')
     assert.equal(report.status, 'failed')
-    assert.deepEqual(report.steps, [])
+    assert.deepEqual(report.steps.map(step => step.name), ['dev-platform-network-isolation'])
   })
 
   it('runDevRehearsalReleaseVerification 缺少合法 commit 时保守失败', async () => {
@@ -1125,6 +1250,7 @@ describe('发布验证 CLI', () => {
 
     try {
       const report = await runLocalRuntimeReleaseVerification({
+        runLocalAttributionGates: passedLocalAttributionGates,
         reportDir,
         collectVersions: async () => ({
           node: 'v24.0.0',

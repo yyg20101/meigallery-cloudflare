@@ -111,7 +111,8 @@ export const ANALYTICS_DEFAULT_SETTINGS = {
 } as const
 
 export const ACTIVE_CONVERSION_ACTIONS = ['contact', 'complete_registration'] as const
-export const ACTIVE_AD_PLATFORM_CONVERSION_EVENTS = ['Contact', 'CompleteRegistration'] as const
+export const CANONICAL_CONVERSION_EVENTS = ['Contact', 'CompleteRegistration'] as const
+export const ACTIVE_AD_PLATFORM_CONVERSION_EVENTS = CANONICAL_CONVERSION_EVENTS
 
 export const ATTRIBUTION_LIMITS = {
   METADATA_MAX_KEYS: 24,

@@ -354,7 +354,7 @@ function trackRegisterSubmit() {
 
 async function completeRegistration(trackingInstructions: AdBrowserInstruction[]) {
   analytics.track('register_success', {
-    eventId: trackingInstructions[0]?.eventId || '',
+    eventId: trackingInstructions[0]?.externalEventId || '',
     entityType: 'auth',
     flush: true,
     props: {

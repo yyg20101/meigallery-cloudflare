@@ -35,7 +35,7 @@ export type CircuitEnv = Pick<
   | 'META_CAPI_ACCESS_TOKEN'
   | 'META_CAPI_DATA_KEY_CURRENT'
   | 'META_CAPI_DATA_KEY_PREVIOUS'
-  | 'META_CAPI_QUEUE'
+  | 'AD_META_QUEUE'
   | 'RELEASE_COMMIT'
 >
 
@@ -385,7 +385,7 @@ export async function closeMetaCapiIncident(
   catch {
     blockers.push('data_key_unavailable')
   }
-  if (!env.META_CAPI_QUEUE || typeof env.META_CAPI_QUEUE.send !== 'function') {
+  if (!env.AD_META_QUEUE || typeof env.AD_META_QUEUE.send !== 'function') {
     blockers.push('queue_binding_missing')
   }
 

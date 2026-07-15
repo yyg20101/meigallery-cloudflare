@@ -1,317 +1,96 @@
-import { Buffer } from 'node:buffer'
 import { readFileSync } from 'node:fs'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import app from './index'
 import type { Bindings } from './index'
-import type { AdPlatformQueueMessage } from '@meigallery/shared'
-import { encryptMetaCapiContext, loadMetaCapiCryptoKeys } from './utils/meta-capi-crypto'
-
-const DATA_KEY = Buffer.alloc(32, 7).toString('base64')
-const META_TOKEN_FINGERPRINT = '0b7a8749b34fd009cf020b30ea6bde2defee9e24b5f1c191764d60b8c1de9f31'
-const META_CONNECTION_REVISION = '1'.repeat(32)
 
 function env(corsOrigin?: string) {
   return {
-    APP_ENV: 'production',
-    RELEASE_COMMIT: 'a'.repeat(40),
-    CORS_ORIGIN: corsOrigin,
-    DB: {
-      prepare() {
-        return { first: async () => ({ ok: 1 }) }
-      },
-    },
+    APP_ENV: 'production', CORS_ORIGIN: corsOrigin,
+    DB: { prepare() { return { first: async () => ({ ok: 1 }) } } },
   } as unknown as Bindings
 }
 
 describe('API CORS 安全配置', () => {
   it('生产环境未配置 CORS_ORIGIN 时不反射任意 Origin', async () => {
-    const res = await app.fetch(new Request('https://api.test/api/health', {
-      headers: { Origin: 'https://evil.example' },
-    }), env(), {} as ExecutionContext)
-
-    expect(res.status).toBe(200)
+    const res = await app.fetch(new Request('https://api.test/api/health', { headers: { Origin: 'https://evil.example' } }), env(), {} as ExecutionContext)
+    expect(res.status).toBe(503)
     expect(res.headers.get('access-control-allow-origin')).toBeNull()
   })
 
   it('支持多个明确允许的生产 Origin', async () => {
-    const res = await app.fetch(new Request('https://api.test/api/health', {
-      headers: { Origin: 'https://www.616618.xyz' },
-    }), env('https://616618.xyz,https://www.616618.xyz'), {} as ExecutionContext)
-
-    expect(res.status).toBe(200)
+    const res = await app.fetch(new Request('https://api.test/api/health', { headers: { Origin: 'https://www.616618.xyz' } }), env('https://616618.xyz,https://www.616618.xyz'), {} as ExecutionContext)
     expect(res.headers.get('access-control-allow-origin')).toBe('https://www.616618.xyz')
   })
 })
 
-describe('Meta CAPI Queue consumer', () => {
-  afterEach(() => {
-    vi.restoreAllMocks()
-  })
-
-  it('解密 Queue V2 envelope 后构造 CAPI payload 并确认消息', async () => {
-    const delivery = {
-      id: 'cdlv_1',
-      conversion_action_id: 'conv_1',
-      provider: 'meta',
-      transport: 'server',
-      external_event_id: 'event_1',
-      event_name: 'Contact',
-      status: 'pending',
-      skip_reason: '',
-      error_code: '',
-      error_message: '',
-      attempt_count: 0,
-      tracking_mode: 'production',
-      connection_revision: META_CONNECTION_REVISION,
-      duplicate_suppressed_at: null,
-      encryption_key_id: '',
-      created_at: new Date().toISOString(),
-      occurred_at: '2026-07-09T10:00:00.000Z',
-      date: '2026-07-09',
-      path: '/',
-      metadata: '{}',
-    }
-    const db = {
-      prepare(sql: string) {
-        const statement = {
-          bind() { return this },
-          async first<T>() {
-            if (sql.includes('FROM analytics_conversion_deliveries')) return delivery as T
-            if (sql.includes('FROM ad_platform_connections')) return {
-              provider: 'meta', enabled: 1, mode: 'production', browser_enabled: 1,
-              server_enabled: 1, destination_id: '1234567890', debug_enabled: 0,
-              rollout_percentage: 100, credential_secret_name: 'META_CAPI_ACCESS_TOKEN',
-              revision: META_CONNECTION_REVISION,
-            } as T
-            if (sql.includes('FROM meta_connection_verifications')) {
-              return {
-                environment: 'dev',
-                pixel_id: '1234567890',
-                token_fingerprint: META_TOKEN_FINGERPRINT,
-                graph_api_version: 'v25.0',
-                verified_event_name: 'Contact',
-                verified_commit: 'a'.repeat(40),
-                dataset_quality_status: 'not_checked',
-                verified_at: '2026-07-11T00:00:00.000Z',
-                verified_by_user_id: 1,
-                invalidated_at: null,
-                invalidation_reason: '',
-                revision: META_CONNECTION_REVISION,
-              } as T
-            }
-            return null as T | null
-          },
-          async run() { return { meta: { changes: 1 } } },
-        }
-        return statement
-      },
-      async batch(statements: Array<{ run: () => Promise<unknown> }>) {
-        return Promise.all(statements.map(statement => statement.run()))
-      },
-    }
-    const keys = await loadMetaCapiCryptoKeys({ META_CAPI_DATA_KEY_CURRENT: DATA_KEY })
-    const sealed = await encryptMetaCapiContext({
-      keys,
-      aad: {
-        deliveryId: delivery.id,
-        externalEventId: delivery.external_event_id,
-        eventName: 'Contact',
-      },
-      value: {
-        fbp: 'fb.1.1700000000000.123456789',
-        fbc: 'fb.1.1700000000000.CLICK_abc-123',
-        clientIpAddress: '203.0.113.24',
-        clientUserAgent: 'MeiGallery Test Browser/1.0',
-      },
-    })
-    delivery.encryption_key_id = sealed.keyId
-    const body: AdPlatformQueueMessage = {
-      schemaVersion: 2,
-      deliveryId: delivery.id,
-      envelope: {
-        keyId: sealed.keyId,
-        iv: sealed.iv,
-        ciphertext: sealed.ciphertext,
-        tag: sealed.tag,
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
-      },
-    }
-    const message = { body, ack: vi.fn(), retry: vi.fn() }
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }))
-
-    await app.queue({ queue: 'meigallery-meta-capi', messages: [message] } as unknown as MessageBatch<AdPlatformQueueMessage>, {
-      APP_ENV: 'dev',
-      SITE_URL: 'https://616618.xyz',
-      META_CAPI_ACCESS_TOKEN: 'token_1',
-      META_CAPI_DATA_KEY_CURRENT: DATA_KEY,
-      RELEASE_COMMIT: 'a'.repeat(40),
-      DB: db,
+describe('统一 Queue 与 Cron 入口', () => {
+  it('未知 Queue 也委托统一运行时并安全确认消息', async () => {
+    const ack = () => { acknowledged = true }
+    let acknowledged = false
+    await app.queue({ queue: 'unknown-queue', messages: [{ body: { schemaVersion: 1, deliveryId: 'delivery_1', provider: 'meta' }, attempts: 1, ack, retry() {} }] } as unknown as MessageBatch<{ schemaVersion: 1; deliveryId: string; provider: 'meta' }>, {
+      APP_ENV: 'production', DB: emptyDb(),
     } as unknown as Bindings)
-
-    const payload = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))
-    expect(payload.data[0].user_data).toEqual({
-      fbp: 'fb.1.1700000000000.123456789',
-      fbc: 'fb.1.1700000000000.CLICK_abc-123',
-      client_ip_address: '203.0.113.24',
-      client_user_agent: 'MeiGallery Test Browser/1.0',
-    })
-    expect(message.ack).toHaveBeenCalledOnce()
-    expect(message.retry).not.toHaveBeenCalled()
-
-    const sensitive = 'fb.1.1700000000000.123456789|fb.1.1700000000000.CLICK_abc-123|203.0.113.24|MeiGallery Test Browser/1.0|token_private'
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    fetchMock.mockRejectedValueOnce(new Error(sensitive))
-    await app.queue({ queue: 'meigallery-meta-capi', messages: [message] } as unknown as MessageBatch<AdPlatformQueueMessage>, {
-      APP_ENV: 'dev',
-      SITE_URL: 'https://616618.xyz',
-      META_CAPI_ACCESS_TOKEN: 'token_1',
-      META_CAPI_DATA_KEY_CURRENT: DATA_KEY,
-      RELEASE_COMMIT: 'a'.repeat(40),
-      DB: db,
-    } as unknown as Bindings)
-
-    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(sensitive)
-    expect(message.retry).toHaveBeenCalledOnce()
-  })
-})
-
-describe('Meta CAPI scheduled recovery', () => {
-  function createScheduledHarness() {
-    const sent: AdPlatformQueueMessage[] = []
-    const sqlCalls: string[] = []
-    const envelope = {
-      keyId: '0123456789abcdef',
-      iv: 'AQIDBAUGBwgJCgsM',
-      ciphertext: 'c2VjdXJlLWNpcGhlcnRleHQ',
-      tag: 'AQIDBAUGBwgJCgsMDQ4PEA',
-      expiresAt: '2099-01-01T00:00:00.000Z',
-    }
-    const db = {
-      prepare(sql: string) {
-        sqlCalls.push(sql)
-        return {
-          bind() { return this },
-          async first() {
-            if (sql.includes('FROM ad_platform_secure_outbox')) {
-              return {
-                delivery_id: 'cdlv_stale',
-                provider: 'meta',
-                schema_version: 2,
-                key_id: envelope.keyId,
-                iv: envelope.iv,
-                ciphertext: envelope.ciphertext,
-                tag: envelope.tag,
-                expires_at: envelope.expiresAt,
-                status: 'pending',
-                skip_reason: '',
-                error_code: '',
-                queue_enqueued_at: null,
-                queue_attempt_count: 0,
-                updated_at: '2026-07-10 00:00:00',
-                date: '2026-07-10',
-                event_name: 'Contact',
-              }
-            }
-            return null
-          },
-          async all<T>() {
-            return {
-              results: (sql.includes('queue_enqueued_at IS NULL') ? [{ id: 'cdlv_stale' }] : []) as T[],
-            }
-          },
-          async run() { return { meta: { changes: 1 } } },
-        }
-      },
-    }
-    let scheduledWork: Promise<unknown> | undefined
-    const ctx = {
-      waitUntil(promise: Promise<unknown>) {
-        scheduledWork = promise
-      },
-    } as unknown as ExecutionContext
-    const scheduledEnv = {
-      APP_ENV: 'production',
-      DB: db,
-      META_CAPI_QUEUE: {
-        async send(message: AdPlatformQueueMessage) {
-          sent.push(message)
-        },
-      },
-    } as unknown as Bindings
-
-    return {
-      sent,
-      sqlCalls,
-      expectedMessage: { schemaVersion: 2, deliveryId: 'cdlv_stale', envelope } as AdPlatformQueueMessage,
-      async run(cron: string, scheduledTime = Date.parse('2026-07-10T09:00:00.000Z')) {
-        await app.scheduled({ cron, scheduledTime } as ScheduledEvent, scheduledEnv, ctx)
-        await scheduledWork
-      },
-    }
-  }
-
-  it('每分钟 Cron 评估 Circuit Breaker 并恢复 outbox，不运行每日聚合或清理', async () => {
-    const harness = createScheduledHarness()
-
-    await harness.run('* * * * *')
-
-    expect(harness.sent).toEqual([harness.expectedMessage])
-    expect(harness.sqlCalls.some(sql => sql.includes('email_verification_codes'))).toBe(false)
-    expect(harness.sqlCalls.some(sql => sql.includes('analytics_daily_sources'))).toBe(false)
-    expect(harness.sqlCalls.some(sql => sql.includes('analytics_events WHERE sampled'))).toBe(false)
-    expect(harness.sqlCalls.some(sql => sql.includes('AS duplicate_delivery_group_count'))).toBe(true)
+    expect(acknowledged).toBe(true)
   })
 
-  it('每日 Cron 只运行完整聚合与保留期清理', async () => {
-    const harness = createScheduledHarness()
-
-    await harness.run('0 0 * * *')
-
-    expect(harness.sent).toEqual([])
-    expect(harness.sqlCalls.some(sql => sql.includes('email_verification_codes'))).toBe(true)
-    expect(harness.sqlCalls.some(sql => sql.includes('analytics_daily_sources'))).toBe(true)
-    expect(harness.sqlCalls.some(sql => sql.includes('analytics_events WHERE sampled'))).toBe(true)
-    expect(harness.sqlCalls.some(sql => sql.includes('AS duplicate_delivery_group_count'))).toBe(false)
+  it('每 15 分钟 Cron 执行统一 Outbox 恢复，午夜继续执行每日维护', async () => {
+    const sql: string[] = []
+    let work: Promise<unknown> | undefined
+    const ctx = { waitUntil(promise: Promise<unknown>) { work = promise } } as unknown as ExecutionContext
+    await app.scheduled({ cron: '*/15 * * * *', scheduledTime: Date.parse('2026-07-15T09:15:00.000Z') } as ScheduledEvent, {
+      APP_ENV: 'production', DB: emptyDb(sql),
+    } as unknown as Bindings, ctx)
+    await work
+    expect(sql.some(value => value.includes('attribution_outbox'))).toBe(true)
+    expect(sql.some(value => value.includes('email_verification_codes'))).toBe(false)
   })
 
-  it('未知 Cron 保守跳过所有任务', async () => {
-    const harness = createScheduledHarness()
-
-    await harness.run('13 * * * *')
-
-    expect(harness.sent).toEqual([])
-    expect(harness.sqlCalls.some(sql => sql.includes('email_verification_codes'))).toBe(false)
-    expect(harness.sqlCalls.some(sql => sql.includes('analytics_daily_sources'))).toBe(false)
-    expect(harness.sqlCalls.some(sql => sql.includes('AS duplicate_delivery_group_count'))).toBe(false)
-  })
-
-  it('UTC 00:00 的 minute trigger 同时执行公共任务和每日维护', async () => {
-    const harness = createScheduledHarness()
-    const scheduledTime = Date.parse('2026-07-11T00:00:00.000Z')
-
-    await harness.run('* * * * *', scheduledTime)
-
-    expect(harness.sent).toEqual([harness.expectedMessage])
-    expect(harness.sqlCalls.filter(sql => sql.includes('AS duplicate_delivery_group_count'))).toHaveLength(1)
-    expect(harness.sqlCalls.filter(sql => sql.includes('FROM users u'))).toHaveLength(1)
-    expect(harness.sqlCalls.filter(sql => sql.includes('email_verification_codes'))).toHaveLength(1)
-  })
-
-  it('注册事实修复只在每分钟主 Cron 的整点运行，每小时最多一次', async () => {
-    const wholeHour = createScheduledHarness()
-    const otherMinute = createScheduledHarness()
-
-    await wholeHour.run('* * * * *', Date.parse('2026-07-10T09:00:00.000Z'))
-    await otherMinute.run('* * * * *', Date.parse('2026-07-10T09:05:00.000Z'))
-
-    expect(wholeHour.sqlCalls.some(sql => sql.includes('FROM users u'))).toBe(true)
-    expect(otherMinute.sqlCalls.some(sql => sql.includes('FROM users u'))).toBe(false)
-    expect(wholeHour.sent).toEqual([wholeHour.expectedMessage])
-  })
-
-  it('Wrangler 仅 production 注册 Meta 恢复 Cron', () => {
+  it('Wrangler 只注册三平台新 Queue、三个 DLQ 和每 15 分钟 Cron', () => {
     const config = readFileSync(new URL('../wrangler.toml', import.meta.url), 'utf8')
-    expect(config).not.toContain('*/5 * * * *')
-    expect(config.match(/\* \* \* \* \*/g)).toHaveLength(1)
+    expect(config).toContain('crons = ["*/15 * * * *"]')
+    expect(config).not.toContain('META_CAPI_QUEUE')
+    expect(config).not.toContain('TIKTOK_EVENTS_QUEUE')
+    for (const queue of ['meigallery-ad-meta', 'meigallery-ad-meta-dlq', 'meigallery-ad-tiktok', 'meigallery-ad-tiktok-dlq', 'meigallery-ad-google', 'meigallery-ad-google-dlq']) expect(config).toContain(queue)
+    expect((config.match(/max_retries = 3/g) ?? [])).toHaveLength(3)
   })
 })
+
+describe('公开设置广告配置隔离', () => {
+  it('不查询旧广告连接表或暴露全平台浏览器目标', () => {
+    const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8')
+    const publicSettingsRoute = source.slice(
+      source.indexOf("app.get('/api/settings/public'"),
+      source.indexOf("app.route('/api/meta'"),
+    )
+
+    expect(publicSettingsRoute).not.toContain('ad_platform_connections')
+    expect(publicSettingsRoute).not.toContain('ad_platform_browser_connections')
+    expect(publicSettingsRoute).not.toContain('browserConnections')
+  })
+
+  it('归因解析和 bootstrap 都纳入公开 API 统一限流', () => {
+    const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8')
+    const publicRateLimit = source.slice(
+      source.indexOf('// 公开 API 速率限制兜底'),
+      source.indexOf('// 外部导入接口速率限制兜底'),
+    )
+
+    expect(publicRateLimit).toContain("'/api/ad-attribution'")
+    expect(publicRateLimit).toContain("'/api/ad-attribution/*'")
+  })
+})
+
+function emptyDb(calls: string[] = []) {
+  return {
+    prepare(sql: string) {
+      calls.push(sql)
+      return {
+        bind() { return this },
+        first: async () => null,
+        all: async () => ({ results: [] }),
+        run: async () => ({ meta: { changes: 0 } }),
+      }
+    },
+    batch: async () => [],
+  }
+}

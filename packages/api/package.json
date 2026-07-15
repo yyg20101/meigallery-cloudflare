@@ -12,7 +12,7 @@
     "deploy": "wrangler deploy --env=\"\"",
     "typecheck": "tsc --noEmit",
     "db:migrate:local": "wrangler d1 migrations apply meigallery-db --local",
-    "db:migrate:remote": "node ../../scripts/verify-ad-platform-queues.mjs production && node ../../scripts/verify-meta-migration.mjs preflight --env production && wrangler d1 migrations apply meigallery-db --env=\"\" --remote"
+    "db:migrate:remote": "node -e \"console.error('PRODUCTION_MIGRATION_REQUIRES_DEPLOY_SCRIPT'); process.exit(1)\""
   },
   "dependencies": {
     "@meigallery/shared": "workspace:*",

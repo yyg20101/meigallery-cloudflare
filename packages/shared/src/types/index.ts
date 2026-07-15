@@ -69,6 +69,22 @@ export type AnalyticsEntityType =
 /** 分析授权/采集状态 */
 export type AnalyticsConsentState = 'granted' | 'limited' | 'denied'
 
+import type {
+  AdAttributionProvider as SharedAdAttributionProvider,
+  CanonicalConversionEvent,
+} from './ad-attribution'
+
+export type {
+  AdBrowserPublicConfig,
+  AdAttributionProvider,
+  AdBrowserInstruction,
+  AdBrowserSignal,
+  AdConsentSnapshot,
+  CanonicalConversionEvent,
+  PlatformEventDescriptor,
+  PlatformPublicConfig,
+} from './ad-attribution'
+
 export type ConversionActionType =
   | 'contact'
   | 'lead'
@@ -81,14 +97,11 @@ export type ActiveConversionActionType = Extract<
   'contact' | 'complete_registration'
 >
 
-export type AdPlatformProvider = 'meta' | 'tiktok' | 'google'
-
-/** 当前已具备可信来源路由能力的广告平台。 */
-export type AdAttributionProvider = Extract<AdPlatformProvider, 'meta' | 'tiktok'>
+export type AdPlatformProvider = SharedAdAttributionProvider
 
 export type AdDeliveryTransport = 'browser' | 'server'
 
-export type AdPlatformConversionEventName = 'Contact' | 'CompleteRegistration'
+export type AdPlatformConversionEventName = CanonicalConversionEvent
 
 export type AdPlatformTrackingMode = 'disabled' | 'test' | 'production'
 
@@ -97,15 +110,6 @@ export type AdPlatformRolloutPercentage = 0 | 10 | 50 | 100
 export type PublicConversionActionType = Extract<ActiveConversionActionType, 'contact'>
 
 export type ConversionDeliveryStatus = 'pending' | 'attempted' | 'sent' | 'failed' | 'skipped' | 'duplicate_suppressed'
-
-export interface AdBrowserInstruction {
-  provider: AdPlatformProvider
-  deliveryId: string
-  eventName: string
-  eventId: string
-  payload: Record<string, string | number | boolean>
-  receiptToken: string
-}
 
 /** 仅允许在内存或短期密文中持有的广告平台用户匹配上下文。 */
 export interface AdPlatformSensitiveContext {
@@ -127,10 +131,11 @@ export interface AdPlatformEncryptedEnvelope {
   expiresAt: string
 }
 
+/** Queue 只传递定位 Delivery 所需的最小信息，密文始终留在 D1 Outbox。 */
 export interface AdPlatformQueueMessage {
-  schemaVersion: 2
+  schemaVersion: 1
   deliveryId: string
-  envelope: AdPlatformEncryptedEnvelope
+  provider: SharedAdAttributionProvider
 }
 
 export type ConversionSkipReason =
@@ -194,6 +199,7 @@ export type AnalyticsEventName =
   | 'load_more'
   | 'contact_panel_open'
   | 'contact_method_click'
+  | 'contact_value_copy'
   | 'contact_qr_expand'
   | 'rules_panel_open'
   | 'rules_page_click'
