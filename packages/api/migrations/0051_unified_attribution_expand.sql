@@ -228,46 +228,50 @@ END;
 
 CREATE TRIGGER attribution_delivery_provider_guard
 BEFORE INSERT ON attribution_deliveries
+WHEN NOT EXISTS (
+  SELECT 1
+  FROM attribution_conversion_facts f
+  JOIN attribution_platform_connections c ON c.id = NEW.connection_id
+  WHERE f.id = NEW.fact_id
+    AND f.attribution_provider = NEW.provider
+    AND c.provider = NEW.provider
+)
 BEGIN
-  SELECT CASE WHEN NOT EXISTS (
-    SELECT 1
-    FROM attribution_conversion_facts f
-    JOIN attribution_platform_connections c ON c.id = NEW.connection_id
-    WHERE f.id = NEW.fact_id
-      AND f.attribution_provider = NEW.provider
-      AND c.provider = NEW.provider
-  ) THEN RAISE(ABORT, 'ATTRIBUTION_PROVIDER_MISMATCH') END;
+  SELECT RAISE(ABORT, 'ATTRIBUTION_PROVIDER_MISMATCH');
 END;
 
 CREATE TRIGGER attribution_delivery_provider_update_guard
 BEFORE UPDATE OF fact_id, connection_id, provider ON attribution_deliveries
+WHEN NOT EXISTS (
+  SELECT 1
+  FROM attribution_conversion_facts f
+  JOIN attribution_platform_connections c ON c.id = NEW.connection_id
+  WHERE f.id = NEW.fact_id
+    AND f.attribution_provider = NEW.provider
+    AND c.provider = NEW.provider
+)
 BEGIN
-  SELECT CASE WHEN NOT EXISTS (
-    SELECT 1
-    FROM attribution_conversion_facts f
-    JOIN attribution_platform_connections c ON c.id = NEW.connection_id
-    WHERE f.id = NEW.fact_id
-      AND f.attribution_provider = NEW.provider
-      AND c.provider = NEW.provider
-  ) THEN RAISE(ABORT, 'ATTRIBUTION_PROVIDER_MISMATCH') END;
+  SELECT RAISE(ABORT, 'ATTRIBUTION_PROVIDER_MISMATCH');
 END;
 
 CREATE TRIGGER attribution_outbox_provider_guard
 BEFORE INSERT ON attribution_outbox
+WHEN NOT EXISTS (
+  SELECT 1
+  FROM attribution_deliveries d
+  WHERE d.id = NEW.delivery_id AND d.provider = NEW.provider
+)
 BEGIN
-  SELECT CASE WHEN NOT EXISTS (
-    SELECT 1
-    FROM attribution_deliveries d
-    WHERE d.id = NEW.delivery_id AND d.provider = NEW.provider
-  ) THEN RAISE(ABORT, 'ATTRIBUTION_PROVIDER_MISMATCH') END;
+  SELECT RAISE(ABORT, 'ATTRIBUTION_PROVIDER_MISMATCH');
 END;
 
 CREATE TRIGGER attribution_outbox_provider_update_guard
 BEFORE UPDATE OF delivery_id, provider ON attribution_outbox
+WHEN NOT EXISTS (
+  SELECT 1
+  FROM attribution_deliveries d
+  WHERE d.id = NEW.delivery_id AND d.provider = NEW.provider
+)
 BEGIN
-  SELECT CASE WHEN NOT EXISTS (
-    SELECT 1
-    FROM attribution_deliveries d
-    WHERE d.id = NEW.delivery_id AND d.provider = NEW.provider
-  ) THEN RAISE(ABORT, 'ATTRIBUTION_PROVIDER_MISMATCH') END;
+  SELECT RAISE(ABORT, 'ATTRIBUTION_PROVIDER_MISMATCH');
 END;

@@ -118,6 +118,26 @@ describe('0051 通用归因 Expand migration', () => {
     assert.doesNotMatch(sql, /\b(?:ON|REFERENCES)\s+(?:analytics_|ad_platform_|meta_)/i)
   })
 
+  it('provider guard 使用远端 D1 migration query 可解析的单层 trigger', () => {
+    const sql = readFileSync(migrationPath, 'utf8')
+    const guardNames = [
+      'attribution_delivery_provider_guard',
+      'attribution_delivery_provider_update_guard',
+      'attribution_outbox_provider_guard',
+      'attribution_outbox_provider_update_guard',
+    ]
+
+    for (const guardName of guardNames) {
+      const start = sql.indexOf(`CREATE TRIGGER ${guardName}`)
+      const end = sql.indexOf('\nEND;', start)
+      assert.notEqual(start, -1, `${guardName} 必须存在`)
+      assert.notEqual(end, -1, `${guardName} 必须完整结束`)
+      const triggerSql = sql.slice(start, end + '\nEND;'.length)
+      assert.match(triggerSql, /\bWHEN\s+NOT\s+EXISTS\s*\(/i)
+      assert.doesNotMatch(triggerSql, /\bSELECT\s+CASE\b/i)
+    }
+  })
+
   it('provider 是开放字符串，Fact 的 live/historical external_event_id 约束严格生效', () => {
     executeSql(emptyPersistDir, connectionSql('connection_custom', 'future_platform'))
     executeSql(emptyPersistDir, factSql('fact_live', 'live', "'mg3_live'", "'future_platform'"))

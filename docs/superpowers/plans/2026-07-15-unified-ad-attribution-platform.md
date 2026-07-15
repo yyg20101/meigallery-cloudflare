@@ -209,17 +209,20 @@ CREATE TABLE attribution_conversion_facts (
 ```sql
 CREATE TRIGGER attribution_delivery_provider_guard
 BEFORE INSERT ON attribution_deliveries
+WHEN NOT EXISTS (
+  SELECT 1
+  FROM attribution_conversion_facts f
+  JOIN attribution_platform_connections c ON c.id = NEW.connection_id
+  WHERE f.id = NEW.fact_id
+    AND f.attribution_provider = NEW.provider
+    AND c.provider = NEW.provider
+)
 BEGIN
-  SELECT CASE WHEN NOT EXISTS (
-    SELECT 1
-    FROM attribution_conversion_facts f
-    JOIN attribution_platform_connections c ON c.id = NEW.connection_id
-    WHERE f.id = NEW.fact_id
-      AND f.attribution_provider = NEW.provider
-      AND c.provider = NEW.provider
-  ) THEN RAISE(ABORT, 'ATTRIBUTION_PROVIDER_MISMATCH') END;
+  SELECT RAISE(ABORT, 'ATTRIBUTION_PROVIDER_MISMATCH');
 END;
 ```
+
+远端 D1 的 migration query 路径会将 trigger 内嵌 `CASE ... END` 与 trigger 自身的 `END` 误判为不完整输入；provider guard 统一使用 `WHEN NOT EXISTS (...)`，保持约束语义且与远端迁移解析器兼容。
 
 - [x] **Step 4：运行迁移测试并提交**
 
