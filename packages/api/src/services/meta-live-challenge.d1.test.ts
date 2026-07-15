@@ -11,7 +11,7 @@ import {
 } from './meta-live-challenge'
 
 const COMMIT = 'a'.repeat(40)
-const TEST_EVENT_CODE = 'TEST25401'
+const TEST_EVENT_CODE = 'TEST90001'
 const DATA_KEY = Buffer.alloc(32, 7).toString('base64')
 
 let miniflare: Miniflare

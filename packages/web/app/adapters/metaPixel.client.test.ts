@@ -10,9 +10,11 @@ const consent = {
 
 function instruction(provider: 'meta' | 'tiktok' = 'meta') {
   return {
+    deliveryId: 'delivery_meta_contact_1',
     provider,
     canonicalEvent: 'Contact' as const,
     externalEventId: 'mg3_meta_contact_1',
+    receiptToken: `v1.${'a'.repeat(16)}.${'b'.repeat(43)}`,
     descriptor: {
       provider,
       canonicalEvent: 'Contact' as const,

@@ -11,6 +11,7 @@ const appDir = join(cwd(), 'app')
 const adapterPath = resolve(appDir, 'adapters/metaPixel.client.ts')
 const platformAdapterPath = resolve(appDir, 'adapters/adPlatformBrowser.client.ts')
 const useTrackingPath = resolve(appDir, 'composables/useTracking.ts')
+const attributionAdminDir = resolve(appDir, 'pages/admin/attribution')
 const forbiddenImportTargets = new Set([
   resolve(appDir, 'composables/useConversionTracking.ts'),
   resolve(appDir, 'composables/useFacebookPixel.ts'),
@@ -139,6 +140,20 @@ describe('Web Tracking 架构边界', () => {
     const files = collectSourceFiles(appDir).map(filePath => ({ filePath, source: readFileSync(filePath, 'utf8') }))
 
     expect(inspectSources(files)).toEqual([])
+  })
+
+  it('归因后台页面不包含平台控制流或硬编码平台选项', () => {
+    const violations = collectSourceFiles(attributionAdminDir).flatMap((filePath) => {
+      if (isTestFile(filePath)) return []
+      const source = readFileSync(filePath, 'utf8')
+      const relativePath = relative(appDir, filePath)
+      return [
+        ...(source.match(/(?:===|!==)\s*['"](?:meta|tiktok|google)['"]/g) ?? []),
+        ...(source.match(/<option\b[^>]*\bvalue=['"](?:meta|tiktok|google)['"]/g) ?? []),
+      ].map(match => `${relativePath}: ${match}`)
+    })
+
+    expect(violations).toEqual([])
   })
 
   it('解析 alias/相对静态与动态 import、auto-import 标识符和直接 fbq，并豁免 Facade、adapter 与测试', () => {

@@ -21,7 +21,7 @@ describe('平台连接验证 Adapter', () => {
       publicConfig: { pixelId: '1277657707436781' },
       eventBindings: fixedBindings,
       credential: 'meta-secret-token',
-      testEventCode: 'TEST16752',
+      testEventCode: 'TEST90001',
       siteUrl: 'https://616618.xyz',
       fetcher,
     }
@@ -30,7 +30,7 @@ describe('平台连接验证 Adapter', () => {
     const second = await adapter.verify(input)
     expect(second.externalEventIds).toEqual(first.externalEventIds)
     expect(first).toMatchObject({ provider: 'meta', testEventsSent: 2, requestIds: ['meta-trace-1'] })
-    expect(JSON.stringify(first)).not.toMatch(/meta-secret-token|TEST16752/)
+    expect(JSON.stringify(first)).not.toMatch(/meta-secret-token|TEST90001/)
   })
 
   it('TikTok 发送同批 Contact 与 CompleteRegistration 测试事件', async () => {

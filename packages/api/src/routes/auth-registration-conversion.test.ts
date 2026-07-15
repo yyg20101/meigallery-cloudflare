@@ -258,7 +258,6 @@ async function register(
   db: ReturnType<typeof createRegisterDb>,
   extra: Record<string, unknown>,
   withTrustedReceipt = true,
-  withTrustedAttributionReceipt = true,
 ) {
   const requestedConsent = (extra.attribution as { consentState?: unknown } | undefined)?.consentState
   const receipt = withTrustedReceipt && requestedConsent === 'granted'

@@ -1,4 +1,4 @@
-export class WorkflowEntrypoint<Env, Params> {
+export class WorkflowEntrypoint<Env, _Params> {
   protected readonly ctx: ExecutionContext
   protected readonly env: Env
 

@@ -1,7 +1,9 @@
+import { readFileSync } from 'node:fs'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Miniflare } from 'miniflare'
 import { unstable_splitSqlQuery } from 'wrangler'
 import type { Bindings } from '../index'
+import { seedAttributionConnection } from '../test/ad-platform-fixture'
 import { tiktokConnectionFingerprint } from '../utils/tiktok-events-crypto'
 import {
   getTikTokConnectionStatus,
@@ -54,6 +56,8 @@ beforeAll(async () => {
     );
   `
   for (const statement of unstable_splitSqlQuery(schema)) await db.prepare(statement).run()
+  const unified = readFileSync(new URL('../../migrations/0051_unified_attribution_expand.sql', import.meta.url), 'utf8')
+  for (const statement of unstable_splitSqlQuery(unified)) await db.prepare(statement).run()
 })
 
 beforeEach(async () => {
@@ -70,6 +74,14 @@ beforeEach(async () => {
     );
   `
   for (const statement of unstable_splitSqlQuery(seed)) await db.prepare(statement).run()
+  await seedAttributionConnection(db, {
+    provider: 'tiktok',
+    publicConfig: { pixelCode: PIXEL_ID },
+    mode: 'production',
+    serverEnabled: false,
+    rolloutTargetPercentage: 0,
+    rolloutEffectivePercentage: 0,
+  })
 })
 
 afterAll(async () => miniflare.dispose())
@@ -103,7 +115,7 @@ describe('TikTok 生产连接验证', () => {
       revision: result.revision,
       invalidated_at: null,
     })
-    expect(await connectionRevision()).toBe(result.revision)
+    expect(await connectionRevision()).toBeNull()
     const persisted = JSON.stringify(await db.prepare('SELECT * FROM tiktok_connection_verifications').all())
     expect(persisted).not.toContain(ACCESS_TOKEN)
     expect(persisted).not.toContain(TEST_EVENT_CODE)
@@ -122,7 +134,7 @@ describe('TikTok 生产连接验证', () => {
       testEventsSent: 2,
     })
     expect(fetchFn).toHaveBeenCalledTimes(4)
-    expect(await connectionRevision()).toBe(first.revision)
+    expect(await connectionRevision()).toBeNull()
   })
 
   it('token 变化后状态变为 configuration_changed 并阻断服务端投递', async () => {

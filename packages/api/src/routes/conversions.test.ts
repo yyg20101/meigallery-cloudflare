@@ -35,7 +35,7 @@ describe('公开转换路由', () => {
   })
 })
 
-function application(db: D1Database) {
+function application(_db: D1Database) {
   const app = new Hono<{ Bindings: Bindings, Variables: Variables }>()
   app.use('*', async (c, next) => { c.set('userId', null); c.set('userRole', null); await next() })
   app.route('/api/conversions', conversionRoutes)

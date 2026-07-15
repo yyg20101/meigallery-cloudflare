@@ -10,9 +10,11 @@ const grantedConsent = {
 
 function instruction(destination = 'AW-123456789/Contact_Label', externalEventId = 'mg3_contact_123') {
   return {
+    deliveryId: 'delivery_google_contact_1',
     provider: 'google' as const,
     canonicalEvent: 'Contact' as const,
     externalEventId,
+    receiptToken: `v1.${'a'.repeat(16)}.${'b'.repeat(43)}`,
     descriptor: {
       provider: 'google' as const,
       canonicalEvent: 'Contact' as const,

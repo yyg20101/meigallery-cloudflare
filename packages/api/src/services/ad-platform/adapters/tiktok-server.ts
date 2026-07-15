@@ -1,4 +1,4 @@
-import type { ServerAdapterRequest, ServerDeliveryResult, ServerTrackingAdapter, TikTokServerDeliveryInput } from '../server-adapter'
+import type { ServerDeliveryResult, ServerTrackingAdapter, TikTokServerDeliveryInput } from '../server-adapter'
 
 const TIKTOK_ENDPOINT = 'https://business-api.tiktok.com/open_api/v1.3/event/track/'
 const TIKTOK_SIGNALS = new Set(['ttclid', 'ttp'])

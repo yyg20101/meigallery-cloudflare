@@ -10,9 +10,11 @@ import {
   assertProductionReleaseIdentity,
   collectTrustedProductionGateFacts,
   runDevRehearsalReleaseVerification,
+  runLocalAttributionGates,
   runLocalRuntimeReleaseVerification,
   runQuickVerification,
   runReleaseVerification,
+  verifyDevRehearsalPlatformIsolation,
 } from './verify-release.mjs'
 import { writeReport } from './release-verification-lib.mjs'
 
@@ -22,6 +24,17 @@ const PACKAGE_JSON_PATH = fileURLToPath(new URL('../package.json', import.meta.u
 const API_PACKAGE_JSON_PATH = fileURLToPath(new URL('../packages/api/package.json', import.meta.url))
 const ROOT_DIR = fileURLToPath(new URL('../', import.meta.url))
 const RELEASE_COMMIT = '18dc11e0b0e4797683d4551a93a1f22e53dc4628'
+
+const passedLocalAttributionGates = async () => ({
+  steps: [
+    'attribution-final-schema',
+    'attribution-queue-mock',
+    'attribution-workflow-mock',
+    'attribution-browser-isolation',
+  ].map(name => ({ name, status: 'passed', durationMs: 1, command: name, exitCode: 0, summary: 'ok' })),
+  notes: [],
+  artifacts: [],
+})
 
 async function writeExecutable(file, content) {
   await writeFile(file, content)
@@ -191,7 +204,7 @@ describe('发布验证 CLI', () => {
     const config = await readFile(VITEST_CONFIG_PATH, 'utf8')
     for (const file of [
       'src/utils/conversions.ts',
-      'src/utils/pixel-receipt.ts',
+      'src/services/ad-platform/browser-attempt-receipt.ts',
       'src/utils/ad-platform-identifiers.ts',
       'src/utils/secure-context-crypto.ts',
       'src/services/ad-platform/secure-outbox.ts',
@@ -230,8 +243,40 @@ describe('发布验证 CLI', () => {
     assert.equal(names[0], 'dependency-install')
     assert.equal(names[1], 'lint')
     assert.equal(names.includes('meta-secret-leaks'), true)
+    assert.equal(names.includes('shared-unit'), true)
     assert.equal(report.steps.some(step => step.name === 'api-coverage'), true)
     assert.equal(report.steps.some(step => step.name === 'meta-secret-leaks'), true)
+    assert.equal(report.steps.some(step => step.name === 'shared-unit'), true)
+  })
+
+  it('local-runtime 归因专项门禁固定执行最终 Schema、Queue、Workflow 和双视口隔离 E2E', async () => {
+    const calls = []
+    const result = await runLocalAttributionGates({
+      runCommand: async (command, args, options) => {
+        calls.push({ command, args, name: options.name })
+        return { name: options.name, status: 'passed', durationMs: 1, command, exitCode: 0, summary: 'ok' }
+      },
+    })
+
+    assert.deepEqual(result.steps.map(step => step.name), [
+      'attribution-final-schema',
+      'attribution-queue-mock',
+      'attribution-workflow-mock',
+      'attribution-browser-isolation',
+    ])
+    assert.match(calls[0].args.join(' '), /0051_unified_attribution_expand\.test\.mjs/)
+    assert.match(calls[1].args.join(' '), /queue-runtime\.d1\.test\.ts/)
+    assert.match(calls[2].args.join(' '), /ad-platform-verification\.test\.ts/)
+    assert.match(calls[3].args.join(' '), /ad-attribution-isolation\.spec\.ts/)
+    assert.match(calls[3].args.join(' '), /--project=chromium/)
+    assert.match(calls[3].args.join(' '), /--project=mobile-360/)
+  })
+
+  it('dev rehearsal fixture 使用最终三平台表且禁止真实平台网络', async () => {
+    const result = await verifyDevRehearsalPlatformIsolation({ cwd: ROOT_DIR })
+
+    assert.equal(result.status, 'passed', result.summary)
+    assert.equal(result.name, 'dev-platform-network-isolation')
   })
 
   it('根脚本提供 Meta secret scanner 交互命令', async () => {
@@ -525,6 +570,7 @@ describe('发布验证 CLI', () => {
 
   it('runLocalRuntimeReleaseVerification 会生成 local-runtime 报告', async () => {
     const report = await runLocalRuntimeReleaseVerification({
+      runLocalAttributionGates: passedLocalAttributionGates,
       collectVersions: async () => ({
         node: 'v24.0.0',
         pnpm: '10.0.0',
@@ -558,6 +604,7 @@ describe('发布验证 CLI', () => {
 
   it('runLocalRuntimeReleaseVerification 在 steps 为空时判定为 failed', async () => {
     const report = await runLocalRuntimeReleaseVerification({
+      runLocalAttributionGates: passedLocalAttributionGates,
       collectVersions: async () => ({
         node: 'v24.0.0',
         pnpm: '10.0.0',
@@ -582,7 +629,12 @@ describe('发布验证 CLI', () => {
 
     assert.equal(report.mode, 'local-runtime')
     assert.equal(report.status, 'failed')
-    assert.deepEqual(report.steps, [])
+    assert.deepEqual(report.steps.map(step => step.name), [
+      'attribution-final-schema',
+      'attribution-queue-mock',
+      'attribution-workflow-mock',
+      'attribution-browser-isolation',
+    ])
   })
 
   it('runDevRehearsalReleaseVerification 会生成 dev-rehearsal 报告', async () => {
@@ -648,7 +700,7 @@ describe('发布验证 CLI', () => {
 
     assert.equal(report.mode, 'dev-rehearsal')
     assert.equal(report.status, 'failed')
-    assert.deepEqual(report.steps, [])
+    assert.deepEqual(report.steps.map(step => step.name), ['dev-platform-network-isolation'])
   })
 
   it('runDevRehearsalReleaseVerification 缺少合法 commit 时保守失败', async () => {
@@ -1125,6 +1177,7 @@ describe('发布验证 CLI', () => {
 
     try {
       const report = await runLocalRuntimeReleaseVerification({
+        runLocalAttributionGates: passedLocalAttributionGates,
         reportDir,
         collectVersions: async () => ({
           node: 'v24.0.0',

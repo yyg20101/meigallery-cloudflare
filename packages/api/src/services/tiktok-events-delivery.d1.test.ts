@@ -1,7 +1,9 @@
+import { readFileSync } from 'node:fs'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Miniflare } from 'miniflare'
 import { unstable_splitSqlQuery } from 'wrangler'
 import type { Bindings } from '../index'
+import { seedAttributionConnection } from '../test/ad-platform-fixture'
 import { tiktokConnectionFingerprint } from '../utils/tiktok-events-crypto'
 import {
   sendTikTokEventsDelivery,
@@ -27,6 +29,8 @@ beforeAll(async () => {
   })
   db = (await miniflare.getBindings<{ DB: D1Database }>()).DB
   for (const statement of unstable_splitSqlQuery(schemaSql())) await db.prepare(statement).run()
+  const unified = readFileSync(new URL('../../migrations/0051_unified_attribution_expand.sql', import.meta.url), 'utf8')
+  for (const statement of unstable_splitSqlQuery(unified)) await db.prepare(statement).run()
 })
 
 beforeEach(async () => {
@@ -53,6 +57,12 @@ beforeEach(async () => {
       ) VALUES ('production', ?, ?, ?, '2026-07-13T00:00:00.000Z', NULL, '')
     `).bind(PIXEL_ID, fingerprint, REVISION),
   ])
+  await seedAttributionConnection(db, {
+    provider: 'tiktok',
+    publicConfig: { pixelCode: PIXEL_ID },
+    mode: 'production',
+    connectionRevision: REVISION,
+  })
 })
 
 afterAll(async () => miniflare.dispose())

@@ -938,11 +938,11 @@ Expected: PASS，提交成功。
 - Modify: `scripts/fixtures/release-smoke/seed-local.sql`
 - Modify: `scripts/fixtures/release-smoke/seed-dev.sql`
 
-- [ ] **Step 1：写架构边界失败测试**
+- [x] **Step 1：写架构边界失败测试**
 
 禁止业务核心和后台页面包含平台分支；禁止读取旧表、旧 secret 和旧 Queue binding；禁止 tracked 文件出现真实 Test Event Code、Token 或 Service Account private key。
 
-- [ ] **Step 2：写桌面/移动网络隔离 E2E**
+- [x] **Step 2：写桌面/移动网络隔离 E2E**
 
 矩阵：Meta、TikTok、Google、无来源、冲突来源 × 未同意/同意 × Contact/Registration。每个场景拦截全部 request，命中非当前平台域名立即失败。
 
@@ -954,11 +954,11 @@ const PLATFORM_HOSTS = {
 } as const
 ```
 
-- [ ] **Step 3：接入 release 验证**
+- [x] **Step 3：接入 release 验证**
 
 `verify:local-runtime` 加入 D1 final schema、Queue mock、Workflow mock 和隔离 E2E；`verify:dev-rehearsal` 明确禁止三家真实 API 请求。
 
-- [ ] **Step 4：运行完整本地验证并提交**
+- [x] **Step 4：运行完整本地验证并提交**
 
 ```bash
 corepack pnpm test:scripts
@@ -974,6 +974,8 @@ git commit -m "test: 建立三平台归因发布门禁"
 ```
 
 Expected: 全部 PASS，提交成功。
+
+验收记录：Task 12 已恢复旧平台测试与 `0051` fixture 的全量基线，并将最终 11 张 attribution 表、Queue/Workflow mock、dev 禁止真实平台网络和桌面/移动三平台隔离 E2E 接入 `verify:local-runtime`。Shared 5/5、API 1119/1119、Web 282/282、scripts/migration 298/298、Playwright 35 项通过且 30 项按非目标视口规则跳过；Lint、全仓 TypeScript、API TypeScript、Nuxt production build 和本地发布门禁均通过。本阶段没有访问真实 Meta、TikTok 或 Google API，没有修改 production 配置、数据或放量；生产回填与切换仍由 Task 13 单独执行。
 
 ---
 

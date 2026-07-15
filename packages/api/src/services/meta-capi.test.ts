@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 import type { AdPlatformConversionEventName, ConversionSkipReason } from '@meigallery/shared'
 import type { Bindings } from '../index'
+import { attributionConnectionSnapshotRows } from '../test/ad-platform-fixture'
 import {
   MetaCapiDeliveryError,
   buildMetaCapiPayload,
@@ -122,6 +123,16 @@ function createMetaCapiDb(options: {
         },
         async all<T>() {
           calls.push(call)
+          if (sql.includes('FROM attribution_platform_connections') && options.pixelId) {
+            return {
+              results: attributionConnectionSnapshotRows({
+                provider: 'meta',
+                publicConfig: { pixelId: options.pixelId },
+                mode: delivery.tracking_mode,
+                connectionRevision: options.connectionRevision ?? CONNECTION_REVISION,
+              }) as T[],
+            }
+          }
           return { results: [] as T[] }
         },
         async run() {
@@ -251,6 +262,19 @@ function createConcurrentSuccessDb() {
             } as T
           }
           return null
+        },
+        async all<T>() {
+          if (sql.includes('FROM attribution_platform_connections')) {
+            return {
+              results: attributionConnectionSnapshotRows({
+                provider: 'meta',
+                publicConfig: { pixelId: '1234567890' },
+                mode: delivery.tracking_mode,
+                connectionRevision: CONNECTION_REVISION,
+              }) as T[],
+            }
+          }
+          return { results: [] as T[] }
         },
         async run() {
           return applyStatement(statement, 1).result

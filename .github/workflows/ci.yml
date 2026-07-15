@@ -45,6 +45,9 @@ jobs:
       - name: Web 组件测试
         run: pnpm --filter @meigallery/web test:unit
 
+      - name: Shared 单元测试
+        run: pnpm --filter @meigallery/shared test
+
       - name: API 单元测试
         run: pnpm --filter @meigallery/api test
 

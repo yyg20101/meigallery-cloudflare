@@ -67,7 +67,7 @@ describe('通用广告平台连接路由', () => {
     const app = createApp('owner')
     const first = await request(app, '/platforms/meta/verify', {
       method: 'POST',
-      body: JSON.stringify({ testEventCode: 'TEST16752' }),
+      body: JSON.stringify({ testEventCode: 'TEST90001' }),
     })
     const second = await request(app, '/platforms/meta/verify', {
       method: 'POST',
@@ -75,7 +75,7 @@ describe('通用广告平台连接路由', () => {
     })
     const restarted = await request(app, '/platforms/meta/reverify', {
       method: 'POST',
-      body: JSON.stringify({ testEventCode: 'TEST25401' }),
+      body: JSON.stringify({ testEventCode: 'TEST90002' }),
     })
 
     expect([first.status, second.status, restarted.status]).toEqual([202, 202, 202])

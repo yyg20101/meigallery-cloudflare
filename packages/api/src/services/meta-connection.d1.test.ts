@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { Miniflare } from 'miniflare'
 import { unstable_splitSqlQuery } from 'wrangler'
 import type { Bindings } from '../index'
+import { seedAttributionConnection } from '../test/ad-platform-fixture'
 import { metaConnectionFingerprint } from '../utils/meta-capi-crypto'
 import {
   bootstrapMetaConnectionVerification,
@@ -16,7 +17,7 @@ const PIXEL_ID = '1234567890'
 const REPLACEMENT_PIXEL_ID = '9988776655'
 const TOKEN = 'meta-token-sensitive'
 const ROTATED_TOKEN = 'rotated-meta-token-sensitive'
-const TEST_EVENT_CODE = 'TEST25401'
+const TEST_EVENT_CODE = 'TEST90001'
 const RELEASE_COMMIT = 'a'.repeat(40)
 const DATA_KEY = Buffer.alloc(32, 7).toString('base64')
 const INITIAL_REVISION = 'f'.repeat(32)
@@ -73,6 +74,7 @@ beforeAll(async () => {
   }
   await applyMigration('0036_meta_capi_v2_secure_delivery.sql')
   await applyMigration('0037_meta_connection_revision.sql')
+  await applyMigration('0051_unified_attribution_expand.sql')
 }, 30_000)
 
 beforeEach(async () => {
@@ -119,10 +121,7 @@ describe('MetaConnection 真实 D1 CAS', () => {
     await expect(older).rejects.toMatchObject({ code: 'META_CONNECTION_VERIFICATION_WRITE_FAILED' })
 
     expect(graph.fetchMock).toHaveBeenCalledTimes(2)
-    expect(newerDb.runs).toEqual([
-      expect.objectContaining({ changes: 1 }),
-      expect.objectContaining({ changes: 1 }),
-    ])
+    expect(newerDb.runs).toEqual([expect.objectContaining({ changes: 1 })])
     expect(olderDb.runs).toEqual([expect.objectContaining({ changes: 0 })])
     await expectWinnerToRemainValid(winner, {
       pixelId: PIXEL_ID,
@@ -149,10 +148,7 @@ describe('MetaConnection 真实 D1 CAS', () => {
 
     await expect(older).rejects.toMatchObject({ code: 'META_CONNECTION_VERIFICATION_WRITE_FAILED' })
     expect(graph.fetchMock).toHaveBeenCalledTimes(2)
-    expect(newerDb.runs).toEqual([
-      expect.objectContaining({ changes: 1 }),
-      expect.objectContaining({ changes: 1 }),
-    ])
+    expect(newerDb.runs).toEqual([expect.objectContaining({ changes: 1 })])
     expect(olderDb.runs).toEqual([expect.objectContaining({ changes: 0 })])
     await expectWinnerToRemainValid(winner, {
       pixelId: PIXEL_ID,
@@ -184,10 +180,7 @@ describe('MetaConnection 真实 D1 CAS', () => {
 
     await expect(older).rejects.toMatchObject({ code: 'META_CONNECTION_VERIFICATION_WRITE_FAILED' })
     expect(graph.fetchMock).toHaveBeenCalledTimes(2)
-    expect(newerDb.runs).toEqual([
-      expect.objectContaining({ changes: 1 }),
-      expect.objectContaining({ changes: 1 }),
-    ])
+    expect(newerDb.runs).toEqual([expect.objectContaining({ changes: 1 })])
     expect(olderDb.runs).toEqual([expect.objectContaining({ changes: 0 })])
     expect(winner.revision).not.toBe(INITIAL_REVISION)
     await expectWinnerToRemainValid(winner, {
@@ -233,10 +226,7 @@ describe('MetaConnection 真实 D1 CAS', () => {
     })
 
     expect(graph.fetchMock).toHaveBeenCalledOnce()
-    expect(bootstrapDb.runs).toEqual([
-      expect.objectContaining({ changes: 1 }),
-      expect.objectContaining({ changes: 1 }),
-    ])
+    expect(bootstrapDb.runs).toEqual([expect.objectContaining({ changes: 1 })])
     expect(staleDb.runs).toEqual([expect.objectContaining({ changes: 0 })])
     await expectWinnerToRemainValid(winner, {
       pixelId: REPLACEMENT_PIXEL_ID,
@@ -268,6 +258,11 @@ function connectionEnv(db: D1Database, token = TOKEN): Bindings {
 }
 
 async function setConnectionSettings(pixelId: string) {
+  await seedAttributionConnection(realDb, {
+    provider: 'meta',
+    publicConfig: { pixelId },
+    mode: 'test',
+  })
   await realDb.prepare(`
     INSERT INTO ad_platform_connections
       (provider, enabled, mode, browser_enabled, server_enabled, destination_id,

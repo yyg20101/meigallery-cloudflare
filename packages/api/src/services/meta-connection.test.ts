@@ -1,6 +1,7 @@
 import { Buffer } from 'node:buffer'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Bindings } from '../index'
+import { attributionConnectionSnapshotRows } from '../test/ad-platform-fixture'
 import { metaConnectionFingerprint } from '../utils/meta-capi-crypto'
 import { META_GRAPH_API_VERSION } from './meta-graph'
 import {
@@ -16,7 +17,7 @@ import {
 
 const PIXEL_ID = '1234567890'
 const TOKEN = 'meta-token-sensitive'
-const TEST_EVENT_CODE = 'TEST25401'
+const TEST_EVENT_CODE = 'TEST90001'
 const RELEASE_COMMIT = 'a'.repeat(40)
 const DATA_KEY = Buffer.alloc(32, 7).toString('base64')
 
@@ -105,6 +106,19 @@ function createConnectionDb(options: {
         },
         async all<T>() {
           calls.push(call)
+          if (sql.includes('FROM attribution_platform_connections')) {
+            const pixelId = JSON.parse(settings.get('destination_id') ?? '""') as string
+            const mode = JSON.parse(settings.get('mode') ?? '"disabled"') as 'disabled' | 'test' | 'production'
+            return {
+              results: attributionConnectionSnapshotRows({
+                provider: 'meta',
+                publicConfig: { pixelId },
+                mode,
+                rolloutTargetPercentage: Number(settings.get('rollout_percentage') ?? 0),
+                rolloutEffectivePercentage: Number(settings.get('rollout_percentage') ?? 0),
+              }) as T[],
+            }
+          }
           if (sql.includes('FROM site_settings')) {
             return {
               results: Array.from(settings, ([key, value]) => ({ key, value })) as T[],
@@ -338,7 +352,7 @@ describe('MetaConnection', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(db.verifications.get('dev')?.revision).toBe(originalRevision)
-    expect(db.settings.get('revision')).toBe(originalRevision)
+    expect(db.settings.has('revision')).toBe(false)
   })
 
   it('Graph 期间 Pixel 或 tracking mode 变化时不写 verification', async () => {

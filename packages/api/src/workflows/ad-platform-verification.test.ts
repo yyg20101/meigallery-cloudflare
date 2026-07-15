@@ -83,9 +83,9 @@ describe('广告平台验证 Workflow', () => {
   it('重复验证返回同一实例，重新验证才增加 attempt', async () => {
     const workflow = workflowBinding()
     const env = fullEnv(workflow)
-    const first = await startPlatformVerification(env, { provider: 'meta', actorId: 1, testEventCode: 'TEST16752' })
+    const first = await startPlatformVerification(env, { provider: 'meta', actorId: 1, testEventCode: 'TEST90001' })
     const repeated = await startPlatformVerification(env, { provider: 'meta', actorId: 1, testEventCode: 'TEST99999' })
-    const restarted = await startPlatformVerification(env, { provider: 'meta', actorId: 1, testEventCode: 'TEST25401', reverify: true })
+    const restarted = await startPlatformVerification(env, { provider: 'meta', actorId: 1, testEventCode: 'TEST90002', reverify: true })
 
     expect(repeated.id).toBe(first.id)
     expect(repeated.attempt).toBe(1)
@@ -93,13 +93,13 @@ describe('广告平台验证 Workflow', () => {
     expect(restarted.id).not.toBe(first.id)
     expect(workflow.ids).toEqual([first.id, restarted.id])
     const rows = await db.prepare('SELECT evidence_json FROM attribution_verifications ORDER BY attempt').all<{ evidence_json: string }>()
-    expect(JSON.stringify(rows.results)).not.toMatch(/TEST16752|TEST25401|TEST99999/)
+    expect(JSON.stringify(rows.results)).not.toMatch(/TEST90001|TEST90002|TEST99999/)
   })
 
   it('自动验证后清除测试码密文，人工证据完成后 revision 仍一致才通过', async () => {
     const workflow = workflowBinding()
     const env = fullEnv(workflow)
-    const started = await startPlatformVerification(env, { provider: 'meta', actorId: 1, testEventCode: 'TEST16752' })
+    const started = await startPlatformVerification(env, { provider: 'meta', actorId: 1, testEventCode: 'TEST90001' })
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ events_received: 2 }), { status: 200 })))
 
     const instance = new AdPlatformVerificationWorkflow({} as ExecutionContext, env)
@@ -109,7 +109,7 @@ describe('广告平台验证 Workflow', () => {
 
     expect(result).toEqual({ status: 'verified' })
     expect(row?.status).toBe('verified')
-    expect(row?.evidence_json).not.toMatch(/ciphertext|verificationInput|TEST16752|meta-access-token/)
+    expect(row?.evidence_json).not.toMatch(/ciphertext|verificationInput|TEST90001|meta-access-token/)
     expect(JSON.parse(row!.evidence_json)).toMatchObject({
       schemaVersion: 1,
       automatic: { provider: 'meta', testEventsSent: 2 },
@@ -120,7 +120,7 @@ describe('广告平台验证 Workflow', () => {
 
   it('等待人工证据超时后只保留脱敏结果，测试输入不可读取', async () => {
     const env = fullEnv(workflowBinding())
-    const started = await startPlatformVerification(env, { provider: 'meta', actorId: 1, testEventCode: 'TEST16752' })
+    const started = await startPlatformVerification(env, { provider: 'meta', actorId: 1, testEventCode: 'TEST90001' })
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ events_received: 2 }), { status: 200 })))
     const instance = new AdPlatformVerificationWorkflow({} as ExecutionContext, env)
     const result = await instance.run(workflowEvent(started.id), workflowStep(new Error('timeout')))
@@ -129,13 +129,13 @@ describe('广告平台验证 Workflow', () => {
 
     expect(result).toEqual({ status: 'timed_out' })
     expect(row?.status).toBe('timed_out')
-    expect(row?.evidence_json).not.toMatch(/ciphertext|verificationInput|TEST16752|meta-access-token/)
+    expect(row?.evidence_json).not.toMatch(/ciphertext|verificationInput|TEST90001|meta-access-token/)
     vi.unstubAllGlobals()
   })
 
   it('平台拒绝自动验证后清除测试码密文和凭证明文', async () => {
     const env = fullEnv(workflowBinding())
-    const started = await startPlatformVerification(env, { provider: 'meta', actorId: 1, testEventCode: 'TEST16752' })
+    const started = await startPlatformVerification(env, { provider: 'meta', actorId: 1, testEventCode: 'TEST90001' })
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ events_received: 0 }), { status: 400 })))
     const instance = new AdPlatformVerificationWorkflow({} as ExecutionContext, env)
     const result = await instance.run(workflowEvent(started.id), workflowStep({ confirmed: true, actorId: 1 }))
@@ -144,7 +144,7 @@ describe('广告平台验证 Workflow', () => {
 
     expect(result).toMatchObject({ status: 'failed' })
     expect(row?.status).toBe('failed')
-    expect(row?.evidence_json).not.toMatch(/ciphertext|verificationInput|TEST16752|meta-access-token/)
+    expect(row?.evidence_json).not.toMatch(/ciphertext|verificationInput|TEST90001|meta-access-token/)
     expect(JSON.parse(row!.evidence_json)).toMatchObject({
       schemaVersion: 1,
       failureCode: 'AD_PLATFORM_VERIFICATION_PROVIDER_REJECTED',
@@ -155,7 +155,7 @@ describe('广告平台验证 Workflow', () => {
   it('人工确认只向所属 Workflow 发送最小事件', async () => {
     const workflow = workflowBinding()
     const env = fullEnv(workflow)
-    const started = await startPlatformVerification(env, { provider: 'meta', actorId: 1, testEventCode: 'TEST16752' })
+    const started = await startPlatformVerification(env, { provider: 'meta', actorId: 1, testEventCode: 'TEST90001' })
     await db.prepare("UPDATE attribution_verifications SET status = 'awaiting_human_evidence' WHERE id = ?")
       .bind(started.id).run()
     await submitPlatformVerificationEvidence(env, {

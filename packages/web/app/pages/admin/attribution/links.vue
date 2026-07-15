@@ -3,6 +3,7 @@ import type { AdPlatformProvider } from '@meigallery/shared'
 import AnalyticsDataTable from '~/components/admin/analytics/AnalyticsDataTable.vue'
 import AttributionPageShell from '~/components/admin/attribution/AttributionPageShell.vue'
 import AttributionProviderSwitch from '~/components/admin/attribution/AttributionProviderSwitch.vue'
+import { ATTRIBUTION_PLATFORMS, attributionPlatformDefinition } from '~/utils/attributionPlatforms'
 
 definePageMeta({ layout: 'admin' })
 
@@ -86,9 +87,7 @@ const linkRows = computed(() => (attribution.data.value?.links ?? []).map(item =
 })))
 
 function adProviderLabel(item: Pick<AttributionLink, 'channel' | 'adProvider'>) {
-  if (item.adProvider === 'meta') return 'Meta'
-  if (item.adProvider === 'tiktok') return 'TikTok'
-  if (item.adProvider === 'google') return 'Google Ads'
+  if (item.adProvider) return attributionPlatformDefinition(item.adProvider).label
   return item.channel === 'ad' ? '未绑定（不投递）' : '非广告'
 }
 
@@ -183,7 +182,7 @@ function normalizeUtmValue(value: string) {
     v-model:range="rangeState.range.value"
     v-model:date="rangeState.date.value"
     title="投放追踪链接"
-    description="为 Meta、TikTok 等渠道创建明确绑定平台的投放链接，按广告版本查看有效联系和注册。"
+    description="为广告渠道创建明确绑定平台的投放链接，按广告版本查看有效联系和注册。"
     :loading="attribution.loading.value"
     :error="attribution.error.value"
     :usage="attribution.usage.value"
@@ -251,7 +250,7 @@ function normalizeUtmValue(value: string) {
           <form class="mt-4 space-y-3" @submit.prevent="createTrackingLink">
             <label class="block">
               <span class="mb-1 block text-xs font-medium text-gray-600">链接名称</span>
-              <input v-model="form.sourceLabel" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="例如 Meta 广告 A｜聊天 CTA" />
+              <input v-model="form.sourceLabel" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="例如广告 A｜聊天 CTA" />
             </label>
             <label class="block">
               <span class="mb-1 block text-xs font-medium text-gray-600">渠道</span>
@@ -262,8 +261,7 @@ function normalizeUtmValue(value: string) {
             <label v-if="form.channel === 'ad'" class="block">
               <span class="mb-1 block text-xs font-medium text-gray-600">广告平台</span>
               <select v-model="form.adProvider" required class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
-                <option value="meta">Meta</option>
-                <option value="tiktok">TikTok</option>
+                <option v-for="item in ATTRIBUTION_PLATFORMS" :key="item.provider" :value="item.provider">{{ item.label }}</option>
               </select>
             </label>
             <label class="block">

@@ -148,9 +148,13 @@ const analyticsBatches = []
 const sessionEndBatches = []
 const registrations = []
 const receiptProtectedRequests = []
+const conversionRequests = []
+const browserAttemptReceipts = []
 let authenticated = true
 let sessionCookieRequired = false
 let marketingConsentState = 'granted'
+let currentAttributionProvider = null
+let currentAttributionResolution = 'none'
 let adminAnalyticsEmpty = false
 const adminAttributionRequests = []
 const adminAttributionActions = []
@@ -164,9 +168,13 @@ function resetPublicSettings() {
   sessionEndBatches.length = 0
   registrations.length = 0
   receiptProtectedRequests.length = 0
+  conversionRequests.length = 0
+  browserAttemptReceipts.length = 0
   authenticated = true
   sessionCookieRequired = false
   marketingConsentState = 'granted'
+  currentAttributionProvider = null
+  currentAttributionResolution = 'none'
   adminAnalyticsEmpty = false
   adminAttributionRequests.length = 0
   adminAttributionActions.length = 0
@@ -178,7 +186,7 @@ function json(res, data, status = 200, extraHeaders = {}) {
     'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Headers': 'content-type',
-    'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
+    'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': Buffer.byteLength(body),
     ...extraHeaders,
@@ -197,6 +205,43 @@ function publicSettings() {
 function adminSettings() {
   const now = new Date('2026-06-01T00:00:00.000Z').toISOString()
   return Object.fromEntries(Object.entries(mutablePublicSettings).map(([key, value]) => [key, { value, updatedAt: now }]))
+}
+
+const attributionBrowserConfigs = {
+  meta: { provider: 'meta', pixelId: '1234567890' },
+  tiktok: { provider: 'tiktok', pixelCode: 'C123456789ABCDEF' },
+  google: { provider: 'google', tagId: 'AW-123456789' },
+}
+
+function attributionBrowserInstruction(provider, canonicalEvent) {
+  const eventSlug = canonicalEvent === 'Contact' ? 'contact' : 'registration'
+  const browserDestination = provider === 'google'
+    ? `AW-123456789/${eventSlug}`
+    : `${provider}_pixel`
+  return {
+    deliveryId: `delivery_${provider}_${eventSlug}`,
+    provider,
+    canonicalEvent,
+    externalEventId: `e2e_${provider}_${eventSlug}`,
+    receiptToken: `v1.${'a'.repeat(16)}.${'b'.repeat(43)}`,
+    descriptor: {
+      provider,
+      canonicalEvent,
+      browserEventName: provider === 'google' ? 'conversion' : canonicalEvent,
+      browserDestination,
+      serverDestination: `${provider}_events_api`,
+    },
+    payload: { test_case: 'platform_isolation' },
+  }
+}
+
+function resolvedTrackingInstructions(canonicalEvent, attribution) {
+  if (marketingConsentState !== 'granted'
+    || currentAttributionResolution !== 'matched'
+    || !currentAttributionProvider
+    || attribution?.consentState !== 'granted'
+    || attribution?.adAttributionState !== 'resolved') return []
+  return [attributionBrowserInstruction(currentAttributionProvider, canonicalEvent)]
 }
 
 async function readJsonBody(req) {
@@ -748,6 +793,15 @@ function handleApi(req, res) {
       events: analyticsBatches.flatMap(batch => Array.isArray(batch.events) ? batch.events : []),
     })
   }
+  if (url.pathname === '/api/test/ad-attribution-events') {
+    return json(res, {
+      provider: currentAttributionProvider,
+      resolution: currentAttributionResolution,
+      conversions: conversionRequests,
+      browserAttempts: browserAttemptReceipts,
+      registrations,
+    })
+  }
   if (url.pathname === '/api/test/receipt-protected-requests/clear' && req.method === 'POST') {
     receiptProtectedRequests.length = 0
     return json(res, { ok: true })
@@ -783,21 +837,30 @@ function handleApi(req, res) {
   if (url.pathname === '/api/ad-attribution' && req.method === 'PUT') {
     readJsonBody(req)
       .then((body) => {
-        const hasMetaClick = Boolean(String(body.fbclid || '').trim())
-        const hasTikTokClick = Boolean(String(body.ttclid || '').trim())
-        const provider = hasMetaClick === hasTikTokClick
-          ? null
-          : hasMetaClick ? 'meta' : 'tiktok'
+        const providers = [
+          Boolean(String(body.fbclid || '').trim()) && 'meta',
+          Boolean(String(body.ttclid || '').trim()) && 'tiktok',
+          Boolean(String(body.gclid || body.gbraid || body.wbraid || '').trim()) && 'google',
+        ].filter(Boolean)
+        const provider = providers.length === 1 ? providers[0] : null
+        currentAttributionProvider = provider
+        currentAttributionResolution = providers.length > 1 ? 'conflict' : provider ? 'matched' : 'none'
         json(res, {
           provider,
-          resolution: hasMetaClick && hasTikTokClick ? 'conflict' : provider ? 'matched' : 'none',
+          resolution: currentAttributionResolution,
           expiresInSeconds: 1_800,
         })
       })
       .catch(() => json(res, { statusCode: 400, message: '广告来源请求无效' }, 400))
     return
   }
+  if (url.pathname === '/api/ad-attribution/bootstrap' && req.method === 'GET') {
+    const publicConfig = currentAttributionProvider ? attributionBrowserConfigs[currentAttributionProvider] : null
+    return json(res, { provider: currentAttributionProvider, publicConfig })
+  }
   if (url.pathname === '/api/ad-attribution' && req.method === 'DELETE') {
+    currentAttributionProvider = null
+    currentAttributionResolution = 'none'
     return json(res, { provider: null, resolution: 'none', expiresInSeconds: 1_800 })
   }
   if (url.pathname === '/api/marketing-consent' && req.method === 'GET') {
@@ -880,14 +943,7 @@ function handleApi(req, res) {
           role: 'user',
           membershipRank: 0,
           membershipName: 'free',
-          trackingInstructions: [{
-            provider: 'meta',
-            deliveryId: 'cdlv_registration_22',
-            eventName: 'CompleteRegistration',
-            eventId: 'meta:CompleteRegistration:complete_registration:user:22',
-            payload: { method: 'email' },
-            receiptToken: 'receipt_registration_22',
-          }],
+          trackingInstructions: resolvedTrackingInstructions('CompleteRegistration', body.attribution),
         }, 200, {
           'Set-Cookie': 'mei_session=mock-session; Path=/; HttpOnly; SameSite=Lax',
         })
@@ -897,7 +953,28 @@ function handleApi(req, res) {
   }
   if (url.pathname === '/api/conversions/events' && req.method === 'POST') {
     receiptProtectedRequests.push({ endpoint: '/api/conversions/events', cookie: req.headers.cookie || '' })
-    return json(res, { data: { trackingInstructions: [] } })
+    readJsonBody(req)
+      .then((body) => {
+        conversionRequests.push(body)
+        json(res, {
+          data: {
+            id: `fact_contact_${conversionRequests.length}`,
+            created: true,
+            trackingInstructions: resolvedTrackingInstructions('Contact', body),
+          },
+        })
+      })
+      .catch(() => json(res, { statusCode: 400, message: '转化事件请求无效' }, 400))
+    return
+  }
+  if (url.pathname === '/api/conversions/browser-attempt' && req.method === 'POST') {
+    readJsonBody(req)
+      .then((body) => {
+        browserAttemptReceipts.push(body)
+        json(res, { accepted: true })
+      })
+      .catch(() => json(res, { statusCode: 400, message: '浏览器投递回执无效' }, 400))
+    return
   }
   if (url.pathname === '/api/cases') return json(res, { data: cases, total: cases.length })
   if (url.pathname === '/api/tags') {

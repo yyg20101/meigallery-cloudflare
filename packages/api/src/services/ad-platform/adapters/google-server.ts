@@ -1,4 +1,4 @@
-import type { GoogleServerDeliveryInput, ServerAdapterRequest, ServerDeliveryResult, ServerTrackingAdapter } from '../server-adapter'
+import type { GoogleServerDeliveryInput, ServerDeliveryResult, ServerTrackingAdapter } from '../server-adapter'
 import { getGoogleAccessToken, GoogleAuthError, parseGoogleServiceAccount } from './google-auth'
 
 const GOOGLE_EVENTS_ENDPOINT = 'https://datamanager.googleapis.com/v1/events:ingest'

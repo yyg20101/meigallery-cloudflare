@@ -27,6 +27,7 @@ const DEFAULT_WRANGLER_VARS = [
   ['TURNSTILE_SECRET_KEY', 'local-runtime-turnstile-secret'],
   ['STREAM_ACCOUNT_ID', 'local-runtime-stream-account'],
   ['STREAM_API_TOKEN', 'local-runtime-stream-token'],
+  ['AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT', crypto.createHash('sha256').update('meigallery-local-attribution-master-key').digest('base64')],
 ]
 
 export async function runLocalRuntimeVerification(options = {}) {
@@ -152,7 +153,8 @@ export async function runLocalRuntimeVerification(options = {}) {
     if (attributionReceipt.step.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
     const contactStep = await postConversion(boundedFetch, 'local-conversion-contact', {
-      actionType: 'contact',
+      actionType: 'open_link',
+      contactMethodId: 'contact_local_telegram',
       visitorId: 'visitor_release_local',
       sessionId: 'session_release_local',
       occurredAt: new Date().toISOString(),
@@ -168,7 +170,6 @@ export async function runLocalRuntimeVerification(options = {}) {
       consentState: 'granted',
       adAttributionState: 'resolved',
       methodType: 'telegram',
-      actionTarget: 'floating_contact_panel',
       metadata: {
         fbclid: 'release-local-fbclid',
         placement: 'local-runtime-smoke',
@@ -218,7 +219,7 @@ export async function runLocalRuntimeVerification(options = {}) {
     steps.push(metaStep)
     if (metaStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
-    notes.push('meta-capi-disabled-in-local')
+    notes.push('ad-platform-server-delivery-disabled-in-local')
     return { steps, notes, artifacts, sensitiveValues }
   } finally {
     if (startedServer && server) {
@@ -453,17 +454,17 @@ async function establishMetaAttribution(fetchFn) {
     if (attributionBody?.provider !== 'meta' || attributionBody?.resolution !== 'matched') {
       throw new Error('广告来源未解析为 Meta')
     }
-    const attributionCookie = readResponseCookie(attributionResponse, 'mei_ad_attribution_receipt')
+    const attributionCookie = readResponseCookie(attributionResponse, 'mei_ad_attribution')
 
     return {
       cookieHeader: `${consentCookie}; ${attributionCookie}`,
       step: {
-        ...createStep('local-meta-attribution-receipt'),
+        ...createStep('local-meta-attribution-context'),
         status: 'passed',
         durationMs: Date.now() - startedAt,
         command,
         exitCode: 200,
-        summary: '营销授权和 Meta 来源 receipt 已由本地 Worker 签发',
+        summary: '营销授权和 Meta 来源上下文已由本地 Worker 签发',
       },
     }
   }
@@ -471,12 +472,12 @@ async function establishMetaAttribution(fetchFn) {
     return {
       cookieHeader: '',
       step: {
-        ...createStep('local-meta-attribution-receipt'),
+        ...createStep('local-meta-attribution-context'),
         status: 'failed',
         durationMs: Date.now() - startedAt,
         command,
         exitCode: null,
-        summary: truncateSummary(error instanceof Error ? error.message : 'Meta 来源 receipt 创建失败'),
+        summary: truncateSummary(error instanceof Error ? error.message : 'Meta 来源上下文创建失败'),
       },
     }
   }
@@ -503,10 +504,10 @@ async function postConversion(fetchFn, stepName, payload, cookieHeader = '') {
     if (!body?.data?.id) {
       throw new Error('响应缺少转化事件 ID')
     }
-    if (body?.data?.actionType !== payload.actionType) {
+    if (body?.data?.actionType !== 'contact') {
       throw new Error(`响应 actionType 不匹配：${String(body?.data?.actionType || '')}`)
     }
-    return `${payload.actionType} 已写入，created=${String(body?.data?.created)}`
+    return `Contact 已写入，created=${String(body?.data?.created)}`
   })
 }
 

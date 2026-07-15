@@ -157,7 +157,8 @@ export async function runDevRehearsalVerification(options = {}) {
     }
 
     const contactStep = await postConversion(boundedFetch, apiUrl, 'dev-conversion-contact', {
-      actionType: 'contact',
+      actionType: 'open_link',
+      contactMethodId: 'contact_release_dev_telegram',
       visitorId: conversionVisitorId,
       sessionId: conversionSessionId,
       occurredAt: new Date().toISOString(),
@@ -173,7 +174,6 @@ export async function runDevRehearsalVerification(options = {}) {
       consentState: 'granted',
       adAttributionState: 'resolved',
       methodType: 'telegram',
-      actionTarget: `floating_contact_panel_${runSuffix}`,
       metadata: {
         fbclid: 'release-dev-fbclid',
         placement: 'dev-rehearsal-smoke',
@@ -388,29 +388,29 @@ async function establishMetaAttribution(fetchFn, apiUrl, runSuffix) {
     if (attributionBody?.provider !== 'meta' || attributionBody?.resolution !== 'matched') {
       throw new Error('广告来源未解析为 Meta')
     }
-    const attributionCookie = readResponseCookie(attributionResponse, 'mei_ad_attribution_receipt')
+    const attributionCookie = readResponseCookie(attributionResponse, 'mei_ad_attribution')
 
     return {
       cookieHeader: `${consentCookie}; ${attributionCookie}`,
       step: {
-        ...createStep('dev-meta-attribution-receipt'),
+        ...createStep('dev-meta-attribution-context'),
         status: 'passed',
         durationMs: Date.now() - startedAt,
         command,
         exitCode: 200,
-        summary: '营销授权和 Meta 来源 receipt 已由 dev Worker 签发',
+        summary: '营销授权和 Meta 来源上下文已由 dev Worker 签发',
       },
     }
   } catch (error) {
     return {
       cookieHeader: '',
       step: {
-        ...createStep('dev-meta-attribution-receipt'),
+        ...createStep('dev-meta-attribution-context'),
         status: 'failed',
         durationMs: Date.now() - startedAt,
         command,
         exitCode: null,
-        summary: truncateSummary(error instanceof Error ? error.message : 'Meta 来源 receipt 创建失败'),
+        summary: truncateSummary(error instanceof Error ? error.message : 'Meta 来源上下文创建失败'),
       },
     }
   }
@@ -437,13 +437,13 @@ async function postConversion(fetchFn, apiUrl, stepName, payload, cookieHeader =
     if (!body?.data?.id) {
       throw new Error('响应缺少转化事件 ID')
     }
-    if (body?.data?.actionType !== payload.actionType) {
+    if (body?.data?.actionType !== 'contact') {
       throw new Error(`响应 actionType 不匹配：${String(body?.data?.actionType || '')}`)
     }
     if (body?.data?.created !== true) {
-      throw new Error(`${payload.actionType} 响应 created 非 true`)
+      throw new Error('Contact 响应 created 非 true')
     }
-    return `${payload.actionType} 已写入，created=${String(body?.data?.created)}`
+    return `Contact 已写入，created=${String(body?.data?.created)}`
   })
 }
 
