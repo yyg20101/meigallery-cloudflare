@@ -73,7 +73,7 @@ export async function handleAttributionQueueBatch(batch: MessageBatch<AdPlatform
     try {
       if (!expectedProvider) {
         const row = await readLocatedDelivery(env.DB, message.body, dependencies)
-        await recordIncident(env.DB, row, 'queue_unregistered', batch.queue)
+        await recordIncident(env.DB, row, 'queue_unregistered', batch.queue, expectedProvider, message.body)
         safeAck(message)
         continue
       }
@@ -81,14 +81,14 @@ export async function handleAttributionQueueBatch(batch: MessageBatch<AdPlatform
       const body = parseQueueMessage(message.body)
       if (!body) {
         const row = await readLocatedDelivery(env.DB, message.body, dependencies)
-        await recordIncident(env.DB, row, 'queue_message_invalid', batch.queue)
+        await recordIncident(env.DB, row, 'queue_message_invalid', batch.queue, expectedProvider, message.body)
         safeAck(message)
         continue
       }
 
       const row = await (dependencies.readDelivery ?? readDelivery)(env.DB, body.deliveryId)
       if (body.provider !== expectedProvider || !row || !consistent(row, expectedProvider)) {
-        await recordIncident(env.DB, row, 'queue_provider_mismatch', batch.queue)
+        await recordIncident(env.DB, row, 'queue_provider_mismatch', batch.queue, expectedProvider, message.body)
         safeAck(message)
         continue
       }
@@ -364,13 +364,21 @@ async function markDeadLetter(db: D1Database, row: AttributionDeliveryQueueRow, 
   return changed(results[0])
 }
 
-async function recordIncident(db: D1Database, row: AttributionDeliveryQueueRow | null, code: string, queue: string) {
-  if (!row || !isProvider(row.delivery_provider)) return
+async function recordIncident(
+  db: D1Database,
+  row: AttributionDeliveryQueueRow | null,
+  code: string,
+  queue: string,
+  expectedProvider: AdAttributionProvider | undefined,
+  body: unknown,
+) {
+  const connectionId = row?.connection_id ?? null
+  const provider = row?.delivery_provider ?? expectedProvider ?? identifiableProvider(body) ?? 'system'
   await db.prepare(`
     INSERT INTO attribution_incidents (
       id, connection_id, provider, status, severity, trigger_code, summary, evidence_json, opened_at
     ) VALUES (?, ?, ?, 'open', 'critical', ?, '广告归因异步投递被安全终止', ?, datetime('now'))
-  `).bind(crypto.randomUUID(), row.connection_id, row.delivery_provider, code, JSON.stringify({ queue })).run()
+  `).bind(crypto.randomUUID(), connectionId, provider, code, JSON.stringify({ queue })).run()
 }
 
 function receiptStatement(db: D1Database, row: AttributionDeliveryQueueRow, token: number, status: string, fence: string, result: ServerDeliveryResult) {
@@ -429,6 +437,16 @@ function terminal(status: string) {
   return status === 'accepted' || status === 'processed' || status === 'rejected' || status === 'dead_letter' || status === 'cancelled'
 }
 function isProvider(value: unknown): value is AdAttributionProvider { return value === 'meta' || value === 'tiktok' || value === 'google' }
+function identifiableProvider(value: unknown): AdAttributionProvider | null {
+  try {
+    if (!isPlainRecord(value)) return null
+    const provider = ownDataProperty(value, 'provider')
+    return isProvider(provider) ? provider : null
+  }
+  catch {
+    return null
+  }
+}
 function identifier(value: unknown): value is string { return typeof value === 'string' && /^[A-Za-z0-9_-]{1,160}$/.test(value) }
 function validUrl(value: unknown) { try { const url = new URL(String(value)); return (url.protocol === 'http:' || url.protocol === 'https:') && Boolean(url.hostname) } catch { return false } }
 function safeRequestId(value: unknown) { return typeof value === 'string' && /^[A-Za-z0-9._-]{1,160}$/.test(value) ? value : undefined }

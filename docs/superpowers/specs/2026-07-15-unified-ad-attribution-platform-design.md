@@ -444,6 +444,7 @@ planned -> queued -> accepted -> processed
 - Queue 消息小于 64 KB。
 - Consumer 必须先识别物理 Queue，再严格解析消息，随后核对 Delivery、Fact、Connection 与 Queue 的 provider；非终态还必须核对 Outbox provider。只有通过全部校验的正常终态重复消息可以静默 ack 并幂等清理同 provider Outbox。
 - 未注册 Queue、跨平台 Queue 或畸形消息必须写 critical incident 后 ack，即使其 `deliveryId` 指向终态 Delivery 也不得借终态分支删除 Outbox。
+- `attribution_incidents.connection_id` 可空：能够定位 Delivery 时属于连接级事件，必须写入该 Delivery 的 connection/provider；无法定位 Delivery 时属于基础设施级事件，写入 `connection_id=NULL`，provider 依次取物理 Queue 的 expected provider、消息中可安全识别的 `meta`/`tiktok`/`google`，否则写 `system`。基础设施级 evidence 只保留 Queue 名，不保存消息 body、`deliveryId`、token 或用户数据。
 - finalize、DLQ 和 expiry 使用同一 D1 batch 内的唯一 winner fence；状态 CAS、Outbox 删除、receipt/incident 写入和 fence 清理必须原子提交，CAS loser 不得借用 winner 的相同终态产生副作用。
 
 ## 11. Google Ads 接入

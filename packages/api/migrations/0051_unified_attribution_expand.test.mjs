@@ -132,6 +132,30 @@ describe('0051 通用归因 Expand migration', () => {
     `), /ATTRIBUTION_PROVIDER_IMMUTABLE/)
   })
 
+  it("基础设施级 critical incident 允许 NULL connection_id 和 system provider", () => {
+    executeSql(emptyPersistDir, `
+      INSERT INTO attribution_incidents (
+        id, connection_id, provider, status, severity, trigger_code, summary, evidence_json, opened_at
+      ) VALUES (
+        'incident_infrastructure', NULL, 'system', 'open', 'critical',
+        'queue_message_invalid', '广告归因队列基础设施异常',
+        '{"queue":"unknown-queue"}', '2026-07-15T00:00:00.000Z'
+      );
+    `)
+
+    assert.deepEqual(schemaRows(emptyPersistDir, `
+      SELECT connection_id, provider, status, severity, evidence_json
+      FROM attribution_incidents
+      WHERE id = 'incident_infrastructure';
+    `), [{
+      connection_id: null,
+      provider: 'system',
+      status: 'open',
+      severity: 'critical',
+      evidence_json: '{"queue":"unknown-queue"}',
+    }])
+  })
+
   it('Fact、Delivery、Outbox provider 必须一致，且 delivery 状态受最终状态机限制', () => {
     executeSql(emptyPersistDir, connectionSql('connection_other', 'another_future_platform'))
     executeSql(emptyPersistDir, deliverySql('delivery_valid', 'fact_live', 'connection_custom', 'future_platform', 'planned'))

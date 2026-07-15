@@ -83,6 +83,67 @@ describe('统一广告平台 Queue 运行时', () => {
     expect((await db.prepare('SELECT severity FROM attribution_incidents').first<{ severity: string }>())?.severity).toBe('critical')
   })
 
+  it('known Queue 的空 body 写无连接 meta critical incident，并继续处理同批下一条消息', async () => {
+    await seed('queued')
+    const malformed = queueMessage({})
+    const valid = queueMessage()
+    await handleAttributionQueueBatch(batch([malformed, valid]), env(), {
+      deliver: async () => ({ classification: 'accepted' }),
+      readCredential: async () => 'secret',
+    })
+
+    expect(malformed.ack).toHaveBeenCalledOnce()
+    expect(malformed.retry).not.toHaveBeenCalled()
+    expect(valid.ack).toHaveBeenCalledOnce()
+    expect((await deliveryState('meta')).status).toBe('accepted')
+    expect(await incidentRows()).toEqual([expect.objectContaining({
+      connection_id: null,
+      provider: 'meta',
+      severity: 'critical',
+      trigger_code: 'queue_message_invalid',
+      evidence_json: '{"queue":"meigallery-ad-meta"}',
+    })])
+  })
+
+  it('unknown Queue 按安全可识别 provider 归属，否则归为 system，并继续处理同批消息', async () => {
+    const unknown = queueMessage({})
+    const recognizable = queueMessage({ provider: 'tiktok', token: 'secret-token', userEmail: 'user@example.test' })
+    await handleAttributionQueueBatch(batch([unknown, recognizable], 'unknown-queue'), env())
+
+    expect(unknown.ack).toHaveBeenCalledOnce()
+    expect(recognizable.ack).toHaveBeenCalledOnce()
+    expect(unknown.retry).not.toHaveBeenCalled()
+    expect(recognizable.retry).not.toHaveBeenCalled()
+    expect(await incidentRows()).toEqual([
+      expect.objectContaining({ connection_id: null, provider: 'system', severity: 'critical', trigger_code: 'queue_unregistered', evidence_json: '{"queue":"unknown-queue"}' }),
+      expect.objectContaining({ connection_id: null, provider: 'tiktok', severity: 'critical', trigger_code: 'queue_unregistered', evidence_json: '{"queue":"unknown-queue"}' }),
+    ])
+    const serialized = JSON.stringify(await incidentRows())
+    expect(serialized).not.toContain('secret-token')
+    expect(serialized).not.toContain('user@example.test')
+  })
+
+  it.each([
+    ['不存在', { schemaVersion: 1, deliveryId: 'delivery_missing', provider: 'meta' }, 'queue_provider_mismatch'],
+    ['非法', { schemaVersion: 1, deliveryId: 'delivery invalid', provider: 'meta', token: 'secret-token' }, 'queue_message_invalid'],
+  ] as const)('%s deliveryId 写无连接 meta critical incident 且 evidence 仅含 Queue', async (_name, body, triggerCode) => {
+    const message = queueMessage(body)
+    await handleAttributionQueueBatch(batch([message]), env())
+
+    expect(message.ack).toHaveBeenCalledOnce()
+    expect(message.retry).not.toHaveBeenCalled()
+    expect(await incidentRows()).toEqual([expect.objectContaining({
+      connection_id: null,
+      provider: 'meta',
+      severity: 'critical',
+      trigger_code: triggerCode,
+      evidence_json: '{"queue":"meigallery-ad-meta"}',
+    })])
+    const serialized = JSON.stringify(await incidentRows())
+    expect(serialized).not.toContain(String(body.deliveryId))
+    expect(serialized).not.toContain('secret-token')
+  })
+
   it.each([
     ['queue', { schemaVersion: 1, deliveryId: 'delivery_meta', provider: 'tiktok' }],
     ['fact', { schemaVersion: 1, deliveryId: 'delivery_meta', provider: 'meta' }],
@@ -337,6 +398,15 @@ async function encryptedOutboxStatement(provider: AdAttributionProvider) {
 
 async function deliveryState(provider: AdAttributionProvider) {
   return db.prepare('SELECT status, attempt_count, last_error_code, updated_at, accepted_at, processed_at FROM attribution_deliveries WHERE id = ?').bind(`delivery_${provider}`).first<{ status: string; attempt_count: number; last_error_code: string; updated_at: string; accepted_at: string | null; processed_at: string | null }>() as Promise<{ status: string; attempt_count: number; last_error_code: string; updated_at: string; accepted_at: string | null; processed_at: string | null }>
+}
+
+async function incidentRows() {
+  const result = await db.prepare(`
+    SELECT connection_id, provider, severity, trigger_code, evidence_json
+    FROM attribution_incidents
+    ORDER BY opened_at, rowid
+  `).all<{ connection_id: string | null; provider: string; severity: string; trigger_code: string; evidence_json: string }>()
+  return result.results
 }
 
 async function readDeliveryRow(provider: AdAttributionProvider) {

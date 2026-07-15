@@ -1,6 +1,6 @@
 # Task 7：统一 Queue、Outbox、重试、DLQ 和恢复 Cron
 
-状态：第二轮审查修复和本地验证已完成。
+状态：最后一项基础设施事件审计修复和本地验证已完成。
 
 ## 审查 RED 证据
 
@@ -23,11 +23,22 @@ registration 正式 0051 schema：8 passed
 
 失败准确覆盖 unknown/cross/malformed 消息借终态分支删除 Outbox、两个 DLQ consumer 重复写 incident、expiry 已先 `rejected` 后迟到 finalize 借相同终态写 receipt，以及 setup 仍创建四条旧 Queue。
 
+最后一项先补正式 0051 D1 schema 上的无法定位 Delivery 场景。实现前结果：
+
+```text
+Queue runtime：4 failed | 42 passed（46）
+0051 migration：1 failed | 5 passed（6）
+```
+
+失败准确覆盖 known Queue 空 body、unknown Queue 空 body、缺失或非法 `deliveryId`、unknown Queue 中可识别 provider 被静默 ack 而未写 critical incident，以及 `attribution_incidents.connection_id NOT NULL` 阻止基础设施事件落库。
+
 ## 审查修复产出
 
 - D1 claim 使用读取到的旧 `status`、`attempt_count`、`updated_at` 做 CAS；finalize、DLQ 和 expiry 在同一 D1 batch 中写入唯一 fence，delete/receipt/incident 只认当次 fence，最后清成正式错误码。CAS loser 即使看到相同终态和 attempt 也不能产生副作用，batch 任一语句失败则整体回滚。
 - 安全校验严格按 expected Queue、body、Delivery row、Delivery/Fact/Connection provider 执行；非终态再要求同 provider Outbox。只有完整校验通过的正常终态重复消息静默 ack 并幂等清理同 provider Outbox。
 - unknown Queue、跨平台 Queue 和 malformed body 即使定位到终态 Delivery，也写 critical incident、ack 且不删除 Outbox。
+- `attribution_incidents.connection_id` 改为 nullable FK。能够定位 Delivery 的连接级 incident 仍使用该行的 connection/provider；无法定位 Delivery 的基础设施级 incident 使用 `connection_id=NULL`，provider 优先取 expected Queue，其次取消息中可安全识别的 `meta`/`tiktok`/`google`，完全不可识别时使用开放字符串 `system`。
+- known/unknown Queue 空 body、缺失或非法 `deliveryId` 和 unknown Queue 可识别 provider 均写 critical incident 后 ack；单条畸形消息不阻塞同批次后续消息。基础设施级 evidence 严格只有 Queue 名，不保存 body、`deliveryId`、token 或用户数据。
 - DLQ CAS 同时递增 `attempt_count` 并写唯一 fence，两个 consumer 同读旧 row 只有 winner 写 incident；活动 consumer 的迟到 finalize 不得覆盖 `dead_letter`。
 - `accepted`、`processed`、`rejected`、`dead_letter`、`cancelled` 终态统一删除加密 Outbox，但保留已有脱敏 Provider Receipt。`accepted` 仅表示平台接收且服务端发送不可重试，不代表归因成功；后续诊断不保留匹配 Payload。
 - 只有明确永久的 `CredentialVaultError` 才映射为 `credential_invalid`；普通 D1、Adapter、网络异常均 retry。确认损坏或过期的 Outbox 才进入 `rejected`。
@@ -44,10 +55,10 @@ registration 正式 0051 schema：8 passed
 
 ## 验证结果
 
-- Task7 focused：`52 passed`。
+- Task7 focused：`56 passed`。
 - conversions/index focused：`15 passed`。
 - Node setup/Queue preflight：`12 passed`。
-- 0051 migration：`5 passed`。
+- 0051 migration：`6 passed`。
 - API `tsc --noEmit`：通过。
 - Wrangler production dry-run：通过，显示 `AD_META_QUEUE`、`AD_TIKTOK_QUEUE`、`AD_GOOGLE_QUEUE` 三个 producer binding。
 - Wrangler dev dry-run：通过，不含 Queue binding。

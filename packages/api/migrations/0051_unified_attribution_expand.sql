@@ -143,7 +143,7 @@ CREATE TABLE attribution_verifications (
 
 CREATE TABLE attribution_incidents (
   id TEXT PRIMARY KEY,
-  connection_id TEXT NOT NULL REFERENCES attribution_platform_connections(id) ON DELETE CASCADE,
+  connection_id TEXT REFERENCES attribution_platform_connections(id) ON DELETE CASCADE,
   provider TEXT NOT NULL,
   status TEXT NOT NULL,
   severity TEXT NOT NULL,
