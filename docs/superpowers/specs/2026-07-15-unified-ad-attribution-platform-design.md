@@ -1,7 +1,7 @@
 # Meta、TikTok、Google 通用广告归因平台设计
 
 - 设计讨论状态：`已确认（2026-07-15）`
-- 书面评审状态：`待复核`
+- 书面评审状态：`已确认（2026-07-15）`
 - 设计版本：`2`
 - 适用环境：`production` 是唯一真实广告平台验证环境；`dev/local` 仅执行代码、迁移、Mock 和契约验证
 - 成本基线：Cloudflare Workers Free，当前设计不要求开通 Paid
@@ -205,6 +205,8 @@ interface PlatformQualityAdapter {
 
 ## 7. 连接、事件绑定与凭证
 
+为满足 Expand 阶段不修改旧运行表的约束，以下名称是逻辑模型名；最终物理表固定使用 `attribution_platform_connections`、`attribution_event_bindings` 和 `attribution_credentials`。旧 `ad_platform_connections` 只在 Contract 阶段删除，不参与新运行时。
+
 ### 7.1 `ad_platform_connections`
 
 通用连接表保存：
@@ -312,6 +314,7 @@ Browser Label 与 Server conversion action ID 必须属于同一个 Google Ads �
 ```ts
 interface AdAttributionContext {
   version: 1
+  contextId: string
   provider: AdAttributionProvider
   source: 'click_id' | 'managed_link' | 'utm_alias'
   identifiers: Record<string, string>
@@ -320,7 +323,7 @@ interface AdAttributionContext {
 }
 ```
 
-默认窗口为 30 天，可按平台连接调整。Cookie 不保存 PII。新的明确广告点击替换旧上下文；普通站内导航不修改来源。
+默认窗口为 30 天，可按平台连接调整。`contextId` 是随机、非 PII 标识，用于撤回同意时取消尚未投递的 Outbox。Cookie 不保存 PII。新的明确广告点击替换旧上下文；普通站内导航不修改来源。
 
 浏览器不能读取加密 Cookie。站点配置接口只返回当前 provider 和对应 Browser Instruction，不返回 Click ID、Token 或其他敏感内容。
 
