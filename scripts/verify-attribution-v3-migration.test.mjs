@@ -11,6 +11,7 @@ import {
   assessAttributionV3Preflight,
   buildProductionCutoverSteps,
   collectProductionQueueStates,
+  runProductionPreflight,
 } from './verify-attribution-v3-migration.mjs'
 import { runProductionBackup } from './export-attribution-production-backup.mjs'
 
@@ -139,6 +140,39 @@ describe('通用归因 production preflight', () => {
     ])
   })
 
+  it('production preflight 按固定顺序读取外部状态，避免并发 Wrangler 互相干扰', async () => {
+    const calls = []
+    const report = await runProductionPreflight({
+      verifyWorkflow: async () => {
+        calls.push('workflow')
+        return true
+      },
+      queryD1: async (sql) => {
+        if (sql.includes('legacy_server_effective_count')) {
+          calls.push('d1:legacy')
+          return [{
+            legacy_server_effective_count: 0,
+            legacy_active_delivery_count: 0,
+            legacy_outbox_count: 0,
+          }]
+        }
+        calls.push('d1:schema')
+        return [{ attribution_table_exists: 0 }]
+      },
+      listSecretNames: async () => {
+        calls.push('secrets')
+        return ['AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT']
+      },
+      collectQueueStates: async () => {
+        calls.push('queues')
+        return queueState()
+      },
+    })
+
+    assert.equal(report.status, 'passed')
+    assert.deepEqual(calls, ['workflow', 'd1:legacy', 'd1:schema', 'secrets', 'queues'])
+  })
+
   it('Queue 积压取两次样本的较大值，避免瞬时零值误放行', async () => {
     const queueIds = [...REQUIRED_AD_QUEUES, ...LEGACY_AD_QUEUES].map((name, index) => ({
       queue_name: name,
@@ -162,6 +196,54 @@ describe('通用归因 production preflight', () => {
 
     assert.equal(states.find(queue => queue.name === REQUIRED_AD_QUEUES[0]).backlogCount, 1)
     assert.equal(metricCall, queueIds.length * 2)
+  })
+
+  it('Queue 指标遇到瞬时 5xx 时有限重试并保持失败关闭语义', async () => {
+    const queueIds = [...REQUIRED_AD_QUEUES, ...LEGACY_AD_QUEUES].map((name, index) => ({
+      queue_name: name,
+      queue_id: `queue-${index}`,
+    }))
+    const delays = []
+    let metricCall = 0
+    let transientFailurePending = true
+    const states = await collectProductionQueueStates({
+      loadCloudflareAuth: async () => ({ accountId: 'account-test', token: 'private-test-token' }),
+      queueSampleDelayMs: 0,
+      sleepFn: async milliseconds => delays.push(milliseconds),
+      fetchFn: async (url) => {
+        if (url.endsWith('/queues?per_page=100')) return jsonResponse({ success: true, result: queueIds })
+        metricCall += 1
+        if (url.includes('/queue-0/metrics') && transientFailurePending) {
+          transientFailurePending = false
+          return jsonResponse({ success: false }, { status: 503 })
+        }
+        return jsonResponse({ success: true, result: { backlog_count: 0 } })
+      },
+    })
+
+    assert.equal(metricCall, queueIds.length * 2 + 1)
+    assert.ok(delays.includes(250))
+    assert.ok(states.every(queue => queue.backlogCount === 0))
+  })
+
+  it('Queue 指标遇到非重试型鉴权错误时立即阻断', async () => {
+    let metricCall = 0
+    await assert.rejects(() => collectProductionQueueStates({
+      loadCloudflareAuth: async () => ({ accountId: 'account-test', token: 'private-test-token' }),
+      sleepFn: async () => {},
+      fetchFn: async (url) => {
+        if (url.endsWith('/queues?per_page=100')) {
+          return jsonResponse({
+            success: true,
+            result: [{ queue_name: REQUIRED_AD_QUEUES[0], queue_id: 'queue-auth' }],
+          })
+        }
+        metricCall += 1
+        return jsonResponse({ success: false }, { status: 401 })
+      },
+    }), /ATTRIBUTION_QUEUE_METRICS_FAILED/)
+
+    assert.equal(metricCall, 1)
   })
 })
 
@@ -217,9 +299,13 @@ function queueState(options = {}) {
   }))
 }
 
-function jsonResponse(body) {
+function jsonResponse(body, options = {}) {
+  const status = options.status ?? 200
+  const headers = new Map(Object.entries(options.headers || {}).map(([key, value]) => [key.toLowerCase(), value]))
   return {
-    ok: true,
+    ok: status >= 200 && status < 300,
+    status,
+    headers: { get: key => headers.get(String(key).toLowerCase()) ?? null },
     json: async () => body,
   }
 }

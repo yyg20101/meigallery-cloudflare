@@ -1041,7 +1041,7 @@ corepack pnpm verify:release
 
 Expected: PASS；未提供 production 凭证时只运行 dry-run/只读门禁，不调用平台 API。
 
-阶段记录：脚本专项测试 52/52、全量 scripts/migration 310/310、API 1144/1144 和高阈值 coverage 已通过；整体 coverage statements 87.35%、branches 80.78%，最终通用后台路由 statements 95.67%、branches 91.04%。Queue 初始化测试已按“先检查、再创建、再确认”的真实幂等流程隔离状态，并验证远端错误不会泄漏敏感输出。通用归因后台最终四层契约已同步到 E2E mock，完整 Playwright 125 通过、30 个按项目配置跳过、0 失败，覆盖三平台来源隔离和 5 档视口。Lint、API/Web TypeScript、Web 282 个单测和 Nuxt production build 通过。完整 `verify:release` 仍等待旧 Meta Server 降为 0 后在 release 分支执行，因此 Step 4 尚未放行。
+阶段记录：脚本专项测试 52/52、全量 scripts/migration 313/313、API 1144/1144 和高阈值 coverage 已通过；整体 coverage statements 87.35%、branches 80.78%，最终通用后台路由 statements 95.67%、branches 91.04%。Queue 初始化测试已按“先检查、再创建、再确认”的真实幂等流程隔离状态，并验证远端错误不会泄漏敏感输出。production preflight 已改为顺序读取外部状态；Queue 指标采用顺序双采样，并对网络、429 和 5xx 进行最多 3 次短退避重试，未知状态仍失败关闭。通用归因后台最终四层契约已同步到 E2E mock，完整 Playwright 125 通过、30 个按项目配置跳过、0 失败，覆盖三平台来源隔离和 5 档视口。Lint、API/Web TypeScript、Web 282 个单测和 Nuxt production build 通过。完整 `verify:release` 仍等待旧 Meta Server 降为 0 后在 release 分支执行，因此 Step 4 尚未放行。
 
 - [x] **Step 5：提交并统一推送 dev**
 

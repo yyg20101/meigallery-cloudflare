@@ -97,13 +97,11 @@ export function assessAttributionV3Reconciliation(row) {
 
 export async function runProductionPreflight(options = {}) {
   const queryD1 = options.queryD1 || (sql => queryProductionD1(sql, options))
-  const [legacyRows, attributionTableRows, secretNames, workflowConfigured, queues] = await Promise.all([
-    queryD1(LEGACY_PREFLIGHT_SQL),
-    queryD1(ATTRIBUTION_TABLE_EXISTS_SQL),
-    (options.listSecretNames || (() => listProductionSecretNames(options)))(),
-    (options.verifyWorkflow || (() => verifyProductionWorkflow(options)))(),
-    (options.collectQueueStates || (() => collectProductionQueueStates(options)))(),
-  ])
+  const workflowConfigured = await (options.verifyWorkflow || (() => verifyProductionWorkflow(options)))()
+  const legacyRows = await queryD1(LEGACY_PREFLIGHT_SQL)
+  const attributionTableRows = await queryD1(ATTRIBUTION_TABLE_EXISTS_SQL)
+  const secretNames = await (options.listSecretNames || (() => listProductionSecretNames(options)))()
+  const queues = await (options.collectQueueStates || (() => collectProductionQueueStates(options)))()
   const legacy = singleRow(legacyRows, 'ATTRIBUTION_PREFLIGHT_D1_RESULT_INVALID')
   const attributionTableExists = integer(singleRow(
     attributionTableRows,
@@ -163,24 +161,33 @@ export async function collectProductionQueueStates(options = {}) {
     `https://api.cloudflare.com/client/v4/accounts/${accountId}/queues?per_page=100`,
     token,
     'ATTRIBUTION_QUEUE_LIST_FAILED',
+    { sleepFn, maxAttempts: 3 },
   )
   const queueIds = new Map((queueList.result || []).map(queue => [queue.queue_name, queue.queue_id]))
   const names = [...REQUIRED_AD_QUEUES, ...LEGACY_AD_QUEUES]
-  const sample = async () => Promise.all(names.map(async name => {
-    const queueId = queueIds.get(name)
-    if (!queueId) return { name, exists: false, backlogCount: 0 }
-    const metrics = await fetchCloudflareJson(
-      fetchFn,
-      `https://api.cloudflare.com/client/v4/accounts/${accountId}/queues/${queueId}/metrics`,
-      token,
-      'ATTRIBUTION_QUEUE_METRICS_FAILED',
-    )
-    const backlogCount = Number(metrics.result?.backlog_count)
-    if (!Number.isSafeInteger(backlogCount) || backlogCount < 0) {
-      throw new Error('ATTRIBUTION_QUEUE_METRICS_INVALID')
+  const sample = async () => {
+    const states = []
+    for (const name of names) {
+      const queueId = queueIds.get(name)
+      if (!queueId) {
+        states.push({ name, exists: false, backlogCount: 0 })
+        continue
+      }
+      const metrics = await fetchCloudflareJson(
+        fetchFn,
+        `https://api.cloudflare.com/client/v4/accounts/${accountId}/queues/${queueId}/metrics`,
+        token,
+        'ATTRIBUTION_QUEUE_METRICS_FAILED',
+        { sleepFn, maxAttempts: 3 },
+      )
+      const backlogCount = Number(metrics.result?.backlog_count)
+      if (!Number.isSafeInteger(backlogCount) || backlogCount < 0) {
+        throw new Error('ATTRIBUTION_QUEUE_METRICS_INVALID')
+      }
+      states.push({ name, exists: true, backlogCount })
     }
-    return { name, exists: true, backlogCount }
-  }))
+    return states
+  }
 
   const first = await sample()
   await sleepFn(options.queueSampleDelayMs ?? 2_000)
@@ -296,21 +303,47 @@ async function privateWranglerJson(args) {
   }
 }
 
-async function fetchCloudflareJson(fetchFn, url, token, errorCode) {
-  let response
-  try {
-    response = await fetchFn(url, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(15_000),
-    })
+async function fetchCloudflareJson(fetchFn, url, token, errorCode, options = {}) {
+  const maxAttempts = Math.max(1, Number(options.maxAttempts) || 1)
+  const sleepFn = options.sleepFn || (milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)))
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    let response
+    try {
+      response = await fetchFn(url, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(15_000),
+      })
+    }
+    catch {
+      if (attempt === maxAttempts) throw new Error(errorCode)
+      await sleepFn(retryDelayMs(null, attempt))
+      continue
+    }
+
+    let body
+    try {
+      body = await response.json()
+    }
+    catch {
+      body = null
+    }
+    if (response.ok && body?.success === true) return body
+
+    const retryable = response.status === 429 || response.status >= 500
+    if (!retryable || attempt === maxAttempts) throw new Error(errorCode)
+    await sleepFn(retryDelayMs(response, attempt))
   }
-  catch {
-    throw new Error(errorCode)
+
+  throw new Error(errorCode)
+}
+
+function retryDelayMs(response, attempt) {
+  const retryAfterSeconds = Number(response?.headers?.get?.('retry-after'))
+  if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+    return Math.min(retryAfterSeconds * 1_000, 2_000)
   }
-  if (!response.ok) throw new Error(errorCode)
-  const body = await response.json()
-  if (body?.success !== true) throw new Error(errorCode)
-  return body
+  return Math.min(250 * (2 ** (attempt - 1)), 2_000)
 }
 
 function ensurePassed(step, code) {
