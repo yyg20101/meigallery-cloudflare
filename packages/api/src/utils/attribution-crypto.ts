@@ -11,6 +11,8 @@ const PURPOSES = new Set<AttributionCryptoPurpose>([
 const AAD_FIELDS = new Set(['purpose', 'provider', 'subjectId', 'revision'])
 const ENVELOPE_FIELDS = new Set(['schemaVersion', 'keyId', 'iv', 'ciphertext', 'tag'])
 const HKDF_SALT = new TextEncoder().encode('meigallery-attribution-hkdf-salt-v1')
+const writableRoots = new WeakSet<AttributionDerivedKeyRoot>()
+const rootKeys = new WeakMap<AttributionDerivedKeyRoot, CryptoKey>()
 
 type AesKeyUsage = 'encrypt' | 'decrypt'
 
@@ -36,10 +38,13 @@ export interface AttributionCryptoKeys {
   previous?: AttributionDerivedKeyRoot
 }
 
-export interface AttributionDerivedKeyRoot {
-  id: string
-  key: CryptoKey
-  canEncrypt: boolean
+class AttributionDerivedKeyRoot {
+  readonly id: string
+
+  constructor(id: string, key: CryptoKey) {
+    this.id = id
+    rootKeys.set(this, key)
+  }
 }
 
 export type AttributionCryptoErrorCode =
@@ -62,9 +67,10 @@ export async function loadAttributionCryptoKeys(env: {
   AD_PLATFORM_CREDENTIAL_MASTER_KEY_PREVIOUS?: string
 }): Promise<AttributionCryptoKeys> {
   try {
-    const current = await importMasterKey(env.AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT, true)
+    const current = await importMasterKey(env.AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT)
+    writableRoots.add(current)
     if (env.AD_PLATFORM_CREDENTIAL_MASTER_KEY_PREVIOUS === undefined) return { current }
-    const previous = await importMasterKey(env.AD_PLATFORM_CREDENTIAL_MASTER_KEY_PREVIOUS, false)
+    const previous = await importMasterKey(env.AD_PLATFORM_CREDENTIAL_MASTER_KEY_PREVIOUS)
     return previous.id === current.id ? { current } : { current, previous }
   }
   catch {
@@ -78,7 +84,8 @@ export async function encryptAttributionValue(input: {
   plaintext: string
 }): Promise<AttributionEncryptedEnvelope> {
   try {
-    validateKeyRoot(input.keys.current, true)
+    validateKeyRoot(input.keys.current)
+    if (!writableRoots.has(input.keys.current)) throw contextError()
     if (typeof input.plaintext !== 'string') throw contextError()
     const additionalData = encodeAad(input.aad)
     const key = await deriveAesKey(input.keys.current, input.aad.purpose, ['encrypt', 'decrypt'])
@@ -118,7 +125,7 @@ export async function decryptAttributionValue(input: {
     envelope = validateEnvelope(input.envelope)
     const candidate = [input.keys.current, input.keys.previous].find(item => item?.id === envelope.keyId)
     if (!candidate) throw contextError()
-    validateKeyRoot(candidate, false)
+    validateKeyRoot(candidate)
     selected = candidate
   }
   catch {
@@ -153,21 +160,22 @@ export async function deriveAttributionHmacKey(input: {
   purpose: AttributionCryptoPurpose
 }): Promise<CryptoKey> {
   try {
-    validateKeyRoot(input.keys.current, false)
+    validateKeyRoot(input.keys.current)
+    if (!writableRoots.has(input.keys.current)) throw contextError()
     if (!PURPOSES.has(input.purpose)) throw contextError()
     return crypto.subtle.deriveKey({
       name: 'HKDF',
       hash: 'SHA-256',
       salt: HKDF_SALT,
       info: hkdfInfo(input.purpose, 'hmac-sha256'),
-    }, input.keys.current.key, { name: 'HMAC', hash: 'SHA-256', length: AES_KEY_BYTES * 8 }, false, ['sign'])
+    }, keyForRoot(input.keys.current), { name: 'HMAC', hash: 'SHA-256', length: AES_KEY_BYTES * 8 }, false, ['sign'])
   }
   catch {
     throw contextError()
   }
 }
 
-async function importMasterKey(value: string | undefined, canEncrypt: boolean): Promise<AttributionDerivedKeyRoot> {
+async function importMasterKey(value: string | undefined): Promise<AttributionDerivedKeyRoot> {
   if (typeof value !== 'string') throw keyError()
   const canonical = value.trim()
   if (!BASE64_KEY_PATTERN.test(canonical)) throw keyError()
@@ -175,11 +183,7 @@ async function importMasterKey(value: string | undefined, canEncrypt: boolean): 
   if (raw.length !== AES_KEY_BYTES || encodeBase64(raw) !== canonical) throw keyError()
   const digest = await crypto.subtle.digest('SHA-256', raw)
   const key = await crypto.subtle.importKey('raw', raw, 'HKDF', false, ['deriveKey'])
-  return {
-    id: bytesToHex(new Uint8Array(digest)).slice(0, 16),
-    key,
-    canEncrypt,
-  }
+  return new AttributionDerivedKeyRoot(bytesToHex(new Uint8Array(digest)).slice(0, 16), key)
 }
 
 function encodeAad(value: AttributionAad) {
@@ -210,12 +214,10 @@ function validateEnvelope(value: AttributionEncryptedEnvelope) {
   }
 }
 
-function validateKeyRoot(value: unknown, requireEncryption: boolean): asserts value is AttributionDerivedKeyRoot {
-  if (!value || typeof value !== 'object' || !Object.hasOwn(value, 'id') || !Object.hasOwn(value, 'key')
-    || !Object.hasOwn(value, 'canEncrypt')) throw contextError()
-  const { id, key, canEncrypt } = value as Partial<AttributionDerivedKeyRoot>
-  if (typeof id !== 'string' || !KEY_ID_PATTERN.test(id) || typeof canEncrypt !== 'boolean') throw contextError()
-  if (requireEncryption && !canEncrypt) throw contextError()
+function validateKeyRoot(value: unknown): asserts value is AttributionDerivedKeyRoot {
+  if (!(value instanceof AttributionDerivedKeyRoot)) throw contextError()
+  const key = keyForRoot(value)
+  if (typeof value.id !== 'string' || !KEY_ID_PATTERN.test(value.id)) throw contextError()
   if (typeof CryptoKey === 'undefined' || !(key instanceof CryptoKey)) throw contextError()
   if (key.type !== 'secret' || key.algorithm.name !== 'HKDF' || key.extractable || !key.usages.includes('deriveKey')) {
     throw contextError()
@@ -228,7 +230,13 @@ function deriveAesKey(root: AttributionDerivedKeyRoot, purpose: AttributionCrypt
     hash: 'SHA-256',
     salt: HKDF_SALT,
     info: hkdfInfo(purpose, 'aes-256-gcm'),
-  }, root.key, { name: 'AES-GCM', length: AES_KEY_BYTES * 8 }, false, usages)
+  }, keyForRoot(root), { name: 'AES-GCM', length: AES_KEY_BYTES * 8 }, false, usages)
+}
+
+function keyForRoot(root: AttributionDerivedKeyRoot) {
+  const key = rootKeys.get(root)
+  if (!key) throw contextError()
+  return key
 }
 
 function hkdfInfo(purpose: AttributionCryptoPurpose, algorithm: string) {
@@ -236,7 +244,12 @@ function hkdfInfo(purpose: AttributionCryptoPurpose, algorithm: string) {
 }
 
 function decodeBase64Url(value: unknown, expectedLength?: number) {
-  if (typeof value !== 'string' || !BASE64_URL_PATTERN.test(value) || value.length % 4 === 1) throw contextError()
+  if (typeof value !== 'string' || value.length % 4 === 1) throw contextError()
+  if (value.length === 0) {
+    if (expectedLength !== undefined) throw contextError()
+    return new Uint8Array()
+  }
+  if (!BASE64_URL_PATTERN.test(value)) throw contextError()
   const standard = value.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - value.length % 4) % 4)
   const bytes = decodeBase64(standard)
   if (encodeBase64Url(bytes) !== value || (expectedLength !== undefined && bytes.length !== expectedLength)) {

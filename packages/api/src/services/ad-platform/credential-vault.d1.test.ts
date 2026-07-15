@@ -114,12 +114,7 @@ describe('归因凭证 D1 库', () => {
   it('Google 仅接受完整且结构有效的 service_account_json', async () => {
     await db.prepare(`UPDATE attribution_platform_connections SET provider = 'google' WHERE id = ?`)
       .bind(CONNECTION_ID).run()
-    const serviceAccount = JSON.stringify({
-      type: 'service_account',
-      client_email: 'service@example.iam.gserviceaccount.com',
-      private_key: '-----BEGIN PRIVATE KEY-----\nkey-material\n-----END PRIVATE KEY-----\n',
-      token_uri: 'https://oauth2.googleapis.com/token',
-    })
+    const serviceAccount = await validGoogleServiceAccount()
 
     await expect(saveAttributionCredential(env(), {
       connectionId: CONNECTION_ID,
@@ -137,6 +132,83 @@ describe('归因凭证 D1 库', () => {
       credentialRevision: 'credential-revision-002',
       createdBy: 41,
     })).rejects.toMatchObject({ code: 'ATTRIBUTION_CREDENTIAL_INPUT_INVALID' })
+
+    const forgedKey = await validGoogleServiceAccount({
+      private_key: '-----BEGIN PRIVATE KEY-----\nnot-a-pkcs8-key\n-----END PRIVATE KEY-----',
+    })
+    const forgedError = await captureError(() => saveAttributionCredential(env(), {
+      connectionId: CONNECTION_ID,
+      provider: 'google',
+      credentialType: 'service_account_json',
+      plaintext: forgedKey,
+      credentialRevision: 'credential-revision-003',
+      createdBy: 41,
+    }))
+    expect(forgedError).toMatchObject({ code: 'ATTRIBUTION_CREDENTIAL_INPUT_INVALID' })
+    expect(String((forgedError as Error).message)).not.toMatch(/private_key|client_email|token_uri/i)
+
+    await expect(saveAttributionCredential(env(), {
+      connectionId: CONNECTION_ID,
+      provider: 'google',
+      credentialType: 'service_account_json',
+      plaintext: await validGoogleServiceAccount({ type: 'user_account' }),
+      credentialRevision: 'credential-revision-004',
+      createdBy: 41,
+    })).rejects.toMatchObject({ code: 'ATTRIBUTION_CREDENTIAL_INPUT_INVALID' })
+    await expect(saveAttributionCredential(env(), {
+      connectionId: CONNECTION_ID,
+      provider: 'google',
+      credentialType: 'service_account_json',
+      plaintext: await validGoogleServiceAccount({ client_email: 'service@example.com' }),
+      credentialRevision: 'credential-revision-005',
+      createdBy: 41,
+    })).rejects.toMatchObject({ code: 'ATTRIBUTION_CREDENTIAL_INPUT_INVALID' })
+    await expect(saveAttributionCredential(env(), {
+      connectionId: CONNECTION_ID,
+      provider: 'google',
+      credentialType: 'service_account_json',
+      plaintext: await validGoogleServiceAccount({ token_uri: 'https://example.com/token' }),
+      credentialRevision: 'credential-revision-006',
+      createdBy: 41,
+    })).rejects.toMatchObject({ code: 'ATTRIBUTION_CREDENTIAL_INPUT_INVALID' })
+  })
+
+  it('precheck 后连接 provider 被替换时，原子写入拒绝且旧凭证保持不变', async () => {
+    const first = `token-${crypto.randomUUID()}`
+    await saveAttributionCredential(env(), metaInput(first, CREDENTIAL_REVISION))
+    const racingDb = replaceConnectionBeforeBatch()
+
+    await expect(saveAttributionCredential(env(racingDb), metaInput(
+      `token-${crypto.randomUUID()}`,
+      'credential-revision-002',
+    ))).rejects.toMatchObject({ code: 'ATTRIBUTION_CREDENTIAL_WRITE_FAILED' })
+    await expect(db.prepare(`
+      SELECT credential_revision FROM attribution_credentials
+      WHERE connection_id = ? AND provider = ? AND credential_type = ?
+    `).bind(CONNECTION_ID, 'meta', 'access_token').first<{ credential_revision: string }>())
+      .resolves.toEqual({ credential_revision: CREDENTIAL_REVISION })
+    await db.prepare(`UPDATE attribution_platform_connections SET provider = 'meta' WHERE id = ?`)
+      .bind(CONNECTION_ID).run()
+    await expect(readAttributionCredential(env(), {
+      connectionId: CONNECTION_ID,
+      provider: 'meta',
+      credentialType: 'access_token',
+      credentialRevision: CREDENTIAL_REVISION,
+    })).resolves.toBe(first)
+  })
+
+  it('读取凭证时连接 provider 不匹配视为不存在', async () => {
+    const plaintext = `token-${crypto.randomUUID()}`
+    await saveAttributionCredential(env(), metaInput(plaintext, CREDENTIAL_REVISION))
+    await db.prepare(`UPDATE attribution_platform_connections SET provider = 'tiktok' WHERE id = ?`)
+      .bind(CONNECTION_ID).run()
+
+    await expect(readAttributionCredential(env(), {
+      connectionId: CONNECTION_ID,
+      provider: 'meta',
+      credentialType: 'access_token',
+      credentialRevision: CREDENTIAL_REVISION,
+    })).rejects.toMatchObject({ code: 'ATTRIBUTION_CREDENTIAL_NOT_FOUND' })
   })
 
   it('错误 provider、错误 revision 和篡改密文均不泄漏内部细节', async () => {
@@ -166,9 +238,9 @@ describe('归因凭证 D1 库', () => {
   })
 })
 
-function env() {
+function env(database: D1Database = db) {
   return {
-    DB: db,
+    DB: database,
     AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT: MASTER_KEY,
   }
 }
@@ -186,4 +258,51 @@ function metaInput(plaintext: string, credentialRevision: string) {
 
 function toBase64(bytes: Uint8Array) {
   return btoa(Array.from(bytes, byte => String.fromCharCode(byte)).join(''))
+}
+
+function replaceConnectionBeforeBatch() {
+  let replaced = false
+  return {
+    prepare: db.prepare.bind(db),
+    async batch(statements: D1PreparedStatement[]) {
+      if (!replaced) {
+        replaced = true
+        await db.prepare(`UPDATE attribution_platform_connections SET provider = 'tiktok' WHERE id = ?`)
+          .bind(CONNECTION_ID).run()
+      }
+      return db.batch(statements)
+    },
+  } as D1Database
+}
+
+async function validGoogleServiceAccount(overrides: Record<string, string> = {}) {
+  const pair = await crypto.subtle.generateKey({
+    name: 'RSASSA-PKCS1-v1_5',
+    modulusLength: 2048,
+    publicExponent: new Uint8Array([1, 0, 1]),
+    hash: 'SHA-256',
+  }, true, ['sign', 'verify'])
+  const pkcs8 = new Uint8Array(await crypto.subtle.exportKey('pkcs8', pair.privateKey))
+  return JSON.stringify({
+    type: 'service_account',
+    client_email: 'service@example-project.iam.gserviceaccount.com',
+    private_key: toPem(pkcs8),
+    token_uri: 'https://oauth2.googleapis.com/token',
+    ...overrides,
+  })
+}
+
+function toPem(bytes: Uint8Array) {
+  const body = toBase64(bytes).match(/.{1,64}/g)?.join('\n') ?? ''
+  return `-----BEGIN PRIVATE KEY-----\n${body}\n-----END PRIVATE KEY-----\n`
+}
+
+async function captureError(run: () => Promise<unknown>) {
+  try {
+    await run()
+  }
+  catch (error) {
+    return error
+  }
+  throw new Error('EXPECTED_ERROR_NOT_THROWN')
 }

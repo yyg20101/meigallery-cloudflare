@@ -51,7 +51,7 @@ export async function saveAttributionCredential(
   env: CredentialVaultEnv,
   input: SaveCredentialInput,
 ): Promise<{ id: string; credentialRevision: string }> {
-  validateSaveInput(input)
+  await validateSaveInput(input)
   await requireConnection(env.DB, input.connectionId, input.provider)
 
   let envelope: AttributionEncryptedEnvelope
@@ -77,10 +77,15 @@ export async function saveAttributionCredential(
         INSERT INTO attribution_credentials (
           id, connection_id, provider, credential_type, schema_version, key_id,
           iv, ciphertext, tag, fingerprint, credential_revision, created_by, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        ) VALUES (
+          ?,
+          (SELECT id FROM attribution_platform_connections WHERE id = ? AND provider = ?),
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')
+        )
       `).bind(
         id,
         input.connectionId,
+        input.provider,
         input.provider,
         input.credentialType,
         envelope.schemaVersion,
@@ -107,9 +112,12 @@ export async function readAttributionCredential(
 ): Promise<string> {
   validateReadInput(input)
   const row = await env.DB.prepare(`
-    SELECT schema_version, key_id, iv, ciphertext, tag
-    FROM attribution_credentials
-    WHERE connection_id = ? AND provider = ? AND credential_type = ? AND credential_revision = ?
+    SELECT credential.schema_version, credential.key_id, credential.iv, credential.ciphertext, credential.tag
+    FROM attribution_credentials AS credential
+    JOIN attribution_platform_connections AS connection
+      ON connection.id = credential.connection_id AND connection.provider = credential.provider
+    WHERE credential.connection_id = ? AND credential.provider = ?
+      AND credential.credential_type = ? AND credential.credential_revision = ?
     LIMIT 1
   `).bind(
     input.connectionId,
@@ -126,7 +134,7 @@ export async function readAttributionCredential(
       aad: credentialAad(input),
       envelope: toEnvelope(row),
     })
-    validateCredentialValue(input.provider, input.credentialType, plaintext)
+    await validateCredentialValue(input.provider, input.credentialType, plaintext)
     return plaintext
   }
   catch {
@@ -149,10 +157,10 @@ async function requireConnection(db: D1Database, connectionId: string, provider:
   if (!row) throw vaultError('ATTRIBUTION_CREDENTIAL_CONNECTION_NOT_FOUND')
 }
 
-function validateSaveInput(input: SaveCredentialInput) {
+async function validateSaveInput(input: SaveCredentialInput) {
   validateReadInput(input)
   if (!Number.isSafeInteger(input.createdBy) || input.createdBy <= 0) throw vaultError('ATTRIBUTION_CREDENTIAL_INPUT_INVALID')
-  validateCredentialValue(input.provider, input.credentialType, input.plaintext)
+  await validateCredentialValue(input.provider, input.credentialType, input.plaintext)
 }
 
 function validateReadInput(input: Omit<SaveCredentialInput, 'plaintext' | 'createdBy'>) {
@@ -162,25 +170,26 @@ function validateReadInput(input: Omit<SaveCredentialInput, 'plaintext' | 'creat
   }
 }
 
-function validateCredentialValue(
+async function validateCredentialValue(
   provider: AdAttributionProvider,
   credentialType: AttributionCredentialType,
   plaintext: unknown,
-) {
+): Promise<void> {
   if (typeof plaintext !== 'string' || plaintext.length === 0 || plaintext.length > 32_768) {
     throw vaultError('ATTRIBUTION_CREDENTIAL_INPUT_INVALID')
   }
   if ((provider === 'meta' || provider === 'tiktok') && credentialType === 'access_token') return
-  if (provider === 'google' && credentialType === 'service_account_json' && isGoogleServiceAccount(plaintext)) return
+  if (provider === 'google' && credentialType === 'service_account_json' && await isGoogleServiceAccount(plaintext)) return
   throw vaultError('ATTRIBUTION_CREDENTIAL_INPUT_INVALID')
 }
 
-function isGoogleServiceAccount(value: string) {
+async function isGoogleServiceAccount(value: string) {
   try {
     const parsed = JSON.parse(value) as Record<string, unknown>
     if (!isPlainRecord(parsed)) return false
     if (parsed.type !== 'service_account' || !isServiceAccountEmail(parsed.client_email)
-      || !isPrivateKey(parsed.private_key) || !isHttpsUrl(parsed.token_uri)) return false
+      || parsed.token_uri !== 'https://oauth2.googleapis.com/token'
+      || !await isPkcs8RsaPrivateKey(parsed.private_key)) return false
     return true
   }
   catch {
@@ -228,18 +237,26 @@ function isIdentifier(value: unknown): value is string {
 }
 
 function isServiceAccountEmail(value: unknown) {
-  return typeof value === 'string' && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)
-}
-
-function isPrivateKey(value: unknown) {
   return typeof value === 'string'
-    && /^-----BEGIN PRIVATE KEY-----[\s\S]+-----END PRIVATE KEY-----\s*$/.test(value)
+    && /^[a-z0-9][a-z0-9._-]*@[a-z0-9][a-z0-9-]*\.iam\.gserviceaccount\.com$/.test(value)
 }
 
-function isHttpsUrl(value: unknown) {
+async function isPkcs8RsaPrivateKey(value: unknown) {
   if (typeof value !== 'string') return false
   try {
-    return new URL(value).protocol === 'https:'
+    const match = /^-----BEGIN PRIVATE KEY-----\r?\n([A-Za-z0-9+/=\r\n]+)-----END PRIVATE KEY-----\s*$/.exec(value)
+    if (!match) return false
+    const encodedBody = match[1]
+    if (!encodedBody) return false
+    const encoded = encodedBody.replace(/\s/g, '')
+    if (encoded.length === 0 || encoded.length % 4 !== 0) return false
+    const bytes = Uint8Array.from(atob(encoded), character => character.charCodeAt(0))
+    if (btoa(Array.from(bytes, byte => String.fromCharCode(byte)).join('')) !== encoded) return false
+    await crypto.subtle.importKey('pkcs8', bytes, {
+      name: 'RSASSA-PKCS1-v1_5',
+      hash: 'SHA-256',
+    }, false, ['sign'])
+    return true
   }
   catch {
     return false

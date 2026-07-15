@@ -116,6 +116,22 @@ describe('归因通用加密域', () => {
       aad: AAD,
       plaintext: 'credential-value',
     })).rejects.toMatchObject({ code: 'ATTRIBUTION_CRYPTO_CONTEXT_INVALID' })
+
+    const forgedCurrent = { ...rotated.previous!, canEncrypt: true }
+    await expect(encryptAttributionValue({
+      keys: { current: forgedCurrent as typeof rotated.current },
+      aad: AAD,
+      plaintext: 'credential-value',
+    })).rejects.toMatchObject({ code: 'ATTRIBUTION_CRYPTO_CONTEXT_INVALID' })
+  })
+
+  it('空字符串作为通用加密载荷可正确往返', async () => {
+    const keys = await loadAttributionCryptoKeys({
+      AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT: CURRENT_KEY,
+    })
+    const envelope = await encryptAttributionValue({ keys, aad: AAD, plaintext: '' })
+
+    await expect(decryptAttributionValue({ keys, aad: AAD, envelope })).resolves.toBe('')
   })
 
   it('不向外暴露 Web Crypto 或明文失败原因', async () => {
