@@ -20,11 +20,16 @@ describe('register page', () => {
       id: 1,
       trackingInstructions: [{
         provider: 'meta',
-        deliveryId: 'cdlv_registration_1',
-        eventName: 'CompleteRegistration',
-        eventId: 'meta:CompleteRegistration:complete_registration:user:1',
+        canonicalEvent: 'CompleteRegistration',
+        externalEventId: 'mg3_registration_1',
+        descriptor: {
+          provider: 'meta',
+          canonicalEvent: 'CompleteRegistration',
+          browserEventName: 'CompleteRegistration',
+          browserDestination: 'meta_pixel',
+          serverDestination: 'meta_capi',
+        },
         payload: { method: 'email' },
-        receiptToken: 'receipt_registration_1',
       }],
     })
     sendCode.mockReset()
@@ -144,8 +149,9 @@ describe('register page', () => {
     expect(register.mock.calls[0]?.[0]).not.toHaveProperty('actionType')
     expect(register.mock.calls[0]?.[0]).not.toHaveProperty('userId')
     expect(executeBrowserInstructions).toHaveBeenCalledWith([
-      expect.objectContaining({ eventName: 'CompleteRegistration' }),
+      expect.objectContaining({ canonicalEvent: 'CompleteRegistration', externalEventId: 'mg3_registration_1' }),
     ])
+    expect(track).toHaveBeenCalledWith('register_success', expect.objectContaining({ eventId: 'mg3_registration_1' }))
     expect(push).toHaveBeenCalledWith('/')
     expect(track).not.toHaveBeenCalledWith('register_failed', expect.anything())
   })

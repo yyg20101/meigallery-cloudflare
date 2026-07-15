@@ -61,33 +61,21 @@ describe('useSiteSettings', () => {
     expect(siteSettings.seoKeywords.value).toEqual(['授权图库', '写真', '时尚写真'])
   })
 
-  it('缺少浏览器平台连接时营销追踪模式为 disabled', async () => {
-    resetState()
-    apiMock.mockResolvedValueOnce({ ad_platform_browser_connections: [] })
-
-    const siteSettings = useSiteSettings()
-    await siteSettings.fetchSettings()
-
-    expect(siteSettings.marketingTrackingMode.value).toBe('disabled')
-  })
-
-  it('仅配置 TikTok 时仍由统一浏览器连接启用营销追踪模式', async () => {
+  it('不读取旧公开广告连接字段，也不暴露运行时兼容属性', async () => {
     resetState()
     apiMock.mockResolvedValueOnce({
       ad_platform_browser_connections: [{
-        provider: 'tiktok',
-        destinationId: 'C123456789ABCDEF',
-        mode: 'test',
+        provider: 'meta',
+        destinationId: '123456789',
+        mode: 'production',
       }],
     })
 
     const siteSettings = useSiteSettings()
     await siteSettings.fetchSettings()
 
-    expect(siteSettings.browserConnections.value).toEqual([
-      expect.objectContaining({ provider: 'tiktok', destinationId: 'C123456789ABCDEF' }),
-    ])
-    expect(siteSettings.marketingTrackingMode.value).toBe('test')
+    expect(siteSettings).not.toHaveProperty('browserConnections')
+    expect(siteSettings).not.toHaveProperty('marketingTrackingMode')
   })
 
   it('已加载后默认复用缓存，强制刷新会重新请求并更新 SEO', async () => {

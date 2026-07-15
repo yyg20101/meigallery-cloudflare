@@ -4,6 +4,14 @@ export type CanonicalConversionEvent = 'Contact' | 'CompleteRegistration'
 
 export type AdBrowserSignal = 'PageView' | 'ViewContent' | 'Search'
 
+export interface AdConsentSnapshot {
+  consentVersion: number
+  marketingAllowed: boolean
+  adUserDataAllowed: boolean
+  adPersonalizationAllowed: boolean
+  decidedAt: string
+}
+
 export type PlatformPublicConfig =
   | { provider: 'meta'; pixelId: string }
   | { provider: 'tiktok'; pixelCode: string }

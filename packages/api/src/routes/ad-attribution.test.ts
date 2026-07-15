@@ -1,8 +1,13 @@
 import { Hono } from 'hono'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Bindings, Variables } from '../index'
 import { createMarketingConsentReceipt } from '../utils/marketing-consent-receipt'
 import { adAttributionRoutes } from './ad-attribution'
+
+const readConnectionSnapshot = vi.hoisted(() => vi.fn())
+vi.mock('../services/ad-platform/connections', () => ({
+  readAttributionConnectionSnapshot: readConnectionSnapshot,
+}))
 
 const SECRET = 'ad-attribution-route-secret'
 
@@ -13,6 +18,11 @@ function app() {
 }
 
 describe('公开广告来源 API', () => {
+  beforeEach(() => {
+    readConnectionSnapshot.mockReset()
+    readConnectionSnapshot.mockResolvedValue({ state: 'connection_invalid', reason: 'not_found' })
+  })
+
   it.each([
     ['meta', { fbclid: 'meta-click-id' }],
     ['tiktok', { ttclid: 'tiktok-click-id' }],
@@ -148,6 +158,70 @@ describe('公开广告来源 API', () => {
 
     expectClearsBothAttributionCookies(response)
   })
+
+  it.each([
+    ['meta', { fbclid: 'meta-click-id' }, { provider: 'meta', pixelId: '123456789' }],
+    ['tiktok', { ttclid: 'tiktok-click-id' }, { provider: 'tiktok', pixelCode: 'C123456789ABCDEF' }],
+    ['google', { gclid: 'google-click-id' }, {
+      provider: 'google',
+      tagId: 'AW-123456789',
+      customerId: '123-456-7890',
+      cloudProjectId: 'meigallery-ads',
+    }],
+  ] as const)('bootstrap 只返回当前 %s 来源的 discriminated public config', async (provider, source, publicConfig) => {
+    const initial = await request(source)
+    const consent = await createMarketingConsentReceipt(SECRET, 'granted')
+    readConnectionSnapshot.mockResolvedValueOnce(readySnapshot(provider, publicConfig))
+
+    const response = await app().request('https://api.616618.xyz/api/ad-attribution/bootstrap', {
+      headers: { cookie: trustedCookie(consent, initial) },
+    }, env())
+    const data = await response.json<Record<string, unknown>>()
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    expect(data).toEqual({ provider, publicConfig })
+    expect(readConnectionSnapshot).toHaveBeenCalledWith(expect.anything(), provider)
+    expect(JSON.stringify(data)).not.toMatch(/click|token|credential|binding|receipt|context/i)
+  })
+
+  it.each([
+    ['未授权', false, readySnapshot('meta', { provider: 'meta', pixelId: '123456789' })],
+    ['连接不存在', true, { state: 'connection_invalid', reason: 'not_found' }],
+    ['连接未启用', true, readySnapshot('meta', { provider: 'meta', pixelId: '123456789' }, { enabled: false })],
+    ['浏览器未启用', true, readySnapshot('meta', { provider: 'meta', pixelId: '123456789' }, { browserEnabled: false })],
+    ['连接 disabled', true, readySnapshot('meta', { provider: 'meta', pixelId: '123456789' }, { mode: 'disabled' })],
+  ])('bootstrap 在%s时返回严格空响应', async (_label, withConsent, snapshot) => {
+    const initial = await request({ fbclid: 'meta-click-id' })
+    const consent = await createMarketingConsentReceipt(SECRET, 'granted')
+    readConnectionSnapshot.mockResolvedValueOnce(snapshot)
+
+    const response = await app().request('https://api.616618.xyz/api/ad-attribution/bootstrap', {
+      headers: withConsent ? { cookie: trustedCookie(consent, initial) } : undefined,
+    }, env())
+
+    expect(await response.json()).toEqual({ provider: null, publicConfig: null })
+    expect(response.headers.get('cache-control')).toBe('no-store')
+  })
+
+  it('bootstrap 即使上游快照异常也不透传额外字段', async () => {
+    const initial = await request({ fbclid: 'meta-click-id' })
+    const consent = await createMarketingConsentReceipt(SECRET, 'granted')
+    readConnectionSnapshot.mockResolvedValueOnce(readySnapshot('meta', {
+      provider: 'meta',
+      pixelId: '123456789',
+      token: 'must-not-leak',
+    }))
+
+    const response = await app().request('https://api.616618.xyz/api/ad-attribution/bootstrap', {
+      headers: { cookie: trustedCookie(consent, initial) },
+    }, env())
+
+    expect(await response.json()).toEqual({
+      provider: 'meta',
+      publicConfig: { provider: 'meta', pixelId: '123456789' },
+    })
+  })
 })
 
 async function request(body: Record<string, string>) {
@@ -186,4 +260,30 @@ function expectClearsBothAttributionCookies(response: Response) {
   expect(cookie).toContain('mei_ad_attribution=')
   expect(cookie).toContain('mei_ad_attribution_receipt=')
   expect(cookie).toContain('Max-Age=0')
+}
+
+function readySnapshot(
+  provider: 'meta' | 'tiktok' | 'google',
+  publicConfig: Record<string, string>,
+  override: { enabled?: boolean; browserEnabled?: boolean; mode?: 'disabled' | 'test' | 'production' } = {},
+) {
+  const { provider: _provider, ...storedConfig } = publicConfig
+  return {
+    state: 'ready',
+    connection: {
+      id: `connection_${provider}`,
+      provider,
+      enabled: override.enabled ?? true,
+      mode: override.mode ?? 'production',
+      browserEnabled: override.browserEnabled ?? true,
+      serverEnabled: true,
+      publicConfig: storedConfig,
+      connectionRevision: 'revision_1',
+      credentialRevision: 'credential_1',
+      rolloutTargetPercentage: 100,
+      rolloutEffectivePercentage: 100,
+    },
+    bindings: new Map(),
+    credential: { type: provider === 'google' ? 'service_account_json' : 'access_token', schemaVersion: 1, credentialRevision: 'credential_1' },
+  }
 }

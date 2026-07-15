@@ -1,4 +1,4 @@
-import type { AdAttributionProvider } from '@meigallery/shared'
+import type { AdAttributionProvider, PlatformPublicConfig } from '@meigallery/shared'
 
 export type AdAttributionResolution = 'unresolved' | 'matched' | 'inherited' | 'none' | 'conflict'
 
@@ -15,6 +15,7 @@ export function useAdAttribution() {
   const { api } = useApi()
   const provider = useState<AdAttributionProvider | null>('ad-attribution-provider', () => null)
   const resolution = useState<AdAttributionResolution>('ad-attribution-resolution', () => 'unresolved')
+  const publicConfig = useState<PlatformPublicConfig | null>('ad-attribution-public-config', () => null)
 
   async function resolve(route: AttributionRoute): Promise<AdAttributionProvider | null> {
     if (import.meta.server) return null
@@ -39,10 +40,11 @@ export function useAdAttribution() {
         if (version !== operationVersion) return null
         provider.value = normalized.provider
         resolution.value = normalized.resolution
+        publicConfig.value = null
         return normalized.provider
       }
       catch {
-        if (version === operationVersion) resetLocalState(provider, resolution)
+        if (version === operationVersion) resetLocalState(provider, resolution, publicConfig)
         try {
           await api('/api/ad-attribution', { method: 'DELETE' })
         }
@@ -56,9 +58,30 @@ export function useAdAttribution() {
     return task
   }
 
+  async function bootstrap(): Promise<PlatformPublicConfig | null> {
+    if (import.meta.server || !provider.value) return null
+    const expectedProvider = provider.value
+    const version = operationVersion
+    const task = operationQueue.then(async () => {
+      try {
+        const response = await api<{ provider?: unknown; publicConfig?: unknown }>('/api/ad-attribution/bootstrap')
+        const config = normalizePublicConfig(response.publicConfig)
+        if (version !== operationVersion || response.provider !== expectedProvider || config?.provider !== expectedProvider) return null
+        publicConfig.value = config
+        return config
+      }
+      catch {
+        if (version === operationVersion) publicConfig.value = null
+        return null
+      }
+    })
+    operationQueue = task.then(() => undefined, () => undefined)
+    return task
+  }
+
   async function clear() {
     const version = ++operationVersion
-    resetLocalState(provider, resolution)
+    resetLocalState(provider, resolution, publicConfig)
     if (import.meta.server) return
     const task = operationQueue.then(async () => {
       try {
@@ -67,21 +90,23 @@ export function useAdAttribution() {
       catch {
         // 本地 Pixel 已关闭；后续转化请求还会携带 suppress，旧 receipt 不能重新开启投递。
       }
-      if (version === operationVersion) resetLocalState(provider, resolution)
+      if (version === operationVersion) resetLocalState(provider, resolution, publicConfig)
     })
     operationQueue = task.then(() => undefined, () => undefined)
     await task
   }
 
-  return { provider, resolution, resolve, clear }
+  return { provider, resolution, publicConfig, resolve, bootstrap, clear }
 }
 
 function resetLocalState(
   provider: ReturnType<typeof useState<AdAttributionProvider | null>>,
   resolution: ReturnType<typeof useState<AdAttributionResolution>>,
+  publicConfig: ReturnType<typeof useState<PlatformPublicConfig | null>>,
 ) {
   provider.value = null
   resolution.value = 'none'
+  publicConfig.value = null
 }
 
 function queryValue(value: unknown) {
@@ -118,4 +143,42 @@ function normalizeServerResolution(response: {
     provider,
     resolution,
   }
+}
+
+function normalizePublicConfig(value: unknown): PlatformPublicConfig | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const config = value as Record<string, unknown>
+  if (config.provider === 'meta'
+    && exactKeys(config, ['provider', 'pixelId'])
+    && typeof config.pixelId === 'string'
+    && /^\d{5,30}$/.test(config.pixelId)) return { provider: 'meta', pixelId: config.pixelId }
+  if (config.provider === 'tiktok'
+    && exactKeys(config, ['provider', 'pixelCode'])
+    && typeof config.pixelCode === 'string'
+    && /^[A-Z0-9]{10,30}$/.test(config.pixelCode)) return { provider: 'tiktok', pixelCode: config.pixelCode }
+  if (config.provider === 'google'
+    && exactKeys(config, ['provider', 'tagId', 'customerId', 'cloudProjectId'], ['loginCustomerId'])
+    && typeof config.tagId === 'string'
+    && /^AW-\d{5,20}$/.test(config.tagId)
+    && safeConfigText(config.customerId)
+    && safeConfigText(config.cloudProjectId)
+    && (config.loginCustomerId === undefined || safeConfigText(config.loginCustomerId))) {
+    return {
+      provider: 'google',
+      tagId: config.tagId,
+      customerId: config.customerId,
+      cloudProjectId: config.cloudProjectId,
+      ...(typeof config.loginCustomerId === 'string' ? { loginCustomerId: config.loginCustomerId } : {}),
+    }
+  }
+  return null
+}
+
+function exactKeys(value: Record<string, unknown>, required: string[], optional: string[] = []) {
+  const allowed = new Set([...required, ...optional])
+  return required.every(key => key in value) && Object.keys(value).every(key => allowed.has(key))
+}
+
+function safeConfigText(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= 160 && !/\p{Cc}/u.test(value)
 }

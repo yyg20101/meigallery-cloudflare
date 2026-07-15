@@ -17,13 +17,10 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{ refreshed: [] }>()
 const testEventCode = defineModel<string>('testEventCode', { default: '' })
 const { api } = useApi()
-const { sendMetaLiveChallenge } = useTracking()
 const verifying = ref(false)
-const evidencing = ref(false)
 const message = ref('')
 const messageTone = ref<'success' | 'error'>('success')
 const canVerify = computed(() => canVerifyMetaConnection(props.connection, props.isOwner))
-const busy = computed(() => verifying.value || evidencing.value)
 const normalizedTestEventCode = computed(() => testEventCode.value.trim().toUpperCase())
 const testEventCodeValid = computed(() => /^TEST\d{1,20}$/.test(normalizedTestEventCode.value))
 
@@ -39,7 +36,7 @@ const connectionItems = computed(() => [
 ])
 
 async function verifyConnection() {
-  if (busy.value) return
+  if (verifying.value) return
   verifying.value = true
   message.value = ''
   try {
@@ -61,43 +58,6 @@ async function verifyConnection() {
   }
 }
 
-async function runLiveEvidence() {
-  if (busy.value) return
-  if (props.connection?.environment !== 'production') return
-  evidencing.value = true
-  message.value = ''
-  try {
-    const challenge = await api<{ data: {
-      challengeId: string
-      pixelId: string
-      eventIds: { Contact: string; CompleteRegistration: string }
-    } }>('/api/admin/attribution/meta/live-challenge', { method: 'POST' })
-    if (!sendMetaLiveChallenge(challenge.data)) throw new Error('浏览器 Pixel 事件发送失败')
-    const consumed = await api<{ data: { status?: string; eventsReceived?: number } }>(
-      '/api/admin/attribution/meta/live-challenge/consume',
-      {
-        method: 'POST',
-        body: {
-          challengeId: challenge.data.challengeId,
-          testEventCode: normalizedTestEventCode.value,
-        },
-      },
-    )
-    if (consumed.data.status !== 'server_sent' || consumed.data.eventsReceived !== 2) {
-      throw new Error('Meta 未确认接收两条服务端测试事件')
-    }
-    messageTone.value = 'success'
-    message.value = 'Browser 与 Server 测试事件已发送，请在 Events Manager 确认去重后记录证据'
-    emit('refreshed')
-  }
-  catch (error) {
-    messageTone.value = 'error'
-    message.value = resolveApiErrorMessage(error, 'Live Evidence 执行失败')
-  }
-  finally {
-    evidencing.value = false
-  }
-}
 </script>
 
 <template>
@@ -132,20 +92,10 @@ async function runLiveEvidence() {
           data-meta-connection-verify
           class="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
           type="button"
-          :disabled="busy || !testEventCodeValid"
+          :disabled="verifying || !testEventCodeValid"
           @click="verifyConnection"
         >
           {{ verifying ? '验证中...' : '验证连接' }}
-        </button>
-        <button
-          v-if="connection?.environment === 'production'"
-          data-meta-live-evidence
-          class="rounded-md bg-gray-950 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60"
-          type="button"
-          :disabled="busy || !testEventCodeValid"
-          @click="runLiveEvidence"
-        >
-          {{ evidencing ? '执行中...' : 'Live Evidence' }}
         </button>
       </div>
     </div>

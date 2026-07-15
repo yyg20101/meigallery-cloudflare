@@ -106,8 +106,28 @@ function deliveryStatement(db: D1Database, factId: string, snapshot: Awaited<Ret
 }
 async function findFact(db: D1Database, dedupeKey: string) { return db.prepare(`SELECT id, canonical_event, external_event_id FROM attribution_conversion_facts WHERE dedupe_key = ? LIMIT 1`).bind(dedupeKey).first<{ id: string; canonical_event: CanonicalConversionEvent; external_event_id: string }>() }
 async function existingBrowserInstructions(db: D1Database, fact: { id: string; canonical_event: CanonicalConversionEvent; external_event_id: string }) {
-  const rows = await db.prepare(`SELECT provider, destination FROM attribution_deliveries WHERE fact_id = ? AND transport = 'browser' AND status NOT IN ('cancelled', 'rejected')`).bind(fact.id).all<{ provider: unknown; destination: string }>()
-  return rows.results.flatMap(row => { const definition = getAdPlatformDefinition(row.provider); const descriptor = definition?.describeEvent({ canonicalEvent: fact.canonical_event }); return definition && descriptor ? [{ provider: definition.provider, canonicalEvent: fact.canonical_event, externalEventId: fact.external_event_id, descriptor, payload: { destination: row.destination } }] : [] })
+  const rows = await db.prepare(`
+    SELECT delivery.provider, delivery.destination, binding.server_destination
+    FROM attribution_deliveries AS delivery
+    JOIN attribution_event_bindings AS binding
+      ON binding.connection_id = delivery.connection_id
+      AND binding.provider = delivery.provider
+      AND binding.canonical_event = ?
+    WHERE delivery.fact_id = ?
+      AND delivery.transport = 'browser'
+      AND delivery.status NOT IN ('cancelled', 'rejected')
+  `).bind(fact.canonical_event, fact.id).all<{ provider: unknown; destination: string; server_destination: string }>()
+  return rows.results.flatMap(row => {
+    const definition = getAdPlatformDefinition(row.provider)
+    const descriptor = definition?.describeEvent({ canonicalEvent: fact.canonical_event })
+    return definition && descriptor ? [{
+      provider: definition.provider,
+      canonicalEvent: fact.canonical_event,
+      externalEventId: fact.external_event_id,
+      descriptor: { ...descriptor, browserDestination: row.destination, serverDestination: row.server_destination },
+      payload: {},
+    }] : []
+  })
 }
 function duplicate(id: string, actionType: RecordConversionResult['actionType'], trackingInstructions: AdBrowserInstruction[]): RecordConversionResult { return { id, actionType, created: false, duplicateOf: id, trackingInstructions } }
 function dimensions(input: ConversionBaseInput, extra: Record<string, unknown>) { return { visitorId: input.visitorId, sessionId: input.sessionId, userId: input.userId ?? null, routeName: text(input.routeName), path: text(input.path), sourceChannel: text(input.sourceChannel), sourceName: text(input.sourceName), trackingSourceSlug: text(input.trackingSourceSlug), utmSource: text(input.utmSource), utmMedium: text(input.utmMedium), utmCampaign: text(input.utmCampaign), utmContent: text(input.utmContent), metadata: sanitizeConversionMetadata(input.metadata ?? {}), ...extra } }

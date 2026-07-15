@@ -651,7 +651,7 @@ Expected: PASS；production setup 与 preflight 共用六条新 Queue 清单，d
 - Modify: `packages/web/app/components/ContactPanel.vue`
 - Modify: `packages/web/app/components/ContactPanel.test.ts`
 
-- [ ] **Step 1：写 Browser Adapter 和 Contact 失败测试**
+- [x] **Step 1：写 Browser Adapter 和 Contact 失败测试**
 
 覆盖未同意零脚本、只初始化当前 provider、来源替换时 teardown、Google Basic Consent Mode、Google `send_to` / `transaction_id`、复制不创建广告转化、合法链接才创建 Contact。
 
@@ -661,7 +661,7 @@ corepack pnpm --filter @meigallery/web exec vitest run app/adapters/*.test.ts ap
 
 Expected: FAIL。
 
-- [ ] **Step 2：实现统一 Browser 接口**
+- [x] **Step 2：实现统一 Browser 接口**
 
 ```ts
 export interface BrowserTrackingAdapter {
@@ -674,7 +674,7 @@ export interface BrowserTrackingAdapter {
 
 adapter map 允许平台注册，但插件一次只持有一个 active provider。`PageView`、`ViewContent`、`Search` 只作为 Browser Signal 发送，不创建标准事实、Server Delivery 或事件编号。
 
-- [ ] **Step 3：实现 Google Tag**
+- [x] **Step 3：实现 Google Tag**
 
 初始化顺序固定为设置 Consent 默认值、加载 `gtag.js?id=AW-*`、执行 `js`、执行 `config`。转化调用：
 
@@ -685,13 +685,13 @@ gtag('event', 'conversion', {
 })
 ```
 
-- [ ] **Step 4：收口 Contact 行为和公开配置**
+- [x] **Step 4：收口 Contact 行为和公开配置**
 
 `ContactMethodItem` 的 `activate` 携带 `contactMethodId`、`methodType`、`actionType`。只有安全外链的 `open_link` 调用 `trackContact`；copy 只调用 `trackAnalytics('contact_value_copy')`。
 
 Web 不再从 `/api/settings/public` 读取全平台目标，改为 `/api/ad-attribution/bootstrap`，响应只包含当前 provider 的公开配置和 Browser Instruction。
 
-- [ ] **Step 5：运行测试并提交**
+- [x] **Step 5：运行测试并提交**
 
 ```bash
 corepack pnpm --filter @meigallery/web exec vitest run app/adapters/*.test.ts app/plugins/ad-platform.client.test.ts app/composables/useTracking.test.ts app/components/ContactMethodItem.test.ts app/components/ContactPanel.test.ts

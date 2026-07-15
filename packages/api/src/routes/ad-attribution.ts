@@ -1,7 +1,9 @@
 import { Hono } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
+import type { AdAttributionProvider, PlatformPublicConfig } from '@meigallery/shared'
 import type { Bindings, Variables } from '../index'
 import { resolveAdAttributionRouting, type AdAttributionSignals } from '../services/ad-attribution-routing'
+import { readAttributionConnectionSnapshot } from '../services/ad-platform/connections'
 import {
   AD_ATTRIBUTION_CONTEXT_TTL_SECONDS,
   createAdAttributionContext,
@@ -21,6 +23,40 @@ export const adAttributionRoutes = new Hono<{ Bindings: Bindings; Variables: Var
 adAttributionRoutes.use('*', async (c, next) => {
   c.header('Cache-Control', 'no-store')
   await next()
+})
+
+adAttributionRoutes.get('/bootstrap', async (c) => {
+  const consentState = await resolveTrustedMarketingConsent(
+    c.env.SESSION_SECRET,
+    getCookie(c, MARKETING_CONSENT_RECEIPT_COOKIE),
+    undefined,
+  )
+  if (consentState !== 'granted') return c.json(emptyBootstrapResponse())
+
+  try {
+    const keys = await loadAttributionCryptoKeys(c.env)
+    const context = await resolveTrustedAdAttributionContext(
+      keys,
+      getCookie(c, AD_ATTRIBUTION_CONTEXT_COOKIE),
+    )
+    if (!context) return c.json(emptyBootstrapResponse())
+
+    const snapshot = await readAttributionConnectionSnapshot(c.env.DB, context.provider)
+    if (snapshot.state !== 'ready'
+      || !snapshot.connection.enabled
+      || !snapshot.connection.browserEnabled
+      || snapshot.connection.mode === 'disabled') return c.json(emptyBootstrapResponse())
+    const publicConfig = serializePublicConfig(snapshot.connection.provider, snapshot.connection.publicConfig)
+    if (!publicConfig) return c.json(emptyBootstrapResponse())
+
+    return c.json({
+      provider: snapshot.connection.provider,
+      publicConfig,
+    })
+  }
+  catch {
+    return c.json(emptyBootstrapResponse())
+  }
 })
 
 adAttributionRoutes.put('/', async (c) => {
@@ -122,4 +158,26 @@ export function clearContextCookie(c: Parameters<typeof deleteCookie>[0]) {
 
 function emptyResponse() {
   return { provider: null, resolution: 'none' as const, expiresInSeconds: null }
+}
+
+function emptyBootstrapResponse() {
+  return { provider: null, publicConfig: null }
+}
+
+function serializePublicConfig(
+  provider: AdAttributionProvider,
+  config: Record<string, string>,
+): PlatformPublicConfig | null {
+  if (provider === 'meta' && config.pixelId) return { provider, pixelId: config.pixelId }
+  if (provider === 'tiktok' && config.pixelCode) return { provider, pixelCode: config.pixelCode }
+  if (provider === 'google' && config.tagId && config.customerId && config.cloudProjectId) {
+    return {
+      provider,
+      tagId: config.tagId,
+      customerId: config.customerId,
+      cloudProjectId: config.cloudProjectId,
+      ...(config.loginCustomerId ? { loginCustomerId: config.loginCustomerId } : {}),
+    }
+  }
+  return null
 }

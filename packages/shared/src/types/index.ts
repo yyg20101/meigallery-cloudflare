@@ -78,6 +78,7 @@ export type {
   AdAttributionProvider,
   AdBrowserInstruction,
   AdBrowserSignal,
+  AdConsentSnapshot,
   CanonicalConversionEvent,
   PlatformEventDescriptor,
   PlatformPublicConfig,
@@ -197,6 +198,7 @@ export type AnalyticsEventName =
   | 'load_more'
   | 'contact_panel_open'
   | 'contact_method_click'
+  | 'contact_value_copy'
   | 'contact_qr_expand'
   | 'rules_panel_open'
   | 'rules_page_click'

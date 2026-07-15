@@ -38,11 +38,16 @@ export async function buildAttributionDeliveryPlan(input: {
   const descriptor = definition.describeEvent({ canonicalEvent: input.canonicalEvent })
   const binding = bindings.get(input.canonicalEvent)
   if (!descriptor || !binding || !binding.enabled || !connection.enabled || connection.mode === 'disabled') return { externalEventId, deliveries: [], rolloutBucket: null }
+  const boundDescriptor = {
+    ...descriptor,
+    browserDestination: binding.browserDestination,
+    serverDestination: binding.serverDestination,
+  }
   const deliveries: PlannedAttributionDelivery[] = []
   if (connection.browserEnabled && definition.capabilities.transports.includes('browser')) {
     deliveries.push({
       id: crypto.randomUUID(), provider: connection.provider, transport: 'browser', destination: binding.browserDestination, externalEventId, matchSignals: {},
-      browserInstruction: { provider: connection.provider, canonicalEvent: input.canonicalEvent, externalEventId, descriptor, payload: { destination: binding.browserDestination } },
+      browserInstruction: { provider: connection.provider, canonicalEvent: input.canonicalEvent, externalEventId, descriptor: boundDescriptor, payload: {} },
     })
   }
   const rolloutBucket = input.stableId.trim() ? await attributionPlannerRolloutBucket(`${connection.id}:${connection.connectionRevision}`, input.stableId) : null

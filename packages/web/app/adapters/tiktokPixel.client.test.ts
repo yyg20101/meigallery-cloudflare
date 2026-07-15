@@ -1,5 +1,29 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+const consent = {
+  consentVersion: 1,
+  marketingAllowed: true,
+  adUserDataAllowed: true,
+  adPersonalizationAllowed: false,
+  decidedAt: '2026-07-15T00:00:00.000Z',
+}
+
+function instruction(provider: 'tiktok' | 'meta' = 'tiktok') {
+  return {
+    provider,
+    canonicalEvent: 'CompleteRegistration' as const,
+    externalEventId: 'mg3_tiktok_registration_1',
+    descriptor: {
+      provider,
+      canonicalEvent: 'CompleteRegistration' as const,
+      browserEventName: 'CompleteRegistration',
+      browserDestination: 'tiktok_pixel',
+      serverDestination: 'tiktok_events_api',
+    },
+    payload: { content_type: 'registration' },
+  }
+}
+
 describe('TikTok Pixel adapter', () => {
   beforeEach(() => {
     vi.resetModules()
@@ -14,42 +38,60 @@ describe('TikTok Pixel adapter', () => {
     vi.restoreAllMocks()
   })
 
-  it('初始化一次 PageView 并发送带 event_id 的标准事件', async () => {
+  it('未同意时零脚本和零平台调用', async () => {
     const { createTikTokPixelAdapter } = await import('./tiktokPixel.client')
     const adapter = createTikTokPixelAdapter()
-    let script: HTMLScriptElement | undefined
-    vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T) => {
-      script = node as unknown as HTMLScriptElement
-      return node
-    })
+    const append = vi.spyOn(document.head, 'appendChild')
 
-    expect(adapter.initialize('c123456789abcdef')).toBe(true)
-    expect(adapter.pageView()).toBe(true)
-    expect(adapter.pageView()).toBe(false)
-    expect(adapter.standardEvent('Contact', { method_type: 'telegram' }, 'event_1')).toBe(true)
+    await expect(adapter.initialize(
+      { provider: 'tiktok', pixelCode: 'C123456789ABCDEF' },
+      { ...consent, marketingAllowed: false },
+    )).resolves.toBe(false)
 
-    expect(window.ttq).toEqual(expect.arrayContaining([
-      ['page'],
-      ['track', 'Contact', { method_type: 'telegram' }, { event_id: 'event_1' }],
-    ]))
-    expect(window.ttq?.methods).toContain('grantConsent')
-    expect(window.ttq?._i?.C123456789ABCDEF?._u).toBe('https://analytics.tiktok.com/i18n/pixel/events.js')
-    expect(window.ttq?.instance?.('C123456789ABCDEF').track).toBeTypeOf('function')
-    expect(script?.src).toContain('https://analytics.tiktok.com/i18n/pixel/events.js?sdkid=C123456789ABCDEF&lib=ttq')
-    expect(script?.referrerPolicy).toBe('no-referrer')
+    expect(append).not.toHaveBeenCalled()
+    expect(window.ttq).toBeUndefined()
   })
 
-  it('拒绝非法 ID 并在 teardown 后移除自有全局对象', async () => {
+  it('使用 externalEventId 发送 TikTok event_id 并映射安全 signal', async () => {
     const { createTikTokPixelAdapter } = await import('./tiktokPixel.client')
     const adapter = createTikTokPixelAdapter()
     vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T) => node)
 
-    expect(adapter.initialize('ttq.track(1)')).toBe(false)
-    expect(adapter.initialize('C123456789ABCDEF')).toBe(true)
-    adapter.teardown()
+    await expect(adapter.initialize({ provider: 'tiktok', pixelCode: 'C123456789ABCDEF' }, consent)).resolves.toBe(true)
+    await expect(adapter.trackSignal('PageView', {})).resolves.toBe(true)
+    await expect(adapter.trackSignal('Search', { search_string: 'portrait' })).resolves.toBe(true)
+    await expect(adapter.track(instruction())).resolves.toBe(true)
 
-    expect(window.ttq).toBeUndefined()
-    expect(window.TiktokAnalyticsObject).toBeUndefined()
-    expect(adapter.standardEvent('Contact')).toBe(false)
+    expect(window.ttq).toEqual(expect.arrayContaining([
+      ['page'],
+      ['track', 'Search', { search_string: 'portrait' }],
+      ['track', 'CompleteRegistration', { content_type: 'registration' }, { event_id: 'mg3_tiktok_registration_1' }],
+    ]))
+  })
+
+  it('跨 provider instruction 和非法 externalEventId 均 fail closed', async () => {
+    const { createTikTokPixelAdapter } = await import('./tiktokPixel.client')
+    const adapter = createTikTokPixelAdapter()
+    vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T) => node)
+    await adapter.initialize({ provider: 'tiktok', pixelCode: 'C123456789ABCDEF' }, consent)
+
+    await expect(adapter.track(instruction('meta'))).resolves.toBe(false)
+    await expect(adapter.track({ ...instruction(), externalEventId: 'person@example.com' })).resolves.toBe(false)
+    expect(window.ttq?.some(item => Array.isArray(item) && item[0] === 'track')).toBe(false)
+  })
+
+  it('teardown 不破坏第三方已有 ttq global', async () => {
+    const thirdPartyQueue = [] as NonNullable<Window['ttq']>
+    thirdPartyQueue.load = vi.fn()
+    window.ttq = thirdPartyQueue
+    window.TiktokAnalyticsObject = 'ttq'
+    const { createTikTokPixelAdapter } = await import('./tiktokPixel.client')
+    const adapter = createTikTokPixelAdapter()
+
+    await adapter.initialize({ provider: 'tiktok', pixelCode: 'C123456789ABCDEF' }, consent)
+    await adapter.teardown()
+
+    expect(window.ttq).toBe(thirdPartyQueue)
+    expect(window.TiktokAnalyticsObject).toBe('ttq')
   })
 })

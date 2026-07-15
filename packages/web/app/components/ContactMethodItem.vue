@@ -5,8 +5,8 @@ import { normalizeContactActionUrl, normalizeContactQrCodeUrl } from '~/utils/co
 
 const props = defineProps<{ method: ContactMethod }>()
 const emit = defineEmits<{
-  activate: [methodType: string, actionType: 'open_link' | 'copy']
-  inspect: [methodType: string, actionType: 'qr_expand']
+  activate: [contactMethodId: string, methodType: string, actionType: 'open_link' | 'copy']
+  inspect: [contactMethodId: string, methodType: string, actionType: 'qr_expand']
 }>()
 
 const showQr = ref(false)
@@ -22,7 +22,7 @@ const safeQrCodeUrl = computed(() => normalizeContactQrCodeUrl(props.method.qrCo
 const hasQr = computed(() => Boolean(safeQrCodeUrl.value))
 
 function activateLink() {
-  emit('activate', props.method.platform, 'open_link')
+  emit('activate', props.method.id, props.method.platform, 'open_link')
 }
 
 function activateLinkWithSpace(event: KeyboardEvent) {
@@ -31,11 +31,11 @@ function activateLinkWithSpace(event: KeyboardEvent) {
 
 function toggleQr() {
   showQr.value = !showQr.value
-  if (showQr.value) emit('inspect', props.method.platform, 'qr_expand')
+  if (showQr.value) emit('inspect', props.method.id, props.method.platform, 'qr_expand')
 }
 
 async function activateCopy() {
-  if (await copyValue()) emit('activate', props.method.platform, 'copy')
+  if (await copyValue()) emit('activate', props.method.id, props.method.platform, 'copy')
 }
 
 async function copyValue() {

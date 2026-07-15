@@ -41,6 +41,18 @@ describe('归因投递 Planner', () => {
     const repeated = await buildAttributionDeliveryPlan({ ...input, canonicalEvent: 'Contact' })
 
     expect(contact.deliveries[0]?.destination).not.toBe(registration.deliveries[0]?.destination)
+    expect(contact.deliveries[0]?.browserInstruction).toMatchObject({
+      provider: 'google',
+      canonicalEvent: 'Contact',
+      descriptor: {
+        provider: 'google',
+        canonicalEvent: 'Contact',
+        browserEventName: 'conversion',
+        browserDestination: 'AW-123456789/Contact_Label',
+        serverDestination: 'customers/123/conversionActions/456',
+      },
+      payload: {},
+    })
     expect(contact.rolloutBucket).toBe(repeated.rolloutBucket)
     expect(contact.deliveries.length).toBe(repeated.deliveries.length)
   })
@@ -81,6 +93,12 @@ describe('归因投递 Planner', () => {
 })
 
 function readyConnection(provider: 'meta' | 'tiktok' | 'google', rolloutPercentage = 100) {
+  const contactBinding = provider === 'google'
+    ? { enabled: true, browserDestination: 'AW-123456789/Contact_Label', serverDestination: 'customers/123/conversionActions/456' }
+    : { enabled: true, browserDestination: 'contact', serverDestination: 'contact' }
+  const registrationBinding = provider === 'google'
+    ? { enabled: true, browserDestination: 'AW-123456789/Registration_Label', serverDestination: 'customers/123/conversionActions/789' }
+    : { enabled: true, browserDestination: 'registration', serverDestination: 'registration' }
   return {
     state: 'ready' as const,
     connection: {
@@ -90,8 +108,8 @@ function readyConnection(provider: 'meta' | 'tiktok' | 'google', rolloutPercenta
       rolloutEffectivePercentage: rolloutPercentage, publicConfig: {},
     },
     bindings: new Map([
-      ['Contact', { enabled: true, browserDestination: 'contact', serverDestination: 'contact' }],
-      ['CompleteRegistration', { enabled: true, browserDestination: 'registration', serverDestination: 'registration' }],
+      ['Contact', contactBinding],
+      ['CompleteRegistration', registrationBinding],
     ]),
     credential: { type: 'access_token', schemaVersion: 1, credentialRevision: 'credential_1' },
   }

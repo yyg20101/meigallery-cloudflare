@@ -1,79 +1,64 @@
-import type { AdBrowserInstruction } from '@meigallery/shared'
+import type {
+  AdAttributionProvider,
+  AdBrowserInstruction,
+  AdBrowserSignal,
+  AdConsentSnapshot,
+  PlatformPublicConfig,
+} from '@meigallery/shared'
+import { googleAdsAdapter } from './googleAds.client'
 import { metaPixelAdapter } from './metaPixel.client'
 import { tiktokPixelAdapter } from './tiktokPixel.client'
 
 type BrowserEventPayload = Record<string, string | number | boolean>
 
-type BrowserAdapter = {
-  initialize: (destinationId: string) => boolean
-  pageView: () => boolean
-  teardown: () => void
-  standardEvent: (eventName: string, payload?: BrowserEventPayload, eventId?: string) => boolean
-  execute: (instruction: AdBrowserInstruction) => boolean
+export interface BrowserTrackingAdapter {
+  initialize(config: PlatformPublicConfig, consent: AdConsentSnapshot): Promise<boolean>
+  track(instruction: AdBrowserInstruction): Promise<boolean>
+  trackSignal(signal: AdBrowserSignal, payload: BrowserEventPayload): Promise<boolean>
+  teardown(): Promise<void>
 }
 
-const adapters = {
-  meta: {
-    initialize: destinationId => metaPixelAdapter.initialize(destinationId),
-    pageView: () => metaPixelAdapter.pageView(),
-    teardown: () => metaPixelAdapter.teardown(),
-    standardEvent: (eventName, payload, eventId) => eventId
-      ? metaPixelAdapter.standardEvent(
-          eventName as 'Contact' | 'CompleteRegistration',
-          payload,
-          { eventID: eventId },
-        )
-      : metaPixelAdapter.standardEvent(eventName as 'Contact' | 'CompleteRegistration', payload),
-    execute: instruction => metaPixelAdapter.standardEvent(
-      instruction.eventName as 'Contact' | 'CompleteRegistration',
-      instruction.payload,
-      { eventID: instruction.eventId },
-    ),
-  },
-  tiktok: {
-    initialize: destinationId => tiktokPixelAdapter.initialize(destinationId),
-    pageView: () => tiktokPixelAdapter.pageView(),
-    teardown: () => tiktokPixelAdapter.teardown(),
-    standardEvent: (eventName, payload, eventId) => tiktokPixelAdapter.standardEvent(eventName, payload, eventId),
-    execute: instruction => tiktokPixelAdapter.standardEvent(
-      instruction.eventName,
-      instruction.payload,
-      instruction.eventId,
-    ),
-  },
-} satisfies Partial<Record<AdBrowserInstruction['provider'], BrowserAdapter>>
+const adapters: ReadonlyMap<AdAttributionProvider, BrowserTrackingAdapter> = new Map([
+  ['meta', metaPixelAdapter],
+  ['tiktok', tiktokPixelAdapter],
+  ['google', googleAdsAdapter],
+])
 
-type RegisteredBrowserProvider = keyof typeof adapters
+let activeProvider: AdAttributionProvider | null = null
 
-export function executeAdBrowserInstruction(instruction: AdBrowserInstruction) {
-  return browserAdapter(instruction.provider)?.execute(instruction) ?? false
+export async function initializeAdBrowserProvider(config: PlatformPublicConfig, consent: AdConsentSnapshot) {
+  if (!consent.marketingAllowed) {
+    await teardownAllAdBrowserProviders()
+    return false
+  }
+  const adapter = adapters.get(config.provider)
+  if (!adapter) return false
+  if (activeProvider && activeProvider !== config.provider) await teardownAllAdBrowserProviders()
+  const initialized = await adapter.initialize(config, consent)
+  activeProvider = initialized ? config.provider : null
+  return initialized
 }
 
-export function initializeAdBrowserProvider(provider: AdBrowserInstruction['provider'], destinationId: string) {
-  return browserAdapter(provider)?.initialize(destinationId) ?? false
+export async function executeAdBrowserInstruction(instruction: AdBrowserInstruction) {
+  if (instruction.provider !== activeProvider) return false
+  return adapters.get(instruction.provider)?.track(instruction) ?? false
 }
 
-export function trackAdBrowserPageView(provider: AdBrowserInstruction['provider']) {
-  return browserAdapter(provider)?.pageView() ?? false
-}
-
-export function trackAdBrowserStandardEvent(
-  provider: AdBrowserInstruction['provider'],
-  eventName: string,
-  payload?: BrowserEventPayload,
-  eventId?: string,
+export async function trackAdBrowserSignal(
+  provider: AdAttributionProvider,
+  signal: AdBrowserSignal,
+  payload: BrowserEventPayload,
 ) {
-  return browserAdapter(provider)?.standardEvent(eventName, payload, eventId) ?? false
+  if (provider !== activeProvider) return false
+  return adapters.get(provider)?.trackSignal(signal, payload) ?? false
 }
 
-export function teardownAllAdBrowserProviders() {
-  for (const adapter of Object.values(adapters)) adapter.teardown()
+export async function teardownAllAdBrowserProviders() {
+  const provider = activeProvider
+  activeProvider = null
+  if (provider) await adapters.get(provider)?.teardown()
 }
 
-export function isRegisteredAdBrowserProvider(value: unknown): value is RegisteredBrowserProvider {
-  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(adapters, value)
-}
-
-function browserAdapter(provider: AdBrowserInstruction['provider']): BrowserAdapter | undefined {
-  return isRegisteredAdBrowserProvider(provider) ? adapters[provider] : undefined
+export function isRegisteredAdBrowserProvider(value: unknown): value is AdAttributionProvider {
+  return typeof value === 'string' && adapters.has(value as AdAttributionProvider)
 }

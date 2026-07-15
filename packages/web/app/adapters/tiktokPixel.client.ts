@@ -1,3 +1,10 @@
+import type {
+  AdBrowserInstruction,
+  AdBrowserSignal,
+  AdConsentSnapshot,
+  PlatformPublicConfig,
+} from '@meigallery/shared'
+
 type TikTokPixelPayload = Record<string, string | number | boolean>
 type TikTokQueue = unknown[] & {
   _i?: Record<string, TikTokQueue>
@@ -20,22 +27,24 @@ declare global {
 }
 
 const TIKTOK_SCRIPT_ORIGIN = 'https://analytics.tiktok.com/i18n/pixel/events.js'
+const EXTERNAL_EVENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
 const TIKTOK_DEFERRED_METHODS = [
   'page', 'track', 'identify', 'instances', 'debug', 'on', 'off', 'once', 'ready',
   'alias', 'group', 'enableCookie', 'disableCookie', 'holdConsent', 'revokeConsent', 'grantConsent',
 ] as const
 
 export function createTikTokPixelAdapter() {
+  let initialized = false
   let activePixelId = ''
-  let script: HTMLScriptElement | null = null
+  let ownedScript: HTMLScriptElement | null = null
   let ownedQueue: TikTokQueue | null = null
-  let initialPageTracked = false
 
-  function initialize(pixelId: string) {
-    const normalized = normalizeTikTokPixelId(pixelId)
-    if (!isClientRuntime() || !normalized) return false
-    if (activePixelId === normalized && window.ttq) return true
-    if (activePixelId && activePixelId !== normalized) teardown()
+  async function initialize(config: PlatformPublicConfig, consent: AdConsentSnapshot) {
+    if (!isClientRuntime() || config.provider !== 'tiktok' || !consent.marketingAllowed) return false
+    const pixelId = normalizeTikTokPixelId(config.pixelCode)
+    if (!pixelId) return false
+    if (initialized && activePixelId === pixelId && window.ttq) return true
+    if (initialized) await teardown()
 
     if (!window.ttq) {
       const queue = [] as TikTokQueue
@@ -52,51 +61,64 @@ export function createTikTokPixelAdapter() {
         queue._i[id] = instance
         queue._o[id] = options
         queue._t[id] = Date.now()
-        const element = document.createElement('script')
-        element.type = 'text/javascript'
-        element.async = true
-        element.referrerPolicy = 'no-referrer'
-        element.src = `${TIKTOK_SCRIPT_ORIGIN}?sdkid=${encodeURIComponent(id)}&lib=ttq`
-        script = element
-        document.head.appendChild(element)
+        const script = document.createElement('script')
+        script.type = 'text/javascript'
+        script.async = true
+        script.referrerPolicy = 'no-referrer'
+        script.src = `${TIKTOK_SCRIPT_ORIGIN}?sdkid=${encodeURIComponent(id)}&lib=ttq`
+        ownedScript = script
+        document.head.appendChild(script)
       }
     }
 
-    activePixelId = normalized
-    window.ttq?.load?.(normalized)
+    initialized = true
+    activePixelId = pixelId
+    window.ttq?.load?.(pixelId)
     return true
   }
 
-  function pageView() {
-    if (!window.ttq || !activePixelId || initialPageTracked) return false
-    window.ttq.page?.()
-    initialPageTracked = true
+  async function track(instruction: AdBrowserInstruction) {
+    if (!window.ttq || !initialized || !validInstruction(instruction)) return false
+    window.ttq.track?.(
+      instruction.descriptor.browserEventName,
+      instruction.payload,
+      { event_id: instruction.externalEventId },
+    )
     return true
   }
 
-  function standardEvent(eventName: string, payload: TikTokPixelPayload = {}, eventId?: string) {
-    if (!window.ttq || !activePixelId) return false
-    if (eventId) window.ttq.track?.(eventName, payload, { event_id: eventId })
-    else window.ttq.track?.(eventName, payload)
+  async function trackSignal(signal: AdBrowserSignal, payload: TikTokPixelPayload) {
+    if (!window.ttq || !initialized) return false
+    if (signal === 'PageView') window.ttq.page?.()
+    else window.ttq.track?.(signal, payload)
     return true
   }
 
-  function teardown() {
-    script?.remove()
+  async function teardown() {
+    ownedScript?.remove()
+    if (ownedQueue) ownedQueue.length = 0
     if (isClientRuntime() && window.ttq === ownedQueue) {
       delete window.ttq
       delete window.TiktokAnalyticsObject
     }
-    script = null
+    ownedScript = null
     ownedQueue = null
+    initialized = false
     activePixelId = ''
-    initialPageTracked = false
   }
 
-  return { initialize, pageView, standardEvent, teardown }
+  return { initialize, track, trackSignal, teardown }
 }
 
 export const tiktokPixelAdapter = createTikTokPixelAdapter()
+
+function validInstruction(instruction: AdBrowserInstruction) {
+  return instruction.provider === 'tiktok'
+    && instruction.descriptor.provider === 'tiktok'
+    && instruction.descriptor.canonicalEvent === instruction.canonicalEvent
+    && instruction.descriptor.browserEventName === instruction.canonicalEvent
+    && EXTERNAL_EVENT_ID_PATTERN.test(instruction.externalEventId)
+}
 
 function installQueueMethods(queue: TikTokQueue) {
   queue.methods = TIKTOK_DEFERRED_METHODS

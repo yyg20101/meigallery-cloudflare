@@ -41,7 +41,7 @@ describe('ContactMethodItem', () => {
     link.element.addEventListener('click', event => event.preventDefault(), { capture: true })
     await link.trigger('click')
 
-    expect(wrapper.emitted('activate')).toEqual([['telegram', 'open_link']])
+    expect(wrapper.emitted('activate')).toEqual([['contact-1', 'telegram', 'open_link']])
   })
 
   it('原样使用 telegram.me 链接且不访问外网', async () => {
@@ -51,7 +51,7 @@ describe('ContactMethodItem', () => {
 
     expect(link.attributes('href')).toBe('https://telegram.me/example')
     await link.trigger('click')
-    expect(wrapper.emitted('activate')).toEqual([['telegram', 'open_link']])
+    expect(wrapper.emitted('activate')).toEqual([['contact-1', 'telegram', 'open_link']])
   })
 
   it('URL 未通过安全校验时不渲染聊天链接且不发出 open_link', () => {
@@ -69,7 +69,7 @@ describe('ContactMethodItem', () => {
     await wrapper.get('button[data-contact-action]').trigger('click')
 
     expect(writeText).toHaveBeenCalledWith('@example')
-    expect(wrapper.emitted('activate')).toEqual([['custom', 'copy']])
+    expect(wrapper.emitted('activate')).toEqual([['contact-1', 'custom', 'copy']])
   })
 
   it('Clipboard API reject 时不发出 activate', async () => {
@@ -103,7 +103,7 @@ describe('ContactMethodItem', () => {
     expect(wrapper.find('a button').exists()).toBe(false)
     await qrButton.trigger('click')
 
-    expect(wrapper.emitted('inspect')).toEqual([['telegram', 'qr_expand']])
+    expect(wrapper.emitted('inspect')).toEqual([['contact-1', 'telegram', 'qr_expand']])
     expect(wrapper.emitted('activate')).toBeUndefined()
     expect(wrapper.get('img').attributes('referrerpolicy')).toBe('no-referrer')
   })

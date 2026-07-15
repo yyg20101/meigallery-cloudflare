@@ -1,22 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 
 const adapter = vi.hoisted(() => ({
   initialize: vi.fn(),
-  pageView: vi.fn(),
-  standardEvent: vi.fn(),
-  teardownAll: vi.fn(),
+  execute: vi.fn(),
+  signal: vi.fn(),
+  teardown: vi.fn(),
 }))
 
 vi.mock('~/adapters/adPlatformBrowser.client', () => ({
-  initializeAdBrowserProvider: (_provider: string, destinationId: string) => adapter.initialize(destinationId),
-  trackAdBrowserPageView: () => adapter.pageView(),
-  trackAdBrowserStandardEvent: (_provider: string, eventName: string, payload: unknown, eventId?: string) => eventId
-    ? adapter.standardEvent(eventName, payload, { eventID: eventId })
-    : adapter.standardEvent(eventName, payload),
-  executeAdBrowserInstruction: (instruction: { eventName: string; payload: unknown; eventId: string }) => adapter.standardEvent(instruction.eventName, instruction.payload, { eventID: instruction.eventId }),
-  isRegisteredAdBrowserProvider: (provider: string) => provider === 'meta' || provider === 'tiktok',
-  teardownAllAdBrowserProviders: adapter.teardownAll,
+  initializeAdBrowserProvider: adapter.initialize,
+  executeAdBrowserInstruction: adapter.execute,
+  trackAdBrowserSignal: adapter.signal,
+  teardownAllAdBrowserProviders: adapter.teardown,
+  isRegisteredAdBrowserProvider: (provider: unknown) => provider === 'meta' || provider === 'tiktok' || provider === 'google',
 }))
 
 import { useTracking } from './useTracking'
@@ -25,25 +22,16 @@ const api = vi.fn()
 const trackAnalytics = vi.fn()
 const marketingConsentState = ref<'granted' | 'limited' | 'denied'>('granted')
 const canTrackMarketing = ref(true)
-const facebookPixelEnabled = ref(true)
-const facebookPixelId = ref('123456789')
-const tiktokPixelId = ref('C123TIKTOK')
-const facebookPixelDebugEnabled = ref(false)
-const browserConnections = computed(() => [
-  ...(facebookPixelEnabled.value && facebookPixelId.value
-    ? [{ provider: 'meta' as const, destinationId: facebookPixelId.value, debugEnabled: facebookPixelDebugEnabled.value }]
-    : []),
-  { provider: 'tiktok' as const, destinationId: tiktokPixelId.value, debugEnabled: false },
-])
-const attributionProvider = ref<'meta' | 'tiktok' | null>('meta')
+const attributionProvider = ref<'meta' | 'tiktok' | 'google' | null>('meta')
 const attributionResolution = ref<'matched' | 'inherited' | 'none' | 'conflict'>('matched')
+const publicConfig = ref<Record<string, string> | null>({ provider: 'meta', pixelId: '123456789' })
 const resolveAdAttribution = vi.fn(async () => attributionProvider.value)
+const bootstrapAdAttribution = vi.fn(async () => publicConfig.value)
 const clearAdAttribution = vi.fn(async () => {
   attributionProvider.value = null
   attributionResolution.value = 'none'
+  publicConfig.value = null
 })
-let analyticsVisitorId = 'visitor_1'
-let analyticsSessionId = 'session_1'
 let route = {
   name: 'gallery-slug',
   path: '/gallery/summer',
@@ -51,49 +39,51 @@ let route = {
   query: { utm_content: 'button' } as Record<string, unknown>,
 }
 
+const metaInstruction = {
+  provider: 'meta' as const,
+  canonicalEvent: 'Contact' as const,
+  externalEventId: 'mg3_contact_123',
+  descriptor: {
+    provider: 'meta' as const,
+    canonicalEvent: 'Contact' as const,
+    browserEventName: 'Contact',
+    browserDestination: 'meta_pixel',
+    serverDestination: 'meta_capi',
+  },
+  payload: { method_type: 'telegram' },
+}
+
 describe('useTracking', () => {
   beforeEach(() => {
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-07-10T08:00:00.000Z'))
-    api.mockReset()
-    api.mockResolvedValue({ data: { id: 'contact_1', created: true, trackingInstructions: [] } })
+    api.mockReset().mockResolvedValue({ data: { id: 'fact_1', created: true, trackingInstructions: [] } })
     trackAnalytics.mockReset()
-    adapter.initialize.mockReset()
-    adapter.initialize.mockReturnValue(true)
-    adapter.pageView.mockReset()
-    adapter.pageView.mockReturnValue(true)
-    adapter.standardEvent.mockReset()
-    adapter.standardEvent.mockReturnValue(true)
-    adapter.teardownAll.mockReset()
+    adapter.initialize.mockReset().mockResolvedValue(true)
+    adapter.execute.mockReset().mockResolvedValue(true)
+    adapter.signal.mockReset().mockResolvedValue(true)
+    adapter.teardown.mockReset().mockResolvedValue(undefined)
     marketingConsentState.value = 'granted'
     canTrackMarketing.value = true
-    facebookPixelEnabled.value = true
-    facebookPixelId.value = '123456789'
-    tiktokPixelId.value = 'C123TIKTOK'
-    facebookPixelDebugEnabled.value = false
     attributionProvider.value = 'meta'
     attributionResolution.value = 'matched'
+    publicConfig.value = { provider: 'meta', pixelId: '123456789' }
     resolveAdAttribution.mockClear()
+    bootstrapAdAttribution.mockClear()
     clearAdAttribution.mockClear()
-    analyticsVisitorId = 'visitor_1'
-    analyticsSessionId = 'session_1'
     route = {
       name: 'gallery-slug',
       path: '/gallery/summer',
       fullPath: '/gallery/summer?utm_content=button',
       query: { utm_content: 'button' },
     }
+    document.cookie = 'mg_ttclid=; Max-Age=0; Path=/'
     sessionStorage.clear()
     vi.stubGlobal('useApi', () => ({ api }))
     vi.stubGlobal('useRoute', () => route)
-    vi.stubGlobal('useRuntimeConfig', () => ({ public: { appEnv: 'production' } }))
-    vi.stubGlobal('useSiteSettings', () => ({
-      browserConnections,
-    }))
+    vi.stubGlobal('useSiteSettings', () => { throw new Error('禁止读取 browserConnections') })
     vi.stubGlobal('useAnalytics', () => ({
       getContext: () => ({
-        visitorId: analyticsVisitorId,
-        sessionId: analyticsSessionId,
+        visitorId: 'visitor_123',
+        sessionId: 'session_123',
         sourceChannel: 'ad',
         sourceContext: {
           utmSource: 'meta',
@@ -105,544 +95,161 @@ describe('useTracking', () => {
       }),
       track: trackAnalytics,
     }))
-    vi.stubGlobal('useMarketingConsent', () => ({
-      state: marketingConsentState,
-      canTrackMarketing,
-    }))
+    vi.stubGlobal('useMarketingConsent', () => ({ state: marketingConsentState, canTrackMarketing }))
     vi.stubGlobal('useAdAttribution', () => ({
       provider: attributionProvider,
       resolution: attributionResolution,
+      publicConfig,
       resolve: resolveAdAttribution,
+      bootstrap: bootstrapAdAttribution,
       clear: clearAdAttribution,
     }))
   })
 
   afterEach(async () => {
-    await vi.runOnlyPendingTimersAsync()
-    useTracking().teardownAdBrowserTracking()
-    vi.useRealTimers()
+    await useTracking().teardownAdBrowserTracking()
     vi.unstubAllGlobals()
   })
 
-  it('trackContact 只创建一次 contact 并写第一方兼容事件', async () => {
+  it('合法 open_link 只创建一次 Contact 并按最终 instruction 执行当前 provider', async () => {
+    api.mockResolvedValueOnce({ data: { id: 'fact_1', created: true, trackingInstructions: [metaInstruction] } })
+
     await useTracking().trackContact({
+      contactMethodId: 'contact_123',
       methodType: 'telegram',
-      actionTarget: 'floating_contact_panel',
       actionType: 'open_link',
     })
 
-    expect(api).toHaveBeenCalledTimes(1)
     expect(api).toHaveBeenCalledWith('/api/conversions/events', expect.objectContaining({
       method: 'POST',
       body: expect.objectContaining({
-        actionType: 'contact',
+        actionType: 'open_link',
+        contactMethodId: 'contact_123',
         methodType: 'telegram',
-        actionTarget: 'floating_contact_panel',
-        metadata: { action_type: 'open_link' },
         adAttributionState: 'resolved',
       }),
     }))
-    expect(trackAnalytics).toHaveBeenCalledWith('contact_method_click', expect.objectContaining({
-      flush: true,
-      props: {
-        method_type: 'telegram',
-        action_type: 'open_link',
-        location: 'floating_contact_panel',
-      },
-    }))
+    const body = api.mock.calls[0]?.[1]?.body as Record<string, unknown>
+    expect(body).not.toHaveProperty('actionTarget')
+    expect(JSON.stringify(body)).not.toContain('actionType":"contact')
+    expect(adapter.initialize).toHaveBeenCalledWith(publicConfig.value, expect.objectContaining({ marketingAllowed: true }))
+    expect(adapter.execute).toHaveBeenCalledWith(metaInstruction)
+    expect(api.mock.calls.some(call => call[0] === '/api/conversions/pixel-receipts')).toBe(false)
+    expect(trackAnalytics).toHaveBeenCalledWith('contact_method_click', expect.objectContaining({ eventId: 'mg3_contact_123' }))
   })
 
-  it('Owner live challenge 通过真实 Pixel adapter 发送恰好两条同组 eventID', () => {
-    const eventIds = {
-      Contact: `mlv_contact_${'a'.repeat(32)}`,
-      CompleteRegistration: `mlv_registration_${'b'.repeat(32)}`,
-    }
-
-    expect(useTracking().sendMetaLiveChallenge({ pixelId: '1234567890', eventIds })).toBe(true)
-    expect(adapter.initialize).toHaveBeenCalledWith('1234567890')
-    expect(adapter.standardEvent.mock.calls).toEqual([
-      ['Contact', { content_category: 'meta_live_synthetic_test' }, { eventID: eventIds.Contact }],
-      ['CompleteRegistration', { content_category: 'meta_live_synthetic_test' }, { eventID: eventIds.CompleteRegistration }],
-    ])
-  })
-
-  it('Owner live challenge 任一 ID 非服务端 opaque 会话格式时不初始化 Pixel', () => {
-    expect(useTracking().sendMetaLiveChallenge({
-      pixelId: '1234567890',
-      eventIds: { Contact: '13800138000', CompleteRegistration: `mlv_registration_${'b'.repeat(32)}` },
-    })).toBe(false)
-    expect(adapter.initialize).not.toHaveBeenCalled()
-    expect(adapter.standardEvent).not.toHaveBeenCalled()
-  })
-
-  it('Contact Pixel instruction 使用服务端同一个 eventID', async () => {
-    api.mockResolvedValueOnce({ data: { trackingInstructions: [instruction('Contact')] } })
-
+  it('copy 永不 POST conversion 或执行广告 instruction', async () => {
     await useTracking().trackContact({
-      methodType: 'telegram',
-      actionTarget: 'floating_contact_panel',
-      actionType: 'open_link',
-    })
-
-    expect(adapter.standardEvent).toHaveBeenCalledWith(
-      'Contact',
-      { method_type: 'telegram' },
-      { eventID: 'meta:Contact:contact_1' },
-    )
-    expect(trackAnalytics).toHaveBeenCalledWith('contact_method_click', expect.objectContaining({
-      eventId: 'meta:Contact:contact_1',
-    }))
-  })
-
-  it.each(['limited', 'denied'] as const)('%s 授权仍写第一方 Contact 且不执行 Pixel', async consent => {
-    marketingConsentState.value = consent
-    canTrackMarketing.value = false
-    api.mockResolvedValueOnce({ data: { trackingInstructions: [instruction('Contact')] } })
-
-    await useTracking().trackContact({
+      contactMethodId: 'contact_123',
       methodType: 'wechat',
-      actionTarget: 'floating_contact_panel',
       actionType: 'copy',
-    })
+    } as never)
 
-    expect(api).toHaveBeenCalledWith('/api/conversions/events', expect.objectContaining({
-      body: expect.objectContaining({ actionType: 'contact', consentState: consent }),
-    }))
-    expect(trackAnalytics).toHaveBeenCalledOnce()
-    expect(adapter.standardEvent).not.toHaveBeenCalled()
+    expect(api).not.toHaveBeenCalled()
+    expect(adapter.initialize).not.toHaveBeenCalled()
+    expect(adapter.execute).not.toHaveBeenCalled()
   })
 
-  it('Pixel attempted 回执失败走有界重试且不重复创建 Contact', async () => {
-    api
-      .mockResolvedValueOnce({ data: { trackingInstructions: [instruction('Contact')] } })
-      .mockRejectedValue(new Error('receipt failed'))
-
-    await useTracking().trackContact({
-      methodType: 'telegram',
-      actionTarget: 'floating_contact_panel',
-      actionType: 'open_link',
-    })
-    await vi.runAllTimersAsync()
-
-    const conversionCalls = api.mock.calls.filter(call => call[0] === '/api/conversions/events')
-    const receiptCalls = api.mock.calls.filter(call => call[0] === '/api/conversions/pixel-receipts')
-    expect(conversionCalls).toHaveLength(1)
-    expect(receiptCalls).toHaveLength(4)
-    expect(receiptCalls.every(call => call[1]?.method === 'POST')).toBe(true)
-    expect(adapter.standardEvent).toHaveBeenCalledOnce()
-  })
-
-  it('granted 时只读取合法 browser identifiers', async () => {
-    document.cookie = '_fbp=fb.1.1700000000000.123456789; path=/'
-    document.cookie = '_fbc=fb.1.1700000000000.saved-click; path=/'
-    route.query.fbclid = 'CLICK_abc-123'
-
-    await useTracking().trackContact({
-      methodType: 'telegram',
-      actionTarget: 'floating_contact_panel',
-      actionType: 'open_link',
-    })
-
-    expect(api).toHaveBeenCalledWith('/api/conversions/events', expect.objectContaining({
-      body: expect.objectContaining({
-        browserIdentifiers: {
-          fbp: 'fb.1.1700000000000.123456789',
-          fbc: `fb.1.${new Date('2026-07-10T08:00:00.000Z').getTime()}.CLICK_abc-123`,
-        },
-      }),
-    }))
-  })
-
-  it('conversion API 首次失败后有界重试且只完成一次兼容分析', async () => {
-    api.mockRejectedValueOnce(new Error('conversion failed')).mockResolvedValueOnce({
-      data: { trackingInstructions: [instruction('Contact')] },
-    })
-
-    await useTracking().trackContact({
-      methodType: 'telegram',
-      actionTarget: 'floating_contact_panel',
-      actionType: 'open_link',
-    })
-    expect(trackAnalytics).not.toHaveBeenCalled()
-
-    await vi.advanceTimersByTimeAsync(1_000)
-
-    expect(api.mock.calls.filter(call => call[0] === '/api/conversions/events')).toHaveLength(2)
-    expect(trackAnalytics).toHaveBeenCalledOnce()
-    expect(adapter.standardEvent).toHaveBeenCalledOnce()
-  })
-
-  it('重试前撤回授权会移除浏览器标识且不执行 Pixel', async () => {
-    document.cookie = '_fbp=fb.1.1700000000000.123456789; path=/'
-    route.query.fbclid = 'CLICK_abc-123'
-    api.mockRejectedValueOnce(new Error('conversion failed')).mockResolvedValueOnce({
-      data: { trackingInstructions: [instruction('Contact')] },
-    })
-
-    await useTracking().trackContact({
-      methodType: 'telegram',
-      actionTarget: 'floating_contact_panel',
-      actionType: 'open_link',
-    })
-    marketingConsentState.value = 'denied'
-    canTrackMarketing.value = false
-    await vi.advanceTimersByTimeAsync(1_000)
-
-    const initialBody = api.mock.calls[0]?.[1]?.body as Record<string, unknown>
-    const retryBody = api.mock.calls[1]?.[1]?.body as Record<string, unknown>
-    expect(initialBody).toHaveProperty('browserIdentifiers')
-    expect(retryBody).toMatchObject({ consentState: 'denied' })
-    expect(retryBody).not.toHaveProperty('browserIdentifiers')
-    expect(adapter.standardEvent).not.toHaveBeenCalled()
-  })
-
-  it('limited activation 即使重试前升级 granted 也不读取标识或执行 Pixel', async () => {
-    marketingConsentState.value = 'limited'
-    canTrackMarketing.value = false
-    document.cookie = '_fbp=fb.1.1700000000000.123456789; path=/'
-    route.query.fbclid = 'CLICK_abc-123'
-    api.mockRejectedValueOnce(new Error('conversion failed')).mockResolvedValueOnce({
-      data: { trackingInstructions: [instruction('Contact')] },
-    })
-
-    await useTracking().trackContact({
-      methodType: 'telegram',
-      actionTarget: 'floating_contact_panel',
-      actionType: 'open_link',
-    })
-    marketingConsentState.value = 'granted'
-    canTrackMarketing.value = true
-    await vi.advanceTimersByTimeAsync(1_000)
-
-    const bodies = api.mock.calls
-      .filter(call => call[0] === '/api/conversions/events')
-      .map(call => call[1]?.body as Record<string, unknown>)
-    expect(bodies).toHaveLength(2)
-    expect(bodies.every(body => body.consentState === 'limited')).toBe(true)
-    expect(bodies.every(body => !('browserIdentifiers' in body))).toBe(true)
-    expect(adapter.standardEvent).not.toHaveBeenCalled()
-  })
-
-  it('analytics 本地异常不会重新提交 conversion', async () => {
-    trackAnalytics.mockImplementationOnce(() => { throw new Error('analytics failed') })
-
-    await expect(useTracking().trackContact({
-      methodType: 'telegram',
-      actionTarget: 'floating_contact_panel',
-      actionType: 'open_link',
-    })).resolves.toBeUndefined()
-    await vi.runAllTimersAsync()
-
-    expect(api.mock.calls.filter(call => call[0] === '/api/conversions/events')).toHaveLength(1)
-  })
-
-  it('Pixel 本地异常不会重新提交 conversion', async () => {
-    api.mockResolvedValueOnce({ data: { trackingInstructions: [instruction('Contact')] } })
-    adapter.standardEvent.mockImplementationOnce(() => { throw new Error('fbq failed') })
-
-    await expect(useTracking().trackContact({
-      methodType: 'telegram',
-      actionTarget: 'floating_contact_panel',
-      actionType: 'open_link',
-    })).resolves.toBeUndefined()
-    await vi.runAllTimersAsync()
-
-    expect(api.mock.calls.filter(call => call[0] === '/api/conversions/events')).toHaveLength(1)
-  })
-
-  it('conversion API 全部补发失败后只写一次空 ID 兼容分析', async () => {
-    api.mockRejectedValue(new Error('conversion failed'))
-
-    await useTracking().trackContact({
-      methodType: 'telegram',
-      actionTarget: 'floating_contact_panel',
-      actionType: 'open_link',
-    })
-    await vi.advanceTimersByTimeAsync(3_000)
-
-    expect(api.mock.calls.filter(call => call[0] === '/api/conversions/events')).toHaveLength(4)
-    expect(trackAnalytics).toHaveBeenCalledOnce()
-    expect(trackAnalytics).toHaveBeenCalledWith('contact_method_click', expect.objectContaining({ eventId: '' }))
-    expect(adapter.standardEvent).not.toHaveBeenCalled()
-  })
-
-  it('analytics 关闭时按浏览器会话生成稳定且相互隔离的必要身份', async () => {
-    analyticsVisitorId = ''
-    analyticsSessionId = ''
-    const input = {
-      methodType: 'telegram',
-      actionTarget: 'floating_contact_panel',
-      actionType: 'open_link' as const,
-    }
-
-    await useTracking().trackContact(input)
-    await useTracking().trackContact(input)
-    const firstSessionBodies = api.mock.calls.map(call => call[1]?.body as Record<string, unknown>)
-
-    expect(firstSessionBodies[0]?.visitorId).toMatch(/^conversion_visitor_[A-Za-z0-9_-]+$/)
-    expect(firstSessionBodies[0]?.sessionId).toMatch(/^conversion_session_[A-Za-z0-9_-]+$/)
-    expect(firstSessionBodies[1]?.visitorId).toBe(firstSessionBodies[0]?.visitorId)
-    expect(firstSessionBodies[1]?.sessionId).toBe(firstSessionBodies[0]?.sessionId)
-
-    sessionStorage.clear()
-    api.mockClear()
-    await useTracking().trackContact(input)
-    const nextSessionBody = api.mock.calls[0]?.[1]?.body as Record<string, unknown>
-    expect(nextSessionBody.visitorId).not.toBe(firstSessionBodies[0]?.visitorId)
-    expect(nextSessionBody.sessionId).not.toBe(firstSessionBodies[0]?.sessionId)
-  })
-
-  it('utm_content 不泄露邮箱、URL 或凭证值', async () => {
-    route.query.utm_content = 'me@example.com https://example.com/path?token=secret'
-
-    await useTracking().trackContact({
-      methodType: 'telegram',
-      actionTarget: 'floating_contact_panel',
-      actionType: 'open_link',
-    })
-
-    const request = JSON.stringify(api.mock.calls[0])
-    expect(request).not.toContain('me@example.com')
-    expect(request).not.toContain('https://example.com')
-    expect(request).not.toContain('token=secret')
-  })
-
-  it('executeBrowserInstructions 拒绝 Lead 与结构不完整指令', () => {
-    useTracking().executeBrowserInstructions([
-      instruction('Lead'),
-      { ...instruction('Contact'), receiptToken: '' },
+  it('跨 provider instruction 和旧 instruction 结构均 fail closed', async () => {
+    await useTracking().executeBrowserInstructions([
+      { ...metaInstruction, provider: 'tiktok' },
+      { provider: 'meta', eventName: 'Contact', eventId: 'legacy', deliveryId: 'delivery', receiptToken: 'receipt', payload: {} },
     ] as never)
 
-    expect(adapter.standardEvent).not.toHaveBeenCalled()
-    expect(api).not.toHaveBeenCalled()
+    expect(adapter.execute).not.toHaveBeenCalled()
   })
 
-  it('trackPageView、trackViewContent 和 trackSearch 只委托可信来源对应 adapter', async () => {
+  it.each(['limited', 'denied'] as const)('%s 时 Contact 仍写一方事实但不调用广告平台', async (consent) => {
+    marketingConsentState.value = consent
+    canTrackMarketing.value = false
+    api.mockResolvedValueOnce({ data: { trackingInstructions: [metaInstruction] } })
+
+    await useTracking().trackContact({ contactMethodId: 'contact_123', methodType: 'telegram', actionType: 'open_link' })
+
+    expect(api).toHaveBeenCalledWith('/api/conversions/events', expect.objectContaining({
+      body: expect.objectContaining({ actionType: 'open_link', consentState: consent, adAttributionState: 'suppress' }),
+    }))
+    expect(adapter.initialize).not.toHaveBeenCalled()
+    expect(adapter.execute).not.toHaveBeenCalled()
+  })
+
+  it('PageView 只用当前 provider bootstrap 初始化并发送 Browser Signal', async () => {
+    await useTracking().trackPageView()
+
+    expect(resolveAdAttribution).toHaveBeenCalledWith(route)
+    expect(bootstrapAdAttribution).toHaveBeenCalledOnce()
+    expect(adapter.initialize).toHaveBeenCalledWith(
+      { provider: 'meta', pixelId: '123456789' },
+      expect.objectContaining({ marketingAllowed: true, adPersonalizationAllowed: false }),
+    )
+    expect(adapter.signal).toHaveBeenCalledWith('meta', 'PageView', {})
+  })
+
+  it('来源切换后只初始化新的 Google provider', async () => {
+    await useTracking().trackPageView()
+    adapter.initialize.mockClear()
+    route.fullPath = '/gallery/google?gclid=click'
+    route.query = { gclid: 'click' }
+    attributionProvider.value = 'google'
+    publicConfig.value = { provider: 'google', tagId: 'AW-123456789', customerId: '123-456-7890', cloudProjectId: 'project-1' }
+
+    await useTracking().trackPageView()
+
+    expect(adapter.initialize).toHaveBeenCalledOnce()
+    expect(adapter.initialize).toHaveBeenCalledWith(publicConfig.value, expect.any(Object))
+    expect(adapter.signal).toHaveBeenCalledWith('google', 'PageView', {})
+  })
+
+  it('PageView/ViewContent/Search 只发送 signal，不调用 conversion API 或创建事件编号', async () => {
     const tracking = useTracking()
     await tracking.trackPageView()
     await tracking.trackViewContent({ content_id: 'gallery_1', required_rank: 10 })
-    await tracking.trackSearch({ searchString: 'has_query=true', resultCount: 12 })
+    await tracking.trackSearch({ searchString: '联系 me@example.com', resultCount: 7 })
 
-    expect(adapter.initialize).toHaveBeenCalledWith('123456789')
-    expect(adapter.pageView).toHaveBeenCalledOnce()
-    expect(adapter.standardEvent).toHaveBeenNthCalledWith(
-      1,
-      'ViewContent',
-      { content_id: 'gallery_1', required_rank: 10 },
-    )
-    expect(adapter.standardEvent).toHaveBeenNthCalledWith(
-      2,
-      'Search',
-      { search_string: 'has_query=true', result_count: 12 },
-    )
+    expect(api.mock.calls.some(call => call[0] === '/api/conversions/events')).toBe(false)
+    expect(adapter.execute).not.toHaveBeenCalled()
+    expect(adapter.signal).toHaveBeenCalledWith('meta', 'ViewContent', { content_id: 'gallery_1', required_rank: 10 })
+    expect(adapter.signal).toHaveBeenCalledWith('meta', 'Search', { search_string: '联系 [redacted_email]', result_count: 7 })
   })
 
-  it('Search 统一清洗并发送 snake_case payload', async () => {
-    await useTracking().trackSearch({
-      searchString: '联系 me@example.com',
-      resultCount: 7,
-    })
+  it('未授权时零初始化、清除项目 click cookie、来源 context 并 teardown', async () => {
+    document.cookie = 'mg_ttclid=stored-click; Path=/'
+    marketingConsentState.value = 'denied'
+    canTrackMarketing.value = false
 
-    expect(adapter.standardEvent).toHaveBeenCalledWith('Search', {
-      search_string: '联系 [redacted_email]',
-      result_count: 7,
-    })
+    await useTracking().trackPageView()
+
+    expect(document.cookie).not.toContain('mg_ttclid=stored-click')
+    expect(clearAdAttribution).toHaveBeenCalledOnce()
+    expect(adapter.teardown).toHaveBeenCalledOnce()
+    expect(adapter.initialize).not.toHaveBeenCalled()
   })
 
-  it('同页 Pixel ID 变化会重新初始化并补发 PageView', async () => {
-    route.fullPath = '/gallery/pixel-id-change'
-    route.path = '/gallery/pixel-id-change'
-    const tracking = useTracking()
-    await tracking.trackPageView()
-    facebookPixelId.value = '987654321'
-    await tracking.trackPageView()
-
-    expect(adapter.initialize).toHaveBeenNthCalledWith(1, '123456789')
-    expect(adapter.initialize).toHaveBeenNthCalledWith(2, '987654321')
-    expect(adapter.pageView).toHaveBeenCalledTimes(2)
-  })
-
-  it('同时配置两个平台时只初始化可信来源对应的 Pixel', async () => {
-    route.fullPath = '/gallery/provider-meta'
-    route.path = '/gallery/provider-meta'
-    const tracking = useTracking()
-    await tracking.trackPageView()
-
-    expect(adapter.initialize).toHaveBeenLastCalledWith('123456789')
-
-    adapter.initialize.mockClear()
-    route.fullPath = '/gallery/provider-tiktok'
-    route.path = '/gallery/provider-tiktok'
-    attributionProvider.value = 'tiktok'
-    await tracking.trackPageView()
-
-    expect(adapter.teardownAll).toHaveBeenCalledOnce()
-    expect(adapter.initialize).toHaveBeenCalledOnce()
-    expect(adapter.initialize).toHaveBeenCalledWith('C123TIKTOK')
-  })
-
-  it('Meta 来源拒绝执行服务端返回的 TikTok 浏览器指令', async () => {
-    api.mockResolvedValueOnce({
-      data: {
-        trackingInstructions: [{
-          ...instruction('Contact'),
-          provider: 'tiktok',
-          eventId: 'tiktok:Contact:contact_1',
-        }],
-      },
-    })
-
-    await useTracking().trackContact({
-      methodType: 'telegram',
-      actionTarget: 'floating_contact_panel',
-      actionType: 'open_link',
-    })
-
-    expect(adapter.standardEvent).not.toHaveBeenCalled()
-    expect(api.mock.calls.some(call => call[0] === '/api/conversions/pixel-receipts')).toBe(false)
-  })
-
-  it('来源冲突时联系请求显式 suppress 广告投递', async () => {
-    attributionProvider.value = null
-    attributionResolution.value = 'conflict'
-
-    await useTracking().trackContact({
-      methodType: 'telegram',
-      actionTarget: 'floating_contact_panel',
-      actionType: 'open_link',
-    })
-
-    expect(api).toHaveBeenCalledWith('/api/conversions/events', expect.objectContaining({
-      body: expect.objectContaining({ adAttributionState: 'suppress' }),
-    }))
-  })
-
-  it('配置禁用会 teardown，再启用同页会补发 PageView', async () => {
-    route.fullPath = '/gallery/pixel-reenable'
-    route.path = '/gallery/pixel-reenable'
-    const tracking = useTracking()
-    await tracking.trackPageView()
-    facebookPixelEnabled.value = false
-    await tracking.trackPageView()
-    facebookPixelEnabled.value = true
-    attributionProvider.value = 'meta'
-    await tracking.trackPageView()
-
-    expect(adapter.teardownAll).toHaveBeenCalledOnce()
-    expect(adapter.initialize).toHaveBeenCalledTimes(2)
-    expect(adapter.pageView).toHaveBeenCalledTimes(2)
-  })
-
-  it('注册归因只在 granted 范围读取 browser identifiers', async () => {
+  it('注册归因只读取当前 Meta provider 的 identifier', async () => {
     route = {
       name: 'register',
       path: '/register',
-      fullPath: '/register?utm_content=hero',
-      query: { utm_content: 'hero', fbclid: 'CLICK_abc-123' },
+      fullPath: '/register?fbclid=meta-click&ttclid=tiktok-click',
+      query: { fbclid: 'meta-click', ttclid: 'tiktok-click' },
     }
-    document.cookie = '_fbp=fb.1.1700000000000.123456789; path=/'
+    document.cookie = '_fbp=fb.1.1700000000000.123456789; Path=/'
+    document.cookie = '_ttp=tiktok-cookie; Path=/'
 
-    const attribution = await useTracking().buildRegistrationAttributionContext()
+    const context = await useTracking().buildRegistrationAttributionContext()
 
-    expect(resolveAdAttribution).toHaveBeenCalledOnce()
-    expect(attribution).toMatchObject({
-      visitorId: 'visitor_1',
-      sessionId: 'session_1',
-      routeName: 'register',
-      path: '/register',
-      utmContent: 'hero',
-      consentState: 'granted',
-      adAttributionState: 'resolved',
-      browserIdentifiers: {
-        fbp: 'fb.1.1700000000000.123456789',
-        fbc: `fb.1.${new Date('2026-07-10T08:00:00.000Z').getTime()}.CLICK_abc-123`,
-      },
-    })
+    expect(context.browserIdentifiers).toMatchObject({ fbp: 'fb.1.1700000000000.123456789' })
+    expect(context.browserIdentifiers).not.toHaveProperty('ttclid')
+    expect(context.browserIdentifiers).not.toHaveProperty('ttp')
   })
 
-  it('注册归因在 limited 时不读取 browser identifiers', async () => {
-    marketingConsentState.value = 'limited'
-    canTrackMarketing.value = false
-    route.query.fbclid = 'CLICK_abc-123'
-
-    const attribution = await useTracking().buildRegistrationAttributionContext()
-
-    expect(attribution).toMatchObject({ consentState: 'limited', adAttributionState: 'suppress' })
-    expect(attribution).not.toHaveProperty('browserIdentifiers')
-  })
-
-  it('后台与敏感 URL 不委托 adapter', async () => {
-    const tracking = useTracking()
-
-    route.fullPath = '/admin/analytics'
+  it('后台或敏感 URL 不初始化广告平台', async () => {
+    route.fullPath = '/admin/analytics?token=secret'
     route.path = '/admin/analytics'
-    await tracking.trackPageView()
-    route.fullPath = '/gallery/summer?token=secret'
-    route.path = '/gallery/summer'
-    await tracking.trackPageView()
+
+    await useTracking().trackPageView()
 
     expect(adapter.initialize).not.toHaveBeenCalled()
-    expect(adapter.pageView).not.toHaveBeenCalled()
-  })
-
-  it('导航到敏感 URL 后 Contact 只写第一方事实并卸载广告平台', async () => {
-    route.fullPath = '/gallery/public-before-sensitive'
-    route.path = '/gallery/public-before-sensitive'
-    const tracking = useTracking()
-    await tracking.trackPageView()
-    adapter.teardownAll.mockClear()
-    adapter.standardEvent.mockClear()
-    api.mockResolvedValueOnce({ data: { trackingInstructions: [instruction('Contact')] } })
-
-    route.fullPath = '/gallery/private?token=secret&credential=hidden'
-    route.path = '/gallery/private'
-    await tracking.trackContact({
-      methodType: 'telegram',
-      actionTarget: 'floating_contact_panel',
-      actionType: 'open_link',
-    })
-
-    expect(adapter.initialize).toHaveBeenCalledWith('123456789')
-    expect(adapter.pageView).toHaveBeenCalledOnce()
-    expect(adapter.teardownAll).toHaveBeenCalledOnce()
-    expect(adapter.standardEvent).not.toHaveBeenCalled()
-    expect(api.mock.calls.filter(call => call[0] === '/api/conversions/events')).toHaveLength(1)
-    expect(api.mock.calls.filter(call => call[0] === '/api/conversions/pixel-receipts')).toHaveLength(0)
-    expect(trackAnalytics).toHaveBeenCalledWith('contact_method_click', expect.objectContaining({ flush: true }))
-  })
-
-  it('admin route 的 Contact 只写第一方事实并卸载广告平台', async () => {
-    route.fullPath = '/gallery/public-before-admin'
-    route.path = '/gallery/public-before-admin'
-    const tracking = useTracking()
-    await tracking.trackPageView()
-    adapter.teardownAll.mockClear()
-    adapter.standardEvent.mockClear()
-    api.mockResolvedValueOnce({ data: { trackingInstructions: [instruction('Contact')] } })
-
-    route.fullPath = '/admin/analytics'
-    route.path = '/admin/analytics'
-    await tracking.trackContact({
-      methodType: 'wechat',
-      actionTarget: 'floating_contact_panel',
-      actionType: 'copy',
-    })
-
-    expect(adapter.teardownAll).toHaveBeenCalledOnce()
-    expect(adapter.standardEvent).not.toHaveBeenCalled()
-    expect(api.mock.calls.filter(call => call[0] === '/api/conversions/events')).toHaveLength(1)
-    expect(api.mock.calls.filter(call => call[0] === '/api/conversions/pixel-receipts')).toHaveLength(0)
-    expect(trackAnalytics).toHaveBeenCalledOnce()
+    expect(adapter.signal).not.toHaveBeenCalled()
+    expect(adapter.teardown).toHaveBeenCalled()
   })
 })
-
-function instruction(eventName: 'Contact' | 'Lead' | 'CompleteRegistration') {
-  return {
-    provider: 'meta',
-    deliveryId: 'cdlv_1',
-    eventName,
-    eventId: `meta:${eventName}:contact_1`,
-    payload: { method_type: 'telegram' },
-    receiptToken: 'receipt_1',
-  }
-}

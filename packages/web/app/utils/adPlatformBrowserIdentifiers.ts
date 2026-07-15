@@ -1,3 +1,5 @@
+import type { AdAttributionProvider } from '@meigallery/shared'
+
 const FBP_PATTERN = /^fb\.1\.\d{10,16}\.[A-Za-z0-9._-]{1,128}$/
 const FBC_PATTERN = /^fb\.1\.\d{10,16}\.[A-Za-z0-9._-]{1,128}$/
 const FBCLID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/
@@ -12,38 +14,58 @@ export type AdPlatformBrowserIdentifiers = {
   ttp?: string
 }
 
-export function readAdPlatformBrowserIdentifiers(
-  cookie: string,
-  clickIds: { fbclid?: unknown; ttclid?: unknown },
-  now = Date.now(),
-): AdPlatformBrowserIdentifiers {
-  const fbp = readCookie(cookie, '_fbp')
-  const storedFbc = readCookie(cookie, '_fbc')
-  const fbclid = firstText(clickIds.fbclid)
-  const generatedFbc = FBCLID_PATTERN.test(fbclid) && Number.isFinite(now)
-    ? `fb.1.${Math.trunc(now)}.${fbclid}`
-    : ''
-  const ttclid = safeIdentifier(firstText(clickIds.ttclid), 1_000)
-    || safeIdentifier(readCookie(cookie, TIKTOK_CLICK_COOKIE, true), 1_000)
-  const ttp = safeIdentifier(readCookie(cookie, '_ttp', true), 256)
-
-  return {
-    ...(FBP_PATTERN.test(fbp) ? { fbp } : {}),
-    ...(FBC_PATTERN.test(generatedFbc) ? { fbc: generatedFbc } : FBC_PATTERN.test(storedFbc) ? { fbc: storedFbc } : {}),
-    ...(ttclid ? { ttclid } : {}),
-    ...(ttp ? { ttp } : {}),
-  }
+type BrowserClickIds = {
+  fbclid?: unknown
+  ttclid?: unknown
+  gclid?: unknown
+  gbraid?: unknown
+  wbraid?: unknown
 }
 
-export function tikTokClickIdCookie(ttclid: unknown) {
-  const value = safeIdentifier(firstText(ttclid), 1_000)
+export function readAdPlatformBrowserIdentifiers(
+  provider: AdAttributionProvider,
+  cookie: string,
+  clickIds: BrowserClickIds,
+  now = Date.now(),
+): AdPlatformBrowserIdentifiers {
+  if (provider === 'meta') return readMetaIdentifiers(cookie, clickIds.fbclid, now)
+  if (provider === 'tiktok') return readTikTokIdentifiers(cookie, clickIds.ttclid)
+  return {}
+}
+
+export function projectAdClickCookie(provider: AdAttributionProvider, clickIds: BrowserClickIds) {
+  if (provider !== 'tiktok') return ''
+  const value = safeIdentifier(firstText(clickIds.ttclid), 1_000)
   return value
     ? `${TIKTOK_CLICK_COOKIE}=${encodeURIComponent(value)}; Max-Age=${TIKTOK_CLICK_MAX_AGE_SECONDS}; Path=/; SameSite=Lax; Secure`
     : ''
 }
 
-export function clearTikTokClickIdCookie() {
-  return `${TIKTOK_CLICK_COOKIE}=; Max-Age=0; Path=/; SameSite=Lax; Secure`
+export function clearProjectAdClickCookies() {
+  return [`${TIKTOK_CLICK_COOKIE}=; Max-Age=0; Path=/; SameSite=Lax; Secure`]
+}
+
+function readMetaIdentifiers(cookie: string, value: unknown, now: number) {
+  const fbp = readCookie(cookie, '_fbp')
+  const storedFbc = readCookie(cookie, '_fbc')
+  const fbclid = firstText(value)
+  const generatedFbc = FBCLID_PATTERN.test(fbclid) && Number.isFinite(now)
+    ? `fb.1.${Math.trunc(now)}.${fbclid}`
+    : ''
+  return {
+    ...(FBP_PATTERN.test(fbp) ? { fbp } : {}),
+    ...(FBC_PATTERN.test(generatedFbc) ? { fbc: generatedFbc } : FBC_PATTERN.test(storedFbc) ? { fbc: storedFbc } : {}),
+  }
+}
+
+function readTikTokIdentifiers(cookie: string, value: unknown) {
+  const ttclid = safeIdentifier(firstText(value), 1_000)
+    || safeIdentifier(readCookie(cookie, TIKTOK_CLICK_COOKIE, true), 1_000)
+  const ttp = safeIdentifier(readCookie(cookie, '_ttp', true), 256)
+  return {
+    ...(ttclid ? { ttclid } : {}),
+    ...(ttp ? { ttp } : {}),
+  }
 }
 
 function readCookie(cookie: string, name: string, decode = false) {

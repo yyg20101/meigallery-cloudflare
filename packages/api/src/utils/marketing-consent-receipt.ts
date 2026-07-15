@@ -1,14 +1,8 @@
-import type { AnalyticsConsentState } from '@meigallery/shared'
+import type { AdConsentSnapshot, AnalyticsConsentState } from '@meigallery/shared'
+
+export type { AdConsentSnapshot } from '@meigallery/shared'
 
 export type MarketingConsentReceiptState = Extract<AnalyticsConsentState, 'granted' | 'denied'>
-
-export interface AdConsentSnapshot {
-  consentVersion: number
-  marketingAllowed: boolean
-  adUserDataAllowed: boolean
-  adPersonalizationAllowed: boolean
-  decidedAt: string
-}
 
 export interface MarketingConsentReceiptClaims {
   state: MarketingConsentReceiptState

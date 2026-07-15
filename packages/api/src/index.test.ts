@@ -55,6 +55,20 @@ describe('统一 Queue 与 Cron 入口', () => {
   })
 })
 
+describe('公开设置广告配置隔离', () => {
+  it('不查询旧广告连接表或暴露全平台浏览器目标', () => {
+    const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8')
+    const publicSettingsRoute = source.slice(
+      source.indexOf("app.get('/api/settings/public'"),
+      source.indexOf("app.route('/api/meta'"),
+    )
+
+    expect(publicSettingsRoute).not.toContain('ad_platform_connections')
+    expect(publicSettingsRoute).not.toContain('ad_platform_browser_connections')
+    expect(publicSettingsRoute).not.toContain('browserConnections')
+  })
+})
+
 function emptyDb(calls: string[] = []) {
   return {
     prepare(sql: string) {
