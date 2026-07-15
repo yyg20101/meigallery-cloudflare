@@ -39,7 +39,7 @@ describe('公开广告来源 API', () => {
       method: 'PUT',
       headers: {
         'content-type': 'application/json',
-        cookie: `mei_marketing_consent_receipt=${consent}; ${cookiePair(initial)}`,
+        cookie: trustedCookie(consent, initial),
       },
       body: JSON.stringify({}),
     }, env())
@@ -50,6 +50,24 @@ describe('公开广告来源 API', () => {
     expect(response.headers.get('set-cookie')).toBeNull()
   })
 
+  it.each([
+    ['自然 Google 来源', { utmSource: 'google' }],
+    ['超长 Click ID', { fbclid: 'x'.repeat(129) }],
+    ['含控制字符的 Click ID', { ttclid: 'invalid\nclick' }],
+    ['无效受管链接', { trackingSourceSlug: 'summer-meta', managedLinkToken: 'invalid.token' }],
+  ])('%s 不替换可信上下文也不清 Cookie', async (_label, body) => {
+    const initial = await request({ fbclid: 'same-meta-click' })
+    const consent = await createMarketingConsentReceipt(SECRET, 'granted')
+    const response = await app().request('https://api.616618.xyz/api/ad-attribution', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', cookie: trustedCookie(consent, initial) },
+      body: JSON.stringify(body),
+    }, env())
+
+    expect(await response.json()).toMatchObject({ provider: 'meta', resolution: 'inherited' })
+    expect(response.headers.get('set-cookie')).toBeNull()
+  })
+
   it('新的明确点击替换旧上下文', async () => {
     const initial = await request({ fbclid: 'old-meta-click' })
     const consent = await createMarketingConsentReceipt(SECRET, 'granted')
@@ -57,7 +75,7 @@ describe('公开广告来源 API', () => {
       method: 'PUT',
       headers: {
         'content-type': 'application/json',
-        cookie: `mei_marketing_consent_receipt=${consent}; ${cookiePair(initial)}`,
+        cookie: trustedCookie(consent, initial),
       },
       body: JSON.stringify({ gclid: 'new-google-click' }),
     }, env())
@@ -73,14 +91,13 @@ describe('公开广告来源 API', () => {
       method: 'PUT',
       headers: {
         'content-type': 'application/json',
-        cookie: `mei_marketing_consent_receipt=${consent}; ${cookiePair(initial)}`,
+        cookie: trustedCookie(consent, initial),
       },
       body: JSON.stringify({ fbclid: 'meta-click', ttclid: 'tiktok-click' }),
     }, env())
 
     expect(await response.json()).toEqual({ provider: null, resolution: 'conflict', expiresInSeconds: null })
-    expect(response.headers.get('set-cookie')).toContain('mei_ad_attribution=')
-    expect(response.headers.get('set-cookie')).toContain('Max-Age=0')
+    expectClearsBothAttributionCookies(response)
   })
 
   it('没有可信营销授权时不签发广告来源', async () => {
@@ -91,7 +108,7 @@ describe('公开广告来源 API', () => {
     }, env())
 
     expect(await response.json()).toEqual({ provider: null, resolution: 'none', expiresInSeconds: null })
-    expect(response.headers.get('set-cookie')).toContain('Max-Age=0')
+    expectClearsBothAttributionCookies(response)
   })
 
   it('客户端直接声明 provider 不会被接受', async () => {
@@ -103,13 +120,13 @@ describe('公开广告来源 API', () => {
     }, env())
 
     expect(await response.json()).toEqual({ provider: null, resolution: 'none', expiresInSeconds: null })
-    expect(response.headers.get('set-cookie')).toContain('Max-Age=0')
+    expectClearsBothAttributionCookies(response)
   })
 
-  it('非法 JSON 与未签名来源均清除旧来源', async () => {
+  it('非法 JSON 清除两枚 Cookie，未签名来源继承旧上下文', async () => {
     const initial = await request({ ttclid: 'old-tiktok-click' })
     const consent = await createMarketingConsentReceipt(SECRET, 'granted')
-    const cookie = `mei_marketing_consent_receipt=${consent}; ${cookiePair(initial)}`
+    const cookie = trustedCookie(consent, initial)
     const invalid = await app().request('https://api.616618.xyz/api/ad-attribution', {
       method: 'PUT', headers: { 'content-type': 'application/json', cookie }, body: '{',
     }, env())
@@ -118,9 +135,18 @@ describe('公开广告来源 API', () => {
     }, env(true))
 
     expect(invalid.status).toBe(400)
-    expect(invalid.headers.get('set-cookie')).toContain('Max-Age=0')
+    expectClearsBothAttributionCookies(invalid)
     expect(unavailable.status).toBe(200)
-    expect(unavailable.headers.get('set-cookie')).toContain('Max-Age=0')
+    expect(await unavailable.json()).toMatchObject({ provider: 'tiktok', resolution: 'inherited' })
+    expect(unavailable.headers.get('set-cookie')).toBeNull()
+  })
+
+  it('显式清理同时删除新旧归因 Cookie', async () => {
+    const response = await app().request('https://api.616618.xyz/api/ad-attribution', {
+      method: 'DELETE',
+    }, env())
+
+    expectClearsBothAttributionCookies(response)
   })
 })
 
@@ -149,4 +175,15 @@ function env(fail = false) {
 
 function cookiePair(response: Response) {
   return (response.headers.get('set-cookie') || '').split(';')[0] || ''
+}
+
+function trustedCookie(consent: string, response: Response) {
+  return `mei_marketing_consent_receipt=${consent}; ${cookiePair(response)}; mei_ad_attribution_receipt=legacy-receipt`
+}
+
+function expectClearsBothAttributionCookies(response: Response) {
+  const cookie = response.headers.get('set-cookie') || ''
+  expect(cookie).toContain('mei_ad_attribution=')
+  expect(cookie).toContain('mei_ad_attribution_receipt=')
+  expect(cookie).toContain('Max-Age=0')
 }

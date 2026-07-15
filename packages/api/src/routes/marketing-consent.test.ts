@@ -51,6 +51,9 @@ describe('公开营销授权 API', () => {
       headers: { 'content-type': 'application/json', cookie: grantedCookie },
       body: JSON.stringify({ state: 'denied' }),
     }, ENV)
+    expect(revoked.headers.get('set-cookie')).toContain('mei_ad_attribution=')
+    expect(revoked.headers.get('set-cookie')).toContain('mei_ad_attribution_receipt=')
+    expect(revoked.headers.get('set-cookie')).toContain('Max-Age=0')
     const revokedCookie = cookiePair(revoked)
     const denied = await app().request('https://api.616618.xyz/api/marketing-consent', {
       headers: { cookie: revokedCookie },

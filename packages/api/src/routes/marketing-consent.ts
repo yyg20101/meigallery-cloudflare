@@ -13,6 +13,7 @@ import { revokeAdAttributionContext } from '../services/ad-attribution-consent'
 
 export const MARKETING_CONSENT_RECEIPT_COOKIE = 'mei_marketing_consent_receipt'
 const AD_ATTRIBUTION_CONTEXT_COOKIE = 'mei_ad_attribution'
+const AD_ATTRIBUTION_RECEIPT_COOKIE = 'mei_ad_attribution_receipt'
 
 export const marketingConsentRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -77,6 +78,7 @@ async function revokeCurrentAdAttribution(c: Parameters<typeof getCookie>[0]) {
 
 function clearAdAttributionContextCookie(c: Parameters<typeof deleteCookie>[0]) {
   deleteCookie(c, AD_ATTRIBUTION_CONTEXT_COOKIE, { path: '/', secure: true, httpOnly: true, sameSite: 'Lax' })
+  deleteCookie(c, AD_ATTRIBUTION_RECEIPT_COOKIE, { path: '/', secure: true, httpOnly: true, sameSite: 'Lax' })
 }
 
 function shouldUseSecureCookie(requestUrl: string, appEnv: string) {

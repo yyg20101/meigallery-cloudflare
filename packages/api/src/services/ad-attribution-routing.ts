@@ -35,8 +35,8 @@ const CLICK_ID_MAX_LENGTH = 1_000
 const MANAGED_LINK_TTL_SECONDS = 30 * 24 * 60 * 60
 const MANAGED_LINK_PREFIX = 'meigallery:managed-ad-link:v1:'
 const SIGNATURE_BYTES = 32
-const META_SOURCE_ALIASES = new Set(['facebook', 'facebook-ad', 'facebook-ads', 'facebookads', 'fb', 'instagram', 'instagram-ad', 'instagram-ads', 'meta', 'meta-ad', 'meta-ads'])
-const TIKTOK_SOURCE_ALIASES = new Set(['tiktok', 'tiktok-ad', 'tiktok-ads', 'tiktokads', 'tt'])
+const META_SOURCE_ALIASES = new Set(['facebook-ad', 'facebook-ads', 'facebookads', 'instagram-ad', 'instagram-ads', 'meta-ad', 'meta-ads'])
+const TIKTOK_SOURCE_ALIASES = new Set(['tiktok-ad', 'tiktok-ads', 'tiktokads'])
 const GOOGLE_SOURCE_ALIASES = new Set(['google-ad', 'google-ads', 'googleads', 'adwords'])
 
 export async function resolveAdAttributionRouting(
@@ -46,9 +46,6 @@ export async function resolveAdAttributionRouting(
   options: { managedLinkSecret?: string; nowSeconds?: number } = {},
 ): Promise<AdAttributionRoutingResult> {
   const normalized = normalizeSignals(signals)
-  if (!normalized.hasExplicitSignal) return inheritedProvider
-    ? inherited(inheritedProvider)
-    : none()
 
   const clickProviders = new Map<AdAttributionProvider, Record<string, string>>()
   addClickIdentifier(clickProviders, 'meta', 'fbclid', normalized.fbclid)
@@ -64,7 +61,8 @@ export async function resolveAdAttributionRouting(
   if (managed) return matched(managed, 'managed_link')
 
   const aliasProvider = providerFromAlias(normalized.utmSource)
-  return aliasProvider ? matched(aliasProvider, 'utm_alias') : none()
+  if (aliasProvider) return matched(aliasProvider, 'utm_alias')
+  return inheritedProvider ? inherited(inheritedProvider) : none()
 }
 
 export async function createManagedLinkToken(
@@ -131,10 +129,6 @@ function normalizeSignals(signals: AdAttributionSignals) {
   const managedLinkToken = normalizeSignal(signals.managedLinkToken, 4_096)
   return {
     fbclid, ttclid, gclid, gbraid, wbraid, utmSource, trackingSourceSlug, managedLinkToken,
-    hasExplicitSignal: [
-      signals.fbclid, signals.ttclid, signals.gclid, signals.gbraid, signals.wbraid,
-      signals.utmSource, signals.trackingSourceSlug, signals.managedLinkToken,
-    ].some(hasExplicitSignal),
   }
 }
 
@@ -185,12 +179,6 @@ function normalizeSignal(value: unknown, maxLength: number) {
 
 function normalizeSlug(value: string) {
   return /^[a-z0-9][a-z0-9_-]{1,58}[a-z0-9]$/.test(value) ? value : ''
-}
-
-function hasExplicitSignal(value: unknown): boolean {
-  if (value === undefined || value === null) return false
-  if (Array.isArray(value)) return value.length > 0 && hasExplicitSignal(value[0])
-  return typeof value === 'string' ? value.length > 0 : true
 }
 
 function isManagedLinkClaims(value: unknown, nowSeconds: number): value is ManagedLinkClaims {

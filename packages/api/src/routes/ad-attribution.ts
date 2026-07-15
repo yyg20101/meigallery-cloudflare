@@ -117,6 +117,7 @@ adAttributionRoutes.delete('/', (c) => {
 
 export function clearContextCookie(c: Parameters<typeof deleteCookie>[0]) {
   deleteCookie(c, AD_ATTRIBUTION_CONTEXT_COOKIE, { path: '/', secure: true, httpOnly: true, sameSite: 'Lax' })
+  deleteCookie(c, AD_ATTRIBUTION_RECEIPT_COOKIE, { path: '/', secure: true, httpOnly: true, sameSite: 'Lax' })
 }
 
 function emptyResponse() {

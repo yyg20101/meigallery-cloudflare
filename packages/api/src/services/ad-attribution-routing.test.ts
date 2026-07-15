@@ -13,9 +13,9 @@ describe('广告来源严格路由', () => {
     ['Google gclid', { gclid: 'google-click-id' }, 'google'],
     ['Google gbraid', { gbraid: 'google-gbraid' }, 'google'],
     ['Google wbraid', { wbraid: 'google-wbraid' }, 'google'],
-    ['Meta UTM', { utmSource: 'instagram_ads' }, 'meta'],
-    ['TikTok UTM', { utmSource: 'tiktok-ads' }, 'tiktok'],
-    ['Google Ads UTM', { utmSource: 'google_ads' }, 'google'],
+    ['Meta 明确广告别名', { utmSource: 'instagram_ads' }, 'meta'],
+    ['TikTok 明确广告别名', { utmSource: 'tiktok-ads' }, 'tiktok'],
+    ['Google 明确广告别名', { utmSource: 'google_ads' }, 'google'],
   ] as const)('%s 只匹配对应平台', async (_label, signals, provider) => {
     await expect(resolveAdAttributionRouting(emptyDb(), signals, null)).resolves.toMatchObject({
       provider,
@@ -38,7 +38,7 @@ describe('广告来源严格路由', () => {
     )).resolves.toMatchObject({ provider: 'tiktok', resolution: 'matched' })
   })
 
-  it('未签名或篡改的受管链接不得建立广告归因', async () => {
+  it('未签名或篡改的受管链接不能替换已验证来源', async () => {
     const token = await createManagedLinkToken(MANAGED_LINK_SECRET, {
       trackingSourceSlug: 'summer-meta',
       provider: 'meta',
@@ -47,15 +47,15 @@ describe('广告来源严格路由', () => {
     await expect(resolveAdAttributionRouting(
       sourceDb({ 'summer-meta': 'meta' }),
       { trackingSourceSlug: 'summer-meta' },
-      null,
+      'tiktok',
       { managedLinkSecret: MANAGED_LINK_SECRET },
-    )).resolves.toMatchObject({ provider: null, resolution: 'none' })
+    )).resolves.toMatchObject({ provider: 'tiktok', resolution: 'inherited' })
     await expect(resolveAdAttributionRouting(
       sourceDb({ 'summer-meta': 'meta' }),
       { trackingSourceSlug: 'summer-meta', managedLinkToken: `${token}x` },
-      null,
+      'tiktok',
       { managedLinkSecret: MANAGED_LINK_SECRET },
-    )).resolves.toMatchObject({ provider: null, resolution: 'none' })
+    )).resolves.toMatchObject({ provider: 'tiktok', resolution: 'inherited' })
   })
 
   it.each([
@@ -69,25 +69,43 @@ describe('广告来源严格路由', () => {
     )).resolves.toMatchObject({ provider: null, resolution: 'conflict' })
   })
 
-  it('强 click id 优先于低优先级别名，普通 google 不视为 Google Ads', async () => {
+  it('强 click id 优先于低优先级别名', async () => {
     await expect(resolveAdAttributionRouting(
       emptyDb(),
       { fbclid: 'meta-click', utmSource: 'tiktok_ads' },
       null,
     )).resolves.toMatchObject({ provider: 'meta', resolution: 'matched' })
-    await expect(resolveAdAttributionRouting(
-      emptyDb(),
-      { utmSource: 'google' },
-      null,
-    )).resolves.toMatchObject({ provider: null, resolution: 'none' })
   })
 
-  it('未知显式来源会清除继承来源', async () => {
+  it.each(['facebook', 'instagram', 'meta', 'tiktok', 'tt', 'google'])(
+    '自然或含糊来源 %s 不能归因并继承旧来源',
+    async utmSource => {
+      await expect(resolveAdAttributionRouting(emptyDb(), { utmSource }, 'meta')).resolves.toMatchObject({
+        provider: 'meta',
+        resolution: 'inherited',
+      })
+    },
+  )
+
+  it('无效、过期或不匹配的受管链接不能替换旧来源', async () => {
+    const token = await createManagedLinkToken(MANAGED_LINK_SECRET, {
+      trackingSourceSlug: 'summer-meta',
+      provider: 'meta',
+      nowSeconds: 1_700_000_000,
+    })
+
     await expect(resolveAdAttributionRouting(
-      emptyDb(),
-      { utmSource: 'unknown-network' },
-      'meta',
-    )).resolves.toMatchObject({ provider: null, resolution: 'none' })
+      sourceDb({ 'summer-meta': 'meta' }),
+      { trackingSourceSlug: 'summer-other', managedLinkToken: token },
+      'tiktok',
+      { managedLinkSecret: MANAGED_LINK_SECRET, nowSeconds: 1_700_000_001 },
+    )).resolves.toMatchObject({ provider: 'tiktok', resolution: 'inherited' })
+    await expect(resolveAdAttributionRouting(
+      sourceDb({ 'summer-meta': 'meta' }),
+      { trackingSourceSlug: 'summer-meta', managedLinkToken: token },
+      'tiktok',
+      { managedLinkSecret: MANAGED_LINK_SECRET, nowSeconds: 1_702_592_000 },
+    )).resolves.toMatchObject({ provider: 'tiktok', resolution: 'inherited' })
   })
 
   it('完全没有新来源信号时才允许继承已验证来源', async () => {
@@ -102,10 +120,11 @@ describe('广告来源严格路由', () => {
     { ttclid: 'x'.repeat(1_001) },
     { utmSource: `meta\n` },
     { fbclid: { invalid: true } },
-  ])('非法长度、控制字符或类型不会被误识别或继承旧来源', async (signals) => {
+    { utmSource: 'unknown-network' },
+  ])('非法长度、控制字符、未知来源或类型均不能替换旧来源', async (signals) => {
     await expect(resolveAdAttributionRouting(emptyDb(), signals, 'meta')).resolves.toMatchObject({
-      provider: null,
-      resolution: 'none',
+      provider: 'meta',
+      resolution: 'inherited',
     })
   })
 })
