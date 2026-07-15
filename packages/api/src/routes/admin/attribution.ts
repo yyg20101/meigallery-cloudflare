@@ -28,13 +28,8 @@ import {
   sanitizeMetaCapiIncidentEvidence,
 } from '../../services/meta-capi-incident-evidence'
 import {
-  isAttributionBreakdownDimension,
   isAttributionDashboardProvider,
-  queryAttributionBreakdown,
-  queryAttributionCapacity,
-  queryAttributionQuality,
   queryAttributionSummary,
-  queryAttributionTrends,
 } from '../../services/attribution-dashboard'
 import {
   consumeMetaLiveChallenge,
@@ -43,6 +38,7 @@ import {
 } from '../../services/meta-live-challenge'
 import { issueMetaResourceAttestationTicket } from '../../services/meta-resource-attestation-ticket'
 import { adminAdPlatformRoutes } from './ad-platforms'
+import { adminAttributionV3Routes } from './attribution-v3'
 
 export const adminAttributionRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -68,97 +64,8 @@ const META_CAPI_CRITICAL_QUALITY_ERROR_CODES = [
   'retry_exhausted',
 ] as const
 
+adminAttributionRoutes.route('/', adminAttributionV3Routes)
 adminAttributionRoutes.route('/platforms', adminAdPlatformRoutes)
-
-adminAttributionRoutes.get('/summary', async (c) => {
-  const range = parseRangeOrError(c)
-  if (range instanceof Response) return range
-  const provider = parseDashboardProviderOrError(c)
-  if (provider instanceof Response) return provider
-  try {
-    const result = await queryAttributionSummary(c.env.DB, range, provider)
-    return c.json({ range, ...result })
-  }
-  catch {
-    return dashboardUnavailable(c)
-  }
-})
-
-adminAttributionRoutes.get('/trends', async (c) => {
-  const range = parseRangeOrError(c)
-  if (range instanceof Response) return range
-  const provider = parseDashboardProviderOrError(c)
-  if (provider instanceof Response) return provider
-  if ((c.req.query('granularity') || 'day') !== 'day') {
-    return errorJson(c, 400, '归因趋势粒度无效', {
-      code: 'ATTRIBUTION_TREND_GRANULARITY_INVALID',
-    })
-  }
-  try {
-    const result = await queryAttributionTrends(c.env.DB, range, provider)
-    return c.json({ range, ...result })
-  }
-  catch {
-    return dashboardUnavailable(c)
-  }
-})
-
-adminAttributionRoutes.get('/quality', async (c) => {
-  const range = parseRangeOrError(c)
-  if (range instanceof Response) return range
-  const provider = parseDashboardProviderOrError(c)
-  if (provider instanceof Response) return provider
-  try {
-    const result = await queryAttributionQuality(c.env.DB, range, provider)
-    return c.json({ range, ...result })
-  }
-  catch {
-    return dashboardUnavailable(c)
-  }
-})
-
-adminAttributionRoutes.get('/capacity', async (c) => {
-  const date = c.req.query('date') || new Date().toISOString().slice(0, 10)
-  const parsedDate = new Date(`${date}T00:00:00.000Z`)
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)
-    || Number.isNaN(parsedDate.getTime())
-    || parsedDate.toISOString().slice(0, 10) !== date) {
-    return errorJson(c, 400, '容量估算日期无效', { code: 'ATTRIBUTION_CAPACITY_DATE_INVALID' })
-  }
-  try {
-    const result = await queryAttributionCapacity(c.env.DB, date)
-    return c.json(result)
-  }
-  catch {
-    return dashboardUnavailable(c)
-  }
-})
-
-adminAttributionRoutes.get('/breakdown', async (c) => {
-  const range = parseRangeOrError(c)
-  if (range instanceof Response) return range
-  const provider = parseDashboardProviderOrError(c)
-  if (provider instanceof Response) return provider
-  const dimension = c.req.query('dimension')
-  if (!isAttributionBreakdownDimension(dimension)) {
-    return errorJson(c, 400, '归因拆分维度无效', {
-      code: 'ATTRIBUTION_BREAKDOWN_DIMENSION_INVALID',
-    })
-  }
-  const limit = parseBoundedInteger(c.req.query('limit'), 50, 1, 100)
-  if (limit === null) {
-    return errorJson(c, 400, '归因拆分数量无效', {
-      code: 'ATTRIBUTION_BREAKDOWN_LIMIT_INVALID',
-    })
-  }
-  try {
-    const result = await queryAttributionBreakdown(c.env.DB, range, dimension, limit, provider)
-    return c.json({ range, ...result })
-  }
-  catch {
-    return dashboardUnavailable(c)
-  }
-})
 
 adminAttributionRoutes.get('/meta/status', async (c) => {
   const range = parseRangeOrError(c)
@@ -316,98 +223,6 @@ adminAttributionRoutes.get('/overview', async (c) => {
       metaTrend: metaTrend.rows.map(normalizeMetaTrendRow),
       duplicates,
       risks: buildRisks(normalizeTotals(totalRow), meta, duplicates),
-    },
-  })
-})
-
-adminAttributionRoutes.get('/conversions', async (c) => {
-  const range = parseRangeOrError(c)
-  if (range instanceof Response) return range
-  const provider = parseDashboardProviderOrError(c)
-  if (provider instanceof Response) return provider
-  const sourceFilter = readAttributionSourceFilter(c)
-  const factSourceWhere = sourceFilter
-    ? `date(datetime(fact.occurred_at, '+8 hours')) BETWEEN ? AND ?
-      AND fact.canonical_event IN ('Contact', 'CompleteRegistration')
-      AND fact.attribution_provider = ?
-      AND (
-        json_extract(fact.analytics_dimensions_json, '$.sourceName') = ?
-        OR json_extract(fact.analytics_dimensions_json, '$.trackingSourceSlug') = ?
-      )`
-    : `date(datetime(fact.occurred_at, '+8 hours')) BETWEEN ? AND ?
-      AND fact.canonical_event IN ('Contact', 'CompleteRegistration')
-      AND fact.attribution_provider = ?`
-  const factSourceParams = sourceFilter
-    ? [range.from, range.to, provider, sourceFilter, sourceFilter]
-    : [range.from, range.to, provider]
-
-  const [byEvent, bySource, samples] = await Promise.all([
-    queryAll(c.env.DB, `
-      SELECT
-        fact.canonical_event,
-        COUNT(*) AS fact_count,
-        COUNT(DISTINCT json_extract(fact.analytics_dimensions_json, '$.sessionId')) AS unique_session_count
-      FROM attribution_conversion_facts AS fact
-      WHERE ${factSourceWhere}
-      GROUP BY fact.canonical_event
-      ORDER BY fact_count DESC, fact.canonical_event ASC
-    `, factSourceParams),
-    queryAll(c.env.DB, `
-      SELECT
-        COALESCE(NULLIF(json_extract(fact.analytics_dimensions_json, '$.sourceChannel'), ''), 'unknown') AS source_channel,
-        COALESCE(NULLIF(json_extract(fact.analytics_dimensions_json, '$.sourceName'), ''), '未标记') AS source_name,
-        COALESCE(NULLIF(json_extract(fact.analytics_dimensions_json, '$.utmCampaign'), ''), '未标记') AS utm_campaign,
-        COALESCE(NULLIF(json_extract(fact.analytics_dimensions_json, '$.utmContent'), ''), '未标记') AS utm_content,
-        SUM(CASE WHEN fact.canonical_event = 'Contact' THEN 1 ELSE 0 END) AS contact_count,
-        SUM(CASE WHEN fact.canonical_event = 'CompleteRegistration' THEN 1 ELSE 0 END) AS complete_registration_count,
-        COUNT(*) AS fact_count
-      FROM attribution_conversion_facts AS fact
-      WHERE ${factSourceWhere}
-      GROUP BY source_channel, source_name, utm_campaign, utm_content
-      ORDER BY contact_count DESC, complete_registration_count DESC
-      LIMIT 50
-    `, factSourceParams),
-    queryAll(c.env.DB, `
-      SELECT
-        fact.id,
-        fact.canonical_event,
-        fact.external_event_id,
-        fact.occurred_at,
-        fact.attribution_provider,
-        fact.attribution_source,
-        json_extract(fact.analytics_dimensions_json, '$.sourceChannel') AS source_channel,
-        json_extract(fact.analytics_dimensions_json, '$.sourceName') AS source_name,
-        json_extract(fact.analytics_dimensions_json, '$.trackingSourceSlug') AS tracking_source_slug,
-        json_extract(fact.analytics_dimensions_json, '$.utmCampaign') AS utm_campaign,
-        json_extract(fact.analytics_dimensions_json, '$.utmContent') AS utm_content,
-        json_extract(fact.analytics_dimensions_json, '$.methodType') AS method_type,
-        json_extract(fact.analytics_dimensions_json, '$.actionTarget') AS action_target,
-        json_extract(fact.analytics_dimensions_json, '$.path') AS path,
-        MAX(CASE WHEN delivery.transport = 'browser' AND EXISTS (
-          SELECT 1 FROM attribution_provider_receipts AS receipt
-          WHERE receipt.delivery_id = delivery.id
-            AND receipt.receipt_type = 'browser_attempt'
-            AND receipt.status = 'attempted'
-        ) THEN 1 ELSE 0 END) AS browser_attempted,
-        MAX(CASE WHEN delivery.transport = 'server' THEN delivery.status ELSE '' END) AS server_status,
-        SUM(CASE WHEN delivery.transport = 'server' THEN MAX(delivery.attempt_count - 1, 0) ELSE 0 END) AS retry_count
-      FROM attribution_conversion_facts AS fact
-      LEFT JOIN attribution_deliveries AS delivery ON delivery.fact_id = fact.id AND delivery.provider = ?
-      WHERE ${factSourceWhere}
-      GROUP BY fact.id
-      ORDER BY fact.occurred_at DESC
-      LIMIT 100
-    `, [provider, ...factSourceParams]),
-  ])
-
-  return c.json({
-    range,
-    usage: mergeQueryUsage(byEvent, bySource, samples),
-    data: {
-      provider,
-      byEvent: byEvent.rows,
-      bySource: bySource.rows,
-      samples: samples.rows,
     },
   })
 })

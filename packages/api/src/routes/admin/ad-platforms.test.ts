@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Bindings, Variables } from '../../index'
+import { PlatformConnectionError } from '../../services/ad-platform/connection-service'
 import { adminAdPlatformRoutes } from './ad-platforms'
 
 const mocks = vi.hoisted(() => ({
@@ -43,6 +44,38 @@ beforeEach(() => {
 })
 
 describe('通用广告平台连接路由', () => {
+  it('列表、单个平台和不存在状态使用统一只读响应', async () => {
+    mocks.listPlatformConnections.mockResolvedValueOnce([{ provider: 'meta' }])
+    mocks.getPlatformConnection
+      .mockResolvedValueOnce({ provider: 'meta', connectionId: 'conn_meta' })
+      .mockResolvedValueOnce(null)
+
+    const [list, found, missing, unsupported] = await Promise.all([
+      request(createApp('admin'), '/platforms', { method: 'GET' }),
+      request(createApp('admin'), '/platforms/meta', { method: 'GET' }),
+      request(createApp('admin'), '/platforms/tiktok', { method: 'GET' }),
+      request(createApp('admin'), '/platforms/unknown', { method: 'GET' }),
+    ])
+
+    expect(list.status).toBe(200)
+    expect((await found.json()).data.connectionId).toBe('conn_meta')
+    expect(missing.status).toBe(404)
+    expect(unsupported.status).toBe(404)
+    expect(list.headers.get('Cache-Control')).toBe('no-store')
+  })
+
+  it('连接读取错误按可恢复性返回稳定状态', async () => {
+    mocks.listPlatformConnections.mockRejectedValueOnce(new PlatformConnectionError('AD_PLATFORM_CONNECTION_READ_FAILED'))
+    mocks.getPlatformConnection.mockRejectedValueOnce(new PlatformConnectionError('AD_PLATFORM_CONNECTION_STATE_INVALID'))
+
+    const [unavailable, conflict] = await Promise.all([
+      request(createApp('admin'), '/platforms', { method: 'GET' }),
+      request(createApp('admin'), '/platforms/meta', { method: 'GET' }),
+    ])
+    expect(unavailable.status).toBe(503)
+    expect(conflict.status).toBe(409)
+  })
+
   it.each([
     ['meta', { provider: 'meta', pixelId: '1277657707436781' }, 'access_token'],
     ['tiktok', { provider: 'tiktok', pixelCode: 'ABCDEF123456' }, 'access_token'],
@@ -99,6 +132,66 @@ describe('通用广告平台连接路由', () => {
     })
   })
 
+  it('验证状态支持读取最新记录和指定记录，并拒绝非法编号', async () => {
+    mocks.getPlatformVerification
+      .mockResolvedValueOnce({ id: 'verify:meta:latest' })
+      .mockResolvedValueOnce({ id: 'verify:meta:1' })
+      .mockResolvedValueOnce(null)
+      .mockRejectedValueOnce(new Error('read failed'))
+
+    const [latest, selected, missing, invalid, failed] = await Promise.all([
+      request(createApp('admin'), '/platforms/meta/verification', { method: 'GET' }),
+      request(createApp('admin'), '/platforms/meta/verifications/verify:meta:1', { method: 'GET' }),
+      request(createApp('admin'), '/platforms/meta/verifications/verify:meta:2', { method: 'GET' }),
+      request(createApp('admin'), '/platforms/meta/verifications/invalid!', { method: 'GET' }),
+      request(createApp('admin'), '/platforms/google/verification', { method: 'GET' }),
+    ])
+
+    expect(latest.status).toBe(200)
+    expect(selected.status).toBe(200)
+    expect(missing.status).toBe(404)
+    expect(invalid.status).toBe(400)
+    expect(failed.status).toBe(503)
+  })
+
+  it('验证和人工证据允许省略临时字段，并拒绝额外或错误字段', async () => {
+    const [verify, evidence, badVerify, badEvidence, badId] = await Promise.all([
+      request(createApp('owner'), '/platforms/meta/verify', { method: 'POST', body: '{}' }),
+      request(createApp('owner'), '/platforms/meta/verifications/verify:meta:1/evidence', {
+        method: 'POST', body: JSON.stringify({ confirmed: true }),
+      }),
+      request(createApp('owner'), '/platforms/meta/verify', {
+        method: 'POST', body: JSON.stringify({ testEventCode: '', extra: true }),
+      }),
+      request(createApp('owner'), '/platforms/meta/verifications/verify:meta:1/evidence', {
+        method: 'POST', body: JSON.stringify({ confirmed: false }),
+      }),
+      request(createApp('owner'), '/platforms/meta/verifications/invalid!/evidence', {
+        method: 'POST', body: JSON.stringify({ confirmed: true }),
+      }),
+    ])
+
+    expect(verify.status).toBe(202)
+    expect(evidence.status).toBe(202)
+    expect(badVerify.status).toBe(400)
+    expect(badEvidence.status).toBe(400)
+    expect(badId.status).toBe(400)
+  })
+
+  it.each([
+    ['AD_PLATFORM_VERIFICATION_NOT_FOUND', 404],
+    ['AD_PLATFORM_VERIFICATION_INPUT_INVALID', 400],
+    ['AD_PLATFORM_CONNECTION_INVALID', 409],
+    ['UNEXPECTED_INTERNAL_DETAIL', 503],
+  ] as const)('验证错误 %s 映射为 %s', async (code, status) => {
+    mocks.startPlatformVerification.mockRejectedValueOnce(new Error(code))
+    const response = await request(createApp('owner'), '/platforms/meta/verify', {
+      method: 'POST', body: '{}',
+    })
+    expect(response.status).toBe(status)
+    expect(await response.text()).not.toContain('UNEXPECTED_INTERNAL_DETAIL')
+  })
+
   it('生产写操作要求 Owner 和受信任 Origin', async () => {
     const noOrigin = await createApp('owner').request('https://api.example.test/platforms/meta', {
       method: 'PATCH',
@@ -114,6 +207,37 @@ describe('通用广告平台连接路由', () => {
     expect(await noOrigin.json()).toMatchObject({ code: 'AD_PLATFORM_ORIGIN_FORBIDDEN' })
     expect(nonOwner.status).toBe(403)
     expect(mocks.savePlatformConnection).not.toHaveBeenCalled()
+  })
+
+  it('生产写操作拒绝 dev、非法 actor 和未知平台', async () => {
+    const body = JSON.stringify(connectionBody({ provider: 'meta', pixelId: '1277657707436781' }, 'access_token'))
+    const [development, invalidActor, unsupported] = await Promise.all([
+      request(createApp('owner'), '/platforms/meta', { method: 'PATCH', body }, { ...env, APP_ENV: 'dev' } as Bindings),
+      request(createApp('owner', 0), '/platforms/meta', { method: 'PATCH', body }),
+      request(createApp('owner'), '/platforms/unknown', { method: 'PATCH', body }),
+    ])
+    expect(development.status).toBe(409)
+    expect(invalidActor.status).toBe(403)
+    expect(unsupported.status).toBe(404)
+  })
+
+  it('连接保存允许沿用现有凭证，并拒绝非法凭证结构', async () => {
+    const withoutCredential = connectionBody({ provider: 'meta', pixelId: '1277657707436781' }, 'access_token')
+    delete (withoutCredential as { credential?: unknown }).credential
+    const valid = await request(createApp('owner'), '/platforms/meta', {
+      method: 'PATCH', body: JSON.stringify(withoutCredential),
+    })
+    const invalid = await request(createApp('owner'), '/platforms/meta', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        ...connectionBody({ provider: 'meta', pixelId: '1277657707436781' }, 'access_token'),
+        credential: { type: 'password', plaintext: '' },
+      }),
+    })
+
+    expect(valid.status).toBe(200)
+    expect(mocks.savePlatformConnection).toHaveBeenCalledWith(env, expect.not.objectContaining({ credential: expect.anything() }))
+    expect(invalid.status).toBe(400)
   })
 
   it('限制请求体大小并拒绝额外字段', async () => {
@@ -134,6 +258,23 @@ describe('通用广告平台连接路由', () => {
     expect(JSON.stringify(await extraField.json())).not.toContain('must-not-be-accepted')
   })
 
+  it('Content-Length、非对象 JSON 和损坏 JSON 都在服务调用前失败', async () => {
+    const app = createApp('owner')
+    const [declaredLarge, arrayBody, malformed] = await Promise.all([
+      app.request('https://api.example.test/platforms/meta', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Origin: 'https://gallery.example.test', 'Content-Length': '70000' },
+        body: '{}',
+      }, env),
+      request(app, '/platforms/meta', { method: 'PATCH', body: '[]' }),
+      request(app, '/platforms/meta', { method: 'PATCH', body: '{' }),
+    ])
+
+    expect(declaredLarge.status).toBe(413)
+    expect(arrayBody.status).toBe(400)
+    expect(malformed.status).toBe(400)
+  })
+
   it('不向响应泄露未知内部错误或凭证内容', async () => {
     mocks.savePlatformConnection.mockRejectedValueOnce(new Error('credential-value: internal failure'))
     const response = await request(createApp('owner'), '/platforms/meta', {
@@ -148,10 +289,10 @@ describe('通用广告平台连接路由', () => {
   })
 })
 
-function createApp(role: string | null) {
+function createApp(role: string | null, userId = 7) {
   const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
   app.use('*', async (c, next) => {
-    c.set('userId', role ? 7 : null)
+    c.set('userId', role ? userId : null)
     c.set('userRole', role)
     await next()
   })
@@ -163,6 +304,7 @@ function request(
   app: ReturnType<typeof createApp>,
   path: string,
   init: RequestInit,
+  bindings = env,
 ) {
   return app.request(`https://api.example.test${path}`, {
     ...init,
@@ -171,7 +313,7 @@ function request(
       Origin: 'https://gallery.example.test',
       ...init.headers,
     },
-  }, env)
+  }, bindings)
 }
 
 function connectionBody(

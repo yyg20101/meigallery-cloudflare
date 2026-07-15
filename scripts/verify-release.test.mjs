@@ -289,7 +289,8 @@ exit 0
       'src/services/tiktok-events-delivery.ts',
       'src/routes/conversions.ts',
       'src/routes/admin/ad-platforms.ts',
-      'src/routes/admin/attribution.ts',
+      'src/routes/admin/attribution-v3.ts',
+      'src/services/attribution-dashboard.ts',
     ]) assert.match(config, new RegExp(file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
     assert.match(config, /AD_PLATFORM_COVERAGE_GLOB/)
     assert.match(config, /statements:\s*85/)

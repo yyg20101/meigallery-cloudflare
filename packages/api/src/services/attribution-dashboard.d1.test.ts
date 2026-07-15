@@ -4,6 +4,7 @@ import { Miniflare } from 'miniflare'
 import {
   queryAttributionBreakdown,
   queryAttributionCapacity,
+  queryAttributionConversions,
   queryAttributionQuality,
   queryAttributionSummary,
   queryAttributionTrends,
@@ -136,6 +137,66 @@ describe('统一归因看板最终事实口径', () => {
     expect(result.data.note).toContain('项目内部估算')
   })
 
+  it('转化明细按来源过滤，并保留最终 Delivery 与 Browser 回执', async () => {
+    const [all, filtered, missing] = await Promise.all([
+      queryAttributionConversions(db, dayRange(), 'google'),
+      queryAttributionConversions(db, dayRange(), 'google', 'google'),
+      queryAttributionConversions(db, dayRange(), 'google', 'missing-source'),
+    ])
+
+    expect(all.data.byEvent).toHaveLength(2)
+    expect(filtered.data.samples).toEqual(expect.arrayContaining([
+      expect.objectContaining({ canonical_event: 'Contact', browser_attempted: 1, server_status: 'processed' }),
+      expect.objectContaining({ canonical_event: 'CompleteRegistration', server_status: 'dead_letter', retry_count: 2 }),
+    ]))
+    expect(missing.data).toMatchObject({ byEvent: [], bySource: [], samples: [] })
+  })
+
+  it('空日期区间返回零值和 unavailable，不复用其他日期数据', async () => {
+    const range = { from: '2026-07-16', to: '2026-07-17', days: 2 }
+    const [summary, trends, quality, breakdown, capacity] = await Promise.all([
+      queryAttributionSummary(db, range, 'meta'),
+      queryAttributionTrends(db, range, 'meta'),
+      queryAttributionQuality(db, range, 'meta'),
+      queryAttributionBreakdown(db, range, 'tracking_link', 1, 'meta'),
+      queryAttributionCapacity(db, '2026-07-16'),
+    ])
+
+    expect(summary.data.business).toEqual({ contactCount: 0, completeRegistrationCount: 0, factCount: 0 })
+    expect(trends.data.rows).toHaveLength(2)
+    expect(trends.data.rows.every(row => row.business.factCount === 0)).toBe(true)
+    expect(quality.data.pairing.summary).toEqual(metric(0, 0))
+    expect(quality.data.match.summary).toEqual(metric(0, 0))
+    expect(breakdown.data.rows).toEqual([])
+    expect(capacity.data.inputs.factCount).toBe(0)
+  })
+
+  it('平台质量快照区分 available、error 与不可解析值', async () => {
+    await db.prepare(`INSERT INTO attribution_quality_snapshots (
+      id, connection_id, provider, canonical_event, metric_key, metric_value,
+      collection_status, error_category, collected_at
+    ) VALUES (?, 'conn_meta', 'meta', 'Contact', 'emq', ?, ?, ?, ?)`)
+      .bind('quality_success', '8.5', 'success', '', '2026-07-15T04:10:00.000Z').run()
+    const available = await queryAttributionQuality(db, dayRange(), 'meta')
+    expect(available.data.platformQuality.latest).toMatchObject({ availability: 'available', value: 8.5 })
+
+    await db.batch([
+      db.prepare(`INSERT INTO attribution_quality_snapshots (
+        id, connection_id, provider, canonical_event, metric_key, metric_value,
+        collection_status, error_category, collected_at
+      ) VALUES ('quality_invalid', 'conn_meta', 'meta', 'Contact', 'emq', 'not-a-number', 'success', '', '2026-07-15T04:20:00.000Z')`),
+      db.prepare(`INSERT INTO attribution_quality_snapshots (
+        id, connection_id, provider, canonical_event, metric_key, metric_value,
+        collection_status, error_category, collected_at
+      ) VALUES ('quality_error', 'conn_meta', 'meta', 'CompleteRegistration', 'emq', NULL, 'error', 'permission', '2026-07-15T04:30:00.000Z')`),
+    ])
+    const degraded = await queryAttributionQuality(db, dayRange(), 'meta')
+    expect(degraded.data.platformQuality.latest).toMatchObject({ availability: 'error', value: null })
+    expect(degraded.data.platformQuality.rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ availability: 'unavailable', value: null }),
+    ]))
+  })
+
   it('所有活动查询只读取最终 Fact、Delivery 和 Receipt', async () => {
     const sql: string[] = []
     const tracked = {
@@ -151,6 +212,7 @@ describe('统一归因看板最终事实口径', () => {
       queryAttributionQuality(tracked, dayRange(), 'google'),
       queryAttributionBreakdown(tracked, dayRange(), 'utm_content', 50, 'meta'),
       queryAttributionCapacity(tracked, '2026-07-15'),
+      queryAttributionConversions(tracked, dayRange(), 'google', 'google'),
     ])
 
     const source = sql.join('\n')

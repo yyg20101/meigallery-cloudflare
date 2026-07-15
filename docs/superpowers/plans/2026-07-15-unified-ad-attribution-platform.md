@@ -1041,6 +1041,8 @@ corepack pnpm verify:release
 
 Expected: PASS；未提供 production 凭证时只运行 dry-run/只读门禁，不调用平台 API。
 
+阶段记录：脚本专项测试 52/52、API 1144/1144 和高阈值 coverage 已通过；整体 coverage statements 87.35%、branches 80.78%，最终通用后台路由 statements 95.67%、branches 91.04%。完整 `verify:release` 仍等待旧 Meta Server 降为 0 后在 release 分支执行，因此 Step 4 尚未放行。
+
 - [x] **Step 5：提交并统一推送 dev**
 
 ```bash

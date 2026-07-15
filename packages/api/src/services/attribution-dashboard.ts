@@ -101,6 +101,97 @@ export async function queryAttributionSummary(
   }
 }
 
+export async function queryAttributionConversions(
+  db: D1Database,
+  range: AnalyticsDateRange,
+  provider: AttributionDashboardProvider,
+  sourceFilter = '',
+) {
+  const factWhere = sourceFilter
+    ? `${businessDateSql('fact.occurred_at')} BETWEEN ? AND ?
+      AND fact.canonical_event IN ${ACTIVE_EVENT_SQL}
+      AND fact.attribution_provider = ?
+      AND (
+        json_extract(fact.analytics_dimensions_json, '$.sourceName') = ?
+        OR json_extract(fact.analytics_dimensions_json, '$.trackingSourceSlug') = ?
+      )`
+    : `${businessDateSql('fact.occurred_at')} BETWEEN ? AND ?
+      AND fact.canonical_event IN ${ACTIVE_EVENT_SQL}
+      AND fact.attribution_provider = ?`
+  const factParams = sourceFilter
+    ? [range.from, range.to, provider, sourceFilter, sourceFilter]
+    : [range.from, range.to, provider]
+
+  const [byEvent, bySource, samples] = await Promise.all([
+    queryAll(db, `
+      SELECT
+        fact.canonical_event,
+        COUNT(*) AS fact_count,
+        COUNT(DISTINCT json_extract(fact.analytics_dimensions_json, '$.sessionId')) AS unique_session_count
+      FROM attribution_conversion_facts AS fact
+      WHERE ${factWhere}
+      GROUP BY fact.canonical_event
+      ORDER BY fact_count DESC, fact.canonical_event ASC
+    `, factParams),
+    queryAll(db, `
+      SELECT
+        COALESCE(NULLIF(json_extract(fact.analytics_dimensions_json, '$.sourceChannel'), ''), 'unknown') AS source_channel,
+        COALESCE(NULLIF(json_extract(fact.analytics_dimensions_json, '$.sourceName'), ''), '未标记') AS source_name,
+        COALESCE(NULLIF(json_extract(fact.analytics_dimensions_json, '$.utmCampaign'), ''), '未标记') AS utm_campaign,
+        COALESCE(NULLIF(json_extract(fact.analytics_dimensions_json, '$.utmContent'), ''), '未标记') AS utm_content,
+        SUM(CASE WHEN fact.canonical_event = 'Contact' THEN 1 ELSE 0 END) AS contact_count,
+        SUM(CASE WHEN fact.canonical_event = 'CompleteRegistration' THEN 1 ELSE 0 END) AS complete_registration_count,
+        COUNT(*) AS fact_count
+      FROM attribution_conversion_facts AS fact
+      WHERE ${factWhere}
+      GROUP BY source_channel, source_name, utm_campaign, utm_content
+      ORDER BY contact_count DESC, complete_registration_count DESC
+      LIMIT 50
+    `, factParams),
+    queryAll(db, `
+      SELECT
+        fact.id,
+        fact.canonical_event,
+        fact.external_event_id,
+        fact.occurred_at,
+        fact.attribution_provider,
+        fact.attribution_source,
+        json_extract(fact.analytics_dimensions_json, '$.sourceChannel') AS source_channel,
+        json_extract(fact.analytics_dimensions_json, '$.sourceName') AS source_name,
+        json_extract(fact.analytics_dimensions_json, '$.trackingSourceSlug') AS tracking_source_slug,
+        json_extract(fact.analytics_dimensions_json, '$.utmCampaign') AS utm_campaign,
+        json_extract(fact.analytics_dimensions_json, '$.utmContent') AS utm_content,
+        json_extract(fact.analytics_dimensions_json, '$.methodType') AS method_type,
+        json_extract(fact.analytics_dimensions_json, '$.actionTarget') AS action_target,
+        json_extract(fact.analytics_dimensions_json, '$.path') AS path,
+        MAX(CASE WHEN delivery.transport = 'browser' AND EXISTS (
+          SELECT 1 FROM attribution_provider_receipts AS receipt
+          WHERE receipt.delivery_id = delivery.id
+            AND receipt.receipt_type = 'browser_attempt'
+            AND receipt.status = 'attempted'
+        ) THEN 1 ELSE 0 END) AS browser_attempted,
+        MAX(CASE WHEN delivery.transport = 'server' THEN delivery.status ELSE '' END) AS server_status,
+        SUM(CASE WHEN delivery.transport = 'server' THEN MAX(delivery.attempt_count - 1, 0) ELSE 0 END) AS retry_count
+      FROM attribution_conversion_facts AS fact
+      LEFT JOIN attribution_deliveries AS delivery ON delivery.fact_id = fact.id AND delivery.provider = ?
+      WHERE ${factWhere}
+      GROUP BY fact.id
+      ORDER BY fact.occurred_at DESC
+      LIMIT 100
+    `, [provider, ...factParams]),
+  ])
+
+  return {
+    usage: mergeUsage(byEvent, bySource, samples),
+    data: {
+      provider,
+      byEvent: byEvent.rows,
+      bySource: bySource.rows,
+      samples: samples.rows,
+    },
+  }
+}
+
 export async function queryAttributionTrends(
   db: D1Database,
   range: AnalyticsDateRange,

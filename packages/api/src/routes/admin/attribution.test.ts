@@ -77,6 +77,16 @@ describe('统一归因后台 API', () => {
     ]))
   })
 
+  it.each(['sourceCode', 'sourceName', 'source'])('conversions 支持 %s 来源过滤且 all 等同未过滤', async (field) => {
+    const [filtered, all] = await Promise.all([
+      request(`/conversions?${RANGE}&provider=google&${field}=google-source`),
+      request(`/conversions?${RANGE}&provider=google&${field}=all`),
+    ])
+
+    expect((await filtered.json()).data.samples).toHaveLength(2)
+    expect((await all.json()).data.samples).toHaveLength(2)
+  })
+
   it('容量按 UTC 日汇总且标明内部估算', async () => {
     const response = await request('/capacity?date=2026-07-15')
     const body = await response.json() as { data: Record<string, unknown> }
@@ -90,11 +100,37 @@ describe('统一归因后台 API', () => {
     ['/summary?provider=unknown', 'ATTRIBUTION_PROVIDER_INVALID'],
     ['/trends?provider=meta&granularity=hour', 'ATTRIBUTION_TREND_GRANULARITY_INVALID'],
     ['/breakdown?provider=meta&dimension=provider', 'ATTRIBUTION_BREAKDOWN_DIMENSION_INVALID'],
+    ['/breakdown?provider=meta&dimension=utm_campaign&limit=0', 'ATTRIBUTION_BREAKDOWN_LIMIT_INVALID'],
+    ['/breakdown?provider=meta&dimension=utm_campaign&limit=abc', 'ATTRIBUTION_BREAKDOWN_LIMIT_INVALID'],
     ['/capacity?date=2026-02-31', 'ATTRIBUTION_CAPACITY_DATE_INVALID'],
   ])('非法查询 %s 返回稳定错误码', async (path, code) => {
     const response = await request(path)
     expect(response.status).toBe(400)
     expect((await response.json()).code).toBe(code)
+  })
+
+  it.each(['/summary', '/trends', '/quality', '/breakdown?dimension=utm_campaign', '/conversions'])(
+    '查询 %s 的非法日期范围在路由层稳定失败',
+    async (path) => {
+      const separator = path.includes('?') ? '&' : '?'
+      const response = await request(`${path}${separator}provider=meta&from=bad&to=2026-07-15`)
+      expect(response.status).toBe(400)
+      expect((await response.json()).code).toBe('ANALYTICS_RANGE_INVALID')
+    },
+  )
+
+  it('D1 查询异常统一返回看板不可用且不泄露内部错误', async () => {
+    const brokenDb = {
+      prepare() {
+        throw new Error('database-secret-detail')
+      },
+    } as unknown as D1Database
+    const response = await request(`/summary?${RANGE}&provider=meta`, brokenDb)
+    const body = await response.text()
+
+    expect(response.status).toBe(503)
+    expect(body).toContain('ATTRIBUTION_DASHBOARD_UNAVAILABLE')
+    expect(body).not.toContain('database-secret-detail')
   })
 })
 
@@ -109,9 +145,9 @@ function application() {
   return app
 }
 
-function request(path: string) {
+function request(path: string, database = db) {
   return application().request(`/api/admin/attribution${path}`, {}, {
-    DB: db,
+    DB: database,
     APP_ENV: 'production',
   } as unknown as Bindings)
 }
