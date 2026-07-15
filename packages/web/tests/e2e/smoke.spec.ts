@@ -44,7 +44,7 @@ async function expectAdminContainersWithinViewport(page: import('@playwright/tes
     if (location.pathname === '/admin/attribution') {
       requirements.push(
         { selector: '[data-evidence-rail]', allowHorizontalOverflow: true },
-        { selector: '[data-attribution-section]', exactCount: 3 },
+        { selector: '[data-attribution-section]', exactCount: 4 },
         { selector: '[data-attribution-trend]', minCount: 3 },
       )
     }
@@ -402,30 +402,30 @@ test.describe('核心页面 smoke', () => {
     expect(hasHorizontalOverflow).toBe(false)
   })
 
-  test('后台广告归因总览可查看三层证据、单日归因和平台连接', async ({ page }, testInfo) => {
+  test('后台广告归因总览可查看四层证据、单日归因和平台连接', async ({ page }, testInfo) => {
     await page.goto('/admin/attribution')
-    await expect(page.locator('main h1')).toHaveText('归因总览')
-    await expect(page.getByText('按单一平台核对站内转化、浏览器投递、服务器接收和匹配质量。')).toBeVisible()
+    await expect(page.locator('main h1')).toHaveText('广告归因总览')
+    await expect(page.getByText('统一核对 Meta、TikTok 与 Google 的业务事实、投递状态、质量和容量。')).toBeVisible()
 
     const sections = page.locator('[data-attribution-section]')
-    await expect(sections).toHaveCount(3)
+    await expect(sections).toHaveCount(4)
     expect(await sections.evaluateAll(elements => elements.map(element => element.getAttribute('data-attribution-section')))).toEqual([
-      'business', 'delivery', 'quality',
+      'business', 'delivery', 'quality', 'capacity',
     ])
-    for (const label of ['站内事实', 'Pixel 尝试', 'Server API 接收', '平台质量']) {
+    for (const label of ['站内事实', 'Browser 回执', 'Server 状态', '质量证据']) {
       await expect(page.locator('[data-evidence-rail]')).toContainText(label)
     }
 
-    await expect(page.getByText('Meta 连接 生产运行', { exact: true })).toBeVisible()
+    await expect(page.getByText('Meta · 生产运行', { exact: true })).toBeVisible()
     await expect(page.getByRole('link', { name: '管理平台连接' })).toBeVisible()
 
     const deliverySection = page.locator('[data-attribution-section="delivery"]')
     await expect(deliverySection.getByRole('heading', { name: 'Meta Pixel 与 Conversions API' })).toBeVisible()
-    await expect(deliverySection.getByText('Server API 接收只表示平台接口已接收，不表示广告已完成归因。')).toBeVisible()
-    const deliveryItems = deliverySection.locator('dl').first().locator(':scope > div')
-    await expect(deliveryItems.filter({ hasText: /^Pixel 尝试\s*12$/ })).toHaveCount(1)
-    await expect(deliveryItems.filter({ hasText: /^Conversions API 接收\s*9$/ })).toHaveCount(1)
-    await expect(page.locator('[data-attribution-section="quality"]').getByRole('heading', { name: 'Meta 匹配覆盖与平台质量' })).toBeVisible()
+    const deliveryItems = deliverySection.locator('[data-health-item]')
+    await expect(deliveryItems.filter({ hasText: /^Browser 已尝试\s*12$/ })).toHaveCount(1)
+    await expect(deliveryItems.filter({ hasText: /^Server 已接收\s*9$/ })).toHaveCount(1)
+    await expect(page.locator('[data-attribution-section="quality"]').getByRole('heading', { name: '配对与匹配覆盖' })).toBeVisible()
+    await expect(page.locator('[data-attribution-section="capacity"]').getByRole('heading', { name: 'UTC 配额日内部估算' })).toBeVisible()
     await expect(page.getByText('已同步', { exact: true })).toHaveCount(0)
     await expectAdminContainersWithinViewport(page)
     if (process.env.TASK8_SCREENSHOT_DIR) {

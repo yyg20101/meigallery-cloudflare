@@ -511,7 +511,8 @@ function adminAnalyticsResponse(pathname, searchParams) {
 
 function adminAttributionResponse(pathname, searchParams) {
   const range = analyticsRange(searchParams)
-  const provider = searchParams.get('provider') === 'tiktok' ? 'tiktok' : 'meta'
+  const requestedProvider = searchParams.get('provider')
+  const provider = ['meta', 'tiktok', 'google'].includes(requestedProvider) ? requestedProvider : 'meta'
   const usage = { rowsRead: 86, rowsWritten: 0, durationMs: 9 }
   const links = [
     {
@@ -546,23 +547,105 @@ function adminAttributionResponse(pathname, searchParams) {
   ]
 
   const dates = range.days === 1 ? [range.from] : ['2026-07-08', '2026-07-09', '2026-07-10']
+  const deliveryMetrics = (index = 0) => ({
+    browserAttempted: index + 3,
+    server: {
+      planned: 0,
+      queued: index === 2 ? 1 : 0,
+      accepted: index + 1,
+      processed: 1,
+      retrying: 0,
+      rejected: index === 1 ? 1 : 0,
+      deadLetter: 0,
+      cancelled: 0,
+    },
+    queueRetryCount: index === 1 ? 1 : 0,
+    queueEnqueueCount: index + 2,
+  })
   const trendRows = dates.map((date, index) => ({
     date,
-    business: { contactCount: index + 1, completeRegistrationCount: index, actionCount: index * 2 + 1 },
-    delivery: { pixelAttempted: index + 3, serverSent: index + 2, failed: index === 1 ? 1 : 0, skipped: 1, pending: index === 2 ? 1 : 0, retryExhausted: 0 },
+    business: { contactCount: index + 1, completeRegistrationCount: index, factCount: index * 2 + 1 },
+    delivery: deliveryMetrics(index),
   }))
 
-  if (pathname.endsWith('/summary')) return { range, usage, data: { provider, business: { contactCount: 6, completeRegistrationCount: 3, actionCount: 9 }, historical: { leadCount: 7 }, delivery: { pixelAttempted: 12, serverSent: 9, failed: 1, skipped: 3, pending: 1, retryExhausted: 0 }, routing: { mismatchCount: 0, unroutedActionCount: 1 } } }
+  if (pathname.endsWith('/summary')) {
+    return {
+      range,
+      usage,
+      data: {
+        provider,
+        business: { contactCount: 6, completeRegistrationCount: 3, factCount: 9 },
+        delivery: {
+          browserAttempted: 12,
+          server: { planned: 0, queued: 1, accepted: 6, processed: 3, retrying: 0, rejected: 1, deadLetter: 0, cancelled: 0 },
+          queueRetryCount: 2,
+          queueEnqueueCount: 10,
+        },
+        routing: {
+          totalFactCount: 12,
+          attributedFactCount: 9,
+          unattributedFactCount: 2,
+          conflictFactCount: 1,
+          byProvider: { meta: 5, tiktok: 3, google: 1 },
+        },
+      },
+    }
+  }
   if (pathname.endsWith('/trends')) return { range, usage, data: { provider, granularity: 'day', rows: trendRows } }
   if (pathname.endsWith('/quality')) {
     const metric = (numerator, denominator) => ({ availability: denominator ? 'available' : 'unavailable', numerator, denominator, rate: denominator ? numerator / denominator : null })
-    const platformQuality = { source: provider === 'meta' ? 'meta_dataset_quality' : 'not_supported', availability: 'unavailable', latest: null, rows: [] }
-    const labels = provider === 'meta'
-      ? { browserId: 'fbp', clickId: 'fbc', email: 'email', externalId: 'external_id' }
-      : { browserId: '_ttp', clickId: 'ttclid', email: 'email', externalId: 'external_id' }
-    return { range, usage, data: { provider, match: { labels, summary: { browserId: metric(8, 9), clickId: metric(0, 0), email: metric(9, 9), externalId: metric(7, 9) }, rows: dates.map((date, index) => ({ date, browserId: index === 1 ? metric(0, 0) : metric(6 + index, 9), clickId: metric(0, 0), email: metric(8 + index, 9), externalId: metric(5 + index, 9) })) }, platformQuality } }
+    const qualityRow = {
+      date: dates.at(-1),
+      canonicalEvent: 'Contact',
+      metricKey: 'event_match_quality',
+      value: 0.86,
+      availability: 'available',
+      status: 'available',
+      errorCategory: '',
+      collectedAt: `${dates.at(-1)}T09:30:00.000Z`,
+    }
+    return {
+      range,
+      usage,
+      data: {
+        provider,
+        pairing: {
+          summary: metric(8, 9),
+          rows: dates.map((date, index) => ({ date, ...metric(index + 1, index + 2) })),
+        },
+        match: {
+          summary: metric(8, 9),
+          signals: [
+            { key: provider === 'meta' ? 'fbp' : provider === 'tiktok' ? 'ttp' : 'gclid', ...metric(8, 9) },
+            { key: 'external_id', ...metric(7, 9) },
+          ],
+          rows: dates.map((date, index) => ({ date, ...metric(index + 1, index + 2) })),
+        },
+        platformQuality: { availability: 'available', latest: qualityRow, rows: [qualityRow] },
+      },
+    }
   }
-  if (pathname.endsWith('/breakdown')) return { range, usage, data: { provider, dimension: searchParams.get('dimension') || 'utm_campaign', rows: [{ value: 'july-contact', actionCount: 6, contactCount: 4, completeRegistrationCount: 2, delivery: { pixelAttempted: 6, serverSent: 5, failed: 1, skipped: 0, pending: 0, retryExhausted: 0 } }] } }
+  if (pathname.endsWith('/breakdown')) return { range, usage, data: { provider, dimension: searchParams.get('dimension') || 'utm_campaign', rows: [{ value: 'july-contact', factCount: 6, contactCount: 4, completeRegistrationCount: 2, delivery: deliveryMetrics(2) }] } }
+  if (pathname.endsWith('/capacity')) {
+    const capacityMetric = (value, safetyLimit) => ({ value, safetyLimit, ratio: value / safetyLimit, warning: value >= safetyLimit })
+    return {
+      usage,
+      data: {
+        date: searchParams.get('date') || dates.at(-1),
+        timeZone: 'UTC',
+        note: '项目内部估算，不代表 Cloudflare 官方账单。',
+        inputs: { factCount: 9, deliveryCount: 21, browserAttemptCount: 12, serverDeliveryCount: 9, adapterAttemptCount: 9, queueAttemptCount: 10, terminalServerDeliveryCount: 8, providerReceiptCount: 20, workflowStepCount: 3 },
+        metrics: {
+          workerRequests: capacityMetric(120, 70_000),
+          queueOperations: capacityMetric(30, 7_000),
+          d1RowsRead: capacityMetric(860, 3_500_000),
+          d1RowsWritten: capacityMetric(90, 70_000),
+          workflowSteps: capacityMetric(3, 2_100),
+          serverConversions: capacityMetric(9, 2_000),
+        },
+      },
+    }
+  }
   if (pathname.endsWith('/platforms')) return { data: ['meta', 'tiktok', 'google'].map(platformConnection) }
 
   if (pathname.endsWith('/overview')) {
