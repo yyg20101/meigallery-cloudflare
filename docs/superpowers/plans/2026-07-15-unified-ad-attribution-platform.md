@@ -90,7 +90,7 @@ export interface AdBrowserInstruction {
 }
 ```
 
-- [ ] **Step 1：写事件编号失败测试**
+- [x] **Step 1：写事件编号失败测试**
 
 覆盖同一 basis 结果稳定、不同事实不相同、只包含 URL-safe 字符、前缀为 `mg3_`、总长度不超过 64、空主密钥 fail closed。
 
@@ -100,7 +100,7 @@ corepack pnpm --filter @meigallery/shared exec vitest run src/utils/ad-event-id.
 
 Expected: FAIL，提示 `buildAdExternalEventId` 不存在。
 
-- [ ] **Step 2：实现 HMAC 事件编号**
+- [x] **Step 2：实现 HMAC 事件编号**
 
 ```ts
 export async function buildAdExternalEventId(secret: string, factId: string, event: CanonicalConversionEvent) {
@@ -117,15 +117,15 @@ export async function buildAdExternalEventId(secret: string, factId: string, eve
 }
 ```
 
-- [ ] **Step 3：将共享类型改为三平台统一类型**
+- [x] **Step 3：将共享类型改为三平台统一类型**
 
 删除 `Extract<AdPlatformProvider, 'meta' | 'tiktok'>`，删除只含 `eventName` / `destinationId` 的旧 Browser Instruction；`google` 必须进入所有 provider 类型守卫。
 
-- [ ] **Step 4：更新 registry 契约测试**
+- [x] **Step 4：更新 registry 契约测试**
 
 断言三个 provider 都有能力声明，事件映射返回 `PlatformEventDescriptor`，Google 两个事件的 `browserEventName` 都是 `conversion`，但 destination 不同。
 
-- [ ] **Step 5：运行测试并提交**
+- [x] **Step 5：运行测试并提交**
 
 ```bash
 corepack pnpm --filter @meigallery/shared exec vitest run src/utils/ad-event-id.test.ts
