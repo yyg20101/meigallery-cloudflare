@@ -468,17 +468,17 @@ git commit -m "refactor: 统一转化事实与投递规划"
 - Create: `packages/api/src/services/ad-platform/server-adapter.ts`
 - Create: `packages/api/src/services/ad-platform/server-adapter.test.ts`
 
-- [ ] **Step 1：写三平台契约失败测试**
+- [x] **Step 1：写三平台契约失败测试**
 
 使用固定 Mock 覆盖 Payload、Header、事件编号、匹配数据、错误分类和敏感字段清洗。Google 额外覆盖 JWT claim、RSA 签名、OAuth token 缓存、Data Manager `validateOnly`、Destination 和 `transactionId`。
 
 ```bash
-corepack pnpm --filter @meigallery/api exec vitest run src/services/ad-platform/adapters/*.test.ts src/services/ad-platform/server-adapter.test.ts
+corepack pnpm --filter @meigallery/api exec vitest run src/services/ad-platform/adapters/meta-server.test.ts src/services/ad-platform/adapters/tiktok-server.test.ts src/services/ad-platform/adapters/google-auth.test.ts src/services/ad-platform/adapters/google-server.test.ts src/services/ad-platform/server-adapter.test.ts
 ```
 
 Expected: FAIL。
 
-- [ ] **Step 2：迁移 Meta/TikTok Payload 构造**
+- [x] **Step 2：迁移 Meta/TikTok Payload 构造**
 
 ```ts
 export interface ServerDeliveryInput {
@@ -495,7 +495,7 @@ export interface ServerDeliveryInput {
 
 Meta 只读取 `fbc/fbp`，TikTok 只读取 `ttclid/ttp`；输入出现其他平台 Click ID 时返回 `destination_invalid` 并记录 critical incident。
 
-- [ ] **Step 3：实现 Google OAuth 和 Data Manager Adapter**
+- [x] **Step 3：实现 Google OAuth 和 Data Manager Adapter**
 
 JWT `aud` 使用 Service Account `token_uri`，scope 固定为 `https://www.googleapis.com/auth/datamanager`，access token 只缓存在模块内存且在过期前 60 秒刷新。
 
@@ -528,7 +528,7 @@ const request = {
 
 `POST https://datamanager.googleapis.com/v1/events:ingest` 成功响应中的 `requestId` 是 Google 生成的异步请求编号，不得把本项目 `externalEventId` 错放到请求顶层；去重编号只写 `events[].transactionId`。若配置 `loginCustomerId`，按上述官方 `ProductAccount` 结构加入 `loginAccount`；不得添加 Developer Token。Service Account 请求同时发送 `x-goog-user-project: cloudProjectId`。
 
-- [ ] **Step 4：统一错误分类**
+- [x] **Step 4：统一错误分类**
 
 ```ts
 export type DeliveryClassification =
@@ -540,10 +540,10 @@ export type DeliveryClassification =
   | 'destination_invalid'
 ```
 
-- [ ] **Step 5：运行测试并提交**
+- [x] **Step 5：运行测试并提交**
 
 ```bash
-corepack pnpm --filter @meigallery/api exec vitest run src/services/ad-platform/adapters/*.test.ts src/services/ad-platform/server-adapter.test.ts
+corepack pnpm --filter @meigallery/api exec vitest run src/services/ad-platform/adapters/meta-server.test.ts src/services/ad-platform/adapters/tiktok-server.test.ts src/services/ad-platform/adapters/google-auth.test.ts src/services/ad-platform/adapters/google-server.test.ts src/services/ad-platform/server-adapter.test.ts
 git add packages/api/src/services/ad-platform/adapters packages/api/src/services/ad-platform/server-adapter.ts packages/api/src/services/ad-platform/server-adapter.test.ts
 git commit -m "feat: 接入三平台服务端适配器"
 ```
