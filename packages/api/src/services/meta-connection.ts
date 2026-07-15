@@ -2,7 +2,7 @@ import type { AdPlatformConversionEventName, AdPlatformTrackingMode } from '@mei
 import type { Bindings } from '../index'
 import { mergeD1Usage, readD1UsageMeta, type D1Usage } from '../utils/analytics-cost'
 import { loadMetaCapiCryptoKeys, metaConnectionFingerprint } from '../utils/meta-capi-crypto'
-import { readAdPlatformConnection } from './ad-platform/connections'
+import { readAdPlatformConnection } from './ad-platform/legacy-connections'
 import { META_GRAPH_API_VERSION, metaEventsEndpoint, metaGraphRequestInit, readMetaEventsResponse } from './meta-graph'
 import {
   createMetaIncidentTrigger,

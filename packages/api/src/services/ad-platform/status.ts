@@ -6,7 +6,8 @@ import { getTikTokConnectionStatus } from '../tiktok-connection'
 import {
   listAdPlatformConnections as readAdPlatformConnections,
   type AdPlatformConnection,
-} from './connections'
+} from './legacy-connections'
+// 临时兼容旧运维状态页；新转换规划只使用 connections.ts 的新快照接口。
 import { listAdPlatformProviders } from './registry'
 
 export interface AdPlatformConnectionStatus {

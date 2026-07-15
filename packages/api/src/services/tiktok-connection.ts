@@ -1,6 +1,6 @@
 import type { AdPlatformTrackingMode } from '@meigallery/shared'
 import type { Bindings } from '../index'
-import { readAdPlatformConnection } from './ad-platform/connections'
+import { readAdPlatformConnection } from './ad-platform/legacy-connections'
 import {
   buildTikTokEventsPayload,
   isTikTokEventsSuccess,

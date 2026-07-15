@@ -4,7 +4,6 @@ import type { Bindings, Variables } from '../index'
 import { recordRegistration } from '../services/conversions'
 import { hashInviteCode } from '../services/invite-codes'
 import { createMarketingConsentReceipt } from '../utils/marketing-consent-receipt'
-import { createAdAttributionReceipt } from '../utils/ad-attribution-receipt'
 import { authRoutes } from './auth'
 
 vi.mock('../services/conversions', () => ({
@@ -29,20 +28,17 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
       duplicateOf: '',
       trackingInstructions: [{
         provider: 'meta',
-        deliveryId: 'cdlv_registration_42',
-        eventName: 'CompleteRegistration',
-        eventId: 'meta:CompleteRegistration:complete_registration:user:42',
-        payload: { method: 'email' },
-        receiptToken: 'receipt_registration_42',
+        canonicalEvent: 'CompleteRegistration',
+        externalEventId: 'mg3_registration_42',
+        descriptor: { provider: 'meta', canonicalEvent: 'CompleteRegistration', browserEventName: 'CompleteRegistration', browserDestination: 'meta_pixel', serverDestination: 'meta_capi' },
+        payload: { destination: 'meta_pixel' },
       }],
     })
   })
 
   it('用户、邀请码和 session 成功后只调用一次 recordRegistration', async () => {
     const db = createRegisterDb(await hashInviteCode('ACTIVE1'))
-    let authoritativeSensitiveInput: Record<string, unknown> | undefined
-    recordRegistrationMock.mockImplementationOnce(async (_env, _input, context) => {
-      authoritativeSensitiveInput = await context?.getRegistrationSensitiveInput?.()
+    recordRegistrationMock.mockImplementationOnce(async () => {
       db.events.push('record_registration')
       return registrationResult()
     })
@@ -64,34 +60,24 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
       visitorId: 'visitor_registration_42',
       sessionId: 'session_registration_42',
       consentState: 'granted',
-      attributionProvider: 'meta',
+      attributionContext: null,
+      attributionSource: 'none',
       metadata: { method: 'email' },
-    }), expect.objectContaining({
-      getAdPlatformUserData: expect.any(Function),
-      getRegistrationSensitiveInput: expect.any(Function),
     }))
     const userInsert = db.calls.find(call => call.sql.includes('INSERT INTO users'))
     const externalId = String(userInsert?.params[7])
     expect(userInsert?.sql).toContain('conversion_external_id')
     expect(externalId).toMatch(/^[0-9a-f]{32}$/)
-    expect(authoritativeSensitiveInput).toEqual({
-      email: 'new@example.com',
-      externalId,
-    })
-    expect(db.calls.some(call => (
-      call.sql.includes('SELECT id, email, conversion_external_id')
-      && call.params[0] === 42
-    ))).toBe(true)
     expect(recordRegistrationMock.mock.calls[0]?.[1]).not.toHaveProperty('actionType')
     expect(recordRegistrationMock.mock.calls[0]?.[1].userId).not.toBe(999)
     expect(db.events.indexOf('invite_registration')).toBeGreaterThan(db.events.indexOf('user_insert'))
     expect(db.events.indexOf('invite_counter_update')).toBeGreaterThan(db.events.indexOf('invite_registration'))
     expect(db.events.indexOf('session_insert')).toBeGreaterThan(db.events.indexOf('invite_counter_update'))
     expect(db.events.indexOf('record_registration')).toBeGreaterThan(db.events.indexOf('session_insert'))
-    expect(body.trackingInstructions).toEqual([expect.objectContaining({ eventName: 'CompleteRegistration' })])
+    expect(body.trackingInstructions).toEqual([expect.objectContaining({ canonicalEvent: 'CompleteRegistration' })])
     expect(body).not.toHaveProperty('capi')
     expect(body).not.toHaveProperty('emailHash')
-    expect(JSON.stringify(body)).not.toContain('external')
+    expect(JSON.stringify(body)).not.toContain(externalId)
     expect(JSON.stringify(db.calls.filter(call => !call.sql.includes('INSERT INTO users')))).not.toContain(externalId)
   })
 
@@ -102,7 +88,7 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
       userId: 42,
       visitorId: 'registration_user_42',
       sessionId: 'registration_user_42',
-    }), expect.anything())
+    }))
   })
 
   it('无营销授权仍创建第一方事实且响应不含 Pixel 指令', async () => {
@@ -134,7 +120,7 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
 
     expect(recordRegistrationMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       consentState: 'limited',
-    }), expect.anything())
+    }))
     expect(db.calls.some(call => call.sql.includes('SELECT id, email, conversion_external_id'))).toBe(false)
   })
 
@@ -155,8 +141,9 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
 
     expect(recordRegistrationMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       consentState: 'granted',
-      attributionProvider: '',
-    }), expect.anything())
+      attributionContext: null,
+      attributionSource: 'none',
+    }))
   })
 
   it('注册 attribution suppress 会忽略已有来源 receipt', async () => {
@@ -168,8 +155,9 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
 
     expect(recordRegistrationMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       consentState: 'granted',
-      attributionProvider: '',
-    }), expect.anything())
+      attributionContext: null,
+      attributionSource: 'none',
+    }))
   })
 
   it('邀请码绑定异常只记录稳定 code，不记录 Error 或注册敏感值', async () => {
@@ -206,9 +194,8 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
   })
 
   it('转化写入失败不回滚用户或 session，并只记录脱敏结构化错误', async () => {
-    recordRegistrationMock.mockImplementationOnce(async (_env, _input, context) => {
-      const sensitive = await context?.getRegistrationSensitiveInput?.()
-      throw new Error(`${sensitive?.email}|${sensitive?.externalId}|token-private|203.0.113.188|private-browser`)
+    recordRegistrationMock.mockImplementationOnce(async () => {
+      throw new Error('token-private|203.0.113.188|private-browser')
     })
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const db = createRegisterDb()
@@ -271,16 +258,13 @@ async function register(
   const receipt = withTrustedReceipt && requestedConsent === 'granted'
     ? await createMarketingConsentReceipt('test-session-secret', 'granted')
     : ''
-  const attributionReceipt = receipt && withTrustedAttributionReceipt
-    ? await createAdAttributionReceipt('test-session-secret', 'meta')
-    : ''
   return createApp().request('/api/auth/register', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'User-Agent': 'unit-test-browser',
       ...(receipt ? {
-        Cookie: `mei_marketing_consent_receipt=${receipt}; mei_ad_attribution_receipt=${attributionReceipt}`,
+        Cookie: `mei_marketing_consent_receipt=${receipt}`,
       } : {}),
     },
     body: JSON.stringify({
@@ -307,10 +291,10 @@ function registrationResult() {
     trackingInstructions: [{
       provider: 'meta',
       deliveryId: 'cdlv_registration_42',
-      eventName: 'CompleteRegistration' as const,
-      eventId: 'meta:CompleteRegistration:complete_registration:user:42',
-      payload: { method: 'email' },
-      receiptToken: 'receipt_registration_42',
+      canonicalEvent: 'CompleteRegistration' as const,
+      externalEventId: 'mg3_registration_42',
+      descriptor: { provider: 'meta' as const, canonicalEvent: 'CompleteRegistration' as const, browserEventName: 'CompleteRegistration', browserDestination: 'meta_pixel', serverDestination: 'meta_capi' },
+      payload: { destination: 'meta_pixel' },
     }],
   }
 }
