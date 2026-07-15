@@ -40,7 +40,7 @@ create_queue() {
     return 0
   fi
 
-  if ! "${WRANGLER[@]}" queues create "$queue_name"; then
+  if ! "${WRANGLER[@]}" queues create "$queue_name" &> /dev/null; then
     echo "Queue ${queue_name} 创建请求未确认成功，继续检查远端状态..."
   fi
 
