@@ -62,6 +62,7 @@ export default defineConfig({
       '@meigallery/shared/constants': resolve(__dirname, '../shared/src/constants/index.ts'),
       '@meigallery/shared/utils': resolve(__dirname, '../shared/src/utils/index.ts'),
       '@meigallery/shared': resolve(__dirname, '../shared/src/types/index.ts'),
+      'cloudflare:workers': resolve(__dirname, 'src/test/cloudflare-workers.ts'),
     },
   },
 })

@@ -389,7 +389,11 @@ async function seed(status: DeliveryStatus, provider: AdAttributionProvider = 'm
   const connectionId = `conn_${provider}`
   const factId = `fact_${provider}`
   const deliveryId = `delivery_${provider}`
-  const config = provider === 'meta' ? '{"pixelId":"12345"}' : provider === 'tiktok' ? '{"pixelCode":"12345"}' : '{"customerId":"12345","cloudProjectId":"project-1"}'
+  const config = provider === 'meta'
+    ? '{"pixelId":"12345"}'
+    : provider === 'tiktok'
+      ? '{"pixelCode":"ABCDEF1234"}'
+      : '{"tagId":"AW-12345","customerId":"12345","cloudProjectId":"project-1"}'
   const statements = [
     db.prepare('INSERT INTO attribution_platform_connections (id, provider, public_config_json, connection_revision, credential_revision) VALUES (?, ?, ?, ?, ?)').bind(connectionId, provider, config, 'revision_1', 'credential_1'),
     db.prepare("INSERT INTO attribution_conversion_facts (id, canonical_event, fact_origin, external_event_id, attribution_provider, attribution_source, occurred_at, dedupe_key, consent_snapshot_json, analytics_dimensions_json) VALUES (?, 'CompleteRegistration', 'live', ?, ?, 'context', '2026-07-15T00:00:00.000Z', ?, '{}', '{}')").bind(factId, `mg3_${provider}_${'a'.repeat(32)}`, provider, `dedupe_${provider}`),

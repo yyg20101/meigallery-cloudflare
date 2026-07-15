@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  getAdPlatformDefinition,
   getAdPlatformAdapter,
   listAdPlatformProviders,
   mapConversionToPlatformEvent,
@@ -34,5 +35,45 @@ describe('广告平台 adapter registry', () => {
     expect(contact.browserEventName).toBe('conversion')
     expect(registration.browserEventName).toBe('conversion')
     expect(contact.browserDestination).not.toBe(registration.browserDestination)
+  })
+
+  it('由平台注册表严格校验公开配置', () => {
+    expect(getAdPlatformDefinition('meta')?.publicConfigSchema.parse({ pixelId: '1277657707436781' })).toEqual({ pixelId: '1277657707436781' })
+    expect(getAdPlatformDefinition('meta')?.publicConfigSchema.parse({ pixelId: 'pixel_1' })).toBeNull()
+    expect(getAdPlatformDefinition('tiktok')?.publicConfigSchema.parse({ pixelCode: 'ABCDEF123456' })).toEqual({ pixelCode: 'ABCDEF123456' })
+    expect(getAdPlatformDefinition('google')?.publicConfigSchema.parse({
+      tagId: 'AW-123456789',
+      customerId: '1234567890',
+      cloudProjectId: 'gallery-project',
+    })).toMatchObject({ tagId: 'AW-123456789' })
+  })
+
+  it('由平台注册表解析事件目标，核心调用方无需判断 provider', () => {
+    const google = getAdPlatformDefinition('google')!
+    const config = { tagId: 'AW-123456789', customerId: '1234567890', cloudProjectId: 'gallery-project' }
+    const contact = google.resolveEventBinding({
+      canonicalEvent: 'Contact',
+      publicConfig: config,
+      browserDestination: 'AW-123456789/CONTACT_LABEL',
+      serverDestination: '123456789',
+    })
+    const registration = google.resolveEventBinding({
+      canonicalEvent: 'CompleteRegistration',
+      publicConfig: config,
+      browserDestination: 'AW-123456789/REGISTRATION_LABEL',
+      serverDestination: '987654321',
+    })
+
+    expect(contact).toEqual({ browserDestination: 'AW-123456789/CONTACT_LABEL', serverDestination: '123456789' })
+    expect(google.resolveEventBinding({
+      canonicalEvent: 'Contact',
+      publicConfig: config,
+      browserDestination: 'AW-OTHER/CONTACT_LABEL',
+      serverDestination: '123456789',
+    })).toBeNull()
+    expect(google.validateEventBindingSet([
+      { canonicalEvent: 'Contact', ...contact! },
+      { canonicalEvent: 'CompleteRegistration', ...registration! },
+    ])).toBe(true)
   })
 })

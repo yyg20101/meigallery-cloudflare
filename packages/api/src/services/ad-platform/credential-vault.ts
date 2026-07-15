@@ -23,6 +23,21 @@ export interface SaveCredentialInput {
   createdBy: number
 }
 
+export interface PreparedAttributionCredential {
+  id: string
+  connectionId: string
+  provider: AdAttributionProvider
+  credentialType: AttributionCredentialType
+  credentialRevision: string
+  schemaVersion: 1
+  keyId: string
+  iv: string
+  ciphertext: string
+  tag: string
+  fingerprint: string
+  createdBy: number
+}
+
 export type CredentialVaultEnv = {
   DB: D1Database
   AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT?: string
@@ -53,20 +68,7 @@ export async function saveAttributionCredential(
 ): Promise<{ id: string; credentialRevision: string }> {
   await validateSaveInput(input)
   await requireConnection(env.DB, input.connectionId, input.provider)
-
-  let envelope: AttributionEncryptedEnvelope
-  let fingerprint: string
-  try {
-    const keys = await loadAttributionCryptoKeys(env)
-    const aad = credentialAad(input)
-    envelope = await encryptAttributionValue({ keys, aad, plaintext: input.plaintext })
-    fingerprint = await credentialFingerprint(keys, input.provider, input.credentialType, input.plaintext)
-  }
-  catch {
-    throw vaultError('ATTRIBUTION_CREDENTIAL_CRYPTO_UNAVAILABLE')
-  }
-
-  const id = crypto.randomUUID()
+  const prepared = await prepareAttributionCredential(env, input)
   try {
     await env.DB.batch([
       env.DB.prepare(`
@@ -83,17 +85,17 @@ export async function saveAttributionCredential(
           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')
         )
       `).bind(
-        id,
+        prepared.id,
         input.connectionId,
         input.provider,
         input.provider,
         input.credentialType,
-        envelope.schemaVersion,
-        envelope.keyId,
-        envelope.iv,
-        envelope.ciphertext,
-        envelope.tag,
-        fingerprint,
+        prepared.schemaVersion,
+        prepared.keyId,
+        prepared.iv,
+        prepared.ciphertext,
+        prepared.tag,
+        prepared.fingerprint,
         input.credentialRevision,
         input.createdBy,
       ),
@@ -103,7 +105,42 @@ export async function saveAttributionCredential(
     throw vaultError('ATTRIBUTION_CREDENTIAL_WRITE_FAILED')
   }
 
-  return { id, credentialRevision: input.credentialRevision }
+  return { id: prepared.id, credentialRevision: input.credentialRevision }
+}
+
+/** 完成凭证校验与封装，但把实际写入留给调用方的原子 batch。 */
+export async function prepareAttributionCredential(
+  env: Pick<CredentialVaultEnv, 'AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT' | 'AD_PLATFORM_CREDENTIAL_MASTER_KEY_PREVIOUS'>,
+  input: SaveCredentialInput,
+): Promise<PreparedAttributionCredential> {
+  await validateSaveInput(input)
+
+  try {
+    const keys = await loadAttributionCryptoKeys(env)
+    const envelope: AttributionEncryptedEnvelope = await encryptAttributionValue({
+      keys,
+      aad: credentialAad(input),
+      plaintext: input.plaintext,
+    })
+    return {
+      id: crypto.randomUUID(),
+      connectionId: input.connectionId,
+      provider: input.provider,
+      credentialType: input.credentialType,
+      credentialRevision: input.credentialRevision,
+      schemaVersion: envelope.schemaVersion,
+      keyId: envelope.keyId,
+      iv: envelope.iv,
+      ciphertext: envelope.ciphertext,
+      tag: envelope.tag,
+      fingerprint: await credentialFingerprint(keys, input.provider, input.credentialType, input.plaintext),
+      createdBy: input.createdBy,
+    }
+  }
+  catch (error) {
+    if (error instanceof CredentialVaultError) throw error
+    throw vaultError('ATTRIBUTION_CREDENTIAL_CRYPTO_UNAVAILABLE')
+  }
 }
 
 export async function readAttributionCredential(

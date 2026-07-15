@@ -103,7 +103,11 @@ function registrationInput(provider: 'meta' | 'tiktok' | 'google'): RecordRegist
   }
 }
 async function seed(provider: 'meta' | 'tiktok' | 'google') {
-  const config = provider === 'meta' ? '{"pixelId":"pixel_1"}' : provider === 'tiktok' ? '{"pixelCode":"pixel_1"}' : '{"tagId":"G-1","customerId":"1","cloudProjectId":"project"}'
+  const config = provider === 'meta'
+    ? '{"pixelId":"1277657707436781"}'
+    : provider === 'tiktok'
+      ? '{"pixelCode":"ABCDEF1234"}'
+      : '{"tagId":"AW-12345","customerId":"1","cloudProjectId":"project"}'
   const credentialType = provider === 'google' ? 'service_account_json' : 'access_token'
   await db.batch([
     db.prepare(`INSERT INTO attribution_platform_connections VALUES (?, ?, 1, 'production', 1, 1, ?, 30, 100, 100, 'revision_1', 'credential_1', '', '')`).bind(`conn_${provider}`, provider, config),

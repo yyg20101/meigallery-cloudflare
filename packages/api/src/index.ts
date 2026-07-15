@@ -50,6 +50,7 @@ export type Bindings = {
   EMAIL_FROM: string
   EMAIL: SendEmail
   SITE_URL?: string
+  CORS_ORIGIN?: string
   IMAGE_RESIZING_ENABLED: string // "true" | "false"
   IMPORT_TOKEN_DAILY_LIMIT?: string
   TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT?: string
@@ -65,6 +66,7 @@ export type Bindings = {
   AD_META_QUEUE?: Queue<AdPlatformQueueMessage>
   AD_TIKTOK_QUEUE?: Queue<AdPlatformQueueMessage>
   AD_GOOGLE_QUEUE?: Queue<AdPlatformQueueMessage>
+  AD_PLATFORM_VERIFICATION_WORKFLOW: Workflow<{ verificationId: string }>
   RELEASE_COMMIT?: string
 }
 
@@ -436,3 +438,5 @@ export default {
     await handleAttributionQueueBatch(batch, env)
   },
 }
+
+export { AdPlatformVerificationWorkflow } from './workflows/ad-platform-verification'

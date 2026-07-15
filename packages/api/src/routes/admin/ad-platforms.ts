@@ -1,259 +1,341 @@
 import { Hono, type Context } from 'hono'
-import type { AdPlatformProvider } from '@meigallery/shared'
+import type {
+  AdAttributionProvider,
+  AdPlatformTrackingMode,
+  PlatformPublicConfig,
+} from '@meigallery/shared'
 import type { Bindings, Variables } from '../../index'
-import { getMetaConnectionStatus } from '../../services/meta-connection'
-import { listAdPlatformConnections } from '../../services/ad-platform/status'
 import {
-  requireVerifiedTikTokConnection,
-  verifyTikTokConnection,
-} from '../../services/tiktok-connection'
-import { loadTikTokEventsCryptoKeys } from '../../utils/tiktok-events-crypto'
+  getPlatformConnection,
+  listPlatformConnections,
+  PlatformConnectionError,
+  savePlatformConnection,
+  type PlatformEventBindingInput,
+  type SavePlatformConnectionCommand,
+} from '../../services/ad-platform/connection-service'
+import { getAdPlatformDefinition } from '../../services/ad-platform/registry'
+import {
+  getPlatformVerification,
+  startPlatformVerification,
+  submitPlatformVerificationEvidence,
+} from '../../workflows/ad-platform-verification'
 import { errorJson } from '../../utils/api-error'
-import { generateId } from '../../utils/db'
 
 type AdminAdPlatformContext = Context<{ Bindings: Bindings; Variables: Variables }>
-type ConfigurableProvider = Extract<AdPlatformProvider, 'meta' | 'tiktok'>
+type MutationGuardResult = ReturnType<typeof errorJson> | null
+
+const CONNECTION_FIELDS = new Set([
+  'enabled',
+  'mode',
+  'browserEnabled',
+  'serverEnabled',
+  'publicConfig',
+  'eventBindings',
+  'credential',
+  'rolloutTargetPercentage',
+])
+const VERIFY_FIELDS = new Set(['testEventCode'])
+const EVIDENCE_FIELDS = new Set(['confirmed', 'reference'])
+const MAX_CONNECTION_BODY_BYTES = 64 * 1024
+const MAX_VERIFICATION_BODY_BYTES = 4 * 1024
+const TRACKING_MODES = new Set<AdPlatformTrackingMode>(['disabled', 'test', 'production'])
+const ROLLOUT_PERCENTAGES = new Set([0, 10, 50, 100])
 
 export const adminAdPlatformRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
+adminAdPlatformRoutes.use('*', async (c, next) => {
+  await next()
+  c.header('Cache-Control', 'no-store')
+})
+
 adminAdPlatformRoutes.get('/', async (c) => {
   try {
-    return c.json({ data: await listAdPlatformConnections(c.env) })
+    return c.json({ data: await listPlatformConnections(c.env) })
   }
-  catch {
-    return errorJson(c, 503, '归因看板数据暂时不可用', { code: 'ATTRIBUTION_DASHBOARD_UNAVAILABLE' })
+  catch (error) {
+    return connectionErrorResponse(c, error)
   }
 })
 
-adminAdPlatformRoutes.post('/:provider/verify', async (c) => {
-  if (c.get('userRole') !== 'owner') {
-    return errorJson(c, 403, '需要站长权限', { code: 'OWNER_REQUIRED' })
-  }
-  if (c.env.APP_ENV !== 'production') {
-    return errorJson(c, 409, '广告平台连接只允许在生产环境验证', { code: 'AD_PLATFORM_PRODUCTION_ONLY' })
-  }
-  if (c.req.param('provider') !== 'tiktok') {
-    return errorJson(c, 404, '该平台不使用此验证入口', { code: 'AD_PLATFORM_VERIFICATION_UNSUPPORTED' })
-  }
-
-  const body = await c.req.json<Record<string, unknown>>()
+adminAdPlatformRoutes.get('/:provider', async (c) => {
+  const provider = providerFromPath(c.req.param('provider'))
+  if (!provider) return unsupportedProvider(c)
   try {
-    const result = await verifyTikTokConnection(c.env, {
-      testEventCode: String(body.testEventCode || ''),
-    })
-    await c.env.DB.prepare(`
-      INSERT INTO admin_audit_logs
-        (id, admin_id, action, target_type, target_id, before_value, after_value)
-      VALUES (?, ?, ?, 'ad_platform_connection', 'tiktok', '{}', ?)
-    `).bind(
-      generateId('log'),
-      c.get('userId')!,
-      result.idempotent ? 'test_ad_platform_connection' : 'verify_ad_platform_connection',
-      JSON.stringify({
-        verified: true,
-        idempotent: result.idempotent,
-        verifiedAt: result.verifiedAt,
-        revision: result.revision,
-        testEventsSent: result.testEventsSent,
-      }),
-    ).run()
-    return c.json({ data: result })
+    const connection = await getPlatformConnection(c.env, provider)
+    return connection
+      ? c.json({ data: connection })
+      : errorJson(c, 404, '广告平台连接不存在', { code: 'AD_PLATFORM_CONNECTION_NOT_FOUND' })
   }
   catch (error) {
-    const code = error instanceof Error ? error.message : ''
-    if (code === 'TIKTOK_TEST_EVENT_CODE_INVALID') {
-      return errorJson(c, 400, 'TikTok Test Event Code 无效', { code })
-    }
-    if (code === 'TIKTOK_VERIFICATION_REJECTED' || code === 'TIKTOK_VERIFICATION_NETWORK_ERROR') {
-      return errorJson(c, 502, 'TikTok 未接受测试事件，请检查 token、Pixel ID 和测试码', { code })
-    }
-    return errorJson(c, 409, 'TikTok 连接尚未满足验证条件', { code: code || 'TIKTOK_VERIFICATION_BLOCKED' })
+    return connectionErrorResponse(c, error)
   }
 })
 
 adminAdPlatformRoutes.patch('/:provider', async (c) => {
-  if (c.get('userRole') !== 'owner') {
+  const blocked = guardMutation(c)
+  if (blocked) return blocked
+  const provider = providerFromPath(c.req.param('provider'))
+  if (!provider) return unsupportedProvider(c)
+  try {
+    const body = await readJsonRecord(c, MAX_CONNECTION_BODY_BYTES)
+    const command = parseConnectionCommand(provider, body, c.get('userId'))
+    return c.json({ data: await savePlatformConnection(c.env, command) })
+  }
+  catch (error) {
+    return connectionErrorResponse(c, error)
+  }
+})
+
+adminAdPlatformRoutes.post('/:provider/verify', async (c) => startVerificationRoute(c, false))
+adminAdPlatformRoutes.post('/:provider/reverify', async (c) => startVerificationRoute(c, true))
+
+adminAdPlatformRoutes.get('/:provider/verification', async (c) => {
+  const provider = providerFromPath(c.req.param('provider'))
+  if (!provider) return unsupportedProvider(c)
+  try {
+    const verification = await getPlatformVerification(c.env.DB, provider)
+    return verification
+      ? c.json({ data: verification })
+      : errorJson(c, 404, '尚无连接验证记录', { code: 'AD_PLATFORM_VERIFICATION_NOT_FOUND' })
+  }
+  catch {
+    return errorJson(c, 503, '连接验证状态暂时不可用', { code: 'AD_PLATFORM_VERIFICATION_READ_FAILED' })
+  }
+})
+
+adminAdPlatformRoutes.get('/:provider/verifications/:verificationId', async (c) => {
+  const provider = providerFromPath(c.req.param('provider'))
+  if (!provider) return unsupportedProvider(c)
+  const verificationId = c.req.param('verificationId')
+  if (!validVerificationId(verificationId)) return invalidRequest(c)
+  try {
+    const verification = await getPlatformVerification(c.env.DB, provider, verificationId)
+    return verification
+      ? c.json({ data: verification })
+      : errorJson(c, 404, '连接验证记录不存在', { code: 'AD_PLATFORM_VERIFICATION_NOT_FOUND' })
+  }
+  catch {
+    return errorJson(c, 503, '连接验证状态暂时不可用', { code: 'AD_PLATFORM_VERIFICATION_READ_FAILED' })
+  }
+})
+
+adminAdPlatformRoutes.post('/:provider/verifications/:verificationId/evidence', async (c) => {
+  const blocked = guardMutation(c)
+  if (blocked) return blocked
+  const provider = providerFromPath(c.req.param('provider'))
+  if (!provider) return unsupportedProvider(c)
+  const verificationId = c.req.param('verificationId')
+  if (!validVerificationId(verificationId)) return invalidRequest(c)
+  try {
+    const body = await readJsonRecord(c, MAX_VERIFICATION_BODY_BYTES)
+    if (!hasOnlyFields(body, EVIDENCE_FIELDS) || body.confirmed !== true
+      || body.reference !== undefined && !validEvidenceReference(body.reference)) {
+      return invalidRequest(c)
+    }
+    const result = await submitPlatformVerificationEvidence(c.env, {
+      provider,
+      verificationId,
+      actorId: c.get('userId')!,
+      ...(body.reference === undefined ? {} : { reference: String(body.reference).trim() }),
+    })
+    return c.json({ data: result }, 202)
+  }
+  catch (error) {
+    return verificationErrorResponse(c, error)
+  }
+})
+
+async function startVerificationRoute(c: AdminAdPlatformContext, reverify: boolean) {
+  const blocked = guardMutation(c)
+  if (blocked) return blocked
+  const provider = providerFromPath(c.req.param('provider'))
+  if (!provider) return unsupportedProvider(c)
+  try {
+    const body = await readJsonRecord(c, MAX_VERIFICATION_BODY_BYTES)
+    if (!hasOnlyFields(body, VERIFY_FIELDS)
+      || body.testEventCode !== undefined && !validShortText(body.testEventCode, 128)) {
+      return invalidRequest(c)
+    }
+    const result = await startPlatformVerification(c.env, {
+      provider,
+      actorId: c.get('userId')!,
+      reverify,
+      ...(body.testEventCode === undefined ? {} : { testEventCode: String(body.testEventCode).trim() }),
+    })
+    return c.json({ data: result }, 202)
+  }
+  catch (error) {
+    return verificationErrorResponse(c, error)
+  }
+}
+
+function parseConnectionCommand(
+  provider: AdAttributionProvider,
+  body: Record<string, unknown>,
+  actorId: number | null,
+): SavePlatformConnectionCommand {
+  if (!hasOnlyFields(body, CONNECTION_FIELDS)
+    || typeof body.enabled !== 'boolean'
+    || typeof body.browserEnabled !== 'boolean'
+    || typeof body.serverEnabled !== 'boolean'
+    || !TRACKING_MODES.has(body.mode as AdPlatformTrackingMode)
+    || !ROLLOUT_PERCENTAGES.has(body.rolloutTargetPercentage as number)
+    || !Number.isSafeInteger(actorId) || Number(actorId) <= 0
+    || !isPlainRecord(body.publicConfig)
+    || !Array.isArray(body.eventBindings)) {
+    throw new PlatformConnectionError('AD_PLATFORM_CONNECTION_CONFIG_INVALID')
+  }
+  const credential = parseCredential(body.credential)
+  return {
+    provider,
+    enabled: body.enabled,
+    mode: body.mode as AdPlatformTrackingMode,
+    browserEnabled: body.browserEnabled,
+    serverEnabled: body.serverEnabled,
+    publicConfig: body.publicConfig as PlatformPublicConfig,
+    eventBindings: body.eventBindings as PlatformEventBindingInput[],
+    ...(credential ? { credential } : {}),
+    rolloutTargetPercentage: body.rolloutTargetPercentage as 0 | 10 | 50 | 100,
+    actorId: Number(actorId),
+  }
+}
+
+function parseCredential(value: unknown): SavePlatformConnectionCommand['credential'] | undefined {
+  if (value === undefined) return undefined
+  if (!isPlainRecord(value) || !hasOnlyFields(value, new Set(['type', 'plaintext']))
+    || value.type !== 'access_token' && value.type !== 'service_account_json'
+    || !validShortText(value.plaintext, 32 * 1024)) {
+    throw new PlatformConnectionError('AD_PLATFORM_CONNECTION_CREDENTIAL_INVALID')
+  }
+  return { type: value.type, plaintext: String(value.plaintext) }
+}
+
+function guardMutation(c: AdminAdPlatformContext): MutationGuardResult {
+  if (c.get('userRole') !== 'owner' || !Number.isSafeInteger(c.get('userId')) || Number(c.get('userId')) <= 0) {
     return errorJson(c, 403, '需要站长权限', { code: 'OWNER_REQUIRED' })
   }
   if (c.env.APP_ENV !== 'production') {
-    return errorJson(c, 409, '广告平台连接只允许在生产环境配置', { code: 'AD_PLATFORM_PRODUCTION_ONLY' })
+    return errorJson(c, 409, '广告平台连接只允许在生产环境配置和验证', { code: 'AD_PLATFORM_PRODUCTION_ONLY' })
   }
+  const origin = normalizeOrigin(c.req.header('Origin'))
+  if (!origin || !trustedOrigins(c.env).has(origin)) {
+    return errorJson(c, 403, '请求来源验证失败', { code: 'AD_PLATFORM_ORIGIN_FORBIDDEN' })
+  }
+  return null
+}
 
-  const provider = configurableProvider(c.req.param('provider'))
-  if (!provider) {
-    return errorJson(c, 404, '广告平台连接不存在', { code: 'AD_PLATFORM_NOT_SUPPORTED' })
+function trustedOrigins(env: Bindings) {
+  const origins = new Set<string>()
+  const siteOrigin = normalizeOrigin(env.SITE_URL)
+  if (siteOrigin) origins.add(siteOrigin)
+  for (const item of String(env.CORS_ORIGIN || '').split(',')) {
+    const origin = normalizeOrigin(item)
+    if (origin) origins.add(origin)
   }
-  const body = await c.req.json<Record<string, unknown>>()
-  const result = provider === 'meta'
-    ? await updateMetaConnection(c, body)
-    : await updateTikTokConnection(c, body)
-  if (result) return result
-  return c.json({ data: await listAdPlatformConnections(c.env) })
-})
+  return origins
+}
 
-async function updateMetaConnection(c: AdminAdPlatformContext, body: Record<string, unknown>) {
-  const destinationId = String(body.destinationId ?? '').trim()
-  const mode = String(body.mode ?? '')
-  const rolloutPercentage = Number(body.rolloutPercentage)
-  if (!/^\d{5,30}$/.test(destinationId)) {
-    return errorJson(c, 400, 'Meta Dataset ID 无效', { code: 'AD_PLATFORM_DESTINATION_INVALID' })
+async function readJsonRecord(c: AdminAdPlatformContext, maxBytes: number) {
+  const contentLength = Number(c.req.header('Content-Length') || 0)
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) throw new Error('AD_PLATFORM_REQUEST_TOO_LARGE')
+  const raw = await c.req.text()
+  if (new TextEncoder().encode(raw).byteLength > maxBytes) throw new Error('AD_PLATFORM_REQUEST_TOO_LARGE')
+  try {
+    const parsed: unknown = JSON.parse(raw || '{}')
+    if (!isPlainRecord(parsed)) throw new Error()
+    return parsed
   }
-  if (!isTrackingMode(mode)) {
-    return errorJson(c, 400, 'Meta 运行模式无效', { code: 'AD_PLATFORM_MODE_INVALID' })
+  catch {
+    throw new Error('AD_PLATFORM_REQUEST_INVALID')
   }
-  if (!isRolloutPercentage(rolloutPercentage)) {
-    return errorJson(c, 400, 'Meta 服务端放量比例无效', { code: 'AD_PLATFORM_ROLLOUT_INVALID' })
-  }
+}
 
-  const enabled = body.enabled === true
-  const browserEnabled = body.browserEnabled === true
-  const serverEnabled = body.serverEnabled === true
-  const debugEnabled = body.debugEnabled === true
-  const before = await readConnectionSnapshot(c.env.DB, 'meta')
-  if (!before) return errorJson(c, 409, 'Meta 连接尚未初始化', { code: 'AD_PLATFORM_CONNECTION_MISSING' })
-
-  const identityChanged = before.destination_id !== destinationId
-  if (serverEnabled) {
-    const status = await getMetaConnectionStatus(c.env)
-    if (identityChanged || status.state !== 'verified' || mode !== 'production') {
-      return errorJson(c, 409, '必须先以当前连接完成验证并切换生产模式，才能启用 Server API', {
-        code: 'AD_PLATFORM_SERVER_GATE_BLOCKED',
-      })
+function connectionErrorResponse(c: AdminAdPlatformContext, error: unknown) {
+  if (error instanceof PlatformConnectionError) {
+    if (error.code === 'AD_PLATFORM_CONNECTION_READ_FAILED'
+      || error.code === 'AD_PLATFORM_CONNECTION_WRITE_FAILED'
+      || error.code === 'AD_PLATFORM_CONNECTION_CREDENTIAL_CRYPTO_UNAVAILABLE') {
+      return errorJson(c, 503, '广告平台连接暂时不可用', { code: error.code })
     }
-  }
-
-  const after = { enabled, mode, browserEnabled, serverEnabled, destinationId, debugEnabled, rolloutPercentage }
-  await c.env.DB.batch([
-    c.env.DB.prepare(`
-      UPDATE ad_platform_connections
-      SET enabled = ?, mode = ?, browser_enabled = ?, server_enabled = ?,
-        destination_id = ?, debug_enabled = ?, rollout_percentage = ?,
-        revision = CASE WHEN ? THEN NULL ELSE revision END,
-        updated_at = datetime('now')
-      WHERE provider = 'meta'
-    `).bind(
-      enabled ? 1 : 0,
-      mode,
-      browserEnabled ? 1 : 0,
-      serverEnabled ? 1 : 0,
-      destinationId,
-      debugEnabled ? 1 : 0,
-      rolloutPercentage,
-      identityChanged ? 1 : 0,
-    ),
-    c.env.DB.prepare(`
-      UPDATE meta_connection_verifications
-      SET invalidated_at = CASE WHEN ? THEN datetime('now') ELSE invalidated_at END,
-        invalidation_reason = CASE WHEN ? THEN 'connection_configuration_changed' ELSE invalidation_reason END,
-        updated_at = datetime('now')
-      WHERE environment = 'production' AND ?
-    `).bind(identityChanged ? 1 : 0, identityChanged ? 1 : 0, identityChanged ? 1 : 0),
-    auditConnectionUpdate(c, 'meta', before, after),
-  ])
-}
-
-async function updateTikTokConnection(c: AdminAdPlatformContext, body: Record<string, unknown>) {
-  const destinationId = String(body.destinationId ?? '').trim().toUpperCase()
-  const mode = String(body.mode ?? '')
-  const rolloutPercentage = Number(body.rolloutPercentage)
-  if (!/^[A-Z0-9]{10,30}$/.test(destinationId)) {
-    return errorJson(c, 400, 'TikTok Pixel ID 无效', { code: 'AD_PLATFORM_DESTINATION_INVALID' })
-  }
-  if (!isTrackingMode(mode)) {
-    return errorJson(c, 400, 'TikTok 运行模式无效', { code: 'AD_PLATFORM_MODE_INVALID' })
-  }
-  if (!isRolloutPercentage(rolloutPercentage)) {
-    return errorJson(c, 400, 'TikTok 服务端放量比例无效', { code: 'AD_PLATFORM_ROLLOUT_INVALID' })
-  }
-
-  const enabled = body.enabled === true
-  const browserEnabled = body.browserEnabled === true
-  const serverEnabled = body.serverEnabled === true
-  const debugEnabled = body.debugEnabled === true
-  const before = await readConnectionSnapshot(c.env.DB, 'tiktok')
-  if (!before) return errorJson(c, 409, 'TikTok 连接尚未初始化', { code: 'AD_PLATFORM_CONNECTION_MISSING' })
-
-  const identityChanged = before.destination_id !== destinationId
-  if (serverEnabled) {
-    try {
-      const verified = await requireVerifiedTikTokConnection(c.env)
-      if (identityChanged || verified.pixelId !== destinationId || mode !== 'production') throw new Error()
-      if (!c.env.AD_TIKTOK_QUEUE) throw new Error()
-      await loadTikTokEventsCryptoKeys(c.env)
+    if (error.code === 'AD_PLATFORM_CONNECTION_STATE_INVALID'
+      || error.code === 'AD_PLATFORM_CONNECTION_CREDENTIAL_REQUIRED') {
+      return errorJson(c, 409, '广告平台连接状态无效', { code: error.code })
     }
-    catch {
-      return errorJson(c, 409, '必须先验证当前连接并配置 TikTok Queue 与数据密钥，才能启用 Events API', {
-        code: 'AD_PLATFORM_SERVER_GATE_BLOCKED',
-      })
-    }
+    return errorJson(c, 400, '广告平台连接配置无效', { code: error.code })
   }
-
-  const after = { enabled, mode, browserEnabled, serverEnabled, destinationId, debugEnabled, rolloutPercentage }
-  await c.env.DB.batch([
-    c.env.DB.prepare(`
-      UPDATE ad_platform_connections
-      SET enabled = ?, mode = ?, browser_enabled = ?, server_enabled = ?,
-        destination_id = ?, debug_enabled = ?, rollout_percentage = ?,
-        revision = CASE WHEN ? THEN NULL ELSE revision END,
-        updated_at = datetime('now')
-      WHERE provider = 'tiktok'
-    `).bind(
-      enabled ? 1 : 0,
-      mode,
-      browserEnabled ? 1 : 0,
-      serverEnabled ? 1 : 0,
-      destinationId,
-      debugEnabled ? 1 : 0,
-      rolloutPercentage,
-      identityChanged ? 1 : 0,
-    ),
-    c.env.DB.prepare(`
-      UPDATE tiktok_connection_verifications
-      SET invalidated_at = CASE WHEN ? THEN datetime('now') ELSE invalidated_at END,
-        invalidation_reason = CASE WHEN ? THEN 'connection_configuration_changed' ELSE invalidation_reason END,
-        updated_at = datetime('now')
-      WHERE environment = 'production' AND ?
-    `).bind(identityChanged ? 1 : 0, identityChanged ? 1 : 0, identityChanged ? 1 : 0),
-    auditConnectionUpdate(c, 'tiktok', before, after),
-  ])
+  if (error instanceof Error && error.message === 'AD_PLATFORM_REQUEST_TOO_LARGE') {
+    return errorJson(c, 413, '请求体过大', { code: error.message })
+  }
+  return invalidRequest(c)
 }
 
-function readConnectionSnapshot(db: D1Database, provider: ConfigurableProvider) {
-  return db.prepare(`
-    SELECT enabled, mode, browser_enabled, server_enabled, destination_id,
-      debug_enabled, rollout_percentage, revision
-    FROM ad_platform_connections
-    WHERE provider = ?
-  `).bind(provider).first<Record<string, unknown>>()
+function verificationErrorResponse(c: AdminAdPlatformContext, error: unknown) {
+  const code = safeErrorCode(error)
+  if (code === 'AD_PLATFORM_REQUEST_TOO_LARGE') {
+    return errorJson(c, 413, '请求体过大', { code })
+  }
+  if (code === 'AD_PLATFORM_VERIFICATION_NOT_FOUND') {
+    return errorJson(c, 404, '连接验证记录不存在', { code })
+  }
+  if (code === 'AD_PLATFORM_VERIFICATION_INPUT_INVALID'
+    || code === 'AD_PLATFORM_VERIFICATION_TEST_CODE_INVALID'
+    || code === 'AD_PLATFORM_REQUEST_INVALID') {
+    return errorJson(c, 400, '连接验证参数无效', { code })
+  }
+  if (code === 'AD_PLATFORM_CONNECTION_INVALID'
+    || code === 'AD_PLATFORM_VERIFICATION_PRODUCTION_MODE_REQUIRED'
+    || code === 'AD_PLATFORM_VERIFICATION_EVIDENCE_NOT_EXPECTED') {
+    return errorJson(c, 409, '连接当前状态不允许执行此操作', { code })
+  }
+  return errorJson(c, 503, '广告平台连接验证暂时不可用', {
+    code: code || 'AD_PLATFORM_VERIFICATION_UNAVAILABLE',
+  })
 }
 
-function auditConnectionUpdate(
-  c: AdminAdPlatformContext,
-  provider: ConfigurableProvider,
-  before: Record<string, unknown>,
-  after: Record<string, unknown>,
-) {
-  return c.env.DB.prepare(`
-    INSERT INTO admin_audit_logs
-      (id, admin_id, action, target_type, target_id, before_value, after_value)
-    VALUES (?, ?, 'update_ad_platform_connection', 'ad_platform_connection', ?, ?, ?)
-  `).bind(
-    generateId('log'),
-    c.get('userId')!,
-    provider,
-    JSON.stringify(before),
-    JSON.stringify(after),
-  )
+function providerFromPath(value: unknown): AdAttributionProvider | null {
+  return getAdPlatformDefinition(value)?.provider ?? null
 }
 
-function configurableProvider(value: string): ConfigurableProvider | null {
-  return value === 'meta' || value === 'tiktok' ? value : null
+function unsupportedProvider(c: AdminAdPlatformContext) {
+  return errorJson(c, 404, '广告平台不受支持', { code: 'AD_PLATFORM_NOT_SUPPORTED' })
 }
 
-function isTrackingMode(value: string) {
-  return value === 'disabled' || value === 'test' || value === 'production'
+function invalidRequest(c: AdminAdPlatformContext) {
+  return errorJson(c, 400, '请求参数无效', { code: 'AD_PLATFORM_REQUEST_INVALID' })
 }
 
-function isRolloutPercentage(value: number) {
-  return value === 0 || value === 10 || value === 50 || value === 100
+function normalizeOrigin(value: unknown) {
+  try {
+    return new URL(String(value || '')).origin
+  }
+  catch {
+    return ''
+  }
+}
+
+function validVerificationId(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9:_-]{1,100}$/.test(value)
+}
+
+function validEvidenceReference(value: unknown) {
+  return validShortText(value, 240)
+}
+
+function validShortText(value: unknown, maxLength: number): value is string {
+  return typeof value === 'string' && value.trim().length > 0 && value.length <= maxLength && !/\p{Cc}/u.test(value)
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
+}
+
+function hasOnlyFields(value: object, fields: Set<string>) {
+  return Reflect.ownKeys(value).every(key => typeof key === 'string' && fields.has(key))
+}
+
+function safeErrorCode(error: unknown) {
+  const value = error instanceof Error ? error.message : ''
+  return /^AD_PLATFORM_[A-Z0-9_]{1,100}$/.test(value) ? value : ''
 }

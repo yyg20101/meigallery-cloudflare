@@ -81,6 +81,11 @@ queue = "meigallery-ad-google-dlq"
 max_batch_size = 10
 max_batch_timeout = 5
 
+[[workflows]]
+binding = "AD_PLATFORM_VERIFICATION_WORKFLOW"
+name = "meigallery-ad-platform-verification"
+class_name = "AdPlatformVerificationWorkflow"
+
 # 环境变量（非敏感）— 生产默认值
 [vars]
 APP_ENV = "production"
@@ -122,6 +127,11 @@ crons = []
 [env.dev.queues]
 producers = []
 consumers = []
+
+[[env.dev.workflows]]
+binding = "AD_PLATFORM_VERIFICATION_WORKFLOW"
+name = "meigallery-ad-platform-verification-dev"
+class_name = "AdPlatformVerificationWorkflow"
 
 [env.dev.vars]
 APP_ENV = "dev"
