@@ -38,6 +38,16 @@ describe('TikTok 服务端 Adapter', () => {
     expect(outcome).toEqual({ classification: 'destination_invalid', incident: { code: 'cross_platform_identifier', severity: 'critical' } })
   })
 
+  it.each([
+    [{ pixelCode: 'pixel_code_1' }, 'very-secret-token'],
+    [{ pixelCode: 'ABCDEF0123' }, ''],
+  ] as const)('跨平台标识优先于无效配置或 token，且不调用 fetch', async (config, accessToken) => {
+    const fetcher = vi.fn()
+    const outcome = await sendTikTokServerEvent({ input: { ...input, matchSignals: { ...input.matchSignals, gclid: 'cross-platform-id' } }, config, accessToken, fetcher })
+    expect(outcome).toEqual({ classification: 'destination_invalid', incident: { code: 'cross_platform_identifier', severity: 'critical' } })
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
   it.each([[403, 'credential_invalid'], [429, 'retryable'], [500, 'retryable'], [422, 'destination_invalid'], [418, 'rejected']] as const)('按 HTTP 状态码分类 %i', async (status, classification) => {
     const outcome = await sendTikTokServerEvent({ input, config: { pixelCode: 'ABCDEF0123' }, accessToken: 'very-secret-token', fetcher: vi.fn(async () => new Response('secret', { status })) })
     expect(outcome).toEqual({ classification, receipt: { status } })

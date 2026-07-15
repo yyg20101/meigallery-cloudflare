@@ -28,6 +28,7 @@ export function buildTikTokServerPayload(input: TikTokServerDeliveryInput, pixel
 
 export async function sendTikTokServerEvent(input: { input: TikTokServerDeliveryInput; config: { pixelCode?: string }; accessToken: string; fetcher?: typeof fetch }): Promise<ServerDeliveryResult> {
   try {
+    assertNoCrossPlatformSignals(input.input.matchSignals)
     if (!validPixelCode(input.config.pixelCode) || !validSecret(input.accessToken)) return invalidDestination()
     const payload = buildTikTokServerPayload(input.input, input.config.pixelCode)
     const response = await (input.fetcher ?? fetch)(TIKTOK_ENDPOINT, { method: 'POST', headers: { 'Access-Token': input.accessToken, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
@@ -57,6 +58,9 @@ function validateTikTokDelivery(input: TikTokServerDeliveryInput) {
     hasMatch = true
   }
   if (!hasMatch) throw new Error('delivery_input_invalid')
+}
+function assertNoCrossPlatformSignals(matchSignals: Record<string, string>) {
+  if (Object.keys(matchSignals).some(key => CROSS_PLATFORM_SIGNALS.has(key))) throw new Error('cross_platform_identifier')
 }
 async function classifyTikTokResponse(response: Response): Promise<ServerDeliveryResult> {
   const result = await readTikTokResponse(response)
