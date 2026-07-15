@@ -12,10 +12,10 @@ describe('buildAdExternalEventId', () => {
   })
 
   it('为不同事实生成不同编号', async () => {
-    const contact = await buildAdExternalEventId(secret, 'contact:user_42:wechat', 'Contact')
-    const registration = await buildAdExternalEventId(secret, 'registration:user_42', 'CompleteRegistration')
+    const first = await buildAdExternalEventId(secret, 'contact:user_42:wechat', 'Contact')
+    const second = await buildAdExternalEventId(secret, 'contact:user_43:wechat', 'Contact')
 
-    expect(registration).not.toBe(contact)
+    expect(second).not.toBe(first)
   })
 
   it('生成带 mg3_ 前缀、URL-safe 且不超过 64 字符的编号', async () => {

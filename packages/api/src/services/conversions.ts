@@ -8,7 +8,6 @@ import type {
   AdPlatformTrackingMode,
   AnalyticsConsentState,
   AnalyticsSourceChannel,
-  AdBrowserInstruction,
   AdPlatformSensitiveContext,
   ConversionSkipReason,
 } from '@meigallery/shared'
@@ -110,7 +109,7 @@ export interface RecordConversionResult {
   actionType: ActiveConversionActionType
   created: boolean
   duplicateOf: string
-  trackingInstructions: AdBrowserInstruction[]
+  trackingInstructions: LegacyAdBrowserInstruction[]
 }
 
 type RecordActiveConversionInput = Omit<RecordConversionInput, 'actionType'>
@@ -158,13 +157,23 @@ export interface MarkPixelAttemptedResult {
   attempted: boolean
 }
 
+/** 任务 1 之前已投放的 Meta/TikTok 浏览器指令，待后续任务迁移。 */
+interface LegacyAdBrowserInstruction {
+  provider: Extract<AdPlatformProvider, 'meta' | 'tiktok'>
+  deliveryId: string
+  eventName: AdPlatformConversionEventName
+  eventId: string
+  payload: Record<string, string | number | boolean>
+  receiptToken: string
+}
+
 type PlannedDelivery = {
   deliveryId: string
   provider: AdPlatformProvider
   transport: AdDeliveryTransport
   eventName: AdPlatformConversionEventName
   eventId: string
-  browserInstruction?: AdBrowserInstruction
+  browserInstruction?: LegacyAdBrowserInstruction
   status: 'pending' | 'skipped'
   skipReason: '' | Extract<ConversionSkipReason,
     | 'connection_unverified'
@@ -794,9 +803,6 @@ async function planMetaDeliveries(
     const browserInstruction = transport === 'browser' && !deliverySkipped
       ? {
           provider: 'meta' as const,
-          canonicalEvent: eventName,
-          externalEventId: eventId,
-          descriptor,
           payload: sanitizeConversionMetadata(input.metadata || {}),
           deliveryId,
           eventName,
@@ -907,9 +913,6 @@ async function planTikTokDeliveries(
     const browserInstruction = transport === 'browser'
       ? {
           provider: 'tiktok' as const,
-          canonicalEvent: eventName,
-          externalEventId: eventId,
-          descriptor,
           payload: sanitizeConversionMetadata(input.metadata || {}),
           deliveryId,
           eventName,

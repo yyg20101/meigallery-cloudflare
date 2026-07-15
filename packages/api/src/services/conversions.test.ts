@@ -542,6 +542,9 @@ describe('conversion ledger service', () => {
     expect(result.trackingInstructions[0]?.eventId).toMatch(/^mg:v2:Contact:[0-9a-f]{64}$/)
     expect(result.trackingInstructions[0]?.eventId).not.toContain('session_1')
     expect(result.trackingInstructions.every(item => item.receiptToken)).toBe(true)
+    expect(result.trackingInstructions[0]).not.toHaveProperty('canonicalEvent')
+    expect(result.trackingInstructions[0]).not.toHaveProperty('externalEventId')
+    expect(result.trackingInstructions[0]).not.toHaveProperty('descriptor')
     expect(db.insertedDeliveries.find(item => item.transport === 'browser')).toMatchObject({
       connectionRevision: CONNECTION_REVISION,
     })
