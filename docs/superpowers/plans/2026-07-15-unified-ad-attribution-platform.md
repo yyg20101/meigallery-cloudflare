@@ -994,7 +994,7 @@ Expected: 全部 PASS，提交成功。
 - Modify: `docs/DEPLOYMENT.md`
 - Modify: `docs/TECHNICAL_SPEC.md`
 
-- [ ] **Step 1：写回填幂等和对账失败测试**
+- [x] **Step 1：写回填幂等和对账失败测试**
 
 固定 production 快照 fixture，连续执行两次 `INSERT OR IGNORE` 结果不变；只迁移 Contact/CompleteRegistration 标准事实和必要历史汇总，不迁移旧 Delivery、Outbox、验证或 incident，不生成新事件编号，不重新投递。
 
@@ -1004,7 +1004,7 @@ node --test scripts/verify-attribution-v3-migration.test.mjs
 
 Expected: FAIL。
 
-- [ ] **Step 2：实现备份、preflight、backfill 和 reconcile**
+- [x] **Step 2：实现备份、preflight、backfill 和 reconcile**
 
 ```text
 node scripts/verify-attribution-v3-migration.mjs preflight
@@ -1015,7 +1015,7 @@ node scripts/verify-attribution-v3-migration.mjs reconcile
 
 preflight 必须确认旧 Meta/TikTok server effective 为 0、新 Google server effective 为 0、旧 pending/retrying/DLQ 为 0、新 Queue/Workflow/主密钥已配置；任一不满足都退出非零。
 
-- [ ] **Step 3：重写 production deploy 阶段**
+- [x] **Step 3：重写 production deploy 阶段**
 
 ```text
 verify:quick
@@ -1029,6 +1029,8 @@ verify:quick
 ```
 
 脚本不修改 rollout、不写平台凭证、不伪造验证证据。
+
+验收记录：production 固定快照幂等回填、仓库外 D1 备份、双采样 Queue preflight、只读 reconcile 和统一部署顺序已实现；专项脚本测试 52/52 通过。真实 production 只读 preflight 仍阻断于旧 Meta Server 有效配置未降为 0、通用主密钥未配置和 6 条新 Queue 未创建，因此尚未应用 `0051`、未部署新运行时，也未写入 production 数据或 rollout。
 
 - [ ] **Step 4：运行脚本测试和 release 验证**
 

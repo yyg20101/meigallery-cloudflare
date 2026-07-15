@@ -104,14 +104,11 @@ print_secrets() {
   echo "  # 可选：sourceBotKey=ops_case_bot 时配置"
   echo "  ${WRANGLER_CMD} secret put TELEGRAM_BOT_TOKEN_OPS_CASE_BOT ${env_flag}"
   if [ "$env_name" = "production" ]; then
-    echo "  ${WRANGLER_CMD} secret put META_CAPI_ACCESS_TOKEN ${env_flag}"
-    echo "  ${WRANGLER_CMD} secret put META_CAPI_DATA_KEY_CURRENT ${env_flag}"
-    echo "  # 仅密钥轮换窗口配置"
-    echo "  ${WRANGLER_CMD} secret put META_CAPI_DATA_KEY_PREVIOUS ${env_flag}"
-    echo "  ${WRANGLER_CMD} secret put TIKTOK_EVENTS_ACCESS_TOKEN ${env_flag}"
-    echo "  ${WRANGLER_CMD} secret put TIKTOK_EVENTS_DATA_KEY_CURRENT ${env_flag}"
-    echo "  # TikTok 密钥轮换窗口："
-    echo "  ${WRANGLER_CMD} secret put TIKTOK_EVENTS_DATA_KEY_PREVIOUS ${env_flag}"
+    echo "  # 生成 32 字节随机主密钥并通过标准输入写入，不在终端输出明文"
+    echo "  openssl rand -base64 32 | ${WRANGLER_CMD} secret put AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT ${env_flag}"
+    echo "  # 仅通用凭证主密钥轮换窗口配置"
+    echo "  ${WRANGLER_CMD} secret put AD_PLATFORM_CREDENTIAL_MASTER_KEY_PREVIOUS ${env_flag}"
+    echo "  # 旧 META_CAPI_* / TIKTOK_EVENTS_* 仅保留为回滚资产，不再创建或轮换"
   fi
   echo ""
 }

@@ -48,10 +48,10 @@ main (生产)
 
 1. 从 `dev` 创建 `release/vX.Y.Z`，完成本地测试、类型检查、构建和 Worker dry-run。
 2. 推送 release 分支，通过 GitHub CI 后以 PR 合入 `main`，生产部署只允许从干净的 `main` 执行。
-3. `./scripts/deploy.sh production` 先只读核验四条广告平台 Queue，再运行 `verify:quick`；任一步失败都不得修改 production D1。
-4. 快速验证通过后应用向后兼容的 expand migration，再运行完整 `verify:release`。迁移必须允许旧 Worker 在发布窗口继续处理 Meta，失败时保留兼容结构但不部署新 Worker。
-5. 完整门禁核验当前 Meta 连接 revision、有效 live evidence、Dataset Quality、新鲜度、incident 和 rollout。普通业务 commit 只绑定本次发布报告，不使已验证的 Meta 连接或证据失效。
-6. 门禁通过后依次部署 API 与 Web，并在部署后严格校验两个 Worker 的 release commit 与当前 `main` HEAD 一致。
+3. release PR/CI 完成完整测试、覆盖率、类型检查、构建和归因隔离门禁；`./scripts/deploy.sh production` 不重复执行整套 `verify:release`。
+4. production 只允许从干净 `main` 执行。`0051` 首次切换按 `verify:quick -> preflight -> backup -> Expand -> API/Web -> backfill -> reconcile -> smoke` 执行，任一步失败按阶段停止。
+5. 普通业务发布在 `0051` 已应用后跳过一次性旧系统关闭态 preflight、备份和历史回填，不使已验证的平台连接或证据失效。
+6. 部署后严格校验两个 Worker 的 release commit 与当前 `main` HEAD 一致。
 7. 部署脚本不得修改 Meta/TikTok 的 enabled、mode、rollout、incident 或凭证；新接入平台必须保持默认关闭，待独立验证后再人工启用。
 8. 部署后核对 Meta 连接、rollout、Queue/DLQ 和 incident 与部署前一致，并确认 TikTok 仍为关闭态。
 9. 稳定后打 tag，将 `main` 合并回 `dev`，再删除 release 分支。

@@ -26,9 +26,9 @@
 - 开发 Worker：`meigallery-web-dev` / `meigallery-api-dev`，不绑定生产域名；当前真实地址为 `https://meigallery-web-dev.wajie.workers.dev` / `https://meigallery-api-dev.wajie.workers.dev`。
 - 数据库：生产为 Cloudflare D1 `meigallery-db`，开发环境已隔离到 `meigallery-db-dev`；迁移文件位于 `packages/api/migrations/`。
 - 对象存储：生产为 Cloudflare R2 `meigallery-media`，开发环境已隔离到 `meigallery-media-dev`。
-- Queue：仅 production 配置 `meigallery-meta-capi` / `meigallery-meta-capi-dlq` 与 `meigallery-tiktok-events` / `meigallery-tiktok-events-dlq` 绑定；dev 不配置广告平台 Queue 或 secret。2026-07-14 生产发布前后只读检查已确认四条 Queue 及对应 consumer 全部存在。
+- Queue：最终 production 配置 Meta/TikTok/Google 三组 `meigallery-ad-*` 主 Queue/DLQ；dev 不绑定广告平台 Queue 或凭证。旧 `meigallery-meta-capi*` / `meigallery-tiktok-events*` 在 Contract 前仅作为旧 Worker 回滚资产保留。
 - 视频：Cloudflare Stream 仍未接入生产链路；相关字段和密钥按规划保留。
-- 生产部署：通过 PR 合入 `main` 后手动执行 `./scripts/deploy.sh production`；脚本先只读确认四条广告平台 Queue 并运行 `verify:quick`，再应用向后兼容 migration、执行完整 `verify:release`，最后部署 Worker 并校验 production release identity。普通功能 commit 不使已验证的 Meta 连接失效。
+- 生产部署：通过 PR 合入 `main` 后手动执行 `./scripts/deploy.sh production`；完整验证由 release PR/CI 完成，部署脚本只运行一次 `verify:quick` 和远端切换门禁。`0051` 首次待应用时自动执行 preflight、仓库外 D1 备份、Expand、API/Web、回填、对账和 smoke；普通后续发布不重复历史切换。
 - CI：`.github/workflows/ci.yml` 只做 PR 和 dev 推送验证，不自动部署生产。
 - 发布快速校验：`corepack pnpm verify:quick` 先执行 `dev-resource-isolation` 与 `meta-secret-leaks`，阻断 dev 误用生产资源及 tracked/release evidence 静态泄漏。
 
@@ -41,7 +41,7 @@
 - `verify:local-runtime` 用于本地 Cloudflare 运行时验证 D1、Queue、归因和降级链路。
 - `verify:dev-rehearsal` 依赖独立 dev D1/R2 和 dev Workers URL，只验证 migration、站内转化、注册、分析与页面逻辑，不调用 Meta。
 - `verify:release` 是生产放行前最终校验；Meta 远端验证默认基于 production。`RELEASE_COMMIT` 仅用于发布追溯，普通业务发布不再使已验证的 Meta 连接失效。
-- `scripts/deploy.sh production` 已在远端 migration 前接入 fresh production gate；旧 `latest.json` 不能跳过 lint、API/Web coverage、scripts、tsc、build、local-runtime 和 remote gates。部署路径只负责验证、preflight、migration 与 Worker 部署，不写 setting、不关闭 incident、不调整 rollout。
+- `scripts/deploy.sh production` 只从干净 `main` 执行；完整测试在 release PR/CI 完成，部署时不重复整套 release gate。一次性 cutover 负责 preflight、备份、Expand、部署、回填、对账和 smoke，且不写平台设置、不关闭 incident、不调整 rollout。
 
 ## 当前已实现能力
 
@@ -55,6 +55,7 @@
 - TikTok Pixel / Events API：`0048` 初始化默认关闭的连接，`0049` 增加 TikTok 匹配字段、production 连接验证和通用加密 outbox。Browser 已接入 PageView、ViewContent、Search、Contact、CompleteRegistration；Server 使用 Events API v1.3、独立 token/data key、Queue/DLQ、lease、重试与 rollout。Contact / CompleteRegistration 的 Browser/Server 共用平台 event ID；Test Event Code 仅存在于 Owner 单次验证请求。生产仍默认关闭，待 production Pixel ID、secret、Queue 和 TikTok Test Events 人工验证后再放量。
 - 2026-07-15 通用广告归因平台设计 v2：设计讨论和书面评审均已确认。Meta、TikTok、Google Ads 将一次性迁入最终通用 Schema 和 Adapter 运行时，不保留 Meta 兼容层、双读、双写或平台 fallback；Google 使用原生 Google Tag 与 Data Manager API，GA4 不属于本期。Cloudflare 采用 Free-first 的 D1 + Queues + Workflows + Web Crypto 组合，Workflows 只处理幂等连接验证和长时间诊断，实时转化仍走平台 Queue；三平台合计服务端转化安全线为 2,000 条/天。可执行实施计划已重写为 14 个任务，覆盖 Expand、三平台迁移、生产回填、Contract 和旧资源清理。
 - 2026-07-15 三平台归因本地发布门禁：最终 11 张 attribution 表、Queue/Workflow mock、dev 真实平台网络禁用和 Meta/TikTok/Google 桌面与移动端来源隔离均已接入 `verify:local-runtime`。冲突来源与无来源只保留站内事实，Browser Contact/Registration 仅允许命中当前归因平台；Shared `5` 项、API `1119` 项、Web `282` 项、scripts/migration `298` 项、Playwright `35` 项、Lint、全仓 TypeScript、API TypeScript、Nuxt production build 和本地发布门禁全部通过。本阶段未访问真实平台 API，未修改 production 配置、数据或放量；生产回填、远端对账和切换属于后续 Task 13。
+- 2026-07-15 通用归因 production 切换工具：新增固定 production 快照、幂等事实回填、双采样 Queue preflight、仓库外 D1 export/Time Travel manifest 和只读对账。部署编排去除重复 `verify:release`、重复 API 测试和重复 Web build；裸 remote migration 命令已禁用。当前真实 production 只读 preflight 阻断于旧 Meta Server 仍有效、通用主密钥未配置和 6 条新 Queue 未创建，因此尚未应用 `0051`、未部署新运行时、未修改 rollout 或发送平台事件。
 - 2026-07-14 后台归因工作台重构：归因后台收口为 `总览 / 转化明细 / 投放链接 / 平台接入 / 发布与诊断` 五页，共用平台注册表和 URL `provider` 上下文；Meta 与 TikTok 的转化、链接、趋势、质量、重复诊断、连接和发布门禁全程隔离。后台入口统一为“广告归因”，旧 `Meta 运维` 页面已删除，连接验证不再与总览、发布控制重复。API `1156` 项、Web `277` 项、归因 Playwright 五视口 `15` 项、Lint、API TypeScript 和 Nuxt production build 全部通过；未修改 production 配置、数据、Meta rollout 或 TikTok 开关。
 - 2026-07-14 Telegram 联系短链调整：`t.me` 当日进入 `serverHold` 并停止全球 DNS 解析后，系统生成的 Telegram 用户名链接改用 `https://telegram.me/<username>`。Owner 手动填写的完整链接按输入域名、路径和参数原样保存并返回，不做 `t.me` / `telegram.me` 相互替换；Web 单测仅阻止锚点真实导航，不再产生外网 DNS 噪声。API `1158` 项、Web `278` 项全部通过；归因后台重构后的部署文档 CI 契约已同步至 `/admin/attribution/platforms?provider=meta`；无 migration、无生产配置变更。
 - 2026-07-14 v0.3.2 正式发布：归因转化 API 强制平台隔离后，local-runtime 与 dev-rehearsal smoke 均显式使用 `provider=meta`，并通过真实营销授权与 `/api/ad-attribution` 签发 Meta 来源 receipt，再创建联系和注册事实；测试替身同时拒绝缺少平台或 receipt 的旧调用。Meta 人工去重确认在连接身份与 Dataset Quality 契约未变化时统一按 30 天复用。production D1 无待执行 migration，API/Web 已部署 commit `63e137ccb7d594c8a3cdda8c1c6f1b6adc8a6cd5`，版本分别为 `aaa67941-4065-459d-9b96-627e95bb4526` / `ae1e0205-033f-4b78-8831-3abd11cf846c`；API health、两个生产域名和 SEO 校验通过。Meta 保持 production rollout `10%`、连接有效、无 critical incident 与 pending/retrying 积压，TikTok 保持 disabled / rollout `0%`。
