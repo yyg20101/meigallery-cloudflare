@@ -353,7 +353,7 @@ describe('Meta CAPI incident 生命周期', () => {
     }],
     ['queue_binding_missing', async () => {
       await seedCloseEvidence()
-      return { env: { META_CAPI_QUEUE: undefined } }
+      return { env: { AD_META_QUEUE: undefined } }
     }],
     ['meta_resources_verification_missing', async () => {
       await seedCloseEvidence({ resources: false })
@@ -427,7 +427,7 @@ function circuitEnv(overrides: Partial<Bindings> = {}) {
     APP_ENV: 'dev',
     META_CAPI_ACCESS_TOKEN: ACCESS_TOKEN,
     META_CAPI_DATA_KEY_CURRENT: DATA_KEY,
-    META_CAPI_QUEUE: { send: async () => undefined },
+    AD_META_QUEUE: { send: async () => undefined },
     RELEASE_COMMIT,
     ...overrides,
   } as unknown as Bindings

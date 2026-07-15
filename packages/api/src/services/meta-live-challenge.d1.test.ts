@@ -165,7 +165,7 @@ function env(overrides: Partial<Bindings> = {}) {
     DB: db,
     META_CAPI_ACCESS_TOKEN: 'production-token',
     META_CAPI_DATA_KEY_CURRENT: DATA_KEY,
-    META_CAPI_QUEUE: { send: vi.fn() },
+    AD_META_QUEUE: { send: vi.fn() },
     RELEASE_COMMIT: COMMIT,
     ...overrides,
   } as unknown as Bindings

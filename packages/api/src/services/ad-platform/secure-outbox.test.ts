@@ -1,12 +1,19 @@
+import { readFileSync } from 'node:fs'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Miniflare } from 'miniflare'
 import { enqueueAttributionDelivery, purgeExpiredAttributionOutbox } from './secure-outbox'
 
+const MIGRATION = readFileSync(new URL('../../../migrations/0051_unified_attribution_expand.sql', import.meta.url), 'utf8')
 let miniflare: Miniflare
 let db: D1Database
-beforeAll(async () => { miniflare = new Miniflare({ modules: true, script: 'export default { fetch() { return new Response("ok") } }', compatibilityDate: '2026-05-26', d1Databases: { DB: 'secure-outbox' } }); db = (await miniflare.getBindings<{ DB: D1Database }>()).DB; await db.exec(schema()) })
+
+beforeAll(async () => {
+  miniflare = new Miniflare({ modules: true, script: 'export default { fetch() { return new Response("ok") } }', compatibilityDate: '2026-05-26', d1Databases: { DB: 'secure-outbox' } })
+  db = (await miniflare.getBindings<{ DB: D1Database }>()).DB
+  await db.exec(MIGRATION.replace(/\s*\r?\n\s*/g, ' '))
+})
 afterAll(async () => { await miniflare.dispose() })
-beforeEach(async () => { await db.exec('DELETE FROM attribution_outbox; DELETE FROM attribution_deliveries;') })
+beforeEach(async () => { await db.exec('DELETE FROM attribution_outbox; DELETE FROM attribution_deliveries; DELETE FROM attribution_conversion_facts; DELETE FROM attribution_platform_connections;') })
 
 describe('统一归因安全 Outbox', () => {
   it('仅发送最小 Queue message，密文继续留在 D1 等待 consumer 终态清理', async () => {
@@ -25,8 +32,24 @@ describe('统一归因安全 Outbox', () => {
     expect((await db.prepare('SELECT status FROM attribution_deliveries').first<{ status: string }>())?.status).toBe('retrying')
   })
 
-  it('过期密文转为 rejected 后删除，不再保留可解密数据', async () => {
-    await seed("datetime('now', '-1 minute')")
+  it('Queue send 与诊断 UPDATE 连续失败也吞掉，留给 recovery', async () => {
+    await seed()
+    const diagnosticFailureDb = {
+      prepare(sql: string) {
+        if (sql.includes("SET status = 'retrying'")) throw new Error('D1 diagnostic unavailable')
+        return db.prepare(sql)
+      },
+      batch: db.batch.bind(db),
+    } as unknown as D1Database
+    await expect(enqueueAttributionDelivery({ DB: diagnosticFailureDb, AD_META_QUEUE: { send: async () => { throw new Error('queue unavailable') } } }, { provider: 'meta', deliveryId: 'delivery_meta' })).resolves.toBe('failed')
+    expect(await db.prepare('SELECT ciphertext FROM attribution_outbox').first()).not.toBeNull()
+  })
+
+  it.each([
+    ['过期', "datetime('now', '-1 minute')"],
+    ['不可解析', "'not-a-date'"],
+  ])('%s 密文转为 rejected 后删除，不再保留可解密数据', async (_name, expiresAt) => {
+    await seed(expiresAt)
     await expect(purgeExpiredAttributionOutbox(db)).resolves.toBe(1)
     expect(await db.prepare('SELECT delivery_id FROM attribution_outbox').first()).toBeNull()
     expect((await db.prepare('SELECT status FROM attribution_deliveries').first<{ status: string }>())?.status).toBe('rejected')
@@ -35,8 +58,9 @@ describe('统一归因安全 Outbox', () => {
 
 async function seed(expiresAt = "'2099-01-01T00:00:00.000Z'") {
   await db.batch([
-    db.prepare("INSERT INTO attribution_deliveries (id, provider, transport, status) VALUES ('delivery_meta', 'meta', 'server', 'planned')"),
-    db.prepare(`INSERT INTO attribution_outbox VALUES ('delivery_meta', 'meta', 1, '0123456789abcdef', 'AQIDBAUGBwgJCgsM', 'cipher', 'AQIDBAUGBwgJCgsMDQ4PEA', ${expiresAt}, datetime('now'), datetime('now'))`),
+    db.prepare("INSERT INTO attribution_platform_connections (id, provider, public_config_json, connection_revision, credential_revision) VALUES ('conn_meta', 'meta', '{}', 'revision_1', 'credential_1')"),
+    db.prepare("INSERT INTO attribution_conversion_facts (id, canonical_event, fact_origin, external_event_id, attribution_provider, attribution_source, occurred_at, dedupe_key, consent_snapshot_json, analytics_dimensions_json) VALUES ('fact_meta', 'Contact', 'live', 'mg3_fact_meta', 'meta', 'context', '2026-07-15T00:00:00.000Z', 'dedupe_meta', '{}', '{}')"),
+    db.prepare("INSERT INTO attribution_deliveries (id, fact_id, connection_id, provider, transport, status) VALUES ('delivery_meta', 'fact_meta', 'conn_meta', 'meta', 'server', 'planned')"),
+    db.prepare(`INSERT INTO attribution_outbox (delivery_id, provider, schema_version, key_id, iv, ciphertext, tag, expires_at) VALUES ('delivery_meta', 'meta', 1, '0123456789abcdef', 'AQIDBAUGBwgJCgsM', 'cipher', 'AQIDBAUGBwgJCgsMDQ4PEA', ${expiresAt})`),
   ])
 }
-function schema() { return `CREATE TABLE attribution_deliveries (id TEXT PRIMARY KEY, provider TEXT NOT NULL, transport TEXT NOT NULL, status TEXT NOT NULL, queue_attempt_count INTEGER NOT NULL DEFAULT 0, last_error_code TEXT NOT NULL DEFAULT '', last_error_message TEXT NOT NULL DEFAULT '', queued_at TEXT, updated_at TEXT NOT NULL DEFAULT (datetime('now'))); CREATE TABLE attribution_outbox (delivery_id TEXT PRIMARY KEY, provider TEXT NOT NULL, schema_version INTEGER NOT NULL, key_id TEXT NOT NULL, iv TEXT NOT NULL, ciphertext TEXT NOT NULL, tag TEXT NOT NULL, expires_at TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);` }

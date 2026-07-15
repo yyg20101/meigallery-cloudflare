@@ -17,7 +17,7 @@ beforeAll(async () => {
     CREATE TABLE attribution_event_bindings (id TEXT PRIMARY KEY, connection_id TEXT NOT NULL, provider TEXT NOT NULL, canonical_event TEXT NOT NULL, enabled INTEGER NOT NULL, browser_destination TEXT NOT NULL, server_destination TEXT NOT NULL, mapping_revision TEXT NOT NULL, config_json TEXT NOT NULL, created_at TEXT, updated_at TEXT);
     CREATE TABLE attribution_credentials (id TEXT PRIMARY KEY, connection_id TEXT NOT NULL, provider TEXT NOT NULL, credential_type TEXT NOT NULL, schema_version INTEGER NOT NULL, key_id TEXT NOT NULL, iv TEXT NOT NULL, ciphertext TEXT NOT NULL, tag TEXT NOT NULL, fingerprint TEXT NOT NULL, credential_revision TEXT NOT NULL, created_by INTEGER, created_at TEXT, updated_at TEXT);
     CREATE TABLE attribution_conversion_facts (id TEXT PRIMARY KEY, canonical_event TEXT NOT NULL, fact_origin TEXT NOT NULL, external_event_id TEXT UNIQUE, attribution_provider TEXT, attribution_source TEXT NOT NULL, attribution_context_id TEXT, occurred_at TEXT NOT NULL, dedupe_key TEXT NOT NULL UNIQUE, consent_snapshot_json TEXT NOT NULL, analytics_dimensions_json TEXT NOT NULL, created_at TEXT);
-    CREATE TABLE attribution_deliveries (id TEXT PRIMARY KEY, fact_id TEXT NOT NULL, connection_id TEXT NOT NULL, provider TEXT NOT NULL, transport TEXT NOT NULL, status TEXT NOT NULL, destination TEXT NOT NULL, match_signals_json TEXT NOT NULL, attempt_count INTEGER NOT NULL DEFAULT 0, queue_attempt_count INTEGER NOT NULL DEFAULT 0, last_error_code TEXT NOT NULL DEFAULT '', last_error_message TEXT NOT NULL DEFAULT '', queued_at TEXT, accepted_at TEXT, processed_at TEXT, created_at TEXT, updated_at TEXT, UNIQUE(fact_id, provider, transport));
+    CREATE TABLE attribution_deliveries (id TEXT PRIMARY KEY, fact_id TEXT NOT NULL, connection_id TEXT NOT NULL, provider TEXT NOT NULL, transport TEXT NOT NULL, status TEXT NOT NULL, destination TEXT NOT NULL, match_signals_json TEXT NOT NULL, attempt_count INTEGER NOT NULL DEFAULT 0, queue_attempt_count INTEGER NOT NULL DEFAULT 0, last_error_code TEXT NOT NULL DEFAULT '', last_error_message TEXT NOT NULL DEFAULT '', queued_at TEXT, accepted_at TEXT, processed_at TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(fact_id, provider, transport));
     CREATE TABLE attribution_outbox (delivery_id TEXT PRIMARY KEY, provider TEXT NOT NULL, schema_version INTEGER NOT NULL, key_id TEXT NOT NULL, iv TEXT NOT NULL, ciphertext TEXT NOT NULL, tag TEXT NOT NULL, expires_at TEXT NOT NULL, created_at TEXT, updated_at TEXT);
   `)
 })
@@ -37,6 +37,21 @@ describe('统一事实 D1 原子写入', () => {
     expect((await db.prepare('SELECT id FROM attribution_conversion_facts WHERE id = ?').bind(result.id).first())?.id).toBe(result.id)
     expect(await db.prepare('SELECT delivery_id FROM attribution_outbox').first()).not.toBeNull()
     expect((await db.prepare("SELECT status FROM attribution_deliveries WHERE transport = 'server'").first<{ status: string }>())?.status).toBe('retrying')
+  })
+
+  it('事实事务提交后，即时入队读取异常不让请求失败', async () => {
+    await seed('meta')
+    const enqueueReadFailureDb = {
+      prepare(sql: string) {
+        if (sql.includes('FROM attribution_outbox AS o')) throw new Error('D1 enqueue read unavailable')
+        return db.prepare(sql)
+      },
+      batch: db.batch.bind(db),
+    } as unknown as D1Database
+    const result = await recordRegistration({ ...env(), DB: enqueueReadFailureDb, AD_META_QUEUE: { send: vi.fn() } } as never, registrationInput('meta'))
+    expect(result.created).toBe(true)
+    expect((await db.prepare('SELECT id FROM attribution_conversion_facts WHERE id = ?').bind(result.id).first())?.id).toBe(result.id)
+    expect(await db.prepare('SELECT delivery_id FROM attribution_outbox').first()).not.toBeNull()
   })
 
   it.each([

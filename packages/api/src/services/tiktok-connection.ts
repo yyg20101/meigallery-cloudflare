@@ -19,7 +19,7 @@ export type TikTokConnectionEnv = Pick<
   | 'APP_ENV'
   | 'SITE_URL'
   | 'TIKTOK_EVENTS_ACCESS_TOKEN'
-  | 'TIKTOK_EVENTS_QUEUE'
+  | 'AD_TIKTOK_QUEUE'
   | 'TIKTOK_EVENTS_DATA_KEY_CURRENT'
 >
 

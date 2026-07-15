@@ -341,8 +341,8 @@ describe('analytics-ingest', () => {
       APP_ENV: 'test',
       DB: db,
       SESSION_SECRET: 'test-session-secret',
-      META_CAPI_QUEUE: { send: async message => { sent.push(message) } },
-    } as unknown as Pick<Bindings, 'APP_ENV' | 'DB' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>
+      AD_META_QUEUE: { send: async message => { sent.push(message) } },
+    } as unknown as Pick<Bindings, 'APP_ENV' | 'DB' | 'SESSION_SECRET' | 'AD_META_QUEUE'>
     const context = {
       body: baseBatch({
         eventId: 'event_contact_duplicate_1',

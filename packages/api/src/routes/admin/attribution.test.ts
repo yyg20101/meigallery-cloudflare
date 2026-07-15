@@ -976,7 +976,7 @@ const VALID_RELEASE_COMMIT = 'a'.repeat(40)
 const REQUEST_TEST_EVENT_CODE = 'TEST25401'
 const VALID_READINESS_ENV = {
   META_CAPI_ACCESS_TOKEN: 'secret-token',
-  META_CAPI_QUEUE: { send: async () => undefined },
+  AD_META_QUEUE: { send: async () => undefined },
   RELEASE_COMMIT: VALID_RELEASE_COMMIT,
   APP_ENV: 'dev',
   META_CAPI_DATA_KEY_CURRENT: Buffer.alloc(32, 7).toString('base64'),
@@ -1342,7 +1342,7 @@ describe('后台归因中心 API', () => {
     }, {
       DB: db,
       APP_ENV: 'production',
-      TIKTOK_EVENTS_QUEUE: { send: vi.fn() },
+      AD_TIKTOK_QUEUE: { send: vi.fn() },
       TIKTOK_EVENTS_DATA_KEY_CURRENT: Buffer.alloc(32, 7).toString('base64'),
     } as unknown as Bindings)
 
@@ -2206,7 +2206,7 @@ describe('后台归因中心 API', () => {
     ['conversion_ledger', { readiness: { actionCount: 0 } }, {}],
     ['pixel_mode_consistency', { settings: { browser_enabled: false } }, {}],
     ['capi_secret', {}, { META_CAPI_ACCESS_TOKEN: undefined }],
-    ['queue_binding', {}, { META_CAPI_QUEUE: undefined }],
+    ['queue_binding', {}, { AD_META_QUEUE: undefined }],
     ['meta_live_verification', { readiness: { liveVerificationPresent: false } }, {}],
     ['meta_resources_verification', { readiness: { resourcesVerificationPresent: false } }, {}],
     ['retry_exhausted', { readiness: { retryExhaustedCount: 1 } }, {}],
@@ -2365,7 +2365,7 @@ describe('后台归因中心 API', () => {
   })
 
   it.each([
-    ['Queue binding', { META_CAPI_QUEUE: undefined }],
+    ['Queue binding', { AD_META_QUEUE: undefined }],
     ['data key', { META_CAPI_DATA_KEY_CURRENT: undefined }],
     ['非法 data key', { META_CAPI_DATA_KEY_CURRENT: 'not-base64' }],
   ])('dev bootstrap 缺少或非法 %s 时不创建记录、不 fetch 且写审计', async (_label, overrides) => {
@@ -2579,7 +2579,7 @@ describe('后台归因中心 API', () => {
       body: JSON.stringify({ percentage: 10, force: false }),
     }, {
       APP_ENV: 'production',
-      META_CAPI_QUEUE: { send: queueSend },
+      AD_META_QUEUE: { send: queueSend },
     })
 
     expect(res.status).toBe(409)

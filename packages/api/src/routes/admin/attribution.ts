@@ -579,7 +579,7 @@ adminAttributionRoutes.get('/meta', async (c) => {
       },
       deliveries: rows.rows,
       lastSentAt: String((lastSentAt.rows[0] ?? {}).last_sent_at ?? ''),
-      queueBindingPresent: Boolean(c.env.META_CAPI_QUEUE),
+      queueBindingPresent: Boolean(c.env.AD_META_QUEUE),
       connection,
       keyRotation,
       matchQuality: {
@@ -863,7 +863,7 @@ async function buildReadinessResponse(c: AdminAttributionContext) {
     blockerCheck('conversion_ledger', '转化账本有近期数据', schemaReady && numberValue((conversions.rows[0] ?? {}).action_count) > 0, schemaReady ? `当前范围记录 ${numberValue((conversions.rows[0] ?? {}).action_count)} 次转化` : '归因迁移表不可用'),
     blockerCheck('pixel_mode_consistency', 'Pixel ID 与运行模式一致', pixelModeConsistent, pixelModeDetail(mode, pixelEnabled, capiEnabled, pixelIdPresent)),
     blockerCheck('capi_secret', 'CAPI token 已配置', !modeRequiresMeta || secretPresent, presenceDetail(modeRequiresMeta, secretPresent)),
-    blockerCheck('queue_binding', 'CAPI Queue binding 已配置', !modeRequiresMeta || Boolean(c.env.META_CAPI_QUEUE), presenceDetail(modeRequiresMeta, Boolean(c.env.META_CAPI_QUEUE))),
+    blockerCheck('queue_binding', 'CAPI Queue binding 已配置', !modeRequiresMeta || Boolean(c.env.AD_META_QUEUE), presenceDetail(modeRequiresMeta, Boolean(c.env.AD_META_QUEUE))),
     blockerCheck('meta_live_verification', '当前 Meta 连接已通过 live 验证', Boolean(liveVerification), verificationDetail(liveVerification)),
     blockerCheck('meta_resources_verification', '当前 Meta 资源已通过验证', Boolean(resourcesVerification), verificationDetail(resourcesVerification)),
     blockerCheck('retry_exhausted', '当前范围无重试耗尽', schemaReady && retryExhaustedCount === 0, schemaReady ? `发现 ${retryExhaustedCount} 条 retry_exhausted` : '归因迁移表不可用'),

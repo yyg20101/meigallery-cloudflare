@@ -4,9 +4,29 @@ import {
   main,
   REQUIRED_PRODUCTION_AD_QUEUES,
   verifyAdPlatformQueues,
+  verifyWranglerAdPlatformConfig,
 } from './verify-ad-platform-queues.mjs'
+import { readFileSync } from 'node:fs'
 
 describe('生产广告平台 Queue 前置检查', () => {
+  it('静态验证生产 3 producer、6 consumer、主 Queue 三次重试与 DLQ、15 分钟 Cron，且 dev 资源为空', () => {
+    const source = readFileSync(new URL('../packages/api/wrangler.toml', import.meta.url), 'utf8')
+    assert.deepEqual(verifyWranglerAdPlatformConfig(source), {
+      producers: 3,
+      consumers: 6,
+      productionCron: '*/15 * * * *',
+      devQueuesEmpty: true,
+      devCronsEmpty: true,
+    })
+  })
+
+  it('静态配置偏离 retry、DLQ 或 dev 隔离时阻断', () => {
+    const source = readFileSync(new URL('../packages/api/wrangler.toml', import.meta.url), 'utf8')
+    assert.throws(() => verifyWranglerAdPlatformConfig(source.replace('max_retries = 3', 'max_retries = 4')), /AD_PLATFORM_WRANGLER_CONFIG_INVALID/)
+    assert.throws(() => verifyWranglerAdPlatformConfig(source.replace('dead_letter_queue = "meigallery-ad-meta-dlq"', 'dead_letter_queue = "wrong-dlq"')), /AD_PLATFORM_WRANGLER_CONFIG_INVALID/)
+    assert.throws(() => verifyWranglerAdPlatformConfig(source.replace('[env.dev.triggers]\ncrons = []', '[env.dev.triggers]\ncrons = ["*/15 * * * *"]')), /AD_PLATFORM_WRANGLER_CONFIG_INVALID/)
+  })
+
   it('按固定顺序检查三平台的主 Queue 和 DLQ', async () => {
     const inspected = []
     const report = await verifyAdPlatformQueues({

@@ -262,7 +262,7 @@ function connectionEnv(db: D1Database, token = TOKEN): Bindings {
     DB: db,
     META_CAPI_ACCESS_TOKEN: token,
     META_CAPI_DATA_KEY_CURRENT: DATA_KEY,
-    META_CAPI_QUEUE: { send: vi.fn() },
+    AD_META_QUEUE: { send: vi.fn() },
     RELEASE_COMMIT,
   } as unknown as Bindings
 }

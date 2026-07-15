@@ -7,19 +7,19 @@ const AD_PLATFORM_COVERAGE_FILES = [
   'src/utils/ad-platform-identifiers.ts',
   'src/utils/secure-context-crypto.ts',
   'src/services/ad-platform/secure-outbox.ts',
+  'src/services/ad-platform/queue-runtime.ts',
+  'src/services/ad-platform/recovery.ts',
   'src/services/conversions.ts',
   'src/services/meta-capi.ts',
-  'src/services/meta-capi-queue.ts',
   'src/services/tiktok-connection.ts',
   'src/services/tiktok-events.ts',
   'src/services/tiktok-events-delivery.ts',
-  'src/services/tiktok-events-queue.ts',
   'src/routes/conversions.ts',
   'src/routes/admin/ad-platforms.ts',
   'src/routes/admin/attribution.ts',
 ]
 
-const AD_PLATFORM_COVERAGE_GLOB = 'src/{utils/conversions,utils/pixel-receipt,utils/ad-platform-identifiers,utils/secure-context-crypto,services/ad-platform/secure-outbox,services/conversions,services/meta-capi,services/meta-capi-queue,services/tiktok-connection,services/tiktok-events,services/tiktok-events-delivery,services/tiktok-events-queue,routes/conversions,routes/admin/ad-platforms,routes/admin/attribution}.ts'
+const AD_PLATFORM_COVERAGE_GLOB = 'src/{utils/conversions,utils/pixel-receipt,utils/ad-platform-identifiers,utils/secure-context-crypto,services/ad-platform/secure-outbox,services/ad-platform/queue-runtime,services/ad-platform/recovery,services/conversions,services/meta-capi,services/tiktok-connection,services/tiktok-events,services/tiktok-events-delivery,routes/conversions,routes/admin/ad-platforms,routes/admin/attribution}.ts'
 
 export default defineConfig({
   test: {

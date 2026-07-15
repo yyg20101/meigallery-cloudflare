@@ -178,7 +178,7 @@ async function updateTikTokConnection(c: AdminAdPlatformContext, body: Record<st
     try {
       const verified = await requireVerifiedTikTokConnection(c.env)
       if (identityChanged || verified.pixelId !== destinationId || mode !== 'production') throw new Error()
-      if (!c.env.TIKTOK_EVENTS_QUEUE) throw new Error()
+      if (!c.env.AD_TIKTOK_QUEUE) throw new Error()
       await loadTikTokEventsCryptoKeys(c.env)
     }
     catch {

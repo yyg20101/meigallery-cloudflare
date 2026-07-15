@@ -55,7 +55,7 @@ export type MetaConnectionEnv = Pick<
   | 'APP_ENV'
   | 'META_CAPI_ACCESS_TOKEN'
   | 'META_CAPI_DATA_KEY_CURRENT'
-  | 'META_CAPI_QUEUE'
+  | 'AD_META_QUEUE'
   | 'RELEASE_COMMIT'
 >
 
@@ -184,7 +184,7 @@ export async function bootstrapMetaConnectionVerification(
     if (environment === 'production') throw new MetaConnectionError('META_PRODUCTION_TEST_GATE_BLOCKED', 409)
     throw new MetaConnectionError('META_RELEASE_COMMIT_INVALID', 503)
   }
-  if (!pixelId || !accessToken || !env.META_CAPI_QUEUE) {
+  if (!pixelId || !accessToken || !env.AD_META_QUEUE) {
     if (environment === 'production') throw new MetaConnectionError('META_PRODUCTION_TEST_GATE_BLOCKED', 409)
     throw new MetaConnectionError('META_TEST_EVENT_NOT_CONFIGURED', 503)
   }

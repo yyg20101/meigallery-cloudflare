@@ -76,7 +76,7 @@ async function recordLiveFact(env: ConversionEnv, input: ConversionBaseInput & {
     if (concurrent) return duplicate(concurrent.id, input.actionType, await existingBrowserInstructions(env.DB, concurrent))
     throw error
   }
-  await Promise.all(plan.deliveries
+  await Promise.allSettled(plan.deliveries
     .filter(delivery => delivery.transport === 'server')
     .map(async delivery => { await enqueueAttributionDelivery(env, { provider: delivery.provider, deliveryId: delivery.id, queue: getAttributionQueue(env, delivery.provider) }) }))
   return { id, actionType: input.actionType, created: true, duplicateOf: '', trackingInstructions: plan.deliveries.flatMap(delivery => delivery.browserInstruction ? [delivery.browserInstruction] : []) }

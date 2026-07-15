@@ -127,7 +127,7 @@ const CRITICAL_RAW_EVENTS = new Set<AnalyticsEventName>([
 ])
 
 export async function ingestAnalyticsBatch(
-  env: Pick<Bindings, 'DB' | 'APP_ENV' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>,
+  env: Pick<Bindings, 'DB' | 'APP_ENV' | 'SESSION_SECRET'>,
   context: AnalyticsIngestContext,
 ): Promise<AnalyticsBatchResponse & { usage: D1Usage }> {
   if (context.bodySizeBytes > ANALYTICS_LIMITS.BATCH_BODY_LIMIT_BYTES) {
@@ -192,7 +192,7 @@ export async function ingestAnalyticsBatch(
 }
 
 export async function recordTrustedAnalyticsEvent(
-  env: Pick<Bindings, 'DB' | 'APP_ENV' | 'SESSION_SECRET' | 'META_CAPI_QUEUE'>,
+  env: Pick<Bindings, 'DB' | 'APP_ENV' | 'SESSION_SECRET'>,
   input: {
     eventName: AnalyticsEventName
     userId: number | null
