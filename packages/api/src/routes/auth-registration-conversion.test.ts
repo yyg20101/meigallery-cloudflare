@@ -59,7 +59,13 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
       userId: 42,
       visitorId: 'visitor_registration_42',
       sessionId: 'session_registration_42',
-      consentState: 'granted',
+      consentSnapshot: expect.objectContaining({
+        consentVersion: 1,
+        marketingAllowed: true,
+        adUserDataAllowed: true,
+        adPersonalizationAllowed: true,
+        decidedAt: expect.any(String),
+      }),
       attributionContext: null,
       attributionSource: 'none',
       metadata: { method: 'email' },
@@ -108,7 +114,7 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
 
     expect(response.status).toBe(201)
     expect(recordRegistrationMock).toHaveBeenCalledOnce()
-    expect(recordRegistrationMock.mock.calls[0]?.[1].consentState).toBe('denied')
+    expect(recordRegistrationMock.mock.calls[0]?.[1].consentSnapshot).toMatchObject({ marketingAllowed: false })
     expect(db.calls.some(call => call.sql.includes('SELECT id, email, conversion_external_id'))).toBe(false)
     expect(body.trackingInstructions).toEqual([])
   })
@@ -119,7 +125,7 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
     await register(db, { attribution: grantedAttribution() }, false)
 
     expect(recordRegistrationMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      consentState: 'limited',
+      consentSnapshot: expect.objectContaining({ marketingAllowed: false }),
     }))
     expect(db.calls.some(call => call.sql.includes('SELECT id, email, conversion_external_id'))).toBe(false)
   })
@@ -140,7 +146,7 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
     }, true, false)
 
     expect(recordRegistrationMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      consentState: 'granted',
+      consentSnapshot: expect.objectContaining({ marketingAllowed: true }),
       attributionContext: null,
       attributionSource: 'none',
     }))
@@ -154,7 +160,7 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
     })
 
     expect(recordRegistrationMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      consentState: 'granted',
+      consentSnapshot: expect.objectContaining({ marketingAllowed: true }),
       attributionContext: null,
       attributionSource: 'none',
     }))

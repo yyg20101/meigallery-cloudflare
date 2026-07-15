@@ -14,8 +14,17 @@ export async function buildAdExternalEventId(
     false,
     ['sign'],
   )
-  const digest = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`v3:${event}:${factId}`))
+  return buildAdExternalEventIdFromKey(key, factId, event)
+}
 
+/** 仅接受不可导出的 HMAC key，供归因派生密钥生成稳定事件 ID。 */
+export async function buildAdExternalEventIdFromKey(
+  key: CryptoKey,
+  factId: string,
+  event: CanonicalConversionEvent,
+) {
+  if (!factId.trim()) throw new Error('AD_EVENT_ID_INPUT_INVALID')
+  const digest = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`v3:${event}:${factId}`))
   return `mg3_${base64Url(new Uint8Array(digest)).slice(0, 43)}`
 }
 

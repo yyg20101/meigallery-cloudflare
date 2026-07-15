@@ -22,6 +22,8 @@ import { resolveTrustedMarketingConsent } from '../utils/marketing-consent-recei
 import { AD_ATTRIBUTION_CONTEXT_COOKIE } from './ad-attribution'
 import { loadAttributionCryptoKeys } from '../utils/attribution-crypto'
 import { resolveTrustedAdAttributionContext } from '../utils/ad-attribution-context'
+import { resolveTrustedAdConsentSnapshot } from '../utils/marketing-consent-receipt'
+import { hashAdPlatformEmail, readAdPlatformBrowserIdentifiersFromRequest } from '../utils/ad-platform-identifiers'
 
 type RegistrationAttributionContext = {
   visitorId?: string
@@ -256,7 +258,12 @@ authRoutes.post('/register', async (c) => {
     getCookie(c, MARKETING_CONSENT_RECEIPT_COOKIE),
     attribution.consentState,
   )
-  const attributionContext = attribution.consentState === 'granted'
+  const consentSnapshot = await resolveTrustedAdConsentSnapshot(
+    c.env.SESSION_SECRET,
+    getCookie(c, MARKETING_CONSENT_RECEIPT_COOKIE),
+    attribution.consentState,
+  )
+  const attributionContext = consentSnapshot.marketingAllowed
     && attribution.adAttributionState !== 'suppress'
     ? await trustedRegistrationAttributionContext(c)
     : null
@@ -299,9 +306,11 @@ authRoutes.post('/register', async (c) => {
       utmMedium: attribution.utmMedium,
       utmCampaign: attribution.utmCampaign,
       utmContent: attribution.utmContent,
-      consentState: attribution.consentState,
+      consentSnapshot,
       attributionContext,
       attributionSource: attributionContext ? 'context' : 'none',
+      browserIdentifiers: readAdPlatformBrowserIdentifiersFromRequest(c.req.raw),
+      hashedEmail: await hashAdPlatformEmail(email),
       metadata: { method: 'email' },
     })
     trackingInstructions = registration.trackingInstructions
@@ -334,7 +343,7 @@ async function trustedRegistrationAttributionContext(c: Parameters<typeof getCoo
   try {
     const keys = await loadAttributionCryptoKeys(c.env)
     const context = await resolveTrustedAdAttributionContext(keys, getCookie(c, AD_ATTRIBUTION_CONTEXT_COOKIE))
-    return context ? { provider: context.provider, contextId: context.contextId, source: context.source } : null
+    return context
   } catch { return null }
 }
 

@@ -1,6 +1,6 @@
 import type { AdPlatformTrackingMode } from '@meigallery/shared'
 import type { Bindings } from '../index'
-import { readAdPlatformConnection } from './ad-platform/legacy-connections'
+import { readAttributionConnectionSnapshot } from './ad-platform/connections'
 import {
   buildTikTokEventsPayload,
   isTikTokEventsSuccess,
@@ -49,8 +49,9 @@ export interface VerifiedTikTokConnection {
 }
 
 export async function getTikTokConnectionStatus(env: TikTokConnectionEnv): Promise<TikTokConnectionStatus> {
-  const connection = await readAdPlatformConnection(env.DB, 'tiktok')
-  const pixelId = String(connection?.destinationId || '').trim().toUpperCase()
+  const snapshot = await readAttributionConnectionSnapshot(env.DB, 'tiktok')
+  const connection = snapshot.state === 'ready' ? snapshot.connection : null
+  const pixelId = String(connection?.publicConfig.pixelCode || '').trim().toUpperCase()
   const accessToken = String(env.TIKTOK_EVENTS_ACCESS_TOKEN || '').trim()
   const base = {
     pixelIdConfigured: Boolean(pixelId),
@@ -93,19 +94,19 @@ export async function requireVerifiedTikTokConnection(
 ): Promise<VerifiedTikTokConnection> {
   const [status, connection] = await Promise.all([
     getTikTokConnectionStatus(env),
-    readAdPlatformConnection(env.DB, 'tiktok'),
+    readAttributionConnectionSnapshot(env.DB, 'tiktok'),
   ])
   const accessToken = String(env.TIKTOK_EVENTS_ACCESS_TOKEN || '').trim()
   if (status.state !== 'verified'
-    || !connection
-    || connection.mode !== 'production'
+    || connection.state !== 'ready'
+    || connection.connection.mode !== 'production'
     || !status.revision
     || !accessToken) throw new Error('TIKTOK_CONNECTION_UNVERIFIED')
   return {
-    pixelId: connection.destinationId,
+    pixelId: connection.connection.publicConfig.pixelCode ?? '',
     accessToken,
     revision: status.revision,
-    trackingMode: connection.mode,
+    trackingMode: connection.connection.mode,
   }
 }
 
@@ -118,8 +119,9 @@ export async function verifyTikTokConnection(
   },
 ) {
   if (env.APP_ENV !== 'production') throw new Error('TIKTOK_VERIFICATION_PRODUCTION_ONLY')
-  const connection = await readAdPlatformConnection(env.DB, 'tiktok')
-  const pixelId = String(connection?.destinationId || '').trim().toUpperCase()
+  const snapshot = await readAttributionConnectionSnapshot(env.DB, 'tiktok')
+  const connection = snapshot.state === 'ready' ? snapshot.connection : null
+  const pixelId = String(connection?.publicConfig.pixelCode || '').trim().toUpperCase()
   const accessToken = String(env.TIKTOK_EVENTS_ACCESS_TOKEN || '').trim()
   const testEventCode = String(input.testEventCode || '').trim()
   if (!pixelId || !accessToken) throw new Error('TIKTOK_CONNECTION_NOT_CONFIGURED')
@@ -178,11 +180,6 @@ export async function verifyTikTokConnection(
         invalidation_reason = '',
         updated_at = datetime('now')
     `).bind(pixelId, fingerprint, revision, verifiedAt),
-    env.DB.prepare(`
-      UPDATE ad_platform_connections
-      SET revision = ?, updated_at = datetime('now')
-      WHERE provider = 'tiktok' AND destination_id = ? AND mode = 'production'
-    `).bind(revision, pixelId),
   ])
   return { verified: true, idempotent: false, revision, verifiedAt, testEventsSent: 2 }
 }

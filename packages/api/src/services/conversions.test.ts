@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { recordContact } from './conversions'
+import { createAdConsentSnapshot } from '../utils/marketing-consent-receipt'
 
 const MASTER_KEY = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
 
 describe('统一转换事实', () => {
-  it('拒绝同意时只批量写入不可变 Fact 和归因审计，不创建 Delivery', async () => {
+  it('拒绝同意时只批量写入不可变 Fact，不创建 Delivery', async () => {
     const db = createDb()
     const result = await recordContact({ DB: db as unknown as D1Database, AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT: MASTER_KEY }, {
       visitorId: 'visitor_123', sessionId: 'session_123', occurredAt: '2026-07-15T00:00:00.000Z',
-      consentState: 'denied', attributionSource: 'none', contactMethodId: 'contact_123', contactPlatform: 'telegram',
+      consentSnapshot: createAdConsentSnapshot('denied'), attributionSource: 'none', contactMethodId: 'contact_123', contactPlatform: 'telegram',
       actionType: 'open_link', metadata: { source: 'unit' },
     })
 
@@ -16,18 +17,18 @@ describe('统一转换事实', () => {
     expect(db.batches).toHaveLength(1)
     const sql = db.batches[0]!.join('\n')
     expect(sql).toContain('attribution_conversion_facts')
-    expect(sql).toContain('attribution_fact_audit_logs')
     expect(sql).not.toContain('analytics_conversion_actions')
     expect(sql).not.toContain('analytics_conversion_deliveries')
   })
 
-  it('相同业务行为复用既有 Fact，不创建第二次投递', async () => {
+  it('相同业务行为复用既有 Fact，并返回原 Browser 指令', async () => {
     const db = createDb('fact_existing')
     const result = await recordContact({ DB: db as unknown as D1Database, AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT: MASTER_KEY }, {
       visitorId: 'visitor_123', sessionId: 'session_123', occurredAt: '2026-07-15T00:00:00.000Z',
-      contactMethodId: 'contact_123', contactPlatform: 'telegram', actionType: 'open_link',
+      consentSnapshot: createAdConsentSnapshot('denied'), contactMethodId: 'contact_123', contactPlatform: 'telegram', actionType: 'open_link',
     })
-    expect(result).toEqual({ id: 'fact_existing', actionType: 'contact', created: false, duplicateOf: 'fact_existing', trackingInstructions: [] })
+    expect(result).toMatchObject({ id: 'fact_existing', actionType: 'contact', created: false, duplicateOf: 'fact_existing' })
+    expect(result.trackingInstructions).toMatchObject([{ externalEventId: 'mg3_existing', canonicalEvent: 'Contact' }])
     expect(db.batches).toHaveLength(0)
   })
 })
@@ -40,15 +41,15 @@ function createDb(existingId?: string) {
       return {
         bind(...params: unknown[]) {
           return {
-            first: async <T>() => sql.includes('attribution_conversion_facts') && existingId ? ({ id: existingId } as T) : null,
-            all: async <T>() => ({ results: [] as T[] }),
+            first: async <T>() => sql.includes('attribution_conversion_facts') && existingId ? ({ id: existingId, canonical_event: 'Contact', external_event_id: 'mg3_existing' } as T) : null,
+            all: async <T>() => ({ results: sql.includes('attribution_deliveries') && existingId ? ([{ provider: 'meta', destination: 'meta_pixel' }] as T[]) : [] as T[] }),
             run: async () => ({ meta: { changes: 1 } }),
             __sql: sql,
             __params: params,
           }
         },
-        first: async <T>() => sql.includes('attribution_conversion_facts') && existingId ? ({ id: existingId } as T) : null,
-        all: async <T>() => ({ results: [] as T[] }),
+        first: async <T>() => sql.includes('attribution_conversion_facts') && existingId ? ({ id: existingId, canonical_event: 'Contact', external_event_id: 'mg3_existing' } as T) : null,
+        all: async <T>() => ({ results: sql.includes('attribution_deliveries') && existingId ? ([{ provider: 'meta', destination: 'meta_pixel' }] as T[]) : [] as T[] }),
       }
     },
     async batch(statements: Array<{ __sql?: string }>) {

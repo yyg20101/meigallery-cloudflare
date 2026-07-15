@@ -5,11 +5,12 @@ import { recordContact } from '../services/conversions'
 import { errorJson } from '../utils/api-error'
 import { safeContactLinkUrl } from '../utils/contact-link-url'
 import { generateContactLink } from '@meigallery/shared/constants'
-import { resolveTrustedMarketingConsent } from '../utils/marketing-consent-receipt'
+import { resolveTrustedAdConsentSnapshot } from '../utils/marketing-consent-receipt'
 import { MARKETING_CONSENT_RECEIPT_COOKIE } from './marketing-consent'
 import { AD_ATTRIBUTION_CONTEXT_COOKIE } from './ad-attribution'
 import { loadAttributionCryptoKeys } from '../utils/attribution-crypto'
 import { resolveTrustedAdAttributionContext } from '../utils/ad-attribution-context'
+import { readAdPlatformBrowserIdentifiersFromRequest } from '../utils/ad-platform-identifiers'
 
 const CONVERSION_ID_RE = /^[A-Za-z0-9_-]{8,120}$/
 
@@ -34,20 +35,22 @@ conversionRoutes.post('/events', async (c) => {
     WHERE id = ? AND enabled = 1
     LIMIT 1
   `).bind(contactMethodId).first<{ id: string, platform: string, value: string, link_url: string | null }>()
-  const targetUrl = contact ? safeContactLinkUrl(contact.link_url) || safeContactLinkUrl(generateContactLink(contact.platform, contact.value)) : null
+  const targetUrl = contact
+    ? (contact.link_url ? safeContactLinkUrl(contact.link_url) : safeContactLinkUrl(generateContactLink(contact.platform, contact.value)))
+    : null
   if (!contact || !contact.platform.trim() || !targetUrl) {
     return errorJson(c, 400, '公开转化动作无效', { code: 'PUBLIC_CONVERSION_ACTION_INVALID' })
   }
-  const consentState = await resolveTrustedMarketingConsent(
+  const consentSnapshot = await resolveTrustedAdConsentSnapshot(
     c.env.SESSION_SECRET, getCookie(c, MARKETING_CONSENT_RECEIPT_COOKIE), body.consentState,
   )
-  const attributionContext = consentState === 'granted' ? await trustedAttributionContext(c) : null
+  const attributionContext = consentSnapshot.marketingAllowed ? await trustedAttributionContext(c) : null
   const result = await recordContact(c.env, {
     visitorId, sessionId, userId: c.get('userId'), occurredAt: String(body.occurredAt || new Date().toISOString()),
     routeName: text(body.routeName, 120), path: text(body.path, 240), sourceChannel: text(body.sourceChannel, 40) || 'unknown',
     sourceName: text(body.sourceName, 120), trackingSourceSlug: text(body.trackingSourceSlug, 120),
     utmSource: text(body.utmSource, 120), utmMedium: text(body.utmMedium, 120), utmCampaign: text(body.utmCampaign, 120), utmContent: text(body.utmContent, 120),
-    consentState, attributionContext, attributionSource: attributionContext ? 'context' : 'none',
+    consentSnapshot, attributionContext, attributionSource: attributionContext ? 'context' : 'none', browserIdentifiers: readAdPlatformBrowserIdentifiersFromRequest(c.req.raw),
     contactMethodId: contact.id, contactPlatform: contact.platform, actionType: 'open_link',
     metadata: isPlainRecord(body.metadata) ? body.metadata : {},
   })
@@ -58,7 +61,7 @@ async function trustedAttributionContext(c: Parameters<typeof getCookie>[0]) {
   try {
     const keys = await loadAttributionCryptoKeys(c.env)
     const context = await resolveTrustedAdAttributionContext(keys, getCookie(c, AD_ATTRIBUTION_CONTEXT_COOKIE))
-    return context ? { provider: context.provider, contextId: context.contextId, source: context.source } : null
+    return context
   } catch { return null }
 }
 

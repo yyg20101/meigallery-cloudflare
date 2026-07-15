@@ -4,9 +4,9 @@ import { getMetaConnectionStatus } from '../meta-connection'
 import type { TikTokConnectionEnv } from '../tiktok-connection'
 import { getTikTokConnectionStatus } from '../tiktok-connection'
 import {
-  listAdPlatformConnections as readAdPlatformConnections,
-  type AdPlatformConnection,
-} from './legacy-connections'
+  readAttributionConnectionSnapshot,
+  type AttributionConnectionSnapshot,
+} from './connections'
 // 临时兼容旧运维状态页；新转换规划只使用 connections.ts 的新快照接口。
 import { listAdPlatformProviders } from './registry'
 
@@ -29,18 +29,45 @@ export interface AdPlatformConnectionStatus {
   verifiedCommit: string
 }
 
+type AdPlatformConnection = {
+  provider: AdPlatformProvider
+  enabled: boolean
+  browserEnabled: boolean
+  serverEnabled: boolean
+  destinationId: string
+  debugEnabled: boolean
+  rolloutPercentage: number
+  mode: AdPlatformTrackingMode
+}
+
 export async function listAdPlatformConnections(env: MetaConnectionEnv & TikTokConnectionEnv) {
-  const [meta, tiktok, connections] = await Promise.all([
+  const providers = listAdPlatformProviders()
+  const [meta, tiktok, snapshots] = await Promise.all([
     getMetaConnectionStatus(env),
     getTikTokConnectionStatus(env),
-    readAdPlatformConnections(env.DB),
+    Promise.all(providers.map(provider => readAttributionConnectionSnapshot(env.DB, provider))),
   ])
-  const byProvider = new Map(connections.map(connection => [connection.provider, connection]))
-  return listAdPlatformProviders().map(provider => provider === 'meta'
+  const byProvider = new Map(providers.map((provider, index) => [provider, toStatusConnection(provider, snapshots[index]!)]))
+  return providers.map(provider => provider === 'meta'
     ? fromMetaConnection(meta, byProvider.get(provider) ?? null, env)
     : provider === 'tiktok'
       ? fromTikTokConnection(tiktok, byProvider.get(provider) ?? null, env)
       : fromBrowserConnection(provider, byProvider.get(provider) ?? null))
+}
+
+function toStatusConnection(provider: AdPlatformProvider, snapshot: AttributionConnectionSnapshot): AdPlatformConnection | null {
+  if (snapshot.state !== 'ready') return null
+  const values = Object.values(snapshot.connection.publicConfig)
+  return {
+    provider,
+    enabled: snapshot.connection.enabled,
+    browserEnabled: snapshot.connection.browserEnabled,
+    serverEnabled: snapshot.connection.serverEnabled,
+    destinationId: values[0] ?? '',
+    debugEnabled: false,
+    rolloutPercentage: snapshot.connection.rolloutEffectivePercentage,
+    mode: snapshot.connection.mode,
+  }
 }
 
 function fromTikTokConnection(

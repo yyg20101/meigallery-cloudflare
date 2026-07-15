@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildAdExternalEventId } from './ad-event-id'
+import { buildAdExternalEventId, buildAdExternalEventIdFromKey } from './ad-event-id'
 
 describe('buildAdExternalEventId', () => {
   const secret = 'test-ad-event-id-secret'
@@ -28,5 +28,13 @@ describe('buildAdExternalEventId', () => {
   it('在主密钥为空时 fail closed', async () => {
     await expect(buildAdExternalEventId('', 'contact:user_42:wechat', 'Contact'))
       .rejects.toThrow('AD_EVENT_ID_INPUT_INVALID')
+  })
+
+  it('可用不可导出的 HMAC key 生成相同协议 ID', async () => {
+    const key = await crypto.subtle.importKey(
+      'raw', new TextEncoder().encode('a'.repeat(32)), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+    )
+    await expect(buildAdExternalEventIdFromKey(key, 'fact_1', 'Contact')).resolves.toMatch(/^mg3_/)
+    expect(key.extractable).toBe(false)
   })
 })

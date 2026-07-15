@@ -52,6 +52,17 @@ describe('归因投递 Planner', () => {
     })
     expect(plan.deliveries).toEqual([])
   })
+
+  it.each([0, 10, 100])('Server rollout 为 %i 时 Browser 仍独立计划', async rolloutEffectivePercentage => {
+    const plan = await buildAttributionDeliveryPlan({
+      factId: `fact_rollout_${rolloutEffectivePercentage}`, provider: 'meta', canonicalEvent: 'Contact',
+      consentGranted: true, sourceAvailable: true, stableId: 'user_5', eventKey: await eventKey(),
+      connection: readyConnection('meta', rolloutEffectivePercentage),
+    })
+    expect(plan.deliveries.filter(item => item.transport === 'browser')).toHaveLength(1)
+    if (rolloutEffectivePercentage === 100) expect(plan.deliveries.filter(item => item.transport === 'server')).toHaveLength(1)
+    else expect(plan.deliveries.filter(item => item.transport === 'server')).toHaveLength(0)
+  })
 })
 
 function readyConnection(provider: 'meta' | 'tiktok' | 'google', rolloutPercentage = 100) {
