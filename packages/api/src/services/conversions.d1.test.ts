@@ -29,6 +29,16 @@ beforeEach(async () => {
 afterAll(async () => { await miniflare.dispose() })
 
 describe('统一事实 D1 原子写入', () => {
+  it('D1 batch 成功后立即尝试入队，入队失败不回滚事实或 Outbox', async () => {
+    await seed('meta')
+    const send = vi.fn().mockRejectedValue(new Error('queue unavailable'))
+    const result = await recordRegistration({ ...env(), AD_META_QUEUE: { send } } as never, registrationInput('meta'))
+    expect(send).toHaveBeenCalledWith({ schemaVersion: 1, deliveryId: expect.any(String), provider: 'meta' })
+    expect((await db.prepare('SELECT id FROM attribution_conversion_facts WHERE id = ?').bind(result.id).first())?.id).toBe(result.id)
+    expect(await db.prepare('SELECT delivery_id FROM attribution_outbox').first()).not.toBeNull()
+    expect((await db.prepare("SELECT status FROM attribution_deliveries WHERE transport = 'server'").first<{ status: string }>())?.status).toBe('retrying')
+  })
+
   it.each([
     ['meta', { fbp: 'fbp_private', fbc: 'fbc_private' }],
     ['tiktok', { ttclid: 'ttclid_private', ttp: 'ttp_private' }],

@@ -34,11 +34,8 @@ import {
   aggregatePathEdges,
   cleanupAnalyticsRetention,
 } from './services/analytics-aggregate'
-import { recoverPendingMetaCapiDeliveries } from './services/meta-capi-queue'
-import { recoverPendingTikTokEventsDeliveries } from './services/tiktok-events-queue'
-import { purgeExpiredAdPlatformOutbox } from './services/ad-platform/secure-outbox'
+import { recoverAttributionOutbox } from './services/ad-platform/recovery'
 import { recoverRegistrationConversionFacts } from './services/registration-conversion-recovery'
-import { runMetaCapiCircuitEvaluation } from './services/meta-capi-circuit-breaker'
 import { collectMetaDatasetQuality } from './services/meta-dataset-quality'
 
 /** Hono 应用绑定类型 */
@@ -67,6 +64,9 @@ export type Bindings = {
   TIKTOK_EVENTS_ACCESS_TOKEN?: string
   TIKTOK_EVENTS_DATA_KEY_CURRENT?: string
   TIKTOK_EVENTS_DATA_KEY_PREVIOUS?: string
+  AD_META_QUEUE?: Queue<AdPlatformQueueMessage>
+  AD_TIKTOK_QUEUE?: Queue<AdPlatformQueueMessage>
+  AD_GOOGLE_QUEUE?: Queue<AdPlatformQueueMessage>
   RELEASE_COMMIT?: string
 }
 
@@ -308,49 +308,19 @@ app.onError((err, c) => {
 // minute trigger 执行高频公共任务，并在 UTC 00:00 继续执行完整维护任务。
 // ============================================================
 
-const MINUTE_MAINTENANCE_CRON = '* * * * *'
-const DAILY_MAINTENANCE_CRON = '0 0 * * *'
-const META_QUEUE_NAMES = new Set(['meigallery-meta-capi', 'meigallery-meta-capi-dlq'])
-const TIKTOK_QUEUE_NAMES = new Set(['meigallery-tiktok-events', 'meigallery-tiktok-events-dlq'])
+const ATTRIBUTION_RECOVERY_CRON = '*/15 * * * *'
 
 async function handleScheduled(event: ScheduledEvent, env: Bindings): Promise<void> {
   const db = env.DB
 
-  if (event.cron === MINUTE_MAINTENANCE_CRON) {
+  if (event.cron === ATTRIBUTION_RECOVERY_CRON) {
     try {
-      const circuit = await runMetaCapiCircuitEvaluation(env)
-      console.log('[cron] Meta CAPI Circuit Breaker 评估完成:', {
-        criticalCount: circuit.criticalTriggers.length,
-        warningCount: circuit.warnings.length,
-      })
+      if (shouldRecoverAttributionOutbox(event)) {
+        const recovery = await recoverAttributionOutbox(env, 100)
+        console.log('[cron] 统一广告平台 Outbox 恢复完成:', recovery)
+      }
     } catch {
-      console.error('[cron] Meta CAPI Circuit Breaker 评估失败:', {
-        errorCode: 'meta_circuit_evaluation_failed',
-      })
-    }
-
-    try {
-      const purge = await purgeExpiredAdPlatformOutbox(db, 100)
-      console.log('[cron] 广告平台过期密文清理完成:', purge)
-    } catch {
-      console.error('[cron] 广告平台过期密文清理失败:', {
-        errorCode: 'secure_outbox_purge_failed',
-      })
-    }
-
-    try {
-      const recovery = await recoverPendingMetaCapiDeliveries(env)
-      console.log('[cron] Meta CAPI Queue 恢复完成:', recovery)
-    } catch (error) {
-      console.error('[cron] Meta CAPI Queue 恢复失败:', error)
-    }
-
-    try {
-      const recovery = await recoverPendingTikTokEventsDeliveries(env)
-      console.log('[cron] TikTok Events Queue 恢复完成:', recovery)
-    }
-    catch (error) {
-      console.error('[cron] TikTok Events Queue 恢复失败:', error)
+      console.error('[cron] 统一广告平台 Outbox 恢复失败:', { errorCode: 'attribution_outbox_recovery_failed' })
     }
 
     if (shouldRecoverRegistrationConversions(event)) {
@@ -365,7 +335,7 @@ async function handleScheduled(event: ScheduledEvent, env: Bindings): Promise<vo
     }
     if (!shouldRunDailyMaintenance(event)) return
   }
-  else if (event.cron !== DAILY_MAINTENANCE_CRON) {
+  else {
     console.log('[cron] 未知 trigger，跳过定时任务:', event.cron || 'unknown')
     return
   }
@@ -451,9 +421,14 @@ function shouldRunDailyMaintenance(event: ScheduledEvent) {
 }
 
 function shouldRecoverRegistrationConversions(event: ScheduledEvent) {
-  if (event.cron !== MINUTE_MAINTENANCE_CRON) return false
+  if (event.cron !== ATTRIBUTION_RECOVERY_CRON) return false
   const scheduledAt = new Date(event.scheduledTime)
   return !Number.isNaN(scheduledAt.getTime()) && scheduledAt.getUTCMinutes() === 0
+}
+
+function shouldRecoverAttributionOutbox(event: ScheduledEvent) {
+  const scheduledAt = new Date(event.scheduledTime)
+  return !Number.isNaN(scheduledAt.getTime()) && [0, 15, 30, 45].includes(scheduledAt.getUTCMinutes())
 }
 
 function operationDate(now = new Date()) {
@@ -477,20 +452,7 @@ export default {
     ctx.waitUntil(handleScheduled(event, env))
   },
   queue: async (batch: MessageBatch<AdPlatformQueueMessage>, env: Bindings) => {
-    if (META_QUEUE_NAMES.has(batch.queue)) {
-      const { handleMetaCapiBatch } = await import('./services/meta-capi-queue')
-      await handleMetaCapiBatch(batch, env)
-      return
-    }
-    if (TIKTOK_QUEUE_NAMES.has(batch.queue)) {
-      const { handleTikTokEventsBatch } = await import('./services/tiktok-events-queue')
-      await handleTikTokEventsBatch(batch, env)
-      return
-    }
-    console.error('[queue] 未注册的 Queue，消息已安全终止:', { queue: batch.queue })
-    for (const message of batch.messages) {
-      try { message.ack() }
-      catch { /* 单条消息错误不影响同批次后续消息。 */ }
-    }
+    const { handleAttributionQueueBatch } = await import('./services/ad-platform/queue-runtime')
+    await handleAttributionQueueBatch(batch, env)
   },
 }

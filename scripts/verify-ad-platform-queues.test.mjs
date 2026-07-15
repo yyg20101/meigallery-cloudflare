@@ -7,7 +7,7 @@ import {
 } from './verify-ad-platform-queues.mjs'
 
 describe('生产广告平台 Queue 前置检查', () => {
-  it('按固定顺序检查 Meta 与 TikTok 的主 Queue 和 DLQ', async () => {
+  it('按固定顺序检查三平台的主 Queue 和 DLQ', async () => {
     const inspected = []
     const report = await verifyAdPlatformQueues({
       environment: 'production',
@@ -15,7 +15,7 @@ describe('生产广告平台 Queue 前置检查', () => {
     })
 
     assert.deepEqual(inspected, [...REQUIRED_PRODUCTION_AD_QUEUES])
-    assert.deepEqual(report, { status: 'passed', inspected: 4, required: 4 })
+    assert.deepEqual(report, { status: 'passed', inspected: 6, required: 6 })
   })
 
   it('任一 Queue 缺失时立即停止，不继续检查后续资源', async () => {
@@ -24,7 +24,7 @@ describe('生产广告平台 Queue 前置检查', () => {
       environment: 'production',
       inspectQueue: async queue => {
         inspected.push(queue)
-        if (queue === 'meigallery-tiktok-events') throw new Error('private provider response')
+        if (queue === 'meigallery-ad-tiktok') throw new Error('private provider response')
       },
     })
 
@@ -32,8 +32,8 @@ describe('生产广告平台 Queue 前置检查', () => {
     assert.deepEqual(report, {
       status: 'failed',
       inspected: 2,
-      required: 4,
-      missing: 'meigallery-tiktok-events',
+      required: 6,
+      missing: 'meigallery-ad-tiktok',
     })
   })
 
@@ -53,7 +53,7 @@ describe('生产广告平台 Queue 前置检查', () => {
     })
 
     assert.equal(report.status, 'failed')
-    assert.equal(output, 'AD_PLATFORM_QUEUE_PREFLIGHT_FAILED inspected=0 required=4\n')
+    assert.equal(output, 'AD_PLATFORM_QUEUE_PREFLIGHT_FAILED inspected=0 required=6\n')
     assert.doesNotMatch(output, /private|provider response/)
   })
 })

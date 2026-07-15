@@ -129,10 +129,11 @@ export interface AdPlatformEncryptedEnvelope {
   expiresAt: string
 }
 
+/** Queue 只传递定位 Delivery 所需的最小信息，密文始终留在 D1 Outbox。 */
 export interface AdPlatformQueueMessage {
-  schemaVersion: 2
+  schemaVersion: 1
   deliveryId: string
-  envelope: AdPlatformEncryptedEnvelope
+  provider: SharedAdAttributionProvider
 }
 
 export type ConversionSkipReason =

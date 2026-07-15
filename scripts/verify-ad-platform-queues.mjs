@@ -8,10 +8,12 @@ const execFile = promisify(execFileCallback)
 const ROOT_DIR = fileURLToPath(new URL('../', import.meta.url))
 
 export const REQUIRED_PRODUCTION_AD_QUEUES = Object.freeze([
-  'meigallery-meta-capi',
-  'meigallery-meta-capi-dlq',
-  'meigallery-tiktok-events',
-  'meigallery-tiktok-events-dlq',
+  'meigallery-ad-meta',
+  'meigallery-ad-meta-dlq',
+  'meigallery-ad-tiktok',
+  'meigallery-ad-tiktok-dlq',
+  'meigallery-ad-google',
+  'meigallery-ad-google-dlq',
 ])
 
 export async function verifyAdPlatformQueues(options = {}) {

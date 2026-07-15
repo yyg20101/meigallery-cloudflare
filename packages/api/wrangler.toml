@@ -28,39 +28,56 @@ name = "EMAIL"
 
 # Cron Trigger（定时任务）
 [triggers]
-crons = ["* * * * *"]  # 每分钟评估熔断；UTC 00:00 由同一 trigger 继续执行完整维护
+crons = ["*/15 * * * *"]
 
 [[queues.producers]]
-binding = "META_CAPI_QUEUE"
-queue = "meigallery-meta-capi"
+binding = "AD_META_QUEUE"
+queue = "meigallery-ad-meta"
 
 [[queues.consumers]]
-queue = "meigallery-meta-capi"
+queue = "meigallery-ad-meta"
 max_batch_size = 10
 max_batch_timeout = 30
-max_retries = 5
+max_retries = 3
 retry_delay = 60
-dead_letter_queue = "meigallery-meta-capi-dlq"
+dead_letter_queue = "meigallery-ad-meta-dlq"
 
 [[queues.consumers]]
-queue = "meigallery-meta-capi-dlq"
+queue = "meigallery-ad-meta-dlq"
 max_batch_size = 10
 max_batch_timeout = 5
 
 [[queues.producers]]
-binding = "TIKTOK_EVENTS_QUEUE"
-queue = "meigallery-tiktok-events"
+binding = "AD_TIKTOK_QUEUE"
+queue = "meigallery-ad-tiktok"
 
 [[queues.consumers]]
-queue = "meigallery-tiktok-events"
+queue = "meigallery-ad-tiktok"
 max_batch_size = 10
 max_batch_timeout = 30
-max_retries = 5
+max_retries = 3
 retry_delay = 60
-dead_letter_queue = "meigallery-tiktok-events-dlq"
+dead_letter_queue = "meigallery-ad-tiktok-dlq"
 
 [[queues.consumers]]
-queue = "meigallery-tiktok-events-dlq"
+queue = "meigallery-ad-tiktok-dlq"
+max_batch_size = 10
+max_batch_timeout = 5
+
+[[queues.producers]]
+binding = "AD_GOOGLE_QUEUE"
+queue = "meigallery-ad-google"
+
+[[queues.consumers]]
+queue = "meigallery-ad-google"
+max_batch_size = 10
+max_batch_timeout = 30
+max_retries = 3
+retry_delay = 60
+dead_letter_queue = "meigallery-ad-google-dlq"
+
+[[queues.consumers]]
+queue = "meigallery-ad-google-dlq"
 max_batch_size = 10
 max_batch_timeout = 5
 

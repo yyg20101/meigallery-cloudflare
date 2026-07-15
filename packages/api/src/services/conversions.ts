@@ -8,8 +8,9 @@ import { createAdConsentSnapshot, type AdConsentSnapshot } from '../utils/market
 import { readAttributionConnectionSnapshot } from './ad-platform/connections'
 import { buildAttributionDeliveryPlan } from './ad-platform/planner'
 import { getAdPlatformDefinition } from './ad-platform/registry'
+import { enqueueAttributionDelivery, getAttributionQueue } from './ad-platform/secure-outbox'
 
-type ConversionEnv = Pick<Bindings, 'DB' | 'SITE_URL' | 'AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT' | 'AD_PLATFORM_CREDENTIAL_MASTER_KEY_PREVIOUS'>
+type ConversionEnv = Pick<Bindings, 'DB' | 'SITE_URL' | 'AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT' | 'AD_PLATFORM_CREDENTIAL_MASTER_KEY_PREVIOUS' | 'AD_META_QUEUE' | 'AD_TIKTOK_QUEUE' | 'AD_GOOGLE_QUEUE'>
 type BrowserIdentifiers = { fbp?: string; fbc?: string; ttclid?: string; ttp?: string }
 type ConversionBaseInput = {
   visitorId: string; sessionId: string; userId?: number | null; occurredAt: string; routeName?: string; path?: string
@@ -75,6 +76,9 @@ async function recordLiveFact(env: ConversionEnv, input: ConversionBaseInput & {
     if (concurrent) return duplicate(concurrent.id, input.actionType, await existingBrowserInstructions(env.DB, concurrent))
     throw error
   }
+  await Promise.all(plan.deliveries
+    .filter(delivery => delivery.transport === 'server')
+    .map(async delivery => { await enqueueAttributionDelivery(env, { provider: delivery.provider, deliveryId: delivery.id, queue: getAttributionQueue(env, delivery.provider) }) }))
   return { id, actionType: input.actionType, created: true, duplicateOf: '', trackingInstructions: plan.deliveries.flatMap(delivery => delivery.browserInstruction ? [delivery.browserInstruction] : []) }
 }
 
@@ -98,7 +102,7 @@ function factStatement(db: D1Database, input: { id: string; canonicalEvent: Cano
 }
 function deliveryStatement(db: D1Database, factId: string, snapshot: Awaited<ReturnType<typeof readAttributionConnectionSnapshot>>, delivery: Awaited<ReturnType<typeof buildAttributionDeliveryPlan>>['deliveries'][number]) {
   if (snapshot.state !== 'ready') throw new Error('ATTRIBUTION_CONNECTION_INVALID')
-  return db.prepare(`INSERT INTO attribution_deliveries (id, fact_id, connection_id, provider, transport, status, destination, match_signals_json) VALUES (?, ?, ?, ?, ?, 'planned', ?, '[]')`).bind(delivery.id, factId, snapshot.connection.id, delivery.provider, delivery.transport, delivery.destination)
+  return db.prepare(`INSERT INTO attribution_deliveries (id, fact_id, connection_id, provider, transport, status, destination, match_signals_json) VALUES (?, ?, ?, ?, ?, 'planned', ?, ?)`).bind(delivery.id, factId, snapshot.connection.id, delivery.provider, delivery.transport, delivery.destination, JSON.stringify(Object.keys(delivery.matchSignals).sort()))
 }
 async function findFact(db: D1Database, dedupeKey: string) { return db.prepare(`SELECT id, canonical_event, external_event_id FROM attribution_conversion_facts WHERE dedupe_key = ? LIMIT 1`).bind(dedupeKey).first<{ id: string; canonical_event: CanonicalConversionEvent; external_event_id: string }>() }
 async function existingBrowserInstructions(db: D1Database, fact: { id: string; canonical_event: CanonicalConversionEvent; external_event_id: string }) {

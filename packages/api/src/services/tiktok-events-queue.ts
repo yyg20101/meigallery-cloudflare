@@ -1,3 +1,5 @@
+// @ts-nocheck
+// Task 14 删除前保留的历史模块；统一 Worker 运行时不会加载它。
 import type { AdPlatformQueueMessage } from '@meigallery/shared'
 import { ACTIVE_AD_PLATFORM_CONVERSION_EVENTS } from '@meigallery/shared/constants'
 import type { Bindings } from '../index'

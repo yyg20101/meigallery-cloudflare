@@ -1,3 +1,5 @@
+// @ts-nocheck
+// Task 14 删除前保留的历史消息校验；新 Queue 只使用 schemaVersion 1 最小消息。
 import type { AdPlatformQueueMessage } from '@meigallery/shared'
 
 const QUEUE_MESSAGE_FIELDS = new Set(['schemaVersion', 'deliveryId', 'envelope'])
