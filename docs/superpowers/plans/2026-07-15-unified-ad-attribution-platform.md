@@ -149,7 +149,7 @@ Expected: tests PASS，提交成功。
 - Modify: `scripts/verify-meta-migration.mjs`
 - Modify: `scripts/verify-meta-migration.test.mjs`
 
-- [ ] **Step 1：写空库升级和 production 快照失败测试**
+- [x] **Step 1：写空库升级和 production 快照失败测试**
 
 验证从 `0001` 到 `0051` 可完整应用；旧表和旧 trigger 在 Expand 后原样存在；11 张 `attribution_*` 表存在；provider 使用开放字符串；Fact provider 不可修改；Fact、Delivery、Outbox provider 不一致被拒绝。
 
@@ -159,7 +159,7 @@ node --test packages/api/migrations/0051_unified_attribution_expand.test.mjs
 
 Expected: FAIL，迁移文件尚不存在。
 
-- [ ] **Step 2：创建最终表**
+- [x] **Step 2：创建最终表**
 
 `0051` 只创建新表、索引和新表之间的 trigger，不得包含 `ALTER TABLE`、旧表 trigger、旧表回填或旧表删除。
 
@@ -204,7 +204,7 @@ CREATE TABLE attribution_conversion_facts (
 
 `attribution_deliveries.status` 只允许 `planned`、`queued`、`accepted`、`processed`、`retrying`、`rejected`、`dead_letter`、`cancelled`。
 
-- [ ] **Step 3：加入 provider 一致性 trigger**
+- [x] **Step 3：加入 provider 一致性 trigger**
 
 ```sql
 CREATE TRIGGER attribution_delivery_provider_guard
@@ -221,7 +221,7 @@ BEGIN
 END;
 ```
 
-- [ ] **Step 4：运行迁移测试并提交**
+- [x] **Step 4：运行迁移测试并提交**
 
 ```bash
 node --test packages/api/migrations/0051_unified_attribution_expand.test.mjs scripts/verify-meta-migration.test.mjs
