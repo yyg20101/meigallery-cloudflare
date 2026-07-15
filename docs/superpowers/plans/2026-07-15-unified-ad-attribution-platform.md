@@ -597,17 +597,17 @@ queue = "meigallery-ad-google"
 - [x] **Step 3：按 Queue 名绑定 Adapter**
 
 ```ts
-const QUEUE_PROVIDERS: Readonly<Record<string, AdAttributionProvider>> = {
-  'meigallery-ad-meta': 'meta',
-  'meigallery-ad-meta-dlq': 'meta',
-  'meigallery-ad-tiktok': 'tiktok',
-  'meigallery-ad-tiktok-dlq': 'tiktok',
-  'meigallery-ad-google': 'google',
-  'meigallery-ad-google-dlq': 'google',
-}
+const QUEUE_PROVIDERS: ReadonlyMap<string, AdAttributionProvider> = new Map([
+  ['meigallery-ad-meta', 'meta'],
+  ['meigallery-ad-meta-dlq', 'meta'],
+  ['meigallery-ad-tiktok', 'tiktok'],
+  ['meigallery-ad-tiktok-dlq', 'tiktok'],
+  ['meigallery-ad-google', 'google'],
+  ['meigallery-ad-google-dlq', 'google'],
+])
 ```
 
-未注册 Queue、畸形消息或 provider 不一致必须 ack 并写 critical incident，禁止投递到其他 Adapter，也禁止借终态分支清理 Outbox。finalize、DLQ、expiry 的 delete/receipt/incident 只认当次唯一 fence，batch 结束前清为最终 `last_error_code`。
+未注册 Queue、畸形消息或 provider 不一致必须 ack 并写 critical incident，禁止投递到其他 Adapter，也禁止借终态分支清理 Outbox。Queue 注册表使用 `ReadonlyMap`，避免 `constructor`、`toString` 等对象原型属性被误识别为合法 Queue。finalize、DLQ、expiry 的 delete/receipt/incident 只认当次唯一 fence，batch 结束前清为最终 `last_error_code`。
 
 - [x] **Step 4：Cron 改为每 15 分钟恢复**
 

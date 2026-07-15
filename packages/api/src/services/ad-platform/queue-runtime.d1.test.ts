@@ -25,7 +25,7 @@ beforeEach(async () => {
 
 describe('统一广告平台 Queue 运行时', () => {
   it('六个物理 Queue 均映射到唯一 provider', () => {
-    expect(QUEUE_PROVIDERS).toEqual({
+    expect(Object.fromEntries(QUEUE_PROVIDERS)).toEqual({
       'meigallery-ad-meta': 'meta',
       'meigallery-ad-meta-dlq': 'meta',
       'meigallery-ad-tiktok': 'tiktok',
@@ -33,6 +33,18 @@ describe('统一广告平台 Queue 运行时', () => {
       'meigallery-ad-google': 'google',
       'meigallery-ad-google-dlq': 'google',
     })
+  })
+
+  it.each(['constructor', 'toString', '__proto__'])('原型属性 Queue %s 仍按未注册处理并记录 system incident', async queue => {
+    const message = queueMessage({})
+    await handleAttributionQueueBatch(batch([message], queue), env())
+    expect(message.ack).toHaveBeenCalledOnce()
+    expect(message.retry).not.toHaveBeenCalled()
+    expect(await incidentRows()).toEqual([expect.objectContaining({
+      connection_id: null,
+      provider: 'system',
+      trigger_code: 'queue_unregistered',
+    })])
   })
 
   it.each(['accepted', 'processed', 'rejected', 'dead_letter', 'cancelled'] as const)('%s 重复主消息在 Outbox 已清理后静默 ack 且不改变时间', async status => {

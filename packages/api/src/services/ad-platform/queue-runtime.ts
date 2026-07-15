@@ -13,14 +13,14 @@ const PERMANENT_CREDENTIAL_ERRORS = new Set([
   'ATTRIBUTION_CREDENTIAL_CRYPTO_UNAVAILABLE',
 ])
 
-export const QUEUE_PROVIDERS: Readonly<Record<string, AdAttributionProvider>> = {
-  'meigallery-ad-meta': 'meta',
-  'meigallery-ad-meta-dlq': 'meta',
-  'meigallery-ad-tiktok': 'tiktok',
-  'meigallery-ad-tiktok-dlq': 'tiktok',
-  'meigallery-ad-google': 'google',
-  'meigallery-ad-google-dlq': 'google',
-}
+export const QUEUE_PROVIDERS: ReadonlyMap<string, AdAttributionProvider> = new Map([
+  ['meigallery-ad-meta', 'meta'],
+  ['meigallery-ad-meta-dlq', 'meta'],
+  ['meigallery-ad-tiktok', 'tiktok'],
+  ['meigallery-ad-tiktok-dlq', 'tiktok'],
+  ['meigallery-ad-google', 'google'],
+  ['meigallery-ad-google-dlq', 'google'],
+])
 
 type QueueEnv = {
   DB: D1Database
@@ -68,7 +68,7 @@ type Dependencies = {
 }
 
 export async function handleAttributionQueueBatch(batch: MessageBatch<AdPlatformQueueMessage>, env: QueueEnv, dependencies: Dependencies = {}) {
-  const expectedProvider = QUEUE_PROVIDERS[batch.queue]
+  const expectedProvider = QUEUE_PROVIDERS.get(batch.queue)
   for (const message of batch.messages as unknown as QueueMessage[]) {
     try {
       if (!expectedProvider) {
