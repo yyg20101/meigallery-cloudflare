@@ -810,7 +810,7 @@ Expected: PASS；dry-run 包含 Workflow binding；提交成功。
 - Modify: `packages/web/app/components/admin/attribution/AttributionPageShell.test.ts`
 - Rewrite: `packages/web/tests/e2e/admin-attribution.spec.ts`
 
-- [ ] **Step 1：写 Schema 驱动 UI 失败测试**
+- [x] **Step 1：写 Schema 驱动 UI 失败测试**
 
 测试平台注册表渲染三平台字段；Google 显示 Tag ID、Customer ID、可选 Manager ID、Cloud Project、两个 Label、两个 conversion action ID 和 Service Account 文件输入；任何平台页面都不出现凭证明文。
 
@@ -820,7 +820,7 @@ corepack pnpm --filter @meigallery/web exec vitest run app/pages/admin/attributi
 
 Expected: FAIL。
 
-- [ ] **Step 2：统一后台导航**
+- [x] **Step 2：统一后台导航**
 
 ```text
 广告归因
@@ -834,15 +834,15 @@ Expected: FAIL。
 
 Provider 切换只出现在需要平台上下文的页面；日期范围只在总览、投递质量、验证和审计出现。
 
-- [ ] **Step 3：从 API Schema 渲染字段**
+- [x] **Step 3：从 API Schema 渲染字段**
 
 平台定义只负责 label、input type、校验提示和能力，不在页面写 provider 分支。文件凭证只在请求内存中提交，成功或失败后立即清空。
 
-- [ ] **Step 4：实现通用验证与 rollout**
+- [x] **Step 4：实现通用验证与 rollout**
 
 “验证连接”轮询当前 Workflow 状态；重复点击不新建；“重新验证”有独立确认。Server rollout 只允许 0/10/50/100，Browser 只允许 0/100。
 
-- [ ] **Step 5：运行 UI、E2E 和静态检查**
+- [x] **Step 5：运行 UI、E2E 和静态检查**
 
 ```bash
 corepack pnpm --filter @meigallery/web exec vitest run app/pages/admin/attribution app/components/admin/attribution
@@ -852,7 +852,7 @@ rg -n "selectedProvider\s*===|provider\s*===|MetaConnectionStatus|MetaRolloutCon
 
 Expected: tests PASS；`rg` 无输出。
 
-- [ ] **Step 6：提交**
+- [x] **Step 6：提交**
 
 ```bash
 git add packages/web/app/composables/useAdminAttribution.ts packages/web/app/utils/attributionPlatforms.ts packages/web/app/components/admin/attribution packages/web/app/pages/admin/attribution packages/web/tests/e2e/admin-attribution.spec.ts

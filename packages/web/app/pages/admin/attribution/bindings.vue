@@ -1,10 +1,7 @@
 <script setup lang="ts">
-import AttributionCredentialEditor from '~/components/admin/attribution/AttributionCredentialEditor.vue'
 import AttributionEventBindingEditor from '~/components/admin/attribution/AttributionEventBindingEditor.vue'
 import AttributionPageShell from '~/components/admin/attribution/AttributionPageShell.vue'
-import AttributionPlatformConnectionEditor from '~/components/admin/attribution/AttributionPlatformConnectionEditor.vue'
 import AttributionProviderSwitch from '~/components/admin/attribution/AttributionProviderSwitch.vue'
-import AttributionRolloutControl from '~/components/admin/attribution/AttributionRolloutControl.vue'
 import { useAdminAttributionPlatforms } from '~/composables/useAdminAttribution'
 import type { AttributionPlatformConnectionDraft, AttributionPlatformProvider } from '~/utils/attributionPlatforms'
 import {
@@ -22,13 +19,8 @@ const rangeState = useAdminAttributionRange('7d')
 const selectedProvider = useAttributionProvider()
 const manager = useAdminAttributionPlatforms()
 const drafts = reactive<Record<AttributionPlatformProvider, AttributionPlatformConnectionDraft>>(
-  Object.fromEntries(ATTRIBUTION_PLATFORMS.map(platform => [
-    platform.provider,
-    emptyAttributionPlatformConnectionDraft(platform),
-  ])) as Record<AttributionPlatformProvider, AttributionPlatformConnectionDraft>,
+  Object.fromEntries(ATTRIBUTION_PLATFORMS.map(platform => [platform.provider, emptyAttributionPlatformConnectionDraft(platform)])) as Record<AttributionPlatformProvider, AttributionPlatformConnectionDraft>,
 )
-const credentialPlaintext = ref('')
-const credentialError = ref('')
 
 const platform = computed(() => attributionPlatformDefinition(selectedProvider.value))
 const connectionsByProvider = computed(() => Object.fromEntries(manager.connections.value.map(connection => [connection.provider, connection])))
@@ -37,7 +29,6 @@ const draft = computed({
   get: () => drafts[selectedProvider.value],
   set: value => { drafts[selectedProvider.value] = value },
 })
-const pageError = computed(() => credentialError.value || manager.error.value)
 
 watch(manager.connections, (connections) => {
   const indexed = Object.fromEntries(connections.map(item => [item.provider, item]))
@@ -46,25 +37,14 @@ watch(manager.connections, (connections) => {
   }
 }, { immediate: true, deep: true })
 
-watch(selectedProvider, () => {
-  credentialPlaintext.value = ''
-  credentialError.value = ''
-  manager.clearFeedback()
-})
-
+watch(selectedProvider, manager.clearFeedback)
 onMounted(() => void manager.refreshConnections())
 
-async function save() {
-  credentialError.value = ''
-  try {
-    await manager.saveConnection(
-      selectedProvider.value,
-      attributionConnectionPayload(platform.value, draft.value, credentialPlaintext.value) as Record<string, unknown>,
-    )
-  }
-  finally {
-    credentialPlaintext.value = ''
-  }
+async function saveBindings() {
+  await manager.saveConnection(
+    selectedProvider.value,
+    attributionConnectionPayload(platform.value, draft.value) as Record<string, unknown>,
+  )
 }
 </script>
 
@@ -72,47 +52,25 @@ async function save() {
   <AttributionPageShell
     v-model:range="rangeState.range.value"
     v-model:date="rangeState.date.value"
-    title="平台连接"
-    description="统一管理广告平台的公开标识、Server 凭证和运行开关。"
+    title="事件绑定"
+    description="将站内有效联系和完成注册映射到当前广告平台。"
     :loading="manager.loading.value"
-    :error="pageError"
+    :error="manager.error.value"
     :show-range-controls="false"
     :show-usage="false"
     @refresh="manager.refreshConnections"
   >
     <AttributionProviderSwitch v-model="selectedProvider" />
-
-    <form class="space-y-4" @submit.prevent="save">
-      <AttributionPlatformConnectionEditor
-        v-model="draft"
-        :platform="platform"
-        :connection="connection"
-        :is-owner="isOwner"
-      />
-      <AttributionEventBindingEditor
-        v-model="draft.eventBindings"
-        :platform="platform"
-        :disabled="!isOwner || manager.saving.value"
-      />
-      <AttributionCredentialEditor
-        v-model="credentialPlaintext"
-        :platform="platform"
-        :configured="connection?.credential.configured"
-        :revision="connection?.credential.revision"
-        :disabled="!isOwner || manager.saving.value"
-        @error="credentialError = $event"
-      />
-      <AttributionRolloutControl
-        v-model:browser-enabled="draft.browserEnabled"
-        v-model:server-target-percentage="draft.rolloutTargetPercentage"
-        :server-effective-percentage="connection?.rolloutEffectivePercentage"
-        :disabled="!isOwner || manager.saving.value"
-      />
+    <div v-if="!connection" class="border-y border-amber-200 bg-amber-50 px-3 py-4 text-sm text-amber-900 sm:px-5">
+      当前平台尚未建立连接。<NuxtLink :to="{ path: '/admin/attribution/platforms', query: { provider: selectedProvider } }" class="font-medium underline">前往平台连接</NuxtLink>
+    </div>
+    <form v-else class="space-y-4" @submit.prevent="saveBindings">
+      <AttributionEventBindingEditor v-model="draft.eventBindings" :platform="platform" :disabled="!isOwner || manager.saving.value" />
       <div class="flex min-w-0 flex-wrap items-center gap-3 border-y border-gray-200 bg-white px-3 py-4 sm:px-5">
         <button v-if="isOwner" type="submit" :disabled="manager.saving.value" class="rounded-md bg-gray-950 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50">
-          {{ manager.saving.value ? '保存中...' : '保存连接' }}
+          {{ manager.saving.value ? '保存中...' : '保存事件绑定' }}
         </button>
-        <span role="status" class="min-w-0 text-sm text-gray-600">{{ manager.message.value }}</span>
+        <span role="status" class="text-sm text-gray-600">{{ manager.message.value }}</span>
       </div>
     </form>
   </AttributionPageShell>

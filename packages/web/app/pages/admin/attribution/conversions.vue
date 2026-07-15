@@ -62,6 +62,7 @@ function refreshAll() {
     :loading="conversions.loading.value || trends.loading.value"
     :error="conversions.error.value || trends.error.value"
     :usage="conversions.usage.value"
+    :show-range-controls="false"
     @refresh="refreshAll"
   >
     <AttributionProviderSwitch v-model="selectedProvider" />

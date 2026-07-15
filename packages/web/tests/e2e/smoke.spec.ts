@@ -31,9 +31,9 @@ async function expectAdminContainersWithinViewport(page: import('@playwright/tes
         { selector: '[data-attribution-refresh]' },
         { selector: '[data-attribution-tabs]', allowHorizontalOverflow: true },
         { selector: '[data-attribution-tab-list]', allowHorizontalOverflow: true },
-        { selector: '[data-attribution-tab]', exactCount: 5, allowHorizontalOverflow: true },
+        { selector: '[data-attribution-tab]', exactCount: 6, allowHorizontalOverflow: true },
       )
-      if (location.pathname !== '/admin/attribution/platforms') {
+      if (['/admin/attribution', '/admin/attribution/deliveries', '/admin/attribution/verifications', '/admin/attribution/audit'].includes(location.pathname)) {
         requirements.push(
           { selector: '[data-attribution-range-group]' },
           { selector: '[data-attribution-range-control]', minCount: 4 },
@@ -50,13 +50,16 @@ async function expectAdminContainersWithinViewport(page: import('@playwright/tes
     }
     if (location.pathname === '/admin/attribution/platforms') {
       requirements.push(
-        { selector: '[data-meta-connection-status]' },
+        { selector: '[data-attribution-connection-editor]' },
+        { selector: '[data-attribution-binding-editor]' },
+        { selector: '[data-attribution-credential-editor]' },
+        { selector: '[data-attribution-rollout-control]' },
       )
     }
-    if (location.pathname === '/admin/attribution/readiness') {
+    if (location.pathname === '/admin/attribution/deliveries') {
       requirements.push(
-        { selector: '[data-meta-rollout-control]' },
-        { selector: '[data-meta-incident-list]' },
+        { selector: '[data-attribution-rollout-control]' },
+        { selector: '[data-attribution-incident-list]' },
       )
     }
 
@@ -77,16 +80,13 @@ async function expectAdminContainersWithinViewport(page: import('@playwright/tes
       '[data-attribution-tab-list]',
       '[data-evidence-rail]',
       '[data-attribution-section]',
-      '[data-meta-connection-status]',
-      '[data-meta-rollout-control]',
-      '[data-meta-incident-list]',
+      '[data-attribution-connection-editor]',
+      '[data-attribution-binding-editor]',
+      '[data-attribution-credential-editor]',
+      '[data-attribution-verification-panel]',
+      '[data-attribution-rollout-control]',
+      '[data-attribution-incident-list]',
       '[data-attribution-trend]',
-      '[data-readiness-status]',
-      '[data-readiness-section]',
-      '[data-readiness-check-grid]',
-      '[data-readiness-check]',
-      '[data-readiness-settings]',
-      '[data-readiness-verifications]',
     ])
     const documentClientWidth = document.documentElement.clientWidth
     const visualViewportWidth = window.visualViewport?.width ?? documentClientWidth
@@ -402,7 +402,7 @@ test.describe('核心页面 smoke', () => {
     expect(hasHorizontalOverflow).toBe(false)
   })
 
-  test('后台广告归因总览可查看三层证据、单日归因和投放链接', async ({ page }, testInfo) => {
+  test('后台广告归因总览可查看三层证据、单日归因和平台连接', async ({ page }, testInfo) => {
     await page.goto('/admin/attribution')
     await expect(page.locator('main h1')).toHaveText('归因总览')
     await expect(page.getByText('按单一平台核对站内转化、浏览器投递、服务器接收和匹配质量。')).toBeVisible()
@@ -416,7 +416,7 @@ test.describe('核心页面 smoke', () => {
       await expect(page.locator('[data-evidence-rail]')).toContainText(label)
     }
 
-    await expect(page.getByText('Meta 连接 已验证', { exact: true })).toBeVisible()
+    await expect(page.getByText('Meta 连接 生产运行', { exact: true })).toBeVisible()
     await expect(page.getByRole('link', { name: '管理平台连接' })).toBeVisible()
 
     const deliverySection = page.locator('[data-attribution-section="delivery"]')
@@ -437,120 +437,11 @@ test.describe('核心页面 smoke', () => {
 
     await page.getByRole('button', { name: '单日' }).click()
     await page.getByLabel('选择归因日期').fill('2026-07-09')
-    await page.getByRole('link', { name: '投放链接', exact: true }).click()
+    await page.locator('[data-attribution-tabs]').getByRole('link', { name: '平台连接', exact: true }).click()
 
-    await expect(page).toHaveURL(/\/admin\/attribution\/links\?range=day&date=2026-07-09&provider=meta/)
-    await expect(page.getByText('投放追踪链接')).toBeVisible()
-    await expect(page.getByText('广告链接必须绑定唯一平台；链接来源只会进入对应平台的 Pixel 与 Server API。')).toBeVisible()
-    await expect(page.getByRole('cell', { name: 'Meta', exact: true })).toBeVisible()
-    await expectAdminContainersWithinViewport(page)
-  })
-
-  test('后台归因 Meta 控制面按生产检查保守启用并验证连接与投递口径', async ({ page }) => {
-    await page.goto('/admin/attribution/platforms?provider=meta')
-    await expect(page.locator('main h1')).toHaveText('平台接入')
-    const connection = page.locator('[data-meta-connection-status]')
-    await expect(connection.getByText('连接验证', { exact: true })).toBeVisible()
-    await expect(connection.getByText('已验证', { exact: true })).toBeVisible()
-    await expect(connection.getByText('Pixel ID', { exact: true })).toBeVisible()
-    await expect(connection.getByText('CAPI token', { exact: true })).toBeVisible()
-    await expect(connection.getByText('已配置', { exact: true })).toHaveCount(2)
-    await expect(connection.getByText('v25.0', { exact: true })).toBeVisible()
-    await expect(connection.getByText('连接配置与验证记录一致 · production', { exact: true })).toBeVisible()
-    await connection.getByLabel('Test Event Code').fill('TEST25401')
-
-    const [connectionResponse] = await Promise.all([
-      page.waitForResponse(response => response.url().endsWith('/api/admin/attribution/meta/test-event') && response.request().method() === 'POST'),
-      page.getByRole('button', { name: '验证连接' }).click(),
-    ])
-    expect(connectionResponse.status()).toBe(200)
-    await expect(connectionResponse.json()).resolves.toMatchObject({
-      data: { status: 'verified', eventsReceived: 1 },
-    })
-
-    const [verificationResponse] = await Promise.all([
-      page.waitForResponse(response => response.url().endsWith('/api/admin/attribution/meta/live-challenge/consume') && response.request().method() === 'POST'),
-      page.getByRole('button', { name: 'Live Evidence' }).click(),
-    ])
-    expect(verificationResponse.status()).toBe(200)
-    await expect(verificationResponse.json()).resolves.toMatchObject({
-      data: {
-        status: 'server_sent',
-        eventsReceived: 2,
-      },
-    })
-    const queuedMetaEvents = await page.evaluate(() => {
-      const queue = (window as unknown as { fbq?: { queue?: unknown[][] } }).fbq?.queue || []
-      return queue.filter(call => call[0] === 'track' && ['Contact', 'CompleteRegistration'].includes(String(call[1])))
-    })
-    expect(queuedMetaEvents).toHaveLength(2)
-    expect(queuedMetaEvents.map(call => call[1]).sort()).toEqual(['CompleteRegistration', 'Contact'])
-    await expect(page.locator('[data-meta-connection-status]').getByText('已验证', { exact: true })).toBeVisible()
-    await expectAdminContainersWithinViewport(page)
-
-    await page.goto('/admin/attribution/readiness?provider=meta')
-    const rollout = page.locator('[data-meta-rollout-control]')
-    await expect(rollout.getByText('critical incident 已打开，effective 强制为 0%；target 10% 保留。')).toBeVisible()
-    await expect(rollout.getByText('critical incident 尚未关闭', { exact: true })).toBeVisible()
-    await expect(page.locator('[data-meta-incident-list]')).toContainText('CAPI 重试耗尽')
-
-    await page.getByRole('link', { name: '总览', exact: true }).click()
-    const deliverySection = page.locator('[data-attribution-section="delivery"]')
-    await expect(deliverySection.getByText('Server API 接收只表示平台接口已接收，不表示广告已完成归因。')).toBeVisible()
-    await expect(deliverySection.locator('dl').first().locator(':scope > div').filter({ hasText: /^Conversions API 接收\s*9$/ })).toHaveCount(1)
-  })
-
-  test('production Owner 可触发 Test Event，并直接看到后端 blocker', async ({ request, page }) => {
-    await request.patch(`${apiURL}/api/test/admin-attribution-environment`, { data: { environment: 'production' } })
-    await request.patch(`${apiURL}/api/test/admin-attribution-action-mode`, { data: { mode: 'conflict' } })
-    await page.goto('/admin/attribution/platforms?provider=meta')
-
-    const connection = page.locator('[data-meta-connection-status]')
-    await expect(connection).toContainText('· production')
-    await connection.getByLabel('Test Event Code').fill('TEST25401')
-    const [response] = await Promise.all([
-      page.waitForResponse(candidate => candidate.url().endsWith('/api/admin/attribution/meta/test-event')),
-      connection.getByRole('button', { name: '验证连接' }).click(),
-    ])
-    expect(response.status()).toBe(409)
-    await expect(connection.getByRole('status')).toHaveText('production 资源验证尚未通过')
-  })
-
-  test('后台归因通过统一连接表单保存 Meta 配置', async ({ page }) => {
-    await page.goto('/admin/attribution/platforms?provider=meta')
-    await expect(page.getByLabel('Meta Dataset ID')).toHaveValue('1234567890')
-    await expect(page.getByRole('checkbox', { name: 'Conversions API', exact: true })).not.toBeChecked()
-    const [response] = await Promise.all([
-      page.waitForResponse(candidate => candidate.url().endsWith('/api/admin/attribution/platforms/meta') && candidate.request().method() === 'PATCH'),
-      page.getByRole('button', { name: '保存连接' }).click(),
-    ])
-    expect(response.status()).toBe(200)
-    await expect(page.getByText('Meta 连接已保存')).toBeVisible()
-  })
-
-  test('后台归因通过统一连接表单保存 TikTok Pixel 配置', async ({ page }) => {
-    await page.goto('/admin/attribution/platforms?provider=tiktok')
-    const form = page.locator('form').filter({ hasText: 'TikTok Pixel ID' })
-    await expect(form).toBeVisible()
-    await form.locator('input[pattern="[A-Za-z0-9]{10,30}"]').fill('C123456789ABCDEF')
-    await form.getByLabel('启用连接').check()
-    await form.getByRole('checkbox', { name: 'TikTok Pixel', exact: true }).check()
-    const response = page.waitForResponse(candidate => candidate.url().endsWith('/api/admin/attribution/platforms/tiktok') && candidate.request().method() === 'PATCH')
-    await form.getByRole('button', { name: '保存连接' }).click()
-    expect((await response).ok()).toBeTruthy()
-    await expect(form.getByText('TikTok 连接已保存')).toBeVisible()
-  })
-
-  test('后台归因发布检查区分阻断项和警告项且警告不改变阻断口径', async ({ page }) => {
-    await page.goto('/admin/attribution/readiness')
-
-    await expect(page.getByText('Meta 生产阻断项仍需处理')).toBeVisible()
-    await expect(page.getByRole('region', { name: '阻断项' }).getByText('最近 24 小时无重试耗尽')).toBeVisible()
-    await expect(page.getByRole('region', { name: '警告项' }).getByText('无超过 10 分钟的 CAPI pending')).toBeVisible()
-    await expect(page.getByText('Meta 资源验证')).toBeVisible()
-    await expect(page.getByText('验证时间：2026-07-10 08:05')).toBeVisible()
-    await expect(page.getByText('正式投放就绪')).toHaveCount(0)
-
+    await expect(page).toHaveURL(/\/admin\/attribution\/platforms\?provider=meta/)
+    await expect(page.getByRole('heading', { name: 'Meta 连接' })).toBeVisible()
+    await expect(page.getByText('Pixel ID / Dataset ID', { exact: true })).toBeVisible()
     await expectAdminContainersWithinViewport(page)
   })
 

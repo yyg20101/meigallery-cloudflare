@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { AdPlatformProvider } from '@meigallery/shared'
 import AnalyticsDataTable from '~/components/admin/analytics/AnalyticsDataTable.vue'
 import AttributionPageShell from '~/components/admin/attribution/AttributionPageShell.vue'
 import AttributionProviderSwitch from '~/components/admin/attribution/AttributionProviderSwitch.vue'
@@ -16,7 +17,7 @@ interface AttributionLink {
   utmMedium: string
   utmCampaign: string
   utmContent: string
-  adProvider: 'meta' | 'tiktok' | ''
+  adProvider: AdPlatformProvider | ''
   status: string
   note: string
   trackingPath: string
@@ -31,7 +32,7 @@ const { api } = useApi()
 const toast = useToast()
 const rangeState = useAdminAttributionRange('7d')
 const selectedProvider = useAttributionProvider()
-const attribution = useAdminAttribution<{ provider: 'meta' | 'tiktok'; links: AttributionLink[] }>('/api/admin/attribution/links', {
+const attribution = useAdminAttribution<{ provider: AdPlatformProvider; links: AttributionLink[] }>('/api/admin/attribution/links', {
   rangeState,
   query: computed(() => ({ provider: selectedProvider.value })),
 })
@@ -41,7 +42,7 @@ const createError = ref('')
 const form = reactive<{
   sourceLabel: string
   channel: string
-  adProvider: '' | 'meta' | 'tiktok'
+  adProvider: AdPlatformProvider | ''
   targetPath: string
   utmMedium: string
   utmCampaign: string
@@ -87,6 +88,7 @@ const linkRows = computed(() => (attribution.data.value?.links ?? []).map(item =
 function adProviderLabel(item: Pick<AttributionLink, 'channel' | 'adProvider'>) {
   if (item.adProvider === 'meta') return 'Meta'
   if (item.adProvider === 'tiktok') return 'TikTok'
+  if (item.adProvider === 'google') return 'Google Ads'
   return item.channel === 'ad' ? '未绑定（不投递）' : '非广告'
 }
 
@@ -185,6 +187,7 @@ function normalizeUtmValue(value: string) {
     :loading="attribution.loading.value"
     :error="attribution.error.value"
     :usage="attribution.usage.value"
+    :show-range-controls="false"
     @refresh="attribution.refresh"
   >
     <AttributionProviderSwitch v-model="selectedProvider" />

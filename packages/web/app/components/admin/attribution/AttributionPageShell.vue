@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { AttributionRangePreset } from '~/composables/useAdminAttribution'
 import { ATTRIBUTION_RANGE_OPTIONS, attributionRouteQuery } from '~/composables/useAdminAttribution'
+import { normalizeAttributionPlatformProvider } from '~/utils/attributionPlatforms'
 
 const props = withDefaults(defineProps<{
   title: string
@@ -31,11 +32,12 @@ const emit = defineEmits<{
 const route = useRoute()
 
 const tabs = [
-  { label: '总览', to: '/admin/attribution' },
-  { label: '转化明细', to: '/admin/attribution/conversions' },
-  { label: '投放链接', to: '/admin/attribution/links' },
-  { label: '平台接入', to: '/admin/attribution/platforms' },
-  { label: '发布与诊断', to: '/admin/attribution/readiness' },
+  { label: '总览', to: '/admin/attribution', range: true, provider: true },
+  { label: '平台连接', to: '/admin/attribution/platforms', range: false, provider: true },
+  { label: '事件绑定', to: '/admin/attribution/bindings', range: false, provider: true },
+  { label: '投递质量', to: '/admin/attribution/deliveries', range: true, provider: true },
+  { label: '验证记录', to: '/admin/attribution/verifications', range: true, provider: true },
+  { label: '审计日志', to: '/admin/attribution/audit', range: true, provider: false },
 ]
 
 const tabLinks = computed(() => tabs.map(tab => ({
@@ -43,10 +45,8 @@ const tabLinks = computed(() => tabs.map(tab => ({
   route: {
     path: tab.to,
     query: {
-      ...attributionRouteQuery(props.range, props.date || ''),
-      ...(route.query?.provider === 'meta' || route.query?.provider === 'tiktok'
-        ? { provider: route.query.provider }
-        : {}),
+      ...(tab.range ? attributionRouteQuery(props.range, props.date || '') : {}),
+      ...(tab.provider ? { provider: normalizeAttributionPlatformProvider(route.query.provider) } : {}),
     },
   },
 })))

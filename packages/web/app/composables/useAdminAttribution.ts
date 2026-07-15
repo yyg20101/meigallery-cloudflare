@@ -30,6 +30,58 @@ export interface AdPlatformConnectionStatusData {
   verifiedCommit: string
 }
 
+export interface AdPlatformEventBindingData {
+  canonicalEvent: 'Contact' | 'CompleteRegistration'
+  enabled: boolean
+  browserDestination: string
+  serverDestination: string
+}
+
+export interface AdPlatformConnectionData {
+  connectionId: string
+  provider: AdPlatformProvider
+  enabled: boolean
+  mode: AdPlatformTrackingMode
+  browserEnabled: boolean
+  serverEnabled: boolean
+  publicConfig: Record<string, string>
+  eventBindings: AdPlatformEventBindingData[]
+  rolloutTargetPercentage: AdPlatformRolloutPercentage
+  rolloutEffectivePercentage: AdPlatformRolloutPercentage
+  connectionRevision: string
+  credential: {
+    configured: true
+    type: 'access_token' | 'service_account_json'
+    revision: string
+  }
+}
+
+export type AdPlatformVerificationStatus =
+  | 'queued'
+  | 'running'
+  | 'awaiting_human_evidence'
+  | 'verified'
+  | 'failed'
+  | 'timed_out'
+  | 'invalidated'
+
+export interface AdPlatformVerificationData {
+  id: string
+  provider: AdPlatformProvider
+  connectionRevision: string
+  credentialRevision: string
+  attempt: number
+  status: AdPlatformVerificationStatus
+  evidence: {
+    automatic?: Record<string, unknown>
+    human?: { confirmed: true; reference?: string; confirmedAt: string }
+    failureCode?: string
+  }
+  startedAt: string
+  completedAt: string
+  updatedAt: string
+}
+
 export interface MetaConnectionStatusData {
   state: MetaConnectionState
   environment: 'dev' | 'production'
@@ -326,6 +378,199 @@ export function useAdminAttribution<T>(
   }
 }
 
+export function useAdminAttributionPlatforms() {
+  const { api } = useApi()
+  const connections = ref<AdPlatformConnectionData[]>([])
+  const verifications = ref<Partial<Record<AdPlatformProvider, AdPlatformVerificationData | null>>>({})
+  const loading = ref(false)
+  const saving = ref(false)
+  const verifying = ref(false)
+  const error = ref('')
+  const message = ref('')
+  const pollTimers = new Map<AdPlatformProvider, ReturnType<typeof setTimeout>>()
+  const evidencePollAttempts = new Map<AdPlatformProvider, number>()
+
+  async function refreshConnections() {
+    loading.value = true
+    error.value = ''
+    try {
+      const result = await api<AttributionApiResponse<AdPlatformConnectionData[]>>('/api/admin/attribution/platforms')
+      connections.value = result.data
+    }
+    catch (cause) {
+      error.value = resolveApiErrorMessage(cause, '平台连接加载失败')
+    }
+    finally {
+      loading.value = false
+    }
+  }
+
+  async function saveConnection(provider: AdPlatformProvider, body: Record<string, unknown>) {
+    saving.value = true
+    error.value = ''
+    message.value = ''
+    try {
+      const result = await api<AttributionApiResponse<AdPlatformConnectionData>>(`/api/admin/attribution/platforms/${provider}`, {
+        method: 'PATCH',
+        body,
+      })
+      const index = connections.value.findIndex(item => item.provider === provider)
+      if (index >= 0) connections.value.splice(index, 1, result.data)
+      else connections.value.push(result.data)
+      verifications.value[provider] = null
+      message.value = '连接已保存，旧验证记录已失效'
+      return result.data
+    }
+    catch (cause) {
+      error.value = resolveApiErrorMessage(cause, '平台连接保存失败')
+      throw cause
+    }
+    finally {
+      saving.value = false
+    }
+  }
+
+  async function refreshVerification(provider: AdPlatformProvider, verificationId = '') {
+    try {
+      const suffix = verificationId ? `/verifications/${encodeURIComponent(verificationId)}` : '/verification'
+      const result = await api<AttributionApiResponse<AdPlatformVerificationData>>(`/api/admin/attribution/platforms/${provider}${suffix}`)
+      verifications.value[provider] = result.data
+      scheduleVerificationPoll(result.data)
+      return result.data
+    }
+    catch (cause) {
+      if (apiErrorStatus(cause) === 404) {
+        verifications.value[provider] = null
+        stopVerificationPoll(provider)
+        return null
+      }
+      error.value = resolveApiErrorMessage(cause, '连接验证状态加载失败')
+      throw cause
+    }
+  }
+
+  async function startVerification(
+    provider: AdPlatformProvider,
+    testEventCode = '',
+    reverify = false,
+  ) {
+    verifying.value = true
+    error.value = ''
+    message.value = ''
+    try {
+      const code = testEventCode.trim()
+      const result = await api<AttributionApiResponse<AdPlatformVerificationData>>(
+        `/api/admin/attribution/platforms/${provider}/${reverify ? 'reverify' : 'verify'}`,
+        {
+          method: 'POST',
+          body: code ? { testEventCode: code } : {},
+        },
+      )
+      verifications.value[provider] = result.data
+      message.value = reverify ? '重新验证已启动' : '验证已启动'
+      scheduleVerificationPoll(result.data, true)
+      return result.data
+    }
+    catch (cause) {
+      error.value = resolveApiErrorMessage(cause, reverify ? '重新验证启动失败' : '连接验证启动失败')
+      throw cause
+    }
+    finally {
+      verifying.value = false
+    }
+  }
+
+  async function confirmVerificationEvidence(
+    provider: AdPlatformProvider,
+    verificationId: string,
+    reference = '',
+  ) {
+    verifying.value = true
+    error.value = ''
+    message.value = ''
+    try {
+      const normalizedReference = reference.trim()
+      const result = await api<AttributionApiResponse<AdPlatformVerificationData>>(
+        `/api/admin/attribution/platforms/${provider}/verifications/${encodeURIComponent(verificationId)}/evidence`,
+        {
+          method: 'POST',
+          body: { confirmed: true, ...(normalizedReference ? { reference: normalizedReference } : {}) },
+        },
+      )
+      verifications.value[provider] = result.data
+      message.value = '人工证据已提交'
+      evidencePollAttempts.set(provider, 0)
+      scheduleVerificationPoll(result.data, true)
+      return result.data
+    }
+    catch (cause) {
+      error.value = resolveApiErrorMessage(cause, '人工证据提交失败')
+      throw cause
+    }
+    finally {
+      verifying.value = false
+    }
+  }
+
+  function scheduleVerificationPoll(verification: AdPlatformVerificationData, immediate = false) {
+    stopVerificationPoll(verification.provider)
+    if (!['queued', 'running', 'awaiting_human_evidence'].includes(verification.status)) {
+      evidencePollAttempts.delete(verification.provider)
+      return
+    }
+    if (verification.status === 'awaiting_human_evidence') {
+      const attempt = evidencePollAttempts.get(verification.provider)
+      if (attempt === undefined && !immediate) return
+      if (attempt !== undefined) {
+        if (attempt >= 60) {
+          evidencePollAttempts.delete(verification.provider)
+          message.value = '验证仍在处理，请稍后刷新状态'
+          return
+        }
+        evidencePollAttempts.set(verification.provider, attempt + 1)
+      }
+    }
+    const delay = immediate ? 800 : 2_000
+    pollTimers.set(verification.provider, setTimeout(() => {
+      pollTimers.delete(verification.provider)
+      void refreshVerification(verification.provider, verification.id).catch(() => undefined)
+    }, delay))
+  }
+
+  function stopVerificationPoll(provider: AdPlatformProvider) {
+    const timer = pollTimers.get(provider)
+    if (timer) clearTimeout(timer)
+    pollTimers.delete(provider)
+  }
+
+  function clearFeedback() {
+    error.value = ''
+    message.value = ''
+  }
+
+  onScopeDispose(() => {
+    for (const timer of pollTimers.values()) clearTimeout(timer)
+    pollTimers.clear()
+    evidencePollAttempts.clear()
+  })
+
+  return {
+    connections,
+    verifications,
+    loading,
+    saving,
+    verifying,
+    error,
+    message,
+    refreshConnections,
+    saveConnection,
+    refreshVerification,
+    startVerification,
+    confirmVerificationEvidence,
+    clearFeedback,
+  }
+}
+
 export function attributionRangeQuery(range: AttributionRangePreset, date: string): Pick<AnalyticsRangeQuery, 'range' | 'from' | 'to'> {
   if (range === 'day') {
     const day = normalizeDateInput(date) || todayDateInputValue()
@@ -401,4 +646,11 @@ function todayDateInputValue() {
   const now = new Date()
   const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000)
   return local.toISOString().slice(0, 10)
+}
+
+function apiErrorStatus(error: unknown) {
+  if (!error || typeof error !== 'object') return 0
+  return Number((error as { statusCode?: unknown; status?: unknown }).statusCode
+    ?? (error as { status?: unknown }).status
+    ?? 0)
 }

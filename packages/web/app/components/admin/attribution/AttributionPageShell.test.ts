@@ -32,7 +32,7 @@ describe('AttributionPageShell', () => {
     expect((input.element as HTMLInputElement).value).toBe('2026-07-09')
   })
 
-  it('展示平台接入和发布诊断标签', () => {
+  it('展示统一归因后台六个标签', () => {
     const wrapper = mount(AttributionPageShell, {
       props: {
         title: '归因中心',
@@ -41,14 +41,16 @@ describe('AttributionPageShell', () => {
       global: { stubs: { NuxtLink: nuxtLinkStub } },
     })
 
-    expect(wrapper.text()).toContain('投放链接')
-    expect(wrapper.text()).toContain('平台接入')
-    expect(wrapper.text()).toContain('发布与诊断')
+    for (const label of ['总览', '平台连接', '事件绑定', '投递质量', '验证记录', '审计日志']) {
+      expect(wrapper.text()).toContain(label)
+    }
+    expect(wrapper.text()).not.toContain('投放链接')
+    expect(wrapper.text()).not.toContain('发布与诊断')
     expect(wrapper.text()).not.toContain('Meta 运维')
     expect(wrapper.text()).not.toContain('重复诊断')
   })
 
-  it('标签链接携带当前归因日期口径', () => {
+  it('只在需要范围和平台上下文的标签保留对应 query', () => {
     const wrapper = mount(AttributionPageShell, {
       props: {
         title: '归因中心',
@@ -58,10 +60,20 @@ describe('AttributionPageShell', () => {
       global: { stubs: { NuxtLink: nuxtLinkStub } },
     })
 
-    const link = wrapper.findAll('a').find(item => item.text() === '投放链接')
-    expect(link?.attributes('data-to')).toBe(JSON.stringify({
-      path: '/admin/attribution/links',
+    const delivery = wrapper.findAll('a').find(item => item.text() === '投递质量')
+    expect(delivery?.attributes('data-to')).toBe(JSON.stringify({
+      path: '/admin/attribution/deliveries',
       query: { range: 'day', date: '2026-07-09', provider: 'meta' },
+    }))
+    const platform = wrapper.findAll('a').find(item => item.text() === '平台连接')
+    expect(platform?.attributes('data-to')).toBe(JSON.stringify({
+      path: '/admin/attribution/platforms',
+      query: { provider: 'meta' },
+    }))
+    const audit = wrapper.findAll('a').find(item => item.text() === '审计日志')
+    expect(audit?.attributes('data-to')).toBe(JSON.stringify({
+      path: '/admin/attribution/audit',
+      query: { range: 'day', date: '2026-07-09' },
     }))
   })
 })

@@ -61,23 +61,13 @@ function mountPage(
         ? { source: 'meta_dataset_quality', availability: 'available', latest: { value: 0.82 }, rows: [] }
         : { source: 'meta_dataset_quality', availability: 'unavailable', latest: null, rows: [] },
     }),
-    '/api/admin/attribution/meta/status': state({
-      connection: { state: 'verified', environment: 'dev', pixelIdConfigured: true, tokenConfigured: true },
-      rollout: { targetPercentage: 10, effectivePercentage: 10, openIncident: null },
-      activity: {},
-    }),
     '/api/admin/attribution/platforms': state([
       {
         provider: 'meta',
-        environment: 'production',
-        destinationConfigured: true,
-        serverCredentialConfigured: true,
-        serverQueueConfigured: true,
-        serverDataKeyConfigured: true,
-        mode: 'test',
-        state: 'verified',
-        verifiedAt: '2026-07-12T00:00:00.000Z',
-        verifiedCommit: 'a'.repeat(40),
+        enabled: true,
+        browserEnabled: true,
+        serverEnabled: true,
+        mode: 'production',
       },
       {
         provider: 'tiktok',
@@ -98,10 +88,8 @@ function mountPage(
         verifiedCommit: '',
       },
     ]),
-    '/api/admin/attribution/readiness': state({ ready: true, checks: [], settings: {}, verifications: {} }),
     '/api/admin/attribution/breakdown': state({ provider: 'meta', dimension: 'utm_campaign', rows: [] }),
     '/api/admin/attribution/duplicates': state({ duplicateRate: 0, samples: [] }),
-    '/api/admin/attribution/meta/incidents': state({ items: [], pagination: { hasMore: false } }),
   }
 
   vi.stubGlobal('definePageMeta', vi.fn())
@@ -120,9 +108,6 @@ function mountPage(
       stubs: {
         AttributionPageShell: { template: '<main><slot /></main>' },
         AttributionTrendPanel: TextStub('AttributionTrendPanel', '趋势图'),
-        MetaConnectionStatus: TextStub('MetaConnectionStatus', '连接状态组件'),
-        MetaRolloutControl: TextStub('MetaRolloutControl', '发布控制组件'),
-        MetaIncidentList: TextStub('MetaIncidentList', 'incident 列表'),
         AnalyticsDataTable: true,
         NuxtLink: { template: '<a><slot /></a>' },
       },
@@ -144,7 +129,7 @@ describe('多平台归因总览', () => {
     expect(wrapper.get('[data-evidence-rail]').text()).toContain('Pixel 尝试')
     expect(wrapper.get('[data-evidence-rail]').text()).toContain('Server API 接收')
     expect(wrapper.get('[data-evidence-rail]').text()).toContain('平台质量')
-    expect(wrapper.text()).toContain('Meta 连接 已验证')
+    expect(wrapper.text()).toContain('Meta 连接 生产运行')
     expect(wrapper.text()).not.toContain('发布控制组件')
   })
 
@@ -158,7 +143,7 @@ describe('多平台归因总览', () => {
 
   it('切换 TikTok 后只展示 TikTok 术语和独立质量口径', () => {
     const wrapper = mountPage(false, 'tiktok')
-    expect(wrapper.text()).toContain('TikTok 连接 待验证')
+    expect(wrapper.text()).toContain('TikTok 连接 生产运行')
     expect(wrapper.text()).toContain('TikTok Pixel 与 Events API')
     expect(wrapper.text()).toContain('_ttp coverage')
     expect(wrapper.text()).toContain('当前平台未接入质量诊断 API')

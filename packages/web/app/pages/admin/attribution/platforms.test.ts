@@ -1,78 +1,100 @@
-import { flushPromises, shallowMount } from '@vue/test-utils'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { computed, defineComponent, ref } from 'vue'
-import PlatformsPage from './platforms.vue'
+import { flushPromises, mount } from '@vue/test-utils'
+import { describe, expect, it } from 'vitest'
+import AttributionCredentialEditor from '~/components/admin/attribution/AttributionCredentialEditor.vue'
+import AttributionEventBindingEditor from '~/components/admin/attribution/AttributionEventBindingEditor.vue'
+import AttributionPlatformConnectionEditor from '~/components/admin/attribution/AttributionPlatformConnectionEditor.vue'
+import {
+  attributionConnectionPayload,
+  attributionPlatformDefinition,
+  emptyAttributionPlatformConnectionDraft,
+} from '~/utils/attributionPlatforms'
 
-function state(data: unknown) {
-  return {
-    data: ref(data),
-    loading: ref(false),
-    error: ref(''),
-    usage: ref(null),
-    refresh: vi.fn().mockResolvedValue(undefined),
-  }
-}
+describe('三平台连接 Schema', () => {
+  it('Google Ads 渲染全部公开配置、事件目标和 Service Account 文件输入', () => {
+    const platform = attributionPlatformDefinition('google')
+    const draft = emptyAttributionPlatformConnectionDraft(platform)
+    const connection = mount(AttributionPlatformConnectionEditor, {
+      props: { platform, modelValue: draft, connection: null, isOwner: true },
+    })
+    const bindings = mount(AttributionEventBindingEditor, {
+      props: { platform, modelValue: draft.eventBindings },
+    })
+    const credential = mount(AttributionCredentialEditor, {
+      props: { platform, modelValue: '', configured: false },
+    })
 
-afterEach(() => vi.unstubAllGlobals())
+    for (const label of ['Tag ID', 'Customer ID', 'Manager Account ID（可选）', 'Cloud Project']) {
+      expect(connection.text()).toContain(label)
+    }
+    for (const label of ['有效联系 Label', '完成注册 Label', '有效联系 Conversion Action ID', '完成注册 Conversion Action ID']) {
+      expect(bindings.text()).toContain(label)
+    }
+    expect(credential.get('input[type="file"]').attributes('accept')).toContain('.json')
+    expect(connection.text()).not.toContain('Access Token')
+    expect(connection.get('[data-connection-controls]').findAll('input[type="checkbox"]')).toHaveLength(2)
+  })
 
-describe('归因平台接入页', () => {
-  it('TikTok 测试码只进入单次验证请求并在成功后清空', async () => {
-    const api = vi.fn().mockResolvedValue({ data: { idempotent: false } })
-    const platforms = state([{
-      provider: 'tiktok',
-      environment: 'production',
-      enabled: true,
-      browserEnabled: true,
-      serverEnabled: true,
-      destinationId: 'C123456789ABCDEF',
-      debugEnabled: false,
-      rolloutPercentage: 10,
-      destinationConfigured: true,
-      serverCredentialConfigured: true,
-      serverQueueConfigured: true,
-      serverDataKeyConfigured: true,
-      mode: 'test',
-      state: 'unverified',
-      verifiedAt: '',
-      verifiedCommit: '',
-    }])
-    const metaStatus = state(null)
-
-    vi.stubGlobal('definePageMeta', vi.fn())
-    vi.stubGlobal('useAuth', () => ({ isOwner: ref(true) }))
-    vi.stubGlobal('useApi', () => ({ api }))
-    vi.stubGlobal('useAttributionProvider', () => ref<'meta' | 'tiktok'>('tiktok'))
-    vi.stubGlobal('useAdminAttributionRange', () => ({
-      range: ref('7d'),
-      date: ref('2026-07-14'),
-      queryKey: computed(() => '7d'),
+  it('凭证明文不进入可见文本，空的可选 Manager ID 不进入请求', () => {
+    const platform = attributionPlatformDefinition('google')
+    const draft = emptyAttributionPlatformConnectionDraft(platform)
+    draft.publicConfig = {
+      tagId: 'AW-123456789',
+      customerId: '1234567890',
+      loginCustomerId: '',
+      cloudProjectId: 'meigallery-ads',
+    }
+    draft.eventBindings = draft.eventBindings.map((binding, index) => ({
+      ...binding,
+      browserDestination: `AW-123456789/Label${index}`,
+      serverDestination: `123456789${index}`,
     }))
-    vi.stubGlobal('useAdminAttribution', (endpoint: string) => endpoint.endsWith('/platforms') ? platforms : metaStatus)
+    const secret = '{"private_key":"TOP_SECRET"}'
+    const credential = mount(AttributionCredentialEditor, {
+      props: { platform, modelValue: secret, configured: false },
+    })
+    const payload = attributionConnectionPayload(platform, draft, secret)
 
-    const editorStub = defineComponent({
-      props: ['message'],
-      template: '<div data-editor-message>{{ message }}</div>',
+    expect(credential.text()).not.toContain('TOP_SECRET')
+    expect(payload.publicConfig).not.toHaveProperty('loginCustomerId')
+    expect(payload.credential).toEqual({ type: 'service_account_json', plaintext: secret })
+  })
+
+  it('Meta 与 TikTok 使用固定事件目标且凭证类型一致', () => {
+    const meta = attributionPlatformDefinition('meta')
+    const tiktok = attributionPlatformDefinition('tiktok')
+    expect(meta.eventBindings.map(item => [item.browser.defaultValue, item.server.defaultValue])).toEqual([
+      ['meta_pixel', 'meta_capi'],
+      ['meta_pixel', 'meta_capi'],
+    ])
+    expect(tiktok.eventBindings.map(item => [item.browser.defaultValue, item.server.defaultValue])).toEqual([
+      ['tiktok_pixel', 'tiktok_events_api'],
+      ['tiktok_pixel', 'tiktok_events_api'],
+    ])
+    expect(meta.credential.type).toBe('access_token')
+    expect(tiktok.credential.type).toBe('access_token')
+  })
+
+  it('重新选择有效凭证文件时清除上一次文件错误', async () => {
+    const platform = attributionPlatformDefinition('google')
+    const credential = mount(AttributionCredentialEditor, {
+      props: { platform, modelValue: '', configured: false },
     })
-    const wrapper = shallowMount(PlatformsPage, {
-      global: {
-        stubs: {
-          AttributionPageShell: { template: '<main><slot /></main>' },
-          AttributionPlatformConnectionEditor: editorStub,
-          AttributionProviderSwitch: true,
-          MetaConnectionStatus: true,
-        },
-      },
+    const input = credential.get('input[type="file"]')
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [new File(['not-json'], 'invalid.json', { type: 'application/json' })],
     })
-    const input = wrapper.get('input[type="password"]')
-    await input.setValue('TEST_TIKTOK_ONCE')
-    await wrapper.get('button[type="button"]').trigger('click')
+    await input.trigger('change')
     await flushPromises()
+    expect(credential.emitted('error')?.at(-1)).toEqual(['Service Account 文件不是有效 JSON'])
 
-    expect(api).toHaveBeenCalledWith('/api/admin/attribution/platforms/tiktok/verify', {
-      method: 'POST',
-      body: { testEventCode: 'TEST_TIKTOK_ONCE' },
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [new File(['{"client_email":"ads@example.com"}'], 'valid.json', { type: 'application/json' })],
     })
-    expect((input.element as HTMLInputElement).value).toBe('')
-    expect(wrapper.get('[data-editor-message]').text()).toBe('TikTok Events API 已验证')
+    await input.trigger('change')
+    await flushPromises()
+    expect(credential.emitted('error')?.at(-1)).toEqual([''])
+    expect(credential.emitted('update:modelValue')?.at(-1)).toEqual(['{"client_email":"ads@example.com"}'])
   })
 })

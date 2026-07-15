@@ -4,7 +4,7 @@ import AttributionPageShell from '~/components/admin/attribution/AttributionPage
 import AttributionProviderSwitch from '~/components/admin/attribution/AttributionProviderSwitch.vue'
 import AttributionTrendPanel from '~/components/admin/attribution/AttributionTrendPanel.vue'
 import type {
-  AdPlatformConnectionStatusData,
+  AdPlatformConnectionData,
   AttributionQualityData,
   AttributionSummaryData,
   AttributionTrendsData,
@@ -54,14 +54,15 @@ const breakdown = useAdminAttribution<BreakdownData>('/api/admin/attribution/bre
   query: computed(() => ({ provider: selectedProvider.value, dimension: 'utm_campaign', limit: 8 })),
 })
 const duplicates = useAdminAttribution<DuplicateData>('/api/admin/attribution/duplicates', platformRequestOptions)
-const platforms = useAdminAttribution<AdPlatformConnectionStatusData[]>('/api/admin/attribution/platforms', requestOptions)
+const platforms = useAdminAttribution<AdPlatformConnectionData[]>('/api/admin/attribution/platforms', requestOptions)
 const sources = [summary, trends, quality, breakdown, duplicates, platforms]
 const platformSources = [summary, trends, quality, breakdown, duplicates]
 
 const loading = computed(() => sources.some(source => source.loading.value))
 const error = computed(() => sources.map(source => source.error.value).find(Boolean) || '')
 const platform = computed(() => attributionPlatformDefinition(selectedProvider.value))
-const selectedConnection = computed(() => platforms.data.value?.find(item => item.provider === selectedProvider.value) ?? null)
+const connectionsByProvider = computed(() => Object.fromEntries((platforms.data.value || []).map(item => [item.provider, item])))
+const selectedConnection = computed(() => connectionsByProvider.value[selectedProvider.value] ?? null)
 const business = computed(() => summary.data.value?.business ?? { contactCount: 0, completeRegistrationCount: 0, actionCount: 0 })
 const delivery = computed(() => summary.data.value?.delivery ?? { pixelAttempted: 0, serverSent: 0, failed: 0, skipped: 0, pending: 0, retryExhausted: 0 })
 const routing = computed(() => summary.data.value?.routing ?? { mismatchCount: 0, unroutedActionCount: 0 })
@@ -163,7 +164,7 @@ function formatCount(value: unknown) {
       <div class="flex min-w-0 items-center gap-3">
         <span :class="platform.accentClass" class="h-8 w-1 shrink-0 rounded-sm" aria-hidden="true" />
         <div class="min-w-0">
-          <p class="text-sm font-semibold text-gray-900">{{ platform.label }} 连接 {{ attributionConnectionStateLabel(selectedConnection?.state || 'not_configured') }}</p>
+          <p class="text-sm font-semibold text-gray-900">{{ platform.label }} 连接 {{ attributionConnectionStateLabel(selectedConnection) }}</p>
           <p class="mt-0.5 truncate text-xs text-gray-500">
             {{ selectedConnection?.mode || 'disabled' }} · {{ selectedConnection?.browserEnabled ? platform.browserLabel : 'Browser 关闭' }} · {{ selectedConnection?.serverEnabled ? platform.serverLabel : 'Server 关闭' }}
           </p>
