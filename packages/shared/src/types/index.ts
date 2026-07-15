@@ -69,6 +69,20 @@ export type AnalyticsEntityType =
 /** 分析授权/采集状态 */
 export type AnalyticsConsentState = 'granted' | 'limited' | 'denied'
 
+import type {
+  AdAttributionProvider as SharedAdAttributionProvider,
+  CanonicalConversionEvent,
+} from './ad-attribution'
+
+export type {
+  AdAttributionProvider,
+  AdBrowserInstruction,
+  AdBrowserSignal,
+  CanonicalConversionEvent,
+  PlatformEventDescriptor,
+  PlatformPublicConfig,
+} from './ad-attribution'
+
 export type ConversionActionType =
   | 'contact'
   | 'lead'
@@ -81,14 +95,11 @@ export type ActiveConversionActionType = Extract<
   'contact' | 'complete_registration'
 >
 
-export type AdPlatformProvider = 'meta' | 'tiktok' | 'google'
-
-/** 当前已具备可信来源路由能力的广告平台。 */
-export type AdAttributionProvider = Extract<AdPlatformProvider, 'meta' | 'tiktok'>
+export type AdPlatformProvider = SharedAdAttributionProvider
 
 export type AdDeliveryTransport = 'browser' | 'server'
 
-export type AdPlatformConversionEventName = 'Contact' | 'CompleteRegistration'
+export type AdPlatformConversionEventName = CanonicalConversionEvent
 
 export type AdPlatformTrackingMode = 'disabled' | 'test' | 'production'
 
@@ -97,15 +108,6 @@ export type AdPlatformRolloutPercentage = 0 | 10 | 50 | 100
 export type PublicConversionActionType = Extract<ActiveConversionActionType, 'contact'>
 
 export type ConversionDeliveryStatus = 'pending' | 'attempted' | 'sent' | 'failed' | 'skipped' | 'duplicate_suppressed'
-
-export interface AdBrowserInstruction {
-  provider: AdPlatformProvider
-  deliveryId: string
-  eventName: string
-  eventId: string
-  payload: Record<string, string | number | boolean>
-  receiptToken: string
-}
 
 /** 仅允许在内存或短期密文中持有的广告平台用户匹配上下文。 */
 export interface AdPlatformSensitiveContext {

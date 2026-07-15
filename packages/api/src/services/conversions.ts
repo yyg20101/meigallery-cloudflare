@@ -766,7 +766,8 @@ async function planMetaDeliveries(
     || input.consentState !== 'granted'
     || settings.mode === 'disabled'
     || !settings.pixelId) return []
-  const eventName = mapConversionToPlatformEvent('meta', input.actionType)
+  const descriptor = mapConversionToPlatformEvent('meta', input.actionType)
+  const eventName = descriptor.canonicalEvent
   const eventId = await buildExternalEventId(env.SESSION_SECRET, {
     actionType: input.actionType,
     sessionId: input.sessionId || '',
@@ -793,10 +794,13 @@ async function planMetaDeliveries(
     const browserInstruction = transport === 'browser' && !deliverySkipped
       ? {
           provider: 'meta' as const,
+          canonicalEvent: eventName,
+          externalEventId: eventId,
+          descriptor,
+          payload: sanitizeConversionMetadata(input.metadata || {}),
           deliveryId,
           eventName,
           eventId,
-          payload: sanitizeConversionMetadata(input.metadata || {}),
           receiptToken: await createPixelReceiptToken(env.SESSION_SECRET, {
             deliveryId,
             eventId,
@@ -867,7 +871,8 @@ async function planTikTokDeliveries(
     || !connection.destinationId
     || (!connection.browserEnabled && !connection.serverEnabled)) return []
 
-  const eventName = mapConversionToPlatformEvent('tiktok', input.actionType)
+  const descriptor = mapConversionToPlatformEvent('tiktok', input.actionType)
+  const eventName = descriptor.canonicalEvent
   const eventId = await buildExternalEventId(env.SESSION_SECRET, {
     actionType: input.actionType,
     sessionId: input.sessionId || '',
@@ -902,10 +907,13 @@ async function planTikTokDeliveries(
     const browserInstruction = transport === 'browser'
       ? {
           provider: 'tiktok' as const,
+          canonicalEvent: eventName,
+          externalEventId: eventId,
+          descriptor,
+          payload: sanitizeConversionMetadata(input.metadata || {}),
           deliveryId,
           eventName,
           eventId,
-          payload: sanitizeConversionMetadata(input.metadata || {}),
           receiptToken: await createPixelReceiptToken(env.SESSION_SECRET, {
             deliveryId,
             eventId,

@@ -1,7 +1,7 @@
 import type {
   ActiveConversionActionType,
-  AdPlatformConversionEventName,
   AdPlatformTrackingMode,
+  CanonicalConversionEvent,
   ConversionActionType,
 } from '../types'
 import {
@@ -37,7 +37,7 @@ export function buildConversionDedupeKey(input: ConversionDedupeInput) {
 }
 
 export function buildExternalEventIdBasis(
-  input: ActiveConversionDedupeInput & { eventName: AdPlatformConversionEventName },
+  input: ActiveConversionDedupeInput & { eventName: CanonicalConversionEvent },
 ) {
   if (
     !ACTIVE_CONVERSION_ACTIONS.includes(input.actionType)
