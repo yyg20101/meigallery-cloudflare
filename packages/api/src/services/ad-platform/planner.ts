@@ -2,6 +2,7 @@ import type { AdAttributionProvider, AdBrowserInstruction, CanonicalConversionEv
 import { buildAdExternalEventIdFromKey } from '@meigallery/shared/utils'
 import { deriveAttributionHmacKey, type AttributionCryptoKeys } from '../../utils/attribution-crypto'
 import type { AttributionConnectionSnapshot } from './connections'
+import { issueBrowserAttemptReceiptToken } from './browser-attempt-receipt'
 import { getAdPlatformDefinition } from './registry'
 
 export interface PlannedAttributionDelivery {
@@ -45,9 +46,23 @@ export async function buildAttributionDeliveryPlan(input: {
   }
   const deliveries: PlannedAttributionDelivery[] = []
   if (connection.browserEnabled && definition.capabilities.transports.includes('browser')) {
+    if (!input.cryptoKeys) throw new Error('ATTRIBUTION_RECEIPT_KEY_UNAVAILABLE')
+    const deliveryId = crypto.randomUUID()
     deliveries.push({
-      id: crypto.randomUUID(), provider: connection.provider, transport: 'browser', destination: binding.browserDestination, externalEventId, matchSignals: {},
-      browserInstruction: { provider: connection.provider, canonicalEvent: input.canonicalEvent, externalEventId, descriptor: boundDescriptor, payload: {} },
+      id: deliveryId, provider: connection.provider, transport: 'browser', destination: binding.browserDestination, externalEventId, matchSignals: {},
+      browserInstruction: {
+        deliveryId,
+        provider: connection.provider,
+        canonicalEvent: input.canonicalEvent,
+        externalEventId,
+        receiptToken: await issueBrowserAttemptReceiptToken(input.cryptoKeys, {
+          deliveryId,
+          provider: connection.provider,
+          externalEventId,
+        }),
+        descriptor: boundDescriptor,
+        payload: {},
+      },
     })
   }
   const rolloutBucket = input.stableId.trim() ? await attributionPlannerRolloutBucket(`${connection.id}:${connection.connectionRevision}`, input.stableId) : null

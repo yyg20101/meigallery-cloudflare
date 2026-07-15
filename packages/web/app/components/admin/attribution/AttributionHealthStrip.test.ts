@@ -14,26 +14,28 @@ const mountOptions = {
 }
 
 describe('AttributionHealthStrip', () => {
-  it('独立展示 Pixel、CAPI 与四类投递数量', () => {
+  it('按平台标签独立展示 Browser、Server 与投递数量', () => {
     const wrapper = mount(AttributionHealthStrip, {
       ...mountOptions,
       props: {
-        pixelEnabled: true,
-        capiEnabled: true,
-        pixelAttemptedCount: 12,
-        capiSentCount: 9,
-        failedCount: 2,
-        skippedCount: 1,
+        browserLabel: 'TikTok Pixel',
+        serverLabel: 'TikTok Events API',
+        browserEnabled: true,
+        serverEnabled: true,
+        browserAttempted: 12,
+        serverAccepted: 9,
+        serverPending: 1,
+        serverFailed: 2,
       },
     })
 
     const labels = wrapper.findAll('[data-health-label]').map(item => item.text())
-    expect(labels).toEqual(['Pixel 状态', 'CAPI 状态', 'Pixel 尝试', 'CAPI 成功', '失败', '跳过'])
+    expect(labels).toEqual(['TikTok Pixel 状态', 'TikTok Events API 状态', 'Browser 已尝试', 'Server 已接收', 'Server 处理中', 'Server 失败'])
     expect(wrapper.text()).toContain('12')
     expect(wrapper.text()).toContain('9')
     expect(wrapper.text()).toContain('2')
     expect(wrapper.text()).toContain('1')
-    expect(wrapper.text()).not.toContain('已同步')
+    expect(wrapper.text()).not.toContain('Meta')
   })
 
   it('未知状态保持未确认且不误报为关闭', () => {

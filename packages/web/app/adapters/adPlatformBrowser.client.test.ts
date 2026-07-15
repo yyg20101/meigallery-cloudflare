@@ -19,9 +19,11 @@ const consent = {
 }
 
 const metaInstruction = {
+  deliveryId: 'delivery_meta_browser',
   provider: 'meta' as const,
   canonicalEvent: 'Contact' as const,
   externalEventId: 'mg3_meta_contact',
+  receiptToken: `v1.${'a'.repeat(16)}.${'b'.repeat(43)}`,
   descriptor: {
     provider: 'meta' as const,
     canonicalEvent: 'Contact' as const,

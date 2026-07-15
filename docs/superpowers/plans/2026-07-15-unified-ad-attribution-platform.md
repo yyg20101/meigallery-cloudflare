@@ -866,6 +866,12 @@ git commit -m "refactor: 重构三平台广告归因后台"
 ### Task 11：统一后台数据口径和容量预警
 
 **Files:**
+- Modify: `packages/shared/src/types/ad-attribution.ts`
+- Create: `packages/api/src/services/ad-platform/browser-attempt-receipt.ts`
+- Create: `packages/api/src/services/ad-platform/browser-attempt-receipt.test.ts`
+- Modify: `packages/api/src/services/ad-platform/planner.ts`
+- Modify: `packages/api/src/routes/conversions.ts`
+- Modify: `packages/web/app/composables/useTracking.ts`
 - Rewrite: `packages/api/src/services/attribution-dashboard.ts`
 - Rewrite: `packages/api/src/services/attribution-dashboard.d1.test.ts`
 - Rewrite: `packages/api/src/routes/admin/attribution.ts`
@@ -877,9 +883,9 @@ git commit -m "refactor: 重构三平台广告归因后台"
 - Rewrite: `packages/web/app/components/admin/attribution/AttributionHealthStrip.vue`
 - Rewrite: `packages/web/app/components/admin/attribution/AttributionTrendPanel.vue`
 
-- [ ] **Step 1：写数据口径失败测试**
+- [x] **Step 1：写数据口径失败测试**
 
-覆盖标准事实数、唯一来源平台、未归因、冲突、Browser attempted、Server planned/queued/accepted/processed/rejected、配对覆盖、匹配信号、retry/DLQ；Google 两个外部 `conversion` 必须按 canonical event 分开。
+覆盖标准事实数、唯一来源平台、未归因、冲突、Browser attempted、Server planned/queued/accepted/processed/rejected、配对覆盖、匹配信号、retry/DLQ；Google 两个外部 `conversion` 必须按 canonical event 分开。Browser attempted 必须来自客户端执行后的签名幂等 Receipt，不得把已下发的 `planned` 伪装成 attempted。
 
 ```bash
 corepack pnpm --filter @meigallery/api exec vitest run src/services/attribution-dashboard.d1.test.ts src/services/ad-platform/usage-estimator.test.ts src/routes/admin/attribution.test.ts
@@ -887,11 +893,11 @@ corepack pnpm --filter @meigallery/api exec vitest run src/services/attribution-
 
 Expected: FAIL。
 
-- [ ] **Step 2：从最终事实表聚合**
+- [x] **Step 2：从最终事实表聚合**
 
 所有活动统计只读取 `attribution_conversion_facts`、`attribution_deliveries`、`attribution_provider_receipts`；旧 `analytics_conversion_delivery_daily` 和平台专属质量表不得进入运行查询。
 
-- [ ] **Step 3：实现 Free 容量估算**
+- [x] **Step 3：实现 Free 容量估算**
 
 ```ts
 export const FREE_SAFETY_LIMITS = {
@@ -904,9 +910,9 @@ export const FREE_SAFETY_LIMITS = {
 } as const
 ```
 
-估算值写明“项目内部估算”，按事实、Delivery、Queue attempt、Workflow step 和已知查询成本计算，不冒充 Cloudflare 官方账单。
+估算值写明“项目内部估算”，按事实、Delivery、Queue attempt、Workflow step 和已知查询成本计算，不冒充 Cloudflare 官方账单。额度计费日按 Cloudflare UTC 重置边界展示，不使用上海业务日替代。
 
-- [ ] **Step 4：运行测试并提交**
+- [x] **Step 4：运行测试并提交**
 
 ```bash
 corepack pnpm --filter @meigallery/api exec vitest run src/services/attribution-dashboard.d1.test.ts src/services/ad-platform/usage-estimator.test.ts src/routes/admin/attribution.test.ts
@@ -917,7 +923,11 @@ git commit -m "feat: 统一归因质量与容量看板"
 
 Expected: PASS，提交成功。
 
+验收记录：Task 11 重点 API 32/32、Web 46/46、Web 全量 281/281、API typecheck 与 Nuxt production build 通过；Browser attempted 已改为客户端实际执行后写入的 10 分钟有效签名幂等 Receipt，容量按 UTC 计费日显示项目内部 70% 安全线。全量 API 测试仍有旧 Meta/TikTok 服务测试、未加载 `0051` 的旧 D1 fixture 和 migration 数量断言失败，因此当前只完成本任务，不构成生产发布放行结论。
+
 ### Task 12：建立三平台网络隔离和完整本地放行门禁
+
+**前置条件：** 先处理全量 API 中遗留的旧平台测试与 `0051` fixture；不得通过跳过、静默排除或降低阈值伪造全绿。若旧服务按 Contract 计划删除，则同步删除其测试；仍保留的运行代码必须迁移到最终表并通过测试。
 
 **Files:**
 - Create: `packages/web/tests/e2e/ad-attribution-isolation.spec.ts`

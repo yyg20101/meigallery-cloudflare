@@ -55,8 +55,8 @@ describe('统一转换事实', () => {
 function createDb(existingId?: string, provider: 'meta' | 'google' = 'meta') {
   const batches: string[][] = []
   const delivery = provider === 'google'
-    ? { provider, destination: 'AW-123456789/Contact_Label', server_destination: 'customers/123/conversionActions/456' }
-    : { provider, destination: 'meta_pixel', server_destination: 'meta_capi' }
+    ? { id: 'delivery_google_browser', provider, destination: 'AW-123456789/Contact_Label', server_destination: 'customers/123/conversionActions/456' }
+    : { id: 'delivery_meta_browser', provider, destination: 'meta_pixel', server_destination: 'meta_capi' }
   return {
     batches,
     prepare(sql: string) {

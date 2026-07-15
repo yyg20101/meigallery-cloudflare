@@ -1,12 +1,15 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { Miniflare } from 'miniflare'
 import {
   queryAttributionBreakdown,
+  queryAttributionCapacity,
   queryAttributionQuality,
   queryAttributionSummary,
   queryAttributionTrends,
 } from './attribution-dashboard'
 
+const MIGRATION = readFileSync(new URL('../../migrations/0051_unified_attribution_expand.sql', import.meta.url), 'utf8')
 let miniflare: Miniflare
 let db: D1Database
 
@@ -14,185 +17,261 @@ beforeAll(async () => {
   miniflare = new Miniflare({
     modules: true,
     script: 'export default { fetch() { return new Response("ok") } }',
-    d1Databases: { DB: '00000000-0000-0000-0000-000000000044' },
+    compatibilityDate: '2026-05-26',
+    d1Databases: { DB: 'attribution-dashboard-v3' },
   })
   db = (await miniflare.getBindings<{ DB: D1Database }>()).DB
-  for (const statement of schemaSql().split(';').map(value => value.trim()).filter(Boolean)) {
-    await db.prepare(statement).run()
-  }
-  await db.batch([
-    insertAction('action_contact_meta', 'contact', '', 'meta'),
-    insertAction('action_contact_duplicate', 'contact', 'action_contact_meta', 'meta'),
-    insertAction('action_registration', 'complete_registration', '', 'meta'),
-    insertAction('action_contact_tiktok', 'contact', '', 'tiktok'),
-    insertAction('action_unrouted', 'contact', '', ''),
-    db.prepare(`
-      INSERT INTO analytics_conversion_deliveries (
-        id, conversion_action_id, transport, status
-      ) VALUES ('delivery_contact_pixel', 'action_contact_meta', 'browser', 'attempted')
-    `),
-    db.prepare(`
-      INSERT INTO analytics_conversion_deliveries (
-        id, conversion_action_id, transport, status, has_fbp, has_fbc, has_email, has_external_id
-      ) VALUES ('delivery_registration_capi', 'action_registration', 'server', 'sent', 1, 1, 1, 1)
-    `),
-    db.prepare(`
-      INSERT INTO analytics_conversion_deliveries (
-        id, conversion_action_id, provider, transport, status, has_ttclid, has_ttp, has_email
-      ) VALUES ('delivery_contact_tiktok', 'action_contact_tiktok', 'tiktok', 'server', 'sent', 1, 1, 1)
-    `),
-    db.prepare(`
-      INSERT INTO analytics_conversion_deliveries (id, conversion_action_id, provider, transport, status)
-      VALUES
-        ('delivery_unrouted_browser', 'action_unrouted', 'meta', 'browser', 'attempted'),
-        ('delivery_unrouted_server', 'action_unrouted', 'meta', 'server', 'sent')
-    `),
-    db.prepare(`INSERT INTO analytics_conversion_daily (date, action_type, action_count) VALUES
-      ('2026-07-11', 'contact', 1),
-      ('2026-07-11', 'complete_registration', 1),
-      ('2026-07-11', 'lead', 3)
-    `),
-    db.prepare(`INSERT INTO analytics_conversion_delivery_daily (
-      date, provider, event_name, transport, status, delivery_count
-    ) VALUES
-      ('2026-07-11', 'meta', 'Contact', 'browser', 'attempted', 1),
-      ('2026-07-11', 'meta', 'CompleteRegistration', 'server', 'sent', 1),
-      ('2026-07-11', 'tiktok', 'Contact', 'server', 'sent', 1)
-    `),
-  ])
+  await db.exec(MIGRATION.replace(/\s*\r?\n\s*/g, ' '))
+})
+
+beforeEach(async () => {
+  await db.exec(`
+    DELETE FROM attribution_provider_receipts;
+    DELETE FROM attribution_deliveries;
+    DELETE FROM attribution_conversion_facts;
+    DELETE FROM attribution_platform_connections;
+  `)
+  await seedDashboardFacts()
 })
 
 afterAll(async () => miniflare.dispose())
 
-describe('attribution breakdown 真实事实口径', () => {
-  it.each(['utm_campaign', 'utm_content', 'tracking_link'] as const)(
-    '%s 排除 duplicate diagnostic 行并与 summary/trend 的正式事实一致',
-    async dimension => {
-      const result = await queryAttributionBreakdown(
-        db,
-        { from: '2026-07-11', to: '2026-07-11' },
-        dimension,
-        50,
-        'meta',
-      )
-
-      expect(result.data.rows).toEqual([{
-        value: dimension === 'utm_campaign' ? 'campaign-a' : dimension === 'utm_content' ? 'content-a' : 'link-a',
-        actionCount: 2,
-        contactCount: 1,
-        completeRegistrationCount: 1,
-        delivery: {
-          pixelAttempted: 1,
-          serverSent: 1,
-          failed: 0,
-          skipped: 0,
-          pending: 0,
-          retryExhausted: 0,
-        },
-      }])
-    },
-  )
-
-  it('按 provider 隔离 TikTok 与 Meta 投递事实', async () => {
-    const result = await queryAttributionBreakdown(
-      db,
-      { from: '2026-07-11', to: '2026-07-11' },
-      'utm_campaign',
-      50,
-      'tiktok',
-    )
+describe('统一归因看板最终事实口径', () => {
+  it('区分标准事实、唯一来源平台、未归因和冲突来源', async () => {
+    const result = await queryAttributionSummary(db, dayRange(), 'meta')
 
     expect(result.data).toMatchObject({
-      provider: 'tiktok',
-      rows: [{
-        actionCount: 1,
-        delivery: { pixelAttempted: 0, serverSent: 1 },
-      }],
+      provider: 'meta',
+      business: { contactCount: 1, completeRegistrationCount: 1, factCount: 2 },
+      routing: {
+        totalFactCount: 7,
+        attributedFactCount: 5,
+        unattributedFactCount: 1,
+        conflictFactCount: 1,
+        byProvider: { meta: 2, tiktok: 1, google: 2 },
+      },
+      delivery: {
+        browserAttempted: 1,
+        server: {
+          planned: 0,
+          queued: 1,
+          accepted: 1,
+          processed: 0,
+          retrying: 0,
+          rejected: 0,
+          deadLetter: 0,
+          cancelled: 0,
+        },
+        queueRetryCount: 0,
+      },
     })
   })
 
-  it('总览、趋势与匹配质量在真实 D1 中按平台使用各自标识', async () => {
-    const range = { from: '2026-07-11', to: '2026-07-11' }
-    const [metaSummary, tiktokSummary, tiktokTrends, metaQuality, tiktokQuality] = await Promise.all([
-      queryAttributionSummary(db, range, 'meta'),
-      queryAttributionSummary(db, range, 'tiktok'),
-      queryAttributionTrends(db, range, 'tiktok'),
-      queryAttributionQuality(db, range, 'dev', 'meta'),
-      queryAttributionQuality(db, range, 'dev', 'tiktok'),
+  it('Google 两个 conversion 始终按 canonical event 分开并保留 retry/DLQ', async () => {
+    const [summary, trends, breakdown] = await Promise.all([
+      queryAttributionSummary(db, dayRange(), 'google'),
+      queryAttributionTrends(db, dayRange(), 'google'),
+      queryAttributionBreakdown(db, dayRange(), 'utm_campaign', 50, 'google'),
     ])
 
-    expect(metaSummary.data).toMatchObject({
-      provider: 'meta',
-      business: { actionCount: 2 },
-      historical: { leadCount: 3 },
-      delivery: { pixelAttempted: 1, serverSent: 1 },
-      routing: { mismatchCount: 0, unroutedActionCount: 1 },
-    })
-    expect(tiktokSummary.data).toMatchObject({
-      provider: 'tiktok',
-      business: { actionCount: 1 },
-      delivery: { pixelAttempted: 0, serverSent: 1 },
-      routing: { mismatchCount: 0, unroutedActionCount: 1 },
-    })
-    expect(tiktokTrends.data.rows[0]?.delivery).toMatchObject({ pixelAttempted: 0, serverSent: 1 })
-    expect(metaQuality.data.match).toMatchObject({
-      labels: { browserId: 'fbp', clickId: 'fbc' },
-      summary: {
-        browserId: { numerator: 1, denominator: 1, rate: 1 },
-        clickId: { numerator: 1, denominator: 1, rate: 1 },
+    expect(summary.data).toMatchObject({
+      business: { contactCount: 1, completeRegistrationCount: 1, factCount: 2 },
+      delivery: {
+        browserAttempted: 1,
+        server: { processed: 1, deadLetter: 1 },
+        queueRetryCount: 2,
       },
     })
-    expect(tiktokQuality.data.match).toMatchObject({
-      labels: { browserId: '_ttp', clickId: 'ttclid' },
-      summary: {
-        browserId: { numerator: 1, denominator: 1, rate: 1 },
-        clickId: { numerator: 1, denominator: 1, rate: 1 },
+    expect(trends.data.rows).toEqual([
+      expect.objectContaining({
+        date: '2026-07-15',
+        business: { contactCount: 1, completeRegistrationCount: 1, factCount: 2 },
+      }),
+    ])
+    expect(breakdown.data.rows).toEqual([
+      expect.objectContaining({
+        value: 'google-campaign',
+        factCount: 2,
+        contactCount: 1,
+        completeRegistrationCount: 1,
+      }),
+    ])
+  })
+
+  it('Browser attempted 只统计签名回执，并计算配对与匹配信号覆盖', async () => {
+    const [meta, google] = await Promise.all([
+      queryAttributionQuality(db, dayRange(), 'meta'),
+      queryAttributionQuality(db, dayRange(), 'google'),
+    ])
+
+    expect(meta.data.pairing.summary).toEqual(metric(1, 2))
+    expect(meta.data.match.summary).toEqual(metric(1, 2))
+    expect(meta.data.match.signals).toEqual([
+      { key: 'fbc', ...metric(1, 2) },
+      { key: 'fbp', ...metric(1, 2) },
+    ])
+    expect(google.data.pairing.summary).toEqual(metric(1, 2))
+    expect(google.data.match.summary).toEqual(metric(1, 2))
+    expect(google.data.match.signals).toEqual([
+      { key: 'gclid', ...metric(1, 2) },
+    ])
+  })
+
+  it('容量估算按 UTC 日汇总三平台最终事实、Delivery 和 Receipt', async () => {
+    const result = await queryAttributionCapacity(db, '2026-07-15')
+
+    expect(result.data.date).toBe('2026-07-15')
+    expect(result.data.timeZone).toBe('UTC')
+    expect(result.data.inputs).toMatchObject({
+      factCount: 7,
+      deliveryCount: 9,
+      browserAttemptCount: 2,
+      serverDeliveryCount: 5,
+      adapterAttemptCount: 6,
+      queueAttemptCount: 5,
+      terminalServerDeliveryCount: 4,
+      providerReceiptCount: 6,
+      workflowStepCount: 0,
+    })
+    expect(result.data.note).toContain('项目内部估算')
+  })
+
+  it('所有活动查询只读取最终 Fact、Delivery 和 Receipt', async () => {
+    const sql: string[] = []
+    const tracked = {
+      prepare(statement: string) {
+        sql.push(statement)
+        return db.prepare(statement)
       },
-    })
-    expect(tiktokQuality.data.platformQuality).toEqual({
-      source: 'not_supported', availability: 'unavailable', latest: null, rows: [],
-    })
+    } as Pick<D1Database, 'prepare'> as D1Database
+
+    await Promise.all([
+      queryAttributionSummary(tracked, dayRange(), 'meta'),
+      queryAttributionTrends(tracked, dayRange(), 'tiktok'),
+      queryAttributionQuality(tracked, dayRange(), 'google'),
+      queryAttributionBreakdown(tracked, dayRange(), 'utm_content', 50, 'meta'),
+      queryAttributionCapacity(tracked, '2026-07-15'),
+    ])
+
+    const source = sql.join('\n')
+    expect(source).toContain('attribution_conversion_facts')
+    expect(source).toContain('attribution_deliveries')
+    expect(source).toContain('attribution_provider_receipts')
+    expect(source).not.toMatch(/analytics_conversion_(?:actions|deliveries|daily|delivery_daily)/)
+    expect(source).not.toContain('meta_dataset_quality_snapshots')
   })
 })
 
-function insertAction(id: string, actionType: string, duplicateOf: string, attributionProvider: 'meta' | 'tiktok' | '') {
-  return db.prepare(`
-    INSERT INTO analytics_conversion_actions (
-      id, action_type, date, source_channel, utm_source,
-      utm_campaign, utm_content, tracking_source_slug, duplicate_of, attribution_provider
-    ) VALUES (?, ?, '2026-07-11', 'ad', ?, 'campaign-a', 'content-a', 'link-a', ?, ?)
-  `).bind(id, actionType, attributionProvider, duplicateOf, attributionProvider)
+function dayRange() {
+  return { from: '2026-07-15', to: '2026-07-15', days: 1 }
 }
 
-function schemaSql() {
-  return `
-    CREATE TABLE analytics_conversion_actions (
-      id TEXT PRIMARY KEY, action_type TEXT NOT NULL, date TEXT NOT NULL,
-      source_channel TEXT NOT NULL DEFAULT '', utm_source TEXT NOT NULL DEFAULT '',
-      utm_campaign TEXT NOT NULL DEFAULT '', utm_content TEXT NOT NULL DEFAULT '',
-      tracking_source_slug TEXT NOT NULL DEFAULT '', duplicate_of TEXT NOT NULL DEFAULT '',
-      attribution_provider TEXT NOT NULL DEFAULT ''
-    );
-    CREATE TABLE analytics_conversion_deliveries (
-      id TEXT PRIMARY KEY, conversion_action_id TEXT NOT NULL,
-      provider TEXT NOT NULL DEFAULT 'meta', transport TEXT NOT NULL DEFAULT 'server',
-      status TEXT NOT NULL, error_code TEXT NOT NULL DEFAULT '',
-      has_fbp INTEGER NOT NULL DEFAULT 0, has_fbc INTEGER NOT NULL DEFAULT 0,
-      has_ttclid INTEGER NOT NULL DEFAULT 0, has_ttp INTEGER NOT NULL DEFAULT 0,
-      has_email INTEGER NOT NULL DEFAULT 0, has_external_id INTEGER NOT NULL DEFAULT 0
-    );
-    CREATE TABLE analytics_conversion_daily (
-      date TEXT NOT NULL, action_type TEXT NOT NULL, action_count INTEGER NOT NULL
-    );
-    CREATE TABLE analytics_conversion_delivery_daily (
-      date TEXT NOT NULL, provider TEXT NOT NULL, event_name TEXT NOT NULL,
-      transport TEXT NOT NULL, status TEXT NOT NULL, delivery_count INTEGER NOT NULL
-    );
-    CREATE TABLE meta_dataset_quality_snapshots (
-      id TEXT PRIMARY KEY, environment TEXT NOT NULL, collected_at TEXT NOT NULL,
-      event_name TEXT NOT NULL, metric_key TEXT NOT NULL, metric_value REAL,
-      collection_status TEXT NOT NULL, error_category TEXT NOT NULL DEFAULT '',
-      window_start TEXT, window_end TEXT, contract_version INTEGER NOT NULL DEFAULT 1
-    );
-  `
+function metric(numerator: number, denominator: number) {
+  return {
+    availability: denominator > 0 ? 'available' : 'unavailable',
+    numerator,
+    denominator,
+    rate: denominator > 0 ? numerator / denominator : null,
+  }
+}
+
+async function seedDashboardFacts() {
+  await db.batch([
+    connection('meta'),
+    connection('tiktok'),
+    connection('google'),
+    fact('fact_meta_contact', 'Contact', 'meta', 'context', 'meta-campaign'),
+    fact('fact_meta_registration', 'CompleteRegistration', 'meta', 'context', 'meta-campaign'),
+    fact('fact_tiktok_contact', 'Contact', 'tiktok', 'context', 'tiktok-campaign'),
+    fact('fact_google_contact', 'Contact', 'google', 'context', 'google-campaign'),
+    fact('fact_google_registration', 'CompleteRegistration', 'google', 'context', 'google-campaign'),
+    fact('fact_unattributed', 'Contact', null, 'none', 'organic'),
+    fact('fact_conflict', 'CompleteRegistration', null, 'conflict', 'conflict'),
+    delivery('delivery_meta_browser', 'fact_meta_contact', 'meta', 'browser', 'planned', 0, 0, []),
+    delivery('delivery_meta_server', 'fact_meta_contact', 'meta', 'server', 'accepted', 1, 1, ['fbp', 'fbc']),
+    delivery('delivery_meta_registration_browser', 'fact_meta_registration', 'meta', 'browser', 'planned', 0, 0, []),
+    delivery('delivery_meta_registration_server', 'fact_meta_registration', 'meta', 'server', 'queued', 0, 1, []),
+    delivery('delivery_tiktok_server', 'fact_tiktok_contact', 'tiktok', 'server', 'rejected', 1, 1, ['ttclid']),
+    delivery('delivery_google_browser', 'fact_google_contact', 'google', 'browser', 'planned', 0, 0, []),
+    delivery('delivery_google_server', 'fact_google_contact', 'google', 'server', 'processed', 1, 1, ['gclid']),
+    delivery('delivery_google_registration_browser', 'fact_google_registration', 'google', 'browser', 'planned', 0, 0, []),
+    delivery('delivery_google_registration_server', 'fact_google_registration', 'google', 'server', 'dead_letter', 3, 1, []),
+    receipt('receipt_meta_browser', 'delivery_meta_browser', 'meta', 'browser_attempt', 'attempted'),
+    receipt('receipt_meta_server', 'delivery_meta_server', 'meta', 'server_delivery', 'accepted'),
+    receipt('receipt_tiktok_server', 'delivery_tiktok_server', 'tiktok', 'server_delivery', 'rejected'),
+    receipt('receipt_google_browser', 'delivery_google_browser', 'google', 'browser_attempt', 'attempted'),
+    receipt('receipt_google_server', 'delivery_google_server', 'google', 'server_delivery', 'processed'),
+    receipt('receipt_google_dlq', 'delivery_google_registration_server', 'google', 'server_delivery', 'dead_letter'),
+  ])
+}
+
+function connection(provider: 'meta' | 'tiktok' | 'google') {
+  return db.prepare(`
+    INSERT INTO attribution_platform_connections (
+      id, provider, enabled, mode, browser_enabled, server_enabled,
+      public_config_json, rollout_target_percentage, rollout_effective_percentage,
+      connection_revision, credential_revision
+    ) VALUES (?, ?, 1, 'production', 1, 1, '{}', 100, 100, 'revision_1', 'credential_1')
+  `).bind(`conn_${provider}`, provider)
+}
+
+function fact(
+  id: string,
+  canonicalEvent: 'Contact' | 'CompleteRegistration',
+  provider: 'meta' | 'tiktok' | 'google' | null,
+  source: 'context' | 'none' | 'conflict',
+  campaign: string,
+) {
+  return db.prepare(`
+    INSERT INTO attribution_conversion_facts (
+      id, canonical_event, fact_origin, external_event_id, attribution_provider,
+      attribution_source, occurred_at, dedupe_key, consent_snapshot_json,
+      analytics_dimensions_json
+    ) VALUES (?, ?, 'live', ?, ?, ?, '2026-07-15T04:00:00.000Z', ?, '{}', ?)
+  `).bind(
+    id,
+    canonicalEvent,
+    `mg3_${id}`,
+    provider,
+    source,
+    `dedupe_${id}`,
+    JSON.stringify({
+      visitorId: `visitor_${id}`,
+      sessionId: `session_${id}`,
+      sourceChannel: provider ? 'ad' : 'unknown',
+      sourceName: provider || source,
+      utmCampaign: campaign,
+      utmContent: `${canonicalEvent}-creative`,
+      trackingSourceSlug: `${provider || source}-link`,
+      methodType: canonicalEvent === 'Contact' ? 'telegram' : 'email',
+      actionTarget: canonicalEvent === 'Contact' ? 'contact_primary' : 'registration',
+      path: canonicalEvent === 'Contact' ? '/' : '/register',
+    }),
+  )
+}
+
+function delivery(
+  id: string,
+  factId: string,
+  provider: 'meta' | 'tiktok' | 'google',
+  transport: 'browser' | 'server',
+  status: string,
+  attemptCount: number,
+  queueAttemptCount: number,
+  matchSignals: string[],
+) {
+  return db.prepare(`
+    INSERT INTO attribution_deliveries (
+      id, fact_id, connection_id, provider, transport, status, destination,
+      match_signals_json, attempt_count, queue_attempt_count
+    ) VALUES (?, ?, ?, ?, ?, ?, 'conversion', ?, ?, ?)
+  `).bind(id, factId, `conn_${provider}`, provider, transport, status, JSON.stringify(matchSignals), attemptCount, queueAttemptCount)
+}
+
+function receipt(id: string, deliveryId: string, provider: 'meta' | 'tiktok' | 'google', type: string, status: string) {
+  return db.prepare(`
+    INSERT INTO attribution_provider_receipts (
+      id, delivery_id, provider, receipt_type, status, receipt_json, received_at
+    ) VALUES (?, ?, ?, ?, ?, '{}', '2026-07-15T04:01:00.000Z')
+  `).bind(id, deliveryId, provider, type, status)
 }

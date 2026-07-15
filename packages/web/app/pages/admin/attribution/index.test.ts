@@ -3,93 +3,43 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { computed, defineComponent, ref } from 'vue'
 import AttributionIndexPage from './index.vue'
 
-const TextStub = (name: string, text: string) => defineComponent({
-  name,
-  template: `<div>${text}</div>`,
-})
+const TextStub = (name: string, text: string) => defineComponent({ name, template: `<div>${text}</div>` })
 
 function state(data: unknown) {
   return {
-    range: ref('7d'),
-    date: ref('2026-07-10'),
-    data: ref(data),
-    loading: ref(false),
-    error: ref(''),
-    usage: ref(null),
+    range: ref('7d'), date: ref('2026-07-15'), data: ref(data), loading: ref(false), error: ref(''), usage: ref(null),
     refresh: vi.fn().mockResolvedValue(undefined),
   }
 }
 
-function mountPage(
-  datasetAvailable = false,
-  initialProvider: 'meta' | 'tiktok' = 'meta',
-) {
+function mountPage(initialProvider: 'meta' | 'tiktok' | 'google' = 'meta', capacityWarning = false) {
+  const server = { planned: 0, queued: 1, accepted: 3, processed: 1, retrying: 0, rejected: 1, deadLetter: 0, cancelled: 0 }
+  const delivery = { browserAttempted: 4, server, queueRetryCount: 1, queueEnqueueCount: 5 }
+  const metric = { availability: 'available', numerator: 3, denominator: 4, rate: 0.75 }
   const states: Record<string, ReturnType<typeof state>> = {
     '/api/admin/attribution/summary': state({
       provider: initialProvider,
-      business: { contactCount: 3, completeRegistrationCount: 2, actionCount: 5 },
-      historical: { leadCount: 9 },
-      delivery: { pixelAttempted: 5, serverSent: 4, failed: 1, skipped: 0, pending: 0, retryExhausted: 0 },
-      routing: { mismatchCount: 0, unroutedActionCount: 1 },
+      business: { contactCount: 3, completeRegistrationCount: 2, factCount: 5 },
+      delivery,
+      routing: { totalFactCount: 8, attributedFactCount: 6, unattributedFactCount: 1, conflictFactCount: 1, byProvider: { meta: 3, tiktok: 2, google: 1 } },
     }),
-    '/api/admin/attribution/trends': state({
-      provider: initialProvider,
-      granularity: 'day',
-      rows: [{
-        date: '2026-07-10',
-        business: { contactCount: 3, completeRegistrationCount: 2, actionCount: 5 },
-        delivery: { pixelAttempted: 5, serverSent: 4, failed: 1, skipped: 0, pending: 0, retryExhausted: 0 },
-      }],
-    }),
+    '/api/admin/attribution/trends': state({ provider: initialProvider, granularity: 'day', rows: [{ date: '2026-07-15', business: { contactCount: 3, completeRegistrationCount: 2, factCount: 5 }, delivery }] }),
     '/api/admin/attribution/quality': state({
       provider: initialProvider,
-      match: {
-        labels: initialProvider === 'meta'
-          ? { browserId: 'fbp', clickId: 'fbc', email: 'email', externalId: 'external_id' }
-          : { browserId: '_ttp', clickId: 'ttclid', email: 'email', externalId: 'external_id' },
-        summary: {
-          browserId: { availability: 'available', numerator: 3, denominator: 4, rate: 0.75 },
-          clickId: { availability: 'unavailable', numerator: 0, denominator: 0, rate: null },
-          email: { availability: 'available', numerator: 4, denominator: 4, rate: 1 },
-          externalId: { availability: 'available', numerator: 1, denominator: 4, rate: 0.25 },
-        },
-        rows: [],
-      },
-      platformQuality: initialProvider === 'tiktok'
-        ? { source: 'not_supported', availability: 'unavailable', latest: null, rows: [] }
-        : datasetAvailable
-        ? { source: 'meta_dataset_quality', availability: 'available', latest: { value: 0.82 }, rows: [] }
-        : { source: 'meta_dataset_quality', availability: 'unavailable', latest: null, rows: [] },
+      pairing: { summary: metric, rows: [{ date: '2026-07-15', ...metric }] },
+      match: { summary: metric, signals: [{ key: initialProvider === 'google' ? 'gclid' : 'fbp', ...metric }], rows: [{ date: '2026-07-15', ...metric }] },
+      platformQuality: { availability: 'unavailable', latest: null, rows: [] },
     }),
-    '/api/admin/attribution/platforms': state([
-      {
-        provider: 'meta',
-        enabled: true,
-        browserEnabled: true,
-        serverEnabled: true,
-        mode: 'production',
+    '/api/admin/attribution/platforms': state(['meta', 'tiktok', 'google'].map(provider => ({
+      provider, enabled: true, browserEnabled: true, serverEnabled: true, mode: 'production', rolloutEffectivePercentage: 100,
+    }))),
+    '/api/admin/attribution/breakdown': state({ provider: initialProvider, dimension: 'utm_campaign', rows: [] }),
+    '/api/admin/attribution/capacity': state({
+      date: '2026-07-15', timeZone: 'UTC', note: '项目内部估算', inputs: {},
+      metrics: {
+        workerRequests: { value: capacityWarning ? 70_000 : 100, safetyLimit: 70_000, ratio: capacityWarning ? 1 : 0.0014, warning: capacityWarning },
       },
-      {
-        provider: 'tiktok',
-        environment: 'production',
-        enabled: true,
-        browserEnabled: true,
-        serverEnabled: false,
-        destinationId: 'C123456789ABCDEF',
-        destinationConfigured: true,
-        serverCredentialConfigured: true,
-        serverQueueConfigured: true,
-        serverDataKeyConfigured: true,
-        debugEnabled: false,
-        rolloutPercentage: 0,
-        mode: 'production',
-        state: 'unverified',
-        verifiedAt: '',
-        verifiedCommit: '',
-      },
-    ]),
-    '/api/admin/attribution/breakdown': state({ provider: 'meta', dimension: 'utm_campaign', rows: [] }),
-    '/api/admin/attribution/duplicates': state({ duplicateRate: 0, samples: [] }),
+    }),
   }
 
   vi.stubGlobal('definePageMeta', vi.fn())
@@ -101,14 +51,13 @@ function mountPage(
     queryKey: computed(() => '7d'),
   }))
   vi.stubGlobal('formatAnalyticsNumber', (value: unknown) => String(value ?? 0))
-  vi.stubGlobal('formatAnalyticsPercent', (numerator: unknown, denominator?: unknown) => denominator === undefined ? `${Number(numerator) * 100}%` : `${Number(numerator) / Math.max(1, Number(denominator)) * 100}%`)
 
   return shallowMount(AttributionIndexPage, {
     global: {
       stubs: {
         AttributionPageShell: { template: '<main><slot /></main>' },
         AttributionTrendPanel: TextStub('AttributionTrendPanel', '趋势图'),
-        AnalyticsDataTable: true,
+        AttributionHealthStrip: TextStub('AttributionHealthStrip', '投递健康'),
         NuxtLink: { template: '<a><slot /></a>' },
       },
     },
@@ -117,36 +66,31 @@ function mountPage(
 
 afterEach(() => vi.unstubAllGlobals())
 
-describe('多平台归因总览', () => {
-  it('按固定顺序展示三个分析区域与四层证据轨', () => {
+describe('统一广告归因总览', () => {
+  it('按固定顺序展示事实、投递、质量和容量四层', () => {
     const wrapper = mountPage()
     expect(wrapper.findAll('[data-attribution-section]').map(section => section.attributes('data-attribution-section'))).toEqual([
-      'business',
-      'delivery',
-      'quality',
+      'business', 'delivery', 'quality', 'capacity',
     ])
     expect(wrapper.get('[data-evidence-rail]').text()).toContain('站内事实')
-    expect(wrapper.get('[data-evidence-rail]').text()).toContain('Pixel 尝试')
-    expect(wrapper.get('[data-evidence-rail]').text()).toContain('Server API 接收')
-    expect(wrapper.get('[data-evidence-rail]').text()).toContain('平台质量')
-    expect(wrapper.text()).toContain('Meta 连接 生产运行')
-    expect(wrapper.text()).not.toContain('发布控制组件')
+    expect(wrapper.get('[data-evidence-rail]').text()).toContain('Browser 回执')
+    expect(wrapper.get('[data-evidence-rail]').text()).toContain('Server 状态')
+    expect(wrapper.get('[data-evidence-rail]').text()).toContain('质量证据')
+    expect(wrapper.text()).toContain('Meta · 生产运行')
+    expect(wrapper.text()).toContain('项目内部估算')
   })
 
-  it('Dataset Quality 与 match 按 availability 渲染，不把 null 显示为 0 分', () => {
-    const wrapper = mountPage(false)
-    expect(wrapper.text()).toContain('尚未取得平台质量数据')
-    expect(wrapper.text()).toContain('暂无可发送样本')
-    expect(wrapper.text()).not.toContain('Meta 质量 0 分')
-    expect(wrapper.text()).not.toContain('fbc 0%')
+  it('Google 使用同一数据口径并保留 canonical 质量信号', () => {
+    const wrapper = mountPage('google')
+    expect(wrapper.text()).toContain('Google Ads · 生产运行')
+    expect(wrapper.text()).toContain('gclid')
+    expect(wrapper.text()).toContain('Browser/Server 配对率')
+    expect(wrapper.text()).not.toContain('CAPI 成功')
   })
 
-  it('切换 TikTok 后只展示 TikTok 术语和独立质量口径', () => {
-    const wrapper = mountPage(false, 'tiktok')
-    expect(wrapper.text()).toContain('TikTok 连接 生产运行')
-    expect(wrapper.text()).toContain('TikTok Pixel 与 Events API')
-    expect(wrapper.text()).toContain('_ttp coverage')
-    expect(wrapper.text()).toContain('当前平台未接入质量诊断 API')
-    expect(wrapper.text()).not.toContain('Meta 匹配覆盖与平台质量')
+  it('容量达到 70% 安全线时显示预警', () => {
+    const wrapper = mountPage('meta', true)
+    expect(wrapper.get('[data-attribution-section="capacity"]').text()).toContain('至少一项已达到项目 70% 安全线')
+    expect(wrapper.get('[data-attribution-section="capacity"]').text()).toContain('预警')
   })
 })

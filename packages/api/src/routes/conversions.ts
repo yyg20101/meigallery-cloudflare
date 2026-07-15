@@ -11,6 +11,7 @@ import { AD_ATTRIBUTION_CONTEXT_COOKIE } from './ad-attribution'
 import { loadAttributionCryptoKeys } from '../utils/attribution-crypto'
 import { resolveTrustedAdAttributionContext } from '../utils/ad-attribution-context'
 import { readAdPlatformBrowserIdentifiersFromRequest } from '../utils/ad-platform-identifiers'
+import { recordBrowserAttemptReceipt } from '../services/ad-platform/browser-attempt-receipt'
 
 const CONVERSION_ID_RE = /^[A-Za-z0-9_-]{8,120}$/
 
@@ -57,6 +58,35 @@ conversionRoutes.post('/events', async (c) => {
   return c.json({ data: result }, result.created ? 201 : 200)
 })
 
+conversionRoutes.post('/browser-attempt', async (c) => {
+  let body: Record<string, unknown>
+  try { body = await c.req.json<Record<string, unknown>>() }
+  catch { return errorJson(c, 400, 'Browser 回执必须是有效 JSON', { code: 'BROWSER_ATTEMPT_RECEIPT_INVALID' }) }
+  const deliveryId = conversionId(body.deliveryId)
+  const provider = attributionProvider(body.provider)
+  const receiptToken = typeof body.receiptToken === 'string' ? body.receiptToken : ''
+  if (!deliveryId || !provider || receiptToken.length < 20 || receiptToken.length > 160) {
+    return errorJson(c, 400, 'Browser 回执无效', { code: 'BROWSER_ATTEMPT_RECEIPT_INVALID' })
+  }
+  let result: Awaited<ReturnType<typeof recordBrowserAttemptReceipt>>
+  try {
+    result = await recordBrowserAttemptReceipt({
+      db: c.env.DB,
+      keys: await loadAttributionCryptoKeys(c.env),
+      deliveryId,
+      provider,
+      receiptToken,
+    })
+  }
+  catch {
+    return errorJson(c, 400, 'Browser 回执无效', { code: 'BROWSER_ATTEMPT_RECEIPT_INVALID' })
+  }
+  if (!result.accepted) {
+    return errorJson(c, 400, 'Browser 回执无效', { code: 'BROWSER_ATTEMPT_RECEIPT_INVALID' })
+  }
+  return c.json({ data: { accepted: true } })
+})
+
 async function trustedAttributionContext(c: Parameters<typeof getCookie>[0]) {
   try {
     const keys = await loadAttributionCryptoKeys(c.env)
@@ -68,3 +98,4 @@ async function trustedAttributionContext(c: Parameters<typeof getCookie>[0]) {
 function conversionId(value: unknown) { const normalized = typeof value === 'string' ? value.trim() : ''; return CONVERSION_ID_RE.test(normalized) ? normalized : '' }
 function text(value: unknown, maximum: number) { return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, maximum) }
 function isPlainRecord(value: unknown): value is Record<string, unknown> { return Boolean(value && typeof value === 'object' && !Array.isArray(value)) }
+function attributionProvider(value: unknown) { return value === 'meta' || value === 'tiktok' || value === 'google' ? value : null }

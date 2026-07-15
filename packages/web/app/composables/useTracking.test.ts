@@ -40,9 +40,11 @@ let route = {
 }
 
 const metaInstruction = {
+  deliveryId: 'delivery_meta_browser',
   provider: 'meta' as const,
   canonicalEvent: 'Contact' as const,
   externalEventId: 'mg3_contact_123',
+  receiptToken: `v1.${'a'.repeat(16)}.${'b'.repeat(43)}`,
   descriptor: {
     provider: 'meta' as const,
     canonicalEvent: 'Contact' as const,
@@ -135,7 +137,14 @@ describe('useTracking', () => {
     expect(JSON.stringify(body)).not.toContain('actionType":"contact')
     expect(adapter.initialize).toHaveBeenCalledWith(publicConfig.value, expect.objectContaining({ marketingAllowed: true }))
     expect(adapter.execute).toHaveBeenCalledWith(metaInstruction)
-    expect(api.mock.calls.some(call => call[0] === '/api/conversions/pixel-receipts')).toBe(false)
+    expect(api).toHaveBeenCalledWith('/api/conversions/browser-attempt', {
+      method: 'POST',
+      body: {
+        deliveryId: 'delivery_meta_browser',
+        provider: 'meta',
+        receiptToken: metaInstruction.receiptToken,
+      },
+    })
     expect(trackAnalytics).toHaveBeenCalledWith('contact_method_click', expect.objectContaining({ eventId: 'mg3_contact_123' }))
   })
 
@@ -154,9 +163,23 @@ describe('useTracking', () => {
     await vi.runAllTimersAsync()
     await request
 
-    expect(api).toHaveBeenCalledTimes(2)
-    expect(api.mock.calls[1]?.[1]?.body).toEqual(api.mock.calls[0]?.[1]?.body)
+    const conversionCalls = api.mock.calls.filter(call => call[0] === '/api/conversions/events')
+    expect(conversionCalls).toHaveLength(2)
+    expect(conversionCalls[1]?.[1]?.body).toEqual(conversionCalls[0]?.[1]?.body)
     expect(adapter.execute).toHaveBeenCalledWith(metaInstruction)
+  })
+
+  it('平台脚本未执行成功时不提交 Browser attempted 回执', async () => {
+    api.mockResolvedValueOnce({ data: { id: 'fact_1', created: true, trackingInstructions: [metaInstruction] } })
+    adapter.execute.mockResolvedValueOnce(false)
+
+    await useTracking().trackContact({
+      contactMethodId: 'contact_123',
+      methodType: 'telegram',
+      actionType: 'open_link',
+    })
+
+    expect(api.mock.calls.some(call => call[0] === '/api/conversions/browser-attempt')).toBe(false)
   })
 
   it('Contact 遇到业务 4xx 时不重试', async () => {

@@ -33,12 +33,13 @@ describe('归因转化页当前口径', () => {
     vi.unstubAllGlobals()
   })
 
-  it('来源活动比率只使用有效联系和完成注册', () => {
+  it('来源和标准事件只读取最终事实口径', () => {
     const conversions = attributionState({
       provider: 'meta',
-      byAction: [],
+      byEvent: [{ canonical_event: 'Contact', fact_count: 1, unique_session_count: 1 }],
       bySource: [{
         source_name: 'Meta A',
+        fact_count: 2,
         contact_count: 1,
         complete_registration_count: 1,
       }],
@@ -47,7 +48,7 @@ describe('归因转化页当前口径', () => {
     const overview = attributionState({ rows: [] })
 
     vi.stubGlobal('definePageMeta', vi.fn())
-    vi.stubGlobal('useAttributionProvider', () => ref<'meta' | 'tiktok'>('meta'))
+    vi.stubGlobal('useAttributionProvider', () => ref<'meta' | 'tiktok' | 'google'>('meta'))
     vi.stubGlobal('useAdminAttributionRange', () => ({ range: ref('7d'), date: ref('2026-07-10'), queryKey: computed(() => '7d') }))
     vi.stubGlobal('useAdminAttribution', (endpoint: string) => endpoint.endsWith('/trends') ? overview : conversions)
 
@@ -66,15 +67,14 @@ describe('归因转化页当前口径', () => {
     expect(tables.length).toBe(3)
     const sourceRow = (tables[0]!.props('rows') as Array<Record<string, unknown>>)[0]!
 
-    expect(sourceRow.contact_rate).toBe(0.5)
-    expect(sourceRow.register_rate).toBe(0.5)
     expect(sourceRow.platform).toBe('Meta')
+    expect(sourceRow.fact_count).toBe(2)
     expect(sourceRow).not.toHaveProperty('historical_lead_count')
     expect(sourceRow).not.toHaveProperty('membership_grant_count')
     expect(tables[0]!.props('columns')).toContainEqual(expect.objectContaining({ key: 'platform', label: '广告平台' }))
     expect(tables[0]!.props('columns')).not.toContainEqual(expect.objectContaining({ key: 'meta_status' }))
     expect(wrapper.text()).not.toContain('开始试用')
-    expect(wrapper.text()).toContain('有效联系或完成注册事件上报后会出现。')
+    expect(wrapper.text()).toContain('有效联系或完成注册后会出现。')
     expect(wrapper.text()).not.toContain('会员发放')
   })
 

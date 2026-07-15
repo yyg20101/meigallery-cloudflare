@@ -31,6 +31,7 @@ import {
   isAttributionBreakdownDimension,
   isAttributionDashboardProvider,
   queryAttributionBreakdown,
+  queryAttributionCapacity,
   queryAttributionQuality,
   queryAttributionSummary,
   queryAttributionTrends,
@@ -108,13 +109,25 @@ adminAttributionRoutes.get('/quality', async (c) => {
   const provider = parseDashboardProviderOrError(c)
   if (provider instanceof Response) return provider
   try {
-    const result = await queryAttributionQuality(
-      c.env.DB,
-      range,
-      c.env.APP_ENV === 'production' ? 'production' : 'dev',
-      provider,
-    )
+    const result = await queryAttributionQuality(c.env.DB, range, provider)
     return c.json({ range, ...result })
+  }
+  catch {
+    return dashboardUnavailable(c)
+  }
+})
+
+adminAttributionRoutes.get('/capacity', async (c) => {
+  const date = c.req.query('date') || new Date().toISOString().slice(0, 10)
+  const parsedDate = new Date(`${date}T00:00:00.000Z`)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)
+    || Number.isNaN(parsedDate.getTime())
+    || parsedDate.toISOString().slice(0, 10) !== date) {
+    return errorJson(c, 400, '容量估算日期无效', { code: 'ATTRIBUTION_CAPACITY_DATE_INVALID' })
+  }
+  try {
+    const result = await queryAttributionCapacity(c.env.DB, date)
+    return c.json(result)
   }
   catch {
     return dashboardUnavailable(c)
@@ -313,58 +326,86 @@ adminAttributionRoutes.get('/conversions', async (c) => {
   const provider = parseDashboardProviderOrError(c)
   if (provider instanceof Response) return provider
   const sourceFilter = readAttributionSourceFilter(c)
-  const actionSourceWhere = sourceFilter
-    ? "date BETWEEN ? AND ? AND action_type IN ('contact', 'complete_registration') AND attribution_provider = ? AND (source_name = ? OR tracking_source_slug = ?)"
-    : "date BETWEEN ? AND ? AND action_type IN ('contact', 'complete_registration') AND attribution_provider = ?"
-  const actionSourceParams = sourceFilter
+  const factSourceWhere = sourceFilter
+    ? `date(datetime(fact.occurred_at, '+8 hours')) BETWEEN ? AND ?
+      AND fact.canonical_event IN ('Contact', 'CompleteRegistration')
+      AND fact.attribution_provider = ?
+      AND (
+        json_extract(fact.analytics_dimensions_json, '$.sourceName') = ?
+        OR json_extract(fact.analytics_dimensions_json, '$.trackingSourceSlug') = ?
+      )`
+    : `date(datetime(fact.occurred_at, '+8 hours')) BETWEEN ? AND ?
+      AND fact.canonical_event IN ('Contact', 'CompleteRegistration')
+      AND fact.attribution_provider = ?`
+  const factSourceParams = sourceFilter
     ? [range.from, range.to, provider, sourceFilter, sourceFilter]
     : [range.from, range.to, provider]
 
-  const [byAction, bySource, samples] = await Promise.all([
+  const [byEvent, bySource, samples] = await Promise.all([
     queryAll(c.env.DB, `
       SELECT
-        action_type,
-        COUNT(*) AS action_count,
-        COUNT(DISTINCT session_id) AS unique_session_count
-      FROM analytics_conversion_actions
-      WHERE ${actionSourceWhere}
-        AND duplicate_of = ''
-      GROUP BY action_type
-      ORDER BY action_count DESC
-    `, actionSourceParams),
+        fact.canonical_event,
+        COUNT(*) AS fact_count,
+        COUNT(DISTINCT json_extract(fact.analytics_dimensions_json, '$.sessionId')) AS unique_session_count
+      FROM attribution_conversion_facts AS fact
+      WHERE ${factSourceWhere}
+      GROUP BY fact.canonical_event
+      ORDER BY fact_count DESC, fact.canonical_event ASC
+    `, factSourceParams),
     queryAll(c.env.DB, `
       SELECT
-        source_channel,
-        source_name,
-        utm_campaign,
-        utm_content,
-        COALESCE(SUM(CASE WHEN action_type = 'contact' THEN 1 ELSE 0 END), 0) AS contact_count,
-        COALESCE(SUM(CASE WHEN action_type = 'complete_registration' THEN 1 ELSE 0 END), 0) AS complete_registration_count
-      FROM analytics_conversion_actions
-      WHERE ${actionSourceWhere}
-        AND duplicate_of = ''
+        COALESCE(NULLIF(json_extract(fact.analytics_dimensions_json, '$.sourceChannel'), ''), 'unknown') AS source_channel,
+        COALESCE(NULLIF(json_extract(fact.analytics_dimensions_json, '$.sourceName'), ''), '未标记') AS source_name,
+        COALESCE(NULLIF(json_extract(fact.analytics_dimensions_json, '$.utmCampaign'), ''), '未标记') AS utm_campaign,
+        COALESCE(NULLIF(json_extract(fact.analytics_dimensions_json, '$.utmContent'), ''), '未标记') AS utm_content,
+        SUM(CASE WHEN fact.canonical_event = 'Contact' THEN 1 ELSE 0 END) AS contact_count,
+        SUM(CASE WHEN fact.canonical_event = 'CompleteRegistration' THEN 1 ELSE 0 END) AS complete_registration_count,
+        COUNT(*) AS fact_count
+      FROM attribution_conversion_facts AS fact
+      WHERE ${factSourceWhere}
       GROUP BY source_channel, source_name, utm_campaign, utm_content
       ORDER BY contact_count DESC, complete_registration_count DESC
       LIMIT 50
-    `, actionSourceParams),
+    `, factSourceParams),
     queryAll(c.env.DB, `
       SELECT
-        id, action_type, occurred_at, source_channel, source_name, tracking_source_slug,
-        utm_campaign, utm_content, method_type, action_target, route_name, path, duplicate_of,
-        attribution_provider
-      FROM analytics_conversion_actions
-      WHERE ${actionSourceWhere}
-      ORDER BY occurred_at DESC
+        fact.id,
+        fact.canonical_event,
+        fact.external_event_id,
+        fact.occurred_at,
+        fact.attribution_provider,
+        fact.attribution_source,
+        json_extract(fact.analytics_dimensions_json, '$.sourceChannel') AS source_channel,
+        json_extract(fact.analytics_dimensions_json, '$.sourceName') AS source_name,
+        json_extract(fact.analytics_dimensions_json, '$.trackingSourceSlug') AS tracking_source_slug,
+        json_extract(fact.analytics_dimensions_json, '$.utmCampaign') AS utm_campaign,
+        json_extract(fact.analytics_dimensions_json, '$.utmContent') AS utm_content,
+        json_extract(fact.analytics_dimensions_json, '$.methodType') AS method_type,
+        json_extract(fact.analytics_dimensions_json, '$.actionTarget') AS action_target,
+        json_extract(fact.analytics_dimensions_json, '$.path') AS path,
+        MAX(CASE WHEN delivery.transport = 'browser' AND EXISTS (
+          SELECT 1 FROM attribution_provider_receipts AS receipt
+          WHERE receipt.delivery_id = delivery.id
+            AND receipt.receipt_type = 'browser_attempt'
+            AND receipt.status = 'attempted'
+        ) THEN 1 ELSE 0 END) AS browser_attempted,
+        MAX(CASE WHEN delivery.transport = 'server' THEN delivery.status ELSE '' END) AS server_status,
+        SUM(CASE WHEN delivery.transport = 'server' THEN MAX(delivery.attempt_count - 1, 0) ELSE 0 END) AS retry_count
+      FROM attribution_conversion_facts AS fact
+      LEFT JOIN attribution_deliveries AS delivery ON delivery.fact_id = fact.id AND delivery.provider = ?
+      WHERE ${factSourceWhere}
+      GROUP BY fact.id
+      ORDER BY fact.occurred_at DESC
       LIMIT 100
-    `, actionSourceParams),
+    `, [provider, ...factSourceParams]),
   ])
 
   return c.json({
     range,
-    usage: mergeQueryUsage(byAction, bySource, samples),
+    usage: mergeQueryUsage(byEvent, bySource, samples),
     data: {
       provider,
-      byAction: byAction.rows,
+      byEvent: byEvent.rows,
       bySource: bySource.rows,
       samples: samples.rows,
     },

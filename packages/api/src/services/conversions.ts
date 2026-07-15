@@ -2,11 +2,12 @@ import type { AdAttributionProvider, AdBrowserInstruction, AnalyticsSourceChanne
 import type { Bindings } from '../index'
 import { generateId } from '../utils/db'
 import { buildConversionDedupeKey, sanitizeConversionMetadata } from '../utils/conversions'
-import { encryptAttributionValue, loadAttributionCryptoKeys } from '../utils/attribution-crypto'
+import { encryptAttributionValue, loadAttributionCryptoKeys, type AttributionCryptoKeys } from '../utils/attribution-crypto'
 import type { AdAttributionContext } from '../utils/ad-attribution-context'
 import { createAdConsentSnapshot, type AdConsentSnapshot } from '../utils/marketing-consent-receipt'
 import { readAttributionConnectionSnapshot } from './ad-platform/connections'
 import { buildAttributionDeliveryPlan } from './ad-platform/planner'
+import { issueBrowserAttemptReceiptToken } from './ad-platform/browser-attempt-receipt'
 import { getAdPlatformDefinition } from './ad-platform/registry'
 import { enqueueAttributionDelivery, getAttributionQueue } from './ad-platform/secure-outbox'
 
@@ -52,11 +53,11 @@ async function recordLiveFact(env: ConversionEnv, input: ConversionBaseInput & {
   const occurredAt = iso(input.occurredAt)
   const eventTime = unixSeconds(occurredAt)
   const dedupeKey = buildConversionDedupeKey({ actionType: input.actionType, userId: input.userId ?? undefined, visitorId: input.visitorId, sessionId: input.sessionId, occurredDate: occurredAt.slice(0, 10), methodType: input.methodType, actionTarget: input.actionTarget })
+  const keys = await loadAttributionCryptoKeys(env)
   const existing = await findFact(env.DB, dedupeKey)
-  if (existing) return duplicate(existing.id, input.actionType, await existingBrowserInstructions(env.DB, existing))
+  if (existing) return duplicate(existing.id, input.actionType, await existingBrowserInstructions(env.DB, keys, existing))
   const id = generateId('fact')
   const context = trustedContext(input.attributionContext, input.attributionSource, input.consentSnapshot)
-  const keys = await loadAttributionCryptoKeys(env)
   const snapshot = context.provider ? await readAttributionConnectionSnapshot(env.DB, context.provider) : { state: 'connection_invalid' as const, reason: 'not_found' as const }
   const definition = getAdPlatformDefinition(context.provider)
   const pageUrl = absolutePageUrl(env.SITE_URL, input.path)
@@ -73,7 +74,7 @@ async function recordLiveFact(env: ConversionEnv, input: ConversionBaseInput & {
   ]
   try { await env.DB.batch(statements) } catch (error) {
     const concurrent = await findFact(env.DB, dedupeKey)
-    if (concurrent) return duplicate(concurrent.id, input.actionType, await existingBrowserInstructions(env.DB, concurrent))
+    if (concurrent) return duplicate(concurrent.id, input.actionType, await existingBrowserInstructions(env.DB, keys, concurrent))
     throw error
   }
   await Promise.allSettled(plan.deliveries
@@ -105,9 +106,9 @@ function deliveryStatement(db: D1Database, factId: string, snapshot: Awaited<Ret
   return db.prepare(`INSERT INTO attribution_deliveries (id, fact_id, connection_id, provider, transport, status, destination, match_signals_json) VALUES (?, ?, ?, ?, ?, 'planned', ?, ?)`).bind(delivery.id, factId, snapshot.connection.id, delivery.provider, delivery.transport, delivery.destination, JSON.stringify(Object.keys(delivery.matchSignals).sort()))
 }
 async function findFact(db: D1Database, dedupeKey: string) { return db.prepare(`SELECT id, canonical_event, external_event_id FROM attribution_conversion_facts WHERE dedupe_key = ? LIMIT 1`).bind(dedupeKey).first<{ id: string; canonical_event: CanonicalConversionEvent; external_event_id: string }>() }
-async function existingBrowserInstructions(db: D1Database, fact: { id: string; canonical_event: CanonicalConversionEvent; external_event_id: string }) {
+async function existingBrowserInstructions(db: D1Database, keys: AttributionCryptoKeys, fact: { id: string; canonical_event: CanonicalConversionEvent; external_event_id: string }) {
   const rows = await db.prepare(`
-    SELECT delivery.provider, delivery.destination, binding.server_destination
+    SELECT delivery.id, delivery.provider, delivery.destination, binding.server_destination
     FROM attribution_deliveries AS delivery
     JOIN attribution_event_bindings AS binding
       ON binding.connection_id = delivery.connection_id
@@ -116,18 +117,25 @@ async function existingBrowserInstructions(db: D1Database, fact: { id: string; c
     WHERE delivery.fact_id = ?
       AND delivery.transport = 'browser'
       AND delivery.status NOT IN ('cancelled', 'rejected')
-  `).bind(fact.canonical_event, fact.id).all<{ provider: unknown; destination: string; server_destination: string }>()
-  return rows.results.flatMap(row => {
+  `).bind(fact.canonical_event, fact.id).all<{ id: string; provider: unknown; destination: string; server_destination: string }>()
+  const instructions = await Promise.all(rows.results.map(async row => {
     const definition = getAdPlatformDefinition(row.provider)
     const descriptor = definition?.describeEvent({ canonicalEvent: fact.canonical_event })
-    return definition && descriptor ? [{
+    return definition && descriptor ? {
+      deliveryId: row.id,
       provider: definition.provider,
       canonicalEvent: fact.canonical_event,
       externalEventId: fact.external_event_id,
+      receiptToken: await issueBrowserAttemptReceiptToken(keys, {
+        deliveryId: row.id,
+        provider: definition.provider,
+        externalEventId: fact.external_event_id,
+      }),
       descriptor: { ...descriptor, browserDestination: row.destination, serverDestination: row.server_destination },
       payload: {},
-    }] : []
-  })
+    } : null
+  }))
+  return instructions.filter((instruction): instruction is AdBrowserInstruction => Boolean(instruction))
 }
 function duplicate(id: string, actionType: RecordConversionResult['actionType'], trackingInstructions: AdBrowserInstruction[]): RecordConversionResult { return { id, actionType, created: false, duplicateOf: id, trackingInstructions } }
 function dimensions(input: ConversionBaseInput, extra: Record<string, unknown>) { return { visitorId: input.visitorId, sessionId: input.sessionId, userId: input.userId ?? null, routeName: text(input.routeName), path: text(input.path), sourceChannel: text(input.sourceChannel), sourceName: text(input.sourceName), trackingSourceSlug: text(input.trackingSourceSlug), utmSource: text(input.utmSource), utmMedium: text(input.utmMedium), utmCampaign: text(input.utmCampaign), utmContent: text(input.utmContent), metadata: sanitizeConversionMetadata(input.metadata ?? {}), ...extra } }

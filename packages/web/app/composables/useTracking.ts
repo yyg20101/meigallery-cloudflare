@@ -104,7 +104,20 @@ export function useTracking() {
       const instruction = normalizeBrowserInstruction(value)
       if (!instruction || instruction.provider !== adAttribution.provider.value) continue
       if (!await activateCurrentAdBrowserProvider(instruction.provider)) continue
-      await executeAdBrowserInstruction(instruction)
+      if (!await executeAdBrowserInstruction(instruction)) continue
+      try {
+        await api('/api/conversions/browser-attempt', {
+          method: 'POST',
+          body: {
+            deliveryId: instruction.deliveryId,
+            provider: instruction.provider,
+            receiptToken: instruction.receiptToken,
+          },
+        })
+      }
+      catch {
+        // 平台事件已执行，回执失败不阻断用户业务动作。
+      }
     }
   }
 
@@ -268,11 +281,16 @@ function scopedMarketingConsent(marketingConsent: ReturnType<typeof useMarketing
 function normalizeBrowserInstruction(value: unknown): AdBrowserInstruction | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const instruction = value as Record<string, unknown>
-  if (!exactKeys(instruction, ['provider', 'canonicalEvent', 'externalEventId', 'descriptor', 'payload'])
+  if (!exactKeys(instruction, ['deliveryId', 'provider', 'canonicalEvent', 'externalEventId', 'receiptToken', 'descriptor', 'payload'])
+    || typeof instruction.deliveryId !== 'string'
+    || !/^[A-Za-z0-9_-]{1,160}$/.test(instruction.deliveryId)
     || !isRegisteredAdBrowserProvider(instruction.provider)
     || (instruction.canonicalEvent !== 'Contact' && instruction.canonicalEvent !== 'CompleteRegistration')
     || typeof instruction.externalEventId !== 'string'
     || !/^[A-Za-z0-9_-]{1,64}$/.test(instruction.externalEventId)
+    || typeof instruction.receiptToken !== 'string'
+    || instruction.receiptToken.length < 20
+    || instruction.receiptToken.length > 160
     || !safeBrowserPayload(instruction.payload)) return null
   const descriptor = instruction.descriptor
   if (!descriptor || typeof descriptor !== 'object' || Array.isArray(descriptor)) return null

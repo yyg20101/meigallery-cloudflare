@@ -7,8 +7,8 @@ import type {
 import type { ComputedRef, Ref } from 'vue'
 
 export type AttributionRangePreset = '7d' | '30d' | '90d' | 'day'
-export type AttributionDashboardProvider = Extract<AdPlatformProvider, 'meta' | 'tiktok'>
-export type EvidenceLayer = 'business' | 'pixel' | 'server' | 'quality'
+export type AttributionDashboardProvider = AdPlatformProvider
+export type EvidenceLayer = 'business' | 'browser' | 'server' | 'quality'
 export type MetaConnectionState = 'not_configured' | 'unverified' | 'verified' | 'configuration_changed'
 
 export interface AdPlatformConnectionStatusData {
@@ -95,28 +95,37 @@ export interface MetaConnectionStatusData {
 }
 
 export interface AttributionDeliveryMetrics {
-  pixelAttempted: number
-  serverSent: number
-  failed: number
-  skipped: number
-  pending: number
-  retryExhausted: number
+  browserAttempted: number
+  server: {
+    planned: number
+    queued: number
+    accepted: number
+    processed: number
+    retrying: number
+    rejected: number
+    deadLetter: number
+    cancelled: number
+  }
+  queueRetryCount: number
+  queueEnqueueCount: number
 }
 
 export interface AttributionBusinessMetrics {
   contactCount: number
   completeRegistrationCount: number
-  actionCount: number
+  factCount: number
 }
 
 export interface AttributionSummaryData {
   provider: AttributionDashboardProvider
   business: AttributionBusinessMetrics
-  historical: { leadCount: number }
   delivery: AttributionDeliveryMetrics
   routing: {
-    mismatchCount: number
-    unroutedActionCount: number
+    totalFactCount: number
+    attributedFactCount: number
+    unattributedFactCount: number
+    conflictFactCount: number
+    byProvider: Record<AdPlatformProvider, number>
   }
 }
 
@@ -139,41 +148,60 @@ export interface AttributionMatchMetric {
   rate: number | null
 }
 
-export interface AttributionMatchRow {
+export interface AttributionRateRow extends AttributionMatchMetric {
   date: string
-  browserId: AttributionMatchMetric
-  clickId: AttributionMatchMetric
-  email: AttributionMatchMetric
-  externalId: AttributionMatchMetric
 }
 
-export interface DatasetQualityRow {
+export interface PlatformQualityRow {
   date: string
-  eventName: string
+  canonicalEvent: string
   metricKey: string
   value: number | null
   availability: 'available' | 'error' | 'unavailable'
   status: string
   errorCategory: string
   collectedAt: string
-  windowStart: string | null
-  windowEnd: string | null
-  contractVersion: number
 }
 
 export interface AttributionQualityData {
   provider: AttributionDashboardProvider
+  pairing: {
+    summary: AttributionMatchMetric
+    rows: AttributionRateRow[]
+  }
   match: {
-    labels: Record<'browserId' | 'clickId' | 'email' | 'externalId', string>
-    summary: Record<'browserId' | 'clickId' | 'email' | 'externalId', AttributionMatchMetric>
-    rows: AttributionMatchRow[]
+    summary: AttributionMatchMetric
+    signals: Array<{ key: string } & AttributionMatchMetric>
+    rows: AttributionRateRow[]
   }
   platformQuality: {
-    source: 'meta_dataset_quality' | 'not_supported'
     availability: 'available' | 'error' | 'unavailable'
-    latest: DatasetQualityRow | null
-    rows: DatasetQualityRow[]
+    latest: PlatformQualityRow | null
+    rows: PlatformQualityRow[]
   }
+}
+
+export interface AttributionCapacityData {
+  date: string
+  timeZone: 'UTC'
+  note: string
+  inputs: {
+    factCount: number
+    deliveryCount: number
+    browserAttemptCount: number
+    serverDeliveryCount: number
+    adapterAttemptCount: number
+    queueAttemptCount: number
+    terminalServerDeliveryCount: number
+    providerReceiptCount: number
+    workflowStepCount: number
+  }
+  metrics: Record<'workerRequests' | 'queueOperations' | 'd1RowsRead' | 'd1RowsWritten' | 'workflowSteps' | 'serverConversions', {
+    value: number
+    safetyLimit: number
+    ratio: number
+    warning: boolean
+  }>
 }
 
 export interface MetaIncident {

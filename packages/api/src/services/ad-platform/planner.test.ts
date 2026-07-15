@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest'
+import { loadAttributionCryptoKeys } from '../../utils/attribution-crypto'
 import { attributionPlannerRolloutBucket, buildAttributionDeliveryPlan } from './planner'
 
-const eventKey = async () => crypto.subtle.importKey(
-  'raw', new TextEncoder().encode('a'.repeat(32)), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
-)
+const MASTER_KEY = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+const cryptoKeys = () => loadAttributionCryptoKeys({ AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT: MASTER_KEY })
 
 describe('归因投递 Planner', () => {
   it('同一事实为 Browser 与 Server 生成相同的 mg3_ externalEventId', async () => {
     const plan = await buildAttributionDeliveryPlan({
       factId: 'fact_1', provider: 'meta', canonicalEvent: 'Contact', consentGranted: true,
-      sourceAvailable: true, stableId: 'user_1', eventKey: await eventKey(),
+      sourceAvailable: true, stableId: 'user_1', cryptoKeys: await cryptoKeys(),
       connection: readyConnection('meta'),
     })
 
@@ -25,7 +25,7 @@ describe('归因投递 Planner', () => {
   ])('%s 时不创建广告 Delivery', async (_label, sourceAvailable, providerSelected, consentGranted = true) => {
     const plan = await buildAttributionDeliveryPlan({
       factId: 'fact_2', provider: providerSelected ? 'tiktok' : null, canonicalEvent: 'Contact',
-      consentGranted, sourceAvailable, stableId: 'user_2', eventKey: await eventKey(),
+      consentGranted, sourceAvailable, stableId: 'user_2', cryptoKeys: await cryptoKeys(),
       connection: readyConnection('tiktok'),
     })
     expect(plan.deliveries).toEqual([])
@@ -34,7 +34,7 @@ describe('归因投递 Planner', () => {
   it('Google 的 Contact 和 CompleteRegistration 使用不同 destination，rollout 保持确定性', async () => {
     const input = {
       factId: 'fact_google', provider: 'google' as const, consentGranted: true, sourceAvailable: true,
-      stableId: 'user_3', eventKey: await eventKey(), connection: readyConnection('google'),
+      stableId: 'user_3', cryptoKeys: await cryptoKeys(), connection: readyConnection('google'),
     }
     const contact = await buildAttributionDeliveryPlan({ ...input, canonicalEvent: 'Contact' })
     const registration = await buildAttributionDeliveryPlan({ ...input, canonicalEvent: 'CompleteRegistration' })
@@ -60,7 +60,7 @@ describe('归因投递 Planner', () => {
   it('未知 provider fail closed', async () => {
     const plan = await buildAttributionDeliveryPlan({
       factId: 'fact_unknown', provider: 'unknown', canonicalEvent: 'Contact', consentGranted: true,
-      sourceAvailable: true, stableId: 'user_4', eventKey: await eventKey(), connection: readyConnection('meta'),
+      sourceAvailable: true, stableId: 'user_4', cryptoKeys: await cryptoKeys(), connection: readyConnection('meta'),
     })
     expect(plan.deliveries).toEqual([])
   })
@@ -68,7 +68,7 @@ describe('归因投递 Planner', () => {
   it.each([0, 10, 100])('Server rollout 为 %i 时 Browser 仍独立计划', async rolloutEffectivePercentage => {
     const plan = await buildAttributionDeliveryPlan({
       factId: `fact_rollout_${rolloutEffectivePercentage}`, provider: 'meta', canonicalEvent: 'Contact',
-      consentGranted: true, sourceAvailable: true, stableId: 'user_5', eventKey: await eventKey(),
+      consentGranted: true, sourceAvailable: true, stableId: 'user_5', cryptoKeys: await cryptoKeys(),
       connection: readyConnection('meta', rolloutEffectivePercentage),
     })
     expect(plan.deliveries.filter(item => item.transport === 'browser')).toHaveLength(1)
@@ -82,7 +82,7 @@ describe('归因投递 Planner', () => {
 
     const base = {
       provider: 'meta' as const, canonicalEvent: 'Contact' as const, consentGranted: true, sourceAvailable: true,
-      eventKey: await eventKey(), connection: readyConnection('meta', 10),
+      cryptoKeys: await cryptoKeys(), connection: readyConnection('meta', 10),
     }
     const included = await buildAttributionDeliveryPlan({ ...base, factId: 'fact_bucket_in', stableId: 'stable-13' })
     const excluded = await buildAttributionDeliveryPlan({ ...base, factId: 'fact_bucket_out', stableId: 'rollout-in' })

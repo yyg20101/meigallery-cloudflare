@@ -6,7 +6,7 @@ const BASE64_KEY_PATTERN = /^(?:[A-Za-z0-9+/]{4}){10}[A-Za-z0-9+/]{3}=$/
 const BASE64_URL_PATTERN = /^[A-Za-z0-9_-]+$/
 const CONTROL_CHARACTER_PATTERN = /\p{Cc}/u
 const PURPOSES = new Set<AttributionCryptoPurpose>([
-  'credential', 'outbox', 'context', 'verification_input', 'event_id',
+  'credential', 'outbox', 'context', 'verification_input', 'event_id', 'browser_receipt',
 ])
 const AAD_FIELDS = new Set(['purpose', 'provider', 'subjectId', 'revision'])
 const ENVELOPE_FIELDS = new Set(['schemaVersion', 'keyId', 'iv', 'ciphertext', 'tag'])
@@ -16,7 +16,7 @@ const rootKeys = new WeakMap<AttributionDerivedKeyRoot, CryptoKey>()
 
 type AesKeyUsage = 'encrypt' | 'decrypt'
 
-export type AttributionCryptoPurpose = 'credential' | 'outbox' | 'context' | 'verification_input' | 'event_id'
+export type AttributionCryptoPurpose = 'credential' | 'outbox' | 'context' | 'verification_input' | 'event_id' | 'browser_receipt'
 
 export interface AttributionAad {
   purpose: AttributionCryptoPurpose
@@ -169,6 +169,34 @@ export async function deriveAttributionHmacKey(input: {
       salt: HKDF_SALT,
       info: hkdfInfo(input.purpose, 'hmac-sha256'),
     }, keyForRoot(input.keys.current), { name: 'HMAC', hash: 'SHA-256', length: AES_KEY_BYTES * 8 }, false, ['sign'])
+  }
+  catch {
+    throw contextError()
+  }
+}
+
+/** 返回可验证当前与上一把主密钥签名的 HMAC key，用于无状态短回执。 */
+export async function deriveAttributionHmacVerificationKeys(input: {
+  keys: AttributionCryptoKeys
+  purpose: AttributionCryptoPurpose
+}) {
+  try {
+    if (!PURPOSES.has(input.purpose)) throw contextError()
+    const roots = [input.keys.current, input.keys.previous].filter(
+      (root): root is AttributionDerivedKeyRoot => Boolean(root),
+    )
+    return await Promise.all(roots.map(async root => {
+      validateKeyRoot(root)
+      return {
+        keyId: root.id,
+        key: await crypto.subtle.deriveKey({
+          name: 'HKDF',
+          hash: 'SHA-256',
+          salt: HKDF_SALT,
+          info: hkdfInfo(input.purpose, 'hmac-sha256'),
+        }, keyForRoot(root), { name: 'HMAC', hash: 'SHA-256', length: AES_KEY_BYTES * 8 }, false, ['sign', 'verify']),
+      }
+    }))
   }
   catch {
     throw contextError()

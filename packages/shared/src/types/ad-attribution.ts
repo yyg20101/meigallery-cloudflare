@@ -37,9 +37,11 @@ export interface PlatformEventDescriptor {
 }
 
 export interface AdBrowserInstruction {
+  deliveryId: string
   provider: AdAttributionProvider
   canonicalEvent: CanonicalConversionEvent
   externalEventId: string
+  receiptToken: string
   descriptor: PlatformEventDescriptor
   payload: Record<string, string | number | boolean>
 }

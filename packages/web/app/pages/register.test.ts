@@ -19,9 +19,11 @@ describe('register page', () => {
     register.mockResolvedValue({
       id: 1,
       trackingInstructions: [{
+        deliveryId: 'delivery_meta_registration',
         provider: 'meta',
         canonicalEvent: 'CompleteRegistration',
         externalEventId: 'mg3_registration_1',
+        receiptToken: `v1.${'a'.repeat(16)}.${'b'.repeat(43)}`,
         descriptor: {
           provider: 'meta',
           canonicalEvent: 'CompleteRegistration',

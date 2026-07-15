@@ -10,7 +10,7 @@ definePageMeta({ layout: 'admin' })
 
 interface ConversionData {
   provider: AttributionDashboardProvider
-  byAction: Array<Record<string, unknown>>
+  byEvent: Array<Record<string, unknown>>
   bySource: Array<Record<string, unknown>>
   samples: Array<Record<string, unknown>>
 }
@@ -37,19 +37,25 @@ const trendSeries = [
   { label: '完成注册', key: 'business.completeRegistrationCount', layer: 'business' as const },
 ]
 
-const sourceRows = computed(() => (conversions.data.value?.bySource ?? []).map(row => {
-  const total = ['contact_count', 'complete_registration_count']
-    .reduce((sum, key) => sum + Number(row[key] ?? 0), 0)
-  return {
-    ...row,
-    platform: platform.value.label,
-    contact_rate: Number(row.contact_count ?? 0) / Math.max(1, total),
-    register_rate: Number(row.complete_registration_count ?? 0) / Math.max(1, total),
-  }
-}))
+const sourceRows = computed(() => (conversions.data.value?.bySource ?? []).map(row => ({
+  ...row,
+  platform: platform.value.label,
+})))
+const sampleRows = computed(() => (conversions.data.value?.samples ?? []).map(row => ({
+  ...row,
+  browser_attempted: Number(row.browser_attempted) === 1 ? '已尝试' : '无回执',
+  server_status: serverStatusLabel(String(row.server_status || '')),
+})))
 
 function refreshAll() {
   void Promise.all([conversions.refresh(), trends.refresh()])
+}
+
+function serverStatusLabel(status: string) {
+  return ({
+    planned: '已规划', queued: '已入队', accepted: '已接收', processed: '已处理', retrying: '重试中',
+    rejected: '已拒绝', dead_letter: '死信', cancelled: '已取消',
+  } as Record<string, string>)[status] || '未创建'
 }
 </script>
 
@@ -57,88 +63,82 @@ function refreshAll() {
   <AttributionPageShell
     v-model:range="rangeState.range.value"
     v-model:date="rangeState.date.value"
-    title="转化明细"
-    description="按单一广告平台检查有效联系、完成注册、Campaign 与最近事件样本。"
+    title="转化事实"
+    description="按平台检查不可变业务事实、来源维度和最终投递状态。"
     :loading="conversions.loading.value || trends.loading.value"
     :error="conversions.error.value || trends.error.value"
     :usage="conversions.usage.value"
-    :show-range-controls="false"
     @refresh="refreshAll"
   >
     <AttributionProviderSwitch v-model="selectedProvider" />
 
     <template v-if="conversions.data.value">
-      <AttributionTrendPanel
-        :title="`${platform.label} 转化趋势`"
-        description="按业务日查看当前平台的有效联系和完成注册，不混入其他广告平台。"
-        :rows="trends.data.value?.rows || []"
-        :series="trendSeries"
-      />
+      <section class="border-b border-gray-200 bg-white px-3 py-5 sm:px-5">
+        <AttributionTrendPanel
+          :title="`${platform.label} 转化趋势`"
+          :rows="trends.data.value?.rows || []"
+          :series="trendSeries"
+        />
+      </section>
 
-      <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_24rem]">
-        <section class="space-y-3">
-          <div>
-            <h2 class="text-sm font-semibold text-gray-900">来源转化</h2>
-            <p class="mt-1 text-sm text-gray-500">用于比较广告系列与素材版本的有效转化质量。</p>
-          </div>
+      <section class="grid gap-5 border-b border-gray-200 bg-white px-3 py-5 sm:px-5 xl:grid-cols-[minmax(0,1fr)_24rem]">
+        <div class="min-w-0">
+          <h2 class="text-sm font-semibold text-gray-900">来源转化</h2>
           <AnalyticsDataTable
+            class="mt-3"
             empty-title="暂无来源转化"
-            empty-text="当前范围没有转化日报。"
+            empty-text="当前范围没有转化事实。"
             :columns="[
               { key: 'source_name', label: '来源', sortable: true },
               { key: 'platform', label: '广告平台' },
-              { key: 'utm_campaign', label: 'campaign', sortable: true },
-              { key: 'utm_content', label: 'content', sortable: true },
+              { key: 'utm_campaign', label: 'Campaign', sortable: true },
+              { key: 'utm_content', label: 'Content', sortable: true },
+              { key: 'fact_count', label: '事实', type: 'number', sortable: true },
               { key: 'contact_count', label: '有效联系', type: 'number', sortable: true },
-              { key: 'complete_registration_count', label: '注册', type: 'number', sortable: true },
-              { key: 'contact_rate', label: '联系率', type: 'percent', sortable: true },
-              { key: 'register_rate', label: '注册率', type: 'percent', sortable: true },
+              { key: 'complete_registration_count', label: '完成注册', type: 'number', sortable: true },
             ]"
             :rows="sourceRows"
             compact
           />
-        </section>
+        </div>
 
-        <section class="space-y-3">
-          <div>
-            <h2 class="text-sm font-semibold text-gray-900">动作汇总</h2>
-            <p class="mt-1 text-sm text-gray-500">只统计明确归属于 {{ platform.label }} 且未被判重的活动转化。</p>
-          </div>
+        <div class="min-w-0">
+          <h2 class="text-sm font-semibold text-gray-900">标准事件</h2>
           <AnalyticsDataTable
-            empty-title="暂无动作数据"
-            empty-text="有效联系或完成注册事件上报后会出现。"
+            class="mt-3"
+            empty-title="暂无标准事件"
+            empty-text="有效联系或完成注册后会出现。"
             :columns="[
-              { key: 'action_type', label: '动作', sortable: true },
-              { key: 'action_count', label: '次数', type: 'number', sortable: true },
+              { key: 'canonical_event', label: '标准事件', sortable: true },
+              { key: 'fact_count', label: '事实数', type: 'number', sortable: true },
               { key: 'unique_session_count', label: 'Session', type: 'number', sortable: true },
             ]"
-            :rows="conversions.data.value.byAction"
+            :rows="conversions.data.value.byEvent"
             compact
           />
-        </section>
-      </div>
-
-      <section class="space-y-3">
-        <div>
-          <h2 class="text-sm font-semibold text-gray-900">最近样本</h2>
-          <p class="mt-1 text-sm text-gray-500">用于核对路径、联系方式入口和去重结果。</p>
         </div>
+      </section>
+
+      <section class="bg-white px-3 py-5 sm:px-5">
+        <h2 class="text-sm font-semibold text-gray-900">最近事实与投递</h2>
         <AnalyticsDataTable
-          empty-title="暂无样本"
-          empty-text="当前范围没有可展示的转化样本。"
+          class="mt-3"
+          empty-title="暂无事实样本"
+          empty-text="当前范围没有可展示的转化事实。"
           :columns="[
             { key: 'occurred_at', label: '时间', sortable: true },
-            { key: 'action_type', label: '动作', sortable: true },
+            { key: 'canonical_event', label: '标准事件', sortable: true },
             { key: 'source_name', label: '来源', sortable: true },
-            { key: 'utm_campaign', label: 'campaign' },
-            { key: 'utm_content', label: 'content' },
+            { key: 'utm_campaign', label: 'Campaign' },
+            { key: 'utm_content', label: 'Content' },
             { key: 'method_type', label: '方式' },
-            { key: 'action_target', label: '入口' },
             { key: 'path', label: '路径' },
-            { key: 'duplicate_of', label: '重复于' },
-            { key: 'attribution_provider', label: '平台标识' },
+            { key: 'browser_attempted', label: 'Browser' },
+            { key: 'server_status', label: 'Server' },
+            { key: 'retry_count', label: '重试', type: 'number' },
+            { key: 'external_event_id', label: '事件编号' },
           ]"
-          :rows="conversions.data.value.samples"
+          :rows="sampleRows"
           compact
         />
       </section>

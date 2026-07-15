@@ -3,7 +3,7 @@ import { resolve } from 'path'
 
 const AD_PLATFORM_COVERAGE_FILES = [
   'src/utils/conversions.ts',
-  'src/utils/pixel-receipt.ts',
+  'src/services/ad-platform/browser-attempt-receipt.ts',
   'src/utils/ad-platform-identifiers.ts',
   'src/utils/secure-context-crypto.ts',
   'src/services/ad-platform/secure-outbox.ts',
@@ -19,7 +19,7 @@ const AD_PLATFORM_COVERAGE_FILES = [
   'src/routes/admin/attribution.ts',
 ]
 
-const AD_PLATFORM_COVERAGE_GLOB = 'src/{utils/conversions,utils/pixel-receipt,utils/ad-platform-identifiers,utils/secure-context-crypto,services/ad-platform/secure-outbox,services/ad-platform/queue-runtime,services/ad-platform/recovery,services/conversions,services/meta-capi,services/tiktok-connection,services/tiktok-events,services/tiktok-events-delivery,routes/conversions,routes/admin/ad-platforms,routes/admin/attribution}.ts'
+const AD_PLATFORM_COVERAGE_GLOB = 'src/{utils/conversions,utils/ad-platform-identifiers,utils/secure-context-crypto,services/ad-platform/browser-attempt-receipt,services/ad-platform/secure-outbox,services/ad-platform/queue-runtime,services/ad-platform/recovery,services/conversions,services/meta-capi,services/tiktok-connection,services/tiktok-events,services/tiktok-events-delivery,routes/conversions,routes/admin/ad-platforms,routes/admin/attribution}.ts'
 
 export default defineConfig({
   test: {
