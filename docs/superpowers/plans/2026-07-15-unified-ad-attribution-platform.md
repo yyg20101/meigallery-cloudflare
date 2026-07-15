@@ -392,7 +392,7 @@ Expected: PASS，提交成功。
 - Modify: `packages/api/src/routes/conversions.ts`
 - Modify: `packages/api/src/routes/conversions.test.ts`
 
-- [ ] **Step 1：写 Planner 失败测试**
+- [x] **Step 1：写 Planner 失败测试**
 
 覆盖三平台唯一选择、无来源零 Delivery、冲突零 Delivery、同意拒绝零 Delivery、Browser/Server 共用 event ID、Google 两个 destination 分离、rollout 确定性、未知 provider fail closed。
 
@@ -402,7 +402,7 @@ corepack pnpm --filter @meigallery/api exec vitest run src/services/ad-platform/
 
 Expected: FAIL。
 
-- [ ] **Step 2：将事件映射改为 Adapter 描述器**
+- [x] **Step 2：将事件映射改为 Adapter 描述器**
 
 ```ts
 export interface AdPlatformDefinition {
@@ -416,11 +416,11 @@ export interface AdPlatformDefinition {
 
 核心 registry 只查表和调用接口；禁止在 `conversions.ts`、`planner.ts`、`connections.ts` 出现 provider 比较分支。
 
-- [ ] **Step 3：实现一次连接快照读取**
+- [x] **Step 3：实现一次连接快照读取**
 
 单次查询读取 connection、event bindings 和 credential metadata，返回经过 Schema 验证的 discriminated union；任何 revision 不一致都返回 `connection_invalid`。
 
-- [ ] **Step 4：重写事实和投递原子写入**
+- [x] **Step 4：重写事实和投递原子写入**
 
 ```ts
 const statements = [
@@ -434,11 +434,11 @@ await env.DB.batch(statements)
 
 `analytics_conversion_actions` 不再由运行时代码读写；内部数据分析需要的标准事实直接从 `attribution_conversion_facts` 聚合。
 
-- [ ] **Step 5：只允许有效 Contact**
+- [x] **Step 5：只允许有效 Contact**
 
 公开请求增加 `contactMethodId` 和 `actionType: 'open_link'`。服务端读取启用的联系方式，确认 ID、平台和安全 URL 均有效后才创建 Contact；`copy` 返回 `PUBLIC_CONVERSION_ACTION_INVALID`。
 
-- [ ] **Step 6：运行测试和分支静态检查**
+- [x] **Step 6：运行测试和分支静态检查**
 
 ```bash
 corepack pnpm --filter @meigallery/api exec vitest run src/services/ad-platform/registry.test.ts src/services/ad-platform/connections.d1.test.ts src/services/ad-platform/planner.test.ts src/services/conversions.test.ts src/services/conversions.d1.test.ts src/routes/conversions.test.ts
@@ -447,7 +447,7 @@ rg -n "provider\s*===|provider\s*!==" packages/api/src/services/conversions.ts p
 
 Expected: tests PASS；`rg` 无输出。
 
-- [ ] **Step 7：提交**
+- [x] **Step 7：提交**
 
 ```bash
 git add packages/api/src/services/ad-platform packages/api/src/services/conversions.ts packages/api/src/services/conversions.test.ts packages/api/src/services/conversions.d1.test.ts packages/api/src/routes/conversions.ts packages/api/src/routes/conversions.test.ts
@@ -501,22 +501,32 @@ JWT `aud` 使用 Service Account `token_uri`，scope 固定为 `https://www.goog
 
 ```ts
 const request = {
-  requestId: input.externalEventId,
   validateOnly: input.validateOnly,
+  encoding: 'HEX',
   destinations: [{
-    operatingAccount: `customers/${customerId}`,
+    operatingAccount: {
+      accountType: 'GOOGLE_ADS',
+      accountId: customerId,
+    },
+    ...(loginCustomerId ? {
+      loginAccount: {
+        accountType: 'GOOGLE_ADS',
+        accountId: loginCustomerId,
+      },
+    } : {}),
     productDestinationId: input.destination,
   }],
   events: [{
     eventTimestamp: toRfc3339(input.eventTime),
     transactionId: input.externalEventId,
+    eventSource: 'WEB',
     adIdentifiers: googleAdIdentifiers(input.matchSignals),
     userData: input.hashedEmail ? { userIdentifiers: [{ emailAddress: input.hashedEmail }] } : undefined,
   }],
 }
 ```
 
-若配置 `loginCustomerId`，按官方请求结构加入 login account；不得添加 Developer Token。
+`POST https://datamanager.googleapis.com/v1/events:ingest` 成功响应中的 `requestId` 是 Google 生成的异步请求编号，不得把本项目 `externalEventId` 错放到请求顶层；去重编号只写 `events[].transactionId`。若配置 `loginCustomerId`，按上述官方 `ProductAccount` 结构加入 `loginAccount`；不得添加 Developer Token。Service Account 请求同时发送 `x-goog-user-project: cloudProjectId`。
 
 - [ ] **Step 4：统一错误分类**
 

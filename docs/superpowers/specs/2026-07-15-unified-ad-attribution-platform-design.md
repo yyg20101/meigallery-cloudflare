@@ -468,11 +468,14 @@ Scope: https://www.googleapis.com/auth/datamanager
 
 请求包含：
 
-- `operatingAccount`：Google Ads Customer ID。
-- `loginAccount`：可选 Manager Account ID。
+- `operatingAccount`：`{ accountType: 'GOOGLE_ADS', accountId: Google Ads Customer ID }`。
+- `loginAccount`：可选的 `{ accountType: 'GOOGLE_ADS', accountId: Manager Account ID }`。
 - `productDestinationId`：对应 Website conversion action ID。
 - `transactionId`：与 Browser `transaction_id` 相同。
+- `eventSource: 'WEB'`；上传哈希用户数据时请求级 `encoding: 'HEX'`。
 - `gclid/gbraid/wbraid` 或经同意的哈希用户数据。
+
+本项目事件编号只写入 `events[].transactionId`。请求顶层不发送自定义 `requestId`；成功响应中的 `requestId` 由 Google 生成，用于后续状态诊断。Service Account REST 请求发送 `x-goog-user-project`，值为连接配置的 Google Cloud Project ID。
 
 Data Manager API 不需要 Google Ads Developer Token。
 
