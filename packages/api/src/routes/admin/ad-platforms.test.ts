@@ -240,6 +240,71 @@ describe('通用广告平台连接路由', () => {
     expect(invalid.status).toBe(400)
   })
 
+  it('仅将 production Worker 中现有 Meta Secret 一次性迁移到通用凭证库', async () => {
+    const migrationEnv = { ...env, META_CAPI_ACCESS_TOKEN: 'existing-worker-secret' } as Bindings
+    mocks.savePlatformConnection.mockResolvedValueOnce({
+      provider: 'meta', connectionId: 'conn_meta', credential: { configured: true },
+    })
+    const response = await request(createApp('owner'), '/platforms/meta/migrate-worker-secret', {
+      method: 'POST',
+      body: JSON.stringify({ pixelId: '1277657707436781' }),
+    }, migrationEnv)
+
+    expect(response.status).toBe(201)
+    expect(mocks.savePlatformConnection).toHaveBeenCalledWith(migrationEnv, expect.objectContaining({
+      provider: 'meta',
+      enabled: true,
+      mode: 'test',
+      browserEnabled: true,
+      serverEnabled: true,
+      publicConfig: { provider: 'meta', pixelId: '1277657707436781' },
+      credential: { type: 'access_token', plaintext: 'existing-worker-secret' },
+      rolloutTargetPercentage: 0,
+      actorId: 7,
+    }))
+    expect(await response.text()).not.toContain('existing-worker-secret')
+  })
+
+  it('Meta Secret 迁移拒绝重复执行、缺失 Secret 和非法输入', async () => {
+    mocks.getPlatformConnection.mockResolvedValueOnce({ connectionId: 'conn_meta' })
+    const app = createApp('owner')
+    const completed = await request(app, '/platforms/meta/migrate-worker-secret', {
+      method: 'POST', body: JSON.stringify({ pixelId: '1277657707436781' }),
+    }, { ...env, META_CAPI_ACCESS_TOKEN: 'existing-worker-secret' } as Bindings)
+    const missing = await request(app, '/platforms/meta/migrate-worker-secret', {
+      method: 'POST', body: JSON.stringify({ pixelId: '1277657707436781' }),
+    })
+    const invalid = await request(app, '/platforms/meta/migrate-worker-secret', {
+      method: 'POST', body: JSON.stringify({ pixelId: '1277657707436781', token: 'forbidden' }),
+    }, { ...env, META_CAPI_ACCESS_TOKEN: 'existing-worker-secret' } as Bindings)
+
+    expect(completed.status).toBe(409)
+    expect(await completed.json()).toMatchObject({ code: 'AD_PLATFORM_SECRET_MIGRATION_ALREADY_COMPLETED' })
+    expect(missing.status).toBe(409)
+    expect(await missing.json()).toMatchObject({ code: 'AD_PLATFORM_SECRET_MIGRATION_SOURCE_UNAVAILABLE' })
+    expect(invalid.status).toBe(400)
+  })
+
+  it('Meta Secret 迁移复用 production Owner 与受信 Origin 门禁', async () => {
+    const migrationEnv = { ...env, META_CAPI_ACCESS_TOKEN: 'existing-worker-secret' } as Bindings
+    const nonOwner = await request(createApp('admin'), '/platforms/meta/migrate-worker-secret', {
+      method: 'POST', body: JSON.stringify({ pixelId: '1277657707436781' }),
+    }, migrationEnv)
+    const development = await request(createApp('owner'), '/platforms/meta/migrate-worker-secret', {
+      method: 'POST', body: JSON.stringify({ pixelId: '1277657707436781' }),
+    }, { ...migrationEnv, APP_ENV: 'dev' } as Bindings)
+    const noOrigin = await createApp('owner').request('https://api.example.test/platforms/meta/migrate-worker-secret', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pixelId: '1277657707436781' }),
+    }, migrationEnv)
+
+    expect(nonOwner.status).toBe(403)
+    expect(development.status).toBe(409)
+    expect(noOrigin.status).toBe(403)
+    expect(mocks.savePlatformConnection).not.toHaveBeenCalled()
+  })
+
   it('限制请求体大小并拒绝额外字段', async () => {
     const oversized = await request(createApp('owner'), '/platforms/meta', {
       method: 'PATCH',
