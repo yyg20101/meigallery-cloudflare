@@ -1030,7 +1030,7 @@ verify:quick
 
 脚本不修改 rollout、不写平台凭证、不伪造验证证据。
 
-验收记录：production 固定快照幂等回填、仓库外 D1 备份、双采样 Queue preflight、只读 reconcile 和统一部署顺序已实现；专项脚本测试 52/52 通过。真实 production 只读 preflight 仍阻断于旧 Meta Server 有效配置未降为 0、通用主密钥未配置和 6 条新 Queue 未创建，因此尚未应用 `0051`、未部署新运行时，也未写入 production 数据或 rollout。
+验收记录：production 固定快照幂等回填、仓库外 D1 备份、双采样 Queue preflight、只读 reconcile 和统一部署顺序已实现；专项脚本测试 52/52 通过。6 条新 Queue 已创建、无积压且尚未绑定新 Worker；32 字节通用主密钥已备份到本机登录钥匙串并写入 production Secret。真实 production 只读 preflight 只剩旧 Meta Server 有效配置未降为 0，因此尚未应用 `0051`、未部署新运行时，也未写入 production 数据或 rollout。
 
 - [ ] **Step 4：运行脚本测试和 release 验证**
 
@@ -1041,13 +1041,15 @@ corepack pnpm verify:release
 
 Expected: PASS；未提供 production 凭证时只运行 dry-run/只读门禁，不调用平台 API。
 
-- [ ] **Step 5：提交并统一推送 dev**
+- [x] **Step 5：提交并统一推送 dev**
 
 ```bash
 git add scripts package.json docs/DEPLOYMENT.md docs/TECHNICAL_SPEC.md docs/releases/v0.4.0.md
 git commit -m "deploy: 准备通用归因生产切换"
 git push origin dev
 ```
+
+验收记录：切换工具已提交为 `ca64c0e` 并统一推送到 `origin/dev`；Cloudflare Queue 创建后的短暂可见性问题在下一关联提交中增加幂等重试。
 
 - [ ] **Step 6：创建 release 并合规合入 main**
 

@@ -33,17 +33,24 @@ fi
 
 create_queue() {
   local queue_name=$1
-
-  if "${WRANGLER[@]}" queues create "$queue_name" &> /dev/null; then
-    :
-  else
-    :
-  fi
+  local attempt
 
   if "${WRANGLER[@]}" queues info "$queue_name" &> /dev/null; then
     echo "Queue ${queue_name} 已确认存在"
     return 0
   fi
+
+  if ! "${WRANGLER[@]}" queues create "$queue_name"; then
+    echo "Queue ${queue_name} 创建请求未确认成功，继续检查远端状态..."
+  fi
+
+  for attempt in 1 2 3 4 5 6; do
+    if "${WRANGLER[@]}" queues info "$queue_name" &> /dev/null; then
+      echo "Queue ${queue_name} 已确认存在"
+      return 0
+    fi
+    sleep 2
+  done
 
   echo "错误: 创建 Queue ${queue_name} 失败"
   return 1
@@ -87,7 +94,7 @@ print_dev_resources() {
 
 print_secrets() {
   local env_name=$1
-  local env_flag=""
+  local env_flag='--env ""'
 
   if [ "$env_name" = "dev" ]; then
     env_flag="--env dev"

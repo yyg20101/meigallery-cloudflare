@@ -239,9 +239,9 @@ corepack pnpm --filter @meigallery/api exec wrangler secret put STREAM_API_TOKEN
 corepack pnpm --filter @meigallery/api exec wrangler secret put TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT
 # 如有独立案例导入 Bot：
 corepack pnpm --filter @meigallery/api exec wrangler secret put TELEGRAM_BOT_TOKEN_OPS_CASE_BOT
-openssl rand -base64 32 | corepack pnpm --filter @meigallery/api exec wrangler secret put AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT
+openssl rand -base64 32 | corepack pnpm --filter @meigallery/api exec wrangler secret put AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT --env=""
 # 仅统一主密钥轮换窗口执行：
-corepack pnpm --filter @meigallery/api exec wrangler secret put AD_PLATFORM_CREDENTIAL_MASTER_KEY_PREVIOUS
+corepack pnpm --filter @meigallery/api exec wrangler secret put AD_PLATFORM_CREDENTIAL_MASTER_KEY_PREVIOUS --env=""
 ```
 
 ## 7. Cloudflare 产品绑定

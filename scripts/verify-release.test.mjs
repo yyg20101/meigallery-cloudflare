@@ -19,6 +19,7 @@ import {
 import { writeReport } from './release-verification-lib.mjs'
 
 const DEPLOY_SCRIPT_PATH = fileURLToPath(new URL('./deploy.sh', import.meta.url))
+const SETUP_SCRIPT_PATH = fileURLToPath(new URL('./setup.sh', import.meta.url))
 const VITEST_CONFIG_PATH = fileURLToPath(new URL('../packages/api/vitest.config.ts', import.meta.url))
 const PACKAGE_JSON_PATH = fileURLToPath(new URL('../package.json', import.meta.url))
 const API_PACKAGE_JSON_PATH = fileURLToPath(new URL('../packages/api/package.json', import.meta.url))
@@ -65,6 +66,16 @@ describe('发布验证 CLI', () => {
     assert.match(deployScript, /"\$\{PNPM\[@\]\}" verify:quick/)
     assert.match(deployScript, /git branch --show-current/)
     assert.match(deployScript, /git status --porcelain/)
+  })
+
+  it('production Queue 初始化是幂等操作，并等待新资源在 Cloudflare 可见', async () => {
+    const setupScript = await readFile(SETUP_SCRIPT_PATH, 'utf8')
+
+    assert.match(setupScript, /queues info "\$queue_name"/)
+    assert.match(setupScript, /for attempt in 1 2 3 4 5 6/)
+    assert.match(setupScript, /sleep 2/)
+    assert.match(setupScript, /local env_flag='--env ""'/)
+    assert.match(setupScript, /旧 META_CAPI_\* \/ TIKTOK_EVENTS_\* 仅保留为回滚资产/)
   })
 
   it('迁移前快速验证失败时不能进入 production migration 或 deploy', async () => {
