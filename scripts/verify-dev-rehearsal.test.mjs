@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { describe, it } from 'node:test'
-import { requestJsonStepWithRetry, runDevRehearsalVerification, toShanghaiOperationDate } from './verify-dev-rehearsal.mjs'
+import {
+  fetchWithTransientRetry,
+  requestJsonStepWithRetry,
+  runDevRehearsalVerification,
+  toShanghaiOperationDate,
+} from './verify-dev-rehearsal.mjs'
 
 const COMMIT = '18dc11e0b0e4797683d4551a93a1f22e53dc4628'
 
@@ -87,5 +92,60 @@ describe('开发环境发布预演边界', () => {
     assert.equal(step.status, 'failed')
     assert.equal(calls, 3)
     assert.match(step.summary, /连续 3 次检查仍未传播/)
+  })
+
+  it('归因上下文请求会重试网络异常和 5xx', async () => {
+    const responses = [
+      new Error('temporary network failure'),
+      new Response('service unavailable', { status: 503 }),
+      new Response('{}', { status: 200 }),
+    ]
+    let calls = 0
+    const response = await fetchWithTransientRetry(
+      async () => {
+        const result = responses[calls]
+        calls += 1
+        if (result instanceof Error) throw result
+        return result
+      },
+      'https://dev.example.test/api/ad-attribution',
+      {},
+      { maxAttempts: 3, retryDelayMs: 0, sleep: async () => {} },
+    )
+
+    assert.equal(response.status, 200)
+    assert.equal(calls, 3)
+  })
+
+  it('归因上下文请求会重试 429', async () => {
+    let calls = 0
+    const response = await fetchWithTransientRetry(
+      async () => {
+        calls += 1
+        return new Response('{}', { status: calls === 1 ? 429 : 200 })
+      },
+      'https://dev.example.test/api/ad-attribution',
+      {},
+      { maxAttempts: 3, retryDelayMs: 0, sleep: async () => {} },
+    )
+
+    assert.equal(response.status, 200)
+    assert.equal(calls, 2)
+  })
+
+  it('归因上下文请求遇到业务 4xx 时立即返回且不重试', async () => {
+    let calls = 0
+    const response = await fetchWithTransientRetry(
+      async () => {
+        calls += 1
+        return new Response('bad request', { status: 400 })
+      },
+      'https://dev.example.test/api/ad-attribution',
+      {},
+      { maxAttempts: 3, retryDelayMs: 0, sleep: async () => {} },
+    )
+
+    assert.equal(response.status, 400)
+    assert.equal(calls, 1)
   })
 })

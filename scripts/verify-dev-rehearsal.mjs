@@ -9,6 +9,8 @@ const LEGACY_DEV_WORKERS_SUBDOMAIN = '250770503'
 const DEV_REQUEST_TIMEOUT_MS = 20_000
 const DEV_IDENTITY_MAX_ATTEMPTS = 31
 const DEV_IDENTITY_RETRY_DELAY_MS = 3_000
+const DEV_TRANSIENT_MAX_ATTEMPTS = 3
+const DEV_TRANSIENT_RETRY_DELAY_MS = 500
 
 export async function runDevRehearsalVerification(options = {}) {
   const cwd = options.cwd || process.cwd()
@@ -372,7 +374,7 @@ async function establishMetaAttribution(fetchFn, apiUrl, runSuffix) {
   const startedAt = Date.now()
   const command = 'PUT /api/marketing-consent -> PUT /api/ad-attribution'
   try {
-    const consentResponse = await fetchFn(`${apiUrl}/api/marketing-consent`, {
+    const consentResponse = await fetchWithTransientRetry(fetchFn, `${apiUrl}/api/marketing-consent`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ state: 'granted' }),
@@ -382,7 +384,7 @@ async function establishMetaAttribution(fetchFn, apiUrl, runSuffix) {
     if (consentBody?.state !== 'granted') throw new Error('营销授权未进入 granted')
     const consentCookie = readResponseCookie(consentResponse, 'mei_marketing_consent_receipt')
 
-    const attributionResponse = await fetchFn(`${apiUrl}/api/ad-attribution`, {
+    const attributionResponse = await fetchWithTransientRetry(fetchFn, `${apiUrl}/api/ad-attribution`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -425,6 +427,33 @@ async function establishMetaAttribution(fetchFn, apiUrl, runSuffix) {
       },
     }
   }
+}
+
+export async function fetchWithTransientRetry(fetchFn, input, init, options = {}) {
+  const configuredAttempts = Number(options.maxAttempts ?? DEV_TRANSIENT_MAX_ATTEMPTS)
+  const maxAttempts = Number.isSafeInteger(configuredAttempts) && configuredAttempts > 0
+    ? configuredAttempts
+    : DEV_TRANSIENT_MAX_ATTEMPTS
+  const configuredDelay = Number(options.retryDelayMs ?? DEV_TRANSIENT_RETRY_DELAY_MS)
+  const retryDelayMs = Number.isFinite(configuredDelay) && configuredDelay >= 0
+    ? configuredDelay
+    : DEV_TRANSIENT_RETRY_DELAY_MS
+  const sleepFn = options.sleep || (delayMs => new Promise(resolve => setTimeout(resolve, delayMs)))
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const response = await fetchFn(input, init)
+      const shouldRetry = response.status === 429 || response.status >= 500
+      if (!shouldRetry || attempt === maxAttempts) return response
+      await response.body?.cancel()
+    } catch (error) {
+      if (attempt === maxAttempts) throw error
+    }
+
+    await sleepFn(retryDelayMs * attempt)
+  }
+
+  throw new Error('瞬时请求重试未返回结果')
 }
 
 function readResponseCookie(response, name) {
