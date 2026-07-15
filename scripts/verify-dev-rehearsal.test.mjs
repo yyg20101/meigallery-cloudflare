@@ -4,6 +4,7 @@ import { describe, it } from 'node:test'
 import {
   fetchWithTransientRetry,
   requestJsonStepWithRetry,
+  runIdempotentCommandWithRetry,
   runDevRehearsalVerification,
   toShanghaiOperationDate,
 } from './verify-dev-rehearsal.mjs'
@@ -147,5 +148,43 @@ describe('开发环境发布预演边界', () => {
 
     assert.equal(response.status, 400)
     assert.equal(calls, 1)
+  })
+
+  it('幂等远端命令遇到单次失败后会重试并保留尝试次数', async () => {
+    let calls = 0
+    const step = await runIdempotentCommandWithRetry(
+      async () => {
+        calls += 1
+        return calls === 1
+          ? { status: 'failed', summary: '远端调用失败', durationMs: 10 }
+          : { status: 'passed', summary: '写入完成', durationMs: 10 }
+      },
+      'corepack',
+      ['pnpm', 'wrangler'],
+      { name: 'dev-session-seed' },
+      { maxAttempts: 3, retryDelayMs: 0, sleep: async () => {} },
+    )
+
+    assert.equal(step.status, 'passed')
+    assert.equal(calls, 2)
+    assert.match(step.summary, /幂等命令重试 2\/3/)
+  })
+
+  it('幂等远端命令超过重试上限后仍保持失败', async () => {
+    let calls = 0
+    const step = await runIdempotentCommandWithRetry(
+      async () => {
+        calls += 1
+        return { status: 'failed', summary: '权限拒绝', durationMs: 10 }
+      },
+      'corepack',
+      ['pnpm', 'wrangler'],
+      { name: 'dev-session-seed' },
+      { maxAttempts: 3, retryDelayMs: 0, sleep: async () => {} },
+    )
+
+    assert.equal(step.status, 'failed')
+    assert.equal(calls, 3)
+    assert.match(step.summary, /连续 3 次失败/)
   })
 })

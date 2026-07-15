@@ -11,6 +11,8 @@ const DEV_IDENTITY_MAX_ATTEMPTS = 31
 const DEV_IDENTITY_RETRY_DELAY_MS = 3_000
 const DEV_TRANSIENT_MAX_ATTEMPTS = 3
 const DEV_TRANSIENT_RETRY_DELAY_MS = 500
+const DEV_COMMAND_MAX_ATTEMPTS = 3
+const DEV_COMMAND_RETRY_DELAY_MS = 500
 
 export async function runDevRehearsalVerification(options = {}) {
   const cwd = options.cwd || process.cwd()
@@ -18,6 +20,13 @@ export async function runDevRehearsalVerification(options = {}) {
   const fetchFn = options.fetch || fetch
   const requestTimeoutMs = options.requestTimeoutMs ?? DEV_REQUEST_TIMEOUT_MS
   const boundedFetch = (input, init) => fetchWithTimeout(fetchFn, input, init, requestTimeoutMs)
+  const runIdempotentCommand = (command, args, commandOptions) => runIdempotentCommandWithRetry(
+    runCommandFn,
+    command,
+    args,
+    commandOptions,
+    commandRetryOptions(options),
+  )
   const env = options.env || process.env
   const apiUrl = readRequiredEnv(env, 'VERIFY_DEV_API_URL')
   const webUrl = readRequiredEnv(env, 'VERIFY_DEV_WEB_URL')
@@ -42,7 +51,7 @@ export async function runDevRehearsalVerification(options = {}) {
   let shouldCleanupRegistrationFixture = false
 
   try {
-    const preflightStep = await runCommandFn(process.execPath, [
+    const preflightStep = await runIdempotentCommand(process.execPath, [
       'scripts/verify-meta-migration.mjs', 'preflight', '--env', 'dev',
     ], {
       cwd,
@@ -52,7 +61,7 @@ export async function runDevRehearsalVerification(options = {}) {
     steps.push(cleanForReport(preflightStep))
     if (preflightStep.status !== 'passed') return { steps, notes, artifacts }
 
-    const migrateStep = await runCommandFn('corepack', [
+    const migrateStep = await runIdempotentCommand('corepack', [
       'pnpm', '--filter', '@meigallery/api', 'exec',
       'wrangler', 'd1', 'migrations', 'apply', DEV_DB_NAME,
       '--env', 'dev',
@@ -64,7 +73,7 @@ export async function runDevRehearsalVerification(options = {}) {
     steps.push(cleanForReport(migrateStep))
     if (migrateStep.status !== 'passed') return { steps, notes, artifacts }
 
-    const seedStep = await runCommandFn('corepack', [
+    const seedStep = await runIdempotentCommand('corepack', [
       'pnpm', '--filter', '@meigallery/api', 'exec',
       'wrangler', 'd1', 'execute', DEV_DB_NAME,
       '--env', 'dev',
@@ -84,7 +93,7 @@ export async function runDevRehearsalVerification(options = {}) {
       `VALUES ('ses_release_dev_rehearsal', 1, '${sessionHash}', '${sessionExpiresAt}', datetime('now'))`,
       "ON CONFLICT(id) DO UPDATE SET token_hash = excluded.token_hash, expires_at = excluded.expires_at;",
     ].join(' ')
-    const sessionStep = await runCommandFn('corepack', [
+    const sessionStep = await runIdempotentCommand('corepack', [
       'pnpm', '--filter', '@meigallery/api', 'exec',
       'wrangler', 'd1', 'execute', DEV_DB_NAME,
       '--env', 'dev',
@@ -99,7 +108,7 @@ export async function runDevRehearsalVerification(options = {}) {
     steps.push(cleanForReport(sessionStep))
     if (sessionStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
-    const apiDeployStep = await runCommandFn('corepack', [
+    const apiDeployStep = await runIdempotentCommand('corepack', [
       'pnpm', '--filter', '@meigallery/api', 'exec',
       'wrangler', 'deploy', '--env', 'dev', '--var', `RELEASE_COMMIT:${releaseCommit}`,
     ], {
@@ -109,7 +118,7 @@ export async function runDevRehearsalVerification(options = {}) {
     steps.push(cleanForReport(apiDeployStep))
     if (apiDeployStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
-    const webDeployStep = await runCommandFn('corepack', [
+    const webDeployStep = await runIdempotentCommand('corepack', [
       'pnpm', '--filter', '@meigallery/web', 'exec',
       'wrangler', 'deploy', '--env', 'dev', '--var', `RELEASE_COMMIT:${releaseCommit}`,
     ], {
@@ -192,7 +201,7 @@ export async function runDevRehearsalVerification(options = {}) {
       'INSERT INTO email_verification_codes (id, email, code, purpose, expires_at, used, attempts, created_at)',
       `VALUES ('${registrationCodeId}', '${registrationEmail}', '${registrationCode}', 'register', datetime('now', '+10 minutes'), 0, 0, datetime('now'));`,
     ].join(' ')
-    const registrationFixtureStep = await runCommandFn('corepack', [
+    const registrationFixtureStep = await runIdempotentCommand('corepack', [
       'pnpm', '--filter', '@meigallery/api', 'exec',
       'wrangler', 'd1', 'execute', DEV_DB_NAME,
       '--env', 'dev',
@@ -307,7 +316,7 @@ export async function runDevRehearsalVerification(options = {}) {
         ] : []),
         "UPDATE users SET status = 'disabled', updated_at = datetime('now') WHERE id = 1 AND email = 'release-dev-owner@example.test';",
       ].join(' ')
-      const cleanupStep = await runCommandFn('corepack', [
+      const cleanupStep = await runIdempotentCommand('corepack', [
         'pnpm', '--filter', '@meigallery/api', 'exec',
         'wrangler', 'd1', 'execute', DEV_DB_NAME,
         '--env', 'dev',
@@ -454,6 +463,39 @@ export async function fetchWithTransientRetry(fetchFn, input, init, options = {}
   }
 
   throw new Error('瞬时请求重试未返回结果')
+}
+
+export async function runIdempotentCommandWithRetry(runCommandFn, command, args, commandOptions, options = {}) {
+  const configuredAttempts = Number(options.maxAttempts ?? DEV_COMMAND_MAX_ATTEMPTS)
+  const maxAttempts = Number.isSafeInteger(configuredAttempts) && configuredAttempts > 0
+    ? configuredAttempts
+    : DEV_COMMAND_MAX_ATTEMPTS
+  const configuredDelay = Number(options.retryDelayMs ?? DEV_COMMAND_RETRY_DELAY_MS)
+  const retryDelayMs = Number.isFinite(configuredDelay) && configuredDelay >= 0
+    ? configuredDelay
+    : DEV_COMMAND_RETRY_DELAY_MS
+  const sleepFn = options.sleep || (delayMs => new Promise(resolve => setTimeout(resolve, delayMs)))
+  const startedAt = Date.now()
+  let lastStep = null
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    lastStep = await runCommandFn(command, args, commandOptions)
+    if (lastStep?.status === 'passed') {
+      if (attempt === 1) return lastStep
+      return {
+        ...lastStep,
+        durationMs: Date.now() - startedAt,
+        summary: truncateSummary(`${lastStep.summary || '命令执行成功'}；幂等命令重试 ${attempt}/${maxAttempts}`),
+      }
+    }
+    if (attempt < maxAttempts) await sleepFn(retryDelayMs * attempt)
+  }
+
+  return {
+    ...lastStep,
+    durationMs: Date.now() - startedAt,
+    summary: truncateSummary(`${lastStep?.summary || '命令执行失败'}；幂等命令连续 ${maxAttempts} 次失败`),
+  }
 }
 
 function readResponseCookie(response, name) {
@@ -639,6 +681,14 @@ function identityRetryOptions(options) {
     maxAttempts: options.identityMaxAttempts,
     retryDelayMs: options.identityRetryDelayMs,
     sleep: options.sleep,
+  }
+}
+
+function commandRetryOptions(options) {
+  return {
+    maxAttempts: options.commandMaxAttempts,
+    retryDelayMs: options.commandRetryDelayMs,
+    sleep: options.commandRetrySleep,
   }
 }
 
