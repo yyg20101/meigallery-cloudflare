@@ -1,179 +1,272 @@
-# 通用广告归因平台与 TikTok 接入设计
+# Meta、TikTok、Google 通用广告归因平台设计
 
-- 设计讨论状态：`已确认`
-- 书面评审状态：`已确认（2026-07-15）`
-- 设计版本：`1`
-- 适用环境：`production` 为唯一真实平台验证环境，`dev/local` 仅执行代码与模拟契约验证
+- 设计讨论状态：`已确认（2026-07-15）`
+- 书面评审状态：`待复核`
+- 设计版本：`2`
+- 适用环境：`production` 是唯一真实广告平台验证环境；`dev/local` 仅执行代码、迁移、Mock 和契约验证
+- 成本基线：Cloudflare Workers Free，当前设计不要求开通 Paid
 
 ## 1. 背景
 
-项目已经具备 Meta Pixel、Conversions API、TikTok Pixel、TikTok Events API、统一转化事实、来源路由、Queue、加密 outbox、重试和后台归因看板。当前主要问题不是缺少 TikTok SDK，而是控制面仍然存在平台专属实现：Meta 使用独立的连接验证、live challenge、发布证据、rollout 和 incident，TikTok 只有较轻量的连接验证。
+项目当前已经实现 Meta Pixel/CAPI、TikTok Pixel/Events API、广告来源路由、浏览器与服务端共享事件编号、D1 Outbox、Cloudflare Queues、重试、DLQ 和后台归因工作台。
 
-继续在现有结构上增加 TikTok 专属门禁会形成两套控制逻辑，后续接入 Google 时仍需复制连接、验证、证据和后台页面。目标因此调整为一次完整收口：统一业务事实、控制面和投递状态机，只把外部协议差异保留在平台 Adapter 中。
+现有实现仍然存在结构性问题：
 
-## 2. 目标
+- Meta 和 TikTok 在连接验证、事件映射、凭证、质量诊断、rollout 和 incident 方面仍有平台专属分支。
+- 连接模型假设一个平台只有一个目标 ID，无法表达 Google Ads Tag、Label 和 Website conversion action ID 的组合。
+- 业务层直接区分 Meta/TikTok，继续增加 Google 会形成第三套处理路径。
+- 归因上下文只覆盖 Meta/TikTok，无法保存 `gclid`、`gbraid`、`wbraid`。
+- 部分投递统计按外部事件名称聚合；Google Ads 的不同转化都使用 `conversion`，会造成口径合并。
+- Test Event Code、验证证据、Commit 门禁和定时轮询过度耦合，曾造成重复验证和发布阻断。
+- 当前 Cloudflare 账户未开通 Workers Paid，架构必须在 Free 配额内具备可靠运行能力。
 
-1. 将 Meta 与 TikTok 迁入同一套连接、凭证、测试挑战、发布证据、rollout、incident 和质量诊断框架。
-2. TikTok 首期以 `Contact` 为主要广告优化事件，`CompleteRegistration` 为次级观察事件，两者都必须通过正式验证。
-3. Pixel 全量启用后，TikTok Events API 按 `0% -> 10% -> 50% -> 100%` 人工放量。
-4. Meta 与 TikTok 可以同时启用，但一条业务事实最多归属一个广告平台，禁止 fan-out。
-5. 后续接入 Google 时，不修改联系、注册、来源路由、投递状态机、后台页面骨架或发布门禁核心，只新增平台注册信息与 Adapter。
-6. 最终删除旧 Meta/TikTok 专属控制代码、旧运行表、双写和兼容分支。
-7. Pixel/Dataset ID 与 Token 在管理后台作为一个逻辑连接管理，Token 加密保存且永不回显。
+本次不再扩展旧实现，也不保留 Meta 兼容层。Meta、TikTok、Google Ads 一次迁移到最终通用架构，平台协议差异只能存在于 Adapter 内。
 
-## 3. 非目标
+## 2. 核心决策
 
-- 本阶段不接入 Google，只保证架构和契约可以直接扩展。
-- 不导入广告花费、campaign、ad group 或 ad 报表。
-- 不把无广告来源的站内行为广播给任何广告平台。
-- 不根据“当前启用了哪些平台”猜测归因平台。
-- 不确认用户在 Telegram 等外部网站最终发送了消息；跨域目标页面的最终状态不可观测。
-- 不删除已经应用的历史 migration 文件。历史 migration 是数据库演进记录，contract 只删除生产运行表和应用兼容逻辑。
+1. Meta、TikTok、Google Ads 本期同时纳入运行时，不把 Google 留作未来占位。
+2. 业务层只创建标准转化事实，不认识 Pixel、Label、CAPI 或 Data Manager Payload。
+3. 一条转化事实最多归属一个广告平台，禁止 fan-out、fallback 和“向所有已启用平台发送”。
+4. 浏览器和服务端对同一平台转化使用同一个平台无关事件编号。
+5. 平台配置在后台作为一套逻辑连接管理，敏感凭证单独加密且永不回显。
+6. 真实广告验证仅在 production 完成；dev/local 禁止调用三家正式 API。
+7. Cloudflare Queues 负责实时服务端投递，Workflows 只负责连接验证、等待诊断和 rollout 编排。
+8. D1 是配置、事实、Outbox、状态和审计的唯一精确账本。
+9. 不使用 Zaraz 作为归因核心，避免项目后台与 Cloudflare Dashboard 形成双控制面。
+10. 不接入 GA4；Google Ads 原生转化与未来 GA4 分属广告和分析两个独立模块。
+11. 不保留旧表双读、双写、旧环境变量 fallback、一次性运行时代码或平台专属业务分支。
+12. 迁移失败时通过 Production D1 备份和 Worker 历史版本回滚，不通过兼容代码回滚。
 
-## 4. 统一业务事件
+## 3. 目标与非目标
 
-### 4.1 规范事件
+### 3.1 目标
 
-内部事件使用平台无关名称：
+- 统一 Meta、TikTok、Google Ads 的连接、事件绑定、凭证、验证、投递、诊断、rollout 和后台管理。
+- 明确定义 `Contact` 和 `CompleteRegistration`，确保三平台使用同一业务口径。
+- Facebook 来源只发送 Meta，TikTok 来源只发送 TikTok，Google Ads 来源只发送 Google。
+- 支持三平台同时启用，但每个访问和转化只激活一个广告平台。
+- 在 Workers Free 下可靠运行，并在后台提供容量安全线和升级提示。
+- 删除旧平台专属运行代码、运行表、资源、Secret 和过时文档口径。
+- 以后接入新广告平台时，只增加平台注册信息、事件映射和 Adapter。
 
-| 规范事件 | 业务口径 | 当前投递范围 |
-|---|---|---|
-| `Contact` | 用户激活经过安全 URL 校验的外部联系链接 | Browser + Server |
-| `CompleteRegistration` | 用户注册事务已经成功完成 | Browser + Server |
-| `PageView` | 允许营销追踪的公开页面被访问 | Browser |
-| `ViewContent` | 重要公开内容详情被查看 | Browser |
-| `Search` | 用户完成站内搜索 | Browser |
+### 3.2 非目标
 
-`Contact` 的“成功”表示浏览器接受合法外部链接的导航动作。复制联系方式、展开二维码、打开联系面板或点击没有合法外链的元素只进入站内行为分析，不创建广告转化事实。
+- 不导入广告花费、Campaign、Ad Group、Ad Set 或广告平台报表。
+- 不在本期接入 GA4、Google Analytics 或跨渠道营销报表。
+- 不把自然搜索、直接访问或无法确认来源的访问发送给广告平台。
+- 不发送 PageView、ViewContent、Search 等行为作为服务端主要转化。
+- 不确认用户跳转 Telegram 等外部网站后是否最终发送消息；项目只能确认合法联系链接被激活。
+- 不删除已经应用的历史 D1 migration 文件；历史 migration 不是运行时兼容逻辑，最终 Contract migration 负责收口生产 Schema。
 
-这项口径对所有广告平台一致，避免 Meta 与 TikTok 对同一个业务动作产生不同定义。Meta 的事件名和去重协议不变，但复制行为不再被当作广告 `Contact`。
+## 4. 标准业务事件
 
-### 4.2 事件映射
+### 4.1 转化事件
 
-规范事件必须经过 Adapter 显式映射：
+```ts
+type CanonicalConversionEvent =
+  | 'Contact'
+  | 'CompleteRegistration'
+```
 
-| 规范事件 | Meta | TikTok | Google 预期示例 |
-|---|---|---|---|
-| `Contact` | `Contact` | `Contact` | `generate_lead` |
-| `CompleteRegistration` | `CompleteRegistration` | `CompleteRegistration` | `sign_up` |
-| `ViewContent` | `ViewContent` | `ViewContent` | `view_item` 或明确不支持 |
-| `Search` | `Search` | `Search` | `search` |
+| 标准事件 | 精确业务口径 | 浏览器 | 服务端 |
+|---|---|---:|---:|
+| `Contact` | 用户激活通过安全 URL 校验的外部联系链接并开始导航 | 是 | 是 |
+| `CompleteRegistration` | 用户注册事务已经成功提交 | 是 | 是 |
 
-核心不得假设不同平台的外部事件名相同。Adapter 未声明映射时必须 fail closed，不能回退到规范事件字符串。
+复制联系方式、展示二维码、展开联系面板、无效 URL、被安全策略阻止的 URL 和页面浏览只进入内部行为分析，不创建广告转化事实。
 
-## 5. 分层架构
+### 4.2 非转化浏览器信号
+
+`PageView`、`ViewContent`、`Search` 可以由 Browser Adapter 按平台能力发送，但它们：
+
+- 不创建服务端转化事实。
+- 不进入 Contact/Registration 漏斗。
+- 不参与服务端 rollout 和主要转化成功率。
+- 仍然遵守营销同意和单一来源平台隔离。
+
+### 4.3 平台映射
+
+| 标准事件 | Meta | TikTok | Google Ads Browser | Google Data Manager API |
+|---|---|---|---|---|
+| `Contact` | `Contact` | `Contact` | `conversion` + Contact `send_to` | Contact Website conversion action ID |
+| `CompleteRegistration` | `CompleteRegistration` | `CompleteRegistration` | `conversion` + Registration `send_to` | Registration Website conversion action ID |
+
+Google 的两个转化都叫 `conversion`，内部看板、事实、投递和统计必须始终使用 `canonical_event`，不能按平台外部事件名聚合。
+
+## 5. 总体架构
 
 ```text
-安全业务动作
+合法业务动作
   -> Canonical Conversion Fact
   -> Attribution Resolver
-  -> 单一 provider
+  -> 唯一 attribution_provider
   -> Delivery Planner
-       -> Browser Adapter
-       -> Server Adapter
-  -> 通用 Queue / Outbox / Retry / DLQ
-  -> Provider API
+       -> Browser Instruction
+       -> D1 Delivery + Outbox
+  -> Provider Queue
+  -> Provider Adapter
+  -> Meta / TikTok / Google API
+
+后台验证
+  -> Cloudflare Workflow
+  -> 凭证/目标/Test Event/诊断步骤
+  -> D1 Verification State
 ```
 
 ### 5.1 通用核心
 
-通用核心负责：
+通用核心只负责：
 
-- 规范业务事件和有效口径。
-- 营销授权与广告来源解析。
-- 单平台归属和冲突 fail closed。
-- Browser/Server delivery 规划。
-- 同一平台、同一事实的共享 `event_id`。
-- 连接 revision、加密 outbox、lease、重试、DLQ 和幂等。
-- 测试挑战、人工证据、rollout target/effective、incident 和审计。
-- 按 provider 隔离的趋势、转化、匹配覆盖、重复诊断和发布状态。
+- 标准事件和精确业务口径。
+- 同意快照、广告来源解析和来源冲突处理。
+- 不可变的平台归属。
+- 平台无关事件编号。
+- 连接与事件绑定快照。
+- D1 事实、Delivery、Outbox、审计和通用状态机。
+- 确定性 rollout、幂等、重试、DLQ 和 incident。
 
-核心业务模块不得通过 `if (provider === 'meta')` 或 `if (provider === 'tiktok')` 构造平台 payload。平台分支只允许存在于注册表或对应 Adapter 内部。
+通用核心禁止构造任何平台 Payload，禁止通过 `if (provider === 'meta')`、`if (provider === 'tiktok')` 或 `if (provider === 'google')` 实现业务行为。
 
-### 5.2 平台能力注册表
+### 5.2 Cloudflare 组件分工
 
-每个平台声明能力，不支持的能力必须显式为 `false`：
+| 组件 | 职责 |
+|---|---|
+| API Worker | 业务事实、归因解析、Browser Instruction、管理 API、Queue consumer |
+| Web Worker | Nuxt 页面、同意交互、Browser Adapter |
+| D1 | 配置、事实、Outbox、投递状态、验证状态、审计 |
+| Queues | 三个平台的实时异步服务端投递 |
+| Workflows | 连接验证、等待平台诊断、rollout 编排 |
+| Worker Secret | 通用凭证主密钥及轮换密钥 |
+| Workers Web Crypto | AES-256-GCM、HMAC、Google Service Account JWT |
+
+当前不引入 KV、Durable Objects、Analytics Engine、Service Binding、R2 归因存储或 Zaraz。
+
+### 5.3 平台物理 Queue
+
+```text
+meigallery-ad-meta
+meigallery-ad-meta-dlq
+meigallery-ad-tiktok
+meigallery-ad-tiktok-dlq
+meigallery-ad-google
+meigallery-ad-google-dlq
+```
+
+三条 Queue 由同一个 API Worker 消费，但每个 Batch 必须根据 `batch.queue` 绑定唯一 Adapter。消息中的 provider、D1 Delivery provider 和 Queue provider 三者不一致时直接拒绝并记录 critical incident。
+
+## 6. 平台注册表与 Adapter
+
+### 6.1 能力声明
 
 ```ts
 interface AdPlatformCapabilities {
   browser: boolean
   server: boolean
   pairedDeduplication: boolean
-  testEvents: boolean
+  temporaryTestCode: boolean
+  validateOnly: boolean
+  asynchronousDiagnostics: boolean
   managedRollout: boolean
-  incidents: boolean
   platformQuality: boolean
 }
 ```
 
-后台导航、连接编辑器、验证步骤、发布门禁和质量区域均从能力注册表生成，不再通过 Meta/TikTok 页面分支拼装。
+后台字段、验证步骤、质量区域和操作按钮从平台注册表与类型化 Schema 生成，不在 Vue 页面内维护平台分支。
 
-### 5.3 平台 Adapter
-
-平台实现拆成小型接口，避免一个大型 Adapter 同时承担浏览器、服务端和运维职责：
+### 6.2 Adapter 边界
 
 ```ts
 interface EventMappingAdapter {
-  mapEvent(event: CanonicalEvent): PlatformEvent | null
+  describe(input: CanonicalEventInput): PlatformEventDescriptor | null
 }
 
 interface BrowserTrackingAdapter {
-  initialize(destinationId: string): boolean
-  pageView(): boolean
-  track(event: PlatformEvent, payload: object, eventId?: string): boolean
-  teardown(): void
+  initialize(config: BrowserPublicConfig): Promise<void>
+  track(instruction: BrowserInstruction): Promise<BrowserTrackingResult>
+  teardown(): Promise<void>
 }
 
 interface ServerTrackingAdapter {
-  buildPayload(input: ServerEventInput): object
-  buildRequest(credential: string, payload: object): RequestInit
-  classifyResponse(response: Response, body: unknown): DeliveryResult
+  buildPayload(input: ServerDeliveryInput): Promise<unknown>
+  send(input: ServerRequestInput): Promise<ProviderReceipt>
+  classifyError(error: unknown): DeliveryClassification
 }
 
 interface VerificationAdapter {
-  buildTestPlan(input: TestPlanInput): TestPlan
-  verifyConnection(input: VerificationInput): Promise<VerificationResult>
+  buildWorkflow(input: VerificationInput): VerificationPlan
 }
 
 interface PlatformQualityAdapter {
-  collect(input: QualityInput): Promise<QualityMetric[]>
+  collect(input: QualityInput): Promise<QualitySnapshot>
 }
 ```
 
-Meta 保留 Graph API、`fbp/fbc`、Dataset Quality 和 Meta 错误分类；TikTok 保留 Events API、`_ttp/ttclid`、`Access-Token` 和 TikTok 错误分类。这些协议差异不能互相复用验证结果。
+核心只消费类型化结果：`accepted`、`processed`、`retryable`、`rejected`、`credential_invalid`、`destination_invalid`。平台错误码解析只能存在于对应 Adapter。
 
-## 6. 来源隔离与数据流
+## 7. 连接、事件绑定与凭证
 
-1. 页面只在营销授权有效且属于公开营销路由时解析广告来源。
-2. `fbclid`、`ttclid`、明确平台 UTM 或后台投放链接只能解析出一个 provider。
-3. 同时出现 Meta 与 TikTok 信号、显式未知来源、非法输入、过期签名或数据库错误时，解析结果为空。
-4. 业务动作先创建一次规范事实，事实保存唯一 `attribution_provider`。
-5. Delivery Planner 只读取事实上的 provider，不枚举所有已启用平台。
-6. Browser 与 Server 对同一平台转化共用事件名和 `event_id`。
-7. D1 约束拒绝事实 provider 与 delivery provider 不一致的写入。
-8. 平台切换前先卸载旧 Browser Adapter，任何时刻最多激活一个广告 Pixel。
+### 7.1 `ad_platform_connections`
 
-Meta 与 TikTok 同时开启只表示两个平台都具备服务能力，不表示同一用户事件向两个平台发送。
+通用连接表保存：
 
-## 7. 通用数据模型
-
-### 7.1 连接与凭证
-
-`ad_platform_connections` 继续作为公开配置和运行状态入口，至少包含：
-
+- `id`
 - `provider`
 - `enabled`
 - `mode`
 - `browser_enabled`
 - `server_enabled`
-- `destination_id`
+- `public_config_json`
+- `attribution_window_days`
 - `rollout_target_percentage`
+- `rollout_effective_percentage`
 - `connection_revision`
 - `credential_revision`
+- `created_at` / `updated_at`
+
+`public_config_json` 是由 Adapter Schema 验证的 discriminated union：
+
+```ts
+type PlatformPublicConfig =
+  | { provider: 'meta'; pixelId: string }
+  | { provider: 'tiktok'; pixelCode: string }
+  | {
+      provider: 'google'
+      tagId: string
+      customerId: string
+      loginCustomerId?: string
+      cloudProjectId: string
+    }
+```
+
+不增加 `meta_pixel_id`、`tiktok_pixel_code`、`google_tag_id` 等平台专属数据库列。
+
+Provider 使用开放字符串标识并由平台注册表校验，数据库不得再使用只允许 `meta/tiktok/google` 的封闭 `CHECK`。Delivery 和 Outbox 通过 connection ID、provider 的组合外键与触发器保持一致；未来新增平台时不重建核心事实表。
+
+### 7.2 `ad_platform_event_bindings`
+
+每个平台、每个标准事件独立保存：
+
+- `provider`
+- `canonical_event`
+- `enabled`
+- `browser_destination`
+- `server_destination`
+- `mapping_revision`
+- `config_json`
 - `updated_at`
 
-新增 `ad_platform_credentials`：
+Meta/TikTok 可以使用连接目标；Google 必须为 Contact 和 Registration 分别配置：
 
+- Browser：`AW-ID/LABEL`
+- Server：Website conversion action ID
+
+Browser Label 与 Server conversion action ID 必须属于同一个 Google Ads 转化操作。
+
+### 7.3 `ad_platform_credentials`
+
+凭证表保存：
+
+- `connection_id`
 - `provider`
 - `credential_type`
 - `ciphertext`
@@ -181,237 +274,486 @@ Meta 与 TikTok 同时开启只表示两个平台都具备服务能力，不表�
 - `fingerprint`
 - `credential_revision`
 - `created_by`
-- `created_at`
-- `updated_at`
+- `created_at` / `updated_at`
 
-凭证唯一键为 `provider + credential_type`。当前 Meta/TikTok 只需要 `access_token`，Google 可注册不同 credential type，但核心无需迁移。
+凭证 Bundle：
 
-### 7.2 连接数据密钥
+- Meta：CAPI Access Token
+- TikTok：Events API Access Token
+- Google：Service Account JSON
 
-新增 `ad_platform_connection_keys`。每个平台连接生成独立随机数据密钥，用于加密临时匹配上下文；数据密钥由通用根密钥包裹后保存。outbox 的 AAD 必须包含 `provider + connection_revision + delivery_id + event_id`，禁止跨平台或跨 revision 解密。
+公开配置、事件绑定和凭证在后台作为一次逻辑保存操作提交，共享新的连接 revision。凭证写入失败时整个保存失败，不能形成“新 ID + 旧 Token”的半配置状态。
 
-### 7.3 验证与证据
+## 8. 归因上下文与来源隔离
 
-新增：
+### 8.1 来源信号
 
-- `ad_platform_connection_verifications`
-- `ad_platform_test_challenges`
-- `ad_platform_release_evidence`
-- `ad_platform_rollout_states`
-- `ad_platform_incidents`
-- `ad_platform_quality_snapshots`
-
-连接验证绑定 `provider + destination identity + credential fingerprint + protocol version`。测试挑战保存短期状态，默认 10 分钟过期；Test Event Code 不落库。发布证据保存 provider、连接 revision、事件范围摘要、确认人、确认时间、失效时间和失效原因，不保存原始 event ID、Token、匹配参数或截图。
-
-人工 Browser/Server 去重证据有效期为 30 天。连接身份、凭证、事件映射、协议版本或证据契约变化时立即失效。
-
-### 7.4 数据完整性
-
-- provider 必须来自平台注册表允许值。
-- connection verification、challenge、evidence、rollout、incident 和 quality 均包含 provider。
-- 所有更新必须同时限定 provider 和 connection revision。
-- 一个 challenge 只能消费一次，一个人工确认只能绑定当前有效 challenge。
-- 旧 revision 的验证、证据和 delivery 不得被新连接复用。
-
-## 8. 通用加密凭证库
-
-管理后台把目标 ID、Token、Browser、Server、验证和放量作为一个逻辑连接管理。敏感值采用不同安全级别存储：
-
-- 公开目标 ID 保存在连接表。
-- Token 使用 AES-256-GCM 加密后保存到 D1。
-- Worker Secret 只保留 `AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT` 和轮换期使用的 `AD_PLATFORM_CREDENTIAL_MASTER_KEY_PREVIOUS`。
-- 凭证 AAD 包含 `provider + credential_type + credential_revision`。
-- API 永不返回 Token 原值；编辑页面只显示存在状态、更新时间和脱敏指纹。
-- Token 只在 Owner 提交请求和 Worker 调用平台 API时短暂存在内存。
-- 凭证写入、轮换和删除必须同时通过 Owner 权限、同源 Origin/CSRF 校验和请求体大小限制；输入框禁用自动填充，成功或失败后立即清空。
-- 审计日志只记录设置、轮换、删除和 revision，不记录明文、密文、IV、完整指纹或 Test Event Code。
-- current/previous 根密钥轮换完成前必须证明旧 key ID 引用归零，之后才能删除 previous。
-
-密文篡改、错误 AAD、跨 provider 解密和未知 key ID 均必须 fail closed。
-
-## 9. 测试挑战与人工证据
-
-### 9.1 通用流程
-
-1. Owner 输入当前平台的临时 Test Event Code。
-2. 服务端校验资源、连接、凭证和 production 环境。
-3. 创建包含 `Contact` 与 `CompleteRegistration` 的短期 challenge，每个事件生成新的 event ID。
-4. Browser Adapter 尝试发送两项 Pixel 事件。
-5. Server Adapter 使用相同事件名和 event ID 发送测试事件。
-6. 平台 API 必须满足 Adapter 的严格成功契约。
-7. 后台只显示 Browser“已尝试”和 Server“已接收”，不得把 Browser 尝试描述为平台已接收。
-8. Owner 在平台 Test Events 中确认 Browser/Server 成对出现并完成去重。
-9. Owner 回到后台提交人工确认，系统写入脱敏 release evidence。
-
-重复点击开始测试会创建新 challenge，但不会创建生产业务事实。重复消费同一 challenge 或重复确认必须返回幂等结果，不能重复轮换连接 revision。
-
-### 9.2 平台差异
-
-- Meta verification Adapter 使用 Meta Pixel、Graph API 和 Meta Test Events。
-- TikTok verification Adapter 使用 TikTok Pixel、Events API 和 TikTok Test Events。
-- 两个平台都验证 `Contact`、`CompleteRegistration`，但证据不能跨 provider 复用。
-- Test Event Code 只存在于当前页面内存和当次请求，刷新或离开页面后清空。
-
-## 10. Rollout 与自动保护
-
-Pixel 在连接、授权和来源条件满足后可全量运行；Server API 使用通用 target/effective rollout：
-
-| 调整 | 必须满足 |
+| 平台 | 强来源信号 |
 |---|---|
-| `0% -> 10%` | 资源完整、连接有效、两个成对测试事件均被 Server API 接收 |
-| `10% -> 50%` | 当前 revision 的人工去重证据有效、存在真实 `Contact` 成功样本、无跨平台投递、无凭证错误和重试耗尽 |
-| `50% -> 100%` | 在 50% 至少稳定运行 24 小时、最近至少 20 条 Server 转化、最终成功率不低于 99%、无严重积压或 critical incident |
+| Meta | `fbclid`，以及按协议生成或保留的 `fbc` |
+| TikTok | `ttclid` |
+| Google Ads | `gclid`、`gbraid`、`wbraid` |
 
-升级只允许 Owner 人工执行。降级可随时执行：
+来源解析优先级：
 
-- 凭证被平台拒绝：连接失效、Server 关闭、effective 和 target rollout 归零。
-- 连接 revision 变化：旧证据失效，effective rollout 归零。
-- 人工证据超过 30 天：target 保留，effective rollout 自动上限降为 10%，重新确认后恢复。
-- Queue、加密上下文或来源约束异常：对应 delivery fail closed，不改投其他平台。
-- critical incident：effective rollout 自动归零，target 保留供故障恢复后人工处理。
+1. 明确 Click ID。
+2. 后台生成并签名的广告投放链接。
+3. 严格广告来源别名。
+4. 无可靠信号时不建立广告归因。
 
-Meta 当前 production 10% target/effective 必须在迁移前后保持一致。TikTok 在完成生产配置前始终保持 disabled、Server 关闭、rollout 0%。
+`utm_source=google` 可能是自然搜索，不能判定为 Google Ads。只有 `google-ads`、`google_ads`、`adwords` 等明确广告别名可以作为低优先级广告信号。
 
-## 11. 管理后台
+同一请求同时存在多个平台强信号时，结果为 `attribution_conflict`：不选择平台、不加载 Pixel、不创建广告 Delivery，只记录脱敏冲突审计。
 
-现有 `总览 / 转化明细 / 投放链接 / 平台接入 / 发布与诊断` 五页结构保留，页面骨架全部通用化。
+### 8.2 加密归因上下文
 
-### 11.1 平台接入
+用户同意营销追踪后，服务端设置 `Secure + HttpOnly + SameSite=Lax` 的加密 Cookie：
 
-- 从平台注册表生成 provider 切换和能力区域。
-- 在同一连接编辑器中管理目标 ID、Token 写入、Browser、Server 和 mode。
-- 显示凭证、Queue、数据密钥、连接验证和 challenge 状态，但不显示敏感值。
-- 提供开始成对测试、Server 结果和人工去重确认。
+```ts
+interface AdAttributionContext {
+  version: 1
+  provider: AdAttributionProvider
+  source: 'click_id' | 'managed_link' | 'utm_alias'
+  identifiers: Record<string, string>
+  issuedAt: number
+  expiresAt: number
+}
+```
 
-### 11.2 发布与诊断
+默认窗口为 30 天，可按平台连接调整。Cookie 不保存 PII。新的明确广告点击替换旧上下文；普通站内导航不修改来源。
 
-- blocker、warning、target/effective rollout 和 incident 按 provider 查询。
-- 平台专属质量能力通过可选 quality Adapter 插入，不创建平台专属页面。
-- Meta Dataset Quality 迁入 `ad_platform_quality_snapshots`，仍由 Meta Adapter 采集。
-- 不支持质量 API 的平台明确显示“未接入平台质量诊断 API”，不能伪装成零问题。
+浏览器不能读取加密 Cookie。站点配置接口只返回当前 provider 和对应 Browser Instruction，不返回 Click ID、Token 或其他敏感内容。
 
-### 11.3 准确文案
+### 8.3 不可变平台归属
 
-- Browser `attempted` 只显示“已尝试”。
-- Server `sent` 只表示平台 API 满足严格成功契约，不表示广告归因成功。
-- warning 不改变 blocker 状态。
-- 历史 Lead 不进入活动漏斗、排序、比率或 rollout 门禁。
+业务事实创建时保存唯一 `attribution_provider`。创建后禁止修改：
 
-## 12. 错误处理、隐私与审计
+- Meta Adapter 只能接收 `fbclid/fbc/fbp`。
+- TikTok Adapter 只能接收 `ttclid/ttp`。
+- Google Adapter 只能接收 `gclid/gbraid/wbraid`。
+- 无来源事实继续进入内部分析，但广告 Delivery 数量为零。
+- D1 触发器拒绝 Fact、Delivery、Outbox provider 不一致的写入。
 
-- 所有平台错误先由 Adapter 归类为成功、可重试、永久失败、凭证失败或协议失败。
-- 通用状态机只消费分类结果，不解析平台错误码。
-- 重试使用 Queue 和 lease/CAS；达到上限进入平台独立 DLQ。
-- 凭证失败必须使当前 verification 失效，阻止后续 Server delivery。
-- 页面 URL、搜索词和属性继续经过 allowlist 与清洗；不向平台发送联系方式原文或敏感页面查询参数。
-- `Contact` 与 `CompleteRegistration` 不发送无业务必要的 value、currency 或自定义描述。
-- CompleteRegistration 仅在营销授权允许时发送已规范化并散列的 email/external_id。
-- 所有连接、凭证、验证、人工确认、rollout、incident 和密钥轮换操作写入脱敏审计。
+## 9. 同意与隐私
 
-## 13. 测试策略
+### 9.1 标准同意快照
 
-### 13.1 单元和契约测试
+```ts
+interface AdConsentSnapshot {
+  consentVersion: number
+  marketingAllowed: boolean
+  adUserDataAllowed: boolean
+  adPersonalizationAllowed: boolean
+  decidedAt: string
+}
+```
 
-- 规范事件口径与平台映射。
-- 每个已启用能力必须存在对应 Adapter。
-- Meta/TikTok payload、header、响应成功和错误分类。
-- Browser/Server 相同事件名和 event ID。
-- 凭证加密、篡改、错误 AAD、跨 provider 解密和根密钥轮换。
-- rollout gate、证据过期、incident 降级和幂等。
+没有营销同意时：
 
-### 13.2 D1 与 Queue 集成测试
+- 内部必要业务事实可以记录。
+- 不加载广告平台脚本。
+- 不保存广告 Click ID。
+- 不创建广告平台 Delivery。
+- 不向任何广告平台发送事件。
 
-- 使用 Miniflare 运行全部 migration、backfill、约束和 contract。
-- 验证 Meta 旧数据准确迁入通用表。
-- 验证事实与 delivery provider 不一致时由 D1 拒绝。
-- 覆盖 lease、并发消费、重试、DLQ、过期 outbox 和旧 revision。
-- 验证 production 空库从 `0001` 到最新 migration 可完整建立最终 schema。
+首次进入且未作选择时，Click ID 只保留在当前页面内存；用户同意后才提交服务端建立加密上下文。撤回同意时删除归因 Cookie、项目设置的广告 Cookie，并取消尚未投递的 Outbox。
 
-### 13.3 前端和端到端测试
+### 9.2 Google Consent Mode v2
 
-- 未授权时不加载任何广告 Pixel。
-- Meta 与 TikTok 同时开启时，每个来源只初始化自身 Pixel。
-- 复制、二维码和面板动作不产生广告转化。
-- 合法外链激活和真实注册产生正确 provider delivery。
-- provider 切换后旧 Pixel 被卸载。
-- 后台五页在 Meta/TikTok 下均显示正确、无跨平台状态、无敏感值。
-- 使用桌面和移动视口验证状态、表格和控制按钮无重叠。
+采用 Basic Consent Mode。加载 Google Tag 前先设置默认状态：
 
-### 13.4 回归与构建
+```ts
+{
+  ad_storage: marketingAllowed ? 'granted' : 'denied',
+  ad_user_data: adUserDataAllowed ? 'granted' : 'denied',
+  ad_personalization: 'denied',
+  analytics_storage: 'denied'
+}
+```
 
-- 完整 API/Web 测试与覆盖率门禁。
-- scripts/migration 测试、secret scan、lint、API TypeScript。
-- API Worker dry-run 与 Nuxt production build。
-- dev/local 的 fetch 必须使用模拟平台响应，禁止调用真实 Meta/TikTok API。
+当前不接入 GA4，因此 `analytics_storage` 始终为 `denied`。未来 GA4 必须使用独立分析同意，不能借用广告授权自动启用。
 
-### 13.5 生产人工验收
+### 9.3 匹配数据
 
-- Meta `Contact`、`CompleteRegistration` Browser/CAPI 成对去重回归。
-- Meta Dataset Quality、连接、incident 和 10% effective rollout 与迁移前一致。
-- TikTok 两项事件 Browser/Server 成对出现并人工确认去重。
-- TikTok 先启用 Pixel，再将 Events API 升至 10%；50% 和 100% 严格遵循门禁。
+| 平台 | 允许匹配数据 |
+|---|---|
+| Meta | `fbc/fbp`、经同意的 IP/UA、注册时的哈希邮箱 |
+| TikTok | `ttclid/ttp`、经同意的 IP/UA、注册时的哈希邮箱 |
+| Google | `gclid/gbraid/wbraid`、经同意的哈希邮箱 |
 
-## 14. 生产迁移与清理
+Google Adapter 永不显式发送 IP。邮箱只在服务端规范化并执行 SHA-256，不发送明文，也不进入 Browser Instruction。Contact 没有邮箱时只发送真实存在的点击和浏览器标识，禁止伪造匹配数据。
 
-Cloudflare Worker 与 D1 无法原子发布，因此采用有终点的 expand/contract，不追求危险的一次性删除。
+## 10. 通用事件编号与投递
 
-### 14.1 Expand
+### 10.1 事件编号
 
-1. 只读记录 Meta 当前连接、revision、证据、rollout、incident、Queue 和 outbox 状态。
-2. 创建通用表并迁移非敏感 Meta/TikTok 状态。
-3. 设置通用根密钥。
-4. 部署一次性 Owner 凭证导入能力，普通生产投递仍走当前稳定路径，不双写。
-5. Worker 在内存中读取现有 Meta Secret，将其加密写入凭证库；验证指纹后完成审计。
-6. 若存在旧 data key 加密的 pending/retrying outbox，先停止升级并等待排空，不进行不可靠的密文转换。
+现有 Meta 命名空间事件编号被删除。新格式：
 
-### 14.2 通用运行时切换
+```text
+mg3_<base64url-hmac>
+```
 
-1. 在本地和真实 D1 fixture 中证明通用表状态与旧状态一致。
-2. 部署只读取通用控制面的运行时。
-3. Meta 保持 10%，TikTok 保持 0%，核对真实事件和后台状态。
-4. 至少稳定观察 24 小时，期间不得出现连接失效、跨平台写入、重试耗尽或 critical incident。
+编号基于事实 ID、标准事件和版本生成一次后持久化，长度不得超过 64 字符。映射如下：
 
-### 14.3 Contract
+- Meta：`event_id`
+- TikTok：`event_id`
+- Google Browser：`transaction_id`
+- Google Server：`transactionId`
 
-1. 删除一次性凭证导入入口和旧运行分支。
-2. 删除 `meta_connection_verifications`、`tiktok_connection_verifications`、`meta_live_challenges`、`meta_capi_incidents`、旧 Meta release verification/resource attestation 运行表和已被通用 outbox 取代的旧表。
-3. 将 Meta Dataset Quality 历史摘要迁入通用质量表后删除旧运行表。
-4. 删除 `META_CAPI_ACCESS_TOKEN`、Meta/TikTok 专属 data key Secret；只保留通用根密钥 current/previous。
-5. 删除旧服务、路由、组件、类型、测试替身和过时文档说明。
-6. 运行最终 schema、代码引用和 secret 扫描，确保不存在双写、fallback 或平台专属控制面。
+重复请求、Queue 重试和浏览器重放必须复用同一编号。
 
-历史 migration 文件继续保留。新的 contract migration 负责把经过全部历史迁移的数据库收敛到唯一最终 schema。
+### 10.2 D1 原子事实与 Outbox
 
-## 15. Google 扩展验收标准
+同一 D1 batch/transaction 写入：
 
-未来接入 Google 时只允许新增：
+1. Canonical Fact。
+2. Provider Delivery。
+3. 加密 Outbox。
+4. 脱敏审计。
 
-1. Google provider 注册项和能力声明。
-2. Google 事件映射。
-3. Google Browser、Server、Verification 和可选 Quality Adapter。
-4. Google 凭证类型和独立 Queue binding。
-5. Google 官方契约测试。
+事务提交后尝试写入 Queue。Queue 发送失败、请求中断或消息过期时，Outbox 仍保留。每 15 分钟执行一次轻量恢复 Cron，扫描 `pending` 和超时 `queued` 记录并重新入队。
 
-以下模块不得因 Google 接入而修改业务分支：联系与注册事实、来源解析、通用 delivery planner、凭证库、challenge/evidence、rollout、incident、后台页面骨架和分析 API。若必须修改，说明本次通用化验收失败。
+### 10.3 状态机
 
-## 16. 完成标准
+```text
+planned -> queued -> accepted -> processed
+                    -> retrying
+                    -> rejected
+                    -> dead_letter
+                    -> cancelled
+```
 
-- Meta 与 TikTok 都由通用连接、凭证、验证、证据、rollout 和 incident 核心管理。
-- 生产 Meta 的连接和 10% rollout 无回归。
-- TikTok `Contact` 与 `CompleteRegistration` 通过生产 Browser/Server 去重验证。
-- TikTok 来源只发送 TikTok，Meta 来源只发送 Meta，同时启用不产生 fan-out。
-- 复制、二维码和面板展开不再计为广告 `Contact`。
-- Token、Test Event Code、匹配参数和根密钥无明文泄漏。
-- contract 后不存在旧平台专属控制表、双写、fallback 或兼容代码。
-- Google 可按第 15 节扩展，不复制业务与控制面。
+`accepted` 只表示平台 API 接收，不代表归因、匹配或最终处理成功。Google 的异步诊断、Meta/TikTok 回执分别保存为通用 Provider Receipt。
 
-## 17. 实施拆分
+只有平台提供可核验的下游诊断时才能进入 `processed`；没有下游处理查询能力的平台保持 `accepted`，后台不得伪造“处理完成”。
 
-该设计按四个可独立验证和回滚的里程碑实施，不把数据库迁移、Meta 切换和 TikTok 放量混入一次不可回退的发布：
+匹配信息使用通用 `match_signals_json`，例如 `['gclid', 'hashed_email']`，不再增加 `has_fbc`、`has_ttclid` 等平台列。
 
-1. **通用基础与凭证库**：完成通用 schema、根密钥、加密凭证、连接数据密钥和 Adapter 契约，生产行为不切换。
-2. **Meta 迁移与通用控制面**：导入 Meta 凭证和状态，切换连接验证、challenge、evidence、rollout、incident、quality 与后台 UI，保持 production 10%。
-3. **Contract 清理**：稳定观察后删除旧表、旧 Secret、一次性导入入口和全部兼容代码，验证最终 schema。
-4. **TikTok 生产接入**：配置 TikTok Pixel/Token，完成两事件成对测试和人工去重确认，再执行 `0% -> 10% -> 50% -> 100%`。
+### 10.4 Queue 规则
 
-每个里程碑都必须形成独立本地 commit、完整测试证据和明确回滚点；只有达到远端协作、CI、生产验证或部署节点时才统一推送。
+- Cloudflare Queues 是至少一次投递，消费者必须幂等。
+- 正常消息最多自动重试 3 次。
+- `4xx` 参数/目标错误直接拒绝，不重试。
+- `429`、网络错误和 `5xx` 才允许延迟重试。
+- 达到上限进入对应 DLQ，并同步 D1 状态。
+- Queue 消息小于 64 KB。
+- Outbox 只有在最终处理或人工取消后才能清除加密 Payload。
+
+## 11. Google Ads 接入
+
+### 11.1 Browser
+
+Google Ads Browser Adapter 使用 Google Tag：
+
+```ts
+gtag('event', 'conversion', {
+  send_to: 'AW-ID/LABEL',
+  transaction_id: externalEventId,
+})
+```
+
+Contact 和 CompleteRegistration 使用两个独立 Google Ads Website conversion action 和 Label。项目不使用 GA4 的 `generate_lead`、`sign_up` 代替 Ads 原生转化。
+
+### 11.2 Server
+
+Google Server Adapter 使用 Data Manager API：
+
+```text
+POST https://datamanager.googleapis.com/v1/events:ingest
+Scope: https://www.googleapis.com/auth/datamanager
+```
+
+请求包含：
+
+- `operatingAccount`：Google Ads Customer ID。
+- `loginAccount`：可选 Manager Account ID。
+- `productDestinationId`：对应 Website conversion action ID。
+- `transactionId`：与 Browser `transaction_id` 相同。
+- `gclid/gbraid/wbraid` 或经同意的哈希用户数据。
+
+Data Manager API 不需要 Google Ads Developer Token。
+
+### 11.3 Google 凭证
+
+推荐 Google Cloud Service Account：
+
+1. 创建 Google Cloud Project。
+2. 启用 Data Manager API。
+3. 创建 Service Account 和 JSON Key。
+4. 将 Service Account 邮箱加入 Google Ads Account 或 Manager Account。
+5. 在项目后台导入 Service Account JSON。
+
+Worker 使用 Web Crypto 的 RSA 能力签发短期 JWT，再交换 OAuth Access Token。Token 只缓存在当前 Worker isolate 内存，到期前刷新，不写入 D1、KV 或日志。多个 isolate 偶尔重复换 Token 可以接受。
+
+Cloudflare Workers 不能直接使用 Google Cloud 原生 Workload Identity，因此静态 Service Account Key 是明确风险。后台必须支持凭证 revision 轮换：新 Key 验证通过后再由 Owner 在 Google Cloud 删除旧 Key，项目不保留旧 Key fallback。
+
+## 12. 凭证安全
+
+- 平台凭证使用 AES-256-GCM 加密保存到 D1。
+- Worker Secret 只保存 `AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT` 和轮换窗口使用的 `AD_PLATFORM_CREDENTIAL_MASTER_KEY_PREVIOUS`。
+- 凭证、Outbox 和归因上下文使用 HKDF 从主密钥派生不同 purpose key，禁止同一原始密钥跨用途直接加密。
+- AAD 包含 connection ID、provider、credential type 和 credential revision。
+- 后台只显示“已配置”、更新时间和截断指纹，不返回明文或密文。
+- Token、Service Account、IV、完整指纹、原始 Click ID、邮箱和完整 Payload 禁止写入日志。
+- 保存、轮换和删除凭证必须要求 Owner、同源 Origin/CSRF 校验、请求体限制和审计。
+- 密文篡改、错误 AAD、未知 key ID 和跨 provider 解密全部 fail closed。
+
+不使用 Cloudflare Secrets Store 保存平台凭证。当前单 Secret 大小和部署绑定模型不适合后台动态管理 Google Service Account JSON。未来仅允许把通用主密钥迁移到成熟的集中 Secret 能力，业务 Schema 不变。
+
+## 13. 连接验证与 Workflows
+
+### 13.1 幂等实例
+
+```text
+verify:<provider>:<connectionId>:<connectionRevision>:<credentialRevision>:<attempt>
+```
+
+“验证连接”创建或返回当前 attempt 的 Workflow。重复点击只返回现有状态，不重复发送测试事件。“重新验证”必须原子递增 attempt 后再创建新实例。
+
+任何公开配置、凭证、事件绑定或协议 revision 变化都会使旧验证失效。Commit SHA 只作审计，不是连接或发布门禁。
+
+### 13.2 平台验证
+
+| 平台 | 自动验证 | 人工证据 |
+|---|---|---|
+| Meta | Pixel、Token、Graph API、事件绑定 | Events Manager Browser/Server 成对事件 |
+| TikTok | Pixel、Token、Events API、事件绑定 | Events Manager Browser/Server 成对事件 |
+| Google | OAuth、Data Manager `validateOnly`、转化操作绑定 | Tag Assistant 和真实 Production 诊断 |
+
+Meta/TikTok Test Event Code：
+
+- 每次验证时由 Owner 输入当前代码。
+- 仅加密存在于本次 Workflow 输入。
+- 完成或超时后清除。
+- 不进入连接配置、Worker Secret、D1 长期状态或正式业务 Payload。
+
+Google 没有 Test Event Code。先通过 `validateOnly` 验证身份、Schema 和目标，再使用真实且已授权的 production 流量完成 Live Evidence；禁止制造虚假广告转化。
+
+### 13.3 Rollout
+
+```text
+browserEffective: 0% | 100%
+serverTarget:     0% | 10% | 50% | 100%
+serverEffective:  0% | 10% | 50% | 100%
+```
+
+服务端 rollout 使用 `externalEventId` 做确定性采样。鉴权失败、目标不匹配、拒绝率异常或 critical incident 只将对应平台 Server effective 降为 0，不影响其他平台、Browser 或内部分析。
+
+平台验证和 Google 诊断可以使用 Workflow 的 sleep/retry；实时转化禁止创建 Workflow，避免步骤成本和不必要状态。
+
+## 14. 管理后台
+
+入口统一命名为“广告归因”：
+
+```text
+广告归因
+  总览
+  平台连接
+    Meta
+    TikTok
+    Google Ads
+  事件绑定
+  投递质量
+  验证记录
+  审计日志
+```
+
+### 14.1 平台连接
+
+- 按平台注册表动态渲染配置字段。
+- 公开 ID、事件目标和凭证作为一套连接保存。
+- 显示 Browser/Server 开关、连接 revision、凭证指纹、验证和 rollout。
+- 不显示 Token、Service Account、Test Event Code 或原始 Click ID。
+
+### 14.2 数据口径
+
+总览必须区分：
+
+- 内部标准转化数。
+- 按唯一来源平台划分的转化数。
+- Browser attempted。
+- Server planned/queued/accepted/processed/rejected。
+- 浏览器与服务端去重覆盖。
+- 匹配信号完整率。
+- Queue retry/DLQ。
+- 未归因与来源冲突数量。
+
+Browser attempted 不能描述为平台已接收，Server accepted 不能描述为平台已归因。
+
+### 14.3 Free 容量面板
+
+后台显示当日内部估算：
+
+- Worker 动态请求。
+- Queue 操作估算。
+- D1 行读取与写入估算。
+- Workflow 步骤。
+- 服务端转化数。
+
+达到 Free 额度 70% 时显示预警，但不自动切换到另一条投递路径。
+
+这些数值是项目依据事实、Delivery、重试和查询元数据计算的容量估算，不冒充 Cloudflare 账单数据。Worker 账户总请求和官方资源用量仍以 Cloudflare Dashboard 为准；项目不为读取账单指标保存高权限 Cloudflare API Token。
+
+## 15. Cloudflare Free 成本边界
+
+当前公开 Free 配额及项目安全线：
+
+| 资源 | Free 配额 | 项目安全线 |
+|---|---:|---:|
+| Worker 动态请求 | 100,000/天 | 70,000/天 |
+| Queue 操作 | 10,000/天 | 7,000/天 |
+| D1 读取 | 5,000,000 行/天 | 3,500,000 行/天 |
+| D1 写入 | 100,000 行/天 | 70,000 行/天 |
+| Workflow 步骤 | 3,000/天 | 2,100/天 |
+
+一条正常 Queue 消息约产生写入、读取、删除三次操作。为重试和 DLQ 预留空间后，Meta、TikTok、Google 合计服务端转化安全线为 2,000 条/天。
+
+达到以下任一条件时再评估 Workers Paid：
+
+- Queue 连续 3 天超过 7,000 操作/天。
+- 服务端转化接近 2,000 条/天。
+- Worker 请求超过 70,000/天。
+- D1 写入超过 70,000 行/天。
+- Google JWT 或 Payload 构建持续触发 10ms CPU 限制。
+- 业务已无法接受 Free Queue 24 小时消息保留窗口。
+
+升级 Paid 只改变 Cloudflare 配额，不改变代码、数据库或归因协议。
+
+## 16. 一次性迁移与清理
+
+### 16.1 保留与删除
+
+保留：
+
+- Contact/CompleteRegistration 标准业务事实。
+- 发生时间、历史来源平台和数据分析所需脱敏维度。
+- 必要管理审计。
+
+删除：
+
+- Meta/TikTok 旧连接、验证、challenge、release evidence、rollout、incident 和质量运行表。
+- 旧 Delivery、Outbox、Receipt、DLQ 和平台专属匹配字段。
+- Commit 发布门禁、Live Attestation 和硬编码 Test Event Code。
+- 旧 Token/Pixel 环境变量读取、旧 Queue 绑定、旧 API、旧组件和旧测试替身。
+- 所有双读、双写、fallback 和兼容响应字段。
+
+历史事实不重新投递，不补生成新事件编号。
+
+### 16.2 切换步骤
+
+1. 导出完整 Production D1 备份。
+2. 将三平台 Server rollout 设为 0，等待旧 Queue、pending、retrying、DLQ 全部清零；未清零则中止迁移。
+3. 执行安全 Expand migration，只创建最终通用表，不增加桥接 trigger、不双写、不修改旧运行表。
+4. 部署只读取和写入新 Schema 的 API/Web；新运行时没有旧表读取路径。
+5. 立即使用 `INSERT OR IGNORE` 将部署前的标准业务事实和必要历史统计从旧表一次性回填到新表；部署后的新事实已经直接进入新表。
+6. 对账新旧标准事实数量、事件口径和历史趋势；不迁移旧技术投递状态。
+7. 通过统一后台重新配置 Meta、TikTok、Google 并依次执行 production 验证。
+8. 确认新运行时、事实对账和 Meta 10% 恢复全部通过后，执行 Contract migration 删除旧归因技术表和触发器。
+9. 按门禁调整 TikTok 和 Google rollout。
+10. 确认新 Queue 无旧消息后删除旧 Cloudflare Queue 和旧 Secret。
+
+Expand 只解决 D1 与 Worker 无法原子发布的问题，不是兼容层：旧 Worker 只使用旧表，新 Worker 只使用新表，任何时刻都没有双读或双写。Contract 前失败可以部署上一 Worker 版本；Contract 后回滚必须恢复 D1 备份并部署上一 Worker 版本。
+
+## 17. 测试策略
+
+### 17.1 核心单元测试
+
+- 来源解析、优先级、替换、过期和多平台冲突。
+- Consent 拒绝、同意、撤回和 Cookie 清理。
+- 标准事件口径和无效 Contact 行为。
+- 平台无关事件编号稳定、幂等且小于等于 64 字符。
+- Adapter 注册、事件描述和未知能力 fail closed。
+- 凭证加密、轮换、错误 AAD、篡改和跨平台解密。
+- 确定性 rollout 和 provider 不可变。
+
+来源路由、同意、Delivery Planner、事件编号、Adapter 选择和跨平台阻断要求 100% 分支覆盖。
+
+### 17.2 D1、Queue 与 Workflow
+
+- Production Schema 快照迁移演练。
+- 从 `0001` 到最新 migration 的空库演练。
+- Fact、Delivery、Outbox 原子写入和 provider 约束。
+- Queue 重复消费、3 次重试、消息过期、DLQ 和恢复入队。
+- Workflow 重复验证幂等、超时、重启和旧 revision 失效。
+- Test Event Code 自动清除。
+- Free 配额计数和 70% 预警。
+
+### 17.3 平台契约测试
+
+- Meta/TikTok/Google 请求 Payload、Header、成功契约和错误分类。
+- Google Service Account JWT、OAuth、`validateOnly`、Destination 和 `transactionId`。
+- 三个平台 Browser/Server 相同事件编号。
+- `4xx` 不重试，`429/5xx` 延迟重试。
+
+### 17.4 浏览器隔离测试
+
+Playwright 对每个平台执行桌面和移动测试：
+
+- 未同意时零广告脚本和零平台请求。
+- Meta 来源只允许 Meta 域名请求。
+- TikTok 来源只允许 TikTok 域名请求。
+- Google 来源只允许 Google Tag/Ads 请求。
+- 无来源和冲突来源零广告请求。
+- 新来源替换旧来源并卸载旧 Browser Adapter。
+- Contact 只在合法外链导航时创建。
+- CompleteRegistration 只在注册成功后创建。
+
+任何来源访问其他平台域名都使测试立即失败。
+
+### 17.5 Production 验证
+
+- Meta/TikTok 使用当前 Test Event Code 完成 Browser/Server 成对去重。
+- Google 完成 OAuth、`validateOnly`、Tag Assistant 和真实 Live Evidence。
+- Google JWT 和 Payload 构建满足 Workers Free 10ms CPU 门禁。
+- 验证后台事实、Delivery、回执和平台后台事件编号一致。
+- 验证不存在跨平台请求、重复业务事实和敏感日志。
+
+## 18. 发布流程
+
+```text
+API/Web 类型检查与构建
+-> 单元、D1、Queue、Workflow、Playwright 测试
+-> Production D1 快照迁移演练
+-> Wrangler dry-run
+-> Production D1 备份
+-> 一次性 Schema 切换
+-> 部署 API/Web
+-> 平台重新配置
+-> Production 验证
+-> Server 0% -> 10% -> 50% -> 100%
+```
+
+- Dev 只验证代码、Mock、迁移和浏览器隔离。
+- Production 真实验证不依赖 Commit SHA。
+- Meta、TikTok、Google 可以使用不同 rollout，但底层通用 Schema 和运行时必须一次切换。
+- 平台连接或凭证变化只使对应平台验证失效，不影响无关功能部署。
+- 紧急停止通过后台将对应平台 Server effective 设为 0，不需要部署代码。
+
+## 19. 完成标准
+
+- Meta、TikTok、Google 都由同一连接、事件绑定、凭证、验证、投递和 rollout 核心管理。
+- 业务代码不存在平台 Payload 分支、旧表读取、双写或 fallback。
+- Meta、TikTok、Google 来源严格隔离，同时开启不产生 fan-out。
+- Contact 和 CompleteRegistration 在三平台保持同一业务口径。
+- Browser/Server 共享小于等于 64 字符的事件编号并正确去重。
+- Google Ads 原生 Tag 和 Data Manager API 通过 production 验证。
+- Test Event Code 不硬编码、不长期保存、不进入正式 Payload。
+- 凭证、Click ID、邮箱和完整 Payload 不泄漏。
+- Free 容量面板和 70% 预警生效，当前不产生新增固定费用。
+- 旧运行表、旧 Queue、旧 Secret、旧路由、旧 UI、旧兼容测试和过时文档口径完成清理。
+- 后续新增广告平台不修改 Contact、Registration、Consent、Attribution Resolver、Delivery Planner、后台页面骨架或通用状态机。
+
+## 20. 官方参考
+
+- Google Ads 网站转化：https://developers.google.com/tag-platform/devguides/conversions
+- Google Ads Transaction ID：https://support.google.com/google-ads/answer/6386790
+- Google Data Manager API 事件：https://developers.google.com/data-manager/api/devguides/events/send-events
+- Google Ads 在线转化：https://developers.google.com/data-manager/api/devguides/events/google-ads/online
+- Google Data Manager API 鉴权：https://developers.google.com/data-manager/api/devguides/quickstart/set-up-access
+- Google Consent Mode：https://developers.google.com/tag-platform/security/guides/consent
+- Cloudflare Queues 投递保证：https://developers.cloudflare.com/queues/reference/delivery-guarantees/
+- Cloudflare Queues 定价：https://developers.cloudflare.com/queues/platform/pricing/
+- Cloudflare Workflows：https://developers.cloudflare.com/workflows/
+- Cloudflare Workflows 定价：https://developers.cloudflare.com/workflows/reference/pricing/
+- Cloudflare Workers Web Crypto：https://developers.cloudflare.com/workers/runtime-apis/web-crypto/
+- Cloudflare D1 batch/transaction：https://developers.cloudflare.com/d1/worker-api/d1-database/
