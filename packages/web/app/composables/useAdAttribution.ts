@@ -7,14 +7,9 @@ type AttributionRoute = {
   query: Record<string, unknown>
 }
 
-let pendingResolution: Promise<AdAttributionProvider | null> | null = null
-let pendingKey = ''
 let operationQueue: Promise<void> = Promise.resolve()
 let operationVersion = 0
-let lastResolvedKey = ''
-let lastResolvedUntil = 0
-const CLIENT_RESOLUTION_TTL_MS = 29 * 60 * 1_000
-const SERVER_RECEIPT_TTL_SECONDS = 30 * 60
+const SERVER_CONTEXT_TTL_SECONDS = 30 * 24 * 60 * 60
 
 export function useAdAttribution() {
   const { api } = useApi()
@@ -23,15 +18,7 @@ export function useAdAttribution() {
 
   async function resolve(route: AttributionRoute): Promise<AdAttributionProvider | null> {
     if (import.meta.server) return null
-    const key = resolutionKey(route)
-    if (!pendingResolution
-      && lastResolvedKey === key
-      && resolution.value !== 'unresolved'
-      && Date.now() < lastResolvedUntil) return provider.value
-    if (pendingResolution && pendingKey === key) return pendingResolution
-
     const version = ++operationVersion
-    pendingKey = key
     const task = operationQueue.then(async () => {
       try {
         const response = await api<{ provider?: unknown; resolution?: unknown; expiresInSeconds?: unknown }>('/api/ad-attribution', {
@@ -39,8 +26,12 @@ export function useAdAttribution() {
           body: {
             fbclid: queryValue(route.query.fbclid),
             ttclid: queryValue(route.query.ttclid),
+            gclid: queryValue(route.query.gclid),
+            gbraid: queryValue(route.query.gbraid),
+            wbraid: queryValue(route.query.wbraid),
             utmSource: queryValue(route.query.utm_source),
             trackingSourceSlug: queryValue(route.query.mg_source),
+            managedLinkToken: queryValue(route.query.mg_token),
           },
         })
         const normalized = normalizeServerResolution(response)
@@ -48,8 +39,6 @@ export function useAdAttribution() {
         if (version !== operationVersion) return null
         provider.value = normalized.provider
         resolution.value = normalized.resolution
-        lastResolvedKey = key
-        lastResolvedUntil = Date.now() + normalized.cacheTtlMs
         return normalized.provider
       }
       catch {
@@ -63,25 +52,13 @@ export function useAdAttribution() {
         return null
       }
     })
-    pendingResolution = task
     operationQueue = task.then(() => undefined, () => undefined)
-
-    try {
-      return await task
-    }
-    finally {
-      if (pendingResolution === task) {
-        pendingResolution = null
-        pendingKey = ''
-      }
-    }
+    return task
   }
 
   async function clear() {
     const version = ++operationVersion
     resetLocalState(provider, resolution)
-    pendingResolution = null
-    pendingKey = ''
     if (import.meta.server) return
     const task = operationQueue.then(async () => {
       try {
@@ -105,18 +82,6 @@ function resetLocalState(
 ) {
   provider.value = null
   resolution.value = 'none'
-  lastResolvedKey = ''
-  lastResolvedUntil = 0
-}
-
-function resolutionKey(route: AttributionRoute) {
-  return JSON.stringify([
-    route.path,
-    queryValue(route.query.fbclid),
-    queryValue(route.query.ttclid),
-    queryValue(route.query.utm_source),
-    queryValue(route.query.mg_source),
-  ])
 }
 
 function queryValue(value: unknown) {
@@ -127,7 +92,7 @@ function queryValue(value: unknown) {
 }
 
 function normalizeProvider(value: unknown): AdAttributionProvider | null {
-  return value === 'meta' || value === 'tiktok' ? value : null
+  return value === 'meta' || value === 'tiktok' || value === 'google' ? value : null
 }
 
 function normalizeResolution(value: unknown): AdAttributionResolution {
@@ -143,15 +108,14 @@ function normalizeServerResolution(response: {
   const resolution = normalizeResolution(response.resolution)
   if (!provider) {
     if (response.provider !== null || (resolution !== 'none' && resolution !== 'conflict')) return null
-    return { provider: null, resolution, cacheTtlMs: CLIENT_RESOLUTION_TTL_MS }
+    return { provider: null, resolution }
   }
   if (resolution !== 'matched' && resolution !== 'inherited') return null
   if (!Number.isInteger(response.expiresInSeconds)) return null
   const expiresInSeconds = Number(response.expiresInSeconds)
-  if (expiresInSeconds <= 1 || expiresInSeconds > SERVER_RECEIPT_TTL_SECONDS) return null
+  if (expiresInSeconds <= 1 || expiresInSeconds > SERVER_CONTEXT_TTL_SECONDS) return null
   return {
     provider,
     resolution,
-    cacheTtlMs: Math.min(CLIENT_RESOLUTION_TTL_MS, (expiresInSeconds - 1) * 1_000),
   }
 }

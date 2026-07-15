@@ -24,8 +24,9 @@ describe('useAdAttribution', () => {
   it.each([
     ['Meta', '/meta-source', { fbclid: 'meta-click' }, 'meta'],
     ['TikTok', '/tiktok-source', { ttclid: 'tiktok-click' }, 'tiktok'],
+    ['Google', '/google-source', { gclid: 'google-click' }, 'google'],
   ] as const)('%s 来源只采用服务端验证结果', async (_label, path, query, provider) => {
-    api.mockResolvedValueOnce({ provider, resolution: 'matched', expiresInSeconds: 1_800 })
+    api.mockResolvedValueOnce({ provider, resolution: 'matched', expiresInSeconds: 2_592_000 })
     const attribution = useAdAttribution()
 
     await expect(attribution.resolve({ path, query })).resolves.toBe(provider)
@@ -37,8 +38,32 @@ describe('useAdAttribution', () => {
     expect(attribution.resolution.value).toBe('matched')
   })
 
-  it('冲突结果不选择平台，同一路由重复调用保持幂等', async () => {
-    api.mockResolvedValueOnce({ provider: null, resolution: 'conflict', expiresInSeconds: null })
+  it('只提交三平台来源信号，不在客户端状态保留 click id', async () => {
+    api.mockResolvedValueOnce({ provider: 'google', resolution: 'matched', expiresInSeconds: 2_592_000 })
+    const attribution = useAdAttribution()
+
+    await attribution.resolve({
+      path: '/google-source',
+      query: { gclid: 'sensitive-google-click', gbraid: 'sensitive-gbraid', wbraid: 'sensitive-wbraid', mg_token: 'signed-link' },
+    })
+
+    expect(api).toHaveBeenCalledWith('/api/ad-attribution', {
+      method: 'PUT',
+      body: expect.objectContaining({
+        gclid: 'sensitive-google-click',
+        gbraid: 'sensitive-gbraid',
+        wbraid: 'sensitive-wbraid',
+        managedLinkToken: 'signed-link',
+      }),
+    })
+    expect(JSON.stringify({ provider: attribution.provider.value, resolution: attribution.resolution.value }))
+      .not.toContain('sensitive-google-click')
+  })
+
+  it('冲突结果不选择平台，重复解析也不保留来源信号', async () => {
+    api
+      .mockResolvedValueOnce({ provider: null, resolution: 'conflict', expiresInSeconds: null })
+      .mockResolvedValueOnce({ provider: null, resolution: 'conflict', expiresInSeconds: null })
     const attribution = useAdAttribution()
     const route = {
       path: '/conflict-source',
@@ -48,7 +73,7 @@ describe('useAdAttribution', () => {
     await expect(attribution.resolve(route)).resolves.toBeNull()
     await expect(attribution.resolve(route)).resolves.toBeNull()
 
-    expect(api).toHaveBeenCalledTimes(1)
+    expect(api).toHaveBeenCalledTimes(2)
     expect(attribution.resolution.value).toBe('conflict')
   })
 
