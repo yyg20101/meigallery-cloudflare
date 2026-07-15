@@ -1,11 +1,11 @@
 import { Buffer } from 'node:buffer'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Miniflare } from 'miniflare'
-import { recordRegistration } from './conversions'
-import { readAttributionConnectionSnapshot } from './ad-platform/connections'
+import { recordRegistration, type RecordRegistrationInput } from './conversions'
 import { decryptAttributionValue, loadAttributionCryptoKeys } from '../utils/attribution-crypto'
 
 const MASTER_KEY = Buffer.alloc(32).toString('base64')
+const SENSITIVE_VALUES = ['fbclid_private', 'ttclid_private', 'gclid_private', 'gbraid_private', 'wbraid_private', 'fbp_private', 'fbc_private', 'ttp_private', 'a'.repeat(64)]
 let miniflare: Miniflare
 let db: D1Database
 
@@ -24,45 +24,78 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await db.exec(`DELETE FROM attribution_outbox; DELETE FROM attribution_deliveries; DELETE FROM attribution_conversion_facts; DELETE FROM attribution_credentials; DELETE FROM attribution_event_bindings; DELETE FROM attribution_platform_connections;`)
-  await db.batch([
-    db.prepare(`INSERT INTO attribution_platform_connections VALUES ('conn_google', 'google', 1, 'production', 1, 1, '{"tagId":"G-1","customerId":"1","cloudProjectId":"project"}', 30, 100, 100, 'revision_1', 'credential_1', '', '')`),
-    db.prepare(`INSERT INTO attribution_event_bindings VALUES ('bind_contact', 'conn_google', 'google', 'Contact', 1, 'contact', 'contact', 'revision_1', '{}', '', '')`),
-    db.prepare(`INSERT INTO attribution_event_bindings VALUES ('bind_registration', 'conn_google', 'google', 'CompleteRegistration', 1, 'registration', 'registration', 'revision_1', '{}', '', '')`),
-    db.prepare(`INSERT INTO attribution_credentials VALUES ('cred_google', 'conn_google', 'google', 'service_account_json', 1, '0123456789abcdef', 'iv', 'cipher', 'tag', 'fingerprint', 'credential_1', NULL, '', '')`),
-  ])
 })
 
 afterAll(async () => { await miniflare.dispose() })
 
 describe('统一事实 D1 原子写入', () => {
-  it('Fact、Browser/Server Delivery 与加密 Outbox 在单个 batch 中写入', async () => {
-    expect(await readAttributionConnectionSnapshot(db, 'google')).toMatchObject({ state: 'ready' })
-    const result = await recordRegistration({ DB: db, SITE_URL: 'https://gallery.example.test', AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT: MASTER_KEY }, {
-      userId: 42, visitorId: 'visitor_42', sessionId: 'session_42', occurredAt: '2026-07-15T00:00:00.000Z', path: '/register',
-      consentSnapshot: { consentVersion: 1, marketingAllowed: true, adUserDataAllowed: true, adPersonalizationAllowed: true, decidedAt: '2026-07-15T00:00:00.000Z' },
-      attributionSource: 'context', hashedEmail: 'a'.repeat(64), attributionContext: { version: 1, provider: 'google', contextId: 'ctx_0123456789abcdef0123456789abcdef', source: 'click_id', identifiers: { gclid: 'gclid_private' }, issuedAt: 1_784_534_400, expiresAt: 1_787_126_400 },
-    })
-    const fact = await db.prepare(`SELECT external_event_id FROM attribution_conversion_facts WHERE id = ?`).bind(result.id).first<{ external_event_id: string }>()
-    expect(fact?.external_event_id).toMatch(/^mg3_/)
-    expect(await db.prepare(`SELECT consent_snapshot_json FROM attribution_conversion_facts WHERE id = ?`).bind(result.id).first<{ consent_snapshot_json: string }>()
-      .then(row => JSON.parse(String(row?.consent_snapshot_json)))).toMatchObject({
-        consentVersion: 1,
-        marketingAllowed: true,
-        adUserDataAllowed: true,
-        adPersonalizationAllowed: true,
-        decidedAt: expect.any(String),
-      })
-    expect(result.trackingInstructions).toHaveLength(1)
-    expect(result.trackingInstructions[0]?.externalEventId).toBe(fact?.external_event_id)
-    expect((await db.prepare(`SELECT count(*) AS count FROM attribution_deliveries`).first<{ count: number }>())?.count).toBe(2)
-    expect((await db.prepare(`SELECT count(*) AS count FROM attribution_outbox`).first<{ count: number }>())?.count).toBe(1)
+  it.each([
+    ['meta', { fbp: 'fbp_private', fbc: 'fbc_private' }],
+    ['tiktok', { ttclid: 'ttclid_private', ttp: 'ttp_private' }],
+    ['google', { gclid: 'gclid_private', gbraid: 'gbraid_private', wbraid: 'wbraid_private' }],
+  ] as const)('%s 只将允许的匹配信号写入加密 Outbox', async (provider, expectedMatchSignals) => {
+    await seed(provider)
+    const logs = vi.spyOn(console, 'log')
+    const result = await recordRegistration(env(), registrationInput(provider))
+    logs.mockRestore()
+
+    const fact = await db.prepare(`SELECT * FROM attribution_conversion_facts WHERE id = ?`).bind(result.id).first()
+    const deliveries = await db.prepare(`SELECT * FROM attribution_deliveries WHERE fact_id = ?`).bind(result.id).all()
     const outbox = await db.prepare(`SELECT key_id, iv, ciphertext, tag FROM attribution_outbox`).first<{ key_id: string; iv: string; ciphertext: string; tag: string }>()
-    const payload = JSON.parse(await decryptAttributionValue({
-      keys: await loadAttributionCryptoKeys({ AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT: MASTER_KEY }),
-      aad: { purpose: 'outbox', provider: 'google', subjectId: result.id, revision: 'revision_1' },
-      envelope: { schemaVersion: 1, keyId: outbox!.key_id, iv: outbox!.iv, ciphertext: outbox!.ciphertext, tag: outbox!.tag },
-    }))
-    expect(payload).toMatchObject({ canonicalEvent: 'CompleteRegistration', pageUrl: 'https://gallery.example.test/register', matchSignals: { gclid: 'gclid_private' }, hashedEmail: 'a'.repeat(64) })
-    expect(JSON.stringify(await db.prepare(`SELECT analytics_dimensions_json FROM attribution_conversion_facts WHERE id = ?`).bind(result.id).first())).not.toContain('gclid_private')
+    const payload = await decryptPayload(provider, result.id, outbox!)
+    const publicOutput = JSON.stringify({ result, fact, deliveries, logs: logs.mock.calls })
+
+    expect(result.trackingInstructions).toHaveLength(1)
+    expect(payload).toMatchObject({ canonicalEvent: 'CompleteRegistration', eventTime: 1_784_073_600, pageUrl: 'https://gallery.example.test/register', matchSignals: expectedMatchSignals, hashedEmail: 'a'.repeat(64) })
+    expect(typeof payload.eventTime).toBe('number')
+    expect(Object.keys(payload.matchSignals).sort()).toEqual(Object.keys(expectedMatchSignals).sort())
+    for (const sensitive of SENSITIVE_VALUES) expect(publicOutput).not.toContain(sensitive)
+  })
+
+  it('Meta 只有 fbclid 时以 context issuedAt 构造 fbc', async () => {
+    await seed('meta')
+    const input = registrationInput('meta')
+    input.browserIdentifiers = { fbp: 'fbp_private', ttclid: 'ttclid_private', ttp: 'ttp_private' }
+    const result = await recordRegistration(env(), input)
+    const outbox = await db.prepare(`SELECT key_id, iv, ciphertext, tag FROM attribution_outbox`).first<{ key_id: string; iv: string; ciphertext: string; tag: string }>()
+    await expect(decryptPayload('meta', result.id, outbox!)).resolves.toMatchObject({ matchSignals: { fbp: 'fbp_private', fbc: 'fb.1.1784534400000.fbclid_private' } })
+  })
+
+  it.each([undefined, 'ftp://gallery.example.test'])('SITE_URL 为 %s 时只写 Fact 与 Browser Delivery', async siteUrl => {
+    await seed('meta')
+    const result = await recordRegistration({ ...env(), SITE_URL: siteUrl }, registrationInput('meta'))
+    expect(result.trackingInstructions).toHaveLength(1)
+    expect((await db.prepare(`SELECT count(*) AS count FROM attribution_conversion_facts`).first<{ count: number }>())?.count).toBe(1)
+    expect((await db.prepare(`SELECT count(*) AS count FROM attribution_deliveries WHERE transport = 'browser'`).first<{ count: number }>())?.count).toBe(1)
+    expect((await db.prepare(`SELECT count(*) AS count FROM attribution_deliveries WHERE transport = 'server'`).first<{ count: number }>())?.count).toBe(0)
+    expect((await db.prepare(`SELECT count(*) AS count FROM attribution_outbox`).first<{ count: number }>())?.count).toBe(0)
   })
 })
+
+function env() { return { DB: db, SITE_URL: 'https://gallery.example.test', AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT: MASTER_KEY } }
+function registrationInput(provider: 'meta' | 'tiktok' | 'google'): RecordRegistrationInput {
+  return {
+    userId: 42, visitorId: 'visitor_42', sessionId: 'session_42', occurredAt: '2026-07-15T00:00:00.000Z', path: '/register',
+    consentSnapshot: { consentVersion: 1, marketingAllowed: true, adUserDataAllowed: true, adPersonalizationAllowed: true, decidedAt: '2026-07-15T00:00:00.000Z' },
+    attributionSource: 'context', hashedEmail: 'a'.repeat(64),
+    attributionContext: { version: 1, provider, contextId: 'ctx_0123456789abcdef0123456789abcdef', source: 'click_id', identifiers: { fbclid: 'fbclid_private', ttclid: 'ttclid_private', gclid: 'gclid_private', gbraid: 'gbraid_private', wbraid: 'wbraid_private' }, issuedAt: 1_784_534_400, expiresAt: 1_787_126_400 },
+    browserIdentifiers: { fbp: 'fbp_private', fbc: 'fbc_private', ttclid: 'ttclid_private', ttp: 'ttp_private' },
+  }
+}
+async function seed(provider: 'meta' | 'tiktok' | 'google') {
+  const config = provider === 'meta' ? '{"pixelId":"pixel_1"}' : provider === 'tiktok' ? '{"pixelCode":"pixel_1"}' : '{"tagId":"G-1","customerId":"1","cloudProjectId":"project"}'
+  const credentialType = provider === 'google' ? 'service_account_json' : 'access_token'
+  await db.batch([
+    db.prepare(`INSERT INTO attribution_platform_connections VALUES (?, ?, 1, 'production', 1, 1, ?, 30, 100, 100, 'revision_1', 'credential_1', '', '')`).bind(`conn_${provider}`, provider, config),
+    db.prepare(`INSERT INTO attribution_event_bindings VALUES (?, ?, ?, 'Contact', 1, 'contact', 'contact', 'revision_1', '{}', '', '')`).bind(`bind_contact_${provider}`, `conn_${provider}`, provider),
+    db.prepare(`INSERT INTO attribution_event_bindings VALUES (?, ?, ?, 'CompleteRegistration', 1, 'registration', 'registration', 'revision_1', '{}', '', '')`).bind(`bind_registration_${provider}`, `conn_${provider}`, provider),
+    db.prepare(`INSERT INTO attribution_credentials VALUES (?, ?, ?, ?, 1, '0123456789abcdef', 'iv', 'cipher', 'tag', 'fingerprint', 'credential_1', NULL, '', '')`).bind(`cred_${provider}`, `conn_${provider}`, provider, credentialType),
+  ])
+}
+async function decryptPayload(provider: 'meta' | 'tiktok' | 'google', factId: string, outbox: { key_id: string; iv: string; ciphertext: string; tag: string }) {
+  return JSON.parse(await decryptAttributionValue({
+    keys: await loadAttributionCryptoKeys({ AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT: MASTER_KEY }),
+    aad: { purpose: 'outbox', provider, subjectId: factId, revision: 'revision_1' },
+    envelope: { schemaVersion: 1, keyId: outbox.key_id, iv: outbox.iv, ciphertext: outbox.ciphertext, tag: outbox.tag },
+  })) as { eventTime: unknown; matchSignals: Record<string, string> }
+}

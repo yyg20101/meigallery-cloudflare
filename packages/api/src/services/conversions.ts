@@ -49,6 +49,7 @@ export async function recordRegistrationFactOnly(db: D1Database, input: RecordRe
 
 async function recordLiveFact(env: ConversionEnv, input: ConversionBaseInput & { actionType: 'contact' | 'complete_registration'; canonicalEvent: CanonicalConversionEvent; methodType: string; actionTarget: string; hashedEmail?: string }) {
   const occurredAt = iso(input.occurredAt)
+  const eventTime = unixSeconds(occurredAt)
   const dedupeKey = buildConversionDedupeKey({ actionType: input.actionType, userId: input.userId ?? undefined, visitorId: input.visitorId, sessionId: input.sessionId, occurredDate: occurredAt.slice(0, 10), methodType: input.methodType, actionTarget: input.actionTarget })
   const existing = await findFact(env.DB, dedupeKey)
   if (existing) return duplicate(existing.id, input.actionType, await existingBrowserInstructions(env.DB, existing))
@@ -67,7 +68,7 @@ async function recordLiveFact(env: ConversionEnv, input: ConversionBaseInput & {
   const statements: D1PreparedStatement[] = [
     factStatement(env.DB, { id, canonicalEvent: input.canonicalEvent, factOrigin: 'live', externalEventId: plan.externalEventId, provider: context.provider, source: context.source, contextId: context.context?.contextId ?? null, occurredAt, dedupeKey, consentSnapshot: input.consentSnapshot, dimensions: dimensions(input, { methodType: input.methodType, actionTarget: input.actionTarget }) }),
     ...plan.deliveries.map(delivery => deliveryStatement(env.DB, id, snapshot, delivery)),
-    ...await outboxStatements(env.DB, keys, id, input.canonicalEvent, occurredAt, pageUrl, input.hashedEmail, snapshot, plan.deliveries),
+    ...await outboxStatements(env.DB, keys, id, input.canonicalEvent, eventTime, pageUrl, input.hashedEmail, snapshot, plan.deliveries),
   ]
   try { await env.DB.batch(statements) } catch (error) {
     const concurrent = await findFact(env.DB, dedupeKey)
@@ -83,7 +84,7 @@ function trustedContext(context: AdAttributionContext | null | undefined, source
   return { provider: valid ? definition.provider : null, context: valid ? context : null, source: valid ? context.source : source === 'conflict' ? 'conflict' : 'none', sourceAvailable: Boolean(valid) }
 }
 
-async function outboxStatements(db: D1Database, keys: Awaited<ReturnType<typeof loadAttributionCryptoKeys>>, factId: string, canonicalEvent: CanonicalConversionEvent, eventTime: string, pageUrl: string | null, hashedEmail: string | undefined, snapshot: Awaited<ReturnType<typeof readAttributionConnectionSnapshot>>, deliveries: Awaited<ReturnType<typeof buildAttributionDeliveryPlan>>['deliveries']) {
+async function outboxStatements(db: D1Database, keys: Awaited<ReturnType<typeof loadAttributionCryptoKeys>>, factId: string, canonicalEvent: CanonicalConversionEvent, eventTime: number, pageUrl: string | null, hashedEmail: string | undefined, snapshot: Awaited<ReturnType<typeof readAttributionConnectionSnapshot>>, deliveries: Awaited<ReturnType<typeof buildAttributionDeliveryPlan>>['deliveries']) {
   if (snapshot.state !== 'ready' || !pageUrl) return []
   return Promise.all(deliveries.filter(delivery => delivery.transport === 'server').map(async delivery => {
     const payload = { canonicalEvent, externalEventId: delivery.externalEventId, eventTime, pageUrl, destination: delivery.destination, matchSignals: delivery.matchSignals, ...(validHash(hashedEmail) ? { hashedEmail } : {}) }
@@ -109,6 +110,7 @@ function dimensions(input: ConversionBaseInput, extra: Record<string, unknown>) 
 function absolutePageUrl(siteUrl: string | undefined, path: string | undefined) { try { if (!siteUrl || !path?.startsWith('/')) return null; const origin = new URL(siteUrl); if (!['http:', 'https:'].includes(origin.protocol)) return null; return new URL(path, origin.origin).toString() } catch { return null } }
 function stableId(input: ConversionBaseInput) { return input.userId ? `user_${input.userId}` : input.visitorId }
 function iso(value: string) { const parsed = new Date(value); return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString() }
+function unixSeconds(value: string) { return Math.floor(new Date(value).getTime() / 1_000) }
 function text(value: unknown) { return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, 240) }
 function identifier(value: unknown) { return typeof value === 'string' && /^[A-Za-z0-9_-]{1,160}$/.test(value) }
 function validHash(value: unknown): value is string { return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value) }

@@ -45,14 +45,15 @@ export async function buildAttributionDeliveryPlan(input: {
       browserInstruction: { provider: connection.provider, canonicalEvent: input.canonicalEvent, externalEventId, descriptor, payload: { destination: binding.browserDestination } },
     })
   }
-  const rolloutBucket = input.stableId.trim() ? await stableBucket(`${connection.id}:${connection.connectionRevision}`, input.stableId) : null
+  const rolloutBucket = input.stableId.trim() ? await attributionPlannerRolloutBucket(`${connection.id}:${connection.connectionRevision}`, input.stableId) : null
   if (input.serverAllowed !== false && connection.serverEnabled && definition.capabilities.transports.includes('server') && rolloutBucket !== null && rolloutBucket < connection.rolloutEffectivePercentage) {
     deliveries.push({ id: crypto.randomUUID(), provider: connection.provider, transport: 'server', destination: binding.serverDestination, externalEventId, matchSignals: input.matchSignals ?? {} })
   }
   return { externalEventId, deliveries, rolloutBucket }
 }
 
-async function stableBucket(namespace: string, stableId: string) {
+/** 为 rollout 提供可复现的稳定分桶，不包含任何平台特例。 */
+export async function attributionPlannerRolloutBucket(namespace: string, stableId: string) {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${namespace}\n${stableId.trim()}`))
   return new DataView(digest).getUint32(0, false) % 100
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildAttributionDeliveryPlan } from './planner'
+import { attributionPlannerRolloutBucket, buildAttributionDeliveryPlan } from './planner'
 
 const eventKey = async () => crypto.subtle.importKey(
   'raw', new TextEncoder().encode('a'.repeat(32)), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
@@ -62,6 +62,21 @@ describe('归因投递 Planner', () => {
     expect(plan.deliveries.filter(item => item.transport === 'browser')).toHaveLength(1)
     if (rolloutEffectivePercentage === 100) expect(plan.deliveries.filter(item => item.transport === 'server')).toHaveLength(1)
     else expect(plan.deliveries.filter(item => item.transport === 'server')).toHaveLength(0)
+  })
+
+  it('10% Server rollout 使用稳定 bucket，Browser 在纳入和排除时均保留', async () => {
+    expect(await attributionPlannerRolloutBucket('conn_meta:revision_1', 'stable-13')).toBe(1)
+    expect(await attributionPlannerRolloutBucket('conn_meta:revision_1', 'rollout-in')).toBe(95)
+
+    const base = {
+      provider: 'meta' as const, canonicalEvent: 'Contact' as const, consentGranted: true, sourceAvailable: true,
+      eventKey: await eventKey(), connection: readyConnection('meta', 10),
+    }
+    const included = await buildAttributionDeliveryPlan({ ...base, factId: 'fact_bucket_in', stableId: 'stable-13' })
+    const excluded = await buildAttributionDeliveryPlan({ ...base, factId: 'fact_bucket_out', stableId: 'rollout-in' })
+
+    expect(included.deliveries.map(item => item.transport)).toEqual(['browser', 'server'])
+    expect(excluded.deliveries.map(item => item.transport)).toEqual(['browser'])
   })
 })
 
