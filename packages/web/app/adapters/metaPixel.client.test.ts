@@ -81,17 +81,18 @@ describe('Meta Pixel adapter', () => {
     expect(window.fbq?.queue).toEqual([['init', '123456789']])
   })
 
-  it('teardown 清理自有脚本、队列和 globals，但不破坏第三方 fbq', async () => {
+  it('检测到第三方 fbq 时 fail closed 且不接管', async () => {
     const thirdPartyFbq = Object.assign(vi.fn(), { queue: [], loaded: true, version: '2.0' })
     window.fbq = thirdPartyFbq
     window._fbq = thirdPartyFbq
     const { createMetaPixelAdapter } = await import('./metaPixel.client')
     const adapter = createMetaPixelAdapter()
 
-    await adapter.initialize({ provider: 'meta', pixelId: '123456789' }, consent)
+    await expect(adapter.initialize({ provider: 'meta', pixelId: '123456789' }, consent)).resolves.toBe(false)
     await adapter.teardown()
 
     expect(window.fbq).toBe(thirdPartyFbq)
     expect(window._fbq).toBe(thirdPartyFbq)
+    expect(thirdPartyFbq).not.toHaveBeenCalled()
   })
 })

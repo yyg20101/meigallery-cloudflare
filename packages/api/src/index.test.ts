@@ -67,6 +67,17 @@ describe('公开设置广告配置隔离', () => {
     expect(publicSettingsRoute).not.toContain('ad_platform_browser_connections')
     expect(publicSettingsRoute).not.toContain('browserConnections')
   })
+
+  it('归因解析和 bootstrap 都纳入公开 API 统一限流', () => {
+    const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8')
+    const publicRateLimit = source.slice(
+      source.indexOf('// 公开 API 速率限制兜底'),
+      source.indexOf('// 外部导入接口速率限制兜底'),
+    )
+
+    expect(publicRateLimit).toContain("'/api/ad-attribution'")
+    expect(publicRateLimit).toContain("'/api/ad-attribution/*'")
+  })
 })
 
 function emptyDb(calls: string[] = []) {

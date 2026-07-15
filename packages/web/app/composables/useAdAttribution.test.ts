@@ -24,7 +24,7 @@ describe('useAdAttribution', () => {
   it.each([
     ['meta', { provider: 'meta', pixelId: '123456789' }],
     ['tiktok', { provider: 'tiktok', pixelCode: 'C123456789ABCDEF' }],
-    ['google', { provider: 'google', tagId: 'AW-123456789', customerId: '123-456-7890', cloudProjectId: 'project-1' }],
+    ['google', { provider: 'google', tagId: 'AW-123456789' }],
   ] as const)('bootstrap 只缓存当前 %s 来源的最终 public config', async (provider, publicConfig) => {
     api
       .mockResolvedValueOnce({ provider, resolution: 'matched', expiresInSeconds: 1_800 })
@@ -41,13 +41,27 @@ describe('useAdAttribution', () => {
   it.each([
     ['跨 provider', { provider: 'tiktok', publicConfig: { provider: 'tiktok', pixelCode: 'C123456789ABCDEF' } }],
     ['额外敏感字段', { provider: 'meta', publicConfig: { provider: 'meta', pixelId: '123456789', token: 'secret' } }],
-    ['provider 与 config 不一致', { provider: 'meta', publicConfig: { provider: 'google', tagId: 'AW-123456789', customerId: '123-456-7890', cloudProjectId: 'project-1' } }],
+    ['provider 与 config 不一致', { provider: 'meta', publicConfig: { provider: 'google', tagId: 'AW-123456789' } }],
   ])('bootstrap 拒绝%s响应', async (_label, response) => {
     api
       .mockResolvedValueOnce({ provider: 'meta', resolution: 'matched', expiresInSeconds: 1_800 })
       .mockResolvedValueOnce(response)
     const attribution = useAdAttribution()
     await attribution.resolve({ path: '/gallery/source', query: { fbclid: 'click' } })
+
+    await expect(attribution.bootstrap()).resolves.toBeNull()
+    expect(attribution.publicConfig.value).toBeNull()
+  })
+
+  it('Google bootstrap 拒绝 customerId 等服务端字段越界', async () => {
+    api
+      .mockResolvedValueOnce({ provider: 'google', resolution: 'matched', expiresInSeconds: 1_800 })
+      .mockResolvedValueOnce({
+        provider: 'google',
+        publicConfig: { provider: 'google', tagId: 'AW-123456789', customerId: '123-456-7890' },
+      })
+    const attribution = useAdAttribution()
+    await attribution.resolve({ path: '/google-source', query: { gclid: 'click' } })
 
     await expect(attribution.bootstrap()).resolves.toBeNull()
     expect(attribution.publicConfig.value).toBeNull()

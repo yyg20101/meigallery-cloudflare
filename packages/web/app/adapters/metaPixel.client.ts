@@ -1,8 +1,8 @@
 import type {
+  AdBrowserPublicConfig,
   AdBrowserInstruction,
   AdBrowserSignal,
   AdConsentSnapshot,
-  PlatformPublicConfig,
 } from '@meigallery/shared'
 import { createFacebookPixelScript, normalizePixelId } from '~/utils/trackingSanitizer'
 
@@ -37,28 +37,27 @@ export function createMetaPixelAdapter() {
     return true
   }
 
-  async function initialize(config: PlatformPublicConfig, consent: AdConsentSnapshot) {
+  async function initialize(config: AdBrowserPublicConfig, consent: AdConsentSnapshot) {
     if (!isClientRuntime() || config.provider !== 'meta' || !consent.marketingAllowed) return false
     const pixelId = normalizePixelId(config.pixelId)
     if (!pixelId) return false
     if (initialized && activePixelId === pixelId && window.fbq) return true
     if (initialized) await teardown()
+    if (window.fbq || window._fbq) return false
 
-    if (!window.fbq) {
-      const fbq = function (...args: unknown[]) {
-        if (fbq.callMethod) fbq.callMethod(...args)
-        else fbq.queue.push(args)
-      } as FacebookQueueFunction
-      fbq.queue = []
-      fbq.loaded = true
-      fbq.version = '2.0'
-      window.fbq = fbq
-      window._fbq = fbq
-      ownedFbq = fbq
+    const fbq = function (...args: unknown[]) {
+      if (fbq.callMethod) fbq.callMethod(...args)
+      else fbq.queue.push(args)
+    } as FacebookQueueFunction
+    fbq.queue = []
+    fbq.loaded = true
+    fbq.version = '2.0'
+    window.fbq = fbq
+    window._fbq = fbq
+    ownedFbq = fbq
 
-      ownedScript = createFacebookPixelScript(document)
-      document.head.appendChild(ownedScript)
-    }
+    ownedScript = createFacebookPixelScript(document)
+    document.head.appendChild(ownedScript)
 
     initialized = true
     activePixelId = pixelId

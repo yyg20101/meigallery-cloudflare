@@ -1,9 +1,9 @@
 import type {
   AdAttributionProvider,
+  AdBrowserPublicConfig,
   AdBrowserInstruction,
   AdBrowserSignal,
   AdConsentSnapshot,
-  PlatformPublicConfig,
 } from '@meigallery/shared'
 import {
   executeAdBrowserInstruction,
@@ -81,15 +81,12 @@ export function useTracking() {
       metadata: { action_type: 'open_link' },
     }
 
-    let instructions: unknown[] = []
-    try {
-      const response = await api('/api/conversions/events', { method: 'POST', body })
-      instructions = trackingInstructionsFromResponse(response)
-    }
-    catch {
+    const response = await postConversionWithRetry(api, body)
+    if (!response) {
       trackContactAnalytics(analytics, input, '')
       return
     }
+    const instructions = trackingInstructionsFromResponse(response)
 
     trackContactAnalytics(analytics, input, firstInstructionExternalEventId(instructions))
     await executeBrowserInstructionsWithinScope(instructions, consentScope)
@@ -364,6 +361,31 @@ function isMarketingRouteAllowed(fullPath: string) {
   return !isAdminPath(pathname) && !hasSensitiveAnalyticsUrl(fullPath)
 }
 
-function configKey(config: PlatformPublicConfig) {
+async function postConversionWithRetry(
+  request: ReturnType<typeof useApi>['api'],
+  body: Record<string, unknown>,
+) {
+  const delays = [100, 250] as const
+  for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+    try {
+      return await request('/api/conversions/events', { method: 'POST', body })
+    }
+    catch (error) {
+      if (attempt === delays.length || !isRetryableConversionError(error)) return null
+      await new Promise(resolve => setTimeout(resolve, delays[attempt]))
+    }
+  }
+  return null
+}
+
+function isRetryableConversionError(error: unknown) {
+  const candidate = error as { status?: unknown; statusCode?: unknown; response?: { status?: unknown } } | null
+  const rawStatus = candidate?.statusCode ?? candidate?.status ?? candidate?.response?.status
+  if (rawStatus === undefined || rawStatus === null) return true
+  const status = Number(rawStatus)
+  return Number.isInteger(status) && (status === 408 || status === 425 || status === 429 || status >= 500)
+}
+
+function configKey(config: AdBrowserPublicConfig) {
   return JSON.stringify(config)
 }

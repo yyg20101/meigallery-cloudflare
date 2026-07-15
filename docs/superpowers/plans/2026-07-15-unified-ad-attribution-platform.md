@@ -631,6 +631,8 @@ Expected: PASS；production setup 与 preflight 共用六条新 Queue 清单，d
 
 ### Task 8：接入 Google Tag 并完成浏览器严格隔离
 
+**独立审查收口：** Browser lifecycle 全部串行化，并发切换、撤销同意与初始化失败均 fail closed；三平台检测到非本模块持有的全局 SDK 时拒绝接管。Google 使用 Basic Consent Mode `default denied -> update current consent -> load tag`，撤销时先写入 denied update，`send_to` 必须与当前 Tag ID 一致。`/bootstrap` 仅返回浏览器必需字段，Contact 对瞬时错误使用同一请求体有界幂等重试，公开归因路由纳入统一限流。最终独立复审结论：`Approved`。
+
 **Files:**
 - Rewrite: `packages/web/app/adapters/adPlatformBrowser.client.ts`
 - Rewrite: `packages/web/app/adapters/adPlatformBrowser.client.test.ts`

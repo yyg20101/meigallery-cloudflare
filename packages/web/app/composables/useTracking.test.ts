@@ -108,6 +108,7 @@ describe('useTracking', () => {
 
   afterEach(async () => {
     await useTracking().teardownAdBrowserTracking()
+    vi.useRealTimers()
     vi.unstubAllGlobals()
   })
 
@@ -136,6 +137,39 @@ describe('useTracking', () => {
     expect(adapter.execute).toHaveBeenCalledWith(metaInstruction)
     expect(api.mock.calls.some(call => call[0] === '/api/conversions/pixel-receipts')).toBe(false)
     expect(trackAnalytics).toHaveBeenCalledWith('contact_method_click', expect.objectContaining({ eventId: 'mg3_contact_123' }))
+  })
+
+  it('Contact 遇到瞬时失败时使用同一 body 有界幂等重试', async () => {
+    vi.useFakeTimers()
+    api
+      .mockRejectedValueOnce(Object.assign(new Error('temporary unavailable'), { statusCode: 503 }))
+      .mockResolvedValueOnce({ data: { id: 'fact_1', created: true, trackingInstructions: [metaInstruction] } })
+
+    const tracking = useTracking()
+    const request = tracking.trackContact({
+      contactMethodId: 'contact_123',
+      methodType: 'telegram',
+      actionType: 'open_link',
+    })
+    await vi.runAllTimersAsync()
+    await request
+
+    expect(api).toHaveBeenCalledTimes(2)
+    expect(api.mock.calls[1]?.[1]?.body).toEqual(api.mock.calls[0]?.[1]?.body)
+    expect(adapter.execute).toHaveBeenCalledWith(metaInstruction)
+  })
+
+  it('Contact 遇到业务 4xx 时不重试', async () => {
+    api.mockRejectedValueOnce(Object.assign(new Error('invalid contact'), { statusCode: 400 }))
+
+    await useTracking().trackContact({
+      contactMethodId: 'contact_123',
+      methodType: 'telegram',
+      actionType: 'open_link',
+    })
+
+    expect(api).toHaveBeenCalledOnce()
+    expect(adapter.execute).not.toHaveBeenCalled()
   })
 
   it('copy 永不 POST conversion 或执行广告 instruction', async () => {
@@ -191,7 +225,7 @@ describe('useTracking', () => {
     route.fullPath = '/gallery/google?gclid=click'
     route.query = { gclid: 'click' }
     attributionProvider.value = 'google'
-    publicConfig.value = { provider: 'google', tagId: 'AW-123456789', customerId: '123-456-7890', cloudProjectId: 'project-1' }
+    publicConfig.value = { provider: 'google', tagId: 'AW-123456789' }
 
     await useTracking().trackPageView()
 

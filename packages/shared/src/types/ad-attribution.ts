@@ -23,6 +23,11 @@ export type PlatformPublicConfig =
       cloudProjectId: string
     }
 
+export type AdBrowserPublicConfig =
+  | { provider: 'meta'; pixelId: string }
+  | { provider: 'tiktok'; pixelCode: string }
+  | { provider: 'google'; tagId: string }
+
 export interface PlatformEventDescriptor {
   provider: AdAttributionProvider
   canonicalEvent: CanonicalConversionEvent

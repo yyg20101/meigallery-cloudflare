@@ -44,7 +44,7 @@ describe('Google Ads Browser adapter', () => {
     const append = vi.spyOn(document.head, 'appendChild')
 
     await expect(adapter.initialize(
-      { provider: 'google', tagId: 'AW-123456789', customerId: '123-456-7890', cloudProjectId: 'project-1' },
+      { provider: 'google', tagId: 'AW-123456789' },
       { ...grantedConsent, marketingAllowed: false, adUserDataAllowed: false },
     )).resolves.toBe(false)
 
@@ -53,7 +53,7 @@ describe('Google Ads Browser adapter', () => {
     await expect(adapter.track(instruction())).resolves.toBe(false)
   })
 
-  it('按 Basic Consent Mode 顺序设置 default、加载脚本、执行 js 和 config', async () => {
+  it('按 Basic Consent Mode 顺序设置 denied default、当前授权 update，再加载脚本和配置', async () => {
     const { createGoogleAdsAdapter } = await import('./googleAds.client')
     const adapter = createGoogleAdsAdapter()
     let queueAtAppend: unknown[] = []
@@ -65,12 +65,18 @@ describe('Google Ads Browser adapter', () => {
     })
 
     await expect(adapter.initialize(
-      { provider: 'google', tagId: 'AW-123456789', customerId: '123-456-7890', cloudProjectId: 'project-1' },
+      { provider: 'google', tagId: 'AW-123456789' },
       grantedConsent,
     )).resolves.toBe(true)
 
     expect(queueAtAppend).toEqual([
       ['consent', 'default', {
+        ad_storage: 'denied',
+        ad_user_data: 'denied',
+        ad_personalization: 'denied',
+        analytics_storage: 'denied',
+      }],
+      ['consent', 'update', {
         ad_storage: 'granted',
         ad_user_data: 'granted',
         ad_personalization: 'denied',
@@ -78,8 +84,8 @@ describe('Google Ads Browser adapter', () => {
       }],
     ])
     const queue = (window as Window & { dataLayer: unknown[] }).dataLayer
-    expect(queue[1]).toEqual(['js', expect.any(Date)])
-    expect(queue[2]).toEqual(['config', 'AW-123456789'])
+    expect(queue[2]).toEqual(['js', expect.any(Date)])
+    expect(queue[3]).toEqual(['config', 'AW-123456789'])
     expect(script?.src).toBe('https://www.googletagmanager.com/gtag/js?id=AW-123456789')
   })
 
@@ -87,7 +93,7 @@ describe('Google Ads Browser adapter', () => {
     const { createGoogleAdsAdapter } = await import('./googleAds.client')
     const adapter = createGoogleAdsAdapter()
     vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T) => node)
-    await adapter.initialize({ provider: 'google', tagId: 'AW-123456789', customerId: '123-456-7890', cloudProjectId: 'project-1' }, grantedConsent)
+    await adapter.initialize({ provider: 'google', tagId: 'AW-123456789' }, grantedConsent)
 
     await expect(adapter.track(instruction())).resolves.toBe(true)
 
@@ -100,34 +106,35 @@ describe('Google Ads Browser adapter', () => {
 
   it.each([
     ['非法 destination', 'contact', 'mg3_contact_123'],
+    ['其他 Google Ads 账户 destination', 'AW-987654321/Contact_Label', 'mg3_contact_123'],
     ['含 PII 的 event id', 'AW-123456789/Contact_Label', 'person@example.com'],
     ['超长 event id', 'AW-123456789/Contact_Label', 'x'.repeat(65)],
   ])('%s 时 fail closed', async (_label, destination, eventId) => {
     const { createGoogleAdsAdapter } = await import('./googleAds.client')
     const adapter = createGoogleAdsAdapter()
     vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T) => node)
-    await adapter.initialize({ provider: 'google', tagId: 'AW-123456789', customerId: '123-456-7890', cloudProjectId: 'project-1' }, grantedConsent)
+    await adapter.initialize({ provider: 'google', tagId: 'AW-123456789' }, grantedConsent)
 
     await expect(adapter.track(instruction(destination, eventId))).resolves.toBe(false)
-    expect((window as Window & { dataLayer: unknown[] }).dataLayer).toHaveLength(3)
+    expect((window as Window & { dataLayer: unknown[] }).dataLayer).toHaveLength(4)
   })
 
   it('Browser Signal 使用安全事件映射且绝不发送 conversion', async () => {
     const { createGoogleAdsAdapter } = await import('./googleAds.client')
     const adapter = createGoogleAdsAdapter()
     vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T) => node)
-    await adapter.initialize({ provider: 'google', tagId: 'AW-123456789', customerId: '123-456-7890', cloudProjectId: 'project-1' }, grantedConsent)
+    await adapter.initialize({ provider: 'google', tagId: 'AW-123456789' }, grantedConsent)
 
     await adapter.trackSignal('PageView', { page_type: 'gallery' })
     await adapter.trackSignal('ViewContent', { content_id: 'gallery_1' })
     await adapter.trackSignal('Search', { search_string: 'portrait' })
 
-    const events = (window as Window & { dataLayer: unknown[][] }).dataLayer.slice(3)
+    const events = (window as Window & { dataLayer: unknown[][] }).dataLayer.slice(4)
     expect(events.map(item => item[1])).toEqual(['page_view', 'view_item', 'search'])
     expect(events.flat()).not.toContain('conversion')
   })
 
-  it('teardown 只移除自有 script、queue 和 globals，不破坏第三方已有 global', async () => {
+  it('检测到第三方已有 Google global 时 fail closed 且不接管', async () => {
     const existingQueue: unknown[] = []
     const existingGtag = vi.fn((...args: unknown[]) => existingQueue.push(args))
     ;(window as unknown as { dataLayer: unknown[][] }).dataLayer = existingQueue as unknown[][]
@@ -135,11 +142,31 @@ describe('Google Ads Browser adapter', () => {
     const { createGoogleAdsAdapter } = await import('./googleAds.client')
     const adapter = createGoogleAdsAdapter()
     vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T) => node)
-    await adapter.initialize({ provider: 'google', tagId: 'AW-123456789', customerId: '123-456-7890', cloudProjectId: 'project-1' }, grantedConsent)
+    await expect(adapter.initialize({ provider: 'google', tagId: 'AW-123456789' }, grantedConsent)).resolves.toBe(false)
 
     await adapter.teardown()
 
     expect((window as Window & { dataLayer: unknown[] }).dataLayer).toBe(existingQueue)
     expect((window as Window & { gtag: unknown }).gtag).toBe(existingGtag)
+    expect(existingGtag).not.toHaveBeenCalled()
+  })
+
+  it('teardown 在删除自有 global 前将 Google 授权更新为 denied', async () => {
+    const { createGoogleAdsAdapter } = await import('./googleAds.client')
+    const adapter = createGoogleAdsAdapter()
+    vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T) => node)
+    await adapter.initialize({ provider: 'google', tagId: 'AW-123456789' }, grantedConsent)
+    const queue = (window as Window & { dataLayer: unknown[][] }).dataLayer
+
+    await adapter.teardown()
+
+    expect(queue.at(-1)).toEqual(['consent', 'update', {
+      ad_storage: 'denied',
+      ad_user_data: 'denied',
+      ad_personalization: 'denied',
+      analytics_storage: 'denied',
+    }])
+    expect((window as Window & { dataLayer?: unknown }).dataLayer).toBeUndefined()
+    expect((window as Window & { gtag?: unknown }).gtag).toBeUndefined()
   })
 })

@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
-import type { AdAttributionProvider, PlatformPublicConfig } from '@meigallery/shared'
+import type { AdAttributionProvider, AdBrowserPublicConfig } from '@meigallery/shared'
 import type { Bindings, Variables } from '../index'
 import { resolveAdAttributionRouting, type AdAttributionSignals } from '../services/ad-attribution-routing'
 import { readAttributionConnectionSnapshot } from '../services/ad-platform/connections'
@@ -167,17 +167,9 @@ function emptyBootstrapResponse() {
 function serializePublicConfig(
   provider: AdAttributionProvider,
   config: Record<string, string>,
-): PlatformPublicConfig | null {
+): AdBrowserPublicConfig | null {
   if (provider === 'meta' && config.pixelId) return { provider, pixelId: config.pixelId }
   if (provider === 'tiktok' && config.pixelCode) return { provider, pixelCode: config.pixelCode }
-  if (provider === 'google' && config.tagId && config.customerId && config.cloudProjectId) {
-    return {
-      provider,
-      tagId: config.tagId,
-      customerId: config.customerId,
-      cloudProjectId: config.cloudProjectId,
-      ...(config.loginCustomerId ? { loginCustomerId: config.loginCustomerId } : {}),
-    }
-  }
+  if (provider === 'google' && config.tagId) return { provider, tagId: config.tagId }
   return null
 }

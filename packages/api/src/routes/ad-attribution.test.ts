@@ -162,12 +162,7 @@ describe('公开广告来源 API', () => {
   it.each([
     ['meta', { fbclid: 'meta-click-id' }, { provider: 'meta', pixelId: '123456789' }],
     ['tiktok', { ttclid: 'tiktok-click-id' }, { provider: 'tiktok', pixelCode: 'C123456789ABCDEF' }],
-    ['google', { gclid: 'google-click-id' }, {
-      provider: 'google',
-      tagId: 'AW-123456789',
-      customerId: '123-456-7890',
-      cloudProjectId: 'meigallery-ads',
-    }],
+    ['google', { gclid: 'google-click-id' }, { provider: 'google', tagId: 'AW-123456789' }],
   ] as const)('bootstrap 只返回当前 %s 来源的 discriminated public config', async (provider, source, publicConfig) => {
     const initial = await request(source)
     const consent = await createMarketingConsentReceipt(SECRET, 'granted')
@@ -220,6 +215,27 @@ describe('公开广告来源 API', () => {
     expect(await response.json()).toEqual({
       provider: 'meta',
       publicConfig: { provider: 'meta', pixelId: '123456789' },
+    })
+  })
+
+  it('Google bootstrap 只投影浏览器必需的 Tag ID', async () => {
+    const initial = await request({ gclid: 'google-click-id' })
+    const consent = await createMarketingConsentReceipt(SECRET, 'granted')
+    readConnectionSnapshot.mockResolvedValueOnce(readySnapshot('google', {
+      provider: 'google',
+      tagId: 'AW-123456789',
+      customerId: '123-456-7890',
+      loginCustomerId: '999-888-7777',
+      cloudProjectId: 'private-project-name',
+    }))
+
+    const response = await app().request('https://api.616618.xyz/api/ad-attribution/bootstrap', {
+      headers: { cookie: trustedCookie(consent, initial) },
+    }, env())
+
+    expect(await response.json()).toEqual({
+      provider: 'google',
+      publicConfig: { provider: 'google', tagId: 'AW-123456789' },
     })
   })
 })

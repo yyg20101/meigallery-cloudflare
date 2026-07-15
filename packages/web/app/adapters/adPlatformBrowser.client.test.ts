@@ -34,6 +34,7 @@ const metaInstruction = {
 
 describe('浏览器广告平台 adapter registry', () => {
   beforeEach(() => {
+    vi.resetModules()
     vi.clearAllMocks()
     for (const adapter of Object.values(adapters)) {
       adapter.initialize.mockResolvedValue(true)
@@ -77,7 +78,7 @@ describe('浏览器广告平台 adapter registry', () => {
 
     await initializeAdBrowserProvider({ provider: 'meta', pixelId: '123456789' }, consent)
     await initializeAdBrowserProvider({ provider: 'tiktok', pixelCode: 'C123456789ABCDEF' }, consent)
-    await initializeAdBrowserProvider({ provider: 'google', tagId: 'AW-123456789', customerId: '123-456-7890', cloudProjectId: 'project-1' }, consent)
+    await initializeAdBrowserProvider({ provider: 'google', tagId: 'AW-123456789' }, consent)
 
     expect(order).toEqual(['meta:teardown', 'tiktok:initialize', 'tiktok:teardown', 'google:initialize'])
   })
@@ -93,5 +94,47 @@ describe('浏览器广告平台 adapter registry', () => {
 
     expect(adapters.meta.teardown).toHaveBeenCalledOnce()
     expect(adapters.meta.initialize).toHaveBeenCalledOnce()
+  })
+
+  it('并发切换 provider 时严格串行化，新平台不会在旧平台 teardown 前初始化', async () => {
+    let releaseMeta!: (value: boolean) => void
+    const metaInitialization = new Promise<boolean>((resolve) => { releaseMeta = resolve })
+    const order: string[] = []
+    adapters.meta.initialize.mockImplementation(async () => {
+      order.push('meta:initialize:start')
+      const result = await metaInitialization
+      order.push('meta:initialize:end')
+      return result
+    })
+    adapters.meta.teardown.mockImplementation(async () => { order.push('meta:teardown') })
+    adapters.tiktok.initialize.mockImplementation(async () => { order.push('tiktok:initialize'); return true })
+    const { initializeAdBrowserProvider } = await import('./adPlatformBrowser.client')
+
+    const meta = initializeAdBrowserProvider({ provider: 'meta', pixelId: '123456789' }, consent)
+    const tiktok = initializeAdBrowserProvider({ provider: 'tiktok', pixelCode: 'C123456789ABCDEF' }, consent)
+    await Promise.resolve()
+
+    expect(order).toEqual(['meta:initialize:start'])
+    releaseMeta(true)
+    await expect(meta).resolves.toBe(true)
+    await expect(tiktok).resolves.toBe(true)
+    expect(order).toEqual([
+      'meta:initialize:start',
+      'meta:initialize:end',
+      'meta:teardown',
+      'tiktok:initialize',
+    ])
+  })
+
+  it('当前 provider 重新初始化失败时 fail closed 并卸载旧实例', async () => {
+    const { executeAdBrowserInstruction, initializeAdBrowserProvider } = await import('./adPlatformBrowser.client')
+    await initializeAdBrowserProvider({ provider: 'meta', pixelId: '123456789' }, consent)
+    adapters.meta.initialize.mockResolvedValueOnce(false)
+
+    await expect(initializeAdBrowserProvider({ provider: 'meta', pixelId: '987654321' }, consent)).resolves.toBe(false)
+    await expect(executeAdBrowserInstruction(metaInstruction)).resolves.toBe(false)
+
+    expect(adapters.meta.teardown).toHaveBeenCalledOnce()
+    expect(adapters.meta.track).not.toHaveBeenCalled()
   })
 })

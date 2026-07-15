@@ -1,8 +1,8 @@
 import type {
+  AdBrowserPublicConfig,
   AdBrowserInstruction,
   AdBrowserSignal,
   AdConsentSnapshot,
-  PlatformPublicConfig,
 } from '@meigallery/shared'
 
 type TikTokPixelPayload = Record<string, string | number | boolean>
@@ -39,36 +39,35 @@ export function createTikTokPixelAdapter() {
   let ownedScript: HTMLScriptElement | null = null
   let ownedQueue: TikTokQueue | null = null
 
-  async function initialize(config: PlatformPublicConfig, consent: AdConsentSnapshot) {
+  async function initialize(config: AdBrowserPublicConfig, consent: AdConsentSnapshot) {
     if (!isClientRuntime() || config.provider !== 'tiktok' || !consent.marketingAllowed) return false
     const pixelId = normalizeTikTokPixelId(config.pixelCode)
     if (!pixelId) return false
     if (initialized && activePixelId === pixelId && window.ttq) return true
     if (initialized) await teardown()
+    if (window.ttq || window.TiktokAnalyticsObject) return false
 
-    if (!window.ttq) {
-      const queue = [] as TikTokQueue
-      window.TiktokAnalyticsObject = 'ttq'
-      window.ttq = queue
-      ownedQueue = queue
-      installQueueMethods(queue)
-      queue.load = (id, options = {}) => {
-        queue._i ||= {}
-        queue._o ||= {}
-        queue._t ||= {}
-        const instance = [] as TikTokQueue
-        instance._u = TIKTOK_SCRIPT_ORIGIN
-        queue._i[id] = instance
-        queue._o[id] = options
-        queue._t[id] = Date.now()
-        const script = document.createElement('script')
-        script.type = 'text/javascript'
-        script.async = true
-        script.referrerPolicy = 'no-referrer'
-        script.src = `${TIKTOK_SCRIPT_ORIGIN}?sdkid=${encodeURIComponent(id)}&lib=ttq`
-        ownedScript = script
-        document.head.appendChild(script)
-      }
+    const queue = [] as TikTokQueue
+    window.TiktokAnalyticsObject = 'ttq'
+    window.ttq = queue
+    ownedQueue = queue
+    installQueueMethods(queue)
+    queue.load = (id, options = {}) => {
+      queue._i ||= {}
+      queue._o ||= {}
+      queue._t ||= {}
+      const instance = [] as TikTokQueue
+      instance._u = TIKTOK_SCRIPT_ORIGIN
+      queue._i[id] = instance
+      queue._o[id] = options
+      queue._t[id] = Date.now()
+      const script = document.createElement('script')
+      script.type = 'text/javascript'
+      script.async = true
+      script.referrerPolicy = 'no-referrer'
+      script.src = `${TIKTOK_SCRIPT_ORIGIN}?sdkid=${encodeURIComponent(id)}&lib=ttq`
+      ownedScript = script
+      document.head.appendChild(script)
     }
 
     initialized = true

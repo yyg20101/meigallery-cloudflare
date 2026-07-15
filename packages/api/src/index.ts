@@ -156,6 +156,8 @@ for (const path of [
   '/api/settings/public',
   '/api/meta/resource-attestation',
   '/api/marketing-consent',
+  '/api/ad-attribution',
+  '/api/ad-attribution/*',
 ]) {
   app.use(path, rateLimiter({
     name: 'public-api',

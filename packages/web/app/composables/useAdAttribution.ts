@@ -1,4 +1,4 @@
-import type { AdAttributionProvider, PlatformPublicConfig } from '@meigallery/shared'
+import type { AdAttributionProvider, AdBrowserPublicConfig } from '@meigallery/shared'
 
 export type AdAttributionResolution = 'unresolved' | 'matched' | 'inherited' | 'none' | 'conflict'
 
@@ -15,7 +15,7 @@ export function useAdAttribution() {
   const { api } = useApi()
   const provider = useState<AdAttributionProvider | null>('ad-attribution-provider', () => null)
   const resolution = useState<AdAttributionResolution>('ad-attribution-resolution', () => 'unresolved')
-  const publicConfig = useState<PlatformPublicConfig | null>('ad-attribution-public-config', () => null)
+  const publicConfig = useState<AdBrowserPublicConfig | null>('ad-attribution-public-config', () => null)
 
   async function resolve(route: AttributionRoute): Promise<AdAttributionProvider | null> {
     if (import.meta.server) return null
@@ -58,7 +58,7 @@ export function useAdAttribution() {
     return task
   }
 
-  async function bootstrap(): Promise<PlatformPublicConfig | null> {
+  async function bootstrap(): Promise<AdBrowserPublicConfig | null> {
     if (import.meta.server || !provider.value) return null
     const expectedProvider = provider.value
     const version = operationVersion
@@ -102,7 +102,7 @@ export function useAdAttribution() {
 function resetLocalState(
   provider: ReturnType<typeof useState<AdAttributionProvider | null>>,
   resolution: ReturnType<typeof useState<AdAttributionResolution>>,
-  publicConfig: ReturnType<typeof useState<PlatformPublicConfig | null>>,
+  publicConfig: ReturnType<typeof useState<AdBrowserPublicConfig | null>>,
 ) {
   provider.value = null
   resolution.value = 'none'
@@ -145,7 +145,7 @@ function normalizeServerResolution(response: {
   }
 }
 
-function normalizePublicConfig(value: unknown): PlatformPublicConfig | null {
+function normalizePublicConfig(value: unknown): AdBrowserPublicConfig | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const config = value as Record<string, unknown>
   if (config.provider === 'meta'
@@ -157,19 +157,10 @@ function normalizePublicConfig(value: unknown): PlatformPublicConfig | null {
     && typeof config.pixelCode === 'string'
     && /^[A-Z0-9]{10,30}$/.test(config.pixelCode)) return { provider: 'tiktok', pixelCode: config.pixelCode }
   if (config.provider === 'google'
-    && exactKeys(config, ['provider', 'tagId', 'customerId', 'cloudProjectId'], ['loginCustomerId'])
+    && exactKeys(config, ['provider', 'tagId'])
     && typeof config.tagId === 'string'
-    && /^AW-\d{5,20}$/.test(config.tagId)
-    && safeConfigText(config.customerId)
-    && safeConfigText(config.cloudProjectId)
-    && (config.loginCustomerId === undefined || safeConfigText(config.loginCustomerId))) {
-    return {
-      provider: 'google',
-      tagId: config.tagId,
-      customerId: config.customerId,
-      cloudProjectId: config.cloudProjectId,
-      ...(typeof config.loginCustomerId === 'string' ? { loginCustomerId: config.loginCustomerId } : {}),
-    }
+    && /^AW-\d{5,20}$/.test(config.tagId)) {
+    return { provider: 'google', tagId: config.tagId }
   }
   return null
 }
@@ -177,8 +168,4 @@ function normalizePublicConfig(value: unknown): PlatformPublicConfig | null {
 function exactKeys(value: Record<string, unknown>, required: string[], optional: string[] = []) {
   const allowed = new Set([...required, ...optional])
   return required.every(key => key in value) && Object.keys(value).every(key => allowed.has(key))
-}
-
-function safeConfigText(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0 && value.length <= 160 && !/\p{Cc}/u.test(value)
 }

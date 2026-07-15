@@ -80,7 +80,7 @@ describe('TikTok Pixel adapter', () => {
     expect(window.ttq?.some(item => Array.isArray(item) && item[0] === 'track')).toBe(false)
   })
 
-  it('teardown 不破坏第三方已有 ttq global', async () => {
+  it('检测到第三方 ttq 时 fail closed 且不接管', async () => {
     const thirdPartyQueue = [] as NonNullable<Window['ttq']>
     thirdPartyQueue.load = vi.fn()
     window.ttq = thirdPartyQueue
@@ -88,10 +88,11 @@ describe('TikTok Pixel adapter', () => {
     const { createTikTokPixelAdapter } = await import('./tiktokPixel.client')
     const adapter = createTikTokPixelAdapter()
 
-    await adapter.initialize({ provider: 'tiktok', pixelCode: 'C123456789ABCDEF' }, consent)
+    await expect(adapter.initialize({ provider: 'tiktok', pixelCode: 'C123456789ABCDEF' }, consent)).resolves.toBe(false)
     await adapter.teardown()
 
     expect(window.ttq).toBe(thirdPartyQueue)
     expect(window.TiktokAnalyticsObject).toBe('ttq')
+    expect(thirdPartyQueue.load).not.toHaveBeenCalled()
   })
 })

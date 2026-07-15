@@ -1,11 +1,10 @@
 import type {
+  AdBrowserPublicConfig,
   AdBrowserInstruction,
   AdBrowserSignal,
   AdConsentSnapshot,
-  PlatformPublicConfig,
 } from '@meigallery/shared'
 
-type GooglePublicConfig = Extract<PlatformPublicConfig, { provider: 'google' }>
 type BrowserPayload = Record<string, string | number | boolean>
 type DataLayer = unknown[][]
 type Gtag = (...args: unknown[]) => void
@@ -34,28 +33,31 @@ export function createGoogleAdsAdapter() {
   let ownedDataLayer: DataLayer | null = null
   let ownedGtag: Gtag | null = null
 
-  async function initialize(config: PlatformPublicConfig, consent: AdConsentSnapshot) {
+  async function initialize(config: AdBrowserPublicConfig, consent: AdConsentSnapshot) {
     if (!isClientRuntime() || config.provider !== 'google' || !hasBasicConsent(consent)) return false
     const tagId = normalizeGoogleTagId(config.tagId)
     if (!tagId) return false
     if (initialized && activeTagId === tagId && window.gtag) return true
     if (initialized) await teardown()
+    if (window.gtag || window.dataLayer) return false
 
-    const dataLayer = window.dataLayer ?? []
-    if (!window.dataLayer) {
-      window.dataLayer = dataLayer
-      ownedDataLayer = dataLayer
-    }
-    const gtag = window.gtag ?? ((...args: unknown[]) => dataLayer.push(args))
-    if (!window.gtag) {
-      window.gtag = gtag
-      ownedGtag = gtag
-    }
+    const dataLayer: DataLayer = []
+    window.dataLayer = dataLayer
+    ownedDataLayer = dataLayer
+    const gtag = (...args: unknown[]) => dataLayer.push(args)
+    window.gtag = gtag
+    ownedGtag = gtag
 
     gtag('consent', 'default', {
+      ad_storage: 'denied',
+      ad_user_data: 'denied',
+      ad_personalization: 'denied',
+      analytics_storage: 'denied',
+    })
+    gtag('consent', 'update', {
       ad_storage: 'granted',
       ad_user_data: 'granted',
-      ad_personalization: 'denied',
+      ad_personalization: consent.adPersonalizationAllowed ? 'granted' : 'denied',
       analytics_storage: 'denied',
     })
 
@@ -74,7 +76,7 @@ export function createGoogleAdsAdapter() {
   }
 
   async function track(instruction: AdBrowserInstruction) {
-    if (!initialized || !window.gtag || !validInstruction(instruction)) return false
+    if (!initialized || !window.gtag || !validInstruction(instruction, activeTagId)) return false
     window.gtag('event', 'conversion', {
       ...safePayload(instruction.payload),
       send_to: instruction.descriptor.browserDestination,
@@ -90,6 +92,14 @@ export function createGoogleAdsAdapter() {
   }
 
   async function teardown() {
+    if (initialized && ownedGtag && isClientRuntime() && window.gtag === ownedGtag) {
+      ownedGtag('consent', 'update', {
+        ad_storage: 'denied',
+        ad_user_data: 'denied',
+        ad_personalization: 'denied',
+        analytics_storage: 'denied',
+      })
+    }
     ownedScript?.remove()
     if (isClientRuntime()) {
       if (window.gtag === ownedGtag) delete window.gtag
@@ -107,12 +117,13 @@ export function createGoogleAdsAdapter() {
 
 export const googleAdsAdapter = createGoogleAdsAdapter()
 
-function validInstruction(instruction: AdBrowserInstruction) {
+function validInstruction(instruction: AdBrowserInstruction, activeTagId: string) {
   return instruction.provider === 'google'
     && instruction.descriptor.provider === 'google'
     && instruction.descriptor.canonicalEvent === instruction.canonicalEvent
     && instruction.descriptor.browserEventName === 'conversion'
     && GOOGLE_DESTINATION_PATTERN.test(instruction.descriptor.browserDestination)
+    && instruction.descriptor.browserDestination.startsWith(`${activeTagId}/`)
     && EXTERNAL_EVENT_ID_PATTERN.test(instruction.externalEventId)
 }
 
