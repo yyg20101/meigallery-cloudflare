@@ -311,7 +311,7 @@ Expected: PASS，提交成功。
 - Modify: `packages/web/app/composables/useAdAttribution.ts`
 - Modify: `packages/web/app/composables/useAdAttribution.test.ts`
 
-- [ ] **Step 1：写三平台来源和同意失败测试**
+- [x] **Step 1：写三平台来源和同意失败测试**
 
 覆盖 `fbclid`、`ttclid`、`gclid`、`gbraid`、`wbraid`，签名链接，明确广告别名，普通 `google` 不归因，多平台强信号冲突，新点击替换旧来源，30 天过期，拒绝/撤回同意删除 Cookie。
 
@@ -321,7 +321,7 @@ corepack pnpm --filter @meigallery/api exec vitest run src/services/ad-attributi
 
 Expected: FAIL。
 
-- [ ] **Step 2：实现标准同意快照和上下文**
+- [x] **Step 2：实现标准同意快照和上下文**
 
 ```ts
 export interface AdConsentSnapshot {
@@ -345,7 +345,7 @@ export interface AdAttributionContext {
 
 Cookie 名为 `mei_ad_attribution`，属性为 `Secure + HttpOnly + SameSite=Lax`，加密 purpose 为 `context`。`contextId` 是随机、非 PII 标识，写入事实后用于同意撤回时取消尚未完成的投递。
 
-- [ ] **Step 3：更新公开路由和 Web 查询收集**
+- [x] **Step 3：更新公开路由和 Web 查询收集**
 
 ```ts
 type AttributionSignals = {
@@ -362,7 +362,7 @@ type AttributionSignals = {
 
 未同意时清理 Cookie；冲突返回 `resolution: 'conflict'`。撤回同意时，服务端先把同一 `contextId` 下仍为 `planned`、`queued`、`retrying` 的 Delivery 改为 `cancelled` 并删除对应 Outbox，再删除 Cookie；已进入 `accepted` 或 `processed` 的历史不可篡改。Queue consumer 后续收到已取消消息只 ack，不调用平台。客户端只保存 provider / resolution，不保存 Click ID。
 
-- [ ] **Step 4：运行测试并提交**
+- [x] **Step 4：运行测试并提交**
 
 ```bash
 corepack pnpm --filter @meigallery/api exec vitest run src/services/ad-attribution-routing.test.ts src/utils/ad-attribution-context.test.ts src/services/ad-attribution-consent.d1.test.ts src/routes/ad-attribution.test.ts
