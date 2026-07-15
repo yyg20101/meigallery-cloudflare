@@ -251,7 +251,7 @@ AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT: string
 AD_PLATFORM_CREDENTIAL_MASTER_KEY_PREVIOUS?: string
 ```
 
-- [ ] **Step 1：写加密域失败测试**
+- [x] **Step 1：写加密域失败测试**
 
 覆盖 AES-256-GCM 往返、HKDF purpose 隔离、错误 AAD、篡改、未知 key ID、previous key 读取、跨 provider 解密拒绝和日志安全错误码。
 
@@ -261,7 +261,7 @@ corepack pnpm --filter @meigallery/api exec vitest run src/utils/attribution-cry
 
 Expected: FAIL。
 
-- [ ] **Step 2：实现 HKDF purpose key 和凭证原子替换**
+- [x] **Step 2：实现 HKDF purpose key 和凭证原子替换**
 
 ```ts
 export type AttributionCryptoPurpose = 'credential' | 'outbox' | 'context' | 'verification_input' | 'event_id'
@@ -285,7 +285,7 @@ export interface SaveCredentialInput {
 
 Service Account JSON 必须解析 `type`、`client_email`、`private_key`、`token_uri`，数据库只保存密文和截断指纹。Planner 生成事件编号时使用 `event_id` purpose 派生出的 HMAC key，不直接复用主密钥或 credential key。
 
-- [ ] **Step 3：运行测试并提交**
+- [x] **Step 3：运行测试并提交**
 
 ```bash
 corepack pnpm --filter @meigallery/api exec vitest run src/utils/attribution-crypto.test.ts src/services/ad-platform/credential-vault.d1.test.ts
