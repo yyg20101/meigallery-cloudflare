@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, describe, it } from 'node:test'
 import { promisify } from 'node:util'
 import { execFile as execFileCallback } from 'node:child_process'
+import { REQUIRED_PRODUCTION_AD_QUEUES } from './verify-ad-platform-queues.mjs'
 
 const execFile = promisify(execFileCallback)
 const SETUP_SCRIPT = fileURLToPath(new URL('./setup.sh', import.meta.url))
@@ -19,8 +20,8 @@ afterEach(async () => {
 describe('Cloudflare setup Queue 初始化', () => {
   for (const [environment, expected] of [
     ['dev', []],
-    ['production', ['meigallery-meta-capi', 'meigallery-meta-capi-dlq', 'meigallery-tiktok-events', 'meigallery-tiktok-events-dlq']],
-    ['all', ['meigallery-meta-capi', 'meigallery-meta-capi-dlq', 'meigallery-tiktok-events', 'meigallery-tiktok-events-dlq']],
+    ['production', REQUIRED_PRODUCTION_AD_QUEUES],
+    ['all', REQUIRED_PRODUCTION_AD_QUEUES],
   ]) {
     it(`${environment} 真正创建期望 Queue`, async () => {
       const result = await runSetup(environment)
@@ -34,18 +35,8 @@ describe('Cloudflare setup Queue 初始化', () => {
   it('Queue 已存在时保持幂等并继续创建后续 Queue', async () => {
     const result = await runSetup('all', 'create-failed-info-passed')
 
-    assert.deepEqual(await createdQueues(result.logFile), [
-      'meigallery-meta-capi',
-      'meigallery-meta-capi-dlq',
-      'meigallery-tiktok-events',
-      'meigallery-tiktok-events-dlq',
-    ])
-    assert.deepEqual(await inspectedQueues(result.logFile), [
-      'meigallery-meta-capi',
-      'meigallery-meta-capi-dlq',
-      'meigallery-tiktok-events',
-      'meigallery-tiktok-events-dlq',
-    ])
+    assert.deepEqual(await createdQueues(result.logFile), REQUIRED_PRODUCTION_AD_QUEUES)
+    assert.deepEqual(await inspectedQueues(result.logFile), REQUIRED_PRODUCTION_AD_QUEUES)
     assert.match(result.stdout, /已确认存在/)
     assert.equal(`${result.stdout}${result.stderr}`.includes(FIXTURE_SECRET), false)
   })

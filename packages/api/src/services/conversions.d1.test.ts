@@ -1,10 +1,12 @@
 import { Buffer } from 'node:buffer'
+import { readFileSync } from 'node:fs'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Miniflare } from 'miniflare'
 import { recordRegistration, type RecordRegistrationInput } from './conversions'
 import { decryptAttributionValue, loadAttributionCryptoKeys } from '../utils/attribution-crypto'
 
 const MASTER_KEY = Buffer.alloc(32).toString('base64')
+const MIGRATION = readFileSync(new URL('../../migrations/0051_unified_attribution_expand.sql', import.meta.url), 'utf8')
 const SENSITIVE_VALUES = ['fbclid_private', 'ttclid_private', 'gclid_private', 'gbraid_private', 'wbraid_private', 'fbp_private', 'fbc_private', 'ttp_private', 'a'.repeat(64)]
 let miniflare: Miniflare
 let db: D1Database
@@ -12,14 +14,7 @@ let db: D1Database
 beforeAll(async () => {
   miniflare = new Miniflare({ modules: true, script: 'export default { fetch() { return new Response("ok") } }', compatibilityDate: '2026-05-26', d1Databases: { DB: 'test' } })
   db = (await miniflare.getBindings<{ DB: D1Database }>()).DB
-  await db.exec(`
-    CREATE TABLE attribution_platform_connections (id TEXT PRIMARY KEY, provider TEXT UNIQUE NOT NULL, enabled INTEGER NOT NULL, mode TEXT NOT NULL, browser_enabled INTEGER NOT NULL, server_enabled INTEGER NOT NULL, public_config_json TEXT NOT NULL, attribution_window_days INTEGER NOT NULL DEFAULT 30, rollout_target_percentage INTEGER NOT NULL, rollout_effective_percentage INTEGER NOT NULL, connection_revision TEXT NOT NULL, credential_revision TEXT NOT NULL, created_at TEXT, updated_at TEXT);
-    CREATE TABLE attribution_event_bindings (id TEXT PRIMARY KEY, connection_id TEXT NOT NULL, provider TEXT NOT NULL, canonical_event TEXT NOT NULL, enabled INTEGER NOT NULL, browser_destination TEXT NOT NULL, server_destination TEXT NOT NULL, mapping_revision TEXT NOT NULL, config_json TEXT NOT NULL, created_at TEXT, updated_at TEXT);
-    CREATE TABLE attribution_credentials (id TEXT PRIMARY KEY, connection_id TEXT NOT NULL, provider TEXT NOT NULL, credential_type TEXT NOT NULL, schema_version INTEGER NOT NULL, key_id TEXT NOT NULL, iv TEXT NOT NULL, ciphertext TEXT NOT NULL, tag TEXT NOT NULL, fingerprint TEXT NOT NULL, credential_revision TEXT NOT NULL, created_by INTEGER, created_at TEXT, updated_at TEXT);
-    CREATE TABLE attribution_conversion_facts (id TEXT PRIMARY KEY, canonical_event TEXT NOT NULL, fact_origin TEXT NOT NULL, external_event_id TEXT UNIQUE, attribution_provider TEXT, attribution_source TEXT NOT NULL, attribution_context_id TEXT, occurred_at TEXT NOT NULL, dedupe_key TEXT NOT NULL UNIQUE, consent_snapshot_json TEXT NOT NULL, analytics_dimensions_json TEXT NOT NULL, created_at TEXT);
-    CREATE TABLE attribution_deliveries (id TEXT PRIMARY KEY, fact_id TEXT NOT NULL, connection_id TEXT NOT NULL, provider TEXT NOT NULL, transport TEXT NOT NULL, status TEXT NOT NULL, destination TEXT NOT NULL, match_signals_json TEXT NOT NULL, attempt_count INTEGER NOT NULL DEFAULT 0, queue_attempt_count INTEGER NOT NULL DEFAULT 0, last_error_code TEXT NOT NULL DEFAULT '', last_error_message TEXT NOT NULL DEFAULT '', queued_at TEXT, accepted_at TEXT, processed_at TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(fact_id, provider, transport));
-    CREATE TABLE attribution_outbox (delivery_id TEXT PRIMARY KEY, provider TEXT NOT NULL, schema_version INTEGER NOT NULL, key_id TEXT NOT NULL, iv TEXT NOT NULL, ciphertext TEXT NOT NULL, tag TEXT NOT NULL, expires_at TEXT NOT NULL, created_at TEXT, updated_at TEXT);
-  `)
+  await db.exec(MIGRATION.replace(/\s*\r?\n\s*/g, ' '))
 })
 
 beforeEach(async () => {

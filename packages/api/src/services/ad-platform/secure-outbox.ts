@@ -137,13 +137,15 @@ async function expireAttributionOutbox(db: D1Database, rows: OutboxDeliveryRow[]
         WHERE delivery_id = ? AND provider = ?
           AND EXISTS (
             SELECT 1 FROM attribution_deliveries
-            WHERE id = ? AND provider = ? AND status = ?
-              AND attempt_count = ? AND queue_attempt_count = ?
+            WHERE id = ? AND provider = ?
+              AND status IN ('accepted', 'processed', 'rejected', 'dead_letter', 'cancelled')
           )
-      `).bind(row.delivery_id, row.provider, row.delivery_id, row.provider, row.status, row.attempt_count, row.queue_attempt_count).run()
+      `).bind(row.delivery_id, row.provider, row.delivery_id, row.provider).run()
       if (changed(deleted)) purged += 1
       continue
     }
+    const errorCode = expiryErrorCode(row.expires_at)
+    const fence = `expiry:${crypto.randomUUID()}`
     const results = await db.batch([
       db.prepare(`
         UPDATE attribution_deliveries
@@ -151,16 +153,22 @@ async function expireAttributionOutbox(db: D1Database, rows: OutboxDeliveryRow[]
         WHERE id = ? AND provider = ? AND transport = 'server'
           AND status = ? AND attempt_count = ? AND queue_attempt_count = ? AND updated_at = ?
           AND status IN ('planned', 'queued', 'retrying')
-      `).bind(expiryErrorCode(row.expires_at), row.delivery_id, row.provider, row.status, row.attempt_count, row.queue_attempt_count, row.updated_at),
+      `).bind(fence, row.delivery_id, row.provider, row.status, row.attempt_count, row.queue_attempt_count, row.updated_at),
       db.prepare(`
         DELETE FROM attribution_outbox
         WHERE delivery_id = ? AND provider = ?
           AND EXISTS (
             SELECT 1 FROM attribution_deliveries
             WHERE id = ? AND provider = ? AND status = 'rejected'
-              AND attempt_count = ? AND queue_attempt_count = ?
+              AND attempt_count = ? AND queue_attempt_count = ? AND last_error_code = ?
           )
-      `).bind(row.delivery_id, row.provider, row.delivery_id, row.provider, row.attempt_count, row.queue_attempt_count),
+      `).bind(row.delivery_id, row.provider, row.delivery_id, row.provider, row.attempt_count, row.queue_attempt_count, fence),
+      db.prepare(`
+        UPDATE attribution_deliveries
+        SET last_error_code = ?
+        WHERE id = ? AND provider = ? AND status = 'rejected'
+          AND attempt_count = ? AND queue_attempt_count = ? AND last_error_code = ?
+      `).bind(errorCode, row.delivery_id, row.provider, row.attempt_count, row.queue_attempt_count, fence),
     ])
     if (changed(results[1])) purged += 1
   }

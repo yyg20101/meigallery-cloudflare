@@ -430,6 +430,8 @@ planned -> queued -> accepted -> processed
 
 只有平台提供可核验的下游诊断时才能进入 `processed`；没有下游处理查询能力的平台保持 `accepted`，后台不得伪造“处理完成”。
 
+`accepted` 同时表示服务端发送已不可重试。`accepted`、`processed`、`rejected`、`dead_letter`、`cancelled` 都是投递终态，进入任一终态后必须在同一原子收口中立即删除敏感 Outbox。后续诊断只能依赖平台外部事件编号和脱敏 Provider Receipt，不保留或重建 Click ID、邮箱、匹配信号及完整平台 Payload。
+
 匹配信息使用通用 `match_signals_json`，例如 `['gclid', 'hashed_email']`，不再增加 `has_fbc`、`has_ttclid` 等平台列。
 
 ### 10.4 Queue 规则
@@ -440,7 +442,9 @@ planned -> queued -> accepted -> processed
 - `429`、网络错误和 `5xx` 才允许延迟重试。
 - 达到上限进入对应 DLQ，并同步 D1 状态。
 - Queue 消息小于 64 KB。
-- Outbox 只有在最终处理或人工取消后才能清除加密 Payload。
+- Consumer 必须先识别物理 Queue，再严格解析消息，随后核对 Delivery、Fact、Connection 与 Queue 的 provider；非终态还必须核对 Outbox provider。只有通过全部校验的正常终态重复消息可以静默 ack 并幂等清理同 provider Outbox。
+- 未注册 Queue、跨平台 Queue 或畸形消息必须写 critical incident 后 ack，即使其 `deliveryId` 指向终态 Delivery 也不得借终态分支删除 Outbox。
+- finalize、DLQ 和 expiry 使用同一 D1 batch 内的唯一 winner fence；状态 CAS、Outbox 删除、receipt/incident 写入和 fence 清理必须原子提交，CAS loser 不得借用 winner 的相同终态产生副作用。
 
 ## 11. Google Ads 接入
 

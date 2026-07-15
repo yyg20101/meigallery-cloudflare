@@ -69,31 +69,37 @@ type Dependencies = {
 
 export async function handleAttributionQueueBatch(batch: MessageBatch<AdPlatformQueueMessage>, env: QueueEnv, dependencies: Dependencies = {}) {
   const expectedProvider = QUEUE_PROVIDERS[batch.queue]
-  const isDlq = batch.queue.endsWith('-dlq')
   for (const message of batch.messages as unknown as QueueMessage[]) {
     try {
-      const deliveryId = locateDeliveryId(message.body)
-      const row = deliveryId ? await (dependencies.readDelivery ?? readDelivery)(env.DB, deliveryId) : null
-
-      if (row && terminal(row.status)) {
-        if (isProvider(row.delivery_provider)) await deleteAttributionOutbox(env.DB, row.delivery_id, row.delivery_provider)
-        safeAck(message)
-        continue
-      }
-
       if (!expectedProvider) {
+        const row = await readLocatedDelivery(env.DB, message.body, dependencies)
         await recordIncident(env.DB, row, 'queue_unregistered', batch.queue)
         safeAck(message)
         continue
       }
 
       const body = parseQueueMessage(message.body)
-      if (!body || body.provider !== expectedProvider || !row || !consistent(row, expectedProvider)) {
+      if (!body) {
+        const row = await readLocatedDelivery(env.DB, message.body, dependencies)
+        await recordIncident(env.DB, row, 'queue_message_invalid', batch.queue)
+        safeAck(message)
+        continue
+      }
+
+      const row = await (dependencies.readDelivery ?? readDelivery)(env.DB, body.deliveryId)
+      if (body.provider !== expectedProvider || !row || !consistent(row, expectedProvider)) {
         await recordIncident(env.DB, row, 'queue_provider_mismatch', batch.queue)
         safeAck(message)
         continue
       }
 
+      if (terminal(row.status)) {
+        await deleteAttributionOutbox(env.DB, row.delivery_id, expectedProvider)
+        safeAck(message)
+        continue
+      }
+
+      const isDlq = batch.queue.endsWith('-dlq')
       if (isDlq) {
         await markDeadLetter(env.DB, row, batch.queue)
         safeAck(message)
@@ -124,6 +130,11 @@ export async function handleAttributionQueueBatch(batch: MessageBatch<AdPlatform
       safeRetry(message)
     }
   }
+}
+
+async function readLocatedDelivery(db: D1Database, value: unknown, dependencies: Dependencies) {
+  const deliveryId = locateDeliveryId(value)
+  return deliveryId ? (dependencies.readDelivery ?? readDelivery)(db, deliveryId) : null
 }
 
 function parseQueueMessage(value: unknown): AdPlatformQueueMessage | null {
@@ -163,7 +174,7 @@ function consistent(row: AttributionDeliveryQueueRow, provider: AdAttributionPro
   return row.delivery_provider === provider
     && row.fact_provider === provider
     && row.connection_provider === provider
-    && row.outbox_provider === provider
+    && (terminal(row.status) ? row.outbox_provider === null || row.outbox_provider === provider : row.outbox_provider === provider)
 }
 
 async function claimLease(db: D1Database, row: AttributionDeliveryQueueRow, attempts: number) {
@@ -295,6 +306,7 @@ async function finalizeDelivery(
   queue: string,
 ) {
   const errorCode = status === 'rejected' ? outcome.errorCode ?? outcome.result.classification : ''
+  const fence = `finalize:${crypto.randomUUID()}`
   const results = await db.batch([
     db.prepare(`
       UPDATE attribution_deliveries
@@ -304,38 +316,50 @@ async function finalizeDelivery(
         updated_at = datetime('now')
       WHERE id = ? AND provider = ? AND transport = 'server'
         AND status = 'retrying' AND attempt_count = ?
-    `).bind(status, errorCode, status, status, row.delivery_id, row.delivery_provider, token),
+    `).bind(status, fence, status, status, row.delivery_id, row.delivery_provider, token),
     db.prepare(`
       DELETE FROM attribution_outbox
       WHERE delivery_id = ? AND provider = ?
         AND EXISTS (
           SELECT 1 FROM attribution_deliveries
-          WHERE id = ? AND provider = ? AND status = ? AND attempt_count = ?
+          WHERE id = ? AND provider = ? AND status = ? AND attempt_count = ? AND last_error_code = ?
         )
-    `).bind(row.delivery_id, row.delivery_provider, row.delivery_id, row.delivery_provider, status, token),
-    receiptStatement(db, row, token, status, outcome.result),
-    ...(outcome.result.incident ? [incidentStatement(db, row, outcome.result.incident.code, queue, status, token)] : []),
+    `).bind(row.delivery_id, row.delivery_provider, row.delivery_id, row.delivery_provider, status, token, fence),
+    receiptStatement(db, row, token, status, fence, outcome.result),
+    ...(outcome.result.incident ? [incidentStatement(db, row, outcome.result.incident.code, queue, status, token, fence)] : []),
+    db.prepare(`
+      UPDATE attribution_deliveries
+      SET last_error_code = ?
+      WHERE id = ? AND provider = ? AND status = ? AND attempt_count = ? AND last_error_code = ?
+    `).bind(errorCode, row.delivery_id, row.delivery_provider, status, token, fence),
   ])
   return changed(results[0])
 }
 
 async function markDeadLetter(db: D1Database, row: AttributionDeliveryQueueRow, queue: string) {
+  const token = row.attempt_count + 1
+  const fence = `dead_letter:${crypto.randomUUID()}`
   const results = await db.batch([
     db.prepare(`
       UPDATE attribution_deliveries
-      SET status = 'dead_letter', last_error_code = 'queue_dead_letter', last_error_message = '', updated_at = datetime('now')
+      SET status = 'dead_letter', attempt_count = ?, last_error_code = ?, last_error_message = '', updated_at = datetime('now')
       WHERE id = ? AND provider = ? AND transport = 'server'
         AND status = ? AND attempt_count = ? AND updated_at = ?
-    `).bind(row.delivery_id, row.delivery_provider, row.status, row.attempt_count, row.updated_at),
+    `).bind(token, fence, row.delivery_id, row.delivery_provider, row.status, row.attempt_count, row.updated_at),
     db.prepare(`
       DELETE FROM attribution_outbox
       WHERE delivery_id = ? AND provider = ?
         AND EXISTS (
           SELECT 1 FROM attribution_deliveries
-          WHERE id = ? AND provider = ? AND status = 'dead_letter' AND attempt_count = ?
+          WHERE id = ? AND provider = ? AND status = 'dead_letter' AND attempt_count = ? AND last_error_code = ?
         )
-    `).bind(row.delivery_id, row.delivery_provider, row.delivery_id, row.delivery_provider, row.attempt_count),
-    incidentStatement(db, row, 'queue_dead_letter', queue, 'dead_letter', row.attempt_count),
+    `).bind(row.delivery_id, row.delivery_provider, row.delivery_id, row.delivery_provider, token, fence),
+    incidentStatement(db, row, 'queue_dead_letter', queue, 'dead_letter', token, fence),
+    db.prepare(`
+      UPDATE attribution_deliveries
+      SET last_error_code = 'queue_dead_letter'
+      WHERE id = ? AND provider = ? AND status = 'dead_letter' AND attempt_count = ? AND last_error_code = ?
+    `).bind(row.delivery_id, row.delivery_provider, token, fence),
   ])
   return changed(results[0])
 }
@@ -349,7 +373,7 @@ async function recordIncident(db: D1Database, row: AttributionDeliveryQueueRow |
   `).bind(crypto.randomUUID(), row.connection_id, row.delivery_provider, code, JSON.stringify({ queue })).run()
 }
 
-function receiptStatement(db: D1Database, row: AttributionDeliveryQueueRow, token: number, status: string, result: ServerDeliveryResult) {
+function receiptStatement(db: D1Database, row: AttributionDeliveryQueueRow, token: number, status: string, fence: string, result: ServerDeliveryResult) {
   const receipt = { status: result.receipt?.status, requestId: safeRequestId(result.receipt?.requestId) }
   return db.prepare(`
     INSERT INTO attribution_provider_receipts (
@@ -358,12 +382,12 @@ function receiptStatement(db: D1Database, row: AttributionDeliveryQueueRow, toke
     SELECT ?, ?, ?, 'server_delivery', ?, ?, datetime('now')
     WHERE EXISTS (
       SELECT 1 FROM attribution_deliveries
-      WHERE id = ? AND provider = ? AND status = ? AND attempt_count = ?
+      WHERE id = ? AND provider = ? AND status = ? AND attempt_count = ? AND last_error_code = ?
     )
-  `).bind(crypto.randomUUID(), row.delivery_id, row.delivery_provider, status, JSON.stringify(receipt), row.delivery_id, row.delivery_provider, status, token)
+  `).bind(crypto.randomUUID(), row.delivery_id, row.delivery_provider, status, JSON.stringify(receipt), row.delivery_id, row.delivery_provider, status, token, fence)
 }
 
-function incidentStatement(db: D1Database, row: AttributionDeliveryQueueRow, code: string, queue: string, status: string, token: number) {
+function incidentStatement(db: D1Database, row: AttributionDeliveryQueueRow, code: string, queue: string, status: string, token: number, fence: string) {
   return db.prepare(`
     INSERT INTO attribution_incidents (
       id, connection_id, provider, status, severity, trigger_code, summary, evidence_json, opened_at
@@ -371,9 +395,9 @@ function incidentStatement(db: D1Database, row: AttributionDeliveryQueueRow, cod
     SELECT ?, ?, ?, 'open', 'critical', ?, '广告归因异步投递被安全终止', ?, datetime('now')
     WHERE EXISTS (
       SELECT 1 FROM attribution_deliveries
-      WHERE id = ? AND provider = ? AND status = ? AND attempt_count = ?
+      WHERE id = ? AND provider = ? AND status = ? AND attempt_count = ? AND last_error_code = ?
     )
-  `).bind(crypto.randomUUID(), row.connection_id, row.delivery_provider, code, JSON.stringify({ queue }), row.delivery_id, row.delivery_provider, status, token)
+  `).bind(crypto.randomUUID(), row.connection_id, row.delivery_provider, code, JSON.stringify({ queue }), row.delivery_id, row.delivery_provider, status, token, fence)
 }
 
 function validEnvelope(row: AttributionDeliveryQueueRow): row is AttributionDeliveryQueueRow & { key_id: string; iv: string; ciphertext: string; tag: string; expires_at: string } {

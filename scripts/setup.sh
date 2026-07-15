@@ -61,10 +61,12 @@ print_production_resources() {
   echo ""
 
   echo "--- 创建生产广告平台 Events API Queue ---"
-  create_queue "meigallery-meta-capi"
-  create_queue "meigallery-meta-capi-dlq"
-  create_queue "meigallery-tiktok-events"
-  create_queue "meigallery-tiktok-events-dlq"
+  create_queue "meigallery-ad-meta"
+  create_queue "meigallery-ad-meta-dlq"
+  create_queue "meigallery-ad-tiktok"
+  create_queue "meigallery-ad-tiktok-dlq"
+  create_queue "meigallery-ad-google"
+  create_queue "meigallery-ad-google-dlq"
   echo ""
 }
 

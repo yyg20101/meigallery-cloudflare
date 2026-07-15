@@ -564,9 +564,11 @@ Expected: PASS，提交成功。
 - Rewrite: `scripts/verify-ad-platform-queues.mjs`
 - Rewrite: `scripts/verify-ad-platform-queues.test.mjs`
 
-- [ ] **Step 1：写 Queue 状态机失败测试**
+**第二轮审查收口：** Queue consumer 按 expected Queue、严格 body、Delivery/Fact/Connection provider、终态/Outbox 的顺序校验；正常终态重复消息才允许幂等清理同 provider Outbox。finalize、DLQ 与 expiry 都用 D1 batch 内唯一 fence 限定 winner 副作用，任何 batch 语句失败整体回滚。`accepted` 仅表示平台接收且服务端发送不可重试，不表示归因成功；五种投递终态立即删除敏感 Outbox，后续只保留外部事件编号和脱敏 Provider Receipt。
 
-覆盖重复消费幂等、provider/queue/fact 三方不一致、3 次重试、`4xx` 直接拒绝、`429/5xx` retry、DLQ、lease 超时、Outbox 恢复和最终清理。
+- [x] **Step 1：写 Queue 状态机失败测试**
+
+覆盖重复消费幂等、provider/queue/fact/connection/outbox 不一致、unknown/cross/malformed 终态消息、3 次重试、`4xx` 直接拒绝、`429/5xx` retry、并发 DLQ 单 incident、lease 超时、expiry/finalize 同终态竞态、batch 回滚、Outbox 恢复、ack/retry 异常隔离和最终清理。Queue/Outbox/Registration D1 测试加载正式 `0051_unified_attribution_expand.sql`。
 
 ```bash
 corepack pnpm --filter @meigallery/api exec vitest run src/services/ad-platform/queue-runtime.d1.test.ts src/services/ad-platform/recovery.test.ts
@@ -574,7 +576,7 @@ corepack pnpm --filter @meigallery/api exec vitest run src/services/ad-platform/
 
 Expected: FAIL。
 
-- [ ] **Step 2：注册三个物理 Queue**
+- [x] **Step 2：注册三个物理 Queue**
 
 ```toml
 [[queues.producers]]
@@ -592,7 +594,7 @@ queue = "meigallery-ad-google"
 
 每个 consumer 设置 `max_retries = 3` 并绑定对应 `meigallery-ad-*-dlq`；dev 的 producers/consumers 继续为空。
 
-- [ ] **Step 3：按 Queue 名绑定 Adapter**
+- [x] **Step 3：按 Queue 名绑定 Adapter**
 
 ```ts
 const QUEUE_PROVIDERS: Readonly<Record<string, AdAttributionProvider>> = {
@@ -605,13 +607,13 @@ const QUEUE_PROVIDERS: Readonly<Record<string, AdAttributionProvider>> = {
 }
 ```
 
-未注册 Queue 或 provider 不一致必须 ack 并写 critical incident，禁止投递到其他 Adapter。
+未注册 Queue、畸形消息或 provider 不一致必须 ack 并写 critical incident，禁止投递到其他 Adapter，也禁止借终态分支清理 Outbox。finalize、DLQ、expiry 的 delete/receipt/incident 只认当次唯一 fence，batch 结束前清为最终 `last_error_code`。
 
-- [ ] **Step 4：Cron 改为每 15 分钟恢复**
+- [x] **Step 4：Cron 改为每 15 分钟恢复**
 
 删除每分钟 Meta circuit、Meta Queue 和 TikTok Queue 专属任务；统一 `recoverAttributionOutbox(env, 100)`，仅在 UTC 分钟为 `0/15/30/45` 时执行。
 
-- [ ] **Step 5：运行测试和 dry-run**
+- [x] **Step 5：运行测试和 dry-run**
 
 ```bash
 corepack pnpm --filter @meigallery/api exec vitest run src/services/ad-platform/secure-outbox.test.ts src/services/ad-platform/queue-runtime.d1.test.ts src/services/ad-platform/recovery.test.ts
@@ -621,7 +623,7 @@ git add packages/api/src/services/ad-platform packages/api/src/index.ts packages
 git commit -m "refactor: 统一广告平台异步投递"
 ```
 
-Expected: PASS；dry-run 包含三个 producer 和六个 consumer；提交成功。
+Expected: PASS；production setup 与 preflight 共用六条新 Queue 清单，dry-run 包含三个 producer 和六个 consumer；dev 保持 Queue/Cron 为空；提交成功。
 
 ---
 

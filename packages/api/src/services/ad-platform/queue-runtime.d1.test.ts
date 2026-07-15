@@ -6,6 +6,7 @@ import type { AdAttributionProvider } from '@meigallery/shared'
 import { encryptAttributionValue, loadAttributionCryptoKeys } from '../../utils/attribution-crypto'
 import { CredentialVaultError } from './credential-vault'
 import { handleAttributionQueueBatch, QUEUE_PROVIDERS, type AttributionDeliveryQueueRow } from './queue-runtime'
+import { purgeExpiredAttributionOutbox } from './secure-outbox'
 
 const MASTER_KEY = Buffer.alloc(32, 7).toString('base64')
 const MIGRATION = readFileSync(new URL('../../../migrations/0051_unified_attribution_expand.sql', import.meta.url), 'utf8')
@@ -69,6 +70,20 @@ describe('统一广告平台 Queue 运行时', () => {
   })
 
   it.each([
+    ['未知 Queue', 'unknown-queue', { schemaVersion: 1, deliveryId: 'delivery_meta', provider: 'meta' }],
+    ['跨平台 Queue', 'meigallery-ad-meta', { schemaVersion: 1, deliveryId: 'delivery_meta', provider: 'tiktok' }],
+    ['畸形 body', 'meigallery-ad-meta', { schemaVersion: 1, deliveryId: 'delivery_meta', provider: 'meta', unexpected: true }],
+  ] as const)('%s 即使指向终态 Delivery 也写 critical incident、ack 且不删除 Outbox', async (_name, queue, body) => {
+    await seed('accepted')
+    const message = queueMessage(body)
+    await handleAttributionQueueBatch(batch([message], queue), env())
+    expect(message.ack).toHaveBeenCalledOnce()
+    expect(message.retry).not.toHaveBeenCalled()
+    expect(await db.prepare('SELECT delivery_id FROM attribution_outbox').first()).not.toBeNull()
+    expect((await db.prepare('SELECT severity FROM attribution_incidents').first<{ severity: string }>())?.severity).toBe('critical')
+  })
+
+  it.each([
     ['queue', { schemaVersion: 1, deliveryId: 'delivery_meta', provider: 'tiktok' }],
     ['fact', { schemaVersion: 1, deliveryId: 'delivery_meta', provider: 'meta' }],
     ['connection', { schemaVersion: 1, deliveryId: 'delivery_meta', provider: 'meta' }],
@@ -104,6 +119,7 @@ describe('统一广告平台 Queue 运行时', () => {
     await handleAttributionQueueBatch(batch([dlq], 'meigallery-ad-meta-dlq'), env())
     expect(dlq.ack).toHaveBeenCalledOnce()
     expect((await deliveryState('meta')).status).toBe('dead_letter')
+    expect((await deliveryState('meta')).attempt_count).toBe(5)
     expect(await db.prepare('SELECT delivery_id FROM attribution_outbox').first()).toBeNull()
   })
 
@@ -159,8 +175,62 @@ describe('统一广告平台 Queue 运行时', () => {
     await active
 
     expect((await deliveryState('meta')).status).toBe('dead_letter')
+    expect((await deliveryState('meta')).attempt_count).toBe(2)
     expect(await db.prepare('SELECT delivery_id FROM attribution_outbox').first()).toBeNull()
     expect(await db.prepare("SELECT id FROM attribution_provider_receipts WHERE status = 'accepted'").first()).toBeNull()
+  })
+
+  it('两个 DLQ consumer 同读旧 row 时只有 winner 写一条 incident', async () => {
+    await seed('retrying')
+    const snapshot = await readDeliveryRow('meta')
+    const first = queueMessage(undefined, 5)
+    const second = queueMessage(undefined, 5)
+    await handleAttributionQueueBatch(batch([first], 'meigallery-ad-meta-dlq'), env(), { readDelivery: async () => snapshot })
+    await handleAttributionQueueBatch(batch([second], 'meigallery-ad-meta-dlq'), env(), { readDelivery: async () => snapshot })
+    expect(first.ack).toHaveBeenCalledOnce()
+    expect(second.ack).toHaveBeenCalledOnce()
+    expect((await db.prepare("SELECT count(*) AS count FROM attribution_incidents WHERE trigger_code = 'queue_dead_letter'").first<{ count: number }>())?.count).toBe(1)
+    expect(await deliveryState('meta')).toMatchObject({ status: 'dead_letter', attempt_count: 1, last_error_code: 'queue_dead_letter' })
+  })
+
+  it('expiry 先置为 rejected 后，迟到 finalize 同为 rejected 也不能写 receipt 或 incident', async () => {
+    await seed('queued')
+    const result = deferred<{ classification: 'rejected'; receipt: { status: number }; incident: { code: 'cross_platform_identifier'; severity: 'critical' } }>()
+    const message = queueMessage()
+    const deliver = vi.fn(() => result.promise)
+    const active = handleAttributionQueueBatch(batch([message]), env(), { deliver, readCredential: async () => 'secret' })
+    await vi.waitFor(() => expect(deliver).toHaveBeenCalledOnce())
+
+    await db.prepare("UPDATE attribution_outbox SET expires_at = datetime('now', '-1 minute') WHERE delivery_id = 'delivery_meta'").run()
+    await expect(purgeExpiredAttributionOutbox(db)).resolves.toBe(1)
+    result.resolve({ classification: 'rejected', receipt: { status: 400 }, incident: { code: 'cross_platform_identifier', severity: 'critical' } })
+    await active
+
+    expect((await deliveryState('meta')).status).toBe('rejected')
+    expect(await db.prepare('SELECT id FROM attribution_provider_receipts').first()).toBeNull()
+    expect(await db.prepare('SELECT id FROM attribution_incidents').first()).toBeNull()
+    expect(await db.prepare('SELECT delivery_id FROM attribution_outbox').first()).toBeNull()
+  })
+
+  it('finalize batch 任一语句失败时整体回滚，不留下终态或副作用', async () => {
+    await seed('queued')
+    const failingBatchDb = {
+      prepare: db.prepare.bind(db),
+      batch(statements: D1PreparedStatement[]) {
+        return db.batch([...statements, db.prepare('INSERT INTO missing_finalize_table (id) VALUES (1)')])
+      },
+    } as unknown as D1Database
+    const message = queueMessage()
+    await handleAttributionQueueBatch(batch([message]), { ...env(), DB: failingBatchDb }, {
+      deliver: async () => ({ classification: 'rejected', receipt: { status: 400 }, incident: { code: 'cross_platform_identifier', severity: 'critical' } }),
+      readCredential: async () => 'secret',
+    })
+    expect(message.retry).toHaveBeenCalledOnce()
+    expect(message.ack).not.toHaveBeenCalled()
+    expect((await deliveryState('meta')).status).toBe('retrying')
+    expect(await db.prepare('SELECT delivery_id FROM attribution_outbox').first()).not.toBeNull()
+    expect(await db.prepare('SELECT id FROM attribution_provider_receipts').first()).toBeNull()
+    expect(await db.prepare('SELECT id FROM attribution_incidents').first()).toBeNull()
   })
 
   it('带合法 deliveryId 的 extra-field 消息仍定位 Delivery、写 critical incident 并 ack', async () => {
@@ -213,6 +283,29 @@ describe('统一广告平台 Queue 运行时', () => {
     expect((await deliveryState('meta')).last_error_code).toBe(errorCode)
     expect(await db.prepare('SELECT delivery_id FROM attribution_outbox').first()).toBeNull()
   })
+
+  it('ack 抛异常时不调用 retry，并继续处理同批下一条消息', async () => {
+    await seed('queued')
+    const malformed = queueMessage({ schemaVersion: 1, deliveryId: 'delivery_meta', provider: 'meta', unexpected: true })
+    malformed.ack.mockImplementation(() => { throw new Error('ack failed') })
+    const valid = queueMessage()
+    await handleAttributionQueueBatch(batch([malformed, valid]), env(), { deliver: async () => ({ classification: 'accepted' }), readCredential: async () => 'secret' })
+    expect(malformed.ack).toHaveBeenCalledOnce()
+    expect(malformed.retry).not.toHaveBeenCalled()
+    expect(valid.ack).toHaveBeenCalledOnce()
+    expect((await deliveryState('meta')).status).toBe('accepted')
+  })
+
+  it('retry 抛异常时不调用 ack，并继续处理同批下一条消息', async () => {
+    await seed('queued')
+    const retryable = queueMessage()
+    retryable.retry.mockImplementation(() => { throw new Error('retry failed') })
+    const malformed = queueMessage({ schemaVersion: 1, deliveryId: 'delivery_meta', provider: 'meta', unexpected: true })
+    await handleAttributionQueueBatch(batch([retryable, malformed]), env(), { deliver: async () => ({ classification: 'retryable' }), readCredential: async () => 'secret' })
+    expect(retryable.retry).toHaveBeenCalledOnce()
+    expect(retryable.ack).not.toHaveBeenCalled()
+    expect(malformed.ack).toHaveBeenCalledOnce()
+  })
 })
 
 function env() { return { DB: db, AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT: MASTER_KEY } }
@@ -248,7 +341,7 @@ async function deliveryState(provider: AdAttributionProvider) {
 
 async function readDeliveryRow(provider: AdAttributionProvider) {
   return db.prepare(`
-    SELECT d.id AS delivery_id, d.provider AS delivery_provider, d.status, d.attempt_count, d.fact_id, f.canonical_event, f.attribution_provider AS fact_provider,
+    SELECT d.id AS delivery_id, d.provider AS delivery_provider, d.status, d.attempt_count, d.updated_at, d.fact_id, f.canonical_event, f.attribution_provider AS fact_provider,
       c.id AS connection_id, c.provider AS connection_provider, c.public_config_json, c.connection_revision, c.credential_revision, d.destination,
       o.provider AS outbox_provider, o.schema_version, o.key_id, o.iv, o.ciphertext, o.tag, o.expires_at
     FROM attribution_deliveries d JOIN attribution_conversion_facts f ON f.id = d.fact_id
