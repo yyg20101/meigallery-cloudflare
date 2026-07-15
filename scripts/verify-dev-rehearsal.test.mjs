@@ -1,11 +1,17 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { describe, it } from 'node:test'
-import { requestJsonStepWithRetry, runDevRehearsalVerification } from './verify-dev-rehearsal.mjs'
+import { requestJsonStepWithRetry, runDevRehearsalVerification, toShanghaiOperationDate } from './verify-dev-rehearsal.mjs'
 
 const COMMIT = '18dc11e0b0e4797683d4551a93a1f22e53dc4628'
 
 describe('开发环境发布预演边界', () => {
+  it('后台查询日期始终使用 Asia/Shanghai 自然日', () => {
+    assert.equal(toShanghaiOperationDate('2026-07-15T15:59:59.999Z'), '2026-07-15')
+    assert.equal(toShanghaiOperationDate('2026-07-15T16:00:00.000Z'), '2026-07-16')
+    assert.throws(() => toShanghaiOperationDate('invalid-date'), /日期无效/)
+  })
+
   it('缺少 dev Web/API 地址时直接拒绝执行', async () => {
     await assert.rejects(
       runDevRehearsalVerification({ env: {}, releaseCommit: COMMIT }),

@@ -35,7 +35,7 @@ export async function runDevRehearsalVerification(options = {}) {
   const registrationCodeId = `evc_release_dev_${runSuffix}`
   const registrationSettingBackupKey = `release_dev_previous_email_verification_${runSuffix}`
   const sensitiveValues = [sessionToken, sessionHash, registrationEmail, registrationPassword, registrationCode]
-  const today = new Date().toISOString().slice(0, 10)
+  const today = toShanghaiOperationDate(options.now ?? new Date())
   let shouldCleanupDevSmokeOwner = false
   let shouldCleanupRegistrationFixture = false
 
@@ -321,6 +321,17 @@ export async function runDevRehearsalVerification(options = {}) {
       if (cleanupStep.status === 'passed') notes.push('dev-smoke-owner-disabled-after-run')
     }
   }
+}
+
+export function toShanghaiOperationDate(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) throw new Error('dev rehearsal 日期无效')
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date)
 }
 
 function readRequiredEnv(env, key) {
