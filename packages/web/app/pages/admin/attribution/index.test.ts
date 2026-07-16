@@ -12,7 +12,11 @@ function state(data: unknown) {
   }
 }
 
-function mountPage(initialProvider: 'meta' | 'tiktok' | 'google' = 'meta', capacityWarning = false) {
+function mountPage(
+  initialProvider: 'meta' | 'tiktok' | 'google' = 'meta',
+  capacityWarning = false,
+  platformQualityLatest: Record<string, unknown> | null = null,
+) {
   const server = { planned: 0, queued: 1, accepted: 3, processed: 1, retrying: 0, rejected: 1, deadLetter: 0, cancelled: 0 }
   const delivery = { browserAttempted: 4, server, queueRetryCount: 1, queueEnqueueCount: 5 }
   const metric = { availability: 'available', numerator: 3, denominator: 4, rate: 0.75 }
@@ -28,7 +32,7 @@ function mountPage(initialProvider: 'meta' | 'tiktok' | 'google' = 'meta', capac
       provider: initialProvider,
       pairing: { summary: metric, rows: [{ date: '2026-07-15', ...metric }] },
       match: { summary: metric, signals: [{ key: initialProvider === 'google' ? 'gclid' : 'fbp', ...metric }], rows: [{ date: '2026-07-15', ...metric }] },
-      platformQuality: { availability: 'unavailable', latest: null, rows: [] },
+      platformQuality: { availability: 'unavailable', latest: platformQualityLatest, rows: [] },
     }),
     '/api/admin/attribution/platforms': state(['meta', 'tiktok', 'google'].map(provider => ({
       provider, enabled: true, browserEnabled: true, serverEnabled: true, mode: 'production', rolloutEffectivePercentage: 100,
@@ -85,7 +89,26 @@ describe('统一广告归因总览', () => {
     expect(wrapper.text()).toContain('Google Ads · 生产运行')
     expect(wrapper.text()).toContain('gclid')
     expect(wrapper.text()).toContain('Browser/Server 配对率')
+    expect(wrapper.text()).toContain('等待 Data Manager 异步诊断')
     expect(wrapper.text()).not.toContain('CAPI 成功')
+  })
+
+  it('TikTok 无自动质量快照时明确要求 Events Manager 人工证据', () => {
+    const wrapper = mountPage('tiktok')
+    expect(wrapper.text()).toContain('需在 TikTok Events Manager 人工确认')
+    expect(wrapper.text()).not.toContain('质量为 0')
+  })
+
+  it('unavailable 快照显示平台注册语义，不把内部原因当分数', () => {
+    const wrapper = mountPage('meta', false, {
+      availability: 'unavailable',
+      canonicalEvent: 'Contact',
+      metricKey: 'emq_score',
+      value: null,
+      errorCategory: 'no_recent_metrics',
+    })
+    expect(wrapper.text()).toContain('等待 Meta Dataset Quality 数据')
+    expect(wrapper.text()).not.toContain('no_recent_metrics')
   })
 
   it('容量达到 70% 安全线时显示预警', () => {

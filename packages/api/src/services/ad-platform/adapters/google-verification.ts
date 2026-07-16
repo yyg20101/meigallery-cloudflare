@@ -36,6 +36,13 @@ export const googleVerificationAdapter: PlatformVerificationAdapter = {
           matchSignals: {},
           hashedEmail,
           validateOnly: true,
+          consent: {
+            consentVersion: 1,
+            marketingAllowed: true,
+            adUserDataAllowed: true,
+            adPersonalizationAllowed: false,
+            decidedAt: new Date().toISOString(),
+          },
         },
         config: input.publicConfig,
         serviceAccount: input.credential,

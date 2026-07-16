@@ -42,6 +42,9 @@ export interface AttributionPlatformDefinition {
   serverLabel: string
   accentClass: string
   badgeClass: string
+  quality: {
+    unavailableLabel: string
+  }
   publicConfigFields: readonly AttributionPlatformFieldDefinition[]
   credential: {
     type: AttributionCredentialType
@@ -97,6 +100,7 @@ export const ATTRIBUTION_PLATFORMS: readonly AttributionPlatformDefinition[] = [
     serverLabel: 'Conversions API',
     accentClass: 'bg-blue-600',
     badgeClass: 'border-blue-200 bg-blue-50 text-blue-800',
+    quality: { unavailableLabel: '等待 Meta Dataset Quality 数据' },
     publicConfigFields: [
       { key: 'pixelId', label: 'Pixel ID / Dataset ID', required: true, inputMode: 'numeric', pattern: '[0-9]{5,30}', placeholder: '123456789012345', autocomplete: 'off' },
     ],
@@ -112,6 +116,7 @@ export const ATTRIBUTION_PLATFORMS: readonly AttributionPlatformDefinition[] = [
     serverLabel: 'Events API',
     accentClass: 'bg-cyan-500',
     badgeClass: 'border-cyan-200 bg-cyan-50 text-cyan-900',
+    quality: { unavailableLabel: '需在 TikTok Events Manager 人工确认' },
     publicConfigFields: [
       { key: 'pixelCode', label: 'Pixel ID', required: true, pattern: '[A-Z0-9]{10,30}', placeholder: 'C123456789ABCDEF', autocomplete: 'off' },
     ],
@@ -127,6 +132,7 @@ export const ATTRIBUTION_PLATFORMS: readonly AttributionPlatformDefinition[] = [
     serverLabel: 'Google Ads API',
     accentClass: 'bg-emerald-600',
     badgeClass: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+    quality: { unavailableLabel: '等待 Data Manager 异步诊断' },
     publicConfigFields: [
       { key: 'tagId', label: 'Tag ID', required: true, pattern: 'AW-[0-9]{5,20}', placeholder: 'AW-123456789', autocomplete: 'off' },
       { key: 'customerId', label: 'Customer ID', required: true, inputMode: 'numeric', pattern: '[0-9]{1,20}', placeholder: '1234567890', autocomplete: 'off' },

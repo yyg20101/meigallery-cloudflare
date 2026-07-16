@@ -725,7 +725,7 @@ Expected: PASS，提交成功。
 - Modify: `packages/api/src/index.ts`
 - Modify: `packages/api/wrangler.toml`
 
-- [ ] **Step 1：写连接原子性和验证幂等失败测试**
+- [x] **Step 1：写连接原子性和验证幂等失败测试**
 
 覆盖公开配置、事件绑定、凭证同批提交；凭证失败全回滚；revision 变化使验证失效；重复“验证连接”返回同一 Workflow；“重新验证”原子增加 attempt；Test Event Code 完成/超时后无法读取。
 
@@ -735,7 +735,7 @@ corepack pnpm --filter @meigallery/api exec vitest run src/services/ad-platform/
 
 Expected: FAIL。
 
-- [ ] **Step 2：实现统一连接写入命令**
+- [x] **Step 2：实现统一连接写入命令**
 
 ```ts
 export interface SavePlatformConnectionCommand {
@@ -754,7 +754,7 @@ export interface SavePlatformConnectionCommand {
 
 Adapter Schema 负责字段校验；路由只解析通用 command，不包含平台分支。
 
-- [ ] **Step 3：实现 Workflow ID、attempt 和 binding**
+- [x] **Step 3：实现 Workflow ID、attempt 和 binding**
 
 ```ts
 const workflowId = [
@@ -771,11 +771,11 @@ name = "meigallery-ad-platform-verification"
 class_name = "AdPlatformVerificationWorkflow"
 ```
 
-- [ ] **Step 4：实现三平台验证计划**
+- [x] **Step 4：实现三平台验证计划**
 
 Meta/TikTok：目标、凭证、事件绑定、Test Event、人工 Evidence。Google：Service Account、OAuth、Data Manager `validateOnly`、转化绑定、Tag Assistant / production Evidence。Commit SHA 只写审计，不参与状态判断。
 
-- [ ] **Step 5：运行测试和 dry-run 并提交**
+- [x] **Step 5：运行测试和 dry-run 并提交**
 
 ```bash
 corepack pnpm --filter @meigallery/api exec vitest run src/services/ad-platform/connection-service.d1.test.ts src/workflows/ad-platform-verification.test.ts src/routes/admin/ad-platforms.test.ts
@@ -785,6 +785,8 @@ git commit -m "feat: 统一三平台连接与验证工作流"
 ```
 
 Expected: PASS；dry-run 包含 Workflow binding；提交成功。
+
+执行记录（2026-07-16）：原子连接写入、三平台验证 Adapter、Workflow attempt、重复验证幂等、人工 Evidence、临时 Test Event Code 清理和后台通用验证入口均已进入最终运行时，并已随 `v0.4.6` 部署 production。原计划复选框未随实现同步，本次依据代码、测试和 production 记录补正，不重复建设第二套流程。
 
 ---
 
@@ -1035,7 +1037,7 @@ verify:quick
 
 验收记录：production 固定快照幂等回填、仓库外 D1 备份、双采样 Queue preflight、只读 reconcile 和统一部署顺序已实现；专项脚本测试 52/52 通过。6 条新 Queue 已创建、无积压且尚未绑定新 Worker；32 字节通用主密钥已备份到本机登录钥匙串并写入 production Secret。真实 production 只读 preflight 只剩旧 Meta Server 有效配置未降为 0，因此尚未应用 `0051`、未部署新运行时，也未写入 production 数据或 rollout。
 
-- [ ] **Step 4：运行脚本测试和 release 验证**
+- [x] **Step 4：运行脚本测试和 release 验证**
 
 ```bash
 node --test scripts/verify-attribution-v3-migration.test.mjs scripts/verify-release.test.mjs
@@ -1056,7 +1058,7 @@ git push origin dev
 
 验收记录：切换工具已提交为 `ca64c0e` 并统一推送到 `origin/dev`；Cloudflare Queue 创建后的短暂可见性问题在下一关联提交中增加幂等重试。
 
-- [ ] **Step 6：创建 release 并合规合入 main**
+- [x] **Step 6：创建 release 并合规合入 main**
 
 ```bash
 git switch -c release/v0.4.0 dev
@@ -1068,7 +1070,7 @@ gh pr merge --merge --delete-branch
 
 Expected: CI 全绿，PR 合入成功；禁止直接 push main。
 
-- [ ] **Step 7：执行 Expand 和新运行时部署**
+- [x] **Step 7：执行 Expand 和新运行时部署**
 
 ```bash
 git switch main
@@ -1078,9 +1080,11 @@ git pull --ff-only origin main
 
 Expected: 备份文件已生成并记录校验值；`0051` 已应用；新 API/Web release identity 一致；回填和对账通过。
 
-- [ ] **Step 8：production 重新配置和验证**
+- [x] **Step 8：production 重新配置和验证**
 
 在统一后台依次保存 Meta、TikTok、Google 连接；Meta/TikTok 使用当次 Test Event Code；Google 完成 OAuth、`validateOnly`、Tag Assistant 和真实 Live Evidence。先恢复 Meta Server 10%，观察无跨平台、无重复、无敏感日志后再处理 TikTok/Google。
+
+执行记录（2026-07-16）：release PR #57 已合入，`0051`、`0052` 和最终 Worker 已部署，Meta production 已重新配置、验证并恢复 10% rollout；TikTok/Google production 配置与 Live Evidence 转入 Task 15-18，不再作为迁移发布步骤的未完成项。
 
 ### Task 14：执行 Contract migration 并彻底删除旧代码与资源
 
@@ -1210,6 +1214,44 @@ git push origin dev
 
 ---
 
+## 阶段九：最终生产归因收口
+
+本阶段只处理最终架构上的协议补强和生产验收，不恢复旧表、旧 Secret、兼容读取、双写、fan-out 或平台专属业务入口。代码与文档在 `dev` 完成；真实平台 API、Test Events、Live Evidence 和 rollout 只在 production 执行。
+
+### Task 15：补齐最新官方协议与异步诊断
+
+- [x] Google Data Manager API 保留 `events:ingest`，并基于返回的 `requestId` 接入 `requestStatus.retrieve`；HTTP 2xx 只表示 `accepted`，只有异步结果成功才更新为 `processed`。
+- [x] 将可信营销授权快照映射到 Google Data Manager Consent；拒绝或不完整授权继续零平台投递。
+- [x] Meta 自动采集 Dataset Quality；TikTok 没有项目可安全调用的质量 API 时显示“需 Events Manager 人工证据”；Google 使用 request status，不把“不可用”显示为 0 分。
+- [x] 增加 Google accepted/processed/rejected、诊断超时、凭证错误和重试幂等测试。
+- [ ] 运行 API/Web 单测、类型检查、Lint、Nuxt build、三平台网络隔离 E2E 和 `verify:release`。
+
+执行记录（2026-07-16）：已按 Google Data Manager v1.7 接入 `requestStatus.retrieve`、30 分钟首次查询、1.3 倍退避、60 分钟单次上限和 24 小时总超时；Google `events:ingest` 2xx 缺少安全 `requestId` 时不进入 accepted。可信 Consent 已进入加密 Outbox 并映射到 Google 顶层 consent，缺失或拒绝广告用户数据在 Adapter 前 fail closed。诊断 Cron 单次上限固定为 40，为 Workers Free 的 50 个外部 subrequest 限制预留 OAuth、重定向和维护余量；已增加“未到退避时间的旧记录不阻塞后方到期任务”积压测试。Meta Dataset Quality 合法空样本改为 `unavailable/no_recent_metrics`，不再误报 `invalid_response`；TikTok/Google 空质量状态使用平台注册语义。最终代码状态已通过 `2026-07-16T05-22-36.486Z-quick-a3a2aa2c4f74.json` 和 `2026-07-16T05-25-30.040Z-local-runtime-a3a2aa2c4f74.json`；仍需在干净 release 分支运行 `verify:release`。
+
+### Task 16：完成 Meta 最终账本验收
+
+- [ ] 在 Contract 后的最终账本生成真实 `Contact`、`CompleteRegistration` Browser/Server 样本。
+- [ ] 核对同一事实共用 `mg3_` 编号、无重复、无缺失必要 user data、无 DLQ/critical incident。
+- [ ] 按 `10% -> 50% -> 100%` 放量，每档至少观察 24 小时；任一门禁失败立即回到 0%。
+
+### Task 17：完成 TikTok 与 Google production 接入
+
+- [ ] TikTok 原子保存 Pixel ID、Events API Token、两个事件绑定和 production 开关；使用当次 Test Event Code 验证后清除临时参数。
+- [ ] TikTok Events Manager 确认 Browser/Server 的 `event`、`event_id` 一致且 Meta/Google 来源零 TikTok 请求，再按 `0% -> 10% -> 50% -> 100%` 放量。
+- [ ] Google Cloud 启用 Data Manager API，Service Account 获得 Service Usage Consumer 并加入 Google Ads 账户。
+- [ ] Google 为 Contact、CompleteRegistration 分别配置 `AW-.../label` 和 `WEBPAGE` Conversion Action ID；先 `validateOnly`，再确认 request status 与 Tag Assistant Live Evidence。
+- [ ] Google 按 `0% -> 10% -> 50% -> 100%` 放量；不接入 GA4，不要求 Developer Token。
+
+### Task 18：三平台联合验收与收尾
+
+- [ ] production 证明 Meta/TikTok/Google 同时启用时，一条事实最多投递一个 provider。
+- [ ] 验证自然、未知、授权拒绝和多平台来源冲突均为零广告请求。
+- [ ] 验证三个 Queue/DLQ、凭证、revision、incident、rollout 和诊断状态完全独立。
+- [ ] 验证每天 2,000 条 Server 转化安全线、Queues 70% 预警和 Free 容量展示准确。
+- [ ] 连续 72 小时无 critical incident、DLQ、过期 Outbox 或跨平台投递后，更新状态文档并完成最终 release/tag。
+
+---
+
 ## 执行顺序与停止条件
 
 1. Task 1-12 在 `dev` 完成并通过全部本地验证前，不创建 production 连接、不调用真实平台 API。
@@ -1221,11 +1263,11 @@ git push origin dev
 
 ## 最终完成定义
 
-- [ ] 三个平台经过同一 registry、connection service、planner、queue runtime、verification workflow 和后台骨架。
-- [ ] 业务核心不存在 provider 分支，平台协议只存在于 Adapter。
+- [x] 三个平台经过同一 registry、connection service、planner、queue runtime、verification workflow 和后台骨架。
+- [x] 业务核心不存在 provider 分支，平台协议只存在于 Adapter。
 - [ ] production 网络证据证明三平台严格隔离且无 fan-out。
-- [ ] 旧运行表、旧 Queue、旧 Secret、旧 API、旧组件和旧运行代码全部删除。
-- [ ] 历史标准事实和必要分析趋势完整，旧技术状态未重新投递。
+- [x] 旧运行表、旧 Queue、旧 Secret、旧 API、旧组件和旧运行代码全部删除。
+- [x] 历史标准事实和必要分析趋势完整，旧技术状态未重新投递。
 - [ ] Google production 验证通过，GA4 未被误接入。
-- [ ] Cloudflare Free 安全线和 70% 预警生效，未新增固定成本。
+- [x] Cloudflare Free 安全线和 70% 预警已实现，未新增固定成本；production 最终验收仍由 Task 18 完成。
 - [ ] `docs/PROJECT_STATUS.md`、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md` 与最终代码一致。

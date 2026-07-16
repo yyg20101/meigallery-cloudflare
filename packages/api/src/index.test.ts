@@ -42,6 +42,7 @@ describe('统一 Queue 与 Cron 入口', () => {
     } as unknown as Bindings, ctx)
     await work
     expect(sql.some(value => value.includes('attribution_outbox'))).toBe(true)
+    expect(sql.some(value => value.includes("delivery.provider = 'google'"))).toBe(true)
     expect(sql.some(value => value.includes('email_verification_codes'))).toBe(false)
   })
 

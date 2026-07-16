@@ -14,11 +14,17 @@ export type MetaQualityMetric = {
   value: number
 }
 
+export type MetaQualityResult = {
+  metrics: MetaQualityMetric[]
+  errorCategory: string
+  unavailableReason?: 'no_recent_metrics'
+}
+
 export async function fetchMetaQuality(input: {
   datasetId: string
   credential: string
   fetcher?: typeof fetch
-}) {
+}): Promise<MetaQualityResult> {
   const url = new URL(`https://graph.facebook.com/${META_GRAPH_API_VERSION}/dataset_quality`)
   url.searchParams.set('dataset_id', input.datasetId)
   url.searchParams.set('fields', 'web{event_match_quality,event_name}')
@@ -27,10 +33,12 @@ export async function fetchMetaQuality(input: {
     headers: { Authorization: `Bearer ${input.credential}`, Accept: 'application/json' },
   })
   if (!response.ok) return { metrics: [], errorCategory: classifyHttpError(response.status) }
-  const metrics = parseMetaQualityResponse(await response.json().catch(() => null))
+  const body = await response.json().catch(() => null)
+  if (!isRecord(body) || !Array.isArray(body.web)) return { metrics: [], errorCategory: 'invalid_response' }
+  const metrics = parseMetaQualityResponse(body)
   return metrics.length > 0
     ? { metrics, errorCategory: '' }
-    : { metrics: [], errorCategory: 'invalid_response' }
+    : { metrics: [], errorCategory: '', unavailableReason: 'no_recent_metrics' }
 }
 
 export function parseMetaQualityResponse(input: unknown): MetaQualityMetric[] {

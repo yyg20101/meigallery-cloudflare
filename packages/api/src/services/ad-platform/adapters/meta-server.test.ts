@@ -7,6 +7,7 @@ const input = {
   provider: 'meta' as const, canonicalEvent: 'Contact' as const, externalEventId: EVENT_ID,
   eventTime: 1_784_256_123, pageUrl: 'https://meigallery.example/contact', destination: 'meta_capi',
   matchSignals: { fbc: 'fb.1.1784256123000.click', fbp: 'fb.1.123.browser' }, hashedEmail: 'a'.repeat(64),
+  consent: { consentVersion: 1, marketingAllowed: true, adUserDataAllowed: true, adPersonalizationAllowed: true, decidedAt: '2026-07-17T02:40:00.000Z' },
 }
 
 describe('Meta 服务端 Adapter', () => {

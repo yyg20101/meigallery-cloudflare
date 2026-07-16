@@ -56,6 +56,11 @@ export async function collectAttributionQuality(
     await persistError(env.DB, snapshot.connection.id, now, result.errorCategory)
     return failed(result.errorCategory)
   }
+  if (result.metrics.length === 0) {
+    const reason = result.unavailableReason ?? 'no_recent_metrics'
+    await persistUnavailable(env.DB, snapshot.connection.id, now, reason)
+    return skipped(reason)
+  }
 
   await env.DB.batch(result.metrics.map(metric => env.DB.prepare(`
     INSERT INTO attribution_quality_snapshots (
@@ -80,6 +85,15 @@ async function persistError(db: D1Database, connectionId: string, now: Date, err
       collection_status, error_category, collected_at
     ) VALUES (?, ?, 'meta', ?, 'emq_score', NULL, 'error', ?, ?)
   `).bind(crypto.randomUUID(), connectionId, canonicalEvent, errorCategory, now.toISOString())))
+}
+
+async function persistUnavailable(db: D1Database, connectionId: string, now: Date, reason: string) {
+  await db.batch((['Contact', 'CompleteRegistration'] as const).map(canonicalEvent => db.prepare(`
+    INSERT INTO attribution_quality_snapshots (
+      id, connection_id, provider, canonical_event, metric_key, metric_value,
+      collection_status, error_category, collected_at
+    ) VALUES (?, ?, 'meta', ?, 'emq_score', NULL, 'unavailable', ?, ?)
+  `).bind(crypto.randomUUID(), connectionId, canonicalEvent, reason, now.toISOString())))
 }
 
 function skipped(errorCategory: string): AttributionQualityCollectionResult {

@@ -75,6 +75,7 @@ Planner + Consent + Rollout
 - 明文凭证不回显、不写日志、不进入审计和发布报告。
 - connection revision 或 credential revision 变化后，原验证立即失效并要求重新验证。
 - Meta/TikTok Test Event Code 是单次请求参数，不持久化；production 正式事件不携带测试码。
+- Google Service Account 只作为连接凭证加密保存；可信 Consent 随加密 Outbox 进入 Data Manager。`events:ingest` 的 `requestId` 仅表示已接收，通用 Cron 再通过 `requestStatus.retrieve` 异步收口最终处理状态；单次最多处理 40 条 accepted delivery，适配 Workers Free 的外部 subrequest 限制。
 
 ## 环境规则
 
@@ -98,4 +99,5 @@ Planner + Consent + Rollout
 - Meta、TikTok、Google 已进入同一最终 schema、Planner、Queue 状态机和后台连接 API。
 - Meta production 已验证并按现有 rollout 运行；TikTok、Google 是否启用以后台实时连接状态为准。
 - Meta Dataset Quality 由通用 collector 写入 `attribution_quality_snapshots`，不再依赖旧 Meta 运维表。
+- TikTok 质量需要 Events Manager 人工证据；Google 质量来自 Data Manager request status。后台不会把暂不可用或未采集显示为 0 分。
 - 旧平台专用运行代码、迁移桥接和数据库技术表由 `0052` Contract 删除。

@@ -41,6 +41,7 @@
 - Owner 在统一后台原子保存 destination、事件映射、加密凭证、模式和开关；明文凭证不回显、不记录。
 - Test Event Code 仅是单次验证参数，不持久化，正式事件不携带测试码。
 - Meta Dataset Quality 由通用 collector 写入 `attribution_quality_snapshots`。
+- Google Data Manager 已实现可信 Consent、`requestId` 接收校验和 `requestStatus.retrieve` 异步诊断；TikTok 质量在后台明确要求 Events Manager 人工证据，不伪造平台质量分。
 
 ## Contract 状态
 
@@ -68,7 +69,7 @@
 
 ## 规划
 
-- TikTok 和 Google production 凭证、Test Events 与分级 rollout 验收。
+- TikTok 和 Google production 凭证、Test Events、Google 异步 request status 与分级 rollout 验收。
 - 广告花费、campaign、ad set、ad 数据导入不属于当前 Pixel/Server API 同步范围。
 - Cloudflare Stream 视频链路和完整 zip 异步导入仍待实现。
 
