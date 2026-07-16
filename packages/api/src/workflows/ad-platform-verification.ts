@@ -325,13 +325,11 @@ export async function createWorkflowId(input: {
 
 async function ensureWorkflow(env: AdPlatformVerificationEnv, verificationId: string) {
   try {
-    const created = await env.AD_PLATFORM_VERIFICATION_WORKFLOW.createBatch([{
+    return await env.AD_PLATFORM_VERIFICATION_WORKFLOW.create({
       id: verificationId,
       params: { verificationId },
       retention: { successRetention: '3 days', errorRetention: '3 days' },
-    }])
-    if (created.length > 0) return created[0]
-    return env.AD_PLATFORM_VERIFICATION_WORKFLOW.get(verificationId)
+    })
   }
   catch {
     try {

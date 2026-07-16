@@ -206,15 +206,11 @@ function workflowBinding() {
   return {
     ids,
     events,
-    async createBatch(items: Array<{ id: string }>) {
-      const created = []
-      for (const item of items) {
-        if (instances.has(item.id)) continue
-        instances.add(item.id)
-        ids.push(item.id)
-        created.push({ id: item.id })
-      }
-      return created
+    async create(item: { id: string }) {
+      if (instances.has(item.id)) throw new Error('already exists')
+      instances.add(item.id)
+      ids.push(item.id)
+      return { id: item.id }
     },
     async get(id: string) {
       if (!instances.has(id)) throw new Error('not found')

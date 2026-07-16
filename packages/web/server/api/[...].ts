@@ -15,6 +15,7 @@
 import {
   apiProxyResponseHeaderEntries,
   filterApiProxyRequestHeaders,
+  resolveTrustedApiProxyOrigin,
 } from '../../app/utils/apiProxyHeaders'
 
 interface CloudflareEnv {
@@ -31,7 +32,10 @@ export default defineEventHandler(async (event) => {
   // 构建目标 URL
   const path = event.path // 完整路径，如 /api/galleries/summer-fresh-guangzhou?page=1
   const method = event.method
-  const forwardHeaders = filterApiProxyRequestHeaders(getRequestHeaders(event))
+  const requestHeaders = getRequestHeaders(event)
+  const forwardHeaders = filterApiProxyRequestHeaders(requestHeaders)
+  const trustedOrigin = resolveTrustedApiProxyOrigin(requestHeaders, String(config.public.siteUrl || ''))
+  if (trustedOrigin) forwardHeaders.origin = trustedOrigin
 
   // 读取请求体（仅 POST/PUT/PATCH/DELETE）
   let body: BodyInit | undefined

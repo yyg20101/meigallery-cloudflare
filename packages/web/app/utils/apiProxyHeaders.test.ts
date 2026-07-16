@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   apiProxyResponseHeaderEntries,
   filterApiProxyRequestHeaders,
+  resolveTrustedApiProxyOrigin,
   shouldForwardApiProxyResponseHeader,
 } from './apiProxyHeaders'
 
@@ -44,6 +45,24 @@ describe('Web API 代理头部白名单', () => {
       Cookie: '',
       Accept: undefined,
     })).toEqual({})
+  })
+
+  it('只恢复与当前站点 Host 一致的浏览器 Origin', () => {
+    expect(resolveTrustedApiProxyOrigin({
+      Host: 'www.616618.xyz',
+      Origin: 'https://www.616618.xyz',
+    }, 'https://616618.xyz')).toBe('https://www.616618.xyz')
+    expect(resolveTrustedApiProxyOrigin({
+      Host: '616618.xyz',
+      Origin: 'https://evil.example',
+    }, 'https://616618.xyz')).toBe('')
+    expect(resolveTrustedApiProxyOrigin({
+      Origin: 'https://616618.xyz',
+    }, 'https://616618.xyz')).toBe('https://616618.xyz')
+    expect(resolveTrustedApiProxyOrigin({
+      Host: '616618.xyz',
+      Origin: 'not-a-url',
+    }, 'https://616618.xyz')).toBe('')
   })
 
   it('只转发浏览器和前端业务需要感知的响应头', () => {
