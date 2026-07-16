@@ -119,6 +119,24 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
     expect(body.trackingInstructions).toEqual([])
   })
 
+  it('营销授权解析异常时按拒绝状态完成注册，不回滚已创建用户', async () => {
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const db = createRegisterDb()
+    const response = await register(db, { attribution: grantedAttribution() }, true, true)
+
+    expect(response.status).toBe(201)
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO users'))).toBe(true)
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO sessions'))).toBe(true)
+    expect(recordRegistrationMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      consentSnapshot: expect.objectContaining({ marketingAllowed: false }),
+      attributionContext: null,
+    }))
+    expect(consoleWarn).toHaveBeenCalledWith(
+      '[auth.register] 营销授权解析失败，按拒绝状态继续注册',
+      { userId: 42, code: 'REGISTRATION_MARKETING_CONSENT_RESOLUTION_FAILED' },
+    )
+  })
+
   it('注册伪造 granted body 但缺少 receipt 时降级为 limited 且不读取匹配字段', async () => {
     const db = createRegisterDb()
 
@@ -258,11 +276,22 @@ async function register(
   db: ReturnType<typeof createRegisterDb>,
   extra: Record<string, unknown>,
   withTrustedReceipt = true,
+  failConsentResolution = false,
 ) {
   const requestedConsent = (extra.attribution as { consentState?: unknown } | undefined)?.consentState
   const receipt = withTrustedReceipt && requestedConsent === 'granted'
     ? await createMarketingConsentReceipt('test-session-secret', 'granted')
     : ''
+  const bindings = {
+    APP_ENV: 'local',
+    DB: db,
+    SESSION_SECRET: 'test-session-secret',
+  } as unknown as Bindings
+  if (failConsentResolution) {
+    Object.defineProperty(bindings, 'SESSION_SECRET', {
+      get() { throw new Error('secret unavailable') },
+    })
+  }
   return createApp().request('/api/auth/register', {
     method: 'POST',
     headers: {
@@ -278,11 +307,7 @@ async function register(
       password: 'password123',
       ...extra,
     }),
-  }, {
-    APP_ENV: 'local',
-    DB: db,
-    SESSION_SECRET: 'test-session-secret',
-  } as unknown as Bindings)
+  }, bindings)
 }
 
 type PreparedCall = { sql: string; params: unknown[] }

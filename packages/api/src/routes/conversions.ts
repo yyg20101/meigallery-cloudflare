@@ -5,8 +5,7 @@ import { recordContact } from '../services/conversions'
 import { errorJson } from '../utils/api-error'
 import { safeContactLinkUrl } from '../utils/contact-link-url'
 import { generateContactLink } from '@meigallery/shared/constants'
-import { resolveTrustedAdConsentSnapshot } from '../utils/marketing-consent-receipt'
-import { MARKETING_CONSENT_RECEIPT_COOKIE } from './marketing-consent'
+import { resolveRequestMarketingConsent } from '../utils/marketing-consent-request'
 import { AD_ATTRIBUTION_CONTEXT_COOKIE } from './ad-attribution'
 import { loadAttributionCryptoKeys } from '../utils/attribution-crypto'
 import { resolveTrustedAdAttributionContext } from '../utils/ad-attribution-context'
@@ -42,9 +41,7 @@ conversionRoutes.post('/events', async (c) => {
   if (!contact || !contact.platform.trim() || !targetUrl) {
     return errorJson(c, 400, '公开转化动作无效', { code: 'PUBLIC_CONVERSION_ACTION_INVALID' })
   }
-  const consentSnapshot = await resolveTrustedAdConsentSnapshot(
-    c.env.SESSION_SECRET, getCookie(c, MARKETING_CONSENT_RECEIPT_COOKIE), body.consentState,
-  )
+  const { consent: consentSnapshot } = await resolveRequestMarketingConsent(c, body.consentState)
   const attributionContext = consentSnapshot.marketingAllowed ? await trustedAttributionContext(c) : null
   const result = await recordContact(c.env, {
     visitorId, sessionId, userId: c.get('userId'), occurredAt: String(body.occurredAt || new Date().toISOString()),

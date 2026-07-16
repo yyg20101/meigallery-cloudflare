@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { describe, expect, it } from 'vitest'
 import type { Bindings, Variables } from '../index'
+import { createMarketingConsentChoice, createMarketingConsentReceipt } from '../utils/marketing-consent-receipt'
 import { marketingConsentRoutes } from './marketing-consent'
 
 const ENV = {
@@ -15,50 +16,67 @@ function app() {
 }
 
 describe('公开营销授权 API', () => {
-  it('grant 设置短期 HttpOnly、Secure、SameSite receipt 且不回显 token', async () => {
+  it('grant 同时设置长期选择和短期 receipt，且不向响应体泄露 token', async () => {
     const response = await app().request('https://api.616618.xyz/api/marketing-consent', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ state: 'granted' }),
     }, ENV)
     const body = await response.json<Record<string, unknown>>()
-    const cookie = response.headers.get('set-cookie') || ''
+    const cookies = response.headers.get('set-cookie') || ''
 
     expect(response.status).toBe(200)
-    expect(body).toEqual({ state: 'granted' })
-    expect(cookie).toMatch(/^mei_marketing_consent_receipt=/)
-    expect(cookie).toContain('HttpOnly')
-    expect(cookie).toContain('Secure')
-    expect(cookie).toContain('SameSite=Lax')
-    expect(cookie).toContain('Max-Age=1800')
-    expect(JSON.stringify(body)).not.toContain(cookie.split(';')[0]?.split('=')[1])
+    expect(body).toMatchObject({ state: 'granted', decisionSource: 'explicit', requiresChoice: false })
+    expect(cookies).toContain('mei_marketing_consent_choice=')
+    expect(cookies).toContain('Max-Age=15552000')
+    expect(cookies).toContain('mei_marketing_consent_receipt=')
+    expect(cookies).toContain('Max-Age=1800')
+    expect(cookies).toContain('HttpOnly')
+    expect(cookies).toContain('Secure')
+    expect(cookies).toContain('SameSite=Lax')
+    for (const pair of cookiePairs(response).split('; ')) {
+      expect(JSON.stringify(body)).not.toContain(pair.split('=')[1])
+    }
   })
 
-  it('GET 只返回服务端验证状态，撤销后同一浏览器变为 denied', async () => {
+  it('GET 可从长期选择静默续签短期 receipt', async () => {
+    const choice = await createMarketingConsentChoice(ENV.SESSION_SECRET, 'granted')
+    const current = await app().request('https://api.616618.xyz/api/marketing-consent', {
+      headers: { cookie: `mei_marketing_consent_choice=${choice.token}` },
+    }, ENV)
+
+    expect(await current.json()).toMatchObject({ state: 'granted', decisionSource: 'explicit' })
+    expect(current.headers.get('set-cookie')).toContain('mei_marketing_consent_receipt=')
+    expect(current.headers.get('set-cookie')).toContain('Max-Age=1800')
+  })
+
+  it('撤销后长期选择变为 denied，并清理当前广告归因上下文', async () => {
     const granted = await app().request('https://api.616618.xyz/api/marketing-consent', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ state: 'granted' }),
     }, ENV)
-    const grantedCookie = cookiePair(granted)
     const current = await app().request('https://api.616618.xyz/api/marketing-consent', {
-      headers: { cookie: grantedCookie },
+      headers: { cookie: cookiePairs(granted) },
     }, ENV)
-    expect(await current.json()).toEqual({ state: 'granted' })
+    expect(await current.json()).toMatchObject({ state: 'granted', decisionSource: 'explicit' })
 
     const revoked = await app().request('https://api.616618.xyz/api/marketing-consent', {
       method: 'PUT',
-      headers: { 'content-type': 'application/json', cookie: grantedCookie },
+      headers: { 'content-type': 'application/json', cookie: cookiePairs(granted) },
       body: JSON.stringify({ state: 'denied' }),
     }, ENV)
-    expect(revoked.headers.get('set-cookie')).toContain('mei_ad_attribution=')
-    expect(revoked.headers.get('set-cookie')).toContain('mei_ad_attribution_receipt=')
-    expect(revoked.headers.get('set-cookie')).toContain('Max-Age=0')
-    const revokedCookie = cookiePair(revoked)
+    const setCookies = revoked.headers.get('set-cookie') || ''
+    expect(setCookies).toContain('mei_marketing_consent_choice=')
+    expect(setCookies).toContain('mei_marketing_consent_receipt=')
+    expect(setCookies).toContain('mei_ad_attribution=')
+    expect(setCookies).toContain('mei_ad_attribution_receipt=')
+    expect(setCookies).toContain('Max-Age=0')
+
     const denied = await app().request('https://api.616618.xyz/api/marketing-consent', {
-      headers: { cookie: revokedCookie },
+      headers: { cookie: cookiePairs(revoked) },
     }, ENV)
-    expect(await denied.json()).toEqual({ state: 'denied' })
+    expect(await denied.json()).toMatchObject({ state: 'denied', decisionSource: 'explicit' })
   })
 
   it('local HTTP cookie 保留 HttpOnly/SameSite 但不设置 Secure', async () => {
@@ -67,14 +85,109 @@ describe('公开营销授权 API', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ state: 'granted' }),
     }, { ...ENV, APP_ENV: 'local' })
-    const cookie = response.headers.get('set-cookie') || ''
+    const cookies = response.headers.get('set-cookie') || ''
 
-    expect(cookie).toContain('HttpOnly')
-    expect(cookie).toContain('SameSite=Lax')
-    expect(cookie).not.toContain('Secure')
+    expect(cookies).toContain('HttpOnly')
+    expect(cookies).toContain('SameSite=Lax')
+    expect(cookies).not.toContain('Secure')
+  })
+
+  it('非严格地区在明确告知并可退出模式下默认允许营销衡量', async () => {
+    const response = await app().request('https://api.616618.xyz/api/marketing-consent', {
+      headers: { 'CF-IPCountry': 'US' },
+    }, { ...ENV, DB: privacyPolicyDb() })
+
+    expect(await response.json()).toEqual({
+      state: 'granted',
+      policyMode: 'notice_opt_out',
+      decisionSource: 'regional_default',
+      requiresChoice: false,
+      policyVersion: 7,
+    })
+  })
+
+  it.each(['GB', 'XX', 'T1', 'A1'])('%s 按严格地区处理，选择前禁止 Pixel 与 Server API', async (countryCode) => {
+    const response = await app().request('https://api.616618.xyz/api/marketing-consent', {
+      headers: { 'CF-IPCountry': countryCode },
+    }, { ...ENV, DB: privacyPolicyDb() })
+
+    expect(await response.json()).toMatchObject({
+      state: 'limited',
+      policyMode: 'prior_consent',
+      decisionSource: 'choice_required',
+      requiresChoice: true,
+    })
+  })
+
+  it('GPC 覆盖地区默认值和历史授权，不允许重新开启营销衡量', async () => {
+    const choice = await createMarketingConsentChoice(ENV.SESSION_SECRET, 'granted')
+    const response = await app().request('https://api.616618.xyz/api/marketing-consent', {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+        'CF-IPCountry': 'US',
+        'Sec-GPC': '1',
+        cookie: `mei_marketing_consent_choice=${choice.token}`,
+      },
+      body: JSON.stringify({ state: 'granted' }),
+    }, { ...ENV, DB: privacyPolicyDb() })
+
+    expect(await response.json()).toMatchObject({ state: 'denied', decisionSource: 'gpc' })
+    expect(response.headers.get('set-cookie') || '').not.toContain('mei_marketing_consent_choice=')
+    expect(response.headers.get('set-cookie') || '').not.toContain('mei_marketing_consent_receipt=')
+  })
+
+  it('明确拒绝覆盖非严格地区默认启用策略', async () => {
+    const denied = await createMarketingConsentChoice(ENV.SESSION_SECRET, 'denied')
+    const response = await app().request('https://api.616618.xyz/api/marketing-consent', {
+      headers: { 'CF-IPCountry': 'US', cookie: `mei_marketing_consent_choice=${denied.token}` },
+    }, { ...ENV, DB: privacyPolicyDb() })
+
+    expect(await response.json()).toMatchObject({ state: 'denied', decisionSource: 'explicit' })
+  })
+
+  it('冲突的长期选择与短期 receipt 在非严格地区也不会升级为授权', async () => {
+    const deniedChoice = await createMarketingConsentChoice(ENV.SESSION_SECRET, 'denied')
+    const grantedChoice = await createMarketingConsentChoice(ENV.SESSION_SECRET, 'granted')
+    const staleGrantedReceipt = await createMarketingConsentReceipt(ENV.SESSION_SECRET, grantedChoice.claims)
+    const response = await app().request('https://api.616618.xyz/api/marketing-consent', {
+      headers: {
+        'CF-IPCountry': 'US',
+        cookie: `mei_marketing_consent_choice=${deniedChoice.token}; mei_marketing_consent_receipt=${staleGrantedReceipt}`,
+      },
+    }, { ...ENV, DB: privacyPolicyDb() })
+
+    expect(await response.json()).toMatchObject({
+      state: 'limited',
+      decisionSource: 'choice_required',
+      requiresChoice: true,
+    })
+    expect(response.headers.get('set-cookie') || '').not.toContain('mei_marketing_consent_receipt=')
   })
 })
 
-function cookiePair(response: Response) {
-  return (response.headers.get('set-cookie') || '').split(';')[0] || ''
+function privacyPolicyDb() {
+  return {
+    prepare() {
+      return {
+        bind() { return this },
+        async first() {
+          return {
+            default_mode: 'notice_opt_out',
+            prior_consent_country_codes_json: JSON.stringify(['GB']),
+            policy_version: 7,
+            updated_at: '2026-07-16 00:00:00',
+          }
+        },
+      }
+    },
+  } as unknown as D1Database
+}
+
+function cookiePairs(response: Response) {
+  return (response.headers.get('set-cookie') || '')
+    .split(/,(?=\s*mei_[A-Za-z0-9_]+=)/)
+    .map(cookie => cookie.trim().split(';')[0])
+    .filter(Boolean)
+    .join('; ')
 }

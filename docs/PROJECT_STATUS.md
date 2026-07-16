@@ -53,8 +53,15 @@
 
 ## Production 归因状态
 
+- 最新 production 代码提交为 `14829e8`，版本标签为 `v0.4.7`；PR #58、最终 `verify:release`、production identity、归因状态和 SEO smoke 均已通过。
 - Meta 使用 production 连接并已完成真实 Contact / CompleteRegistration 验证，当前 rollout 以后台实时值为准；最近确认值为 `10%`。
-- TikTok、Google 的启用状态以统一后台实时连接为准；代码部署不会自动开启平台或提高 rollout。
+- TikTok production 连接已原子配置 Pixel、Events API 凭证和 Contact / CompleteRegistration 事件绑定；2026-07-16 使用当次临时 Test Event Code 完成自动验证和 Events Manager 人工证据确认，临时测试码未持久化。
+- TikTok Browser 已启用，Server target / effective 均为 `10%`；production 隔离访问只加载 TikTok Pixel SDK，Meta / Google Browser SDK 均未加载。TikTok Events Manager 的投放就绪状态仍需等待正式事件与平台最长约 24 小时刷新，不以 Test Events 代替真实流量验收。
+- TikTok Events Manager 保持 AAM 关闭、第一方 Cookie 开启、Enhanced Data Postback 关闭，避免超出项目标准事件和授权范围的自动采集。
+- `dev` 已完成地区化营销衡量重构，待 release 后进入 production：`0053` 增加统一地区策略；非严格地区明确告知并可退出且 Pixel/Server API 正常工作，严格/未知/Tor 地区先选择，GPC 和明确拒绝始终优先。长期签名选择与短期 receipt 只表示用户明确选择，不把地区默认值伪装成同意。
+- 前台已改为“有效联系衡量、减少无关推广、不读取聊天内容或密码”的用途说明；后台归因新增“地区策略”，可维护默认模式与严格地区代码。无论营销衡量状态如何，站内 Contact/CompleteRegistration 事实持续记录，Meta/TikTok/Google 仍按唯一来源严格隔离。
+- `v0.4.8` 发布候选已补齐冲突授权凭证 fail-closed、GPC 禁止续签、注册与来源解析失败降级、地区策略严格入参校验，以及 7 标签/新授权文案的多视口 E2E 契约。
+- Google 的启用状态以统一后台实时连接为准；代码部署不会自动开启平台或提高 rollout。
 - production 域名：`616618.xyz`、`www.616618.xyz`；API：`api.616618.xyz`。
 
 ## 当前验证入口
@@ -69,7 +76,7 @@
 
 ## 规划
 
-- TikTok 和 Google production 凭证、Test Events、Google 异步 request status 与分级 rollout 验收。
+- TikTok 继续完成真实广告来源下 Browser / Server 配对去重与 `10% -> 50% -> 100%` 观察；Google 仍需 production 凭证、转化操作、异步 request status 与分级 rollout 验收。
 - 广告花费、campaign、ad set、ad 数据导入不属于当前 Pixel/Server API 同步范围。
 - Cloudflare Stream 视频链路和完整 zip 异步导入仍待实现。
 

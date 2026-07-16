@@ -361,6 +361,8 @@ interface AdConsentSnapshot {
 
 首次进入且未作选择时，Click ID 只保留在当前页面内存；用户同意后才提交服务端建立加密上下文。撤回同意时删除归因 Cookie、项目设置的广告 Cookie，并取消尚未投递的 Outbox。
 
+用户选择以 180 天签名 `HttpOnly` Cookie 保存；面向 Pixel、Contact 和 Registration 的服务端授权使用 30 分钟短期签名 receipt。两种凭证使用独立 HMAC purpose，所有归因入口都可在长期选择仍有效且与短期 receipt 一致时静默续签。首次未选择继续显示精简授权条；选择后收起为全站可访问的设置入口，并提供独立营销追踪说明页，允许随时撤回或重新授权。
+
 ### 9.2 Google Consent Mode v2
 
 采用 Basic Consent Mode。加载 Google Tag 前先设置默认状态：

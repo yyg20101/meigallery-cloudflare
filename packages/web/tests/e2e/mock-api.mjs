@@ -947,7 +947,7 @@ function handleApi(req, res) {
     return json(res, { provider: null, resolution: 'none', expiresInSeconds: 1_800 })
   }
   if (url.pathname === '/api/marketing-consent' && req.method === 'GET') {
-    return json(res, { state: marketingConsentState })
+    return json(res, marketingConsentResponse())
   }
   if (url.pathname === '/api/marketing-consent' && req.method === 'PUT') {
     readJsonBody(req)
@@ -957,7 +957,7 @@ function handleApi(req, res) {
           return
         }
         marketingConsentState = body.state
-        json(res, { state: marketingConsentState }, 200, {
+        json(res, marketingConsentResponse(), 200, {
           'Set-Cookie': `mei_marketing_consent_receipt=mock-${marketingConsentState}; Path=/; HttpOnly; SameSite=Lax`,
         })
       })
@@ -1212,6 +1212,17 @@ function handleApi(req, res) {
   }
 
   notFound(res)
+}
+
+function marketingConsentResponse() {
+  const requiresChoice = marketingConsentState === 'limited'
+  return {
+    state: marketingConsentState,
+    policyMode: requiresChoice ? 'prior_consent' : 'notice_opt_out',
+    decisionSource: requiresChoice ? 'choice_required' : 'explicit',
+    requiresChoice,
+    policyVersion: 1,
+  }
 }
 
 const server = createServer(handleApi)

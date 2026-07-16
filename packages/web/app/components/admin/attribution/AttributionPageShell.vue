@@ -37,6 +37,7 @@ const tabs = [
   { label: '事件绑定', to: '/admin/attribution/bindings', range: false, provider: true },
   { label: '投递质量', to: '/admin/attribution/deliveries', range: true, provider: true },
   { label: '验证记录', to: '/admin/attribution/verifications', range: true, provider: true },
+  { label: '地区策略', to: '/admin/attribution/privacy', range: false, provider: false },
   { label: '审计日志', to: '/admin/attribution/audit', range: true, provider: false },
 ]
 

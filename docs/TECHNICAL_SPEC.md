@@ -621,7 +621,7 @@ INSERT INTO site_settings (key, value) VALUES
 
 归因中心把“站内可信事实”和“外部广告平台同步”分开维护：`attribution_conversion_facts` 是唯一事实源，Pixel / Server API 只是 delivery 渠道。后台 `/admin/analytics` 仍是一方行为分析大盘；广告来源、有效联系、完成注册、按平台投递、匹配覆盖和发布诊断统一放在 `/admin/attribution`。
 
-后台归因 UI 使用 `总览 / 转化明细 / 投放链接 / 平台接入 / 发布与诊断` 五页结构。平台选择通过 URL `provider` 显式传递，API 不提供隐式默认平台。连接的公开配置、事件映射和加密凭证必须在同一平台事务中保存；凭证明文不回显，平台 rollout 不由部署脚本自动修改。
+后台归因 UI 使用 `总览 / 平台连接 / 事件绑定 / 投递质量 / 验证记录 / 地区策略 / 审计日志` 七个主入口。平台选择通过 URL `provider` 显式传递，API 不提供隐式默认平台。连接的公开配置、事件映射和加密凭证必须在同一平台事务中保存；凭证明文不回显，平台 rollout 不由部署脚本自动修改。
 
 #### 归因事实所有权 `[当前实现]`
 
@@ -646,6 +646,7 @@ INSERT INTO site_settings (key, value) VALUES
 | `attribution_incidents` | `[当前实现]` | 平台运行故障与降级记录。 |
 | `attribution_quality_snapshots` | `[当前实现]` | 匹配覆盖与平台质量指标。 |
 | `attribution_usage_daily` | `[当前实现]` | 平台调用量、预算和容量统计。 |
+| `attribution_privacy_policy` | `[当前实现]` | 全局地区授权策略、严格地区代码、策略版本和更新人；不保存访客国家或授权 token。 |
 
 实现约束：
 
@@ -656,13 +657,15 @@ INSERT INTO site_settings (key, value) VALUES
 - Google Data Manager `events:ingest` 顶层写入服务端可信 Consent，`events[].transactionId` 与 Browser `transaction_id` 共用同一外部事件编号。HTTP 2xx 必须返回安全 `requestId` 才进入 `accepted`；Cron 在 30 分钟后通过 `requestStatus.retrieve` 查询异步结果，按 1.3 倍退避、单次最多 60 分钟、总计最多 24 小时收口为 `processed` 或 `rejected`。每次 Cron 最多诊断 40 条 accepted delivery，为 Workers Free 的 50 个外部 subrequest 上限保留 OAuth、重定向和维护余量。不得把 `accepted` 表述为最终处理或广告归因成功。
 - API 只返回 provider-aware `trackingInstructions`，前端通过广告平台 adapter registry 执行，不保留 `pixelEvents` 兼容响应。
 - 广告来源解析只接受平台 click ID、明确平台 UTM 别名或后台 `analytics_tracking_sources.ad_provider`。多平台信号冲突、显式来源未知、输入非法或 D1 查询失败时均 fail closed。
-- `PUT /api/ad-attribution` 只在营销授权 receipt 有效时签发 30 分钟 `HttpOnly` 来源 receipt；前端不能通过 body 声明 provider。Contact 和注册请求还必须携带只能降级的 `adAttributionState=resolved`，缺失、冲突或校验失败一律忽略旧 receipt。
+- `PUT /api/ad-attribution` 只在可信营销授权有效时签发 30 天 `HttpOnly` 加密来源上下文；前端不能通过 body 声明 provider。Contact 和注册请求还必须携带只能降级的 `adAttributionState=resolved`，缺失、冲突或校验失败一律忽略旧上下文。
 - 一个 `attribution_conversion_facts` 最多属于一个广告平台。每个平台只读取自身连接、凭证、Queue 和 receipt；空来源事实不进入任何广告平台。禁止 fan-out、广播或按启用平台枚举投递。
 - 正式活动事件严格限定为 `Contact`、`CompleteRegistration`；sender 与 recovery 不接受 `Lead` 或 `StartTrial`。
 - `/api/conversions/events` 为公开联系命令入口，仅允许提交 `contact`；完成注册由注册 API 的服务端事务创建。`lead`、`complete_registration`、`start_trial` 和 `membership_grant` 的公开提交均返回明确 4xx。
 - 公开转化入口复用应用内兜底限流，并在服务端白名单清洗 metadata；请求不得携带邮箱、手机号、联系方式明文、token、私有 R2 key、完整敏感 URL 或任意广告账户密钥。
-- 浏览器通过 `PUT /api/marketing-consent` 授权或撤销；API 使用 `SESSION_SECRET` 与 Web Crypto 签发 30 分钟 `HttpOnly`、`SameSite=Lax` receipt cookie，HTTPS 环境同时设置 `Secure`。授权 GET/PUT、Contact conversion、registration 和 Pixel receipt 重试显式通过 Web 同源 `/api` 代理：Cloudflare 环境使用 `API_SERVICE`，本地回退 API URL，代理逐条转发 `Set-Cookie` 和后续请求 cookie；其余浏览器 API 保持既有直连策略。前端 body 只能把服务端 receipt 的授权降级，缺失、篡改、过期或 denied receipt 都不能由 `consentState=granted` 升级。receipt、签名、nonce 和 cookie 值不得进入日志、D1、API 响应、审计或发布报告。
-- `consent_state=denied` 时只保留站内必要事实，不创建任何广告平台 Browser / Server delivery；服务端解析后的 `consent_state` 仅用于当次 delivery 判断，不作为 D1 字段持久化。浏览器 Pixel 以公开授权 API 返回状态为准，Server API 始终独立验证 receipt。
+- `0053_attribution_privacy_policy.sql` 创建统一地区策略。默认模式为 `notice_opt_out`：非严格地区在明确告知、持续可见设置入口和可随时退出的前提下启用效果分析；策略表中的严格地区、无法识别的 `XX` 和 Tor `T1` 必须先选择。Owner 可在后台“地区策略”修改默认模式和严格地区代码，修改写入审计并通过 60 秒 Worker 缓存传播。
+- 地区只接受 Cloudflare 可信请求属性 `request.cf.country`，Web Worker 通过 Service Binding 时仅透传边缘提供的 `CF-IPCountry`；前端 body、query 和页面脚本不能声明国家。Web 代理同时透传浏览器 `Sec-GPC`。优先级固定为 `GPC/全局停用 > 用户明确选择 > 地区默认值`，其中用户明确拒绝在所有地区持续生效；GPC 与全局停用不允许前端重新开启。
+- 浏览器通过 `PUT /api/marketing-consent` 明确启用或关闭；只有明确选择才签发 180 天长期选择和 30 分钟短期 receipt。两者均为 `HttpOnly`、`SameSite=Lax`，HTTPS 环境同时设置 `Secure`，并使用不同 HMAC purpose 防止互换。非严格地区的默认启用不伪装成用户同意、不签发长期选择。授权 GET/PUT、来源 bootstrap、Contact conversion 和 registration 统一在 API 重新计算地区策略；前端 body 只能降低结果。用户撤回后立即清理来源上下文和未投递归因。所有 token、签名、nonce 和 cookie 值不得进入日志、D1、API 响应、审计或发布报告。
+- `consent_state=denied/limited` 时只保留站内必要事实，不创建任何广告平台 Browser / Server delivery；`granted` 才允许按唯一可信来源加载对应平台 Pixel 和 Server API。地区策略只决定是否投递，不改变 Meta/TikTok/Google 单平台来源隔离。浏览器 Pixel 以公开授权 API 返回状态为准，Server API 每次独立执行同一地区与授权判定。
 - 每个平台的 Browser / Server delivery 使用同一 `external_event_id`；Pixel `attempted` 仅说明浏览器已尝试调用，不代表平台接收。Server delivery 只有在平台响应满足严格成功契约时才进入 `accepted`；Google 还必须等待异步诊断进入 `processed`。平台接收或处理完成仍不代表广告归因成功。
 - `/api/admin/attribution/*` 需要 admin+；连接、凭证、验证和 rollout 修改需要 owner，并写入 `admin_audit_logs`。
 - Meta/TikTok/Google Server API 仅在 production 通过各自 `AD_META_QUEUE`、`AD_TIKTOK_QUEUE`、`AD_GOOGLE_QUEUE` 异步投递；主 Queue/DLQ 固定为 6 条 `meigallery-ad-*` 资源。dev/local 不绑定广告 Queue、不配置平台凭证、不调用真实平台 API。

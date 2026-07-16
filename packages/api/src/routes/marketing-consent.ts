@@ -1,17 +1,15 @@
 import { Hono } from 'hono'
-import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
+import { deleteCookie, getCookie } from 'hono/cookie'
 import type { Bindings, Variables } from '../index'
-import {
-  createMarketingConsentReceipt,
-  MARKETING_CONSENT_RECEIPT_TTL_SECONDS,
-  resolveTrustedMarketingConsent,
-} from '../utils/marketing-consent-receipt'
 import { errorJson } from '../utils/api-error'
 import { loadAttributionCryptoKeys } from '../utils/attribution-crypto'
 import { resolveTrustedAdAttributionContext } from '../utils/ad-attribution-context'
 import { revokeAdAttributionContext } from '../services/ad-attribution-consent'
+import {
+  persistMarketingConsentChoice,
+  resolveRequestMarketingConsent,
+} from '../utils/marketing-consent-request'
 
-export const MARKETING_CONSENT_RECEIPT_COOKIE = 'mei_marketing_consent_receipt'
 const AD_ATTRIBUTION_CONTEXT_COOKIE = 'mei_ad_attribution'
 const AD_ATTRIBUTION_RECEIPT_COOKIE = 'mei_ad_attribution_receipt'
 
@@ -23,12 +21,8 @@ marketingConsentRoutes.use('*', async (c, next) => {
 })
 
 marketingConsentRoutes.get('/', async (c) => {
-  const state = await resolveTrustedMarketingConsent(
-    c.env.SESSION_SECRET,
-    getCookie(c, MARKETING_CONSENT_RECEIPT_COOKIE),
-    undefined,
-  )
-  return c.json({ state })
+  const resolution = await resolveRequestMarketingConsent(c)
+  return c.json(publicConsentResolution(resolution))
 })
 
 marketingConsentRoutes.put('/', async (c) => {
@@ -50,17 +44,29 @@ marketingConsentRoutes.put('/', async (c) => {
     return errorJson(c, 503, '广告归因撤回暂时不可用', { code: 'AD_ATTRIBUTION_REVOKE_UNAVAILABLE' })
   }
 
-  const receipt = await createMarketingConsentReceipt(c.env.SESSION_SECRET, body.state)
-  setCookie(c, MARKETING_CONSENT_RECEIPT_COOKIE, receipt, {
-    httpOnly: true,
-    secure: shouldUseSecureCookie(c.req.url, c.env.APP_ENV),
-    sameSite: 'Lax',
-    path: '/',
-    maxAge: MARKETING_CONSENT_RECEIPT_TTL_SECONDS,
-  })
+  const resolution = await resolveRequestMarketingConsent(c, undefined, undefined, body.state)
+  if (body.state === 'granted' && resolution.state !== 'granted') {
+    return c.json(publicConsentResolution(resolution))
+  }
+  await persistMarketingConsentChoice(c, body.state)
   if (shouldClearAdAttribution) clearAdAttributionContextCookie(c)
-  return c.json({ state: body.state })
+  return c.json(publicConsentResolution({
+    ...resolution,
+    state: body.state,
+    decisionSource: 'explicit',
+    requiresChoice: false,
+  }))
 })
+
+function publicConsentResolution(resolution: Awaited<ReturnType<typeof resolveRequestMarketingConsent>>) {
+  return {
+    state: resolution.state,
+    policyMode: resolution.policyMode,
+    decisionSource: resolution.decisionSource,
+    requiresChoice: resolution.requiresChoice,
+    policyVersion: resolution.policyVersion,
+  }
+}
 
 async function revokeCurrentAdAttribution(c: Parameters<typeof getCookie>[0]) {
   const encrypted = getCookie(c, AD_ATTRIBUTION_CONTEXT_COOKIE)
@@ -79,8 +85,4 @@ async function revokeCurrentAdAttribution(c: Parameters<typeof getCookie>[0]) {
 function clearAdAttributionContextCookie(c: Parameters<typeof deleteCookie>[0]) {
   deleteCookie(c, AD_ATTRIBUTION_CONTEXT_COOKIE, { path: '/', secure: true, httpOnly: true, sameSite: 'Lax' })
   deleteCookie(c, AD_ATTRIBUTION_RECEIPT_COOKIE, { path: '/', secure: true, httpOnly: true, sameSite: 'Lax' })
-}
-
-function shouldUseSecureCookie(requestUrl: string, appEnv: string) {
-  return appEnv === 'production' || new URL(requestUrl).protocol === 'https:'
 }

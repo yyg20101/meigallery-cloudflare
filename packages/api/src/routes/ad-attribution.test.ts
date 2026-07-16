@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Bindings, Variables } from '../index'
-import { createMarketingConsentReceipt } from '../utils/marketing-consent-receipt'
+import { createMarketingConsentChoice, createMarketingConsentReceipt } from '../utils/marketing-consent-receipt'
 import { adAttributionRoutes } from './ad-attribution'
 
 const readConnectionSnapshot = vi.hoisted(() => vi.fn())
@@ -40,6 +40,25 @@ describe('公开广告来源 API', () => {
     expect(cookie).toContain('SameSite=Lax')
     expect(cookie).toContain('Max-Age=2592000')
     expect(JSON.stringify(data)).not.toContain(cookiePair(response).split('=')[1])
+  })
+
+  it('短期授权过期时可由长期选择续签，并继续建立单一平台上下文', async () => {
+    const choice = await createMarketingConsentChoice(SECRET, 'granted')
+    const response = await app().request('https://api.616618.xyz/api/ad-attribution', {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+        cookie: `mei_marketing_consent_choice=${choice.token}`,
+      },
+      body: JSON.stringify({ ttclid: 'renewed-tiktok-click' }),
+    }, env())
+    const cookies = response.headers.get('set-cookie') || ''
+
+    expect(await response.json()).toEqual({ provider: 'tiktok', resolution: 'matched', expiresInSeconds: 2_592_000 })
+    expect(cookies).toContain('mei_marketing_consent_receipt=')
+    expect(cookies).toContain('Max-Age=1800')
+    expect(cookies).toContain('mei_ad_attribution=')
+    expect(cookies).toContain('Max-Age=2592000')
   })
 
   it('普通导航继承未过期上下文且不重复签发 Cookie', async () => {
@@ -119,6 +138,25 @@ describe('公开广告来源 API', () => {
 
     expect(await response.json()).toEqual({ provider: null, resolution: 'none', expiresInSeconds: null })
     expectClearsBothAttributionCookies(response)
+  })
+
+  it('营销授权解析异常时 bootstrap 与来源写入都失败关闭', async () => {
+    const throwingEnv = env() as Bindings
+    Object.defineProperty(throwingEnv, 'SESSION_SECRET', {
+      get() { throw new Error('secret unavailable') },
+    })
+    const bootstrap = await app().request('https://api.616618.xyz/api/ad-attribution/bootstrap', {}, throwingEnv)
+    const update = await app().request('https://api.616618.xyz/api/ad-attribution', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ fbclid: 'meta-click' }),
+    }, throwingEnv)
+
+    expect(bootstrap.status).toBe(200)
+    expect(await bootstrap.json()).toEqual({ provider: null, publicConfig: null })
+    expect(update.status).toBe(503)
+    expect(await update.json()).toEqual({ provider: null, resolution: 'none', expiresInSeconds: null })
+    expectClearsBothAttributionCookies(update)
   })
 
   it('客户端直接声明 provider 不会被接受', async () => {

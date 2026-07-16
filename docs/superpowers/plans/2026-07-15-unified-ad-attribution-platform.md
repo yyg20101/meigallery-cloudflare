@@ -1046,7 +1046,7 @@ corepack pnpm verify:release
 
 Expected: PASS；未提供 production 凭证时只运行 dry-run/只读门禁，不调用平台 API。
 
-阶段记录：脚本专项测试 52/52、全量 scripts/migration 313/313、API 1144/1144 和高阈值 coverage 已通过；整体 coverage statements 87.35%、branches 80.78%，最终通用后台路由 statements 95.67%、branches 91.04%。Queue 初始化测试已按“先检查、再创建、再确认”的真实幂等流程隔离状态，并验证远端错误不会泄漏敏感输出。production preflight 已改为顺序读取外部状态；Queue 指标采用顺序双采样，并对网络、429 和 5xx 进行最多 3 次短退避重试，未知状态仍失败关闭。通用归因后台最终四层契约已同步到 E2E mock，完整 Playwright 125 通过、30 个按项目配置跳过、0 失败，覆盖三平台来源隔离和 5 档视口。Lint、API/Web TypeScript、Web 282 个单测和 Nuxt production build 通过。旧 Meta Server 已由 Contract 收口，`0052` 已应用；`release/v0.4.7` 已完成一次 `verify:release`，PR 审查修复完成后必须针对最终待发 commit 重新运行，只有新的通过报告才可作为 production gate。
+阶段记录：脚本专项测试 52/52、全量 scripts/migration 313/313、API 1144/1144 和高阈值 coverage 已通过；整体 coverage statements 87.35%、branches 80.78%，最终通用后台路由 statements 95.67%、branches 91.04%。Queue 初始化测试已按“先检查、再创建、再确认”的真实幂等流程隔离状态，并验证远端错误不会泄漏敏感输出。production preflight 已改为顺序读取外部状态；Queue 指标采用顺序双采样，并对网络、429 和 5xx 进行最多 3 次短退避重试，未知状态仍失败关闭。通用归因后台最终四层契约已同步到 E2E mock，完整 Playwright 125 通过、30 个按项目配置跳过、0 失败，覆盖三平台来源隔离和 5 档视口。Lint、API/Web TypeScript、Web 282 个单测和 Nuxt production build 通过。旧 Meta Server 已由 Contract 收口，`0052` 已应用；`release/v0.4.7` 最终 commit `a7f8180` 的 `verify:release` 报告 `2026-07-16T06-48-13.557Z-release-a7f8180cc74b.json` 已通过，PR #58 CI 与审查已全绿并合入 `main`。
 
 - [x] **Step 5：提交并统一推送 dev**
 
@@ -1224,9 +1224,9 @@ git push origin dev
 - [x] 将可信营销授权快照映射到 Google Data Manager Consent；拒绝或不完整授权继续零平台投递。
 - [x] Meta 自动采集 Dataset Quality；TikTok 没有项目可安全调用的质量 API 时显示“需 Events Manager 人工证据”；Google 使用 request status，不把“不可用”显示为 0 分。
 - [x] 增加 Google accepted/processed/rejected、诊断超时、凭证错误和重试幂等测试。
-- [ ] 运行 API/Web 单测、类型检查、Lint、Nuxt build、三平台网络隔离 E2E 和 `verify:release`。
+- [x] 运行 API/Web 单测、类型检查、Lint、Nuxt build、三平台网络隔离 E2E 和 `verify:release`。
 
-执行记录（2026-07-16）：已按 Google Data Manager v1.7 接入 `requestStatus.retrieve`、30 分钟首次查询、1.3 倍退避、60 分钟单次上限和 24 小时总超时；Google `events:ingest` 2xx 缺少安全 `requestId` 时不进入 accepted。可信 Consent 已进入加密 Outbox 并映射到 Google 顶层 consent，缺失或拒绝广告用户数据在 Adapter 前 fail closed。诊断 Cron 单次上限固定为 40，为 Workers Free 的 50 个外部 subrequest 限制预留 OAuth、重定向和维护余量；已增加“未到退避时间的旧记录不阻塞后方到期任务”积压测试。Meta Dataset Quality 合法空样本改为 `unavailable/no_recent_metrics`，不再误报 `invalid_response`；TikTok/Google 空质量状态使用平台注册语义。最终代码状态已通过 `2026-07-16T05-22-36.486Z-quick-a3a2aa2c4f74.json` 和 `2026-07-16T05-25-30.040Z-local-runtime-a3a2aa2c4f74.json`；仍需在干净 release 分支运行 `verify:release`。
+执行记录（2026-07-16）：已按 Google Data Manager v1.7 接入 `requestStatus.retrieve`、30 分钟首次查询、1.3 倍退避、60 分钟单次上限和 24 小时总超时；Google `events:ingest` 2xx 缺少安全 `requestId` 时不进入 accepted。可信 Consent 已进入加密 Outbox 并映射到 Google 顶层 consent，缺失或拒绝广告用户数据在 Adapter 前 fail closed。诊断 Cron 单次上限固定为 40，为 Workers Free 的 50 个外部 subrequest 限制预留 OAuth、重定向和维护余量；已验证未到期积压不阻塞到期任务，且超过 24 小时的记录在 40 条批次上限前优先终结。Meta Dataset Quality 合法空样本使用 `unavailable/no_recent_metrics`，活动事件缺少质量结构时使用 `invalid_response`；TikTok/Google 空质量状态使用平台注册语义。API `920/920`、API TypeScript、Nuxt production build、PR #58 CI/CodeRabbit 和最终 `verify:release` 均通过。`main` 提交 `14829e8` 已部署 production 并标记 `v0.4.7`；部署后 Meta 保持 `10%/10%`，Outbox、活动投递、dead letter 和 open critical incident 均为 0。
 
 ### Task 16：完成 Meta 最终账本验收
 
@@ -1236,11 +1236,13 @@ git push origin dev
 
 ### Task 17：完成 TikTok 与 Google production 接入
 
-- [ ] TikTok 原子保存 Pixel ID、Events API Token、两个事件绑定和 production 开关；使用当次 Test Event Code 验证后清除临时参数。
+- [x] TikTok 原子保存 Pixel ID、Events API Token、两个事件绑定和 production 开关；使用当次 Test Event Code 验证后清除临时参数。
 - [ ] TikTok Events Manager 确认 Browser/Server 的 `event`、`event_id` 一致且 Meta/Google 来源零 TikTok 请求，再按 `0% -> 10% -> 50% -> 100%` 放量。
 - [ ] Google Cloud 启用 Data Manager API，Service Account 获得 Service Usage Consumer 并加入 Google Ads 账户。
 - [ ] Google 为 Contact、CompleteRegistration 分别配置 `AW-.../label` 和 `WEBPAGE` Conversion Action ID；先 `validateOnly`，再确认 request status 与 Tag Assistant Live Evidence。
 - [ ] Google 按 `0% -> 10% -> 50% -> 100%` 放量；不接入 GA4，不要求 Developer Token。
+
+TikTok 当前进度（2026-07-16）：Browser 已启用，Server target / effective 为 `10%`；Test Events 已收到新版连接的 Contact 和 CompleteRegistration Server 样本。无拦截浏览器已验证 TikTok 来源只加载 TikTok Pixel SDK，Meta / Google SDK 均为零；仍需真实 TikTok 广告来源的同事实 Browser / Server 配对证据和分档观察。
 
 ### Task 18：三平台联合验收与收尾
 
@@ -1270,4 +1272,4 @@ git push origin dev
 - [x] 历史标准事实和必要分析趋势完整，旧技术状态未重新投递。
 - [ ] Google production 验证通过，GA4 未被误接入。
 - [x] Cloudflare Free 安全线和 70% 预警已实现，未新增固定成本；production 最终验收仍由 Task 18 完成。
-- [ ] `docs/PROJECT_STATUS.md`、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md` 与最终代码一致。
+- [x] `docs/PROJECT_STATUS.md`、`docs/TECHNICAL_SPEC.md`、`docs/DEPLOYMENT.md` 与最终代码一致。

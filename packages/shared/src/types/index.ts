@@ -69,6 +69,18 @@ export type AnalyticsEntityType =
 /** 分析授权/采集状态 */
 export type AnalyticsConsentState = 'granted' | 'limited' | 'denied'
 
+/** 营销衡量地区策略 */
+export type MarketingConsentPolicyMode = 'notice_opt_out' | 'prior_consent' | 'disabled'
+
+/** 营销衡量决策来源 */
+export type MarketingConsentDecisionSource =
+  | 'explicit'
+  | 'regional_default'
+  | 'choice_required'
+  | 'gpc'
+  | 'disabled'
+  | 'request_limit'
+
 import type {
   AdAttributionProvider as SharedAdAttributionProvider,
   CanonicalConversionEvent,
