@@ -35,7 +35,8 @@ describe('开发环境发布预演边界', () => {
 
   it('仍保留 dev migration、部署、站内转化与注册逻辑验证', async () => {
     const source = await readFile(new URL('./verify-dev-rehearsal.mjs', import.meta.url), 'utf8')
-    assert.match(source, /verify-meta-migration\.mjs', 'preflight', '--env', 'dev'/)
+    assert.doesNotMatch(source, /verify-meta-migration/)
+    assert.match(source, /wrangler', 'd1', 'migrations', 'apply'/)
     assert.match(source, /wrangler', 'deploy', '--env', 'dev'/)
     assert.match(source, /postConversion/)
     assert.match(source, /postRegistration/)

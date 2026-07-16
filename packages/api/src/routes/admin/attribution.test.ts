@@ -15,7 +15,7 @@ beforeAll(async () => {
     modules: true,
     script: 'export default { fetch() { return new Response("ok") } }',
     compatibilityDate: '2026-05-26',
-    d1Databases: { DB: 'admin-attribution-v3' },
+    d1Databases: { DB: 'admin-attribution' },
   })
   db = (await miniflare.getBindings<{ DB: D1Database }>()).DB
   await db.exec(MIGRATION.replace(/\s*\r?\n\s*/g, ' '))

@@ -15,4 +15,3 @@
 - `docs/TELEGRAM_IMPORT_API.md`：Telegram 外部导入 API 对接契约。
 - `docs/SEO_CONFIGURATION.md`：SEO 关键词和运营配置说明。
 - `docs/AD_PLATFORM_ARCHITECTURE.md`：广告平台统一事实、投递和 adapter 架构。
-- `docs/META_PRODUCTION_ROLLOUT_PLAN.md`：Meta CAPI 当前放量状态和升级门槛。

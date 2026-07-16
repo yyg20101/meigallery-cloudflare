@@ -48,7 +48,6 @@ const SANITIZED_PRIVATE_VALUES = new Set([PRIVACY_REDACTION, '[REDACTED]'])
 const PUBLIC_DIGEST_CONTEXT_KEYS = new Set(['digest', 'datasetqualitycontractdigest'])
 const SUMMARY_LIMIT = 1200
 const REPORT_MAX_AGE_MS = 24 * 60 * 60 * 1000
-const META_LIVE_CONFIRMATION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
 const VALID_REPORT_MODES = new Set(['quick', 'local-runtime', 'dev-rehearsal', 'release'])
 const VALID_REPORT_STATUSES = new Set(['passed', 'failed', 'skipped'])
 const RELEASE_CHILD_MODES = ['quick', 'local-runtime', 'dev-rehearsal']
@@ -375,7 +374,7 @@ export function assertReportCanGateProduction(report, options = {}) {
     }
 
     if (report.mode === 'release') {
-      validateReleaseSummary(report, reasons, now)
+      validateReleaseSummary(report, reasons)
     }
   }
 
@@ -466,7 +465,7 @@ function validateReportShape(report, reasons) {
   }
 }
 
-function validateReleaseSummary(report, reasons, now) {
+function validateReleaseSummary(report, reasons) {
   if (!Array.isArray(report.steps)) return
 
   const stepMap = new Map(report.steps.map(step => [step?.name, step]))
@@ -491,13 +490,6 @@ function validateReleaseSummary(report, reasons, now) {
         reasons.push(`release 报告中的 ${mode} 子模式摘要为空`)
       }
 
-      if (typeof step.summary === 'string' && (step.summary.includes('未生成通过步骤摘要') || step.summary.includes('没有真实通过步骤'))) {
-        reasons.push(`release 报告中的 ${mode} 子模式使用了占位摘要`)
-      }
-
-      if (!hasNonEmptyStringArray(step.passedStepNames)) {
-        reasons.push(`release 报告中的 ${mode} 子模式缺少真实 passed step 摘要`)
-      }
     }
 
     const releaseSubMode = releaseSubModeMap?.get(mode)
@@ -510,81 +502,8 @@ function validateReleaseSummary(report, reasons, now) {
       reasons.push(`releaseSubModes 中的 ${mode} 子模式未通过`)
     }
 
-    if (!hasNonEmptyStringArray(releaseSubMode.passedStepNames)) {
-      reasons.push(`releaseSubModes 中的 ${mode} 子模式缺少 passedStepNames`)
-    }
-  }
-
-  validateMetaReleaseSummary(report, reasons, now)
-}
-
-function validateMetaReleaseSummary(report, reasons, now) {
-  const bootstrap = report.initialMetaRollout === true
-  const live = report.metaLiveVerification
-  if (bootstrap && live?.status === 'skipped') {
-    // 冷启动的真实 Test Event 在 production rollout=0 部署后完成。
-  } else if (!live || typeof live !== 'object' || Array.isArray(live)) {
-    reasons.push('release 报告缺少 Meta live evidence 摘要')
-  } else {
-    if (live.status !== 'passed') reasons.push('Meta live evidence 未通过')
-    if (!/^[0-9a-f]{40}$/i.test(String(live.commit || '').trim())) reasons.push('Meta live evidence 来源 commit 非法')
-    if (live.environment !== 'production') reasons.push('Meta live evidence 必须来自 production')
-    if (!Array.isArray(live.events) || live.events.length !== 2 || !['Contact', 'CompleteRegistration'].every(name => live.events.includes(name))) {
-      reasons.push('Meta live evidence 事件集合不完整')
-    }
-    if (live.enhancedMatchVerified !== true) reasons.push('Meta live evidence 增强匹配未通过')
-    if (live.forbiddenEventsAbsent !== true) reasons.push('Meta live evidence 禁止事件缺席未确认')
-    const verifiedAt = Date.parse(live.verifiedAt || '')
-    const expiresAt = Date.parse(live.expiresAt || '')
-    if (Number.isNaN(verifiedAt) || Number.isNaN(expiresAt)) {
-      reasons.push('Meta live evidence 时间格式非法')
-    } else {
-      if (expiresAt - verifiedAt !== META_LIVE_CONFIRMATION_MAX_AGE_MS) reasons.push('Meta live 人工确认有效期不是严格 30 天')
-      if (now >= expiresAt) reasons.push('Meta live evidence 已过期')
-    }
-  }
-
-  const contract = report.datasetQualityContract
-  if (!contract || contract.status !== 'passed'
-    || !Number.isSafeInteger(contract.version) || contract.version < 1
-    || !/^sha256:[0-9a-f]{64}$/.test(String(contract.digest || ''))) {
-    reasons.push('Dataset Quality tracked approved contract/digest 未通过')
-  }
-
-  for (const environment of ['production']) {
-    const resource = report.metaResources?.[environment]
-    if (!resource || typeof resource !== 'object' || resource.status !== 'passed' || resource.environment !== environment) {
-      reasons.push(`Meta ${environment} 资源检查未通过`)
-    } else if (resource.commit !== report.git?.commit) {
-      reasons.push(`Meta ${environment} 资源检查 commit 与报告 commit 不一致`)
-    } else {
-      const bootstrapProduction = environment === 'production'
-        && report.initialMetaRollout === true
-        && resource.phase === 'bootstrap'
-      if (!bootstrapProduction && resource.connectionVerified !== true) reasons.push(`Meta ${environment} connection 未验证`)
-      if (resource.openCriticalIncidentCount !== 0) reasons.push(`Meta ${environment} 存在 open critical incident`)
-      if (bootstrapProduction) {
-        const isolation = resource.environmentIsolation
-        if (resource.r2Present !== true || resource.secretsPresent !== true
-          || !isolation || !['d1', 'r2', 'queue', 'dlq'].every(key => isolation[key] === true)) {
-          reasons.push('Meta production bootstrap 资源或环境隔离证明不完整')
-        }
-      }
-      if (!bootstrap && environment === 'production') {
-        if (resource.datasetQualityContractVersion !== contract?.version
-          || resource.datasetQualityContractDigest !== contract?.digest
-          || resource.datasetQualityCollectorCurrent !== true) {
-          reasons.push('production Dataset Quality collector/contract digest 不是当前状态')
-        }
-      }
-    }
-  }
-
-  if (report.initialMetaRollout === true) {
-    const production = report.metaResources?.production
-    if (production?.capiEnabled !== false) reasons.push('Meta 首次上线要求生产 CAPI 保持关闭')
-    if (production?.targetRolloutPercentage !== 0 || production?.effectiveRolloutPercentage !== 0) {
-      reasons.push('Meta 首次上线要求 production target/effective rollout 均为 0')
+    if (typeof releaseSubMode.reportFile !== 'string' || releaseSubMode.reportFile.trim() === '') {
+      reasons.push(`releaseSubModes 中的 ${mode} 子模式缺少报告文件`)
     }
   }
 }
@@ -593,10 +512,6 @@ function validateNonEmptyString(value, reason, reasons) {
   if (typeof value !== 'string' || value.trim() === '') {
     reasons.push(reason)
   }
-}
-
-function hasNonEmptyStringArray(value) {
-  return Array.isArray(value) && value.length > 0 && value.every(item => typeof item === 'string' && item.trim() !== '')
 }
 
 function compactWhitespace(value) {

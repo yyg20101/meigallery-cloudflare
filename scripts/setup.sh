@@ -115,7 +115,6 @@ print_secrets() {
     echo "  openssl rand -base64 32 | ${WRANGLER_CMD} secret put AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT ${env_flag}"
     echo "  # 仅通用凭证主密钥轮换窗口配置"
     echo "  ${WRANGLER_CMD} secret put AD_PLATFORM_CREDENTIAL_MASTER_KEY_PREVIOUS ${env_flag}"
-    echo "  # 旧 META_CAPI_* / TIKTOK_EVENTS_* 仅保留为回滚资产，不再创建或轮换"
   fi
   echo ""
 }

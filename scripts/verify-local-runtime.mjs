@@ -215,10 +215,6 @@ export async function runLocalRuntimeVerification(options = {}) {
     steps.push(attributionStep)
     if (attributionStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
 
-    const metaStep = await smokeMetaDelivery(boundedFetch, sessionToken)
-    steps.push(metaStep)
-    if (metaStep.status !== 'passed') return { steps, notes, artifacts, sensitiveValues }
-
     notes.push('ad-platform-server-delivery-disabled-in-local')
     return { steps, notes, artifacts, sensitiveValues }
   } finally {
@@ -636,20 +632,6 @@ async function smokeAdminAttribution(fetchFn, sessionToken) {
     if (Number(matched.contact_count ?? 0) < 1) throw new Error('contact_count 未写入')
     if (Number(matched.complete_registration_count ?? 0) < 1) throw new Error('complete_registration_count 未写入')
     return `归因来源可读，contact=${matched.contact_count}, complete_registration=${matched.complete_registration_count}`
-  })
-}
-
-async function smokeMetaDelivery(fetchFn, sessionToken) {
-  return requestStep(fetchFn, 'local-meta-delivery', '/api/admin/attribution/meta?range=7d', {
-    headers: {
-      Cookie: `${SESSION_COOKIE}=${sessionToken}`,
-    },
-  }, (body) => {
-    const settings = body?.data?.settings || {}
-    const deliveries = Array.isArray(body?.data?.deliveries) ? body.data.deliveries : []
-    if (settings.server_enabled !== false) throw new Error('本地 Meta Server 投递未关闭')
-    if (deliveries.some(row => row?.provider === 'meta' && row?.transport === 'server')) throw new Error('Server 投递关闭时仍创建了 Meta delivery')
-    return 'meta-server-delivery-disabled-in-local'
   })
 }
 

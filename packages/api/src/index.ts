@@ -22,7 +22,6 @@ import { PUBLIC_SETTING_KEYS } from './utils/site-settings'
 import { sanitizePublicSiteSetting, sanitizePublicSiteSettings } from './utils/public-site-settings'
 import { HOME_AD_PLACEMENT, type HomeAdRow, serializePublicHomeAd } from './utils/home-ads'
 import { adminRoutes } from './routes/admin'
-import { metaResourceAttestationRoutes } from './routes/meta-resource-attestation'
 import { healthRoutes } from './routes/health'
 import { authMiddleware } from './middleware/auth'
 import { rateLimiter } from './middleware/rate-limit'
@@ -36,7 +35,7 @@ import {
 } from './services/analytics-aggregate'
 import { recoverAttributionOutbox } from './services/ad-platform/recovery'
 import { recoverRegistrationConversionFacts } from './services/registration-conversion-recovery'
-import { collectMetaDatasetQuality } from './services/meta-dataset-quality'
+import { collectAttributionQuality } from './services/ad-platform/quality-collector'
 
 /** Hono 应用绑定类型 */
 export type Bindings = {
@@ -55,14 +54,8 @@ export type Bindings = {
   IMPORT_TOKEN_DAILY_LIMIT?: string
   TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT?: string
   TELEGRAM_BOT_TOKEN_OPS_CASE_BOT?: string
-  META_CAPI_ACCESS_TOKEN?: string
-  META_CAPI_DATA_KEY_CURRENT?: string
-  META_CAPI_DATA_KEY_PREVIOUS?: string
   AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT: string
   AD_PLATFORM_CREDENTIAL_MASTER_KEY_PREVIOUS?: string
-  TIKTOK_EVENTS_ACCESS_TOKEN?: string
-  TIKTOK_EVENTS_DATA_KEY_CURRENT?: string
-  TIKTOK_EVENTS_DATA_KEY_PREVIOUS?: string
   AD_META_QUEUE?: Queue<AdPlatformQueueMessage>
   AD_TIKTOK_QUEUE?: Queue<AdPlatformQueueMessage>
   AD_GOOGLE_QUEUE?: Queue<AdPlatformQueueMessage>
@@ -132,16 +125,6 @@ app.use('/api/auth/*', rateLimiter({
   windowMs: rateLimitWindowMs(authRateLimit.window),
 }))
 
-app.use('/api/meta/resource-attestation', async (c, next) => {
-  c.header('Cache-Control', 'no-store')
-  await next()
-})
-
-app.use('/api/admin/attribution/meta/resource-attestation-ticket', async (c, next) => {
-  c.header('Cache-Control', 'no-store')
-  await next()
-})
-
 // 公开 API 速率限制兜底：每 IP 每分钟 60 次
 for (const path of [
   '/api/galleries',
@@ -156,7 +139,6 @@ for (const path of [
   '/api/contact-methods/*',
   '/api/invites/*',
   '/api/settings/public',
-  '/api/meta/resource-attestation',
   '/api/marketing-consent',
   '/api/ad-attribution',
   '/api/ad-attribution/*',
@@ -271,7 +253,6 @@ app.get('/api/settings/public', async (c) => {
   return c.json(sanitizePublicSiteSettings(settings))
 })
 
-app.route('/api/meta', metaResourceAttestationRoutes)
 app.route('/api/admin', adminRoutes)
 
 // 404 fallback
@@ -384,13 +365,13 @@ async function handleScheduled(event: ScheduledEvent, env: Bindings): Promise<vo
     console.error('[cron] 数据分析聚合任务失败:', e)
   }
 
-  // 4. Dataset Quality 只读采集独立于 CAPI 投递，失败不阻断其他维护任务。
+  // 4. 平台质量采集独立于投递，失败不阻断其他维护任务。
   try {
-    const quality = await collectMetaDatasetQuality(env, new Date(event.scheduledTime))
-    console.log('[cron] Meta Dataset Quality 采集完成:', quality)
+    const quality = await collectAttributionQuality(env, new Date(event.scheduledTime))
+    console.log('[cron] 广告平台质量采集完成:', quality)
   } catch {
-    console.error('[cron] Meta Dataset Quality 采集失败:', {
-      errorCode: 'meta_dataset_quality_collection_failed',
+    console.error('[cron] 广告平台质量采集失败:', {
+      errorCode: 'attribution_quality_collection_failed',
     })
   }
 }

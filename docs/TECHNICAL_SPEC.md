@@ -302,24 +302,20 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/admin/analytics/sessions/:id` | 单 session 脱敏事件明细，写审计日志 | owner |
 | POST | `/api/admin/analytics/exports` | 创建 CSV 导出任务并写入 R2，写审计日志 | owner |
 | GET | `/api/admin/analytics/exports/:id` | 查看导出任务状态 | owner |
-| GET | `/api/admin/attribution/summary?provider=meta\|tiktok` | 按平台返回站内事实、Pixel 与 Server API 投递摘要；`provider` 必填 | admin+ |
-| GET | `/api/admin/attribution/trends?provider=meta\|tiktok` | 按平台返回逐日业务与投递趋势；`provider` 必填 | admin+ |
-| GET | `/api/admin/attribution/quality?provider=meta\|tiktok` | 按平台返回匹配标识覆盖；Meta 额外返回 Dataset Quality，TikTok 明确标记未接入平台质量 API | admin+ |
-| GET | `/api/admin/attribution/breakdown?provider=meta\|tiktok` | 按平台返回 campaign、utm_content 或追踪链接拆分 | admin+ |
-| GET | `/api/admin/attribution/overview` | 旧版聚合兼容接口，仅供存量调用迁移；新后台不再使用 | admin+ |
-| GET | `/api/admin/attribution/conversions?provider=meta\|tiktok` | 按平台返回活动转化的来源分组、事件分组和样本明细；不混入无法确认平台的历史口径 | admin+ |
-| GET | `/api/admin/attribution/links?provider=meta\|tiktok` | 按平台返回投放追踪链接、UTM 参数和转化统计；创建和修改仍复用 `/api/admin/tracking-sources` | admin+ |
-| GET | `/api/admin/attribution/meta` | Meta Pixel / CAPI 同步状态，只返回配置存在状态和 delivery 统计，不泄露 secret | admin+ |
-| GET | `/api/admin/attribution/platforms` | 返回 Meta / TikTok 连接、开关、凭证存在性、revision 与验证状态，不返回凭证值 | admin+ |
-| PATCH | `/api/admin/attribution/platforms/:provider` | 原子更新 Meta / TikTok 连接公开配置和开关，写入审计日志 | owner |
-| POST | `/api/admin/attribution/platforms/tiktok/verify` | 使用请求级 Test Event Code 向 TikTok 发送两项测试事件并验证当前连接；代码不持久化 | owner |
-| POST | `/api/admin/attribution/meta/test-event` | 创建 Meta CAPI Test Event delivery 并写入审计日志，不返回 token 或 test code | owner |
-| POST | `/api/admin/attribution/meta/live-challenge` | 由 production Worker 创建一次性 Browser/CAPI 双事件 challenge | owner |
-| POST | `/api/admin/attribution/meta/live-challenge/consume` | 原子消费 challenge，并使用 Browser 同组 ID 真实发送两条 CAPI Test Event | owner |
-| POST | `/api/admin/attribution/meta/resource-attestation-ticket` | Owner Cookie 仅在固定可信 API origin 换取绑定环境、commit、nonce 的 60 秒一次性 ticket | owner |
-| POST | `/api/meta/resource-attestation` | 原子消费一次性 ticket 并返回当前 Worker Meta 资源 HMAC 摘要；不接受 Owner Cookie 作为凭据 | ticket |
-| GET | `/api/admin/attribution/duplicates?provider=meta\|tiktok` | 按平台查看 Contact / CompleteRegistration 重复事实和 Browser / Server 去重诊断 | admin+ |
-| GET | `/api/admin/attribution/readiness` | 归因发布检查，展示允许公开的配置项、开关和阻断项 | admin+ |
+| GET | `/api/admin/attribution/summary?provider=meta\|tiktok\|google` | 按平台返回事实与 Browser/Server 投递摘要；`provider` 必填 | admin+ |
+| GET | `/api/admin/attribution/trends?provider=meta\|tiktok\|google` | 按平台返回逐日事实与投递趋势 | admin+ |
+| GET | `/api/admin/attribution/quality?provider=meta\|tiktok\|google` | 按平台返回匹配覆盖和可用的平台质量指标 | admin+ |
+| GET | `/api/admin/attribution/capacity?provider=meta\|tiktok\|google` | 返回平台调用量、预算与容量状态 | admin+ |
+| GET | `/api/admin/attribution/breakdown?provider=meta\|tiktok\|google` | 按 campaign、utm_content 或追踪来源拆分 | admin+ |
+| GET | `/api/admin/attribution/conversions?provider=meta\|tiktok\|google` | 返回平台隔离的 Contact / CompleteRegistration 明细 | admin+ |
+| GET | `/api/admin/attribution/platforms` | 返回通用平台连接列表，不返回凭证明文 | admin+ |
+| GET | `/api/admin/attribution/platforms/:provider` | 返回单个平台连接、事件映射和验证状态 | admin+ |
+| PATCH | `/api/admin/attribution/platforms/:provider` | 原子保存公开配置、加密凭证、事件映射、开关和 rollout | owner |
+| POST | `/api/admin/attribution/platforms/:provider/verify` | 启动通用连接验证 Workflow；临时测试参数不持久化 | owner |
+| POST | `/api/admin/attribution/platforms/:provider/reverify` | 强制重新验证当前连接版本 | owner |
+| GET | `/api/admin/attribution/platforms/:provider/verification` | 返回当前连接版本的最新验证状态 | admin+ |
+| GET | `/api/admin/attribution/platforms/:provider/verifications/:verificationId` | 返回指定验证任务状态 | admin+ |
+| POST | `/api/admin/attribution/platforms/:provider/verifications/:verificationId/evidence` | 提交验证所需的人工平台证据 | owner |
 | POST | `/api/admin/legacy-import/sources` | 创建旧站来源 | admin+ |
 | POST | `/api/admin/legacy-import/jobs` | 启动旧站迁移 | admin+ |
 | GET | `/api/admin/legacy-import/jobs/:id` | 迁移任务详情 | admin+ |
@@ -623,9 +619,9 @@ INSERT INTO site_settings (key, value) VALUES
 
 ### 转化账本与归因中心表 `[当前实现]`
 
-归因中心把“站内可信事实”和“外部广告平台同步”分开维护：`analytics_conversion_actions` 是事实源，Pixel / Server API 只是 delivery 渠道。后台 `/admin/analytics` 仍是一方行为分析大盘；广告投放追踪链接、有效联系、完成注册、历史 Lead 对照、按平台投递与匹配覆盖、重复诊断和发布检查统一放在 `/admin/attribution`。
+归因中心把“站内可信事实”和“外部广告平台同步”分开维护：`attribution_conversion_facts` 是唯一事实源，Pixel / Server API 只是 delivery 渠道。后台 `/admin/analytics` 仍是一方行为分析大盘；广告来源、有效联系、完成注册、按平台投递、匹配覆盖和发布诊断统一放在 `/admin/attribution`。
 
-后台归因 UI 使用 `总览 / 转化明细 / 投放链接 / 平台接入 / 发布与诊断` 五页结构。平台选择通过 URL `provider` 显式传递；分析、链接和重复诊断 API 不提供隐式默认平台。平台接入只修改 `ad_platform_connections` 的公开配置，secret 仍由 Cloudflare Secret 管理；Meta 受控 rollout 只能在发布与诊断页通过专属门禁修改，通用连接表单不得绕过。
+后台归因 UI 使用 `总览 / 转化明细 / 投放链接 / 平台接入 / 发布与诊断` 五页结构。平台选择通过 URL `provider` 显式传递，API 不提供隐式默认平台。连接的公开配置、事件映射和加密凭证必须在同一平台事务中保存；凭证明文不回显，平台 rollout 不由部署脚本自动修改。
 
 #### 归因事实所有权 `[当前实现]`
 
@@ -635,73 +631,52 @@ INSERT INTO site_settings (key, value) VALUES
 | `CompleteRegistration` | 注册 API 在用户、邀请码和 session 事务成功后调用 `recordRegistration()`；事实修复只允许 `recordRegistrationFactOnly()` | 服务端已持久化的正整数 `userId`，客户端不能声明事件类型或注册成功 | 写入 `complete_registration` 事实并以 `userId` 去重；注册响应可携带 Pixel 指令，浏览器只能执行指令，不能通过公开 conversion API 创建注册事实。 |
 | QR 展开 | Web `ContactPanel` 通过 `useAnalytics()` 记录 `contact_qr_expand`，由 analytics ingest 所有 | 用户展开通过安全 URL 校验的二维码 | 仅是一方行为分析事件；不创建 Contact、不进入 conversion 账本，也不生成广告平台 delivery。 |
 
-历史 D1 中的 `lead` / `Lead` 保留读取，不删除数据。后台只通过 `historical.leadCount` 展示“历史 Lead”，不得将其用于活动漏斗、联系率、注册率、链接排序、Meta delivery 健康或 readiness。
-
-归因 API 的活动 `totals`、趋势、风险空态和比率只使用 Contact / CompleteRegistration。既有会员发放聚合若需保留，只能放在 `operations.membershipGrantCount` 等明确辅助结构中，不得进入活动卡片、活动总数、发放注册率或投放效果排序。
+归因 API 的活动 `totals`、趋势、风险空态和比率只使用 Contact / CompleteRegistration。`Lead`、`StartTrial` 和会员发放不属于当前广告转化事实。
 
 | 表 | 状态 | 用途 |
 |------|------|------|
-| `analytics_conversion_actions` | `[当前实现]` | 站内转化事实；新写入只由 `recordContact()`、`recordRegistration()` 和注册事实修复函数创建 `contact` / `complete_registration`。`attribution_provider` 保存服务端确认的唯一广告平台或空值，写入后不可修改。历史 schema 继续只读兼容 `lead`、`start_trial` 和既有 `membership_grant`，不删除存量数据。 |
-| `analytics_conversion_deliveries` | `[当前实现]` | 广告平台投递账本，记录 provider、transport、`external_event_id`、连接版本、状态、跳过原因、失败错误、重试次数和发送时间。 |
-| `analytics_conversion_daily` | `[当前实现]` | 按日期、事件、来源、campaign、utm_content 等维度聚合站内转化，用于后台趋势和投放对比。 |
-| `analytics_conversion_delivery_daily` | `[当前实现]` | 按日期、provider、transport、事件和 delivery 状态聚合同步结果，用于平台同步健康和发布检查。 |
+| `attribution_conversion_facts` | `[当前实现]` | Contact / CompleteRegistration 唯一事实源；记录唯一 provider、可信来源、授权快照和分析维度。 |
+| `attribution_deliveries` | `[当前实现]` | Browser/Server 投递账本；记录 provider、event ID、连接/凭证版本、状态、lease、错误和重试。 |
+| `attribution_outbox` | `[当前实现]` | 按 provider 隔离的加密临时匹配上下文；发送成功或安全终止后删除。 |
+| `attribution_platform_connections` | `[当前实现]` | 平台公开配置、模式、开关、连接版本和 rollout。 |
+| `attribution_event_bindings` | `[当前实现]` | 标准事件到 Browser/Server destination 的映射。 |
+| `attribution_credentials` | `[当前实现]` | 通用主密钥加密的平台 Token 或 Service Account。 |
+| `attribution_provider_receipts` | `[当前实现]` | 来源和 Browser 回执，不保存明文凭证。 |
+| `attribution_verifications` | `[当前实现]` | 三平台通用连接验证状态和脱敏证据。 |
+| `attribution_incidents` | `[当前实现]` | 平台运行故障与降级记录。 |
+| `attribution_quality_snapshots` | `[当前实现]` | 匹配覆盖与平台质量指标。 |
+| `attribution_usage_daily` | `[当前实现]` | 平台调用量、预算和容量统计。 |
 
 实现约束：
 
-- migration `0047_ad_platform_delivery_core.sql` 建立统一连接表和最终 delivery schema，将唯一目标约束改为 `conversion_action_id + provider + transport`，并清空旧投递技术数据。旧 `channel`、`meta_connection_revision` 和旧 Meta 站点设置键已删除；新增平台必须通过 adapter registry 接入，不得复制业务事实服务。
-- migration `0048_tiktok_pixel_connection.sql` 增加默认关闭的 TikTok 连接。TikTok Browser Pixel 复用统一连接、营销同意、Contact / CompleteRegistration 事实和 delivery 回执；PageView、ViewContent、Search 由前端 provider adapter 发送。
-- migration `0049_tiktok_events_api.sql` 是 expand 阶段：增加 `has_ttclid` / `has_ttp`、TikTok production 连接验证和按 provider 隔离的 `ad_platform_secure_outbox`，回填通用 `conversion_external_id`。为保证“先迁移、后部署”窗口以及 API Worker 回滚安全，旧 `meta_external_id`、`meta_capi_secure_outbox` 暂时保留，并由 migration trigger 双向同步；应用代码只允许读写通用结构，不得新增兼容分支。
-- migration `0050_strict_ad_source_routing.sql` 为后台投放来源增加必选 `ad_provider`，为转化事实增加不可变 `attribution_provider`，并通过 D1 trigger 拒绝已明确归因事实与 delivery 平台不一致的插入和更新。为兼容“先 migration、后 Worker”的短暂发布窗口，旧 Worker 写入的空来源事实可完成原投递；新 Worker 对空来源始终零投递。既有未绑定平台的广告来源不会被名称猜测或自动归类，迁移时停用，必须明确重建后才能参与广告平台归因。
-- contract 阶段必须作为后续独立版本执行，不能与 `0049` 同批部署。只有 production 已稳定运行通用结构、桥接两侧无差异、旧 Worker 回滚窗口关闭且前一版本可用其他方式恢复后，才允许新增 migration 删除旧列、旧表和 `trg_0049_bridge_*`。删除前必须再次通过真实 D1 历史库与空库演练。
+- `0051_unified_attribution_expand.sql` 创建最终 11 张 `attribution_*` 表；`0052_unified_attribution_contract.sql` 迁移仍有价值的 Meta 质量历史，并删除旧事实、投递、连接、验证、Outbox、Meta 运维表、桥接 trigger 和平台专用用户标识。
+- 历史 migration `0001..0050` 只负责升级路径和空库顺序建库，应用运行时不得访问其中已由 `0052` 删除的结构。
+- 新增平台必须通过 adapter registry 接入，不得复制业务事实、来源 receipt、Planner、Queue 状态机或恢复逻辑。
 - TikTok Events API 使用官方 v1.3 Web Events endpoint、`Access-Token` header、`event_source=web`、Pixel ID、`event/event_time/event_id/user/page` 契约；生产 payload 不带 `test_event_code`。Browser Pixel 与 Events API 对同一业务事实使用相同 event name 与 event ID 进行去重。
 - API 只返回 provider-aware `trackingInstructions`，前端通过广告平台 adapter registry 执行，不保留 `pixelEvents` 兼容响应。
-- 广告来源解析只接受 `fbclid`、`ttclid`、明确平台 UTM 别名或后台 `analytics_tracking_sources.ad_provider`。Meta 与 TikTok 信号同时出现、显式来源未知、来源超长、包含控制字符或 D1 查询失败时均 fail closed，不创建任何平台 delivery。
+- 广告来源解析只接受平台 click ID、明确平台 UTM 别名或后台 `analytics_tracking_sources.ad_provider`。多平台信号冲突、显式来源未知、输入非法或 D1 查询失败时均 fail closed。
 - `PUT /api/ad-attribution` 只在营销授权 receipt 有效时签发 30 分钟 `HttpOnly` 来源 receipt；前端不能通过 body 声明 provider。Contact 和注册请求还必须携带只能降级的 `adAttributionState=resolved`，缺失、冲突或校验失败一律忽略旧 receipt。
-- 一个 `analytics_conversion_actions` 最多属于一个广告平台。`meta` 事实只读取 Meta 连接、Meta 密钥与 Meta Queue；`tiktok` 事实只读取 TikTok 连接、TikTok 密钥与 TikTok Queue；空来源事实只写入一方账本。禁止 fan-out、广播或按“哪些平台已启用”决定投递目标。
-
-- 正式活动 Meta 事件严格限定为 `Contact`、`CompleteRegistration`；`Lead`、`StartTrial` 仅为历史读取值，sender 与 recovery 均不得再次发送。
+- 一个 `attribution_conversion_facts` 最多属于一个广告平台。每个平台只读取自身连接、凭证、Queue 和 receipt；空来源事实不进入任何广告平台。禁止 fan-out、广播或按启用平台枚举投递。
+- 正式活动事件严格限定为 `Contact`、`CompleteRegistration`；sender 与 recovery 不接受 `Lead` 或 `StartTrial`。
 - `/api/conversions/events` 为公开联系命令入口，仅允许提交 `contact`；完成注册由注册 API 的服务端事务创建。`lead`、`complete_registration`、`start_trial` 和 `membership_grant` 的公开提交均返回明确 4xx。
 - 公开转化入口复用应用内兜底限流，并在服务端白名单清洗 metadata；请求不得携带邮箱、手机号、联系方式明文、token、私有 R2 key、完整敏感 URL 或任意广告账户密钥。
 - 浏览器通过 `PUT /api/marketing-consent` 授权或撤销；API 使用 `SESSION_SECRET` 与 Web Crypto 签发 30 分钟 `HttpOnly`、`SameSite=Lax` receipt cookie，HTTPS 环境同时设置 `Secure`。授权 GET/PUT、Contact conversion、registration 和 Pixel receipt 重试显式通过 Web 同源 `/api` 代理：Cloudflare 环境使用 `API_SERVICE`，本地回退 API URL，代理逐条转发 `Set-Cookie` 和后续请求 cookie；其余浏览器 API 保持既有直连策略。前端 body 只能把服务端 receipt 的授权降级，缺失、篡改、过期或 denied receipt 都不能由 `consentState=granted` 升级。receipt、签名、nonce 和 cookie 值不得进入日志、D1、API 响应、审计或发布报告。
 - `consent_state=denied` 时只保留站内必要事实，不创建任何广告平台 Browser / Server delivery；服务端解析后的 `consent_state` 仅用于当次 delivery 判断，不作为 D1 字段持久化。浏览器 Pixel 以公开授权 API 返回状态为准，Server API 始终独立验证 receipt。
 - 每个平台的 Browser / Server delivery 使用同一 `external_event_id`；Pixel `attempted` 仅说明浏览器已尝试调用，不代表平台接收。只有 Server delivery 为 `sent` 且平台响应满足严格成功契约，才可显示为 API 已接收；这仍不代表广告归因成功。
-- `/api/admin/attribution/*` 需要 admin+；`/api/admin/attribution/meta/test-event` 需要 owner，并写入 `admin_audit_logs`。
+- `/api/admin/attribution/*` 需要 admin+；连接、凭证、验证和 rollout 修改需要 owner，并写入 `admin_audit_logs`。
 - Meta/TikTok/Google Server API 仅在 production 通过各自 `AD_META_QUEUE`、`AD_TIKTOK_QUEUE`、`AD_GOOGLE_QUEUE` 异步投递；主 Queue/DLQ 固定为 6 条 `meigallery-ad-*` 资源。dev/local 不绑定广告 Queue、不配置平台凭证、不调用真实平台 API。
 - 三个平台共享通用 Planner、Outbox、CAS 状态机和恢复算法，但物理 Queue、destination、connection revision、credential revision 和 rollout namespace 独立；所有读写必须限定唯一 provider，禁止交叉解密、投递、恢复或 fan-out。
 - 平台 Token/OAuth 凭证由 Owner 通过统一后台写入 D1 加密凭证库；Worker secret 只保存 `AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT/PREVIOUS`。凭证明文不返回前端、不写审计或日志。
-- 旧 `META_CAPI_*`、`TIKTOK_EVENTS_*` Secret 与旧 Queue 只在 v0.4.0 Contract 前作为旧 Worker 回滚资产保留，新运行时不读取。
-- Meta Events Manager 的 Test Event Code 是短期会话值，不属于 Pixel / CAPI 长期连接凭据。Owner 在后台输入当前 `TEST...` 代码，验证连接与 Live Evidence 共用该页面内存值；状态数据刷新不得清空该值，离开页面或重新加载后必须重新输入。API 只接受请求级代码并严格校验，代码不落 D1、不进入审计和响应，也不读取 Worker secret。资源 attestation V2 与资源摘要 V3 只证明 Pixel、CAPI token 和 data key 的环境隔离，正式事件 payload 禁止携带 `test_event_code`。
-- `/api/admin/attribution/meta` 仅返回 current/previous 有效性布尔值、previous outbox 计数、previous `pending/failed` delivery 计数和可移除状态；不返回 key ID、Base64、fingerprint 或错误 cause。
-- `corepack pnpm verify:meta-secrets` 扫描 tracked 文件与 ignored release evidence；`corepack pnpm verify:quick` 在单元测试和构建前执行该检查。production bootstrap、rollout 与最终 evidence 已由本地代码门禁强绑定，但没有外部证据时始终 fail closed。
+- Meta/TikTok Test Event Code 是单次验证参数，不属于长期凭据；代码不落 D1、不进入审计和响应，正式事件禁止携带测试码。
 - Queue 发送失败不得阻塞站内转化账本写入；delivery 必须显示 `sent`、`failed`、`skipped`、`missing_queue`、`missing_secret`、`disabled` 等可诊断状态。
-- migration `0043_meta_capi_delivery_lease.sql` 为每条 CAPI delivery 增加短期发送 lease。Queue consumer 必须在 Graph fetch 前用 D1 CAS 获取 lease，loser 不发请求；持 token 的发送结果只匹配自身 token，所有无 token 的 Queue、DLQ、安全终止和过期清理终态写都在同一 delivery `UPDATE` CAS 中要求 lease 为空或已过期，冲突时保留 outbox 并安全重试。网络、Meta 或状态写回失败按 token 释放 lease，进程崩溃则由 TTL 到期接管，重试始终复用原 `external_event_id`；`sent` 不可回归。lease token 不得进入日志、响应或报告。
+- Queue consumer 使用 `attribution_deliveries` 的短期 lease 和 D1 CAS；loser 不请求外部平台，重试复用原 event ID，`sent` 不可回归，lease token 不进入日志、响应或报告。
 
-Meta CAPI v2 远端证据链：
+### 通用归因 Contract 与生产门禁
 
-- migrations `0041_meta_live_challenges.sql`、`0045_meta_live_production.sql` 与 `0046_meta_live_match_coverage.sql` 保存绑定 production、40 字符 commit 和有效期的一次性 challenge；正式域名 Browser `fbq` 与 production CAPI 只允许 `Contact`、`CompleteRegistration`，共享 opaque external event ID，消费后不得恢复原始 ID。challenge 仅保存增强匹配覆盖布尔值：`CompleteRegistration` 必须覆盖 email hash 与 `external_id` hash，`Contact` 必须不含注册身份；正式证据不得从历史业务 delivery 推断这些口径。
-- migration `0042_meta_resource_attestation_tickets.sql` 保存 60 秒 D1 原子一次性 ticket。Owner Cookie 只能在固定可信 API origin 换取 ticket；`/api/meta/resource-attestation` 只接受 ticket 并返回 HMAC 摘要，最终请求不携带 Cookie，ticket 响应和审计均不得回显凭据。
-- production 冷启动 gate 分为 `bootstrap`、`post-deploy`、`full`：当前 commit 与未过期 D1 bootstrap permit 决定首次部署资格；部署后必须通过资源 attestation 和 `trackingMode=test` 的真实 Test Event；完整 gate 通过后才能切换 production，并由 Owner 将 rollout 从 `0` 手动升至 `10`。系统不得自动升级，只能因 incident 自动降至 `0`。
-- Meta 远端验证 CLI 默认目标为 production；`--env production` 仅为兼容显式调用。不得再创建 dev Owner 会话、dev Meta attestation、dev Meta Queue 或 dev Meta secret 来模拟生产验证。production URL 可通过 `VERIFY_PRODUCTION_API_URL`、`VERIFY_PRODUCTION_WEB_URL` 覆盖，未提供时使用生产部署默认地址。
-- Dataset Quality 使用唯一 production Dataset：批准契约固定 `GET /v25.0/dataset_quality` 的字段白名单，collector 只在 production 每日执行并写入契约 version/digest。production live challenge 必须在 24 小时内完成；人工确认在连接 revision 未变化、未失效且 Dataset Quality 契约一致时可复用 30 天。首次 bootstrap 保持 rollout `0`，full gate 仍要求两项活动事件质量快照满足 24 小时新鲜度。
-
-#### Meta 生产放行与回滚 `[当前实现 / 运维前置]`
-
-`0047_ad_platform_delivery_core.sql` 将运行配置收口到 `ad_platform_connections`；生产放行必须确认 `server_enabled=false`、rollout `0`，直至 Owner 按顺序显式开启。`0044` 将 Dataset Quality 快照绑定批准契约 digest，`0045` 将 live challenge 唯一环境收口为 production，`0046` 将 live 增强匹配证明收口到当前 challenge。Browser 与 Server 投递都必须绑定当前有效 MetaConnection revision；连接失效时两条路径均 fail closed。顺序固定为：代码关闭态 -> production bootstrap -> 生产部署 -> post-deploy attestation -> test mode MetaConnection -> production live evidence -> Dataset Quality full gate -> production mode -> Server 开关 -> `0 -> 10 -> 50 -> 100` 人工放量与观察。
-
-### 通用归因 v3 production 切换
-
-- `0051_unified_attribution_expand.sql` 是纯 Expand：仅创建 `attribution_*` 最终物理表、索引和新表 trigger，不修改、桥接、回填或删除旧表。
-- 历史回填的唯一来源是 `analytics_conversion_actions`。只迁移 `contact` 和 `complete_registration`，沿用原 `id` 与 `dedupe_key`；`fact_origin=historical_backfill`、`external_event_id=NULL`，可信 provider 仅允许 `meta/tiktok/google`，其余归入 `none`。
-- 历史授权快照固定为 marketing/ad user data/ad personalization 全部 denied，确保 Planner 不会把历史事实转为 Delivery。旧 Delivery、Outbox、Receipt、verification、incident 和技术日报不迁移；业务 `analytics_conversion_daily` 原表保留供 Contract 后单独评估。
-- `scripts/attribution-v3-backfill.sql` 只包含 `INSERT OR IGNORE`，允许故障后重复执行。对账以 `dedupe_key` 覆盖为准，允许部署窗口中新 live fact 抢先占用同一业务事实，但必须保证 canonical event/provider 一致。
-- production preflight 严格只读：旧 Meta/TikTok Server/rollout、活跃 Delivery、Outbox、新 Google Server/rollout 和两次 Queue backlog 任一非零均阻断；6 条新 Queue、Workflow 配置和 `AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT` 任一缺失也阻断。
-- D1 export 默认写到 `~/.meigallery/production-backups/attribution-v3`，目录权限 `0700`、SQL/manifest 权限 `0600`。manifest 记录 database、Git commit、Time Travel bookmark、字节数和 SHA-256，不记录凭证或业务字段。
-- production 脚本识别 `0051` 是否待应用。仅首次切换运行上述 preflight、备份、回填和对账；普通后续发布不受旧系统关闭态约束。裸 remote migration package command 被禁用，避免产生“schema 已改、Worker/回填未完成”的分叉状态。
-- 停止条件：preflight/备份失败时 production 零写入；Expand 后部署失败时可回退旧 Worker；新 Worker 后回填/对账失败时三个新平台 rollout 保持 0，修复后只重跑幂等回填和对账；Contract 前不得删除旧表或旧 Queue。
-
-严格 Test Event 必须只包含 `Contact`、`CompleteRegistration`，出现 `Lead` 或 `StartTrial` 必须阻断，并且 CAPI 的 `sent` 与 `events_received=1` 同时成立。由用户营销授权门禁控制的 Pixel 只能写入 `attempted`，不能替代这项确认。任何阶段失败都必须将 mode 切回 `disabled` 并保持 `server_enabled=false`；先关闭 Server 投递、再关闭 mode，保留 Queue/DLQ、D1 migration 和账本用于诊断。
-
-当前外部 blocker 以后台实时状态为准：最终 production commit 必须具有未过期的 Meta live、resource attestation 与 Dataset Quality 快照。首次 bootstrap 可以在 rollout `0` 且 CAPI 关闭时执行；在 post-deploy/full gate 全部通过前不得提高 rollout。
+- `0052` 执行前要求旧 Contact/CompleteRegistration 已被通用事实覆盖、旧 Server delivery 静止、旧 Outbox 清空；失败时 migration 整体回滚。
+- 若 `0052` 待执行，部署脚本先把 production D1 export、Time Travel bookmark、Git commit 和 SHA-256 manifest 写入 `~/.meigallery/production-backups/d1`，文件不进入仓库。
+- migration 后实时门禁要求 `0052` 已应用、启用的 production 连接具有当前验证、无 critical incident、无过期 Outbox、无 dead letter 且 effective rollout 不超过 target。
+- 严格 Test Event 只允许 Contact / CompleteRegistration。平台后台确认通过后由 Owner 人工设置 mode、Server 开关和 rollout，部署流程不改变业务运行参数。
 
 成本与索引口径：
 

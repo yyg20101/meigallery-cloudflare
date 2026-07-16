@@ -51,16 +51,6 @@ export async function runDevRehearsalVerification(options = {}) {
   let shouldCleanupRegistrationFixture = false
 
   try {
-    const preflightStep = await runIdempotentCommand(process.execPath, [
-      'scripts/verify-meta-migration.mjs', 'preflight', '--env', 'dev',
-    ], {
-      cwd,
-      name: 'dev-meta-migration-preflight',
-      reportCommand: 'node scripts/verify-meta-migration.mjs preflight --env dev',
-    })
-    steps.push(cleanForReport(preflightStep))
-    if (preflightStep.status !== 'passed') return { steps, notes, artifacts }
-
     const migrateStep = await runIdempotentCommand('corepack', [
       'pnpm', '--filter', '@meigallery/api', 'exec',
       'wrangler', 'd1', 'migrations', 'apply', DEV_DB_NAME,

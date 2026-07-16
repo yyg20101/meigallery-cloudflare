@@ -201,14 +201,6 @@ async function localSmokeFetch(input, init = {}) {
       },
     })
   }
-  if (url.pathname === '/api/admin/attribution/meta') {
-    return jsonResponse({
-      data: {
-        settings: { server_enabled: false },
-        deliveries: [],
-      },
-    })
-  }
   return jsonResponse({ message: 'unexpected route' }, 404)
 }
 
