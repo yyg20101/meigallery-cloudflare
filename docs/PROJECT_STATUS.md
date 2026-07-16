@@ -53,8 +53,10 @@
 
 ## Production 归因状态
 
+- 最新 production 代码提交为 `14829e8`，版本标签为 `v0.4.7`；PR #58、最终 `verify:release`、production identity、归因状态和 SEO smoke 均已通过。
 - Meta 使用 production 连接并已完成真实 Contact / CompleteRegistration 验证，当前 rollout 以后台实时值为准；最近确认值为 `10%`。
 - TikTok、Google 的启用状态以统一后台实时连接为准；代码部署不会自动开启平台或提高 rollout。
+- 部署后只读确认 production 仅存在 Meta 连接，Outbox、活动投递、dead letter 和 open critical incident 均为 0；TikTok、Google 仍待真实凭证与平台侧 Live Evidence。
 - production 域名：`616618.xyz`、`www.616618.xyz`；API：`api.616618.xyz`。
 
 ## 当前验证入口
