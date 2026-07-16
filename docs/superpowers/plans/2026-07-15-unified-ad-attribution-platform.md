@@ -1190,7 +1190,7 @@ Expected: 全部 PASS。
 
 执行记录（2026-07-16）：scripts/migration `103/103`、API `894/894`、Web unit `283/283`、Lint、API/Web TypeScript 与 Nuxt production build 已通过；当前运行代码和当前文档不再引用旧归因表、旧平台 Secret 或一次性切换脚本。
 
-- [ ] **Step 5：提交、PR、部署 Contract**
+- [x] **Step 5：提交、PR、部署 Contract**
 
 ```bash
 git add -A
@@ -1200,9 +1200,13 @@ git push origin dev
 
 通过新的 release PR 合入 `main` 后执行 `./scripts/deploy.sh production`。Contract 部署完成后删除旧 Cloudflare Queue：`meigallery-meta-capi`、`meigallery-meta-capi-dlq`、`meigallery-tiktok-events`、`meigallery-tiktok-events-dlq`，并删除旧平台 Token/Data Key Secret。删除前再次确认旧 Queue 消息为 0。
 
+执行记录（2026-07-16）：release PR #57 通过 CI 和 CodeRabbit 后合入 `main`；production 在仓库外 D1 备份完成后应用 `0052` 并部署 API/Web。部署后确认旧表为 0、最终事实 400 条、质量快照 17 条、Outbox/死信/critical incident 均为 0；四个旧 Queue 和两个旧 Meta Worker Secret 已删除，通用归因生产门禁再次通过。发布提交 `63d7ec1`，标签 `v0.4.6`。
+
 - [ ] **Step 6：最终 production 验收**
 
 确认三平台同时启用时一条事实只投递一个 provider；Browser/Server 共用 `mg3_` 编号；未同意、无来源和冲突来源零广告请求；Test Event Code 不长期保存；Google 不依赖 GA4 或 Developer Token；后台数据口径和 Free 预警准确；任一平台可独立将 Server effective 调为 0。
+
+当前状态：架构、隔离测试与 Meta production 验收已通过；TikTok、Google 仍需在各自真实生产凭据配置后完成平台侧 Live Evidence，因此本步骤保持未完成。
 
 ---
 
