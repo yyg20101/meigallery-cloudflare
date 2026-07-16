@@ -1236,11 +1236,13 @@ git push origin dev
 
 ### Task 17：完成 TikTok 与 Google production 接入
 
-- [ ] TikTok 原子保存 Pixel ID、Events API Token、两个事件绑定和 production 开关；使用当次 Test Event Code 验证后清除临时参数。
+- [x] TikTok 原子保存 Pixel ID、Events API Token、两个事件绑定和 production 开关；使用当次 Test Event Code 验证后清除临时参数。
 - [ ] TikTok Events Manager 确认 Browser/Server 的 `event`、`event_id` 一致且 Meta/Google 来源零 TikTok 请求，再按 `0% -> 10% -> 50% -> 100%` 放量。
 - [ ] Google Cloud 启用 Data Manager API，Service Account 获得 Service Usage Consumer 并加入 Google Ads 账户。
 - [ ] Google 为 Contact、CompleteRegistration 分别配置 `AW-.../label` 和 `WEBPAGE` Conversion Action ID；先 `validateOnly`，再确认 request status 与 Tag Assistant Live Evidence。
 - [ ] Google 按 `0% -> 10% -> 50% -> 100%` 放量；不接入 GA4，不要求 Developer Token。
+
+TikTok 当前进度（2026-07-16）：Browser 已启用，Server target / effective 为 `10%`；Test Events 已收到新版连接的 Contact 和 CompleteRegistration Server 样本。无拦截浏览器已验证 TikTok 来源只加载 TikTok Pixel SDK，Meta / Google SDK 均为零；仍需真实 TikTok 广告来源的同事实 Browser / Server 配对证据和分档观察。
 
 ### Task 18：三平台联合验收与收尾
 

@@ -55,8 +55,10 @@
 
 - 最新 production 代码提交为 `14829e8`，版本标签为 `v0.4.7`；PR #58、最终 `verify:release`、production identity、归因状态和 SEO smoke 均已通过。
 - Meta 使用 production 连接并已完成真实 Contact / CompleteRegistration 验证，当前 rollout 以后台实时值为准；最近确认值为 `10%`。
-- TikTok、Google 的启用状态以统一后台实时连接为准；代码部署不会自动开启平台或提高 rollout。
-- 部署后只读确认 production 仅存在 Meta 连接，Outbox、活动投递、dead letter 和 open critical incident 均为 0；TikTok、Google 仍待真实凭证与平台侧 Live Evidence。
+- TikTok production 连接已原子配置 Pixel、Events API 凭证和 Contact / CompleteRegistration 事件绑定；2026-07-16 使用当次临时 Test Event Code 完成自动验证和 Events Manager 人工证据确认，临时测试码未持久化。
+- TikTok Browser 已启用，Server target / effective 均为 `10%`；production 隔离访问只加载 TikTok Pixel SDK，Meta / Google Browser SDK 均未加载。TikTok Events Manager 的投放就绪状态仍需等待正式事件与平台最长约 24 小时刷新，不以 Test Events 代替真实流量验收。
+- TikTok Events Manager 保持 AAM 关闭、第一方 Cookie 开启、Enhanced Data Postback 关闭，避免超出项目标准事件和授权范围的自动采集。
+- Google 的启用状态以统一后台实时连接为准；代码部署不会自动开启平台或提高 rollout。
 - production 域名：`616618.xyz`、`www.616618.xyz`；API：`api.616618.xyz`。
 
 ## 当前验证入口
@@ -71,7 +73,7 @@
 
 ## 规划
 
-- TikTok 和 Google production 凭证、Test Events、Google 异步 request status 与分级 rollout 验收。
+- TikTok 继续完成真实广告来源下 Browser / Server 配对去重与 `10% -> 50% -> 100%` 观察；Google 仍需 production 凭证、转化操作、异步 request status 与分级 rollout 验收。
 - 广告花费、campaign、ad set、ad 数据导入不属于当前 Pixel/Server API 同步范围。
 - Cloudflare Stream 视频链路和完整 zip 异步导入仍待实现。
 
