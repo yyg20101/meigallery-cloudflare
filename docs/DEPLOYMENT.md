@@ -86,7 +86,7 @@ corepack pnpm verify:seo:production -- --expect-site-name 星耀传媒 --expect-
 - `0052` 已应用后的普通发布跳过迁移前 D1 备份，不重复历史回填或平台测试事件。
 - production 必须预先存在 `meigallery-ad-meta`、`meigallery-ad-meta-dlq`、`meigallery-ad-tiktok`、`meigallery-ad-tiktok-dlq`、`meigallery-ad-google`、`meigallery-ad-google-dlq`；使用 `./scripts/setup.sh production` 幂等创建。
 - `AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT` 必须是 32 字节随机值的标准 Base64，并通过 `openssl rand -base64 32 | wrangler secret put ...` 或交互式 `wrangler secret put` 配置；previous 仅在主密钥轮换窗口存在。Secret 值不得进入命令参数、文档、报告或日志。
-- 部署后门禁要求 `0052` 已应用、启用的 production 连接有当前验证、无 critical incident、无过期 Outbox、无 dead letter 且 rollout 一致。
+- 部署后门禁要求 `0052`、`0053` 已应用且全局地区策略存在，启用的 production 连接有当前验证、无 critical incident、无过期 Outbox、无 dead letter 且 rollout 一致。
 - 部署脚本不修改平台 enabled、mode、rollout、凭证或验证证据，也不调用 Meta、TikTok 或 Google Ads 事件 API。
 
 ### 广告平台 schema 契约
@@ -180,7 +180,7 @@ TikTok 与 Meta 共享通用事实和投递状态机，但不共享 Queue、凭�
 
 上线顺序固定为：
 
-1. 本地通过 migration `0001..0052`、API/Web 测试、类型检查、Nuxt production build 和 Worker dry-run。
+1. 本地通过 migration `0001..0053`、API/Web 测试、类型检查、Nuxt production build 和 Worker dry-run。
 2. 通过 `./scripts/setup.sh production` 确认统一 Queue；dev/local 不创建或绑定真实广告平台资源。
 3. 在 `/admin/attribution/platforms?provider=tiktok` 保存 Pixel ID 与 Access Token，保持 Server 关闭且 rollout `0`。
 4. 在 TikTok Events Manager 打开 Test Events，输入当次 Test Event Code 后点击“验证 Events API”。API 每次都会发送新的 `Contact` 与 `CompleteRegistration` 测试事件；连接身份未变化时复用现有 revision，不改写验证状态。Test Event Code 不写入 D1、审计或长期 secret，审计日志只记录发送数量、验证状态与 revision。
@@ -385,7 +385,7 @@ head_sampling_rate = 1
 - [ ] 每个 `sourceBotKey` 对应的 `TELEGRAM_BOT_TOKEN_<SOURCE_BOT_KEY>` secret 已配置
 - [ ] 生产 6 条 `meigallery-ad-*` Queue 已创建且 backlog 正常
 - [ ] `AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT` 已作为 production secret 配置；dev 不配置
-- [ ] `0052_unified_attribution_contract.sql` 已应用，启用的平台连接具有当前有效验证，无 critical incident、过期 Outbox 或 dead letter
+- [ ] `0052_unified_attribution_contract.sql` 与 `0053_attribution_privacy_policy.sql` 已应用且全局地区策略存在，启用的平台连接具有当前有效验证，无 critical incident、过期 Outbox 或 dead letter
 - [ ] Meta 的 `Contact` / `CompleteRegistration` 已完成人工 Browser/Server 同 ID 去重确认
 - [ ] `/admin/attribution` 可按 Meta / TikTok / Google 分别查看 Browser、Server、质量与容量；平台验证成功后才允许对应 Server 开关与 rollout
 - [ ] 如接入 Ops Hub 自动导入，Ops Hub 侧 `sourceBotKey` 与 MeiGallery Import Token allowlist 完全一致，且只提交 `metadata.type=gallery/case`

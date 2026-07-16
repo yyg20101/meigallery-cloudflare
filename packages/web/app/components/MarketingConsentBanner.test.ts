@@ -1,83 +1,90 @@
 import { mount } from '@vue/test-utils'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 import MarketingConsentBanner from './MarketingConsentBanner.vue'
 
 describe('MarketingConsentBanner', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals()
-  })
+  beforeEach(() => window.localStorage.clear())
+  afterEach(() => vi.unstubAllGlobals())
 
-  it('首次访问显示精简选择和说明入口', async () => {
-    const state = ref<'limited' | 'granted' | 'denied'>('limited')
-    const grant = vi.fn(() => { state.value = 'granted' })
-    const deny = vi.fn(() => { state.value = 'denied' })
-    vi.stubGlobal('useMarketingConsent', () => ({ state, pending: ref(false), grant, deny }))
-
+  it('严格地区显示用途清晰且选择对等的授权条', async () => {
+    const consent = consentState('limited', 'choice_required', true)
+    vi.stubGlobal('useMarketingConsent', () => consent)
     const wrapper = mountComponent()
-    const buttons = wrapper.findAll('button')
 
-    expect(wrapper.text()).toContain('允许营销追踪，用于衡量并优化广告效果。可随时更改。')
-    expect(wrapper.text()).toContain('了解详情')
-    expect(wrapper.text()).toContain('仅必要功能')
+    expect(wrapper.text()).toContain('帮助我们减少无关推广')
+    expect(wrapper.text()).toContain('不会读取聊天内容、密码或联系人内容')
+    expect(wrapper.text()).toContain('允许效果分析')
+    expect(wrapper.text()).toContain('暂不使用')
 
-    await buttons[0]?.trigger('click')
-    expect(grant).toHaveBeenCalledTimes(1)
-
-    state.value = 'limited'
-    await buttons[1]?.trigger('click')
-    expect(deny).toHaveBeenCalledTimes(1)
-  })
-
-  it('首次保存失败时在授权条内显示错误', async () => {
-    const state = ref<'limited' | 'granted' | 'denied'>('limited')
-    vi.stubGlobal('useMarketingConsent', () => ({
-      state,
-      pending: ref(false),
-      grant: vi.fn().mockRejectedValue(new Error('unavailable')),
-      deny: vi.fn(),
-    }))
-
-    const wrapper = mountComponent()
     await wrapper.findAll('button')[0]?.trigger('click')
-
-    expect(wrapper.get('[role="alert"]').text()).toBe('保存失败，请稍后重试。')
+    expect(consent.grant).toHaveBeenCalledTimes(1)
   })
 
-  it.each(['granted', 'denied'] as const)('已有 %s 选择时收起为可重新打开的设置入口', async (consent) => {
-    const state = ref<'limited' | 'granted' | 'denied'>(consent)
-    const grant = vi.fn(() => { state.value = 'granted' })
-    const deny = vi.fn(() => { state.value = 'denied' })
-    vi.stubGlobal('useMarketingConsent', () => ({ state, pending: ref(false), grant, deny }))
-
+  it('非严格地区显示一次告知但不阻断效果分析', async () => {
+    const consent = consentState('granted', 'regional_default', false)
+    vi.stubGlobal('useMarketingConsent', () => consent)
     const wrapper = mountComponent()
-    expect(wrapper.find('[aria-label="营销追踪授权"]').exists()).toBe(false)
 
-    await wrapper.get('[aria-label="打开营销追踪设置"]').trigger('click')
-    expect(wrapper.get('[role="dialog"]').text()).toContain(consent === 'granted' ? '已允许营销追踪' : '仅使用必要功能')
+    expect(wrapper.get('[aria-label="营销效果分析说明"]').text()).toContain('减少无关推广')
+    expect(wrapper.find('[aria-label="营销效果分析选择"]').exists()).toBe(false)
 
-    const choiceButtons = wrapper.get('[role="dialog"]').findAll('button')
-    await choiceButtons[2]?.trigger('click')
-    expect(deny).toHaveBeenCalledTimes(1)
+    await wrapper.get('[aria-label="关闭效果分析说明"]').trigger('click')
+    expect(window.localStorage.getItem('mei_marketing_notice_dismissed_v1')).toBe('1')
+    expect(wrapper.find('[aria-label="打开效果分析设置"]').exists()).toBe(true)
   })
 
-  it('营销追踪说明页使用正文内控件，不重复显示全局授权条', () => {
-    vi.stubGlobal('useMarketingConsent', () => ({
-      state: ref('limited'),
-      pending: ref(false),
-      grant: vi.fn(),
-      deny: vi.fn(),
-    }))
-    vi.stubGlobal('useRoute', () => ({ path: '/marketing-tracking' }))
+  it('明确选择后收起为可重新打开的设置入口', async () => {
+    const consent = consentState('denied', 'explicit', false)
+    vi.stubGlobal('useMarketingConsent', () => consent)
+    const wrapper = mountComponent()
 
+    await wrapper.get('[aria-label="打开效果分析设置"]').trigger('click')
+    expect(wrapper.get('[role="dialog"]').text()).toContain('仅使用必要功能')
+
+    const buttons = wrapper.get('[role="dialog"]').findAll('button')
+    await buttons[2]?.trigger('click')
+    expect(consent.deny).toHaveBeenCalledTimes(1)
+  })
+
+  it('GPC 状态明确说明由浏览器隐私偏好关闭', async () => {
+    const consent = consentState('denied', 'gpc', false)
+    vi.stubGlobal('useMarketingConsent', () => consent)
+    const wrapper = mountComponent()
+
+    await wrapper.get('[aria-label="打开效果分析设置"]').trigger('click')
+    expect(wrapper.get('[role="dialog"]').text()).toContain('浏览器隐私偏好已关闭效果分析')
+  })
+
+  it('说明页不重复显示全局控件', () => {
+    vi.stubGlobal('useMarketingConsent', () => consentState('limited', 'choice_required', true))
+    vi.stubGlobal('useRoute', () => ({ path: '/marketing-tracking' }))
     const wrapper = mount(MarketingConsentBanner, {
       global: { stubs: { NuxtLink: true, UIcon: true } },
     })
 
-    expect(wrapper.find('[aria-label="营销追踪授权"]').exists()).toBe(false)
-    expect(wrapper.find('[aria-label="打开营销追踪设置"]').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="营销效果分析选择"]').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="打开效果分析设置"]').exists()).toBe(false)
   })
 })
+
+function consentState(
+  initial: 'limited' | 'granted' | 'denied',
+  source: 'explicit' | 'regional_default' | 'choice_required' | 'gpc',
+  choiceRequired: boolean,
+) {
+  const state = ref(initial)
+  const grant = vi.fn(() => { state.value = 'granted' })
+  const deny = vi.fn(() => { state.value = 'denied' })
+  return {
+    state,
+    pending: ref(false),
+    decisionSource: ref(source),
+    requiresChoice: ref(choiceRequired),
+    grant,
+    deny,
+  }
+}
 
 function mountComponent() {
   vi.stubGlobal('useRoute', () => ({ path: '/' }))

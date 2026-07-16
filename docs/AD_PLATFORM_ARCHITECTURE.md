@@ -34,6 +34,8 @@ Planner + Consent + Rollout
 
 `0052_unified_attribution_contract.sql` 在事实覆盖、旧 Server 投递静止和旧 Outbox 清空后，迁移 Meta 质量历史并删除旧事实表、旧投递表、旧连接/验证表、旧 Outbox、旧 Meta 运维表、桥接 trigger 和 `users.meta_external_id`。应用运行时不得再访问这些历史结构。
 
+`0053_attribution_privacy_policy.sql` 增加平台无关的地区隐私策略。它只控制通用 Planner 和 Browser adapter 是否可以投递，不参与 provider 选择，不会把同一事件广播到多个平台。
+
 历史 migration `0001..0050` 只用于已有数据库升级和空库顺序建库，不代表当前运行架构。
 
 ## 事实与来源
@@ -53,6 +55,14 @@ Planner + Consent + Rollout
 - 同一 provider 的 Browser/Server delivery 复用同一 external event ID 去重；不同 provider 的 event ID 不共享。
 - Meta 加密上下文只允许 `fbp/fbc`，TikTok 只允许 `ttclid/ttp`，Google 只允许其标准点击和增强转化字段。
 - 连接关闭、凭证缺失、营销授权拒绝或 rollout 未命中时，站内事实仍写入，平台投递明确记录为跳过或失败。
+
+## 地区与授权
+
+- 默认使用“非严格地区告知并可退出、严格地区先选择”的统一策略；严格地区代码由 Owner 在后台维护。
+- 国家只从 Cloudflare `request.cf.country` 或同源 Web Worker 透传的 `CF-IPCountry` 读取；未知地区与 Tor 流量按先选择处理。
+- 浏览器 `Sec-GPC: 1`、站点全局停用、用户明确选择、地区默认值按此顺序决定结果。明确拒绝不会因切换地区被自动覆盖。
+- 非严格地区默认启用不签发或伪造用户同意；前台提供一次明确告知、长期可见设置入口和即时退出。
+- 地区授权只决定 delivery 是否创建。Contact / CompleteRegistration 的站内事实仍写入，单一 provider 来源和跨平台隔离不受影响。
 
 ## Adapter 边界
 

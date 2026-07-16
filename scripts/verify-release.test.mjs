@@ -47,6 +47,8 @@ describe('通用发布验证', () => {
   it('生产归因门禁仅接受 Contract 后的健康通用状态', async () => {
     const state = {
       contractMigrationCount: 1,
+      privacyPolicyMigrationCount: 1,
+      privacyPolicyRowCount: 1,
       invalidConnectionCount: 0,
       openCriticalIncidentCount: 0,
       expiredOutboxCount: 0,

@@ -21,8 +21,8 @@ marketingConsentRoutes.use('*', async (c, next) => {
 })
 
 marketingConsentRoutes.get('/', async (c) => {
-  const { state } = await resolveRequestMarketingConsent(c)
-  return c.json({ state })
+  const resolution = await resolveRequestMarketingConsent(c)
+  return c.json(publicConsentResolution(resolution))
 })
 
 marketingConsentRoutes.put('/', async (c) => {
@@ -44,10 +44,29 @@ marketingConsentRoutes.put('/', async (c) => {
     return errorJson(c, 503, '广告归因撤回暂时不可用', { code: 'AD_ATTRIBUTION_REVOKE_UNAVAILABLE' })
   }
 
+  const resolution = await resolveRequestMarketingConsent(c, undefined, undefined, body.state)
+  if (body.state === 'granted' && resolution.state !== 'granted') {
+    return c.json(publicConsentResolution(resolution))
+  }
   await persistMarketingConsentChoice(c, body.state)
   if (shouldClearAdAttribution) clearAdAttributionContextCookie(c)
-  return c.json({ state: body.state })
+  return c.json(publicConsentResolution({
+    ...resolution,
+    state: body.state,
+    decisionSource: 'explicit',
+    requiresChoice: false,
+  }))
 })
+
+function publicConsentResolution(resolution: Awaited<ReturnType<typeof resolveRequestMarketingConsent>>) {
+  return {
+    state: resolution.state,
+    policyMode: resolution.policyMode,
+    decisionSource: resolution.decisionSource,
+    requiresChoice: resolution.requiresChoice,
+    policyVersion: resolution.policyVersion,
+  }
+}
 
 async function revokeCurrentAdAttribution(c: Parameters<typeof getCookie>[0]) {
   const encrypted = getCookie(c, AD_ATTRIBUTION_CONTEXT_COOKIE)

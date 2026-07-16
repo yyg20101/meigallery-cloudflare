@@ -244,6 +244,8 @@ export async function collectTrustedProductionGateFacts(options = {}) {
   const state = await (options.queryProductionAttributionState || queryProductionAttributionState)(options)
   const blockers = [
     ['contractMigrationCount', value => value !== 1],
+    ['privacyPolicyMigrationCount', value => value !== 1],
+    ['privacyPolicyRowCount', value => value !== 1],
     ['invalidConnectionCount', value => value !== 0],
     ['openCriticalIncidentCount', value => value !== 0],
     ['expiredOutboxCount', value => value !== 0],
@@ -299,6 +301,8 @@ async function queryProductionAttributionState(options = {}) {
   const sql = `
     SELECT
       (SELECT COUNT(*) FROM d1_migrations WHERE name = '0052_unified_attribution_contract.sql') AS contract_migration_count,
+      (SELECT COUNT(*) FROM d1_migrations WHERE name = '0053_attribution_privacy_policy.sql') AS privacy_policy_migration_count,
+      (SELECT COUNT(*) FROM attribution_privacy_policy WHERE id = 'global') AS privacy_policy_row_count,
       (SELECT COUNT(*) FROM attribution_platform_connections AS connection
         WHERE connection.enabled = 1 AND connection.mode = 'production'
           AND NOT EXISTS (
