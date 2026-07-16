@@ -35,10 +35,35 @@ export async function fetchMetaQuality(input: {
   if (!response.ok) return { metrics: [], errorCategory: classifyHttpError(response.status) }
   const body = await response.json().catch(() => null)
   if (!isRecord(body) || !Array.isArray(body.web)) return { metrics: [], errorCategory: 'invalid_response' }
+  if (!hasValidQualityStructure(body.web)) return { metrics: [], errorCategory: 'invalid_response' }
   const metrics = parseMetaQualityResponse(body)
   return metrics.length > 0
     ? { metrics, errorCategory: '' }
     : { metrics: [], errorCategory: '', unavailableReason: 'no_recent_metrics' }
+}
+
+function hasValidQualityStructure(events: unknown[]) {
+  for (const event of events) {
+    if (!isRecord(event) || typeof event.event_name !== 'string') return false
+    if (!ACTIVE_EVENTS.has(event.event_name)) continue
+    const quality = event.event_match_quality
+    if (!isRecord(quality)) return false
+
+    const hasCompositeScore = quality.composite_score !== undefined
+    if (hasCompositeScore && !isFiniteNumber(quality.composite_score)) return false
+
+    const hasMatchKeyFeedback = quality.match_key_feedback !== undefined
+    if (hasMatchKeyFeedback && !Array.isArray(quality.match_key_feedback)) return false
+    if (!hasCompositeScore && !hasMatchKeyFeedback) return false
+    if (!Array.isArray(quality.match_key_feedback)) continue
+
+    for (const feedback of quality.match_key_feedback) {
+      if (!isRecord(feedback) || typeof feedback.identifier !== 'string') return false
+      const percentage = isRecord(feedback.coverage) ? feedback.coverage.percentage : null
+      if (!isFiniteNumber(percentage) || percentage < 0 || percentage > 100) return false
+    }
+  }
+  return true
 }
 
 export function parseMetaQualityResponse(input: unknown): MetaQualityMetric[] {

@@ -54,6 +54,18 @@ describe('Google accepted Delivery 异步诊断', () => {
     expect(await db.prepare("SELECT status FROM attribution_deliveries WHERE id = 'delivery_due'").first<{ status: string }>()).toEqual({ status: 'processed' })
   })
 
+  it('超过 24 小时的记录优先于普通到期记录进入 40 条批次', async () => {
+    await seedTimeoutPriorityBacklog()
+    const retrieveStatus = vi.fn(async () => ({ classification: 'processed' as const, status: 200, requestStatus: 'SUCCESS', errorReasons: [], warningReasons: [] }))
+
+    const result = await reconcileGoogleDeliveryDiagnostics(env(), new Date('2026-07-16T02:00:00.000Z'), 40, dependencies(retrieveStatus))
+
+    expect(result).toMatchObject({ scanned: 40, processed: 39, rejected: 1, timedOut: 1 })
+    expect(retrieveStatus).toHaveBeenCalledTimes(39)
+    expect(await db.prepare("SELECT status, last_error_code FROM attribution_deliveries WHERE id = 'delivery_expired'").first<{ status: string; last_error_code: string }>())
+      .toEqual({ status: 'rejected', last_error_code: 'google_diagnostic_timeout' })
+  })
+
   it('30 分钟后把 SUCCESS 原子收口为 processed 并写入质量快照', async () => {
     await seedAccepted('2026-07-16T00:00:00.000Z')
     const retrieveStatus = vi.fn(async () => ({ classification: 'processed' as const, status: 200, requestStatus: 'SUCCESS', errorReasons: [], warningReasons: [] }))
@@ -181,6 +193,45 @@ async function seedBacklog() {
         id, delivery_id, provider, receipt_type, status, receipt_json, received_at
       ) VALUES (?, ?, 'google', 'google_request_status', 'processing', '{}', '2026-07-16T01:50:00.000Z')`)
         .bind(`diagnostic_${suffix}`, deliveryId))
+    }
+  }
+  await db.batch(statements)
+}
+
+async function seedTimeoutPriorityBacklog() {
+  await db.prepare(`INSERT INTO attribution_platform_connections (
+    id, provider, enabled, mode, browser_enabled, server_enabled, public_config_json,
+    connection_revision, credential_revision
+  ) VALUES ('conn_google', 'google', 1, 'production', 1, 1, ?, 'revision_1', 'credential_1')`)
+    .bind(JSON.stringify({ tagId: 'AW-12345', customerId: '12345', cloudProjectId: 'project-1' })).run()
+
+  const statements: D1PreparedStatement[] = []
+  for (let index = 0; index < 41; index += 1) {
+    const expired = index === 40
+    const suffix = expired ? 'expired' : `normal_${index}`
+    const factId = `fact_${suffix}`
+    const deliveryId = `delivery_${suffix}`
+    const acceptedAt = expired ? '2026-07-15T00:00:00.000Z' : '2026-07-16T01:00:00.000Z'
+    statements.push(
+      db.prepare(`INSERT INTO attribution_conversion_facts (
+        id, canonical_event, fact_origin, external_event_id, attribution_provider,
+        attribution_source, occurred_at, dedupe_key, consent_snapshot_json, analytics_dimensions_json
+      ) VALUES (?, 'Contact', 'live', ?, 'google', 'context', ?, ?, '{}', '{}')`)
+        .bind(factId, `mg3_${String(index + 100).padStart(43, '0')}`, acceptedAt, `dedupe_${suffix}`),
+      db.prepare(`INSERT INTO attribution_deliveries (
+        id, fact_id, connection_id, provider, transport, status, destination, accepted_at, updated_at
+      ) VALUES (?, ?, 'conn_google', 'google', 'server', 'accepted', '123456789', ?, ?)`)
+        .bind(deliveryId, factId, acceptedAt, acceptedAt),
+      db.prepare(`INSERT INTO attribution_provider_receipts (
+        id, delivery_id, provider, receipt_type, status, receipt_json, received_at
+      ) VALUES (?, ?, 'google', 'server_delivery', 'accepted', ?, ?)`)
+        .bind(`receipt_${suffix}`, deliveryId, JSON.stringify({ status: 200, requestId: `request_${suffix}` }), acceptedAt),
+    )
+    if (expired) {
+      statements.push(db.prepare(`INSERT INTO attribution_provider_receipts (
+        id, delivery_id, provider, receipt_type, status, receipt_json, received_at
+      ) VALUES ('diagnostic_expired', ?, 'google', 'google_request_status', 'processing', '{}', '2026-07-16T01:50:00.000Z')`)
+        .bind(deliveryId))
     }
   }
   await db.batch(statements)

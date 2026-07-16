@@ -272,7 +272,7 @@ corepack pnpm --filter @meigallery/api exec wrangler secret put AD_PLATFORM_CRED
 
 要求：
 
-- dev 的 D1、R2 必须与 production 完全隔离；Meta / TikTok Queue 与凭证仅允许 production 配置。
+- dev 的 D1、R2 必须与 production 完全隔离；Meta / TikTok / Google Queue 与凭证仅允许 production 配置。
 - `verify:quick` 的 `dev-resource-isolation` 必须持续通过，确保 `env.dev` 绑定不会回退到生产资源。
 - 任何“dev 可连接生产 D1/R2 或真实广告平台”口径均视为历史策略，当前不再适用。
 

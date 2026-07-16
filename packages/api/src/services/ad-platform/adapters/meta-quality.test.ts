@@ -72,4 +72,13 @@ describe('Meta 通用质量 Adapter', () => {
     })
     expect(result).toEqual({ metrics: [], errorCategory: 'invalid_response' })
   })
+
+  it('非空活动事件缺少质量结构时不伪装成暂无近期样本', async () => {
+    const result = await fetchMetaQuality({
+      datasetId: '1277657707436781',
+      credential: 'private-token',
+      fetcher: async () => new Response('{"web":[{"event_name":"Contact"}]}', { status: 200 }),
+    })
+    expect(result).toEqual({ metrics: [], errorCategory: 'invalid_response' })
+  })
 })

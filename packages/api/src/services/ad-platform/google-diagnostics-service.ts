@@ -174,7 +174,13 @@ async function listAcceptedGoogleDeliveries(db: D1Database, now: Date, limit: nu
         OR (diagnostic_count = 2 AND datetime(last_diagnostic_at) <= datetime(?))
         OR (diagnostic_count >= 3 AND datetime(last_diagnostic_at) <= datetime(?))
       ))
-    ORDER BY COALESCE(last_diagnostic_at, accepted_at) ASC, delivery_id ASC
+    ORDER BY
+      CASE
+        WHEN datetime(accepted_at) IS NULL OR datetime(accepted_at) <= datetime(?) THEN 0
+        ELSE 1
+      END ASC,
+      COALESCE(last_diagnostic_at, accepted_at) ASC,
+      delivery_id ASC
     LIMIT ?
   `).bind(
     cutoff(now, MAX_CHECK_AGE_MS),
@@ -182,6 +188,7 @@ async function listAcceptedGoogleDeliveries(db: D1Database, now: Date, limit: nu
     cutoff(now, diagnosticBackoffMs(1)),
     cutoff(now, diagnosticBackoffMs(2)),
     cutoff(now, diagnosticBackoffMs(3)),
+    cutoff(now, MAX_CHECK_AGE_MS),
     limit,
   ).all<DiagnosticRow>()
   return result.results
