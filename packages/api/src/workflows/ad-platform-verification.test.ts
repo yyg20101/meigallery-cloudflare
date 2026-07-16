@@ -99,6 +99,10 @@ describe('广告平台验证 Workflow', () => {
   it('自动验证后清除测试码密文，人工证据完成后 revision 仍一致才通过', async () => {
     const workflow = workflowBinding()
     const env = fullEnv(workflow)
+    await db.prepare(`
+      UPDATE attribution_platform_connections SET rollout_target_percentage = 10
+      WHERE provider = 'meta'
+    `).run()
     const started = await startPlatformVerification(env, { provider: 'meta', actorId: 1, testEventCode: 'TEST90001' })
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ events_received: 2 }), { status: 200 })))
 
@@ -115,6 +119,11 @@ describe('广告平台验证 Workflow', () => {
       automatic: { provider: 'meta', testEventsSent: 2 },
       human: { confirmed: true },
     })
+    const rollout = await db.prepare(`
+      SELECT rollout_target_percentage, rollout_effective_percentage
+      FROM attribution_platform_connections WHERE provider = 'meta'
+    `).first<{ rollout_target_percentage: number; rollout_effective_percentage: number }>()
+    expect(rollout).toMatchObject({ rollout_target_percentage: 10, rollout_effective_percentage: 10 })
     vi.unstubAllGlobals()
   })
 
@@ -149,6 +158,10 @@ describe('广告平台验证 Workflow', () => {
       schemaVersion: 1,
       failureCode: 'AD_PLATFORM_VERIFICATION_PROVIDER_REJECTED',
     })
+    const rollout = await db.prepare(`
+      SELECT rollout_effective_percentage FROM attribution_platform_connections WHERE provider = 'meta'
+    `).first<{ rollout_effective_percentage: number }>()
+    expect(rollout?.rollout_effective_percentage).toBe(0)
     vi.unstubAllGlobals()
   })
 

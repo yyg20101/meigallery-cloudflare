@@ -436,6 +436,19 @@ async function finalizeVerified(
       )
     `).bind(JSON.stringify(state), verificationId),
     db.prepare(`
+      UPDATE attribution_platform_connections AS connection
+      SET rollout_effective_percentage = rollout_target_percentage,
+        updated_at = datetime('now')
+      WHERE EXISTS (
+        SELECT 1 FROM attribution_verifications AS verification
+        WHERE verification.id = ? AND verification.status = 'verified'
+          AND verification.connection_id = connection.id
+          AND verification.provider = connection.provider
+          AND verification.connection_revision = connection.connection_revision
+          AND verification.credential_revision = connection.credential_revision
+      )
+    `).bind(verificationId),
+    db.prepare(`
       INSERT INTO admin_audit_logs (
         id, admin_id, action, target_type, target_id, before_value, after_value
       )
@@ -448,7 +461,7 @@ async function finalizeVerified(
       JSON.stringify({ status: 'verified' }),
     ),
   ])
-  if (results[0] && d1Changed(results[0])) return 'verified' as const
+  if (results[0] && d1Changed(results[0]) && results[1] && d1Changed(results[1])) return 'verified' as const
   await db.batch([
     db.prepare(`
       UPDATE attribution_verifications
