@@ -4,35 +4,85 @@ export type { AdConsentSnapshot } from '@meigallery/shared'
 
 export type MarketingConsentReceiptState = Extract<AnalyticsConsentState, 'granted' | 'denied'>
 
+export interface MarketingConsentChoiceClaims {
+  state: MarketingConsentReceiptState
+  decidedAt: number
+  expiresAt: number
+  nonce: string
+}
+
 export interface MarketingConsentReceiptClaims {
   state: MarketingConsentReceiptState
   issuedAt: number
   expiresAt: number
-  nonce: string
+  decisionNonce: string
   consent: AdConsentSnapshot
 }
 
-export const MARKETING_CONSENT_RECEIPT_TTL_SECONDS = 30 * 60
+export interface MarketingConsentTokens {
+  choice?: string
+  receipt?: string
+}
 
-const SIGNING_PREFIX = 'meigallery:marketing-consent:v1:'
+export interface ResolvedMarketingConsent {
+  state: AnalyticsConsentState
+  consent: AdConsentSnapshot
+  choice: MarketingConsentChoiceClaims | null
+  needsReceiptRefresh: boolean
+}
+
+export const MARKETING_CONSENT_RECEIPT_TTL_SECONDS = 30 * 60
+export const MARKETING_CONSENT_RECEIPT_REFRESH_SECONDS = 10 * 60
+export const MARKETING_CONSENT_CHOICE_TTL_SECONDS = 180 * 24 * 60 * 60
+
+const CHOICE_SIGNING_PREFIX = 'meigallery:marketing-consent-choice:v1:'
+const RECEIPT_SIGNING_PREFIX = 'meigallery:marketing-consent-receipt:v2:'
 const SIGNATURE_BYTES = 32
 const NONCE_PATTERN = /^[0-9a-f]{32}$/
 
-export async function createMarketingConsentReceipt(
+export async function createMarketingConsentChoice(
   secret: string,
   state: MarketingConsentReceiptState,
   nowSeconds = Math.floor(Date.now() / 1000),
-): Promise<string> {
-  const claims: MarketingConsentReceiptClaims = {
+) {
+  const claims: MarketingConsentChoiceClaims = {
     state,
+    decidedAt: nowSeconds,
+    expiresAt: nowSeconds + MARKETING_CONSENT_CHOICE_TTL_SECONDS,
+    nonce: randomHex(16),
+  }
+  return {
+    claims,
+    token: await encodeSignedClaims(secret, CHOICE_SIGNING_PREFIX, claims),
+  }
+}
+
+export async function verifyMarketingConsentChoice(
+  secret: string,
+  choice: string,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): Promise<MarketingConsentChoiceClaims> {
+  const claims = await decodeSignedClaims(secret, CHOICE_SIGNING_PREFIX, choice)
+  if (!isValidChoiceClaims(claims, nowSeconds)) throw new Error('营销授权选择无效或已过期')
+  return claims
+}
+
+export async function createMarketingConsentReceipt(
+  secret: string,
+  choice: MarketingConsentReceiptState | MarketingConsentChoiceClaims,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): Promise<string> {
+  const decision = typeof choice === 'string'
+    ? { state: choice, decidedAt: nowSeconds, nonce: randomHex(16) }
+    : choice
+  const claims: MarketingConsentReceiptClaims = {
+    state: decision.state,
     issuedAt: nowSeconds,
     expiresAt: nowSeconds + MARKETING_CONSENT_RECEIPT_TTL_SECONDS,
-    nonce: randomHex(16),
-    consent: createAdConsentSnapshot(state, nowSeconds),
+    decisionNonce: decision.nonce,
+    consent: createAdConsentSnapshot(decision.state, decision.decidedAt),
   }
-  const payload = base64UrlEncode(new TextEncoder().encode(JSON.stringify(claims)))
-  const signature = await sign(secret, payload)
-  return `${payload}.${base64UrlEncode(signature)}`
+  return encodeSignedClaims(secret, RECEIPT_SIGNING_PREFIX, claims)
 }
 
 export async function verifyMarketingConsentReceipt(
@@ -40,75 +90,50 @@ export async function verifyMarketingConsentReceipt(
   receipt: string,
   nowSeconds = Math.floor(Date.now() / 1000),
 ): Promise<MarketingConsentReceiptClaims> {
-  const [payload, encodedSignature, extra] = receipt.split('.')
-  if (!payload || !encodedSignature || extra !== undefined) throw new Error('营销授权 receipt 无效')
-
-  let receivedSignature: Uint8Array
-  try {
-    receivedSignature = base64UrlDecode(encodedSignature)
-  }
-  catch {
-    throw new Error('营销授权 receipt 无效')
-  }
-  const expectedSignature = await sign(secret, payload)
-  if (!constantTimeSignatureMatch(expectedSignature, receivedSignature)) {
-    throw new Error('营销授权 receipt 签名无效')
-  }
-
-  let claims: unknown
-  try {
-    claims = JSON.parse(new TextDecoder().decode(base64UrlDecode(payload)))
-  }
-  catch {
-    throw new Error('营销授权 receipt 无效')
-  }
-  if (!isValidClaims(claims, nowSeconds)) throw new Error('营销授权 receipt 无效或已过期')
+  const claims = await decodeSignedClaims(secret, RECEIPT_SIGNING_PREFIX, receipt)
+  if (!isValidReceiptClaims(claims, nowSeconds)) throw new Error('营销授权 receipt 无效或已过期')
   return claims
 }
 
 export async function resolveTrustedMarketingConsent(
   secret: string,
-  receipt: string | undefined,
+  tokens: MarketingConsentTokens,
   requestedState: unknown,
   nowSeconds = Math.floor(Date.now() / 1000),
-): Promise<AnalyticsConsentState> {
-  if (requestedState === 'denied') return 'denied'
-  if (requestedState === 'limited') return 'limited'
-
-  let receiptState: MarketingConsentReceiptState | undefined
-  if (receipt) {
-    try {
-      receiptState = (await verifyMarketingConsentReceipt(secret, receipt, nowSeconds)).state
-    }
-    catch {
-      receiptState = undefined
-    }
-  }
-  if (receiptState === 'denied') return 'denied'
-  if (receiptState === 'granted' && (requestedState === undefined || requestedState === 'granted')) return 'granted'
-  return 'limited'
-}
-
-export async function resolveTrustedAdConsentSnapshot(
-  secret: string,
-  receipt: string | undefined,
-  requestedState: unknown,
-  nowSeconds = Math.floor(Date.now() / 1000),
-): Promise<AdConsentSnapshot> {
-  const state = await resolveTrustedMarketingConsent(secret, receipt, requestedState, nowSeconds)
-  if (state !== 'granted') return createAdConsentSnapshot('denied', nowSeconds)
-  if (!receipt) return createAdConsentSnapshot('denied', nowSeconds)
-  try {
-    return (await verifyMarketingConsentReceipt(secret, receipt, nowSeconds)).consent
-  }
-  catch {
-    return createAdConsentSnapshot('denied', nowSeconds)
+): Promise<ResolvedMarketingConsent> {
+  const [receipt, choice] = await Promise.all([
+    verifyOptionalReceipt(secret, tokens.receipt, nowSeconds),
+    verifyOptionalChoice(secret, tokens.choice, nowSeconds),
+  ])
+  const proofsConflict = Boolean(receipt && choice && (
+    receipt.state !== choice.state
+    || receipt.decisionNonce !== choice.nonce
+    || receipt.consent.decidedAt !== new Date(choice.decidedAt * 1_000).toISOString()
+  ))
+  const trustedState = proofsConflict ? undefined : receipt?.state ?? choice?.state
+  const trustedConsent = proofsConflict
+    ? undefined
+    : receipt?.consent ?? (choice ? createAdConsentSnapshot(choice.state, choice.decidedAt) : undefined)
+  const state = limitRequestedState(trustedState, requestedState)
+  const consent = state === 'granted' && trustedConsent?.marketingAllowed
+    ? trustedConsent
+    : createAdConsentSnapshot('denied', nowSeconds)
+  const needsReceiptRefresh = Boolean(
+    !proofsConflict
+    && choice
+    && (!receipt || receipt.expiresAt - nowSeconds <= MARKETING_CONSENT_RECEIPT_REFRESH_SECONDS),
+  )
+  return {
+    state,
+    consent,
+    choice: proofsConflict ? null : choice,
+    needsReceiptRefresh,
   }
 }
 
 export function createAdConsentSnapshot(
   state: MarketingConsentReceiptState,
-  nowSeconds = Math.floor(Date.now() / 1000),
+  decidedAtSeconds = Math.floor(Date.now() / 1000),
 ): AdConsentSnapshot {
   const allowed = state === 'granted'
   return {
@@ -116,11 +141,52 @@ export function createAdConsentSnapshot(
     marketingAllowed: allowed,
     adUserDataAllowed: allowed,
     adPersonalizationAllowed: allowed,
-    decidedAt: new Date(nowSeconds * 1_000).toISOString(),
+    decidedAt: new Date(decidedAtSeconds * 1_000).toISOString(),
   }
 }
 
-async function sign(secret: string, payload: string) {
+async function verifyOptionalChoice(secret: string, value: string | undefined, nowSeconds: number) {
+  if (!value) return null
+  try { return await verifyMarketingConsentChoice(secret, value, nowSeconds) }
+  catch { return null }
+}
+
+async function verifyOptionalReceipt(secret: string, value: string | undefined, nowSeconds: number) {
+  if (!value) return null
+  try { return await verifyMarketingConsentReceipt(secret, value, nowSeconds) }
+  catch { return null }
+}
+
+function limitRequestedState(
+  trustedState: MarketingConsentReceiptState | undefined,
+  requestedState: unknown,
+): AnalyticsConsentState {
+  if (requestedState === 'denied') return 'denied'
+  if (requestedState === 'limited') return 'limited'
+  if (trustedState === 'denied') return 'denied'
+  if (trustedState === 'granted' && (requestedState === undefined || requestedState === 'granted')) return 'granted'
+  return 'limited'
+}
+
+async function encodeSignedClaims(secret: string, prefix: string, claims: object) {
+  const payload = base64UrlEncode(new TextEncoder().encode(JSON.stringify(claims)))
+  const signature = await sign(secret, prefix, payload)
+  return `${payload}.${base64UrlEncode(signature)}`
+}
+
+async function decodeSignedClaims(secret: string, prefix: string, token: string): Promise<unknown> {
+  const [payload, encodedSignature, extra] = token.split('.')
+  if (!payload || !encodedSignature || extra !== undefined) throw new Error('营销授权凭证无效')
+  let receivedSignature: Uint8Array
+  try { receivedSignature = base64UrlDecode(encodedSignature) }
+  catch { throw new Error('营销授权凭证无效') }
+  const expectedSignature = await sign(secret, prefix, payload)
+  if (!constantTimeSignatureMatch(expectedSignature, receivedSignature)) throw new Error('营销授权凭证签名无效')
+  try { return JSON.parse(new TextDecoder().decode(base64UrlDecode(payload))) }
+  catch { throw new Error('营销授权凭证无效') }
+}
+
+async function sign(secret: string, prefix: string, payload: string) {
   const key = await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(secret),
@@ -131,14 +197,29 @@ async function sign(secret: string, payload: string) {
   return new Uint8Array(await crypto.subtle.sign(
     'HMAC',
     key,
-    new TextEncoder().encode(`${SIGNING_PREFIX}${payload}`),
+    new TextEncoder().encode(`${prefix}${payload}`),
   ))
 }
 
-function isValidClaims(value: unknown, nowSeconds: number): value is MarketingConsentReceiptClaims {
+function isValidChoiceClaims(value: unknown, nowSeconds: number): value is MarketingConsentChoiceClaims {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   const keys = Object.keys(value)
-  if (keys.length !== 5 || !keys.every(key => ['state', 'issuedAt', 'expiresAt', 'nonce', 'consent'].includes(key))) return false
+  if (keys.length !== 4 || !keys.every(key => ['state', 'decidedAt', 'expiresAt', 'nonce'].includes(key))) return false
+  const claims = value as Partial<MarketingConsentChoiceClaims>
+  return (claims.state === 'granted' || claims.state === 'denied')
+    && Number.isInteger(claims.decidedAt)
+    && Number.isInteger(claims.expiresAt)
+    && Number(claims.decidedAt) <= nowSeconds
+    && Number(claims.expiresAt) > nowSeconds
+    && Number(claims.expiresAt) - Number(claims.decidedAt) === MARKETING_CONSENT_CHOICE_TTL_SECONDS
+    && typeof claims.nonce === 'string'
+    && NONCE_PATTERN.test(claims.nonce)
+}
+
+function isValidReceiptClaims(value: unknown, nowSeconds: number): value is MarketingConsentReceiptClaims {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const keys = Object.keys(value)
+  if (keys.length !== 5 || !keys.every(key => ['state', 'issuedAt', 'expiresAt', 'decisionNonce', 'consent'].includes(key))) return false
   const claims = value as Partial<MarketingConsentReceiptClaims>
   return (claims.state === 'granted' || claims.state === 'denied')
     && Number.isInteger(claims.issuedAt)
@@ -146,8 +227,8 @@ function isValidClaims(value: unknown, nowSeconds: number): value is MarketingCo
     && Number(claims.issuedAt) <= nowSeconds
     && Number(claims.expiresAt) > nowSeconds
     && Number(claims.expiresAt) - Number(claims.issuedAt) === MARKETING_CONSENT_RECEIPT_TTL_SECONDS
-    && typeof claims.nonce === 'string'
-    && NONCE_PATTERN.test(claims.nonce)
+    && typeof claims.decisionNonce === 'string'
+    && NONCE_PATTERN.test(claims.decisionNonce)
     && isValidAdConsentSnapshot(claims.consent, claims.state, claims.issuedAt)
 }
 
@@ -155,12 +236,14 @@ function isValidAdConsentSnapshot(value: unknown, state: MarketingConsentReceipt
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   const snapshot = value as Partial<AdConsentSnapshot>
   const allowed = state === 'granted'
+  const decidedAt = Date.parse(String(snapshot.decidedAt))
   return Object.keys(value).length === 5
     && snapshot.consentVersion === 1
     && snapshot.marketingAllowed === allowed
     && snapshot.adUserDataAllowed === allowed
     && snapshot.adPersonalizationAllowed === allowed
-    && snapshot.decidedAt === new Date(Number(issuedAt) * 1_000).toISOString()
+    && Number.isFinite(decidedAt)
+    && decidedAt <= Number(issuedAt) * 1_000
 }
 
 function randomHex(byteLength: number) {

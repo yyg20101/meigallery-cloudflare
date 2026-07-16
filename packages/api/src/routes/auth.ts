@@ -17,13 +17,11 @@ import { consumeInviteCodeForRegistration } from '../services/invite-codes'
 import type { AnalyticsConsentState } from '@meigallery/shared'
 import { recordRegistration } from '../services/conversions'
 import { getCookie } from 'hono/cookie'
-import { MARKETING_CONSENT_RECEIPT_COOKIE } from './marketing-consent'
-import { resolveTrustedMarketingConsent } from '../utils/marketing-consent-receipt'
 import { AD_ATTRIBUTION_CONTEXT_COOKIE } from './ad-attribution'
 import { loadAttributionCryptoKeys } from '../utils/attribution-crypto'
 import { resolveTrustedAdAttributionContext } from '../utils/ad-attribution-context'
-import { resolveTrustedAdConsentSnapshot } from '../utils/marketing-consent-receipt'
 import { hashAdPlatformEmail, readAdPlatformBrowserIdentifiersFromRequest } from '../utils/ad-platform-identifiers'
+import { resolveRequestMarketingConsent } from '../utils/marketing-consent-request'
 
 type RegistrationAttributionContext = {
   visitorId?: string
@@ -253,16 +251,9 @@ authRoutes.post('/register', async (c) => {
     .run()
   const userId = insertResult.meta.last_row_id
   const attribution = normalizeRegistrationAttribution(body.attribution, userId)
-  attribution.consentState = await resolveTrustedMarketingConsent(
-    c.env.SESSION_SECRET,
-    getCookie(c, MARKETING_CONSENT_RECEIPT_COOKIE),
-    attribution.consentState,
-  )
-  const consentSnapshot = await resolveTrustedAdConsentSnapshot(
-    c.env.SESSION_SECRET,
-    getCookie(c, MARKETING_CONSENT_RECEIPT_COOKIE),
-    attribution.consentState,
-  )
+  const marketingConsent = await resolveRequestMarketingConsent(c, attribution.consentState)
+  attribution.consentState = marketingConsent.state
+  const consentSnapshot = marketingConsent.consent
   const attributionContext = consentSnapshot.marketingAllowed
     && attribution.adAttributionState !== 'suppress'
     ? await trustedRegistrationAttributionContext(c)

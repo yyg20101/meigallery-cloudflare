@@ -58,6 +58,7 @@
 - TikTok production 连接已原子配置 Pixel、Events API 凭证和 Contact / CompleteRegistration 事件绑定；2026-07-16 使用当次临时 Test Event Code 完成自动验证和 Events Manager 人工证据确认，临时测试码未持久化。
 - TikTok Browser 已启用，Server target / effective 均为 `10%`；production 隔离访问只加载 TikTok Pixel SDK，Meta / Google Browser SDK 均未加载。TikTok Events Manager 的投放就绪状态仍需等待正式事件与平台最长约 24 小时刷新，不以 Test Events 代替真实流量验收。
 - TikTok Events Manager 保持 AAM 关闭、第一方 Cookie 开启、Enhanced Data Postback 关闭，避免超出项目标准事件和授权范围的自动采集。
+- 营销授权采用 180 天长期签名选择与 30 分钟短期 receipt 两层机制；Pixel、Contact 和 Registration 会在长期选择有效且一致时静默续签，未选择或拒绝仍保持所有广告平台零投递。前台授权条已精简，并提供全站撤回入口和 `/marketing-tracking` 说明页。
 - Google 的启用状态以统一后台实时连接为准；代码部署不会自动开启平台或提高 rollout。
 - production 域名：`616618.xyz`、`www.616618.xyz`；API：`api.616618.xyz`。
 

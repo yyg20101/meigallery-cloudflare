@@ -656,12 +656,12 @@ INSERT INTO site_settings (key, value) VALUES
 - Google Data Manager `events:ingest` 顶层写入服务端可信 Consent，`events[].transactionId` 与 Browser `transaction_id` 共用同一外部事件编号。HTTP 2xx 必须返回安全 `requestId` 才进入 `accepted`；Cron 在 30 分钟后通过 `requestStatus.retrieve` 查询异步结果，按 1.3 倍退避、单次最多 60 分钟、总计最多 24 小时收口为 `processed` 或 `rejected`。每次 Cron 最多诊断 40 条 accepted delivery，为 Workers Free 的 50 个外部 subrequest 上限保留 OAuth、重定向和维护余量。不得把 `accepted` 表述为最终处理或广告归因成功。
 - API 只返回 provider-aware `trackingInstructions`，前端通过广告平台 adapter registry 执行，不保留 `pixelEvents` 兼容响应。
 - 广告来源解析只接受平台 click ID、明确平台 UTM 别名或后台 `analytics_tracking_sources.ad_provider`。多平台信号冲突、显式来源未知、输入非法或 D1 查询失败时均 fail closed。
-- `PUT /api/ad-attribution` 只在营销授权 receipt 有效时签发 30 分钟 `HttpOnly` 来源 receipt；前端不能通过 body 声明 provider。Contact 和注册请求还必须携带只能降级的 `adAttributionState=resolved`，缺失、冲突或校验失败一律忽略旧 receipt。
+- `PUT /api/ad-attribution` 只在可信营销授权有效时签发 30 天 `HttpOnly` 加密来源上下文；前端不能通过 body 声明 provider。Contact 和注册请求还必须携带只能降级的 `adAttributionState=resolved`，缺失、冲突或校验失败一律忽略旧上下文。
 - 一个 `attribution_conversion_facts` 最多属于一个广告平台。每个平台只读取自身连接、凭证、Queue 和 receipt；空来源事实不进入任何广告平台。禁止 fan-out、广播或按启用平台枚举投递。
 - 正式活动事件严格限定为 `Contact`、`CompleteRegistration`；sender 与 recovery 不接受 `Lead` 或 `StartTrial`。
 - `/api/conversions/events` 为公开联系命令入口，仅允许提交 `contact`；完成注册由注册 API 的服务端事务创建。`lead`、`complete_registration`、`start_trial` 和 `membership_grant` 的公开提交均返回明确 4xx。
 - 公开转化入口复用应用内兜底限流，并在服务端白名单清洗 metadata；请求不得携带邮箱、手机号、联系方式明文、token、私有 R2 key、完整敏感 URL 或任意广告账户密钥。
-- 浏览器通过 `PUT /api/marketing-consent` 授权或撤销；API 使用 `SESSION_SECRET` 与 Web Crypto 签发 30 分钟 `HttpOnly`、`SameSite=Lax` receipt cookie，HTTPS 环境同时设置 `Secure`。授权 GET/PUT、Contact conversion、registration 和 Pixel receipt 重试显式通过 Web 同源 `/api` 代理：Cloudflare 环境使用 `API_SERVICE`，本地回退 API URL，代理逐条转发 `Set-Cookie` 和后续请求 cookie；其余浏览器 API 保持既有直连策略。前端 body 只能把服务端 receipt 的授权降级，缺失、篡改、过期或 denied receipt 都不能由 `consentState=granted` 升级。receipt、签名、nonce 和 cookie 值不得进入日志、D1、API 响应、审计或发布报告。
+- 浏览器通过 `PUT /api/marketing-consent` 授权或撤销；API 使用 `SESSION_SECRET` 与 Web Crypto 分别签发 180 天长期选择和 30 分钟短期 receipt，两者均为 `HttpOnly`、`SameSite=Lax`，HTTPS 环境同时设置 `Secure`，并使用不同 HMAC purpose 防止互换。授权 GET/PUT、来源 bootstrap、Contact conversion 和 registration 统一验证两层凭证；短期 receipt 临近或达到有效期时由仍有效且一致的长期选择静默续签。Cloudflare 环境通过 Web 同源 `/api` 与 `API_SERVICE` 代理逐条转发 `Set-Cookie`，本地回退 API URL；前端 body 只能降低授权，缺失、篡改、过期、冲突或 denied proof 均不能由 `consentState=granted` 升级。用户撤回后长期选择改为 denied，并立即清理来源上下文和未投递归因。所有 token、签名、nonce 和 cookie 值不得进入日志、D1、API 响应、审计或发布报告。
 - `consent_state=denied` 时只保留站内必要事实，不创建任何广告平台 Browser / Server delivery；服务端解析后的 `consent_state` 仅用于当次 delivery 判断，不作为 D1 字段持久化。浏览器 Pixel 以公开授权 API 返回状态为准，Server API 始终独立验证 receipt。
 - 每个平台的 Browser / Server delivery 使用同一 `external_event_id`；Pixel `attempted` 仅说明浏览器已尝试调用，不代表平台接收。Server delivery 只有在平台响应满足严格成功契约时才进入 `accepted`；Google 还必须等待异步诊断进入 `processed`。平台接收或处理完成仍不代表广告归因成功。
 - `/api/admin/attribution/*` 需要 admin+；连接、凭证、验证和 rollout 修改需要 owner，并写入 `admin_audit_logs`。

@@ -11,8 +11,7 @@ import {
   sealAdAttributionContext,
 } from '../utils/ad-attribution-context'
 import { loadAttributionCryptoKeys } from '../utils/attribution-crypto'
-import { resolveTrustedMarketingConsent } from '../utils/marketing-consent-receipt'
-import { MARKETING_CONSENT_RECEIPT_COOKIE } from './marketing-consent'
+import { resolveRequestMarketingConsent } from '../utils/marketing-consent-request'
 
 export const AD_ATTRIBUTION_CONTEXT_COOKIE = 'mei_ad_attribution'
 /** 旧 receipt 仅为过渡期导出；任务 4 不再签发或读取。 */
@@ -26,11 +25,7 @@ adAttributionRoutes.use('*', async (c, next) => {
 })
 
 adAttributionRoutes.get('/bootstrap', async (c) => {
-  const consentState = await resolveTrustedMarketingConsent(
-    c.env.SESSION_SECRET,
-    getCookie(c, MARKETING_CONSENT_RECEIPT_COOKIE),
-    undefined,
-  )
+  const { state: consentState } = await resolveRequestMarketingConsent(c)
   if (consentState !== 'granted') return c.json(emptyBootstrapResponse())
 
   try {
@@ -60,11 +55,7 @@ adAttributionRoutes.get('/bootstrap', async (c) => {
 })
 
 adAttributionRoutes.put('/', async (c) => {
-  const consentState = await resolveTrustedMarketingConsent(
-    c.env.SESSION_SECRET,
-    getCookie(c, MARKETING_CONSENT_RECEIPT_COOKIE),
-    undefined,
-  )
+  const { state: consentState } = await resolveRequestMarketingConsent(c)
   if (consentState !== 'granted') {
     clearContextCookie(c)
     return c.json(emptyResponse())
