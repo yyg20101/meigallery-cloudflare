@@ -317,19 +317,19 @@ export async function createWorkflowId(input: {
   const logical = [
     'verify', input.provider, input.connectionId,
     input.connectionRevision, input.credentialRevision, String(input.attempt),
-  ].join(':')
-  if (logical.length <= 100 && validIdentifier(logical)) return logical
+  ].join('\u0000')
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(logical)))
-  return `verify:${input.provider}:${base64Url(digest)}`
+  return `verify-${input.provider}-${base64Url(digest)}`
 }
 
 async function ensureWorkflow(env: AdPlatformVerificationEnv, verificationId: string) {
   try {
-    return await env.AD_PLATFORM_VERIFICATION_WORKFLOW.create({
+    const [created] = await env.AD_PLATFORM_VERIFICATION_WORKFLOW.createBatch([{
       id: verificationId,
       params: { verificationId },
       retention: { successRetention: '3 days', errorRetention: '3 days' },
-    })
+    }])
+    return created ?? await env.AD_PLATFORM_VERIFICATION_WORKFLOW.get(verificationId)
   }
   catch {
     try {
@@ -573,7 +573,7 @@ function validProvider(value: unknown): value is AdAttributionProvider {
 }
 
 function validIdentifier(value: unknown): value is string {
-  return typeof value === 'string' && /^[A-Za-z0-9:_-]{1,160}$/.test(value)
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(value)
 }
 
 function d1Changed(result: D1Result<unknown>) {
