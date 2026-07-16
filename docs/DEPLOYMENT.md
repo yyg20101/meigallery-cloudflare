@@ -374,7 +374,7 @@ head_sampling_rate = 1
 - [ ] 域名 DNS 已接入 Cloudflare
 - [ ] `meigallery-web` Worker 已部署并绑定 `616618.xyz`
 - [ ] `meigallery-api` Worker 已部署并绑定 `api.616618.xyz`
-- [ ] D1 数据库 `meigallery-db` 已创建，`0001` 到 `0049` migrations 已依次执行
+- [ ] D1 数据库 `meigallery-db` 已创建，`0001` 到 `0053` migrations 已依次执行
 - [ ] R2 bucket `meigallery-media` 已创建并设置私有访问策略
 - [ ] Stream 上传和播放流程验证通过（当前未接入）
 - [ ] 所有 Worker secrets 已配置（SESSION_SECRET、TURNSTILE_SECRET_KEY、STREAM_ACCOUNT_ID、STREAM_API_TOKEN）
@@ -385,7 +385,7 @@ head_sampling_rate = 1
 - [ ] 每个 `sourceBotKey` 对应的 `TELEGRAM_BOT_TOKEN_<SOURCE_BOT_KEY>` secret 已配置
 - [ ] 生产 6 条 `meigallery-ad-*` Queue 已创建且 backlog 正常
 - [ ] `AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT` 已作为 production secret 配置；dev 不配置
-- [ ] `0052_unified_attribution_contract.sql` 与 `0053_attribution_privacy_policy.sql` 已应用且全局地区策略存在，启用的平台连接具有当前有效验证，无 critical incident、过期 Outbox 或 dead letter
+- [ ] `0052_unified_attribution_contract.sql` 与 `0053_attribution_privacy_policy.sql` 已应用且全局地区策略存在，启用的平台连接具有当前有效验证，无 critical incident、过期 Outbox 或 dead letter，rollout target/effective 一致
 - [ ] Meta 的 `Contact` / `CompleteRegistration` 已完成人工 Browser/Server 同 ID 去重确认
 - [ ] `/admin/attribution` 可按 Meta / TikTok / Google 分别查看 Browser、Server、质量与容量；平台验证成功后才允许对应 Server 开关与 rollout
 - [ ] 如接入 Ops Hub 自动导入，Ops Hub 侧 `sourceBotKey` 与 MeiGallery Import Token allowlist 完全一致，且只提交 `metadata.type=gallery/case`

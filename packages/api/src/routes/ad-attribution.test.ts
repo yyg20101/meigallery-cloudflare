@@ -140,6 +140,25 @@ describe('公开广告来源 API', () => {
     expectClearsBothAttributionCookies(response)
   })
 
+  it('营销授权解析异常时 bootstrap 与来源写入都失败关闭', async () => {
+    const throwingEnv = env() as Bindings
+    Object.defineProperty(throwingEnv, 'SESSION_SECRET', {
+      get() { throw new Error('secret unavailable') },
+    })
+    const bootstrap = await app().request('https://api.616618.xyz/api/ad-attribution/bootstrap', {}, throwingEnv)
+    const update = await app().request('https://api.616618.xyz/api/ad-attribution', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ fbclid: 'meta-click' }),
+    }, throwingEnv)
+
+    expect(bootstrap.status).toBe(200)
+    expect(await bootstrap.json()).toEqual({ provider: null, publicConfig: null })
+    expect(update.status).toBe(503)
+    expect(await update.json()).toEqual({ provider: null, resolution: 'none', expiresInSeconds: null })
+    expectClearsBothAttributionCookies(update)
+  })
+
   it('客户端直接声明 provider 不会被接受', async () => {
     const consent = await createMarketingConsentReceipt(SECRET, 'granted')
     const response = await app().request('https://api.616618.xyz/api/ad-attribution', {

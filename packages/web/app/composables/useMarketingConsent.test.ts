@@ -72,7 +72,13 @@ describe('useMarketingConsent', () => {
 
   it('历史 granted 后 refresh 失败时先强制降级 limited 再抛错', async () => {
     const consent = useMarketingConsent()
-    api.mockResolvedValueOnce({ state: 'granted' })
+    api.mockResolvedValueOnce({
+      state: 'granted',
+      policyMode: 'notice_opt_out',
+      decisionSource: 'regional_default',
+      requiresChoice: false,
+      policyVersion: 3,
+    })
     await consent.refresh()
     expect(consent.state.value).toBe('granted')
 
@@ -80,5 +86,9 @@ describe('useMarketingConsent', () => {
     await expect(consent.refresh()).rejects.toThrow('refresh failed')
     expect(consent.state.value).toBe('limited')
     expect(consent.canTrackMarketing.value).toBe(false)
+    expect(consent.policyMode.value).toBe('prior_consent')
+    expect(consent.decisionSource.value).toBe('choice_required')
+    expect(consent.requiresChoice.value).toBe(false)
+    expect(consent.policyVersion.value).toBe(0)
   })
 })

@@ -1,5 +1,6 @@
 import type { Context } from 'hono'
 import { getCookie, setCookie } from 'hono/cookie'
+import type { MarketingConsentDecisionSource } from '@meigallery/shared'
 import type { Bindings, Variables } from '../index'
 import {
   isPriorConsentRegion,
@@ -20,14 +21,6 @@ export const MARKETING_CONSENT_CHOICE_COOKIE = 'mei_marketing_consent_choice'
 export const MARKETING_CONSENT_RECEIPT_COOKIE = 'mei_marketing_consent_receipt'
 
 type AppContext = Context<{ Bindings: Bindings; Variables: Variables }>
-
-export type MarketingConsentDecisionSource =
-  | 'explicit'
-  | 'regional_default'
-  | 'choice_required'
-  | 'gpc'
-  | 'disabled'
-  | 'request_limit'
 
 export interface RequestMarketingConsentResolution extends Awaited<ReturnType<typeof resolveTrustedMarketingConsent>> {
   policyMode: AttributionPrivacyDefaultMode
@@ -51,11 +44,6 @@ export async function resolveRequestMarketingConsent(
     undefined,
     nowSeconds,
   )
-  if (trusted.needsReceiptRefresh && trusted.choice) {
-    const receipt = await createMarketingConsentReceipt(c.env.SESSION_SECRET, trusted.choice, nowSeconds)
-    setConsentCookie(c, MARKETING_CONSENT_RECEIPT_COOKIE, receipt, MARKETING_CONSENT_RECEIPT_TTL_SECONDS)
-  }
-
   const policy = await readAttributionPrivacyPolicy(c.env.DB)
   const countryCode = requestCountryCode(c.req.raw)
   const priorConsentRegion = isPriorConsentRegion(policy, countryCode)
@@ -77,7 +65,7 @@ export async function resolveRequestMarketingConsent(
     state = explicitState
     decisionSource = 'explicit'
   }
-  else if (priorConsentRegion) {
+  else if (priorConsentRegion || trusted.hasInvalidProof) {
     state = 'limited'
     decisionSource = 'choice_required'
   }
@@ -89,6 +77,10 @@ export async function resolveRequestMarketingConsent(
   if (requestedState === 'denied' || requestedState === 'limited') {
     state = requestedState
     decisionSource = 'request_limit'
+  }
+  if (trusted.needsReceiptRefresh && trusted.choice && state === 'granted') {
+    const receipt = await createMarketingConsentReceipt(c.env.SESSION_SECRET, trusted.choice, nowSeconds)
+    setConsentCookie(c, MARKETING_CONSENT_RECEIPT_COOKIE, receipt, MARKETING_CONSENT_RECEIPT_TTL_SECONDS)
   }
   const consent = state === 'granted'
     ? createAdConsentSnapshot('granted', nowSeconds)

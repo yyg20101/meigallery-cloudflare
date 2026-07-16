@@ -1,9 +1,9 @@
 <script setup lang="ts">
+import type { MarketingConsentPolicyMode } from '@meigallery/shared'
 import AttributionPageShell from '~/components/admin/attribution/AttributionPageShell.vue'
 
-type PolicyMode = 'notice_opt_out' | 'prior_consent' | 'disabled'
 type PrivacyPolicy = {
-  defaultMode: PolicyMode
+  defaultMode: MarketingConsentPolicyMode
   priorConsentCountryCodes: string[]
   policyVersion: number
   updatedAt: string | null
@@ -19,10 +19,10 @@ const saving = ref(false)
 const error = ref('')
 const message = ref('')
 const policy = ref<PrivacyPolicy | null>(null)
-const defaultMode = ref<PolicyMode>('notice_opt_out')
+const defaultMode = ref<MarketingConsentPolicyMode>('notice_opt_out')
 const countryCodesText = ref('')
 
-const modeOptions: Array<{ value: PolicyMode; label: string; description: string }> = [
+const modeOptions: Array<{ value: MarketingConsentPolicyMode; label: string; description: string }> = [
   { value: 'notice_opt_out', label: '通知并允许', description: '非严格地区在明确告知后启用效果分析，并保留随时关闭入口。' },
   { value: 'prior_consent', label: '全部先选择', description: '所有地区都必须先选择，未选择前不加载 Pixel 或 Server API。' },
   { value: 'disabled', label: '全部关闭', description: '紧急停用所有广告平台追踪，站内有效联系事实仍会记录。' },
@@ -97,21 +97,21 @@ onMounted(refresh)
           </div>
           <span class="text-xs text-gray-500">策略版本 {{ policy.policyVersion }}</span>
         </div>
-        <div class="mt-4 grid gap-2 lg:grid-cols-3">
-          <label v-for="option in modeOptions" :key="option.value" class="flex cursor-pointer gap-3 rounded-md border border-gray-200 p-3 hover:border-gray-400">
-            <input v-model="defaultMode" type="radio" name="defaultMode" :value="option.value" class="mt-1 h-4 w-4">
-            <span class="min-w-0">
-              <span class="block text-sm font-medium text-gray-900">{{ option.label }}</span>
-              <span class="mt-1 block text-xs leading-5 text-gray-500">{{ option.description }}</span>
-            </span>
-          </label>
-        </div>
+        <URadioGroup
+          v-model="defaultMode"
+          :items="modeOptions"
+          value-key="value"
+          color="neutral"
+          variant="card"
+          class="mt-4"
+          :ui="{ fieldset: 'grid gap-2 lg:grid-cols-3' }"
+        />
       </section>
 
       <section class="border-y border-gray-200 bg-white px-3 py-5 sm:px-5">
         <label for="prior-consent-countries" class="text-base font-semibold text-gray-900">必须先选择的国家/地区</label>
         <p class="mt-1 text-sm leading-6 text-gray-500">使用两位 ISO 国家/地区代码，以逗号或空格分隔。无法识别地区和 Tor 流量始终按先选择处理。</p>
-        <textarea id="prior-consent-countries" v-model="countryCodesText" rows="5" spellcheck="false" class="mt-4 w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-sm uppercase text-gray-800 focus:border-gray-500 focus:outline-none" />
+        <UTextarea id="prior-consent-countries" v-model="countryCodesText" :rows="5" spellcheck="false" color="neutral" class="mt-4 w-full font-mono uppercase" />
       </section>
 
       <section class="border-y border-gray-200 bg-white px-3 py-4 sm:px-5">
@@ -120,9 +120,7 @@ onMounted(refresh)
       </section>
 
       <div class="flex flex-wrap items-center gap-3 border-y border-gray-200 bg-white px-3 py-4 sm:px-5">
-        <button v-if="isOwner" type="submit" :disabled="saving" class="rounded-md bg-gray-950 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50">
-          {{ saving ? '保存中...' : '保存地区策略' }}
-        </button>
+        <UButton v-if="isOwner" type="submit" color="neutral" :loading="saving" :disabled="saving" label="保存地区策略" />
         <span v-else class="text-sm text-gray-500">仅站长可修改地区策略。</span>
         <span role="status" class="text-sm text-gray-600">{{ message }}</span>
       </div>

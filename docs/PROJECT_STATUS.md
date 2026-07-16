@@ -60,6 +60,7 @@
 - TikTok Events Manager 保持 AAM 关闭、第一方 Cookie 开启、Enhanced Data Postback 关闭，避免超出项目标准事件和授权范围的自动采集。
 - `dev` 已完成地区化营销衡量重构，待 release 后进入 production：`0053` 增加统一地区策略；非严格地区明确告知并可退出且 Pixel/Server API 正常工作，严格/未知/Tor 地区先选择，GPC 和明确拒绝始终优先。长期签名选择与短期 receipt 只表示用户明确选择，不把地区默认值伪装成同意。
 - 前台已改为“有效联系衡量、减少无关推广、不读取聊天内容或密码”的用途说明；后台归因新增“地区策略”，可维护默认模式与严格地区代码。无论营销衡量状态如何，站内 Contact/CompleteRegistration 事实持续记录，Meta/TikTok/Google 仍按唯一来源严格隔离。
+- `v0.4.8` 发布候选已补齐冲突授权凭证 fail-closed、GPC 禁止续签、注册与来源解析失败降级、地区策略严格入参校验，以及 7 标签/新授权文案的多视口 E2E 契约。
 - Google 的启用状态以统一后台实时连接为准；代码部署不会自动开启平台或提高 rollout。
 - production 域名：`616618.xyz`、`www.616618.xyz`；API：`api.616618.xyz`。
 

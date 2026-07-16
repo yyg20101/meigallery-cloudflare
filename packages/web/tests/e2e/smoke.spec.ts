@@ -31,7 +31,7 @@ async function expectAdminContainersWithinViewport(page: import('@playwright/tes
         { selector: '[data-attribution-refresh]' },
         { selector: '[data-attribution-tabs]', allowHorizontalOverflow: true },
         { selector: '[data-attribution-tab-list]', allowHorizontalOverflow: true },
-        { selector: '[data-attribution-tab]', exactCount: 6, allowHorizontalOverflow: true },
+        { selector: '[data-attribution-tab]', exactCount: 7, allowHorizontalOverflow: true },
       )
       if (['/admin/attribution', '/admin/attribution/deliveries', '/admin/attribution/verifications', '/admin/attribution/audit'].includes(location.pathname)) {
         requirements.push(
@@ -524,7 +524,7 @@ test.describe('核心页面 smoke', () => {
     await page.waitForLoadState('networkidle')
     const [consentResponse] = await Promise.all([
       page.waitForResponse(response => response.url().endsWith('/api/marketing-consent') && response.request().method() === 'PUT'),
-      page.getByRole('button', { name: '同意营销追踪' }).click(),
+      page.getByRole('button', { name: '允许效果分析' }).click(),
     ])
     expect((await consentResponse.allHeaders())['set-cookie']).toContain('mei_marketing_consent_receipt=mock-granted')
 

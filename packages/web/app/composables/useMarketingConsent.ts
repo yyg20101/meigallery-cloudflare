@@ -1,8 +1,9 @@
-import type { AnalyticsConsentState } from '@meigallery/shared'
+import type {
+  AnalyticsConsentState,
+  MarketingConsentDecisionSource,
+  MarketingConsentPolicyMode,
+} from '@meigallery/shared'
 import { canTrackMarketing as isMarketingTrackingAllowed, normalizeMarketingConsent } from '~/utils/marketingConsent'
-
-export type MarketingConsentPolicyMode = 'notice_opt_out' | 'prior_consent' | 'disabled'
-export type MarketingConsentDecisionSource = 'explicit' | 'regional_default' | 'choice_required' | 'gpc' | 'disabled' | 'request_limit'
 
 type MarketingConsentResponse = {
   state?: unknown
@@ -28,8 +29,7 @@ export function useMarketingConsent() {
       applyTrustedResponse(response)
     }
     catch (error) {
-      state.value = 'limited'
-      requiresChoice.value = false
+      applyFallbackState()
       throw error
     }
   }
@@ -44,8 +44,7 @@ export function useMarketingConsent() {
       applyTrustedResponse(response)
     }
     catch (error) {
-      state.value = 'limited'
-      requiresChoice.value = false
+      applyFallbackState()
       throw error
     }
     finally {
@@ -65,6 +64,14 @@ export function useMarketingConsent() {
     policyVersion.value = Number.isSafeInteger(response.policyVersion) && Number(response.policyVersion) > 0
       ? Number(response.policyVersion)
       : 0
+  }
+
+  function applyFallbackState() {
+    state.value = 'limited'
+    policyMode.value = 'prior_consent'
+    decisionSource.value = 'choice_required'
+    requiresChoice.value = false
+    policyVersion.value = 0
   }
 
   return {

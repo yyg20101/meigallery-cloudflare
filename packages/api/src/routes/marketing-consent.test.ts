@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { describe, expect, it } from 'vitest'
 import type { Bindings, Variables } from '../index'
-import { createMarketingConsentChoice } from '../utils/marketing-consent-receipt'
+import { createMarketingConsentChoice, createMarketingConsentReceipt } from '../utils/marketing-consent-receipt'
 import { marketingConsentRoutes } from './marketing-consent'
 
 const ENV = {
@@ -134,6 +134,7 @@ describe('公开营销授权 API', () => {
 
     expect(await response.json()).toMatchObject({ state: 'denied', decisionSource: 'gpc' })
     expect(response.headers.get('set-cookie') || '').not.toContain('mei_marketing_consent_choice=')
+    expect(response.headers.get('set-cookie') || '').not.toContain('mei_marketing_consent_receipt=')
   })
 
   it('明确拒绝覆盖非严格地区默认启用策略', async () => {
@@ -143,6 +144,25 @@ describe('公开营销授权 API', () => {
     }, { ...ENV, DB: privacyPolicyDb() })
 
     expect(await response.json()).toMatchObject({ state: 'denied', decisionSource: 'explicit' })
+  })
+
+  it('冲突的长期选择与短期 receipt 在非严格地区也不会升级为授权', async () => {
+    const deniedChoice = await createMarketingConsentChoice(ENV.SESSION_SECRET, 'denied')
+    const grantedChoice = await createMarketingConsentChoice(ENV.SESSION_SECRET, 'granted')
+    const staleGrantedReceipt = await createMarketingConsentReceipt(ENV.SESSION_SECRET, grantedChoice.claims)
+    const response = await app().request('https://api.616618.xyz/api/marketing-consent', {
+      headers: {
+        'CF-IPCountry': 'US',
+        cookie: `mei_marketing_consent_choice=${deniedChoice.token}; mei_marketing_consent_receipt=${staleGrantedReceipt}`,
+      },
+    }, { ...ENV, DB: privacyPolicyDb() })
+
+    expect(await response.json()).toMatchObject({
+      state: 'limited',
+      decisionSource: 'choice_required',
+      requiresChoice: true,
+    })
+    expect(response.headers.get('set-cookie') || '').not.toContain('mei_marketing_consent_receipt=')
   })
 })
 

@@ -61,6 +61,14 @@ describe('通用发布验证', () => {
       commit: COMMIT,
       queryProductionAttributionState: async () => ({ ...state, openCriticalIncidentCount: 1 }),
     }), /openCriticalIncidentCount/)
+    await assert.rejects(collectTrustedProductionGateFacts({
+      commit: COMMIT,
+      queryProductionAttributionState: async () => ({ ...state, privacyPolicyMigrationCount: 0 }),
+    }), /privacyPolicyMigrationCount/)
+    await assert.rejects(collectTrustedProductionGateFacts({
+      commit: COMMIT,
+      queryProductionAttributionState: async () => ({ ...state, privacyPolicyRowCount: -1 }),
+    }), /privacyPolicyRowCount/)
   })
 
   it('release 串联三个通用子模式并生成可放行报告', async () => {

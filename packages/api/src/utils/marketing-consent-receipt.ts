@@ -29,6 +29,7 @@ export interface ResolvedMarketingConsent {
   consent: AdConsentSnapshot
   choice: MarketingConsentChoiceClaims | null
   needsReceiptRefresh: boolean
+  hasInvalidProof: boolean
 }
 
 export const MARKETING_CONSENT_RECEIPT_TTL_SECONDS = 30 * 60
@@ -110,6 +111,11 @@ export async function resolveTrustedMarketingConsent(
     || receipt.decisionNonce !== choice.nonce
     || receipt.consent.decidedAt !== new Date(choice.decidedAt * 1_000).toISOString()
   ))
+  const hasInvalidProof = Boolean(
+    (tokens.receipt && !receipt)
+    || (tokens.choice && !choice)
+    || proofsConflict,
+  )
   const trustedState = proofsConflict ? undefined : receipt?.state ?? choice?.state
   const trustedConsent = proofsConflict
     ? undefined
@@ -128,6 +134,7 @@ export async function resolveTrustedMarketingConsent(
     consent,
     choice: proofsConflict ? null : choice,
     needsReceiptRefresh,
+    hasInvalidProof,
   }
 }
 

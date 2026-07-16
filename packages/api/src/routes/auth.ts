@@ -14,7 +14,7 @@ import {
 import { validateUsername } from '@meigallery/shared/utils'
 import { getTurnstileConfigError, validateTurnstile } from '../utils/turnstile'
 import { consumeInviteCodeForRegistration } from '../services/invite-codes'
-import type { AnalyticsConsentState } from '@meigallery/shared'
+import type { AdConsentSnapshot, AnalyticsConsentState } from '@meigallery/shared'
 import { recordRegistration } from '../services/conversions'
 import { getCookie } from 'hono/cookie'
 import { AD_ATTRIBUTION_CONTEXT_COOKIE } from './ad-attribution'
@@ -22,6 +22,7 @@ import { loadAttributionCryptoKeys } from '../utils/attribution-crypto'
 import { resolveTrustedAdAttributionContext } from '../utils/ad-attribution-context'
 import { hashAdPlatformEmail, readAdPlatformBrowserIdentifiersFromRequest } from '../utils/ad-platform-identifiers'
 import { resolveRequestMarketingConsent } from '../utils/marketing-consent-request'
+import { createAdConsentSnapshot } from '../utils/marketing-consent-receipt'
 
 type RegistrationAttributionContext = {
   visitorId?: string
@@ -251,9 +252,19 @@ authRoutes.post('/register', async (c) => {
     .run()
   const userId = insertResult.meta.last_row_id
   const attribution = normalizeRegistrationAttribution(body.attribution, userId)
-  const marketingConsent = await resolveRequestMarketingConsent(c, attribution.consentState)
-  attribution.consentState = marketingConsent.state
-  const consentSnapshot = marketingConsent.consent
+  let consentSnapshot: AdConsentSnapshot = createAdConsentSnapshot('denied')
+  try {
+    const marketingConsent = await resolveRequestMarketingConsent(c, attribution.consentState)
+    attribution.consentState = marketingConsent.state
+    consentSnapshot = marketingConsent.consent
+  }
+  catch {
+    attribution.consentState = 'denied'
+    console.warn('[auth.register] 营销授权解析失败，按拒绝状态继续注册', {
+      userId,
+      code: 'REGISTRATION_MARKETING_CONSENT_RESOLUTION_FAILED',
+    })
+  }
   const attributionContext = consentSnapshot.marketingAllowed
     && attribution.adAttributionState !== 'suppress'
     ? await trustedRegistrationAttributionContext(c)

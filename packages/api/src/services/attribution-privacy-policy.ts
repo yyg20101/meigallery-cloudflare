@@ -1,4 +1,6 @@
-export type AttributionPrivacyDefaultMode = 'notice_opt_out' | 'prior_consent' | 'disabled'
+import type { MarketingConsentPolicyMode } from '@meigallery/shared'
+
+export type AttributionPrivacyDefaultMode = MarketingConsentPolicyMode
 
 export interface AttributionPrivacyPolicy {
   defaultMode: AttributionPrivacyDefaultMode

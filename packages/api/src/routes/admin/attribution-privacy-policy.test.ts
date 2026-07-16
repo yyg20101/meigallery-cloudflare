@@ -41,6 +41,7 @@ describe('后台地区归因策略 API', () => {
     { defaultMode: 'unknown', priorConsentCountryCodes: ['GB'] },
     { defaultMode: 'notice_opt_out', priorConsentCountryCodes: ['UNITED-KINGDOM'] },
     { defaultMode: 'notice_opt_out', priorConsentCountryCodes: 'GB' },
+    { defaultMode: 'notice_opt_out', priorConsentCountryCodes: ['GB', 42] },
     { defaultMode: 'notice_opt_out', priorConsentCountryCodes: ['GB'], unexpected: true },
   ])('拒绝非法策略 %#', async (body) => {
     const response = await app('owner').request('/api/admin/attribution/privacy-policy', {

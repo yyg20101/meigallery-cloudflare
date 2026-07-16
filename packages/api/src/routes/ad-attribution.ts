@@ -25,10 +25,10 @@ adAttributionRoutes.use('*', async (c, next) => {
 })
 
 adAttributionRoutes.get('/bootstrap', async (c) => {
-  const { state: consentState } = await resolveRequestMarketingConsent(c)
-  if (consentState !== 'granted') return c.json(emptyBootstrapResponse())
-
   try {
+    const { state: consentState } = await resolveRequestMarketingConsent(c)
+    if (consentState !== 'granted') return c.json(emptyBootstrapResponse())
+
     const keys = await loadAttributionCryptoKeys(c.env)
     const context = await resolveTrustedAdAttributionContext(
       keys,
@@ -55,7 +55,14 @@ adAttributionRoutes.get('/bootstrap', async (c) => {
 })
 
 adAttributionRoutes.put('/', async (c) => {
-  const { state: consentState } = await resolveRequestMarketingConsent(c)
+  let consentState
+  try {
+    consentState = (await resolveRequestMarketingConsent(c)).state
+  }
+  catch {
+    clearContextCookie(c)
+    return c.json(emptyResponse(), 503)
+  }
   if (consentState !== 'granted') {
     clearContextCookie(c)
     return c.json(emptyResponse())

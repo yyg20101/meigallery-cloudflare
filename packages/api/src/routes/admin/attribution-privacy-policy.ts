@@ -35,7 +35,8 @@ adminAttributionPrivacyPolicyRoutes.patch('/', async (c) => {
     if (!isPlainRecord(body)
       || Object.keys(body).some(key => !ALLOWED_FIELDS.has(key))
       || typeof body.defaultMode !== 'string'
-      || !Array.isArray(body.priorConsentCountryCodes)) {
+      || !Array.isArray(body.priorConsentCountryCodes)
+      || !body.priorConsentCountryCodes.every(code => typeof code === 'string')) {
       return invalidPolicy(c)
     }
     const before = await readAttributionPrivacyPolicy(c.env.DB)
