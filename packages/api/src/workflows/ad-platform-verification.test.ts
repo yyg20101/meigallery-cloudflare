@@ -178,8 +178,24 @@ describe('广告平台验证 Workflow', () => {
       credentialRevision: 'credential_' + 'c'.repeat(150),
       attempt: 999,
     })
-    expect(id).toMatch(/^verify:google:[A-Za-z0-9_-]{43}$/)
+    expect(id).toMatch(/^verify-google-[A-Za-z0-9_-]{43}$/)
     expect(id.length).toBeLessThanOrEqual(100)
+  })
+
+  it('普通业务元组同样生成不含冒号的稳定 Workflow ID', async () => {
+    const input = {
+      provider: 'meta' as const,
+      connectionId: 'conn_meta',
+      connectionRevision: CONNECTION_REVISION,
+      credentialRevision: CREDENTIAL_REVISION,
+      attempt: 1,
+    }
+    const first = await createWorkflowId(input)
+    const repeated = await createWorkflowId(input)
+
+    expect(first).toBe(repeated)
+    expect(first).toMatch(/^verify-meta-[A-Za-z0-9_-]{43}$/)
+    expect(first).not.toContain(':')
   })
 })
 
@@ -206,11 +222,15 @@ function workflowBinding() {
   return {
     ids,
     events,
-    async create(item: { id: string }) {
-      if (instances.has(item.id)) throw new Error('already exists')
-      instances.add(item.id)
-      ids.push(item.id)
-      return { id: item.id }
+    async createBatch(items: Array<{ id: string }>) {
+      const created = []
+      for (const item of items) {
+        if (instances.has(item.id)) continue
+        instances.add(item.id)
+        ids.push(item.id)
+        created.push({ id: item.id })
+      }
+      return created
     },
     async get(id: string) {
       if (!instances.has(id)) throw new Error('not found')
