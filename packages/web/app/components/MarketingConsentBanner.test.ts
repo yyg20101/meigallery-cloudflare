@@ -15,7 +15,11 @@ describe('MarketingConsentBanner', () => {
     expect(wrapper.text()).toContain('帮助我们减少无关推广')
     expect(wrapper.text()).toContain('不会读取聊天内容、密码或联系人内容')
     expect(wrapper.text()).toContain('允许效果分析')
-    expect(wrapper.text()).toContain('暂不使用')
+    expect(wrapper.text()).toContain('仅使用必要功能')
+
+    const choices = wrapper.findAll('[data-consent-choice]')
+    expect(choices).toHaveLength(2)
+    expect(choices[0]?.classes()).toEqual(choices[1]?.classes())
 
     await wrapper.findAll('button')[0]?.trigger('click')
     expect(consent.grant).toHaveBeenCalledTimes(1)

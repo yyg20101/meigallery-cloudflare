@@ -62,8 +62,8 @@ function dismissNotice() {
         <p v-if="errorMessage" class="mt-1 text-sm text-red-600" role="alert">{{ errorMessage }}</p>
       </div>
       <div class="flex shrink-0 gap-2">
-        <button type="button" :disabled="pending" class="rounded-md bg-gray-950 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60" @click="choose('granted')">允许效果分析</button>
-        <button type="button" :disabled="pending" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60" @click="choose('denied')">暂不使用</button>
+        <button type="button" data-consent-choice="granted" :disabled="pending" class="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60" @click="choose('granted')">允许效果分析</button>
+        <button type="button" data-consent-choice="denied" :disabled="pending" class="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60" @click="choose('denied')">仅使用必要功能</button>
       </div>
     </div>
   </section>
@@ -114,8 +114,8 @@ function dismissNotice() {
       <p class="mt-2 text-sm leading-6 text-gray-500">用于衡量有效联系和完成注册，不读取聊天内容、密码或联系人内容。</p>
       <p v-if="errorMessage" class="mt-2 text-sm text-red-600" role="alert">{{ errorMessage }}</p>
       <div class="mt-5 flex flex-col gap-2 sm:flex-row">
-        <button type="button" :disabled="pending" class="rounded-md bg-gray-950 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60" @click="choose('granted')">启用效果分析</button>
-        <button type="button" :disabled="pending" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60" @click="choose('denied')">关闭效果分析</button>
+        <button type="button" data-consent-choice="granted" :aria-pressed="state === 'granted'" :disabled="pending" class="rounded-md border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-60" :class="state === 'granted' ? 'border-gray-950 bg-gray-100 text-gray-950' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'" @click="choose('granted')">允许效果分析</button>
+        <button type="button" data-consent-choice="denied" :aria-pressed="state === 'denied'" :disabled="pending" class="rounded-md border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-60" :class="state === 'denied' ? 'border-gray-950 bg-gray-100 text-gray-950' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'" @click="choose('denied')">仅使用必要功能</button>
       </div>
       <NuxtLink to="/marketing-tracking" class="mt-4 inline-block text-sm font-medium text-gray-700 underline decoration-gray-300 underline-offset-4 hover:text-gray-950" @click="settingsOpen = false">查看完整说明</NuxtLink>
     </section>
