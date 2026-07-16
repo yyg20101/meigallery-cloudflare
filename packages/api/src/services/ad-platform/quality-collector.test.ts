@@ -88,4 +88,18 @@ describe('通用归因质量采集', () => {
     expect(statements).toHaveLength(2)
     expect(statements.every(item => item.sql.includes('attribution_quality_snapshots'))).toBe(true)
   })
+
+  it('平台暂无近期样本时写 unavailable 快照，不制造 error', async () => {
+    const { db, statements } = createDb()
+    mocks.fetchQuality.mockResolvedValue({ metrics: [], errorCategory: '', unavailableReason: 'no_recent_metrics' })
+    const result = await collectAttributionQuality({
+      APP_ENV: 'production',
+      DB: db,
+      AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT: 'master-key',
+    })
+    expect(result).toEqual({ status: 'skipped', metricCount: 0, errorCategory: 'no_recent_metrics' })
+    expect(statements).toHaveLength(2)
+    expect(statements.every(item => item.values.includes('no_recent_metrics'))).toBe(true)
+    expect(statements.every(item => item.sql.includes("'unavailable'"))).toBe(true)
+  })
 })

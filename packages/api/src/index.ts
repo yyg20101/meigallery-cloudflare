@@ -36,6 +36,7 @@ import {
 import { recoverAttributionOutbox } from './services/ad-platform/recovery'
 import { recoverRegistrationConversionFacts } from './services/registration-conversion-recovery'
 import { collectAttributionQuality } from './services/ad-platform/quality-collector'
+import { reconcileGoogleDeliveryDiagnostics } from './services/ad-platform/google-diagnostics-service'
 
 /** Hono 应用绑定类型 */
 export type Bindings = {
@@ -277,13 +278,19 @@ async function handleScheduled(event: ScheduledEvent, env: Bindings): Promise<vo
   const db = env.DB
 
   if (event.cron === ATTRIBUTION_RECOVERY_CRON) {
-    try {
-      if (shouldRecoverAttributionOutbox(event)) {
+    if (shouldRecoverAttributionOutbox(event)) {
+      try {
         const recovery = await recoverAttributionOutbox(env, 100)
         console.log('[cron] 统一广告平台 Outbox 恢复完成:', recovery)
+      } catch {
+        console.error('[cron] 统一广告平台 Outbox 恢复失败:', { errorCode: 'attribution_outbox_recovery_failed' })
       }
-    } catch {
-      console.error('[cron] 统一广告平台 Outbox 恢复失败:', { errorCode: 'attribution_outbox_recovery_failed' })
+      try {
+        const diagnostics = await reconcileGoogleDeliveryDiagnostics(env, new Date(event.scheduledTime), 40)
+        console.log('[cron] Google 异步诊断对账完成:', diagnostics)
+      } catch {
+        console.error('[cron] Google 异步诊断对账失败:', { errorCode: 'google_diagnostic_reconciliation_failed' })
+      }
     }
 
     if (shouldRecoverRegistrationConversions(event)) {

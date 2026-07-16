@@ -70,7 +70,7 @@ async function recordLiveFact(env: ConversionEnv, input: ConversionBaseInput & {
   const statements: D1PreparedStatement[] = [
     factStatement(env.DB, { id, canonicalEvent: input.canonicalEvent, factOrigin: 'live', externalEventId: plan.externalEventId, provider: context.provider, source: context.source, contextId: context.context?.contextId ?? null, occurredAt, dedupeKey, consentSnapshot: input.consentSnapshot, dimensions: dimensions(input, { methodType: input.methodType, actionTarget: input.actionTarget }) }),
     ...plan.deliveries.map(delivery => deliveryStatement(env.DB, id, snapshot, delivery)),
-    ...await outboxStatements(env.DB, keys, id, input.canonicalEvent, eventTime, pageUrl, input.hashedEmail, snapshot, plan.deliveries),
+    ...await outboxStatements(env.DB, keys, id, input.canonicalEvent, eventTime, pageUrl, input.hashedEmail, input.consentSnapshot, snapshot, plan.deliveries),
   ]
   try { await env.DB.batch(statements) } catch (error) {
     const concurrent = await findFact(env.DB, dedupeKey)
@@ -89,10 +89,10 @@ function trustedContext(context: AdAttributionContext | null | undefined, source
   return { provider: valid ? definition.provider : null, context: valid ? context : null, source: valid ? context.source : source === 'conflict' ? 'conflict' : 'none', sourceAvailable: Boolean(valid) }
 }
 
-async function outboxStatements(db: D1Database, keys: Awaited<ReturnType<typeof loadAttributionCryptoKeys>>, factId: string, canonicalEvent: CanonicalConversionEvent, eventTime: number, pageUrl: string | null, hashedEmail: string | undefined, snapshot: Awaited<ReturnType<typeof readAttributionConnectionSnapshot>>, deliveries: Awaited<ReturnType<typeof buildAttributionDeliveryPlan>>['deliveries']) {
+async function outboxStatements(db: D1Database, keys: Awaited<ReturnType<typeof loadAttributionCryptoKeys>>, factId: string, canonicalEvent: CanonicalConversionEvent, eventTime: number, pageUrl: string | null, hashedEmail: string | undefined, consent: AdConsentSnapshot, snapshot: Awaited<ReturnType<typeof readAttributionConnectionSnapshot>>, deliveries: Awaited<ReturnType<typeof buildAttributionDeliveryPlan>>['deliveries']) {
   if (snapshot.state !== 'ready' || !pageUrl) return []
   return Promise.all(deliveries.filter(delivery => delivery.transport === 'server').map(async delivery => {
-    const payload = { canonicalEvent, externalEventId: delivery.externalEventId, eventTime, pageUrl, destination: delivery.destination, matchSignals: delivery.matchSignals, ...(validHash(hashedEmail) ? { hashedEmail } : {}) }
+    const payload = { canonicalEvent, externalEventId: delivery.externalEventId, eventTime, pageUrl, destination: delivery.destination, matchSignals: delivery.matchSignals, consent, ...(validHash(hashedEmail) ? { hashedEmail } : {}) }
     const envelope = await encryptAttributionValue({ keys, aad: { purpose: 'outbox', provider: delivery.provider, subjectId: factId, revision: snapshot.connection.connectionRevision }, plaintext: JSON.stringify(payload) })
     return db.prepare(`INSERT INTO attribution_outbox (delivery_id, provider, schema_version, key_id, iv, ciphertext, tag, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).bind(delivery.id, delivery.provider, envelope.schemaVersion, envelope.keyId, envelope.iv, envelope.ciphertext, envelope.tag, new Date(Date.now() + 24 * 60 * 60 * 1_000).toISOString())
   }))

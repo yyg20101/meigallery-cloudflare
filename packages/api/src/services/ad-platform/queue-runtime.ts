@@ -1,4 +1,4 @@
-import type { AdAttributionProvider, AdPlatformQueueMessage, CanonicalConversionEvent } from '@meigallery/shared'
+import type { AdAttributionProvider, AdConsentSnapshot, AdPlatformQueueMessage, CanonicalConversionEvent } from '@meigallery/shared'
 import { decryptAttributionValue, loadAttributionCryptoKeys } from '../../utils/attribution-crypto'
 import { CredentialVaultError, readAttributionCredential } from './credential-vault'
 import { deleteAttributionOutbox } from './secure-outbox'
@@ -59,6 +59,7 @@ type DecryptedPayload = {
   destination: string
   matchSignals: Record<string, string>
   hashedEmail?: string
+  consent: AdConsentSnapshot
 }
 type DeliveryOutcome = { result: ServerDeliveryResult; errorCode?: string }
 type Dependencies = {
@@ -271,7 +272,8 @@ function parsePayload(plaintext: string, row: AttributionDeliveryQueueRow): Decr
       || !validUrl(value.pageUrl)
       || typeof value.destination !== 'string'
       || value.destination !== row.destination
-      || !plainSignals(value.matchSignals)) return null
+      || !plainSignals(value.matchSignals)
+      || !validConsent(value.consent)) return null
     if (value.hashedEmail !== undefined && (typeof value.hashedEmail !== 'string' || !/^[a-f0-9]{64}$/.test(value.hashedEmail))) return null
     return value as DecryptedPayload
   }
@@ -295,6 +297,17 @@ function parseConfig(value: string): Record<string, string> | null {
 function plainSignals(value: unknown): value is Record<string, string> {
   return isPlainRecord(value)
     && Object.entries(value).every(([key, item]) => identifier(key) && typeof item === 'string' && item.length > 0 && item.length <= 1_000)
+}
+
+function validConsent(value: unknown): value is AdConsentSnapshot {
+  if (!isPlainRecord(value) || Reflect.ownKeys(value).length !== 5) return false
+  const decidedAt = ownDataProperty(value, 'decidedAt')
+  return ownDataProperty(value, 'consentVersion') === 1
+    && ownDataProperty(value, 'marketingAllowed') === true
+    && ownDataProperty(value, 'adUserDataAllowed') === true
+    && typeof ownDataProperty(value, 'adPersonalizationAllowed') === 'boolean'
+    && typeof decidedAt === 'string'
+    && Number.isFinite(Date.parse(decidedAt))
 }
 
 async function finalizeDelivery(

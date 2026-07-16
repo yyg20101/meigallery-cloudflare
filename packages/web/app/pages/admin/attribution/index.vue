@@ -74,6 +74,12 @@ const serverPending = computed(() => delivery.value.server.planned + delivery.va
 const serverFailed = computed(() => delivery.value.server.rejected + delivery.value.server.deadLetter)
 const pairing = computed(() => quality.data.value?.pairing.summary ?? emptyMetric())
 const match = computed(() => quality.data.value?.match.summary ?? emptyMetric())
+const platformQualityStatus = computed(() => {
+  const latest = quality.data.value?.platformQuality.latest
+  if (latest?.availability === 'error') return `采集异常：${latest.errorCategory || latest.metricKey}`
+  if (latest?.availability === 'available') return `${latest.canonicalEvent} · ${latest.metricKey}: ${latest.value}`
+  return platform.value.quality.unavailableLabel
+})
 const qualityTrendRows = computed(() => (quality.data.value?.pairing.rows ?? []).map(row => ({
   date: row.date,
   pairing: row,
@@ -233,7 +239,7 @@ function serverSuccess(row: BreakdownData['rows'][number]) {
         <dl class="my-4 grid grid-cols-2 border-y border-gray-200 md:grid-cols-3">
           <div class="px-3 py-3"><dt class="text-xs text-gray-500">Browser/Server 配对率</dt><dd class="mt-1 text-lg font-semibold text-rose-700">{{ formatRate(pairing.rate) }}</dd><p class="mt-1 text-xs text-gray-400">{{ pairing.numerator }} / {{ pairing.denominator }}</p></div>
           <div class="px-3 py-3"><dt class="text-xs text-gray-500">匹配信号覆盖率</dt><dd class="mt-1 text-lg font-semibold text-rose-700">{{ formatRate(match.rate) }}</dd><p class="mt-1 text-xs text-gray-400">{{ match.numerator }} / {{ match.denominator }}</p></div>
-          <div class="col-span-2 px-3 py-3 md:col-span-1"><dt class="text-xs text-gray-500">平台质量快照</dt><dd class="mt-1 text-sm font-semibold">{{ quality.data.value?.platformQuality.latest?.metricKey || '暂无数据' }}</dd></div>
+          <div class="col-span-2 px-3 py-3 md:col-span-1"><dt class="text-xs text-gray-500">平台质量快照</dt><dd class="mt-1 text-sm font-semibold">{{ platformQualityStatus }}</dd></div>
         </dl>
         <AttributionTrendPanel title="质量趋势" :rows="qualityTrendRows" :series="qualitySeries" />
         <div class="mt-5 overflow-x-auto">

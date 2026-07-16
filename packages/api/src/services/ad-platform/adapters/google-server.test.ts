@@ -7,12 +7,14 @@ const input = {
   provider: 'google' as const, canonicalEvent: 'Contact' as const, externalEventId: EVENT_ID,
   eventTime: 1_784_256_123, pageUrl: 'https://meigallery.example/contact', destination: '123456789',
   matchSignals: { gclid: 'gclid-1', gbraid: 'gbraid-1', wbraid: 'wbraid-1' }, hashedEmail: 'c'.repeat(64), validateOnly: true,
+  consent: { consentVersion: 1, marketingAllowed: true, adUserDataAllowed: true, adPersonalizationAllowed: false, decidedAt: '2026-07-17T02:40:00.000Z' },
 }
 
 describe('Google Data Manager 服务端 Adapter', () => {
   it('构造最新 events:ingest 请求，不写顶层 requestId', () => {
     expect(buildGoogleServerRequest(input, { customerId: '1112223333', loginCustomerId: '9998887777', cloudProjectId: 'project-1' })).toEqual({
       validateOnly: true, encoding: 'HEX',
+      consent: { adUserData: 'CONSENT_GRANTED', adPersonalization: 'CONSENT_DENIED' },
       destinations: [{ operatingAccount: { accountType: 'GOOGLE_ADS', accountId: '1112223333' }, loginAccount: { accountType: 'GOOGLE_ADS', accountId: '9998887777' }, productDestinationId: '123456789' }],
       events: [{ eventTimestamp: '2026-07-17T02:42:03.000Z', transactionId: EVENT_ID, eventSource: 'WEB', adIdentifiers: { gclid: 'gclid-1', gbraid: 'gbraid-1', wbraid: 'wbraid-1' }, userData: { userIdentifiers: [{ emailAddress: 'c'.repeat(64) }] } }],
     })
@@ -33,6 +35,16 @@ describe('Google Data Manager 服务端 Adapter', () => {
     expect(JSON.stringify(init?.headers)).not.toContain('Developer')
     expect(outcome).toEqual({ classification: 'accepted', receipt: { status: 200, requestId: 'google-request-1' } })
     expect(JSON.stringify(outcome)).not.toContain('should-not-leak')
+  })
+
+  it('HTTP 成功但缺少 requestId 时不误报 accepted', async () => {
+    clearGoogleAccessTokenCacheForTests()
+    const fetcher = vi.fn(async (url: string) => url.includes('/token')
+      ? new Response(JSON.stringify({ access_token: 'google-access-token', expires_in: 3600 }), { status: 200 })
+      : new Response('{}', { status: 200 }))
+
+    await expect(sendGoogleServerEvent({ input, config: { customerId: '1112223333', cloudProjectId: 'project-1' }, serviceAccount: await serviceAccount(), fetcher }))
+      .resolves.toEqual({ classification: 'retryable', receipt: { status: 200 } })
   })
 
   it.each([['fbc'], ['fbp'], ['ttclid'], ['ttp']])('拒绝跨平台 %s', async signal => {
@@ -56,6 +68,7 @@ describe('Google Data Manager 服务端 Adapter', () => {
     [{ ...input, eventTime: -1 }, { customerId: '1112223333', cloudProjectId: 'project-1' }],
     [{ ...input, eventTime: 4_102_444_800 }, { customerId: '1112223333', cloudProjectId: 'project-1' }],
     [{ ...input, pageUrl: 'https://user:pass@meigallery.example/contact' }, { customerId: '1112223333', cloudProjectId: 'project-1' }],
+    [{ ...input, consent: { ...input.consent, adUserDataAllowed: false } }, { customerId: '1112223333', cloudProjectId: 'project-1' }],
     [input, { customerId: 'customer-1', cloudProjectId: 'Project_1' }],
   ] as const)('拒绝空匹配或 Google 配置边界，且不调用 fetch', async (invalidInput, config) => {
     const fetcher = vi.fn()

@@ -54,4 +54,31 @@ describe('Meta 通用质量 Adapter', () => {
     })
     expect(result).toEqual({ metrics: [], errorCategory: 'permission_denied' })
   })
+
+  it('合法空集合表示暂无近期质量样本，不误报响应损坏', async () => {
+    const result = await fetchMetaQuality({
+      datasetId: '1277657707436781',
+      credential: 'private-token',
+      fetcher: async () => new Response('{"web":[]}', { status: 200 }),
+    })
+    expect(result).toEqual({ metrics: [], errorCategory: '', unavailableReason: 'no_recent_metrics' })
+  })
+
+  it('结构损坏的 2xx 响应仍归类为 invalid_response', async () => {
+    const result = await fetchMetaQuality({
+      datasetId: '1277657707436781',
+      credential: 'private-token',
+      fetcher: async () => new Response('{"data":[]}', { status: 200 }),
+    })
+    expect(result).toEqual({ metrics: [], errorCategory: 'invalid_response' })
+  })
+
+  it('非空活动事件缺少质量结构时不伪装成暂无近期样本', async () => {
+    const result = await fetchMetaQuality({
+      datasetId: '1277657707436781',
+      credential: 'private-token',
+      fetcher: async () => new Response('{"web":[{"event_name":"Contact"}]}', { status: 200 }),
+    })
+    expect(result).toEqual({ metrics: [], errorCategory: 'invalid_response' })
+  })
 })

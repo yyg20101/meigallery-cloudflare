@@ -151,7 +151,7 @@ Meta 正式事件仅为 `Contact`、`CompleteRegistration`。`attribution_conver
 
 Dataset Quality 使用 production Dataset，由通用 collector 每日写入 `attribution_quality_snapshots`。dev 不配置 CAPI token、不采集或伪造 production 质量快照。
 
-后台与证据的状态口径必须严格区分：Pixel `attempted` 只表示浏览器已按服务端指令尝试调用，**不代表 Meta 已接收**；只有 CAPI delivery 为 `sent` 且 Graph API 返回 `events_received=1`，才可表述为 Meta 已接收。两项正式事件的 Browser/Server 同 ID 与 Meta 去重结果，必须由 Owner 在 Events Manager 中确认并生成脱敏 live evidence。
+后台与证据的状态口径必须严格区分：Pixel `attempted` 只表示浏览器已按服务端指令尝试调用，**不代表 Meta 已接收**；只有 CAPI delivery 为 `accepted` 且 Graph API 返回 `events_received=1`，才可表述为 Meta 已接收。两项正式事件的 Browser/Server 同 ID 与 Meta 去重结果，必须由 Owner 在 Events Manager 中确认并生成脱敏 live evidence。
 
 Test Event Code 仅由 Owner 在 `/admin/attribution/platforms?provider=meta` 的当次验证请求中提交；服务端不持久化、不审计、不回显。production CAPI payload 绝不携带 `test_event_code`。Meta 使用 `meigallery-ad-meta` / `meigallery-ad-meta-dlq`，Token 由统一后台写入 D1 加密凭证库。
 
@@ -191,6 +191,19 @@ TikTok 与 Meta 共享通用事实和投递状态机，但不共享 Queue、凭�
 后台切换到 TikTok 后只显示 TikTok 配置和发布检查，逐项核对 Pixel ID、Access Token、Queue、数据密钥、连接验证、Browser Pixel、Events API 与 rollout；Meta incident 和 CAPI rollout 不参与 TikTok 放量判断。
 
 回滚时先关闭 TikTok `server_enabled` 并将 rollout 降为 `0`，再把 mode 切为 `disabled`，最后按需关闭 Browser Pixel。保留 Queue、DLQ、D1 delivery 和加密 outbox 用于诊断，不删除已应用 migration。
+
+### Google Ads Tag / Data Manager API 上线顺序
+
+Google 与 Meta、TikTok 共用标准事实，但只消费 Google click ID、签名投放链接或明确 Google Ads 来源。Google 使用独立 `meigallery-ad-google` / `meigallery-ad-google-dlq`；不接入 GA4，不需要 Developer Token。
+
+1. 在 Google Cloud 启用 Data Manager API，为 Service Account 配置 Service Usage Consumer，并在 Google Ads 中授予对应账户权限。
+2. 分别为 Contact、CompleteRegistration 创建 Google Ads 网站转化操作，取得各自 `AW-.../label` 与 `WEBPAGE` Conversion Action ID。
+3. 在 `/admin/attribution/platforms?provider=google` 原子保存 Tag ID、Customer ID、Cloud Project ID、两个事件绑定和 Service Account JSON，保持 Server 关闭且 rollout `0`。
+4. 运行 `validateOnly` 连接验证；Tag Assistant 确认浏览器事件的 `send_to`、`transaction_id` 与当前 Google 连接一致。
+5. 开启 Server 后只从 `10%` 开始。Data Manager HTTP 2xx 返回安全 `requestId` 才进入 `accepted`；Cron 最早 30 分钟后查询 `requestStatus.retrieve`，最终成功才进入 `processed`。Free 计划下每次 Cron 最多处理 40 条，给 50 个外部 subrequest 上限保留安全余量。
+6. 观察 `processed/rejected`、diagnostic timeout、DLQ、incident 和容量后再按 `10 -> 50 -> 100` 人工放量。Google 不使用 Test Event Code。
+
+回滚时先将 Google Server rollout 降为 `0` 并关闭 Server，再按需关闭 Browser Tag；已 `accepted` 的请求仍保留异步诊断，避免丢失最终状态。
 
 ## 6. 环境变量
 
@@ -255,13 +268,13 @@ corepack pnpm --filter @meigallery/api exec wrangler secret put AD_PLATFORM_CRED
 | API 域名 | `https://api.616618.xyz` | `https://meigallery-api-dev.wajie.workers.dev` |
 | D1 | `meigallery-db` | `meigallery-db-dev` |
 | R2 | `meigallery-media` | `meigallery-media-dev` |
-| Queue（主 / DLQ） | Meta 与 TikTok 各自独立的 production Queue / DLQ | 不配置 |
+| Queue（主 / DLQ） | Meta、TikTok、Google 各自独立的 production Queue / DLQ | 不配置 |
 
 要求：
 
-- dev 的 D1、R2 必须与 production 完全隔离；Meta / TikTok Queue 与凭证仅允许 production 配置。
+- dev 的 D1、R2 必须与 production 完全隔离；Meta / TikTok / Google Queue 与凭证仅允许 production 配置。
 - `verify:quick` 的 `dev-resource-isolation` 必须持续通过，确保 `env.dev` 绑定不会回退到生产资源。
-- 任何“dev 可连接生产 D1/R2”口径均视为历史策略，当前不再适用。
+- 任何“dev 可连接生产 D1/R2 或真实广告平台”口径均视为历史策略，当前不再适用。
 
 Workers：
 

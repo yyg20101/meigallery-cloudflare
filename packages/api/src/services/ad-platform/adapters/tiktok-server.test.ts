@@ -6,6 +6,7 @@ const input = {
   provider: 'tiktok' as const, canonicalEvent: 'CompleteRegistration' as const, externalEventId: EVENT_ID,
   eventTime: 1_784_256_123, pageUrl: 'https://meigallery.example/register', destination: 'tiktok_events_api',
   matchSignals: { ttclid: 'tt-click-id', ttp: 'ttp-cookie' }, hashedEmail: 'b'.repeat(64),
+  consent: { consentVersion: 1, marketingAllowed: true, adUserDataAllowed: true, adPersonalizationAllowed: true, decidedAt: '2026-07-17T02:40:00.000Z' },
 }
 
 describe('TikTok 服务端 Adapter', () => {

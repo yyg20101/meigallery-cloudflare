@@ -1,4 +1,4 @@
-import type { AdAttributionProvider, CanonicalConversionEvent } from '@meigallery/shared'
+import type { AdAttributionProvider, AdConsentSnapshot, CanonicalConversionEvent } from '@meigallery/shared'
 import { googleServerAdapter } from './adapters/google-server'
 import { metaServerAdapter } from './adapters/meta-server'
 import { tiktokServerAdapter } from './adapters/tiktok-server'
@@ -13,6 +13,7 @@ export interface ServerDeliveryBaseInput {
   destination: string
   matchSignals: Record<string, string>
   hashedEmail?: string
+  consent: AdConsentSnapshot
 }
 
 export interface MetaServerDeliveryInput extends ServerDeliveryBaseInput { provider: 'meta' }

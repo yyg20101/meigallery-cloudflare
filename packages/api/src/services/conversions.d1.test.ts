@@ -66,7 +66,20 @@ describe('统一事实 D1 原子写入', () => {
     const publicOutput = JSON.stringify({ result, fact, deliveries, logs: logs.mock.calls })
 
     expect(result.trackingInstructions).toHaveLength(1)
-    expect(payload).toMatchObject({ canonicalEvent: 'CompleteRegistration', eventTime: 1_784_073_600, pageUrl: 'https://gallery.example.test/register', matchSignals: expectedMatchSignals, hashedEmail: 'a'.repeat(64) })
+    expect(payload).toMatchObject({
+      canonicalEvent: 'CompleteRegistration',
+      eventTime: 1_784_073_600,
+      pageUrl: 'https://gallery.example.test/register',
+      matchSignals: expectedMatchSignals,
+      hashedEmail: 'a'.repeat(64),
+      consent: {
+        consentVersion: 1,
+        marketingAllowed: true,
+        adUserDataAllowed: true,
+        adPersonalizationAllowed: true,
+        decidedAt: '2026-07-15T00:00:00.000Z',
+      },
+    })
     expect(typeof payload.eventTime).toBe('number')
     expect(Object.keys(payload.matchSignals).sort()).toEqual(Object.keys(expectedMatchSignals).sort())
     for (const sensitive of SENSITIVE_VALUES) expect(publicOutput).not.toContain(sensitive)
@@ -121,5 +134,5 @@ async function decryptPayload(provider: 'meta' | 'tiktok' | 'google', factId: st
     keys: await loadAttributionCryptoKeys({ AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT: MASTER_KEY }),
     aad: { purpose: 'outbox', provider, subjectId: factId, revision: 'revision_1' },
     envelope: { schemaVersion: 1, keyId: outbox.key_id, iv: outbox.iv, ciphertext: outbox.ciphertext, tag: outbox.tag },
-  })) as { eventTime: unknown; matchSignals: Record<string, string> }
+  })) as { eventTime: unknown; matchSignals: Record<string, string>; consent: Record<string, unknown> }
 }

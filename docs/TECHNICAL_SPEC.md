@@ -653,6 +653,7 @@ INSERT INTO site_settings (key, value) VALUES
 - 历史 migration `0001..0050` 只负责升级路径和空库顺序建库，应用运行时不得访问其中已由 `0052` 删除的结构。
 - 新增平台必须通过 adapter registry 接入，不得复制业务事实、来源 receipt、Planner、Queue 状态机或恢复逻辑。
 - TikTok Events API 使用官方 v1.3 Web Events endpoint、`Access-Token` header、`event_source=web`、Pixel ID、`event/event_time/event_id/user/page` 契约；生产 payload 不带 `test_event_code`。Browser Pixel 与 Events API 对同一业务事实使用相同 event name 与 event ID 进行去重。
+- Google Data Manager `events:ingest` 顶层写入服务端可信 Consent，`events[].transactionId` 与 Browser `transaction_id` 共用同一外部事件编号。HTTP 2xx 必须返回安全 `requestId` 才进入 `accepted`；Cron 在 30 分钟后通过 `requestStatus.retrieve` 查询异步结果，按 1.3 倍退避、单次最多 60 分钟、总计最多 24 小时收口为 `processed` 或 `rejected`。每次 Cron 最多诊断 40 条 accepted delivery，为 Workers Free 的 50 个外部 subrequest 上限保留 OAuth、重定向和维护余量。不得把 `accepted` 表述为最终处理或广告归因成功。
 - API 只返回 provider-aware `trackingInstructions`，前端通过广告平台 adapter registry 执行，不保留 `pixelEvents` 兼容响应。
 - 广告来源解析只接受平台 click ID、明确平台 UTM 别名或后台 `analytics_tracking_sources.ad_provider`。多平台信号冲突、显式来源未知、输入非法或 D1 查询失败时均 fail closed。
 - `PUT /api/ad-attribution` 只在营销授权 receipt 有效时签发 30 分钟 `HttpOnly` 来源 receipt；前端不能通过 body 声明 provider。Contact 和注册请求还必须携带只能降级的 `adAttributionState=resolved`，缺失、冲突或校验失败一律忽略旧 receipt。
@@ -662,14 +663,15 @@ INSERT INTO site_settings (key, value) VALUES
 - 公开转化入口复用应用内兜底限流，并在服务端白名单清洗 metadata；请求不得携带邮箱、手机号、联系方式明文、token、私有 R2 key、完整敏感 URL 或任意广告账户密钥。
 - 浏览器通过 `PUT /api/marketing-consent` 授权或撤销；API 使用 `SESSION_SECRET` 与 Web Crypto 签发 30 分钟 `HttpOnly`、`SameSite=Lax` receipt cookie，HTTPS 环境同时设置 `Secure`。授权 GET/PUT、Contact conversion、registration 和 Pixel receipt 重试显式通过 Web 同源 `/api` 代理：Cloudflare 环境使用 `API_SERVICE`，本地回退 API URL，代理逐条转发 `Set-Cookie` 和后续请求 cookie；其余浏览器 API 保持既有直连策略。前端 body 只能把服务端 receipt 的授权降级，缺失、篡改、过期或 denied receipt 都不能由 `consentState=granted` 升级。receipt、签名、nonce 和 cookie 值不得进入日志、D1、API 响应、审计或发布报告。
 - `consent_state=denied` 时只保留站内必要事实，不创建任何广告平台 Browser / Server delivery；服务端解析后的 `consent_state` 仅用于当次 delivery 判断，不作为 D1 字段持久化。浏览器 Pixel 以公开授权 API 返回状态为准，Server API 始终独立验证 receipt。
-- 每个平台的 Browser / Server delivery 使用同一 `external_event_id`；Pixel `attempted` 仅说明浏览器已尝试调用，不代表平台接收。只有 Server delivery 为 `sent` 且平台响应满足严格成功契约，才可显示为 API 已接收；这仍不代表广告归因成功。
+- 每个平台的 Browser / Server delivery 使用同一 `external_event_id`；Pixel `attempted` 仅说明浏览器已尝试调用，不代表平台接收。Server delivery 只有在平台响应满足严格成功契约时才进入 `accepted`；Google 还必须等待异步诊断进入 `processed`。平台接收或处理完成仍不代表广告归因成功。
 - `/api/admin/attribution/*` 需要 admin+；连接、凭证、验证和 rollout 修改需要 owner，并写入 `admin_audit_logs`。
 - Meta/TikTok/Google Server API 仅在 production 通过各自 `AD_META_QUEUE`、`AD_TIKTOK_QUEUE`、`AD_GOOGLE_QUEUE` 异步投递；主 Queue/DLQ 固定为 6 条 `meigallery-ad-*` 资源。dev/local 不绑定广告 Queue、不配置平台凭证、不调用真实平台 API。
 - 三个平台共享通用 Planner、Outbox、CAS 状态机和恢复算法，但物理 Queue、destination、connection revision、credential revision 和 rollout namespace 独立；所有读写必须限定唯一 provider，禁止交叉解密、投递、恢复或 fan-out。
 - 平台 Token/OAuth 凭证由 Owner 通过统一后台写入 D1 加密凭证库；Worker secret 只保存 `AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT/PREVIOUS`。凭证明文不返回前端、不写审计或日志。
 - Meta/TikTok Test Event Code 是单次验证参数，不属于长期凭据；代码不落 D1、不进入审计和响应，正式事件禁止携带测试码。
-- Queue 发送失败不得阻塞站内转化账本写入；delivery 必须显示 `sent`、`failed`、`skipped`、`missing_queue`、`missing_secret`、`disabled` 等可诊断状态。
-- Queue consumer 使用 `attribution_deliveries` 的短期 lease 和 D1 CAS；loser 不请求外部平台，重试复用原 event ID，`sent` 不可回归，lease token 不进入日志、响应或报告。
+- Queue 发送失败不得阻塞站内转化账本写入；delivery 使用 `planned`、`queued`、`retrying`、`accepted`、`processed`、`rejected`、`dead_letter`、`cancelled` 状态，并用 `last_error_code` 区分缺失 Queue、凭证、过期或平台拒绝。
+- Queue consumer 使用 `attribution_deliveries` 的短期 lease 和 D1 CAS；loser 不请求外部平台，重试复用原 event ID，`accepted/processed` 不可回归，lease token 不进入日志、响应或报告。
+- 平台质量必须按真实证据展示：Meta 由 Dataset Quality collector 自动采集；TikTok 在没有项目可安全调用的质量 API 时明确要求 Events Manager 人工证据；Google 使用 `requestStatus.retrieve` 结果写入处理质量。无数据或不支持不得显示为 0 分。
 
 ### 通用归因 Contract 与生产门禁
 

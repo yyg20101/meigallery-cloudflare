@@ -41,14 +41,15 @@
 - Owner 在统一后台原子保存 destination、事件映射、加密凭证、模式和开关；明文凭证不回显、不记录。
 - Test Event Code 仅是单次验证参数，不持久化，正式事件不携带测试码。
 - Meta Dataset Quality 由通用 collector 写入 `attribution_quality_snapshots`。
+- Google Data Manager 已实现可信 Consent、`requestId` 接收校验和 `requestStatus.retrieve` 异步诊断；TikTok 质量在后台明确要求 Events Manager 人工证据，不伪造平台质量分。
 
 ## Contract 状态
 
 - `0051_unified_attribution_expand.sql` 已定义最终 11 张 `attribution_*` 表。
-- 本次待发布的 `0052_unified_attribution_contract.sql` 会在保护条件满足时迁移 Meta 质量历史，并删除旧事实、投递、连接、验证、Outbox、Meta 运维表、桥接 trigger 和 `users.meta_external_id`。
+- `0052_unified_attribution_contract.sql` 已于 2026-07-16 在 production 应用：17 条 Meta 质量历史已迁移，400 条最终归因事实完整保留，旧事实、投递、连接、验证、Outbox、Meta 运维表、桥接 trigger 和 `users.meta_external_id` 已删除。
 - 旧平台专用 API 服务、运维脚本、一次性回填/对账脚本和发布报告特例已从当前代码删除。
-- production 在 `0052` 正式发布前仍保留旧数据库结构；部署脚本会先生成仓库外 D1 export、Time Travel bookmark 和 SHA-256 manifest。
-- Contract 发布后再删除 Cloudflare 中已无绑定的旧 Queue 和旧 Secret；通用 `meigallery-ad-*` Queue 与 `AD_PLATFORM_CREDENTIAL_MASTER_KEY_*` 保留。
+- Contract 发布前已生成仓库外 D1 export、Time Travel bookmark 和 SHA-256 manifest；production 发布提交为 `63d7ec1`，版本标签为 `v0.4.6`。
+- 旧 `meigallery-meta-capi*`、`meigallery-tiktok-events*` Queue 和 `META_CAPI_ACCESS_TOKEN`、`META_CAPI_DATA_KEY_CURRENT` Worker Secret 已删除；通用 `meigallery-ad-*` Queue 与 `AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT` 保留。
 
 ## Production 归因状态
 
@@ -68,7 +69,7 @@
 
 ## 规划
 
-- TikTok 和 Google production 凭证、Test Events 与分级 rollout 验收。
+- TikTok 和 Google production 凭证、Test Events、Google 异步 request status 与分级 rollout 验收。
 - 广告花费、campaign、ad set、ad 数据导入不属于当前 Pixel/Server API 同步范围。
 - Cloudflare Stream 视频链路和完整 zip 异步导入仍待实现。
 

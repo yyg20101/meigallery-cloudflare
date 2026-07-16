@@ -14,6 +14,7 @@ export interface GoogleServerConfig { customerId?: string; loginCustomerId?: str
 export interface GoogleServerRequest {
   validateOnly: boolean
   encoding?: 'HEX'
+  consent: { adUserData: 'CONSENT_GRANTED'; adPersonalization: 'CONSENT_GRANTED' | 'CONSENT_DENIED' }
   destinations: Array<{ operatingAccount: { accountType: 'GOOGLE_ADS'; accountId: string }; loginAccount?: { accountType: 'GOOGLE_ADS'; accountId: string }; productDestinationId: string }>
   events: Array<{ eventTimestamp: string; transactionId: string; eventSource: 'WEB'; adIdentifiers: Record<string, string>; userData?: { userIdentifiers: Array<{ emailAddress: string }> } }>
 }
@@ -27,6 +28,10 @@ export function buildGoogleServerRequest(input: GoogleServerDeliveryInput, confi
   }
   return {
     validateOnly: input.validateOnly, ...(input.hashedEmail ? { encoding: 'HEX' as const } : {}),
+    consent: {
+      adUserData: 'CONSENT_GRANTED',
+      adPersonalization: input.consent.adPersonalizationAllowed ? 'CONSENT_GRANTED' : 'CONSENT_DENIED',
+    },
     destinations: [{ operatingAccount: { accountType: 'GOOGLE_ADS', accountId: config.customerId }, ...(config.loginCustomerId ? { loginAccount: { accountType: 'GOOGLE_ADS' as const, accountId: config.loginCustomerId } } : {}), productDestinationId: input.destination }],
     events: [event],
   }
@@ -62,7 +67,7 @@ export const googleServerAdapter: ServerTrackingAdapter = {
 }
 
 function validateGoogleDelivery(input: GoogleServerDeliveryInput) {
-  if (input.provider !== 'google' || typeof input.validateOnly !== 'boolean' || !validEvent(input) || !validUrl(input.pageUrl) || !validAccountId(input.destination) || !validHash(input.hashedEmail)) throw new Error('destination_invalid')
+  if (input.provider !== 'google' || typeof input.validateOnly !== 'boolean' || !validEvent(input) || !validUrl(input.pageUrl) || !validAccountId(input.destination) || !validHash(input.hashedEmail) || !validConsent(input.consent)) throw new Error('destination_invalid')
   let hasMatch = Boolean(input.hashedEmail)
   for (const [key, value] of Object.entries(input.matchSignals)) {
     if (!validText(value)) throw new Error('destination_invalid')
@@ -74,7 +79,7 @@ function validateGoogleDelivery(input: GoogleServerDeliveryInput) {
 }
 async function classifiedResponse(response: Response): Promise<ServerDeliveryResult> {
   const receipt = { status: response.status, ...await responseRequestId(response) }
-  if (response.status >= 200 && response.status < 300) return { classification: 'accepted', receipt }
+  if (response.status >= 200 && response.status < 300) return { classification: receipt.requestId ? 'accepted' : 'retryable', receipt }
   if (response.status === 401 || response.status === 403) return { classification: 'credential_invalid', receipt }
   if (response.status === 429 || response.status >= 500) return { classification: 'retryable', receipt }
   if (response.status === 400 || response.status === 404 || response.status === 422) return { classification: 'destination_invalid', receipt }
@@ -87,6 +92,16 @@ function isCrossPlatformError(error: unknown) { return error instanceof Error &&
 function validEvent(input: GoogleServerDeliveryInput) { return (input.canonicalEvent === 'Contact' || input.canonicalEvent === 'CompleteRegistration') && typeof input.eventTime === 'number' && Number.isSafeInteger(input.eventTime) && input.eventTime >= MIN_EVENT_TIME && input.eventTime <= MAX_EVENT_TIME && typeof input.externalEventId === 'string' && input.externalEventId.length <= 64 && EVENT_ID_PATTERN.test(input.externalEventId) }
 function validUrl(value: string) { try { const url = new URL(value); return (url.protocol === 'http:' || url.protocol === 'https:') && Boolean(url.hostname) && !url.username && !url.password } catch { return false } }
 function validHash(value: unknown) { return value === undefined || typeof value === 'string' && /^[a-f0-9]{64}$/.test(value) }
+function validConsent(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const consent = value as Record<string, unknown>
+  return consent.consentVersion === 1
+    && consent.marketingAllowed === true
+    && consent.adUserDataAllowed === true
+    && typeof consent.adPersonalizationAllowed === 'boolean'
+    && typeof consent.decidedAt === 'string'
+    && Number.isFinite(Date.parse(consent.decidedAt))
+}
 function validAccountId(value: unknown): value is string { return typeof value === 'string' && ACCOUNT_ID_PATTERN.test(value) }
 function validProjectId(value: unknown): value is string { return typeof value === 'string' && GCP_PROJECT_ID_PATTERN.test(value) }
 function validText(value: unknown): value is string { return typeof value === 'string' && value.trim().length > 0 && value.length <= 4_096 && !/\p{Cc}/u.test(value) }
