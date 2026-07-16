@@ -34,6 +34,24 @@ export function filterApiProxyRequestHeaders(headers: Record<string, string | un
   return filtered
 }
 
+export function resolveTrustedApiProxyOrigin(
+  headers: Record<string, string | undefined>,
+  configuredSiteUrl: string,
+): string {
+  const origin = normalizeOrigin(readHeader(headers, 'origin'))
+  if (!origin) return ''
+
+  try {
+    const originUrl = new URL(origin)
+    const requestHost = readHeader(headers, 'host').trim().toLowerCase()
+    if (requestHost && originUrl.host.toLowerCase() === requestHost) return origin
+    return origin === normalizeOrigin(configuredSiteUrl) ? origin : ''
+  }
+  catch {
+    return ''
+  }
+}
+
 export function shouldForwardApiProxyResponseHeader(name: string): boolean {
   return ALLOWED_API_PROXY_RESPONSE_HEADERS.has(normalizeHeaderName(name))
 }
@@ -56,4 +74,18 @@ export function apiProxyResponseHeaderEntries(headers: Headers): Array<[string, 
 
 function normalizeHeaderName(name: string): string {
   return name.trim().toLowerCase()
+}
+
+function readHeader(headers: Record<string, string | undefined>, target: string): string {
+  const entry = Object.entries(headers).find(([name]) => normalizeHeaderName(name) === target)
+  return entry?.[1] ?? ''
+}
+
+function normalizeOrigin(value: unknown): string {
+  try {
+    return new URL(String(value || '')).origin
+  }
+  catch {
+    return ''
+  }
 }
