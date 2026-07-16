@@ -19,6 +19,7 @@ import {
   startPlatformVerification,
   submitPlatformVerificationEvidence,
 } from '../../workflows/ad-platform-verification'
+import { migrateMetaWorkerSecret } from '../../services/ad-platform/worker-secret-migration'
 import { errorJson } from '../../utils/api-error'
 
 type AdminAdPlatformContext = Context<{ Bindings: Bindings; Variables: Variables }>
@@ -36,6 +37,7 @@ const CONNECTION_FIELDS = new Set([
 ])
 const VERIFY_FIELDS = new Set(['testEventCode'])
 const EVIDENCE_FIELDS = new Set(['confirmed', 'reference'])
+const META_SECRET_MIGRATION_FIELDS = new Set(['pixelId'])
 const MAX_CONNECTION_BODY_BYTES = 64 * 1024
 const MAX_VERIFICATION_BODY_BYTES = 4 * 1024
 const TRACKING_MODES = new Set<AdPlatformTrackingMode>(['disabled', 'test', 'production'])
@@ -80,6 +82,36 @@ adminAdPlatformRoutes.patch('/:provider', async (c) => {
     const body = await readJsonRecord(c, MAX_CONNECTION_BODY_BYTES)
     const command = parseConnectionCommand(provider, body, c.get('userId'))
     return c.json({ data: await savePlatformConnection(c.env, command) })
+  }
+  catch (error) {
+    return connectionErrorResponse(c, error)
+  }
+})
+
+adminAdPlatformRoutes.post('/meta/migrate-worker-secret', async (c) => {
+  const blocked = guardMutation(c)
+  if (blocked) return blocked
+  try {
+    const body = await readJsonRecord(c, MAX_VERIFICATION_BODY_BYTES)
+    if (!hasOnlyFields(body, META_SECRET_MIGRATION_FIELDS)
+      || !validShortText(body.pixelId, 30)) {
+      return invalidRequest(c)
+    }
+    const result = await migrateMetaWorkerSecret(c.env, {
+      pixelId: String(body.pixelId).trim(),
+      actorId: c.get('userId')!,
+    })
+    if (result.status === 'already_completed') {
+      return errorJson(c, 409, 'Meta 凭证迁移已完成', {
+        code: 'AD_PLATFORM_SECRET_MIGRATION_ALREADY_COMPLETED',
+      })
+    }
+    if (result.status === 'source_unavailable') {
+      return errorJson(c, 409, '旧 Meta 凭证不可用', {
+        code: 'AD_PLATFORM_SECRET_MIGRATION_SOURCE_UNAVAILABLE',
+      })
+    }
+    return c.json({ data: result.data }, 201)
   }
   catch (error) {
     return connectionErrorResponse(c, error)
