@@ -172,6 +172,7 @@ const smokePages = [
   { path: '/gallery/summer-portrait', heading: /夏日授权写真/, title: '夏日授权写真 - 测试图库站' },
   { path: '/login', heading: /登录 测试图库站/, title: '登录 - 测试图库站' },
   { path: '/user', heading: /会员权益/, title: '个人中心 - 测试图库站' },
+  { path: '/marketing-tracking', heading: /数据与隐私/, title: '数据与隐私 - 测试图库站' },
   { path: '/admin', heading: /数据概览/ },
 ]
 
