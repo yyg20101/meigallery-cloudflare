@@ -325,8 +325,8 @@ function delivery(
   return db.prepare(`
     INSERT INTO attribution_deliveries (
       id, fact_id, connection_id, provider, transport, status, destination,
-      match_signals_json, attempt_count, queue_attempt_count
-    ) VALUES (?, ?, ?, ?, ?, ?, 'conversion', ?, ?, ?)
+      match_signals_json, attempt_count, queue_attempt_count, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, 'conversion', ?, ?, ?, '2026-07-15T04:00:00.000Z', '2026-07-15T04:00:00.000Z')
   `).bind(id, factId, `conn_${provider}`, provider, transport, status, JSON.stringify(matchSignals), attemptCount, queueAttemptCount)
 }
 
