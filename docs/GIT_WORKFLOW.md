@@ -49,8 +49,8 @@ main (生产)
 1. 从 `dev` 创建 `release/vX.Y.Z`，完成本地测试、类型检查、构建和 Worker dry-run。
 2. 推送 release 分支，通过 GitHub CI 后以 PR 合入 `main`，生产部署只允许从干净的 `main` 执行。
 3. release PR/CI 完成完整测试、覆盖率、类型检查、构建和归因隔离门禁；`./scripts/deploy.sh production` 不重复执行整套 `verify:release`。
-4. production 只允许从干净 `main` 执行。`0051` 首次切换按 `verify:quick -> preflight -> backup -> Expand -> API/Web -> backfill -> reconcile -> smoke` 执行，任一步失败按阶段停止。
-5. 普通业务发布在 `0051` 已应用后跳过一次性旧系统关闭态 preflight、备份和历史回填，不使已验证的平台连接或证据失效。
+4. production 只允许从干净 `main` 执行。`0052` 待应用时按 `verify:quick -> D1 backup -> migration -> API/Web -> 通用归因健康校验 -> smoke` 执行，任一步失败按阶段停止。
+5. 普通业务发布在 `0052` 已应用后跳过 Contract 前备份，不重复历史回填或平台测试事件，也不修改已验证的平台连接、凭证和 rollout。
 6. 部署后严格校验两个 Worker 的 release commit 与当前 `main` HEAD 一致。
 7. 部署脚本不得修改 Meta/TikTok 的 enabled、mode、rollout、incident 或凭证；新接入平台必须保持默认关闭，待独立验证后再人工启用。
 8. 部署后核对 Meta 连接、rollout、Queue/DLQ 和 incident 与部署前一致，并确认 TikTok 仍为关闭态。

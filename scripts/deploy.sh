@@ -22,7 +22,6 @@ fi
 
 PNPM=(corepack pnpm)
 GIT_COMMIT="$(git rev-parse HEAD)"
-ATTRIBUTION_CUTOVER=false
 
 echo "=== MeiGallery 部署 (环境: $ENV) ==="
 
@@ -59,7 +58,7 @@ if ! "${PNPM[@]}" --filter @meigallery/api exec wrangler whoami &> /dev/null; th
 fi
 
 if [ "$IS_PRODUCTION" = "true" ]; then
-  echo "[1/9] 执行 production 快速代码门禁..."
+  echo "[1/7] 执行 production 快速代码门禁..."
   if ! "${PNPM[@]}" verify:quick; then
     echo "生产部署被快速验证阻断，尚未修改 production D1。"
     exit 1
@@ -77,21 +76,14 @@ if [ "$IS_PRODUCTION" = "true" ]; then
     fi
   fi
 
-  if [[ "$UNAPPLIED_MIGRATIONS" == *"0051_unified_attribution_expand"* ]]; then
-    ATTRIBUTION_CUTOVER=true
-    echo "[2/9] 执行通用归因 production preflight..."
-    if ! node scripts/verify-attribution-v3-migration.mjs preflight; then
-      echo "生产部署被通用归因 production preflight 阻断，尚未备份或修改 production D1。"
-      exit 1
-    fi
-
-    echo "[3/9] 导出 production D1 备份..."
-    node scripts/export-attribution-production-backup.mjs
+  if [[ "$UNAPPLIED_MIGRATIONS" == *"0052_unified_attribution_contract"* ]]; then
+    echo "[2/7] 0052 Contract 待执行，先导出 production D1 备份..."
+    node scripts/export-production-d1-backup.mjs
   else
-    echo "[2/9] 0051 已应用，本次为常规发布，跳过一次性归因切换 preflight 和备份。"
+    echo "[2/7] 通用归因 Contract 已生效，本次无需迁移前备份。"
   fi
 
-  echo "[4/9] 应用 production D1 Expand migration..."
+  echo "[3/7] 应用 production D1 migration..."
   "${PNPM[@]}" --filter @meigallery/api exec wrangler d1 migrations apply "$D1_DB" "${ENV_ARGS[@]}" --remote
 else
   echo "[1/6] 运行 API 测试..."
@@ -114,24 +106,12 @@ echo "部署 Web Worker..."
 "${PNPM[@]}" --filter @meigallery/web exec wrangler deploy "${ENV_ARGS[@]}" --var "RELEASE_COMMIT:${GIT_COMMIT}"
 
 if [ "$IS_PRODUCTION" = "true" ]; then
-  if [ "$ATTRIBUTION_CUTOVER" = "true" ]; then
-    echo "确认 production Workflow 已由新 API Worker 创建..."
-    "${PNPM[@]}" --filter @meigallery/api exec wrangler workflows describe meigallery-ad-platform-verification --env "" > /dev/null
+  echo "[6/7] 校验 production 通用归因状态与 API/Web release identity..."
+  node scripts/verify-release.mjs assert-production-attribution
 
-    echo "[7/9] 幂等回填历史标准事实..."
-    node scripts/verify-attribution-v3-migration.mjs backfill --apply
-
-    echo "[8/9] 对账通用归因事实且确认零历史重投..."
-    node scripts/verify-attribution-v3-migration.mjs reconcile
-  else
-    echo "[7/9] 常规发布不重复执行历史回填。"
-    echo "[8/9] 常规发布不重复执行一次性迁移对账。"
-  fi
-
-  echo "校验 production API/Web release identity..."
   env -u VERIFY_RELEASE_ALLOW_BRANCH node scripts/verify-release.mjs assert-production-identity
 
-  echo "[9/9] 执行 production SEO 和基础可用性烟测..."
+  echo "[7/7] 执行 production SEO 和基础可用性烟测..."
   node scripts/verify-production-seo.mjs
 else
   echo "[5/6] API/Web Worker 已部署。"

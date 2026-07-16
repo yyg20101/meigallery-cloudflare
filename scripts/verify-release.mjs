@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
-import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
 import {
   assertReportCanGateProduction,
   collectVersions,
+  fetchWithTimeout,
   getGitState,
   readLatestReport,
   runCommand,
@@ -13,19 +13,13 @@ import {
 } from './release-verification-lib.mjs'
 import { runDevRehearsalVerification } from './verify-dev-rehearsal.mjs'
 import { runLocalRuntimeVerification } from './verify-local-runtime.mjs'
-import {
-  assertReleaseVerificationRow,
-  assertReleaseVerificationSummary,
-  recordReleaseVerificationSummary,
-} from './release-verification-store.mjs'
-import { runMetaResourceVerification } from './verify-meta-resources.mjs'
-import { verifyApprovedMetaDatasetQualityContract } from './meta-dataset-quality-contract-lib.mjs'
-import { verifyProductionReleaseIdentity } from './record-meta-live-verification.mjs'
 
 const PRODUCTION_IDENTITY_MAX_ATTEMPTS = 31
 const PRODUCTION_IDENTITY_RETRY_DELAY_MS = 3_000
-const META_LIVE_CONFIRMATION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
-const META_LIVE_SOURCE_TTL_MS = 24 * 60 * 60 * 1000
+const DEFAULT_PRODUCTION_URLS = {
+  VERIFY_PRODUCTION_API_URL: 'https://api.616618.xyz',
+  VERIFY_PRODUCTION_WEB_URL: 'https://616618.xyz',
+}
 const FORBIDDEN_DEV_PLATFORM_HOSTS = [
   'graph.facebook.com',
   'connect.facebook.net',
@@ -39,7 +33,7 @@ const LOCAL_ATTRIBUTION_GATE_STEPS = [
   {
     name: 'attribution-final-schema',
     command: 'node',
-    args: ['--test', 'packages/api/migrations/0051_unified_attribution_expand.test.mjs'],
+    args: ['--test', 'packages/api/migrations/0052_unified_attribution_contract.test.mjs'],
   },
   {
     name: 'attribution-queue-mock',
@@ -63,924 +57,350 @@ const LOCAL_ATTRIBUTION_GATE_STEPS = [
 ]
 
 const QUICK_STEPS = [
-  {
-    name: 'dependency-install',
-    command: 'corepack',
-    args: ['pnpm', 'install', '--frozen-lockfile'],
-  },
-  {
-    name: 'lint',
-    command: 'corepack',
-    args: ['pnpm', 'lint'],
-  },
-  {
-    name: 'dev-resource-isolation',
-    command: 'node',
-    args: ['scripts/verify-dev-resources.mjs'],
-  },
-  {
-    name: 'meta-secret-leaks',
-    command: 'node',
-    args: ['scripts/verify-meta-secret-leaks.mjs'],
-  },
-  {
-    name: 'scripts-test',
-    command: 'corepack',
-    args: ['pnpm', 'test:scripts'],
-  },
-  {
-    name: 'shared-unit',
-    command: 'corepack',
-    args: ['pnpm', '--filter', '@meigallery/shared', 'test'],
-  },
-  {
-    name: 'api-unit',
-    command: 'corepack',
-    args: ['pnpm', '--filter', '@meigallery/api', 'test'],
-  },
-  {
-    name: 'api-coverage',
-    command: 'corepack',
-    args: ['pnpm', '--filter', '@meigallery/api', 'run', 'test:coverage'],
-  },
-  {
-    name: 'api-typecheck',
-    command: 'corepack',
-    args: ['pnpm', '--filter', '@meigallery/api', 'exec', 'tsc', '--noEmit'],
-  },
-  {
-    name: 'web-typecheck',
-    command: 'corepack',
-    args: ['pnpm', '--filter', '@meigallery/web', 'exec', 'nuxt', 'typecheck'],
-  },
-  {
-    name: 'web-unit',
-    command: 'corepack',
-    args: ['pnpm', '--filter', '@meigallery/web', 'run', 'test:unit'],
-  },
-  {
-    name: 'web-e2e',
-    command: 'corepack',
-    args: ['pnpm', '--filter', '@meigallery/web', 'exec', 'playwright', 'test'],
-  },
-  {
-    name: 'web-build',
-    command: 'corepack',
-    args: ['pnpm', '--filter', '@meigallery/web', 'exec', 'nuxt', 'build'],
-  },
-  {
-    name: 'api-dry-run-deploy',
-    command: 'corepack',
-    args: ['pnpm', '--filter', '@meigallery/api', 'exec', 'wrangler', 'deploy', '--env=', '--dry-run', '--outdir=dist'],
-  },
-]
+  ['dependency-install', 'corepack', ['pnpm', 'install', '--frozen-lockfile']],
+  ['lint', 'corepack', ['pnpm', 'lint']],
+  ['dev-resource-isolation', 'node', ['scripts/verify-dev-resources.mjs']],
+  ['scripts-test', 'corepack', ['pnpm', 'test:scripts']],
+  ['shared-unit', 'corepack', ['pnpm', '--filter', '@meigallery/shared', 'test']],
+  ['api-unit', 'corepack', ['pnpm', '--filter', '@meigallery/api', 'test']],
+  ['api-coverage', 'corepack', ['pnpm', '--filter', '@meigallery/api', 'run', 'test:coverage']],
+  ['api-typecheck', 'corepack', ['pnpm', '--filter', '@meigallery/api', 'exec', 'tsc', '--noEmit']],
+  ['web-typecheck', 'corepack', ['pnpm', '--filter', '@meigallery/web', 'exec', 'nuxt', 'typecheck']],
+  ['web-unit', 'corepack', ['pnpm', '--filter', '@meigallery/web', 'run', 'test:unit']],
+  ['web-e2e', 'corepack', ['pnpm', '--filter', '@meigallery/web', 'exec', 'playwright', 'test']],
+  ['web-build', 'corepack', ['pnpm', '--filter', '@meigallery/web', 'exec', 'nuxt', 'build']],
+  ['api-dry-run-deploy', 'corepack', ['pnpm', '--filter', '@meigallery/api', 'exec', 'wrangler', 'deploy', '--env=', '--dry-run', '--outdir=dist']],
+].map(([name, command, args]) => ({ name, command, args }))
 
-if (isCliEntry()) {
-  try {
-    await main()
-  } catch (error) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try { await main() }
+  catch (error) {
     console.error(error instanceof Error ? error.message : String(error))
-    process.exit(1)
+    process.exitCode = 1
   }
 }
 
 export async function main(argv = process.argv.slice(2), options = {}) {
   const [mode] = argv
-
   if (!mode || mode === '--help' || mode === '-h') {
     printHelp()
     return
   }
-
   if (mode === 'assert-production-allowed') {
     await assertProductionAllowed(options)
-    console.log('最近一次发布验证报告允许生产部署。')
+    console.log('通用生产发布门禁已通过。')
     return
   }
-
   if (mode === 'assert-production-identity') {
     await assertProductionReleaseIdentity(options)
     console.log('production API/Web 发布 commit 与本地 Git HEAD 一致。')
     return
   }
-
-  let report
-  if (mode === 'quick') {
-    report = await runQuickVerification({ ...options, mode })
-  } else if (mode === 'dev-rehearsal') {
-    report = await runDevRehearsalReleaseVerification({ ...options, mode })
-  } else if (mode === 'local-runtime') {
-    report = await runLocalRuntimeReleaseVerification({ ...options, mode })
-  } else if (mode === 'release') {
-    report = await runReleaseVerification({ ...options, mode })
-  } else {
-    throw new Error(`模式 ${mode} 尚未实现`)
-  }
-
-  if (report.status !== 'passed') {
-    throw new Error(`发布快速验证失败，报告已写入：${report.reportFile}`)
-  }
-
-  console.log(`发布快速验证通过，报告已写入：${report.reportFile}`)
-}
-
-export async function runReleaseVerification(options = {}) {
-  const initialMetaRollout = parseInitialMetaRollout(options.env || process.env)
-  const mode = options.mode || 'release'
-  const startedAt = new Date().toISOString()
-  const startedMs = Date.now()
-  const collectVersionsFn = options.collectVersions || collectVersions
-  const getGitStateFn = options.getGitState || getGitState
-  const writeReportFn = options.writeReport || writeReport
-  const runQuickVerificationFn = options.runQuickVerification || runQuickVerification
-  const runLocalRuntimeReleaseVerificationFn = options.runLocalRuntimeReleaseVerification || runLocalRuntimeReleaseVerification
-  const runDevRehearsalReleaseVerificationFn = options.runDevRehearsalReleaseVerification || runDevRehearsalReleaseVerification
-  const verifyApprovedMetaDatasetQualityContractFn = options.verifyApprovedMetaDatasetQualityContract || verifyApprovedMetaDatasetQualityContract
-  const runMetaResourceVerificationFn = options.runMetaResourceVerification || runMetaResourceVerification
-  const readRemoteProductionLiveGateFn = options.readRemoteProductionLiveGate || readRemoteProductionLiveGate
-  const recordReleaseVerificationSummaryFn = options.recordReleaseVerificationSummary || recordReleaseVerificationSummary
-  const versions = await collectVersionsFn(options)
-  const git = await getGitStateFn(options)
-  const steps = []
-  const artifacts = []
-  const notes = []
-  const releaseSubModes = []
-  const releaseGitBlockers = []
-  const metaResources = {
-    dev: skippedMetaResource('dev'),
-    production: skippedMetaResource('production'),
-  }
-  let metaLiveVerification = {
-    status: 'skipped',
-    commit: git.commit || '',
-    verifiedAt: '',
-    expiresAt: '',
-    events: [],
-  }
-  let datasetQualityContract = {
-    status: 'failed',
-    path: '',
-    version: null,
-    digest: '',
-  }
-
-  if (typeof git.branch !== 'string' || git.branch.trim() === '') releaseGitBlockers.push('无法获取当前 Git branch')
-  else if (!isReleaseReportBranchAllowed(git.branch, options.env || process.env)) releaseGitBlockers.push('release 报告生成分支不是 main 或 release/*')
-  if (!isValidCommit(git.commit)) releaseGitBlockers.push('release 报告需要 40 位 Git commit')
-  if (git.isClean !== true) releaseGitBlockers.push('release 报告对应工作区不是干净状态')
-
-  const childRuns = [
-    ['quick', runQuickVerificationFn],
-    ['local-runtime', runLocalRuntimeReleaseVerificationFn],
-    ['dev-rehearsal', runDevRehearsalReleaseVerificationFn],
-  ]
-
-  if (releaseGitBlockers.length > 0) {
-    notes.push(`${releaseGitBlockers.join('；')}，已跳过 release 子模式编排。`)
-  } else {
-    for (const [childMode, runChild] of childRuns) {
-      const childReport = await runChild({ ...options, mode: childMode, releaseCommit: git.commit })
-      if (childReport.reportFile) artifacts.push(childReport.reportFile)
-
-      const passedSteps = Array.isArray(childReport.steps)
-        ? childReport.steps
-          .filter(step => step?.status === 'passed' && typeof step?.name === 'string' && step.name.trim() !== '')
-          .map(step => step.name)
-        : []
-      const childStatus = childReport.status === 'passed' && passedSteps.length > 0 ? 'passed' : 'failed'
-      const childSummary = {
-        mode: childMode,
-        status: childStatus,
-        passedStepNames: passedSteps,
-        reportFile: childReport.reportFile || '',
-      }
-      releaseSubModes.push(childSummary)
-
-      steps.push({
-        name: childMode,
-        status: childStatus,
-        durationMs: childReport.durationMs ?? 0,
-        command: `node scripts/verify-release.mjs ${childMode}`,
-        exitCode: childStatus === 'passed' ? 0 : 1,
-        summary: passedSteps.length > 0
-          ? `通过步骤：${passedSteps.join('、')}；报告：${childReport.reportFile}`
-          : `没有真实通过步骤；报告：${childReport.reportFile}`,
-        passedStepNames: passedSteps,
-      })
-
-      if (Array.isArray(childReport.notes) && childReport.notes.length > 0) {
-        notes.push(`[${childMode}] ${childReport.notes.join('；')}`)
-      }
-
-      if (childReport.status === 'passed' && passedSteps.length === 0) {
-        notes.push(`[${childMode}] 子模式没有真实 passed step，release 不能通过。`)
-      }
-
-      if (childStatus !== 'passed') {
-        notes.push(`release 编排在 ${childMode} 阶段停止，请先修复该阶段失败项。`)
-        break
-      }
-    }
-  }
-
-  const childModesPassed = releaseSubModes.length === childRuns.length && releaseSubModes.every(item => item.status === 'passed')
-  if (releaseGitBlockers.length === 0 && childModesPassed) {
-    const contractStartedMs = Date.now()
-    try {
-      const contract = await verifyApprovedMetaDatasetQualityContractFn({ cwd: options.cwd })
-      datasetQualityContract = { status: 'passed', ...contract }
-      steps.push({
-        name: 'meta-dataset-quality-contract', status: 'passed', durationMs: Date.now() - contractStartedMs,
-        command: '验证 Git tracked approved Dataset Quality contract artifact/digest', exitCode: 0,
-        summary: `Dataset Quality contract v${contract.version} digest 已验证`,
-      })
-    } catch (error) {
-      steps.push({
-        name: 'meta-dataset-quality-contract', status: 'failed', durationMs: Date.now() - contractStartedMs,
-        command: '验证 Git tracked approved Dataset Quality contract artifact/digest', exitCode: 1,
-        summary: error instanceof Error ? error.message : String(error),
-      })
-      notes.push('Dataset Quality approved contract artifact/digest 校验失败。')
-    }
-  }
-
-  if (!initialMetaRollout && releaseGitBlockers.length === 0 && childModesPassed && datasetQualityContract.status === 'passed') {
-    const liveStartedMs = Date.now()
-    try {
-      const evidence = await readRemoteProductionLiveGateFn({ ...options, contract: datasetQualityContract })
-      if (evidence?.status !== 'passed') throw new Error('production 远端 live evidence 不可用')
-      metaLiveVerification = {
-        status: 'passed',
-        commit: evidence.commit,
-        environment: 'production',
-        verifiedAt: evidence.verifiedAt,
-        expiresAt: evidence.expiresAt,
-        events: ['Contact', 'CompleteRegistration'],
-        enhancedMatchVerified: true,
-        forbiddenEventsAbsent: true,
-      }
-      steps.push({
-        name: 'meta-live-evidence',
-        status: 'passed',
-        durationMs: Date.now() - liveStartedMs,
-        command: '读取 production D1 最新有效 Meta live evidence',
-        exitCode: 0,
-        summary: `当前 Meta 连接两事件 live evidence 通过：${metaLiveVerification.events.join('、')}`,
-      })
-    } catch (error) {
-      steps.push({
-        name: 'meta-live-evidence',
-        status: 'failed',
-        durationMs: Date.now() - liveStartedMs,
-        command: '读取 reports/meta-live-verification/latest.json',
-        exitCode: 1,
-        summary: error instanceof Error ? error.message : String(error),
-      })
-      notes.push('Meta live evidence 校验失败。')
-    }
-  }
-
-  const productionEvidenceGatePassed = initialMetaRollout
-    ? datasetQualityContract.status === 'passed'
-    : metaLiveVerification.status === 'passed'
-  if (productionEvidenceGatePassed) {
-    const startedResourceMs = Date.now()
-    const result = await runMetaResourceVerificationFn({
+  if (mode === 'assert-production-attribution') {
+    const git = await (options.getGitState || getGitState)(options)
+    await (options.collectTrustedProductionGateFacts || collectTrustedProductionGateFacts)({
       ...options,
-      environment: 'production',
       commit: git.commit,
-      initialMetaRollout,
-      reportOnly: false,
-      expectedDatasetQualityContract: initialMetaRollout ? undefined : datasetQualityContract,
     })
-    metaResources.production = sanitizeMetaResourceSummary(result, 'production', git.commit)
-    steps.push({
-      name: 'meta-resources-production', status: result?.status === 'passed' ? 'passed' : 'failed',
-      durationMs: Date.now() - startedResourceMs,
-      command: `node scripts/verify-meta-resources.mjs --env production${initialMetaRollout ? ' --initial-meta-rollout' : ''}`,
-      exitCode: result?.status === 'passed' ? 0 : 1,
-      summary: result?.status === 'passed' ? 'Meta production 资源检查通过' : 'Meta production 资源检查失败',
-    })
-    if (result?.status === 'passed') {
-      if (!initialMetaRollout) {
-        steps.push({
-          name: 'meta-dataset-quality', status: result.datasetQualityCollectorCurrent === true ? 'passed' : 'failed', durationMs: 0,
-          command: '校验 production Dataset Quality 当前快照', exitCode: result.datasetQualityCollectorCurrent === true ? 0 : 1,
-          summary: result.datasetQualityCollectorCurrent === true ? 'production Dataset Quality 当前快照通过' : 'production Dataset Quality 当前快照缺失',
-        })
-        steps.push({
-          name: 'meta-open-incident-gate', status: result.openCriticalIncidentCount === 0 ? 'passed' : 'failed', durationMs: 0,
-          command: '校验 production open critical incident', exitCode: result.openCriticalIncidentCount === 0 ? 0 : 1,
-          summary: result.openCriticalIncidentCount === 0 ? 'production 无 open critical incident' : 'production open critical incident 非零',
-        })
-      }
-      const rolloutPassed = !initialMetaRollout || (
-        result.targetRolloutPercentage === 0 && result.effectiveRolloutPercentage === 0
-      )
-      steps.push({
-        name: 'meta-initial-rollout-zero', status: rolloutPassed ? 'passed' : 'failed', durationMs: 0,
-        command: '校验 production target/effective rollout', exitCode: rolloutPassed ? 0 : 1,
-        summary: rolloutPassed ? 'production initial rollout 为 0' : 'production initial rollout 非 0',
-      })
-    }
+    console.log('production 通用归因状态校验通过。')
+    return
   }
-
-  const resourcesPassed = metaResources.production.status === 'passed'
-  if (metaLiveVerification.status === 'passed' && resourcesPassed) {
-    for (const environment of ['production']) {
-      const startedStoreMs = Date.now()
-      const storeStep = await recordReleaseVerificationSummaryFn({
-        environment,
-        verificationType: 'meta_live',
-        commit: git.commit,
-        verifiedAt: metaLiveVerification.verifiedAt,
-        summary: {
-          schemaVersion: 2,
-          commitSha: git.commit,
-          environment,
-          events: ['Contact', 'CompleteRegistration'],
-          eventsVerified: true,
-          forbiddenEventsAbsent: true,
-          datasetQualityContractVersion: datasetQualityContract.version,
-          datasetQualityContractDigest: datasetQualityContract.digest,
-        },
-        cwd: options.cwd,
-        runCommand: options.runCommand,
-      })
-      steps.push({
-        name: `meta-live-store-${environment}`,
-        status: storeStep?.status === 'passed' ? 'passed' : 'failed',
-        durationMs: Date.now() - startedStoreMs,
-        command: `写入 ${environment} D1 Meta live 脱敏摘要`,
-        exitCode: storeStep?.status === 'passed' ? 0 : 1,
-        summary: storeStep?.status === 'passed' ? 'Meta live 脱敏摘要写入成功' : 'Meta live 脱敏摘要写入失败',
-      })
-      if (storeStep?.status !== 'passed') {
-        notes.push(`Meta live 脱敏摘要写入 ${environment} D1 失败。`)
-        break
-      }
-    }
+  const runners = {
+    quick: runQuickVerification,
+    'local-runtime': runLocalRuntimeReleaseVerification,
+    'dev-rehearsal': runDevRehearsalReleaseVerification,
+    release: runReleaseVerification,
   }
-
-  const finishedAt = new Date().toISOString()
-  const requiredMetaSteps = initialMetaRollout
-    ? ['meta-dataset-quality-contract', 'meta-resources-production', 'meta-initial-rollout-zero']
-    : [
-        'meta-dataset-quality-contract',
-        'meta-resources-production',
-        'meta-live-evidence',
-        'meta-dataset-quality',
-        'meta-open-incident-gate',
-        'meta-live-store-production',
-      ]
-  const metaStepsPassed = requiredMetaSteps.every(name => steps.some(step => step.name === name && step.status === 'passed'))
-  const report = {
-    schemaVersion: 1,
-    mode,
-    status: releaseGitBlockers.length === 0 && childModesPassed && metaStepsPassed ? 'passed' : 'failed',
-    startedAt,
-    finishedAt,
-    durationMs: Date.now() - startedMs,
-    git,
-    versions,
-    steps,
-    releaseSubModes,
-    initialMetaRollout,
-    metaLiveVerification,
-    datasetQualityContract,
-    metaResources,
-    artifacts,
-    notes,
-  }
-  const files = await writeReportFn(report, options)
-
-  return {
-    ...report,
-    ...files,
-  }
+  const runner = runners[mode]
+  if (!runner) throw new Error(`模式 ${mode} 尚未实现`)
+  const report = await runner({ ...options, mode })
+  if (report.status !== 'passed') throw new Error(`发布验证失败，报告已写入：${report.reportFile}`)
+  console.log(`发布验证通过，报告已写入：${report.reportFile}`)
 }
 
-function parseInitialMetaRollout(env) {
-  const value = env?.META_INITIAL_ROLLOUT
-  if (value === undefined || value === '') return false
-  if (value !== '1') throw new Error('META_INITIAL_ROLLOUT 只接受精确值 1')
-  return true
-}
-
-function isReleaseReportBranchAllowed(branch, env) {
-  const value = String(branch || '').trim()
-  const override = String(env?.VERIFY_RELEASE_ALLOW_BRANCH || '').trim()
-  return value === 'main' || value.startsWith('release/') || Boolean(override && value === override)
-}
-
-function isValidCommit(value) {
-  return /^[0-9a-f]{40}$/i.test(String(value || '').trim())
-}
-
-function skippedMetaResource(environment) {
-  return {
-    status: 'skipped',
-    environment,
-    commit: '',
-    database: environment === 'dev' ? 'meigallery-db-dev' : 'meigallery-db',
-    queues: [],
-    capiEnabled: null,
-  }
-}
-
-function sanitizeMetaResourceSummary(result, environment, commit) {
-  return {
-    status: result?.status === 'passed' ? 'passed' : 'failed',
-    environment,
-    commit,
-    database: String(result?.database || (environment === 'dev' ? 'meigallery-db-dev' : 'meigallery-db')),
-    queues: Array.isArray(result?.queues) ? result.queues.map(String) : [],
-    consumersPresent: result?.consumersPresent === true,
-    r2Present: result?.r2Present === true,
-    secretsPresent: result?.secretsPresent === true,
-    migrationsCurrent: result?.migrationsCurrent === true,
-    migrationsApplied: result?.migrationsApplied === true,
-    connectionVerified: result?.connectionVerified === true,
-    openCriticalIncidentCount: Number.isSafeInteger(result?.openCriticalIncidentCount) ? result.openCriticalIncidentCount : null,
-    targetRolloutPercentage: Number.isSafeInteger(result?.targetRolloutPercentage) ? result.targetRolloutPercentage : null,
-    effectiveRolloutPercentage: Number.isSafeInteger(result?.effectiveRolloutPercentage) ? result.effectiveRolloutPercentage : null,
-    trackingMode: ['disabled', 'test', 'production'].includes(result?.trackingMode)
-      ? result.trackingMode
-      : null,
-    capiEnabled: typeof result?.capiEnabled === 'boolean' ? result.capiEnabled : null,
-    initialMetaRollout: result?.initialMetaRollout === true,
-    phase: result?.phase === 'bootstrap' ? 'bootstrap' : 'full',
-    datasetQualityContractVersion: Number.isSafeInteger(result?.datasetQualityContractVersion) ? result.datasetQualityContractVersion : null,
-    datasetQualityContractDigest: /^sha256:[0-9a-f]{64}$/.test(String(result?.datasetQualityContractDigest || '')) ? result.datasetQualityContractDigest : '',
-    datasetQualityCollectorCurrent: result?.datasetQualityCollectorCurrent === true,
-    environmentIsolation: sanitizeEnvironmentIsolation(result?.environmentIsolation),
-  }
-}
-
-function sanitizeEnvironmentIsolation(value) {
-  const fields = ['d1', 'r2', 'queue', 'dlq', 'pixel', 'token', 'dataKey']
-  return Object.fromEntries(fields.map(field => [field, value?.[field] === true]))
+export async function runQuickVerification(options = {}) {
+  const context = await reportContext(options, options.mode || 'quick')
+  const steps = await runSteps(QUICK_STEPS, options)
+  return finishReport(context, { steps, notes: failedNotes(steps), artifacts: [] }, options)
 }
 
 export async function runLocalAttributionGates(options = {}) {
-  const runCommandFn = options.runCommand || runCommand
-  const steps = []
-  const notes = []
-  for (const definition of LOCAL_ATTRIBUTION_GATE_STEPS) {
-    const step = await runCommandFn(definition.command, definition.args, {
-      cwd: options.cwd || process.cwd(),
-      name: definition.name,
-    })
-    steps.push(step)
-    if (step.status !== 'passed') {
-      notes.push(`归因专项门禁 ${definition.name} 失败，后续专项检查与 local-runtime smoke 已停止。`)
-      break
-    }
-  }
-  return { steps, notes, artifacts: [] }
-}
-
-export async function verifyDevRehearsalPlatformIsolation(options = {}) {
-  const startedMs = Date.now()
-  const cwd = options.cwd || process.cwd()
-  const readFileFn = options.readFile || readFile
-  const command = '静态核对 dev Queue、最终归因 fixture 与真实平台域名'
-  try {
-    const [wrangler, seed, rehearsal] = await Promise.all([
-      readFileFn(new URL('packages/api/wrangler.toml', pathToFileURL(`${cwd}/`)), 'utf8'),
-      readFileFn(new URL('scripts/fixtures/release-smoke/seed-dev.sql', pathToFileURL(`${cwd}/`)), 'utf8'),
-      readFileFn(new URL('scripts/verify-dev-rehearsal.mjs', pathToFileURL(`${cwd}/`)), 'utf8'),
-    ])
-    if (!/\[env\.dev\.queues\][\s\S]*?producers\s*=\s*\[\][\s\S]*?consumers\s*=\s*\[\]/.test(wrangler)) {
-      throw new Error('dev 环境仍存在广告平台 Queue producer 或 consumer')
-    }
-    if (/\bad_platform_connections\b/.test(seed)) throw new Error('dev smoke fixture 仍写旧广告平台连接表')
-    const connectionSeed = seed.match(/INSERT OR REPLACE INTO attribution_platform_connections[\s\S]*?;/)?.[0] || ''
-    for (const provider of ['meta', 'tiktok', 'google']) {
-      const closedTransport = new RegExp(`'${provider}',\\s*1,\\s*'test',\\s*0,\\s*0`)
-      if (!closedTransport.test(connectionSeed)) throw new Error(`dev ${provider} Browser/Server 通道未同时关闭`)
-    }
-    const forbiddenHost = FORBIDDEN_DEV_PLATFORM_HOSTS.find(host => seed.includes(host) || rehearsal.includes(host))
-    if (forbiddenHost) throw new Error(`dev rehearsal 禁止请求真实平台域名：${forbiddenHost}`)
-    return {
-      name: 'dev-platform-network-isolation',
-      status: 'passed',
-      durationMs: Date.now() - startedMs,
-      command,
-      exitCode: 0,
-      summary: 'dev 三个平台 Browser/Server 与 Queue 均关闭，预演脚本不包含真实平台域名',
-    }
-  }
-  catch (error) {
-    return {
-      name: 'dev-platform-network-isolation',
-      status: 'failed',
-      durationMs: Date.now() - startedMs,
-      command,
-      exitCode: 1,
-      summary: error instanceof Error ? error.message : String(error),
-    }
-  }
-}
-
-function stripCommandOutput({ stdout, stderr, logs, ...step }) {
-  return step
+  const steps = await runSteps(LOCAL_ATTRIBUTION_GATE_STEPS, options)
+  return { steps, notes: failedNotes(steps), artifacts: [] }
 }
 
 export async function runLocalRuntimeReleaseVerification(options = {}) {
-  const mode = options.mode || 'local-runtime'
-  const startedAt = new Date().toISOString()
-  const startedMs = Date.now()
-  const collectVersionsFn = options.collectVersions || collectVersions
-  const getGitStateFn = options.getGitState || getGitState
-  const runLocalRuntimeVerificationFn = options.runLocalRuntimeVerification || runLocalRuntimeVerification
-  const runLocalAttributionGatesFn = options.runLocalAttributionGates || runLocalAttributionGates
-  const writeReportFn = options.writeReport || writeReport
-  const versions = await collectVersionsFn(options)
-  const git = await getGitStateFn(options)
-  const gates = await runLocalAttributionGatesFn(options)
-  const gateSteps = Array.isArray(gates.steps) ? gates.steps : []
-  const gatesPassed = gateSteps.length === LOCAL_ATTRIBUTION_GATE_STEPS.length
-    && gateSteps.every(step => step.status === 'passed')
+  const context = await reportContext(options, options.mode || 'local-runtime')
+  const gates = await (options.runLocalAttributionGates || runLocalAttributionGates)(options)
+  const gatesPassed = gates.steps.length === LOCAL_ATTRIBUTION_GATE_STEPS.length
+    && gates.steps.every(step => step.status === 'passed')
   const runtime = gatesPassed
-    ? await runLocalRuntimeVerificationFn(options)
-    : { steps: [], notes: ['归因专项门禁失败，local-runtime smoke 未执行。'], artifacts: [], sensitiveValues: [] }
-  const runtimeSteps = Array.isArray(runtime.steps) ? runtime.steps : []
-  const normalizedSteps = [...gateSteps, ...runtimeSteps]
-  const notes = [...(gates.notes || []), ...(runtime.notes || [])]
-  const artifacts = [...(gates.artifacts || []), ...(runtime.artifacts || [])]
-  const sensitiveValues = runtime.sensitiveValues || []
-  const finishedAt = new Date().toISOString()
-  const report = {
-    schemaVersion: 1,
-    mode,
-    status: gatesPassed && runtimeSteps.length > 0 && normalizedSteps.every(step => step.status === 'passed') ? 'passed' : 'failed',
-    startedAt,
-    finishedAt,
-    durationMs: Date.now() - startedMs,
-    git,
-    versions,
-    steps: normalizedSteps.map(stripCommandOutput),
-    artifacts,
-    notes,
-  }
-  const files = await writeReportFn(report, options)
-  await assertReportOmitsSecrets(files, sensitiveValues)
+    ? await (options.runLocalRuntimeVerification || runLocalRuntimeVerification)(options)
+    : { steps: [], notes: ['归因专项门禁失败，未启动本地运行时。'], artifacts: [] }
+  return finishReport(context, {
+    steps: [...gates.steps, ...(runtime.steps || [])],
+    notes: [...(gates.notes || []), ...(runtime.notes || [])],
+    artifacts: [...(gates.artifacts || []), ...(runtime.artifacts || [])],
+    forceFailed: !gatesPassed || !runtime.steps?.length,
+  }, options)
+}
 
-  return {
-    ...report,
-    ...files,
+export async function verifyDevRehearsalPlatformIsolation(options = {}) {
+  const started = Date.now()
+  const cwd = options.cwd || process.cwd()
+  try {
+    const read = options.readFile || readFile
+    const [wrangler, seed, rehearsal] = await Promise.all([
+      read(new URL('packages/api/wrangler.toml', pathToFileURL(`${cwd}/`)), 'utf8'),
+      read(new URL('scripts/fixtures/release-smoke/seed-dev.sql', pathToFileURL(`${cwd}/`)), 'utf8'),
+      read(new URL('scripts/verify-dev-rehearsal.mjs', pathToFileURL(`${cwd}/`)), 'utf8'),
+    ])
+    if (!/\[env\.dev\.queues\][\s\S]*?producers\s*=\s*\[\][\s\S]*?consumers\s*=\s*\[\]/.test(wrangler)) {
+      throw new Error('dev 环境仍绑定广告平台 Queue')
+    }
+    const connectionSeed = seed.match(/INSERT OR REPLACE INTO attribution_platform_connections[\s\S]*?;/)?.[0] || ''
+    for (const provider of ['meta', 'tiktok', 'google']) {
+      if (!new RegExp(`'${provider}',\\s*1,\\s*'test',\\s*0,\\s*0`).test(connectionSeed)) {
+        throw new Error(`dev ${provider} 通道未关闭`)
+      }
+    }
+    const forbiddenHost = FORBIDDEN_DEV_PLATFORM_HOSTS.find(host => seed.includes(host) || rehearsal.includes(host))
+    if (forbiddenHost) throw new Error(`dev 禁止请求真实平台域名：${forbiddenHost}`)
+    return step('dev-platform-network-isolation', 'passed', started, '静态核对 dev 广告资源隔离', 'dev 三平台网络与 Queue 均关闭')
+  }
+  catch (error) {
+    return step('dev-platform-network-isolation', 'failed', started, '静态核对 dev 广告资源隔离', error instanceof Error ? error.message : String(error))
   }
 }
 
 export async function runDevRehearsalReleaseVerification(options = {}) {
-  const mode = options.mode || 'dev-rehearsal'
-  const startedAt = new Date().toISOString()
-  const startedMs = Date.now()
-  const collectVersionsFn = options.collectVersions || collectVersions
-  const getGitStateFn = options.getGitState || getGitState
-  const runDevRehearsalVerificationFn = options.runDevRehearsalVerification || runDevRehearsalVerification
-  const verifyDevIsolationFn = options.verifyDevRehearsalPlatformIsolation || verifyDevRehearsalPlatformIsolation
-  const writeReportFn = options.writeReport || writeReport
-  const versions = await collectVersionsFn(options)
-  const git = await getGitStateFn(options)
-  const isolation = isValidCommit(git.commit)
-    ? await verifyDevIsolationFn(options)
-    : null
-  const verification = isValidCommit(git.commit) && isolation?.status === 'passed'
-    ? await runDevRehearsalVerificationFn({ ...options, releaseCommit: git.commit })
-    : {
-        steps: [{
-          name: isolation?.name || 'dev-release-commit',
-          status: 'failed',
-          durationMs: 0,
-          command: isolation?.command || 'git rev-parse HEAD',
-          exitCode: 1,
-          summary: isolation?.summary || 'dev rehearsal release 路径需要 40 位 commit',
-        }],
-        notes: [isolation?.summary || 'dev rehearsal release 路径缺少合法的 40 位 commit'],
-        artifacts: [],
-      }
-  const { steps, notes, artifacts, sensitiveValues = [] } = verification
-  const normalizedSteps = [
-    ...(isolation?.status === 'passed' ? [isolation] : []),
-    ...(Array.isArray(steps) ? steps : []),
-  ]
-  const rehearsalStepCount = Array.isArray(steps) ? steps.length : 0
-  const finishedAt = new Date().toISOString()
-  const report = {
-    schemaVersion: 1,
-    mode,
-    status: isolation?.status === 'passed' && rehearsalStepCount > 0 && normalizedSteps.every(step => step.status === 'passed') ? 'passed' : 'failed',
-    startedAt,
-    finishedAt,
-    durationMs: Date.now() - startedMs,
-    git,
-    versions,
-    steps: normalizedSteps.map(stripCommandOutput),
-    artifacts,
-    notes,
-  }
-  const files = await writeReportFn(report, options)
-  await assertReportOmitsSecrets(files, sensitiveValues)
+  const context = await reportContext(options, options.mode || 'dev-rehearsal')
+  const isolation = await (options.verifyDevRehearsalPlatformIsolation || verifyDevRehearsalPlatformIsolation)(options)
+  const rehearsal = isolation.status === 'passed'
+    ? await (options.runDevRehearsalVerification || runDevRehearsalVerification)({ ...options, releaseCommit: context.git.commit })
+    : { steps: [], notes: [isolation.summary], artifacts: [] }
+  return finishReport(context, {
+    steps: [isolation, ...(rehearsal.steps || [])],
+    notes: rehearsal.notes || [],
+    artifacts: rehearsal.artifacts || [],
+    forceFailed: isolation.status !== 'passed' || !rehearsal.steps?.length,
+  }, options)
+}
 
-  return {
-    ...report,
-    ...files,
+export async function runReleaseVerification(options = {}) {
+  const context = await reportContext(options, options.mode || 'release')
+  const allowed = context.git.isClean === true
+    && isValidCommit(context.git.commit)
+    && (context.git.branch === 'main' || context.git.branch?.startsWith('release/'))
+  const notes = allowed ? [] : ['release 只允许干净的 main 或 release/* 40 位 commit。']
+  const children = []
+  if (allowed) {
+    for (const [mode, optionName, defaultRunner] of [
+      ['quick', 'runQuickVerification', runQuickVerification],
+      ['local-runtime', 'runLocalRuntimeReleaseVerification', runLocalRuntimeReleaseVerification],
+      ['dev-rehearsal', 'runDevRehearsalReleaseVerification', runDevRehearsalReleaseVerification],
+    ]) {
+      const runner = options[optionName] || defaultRunner
+      const report = await runner({ ...options, mode })
+      children.push({ mode, status: report.status, reportFile: report.reportFile || '' })
+      if (report.status !== 'passed') break
+    }
   }
+  const steps = children.map(child => ({
+    name: child.mode,
+    status: child.status,
+    durationMs: 0,
+    command: `node scripts/verify-release.mjs ${child.mode}`,
+    exitCode: child.status === 'passed' ? 0 : 1,
+    summary: child.reportFile,
+  }))
+  return finishReport(context, {
+    steps,
+    notes,
+    artifacts: children.map(child => child.reportFile).filter(Boolean),
+    releaseSubModes: children,
+    forceFailed: !allowed || children.length !== 3 || children.some(child => child.status !== 'passed'),
+  }, options)
 }
 
 export async function assertProductionAllowed(options = {}) {
-  const readLatestReportFn = options.readLatestReport || readLatestReport
-  const getGitStateFn = options.getGitState || getGitState
-  const assertReportCanGateProductionFn = options.assertReportCanGateProduction || assertReportCanGateProduction
-  const collectTrustedProductionGateFactsFn = options.collectTrustedProductionGateFacts || collectTrustedProductionGateFacts
-  const currentGit = await getGitStateFn(options)
-  const expectedBranch = currentGit.branch?.trim()
-  const expectedCommit = currentGit.commit?.trim()
-
-  if (!expectedBranch) {
-    throw new Error('无法获取当前 Git branch，拒绝放行生产部署')
+  const getGit = options.getGitState || getGitState
+  const git = await getGit(options)
+  if (git.branch !== 'main' || git.isClean !== true || !isValidCommit(git.commit)) {
+    throw new Error('production 只允许干净的 main 40 位 commit')
   }
-  if (!expectedCommit) {
-    throw new Error('无法获取当前 Git commit，拒绝放行生产部署')
-  }
-  if (currentGit.isClean !== true) {
-    throw new Error('当前工作区不是干净状态，拒绝放行生产部署')
-  }
-  if (expectedBranch !== 'main') {
-    throw new Error('最终生产部署只允许 main 分支')
-  }
-
-  const report = await readLatestReportFn(options)
-  assertReportCanGateProductionFn(report, {
+  const report = await (options.readLatestReport || readLatestReport)(options)
+  ;(options.assertReportCanGateProduction || assertReportCanGateProduction)(report, {
     ...options,
-    currentBranch: expectedBranch,
-    expectedCommit,
+    currentBranch: 'main',
+    expectedCommit: git.commit,
   })
-  await collectTrustedProductionGateFactsFn({
-    ...options,
-    commit: expectedCommit,
-  })
+  return (options.collectTrustedProductionGateFacts || collectTrustedProductionGateFacts)({ ...options, commit: git.commit })
 }
 
 export async function collectTrustedProductionGateFacts(options = {}) {
   const commit = String(options.commit || '').trim().toLowerCase()
-  if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error('受信生产门禁需要当前 40 位 commit')
-  const verifyContractFn = options.verifyApprovedMetaDatasetQualityContract || verifyApprovedMetaDatasetQualityContract
-  const runMetaResourceVerificationFn = options.runMetaResourceVerification || runMetaResourceVerification
-  const readRemoteProductionLiveGateFn = options.readRemoteProductionLiveGate || readRemoteProductionLiveGate
-  const readTrustedProductionBootstrapPermitFn = options.readTrustedProductionBootstrapPermit || readTrustedProductionBootstrapPermit
-
-  const contract = await verifyContractFn(options)
-  const bootstrapPermitted = await readTrustedProductionBootstrapPermitFn({ ...options, commit })
-  if (bootstrapPermitted) {
-    const production = await runMetaResourceVerificationFn({
-      ...options,
-      environment: 'production',
-      commit,
-      phase: 'bootstrap',
-      initialMetaRollout: true,
-      reportOnly: true,
-    })
-    if (production?.status !== 'passed'
-      || production.openCriticalIncidentCount !== 0
-      || production.targetRolloutPercentage !== 0
-      || production.effectiveRolloutPercentage !== 0) {
-      throw new Error('当前 production bootstrap resource/incident/rollout 链未通过')
-    }
-    return { contract, production, bootstrapPermitted: true }
-  }
-  const live = await readRemoteProductionLiveGateFn({ ...options, commit, contract })
-  if (live?.status !== 'passed') throw new Error('当前 production 远端 live evidence 链未通过')
-
-  const production = await runMetaResourceVerificationFn({
-    ...options,
-    environment: 'production',
-    commit,
-    phase: 'full',
-    initialMetaRollout: false,
-    reportOnly: true,
-    expectedDatasetQualityContract: contract,
-  })
-  if (production?.status !== 'passed'
-    || production.openCriticalIncidentCount !== 0
-    || (
-      production.datasetQualityCollectorCurrent !== true
-      || production.datasetQualityContractVersion !== contract.version
-      || production.datasetQualityContractDigest !== contract.digest
-    )) {
-    throw new Error('当前 production 远端 resource/incident/rollout 链未通过')
-  }
-  return { status: 'passed', production, live, contract }
+  if (!isValidCommit(commit)) throw new Error('通用生产门禁需要当前 40 位 commit')
+  const state = await (options.queryProductionAttributionState || queryProductionAttributionState)(options)
+  const blockers = [
+    ['contractMigrationCount', value => value !== 1],
+    ['invalidConnectionCount', value => value !== 0],
+    ['openCriticalIncidentCount', value => value !== 0],
+    ['expiredOutboxCount', value => value !== 0],
+    ['deadLetterCount', value => value !== 0],
+    ['invalidRolloutCount', value => value !== 0],
+  ].filter(([key, invalid]) => invalid(integer(state[key]))).map(([key]) => key)
+  if (blockers.length > 0) throw new Error(`通用 production 归因门禁未通过：${blockers.join(',')}`)
+  return { status: 'passed', commit, ...state }
 }
 
 export async function assertProductionReleaseIdentity(options = {}) {
-  const getGitStateFn = options.getGitState || getGitState
-  const verifyProductionReleaseIdentityFn = options.verifyProductionReleaseIdentity || verifyProductionReleaseIdentity
-  const git = await getGitStateFn(options)
+  const git = await (options.getGitState || getGitState)(options)
   if (git.branch !== 'main' || git.isClean !== true || !isValidCommit(git.commit)) {
     throw new Error('production 发布后 identity 校验只允许干净的 main 40 位 commit')
   }
-
-  const maxAttempts = Number.isSafeInteger(options.identityMaxAttempts) && options.identityMaxAttempts > 0
+  const verify = options.verifyProductionReleaseIdentity || verifyProductionReleaseIdentity
+  const attempts = Number.isSafeInteger(options.identityMaxAttempts) && options.identityMaxAttempts > 0
     ? options.identityMaxAttempts
     : PRODUCTION_IDENTITY_MAX_ATTEMPTS
-  const retryDelayMs = Number.isFinite(options.identityRetryDelayMs) && options.identityRetryDelayMs >= 0
+  const delayMs = Number.isFinite(options.identityRetryDelayMs) && options.identityRetryDelayMs >= 0
     ? options.identityRetryDelayMs
     : PRODUCTION_IDENTITY_RETRY_DELAY_MS
-  const sleepFn = options.sleep || (delayMs => new Promise(resolve => setTimeout(resolve, delayMs)))
   let lastError
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    try {
-      await verifyProductionReleaseIdentityFn({ ...options, commit: git.commit.toLowerCase() })
-      return
-    } catch (error) {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try { return await verify({ ...options, commit: git.commit.toLowerCase() }) }
+    catch (error) {
       lastError = error
-      if (attempt < maxAttempts) await sleepFn(retryDelayMs)
+      if (attempt < attempts) await (options.sleep || sleep)(delayMs)
     }
   }
-
-  const reason = lastError instanceof Error ? lastError.message : String(lastError)
-  throw new Error(`${reason}；连续 ${maxAttempts} 次检查仍未完成 Cloudflare 发布传播`)
+  throw new Error(`${lastError instanceof Error ? lastError.message : String(lastError)}；连续 ${attempts} 次检查未通过`)
 }
 
-export async function readRemoteProductionLiveGate(options = {}) {
-  const sql = `
-    SELECT v.summary, v.verified_at, v.expires_at,
-      c.verified_commit AS connection_verified_commit,
-      c.verified_at AS connection_verified_at
-    FROM analytics_release_verifications v
-    JOIN meta_connection_verifications c ON c.environment = v.environment
-    WHERE v.environment = 'production' AND v.verification_type = 'meta_live'
-      AND v.status = 'passed'
-      AND c.invalidated_at IS NULL
-      AND length(c.revision) = 32
-      AND json_extract(v.summary, '$.commitSha') = c.verified_commit
-      AND datetime(v.verified_at) >= datetime(c.verified_at)
-      AND datetime(v.verified_at) > datetime('now', '-30 days')
-    ORDER BY v.verified_at DESC LIMIT 1
-  `.replace(/\s+/g, ' ').trim()
-  const step = await (options.runCommand || runCommand)('corepack', [
-    'pnpm', '--filter', '@meigallery/api', 'exec', 'wrangler', 'd1', 'execute', 'meigallery-db',
-    '--env', '', '--remote', '--command', sql, '--json',
-  ], { cwd: options.cwd || process.cwd(), name: 'production-gate-production-live', reportCommand: '重查 production D1 当前 Meta 连接 live 脱敏摘要' })
-  if (step.status !== 'passed') throw new Error('当前 production 远端 live evidence 查询失败')
-  try {
-    const payload = JSON.parse(String(step.stdout || ''))
-    const rows = payload?.[0]?.results
-    if (!Array.isArray(rows) || rows.length !== 1) return { status: 'failed' }
-    const rawSummary = JSON.parse(String(rows[0].summary || ''))
-    const evidenceCommit = String(rawSummary.commitSha || '').trim().toLowerCase()
-    if (!/^[0-9a-f]{40}$/.test(evidenceCommit)) return { status: 'failed' }
-    const connectionCommit = String(rows[0].connection_verified_commit || '').trim().toLowerCase()
-    const verifiedAtMs = parseTrustedUtcTimestamp(rows[0].verified_at)
-    const sourceExpiresAtMs = parseTrustedUtcTimestamp(rows[0].expires_at)
-    const connectionVerifiedAtMs = parseTrustedUtcTimestamp(rows[0].connection_verified_at)
-    const nowMs = new Date(options.now ?? Date.now()).getTime()
-    if (!Number.isFinite(nowMs)
-      || evidenceCommit !== connectionCommit
-      || sourceExpiresAtMs - verifiedAtMs !== META_LIVE_SOURCE_TTL_MS
-      || verifiedAtMs < connectionVerifiedAtMs
-      || verifiedAtMs > nowMs
-      || nowMs - verifiedAtMs >= META_LIVE_CONFIRMATION_MAX_AGE_MS) {
-      return { status: 'failed' }
-    }
-    const contract = options.contract
-    assertReleaseVerificationSummary({
-      environment: 'production',
-      verificationType: 'meta_live',
-      commit: evidenceCommit,
-      summary: rawSummary,
-    })
-    const valid = rawSummary.datasetQualityContractVersion === contract?.version
-      && rawSummary.datasetQualityContractDigest === contract?.digest
-    return {
-      status: valid ? 'passed' : 'failed',
-      commit: evidenceCommit,
-      verifiedAt: new Date(verifiedAtMs).toISOString(),
-      expiresAt: new Date(verifiedAtMs + META_LIVE_CONFIRMATION_MAX_AGE_MS).toISOString(),
-    }
-  }
-  catch {
-    return { status: 'failed' }
-  }
-}
-
-function parseTrustedUtcTimestamp(value) {
-  const raw = String(value || '').trim()
-  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{1,3})?$/.test(raw)
-    ? `${raw.replace(' ', 'T')}Z`
-    : raw
-  return Date.parse(normalized)
-}
-
-export async function readTrustedProductionBootstrapPermit(options = {}) {
+export async function verifyProductionReleaseIdentity(options = {}) {
   const commit = String(options.commit || '').trim().toLowerCase()
-  if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error('bootstrap permit 需要当前 40 位 commit')
+  if (!isValidCommit(commit)) throw new Error('本地 Git HEAD 必须为 40 位 SHA')
+  const env = options.env || process.env
+  const fetchFn = options.fetch || fetch
+  await Promise.all(Object.entries(DEFAULT_PRODUCTION_URLS).map(async ([key, fallback]) => {
+    const origin = productionOrigin(env[key] || fallback, key)
+    const endpoint = key === 'VERIFY_PRODUCTION_API_URL' ? '/api/health' : '/__release'
+    const response = await fetchWithTimeout(fetchFn, new URL(endpoint, origin), {
+      headers: { Accept: 'application/json' },
+    }, options.requestTimeoutMs ?? 10_000)
+    const body = response.ok ? await response.json().catch(() => null) : null
+    if (!body || body.status !== 'ok' || body.environment !== 'production' || body.commit !== commit) {
+      throw new Error(`${key} 发布 commit 与本地 Git HEAD 不一致`)
+    }
+  }))
+}
+
+async function queryProductionAttributionState(options = {}) {
   const sql = `
-    SELECT summary, verified_at, expires_at
-    FROM analytics_release_verifications
-    WHERE environment = 'production' AND verification_type = 'meta_resources'
-      AND status = 'passed' AND commit_sha = '${commit}'
-      AND datetime(expires_at) > datetime('now')
-    ORDER BY verified_at DESC LIMIT 1
+    SELECT
+      (SELECT COUNT(*) FROM d1_migrations WHERE name = '0052_unified_attribution_contract.sql') AS contract_migration_count,
+      (SELECT COUNT(*) FROM attribution_platform_connections AS connection
+        WHERE connection.enabled = 1 AND connection.mode = 'production'
+          AND NOT EXISTS (
+            SELECT 1 FROM attribution_verifications AS verification
+            WHERE verification.connection_id = connection.id
+              AND verification.provider = connection.provider
+              AND verification.connection_revision = connection.connection_revision
+              AND verification.credential_revision = connection.credential_revision
+              AND verification.status = 'verified'
+          )) AS invalid_connection_count,
+      (SELECT COUNT(*) FROM attribution_incidents WHERE status = 'open' AND severity = 'critical') AS open_critical_incident_count,
+      (SELECT COUNT(*) FROM attribution_outbox WHERE datetime(expires_at) <= datetime('now')) AS expired_outbox_count,
+      (SELECT COUNT(*) FROM attribution_deliveries WHERE status = 'dead_letter') AS dead_letter_count,
+      (SELECT COUNT(*) FROM attribution_platform_connections
+        WHERE rollout_effective_percentage > rollout_target_percentage
+          OR (server_enabled = 0 AND rollout_effective_percentage <> 0)) AS invalid_rollout_count;
   `.replace(/\s+/g, ' ').trim()
-  const step = await (options.runCommand || runCommand)('corepack', [
+  const result = await (options.runCommand || runCommand)('corepack', [
     'pnpm', '--filter', '@meigallery/api', 'exec', 'wrangler', 'd1', 'execute', 'meigallery-db',
     '--env', '', '--remote', '--command', sql, '--json',
-  ], { cwd: options.cwd || process.cwd(), name: 'production-gate-bootstrap-permit', reportCommand: '重查 production D1 当前 commit bootstrap permit' })
-  if (step.status !== 'passed') throw new Error('production bootstrap permit 查询失败')
+  ], { cwd: options.cwd || process.cwd(), name: 'attribution-production-gate', reportCommand: '读取 production 通用归因门禁' })
+  if (result.status !== 'passed') throw new Error('production 通用归因状态查询失败')
   try {
-    const payload = JSON.parse(String(step.stdout || ''))
-    const rows = payload?.[0]?.results
-    if (!Array.isArray(rows) || rows.length !== 1) return false
-    const summary = assertReleaseVerificationRow({
-      row: rows[0], environment: 'production', verificationType: 'meta_resources', commit, now: options.now,
-    })
-    return summary.verificationPhase === 'bootstrap'
+    const parsed = JSON.parse(result.stdout)
+    const row = parsed?.[0]?.results?.[0]
+    if (!row) throw new Error()
+    return Object.fromEntries(Object.entries(row).map(([key, value]) => [toCamel(key), integer(value)]))
   }
-  catch {
-    return false
+  catch { throw new Error('production 通用归因状态响应无效') }
+}
+
+async function reportContext(options, mode) {
+  return {
+    mode,
+    startedAt: new Date().toISOString(),
+    startedMs: Date.now(),
+    git: await (options.getGitState || getGitState)(options),
+    versions: await (options.collectVersions || collectVersions)(options),
   }
 }
 
-export async function runQuickVerification(options = {}) {
-  const mode = options.mode || 'quick'
-  const startedAt = new Date().toISOString()
-  const startedMs = Date.now()
-  const collectVersionsFn = options.collectVersions || collectVersions
-  const getGitStateFn = options.getGitState || getGitState
-  const runCommandFn = options.runCommand || runCommand
-  const writeReportFn = options.writeReport || writeReport
-  const versions = await collectVersionsFn(options)
-  const git = await getGitStateFn(options)
-  const steps = []
-  const notes = []
-
-  for (const stepDefinition of QUICK_STEPS) {
-    const step = await runCommandFn(stepDefinition.command, stepDefinition.args, {
-      cwd: options.cwd || process.cwd(),
-      name: stepDefinition.name,
-    })
-    steps.push(step)
-
-    if (step.status !== 'passed') {
-      notes.push(`步骤 ${step.name} 执行失败，后续步骤已停止。`)
-      break
-    }
-  }
-
-  const finishedAt = new Date().toISOString()
+async function finishReport(context, input, options) {
   const report = {
     schemaVersion: 1,
-    mode,
-    status: steps.every(step => step.status === 'passed') && steps.length === QUICK_STEPS.length ? 'passed' : 'failed',
-    startedAt,
-    finishedAt,
-    durationMs: Date.now() - startedMs,
-    git,
-    versions,
-    steps: steps.map(({ stdout, stderr, ...step }) => step),
-    artifacts: [],
-    notes,
+    mode: context.mode,
+    status: !input.forceFailed && input.steps.length > 0 && input.steps.every(item => item.status === 'passed') ? 'passed' : 'failed',
+    startedAt: context.startedAt,
+    finishedAt: new Date().toISOString(),
+    durationMs: Date.now() - context.startedMs,
+    git: context.git,
+    versions: context.versions,
+    steps: input.steps.map(({ stdout: _stdout, stderr: _stderr, logs: _logs, ...item }) => item),
+    artifacts: input.artifacts || [],
+    notes: input.notes || [],
+    ...(input.releaseSubModes ? { releaseSubModes: input.releaseSubModes } : {}),
   }
-  const files = await writeReportFn(report, options)
-
-  return {
-    ...report,
-    ...files,
-  }
+  return { ...report, ...await (options.writeReport || writeReport)(report, options) }
 }
+
+async function runSteps(definitions, options) {
+  const steps = []
+  for (const definition of definitions) {
+    const result = await (options.runCommand || runCommand)(definition.command, definition.args, {
+      cwd: options.cwd || process.cwd(),
+      name: definition.name,
+    })
+    steps.push(result)
+    if (result.status !== 'passed') break
+  }
+  return steps
+}
+
+function failedNotes(steps) {
+  const failed = steps.find(item => item.status !== 'passed')
+  return failed ? [`步骤 ${failed.name} 失败，后续步骤已停止。`] : []
+}
+
+function productionOrigin(value, label) {
+  try {
+    const url = new URL(String(value || ''))
+    if (url.protocol !== 'https:' || url.username || url.password) throw new Error()
+    return url
+  }
+  catch { throw new Error(`${label} 必须是无凭证的 production HTTPS 地址`) }
+}
+
+function step(name, status, started, command, summary) {
+  return { name, status, durationMs: Date.now() - started, command, exitCode: status === 'passed' ? 0 : 1, summary }
+}
+
+function isValidCommit(value) { return /^[0-9a-f]{40}$/i.test(String(value || '').trim()) }
+function integer(value) { const parsed = Number(value); return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : -1 }
+function toCamel(value) { return String(value).replace(/_([a-z])/g, (_match, letter) => letter.toUpperCase()) }
+function sleep(delayMs) { return new Promise(resolve => setTimeout(resolve, delayMs)) }
 
 function printHelp() {
-  console.log(`
-用法：
+  console.log(`用法：
   node scripts/verify-release.mjs quick
-  node scripts/verify-release.mjs dev-rehearsal
   node scripts/verify-release.mjs local-runtime
+  node scripts/verify-release.mjs dev-rehearsal
   node scripts/verify-release.mjs release
   node scripts/verify-release.mjs assert-production-allowed
-  node scripts/verify-release.mjs assert-production-identity
-`.trim())
-}
-
-function isCliEntry() {
-  return process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
-}
-
-async function assertReportOmitsSecrets(files, sensitiveValues) {
-  const secrets = sensitiveValues.filter(value => typeof value === 'string' && value.trim() !== '')
-  if (secrets.length === 0) return
-
-  const [reportFileContent, latestFileContent] = await Promise.all([
-    readFile(files.reportFile, 'utf8'),
-    readFile(files.latestFile, 'utf8'),
-  ])
-
-  for (const secret of secrets) {
-    assert.equal(reportFileContent.includes(secret), false, 'reportFile 包含敏感 token 信息')
-    assert.equal(latestFileContent.includes(secret), false, 'latestFile 包含敏感 token 信息')
-  }
+  node scripts/verify-release.mjs assert-production-attribution
+  node scripts/verify-release.mjs assert-production-identity`)
 }

@@ -1150,7 +1150,7 @@ Expected: 备份文件已生成并记录校验值；`0051` 已应用；新 API/W
 - Modify: `docs/TECHNICAL_SPEC.md`
 - Modify: `docs/DEPLOYMENT.md`
 
-- [ ] **Step 1：写 Contract 失败测试**
+- [x] **Step 1：写 Contract 失败测试**
 
 Contract 仅在新事实对账完成、Meta 10% 正常、新 Queue 无旧消息时允许执行。测试确认旧技术表和 bridge trigger 全部删除，标准业务历史和审计仍存在，最终运行查询不引用旧表。
 
@@ -1160,11 +1160,11 @@ node --test packages/api/migrations/0052_unified_attribution_contract.test.mjs
 
 Expected: FAIL。
 
-- [ ] **Step 2：删除旧技术 Schema 和运行代码**
+- [x] **Step 2：删除旧技术 Schema 和运行代码**
 
 删除所有 Meta/TikTok 旧连接、验证、challenge、attestation、rollout、incident、质量、Delivery、Outbox、Receipt、DLQ 运行表和 `trg_0049_bridge_*`。已应用的历史 migration 保留。删除旧平台服务、旧 crypto、旧 Queue consumer、旧 release evidence、旧 API 和旧测试替身。
 
-- [ ] **Step 3：运行冗余扫描**
+- [x] **Step 3：运行冗余扫描**
 
 ```bash
 rg -n "META_CAPI_|TIKTOK_EVENTS_|meta_connection_verifications|tiktok_connection_verifications|meta_live_|resource_attestation|meta_capi_secure_outbox|ad_platform_secure_outbox|analytics_conversion_deliveries" packages scripts docs --glob '!packages/api/migrations/00*.sql' --glob '!docs/superpowers/specs/2026-07-15-unified-ad-attribution-platform-design.md'
@@ -1172,7 +1172,7 @@ rg -n "META_CAPI_|TIKTOK_EVENTS_|meta_connection_verifications|tiktok_connection
 
 Expected: 无运行时代码、当前脚本或当前文档命中；历史 migration 可保留。
 
-- [ ] **Step 4：执行最终完整验证**
+- [x] **Step 4：执行最终完整验证**
 
 ```bash
 corepack pnpm test:scripts
@@ -1187,6 +1187,8 @@ corepack pnpm build
 ```
 
 Expected: 全部 PASS。
+
+执行记录（2026-07-16）：scripts/migration `103/103`、API `894/894`、Web unit `283/283`、Lint、API/Web TypeScript 与 Nuxt production build 已通过；当前运行代码和当前文档不再引用旧归因表、旧平台 Secret 或一次性切换脚本。
 
 - [ ] **Step 5：提交、PR、部署 Contract**
 

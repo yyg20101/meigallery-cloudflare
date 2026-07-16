@@ -27,10 +27,9 @@ export async function recoverRegistrationConversionFacts(
       AND datetime(u.created_at) <= datetime('now')
       AND NOT EXISTS (
         SELECT 1
-        FROM analytics_conversion_actions a
-        WHERE a.user_id = u.id
-          AND a.action_type = 'complete_registration'
-          AND a.duplicate_of = ''
+        FROM attribution_conversion_facts AS fact
+        WHERE fact.canonical_event = 'CompleteRegistration'
+          AND CAST(json_extract(fact.analytics_dimensions_json, '$.userId') AS INTEGER) = u.id
       )
     ORDER BY u.id ASC
     LIMIT 100

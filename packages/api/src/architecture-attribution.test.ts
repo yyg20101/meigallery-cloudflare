@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { relative, resolve } from 'node:path'
 import { cwd } from 'node:process'
 import { describe, expect, it } from 'vitest'
@@ -17,7 +17,7 @@ const finalFactFiles = [
   'src/services/attribution-dashboard.ts',
 ]
 
-describe('通用广告归因 V3 架构边界', () => {
+describe('通用广告归因架构边界', () => {
   it('业务编排只依赖通用注册表和协议，不包含平台控制流或平台服务 import', () => {
     const violations = orchestrationFiles.flatMap((filePath) => {
       const source = sourceFile(filePath)
@@ -90,4 +90,5 @@ function trackedTextFiles() {
     .filter(Boolean)
     .filter(filePath => /\.(?:[cm]?[jt]s|vue|json|toml|ya?ml|md|sql|env(?:\.example)?)$/.test(filePath))
     .map(filePath => relative(repositoryRoot, resolve(repositoryRoot, filePath)))
+    .filter(filePath => existsSync(resolve(repositoryRoot, filePath)))
 }

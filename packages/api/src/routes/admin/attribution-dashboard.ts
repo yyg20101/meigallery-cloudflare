@@ -13,17 +13,17 @@ import {
 import { errorJson } from '../../utils/api-error'
 import { parseAnalyticsRange, type AnalyticsDateRange } from '../../utils/analytics-time'
 
-type AdminAttributionV3Context = Context<{ Bindings: Bindings; Variables: Variables }>
+type AdminAttributionDashboardContext = Context<{ Bindings: Bindings; Variables: Variables }>
 
-export const adminAttributionV3Routes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
+export const adminAttributionDashboardRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
-adminAttributionV3Routes.get('/summary', async (c) => {
+adminAttributionDashboardRoutes.get('/summary', async (c) => {
   const input = readScopedQuery(c)
   if (input instanceof Response) return input
   return dashboardQuery(c, () => queryAttributionSummary(c.env.DB, input.range, input.provider), input.range)
 })
 
-adminAttributionV3Routes.get('/trends', async (c) => {
+adminAttributionDashboardRoutes.get('/trends', async (c) => {
   const input = readScopedQuery(c)
   if (input instanceof Response) return input
   if ((c.req.query('granularity') || 'day') !== 'day') {
@@ -34,13 +34,13 @@ adminAttributionV3Routes.get('/trends', async (c) => {
   return dashboardQuery(c, () => queryAttributionTrends(c.env.DB, input.range, input.provider), input.range)
 })
 
-adminAttributionV3Routes.get('/quality', async (c) => {
+adminAttributionDashboardRoutes.get('/quality', async (c) => {
   const input = readScopedQuery(c)
   if (input instanceof Response) return input
   return dashboardQuery(c, () => queryAttributionQuality(c.env.DB, input.range, input.provider), input.range)
 })
 
-adminAttributionV3Routes.get('/capacity', async (c) => {
+adminAttributionDashboardRoutes.get('/capacity', async (c) => {
   const date = c.req.query('date') || new Date().toISOString().slice(0, 10)
   const parsedDate = new Date(`${date}T00:00:00.000Z`)
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)
@@ -51,7 +51,7 @@ adminAttributionV3Routes.get('/capacity', async (c) => {
   return dashboardQuery(c, () => queryAttributionCapacity(c.env.DB, date))
 })
 
-adminAttributionV3Routes.get('/breakdown', async (c) => {
+adminAttributionDashboardRoutes.get('/breakdown', async (c) => {
   const input = readScopedQuery(c)
   if (input instanceof Response) return input
   const dimension = c.req.query('dimension')
@@ -75,7 +75,7 @@ adminAttributionV3Routes.get('/breakdown', async (c) => {
   ), input.range)
 })
 
-adminAttributionV3Routes.get('/conversions', async (c) => {
+adminAttributionDashboardRoutes.get('/conversions', async (c) => {
   const input = readScopedQuery(c)
   if (input instanceof Response) return input
   const sourceFilter = normalizedQueryValue(c.req.query('sourceCode'))
@@ -89,7 +89,7 @@ adminAttributionV3Routes.get('/conversions', async (c) => {
   ), input.range)
 })
 
-function readScopedQuery(c: AdminAttributionV3Context) {
+function readScopedQuery(c: AdminAttributionDashboardContext) {
   const range = parseRangeOrError(c)
   if (range instanceof Response) return range
   const provider = c.req.query('provider')
@@ -99,7 +99,7 @@ function readScopedQuery(c: AdminAttributionV3Context) {
   return { range, provider }
 }
 
-function parseRangeOrError(c: AdminAttributionV3Context): AnalyticsDateRange | Response {
+function parseRangeOrError(c: AdminAttributionDashboardContext): AnalyticsDateRange | Response {
   try {
     return parseAnalyticsRange({
       range: c.req.query('range'),
@@ -115,7 +115,7 @@ function parseRangeOrError(c: AdminAttributionV3Context): AnalyticsDateRange | R
 }
 
 async function dashboardQuery<T extends object>(
-  c: AdminAttributionV3Context,
+  c: AdminAttributionDashboardContext,
   query: () => Promise<T>,
   range?: AnalyticsDateRange,
 ) {

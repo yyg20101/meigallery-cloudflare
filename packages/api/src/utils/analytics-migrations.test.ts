@@ -8,13 +8,13 @@ async function readMigration(name: string) {
 }
 
 describe('analytics migrations', () => {
-  it('migration 索引从 0001 到 0051 连续且编号唯一', async () => {
+  it('migration 索引从 0001 到 0052 连续且编号唯一', async () => {
     const names = (await readdir(MIGRATION_DIR))
       .filter(name => /^\d{4}_.+\.sql$/.test(name))
       .sort()
     const indexes = names.map(name => Number(name.slice(0, 4)))
 
-    expect(indexes).toEqual(Array.from({ length: 51 }, (_, index) => index + 1))
+    expect(indexes).toEqual(Array.from({ length: 52 }, (_, index) => index + 1))
     expect(new Set(indexes).size).toBe(indexes.length)
   })
 
@@ -294,5 +294,21 @@ describe('analytics migrations', () => {
     expect(sql).toContain("CHECK (environment = 'production')")
     expect(sql).toContain("credential_secret_name = 'TIKTOK_EVENTS_ACCESS_TOKEN'")
     expect(sql).not.toMatch(/access_token\s+TEXT|test_event_code\s+TEXT|client_ip|user_agent|\bemail\s+TEXT/i)
+  })
+
+  it('0052 删除旧归因表、兼容触发器和平台专用用户标识', async () => {
+    const sql = await readMigration('0052_unified_attribution_contract.sql')
+    for (const table of [
+      'analytics_conversion_actions',
+      'analytics_conversion_deliveries',
+      'ad_platform_connections',
+      'meta_capi_secure_outbox',
+      'ad_platform_secure_outbox',
+      'meta_connection_verifications',
+      'tiktok_connection_verifications',
+    ]) expect(sql).toContain(`DROP TABLE ${table}`)
+    expect(sql).toContain('ALTER TABLE users DROP COLUMN meta_external_id')
+    expect(sql).toContain('DROP TRIGGER IF EXISTS trg_0049_bridge_user_identity_insert')
+    expect(sql).not.toMatch(/CREATE\s+TRIGGER\s+trg_0049_bridge_/i)
   })
 })

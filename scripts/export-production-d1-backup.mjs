@@ -11,7 +11,7 @@ const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url))
 const ROOT_DIR = dirname(SCRIPTS_DIR)
 const API_WRANGLER_CONFIG = join(ROOT_DIR, 'packages', 'api', 'wrangler.toml')
 const PRODUCTION_DATABASE = 'meigallery-db'
-const DEFAULT_BACKUP_DIR = join(homedir(), '.meigallery', 'production-backups', 'attribution-v3')
+const DEFAULT_BACKUP_DIR = join(homedir(), '.meigallery', 'production-backups', 'd1')
 
 export async function runProductionBackup(options = {}) {
   const backupDir = resolve(options.backupDir || process.env.ATTRIBUTION_BACKUP_DIR || DEFAULT_BACKUP_DIR)
@@ -20,7 +20,7 @@ export async function runProductionBackup(options = {}) {
   const now = options.now || (() => new Date())
   const createdAt = now().toISOString()
   const timestamp = createdAt.replaceAll(':', '-')
-  const basename = `meigallery-db-attribution-v3-${timestamp}`
+  const basename = `meigallery-db-${timestamp}`
   const sqlPath = join(backupDir, `${basename}.sql`)
   const manifestPath = join(backupDir, `${basename}.manifest.json`)
   const temporarySqlPath = join(backupDir, `.${basename}.${randomUUID()}.partial`)
@@ -43,7 +43,7 @@ export async function runProductionBackup(options = {}) {
     const manifest = {
       schemaVersion: 1,
       database: PRODUCTION_DATABASE,
-      purpose: 'attribution-v3-expand',
+      purpose: 'production-d1-before-contract-migration',
       createdAt,
       gitCommit: String(gitCommit),
       timeTravelBookmark: String(timeTravelBookmark),
@@ -97,7 +97,7 @@ async function exportProductionDatabase(output, options = {}) {
     '--remote',
     '--skip-confirmation',
     '--output', output,
-  ], 'attribution-v3-production-backup', options)
+  ], 'production-d1-backup', options)
   ensurePassed(step, 'ATTRIBUTION_BACKUP_EXPORT_FAILED')
 }
 
@@ -107,7 +107,7 @@ async function getProductionBookmark(options = {}) {
     '--config', API_WRANGLER_CONFIG,
     '--env', '',
     '--json',
-  ], 'attribution-v3-time-travel-bookmark', options)
+  ], 'production-d1-time-travel-bookmark', options)
   ensurePassed(step, 'ATTRIBUTION_BACKUP_BOOKMARK_FAILED')
   const parsed = JSON.parse(step.stdout)
   const bookmark = parsed.bookmark || parsed.result?.bookmark
@@ -119,7 +119,7 @@ async function getGitCommit(options = {}) {
   const runCommand = options.runCommand || defaultRunCommand
   const step = await runCommand('git', ['rev-parse', 'HEAD'], {
     cwd: ROOT_DIR,
-    name: 'attribution-v3-backup-git-commit',
+    name: 'production-d1-backup-git-commit',
   })
   ensurePassed(step, 'ATTRIBUTION_BACKUP_COMMIT_FAILED')
   return step.stdout.trim()
