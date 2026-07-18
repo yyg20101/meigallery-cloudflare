@@ -76,6 +76,18 @@ const galleries = [
     viewCount: 64,
     likeCount: 3,
   },
+  {
+    id: 'gallery-5',
+    title: '中文直达图库',
+    slug: '中文直达图库',
+    summary: '验证广告和搜索引擎可直接打开编码后的中文图库链接。',
+    coverUrl: imageDataUrl,
+    requiredLevelRank: 0,
+    publishedAt: '2026-05-05T08:00:00Z',
+    tags,
+    viewCount: 32,
+    likeCount: 2,
+  },
 ]
 
 const cases = [
@@ -1089,7 +1101,7 @@ function handleApi(req, res) {
   }
   if (url.pathname === '/api/admin/dashboard') {
     return json(res, {
-      totalGalleries: 4,
+      totalGalleries: 5,
       publishedGalleries: 3,
       totalUsers: 12,
       activeVipUsers: 5,
