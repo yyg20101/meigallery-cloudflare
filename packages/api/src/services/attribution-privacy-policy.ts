@@ -19,7 +19,7 @@ const POLICY_ID = 'global'
 const CACHE_TTL_MS = 60_000
 const COUNTRY_CODE_PATTERN = /^[A-Z]{2}$/
 const DEFAULT_PRIOR_CONSENT_COUNTRY_CODES = [
-  'AT', 'AX', 'BE', 'BG', 'CY', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB',
+  'AT', 'AX', 'BE', 'BG', 'CH', 'CY', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB',
   'GF', 'GP', 'GR', 'HR', 'HU', 'IE', 'IS', 'IT', 'LI', 'LT', 'LU', 'LV', 'MF',
   'MQ', 'MT', 'NL', 'NO', 'PL', 'PT', 'RE', 'RO', 'SE', 'SI', 'SK', 'YT',
 ]

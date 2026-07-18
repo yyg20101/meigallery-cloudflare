@@ -23,7 +23,7 @@ const defaultMode = ref<MarketingConsentPolicyMode>('notice_opt_out')
 const countryCodesText = ref('')
 
 const modeOptions: Array<{ value: MarketingConsentPolicyMode; label: string; description: string }> = [
-  { value: 'notice_opt_out', label: '通知并允许', description: '非严格地区在明确告知后启用效果分析，并保留随时关闭入口。' },
+  { value: 'notice_opt_out', label: '默认允许', description: '非严格地区默认启用效果分析，并通过隐私页保留随时关闭入口。' },
   { value: 'prior_consent', label: '全部先选择', description: '所有地区都必须先选择，未选择前不加载 Pixel 或 Server API。' },
   { value: 'disabled', label: '全部关闭', description: '紧急停用所有广告平台追踪，站内有效联系事实仍会记录。' },
 ]

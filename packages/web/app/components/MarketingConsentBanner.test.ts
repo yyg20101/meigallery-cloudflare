@@ -1,10 +1,9 @@
 import { mount } from '@vue/test-utils'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 import MarketingConsentBanner from './MarketingConsentBanner.vue'
 
 describe('MarketingConsentBanner', () => {
-  beforeEach(() => window.localStorage.clear())
   afterEach(() => vi.unstubAllGlobals())
 
   it('严格地区显示用途清晰且选择对等的授权条', async () => {
@@ -25,39 +24,31 @@ describe('MarketingConsentBanner', () => {
     expect(consent.grant).toHaveBeenCalledTimes(1)
   })
 
-  it('非严格地区显示一次告知但不阻断效果分析', async () => {
+  it('非严格地区默认启用时不显示全局说明或设置控件', () => {
     const consent = consentState('granted', 'regional_default', false)
     vi.stubGlobal('useMarketingConsent', () => consent)
     const wrapper = mountComponent()
 
-    expect(wrapper.get('[aria-label="营销效果分析说明"]').text()).toContain('减少无关推广')
     expect(wrapper.find('[aria-label="营销效果分析选择"]').exists()).toBe(false)
-
-    await wrapper.get('[aria-label="关闭效果分析说明"]').trigger('click')
-    expect(window.localStorage.getItem('mei_marketing_notice_dismissed_v1')).toBe('1')
-    expect(wrapper.find('[aria-label="打开效果分析设置"]').exists()).toBe(true)
+    expect(wrapper.html()).toBe('<!--v-if-->')
   })
 
-  it('明确选择后收起为可重新打开的设置入口', async () => {
+  it('明确拒绝后不重复显示全局控件', () => {
     const consent = consentState('denied', 'explicit', false)
     vi.stubGlobal('useMarketingConsent', () => consent)
     const wrapper = mountComponent()
 
-    await wrapper.get('[aria-label="打开效果分析设置"]').trigger('click')
-    expect(wrapper.get('[role="dialog"]').text()).toContain('仅使用必要功能')
-
-    const buttons = wrapper.get('[role="dialog"]').findAll('button')
-    await buttons[2]?.trigger('click')
-    expect(consent.deny).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[aria-label="营销效果分析选择"]').exists()).toBe(false)
+    expect(wrapper.html()).toBe('<!--v-if-->')
   })
 
-  it('GPC 状态明确说明由浏览器隐私偏好关闭', async () => {
+  it('GPC 关闭效果分析时不显示全局控件', () => {
     const consent = consentState('denied', 'gpc', false)
     vi.stubGlobal('useMarketingConsent', () => consent)
     const wrapper = mountComponent()
 
-    await wrapper.get('[aria-label="打开效果分析设置"]').trigger('click')
-    expect(wrapper.get('[role="dialog"]').text()).toContain('浏览器隐私偏好已关闭效果分析')
+    expect(wrapper.find('[aria-label="营销效果分析选择"]').exists()).toBe(false)
+    expect(wrapper.html()).toBe('<!--v-if-->')
   })
 
   it('说明页不重复显示全局控件', () => {
@@ -68,7 +59,7 @@ describe('MarketingConsentBanner', () => {
     })
 
     expect(wrapper.find('[aria-label="营销效果分析选择"]').exists()).toBe(false)
-    expect(wrapper.find('[aria-label="打开效果分析设置"]').exists()).toBe(false)
+    expect(wrapper.html()).toBe('<!--v-if-->')
   })
 })
 
