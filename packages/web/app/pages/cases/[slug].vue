@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { buildAbsoluteSeoUrl, buildArticleJsonLd, buildCanonicalUrl, buildJsonLdScript, normalizeSeoSiteUrl } from '~/utils/seoMetadata'
+import { decodeRouteParam } from '~/utils/routeParam'
 
 const route = useRoute()
 const config = useRuntimeConfig()
 const { api } = useApi()
 const { siteName, seoKeywords, siteIcon } = useSiteSettings()
+const caseSlug = decodeRouteParam(route.params.slug)
 
 interface CaseDetail {
   id: string
@@ -18,8 +20,8 @@ interface CaseDetail {
   images: Array<{ id: string; url: string; alt: string; sortOrder: number }>
 }
 
-const { data: item, error } = await useAsyncData(`case-${route.params.slug}`, () =>
-  api<CaseDetail>(`/api/cases/${route.params.slug}`),
+const { data: item, error } = await useAsyncData(`case-${caseSlug}`, () =>
+  api<CaseDetail>(`/api/cases/${caseSlug}`),
 )
 
 if (error.value || !item.value) {

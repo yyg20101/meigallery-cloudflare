@@ -197,6 +197,14 @@ test.describe('核心页面 smoke', () => {
     expect(html).not.toContain('<title>MeiGallery - 精选写真图库</title>')
   })
 
+  test('编码后的中文图库链接可直接 SSR 渲染', async ({ page }) => {
+    const response = await page.goto('/gallery/%E4%B8%AD%E6%96%87%E7%9B%B4%E8%BE%BE%E5%9B%BE%E5%BA%93')
+
+    expect(response?.ok()).toBe(true)
+    await expect(page.getByRole('heading', { name: '中文直达图库' }).first()).toBeVisible()
+    await expect(page).toHaveTitle('中文直达图库 - 测试图库站')
+  })
+
   for (const smokePage of smokePages) {
     test(`${smokePage.path} 可渲染且无横向溢出`, async ({ page }) => {
       await page.goto(smokePage.path)

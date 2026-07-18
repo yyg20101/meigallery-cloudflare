@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { getPrimaryRegion, getSupportTags } from '~/utils/galleryPresentation'
+import { decodeRouteParam } from '~/utils/routeParam'
 import { buildAbsoluteSeoUrl, buildCanonicalUrl, buildImageGalleryJsonLd, buildJsonLdScript, normalizeSeoSiteUrl } from '~/utils/seoMetadata'
 
 const route = useRoute()
@@ -9,6 +10,7 @@ const { isLoggedIn, membershipRank } = useAuth()
 const { siteName, seoKeywords, videoEnabled } = useSiteSettings()
 const { trackViewContent } = useTracking()
 const analytics = useAnalytics()
+const gallerySlug = decodeRouteParam(route.params.slug)
 
 
 interface GalleryTag {
@@ -63,8 +65,8 @@ interface LikeResult {
   likedByMe: boolean
 }
 
-const { data: gallery, error } = await useAsyncData(`gallery-${route.params.slug}`, () =>
-  api<GalleryDetail>(`/api/galleries/${route.params.slug}`),
+const { data: gallery, error } = await useAsyncData(`gallery-${gallerySlug}`, () =>
+  api<GalleryDetail>(`/api/galleries/${gallerySlug}`),
 )
 
 if (error.value || !gallery.value) {
@@ -134,7 +136,7 @@ const breadcrumbs = computed(() => [
 // 相关推荐
 const firstTag = computed(() => gallery.value?.tags[0])
 const { data: relatedData } = await useAsyncData(
-  `related-${route.params.slug}`,
+  `related-${gallerySlug}`,
   () => firstTag.value
     ? api<{ data: GallerySummary[] }>('/api/galleries', { query: { tag: firstTag.value.slug, pageSize: '4' } })
     : Promise.resolve({ data: [] as GallerySummary[] }),
