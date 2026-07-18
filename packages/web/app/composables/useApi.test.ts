@@ -2,10 +2,14 @@ import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchViaApiServiceBinding, useApi } from './useApi'
 
+const h3Mocks = vi.hoisted(() => ({ appendResponseHeader: vi.fn() }))
+vi.mock('h3', () => h3Mocks)
+
 const fetchMock = vi.fn()
 
 beforeEach(() => {
   fetchMock.mockReset()
+  h3Mocks.appendResponseHeader.mockReset()
   fetchMock.mockResolvedValue({ ok: true })
   vi.stubGlobal('$fetch', fetchMock)
   vi.stubGlobal('useRuntimeConfig', () => ({
@@ -48,8 +52,6 @@ describe('useApi 浏览器请求目标', () => {
 
 describe('useApi SSR Service Binding', () => {
   it('转发多个 Set-Cookie 并解析成功响应', async () => {
-    const appendHeader = vi.fn()
-    vi.stubGlobal('appendResponseHeader', appendHeader)
     const headers = new Headers()
     Object.defineProperty(headers, 'getSetCookie', {
       value: () => [
@@ -80,15 +82,13 @@ describe('useApi SSR Service Binding', () => {
       method: 'GET',
       headers: { cookie: 'mei_session=old' },
     }))
-    expect(appendHeader.mock.calls).toEqual([
+    expect(h3Mocks.appendResponseHeader.mock.calls).toEqual([
       [event, 'set-cookie', 'mei_session=renewed; Path=/; HttpOnly'],
       [event, 'set-cookie', 'mei_marketing_consent_receipt=receipt; Path=/; HttpOnly'],
     ])
   })
 
   it('非 2xx 仍先转发续期 Cookie，并保留状态与响应体', async () => {
-    const appendHeader = vi.fn()
-    vi.stubGlobal('appendResponseHeader', appendHeader)
     const headers = new Headers()
     Object.defineProperty(headers, 'getSetCookie', {
       value: () => ['mei_session=renewed; Path=/; HttpOnly'],
@@ -114,7 +114,7 @@ describe('useApi SSR Service Binding', () => {
       statusMessage: 'Unauthorized',
       data: '{"error":"expired"}',
     })
-    expect(appendHeader).toHaveBeenCalledWith(event, 'set-cookie', 'mei_session=renewed; Path=/; HttpOnly')
+    expect(h3Mocks.appendResponseHeader).toHaveBeenCalledWith(event, 'set-cookie', 'mei_session=renewed; Path=/; HttpOnly')
   })
 
   it('调用 Service Binding 前标准化 Unicode 路径', async () => {
