@@ -116,4 +116,25 @@ describe('useApi SSR Service Binding', () => {
     })
     expect(appendHeader).toHaveBeenCalledWith(event, 'set-cookie', 'mei_session=renewed; Path=/; HttpOnly')
   })
+
+  it('调用 Service Binding 前标准化 Unicode 路径', async () => {
+    const binding = {
+      fetch: vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: 'gallery-1' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })),
+    }
+
+    await fetchViaApiServiceBinding(
+      { context: {} } as ReturnType<typeof useRequestEvent>,
+      binding,
+      '/api/galleries/%E4%B8%AD%E6%96%87%E5%9B%BE%E5%BA%93',
+      { method: 'GET' },
+    )
+
+    expect(binding.fetch).toHaveBeenCalledWith(
+      'https://api.internal/api/galleries/%E4%B8%AD%E6%96%87%E5%9B%BE%E5%BA%93',
+      { method: 'GET' },
+    )
+  })
 })
