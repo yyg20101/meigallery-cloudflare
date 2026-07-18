@@ -9,6 +9,7 @@
  * 解决 Cloudflare 同账户 *.workers.dev 域名互访限制（error 1042）
  */
 import { apiProxyResponseHeaderEntries } from '~/utils/apiProxyHeaders'
+import { appendResponseHeader } from 'h3'
 
 export function useApi() {
   const config = useRuntimeConfig()
