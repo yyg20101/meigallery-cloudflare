@@ -11,6 +11,7 @@ const { siteName, seoKeywords, videoEnabled } = useSiteSettings()
 const { trackViewContent } = useTracking()
 const analytics = useAnalytics()
 const gallerySlug = decodeRouteParam(route.params.slug)
+const galleryApiSlug = encodeURIComponent(gallerySlug)
 
 
 interface GalleryTag {
@@ -66,7 +67,7 @@ interface LikeResult {
 }
 
 const { data: gallery, error } = await useAsyncData(`gallery-${gallerySlug}`, () =>
-  api<GalleryDetail>(`/api/galleries/${gallerySlug}`),
+  api<GalleryDetail>(`/api/galleries/${galleryApiSlug}`),
 )
 
 if (error.value || !gallery.value) {

@@ -7,6 +7,7 @@ const config = useRuntimeConfig()
 const { api } = useApi()
 const { siteName, seoKeywords, siteIcon } = useSiteSettings()
 const caseSlug = decodeRouteParam(route.params.slug)
+const caseApiSlug = encodeURIComponent(caseSlug)
 
 interface CaseDetail {
   id: string
@@ -21,7 +22,7 @@ interface CaseDetail {
 }
 
 const { data: item, error } = await useAsyncData(`case-${caseSlug}`, () =>
-  api<CaseDetail>(`/api/cases/${caseSlug}`),
+  api<CaseDetail>(`/api/cases/${caseApiSlug}`),
 )
 
 if (error.value || !item.value) {

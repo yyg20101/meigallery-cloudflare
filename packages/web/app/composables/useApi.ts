@@ -162,7 +162,8 @@ export async function fetchViaApiServiceBinding<T>(
   fullPath: string,
   init: RequestInit,
 ): Promise<T> {
-  const response = await apiBinding.fetch(`https://api.internal${fullPath}`, init)
+  const bindingUrl = new URL(fullPath, 'https://api.internal').href
+  const response = await apiBinding.fetch(bindingUrl, init)
   forwardSsrResponseCookies(event, response)
   if (!response.ok) {
     const errorBody = await response.text().catch(() => '')
