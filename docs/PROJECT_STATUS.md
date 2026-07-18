@@ -1,6 +1,6 @@
 # 项目状态
 
-更新时间：2026-07-17。
+更新时间：2026-07-18。
 
 ## 文档边界
 
@@ -53,14 +53,15 @@
 
 ## Production 归因状态
 
-- 最新 production 代码提交为 `7876166`，版本标签为 `v0.4.8`；PR #59、完整 CI、production identity、归因状态和 SEO smoke 均已通过。
+- 最新 production 代码提交为 `776d056`，版本标签为 `v0.4.9`；PR #60、完整 CI、production identity、归因状态和 SEO smoke 均已通过。
 - Meta 使用 production 连接并已完成真实 Contact / CompleteRegistration 验证，当前 rollout 以后台实时值为准；最近确认值为 `10%`。
 - TikTok production 连接已原子配置 Pixel、Events API 凭证和 Contact / CompleteRegistration 事件绑定；2026-07-16 使用当次临时 Test Event Code 完成自动验证和 Events Manager 人工证据确认，临时测试码未持久化。
 - TikTok Browser 已启用，Server target / effective 均为 `10%`；production 隔离访问只加载 TikTok Pixel SDK，Meta / Google Browser SDK 均未加载。TikTok Events Manager 的投放就绪状态仍需等待正式事件与平台最长约 24 小时刷新，不以 Test Events 代替真实流量验收。
 - TikTok Events Manager 保持 AAM 关闭、第一方 Cookie 开启、Enhanced Data Postback 关闭，避免超出项目标准事件和授权范围的自动采集。
-- `0053_attribution_privacy_policy.sql` 已在 production 应用：非严格地区明确告知并可退出，严格/未知/Tor 地区先选择，GPC 和明确拒绝始终优先。长期签名选择与短期 receipt 只表示用户明确选择，不把地区默认值伪装成同意。
+- `0053_attribution_privacy_policy.sql` 已在 production 应用：非严格地区默认启用并可从隐私页退出，严格/未知/Tor 地区先选择，GPC 和明确拒绝始终优先。长期签名选择与短期 receipt 只表示用户明确选择，不把地区默认值伪装成同意。
 - 访客隐私设置页按必要功能与可选效果分析分层说明数据用途、受托处理、隐私保护和选择期限，允许与拒绝保持同等视觉权重；页面不展示广告平台名称、事件名或传输实现，后台继续保留完整运维信息。无论营销衡量状态如何，站内 Contact/CompleteRegistration 事实持续记录，Meta/TikTok/Google 仍按唯一来源严格隔离。
-- `v0.4.8` 已补齐冲突授权凭证 fail-closed、GPC 禁止续签、注册与来源解析失败降级、地区策略严格入参校验，以及 7 标签/新授权文案的多视口 E2E 契约。
+- `v0.4.9` 已上线面向访客的隐私设置页和选择对等的授权交互。
+- 本地待发布变更已移除非严格地区的一次性底部说明和悬浮设置控件，改为页脚低干扰“隐私”入口；严格地区首次选择条保持不变。`0054_attribution_privacy_switzerland.sql` 以幂等方式补充瑞士严格地区，不覆盖后台已有地区配置。
 - Google 的启用状态以统一后台实时连接为准；代码部署不会自动开启平台或提高 rollout。
 - production 域名：`616618.xyz`、`www.616618.xyz`；API：`api.616618.xyz`。
 

@@ -109,7 +109,7 @@ function isActive(to: string) {
     </header>
 
     <!-- 主内容 -->
-    <main class="flex-1 pb-[calc(4rem+env(safe-area-inset-bottom))] lg:pb-0">
+    <main class="flex-1">
       <slot />
     </main>
 
@@ -117,9 +117,12 @@ function isActive(to: string) {
     <ContactPanel />
     <MarketingConsentBanner />
 
-    <!-- 桌面端底部 copyright -->
-    <footer class="hidden lg:block">
-      <p class="text-xs text-gray-400 text-center py-4">{{ footerText }}</p>
+    <footer class="pb-[calc(4rem+env(safe-area-inset-bottom))] lg:pb-0">
+      <div class="flex items-center justify-center gap-3 px-4 py-4 text-xs text-gray-400">
+        <p v-if="footerText">{{ footerText }}</p>
+        <span v-if="footerText" aria-hidden="true">·</span>
+        <NuxtLink to="/marketing-tracking" class="transition-colors hover:text-gray-700">隐私</NuxtLink>
+      </div>
     </footer>
 
     <!-- 移动端底部 Tab Bar -->

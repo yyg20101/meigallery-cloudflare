@@ -228,6 +228,7 @@ test.describe('核心页面 smoke', () => {
         await expect(homeAd.locator('h2')).toBeVisible()
         await expect(homeAd.locator('h2')).toHaveCSS('overflow-wrap', 'break-word')
         await expect(homeAd.locator('p').first()).toHaveCSS('overflow-wrap', 'break-word')
+        await expect(page.getByRole('link', { name: '隐私', exact: true })).toHaveAttribute('href', '/marketing-tracking')
       }
       await expect(page.locator('body')).not.toContainText('originals/')
       await expect(page.locator('body')).not.toContainText('imports/')

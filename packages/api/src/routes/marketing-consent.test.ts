@@ -106,7 +106,7 @@ describe('公开营销授权 API', () => {
     })
   })
 
-  it.each(['GB', 'XX', 'T1', 'A1'])('%s 按严格地区处理，选择前禁止 Pixel 与 Server API', async (countryCode) => {
+  it.each(['CH', 'GB', 'XX', 'T1', 'A1'])('%s 按严格地区处理，选择前禁止 Pixel 与 Server API', async (countryCode) => {
     const response = await app().request('https://api.616618.xyz/api/marketing-consent', {
       headers: { 'CF-IPCountry': countryCode },
     }, { ...ENV, DB: privacyPolicyDb() })
@@ -174,7 +174,7 @@ function privacyPolicyDb() {
         async first() {
           return {
             default_mode: 'notice_opt_out',
-            prior_consent_country_codes_json: JSON.stringify(['GB']),
+            prior_consent_country_codes_json: JSON.stringify(['CH', 'GB']),
             policy_version: 7,
             updated_at: '2026-07-16 00:00:00',
           }
