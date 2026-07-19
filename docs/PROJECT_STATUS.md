@@ -81,8 +81,8 @@
 - TikTok 继续完成真实广告来源下 Browser / Server 配对去重与 `10% -> 50% -> 100%` 观察；Google 仍需 production 凭证、转化操作、异步 request status 与分级 rollout 验收。
 - 广告花费、campaign、ad set、ad 数据导入不属于当前 Pixel/Server API 同步范围。
 - Cloudflare Stream 视频链路和完整 zip 异步导入仍待实现。
-- 独立交友 App 已完成产品、架构、数据迁移、API/实时通信、UI/UX、信任安全、商业账本和质量路线图设计，入口为 `docs/app/README.md`。目标方案是共享核心平台 + 渐进迁移；用户客户端已确定采用 KMP + Compose Multiplatform，Android/iOS 优先、Windows/macOS 后续，Nuxt Web/管理后台继续保留。当前仅有文档，尚未创建 KMP 工程、v2 API、社交数据表或实时消息能力。
-- 交友 App 公开实施前必须先关闭正式品牌、首发地区、应用商店、运营主体、身份核验、内容审核、支付、Cloudflare 数据位置/跨境和中国大陆备案等开放决策；现有图库人物不得自动转换为交友用户资料。
+- 独立真人发现与互动 App 的 1.0 产品总纲、Feature PRD、架构、数据迁移、API/实时通信、UI/UX、信任安全、商业账本和质量路线图处于需求讨论中，入口为 `docs/app/README.md`。产品只展示管理员认证并发布的真人资料；普通注册账号是观看者，心享会员可直接私信，未认领真人的消息由平台运营接收并明确披露。目标架构为共享核心平台 + 渐进迁移，客户端采用 KMP + Compose Multiplatform，Android/iOS 优先、Windows/macOS 后续，Nuxt Web/管理后台保留。当前没有创建 KMP 工程、目标 API、真人/会话数据表或实时消息能力。
+- App 进入实现前必须关闭正式品牌、首发地区、应用商店、运营主体、真人/年龄核验、内容审核、支付、Cloudflare 数据位置/跨境和中国大陆备案等开放决策；现有图库人物可以进入候选导入，但没有独立 App 用途授权、认证和发布审批时不得公开。
 
 ## 文档入口
 
@@ -94,4 +94,4 @@
 - `docs/UI_DATA_ANALYTICS_DASHBOARD.md`：后台数据分析看板口径。
 - `docs/TELEGRAM_IMPORT_API.md`：外部导入 API 契约。
 - `docs/SEO_CONFIGURATION.md`：SEO 配置。
-- `docs/app/README.md`：独立交友 App 与共享业务平台的前瞻性产品、KMP/CMP 客户端、迁移、UI、安全、商业化和路线图文档索引。
+- `docs/app/README.md`：独立真人发现与互动 App 1.0 与共享业务平台的需求、KMP/CMP 客户端、迁移、UI、安全、商业化和路线图索引。

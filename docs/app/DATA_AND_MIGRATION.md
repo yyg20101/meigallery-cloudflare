@@ -1,292 +1,236 @@
-# 数据模型与渐进迁移方案
+# 真人发现平台数据模型与渐进迁移方案
 
-版本：1.0
+App 版本：1.0
 
-日期：2026-07-19
-状态：`[已确认范围 / 目标设计 / 迁移设计]`
+日期：2026-07-20
 
-## 1. 迁移目标
+状态：需求讨论中
 
-首批允许评估复用的数据包括：现有用户账号、会员等级、合法授权媒体、标签分类和管理员体系。复用的前提是用途兼容、数据质量达标和用户重新授权。
+## 1. 目标
 
-迁移的核心原则：
+将现有 MeiGallery 的账号、会员、图库、媒体、标签和后台能力逐步接入共享核心，同时建立真人、公开资料、运营归属、会话、五级会员和虚拟商业化的新模型。迁移期间 Web 保持可用，App 不直接依赖 legacy 表。
 
-- 先建立共享目标模型，再迁移数据；不让新 App 直接依赖遗留 schema。
-- 账号可复用，交友身份必须重新激活。
-- 媒体可复用对象文件，不能复用未覆盖交友展示用途的授权。
-- 数据迁移使用可重入任务、批次报告、双读对账和明确回滚点。
-- 不长期双写。双写只存在于受控过渡窗口，并有唯一权威来源。
-
-## 2. 当前数据评估
-
-| 当前数据 | 当前结构 | 可复用程度 | 目标处理 |
-|----------|----------|------------|----------|
-| 用户 | `users`，整数 ID、邮箱密码、昵称、头像、角色 | 条件复用 | 建立不可枚举 `account_id` 和 `legacy_user_link`；重新验证手机号、年龄和新条款 |
-| 会话 | `sessions`，Web cookie token hash | 不迁移 | 保持 Web 有效窗口；App 创建独立 token session |
-| 会员等级 | `membership_levels`，以 rank 比较 | 可复用定义 | 转换为共享 entitlement catalog；名称不作为权限判断 |
-| 用户会员 | `user_memberships`，时间区间与人工发放者 | 可复用事实 | 导入为 `entitlement_grants`，保留来源、原 ID、有效期和发放者 |
-| 图库 | `galleries` | 不作为交友资料复用 | 继续属于 Gallery 域；必要时只作为授权媒体来源证据 |
-| 媒体 | `media_assets`，R2/Stream，归属于 gallery | 条件复用对象 | 经权利复核和主体同意后创建新的 `profile_media` 引用；原归属不改变 |
-| 标签 | `tags`，含地区、身份、性格、风格、职业等 | 白名单复用 | 建立受控词表映射；敏感或语义不合适的标签不迁移 |
-| 管理员 | `users.role` 的 admin/owner | 条件复用 | 映射到 RBAC 角色；强制 MFA 和重新授权，不能复用普通 Web session |
-| 审计日志 | `admin_audit_logs` | 历史保留 | 只读归档；新平台写统一审计事件，保留 legacy 引用 |
-| 站内分析/广告归因 | 多张分析与归因表 | 不迁移到交友画像 | 业务隔离；未取得交友用途同意不得用于推荐或营销 |
-
-## 3. 数据用途门禁
-
-### 3.1 账号迁移
-
-账号迁移只建立身份关联，不自动完成以下动作：
-
-- 不自动创建交友资料。
-- 不自动公开昵称、头像、地区、职业或标签。
-- 不自动开启定位、个性化推荐、推送或营销。
-- 不自动将现有会员权益映射为付费订阅，除非权益规则明确且向用户说明。
-
-首次进入 App 时，用户必须完成：
-
-1. 旧账号控制权验证。
-2. 手机号验证和成年人门槛。
-3. 独立交友服务条款与隐私政策同意。
-4. 迁移字段逐项确认。
-5. 资料创建与审核。
-
-### 3.2 媒体迁移
-
-媒体只有同时满足以下条件才能成为 `profile_media`：
-
-- 已确认上传者或权利人身份。
-- 授权范围明确包含交友资料展示、推荐流和必要的审核处理。
-- 照片主体与交友账号是同一人，或具有可验证的合法代理关系。
-- 不包含未成年人、第三方隐私、敏感证件或禁止内容。
-- 通过交友资料媒体审核。
-
-若任一条件不满足，媒体仍可留在 Gallery 域，但不得出现在交友发现流。
-
-### 3.3 标签迁移
-
-| 当前标签类型 | 默认策略 | 说明 |
-|--------------|----------|------|
-| `personality`、`style`、`occupation` | 人工白名单映射 | 用户主动选择后才进入资料 |
-| `city_country`、`region_*` | 转为标准地区代码 | 不迁移自由文本精确地址 |
-| `hair`、`clothing`、`scene` | 默认不迁移 | 更适合内容描述，不应自动成为人物身份标签 |
-| `identity` | 逐项隐私评估 | 可能涉及敏感身份、性取向或其他高风险画像 |
-| `content_type` | 保留在 Gallery 域 | 不进入交友推荐画像 |
-
-## 4. 目标核心实体
-
-### 4.1 身份与同意
-
-| 实体 | 关键字段 | 说明 |
-|------|----------|------|
-| `accounts` | `id`, `status`, `public_id`, `created_at` | 共享身份根，不存公开资料 |
-| `account_credentials` | `account_id`, `type`, `identifier_hash`, `verified_at` | 邮箱、手机号、第三方登录；敏感标识加密或哈希 |
-| `account_sessions` | `token_hash`, `device_id`, `audience`, `expires_at`, `revoked_at` | Web、App、Admin audience 隔离 |
-| `legacy_user_links` | `account_id`, `source`, `legacy_user_id`, `migration_state` | 保留一对一迁移映射 |
-| `verification_credentials` | `type`, `status`, `provider_ref`, `verified_at`, `expires_at` | 只保存最小结果和供应商引用 |
-| `terms_acceptances` | `account_id`, `document_type`, `version`, `accepted_at`, `evidence` | 条款和政策版本留痕 |
-| `privacy_consents` | `purpose`, `status`, `version`, `granted_at`, `withdrawn_at` | 位置、推荐、营销、迁移等独立目的 |
-
-### 4.2 资料与社交
-
-| 实体 | 关键字段 | 说明 |
-|------|----------|------|
-| `profiles` | `account_id`, `status`, `display_name`, `birth_year`, `city_code`, `bio` | 交友资料根 |
-| `profile_versions` | `profile_id`, `version`, `review_status`, `submitted_at` | 审核版本，不直接覆盖线上版本 |
-| `profile_media` | `profile_id`, `media_id`, `rights_status`, `review_status`, `sort_order` | 资料媒体引用与权利状态 |
-| `profile_tags` | `profile_id`, `taxonomy_id`, `visibility` | 用户主动选择的受控标签 |
-| `discovery_preferences` | 年龄段、城市范围、可见性、个性化开关 | 偏好和隐私设置 |
-| `interactions` | `actor_id`, `target_id`, `type`, `idempotency_key`, `created_at` | 喜欢、跳过、招呼 |
-| `matches` | `member_low`, `member_high`, `status`, `matched_at` | 规范化成员顺序保证唯一 |
-| `blocks` | `blocker_id`, `blocked_id`, `reason_code`, `created_at` | 安全边界，查询优先级最高 |
-
-### 4.3 消息与安全
-
-| 实体 | 存储 | 说明 |
-|------|------|------|
-| `conversations` | 社交 D1 | 会话元数据、成员和状态 |
-| `messages` | Durable Object SQLite | 权威消息、递增序号和幂等键 |
-| `conversation_projections` | 社交 D1 | 会话列表、最后消息摘要、未读计数 |
-| `reports` | 社交 D1 | 举报分类、状态、优先级和提交者 |
-| `report_evidence` | D1 + 私有 R2 | 消息快照、媒体引用和证据哈希 |
-| `moderation_cases` | 社交 D1 | 审核任务、决定、SLA 和申诉 |
-| `safety_actions` | 社交 D1 | 限流、冻结、封禁和恢复的追加记录 |
-
-### 4.4 权益与账本
-
-| 实体 | 关键约束 |
-|------|----------|
-| `entitlement_products` | 商品与权益分离；平台 SKU 映射可版本化 |
-| `entitlement_grants` | 来源、有效期、原订单/人工发放/legacy 引用必填 |
-| `store_transactions` | `(store, original_transaction_id)` 唯一 |
-| `wallet_accounts` | 每账号每币种唯一 |
-| `wallet_ledger_entries` | 只追加；同一业务操作借贷平衡；幂等键唯一 |
-| `gift_catalog` | 确定性商品、价格版本、上下架状态 |
-| `gift_transactions` | 扣币、收件人、会话、账本交易和事件 ID 可追踪 |
-
-## 5. 权威来源矩阵
-
-迁移期间，每类数据只能有一个写入权威：
-
-| 阶段 | 账号 | 会员/权益 | 资料/匹配 | 消息 | 媒体 |
-|------|------|-----------|-----------|------|------|
-| A 建模前 | legacy D1 | legacy D1 | 不存在 | 不存在 | legacy D1/R2 |
-| B 影子迁移 | legacy D1 | legacy D1 | 新社交 D1 | DO | legacy 媒体 + 新引用 |
-| C App 内测 | 核心 D1；legacy 通过兼容层 | 核心 D1，回投影给 Web | 新社交 D1 | DO | 共享媒体服务 |
-| D Web 切换 | 核心 D1 | 核心 D1 | 新社交 D1 | DO | 共享媒体服务 |
-| E 退役后 | 核心 D1 | 核心 D1 | 新社交 D1 | DO | 共享媒体服务 |
-
-禁止在同一阶段让 legacy 和 core 同时接受同类主数据写入而没有冲突规则。
-
-## 6. 迁移任务模型
-
-### 6.1 批次与条目
-
-每次迁移由 `migration_batches` 和 `migration_items` 记录：
-
-- 源数据快照或 bookmark。
-- 迁移类型、schema 版本和代码版本。
-- 总数、成功数、跳过数、失败数和阻断数。
-- 每条源 ID、目标 ID、输入摘要哈希、输出摘要哈希和失败码。
-- 开始/完成时间、操作者、审批人和回滚锚点。
-
-任务必须可重入：同一源记录和迁移版本重复执行时不能生成重复目标。
-
-### 6.2 标准流程
+## 2. 核心对象
 
 ```mermaid
-flowchart LR
-    S["源数据盘点"] --> C["用途与授权分类"]
-    C --> M["建立 ID 映射"]
-    M --> T["影子转换"]
-    T --> V["数量 / 哈希 / 语义对账"]
-    V -->|通过| R["小流量双读"]
-    V -->|失败| F["修复或隔离"]
-    R --> W["切换写权威"]
-    W --> O["观察窗口"]
-    O --> A["归档旧数据"]
+erDiagram
+    ACCOUNT ||--o{ VIEWER_INTERACTION : creates
+    PERSON ||--o{ PERSON_PROFILE : has
+    PERSON ||--o{ PERSON_VERIFICATION : verified_by
+    PERSON ||--o{ PERSON_AUTHORIZATION : authorized_by
+    PERSON ||--o{ OPERATOR_ASSIGNMENT : operated_by
+    PERSON ||--o| PERSON_CLAIM : may_have
+    PERSON_PROFILE ||--o{ PROFILE_GALLERY : displays
+    GALLERY ||--o{ PROFILE_GALLERY : linked_to
+    ACCOUNT ||--o{ CONVERSATION : starts
+    PERSON ||--o{ CONVERSATION : target
+    CONVERSATION ||--o{ MESSAGE_INDEX : contains
+    ACCOUNT ||--o{ ENTITLEMENT_GRANT : owns
+    ACCOUNT ||--o{ WALLET_ENTRY : owns
+    ACCOUNT ||--o{ ORDER : places
+    PERSON_PROFILE ||--o{ GIFT_TRANSACTION : receives_expression
 ```
 
-## 7. 分阶段迁移
+### 2.1 不可合并的概念
 
-### M0：盘点与冻结契约
+- `Account`：登录、设备、角色、隐私和付费主体。
+- `Person`：现实中的真人主体和权利事实，不一定有账号。
+- `PersonProfile`：经过审核的公开展示版本，可有版本历史。
+- `Gallery`：图片/视频内容集合，可关联一个或多个合法主体。
+- `OperatorAssignment`：当前由平台运营还是本人运营，以及管理员分配。
 
-- 生成现有核心表、数量、外键缺口、重复账号和无效会员报告。
-- 建立数据分类、处理目的、保留期限和授权证据清单。
-- 冻结 legacy 到 v2 的映射契约，不冻结正常业务写入。
+## 3. 目标表族
 
-退出条件：所有首批字段有 `迁移/重采集/不迁移` 结论。
+表名为设计建议，实施前通过 D1 migration 和技术评审冻结。
 
-### M1：身份映射与影子读取
+### 3.1 身份和账号
 
-- 为每个现有用户创建 `account_id` 和唯一 legacy link。
-- 不迁移 session、密码明文或无必要的历史行为数据。
-- v2 只读展示迁移预览；不改变 Web 登录和会员判断。
+| 表 | 关键字段 | 说明 |
+|----|----------|------|
+| `accounts_v2` | `id`, `legacy_user_id`, `status`, `region`, `created_at` | 共享账号 |
+| `account_identities` | `account_id`, `provider`, `provider_subject`, `verified_at` | 登录标识 |
+| `account_devices` | `account_id`, `device_id`, `platform`, `session_version` | 设备和远程退出 |
+| `account_roles` | `account_id`, `role`, `scope` | RBAC |
+| `consent_records` | `account_id`, `document_version`, `decision`, `created_at` | 条款/隐私选择 |
 
-退出条件：账号数量、唯一性、角色和状态 100% 对账；冲突账号有隔离清单。
+### 3.2 真人、资料和内容
 
-### M2：同意驱动的 App 激活
+| 表 | 关键字段 | 说明 |
+|----|----------|------|
+| `persons` | `id`, `status`, `claim_status`, `created_at` | 真人主体，不含不必要公开字段 |
+| `person_profiles` | `id`, `person_id`, `display_name`, `region_id`, `verification_status`, `publish_status`, `version` | 公开资料 |
+| `person_authorizations` | `person_id`, `purpose`, `evidence_ref`, `valid_from`, `valid_until`, `status` | 用途授权 |
+| `person_verifications` | `person_id`, `type`, `result`, `evidence_ref`, `reviewer_id`, `reviewed_at` | 核验范围和结果 |
+| `operator_assignments` | `person_id`, `mode`, `operator_group_id`, `valid_from`, `valid_until` | 平台/本人运营模式 |
+| `person_claims` | `person_id`, `claimant_account_id`, `status`, `workflow_id` | 本人认领 |
+| `profile_galleries` | `profile_id`, `gallery_id`, `sort_order`, `status` | 真人资料与图库映射 |
+| `media_rights` | `media_id`, `person_id`, `purpose`, `evidence_ref`, `status` | 媒体权利 |
 
-- 用户首次登录时创建 App session。
-- 记录新条款、成年人、迁移字段、位置和推荐同意。
-- 仅为主动激活用户创建 draft profile。
+`display_name` 可以是审核通过的公开名称，不等同法定姓名。敏感身份材料不进入公开 profile 表。
 
-退出条件：未激活账号在发现、匹配和消息查询中均不可见。
+### 3.3 发现与互动
 
-### M3：权益切换
+| 表 | 关键字段 | 说明 |
+|----|----------|------|
+| `profile_public_projections` | `profile_id`, `version`, `payload`, `published_at` | 公开只读投影 |
+| `viewer_interactions` | `account_id`, `profile_id`, `type`, `idempotency_key` | 喜欢/关注/收藏 |
+| `favorite_folders` | `id`, `account_id`, `name`, `sort_order` | 收藏夹 |
+| `favorite_folder_items` | `folder_id`, `profile_id`, `created_at` | 收藏归档 |
+| `view_history` | `account_id`, `profile_id`, `viewed_at`, `expires_at` | 浏览历史 |
+| `recommendation_exposures` | `account_id_hash`, `profile_id`, `reason_code`, `rule_version` | 最小化推荐证据 |
 
-- 将现有有效会员转换为 entitlement grant，保留 legacy 来源。
-- Web 先双读比较旧 rank 与新 entitlement，差异只告警不切换。
-- 连续观察无阻断差异后，Web 切换新权益读模型。
+`viewer_interactions` 不存在 reciprocal/matched 状态。
 
-退出条件：有效期边界、最高 rank、多重会员和过期行为全部一致。
+### 3.4 会话与代运营
 
-### M4：媒体与标签
+| 表 | 关键字段 | 说明 |
+|----|----------|------|
+| `conversations` | `id`, `viewer_account_id`, `person_id`, `operation_mode`, `status`, `last_sequence` | 会话索引 |
+| `conversation_assignments` | `conversation_id`, `operator_id/group_id`, `status`, `assigned_at` | 管理员分配 |
+| `message_index` | `conversation_id`, `sequence`, `sender_type`, `sender_ref`, `content_ref`, `status` | D1 查询投影 |
+| `message_receipts` | `conversation_id`, `sequence`, `recipient_type`, `read_at` | 实际接收主体回执 |
+| `conversation_handover_consents` | `conversation_id`, `account_id`, `decision`, `version` | 历史交接同意 |
+| `internal_conversation_notes` | `conversation_id`, `operator_id`, `body_ref` | 后台隔离备注 |
 
-- 媒体服务统一对象元数据，但 Gallery 与 Profile 关系分离。
-- 已授权媒体由用户逐项选择并再次审核。
-- 标签按白名单映射，未映射标签不阻断账号迁移。
+消息权威顺序和短期实时状态由 Durable Object 管理；D1 保存可检索投影。内部备注绝不进入用户消息投影。
 
-退出条件：任何 profile media 都能追溯主体、来源、授权和审核决定。
+### 3.5 会员与商业化
 
-### M5：管理员与 Web 模块迁移
+| 表 | 关键字段 | 说明 |
+|----|----------|------|
+| `membership_tiers` | `id`, `rank`, `name`, `catalog_version` | 五级展示目录 |
+| `entitlement_definitions` | `key`, `value_type`, `schema_version` | 权限定义 |
+| `tier_entitlements` | `tier_id`, `key`, `value_json` | 等级权益 |
+| `entitlement_grants` | `account_id`, `key`, `value_json`, `source`, `valid_until` | 已解析发放 |
+| `products` / `product_versions` | `id`, `type`, `price`, `currency`, `resource_version` | 会员/金币/礼物/装扮目录 |
+| `orders` | `id`, `account_id`, `external_transaction_id`, `status` | 订单 |
+| `wallet_entries` | `id`, `account_id`, `direction`, `amount`, `reason_code`, `balance_after` | 只追加账本 |
+| `gift_transactions` | `id`, `account_id`, `profile_id`, `product_version_id`, `wallet_entry_id` | 礼物记录 |
+| `cosmetic_inventory` | `account_id`, `product_version_id`, `valid_until`, `equipped_slot` | 装扮库存 |
+| `coin_adjustment_requests` | `id`, `operator_id`, `approver_id`, `reason`, `status` | 调币和复核 |
 
-- 管理员完成 MFA 和角色重授权。
-- 后台模块逐个切到 v2；每次只迁一个权威边界。
-- v1 进入只读和退役窗口。
+### 3.6 审核和审计
 
-退出条件：生产流量不再写 legacy 目标表，保留期结束后可归档。
+| 表 | 说明 |
+|----|------|
+| `review_cases` | 真人、媒体、消息、举报和认领审核队列 |
+| `reports` / `report_evidence` | 用户举报和最小证据快照 |
+| `moderation_actions` | 暂停、隐藏、冻结、警告和恢复 |
+| `audit_events_v2` | 管理员和高风险系统写操作的追加事件 |
+| `migration_jobs` / `migration_items` | 迁移任务、逐项结果、重试和证据 |
 
-## 8. 对账与验收
+## 4. Stable ID 与映射
 
-### 8.1 数量对账
+- v2 使用不可枚举字符串 ID；具体 ULID/UUIDv7 在 OQ-026 类技术决策中冻结。
+- `legacy_id_mappings` 保存实体类型、legacy ID、v2 ID、迁移批次、校验哈希和状态。
+- 对外 API 只暴露 v2 ID，不暴露 D1 自增 ID。
+- 映射唯一且不可重用；删除/合并使用状态和关联事件表达。
 
-- 源总数 = 成功 + 跳过 + 失败 + 阻断。
-- 用户、角色、会员有效区间和媒体对象均有分类统计。
-- 目标记录无孤儿账号、无重复 legacy link、无无效外键。
+## 5. MeiGallery 复用规则
 
-### 8.2 语义对账
+| 现有数据 | 复用方式 | 禁止事项 |
+|----------|----------|----------|
+| 用户 | 建立账号影子映射，用户主动登录/接受新条款后激活 | 不自动成为公开真人 |
+| 会员 | 映射有证据的 rank/有效期，生成独立 grant | 不把旧名称当新权限 |
+| 图库/媒体 | 保留原 ID 引用或复制到共享内容域，逐项复核用途授权 | 不因已在网站展示就默认可用于互动 App |
+| 标签/地区 | 归一化到统一 taxonomy，并保留 alias | 不直接信任自由文本进行权限/地区判断 |
+| 管理员 | 映射账号后重新授予最小角色 | 不继承全量 Owner 权限 |
+| 审计 | 原日志只读保留，新操作写 v2 审计 | 不重写历史操作者和时间 |
 
-- 在固定时点计算 legacy 与 target 的有效会员最高 rank，结果必须一致。
-- disabled 用户不能在 target 中变成 active。
-- 未验证邮箱不能在 target 中变成 verified。
-- 未取得交友授权的媒体不能创建 profile media。
-- admin/owner 迁移不能扩大原权限。
+## 6. 迁移阶段
 
-### 8.3 安全对账
+### 阶段 0：盘点与冻结
 
-- 迁移报告不得包含密码哈希、验证码、完整身份证号或媒体公开 URL。
-- 迁移操作者和审批者分离，高风险批次写审计日志。
-- 生产迁移前保存 D1 Time Travel bookmark、仓库外导出和 R2 清单哈希。
+- 导出现有 schema、数据量、权限、媒体来源和会员状态。
+- 建立数据字典、敏感级别、Owner、保留期和用途授权清单。
+- 冻结任何“直接将图库人物变成交友账号”的脚本或方案。
 
-## 9. 回滚策略
+退出条件：每类数据有 Owner、合法用途、映射策略和不迁移规则。
 
-回滚不是删除新库，而是恢复明确的写权威：
+### 阶段 1：v2 地基与影子 ID
 
-1. 停止新迁移 Workflow 和 Queue consumer。
-2. 关闭 App 新激活或相关 feature flag。
-3. 将 Web 读路径切回 legacy；App 显示维护状态。
-4. 对已发生的新 App 消息、举报和订单保持只读，不反写 legacy。
-5. 使用迁移批次映射隔离错误目标记录。
-6. 如需恢复 D1，先验证恢复点不会覆盖迁移后合法交易或安全证据。
+- 创建 v2 核心表、stable ID 和 legacy 映射。
+- 全量生成不可见影子账号和内容映射，不改变前台行为。
+- 建立逐批哈希、数量和引用完整性对账。
 
-订单、账本、举报和消息一旦产生，不允许通过简单数据库回滚抹去；必须使用冲正、补偿或只读保全。
+退出条件：映射可重复运行且结果幂等，Web 仍以 legacy 为写主。
 
-## 10. 注销与删除编排
+### 阶段 2：真人资料候选导入
 
-账号注销由 Workflow 执行：
+- 按图库/标签生成候选 `Person` 和 `PersonProfile` 草稿。
+- 导入来源与授权证据引用，未知或不足的标为待补证。
+- 管理员逐项认证和发布；任何候选默认不可公开。
 
-1. 立即停止登录、发现和消息发送。
-2. 取消推送 token，处理订阅提示和恢复路径。
-3. 冻结公开资料，撤销媒体访问凭证。
-4. 删除或匿名化资料、偏好、设备、非必要分析数据和 UGC。
-5. 按适用法律保留必要的账务、争议和安全证据，并限制用途。
-6. 删除会话成员可识别信息；对方会话保留最小“账号已注销”系统状态。
-7. 生成完成报告并通知用户。
+退出条件：公开投影只包含人工确认的 `verified + published` 资料。
 
-注销流程必须同时满足 Apple App 内发起删除和 Google Play App 内 + Web 删除入口要求。
+### 阶段 3：App 发现与互动
 
-## 11. 中国大陆数据与跨境门禁
+- App 读取 v2 公开投影，互动只写 v2。
+- 标签、媒体和账号必要信息通过适配器或单向同步获取。
+- 建立推荐、互动和受保护媒体访问对账。
 
-位置、身份、通信内容、联系人关系、消费记录和用户画像均可能构成个人信息或敏感个人信息。不能仅因为底层服务来自 Cloudflare 就假设满足中国大陆数据驻留、跨境提供和安全评估要求。
+退出条件：App 不直接查询 legacy 表，暂停资料可快速撤回。
 
-公开上线前必须完成：
+### 阶段 4：消息与商业化
 
-- 数据流图和处理者/受托处理者清单。
-- D1、R2、Durable Objects、日志、身份核验、支付和推送的数据位置与传输路径确认。
-- 敏感个人信息单独同意、个人信息保护影响评估和保存记录。
-- 跨境机制、备案/申报/合同等适用性法律意见。
-- 数据主体查阅、复制、更正、删除、撤回同意和注销演练。
+- 新建 v2 会话、管理员分配、订单、entitlement 和钱包账本。
+- 旧会员仅通过一次性、可追溯 grant 映射；不双写余额。
+- 商店回调和调币全部写 v2。
 
-依据参考：[中华人民共和国个人信息保护法](https://www.cac.gov.cn/2021-08/20/c_1631050028355286.htm) 与 [个人信息保护政策法规问答（2026年1月）](https://www.cac.gov.cn/2026-01/09/c_1769688003183197.htm)。
+退出条件：订单/权益/账本日对账通过，代运营披露和审计完整。
 
-## 12. 迁移完成定义
+### 阶段 5：Web 渐进切换
 
-迁移阶段只有同时满足以下条件才能关闭：
+- 按账号、权益、标签、媒体和图库顺序，把 Web 读取切向共享核心。
+- 先双读比较，再切换读主；写路径每次只保留一个主系统。
+- 删除 legacy 写路径前跨越明确兼容和回滚窗口。
 
-- 数据数量、唯一性、引用和业务语义对账通过。
-- 用户同意和媒体授权没有被迁移过程扩大。
-- Web、App、后台的关键路径回归通过。
-- 备份、恢复和回滚完成演练并记录证据。
-- 迁移失败项有明确处置，不存在未分类失败。
-- 旧数据进入只读归档并有删除日期与责任人。
+退出条件：连续对账通过、旧版本支持窗口结束、归档有恢复验证。
+
+### 阶段 6：本人认领与交接
+
+- 认领 Workflow 绑定真人和账号。
+- 新会话路由本人；历史会话只按批准的同意记录迁移可见性。
+- 运营模式切换、撤回和争议均有审计和回滚。
+
+## 7. 双读、写主与回滚
+
+| 阶段 | 写主 | 影子/双读 | 回滚方式 |
+|------|------|-----------|----------|
+| 0–1 | legacy | v2 映射 | 删除未发布影子批次 |
+| 2 | v2 真人草稿 | legacy 图库只读 | 撤销候选/投影，不改 legacy |
+| 3 | v2 互动 | 公开投影与 legacy 内容对账 | 关闭 App feature flag |
+| 4 | v2 消息与商业 | 外部商店/账本对账 | 停止新单/新会话，forward-fix |
+| 5 | 每模块唯一写主 | 双读比较 | 路由切回上一读主 |
+| 6 | v2 | 交接前后快照 | 暂停路由并恢复上一运营模式 |
+
+已发生的订单、账本、消息和审计不做破坏性回滚，采用 forward-fix、冲正或状态恢复。
+
+## 8. 数据质量校验
+
+- 映射唯一性和引用完整性。
+- `verified + published` 与公开投影集合完全一致。
+- 每个公开媒体存在有效用途授权和可访问派生资源。
+- 会话运营模式与当前 OperatorAssignment/Claim 一致。
+- 订单发放、entitlement、钱包分录和库存可逐笔关联。
+- 余额快照等于有效分录汇总。
+- 管理员写入都有审计；内部备注不会出现在用户 API。
+
+## 9. 隐私、保留和删除
+
+- 身份、授权、消息、账务、安全证据分别制定保留策略。
+- 公开资料与敏感身份材料分表/分存储、分权限。
+- 用户删除账号后撤销登录和公开关联；法定账务/安全证据按批准期限隔离保留。
+- 真人授权撤回时停止新展示和新凭证，进入内容撤回与争议 Workflow。
+- 数据导出只包含请求者有权获得的数据，不包含管理员内部备注或其他主体隐私。
+
+## 10. 迁移验收
+
+- **DATA-AC-001**：普通账号映射后不产生公开真人资料。
+- **DATA-AC-002**：没有用途授权证据的媒体不能进入已发布公开投影。
+- **DATA-AC-003**：迁移任务重复运行不会复制真人、互动、权益或账本分录。
+- **DATA-AC-004**：任一批次可查看输入、输出、失败、哈希、审计和回滚点。
+- **DATA-AC-005**：App API 不包含 legacy 自增 ID，也不直接查询 legacy 表。
+- **DATA-AC-006**：余额和订单在切换前后逐笔对账，无静默覆盖。
+- **DATA-AC-007**：认领后历史会话没有同意记录则真人账号不可读取。
+- **DATA-AC-008**：关闭 v2 feature flag 后，现有 Web 不受影响且新写入安全停止。

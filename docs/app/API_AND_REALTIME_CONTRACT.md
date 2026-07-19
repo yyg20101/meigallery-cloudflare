@@ -1,325 +1,320 @@
-# API 与实时通信契约
+# App API 与实时通信契约
 
-版本：1.1
+App 版本：1.0
 
 日期：2026-07-20
-状态：`[目标设计]`
+
+状态：需求讨论中
 
 ## 1. 契约原则
 
-- Android、iOS、Windows 和 macOS 用户客户端只使用 `/api/v2` 和 `/realtime/v1`，不直接调用现有 v1 图库接口。
-- 对外 JSON 使用 `camelCase`，数据库字段命名不构成公开契约。
-- 所有时间为 UTC ISO 8601，所有金额为最小货币单位整数，金币为整数。
-- 所有写请求支持或强制 `Idempotency-Key`；支付、礼物、消息和匹配接口强制使用。
-- 客户端不传可信角色、会员 rank、余额、认证结论或审核状态。
-- API 采用向后兼容扩展；删除字段或改变语义必须升级主版本。
+- HTTP 基础路径使用 `/api/v2`，旧 Web API 保持兼容直至迁移完成。
+- OpenAPI、JSON Schema 和实时事件 schema 是 Kotlin/TypeScript 契约源。
+- 对外 ID 为不可枚举字符串；不暴露 D1 自增 ID。
+- 所有对象权限在服务端校验，客户端隐藏按钮不构成授权。
+- 消息、订单、礼物、调币和关键互动强制幂等。
+- 未知字段向前兼容，未知枚举使用 `unknown`/安全降级，不扩大权限。
 
-## 2. 传输与鉴权
+## 2. 通用请求
 
-### 2.1 HTTP
+建议请求头：
 
-- 只允许 HTTPS。
-- 用户客户端使用 `Authorization: Bearer <access-token>`。
-- access token 短期有效，refresh token 轮换并保存在 Keychain/Keystore/OS credential store。
-- 请求包含 `X-Client-Platform`、`X-Client-Version`、`X-Request-Id`。
-- `X-Client-Platform` 使用受控枚举：`android`、`ios`、`windows`、`macos`、`linux` 或 `web`；服务端不信任该值进行身份授权。
-- 服务端按最低受支持客户端版本返回强制升级或建议升级信息。
+```text
+Authorization: Bearer <session-token>
+X-Client-Platform: android | ios | windows | macos | web
+X-Client-Version: <semver/build>
+X-Contract-Version: <schema-version>
+X-Request-Id: <uuid>
+Idempotency-Key: <unique-key>（关键写接口）
+Accept-Language: zh-CN
+```
 
-### 2.2 WebSocket
+会话 Token 只代表身份。服务端仍需读取账号状态、设备、角色、资格、会员和风险状态。
 
-- 客户端先通过 HTTPS 获取一次性、短期 `realtimeTicket`。
-- WebSocket 握手只携带 ticket，不把长期 access token 放在 URL。
-- ticket 绑定 `accountId`、`deviceId`、audience、过期时间和允许加入的 conversation。
-- 断线重连重新获取 ticket，并携带每个会话最后确认序号补拉。
+## 3. 通用响应与错误
 
-## 3. 标准响应
-
-成功响应：
+成功：
 
 ```json
 {
   "data": {},
   "meta": {
-    "requestId": "req_01...",
-    "serverTime": "2026-07-19T08:00:00Z"
+    "requestId": "req_xxx",
+    "contractVersion": "2.0"
   }
 }
 ```
 
-错误响应：
+失败：
 
 ```json
 {
   "error": {
-    "code": "PROFILE_NOT_APPROVED",
-    "message": "资料通过审核后才能发送招呼",
-    "fieldErrors": [],
+    "code": "ENTITLEMENT_REQUIRED",
+    "message": "开通心享会员后可创建真人私信",
+    "details": {
+      "requiredEntitlement": "direct_message.create",
+      "operationMode": "platform_managed"
+    },
     "retryable": false
   },
   "meta": {
-    "requestId": "req_01...",
-    "serverTime": "2026-07-19T08:00:00Z"
+    "requestId": "req_xxx"
   }
 }
 ```
 
-客户端展示 `message`，业务分支使用稳定 `code`，不得解析文案。
+稳定错误码至少包括：
 
-## 4. 通用语义
+| 错误码 | HTTP | 说明 |
+|--------|------|------|
+| `AUTH_REQUIRED` | 401 | 未登录或会话失效 |
+| `ACCOUNT_RESTRICTED` | 403 | 账号/资格/安全受限 |
+| `ENTITLEMENT_REQUIRED` | 403 | 缺少会员权限 |
+| `ENTITLEMENT_QUOTA_EXCEEDED` | 429 | 周期额度不足 |
+| `PROFILE_NOT_AVAILABLE` | 404/410 | 真人资料未发布、暂停或归档 |
+| `CONVERSATION_FORBIDDEN` | 403 | 非参与方或已拉黑/关闭 |
+| `CONTENT_REVIEW_PENDING` | 202/409 | 内容需审核 |
+| `INSUFFICIENT_COINS` | 409 | 金币不足 |
+| `PRODUCT_NOT_AVAILABLE` | 409 | 商品下架/地区/版本不可用 |
+| `IDEMPOTENCY_CONFLICT` | 409 | 同一键对应不同请求 |
+| `APP_UPGRADE_REQUIRED` | 426 | 能力需要更高客户端版本 |
+| `RATE_LIMITED` | 429 | 频控，返回安全的重试时间 |
 
-### 4.1 分页
+错误文案由客户端本地化或服务端文案键渲染，不能暴露内部表名、策略阈值或操作员隐私。
 
-- 列表使用 opaque cursor，不使用页码作为长期契约。
-- 请求：`?limit=20&cursor=<opaque>`，`limit` 最大值由端点定义。
-- 响应：`pageInfo.nextCursor` 和 `pageInfo.hasMore`。
-- cursor 绑定查询条件；修改筛选条件后必须从头请求。
+## 4. 分页与缓存
 
-### 4.2 幂等
+- 列表采用游标分页：`cursor`、`limit`，服务端返回 `nextCursor`。
+- 推荐游标绑定排序规则版本，规则切换时返回新会话或 `CURSOR_EXPIRED`。
+- 公共投影支持 `ETag`；账号、会员、消息、余额和订单响应禁止共享缓存。
+- 时间为 UTC ISO 8601，客户端按地区展示。
 
-- 同一账号、端点和 `Idempotency-Key` 在保留窗口内只执行一次。
-- 相同 key、不同请求摘要返回 `409 IDEMPOTENCY_KEY_REUSED`。
-- 重复请求返回原业务结果，并在 meta 中标记 `idempotentReplay=true`。
-
-### 4.3 乐观并发
-
-- 可编辑资源返回 `version` 和 `ETag`。
-- 更新使用 `If-Match`；版本冲突返回 `409 VERSION_CONFLICT` 和最新摘要。
-- 审核决定、账本和消息不允许普通覆盖更新。
-
-### 4.4 隐私过滤
-
-任何 Profile DTO 必须按查看者上下文构建：
-
-- 自己可见私密设置，不返回身份凭证明文。
-- 匹配用户可见匹配层字段。
-- 陌生用户只见公开字段和模糊位置。
-- 被拉黑、封禁或不可发现时返回统一不可用结果，避免枚举状态。
-
-## 5. API 清单
-
-### 5.1 认证与账号
+## 5. 身份与账号 API
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/v2/auth/phone/challenges` | 发送短信验证码；高风险时要求 Turnstile token |
-| POST | `/api/v2/auth/phone/verify` | 验证验证码并创建/读取账号 |
-| POST | `/api/v2/auth/legacy/link` | 使用旧账号证明绑定 legacy 用户 |
-| POST | `/api/v2/auth/refresh` | 轮换 refresh token |
-| POST | `/api/v2/auth/logout` | 撤销当前设备 session |
-| POST | `/api/v2/auth/logout-all` | 撤销全部 App session |
-| GET | `/api/v2/me` | 当前账号、激活状态、权益和待完成步骤 |
-| GET | `/api/v2/me/devices` | 登录设备列表 |
-| DELETE | `/api/v2/me/devices/:deviceId` | 撤销指定设备 |
+| POST | `/api/v2/auth/register` | 创建观看者账号 |
+| POST | `/api/v2/auth/login` | 登录与风险验证 |
+| POST | `/api/v2/auth/refresh` | 刷新会话 |
+| POST | `/api/v2/auth/logout` | 当前设备退出 |
+| GET | `/api/v2/me` | 账号、角色、会员摘要和配置版本 |
+| GET | `/api/v2/me/devices` | 设备列表 |
+| DELETE | `/api/v2/me/devices/:deviceId` | 远程退出设备 |
+| GET/PUT | `/api/v2/me/preferences` | 地区、偏好、推荐和隐私设置 |
+| POST | `/api/v2/me/data-export` | 创建数据导出 Workflow |
+| POST | `/api/v2/me/deletion` | 创建注销 Workflow |
 
-### 5.2 同意、身份与数据权利
+注册响应不得返回 `personId` 或 `profileId`，除非该账号以后通过独立认领流程绑定真人。
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/v2/legal/documents/current` | 当前条款、隐私和社区规则版本 |
-| POST | `/api/v2/me/consents` | 记录或更新某一处理目的同意 |
-| POST | `/api/v2/me/verifications` | 发起年龄/身份核验 |
-| GET | `/api/v2/me/verifications` | 查看核验状态和过期时间 |
-| POST | `/api/v2/me/data-exports` | 创建个人数据导出 Workflow |
-| GET | `/api/v2/me/data-exports/:id` | 查询导出状态并获取短期下载凭证 |
-| POST | `/api/v2/me/deletion-requests` | App 内发起注销和删除 |
-| GET | `/api/v2/me/deletion-requests/:id` | 查询注销进度 |
-| POST | `/api/v2/me/deletion-requests/:id/cancel` | 在允许的冷静期内取消 |
-
-### 5.3 资料与媒体
+## 6. 真人发现 API
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/v2/me/profile` | 查看自己的线上版本、草稿和审核状态 |
-| PUT | `/api/v2/me/profile/draft` | 保存资料草稿 |
-| POST | `/api/v2/me/profile/submit` | 提交资料版本审核 |
-| POST | `/api/v2/me/profile/media/uploads` | 创建私有 R2 直传凭证或 Worker 上传会话 |
-| POST | `/api/v2/me/profile/media/:id/complete` | 完成上传并进入扫描/审核 |
-| DELETE | `/api/v2/me/profile/media/:id` | 删除媒体并撤销变体 |
-| GET | `/api/v2/profiles/:profileId` | 按查看者权限获取资料 |
-| POST | `/api/v2/me/profile/visibility` | 暂停发现、隐藏距离等 |
+| GET | `/api/v2/discovery/feed` | 个性化或非个性化推荐 |
+| GET | `/api/v2/discovery/regions` | 地区目录和模糊范围 |
+| GET | `/api/v2/discovery/popular` | 热门资料 |
+| GET | `/api/v2/discovery/latest` | 最新发布 |
+| GET | `/api/v2/discovery/categories` | 标签/分类入口 |
+| GET | `/api/v2/person-profiles` | 搜索和筛选 |
+| GET | `/api/v2/person-profiles/:profileId` | 真人公开详情 |
+| POST | `/api/v2/person-profiles/:profileId/media-access` | 受保护媒体短期凭证 |
 
-### 5.4 发现与互动
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/v2/discovery/recommended` | 个性化或非个性化推荐 |
-| GET | `/api/v2/discovery/nearby` | 城市与模糊距离段结果 |
-| GET | `/api/v2/discovery/active` | 近期活跃结果 |
-| GET | `/api/v2/discovery/explanation` | 当前推荐主要因素、版本和关闭入口 |
-| PUT | `/api/v2/me/discovery-preferences` | 修改偏好和个性化开关 |
-| POST | `/api/v2/profiles/:profileId/likes` | 喜欢；幂等 |
-| POST | `/api/v2/profiles/:profileId/passes` | 跳过；幂等 |
-| POST | `/api/v2/profiles/:profileId/greetings` | 发送受限招呼；幂等 |
-| POST | `/api/v2/greetings/:id/accept` | 接受招呼并创建匹配 |
-| POST | `/api/v2/greetings/:id/reject` | 拒绝招呼 |
-| GET | `/api/v2/matches` | 匹配列表 |
-| POST | `/api/v2/matches/:id/unmatch` | 解除匹配并关闭发送权限 |
-
-### 5.5 会话与消息
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/v2/conversations` | 会话投影列表 |
-| POST | `/api/v2/conversations/:id/realtime-ticket` | 获取 WebSocket 一次性 ticket |
-| GET | `/api/v2/conversations/:id/messages?afterSeq=` | 断线补拉历史 |
-| POST | `/api/v2/conversations/:id/read` | 更新已读序号；单调递增 |
-| POST | `/api/v2/conversations/:id/mute` | 静音设置 |
-| POST | `/api/v2/conversations/:id/messages/:messageId/recall` | 撤回允许窗口内自己的消息 |
-
-消息主发送路径走 WebSocket；HTTP 可提供同幂等语义的降级发送端点，但不能形成第二套消息规则。
-
-### 5.6 安全
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/v2/profiles/:profileId/block` | 立即拉黑 |
-| DELETE | `/api/v2/profiles/:profileId/block` | 解除拉黑；不自动恢复匹配 |
-| GET | `/api/v2/me/blocks` | 黑名单 |
-| POST | `/api/v2/reports` | 举报资料、用户、消息或交易 |
-| GET | `/api/v2/me/reports` | 举报状态列表 |
-| POST | `/api/v2/moderation-decisions/:id/appeals` | 用户申诉 |
-| GET | `/api/v2/safety/resources` | 安全说明、紧急帮助和官方联系方式 |
-
-### 5.7 权益、金币和礼物
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/v2/commerce/products` | 返回当前平台和地区可售商品 |
-| POST | `/api/v2/commerce/store-transactions/verify` | 验证商店交易；幂等 |
-| POST | `/api/v2/commerce/store-notifications` | 商店服务端通知；独立签名校验入口 |
-| GET | `/api/v2/me/entitlements` | 当前有效权益与来源摘要 |
-| GET | `/api/v2/me/wallet` | 可用余额、冻结余额和最近变动 |
-| GET | `/api/v2/me/wallet/ledger` | 账本分页 |
-| GET | `/api/v2/commerce/gifts` | 礼物目录和价格版本 |
-| POST | `/api/v2/conversations/:id/gift-transactions` | 扣币并发送礼物；强幂等 |
-| POST | `/api/v2/commerce/purchases/restore` | 恢复可恢复购买 |
-
-## 6. 关键 DTO
-
-### 6.1 发现资料卡
+推荐项关键字段：
 
 ```json
 {
-  "id": "prf_01...",
-  "displayName": "小鹿",
-  "age": 24,
-  "city": { "code": "CN-BJ", "name": "北京市" },
-  "distanceBand": "2–5km",
-  "activityStatus": "online",
-  "occupation": "设计师",
-  "badges": [
-    { "type": "identityVerified", "label": "身份已核验" }
-  ],
-  "primaryMedia": {
-    "id": "pmd_01...",
-    "thumbnailUrl": "https://短期或公开变体域名/...",
-    "blurHash": "..."
+  "profileId": "pp_xxx",
+  "personId": "per_xxx",
+  "displayName": "示例展示名",
+  "verification": {
+    "status": "verified",
+    "label": "真人资料已认证"
   },
-  "interaction": {
-    "canLike": true,
-    "canGreet": true,
-    "greetingsRemaining": 3
+  "operation": {
+    "mode": "platform_managed",
+    "label": "消息由平台运营接收"
   },
-  "reason": "同城且有 2 个共同兴趣"
+  "region": { "label": "北京市", "precision": "city" },
+  "tags": [],
+  "recommendation": {
+    "mode": "personalized",
+    "reasonCode": "PREFERRED_STYLE",
+    "ruleVersion": "rec_2026_07_01"
+  }
 }
 ```
 
-不得返回：精确坐标、准确最后在线时间、身份材料、手机号、内部安全分、个人不可见标签。
+公开 API 只从已认证且已发布投影读取。客户端不得依赖字段缺失自行判断状态。
 
-### 6.2 会话消息
+## 7. 单向互动 API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| PUT/DELETE | `/api/v2/person-profiles/:profileId/like` | 喜欢/取消喜欢 |
+| PUT/DELETE | `/api/v2/person-profiles/:profileId/follow` | 关注/取消关注 |
+| PUT/DELETE | `/api/v2/person-profiles/:profileId/favorite` | 收藏/取消收藏 |
+| GET | `/api/v2/me/likes` | 喜欢列表 |
+| GET | `/api/v2/me/follows` | 关注和更新 |
+| GET | `/api/v2/me/favorites` | 收藏列表 |
+| GET/POST/PATCH/DELETE | `/api/v2/me/favorite-folders[/:id]` | 收藏夹 |
+| GET/DELETE | `/api/v2/me/view-history` | 历史查询/全部清除 |
+| DELETE | `/api/v2/me/view-history/:profileId` | 删除单条历史 |
+
+这些接口不返回 reciprocal/matched 等字段，也不创建会话。
+
+## 8. 会员和目录 API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/v2/catalog/memberships` | 五级会员目录和价格 |
+| GET | `/api/v2/me/entitlements` | 已解析权限快照 |
+| POST | `/api/v2/orders` | 创建购买意图 |
+| POST | `/api/v2/orders/verify` | 提交商店交易供服务端验证 |
+| POST | `/api/v2/orders/restore` | 恢复购买 |
+| GET | `/api/v2/me/orders` | 订单列表 |
+| GET | `/api/v2/me/orders/:orderId` | 订单详情 |
+
+entitlement 响应包含目录版本、来源、值、有效期和最低客户端版本。客户端可缓存展示，但受限 API 每次服务端重验。
+
+## 9. 会话与消息 API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/v2/conversations` | 按真人资料创建/复用私信；强制幂等 |
+| GET | `/api/v2/conversations` | 当前账号会话列表 |
+| GET | `/api/v2/conversations/:id` | 会话、接收主体和状态 |
+| GET | `/api/v2/conversations/:id/messages` | 按 sequence 补拉消息 |
+| POST | `/api/v2/conversations/:id/messages` | HTTP 发送兜底 |
+| POST | `/api/v2/conversations/:id/read` | 实际接收方已读到 sequence |
+| POST | `/api/v2/conversations/:id/mute` | 静音/取消静音 |
+| POST | `/api/v2/conversations/:id/close` | 用户关闭会话 |
+| POST | `/api/v2/conversations/:id/handover-consent` | 历史交接选择（M3） |
+
+创建请求：
 
 ```json
 {
-  "id": "msg_01...",
-  "conversationId": "cnv_01...",
-  "clientMessageId": "device-generated-uuid",
-  "seq": 128,
-  "type": "text",
-  "senderId": "acc_01...",
-  "content": { "text": "周末有时间一起喝咖啡吗？" },
-  "moderationState": "accepted",
-  "createdAt": "2026-07-19T08:00:00Z",
-  "recalledAt": null
+  "profileId": "pp_xxx",
+  "clientCapabilityVersion": "2.0"
 }
 ```
 
-## 7. WebSocket 事件
-
-### 7.1 包络
+创建响应必须包含：
 
 ```json
 {
-  "eventId": "evt_01...",
-  "type": "message.send",
+  "conversationId": "cv_xxx",
+  "operationMode": "platform_managed",
+  "receiverLabel": "平台运营接收",
+  "disclosureVersion": "managed_message_1",
+  "quota": { "remaining": 2, "resetsAt": "2026-07-21T00:00:00Z" }
+}
+```
+
+## 10. 实时通道
+
+连接过程：HTTP 获取短期 WebSocket ticket → 连接会话 Durable Object → `hello` 携带最后确认 sequence → 服务端补发缺失事件。
+
+通用事件：
+
+```json
+{
+  "eventId": "evt_xxx",
+  "eventType": "message.created",
   "schemaVersion": 1,
-  "conversationId": "cnv_01...",
-  "sentAt": "2026-07-19T08:00:00Z",
+  "conversationId": "cv_xxx",
+  "sequence": 42,
+  "occurredAt": "2026-07-20T12:00:00Z",
   "payload": {}
 }
 ```
 
-### 7.2 客户端到服务端
-
-| 事件 | 必填字段 | 说明 |
-|------|----------|------|
-| `connection.resume` | `lastSeenSeqByConversation` | 重连恢复 |
-| `message.send` | `clientMessageId`, `type`, `content` | 发送消息，client ID 为幂等键 |
-| `message.read` | `throughSeq` | 已读序号只能增加 |
-| `typing.start` / `typing.stop` | 无 | 临时状态，不持久化，不触发推送 |
-| `heartbeat` | `clientTime` | 维护连接，不用于公开精确在线时间 |
-
-### 7.3 服务端到客户端
-
 | 事件 | 说明 |
 |------|------|
-| `connection.ready` | 连接、账号和服务器时间已确认 |
-| `message.ack` | 发送被接受，返回 server ID 与 seq |
-| `message.created` | 新消息 |
-| `message.updated` | 撤回或审核状态变化 |
-| `message.read` | 对方已读到某序号 |
-| `conversation.closed` | 拉黑、解除匹配、封禁或注销导致关闭 |
-| `sync.required` | 序号缺口或投影落后，需要 HTTP 补拉 |
-| `error` | 稳定错误码和是否可重试 |
+| `conversation.snapshot` | 当前状态、运营模式、接收主体和 sequence |
+| `message.created` | 新消息，含 `senderType: viewer/platform_operator/person/system` |
+| `message.status_changed` | 审核、送达、失败、撤回状态 |
+| `receipt.read` | 当前实际接收主体已读到某 sequence |
+| `operation_mode.changed` | 平台运营/本人运营切换，必须落系统消息 |
+| `conversation.restricted` | 拉黑、暂停、安全限制或关闭 |
+| `entitlement.changed` | 会员变化提示客户端刷新 HTTP 快照 |
 
-## 8. 关键错误码
+不为平台代运营会话发送 `person.typing`、`person.online` 或 `person.read` 事件。输入状态仅在真实发送主体主动产生且策略允许时短期发送，不持久化。
 
-| HTTP | 错误码 | 客户端动作 |
-|------|--------|------------|
-| 400 | `VALIDATION_FAILED` | 就地展示字段错误 |
-| 401 | `AUTH_REQUIRED` | 尝试刷新；失败后登录 |
-| 401 | `SESSION_REVOKED` | 清除本地敏感缓存并登录 |
-| 403 | `AGE_VERIFICATION_REQUIRED` | 导航到成年人核验 |
-| 403 | `CONSENT_REQUIRED` | 展示缺失的具体同意项目 |
-| 403 | `PROFILE_NOT_APPROVED` | 导航到审核状态 |
-| 403 | `CONVERSATION_NOT_OPEN` | 禁用输入框并显示状态 |
-| 403 | `SAFETY_RESTRICTION` | 不披露内部规则；提供申诉入口 |
-| 409 | `VERSION_CONFLICT` | 合并或重新载入 |
-| 409 | `IDEMPOTENCY_KEY_REUSED` | 生成新操作 key 后由用户确认重试 |
-| 422 | `CONTENT_REJECTED` | 保留草稿并给出安全文案 |
-| 429 | `RATE_LIMITED` | 使用 `Retry-After`，不循环请求 |
-| 503 | `DEPENDENCY_UNAVAILABLE` | 告知稍后重试，不丢本地 outbox |
-| 426 | `CLIENT_UPGRADE_REQUIRED` | 强制升级页 |
+## 11. 钱包、礼物与装扮 API
 
-## 9. 速率限制设计
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/v2/me/wallet` | 余额和最后同步时间 |
+| GET | `/api/v2/me/wallet/entries` | 金币明细 |
+| GET | `/api/v2/catalog/coin-packs` | 金币包 |
+| GET | `/api/v2/catalog/gifts` | 礼物目录 |
+| POST | `/api/v2/gifts` | 赠礼并原子扣币；强制幂等 |
+| GET | `/api/v2/me/gifts` | 赠礼历史 |
+| GET | `/api/v2/catalog/cosmetics` | 装扮目录 |
+| GET | `/api/v2/me/cosmetics` | 库存和装备状态 |
+| POST | `/api/v2/cosmetics/:productId/purchase` | 金币购买 |
+| PUT/DELETE | `/api/v2/me/cosmetics/:inventoryId/equip` | 装备/卸下 |
 
-具体数字由压测与风控调整，契约至少区分：
+赠礼返回订单/业务记录、钱包分录和权威余额。客户端不得先行扣减余额。
 
-- 验证码按手机号、设备、IP 和账号组合限制。
-- 登录、refresh、身份核验和数据导出独立限制。
-- 发现接口按账号和设备限制，并防止批量枚举。
-- 喜欢、招呼、资料查看和消息发送按账号、会话及风险等级限制。
-- 举报接口防刷但不得阻止真实高危举报，可进入降级人工渠道。
-- 商店交易验证按账号、transaction ID 和平台限制。
+## 12. 举报、拉黑与支持 API
 
-返回 `Retry-After` 与通用错误，不向攻击者披露具体风险规则。
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/v2/reports` | 举报真人、媒体、会话或消息 |
+| GET | `/api/v2/me/reports` | 举报状态 |
+| PUT/DELETE | `/api/v2/person-profiles/:profileId/block` | 拉黑/解除拉黑 |
+| GET | `/api/v2/help/topics` | 帮助与政策 |
+| POST | `/api/v2/appeals` | 申诉 |
 
-## 10. 契约测试
+拉黑后禁止新会话和消息，并停止目标推荐；解除拉黑不自动重开已关闭会话。
 
-- OpenAPI、JSON Schema 和 WebSocket event schema 是跨语言唯一契约源；Kotlin/TypeScript 模型不得各自手工演进。
-- schema 变更后必须在 KMP、Web 和 API CI 中生成或校验模型；生成差异未提交、枚举/可空性不一致或破坏兼容性时阻断合并。
-- 每个错误码至少有一个契约测试。
-- 幂等测试覆盖重复、并发和 key 复用不同 payload。
-- WebSocket 测试覆盖乱序、重复、断线、补拉、休眠恢复和会话关闭。
-- 对象权限测试覆盖本人、陌生人、匹配、被拉黑、管理员和越权 ID 枚举。
-- 支付契约测试只使用 sandbox 签名样本，生产凭证不得进入测试仓库。
-- 平台矩阵至少覆盖 Android、iOS、Windows 和 macOS 的 header、强制升级、token 刷新、WebSocket 重连与错误映射。
+## 13. 管理 API
+
+管理路由使用 `/api/v2/admin`，强认证、RBAC、对象范围和审计必需。
+
+| 资源 | 主要能力 |
+|------|----------|
+| `/persons`, `/person-profiles` | 创建、编辑、来源、授权和状态 |
+| `/verifications`, `/publications` | 认证、发布、暂停、归档 |
+| `/imports` | MeiGallery/批量导入任务 |
+| `/operation-assignments` | 真人运营模式和管理员组 |
+| `/managed-conversations` | 队列、分配、平台回复和内部备注 |
+| `/reviews`, `/reports`, `/appeals` | 审核和安全处置 |
+| `/membership-catalogs`, `/products` | 五级权益、价格和商品版本 |
+| `/coin-adjustments` | 加币、扣币、批量任务、复核和冲正 |
+| `/orders`, `/reconciliation` | 订单、退款和对账 |
+| `/claims`, `/handovers` | 真人认领和交接 |
+| `/audit-events` | 只读审计查询 |
+
+管理员消息接口必须由服务端写入 `senderType=platform_operator`；客户端不能传入 `person` 冒充真人。
+
+## 14. 幂等与并发
+
+- `Idempotency-Key` 与账号、路由和规范化请求哈希绑定。
+- 同键同请求返回首个权威结果；同键不同请求返回 `IDEMPOTENCY_CONFLICT`。
+- 创建会话按观看者 + 真人建立唯一有效关系。
+- 消息按会话 + clientMessageId 唯一。
+- 外部交易 ID、钱包业务单号、礼物业务单号和调币申请唯一。
+- 状态更新使用版本号/ETag 防止管理员并发覆盖。
+
+## 15. 契约与安全测试
+
+- OpenAPI lint、破坏性变更检测和 Kotlin/TypeScript 生成代码编译。
+- 对象权限矩阵覆盖本人、其他观看者、未认领/已认领真人、代运营、审核、财务和越权 ID。
+- 幂等、乱序、重复回调、断线补拉、DO 休眠和多设备已读测试。
+- 资料暂停、会员到期、拉黑和运营模式切换的实时撤权测试。
+- 日志/分析事件扫描私信、证件、凭证和令牌泄漏。
+
+## 16. 契约验收
+
+- **API-AC-001**：公开接口无法返回未认证或未发布真人。
+- **API-AC-002**：普通账号响应不包含自动生成的公开资料。
+- **API-AC-003**：无 entitlement 创建私信返回明确错误且不消耗额度。
+- **API-AC-004**：平台运营消息不能伪装为 `senderType=person`。
+- **API-AC-005**：重复订单、消息、礼物和调币请求不产生重复结果。
+- **API-AC-006**：资料暂停、会员到期或拉黑后，现有实时连接立即失去相关写权限。
+- **API-AC-007**：未知 schema 字段不会使旧客户端扩大权限或崩溃。
+- **API-AC-008**：管理写接口均能关联完整审计事件。

@@ -1,389 +1,245 @@
-# 独立交友 App 与共享业务平台技术架构方案
+# 真人发现与互动平台技术架构方案
 
-版本：1.1（目标架构）
+App 版本：1.0
 
 日期：2026-07-20
-状态：`[已确认方向 / 目标设计 / 迁移设计]`
 
-## 1. 架构目标
+状态：需求讨论中
 
-目标不是在现有图库 API 中追加一组聊天表，而是建立一个可同时服务独立移动/桌面客户端与 MeiGallery Web 的共享业务平台，并让现有 Web 在不停止服务的前提下逐步迁移。
+## 1. 目标与约束
 
-架构必须满足：
+目标是在不破坏当前 MeiGallery Web 的前提下，为独立 App 和未来 Web 迁移建立共享核心平台。首发客户端为 Android/iOS，采用 KMP + Compose Multiplatform；Windows/macOS 后续复用业务核心和大部分 UI。Nuxt Web 与管理后台继续运行在 Cloudflare Workers。
 
-- Android、iOS、Windows、macOS、Web 和后台通过版本化契约访问数据，不直接读取数据库。
-- 身份、权益、媒体、标签和管理员能力成为共享核心。
-- 图库域与交友域保持独立，不能把 Gallery 当作 User Profile。
-- 实时消息在单会话内强顺序、可补拉、可幂等重试。
-- 支付账本、匹配关系、消息事件和迁移任务可审计、可恢复。
-- Cloudflare 是主要运行时和基础设施；APNs、FCM、应用商店支付和合规身份服务属于平台必需的外部集成。
+硬约束：
 
-## 2. 关键技术决策
+- Cloudflare 是唯一运行时和基础设施平台，除经明确评审的商店、推送、短信、身份核验和内容审核适配器。
+- Web 与 API 保持独立 Worker；不使用 Cloudflare Pages。
+- 客户端不直接访问 D1、R2、Durable Objects 或 legacy 表。
+- 受保护媒体、会员权限、消息发送、订单和调币全部由服务端授权。
+- 普通账号与真人主体分离，不存在 Match 聚合或用户间聊天。
+- Kotlin 和 TypeScript 通过版本化 schema 共享契约，不共享语言源码。
 
-| 决策 | 选择 | 原因 |
-|------|------|------|
-| 用户客户端 | Kotlin Multiplatform + Compose Multiplatform | 首期覆盖 iOS/Android，后续复用业务核心和大部分 UI 到 Windows/macOS；详见 [ADR-0001](../adr/adr-0001-kmp-compose-multiplatform-client.md) |
-| 客户端构建 | Gradle + Xcode + GitHub Actions；按目标平台使用 macOS/Windows runner | 保留原生支付、推送、深链、签名、notarization 和合规 SDK 的控制权 |
-| 跨语言契约 | OpenAPI + JSON Schema + WebSocket event schema | Kotlin 与 TypeScript 分别生成/校验模型，避免把 `@meigallery/shared` 源码当成跨语言协议 |
-| API | Hono on Cloudflare Workers，新增 `/api/v2` | 延续现有团队能力，同时用版本边界隔离旧契约 |
-| 实时通信 | Durable Objects + Hibernation WebSocket API | 以会话作为协调原子，提供有序广播、连接状态和闲置休眠 |
-| 核心事务数据 | Cloudflare D1，按核心域和社交域分库 | 避免现有图库表与新社交/支付表继续耦合 |
-| 私有媒体 | Cloudflare R2；视频后续使用 Cloudflare Stream signed token | 保持授权访问，避免暴露原始对象地址 |
-| 异步任务 | Cloudflare Queues + Workflows | Queues 处理事件投递，Workflows 处理迁移、注销、审核和对账等长流程 |
-| 人机验证 | Cloudflare Turnstile WebView + 服务端 Siteverify | 适配原生 App，并保留当前服务端验证模型 |
-| 推送 | APNs、FCM；中国 Android 厂商推送作为适配器 | 操作系统级推送不可由 Cloudflare 替代 |
-| 支付 | StoreKit 2、Google Play Billing 和经目标渠道批准的 Android 商店支付适配器 | 数字权益、虚拟币和交友订阅必须遵循分发渠道规则 |
-
-技术版本只在实施计划阶段锁定。目标架构以能力和接口为约束，不以当前依赖的小版本作为长期契约。
-
-## 3. 系统上下文
+## 2. 总体架构
 
 ```mermaid
 flowchart LR
-    U["成年用户"] --> APP["KMP 用户客户端\nAndroid / iOS / Windows / macOS"]
-    WU["MeiGallery Web 用户"] --> WEB["现有 Nuxt Web"]
-    MOD["审核员 / 管理员"] --> ADMIN["Nuxt 管理后台"]
+    A["Android / iOS\nKMP + CMP"] --> G["App API Gateway\nHono Worker"]
+    D["Windows / macOS\nKMP + CMP"] --> G
+    W["Nuxt Web Worker"] --> G
+    M["Nuxt 管理后台"] --> AG["Admin API\nHono Worker"]
 
-    APP --> EDGE["Cloudflare WAF / Rate Limiting"]
-    WEB --> EDGE
-    ADMIN --> EDGE
-    EDGE --> API["共享 Hono API v2"]
-    EDGE --> RT["实时通信 Worker"]
+    G --> IAM["Identity & Account"]
+    G --> PER["Person & Discovery"]
+    G --> INT["Viewer Interaction"]
+    G --> MSG["Messaging"]
+    G --> COM["Membership & Commerce"]
+    AG --> PER
+    AG --> MSG
+    AG --> COM
+    AG --> GOV["Review & Audit"]
 
-    API --> CORE["核心 D1"]
-    API --> SOCIAL["社交 D1"]
-    API --> R2["私有 R2"]
-    API --> STREAM["Cloudflare Stream"]
-    RT --> DO["会话 Durable Objects"]
-    API --> Q["Cloudflare Queues"]
-    Q --> WF["Cloudflare Workflows"]
-
-    API --> IDV["合规身份核验服务"]
-    API --> STORE["Apple / Google / Android 渠道支付"]
-    Q --> PUSH["APNs / FCM / 厂商推送"]
+    IAM --> D1[("Cloudflare D1")]
+    PER --> D1
+    INT --> D1
+    COM --> D1
+    GOV --> D1
+    PER --> R2[("Cloudflare R2")]
+    MSG --> DO["Durable Objects"]
+    MSG --> D1
+    G --> Q["Cloudflare Queues / Workflows"]
+    AG --> Q
+    Q --> D1
 ```
 
-## 4. 目标部署单元
+逻辑服务可在早期部署为少量 Worker 内的独立模块，不要求立即拆成微服务。边界由领域、权限、schema 和测试明确，达到容量或团队阈值后再物理拆分。
 
-### 4.1 客户端
+## 3. 客户端架构
 
-| 单元 | 目标职责 |
-|------|----------|
-| `clients/app-kmp` | 独立 Gradle 工程；KMP 共享业务核心、Compose Multiplatform UI、平台入口与适配器 |
-| `packages/web` | 现有 Nuxt Web；迁移期继续消费 v1，按能力切换 v2 |
-| `contracts` | OpenAPI、JSON Schema、WebSocket event schema 与兼容策略；作为 Kotlin/TypeScript 的唯一跨语言契约源 |
-| `packages/shared` | Web/API 的 TypeScript 类型、错误码、权限常量和纯函数；不得被描述为 KMP 可直接导入的源码 |
-
-`clients/app-kmp` 和 `contracts` 是未来实施建议路径，本阶段不创建目录。KMP 工程不加入 pnpm workspace；仓库级脚本和 CI 分别编排 pnpm 与 Gradle。
-
-### 4.2 KMP 客户端分层
+### 3.1 KMP/CMP 模块
 
 ```text
-clients/app-kmp/
-├── composeApp/
-│   └── src/
-│       ├── commonMain/   领域、用例、状态、契约客户端、共享 UI
-│       ├── androidMain/  Android 入口与平台适配器
-│       ├── iosMain/      iOS 入口与平台适配器
-│       └── desktopMain/  Windows/macOS 公共桌面能力
-├── iosApp/               Xcode 工程、签名与 Apple 平台配置
-├── desktopApp/           桌面入口、菜单、窗口、通知与打包
-└── gradle/               版本目录、构建约束与依赖校验
+apps/
+├── androidApp
+├── iosApp
+├── desktopApp（M4）
+└── shared
+    ├── core-model
+    ├── core-network
+    ├── core-database
+    ├── core-auth
+    ├── core-design
+    ├── feature-discovery
+    ├── feature-person
+    ├── feature-interaction
+    ├── feature-messaging
+    ├── feature-membership
+    ├── feature-wallet
+    ├── feature-cosmetic
+    └── feature-settings
 ```
 
-共享边界遵循以下规则：
+- `commonMain`：领域模型、用例、状态机、网络契约、本地缓存、共享 ViewModel 和大部分 Compose UI。
+- `androidMain/iosMain/desktopMain`：商店购买、推送、深链、安全存储、媒体选择、身份核验、系统权限和窗口行为。
+- 支付、身份核验和高风险平台流程可保留原生 UI，不追求机械共享率。
+- Compose Web 不在范围内；Nuxt Web/后台继续满足 SEO 和运营效率。
 
-- `commonMain` 包含领域模型、用例、API/WebSocket、状态管理、错误映射、离线 outbox、设计 token 和可复用页面。
-- 平台 source set 实现安全存储、推送、支付、相机/相册、定位、身份 SDK、深链和系统通知等端口。
-- iOS 或桌面需要明显不同的系统体验时允许平台专属 UI，不以追求共享率牺牲可用性、无障碍或商店合规。
-- 共享模块只消费生成的 Kotlin 契约，不手工复制 TypeScript DTO；契约变化先通过兼容检查再生成客户端。
+### 3.2 本地数据
 
-| 能力 | 共享层职责 | 平台适配职责 |
-|------|------------|--------------|
-| 认证 | token 状态机、刷新与远程登出 | Keychain/Keystore/OS credential store、Apple/Google 登录 |
-| 实时消息 | ticket、重连、补拉、幂等和离线 outbox | 网络状态、后台限制、系统通知 |
-| 商业化 | 商品、权益、钱包和服务端验证状态 | StoreKit、Play Billing、桌面分发渠道支付 |
-| 媒体与权限 | 上传流程、压缩规则、授权状态 | 相机、相册、文件选择器、定位和权限提示 |
-| 桌面体验 | 共享页面与状态 | 多窗口、菜单、快捷键、托盘、通知、签名和自动更新 |
+- 只缓存公开真人投影、用户互动状态、目录、会话摘要和已加密的必要消息。
+- 订单结果、余额和 entitlement 以服务端为准；离线只读并标注最后同步时间。
+- 消息使用 outbox 和客户端消息 ID，恢复网络后幂等提交。
+- 退出、远程登出和账号注销触发本地敏感缓存清理。
 
-### 4.3 服务端
+## 4. 服务端领域
 
-| 部署单元 | 职责 | 首阶段策略 |
-|----------|------|------------|
-| `meigallery-api` | 现有 v1 + 新增 v2 共享 API | 保持一个 Worker，按模块和路由边界隔离，避免过早拆服务 |
-| `meigallery-realtime` | WebSocket、会话路由、在线状态和消息协调 | 独立 Worker + Durable Objects |
-| Queue consumers | 推送、通知、内容任务、领域事件投影 | 按风险和凭证边界拆 consumer |
-| Workflows | 账号迁移、数据导出、注销、退款对账、批量审核 | 与 API 解耦的长任务 |
+### 4.1 Identity & Account
 
-只有当单个 Worker 的发布风险、权限边界或容量数据证明需要拆分时，才把 v2 API 再拆为 identity/social/commerce Workers。对外契约不因内部拆分改变。
+拥有账号、凭证、设备、会话、角色、同意记录、资格状态和数据权利 Workflow。注册只创建 `Account`，不创建真人资料。
 
-## 5. 领域边界
+### 4.2 Person & Discovery
 
-```mermaid
-flowchart TB
-    ID["身份与访问 Identity"] --> ENT["权益与会员 Entitlement"]
-    ID --> PRO["交友资料 Profile"]
-    PRO --> DIS["发现与推荐 Discovery"]
-    DIS --> MAT["互动与匹配 Match"]
-    MAT --> MSG["会话与消息 Messaging"]
-    ID --> SAFE["信任与安全 Trust & Safety"]
-    PRO --> SAFE
-    MSG --> SAFE
-    ENT --> COM["订单、金币与礼物 Commerce"]
-    COM --> MSG
-    MED["媒体与授权 Media"] --> PRO
-    MED --> GAL["图库 Gallery"]
-    ADM["后台与审计 Admin"] --> ID
-    ADM --> SAFE
-    ADM --> COM
-```
+拥有 `Person`、`PersonProfile`、认证、授权、运营归属、认领、地区/标签、公开投影、搜索和推荐规则。
 
-### 5.1 身份与访问
+- 公开查询统一过滤 `verified + published`。
+- 运营置顶和自然热度分开记录。
+- 推荐输出理由代码、规则版本和排序模式。
 
-- 统一内部 `account_id` 是不可枚举的稳定 ID；现有整数 `users.id` 只作为 legacy key。
-- Web cookie session 与 App token session 分离，但归属于同一账号。
-- 用户客户端使用短期 access token、轮换 refresh token 和平台安全凭据存储；移动端使用 Keychain/Keystore，桌面端使用操作系统 credential store；服务端只保存刷新令牌哈希。
-- 管理员身份使用独立 audience、MFA 和更短会话，不允许 App token 访问后台。
+### 4.3 Viewer Interaction
 
-### 5.2 权益与会员
+拥有浏览、喜欢、关注、收藏、收藏夹和历史。所有关系为 `Account → PersonProfile` 单向关系，不创建 Match。
 
-- 共享核心把当前 `membership_levels.rank` 和 `user_memberships` 转换为统一 entitlement 视图。
-- 新业务判断能力代码，例如 `chat.daily_intro.limit`、`visitor_history.days`，而不是判断 `vip` 字符串。
-- 现有手动发放会员和未来商店订阅作为不同 grant source，共同投影成有效权益。
+### 4.4 Messaging
 
-### 5.3 交友资料、发现和匹配
+拥有会话资格、参与主体、运营模式、消息事件、管理员分配、已读、举报快照和会话状态。
 
-- Profile 是用户主动创建并授权的独立聚合，不从 Gallery 自动派生。
-- Discovery 只消费资料公开投影和安全状态，不读取身份证明文或聊天内容。
-- Match 服务拥有喜欢、招呼、匹配、解除匹配和拉黑后的可见性规则。
+- `platform_managed` 会话：观看者 + 平台运营身份，具体操作员只在审计中保存。
+- `person_managed` 会话：观看者 + 已认领真人账号。
+- 建会话需要 `direct_message.create` entitlement，不需要双方同意。
+- Durable Object 按 `conversationId` 串行处理消息、序号、连接和已读；D1 保存会话索引、可查询投影和审计关联。
 
-### 5.4 消息
+### 4.5 Membership & Commerce
 
-- 一个 Durable Object 对应一个 conversation，负责序号分配、消息接受、WebSocket 广播和短期状态。
-- SQLite-backed Durable Object Storage 保存消息权威副本；D1 保存会话列表、成员状态、未读计数和审核索引投影。
-- 重要状态必须落盘，不能依赖 Durable Object 内存；休眠或部署重启后可恢复。
-- 首版不承诺端到端加密。传输与存储加密、最小权限访问、举报证据审计必须在隐私政策中透明说明。
+拥有五级会员目录、entitlement、SKU、订单、钱包、账本、礼物、装扮库存、退款和管理员调币。
 
-### 5.5 商业化
+- rank 只表达等级顺序，实际权限来自 entitlement。
+- 账本只追加，余额快照可重建。
+- 高风险调币使用 Workflow 双人复核。
+- 商店凭证仅服务端验证，重复回调幂等。
 
-- 商店订单、权益 grant、金币账本位于核心 D1，同一财务操作在单库事务中落地。
-- 礼物扣币成功后通过 outbox/Queue 发布 `gift.sent`，消息域按事件 ID 幂等展示。
-- 不使用跨 D1 分布式事务；所有跨域流程采用“本地事务 + outbox + 幂等消费者 + 可补偿”。
+### 4.6 Review & Governance
 
-## 6. 数据分层
+拥有真人认证/发布审核、消息/媒体举报、安全处置、申诉、审计和高风险后台审批。内部备注与用户可见消息隔离。
 
-### 6.1 数据存储职责
+## 5. Cloudflare 组件分工
 
-| 存储 | 权威数据 |
+| 组件 | 目标用途 |
 |------|----------|
-| 现有 `meigallery-db` | 迁移期内的旧用户、旧会员、图库、媒体、标签和旧后台事实 |
-| 核心 D1 | 统一账号、身份状态、同意记录、角色、权益、商品、订单、钱包账本和审计 |
-| 社交 D1 | 资料、公开投影、偏好、互动、匹配、举报、审核、会话索引和迁移映射 |
-| Durable Object SQLite | 单会话消息、顺序号、连接和消息幂等键 |
-| R2 | 私有图片原件、审核证据、数据导出和迁移报告 |
-| Stream | 后续视频资料和通话外的视频内容；必须启用 signed URL |
+| Workers + Hono | App/Public/Admin API、鉴权、领域编排和签名凭证 |
+| Workers Assets | Nuxt Web/后台静态资源 |
+| D1 | 账号、真人、投影、互动、会话索引、会员、订单、账本、审核和审计 |
+| R2 | 原始/处理后图片、导入包、授权证据和经审批的举报附件 |
+| Cloudflare Stream | M4 视频上传、编码和受控播放；当前规划能力 |
+| Durable Objects | 单会话实时连接、顺序、去重、已读和短期状态 |
+| Queues | 通知、媒体处理、投影更新、订单回调和分析事件 |
+| Workflows | 导入、认领、批量调币、退款、删除/导出和长事务编排 |
+| Turnstile | 注册、登录恢复和高风险操作人机验证 |
+| WAF / Rate Limiting | API 防护、撞库、爬取、消息和支付限流 |
 
-### 6.2 标识符规则
+添加配置前必须核对当前 Cloudflare 官方文档和目标套餐，不在架构中硬编码可能变化的产品限制。
 
-- 外部资源使用 ULID 或等价的不可枚举字符串 ID。
-- 数据库内部可以使用整数主键，但不得直接暴露为用户公开 ID。
-- 每个创建/支付/消息接口都接受 `Idempotency-Key`。
-- 事件使用全局唯一 `event_id`、`event_type`、`schema_version`、`occurred_at` 和 `aggregate_version`。
-
-### 6.3 时间与删除
-
-- 服务端时间统一为 UTC ISO 8601；客户端按用户时区显示。
-- 软删除只用于恢复窗口和审核证据，不能代替最终删除。
-- 法定或安全留存数据与业务可见数据物理或逻辑隔离，达到期限后由 Workflow 删除。
-
-## 7. 关键流程
-
-### 7.1 App 登录与现有账号绑定
-
-```mermaid
-sequenceDiagram
-    participant A as App
-    participant API as API v2
-    participant L as 现有账号服务
-    participant C as 核心 D1
-    participant V as 身份核验服务
-
-    A->>API: 手机验证码登录 / 旧账号证明
-    API->>L: 校验旧账号（仅迁移时）
-    API->>C: 创建或读取 account + legacy link
-    API-->>A: 激活状态与所需同意清单
-    A->>API: 条款同意、成年人声明、迁移字段选择
-    API->>V: 发起年龄/身份核验
-    V-->>API: 结果令牌与状态
-    API->>C: 保存核验状态和同意凭据
-    API-->>A: access token + rotating refresh token
-```
-
-### 7.2 发送消息
-
-```mermaid
-sequenceDiagram
-    participant A as 发送方 App
-    participant RT as Realtime Worker
-    participant DO as Conversation Durable Object
-    participant Q as Queue
-    participant B as 接收方 App
-
-    A->>RT: message.send(clientMessageId, content)
-    RT->>DO: 校验成员与会话状态
-    DO->>DO: 幂等检查、内容规则、分配 seq、持久化
-    DO-->>A: message.ack(serverMessageId, seq)
-    DO-->>B: message.created
-    DO->>Q: message.accepted（推送/投影/审核）
-```
-
-### 7.3 发送虚拟礼物
-
-```mermaid
-sequenceDiagram
-    participant A as App
-    participant API as Commerce API
-    participant DB as 核心 D1
-    participant Q as Queue
-    participant DO as Conversation DO
-
-    A->>API: POST gift-transactions + Idempotency-Key
-    API->>DB: 事务：校验商品、扣币、写账本、写 outbox
-    DB-->>API: giftTransactionId
-    API-->>A: 已接受
-    Q->>DO: gift.sent(eventId)
-    DO->>DO: 幂等写入礼物消息
-```
-
-## 8. 一致性与失败策略
-
-### 8.1 一致性分类
+## 6. 数据所有权与一致性
 
 | 场景 | 一致性要求 | 方案 |
 |------|------------|------|
-| 金币扣减、退款、权益 | 强一致 | 核心 D1 单事务 + 唯一幂等键 |
-| 单会话消息顺序 | 强一致 | 单 conversation Durable Object 分配序号 |
-| 匹配创建 | 单聚合强一致 | 社交 D1 条件更新 + 唯一组合键 |
-| 会话列表、未读数 | 最终一致 | Queue 投影，可按会话权威序号纠正 |
-| 推送 | 至少一次 | 幂等通知记录、过期时间和退避重试 |
-| 推荐候选 | 最终一致 | 公开资料投影 + 短缓存，安全状态优先实时校验 |
+| 真人认证并发布 | 认证/发布强一致，搜索最终一致 | D1 事务 + Outbox/Queue 更新投影 |
+| 喜欢/关注/收藏 | 单关系幂等 | D1 唯一键 + 条件写 |
+| 创建私信 | 权限、额度、唯一会话强一致 | D1 条件事务/服务端协调 + 幂等键 |
+| 单会话消息 | 顺序、去重强一致 | conversation Durable Object |
+| 会员发放 | 订单与 entitlement 可证明一致 | 幂等订单状态机 + Outbox/Saga |
+| 金币消费/赠礼 | 扣币与业务记录原子 | D1 事务 + 唯一业务键 |
+| 管理员调币 | 审批与分录强一致 | Workflow + D1 条件事务 |
+| 认领交接 | 状态与路由强一致，通知最终一致 | Workflow + 版本检查 + Outbox |
 
-### 8.2 失败处理
+不允许长期无归属双写。每个迁移阶段必须定义唯一写主、影子读、对账和回滚点。
 
-- 客户端网络重试必须复用原幂等键。
-- Queue 消费失败进入有限重试和 DLQ；后台可查看、重放和审计。
-- Workflows 每个步骤定义重试、安全重入和人工介入点。
-- 推送失败不回滚已接受消息。
-- 消息投影失败不丢消息，客户端可直接按 DO 权威序号补拉。
-- 礼物消息投影失败不回滚扣币；必须自动重放，长期失败转人工工单。
+## 7. 身份、授权与 RBAC
 
-## 9. 缓存与离线
+### 7.1 用户侧
 
-- 客户端本地只缓存公开资料缩略图、会话索引和最近消息；令牌进入 Keychain/Keystore/OS credential store。
-- 身份材料、精确位置、审核证据和完整支付回执不得写入普通异步存储。
-- 发现流可短缓存候选 ID，但展示前重新应用拉黑、封禁和可发现状态。
-- 离线发送进入本地 outbox，网络恢复时按原 `clientMessageId` 重试。
-- 用户退出或账号被远程登出时清除本地敏感缓存。
-- KMP 数据层只能通过抽象存储端口访问本地持久化；桌面文件系统路径、移动数据库和备份排除策略由平台实现负责。
+服务端授权上下文至少包含：`accountId`、会话、设备、账号状态、地区/资格、角色、会员快照版本和风险状态。
 
-## 10. 安全架构
+对象级检查：
 
-- WAF 和 Cloudflare Rate Limiting Rules 作为边缘强限流；Worker 内限流只作兜底。
-- 所有对象级访问执行服务端授权，客户端传入的 `userId` 不作为权限依据。
-- R2 原件私有；下载由 Worker 代理或签发短期、用途受限凭证。
-- Stream 视频启用 `requireSignedURLs`，播放前校验资料可见性和会话权限。
-- 管理员、商店密钥、身份核验和推送凭证按独立 Worker/secret 边界隔离。
-- 管理后台启用 MFA、IP/设备风险控制、敏感字段按角色脱敏。
-- 日志禁止包含 access token、refresh token、短信验证码、完整身份证号、精确位置、私聊正文和商店原始凭证。
+- 只能读取自己的互动、订单、账本、设备和数据请求。
+- 创建私信校验目标资料、entitlement、额度、拉黑和安全状态。
+- 读取会话校验参与主体和当前运营模式。
+- 受保护媒体每次签发短期凭证前校验可见性和会员等级。
 
-## 11. 可观测性
+### 7.2 管理侧
 
-统一关联字段：
+建议角色：Owner、内容编辑、认证审核、发布审核、代运营、消息审核、客服、商业运营、财务、财务复核、审计只读。
 
-- `request_id`：单次 HTTP 请求。
-- `trace_id`：跨 Worker/Queue/Workflow 链路。
-- `event_id`：领域事件唯一标识。
-- `account_id_hash`：仅用于运维关联的不可逆标识。
-- `conversation_id`、`order_id`：按权限记录，不附带消息正文或支付明文。
+认证、发布、代运营、财务和审计能力分离；高风险操作要求强认证和新鲜会话。所有管理写入包含操作者、目标、原因、前后状态和审批链。
 
-核心告警：登录失败异常、消息接受失败、Queue/DLQ 堆积、账本不平衡、商店回调验证失败、举报 SLA 超时、身份核验服务异常、数据删除 Workflow 失败。
+## 8. 媒体安全
 
-## 12. 部署与环境
+- 原始对象和授权证据存放在私有 R2。
+- 前台使用审核通过的派生资源和短期签名 URL。
+- 上传校验 MIME、扩展名、文件签名、尺寸、大小和恶意内容。
+- EXIF/位置等非必要元数据在发布派生时移除。
+- 资料暂停、授权撤销或会员到期后停止签发新凭证。
+- CDN 已缓存资源使用不可猜测版本 URL和短 TTL/撤销策略。
 
-| 环境 | 用途 | 数据规则 |
-|------|------|----------|
-| local | 单元和本地集成 | 全部合成数据，禁止真实身份和支付凭证 |
-| dev | 联调和演示 | 独立 D1/R2/DO namespace；支付、身份和推送使用 sandbox |
-| staging | 商店前验收和迁移演练 | 脱敏迁移样本；生产等价配置，不接收真实付费 |
-| production | 正式服务 | 独立资源、密钥、WAF 和审计；变更经 release 门禁 |
+## 9. 配置与功能演进
 
-Web、移动客户端和桌面客户端可独立发布，API 对所有仍受支持的客户端至少维持一个兼容窗口。破坏性 API 变更只能进入新主版本；`X-Client-Platform` 与版本门禁按平台分别配置。
+服务端配置域：会员目录、entitlement、商品、筛选、推荐、地区、披露文案、频控、远程开关和最低客户端版本。
 
-客户端 CI 至少包含：
+每份配置包含 schema 版本、内容版本、生效区间、地区/渠道、灰度、审批和回滚。客户端只渲染已支持的组件类型，未知类型安全忽略。远程配置不得下载可执行代码或绕过商店审核。
 
-- `commonTest`、契约生成差异检查和共享 Compose UI 测试。
-- Android 编译/单元测试与目标设备测试，iOS 模拟器编译/测试。
-- macOS arm64 构建与签名预检，Windows x86-64 构建与安装包冒烟。
-- 发布前的 Apple 签名/notarization、Windows 代码签名、商店凭证和自动更新源隔离。
+## 10. 可观测性和审计
 
-## 13. 演进阶段
+- Trace ID 贯穿 API、Queue、Workflow、DO 和外部适配器。
+- 产品分析只记录事件 ID、对象引用和枚举，不记录私信正文、证件和完整支付凭证。
+- 关键业务指标：发布、推荐、会话、响应、订单、账本、认领和安全队列。
+- 安全告警：越权枚举、批量抓取、异常新会话、管理员大额调币、账本差异、凭证重放和审计缺口。
+- 审计日志使用追加式存储、受限查询和独立保留策略。
 
-### 阶段 A：共享身份与兼容层
+## 11. 部署与环境
 
-- 创建 v2 身份、同意和 entitlement 视图。
-- 为现有用户生成稳定 `account_id` 和 legacy link。
-- Web 继续使用 v1；App 只使用 v2。
+- `dev`、`staging`（实施时新增/确认）和 `production` 数据、密钥、Queue、R2、D1、DO namespace 全隔离。
+- Web 和 API 继续独立 Worker；App API 可以先作为现有 API 的 `/api/v2` 模块，达到拆分条件再成为独立 Worker。
+- 所有 migration 先备份/书签、在非生产演练、记录兼容窗口并提供 forward-fix/回滚策略。
+- 商店、推送、身份和审核供应商使用适配器，生产凭证只存 Secret。
 
-### 阶段 B：移动社交核心与实时消息
+## 12. 演进路线
 
-- 上线资料、审核、发现、匹配、举报和 Durable Objects 会话。
-- Android/iOS 客户端封闭内测；现有 Web 不展示交友数据。
+### M0
 
-### 阶段 C：商业化与公开发布
+建立 v2 schema、stable ID、legacy 映射、公开投影、会员/商品/账本和契约生成；Web 保持 legacy 写主。
 
-- 上线商店支付、账本、推送、对账和退款。
-- 完成商店、备案、隐私、安全和内容审核门禁。
+### M1
 
-### 阶段 D：用户桌面客户端
+App 上线发现与单向互动；真人资料由新后台或迁移任务写入 v2；必要数据从 legacy 单向同步。
 
-- 在共享核心和移动端业务稳定后启用 Windows/macOS target。
-- 首批复用登录、发现、匹配、聊天、安全中心和设备管理；桌面支付是否开放按分发渠道单独决策。
-- 完成键盘导航、多窗口、通知、系统凭据存储、代码签名、notarization、增量更新和回滚演练。
+### M2
 
-### 阶段 E：Web 迁移
+上线会员、会话 DO、代运营工作台、订单、金币和装扮；财务/安全门禁完成。
 
-- Web 的账号、会员、媒体和后台按模块切换到 v2。
-- v1 进入只读兼容期，完成流量对账后退役旧表和旧会话。
+### M3
 
-阶段 D 与阶段 E 在阶段 B/C 的共享平台稳定后可以并行，不要求为了桌面端延后现有 Web 迁移。
+上线认领 Workflow、本人账号绑定和会话路由；按 consent 处理历史交接。
 
-## 14. 架构治理
+### M4
 
-- 每个领域必须定义 owner、API、权威存储、事件和失败补偿。
-- KMP `commonMain` 不得直接依赖平台 SDK；平台能力必须通过明确端口和 source set 适配。
-- 不以代码共享率作为架构目标；平台安全、无障碍和用户体验优先于共享 UI。
-- 禁止跨领域直接写表；读模型也必须通过版本化模块接口或投影。
-- 跨域事件先写 outbox，再异步发布，禁止“先写库再裸发 Queue”。
-- 账本和审计表只能追加或冲正，不允许静默覆盖历史。
-- 所有新管理员写接口必须有授权测试和审计断言。
-- 所有精确位置、身份结果和私聊证据访问都要记录目的和访问者。
+Windows/macOS、多地区、视频和更完善实验平台；按模块将 MeiGallery Web 读写切向共享核心，最终归档 legacy 写路径。
 
-## 15. 已核对的官方能力
+## 13. 架构验收
 
-- Kotlin Multiplatform 核心以及 Compose Multiplatform 的 Android、iOS 和 Desktop（JVM）目标已为 Stable；Web UI 目标仍为 Beta：[KMP 支持平台与稳定性](https://kotlinlang.org/docs/multiplatform/supported-platforms.html)。
-- Google 正式支持 KMP 共享 Android/iOS 业务逻辑，Compose Multiplatform 可进一步共享 UI：[Android Developers Kotlin Multiplatform](https://developer.android.com/kotlin/multiplatform)。
-- Compose Multiplatform 允许在 Android、iOS、desktop 和 web 使用公共 Compose API，但仍存在平台专属组件和 API：[Compose Multiplatform 与 Jetpack Compose](https://kotlinlang.org/docs/multiplatform/compose-multiplatform-and-jetpack-compose.html)。
-- Durable Objects 可作为 WebSocket 服务端，Hibernation API 允许闲置时休眠且保持连接；重要状态必须持久化：[Use WebSockets](https://developers.cloudflare.com/durable-objects/best-practices/websockets/)。
-- Cloudflare 建议新的 Durable Objects namespace 使用 SQLite storage，并提供事务性、强一致的对象私有存储：[Access Durable Objects Storage](https://developers.cloudflare.com/durable-objects/best-practices/access-durable-objects-storage/)。
-- Workflows 支持持久化多步骤执行、自动重试和外部事件等待：[Cloudflare Workflows](https://developers.cloudflare.com/workflows/)。
-- D1 Time Travel 默认启用，可恢复最近 30 天内的数据库状态，但生产迁移仍需独立导出和恢复演练：[D1 Time Travel](https://developers.cloudflare.com/d1/reference/time-travel/)。
-- 原生 App 中 Turnstile 需要通过 WebView 运行，服务端 Siteverify 仍是强制要求：[Turnstile mobile implementation](https://developers.cloudflare.com/turnstile/get-started/mobile-implementation/)。
-- 私有 Stream 视频应启用 signed URL/token：[Secure your Stream](https://developers.cloudflare.com/stream/viewing-videos/securing-your-stream/)。
-
-## 16. 上线架构硬门槛
-
-- 未完成中国大陆数据驻留、跨境传输、Cloudflare 资源位置和身份数据处理的书面评估，不面向中国大陆公开上线。
-- 未完成身份核验、支付和内容审核供应商的数据处理协议与安全评估，不接入生产数据。
-- 未完成消息补拉、账本幂等、举报拉黑即时生效和注销全链路演练，不开放公测。
-- 未完成生产 D1/R2/DO 的备份、导出、恢复和回滚演练，不迁移现有主数据。
-- 未完成各客户端平台的安全存储、推送/通知、签名、更新、无障碍和远程停用演练，不发布相应平台安装包。
+- **ARCH-AC-001**：注册普通账号不会创建真人资料或公开投影。
+- **ARCH-AC-002**：所有公开查询在服务端排除非 `verified + published` 资料。
+- **ARCH-AC-003**：系统中没有 Match 作为建会话前置；会员 entitlement 是必要但非唯一条件。
+- **ARCH-AC-004**：平台代运营消息能追溯实际管理员，用户侧不冒充真人。
+- **ARCH-AC-005**：余额可从账本重建，调币和退款不修改历史分录。
+- **ARCH-AC-006**：认领后只有新会话自动路由本人，历史消息通过独立交接流程。
+- **ARCH-AC-007**：Kotlin/TypeScript 契约兼容性在 CI 中验证。
+- **ARCH-AC-008**：任一迁移阶段都能指出唯一写主、对账证据和回滚点。
