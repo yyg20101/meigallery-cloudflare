@@ -1,13 +1,13 @@
 # API 与实时通信契约
 
-版本：1.0
+版本：1.1
 
-日期：2026-07-19
+日期：2026-07-20
 状态：`[目标设计]`
 
 ## 1. 契约原则
 
-- App 只使用 `/api/v2` 和 `/realtime/v1`，不直接调用现有 v1 图库接口。
+- Android、iOS、Windows 和 macOS 用户客户端只使用 `/api/v2` 和 `/realtime/v1`，不直接调用现有 v1 图库接口。
 - 对外 JSON 使用 `camelCase`，数据库字段命名不构成公开契约。
 - 所有时间为 UTC ISO 8601，所有金额为最小货币单位整数，金币为整数。
 - 所有写请求支持或强制 `Idempotency-Key`；支付、礼物、消息和匹配接口强制使用。
@@ -19,9 +19,10 @@
 ### 2.1 HTTP
 
 - 只允许 HTTPS。
-- App 使用 `Authorization: Bearer <access-token>`。
-- access token 短期有效，refresh token 轮换并保存在 Keychain/Keystore。
+- 用户客户端使用 `Authorization: Bearer <access-token>`。
+- access token 短期有效，refresh token 轮换并保存在 Keychain/Keystore/OS credential store。
 - 请求包含 `X-Client-Platform`、`X-Client-Version`、`X-Request-Id`。
+- `X-Client-Platform` 使用受控枚举：`android`、`ios`、`windows`、`macos`、`linux` 或 `web`；服务端不信任该值进行身份授权。
 - 服务端按最低受支持客户端版本返回强制升级或建议升级信息。
 
 ### 2.2 WebSocket
@@ -314,9 +315,11 @@
 
 ## 10. 契约测试
 
-- OpenAPI/JSON Schema 生成后必须在移动端、Web 和 API CI 中校验兼容性。
+- OpenAPI、JSON Schema 和 WebSocket event schema 是跨语言唯一契约源；Kotlin/TypeScript 模型不得各自手工演进。
+- schema 变更后必须在 KMP、Web 和 API CI 中生成或校验模型；生成差异未提交、枚举/可空性不一致或破坏兼容性时阻断合并。
 - 每个错误码至少有一个契约测试。
 - 幂等测试覆盖重复、并发和 key 复用不同 payload。
 - WebSocket 测试覆盖乱序、重复、断线、补拉、休眠恢复和会话关闭。
 - 对象权限测试覆盖本人、陌生人、匹配、被拉黑、管理员和越权 ID 枚举。
 - 支付契约测试只使用 sandbox 签名样本，生产凭证不得进入测试仓库。
+- 平台矩阵至少覆盖 Android、iOS、Windows 和 macOS 的 header、强制升级、token 刷新、WebSocket 重连与错误映射。

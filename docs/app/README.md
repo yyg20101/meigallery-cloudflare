@@ -1,6 +1,6 @@
 # 独立交友 App 文档总览
 
-更新时间：2026-07-19。
+更新时间：2026-07-20。
 
 ## 1. 文档定位
 
@@ -11,8 +11,10 @@
 - App 是独立产品和独立客户端，不是 MeiGallery 的换皮移动端。
 - App 与现有 Web 最终共用一套核心账号、权益、授权媒体、标签和管理员能力。
 - 采用“共享核心平台 + 渐进式迁移”，不直接让 App 耦合现有图库表，也不一次性重写 Web。
+- 用户客户端采用 KMP + Compose Multiplatform：Android/iOS 优先，后续提供面向普通用户的 Windows/macOS 客户端；Nuxt Web 与管理后台继续保留。
+- Kotlin 与 TypeScript 通过 OpenAPI、JSON Schema 和 WebSocket event schema 共享契约，不直接共享语言源码。
 - 现有图库中的人物图片不得自动转换为真人交友资料；只有取得交友用途明确授权并完成认证的账号和媒体才能进入发现流。
-- 当前只形成文档，不创建移动端工程、不修改 API、不新增数据库迁移。
+- 当前只形成文档，不创建 KMP 客户端工程、不修改 API、不新增数据库迁移。
 
 ## 2. 状态标签
 
@@ -29,14 +31,15 @@
 | 文档 | 主要读者 | 解决的问题 |
 |------|----------|------------|
 | [产品需求文档](./PRODUCT_REQUIREMENTS.md) | 产品、设计、研发、运营 | 做什么、不做什么、用户流程和验收口径 |
-| [技术架构方案](./TECHNICAL_ARCHITECTURE.md) | 架构、后端、移动端、运维 | 共享平台边界、Cloudflare 拓扑、一致性和部署方式 |
+| [技术架构方案](./TECHNICAL_ARCHITECTURE.md) | 架构、后端、客户端、运维 | 共享平台边界、KMP 分层、Cloudflare 拓扑、一致性和部署方式 |
 | [数据模型与迁移方案](./DATA_AND_MIGRATION.md) | 后端、数据、运维、法务 | 复用哪些现有数据、如何取得新授权、如何迁移和回滚 |
-| [API 与实时通信契约](./API_AND_REALTIME_CONTRACT.md) | 移动端、Web、后端、测试 | API 版本、鉴权、幂等、WebSocket 事件和错误模型 |
-| [UI/UX 设计文档](./UI_UX_DESIGN.md) | 产品、UI、交互、移动端 | 设计稿审查、信息架构、页面清单、组件和状态规范 |
+| [API 与实时通信契约](./API_AND_REALTIME_CONTRACT.md) | KMP、Web、后端、测试 | API 版本、鉴权、跨语言契约、幂等、WebSocket 事件和错误模型 |
+| [UI/UX 设计文档](./UI_UX_DESIGN.md) | 产品、UI、交互、客户端 | 设计稿审查、移动/桌面信息架构、组件和状态规范 |
 | [信任、安全、隐私与合规](./TRUST_SAFETY_PRIVACY_COMPLIANCE.md) | 产品、法务、安全、审核、客服 | 成年人门槛、认证、内容治理、举报、数据权利和上架规则 |
 | [会员、金币与虚拟礼物](./MONETIZATION_AND_LEDGER.md) | 产品、财务、后端、运营 | 商业权益、商店内购、账本、退款和反欺诈 |
 | [质量、运营与路线图](./QUALITY_OPERATIONS_ROADMAP.md) | 项目负责人、研发、测试、运营 | 分阶段交付、测试、SLO、监控、发布门禁和待决策项 |
-| [方向基线与开放问题](./DECISIONS_AND_OPEN_QUESTIONS.md) | Owner、产品、法务、技术、运营 | 记录用户已确认方向、推荐基线和实施/上线前必须关闭的 40 项问题 |
+| [方向基线与开放问题](./DECISIONS_AND_OPEN_QUESTIONS.md) | Owner、产品、法务、技术、运营 | 记录用户已确认方向、推荐基线和实施/上线前必须关闭的 44 项问题 |
+| [ADR-0001：KMP/CMP 客户端选型](../adr/adr-0001-kmp-compose-multiplatform-client.md) | Owner、架构、客户端、测试 | 记录 KMP 决策、平台边界、替代方案和后果 |
 | [AI 可执行架构规格](../../spec/spec-architecture-social-app-shared-platform.md) | AI、研发、测试 | 带编号的要求、接口、验收和边界 |
 | [顶层设计记录](../superpowers/specs/2026-07-19-social-app-shared-platform-design.md) | 决策者、后续实施负责人 | 已选方案、备选方案、关键取舍和实施前审批门 |
 
@@ -44,7 +47,7 @@
 
 1. 产品、运营与法务评审产品边界和成年人策略。
 2. 安全、隐私与审核负责人评审信任安全文档。
-3. 架构、移动端和后端负责人评审技术、数据迁移和 API 契约。
+3. 架构、KMP/平台客户端和后端负责人评审技术、数据迁移和 API 契约。
 4. 财务与商店运营负责人评审会员、金币和退款规则。
 5. 设计负责人以 UI/UX 文档补齐线框图、高保真稿和交互原型。
 6. 所有上线门禁明确责任人和证据后，才进入实施计划和排期。

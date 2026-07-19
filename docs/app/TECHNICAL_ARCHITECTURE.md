@@ -1,17 +1,17 @@
 # 独立交友 App 与共享业务平台技术架构方案
 
-版本：1.0（目标架构）
+版本：1.1（目标架构）
 
-日期：2026-07-19
+日期：2026-07-20
 状态：`[已确认方向 / 目标设计 / 迁移设计]`
 
 ## 1. 架构目标
 
-目标不是在现有图库 API 中追加一组聊天表，而是建立一个可同时服务独立 App 与 MeiGallery Web 的共享业务平台，并让现有 Web 在不停止服务的前提下逐步迁移。
+目标不是在现有图库 API 中追加一组聊天表，而是建立一个可同时服务独立移动/桌面客户端与 MeiGallery Web 的共享业务平台，并让现有 Web 在不停止服务的前提下逐步迁移。
 
 架构必须满足：
 
-- App、Web 和后台通过版本化契约访问数据，不直接读取数据库。
+- Android、iOS、Windows、macOS、Web 和后台通过版本化契约访问数据，不直接读取数据库。
 - 身份、权益、媒体、标签和管理员能力成为共享核心。
 - 图库域与交友域保持独立，不能把 Gallery 当作 User Profile。
 - 实时消息在单会话内强顺序、可补拉、可幂等重试。
@@ -22,8 +22,9 @@
 
 | 决策 | 选择 | 原因 |
 |------|------|------|
-| 移动端 | React Native + TypeScript | 可同时覆盖 iOS/Android，并复用 `@meigallery/shared` 的类型、校验和事件定义 |
-| 移动构建 | 原生 Xcode/Gradle + GitHub Actions；允许使用 Expo modules/prebuild，但不依赖托管运行时 | 保留原生支付、推送、深链和合规 SDK 的控制权 |
+| 用户客户端 | Kotlin Multiplatform + Compose Multiplatform | 首期覆盖 iOS/Android，后续复用业务核心和大部分 UI 到 Windows/macOS；详见 [ADR-0001](../adr/adr-0001-kmp-compose-multiplatform-client.md) |
+| 客户端构建 | Gradle + Xcode + GitHub Actions；按目标平台使用 macOS/Windows runner | 保留原生支付、推送、深链、签名、notarization 和合规 SDK 的控制权 |
+| 跨语言契约 | OpenAPI + JSON Schema + WebSocket event schema | Kotlin 与 TypeScript 分别生成/校验模型，避免把 `@meigallery/shared` 源码当成跨语言协议 |
 | API | Hono on Cloudflare Workers，新增 `/api/v2` | 延续现有团队能力，同时用版本边界隔离旧契约 |
 | 实时通信 | Durable Objects + Hibernation WebSocket API | 以会话作为协调原子，提供有序广播、连接状态和闲置休眠 |
 | 核心事务数据 | Cloudflare D1，按核心域和社交域分库 | 避免现有图库表与新社交/支付表继续耦合 |
@@ -39,7 +40,7 @@
 
 ```mermaid
 flowchart LR
-    U["成年用户"] --> APP["独立交友 App"]
+    U["成年用户"] --> APP["KMP 用户客户端\nAndroid / iOS / Windows / macOS"]
     WU["MeiGallery Web 用户"] --> WEB["现有 Nuxt Web"]
     MOD["审核员 / 管理员"] --> ADMIN["Nuxt 管理后台"]
 
@@ -68,13 +69,44 @@ flowchart LR
 
 | 单元 | 目标职责 |
 |------|----------|
-| `packages/app-mobile` | React Native App；UI、设备权限、离线缓存、深链、推送和商店支付桥接 |
+| `clients/app-kmp` | 独立 Gradle 工程；KMP 共享业务核心、Compose Multiplatform UI、平台入口与适配器 |
 | `packages/web` | 现有 Nuxt Web；迁移期继续消费 v1，按能力切换 v2 |
-| `packages/shared` | 跨客户端 DTO、错误码、事件 schema、权限常量和纯函数；不得包含 Worker 或原生平台专属依赖 |
+| `contracts` | OpenAPI、JSON Schema、WebSocket event schema 与兼容策略；作为 Kotlin/TypeScript 的唯一跨语言契约源 |
+| `packages/shared` | Web/API 的 TypeScript 类型、错误码、权限常量和纯函数；不得被描述为 KMP 可直接导入的源码 |
 
-`packages/app-mobile` 是未来实施建议路径，本阶段不创建目录。
+`clients/app-kmp` 和 `contracts` 是未来实施建议路径，本阶段不创建目录。KMP 工程不加入 pnpm workspace；仓库级脚本和 CI 分别编排 pnpm 与 Gradle。
 
-### 4.2 服务端
+### 4.2 KMP 客户端分层
+
+```text
+clients/app-kmp/
+├── composeApp/
+│   └── src/
+│       ├── commonMain/   领域、用例、状态、契约客户端、共享 UI
+│       ├── androidMain/  Android 入口与平台适配器
+│       ├── iosMain/      iOS 入口与平台适配器
+│       └── desktopMain/  Windows/macOS 公共桌面能力
+├── iosApp/               Xcode 工程、签名与 Apple 平台配置
+├── desktopApp/           桌面入口、菜单、窗口、通知与打包
+└── gradle/               版本目录、构建约束与依赖校验
+```
+
+共享边界遵循以下规则：
+
+- `commonMain` 包含领域模型、用例、API/WebSocket、状态管理、错误映射、离线 outbox、设计 token 和可复用页面。
+- 平台 source set 实现安全存储、推送、支付、相机/相册、定位、身份 SDK、深链和系统通知等端口。
+- iOS 或桌面需要明显不同的系统体验时允许平台专属 UI，不以追求共享率牺牲可用性、无障碍或商店合规。
+- 共享模块只消费生成的 Kotlin 契约，不手工复制 TypeScript DTO；契约变化先通过兼容检查再生成客户端。
+
+| 能力 | 共享层职责 | 平台适配职责 |
+|------|------------|--------------|
+| 认证 | token 状态机、刷新与远程登出 | Keychain/Keystore/OS credential store、Apple/Google 登录 |
+| 实时消息 | ticket、重连、补拉、幂等和离线 outbox | 网络状态、后台限制、系统通知 |
+| 商业化 | 商品、权益、钱包和服务端验证状态 | StoreKit、Play Billing、桌面分发渠道支付 |
+| 媒体与权限 | 上传流程、压缩规则、授权状态 | 相机、相册、文件选择器、定位和权限提示 |
+| 桌面体验 | 共享页面与状态 | 多窗口、菜单、快捷键、托盘、通知、签名和自动更新 |
+
+### 4.3 服务端
 
 | 部署单元 | 职责 | 首阶段策略 |
 |----------|------|------------|
@@ -110,7 +142,7 @@ flowchart TB
 
 - 统一内部 `account_id` 是不可枚举的稳定 ID；现有整数 `users.id` 只作为 legacy key。
 - Web cookie session 与 App token session 分离，但归属于同一账号。
-- App 使用短期 access token、轮换 refresh token 和 OS 安全存储；刷新令牌仅存哈希。
+- 用户客户端使用短期 access token、轮换 refresh token 和平台安全凭据存储；移动端使用 Keychain/Keystore，桌面端使用操作系统 credential store；服务端只保存刷新令牌哈希。
 - 管理员身份使用独立 audience、MFA 和更短会话，不允许 App token 访问后台。
 
 ### 5.2 权益与会员
@@ -247,11 +279,12 @@ sequenceDiagram
 
 ## 9. 缓存与离线
 
-- App 本地只缓存公开资料缩略图、会话索引和最近消息；令牌进入 Keychain/Keystore。
+- 客户端本地只缓存公开资料缩略图、会话索引和最近消息；令牌进入 Keychain/Keystore/OS credential store。
 - 身份材料、精确位置、审核证据和完整支付回执不得写入普通异步存储。
 - 发现流可短缓存候选 ID，但展示前重新应用拉黑、封禁和可发现状态。
 - 离线发送进入本地 outbox，网络恢复时按原 `clientMessageId` 重试。
 - 用户退出或账号被远程登出时清除本地敏感缓存。
+- KMP 数据层只能通过抽象存储端口访问本地持久化；桌面文件系统路径、移动数据库和备份排除策略由平台实现负责。
 
 ## 10. 安全架构
 
@@ -284,7 +317,14 @@ sequenceDiagram
 | staging | 商店前验收和迁移演练 | 脱敏迁移样本；生产等价配置，不接收真实付费 |
 | production | 正式服务 | 独立资源、密钥、WAF 和审计；变更经 release 门禁 |
 
-Web 和 App 可独立发布，API 对旧客户端至少维持一个受支持窗口。破坏性 API 变更只能进入新主版本。
+Web、移动客户端和桌面客户端可独立发布，API 对所有仍受支持的客户端至少维持一个兼容窗口。破坏性 API 变更只能进入新主版本；`X-Client-Platform` 与版本门禁按平台分别配置。
+
+客户端 CI 至少包含：
+
+- `commonTest`、契约生成差异检查和共享 Compose UI 测试。
+- Android 编译/单元测试与目标设备测试，iOS 模拟器编译/测试。
+- macOS arm64 构建与签名预检，Windows x86-64 构建与安装包冒烟。
+- 发布前的 Apple 签名/notarization、Windows 代码签名、商店凭证和自动更新源隔离。
 
 ## 13. 演进阶段
 
@@ -294,24 +334,34 @@ Web 和 App 可独立发布，API 对旧客户端至少维持一个受支持窗�
 - 为现有用户生成稳定 `account_id` 和 legacy link。
 - Web 继续使用 v1；App 只使用 v2。
 
-### 阶段 B：社交核心与实时消息
+### 阶段 B：移动社交核心与实时消息
 
 - 上线资料、审核、发现、匹配、举报和 Durable Objects 会话。
-- App 封闭内测；现有 Web 不展示交友数据。
+- Android/iOS 客户端封闭内测；现有 Web 不展示交友数据。
 
 ### 阶段 C：商业化与公开发布
 
 - 上线商店支付、账本、推送、对账和退款。
 - 完成商店、备案、隐私、安全和内容审核门禁。
 
-### 阶段 D：Web 迁移
+### 阶段 D：用户桌面客户端
+
+- 在共享核心和移动端业务稳定后启用 Windows/macOS target。
+- 首批复用登录、发现、匹配、聊天、安全中心和设备管理；桌面支付是否开放按分发渠道单独决策。
+- 完成键盘导航、多窗口、通知、系统凭据存储、代码签名、notarization、增量更新和回滚演练。
+
+### 阶段 E：Web 迁移
 
 - Web 的账号、会员、媒体和后台按模块切换到 v2。
 - v1 进入只读兼容期，完成流量对账后退役旧表和旧会话。
 
+阶段 D 与阶段 E 在阶段 B/C 的共享平台稳定后可以并行，不要求为了桌面端延后现有 Web 迁移。
+
 ## 14. 架构治理
 
 - 每个领域必须定义 owner、API、权威存储、事件和失败补偿。
+- KMP `commonMain` 不得直接依赖平台 SDK；平台能力必须通过明确端口和 source set 适配。
+- 不以代码共享率作为架构目标；平台安全、无障碍和用户体验优先于共享 UI。
 - 禁止跨领域直接写表；读模型也必须通过版本化模块接口或投影。
 - 跨域事件先写 outbox，再异步发布，禁止“先写库再裸发 Queue”。
 - 账本和审计表只能追加或冲正，不允许静默覆盖历史。
@@ -320,6 +370,9 @@ Web 和 App 可独立发布，API 对旧客户端至少维持一个受支持窗�
 
 ## 15. 已核对的官方能力
 
+- Kotlin Multiplatform 核心以及 Compose Multiplatform 的 Android、iOS 和 Desktop（JVM）目标已为 Stable；Web UI 目标仍为 Beta：[KMP 支持平台与稳定性](https://kotlinlang.org/docs/multiplatform/supported-platforms.html)。
+- Google 正式支持 KMP 共享 Android/iOS 业务逻辑，Compose Multiplatform 可进一步共享 UI：[Android Developers Kotlin Multiplatform](https://developer.android.com/kotlin/multiplatform)。
+- Compose Multiplatform 允许在 Android、iOS、desktop 和 web 使用公共 Compose API，但仍存在平台专属组件和 API：[Compose Multiplatform 与 Jetpack Compose](https://kotlinlang.org/docs/multiplatform/compose-multiplatform-and-jetpack-compose.html)。
 - Durable Objects 可作为 WebSocket 服务端，Hibernation API 允许闲置时休眠且保持连接；重要状态必须持久化：[Use WebSockets](https://developers.cloudflare.com/durable-objects/best-practices/websockets/)。
 - Cloudflare 建议新的 Durable Objects namespace 使用 SQLite storage，并提供事务性、强一致的对象私有存储：[Access Durable Objects Storage](https://developers.cloudflare.com/durable-objects/best-practices/access-durable-objects-storage/)。
 - Workflows 支持持久化多步骤执行、自动重试和外部事件等待：[Cloudflare Workflows](https://developers.cloudflare.com/workflows/)。
@@ -333,3 +386,4 @@ Web 和 App 可独立发布，API 对旧客户端至少维持一个受支持窗�
 - 未完成身份核验、支付和内容审核供应商的数据处理协议与安全评估，不接入生产数据。
 - 未完成消息补拉、账本幂等、举报拉黑即时生效和注销全链路演练，不开放公测。
 - 未完成生产 D1/R2/DO 的备份、导出、恢复和回滚演练，不迁移现有主数据。
+- 未完成各客户端平台的安全存储、推送/通知、签名、更新、无障碍和远程停用演练，不发布相应平台安装包。

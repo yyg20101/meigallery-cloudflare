@@ -15,4 +15,4 @@
 - `docs/TELEGRAM_IMPORT_API.md`：Telegram 外部导入 API 对接契约。
 - `docs/SEO_CONFIGURATION.md`：SEO 关键词和运营配置说明。
 - `docs/AD_PLATFORM_ARCHITECTURE.md`：广告平台统一事实、投递和 adapter 架构。
-- `docs/app/README.md`：独立交友 App 与共享业务平台的产品、迁移、技术、UI、安全、商业化和实施路线图；当前为前瞻性设计，尚未实现。
+- `docs/app/README.md`：独立交友 App 与共享业务平台的产品、迁移、KMP/CMP 移动及桌面客户端、UI、安全、商业化和实施路线图；当前为前瞻性设计，尚未实现。

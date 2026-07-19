@@ -1,28 +1,28 @@
 ---
 title: 独立交友 App 与共享业务平台架构规格
-version: 1.0.0
+version: 1.1.0
 date_created: 2026-07-19
-last_updated: 2026-07-19
+last_updated: 2026-07-20
 owner: MeiGallery 项目 Owner
-tags: [architecture, app, cloudflare, social, migration, trust-safety]
+tags: [architecture, app, cloudflare, social, migration, trust-safety, kmp, desktop]
 ---
 
 # Introduction
 
-本规格定义独立交友 App（工作名“心动遇见你”）与当前 MeiGallery Web 共用核心数据、并将 Web 渐进迁移到共享业务平台的要求、约束、接口和验收标准。本文是面向研发、测试和 AI 工程代理的自包含执行规格，不表示能力已实现。
+本规格定义独立交友用户客户端（工作名“心动遇见你”）与当前 MeiGallery Web 共用核心数据、并将 Web 渐进迁移到共享业务平台的要求、约束、接口和验收标准。客户端先发布 Android/iOS，后续覆盖 Windows/macOS。本文是面向研发、测试和 AI 工程代理的自包含执行规格，不表示能力已实现。
 
 ## 1. Purpose & Scope
 
 ### 1.1 目的
 
-- 建立独立 iOS/Android App 的产品与技术边界。
+- 建立独立 Android/iOS App 以及后续 Windows/macOS 用户客户端的产品与技术边界。
 - 复用现有用户、会员、合法授权媒体、标签和管理员事实。
 - 隔离图库、交友、实时消息和商业化领域。
 - 使现有 Web 在不中断服务的前提下逐模块迁移到共享平台。
 
 ### 1.2 范围
 
-包含：账号与同意、成年与身份核验、交友资料、发现、匹配、消息、举报拉黑、会员权益、金币礼物、数据迁移、隐私安全、测试和发布门禁。
+包含：账号与同意、成年与身份核验、交友资料、发现、匹配、消息、举报拉黑、会员权益、金币礼物、KMP 客户端、桌面演进、数据迁移、隐私安全、测试和发布门禁。
 
 不包含：本阶段实现代码、匿名随机聊天、未成年人交友、直播、博彩/随机礼物、用户提现、精确位置分享和端到端加密承诺。
 
@@ -30,7 +30,7 @@ tags: [architecture, app, cloudflare, social, migration, trust-safety]
 
 - App 是独立产品和独立客户端。
 - 目标架构为共享核心平台 + 渐进式迁移。
-- App 首选 React Native + TypeScript，后端继续使用 Cloudflare Workers/Hono。
+- 用户客户端采用 KMP + Compose Multiplatform：Android/iOS 优先，Windows/macOS 后续；后端继续使用 Cloudflare Workers/Hono。
 - 现有图库人物不得自动成为交友资料。
 - 首发交友功能仅限 18 岁及以上用户。
 
@@ -50,6 +50,8 @@ tags: [architecture, app, cloudflare, social, migration, trust-safety]
 | Sensitive PII | 身份、生物识别、精确位置、通信、金融等高风险个人信息 |
 | DLQ | Dead Letter Queue，多次消费失败后的隔离队列 |
 | SLO | Service Level Objective，服务目标 |
+| KMP | Kotlin Multiplatform，共享跨平台 Kotlin 业务代码的技术 |
+| CMP | Compose Multiplatform，共享 Android、iOS 和 Desktop UI 的框架 |
 
 ## 3. Requirements, Constraints & Guidelines
 
@@ -71,6 +73,9 @@ tags: [architecture, app, cloudflare, social, migration, trust-safety]
 - **ARC-005**：API 对外 ID 必须不可枚举；legacy integer user ID 不得作为 App 公开 ID。
 - **ARC-006**：Web 和 App 必须独立发布，API 破坏性变更只能进入新主版本。
 - **ARC-007**：重要 Durable Object 状态必须持久化，不得只保存在内存。
+- **ARC-008**：客户端共享代码必须使用 KMP/CMP，平台 SDK 通过 Android/iOS/Desktop source set 或适配端口接入。
+- **ARC-009**：OpenAPI、JSON Schema 和 WebSocket event schema 必须是 Kotlin/TypeScript 的唯一跨语言契约源，禁止手工维护两套语义不同的 DTO。
+- **ARC-010**：Android/iOS、Windows/macOS、Nuxt Web 和管理后台必须可独立发布；桌面客户端不得直接读取数据库或复用管理员凭证。
 
 ### 3.3 数据与迁移要求
 
@@ -127,7 +132,7 @@ tags: [architecture, app, cloudflare, social, migration, trust-safety]
 | 接口 | 用途 | 鉴权 |
 |------|------|------|
 | `/api/v2/auth/*` | 手机登录、legacy link、token refresh | 按端点；高风险 Turnstile |
-| `/api/v2/me/*` | 当前账号、资料、同意、数据权利 | App bearer token |
+| `/api/v2/me/*` | 当前账号、资料、同意、数据权利 | 用户客户端 bearer token |
 | `/api/v2/discovery/*` | 推荐、附近、活跃、解释 | 已激活 App account |
 | `/api/v2/profiles/*` | 资料读取、互动、拉黑 | 查看者上下文授权 |
 | `/api/v2/matches/*` | 匹配与解除 | 匹配成员 |
@@ -176,11 +181,13 @@ accounts 1 ── 1 wallet_accounts 1 ── * wallet_ledger_entries
 - **AC-008**：Given 用户拒绝定位和个性化推荐，When 访问发现页，Then 可使用手动城市和非个性化排序。
 - **AC-009**：Given 用户提交账号删除，When Workflow 完成，Then 公开资料、非必要 UGC、session 和推送 token 已移除，必要留存被用途隔离。
 - **AC-010**：Given 管理员修改审核、封禁、权益或钱包，When 操作完成，Then 存在操作者、目标、前后状态、原因和时间的审计事件。
+- **AC-011**：Given 同一契约版本，When CI 生成/校验 Kotlin 与 TypeScript 模型，Then 字段、枚举、可空性、错误码和事件版本语义一致且不存在未提交差异。
+- **AC-012**：Given 某桌面设备被远程退出或账号被封禁，When 客户端收到失效状态或下一次请求失败，Then 所有窗口立即隐藏敏感内容、停止消息发送并要求重新认证。
 
 ## 6. Test Automation Strategy
 
 - **Test Levels**：单元、组件、契约、D1/DO 集成、E2E、安全、性能和恢复。
-- **Frameworks**：API/Shared 沿用 Vitest；移动端使用 React Native Testing Library；E2E 在实施选型时从 Maestro/Detox 中选择并固定。
+- **Frameworks**：API/Web/TypeScript Shared 沿用 Vitest；KMP 使用 `kotlin.test`、平台测试和 Compose Multiplatform UI 测试；E2E 工具在技术验证后按 Android/iOS/Windows/macOS 支持情况固定。
 - **Contract**：OpenAPI/JSON Schema 和 WebSocket event schema 兼容检查进入 CI。
 - **Test Data**：只用合成成人资料、脱敏迁移 fixture、身份与商店 sandbox。
 - **Coverage**：关键状态机、授权、账本、幂等、迁移和删除分支必须 100% 分支覆盖；全项目覆盖率阈值由实施计划按现有基线设定。
@@ -192,7 +199,7 @@ accounts 1 ── 1 wallet_accounts 1 ── * wallet_ledger_entries
 | 要求组 | 验收标准 | 主要自动化证据 | 主要人工证据 |
 |--------|----------|----------------|--------------|
 | PRD-001..006 | AC-001、AC-003、AC-005、AC-008、AC-009 | 激活、发现、匹配、拉黑和注销 E2E | 年龄/推荐/付费文案和商店评审 |
-| ARC-001..007 | AC-004、AC-007、AC-010 | API 契约、架构边界、DO 休眠恢复、outbox/Queue 集成 | 部署拓扑与权限复核 |
+| ARC-001..010 | AC-004、AC-007、AC-010、AC-011、AC-012 | API 契约、双语言生成、平台边界、DO 休眠恢复、outbox/Queue 集成 | 部署拓扑、桌面分发与权限复核 |
 | DAT-001..007 | AC-001、AC-002、AC-009 | 迁移可重入、数量/语义对账、同意撤回 | 媒体授权与数据用途抽检 |
 | SEC-001..008 | AC-002、AC-005、AC-009、AC-010 | 对象授权、日志脱敏、拉黑竞态、删除 Workflow | PIA、供应商、备案和事件演练 |
 | MSG-001..006 | AC-003、AC-004、AC-005 | 序号、幂等、断线补拉、Queue 重复、会话关闭 | 弱网与多设备体验验收 |
@@ -206,6 +213,8 @@ accounts 1 ── 1 wallet_accounts 1 ── * wallet_ledger_entries
 
 Durable Objects 适合用会话作为协调原子；D1 适合跨会话查询、身份和账本事务；Queues/Workflows 处理跨域最终一致和长任务。组合方案避免将实时顺序、财务强一致和全局查询硬塞进同一种存储。
 
+KMP/CMP 在 Android、iOS 和 Desktop 目标上提供稳定的共享业务与 UI 基础，符合移动优先、桌面后续的路线。平台支付、推送、安全存储、权限、签名和更新仍由适配层承担。现有 Nuxt Web/后台继续服务 SEO 和运营场景，避免把尚未稳定的 Compose Web UI 当作迁移目标。
+
 ## 8. Dependencies & External Integrations
 
 ### External Systems
@@ -214,6 +223,7 @@ Durable Objects 适合用会话作为协调原子；D1 适合跨会话查询、�
 - **EXT-002**：Apple App Store / StoreKit，用于 iOS 分发、订阅和虚拟币。
 - **EXT-003**：Google Play / Billing，用于相应 Android 分发与支付。
 - **EXT-004**：目标中国 Android 应用商店及支付系统，按渠道审批。
+- **EXT-005**：Windows/macOS 的签名、notarization、商店或批准的更新分发渠道。
 
 ### Third-Party Services
 
@@ -238,9 +248,11 @@ Durable Objects 适合用会话作为协调原子；D1 适合跨会话查询、�
 
 ### Technology Platform Dependencies
 
-- **PLT-001**：React Native + TypeScript，支持目标 iOS/Android 最低版本。
-- **PLT-002**：Nuxt 4 Web 继续作为迁移期既有客户端。
-- **PLT-003**：pnpm monorepo 和 `@meigallery/shared` 保持类型边界。
+- **PLT-001**：Kotlin Multiplatform + Compose Multiplatform，首期目标 Android/iOS，后续目标 Windows/macOS。
+- **PLT-002**：Nuxt 4 Web/管理后台继续作为迁移期和长期 Web 客户端，不迁移到 Compose Web。
+- **PLT-003**：pnpm monorepo 与独立 Gradle 客户端工程在仓库级 CI 编排，互不伪装为对方的 package。
+- **PLT-004**：OpenAPI/JSON Schema/WebSocket event schema 为契约源，生成或校验 Kotlin 与 TypeScript 模型。
+- **PLT-005**：Kotlin、Compose、Gradle、AGP、JDK 和 Xcode 必须使用经过验证并锁定的兼容矩阵。
 
 ### Compliance Dependencies
 
@@ -279,6 +291,8 @@ Durable Objects 适合用会话作为协调原子；D1 适合跨会话查询、�
 - 账本任何时点平衡，订单回调重复不会重复发放。
 - 拉黑、举报、未成年人处置和注销完成端到端演练。
 - 商店声明、隐私政策和真实 SDK/数据流一致。
+- Kotlin 与 TypeScript 契约生成/兼容检查通过，Android/iOS/Windows/macOS 构建矩阵无阻断错误。
+- 桌面远程登出、敏感窗口遮蔽、代码签名、更新校验和回滚完成演练后才允许桌面 Alpha。
 - 中国大陆数据和备案门禁在包含大陆的发布计划中有正式批准证据。
 
 ## 11. Related Specifications / Further Reading
@@ -293,6 +307,7 @@ Durable Objects 适合用会话作为协调原子；D1 适合跨会话查询、�
 - [商业化与账本](../docs/app/MONETIZATION_AND_LEDGER.md)
 - [质量与路线图](../docs/app/QUALITY_OPERATIONS_ROADMAP.md)
 - [方向基线与开放问题](../docs/app/DECISIONS_AND_OPEN_QUESTIONS.md)
+- [ADR-0001：KMP 与 Compose Multiplatform 客户端](../docs/adr/adr-0001-kmp-compose-multiplatform-client.md)
 - [Cloudflare Durable Objects WebSockets](https://developers.cloudflare.com/durable-objects/best-practices/websockets/)
 - [Apple App Review Guidelines](https://developer.apple.com/app-store/review/guidelines/)
 - [Google Play User-generated content](https://support.google.com/googleplay/android-developer/answer/9876937)
