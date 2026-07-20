@@ -44,6 +44,7 @@ App 版本：1.0
 - 普通账号不会生成真人资料。
 - 数据模型、API schema、权限和迁移有评审结论。
 - KMP Android/iOS 空壳完成统一版本锁；网络、序列化、Paging、Room、DataStore、Coil 受保护缓存、WebSocket 和 Media3/AVPlayer HLS 技术验证通过（进入实现阶段后执行）。
+- Android 设备矩阵从 API 26 开始，API 25 及以下不设置兼容用例或发布门禁。
 - M1 必需开放问题关闭，风险和负责人明确。
 
 ## 4. M1：真人发现闭环
@@ -151,7 +152,7 @@ App 版本：1.0
 | 权限 | 用户和后台对象矩阵 | 越权 ID、角色、会话主体、财务和证据访问 |
 | E2E | Android/iOS/管理后台 | 发现、互动、代运营、购买、调币、举报、注销 |
 | 非功能 | 性能、容量、安全、无障碍、恢复 | 冷启动、列表、消息、账本、键盘、屏幕阅读器和灾备 |
-| KMP 兼容 | Android/iOS 构建与真机 | Kotlin/CMP/Gradle/AGP/KSP/Xcode、Ktor 引擎、Room、Coil、Media3/AVPlayer |
+| KMP 兼容 | Android API 26+ / iOS 构建与真机 | Kotlin/CMP/Gradle/AGP/KSP/Xcode、Ktor 引擎、Room、Coil、Media3/AVPlayer |
 
 ## 9. 必测场景
 

@@ -93,6 +93,7 @@ apps/
 - 数据：Room 保存结构化离线投影，DataStore 只保存 Preferences 和非敏感配置；Token 与密钥进入 Android Keystore/iOS Keychain。
 - 当前不接入支付和推送，平台端口保留但不进入首轮依赖。
 - Media3、Hilt、WorkManager、CameraX 和平台安全存储类型不得进入 `commonMain`。
+- Android App 1.0 使用 `minSdk = 26`，API 25 及以下不进入兼容和测试范围；脚手架冻结前可以基于安全、媒体或商店要求继续提高，不得静默降低。
 
 ### 3.3 本地数据
 

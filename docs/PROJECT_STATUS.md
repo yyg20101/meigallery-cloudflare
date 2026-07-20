@@ -81,7 +81,7 @@
 - TikTok 继续完成真实广告来源下 Browser / Server 配对去重与 `10% -> 50% -> 100%` 观察；Google 仍需 production 凭证、转化操作、异步 request status 与分级 rollout 验收。
 - 广告花费、campaign、ad set、ad 数据导入不属于当前 Pixel/Server API 同步范围。
 - Cloudflare Stream 视频链路和完整 zip 异步导入仍待实现。
-- 独立真人发现与互动 App 的 1.0 产品总纲、Feature PRD、架构、数据迁移、API/实时通信、UI/UX、信任安全、商业账本和质量路线图处于需求讨论中，入口为 `docs/app/README.md`。产品只展示管理员认证并发布的真人资料；普通注册账号是观看者，心享会员可直接私信，未认领真人的消息由平台运营接收并明确披露。目标架构为共享核心平台 + 渐进迁移，客户端采用 KMP + Compose Multiplatform，Android/iOS 优先、Windows/macOS 后续，Nuxt Web/管理后台保留。客户端库基线已确定为 Jetpack KMP + Ktor + Room/DataStore + Coil，视频采用 Android Media3/iOS AVPlayer 平台适配；精确工具链版本仍需在创建最小工程时验证。当前没有创建 KMP 工程、目标 API、真人/会话数据表或实时消息能力。
+- 独立真人发现与互动 App 的 1.0 产品总纲、Feature PRD、架构、数据迁移、API/实时通信、UI/UX、信任安全、商业账本和质量路线图处于需求讨论中，入口为 `docs/app/README.md`。产品只展示管理员认证并发布的真人资料；普通注册账号是观看者，心享会员可直接私信，未认领真人的消息由平台运营接收并明确披露。目标架构为共享核心平台 + 渐进迁移，客户端采用 KMP + Compose Multiplatform，Android/iOS 优先、Windows/macOS 后续，Nuxt Web/管理后台保留。客户端库基线已确定为 Jetpack KMP + Ktor + Room/DataStore + Coil，视频采用 Android Media3/iOS AVPlayer 平台适配；Android App 1.0 使用 `minSdk = 26`，不兼容 API 25 及以下；精确工具链版本仍需在创建最小工程时验证。当前没有创建 KMP 工程、目标 API、真人/会话数据表或实时消息能力。
 - App 进入实现前必须关闭正式品牌、首发地区、应用商店、运营主体、真人/年龄核验、内容审核、支付、Cloudflare 数据位置/跨境和中国大陆备案等开放决策；现有图库人物可以进入候选导入，但没有独立 App 用途授权、认证和发布审批时不得公开。
 
 ## 文档入口

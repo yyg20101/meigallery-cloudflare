@@ -35,6 +35,7 @@ Proposed | **Accepted** | Rejected | Superseded | Deprecated
 - **DEC-007**：移动发布稳定后再开放桌面端，桌面端不得绕过账号安全、内容治理、权益、地区门禁或支付合规规则。
 - **DEC-008**：公共客户端基线采用稳定版 Jetpack Lifecycle/ViewModel、Navigation 3、Paging、Room/SQLite、DataStore Preferences、Ktor Client、kotlinx.serialization 和 Coil 3。
 - **DEC-009**：视频共享播放契约、状态和控制 UI；Android 使用 Media3 ExoPlayer，iOS 使用 AVPlayer/AVKit，不把社区统一播放器设为生产核心依赖。
+- **DEC-010**：Android App 1.0 使用 `minSdk = 26`，API 25 及以下不进入兼容、测试和发布范围；允许基于安全、媒体或商店要求继续提高。
 
 ## Consequences
 

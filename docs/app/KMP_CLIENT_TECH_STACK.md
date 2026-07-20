@@ -57,7 +57,15 @@ Google 将 Android、iOS 和 JVM 列为 Jetpack KMP 的 Tier 1 平台：包含�
 - Paging 3.5.0 可在公共代码中承载分页状态；是否将具体页面数据持久化到 Room，由数据新鲜度和离线需求决定。参考：[Paging 发布说明](https://developer.android.com/jetpack/androidx/releases/paging)。
 - KMP DataStore 当前只正式支持 Preferences DataStore，不把 Proto DataStore 写入首发方案。参考：[DataStore KMP 文档](https://developer.android.com/kotlin/multiplatform/datastore)。
 - Media3、Hilt、WorkManager、CameraX 等未进入 Google 的 Jetpack KMP 支持矩阵。需要时放入平台 source set，或在公共层定义端口后由平台实现。
-- 采用 Room 2.8.4 和 Coil 3.5.0 时，Android `minSdk` 不得低于 23；产品可根据目标设备和安全周期选择更高版本。iOS 最低版本仍由 OQ-027 决定。
+- Room 2.8.4 和 Coil 3.5.0 的技术最低门槛是 Android API 23，但这不是本产品的支持目标。App 1.0 将 Android `minSdk` 设为 API 26，不为 API 25 及以下提供兼容、测试或降级方案。
+
+### 3.2 Android 版本策略
+
+- App 1.0 基线：`minSdk = 26`（Android 8.0）。
+- API 25 及以下不进入设备矩阵，不为其增加专用兼容库、条件分支、降级 UI 或缺陷修复。
+- 如果登录安全、媒体播放、系统 WebView 或关键依赖需要更高版本，可以在客户端脚手架冻结前继续提高 `minSdk`；降低到 26 以下需要重新形成产品和技术决策。
+- `compileSdk` 和 `targetSdk` 在实现时选择满足目标应用商店要求的稳定版本，不与 `minSdk` 绑定。
+- iOS、Windows 和 macOS 最低版本仍由 OQ-027 决定。
 
 ## 4. 网络请求与实时通信
 

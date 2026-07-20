@@ -303,6 +303,7 @@ PersonProfile ──< GiftTransaction
 - **PLT-006**：Jetpack Lifecycle/ViewModel、Navigation 3、Paging、Room/SQLite 和 DataStore Preferences——公共状态、导航、分页和本地数据基线。
 - **PLT-007**：Coil 3——公共图片加载；公开和受保护媒体使用不同缓存策略。
 - **PLT-008**：视频共享控制契约，Android 使用 Media3 ExoPlayer，iOS 使用 AVPlayer/AVKit；Cloudflare Stream 使用服务端授权的短期签名 HLS。
+- **PLT-009**：Android App 1.0 使用 `minSdk = 26`；API 25 及以下不提供兼容、测试或降级方案，可以经显式决策继续提高最低版本。
 
 ### Data and Compliance Dependencies
 
