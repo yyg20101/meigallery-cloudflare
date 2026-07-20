@@ -299,6 +299,10 @@ PersonProfile ──< GiftTransaction
 - **PLT-002**：Nuxt 4——现有 Web 和管理后台。
 - **PLT-003**：Hono on Cloudflare Workers——API 运行时。
 - **PLT-004**：OpenAPI/JSON Schema——跨语言契约源。
+- **PLT-005**：Ktor Client + kotlinx.serialization——Android 使用 OkHttp 引擎，iOS 使用 Darwin 引擎。
+- **PLT-006**：Jetpack Lifecycle/ViewModel、Navigation 3、Paging、Room/SQLite 和 DataStore Preferences——公共状态、导航、分页和本地数据基线。
+- **PLT-007**：Coil 3——公共图片加载；公开和受保护媒体使用不同缓存策略。
+- **PLT-008**：视频共享控制契约，Android 使用 Media3 ExoPlayer，iOS 使用 AVPlayer/AVKit；Cloudflare Stream 使用服务端授权的短期签名 HLS。
 
 ### Data and Compliance Dependencies
 

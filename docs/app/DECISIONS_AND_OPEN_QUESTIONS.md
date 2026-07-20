@@ -36,6 +36,9 @@ App 版本：1.0
 | D-018 | 金币不可提现或用户间转账；礼物不向真人形成可提现收益 | 产品边界 |
 | D-019 | 管理员可加币、扣币和冲正，但只能追加账本并提供原因、审计和高风险复核 | 用户确认 + 财务控制 |
 | D-020 | 当前阶段只编写文档，不创建客户端工程、API 或数据库变更 | 用户明确要求 |
+| D-021 | KMP 客户端公共基线采用稳定版 Jetpack Lifecycle/ViewModel、Navigation 3、Paging、Room/SQLite、DataStore Preferences、Ktor Client、kotlinx.serialization 和 Coil 3 | 技术调研；详见 KMP 客户端技术栈文档 |
+| D-022 | 视频不依赖社区统一播放器作为核心：共享播放契约和控制 UI，Android 使用 Media3 ExoPlayer，iOS 使用 AVPlayer/AVKit | 技术调研；与 Cloudflare Stream HLS 兼容 |
+| D-023 | 采用当前 Room/Coil 稳定基线时 Android `minSdk` 不得低于 23；最终最低 Android/iOS 版本仍由目标设备和安全周期决定 | 官方依赖约束；OQ-027 |
 
 ## 3. 产品与品牌开放问题
 
@@ -86,8 +89,8 @@ App 版本：1.0
 
 | ID | 问题 | 推荐默认值 | 影响 | 最晚关闭点 | 责任角色 |
 |----|------|------------|------|------------|----------|
-| OQ-026 | KMP 版本矩阵和网络/序列化/本地库组合是什么？ | 锁定 Kotlin、Compose、Gradle、AGP、JDK、Xcode；通过技术 Spike 决定数据库 | 构建和升级 | 客户端脚手架前 | 客户端架构负责人 |
-| OQ-027 | 最低 Android/iOS/Windows/macOS 版本是什么？ | 以目标设备分布和安全更新能力决定 | 测试、SDK 和包体 | 客户端实现前 | 产品 + 客户端 |
+| OQ-026 | Kotlin、Compose、Gradle、AGP、KSP、JDK 和 Xcode 的可构建版本矩阵及最终依赖锁是什么？ | 库组合已按 KMP 技术栈文档确定；创建最小 Android/iOS 工程验证后写入 Version Catalog | 构建和升级 | 客户端脚手架前 | 客户端架构负责人 |
+| OQ-027 | 最低 Android/iOS/Windows/macOS 版本是什么？ | Android 至少 API 23；最终 Android/iOS 及 M4 Desktop 版本以设备分布和安全更新能力决定 | 测试、SDK 和包体 | 客户端实现前 | 产品 + 客户端 |
 | OQ-028 | 消息实时层的容量和恢复基线是什么？ | Durable Objects + D1 投影；先验证休眠、重连、导出和灾备 | 消息可靠性和成本 | M2 技术设计前 | 后端 + SRE |
 | OQ-029 | 桌面首发 Windows、macOS 还是同时发布？ | 根据用户占比、签名账号和运维能力先选一个封闭 Alpha | M4 排期和分发 | 桌面高保真前 | 产品 + 客户端 + 运营 |
 | OQ-030 | 首发商店、推送和身份/支付平台适配器组合是什么？ | 只支持明确的首发渠道，不同时覆盖所有商店 | SDK、隐私、CI 和上架 | 工程启动前 | 产品 + 平台 + 法务 |

@@ -83,7 +83,18 @@ apps/
 - 支付、身份核验和高风险平台流程可保留原生 UI，不追求机械共享率。
 - Compose Web 不在范围内；Nuxt Web/后台继续满足 SEO 和运营效率。
 
-### 3.2 本地数据
+### 3.2 客户端库基线与平台边界
+
+客户端稳定基线采用：Compose Multiplatform、Lifecycle/ViewModel、Navigation 3、Paging、Room/SQLite、DataStore Preferences、Ktor Client、kotlinx.serialization 和 Coil 3。完整版本矩阵、候选库、缓存规则和技术 Spike 见 [KMP 客户端技术栈与库选型](./KMP_CLIENT_TECH_STACK.md)。
+
+- 网络：公共层使用 Ktor Client；Android 使用 OkHttp 引擎，iOS 使用 Darwin 引擎。
+- 图片：公共层使用 Coil 3 + Ktor 3 网络模块；公开媒体和受保护媒体使用不同缓存策略。
+- 视频：公共层只拥有视频源、播放状态、控制器接口和共享控制 UI；Android 使用 Media3 ExoPlayer，iOS 使用 AVPlayer/AVKit。
+- 数据：Room 保存结构化离线投影，DataStore 只保存 Preferences 和非敏感配置；Token 与密钥进入 Android Keystore/iOS Keychain。
+- 当前不接入支付和推送，平台端口保留但不进入首轮依赖。
+- Media3、Hilt、WorkManager、CameraX 和平台安全存储类型不得进入 `commonMain`。
+
+### 3.3 本地数据
 
 - 只缓存公开真人投影、用户互动状态、目录、会话摘要和已加密的必要消息。
 - 订单结果、余额和 entitlement 以服务端为准；离线只读并标注最后同步时间。
@@ -189,6 +200,9 @@ apps/
 - EXIF/位置等非必要元数据在发布派生时移除。
 - 资料暂停、授权撤销或会员到期后停止签发新凭证。
 - CDN 已缓存资源使用不可猜测版本 URL和短 TTL/撤销策略。
+- Coil 公开图片缓存与受保护媒体缓存隔离；受保护原图默认只使用内存缓存，任何磁盘缓存必须可在退出、远程登出、会员失效和权限撤回时清理。
+- 短期签名 URL 与稳定媒体 ID、凭证过期时间分开建模，不把签名 URL 作为永久缓存键或业务主键。
+- Cloudflare Stream Manifest 不持久缓存；Android Media3 和 iOS AVPlayer 只消费服务端授权后返回的短期签名 HLS URL。
 
 ## 9. 配置与功能演进
 
@@ -243,3 +257,5 @@ Windows/macOS、多地区、视频和更完善实验平台；按模块将 MeiGal
 - **ARCH-AC-006**：认领后只有新会话自动路由本人，历史消息通过独立交接流程。
 - **ARCH-AC-007**：Kotlin/TypeScript 契约兼容性在 CI 中验证。
 - **ARCH-AC-008**：任一迁移阶段都能指出唯一写主、对账证据和回滚点。
+- **ARCH-AC-009**：`commonMain` 不依赖 Media3、AVFoundation、OkHttp、Keystore 或 Keychain 平台类型，视频和安全存储通过公共端口适配。
+- **ARCH-AC-010**：退出、远程登出、会员失效或媒体撤权后，客户端能清理不再授权的受保护媒体缓存。

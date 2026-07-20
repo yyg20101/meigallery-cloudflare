@@ -121,7 +121,7 @@ erDiagram
 
 ## 4. Stable ID 与映射
 
-- v2 使用不可枚举字符串 ID；具体 ULID/UUIDv7 在 OQ-026 类技术决策中冻结。
+- v2 使用不可枚举字符串 ID；具体 ULID/UUIDv7 在 API 与数据模型冻结前通过独立技术决策确定。
 - `legacy_id_mappings` 保存实体类型、legacy ID、v2 ID、迁移批次、校验哈希和状态。
 - 对外 API 只暴露 v2 ID，不暴露 D1 自增 ID。
 - 映射唯一且不可重用；删除/合并使用状态和关联事件表达。

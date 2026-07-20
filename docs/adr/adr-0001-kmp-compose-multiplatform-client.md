@@ -33,6 +33,8 @@ Proposed | **Accepted** | Rejected | Superseded | Deprecated
 - **DEC-005**：现有 Hono/Cloudflare 后端、Nuxt 公共 Web 和 Nuxt 管理后台保持不变；KMP 只改变用户客户端技术路线。
 - **DEC-006**：OpenAPI、JSON Schema 和 WebSocket event schema 是跨语言唯一契约来源，分别生成或校验 Kotlin 与 TypeScript 模型；`@meigallery/shared` 不再被定义为 KMP 可直接复用的源码。
 - **DEC-007**：移动发布稳定后再开放桌面端，桌面端不得绕过账号安全、内容治理、权益、地区门禁或支付合规规则。
+- **DEC-008**：公共客户端基线采用稳定版 Jetpack Lifecycle/ViewModel、Navigation 3、Paging、Room/SQLite、DataStore Preferences、Ktor Client、kotlinx.serialization 和 Coil 3。
+- **DEC-009**：视频共享播放契约、状态和控制 UI；Android 使用 Media3 ExoPlayer，iOS 使用 AVPlayer/AVKit，不把社区统一播放器设为生产核心依赖。
 
 ## Consequences
 
@@ -76,6 +78,7 @@ Proposed | **Accepted** | Rejected | Superseded | Deprecated
 - **IMP-004**：版本锁定时同时记录 Kotlin、Compose Multiplatform、Gradle、Android Gradle Plugin、JDK、Xcode 和最低操作系统版本，并通过依赖更新验证任务统一升级。
 - **IMP-005**：CI 至少包含共享单元测试、Android 构建、iOS 模拟器构建、macOS 构建和 Windows 构建；商店签名、notarization 和发布在受保护环境执行。
 - **IMP-006**：以共享业务逻辑覆盖率、各目标构建通过率、UI 例外数量、平台缺陷率、启动性能和无障碍结果衡量方案，不以单一“代码共享百分比”作为成功指标。
+- **IMP-007**：依赖版本、source set 边界、媒体缓存和视频 Spike 以 [KMP 客户端技术栈与库选型](../app/KMP_CLIENT_TECH_STACK.md) 为实施基线。
 
 ## References
 
@@ -86,3 +89,4 @@ Proposed | **Accepted** | Rejected | Superseded | Deprecated
 - **REF-005**：[React Native macOS](https://microsoft.github.io/react-native-macos/docs/intro)
 - **REF-006**：[真人发现与互动 App 技术架构](../app/TECHNICAL_ARCHITECTURE.md)
 - **REF-007**：[客户端方向与开放问题](../app/DECISIONS_AND_OPEN_QUESTIONS.md)
+- **REF-008**：[KMP 客户端技术栈与库选型](../app/KMP_CLIENT_TECH_STACK.md)
