@@ -9,7 +9,7 @@ tags: [architecture, app, kmp, cloudflare, person-discovery, messaging, commerce
 
 # Introduction
 
-本规格定义 App 1.0 的产品边界、共享平台架构、核心数据、接口、安全要求和可验收行为。目标是让产品、设计、KMP 客户端、Nuxt Web、Hono API、管理后台和测试使用同一组明确规则。
+本规格定义 App 1.0 及后续能力的产品边界、共享平台架构、核心数据、接口、安全要求和可验收行为。App 1.0 的启用子集为真人发现、五级会员手动发放、会员私信、平台代运营、站内通知和管理员金币账本；支付、推送、礼物和装扮只保留长期约束。
 
 当前状态为需求讨论中，尚未授权创建客户端工程、API、数据库 migration 或部署资源。需求讨论期间直接修订本规格，版本保持与 App 版本一致。
 
@@ -24,13 +24,15 @@ tags: [architecture, app, kmp, cloudflare, person-discovery, messaging, commerce
 
 ### 1.2 范围
 
-包含：账号、真人、公开资料、图库映射、认证发布、发现、喜欢/关注/收藏、心享会员私信、平台代运营、本人认领、金币、礼物、装扮、管理后台、安全隐私、KMP 客户端、桌面演进和数据迁移。
+App 1.0 包含：账号、真人、公开资料、图库映射、认证发布、发现、喜欢/关注/收藏、五级会员手动发放、会员私信、平台代运营、站内通知、金币余额/管理员调币、管理后台、安全隐私、Android/iOS KMP 客户端和数据迁移。
+
+长期设计包含但 1.0 不启用：在线支付、金币充值、系统推送、图片消息、本人认领、礼物和装扮。普通用户桌面客户端未承诺立项。
 
 不包含：普通用户公开交友资料、双方喜欢/招呼/匹配、普通用户间聊天、未披露管理员冒充、提现/转账/博彩、首版直播和音视频通话。
 
 ### 1.3 受众
 
-产品负责人、设计、架构、KMP/Android/iOS/Desktop、Nuxt、Hono、数据、测试、安全、运营、客服和财务人员。
+产品负责人、设计、架构、KMP/Android/iOS、Nuxt、Hono、数据、测试、安全、运营、客服和财务人员；未来桌面客户端立项后再加入对应负责人。
 
 ## 2. Definitions
 
@@ -92,22 +94,23 @@ tags: [architecture, app, kmp, cloudflare, person-discovery, messaging, commerce
 - **MSG-006**：消息发送使用客户端消息 ID、幂等键和会话内单调 sequence。
 - **MSG-007**：拉黑、资料暂停、账号冻结、会员失效或会话关闭后，服务端立即重新判断发送权限。
 - **MSG-008**：平台代运营的已读只代表平台实际接收主体已查看，不得表示真人本人已读。
-- **MSG-009**：首版消息支持文本、表情、系统消息和经审核图片；语音、视频、文件和位置不在首版。
+- **MSG-009**：App 1.0 用户消息支持文本、表情和系统消息；图片、语音、视频、文件和位置不在 1.0 范围。
 
 ### 3.5 心享会员要求
 
-- **MEM-001**：首版同时展示并销售 rank 10 心遇、20 心悦、30 心知、40 心契、50 心耀。
+- **MEM-001**：App 1.0 同时展示并支持管理员手动发放 rank 10 心遇、20 心悦、30 心知、40 心契、50 心耀，不提供在线销售。
 - **MEM-002**：授权只使用 rank 和 entitlement；名称、文案、颜色和价格不得参与权限判断。
 - **MEM-003**：高等级默认继承低等级权益；不继承项必须显式配置和说明。
 - **MEM-004**：会员目录必须包含明确价格、期限、续订、权益值、接收主体说明和最低客户端能力。
 - **MEM-005**：现有通用展示和额度字段可以服务端配置；未知能力在不支持的客户端安全忽略且不得扩大权限。
 - **MEM-006**：任何等级都不能绕过认证、审核、举报、拉黑、频控、资格、隐私或账本规则。
+- **MEM-007**：五个有效付费等级均具有 `direct_message.create` 基础 entitlement，差异通过额度和其他 entitlement 表达。
 
-### 3.6 金币、礼物与装扮要求
+### 3.6 金币与未来礼物/装扮要求
 
 - **COM-001**：金币不可提现、用户间转账、兑换法币、跨产品流通或用于概率博彩。
 - **COM-002**：余额必须由只追加 wallet ledger 分录计算或校验，不允许直接覆盖余额。
-- **COM-003**：订单、充值、赠礼、装扮购买和退款必须幂等。
+- **COM-003**：App 1.0 会员发放和调币必须幂等；未来订单、充值、赠礼、装扮购买和退款也必须遵循同一原则。
 - **COM-004**：礼物是固定价格的非提现互动商品，不向 Person 产生可提现收入或分成。
 - **COM-005**：头像框、主页皮肤和聊天皮肤使用统一商品、库存、期限和装备槽模型。
 - **COM-006**：管理员可加币、扣币、补偿和冲正，但必须记录原因、用户说明、操作者和审计。
@@ -131,13 +134,13 @@ tags: [architecture, app, kmp, cloudflare, person-discovery, messaging, commerce
 - **SEC-005**：通用日志、分析和崩溃报告不得包含消息正文、完整证件、授权原件、支付凭证、精确位置或 Token。
 - **SEC-006**：用户必须能举报、拉黑、管理推荐偏好、导出数据和申请注销。
 - **SEC-007**：真人/权利人必须有更正、暂停、撤回授权和争议渠道。
-- **SEC-008**：发布前必须关闭目标地区的运营主体、数据位置、跨境、年龄、商店和支付结论。
+- **SEC-008**：App 1.0 发布前必须关闭目标地区的运营主体、数据位置、跨境、年龄和目标商店结论；支付结论在未来在线商业化发布前关闭。
 
 ### 3.9 平台和迁移约束
 
 - **CON-001**：基础设施使用 Cloudflare Workers、Workers Assets、D1、R2、Durable Objects、Queues、Workflows、Turnstile、WAF 和 Rate Limiting；不使用 Cloudflare Pages。
 - **CON-002**：Web 与 API 保持独立 Worker，管理后台保留 Nuxt；Compose Web 不在范围。
-- **CON-003**：Android/iOS 首发使用 KMP + CMP；Windows/macOS 后续复用业务核心和大部分 UI。
+- **CON-003**：App 1.0 使用 KMP + CMP 发布 Android/iOS；普通用户 Windows/macOS 客户端未承诺立项，桌面运营由 Nuxt 管理后台承担。
 - **CON-004**：Kotlin 与 TypeScript 使用 OpenAPI、JSON Schema 和实时事件 schema 对齐，不直接共享源码。
 - **CON-005**：App 不能直接访问 D1/R2/DO 或 legacy 表。
 - **CON-006**：迁移使用共享核心 + 渐进切换，每个阶段只有一个写主并提供对账和回滚点。
@@ -246,7 +249,7 @@ PersonProfile ──< GiftTransaction
 - 单元：状态机、rank/entitlement、公开过滤、互动幂等、额度、账本和认领规则。
 - 契约：OpenAPI、JSON Schema、实时事件、Kotlin/TypeScript 生成和错误码。
 - 集成：D1 事务、R2 凭证、DO 顺序/休眠、Queue 重试、Workflow 和外部商店回调。
-- E2E：Android/iOS、Nuxt 后台与 dev/staging，覆盖发现、代运营、购买、调币、举报和认领。
+- E2E：Android/iOS、Nuxt 后台与 dev/staging，App 1.0 覆盖发现、代运营、会员发放、调币、举报和账号数据权利；购买和认领在未来启用时加入。
 - 安全：对象越权、管理员 RBAC、凭证重放、批量抓取、消息身份伪造和敏感日志扫描。
 - 非功能：性能、容量、恢复、无障碍、桌面键盘和目标设备矩阵。
 
@@ -260,7 +263,7 @@ PersonProfile ──< GiftTransaction
 
 - Pull Request 必须执行 schema lint、破坏性变更检查、类型检查、构建和核心单元/集成测试。
 - migration 在隔离 D1 上演练并验证 forward-fix/回滚路径。
-- Android/iOS 必须在对应 runner 构建；Desktop 在 M4 加入 Windows/macOS 构建矩阵。
+- App 1.0 的 Android/iOS 必须在对应 runner 构建；Windows/macOS 只有在普通用户桌面客户端立项后才加入构建矩阵。
 
 ### Performance and Recovery
 
@@ -279,8 +282,8 @@ PersonProfile ──< GiftTransaction
 
 ### External Systems
 
-- **EXT-001**：目标应用商店——数字会员/金币购买、交易验证、退款和恢复购买。
-- **EXT-002**：目标平台推送服务——消息、交易和安全通知；按地区和平台适配。
+- **EXT-001**：未来目标应用商店支付——数字会员/金币购买、交易验证、退款和恢复购买；App 1.0 不接入。
+- **EXT-002**：未来目标平台推送服务——消息、交易和安全通知；App 1.0 使用站内通知，不接入系统推送。
 - **EXT-003**：身份/真人核验供应商——处理认领和资格所需的最小核验结果，接入前完成隐私与地区评估。
 - **EXT-004**：内容审核服务（如需要）——只有人工/规则不足时，经 DPA 和安全评审通过适配器接入。
 
@@ -295,7 +298,7 @@ PersonProfile ──< GiftTransaction
 
 ### Technology Platform Dependencies
 
-- **PLT-001**：KMP + Compose Multiplatform——Android/iOS 首发，Windows/macOS 后续。
+- **PLT-001**：KMP + Compose Multiplatform——App 1.0 发布 Android/iOS；Windows/macOS 未承诺立项。
 - **PLT-002**：Nuxt 4——现有 Web 和管理后台。
 - **PLT-003**：Hono on Cloudflare Workers——API 运行时。
 - **PLT-004**：OpenAPI/JSON Schema——跨语言契约源。
@@ -308,7 +311,7 @@ PersonProfile ──< GiftTransaction
 ### Data and Compliance Dependencies
 
 - **DAT-001**：MeiGallery 账号、会员、图库、媒体、标签和审计——按稳定 ID、授权证据和迁移任务接入。
-- **COM-001**：目标地区运营主体、年龄、数据位置/跨境、商店、支付、隐私和内容结论——公开发布前必须关闭。
+- **DCP-001**：目标地区运营主体、年龄、数据位置/跨境、商店、隐私和内容结论——App 1.0 公开发布前必须关闭；支付结论在未来在线商业化发布前关闭。
 
 ## 9. Examples & Edge Cases
 
@@ -351,6 +354,7 @@ Person 完成认领
 - App 文档版本统一为 1.0，状态统一为需求讨论中。
 - Markdown 链接、Mermaid、JSON 示例和表格通过文档检查。
 - 当前阶段没有因文档工作产生实现代码、API、migration 或生产变更。
+- App 1.0 范围与 [发布范围 PRD](../docs/ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md) 一致，未来能力不会被误计入首发验收。
 
 ## 11. Related Specifications / Further Reading
 

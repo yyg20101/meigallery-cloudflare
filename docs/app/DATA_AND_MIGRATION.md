@@ -6,6 +6,8 @@ App 版本：1.0
 
 状态：需求讨论中
 
+范围说明：目标模型覆盖长期产品，但 App 1.0 只要求会员目录/grant/entitlement、钱包账本和管理员调币。`products`、`orders`、礼物和装扮表在未来商业化 Feature 冻结后再创建 production migration，不能因出现在目标模型中而默认进入 1.0 实现。
+
 ## 1. 目标
 
 将现有 MeiGallery 的账号、会员、图库、媒体、标签和后台能力逐步接入共享核心，同时建立真人、公开资料、运营归属、会话、五级会员和虚拟商业化的新模型。迁移期间 Web 保持可用，App 不直接依赖 legacy 表。
@@ -78,6 +80,8 @@ erDiagram
 | `favorite_folder_items` | `folder_id`, `profile_id`, `created_at` | 收藏归档 |
 | `view_history` | `account_id`, `profile_id`, `viewed_at`, `expires_at` | 浏览历史 |
 | `recommendation_exposures` | `account_id_hash`, `profile_id`, `reason_code`, `rule_version` | 最小化推荐证据 |
+| `notifications` | `id`, `account_id`, `category`, `event_ref`, `read_at`, `created_at` | App 1.0 站内通知与未读状态 |
+| `notification_preferences` | `account_id`, `category`, `enabled`, `updated_at` | 站内通知偏好；必要安全通知不可关闭 |
 
 `viewer_interactions` 不存在 reciprocal/matched 状态。
 
@@ -102,11 +106,11 @@ erDiagram
 | `entitlement_definitions` | `key`, `value_type`, `schema_version` | 权限定义 |
 | `tier_entitlements` | `tier_id`, `key`, `value_json` | 等级权益 |
 | `entitlement_grants` | `account_id`, `key`, `value_json`, `source`, `valid_until` | 已解析发放 |
-| `products` / `product_versions` | `id`, `type`, `price`, `currency`, `resource_version` | 会员/金币/礼物/装扮目录 |
-| `orders` | `id`, `account_id`, `external_transaction_id`, `status` | 订单 |
+| `products` / `product_versions` | `id`, `type`, `price`, `currency`, `resource_version` | 未来商业化：会员/金币/礼物/装扮目录 |
+| `orders` | `id`, `account_id`, `external_transaction_id`, `status` | 未来商业化：订单 |
 | `wallet_entries` | `id`, `account_id`, `direction`, `amount`, `reason_code`, `balance_after` | 只追加账本 |
-| `gift_transactions` | `id`, `account_id`, `profile_id`, `product_version_id`, `wallet_entry_id` | 礼物记录 |
-| `cosmetic_inventory` | `account_id`, `product_version_id`, `valid_until`, `equipped_slot` | 装扮库存 |
+| `gift_transactions` | `id`, `account_id`, `profile_id`, `product_version_id`, `wallet_entry_id` | 未来商业化：礼物记录 |
+| `cosmetic_inventory` | `account_id`, `product_version_id`, `valid_until`, `equipped_slot` | 未来商业化：装扮库存 |
 | `coin_adjustment_requests` | `id`, `operator_id`, `approver_id`, `reason`, `status` | 调币和复核 |
 
 ### 3.6 审核和审计
@@ -171,15 +175,23 @@ erDiagram
 
 退出条件：App 不直接查询 legacy 表，暂停资料可快速撤回。
 
-### 阶段 4：消息与商业化
+### 阶段 4：App 1.0 私信、会员与金币账本
 
-- 新建 v2 会话、管理员分配、订单、entitlement 和钱包账本。
+- 新建 v2 会话、管理员分配、站内通知、五级目录、entitlement grant 和钱包账本。
 - 旧会员仅通过一次性、可追溯 grant 映射；不双写余额。
-- 商店回调和调币全部写 v2。
+- 管理员会员发放和调币全部写 v2；不创建商店订单或用户金币消费。
 
-退出条件：订单/权益/账本日对账通过，代运营披露和审计完整。
+退出条件：会员 grant、entitlement、调币/账本对账通过，代运营披露和审计完整。
 
-### 阶段 5：Web 渐进切换
+### 阶段 5：未来在线商业化
+
+- 按独立 Feature migration 创建商品、订单、礼物和装扮表。
+- 商店回调、购买、退款、用户扣币和库存全部写 v2。
+- 上线前完成商店、账本和库存逐笔对账。
+
+退出条件：订单、权益、账本和库存日对账通过，客户端版本门槛有效。
+
+### 阶段 6：Web 渐进切换
 
 - 按账号、权益、标签、媒体和图库顺序，把 Web 读取切向共享核心。
 - 先双读比较，再切换读主；写路径每次只保留一个主系统。
@@ -187,7 +199,7 @@ erDiagram
 
 退出条件：连续对账通过、旧版本支持窗口结束、归档有恢复验证。
 
-### 阶段 6：本人认领与交接
+### 阶段 7：本人认领与交接
 
 - 认领 Workflow 绑定真人和账号。
 - 新会话路由本人；历史会话只按批准的同意记录迁移可见性。
@@ -200,9 +212,10 @@ erDiagram
 | 0–1 | legacy | v2 映射 | 删除未发布影子批次 |
 | 2 | v2 真人草稿 | legacy 图库只读 | 撤销候选/投影，不改 legacy |
 | 3 | v2 互动 | 公开投影与 legacy 内容对账 | 关闭 App feature flag |
-| 4 | v2 消息与商业 | 外部商店/账本对账 | 停止新单/新会话，forward-fix |
-| 5 | 每模块唯一写主 | 双读比较 | 路由切回上一读主 |
-| 6 | v2 | 交接前后快照 | 暂停路由并恢复上一运营模式 |
+| 4 | v2 私信、会员与金币账本 | grant/entitlement/账本对账 | 停止新会话/调币，forward-fix |
+| 5 | v2 在线商业化 | 外部商店/订单/库存对账 | 停止新单，forward-fix |
+| 6 | 每模块唯一写主 | 双读比较 | 路由切回上一读主 |
+| 7 | v2 | 交接前后快照 | 暂停路由并恢复上一运营模式 |
 
 已发生的订单、账本、消息和审计不做破坏性回滚，采用 forward-fix、冲正或状态恢复。
 
@@ -212,7 +225,7 @@ erDiagram
 - `verified + published` 与公开投影集合完全一致。
 - 每个公开媒体存在有效用途授权和可访问派生资源。
 - 会话运营模式与当前 OperatorAssignment/Claim 一致。
-- 订单发放、entitlement、钱包分录和库存可逐笔关联。
+- App 1.0 会员 grant、entitlement 和管理员钱包分录可逐笔关联；未来商业化启用后再加入订单和库存关联。
 - 余额快照等于有效分录汇总。
 - 管理员写入都有审计；内部备注不会出现在用户 API。
 
@@ -231,6 +244,6 @@ erDiagram
 - **DATA-AC-003**：迁移任务重复运行不会复制真人、互动、权益或账本分录。
 - **DATA-AC-004**：任一批次可查看输入、输出、失败、哈希、审计和回滚点。
 - **DATA-AC-005**：App API 不包含 legacy 自增 ID，也不直接查询 legacy 表。
-- **DATA-AC-006**：余额和订单在切换前后逐笔对账，无静默覆盖。
+- **DATA-AC-006**：App 1.0 会员 grant 和余额在切换前后逐笔对账，无静默覆盖；订单在未来商业化阶段加入验收。
 - **DATA-AC-007**：认领后历史会话没有同意记录则真人账号不可读取。
 - **DATA-AC-008**：关闭 v2 feature flag 后，现有 Web 不受影响且新写入安全停止。

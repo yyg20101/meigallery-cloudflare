@@ -15,6 +15,12 @@ App 版本：1.0
 - 消息、订单、礼物、调币和关键互动强制幂等。
 - 未知字段向前兼容，未知枚举使用 `unknown`/安全降级，不扩大权限。
 
+### 1.1 App 1.0 启用范围
+
+- 1.0 必须实现：账号、真人发现、单向互动、五级会员目录、entitlement、会话/文本消息、站内通知、钱包余额/明细、管理员会员发放和管理员调币。
+- 仅保留未来契约：订单/商店验证、金币包、礼物、装扮、真人认领和系统推送。未立项前不部署生产路由，也不向 1.0 客户端下发可执行 capability。
+- 路由表中的“未来”表示长期兼容设计，不属于 App 1.0 上线验收。详细边界见 [App 1.0 发布范围](../ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md)。
+
 ## 2. 通用请求
 
 建议请求头：
@@ -167,13 +173,13 @@ Accept-Language: zh-CN
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/v2/catalog/memberships` | 五级会员目录和价格 |
+| GET | `/api/v2/catalog/memberships` | 五级会员目录、获取方式和已启用 entitlement |
 | GET | `/api/v2/me/entitlements` | 已解析权限快照 |
-| POST | `/api/v2/orders` | 创建购买意图 |
-| POST | `/api/v2/orders/verify` | 提交商店交易供服务端验证 |
-| POST | `/api/v2/orders/restore` | 恢复购买 |
-| GET | `/api/v2/me/orders` | 订单列表 |
-| GET | `/api/v2/me/orders/:orderId` | 订单详情 |
+| POST | `/api/v2/orders` | 未来：创建购买意图 |
+| POST | `/api/v2/orders/verify` | 未来：提交商店交易供服务端验证 |
+| POST | `/api/v2/orders/restore` | 未来：恢复购买 |
+| GET | `/api/v2/me/orders` | 未来：订单列表 |
+| GET | `/api/v2/me/orders/:orderId` | 未来：订单详情 |
 
 entitlement 响应包含目录版本、来源、值、有效期和最低客户端版本。客户端可缓存展示，但受限 API 每次服务端重验。
 
@@ -199,6 +205,8 @@ entitlement 响应包含目录版本、来源、值、有效期和最低客户�
   "clientCapabilityVersion": "2.0"
 }
 ```
+
+App 1.0 的用户消息 payload 只允许 `text` 和 `emoji`；`system` 只能由服务端生成。图片、语音、视频、文件和位置消息必须同时满足服务端 capability 与最低客户端版本后才能接收。
 
 创建响应必须包含：
 
@@ -239,27 +247,40 @@ entitlement 响应包含目录版本、来源、值、有效期和最低客户�
 | `operation_mode.changed` | 平台运营/本人运营切换，必须落系统消息 |
 | `conversation.restricted` | 拉黑、暂停、安全限制或关闭 |
 | `entitlement.changed` | 会员变化提示客户端刷新 HTTP 快照 |
+| `notification.created` | 新站内通知，提示客户端刷新通知列表/未读数 |
 
 不为平台代运营会话发送 `person.typing`、`person.online` 或 `person.read` 事件。输入状态仅在真实发送主体主动产生且策略允许时短期发送，不持久化。
 
-## 11. 钱包、礼物与装扮 API
+## 11. 站内通知 API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/v2/notifications` | 按消息、互动、会员/金币、系统/安全分类分页查询 |
+| GET | `/api/v2/notifications/unread-counts` | 各分类未读数 |
+| POST | `/api/v2/notifications/:id/read` | 标记单条已读，幂等 |
+| POST | `/api/v2/notifications/read-all` | 按分类标记全部已读，幂等 |
+| GET/PUT | `/api/v2/me/notification-preferences` | 站内通知偏好；交易/安全必要通知不可关闭 |
+
+App 1.0 通过 HTTP 拉取和已连接实时通道刷新站内通知，不依赖 APNs、FCM 或其他系统推送。
+
+## 12. 钱包、礼物与装扮 API
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/api/v2/me/wallet` | 余额和最后同步时间 |
 | GET | `/api/v2/me/wallet/entries` | 金币明细 |
-| GET | `/api/v2/catalog/coin-packs` | 金币包 |
-| GET | `/api/v2/catalog/gifts` | 礼物目录 |
-| POST | `/api/v2/gifts` | 赠礼并原子扣币；强制幂等 |
-| GET | `/api/v2/me/gifts` | 赠礼历史 |
-| GET | `/api/v2/catalog/cosmetics` | 装扮目录 |
-| GET | `/api/v2/me/cosmetics` | 库存和装备状态 |
-| POST | `/api/v2/cosmetics/:productId/purchase` | 金币购买 |
-| PUT/DELETE | `/api/v2/me/cosmetics/:inventoryId/equip` | 装备/卸下 |
+| GET | `/api/v2/catalog/coin-packs` | 未来：金币包 |
+| GET | `/api/v2/catalog/gifts` | 未来：礼物目录 |
+| POST | `/api/v2/gifts` | 未来：赠礼并原子扣币；强制幂等 |
+| GET | `/api/v2/me/gifts` | 未来：赠礼历史 |
+| GET | `/api/v2/catalog/cosmetics` | 未来：装扮目录 |
+| GET | `/api/v2/me/cosmetics` | 未来：库存和装备状态 |
+| POST | `/api/v2/cosmetics/:productId/purchase` | 未来：金币购买 |
+| PUT/DELETE | `/api/v2/me/cosmetics/:inventoryId/equip` | 未来：装备/卸下 |
 
 赠礼返回订单/业务记录、钱包分录和权威余额。客户端不得先行扣减余额。
 
-## 12. 举报、拉黑与支持 API
+## 13. 举报、拉黑与支持 API
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -271,7 +292,7 @@ entitlement 响应包含目录版本、来源、值、有效期和最低客户�
 
 拉黑后禁止新会话和消息，并停止目标推荐；解除拉黑不自动重开已关闭会话。
 
-## 13. 管理 API
+## 14. 管理 API
 
 管理路由使用 `/api/v2/admin`，强认证、RBAC、对象范围和审计必需。
 
@@ -283,15 +304,16 @@ entitlement 响应包含目录版本、来源、值、有效期和最低客户�
 | `/operation-assignments` | 真人运营模式和管理员组 |
 | `/managed-conversations` | 队列、分配、平台回复和内部备注 |
 | `/reviews`, `/reports`, `/appeals` | 审核和安全处置 |
-| `/membership-catalogs`, `/products` | 五级权益、价格和商品版本 |
+| `/membership-catalogs`, `/membership-grants` | 1.0 五级权益、手动发放、撤销和有效期 |
+| `/products` | 未来：价格和商品版本 |
 | `/coin-adjustments` | 加币、扣币、批量任务、复核和冲正 |
-| `/orders`, `/reconciliation` | 订单、退款和对账 |
-| `/claims`, `/handovers` | 真人认领和交接 |
+| `/orders`, `/reconciliation` | 未来：订单、退款和对账 |
+| `/claims`, `/handovers` | 未来：真人认领和交接 |
 | `/audit-events` | 只读审计查询 |
 
 管理员消息接口必须由服务端写入 `senderType=platform_operator`；客户端不能传入 `person` 冒充真人。
 
-## 14. 幂等与并发
+## 15. 幂等与并发
 
 - `Idempotency-Key` 与账号、路由和规范化请求哈希绑定。
 - 同键同请求返回首个权威结果；同键不同请求返回 `IDEMPOTENCY_CONFLICT`。
@@ -300,7 +322,7 @@ entitlement 响应包含目录版本、来源、值、有效期和最低客户�
 - 外部交易 ID、钱包业务单号、礼物业务单号和调币申请唯一。
 - 状态更新使用版本号/ETag 防止管理员并发覆盖。
 
-## 15. 契约与安全测试
+## 16. 契约与安全测试
 
 - OpenAPI lint、破坏性变更检测和 Kotlin/TypeScript 生成代码编译。
 - 对象权限矩阵覆盖本人、其他观看者、未认领/已认领真人、代运营、审核、财务和越权 ID。
@@ -308,13 +330,13 @@ entitlement 响应包含目录版本、来源、值、有效期和最低客户�
 - 资料暂停、会员到期、拉黑和运营模式切换的实时撤权测试。
 - 日志/分析事件扫描私信、证件、凭证和令牌泄漏。
 
-## 16. 契约验收
+## 17. 契约验收
 
 - **API-AC-001**：公开接口无法返回未认证或未发布真人。
 - **API-AC-002**：普通账号响应不包含自动生成的公开资料。
 - **API-AC-003**：无 entitlement 创建私信返回明确错误且不消耗额度。
 - **API-AC-004**：平台运营消息不能伪装为 `senderType=person`。
-- **API-AC-005**：重复订单、消息、礼物和调币请求不产生重复结果。
+- **API-AC-005**：App 1.0 重复会员发放、消息和调币请求不产生重复结果；订单和礼物在未来启用时遵循同一规则。
 - **API-AC-006**：资料暂停、会员到期或拉黑后，现有实时连接立即失去相关写权限。
 - **API-AC-007**：未知 schema 字段不会使旧客户端扩大权限或崩溃。
 - **API-AC-008**：管理写接口均能关联完整审计事件。

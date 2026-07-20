@@ -102,7 +102,7 @@ MeiGallery 已拥有真实人物、授权媒体、标签和后台运营能力，
 
 #### 跨平台与迁移
 
-- **BLP-FR-021**：Android/iOS 首发，Windows/macOS 后续；Nuxt Web 和后台继续保留。
+- **BLP-FR-021**：App 1.0 只发布 Android/iOS；Nuxt Web 和管理后台继续保留。普通用户 Windows/macOS 客户端未承诺立项。
 - **BLP-FR-022**：现有 MeiGallery 数据按共享核心 + 渐进迁移方式接入，不直接让客户端读取 legacy 表。
 
 ### Non-Functional Requirements

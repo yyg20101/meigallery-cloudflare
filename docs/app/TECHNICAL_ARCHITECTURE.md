@@ -8,7 +8,7 @@ App 版本：1.0
 
 ## 1. 目标与约束
 
-目标是在不破坏当前 MeiGallery Web 的前提下，为独立 App 和未来 Web 迁移建立共享核心平台。首发客户端为 Android/iOS，采用 KMP + Compose Multiplatform；Windows/macOS 后续复用业务核心和大部分 UI。Nuxt Web 与管理后台继续运行在 Cloudflare Workers。
+目标是在不破坏当前 MeiGallery Web 的前提下，为独立 App 和未来 Web 迁移建立共享核心平台。App 1.0 客户端为 Android/iOS，采用 KMP + Compose Multiplatform；普通用户 Windows/macOS 客户端未承诺立项。Nuxt Web 与管理后台继续运行在 Cloudflare Workers，并承担桌面运营场景。
 
 硬约束：
 
@@ -24,7 +24,7 @@ App 版本：1.0
 ```mermaid
 flowchart LR
     A["Android / iOS\nKMP + CMP"] --> G["App API Gateway\nHono Worker"]
-    D["Windows / macOS\nKMP + CMP"] --> G
+    D["未来可选 Windows / macOS\n独立立项后接入"] -.-> G
     W["Nuxt Web Worker"] --> G
     M["Nuxt 管理后台"] --> AG["Admin API\nHono Worker"]
 
@@ -61,7 +61,7 @@ flowchart LR
 apps/
 ├── androidApp
 ├── iosApp
-├── desktopApp（M4）
+├── desktopApp（未来独立立项后再创建）
 └── shared
     ├── core-model
     ├── core-network
@@ -79,7 +79,7 @@ apps/
 ```
 
 - `commonMain`：领域模型、用例、状态机、网络契约、本地缓存、共享 ViewModel 和大部分 Compose UI。
-- `androidMain/iosMain/desktopMain`：商店购买、推送、深链、安全存储、媒体选择、身份核验、系统权限和窗口行为。
+- `androidMain/iosMain`：App 1.0 深链、安全存储和系统适配；商店购买、系统推送、媒体选择和身份核验在未来 Feature 立项后加入。`desktopMain` 只在桌面客户端立项后创建。
 - 支付、身份核验和高风险平台流程可保留原生 UI，不追求机械共享率。
 - Compose Web 不在范围内；Nuxt Web/后台继续满足 SEO 和运营效率。
 
@@ -91,7 +91,7 @@ apps/
 - 图片：公共层使用 Coil 3 + Ktor 3 网络模块；公开媒体和受保护媒体使用不同缓存策略。
 - 视频：公共层只拥有视频源、播放状态、控制器接口和共享控制 UI；Android 使用 Media3 ExoPlayer，iOS 使用 AVPlayer/AVKit。
 - 数据：Room 保存结构化离线投影，DataStore 只保存 Preferences 和非敏感配置；Token 与密钥进入 Android Keystore/iOS Keychain。
-- 当前不接入支付和推送，平台端口保留但不进入首轮依赖。
+- App 1.0 不接入支付和系统推送，不预装相关 SDK；站内通知使用 HTTP/实时通道。未来能力通过平台端口和正常 App 升级交付。
 - Media3、Hilt、WorkManager、CameraX 和平台安全存储类型不得进入 `commonMain`。
 - Android App 1.0 使用 `minSdk = 26`，API 25 及以下不进入兼容和测试范围；脚手架冻结前可以基于安全、媒体或商店要求继续提高，不得静默降低。
 
@@ -131,12 +131,12 @@ apps/
 
 ### 4.5 Membership & Commerce
 
-拥有五级会员目录、entitlement、SKU、订单、钱包、账本、礼物、装扮库存、退款和管理员调币。
+长期拥有五级会员目录、entitlement、SKU、订单、钱包、账本、礼物、装扮库存、退款和管理员调币。App 1.0 只实现五级目录、管理员 grant、entitlement、钱包账本和调币；其余能力在未来 Feature migration 中启用。
 
 - rank 只表达等级顺序，实际权限来自 entitlement。
 - 账本只追加，余额快照可重建。
 - 高风险调币使用 Workflow 双人复核。
-- 商店凭证仅服务端验证，重复回调幂等。
+- 未来商店能力启用后，凭证仅服务端验证且重复回调幂等。
 
 ### 4.6 Review & Governance
 
@@ -150,7 +150,7 @@ apps/
 | Workers Assets | Nuxt Web/后台静态资源 |
 | D1 | 账号、真人、投影、互动、会话索引、会员、订单、账本、审核和审计 |
 | R2 | 原始/处理后图片、导入包、授权证据和经审批的举报附件 |
-| Cloudflare Stream | M4 视频上传、编码和受控播放；当前规划能力 |
+| Cloudflare Stream | 未来视频 Feature 的上传、编码和受控播放；当前规划能力 |
 | Durable Objects | 单会话实时连接、顺序、去重、已读和短期状态 |
 | Queues | 通知、媒体处理、投影更新、订单回调和分析事件 |
 | Workflows | 导入、认领、批量调币、退款、删除/导出和长事务编排 |
@@ -224,7 +224,7 @@ apps/
 - `dev`、`staging`（实施时新增/确认）和 `production` 数据、密钥、Queue、R2、D1、DO namespace 全隔离。
 - Web 和 API 继续独立 Worker；App API 可以先作为现有 API 的 `/api/v2` 模块，达到拆分条件再成为独立 Worker。
 - 所有 migration 先备份/书签、在非生产演练、记录兼容窗口并提供 forward-fix/回滚策略。
-- 商店、推送、身份和审核供应商使用适配器，生产凭证只存 Secret。
+- 未来商店、推送、身份和审核供应商使用适配器，生产凭证只存 Secret；App 1.0 不配置支付或推送生产凭证。
 
 ## 12. 演进路线
 
@@ -236,17 +236,21 @@ apps/
 
 App 上线发现与单向互动；真人资料由新后台或迁移任务写入 v2；必要数据从 legacy 单向同步。
 
-### M2
+### M2A：App 1.0 私信与手动运营
 
-上线会员、会话 DO、代运营工作台、订单、金币和装扮；财务/安全门禁完成。
+上线五级会员目录与管理员 grant、会话 DO、代运营工作台、站内通知、金币账本和管理员调币；安全与账本门禁完成。
+
+### M2B：未来在线商业化
+
+通过独立 Feature 上线商店支付、订单、金币充值、礼物、装扮、图片消息和系统推送，并设置最低客户端版本。
 
 ### M3
 
 上线认领 Workflow、本人账号绑定和会话路由；按 consent 处理历史交接。
 
-### M4
+### 可选平台扩展
 
-Windows/macOS、多地区、视频和更完善实验平台；按模块将 MeiGallery Web 读写切向共享核心，最终归档 legacy 写路径。
+多地区、视频和更完善实验平台；按模块将 MeiGallery Web 读写切向共享核心，最终归档 legacy 写路径。普通用户 Windows/macOS 客户端只有独立立项后才加入。
 
 ## 13. 架构验收
 

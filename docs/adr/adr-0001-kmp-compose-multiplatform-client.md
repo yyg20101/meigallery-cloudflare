@@ -14,11 +14,11 @@ tags: ["architecture", "decision", "kmp", "compose-multiplatform", "client"]
 
 Proposed | **Accepted** | Rejected | Superseded | Deprecated
 
-用户于 2026-07-20 确认采用 KMP 方向，并把面向普通用户的桌面客户端纳入长期产品范围。本决定在创建客户端工程前生效。
+用户于 2026-07-20 确认采用 KMP 方向。App 1.0 只发布 Android/iOS；普通用户桌面客户端不再作为已承诺范围，未来按真实需求独立立项。本决定在创建客户端工程前生效。
 
 ## Context
 
-独立真人发现与互动 App 首期需要覆盖 Android 和 iOS，后续需要提供面向普通用户的 Windows 和 macOS 客户端。客户端要承载登录、真人发现、单向互动、会员私信、安全中心、会员和金币等一致业务，同时接入商店支付、推送、媒体、安全存储和桌面系统能力。
+独立真人发现与互动 App 首期覆盖 Android 和 iOS，承载登录、真人发现、单向互动、会员私信、安全中心、五级会员、金币明细和站内通知。App 1.0 不接入商店支付和系统推送；普通用户 Windows/macOS 客户端是否需要由未来独立决策确定，当前桌面运营由 Nuxt 管理后台承担。
 
 现有 MeiGallery 是 Nuxt、Hono 和 TypeScript 组成的 pnpm monorepo。共享平台后端继续运行在 Cloudflare Workers，现有 Web 和管理后台仍适合使用 Nuxt。客户端选型不能要求后端改写，也不能把 TypeScript 源码复用误当成跨语言数据契约。
 
@@ -27,12 +27,12 @@ Proposed | **Accepted** | Rejected | Superseded | Deprecated
 ## Decision
 
 - **DEC-001**：用户客户端采用 Kotlin Multiplatform（KMP）和 Compose Multiplatform，以 Kotlin 作为客户端主要开发语言。
-- **DEC-002**：Android 和 iOS 是 M1/M2 首发目标；Windows 和 macOS 是 M4 的面向用户桌面目标；Linux 不纳入当前产品路线。
+- **DEC-002**：Android 和 iOS 是 App 1.0 发布目标；Windows、macOS 和 Linux 均不纳入已承诺的普通用户客户端路线。
 - **DEC-003**：领域模型、用例、API、WebSocket、状态管理、缓存策略、错误映射、设计 token 和大部分业务 UI 默认放入共享代码。
-- **DEC-004**：StoreKit、Google Play Billing、推送、相机/相册、定位、生物识别、安全存储、深链、桌面通知、窗口、菜单、签名和更新使用平台适配层，不追求百分之百源码共享。
+- **DEC-004**：App 1.0 需要的安全存储、深链和系统能力使用平台适配层。StoreKit、Google Play Billing、系统推送、相机/相册和桌面能力在未来 Feature 立项后再增加平台实现，不预装无用 SDK。
 - **DEC-005**：现有 Hono/Cloudflare 后端、Nuxt 公共 Web 和 Nuxt 管理后台保持不变；KMP 只改变用户客户端技术路线。
 - **DEC-006**：OpenAPI、JSON Schema 和 WebSocket event schema 是跨语言唯一契约来源，分别生成或校验 Kotlin 与 TypeScript 模型；`@meigallery/shared` 不再被定义为 KMP 可直接复用的源码。
-- **DEC-007**：移动发布稳定后再开放桌面端，桌面端不得绕过账号安全、内容治理、权益、地区门禁或支付合规规则。
+- **DEC-007**：未来如立项普通用户桌面端，复用共享业务核心并独立评审分发、维护、安全和平台体验，不因 KMP 可构建而自动承诺发布。
 - **DEC-008**：公共客户端基线采用稳定版 Jetpack Lifecycle/ViewModel、Navigation 3、Paging、Room/SQLite、DataStore Preferences、Ktor Client、kotlinx.serialization 和 Coil 3。
 - **DEC-009**：视频共享播放契约、状态和控制 UI；Android 使用 Media3 ExoPlayer，iOS 使用 AVPlayer/AVKit，不把社区统一播放器设为生产核心依赖。
 - **DEC-010**：Android App 1.0 使用 `minSdk = 26`，API 25 及以下不进入兼容、测试和发布范围；允许基于安全、媒体或商店要求继续提高。
@@ -41,8 +41,8 @@ Proposed | **Accepted** | Rejected | Superseded | Deprecated
 
 ### Positive
 
-- **POS-001**：Android、iOS、Windows 和 macOS 可以共享业务核心和大部分 UI，降低长期功能分叉概率。
-- **POS-002**：桌面端直接复用发现、互动、会员私信、安全和契约测试，而不是另建一套桌面业务核心。
+- **POS-001**：Android 和 iOS 可以共享业务核心和大部分 UI，降低首发功能分叉概率。
+- **POS-002**：未来若桌面端立项，可以评估复用发现、互动、会员私信、安全和契约测试，而不需要现在承担桌面发布成本。
 - **POS-003**：平台适配层允许在 iOS/Android/桌面使用原生 SDK、原生安全存储和系统分发能力。
 - **POS-004**：契约优先取代语言源码耦合，使现有 Web、后端和未来客户端能够独立发布与迁移。
 
@@ -74,10 +74,10 @@ Proposed | **Accepted** | Rejected | Superseded | Deprecated
 ## Implementation Notes
 
 - **IMP-001**：客户端建议位于独立 Gradle 根目录 `clients/app-kmp/`，不伪装成 pnpm package；pnpm 与 Gradle 在仓库级 CI 中编排。
-- **IMP-002**：工程启动前完成技术验证：登录与令牌轮换、WebSocket 断线补拉、媒体选择、安全存储、推送、StoreKit/Play Billing sandbox、Windows/macOS 打包签名和无障碍。
+- **IMP-002**：工程启动前完成技术验证：登录与令牌轮换、WebSocket 断线补拉、安全存储、站内通知、Android/iOS 构建和无障碍。支付、系统推送、媒体选择和桌面打包在对应 Feature 立项后验证。
 - **IMP-003**：共享模块采用端口与适配器边界；任何直接调用平台 API 的实现只能进入对应平台 source set。
 - **IMP-004**：版本锁定时同时记录 Kotlin、Compose Multiplatform、Gradle、Android Gradle Plugin、JDK、Xcode 和最低操作系统版本，并通过依赖更新验证任务统一升级。
-- **IMP-005**：CI 至少包含共享单元测试、Android 构建、iOS 模拟器构建、macOS 构建和 Windows 构建；商店签名、notarization 和发布在受保护环境执行。
+- **IMP-005**：App 1.0 CI 至少包含共享单元测试、Android 构建和 iOS 模拟器构建；Windows/macOS 构建、签名和发布仅在桌面客户端立项后加入。
 - **IMP-006**：以共享业务逻辑覆盖率、各目标构建通过率、UI 例外数量、平台缺陷率、启动性能和无障碍结果衡量方案，不以单一“代码共享百分比”作为成功指标。
 - **IMP-007**：依赖版本、source set 边界、媒体缓存和视频 Spike 以 [KMP 客户端技术栈与库选型](../app/KMP_CLIENT_TECH_STACK.md) 为实施基线。
 

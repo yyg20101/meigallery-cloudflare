@@ -12,7 +12,7 @@ App 版本：1.0
 
 本文是选型参考，不是已经生成的 Gradle 依赖锁。表中版本表示 2026-07-20 调研时可采用的稳定基线；创建客户端工程时仍需统一锁定 Kotlin、CMP、Gradle、Android Gradle Plugin、KSP、JDK、Xcode 和最低操作系统版本，并通过 Android/iOS 构建验证后落入 Version Catalog。
 
-当前不接入支付和推送。相关能力保留平台适配接口，但不进入首轮依赖和技术 Spike。
+App 1.0 不接入支付和系统推送。相关能力不进入首轮依赖和技术 Spike，未来 Feature 立项时再增加平台适配实现并正常升级 App。
 
 ## 2. 选型结论
 
@@ -29,7 +29,7 @@ App 版本：1.0
 | 视频 | 公共播放契约 + Media3/AVPlayer | 契约与控制 UI 共享，播放内核分平台 | 不依赖社区播放器作为核心播放内核 |
 | 敏感凭证 | Android Keystore / iOS Keychain | `androidMain` / `iosMain` | Token 和密钥不得写入 DataStore 或 Room 明文 |
 
-Google 将 Android、iOS 和 JVM 列为 Jetpack KMP 的 Tier 1 平台：包含完整 CI 测试，并跟踪源码和二进制兼容性。Windows、JavaScript 和 Wasm 当前保障级别较低，因此 M1/M2 只以 Android/iOS 为发布目标，Desktop 到 M4 再单独锁定平台矩阵。参考：[Google Jetpack KMP 支持矩阵](https://developer.android.com/kotlin/multiplatform)。
+Google 将 Android、iOS 和 JVM 列为 Jetpack KMP 的 Tier 1 平台：包含完整 CI 测试，并跟踪源码和二进制兼容性。Windows、JavaScript 和 Wasm 当前保障级别较低，因此 App 1.0 只以 Android/iOS 为发布目标；普通用户 Desktop 未立项，未来若启动再单独锁定平台矩阵。参考：[Google Jetpack KMP 支持矩阵](https://developer.android.com/kotlin/multiplatform)。
 
 ## 3. Jetpack KMP 稳定基线
 
@@ -65,7 +65,7 @@ Google 将 Android、iOS 和 JVM 列为 Jetpack KMP 的 Tier 1 平台：包含�
 - API 25 及以下不进入设备矩阵，不为其增加专用兼容库、条件分支、降级 UI 或缺陷修复。
 - 如果登录安全、媒体播放、系统 WebView 或关键依赖需要更高版本，可以在客户端脚手架冻结前继续提高 `minSdk`；降低到 26 以下需要重新形成产品和技术决策。
 - `compileSdk` 和 `targetSdk` 在实现时选择满足目标应用商店要求的稳定版本，不与 `minSdk` 绑定。
-- iOS、Windows 和 macOS 最低版本仍由 OQ-027 决定。
+- iOS 最低版本仍由 OQ-027 决定；Windows/macOS 只有在普通用户桌面客户端立项后才确定。
 
 ## 4. 网络请求与实时通信
 
@@ -201,7 +201,7 @@ iosMain
 ├── iOS Keychain
 └── UIKit 播放表面和系统适配
 
-desktopMain（M4 再启用）
+desktopMain（普通用户桌面客户端独立立项后再创建）
 └── 根据目标平台重新验证网络、数据库、图片、视频和安全存储
 ```
 
