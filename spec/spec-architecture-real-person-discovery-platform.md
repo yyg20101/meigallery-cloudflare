@@ -60,7 +60,7 @@ App 1.0 包含：账号、真人、公开资料、图库映射、认证发布、
 - **PRD-001**：普通注册只能创建 Account，不得创建 Person 或公开 PersonProfile。
 - **PRD-002**：只有管理员认证且发布的 PersonProfile 可以出现在推荐、列表、搜索和分享页。
 - **PRD-003**：喜欢、关注、收藏和浏览记录必须是 Account 到 PersonProfile 的单向关系，不得创建 Match。
-- **PRD-004**：只有有效 `direct_message.create` entitlement 的账号可以创建真人私信。
+- **PRD-004**：只有有效 `direct_message.create` entitlement 的账号可以创建真人私信，只有有效 `direct_message.send` entitlement 的账号可以发送；会员到期后既有会话只读。
 - **PRD-005**：创建真人私信不要求双方喜欢、招呼、接受或匹配。
 - **PRD-006**：未认领真人的私信由平台运营接收；界面必须披露实际接收主体。
 - **PRD-007**：管理员不得以 Person 身份发送消息或伪造本人在线、输入、已读和回复。
@@ -92,7 +92,7 @@ App 1.0 包含：账号、真人、公开资料、图库映射、认证发布、
 - **MSG-004**：管理员消息的 sender type 必须是 platform_operator，并关联受限的实际操作员审计。
 - **MSG-005**：内部备注与用户消息隔离，任何用户 API 或实时事件不得返回内部备注。
 - **MSG-006**：消息发送使用客户端消息 ID、幂等键和会话内单调 sequence。
-- **MSG-007**：拉黑、资料暂停、账号冻结、会员失效或会话关闭后，服务端立即重新判断发送权限。
+- **MSG-007**：拉黑、资料暂停、账号冻结、会员失效或会话关闭后，服务端立即重新判断发送权限；App 1.0 会员失效后缺少 `direct_message.send`，不得继续发送。
 - **MSG-008**：平台代运营的已读只代表平台实际接收主体已查看，不得表示真人本人已读。
 - **MSG-009**：App 1.0 用户消息支持文本、表情和系统消息；图片、语音、视频、文件和位置不在 1.0 范围。
 
@@ -101,10 +101,10 @@ App 1.0 包含：账号、真人、公开资料、图库映射、认证发布、
 - **MEM-001**：App 1.0 同时展示并支持管理员手动发放 rank 10 心遇、20 心悦、30 心知、40 心契、50 心耀，不提供在线销售。
 - **MEM-002**：授权只使用 rank 和 entitlement；名称、文案、颜色和价格不得参与权限判断。
 - **MEM-003**：高等级默认继承低等级权益；不继承项必须显式配置和说明。
-- **MEM-004**：会员目录必须包含明确价格、期限、续订、权益值、接收主体说明和最低客户端能力。
+- **MEM-004**：App 1.0 会员目录必须包含获取方式、期限、权益值、接收主体说明和最低客户端能力，不显示在线价格、购买、续订或退款；未来在线销售启用后才加入对应字段。
 - **MEM-005**：现有通用展示和额度字段可以服务端配置；未知能力在不支持的客户端安全忽略且不得扩大权限。
 - **MEM-006**：任何等级都不能绕过认证、审核、举报、拉黑、频控、资格、隐私或账本规则。
-- **MEM-007**：五个有效付费等级均具有 `direct_message.create` 基础 entitlement，差异通过额度和其他 entitlement 表达。
+- **MEM-007**：五个有效会员等级均具有 `direct_message.create` 和 `direct_message.send` 基础 entitlement，差异通过额度和其他 entitlement 表达。
 
 ### 3.6 金币与未来礼物/装扮要求
 
@@ -117,7 +117,16 @@ App 1.0 包含：账号、真人、公开资料、图库映射、认证发布、
 - **COM-007**：高额、高频、批量或负余额风险调币必须双人复核，发起人与复核人不得相同。
 - **COM-008**：错误分录只能通过关联冲正修复，不得编辑或删除原记录。
 
-### 3.7 本人认领要求
+### 3.7 站内通知要求
+
+- **NTF-001**：App 1.0 使用 HTTP 权威列表和已连接实时通道刷新站内通知，不接入 APNs、FCM 或其他系统推送。
+- **NTF-002**：通知至少分为消息、互动、会员/金币、系统/安全和营销；账号、安全、会员、金币和数据权利结果等必要通知不可被营销开关屏蔽。
+- **NTF-003**：通知由版本化业务事件和模板生成，使用稳定事件引用防重；Queue 重试不得重复增加未读数。
+- **NTF-004**：深链打开时重新校验目标对象、账号权限和客户端 capability，通知存在不代表目标仍可访问。
+- **NTF-005**：通知 payload、摘要、日志和分析不得包含完整私信正文、内部备注、证件、访问凭证或敏感证据。
+- **NTF-006**：多设备未读与已读状态以服务端为准；实时事件只提示刷新，不能成为唯一通知存储。
+
+### 3.8 本人认领要求
 
 - **CLM-001**：认领至少包含申请、身份核验、用途/权利复核、账号安全、管理员批准和绑定。
 - **CLM-002**：同一 Person 的并发认领必须进入冲突处理，不能后写覆盖。
@@ -125,7 +134,7 @@ App 1.0 包含：账号、真人、公开资料、图库映射、认证发布、
 - **CLM-004**：历史交接需要观看者明确同意、真人权利确认和管理员审批。
 - **CLM-005**：认领撤销、争议或账号受限时可暂停新会话或恢复平台运营，并记录审计。
 
-### 3.8 安全、隐私和后台要求
+### 3.9 安全、隐私和后台要求
 
 - **SEC-001**：所有对象级权限由服务端执行；客户端状态不得作为授权依据。
 - **SEC-002**：受保护 R2/Stream 媒体必须在服务端验证后签发短期凭证。
@@ -136,7 +145,17 @@ App 1.0 包含：账号、真人、公开资料、图库映射、认证发布、
 - **SEC-007**：真人/权利人必须有更正、暂停、撤回授权和争议渠道。
 - **SEC-008**：App 1.0 发布前必须关闭目标地区的运营主体、数据位置、跨境、年龄和目标商店结论；支付结论在未来在线商业化发布前关闭。
 
-### 3.9 平台和迁移约束
+### 3.10 运营看板与审计要求
+
+- **AUD-001**：产品指标、技术可观测性和审计事件必须分层存储、授权和保留，不能用一个通用日志替代。
+- **AUD-002**：所有管理员写操作、复核、规则发布/回滚、批量任务、应急操作和高风险敏感读取必须产生追加式审计事件。
+- **AUD-003**：审计至少记录 actor、role/scope、action、target/version、结果、原因、request/trace、申请/批准/执行关系和经脱敏的前后差异。
+- **AUD-004**：审计事件禁止编辑或删除；更正通过新关联事件完成，并建立 sequence/业务成功无审计等完整性检查。
+- **AUD-005**：运营看板只提供登记口径的聚合数据和质量/新鲜度状态；钻取重新鉴权，小样本或可识别个人的结果必须抑制。
+- **AUD-006**：私信正文、证件、内部备注、令牌、个人余额和敏感证据不得进入看板或通用审计 payload。
+- **AUD-007**：审计和敏感报表导出必须强认证、范围预览、必要复核、水印、短期下载凭证并审计导出/下载行为。
+
+### 3.11 平台和迁移约束
 
 - **CON-001**：基础设施使用 Cloudflare Workers、Workers Assets、D1、R2、Durable Objects、Queues、Workflows、Turnstile、WAF 和 Rate Limiting；不使用 Cloudflare Pages。
 - **CON-002**：Web 与 API 保持独立 Worker，管理后台保留 Nuxt；Compose Web 不在范围。
@@ -146,7 +165,7 @@ App 1.0 包含：账号、真人、公开资料、图库映射、认证发布、
 - **CON-006**：迁移使用共享核心 + 渐进切换，每个阶段只有一个写主并提供对账和回滚点。
 - **CON-007**：当前阶段只允许文档变更，不允许创建实现代码或运行生产迁移。
 
-### 3.10 工程指南
+### 3.12 工程指南
 
 - **GUD-001**：优先保持逻辑领域边界，在容量或团队需要前不强制拆分微服务。
 - **GUD-002**：配置包含 schema、版本、生效时间、地区/渠道、灰度、审批和回滚。
@@ -165,7 +184,7 @@ Person ──< PersonAuthorization / Verification / OperatorAssignment / Claim
 PersonProfile ──< ProfileGallery >── Gallery ──< Media
 Account ──< Conversation >── Person
 Conversation ──< Message / Receipt / Assignment
-Account ──< EntitlementGrant / Order / WalletEntry / CosmeticInventory
+Account ──< MembershipGrant / AccountEntitlementGrant / Order / WalletEntry / CosmeticInventory
 PersonProfile ──< GiftTransaction
 ```
 
@@ -179,8 +198,9 @@ PersonProfile ──< GiftTransaction
 | 私信 | `/api/v2/conversations` | 参与者 + entitlement + 状态 |
 | 会员和订单 | `/api/v2/catalog`, `/api/v2/orders`, `/entitlements` | 当前账号/公开目录 |
 | 钱包和商品 | `/api/v2/me/wallet`, `/gifts`, `/cosmetics` | 当前账号 |
+| 站内通知 | `/api/v2/notifications`, `/notification-preferences` | 当前账号 |
 | 举报和拉黑 | `/api/v2/reports`, `/person-profiles/:id/block` | 当前账号 |
-| 管理后台 | `/api/v2/admin/*` | 强认证 + RBAC + 审计 |
+| 管理后台 | `/api/v2/admin/*` | 强认证 + RBAC + 对象范围 + 审计 |
 
 ### 4.3 会话创建响应
 
@@ -216,12 +236,13 @@ PersonProfile ──< GiftTransaction
 {
   "entryId": "le_01...",
   "accountId": "acc_01...",
-  "direction": "debit",
+  "direction": "credit",
   "amount": 100,
-  "businessType": "gift_purchase",
-  "businessId": "gift_01...",
-  "reasonCode": "USER_PURCHASE",
-  "userVisibleDescription": "赠送虚拟礼物",
+  "businessType": "admin_adjustment",
+  "businessId": "adj_01...",
+  "reasonCode": "SERVICE_COMPENSATION",
+  "userVisibleDescription": "平台服务补偿",
+  "previousBalance": 320,
   "balanceAfter": 420,
   "createdAt": "2026-07-20T12:00:00Z"
 }
@@ -241,6 +262,9 @@ PersonProfile ──< GiftTransaction
 - **AC-010**：Given 真人完成认领，When 新建会话，Then 路由本人；历史会话无 consent 时本人不可读取。
 - **AC-011**：Given 客户端收到未知 entitlement，When 渲染和调用 API，Then 安全忽略展示且不能自行获得权限。
 - **AC-012**：Given 真人授权被撤回，When 公开查询或请求媒体凭证，Then 资料/媒体停止可用并保留审计。
+- **AC-013**：Given 会员到期仍停留在既有会话，When 继续发送，Then 因缺少 `direct_message.send` 被拒绝，历史会话保持只读。
+- **AC-014**：Given 业务事件因 Queue 重试，When 生成站内通知，Then 用户只得到一条通知且未读数只增加一次。
+- **AC-015**：Given 管理员执行会员发放或调币，When 按业务单号查询，Then 可关联申请、复核、执行、通知和不可修改的审计时间线。
 
 ## 6. Test Automation Strategy
 

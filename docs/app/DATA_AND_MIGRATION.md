@@ -27,7 +27,8 @@ erDiagram
     ACCOUNT ||--o{ CONVERSATION : starts
     PERSON ||--o{ CONVERSATION : target
     CONVERSATION ||--o{ MESSAGE_INDEX : contains
-    ACCOUNT ||--o{ ENTITLEMENT_GRANT : owns
+    ACCOUNT ||--o{ MEMBERSHIP_GRANT : owns
+    ACCOUNT ||--o{ ACCOUNT_ENTITLEMENT_GRANT : may_have
     ACCOUNT ||--o{ WALLET_ENTRY : owns
     ACCOUNT ||--o{ ORDER : places
     PERSON_PROFILE ||--o{ GIFT_TRANSACTION : receives_expression
@@ -91,7 +92,9 @@ erDiagram
 | `recommendation_rule_versions` | `id`, `mode`, `status`, `config_json`, `catalog_version` | 不可变推荐规则版本 |
 | `editorial_placements` | `id`, `profile_id`, `slot`, `starts_at`, `ends_at`, `status` | 明确披露的运营精选 |
 | `heat_snapshots` | `profile_id`, `heat_version`, `bucket`, `calculated_at` | 抗刷、时间衰减后的热度投影 |
-| `notifications` | `id`, `account_id`, `category`, `event_ref`, `read_at`, `created_at` | App 1.0 站内通知与未读状态 |
+| `notification_event_definitions` | `event_type`, `category`, `necessity`, `schema_version`, `status` | 事件、必要性、去重和 action 契约 |
+| `notification_templates` | `id`, `event_type`, `locale`, `version`, `status`, `effective_at` | 不可变站内模板版本 |
+| `notifications` | `id`, `account_id`, `category`, `event_ref`, `template_version`, `target_ref`, `status`, `read_at`, `created_at` | App 1.0 站内通知、目标和未读状态 |
 | `notification_preferences` | `account_id`, `category`, `enabled`, `updated_at` | 站内通知偏好；必要安全通知不可关闭 |
 
 `viewer_interactions` 不存在 reciprocal/matched 状态。
@@ -100,9 +103,9 @@ erDiagram
 
 | 表 | 关键字段 | 说明 |
 |----|----------|------|
-| `conversations` | `id`, `viewer_account_id`, `person_id`, `operation_mode`, `status`, `last_sequence` | 会话索引 |
-| `conversation_assignments` | `conversation_id`, `operator_id/group_id`, `status`, `assigned_at` | 管理员分配 |
-| `message_index` | `conversation_id`, `sequence`, `sender_type`, `sender_ref`, `content_ref`, `status` | D1 查询投影 |
+| `conversations` | `id`, `viewer_account_id`, `person_id`, `operation_mode`, `status`, `disclosure_version`, `last_sequence` | 会话索引与接收主体披露 |
+| `conversation_assignments` | `conversation_id`, `operator_id/group_id`, `status`, `lease_version`, `assigned_at` | 管理员分配和并发租约 |
+| `message_index` | `conversation_id`, `sequence`, `client_message_id`, `sender_type`, `sender_ref`, `content_ref`, `status`, `recall_until` | D1 查询投影、幂等和撤回窗口 |
 | `message_receipts` | `conversation_id`, `sequence`, `recipient_type`, `read_at` | 实际接收主体回执 |
 | `conversation_handover_consents` | `conversation_id`, `account_id`, `decision`, `version` | 历史交接同意 |
 | `internal_conversation_notes` | `conversation_id`, `operator_id`, `body_ref` | 后台隔离备注 |
@@ -113,16 +116,22 @@ erDiagram
 
 | 表 | 关键字段 | 说明 |
 |----|----------|------|
-| `membership_tiers` | `id`, `rank`, `name`, `catalog_version` | 五级展示目录 |
-| `entitlement_definitions` | `key`, `value_type`, `schema_version` | 权限定义 |
+| `membership_catalog_versions` | `id`, `region`, `status`, `effective_at`, `min_client_version` | 不可变会员目录发布版本 |
+| `membership_tiers` | `id`, `rank`, `name`, `catalog_version` | 五级展示目录；名称不参与授权 |
+| `entitlement_definitions` | `key`, `value_type`, `schema_version`, `merge_policy`, `safe_default` | typed 权限定义 |
 | `tier_entitlements` | `tier_id`, `key`, `value_json` | 等级权益 |
-| `entitlement_grants` | `account_id`, `key`, `value_json`, `source`, `valid_until` | 已解析发放 |
+| `membership_grant_requests` | `id`, `account_id`, `action`, `tier_id`, `status`, `operator_id`, `approver_id` | 发放、续期、替换、撤销和复核请求 |
+| `membership_grants` | `id`, `account_id`, `tier_id`, `source`, `valid_from`, `valid_until`, `revoked_by_event_id` | 会员等级的追加式有效记录 |
+| `account_entitlement_grants` | `id`, `account_id`, `key`, `value_json`, `source`, `valid_from`, `valid_until` | 经授权的账号级例外权益 |
+| `entitlement_usage_counters` | `account_id`, `key`, `period_start`, `used`, `version` | 额度原子消费和周期重置 |
 | `products` / `product_versions` | `id`, `type`, `price`, `currency`, `resource_version` | 未来商业化：会员/金币/礼物/装扮目录 |
 | `orders` | `id`, `account_id`, `external_transaction_id`, `status` | 未来商业化：订单 |
-| `wallet_entries` | `id`, `account_id`, `direction`, `amount`, `reason_code`, `balance_after` | 只追加账本 |
+| `wallets` | `account_id`, `currency_code`, `balance_snapshot`, `last_sequence`, `version` | 钱包权威查询快照；可从分录重建 |
+| `wallet_entries` | `id`, `account_id`, `sequence`, `direction`, `amount`, `reason_code`, `previous_balance`, `balance_after`, `reversal_of` | 只追加账本 |
 | `gift_transactions` | `id`, `account_id`, `profile_id`, `product_version_id`, `wallet_entry_id` | 未来商业化：礼物记录 |
 | `cosmetic_inventory` | `account_id`, `product_version_id`, `valid_until`, `equipped_slot` | 未来商业化：装扮库存 |
-| `coin_adjustment_requests` | `id`, `operator_id`, `approver_id`, `reason`, `status` | 调币和复核 |
+| `coin_adjustment_requests` | `id`, `business_ref`, `account_id`, `direction`, `amount`, `operator_id`, `approver_id`, `reason`, `status` | 单笔调币、复核和执行 |
+| `coin_adjustment_batches` / `items` | `id`, `status`, `operator_id`, `approver_id`; `batch_id`, `account_id`, `external_ref`, `status` | 批量校验、逐项幂等和部分结果 |
 
 ### 3.6 审核和审计
 
@@ -132,6 +141,10 @@ erDiagram
 | `reports` / `report_evidence` | 用户举报和最小证据快照 |
 | `moderation_actions` | 暂停、隐藏、冻结、警告和恢复 |
 | `audit_events_v2` | 管理员和高风险系统写操作的追加事件 |
+| `audit_integrity_checkpoints` | 审计 sequence、完整性清单、验证与恢复结果 |
+| `metric_definitions` / `metric_versions` | 运营指标定义、Owner、来源、敏感级别和生效版本 |
+| `metric_snapshots` | 按允许维度聚合的指标结果、新鲜度和质量状态 |
+| `operational_incidents` | 异常级别、Owner、状态、Runbook 和处置时间线 |
 | `migration_jobs` / `migration_items` | 迁移任务、逐项结果、重试和证据 |
 
 ## 4. Stable ID 与映射

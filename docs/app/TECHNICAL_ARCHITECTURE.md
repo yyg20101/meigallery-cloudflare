@@ -126,7 +126,7 @@ apps/
 
 - `platform_managed` 会话：观看者 + 平台运营身份，具体操作员只在审计中保存。
 - `person_managed` 会话：观看者 + 已认领真人账号。
-- 建会话需要 `direct_message.create` entitlement，不需要双方同意。
+- 建会话需要 `direct_message.create`，发送需要 `direct_message.send`，均不需要双方同意；会员到期后既有会话只读。
 - Durable Object 按 `conversationId` 串行处理消息、序号、连接和已读；D1 保存会话索引、可查询投影和审计关联。
 
 ### 4.5 Membership & Commerce

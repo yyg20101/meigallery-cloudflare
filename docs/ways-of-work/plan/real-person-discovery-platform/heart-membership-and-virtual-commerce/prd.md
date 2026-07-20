@@ -16,6 +16,8 @@ App 版本：1.0
 
 范围说明：App 1.0 只交付五级会员展示与管理员手动发放、entitlement、金币余额/明细和管理员调币。购买、充值、礼物与装扮要求属于后续商业化设计，不纳入 App 1.0 上线验收，详见 [App 1.0 发布范围](../app-1-0-release-scope/prd.md)。
 
+App 1.0 可验收细节分别以 [心享会员、Entitlement 与管理员手动发放](../membership-entitlements-and-manual-grants/prd.md) 和 [金币钱包、追加式账本与管理员调币](../wallet-ledger-and-admin-coin-adjustments/prd.md) 为准；本文继续承担长期商业化边界。
+
 ## 3. Goal
 
 ### Problem
@@ -81,7 +83,7 @@ App 版本：1.0
 
 - **HMC-FR-006**：entitlement 至少支持布尔、数值额度、枚举档位、集合、时间窗口和按周期重置六类值。
 - **HMC-FR-007**：App 1.0 权限目录至少覆盖：创建私信、每日新会话额度、高级筛选档位、保存筛选数量、浏览历史保留、收藏文件夹数量、徽章动画、客服优先级和新功能优先体验；赠币、礼物和装扮 entitlement 作为未来字段，不在 1.0 下发可执行值。
-- **HMC-FR-043**：心遇至心耀五级有效会员均必须解析出 `direct_message.create=true`；等级差异通过额度和其他 entitlement 表达。
+- **HMC-FR-043**：心遇至心耀五级有效会员均必须解析出 `direct_message.create=true` 和 `direct_message.send=true`；等级差异通过额度和其他 entitlement 表达。
 - **HMC-FR-008**：服务端返回已解析 entitlement 快照、目录版本、来源和有效期；每个受限 API 在服务端重新校验，不信任客户端缓存。
 - **HMC-FR-009**：目录支持生效时间、失效时间、灰度范围、最低客户端版本、回滚版本和变更审计。
 - **HMC-FR-010**：旧客户端遇到未知 entitlement 时必须忽略展示且不得自行推断授权；服务端不得向不支持该能力的客户端发放不可执行操作。

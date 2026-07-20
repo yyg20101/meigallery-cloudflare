@@ -8,6 +8,8 @@ App 版本：1.0
 
 范围说明：App 1.0 只交付五级会员展示与管理员手动发放、entitlement、金币余额/明细和管理员加扣币/冲正。在线支付、金币充值、礼物和装扮属于后续商业化阶段；本文保留其长期设计，但不构成 App 1.0 发布门禁。
 
+App 1.0 产品验收分别以 [心享会员、Entitlement 与管理员手动发放 PRD](../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md) 和 [金币钱包、追加式账本与管理员调币 PRD](../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md) 为准。
+
 ## 1. 商业化原则
 
 - 权益透明：1.0 明确展示功能、额度、期限、接收主体和获取方式；未来在线销售时再展示价格、续订和退款。
@@ -36,6 +38,7 @@ App 1.0 五级全部展示并可由管理员手动发放，不提供在线销售
 | 权限键示例 | 类型 | 说明 |
 |------------|------|------|
 | `direct_message.create` | bool | 是否可创建真人私信 |
+| `direct_message.send` | bool | 是否可在有效会话中发送私信；会员到期后既有会话只读 |
 | `direct_message.new_threads_per_day` | quota | 每日新会话额度 |
 | `discovery.filter_tier` | enum | 基础/进阶/高级筛选档位 |
 | `discovery.saved_filters` | quota | 保存筛选数量 |

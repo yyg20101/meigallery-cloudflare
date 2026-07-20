@@ -179,8 +179,9 @@ App 1.0 不包含普通用户桌面客户端。Nuxt 管理后台在桌面端采�
 - **PRD-FR-053**：管理员消息显示为平台运营回复，并记录实际操作员；不得伪造真人本人在线、输入、已读或回复。
 - **PRD-FR-054**：App 1.0 消息支持文本、表情、系统消息，以及发送、失败、审核中、送达、已读、撤回规则、举报、拉黑、静音和关闭状态；图片等媒体消息以后独立启用。
 - **PRD-FR-055**：会员权益不保证任何回复时效或关系结果。
+- **PRD-FR-056**：只有有效 `direct_message.send` entitlement 才能在会话中发送私信；会员到期后历史会话保留为只读。
 
-详细要求见 [真人发现、单向互动与代运营私信 PRD](../ways-of-work/plan/real-person-discovery-platform/managed-person-discovery-and-messaging/prd.md)。
+总纲见 [真人发现、单向互动与代运营私信 PRD](../ways-of-work/plan/real-person-discovery-platform/managed-person-discovery-and-messaging/prd.md)；App 1.0 可验收细节见 [会员私信、实时会话与平台代运营工作台 PRD](../ways-of-work/plan/real-person-discovery-platform/member-messaging-and-managed-operations/prd.md)。
 
 ### 5.7 心享会员
 
@@ -189,7 +190,9 @@ App 1.0 不包含普通用户桌面客户端。Nuxt 管理后台在桌面端采�
 - **PRD-FR-062**：App 1.0 会员页展示获取方式、有效期、具体额度、接收主体、限制和条款；价格、续订和退款仅在未来在线购买启用后展示。
 - **PRD-FR-063**：高等级默认继承低等级；到期后自动回落免费权限。
 - **PRD-FR-064**：现有通用字段可远程配置；未知能力在旧客户端安全忽略。
-- **PRD-FR-065**：心遇至心耀五级有效会员均具备 `direct_message.create` 基础 entitlement；差异由额度和其他 entitlement 表达。
+- **PRD-FR-065**：心遇至心耀五级有效会员均具备 `direct_message.create` 和 `direct_message.send` 基础 entitlement；差异由额度和其他 entitlement 表达。
+
+详细要求见 [心享会员、Entitlement 与管理员手动发放 PRD](../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md)。
 
 ### 5.8 金币与后续虚拟商品
 
@@ -200,7 +203,7 @@ App 1.0 不包含普通用户桌面客户端。Nuxt 管理后台在桌面端采�
 - **PRD-FR-074**：管理员调币使用追加式账本、标准原因、用户说明、审计和高风险双人复核。
 - **PRD-FR-075**：未来订单、扣币、赠礼和发货必须幂等；余额不足或失败时不产生部分扣款。
 
-详细要求见 [心享会员、金币、礼物与个性装扮 PRD](../ways-of-work/plan/real-person-discovery-platform/heart-membership-and-virtual-commerce/prd.md)。
+长期商业边界见 [心享会员、金币、礼物与个性装扮 PRD](../ways-of-work/plan/real-person-discovery-platform/heart-membership-and-virtual-commerce/prd.md)；App 1.0 可验收细节见 [金币钱包、追加式账本与管理员调币 PRD](../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md)。
 
 ### 5.9 通知、帮助和数据权利
 
@@ -208,7 +211,7 @@ App 1.0 不包含普通用户桌面客户端。Nuxt 管理后台在桌面端采�
 - **PRD-FR-081**：交易、安全和账号通知不得因关闭营销通知而丢失。
 - **PRD-FR-082**：用户可访问帮助、举报进度、申诉、隐私设置、数据导出和注销。
 
-详细要求见 [我的、隐私设置与数据权利 PRD](../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md) 和 [举报、拉黑与安全审核 PRD](../ways-of-work/plan/real-person-discovery-platform/report-blocking-and-moderation/prd.md)。
+通知细节见 [站内通知中心与通知偏好 PRD](../ways-of-work/plan/real-person-discovery-platform/in-app-notification-center/prd.md)；数据权利和安全处置分别见 [我的、隐私设置与数据权利 PRD](../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md) 和 [举报、拉黑与安全审核 PRD](../ways-of-work/plan/real-person-discovery-platform/report-blocking-and-moderation/prd.md)。
 
 ### 5.10 后台
 
@@ -216,7 +219,7 @@ App 1.0 不包含普通用户桌面客户端。Nuxt 管理后台在桌面端采�
 - **PRD-FR-091**：认证、发布、代运营、财务、复核和审计使用独立角色，所有写操作记录原因和前后状态。
 - **PRD-FR-092**：批量任务逐项幂等，单项失败不得重复处理已成功项目。
 
-后台 taxonomy、推荐运营和安全审核分别以 [A-04 PRD](../ways-of-work/plan/real-person-discovery-platform/taxonomy-region-and-category-management/prd.md)、[A-05 PRD](../ways-of-work/plan/real-person-discovery-platform/recommendation-and-popularity-operations/prd.md) 和 [A-07 PRD](../ways-of-work/plan/real-person-discovery-platform/report-blocking-and-moderation/prd.md) 为详细验收依据。
+后台 taxonomy、推荐运营、安全审核、代运营、会员发放、调币和审计分别以 [A-04 PRD](../ways-of-work/plan/real-person-discovery-platform/taxonomy-region-and-category-management/prd.md)、[A-05 PRD](../ways-of-work/plan/real-person-discovery-platform/recommendation-and-popularity-operations/prd.md)、[A-07 PRD](../ways-of-work/plan/real-person-discovery-platform/report-blocking-and-moderation/prd.md)、[A-06 PRD](../ways-of-work/plan/real-person-discovery-platform/member-messaging-and-managed-operations/prd.md)、[A-08 PRD](../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md)、[A-10 PRD](../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md) 和 [A-13 PRD](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md) 为详细验收依据。
 
 ## 6. 核心状态
 

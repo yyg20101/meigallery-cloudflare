@@ -185,6 +185,7 @@ Accept-Language: zh-CN
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/api/v2/catalog/memberships` | 五级会员目录、获取方式和已启用 entitlement |
+| GET | `/api/v2/me/membership` | 当前等级、有效区间、发放来源摘要和用户可见时间线 |
 | GET | `/api/v2/me/entitlements` | 已解析权限快照 |
 | POST | `/api/v2/orders` | 未来：创建购买意图 |
 | POST | `/api/v2/orders/verify` | 未来：提交商店交易供服务端验证 |
@@ -192,7 +193,7 @@ Accept-Language: zh-CN
 | GET | `/api/v2/me/orders` | 未来：订单列表 |
 | GET | `/api/v2/me/orders/:orderId` | 未来：订单详情 |
 
-entitlement 响应包含目录版本、来源、值、有效期和最低客户端版本。客户端可缓存展示，但受限 API 每次服务端重验。
+entitlement 响应包含目录版本、来源、值、有效期、已用/剩余额度、重置时间和最低客户端版本。客户端可缓存展示，但受限 API 每次服务端重验。目录使用 `rank` 和稳定 key；等级中文名只用于展示。App 1.0 不部署订单写路由或向客户端返回购买 capability。
 
 ## 9. 会话与消息 API
 
@@ -202,7 +203,8 @@ entitlement 响应包含目录版本、来源、值、有效期和最低客户�
 | GET | `/api/v2/conversations` | 当前账号会话列表 |
 | GET | `/api/v2/conversations/:id` | 会话、接收主体和状态 |
 | GET | `/api/v2/conversations/:id/messages` | 按 sequence 补拉消息 |
-| POST | `/api/v2/conversations/:id/messages` | HTTP 发送兜底 |
+| POST | `/api/v2/conversations/:id/messages` | HTTP 发送兜底；校验有效 `direct_message.send` |
+| POST | `/api/v2/conversations/:id/messages/:sequence/recall` | 在服务端返回窗口内撤回本人消息；幂等 |
 | POST | `/api/v2/conversations/:id/read` | 实际接收方已读到 sequence |
 | POST | `/api/v2/conversations/:id/mute` | 静音/取消静音 |
 | POST | `/api/v2/conversations/:id/close` | 用户关闭会话 |
@@ -233,7 +235,7 @@ App 1.0 的用户消息 payload 只允许 `text` 和 `emoji`；`system` 只能�
 
 ## 10. 实时通道
 
-连接过程：HTTP 获取短期 WebSocket ticket → 连接会话 Durable Object → `hello` 携带最后确认 sequence → 服务端补发缺失事件。
+连接过程：`POST /api/v2/realtime/tickets` 获取绑定账号、设备和允许会话范围的短期 WebSocket ticket → 连接会话 Durable Object → `hello` 携带最后确认 sequence → 服务端补发缺失事件。
 
 通用事件：
 
@@ -259,6 +261,8 @@ App 1.0 的用户消息 payload 只允许 `text` 和 `emoji`；`system` 只能�
 | `conversation.restricted` | 拉黑、暂停、安全限制或关闭 |
 | `entitlement.changed` | 会员变化提示客户端刷新 HTTP 快照 |
 | `notification.created` | 新站内通知，提示客户端刷新通知列表/未读数 |
+| `notification.read_state_changed` | 多设备已读变化，提示刷新服务端未读数 |
+| `wallet.changed` | 钱包分录生效，提示刷新权威余额和明细 |
 
 不为平台代运营会话发送 `person.typing`、`person.online` 或 `person.read` 事件。输入状态仅在真实发送主体主动产生且策略允许时短期发送，不持久化。
 
@@ -267,12 +271,13 @@ App 1.0 的用户消息 payload 只允许 `text` 和 `emoji`；`system` 只能�
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/api/v2/notifications` | 按消息、互动、会员/金币、系统/安全分类分页查询 |
+| GET | `/api/v2/notifications/:id` | 通知安全详情和当前目标可用状态 |
 | GET | `/api/v2/notifications/unread-counts` | 各分类未读数 |
 | POST | `/api/v2/notifications/:id/read` | 标记单条已读，幂等 |
 | POST | `/api/v2/notifications/read-all` | 按分类标记全部已读，幂等 |
-| GET/PUT | `/api/v2/me/notification-preferences` | 站内通知偏好；交易/安全必要通知不可关闭 |
+| GET/PUT | `/api/v2/me/notification-preferences` | 站内通知偏好；账号/安全/会员/金币/数据权利必要通知不可关闭 |
 
-App 1.0 通过 HTTP 拉取和已连接实时通道刷新站内通知，不依赖 APNs、FCM 或其他系统推送。
+App 1.0 通过 HTTP 拉取和已连接实时通道刷新站内通知，不依赖 APNs、FCM 或其他系统推送。通知 action 使用受控 `targetType + targetId + action`，打开时重新校验目标和客户端 capability；实时事件不携带完整私信正文。
 
 ## 12. 钱包、礼物与装扮 API
 
@@ -280,6 +285,7 @@ App 1.0 通过 HTTP 拉取和已连接实时通道刷新站内通知，不依赖
 |------|------|------|
 | GET | `/api/v2/me/wallet` | 余额和最后同步时间 |
 | GET | `/api/v2/me/wallet/entries` | 金币明细 |
+| GET | `/api/v2/me/wallet/entries/:entryId` | 用户可见原因、业务单安全引用和关联冲正 |
 | GET | `/api/v2/catalog/coin-packs` | 未来：金币包 |
 | GET | `/api/v2/catalog/gifts` | 未来：礼物目录 |
 | POST | `/api/v2/gifts` | 未来：赠礼并原子扣币；强制幂等 |
@@ -289,7 +295,7 @@ App 1.0 通过 HTTP 拉取和已连接实时通道刷新站内通知，不依赖
 | POST | `/api/v2/cosmetics/:productId/purchase` | 未来：金币购买 |
 | PUT/DELETE | `/api/v2/me/cosmetics/:inventoryId/equip` | 未来：装备/卸下 |
 
-赠礼返回订单/业务记录、钱包分录和权威余额。客户端不得先行扣减余额。
+App 1.0 钱包路由只读，余额来自追加式分录/受控快照，客户端不得先行加减。赠礼等未来写路由只有独立 Feature 上线后才部署；启用时返回订单/业务记录、钱包分录和权威余额。
 
 ## 13. 举报、拉黑与支持 API
 
@@ -316,16 +322,17 @@ App 1.0 通过 HTTP 拉取和已连接实时通道刷新站内通知，不依赖
 | `/taxonomy`, `/taxonomy-catalogs` | 标签/地区/分类、alias、映射、合并和版本发布 |
 | `/recommendation-rules`, `/editorial-placements` | 规则版本、dry-run、精选、灰度、暂停和回滚 |
 | `/operation-assignments` | 真人运营模式和管理员组 |
-| `/managed-conversations` | 队列、分配、平台回复和内部备注 |
+| `/managed-conversations`, `/conversation-assignments` | 队列、租约分配、平台回复、内部备注和安全升级 |
 | `/reviews`, `/reports`, `/appeals` | 举报案件、最小证据、审核、安全处置和申诉 |
-| `/membership-catalogs`, `/membership-grants` | 1.0 五级权益、手动发放、撤销和有效期 |
+| `/membership-catalogs`, `/entitlement-definitions`, `/membership-grants` | 1.0 五级目录、typed entitlement、预览、手动发放/续期/替换/撤销、复核和有效期 |
 | `/products` | 未来：价格和商品版本 |
-| `/coin-adjustments` | 加币、扣币、批量任务、复核和冲正 |
+| `/coin-adjustments`, `/coin-adjustment-batches` | 加币、扣币、补偿、批量逐项结果、复核和冲正 |
 | `/orders`, `/reconciliation` | 未来：订单、退款和对账 |
 | `/claims`, `/handovers` | 未来：真人认领和交接 |
-| `/audit-events` | 只读审计查询 |
+| `/operation-dashboards`, `/operational-incidents` | 聚合指标、数据新鲜度、异常认领和受控安全开关 |
+| `/audit-events`, `/audit-exports` | 只读审计查询、完整性状态和受控短期导出 |
 
-管理员消息接口必须由服务端写入 `senderType=platform_operator`；客户端不能传入 `person` 冒充真人。
+管理员消息接口必须由服务端写入 `senderType=platform_operator`；客户端不能传入 `person` 冒充真人。会员发放、调币和审计导出均使用独立申请/批准/执行状态，批准不等于已经生效；任何余额变化只能产生新钱包分录。
 
 ## 15. 幂等与并发
 

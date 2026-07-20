@@ -15,7 +15,7 @@ App 版本：1.0
 - 真人供给：管理员上传、MeiGallery 合规导入，或外部提交后由管理员认证。
 - 普通注册账号：只作为观看者，不创建公开真人资料，不进入发现列表。
 - 核心行为：按地区、热度和偏好发现真人，喜欢、关注、收藏、浏览媒体。
-- 私信：只有有效心享会员可以创建；不要求双方同意或匹配。
+- 私信：只有有效心享会员可以创建和发送；不要求双方同意或匹配，到期后既有会话只读。
 - 当前接收方：未认领真人的私信由管理员代运营，前台必须披露平台运营身份。
 - 未来方向：真人本人完成认领后，可以运营资料并接收认领后的新会话。
 - App 1.0：五级心享会员由管理员手动发放，所有有效等级可私信；支持管理员加扣币与用户明细，不接入支付和系统推送。
@@ -55,6 +55,11 @@ App 版本：1.0
 | [标签、地区与分类目录管理](../ways-of-work/plan/real-person-discovery-platform/taxonomy-region-and-category-management/prd.md) | A-04 taxonomy、地区层级、映射和目录版本 |
 | [推荐位、排序规则与热度运营](../ways-of-work/plan/real-person-discovery-platform/recommendation-and-popularity-operations/prd.md) | A-05 资格、排序、热度、精选、灰度和回滚 |
 | [举报、拉黑与安全审核](../ways-of-work/plan/real-person-discovery-platform/report-blocking-and-moderation/prd.md) | A-07 举报证据、拉黑联动、审核处置和申诉 |
+| [心享会员、Entitlement 与管理员手动发放](../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md) | F-09、A-08 五级目录、typed entitlement、grant、到期、复核与迁移 |
+| [会员私信、实时会话与平台代运营](../ways-of-work/plan/real-person-discovery-platform/member-messaging-and-managed-operations/prd.md) | F-07、A-06 直接建会话、持续披露、消息状态、实时恢复和运营队列 |
+| [站内通知中心与通知偏好](../ways-of-work/plan/real-person-discovery-platform/in-app-notification-center/prd.md) | F-12 分类、模板、未读、偏好、深链和 HTTP/实时刷新 |
+| [金币钱包、追加式账本与管理员调币](../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md) | F-10、A-10 余额、明细、加扣币、双人复核、冲正和对账 |
+| [运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md) | A-13 指标口径、最小化看板、追加审计、异常和受控导出 |
 | [产品需求文档](./PRODUCT_REQUIREMENTS.md) | 产品做什么、不做什么、模块、流程、指标和验收 |
 | [技术架构方案](./TECHNICAL_ARCHITECTURE.md) | 共享平台、Cloudflare 服务、KMP 分层和演进边界 |
 | [KMP 客户端技术栈与库选型](./KMP_CLIENT_TECH_STACK.md) | Jetpack KMP、Ktor、Coil、Room、视频播放和平台适配基线 |

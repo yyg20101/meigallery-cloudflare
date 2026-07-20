@@ -34,6 +34,11 @@ App 版本：1.0
 | 详细 | A-04 标签、地区与分类目录管理 | [PRD](./taxonomy-region-and-category-management/prd.md) | stable taxonomy、地区层级、legacy 映射与目录演进 |
 | 详细 | A-05 推荐位、排序规则与热度运营 | [PRD](./recommendation-and-popularity-operations/prd.md) | 候选资格、规则版本、热度、精选、灰度与回滚 |
 | 详细 | A-07 举报、拉黑与安全审核 | [PRD](./report-blocking-and-moderation/prd.md) | 举报案件、最小证据、拉黑、审核、处置与申诉 |
+| 详细 | F-09、A-08 心享会员、Entitlement 与管理员手动发放 | [PRD](./membership-entitlements-and-manual-grants/prd.md) | 五级目录、typed entitlement、grant、有效期、复核与旧会员迁移 |
+| 详细 | F-07、A-06 会员私信、实时会话与平台代运营 | [PRD](./member-messaging-and-managed-operations/prd.md) | 直接建会话、持续披露、消息状态、实时恢复、队列分配与安全升级 |
+| 详细 | F-12 站内通知中心与通知偏好 | [PRD](./in-app-notification-center/prd.md) | 事件模板、分类、未读、偏好、深链、HTTP/实时刷新与必要通知 |
+| 详细 | F-10、A-10 金币钱包与管理员调币 | [PRD](./wallet-ledger-and-admin-coin-adjustments/prd.md) | 余额明细、追加账本、加扣币、复核、批量、冲正与对账 |
+| 详细 | A-13 运营看板、审计日志与异常追踪 | [PRD](./operations-dashboard-and-audit-log/prd.md) | 指标口径、最小化看板、追加审计、完整性、异常与受控导出 |
 
 ## 3. 前台 Feature 拆分顺序
 
@@ -45,12 +50,12 @@ App 版本：1.0
 | F-04 | [搜索、筛选与保存条件](./person-discovery-and-profile-experience/prd.md) | M1/M2 | 搜索索引、会员 entitlement |
 | F-05 | [真人详情与媒体浏览](./person-discovery-and-profile-experience/prd.md) | M1 | Person/Profile/Gallery 映射、媒体授权 |
 | F-06 | [喜欢、关注、收藏与历史](./viewer-interactions-and-history/prd.md) | M1 | 观看者互动、隐私与幂等 |
-| F-07 | 心享会员私信与会话 | M2 | 心享会员、代运营工作台、实时消息 |
+| F-07 | [心享会员私信与会话](./member-messaging-and-managed-operations/prd.md) | M2 | 心享会员、代运营工作台、实时消息 |
 | F-08 | 礼物与互动记录 | 后续商业化 | 金币账本、礼物目录、会话 |
-| F-09 | 心享会员手动发放与权益 | App 1.0 | 五级目录、管理员发放、有效期、entitlement |
-| F-10 | 金币余额、明细与管理员调整 | App 1.0 | 钱包、追加账本、后台调币；充值后续立项 |
+| F-09 | [心享会员手动发放与权益](./membership-entitlements-and-manual-grants/prd.md) | App 1.0 | 五级目录、管理员发放、有效期、entitlement |
+| F-10 | [金币余额、明细与管理员调整](./wallet-ledger-and-admin-coin-adjustments/prd.md) | App 1.0 | 钱包、追加账本、后台调币；充值后续立项 |
 | F-11 | 头像框、主页皮肤与聊天皮肤 | 后续商业化 | 商品库存、装扮渲染、到期规则 |
-| F-12 | 站内通知中心 | App 1.0 | 消息、会员/金币和安全事件；系统推送后续立项 |
+| F-12 | [站内通知中心](./in-app-notification-center/prd.md) | App 1.0 | 消息、会员/金币和安全事件；系统推送后续立项 |
 | F-13 | [我的、隐私、数据导出与注销](./privacy-settings-and-data-rights/prd.md) | M1 | 账号、设备、数据权利 Workflow |
 
 ## 4. 后台 Feature 拆分顺序
@@ -62,14 +67,14 @@ App 版本：1.0
 | A-03 | [真人认证与发布审核](./person-verification-and-publication/prd.md) | M1 | 审核状态机、角色权限、审计 |
 | A-04 | [标签、地区与分类管理](./taxonomy-region-and-category-management/prd.md) | M1 | Taxonomy、搜索和推荐 |
 | A-05 | [推荐位与热度运营](./recommendation-and-popularity-operations/prd.md) | M1 | 热度指标、feature flags、审计 |
-| A-06 | 私信代运营工作台 | M2 | Conversation、管理员分配、消息审计 |
+| A-06 | [私信代运营工作台](./member-messaging-and-managed-operations/prd.md) | M2 | Conversation、管理员分配、消息审计 |
 | A-07 | [举报、拉黑与内容审核](./report-blocking-and-moderation/prd.md) | M1/M2 | UGC 规则、审核队列、证据存储 |
-| A-08 | 会员与 entitlement 管理 | M2 | 五级目录、grant、有效期 |
+| A-08 | [会员与 entitlement 管理](./membership-entitlements-and-manual-grants/prd.md) | M2 | 五级目录、grant、有效期 |
 | A-09 | 商品、礼物和装扮管理 | 后续商业化 | 商品目录、资产审核、价格版本 |
-| A-10 | 管理员加币、扣币与复核 | App 1.0 | 钱包账本、RBAC、双人复核 |
+| A-10 | [管理员加币、扣币与复核](./wallet-ledger-and-admin-coin-adjustments/prd.md) | App 1.0 | 钱包账本、RBAC、双人复核 |
 | A-11 | 订单、退款与账本审计 | 后续商业化 | 商店回调、冲正、财务对账 |
 | A-12 | 真人认领与资料交接 | M3 | 身份核验、授权、账号绑定、会话交接 |
-| A-13 | 运营看板与审计日志 | M1–M4 | 事件字典、数据最小化、权限 |
+| A-13 | [运营看板与审计日志](./operations-dashboard-and-audit-log/prd.md) | M1–M4 | 事件字典、数据最小化、权限 |
 
 ## 5. 依赖主链
 
@@ -119,6 +124,24 @@ flowchart LR
 ```
 
 第二批把 taxonomy、推荐规则、安全处置和数据权利作为贯穿前后台的治理能力：推荐配置不能绕过认证/授权，拉黑必须联动推荐与会话，用户清除/关闭后的数据不能继续作为新推荐信号。
+
+### 5.3 第三批 App 1.0 服务闭环
+
+```mermaid
+flowchart LR
+    MBR["F-09/A-08 五级会员与 Entitlement"] --> MSG["F-07/A-06 会员私信与代运营"]
+    MSG --> NTF["F-12 站内通知"]
+    MBR --> NTF
+    WAL["F-10/A-10 钱包账本与调币"] --> NTF
+    MBR --> OAU["A-13 看板与审计"]
+    MSG --> OAU
+    NTF --> OAU
+    WAL --> OAU
+    MOD["A-07 安全审核"] --> MSG
+    MOD --> OAU
+```
+
+第三批冻结 App 1.0 的服务与内控闭环：五级会员全部可私信但按 entitlement 表达差异；平台代运营身份持续披露；站内通知不依赖系统推送；金币只允许管理员通过追加账本调整；所有高风险动作进入审计、异常和对账。
 
 ## 6. 文档完成定义
 

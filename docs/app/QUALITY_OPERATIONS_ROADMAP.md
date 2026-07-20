@@ -103,6 +103,8 @@ App 版本：1.0
 - 调币阈值、双人复核、用户说明和审计通过演练。
 - 客服排班和安全队列容量支持邀请规模。
 
+M2A 的功能验收分别以 [会员与手动发放](../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md)、[私信与代运营](../ways-of-work/plan/real-person-discovery-platform/member-messaging-and-managed-operations/prd.md)、[站内通知](../ways-of-work/plan/real-person-discovery-platform/in-app-notification-center/prd.md)、[钱包与调币](../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md) 和 [运营看板与审计](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md) 为准。
+
 ## 6. M2B：未来在线商业化
 
 ### 6.1 范围
