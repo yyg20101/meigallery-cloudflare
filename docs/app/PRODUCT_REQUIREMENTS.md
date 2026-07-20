@@ -132,10 +132,12 @@ App 1.0 不包含普通用户桌面客户端。Nuxt 管理后台在桌面端采�
 
 ### 5.1 注册、登录与账号
 
-- **PRD-FR-001**：支持手机号/邮箱和经评审的第三方登录；账号激活前展示条款、隐私和目标地区必要资格要求。
+- **PRD-FR-001**：支持由首发地区、渠道和服务端 capability 启用的邮箱、手机号或经评审第三方登录；不要求所有方式同时启用。账号激活前展示条款、隐私和目标地区必要资格要求。
 - **PRD-FR-002**：用户可管理设备、远程退出、修改绑定、安全验证、数据导出和注销。
 - **PRD-FR-003**：注册只创建 `Account`，不得自动创建 `Person` 或 `PersonProfile`。
 - **PRD-FR-004**：服务端基于角色、账号状态、会员 entitlement 和对象关系授权。
+
+详细要求见 [观看者注册、登录与设备安全 PRD](../ways-of-work/plan/real-person-discovery-platform/account-access-and-device-management/prd.md)。
 
 ### 5.2 真人资料供给
 
@@ -143,6 +145,8 @@ App 1.0 不包含普通用户桌面客户端。Nuxt 管理后台在桌面端采�
 - **PRD-FR-011**：只有 `verified + published` 的资料进入推荐、列表、搜索和分享页。
 - **PRD-FR-012**：资料记录来源、授权、认证、媒体、标签、地区、运营主体和发布历史。
 - **PRD-FR-013**：暂停、撤销认证或归档后必须立即停止新曝光和新私信。
+
+详细要求见 [真人资料来源、上传与 MeiGallery 导入 PRD](../ways-of-work/plan/real-person-discovery-platform/person-source-upload-and-meigallery-import/prd.md) 和 [真人认证与发布审核 PRD](../ways-of-work/plan/real-person-discovery-platform/person-verification-and-publication/prd.md)。
 
 ### 5.3 发现、搜索与推荐
 
@@ -156,6 +160,8 @@ App 1.0 不包含普通用户桌面客户端。Nuxt 管理后台在桌面端采�
 - **PRD-FR-030**：详情展示认证标识、展示名、模糊地区、标签、简介、图库、运营说明和可执行操作。
 - **PRD-FR-031**：受保护媒体由服务端校验后发放短期访问凭证。
 - **PRD-FR-032**：页面始终提供举报、拉黑和分享入口；分享页遵循资料当前状态。
+
+详细要求见 [真人发现、搜索与资料浏览体验 PRD](../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md)。
 
 ### 5.5 单向互动
 
@@ -210,12 +216,29 @@ App 1.0 不包含普通用户桌面客户端。Nuxt 管理后台在桌面端采�
 
 ### 6.1 真人资料
 
+认证与发布使用两个独立状态轴，不能以单一状态同时表达证据结论和公开可见性。
+
+认证轴：
+
 ```text
-draft → pending_review → verified → published
-                    └→ rejected
-published → suspended → published
-published/suspended → archived
+unverified → pending → verified
+                    ├→ rejected
+                    └→ unverified（退回补充）
+verified → expired / revoked
+expired/revoked → pending（重新提交）
 ```
+
+发布轴：
+
+```text
+draft → pending_review → published
+                       ├→ draft（退回）
+                       └→ archived
+published → suspended → draft/pending_review → published
+published/suspended/draft → archived
+```
+
+只有认证有效、发布生效、用途授权有效且未被安全隐藏的同一资料版本可以进入公开投影。
 
 ### 6.2 会话运营模式
 

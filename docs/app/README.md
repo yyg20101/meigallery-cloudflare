@@ -46,6 +46,10 @@ App 版本：1.0
 | 文档 | 解决的问题 |
 |------|------------|
 | [App 1.0 发布范围](../ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md) | 1.0 必须交付、仅预留、未来升级和不承诺能力的边界 |
+| [观看者注册、登录与设备安全](../ways-of-work/plan/real-person-discovery-platform/account-access-and-device-management/prd.md) | F-01 登录适配、账号边界、会话、设备与撤权 |
+| [真人发现、搜索与资料浏览](../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md) | F-02–F-05 推荐、列表、筛选、详情与媒体权限 |
+| [真人来源、上传与 MeiGallery 导入](../ways-of-work/plan/real-person-discovery-platform/person-source-upload-and-meigallery-import/prd.md) | A-01–A-02 合规来源、授权、去重、批量任务与草稿生成 |
+| [真人认证与发布审核](../ways-of-work/plan/real-person-discovery-platform/person-verification-and-publication/prd.md) | A-03 双状态审核、公开投影、暂停撤权与审计 |
 | [产品需求文档](./PRODUCT_REQUIREMENTS.md) | 产品做什么、不做什么、模块、流程、指标和验收 |
 | [技术架构方案](./TECHNICAL_ARCHITECTURE.md) | 共享平台、Cloudflare 服务、KMP 分层和演进边界 |
 | [KMP 客户端技术栈与库选型](./KMP_CLIENT_TECH_STACK.md) | Jetpack KMP、Ktor、Coil、Room、视频播放和平台适配基线 |
@@ -61,10 +65,10 @@ App 版本：1.0
 
 ## 5. 评审顺序
 
-1. Owner、产品和运营确认产品需求、五级会员定位与路线优先级。
-2. 内容、法务与安全负责人确认真人来源、授权、认证和代运营披露。
-3. 设计负责人基于 UI/UX 文档产出线框、高保真和可点击原型。
-4. 架构、后端、KMP 和 Web 负责人评审技术、数据和契约。
+1. Owner、产品和运营确认发布范围、详细 Feature PRD、五级会员定位与路线优先级。
+2. 内容、法务与安全负责人关闭首批 PRD 中的真人来源、授权、认证声明、审核复核和推荐合规门禁。
+3. 设计负责人基于详细 Feature PRD 和 UI/UX 文档产出线框、高保真和可点击原型。
+4. 架构、后端、KMP 和 Web 负责人基于详细 PRD 编写模块技术方案并评审数据和契约。
 5. 运营与财务确认五级会员额度、有效期、手动发放、调币阈值和用户说明；价格、支付和退款在未来商业化立项时确认。
 6. 所有上线门禁有责任人和验收证据后，才进入实现排期。
 

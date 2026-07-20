@@ -17,24 +17,28 @@ App 版本：1.0
 - 未认领真人的私信由管理员代运营，并向观看者披露实际接收主体。
 - 会员功能使用 rank/entitlement，不硬编码心遇、心悦等展示名称。
 
-## 2. 本轮已完成 PRD
+## 2. 已完成 PRD
 
-| Feature | 文档 | 解决的问题 |
-|---------|------|------------|
-| App 1.0 发布范围 | [PRD](./app-1-0-release-scope/prd.md) | 首发必须交付、仅预留、未来升级和不承诺能力 |
-| 产品蓝图 | [PRD](./product-blueprint/prd.md) | 产品定位、角色、范围、路线和产品级验收 |
-| 真人发现与代运营私信 | [PRD](./managed-person-discovery-and-messaging/prd.md) | 真人资料准入、推荐、单向互动、心享会员私信和本人认领 |
-| 心享会员与虚拟商业化 | [PRD](./heart-membership-and-virtual-commerce/prd.md) | 五级会员、权限目录、金币、礼物、装扮和后台调币 |
+| 类型 | Feature | 文档 | 解决的问题 |
+|------|---------|------|------------|
+| 范围 | App 1.0 发布范围 | [PRD](./app-1-0-release-scope/prd.md) | 首发必须交付、仅预留、未来升级和不承诺能力 |
+| 总纲 | 产品蓝图 | [PRD](./product-blueprint/prd.md) | 产品定位、角色、范围、路线和产品级验收 |
+| 总纲 | 真人发现与代运营私信 | [PRD](./managed-person-discovery-and-messaging/prd.md) | 真人资料准入、推荐、单向互动、心享会员私信和本人认领 |
+| 总纲 | 心享会员与虚拟商业化 | [PRD](./heart-membership-and-virtual-commerce/prd.md) | 五级会员、权限目录、金币、礼物、装扮和后台调币 |
+| 详细 | F-01 观看者注册、登录与设备安全 | [PRD](./account-access-and-device-management/prd.md) | 登录适配、账号边界、会话、设备和撤权 |
+| 详细 | F-02–F-05 真人发现、搜索与资料浏览 | [PRD](./person-discovery-and-profile-experience/prd.md) | 推荐、列表、搜索筛选、详情和受保护媒体 |
+| 详细 | A-01–A-02 真人来源、上传与 MeiGallery 导入 | [PRD](./person-source-upload-and-meigallery-import/prd.md) | 手动供给、候选迁移、授权、去重和逐项幂等 |
+| 详细 | A-03 真人认证与发布审核 | [PRD](./person-verification-and-publication/prd.md) | 双状态审核、公开投影、暂停撤权和审计 |
 
 ## 3. 前台 Feature 拆分顺序
 
 | 序号 | Feature | 目标版本 | 主要依赖 |
 |------|---------|----------|----------|
-| F-01 | 注册、登录与设备管理 | M1 | 共享身份、条款、会话安全 |
-| F-02 | 首页与个性化推荐 | M1 | 真人公开投影、推荐规则 |
-| F-03 | 地区、热门、最新与分类列表 | M1 | 地区/标签体系、热度投影 |
-| F-04 | 搜索、筛选与保存条件 | M1/M2 | 搜索索引、会员 entitlement |
-| F-05 | 真人详情与媒体浏览 | M1 | Person/Profile/Gallery 映射、媒体授权 |
+| F-01 | [注册、登录与设备管理](./account-access-and-device-management/prd.md) | M1 | 共享身份、条款、会话安全 |
+| F-02 | [首页与个性化推荐](./person-discovery-and-profile-experience/prd.md) | M1 | 真人公开投影、推荐规则 |
+| F-03 | [地区、热门、最新与分类列表](./person-discovery-and-profile-experience/prd.md) | M1 | 地区/标签体系、热度投影 |
+| F-04 | [搜索、筛选与保存条件](./person-discovery-and-profile-experience/prd.md) | M1/M2 | 搜索索引、会员 entitlement |
+| F-05 | [真人详情与媒体浏览](./person-discovery-and-profile-experience/prd.md) | M1 | Person/Profile/Gallery 映射、媒体授权 |
 | F-06 | 喜欢、关注、收藏与历史 | M1 | 观看者互动、隐私与幂等 |
 | F-07 | 心享会员私信与会话 | M2 | 心享会员、代运营工作台、实时消息 |
 | F-08 | 礼物与互动记录 | 后续商业化 | 金币账本、礼物目录、会话 |
@@ -48,9 +52,9 @@ App 版本：1.0
 
 | 序号 | Feature | 目标版本 | 主要依赖 |
 |------|---------|----------|----------|
-| A-01 | 真人资料上传 | M0/M1 | Person/Profile 模型、R2 |
-| A-02 | MeiGallery 人物导入 | M0/M1 | legacy 映射、授权证据、迁移任务 |
-| A-03 | 真人认证与发布审核 | M1 | 审核状态机、角色权限、审计 |
+| A-01 | [真人资料上传](./person-source-upload-and-meigallery-import/prd.md) | M0/M1 | Person/Profile 模型、R2 |
+| A-02 | [MeiGallery 人物导入](./person-source-upload-and-meigallery-import/prd.md) | M0/M1 | legacy 映射、授权证据、迁移任务 |
+| A-03 | [真人认证与发布审核](./person-verification-and-publication/prd.md) | M1 | 审核状态机、角色权限、审计 |
 | A-04 | 标签、地区与分类管理 | M1 | Taxonomy、搜索和推荐 |
 | A-05 | 推荐位与热度运营 | M1 | 热度指标、feature flags、审计 |
 | A-06 | 私信代运营工作台 | M2 | Conversation、管理员分配、消息审计 |
@@ -77,6 +81,21 @@ Person/Profile/Gallery 建模
 ```
 
 安全、审计、数据权利、契约和可访问性是所有链路的横向前置，不作为最后补充模块。
+
+### 5.1 App 1.0 首批落地主链
+
+```mermaid
+flowchart LR
+    ACC["F-01 账号与设备"] --> DISC["F-02–F-05 发现与详情"]
+    SRC["A-01–A-02 来源与导入"] --> VER["A-03 认证与发布"]
+    VER --> PROJ["公开投影"]
+    PROJ --> DISC
+    DISC --> INT["F-06 单向互动"]
+    ACC --> INT
+    INT --> MSG["F-07 会员私信"]
+```
+
+首批详细 PRD 已冻结业务流程和门禁，但不代表开放参数已经关闭。正式进入实现前仍需按各 PRD 的“实施前门禁”完成首发地区、身份方式、授权范围、认证声明、审核复核和推荐规则决策。
 
 ## 6. 文档完成定义
 
