@@ -313,4 +313,4 @@ unclaimed → claim_submitted → identity_review
 
 ## 10. 文档关系
 
-本文件是产品层总需求。App 1.0 的启用边界以 [发布范围 PRD](../ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md) 为准；模块可验收细节以 [Feature PRD 目录](../ways-of-work/plan/real-person-discovery-platform/README.md) 为准；技术边界以 [技术架构](./TECHNICAL_ARCHITECTURE.md)、[数据与迁移](./DATA_AND_MIGRATION.md) 和 [API 契约](./API_AND_REALTIME_CONTRACT.md) 为准。发生冲突时，先更新发布范围、产品蓝图和决策登记，再同步所有下游文档，禁止在实现中自行选择旧规则。
+本文件是产品层总需求。App 1.0 的启用边界以 [发布范围 PRD](../ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md) 为准；模块可验收细节以 [Feature PRD 目录](../ways-of-work/plan/real-person-discovery-platform/README.md) 为准；页面交互以 [移动端规格](./MOBILE_APP_INTERACTION_SPEC.md)、[后台规格](./ADMIN_CONSOLE_INTERACTION_SPEC.md) 和 [统一状态文案与埋点目录](./UI_STATE_COPY_AND_ANALYTICS_CATALOG.md) 为准；技术边界以 [技术架构](./TECHNICAL_ARCHITECTURE.md)、[数据与迁移](./DATA_AND_MIGRATION.md) 和 [API 契约](./API_AND_REALTIME_CONTRACT.md) 为准。发生冲突时，先更新发布范围、产品蓝图和决策登记，再同步所有下游文档，禁止在实现中自行选择旧规则。

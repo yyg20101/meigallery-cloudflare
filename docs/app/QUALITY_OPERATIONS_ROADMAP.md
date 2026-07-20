@@ -31,7 +31,7 @@ App 版本：1.0
 
 ### 3.2 交付
 
-- 产品总纲、Feature PRD、UI 交互基础和决策清单。
+- 产品总纲、Feature PRD、移动端/后台页面交互规格、统一状态文案与埋点目录和决策清单。
 - `Account`、`Person`、`PersonProfile`、`Gallery`、授权、认证、运营和认领模型。
 - MeiGallery 数据盘点、stable ID、影子映射、导入和对账方案。
 - 心享会员五级、entitlement、商品、订单、钱包和只追加账本模型。

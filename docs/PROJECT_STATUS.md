@@ -82,6 +82,7 @@
 - 广告花费、campaign、ad set、ad 数据导入不属于当前 Pixel/Server API 同步范围。
 - Cloudflare Stream 视频链路和完整 zip 异步导入仍待实现。
 - 独立真人发现与互动 App 的 1.0 产品总纲、架构、数据迁移、API/实时通信、UI/UX、信任安全、商业账本和质量路线图处于需求讨论中，入口为 `docs/app/README.md`。App 1.0 发布范围已冻结为：真人发现、五级会员展示与管理员手动发放、所有有效会员私信、平台代运营、站内通知、管理员加扣币和用户金币明细；不接入在线支付、金币充值、系统推送、图片消息、礼物或装扮交易。详细 Feature PRD 已完成 F-01 账号与设备、F-02–F-05 发现/搜索/详情、F-06 单向互动、F-07/A-06 会员私信与代运营、F-09/A-08 会员/entitlement/手动发放、F-10/A-10 钱包账本与调币、F-12 站内通知、F-13 隐私与数据权利、A-01–A-02 真人来源/上传/MeiGallery 导入、A-03 认证发布、A-04 taxonomy/地区、A-05 推荐运营、A-07 举报安全审核和 A-13 运营看板/审计，均明确主流程、状态、权限、异常、埋点、验收与实施门禁。普通用户 Windows/macOS 客户端未承诺立项，桌面运营使用 Nuxt 管理后台；未来新增原生能力允许正常升级 App。目标架构为共享核心平台 + 渐进迁移，客户端采用 KMP + Compose Multiplatform，App 1.0 发布 Android/iOS。客户端库基线已确定为 Jetpack KMP + Ktor + Room/DataStore + Coil，视频采用 Android Media3/iOS AVPlayer 平台适配；Android App 1.0 使用 `minSdk = 26`，不兼容 API 25 及以下；精确工具链版本仍需在创建最小工程时验证。当前没有创建 KMP 工程、目标 API、真人/会话数据表或实时消息能力。
+- App 1.0 页面级交互设计参考已完成：移动端以稳定 Screen ID 覆盖认证、发现、互动、私信、通知、会员、钱包和数据权利；Nuxt 后台以 Page ID 覆盖真人、推荐、代运营、安全、会员、调币、通知和审计；统一目录已定义 API 错误映射、状态/文案/事件 key、关键披露、危险操作和组件状态。当前产出仍是低保真与交互规格，不是最终高保真视觉稿或实现代码。
 - App 进入实现前必须关闭正式品牌、首发地区、应用商店、运营主体、真人/年龄核验、内容审核、支付、Cloudflare 数据位置/跨境和中国大陆备案等开放决策；现有图库人物可以进入候选导入，但没有独立 App 用途授权、认证和发布审批时不得公开。
 
 ## 文档入口
@@ -97,3 +98,6 @@
 - `docs/app/README.md`：独立真人发现与互动 App 1.0 与共享业务平台的需求、KMP/CMP 客户端、迁移、UI、安全、商业化和路线图索引。
 - `docs/ways-of-work/plan/real-person-discovery-platform/README.md`：App 1.0 Feature PRD 索引、拆分顺序、依赖主链与详细验收入口。
 - `docs/app/KMP_CLIENT_TECH_STACK.md`：Jetpack KMP、网络、图片、本地存储、视频播放、媒体缓存和平台 source set 边界。
+- `docs/app/MOBILE_APP_INTERACTION_SPEC.md`：移动端 Screen ID、页面目录、关键旅程、低保真结构和页面级验收。
+- `docs/app/ADMIN_CONSOLE_INTERACTION_SPEC.md`：Nuxt 后台 Page ID、角色、工作台、审批状态、并发、低保真结构和后台验收。
+- `docs/app/UI_STATE_COPY_AND_ANALYTICS_CATALOG.md`：统一状态/文案/埋点 key、API 错误映射、危险操作和组件状态矩阵。

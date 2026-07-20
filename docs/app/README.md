@@ -36,7 +36,7 @@ App 版本：1.0
 |----|------|----------|
 | 一、产品战略与方向 | 定位、用户、边界、指标、阶段路线 | [产品需求](./PRODUCT_REQUIREMENTS.md)、[产品蓝图](../superpowers/specs/2026-07-20-real-person-discovery-product-blueprint-design.md) |
 | 二、角色、领域与技术基础 | Account、Person、Profile、Gallery、运营归属、认领和客户端技术栈 | [数据与迁移](./DATA_AND_MIGRATION.md)、[技术架构](./TECHNICAL_ARCHITECTURE.md)、[KMP 客户端技术栈](./KMP_CLIENT_TECH_STACK.md) |
-| 三、体验与交互基础 | 信息架构、导航、页面状态、权限提示、文案和无障碍 | [UI/UX 设计](./UI_UX_DESIGN.md) |
+| 三、体验与交互基础 | 信息架构、导航、移动端/后台页面、状态、文案、埋点和无障碍 | [UI/UX 设计](./UI_UX_DESIGN.md)、[移动端交互](./MOBILE_APP_INTERACTION_SPEC.md)、[后台交互](./ADMIN_CONSOLE_INTERACTION_SPEC.md)、[状态文案与埋点](./UI_STATE_COPY_AND_ANALYTICS_CATALOG.md) |
 | 四、前台功能 PRD | 发现、互动、会员私信、会员、金币、礼物和装扮 | [Feature PRD 目录](../ways-of-work/plan/real-person-discovery-platform/README.md) |
 | 五、后台与运营 PRD | 导入、认证、发布、代运营、商品、调币、退款、认领和审计 | [Feature PRD 目录](../ways-of-work/plan/real-person-discovery-platform/README.md) |
 | 六、运营、指标与交付 | 路线图、质量、安全、指标、发布门禁和开放决策 | [质量与路线图](./QUALITY_OPERATIONS_ROADMAP.md)、[决策登记](./DECISIONS_AND_OPEN_QUESTIONS.md) |
@@ -66,6 +66,9 @@ App 版本：1.0
 | [数据模型与迁移方案](./DATA_AND_MIGRATION.md) | 真人主体建模、MeiGallery 映射、影子迁移和回滚 |
 | [API 与实时通信契约](./API_AND_REALTIME_CONTRACT.md) | API 资源、鉴权、幂等、消息事件和错误模型 |
 | [UI/UX 设计文档](./UI_UX_DESIGN.md) | 移动/桌面信息架构、关键页面、状态、文案和组件 |
+| [移动端页面与交互规格](./MOBILE_APP_INTERACTION_SPEC.md) | Android/iOS Screen ID、设计路由、页面目录、关键旅程和低保真结构 |
+| [Nuxt 管理后台交互与低保真规格](./ADMIN_CONSOLE_INTERACTION_SPEC.md) | 后台 Page ID、角色、工作台、审批状态、并发和低保真结构 |
+| [统一 UI 状态、文案与埋点目录](./UI_STATE_COPY_AND_ANALYTICS_CATALOG.md) | 状态/文案/事件 key、错误映射、危险操作、组件矩阵和验收 |
 | [信任、安全、隐私与合规](./TRUST_SAFETY_PRIVACY_COMPLIANCE.md) | 真人授权、运营披露、消息治理、数据权利和发布门禁 |
 | [会员、金币与虚拟商品](./MONETIZATION_AND_LEDGER.md) | 心享会员、商品目录、订单、账本、调币和退款 |
 | [质量、运营与路线图](./QUALITY_OPERATIONS_ROADMAP.md) | App 1.0、后续可选阶段、测试、SLO、运营准备和阶段出口 |
@@ -77,7 +80,7 @@ App 版本：1.0
 
 1. Owner、产品和运营确认发布范围、详细 Feature PRD、五级会员定位与路线优先级。
 2. 内容、法务与安全负责人关闭首批 PRD 中的真人来源、授权、认证声明、审核复核和推荐合规门禁。
-3. 设计负责人基于详细 Feature PRD 和 UI/UX 文档产出线框、高保真和可点击原型。
+3. 设计负责人基于详细 Feature PRD、移动端/后台页面交互规格和统一状态文案目录产出高保真与可点击原型；线框结构已经形成。
 4. 架构、后端、KMP 和 Web 负责人基于详细 PRD 编写模块技术方案并评审数据和契约。
 5. 运营与财务确认五级会员额度、有效期、手动发放、调币阈值和用户说明；价格、支付和退款在未来商业化立项时确认。
 6. 所有上线门禁有责任人和验收证据后，才进入实现排期。
