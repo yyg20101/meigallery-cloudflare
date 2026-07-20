@@ -86,6 +86,9 @@ Accept-Language: zh-CN
 | `IDEMPOTENCY_CONFLICT` | 409 | 同一键对应不同请求 |
 | `APP_UPGRADE_REQUIRED` | 426 | 能力需要更高客户端版本 |
 | `RATE_LIMITED` | 429 | 频控，返回安全的重试时间 |
+| `PRIVACY_REQUEST_IN_PROGRESS` | 409 | 已有相同数据权利任务在处理 |
+| `TAXONOMY_VERSION_CONFLICT` | 409 | 目录或引用版本已变化 |
+| `MODERATION_RESTRICTED` | 403 | 账号、内容或会话受安全限制 |
 
 错误文案由客户端本地化或服务端文案键渲染，不能暴露内部表名、策略阈值或操作员隐私。
 
@@ -105,11 +108,17 @@ Accept-Language: zh-CN
 | POST | `/api/v2/auth/refresh` | 刷新会话 |
 | POST | `/api/v2/auth/logout` | 当前设备退出 |
 | GET | `/api/v2/me` | 账号、角色、会员摘要和配置版本 |
+| PATCH | `/api/v2/me` | 修改仅用于账号识别的昵称、头像等允许字段 |
 | GET | `/api/v2/me/devices` | 设备列表 |
 | DELETE | `/api/v2/me/devices/:deviceId` | 远程退出设备 |
 | GET/PUT | `/api/v2/me/preferences` | 地区、偏好、推荐和隐私设置 |
-| POST | `/api/v2/me/data-export` | 创建数据导出 Workflow |
-| POST | `/api/v2/me/deletion` | 创建注销 Workflow |
+| GET | `/api/v2/me/blocks` | 本人拉黑名单 |
+| POST | `/api/v2/me/data-exports` | 创建数据导出 Workflow |
+| GET | `/api/v2/me/data-exports/:requestId` | 查询导出状态 |
+| POST | `/api/v2/me/data-exports/:requestId/download-ticket` | 再次验证后签发短期下载凭证 |
+| POST | `/api/v2/me/deletion-requests` | 创建注销 Workflow |
+| GET | `/api/v2/me/deletion-requests/:requestId` | 查询注销状态 |
+| DELETE | `/api/v2/me/deletion-requests/:requestId` | 在允许阶段取消注销 |
 
 注册响应不得返回 `personId` 或 `profileId`，除非该账号以后通过独立认领流程绑定真人。
 
@@ -166,6 +175,8 @@ Accept-Language: zh-CN
 | GET/POST/PATCH/DELETE | `/api/v2/me/favorite-folders[/:id]` | 收藏夹 |
 | GET/DELETE | `/api/v2/me/view-history` | 历史查询/全部清除 |
 | DELETE | `/api/v2/me/view-history/:profileId` | 删除单条历史 |
+| GET/DELETE | `/api/v2/me/search-history` | 搜索历史查询/全部清除 |
+| DELETE | `/api/v2/me/search-history/:historyId` | 删除单条搜索历史 |
 
 这些接口不返回 reciprocal/matched 等字段，也不创建会话。
 
@@ -286,6 +297,7 @@ App 1.0 通过 HTTP 拉取和已连接实时通道刷新站内通知，不依赖
 |------|------|------|
 | POST | `/api/v2/reports` | 举报真人、媒体、会话或消息 |
 | GET | `/api/v2/me/reports` | 举报状态 |
+| GET | `/api/v2/me/reports/:reportId` | 举报必要详情与用户可见时间线 |
 | PUT/DELETE | `/api/v2/person-profiles/:profileId/block` | 拉黑/解除拉黑 |
 | GET | `/api/v2/help/topics` | 帮助与政策 |
 | POST | `/api/v2/appeals` | 申诉 |
@@ -301,9 +313,11 @@ App 1.0 通过 HTTP 拉取和已连接实时通道刷新站内通知，不依赖
 | `/persons`, `/person-profiles` | 创建、编辑、来源、授权和状态 |
 | `/verifications`, `/publications` | 认证、发布、暂停、归档 |
 | `/imports` | MeiGallery/批量导入任务 |
+| `/taxonomy`, `/taxonomy-catalogs` | 标签/地区/分类、alias、映射、合并和版本发布 |
+| `/recommendation-rules`, `/editorial-placements` | 规则版本、dry-run、精选、灰度、暂停和回滚 |
 | `/operation-assignments` | 真人运营模式和管理员组 |
 | `/managed-conversations` | 队列、分配、平台回复和内部备注 |
-| `/reviews`, `/reports`, `/appeals` | 审核和安全处置 |
+| `/reviews`, `/reports`, `/appeals` | 举报案件、最小证据、审核、安全处置和申诉 |
 | `/membership-catalogs`, `/membership-grants` | 1.0 五级权益、手动发放、撤销和有效期 |
 | `/products` | 未来：价格和商品版本 |
 | `/coin-adjustments` | 加币、扣币、批量任务、复核和冲正 |
@@ -328,6 +342,8 @@ App 1.0 通过 HTTP 拉取和已连接实时通道刷新站内通知，不依赖
 - 对象权限矩阵覆盖本人、其他观看者、未认领/已认领真人、代运营、审核、财务和越权 ID。
 - 幂等、乱序、重复回调、断线补拉、DO 休眠和多设备已读测试。
 - 资料暂停、会员到期、拉黑和运营模式切换的实时撤权测试。
+- 个性化关闭、历史清除、taxonomy 合并、规则回滚和数据导出/注销的跨设备一致性测试。
+- 举报证据最小化、审核越权、拉黑联动、申诉改判和高危 fail-closed 测试。
 - 日志/分析事件扫描私信、证件、凭证和令牌泄漏。
 
 ## 17. 契约验收

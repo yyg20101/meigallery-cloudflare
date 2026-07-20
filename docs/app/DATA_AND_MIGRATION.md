@@ -54,6 +54,8 @@ erDiagram
 | `account_devices` | `account_id`, `device_id`, `platform`, `session_version` | 设备和远程退出 |
 | `account_roles` | `account_id`, `role`, `scope` | RBAC |
 | `consent_records` | `account_id`, `document_version`, `decision`, `created_at` | 条款/隐私选择 |
+| `privacy_preferences` | `account_id`, `purpose`, `enabled`, `policy_version`, `updated_at` | 分用途隐私与推荐设置 |
+| `data_right_requests` | `id`, `account_id`, `type`, `status`, `workflow_ref`, `created_at` | 导出、清除和注销 Workflow |
 
 ### 3.2 真人、资料和内容
 
@@ -75,11 +77,20 @@ erDiagram
 | 表 | 关键字段 | 说明 |
 |----|----------|------|
 | `profile_public_projections` | `profile_id`, `version`, `payload`, `published_at` | 公开只读投影 |
+| `taxonomy_terms` | `id`, `type`, `parent_id`, `status`, `version` | 标签、地区和分类 stable term |
+| `taxonomy_aliases` | `term_id`, `locale`, `alias`, `status` | 搜索别名和兼容名称 |
+| `taxonomy_mappings` | `source`, `source_term`, `target_term_id`, `mapping_version` | MeiGallery/外部值映射 |
+| `taxonomy_catalog_versions` | `id`, `region`, `status`, `effective_at` | 不可变目录发布版本 |
 | `viewer_interactions` | `account_id`, `profile_id`, `type`, `idempotency_key` | 喜欢/关注/收藏 |
 | `favorite_folders` | `id`, `account_id`, `name`, `sort_order` | 收藏夹 |
 | `favorite_folder_items` | `folder_id`, `profile_id`, `created_at` | 收藏归档 |
 | `view_history` | `account_id`, `profile_id`, `viewed_at`, `expires_at` | 浏览历史 |
+| `search_history` | `account_id`, `query_ref`, `searched_at`, `expires_at` | 本人搜索历史；敏感原文不进入分析 |
+| `profile_blocks` | `account_id`, `profile_id`, `status`, `created_at` | 服务端拉黑与解除状态 |
 | `recommendation_exposures` | `account_id_hash`, `profile_id`, `reason_code`, `rule_version` | 最小化推荐证据 |
+| `recommendation_rule_versions` | `id`, `mode`, `status`, `config_json`, `catalog_version` | 不可变推荐规则版本 |
+| `editorial_placements` | `id`, `profile_id`, `slot`, `starts_at`, `ends_at`, `status` | 明确披露的运营精选 |
+| `heat_snapshots` | `profile_id`, `heat_version`, `bucket`, `calculated_at` | 抗刷、时间衰减后的热度投影 |
 | `notifications` | `id`, `account_id`, `category`, `event_ref`, `read_at`, `created_at` | App 1.0 站内通知与未读状态 |
 | `notification_preferences` | `account_id`, `category`, `enabled`, `updated_at` | 站内通知偏好；必要安全通知不可关闭 |
 
@@ -223,11 +234,15 @@ erDiagram
 
 - 映射唯一性和引用完整性。
 - `verified + published` 与公开投影集合完全一致。
+- active taxonomy/地区引用可解析到同一 catalog version，merged/archived 词条不存在悬空公开引用。
+- 个性化关闭或历史清除后，新推荐曝光不再引用被禁用的账号行为信号。
 - 每个公开媒体存在有效用途授权和可访问派生资源。
 - 会话运营模式与当前 OperatorAssignment/Claim 一致。
 - App 1.0 会员 grant、entitlement 和管理员钱包分录可逐笔关联；未来商业化启用后再加入订单和库存关联。
 - 余额快照等于有效分录汇总。
 - 管理员写入都有审计；内部备注不会出现在用户 API。
+- 拉黑、资料暂停和账号限制与推荐、互动、会话和媒体撤权状态一致。
+- 数据导出不包含其他主体或内部备注，注销后隔离保留数据不进入普通产品查询。
 
 ## 9. 隐私、保留和删除
 

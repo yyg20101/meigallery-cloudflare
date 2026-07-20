@@ -29,6 +29,11 @@ App 版本：1.0
 | 详细 | F-02–F-05 真人发现、搜索与资料浏览 | [PRD](./person-discovery-and-profile-experience/prd.md) | 推荐、列表、搜索筛选、详情和受保护媒体 |
 | 详细 | A-01–A-02 真人来源、上传与 MeiGallery 导入 | [PRD](./person-source-upload-and-meigallery-import/prd.md) | 手动供给、候选迁移、授权、去重和逐项幂等 |
 | 详细 | A-03 真人认证与发布审核 | [PRD](./person-verification-and-publication/prd.md) | 双状态审核、公开投影、暂停撤权和审计 |
+| 详细 | F-06 喜欢、关注、收藏与浏览历史 | [PRD](./viewer-interactions-and-history/prd.md) | 单向私有关系、收藏夹、历史、拉黑联动和推荐信号 |
+| 详细 | F-13 我的、隐私设置与数据权利 | [PRD](./privacy-settings-and-data-rights/prd.md) | 账号设置、隐私选择、导出、注销、帮助与申诉 |
+| 详细 | A-04 标签、地区与分类目录管理 | [PRD](./taxonomy-region-and-category-management/prd.md) | stable taxonomy、地区层级、legacy 映射与目录演进 |
+| 详细 | A-05 推荐位、排序规则与热度运营 | [PRD](./recommendation-and-popularity-operations/prd.md) | 候选资格、规则版本、热度、精选、灰度与回滚 |
+| 详细 | A-07 举报、拉黑与安全审核 | [PRD](./report-blocking-and-moderation/prd.md) | 举报案件、最小证据、拉黑、审核、处置与申诉 |
 
 ## 3. 前台 Feature 拆分顺序
 
@@ -39,14 +44,14 @@ App 版本：1.0
 | F-03 | [地区、热门、最新与分类列表](./person-discovery-and-profile-experience/prd.md) | M1 | 地区/标签体系、热度投影 |
 | F-04 | [搜索、筛选与保存条件](./person-discovery-and-profile-experience/prd.md) | M1/M2 | 搜索索引、会员 entitlement |
 | F-05 | [真人详情与媒体浏览](./person-discovery-and-profile-experience/prd.md) | M1 | Person/Profile/Gallery 映射、媒体授权 |
-| F-06 | 喜欢、关注、收藏与历史 | M1 | 观看者互动、隐私与幂等 |
+| F-06 | [喜欢、关注、收藏与历史](./viewer-interactions-and-history/prd.md) | M1 | 观看者互动、隐私与幂等 |
 | F-07 | 心享会员私信与会话 | M2 | 心享会员、代运营工作台、实时消息 |
 | F-08 | 礼物与互动记录 | 后续商业化 | 金币账本、礼物目录、会话 |
 | F-09 | 心享会员手动发放与权益 | App 1.0 | 五级目录、管理员发放、有效期、entitlement |
 | F-10 | 金币余额、明细与管理员调整 | App 1.0 | 钱包、追加账本、后台调币；充值后续立项 |
 | F-11 | 头像框、主页皮肤与聊天皮肤 | 后续商业化 | 商品库存、装扮渲染、到期规则 |
 | F-12 | 站内通知中心 | App 1.0 | 消息、会员/金币和安全事件；系统推送后续立项 |
-| F-13 | 我的、隐私、数据导出与注销 | M1 | 账号、设备、数据权利 Workflow |
+| F-13 | [我的、隐私、数据导出与注销](./privacy-settings-and-data-rights/prd.md) | M1 | 账号、设备、数据权利 Workflow |
 
 ## 4. 后台 Feature 拆分顺序
 
@@ -55,10 +60,10 @@ App 版本：1.0
 | A-01 | [真人资料上传](./person-source-upload-and-meigallery-import/prd.md) | M0/M1 | Person/Profile 模型、R2 |
 | A-02 | [MeiGallery 人物导入](./person-source-upload-and-meigallery-import/prd.md) | M0/M1 | legacy 映射、授权证据、迁移任务 |
 | A-03 | [真人认证与发布审核](./person-verification-and-publication/prd.md) | M1 | 审核状态机、角色权限、审计 |
-| A-04 | 标签、地区与分类管理 | M1 | Taxonomy、搜索和推荐 |
-| A-05 | 推荐位与热度运营 | M1 | 热度指标、feature flags、审计 |
+| A-04 | [标签、地区与分类管理](./taxonomy-region-and-category-management/prd.md) | M1 | Taxonomy、搜索和推荐 |
+| A-05 | [推荐位与热度运营](./recommendation-and-popularity-operations/prd.md) | M1 | 热度指标、feature flags、审计 |
 | A-06 | 私信代运营工作台 | M2 | Conversation、管理员分配、消息审计 |
-| A-07 | 举报、拉黑与内容审核 | M1/M2 | UGC 规则、审核队列、证据存储 |
+| A-07 | [举报、拉黑与内容审核](./report-blocking-and-moderation/prd.md) | M1/M2 | UGC 规则、审核队列、证据存储 |
 | A-08 | 会员与 entitlement 管理 | M2 | 五级目录、grant、有效期 |
 | A-09 | 商品、礼物和装扮管理 | 后续商业化 | 商品目录、资产审核、价格版本 |
 | A-10 | 管理员加币、扣币与复核 | App 1.0 | 钱包账本、RBAC、双人复核 |
@@ -96,6 +101,24 @@ flowchart LR
 ```
 
 首批详细 PRD 已冻结业务流程和门禁，但不代表开放参数已经关闭。正式进入实现前仍需按各 PRD 的“实施前门禁”完成首发地区、身份方式、授权范围、认证声明、审核复核和推荐规则决策。
+
+### 5.2 第二批横向治理链
+
+```mermaid
+flowchart LR
+    TAX["A-04 Taxonomy/地区"] --> SRC["A-01–A-02 来源/导入"]
+    TAX --> ROP["A-05 推荐/热度运营"]
+    VER["A-03 认证/发布"] --> ROP
+    ROP --> DISC["F-02–F-05 发现/详情"]
+    DISC --> VIR["F-06 单向互动"]
+    VIR --> PDR["F-13 隐私/数据权利"]
+    MOD["A-07 举报/拉黑/审核"] --> DISC
+    MOD --> VIR
+    MOD --> MSG["F-07 私信/会话"]
+    PDR --> ROP
+```
+
+第二批把 taxonomy、推荐规则、安全处置和数据权利作为贯穿前后台的治理能力：推荐配置不能绕过认证/授权，拉黑必须联动推荐与会话，用户清除/关闭后的数据不能继续作为新推荐信号。
 
 ## 6. 文档完成定义
 

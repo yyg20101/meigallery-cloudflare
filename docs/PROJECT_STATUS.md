@@ -81,7 +81,7 @@
 - TikTok 继续完成真实广告来源下 Browser / Server 配对去重与 `10% -> 50% -> 100%` 观察；Google 仍需 production 凭证、转化操作、异步 request status 与分级 rollout 验收。
 - 广告花费、campaign、ad set、ad 数据导入不属于当前 Pixel/Server API 同步范围。
 - Cloudflare Stream 视频链路和完整 zip 异步导入仍待实现。
-- 独立真人发现与互动 App 的 1.0 产品总纲、架构、数据迁移、API/实时通信、UI/UX、信任安全、商业账本和质量路线图处于需求讨论中，入口为 `docs/app/README.md`。App 1.0 发布范围已冻结为：真人发现、五级会员展示与管理员手动发放、所有有效会员私信、平台代运营、站内通知、管理员加扣币和用户金币明细；不接入在线支付、金币充值、系统推送、图片消息、礼物或装扮交易。首批详细 Feature PRD 已完成 F-01 账号与设备、F-02–F-05 发现/搜索/详情、A-01–A-02 真人来源/上传/MeiGallery 导入和 A-03 认证发布审核，均明确主流程、状态、权限、异常、埋点、验收与实施门禁。普通用户 Windows/macOS 客户端未承诺立项，桌面运营使用 Nuxt 管理后台；未来新增原生能力允许正常升级 App。目标架构为共享核心平台 + 渐进迁移，客户端采用 KMP + Compose Multiplatform，App 1.0 发布 Android/iOS。客户端库基线已确定为 Jetpack KMP + Ktor + Room/DataStore + Coil，视频采用 Android Media3/iOS AVPlayer 平台适配；Android App 1.0 使用 `minSdk = 26`，不兼容 API 25 及以下；精确工具链版本仍需在创建最小工程时验证。当前没有创建 KMP 工程、目标 API、真人/会话数据表或实时消息能力。
+- 独立真人发现与互动 App 的 1.0 产品总纲、架构、数据迁移、API/实时通信、UI/UX、信任安全、商业账本和质量路线图处于需求讨论中，入口为 `docs/app/README.md`。App 1.0 发布范围已冻结为：真人发现、五级会员展示与管理员手动发放、所有有效会员私信、平台代运营、站内通知、管理员加扣币和用户金币明细；不接入在线支付、金币充值、系统推送、图片消息、礼物或装扮交易。详细 Feature PRD 已完成 F-01 账号与设备、F-02–F-05 发现/搜索/详情、F-06 单向互动、F-13 隐私与数据权利、A-01–A-02 真人来源/上传/MeiGallery 导入、A-03 认证发布、A-04 taxonomy/地区、A-05 推荐运营和 A-07 举报安全审核，均明确主流程、状态、权限、异常、埋点、验收与实施门禁。普通用户 Windows/macOS 客户端未承诺立项，桌面运营使用 Nuxt 管理后台；未来新增原生能力允许正常升级 App。目标架构为共享核心平台 + 渐进迁移，客户端采用 KMP + Compose Multiplatform，App 1.0 发布 Android/iOS。客户端库基线已确定为 Jetpack KMP + Ktor + Room/DataStore + Coil，视频采用 Android Media3/iOS AVPlayer 平台适配；Android App 1.0 使用 `minSdk = 26`，不兼容 API 25 及以下；精确工具链版本仍需在创建最小工程时验证。当前没有创建 KMP 工程、目标 API、真人/会话数据表或实时消息能力。
 - App 进入实现前必须关闭正式品牌、首发地区、应用商店、运营主体、真人/年龄核验、内容审核、支付、Cloudflare 数据位置/跨境和中国大陆备案等开放决策；现有图库人物可以进入候选导入，但没有独立 App 用途授权、认证和发布审批时不得公开。
 
 ## 文档入口

@@ -161,13 +161,15 @@ App 1.0 不包含普通用户桌面客户端。Nuxt 管理后台在桌面端采�
 - **PRD-FR-031**：受保护媒体由服务端校验后发放短期访问凭证。
 - **PRD-FR-032**：页面始终提供举报、拉黑和分享入口；分享页遵循资料当前状态。
 
-详细要求见 [真人发现、搜索与资料浏览体验 PRD](../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md)。
+详细要求见 [真人发现、搜索与资料浏览体验 PRD](../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md)、[标签、地区与分类目录管理 PRD](../ways-of-work/plan/real-person-discovery-platform/taxonomy-region-and-category-management/prd.md) 和 [推荐位、排序规则与热度运营 PRD](../ways-of-work/plan/real-person-discovery-platform/recommendation-and-popularity-operations/prd.md)。
 
 ### 5.5 单向互动
 
 - **PRD-FR-040**：喜欢、关注、收藏相互独立、幂等并支持撤销，不产生匹配。
 - **PRD-FR-041**：关注用于更新订阅，收藏支持文件夹，喜欢作为轻量偏好信号。
 - **PRD-FR-042**：浏览历史仅本人可见，可逐条或全部清理。
+
+详细要求见 [喜欢、关注、收藏与浏览历史 PRD](../ways-of-work/plan/real-person-discovery-platform/viewer-interactions-and-history/prd.md)。
 
 ### 5.6 会员私信与代运营
 
@@ -206,11 +208,15 @@ App 1.0 不包含普通用户桌面客户端。Nuxt 管理后台在桌面端采�
 - **PRD-FR-081**：交易、安全和账号通知不得因关闭营销通知而丢失。
 - **PRD-FR-082**：用户可访问帮助、举报进度、申诉、隐私设置、数据导出和注销。
 
+详细要求见 [我的、隐私设置与数据权利 PRD](../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md) 和 [举报、拉黑与安全审核 PRD](../ways-of-work/plan/real-person-discovery-platform/report-blocking-and-moderation/prd.md)。
+
 ### 5.10 后台
 
 - **PRD-FR-090**：App 1.0 后台包括真人导入、认证发布、标签地区、推荐位、代运营消息、举报审核、会员发放、调币复核和审计；商品、订单退款和认领模块按后续阶段启用。
 - **PRD-FR-091**：认证、发布、代运营、财务、复核和审计使用独立角色，所有写操作记录原因和前后状态。
 - **PRD-FR-092**：批量任务逐项幂等，单项失败不得重复处理已成功项目。
+
+后台 taxonomy、推荐运营和安全审核分别以 [A-04 PRD](../ways-of-work/plan/real-person-discovery-platform/taxonomy-region-and-category-management/prd.md)、[A-05 PRD](../ways-of-work/plan/real-person-discovery-platform/recommendation-and-popularity-operations/prd.md) 和 [A-07 PRD](../ways-of-work/plan/real-person-discovery-platform/report-blocking-and-moderation/prd.md) 为详细验收依据。
 
 ## 6. 核心状态
 
