@@ -8,6 +8,8 @@ App 版本：1.0
 
 本目录把 [产品蓝图](./product-blueprint/prd.md) 拆为可独立评审、设计、估算和验收的 Feature PRD。上游产品与技术基线见 [App 文档总览](../../../app/README.md)，已确认设计记录见 [真人发现与互动平台产品蓝图](../../../superpowers/specs/2026-07-20-real-person-discovery-product-blueprint-design.md)。
 
+本 Epic 的跨 Feature 技术边界见 [Epic 架构方案](./arch.md)。它定义系统图、领域所有权、App 1.0 Feature/Enabler、同步与异步提交点、技术栈、规模和进入实现的出口条件；详细客户端、后端、RBAC 和契约冻结文档从该文档继续下钻。
+
 ## 1. 使用规则
 
 - 产品蓝图定义公开定位、角色、领域边界、路线和全局验收，是本 Epic 的事实源。
@@ -153,6 +155,18 @@ flowchart LR
 
 页面级文档是 Feature PRD 到高保真、技术设计和测试用例之间的可追溯桥梁。未来 Feature 不得提前混入 App 1.0 可点击原型。
 
-## 7. 文档完成定义
+## 7. 模块级技术设计参考
+
+| 文档 | 作用 |
+|------|------|
+| [Epic 架构方案](./arch.md) | 冻结系统上下文、领域所有权、Feature/Enabler、执行模型、规模与出口 |
+| [KMP 客户端模块与状态导航设计](../../../app/KMP_CLIENT_MODULE_DESIGN.md) | 将移动 Screen ID 落到模块依赖、UiState、Navigation 3、本地同步与平台端口 |
+| [Cloudflare 后端模块与实时链路设计](../../../app/CLOUDFLARE_BACKEND_MODULE_DESIGN.md) | 定义 Hono 模块、D1 所有权、Outbox、DO/Queue/Workflow 和故障恢复 |
+| [管理后台 RBAC、审批与审计设计](../../../app/ADMIN_RBAC_AND_WORKFLOW_DESIGN.md) | 定义 capability + scope、职责分离、强认证、审批、敏感读取和审计 |
+| [API、DTO 与数据契约冻结计划](../../../app/API_DATA_CONTRACT_FREEZE_PLAN.md) | 定义 OpenAPI/JSON Schema、DTO、状态机、D1 migration 和 Gate 顺序 |
+
+这些文档是冻结候选，不代表目标 API、D1 表或 KMP 工程已经创建。所有阻塞开放问题关闭并完成技术 Spike 后，才能进入 schema 和脚手架实现。
+
+## 8. 文档完成定义
 
 任一 Feature 进入技术方案前必须具备：目标用户、用户故事、功能/非功能要求、主流程、异常状态、权限边界、埋点、验收标准和明确不做项。任何仍依赖价格、具体额度或地区政策的参数必须进入统一决策登记，并通过配置表达，不能用模糊占位符代替产品规则。

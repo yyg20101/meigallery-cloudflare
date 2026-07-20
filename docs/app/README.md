@@ -35,7 +35,7 @@ App 版本：1.0
 | 卷 | 内容 | 主要文档 |
 |----|------|----------|
 | 一、产品战略与方向 | 定位、用户、边界、指标、阶段路线 | [产品需求](./PRODUCT_REQUIREMENTS.md)、[产品蓝图](../superpowers/specs/2026-07-20-real-person-discovery-product-blueprint-design.md) |
-| 二、角色、领域与技术基础 | Account、Person、Profile、Gallery、运营归属、认领和客户端技术栈 | [数据与迁移](./DATA_AND_MIGRATION.md)、[技术架构](./TECHNICAL_ARCHITECTURE.md)、[KMP 客户端技术栈](./KMP_CLIENT_TECH_STACK.md) |
+| 二、角色、领域与技术基础 | Account、Person、Profile、Gallery、运营归属、认领、客户端/后端模块和契约冻结 | [Epic 架构](../ways-of-work/plan/real-person-discovery-platform/arch.md)、[数据与迁移](./DATA_AND_MIGRATION.md)、[技术架构](./TECHNICAL_ARCHITECTURE.md)、[KMP 客户端技术栈](./KMP_CLIENT_TECH_STACK.md)、[模块级技术设计](./KMP_CLIENT_MODULE_DESIGN.md) |
 | 三、体验与交互基础 | 信息架构、导航、移动端/后台页面、状态、文案、埋点和无障碍 | [UI/UX 设计](./UI_UX_DESIGN.md)、[移动端交互](./MOBILE_APP_INTERACTION_SPEC.md)、[后台交互](./ADMIN_CONSOLE_INTERACTION_SPEC.md)、[状态文案与埋点](./UI_STATE_COPY_AND_ANALYTICS_CATALOG.md) |
 | 四、前台功能 PRD | 发现、互动、会员私信、会员、金币、礼物和装扮 | [Feature PRD 目录](../ways-of-work/plan/real-person-discovery-platform/README.md) |
 | 五、后台与运营 PRD | 导入、认证、发布、代运营、商品、调币、退款、认领和审计 | [Feature PRD 目录](../ways-of-work/plan/real-person-discovery-platform/README.md) |
@@ -62,7 +62,12 @@ App 版本：1.0
 | [运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md) | A-13 指标口径、最小化看板、追加审计、异常和受控导出 |
 | [产品需求文档](./PRODUCT_REQUIREMENTS.md) | 产品做什么、不做什么、模块、流程、指标和验收 |
 | [技术架构方案](./TECHNICAL_ARCHITECTURE.md) | 共享平台、Cloudflare 服务、KMP 分层和演进边界 |
+| [Epic 模块级总体架构](../ways-of-work/plan/real-person-discovery-platform/arch.md) | 系统边界、领域所有权、同步/异步执行模型、技术价值、规模和实现出口 |
 | [KMP 客户端技术栈与库选型](./KMP_CLIENT_TECH_STACK.md) | Jetpack KMP、Ktor、Coil、Room、视频播放和平台适配基线 |
+| [KMP 客户端模块与状态导航设计](./KMP_CLIENT_MODULE_DESIGN.md) | commonMain/平台边界、Feature 依赖、UDF、四 Tab 导航、本地同步和实时恢复 |
+| [Cloudflare 后端模块与实时链路设计](./CLOUDFLARE_BACKEND_MODULE_DESIGN.md) | Hono 领域模块、D1 所有权、Outbox、DO/Queue/Workflow 提交点和故障恢复 |
+| [管理后台 RBAC、审批与审计设计](./ADMIN_RBAC_AND_WORKFLOW_DESIGN.md) | capability + scope、职责分离、强认证、审批、调币和敏感读取 |
+| [API、DTO 与数据契约冻结计划](./API_DATA_CONTRACT_FREEZE_PLAN.md) | OpenAPI/JSON Schema、DTO、状态机、D1 migration、兼容与冻结门禁 |
 | [数据模型与迁移方案](./DATA_AND_MIGRATION.md) | 真人主体建模、MeiGallery 映射、影子迁移和回滚 |
 | [API 与实时通信契约](./API_AND_REALTIME_CONTRACT.md) | API 资源、鉴权、幂等、消息事件和错误模型 |
 | [UI/UX 设计文档](./UI_UX_DESIGN.md) | 移动/桌面信息架构、关键页面、状态、文案和组件 |
@@ -81,7 +86,7 @@ App 版本：1.0
 1. Owner、产品和运营确认发布范围、详细 Feature PRD、五级会员定位与路线优先级。
 2. 内容、法务与安全负责人关闭首批 PRD 中的真人来源、授权、认证声明、审核复核和推荐合规门禁。
 3. 设计负责人基于详细 Feature PRD、移动端/后台页面交互规格和统一状态文案目录产出高保真与可点击原型；线框结构已经形成。
-4. 架构、后端、KMP 和 Web 负责人基于详细 PRD 编写模块技术方案并评审数据和契约。
+4. 架构、后端、KMP 和 Web 负责人评审模块级总体架构、KMP 模块、Cloudflare 后端、后台 RBAC 和契约冻结计划，并按 Gate 关闭实现前问题。
 5. 运营与财务确认五级会员额度、有效期、手动发放、调币阈值和用户说明；价格、支付和退款在未来商业化立项时确认。
 6. 所有上线门禁有责任人和验收证据后，才进入实现排期。
 
