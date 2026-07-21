@@ -11,8 +11,9 @@ App 版本：1.0
 ## 客户确认交付
 
 - [App 1.0 产品需求确认书（Markdown）](./MEIGALLERY_APP_1_0_CLIENT_PRD.md)：面向客户的单一需求基线，覆盖范围、角色、会员、移动端与后台交互、异常状态、迁移、验收和 17 项待确认参数。
-- [App 1.0 产品需求确认书（DOCX）](./deliverables/MeiGallery_App_1.0_产品需求确认书.docx)：可直接提供客户评审、填写结论和签字确认的 32 页版本。
-- [客户确认原型图](./assets/client-prd/)：7 组低保真原型，覆盖登录发现、真人详情与会员、会话、通知/钱包/我的、后台内容审核、后台运营及端到端流程。
+- [App 1.0 产品需求确认书（DOCX）](./deliverables/MeiGallery_App_1.0_产品需求确认书.docx)：可直接提供客户评审、填写结论和签字确认的完整交付版。
+- [App 1.0 高保真交互原型](./interactive-prototype/index.html)：可点击体验 8 个移动端与后台场景，包含业务规则、建议操作、预期结果、响应式布局和状态反馈。
+- [客户确认原型图](./assets/client-prd/)：从交互原型生成的 7 组高保真截图，覆盖登录发现、真人详情与五级会员、平台会话、通知/钱包、后台内容审核、后台运营及端到端流程。
 
 ## 1. 产品定位
 
@@ -53,6 +54,7 @@ App 版本：1.0
 |------|------------|
 | [客户产品需求确认书](./MEIGALLERY_APP_1_0_CLIENT_PRD.md) | 将分散的产品、交互、原型、验收与客户待确认参数合并为单一可签字需求基线 |
 | [客户确认版 DOCX](./deliverables/MeiGallery_App_1.0_产品需求确认书.docx) | 供客户阅读、勾选确认结论、填写意见并签字盖章 |
+| [高保真交互原型](./interactive-prototype/index.html) | 通过 8 个可点击场景演示移动端、管理后台、业务规则和关键状态 |
 | [App 1.0 发布范围](../ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md) | 1.0 必须交付、仅预留、未来升级和不承诺能力的边界 |
 | [观看者注册、登录与设备安全](../ways-of-work/plan/real-person-discovery-platform/account-access-and-device-management/prd.md) | F-01 登录适配、账号边界、会话、设备与撤权 |
 | [真人发现、搜索与资料浏览](../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md) | F-02–F-05 推荐、列表、筛选、详情与媒体权限 |
@@ -94,7 +96,7 @@ App 版本：1.0
 1. 客户先评审产品需求确认书第 17 章的 17 项参数，并在第 18 章选择确认结论、填写意见和签字。
 2. Owner、产品和运营根据客户结论冻结发布范围、详细 Feature PRD、五级会员定位与路线优先级。
 3. 内容、法务与安全负责人关闭首批 PRD 中的真人来源、授权、认证声明、审核复核和推荐合规门禁。
-4. 设计负责人基于已确认需求和现有 7 组低保真原型产出高保真与可点击原型。
+4. 客户和设计负责人逐场景评审现有高保真交互原型，确认视觉方向、信息层级、核心操作和状态反馈；后续视觉细化不得改变已确认业务规则。
 5. 架构、后端、KMP 和 Web 负责人评审模块级总体架构、KMP 模块、Cloudflare 后端、后台 RBAC 和契约冻结计划，并按 Gate 关闭实现前问题。
 6. 运营与财务确认五级会员额度、有效期、手动发放、调币阈值和用户说明；价格、支付和退款在未来商业化立项时确认。
 7. 所有上线门禁有责任人和验收证据后，才进入实现排期。

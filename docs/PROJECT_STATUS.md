@@ -82,7 +82,7 @@
 - 广告花费、campaign、ad set、ad 数据导入不属于当前 Pixel/Server API 同步范围。
 - Cloudflare Stream 视频链路和完整 zip 异步导入仍待实现。
 - 独立真人发现与互动 App 的 1.0 产品总纲、架构、数据迁移、API/实时通信、UI/UX、信任安全、商业账本和质量路线图处于需求讨论中，入口为 `docs/app/README.md`。App 1.0 发布范围已冻结为：真人发现、五级会员展示与管理员手动发放、所有有效会员私信、平台代运营、站内通知、管理员加扣币和用户金币明细；不接入在线支付、金币充值、系统推送、图片消息、礼物或装扮交易。详细 Feature PRD 已完成 F-01 账号与设备、F-02–F-05 发现/搜索/详情、F-06 单向互动、F-07/A-06 会员私信与代运营、F-09/A-08 会员/entitlement/手动发放、F-10/A-10 钱包账本与调币、F-12 站内通知、F-13 隐私与数据权利、A-01–A-02 真人来源/上传/MeiGallery 导入、A-03 认证发布、A-04 taxonomy/地区、A-05 推荐运营、A-07 举报安全审核和 A-13 运营看板/审计，均明确主流程、状态、权限、异常、埋点、验收与实施门禁。普通用户 Windows/macOS 客户端未承诺立项，桌面运营使用 Nuxt 管理后台；未来新增原生能力允许正常升级 App。目标架构为共享核心平台 + 渐进迁移，客户端采用 KMP + Compose Multiplatform，App 1.0 发布 Android/iOS。客户端库基线已确定为 Jetpack KMP + Ktor + Room/DataStore + Coil，视频采用 Android Media3/iOS AVPlayer 平台适配；Android App 1.0 使用 `minSdk = 26`，不兼容 API 25 及以下；精确工具链版本仍需在创建最小工程时验证。当前没有创建 KMP 工程、目标 API、真人/会话数据表或实时消息能力。
-- App 1.0 客户需求确认包已完成：`docs/app/MEIGALLERY_APP_1_0_CLIENT_PRD.md` 汇总产品范围、细节交互、异常状态、后台流程、数据迁移、验收标准和 17 项客户确认参数；配套 7 组移动端/后台/端到端低保真原型，以及可直接评审、填写意见和签字的 32 页 DOCX。当前原型用于需求结构确认，不是最终高保真视觉稿或实现代码；下一步应先取得客户确认，再制作高保真可点击原型。
+- App 1.0 客户需求确认包已完成并升级为高保真交付：`docs/app/MEIGALLERY_APP_1_0_CLIENT_PRD.md` 汇总产品范围、细节交互、异常状态、后台流程、数据迁移、验收标准和 17 项客户确认参数；`docs/app/interactive-prototype/index.html` 提供 8 个可点击移动端/后台场景、业务规则和状态反馈；配套 7 组高保真截图及客户评审签字版 DOCX。原型是需求确认与交互演示资产，不是生产 App 实现代码；下一步应组织客户逐场景评审并关闭第 17 章参数。
 - App 1.0 模块级技术方案已形成冻结候选：Epic 总架构明确模块化单体、领域所有权与阶段规模；KMP 设计明确 Feature/Core、单向状态、四 Tab 导航、本地同步和平台端口；Cloudflare 后端设计明确 Hono 模块、D1 事务/Outbox、Conversation Durable Object、Queues/Workflows 的提交点与恢复；后台设计明确 capability + scope、职责分离、强认证、审批和追加审计；契约冻结计划明确 OpenAPI/JSON Schema、DTO、状态机、D1 migration 和 Gate 顺序。当前仍未创建 KMP 工程、目标 API、D1 migration 或实时资源。
 - App 进入实现前必须关闭正式品牌、首发地区、应用商店、运营主体、真人/年龄核验、内容审核、支付、Cloudflare 数据位置/跨境和中国大陆备案等开放决策；现有图库人物可以进入候选导入，但没有独立 App 用途授权、认证和发布审批时不得公开。
 
@@ -97,8 +97,9 @@
 - `docs/TELEGRAM_IMPORT_API.md`：外部导入 API 契约。
 - `docs/SEO_CONFIGURATION.md`：SEO 配置。
 - `docs/app/README.md`：独立真人发现与互动 App 1.0 与共享业务平台的需求、KMP/CMP 客户端、迁移、UI、安全、商业化和路线图索引。
-- `docs/app/MEIGALLERY_APP_1_0_CLIENT_PRD.md`：客户需求确认基线，含详细功能交互、7 组原型、验收和 17 项待确认参数。
-- `docs/app/deliverables/MeiGallery_App_1.0_产品需求确认书.docx`：供客户评审、填写意见和签字确认的 32 页交付版。
+- `docs/app/MEIGALLERY_APP_1_0_CLIENT_PRD.md`：客户需求确认基线，含详细功能交互、7 组高保真原型图、验收和 17 项待确认参数。
+- `docs/app/interactive-prototype/index.html`：App 1.0 高保真交互原型，覆盖 8 个移动端与后台场景。
+- `docs/app/deliverables/MeiGallery_App_1.0_产品需求确认书.docx`：供客户评审、填写意见和签字确认的完整交付版。
 - `docs/ways-of-work/plan/real-person-discovery-platform/README.md`：App 1.0 Feature PRD 索引、拆分顺序、依赖主链与详细验收入口。
 - `docs/ways-of-work/plan/real-person-discovery-platform/arch.md`：App Epic 总体架构、领域边界、执行模型、技术价值、规模和实现出口。
 - `docs/app/KMP_CLIENT_TECH_STACK.md`：Jetpack KMP、网络、图片、本地存储、视频播放、媒体缓存和平台 source set 边界。
