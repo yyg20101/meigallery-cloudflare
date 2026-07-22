@@ -381,7 +381,7 @@ AuditEvent
 
 ## 17. 相关文档
 
-- [Nuxt 管理后台交互与低保真规格](./ADMIN_CONSOLE_INTERACTION_SPEC.md)
+- [Nuxt 管理后台页面与交互规格](./ADMIN_CONSOLE_INTERACTION_SPEC.md)
 - [Cloudflare 后端模块与实时链路设计](./CLOUDFLARE_BACKEND_MODULE_DESIGN.md)
 - [金币钱包与调币 PRD](../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md)
 - [运营看板与审计 PRD](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)

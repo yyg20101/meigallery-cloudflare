@@ -15,7 +15,7 @@ App 版本：1.0
 关联文档：
 
 - [移动端页面与交互规格](./MOBILE_APP_INTERACTION_SPEC.md)
-- [Nuxt 管理后台交互与低保真规格](./ADMIN_CONSOLE_INTERACTION_SPEC.md)
+- [Nuxt 管理后台页面与交互规格](./ADMIN_CONSOLE_INTERACTION_SPEC.md)
 - [UI/UX 设计总纲](./UI_UX_DESIGN.md)
 - [API 与实时通信契约](./API_AND_REALTIME_CONTRACT.md)
 - [信任、安全、隐私与合规](./TRUST_SAFETY_PRIVACY_COMPLIANCE.md)

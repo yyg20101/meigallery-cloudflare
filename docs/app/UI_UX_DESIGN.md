@@ -14,7 +14,7 @@ App 版本：1.0
 
 因此保留“温暖、浪漫、轻盈”的品牌感，移除会造成双边交友误解的匹配、在线承诺和本人代聊视觉。
 
-页面级交互、后台线框以及可复用状态/文案/埋点已经分别拆为 [移动端页面与交互规格](./MOBILE_APP_INTERACTION_SPEC.md)、[Nuxt 管理后台交互与低保真规格](./ADMIN_CONSOLE_INTERACTION_SPEC.md) 和 [统一 UI 状态、文案与埋点目录](./UI_STATE_COPY_AND_ANALYTICS_CATALOG.md)。本文继续作为整体设计原则和视觉方向事实源。
+页面级交互、后台工作台以及可复用状态/文案/埋点已经分别拆为 [移动端页面与交互规格](./MOBILE_APP_INTERACTION_SPEC.md)、[Nuxt 管理后台页面与交互规格](./ADMIN_CONSOLE_INTERACTION_SPEC.md) 和 [统一 UI 状态、文案与埋点目录](./UI_STATE_COPY_AND_ANALYTICS_CATALOG.md)。本文继续作为整体设计原则和视觉方向事实源。
 
 ## 2. 设计原则
 

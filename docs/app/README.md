@@ -1,6 +1,6 @@
 # 独立 App 与共享业务平台文档总览
 
-更新时间：2026-07-21
+更新时间：2026-07-22
 
 App 版本：1.0
 
@@ -12,8 +12,11 @@ App 版本：1.0
 
 - [App 1.0 产品需求确认书（Markdown）](./MEIGALLERY_APP_1_0_CLIENT_PRD.md)：面向客户的单一需求基线，覆盖范围、角色、会员、移动端与后台交互、异常状态、迁移、验收和 17 项待确认参数。
 - [App 1.0 产品需求确认书（DOCX）](./deliverables/MeiGallery_App_1.0_产品需求确认书.docx)：可直接提供客户评审、填写结论和签字确认的完整交付版。
-- [App 1.0 高保真交互原型](./interactive-prototype/index.html)：可点击体验 8 个移动端与后台场景，包含业务规则、建议操作、预期结果、响应式布局和状态反馈。
-- [客户确认原型图](./assets/client-prd/)：从交互原型生成的 7 组高保真截图，覆盖登录发现、真人详情与五级会员、平台会话、通知/钱包、后台内容审核、后台运营及端到端流程。
+- [App 1.0 逐页交互设计确认册（DOCX）](./deliverables/MeiGallery_App_1.0_逐页交互设计确认册.docx)：按 49 个移动端页面与 43 个后台页面汇总 Page ID、页面目标、主操作、必备状态、跨页旅程、验收清单和签字页。
+- [App 1.0 高保真关键旅程原型](./interactive-prototype/index.html)：可点击体验 8 个移动端与后台关键旅程，包含业务规则、建议操作、预期结果、响应式布局和状态反馈。
+- [App 1.0 逐页交互设计库](./interactive-prototype/pages.html)：覆盖移动端 49 页和管理后台 43 页，共 92 个可独立访问、搜索、切换状态和操作的页面设计。
+- [App 1.0 逐页产品与交互设计](./APP_PAGE_LEVEL_PRODUCT_DESIGN.md)：逐页列出页面目标、主操作、必备状态、跨页旅程和验收方法。
+- [客户确认原型图](./assets/client-prd/)：从交互原型生成的 9 组高保真截图，覆盖登录发现、真人详情与五级会员、平台会话、通知/钱包、后台内容审核、后台运营、端到端流程及移动端/后台逐页设计库。
 
 ## 1. 产品定位
 
@@ -54,7 +57,10 @@ App 版本：1.0
 |------|------------|
 | [客户产品需求确认书](./MEIGALLERY_APP_1_0_CLIENT_PRD.md) | 将分散的产品、交互、原型、验收与客户待确认参数合并为单一可签字需求基线 |
 | [客户确认版 DOCX](./deliverables/MeiGallery_App_1.0_产品需求确认书.docx) | 供客户阅读、勾选确认结论、填写意见并签字盖章 |
-| [高保真交互原型](./interactive-prototype/index.html) | 通过 8 个可点击场景演示移动端、管理后台、业务规则和关键状态 |
+| [逐页交互设计确认册 DOCX](./deliverables/MeiGallery_App_1.0_逐页交互设计确认册.docx) | 供客户按 Page ID 逐页确认 92 个页面的目标、主操作、必备状态和修改意见 |
+| [高保真关键旅程原型](./interactive-prototype/index.html) | 通过 8 个可点击旅程演示移动端、管理后台、业务规则和关键状态 |
+| [逐页交互设计库](./interactive-prototype/pages.html) | 为 92 个移动端和后台 Page ID 提供可独立访问、状态切换和交互评审的高保真页面 |
+| [逐页产品与交互设计](./APP_PAGE_LEVEL_PRODUCT_DESIGN.md) | 汇总 92 页的页面目标、主操作、必备状态、全局交互和验收清单 |
 | [App 1.0 发布范围](../ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md) | 1.0 必须交付、仅预留、未来升级和不承诺能力的边界 |
 | [观看者注册、登录与设备安全](../ways-of-work/plan/real-person-discovery-platform/account-access-and-device-management/prd.md) | F-01 登录适配、账号边界、会话、设备与撤权 |
 | [真人发现、搜索与资料浏览](../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md) | F-02–F-05 推荐、列表、筛选、详情与媒体权限 |
@@ -81,8 +87,8 @@ App 版本：1.0
 | [数据模型与迁移方案](./DATA_AND_MIGRATION.md) | 真人主体建模、MeiGallery 映射、影子迁移和回滚 |
 | [API 与实时通信契约](./API_AND_REALTIME_CONTRACT.md) | API 资源、鉴权、幂等、消息事件和错误模型 |
 | [UI/UX 设计文档](./UI_UX_DESIGN.md) | 移动/桌面信息架构、关键页面、状态、文案和组件 |
-| [移动端页面与交互规格](./MOBILE_APP_INTERACTION_SPEC.md) | Android/iOS Screen ID、设计路由、页面目录、关键旅程和低保真结构 |
-| [Nuxt 管理后台交互与低保真规格](./ADMIN_CONSOLE_INTERACTION_SPEC.md) | 后台 Page ID、角色、工作台、审批状态、并发和低保真结构 |
+| [移动端页面与交互规格](./MOBILE_APP_INTERACTION_SPEC.md) | Android/iOS Screen ID、设计路由、页面目录、关键旅程和关键页面结构 |
+| [Nuxt 管理后台页面与交互规格](./ADMIN_CONSOLE_INTERACTION_SPEC.md) | 后台 Page ID、角色、工作台、审批状态、并发和页面结构 |
 | [统一 UI 状态、文案与埋点目录](./UI_STATE_COPY_AND_ANALYTICS_CATALOG.md) | 状态/文案/事件 key、错误映射、危险操作、组件矩阵和验收 |
 | [信任、安全、隐私与合规](./TRUST_SAFETY_PRIVACY_COMPLIANCE.md) | 真人授权、运营披露、消息治理、数据权利和发布门禁 |
 | [会员、金币与虚拟商品](./MONETIZATION_AND_LEDGER.md) | 心享会员、商品目录、订单、账本、调币和退款 |
@@ -96,7 +102,7 @@ App 版本：1.0
 1. 客户先评审产品需求确认书第 17 章的 17 项参数，并在第 18 章选择确认结论、填写意见和签字。
 2. Owner、产品和运营根据客户结论冻结发布范围、详细 Feature PRD、五级会员定位与路线优先级。
 3. 内容、法务与安全负责人关闭首批 PRD 中的真人来源、授权、认证声明、审核复核和推荐合规门禁。
-4. 客户和设计负责人逐场景评审现有高保真交互原型，确认视觉方向、信息层级、核心操作和状态反馈；后续视觉细化不得改变已确认业务规则。
+4. 客户和设计负责人先评审 8 个关键旅程，再按 Page ID 逐页评审 92 页设计库，确认视觉方向、信息层级、核心操作和状态反馈；后续视觉细化不得改变已确认业务规则。
 5. 架构、后端、KMP 和 Web 负责人评审模块级总体架构、KMP 模块、Cloudflare 后端、后台 RBAC 和契约冻结计划，并按 Gate 关闭实现前问题。
 6. 运营与财务确认五级会员额度、有效期、手动发放、调币阈值和用户说明；价格、支付和退款在未来商业化立项时确认。
 7. 所有上线门禁有责任人和验收证据后，才进入实现排期。
