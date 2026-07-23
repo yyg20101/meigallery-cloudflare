@@ -271,9 +271,18 @@ describe('统一广告平台连接原子服务', () => {
     ['事件重复', () => ({ ...metaCommand(), eventBindings: [{ canonicalEvent: 'Contact', enabled: true }, { canonicalEvent: 'Contact', enabled: true }] }), 'AD_PLATFORM_CONNECTION_BINDINGS_INVALID'],
     ['Meta 跨平台 destination', () => ({ ...metaCommand(), eventBindings: [{ canonicalEvent: 'Contact', enabled: true, browserDestination: 'tiktok_pixel' }, { canonicalEvent: 'CompleteRegistration', enabled: true }] }), 'AD_PLATFORM_CONNECTION_BINDINGS_INVALID'],
     ['非法 rollout', () => ({ ...metaCommand(), rolloutTargetPercentage: 25 as never }), 'AD_PLATFORM_CONNECTION_ROLLOUT_INVALID'],
+    ['生产连接双出口关闭', () => ({ ...metaCommand(), browserEnabled: false, serverEnabled: false, rolloutTargetPercentage: 0 }), 'AD_PLATFORM_CONNECTION_STATE_INVALID'],
+    ['生产连接没有实际投递出口', () => ({ ...metaCommand(), browserEnabled: false, serverEnabled: true, rolloutTargetPercentage: 0 }), 'AD_PLATFORM_CONNECTION_STATE_INVALID'],
   ] as const)('%s 被稳定错误码拒绝', async (_label, command, code) => {
     await expect(savePlatformConnection(env(), command() as SavePlatformConnectionCommand)).rejects.toMatchObject({ code })
     expect(await countRows('attribution_platform_connections')).toBe(0)
+  })
+
+  it.each([
+    ['Browser 单出口', { browserEnabled: true, serverEnabled: false, rolloutTargetPercentage: 0 as const }],
+    ['Server 单出口', { browserEnabled: false, serverEnabled: true, rolloutTargetPercentage: 10 as const }],
+  ])('生产连接允许%s', async (_label, overrides) => {
+    await expect(savePlatformConnection(env(), metaCommand(overrides))).resolves.toMatchObject(overrides)
   })
 
   it.each([
