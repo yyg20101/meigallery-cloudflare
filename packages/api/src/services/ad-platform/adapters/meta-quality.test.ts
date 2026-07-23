@@ -64,11 +64,32 @@ describe('Meta 通用质量 Adapter', () => {
     expect(result).toEqual({ metrics: [], errorCategory: '', unavailableReason: 'no_recent_metrics' })
   })
 
-  it('结构损坏的 2xx 响应仍归类为 invalid_response', async () => {
+  it('Graph API 空 data 包裹表示暂无近期质量样本', async () => {
     const result = await fetchMetaQuality({
       datasetId: '1277657707436781',
       credential: 'private-token',
       fetcher: async () => new Response('{"data":[]}', { status: 200 }),
+    })
+    expect(result).toEqual({ metrics: [], errorCategory: '', unavailableReason: 'no_recent_metrics' })
+  })
+
+  it('解析 Graph API data 和 web connection 包裹', async () => {
+    const result = await fetchMetaQuality({
+      datasetId: '1277657707436781',
+      credential: 'private-token',
+      fetcher: async () => new Response(JSON.stringify({
+        data: [{ web: { data: response.web } }],
+      }), { status: 200 }),
+    })
+    expect(result.metrics).toHaveLength(4)
+    expect(result.errorCategory).toBe('')
+  })
+
+  it('结构未知的非空 2xx 响应仍归类为 invalid_response', async () => {
+    const result = await fetchMetaQuality({
+      datasetId: '1277657707436781',
+      credential: 'private-token',
+      fetcher: async () => new Response('{"data":[{"unexpected":true}]}', { status: 200 }),
     })
     expect(result).toEqual({ metrics: [], errorCategory: 'invalid_response' })
   })

@@ -34,12 +34,43 @@ export async function fetchMetaQuality(input: {
   })
   if (!response.ok) return { metrics: [], errorCategory: classifyHttpError(response.status) }
   const body = await response.json().catch(() => null)
-  if (!isRecord(body) || !Array.isArray(body.web)) return { metrics: [], errorCategory: 'invalid_response' }
-  if (!hasValidQualityStructure(body.web)) return { metrics: [], errorCategory: 'invalid_response' }
-  const metrics = parseMetaQualityResponse(body)
+  const events = extractWebEvents(body)
+  if (!events || !hasValidQualityStructure(events)) {
+    return { metrics: [], errorCategory: 'invalid_response' }
+  }
+  const metrics = parseMetaQualityEvents(events)
   return metrics.length > 0
     ? { metrics, errorCategory: '' }
     : { metrics: [], errorCategory: '', unavailableReason: 'no_recent_metrics' }
+}
+
+function extractWebEvents(input: unknown): unknown[] | null {
+  if (!isRecord(input)) return null
+
+  const direct = extractConnectionItems(input.web)
+  if (direct) return direct
+
+  if (!Array.isArray(input.data)) return null
+  if (input.data.length === 0) return []
+
+  const events: unknown[] = []
+  for (const item of input.data) {
+    if (!isRecord(item)) return null
+    if (typeof item.event_name === 'string') {
+      events.push(item)
+      continue
+    }
+    const nested = extractConnectionItems(item.web)
+    if (!nested) return null
+    events.push(...nested)
+  }
+  return events
+}
+
+function extractConnectionItems(value: unknown): unknown[] | null {
+  if (Array.isArray(value)) return value
+  if (isRecord(value) && Array.isArray(value.data)) return value.data
+  return null
 }
 
 function hasValidQualityStructure(events: unknown[]) {
@@ -67,9 +98,13 @@ function hasValidQualityStructure(events: unknown[]) {
 }
 
 export function parseMetaQualityResponse(input: unknown): MetaQualityMetric[] {
-  if (!isRecord(input) || !Array.isArray(input.web)) return []
+  const events = extractWebEvents(input)
+  return events ? parseMetaQualityEvents(events) : []
+}
+
+function parseMetaQualityEvents(events: unknown[]): MetaQualityMetric[] {
   const metrics: MetaQualityMetric[] = []
-  for (const event of input.web) {
+  for (const event of events) {
     if (!isRecord(event) || !ACTIVE_EVENTS.has(String(event.event_name))) continue
     const canonicalEvent = event.event_name as MetaQualityMetric['canonicalEvent']
     const quality = event.event_match_quality

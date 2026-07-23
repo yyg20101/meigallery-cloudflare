@@ -83,7 +83,7 @@ describe('公开广告来源 API', () => {
     ['自然 Google 来源', { utmSource: 'google' }],
     ['超长 Click ID', { fbclid: 'x'.repeat(129) }],
     ['含控制字符的 Click ID', { ttclid: 'invalid\nclick' }],
-    ['无效受管链接', { trackingSourceSlug: 'summer-meta', managedLinkToken: 'invalid.token' }],
+    ['不存在的来源 code', { trackingSourceSlug: 'missing-source' }],
   ])('%s 不替换可信上下文也不清 Cookie', async (_label, body) => {
     const initial = await request({ fbclid: 'same-meta-click' })
     const consent = await createMarketingConsentReceipt(SECRET, 'granted')

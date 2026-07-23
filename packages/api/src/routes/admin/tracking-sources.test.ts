@@ -139,6 +139,29 @@ describe('后台推广来源 API', () => {
     expect(JSON.stringify(db.calls)).not.toContain('Meta 像素测试地址')
   })
 
+  it('Google 广告来源使用与 Meta、TikTok 相同的统一连接模型', async () => {
+    const db = createDb()
+    const res = await createApp('admin').request('/api/admin/tracking-sources', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        sourceLabel: 'Google 广告 A',
+        channel: 'ad',
+        adProvider: 'google',
+        targetPath: '/',
+        utmMedium: 'paid_search',
+      }),
+    }, { DB: db } as unknown as Bindings)
+    const body = await res.json()
+
+    expect(res.status).toBe(201)
+    expect(body.data.adProvider).toBe('google')
+    expect(db.calls.some(call => (
+      call.sql.includes('INSERT INTO analytics_tracking_sources')
+      && call.params[9] === 'google'
+    ))).toBe(true)
+  })
+
   it('创建时不允许手动填写 code', async () => {
     const res = await createApp('admin').request('/api/admin/tracking-sources', {
       method: 'POST',

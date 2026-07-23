@@ -91,6 +91,7 @@ describe('useTracking', () => {
           utmSource: 'meta',
           utmMedium: 'paid_social',
           utmCampaign: 'summer',
+          utmContent: 'button',
           trackingSourceSlug: 'meta-summer',
           sourceName: 'meta-summer',
         },

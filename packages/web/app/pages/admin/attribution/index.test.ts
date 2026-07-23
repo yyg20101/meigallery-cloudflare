@@ -39,7 +39,7 @@ function mountPage(
     }))),
     '/api/admin/attribution/breakdown': state({ provider: initialProvider, dimension: 'utm_campaign', rows: [] }),
     '/api/admin/attribution/capacity': state({
-      date: '2026-07-15', timeZone: 'UTC', note: '项目内部估算', inputs: {},
+      date: '2026-07-15', timeZone: 'Asia/Shanghai', note: '项目内部估算', inputs: {},
       metrics: {
         workerRequests: { value: capacityWarning ? 70_000 : 100, safetyLimit: 70_000, ratio: capacityWarning ? 1 : 0.0014, warning: capacityWarning },
       },

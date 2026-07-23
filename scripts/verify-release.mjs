@@ -33,7 +33,7 @@ const LOCAL_ATTRIBUTION_GATE_STEPS = [
   {
     name: 'attribution-final-schema',
     command: 'node',
-    args: ['--test', 'packages/api/migrations/0052_unified_attribution_contract.test.mjs'],
+    args: ['--test', 'packages/api/migrations/0055_attribution_tracking_integrity.test.mjs'],
   },
   {
     name: 'attribution-queue-mock',
@@ -65,7 +65,7 @@ const QUICK_STEPS = [
   ['api-unit', 'corepack', ['pnpm', '--filter', '@meigallery/api', 'test']],
   ['api-coverage', 'corepack', ['pnpm', '--filter', '@meigallery/api', 'run', 'test:coverage']],
   ['api-typecheck', 'corepack', ['pnpm', '--filter', '@meigallery/api', 'exec', 'tsc', '--noEmit']],
-  ['web-typecheck', 'corepack', ['pnpm', '--filter', '@meigallery/web', 'exec', 'nuxt', 'typecheck']],
+  ['web-typecheck', 'corepack', ['pnpm', '--filter', '@meigallery/web', 'run', 'typecheck']],
   ['web-unit', 'corepack', ['pnpm', '--filter', '@meigallery/web', 'run', 'test:unit']],
   ['web-e2e', 'corepack', ['pnpm', '--filter', '@meigallery/web', 'exec', 'playwright', 'test']],
   ['web-build', 'corepack', ['pnpm', '--filter', '@meigallery/web', 'exec', 'nuxt', 'build']],
@@ -235,7 +235,11 @@ export async function assertProductionAllowed(options = {}) {
     currentBranch: 'main',
     expectedCommit: git.commit,
   })
-  return (options.collectTrustedProductionGateFacts || collectTrustedProductionGateFacts)({ ...options, commit: git.commit })
+  return (options.collectTrustedProductionGateFacts || collectTrustedProductionGateFacts)({
+    ...options,
+    commit: git.commit,
+    requireTrackingIntegrityMigration: false,
+  })
 }
 
 export async function collectTrustedProductionGateFacts(options = {}) {
@@ -244,6 +248,9 @@ export async function collectTrustedProductionGateFacts(options = {}) {
   const state = await (options.queryProductionAttributionState || queryProductionAttributionState)(options)
   const blockers = [
     ['contractMigrationCount', value => value !== 1],
+    ...(options.requireTrackingIntegrityMigration === false
+      ? []
+      : [['trackingIntegrityMigrationCount', value => value !== 1]]),
     ['privacyPolicyMigrationCount', value => value !== 1],
     ['privacyPolicyRowCount', value => value !== 1],
     ['invalidConnectionCount', value => value !== 0],
@@ -301,6 +308,7 @@ async function queryProductionAttributionState(options = {}) {
   const sql = `
     SELECT
       (SELECT COUNT(*) FROM d1_migrations WHERE name = '0052_unified_attribution_contract.sql') AS contract_migration_count,
+      (SELECT COUNT(*) FROM d1_migrations WHERE name = '0055_attribution_tracking_integrity.sql') AS tracking_integrity_migration_count,
       (SELECT COUNT(*) FROM d1_migrations WHERE name = '0053_attribution_privacy_policy.sql') AS privacy_policy_migration_count,
       (SELECT COUNT(*) FROM attribution_privacy_policy WHERE id = 'global') AS privacy_policy_row_count,
       (SELECT COUNT(*) FROM attribution_platform_connections AS connection

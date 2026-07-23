@@ -651,6 +651,7 @@ INSERT INTO site_settings (key, value) VALUES
 实现约束：
 
 - `0051_unified_attribution_expand.sql` 创建最终 11 张 `attribution_*` 表；`0052_unified_attribution_contract.sql` 迁移仍有价值的 Meta 质量历史，并删除旧事实、投递、连接、验证、Outbox、Meta 运维表、桥接 trigger 和平台专用用户标识。
+- `0055_attribution_tracking_integrity.sql` 将管理广告链接历史来源统一修正为 `ad`、只以 `contact_method_click` 计有效联系、按北京时间自然日重建来源/页面/邀请日报，并允许 tracking source 绑定 Google；普通 UTM 和自然流量不做推测性回填。
 - 历史 migration `0001..0050` 只负责升级路径和空库顺序建库，应用运行时不得访问其中已由 `0052` 删除的结构。
 - 新增平台必须通过 adapter registry 接入，不得复制业务事实、来源 receipt、Planner、Queue 状态机或恢复逻辑。
 - TikTok Events API 使用官方 v1.3 Web Events endpoint、`Access-Token` header、`event_source=web`、Pixel ID、`event/event_time/event_id/user/page` 契约；生产 payload 不带 `test_event_code`。Browser Pixel 与 Events API 对同一业务事实使用相同 event name 与 event ID 进行去重。
@@ -679,8 +680,8 @@ INSERT INTO site_settings (key, value) VALUES
 ### 通用归因 Contract 与生产门禁
 
 - `0052` 执行前要求旧 Contact/CompleteRegistration 已被通用事实覆盖、旧 Server delivery 静止、旧 Outbox 清空；失败时 migration 整体回滚。
-- 若 `0052` 待执行，部署脚本先把 production D1 export、Time Travel bookmark、Git commit 和 SHA-256 manifest 写入 `~/.meigallery/production-backups/d1`，文件不进入仓库。
-- migration 后实时门禁要求 `0052` 已应用、启用的 production 连接具有当前验证、无 critical incident、无过期 Outbox、无 dead letter 且 effective rollout 不超过 target。
+- 若 `0052` 或 `0055` 待执行，部署脚本先把 production D1 export、Time Travel bookmark、Git commit 和 SHA-256 manifest 写入 `~/.meigallery/production-backups/d1`，文件不进入仓库。
+- migration 后实时门禁要求 `0052`、`0053`、`0055` 已应用、启用的 production 连接具有当前验证、无 critical incident、无过期 Outbox、无 dead letter 且 effective rollout 不超过 target；部署前门禁不要求本次待应用的 `0055` 已存在。
 - 严格 Test Event 只允许 Contact / CompleteRegistration。平台后台确认通过后由 Owner 人工设置 mode、Server 开关和 rollout，部署流程不改变业务运行参数。
 
 成本与索引口径：

@@ -431,7 +431,7 @@ Nuxt 后台归因中心
 | PV | `page_view` 或页面摘要总数 | 总览、内容 |
 | 注册数 | `register_success` 去重用户数 | 总览、来源、邀请 |
 | 邀请注册数 | 带 `invite_code_id` 的注册成功用户数 | 总览、邀请 |
-| 联系点击数 | `contact_panel_open` 或 `contact_method_click` 独立 session 数 | 总览、来源、点击 |
+| 有效联系数 | `contact_method_click` 事件数；仅打开联系面板不计转化 | 总览、来源、页面、点击 |
 | 会员发放数 | 首次 rank > 0 的会员发放转化数 | 总览、来源、邀请 |
 | 注册率 | 注册数 / session 数 | 来源、邀请 |
 | 联系率 | 联系点击独立 session 数 / session 数 | 来源、点击 |

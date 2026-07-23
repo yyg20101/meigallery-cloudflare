@@ -72,7 +72,7 @@ export function useTracking() {
       utmSource: normalizeText(sourceContext.utmSource, 120),
       utmMedium: normalizeText(sourceContext.utmMedium, 120),
       utmCampaign: normalizeText(sourceContext.utmCampaign, 120),
-      utmContent: queryValue(route.query.utm_content),
+      utmContent: normalizeText(sourceContext.utmContent, 120) || queryValue(route.query.utm_content),
       methodType: normalizeText(input.methodType, 80),
       consentState: consentScope,
       adAttributionState: consentScope === 'granted' && routeAllowed
@@ -210,7 +210,7 @@ export function useTracking() {
       utmSource: normalizeText(sourceContext.utmSource, 120),
       utmMedium: normalizeText(sourceContext.utmMedium, 120),
       utmCampaign: normalizeText(sourceContext.utmCampaign, 120),
-      utmContent: queryValue(route.query.utm_content),
+      utmContent: normalizeText(sourceContext.utmContent, 120) || queryValue(route.query.utm_content),
       consentState: consentScope,
       adAttributionState: consentScope === 'granted' && routeAllowed
         ? trustedAdAttributionState(adAttribution)

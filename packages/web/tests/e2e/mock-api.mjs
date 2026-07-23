@@ -644,7 +644,7 @@ function adminAttributionResponse(pathname, searchParams) {
       usage,
       data: {
         date: searchParams.get('date') || dates.at(-1),
-        timeZone: 'UTC',
+        timeZone: 'Asia/Shanghai',
         note: '项目内部估算，不代表 Cloudflare 官方账单。',
         inputs: { factCount: 9, deliveryCount: 21, browserAttemptCount: 12, serverDeliveryCount: 9, adapterAttemptCount: 9, queueAttemptCount: 10, terminalServerDeliveryCount: 8, providerReceiptCount: 20, workflowStepCount: 3 },
         metrics: {

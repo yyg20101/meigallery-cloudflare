@@ -92,7 +92,7 @@ Planner + Consent + Rollout
 - production 才绑定真实平台 Queue、凭证和平台 API。
 - dev/local 只进行 migration、adapter mock、Queue/Workflow mock、来源隔离、类型检查和构建验证。
 - 生产发布不自动修改 enabled、mode、rollout、incident 或凭证。
-- 通用门禁要求 `0052`、`0053` 已应用且全局地区策略行存在、启用的 production 连接具有当前有效验证、无 critical incident、无过期 Outbox、无 dead letter 且 rollout 一致。
+- 通用部署后门禁要求 `0052`、`0053`、`0055` 已应用且全局地区策略行存在、启用的 production 连接具有当前有效验证、无 critical incident、无过期 Outbox、无 dead letter 且 rollout 一致。部署前门禁允许本次待执行的 `0055` 尚未应用。
 
 ## 新平台接入
 

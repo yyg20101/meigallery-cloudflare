@@ -19,7 +19,7 @@ describe('production D1 备份', () => {
         getCommit: async () => COMMIT,
       })
       const manifest = JSON.parse(await readFile(result.manifestPath, 'utf8'))
-      assert.equal(manifest.purpose, 'production-d1-before-contract-migration')
+      assert.equal(manifest.purpose, 'production-d1-before-attribution-migration')
       assert.equal(manifest.gitCommit, COMMIT)
       assert.equal(manifest.timeTravelBookmark, 'bookmark-1')
       assert.match(manifest.sha256, /^[0-9a-f]{64}$/)

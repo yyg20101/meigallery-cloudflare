@@ -6,6 +6,42 @@ import type { Bindings, Variables } from '../../index'
 import { adminAttributionRoutes } from './attribution'
 
 const MIGRATION = readFileSync(new URL('../../../migrations/0051_unified_attribution_expand.sql', import.meta.url), 'utf8')
+const LINK_SCHEMA = `
+  CREATE TABLE users (id INTEGER PRIMARY KEY);
+  INSERT INTO users (id) VALUES (1);
+  CREATE TABLE analytics_tracking_sources (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    slug TEXT NOT NULL UNIQUE,
+    target_path TEXT NOT NULL,
+    utm_source TEXT NOT NULL,
+    utm_medium TEXT NOT NULL,
+    utm_campaign TEXT NOT NULL,
+    utm_content TEXT NOT NULL,
+    ad_provider TEXT NOT NULL,
+    status TEXT NOT NULL,
+    note TEXT NOT NULL,
+    created_by INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE TABLE analytics_daily_sources (
+    date TEXT NOT NULL,
+    source_channel TEXT NOT NULL,
+    source_name TEXT NOT NULL,
+    invite_code_id TEXT NOT NULL,
+    visitor_count INTEGER NOT NULL,
+    session_count INTEGER NOT NULL,
+    page_view_count INTEGER NOT NULL,
+    gallery_detail_count INTEGER NOT NULL,
+    contact_click_count INTEGER NOT NULL,
+    register_count INTEGER NOT NULL,
+    invite_register_count INTEGER NOT NULL,
+    membership_grant_count INTEGER NOT NULL,
+    active_seconds_total INTEGER NOT NULL
+  );
+`
 const RANGE = 'from=2026-07-15&to=2026-07-15'
 let miniflare: Miniflare
 let db: D1Database
@@ -19,10 +55,13 @@ beforeAll(async () => {
   })
   db = (await miniflare.getBindings<{ DB: D1Database }>()).DB
   await db.exec(MIGRATION.replace(/\s*\r?\n\s*/g, ' '))
+  await db.exec(LINK_SCHEMA.replace(/\s*\r?\n\s*/g, ' '))
 })
 
 beforeEach(async () => {
   await db.exec(`
+    DELETE FROM analytics_daily_sources;
+    DELETE FROM analytics_tracking_sources;
     DELETE FROM attribution_provider_receipts;
     DELETE FROM attribution_deliveries;
     DELETE FROM attribution_conversion_facts;
@@ -77,6 +116,30 @@ describe('统一归因后台 API', () => {
     ]))
   })
 
+  it('links 只返回当前平台投放链接，并使用最终事实计算有效联系和注册', async () => {
+    const response = await request(`/links?${RANGE}&provider=google`)
+    const body = await response.json() as {
+      data: {
+        provider: string
+        links: Array<Record<string, unknown>>
+      }
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.data.provider).toBe('google')
+    expect(body.data.links).toEqual([
+      expect.objectContaining({
+        sourceLabel: 'Google 广告 A',
+        sourceCode: 'google-source',
+        adProvider: 'google',
+        sessionCount: 3,
+        pageViewCount: 7,
+        contactCount: 1,
+        completeRegistrationCount: 1,
+      }),
+    ])
+  })
+
   it.each(['sourceCode', 'sourceName', 'source'])('conversions 支持 %s 来源过滤且 all 等同未过滤', async (field) => {
     const [filtered, all] = await Promise.all([
       request(`/conversions?${RANGE}&provider=google&${field}=google-source`),
@@ -87,12 +150,12 @@ describe('统一归因后台 API', () => {
     expect((await all.json()).data.samples).toHaveLength(2)
   })
 
-  it('容量按 UTC 日汇总且标明内部估算', async () => {
+  it('容量按北京时间自然日汇总且标明内部估算', async () => {
     const response = await request('/capacity?date=2026-07-15')
     const body = await response.json() as { data: Record<string, unknown> }
 
     expect(response.status).toBe(200)
-    expect(body.data).toMatchObject({ date: '2026-07-15', timeZone: 'UTC' })
+    expect(body.data).toMatchObject({ date: '2026-07-15', timeZone: 'Asia/Shanghai' })
     expect(body.data.note).toContain('项目内部估算')
   })
 
@@ -109,7 +172,7 @@ describe('统一归因后台 API', () => {
     expect((await response.json()).code).toBe(code)
   })
 
-  it.each(['/summary', '/trends', '/quality', '/breakdown?dimension=utm_campaign', '/conversions'])(
+  it.each(['/summary', '/trends', '/quality', '/breakdown?dimension=utm_campaign', '/conversions', '/links'])(
     '查询 %s 的非法日期范围在路由层稳定失败',
     async (path) => {
       const separator = path.includes('?') ? '&' : '?'
@@ -154,6 +217,15 @@ function request(path: string, database = db) {
 
 async function seed() {
   await db.batch([
+    trackingSource('source_meta', 'Meta 广告 A', 'meta-source', 'meta'),
+    trackingSource('source_google', 'Google 广告 A', 'google-source', 'google'),
+    db.prepare(`INSERT INTO analytics_daily_sources (
+      date, source_channel, source_name, invite_code_id, visitor_count, session_count,
+      page_view_count, gallery_detail_count, contact_click_count, register_count,
+      invite_register_count, membership_grant_count, active_seconds_total
+    ) VALUES (
+      '2026-07-15', 'ad', 'google-source', '', 2, 3, 7, 1, 1, 1, 0, 0, 120
+    )`),
     connection('meta'),
     connection('google'),
     fact('fact_meta', 'Contact', 'meta', 'meta-source', 'meta-campaign'),
@@ -167,6 +239,15 @@ async function seed() {
       id, delivery_id, provider, receipt_type, status, receipt_json, received_at
     ) VALUES ('receipt_google_browser', 'google_browser_contact', 'google', 'browser_attempt', 'attempted', '{}', '2026-07-15T04:00:00.000Z')`),
   ])
+}
+
+function trackingSource(id: string, name: string, slug: string, provider: 'meta' | 'google') {
+  return db.prepare(`INSERT INTO analytics_tracking_sources (
+    id, name, channel, slug, target_path, utm_source, utm_medium, utm_campaign,
+    utm_content, ad_provider, status, note, created_by, created_at, updated_at
+  ) VALUES (?, ?, 'ad', ?, '/', ?, 'paid_social', ?, 'creative-a', ?, 'active', '', 1,
+    '2026-07-15T00:00:00.000Z', '2026-07-15T00:00:00.000Z'
+  )`).bind(id, name, slug, slug, `${slug}-campaign`, provider)
 }
 
 function connection(provider: 'meta' | 'google') {
