@@ -31,10 +31,10 @@ describe('0055 投放来源与聚合完整性 migration', () => {
 
     execute(`
       INSERT INTO analytics_tracking_sources (
-        id, name, channel, slug, target_path, utm_source, utm_medium,
+        id, name, channel, slug, link_proof, target_path, utm_source, utm_medium,
         utm_campaign, utm_content, ad_provider, status, note, created_by
       ) VALUES (
-        'source_google', 'Google A', 'ad', 'ad-google-a', '/', 'ad-google-a',
+        'source_google', 'Google A', 'ad', 'ad-google-a', '${'b'.repeat(64)}', '/', 'ad-google-a',
         'paid_search', 'campaign-google', '', 'google', 'active', '', 1
       );
     `)
@@ -45,13 +45,18 @@ describe('0055 投放来源与聚合完整性 migration', () => {
     `)[0].count, 1)
     assert.throws(() => execute(`
       INSERT INTO analytics_tracking_sources (
-        id, name, channel, slug, target_path, utm_source, utm_medium,
+        id, name, channel, slug, link_proof, target_path, utm_source, utm_medium,
         utm_campaign, utm_content, ad_provider, status, note, created_by
       ) VALUES (
-        'source_invalid', 'Invalid', 'ad', 'ad-invalid-a', '/', 'ad-invalid-a',
+        'source_invalid', 'Invalid', 'ad', 'ad-invalid-a', '${'c'.repeat(64)}', '/', 'ad-invalid-a',
         'paid_social', '', '', 'unknown', 'active', '', 1
       );
     `), /CHECK constraint failed/)
+    assert.match(rows(`
+      SELECT link_proof
+      FROM analytics_tracking_sources
+      WHERE id = 'source_meta';
+    `)[0].link_proof, /^[0-9a-f]{64}$/)
   })
 
   it('只修正后台广告来源，不猜测普通流量', () => {
@@ -82,22 +87,34 @@ describe('0055 投放来源与聚合完整性 migration', () => {
       SELECT contact_click_count
       FROM analytics_session_summaries
       WHERE session_id = 'session_managed';
-    `)[0].contact_click_count, 1)
+    `)[0].contact_click_count, 2)
     assert.deepEqual(rows(`
-      SELECT source_channel, source_name, contact_click_count
+      SELECT date, source_channel, source_name, contact_click_count, register_count
       FROM analytics_daily_sources
-      WHERE source_name = 'ad-meta-a';
-    `), [{ source_channel: 'ad', source_name: 'ad-meta-a', contact_click_count: 1 }])
-    assert.equal(rows(`
-      SELECT contact_click_count
-      FROM analytics_daily_pages
-      WHERE path = '/';
-    `)[0].contact_click_count, 1)
+      WHERE source_name = 'ad-meta-a'
+      ORDER BY date;
+    `), [
+      { date: '2026-07-21', source_channel: 'ad', source_name: 'ad-meta-a', contact_click_count: 1, register_count: 0 },
+      { date: '2026-07-22', source_channel: 'ad', source_name: 'ad-meta-a', contact_click_count: 1, register_count: 1 },
+    ])
     assert.deepEqual(rows(`
-      SELECT source_channel, contact_click_count
+      SELECT date, contact_click_count, register_count
+      FROM analytics_daily_pages
+      WHERE path = '/'
+      ORDER BY date;
+    `), [
+      { date: '2026-07-21', contact_click_count: 1, register_count: 0 },
+      { date: '2026-07-22', contact_click_count: 1, register_count: 1 },
+    ])
+    assert.deepEqual(rows(`
+      SELECT date, source_channel, contact_click_count, register_count
       FROM analytics_source_page_daily
-      WHERE source_name = 'ad-meta-a';
-    `), [{ source_channel: 'ad', contact_click_count: 1 }])
+      WHERE source_name = 'ad-meta-a'
+      ORDER BY date;
+    `), [
+      { date: '2026-07-21', source_channel: 'ad', contact_click_count: 1, register_count: 0 },
+      { date: '2026-07-22', source_channel: 'ad', contact_click_count: 1, register_count: 1 },
+    ])
   })
 
   it('来源点击旧渠道行迁移到 ad 且不重复保留', () => {
@@ -116,13 +133,22 @@ describe('0055 投放来源与聚合完整性 migration', () => {
     assert.deepEqual(rows(`
       SELECT date, invite_code_id, register_count, contact_click_count, membership_grant_count
       FROM analytics_invite_daily;
-    `), [{
-      date: '2026-07-21',
-      invite_code_id: 'invite_a',
-      register_count: 1,
-      contact_click_count: 1,
-      membership_grant_count: 1,
-    }])
+    `), [
+      {
+        date: '2026-07-21',
+        invite_code_id: 'invite_a',
+        register_count: 1,
+        contact_click_count: 1,
+        membership_grant_count: 1,
+      },
+      {
+        date: '2026-07-22',
+        invite_code_id: 'invite_a',
+        register_count: 0,
+        contact_click_count: 1,
+        membership_grant_count: 0,
+      },
+    ])
   })
 })
 
@@ -362,7 +388,9 @@ function setupSql() {
     ('page_managed', '2026-07-21', 'visitor_managed', 'session_managed', '/', '/', 'page', '', '首页', 1, 1, 1, 0, 30, 80);
   INSERT INTO analytics_events VALUES
     ('event_panel', 'contact_panel_open', '2026-07-20T16:00:00.000Z', 'visitor_managed', 'session_managed', '/', '/', 'page', '', '首页', 'referral'),
-    ('event_contact', 'contact_method_click', '2026-07-20T16:00:01.000Z', 'visitor_managed', 'session_managed', '/', '/', 'page', '', '首页', 'referral');
+    ('event_contact', 'contact_method_click', '2026-07-20T16:00:01.000Z', 'visitor_managed', 'session_managed', '/', '/', 'page', '', '首页', 'referral'),
+    ('event_contact_cross_day', 'contact_method_click', '2026-07-21T16:00:01.000Z', 'visitor_managed', 'session_managed', '/', '/', 'page', '', '首页', 'referral'),
+    ('event_register_cross_day', 'register_success', '2026-07-21T16:00:02.000Z', 'visitor_managed', 'session_managed', '/', '/', 'page', '', '首页', 'referral');
   INSERT INTO attribution_conversion_facts VALUES
     ('fact_managed', '{"sourceChannel":"referral","sourceName":"ad-meta-a"}');
   INSERT INTO invite_codes VALUES ('invite_a', 'meta-team');

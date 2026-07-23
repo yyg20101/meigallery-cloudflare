@@ -1,4 +1,5 @@
 import type { AdAttributionProvider, AnalyticsSourceChannel } from '@meigallery/shared'
+import { normalizeAnalyticsCampaignToken } from '@meigallery/shared/utils'
 import { generateId } from '../utils/db'
 import { sanitizeAnalyticsPath } from '../utils/analytics-url'
 import { readD1UsageMeta } from '../utils/analytics-cost'
@@ -86,6 +87,7 @@ interface TrackingSourceRow {
   name: string
   channel: TrackingSourceChannel
   slug: string
+  link_proof: string
   target_path: string
   utm_source: string
   utm_medium: string
@@ -129,18 +131,19 @@ export async function createTrackingSource(db: TrackingSourceDb, input: CreateTr
   const utmSource = slug
   const utmMedium = normalizeUtmValue(input.utmMedium || defaultUtmMedium(channel), 'utm_medium')
   const utmCampaign = normalizeOptionalUtmValue(input.utmCampaign || slug, 'utm_campaign')
-  const utmContent = normalizeOptionalUtmValue(input.utmContent, 'utm_content')
+  const utmContent = normalizeOptionalUtmContent(input.utmContent)
   const adProvider = normalizeAdProvider(channel, input.adProvider)
+  const linkProof = generateLinkProof()
   const note = normalizeOptionalText(input.note, 500)
 
   await assertUniqueTrackingSource(db, slug, utmSource)
   await db.prepare(`
     INSERT INTO analytics_tracking_sources (
-      id, name, channel, slug, target_path, utm_source, utm_medium,
+      id, name, channel, slug, link_proof, target_path, utm_source, utm_medium,
       utm_campaign, utm_content, ad_provider, note, created_by
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).bind(id, name, channel, slug, targetPath, utmSource, utmMedium, utmCampaign, utmContent, adProvider, note, input.createdBy).run()
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(id, name, channel, slug, linkProof, targetPath, utmSource, utmMedium, utmCampaign, utmContent, adProvider, note, input.createdBy).run()
 
   return {
     id,
@@ -160,13 +163,22 @@ export async function createTrackingSource(db: TrackingSourceDb, input: CreateTr
     createdBy: input.createdBy,
     createdAt: '',
     updatedAt: '',
-    trackingPath: buildTrackingPath({ targetPath, slug, utmSource, utmMedium, utmCampaign, utmContent }),
+    trackingPath: buildTrackingPath({
+      targetPath,
+      slug,
+      linkProof,
+      utmSource,
+      utmMedium,
+      utmCampaign,
+      utmContent,
+      adProvider,
+    }),
   }
 }
 
 export async function listTrackingSources(db: TrackingSourceDb): Promise<TrackingSourceItem[]> {
   const rows = await db.prepare(`
-    SELECT id, name, channel, slug, target_path, utm_source, utm_medium,
+    SELECT id, name, channel, slug, link_proof, target_path, utm_source, utm_medium,
            utm_campaign, utm_content, ad_provider, status, note, created_by, created_at, updated_at
     FROM analytics_tracking_sources
     ORDER BY created_at DESC
@@ -188,7 +200,7 @@ export async function queryTrackingSourcesWithMetrics(
 ) {
   const result = await db.prepare(`
     SELECT
-      ats.id, ats.name, ats.channel, ats.slug, ats.target_path, ats.utm_source,
+      ats.id, ats.name, ats.channel, ats.slug, ats.link_proof, ats.target_path, ats.utm_source,
       ats.utm_medium, ats.utm_campaign, ats.utm_content, ats.ad_provider, ats.status, ats.note, ats.created_by,
       ats.created_at, ats.updated_at,
       COALESCE(SUM(ads.visitor_count), 0) AS visitor_count,
@@ -203,8 +215,9 @@ export async function queryTrackingSourcesWithMetrics(
     LEFT JOIN analytics_daily_sources ads
       ON ads.date BETWEEN ? AND ?
      AND ads.source_name = ats.utm_source
+     AND ads.source_channel = ats.channel
     GROUP BY
-      ats.id, ats.name, ats.channel, ats.slug, ats.target_path, ats.utm_source,
+      ats.id, ats.name, ats.channel, ats.slug, ats.link_proof, ats.target_path, ats.utm_source,
       ats.utm_medium, ats.utm_campaign, ats.utm_content, ats.ad_provider, ats.status, ats.note, ats.created_by,
       ats.created_at, ats.updated_at
     ORDER BY session_count DESC, ats.created_at DESC
@@ -227,7 +240,8 @@ export async function queryTrackingSourcesWithMetrics(
 }
 
 export async function updateTrackingSource(db: TrackingSourceDb, id: string, input: UpdateTrackingSourceInput) {
-  const before = await getTrackingSourceById(db, id)
+  const beforeRow = await getTrackingSourceRowById(db, id)
+  const before = serializeTrackingSource(beforeRow)
   const requestedCode = input.sourceCode ?? input.slug
   if (requestedCode !== undefined && normalizeSlug(requestedCode) !== before.slug) {
     throw new TrackingSourceError(400, '来源 code 创建后不能修改；如需新 code，请创建新来源并停用旧来源')
@@ -251,7 +265,7 @@ export async function updateTrackingSource(db: TrackingSourceDb, id: string, inp
     utmSource: before.utmSource,
     utmMedium: input.utmMedium === undefined ? before.utmMedium : normalizeUtmValue(input.utmMedium, 'utm_medium'),
     utmCampaign: input.utmCampaign === undefined ? before.utmCampaign : normalizeOptionalUtmValue(input.utmCampaign, 'utm_campaign'),
-    utmContent: input.utmContent === undefined ? before.utmContent : normalizeOptionalUtmValue(input.utmContent, 'utm_content'),
+    utmContent: input.utmContent === undefined ? before.utmContent : normalizeOptionalUtmContent(input.utmContent),
     adProvider: before.adProvider,
     status: input.status ?? before.status,
     note: input.note === undefined ? before.note : normalizeOptionalText(input.note, 500),
@@ -290,10 +304,12 @@ export async function updateTrackingSource(db: TrackingSourceDb, id: string, inp
       trackingPath: buildTrackingPath({
         targetPath: next.targetPath,
         slug: next.slug,
+        linkProof: beforeRow.link_proof,
         utmSource: next.utmSource,
         utmMedium: next.utmMedium,
         utmCampaign: next.utmCampaign,
         utmContent: next.utmContent,
+        adProvider: next.adProvider,
       }),
     },
   }
@@ -340,23 +356,25 @@ function serializeTrackingSource(row: TrackingSourceRow): TrackingSourceItem {
     trackingPath: buildTrackingPath({
       targetPath: row.target_path,
       slug: row.slug,
+      linkProof: row.link_proof,
       utmSource: row.utm_source,
       utmMedium: row.utm_medium,
       utmCampaign: row.utm_campaign,
       utmContent: row.utm_content ?? '',
+      adProvider: normalizeStoredAdProvider(row.ad_provider),
     }),
   }
 }
 
-async function getTrackingSourceById(db: TrackingSourceDb, id: string): Promise<TrackingSourceItem> {
+async function getTrackingSourceRowById(db: TrackingSourceDb, id: string): Promise<TrackingSourceRow> {
   const row = await db.prepare(`
-    SELECT id, name, channel, slug, target_path, utm_source, utm_medium,
+    SELECT id, name, channel, slug, link_proof, target_path, utm_source, utm_medium,
            utm_campaign, utm_content, ad_provider, status, note, created_by, created_at, updated_at
     FROM analytics_tracking_sources
     WHERE id = ?
   `).bind(id).first<TrackingSourceRow>()
   if (!row) throw new TrackingSourceError(404, '推广来源不存在')
-  return serializeTrackingSource(row)
+  return row
 }
 
 async function assertUniqueTrackingSource(db: TrackingSourceDb, slug: string, utmSource: string, excludeId?: string) {
@@ -375,18 +393,26 @@ async function assertUniqueTrackingSource(db: TrackingSourceDb, slug: string, ut
 function buildTrackingPath(input: {
   targetPath: string
   slug: string
+  linkProof: string
   utmSource: string
   utmMedium: string
   utmCampaign: string
   utmContent: string
+  adProvider: AdAttributionProvider | ''
 }) {
   const url = new URL(input.targetPath, 'https://site.local')
   url.searchParams.set('mg_source', input.slug)
+  if (input.adProvider) url.searchParams.set('mg_proof', input.linkProof)
   url.searchParams.set('utm_source', input.utmSource)
   url.searchParams.set('utm_medium', input.utmMedium)
   if (input.utmCampaign) url.searchParams.set('utm_campaign', input.utmCampaign)
   if (input.utmContent) url.searchParams.set('utm_content', input.utmContent)
   return `${url.pathname}${url.search}`
+}
+
+function generateLinkProof() {
+  const bytes = crypto.getRandomValues(new Uint8Array(32))
+  return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
 }
 
 function normalizeRequiredText(value: unknown, label: string, maxLength: number) {
@@ -465,6 +491,16 @@ function normalizeOptionalUtmValue(value: unknown, label: string) {
   const text = String(value ?? '').trim()
   if (!text) return ''
   return normalizeUtmValue(text, label)
+}
+
+function normalizeOptionalUtmContent(value: unknown) {
+  const text = String(value ?? '').trim()
+  if (!text) return ''
+  const normalized = normalizeAnalyticsCampaignToken(text, 80)
+  if (!normalized) {
+    throw new TrackingSourceError(400, 'utm_content 只能使用不含个人信息的字母、数字、点、中划线或下划线')
+  }
+  return normalized
 }
 
 function defaultUtmMedium(channel: TrackingSourceChannel) {

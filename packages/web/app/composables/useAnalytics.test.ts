@@ -109,6 +109,29 @@ describe('useAnalytics', () => {
     ]))
   })
 
+  it.each(['user@example.com', '13800000000'])(
+    'utm_content 含敏感值 %s 时不进入客户端事件队列',
+    async (utmContent) => {
+      const analytics = useAnalytics()
+      analytics.initialize({
+        enabled: true,
+        consentState: 'granted',
+        sourceChannel: 'ad',
+        sourceContext: { utmContent },
+        route,
+      })
+      analytics.trackPageView(route)
+
+      await analytics.flush()
+
+      const body = apiMock.mock.calls[0]?.[1]?.body
+      expect(body.events).toEqual(expect.arrayContaining([
+        expect.objectContaining({ eventName: 'page_view', utmContent: '' }),
+      ]))
+      expect(JSON.stringify(body)).not.toContain(utmContent)
+    },
+  )
+
   it('允许外部传入 eventId 并随 flush 上报', async () => {
     const analytics = useAnalytics()
     analytics.initialize({ enabled: true, consentState: 'granted', route })

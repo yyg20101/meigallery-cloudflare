@@ -11,6 +11,7 @@ export interface AdAttributionSignals {
   wbraid?: unknown
   utmSource?: unknown
   trackingSourceSlug?: unknown
+  managedLinkProof?: unknown
 }
 
 export interface AdAttributionRoutingResult {
@@ -54,7 +55,7 @@ export async function resolveAdAttributionRouting(
   const [click] = clickProviders
   if (click) return matched(click[0], 'click_id', click[1])
   if (managed) return matched(managed, 'managed_link')
-  if (aliasProvider) return matched(aliasProvider, 'utm_alias')
+  if (aliasProvider && inheritedProvider && aliasProvider !== inheritedProvider) return conflict()
   return inheritedProvider ? inherited(inheritedProvider) : none()
 }
 
@@ -62,16 +63,17 @@ async function resolveManagedLinkProvider(
   db: Pick<D1Database, 'prepare'>,
   signals: ReturnType<typeof normalizeSignals>,
 ) {
-  if (!signals.trackingSourceSlug) return null
+  if (!signals.trackingSourceSlug || !signals.managedLinkProof) return null
   const row = await db.prepare(`
     SELECT ad_provider
     FROM analytics_tracking_sources
     WHERE status = 'active'
       AND channel = 'ad'
       AND slug = ?
+      AND link_proof = ?
       AND ad_provider IN ('meta', 'tiktok', 'google')
     LIMIT 1
-  `).bind(signals.trackingSourceSlug).all<TrackingSourceProviderRow>()
+  `).bind(signals.trackingSourceSlug, signals.managedLinkProof).all<TrackingSourceProviderRow>()
   return normalizeProvider(row.results[0]?.ad_provider)
 }
 
@@ -83,7 +85,11 @@ function normalizeSignals(signals: AdAttributionSignals) {
   const wbraid = normalizeOptionalSignal(signals.wbraid, CLICK_ID_MAX_LENGTH)
   const utmSource = normalizeOptionalSignal(signals.utmSource, 120)
   const trackingSource = normalizeOptionalSignal(signals.trackingSourceSlug, 120)
+  const managedProof = normalizeOptionalSignal(signals.managedLinkProof, 64)
   const trackingSourceSlug = trackingSource.provided ? normalizeSlug(trackingSource.value) : ''
+  const managedLinkProof = managedProof.provided && /^[0-9a-f]{64}$/.test(managedProof.value)
+    ? managedProof.value
+    : ''
   return {
     fbclid: fbclid.value,
     ttclid: ttclid.value,
@@ -92,10 +98,13 @@ function normalizeSignals(signals: AdAttributionSignals) {
     wbraid: wbraid.value,
     utmSource: utmSource.value,
     trackingSourceSlug,
+    managedLinkProof,
     invalid: [
-      fbclid, ttclid, gclid, gbraid, wbraid, utmSource, trackingSource,
+      fbclid, ttclid, gclid, gbraid, wbraid, utmSource, trackingSource, managedProof,
     ].some(item => item.invalid)
-      || (trackingSource.provided && !trackingSourceSlug),
+      || (trackingSource.provided && !trackingSourceSlug)
+      || (managedProof.provided && !managedLinkProof)
+      || trackingSource.provided !== managedProof.provided,
   }
 }
 

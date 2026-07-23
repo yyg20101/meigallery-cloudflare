@@ -105,6 +105,25 @@ describe('useAdAttribution', () => {
       .not.toContain('sensitive-google-click')
   })
 
+  it('后台投放链接同时提交来源 code 与不可伪造的校验参数', async () => {
+    api.mockResolvedValueOnce({ provider: 'meta', resolution: 'matched', expiresInSeconds: 2_592_000 })
+    const attribution = useAdAttribution()
+    const proof = 'a'.repeat(64)
+
+    await attribution.resolve({
+      path: '/',
+      query: { mg_source: 'ad-meta-a', mg_proof: proof, utm_source: 'ad-meta-a' },
+    })
+
+    expect(api).toHaveBeenCalledWith('/api/ad-attribution', {
+      method: 'PUT',
+      body: expect.objectContaining({
+        trackingSourceSlug: 'ad-meta-a',
+        managedLinkProof: proof,
+      }),
+    })
+  })
+
   it('冲突结果不选择平台，重复解析也不保留来源信号', async () => {
     api
       .mockResolvedValueOnce({ provider: null, resolution: 'conflict', expiresInSeconds: null })

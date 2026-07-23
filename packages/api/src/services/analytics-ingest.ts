@@ -8,6 +8,7 @@ import type {
   AnalyticsSourceChannel,
 } from '@meigallery/shared'
 import { ANALYTICS_LIMITS } from '@meigallery/shared/constants'
+import { normalizeAnalyticsCampaignToken } from '@meigallery/shared/utils'
 import type { Bindings } from '../index'
 import {
   isAnalyticsEntityType,
@@ -387,7 +388,7 @@ function normalizeAnalyticsEvent(
     utmSource: truncateAnalyticsString(utmSource, 120),
     utmMedium: truncateAnalyticsString(utmMedium, 120),
     utmCampaign: truncateAnalyticsString(utmCampaign, 120),
-    utmContent: truncateAnalyticsString(utmContent, 120),
+    utmContent: normalizeAnalyticsCampaignToken(utmContent),
     trackingSourceSlug: truncateAnalyticsString(trackingSourceSlug, 120),
     sourceChannel,
     sourceName: truncateAnalyticsString(sourceNameFromProps || derivedSource.name, 120),

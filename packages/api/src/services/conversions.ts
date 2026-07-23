@@ -1,4 +1,5 @@
 import type { AdAttributionProvider, AdBrowserInstruction, AnalyticsSourceChannel, CanonicalConversionEvent } from '@meigallery/shared'
+import { normalizeAnalyticsCampaignToken } from '@meigallery/shared/utils'
 import type { Bindings } from '../index'
 import { generateId } from '../utils/db'
 import { buildConversionDedupeKey, sanitizeConversionMetadata } from '../utils/conversions'
@@ -138,7 +139,7 @@ async function existingBrowserInstructions(db: D1Database, keys: AttributionCryp
   return instructions.filter((instruction): instruction is AdBrowserInstruction => Boolean(instruction))
 }
 function duplicate(id: string, actionType: RecordConversionResult['actionType'], trackingInstructions: AdBrowserInstruction[]): RecordConversionResult { return { id, actionType, created: false, duplicateOf: id, trackingInstructions } }
-function dimensions(input: ConversionBaseInput, extra: Record<string, unknown>) { return { visitorId: input.visitorId, sessionId: input.sessionId, userId: input.userId ?? null, routeName: text(input.routeName), path: text(input.path), sourceChannel: text(input.sourceChannel), sourceName: text(input.sourceName), trackingSourceSlug: text(input.trackingSourceSlug), utmSource: text(input.utmSource), utmMedium: text(input.utmMedium), utmCampaign: text(input.utmCampaign), utmContent: text(input.utmContent), metadata: sanitizeConversionMetadata(input.metadata ?? {}), ...extra } }
+function dimensions(input: ConversionBaseInput, extra: Record<string, unknown>) { return { visitorId: input.visitorId, sessionId: input.sessionId, userId: input.userId ?? null, routeName: text(input.routeName), path: text(input.path), sourceChannel: text(input.sourceChannel), sourceName: text(input.sourceName), trackingSourceSlug: text(input.trackingSourceSlug), utmSource: text(input.utmSource), utmMedium: text(input.utmMedium), utmCampaign: text(input.utmCampaign), utmContent: normalizeAnalyticsCampaignToken(input.utmContent), metadata: sanitizeConversionMetadata(input.metadata ?? {}), ...extra } }
 function absolutePageUrl(siteUrl: string | undefined, path: string | undefined) { try { if (!siteUrl || !path?.startsWith('/')) return null; const origin = new URL(siteUrl); if (!['http:', 'https:'].includes(origin.protocol)) return null; return new URL(path, origin.origin).toString() } catch { return null } }
 function stableId(input: ConversionBaseInput) { return input.userId ? `user_${input.userId}` : input.visitorId }
 function iso(value: string) { const parsed = new Date(value); return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString() }

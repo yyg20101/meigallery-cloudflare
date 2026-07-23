@@ -5,6 +5,7 @@ import type {
   AdBrowserSignal,
   AdConsentSnapshot,
 } from '@meigallery/shared'
+import { normalizeAnalyticsCampaignToken } from '@meigallery/shared/utils'
 import {
   executeAdBrowserInstruction,
   initializeAdBrowserProvider,
@@ -72,7 +73,7 @@ export function useTracking() {
       utmSource: normalizeText(sourceContext.utmSource, 120),
       utmMedium: normalizeText(sourceContext.utmMedium, 120),
       utmCampaign: normalizeText(sourceContext.utmCampaign, 120),
-      utmContent: normalizeText(sourceContext.utmContent, 120) || queryValue(route.query.utm_content),
+      utmContent: normalizeAnalyticsCampaignToken(sourceContext.utmContent || queryValue(route.query.utm_content)),
       methodType: normalizeText(input.methodType, 80),
       consentState: consentScope,
       adAttributionState: consentScope === 'granted' && routeAllowed
@@ -210,7 +211,7 @@ export function useTracking() {
       utmSource: normalizeText(sourceContext.utmSource, 120),
       utmMedium: normalizeText(sourceContext.utmMedium, 120),
       utmCampaign: normalizeText(sourceContext.utmCampaign, 120),
-      utmContent: normalizeText(sourceContext.utmContent, 120) || queryValue(route.query.utm_content),
+      utmContent: normalizeAnalyticsCampaignToken(sourceContext.utmContent || queryValue(route.query.utm_content)),
       consentState: consentScope,
       adAttributionState: consentScope === 'granted' && routeAllowed
         ? trustedAdAttributionState(adAttribution)

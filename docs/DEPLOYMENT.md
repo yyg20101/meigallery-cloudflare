@@ -82,8 +82,8 @@ corepack pnpm verify:seo:production -- --expect-site-name 星耀传媒 --expect-
 
 - release PR/CI 必须先完成完整测试、类型检查、构建、迁移 fixture 和三平台隔离验证；生产脚本不以重复执行整套门禁代替 CI。
 - production 只允许从干净的 `main` 执行，脚本为 API/Web 注入同一 `RELEASE_COMMIT`，部署后必须通过 identity 校验。
-- `0052` 或 `0055` 待应用时，脚本自动执行 `verify:quick -> D1 export + Time Travel bookmark -> migration -> API/Web -> 通用归因健康校验 -> smoke`；migration guard 不满足时 D1 migration 整体失败。
-- `0052`、`0055` 均已应用后的普通发布跳过迁移前 D1 备份，不重复历史回填或平台测试事件。
+- `0052`、`0053` 或 `0055` 待应用时，脚本自动执行 `verify:quick -> D1 export + Time Travel bookmark -> migration -> API/Web -> 通用归因健康校验 -> smoke`；migration guard 不满足时 D1 migration 整体失败。
+- `0052`、`0053`、`0055` 均已应用后的代码发布跳过迁移前 D1 备份，不重复历史回填或平台测试事件；也不表示可以绕过现有恢复策略。
 - production 必须预先存在 `meigallery-ad-meta`、`meigallery-ad-meta-dlq`、`meigallery-ad-tiktok`、`meigallery-ad-tiktok-dlq`、`meigallery-ad-google`、`meigallery-ad-google-dlq`；使用 `./scripts/setup.sh production` 幂等创建。
 - `AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT` 必须是 32 字节随机值的标准 Base64，并通过 `openssl rand -base64 32 | wrangler secret put ...` 或交互式 `wrangler secret put` 配置；previous 仅在主密钥轮换窗口存在。Secret 值不得进入命令参数、文档、报告或日志。
 - 部署后门禁要求 `0052`、`0053`、`0055` 已应用且全局地区策略存在，启用的 production 连接有当前验证、无 critical incident、无过期 Outbox、无 dead letter 且 rollout 一致；部署前检查允许本次待执行的 `0055` 尚未应用。
@@ -94,6 +94,7 @@ corepack pnpm verify:seo:production -- --expect-site-name 星耀传媒 --expect-
 - `0051` 已创建最终 11 张 `attribution_*` 表并完成 production 事实回填。
 - `0052` 在 facts 覆盖完整、旧 Server delivery 静止和旧 Outbox 为空时，迁移 Meta 质量历史并删除旧表、旧列和 bridge trigger。
 - `0052` 是不可回退到旧 Worker 的 Contract 边界；发布前必须已有 D1 export、Time Travel bookmark 和可用的前一版本 Worker 产物。
+- `0053` 固化归因地区与隐私策略；执行前必须生成 production D1 备份，避免策略切换与连接状态失去恢复基线。
 - `0055` 修复管理广告链接历史来源、有效联系口径和日报聚合，并把来源平台约束扩展到 Google；执行前同样必须生成 production D1 备份。
 - Contract 后应用和运维脚本只允许访问 `attribution_*` 表，不保留双读、双写或旧平台 fallback。
 
@@ -181,7 +182,7 @@ TikTok 与 Meta 共享通用事实和投递状态机，但不共享 Queue、凭�
 
 上线顺序固定为：
 
-1. 本地通过 migration `0001..0053`、API/Web 测试、类型检查、Nuxt production build 和 Worker dry-run。
+1. 本地通过 migration `0001..0055`、API/Web 测试、类型检查、Nuxt production build 和 Worker dry-run。
 2. 通过 `./scripts/setup.sh production` 确认统一 Queue；dev/local 不创建或绑定真实广告平台资源。
 3. 在 `/admin/attribution/platforms?provider=tiktok` 保存 Pixel ID 与 Access Token，保持 Server 关闭且 rollout `0`。
 4. 在 TikTok Events Manager 打开 Test Events，输入当次 Test Event Code 后点击“验证 Events API”。API 每次都会发送新的 `Contact` 与 `CompleteRegistration` 测试事件；连接身份未变化时复用现有 revision，不改写验证状态。Test Event Code 不写入 D1、审计或长期 secret，审计日志只记录发送数量、验证状态与 revision。
@@ -195,7 +196,7 @@ TikTok 与 Meta 共享通用事实和投递状态机，但不共享 Queue、凭�
 
 ### Google Ads Tag / Data Manager API 上线顺序
 
-Google 与 Meta、TikTok 共用标准事实，但只消费 Google click ID、签名投放链接或明确 Google Ads 来源。Google 使用独立 `meigallery-ad-google` / `meigallery-ad-google-dlq`；不接入 GA4，不需要 Developer Token。
+Google 与 Meta、TikTok 共用标准事实，但只消费 Google click ID、数据库校验通过的管理投放链接或既有可信 Google receipt；普通 UTM 不能建立 Google Ads 来源。Google 使用独立 `meigallery-ad-google` / `meigallery-ad-google-dlq`；不接入 GA4，不需要 Developer Token。
 
 1. 在 Google Cloud 启用 Data Manager API，为 Service Account 配置 Service Usage Consumer，并在 Google Ads 中授予对应账户权限。
 2. 分别为 Contact、CompleteRegistration 创建 Google Ads 网站转化操作，取得各自 `AW-.../label` 与 `WEBPAGE` Conversion Action ID。
@@ -375,7 +376,7 @@ head_sampling_rate = 1
 - [ ] 域名 DNS 已接入 Cloudflare
 - [ ] `meigallery-web` Worker 已部署并绑定 `616618.xyz`
 - [ ] `meigallery-api` Worker 已部署并绑定 `api.616618.xyz`
-- [ ] D1 数据库 `meigallery-db` 已创建，`0001` 到 `0053` migrations 已依次执行
+- [ ] D1 数据库 `meigallery-db` 已创建，`0001` 到 `0055` migrations 已依次执行
 - [ ] R2 bucket `meigallery-media` 已创建并设置私有访问策略
 - [ ] Stream 上传和播放流程验证通过（当前未接入）
 - [ ] 所有 Worker secrets 已配置（SESSION_SECRET、TURNSTILE_SECRET_KEY、STREAM_ACCOUNT_ID、STREAM_API_TOKEN）

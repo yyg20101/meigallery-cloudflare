@@ -14,6 +14,7 @@ const LINK_SCHEMA = `
     name TEXT NOT NULL,
     channel TEXT NOT NULL,
     slug TEXT NOT NULL UNIQUE,
+    link_proof TEXT NOT NULL,
     target_path TEXT NOT NULL,
     utm_source TEXT NOT NULL,
     utm_medium TEXT NOT NULL,
@@ -117,6 +118,14 @@ describe('统一归因后台 API', () => {
   })
 
   it('links 只返回当前平台投放链接，并使用最终事实计算有效联系和注册', async () => {
+    await fact(
+      'fact_google_unresolved',
+      'Contact',
+      'google',
+      'google-source',
+      'google-campaign',
+      '',
+    ).run()
     const response = await request(`/links?${RANGE}&provider=google`)
     const body = await response.json() as {
       data: {
@@ -136,6 +145,7 @@ describe('统一归因后台 API', () => {
         pageViewCount: 7,
         contactCount: 1,
         completeRegistrationCount: 1,
+        trackingPath: expect.stringMatching(/[?&]mg_proof=[0-9a-f]{64}(?:&|$)/),
       }),
     ])
   })
@@ -226,6 +236,13 @@ async function seed() {
     ) VALUES (
       '2026-07-15', 'ad', 'google-source', '', 2, 3, 7, 1, 1, 1, 0, 0, 120
     )`),
+    db.prepare(`INSERT INTO analytics_daily_sources (
+      date, source_channel, source_name, invite_code_id, visitor_count, session_count,
+      page_view_count, gallery_detail_count, contact_click_count, register_count,
+      invite_register_count, membership_grant_count, active_seconds_total
+    ) VALUES (
+      '2026-07-15', 'referral', 'google-source', '', 50, 100, 200, 0, 0, 0, 0, 0, 300
+    )`),
     connection('meta'),
     connection('google'),
     fact('fact_meta', 'Contact', 'meta', 'meta-source', 'meta-campaign'),
@@ -243,11 +260,11 @@ async function seed() {
 
 function trackingSource(id: string, name: string, slug: string, provider: 'meta' | 'google') {
   return db.prepare(`INSERT INTO analytics_tracking_sources (
-    id, name, channel, slug, target_path, utm_source, utm_medium, utm_campaign,
+    id, name, channel, slug, link_proof, target_path, utm_source, utm_medium, utm_campaign,
     utm_content, ad_provider, status, note, created_by, created_at, updated_at
-  ) VALUES (?, ?, 'ad', ?, '/', ?, 'paid_social', ?, 'creative-a', ?, 'active', '', 1,
+  ) VALUES (?, ?, 'ad', ?, ?, '/', ?, 'paid_social', ?, 'creative-a', ?, 'active', '', 1,
     '2026-07-15T00:00:00.000Z', '2026-07-15T00:00:00.000Z'
-  )`).bind(id, name, slug, slug, `${slug}-campaign`, provider)
+  )`).bind(id, name, slug, provider === 'meta' ? 'a'.repeat(64) : 'b'.repeat(64), slug, `${slug}-campaign`, provider)
 }
 
 function connection(provider: 'meta' | 'google') {
@@ -257,7 +274,14 @@ function connection(provider: 'meta' | 'google') {
   ) VALUES (?, ?, 1, 'production', 1, 1, '{}', 100, 100, 'revision_1', 'credential_1')`).bind(`conn_${provider}`, provider)
 }
 
-function fact(id: string, event: 'Contact' | 'CompleteRegistration', provider: 'meta' | 'google', sourceName: string, campaign: string) {
+function fact(
+  id: string,
+  event: 'Contact' | 'CompleteRegistration',
+  provider: 'meta' | 'google',
+  sourceName: string,
+  campaign: string,
+  trackingSourceSlug = sourceName,
+) {
   return db.prepare(`INSERT INTO attribution_conversion_facts (
     id, canonical_event, fact_origin, external_event_id, attribution_provider, attribution_source,
     occurred_at, dedupe_key, consent_snapshot_json, analytics_dimensions_json
@@ -267,7 +291,15 @@ function fact(id: string, event: 'Contact' | 'CompleteRegistration', provider: '
     `mg3_${id}`,
     provider,
     `dedupe_${id}`,
-    JSON.stringify({ sessionId: `session_${id}`, sourceName, sourceChannel: 'ad', utmCampaign: campaign, utmContent: 'creative-a', path: '/' }),
+    JSON.stringify({
+      sessionId: `session_${id}`,
+      sourceName,
+      sourceChannel: 'ad',
+      ...(trackingSourceSlug ? { trackingSourceSlug } : {}),
+      utmCampaign: campaign,
+      utmContent: 'creative-a',
+      path: '/',
+    }),
   )
 }
 

@@ -13,7 +13,7 @@
 - 实施依据：`docs/superpowers/specs/2026-07-15-unified-ad-attribution-platform-design.md` 版本 2。
 - 真实平台调用和人工证据只允许在 `production`；`dev/local` 只运行 Mock、契约、迁移和浏览器隔离测试。
 - Meta、TikTok、Google Ads 本期一起迁移；不存在 Meta 兼容分支、旧表 fallback、双读、双写或 fan-out。
-- `utm_source=google` 不等于 Google Ads；只有 `gclid`、`gbraid`、`wbraid`、签名投放链接或明确广告别名可以选择 Google。
+- `utm_source=google` 不等于 Google Ads；只有 `gclid`、`gbraid`、`wbraid`、数据库校验通过的管理投放链接或既有可信 receipt 可以选择 Google，UTM 别名只用于冲突检测。
 - 同一事实只能有一个不可变 `attribution_provider`；无来源或来源冲突时创建内部事实但不创建广告 Delivery。
 - 广告转化仅包含 `Contact` 和 `CompleteRegistration`。复制、二维码展开、面板展开只进入内部分析。
 - 凭证明文、Click ID、邮箱、完整 Payload、IV 和完整指纹不得进入日志、响应或审计。
@@ -316,7 +316,7 @@ Expected: PASS，提交成功。
 
 - [x] **Step 1：写三平台来源和同意失败测试**
 
-覆盖 `fbclid`、`ttclid`、`gclid`、`gbraid`、`wbraid`，签名链接，明确广告别名，普通 `google` 不归因，多平台强信号冲突，新点击替换旧来源，30 天过期，拒绝/撤回同意删除 Cookie。
+覆盖 `fbclid`、`ttclid`、`gclid`、`gbraid`、`wbraid`，数据库校验的管理链接，伪造/缺失 proof 拒绝，UTM 别名不独立归因，多平台强信号冲突，新点击替换旧来源，30 天过期，拒绝/撤回同意删除 Cookie。
 
 ```bash
 corepack pnpm --filter @meigallery/api exec vitest run src/services/ad-attribution-routing.test.ts src/utils/ad-attribution-context.test.ts src/services/ad-attribution-consent.d1.test.ts src/routes/ad-attribution.test.ts
@@ -339,7 +339,7 @@ export interface AdAttributionContext {
   version: 1
   contextId: string
   provider: AdAttributionProvider
-  source: 'click_id' | 'managed_link' | 'utm_alias'
+  source: 'click_id' | 'managed_link'
   identifiers: Record<string, string>
   issuedAt: number
   expiresAt: number

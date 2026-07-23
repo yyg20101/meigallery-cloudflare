@@ -54,19 +54,21 @@ VALUES
   );
 
 INSERT INTO analytics_tracking_sources (
-  id, name, channel, slug, target_path, utm_source, utm_medium, utm_campaign, utm_content,
-  status, note, created_by, created_at, updated_at
+  id, name, channel, slug, link_proof, target_path, utm_source, utm_medium, utm_campaign, utm_content,
+  ad_provider, status, note, created_by, created_at, updated_at
 )
 VALUES (
   'ats_release_local_fb',
   'Release Local FB',
   'ad',
   'release-local-fb',
+  'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
   '/gallery/release-local',
   'facebook',
   'paid_social',
   'release-local-runtime',
   'release-local-chat',
+  'meta',
   'active',
   '用于 local-runtime smoke',
   1,
@@ -77,11 +79,13 @@ ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
   channel = excluded.channel,
   slug = excluded.slug,
+  link_proof = excluded.link_proof,
   target_path = excluded.target_path,
   utm_source = excluded.utm_source,
   utm_medium = excluded.utm_medium,
   utm_campaign = excluded.utm_campaign,
   utm_content = excluded.utm_content,
+  ad_provider = excluded.ad_provider,
   status = excluded.status,
   note = excluded.note,
   created_by = excluded.created_by,
