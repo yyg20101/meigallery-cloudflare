@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
+import { getCookie, setCookie } from 'hono/cookie'
 import type { AdAttributionProvider, AdBrowserPublicConfig } from '@meigallery/shared'
 import type { Bindings, Variables } from '../index'
 import { resolveAdAttributionRouting, type AdAttributionSignals } from '../services/ad-attribution-routing'
@@ -12,10 +12,10 @@ import {
 } from '../utils/ad-attribution-context'
 import { loadAttributionCryptoKeys } from '../utils/attribution-crypto'
 import { resolveRequestMarketingConsent } from '../utils/marketing-consent-request'
-
-export const AD_ATTRIBUTION_CONTEXT_COOKIE = 'mei_ad_attribution'
-/** 旧 receipt 仅为过渡期导出；任务 4 不再签发或读取。 */
-export const AD_ATTRIBUTION_RECEIPT_COOKIE = 'mei_ad_attribution_receipt'
+import {
+  AD_ATTRIBUTION_CONTEXT_COOKIE,
+  clearAdAttributionContextCookie,
+} from '../utils/ad-attribution-cookie'
 
 export const adAttributionRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -60,11 +60,11 @@ adAttributionRoutes.put('/', async (c) => {
     consentState = (await resolveRequestMarketingConsent(c)).state
   }
   catch {
-    clearContextCookie(c)
+    clearAdAttributionContextCookie(c)
     return c.json(emptyResponse(), 503)
   }
   if (consentState !== 'granted') {
-    clearContextCookie(c)
+    clearAdAttributionContextCookie(c)
     return c.json(emptyResponse())
   }
 
@@ -73,7 +73,7 @@ adAttributionRoutes.put('/', async (c) => {
     body = await c.req.json<AdAttributionSignals>()
   }
   catch {
-    clearContextCookie(c)
+    clearAdAttributionContextCookie(c)
     return c.json(emptyResponse(), 400)
   }
 
@@ -89,7 +89,7 @@ adAttributionRoutes.put('/', async (c) => {
     )
   }
   catch {
-    clearContextCookie(c)
+    clearAdAttributionContextCookie(c)
     return c.json(emptyResponse(), 503)
   }
 
@@ -98,12 +98,12 @@ adAttributionRoutes.put('/', async (c) => {
     result = await resolveAdAttributionRouting(c.env.DB, body, currentContext?.provider ?? null)
   }
   catch {
-    clearContextCookie(c)
+    clearAdAttributionContextCookie(c)
     return c.json(emptyResponse(), 503)
   }
 
   if (!result.provider) {
-    clearContextCookie(c)
+    clearAdAttributionContextCookie(c)
     return c.json({ provider: null, resolution: result.resolution, expiresInSeconds: null })
   }
   if (result.resolution === 'inherited' && currentContext) {
@@ -136,20 +136,15 @@ adAttributionRoutes.put('/', async (c) => {
     })
   }
   catch {
-    clearContextCookie(c)
+    clearAdAttributionContextCookie(c)
     return c.json(emptyResponse(), 503)
   }
 })
 
 adAttributionRoutes.delete('/', (c) => {
-  clearContextCookie(c)
+  clearAdAttributionContextCookie(c)
   return c.json(emptyResponse())
 })
-
-export function clearContextCookie(c: Parameters<typeof deleteCookie>[0]) {
-  deleteCookie(c, AD_ATTRIBUTION_CONTEXT_COOKIE, { path: '/', secure: true, httpOnly: true, sameSite: 'Lax' })
-  deleteCookie(c, AD_ATTRIBUTION_RECEIPT_COOKIE, { path: '/', secure: true, httpOnly: true, sameSite: 'Lax' })
-}
 
 function emptyResponse() {
   return { provider: null, resolution: 'none' as const, expiresInSeconds: null }

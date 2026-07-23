@@ -133,7 +133,7 @@ function registrationInput(provider: 'meta' | 'tiktok' | 'google'): RecordRegist
 }
 async function seed(provider: 'meta' | 'tiktok' | 'google') {
   const config = provider === 'meta'
-    ? '{"pixelId":"1277657707436781"}'
+    ? '{"pixelId":"1234567890123456"}'
     : provider === 'tiktok'
       ? '{"pixelCode":"ABCDEF1234"}'
       : '{"tagId":"AW-12345","customerId":"1","cloudProjectId":"project"}'

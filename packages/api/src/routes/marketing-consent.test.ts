@@ -70,7 +70,6 @@ describe('公开营销授权 API', () => {
     expect(setCookies).toContain('mei_marketing_consent_choice=')
     expect(setCookies).toContain('mei_marketing_consent_receipt=')
     expect(setCookies).toContain('mei_ad_attribution=')
-    expect(setCookies).toContain('mei_ad_attribution_receipt=')
     expect(setCookies).toContain('Max-Age=0')
 
     const denied = await app().request('https://api.616618.xyz/api/marketing-consent', {

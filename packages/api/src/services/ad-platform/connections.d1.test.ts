@@ -26,7 +26,7 @@ describe('归因连接快照', () => {
     ['binding provider 不匹配', (rows: SnapshotRow[]) => rows.map(row => ({ ...row, binding_provider: 'google' }))],
     ['credential provider 不匹配', (rows: SnapshotRow[]) => rows.map(row => ({ ...row, credential_provider: 'google' }))],
     ['无效 public config', (rows: SnapshotRow[]) => rows.map(row => ({ ...row, public_config_json: '{invalid' }))],
-    ['额外 public config', (rows: SnapshotRow[]) => rows.map(row => ({ ...row, public_config_json: '{"pixelId":"1277657707436781","unexpected":"x"}' }))],
+    ['额外 public config', (rows: SnapshotRow[]) => rows.map(row => ({ ...row, public_config_json: '{"pixelId":"1234567890123456","unexpected":"x"}' }))],
     ['credential type 不匹配', (rows: SnapshotRow[]) => rows.map(row => ({ ...row, credential_type: 'service_account_json' }))],
     ['credential schema 不匹配', (rows: SnapshotRow[]) => rows.map(row => ({ ...row, schema_version: 2 }))],
     ['binding revision 不匹配', (rows: SnapshotRow[]) => rows.map(row => ({ ...row, mapping_revision: 'other_revision' }))],
@@ -51,7 +51,7 @@ function snapshotDb(rows: SnapshotRow[]) {
 function validRows(): SnapshotRow[] {
   return ['Contact', 'CompleteRegistration'].map((canonical_event, index) => ({
     connection_id: 'conn_meta', provider: 'meta', enabled: 1, mode: 'production', browser_enabled: 1, server_enabled: 1,
-    public_config_json: '{"pixelId":"1277657707436781"}', rollout_target_percentage: 100, rollout_effective_percentage: 100,
+    public_config_json: '{"pixelId":"1234567890123456"}', rollout_target_percentage: 100, rollout_effective_percentage: 100,
     connection_revision: 'revision_1', credential_revision: 'credential_revision_1', binding_id: `binding_${index + 1}`,
     canonical_event, binding_provider: 'meta', binding_enabled: 1, browser_destination: 'meta_pixel', server_destination: 'meta_capi',
     mapping_revision: 'revision_1', credential_id: 'credential_1', credential_provider: 'meta', credential_type: 'access_token',

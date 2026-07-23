@@ -88,7 +88,7 @@ export function useAdAttribution() {
         await api('/api/ad-attribution', { method: 'DELETE' })
       }
       catch {
-        // 本地 Pixel 已关闭；后续转化请求还会携带 suppress，旧 receipt 不能重新开启投递。
+        // 本地 Pixel 已关闭；后续转化请求仍携带 suppress，服务端不会重新开启投递。
       }
       if (version === operationVersion) resetLocalState(provider, resolution, publicConfig)
     })

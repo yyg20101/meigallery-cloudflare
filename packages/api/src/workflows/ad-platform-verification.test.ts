@@ -60,7 +60,7 @@ beforeEach(async () => {
       id, provider, enabled, mode, browser_enabled, server_enabled, public_config_json,
       rollout_target_percentage, rollout_effective_percentage, connection_revision, credential_revision
     ) VALUES ('conn_meta', 'meta', 1, 'production', 1, 1, ?, 0, 0, ?, ?)
-  `).bind(JSON.stringify({ pixelId: '1277657707436781' }), CONNECTION_REVISION, CREDENTIAL_REVISION).run()
+  `).bind(JSON.stringify({ pixelId: '1234567890123456' }), CONNECTION_REVISION, CREDENTIAL_REVISION).run()
   await db.batch((['Contact', 'CompleteRegistration'] as const).map(event => db.prepare(`
     INSERT INTO attribution_event_bindings (
       id, connection_id, provider, canonical_event, enabled,

@@ -141,7 +141,7 @@ describe('useAdAttribution', () => {
     expect(attribution.resolution.value).toBe('conflict')
   })
 
-  it('来源验证失败时本地降级并请求服务端清除旧 receipt', async () => {
+  it('来源验证失败时本地降级并请求服务端清除归因上下文', async () => {
     api.mockRejectedValueOnce(new Error('network'))
     api.mockResolvedValueOnce({ provider: null, resolution: 'none', expiresInSeconds: null })
     api.mockResolvedValueOnce({ provider: 'meta', resolution: 'matched', expiresInSeconds: 1_800 })

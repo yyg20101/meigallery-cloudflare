@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { deleteCookie, getCookie } from 'hono/cookie'
+import { getCookie } from 'hono/cookie'
 import type { Bindings, Variables } from '../index'
 import { errorJson } from '../utils/api-error'
 import { loadAttributionCryptoKeys } from '../utils/attribution-crypto'
@@ -9,9 +9,10 @@ import {
   persistMarketingConsentChoice,
   resolveRequestMarketingConsent,
 } from '../utils/marketing-consent-request'
-
-const AD_ATTRIBUTION_CONTEXT_COOKIE = 'mei_ad_attribution'
-const AD_ATTRIBUTION_RECEIPT_COOKIE = 'mei_ad_attribution_receipt'
+import {
+  AD_ATTRIBUTION_CONTEXT_COOKIE,
+  clearAdAttributionContextCookie,
+} from '../utils/ad-attribution-cookie'
 
 export const marketingConsentRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -80,9 +81,4 @@ async function revokeCurrentAdAttribution(c: Parameters<typeof getCookie>[0]) {
   catch {
     return false
   }
-}
-
-function clearAdAttributionContextCookie(c: Parameters<typeof deleteCookie>[0]) {
-  deleteCookie(c, AD_ATTRIBUTION_CONTEXT_COOKIE, { path: '/', secure: true, httpOnly: true, sameSite: 'Lax' })
-  deleteCookie(c, AD_ATTRIBUTION_RECEIPT_COOKIE, { path: '/', secure: true, httpOnly: true, sameSite: 'Lax' })
 }

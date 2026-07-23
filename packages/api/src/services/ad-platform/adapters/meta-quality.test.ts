@@ -38,7 +38,7 @@ describe('Meta 通用质量 Adapter', () => {
       return new Response(JSON.stringify(response), { status: 200 })
     }) as unknown as typeof fetch
     const result = await fetchMetaQuality({
-      datasetId: '1277657707436781',
+      datasetId: '1234567890123456',
       credential: 'private-token',
       fetcher,
     })
@@ -48,7 +48,7 @@ describe('Meta 通用质量 Adapter', () => {
 
   it('将权限错误归类为稳定错误码', async () => {
     const result = await fetchMetaQuality({
-      datasetId: '1277657707436781',
+      datasetId: '1234567890123456',
       credential: 'private-token',
       fetcher: async () => new Response('{}', { status: 403 }),
     })
@@ -57,7 +57,7 @@ describe('Meta 通用质量 Adapter', () => {
 
   it('合法空集合表示暂无近期质量样本，不误报响应损坏', async () => {
     const result = await fetchMetaQuality({
-      datasetId: '1277657707436781',
+      datasetId: '1234567890123456',
       credential: 'private-token',
       fetcher: async () => new Response('{"web":[]}', { status: 200 }),
     })
@@ -66,7 +66,7 @@ describe('Meta 通用质量 Adapter', () => {
 
   it('Graph API 空 data 包裹表示暂无近期质量样本', async () => {
     const result = await fetchMetaQuality({
-      datasetId: '1277657707436781',
+      datasetId: '1234567890123456',
       credential: 'private-token',
       fetcher: async () => new Response('{"data":[]}', { status: 200 }),
     })
@@ -75,7 +75,7 @@ describe('Meta 通用质量 Adapter', () => {
 
   it('解析 Graph API data 和 web connection 包裹', async () => {
     const result = await fetchMetaQuality({
-      datasetId: '1277657707436781',
+      datasetId: '1234567890123456',
       credential: 'private-token',
       fetcher: async () => new Response(JSON.stringify({
         data: [{ web: { data: response.web } }],
@@ -87,7 +87,7 @@ describe('Meta 通用质量 Adapter', () => {
 
   it('结构未知的非空 2xx 响应仍归类为 invalid_response', async () => {
     const result = await fetchMetaQuality({
-      datasetId: '1277657707436781',
+      datasetId: '1234567890123456',
       credential: 'private-token',
       fetcher: async () => new Response('{"data":[{"unexpected":true}]}', { status: 200 }),
     })
@@ -96,7 +96,7 @@ describe('Meta 通用质量 Adapter', () => {
 
   it('非空活动事件缺少质量结构时不伪装成暂无近期样本', async () => {
     const result = await fetchMetaQuality({
-      datasetId: '1277657707436781',
+      datasetId: '1234567890123456',
       credential: 'private-token',
       fetcher: async () => new Response('{"web":[{"event_name":"Contact"}]}', { status: 200 }),
     })

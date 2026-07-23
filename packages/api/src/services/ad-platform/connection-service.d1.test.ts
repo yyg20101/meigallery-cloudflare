@@ -326,7 +326,7 @@ function metaCommand(overrides: Partial<SavePlatformConnectionCommand> = {}): Sa
     mode: 'production',
     browserEnabled: true,
     serverEnabled: true,
-    publicConfig: { provider: 'meta', pixelId: '1277657707436781' },
+    publicConfig: { provider: 'meta', pixelId: '1234567890123456' },
     eventBindings: [
       { canonicalEvent: 'Contact', enabled: true },
       { canonicalEvent: 'CompleteRegistration', enabled: true },

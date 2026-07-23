@@ -38,7 +38,7 @@ describe('广告平台 adapter registry', () => {
   })
 
   it('由平台注册表严格校验公开配置', () => {
-    expect(getAdPlatformDefinition('meta')?.publicConfigSchema.parse({ pixelId: '1277657707436781' })).toEqual({ pixelId: '1277657707436781' })
+    expect(getAdPlatformDefinition('meta')?.publicConfigSchema.parse({ pixelId: '1234567890123456' })).toEqual({ pixelId: '1234567890123456' })
     expect(getAdPlatformDefinition('meta')?.publicConfigSchema.parse({ pixelId: 'pixel_1' })).toBeNull()
     expect(getAdPlatformDefinition('tiktok')?.publicConfigSchema.parse({ pixelCode: 'ABCDEF123456' })).toEqual({ pixelCode: 'ABCDEF123456' })
     expect(getAdPlatformDefinition('google')?.publicConfigSchema.parse({

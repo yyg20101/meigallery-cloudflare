@@ -18,7 +18,7 @@ describe('平台连接验证 Adapter', () => {
     const input: PlatformVerificationAdapterInput = {
       verificationId: 'verify:meta:1',
       provider: 'meta',
-      publicConfig: { pixelId: '1277657707436781' },
+      publicConfig: { pixelId: '1234567890123456' },
       eventBindings: fixedBindings,
       credential: 'meta-secret-token',
       testEventCode: 'TEST90001',
