@@ -79,7 +79,8 @@ if [ "$IS_PRODUCTION" = "true" ]; then
   if [[ "$UNAPPLIED_MIGRATIONS" == *"0052_unified_attribution_contract"* ]] \
     || [[ "$UNAPPLIED_MIGRATIONS" == *"0053_attribution_privacy_policy"* ]] \
     || [[ "$UNAPPLIED_MIGRATIONS" == *"0055_attribution_tracking_integrity"* ]] \
-    || [[ "$UNAPPLIED_MIGRATIONS" == *"0056_attribution_fact_source_integrity"* ]]; then
+    || [[ "$UNAPPLIED_MIGRATIONS" == *"0056_attribution_fact_source_integrity"* ]] \
+    || [[ "$UNAPPLIED_MIGRATIONS" == *"0057_contact_aggregate_integrity"* ]]; then
     echo "[2/7] 高风险归因 migration 待执行，先导出 production D1 备份..."
     node scripts/export-production-d1-backup.mjs
   else

@@ -8,14 +8,23 @@ async function readMigration(name: string) {
 }
 
 describe('analytics migrations', () => {
-  it('migration 索引从 0001 到 0056 连续且编号唯一', async () => {
+  it('migration 索引从 0001 到 0057 连续且编号唯一', async () => {
     const names = (await readdir(MIGRATION_DIR))
       .filter(name => /^\d{4}_.+\.sql$/.test(name))
       .sort()
     const indexes = names.map(name => Number(name.slice(0, 4)))
 
-    expect(indexes).toEqual(Array.from({ length: 56 }, (_, index) => index + 1))
+    expect(indexes).toEqual(Array.from({ length: 57 }, (_, index) => index + 1))
     expect(new Set(indexes).size).toBe(indexes.length)
+  })
+
+  it('0057 只从完整保留的有效联系事实重建两个联系日报', async () => {
+    const sql = await readMigration('0057_contact_aggregate_integrity.sql')
+    expect(sql).toContain("DELETE FROM analytics_daily_events\nWHERE event_name = 'contact_method_click'")
+    expect(sql).toContain("date(datetime(occurred_at, '+8 hours'))")
+    expect(sql).toContain("DELETE FROM analytics_source_click_daily\nWHERE element_id = 'contact_method_click'")
+    expect(sql).toContain("summary.source_channel != 'direct'")
+    expect(sql).not.toContain("WHERE event_name = 'page_view'")
   })
 
   it('0056 清除 UTM 推测事实并建立可信来源数据库守卫', async () => {
