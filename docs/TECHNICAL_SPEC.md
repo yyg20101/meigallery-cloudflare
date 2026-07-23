@@ -668,6 +668,7 @@ INSERT INTO site_settings (key, value) VALUES
 - 浏览器通过 `PUT /api/marketing-consent` 明确启用或关闭；只有明确选择才签发 180 天长期选择和 30 分钟短期 receipt。两者均为 `HttpOnly`、`SameSite=Lax`，HTTPS 环境同时设置 `Secure`，并使用不同 HMAC purpose 防止互换。非严格地区的默认启用不伪装成用户同意、不签发长期选择。授权 GET/PUT、来源 bootstrap、Contact conversion 和 registration 统一在 API 重新计算地区策略；前端 body 只能降低结果。用户撤回后立即清理来源上下文和未投递归因。所有 token、签名、nonce 和 cookie 值不得进入日志、D1、API 响应、审计或发布报告。
 - `consent_state=denied/limited` 时只保留站内必要事实，不创建任何广告平台 Browser / Server delivery；`granted` 才允许按唯一可信来源加载对应平台 Pixel 和 Server API。地区策略只决定是否投递，不改变 Meta/TikTok/Google 单平台来源隔离。浏览器 Pixel 以公开授权 API 返回状态为准，Server API 每次独立执行同一地区与授权判定。
 - 每个平台的 Browser / Server delivery 使用同一 `external_event_id`；Pixel `attempted` 仅说明浏览器已尝试调用，不代表平台接收。Server delivery 只有在平台响应满足严格成功契约时才进入 `accepted`；Google 还必须等待异步诊断进入 `processed`。平台接收或处理完成仍不代表广告归因成功。
+- 仅在可信营销授权有效时，从 Cloudflare `CF-Connecting-IP` 与原始 `User-Agent` 读取完整网络匹配上下文；两者必须同时通过格式校验，只能进入 24 小时加密 Outbox，并仅由 Meta/TikTok Server adapter 解密使用。原始 IP/UA 不得进入事实表、分析维度、日志、响应、审计或 Google 请求；缺少完整网络上下文且没有平台 Cookie、Click ID 或哈希身份时，不创建无效 Server delivery。
 - `/api/admin/attribution/*` 需要 admin+；连接、凭证、验证和 rollout 修改需要 owner，并写入 `admin_audit_logs`。
 - Meta/TikTok/Google Server API 仅在 production 通过各自 `AD_META_QUEUE`、`AD_TIKTOK_QUEUE`、`AD_GOOGLE_QUEUE` 异步投递；主 Queue/DLQ 固定为 6 条 `meigallery-ad-*` 资源。dev/local 不绑定广告 Queue、不配置平台凭证、不调用真实平台 API。
 - 三个平台共享通用 Planner、Outbox、CAS 状态机和恢复算法，但物理 Queue、destination、connection revision、credential revision 和 rollout namespace 独立；所有读写必须限定唯一 provider，禁止交叉解密、投递、恢复或 fan-out。

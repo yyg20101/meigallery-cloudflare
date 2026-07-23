@@ -20,7 +20,7 @@ import { getCookie } from 'hono/cookie'
 import { AD_ATTRIBUTION_CONTEXT_COOKIE } from './ad-attribution'
 import { loadAttributionCryptoKeys } from '../utils/attribution-crypto'
 import { resolveTrustedAdAttributionContext } from '../utils/ad-attribution-context'
-import { hashAdPlatformEmail, readAdPlatformBrowserIdentifiersFromRequest } from '../utils/ad-platform-identifiers'
+import { buildAdPlatformUserData, hashAdPlatformEmail, readAdPlatformBrowserIdentifiersFromRequest } from '../utils/ad-platform-identifiers'
 import { resolveRequestMarketingConsent } from '../utils/marketing-consent-request'
 import { createAdConsentSnapshot } from '../utils/marketing-consent-receipt'
 
@@ -39,7 +39,6 @@ type RegistrationAttributionContext = {
   utmContent?: string
   consentState?: AnalyticsConsentState
   adAttributionState?: 'resolved' | 'suppress'
-  browserIdentifiers?: unknown
 }
 
 const CONVERSION_ID_RE = /^[A-Za-z0-9_-]{8,120}$/
@@ -241,14 +240,14 @@ authRoutes.post('/register', async (c) => {
 
   // 创建用户（自增 ID）
   const passwordHash = await hashPassword(body.password)
-  const metaExternalId = generateMetaExternalId()
+  const conversionExternalId = generateConversionExternalId()
 
   const insertResult = await db
     .prepare(
       `INSERT INTO users (email, username, nickname, password_hash, role, status, email_verified, conversion_external_id)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .bind(email, username, body.nickname?.trim() || null, passwordHash, 'user', 'active', emailVerified, metaExternalId)
+    .bind(email, username, body.nickname?.trim() || null, passwordHash, 'user', 'active', emailVerified, conversionExternalId)
     .run()
   const userId = insertResult.meta.last_row_id
   const attribution = normalizeRegistrationAttribution(body.attribution, userId)
@@ -294,6 +293,9 @@ authRoutes.post('/register', async (c) => {
 
   let trackingInstructions = [] as Awaited<ReturnType<typeof recordRegistration>>['trackingInstructions']
   try {
+    const adPlatformUserData = consentSnapshot.marketingAllowed
+      ? buildAdPlatformUserData(c.req.raw, readAdPlatformBrowserIdentifiersFromRequest(c.req.raw))
+      : undefined
     const registration = await recordRegistration(c.env, {
       userId,
       visitorId: attribution.visitorId,
@@ -311,8 +313,8 @@ authRoutes.post('/register', async (c) => {
       consentSnapshot,
       attributionContext,
       attributionSource: attributionContext ? 'context' : 'none',
-      browserIdentifiers: readAdPlatformBrowserIdentifiersFromRequest(c.req.raw),
-      hashedEmail: await hashAdPlatformEmail(email),
+      adPlatformUserData,
+      hashedEmail: consentSnapshot.marketingAllowed ? await hashAdPlatformEmail(email) : undefined,
       metadata: { method: 'email' },
     })
     trackingInstructions = registration.trackingInstructions
@@ -336,7 +338,7 @@ authRoutes.post('/register', async (c) => {
   }, 201)
 })
 
-function generateMetaExternalId() {
+function generateConversionExternalId() {
   const bytes = crypto.getRandomValues(new Uint8Array(16))
   return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
 }
@@ -367,7 +369,6 @@ function normalizeRegistrationAttribution(value: unknown, userId: number) {
     utmContent: normalizeText(input.utmContent, 120),
     consentState: normalizeConsentState(input.consentState),
     adAttributionState: input.adAttributionState === 'resolved' ? 'resolved' as const : 'suppress' as const,
-    browserIdentifiers: input.browserIdentifiers,
   }
 }
 

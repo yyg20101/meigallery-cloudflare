@@ -7,7 +7,9 @@ import { decryptAttributionValue, loadAttributionCryptoKeys } from '../utils/att
 
 const MASTER_KEY = Buffer.alloc(32).toString('base64')
 const MIGRATION = readFileSync(new URL('../../migrations/0051_unified_attribution_expand.sql', import.meta.url), 'utf8')
-const SENSITIVE_VALUES = ['fbclid_private', 'ttclid_private', 'gclid_private', 'gbraid_private', 'wbraid_private', 'fbp_private', 'fbc_private', 'ttp_private', 'a'.repeat(64)]
+const FBP_PRIVATE = 'fb.1.1700000000000.fbp_private'
+const FBC_PRIVATE = 'fb.1.1700000000000.fbc_private'
+const SENSITIVE_VALUES = ['fbclid_private', 'ttclid_private', 'gclid_private', 'gbraid_private', 'wbraid_private', FBP_PRIVATE, FBC_PRIVATE, 'ttp_private', '203.0.113.42', 'Private Browser/1.0', 'a'.repeat(64)]
 let miniflare: Miniflare
 let db: D1Database
 
@@ -50,10 +52,10 @@ describe('统一事实 D1 原子写入', () => {
   })
 
   it.each([
-    ['meta', { fbp: 'fbp_private', fbc: 'fbc_private' }],
-    ['tiktok', { ttclid: 'ttclid_private', ttp: 'ttp_private' }],
-    ['google', { gclid: 'gclid_private', gbraid: 'gbraid_private', wbraid: 'wbraid_private' }],
-  ] as const)('%s 只将允许的匹配信号写入加密 Outbox', async (provider, expectedMatchSignals) => {
+    ['meta', { fbp: FBP_PRIVATE, fbc: FBC_PRIVATE }, { clientIpAddress: '203.0.113.42', clientUserAgent: 'Private Browser/1.0' }],
+    ['tiktok', { ttclid: 'ttclid_private', ttp: 'ttp_private' }, { clientIpAddress: '203.0.113.42', clientUserAgent: 'Private Browser/1.0' }],
+    ['google', { gclid: 'gclid_private', gbraid: 'gbraid_private', wbraid: 'wbraid_private' }, {}],
+  ] as const)('%s 只将允许的匹配信号写入加密 Outbox', async (provider, expectedMatchSignals, expectedNetworkContext) => {
     await seed(provider)
     const logs = vi.spyOn(console, 'log')
     const result = await recordRegistration(env(), registrationInput(provider))
@@ -71,6 +73,7 @@ describe('统一事实 D1 原子写入', () => {
       eventTime: 1_784_073_600,
       pageUrl: 'https://gallery.example.test/register',
       matchSignals: expectedMatchSignals,
+      ...expectedNetworkContext,
       hashedEmail: 'a'.repeat(64),
       consent: {
         consentVersion: 1,
@@ -88,10 +91,23 @@ describe('统一事实 D1 原子写入', () => {
   it('Meta 只有 fbclid 时以 context issuedAt 构造 fbc', async () => {
     await seed('meta')
     const input = registrationInput('meta')
-    input.browserIdentifiers = { fbp: 'fbp_private', ttclid: 'ttclid_private', ttp: 'ttp_private' }
+    input.adPlatformUserData = { fbp: FBP_PRIVATE, ttclid: 'ttclid_private', ttp: 'ttp_private', clientIpAddress: '203.0.113.42', clientUserAgent: 'Private Browser/1.0' }
     const result = await recordRegistration(env(), input)
     const outbox = await db.prepare(`SELECT key_id, iv, ciphertext, tag FROM attribution_outbox`).first<{ key_id: string; iv: string; ciphertext: string; tag: string }>()
-    await expect(decryptPayload('meta', result.id, outbox!)).resolves.toMatchObject({ matchSignals: { fbp: 'fbp_private', fbc: 'fb.1.1784534400000.fbclid_private' } })
+    await expect(decryptPayload('meta', result.id, outbox!)).resolves.toMatchObject({ matchSignals: { fbp: FBP_PRIVATE, fbc: 'fb.1.1784534400000.fbclid_private' } })
+  })
+
+  it('缺少 Cookie、哈希身份和完整网络上下文时不创建无效 Server Delivery', async () => {
+    await seed('meta')
+    const input = registrationInput('meta')
+    input.hashedEmail = undefined
+    input.attributionContext = { ...input.attributionContext!, source: 'managed_link', identifiers: {} }
+    input.adPlatformUserData = {}
+    const result = await recordRegistration(env(), input)
+
+    expect(result.trackingInstructions).toHaveLength(1)
+    expect((await db.prepare(`SELECT count(*) AS count FROM attribution_deliveries WHERE transport = 'server'`).first<{ count: number }>())?.count).toBe(0)
+    expect((await db.prepare(`SELECT count(*) AS count FROM attribution_outbox`).first<{ count: number }>())?.count).toBe(0)
   })
 
   it.each([undefined, 'ftp://gallery.example.test'])('SITE_URL 为 %s 时只写 Fact 与 Browser Delivery', async siteUrl => {
@@ -112,7 +128,7 @@ function registrationInput(provider: 'meta' | 'tiktok' | 'google'): RecordRegist
     consentSnapshot: { consentVersion: 1, marketingAllowed: true, adUserDataAllowed: true, adPersonalizationAllowed: true, decidedAt: '2026-07-15T00:00:00.000Z' },
     attributionSource: 'context', hashedEmail: 'a'.repeat(64),
     attributionContext: { version: 1, provider, contextId: 'ctx_0123456789abcdef0123456789abcdef', source: 'click_id', identifiers: { fbclid: 'fbclid_private', ttclid: 'ttclid_private', gclid: 'gclid_private', gbraid: 'gbraid_private', wbraid: 'wbraid_private' }, issuedAt: 1_784_534_400, expiresAt: 1_787_126_400 },
-    browserIdentifiers: { fbp: 'fbp_private', fbc: 'fbc_private', ttclid: 'ttclid_private', ttp: 'ttp_private' },
+    adPlatformUserData: { fbp: FBP_PRIVATE, fbc: FBC_PRIVATE, ttclid: 'ttclid_private', ttp: 'ttp_private', clientIpAddress: '203.0.113.42', clientUserAgent: 'Private Browser/1.0' },
   }
 }
 async function seed(provider: 'meta' | 'tiktok' | 'google') {
@@ -134,5 +150,5 @@ async function decryptPayload(provider: 'meta' | 'tiktok' | 'google', factId: st
     keys: await loadAttributionCryptoKeys({ AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT: MASTER_KEY }),
     aad: { purpose: 'outbox', provider, subjectId: factId, revision: 'revision_1' },
     envelope: { schemaVersion: 1, keyId: outbox.key_id, iv: outbox.iv, ciphertext: outbox.ciphertext, tag: outbox.tag },
-  })) as { eventTime: unknown; matchSignals: Record<string, string>; consent: Record<string, unknown> }
+  })) as { eventTime: unknown; matchSignals: Record<string, string>; consent: Record<string, unknown>; clientIpAddress?: string; clientUserAgent?: string }
 }

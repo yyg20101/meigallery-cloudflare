@@ -9,7 +9,7 @@ import { resolveRequestMarketingConsent } from '../utils/marketing-consent-reque
 import { AD_ATTRIBUTION_CONTEXT_COOKIE } from './ad-attribution'
 import { loadAttributionCryptoKeys } from '../utils/attribution-crypto'
 import { resolveTrustedAdAttributionContext } from '../utils/ad-attribution-context'
-import { readAdPlatformBrowserIdentifiersFromRequest } from '../utils/ad-platform-identifiers'
+import { buildAdPlatformUserData, readAdPlatformBrowserIdentifiersFromRequest } from '../utils/ad-platform-identifiers'
 import { recordBrowserAttemptReceipt } from '../services/ad-platform/browser-attempt-receipt'
 
 const CONVERSION_ID_RE = /^[A-Za-z0-9_-]{8,120}$/
@@ -43,12 +43,15 @@ conversionRoutes.post('/events', async (c) => {
   }
   const { consent: consentSnapshot } = await resolveRequestMarketingConsent(c, body.consentState)
   const attributionContext = consentSnapshot.marketingAllowed ? await trustedAttributionContext(c) : null
+  const adPlatformUserData = consentSnapshot.marketingAllowed
+    ? buildAdPlatformUserData(c.req.raw, readAdPlatformBrowserIdentifiersFromRequest(c.req.raw))
+    : undefined
   const result = await recordContact(c.env, {
     visitorId, sessionId, userId: c.get('userId'), occurredAt: String(body.occurredAt || new Date().toISOString()),
     routeName: text(body.routeName, 120), path: text(body.path, 240), sourceChannel: text(body.sourceChannel, 40) || 'unknown',
     sourceName: text(body.sourceName, 120), trackingSourceSlug: text(body.trackingSourceSlug, 120),
     utmSource: text(body.utmSource, 120), utmMedium: text(body.utmMedium, 120), utmCampaign: text(body.utmCampaign, 120), utmContent: text(body.utmContent, 120),
-    consentSnapshot, attributionContext, attributionSource: attributionContext ? 'context' : 'none', browserIdentifiers: readAdPlatformBrowserIdentifiersFromRequest(c.req.raw),
+    consentSnapshot, attributionContext, attributionSource: attributionContext ? 'context' : 'none', adPlatformUserData,
     contactMethodId: contact.id, contactPlatform: contact.platform, actionType: 'open_link',
     metadata: isPlainRecord(body.metadata) ? body.metadata : {},
   })

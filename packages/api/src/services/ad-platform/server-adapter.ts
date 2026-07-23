@@ -13,6 +13,8 @@ export interface ServerDeliveryBaseInput {
   destination: string
   matchSignals: Record<string, string>
   hashedEmail?: string
+  clientIpAddress?: string
+  clientUserAgent?: string
   consent: AdConsentSnapshot
 }
 

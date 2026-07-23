@@ -3,6 +3,7 @@ import {
   buildAdPlatformUserData,
   hashAdPlatformEmail,
   hashAdPlatformExternalId,
+  normalizeAdPlatformNetworkContext,
   normalizeAdPlatformBrowserIdentifiers,
 } from './ad-platform-identifiers'
 
@@ -52,6 +53,27 @@ describe('广告平台用户匹配标识', () => {
       clientIpAddress: '203.0.113.8',
       clientUserAgent: 'MeiGallery-Test/1.0',
     })
+  })
+
+  it('网络匹配上下文必须是合法 IP 与 User-Agent 完整组合', () => {
+    expect(normalizeAdPlatformNetworkContext({
+      clientIpAddress: '2001:db8::1',
+      clientUserAgent: 'MeiGallery-Test/1.0',
+    })).toEqual({
+      clientIpAddress: '2001:db8::1',
+      clientUserAgent: 'MeiGallery-Test/1.0',
+    })
+    expect(normalizeAdPlatformNetworkContext({
+      clientIpAddress: '999.0.0.1',
+      clientUserAgent: 'MeiGallery-Test/1.0',
+    })).toEqual({})
+    expect(normalizeAdPlatformNetworkContext({
+      clientIpAddress: '203.0.113.8',
+    })).toEqual({})
+    expect(normalizeAdPlatformNetworkContext({
+      clientIpAddress: '203.0.113.8',
+      clientUserAgent: 'bad\nagent',
+    })).toEqual({})
   })
 
   it('按平台要求规范化并散列邮箱和外部 ID', async () => {

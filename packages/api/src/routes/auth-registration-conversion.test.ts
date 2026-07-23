@@ -68,6 +68,10 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
       }),
       attributionContext: null,
       attributionSource: 'none',
+      adPlatformUserData: {
+        clientIpAddress: '203.0.113.10',
+        clientUserAgent: 'unit-test-browser',
+      },
       metadata: { method: 'email' },
     }))
     const userInsert = db.calls.find(call => call.sql.includes('INSERT INTO users'))
@@ -115,6 +119,8 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
     expect(response.status).toBe(201)
     expect(recordRegistrationMock).toHaveBeenCalledOnce()
     expect(recordRegistrationMock.mock.calls[0]?.[1].consentSnapshot).toMatchObject({ marketingAllowed: false })
+    expect(recordRegistrationMock.mock.calls[0]?.[1].adPlatformUserData).toBeUndefined()
+    expect(recordRegistrationMock.mock.calls[0]?.[1].hashedEmail).toBeUndefined()
     expect(db.calls.some(call => call.sql.includes('SELECT id, email, conversion_external_id'))).toBe(false)
     expect(body.trackingInstructions).toEqual([])
   })
@@ -145,6 +151,7 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
     expect(recordRegistrationMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       consentSnapshot: expect.objectContaining({ marketingAllowed: false }),
     }))
+    expect(recordRegistrationMock.mock.calls[0]?.[1].adPlatformUserData).toBeUndefined()
     expect(db.calls.some(call => call.sql.includes('SELECT id, email, conversion_external_id'))).toBe(false)
   })
 
@@ -296,6 +303,7 @@ async function register(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'CF-Connecting-IP': '203.0.113.10',
       'User-Agent': 'unit-test-browser',
       ...(receipt ? {
         Cookie: `mei_marketing_consent_receipt=${receipt}`,

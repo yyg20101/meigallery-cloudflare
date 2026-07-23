@@ -215,6 +215,33 @@ describe('统一广告平台 Queue 运行时', () => {
     expect(deliver).toHaveBeenCalledWith(expect.objectContaining({ input: expect.objectContaining({ provider: 'google', validateOnly: false }) }))
   })
 
+  it('可信网络上下文解密后只传给目标平台 Adapter', async () => {
+    await seed('queued', 'meta', true, {
+      clientIpAddress: '203.0.113.42',
+      clientUserAgent: 'Private Browser/1.0',
+    })
+    const message = queueMessage()
+    const deliver = vi.fn().mockResolvedValue({ classification: 'accepted', receipt: { status: 200 } })
+    await handleAttributionQueueBatch(batch([message]), env(), { deliver, readCredential: async () => 'secret' })
+    expect(deliver).toHaveBeenCalledWith(expect.objectContaining({
+      input: expect.objectContaining({
+        provider: 'meta',
+        clientIpAddress: '203.0.113.42',
+        clientUserAgent: 'Private Browser/1.0',
+      }),
+    }))
+  })
+
+  it('不完整网络上下文按非法 Outbox 拒绝且不调用 Adapter', async () => {
+    await seed('queued', 'meta', true, { clientIpAddress: '203.0.113.42' })
+    const message = queueMessage()
+    const deliver = vi.fn()
+    await handleAttributionQueueBatch(batch([message]), env(), { deliver, readCredential: async () => 'secret' })
+    expect(deliver).not.toHaveBeenCalled()
+    expect((await deliveryState('meta')).last_error_code).toBe('outbox_invalid')
+    expect(message.ack).toHaveBeenCalledOnce()
+  })
+
   it('迟到 lease 的 retry 写回不能覆盖后继消费者的 accepted 终态', async () => {
     await seed('queued')
     const firstResult = deferred<{ classification: 'retryable' }>()
@@ -402,7 +429,7 @@ function env() { return { DB: db, AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT: MAS
 function batch(messages: ReturnType<typeof queueMessage>[], queue = 'meigallery-ad-meta') { return { queue, messages } as unknown as MessageBatch<{ schemaVersion: 1; deliveryId: string; provider: AdAttributionProvider }> }
 function queueMessage(body: Record<string, unknown> = { schemaVersion: 1, deliveryId: 'delivery_meta', provider: 'meta' }, attempts = 1) { return { body, attempts, ack: vi.fn(), retry: vi.fn() } }
 
-async function seed(status: DeliveryStatus, provider: AdAttributionProvider = 'meta', withOutbox = true) {
+async function seed(status: DeliveryStatus, provider: AdAttributionProvider = 'meta', withOutbox = true, outboxOverrides: Record<string, unknown> = {}) {
   const connectionId = `conn_${provider}`
   const factId = `fact_${provider}`
   const deliveryId = `delivery_${provider}`
@@ -416,7 +443,7 @@ async function seed(status: DeliveryStatus, provider: AdAttributionProvider = 'm
     db.prepare("INSERT INTO attribution_conversion_facts (id, canonical_event, fact_origin, external_event_id, attribution_provider, attribution_source, occurred_at, dedupe_key, consent_snapshot_json, analytics_dimensions_json) VALUES (?, 'CompleteRegistration', 'live', ?, ?, 'context', '2026-07-15T00:00:00.000Z', ?, '{}', '{}')").bind(factId, `mg3_${provider}_${'a'.repeat(32)}`, provider, `dedupe_${provider}`),
     db.prepare("INSERT INTO attribution_deliveries (id, fact_id, connection_id, provider, transport, status, destination, updated_at) VALUES (?, ?, ?, ?, 'server', ?, 'destination_1', '2026-07-15 00:00:00')").bind(deliveryId, factId, connectionId, provider, status),
   ]
-  if (withOutbox) statements.push(await encryptedOutboxStatement(provider))
+  if (withOutbox) statements.push(await encryptedOutboxStatement(provider, outboxOverrides))
   await db.batch(statements)
 }
 

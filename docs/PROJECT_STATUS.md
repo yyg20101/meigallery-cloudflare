@@ -42,29 +42,30 @@
 - Test Event Code 仅是单次验证参数，不持久化，正式事件不携带测试码。
 - Meta Dataset Quality 由通用 collector 写入 `attribution_quality_snapshots`。
 - Google Data Manager 已实现可信 Consent、`requestId` 接收校验和 `requestStatus.retrieve` 异步诊断；TikTok 质量在后台明确要求 Events Manager 人工证据，不伪造平台质量分。
+- Meta/TikTok Server 投递会在营销授权有效时使用 Cloudflare 可信 IP 与浏览器 User-Agent 提升匹配质量；该组合只进入 24 小时加密 Outbox，不进入事实、分析、日志或 Google 请求。
 
 ## Contract 状态
 
 - `0051_unified_attribution_expand.sql` 已定义最终 11 张 `attribution_*` 表。
 - `0052_unified_attribution_contract.sql` 已于 2026-07-16 在 production 应用：17 条 Meta 质量历史已迁移，400 条最终归因事实完整保留，旧事实、投递、连接、验证、Outbox、Meta 运维表、桥接 trigger 和 `users.meta_external_id` 已删除。
-- dev 已完成 `0055_attribution_tracking_integrity.sql`：投放来源约束统一支持 Meta/TikTok/Google，每个管理来源持有独立随机 `link_proof`，只有数据库匹配的 `mg_source + mg_proof` 才能建立平台来源，UTM 只参与冲突检测；历史管理链接的 referral 误分类、来源/页面/邀请日报和有效联系聚合会按事件发生的北京时间自然日从原始事实重建。该 migration 已通过全新 D1 的 0001-0055 顺序执行、UTC 跨日边界和旧数据修复测试，尚未应用 production。
+- 待发布分支已完成 `0055_attribution_tracking_integrity.sql`：投放来源约束统一支持 Meta/TikTok/Google，每个管理来源持有独立随机 `link_proof`，只有数据库匹配的 `mg_source + mg_proof` 才能建立平台来源，UTM 只参与冲突检测；历史管理链接的 referral 误分类、来源/页面/邀请日报和有效联系聚合会按事件发生的北京时间自然日从原始事实重建。该 migration 已通过全新 D1 的 0001-0055 顺序执行、UTC 跨日边界、production export 本地演练和旧数据修复测试，尚未应用 production。
 - 旧平台专用 API 服务、运维脚本、一次性回填/对账脚本和发布报告特例已从当前代码删除。
 - Contract 发布前已生成仓库外 D1 export、Time Travel bookmark 和 SHA-256 manifest；production 发布提交为 `63d7ec1`，版本标签为 `v0.4.6`。
 - 旧 `meigallery-meta-capi*`、`meigallery-tiktok-events*` Queue 和 `META_CAPI_ACCESS_TOKEN`、`META_CAPI_DATA_KEY_CURRENT` Worker Secret 已删除；通用 `meigallery-ad-*` Queue 与 `AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT` 保留。
 
 ## Production 归因状态
 
-- 最新 production 代码提交为 `93343ae`，版本标签为 `v0.4.10`；PR #61、完整 CI、production identity、归因状态和 SEO smoke 均已通过。
+- 最新 production 代码提交为 `12e5781`，版本标签为 `v0.4.14`；PR #66 已先行发布 Meta 零投递保护，production identity、归因状态和 SEO smoke 均已通过。
 - Meta 使用 production 连接并已完成真实 Contact / CompleteRegistration 验证，当前 rollout 以后台实时值为准；最近确认值为 `10%`。
 - TikTok production 连接已原子配置 Pixel、Events API 凭证和 Contact / CompleteRegistration 事件绑定；2026-07-16 使用当次临时 Test Event Code 完成自动验证和 Events Manager 人工证据确认，临时测试码未持久化。
 - TikTok Browser 已启用，Server target / effective 均为 `10%`；production 隔离访问只加载 TikTok Pixel SDK，Meta / Google Browser SDK 均未加载。TikTok Events Manager 的投放就绪状态仍需等待正式事件与平台最长约 24 小时刷新，不以 Test Events 代替真实流量验收。
-- 2026-07-18 已在 production 使用 TikTok 来源参数验证真实页面链路：Pixel SDK 与 `/api/v2/pixel` 均返回成功，`PageView` / `ViewContent` 已从正式页面发送；TikTok 正式 Contact / CompleteRegistration 事实仍为零，必须等待真实业务动作，不以合成转化污染投放数据。
+- 2026-07-18 已在 production 使用 TikTok 来源参数验证真实页面链路：Pixel SDK 与 `/api/v2/pixel` 均返回成功，`PageView` / `ViewContent` 已从正式页面发送；截至 2026-07-23，production 已有 2 条 TikTok Contact 事实及对应 Browser 尝试回执，10% Server 分桶尚未产生正式 Server 样本，不能据此判定 Events API 异常。
 - TikTok Events Manager 保持 AAM 关闭、第一方 Cookie 开启、Enhanced Data Postback 关闭，避免超出项目标准事件和授权范围的自动采集。
 - `0053_attribution_privacy_policy.sql` 已在 production 应用：非严格地区默认启用并可从隐私页退出，严格/未知/Tor 地区先选择，GPC 和明确拒绝始终优先。长期签名选择与短期 receipt 只表示用户明确选择，不把地区默认值伪装成同意。
 - 访客隐私设置页按必要功能与可选效果分析分层说明数据用途、受托处理、隐私保护和选择期限，允许与拒绝保持同等视觉权重；页面不展示广告平台名称、事件名或传输实现，后台继续保留完整运维信息。无论营销衡量状态如何，站内 Contact/CompleteRegistration 事实持续记录，Meta/TikTok/Google 仍按唯一来源严格隔离。
 - `v0.4.10` 已移除非严格地区的一次性底部说明和悬浮设置控件，改为页脚低干扰“隐私”入口；严格地区首次选择条保持不变。`0054_attribution_privacy_switzerland.sql` 以幂等方式补充瑞士严格地区，不覆盖后台已有地区配置。
-- 当前 dev 已修复中文图库和案例链接在 SSR 直达时重复编码导致的 404，待下一次正式发布后用于广告落地页。
-- 当前 dev 已修复 `paid_social` 来源识别、`utm_content` 跨页面持久化、Meta Dataset Quality 的 Graph API 包裹响应、投放追踪链接缺失 API、有效联系重复口径、每日聚合归零和容量统计 UTC 跨日偏差；Click ID、后台绑定平台与明确平台 UTM 互相冲突时失败关闭，禁止 Meta/TikTok/Google 跨平台投递。以上变更待合规发布后生效。
+- `v0.4.12` / `v0.4.13` 已修复中文图库和案例链接在 Service Binding、SSR 直达时的编码与响应头问题，可用于 production 广告落地页。
+- 待发布分支已修复 `paid_social` 来源识别、`utm_content` 跨页面持久化、Meta Dataset Quality 的 Graph API 包裹响应、投放追踪链接缺失 API、有效联系重复口径、每日聚合归零和容量统计 UTC 跨日偏差；Click ID、后台绑定平台与明确平台 UTM 互相冲突时失败关闭，禁止 Meta/TikTok/Google 跨平台投递，并补齐 Meta/TikTok Server 的可信 IP/UA 匹配上下文。以上变更待合规发布后生效。
 - Google 的启用状态以统一后台实时连接为准；代码部署不会自动开启平台或提高 rollout。
 - production 域名：`616618.xyz`、`www.616618.xyz`；API：`api.616618.xyz`。
 
