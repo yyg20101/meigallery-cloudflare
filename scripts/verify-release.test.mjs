@@ -32,7 +32,7 @@ describe('通用发布验证', () => {
     assert.deepEqual(calls, ['dependency-install', 'lint'])
   })
 
-  it('本地归因门禁覆盖 0055 聚合与 0056 事实来源完整性 migration', async () => {
+  it('本地归因门禁覆盖 0055-0057 三层数据完整性 migration', async () => {
     const commands = []
     const result = await runLocalAttributionGates({
       runCommand: async (command, args, options) => {
@@ -40,9 +40,10 @@ describe('通用发布验证', () => {
         return { name: options.name, status: 'passed', durationMs: 1, command: '', exitCode: 0, summary: '' }
       },
     })
-    assert.equal(result.steps.length, 5)
+    assert.equal(result.steps.length, 6)
     assert.match(commands[0], /0055_attribution_tracking_integrity\.test\.mjs/)
     assert.match(commands[1], /0056_attribution_fact_source_integrity\.test\.mjs/)
+    assert.match(commands[2], /0057_contact_aggregate_integrity\.test\.mjs/)
   })
 
   it('生产归因门禁仅接受 Contract 后的健康通用状态', async () => {
@@ -50,6 +51,7 @@ describe('通用发布验证', () => {
       contractMigrationCount: 1,
       trackingIntegrityMigrationCount: 1,
       factSourceIntegrityMigrationCount: 1,
+      contactAggregateIntegrityMigrationCount: 1,
       privacyPolicyMigrationCount: 1,
       privacyPolicyRowCount: 1,
       invalidConnectionCount: 0,
@@ -57,6 +59,8 @@ describe('通用发布验证', () => {
       expiredOutboxCount: 0,
       deadLetterCount: 0,
       invalidFactSourceCount: 0,
+      invalidContactDailyEventCount: 0,
+      invalidSourceContactClickCount: 0,
       invalidRolloutCount: 0,
     }
     const passed = await collectTrustedProductionGateFacts({ commit: COMMIT, queryProductionAttributionState: async () => state })
@@ -79,6 +83,18 @@ describe('通用发布验证', () => {
     }), /invalidFactSourceCount/)
     await assert.rejects(collectTrustedProductionGateFacts({
       commit: COMMIT,
+      queryProductionAttributionState: async () => ({ ...state, contactAggregateIntegrityMigrationCount: 0 }),
+    }), /contactAggregateIntegrityMigrationCount/)
+    await assert.rejects(collectTrustedProductionGateFacts({
+      commit: COMMIT,
+      queryProductionAttributionState: async () => ({ ...state, invalidContactDailyEventCount: 1 }),
+    }), /invalidContactDailyEventCount/)
+    await assert.rejects(collectTrustedProductionGateFacts({
+      commit: COMMIT,
+      queryProductionAttributionState: async () => ({ ...state, invalidSourceContactClickCount: 1 }),
+    }), /invalidSourceContactClickCount/)
+    await assert.rejects(collectTrustedProductionGateFacts({
+      commit: COMMIT,
       queryProductionAttributionState: async () => ({ ...state, privacyPolicyMigrationCount: 0 }),
     }), /privacyPolicyMigrationCount/)
     await assert.rejects(collectTrustedProductionGateFacts({
@@ -89,11 +105,15 @@ describe('通用发布验证', () => {
       commit: COMMIT,
       requireTrackingIntegrityMigration: false,
       requireFactSourceIntegrityMigration: false,
+      requireContactAggregateIntegrityMigration: false,
       queryProductionAttributionState: async () => ({
         ...state,
         trackingIntegrityMigrationCount: 0,
         factSourceIntegrityMigrationCount: 0,
         invalidFactSourceCount: 2,
+        contactAggregateIntegrityMigrationCount: 0,
+        invalidContactDailyEventCount: 42,
+        invalidSourceContactClickCount: 4,
       }),
     })
     assert.equal(preDeploy.status, 'passed')
