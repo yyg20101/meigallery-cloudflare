@@ -32,7 +32,6 @@ export function useAdAttribution() {
             wbraid: queryValue(route.query.wbraid),
             utmSource: queryValue(route.query.utm_source),
             trackingSourceSlug: queryValue(route.query.mg_source),
-            managedLinkToken: queryValue(route.query.mg_token),
           },
         })
         const normalized = normalizeServerResolution(response)

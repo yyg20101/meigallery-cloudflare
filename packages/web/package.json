@@ -9,7 +9,7 @@
     "deploy": "wrangler deploy --env=\"\"",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
-    "typecheck": "nuxt typecheck",
+    "typecheck": "nuxt prepare && vue-tsc --noEmit",
     "test:unit": "vitest run",
     "test:e2e": "playwright test"
   },

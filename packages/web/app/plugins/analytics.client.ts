@@ -1,6 +1,7 @@
 import type { AnalyticsSourceChannel } from '@meigallery/shared'
 import { hasSensitiveAnalyticsUrl, isAdminPath } from '~/utils/trackingSanitizer'
 import { sanitizeReferrer } from '~/utils/analyticsSanitizer'
+import { sourceChannelFromUtmMedium } from '~/utils/analyticsSource'
 
 const SEARCH_REFERRER_PATTERNS = [
   'google.',
@@ -82,6 +83,7 @@ function deriveInitialSource(route: ReturnType<typeof useRoute>): {
     utmSource: string
     utmMedium: string
     utmCampaign: string
+    utmContent: string
     trackingSourceSlug: string
     sourceName: string
   }
@@ -90,6 +92,7 @@ function deriveInitialSource(route: ReturnType<typeof useRoute>): {
   const utmSource = queryValue(route.query.utm_source)
   const utmMedium = queryValue(route.query.utm_medium)
   const utmCampaign = queryValue(route.query.utm_campaign)
+  const utmContent = queryValue(route.query.utm_content)
   const currentHost = import.meta.client ? window.location.host : ''
   const referrer = import.meta.client ? sanitizeReferrer(document.referrer, currentHost) : { referrer: '', referrerHost: '' }
   const channel = deriveInitialSourceChannel({
@@ -108,6 +111,7 @@ function deriveInitialSource(route: ReturnType<typeof useRoute>): {
       utmSource,
       utmMedium,
       utmCampaign,
+      utmContent,
       trackingSourceSlug,
       sourceName: utmSource || trackingSourceSlug || referrer.referrerHost || channel,
     },
@@ -123,19 +127,9 @@ function deriveInitialSourceChannel(input: {
   referrerHost: string
 }): AnalyticsSourceChannel {
   if (input.hasInvite) return 'invite'
-  if (input.hasTrackingSource || input.hasUtm) return channelFromUtmMedium(input.utmMedium)
+  if (input.hasTrackingSource || input.hasUtm) return sourceChannelFromUtmMedium(input.utmMedium)
   if (input.hasReferrer) return channelFromReferrer(input.referrerHost)
   return 'direct'
-}
-
-function channelFromUtmMedium(value: string): AnalyticsSourceChannel {
-  const medium = value.trim().toLowerCase()
-  if (medium === 'ad' || medium === 'ads' || medium === 'paid' || medium === 'cpc') return 'ad'
-  if (medium === 'social' || medium === 'sns') return 'social'
-  if (medium === 'search' || medium === 'seo' || medium === 'organic_search') return 'search'
-  if (medium === 'direct') return 'direct'
-  if (medium === 'internal') return 'internal'
-  return 'referral'
 }
 
 function channelFromReferrer(value: string): AnalyticsSourceChannel {

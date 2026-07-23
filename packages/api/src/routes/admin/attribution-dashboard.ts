@@ -6,6 +6,7 @@ import {
   queryAttributionBreakdown,
   queryAttributionCapacity,
   queryAttributionConversions,
+  queryAttributionLinks,
   queryAttributionQuality,
   queryAttributionSummary,
   queryAttributionTrends,
@@ -86,6 +87,16 @@ adminAttributionDashboardRoutes.get('/conversions', async (c) => {
     input.range,
     input.provider,
     sourceFilter,
+  ), input.range)
+})
+
+adminAttributionDashboardRoutes.get('/links', async (c) => {
+  const input = readScopedQuery(c)
+  if (input instanceof Response) return input
+  return dashboardQuery(c, () => queryAttributionLinks(
+    c.env.DB,
+    input.range,
+    input.provider,
   ), input.range)
 })
 

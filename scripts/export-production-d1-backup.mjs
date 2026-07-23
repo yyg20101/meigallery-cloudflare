@@ -43,7 +43,7 @@ export async function runProductionBackup(options = {}) {
     const manifest = {
       schemaVersion: 1,
       database: PRODUCTION_DATABASE,
-      purpose: 'production-d1-before-contract-migration',
+      purpose: 'production-d1-before-attribution-migration',
       createdAt,
       gitCommit: String(gitCommit),
       timeTravelBookmark: String(timeTravelBookmark),

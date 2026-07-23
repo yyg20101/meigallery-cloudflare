@@ -183,7 +183,7 @@ export interface AttributionQualityData {
 
 export interface AttributionCapacityData {
   date: string
-  timeZone: 'UTC'
+  timeZone: 'Asia/Shanghai'
   note: string
   inputs: {
     factCount: number

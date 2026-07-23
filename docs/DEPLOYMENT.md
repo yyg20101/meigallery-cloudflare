@@ -82,11 +82,11 @@ corepack pnpm verify:seo:production -- --expect-site-name 星耀传媒 --expect-
 
 - release PR/CI 必须先完成完整测试、类型检查、构建、迁移 fixture 和三平台隔离验证；生产脚本不以重复执行整套门禁代替 CI。
 - production 只允许从干净的 `main` 执行，脚本为 API/Web 注入同一 `RELEASE_COMMIT`，部署后必须通过 identity 校验。
-- `0052` 待应用时，脚本自动执行 `verify:quick -> D1 export + Time Travel bookmark -> migration -> API/Web -> 通用归因健康校验 -> smoke`；Contract guard 不满足时 D1 migration 整体失败。
-- `0052` 已应用后的普通发布跳过迁移前 D1 备份，不重复历史回填或平台测试事件。
+- `0052` 或 `0055` 待应用时，脚本自动执行 `verify:quick -> D1 export + Time Travel bookmark -> migration -> API/Web -> 通用归因健康校验 -> smoke`；migration guard 不满足时 D1 migration 整体失败。
+- `0052`、`0055` 均已应用后的普通发布跳过迁移前 D1 备份，不重复历史回填或平台测试事件。
 - production 必须预先存在 `meigallery-ad-meta`、`meigallery-ad-meta-dlq`、`meigallery-ad-tiktok`、`meigallery-ad-tiktok-dlq`、`meigallery-ad-google`、`meigallery-ad-google-dlq`；使用 `./scripts/setup.sh production` 幂等创建。
 - `AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT` 必须是 32 字节随机值的标准 Base64，并通过 `openssl rand -base64 32 | wrangler secret put ...` 或交互式 `wrangler secret put` 配置；previous 仅在主密钥轮换窗口存在。Secret 值不得进入命令参数、文档、报告或日志。
-- 部署后门禁要求 `0052`、`0053` 已应用且全局地区策略存在，启用的 production 连接有当前验证、无 critical incident、无过期 Outbox、无 dead letter 且 rollout 一致。
+- 部署后门禁要求 `0052`、`0053`、`0055` 已应用且全局地区策略存在，启用的 production 连接有当前验证、无 critical incident、无过期 Outbox、无 dead letter 且 rollout 一致；部署前检查允许本次待执行的 `0055` 尚未应用。
 - 部署脚本不修改平台 enabled、mode、rollout、凭证或验证证据，也不调用 Meta、TikTok 或 Google Ads 事件 API。
 
 ### 广告平台 schema 契约
@@ -94,6 +94,7 @@ corepack pnpm verify:seo:production -- --expect-site-name 星耀传媒 --expect-
 - `0051` 已创建最终 11 张 `attribution_*` 表并完成 production 事实回填。
 - `0052` 在 facts 覆盖完整、旧 Server delivery 静止和旧 Outbox 为空时，迁移 Meta 质量历史并删除旧表、旧列和 bridge trigger。
 - `0052` 是不可回退到旧 Worker 的 Contract 边界；发布前必须已有 D1 export、Time Travel bookmark 和可用的前一版本 Worker 产物。
+- `0055` 修复管理广告链接历史来源、有效联系口径和日报聚合，并把来源平台约束扩展到 Google；执行前同样必须生成 production D1 备份。
 - Contract 后应用和运维脚本只允许访问 `attribution_*` 表，不保留双读、双写或旧平台 fallback。
 
 ### 推荐执行顺序
@@ -385,7 +386,7 @@ head_sampling_rate = 1
 - [ ] 每个 `sourceBotKey` 对应的 `TELEGRAM_BOT_TOKEN_<SOURCE_BOT_KEY>` secret 已配置
 - [ ] 生产 6 条 `meigallery-ad-*` Queue 已创建且 backlog 正常
 - [ ] `AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT` 已作为 production secret 配置；dev 不配置
-- [ ] `0052_unified_attribution_contract.sql` 与 `0053_attribution_privacy_policy.sql` 已应用且全局地区策略存在，启用的平台连接具有当前有效验证，无 critical incident、过期 Outbox 或 dead letter，rollout target/effective 一致
+- [ ] `0052_unified_attribution_contract.sql`、`0053_attribution_privacy_policy.sql` 与 `0055_attribution_tracking_integrity.sql` 已应用且全局地区策略存在，启用的平台连接具有当前有效验证，无 critical incident、过期 Outbox 或 dead letter，rollout target/effective 一致
 - [ ] Meta 的 `Contact` / `CompleteRegistration` 已完成人工 Browser/Server 同 ID 去重确认
 - [ ] `/admin/attribution` 可按 Meta / TikTok / Google 分别查看 Browser、Server、质量与容量；平台验证成功后才允许对应 Server 开关与 rollout
 - [ ] 如接入 Ops Hub 自动导入，Ops Hub 侧 `sourceBotKey` 与 MeiGallery Import Token allowlist 完全一致，且只提交 `metadata.type=gallery/case`

@@ -95,10 +95,7 @@ adAttributionRoutes.put('/', async (c) => {
 
   let result
   try {
-    result = await resolveAdAttributionRouting(c.env.DB, body, currentContext?.provider ?? null, {
-      managedLinkSecret: c.env.SESSION_SECRET,
-      nowSeconds,
-    })
+    result = await resolveAdAttributionRouting(c.env.DB, body, currentContext?.provider ?? null)
   }
   catch {
     clearContextCookie(c)

@@ -78,6 +78,7 @@ describe('useAnalytics', () => {
         utmSource: 'telegram-june',
         utmMedium: 'social',
         utmCampaign: 'telegram-june',
+        utmContent: 'floating-chat',
         trackingSourceSlug: 'telegram-june',
         sourceName: 'telegram-june',
       },
@@ -95,12 +96,14 @@ describe('useAnalytics', () => {
         utmSource: 'telegram-june',
         utmMedium: 'social',
         utmCampaign: 'telegram-june',
+        utmContent: 'floating-chat',
         trackingSourceSlug: 'telegram-june',
         sourceChannel: 'social',
         props: expect.objectContaining({
           source_name: 'telegram-june',
           tracking_source_slug: 'telegram-june',
           utm_source: 'telegram-june',
+          utm_content: 'floating-chat',
         }),
       }),
     ]))

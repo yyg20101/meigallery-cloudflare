@@ -84,13 +84,13 @@ describe('useAdAttribution', () => {
     expect(attribution.resolution.value).toBe('matched')
   })
 
-  it('只提交三平台来源信号，不在客户端状态保留 click id', async () => {
+  it('只提交三平台来源信号，不在客户端状态中保留 click id', async () => {
     api.mockResolvedValueOnce({ provider: 'google', resolution: 'matched', expiresInSeconds: 2_592_000 })
     const attribution = useAdAttribution()
 
     await attribution.resolve({
       path: '/google-source',
-      query: { gclid: 'sensitive-google-click', gbraid: 'sensitive-gbraid', wbraid: 'sensitive-wbraid', mg_token: 'signed-link' },
+      query: { gclid: 'sensitive-google-click', gbraid: 'sensitive-gbraid', wbraid: 'sensitive-wbraid' },
     })
 
     expect(api).toHaveBeenCalledWith('/api/ad-attribution', {
@@ -99,7 +99,6 @@ describe('useAdAttribution', () => {
         gclid: 'sensitive-google-click',
         gbraid: 'sensitive-gbraid',
         wbraid: 'sensitive-wbraid',
-        managedLinkToken: 'signed-link',
       }),
     })
     expect(JSON.stringify({ provider: attribution.provider.value, resolution: attribution.resolution.value }))

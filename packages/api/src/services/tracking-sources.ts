@@ -1,6 +1,7 @@
 import type { AdAttributionProvider, AnalyticsSourceChannel } from '@meigallery/shared'
 import { generateId } from '../utils/db'
 import { sanitizeAnalyticsPath } from '../utils/analytics-url'
+import { readD1UsageMeta } from '../utils/analytics-cost'
 
 type TrackingSourceDb = Pick<D1Database, 'prepare'>
 type TrackingSourceStatus = 'active' | 'disabled'
@@ -178,7 +179,14 @@ export async function listTrackingSourcesWithMetrics(
   db: TrackingSourceDb,
   range: { from: string; to: string },
 ): Promise<TrackingSourceMetricItem[]> {
-  const rows = await db.prepare(`
+  return (await queryTrackingSourcesWithMetrics(db, range)).items
+}
+
+export async function queryTrackingSourcesWithMetrics(
+  db: TrackingSourceDb,
+  range: { from: string; to: string },
+) {
+  const result = await db.prepare(`
     SELECT
       ats.id, ats.name, ats.channel, ats.slug, ats.target_path, ats.utm_source,
       ats.utm_medium, ats.utm_campaign, ats.utm_content, ats.ad_provider, ats.status, ats.note, ats.created_by,
@@ -202,17 +210,20 @@ export async function listTrackingSourcesWithMetrics(
     ORDER BY session_count DESC, ats.created_at DESC
   `).bind(range.from, range.to).all<TrackingSourceMetricRow>()
 
-  return rows.results.map(row => ({
-    ...serializeTrackingSource(row),
-    visitorCount: Number(row.visitor_count ?? 0),
-    sessionCount: Number(row.session_count ?? 0),
-    pageViewCount: Number(row.page_view_count ?? 0),
-    galleryDetailCount: Number(row.gallery_detail_count ?? 0),
-    contactClickCount: Number(row.contact_click_count ?? 0),
-    registerCount: Number(row.register_count ?? 0),
-    membershipGrantCount: Number(row.membership_grant_count ?? 0),
-    activeSecondsTotal: Number(row.active_seconds_total ?? 0),
-  }))
+  return {
+    items: result.results.map(row => ({
+      ...serializeTrackingSource(row),
+      visitorCount: Number(row.visitor_count ?? 0),
+      sessionCount: Number(row.session_count ?? 0),
+      pageViewCount: Number(row.page_view_count ?? 0),
+      galleryDetailCount: Number(row.gallery_detail_count ?? 0),
+      contactClickCount: Number(row.contact_click_count ?? 0),
+      registerCount: Number(row.register_count ?? 0),
+      membershipGrantCount: Number(row.membership_grant_count ?? 0),
+      activeSecondsTotal: Number(row.active_seconds_total ?? 0),
+    })),
+    usage: readD1UsageMeta(result),
+  }
 }
 
 export async function updateTrackingSource(db: TrackingSourceDb, id: string, input: UpdateTrackingSourceInput) {
@@ -428,12 +439,12 @@ function normalizeAdProvider(channel: TrackingSourceChannel, value: unknown): Ad
     if (provider) throw new TrackingSourceError(400, '仅广告渠道可以绑定广告平台')
     return ''
   }
-  if (provider === 'meta' || provider === 'tiktok') return provider
-  throw new TrackingSourceError(400, '广告渠道必须明确绑定 Meta 或 TikTok')
+  if (provider === 'meta' || provider === 'tiktok' || provider === 'google') return provider
+  throw new TrackingSourceError(400, '广告渠道必须明确绑定 Meta、TikTok 或 Google')
 }
 
 function normalizeStoredAdProvider(value: unknown): AdAttributionProvider | '' {
-  return value === 'meta' || value === 'tiktok' ? value : ''
+  return value === 'meta' || value === 'tiktok' || value === 'google' ? value : ''
 }
 
 function normalizeTargetPath(value: unknown) {

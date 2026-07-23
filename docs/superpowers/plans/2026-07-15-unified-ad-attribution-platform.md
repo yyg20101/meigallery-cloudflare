@@ -359,11 +359,10 @@ type AttributionSignals = {
   wbraid?: string
   utmSource?: string
   trackingSourceSlug?: string
-  managedLinkToken?: string
 }
 ```
 
-未同意时清理 Cookie；冲突返回 `resolution: 'conflict'`。撤回同意时，服务端先把同一 `contextId` 下仍为 `planned`、`queued`、`retrying` 的 Delivery 改为 `cancelled` 并删除对应 Outbox，再删除 Cookie；已进入 `accepted` 或 `processed` 的历史不可篡改。Queue consumer 后续收到已取消消息只 ack，不调用平台。客户端只保存 provider / resolution，不保存 Click ID。
+`trackingSourceSlug` 只作为索引，服务端直接读取 `analytics_tracking_sources` 中启用且唯一绑定平台的广告来源；投放链接不携带临时 token，不会因链接过期而中断长期广告。未同意时清理 Cookie；冲突返回 `resolution: 'conflict'`。撤回同意时，服务端先把同一 `contextId` 下仍为 `planned`、`queued`、`retrying` 的 Delivery 改为 `cancelled` 并删除对应 Outbox，再删除 Cookie；已进入 `accepted` 或 `processed` 的历史不可篡改。Queue consumer 后续收到已取消消息只 ack，不调用平台。客户端只保存 provider / resolution，不保存 Click ID。
 
 - [x] **Step 4：运行测试并提交**
 

@@ -8,14 +8,25 @@ async function readMigration(name: string) {
 }
 
 describe('analytics migrations', () => {
-  it('migration 索引从 0001 到 0054 连续且编号唯一', async () => {
+  it('migration 索引从 0001 到 0055 连续且编号唯一', async () => {
     const names = (await readdir(MIGRATION_DIR))
       .filter(name => /^\d{4}_.+\.sql$/.test(name))
       .sort()
     const indexes = names.map(name => Number(name.slice(0, 4)))
 
-    expect(indexes).toEqual(Array.from({ length: 54 }, (_, index) => index + 1))
+    expect(indexes).toEqual(Array.from({ length: 55 }, (_, index) => index + 1))
     expect(new Set(indexes).size).toBe(indexes.length)
+  })
+
+  it('0055 统一投放来源平台约束并按有效联系口径重建聚合', async () => {
+    const sql = await readMigration('0055_attribution_tracking_integrity.sql')
+    expect(sql).toContain("CHECK (ad_provider IN ('', 'meta', 'tiktok', 'google'))")
+    expect(sql).toContain("event.event_name = 'contact_method_click'")
+    expect(sql).toContain("source_channel = 'ad'")
+    expect(sql).toContain('DELETE FROM analytics_daily_sources')
+    expect(sql).toContain('DELETE FROM analytics_daily_pages')
+    expect(sql).toContain('DELETE FROM analytics_source_page_daily')
+    expect(sql).not.toMatch(/event_name\s*=\s*'contact_panel_open'/)
   })
 
   it('0023 创建核心分析表、必要索引和默认关闭设置', async () => {

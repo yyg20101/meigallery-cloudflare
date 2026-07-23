@@ -1,6 +1,6 @@
 # 项目状态
 
-更新时间：2026-07-18。
+更新时间：2026-07-23。
 
 ## 文档边界
 
@@ -47,6 +47,7 @@
 
 - `0051_unified_attribution_expand.sql` 已定义最终 11 张 `attribution_*` 表。
 - `0052_unified_attribution_contract.sql` 已于 2026-07-16 在 production 应用：17 条 Meta 质量历史已迁移，400 条最终归因事实完整保留，旧事实、投递、连接、验证、Outbox、Meta 运维表、桥接 trigger 和 `users.meta_external_id` 已删除。
+- dev 已完成 `0055_attribution_tracking_integrity.sql`：投放来源约束统一支持 Meta/TikTok/Google，管理链接来源由服务端配置直接解析，不再依赖临时 token；历史管理链接的 referral 误分类、来源/页面/邀请日报和有效联系聚合会按北京时间自然日从原始事实重建。该 migration 已通过全新 D1 的 0001-0055 顺序执行、UTC 跨日边界和旧数据修复测试，尚未应用 production。
 - 旧平台专用 API 服务、运维脚本、一次性回填/对账脚本和发布报告特例已从当前代码删除。
 - Contract 发布前已生成仓库外 D1 export、Time Travel bookmark 和 SHA-256 manifest；production 发布提交为 `63d7ec1`，版本标签为 `v0.4.6`。
 - 旧 `meigallery-meta-capi*`、`meigallery-tiktok-events*` Queue 和 `META_CAPI_ACCESS_TOKEN`、`META_CAPI_DATA_KEY_CURRENT` Worker Secret 已删除；通用 `meigallery-ad-*` Queue 与 `AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT` 保留。
@@ -63,6 +64,7 @@
 - 访客隐私设置页按必要功能与可选效果分析分层说明数据用途、受托处理、隐私保护和选择期限，允许与拒绝保持同等视觉权重；页面不展示广告平台名称、事件名或传输实现，后台继续保留完整运维信息。无论营销衡量状态如何，站内 Contact/CompleteRegistration 事实持续记录，Meta/TikTok/Google 仍按唯一来源严格隔离。
 - `v0.4.10` 已移除非严格地区的一次性底部说明和悬浮设置控件，改为页脚低干扰“隐私”入口；严格地区首次选择条保持不变。`0054_attribution_privacy_switzerland.sql` 以幂等方式补充瑞士严格地区，不覆盖后台已有地区配置。
 - 当前 dev 已修复中文图库和案例链接在 SSR 直达时重复编码导致的 404，待下一次正式发布后用于广告落地页。
+- 当前 dev 已修复 `paid_social` 来源识别、`utm_content` 跨页面持久化、Meta Dataset Quality 的 Graph API 包裹响应、投放追踪链接缺失 API、有效联系重复口径、每日聚合归零和容量统计 UTC 跨日偏差；Click ID、后台绑定平台与明确平台 UTM 互相冲突时失败关闭，禁止 Meta/TikTok/Google 跨平台投递。以上变更待合规发布后生效。
 - Google 的启用状态以统一后台实时连接为准；代码部署不会自动开启平台或提高 rollout。
 - production 域名：`616618.xyz`、`www.616618.xyz`；API：`api.616618.xyz`。
 

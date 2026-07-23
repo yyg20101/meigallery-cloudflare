@@ -32,7 +32,7 @@ describe('通用发布验证', () => {
     assert.deepEqual(calls, ['dependency-install', 'lint'])
   })
 
-  it('本地归因门禁使用 0052 Contract migration', async () => {
+  it('本地归因门禁使用最新 0055 数据完整性 migration', async () => {
     const commands = []
     const result = await runLocalAttributionGates({
       runCommand: async (command, args, options) => {
@@ -41,12 +41,13 @@ describe('通用发布验证', () => {
       },
     })
     assert.equal(result.steps.length, 4)
-    assert.match(commands[0], /0052_unified_attribution_contract\.test\.mjs/)
+    assert.match(commands[0], /0055_attribution_tracking_integrity\.test\.mjs/)
   })
 
   it('生产归因门禁仅接受 Contract 后的健康通用状态', async () => {
     const state = {
       contractMigrationCount: 1,
+      trackingIntegrityMigrationCount: 1,
       privacyPolicyMigrationCount: 1,
       privacyPolicyRowCount: 1,
       invalidConnectionCount: 0,
@@ -63,12 +64,22 @@ describe('通用发布验证', () => {
     }), /openCriticalIncidentCount/)
     await assert.rejects(collectTrustedProductionGateFacts({
       commit: COMMIT,
+      queryProductionAttributionState: async () => ({ ...state, trackingIntegrityMigrationCount: 0 }),
+    }), /trackingIntegrityMigrationCount/)
+    await assert.rejects(collectTrustedProductionGateFacts({
+      commit: COMMIT,
       queryProductionAttributionState: async () => ({ ...state, privacyPolicyMigrationCount: 0 }),
     }), /privacyPolicyMigrationCount/)
     await assert.rejects(collectTrustedProductionGateFacts({
       commit: COMMIT,
       queryProductionAttributionState: async () => ({ ...state, privacyPolicyRowCount: -1 }),
     }), /privacyPolicyRowCount/)
+    const preDeploy = await collectTrustedProductionGateFacts({
+      commit: COMMIT,
+      requireTrackingIntegrityMigration: false,
+      queryProductionAttributionState: async () => ({ ...state, trackingIntegrityMigrationCount: 0 }),
+    })
+    assert.equal(preDeploy.status, 'passed')
   })
 
   it('release 串联三个通用子模式并生成可放行报告', async () => {
