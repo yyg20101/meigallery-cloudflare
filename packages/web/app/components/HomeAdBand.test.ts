@@ -86,7 +86,9 @@ describe('HomeAdBand', () => {
       global: { stubs: { NuxtLink: nuxtLinkStub } },
     })
 
-    await wrapper.get('a').trigger('click')
+    const link = wrapper.get('a')
+    link.element.addEventListener('click', event => event.preventDefault(), { once: true })
+    await link.trigger('click')
 
     expect(track).toHaveBeenCalledWith('home_ad_click', expect.objectContaining({
       entityType: 'ad',
