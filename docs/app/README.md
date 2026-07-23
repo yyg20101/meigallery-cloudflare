@@ -1,6 +1,6 @@
 # 独立 App 与共享业务平台文档总览
 
-更新时间：2026-07-22
+更新时间：2026-07-23
 
 App 版本：1.0
 
@@ -10,7 +10,7 @@ App 版本：1.0
 
 ## 客户确认交付
 
-- [App 1.0 产品需求确认书（Markdown）](./MEIGALLERY_APP_1_0_CLIENT_PRD.md)：面向客户的单一需求基线，覆盖范围、角色、会员、移动端与后台交互、异常状态、迁移、验收和 17 项待确认参数。
+- [App 1.0 产品需求确认书（Markdown）](./MEIGALLERY_APP_1_0_CLIENT_PRD.md)：面向客户的单一需求基线，覆盖范围、角色、会员、移动端与后台交互、异常状态、迁移、验收和 8 项客户确认事项。
 - [App 1.0 产品需求确认书（DOCX）](./deliverables/MeiGallery_App_1.0_产品需求确认书.docx)：可直接提供客户评审、填写结论和签字确认的完整交付版。
 - [App 1.0 逐页交互设计确认册（DOCX）](./deliverables/MeiGallery_App_1.0_逐页交互设计确认册.docx)：按 49 个移动端页面与 43 个后台页面汇总 Page ID、页面目标、主操作、必备状态、跨页旅程、验收清单和签字页。
 - [App 1.0 高保真关键旅程原型](./interactive-prototype/index.html)：可点击体验 8 个移动端与后台关键旅程，包含业务规则、建议操作、预期结果、响应式布局和状态反馈。
@@ -25,10 +25,10 @@ App 版本：1.0
 - 真人供给：管理员上传、MeiGallery 合规导入，或外部提交后由管理员认证。
 - 普通注册账号：只作为观看者，不创建公开真人资料，不进入发现列表。
 - 核心行为：按地区、热度和偏好发现真人，喜欢、关注、收藏、浏览媒体。
-- 私信：只有有效心享会员可以创建和发送；不要求双方同意或匹配，到期后既有会话只读。
-- 当前接收方：未认领真人的私信由管理员代运营，前台必须披露平台运营身份。
+- 平台话题：只有有效心享会员可以创建和发送；不要求双方同意或匹配，到期后既有会话只读。
+- 当前接收方：未认领真人的话题由平台运营接收与处理，前台必须持续披露平台身份，不使用“给 TA 私信”等暗示本人接收的文案。
 - 未来方向：真人本人完成认领后，可以运营资料并接收认领后的新会话。
-- App 1.0：五级心享会员由管理员手动发放，所有有效等级可私信；支持管理员加扣币与用户明细，不接入支付和系统推送。
+- App 1.0：用户可提交会员申请，五级心享会员最终由管理员手动发放；所有有效等级可发起平台话题。支持管理员加扣币与用户明细，不接入支付和系统推送。
 - 后续商业化：金币充值、礼物、头像框、主页皮肤和聊天皮肤；需要新增客户端能力时正常升级 App，金币始终不可提现。
 
 ## 2. 顶层架构决策
@@ -47,7 +47,7 @@ App 版本：1.0
 | 一、产品战略与方向 | 定位、用户、边界、指标、阶段路线 | [产品需求](./PRODUCT_REQUIREMENTS.md)、[产品蓝图](../superpowers/specs/2026-07-20-real-person-discovery-product-blueprint-design.md) |
 | 二、角色、领域与技术基础 | Account、Person、Profile、Gallery、运营归属、认领、客户端/后端模块和契约冻结 | [Epic 架构](../ways-of-work/plan/real-person-discovery-platform/arch.md)、[数据与迁移](./DATA_AND_MIGRATION.md)、[技术架构](./TECHNICAL_ARCHITECTURE.md)、[KMP 客户端技术栈](./KMP_CLIENT_TECH_STACK.md)、[模块级技术设计](./KMP_CLIENT_MODULE_DESIGN.md) |
 | 三、体验与交互基础 | 信息架构、导航、移动端/后台页面、状态、文案、埋点和无障碍 | [UI/UX 设计](./UI_UX_DESIGN.md)、[移动端交互](./MOBILE_APP_INTERACTION_SPEC.md)、[后台交互](./ADMIN_CONSOLE_INTERACTION_SPEC.md)、[状态文案与埋点](./UI_STATE_COPY_AND_ANALYTICS_CATALOG.md) |
-| 四、前台功能 PRD | 发现、互动、会员私信、会员、金币、礼物和装扮 | [Feature PRD 目录](../ways-of-work/plan/real-person-discovery-platform/README.md) |
+| 四、前台功能 PRD | 发现、互动、平台话题、会员申请、会员、金币及未来商业化边界 | [Feature PRD 目录](../ways-of-work/plan/real-person-discovery-platform/README.md) |
 | 五、后台与运营 PRD | 导入、认证、发布、代运营、商品、调币、退款、认领和审计 | [Feature PRD 目录](../ways-of-work/plan/real-person-discovery-platform/README.md) |
 | 六、运营、指标与交付 | 路线图、质量、安全、指标、发布门禁和开放决策 | [质量与路线图](./QUALITY_OPERATIONS_ROADMAP.md)、[决策登记](./DECISIONS_AND_OPEN_QUESTIONS.md) |
 
@@ -72,7 +72,7 @@ App 版本：1.0
 | [推荐位、排序规则与热度运营](../ways-of-work/plan/real-person-discovery-platform/recommendation-and-popularity-operations/prd.md) | A-05 资格、排序、热度、精选、灰度和回滚 |
 | [举报、拉黑与安全审核](../ways-of-work/plan/real-person-discovery-platform/report-blocking-and-moderation/prd.md) | A-07 举报证据、拉黑联动、审核处置和申诉 |
 | [心享会员、Entitlement 与管理员手动发放](../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md) | F-09、A-08 五级目录、typed entitlement、grant、到期、复核与迁移 |
-| [会员私信、实时会话与平台代运营](../ways-of-work/plan/real-person-discovery-platform/member-messaging-and-managed-operations/prd.md) | F-07、A-06 直接建会话、持续披露、消息状态、实时恢复和运营队列 |
+| [会员平台话题、实时会话与运营工作台](../ways-of-work/plan/real-person-discovery-platform/member-messaging-and-managed-operations/prd.md) | F-07、A-06 发起话题、持续披露、消息状态、实时恢复、容量降级和运营队列 |
 | [站内通知中心与通知偏好](../ways-of-work/plan/real-person-discovery-platform/in-app-notification-center/prd.md) | F-12 分类、模板、未读、偏好、深链和 HTTP/实时刷新 |
 | [金币钱包、追加式账本与管理员调币](../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md) | F-10、A-10 余额、明细、加扣币、双人复核、冲正和对账 |
 | [运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md) | A-13 指标口径、最小化看板、追加审计、异常和受控导出 |
@@ -99,7 +99,7 @@ App 版本：1.0
 
 ## 5. 评审顺序
 
-1. 客户先评审产品需求确认书第 17 章的 17 项参数，并在第 18 章选择确认结论、填写意见和签字。
+1. 客户先评审产品需求确认书第 17 章的 8 项确认事项，并在第 19 章选择确认结论、填写意见和签字。
 2. Owner、产品和运营根据客户结论冻结发布范围、详细 Feature PRD、五级会员定位与路线优先级。
 3. 内容、法务与安全负责人关闭首批 PRD 中的真人来源、授权、认证声明、审核复核和推荐合规门禁。
 4. 客户和设计负责人先评审 8 个关键旅程，再按 Page ID 逐页评审 92 页设计库，确认视觉方向、信息层级、核心操作和状态反馈；后续视觉细化不得改变已确认业务规则。
@@ -111,9 +111,17 @@ App 版本：1.0
 
 - `Account` 是登录和付费主体，`Person` 是真人事实，`PersonProfile` 是公开展示，`Gallery` 是内容集合；四者不能合并。
 - 喜欢、关注和收藏是单向关系，不创建双方匹配。
-- 会员获得的是明确的功能和额度，不是“真人一定回复”或关系结果。
+- 会员获得的是明确的功能和额度，不是“真人一定回复”或关系结果；提交会员申请本身不产生权限。
 - 平台运营回复不得伪装为真人本人回复，也不得伪造本人在线、正在输入或已读。
 - 热度、付费等级和运营推荐不等于真人认证。
 - 管理员上传也必须保留来源、授权、认证、发布和变更审计。
 - 管理员加币、扣币和冲正只能追加账本分录，不能直接改余额或删除历史。
 - 远程配置可以调整已支持字段；新增页面、原生 SDK 或交互能力仍需要 App 发版。
+
+## 7. 交付物维护
+
+- `scripts/generate_app_product_assets.py`：从已确认原型生成客户文档使用的 9 组截图。
+- `scripts/generate_app_product_docs.py`：根据当前 Markdown、页面目录和原型截图生成两份 DOCX，避免手工副本与需求基线分叉。
+- `scripts/create_docx_contact_sheets.py`：将 DOCX 渲染结果整理为视觉复核联系表。
+- 每次客户确认导致需求变化后，应先修改 Markdown 和原型，再重新生成 DOCX；DOCX 不作为独立需求源维护。
+- 当前交付仍标记为“需求讨论中”。客户完成 C-01～C-08 和签字页确认后，才可将范围状态改为“已确认并冻结”。

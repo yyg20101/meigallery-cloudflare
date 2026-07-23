@@ -12,7 +12,14 @@
     { name: "知遥", meta: "南京 · 出版编辑", image: "./assets/portrait-zhiyao.png", tag: "阅读" },
     { name: "沐青", meta: "成都 · 艺术策展", image: "./assets/portrait-muqing.png", tag: "艺术" }
   ];
-  const levels = ["心遇", "心悦", "心知", "心契", "心耀"];
+  const levelDetails = [
+    { name: "心遇", rank: 10, topics: 1, filters: 1, folders: 3, advanced: "不开放" },
+    { name: "心悦", rank: 20, topics: 2, filters: 3, folders: 5, advanced: "基础组合" },
+    { name: "心知", rank: 30, topics: 4, filters: 6, folders: 10, advanced: "完整开放" },
+    { name: "心契", rank: 40, topics: 6, filters: 12, folders: 20, advanced: "完整开放" },
+    { name: "心耀", rank: 50, topics: 10, filters: 20, folders: 30, advanced: "完整开放" }
+  ];
+  const levels = levelDetails.map(level => level.name);
   const params = new URLSearchParams(location.search);
   const requestedPage = catalog.pages.find(item => item.id === params.get("page"));
 
@@ -87,10 +94,23 @@
 
   function stateNotice(page) {
     const value = selectedState(page);
-    if (["正常", "首次", "免费", "初始", "维护中", "必须升级", "部分受限", "已下架", "未开放"].includes(value)) return "";
+    if (["正常", "首次", "免费", "初始", "未申请", "维护中", "必须升级", "部分受限", "已下架", "未开放"].includes(value)) return "";
     const isRisk = /失败|错误|受限|冲突|不可用|过期|不足|冻结|限制|异常|无权限|下架|关闭/.test(value);
     const glyph = isRisk ? "alert-circle" : "history";
-    return `<div class="page-state-notice ${isRisk ? "risk" : ""}">${icon(glyph)}<div><strong>${escapeHtml(value)}</strong><span>当前正在展示“${escapeHtml(value)}”状态，页面保留事实说明与安全下一步。</span></div></div>`;
+    const descriptions = {
+      "已提交": "申请已由服务端创建，等待平台领取；可以查看进度或取消。",
+      "处理中": "平台运营正在处理，会员权限尚未生效。",
+      "待补充": "申请需要补充说明；补充并重新提交前不会继续处理。",
+      "已通过": "申请审核已通过，仍需管理员 grant 生效后才获得会员权限。",
+      "已拒绝": "本次申请未通过；页面展示可理解原因和帮助入口。",
+      "已取消": "申请已取消，未产生会员权益。",
+      "额度尽": "今日新话题额度已用完；已有话题仍按当前权益与会话状态处理。",
+      "无会员": "当前账号没有有效会员；可以查看权益并提交会员申请。",
+      "离线": "当前显示上次同步结果；权威操作需要恢复联网后重新校验。",
+      "同步失败": "未取得最新权威状态；页面不会推断会员、余额或权限。"
+    };
+    const description = descriptions[value] || `当前为“${value}”状态；页面展示已知事实，并提供与该状态相符的安全下一步。`;
+    return `<div class="page-state-notice ${isRisk ? "risk" : ""}">${icon(glyph)}<div><strong>${escapeHtml(value)}</strong><span>${escapeHtml(description)}</span></div></div>`;
   }
 
   function primaryButton(page, label = page.primary) {
@@ -124,7 +144,7 @@
   }
 
   function renderDocument(page) {
-    return phoneShell(page, `<div class="library-scroll document-screen">${mobileHeader(page.name, { caption: "版本 2026-07-22" })}${stateNotice(page)}<div class="document-meta"><span>当前生效版本</span><strong>更新时间：2026-07-22</strong></div><h2>MeiGallery 用户协议</h2><p>欢迎使用 MeiGallery。本服务用于浏览经过平台审核和授权的写真、时尚、生活及艺术内容。</p><h3>账号与身份</h3><p>普通用户注册后为观看者。公开真人资料由管理员依据授权素材创建、认证并发布。</p><h3>平台会话</h3><p>私信由平台运营团队接收与处理，不代表真人本人在线或亲自回复。</p><h3>会员与金币</h3><p>App 1.0 不提供在线支付、充值、礼物、转账或提现入口。</p>${primaryButton(page)}</div>`);
+    return phoneShell(page, `<div class="library-scroll document-screen">${mobileHeader(page.name, { caption: "版本 2026-07-23" })}${stateNotice(page)}<div class="document-meta"><span>当前生效版本</span><strong>更新时间：2026-07-23</strong></div><h2>MeiGallery 用户协议</h2><p>欢迎使用 MeiGallery。本服务用于浏览经过平台审核和授权的写真、时尚、生活及艺术内容。</p><h3>账号与身份</h3><p>普通用户注册后为观看者。公开真人资料由管理员依据授权素材创建、认证并发布。</p><h3>平台话题</h3><p>当前话题由平台运营团队接收与处理，不代表真人本人在线、查看或亲自回复。</p><h3>会员与金币</h3><p>App 1.0 不提供在线支付、金币购买、充值、消费、兑换、转账或提现入口。</p>${primaryButton(page)}</div>`);
   }
 
   function renderDiscover(page) {
@@ -153,7 +173,7 @@
   }
 
   function renderProfile(page) {
-    return phoneShell(page, `<div class="library-scroll profile-library">${stateNotice(page)}<div class="profile-hero"><img src="./assets/portrait-linxia.png" alt="林夏的虚构演示照片" /><button class="icon-button back-floating" data-action="previous-page">${icon("chevron-left")}</button><button class="icon-button profile-more" data-action="secondary">${icon("settings")}</button><div class="profile-overlay"><span class="tiny-badge">${icon("shield-check")}资料已认证</span><h2>林夏</h2><p>杭州 · 品牌策划 · 生活方式</p></div></div><div class="profile-body"><div class="profile-actions"><button class="circle-action" data-action="toggle-choice">${icon("heart")}</button><button class="circle-action" data-action="toggle-choice">${icon("bookmark")}</button>${primaryButton(page)}</div><div class="disclosure-box"><strong>资料与会话说明</strong><br />资料由 MeiGallery 依据授权素材创建和维护。私信由平台管理员接收与处理，不代表本人在线或亲自回复。</div><h3>关于林夏</h3><p>喜欢城市散步、独立书店和轻松的周末，也会记录自然与城市生活。</p><div class="tag-wrap"><span class="tag">杭州</span><span class="tag">文艺</span><span class="tag">旅行</span><span class="tag">生活方式</span></div><button class="verification-link" data-action="open-page" data-page="APP-DSC-09">${icon("shield-check")}查看认证范围与更新时间${icon("chevron-right")}</button></div></div>`);
+    return phoneShell(page, `<div class="library-scroll profile-library">${stateNotice(page)}<div class="profile-hero"><img src="./assets/portrait-linxia.png" alt="林夏的虚构演示照片" /><button class="icon-button back-floating" data-action="previous-page">${icon("chevron-left")}</button><button class="icon-button profile-more" data-action="secondary">${icon("settings")}</button><div class="profile-overlay"><span class="tiny-badge">${icon("shield-check")}资料已认证</span><h2>林夏</h2><p>杭州 · 品牌策划 · 生活方式</p></div></div><div class="profile-body"><div class="profile-actions"><button class="circle-action" data-action="toggle-choice">${icon("heart")}</button><button class="circle-action" data-action="toggle-choice">${icon("bookmark")}</button>${primaryButton(page)}</div><div class="disclosure-box"><strong>资料与话题说明</strong><br />资料由 MeiGallery 依据授权素材创建和维护。你发起的话题由平台管理员接收与处理，不代表本人在线或亲自回复。</div><h3>关于林夏</h3><p>喜欢城市散步、独立书店和轻松的周末，也会记录自然与城市生活。</p><div class="tag-wrap"><span class="tag">杭州</span><span class="tag">文艺</span><span class="tag">旅行</span><span class="tag">生活方式</span></div><button class="verification-link" data-action="open-page" data-page="APP-DSC-09">${icon("shield-check")}查看认证范围与更新时间${icon("chevron-right")}</button></div></div>`);
   }
 
   function renderMedia(page) {
@@ -181,11 +201,11 @@
   }
 
   function renderChatList(page) {
-    return phoneShell(page, `<div class="library-scroll">${mobileHeader(page.name, { back: false, caption: "平台运营统一接收", action: "筛选", actionIcon: "filter" })}${stateNotice(page)}<div class="chat-list-disclosure">${icon("shield-check")}所有会话均由 MeiGallery 平台运营团队接收与处理</div>${people.slice(0, 3).map((person, index) => `<button class="conversation-row" data-action="open-page" data-page="APP-MSG-03"><span class="avatar-wrap"><img src="${person.image}" alt="" />${index === 0 ? `<i>2</i>` : ""}</span><span><strong>${person.name}<em>平台运营</em></strong><p>${index === 0 ? "已收到你的留言，我们会继续处理…" : "关于近期公开内容的话题会话"}</p><small>${index === 0 ? "10:42" : "昨天"}</small></span>${index === 2 ? icon("bell") : ""}</button>`).join("")}</div>`, "消息");
+    return phoneShell(page, `<div class="library-scroll">${mobileHeader(page.name, { back: false, caption: "平台运营统一接收", action: "筛选", actionIcon: "filter" })}${stateNotice(page)}<div class="chat-list-disclosure">${icon("shield-check")}所有话题均由 MeiGallery 平台运营团队接收与处理</div>${people.slice(0, 3).map((person, index) => `<button class="conversation-row" data-action="open-page" data-page="APP-MSG-03"><span class="avatar-wrap"><img src="${person.image}" alt="" />${index === 0 ? `<i>2</i>` : ""}</span><span><strong>${person.name}<em>平台接收</em></strong><p>${index === 0 ? "已收到你的留言，我们会继续处理…" : "关于近期公开内容的话题会话"}</p><small>${index === 0 ? "10:42" : "昨天"}</small></span>${index === 2 ? icon("bell") : ""}</button>`).join("")}</div>`, "消息");
   }
 
   function renderConfirm(page) {
-    return phoneShell(page, `<div class="library-scroll">${mobileHeader(page.name, { caption: "林夏 · 话题会话" })}${stateNotice(page)}<div class="candidate-head"><img src="./assets/portrait-linxia.png" alt="" /><div><h2>与林夏相关的话题</h2><p>接收主体：MeiGallery 平台运营</p></div></div><section class="confirmation-card"><h3>创建前请确认</h3>${[["shield-check", "由平台管理员接收和处理"], ["crown", "需要有效心享会员"], ["message-circle", "今日剩余新会话额度 2 次"], ["history", "平台不保证回复时间或关系结果"]].map(item => `<div>${icon(item[0])}<span>${item[1]}</span></div>`).join("")}</section><label class="check-row"><input type="checkbox" checked />我已了解消息接收主体与服务说明</label>${primaryButton(page)}<button class="secondary-button" data-action="previous-page">暂不创建</button></div>`);
+    return phoneShell(page, `<div class="library-scroll">${mobileHeader(page.name, { caption: "林夏 · 平台接收" })}${stateNotice(page)}<div class="candidate-head"><img src="./assets/portrait-linxia.png" alt="" /><div><h2>与林夏相关的话题</h2><p>接收主体：MeiGallery 平台运营</p></div></div><section class="confirmation-card"><h3>发起话题前请确认</h3>${[["shield-check", "由平台管理员接收和处理"], ["crown", "需要有效心享会员"], ["message-circle", "今日剩余新话题额度 2 次"], ["history", "平台不保证回复时间或关系结果"]].map(item => `<div>${icon(item[0])}<span>${item[1]}</span></div>`).join("")}</section><label class="check-row"><input type="checkbox" checked />我已了解消息接收主体与服务说明</label>${primaryButton(page)}<button class="secondary-button" data-action="previous-page">暂不发起</button></div>`);
   }
 
   function renderChat(page) {
@@ -194,32 +214,48 @@
   }
 
   function renderSettings(page) {
-    return phoneShell(page, `<div class="library-scroll">${mobileHeader(page.name, { caption: "林夏 · 话题会话" })}${stateNotice(page)}<div class="chat-list-disclosure">${icon("shield-check")}接收与回复主体：MeiGallery 平台运营团队</div>${[["消息静音", "关闭后不显示新消息角标", "bell"], ["举报会话", "提交给独立安全审核", "alert-circle"], ["拉黑相关真人", "停止推荐、互动和新私信", "x"], ["关闭会话", "历史可查看，停止继续发送", "lock"]].map((item, index) => `<button class="setting-row ${index > 1 ? "danger-row" : ""}" data-action="secondary">${icon(item[2])}<span><strong>${item[0]}</strong><small>${item[1]}</small></span>${index === 0 ? `<i class="switch-control active"></i>` : icon("chevron-right")}</button>`).join("")}${primaryButton(page)}</div>`, "消息");
+    return phoneShell(page, `<div class="library-scroll">${mobileHeader(page.name, { caption: "林夏 · 话题会话" })}${stateNotice(page)}<div class="chat-list-disclosure">${icon("shield-check")}接收与回复主体：MeiGallery 平台运营团队</div>${[["消息静音", "关闭后不显示新消息角标", "bell"], ["举报会话", "提交给独立安全审核", "alert-circle"], ["拉黑相关真人", "停止推荐、互动和新话题", "x"], ["关闭会话", "历史可查看，停止继续发送", "lock"]].map((item, index) => `<button class="setting-row ${index > 1 ? "danger-row" : ""}" data-action="secondary">${icon(item[2])}<span><strong>${item[0]}</strong><small>${item[1]}</small></span>${index === 0 ? `<i class="switch-control active"></i>` : icon("chevron-right")}</button>`).join("")}${primaryButton(page)}</div>`, "消息");
   }
 
   function renderNotifications(page) {
-    const notices = [["平台会话有新回复", "MeiGallery 平台运营已回复你的话题会话", "10:42", "message-circle"], ["会员等级已生效", "心知会员有效期至 2026-08-20", "昨天", "crown"], ["金币余额已调整", "平台服务补偿 +100 金币", "07-18", "coin"]];
+    const notices = [["平台话题有新回复", "MeiGallery 平台运营已回复你的话题", "10:42", "message-circle"], ["会员等级已生效", "心知会员有效期至 2026-08-20", "昨天", "crown"], ["金币余额已调整", "平台服务补偿 +100 金币", "07-18", "coin"]];
     return phoneShell(page, `<div class="library-scroll">${mobileHeader(page.name, { caption: "3 条未读", action: "全部已读", actionIcon: "circle-check" })}${stateNotice(page)}<div class="tab-row"><button class="tab-button active">全部</button><button class="tab-button">消息</button><button class="tab-button">会员金币</button><button class="tab-button">安全</button></div>${notices.map(notice => `<button class="notice-row" data-action="open-page" data-page="APP-MSG-06"><span>${icon(notice[3])}</span><div><strong>${notice[0]}</strong><p>${notice[1]}</p><small>${notice[2]}</small></div><i></i></button>`).join("")}</div>`, "消息");
   }
 
   function renderNoticeDetail(page) {
-    return phoneShell(page, `<div class="library-scroll">${mobileHeader(page.name, { caption: "消息与会话" })}${stateNotice(page)}<article class="notice-detail-card"><span class="notice-icon">${icon("message-circle")}</span><small>2026-07-22 10:42</small><h2>平台会话有新回复</h2><p>MeiGallery 平台运营团队已经回复你与“林夏”相关的话题会话。</p><div class="disclosure-box">消息由平台运营接收和回复，不代表真人本人查看、在线或亲自回复。</div><section><span>当前目标状态</span><strong>会话可用 · 心知会员有效</strong></section>${primaryButton(page, "查看平台会话")}</article></div>`, "消息");
+    return phoneShell(page, `<div class="library-scroll">${mobileHeader(page.name, { caption: "消息与话题" })}${stateNotice(page)}<article class="notice-detail-card"><span class="notice-icon">${icon("message-circle")}</span><small>2026-07-23 10:42</small><h2>平台话题有新回复</h2><p>MeiGallery 平台运营团队已经回复你与“林夏”相关的话题。</p><div class="disclosure-box">消息由平台运营接收和回复，不代表真人本人查看、在线或亲自回复。</div><section><span>当前目标状态</span><strong>话题可用 · 心知会员有效</strong></section>${primaryButton(page, "查看平台话题")}</article></div>`, "消息");
   }
 
   function renderMembership(page) {
-    return phoneShell(page, `<div class="library-scroll membership-library">${mobileHeader(page.name, { caption: "由管理员线下发放" })}${stateNotice(page)}<div class="membership-hero"><span>${icon("crown")}</span><small>当前账号</small><h2>尚未获得会员</h2><p>有效会员才可创建和发送平台私信</p></div><div class="level-switch">${levels.map((level, index) => `<button class="${index === 2 ? "active" : ""}" data-action="toggle-choice"><span>${level.slice(-1)}</span><small>${level}</small></button>`).join("")}</div><article class="level-detail"><span>推荐查看</span><h2>心知会员</h2><p>包含心遇、心悦权益，并预留未来专属内容能力。</p>${[["message-circle", "发送平台私信"], ["bookmark", "保存更多筛选条件"], ["filter", "使用进阶内容筛选"]].map(item => `<div>${icon(item[0])}<span>${item[1]}</span>${icon("circle-check")}</div>`).join("")}</article><div class="gate-note">App 1.0 不提供在线购买、充值或自动续费。资格由平台线下确认后由管理员发放。</div>${primaryButton(page)}</div>`);
+    const selected = levelDetails[2];
+    return phoneShell(page, `<div class="library-scroll membership-library">${mobileHeader(page.name, { caption: "站内申请 · 人工发放" })}${stateNotice(page)}<div class="membership-hero"><span>${icon("crown")}</span><small>当前账号</small><h2>尚未获得会员</h2><p>有效会员才可发起由平台接收的话题</p></div><div class="level-switch">${levelDetails.map((level, index) => `<button class="${index === 2 ? "active" : ""}" data-action="toggle-choice"><span>${level.name.slice(-1)}</span><small>${level.name}</small></button>`).join("")}</div><article class="level-detail"><span>当前选择</span><h2>${selected.name}会员</h2><p>rank ${selected.rank} · 权益由服务端目录下发</p>${[["message-circle", `每日新话题 ${selected.topics} 个`], ["bookmark", `保存筛选 ${selected.filters} 个 · 收藏夹 ${selected.folders} 个`], ["filter", `高级筛选：${selected.advanced}`]].map(item => `<div>${icon(item[0])}<span>${item[1]}</span>${icon("circle-check")}</div>`).join("")}</article><div class="gate-note">App 1.0 不在线购买、续订或自动开通。服务时段每日 10:00–22:00，通常在 1 个服务日内处理；管理员发放后权益才生效。</div>${primaryButton(page)}</div>`);
   }
 
   function renderBenefits(page) {
-    return phoneShell(page, `<div class="library-scroll">${mobileHeader(page.name, { caption: "心知会员" })}${stateNotice(page)}<div class="benefit-card"><span>当前等级</span><h2>心知</h2><p>有效期至 2026-08-20 23:59</p><div class="benefit-progress"><span style="width:68%"></span></div><small>剩余 29 天</small></div><h3 class="list-section-title">本期权益使用</h3>${[["新建话题会话", "1 / 3", "message-circle"], ["已保存筛选", "3 / 5", "filter"], ["进阶筛选", "可用", "circle-check"]].map(item => `<div class="benefit-row">${icon(item[2])}<span><strong>${item[0]}</strong><small>本期额度</small></span><em>${item[1]}</em></div>`).join("")}<div class="renewal-note">会员到期后历史会话保留为只读；重新获得会员仍需重新校验会话状态。</div>${primaryButton(page)}</div>`, "我的");
+    return phoneShell(page, `<div class="library-scroll">${mobileHeader(page.name, { caption: "心知会员" })}${stateNotice(page)}<div class="benefit-card"><span>当前等级</span><h2>心知</h2><p>有效期至 2026-08-20 23:59</p><div class="benefit-progress"><span style="width:68%"></span></div><small>剩余 29 天</small></div><h3 class="list-section-title">今日权益使用</h3>${[["新建平台话题", "1 / 4", "message-circle"], ["已保存筛选", "3 / 6", "filter"], ["自定义收藏夹", "4 / 10", "bookmark"], ["高级筛选", "完整开放", "circle-check"]].map(item => `<div class="benefit-row">${icon(item[2])}<span><strong>${item[0]}</strong><small>${item[0] === "新建平台话题" ? "每日 00:00 重置" : "当前使用"}</small></span><em>${item[1]}</em></div>`).join("")}<div class="renewal-note">会员到期后历史会话保留为只读；重新获得会员仍需重新校验会话状态。</div>${primaryButton(page)}</div>`, "我的");
+  }
+
+  function renderMembershipApplication(page) {
+    const value = selectedState(page);
+    const active = ["已提交", "处理中", "待补充", "已通过", "已拒绝", "已取消"].includes(value);
+    const statusCopy = {
+      "已提交": ["等待平台受理", "申请已进入会员服务队列。"],
+      "处理中": ["平台正在处理", "运营人员正在核对申请信息。"],
+      "待补充": ["需要补充说明", "请按页面提示补充后重新提交。"],
+      "已通过": ["申请审核通过", "管理员发放后权益才会生效。"],
+      "已拒绝": ["本次申请未通过", "可查看原因说明或联系平台。"],
+      "已取消": ["申请已取消", "未产生会员权益，可重新申请。"]
+    };
+    const status = statusCopy[value] || ["选择期望等级", "提交后可在此查看人工处理状态。"];
+    return phoneShell(page, `<div class="library-scroll membership-application-page">${mobileHeader(page.name, { caption: "服务时段 10:00–22:00" })}${stateNotice(page)}${active ? `<div class="application-progress"><span class="done">${icon("circle-check")}已提交</span><i></i><span class="${value === "已提交" ? "active" : "done"}">${icon(value === "已提交" ? "history" : "circle-check")}平台处理</span><i></i><span class="${value === "已通过" ? "active" : ""}">${icon(value === "已通过" ? "circle-check" : "crown")}管理员发放</span></div>` : ""}<article class="membership-application-card"><span>${value}</span><h2>${status[0]}</h2><p>${status[1]}</p>${active ? `<dl><dt>申请编号</dt><dd>MBR-260723-018</dd><dt>期望等级</dt><dd>心知 · rank 30</dd><dt>提交时间</dt><dd>2026-07-23 14:30</dd></dl>` : `<label>期望等级<select><option>心知 · 每日 4 个新话题</option><option>心遇 · 每日 1 个新话题</option><option>心悦 · 每日 2 个新话题</option><option>心契 · 每日 6 个新话题</option><option>心耀 · 每日 10 个新话题</option></select></label><label>申请说明（选填）<textarea maxlength="200">希望使用平台话题与高级筛选。</textarea></label><label class="check-row"><input type="checkbox" checked />我已了解本版本不在线支付，管理员发放后权益才生效。</label>`}</article><div class="disclosure-box"><strong>处理说明</strong><br />通常在 1 个服务日内处理。平台话题由平台运营接收，不保证固定回复时间或本人回复。</div>${primaryButton(page, active ? value === "待补充" ? "补充并重新提交" : value === "已通过" ? "查看当前权益" : "查看申请进度" : "提交会员申请")}${active && !["已通过", "已拒绝", "已取消"].includes(value) ? `<button class="secondary-button" data-action="secondary">取消申请</button>` : ""}</div>`, "我的");
   }
 
   function renderHelp(page) {
-    return phoneShell(page, `<div class="library-scroll">${mobileHeader(page.name, { caption: page.id === "APP-MBR-03" ? "会员服务" : "帮助与服务" })}${stateNotice(page)}<label class="search-field">${icon("search")}<input placeholder="搜索帮助问题" aria-label="搜索帮助" /></label><div class="help-feature">${icon("message-circle")}<div><strong>${page.id === "APP-MBR-03" ? "如何获得心享会员？" : "关于平台会话"}</strong><p>${page.id === "APP-MBR-03" ? "联系平台完成线下资格确认，再由管理员发放。" : "会话由平台运营接收和处理，不代表真人本人回复。"}</p></div></div>${["账号与登录", "真人认证说明", "平台会话与会员", "金币与账本", "举报、申诉与数据权利"].map(item => `<button class="setting-row" data-action="secondary"><span><strong>${item}</strong><small>查看常见问题</small></span>${icon("chevron-right")}</button>`).join("")}${primaryButton(page, page.id === "APP-MBR-03" ? "联系平台了解资格" : "联系平台")}</div>`, "我的");
+    return phoneShell(page, `<div class="library-scroll">${mobileHeader(page.name, { caption: "帮助与服务" })}${stateNotice(page)}<label class="search-field">${icon("search")}<input placeholder="搜索帮助问题" aria-label="搜索帮助" /></label><div class="help-feature">${icon("message-circle")}<div><strong>关于平台话题</strong><p>话题由平台运营接收和处理，不代表真人本人回复。</p></div></div>${["账号与登录", "真人认证说明", "平台话题与会员", "金币与账本", "举报、申诉与数据权利"].map(item => `<button class="setting-row" data-action="secondary"><span><strong>${item}</strong><small>查看常见问题</small></span>${icon("chevron-right")}</button>`).join("")}${primaryButton(page, "联系平台")}</div>`, "我的");
   }
 
   function renderWallet(page) {
-    return phoneShell(page, `<div class="library-scroll">${mobileHeader(page.name, { caption: "最后同步 10:46" })}${stateNotice(page)}<div class="wallet-card"><span>金币余额</span><h2>520</h2><p>仅显示已生效账本分录</p>${icon("wallet")}</div><div class="wallet-rule"><strong>金币规则</strong><p>金币由管理员依据业务原因加币或扣币；App 1.0 不提供充值、礼物、转账、提现或兑换。</p></div><h3 class="list-section-title">最近明细</h3>${ledgerRows(3)}${primaryButton(page)}</div>`, "我的");
+    return phoneShell(page, `<div class="library-scroll">${mobileHeader(page.name, { caption: "最后同步 10:46" })}${stateNotice(page)}<div class="wallet-card"><span>金币余额</span><h2>520</h2><p>平台内部记录值，不具现金价值</p>${icon("wallet")}</div><div class="wallet-rule"><strong>金币规则</strong><p>金币由管理员依据业务原因加币或扣币；App 1.0 不提供购买、充值、消费、兑换、转账或提现。</p></div><h3 class="list-section-title">最近明细</h3>${ledgerRows(3)}${primaryButton(page)}</div>`, "我的");
   }
 
   function ledgerRows(limit = 4) {
@@ -249,7 +285,7 @@
 
   function renderToggles(page) {
     const isNotice = page.id === "APP-SET-05";
-    const options = isNotice ? [["消息通知", "平台会话有新回复", true], ["互动通知", "关注资料有新公开内容", true], ["会员与金币", "权益或余额发生变化", true], ["营销通知", "可选活动与内容推荐", false], ["账号与安全", "不可关闭的必要通知", true]] : [["个性化推荐", "依据地区、内容热度和偏好排序", true], ["保存浏览历史", "用于本人查看与推荐优化", true], ["可选产品分析", "帮助改进页面和性能", false], ["精确位置", "App 1.0 不采集", false]];
+    const options = isNotice ? [["消息通知", "平台话题有新回复", true], ["互动通知", "关注资料有新公开内容", true], ["会员与金币", "权益或余额发生变化", true], ["营销通知", "可选活动与内容推荐", false], ["账号与安全", "不可关闭的必要通知", true]] : [["个性化推荐", "依据地区、内容热度和偏好排序", true], ["保存浏览历史", "用于本人查看与推荐优化", true], ["可选产品分析", "帮助改进页面和性能", false], ["精确位置", "App 1.0 不采集", false]];
     return phoneShell(page, `<div class="library-scroll">${mobileHeader(page.name, { caption: isNotice ? "站内通知" : "隐私与用途" })}${stateNotice(page)}${options.map((option, index) => `<button class="toggle-row" data-action="toggle-setting" data-setting="${option[0]}" ${isNotice && index === options.length - 1 ? "disabled" : ""}><span><strong>${option[0]}</strong><small>${option[1]}</small></span><i class="switch-control ${state.toggles.has(option[0]) || option[2] ? "active" : ""}"></i></button>`).join("")}<div class="disclosure-box">关闭可选项目不会影响账号、安全、会员、金币和数据权利等必要通知或服务。</div>${primaryButton(page)}</div>`, "我的");
   }
 
@@ -270,14 +306,14 @@
   }
 
   function renderAbout(page) {
-    return phoneShell(page, `<div class="library-scroll">${mobileHeader(page.name, { caption: "App 1.0" })}${stateNotice(page)}<div class="about-hero"><span class="welcome-logo">M</span><h2>MeiGallery</h2><p>心动遇见你 · 高效真实的内容发现平台</p><small>版本 1.0 · Build 100</small></div>${[["用户协议", "APP-AUTH-06"], ["隐私政策", "APP-AUTH-06"], ["社区与内容规则", "APP-SET-11"], ["开源软件许可", "APP-AUTH-06"], ["联系我们", "APP-SET-11"]].map(item => `<button class="setting-row" data-action="open-page" data-page="${item[1]}"><span><strong>${item[0]}</strong></span>${icon("chevron-right")}</button>`).join("")}</div>`, "我的");
+    return phoneShell(page, `<div class="library-scroll">${mobileHeader(page.name, { caption: "App 1.0" })}${stateNotice(page)}<div class="about-hero"><span class="welcome-logo">M</span><h2>MeiGallery</h2><p>经授权真人内容发现与平台话题服务</p><small>版本 1.0 · Build 100</small></div>${[["用户协议", "APP-AUTH-06"], ["隐私政策", "APP-AUTH-06"], ["社区与内容规则", "APP-SET-11"], ["开源软件许可", "APP-AUTH-06"], ["联系我们", "APP-SET-11"]].map(item => `<button class="setting-row" data-action="open-page" data-page="${item[1]}"><span><strong>${item[0]}</strong></span>${icon("chevron-right")}</button>`).join("")}</div>`, "我的");
   }
 
   function renderSystem(page) {
     const map = {
       "APP-SYS-01": ["refresh", "需要更新 App", "当前版本无法安全支持最新服务能力。更新前不会继续执行当前操作。"],
       "APP-SYS-02": ["history", "服务正在维护", "暂时无法获取最新数据，已保存的本地内容不代表当前状态。"],
-      "APP-SYS-03": ["shield-check", "账号部分功能受限", "私信发送暂不可用，浏览和数据权利入口仍可访问。"],
+      "APP-SYS-03": ["shield-check", "账号部分功能受限", "平台话题发送暂不可用，浏览和数据权利入口仍可访问。"],
       "APP-SYS-04": ["alert-circle", "当前内容不可访问", "资料、会话或通知目标可能已下架、删除或不在你的权限范围内。"],
       "APP-SYS-05": ["compass", "当前地区暂未开放", "我们尚未在当前地区提供服务，注册与业务入口已停止。"]
     };
@@ -292,7 +328,7 @@
       saved: renderSaved, profile: renderProfile, media: renderMedia, verification: renderVerification, feed: renderFeed,
       "people-list": renderPeopleList, folders: renderFolders, history: renderHistory, "chat-list": renderChatList, confirm: renderConfirm,
       chat: renderChat, settings: renderSettings, notifications: renderNotifications, "notice-detail": renderNoticeDetail,
-      membership: renderMembership, benefits: renderBenefits, help: renderHelp, wallet: renderWallet, ledger: renderLedger,
+      membership: renderMembership, benefits: renderBenefits, "membership-application": renderMembershipApplication, help: renderHelp, wallet: renderWallet, ledger: renderLedger,
       "ledger-detail": renderLedgerDetail, me: renderMe, account: renderAccount, devices: renderDevices, toggles: renderToggles,
       cases: renderCases, appeal: renderAppeal, task: renderTask, danger: renderDanger, about: renderAbout, system: renderSystem
     };
@@ -317,7 +353,7 @@
   }
 
   function renderAdminDashboard(page) {
-    const body = `<div class="admin-metrics">${adminMetric("已发布真人", "86", "本周 +7", "good")}${adminMetric("待认证", "12", "最久等待 3.2 小时")}${adminMetric("待平台回复", "18", "4 条接近服务时段")}${adminMetric("账本差异", "3", "需要人工解释", "warn")}</div><div class="dashboard-grid"><section class="admin-panel"><div class="panel-title"><strong>今日运营主线</strong><span>2026-07-22 · 实时摘要</span></div>${adminTable(["领域", "待处理", "状态"], [["真人认证", "12 项", "正常"], ["平台会话", "18 条", "关注"], ["会员发放", "6 项", "待复核"], ["金币调整", "3 项", "高风险"]])}</section><section class="admin-panel"><div class="panel-title"><strong>数据质量</strong><span>未知不等于 0</span></div><div class="quality-ring"><strong>96.8%</strong><span>可用数据</span></div>${["推荐快照延迟 2 分钟", "通知队列正常", "钱包 Sequence 校验通过"].map(item => `<div class="quality-line">${icon("circle-check")}<span>${item}</span></div>`).join("")}</section></div>`;
+    const body = `<div class="admin-metrics">${adminMetric("已发布真人", "86", "本周 +7", "good")}${adminMetric("待认证", "12", "最久等待 3.2 小时")}${adminMetric("待平台回复", "18", "4 条接近服务时段")}${adminMetric("账本差异", "3", "需要人工解释", "warn")}</div><div class="dashboard-grid"><section class="admin-panel"><div class="panel-title"><strong>今日运营主线</strong><span>2026-07-23 · 实时摘要</span></div>${adminTable(["领域", "待处理", "状态"], [["真人认证", "12 项", "正常"], ["平台话题", "18 条", "关注"], ["会员申请/发放", "6 项", "待复核"], ["金币调整", "3 项", "高风险"]])}</section><section class="admin-panel"><div class="panel-title"><strong>数据质量</strong><span>未知不等于 0</span></div><div class="quality-ring"><strong>96.8%</strong><span>可用数据</span></div>${["推荐快照延迟 2 分钟", "通知队列正常", "钱包 Sequence 校验通过"].map(item => `<div class="quality-line">${icon("circle-check")}<span>${item}</span></div>`).join("")}</section></div>`;
     return adminShell(page, body);
   }
 
@@ -419,22 +455,22 @@
   }
 
   function renderAdminCase(page) {
-    const body = `<div class="case-layout"><section class="admin-panel"><div class="panel-title"><strong>最小必要证据</strong><span>CASE-2081</span></div><div class="evidence-block"><span>举报对象</span><strong>真人资料 · PER-2841</strong><p>用户认为认证说明可能过期，请核对授权与资料更新时间。</p></div><div class="evidence-block"><span>公开快照</span><div class="review-person compact"><img src="./assets/portrait-linxia.png" alt="" /><div><strong>林夏</strong><small>资料已认证 · 2026-07-18 更新</small></div></div></div><div class="evidence-restricted">${icon("lock")}未授权证件与无关会话正文已隐藏</div></section><section class="admin-panel"><div class="panel-title"><strong>处置结论</strong><span>独立审核</span></div><label><span>结论</span><select><option>请求补充授权证据</option><option>维持公开</option><option>暂停资料</option></select></label><label class="admin-note"><span>用户可见说明</span><textarea>平台正在复核资料认证范围，处理期间已停止新的私信入口。</textarea></label><label class="admin-note"><span>内部理由</span><textarea>授权有效期字段需要与原件重新核对。</textarea></label></section></div>`;
+    const body = `<div class="case-layout"><section class="admin-panel"><div class="panel-title"><strong>最小必要证据</strong><span>CASE-2081</span></div><div class="evidence-block"><span>举报对象</span><strong>真人资料 · PER-2841</strong><p>用户认为认证说明可能过期，请核对授权与资料更新时间。</p></div><div class="evidence-block"><span>公开快照</span><div class="review-person compact"><img src="./assets/portrait-linxia.png" alt="" /><div><strong>林夏</strong><small>资料已认证 · 2026-07-18 更新</small></div></div></div><div class="evidence-restricted">${icon("lock")}未授权证件与无关会话正文已隐藏</div></section><section class="admin-panel"><div class="panel-title"><strong>处置结论</strong><span>独立审核</span></div><label><span>结论</span><select><option>请求补充授权证据</option><option>维持公开</option><option>暂停资料</option></select></label><label class="admin-note"><span>用户可见说明</span><textarea>平台正在复核资料认证范围，处理期间已停止新的话题入口。</textarea></label><label class="admin-note"><span>内部理由</span><textarea>授权有效期字段需要与原件重新核对。</textarea></label></section></div>`;
     return adminShell(page, body);
   }
 
   function renderAdminCatalog(page) {
-    const body = `<div class="catalog-version-head"><div><span>当前生效版本</span><h3>会员目录 1.0</h3><p>2026-07-01 生效 · 5 个等级 · 12 个 entitlement</p></div><button data-action="secondary">比较版本</button></div><div class="membership-admin-grid">${levels.map((level, index) => `<article class="membership-admin-card ${index === 2 ? "active" : ""}"><span>${level.slice(-1)}</span><small>rank ${(index + 1) * 10}</small><h3>${level}</h3><p>${index === 0 ? "私信资格与基础标识" : `继承${levels[index - 1]}全部权益`}</p><em>${index + 2} 项 entitlement</em></article>`).join("")}</div><div class="safety-filter-card">${icon("file-description")}<div><strong>名称与权限分离</strong><p>业务逻辑只比较 rank 和稳定 entitlement key，不硬编码会员名称。</p></div></div>`;
+    const body = `<div class="catalog-version-head"><div><span>当前生效版本</span><h3>会员目录 1.0</h3><p>建议基线 · 5 个等级 · 精确额度待客户确认</p></div><button data-action="secondary">比较版本</button></div><div class="membership-admin-grid">${levelDetails.map((level, index) => `<article class="membership-admin-card ${index === 2 ? "active" : ""}"><span>${level.name.slice(-1)}</span><small>rank ${level.rank}</small><h3>${level.name}</h3><p>每日 ${level.topics} 个新话题 · 保存筛选 ${level.filters}</p><em>收藏夹 ${level.folders} · ${level.advanced}</em></article>`).join("")}</div><div class="safety-filter-card">${icon("file-description")}<div><strong>名称与权限分离</strong><p>业务逻辑只比较 rank 和稳定 entitlement key，不硬编码会员名称。</p></div></div>`;
     return adminShell(page, body);
   }
 
   function renderAdminDefinition(page) {
-    const body = `<div class="definition-layout"><section class="admin-panel"><div class="panel-title"><strong>Entitlement 定义</strong><span>12 项</span></div>${[["messaging.send", "发送平台私信", "boolean"], ["messaging.new_quota", "每日新会话额度", "integer"], ["filter.advanced", "进阶筛选", "boolean"], ["saved_filter.limit", "保存筛选上限", "integer"]].map((item, index) => `<button class="definition-row ${index === 0 ? "active" : ""}"><code>${item[0]}</code><span>${item[1]}</span><em>${item[2]}</em></button>`).join("")}</section><section class="admin-panel"><div class="panel-title"><strong>messaging.send</strong><span>v3 · 生效</span></div><label><span>数据类型</span><input value="boolean" readonly /></label><label><span>默认值</span><input value="false" /></label><label><span>支持客户端</span><input value="App ≥ 1.0" /></label><label class="admin-note"><span>用途说明</span><textarea>允许有效会员在服务端校验后发送平台私信。</textarea></label></section></div>`;
+    const body = `<div class="definition-layout"><section class="admin-panel"><div class="panel-title"><strong>Entitlement 定义</strong><span>12 项</span></div>${[["messaging.send", "发送平台话题消息", "boolean"], ["messaging.new_quota", "每日新话题额度", "integer"], ["filter.advanced", "高级筛选", "enum"], ["saved_filter.limit", "保存筛选上限", "integer"]].map((item, index) => `<button class="definition-row ${index === 0 ? "active" : ""}"><code>${item[0]}</code><span>${item[1]}</span><em>${item[2]}</em></button>`).join("")}</section><section class="admin-panel"><div class="panel-title"><strong>messaging.send</strong><span>v3 · 生效</span></div><label><span>数据类型</span><input value="boolean" readonly /></label><label><span>默认值</span><input value="false" /></label><label><span>支持客户端</span><input value="App ≥ 1.0" /></label><label class="admin-note"><span>用途说明</span><textarea>允许有效会员在服务端校验后发送平台话题消息。</textarea></label></section></div>`;
     return adminShell(page, body);
   }
 
   function renderAdminGrantList(page) {
-    const body = `<div class="admin-toolbar"><label>${icon("search")}<input value="138 0013 8000" /></label><button data-action="secondary">查询账号</button></div><div class="account-grant-head"><span class="account-avatar">小</span><div><strong>ACCT-002841</strong><p>当前：心知会员 · 有效至 2026-08-20</p></div><button data-action="page-primary">新建发放申请</button></div>${adminTable(["业务单号", "等级", "生效区间", "来源", "状态"], [["MBR-024811", "心知", "07-22 — 08-20", "线下确认", "生效"], ["MBR-021404", "心悦", "06-01 — 06-30", "运营发放", "到期"], ["MBR-018122", "心遇", "05-12 — 05-31", "legacy 映射", "到期"]])}`;
+    const body = `<div class="admin-toolbar"><label>${icon("search")}<input value="138 0013 8000" /></label><button data-action="secondary">查询账号</button></div><div class="account-grant-head"><span class="account-avatar">小</span><div><strong>待处理申请 · MBR-260723-018</strong><p>期望：心知会员 · 提交于 2026-07-23 14:30</p></div><button data-action="page-primary">受理会员申请</button></div>${adminTable(["申请/业务单号", "等级", "来源", "处理时限", "状态"], [["MBR-260723-018", "心知", "用户站内申请", "剩余 6 小时", "待处理"], ["MBR-024811", "心知", "用户申请后发放", "已完成", "生效"], ["MBR-021404", "心悦", "管理员直接发放", "已完成", "到期"]])}`;
     return adminShell(page, body);
   }
 
@@ -470,12 +506,12 @@
   }
 
   function renderAdminEvent(page) {
-    const body = `<div class="admin-toolbar"><label>${icon("search")}<input placeholder="搜索事件 key" /></label><button data-action="secondary">必要通知</button></div>${adminTable(["事件 Key", "用户用途", "必要性", "版本", "状态"], [["conversation.platform_reply", "平台会话新回复", "必要", "v3", "生效"], ["membership.granted", "会员已生效", "必要", "v2", "生效"], ["wallet.entry_created", "金币余额变化", "必要", "v4", "生效"], ["content.following_update", "关注内容更新", "可选", "v2", "生效"]], "ADM-NTF-02")}`;
+    const body = `<div class="admin-toolbar"><label>${icon("search")}<input placeholder="搜索事件 key" /></label><button data-action="secondary">必要通知</button></div>${adminTable(["事件 Key", "用户用途", "必要性", "版本", "状态"], [["conversation.platform_reply", "平台话题新回复", "必要", "v3", "生效"], ["membership.granted", "会员已生效", "必要", "v2", "生效"], ["wallet.entry_created", "金币余额变化", "必要", "v4", "生效"], ["content.following_update", "关注内容更新", "可选", "v2", "生效"]], "ADM-NTF-02")}`;
     return adminShell(page, body);
   }
 
   function renderAdminTemplate(page) {
-    const body = `<div class="template-layout"><section class="admin-panel"><div class="panel-title"><strong>模板草稿</strong><span>conversation.platform_reply · v4</span></div><label><span>标题</span><input value="平台会话有新回复" /></label><label class="admin-note"><span>正文</span><textarea>MeiGallery 平台运营团队已经回复你与“{{person_display_name}}”相关的话题会话。</textarea></label><div class="variable-list"><span>{{person_display_name}}</span><span>{{conversation_id}}</span><span>{{event_time}}</span></div><div class="disclosure-box">模板禁止写“本人回复”“本人已读”“正在输入”或保证回复。</div></section><section class="admin-panel"><div class="panel-title"><strong>用户预览</strong><span>简体中文 · 华东</span></div><div class="notification-preview"><span>${icon("message-circle")}</span><div><strong>平台会话有新回复</strong><p>MeiGallery 平台运营团队已经回复你与“林夏”相关的话题会话。</p><small>刚刚</small></div></div><div class="detail-pair"><span>目标动作</span><strong>打开平台会话</strong></div><div class="detail-pair"><span>必要性</span><strong>不可由营销开关屏蔽</strong></div></section></div>`;
+    const body = `<div class="template-layout"><section class="admin-panel"><div class="panel-title"><strong>模板草稿</strong><span>conversation.platform_reply · v4</span></div><label><span>标题</span><input value="平台话题有新回复" /></label><label class="admin-note"><span>正文</span><textarea>MeiGallery 平台运营团队已经回复你与“{{person_display_name}}”相关的话题。</textarea></label><div class="variable-list"><span>{{person_display_name}}</span><span>{{conversation_id}}</span><span>{{event_time}}</span></div><div class="disclosure-box">模板禁止写“本人回复”“本人已读”“正在输入”或保证回复。</div></section><section class="admin-panel"><div class="panel-title"><strong>用户预览</strong><span>简体中文 · 华东</span></div><div class="notification-preview"><span>${icon("message-circle")}</span><div><strong>平台话题有新回复</strong><p>MeiGallery 平台运营团队已经回复你与“林夏”相关的话题。</p><small>刚刚</small></div></div><div class="detail-pair"><span>目标动作</span><strong>打开平台话题</strong></div><div class="detail-pair"><span>必要性</span><strong>不可由营销开关屏蔽</strong></div></section></div>`;
     return adminShell(page, body);
   }
 
@@ -490,7 +526,7 @@
   }
 
   function renderAdminAuditDetail(page) {
-    const body = `<div class="audit-detail-layout"><section class="admin-panel"><div class="panel-title"><strong>审计事件</strong><span>AUD-984120</span></div>${[["发生时间", "2026-07-22 10:32:04.182"], ["操作者", "reviewer-006 · 财务复核"], ["动作", "coin.adjustment.approve"], ["对象", "COIN-067827 / ACCT-002841"], ["请求链", "REQ-c8421 / Trace-83f1"], ["结果", "成功"]].map(item => `<div class="detail-pair"><span>${item[0]}</span><strong>${item[1]}</strong></div>`).join("")}</section><section class="admin-panel"><div class="panel-title"><strong>脱敏差异</strong><span>不可修改</span></div><div class="diff-card before"><span>执行前</span><code>balance: 520<br />sequence: 17<br />status: pending</code></div><div class="diff-card after"><span>执行后</span><code>balance: 620<br />sequence: 18<br />status: approved</code></div><div class="audit-note">私信正文、证件、Token、签名 URL 与内部备注未进入通用审计展示。</div></section></div>`;
+    const body = `<div class="audit-detail-layout"><section class="admin-panel"><div class="panel-title"><strong>审计事件</strong><span>AUD-984120</span></div>${[["发生时间", "2026-07-23 10:32:04.182"], ["操作者", "reviewer-006 · 财务复核"], ["动作", "coin.adjustment.approve"], ["对象", "COIN-067827 / ACCT-002841"], ["请求链", "REQ-c8421 / Trace-83f1"], ["结果", "成功"]].map(item => `<div class="detail-pair"><span>${item[0]}</span><strong>${item[1]}</strong></div>`).join("")}</section><section class="admin-panel"><div class="panel-title"><strong>脱敏差异</strong><span>不可修改</span></div><div class="diff-card before"><span>执行前</span><code>balance: 520<br />sequence: 17<br />status: pending</code></div><div class="diff-card after"><span>执行后</span><code>balance: 620<br />sequence: 18<br />status: approved</code></div><div class="audit-note">平台话题正文、证件、Token、签名 URL 与内部备注未进入通用审计展示。</div></section></div>`;
     return adminShell(page, body);
   }
 
@@ -500,7 +536,7 @@
   }
 
   function renderAdminExport(page) {
-    const body = `<div class="export-layout"><section class="admin-panel"><div class="panel-title"><strong>新建受控导出</strong><span>需要独立复核</span></div><label><span>查询范围</span><input value="2026-07-22 · 高风险写操作 · 华东" readonly /></label><label><span>导出目的</span><select><option>内部合规复核</option></select></label><label class="admin-note"><span>用途说明</span><textarea>用于季度金币与会员高风险操作抽样复核。</textarea></label><div class="disclosure-box">导出不包含私信正文、证件、Token 或内部备注。批准后使用短期下载凭证。</div></section><section class="admin-panel"><div class="panel-title"><strong>历史申请</strong><span>最近 30 天</span></div>${[["EXP-AUD-2041", "已批准", "剩余 18 分钟"], ["EXP-AUD-2034", "已过期", "不可下载"], ["EXP-AUD-2028", "待复核", "范围已变化"]].map(item => `<div class="export-row"><span><strong>${item[0]}</strong><small>${item[2]}</small></span><em>${item[1]}</em><button data-action="secondary">查看</button></div>`).join("")}</section></div>`;
+    const body = `<div class="export-layout"><section class="admin-panel"><div class="panel-title"><strong>新建受控导出</strong><span>需要独立复核</span></div><label><span>查询范围</span><input value="2026-07-23 · 高风险写操作 · 华东" readonly /></label><label><span>导出目的</span><select><option>内部合规复核</option></select></label><label class="admin-note"><span>用途说明</span><textarea>用于季度金币与会员高风险操作抽样复核。</textarea></label><div class="disclosure-box">导出不包含平台话题正文、证件、Token 或内部备注。批准后使用短期下载凭证。</div></section><section class="admin-panel"><div class="panel-title"><strong>历史申请</strong><span>最近 30 天</span></div>${[["EXP-AUD-2041", "已批准", "剩余 18 分钟"], ["EXP-AUD-2034", "已过期", "不可下载"], ["EXP-AUD-2028", "待复核", "范围已变化"]].map(item => `<div class="export-row"><span><strong>${item[0]}</strong><small>${item[2]}</small></span><em>${item[1]}</em><button data-action="secondary">查看</button></div>`).join("")}</section></div>`;
     return adminShell(page, body);
   }
 
@@ -523,7 +559,8 @@
   const layoutDescriptions = {
     launch: "品牌与恢复状态居中；最低版本和维护状态优先于业务入口。", auth: "单任务表单；错误就近呈现；观看者身份边界位于主操作之后。",
     discover: "推荐范围、搜索、频道与真人内容构成首屏；卡片优先展示认证和推荐理由。", profile: "媒体主视觉、单向互动、身份披露和资料正文依次展开。",
-    chat: "接收主体固定置顶；消息线程、状态和输入区清晰分层。", membership: "当前身份、五级切换、权益差异与线下获取说明构成完整门槛。",
+    chat: "接收主体固定置顶；消息线程、状态和输入区清晰分层。", membership: "当前身份、五级切换、精确权益和站内申请入口构成完整门槛。",
+    "membership-application": "申请表单、人工处理说明、权威状态和管理员发放结果构成完整闭环。",
     system: "单一事实、明确影响和安全下一步，不暴露内部风控细节。", dashboard: "指标摘要、质量状态和专题入口分层，未知值不显示为零。",
     queue: "筛选、范围、等待时间和状态优先，列表与详情入口稳定。", review: "锁定版本预览与审核检查并列，编辑和批准职责分离。",
     conversation: "队列、会话正文和最小必要上下文三栏分工，发送主体不可选择。", approval: "申请事实与复核检查并列，前后影响和职责分离始终可见。"
@@ -533,9 +570,9 @@
     if (page.id.startsWith("APP-AUTH")) return "注册和登录只处理观看者账号，不创建公开真人资料。";
     if (page.id.startsWith("APP-DSC")) return "只展示认证有效、已发布、授权有效且未被安全隐藏的资料。";
     if (page.id.startsWith("APP-INT")) return "喜欢、关注和收藏互相独立，不产生匹配、通知对方或双向关系。";
-    if (page.id.startsWith("APP-MSG")) return "会话由平台管理员接收与处理；只有有效会员可以新建和发送。";
-    if (page.id.startsWith("APP-MBR")) return "App 1.0 不在线支付；会员由管理员线下确认后发放。";
-    if (page.id.startsWith("APP-WAL")) return "客户端只读余额和有效分录，不出现充值、礼物、转账或提现。";
+    if (page.id.startsWith("APP-MSG")) return "话题由平台管理员接收与处理；只有有效会员可以新建和发送。";
+    if (page.id.startsWith("APP-MBR")) return "App 1.0 不在线支付；提交申请不产生权限，管理员 grant 生效后才获得会员权益。";
+    if (page.id.startsWith("APP-WAL")) return "金币不具现金价值；客户端只读余额和有效分录，不出现购买、充值、消费、兑换、转账或提现。";
     if (page.id.startsWith("APP-SET")) return "账号设置不改变公开真人资料；敏感操作需要服务端重验。";
     if (page.id.startsWith("APP-SYS")) return "缓存不能冒充最新事实；必须提供可理解原因和安全返回路径。";
     if (page.id.startsWith("ADM-MSG")) return "管理员只能以固定平台运营身份发送，正文读取按租约和对象范围控制。";
@@ -546,7 +583,7 @@
 
   function renderInspector(page) {
     const next = catalog.pages.find(item => item.id === page.next);
-    els.inspectorContent.innerHTML = `<div class="page-inspector-title"><span>${escapeHtml(page.id)}</span><h2>${escapeHtml(page.name)}</h2><p>${escapeHtml(page.purpose)}</p></div><section class="rule-card"><h3>页面目标与入口</h3><dl><dt>进入方式</dt><dd>${escapeHtml(page.entry)}</dd><dt>设计路由</dt><dd><code>${escapeHtml(page.route)}</code></dd><dt>主要操作</dt><dd>${escapeHtml(page.primary)}</dd></dl></section><section class="interaction-card"><h3>页面结构</h3><p>${escapeHtml(layoutDescriptions[page.template] || `${page.name}采用与当前业务任务匹配的独立布局，重点突出事实、主操作和状态反馈。`)}</p><div class="inspector-actions"><strong>次要操作</strong><div>${page.secondary.map(item => `<span>${escapeHtml(item)}</span>`).join("") || "<span>返回上一页</span>"}</div></div></section><section class="state-spec-card"><h3>必须覆盖的状态</h3><div>${page.states.map(item => `<button type="button" class="${selectedState(page) === item ? "active" : ""}" data-action="set-page-state" data-state="${escapeHtml(item)}">${escapeHtml(item)}</button>`).join("")}</div></section><section class="expected-card"><h3>不可变规则</h3><p>${escapeHtml(ruleFor(page))}</p></section><section class="acceptance-card"><h3>页面级验收</h3><ol><li>入口、Page ID 和返回路径明确。</li><li>主操作有加载、成功和失败反馈。</li><li>服务端状态变化后不会展示过期权限。</li><li>空、错误和受限状态提供安全下一步。</li><li>不存在 App 1.0 范围外入口。</li></ol></section><div class="next-page-card"><span>建议下一页</span><strong>${next ? `${next.id} · ${next.name}` : "返回页面目录"}</strong><button type="button" data-action="${next ? "open-page" : "reset-page"}" ${next ? `data-page="${next.id}"` : ""}>继续评审${icon("chevron-right")}</button></div><p class="inspector-footnote">页面数据、账号、人物和金额均为本地演示，不连接生产系统。</p>`;
+    els.inspectorContent.innerHTML = `<div class="page-inspector-title"><span>${escapeHtml(page.id)} · ${escapeHtml(page.priority)}</span><h2>${escapeHtml(page.name)}</h2><p>${escapeHtml(page.purpose)}</p></div><section class="rule-card"><h3>页面目标与入口</h3><dl><dt>交付优先级</dt><dd><strong>${escapeHtml(page.priority)}</strong></dd><dt>进入方式</dt><dd>${escapeHtml(page.entry)}</dd><dt>设计路由</dt><dd><code>${escapeHtml(page.route)}</code></dd><dt>主要操作</dt><dd>${escapeHtml(page.primary)}</dd></dl></section><section class="interaction-card"><h3>页面结构</h3><p>${escapeHtml(layoutDescriptions[page.template] || `${page.name}采用与当前业务任务匹配的独立布局，重点突出事实、主操作和状态反馈。`)}</p><div class="inspector-actions"><strong>次要操作</strong><div>${page.secondary.map(item => `<span>${escapeHtml(item)}</span>`).join("") || "<span>返回上一页</span>"}</div></div></section><section class="state-spec-card"><h3>必须覆盖的状态</h3><div>${page.states.map(item => `<button type="button" class="${selectedState(page) === item ? "active" : ""}" data-action="set-page-state" data-state="${escapeHtml(item)}">${escapeHtml(item)}</button>`).join("")}</div></section><section class="expected-card"><h3>不可变规则</h3><p>${escapeHtml(ruleFor(page))}</p></section><section class="acceptance-card"><h3>页面级验收</h3><ol><li>入口、Page ID 和返回路径明确。</li><li>主操作有加载、成功和失败反馈。</li><li>服务端状态变化后不会展示过期权限。</li><li>空、错误和受限状态提供安全下一步。</li><li>不存在 App 1.0 范围外入口。</li></ol></section><div class="next-page-card"><span>建议下一页</span><strong>${next ? `${next.id} · ${next.name}` : "返回页面目录"}</strong><button type="button" data-action="${next ? "open-page" : "reset-page"}" ${next ? `data-page="${next.id}"` : ""}>继续评审${icon("chevron-right")}</button></div><p class="inspector-footnote">页面数据、账号、人物和金额均为本地演示，不连接生产系统。</p>`;
   }
 
   function renderNav() {
@@ -557,7 +594,7 @@
       const prefixes = [group.prefix, ...(group.extraPrefixes || [])];
       const items = pages.filter(item => prefixes.some(prefix => item.id.startsWith(prefix)));
       if (!items.length) return "";
-      return `<section class="page-nav-group"><header><strong>${group.name}</strong><span>${items.length}</span></header>${items.map(item => `<button type="button" class="page-nav-item ${state.currentId === item.id ? "active" : ""}" data-action="open-page" data-page="${item.id}"><span>${item.id.replace("APP-", "").replace("ADM-", "")}</span><strong>${item.name}</strong>${state.completed.has(item.id) ? icon("circle-check") : ""}</button>`).join("")}</section>`;
+      return `<section class="page-nav-group"><header><strong>${group.name}</strong><span>${items.length}</span></header>${items.map(item => `<button type="button" class="page-nav-item ${state.currentId === item.id ? "active" : ""}" data-action="open-page" data-page="${item.id}"><span>${item.id.replace("APP-", "").replace("ADM-", "")}</span><strong>${item.name}</strong><em class="page-priority ${item.priority.toLowerCase()}">${item.priority}</em>${state.completed.has(item.id) ? icon("circle-check") : ""}</button>`).join("")}</section>`;
     }).join("") || `<div class="catalog-empty">没有找到页面<br /><button data-action="clear-search">清除搜索</button></div>`;
   }
 
@@ -579,7 +616,7 @@
     const index = catalog.pages.findIndex(item => item.id === page.id);
     els.title.textContent = page.name;
     els.kicker.textContent = `${page.platform === "mobile" ? "移动端" : "管理后台"} · ${group ? group.name : "页面设计"}`;
-    els.route.textContent = `${page.id} · ${page.route}`;
+    els.route.textContent = `${page.id} · ${page.priority} · ${page.route}`;
     els.statePill.textContent = selectedState(page);
     els.progressText.textContent = `${String(index + 1).padStart(2, "0")} / ${catalog.pages.length}`;
     els.footerLabel.textContent = page.id;
@@ -634,9 +671,10 @@
       }
       case "page-primary":
         state.completed.add(page.id);
-        showToast(`“${page.primary}”演示成功，页面状态已记录`);
+        showToast(`“${page.primary}”已记录，准备进入建议下一页`);
         renderNav();
         if (target.dataset.navigate === "false") break;
+        if (page.next) window.setTimeout(() => openPage(page.next), 320);
         break;
       case "secondary": showToast("次要操作已触发；原型保留当前页面便于继续评审"); break;
       case "toggle-choice": target.classList.toggle("selected"); break;

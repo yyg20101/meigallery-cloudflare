@@ -11,11 +11,11 @@
   ];
 
   const levels = [
-    { id: "xinyu", name: "心遇", rank: 10, initial: "遇", desc: "私信资格与基础会员标识", future: "基础权限层" },
-    { id: "xinyue", name: "心悦", rank: 20, initial: "悦", desc: "包含心遇权益，预留进阶能力", future: "进阶权限层" },
-    { id: "xinzhi", name: "心知", rank: 30, initial: "知", desc: "包含心悦权益，预留专属内容", future: "高级权限层" },
-    { id: "xinqi", name: "心契", rank: 40, initial: "契", desc: "包含心知权益，预留身份权益", future: "尊享权限层" },
-    { id: "xinyao", name: "心耀", rank: 50, initial: "耀", desc: "当前最高等级，预留完整扩展位", future: "旗舰权限层" }
+    { id: "xinyu", name: "心遇", rank: 10, initial: "遇", topics: 1, filters: 1, folders: 3, advanced: "不开放" },
+    { id: "xinyue", name: "心悦", rank: 20, initial: "悦", topics: 2, filters: 3, folders: 5, advanced: "基础组合" },
+    { id: "xinzhi", name: "心知", rank: 30, initial: "知", topics: 4, filters: 6, folders: 10, advanced: "完整开放" },
+    { id: "xinqi", name: "心契", rank: 40, initial: "契", topics: 6, filters: 12, folders: 20, advanced: "完整开放" },
+    { id: "xinyao", name: "心耀", rank: 50, initial: "耀", topics: 10, filters: 20, folders: 30, advanced: "完整开放" }
   ];
 
   const params = new URLSearchParams(location.search);
@@ -29,6 +29,7 @@
     followed: new Set(),
     selectedPerson: people[0],
     selectedLevel: "xinyu",
+    membershipRequest: null,
     member: params.get("member") === "1",
     memberLevel: "心遇",
     memberExpiry: "2026-08-20 23:59",
@@ -37,6 +38,7 @@
       { mine: false, author: "平台运营专员", text: "你好，这里是 MeiGallery 平台运营团队。我会接收并处理这条会话。", status: "平台回复" },
       { mine: true, text: "你好，我很喜欢林夏的城市生活内容，想了解更多。", status: "已送达平台" }
     ],
+    chatDraft: "想了解近期更新的城市生活内容",
     walletTab: params.get("wallet") === "coins" ? "金币" : "通知",
     walletBalance: 520,
     reviewPerson: people[2],
@@ -82,38 +84,39 @@
       short: "资料与关系",
       kicker: "移动端 · 内容详情",
       state: () => state.member ? `${state.memberLevel}会员` : "普通用户",
-      lead: "详情页强化素材质量、认证来源和平台维护边界，同时提供喜欢、关注、收藏和私信入口。",
-      rule: "当前资料多数并非真人本人运营。详情页必须明确说明资料由平台维护，私信由平台管理员接收和处理。",
+      lead: "详情页强化素材质量、认证来源和平台维护边界，同时提供喜欢、关注、收藏和平台话题入口。",
+      rule: "当前资料多数并非真人本人运营。详情页必须明确说明资料由平台维护，话题由平台管理员接收和处理。",
       actions: [
         { label: "切换喜欢状态", action: "toggle-like" },
         { label: "关注该真人", action: "toggle-follow" },
-        { label: "尝试发送私信", action: "try-message" }
+        { label: "尝试发起话题", action: "try-message" }
       ],
-      expected: "非会员点击私信进入会员门槛；有效会员可直接创建或继续平台会话。",
+      expected: "非会员点击“发起话题”进入会员门槛；有效会员可直接创建或继续平台话题会话。",
       render: renderProfile
     },
     {
       title: "会员门槛",
       short: "五级权限",
       kicker: "移动端 · 权限说明",
-      state: () => state.member ? `${state.memberLevel} · 有效` : "未开通",
-      lead: "App 1.0 预置五个会员等级与可配置 rank，为未来能力扩展保留权限槽位。",
-      rule: "App 1.0 不接入支付。会员由管理员线下确认后手动发放；只有有效会员才能新建和发送私信。",
+      state: () => state.member ? `${state.memberLevel} · 有效` : state.membershipRequest ? state.membershipRequest.status : "未申请",
+      lead: "五个会员等级展示精确额度；用户在 App 内提交申请，平台处理后由管理员发放。",
+      rule: "App 1.0 不接入支付。提交申请不等于获得会员；只有管理员发放生效后，用户才能新建和发送平台话题。",
       actions: [
         { label: "选择心知等级", action: "select-xinzhi" },
-        { label: "模拟管理员发放", action: "prototype-grant" },
+        { label: "提交会员申请", action: "request-membership" },
+        { label: "模拟管理员审核并发放", action: "prototype-grant" },
         { label: "会员有效后进入会话", action: "open-chat" }
       ],
-      expected: "等级名称与 rank 配置化。高等级继承低等级权限，会员到期后会话保留但输入区只读。",
+      expected: "申请状态可查询，管理员 grant 生效后才获得权限；会员到期后会话保留但输入区只读。",
       render: renderMembership
     },
     {
-      title: "平台会话",
-      short: "私信与披露",
-      kicker: "移动端 · 平台代运营",
+      title: "平台话题",
+      short: "话题与披露",
+      kicker: "移动端 · 平台接收",
       state: () => state.chatReadonly ? "会员到期 · 只读" : state.member ? "会员有效" : "无发送权限",
       lead: "用户面向所选真人发起话题，但消息实际由平台管理员接收和处理，界面全程保持披露。",
-      rule: "不需要双方同意。有效 VIP 即可发送；不得暗示真人本人在线、正在输入、已读或亲自回复。",
+      rule: "不需要双方同意。有效心享会员即可发送；不得暗示真人本人在线、正在输入、已读或亲自回复。",
       actions: [
         { label: "发送一条演示消息", action: "send-demo-message" },
         { label: "模拟平台运营回复", action: "operator-reply" },
@@ -128,7 +131,7 @@
       kicker: "移动端 · 个人资产",
       state: () => `${state.walletBalance} 金币`,
       lead: "把会员变更、运营回复和金币变动汇总为可追溯通知，同时提供清晰的金币明细。",
-      rule: "App 1.0 没有充值、消费或赠礼入口。管理员可以加币、扣币，但必须填写原因并生成不可覆盖的明细。",
+      rule: "金币不具现金价值。App 1.0 没有购买、充值、消费、兑换、转账、提现或赠礼入口；管理员调整必须生成不可覆盖的明细。",
       actions: [
         { label: "查看金币明细", action: "wallet-coins" },
         { label: "返回通知中心", action: "wallet-notices" },
@@ -154,10 +157,10 @@
     },
     {
       title: "运营与调币",
-      short: "会话和内控",
+      short: "话题和内控",
       kicker: "管理后台 · 运营工作台",
       state: () => `${state.operationTab}工作台`,
-      lead: "统一处理平台会话、会员发放和金币调整，并通过固定发送主体、审批与审计控制运营风险。",
+      lead: "统一处理平台话题、会员申请与发放、金币调整，并通过固定发送主体、审批与审计控制运营风险。",
       rule: "管理员回复的发送主体固定为平台运营；加币扣币采用申请与审批分离，余额只允许通过账本流水变更。",
       actions: [
         { label: "切换会员发放", action: "operation-member" },
@@ -188,10 +191,10 @@
     return `<div class="phone-status"><span>9:41</span><span class="status-icons">▮▮▮ ◉ ▰</span></div>`;
   }
 
-  function phoneTabs(active = "发现") {
+  function phoneTabs(active = "推荐") {
     const tabs = [
-      ["发现", "compass", 1],
-      ["动态", "photo-scan", 1],
+      ["推荐", "compass", 1],
+      ["关注", "photo-scan", 1],
       ["消息", "message-circle", 4],
       ["我的", "user", 5]
     ];
@@ -234,11 +237,11 @@
           <div class="tab-row">${["推荐", "热度", "同城", "艺术", "生活"].map(item => `<button type="button" class="tab-button ${state.category === item ? "active" : ""}" data-action="set-category" data-category="${item}">${item}</button>`).join("")}</div>
           <div class="person-grid">${people.map((person, index) => `
             <button type="button" class="person-card ${index === 0 ? "hotspot" : ""}" data-action="open-person" data-person="${person.id}">
-              <div class="person-photo"><img src="${person.image}" alt="${person.name}的虚构演示照片" /><span class="tiny-badge">${icon("shield-check")}平台已核验</span></div>
+              <div class="person-photo"><img src="${person.image}" alt="${person.name}的虚构演示照片" /><span class="tiny-badge">${icon("shield-check")}资料已认证</span></div>
               <div class="person-copy"><strong>${person.name}</strong><p>${person.age}岁 · ${person.field}</p><small>${person.city} · ${person.style}</small></div>
             </button>`).join("")}</div>
         </div>
-        ${phoneTabs("发现")}
+        ${phoneTabs("推荐")}
       </div>
     </div>`;
   }
@@ -259,21 +262,23 @@
             <div class="profile-actions">
               <button type="button" class="circle-action ${liked ? "active" : ""}" data-action="toggle-like" aria-label="喜欢" title="喜欢">${icon("heart")}</button>
               <button type="button" class="circle-action ${followed ? "active" : ""}" data-action="toggle-follow" aria-label="关注" title="关注">${icon("bookmark")}</button>
-              <button type="button" class="primary-button hotspot" data-action="try-message">${icon("message-circle")}发送私信</button>
+              <button type="button" class="primary-button hotspot" data-action="try-message">${icon("message-circle")}发起话题</button>
             </div>
-            <div class="disclosure-box"><strong>资料与会话说明</strong><br />该资料经平台审核，由 MeiGallery 依据授权素材创建和维护。私信由平台管理员接收与处理，并不代表真人本人在线或亲自回复。</div>
+            <div class="disclosure-box"><strong>资料与话题说明</strong><br />该资料经平台审核，由 MeiGallery 依据授权素材创建和维护。你发起的话题由平台管理员接收与处理，并不代表真人本人在线或亲自回复。</div>
             <h3 class="section-title">关于 ${person.name}</h3>
             <p class="profile-bio">${person.bio}</p>
             <h3 class="section-title">内容标签</h3>
             <div class="tag-wrap">${person.tags.map(tag => `<span class="tag">${tag}</span>`).join("")}</div>
           </div>
         </div>
-        ${phoneTabs("发现")}
+        ${phoneTabs("推荐")}
       </div>
     </div>`;
   }
 
   function renderMembership() {
+    const selected = levels.find(level => level.id === state.selectedLevel) || levels[0];
+    const request = state.membershipRequest;
     return `<div class="phone-shell">
       <div class="phone-screen">
         ${phoneStatus()}
@@ -281,11 +286,18 @@
         <div class="phone-content">
           <div class="gate-content">
             <div class="gate-visual">${icon("crown")}</div>
-            <h2 class="gate-title">私信需要有效会员</h2>
-            <p class="gate-subtitle">选择等级用于了解权限结构。App 1.0 不提供在线购买，实际会员由管理员发放。</p>
-            <div class="membership-list">${levels.map(level => `<button type="button" class="member-card ${state.selectedLevel === level.id ? "selected" : ""}" data-action="select-level" data-level="${level.id}"><span class="level-icon">${level.initial}</span><span><strong>${level.name}</strong><p>${level.desc}</p></span><small>${level.future}</small></button>`).join("")}</div>
-            <div class="gate-note">原型演示说明：下方按钮只在本地模拟“管理员已经发放会员”的结果，不代表 App 内存在购买、充值或自动开通能力。</div>
-            <button type="button" class="primary-button prototype-grant hotspot" data-action="prototype-grant">${state.member ? icon("circle-check") + `${state.memberLevel}已生效，进入会话` : icon("shield-check") + "演示管理员发放"}</button>
+            <h2 class="gate-title">平台话题需要有效会员</h2>
+            <p class="gate-subtitle">选择等级查看精确权益。App 1.0 不在线支付，提交申请后由平台人工处理。</p>
+            <div class="membership-list">${levels.map(level => `<button type="button" class="member-card ${state.selectedLevel === level.id ? "selected" : ""}" data-action="select-level" data-level="${level.id}"><span class="level-icon">${level.initial}</span><span><strong>${level.name}</strong><p>每日 ${level.topics} 个新话题 · 保存 ${level.filters} 个筛选</p></span><small>收藏夹 ${level.folders}</small></button>`).join("")}</div>
+            <article class="membership-rights">
+              <div><span>${selected.name}权益</span><strong>rank ${selected.rank}</strong></div>
+              <p>${icon("message-circle")}每日新话题 <b>${selected.topics}</b> 个</p>
+              <p>${icon("filter")}保存筛选 <b>${selected.filters}</b> 个 · 收藏夹 <b>${selected.folders}</b> 个</p>
+              <p>${icon("circle-check")}高级筛选：<b>${selected.advanced}</b></p>
+            </article>
+            ${request ? `<button type="button" class="membership-request-card" data-action="view-membership-request"><span class="request-state">${request.status}</span><strong>${request.levelName}会员申请</strong><small>申请编号 ${request.id} · ${request.submittedAt}</small><em>查看处理进度 ${icon("chevron-right")}</em></button>` : ""}
+            <div class="gate-note">服务时段每日 10:00–22:00，通常在 1 个服务日内处理。提交申请不代表已获得会员，平台话题不保证固定回复时间。</div>
+            <button type="button" class="primary-button hotspot" data-action="${state.member ? "open-chat" : request ? "view-membership-request" : "request-membership"}">${state.member ? icon("circle-check") + `${state.memberLevel}已生效，进入话题` : request ? icon("history") + "查看会员申请" : icon("shield-check") + "提交会员申请"}</button>
           </div>
         </div>
       </div>
@@ -312,7 +324,7 @@
             <div class="message-row"><img class="chat-avatar" src="${person.image}" alt="" /><div class="bubble"><div class="message-author"><strong>${message.author}</strong></div>${escapeHtml(message.text)}<small>${message.status}</small></div></div>`).join("")}
           ${state.chatReadonly ? `<div class="system-message">会员已到期，会话已转为只读</div>` : ""}
         </div>
-        ${cannotSend ? `<div class="chat-composer readonly">${icon("lock")} ${state.chatReadonly ? "会员到期，续期后可继续发送" : "有效会员才能发送私信"}</div>` : `<form class="chat-composer" id="chat-form"><input id="chat-input" value="想了解近期更新的城市生活内容" aria-label="输入消息" /><button class="icon-button hotspot" type="submit" aria-label="发送" title="发送">${icon("send")}</button></form>`}
+        ${cannotSend ? `<div class="chat-composer readonly">${icon("lock")} ${state.chatReadonly ? "会员到期，重新获得会员后可继续发送" : "有效心享会员才能发送平台话题消息"}</div>` : `<form class="chat-composer" id="chat-form"><input id="chat-input" value="${escapeHtml(state.chatDraft)}" aria-label="输入消息" placeholder="输入平台话题消息" /><button class="icon-button hotspot" type="submit" aria-label="发送" title="发送">${icon("send")}</button></form>`}
       </div>
     </div>`;
   }
@@ -336,12 +348,13 @@
     return `<div class="notice-list">
       <button class="notice-item" type="button" data-action="goto-scene" data-scene="4"><span class="notice-icon">${icon("message-circle")}</span><span class="notice-copy"><strong>平台运营回复了你的会话</strong><p>关于林夏的城市生活内容，运营专员已经处理。</p><small>5 分钟前</small></span><span class="unread-dot"></span></button>
       <button class="notice-item" type="button" data-action="wallet-coins"><span class="notice-icon">${icon("coin")}</span><span class="notice-copy"><strong>金币余额发生变动</strong><p>管理员调整 +120，原因：活动补发。</p><small>昨天 18:32</small></span></button>
-      <button class="notice-item" type="button" data-action="goto-scene" data-scene="3"><span class="notice-icon">${icon("crown")}</span><span class="notice-copy"><strong>${state.member ? `${state.memberLevel}会员已生效` : "会员权限提醒"}</strong><p>${state.member ? `有效期至 ${state.memberExpiry}` : "有效会员可创建并发送平台私信。"}</p><small>2026-07-20</small></span></button>
+      <button class="notice-item" type="button" data-action="goto-scene" data-scene="3"><span class="notice-icon">${icon("crown")}</span><span class="notice-copy"><strong>${state.member ? `${state.memberLevel}会员已生效` : state.membershipRequest ? `会员申请${state.membershipRequest.status}` : "会员权益提醒"}</strong><p>${state.member ? `有效期至 ${state.memberExpiry}` : state.membershipRequest ? `申请编号 ${state.membershipRequest.id}` : "有效会员可发起由平台接收的话题。"}</p><small>2026-07-23</small></span></button>
     </div>`;
   }
 
   function renderCoinWallet() {
-    return `<div class="wallet-hero"><div class="row-between"><div><span>当前金币</span><strong>${state.walletBalance}</strong><small>仅展示管理员调整所得金币</small></div>${icon("wallet")}</div></div>
+    return `<div class="wallet-hero"><div class="row-between"><div><span>当前金币</span><strong>${state.walletBalance}</strong><small>平台内部记录值，不具现金价值</small></div>${icon("wallet")}</div></div>
+      <div class="gate-note wallet-disclaimer">App 1.0 仅展示余额和明细，不支持购买、充值、消费、兑换、转账或提现。</div>
       <div class="coin-list">
         <div class="coin-row"><div><strong>活动补发</strong><p>业务单号 COIN-20260720-018 · 管理员调整</p></div><span class="coin-amount plus">+120</span></div>
         <div class="coin-row"><div><strong>异常数据冲正</strong><p>业务单号 COIN-20260718-009 · 审批通过</p></div><span class="coin-amount">-30</span></div>
@@ -351,7 +364,7 @@
 
   function adminShell(active, title, subtitle, body) {
     const nav = [
-      ["工作台", "home"], ["真人内容", "users"], ["平台会话", "message-circle"], ["会员管理", "crown"], ["金币账本", "coin"], ["审计日志", "history"]
+      ["工作台", "home"], ["真人内容", "users"], ["平台话题", "message-circle"], ["会员管理", "crown"], ["金币账本", "coin"], ["审计日志", "history"]
     ];
     return `<div class="admin-shell">
       <aside class="admin-sidebar"><div class="admin-brand"><span class="brand-mark">M</span>MeiGallery</div><nav class="admin-nav">${nav.map(([label, glyph]) => `<button type="button" class="${active === label ? "active" : ""}">${icon(glyph)}${label}</button>`).join("")}</nav></aside>
@@ -381,17 +394,31 @@
 
   function renderOperations() {
     const body = `<div class="operations-grid">
-      <section class="admin-panel"><div class="panel-title"><strong>待处理队列</strong><span>平台统一接收</span></div><div class="queue-list">
-        ${people.slice(0,3).map((person, index) => `<button type="button" class="queue-item ${index === 0 ? "active" : ""}" data-action="operation-message"><span class="queue-person"><img src="${person.image}" alt="" /><span><strong>${person.name} · 话题会话</strong><small>${index === 0 ? "用户询问近期内容" : "等待运营处理"}</small></span></span><span class="queue-count">${index + 1}</span></button>`).join("")}
-      </div></section>
-      <section class="admin-panel"><div class="operation-tabs">${["消息", "会员", "金币"].map(tab => `<button type="button" class="${state.operationTab === tab ? "active" : ""}" data-action="set-operation" data-tab="${tab}">${tab === "消息" ? "平台会话" : tab === "会员" ? "会员发放" : "金币调整"}</button>`).join("")}</div><div class="operation-body">${renderOperationBody()}</div></section>
+      <section class="admin-panel"><div class="panel-title"><strong>${state.operationTab === "会员" ? "会员申请队列" : "待处理队列"}</strong><span>${state.operationTab === "会员" ? "人工审核" : "平台统一接收"}</span></div><div class="queue-list">${renderOperationQueue()}</div></section>
+      <section class="admin-panel"><div class="operation-tabs">${["消息", "会员", "金币"].map(tab => `<button type="button" class="${state.operationTab === tab ? "active" : ""}" data-action="set-operation" data-tab="${tab}">${tab === "消息" ? "平台话题" : tab === "会员" ? "申请与发放" : "金币调整"}</button>`).join("")}</div><div class="operation-body">${renderOperationBody()}</div></section>
     </div>`;
-    return adminShell(state.operationTab === "消息" ? "平台会话" : state.operationTab === "会员" ? "会员管理" : "金币账本", "运营与会员工作台", "所有操作记录操作者、原因、时间和业务单号", body);
+    return adminShell(state.operationTab === "消息" ? "平台话题" : state.operationTab === "会员" ? "会员管理" : "金币账本", "运营与会员工作台", "所有操作记录操作者、原因、时间和业务单号", body);
+  }
+
+  function renderOperationQueue() {
+    if (state.operationTab === "会员") {
+      const request = state.membershipRequest;
+      return request
+        ? `<button type="button" class="queue-item active" data-action="operation-member"><span class="queue-person"><span class="queue-letter">用</span><span><strong>138 0013 8000 · ${request.levelName}</strong><small>${request.id} · ${request.status}</small></span></span><span class="queue-count">1</span></button>`
+        : `<div class="queue-empty"><strong>暂无用户申请</strong><p>管理员仍可按授权规则直接发放，但必须填写来源和原因。</p></div>`;
+    }
+    return people.slice(0, 3).map((person, index) => `<button type="button" class="queue-item ${index === 0 ? "active" : ""}" data-action="operation-message"><span class="queue-person"><img src="${person.image}" alt="" /><span><strong>${person.name} · 话题会话</strong><small>${index === 0 ? "用户询问近期内容" : "等待运营处理"}</small></span></span><span class="queue-count">${index + 1}</span></button>`).join("");
   }
 
   function renderOperationBody() {
     if (state.operationTab === "会员") {
-      return `<h3>手动发放会员</h3><p>线下确认完成后，由授权管理员设置等级与有效期。</p><form class="admin-form" id="member-form"><label>用户账号<input value="138 0013 8000 · 演示用户" readonly /></label><label>会员等级<select id="admin-member-level">${levels.map(level => `<option ${level.name === state.memberLevel ? "selected" : ""}>${level.name}</option>`).join("")}</select></label><label>有效期至<input id="member-expiry" value="2026-08-20 23:59" /></label><label>发放原因<textarea>线下会员资格确认，客户需求演示</textarea></label><div class="audit-note">提交后立即影响私信权限，并自动写入会员变更记录与后台审计日志。</div><div class="form-actions"><button class="primary-button hotspot" type="submit">确认发放会员</button></div></form>`;
+      const request = state.membershipRequest;
+      const requestedLevel = request ? request.levelName : state.memberLevel;
+      const grantedLevel = levels.find(level => level.name === state.memberLevel) || levels[0];
+      if (state.member && request && request.status === "已发放") {
+        return `<div class="operation-success">${icon("circle-check")}<span>申请与 grant 已完成</span></div><h3>${state.memberLevel}会员已生效</h3><p>申请 ${request.id} 已完成审核，会员 grant 已写入，用户 entitlement 将以服务端权威快照为准。</p><div class="application-summary"><span>已发放</span><strong>${state.memberLevel}会员</strong><p>每日 ${grantedLevel.topics} 个新话题 · 保存筛选 ${grantedLevel.filters} 个 · 收藏夹 ${grantedLevel.folders} 个</p><small>有效期至 ${escapeHtml(state.memberExpiry)} · 申请、发放与审计记录已关联</small></div><div class="audit-note">再次发放、续期、替换或撤销必须创建新的业务操作，不允许重复提交原申请或覆盖历史 grant。</div><div class="form-actions"><button class="primary-button hotspot" type="button" data-action="goto-scene" data-scene="4">查看用户平台话题权限</button></div>`;
+      }
+      return `<h3>${request ? "审核会员申请并发放" : "管理员直接发放会员"}</h3><p>${request ? `申请 ${request.id} 已由用户提交，先记录处理结论，再创建会员 grant。` : "没有用户申请时可直接发放，但必须填写来源、业务单号和原因。"}</p>${request ? `<div class="application-summary"><span>${request.status}</span><strong>${request.levelName}会员申请</strong><p>${escapeHtml(request.note || "用户未填写申请说明")}</p><small>${request.submittedAt} · 服务目标 1 个服务日</small></div>` : ""}<form class="admin-form" id="member-form"><label>用户账号<input value="138 0013 8000 · 演示用户" readonly /></label><label>会员等级<select id="admin-member-level">${levels.map(level => `<option ${level.name === requestedLevel ? "selected" : ""}>${level.name}</option>`).join("")}</select></label><label>有效期至<input id="member-expiry" value="2026-08-20 23:59" /></label><label>申请来源<input value="${request ? `用户申请 ${request.id}` : "管理员直接发放"}" readonly /></label><label>发放原因<textarea>${request ? "会员申请审核通过，人工资格确认完成" : "线下资格确认，授权管理员直接发放"}</textarea></label><div class="audit-note">提交后才影响平台话题权限，并自动写入申请处理、会员变更与后台审计记录。</div><div class="form-actions"><button class="primary-button hotspot" type="submit">${request ? "批准申请并发放会员" : "确认发放会员"}</button></div></form>`;
     }
     if (state.operationTab === "金币") {
       const pending = state.coinRequest && state.coinRequest.status === "待审批";
@@ -399,7 +426,7 @@
       const delta = state.coinRequest ? state.coinRequest.delta : 100;
       return `<h3>金币调整与审批</h3><p>余额不允许直接编辑。先创建调整申请，再由不同权限角色审批入账。</p><form class="admin-form" id="coin-form"><label>用户账号<input value="138 0013 8000 · 当前余额 ${state.walletBalance}" readonly /></label><label>调整方向<select id="coin-direction"><option>加币</option><option>扣币</option></select></label><label>调整数量<input id="coin-amount" inputmode="numeric" value="100" /></label><label>调整原因<textarea id="coin-reason">客户活动补发，业务核对完成</textarea></label><div class="balance-preview"><span>调整前<strong>${approved ? state.walletBalance - delta : state.walletBalance}</strong></span>${icon("arrow-right")}<span>预计调整后<strong>${approved ? state.walletBalance : state.walletBalance + delta}</strong></span></div><div class="audit-note">申请人和审批人必须分离。流水写入后不可修改或删除，只能通过新的冲正流水纠正。</div><div class="form-actions">${pending ? `<button class="secondary-button" type="button" disabled>申请 ${state.coinRequest.id} 待审批</button><button class="primary-button hotspot" type="button" data-action="coin-approve">切换审批人并通过</button>` : approved ? `<button class="primary-button" type="button" disabled>${icon("circle-check")}已审批入账</button>` : `<button class="primary-button hotspot" type="submit">创建调整申请</button>`}</div></form>`;
     }
-    return `<h3>平台代运营回复</h3><p>用户看到的接收与回复主体始终是 MeiGallery 平台运营团队。</p><div class="candidate-head"><img src="${state.selectedPerson.image}" alt="" /><div><h3>${state.selectedPerson.name} · 话题会话</h3><p>观看者：138 0013 8000</p><p>当前状态：等待平台运营处理</p></div></div><div class="chat-disclosure" style="margin:13px 0;border-radius:8px">前台固定披露：本会话由平台管理员接收和处理。</div><form class="admin-form" id="operator-form"><label>发送主体<input value="MeiGallery 平台运营专员（固定，不可修改）" readonly /></label><label>回复内容<textarea id="operator-text">已收到你的留言，我们会整理近期公开内容并通过平台回复。</textarea></label><div class="form-actions"><button class="primary-button hotspot" type="submit">以平台运营身份发送</button></div></form>`;
+    return `<h3>平台话题回复</h3><p>用户看到的接收与回复主体始终是 MeiGallery 平台运营团队。</p><div class="candidate-head"><img src="${state.selectedPerson.image}" alt="" /><div><h3>${state.selectedPerson.name} · 话题会话</h3><p>观看者：138 0013 8000</p><p>当前状态：等待平台运营处理</p></div></div><div class="chat-disclosure" style="margin:13px 0;border-radius:8px">前台固定披露：本会话由平台管理员接收和处理。</div><form class="admin-form" id="operator-form"><label>发送主体<input value="MeiGallery 平台运营专员（固定，不可修改）" readonly /></label><label>回复内容<textarea id="operator-text">已收到你的留言，我们会整理近期公开内容并通过平台回复。</textarea></label><div class="audit-note">可回答公开资料、内容更新和平台规则；不得代表真人描述私人经历、情感、行程或关系意愿。</div><div class="form-actions"><button class="primary-button hotspot" type="submit">以平台运营身份发送</button></div></form>`;
   }
 
   function renderInspector() {
@@ -453,12 +480,25 @@
     els.modal.innerHTML = `<div class="modal-card" style="max-width:520px;margin-top:8vh"><div class="modal-head"><h2>筛选推荐内容</h2><button type="button" class="icon-button" data-action="close-modal" aria-label="关闭">${icon("x")}</button></div><div class="overview-body"><div class="admin-form"><label>地区范围<select id="filter-city"><option>全部地区</option><option>杭州</option><option>上海</option><option>南京</option><option>成都</option></select></label><label>偏好标签<div class="tag-wrap"><button class="tag" type="button">生活方式</button><button class="tag" type="button">艺术</button><button class="tag" type="button">设计</button><button class="tag" type="button">阅读</button></div></label><div class="disclosure-box">推荐依据为地区、内容热度和用户偏好，不使用精确距离，也不代表真人在线或会回复。</div><button type="button" class="primary-button" data-action="apply-filter">应用筛选</button></div></div></div>`;
   }
 
+  function showMembershipRequest() {
+    const level = levels.find(item => item.id === state.selectedLevel) || levels[0];
+    els.modal.hidden = false;
+    els.modal.innerHTML = `<div class="modal-card request-modal" style="max-width:560px;margin-top:5vh"><div class="modal-head"><div><small>心享会员 · 人工处理</small><h2>提交${level.name}会员申请</h2></div><button type="button" class="icon-button" data-action="close-modal" aria-label="关闭">${icon("x")}</button></div><form class="overview-body admin-form" id="membership-request-form"><div class="application-summary"><span>申请等级</span><strong>${level.name} · 每日 ${level.topics} 个新话题</strong><p>保存筛选 ${level.filters} 个 · 收藏夹 ${level.folders} 个 · 高级筛选${level.advanced}</p></div><label>当前账号<input value="138 0013 8000 · 已验证" readonly /></label><label>申请说明（选填，最多 200 字）<textarea id="membership-note" maxlength="200" placeholder="可说明希望使用的平台功能">希望围绕感兴趣的真人资料发起内容话题。</textarea></label><label class="check-row"><input id="membership-confirm" type="checkbox" required />我已了解 App 1.0 不在线支付，申请由平台人工处理，管理员发放后权益才生效。</label><div class="disclosure-box"><strong>处理与服务说明</strong><br />服务时段每日 10:00–22:00，通常在 1 个服务日内处理。平台话题由平台运营接收，不保证固定回复时间或本人回复。</div><div class="form-actions"><button type="button" class="secondary-button" data-action="close-modal">暂不申请</button><button type="submit" class="primary-button hotspot">确认提交申请</button></div></form></div>`;
+  }
+
+  function showMembershipRequestStatus() {
+    const request = state.membershipRequest;
+    if (!request) return showMembershipRequest();
+    els.modal.hidden = false;
+    els.modal.innerHTML = `<div class="modal-card request-modal" style="max-width:540px;margin-top:8vh"><div class="modal-head"><div><small>申请编号 ${request.id}</small><h2>会员申请${request.status}</h2></div><button type="button" class="icon-button" data-action="close-modal" aria-label="关闭">${icon("x")}</button></div><div class="overview-body"><div class="request-progress"><span class="done">${icon("circle-check")}已提交</span><i></i><span class="${request.status === "已提交" ? "current" : "done"}">${icon(request.status === "已提交" ? "history" : "circle-check")}平台处理</span><i></i><span class="${request.status === "已通过" ? "done" : ""}">${icon(request.status === "已通过" ? "circle-check" : "crown")}管理员发放</span></div><article class="application-summary"><span>${request.status}</span><strong>${request.levelName}会员申请</strong><p>${escapeHtml(request.note || "未填写申请说明")}</p><small>提交于 ${request.submittedAt}</small></article><div class="disclosure-box">提交申请不会直接获得话题权限。管理员发放成功后，App 会展示会员等级、有效期和可用额度。</div><button type="button" class="primary-button" data-action="close-modal">知道了</button></div></div>`;
+  }
+
   function showOverview() {
     els.modal.hidden = false;
-    els.modal.innerHTML = `<div class="modal-card"><div class="modal-head"><h2>App 1.0 端到端业务总览</h2><button type="button" class="icon-button" data-action="close-modal" aria-label="关闭">${icon("x")}</button></div><div class="overview-body"><p class="overview-lead">从真人资料进入平台，到观看者浏览并发起私信，再到管理员运营和内控，所有关键节点都由明确状态、服务端权限和审计记录连接。</p><div class="overview-flow">${[
+    els.modal.innerHTML = `<div class="modal-card"><div class="modal-head"><h2>App 1.0 端到端业务总览</h2><button type="button" class="icon-button" data-action="close-modal" aria-label="关闭">${icon("x")}</button></div><div class="overview-body"><p class="overview-lead">从真人资料进入平台，到观看者浏览并发起平台话题，再到会员申请、管理员运营和内控，所有关键节点都由明确状态、服务端权限和审计记录连接。</p><div class="overview-flow">${[
       ["内容供给", "管理员创建或导入授权真人素材"], ["认证发布", "成年、授权、身份与内容边界审核"], ["发现浏览", "观看者按地区、热度和偏好筛选"], ["建立关系", "喜欢、关注、收藏不触发匹配"],
-      ["会员校验", "有效会员才可创建与发送私信"], ["平台会话", "消息由管理员接收并以平台身份回复"], ["权益运营", "管理员发放会员、设置明确有效期"], ["账本内控", "金币申请、独立审批、流水与审计"]
-    ].map((step, i) => `<article class="flow-step"><span>${String(i + 1).padStart(2, "0")}</span><h3>${step[0]}</h3><p>${step[1]}</p></article>`).join("")}</div><div class="overview-boundaries"><article class="boundary-card"><strong>身份边界</strong><p>注册用户只是观看者；公开真人必须由管理员创建或认证发布。</p></article><article class="boundary-card"><strong>沟通边界</strong><p>VIP 是发送门槛，接收与回复主体始终为平台运营，不暗示本人。</p></article><article class="boundary-card"><strong>商业边界</strong><p>1.0 不含支付、充值、礼物与装扮购买；金币仅由管理员调整。</p></article></div></div></div>`;
+      ["会员申请", "选择等级并提交站内申请"], ["管理员发放", "审核通过后 grant 才使权益生效"], ["平台话题", "消息由管理员接收并以平台身份回复"], ["账本内控", "金币申请、独立审批、流水与审计"]
+    ].map((step, i) => `<article class="flow-step"><span>${String(i + 1).padStart(2, "0")}</span><h3>${step[0]}</h3><p>${step[1]}</p></article>`).join("")}</div><div class="overview-boundaries"><article class="boundary-card"><strong>身份边界</strong><p>注册用户只是观看者；公开真人必须由管理员创建或认证发布。</p></article><article class="boundary-card"><strong>沟通边界</strong><p>有效心享会员是发送门槛，接收与回复主体始终为平台运营，不暗示本人。</p></article><article class="boundary-card"><strong>商业边界</strong><p>1.0 不含支付、充值、礼物与装扮购买；金币不具现金价值且仅由管理员调整。</p></article></div></div></div>`;
   }
 
   function handleAction(action, target) {
@@ -504,7 +544,7 @@
       case "toggle-follow":
         toggleSet(state.followed, state.selectedPerson.id);
         render();
-        showToast(state.followed.has(state.selectedPerson.id) ? "已关注，动态会出现在个人页" : "已取消关注");
+        showToast(state.followed.has(state.selectedPerson.id) ? "已关注，更新会出现在关注页" : "已取消关注");
         break;
       case "try-message": state.member && !state.chatReadonly ? goToScene(4) : goToScene(3); break;
       case "select-level":
@@ -512,16 +552,21 @@
         render();
         break;
       case "select-xinzhi": state.selectedLevel = "xinzhi"; if (state.scene !== 3) state.scene = 3; render(); break;
+      case "request-membership": showMembershipRequest(); break;
+      case "view-membership-request": showMembershipRequestStatus(); break;
       case "prototype-grant": {
-        const level = levels.find(item => item.id === state.selectedLevel) || levels[0];
-        state.member = true;
-        state.chatReadonly = false;
-        state.memberLevel = level.name;
-        showToast(`演示结果：管理员已发放${level.name}会员`);
-        goToScene(4);
+        if (!state.membershipRequest) {
+          showToast("请先提交会员申请，再进入管理员审核流程");
+          showMembershipRequest();
+          break;
+        }
+        state.membershipRequest.status = "处理中";
+        state.operationTab = "会员";
+        goToScene(7);
+        showToast("已进入管理员会员申请队列");
         break;
       }
-      case "open-chat": state.member ? goToScene(4) : (showToast("请先演示管理员发放会员"), goToScene(3)); break;
+      case "open-chat": state.member ? goToScene(4) : (showToast("会员尚未生效，请先提交申请并等待管理员发放"), goToScene(3)); break;
       case "send-demo-message":
         if (!state.member || state.chatReadonly) { showToast("当前无发送权限"); break; }
         state.chatMessages.push({ mine: true, text: "希望平台后续可以更新更多展览和城市生活内容。", status: "已送达平台" });
@@ -606,17 +651,34 @@
 
   document.addEventListener("submit", event => {
     event.preventDefault();
+    if (event.target.id === "membership-request-form") {
+      const level = levels.find(item => item.id === state.selectedLevel) || levels[0];
+      state.membershipRequest = {
+        id: `MBR-${Date.now().toString().slice(-6)}`,
+        levelId: level.id,
+        levelName: level.name,
+        note: document.getElementById("membership-note").value.trim(),
+        status: "已提交",
+        submittedAt: "2026-07-23 14:30"
+      };
+      els.modal.hidden = true;
+      render();
+      showToast("会员申请已提交，平台将在服务时段内处理");
+    }
     if (event.target.id === "chat-form") {
       if (!state.member || state.chatReadonly) return showToast("当前无发送权限");
       const input = document.getElementById("chat-input");
       if (!input.value.trim()) return;
       state.chatMessages.push({ mine: true, text: input.value.trim(), status: "已送达平台" });
+      state.chatDraft = "";
       render();
       showToast("消息已送达平台运营队列");
     }
     if (event.target.id === "operator-form") {
       const value = document.getElementById("operator-text").value.trim();
+      if (!value) return showToast("请输入平台回复内容");
       state.chatMessages.push({ mine: false, author: "平台运营专员", text: value, status: "平台回复" });
+      render();
       showToast("已以平台运营身份发送，前台披露保持不变");
     }
     if (event.target.id === "member-form") {
@@ -624,8 +686,9 @@
       state.chatReadonly = false;
       state.memberLevel = document.getElementById("admin-member-level").value;
       state.memberExpiry = document.getElementById("member-expiry").value;
+      if (state.membershipRequest) state.membershipRequest.status = "已发放";
       render();
-      showToast(`${state.memberLevel}会员已发放并即时生效`);
+      showToast(`${state.memberLevel}会员已发放并生效，申请与审计记录已更新`);
     }
     if (event.target.id === "coin-form") {
       const direction = document.getElementById("coin-direction").value;

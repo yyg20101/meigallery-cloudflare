@@ -66,7 +66,7 @@
   width: 100%;
   min-height: 35px;
   display: grid;
-  grid-template-columns: 74px 1fr 16px;
+  grid-template-columns: 58px 1fr 28px 16px;
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
@@ -83,6 +83,9 @@
 .page-nav-item > span { color: var(--muted); font-size: 9px; font-weight: 700; }
 .page-nav-item > strong { min-width: 0; overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .page-nav-item > img { width: 14px; filter: invert(50%) sepia(70%) saturate(400%) hue-rotate(100deg); }
+.page-priority { display: grid; place-items: center; min-width: 26px; height: 19px; border-radius: 6px; background: var(--surface-soft); color: var(--muted); font-size: 8px; font-style: normal; font-weight: 800; }
+.page-priority.p0 { background: #ffe8ee; color: var(--brand-deep); }
+.page-priority.p2 { background: #eef0f4; color: #666b79; }
 .catalog-empty { padding: 30px 12px; color: var(--muted); font-size: 12px; line-height: 1.7; text-align: center; }
 .catalog-empty button { margin-top: 10px; border: 0; background: transparent; color: var(--brand); cursor: pointer; }
 
@@ -151,7 +154,7 @@
   top: 0;
   min-height: 52px;
   display: grid;
-  grid-template-columns: 38px 1fr 38px;
+  grid-template-columns: 44px 1fr 44px;
   align-items: center;
   padding: 4px 11px 6px;
   border-bottom: 1px solid rgba(231,232,236,.8);
@@ -162,7 +165,7 @@
 .library-mobile-header > div { min-width: 0; text-align: center; }
 .library-mobile-header strong { display: block; overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
 .library-mobile-header small { display: block; margin-top: 2px; color: var(--muted); font-size: 8px; }
-.mobile-header-spacer { width: 38px; }
+.mobile-header-spacer { width: 44px; }
 
 .library-tabs { z-index: 10; }
 .page-state-notice {
@@ -232,8 +235,8 @@
 .library-form .form-field button { border: 0; background: transparent; color: var(--brand); font-size: 9px; white-space: nowrap; }
 .library-form .page-primary-action { width: 100%; margin: 4px 0 0; }
 .library-form .secondary-button { justify-content: center; }
-.check-row { display: flex !important; align-items: flex-start; gap: 7px; color: var(--ink-soft); font-size: 9px; line-height: 1.5; }
-.check-row input { width: 14px !important; height: 14px !important; min-height: 0 !important; margin: 0; accent-color: var(--brand); }
+.check-row { display: flex !important; align-items: flex-start; gap: 8px; color: var(--ink-soft); font-size: 11px; line-height: 1.5; }
+.check-row input { width: 18px !important; height: 18px !important; min-height: 0 !important; margin: 0; flex: 0 0 auto; accent-color: var(--brand); }
 .auth-boundary { margin: 15px 20px; padding: 10px; border-radius: 9px; background: var(--brand-pale); color: var(--ink-soft); font-size: 9px; line-height: 1.55; text-align: center; }
 
 .security-illustration { padding: 38px 22px 18px; text-align: center; }
@@ -524,6 +527,31 @@
 .level-detail > div { display: grid; grid-template-columns: 17px 1fr 15px; align-items: center; gap: 7px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 9px; }
 .level-detail img { width: 15px; }
 .gate-note { margin: 10px 13px; padding: 10px; border-radius: 9px; background: var(--warning-soft); color: var(--warning); font-size: 8px; line-height: 1.5; }
+
+.membership-application-page .page-primary-action,
+.membership-application-page > .secondary-button { width: calc(100% - 28px); margin: 10px 14px 0; }
+.application-progress { display: grid; grid-template-columns: auto 1fr auto 1fr auto; align-items: center; gap: 6px; margin: 14px; }
+.application-progress span { display: grid; justify-items: center; gap: 4px; color: var(--muted); font-size: 8px; text-align: center; }
+.application-progress span img { width: 20px; height: 20px; opacity: .42; }
+.application-progress span.done,
+.application-progress span.active { color: var(--info); font-weight: 700; }
+.application-progress span.done img,
+.application-progress span.active img { opacity: 1; filter: invert(42%) sepia(85%) saturate(1178%) hue-rotate(201deg); }
+.application-progress i { height: 2px; background: var(--line); }
+.membership-application-card { margin: 13px 14px; padding: 15px; border: 1px solid var(--line); border-radius: 14px; background: white; box-shadow: var(--shadow-soft); }
+.membership-application-card > span { display: inline-flex; padding: 4px 7px; border-radius: 999px; background: var(--info-soft); color: var(--info); font-size: 8px; font-weight: 700; }
+.membership-application-card h2 { margin: 9px 0 4px; font-size: 17px; }
+.membership-application-card > p { margin: 0 0 12px; color: var(--muted); font-size: 9px; line-height: 1.5; }
+.membership-application-card dl { display: grid; grid-template-columns: 90px 1fr; gap: 0; margin: 0; }
+.membership-application-card dt,
+.membership-application-card dd { margin: 0; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 9px; }
+.membership-application-card dt { color: var(--muted); }
+.membership-application-card dd { text-align: right; font-weight: 700; }
+.membership-application-card label { display: grid; gap: 5px; margin-top: 10px; color: var(--ink-soft); font-size: 9px; }
+.membership-application-card select,
+.membership-application-card textarea { width: 100%; min-height: 44px; padding: 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-soft); color: var(--ink); font-size: 10px; }
+.membership-application-card textarea { min-height: 68px; resize: vertical; }
+.membership-application-card .check-row { display: flex; }
 
 .benefit-card { margin: 13px; padding: 17px; border-radius: 15px; background: #332834; color: white; }
 .benefit-card > span { color: #ffc2d5; font-size: 8px; }

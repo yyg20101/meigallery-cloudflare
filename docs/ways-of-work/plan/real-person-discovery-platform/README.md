@@ -25,7 +25,7 @@ App 版本：1.0
 |------|---------|------|------------|
 | 范围 | App 1.0 发布范围 | [PRD](./app-1-0-release-scope/prd.md) | 首发必须交付、仅预留、未来升级和不承诺能力 |
 | 总纲 | 产品蓝图 | [PRD](./product-blueprint/prd.md) | 产品定位、角色、范围、路线和产品级验收 |
-| 总纲 | 真人发现与代运营私信 | [PRD](./managed-person-discovery-and-messaging/prd.md) | 真人资料准入、推荐、单向互动、心享会员私信和本人认领 |
+| 总纲 | 真人发现与平台话题 | [PRD](./managed-person-discovery-and-messaging/prd.md) | 真人资料准入、推荐、单向互动、心享会员平台话题和本人认领 |
 | 总纲 | 心享会员与虚拟商业化 | [PRD](./heart-membership-and-virtual-commerce/prd.md) | 五级会员、权限目录、金币、礼物、装扮和后台调币 |
 | 详细 | F-01 观看者注册、登录与设备安全 | [PRD](./account-access-and-device-management/prd.md) | 登录适配、账号边界、会话、设备和撤权 |
 | 详细 | F-02–F-05 真人发现、搜索与资料浏览 | [PRD](./person-discovery-and-profile-experience/prd.md) | 推荐、列表、搜索筛选、详情和受保护媒体 |
@@ -37,7 +37,7 @@ App 版本：1.0
 | 详细 | A-05 推荐位、排序规则与热度运营 | [PRD](./recommendation-and-popularity-operations/prd.md) | 候选资格、规则版本、热度、精选、灰度与回滚 |
 | 详细 | A-07 举报、拉黑与安全审核 | [PRD](./report-blocking-and-moderation/prd.md) | 举报案件、最小证据、拉黑、审核、处置与申诉 |
 | 详细 | F-09、A-08 心享会员、Entitlement 与管理员手动发放 | [PRD](./membership-entitlements-and-manual-grants/prd.md) | 五级目录、typed entitlement、grant、有效期、复核与旧会员迁移 |
-| 详细 | F-07、A-06 会员私信、实时会话与平台代运营 | [PRD](./member-messaging-and-managed-operations/prd.md) | 直接建会话、持续披露、消息状态、实时恢复、队列分配与安全升级 |
+| 详细 | F-07、A-06 会员平台话题、实时会话与运营工作台 | [PRD](./member-messaging-and-managed-operations/prd.md) | 发起话题、持续披露、消息状态、实时恢复、容量降级、队列分配与安全升级 |
 | 详细 | F-12 站内通知中心与通知偏好 | [PRD](./in-app-notification-center/prd.md) | 事件模板、分类、未读、偏好、深链、HTTP/实时刷新与必要通知 |
 | 详细 | F-10、A-10 金币钱包与管理员调币 | [PRD](./wallet-ledger-and-admin-coin-adjustments/prd.md) | 余额明细、追加账本、加扣币、复核、批量、冲正与对账 |
 | 详细 | A-13 运营看板、审计日志与异常追踪 | [PRD](./operations-dashboard-and-audit-log/prd.md) | 指标口径、最小化看板、追加审计、完整性、异常与受控导出 |
@@ -69,7 +69,7 @@ App 版本：1.0
 | A-03 | [真人认证与发布审核](./person-verification-and-publication/prd.md) | M1 | 审核状态机、角色权限、审计 |
 | A-04 | [标签、地区与分类管理](./taxonomy-region-and-category-management/prd.md) | M1 | Taxonomy、搜索和推荐 |
 | A-05 | [推荐位与热度运营](./recommendation-and-popularity-operations/prd.md) | M1 | 热度指标、feature flags、审计 |
-| A-06 | [私信代运营工作台](./member-messaging-and-managed-operations/prd.md) | M2 | Conversation、管理员分配、消息审计 |
+| A-06 | [平台话题运营工作台](./member-messaging-and-managed-operations/prd.md) | M2 | Conversation、管理员分配、容量保护、消息审计 |
 | A-07 | [举报、拉黑与内容审核](./report-blocking-and-moderation/prd.md) | M1/M2 | UGC 规则、审核队列、证据存储 |
 | A-08 | [会员与 entitlement 管理](./membership-entitlements-and-manual-grants/prd.md) | M2 | 五级目录、grant、有效期 |
 | A-09 | 商品、礼物和装扮管理 | 后续商业化 | 商品目录、资产审核、价格版本 |

@@ -4,11 +4,11 @@ App 版本：1.0
 
 文档状态：需求讨论中
 
-更新时间：2026-07-22
+更新时间：2026-07-23
 
 ## 1. 文档目标
 
-本文把 App 1.0 的产品范围落实到可独立评审的页面级设计对象，覆盖移动端 49 页与管理后台 43 页，共 92 页。每个 Page ID 都有唯一设计路由、页面目标、入口、主操作、次要操作、必备状态、下一页面、不可变规则和页面级验收标准。
+本文把 App 1.0 的产品范围落实到可独立评审的页面级设计对象，覆盖移动端 49 页与管理后台 43 页，共 92 页。每个 Page ID 都有唯一设计路由、页面目标、入口、主操作、次要操作、必备状态、下一页面、不可变规则和页面级验收标准。92 页代表完整需求覆盖，不代表全部页面同时进入首批开发。
 
 [打开 92 页逐页交互设计库](./interactive-prototype/pages.html)
 
@@ -59,8 +59,9 @@ App 版本：1.0
 ### 3.3 不可变产品边界
 
 - 只有管理员认证且发布的真人资料可以进入发现列表。
-- 当前私信由平台管理员接收和处理；前台持续披露平台运营身份，不伪装真人本人。
-- 只有有效会员可创建和发送私信；不需要双方同意，不形成匹配关系，也不承诺回复。
+- 当前平台话题由平台管理员接收和处理；前台持续披露平台运营身份，不伪装真人本人。
+- `platform_managed` 资料的用户入口为“发起话题（平台接收）”；只有未来 `person_managed` 资料才能显示“给本人发私信”。
+- 只有有效会员可创建和发送平台话题；不需要双方同意，不形成匹配关系，也不承诺回复。
 - App 1.0 不展示支付、充值、礼物、头像框、皮肤、媒体消息、系统推送或真人认领入口。
 - 金币只展示管理员调整产生的追加式账本；不得直接修改余额、删除历史分录或允许用户转账提现。
 
@@ -82,7 +83,7 @@ App 版本：1.0
 | [APP-DSC-04](./interactive-prototype/pages.html?page=APP-DSC-04) | 搜索 | 搜索名字、地区、职业和标签 | 提交搜索 | 初始、输入中、有结果、无结果、历史关闭 |
 | [APP-DSC-05](./interactive-prototype/pages.html?page=APP-DSC-05) | 筛选 | 配置基础与会员高级条件并反馈结果数 | 应用筛选 | 正常、权益门槛、目录冲突、无结果 |
 | [APP-DSC-06](./interactive-prototype/pages.html?page=APP-DSC-06) | 已保存条件 | 管理常用筛选条件和目录变化 | 使用条件 | 正常、空、额度满、标签已合并 |
-| [APP-DSC-07](./interactive-prototype/pages.html?page=APP-DSC-07) | 真人详情 | 呈现授权资料、认证范围和平台维护说明 | 发送私信 | 正常、下架、受限、离线摘要、媒体不可用 |
+| [APP-DSC-07](./interactive-prototype/pages.html?page=APP-DSC-07) | 真人详情 | 呈现授权资料、认证范围和平台维护说明 | 发起话题 | 正常、下架、受限、离线摘要、媒体不可用 |
 | [APP-DSC-08](./interactive-prototype/pages.html?page=APP-DSC-08) | 媒体浏览 | 安全浏览已授权图片并支持说明与举报 | 查看下一张 | 正常、凭证刷新、加载失败、内容隐藏 |
 | [APP-DSC-09](./interactive-prototype/pages.html?page=APP-DSC-09) | 认证说明 | 解释核验范围、更新时间和失效条件 | 返回真人详情 | 正常、认证失效、资料变化 |
 | [APP-INT-01](./interactive-prototype/pages.html?page=APP-INT-01) | 关注更新 | 聚合已关注真人的新公开内容 | 查看更新 | 正常、首次空、无更新、资料下架 |
@@ -90,15 +91,15 @@ App 版本：1.0
 | [APP-INT-03](./interactive-prototype/pages.html?page=APP-INT-03) | 收藏夹 | 用文件夹管理收藏的真人资料 | 打开收藏夹 | 正常、空、额度满、离线 |
 | [APP-INT-04](./interactive-prototype/pages.html?page=APP-INT-04) | 收藏夹详情 | 查看、移动或移除文件夹内真人 | 查看真人 | 正常、文件夹已删除、资料下架 |
 | [APP-INT-05](./interactive-prototype/pages.html?page=APP-INT-05) | 浏览历史 | 按时间查看并清理浏览记录 | 查看历史详情 | 正常、空、保留到期、清除失败 |
-| [APP-MSG-01](./interactive-prototype/pages.html?page=APP-MSG-01) | 私信列表 | 展示平台代运营会话、未读和限制状态 | 打开会话 | 正常、首次空、离线、会话受限 |
-| [APP-MSG-02](./interactive-prototype/pages.html?page=APP-MSG-02) | 建会话确认 | 创建前披露接收主体、会员资格和额度 | 确认创建会话 | 正常、无会员、额度尽、资料失效、已有会话 |
+| [APP-MSG-01](./interactive-prototype/pages.html?page=APP-MSG-01) | 平台话题列表 | 展示平台代运营话题、未读和限制状态 | 打开话题 | 正常、首次空、离线、会话受限 |
+| [APP-MSG-02](./interactive-prototype/pages.html?page=APP-MSG-02) | 发起话题确认 | 创建前披露接收主体、会员资格和额度 | 确认发起话题 | 正常、无会员、额度尽、资料失效、已有会话 |
 | [APP-MSG-03](./interactive-prototype/pages.html?page=APP-MSG-03) | 平台会话 | 让有效会员发送文本并持续披露平台运营 | 发送消息 | 正常、补拉、审核中、只读、冻结、关闭 |
 | [APP-MSG-04](./interactive-prototype/pages.html?page=APP-MSG-04) | 会话设置 | 管理静音、举报、拉黑和关闭 | 保存会话设置 | 正常、操作失败、已关闭 |
 | [APP-MSG-05](./interactive-prototype/pages.html?page=APP-MSG-05) | 通知列表 | 按类别展示站内通知和未读状态 | 打开通知 | 正常、首次空、分页失败、实时离线 |
 | [APP-MSG-06](./interactive-prototype/pages.html?page=APP-MSG-06) | 通知详情 | 展示安全正文、事件时间和当前目标状态 | 前往相关页面 | 正常、目标失效、无权限、需要升级 |
-| [APP-MBR-01](./interactive-prototype/pages.html?page=APP-MBR-01) | 五级会员目录 | 展示五级会员差异和线下获取方式 | 了解获取方式 | 免费、待生效、同步失败 |
+| [APP-MBR-01](./interactive-prototype/pages.html?page=APP-MBR-01) | 五级会员目录 | 展示五级会员差异和人工获取方式 | 提交会员申请 | 免费、已提交、处理中、同步失败 |
 | [APP-MBR-02](./interactive-prototype/pages.html?page=APP-MBR-02) | 当前权益 | 展示当前等级、有效期和额度事实 | 查看权益说明 | 正常、即将到期、到期、撤销、受限 |
-| [APP-MBR-03](./interactive-prototype/pages.html?page=APP-MBR-03) | 会员获取方式与帮助 | 说明 1.0 不在线支付及管理员发放方式 | 联系平台 | 正常、帮助不可用 |
+| [APP-MBR-03](./interactive-prototype/pages.html?page=APP-MBR-03) | 会员申请与进度 | 提交申请并查看人工处理状态 | 提交会员申请 | 未申请、已提交、处理中、待补充、已通过、已拒绝 |
 | [APP-WAL-01](./interactive-prototype/pages.html?page=APP-WAL-01) | 金币钱包 | 只读展示余额、同步时间和调整规则 | 查看金币明细 | 正常、空钱包、离线缓存、同步失败 |
 | [APP-WAL-02](./interactive-prototype/pages.html?page=APP-WAL-02) | 金币明细 | 按方向查看不可覆盖的有效分录 | 查看分录详情 | 正常、首次空、分页、对账维护 |
 | [APP-WAL-03](./interactive-prototype/pages.html?page=APP-WAL-03) | 金币分录详情 | 展示数量、原因、业务单号和冲正关系 | 提交申诉 | 正常、分录不可用、冲正中 |
@@ -150,7 +151,7 @@ App 版本：1.0
 | [ADM-SAF-04](./interactive-prototype/pages.html?page=ADM-SAF-04) | 申诉详情 | 独立复核事实、原处置和新增说明 | 提交复核结论 | 正常、证据不足、需要升级 |
 | [ADM-MBR-01](./interactive-prototype/pages.html?page=ADM-MBR-01) | 五级会员目录 | 版本化配置名称、rank 和 entitlement | 新建目录版本 | 正常、草稿、生效、待回滚 |
 | [ADM-MBR-02](./interactive-prototype/pages.html?page=ADM-MBR-02) | Entitlement 定义 | 管理稳定能力键、Schema 和客户端兼容 | 新建 Entitlement | 正常、未知客户端、合并冲突 |
-| [ADM-MBR-03](./interactive-prototype/pages.html?page=ADM-MBR-03) | 会员发放记录 | 搜索账号、查看时间线并创建申请 | 新建发放申请 | 正常、重叠发放、到期、撤销 |
+| [ADM-MBR-03](./interactive-prototype/pages.html?page=ADM-MBR-03) | 会员申请与发放 | 处理用户申请、搜索账号并查看发放时间线 | 处理会员申请 | 正常、待处理、待补充、已通过、已拒绝、到期 |
 | [ADM-MBR-04](./interactive-prototype/pages.html?page=ADM-MBR-04) | 会员发放申请 | 填写等级、有效期、来源和业务原因 | 提交发放申请 | 正常、账号错误、高风险、重复业务单 |
 | [ADM-MBR-05](./interactive-prototype/pages.html?page=ADM-MBR-05) | 会员发放复核 | 独立比较前后权益并批准或拒绝 | 批准发放 | 正常、发起人冲突、账号状态已变 |
 | [ADM-MBR-06](./interactive-prototype/pages.html?page=ADM-MBR-06) | 旧会员映射 | 对 legacy 证据 Dry-run、复核和迁移 | 执行迁移 | 正常、证据不足、映射冲突 |
@@ -168,6 +169,24 @@ App 版本：1.0
 | [ADM-AUD-03](./interactive-prototype/pages.html?page=ADM-AUD-03) | 审计完整性状态 | 检查 sequence 缺口和高风险无审计 | 运行完整性校验 | 正常、Sequence 缺口、业务无审计 |
 | [ADM-AUD-04](./interactive-prototype/pages.html?page=ADM-AUD-04) | 受控导出 | 通过申请、复核和短期凭证导出 | 提交导出申请 | 正常、待批准、已过期、范围变化 |
 
+### 5.1 页面交付优先级
+
+| 层级 | 含义 | 交付门禁 |
+|------|------|----------|
+| P0 | 限量 Alpha/Beta 的端到端闭环页面 | 未完成不得邀请真实用户 |
+| P1 | App 1.0 客户最终验收页面 | 未完成不得确认 App 1.0 业务交付 |
+| P2 | Nuxt 管理后台运营增强页面 | 不阻塞移动端 1.0，可独立发布 |
+
+移动端 P0：
+
+`APP-AUTH-01`、`APP-AUTH-02`、`APP-AUTH-03`、`APP-AUTH-06`、`APP-DSC-01`、`APP-DSC-02`、`APP-DSC-04`、`APP-DSC-05`、`APP-DSC-07`、`APP-DSC-08`、`APP-DSC-09`、`APP-INT-01`、`APP-INT-02`、`APP-MSG-01`、`APP-MSG-02`、`APP-MSG-03`、`APP-MSG-04`、`APP-MSG-05`、`APP-MBR-01`、`APP-MBR-02`、`APP-MBR-03`、`APP-WAL-01`、`APP-WAL-02`、`APP-SET-01`、`APP-SET-06`、`APP-SET-07`、`APP-SET-08`、`APP-SET-11`、`APP-SYS-03`、`APP-SYS-04`。
+
+管理后台 P0：
+
+`ADM-PER-01` 至 `ADM-PER-06`、`ADM-MSG-01` 至 `ADM-MSG-04`、`ADM-SAF-01` 至 `ADM-SAF-04`、`ADM-MBR-03` 至 `ADM-MBR-05`、`ADM-WAL-01` 至 `ADM-WAL-04`、`ADM-WAL-06`、`ADM-AUD-01` 至 `ADM-AUD-03`。
+
+其余页面默认属于 P1。`ADM-OV-02`、`ADM-OV-03`、`ADM-REC-03`、`ADM-WAL-05`、`ADM-NTF-03`、`ADM-AUD-04` 默认属于 P2；`ADM-AUD-03` 的最小自动完整性检查属于 P0，完整可视化中心属于 P2。
+
 ## 6. 重点跨页旅程
 
 ### 6.1 观看者发现与互动
@@ -178,11 +197,12 @@ App 版本：1.0
 - 推荐只展示认证、发布、授权和安全状态均合格的真人。
 - 喜欢、关注和收藏是三个独立的单向互动，不形成匹配。
 
-### 6.2 会员私信与平台代运营
+### 6.2 会员申请、平台话题与代运营
 
-`APP-DSC-07 → APP-MSG-02 → APP-MBR-01/03 或 APP-MSG-03 → ADM-MSG-01 → ADM-MSG-02`
+`APP-DSC-07 → APP-MSG-02 → APP-MBR-01 → APP-MBR-03 → ADM-MBR-03/04/05 → APP-MBR-02 → APP-MSG-03 → ADM-MSG-01 → ADM-MSG-02`
 
-- 建会话前同时校验会员、额度、资料状态和既有会话。
+- 无会员时先提交并查询会员申请；管理员发放后刷新 entitlement。
+- 发起话题前同时校验会员、额度、资料状态和既有会话。
 - 前台在确认页、会话列表、会话页和设置页持续披露平台接收主体。
 - 后台发送身份固定为平台运营，不提供真人身份切换器。
 
