@@ -76,11 +76,13 @@ if [ "$IS_PRODUCTION" = "true" ]; then
     fi
   fi
 
-  if [[ "$UNAPPLIED_MIGRATIONS" == *"0052_unified_attribution_contract"* ]]; then
-    echo "[2/7] 0052 Contract 待执行，先导出 production D1 备份..."
+  if [[ "$UNAPPLIED_MIGRATIONS" == *"0052_unified_attribution_contract"* ]] \
+    || [[ "$UNAPPLIED_MIGRATIONS" == *"0053_attribution_privacy_policy"* ]] \
+    || [[ "$UNAPPLIED_MIGRATIONS" == *"0055_attribution_tracking_integrity"* ]]; then
+    echo "[2/7] 高风险归因 migration 待执行，先导出 production D1 备份..."
     node scripts/export-production-d1-backup.mjs
   else
-    echo "[2/7] 通用归因 Contract 已生效，本次无需迁移前备份。"
+    echo "[2/7] 无高风险归因 migration，本次无需迁移前备份。"
   fi
 
   echo "[3/7] 应用 production D1 migration..."
@@ -99,10 +101,18 @@ else
   "${PNPM[@]}" --filter @meigallery/api exec wrangler d1 migrations apply "$D1_DB" "${ENV_ARGS[@]}" --remote
 fi
 
-echo "部署 API Worker..."
+if [ "$IS_PRODUCTION" = "true" ]; then
+  echo "[4/7] 部署 API Worker..."
+else
+  echo "部署 API Worker..."
+fi
 "${PNPM[@]}" --filter @meigallery/api exec wrangler deploy "${ENV_ARGS[@]}" --var "RELEASE_COMMIT:${GIT_COMMIT}"
 
-echo "部署 Web Worker..."
+if [ "$IS_PRODUCTION" = "true" ]; then
+  echo "[5/7] 部署 Web Worker..."
+else
+  echo "部署 Web Worker..."
+fi
 "${PNPM[@]}" --filter @meigallery/web exec wrangler deploy "${ENV_ARGS[@]}" --var "RELEASE_COMMIT:${GIT_COMMIT}"
 
 if [ "$IS_PRODUCTION" = "true" ]; then

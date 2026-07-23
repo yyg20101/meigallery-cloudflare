@@ -118,11 +118,11 @@ describe('统一归因看板最终事实口径', () => {
     ])
   })
 
-  it('容量估算按 UTC 日汇总三平台最终事实、Delivery 和 Receipt', async () => {
+  it('容量估算按北京时间自然日汇总三平台最终事实、Delivery 和 Receipt', async () => {
     const result = await queryAttributionCapacity(db, '2026-07-15')
 
     expect(result.data.date).toBe('2026-07-15')
-    expect(result.data.timeZone).toBe('UTC')
+    expect(result.data.timeZone).toBe('Asia/Shanghai')
     expect(result.data.inputs).toMatchObject({
       factCount: 7,
       deliveryCount: 9,
@@ -135,6 +135,46 @@ describe('统一归因看板最终事实口径', () => {
       workflowStepCount: 0,
     })
     expect(result.data.note).toContain('项目内部估算')
+  })
+
+  it('容量估算将 UTC 16:00 后的数据计入北京时间次日', async () => {
+    await db.batch([
+      fact('fact_bj_midnight', 'Contact', 'meta', 'context', 'beijing-next-day'),
+      delivery('delivery_bj_midnight', 'fact_bj_midnight', 'meta', 'server', 'processed', 1, 1, ['fbc']),
+      receipt('receipt_bj_midnight', 'delivery_bj_midnight', 'meta', 'server_delivery', 'accepted'),
+    ])
+    await db.prepare(`
+      UPDATE attribution_conversion_facts
+      SET occurred_at = '2026-07-15T16:01:00.000Z'
+      WHERE id = 'fact_bj_midnight'
+    `).run()
+    await db.prepare(`
+      UPDATE attribution_deliveries
+      SET created_at = '2026-07-15T16:01:00.000Z'
+      WHERE id = 'delivery_bj_midnight'
+    `).run()
+    await db.prepare(`
+      UPDATE attribution_provider_receipts
+      SET received_at = '2026-07-15T16:01:00.000Z'
+      WHERE id = 'receipt_bj_midnight'
+    `).run()
+
+    const [previousDay, nextDay] = await Promise.all([
+      queryAttributionCapacity(db, '2026-07-15'),
+      queryAttributionCapacity(db, '2026-07-16'),
+    ])
+
+    expect(previousDay.data.inputs).toMatchObject({
+      factCount: 7,
+      deliveryCount: 9,
+      providerReceiptCount: 6,
+    })
+    expect(nextDay.data.inputs).toMatchObject({
+      factCount: 1,
+      deliveryCount: 1,
+      serverDeliveryCount: 1,
+      providerReceiptCount: 1,
+    })
   })
 
   it('转化明细按来源过滤，并保留最终 Delivery 与 Browser 回执', async () => {

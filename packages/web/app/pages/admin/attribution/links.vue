@@ -3,7 +3,7 @@ import type { AdPlatformProvider } from '@meigallery/shared'
 import AnalyticsDataTable from '~/components/admin/analytics/AnalyticsDataTable.vue'
 import AttributionPageShell from '~/components/admin/attribution/AttributionPageShell.vue'
 import AttributionProviderSwitch from '~/components/admin/attribution/AttributionProviderSwitch.vue'
-import { ATTRIBUTION_PLATFORMS, attributionPlatformDefinition } from '~/utils/attributionPlatforms'
+import { attributionPlatformDefinition } from '~/utils/attributionPlatforms'
 
 definePageMeta({ layout: 'admin' })
 
@@ -25,7 +25,6 @@ interface AttributionLink {
   sessionCount: number
   pageViewCount: number
   contactCount: number
-  historical: { leadCount: number }
   completeRegistrationCount: number
 }
 
@@ -42,8 +41,6 @@ const creating = ref(false)
 const createError = ref('')
 const form = reactive<{
   sourceLabel: string
-  channel: string
-  adProvider: AdPlatformProvider | ''
   targetPath: string
   utmMedium: string
   utmCampaign: string
@@ -51,37 +48,20 @@ const form = reactive<{
   note: string
 }>({
   sourceLabel: '',
-  channel: 'ad',
-  adProvider: selectedProvider.value,
   targetPath: '/',
-  utmMedium: 'paid_social',
+  utmMedium: defaultUtmMedium(selectedProvider.value),
   utmCampaign: '',
   utmContent: '',
   note: '',
 })
 
-const channelOptions = [
-  { label: '广告', value: 'ad', medium: 'paid_social' },
-  { label: '社交媒体', value: 'social', medium: 'social' },
-  { label: '合作/互推', value: 'referral', medium: 'referral' },
-  { label: '搜索', value: 'search', medium: 'search' },
-  { label: '站内', value: 'internal', medium: 'internal' },
-]
-
-watch(() => form.channel, (channel) => {
-  const option = channelOptions.find(item => item.value === channel)
-  if (option) form.utmMedium = option.medium
-  form.adProvider = channel === 'ad' ? (form.adProvider || selectedProvider.value) : ''
-})
-
 watch(selectedProvider, (provider) => {
-  if (form.channel === 'ad') form.adProvider = provider
+  form.utmMedium = defaultUtmMedium(provider)
 })
 
 const linkRows = computed(() => (attribution.data.value?.links ?? []).map(item => ({
   ...item,
   adProviderLabel: adProviderLabel(item),
-  historicalLeadCount: Number(item.historical?.leadCount ?? 0),
   contactRate: Number(item.contactCount ?? 0) / Math.max(1, Number(item.sessionCount ?? 0)),
   registerRate: Number(item.completeRegistrationCount ?? 0) / Math.max(1, Number(item.sessionCount ?? 0)),
 })))
@@ -111,8 +91,8 @@ async function createTrackingLink() {
       method: 'POST',
       body: {
         sourceLabel: form.sourceLabel,
-        channel: form.channel,
-        adProvider: form.adProvider || undefined,
+        channel: 'ad',
+        adProvider: selectedProvider.value,
         targetPath: form.targetPath,
         utmMedium: form.utmMedium,
         utmCampaign: form.utmCampaign || undefined,
@@ -152,7 +132,7 @@ function buildTrackingPathPreview(input: {
   try {
     const url = new URL(input.targetPath || '/', 'https://site.local')
     if (!url.pathname.startsWith('/') || url.pathname.startsWith('/admin') || url.pathname.startsWith('/api')) {
-      return '/?mg_source=ad-test&utm_source=ad-test&utm_medium=paid_social'
+      return fallbackTrackingPath(input.sourceCode, input.utmMedium, input.utmCampaign, input.utmContent)
     }
     url.searchParams.set('mg_source', input.sourceCode)
     url.searchParams.set('utm_source', input.sourceCode)
@@ -161,7 +141,7 @@ function buildTrackingPathPreview(input: {
     if (input.utmContent) url.searchParams.set('utm_content', input.utmContent)
     return `${url.pathname}${url.search}`
   } catch {
-    return '/?mg_source=ad-test&utm_source=ad-test&utm_medium=paid_social'
+    return fallbackTrackingPath(input.sourceCode, input.utmMedium, input.utmCampaign, input.utmContent)
   }
 }
 
@@ -174,6 +154,26 @@ function normalizeUtmValue(value: string) {
     .replace(/[-_.]{2,}/g, '-')
     .replace(/^[-_.]+|[-_.]+$/g, '')
     .slice(0, 80)
+}
+
+function defaultUtmMedium(provider: AdPlatformProvider) {
+  return attributionPlatformDefinition(provider).tracking.defaultUtmMedium
+}
+
+function fallbackTrackingPath(
+  sourceCode: string,
+  utmMedium: string,
+  utmCampaign: string,
+  utmContent: string,
+) {
+  const params = new URLSearchParams({
+    mg_source: sourceCode || 'ad-test',
+    utm_source: sourceCode || 'ad-test',
+    utm_medium: utmMedium || 'ad',
+  })
+  if (utmCampaign) params.set('utm_campaign', utmCampaign)
+  if (utmContent) params.set('utm_content', utmContent)
+  return `/?${params.toString()}`
 }
 </script>
 
@@ -199,7 +199,7 @@ function normalizeUtmValue(value: string) {
       <section class="min-w-0 space-y-3">
         <div>
           <h2 class="text-sm font-semibold text-gray-900">链接表现</h2>
-          <p class="mt-1 text-sm text-gray-500">按链接查看 Session、有效联系、注册和历史 Lead 对照。</p>
+          <p class="mt-1 text-sm text-gray-500">按链接查看 Session、有效联系和完成注册。</p>
         </div>
         <AnalyticsDataTable
           empty-title="暂无投放追踪链接"
@@ -213,7 +213,6 @@ function normalizeUtmValue(value: string) {
             { key: 'sessionCount', label: 'Session', type: 'number', sortable: true },
             { key: 'pageViewCount', label: 'PV', type: 'number', sortable: true },
             { key: 'contactCount', label: '有效联系', type: 'number', sortable: true },
-            { key: 'historicalLeadCount', label: '历史 Lead', type: 'number' },
             { key: 'completeRegistrationCount', label: '注册', type: 'number', sortable: true },
             { key: 'contactRate', label: '联系率', type: 'percent', sortable: true },
             { key: 'registerRate', label: '注册率', type: 'percent', sortable: true },
@@ -252,18 +251,10 @@ function normalizeUtmValue(value: string) {
               <span class="mb-1 block text-xs font-medium text-gray-600">链接名称</span>
               <input v-model="form.sourceLabel" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="例如广告 A｜聊天 CTA" />
             </label>
-            <label class="block">
-              <span class="mb-1 block text-xs font-medium text-gray-600">渠道</span>
-              <select v-model="form.channel" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
-                <option v-for="option in channelOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-              </select>
-            </label>
-            <label v-if="form.channel === 'ad'" class="block">
-              <span class="mb-1 block text-xs font-medium text-gray-600">广告平台</span>
-              <select v-model="form.adProvider" required class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
-                <option v-for="item in ATTRIBUTION_PLATFORMS" :key="item.provider" :value="item.provider">{{ item.label }}</option>
-              </select>
-            </label>
+            <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+              <p class="text-xs text-gray-500">绑定平台</p>
+              <p class="mt-1 text-sm font-medium text-gray-900">{{ attributionPlatformDefinition(selectedProvider).label }}</p>
+            </div>
             <label class="block">
               <span class="mb-1 block text-xs font-medium text-gray-600">落地页</span>
               <input v-model="form.targetPath" class="w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm" placeholder="/" />
@@ -281,7 +272,7 @@ function normalizeUtmValue(value: string) {
               <textarea v-model="form.note" rows="3" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="内部备注" />
             </label>
             <div class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
-              <p class="text-xs font-medium text-gray-700">链接预览</p>
+              <p class="text-xs font-medium text-gray-700">链接预览（创建后自动加入校验参数）</p>
               <p class="mt-1 break-all font-mono text-xs leading-5 text-gray-600">{{ previewPath }}</p>
             </div>
             <p v-if="createError" class="text-xs text-red-600">{{ createError }}</p>

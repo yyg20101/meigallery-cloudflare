@@ -6,13 +6,14 @@ const input = {
   provider: 'tiktok' as const, canonicalEvent: 'CompleteRegistration' as const, externalEventId: EVENT_ID,
   eventTime: 1_784_256_123, pageUrl: 'https://meigallery.example/register', destination: 'tiktok_events_api',
   matchSignals: { ttclid: 'tt-click-id', ttp: 'ttp-cookie' }, hashedEmail: 'b'.repeat(64),
+  clientIpAddress: '203.0.113.42', clientUserAgent: 'Private Browser/1.0',
   consent: { consentVersion: 1, marketingAllowed: true, adUserDataAllowed: true, adPersonalizationAllowed: true, decidedAt: '2026-07-17T02:40:00.000Z' },
 }
 
 describe('TikTok 服务端 Adapter', () => {
   it('按 Events 2.0 v1.3 契约构造 Payload，且不接受 Test Event Code', () => {
     const payload = buildTikTokServerPayload({ ...input, testEventCode: 'must-not-be-accepted' } as typeof input, 'ABCDEF0123')
-    expect(payload).toEqual({ event_source: 'web', event_source_id: 'ABCDEF0123', data: [{ event: 'CompleteRegistration', event_time: 1_784_256_123, event_id: EVENT_ID, user: { ttclid: 'tt-click-id', ttp: 'ttp-cookie', email: ['b'.repeat(64)] }, page: { url: 'https://meigallery.example/register' } }] })
+    expect(payload).toEqual({ event_source: 'web', event_source_id: 'ABCDEF0123', data: [{ event: 'CompleteRegistration', event_time: 1_784_256_123, event_id: EVENT_ID, user: { ttclid: 'tt-click-id', ttp: 'ttp-cookie', email: ['b'.repeat(64)], ip: '203.0.113.42', user_agent: 'Private Browser/1.0' }, page: { url: 'https://meigallery.example/register' } }] })
     expect(payload).not.toHaveProperty('pixel_code')
     expect(payload).not.toHaveProperty('timestamp')
     expect(payload).not.toHaveProperty('test_event_code')
@@ -20,7 +21,14 @@ describe('TikTok 服务端 Adapter', () => {
   })
 
   it('允许仅使用哈希邮箱作为有效匹配键', () => {
-    expect(buildTikTokServerPayload({ ...input, matchSignals: {} }, 'ABCDEF0123').data[0]?.user).toEqual({ email: ['b'.repeat(64)] })
+    expect(buildTikTokServerPayload({ ...input, matchSignals: {}, clientIpAddress: undefined, clientUserAgent: undefined }, 'ABCDEF0123').data[0]?.user).toEqual({ email: ['b'.repeat(64)] })
+  })
+
+  it('允许可信 IP 和 User-Agent 组合独立作为匹配上下文', () => {
+    expect(buildTikTokServerPayload({ ...input, matchSignals: {}, hashedEmail: undefined }, 'ABCDEF0123').data[0]?.user).toEqual({
+      ip: '203.0.113.42',
+      user_agent: 'Private Browser/1.0',
+    })
   })
 
   it('token 只放在 Access-Token header，并保存安全 request_id', async () => {
@@ -62,7 +70,8 @@ describe('TikTok 服务端 Adapter', () => {
   })
 
   it.each([
-    [{ ...input, matchSignals: {}, hashedEmail: undefined }, { pixelCode: 'ABCDEF0123' }],
+    [{ ...input, matchSignals: {}, hashedEmail: undefined, clientIpAddress: undefined, clientUserAgent: undefined }, { pixelCode: 'ABCDEF0123' }],
+    [{ ...input, clientIpAddress: '999.1.1.1' }, { pixelCode: 'ABCDEF0123' }],
     [{ ...input, externalEventId: 'legacy-id' }, { pixelCode: 'ABCDEF0123' }],
     [{ ...input, eventTime: Number.NaN }, { pixelCode: 'ABCDEF0123' }],
     [{ ...input, eventTime: 4_102_444_800 }, { pixelCode: 'ABCDEF0123' }],

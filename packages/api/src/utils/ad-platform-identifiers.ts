@@ -3,7 +3,7 @@ import type { AdPlatformSensitiveContext } from '@meigallery/shared'
 const FBP_PATTERN = /^fb\.1\.\d{10,16}\.[A-Za-z0-9._-]{1,128}$/
 const FBC_PATTERN = /^fb\.1\.\d{10,16}\.[A-Za-z0-9._-]{1,128}$/
 const CONTROL_CHARACTER_PATTERN = /\p{Cc}/u
-const IP_MAX_LENGTH = 64
+const IP_MAX_LENGTH = 45
 const USER_AGENT_MAX_LENGTH = 512
 const TTCLID_MAX_LENGTH = 1_000
 const TTP_MAX_LENGTH = 256
@@ -28,13 +28,21 @@ export function normalizeAdPlatformBrowserIdentifiers(
 export function normalizeAdPlatformUserData(value: unknown): AdPlatformSensitiveContext {
   if (!isPlainRecord(value)) return {}
   const identifiers = normalizeAdPlatformBrowserIdentifiers(value)
-  const clientIpAddress = safeText(value.clientIpAddress, IP_MAX_LENGTH)
-  const clientUserAgent = safeText(value.clientUserAgent, USER_AGENT_MAX_LENGTH)
+  const networkContext = normalizeAdPlatformNetworkContext(value)
   return {
     ...identifiers,
-    ...(clientIpAddress ? { clientIpAddress } : {}),
-    ...(clientUserAgent ? { clientUserAgent } : {}),
+    ...networkContext,
   }
+}
+
+export function normalizeAdPlatformNetworkContext(
+  value: unknown,
+): Pick<AdPlatformSensitiveContext, 'clientIpAddress' | 'clientUserAgent'> {
+  if (!isPlainRecord(value)) return {}
+  const clientIpAddress = safeText(value.clientIpAddress, IP_MAX_LENGTH)
+  const clientUserAgent = safeText(value.clientUserAgent, USER_AGENT_MAX_LENGTH)
+  if (!isValidAdPlatformIpAddress(clientIpAddress) || !isValidAdPlatformUserAgent(clientUserAgent)) return {}
+  return { clientIpAddress, clientUserAgent }
 }
 
 export function buildAdPlatformUserData(request: Request, bodyIdentifiers: unknown): AdPlatformSensitiveContext {
@@ -79,6 +87,27 @@ export async function hashAdPlatformExternalId(externalId: string): Promise<stri
   catch {
     throw new Error(IDENTIFIER_ERROR)
   }
+}
+
+export function isValidAdPlatformIpAddress(value: unknown): value is string {
+  if (typeof value !== 'string' || !value || value.length > IP_MAX_LENGTH || CONTROL_CHARACTER_PATTERN.test(value)) return false
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(value)) {
+    return value.split('.').every(part => Number(part) >= 0 && Number(part) <= 255)
+  }
+  if (!value.includes(':') || !/^[0-9A-Fa-f:.]+$/.test(value)) return false
+  try {
+    return Boolean(new URL(`http://[${value}]/`).hostname)
+  }
+  catch {
+    return false
+  }
+}
+
+export function isValidAdPlatformUserAgent(value: unknown): value is string {
+  return typeof value === 'string'
+    && value.trim().length > 0
+    && value.length <= USER_AGENT_MAX_LENGTH
+    && !CONTROL_CHARACTER_PATTERN.test(value)
 }
 
 async function sha256Hex(value: string) {

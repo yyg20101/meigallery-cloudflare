@@ -44,7 +44,7 @@ Planner + Consent + Rollout
 - `Contact` 仅在原生联系跳转或复制联系方式成功并通过服务端校验后创建。
 - `CompleteRegistration` 仅由注册事务成功后创建，客户端不能声明注册成功。
 - 二维码展开、页面浏览和普通点击属于一方分析事件，不进入广告转化事实。
-- `PUT /api/ad-attribution` 根据 click ID、明确 UTM 平台和后台投放来源签发短期 HttpOnly receipt；浏览器不能直接声明 provider。
+- `PUT /api/ad-attribution` 只根据 click ID 或数据库校验通过的 `mg_source + mg_proof` 管理投放链接签发短期 HttpOnly receipt；UTM 仅用于发现与既有可信来源的冲突，浏览器不能直接声明 provider。
 - 多平台信号冲突、来源未知、授权无效或校验失败时，只保留站内事实，不创建广告投递。
 
 ## 平台隔离
@@ -92,7 +92,7 @@ Planner + Consent + Rollout
 - production 才绑定真实平台 Queue、凭证和平台 API。
 - dev/local 只进行 migration、adapter mock、Queue/Workflow mock、来源隔离、类型检查和构建验证。
 - 生产发布不自动修改 enabled、mode、rollout、incident 或凭证。
-- 通用门禁要求 `0052`、`0053` 已应用且全局地区策略行存在、启用的 production 连接具有当前有效验证、无 critical incident、无过期 Outbox、无 dead letter 且 rollout 一致。
+- 通用部署后门禁要求 `0052`、`0053`、`0055` 已应用且全局地区策略行存在、启用的 production 连接具有当前有效验证、无 critical incident、无过期 Outbox、无 dead letter 且 rollout 一致。部署前门禁允许本次待执行的 `0055` 尚未应用。
 
 ## 新平台接入
 

@@ -289,7 +289,7 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/admin/tracking-sources` | 推广来源列表，返回可复制追踪链接 | admin+ |
 | POST | `/api/admin/tracking-sources` | 创建推广来源，写入审计日志 | admin+ |
 | PATCH | `/api/admin/tracking-sources/:id` | 修改或停用推广来源，写入审计日志 | admin+ |
-| PUT | `/api/ad-attribution` | 在可信营销授权下解析 click ID 或后台投放来源，签发单一平台 HttpOnly 来源 receipt；冲突或未知来源清除 receipt | public |
+| PUT | `/api/ad-attribution` | 在可信营销授权下解析 click ID 或数据库校验通过的 `mg_source + mg_proof` 管理投放链接，签发单一平台 HttpOnly 来源 receipt；UTM 只参与冲突检测，冲突或未知来源清除 receipt | public |
 | DELETE | `/api/ad-attribution` | 清除当前广告来源 receipt | public |
 | GET | `/api/admin/analytics/overview` | 数据分析总览，读取聚合表和健康摘要 | admin+ |
 | GET | `/api/admin/analytics/sources` | 来源质量报表，包含已创建推广来源表现 | admin+ |
@@ -651,6 +651,7 @@ INSERT INTO site_settings (key, value) VALUES
 实现约束：
 
 - `0051_unified_attribution_expand.sql` 创建最终 11 张 `attribution_*` 表；`0052_unified_attribution_contract.sql` 迁移仍有价值的 Meta 质量历史，并删除旧事实、投递、连接、验证、Outbox、Meta 运维表、桥接 trigger 和平台专用用户标识。
+- `0055_attribution_tracking_integrity.sql` 将管理广告链接历史来源统一修正为 `ad`、为每个管理来源生成唯一 `link_proof`、只以 `contact_method_click` 计有效联系、按事件发生的北京时间自然日重建来源/页面/邀请日报，并允许 tracking source 绑定 Google；只有数据库匹配的 `mg_source + mg_proof` 才能建立平台来源，普通 UTM 和自然流量不做推测性回填。
 - 历史 migration `0001..0050` 只负责升级路径和空库顺序建库，应用运行时不得访问其中已由 `0052` 删除的结构。
 - 新增平台必须通过 adapter registry 接入，不得复制业务事实、来源 receipt、Planner、Queue 状态机或恢复逻辑。
 - TikTok Events API 使用官方 v1.3 Web Events endpoint、`Access-Token` header、`event_source=web`、Pixel ID、`event/event_time/event_id/user/page` 契约；生产 payload 不带 `test_event_code`。Browser Pixel 与 Events API 对同一业务事实使用相同 event name 与 event ID 进行去重。
@@ -667,6 +668,7 @@ INSERT INTO site_settings (key, value) VALUES
 - 浏览器通过 `PUT /api/marketing-consent` 明确启用或关闭；只有明确选择才签发 180 天长期选择和 30 分钟短期 receipt。两者均为 `HttpOnly`、`SameSite=Lax`，HTTPS 环境同时设置 `Secure`，并使用不同 HMAC purpose 防止互换。非严格地区的默认启用不伪装成用户同意、不签发长期选择。授权 GET/PUT、来源 bootstrap、Contact conversion 和 registration 统一在 API 重新计算地区策略；前端 body 只能降低结果。用户撤回后立即清理来源上下文和未投递归因。所有 token、签名、nonce 和 cookie 值不得进入日志、D1、API 响应、审计或发布报告。
 - `consent_state=denied/limited` 时只保留站内必要事实，不创建任何广告平台 Browser / Server delivery；`granted` 才允许按唯一可信来源加载对应平台 Pixel 和 Server API。地区策略只决定是否投递，不改变 Meta/TikTok/Google 单平台来源隔离。浏览器 Pixel 以公开授权 API 返回状态为准，Server API 每次独立执行同一地区与授权判定。
 - 每个平台的 Browser / Server delivery 使用同一 `external_event_id`；Pixel `attempted` 仅说明浏览器已尝试调用，不代表平台接收。Server delivery 只有在平台响应满足严格成功契约时才进入 `accepted`；Google 还必须等待异步诊断进入 `processed`。平台接收或处理完成仍不代表广告归因成功。
+- 仅在可信营销授权有效时，从 Cloudflare `CF-Connecting-IP` 与原始 `User-Agent` 读取完整网络匹配上下文；两者必须同时通过格式校验，只能进入 24 小时加密 Outbox，并仅由 Meta/TikTok Server adapter 解密使用。原始 IP/UA 不得进入事实表、分析维度、日志、响应、审计或 Google 请求；缺少完整网络上下文且没有平台 Cookie、Click ID 或哈希身份时，不创建无效 Server delivery。
 - `/api/admin/attribution/*` 需要 admin+；连接、凭证、验证和 rollout 修改需要 owner，并写入 `admin_audit_logs`。
 - Meta/TikTok/Google Server API 仅在 production 通过各自 `AD_META_QUEUE`、`AD_TIKTOK_QUEUE`、`AD_GOOGLE_QUEUE` 异步投递；主 Queue/DLQ 固定为 6 条 `meigallery-ad-*` 资源。dev/local 不绑定广告 Queue、不配置平台凭证、不调用真实平台 API。
 - 三个平台共享通用 Planner、Outbox、CAS 状态机和恢复算法，但物理 Queue、destination、connection revision、credential revision 和 rollout namespace 独立；所有读写必须限定唯一 provider，禁止交叉解密、投递、恢复或 fan-out。
@@ -679,8 +681,8 @@ INSERT INTO site_settings (key, value) VALUES
 ### 通用归因 Contract 与生产门禁
 
 - `0052` 执行前要求旧 Contact/CompleteRegistration 已被通用事实覆盖、旧 Server delivery 静止、旧 Outbox 清空；失败时 migration 整体回滚。
-- 若 `0052` 待执行，部署脚本先把 production D1 export、Time Travel bookmark、Git commit 和 SHA-256 manifest 写入 `~/.meigallery/production-backups/d1`，文件不进入仓库。
-- migration 后实时门禁要求 `0052` 已应用、启用的 production 连接具有当前验证、无 critical incident、无过期 Outbox、无 dead letter 且 effective rollout 不超过 target。
+- 若 `0052` 或 `0055` 待执行，部署脚本先把 production D1 export、Time Travel bookmark、Git commit 和 SHA-256 manifest 写入 `~/.meigallery/production-backups/d1`，文件不进入仓库。
+- migration 后实时门禁要求 `0052`、`0053`、`0055` 已应用、启用的 production 连接具有当前验证、无 critical incident、无过期 Outbox、无 dead letter 且 effective rollout 不超过 target；部署前门禁不要求本次待应用的 `0055` 已存在。
 - 严格 Test Event 只允许 Contact / CompleteRegistration。平台后台确认通过后由 Owner 人工设置 mode、Server 开关和 rollout，部署流程不改变业务运行参数。
 
 成本与索引口径：

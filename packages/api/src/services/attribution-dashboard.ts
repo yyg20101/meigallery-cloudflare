@@ -3,6 +3,7 @@ import type { D1Usage } from '../utils/analytics-cost'
 import { mergeD1Usage, readD1UsageMeta } from '../utils/analytics-cost'
 import type { AnalyticsDateRange } from '../utils/analytics-time'
 import { estimateAttributionUsage, type AttributionUsageInputs } from './ad-platform/usage-estimator'
+import { queryTrackingSourcesWithMetrics } from './tracking-sources'
 
 type Row = Record<string, unknown>
 type QueryResult<T extends Row = Row> = { rows: T[]; usage: D1Usage }
@@ -192,6 +193,48 @@ export async function queryAttributionConversions(
   }
 }
 
+export async function queryAttributionLinks(
+  db: D1Database,
+  range: AnalyticsDateRange,
+  provider: AttributionDashboardProvider,
+) {
+  const [trackingSources, conversions] = await Promise.all([
+    queryTrackingSourcesWithMetrics(db, range),
+    queryAll(db, `
+      SELECT
+        NULLIF(json_extract(analytics_dimensions_json, '$.trackingSourceSlug'), '') AS source_code,
+        SUM(CASE WHEN canonical_event = 'Contact' THEN 1 ELSE 0 END) AS contact_count,
+        SUM(CASE WHEN canonical_event = 'CompleteRegistration' THEN 1 ELSE 0 END) AS complete_registration_count
+      FROM attribution_conversion_facts
+      WHERE ${businessDateSql('occurred_at')} BETWEEN ? AND ?
+        AND canonical_event IN ${ACTIVE_EVENT_SQL}
+        AND attribution_provider = ?
+      GROUP BY source_code
+    `, [range.from, range.to, provider]),
+  ])
+  const conversionsBySource = new Map(conversions.rows.map(row => [
+    String(row.source_code || ''),
+    {
+      contactCount: count(row.contact_count),
+      completeRegistrationCount: count(row.complete_registration_count),
+    },
+  ]))
+
+  return {
+    usage: mergeD1Usage(trackingSources.usage, conversions.usage),
+    data: {
+      provider,
+      links: trackingSources.items
+        .filter(item => item.channel === 'ad' && item.adProvider === provider)
+        .map(item => ({
+          ...item,
+          contactCount: conversionsBySource.get(item.slug)?.contactCount ?? 0,
+          completeRegistrationCount: conversionsBySource.get(item.slug)?.completeRegistrationCount ?? 0,
+        })),
+    },
+  }
+}
+
 export async function queryAttributionTrends(
   db: D1Database,
   range: AnalyticsDateRange,
@@ -366,7 +409,7 @@ export async function queryAttributionCapacity(db: D1Database, date: string) {
     queryFirst(db, `
       SELECT COUNT(*) AS fact_count
       FROM attribution_conversion_facts
-      WHERE date(occurred_at) = ?
+      WHERE ${businessDateSql('occurred_at')} = ?
         AND canonical_event IN ${ACTIVE_EVENT_SQL}
     `, [date]),
     queryFirst(db, `
@@ -377,14 +420,14 @@ export async function queryAttributionCapacity(db: D1Database, date: string) {
         SUM(CASE WHEN transport = 'server' THEN queue_attempt_count ELSE 0 END) AS queue_attempt_count,
         SUM(CASE WHEN transport = 'server' AND status IN ('accepted', 'processed', 'rejected', 'dead_letter', 'cancelled') THEN 1 ELSE 0 END) AS terminal_server_delivery_count
       FROM attribution_deliveries
-      WHERE date(created_at) = ?
+      WHERE ${businessDateSql('created_at')} = ?
     `, [date]),
     queryFirst(db, `
       SELECT
         COUNT(*) AS provider_receipt_count,
         SUM(CASE WHEN receipt_type = 'browser_attempt' AND status = 'attempted' THEN 1 ELSE 0 END) AS browser_attempt_count
       FROM attribution_provider_receipts
-      WHERE date(received_at) = ?
+      WHERE ${businessDateSql('received_at')} = ?
     `, [date]),
   ])
   const factRow = facts.rows[0] ?? {}
@@ -407,7 +450,7 @@ export async function queryAttributionCapacity(db: D1Database, date: string) {
     usage: mergeUsage(facts, deliveries, receipts),
     data: {
       date,
-      timeZone: 'UTC' as const,
+      timeZone: 'Asia/Shanghai' as const,
       inputs,
       ...estimate,
     },

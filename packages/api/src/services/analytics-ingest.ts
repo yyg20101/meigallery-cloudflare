@@ -8,6 +8,7 @@ import type {
   AnalyticsSourceChannel,
 } from '@meigallery/shared'
 import { ANALYTICS_LIMITS } from '@meigallery/shared/constants'
+import { normalizeAnalyticsCampaignToken } from '@meigallery/shared/utils'
 import type { Bindings } from '../index'
 import {
   isAnalyticsEntityType,
@@ -111,7 +112,7 @@ const CLICK_EVENTS = new Set<AnalyticsEventName>([
   'rules_page_click',
   'membership_cta_click',
 ])
-const CONTACT_EVENTS = new Set<AnalyticsEventName>(['contact_panel_open', 'contact_method_click'])
+const EFFECTIVE_CONTACT_EVENTS = new Set<AnalyticsEventName>(['contact_method_click'])
 const CRITICAL_RAW_EVENTS = new Set<AnalyticsEventName>([
   'invite_landed',
   'invite_code_checked',
@@ -387,7 +388,7 @@ function normalizeAnalyticsEvent(
     utmSource: truncateAnalyticsString(utmSource, 120),
     utmMedium: truncateAnalyticsString(utmMedium, 120),
     utmCampaign: truncateAnalyticsString(utmCampaign, 120),
-    utmContent: truncateAnalyticsString(utmContent, 120),
+    utmContent: normalizeAnalyticsCampaignToken(utmContent),
     trackingSourceSlug: truncateAnalyticsString(trackingSourceSlug, 120),
     sourceChannel,
     sourceName: truncateAnalyticsString(sourceNameFromProps || derivedSource.name, 120),
@@ -657,7 +658,7 @@ async function writeSessionSummaryBatch(
     events.filter(event => event.eventName === 'page_view').length,
     sumBy(events, event => event.activeSeconds),
     events.filter(event => CLICK_EVENTS.has(event.eventName)).length,
-    events.filter(event => CONTACT_EVENTS.has(event.eventName)).length,
+    events.filter(event => EFFECTIVE_CONTACT_EVENTS.has(event.eventName)).length,
     events.filter(event => event.eventName === 'register_success').length,
     events.filter(event => event.eventName === 'membership_granted_conversion').length,
     events.some(event => event.isBounce) ? 1 : 0,
@@ -772,7 +773,7 @@ async function writeDailySourcesBatch(
     const sessionStarts = groupEvents.filter(item => item.eventName === 'session_start').length
     const pageViews = groupEvents.filter(item => item.eventName === 'page_view').length
     const galleryDetails = groupEvents.filter(item => item.eventName === 'gallery_detail_view' || item.routeName === '/gallery/:slug').length
-    const contactClicks = groupEvents.filter(item => CONTACT_EVENTS.has(item.eventName)).length
+    const contactClicks = groupEvents.filter(item => EFFECTIVE_CONTACT_EVENTS.has(item.eventName)).length
     const registers = groupEvents.filter(item => item.eventName === 'register_success').length
     const memberships = groupEvents.filter(item => item.eventName === 'membership_granted_conversion').length
     await runAndTrack(db, response, `
@@ -865,7 +866,7 @@ async function writeDailyPagesBatch(
       sumBy(group, event => event.activeSeconds),
       maxBy(group, event => event.maxScrollDepth),
       group.filter(event => event.eventName === 'register_success').length,
-      group.filter(event => CONTACT_EVENTS.has(event.eventName)).length,
+      group.filter(event => EFFECTIVE_CONTACT_EVENTS.has(event.eventName)).length,
     ])
   }
 }
@@ -986,7 +987,7 @@ async function writeSourcePageDailyBatch(
       sumBy(group, event => event.activeSeconds),
       maxBy(group, event => event.maxScrollDepth),
       group.filter(event => event.eventName === 'register_success').length,
-      group.filter(event => CONTACT_EVENTS.has(event.eventName)).length,
+      group.filter(event => EFFECTIVE_CONTACT_EVENTS.has(event.eventName)).length,
     ])
   }
 }
@@ -1170,7 +1171,7 @@ async function writeSessionSummary(
     event.eventName === 'page_view' ? 1 : 0,
     event.activeSeconds,
     CLICK_EVENTS.has(event.eventName) ? 1 : 0,
-    CONTACT_EVENTS.has(event.eventName) ? 1 : 0,
+    EFFECTIVE_CONTACT_EVENTS.has(event.eventName) ? 1 : 0,
     event.eventName === 'register_success' ? 1 : 0,
     event.eventName === 'membership_granted_conversion' ? 1 : 0,
     event.isBounce ? 1 : 0,
@@ -1268,7 +1269,7 @@ async function writeDailyAggregates(
     event.eventName === 'session_start' ? 1 : 0,
     event.eventName === 'page_view' ? 1 : 0,
     event.eventName === 'gallery_detail_view' ? 1 : 0,
-    CONTACT_EVENTS.has(event.eventName) ? 1 : 0,
+    EFFECTIVE_CONTACT_EVENTS.has(event.eventName) ? 1 : 0,
     event.eventName === 'register_success' ? 1 : 0,
     event.eventName === 'register_success' && stringProp(event.props.invite_code_id) ? 1 : 0,
     event.eventName === 'membership_granted_conversion' ? 1 : 0,

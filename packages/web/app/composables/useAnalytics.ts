@@ -9,6 +9,7 @@ import type {
   AnalyticsSourceChannel,
 } from '@meigallery/shared'
 import { ANALYTICS_LIMITS, ANALYTICS_RETENTION } from '@meigallery/shared/constants'
+import { normalizeAnalyticsCampaignToken } from '@meigallery/shared/utils'
 import { normalizeAnalyticsRoute, type AnalyticsRouteLike } from '~/utils/analyticsRoute'
 import {
   detectAnalyticsDeviceType,
@@ -55,6 +56,7 @@ export interface AnalyticsSourceContext {
   utmSource: string
   utmMedium: string
   utmCampaign: string
+  utmContent: string
   trackingSourceSlug: string
   sourceName: string
 }
@@ -158,6 +160,7 @@ export function useAnalytics() {
       utmSource: state.value.sourceContext.utmSource,
       utmMedium: state.value.sourceContext.utmMedium,
       utmCampaign: state.value.sourceContext.utmCampaign,
+      utmContent: state.value.sourceContext.utmContent,
       trackingSourceSlug: state.value.sourceContext.trackingSourceSlug,
       sourceChannel: normalizeAnalyticsSourceChannel(options.sourceChannel ?? state.value.sourceChannel),
       deviceType: detectAnalyticsDeviceType(),
@@ -351,6 +354,7 @@ function normalizeSourceContext(input: Partial<AnalyticsSourceContext> = {}): An
     utmSource: normalizeContextText(input.utmSource, 120).toLowerCase(),
     utmMedium: normalizeContextText(input.utmMedium, 120).toLowerCase(),
     utmCampaign: normalizeContextText(input.utmCampaign, 120).toLowerCase(),
+    utmContent: normalizeAnalyticsCampaignToken(input.utmContent),
     trackingSourceSlug: normalizeContextText(input.trackingSourceSlug, 120).toLowerCase(),
     sourceName: normalizeContextText(input.sourceName, 120).toLowerCase(),
   }
@@ -363,6 +367,7 @@ function sourceContextProps(context: AnalyticsSourceContext): Record<string, Ana
     utm_source: context.utmSource || undefined,
     utm_medium: context.utmMedium || undefined,
     utm_campaign: context.utmCampaign || undefined,
+    utm_content: context.utmContent || undefined,
   }
 }
 

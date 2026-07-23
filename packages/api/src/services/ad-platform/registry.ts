@@ -1,7 +1,7 @@
 import type { ActiveConversionActionType, AdAttributionProvider, AdDeliveryTransport, CanonicalConversionEvent, PlatformEventDescriptor } from '@meigallery/shared'
 
 export interface CanonicalEventInput { canonicalEvent: CanonicalConversionEvent }
-export interface AdPlatformCapabilities { transports: readonly AdDeliveryTransport[]; credentialType: 'access_token' | 'service_account_json' }
+export interface AdPlatformCapabilities { transports: readonly AdDeliveryTransport[]; credentialType: 'access_token' | 'service_account_json'; networkMatching: boolean }
 export interface PlatformConfigSchema { parse(value: unknown): Record<string, string> | null }
 export interface PlatformCredentialSchema { version: number; type: 'access_token' | 'service_account_json' }
 export interface PlatformEventBindingInput {
@@ -86,7 +86,7 @@ function definition(input: DefinitionInput): AdPlatformDefinition {
 
 const DEFINITIONS: ReadonlyMap<AdAttributionProvider, AdPlatformDefinition> = new Map([
   ['meta', definition({
-    provider: 'meta', capabilities: { transports: ['browser', 'server'], credentialType: 'access_token' }, publicConfigSchema: objectSchema(['pixelId'], [], { pixelId: value => /^\d{5,30}$/.test(value) }), credentialSchema: { version: 1, type: 'access_token' },
+    provider: 'meta', capabilities: { transports: ['browser', 'server'], credentialType: 'access_token', networkMatching: true }, publicConfigSchema: objectSchema(['pixelId'], [], { pixelId: value => /^\d{5,30}$/.test(value) }), credentialSchema: { version: 1, type: 'access_token' },
     events: { Contact: { browserEventName: 'Contact', browserDestination: 'meta_pixel', serverDestination: 'meta_capi' }, CompleteRegistration: { browserEventName: 'CompleteRegistration', browserDestination: 'meta_pixel', serverDestination: 'meta_capi' } },
     matchSignals({ contextIdentifiers, contextIssuedAt, browserIdentifiers }) {
       const fbclid = contextIdentifiers.fbclid
@@ -94,12 +94,12 @@ const DEFINITIONS: ReadonlyMap<AdAttributionProvider, AdPlatformDefinition> = ne
     },
   })],
   ['tiktok', definition({
-    provider: 'tiktok', capabilities: { transports: ['browser', 'server'], credentialType: 'access_token' }, publicConfigSchema: objectSchema(['pixelCode'], [], { pixelCode: value => /^[A-Z0-9]{10,30}$/.test(value) }), credentialSchema: { version: 1, type: 'access_token' },
+    provider: 'tiktok', capabilities: { transports: ['browser', 'server'], credentialType: 'access_token', networkMatching: true }, publicConfigSchema: objectSchema(['pixelCode'], [], { pixelCode: value => /^[A-Z0-9]{10,30}$/.test(value) }), credentialSchema: { version: 1, type: 'access_token' },
     events: { Contact: { browserEventName: 'Contact', browserDestination: 'tiktok_pixel', serverDestination: 'tiktok_events_api' }, CompleteRegistration: { browserEventName: 'CompleteRegistration', browserDestination: 'tiktok_pixel', serverDestination: 'tiktok_events_api' } },
     matchSignals({ contextIdentifiers, browserIdentifiers }) { return compact({ ttclid: contextIdentifiers.ttclid || browserIdentifiers.ttclid, ttp: browserIdentifiers.ttp }) },
   })],
   ['google', definition({
-    provider: 'google', capabilities: { transports: ['browser', 'server'], credentialType: 'service_account_json' }, publicConfigSchema: objectSchema(
+    provider: 'google', capabilities: { transports: ['browser', 'server'], credentialType: 'service_account_json', networkMatching: false }, publicConfigSchema: objectSchema(
       ['tagId', 'customerId', 'cloudProjectId'],
       ['loginCustomerId'],
       {

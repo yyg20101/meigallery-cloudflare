@@ -1,5 +1,6 @@
 import type { MetaServerDeliveryInput, ServerAdapterRequest, ServerDeliveryResult, ServerTrackingAdapter } from '../server-adapter'
 import { META_GRAPH_API_VERSION } from '../protocol-versions'
+import { isValidAdPlatformIpAddress, isValidAdPlatformUserAgent } from '../../../utils/ad-platform-identifiers'
 
 const META_ENDPOINT = `https://graph.facebook.com/${META_GRAPH_API_VERSION}`
 const META_SIGNALS = new Set(['fbc', 'fbp'])
@@ -11,15 +12,19 @@ const MIN_EVENT_TIME = 946_684_800
 const MAX_EVENT_TIME = 4_102_444_799
 
 export interface MetaServerPayload {
-  data: Array<{ event_name: string; event_time: number; event_id: string; action_source: 'website'; event_source_url: string; user_data: { fbc?: string; fbp?: string; em?: string[] } }>
+  data: Array<{ event_name: string; event_time: number; event_id: string; action_source: 'website'; event_source_url: string; user_data: { fbc?: string; fbp?: string; em?: string[]; client_ip_address?: string; client_user_agent?: string } }>
 }
 
 export function buildMetaServerPayload(input: MetaServerDeliveryInput): MetaServerPayload {
   validateMetaDelivery(input)
-  const user_data: { fbc?: string; fbp?: string; em?: string[] } = {}
+  const user_data: MetaServerPayload['data'][number]['user_data'] = {}
   if (input.matchSignals.fbc) user_data.fbc = input.matchSignals.fbc
   if (input.matchSignals.fbp) user_data.fbp = input.matchSignals.fbp
   if (input.hashedEmail) user_data.em = [input.hashedEmail]
+  if (input.clientIpAddress && input.clientUserAgent) {
+    user_data.client_ip_address = input.clientIpAddress
+    user_data.client_user_agent = input.clientUserAgent
+  }
   return { data: [{ event_name: input.canonicalEvent, event_time: input.eventTime, event_id: input.externalEventId, action_source: 'website', event_source_url: input.pageUrl, user_data }] }
 }
 
@@ -46,7 +51,8 @@ export const metaServerAdapter: ServerTrackingAdapter = {
 
 function validateMetaDelivery(input: MetaServerDeliveryInput) {
   if (input.provider !== 'meta' || !validDeliveryCore(input) || !validText(input.destination) || !validHash(input.hashedEmail)) throw new Error('delivery_input_invalid')
-  let hasMatch = Boolean(input.hashedEmail)
+  const hasNetworkMatch = validNetworkContext(input)
+  let hasMatch = Boolean(input.hashedEmail) || hasNetworkMatch
   for (const [key, value] of Object.entries(input.matchSignals)) {
     if (!validText(value)) throw new Error('delivery_input_invalid')
     if (CROSS_PLATFORM_SIGNALS.has(key)) throw new Error('cross_platform_identifier')
@@ -54,6 +60,11 @@ function validateMetaDelivery(input: MetaServerDeliveryInput) {
     hasMatch = true
   }
   if (!hasMatch) throw new Error('delivery_input_invalid')
+}
+function validNetworkContext(input: MetaServerDeliveryInput) {
+  if (input.clientIpAddress === undefined && input.clientUserAgent === undefined) return false
+  if (!isValidAdPlatformIpAddress(input.clientIpAddress) || !isValidAdPlatformUserAgent(input.clientUserAgent)) throw new Error('delivery_input_invalid')
+  return true
 }
 async function classifyMetaResponse(response: Response): Promise<ServerDeliveryResult> {
   const error = await readMetaError(response)

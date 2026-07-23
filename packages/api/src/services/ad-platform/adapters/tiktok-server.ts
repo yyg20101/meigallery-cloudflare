@@ -1,4 +1,5 @@
 import type { ServerDeliveryResult, ServerTrackingAdapter, TikTokServerDeliveryInput } from '../server-adapter'
+import { isValidAdPlatformIpAddress, isValidAdPlatformUserAgent } from '../../../utils/ad-platform-identifiers'
 
 const TIKTOK_ENDPOINT = 'https://business-api.tiktok.com/open_api/v1.3/event/track/'
 const TIKTOK_SIGNALS = new Set(['ttclid', 'ttp'])
@@ -13,16 +14,20 @@ const MAX_EVENT_TIME = 4_102_444_799
 export interface TikTokServerPayload {
   event_source: 'web'
   event_source_id: string
-  data: Array<{ event: string; event_time: number; event_id: string; user: { ttclid?: string; ttp?: string; email?: string[] }; page: { url: string } }>
+  data: Array<{ event: string; event_time: number; event_id: string; user: { ttclid?: string; ttp?: string; email?: string[]; ip?: string; user_agent?: string }; page: { url: string } }>
 }
 
 export function buildTikTokServerPayload(input: TikTokServerDeliveryInput, pixelCode: string): TikTokServerPayload {
   validateTikTokDelivery(input)
   if (!validPixelCode(pixelCode)) throw new Error('delivery_input_invalid')
-  const user: { ttclid?: string; ttp?: string; email?: string[] } = {}
+  const user: TikTokServerPayload['data'][number]['user'] = {}
   if (input.matchSignals.ttclid) user.ttclid = input.matchSignals.ttclid
   if (input.matchSignals.ttp) user.ttp = input.matchSignals.ttp
   if (input.hashedEmail) user.email = [input.hashedEmail]
+  if (input.clientIpAddress && input.clientUserAgent) {
+    user.ip = input.clientIpAddress
+    user.user_agent = input.clientUserAgent
+  }
   return { event_source: 'web', event_source_id: pixelCode, data: [{ event: input.canonicalEvent, event_time: input.eventTime, event_id: input.externalEventId, user, page: { url: input.pageUrl } }] }
 }
 
@@ -50,7 +55,8 @@ export const tiktokServerAdapter: ServerTrackingAdapter = {
 
 function validateTikTokDelivery(input: TikTokServerDeliveryInput) {
   if (input.provider !== 'tiktok' || !validDeliveryCore(input) || !validText(input.destination) || !validHash(input.hashedEmail)) throw new Error('delivery_input_invalid')
-  let hasMatch = Boolean(input.hashedEmail)
+  const hasNetworkMatch = validNetworkContext(input)
+  let hasMatch = Boolean(input.hashedEmail) || hasNetworkMatch
   for (const [key, value] of Object.entries(input.matchSignals)) {
     if (!validText(value)) throw new Error('delivery_input_invalid')
     if (CROSS_PLATFORM_SIGNALS.has(key)) throw new Error('cross_platform_identifier')
@@ -58,6 +64,11 @@ function validateTikTokDelivery(input: TikTokServerDeliveryInput) {
     hasMatch = true
   }
   if (!hasMatch) throw new Error('delivery_input_invalid')
+}
+function validNetworkContext(input: TikTokServerDeliveryInput) {
+  if (input.clientIpAddress === undefined && input.clientUserAgent === undefined) return false
+  if (!isValidAdPlatformIpAddress(input.clientIpAddress) || !isValidAdPlatformUserAgent(input.clientUserAgent)) throw new Error('delivery_input_invalid')
+  return true
 }
 function assertNoCrossPlatformSignals(matchSignals: Record<string, string>) {
   if (Object.keys(matchSignals).some(key => CROSS_PLATFORM_SIGNALS.has(key))) throw new Error('cross_platform_identifier')

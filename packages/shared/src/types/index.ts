@@ -315,6 +315,7 @@ export interface AnalyticsEventPayload {
   utmSource?: string
   utmMedium?: string
   utmCampaign?: string
+  utmContent?: string
   trackingSourceSlug?: string
   sourceChannel?: AnalyticsSourceChannel
   deviceType?: AnalyticsDeviceType
