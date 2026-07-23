@@ -23,6 +23,7 @@ describe('本地运行时发布身份', () => {
     let waitedForCommit = ''
     let stopped = false
     const commands = []
+    const attributionBodies = []
     const conversionBodies = []
     const registrationBodies = []
 
@@ -46,6 +47,7 @@ describe('本地运行时发布身份', () => {
       },
       fetch: async (input, init) => {
         const url = new URL(String(input))
+        if (url.pathname === '/api/ad-attribution') attributionBodies.push(JSON.parse(init.body))
         if (url.pathname === '/api/conversions/events') conversionBodies.push(JSON.parse(init.body))
         if (url.pathname === '/api/auth/register') registrationBodies.push(JSON.parse(init.body))
         return localSmokeFetch(input, init)
@@ -58,6 +60,9 @@ describe('本地运行时发布身份', () => {
     assert.equal(result.steps.every(step => step.status === 'passed'), true)
     assert.deepEqual(result.notes, ['ad-platform-server-delivery-disabled-in-local'])
     assert.equal(result.notes.some(note => note.startsWith('local-api-log:')), false)
+    assert.equal(attributionBodies.length, 1)
+    assert.equal(attributionBodies[0].trackingSourceSlug, 'release-local-fb')
+    assert.equal(attributionBodies[0].managedLinkProof, 'b'.repeat(64))
     assert.deepEqual(conversionBodies.map(body => body.actionType), ['open_link'])
     assert.deepEqual(conversionBodies.map(body => body.contactMethodId), ['contact_local_telegram'])
     assert.equal(conversionBodies[0].consentState, 'granted')
@@ -159,7 +164,7 @@ async function localSmokeFetch(input, init = {}) {
   const cookie = String(init.headers?.Cookie || '')
   if (url.pathname === '/api/marketing-consent') {
     return jsonResponse({ state: 'granted' }, 200, {
-      'set-cookie': 'mei_marketing_consent_receipt=marketing_receipt; Path=/; HttpOnly',
+      'set-cookie': 'mei_marketing_consent_choice=choice; Path=/; HttpOnly, mei_marketing_consent_receipt=marketing_receipt; Path=/; HttpOnly',
     })
   }
   if (url.pathname === '/api/ad-attribution') {

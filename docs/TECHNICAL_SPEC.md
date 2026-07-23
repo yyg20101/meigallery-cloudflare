@@ -289,7 +289,7 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/admin/tracking-sources` | 推广来源列表，返回可复制追踪链接 | admin+ |
 | POST | `/api/admin/tracking-sources` | 创建推广来源，写入审计日志 | admin+ |
 | PATCH | `/api/admin/tracking-sources/:id` | 修改或停用推广来源，写入审计日志 | admin+ |
-| PUT | `/api/ad-attribution` | 在可信营销授权下解析 click ID 或后台投放来源，签发单一平台 HttpOnly 来源 receipt；冲突或未知来源清除 receipt | public |
+| PUT | `/api/ad-attribution` | 在可信营销授权下解析 click ID 或数据库校验通过的 `mg_source + mg_proof` 管理投放链接，签发单一平台 HttpOnly 来源 receipt；UTM 只参与冲突检测，冲突或未知来源清除 receipt | public |
 | DELETE | `/api/ad-attribution` | 清除当前广告来源 receipt | public |
 | GET | `/api/admin/analytics/overview` | 数据分析总览，读取聚合表和健康摘要 | admin+ |
 | GET | `/api/admin/analytics/sources` | 来源质量报表，包含已创建推广来源表现 | admin+ |
@@ -651,7 +651,7 @@ INSERT INTO site_settings (key, value) VALUES
 实现约束：
 
 - `0051_unified_attribution_expand.sql` 创建最终 11 张 `attribution_*` 表；`0052_unified_attribution_contract.sql` 迁移仍有价值的 Meta 质量历史，并删除旧事实、投递、连接、验证、Outbox、Meta 运维表、桥接 trigger 和平台专用用户标识。
-- `0055_attribution_tracking_integrity.sql` 将管理广告链接历史来源统一修正为 `ad`、只以 `contact_method_click` 计有效联系、按北京时间自然日重建来源/页面/邀请日报，并允许 tracking source 绑定 Google；普通 UTM 和自然流量不做推测性回填。
+- `0055_attribution_tracking_integrity.sql` 将管理广告链接历史来源统一修正为 `ad`、为每个管理来源生成唯一 `link_proof`、只以 `contact_method_click` 计有效联系、按事件发生的北京时间自然日重建来源/页面/邀请日报，并允许 tracking source 绑定 Google；只有数据库匹配的 `mg_source + mg_proof` 才能建立平台来源，普通 UTM 和自然流量不做推测性回填。
 - 历史 migration `0001..0050` 只负责升级路径和空库顺序建库，应用运行时不得访问其中已由 `0052` 删除的结构。
 - 新增平台必须通过 adapter registry 接入，不得复制业务事实、来源 receipt、Planner、Queue 状态机或恢复逻辑。
 - TikTok Events API 使用官方 v1.3 Web Events endpoint、`Access-Token` header、`event_source=web`、Pixel ID、`event/event_time/event_id/user/page` 契约；生产 payload 不带 `test_event_code`。Browser Pixel 与 Events API 对同一业务事实使用相同 event name 与 event ID 进行去重。

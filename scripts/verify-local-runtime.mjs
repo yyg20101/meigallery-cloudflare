@@ -443,6 +443,7 @@ async function establishMetaAttribution(fetchFn) {
         fbclid: 'release-local-fbclid',
         utmSource: 'facebook',
         trackingSourceSlug: 'release-local-fb',
+        managedLinkProof: 'b'.repeat(64),
       }),
     })
     if (!attributionResponse.ok) throw new Error(`广告来源验证 HTTP ${attributionResponse.status}`)
@@ -480,12 +481,16 @@ async function establishMetaAttribution(fetchFn) {
 }
 
 function readResponseCookie(response, name) {
-  const setCookie = response.headers.get('set-cookie') || ''
-  const cookiePair = setCookie.split(';', 1)[0]
-  if (!cookiePair.startsWith(`${name}=`) || cookiePair.length <= name.length + 1) {
-    throw new Error(`${name} 未签发`)
+  const setCookies = typeof response.headers.getSetCookie === 'function'
+    ? response.headers.getSetCookie()
+    : [response.headers.get('set-cookie') || '']
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const pattern = new RegExp(`(?:^|,\\s*)${escapedName}=([^;,]+)`)
+  for (const setCookie of setCookies) {
+    const value = setCookie.match(pattern)?.[1]
+    if (value) return `${name}=${value}`
   }
-  return cookiePair
+  throw new Error(`${name} 未签发`)
 }
 
 async function postConversion(fetchFn, stepName, payload, cookieHeader = '') {

@@ -8,9 +8,6 @@ describe('广告来源严格路由', () => {
     ['Google gclid', { gclid: 'google-click-id' }, 'google'],
     ['Google gbraid', { gbraid: 'google-gbraid' }, 'google'],
     ['Google wbraid', { wbraid: 'google-wbraid' }, 'google'],
-    ['Meta 明确广告别名', { utmSource: 'instagram_ads' }, 'meta'],
-    ['TikTok 明确广告别名', { utmSource: 'tiktok-ads' }, 'tiktok'],
-    ['Google 明确广告别名', { utmSource: 'google_ads' }, 'google'],
   ] as const)('%s 只匹配对应平台', async (_label, signals, provider) => {
     await expect(resolveAdAttributionRouting(emptyDb(), signals, null)).resolves.toMatchObject({
       provider,
@@ -18,20 +15,42 @@ describe('广告来源严格路由', () => {
     })
   })
 
-  it('受管投放链接按后台不可变的平台归属解析', async () => {
+  it('受管投放链接必须同时具备后台生成的随机校验参数', async () => {
     const db = sourceDb({ 'summer-meta': 'meta', 'summer-tiktok': 'tiktok' })
 
     await expect(resolveAdAttributionRouting(
       db,
-      { trackingSourceSlug: 'summer-tiktok', utmSource: 'campaign-alias' },
+      managedSignals('summer-tiktok', 'campaign-alias'),
       null,
     )).resolves.toMatchObject({ provider: 'tiktok', resolution: 'matched' })
   })
 
+  it.each([
+    { trackingSourceSlug: 'summer-meta' },
+    { trackingSourceSlug: 'summer-meta', managedLinkProof: 'f'.repeat(64) },
+    { managedLinkProof: SOURCE_PROOFS['summer-meta'] },
+  ])('缺少或伪造校验参数的来源不能建立平台归因', async signals => {
+    await expect(resolveAdAttributionRouting(
+      sourceDb({ 'summer-meta': 'meta' }),
+      signals,
+      null,
+    )).resolves.toMatchObject({ provider: null, resolution: 'none' })
+  })
+
+  it.each(['instagram_ads', 'tiktok-ads', 'google_ads'])(
+    'UTM 平台别名 %s 只能用于冲突检测，不能单独建立可信归因',
+    async utmSource => {
+      await expect(resolveAdAttributionRouting(emptyDb(), { utmSource }, null)).resolves.toMatchObject({
+        provider: null,
+        resolution: 'none',
+      })
+    },
+  )
+
   it('Click ID 与后台绑定平台冲突时失败关闭，禁止跨平台投递', async () => {
     await expect(resolveAdAttributionRouting(
       sourceDb({ 'summer-tiktok': 'tiktok' }),
-      { trackingSourceSlug: 'summer-tiktok', fbclid: 'meta-click' },
+      { ...managedSignals('summer-tiktok'), fbclid: 'meta-click' },
       null,
     )).resolves.toMatchObject({ provider: null, resolution: 'conflict' })
   })
@@ -39,7 +58,7 @@ describe('广告来源严格路由', () => {
   it('Click ID 与后台绑定平台一致时保留平台匹配参数', async () => {
     await expect(resolveAdAttributionRouting(
       sourceDb({ 'summer-meta': 'meta' }),
-      { trackingSourceSlug: 'summer-meta', fbclid: 'meta-click' },
+      { ...managedSignals('summer-meta'), fbclid: 'meta-click' },
       null,
     )).resolves.toMatchObject({
       provider: 'meta',
@@ -79,7 +98,7 @@ describe('广告来源严格路由', () => {
   it('管理链接与另一个平台的明确别名冲突时失败关闭', async () => {
     await expect(resolveAdAttributionRouting(
       sourceDb({ 'summer-meta': 'meta' }),
-      { trackingSourceSlug: 'summer-meta', utmSource: 'tiktok_ads' },
+      { ...managedSignals('summer-meta'), utmSource: 'tiktok_ads' },
       null,
     )).resolves.toMatchObject({ provider: null, resolution: 'conflict' })
   })
@@ -109,7 +128,10 @@ describe('广告来源严格路由', () => {
   it('无效或不匹配的受管链接不能替换旧来源', async () => {
     await expect(resolveAdAttributionRouting(
       sourceDb({ 'summer-meta': 'meta' }),
-      { trackingSourceSlug: 'summer-other' },
+      {
+        trackingSourceSlug: 'summer-other',
+        managedLinkProof: 'd'.repeat(64),
+      },
       'tiktok',
     )).resolves.toMatchObject({ provider: 'tiktok', resolution: 'inherited' })
   })
@@ -139,6 +161,19 @@ function emptyDb() {
   return sourceDb({})
 }
 
+const SOURCE_PROOFS: Record<string, string> = {
+  'summer-meta': 'a'.repeat(64),
+  'summer-tiktok': 'b'.repeat(64),
+}
+
+function managedSignals(slug: string, utmSource = '') {
+  return {
+    trackingSourceSlug: slug,
+    managedLinkProof: SOURCE_PROOFS[slug] ?? 'c'.repeat(64),
+    ...(utmSource ? { utmSource } : {}),
+  }
+}
+
 function sourceDb(sources: Record<string, 'meta' | 'tiktok' | 'google'>) {
   return {
     prepare(_sql: string) {
@@ -146,7 +181,9 @@ function sourceDb(sources: Record<string, 'meta' | 'tiktok' | 'google'>) {
         bind(...values: string[]) {
           return {
             async all<T>() {
-              const providers = [...new Set([sources[values[0] || '']].filter(Boolean))]
+              const slug = values[0] || ''
+              const proofMatches = SOURCE_PROOFS[slug] === values[1]
+              const providers = [...new Set([proofMatches ? sources[slug] : undefined].filter(Boolean))]
               return { results: providers.map(provider => ({ ad_provider: provider })) as T[] }
             },
           }

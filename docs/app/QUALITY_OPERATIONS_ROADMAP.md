@@ -45,7 +45,7 @@ App 版本：1.0
 - 数据模型、API schema、权限和迁移有评审结论。
 - KMP Android/iOS 空壳完成统一版本锁；网络、序列化、Paging、Room、DataStore、Coil 受保护缓存、WebSocket 和 Media3/AVPlayer HLS 技术验证通过（进入实现阶段后执行）。
 - Android 设备矩阵从 API 26 开始，API 25 及以下不设置兼容用例或发布门禁。
-- M1 必需开放问题关闭，风险和负责人明确。
+- M1 必须关闭的开放问题已关闭，剩余风险和负责人明确。
 
 ## 4. M1：真人发现闭环
 

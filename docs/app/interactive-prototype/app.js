@@ -19,7 +19,10 @@
   ];
 
   const params = new URLSearchParams(location.search);
-  const initialScene = Math.min(7, Math.max(0, Number(params.get("scene") || 0)));
+  const requestedScene = Number(params.get("scene") || "0");
+  const initialScene = Number.isFinite(requestedScene)
+    ? Math.min(7, Math.max(0, Math.trunc(requestedScene)))
+    : 0;
 
   const state = {
     scene: initialScene,

@@ -84,15 +84,16 @@ flowchart BT
 
 | Feature 模块 | 主要 Screen ID | 主要领域依赖 | 1.0 |
 |--------------|----------------|--------------|-----|
-| `feature-auth` | APP-001～APP-006 | account | 必须 |
-| `feature-discovery` | APP-101～APP-108 | person、interaction | 必须 |
-| `feature-person` | APP-109～APP-114 | person、entitlement、interaction | 必须 |
-| `feature-interaction` | APP-201～APP-208 | interaction、person | 必须 |
-| `feature-messaging` | APP-301～APP-309 | messaging、entitlement、person | 必须 |
-| `feature-membership` | APP-401～APP-405 | entitlement | 必须；仅手动获取说明 |
-| `feature-wallet` | APP-501～APP-504 | wallet | 必须；仅余额/明细 |
-| `feature-notification` | APP-601～APP-604 | notification | 必须；无系统推送 |
-| `feature-settings` | APP-701～APP-714 | account | 必须 |
+| `feature-auth` | `APP-AUTH-01`～`APP-AUTH-06` | account | 必须 |
+| `feature-discovery` | `APP-DSC-01`～`APP-DSC-06` | person、interaction | 必须 |
+| `feature-person` | `APP-DSC-07`～`APP-DSC-09` | person、entitlement、interaction | 必须 |
+| `feature-interaction` | `APP-INT-01`～`APP-INT-05` | interaction、person | 必须 |
+| `feature-messaging` | `APP-MSG-01`～`APP-MSG-04` | messaging、entitlement、person | 必须 |
+| `feature-membership` | `APP-MBR-01`～`APP-MBR-03` | entitlement | 必须；仅手动获取说明 |
+| `feature-wallet` | `APP-WAL-01`～`APP-WAL-03` | wallet | 必须；仅余额/明细 |
+| `feature-notification` | `APP-MSG-05`～`APP-MSG-06` | notification | 必须；仅站内通知 |
+| `feature-settings` | `APP-SET-01`～`APP-SET-12` | account | 必须 |
+| `feature-system` | `APP-SYS-01`～`APP-SYS-05` | account、capability | 必须 |
 | future commerce | 礼物、充值、装扮页面 | wallet、catalog | 不创建 1.0 可达路由 |
 
 完整 Screen ID 和页面状态以 [移动端页面与交互规格](./MOBILE_APP_INTERACTION_SPEC.md) 为事实源。

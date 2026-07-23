@@ -74,7 +74,8 @@ Accept-Language: zh-CN
 
 | 错误码 | HTTP | 说明 |
 |--------|------|------|
-| `AUTH_REQUIRED` | 401 | 未登录或会话失效 |
+| `AUTH_REQUIRED` | 401 | 请求未携带有效认证 |
+| `AUTH_EXPIRED` | 401 | 会话过期、设备撤销或凭证已失效 |
 | `ACCOUNT_RESTRICTED` | 403 | 账号/资格/安全受限 |
 | `ENTITLEMENT_REQUIRED` | 403 | 缺少会员权限 |
 | `ENTITLEMENT_QUOTA_EXCEEDED` | 429 | 周期额度不足 |
@@ -314,8 +315,10 @@ App 1.0 钱包路由只读，余额来自追加式分录/受控快照，客户�
 
 管理路由使用 `/api/v2/admin`，强认证、RBAC、对象范围和审计必需。
 
-| 资源 | 主要能力 |
-|------|----------|
+下表路径均相对于 `/api/v2/admin`，不得作为公开 API 暴露。
+
+| 相对资源路径 | 主要能力 |
+|--------------|----------|
 | `/persons`, `/person-profiles` | 创建、编辑、来源、授权和状态 |
 | `/verifications`, `/publications` | 认证、发布、暂停、归档 |
 | `/imports` | MeiGallery/批量导入任务 |

@@ -74,16 +74,22 @@ Owner 不是绕过控制的“超级按钮”。极少数 break-glass 行为必�
 
 | Capability | 典型角色 | 约束 |
 |------------|----------|------|
+| `person.draft.read` | 内容编辑/审核 | 按地区和对象 scope 读取 |
 | `person.draft.create` | 内容编辑 | 来源与授权字段必填 |
 | `person.draft.update` | 内容编辑 | `expectedVersion`；已进入审核时受限 |
+| `person.verification.read` | 认证审核 | 只读认证队列和非敏感摘要 |
 | `person.evidence.read_sensitive` | 认证审核 | 用途原因、强认证、审计 |
 | `person.verification.review` | 认证审核 | 不能审核自己提交的高风险资料 |
+| `person.publication.read` | 发布审核 | 只读发布队列和影响摘要 |
 | `person.publication.review` | 发布审核 | 认证必须有效 |
 | `person.publication.pause` | 发布审核、安全管理员 | 必填原因；高优先级撤权事件 |
+| `taxonomy.catalog.read` | 内容编辑/目录运营/审核 | 读取目录草案和已发布版本 |
 | `taxonomy.catalog.edit` | 内容编辑/目录运营 | 只编辑草案 |
 | `taxonomy.catalog.publish` | 发布审核/指定 Owner | 不可变版本、预览影响、可回滚 |
+| `recommendation.rule.read` | 推荐运营/审核 | 读取规则、版本和灰度状态 |
 | `recommendation.rule.edit` | 推荐运营 | 只编辑草案 |
 | `recommendation.rule.publish` | 推荐运营 + 必要复核 | 灰度、规则版本、Kill switch |
+| `recommendation.rule.rollback` | 推荐运营 + 必要复核 | 仅回滚到已验证的不可变版本 |
 
 ### 4.2 消息、举报与安全
 
@@ -94,6 +100,7 @@ Owner 不是绕过控制的“超级按钮”。极少数 break-glass 行为必�
 | `conversation.reply_as_platform` | 代运营 | senderType 由服务端固定为 `platform_operator` |
 | `conversation.internal_note.create` | 代运营/审核 | 永不进入用户 API/事件 |
 | `conversation.message.read_sensitive` | 代运营或案件审核 | 只读当前分配会话或案件证据范围 |
+| `moderation.case.read` | 消息安全审核/审计 | 按案件 scope 读取摘要；正文另行授权 |
 | `moderation.case.review` | 消息安全审核 | 按案件 scope；最小正文窗口 |
 | `moderation.action.execute` | 安全审核/管理员 | 处置类型与影响预览 |
 | `moderation.appeal.review` | 独立申诉审核 | 不由原处置人单独终审 |
@@ -105,6 +112,7 @@ Owner 不是绕过控制的“超级按钮”。极少数 break-glass 行为必�
 | Capability | 典型角色 | 约束 |
 |------------|----------|------|
 | `membership.catalog.read` | 客服/商业/审计 | 非敏感读取 |
+| `membership.grant.read` | 客服/商业/审计 | 按账号 scope 读取发放状态和历史 |
 | `membership.grant.request` | 客服/商业运营 | 业务单号、来源、期限、用户说明 |
 | `membership.grant.approve` | 商业复核/Owner | 不能批准自己的申请 |
 | `membership.grant.revoke` | 商业主管/安全 | 影响预览、原因、必要复核 |
@@ -116,6 +124,7 @@ Owner 不是绕过控制的“超级按钮”。极少数 break-glass 行为必�
 | `wallet.reversal.request` | 财务操作 | 必须引用原分录 |
 | `audit.event.read` | 审计只读/安全 | 字段按权限脱敏 |
 | `audit.export.request` | 审计/Owner | 强认证、范围预览、必要复核、水印 |
+| `rbac.assignment.read` | Owner/安全管理员/审计 | 读取角色、scope 和变更历史 |
 | `rbac.assignment.update` | Owner/安全管理员 | 高风险、双人或事后复核 |
 
 ## 5. 对象 Scope

@@ -81,6 +81,7 @@ App 版本：1.0
 | `ui.entitlement.required` | 缺少所需 entitlement | 权益价值、获取方式、限制 | 查看心享会员 |
 | `ui.entitlement.expired` | 会员到期 | 当前失效能力和历史可见范围 | 查看会员/帮助 |
 | `ui.quota.exhausted` | 周期额度耗尽 | 额度名、重置时间 | 返回/查看权益 |
+| `ui.wallet.insufficient_coins` | 当前金币不足以完成操作 | 当前余额和所需金额；不展示未来充值入口 | 返回钱包 |
 | `ui.moderation.pending` | 内容等待审核 | “审核中”，不显示送达 | 查看规则 |
 | `ui.moderation.restricted` | 内容/会话被限制 | 可见范围和下一步 | 修改内容/申诉 |
 | `ui.app.upgrade_required` | capability 不兼容 | 为什么需要升级 | 更新 App/返回 |
@@ -104,14 +105,15 @@ App 版本：1.0
 
 | API 错误码 | stateKey | 用户标题 | 建议操作 | 禁止事项 |
 |------------|----------|----------|----------|----------|
-| `AUTH_REQUIRED` | `ui.auth.required/expired` | 需要登录 / 登录已失效 | 登录并安全回跳 | 保留私有页面可操作状态 |
+| `AUTH_REQUIRED` | `ui.auth.required` | 需要登录 | 登录并安全回跳 | 把未登录误报为会话失效 |
+| `AUTH_EXPIRED` | `ui.auth.expired` | 登录已失效 | 清理私有状态后重新登录 | 保留私有页面可操作状态 |
 | `ACCOUNT_RESTRICTED` | `ui.account.restricted` | 当前账号部分功能受限 | 查看说明/申诉 | 暴露内部风控规则 |
 | `ENTITLEMENT_REQUIRED` | `ui.entitlement.required` | 当前账号没有此项权益 | 查看心享会员 | 显示“立即购买” |
 | `ENTITLEMENT_QUOTA_EXCEEDED` | `ui.quota.exhausted` | 本周期额度已用完 | 显示 `{resetsAt}` | 称为系统故障 |
 | `PROFILE_NOT_AVAILABLE` | `ui.object.unavailable` | 该真人资料当前不可访问 | 返回推荐 | 泄露暂停/争议内部原因 |
 | `CONVERSATION_FORBIDDEN` | `ui.moderation.restricted` | 当前会话不可继续操作 | 查看会话状态/帮助 | 自动重开或重发 |
 | `CONTENT_REVIEW_PENDING` | `ui.moderation.pending` | 消息正在审核 | 等待结果 | 显示已送达 |
-| `INSUFFICIENT_COINS` | `ui.entitlement.required` | 金币余额不足 | 返回钱包 | App 1.0 显示充值入口 |
+| `INSUFFICIENT_COINS` | `ui.wallet.insufficient_coins` | 金币余额不足 | 返回钱包 | App 1.0 显示充值入口或引导购买 |
 | `PRODUCT_NOT_AVAILABLE` | `ui.object.unavailable` | 当前内容暂不可用 | 返回 | App 1.0 引导未来商品 |
 | `IDEMPOTENCY_CONFLICT` | `ui.error.conflict` | 请求内容与原操作不一致 | 刷新结果/重新发起 | 自动换 key 重复提交 |
 | `APP_UPGRADE_REQUIRED` | `ui.app.upgrade_required` | 需要更新 App | 更新/返回 | 远程执行未知能力 |

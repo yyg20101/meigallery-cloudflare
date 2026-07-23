@@ -8,7 +8,7 @@ import {
 
 export const AD_ATTRIBUTION_CONTEXT_TTL_SECONDS = 30 * 24 * 60 * 60
 
-export type AdAttributionSource = 'click_id' | 'managed_link' | 'utm_alias'
+export type AdAttributionSource = 'click_id' | 'managed_link'
 
 export interface AdAttributionContext {
   version: 1
@@ -124,7 +124,7 @@ function isProvider(value: unknown): value is AdAttributionProvider {
 }
 
 function isSource(value: unknown): value is AdAttributionSource {
-  return value === 'click_id' || value === 'managed_link' || value === 'utm_alias'
+  return value === 'click_id' || value === 'managed_link'
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
