@@ -243,6 +243,11 @@ function validateCommonCommand(command: SavePlatformConnectionCommand) {
   if (!isRolloutPercentage(command.rolloutTargetPercentage)) {
     throw serviceError('AD_PLATFORM_CONNECTION_ROLLOUT_INVALID')
   }
+  const hasActiveTransport = command.browserEnabled
+    || (command.serverEnabled && command.rolloutTargetPercentage > 0)
+  if (command.enabled && command.mode === 'production' && !hasActiveTransport) {
+    throw serviceError('AD_PLATFORM_CONNECTION_STATE_INVALID')
+  }
   if (!Number.isSafeInteger(command.actorId) || command.actorId <= 0) {
     throw serviceError('AD_PLATFORM_CONNECTION_ACTOR_INVALID')
   }
