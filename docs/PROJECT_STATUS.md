@@ -48,7 +48,8 @@
 
 - `0051_unified_attribution_expand.sql` 已定义最终 11 张 `attribution_*` 表。
 - `0052_unified_attribution_contract.sql` 已于 2026-07-16 在 production 应用：17 条 Meta 质量历史已迁移，400 条最终归因事实完整保留，旧事实、投递、连接、验证、Outbox、Meta 运维表、桥接 trigger 和 `users.meta_external_id` 已删除。
-- 待发布分支已完成 `0055_attribution_tracking_integrity.sql`：投放来源约束统一支持 Meta/TikTok/Google，每个管理来源持有独立随机 `link_proof`，只有数据库匹配的 `mg_source + mg_proof` 才能建立平台来源，UTM 只参与冲突检测；历史管理链接的 referral 误分类、来源/页面/邀请日报和有效联系聚合会按事件发生的北京时间自然日从原始事实重建。该 migration 已通过全新 D1 的 0001-0055 顺序执行、UTC 跨日边界、production export 本地演练和旧数据修复测试，尚未应用 production。
+- production 已应用 `0055_attribution_tracking_integrity.sql`：投放来源约束统一支持 Meta/TikTok/Google，每个管理来源持有独立随机 `link_proof`，只有数据库匹配的 `mg_source + mg_proof` 才能建立平台来源，UTM 只参与冲突检测；历史管理链接的 referral 误分类、来源/页面/邀请日报和有效联系聚合已按事件发生的北京时间自然日从原始事实重建。
+- production 部署后的最终只读审计识别出 2 条旧版 `utm_alias` TikTok 推测事实；`0056_attribution_fact_source_integrity.sql` 将从活跃事实源删除该历史污染及其级联 Delivery/Receipt，并以 D1 trigger 强制 `provider=null` 只能对应 `none/conflict`、广告 provider 只能对应 `click_id/managed_link`。migration 前 D1 备份和 Time Travel 保留原始审计证据。
 - 旧平台专用 API 服务、运维脚本、一次性回填/对账脚本和发布报告特例已从当前代码删除。
 - Contract 发布前已生成仓库外 D1 export、Time Travel bookmark 和 SHA-256 manifest；production 发布提交为 `63d7ec1`，版本标签为 `v0.4.6`。
 - 旧 `meigallery-meta-capi*`、`meigallery-tiktok-events*` Queue 和 `META_CAPI_ACCESS_TOKEN`、`META_CAPI_DATA_KEY_CURRENT` Worker Secret 已删除；通用 `meigallery-ad-*` Queue 与 `AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT` 保留。

@@ -8,14 +8,23 @@ async function readMigration(name: string) {
 }
 
 describe('analytics migrations', () => {
-  it('migration 索引从 0001 到 0055 连续且编号唯一', async () => {
+  it('migration 索引从 0001 到 0056 连续且编号唯一', async () => {
     const names = (await readdir(MIGRATION_DIR))
       .filter(name => /^\d{4}_.+\.sql$/.test(name))
       .sort()
     const indexes = names.map(name => Number(name.slice(0, 4)))
 
-    expect(indexes).toEqual(Array.from({ length: 55 }, (_, index) => index + 1))
+    expect(indexes).toEqual(Array.from({ length: 56 }, (_, index) => index + 1))
     expect(new Set(indexes).size).toBe(indexes.length)
+  })
+
+  it('0056 清除 UTM 推测事实并建立可信来源数据库守卫', async () => {
+    const sql = await readMigration('0056_attribution_fact_source_integrity.sql')
+    expect(sql).toContain("attribution_source NOT IN ('none', 'conflict')")
+    expect(sql).toContain("attribution_source NOT IN ('click_id', 'managed_link')")
+    expect(sql).toContain('CREATE TRIGGER attribution_fact_source_insert_guard')
+    expect(sql).toContain('CREATE TRIGGER attribution_fact_source_update_guard')
+    expect(sql).toContain("RAISE(ABORT, 'ATTRIBUTION_FACT_SOURCE_INVALID')")
   })
 
   it('0055 统一投放来源平台约束并按有效联系口径重建聚合', async () => {
