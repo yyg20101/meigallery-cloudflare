@@ -232,6 +232,22 @@ describe('统一广告平台 Queue 运行时', () => {
     }))
   })
 
+  it('平台不支持网络匹配时在进入 Adapter 前移除网络上下文', async () => {
+    await seed('queued', 'google', true, {
+      clientIpAddress: '203.0.113.42',
+      clientUserAgent: 'Private Browser/1.0',
+    })
+    const message = queueMessage({ schemaVersion: 1, deliveryId: 'delivery_google', provider: 'google' })
+    const deliver = vi.fn().mockResolvedValue({ classification: 'accepted', receipt: { status: 200 } })
+    await handleAttributionQueueBatch(batch([message], 'meigallery-ad-google'), env(), { deliver, readCredential: async () => 'secret' })
+
+    expect(deliver).toHaveBeenCalledOnce()
+    const input = deliver.mock.calls[0]?.[0].input
+    expect(input).toMatchObject({ provider: 'google', matchSignals: { gclid: 'gclid_1' } })
+    expect(input).not.toHaveProperty('clientIpAddress')
+    expect(input).not.toHaveProperty('clientUserAgent')
+  })
+
   it('不完整网络上下文按非法 Outbox 拒绝且不调用 Adapter', async () => {
     await seed('queued', 'meta', true, { clientIpAddress: '203.0.113.42' })
     const message = queueMessage()

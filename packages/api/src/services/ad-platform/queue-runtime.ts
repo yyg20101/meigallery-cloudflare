@@ -2,6 +2,7 @@ import type { AdAttributionProvider, AdConsentSnapshot, AdPlatformQueueMessage, 
 import { decryptAttributionValue, loadAttributionCryptoKeys } from '../../utils/attribution-crypto'
 import { isValidAdPlatformIpAddress, isValidAdPlatformUserAgent } from '../../utils/ad-platform-identifiers'
 import { CredentialVaultError, readAttributionCredential } from './credential-vault'
+import { getAdPlatformDefinition } from './registry'
 import { deleteAttributionOutbox } from './secure-outbox'
 import { deliverServerEvent, type ServerDeliveryInput, type ServerDeliveryResult } from './server-adapter'
 
@@ -278,6 +279,14 @@ function parsePayload(plaintext: string, row: AttributionDeliveryQueueRow): Decr
       || !plainSignals(value.matchSignals)
       || !validConsent(value.consent)) return null
     if (value.hashedEmail !== undefined && (typeof value.hashedEmail !== 'string' || !/^[a-f0-9]{64}$/.test(value.hashedEmail))) return null
+    const definition = getAdPlatformDefinition(row.delivery_provider)
+    if (!definition) return null
+    if (!definition.capabilities.networkMatching) {
+      const payload = { ...value }
+      delete payload.clientIpAddress
+      delete payload.clientUserAgent
+      return payload as DecryptedPayload
+    }
     if (!validNetworkContext(value.clientIpAddress, value.clientUserAgent)) return null
     return value as DecryptedPayload
   }
