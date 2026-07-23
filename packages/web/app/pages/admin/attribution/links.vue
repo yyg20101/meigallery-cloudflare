@@ -132,7 +132,7 @@ function buildTrackingPathPreview(input: {
   try {
     const url = new URL(input.targetPath || '/', 'https://site.local')
     if (!url.pathname.startsWith('/') || url.pathname.startsWith('/admin') || url.pathname.startsWith('/api')) {
-      return fallbackTrackingPath(input.sourceCode, input.utmMedium)
+      return fallbackTrackingPath(input.sourceCode, input.utmMedium, input.utmCampaign, input.utmContent)
     }
     url.searchParams.set('mg_source', input.sourceCode)
     url.searchParams.set('utm_source', input.sourceCode)
@@ -141,7 +141,7 @@ function buildTrackingPathPreview(input: {
     if (input.utmContent) url.searchParams.set('utm_content', input.utmContent)
     return `${url.pathname}${url.search}`
   } catch {
-    return fallbackTrackingPath(input.sourceCode, input.utmMedium)
+    return fallbackTrackingPath(input.sourceCode, input.utmMedium, input.utmCampaign, input.utmContent)
   }
 }
 
@@ -160,12 +160,19 @@ function defaultUtmMedium(provider: AdPlatformProvider) {
   return attributionPlatformDefinition(provider).tracking.defaultUtmMedium
 }
 
-function fallbackTrackingPath(sourceCode: string, utmMedium: string) {
+function fallbackTrackingPath(
+  sourceCode: string,
+  utmMedium: string,
+  utmCampaign: string,
+  utmContent: string,
+) {
   const params = new URLSearchParams({
     mg_source: sourceCode || 'ad-test',
     utm_source: sourceCode || 'ad-test',
     utm_medium: utmMedium || 'ad',
   })
+  if (utmCampaign) params.set('utm_campaign', utmCampaign)
+  if (utmContent) params.set('utm_content', utmContent)
   return `/?${params.toString()}`
 }
 </script>
@@ -265,7 +272,7 @@ function fallbackTrackingPath(sourceCode: string, utmMedium: string) {
               <textarea v-model="form.note" rows="3" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="内部备注" />
             </label>
             <div class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
-              <p class="text-xs font-medium text-gray-700">链接预览</p>
+              <p class="text-xs font-medium text-gray-700">链接预览（创建后自动加入校验参数）</p>
               <p class="mt-1 break-all font-mono text-xs leading-5 text-gray-600">{{ previewPath }}</p>
             </div>
             <p v-if="createError" class="text-xs text-red-600">{{ createError }}</p>

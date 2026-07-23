@@ -44,7 +44,7 @@ Planner + Consent + Rollout
 - `Contact` 仅在原生联系跳转或复制联系方式成功并通过服务端校验后创建。
 - `CompleteRegistration` 仅由注册事务成功后创建，客户端不能声明注册成功。
 - 二维码展开、页面浏览和普通点击属于一方分析事件，不进入广告转化事实。
-- `PUT /api/ad-attribution` 根据 click ID、明确 UTM 平台和后台投放来源签发短期 HttpOnly receipt；浏览器不能直接声明 provider。
+- `PUT /api/ad-attribution` 只根据 click ID 或数据库校验通过的 `mg_source + mg_proof` 管理投放链接签发短期 HttpOnly receipt；UTM 仅用于发现与既有可信来源的冲突，浏览器不能直接声明 provider。
 - 多平台信号冲突、来源未知、授权无效或校验失败时，只保留站内事实，不创建广告投递。
 
 ## 平台隔离

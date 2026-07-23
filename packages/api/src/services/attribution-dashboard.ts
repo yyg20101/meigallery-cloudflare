@@ -202,10 +202,7 @@ export async function queryAttributionLinks(
     queryTrackingSourcesWithMetrics(db, range),
     queryAll(db, `
       SELECT
-        COALESCE(
-          NULLIF(json_extract(analytics_dimensions_json, '$.trackingSourceSlug'), ''),
-          NULLIF(json_extract(analytics_dimensions_json, '$.sourceName'), '')
-        ) AS source_code,
+        NULLIF(json_extract(analytics_dimensions_json, '$.trackingSourceSlug'), '') AS source_code,
         SUM(CASE WHEN canonical_event = 'Contact' THEN 1 ELSE 0 END) AS contact_count,
         SUM(CASE WHEN canonical_event = 'CompleteRegistration' THEN 1 ELSE 0 END) AS complete_registration_count
       FROM attribution_conversion_facts

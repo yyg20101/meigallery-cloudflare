@@ -63,6 +63,7 @@ function trackingSourceRow() {
     name: 'Telegram 六月互推',
     channel: 'social',
     slug: 'telegram-june',
+    link_proof: 'a'.repeat(64),
     target_path: '/',
     utm_source: 'telegram-june',
     utm_medium: 'social',
@@ -133,9 +134,10 @@ describe('后台推广来源 API', () => {
     expect(res.status).toBe(201)
     expect(body.data.utmContent).toBe('chat-a')
     expect(body.data.adProvider).toBe('meta')
+    expect(body.data.trackingPath).toMatch(/[?&]mg_proof=[0-9a-f]{64}(?:&|$)/)
     expect(body.data.trackingPath).toContain('utm_content=chat-a')
-    expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_tracking_sources') && call.params[8] === 'chat-a')).toBe(true)
-    expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_tracking_sources') && call.params[9] === 'meta')).toBe(true)
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_tracking_sources') && call.params[9] === 'chat-a')).toBe(true)
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_tracking_sources') && call.params[10] === 'meta')).toBe(true)
     expect(JSON.stringify(db.calls)).not.toContain('Meta 像素测试地址')
   })
 
@@ -158,8 +160,26 @@ describe('后台推广来源 API', () => {
     expect(body.data.adProvider).toBe('google')
     expect(db.calls.some(call => (
       call.sql.includes('INSERT INTO analytics_tracking_sources')
-      && call.params[9] === 'google'
+      && call.params[10] === 'google'
     ))).toBe(true)
+  })
+
+  it('拒绝把邮箱或手机号写入 utm_content', async () => {
+    for (const utmContent of ['user@example.com', '13800000000']) {
+      const res = await createApp('admin').request('/api/admin/tracking-sources', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          sourceLabel: 'Meta 敏感参数测试',
+          channel: 'ad',
+          adProvider: 'meta',
+          utmContent,
+        }),
+      }, { DB: createDb() } as unknown as Bindings)
+
+      expect(res.status).toBe(400)
+      expect((await res.json()).message).toContain('不含个人信息')
+    }
   })
 
   it('创建时不允许手动填写 code', async () => {

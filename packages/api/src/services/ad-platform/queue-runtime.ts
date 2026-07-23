@@ -1,6 +1,8 @@
 import type { AdAttributionProvider, AdConsentSnapshot, AdPlatformQueueMessage, CanonicalConversionEvent } from '@meigallery/shared'
 import { decryptAttributionValue, loadAttributionCryptoKeys } from '../../utils/attribution-crypto'
+import { isValidAdPlatformIpAddress, isValidAdPlatformUserAgent } from '../../utils/ad-platform-identifiers'
 import { CredentialVaultError, readAttributionCredential } from './credential-vault'
+import { getAdPlatformDefinition } from './registry'
 import { deleteAttributionOutbox } from './secure-outbox'
 import { deliverServerEvent, type ServerDeliveryInput, type ServerDeliveryResult } from './server-adapter'
 
@@ -59,6 +61,8 @@ type DecryptedPayload = {
   destination: string
   matchSignals: Record<string, string>
   hashedEmail?: string
+  clientIpAddress?: string
+  clientUserAgent?: string
   consent: AdConsentSnapshot
 }
 type DeliveryOutcome = { result: ServerDeliveryResult; errorCode?: string }
@@ -275,11 +279,25 @@ function parsePayload(plaintext: string, row: AttributionDeliveryQueueRow): Decr
       || !plainSignals(value.matchSignals)
       || !validConsent(value.consent)) return null
     if (value.hashedEmail !== undefined && (typeof value.hashedEmail !== 'string' || !/^[a-f0-9]{64}$/.test(value.hashedEmail))) return null
+    const definition = getAdPlatformDefinition(row.delivery_provider)
+    if (!definition) return null
+    if (!definition.capabilities.networkMatching) {
+      const payload = { ...value }
+      delete payload.clientIpAddress
+      delete payload.clientUserAgent
+      return payload as DecryptedPayload
+    }
+    if (!validNetworkContext(value.clientIpAddress, value.clientUserAgent)) return null
     return value as DecryptedPayload
   }
   catch {
     return null
   }
+}
+
+function validNetworkContext(clientIpAddress: unknown, clientUserAgent: unknown) {
+  if (clientIpAddress === undefined && clientUserAgent === undefined) return true
+  return isValidAdPlatformIpAddress(clientIpAddress) && isValidAdPlatformUserAgent(clientUserAgent)
 }
 
 function parseConfig(value: string): Record<string, string> | null {

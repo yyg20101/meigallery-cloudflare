@@ -7,18 +7,26 @@ const input = {
   provider: 'meta' as const, canonicalEvent: 'Contact' as const, externalEventId: EVENT_ID,
   eventTime: 1_784_256_123, pageUrl: 'https://meigallery.example/contact', destination: 'meta_capi',
   matchSignals: { fbc: 'fb.1.1784256123000.click', fbp: 'fb.1.123.browser' }, hashedEmail: 'a'.repeat(64),
+  clientIpAddress: '203.0.113.42', clientUserAgent: 'Private Browser/1.0',
   consent: { consentVersion: 1, marketingAllowed: true, adUserDataAllowed: true, adPersonalizationAllowed: true, decidedAt: '2026-07-17T02:40:00.000Z' },
 }
 
 describe('Meta 服务端 Adapter', () => {
   it('按 CAPI 契约构造事件、去重 ID 和允许的匹配数据', () => {
     expect(buildMetaServerPayload(input)).toEqual({
-      data: [{ event_name: 'Contact', event_time: 1_784_256_123, event_id: EVENT_ID, action_source: 'website', event_source_url: 'https://meigallery.example/contact', user_data: { fbc: 'fb.1.1784256123000.click', fbp: 'fb.1.123.browser', em: ['a'.repeat(64)] } }],
+      data: [{ event_name: 'Contact', event_time: 1_784_256_123, event_id: EVENT_ID, action_source: 'website', event_source_url: 'https://meigallery.example/contact', user_data: { fbc: 'fb.1.1784256123000.click', fbp: 'fb.1.123.browser', em: ['a'.repeat(64)], client_ip_address: '203.0.113.42', client_user_agent: 'Private Browser/1.0' } }],
     })
   })
 
   it('允许仅使用哈希邮箱作为有效匹配键', () => {
-    expect(buildMetaServerPayload({ ...input, matchSignals: {} }).data[0]?.user_data).toEqual({ em: ['a'.repeat(64)] })
+    expect(buildMetaServerPayload({ ...input, matchSignals: {}, clientIpAddress: undefined, clientUserAgent: undefined }).data[0]?.user_data).toEqual({ em: ['a'.repeat(64)] })
+  })
+
+  it('允许可信 IP 和 User-Agent 组合独立作为匹配上下文', () => {
+    expect(buildMetaServerPayload({ ...input, matchSignals: {}, hashedEmail: undefined }).data[0]?.user_data).toEqual({
+      client_ip_address: '203.0.113.42',
+      client_user_agent: 'Private Browser/1.0',
+    })
   })
 
   it('从统一版本模块构造端点，token 只在请求体且不向结果泄露敏感响应', async () => {
@@ -54,7 +62,8 @@ describe('Meta 服务端 Adapter', () => {
   })
 
   it.each([
-    [{ ...input, matchSignals: {}, hashedEmail: undefined }, { pixelId: '123456789012345' }],
+    [{ ...input, matchSignals: {}, hashedEmail: undefined, clientIpAddress: undefined, clientUserAgent: undefined }, { pixelId: '123456789012345' }],
+    [{ ...input, clientUserAgent: undefined }, { pixelId: '123456789012345' }],
     [{ ...input, externalEventId: 'legacy-id' }, { pixelId: '123456789012345' }],
     [{ ...input, eventTime: 1.5 }, { pixelId: '123456789012345' }],
     [{ ...input, eventTime: 4_102_444_800 }, { pixelId: '123456789012345' }],

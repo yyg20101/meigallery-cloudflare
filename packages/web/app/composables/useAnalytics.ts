@@ -9,6 +9,7 @@ import type {
   AnalyticsSourceChannel,
 } from '@meigallery/shared'
 import { ANALYTICS_LIMITS, ANALYTICS_RETENTION } from '@meigallery/shared/constants'
+import { normalizeAnalyticsCampaignToken } from '@meigallery/shared/utils'
 import { normalizeAnalyticsRoute, type AnalyticsRouteLike } from '~/utils/analyticsRoute'
 import {
   detectAnalyticsDeviceType,
@@ -353,7 +354,7 @@ function normalizeSourceContext(input: Partial<AnalyticsSourceContext> = {}): An
     utmSource: normalizeContextText(input.utmSource, 120).toLowerCase(),
     utmMedium: normalizeContextText(input.utmMedium, 120).toLowerCase(),
     utmCampaign: normalizeContextText(input.utmCampaign, 120).toLowerCase(),
-    utmContent: normalizeContextText(input.utmContent, 120).toLowerCase(),
+    utmContent: normalizeAnalyticsCampaignToken(input.utmContent),
     trackingSourceSlug: normalizeContextText(input.trackingSourceSlug, 120).toLowerCase(),
     sourceName: normalizeContextText(input.sourceName, 120).toLowerCase(),
   }

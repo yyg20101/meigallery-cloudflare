@@ -299,11 +299,11 @@ Browser Label 与 Server conversion action ID 必须属于同一个 Google Ads �
 来源解析优先级：
 
 1. 明确 Click ID。
-2. 后台生成并签名的广告投放链接。
-3. 严格广告来源别名。
+2. 后台生成、携带随机 proof 且能与数据库来源记录匹配的广告投放链接。
+3. 已存在且仍有效的可信来源 receipt。
 4. 无可靠信号时不建立广告归因。
 
-`utm_source=google` 可能是自然搜索，不能判定为 Google Ads。只有 `google-ads`、`google_ads`、`adwords` 等明确广告别名可以作为低优先级广告信号。
+`utm_source=google` 可能是自然搜索，不能判定为 Google Ads。Meta、TikTok、Google 的 UTM 广告别名都不能独立建立平台归因，只能用于检测它与 click ID、管理链接或既有 receipt 是否冲突。
 
 同一请求同时存在多个平台强信号时，结果为 `attribution_conflict`：不选择平台、不加载 Pixel、不创建广告 Delivery，只记录脱敏冲突审计。
 
@@ -316,7 +316,7 @@ interface AdAttributionContext {
   version: 1
   contextId: string
   provider: AdAttributionProvider
-  source: 'click_id' | 'managed_link' | 'utm_alias'
+  source: 'click_id' | 'managed_link'
   identifiers: Record<string, string>
   issuedAt: number
   expiresAt: number

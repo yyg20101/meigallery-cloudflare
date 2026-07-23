@@ -1,10 +1,12 @@
-import type { AdAttributionProvider, AdBrowserInstruction, AnalyticsSourceChannel, CanonicalConversionEvent } from '@meigallery/shared'
+import type { AdAttributionProvider, AdBrowserInstruction, AdPlatformSensitiveContext, AnalyticsSourceChannel, CanonicalConversionEvent } from '@meigallery/shared'
+import { normalizeAnalyticsCampaignToken } from '@meigallery/shared/utils'
 import type { Bindings } from '../index'
 import { generateId } from '../utils/db'
 import { buildConversionDedupeKey, sanitizeConversionMetadata } from '../utils/conversions'
 import { encryptAttributionValue, loadAttributionCryptoKeys, type AttributionCryptoKeys } from '../utils/attribution-crypto'
 import type { AdAttributionContext } from '../utils/ad-attribution-context'
 import { createAdConsentSnapshot, type AdConsentSnapshot } from '../utils/marketing-consent-receipt'
+import { normalizeAdPlatformUserData } from '../utils/ad-platform-identifiers'
 import { readAttributionConnectionSnapshot } from './ad-platform/connections'
 import { buildAttributionDeliveryPlan } from './ad-platform/planner'
 import { issueBrowserAttemptReceiptToken } from './ad-platform/browser-attempt-receipt'
@@ -12,11 +14,10 @@ import { getAdPlatformDefinition } from './ad-platform/registry'
 import { enqueueAttributionDelivery, getAttributionQueue } from './ad-platform/secure-outbox'
 
 type ConversionEnv = Pick<Bindings, 'DB' | 'SITE_URL' | 'AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT' | 'AD_PLATFORM_CREDENTIAL_MASTER_KEY_PREVIOUS' | 'AD_META_QUEUE' | 'AD_TIKTOK_QUEUE' | 'AD_GOOGLE_QUEUE'>
-type BrowserIdentifiers = { fbp?: string; fbc?: string; ttclid?: string; ttp?: string }
 type ConversionBaseInput = {
   visitorId: string; sessionId: string; userId?: number | null; occurredAt: string; routeName?: string; path?: string
   sourceChannel?: AnalyticsSourceChannel | string; sourceName?: string; trackingSourceSlug?: string; utmSource?: string; utmMedium?: string; utmCampaign?: string; utmContent?: string
-  consentSnapshot: AdConsentSnapshot; attributionContext?: AdAttributionContext | null; attributionSource?: 'context' | 'none' | 'conflict'; browserIdentifiers?: BrowserIdentifiers; metadata?: Record<string, unknown>
+  consentSnapshot: AdConsentSnapshot; attributionContext?: AdAttributionContext | null; attributionSource?: 'context' | 'none' | 'conflict'; adPlatformUserData?: AdPlatformSensitiveContext; metadata?: Record<string, unknown>
 }
 export type RecordContactInput = ConversionBaseInput & { contactMethodId: string; contactPlatform: string; actionType: 'open_link' }
 export type RecordRegistrationInput = ConversionBaseInput & { userId: number; hashedEmail?: string }
@@ -61,16 +62,17 @@ async function recordLiveFact(env: ConversionEnv, input: ConversionBaseInput & {
   const snapshot = context.provider ? await readAttributionConnectionSnapshot(env.DB, context.provider) : { state: 'connection_invalid' as const, reason: 'not_found' as const }
   const definition = getAdPlatformDefinition(context.provider)
   const pageUrl = absolutePageUrl(env.SITE_URL, input.path)
-  const matchSignals = definition && context.context ? definition.matchSignals({ contextIdentifiers: context.context.identifiers, contextIssuedAt: context.context.issuedAt, browserIdentifiers: input.browserIdentifiers ?? {} }) : {}
+  const adPlatformUserData = normalizeAdPlatformUserData(input.adPlatformUserData)
+  const matchSignals = definition && context.context ? definition.matchSignals({ contextIdentifiers: context.context.identifiers, contextIssuedAt: context.context.issuedAt, browserIdentifiers: adPlatformUserData }) : {}
   const plan = await buildAttributionDeliveryPlan({
     factId: id, provider: context.provider, canonicalEvent: input.canonicalEvent, consentGranted: input.consentSnapshot.marketingAllowed,
     sourceAvailable: context.sourceAvailable, stableId: stableId(input), cryptoKeys: keys, matchSignals,
-    serverAllowed: Boolean(pageUrl), connection: snapshot,
+    serverAllowed: Boolean(pageUrl) && serverMatchAvailable(definition, matchSignals, input.hashedEmail, adPlatformUserData), connection: snapshot,
   })
   const statements: D1PreparedStatement[] = [
     factStatement(env.DB, { id, canonicalEvent: input.canonicalEvent, factOrigin: 'live', externalEventId: plan.externalEventId, provider: context.provider, source: context.source, contextId: context.context?.contextId ?? null, occurredAt, dedupeKey, consentSnapshot: input.consentSnapshot, dimensions: dimensions(input, { methodType: input.methodType, actionTarget: input.actionTarget }) }),
     ...plan.deliveries.map(delivery => deliveryStatement(env.DB, id, snapshot, delivery)),
-    ...await outboxStatements(env.DB, keys, id, input.canonicalEvent, eventTime, pageUrl, input.hashedEmail, input.consentSnapshot, snapshot, plan.deliveries),
+    ...await outboxStatements(env.DB, keys, id, input.canonicalEvent, eventTime, pageUrl, input.hashedEmail, adPlatformUserData, input.consentSnapshot, snapshot, plan.deliveries),
   ]
   try { await env.DB.batch(statements) } catch (error) {
     const concurrent = await findFact(env.DB, dedupeKey)
@@ -89,10 +91,11 @@ function trustedContext(context: AdAttributionContext | null | undefined, source
   return { provider: valid ? definition.provider : null, context: valid ? context : null, source: valid ? context.source : source === 'conflict' ? 'conflict' : 'none', sourceAvailable: Boolean(valid) }
 }
 
-async function outboxStatements(db: D1Database, keys: Awaited<ReturnType<typeof loadAttributionCryptoKeys>>, factId: string, canonicalEvent: CanonicalConversionEvent, eventTime: number, pageUrl: string | null, hashedEmail: string | undefined, consent: AdConsentSnapshot, snapshot: Awaited<ReturnType<typeof readAttributionConnectionSnapshot>>, deliveries: Awaited<ReturnType<typeof buildAttributionDeliveryPlan>>['deliveries']) {
+async function outboxStatements(db: D1Database, keys: Awaited<ReturnType<typeof loadAttributionCryptoKeys>>, factId: string, canonicalEvent: CanonicalConversionEvent, eventTime: number, pageUrl: string | null, hashedEmail: string | undefined, adPlatformUserData: AdPlatformSensitiveContext, consent: AdConsentSnapshot, snapshot: Awaited<ReturnType<typeof readAttributionConnectionSnapshot>>, deliveries: Awaited<ReturnType<typeof buildAttributionDeliveryPlan>>['deliveries']) {
   if (snapshot.state !== 'ready' || !pageUrl) return []
   return Promise.all(deliveries.filter(delivery => delivery.transport === 'server').map(async delivery => {
-    const payload = { canonicalEvent, externalEventId: delivery.externalEventId, eventTime, pageUrl, destination: delivery.destination, matchSignals: delivery.matchSignals, consent, ...(validHash(hashedEmail) ? { hashedEmail } : {}) }
+    const networkContext = providerNetworkContext(delivery.provider, adPlatformUserData)
+    const payload = { canonicalEvent, externalEventId: delivery.externalEventId, eventTime, pageUrl, destination: delivery.destination, matchSignals: delivery.matchSignals, consent, ...networkContext, ...(validHash(hashedEmail) ? { hashedEmail } : {}) }
     const envelope = await encryptAttributionValue({ keys, aad: { purpose: 'outbox', provider: delivery.provider, subjectId: factId, revision: snapshot.connection.connectionRevision }, plaintext: JSON.stringify(payload) })
     return db.prepare(`INSERT INTO attribution_outbox (delivery_id, provider, schema_version, key_id, iv, ciphertext, tag, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).bind(delivery.id, delivery.provider, envelope.schemaVersion, envelope.keyId, envelope.iv, envelope.ciphertext, envelope.tag, new Date(Date.now() + 24 * 60 * 60 * 1_000).toISOString())
   }))
@@ -138,9 +141,19 @@ async function existingBrowserInstructions(db: D1Database, keys: AttributionCryp
   return instructions.filter((instruction): instruction is AdBrowserInstruction => Boolean(instruction))
 }
 function duplicate(id: string, actionType: RecordConversionResult['actionType'], trackingInstructions: AdBrowserInstruction[]): RecordConversionResult { return { id, actionType, created: false, duplicateOf: id, trackingInstructions } }
-function dimensions(input: ConversionBaseInput, extra: Record<string, unknown>) { return { visitorId: input.visitorId, sessionId: input.sessionId, userId: input.userId ?? null, routeName: text(input.routeName), path: text(input.path), sourceChannel: text(input.sourceChannel), sourceName: text(input.sourceName), trackingSourceSlug: text(input.trackingSourceSlug), utmSource: text(input.utmSource), utmMedium: text(input.utmMedium), utmCampaign: text(input.utmCampaign), utmContent: text(input.utmContent), metadata: sanitizeConversionMetadata(input.metadata ?? {}), ...extra } }
+function dimensions(input: ConversionBaseInput, extra: Record<string, unknown>) { return { visitorId: input.visitorId, sessionId: input.sessionId, userId: input.userId ?? null, routeName: text(input.routeName), path: text(input.path), sourceChannel: text(input.sourceChannel), sourceName: text(input.sourceName), trackingSourceSlug: text(input.trackingSourceSlug), utmSource: text(input.utmSource), utmMedium: text(input.utmMedium), utmCampaign: text(input.utmCampaign), utmContent: normalizeAnalyticsCampaignToken(input.utmContent), metadata: sanitizeConversionMetadata(input.metadata ?? {}), ...extra } }
 function absolutePageUrl(siteUrl: string | undefined, path: string | undefined) { try { if (!siteUrl || !path?.startsWith('/')) return null; const origin = new URL(siteUrl); if (!['http:', 'https:'].includes(origin.protocol)) return null; return new URL(path, origin.origin).toString() } catch { return null } }
 function stableId(input: ConversionBaseInput) { return input.userId ? `user_${input.userId}` : input.visitorId }
+function serverMatchAvailable(definition: ReturnType<typeof getAdPlatformDefinition>, matchSignals: Record<string, string>, hashedEmail: string | undefined, userData: AdPlatformSensitiveContext) {
+  return Object.keys(matchSignals).length > 0
+    || validHash(hashedEmail)
+    || Boolean(definition?.capabilities.networkMatching && userData.clientIpAddress && userData.clientUserAgent)
+}
+function providerNetworkContext(provider: AdAttributionProvider, userData: AdPlatformSensitiveContext) {
+  return getAdPlatformDefinition(provider)?.capabilities.networkMatching && userData.clientIpAddress && userData.clientUserAgent
+    ? { clientIpAddress: userData.clientIpAddress, clientUserAgent: userData.clientUserAgent }
+    : {}
+}
 function iso(value: string) { const parsed = new Date(value); return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString() }
 function unixSeconds(value: string) { return Math.floor(new Date(value).getTime() / 1_000) }
 function text(value: unknown) { return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, 240) }

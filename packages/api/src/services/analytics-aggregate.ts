@@ -162,8 +162,6 @@ async function aggregateDailySources(db: AnalyticsDb, date: string) {
         COUNT(DISTINCT ss.visitor_id) AS visitor_count,
         COUNT(DISTINCT ss.session_id) AS session_count,
         SUM(ss.page_view_count) AS page_view_count,
-        SUM(CASE WHEN ss.invite_code_id != '' THEN ss.register_success_count ELSE 0 END) AS invite_register_count,
-        SUM(ss.membership_grant_count) AS membership_grant_count,
         SUM(ss.active_seconds) AS active_seconds_total
       FROM analytics_session_summaries ss
       WHERE ss.date = ?
@@ -171,19 +169,31 @@ async function aggregateDailySources(db: AnalyticsDb, date: string) {
     ),
     conversion_counts AS (
       SELECT
-        ss.date,
+        date(datetime(ae.occurred_at, '+8 hours')) AS date,
         ss.source_channel,
         ss.source_name,
         ss.invite_code_id,
         SUM(CASE WHEN ae.event_name = 'contact_method_click' THEN 1 ELSE 0 END) AS contact_click_count,
-        SUM(CASE WHEN ae.event_name = 'register_success' THEN 1 ELSE 0 END) AS register_count
+        SUM(CASE WHEN ae.event_name = 'register_success' THEN 1 ELSE 0 END) AS register_count,
+        SUM(CASE
+          WHEN ae.event_name = 'register_success' AND ss.invite_code_id != '' THEN 1
+          ELSE 0
+        END) AS invite_register_count,
+        SUM(CASE WHEN ae.event_name = 'membership_granted_conversion' THEN 1 ELSE 0 END) AS membership_grant_count
       FROM analytics_events ae
       JOIN analytics_session_summaries ss
         ON ss.session_id = ae.session_id
-       AND ss.date = date(datetime(ae.occurred_at, '+8 hours'))
-      WHERE ss.date = ?
-        AND ae.event_name IN ('contact_method_click', 'register_success')
-      GROUP BY ss.date, ss.source_channel, ss.source_name, ss.invite_code_id
+      WHERE date(datetime(ae.occurred_at, '+8 hours')) = ?
+        AND ae.event_name IN (
+          'contact_method_click',
+          'register_success',
+          'membership_granted_conversion'
+        )
+      GROUP BY
+        date(datetime(ae.occurred_at, '+8 hours')),
+        ss.source_channel,
+        ss.source_name,
+        ss.invite_code_id
     ),
     gallery_counts AS (
       SELECT
@@ -198,33 +208,45 @@ async function aggregateDailySources(db: AnalyticsDb, date: string) {
        AND aps.date = ss.date
       WHERE ss.date = ? AND aps.route_name = '/gallery/:slug'
       GROUP BY ss.date, ss.source_channel, ss.source_name, ss.invite_code_id
+    ),
+    dimensions AS (
+      SELECT date, source_channel, source_name, invite_code_id FROM source_sessions
+      UNION
+      SELECT date, source_channel, source_name, invite_code_id FROM conversion_counts
+      UNION
+      SELECT date, source_channel, source_name, invite_code_id FROM gallery_counts
     )
     SELECT
-      s.date,
-      s.source_channel,
-      s.source_name,
-      s.invite_code_id,
-      s.visitor_count,
-      s.session_count,
+      dimensions.date,
+      dimensions.source_channel,
+      dimensions.source_name,
+      dimensions.invite_code_id,
+      COALESCE(s.visitor_count, 0),
+      COALESCE(s.session_count, 0),
       COALESCE(s.page_view_count, 0),
       COALESCE(g.gallery_detail_count, 0),
       COALESCE(c.contact_click_count, 0),
       COALESCE(c.register_count, 0),
-      COALESCE(s.invite_register_count, 0),
-      COALESCE(s.membership_grant_count, 0),
+      COALESCE(c.invite_register_count, 0),
+      COALESCE(c.membership_grant_count, 0),
       COALESCE(s.active_seconds_total, 0),
       datetime('now')
-    FROM source_sessions s
+    FROM dimensions
+    LEFT JOIN source_sessions s
+      ON s.date = dimensions.date
+     AND s.source_channel = dimensions.source_channel
+     AND s.source_name = dimensions.source_name
+     AND s.invite_code_id = dimensions.invite_code_id
     LEFT JOIN gallery_counts g
-      ON g.date = s.date
-     AND g.source_channel = s.source_channel
-     AND g.source_name = s.source_name
-     AND g.invite_code_id = s.invite_code_id
+      ON g.date = dimensions.date
+     AND g.source_channel = dimensions.source_channel
+     AND g.source_name = dimensions.source_name
+     AND g.invite_code_id = dimensions.invite_code_id
     LEFT JOIN conversion_counts c
-      ON c.date = s.date
-     AND c.source_channel = s.source_channel
-     AND c.source_name = s.source_name
-     AND c.invite_code_id = s.invite_code_id
+      ON c.date = dimensions.date
+     AND c.source_channel = dimensions.source_channel
+     AND c.source_name = dimensions.source_name
+     AND c.invite_code_id = dimensions.invite_code_id
   `).bind(date, date, date).run()
 }
 
@@ -398,11 +420,11 @@ async function aggregateSourcePages(db: AnalyticsDb, date: string) {
       FROM analytics_events ae
       JOIN analytics_session_summaries ss
         ON ss.session_id = ae.session_id
-       AND ss.date = date(datetime(ae.occurred_at, '+8 hours'))
       WHERE date(datetime(ae.occurred_at, '+8 hours')) = ?
         AND ae.event_name IN ('contact_method_click', 'register_success')
       GROUP BY
-        date, ss.source_channel, ss.source_name, ss.invite_code_id,
+        date(datetime(ae.occurred_at, '+8 hours')),
+        ss.source_channel, ss.source_name, ss.invite_code_id,
         ae.route_name, ae.path, ae.entity_type, ae.entity_id
     ),
     combined AS (
@@ -449,11 +471,22 @@ async function aggregateInviteDaily(db: AnalyticsDb, date: string) {
       SELECT
         invite_code_id,
         COUNT(DISTINCT visitor_id) AS visitor_count,
-        COUNT(DISTINCT session_id) AS session_count,
-        SUM(contact_click_count) AS contact_click_count
+        COUNT(DISTINCT session_id) AS session_count
       FROM analytics_session_summaries
       WHERE date = ? AND invite_code_id != ''
       GROUP BY invite_code_id
+    ),
+    invite_contacts AS (
+      SELECT
+        summary.invite_code_id,
+        COUNT(*) AS contact_click_count
+      FROM analytics_events AS event
+      JOIN analytics_session_summaries AS summary
+        ON summary.session_id = event.session_id
+      WHERE date(datetime(event.occurred_at, '+8 hours')) = ?
+        AND event.event_name = 'contact_method_click'
+        AND summary.invite_code_id != ''
+      GROUP BY summary.invite_code_id
     ),
     invite_registers AS (
       SELECT
@@ -475,6 +508,8 @@ async function aggregateInviteDaily(db: AnalyticsDb, date: string) {
     ids AS (
       SELECT invite_code_id FROM invite_sessions
       UNION
+      SELECT invite_code_id FROM invite_contacts
+      UNION
       SELECT invite_code_id FROM invite_registers
       UNION
       SELECT invite_code_id FROM invite_memberships
@@ -487,15 +522,16 @@ async function aggregateInviteDaily(db: AnalyticsDb, date: string) {
       COALESCE(invite_sessions.visitor_count, 0) AS visitor_count,
       COALESCE(invite_sessions.session_count, 0) AS session_count,
       COALESCE(invite_registers.register_count, 0) AS register_count,
-      COALESCE(invite_sessions.contact_click_count, 0) AS contact_click_count,
+      COALESCE(invite_contacts.contact_click_count, 0) AS contact_click_count,
       COALESCE(invite_memberships.membership_grant_count, 0) AS membership_grant_count,
       datetime('now')
     FROM ids
     LEFT JOIN invite_codes ic ON ic.id = ids.invite_code_id
     LEFT JOIN invite_sessions ON invite_sessions.invite_code_id = ids.invite_code_id
     LEFT JOIN invite_registers ON invite_registers.invite_code_id = ids.invite_code_id
+    LEFT JOIN invite_contacts ON invite_contacts.invite_code_id = ids.invite_code_id
     LEFT JOIN invite_memberships ON invite_memberships.invite_code_id = ids.invite_code_id
-  `).bind(date, date, date, date).run()
+  `).bind(date, date, date, date, date).run()
 }
 
 function assertDate(date: string) {

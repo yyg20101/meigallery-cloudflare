@@ -36,6 +36,16 @@ const LOCAL_ATTRIBUTION_GATE_STEPS = [
     args: ['--test', 'packages/api/migrations/0055_attribution_tracking_integrity.test.mjs'],
   },
   {
+    name: 'attribution-fact-source-integrity',
+    command: 'node',
+    args: ['--test', 'packages/api/migrations/0056_attribution_fact_source_integrity.test.mjs'],
+  },
+  {
+    name: 'attribution-contact-aggregate-integrity',
+    command: 'node',
+    args: ['--test', 'packages/api/migrations/0057_contact_aggregate_integrity.test.mjs'],
+  },
+  {
     name: 'attribution-queue-mock',
     command: 'corepack',
     args: ['pnpm', '--filter', '@meigallery/api', 'exec', 'vitest', 'run',
@@ -239,6 +249,8 @@ export async function assertProductionAllowed(options = {}) {
     ...options,
     commit: git.commit,
     requireTrackingIntegrityMigration: false,
+    requireFactSourceIntegrityMigration: false,
+    requireContactAggregateIntegrityMigration: false,
   })
 }
 
@@ -251,6 +263,19 @@ export async function collectTrustedProductionGateFacts(options = {}) {
     ...(options.requireTrackingIntegrityMigration === false
       ? []
       : [['trackingIntegrityMigrationCount', value => value !== 1]]),
+    ...(options.requireFactSourceIntegrityMigration === false
+      ? []
+      : [
+          ['factSourceIntegrityMigrationCount', value => value !== 1],
+          ['invalidFactSourceCount', value => value !== 0],
+        ]),
+    ...(options.requireContactAggregateIntegrityMigration === false
+      ? []
+      : [
+          ['contactAggregateIntegrityMigrationCount', value => value !== 1],
+          ['invalidContactDailyEventCount', value => value !== 0],
+          ['invalidSourceContactClickCount', value => value !== 0],
+        ]),
     ['privacyPolicyMigrationCount', value => value !== 1],
     ['privacyPolicyRowCount', value => value !== 1],
     ['invalidConnectionCount', value => value !== 0],
@@ -309,6 +334,8 @@ async function queryProductionAttributionState(options = {}) {
     SELECT
       (SELECT COUNT(*) FROM d1_migrations WHERE name = '0052_unified_attribution_contract.sql') AS contract_migration_count,
       (SELECT COUNT(*) FROM d1_migrations WHERE name = '0055_attribution_tracking_integrity.sql') AS tracking_integrity_migration_count,
+      (SELECT COUNT(*) FROM d1_migrations WHERE name = '0056_attribution_fact_source_integrity.sql') AS fact_source_integrity_migration_count,
+      (SELECT COUNT(*) FROM d1_migrations WHERE name = '0057_contact_aggregate_integrity.sql') AS contact_aggregate_integrity_migration_count,
       (SELECT COUNT(*) FROM d1_migrations WHERE name = '0053_attribution_privacy_policy.sql') AS privacy_policy_migration_count,
       (SELECT COUNT(*) FROM attribution_privacy_policy WHERE id = 'global') AS privacy_policy_row_count,
       (SELECT COUNT(*) FROM attribution_platform_connections AS connection
@@ -324,6 +351,105 @@ async function queryProductionAttributionState(options = {}) {
       (SELECT COUNT(*) FROM attribution_incidents WHERE status = 'open' AND severity = 'critical') AS open_critical_incident_count,
       (SELECT COUNT(*) FROM attribution_outbox WHERE datetime(expires_at) <= datetime('now')) AS expired_outbox_count,
       (SELECT COUNT(*) FROM attribution_deliveries WHERE status = 'dead_letter') AS dead_letter_count,
+      (SELECT COUNT(*) FROM attribution_conversion_facts
+        WHERE (
+          attribution_provider IS NULL
+          AND attribution_source NOT IN ('none', 'conflict')
+        ) OR (
+          attribution_provider IS NOT NULL
+          AND (
+            attribution_provider NOT IN ('meta', 'tiktok', 'google')
+            OR attribution_source NOT IN ('click_id', 'managed_link')
+          )
+        )) AS invalid_fact_source_count,
+      (SELECT COUNT(*) FROM (
+        SELECT * FROM (
+          SELECT
+            date(datetime(occurred_at, '+8 hours')) AS date,
+            entity_type,
+            entity_id,
+            COUNT(*) AS event_count
+          FROM analytics_events
+          WHERE event_name = 'contact_method_click'
+          GROUP BY date(datetime(occurred_at, '+8 hours')), entity_type, entity_id
+          EXCEPT
+          SELECT date, entity_type, entity_id, event_count
+          FROM analytics_daily_events
+          WHERE event_name = 'contact_method_click'
+        )
+        UNION ALL
+        SELECT * FROM (
+          SELECT date, entity_type, entity_id, event_count
+          FROM analytics_daily_events
+          WHERE event_name = 'contact_method_click'
+          EXCEPT
+          SELECT
+            date(datetime(occurred_at, '+8 hours')) AS date,
+            entity_type,
+            entity_id,
+            COUNT(*) AS event_count
+          FROM analytics_events
+          WHERE event_name = 'contact_method_click'
+          GROUP BY date(datetime(occurred_at, '+8 hours')), entity_type, entity_id
+        )
+      )) AS invalid_contact_daily_event_count,
+      (SELECT COUNT(*) FROM (
+        SELECT * FROM (
+          SELECT
+            date(datetime(event.occurred_at, '+8 hours')) AS date,
+            summary.source_channel,
+            summary.source_name,
+            summary.invite_code_id,
+            COUNT(*) AS click_count
+          FROM analytics_events AS event
+          JOIN analytics_session_summaries AS summary
+            ON summary.session_id = event.session_id
+          WHERE event.event_name = 'contact_method_click'
+            AND (
+              summary.source_channel != 'direct'
+              OR summary.invite_code_id != ''
+              OR (summary.source_name != '' AND summary.source_name != 'direct')
+            )
+          GROUP BY
+            date(datetime(event.occurred_at, '+8 hours')),
+            summary.source_channel, summary.source_name, summary.invite_code_id
+          EXCEPT
+          SELECT
+            date, source_channel, source_name, invite_code_id,
+            SUM(effective_click_count)
+          FROM analytics_source_click_daily
+          WHERE element_id = 'contact_method_click'
+          GROUP BY date, source_channel, source_name, invite_code_id
+        )
+        UNION ALL
+        SELECT * FROM (
+          SELECT
+            date, source_channel, source_name, invite_code_id,
+            SUM(effective_click_count)
+          FROM analytics_source_click_daily
+          WHERE element_id = 'contact_method_click'
+          GROUP BY date, source_channel, source_name, invite_code_id
+          EXCEPT
+          SELECT
+            date(datetime(event.occurred_at, '+8 hours')) AS date,
+            summary.source_channel,
+            summary.source_name,
+            summary.invite_code_id,
+            COUNT(*) AS click_count
+          FROM analytics_events AS event
+          JOIN analytics_session_summaries AS summary
+            ON summary.session_id = event.session_id
+          WHERE event.event_name = 'contact_method_click'
+            AND (
+              summary.source_channel != 'direct'
+              OR summary.invite_code_id != ''
+              OR (summary.source_name != '' AND summary.source_name != 'direct')
+            )
+          GROUP BY
+            date(datetime(event.occurred_at, '+8 hours')),
+            summary.source_channel, summary.source_name, summary.invite_code_id
+        )
+      )) AS invalid_source_contact_click_count,
       (SELECT COUNT(*) FROM attribution_platform_connections
         WHERE rollout_effective_percentage > rollout_target_percentage
           OR (server_enabled = 0 AND rollout_effective_percentage <> 0)) AS invalid_rollout_count;

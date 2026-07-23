@@ -6,6 +6,7 @@ CREATE TABLE analytics_tracking_sources_v2 (
   name TEXT NOT NULL,
   channel TEXT NOT NULL DEFAULT 'referral',
   slug TEXT NOT NULL UNIQUE,
+  link_proof TEXT NOT NULL UNIQUE,
   target_path TEXT NOT NULL DEFAULT '/',
   utm_source TEXT NOT NULL,
   utm_medium TEXT NOT NULL DEFAULT 'referral',
@@ -18,16 +19,17 @@ CREATE TABLE analytics_tracking_sources_v2 (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   CHECK (channel IN ('direct', 'search', 'social', 'referral', 'ad', 'internal', 'unknown')),
+  CHECK (length(link_proof) = 64 AND link_proof NOT GLOB '*[^0-9a-f]*'),
   CHECK (ad_provider IN ('', 'meta', 'tiktok', 'google')),
   CHECK (status IN ('active', 'disabled'))
 );
 
 INSERT INTO analytics_tracking_sources_v2 (
-  id, name, channel, slug, target_path, utm_source, utm_medium, utm_campaign,
+  id, name, channel, slug, link_proof, target_path, utm_source, utm_medium, utm_campaign,
   utm_content, ad_provider, status, note, created_by, created_at, updated_at
 )
 SELECT
-  id, name, channel, slug, target_path, utm_source, utm_medium, utm_campaign,
+  id, name, channel, slug, lower(hex(randomblob(32))), target_path, utm_source, utm_medium, utm_campaign,
   utm_content, ad_provider, status, note, created_by, created_at, updated_at
 FROM analytics_tracking_sources;
 
@@ -151,30 +153,40 @@ WITH source_sessions AS (
     COUNT(DISTINCT visitor_id) AS visitor_count,
     COUNT(DISTINCT session_id) AS session_count,
     SUM(page_view_count) AS page_view_count,
-    SUM(CASE WHEN invite_code_id != '' THEN register_success_count ELSE 0 END) AS invite_register_count,
-    SUM(membership_grant_count) AS membership_grant_count,
     SUM(active_seconds) AS active_seconds_total
   FROM analytics_session_summaries
   GROUP BY date, source_channel, source_name, invite_code_id
 ),
 conversion_counts AS (
   SELECT
-    summary.date,
+    date(datetime(event.occurred_at, '+8 hours')) AS date,
     summary.source_channel,
     summary.source_name,
     summary.invite_code_id,
     SUM(CASE WHEN event.event_name = 'contact_method_click' THEN 1 ELSE 0 END) AS contact_click_count,
-    SUM(CASE WHEN event.event_name = 'register_success' THEN 1 ELSE 0 END) AS register_count
+    SUM(CASE WHEN event.event_name = 'register_success' THEN 1 ELSE 0 END) AS register_count,
+    SUM(CASE
+      WHEN event.event_name = 'register_success' AND summary.invite_code_id != '' THEN 1
+      ELSE 0
+    END) AS invite_register_count,
+    SUM(CASE WHEN event.event_name = 'membership_granted_conversion' THEN 1 ELSE 0 END) AS membership_grant_count
   FROM analytics_events AS event
   JOIN analytics_session_summaries AS summary
     ON summary.session_id = event.session_id
-   AND summary.date = date(datetime(event.occurred_at, '+8 hours'))
-  WHERE event.event_name IN ('contact_method_click', 'register_success')
-  GROUP BY summary.date, summary.source_channel, summary.source_name, summary.invite_code_id
+  WHERE event.event_name IN (
+    'contact_method_click',
+    'register_success',
+    'membership_granted_conversion'
+  )
+  GROUP BY
+    date(datetime(event.occurred_at, '+8 hours')),
+    summary.source_channel,
+    summary.source_name,
+    summary.invite_code_id
 ),
 gallery_counts AS (
   SELECT
-    summary.date,
+    date(datetime(event.occurred_at, '+8 hours')) AS date,
     summary.source_channel,
     summary.source_name,
     summary.invite_code_id,
@@ -182,36 +194,51 @@ gallery_counts AS (
   FROM analytics_events AS event
   JOIN analytics_session_summaries AS summary
     ON summary.session_id = event.session_id
-   AND summary.date = date(datetime(event.occurred_at, '+8 hours'))
   WHERE event.event_name = 'gallery_detail_view'
-  GROUP BY summary.date, summary.source_channel, summary.source_name, summary.invite_code_id
+  GROUP BY
+    date(datetime(event.occurred_at, '+8 hours')),
+    summary.source_channel,
+    summary.source_name,
+    summary.invite_code_id
+),
+dimensions AS (
+  SELECT date, source_channel, source_name, invite_code_id FROM source_sessions
+  UNION
+  SELECT date, source_channel, source_name, invite_code_id FROM conversion_counts
+  UNION
+  SELECT date, source_channel, source_name, invite_code_id FROM gallery_counts
 )
 SELECT
-  sessions.date,
-  sessions.source_channel,
-  sessions.source_name,
-  sessions.invite_code_id,
-  sessions.visitor_count,
-  sessions.session_count,
+  dimensions.date,
+  dimensions.source_channel,
+  dimensions.source_name,
+  dimensions.invite_code_id,
+  COALESCE(sessions.visitor_count, 0),
+  COALESCE(sessions.session_count, 0),
   COALESCE(sessions.page_view_count, 0),
   COALESCE(gallery.gallery_detail_count, 0),
   COALESCE(conversions.contact_click_count, 0),
   COALESCE(conversions.register_count, 0),
-  COALESCE(sessions.invite_register_count, 0),
-  COALESCE(sessions.membership_grant_count, 0),
+  COALESCE(conversions.invite_register_count, 0),
+  COALESCE(conversions.membership_grant_count, 0),
   COALESCE(sessions.active_seconds_total, 0),
   datetime('now')
-FROM source_sessions AS sessions
+FROM dimensions
+LEFT JOIN source_sessions AS sessions
+  ON sessions.date = dimensions.date
+ AND sessions.source_channel = dimensions.source_channel
+ AND sessions.source_name = dimensions.source_name
+ AND sessions.invite_code_id = dimensions.invite_code_id
 LEFT JOIN gallery_counts AS gallery
-  ON gallery.date = sessions.date
- AND gallery.source_channel = sessions.source_channel
- AND gallery.source_name = sessions.source_name
- AND gallery.invite_code_id = sessions.invite_code_id
+  ON gallery.date = dimensions.date
+ AND gallery.source_channel = dimensions.source_channel
+ AND gallery.source_name = dimensions.source_name
+ AND gallery.invite_code_id = dimensions.invite_code_id
 LEFT JOIN conversion_counts AS conversions
-  ON conversions.date = sessions.date
- AND conversions.source_channel = sessions.source_channel
- AND conversions.source_name = sessions.source_name
- AND conversions.invite_code_id = sessions.invite_code_id;
+  ON conversions.date = dimensions.date
+ AND conversions.source_channel = dimensions.source_channel
+ AND conversions.source_name = dimensions.source_name
+ AND conversions.invite_code_id = dimensions.invite_code_id;
 
 DELETE FROM analytics_daily_pages;
 
@@ -341,10 +368,10 @@ conversion_rows AS (
   FROM analytics_events AS event
   JOIN analytics_session_summaries AS summary
     ON summary.session_id = event.session_id
-   AND summary.date = date(datetime(event.occurred_at, '+8 hours'))
   WHERE event.event_name IN ('contact_method_click', 'register_success')
   GROUP BY
-    date, summary.source_channel, summary.source_name, summary.invite_code_id,
+    date(datetime(event.occurred_at, '+8 hours')),
+    summary.source_channel, summary.source_name, summary.invite_code_id,
     event.route_name, event.path, event.entity_type, event.entity_id
 ),
 combined AS (
@@ -441,11 +468,22 @@ WITH invite_sessions AS (
     date,
     invite_code_id,
     COUNT(DISTINCT visitor_id) AS visitor_count,
-    COUNT(DISTINCT session_id) AS session_count,
-    SUM(contact_click_count) AS contact_click_count
+    COUNT(DISTINCT session_id) AS session_count
   FROM analytics_session_summaries
   WHERE invite_code_id != ''
   GROUP BY date, invite_code_id
+),
+invite_contacts AS (
+  SELECT
+    date(datetime(event.occurred_at, '+8 hours')) AS date,
+    summary.invite_code_id,
+    COUNT(*) AS contact_click_count
+  FROM analytics_events AS event
+  JOIN analytics_session_summaries AS summary
+    ON summary.session_id = event.session_id
+  WHERE event.event_name = 'contact_method_click'
+    AND summary.invite_code_id != ''
+  GROUP BY date(datetime(event.occurred_at, '+8 hours')), summary.invite_code_id
 ),
 invite_registers AS (
   SELECT
@@ -467,6 +505,8 @@ invite_memberships AS (
 ids AS (
   SELECT date, invite_code_id FROM invite_sessions
   UNION
+  SELECT date, invite_code_id FROM invite_contacts
+  UNION
   SELECT date, invite_code_id FROM invite_registers
   UNION
   SELECT date, invite_code_id FROM invite_memberships
@@ -479,7 +519,7 @@ SELECT
   COALESCE(sessions.visitor_count, 0),
   COALESCE(sessions.session_count, 0),
   COALESCE(registers.register_count, 0),
-  COALESCE(sessions.contact_click_count, 0),
+  COALESCE(contacts.contact_click_count, 0),
   COALESCE(memberships.membership_grant_count, 0),
   datetime('now'),
   datetime('now')
@@ -492,6 +532,9 @@ LEFT JOIN invite_sessions AS sessions
 LEFT JOIN invite_registers AS registers
   ON registers.date = ids.date
  AND registers.invite_code_id = ids.invite_code_id
+LEFT JOIN invite_contacts AS contacts
+  ON contacts.date = ids.date
+ AND contacts.invite_code_id = ids.invite_code_id
 LEFT JOIN invite_memberships AS memberships
   ON memberships.date = ids.date
  AND memberships.invite_code_id = ids.invite_code_id;
