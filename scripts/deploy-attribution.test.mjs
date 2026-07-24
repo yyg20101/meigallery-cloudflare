@@ -72,13 +72,27 @@ test('生产启用凭证维护 Cron，dev 明确禁用', async () => {
     new URL('packages/attribution/wrangler.toml', ROOT_URL),
     'utf8',
   )
+  const productionTriggers = readTomlSection(source, 'triggers')
+  const devTriggers = readTomlSection(source, 'env.dev.triggers')
 
   assert.match(
-    source,
-    /\[triggers\](?:\s|#[^\n]*\n)*crons\s*=\s*\[\s*"[^"]+"\s*\]/,
+    productionTriggers,
+    /crons\s*=\s*\[[^\]]*"\*\/15 \* \* \* \*"[^\]]*\]/,
   )
   assert.match(
-    source,
-    /\[env\.dev\.triggers\]\s+crons\s*=\s*\[\s*\]/,
+    productionTriggers,
+    /crons\s*=\s*\[[^\]]*"17 3 \* \* \*"[^\]]*\]/,
   )
+  assert.match(devTriggers, /crons\s*=\s*\[\s*\]/)
 })
+
+function readTomlSection(source, name) {
+  const heading = `[${name}]`
+  const start = source.indexOf(heading)
+  assert.notEqual(start, -1, `缺少 ${heading}`)
+  const contentStart = start + heading.length
+  const nextSectionOffset = source.slice(contentStart).search(/\n\[/)
+  return nextSectionOffset === -1
+    ? source.slice(contentStart)
+    : source.slice(contentStart, contentStart + nextSectionOffset)
+}
