@@ -493,12 +493,20 @@ Test Event Code：
 
 ```text
 GET    /admin/attribution/connections
+GET    /admin/attribution/connections/:id
 POST   /admin/attribution/connections
 POST   /admin/attribution/connections/:id/candidates
-GET    /admin/attribution/connections/:id/candidates/:candidateId
+GET    /admin/attribution/connections/:id/candidate
 PATCH  /admin/attribution/connections/:id/runtime-policy
 POST   /admin/attribution/connections/:id/rollback
 POST   /admin/attribution/connections/:id/disable
+GET    /admin/attribution/connections/:id/sources
+POST   /admin/attribution/connections/:id/sources
+POST   /admin/attribution/connections/:id/sources/:sourceId/disable
+GET    /admin/attribution/quality
+GET    /admin/attribution/incidents
+GET    /admin/attribution/privacy-policy
+PATCH  /admin/attribution/privacy-policy
 ```
 
 Browser API：
@@ -510,13 +518,22 @@ POST /v1/events/contact
 POST /v1/browser-receipts
 ```
 
-内部 Service Binding：
+内部 Service Binding 使用命名 `AttributionServiceEntrypoint`，通过 HTTP
+`fetch` 契约承载：
 
 ```text
-ingestRegistrationEvent()
-dispatchBusinessOutbox()
-getSignedBrowserInstruction()
+POST /internal/v1/privacy-decision
+POST /internal/v1/registration-events
+GET  /internal/v1/events/:eventId/browser-instruction
+POST /internal/v1/contact-capabilities
+*    /admin/attribution/*
 ```
+
+API Worker 的 `ATTRIBUTION` binding 必须通过 Wrangler 的 `entrypoint` 字段
+固定到该命名入口。默认公网 `fetch` 不挂载 `/internal/v1/*` 或
+`/admin/attribution/*`；内部身份由主 API 完成登录和 Owner 鉴权后注入，
+浏览器提供的 actor、内部认证、Cookie 和 Authorization 头一律不转发。
+不再维护共享内部认证 secret 或 HTTP 兼容入口。
 
 所有修改 API 必须使用幂等键。并发条件通过内部 Active Version/Runtime Generation 自动传递，用户不需要理解版本号。
 

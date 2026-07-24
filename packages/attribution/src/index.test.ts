@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { app } from './index'
+import { ATTRIBUTION_SERVICE_BINDING } from '@meigallery/shared/constants'
+import { app, attributionServiceApp } from './index'
 import type { AttributionBindings } from './env'
 
 function createBindings(
@@ -43,8 +44,22 @@ describe('attribution worker', () => {
     })
   })
 
-  it('私有内部路由按固定 /internal/v1 前缀挂载', async () => {
+  it('公网默认入口不挂载内部 Service Binding 路由', async () => {
     const response = await app.request(
+      '/internal/v1/registration-events',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      },
+      createBindings(),
+    )
+
+    expect(response.status).toBe(404)
+  })
+
+  it('命名 Service Binding 入口按固定 /internal/v1 前缀挂载', async () => {
+    const response = await attributionServiceApp.request(
       '/internal/v1/registration-events',
       {
         method: 'POST',
@@ -63,11 +78,63 @@ describe('attribution worker', () => {
   it('公共网络直接访问管理路由始终返回 404', async () => {
     const response = await app.request(
       '/admin/attribution/connections',
-      {},
+      {
+        headers: {
+          [ATTRIBUTION_SERVICE_BINDING.HEADERS.ACTOR_ID]: '1',
+          [ATTRIBUTION_SERVICE_BINDING.HEADERS.ACTOR_ROLE]: 'owner',
+          [ATTRIBUTION_SERVICE_BINDING.HEADERS.REQUEST_ID]:
+            '019f931b-132e-77c2-b06d-9378e4f6d680',
+        },
+      },
       createBindings(),
     )
 
     expect(response.status).toBe(404)
+  })
+
+  it('命名入口只接受主 API 注入的可信 Owner 身份', async () => {
+    const db = {
+      prepare: () => ({
+        bind() {
+          return this
+        },
+        all: async () => ({ results: [] }),
+      }),
+    }
+    const noActor = await attributionServiceApp.request(
+      '/admin/attribution/connections',
+      {},
+      createBindings({ DB: db as unknown as D1Database }),
+    )
+    const adminActor = await attributionServiceApp.request(
+      '/admin/attribution/connections',
+      {
+        headers: {
+          [ATTRIBUTION_SERVICE_BINDING.HEADERS.ACTOR_ID]: '2',
+          [ATTRIBUTION_SERVICE_BINDING.HEADERS.ACTOR_ROLE]: 'admin',
+          [ATTRIBUTION_SERVICE_BINDING.HEADERS.REQUEST_ID]:
+            '019f931b-132e-77c2-b06d-9378e4f6d680',
+        },
+      },
+      createBindings({ DB: db as unknown as D1Database }),
+    )
+    const ownerActor = await attributionServiceApp.request(
+      '/admin/attribution/connections',
+      {
+        headers: {
+          [ATTRIBUTION_SERVICE_BINDING.HEADERS.ACTOR_ID]: '1',
+          [ATTRIBUTION_SERVICE_BINDING.HEADERS.ACTOR_ROLE]: 'owner',
+          [ATTRIBUTION_SERVICE_BINDING.HEADERS.REQUEST_ID]:
+            '019f931b-132e-77c2-b06d-9378e4f6d680',
+        },
+      },
+      createBindings({ DB: db as unknown as D1Database }),
+    )
+
+    expect(noActor.status).toBe(404)
+    expect(adminActor.status).toBe(403)
+    expect(ownerActor.status).toBe(200)
+    expect(await ownerActor.json()).toEqual({ data: [] })
   })
 
   it.each([

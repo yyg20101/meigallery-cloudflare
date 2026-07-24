@@ -20,6 +20,9 @@
 - 所有写命令必须幂等；同一幂等键重放为零写入、零审计、零验证。使用新幂等键提交语义相同的 no-op 时，只允许写入该键的回执，不得改业务状态、写审计或启动验证，防止该键随后被改作其他请求。
 - 候选失败不得影响当前 Active；Server 熔断不得关闭 Browser。
 - 生产切换禁止双写、双消费和双平台投递；观察期结束后删除旧运行路径。
+- `/internal/v1/*` 与 `/admin/attribution/*` 只允许通过命名
+  `AttributionServiceEntrypoint` 的 Service Binding 调用；独立 Worker
+  默认公网 `fetch` 禁止挂载这两组路由，不维护共享认证 secret 或兼容入口。
 - 经 Cloudflare 官方文档于 2026-07-24 核验：Workers Free 为账户级 100,000 请求/日；D1 Free 为账户级 5,000,000 rows read/日、100,000 rows written/日和 5GB 总存储；Queues Free 为账户级 10,000 operations/日且消息只保留 24 小时。容量预算不得把额度视为单个 Worker、数据库或 Queue 独享。
 - 不引入 Cloudflare Pages 或非 Cloudflare 基础设施。
 - 每个任务按“失败测试、最小实现、通过测试、提交”顺序执行。

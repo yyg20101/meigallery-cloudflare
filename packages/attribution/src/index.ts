@@ -1,12 +1,18 @@
+import { WorkerEntrypoint } from 'cloudflare:workers'
 import { ATTRIBUTION_CONTRACT_VERSION } from '@meigallery/shared'
+import { ATTRIBUTION_SERVICE_BINDING } from '@meigallery/shared/constants'
 import { Hono } from 'hono'
+import { createMiddleware } from 'hono/factory'
 import {
   parseAttributionEnvironment,
   type AttributionBindings,
   type AttributionEnvironment,
 } from './env'
 import type { AttributionQueueMessage } from './domain/queue'
-import { createAdminAttributionRoutes } from './routes/admin'
+import {
+  createAdminAttributionRoutes,
+  type AdminAttributionActor,
+} from './routes/admin'
 import { browserAttributionRoutes } from './routes/browser'
 import { internalRoutes } from './routes/internal'
 import { runAttributionMaintenance } from './scheduled'
@@ -24,7 +30,15 @@ export const app = new Hono<{
   Variables: AttributionVariables
 }>()
 
-app.use('*', async (c, next) => {
+export const attributionServiceApp = new Hono<{
+  Bindings: AttributionBindings
+  Variables: AttributionVariables
+}>()
+
+const parseEnvironment = createMiddleware<{
+  Bindings: AttributionBindings
+  Variables: AttributionVariables
+}>(async (c, next) => {
   try {
     c.set('attributionEnvironment', parseAttributionEnvironment(c.env))
   } catch {
@@ -39,17 +53,34 @@ app.use('*', async (c, next) => {
   await next()
 })
 
+app.use('*', parseEnvironment)
+attributionServiceApp.use('*', parseEnvironment)
+
 app.get('/health', c => c.json({
   service: 'meigallery-attribution',
   status: 'ok',
   contractVersion: ATTRIBUTION_CONTRACT_VERSION,
 }))
 app.route('/', browserAttributionRoutes)
-app.route('/internal/v1', internalRoutes)
-app.route(
+
+attributionServiceApp.route('/internal/v1', internalRoutes)
+attributionServiceApp.route(
   '/admin/attribution',
-  createAdminAttributionRoutes(),
+  createAdminAttributionRoutes({
+    authorize: async request => readServiceBindingActor(request),
+  }),
 )
+
+/**
+ * 仅可由 Cloudflare Service Binding 指向的命名入口调用。
+ * 公网默认 fetch 不挂载内部事件和管理路由。
+ */
+export class AttributionServiceEntrypoint
+  extends WorkerEntrypoint<AttributionBindings> {
+  async fetch(request: Request): Promise<Response> {
+    return attributionServiceApp.fetch(request, this.env, this.ctx)
+  }
+}
 
 export default {
   fetch(request, env, ctx) {
@@ -90,3 +121,30 @@ export default {
     })
   },
 } satisfies ExportedHandler<AttributionBindings, AttributionQueueMessage>
+
+function readServiceBindingActor(
+  request: Request,
+): AdminAttributionActor | null {
+  const actorId = Number(request.headers.get(
+    ATTRIBUTION_SERVICE_BINDING.HEADERS.ACTOR_ID,
+  ))
+  const role = request.headers.get(
+    ATTRIBUTION_SERVICE_BINDING.HEADERS.ACTOR_ROLE,
+  )
+  const requestId = request.headers.get(
+    ATTRIBUTION_SERVICE_BINDING.HEADERS.REQUEST_ID,
+  )
+  if (
+    !Number.isSafeInteger(actorId)
+    || actorId <= 0
+    || (role !== 'admin' && role !== 'owner')
+    || !requestId
+    || !/^[A-Za-z0-9:_-]{16,160}$/.test(requestId)
+  ) {
+    return null
+  }
+  return {
+    actorId,
+    role: role === 'admin' ? 'admin' : 'owner',
+  }
+}

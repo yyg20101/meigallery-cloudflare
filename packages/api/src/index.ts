@@ -99,7 +99,13 @@ app.use('*', cors({
     return allowed.includes(origin) ? origin : ''
   },
   credentials: true,
-  allowHeaders: ['Content-Type', 'Authorization', 'X-Analytics-Visitor-Id', 'X-Analytics-Session-Id'],
+  allowHeaders: [
+    'Content-Type',
+    'Authorization',
+    'Idempotency-Key',
+    'X-Analytics-Visitor-Id',
+    'X-Analytics-Session-Id',
+  ],
   allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   maxAge: 86400,
 }))

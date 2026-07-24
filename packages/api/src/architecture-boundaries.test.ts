@@ -12,10 +12,14 @@ describe('架构依赖边界', () => {
     expect(source).not.toContain('recordRegistration')
   })
 
-  it('只有归因 Service Binding client 可以调用 ATTRIBUTION.fetch 和声明内部 URL', async () => {
+  it('只有归因 Service Binding 网关可以调用 ATTRIBUTION.fetch 和声明内部 URL', async () => {
     const root = fileURLToPath(new URL('.', import.meta.url))
+    const gateways = new Set([
+      'attribution-service-client.ts',
+      'attribution-proxy.ts',
+    ])
     const files = (await collectTypeScriptSources(root))
-      .filter(file => basename(file) !== 'attribution-service-client.ts')
+      .filter(file => !gateways.has(basename(file)))
     const violations: string[] = []
 
     for (const file of files) {

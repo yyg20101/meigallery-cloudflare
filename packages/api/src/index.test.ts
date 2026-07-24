@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { ATTRIBUTION_SERVICE_BINDING } from '@meigallery/shared/constants'
 import { describe, expect, it } from 'vitest'
 import app from './index'
 import type { Bindings } from './index'
@@ -20,6 +21,25 @@ describe('API CORS 安全配置', () => {
   it('支持多个明确允许的生产 Origin', async () => {
     const res = await app.fetch(new Request('https://api.test/api/health', { headers: { Origin: 'https://www.616618.xyz' } }), env('https://616618.xyz,https://www.616618.xyz'), {} as ExecutionContext)
     expect(res.headers.get('access-control-allow-origin')).toBe('https://www.616618.xyz')
+  })
+
+  it('归因写命令预检明确允许 Idempotency-Key', async () => {
+    const res = await app.fetch(new Request(
+      'https://api.test/api/admin/attribution-runtime/connections',
+      {
+        method: 'OPTIONS',
+        headers: {
+          Origin: 'https://616618.xyz',
+          'Access-Control-Request-Method': 'POST',
+          'Access-Control-Request-Headers':
+            'content-type,idempotency-key',
+        },
+      },
+    ), env('https://616618.xyz'), {} as ExecutionContext)
+
+    expect(res.status).toBe(204)
+    expect(res.headers.get('access-control-allow-headers'))
+      .toContain('Idempotency-Key')
   })
 })
 
@@ -53,6 +73,9 @@ describe('统一 Queue 与 Cron 入口', () => {
     expect(config).not.toContain('TIKTOK_EVENTS_QUEUE')
     for (const queue of ['meigallery-ad-meta', 'meigallery-ad-meta-dlq', 'meigallery-ad-tiktok', 'meigallery-ad-tiktok-dlq', 'meigallery-ad-google', 'meigallery-ad-google-dlq']) expect(config).toContain(queue)
     expect((config.match(/max_retries = 3/g) ?? [])).toHaveLength(3)
+    expect(config).toContain(
+      `entrypoint = "${ATTRIBUTION_SERVICE_BINDING.ENTRYPOINT}"`,
+    )
   })
 })
 

@@ -171,14 +171,23 @@ git commit -m "feat: 建立归因独立管理 API"
 - Create: `packages/api/src/routes/admin/attribution-proxy.test.ts`
 - Modify: `packages/api/src/routes/admin/index.ts`
 - Modify: `packages/api/src/index.ts`
+- Modify: `packages/api/src/index.test.ts`
+- Modify: `packages/api/src/architecture-boundaries.test.ts`
 - Modify: `packages/api/wrangler.toml`
+- Modify: `packages/attribution/src/index.ts`
+- Modify: `packages/attribution/src/index.test.ts`
+- Modify: `packages/attribution/src/test/cloudflare-workers.ts`
+- Modify: `packages/attribution/vitest.config.ts`
 - Modify: `packages/shared/src/constants/index.ts`
 
 **Interfaces:**
-- Consumes: 已认证 `userId/userRole` 和 `ATTRIBUTION` Fetcher binding。
-- Produces: `/api/admin/attribution-runtime/*` 同源代理；写请求注入可信 actor，不信任浏览器 actor 字段。
+- Consumes: 已认证 `userId/userRole` 和指向命名
+  `AttributionServiceEntrypoint` 的 `ATTRIBUTION` Fetcher binding。
+- Produces: `/api/admin/attribution-runtime/*` 同源代理；写请求注入可信
+  actor，不信任浏览器 actor 字段。独立 Worker 的默认公网 `fetch` 不挂载内部
+  事件路由或管理路由。
 
-- [ ] **Step 1: 写权限和头过滤失败测试**
+- [x] **Step 1: 写权限和头过滤失败测试**
 
 ```ts
 it.each([
@@ -204,13 +213,14 @@ it('丢弃客户端伪造 actor 和内部认证头', async () => {
     expect.objectContaining({
       headers: expectHeaders({
         'X-Attribution-Actor-Id': '1',
+        'X-Attribution-Actor-Role': 'owner',
       }),
     }),
   )
 })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -220,7 +230,7 @@ corepack pnpm --filter @meigallery/api exec vitest run src/routes/admin/attribut
 
 Expected: FAIL，代理路由不存在。
 
-- [ ] **Step 3: 实现最小可信代理**
+- [x] **Step 3: 实现最小可信代理**
 
 允许转发的请求头仅为：
 
@@ -239,9 +249,24 @@ headers.set('X-Attribution-Actor-Role', 'owner')
 headers.set('X-Attribution-Request-Id', crypto.randomUUID())
 ```
 
-Attribution Worker 只接受 Service Binding 注入的内部签名头；公共网络命中 `/admin/*` 返回 `404`。
+API 的 Wrangler binding 必须固定到：
 
-- [ ] **Step 4: 运行代理和类型测试**
+```toml
+[[services]]
+binding = "ATTRIBUTION"
+service = "meigallery-attribution"
+entrypoint = "AttributionServiceEntrypoint"
+```
+
+独立 Worker 使用 Cloudflare 命名 `WorkerEntrypoint` 承载 `/internal/v1/*`
+和 `/admin/attribution/*`。默认公网 `fetch` 只承载 Browser API 与健康检查，
+因此公网即使伪造内部头也无法命中私有路由。Service Binding 自身是账户配置
+授予的 capability，不再增加共享 HMAC secret、签名轮换或兼容认证路径。
+代理只允许 `GET/POST/PATCH`，请求体上限为 64 KiB，响应只保留
+`Content-Type` 并强制 `no-store`；API 的 CORS 白名单显式允许
+`Idempotency-Key`，确保跨子域后台写命令可以完成预检。
+
+- [x] **Step 4: 运行代理和类型测试**
 
 Run:
 
@@ -252,10 +277,27 @@ corepack pnpm --filter @meigallery/api exec tsc --noEmit
 
 Expected: PASS，非 Owner 不能修改或读取敏感连接信息。
 
-- [ ] **Step 5: 提交**
+实际结果：
+
+- API 完整套件：`119` 个测试文件、`1004` 项测试通过。
+- Attribution 完整套件：`40` 个测试文件、`282` 项测试通过。
+- Shared 完整套件：`4` 个测试文件、`16` 项测试通过。
+- API、Attribution、Shared 类型检查通过。
+- API 与 Attribution Wrangler dry-run 通过，API 明确显示
+  `meigallery-attribution#AttributionServiceEntrypoint`。
+
+- [x] **Step 5: 提交**
 
 ```bash
-git add packages/api/src/routes/admin/attribution-proxy* packages/api/src/routes/admin/index.ts packages/api/src/index.ts packages/api/wrangler.toml packages/shared/src/constants/index.ts
+git add packages/api/src/routes/admin/attribution-proxy* \
+  packages/api/src/routes/admin/index* \
+  packages/api/src/index* \
+  packages/api/src/architecture-boundaries.test.ts \
+  packages/api/wrangler.toml \
+  packages/attribution/src/index* \
+  packages/attribution/src/test/cloudflare-workers.ts \
+  packages/attribution/vitest.config.ts \
+  packages/shared/src/constants/index.ts
 git commit -m "feat: 代理归因控制面并统一 Owner 鉴权"
 ```
 
