@@ -59,7 +59,7 @@ packages/web/app/composables/useAdAttribution.ts
 - Consumes: `connection_id`、`version_id` 和运行策略。
 - Produces: 来源、上下文、事实、delivery、outbox、Browser 回执、验证和质量表。
 
-- [ ] **Step 1: 写迁移失败测试**
+- [x] **Step 1: 写迁移失败测试**
 
 ```js
 test('事件 Schema 具备事实和投递唯一约束', () => {
@@ -70,7 +70,7 @@ test('事件 Schema 具备事实和投递唯一约束', () => {
 })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -80,7 +80,7 @@ node --test packages/attribution/migrations/0002_event_delivery.test.mjs
 
 Expected: FAIL，迁移文件不存在。
 
-- [ ] **Step 3: 编写事件 Schema**
+- [x] **Step 3: 编写事件 Schema**
 
 核心表和唯一约束必须为：
 
@@ -203,7 +203,7 @@ CREATE TABLE attribution_privacy_policy (
 );
 ```
 
-- [ ] **Step 4: 运行迁移测试**
+- [x] **Step 4: 运行迁移测试**
 
 Run:
 
@@ -214,7 +214,7 @@ corepack pnpm --filter @meigallery/attribution exec wrangler d1 migrations apply
 
 Expected: PASS，Wrangler 显示第二个 migration applied。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add packages/attribution/migrations packages/attribution/src/test
