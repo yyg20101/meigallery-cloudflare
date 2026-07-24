@@ -233,7 +233,7 @@ git commit -m "feat: 建立归因事件投递数据模型"
 - Consumes: `attribution_managed_sources`、当前有效连接集合。
 - Produces: `createManagedSource()`、`resolveAttributionRoute()`。
 
-- [ ] **Step 1: 写完整路由矩阵失败测试**
+- [x] **Step 1: 写完整路由矩阵失败测试**
 
 ```ts
 it.each([
@@ -259,7 +259,7 @@ it('多连接只有 click ID 时不猜测', async () => {
 })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -269,7 +269,7 @@ corepack pnpm --filter @meigallery/attribution exec vitest run src/domain/routin
 
 Expected: FAIL，路由服务不存在。
 
-- [ ] **Step 3: 实现 opaque proof**
+- [x] **Step 3: 实现 opaque proof**
 
 `createManagedSource()` 使用 32 字节随机 proof：
 
@@ -292,7 +292,7 @@ return noAttribution
 
 任何普通 `utm_source=facebook|tiktok|google` 均不能改变结果。
 
-- [ ] **Step 4: 运行测试**
+- [x] **Step 4: 运行测试**
 
 Run:
 
@@ -302,7 +302,7 @@ corepack pnpm --filter @meigallery/attribution exec vitest run src/domain/routin
 
 Expected: PASS，矩阵中每个来源只返回一个 connection 或 `null`。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add packages/attribution/src/domain/routing* packages/attribution/src/services/managed-source-service*
