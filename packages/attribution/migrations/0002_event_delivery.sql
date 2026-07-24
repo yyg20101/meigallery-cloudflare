@@ -45,11 +45,19 @@ CREATE INDEX attribution_contexts_connection_expiry
 
 CREATE TABLE attribution_facts (
   id TEXT PRIMARY KEY,
+  event_id TEXT NOT NULL UNIQUE,
   event_name TEXT NOT NULL CHECK (
     event_name IN ('Contact','CompleteRegistration')
   ),
   fact_origin TEXT NOT NULL CHECK (fact_origin IN ('live','synthetic')),
-  dedupe_key TEXT NOT NULL,
+  dedupe_hash TEXT NOT NULL UNIQUE CHECK (
+    length(dedupe_hash) = 64
+    AND dedupe_hash NOT GLOB '*[^0-9a-f]*'
+  ),
+  event_fingerprint TEXT NOT NULL CHECK (
+    length(event_fingerprint) = 64
+    AND event_fingerprint NOT GLOB '*[^0-9a-f]*'
+  ),
   connection_id TEXT
     REFERENCES attribution_connections(id),
   version_id TEXT
@@ -63,7 +71,6 @@ CREATE TABLE attribution_facts (
   analytics_dimensions_json TEXT NOT NULL
     CHECK (json_valid(analytics_dimensions_json)),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  UNIQUE (dedupe_key),
   CHECK (
     (
       connection_id IS NULL
@@ -85,6 +92,10 @@ CREATE INDEX attribution_facts_connection_occurred
 
 CREATE INDEX attribution_facts_origin_occurred
   ON attribution_facts(fact_origin, occurred_at DESC);
+
+CREATE UNIQUE INDEX attribution_facts_external_event_unique
+  ON attribution_facts(external_event_id)
+  WHERE external_event_id IS NOT NULL;
 
 CREATE TABLE attribution_deliveries (
   id TEXT PRIMARY KEY,

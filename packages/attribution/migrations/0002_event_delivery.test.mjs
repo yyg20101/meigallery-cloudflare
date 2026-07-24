@@ -22,7 +22,8 @@ test('事件 Schema 具备完整事实、投递和隐私边界', async () => {
     assert.match(migration, new RegExp(`CREATE TABLE ${table}`))
   }
 
-  assert.match(migration, /UNIQUE\s*\(dedupe_key\)/i)
+  assert.match(migration, /dedupe_hash\s+TEXT\s+NOT NULL\s+UNIQUE/i)
+  assert.doesNotMatch(migration, /\bdedupe_key\b/i)
   assert.match(
     migration,
     /UNIQUE\s*\(fact_id,\s*connection_id,\s*transport\)/i,
@@ -38,6 +39,15 @@ test('事件 Schema 具备完整事实、投递和隐私边界', async () => {
   assert.match(
     migration,
     /CHECK\s*\(fact_origin IN \('live','synthetic'\)\)/i,
+  )
+  assert.match(
+    migration,
+    /event_fingerprint\s+TEXT\s+NOT NULL[\s\S]*length\(event_fingerprint\)\s*=\s*64/i,
+  )
+  assert.match(migration, /event_id\s+TEXT\s+NOT NULL\s+UNIQUE/i)
+  assert.match(
+    migration,
+    /CREATE UNIQUE INDEX attribution_facts_external_event_unique[\s\S]*WHERE external_event_id IS NOT NULL/i,
   )
   assert.match(migration, /\bproof_hash\s+TEXT\s+NOT NULL\s+UNIQUE\b/i)
   assert.doesNotMatch(migration, /\bproof_hmac\b/i)

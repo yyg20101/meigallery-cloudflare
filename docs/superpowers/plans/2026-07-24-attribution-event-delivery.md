@@ -63,7 +63,7 @@ packages/web/app/composables/useAdAttribution.ts
 
 ```js
 test('事件 Schema 具备事实和投递唯一约束', () => {
-  assert.match(migration, /UNIQUE\s*\(dedupe_key\)/i)
+  assert.match(migration, /dedupe_hash\s+TEXT\s+NOT NULL\s+UNIQUE/i)
   assert.match(migration, /UNIQUE\s*\(fact_id,\s*connection_id,\s*transport\)/i)
   assert.match(migration, /CHECK\s*\(transport IN \('browser','server'\)\)/i)
   assert.doesNotMatch(migration, /release_commit|verified_commit/i)
@@ -116,7 +116,9 @@ CREATE TABLE attribution_facts (
   id TEXT PRIMARY KEY,
   event_name TEXT NOT NULL CHECK (event_name IN ('Contact','CompleteRegistration')),
   fact_origin TEXT NOT NULL CHECK (fact_origin IN ('live','synthetic')),
-  dedupe_key TEXT NOT NULL UNIQUE,
+  dedupe_hash TEXT NOT NULL UNIQUE,
+  event_id TEXT NOT NULL UNIQUE,
+  event_fingerprint TEXT NOT NULL,
   connection_id TEXT,
   version_id TEXT,
   provider TEXT,
@@ -488,14 +490,14 @@ git commit -m "feat: 统一地区隐私与归因运行租约"
 - Consumes: 已验证租约、Active/Draining 版本快照和运行策略。
 - Produces: `recordCanonicalFact()`、`planDeliveries()`、`recordBrowserReceipt()`。
 
-- [ ] **Step 1: 写去重和配对失败测试**
+- [x] **Step 1: 写去重和配对失败测试**
 
 ```ts
 it('同一事实重复提交只保留一组 Browser/Server delivery', async () => {
   const first = await recordCanonicalFact(env, validContactEvent)
   const second = await recordCanonicalFact(env, validContactEvent)
   expect(second.factId).toBe(first.factId)
-  expect(await countFacts(db, validContactEvent.dedupeKey)).toBe(1)
+  expect(await countFactsByDedupeHash(db, validContactEvent.dedupeKey)).toBe(1)
   expect(await countDeliveries(db, first.factId)).toBe(2)
   expect(new Set(await externalEventIds(db, first.factId))).toEqual(
     new Set([first.externalEventId]),
@@ -520,7 +522,7 @@ it.each([
 })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -530,7 +532,7 @@ corepack pnpm --filter @meigallery/attribution exec vitest run src/services/fact
 
 Expected: FAIL，事实服务不存在。
 
-- [ ] **Step 3: 实现事实与 Planner**
+- [x] **Step 3: 实现事实与 Planner**
 
 稳定事件 ID：
 
@@ -552,12 +554,19 @@ export interface DeliveryPlanInput {
   provider: AttributionProvider
   eventName: CanonicalConversionEvent
   runtimePolicy: AttributionRuntimePolicy
+  binding: DeliveryPlanBinding
 }
 ```
 
 当 `browserEnabled=true` 创建一条 Browser delivery；当 `serverEnabled=true`、熔断关闭且稳定分桶小于 effective 时创建一条 Server delivery。事实、delivery 和加密 outbox 使用同一 D1 `batch` 写入。
+原始 `dedupeKey` 只在进程内参与 SHA-256 计算，D1 仅保存 `dedupe_hash`；业务
+`event_id`、`dedupe_hash` 与归因 `external_event_id` 分别保持唯一，冲突直接拒绝覆盖。
+Browser outbox 只保存浏览器投递必需字段，不携带上下文标识符、IP、UA 或业务用户数据；
+Server outbox 才能在授权范围内保存加密用户数据。跨 provider 上下文/租约错配保留最小事实
+但返回零广告 Delivery；D1 故障返回 `ATTRIBUTION_RUNTIME_UNAVAILABLE` 交由上游重试，
+不得降级成永久未归因事实。
 
-- [ ] **Step 4: 运行测试**
+- [x] **Step 4: 运行测试**
 
 Run:
 
@@ -567,7 +576,7 @@ corepack pnpm --filter @meigallery/attribution exec vitest run src/services/fact
 
 Expected: PASS；重复请求、刷新和 Queue 重试均不产生新 `external_event_id`。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add packages/attribution/src/services/fact-service* packages/attribution/src/services/delivery-planner* packages/attribution/src/services/browser-receipt*

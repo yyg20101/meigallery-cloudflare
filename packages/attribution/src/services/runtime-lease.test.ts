@@ -101,6 +101,25 @@ describe('归因运行租约', () => {
     }, input())).rejects.toThrow('ATTRIBUTION_RUNTIME_LEASE_INVALID')
   })
 
+  it('D1 故障必须标记运行时不可用以便上游重试', async () => {
+    const brokenDb = {
+      prepare() {
+        throw new Error('D1 unavailable')
+      },
+    } as unknown as D1Database
+
+    await expect(issueRuntimeLease({
+      ...environment(),
+      db: brokenDb,
+    }, input())).rejects.toThrow('ATTRIBUTION_RUNTIME_UNAVAILABLE')
+
+    const lease = await issueRuntimeLease(environment(), input())
+    await expect(verifyRuntimeLease({
+      ...environment(),
+      db: brokenDb,
+    }, lease)).rejects.toThrow('ATTRIBUTION_RUNTIME_UNAVAILABLE')
+  })
+
   it('密钥轮换后 previous 仍可验证租约', async () => {
     const lease = await issueRuntimeLease(environment(), input())
     now = new Date('2026-07-24T00:10:00.000Z')

@@ -157,7 +157,7 @@ async function requireEligibleRuntime(
       LIMIT 1
     `).bind(input.connectionId, input.provider).first<EligibleRuntimeRow>()
   } catch {
-    throw leaseInvalid()
+    throw runtimeUnavailable()
   }
   if (
     !row
@@ -203,7 +203,7 @@ async function requireLeaseEnabled(
       payload.provider,
     ).first<{ connection_id: string }>()
   } catch {
-    throw leaseInvalid()
+    throw runtimeUnavailable()
   }
   if (row?.connection_id !== payload.connectionId) throw leaseInvalid()
 }
@@ -280,4 +280,8 @@ function leaseInvalid(): AttributionDomainError {
 
 function delayedEventInvalid(): AttributionDomainError {
   return new AttributionDomainError('ATTRIBUTION_DELAYED_EVENT_INVALID')
+}
+
+function runtimeUnavailable(): AttributionDomainError {
+  return new AttributionDomainError('ATTRIBUTION_RUNTIME_UNAVAILABLE')
 }
