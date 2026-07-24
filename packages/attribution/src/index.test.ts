@@ -43,6 +43,23 @@ describe('attribution worker', () => {
     })
   })
 
+  it('私有内部路由按固定 /internal/v1 前缀挂载', async () => {
+    const response = await app.request(
+      '/internal/v1/registration-events',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      },
+      createBindings(),
+    )
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({
+      code: 'ATTRIBUTION_REGISTRATION_EVENT_INVALID',
+    })
+  })
+
   it.each([
     ['空 Origin', { ATTRIBUTION_PUBLIC_ORIGINS: '' }],
     ['通配符 Origin', { ATTRIBUTION_PUBLIC_ORIGINS: '*' }],

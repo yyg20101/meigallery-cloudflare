@@ -34,14 +34,16 @@ import {
   cleanupAnalyticsRetention,
 } from './services/analytics-aggregate'
 import { recoverAttributionOutbox } from './services/ad-platform/recovery'
-import { recoverRegistrationConversionFacts } from './services/registration-conversion-recovery'
 import { collectAttributionQuality } from './services/ad-platform/quality-collector'
 import { reconcileGoogleDeliveryDiagnostics } from './services/ad-platform/google-diagnostics-service'
+import { dispatchAttributionBusinessOutbox } from './services/attribution-business-outbox'
+import { createAttributionServiceClient } from './services/attribution-service-client'
 
 /** Hono 应用绑定类型 */
 export type Bindings = {
   DB: D1Database
   R2: R2Bucket
+  ATTRIBUTION: Fetcher
   APP_ENV: string
   SESSION_SECRET: string
   TURNSTILE_SECRET_KEY: string
@@ -278,6 +280,19 @@ async function handleScheduled(event: ScheduledEvent, env: Bindings): Promise<vo
   const db = env.DB
 
   if (event.cron === ATTRIBUTION_RECOVERY_CRON) {
+    try {
+      const dispatch = await dispatchAttributionBusinessOutbox(
+        db,
+        createAttributionServiceClient(env.ATTRIBUTION),
+        { limit: 100, now: new Date(event.scheduledTime) },
+      )
+      console.log('[cron] 注册归因业务 Outbox 投递完成:', dispatch)
+    } catch {
+      console.error('[cron] 注册归因业务 Outbox 投递失败:', {
+        errorCode: 'attribution_business_outbox_dispatch_failed',
+      })
+    }
+
     if (shouldRecoverAttributionOutbox(event)) {
       try {
         const recovery = await recoverAttributionOutbox(env, 100)
@@ -293,16 +308,6 @@ async function handleScheduled(event: ScheduledEvent, env: Bindings): Promise<vo
       }
     }
 
-    if (shouldRecoverRegistrationConversions(event)) {
-      try {
-        const recovery = await recoverRegistrationConversionFacts(db, new Date(event.scheduledTime))
-        console.log('[cron] 注册转化事实修复完成:', recovery)
-      } catch {
-        console.error('[cron.registration-recovery] 注册事实修复任务失败', {
-          code: 'REGISTRATION_CONVERSION_RECOVERY_JOB_FAILED',
-        })
-      }
-    }
     if (!shouldRunDailyMaintenance(event)) return
   }
   else {
@@ -388,12 +393,6 @@ function shouldRunDailyMaintenance(event: ScheduledEvent) {
   return !Number.isNaN(scheduledAt.getTime())
     && scheduledAt.getUTCHours() === 0
     && scheduledAt.getUTCMinutes() === 0
-}
-
-function shouldRecoverRegistrationConversions(event: ScheduledEvent) {
-  if (event.cron !== ATTRIBUTION_RECOVERY_CRON) return false
-  const scheduledAt = new Date(event.scheduledTime)
-  return !Number.isNaN(scheduledAt.getTime()) && scheduledAt.getUTCMinutes() === 0
 }
 
 function shouldRecoverAttributionOutbox(event: ScheduledEvent) {

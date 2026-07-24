@@ -6,6 +6,7 @@ import {
   type AttributionEnvironment,
 } from './env'
 import type { AttributionQueueMessage } from './domain/queue'
+import { internalRoutes } from './routes/internal'
 import { runAttributionMaintenance } from './scheduled'
 import { consumeAttributionQueue } from './services/queue-consumer'
 export {
@@ -41,6 +42,7 @@ app.get('/health', c => c.json({
   status: 'ok',
   contractVersion: ATTRIBUTION_CONTRACT_VERSION,
 }))
+app.route('/internal/v1', internalRoutes)
 
 export default {
   fetch(request, env, ctx) {

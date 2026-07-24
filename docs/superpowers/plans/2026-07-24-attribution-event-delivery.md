@@ -914,7 +914,7 @@ Meta/TikTok/Google Queue。本阶段尚未部署独立 Worker，production 保�
 - Consumes: Task 1 的 `AttributionBusinessEventV1`。
 - Produces: 注册事务 outbox、`dispatchAttributionBusinessOutbox()`、签名联系人 capability 和 `ATTRIBUTION` Service Binding。
 
-- [ ] **Step 1: 写注册事务失败测试**
+- [x] **Step 1: 写注册事务失败测试**
 
 ```ts
 it('注册失败不产生归因 outbox', async () => {
@@ -938,7 +938,7 @@ it('联系人接口在归因不可用时仍返回联系人但不伪造 capabilit
 })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -949,7 +949,7 @@ corepack pnpm --filter @meigallery/attribution exec vitest run src/services/cont
 
 Expected: FAIL，outbox 和 Service Binding client 不存在。
 
-- [ ] **Step 3: 实现业务 outbox 和 Binding client**
+- [x] **Step 3: 实现业务 outbox 和 Binding client**
 
 API D1 表：
 
@@ -1016,7 +1016,7 @@ interface ContactCapabilityV1 {
 `ATTRIBUTION_SIGNING_KEY_CURRENT` HMAC-SHA256；轮换窗口仅允许
 `ATTRIBUTION_SIGNING_KEY_PREVIOUS` 验证既有短期 token。
 
-- [ ] **Step 4: 运行测试**
+- [x] **Step 4: 运行测试**
 
 Run:
 
@@ -1028,7 +1028,12 @@ corepack pnpm --filter @meigallery/attribution exec vitest run src/services/cont
 
 Expected: PASS；重复 dispatch 不会在 Attribution D1 产生重复事实。
 
-- [ ] **Step 5: 提交**
+结果：API 全量 `990/990`、Attribution 全量 `222/222`、Shared
+`16/16` 通过；API、Attribution、Shared 类型检查和 Web production
+build 通过，API/Attribution 的 production、dev Wrangler dry-run 均通过。
+本任务未部署、未切换 production 流量。
+
+- [x] **Step 5: 提交**
 
 ```bash
 git add packages/api/migrations/0058_attribution_business_outbox* packages/api/src/services/attribution-* packages/api/src/index.ts packages/api/src/routes/auth.ts packages/api/src/routes/contact-methods* packages/api/wrangler.toml packages/attribution/src/services/contact-capability* packages/attribution/src/routes/internal* packages/attribution/src/index.ts
