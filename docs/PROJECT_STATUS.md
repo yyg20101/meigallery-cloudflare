@@ -96,6 +96,7 @@
 - `docs/GIT_WORKFLOW.md`：分支、PR、tag 和 commit 规范。
 - `docs/AD_PLATFORM_ARCHITECTURE.md`：通用广告归因架构。
 - `docs/superpowers/specs/2026-07-24-attribution-runtime-isolation-design.md`：独立归因运行时、零中断版本切换与迁移的唯一目标设计。
+- `docs/superpowers/plans/2026-07-24-attribution-runtime-isolation.md`：已确认设计的总实施计划，索引运行时基础、事件投递、后台控制面和生产迁移四个阶段；当前仅完成计划编写，尚未修改运行时代码。
 - `docs/UI_DATA_ANALYTICS_DASHBOARD.md`：后台数据分析看板口径。
 - `docs/TELEGRAM_IMPORT_API.md`：外部导入 API 契约。
 - `docs/SEO_CONFIGURATION.md`：SEO 配置。
