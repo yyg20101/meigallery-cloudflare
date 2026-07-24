@@ -27,6 +27,11 @@ queue = "meigallery-attribution-tiktok"
 binding = "GOOGLE_QUEUE"
 queue = "meigallery-attribution-google"
 
+[[workflows]]
+name = "meigallery-attribution-candidate-validation"
+binding = "ATTRIBUTION_CANDIDATE_VALIDATION_WORKFLOW"
+class_name = "CandidateValidationWorkflow"
+
 [[queues.consumers]]
 queue = "meigallery-attribution-meta"
 max_batch_size = 10
@@ -99,6 +104,11 @@ queue = "meigallery-attribution-tiktok-dev"
 [[env.dev.queues.producers]]
 binding = "GOOGLE_QUEUE"
 queue = "meigallery-attribution-google-dev"
+
+[[env.dev.workflows]]
+name = "meigallery-attribution-candidate-validation-dev"
+binding = "ATTRIBUTION_CANDIDATE_VALIDATION_WORKFLOW"
+class_name = "CandidateValidationWorkflow"
 
 [[env.dev.queues.consumers]]
 queue = "meigallery-attribution-meta-dev"

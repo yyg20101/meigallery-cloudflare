@@ -6,6 +6,10 @@ import type { AttributionSigningKeys } from './security/signed-token'
 
 export type AttributionAppEnvironment = 'production' | 'dev' | 'local'
 
+export interface CandidateValidationWorkflowPayload {
+  validationId: string
+}
+
 export interface AttributionBindings {
   DB: D1Database
   APP_ENV: AttributionAppEnvironment
@@ -20,6 +24,8 @@ export interface AttributionBindings {
   META_QUEUE: Queue<AttributionQueueMessage>
   TIKTOK_QUEUE: Queue<AttributionQueueMessage>
   GOOGLE_QUEUE: Queue<AttributionQueueMessage>
+  ATTRIBUTION_CANDIDATE_VALIDATION_WORKFLOW:
+    Workflow<CandidateValidationWorkflowPayload>
 }
 
 export interface AttributionEnvironment {
@@ -32,6 +38,7 @@ export interface AttributionEnvironment {
   queues: Readonly<
     Record<AttributionProvider, Queue<AttributionQueueMessage>>
   >
+  validationWorkflow: Workflow<CandidateValidationWorkflowPayload>
 }
 
 const APP_ENVIRONMENTS = new Set<AttributionAppEnvironment>([
@@ -143,6 +150,17 @@ function requireQueue(
   return value
 }
 
+function requireWorkflow(
+  value: Workflow<CandidateValidationWorkflowPayload> | undefined,
+): Workflow<CandidateValidationWorkflowPayload> {
+  if (!value || typeof value.createBatch !== 'function') {
+    throw new Error(
+      'ATTRIBUTION_CANDIDATE_VALIDATION_WORKFLOW_REQUIRED',
+    )
+  }
+  return value
+}
+
 export function parseAttributionEnvironment(
   bindings: AttributionBindings,
 ): AttributionEnvironment {
@@ -198,5 +216,8 @@ export function parseAttributionEnvironment(
       tiktok: requireQueue(bindings.TIKTOK_QUEUE, 'TIKTOK_QUEUE'),
       google: requireQueue(bindings.GOOGLE_QUEUE, 'GOOGLE_QUEUE'),
     },
+    validationWorkflow: requireWorkflow(
+      bindings.ATTRIBUTION_CANDIDATE_VALIDATION_WORKFLOW,
+    ),
   }
 }

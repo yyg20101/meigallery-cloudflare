@@ -117,6 +117,7 @@ export async function persistRetryableResult(
   row: DeliverySnapshot,
   attempt: number,
   result: ProviderDeliveryResult & { classification: 'retryable' },
+  affectCircuit = true,
 ): Promise<boolean> {
   const now = trustedNow(environment.now)
   const results = await environment.db.batch([
@@ -146,6 +147,7 @@ export async function persistRetryableResult(
     ),
   ])
   if (!changed(results[0]) || !changed(results[1])) throw queueInvalid()
+  if (!affectCircuit) return false
   return (await recordTransientFailure(environment, {
     connectionId: row.connectionId,
     provider: row.provider,
@@ -157,10 +159,11 @@ export async function rejectLocally(
   row: DeliverySnapshot,
   code: string,
   attempt?: number,
+  recordIncident = true,
 ): Promise<void> {
   const now = trustedNow(environment.now).toISOString()
   const effectiveAttempt = attempt ?? row.attemptCount
-  const results = await environment.db.batch([
+  const statements = [
     environment.db.prepare(`
       UPDATE attribution_deliveries
       SET status = 'rejected',
@@ -197,12 +200,15 @@ export async function rejectLocally(
       row.provider,
       code,
     ),
-    incidentStatement(environment, {
+  ]
+  if (recordIncident) {
+    statements.push(incidentStatement(environment, {
       provider: row.provider,
       connectionId: row.connectionId,
       code,
-    }),
-  ])
+    }))
+  }
+  const results = await environment.db.batch(statements)
   if (!changed(results[0]) || !changed(results[1])) throw queueInvalid()
 }
 
@@ -282,6 +288,7 @@ export async function reconcileTerminalCircuit(
   environment: AttributionQueueConsumerEnvironment,
   header: DeliveryHeader,
 ): Promise<void> {
+  if (header.factOrigin === 'synthetic') return
   const receipt = await environment.db.prepare(`
     SELECT classification
     FROM attribution_delivery_receipts
@@ -324,8 +331,9 @@ export async function recordQueueIncident(
 export async function markDeadLetter(
   environment: AttributionQueueConsumerEnvironment,
   row: DeliverySnapshot,
+  recordIncident = true,
 ): Promise<void> {
-  await environment.db.batch([
+  const statements = [
     environment.db.prepare(`
       UPDATE attribution_deliveries
       SET status = 'dead_letter',
@@ -340,12 +348,15 @@ export async function markDeadLetter(
       row.deliveryId,
       row.provider,
     ),
-    incidentStatement(environment, {
+  ]
+  if (recordIncident) {
+    statements.push(incidentStatement(environment, {
       provider: row.provider,
       connectionId: row.connectionId,
       code: 'queue_dead_letter',
-    }),
-  ])
+    }))
+  }
+  await environment.db.batch(statements)
 }
 
 function receiptStatement(

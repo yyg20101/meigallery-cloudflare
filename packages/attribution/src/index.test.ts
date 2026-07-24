@@ -22,6 +22,11 @@ function createBindings(
     META_QUEUE: queue,
     TIKTOK_QUEUE: queue,
     GOOGLE_QUEUE: queue,
+    ATTRIBUTION_CANDIDATE_VALIDATION_WORKFLOW: {
+      createBatch: async () => [],
+    } as unknown as AttributionBindings[
+      'ATTRIBUTION_CANDIDATE_VALIDATION_WORKFLOW'
+    ],
     ...overrides,
   }
 }
@@ -74,6 +79,9 @@ describe('attribution worker', () => {
     }],
     ['缺少 Google Queue', {
       GOOGLE_QUEUE: undefined,
+    }],
+    ['缺少候选验证 Workflow', {
+      ATTRIBUTION_CANDIDATE_VALIDATION_WORKFLOW: undefined,
     }],
   ])('%s 时 fail closed', async (_label, overrides) => {
     const response = await app.request(

@@ -87,6 +87,30 @@ describe('Google Adapter', () => {
     )
   })
 
+  it('Google validateOnly 使用原生字段且拒绝平台测试码', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      requestId: 'request_google_validation',
+    }), { status: 200 }))
+    const adapter = createGoogleAdapter({
+      fetcher,
+      tokenProvider: vi.fn().mockResolvedValue('google-oauth-token'),
+    })
+
+    expect(adapter.normalizeTestEventCode(undefined)).toBeUndefined()
+    expect(adapter.normalizeTestEventCode('TEST12345')).toBeNull()
+    await adapter.deliverServerEvent({
+      ...serverInput(),
+      validateOnly: true,
+    })
+    const body = JSON.parse(String(fetcher.mock.calls[0]![1].body))
+    expect(body.validateOnly).toBe(true)
+
+    await expect(adapter.deliverServerEvent({
+      ...serverInput(),
+      testEventCode: 'TEST12345',
+    })).rejects.toThrow('ATTRIBUTION_ADAPTER_INPUT_INVALID')
+  })
+
   it('拒绝 Meta connection 和跨平台标识符', async () => {
     await expect(googleAdapter.deliverServerEvent({
       ...serverInput(),

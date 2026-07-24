@@ -37,6 +37,9 @@ interface OutboxDeliveryRow {
   updated_at: string
   expires_at: string
   circuit_state: string
+  fact_origin: string
+  version_status: string
+  validation_status: string | null
 }
 
 const PROVIDERS = [
@@ -52,6 +55,7 @@ export async function enqueueServerDelivery(
   input: {
     provider: AttributionProvider
     deliveryId: string
+    mode?: 'runtime' | 'candidate_validation'
   },
 ): Promise<EnqueueDeliveryResult> {
   if (!isProvider(input.provider) || !isIdentifier(input.deliveryId)) {
@@ -62,10 +66,11 @@ export async function enqueueServerDelivery(
     environment.db,
     input.deliveryId,
   )
+  const mode = input.mode ?? 'runtime'
   if (
     !row
     || row.provider !== input.provider
-    || row.circuit_state !== 'closed'
+    || !modeAllowed(row, mode)
     || !recoverable(row, now)
   ) {
     return 'not_pending'
@@ -151,18 +156,37 @@ export async function recoverPendingServerOutbox(
   const result = await environment.db.prepare(`
     SELECT
       delivery.id AS delivery_id,
-      delivery.provider
+      delivery.provider,
+      fact.fact_origin
     FROM attribution_deliveries AS delivery
+    INNER JOIN attribution_facts AS fact
+      ON fact.id = delivery.fact_id
+    INNER JOIN attribution_connection_versions AS version
+      ON version.id = delivery.version_id
     INNER JOIN attribution_outbox AS outbox
       ON outbox.delivery_id = delivery.id
      AND outbox.provider = delivery.provider
     INNER JOIN attribution_runtime_policies AS policy
       ON policy.connection_id = delivery.connection_id
+    LEFT JOIN attribution_validations AS validation
+      ON validation.candidate_version_id = delivery.version_id
+     AND validation.provider = delivery.provider
+     AND validation.status = 'running'
     WHERE delivery.transport = 'server'
-      AND policy.enabled = 1
-      AND policy.server_enabled = 1
-      AND policy.server_effective_percentage > 0
-      AND policy.circuit_state = 'closed'
+      AND (
+        (
+          fact.fact_origin = 'live'
+          AND policy.enabled = 1
+          AND policy.server_enabled = 1
+          AND policy.server_effective_percentage > 0
+          AND policy.circuit_state = 'closed'
+        )
+        OR (
+          fact.fact_origin = 'synthetic'
+          AND version.status = 'validating'
+          AND validation.status = 'running'
+        )
+      )
       AND (
         delivery.status = 'planned'
         OR (
@@ -175,6 +199,7 @@ export async function recoverPendingServerOutbox(
   `).bind(cutoff, normalizedLimit).all<{
     delivery_id: string
     provider: string
+    fact_origin: string
   }>()
 
   const summary: OutboxRecoveryResult = {
@@ -189,6 +214,9 @@ export async function recoverPendingServerOutbox(
     const outcome = await enqueueServerDelivery(environment, {
       provider: row.provider,
       deliveryId: row.delivery_id,
+      mode: row.fact_origin === 'synthetic'
+        ? 'candidate_validation'
+        : 'runtime',
     })
     if (outcome === 'enqueued') summary.enqueued += 1
     if (outcome === 'failed') summary.failed += 1
@@ -213,8 +241,15 @@ export async function purgeExpiredServerOutbox(
       delivery.queue_attempt_count,
       delivery.updated_at,
       outbox.expires_at,
-      'closed' AS circuit_state
+      'closed' AS circuit_state,
+      fact.fact_origin,
+      version.status AS version_status,
+      NULL AS validation_status
     FROM attribution_deliveries AS delivery
+    INNER JOIN attribution_facts AS fact
+      ON fact.id = delivery.fact_id
+    INNER JOIN attribution_connection_versions AS version
+      ON version.id = delivery.version_id
     INNER JOIN attribution_outbox AS outbox
       ON outbox.delivery_id = delivery.id
      AND outbox.provider = delivery.provider
@@ -265,13 +300,24 @@ async function readOutboxDelivery(
       delivery.queue_attempt_count,
       delivery.updated_at,
       outbox.expires_at,
-      policy.circuit_state
+      policy.circuit_state,
+      fact.fact_origin,
+      version.status AS version_status,
+      validation.status AS validation_status
     FROM attribution_deliveries AS delivery
+    INNER JOIN attribution_facts AS fact
+      ON fact.id = delivery.fact_id
+    INNER JOIN attribution_connection_versions AS version
+      ON version.id = delivery.version_id
     INNER JOIN attribution_outbox AS outbox
       ON outbox.delivery_id = delivery.id
      AND outbox.provider = delivery.provider
     INNER JOIN attribution_runtime_policies AS policy
       ON policy.connection_id = delivery.connection_id
+    LEFT JOIN attribution_validations AS validation
+      ON validation.candidate_version_id = delivery.version_id
+     AND validation.provider = delivery.provider
+     AND validation.status = 'running'
     WHERE delivery.id = ?
       AND delivery.transport = 'server'
     LIMIT 1
@@ -363,6 +409,25 @@ function validRow(row: OutboxDeliveryRow): boolean {
       row.circuit_state === 'closed'
       || row.circuit_state === 'server_open'
     )
+    && (row.fact_origin === 'live' || row.fact_origin === 'synthetic')
+    && typeof row.version_status === 'string'
+    && (
+      row.validation_status === null
+      || row.validation_status === 'running'
+    )
+}
+
+function modeAllowed(
+  row: OutboxDeliveryRow,
+  mode: 'runtime' | 'candidate_validation',
+): boolean {
+  if (mode === 'candidate_validation') {
+    return row.fact_origin === 'synthetic'
+      && row.version_status === 'validating'
+      && row.validation_status === 'running'
+  }
+  return row.fact_origin === 'live'
+    && row.circuit_state === 'closed'
 }
 
 function terminal(status: string): boolean {

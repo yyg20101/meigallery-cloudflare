@@ -56,6 +56,16 @@ export interface DeliverySnapshot {
   runtimeEnabled: boolean
   serverEnabled: boolean
   serverEffectivePercentage: 0 | 10 | 50 | 100
+  validationId: string | null
+  validationSecretEnvelope: {
+    schemaVersion: 1
+    keyId: string
+    iv: string
+    ciphertext: string
+    tag: string
+  } | null
+  validationSecretExpiresAt: string | null
+  candidateValidationValid: boolean
 }
 
 export interface DeliveryHeader {
@@ -63,6 +73,7 @@ export interface DeliveryHeader {
   connectionId: string
   provider: AttributionProvider
   status: string
+  factOrigin: 'live' | 'synthetic'
 }
 
 export interface ServerOutboxPayload {
@@ -101,5 +112,8 @@ export interface ServerOutboxPayload {
   requestMetadata: {
     clientIp?: string
     userAgent?: string
+  }
+  matchData?: {
+    hashedEmail: string
   }
 }

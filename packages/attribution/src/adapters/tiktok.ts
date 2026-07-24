@@ -47,6 +47,7 @@ const FOREIGN_IDENTIFIER_KEYS = new Set([
 ])
 const RETRYABLE_CODES = new Set([40016, 40100, 40133, 40202, 60001])
 const PIXEL_CODE_PATTERN = /^[A-Z0-9]{10,30}$/
+const TEST_EVENT_CODE_PATTERN = /^[A-Za-z0-9_-]{4,128}$/
 
 export function createTikTokAdapter(
   runtime: AdapterRuntime = {},
@@ -54,6 +55,7 @@ export function createTikTokAdapter(
   return {
     provider: 'tiktok',
     eventName,
+    normalizeTestEventCode,
     validateCandidate,
     buildBrowserInstruction,
     deliverServerEvent,
@@ -63,6 +65,19 @@ export function createTikTokAdapter(
   function eventName(event: CanonicalConversionEvent): string {
     if (!isCanonicalEvent(event)) throw adapterInputInvalid()
     return event
+  }
+
+  function normalizeTestEventCode(
+    value: unknown,
+  ): string | undefined | null {
+    if (value === undefined || value === null || value === '') {
+      return undefined
+    }
+    if (typeof value !== 'string') return null
+    const normalized = value.trim()
+    return TEST_EVENT_CODE_PATTERN.test(normalized)
+      ? normalized
+      : null
   }
 
   async function validateCandidate(
@@ -75,6 +90,12 @@ export function createTikTokAdapter(
     assertCanonicalBindings(input, binding =>
       binding.browserDestination === 'tiktok_pixel'
       && binding.serverDestination === 'tiktok_events_api')
+    if (
+      input.testEventCode !== undefined
+      && normalizeTestEventCode(input.testEventCode) !== input.testEventCode
+    ) {
+      throw adapterInputInvalid()
+    }
     return validationEvidence(runtime, input)
   }
 
@@ -114,9 +135,17 @@ export function createTikTokAdapter(
 
     const user = tiktokUser(input)
     if (Object.keys(user).length === 0) throw adapterInputInvalid()
+    const testEventCode = normalizeTestEventCode(input.testEventCode)
+    if (
+      (input.validateOnly && !testEventCode)
+      || (!input.validateOnly && input.testEventCode !== undefined)
+    ) {
+      throw adapterInputInvalid()
+    }
     const body = {
       event_source: 'web',
       event_source_id: config.pixelCode,
+      ...(testEventCode ? { test_event_code: testEventCode } : {}),
       data: [{
         event: eventName(input.canonicalEvent),
         event_time: eventTimeSeconds(input.occurredAt),

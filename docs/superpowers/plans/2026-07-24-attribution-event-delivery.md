@@ -807,7 +807,7 @@ Server Delivery，Server circuit 打开仅暂停 Server 并保留 outbox，Brows
 - Consumes: 候选状态机、事实服务、Queue、Adapter。
 - Produces: `startCandidateValidation()` 和 `CandidateValidationWorkflow`。
 
-- [ ] **Step 1: 写验证失败测试**
+- [x] **Step 1: 写验证失败测试**
 
 ```ts
 it('验证失败保持旧 Active 和运行策略', async () => {
@@ -828,7 +828,7 @@ it('验证成功使用正常事实和 Queue 链路后自动激活', async () => 
 })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -838,7 +838,7 @@ corepack pnpm --filter @meigallery/attribution exec vitest run src/services/vali
 
 Expected: FAIL，Workflow 未实现。
 
-- [ ] **Step 3: 实现 30 分钟自动验证**
+- [x] **Step 3: 实现 30 分钟自动验证**
 
 Workflow 固定步骤：
 
@@ -858,7 +858,7 @@ await destroyValidationSecret(validationId)
 
 任何终态都执行 `destroyValidationSecret()`。总执行时间超过 30 分钟写入 `timed_out`，不等待人工证据。429、5xx 和网络超时不得触发身份回滚。
 
-- [ ] **Step 4: 运行验证测试**
+- [x] **Step 4: 运行验证测试**
 
 Run:
 
@@ -868,12 +868,27 @@ corepack pnpm --filter @meigallery/attribution exec vitest run src/services/vali
 
 Expected: PASS；测试结束后 `attribution_validation_secrets` 中没有终态 validation 行。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add packages/attribution/src/services/validation-service* packages/attribution/src/workflows packages/attribution/wrangler.toml
 git commit -m "feat: 自动验证并激活归因候选"
 ```
+
+Result: 候选配置通过唯一的 `Canonical Fact -> Planner -> 加密
+Outbox -> provider Queue -> Adapter` 链路执行 `Contact` 和
+`CompleteRegistration` 双事件验证。Meta/TikTok 测试码只以
+`validation-secret` AAD 加密保存并仅注入 `validateOnly` 请求；正式业务
+投递对象不包含该字段，Google 使用原生 `validateOnly`。候选 Queue 绕过
+production rollout/circuit 仅限 `synthetic + validating + running`
+组合，成功、重试和失败均不改写旧 Active、运行策略、线上 circuit 或
+Incident。Workflow 固定 30 分钟，激活后 smoke 失败先回滚再终结候选，
+任何终态销毁临时秘密；Workflow 重放复用稳定 Fact，Queue 短暂失败由
+D1 outbox 恢复，验证启动失败保留原 candidate，秘密清理失败不会误回滚
+已验证配置。Attribution 全量 `32` 个测试文件、`197` 项测试通过，
+production/dev Wrangler dry-run 均绑定各自独立 Workflow、D1 与
+Meta/TikTok/Google Queue。本阶段尚未部署独立 Worker，production 保持
+不变。
 
 ### Task 8: 接入可信业务 outbox 和 Service Binding
 

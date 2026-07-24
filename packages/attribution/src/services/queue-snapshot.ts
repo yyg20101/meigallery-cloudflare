@@ -57,6 +57,14 @@ interface DeliverySnapshotRow {
   credential_ciphertext: string
   credential_tag: string
   credential_fingerprint: string
+  validation_id: string | null
+  validation_provider: string | null
+  validation_status: string | null
+  validation_secret_key_id: string | null
+  validation_secret_iv: string | null
+  validation_secret_ciphertext: string | null
+  validation_secret_tag: string | null
+  validation_secret_expires_at: string | null
 }
 
 const ACTIVE_VERSION_STATUSES = new Set([
@@ -71,21 +79,30 @@ export async function readDeliveryHeader(
 ): Promise<DeliveryHeader | null> {
   if (!isIdentifier(deliveryId)) return null
   const row = await db.prepare(`
-    SELECT id, connection_id, provider, status
-    FROM attribution_deliveries
-    WHERE id = ?
-      AND transport = 'server'
+    SELECT
+      delivery.id,
+      delivery.connection_id,
+      delivery.provider,
+      delivery.status,
+      fact.fact_origin
+    FROM attribution_deliveries AS delivery
+    INNER JOIN attribution_facts AS fact
+      ON fact.id = delivery.fact_id
+    WHERE delivery.id = ?
+      AND delivery.transport = 'server'
     LIMIT 1
   `).bind(deliveryId).first<{
     id: string
     connection_id: string
     provider: string
     status: string
+    fact_origin: string
   }>()
   if (
     !row
     || !isIdentifier(row.id)
     || !isIdentifier(row.connection_id)
+    || (row.fact_origin !== 'live' && row.fact_origin !== 'synthetic')
   ) {
     return null
   }
@@ -94,6 +111,7 @@ export async function readDeliveryHeader(
     connectionId: row.connection_id,
     provider: asProvider(row.provider),
     status: row.status,
+    factOrigin: row.fact_origin,
   }
 }
 
@@ -145,7 +163,15 @@ export async function readDeliverySnapshot(
       credential.iv AS credential_iv,
       credential.ciphertext AS credential_ciphertext,
       credential.tag AS credential_tag,
-      credential.credential_fingerprint
+      credential.credential_fingerprint,
+      validation.id AS validation_id,
+      validation.provider AS validation_provider,
+      validation.status AS validation_status,
+      validation_secret.key_id AS validation_secret_key_id,
+      validation_secret.iv AS validation_secret_iv,
+      validation_secret.ciphertext AS validation_secret_ciphertext,
+      validation_secret.tag AS validation_secret_tag,
+      validation_secret.expires_at AS validation_secret_expires_at
     FROM attribution_deliveries AS delivery
     INNER JOIN attribution_facts AS fact
       ON fact.id = delivery.fact_id
@@ -163,6 +189,12 @@ export async function readDeliverySnapshot(
       ON outbox.delivery_id = delivery.id
     INNER JOIN attribution_version_credentials AS credential
       ON credential.version_id = version.id
+    LEFT JOIN attribution_validations AS validation
+      ON validation.candidate_version_id = version.id
+     AND validation.provider = delivery.provider
+     AND validation.status = 'running'
+    LEFT JOIN attribution_validation_secrets AS validation_secret
+      ON validation_secret.validation_id = validation.id
     WHERE delivery.id = ?
     LIMIT 1
   `).bind(deliveryId).first<DeliverySnapshotRow>()
@@ -191,7 +223,14 @@ function parseSnapshot(row: DeliverySnapshotRow): DeliverySnapshot {
     || row.attempt_count < 0
     || !isCanonicalEvent(row.event_name)
     || (row.fact_origin !== 'live' && row.fact_origin !== 'synthetic')
-    || !ACTIVE_VERSION_STATUSES.has(row.version_status)
+    || (
+      row.fact_origin === 'live'
+      && !ACTIVE_VERSION_STATUSES.has(row.version_status)
+    )
+    || (
+      row.fact_origin === 'synthetic'
+      && row.version_status !== 'validating'
+    )
     || (row.policy_enabled !== 0 && row.policy_enabled !== 1)
     || (row.server_enabled !== 0 && row.server_enabled !== 1)
     || !isRolloutPercentage(row.server_effective_percentage)
@@ -204,6 +243,15 @@ function parseSnapshot(row: DeliverySnapshotRow): DeliverySnapshot {
   ) {
     throw queueInvalid()
   }
+  const validationSecretEnvelope = validationSecret(row)
+  const candidateValidationValid = row.fact_origin === 'synthetic'
+    && isIdentifier(row.validation_id)
+    && row.validation_provider === provider
+    && row.validation_status === 'running'
+    && (
+      provider === 'google'
+      || validationSecretEnvelope !== null
+    )
   return {
     deliveryId: row.delivery_id,
     factId: row.fact_id,
@@ -247,5 +295,34 @@ function parseSnapshot(row: DeliverySnapshotRow): DeliverySnapshot {
     runtimeEnabled: row.policy_enabled === 1,
     serverEnabled: row.server_enabled === 1,
     serverEffectivePercentage: row.server_effective_percentage,
+    validationId: isIdentifier(row.validation_id)
+      ? row.validation_id
+      : null,
+    validationSecretEnvelope,
+    validationSecretExpiresAt:
+      row.validation_secret_expires_at,
+    candidateValidationValid,
+  }
+}
+
+function validationSecret(
+  row: DeliverySnapshotRow,
+): DeliverySnapshot['validationSecretEnvelope'] {
+  const values = [
+    row.validation_secret_key_id,
+    row.validation_secret_iv,
+    row.validation_secret_ciphertext,
+    row.validation_secret_tag,
+  ]
+  if (values.every(value => value === null)) return null
+  if (!values.every(value => typeof value === 'string' && value.length > 0)) {
+    throw queueInvalid()
+  }
+  return {
+    schemaVersion: 1,
+    keyId: row.validation_secret_key_id!,
+    iv: row.validation_secret_iv!,
+    ciphertext: row.validation_secret_ciphertext!,
+    tag: row.validation_secret_tag!,
   }
 }

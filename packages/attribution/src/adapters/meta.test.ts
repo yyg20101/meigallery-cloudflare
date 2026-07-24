@@ -100,6 +100,28 @@ describe('Meta Adapter', () => {
     )
   })
 
+  it('测试码只进入 validateOnly 请求，正式事件明确拒绝携带', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      events_received: 1,
+    }), { status: 200 }))
+    const adapter = createMetaAdapter({ fetcher })
+
+    expect(adapter.normalizeTestEventCode(' test12345 ')).toBe(
+      'TEST12345',
+    )
+    await adapter.deliverServerEvent(serverInput('meta', {
+      validateOnly: true,
+      testEventCode: 'TEST12345',
+    }))
+    const body = JSON.parse(String(fetcher.mock.calls[0]![1].body))
+    expect(body.test_event_code).toBe('TEST12345')
+
+    await expect(adapter.deliverServerEvent(serverInput('meta', {
+      validateOnly: false,
+      testEventCode: 'TEST12345',
+    }))).rejects.toThrow('ATTRIBUTION_ADAPTER_INPUT_INVALID')
+  })
+
   it('拒绝 TikTok connection 和跨平台标识符', async () => {
     await expect(metaAdapter.deliverServerEvent({
       ...serverInput('meta'),

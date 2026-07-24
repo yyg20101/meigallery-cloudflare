@@ -39,6 +39,7 @@ const EXACT_OUTBOX_KEYS = [
   'payload',
   'context',
   'requestMetadata',
+  'matchData',
 ]
 
 export function isQueueMessage(
@@ -74,6 +75,44 @@ export async function openServerPayload(
   return value
 }
 
+export async function openValidationTestEventCode(
+  keys: AttributionEncryptionKeys,
+  row: DeliverySnapshot,
+  now: Date,
+): Promise<string | undefined> {
+  if (row.factOrigin === 'live') return undefined
+  if (
+    !row.candidateValidationValid
+    || !row.validationId
+    || (
+      row.validationSecretExpiresAt !== null
+      && outboxExpired(row.validationSecretExpiresAt, now)
+    )
+  ) {
+    throw queueInvalid()
+  }
+  if (row.provider === 'google') return undefined
+  if (
+    !row.validationSecretEnvelope
+    || !row.validationSecretExpiresAt
+  ) {
+    throw queueInvalid()
+  }
+  const value = await openAttributionData(keys, {
+    purpose: 'validation-secret',
+    identity: [
+      row.validationId,
+      row.provider,
+      row.versionId,
+    ].join(':'),
+    envelope: row.validationSecretEnvelope,
+  })
+  if (!isSafeText(value, 128) || value.trim() !== value) {
+    throw queueInvalid()
+  }
+  return value
+}
+
 export function assertPayloadMatchesSnapshot(
   payload: ServerOutboxPayload,
   row: DeliverySnapshot,
@@ -97,6 +136,9 @@ export function assertPayloadMatchesSnapshot(
 export function hashedEmail(
   payload: ServerOutboxPayload,
 ): { hashedEmail?: string } {
+  if (payload.matchData?.hashedEmail) {
+    return { hashedEmail: payload.matchData.hashedEmail }
+  }
   if (
     payload.eventName === 'CompleteRegistration'
     && 'hashedEmail' in payload.payload
@@ -212,7 +254,11 @@ function isServerOutboxPayload(
 ): value is ServerOutboxPayload {
   if (
     !isPlainRecord(value)
-    || !hasExactKeys(value, EXACT_OUTBOX_KEYS)
+    || !hasExactKeys(
+      value,
+      EXACT_OUTBOX_KEYS.filter(key => key !== 'matchData'),
+      ['matchData'],
+    )
     || value.schemaVersion !== 1
     || !isIdentifier(value.factId)
     || !isIdentifier(value.deliveryId)
@@ -228,10 +274,23 @@ function isServerOutboxPayload(
     || !isConsent(value.consent)
     || !isContext(value.context)
     || !isRequestMetadata(value.requestMetadata)
+    || !isMatchData(value.matchData)
   ) {
     return false
   }
   return isCanonicalPayload(value.eventName, value.payload)
+}
+
+function isMatchData(
+  value: unknown,
+): value is ServerOutboxPayload['matchData'] {
+  return value === undefined
+    || (
+      isPlainRecord(value)
+      && hasExactKeys(value, ['hashedEmail'])
+      && typeof value.hashedEmail === 'string'
+      && /^[0-9a-f]{64}$/.test(value.hashedEmail)
+    )
 }
 
 function isConsent(

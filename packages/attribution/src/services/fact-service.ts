@@ -85,8 +85,11 @@ interface RuntimeSnapshot {
   binding: DeliveryPlanBinding
 }
 
-interface ResolvedFactRoute extends RuntimeSnapshot {
+interface FactRoute extends RuntimeSnapshot {
   context: ResolvedAttributionContext
+}
+
+interface ResolvedFactRoute extends FactRoute {
   lease: RuntimeLeasePayload
 }
 
@@ -183,6 +186,115 @@ export async function recordCanonicalFact(
   await ensureEventIdAvailable(environment.db, event.eventId)
 
   const route = await resolveFactRoute(environment, event, options)
+  return persistFact(
+    environment,
+    event,
+    options,
+    factOrigin,
+    now,
+    eventFingerprint,
+    dedupeHash,
+    route,
+  )
+}
+
+export interface CandidateSyntheticFactInput {
+  validationId: string
+  connectionId: string
+  versionId: string
+  provider: AttributionProvider
+  eventName: CanonicalConversionEvent
+  occurredAt: string
+}
+
+export async function recordCandidateSyntheticFact(
+  environment: CanonicalFactEnvironment,
+  input: CandidateSyntheticFactInput,
+): Promise<CanonicalFactResult> {
+  if (
+    !isIdentifier(input.validationId)
+    || !isIdentifier(input.connectionId)
+    || !isIdentifier(input.versionId)
+    || !PROVIDERS.has(input.provider)
+    || (
+      input.eventName !== 'Contact'
+      && input.eventName !== 'CompleteRegistration'
+    )
+  ) {
+    throw factInvalid()
+  }
+  const now = trustedNow(environment.now)
+  const hashedEmail = await sha256Hex(
+    `candidate-validation:${input.validationId}@meigallery.invalid`,
+  )
+  const event: AttributionBusinessEventV1 = {
+    schemaVersion: 1,
+    eventId: `validation:${input.validationId}:${input.eventName}`,
+    eventName: input.eventName,
+    occurredAt: input.occurredAt,
+    pagePath: '/attribution-candidate-validation',
+    dedupeKey: `validation:${input.validationId}:${input.eventName}`,
+    sourceContextToken: null,
+    consent: {
+      marketingAllowed: true,
+      adUserDataAllowed: true,
+      adPersonalizationAllowed: false,
+    },
+    payload: input.eventName === 'Contact'
+      ? {
+          contactMethodId: 'validation_contact',
+          contactPlatform: 'synthetic',
+          contactAction: 'open_link',
+        }
+      : {
+          userId: 1,
+          hashedEmail,
+        },
+  }
+  validateEvent(event, 'synthetic', now)
+  const eventFingerprint = await fingerprintEvent(event, 'synthetic')
+  const dedupeHash = await sha256Hex(
+    `fact-dedupe:v1:${event.dedupeKey}`,
+  )
+  const existing = await readFact(
+    environment.db,
+    dedupeHash,
+    eventFingerprint,
+  )
+  if (existing) return existing
+  await ensureEventIdAvailable(environment.db, event.eventId)
+  const route = await readCandidateFactRoute(environment.db, input, now)
+
+  return persistFact(
+    environment,
+    event,
+    {
+      factOrigin: 'synthetic',
+      requestMetadata: {
+        clientIp: '192.0.2.1',
+        userAgent: 'MeiGallery Attribution Validation/1.0',
+      },
+    },
+    'synthetic',
+    now,
+    eventFingerprint,
+    dedupeHash,
+    route,
+    hashedEmail,
+  )
+}
+
+async function persistFact(
+  environment: CanonicalFactEnvironment,
+  event: AttributionBusinessEventV1,
+  options: CanonicalFactOptions,
+  factOrigin: 'live' | 'synthetic',
+  now: Date,
+  eventFingerprint: string,
+  dedupeHash: string,
+  route: FactRoute | null,
+  syntheticHashedEmail?: string,
+): Promise<CanonicalFactResult> {
   const idFactory = environment.idFactory
     ?? (prefix => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}`)
   const factId = createIdentifier(idFactory, 'fact')
@@ -216,6 +328,7 @@ export async function recordCanonicalFact(
         externalEventId,
         plans,
         idFactory,
+        syntheticHashedEmail,
       )
     : []
 
@@ -308,6 +421,96 @@ export async function recordCanonicalFact(
     factId,
     externalEventId,
     deliveries: deliveries.map(item => item.result),
+  }
+}
+
+async function readCandidateFactRoute(
+  db: D1Database,
+  input: CandidateSyntheticFactInput,
+  now: Date,
+): Promise<FactRoute> {
+  const row = await db.prepare(`
+    SELECT
+      connection.id AS connection_id,
+      version.id AS version_id,
+      connection.provider,
+      binding.enabled AS binding_enabled,
+      binding.browser_destination,
+      binding.server_destination
+    FROM attribution_connections AS connection
+    INNER JOIN attribution_connection_versions AS version
+      ON version.id = ?
+     AND version.connection_id = connection.id
+     AND version.provider = connection.provider
+     AND version.status = 'validating'
+    INNER JOIN attribution_validations AS validation
+      ON validation.candidate_version_id = version.id
+     AND validation.id = ?
+     AND validation.provider = connection.provider
+     AND validation.status IN ('queued','running')
+    LEFT JOIN attribution_version_bindings AS binding
+      ON binding.version_id = version.id
+     AND binding.canonical_event = ?
+    WHERE connection.id = ?
+      AND connection.provider = ?
+    LIMIT 1
+  `).bind(
+    input.versionId,
+    input.validationId,
+    input.eventName,
+    input.connectionId,
+    input.provider,
+  ).first<{
+    connection_id: string
+    version_id: string
+    provider: string
+    binding_enabled: number | null
+    browser_destination: string | null
+    server_destination: string | null
+  }>()
+  if (
+    !row
+    || row.connection_id !== input.connectionId
+    || row.version_id !== input.versionId
+    || row.provider !== input.provider
+  ) {
+    throw factInvalid()
+  }
+  const issuedAt = Math.floor(now.getTime() / 1_000)
+  return {
+    connectionId: input.connectionId,
+    versionId: input.versionId,
+    provider: input.provider,
+    runtimePolicy: {
+      enabled: true,
+      browserEnabled: true,
+      serverEnabled: true,
+      serverTargetPercentage: 100,
+      serverEffectivePercentage: 100,
+      circuitState: 'closed',
+      runtimeGeneration: 1,
+      updatedBy: 0,
+      updatedAt: now.toISOString(),
+    },
+    binding: {
+      enabled: row.binding_enabled === 1,
+      browserDestination: validDestination(
+        row.browser_destination ?? '',
+      ),
+      serverDestination: validDestination(
+        row.server_destination ?? '',
+      ),
+    },
+    context: {
+      contextId: `validation_${input.validationId}`,
+      connectionId: input.connectionId,
+      issuedVersionId: input.versionId,
+      provider: input.provider,
+      sourceId: `validation_${input.validationId}`,
+      identifiers: {},
+      issuedAt,
+      expiresAt: issuedAt + 30 * 60,
+    },
   }
 }
 
@@ -488,11 +691,12 @@ async function prepareDeliveries(
   environment: CanonicalFactEnvironment,
   event: AttributionBusinessEventV1,
   options: CanonicalFactOptions,
-  route: ResolvedFactRoute,
+  route: FactRoute,
   factId: string,
   externalEventId: string,
   plans: PlannedDelivery[],
   idFactory: (prefix: string) => string,
+  syntheticHashedEmail?: string,
 ): Promise<PreparedDelivery[]> {
   const requestMetadata = normalizeRequestMetadata(
     options.requestMetadata,
@@ -546,6 +750,9 @@ async function prepareDeliveries(
             identifiers: route.context.identifiers,
           },
           requestMetadata,
+          ...(syntheticHashedEmail
+            ? { matchData: { hashedEmail: syntheticHashedEmail } }
+            : {}),
         }
     const envelope = await sealAttributionData(
       environment.encryptionKeys,

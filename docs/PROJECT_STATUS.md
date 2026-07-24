@@ -86,7 +86,7 @@
 
 - 独立 Attribution Worker 阶段 1 已完成：独立 package 与 D1 schema、加密凭证仓库、不可变候选版本、原子激活/回滚、独立运行策略、凭证保留 Cron 和专属部署门禁均已通过测试。资源仍使用哨兵 ID，尚未部署或切换 production 流量。
 - 普通根 `deploy` 和 `scripts/deploy.sh` 只部署 API/Web；Attribution Worker 只能通过 `scripts/deploy-attribution.sh` 显式发布，普通业务发布不会改变归因 Active Version、运行策略或凭证。
-- 独立 Attribution Worker 阶段 2 正在执行：事件投递 Schema、32 字节 opaque 管理来源 Proof、SHA-256 摘要持久化、严格单连接路由、地区隐私决策、加密 HttpOnly 第一方上下文、由 D1 Active Version 签发的 30 分钟不可变运行租约、24 小时离线补交边界、draining 版本退休、Canonical Fact、业务事件去重、Browser/Server 同 `external_event_id` 配对、唯一稳定 rollout 分桶、加密 outbox、Browser 回执、Meta/TikTok/Google 唯一 Provider Adapter，以及 production/dev 严格分离的三组 Queue/DLQ、D1 恢复、平台回执和 Server-only circuit 均已完成。Queue 只携带最小定位消息，跨 provider 不一致零平台调用；rollout 降低立即停止未发送 Server Delivery，熔断只暂停 Server 并保留恢复依据。全链路候选验证、业务 Service Binding 和 Browser SDK 仍待后续任务；独立 Worker 尚未部署或切换 production 流量。
+- 独立 Attribution Worker 阶段 2 正在执行：事件投递 Schema、32 字节 opaque 管理来源 Proof、SHA-256 摘要持久化、严格单连接路由、地区隐私决策、加密 HttpOnly 第一方上下文、由 D1 Active Version 签发的 30 分钟不可变运行租约、24 小时离线补交边界、draining 版本退休、Canonical Fact、业务事件去重、Browser/Server 同 `external_event_id` 配对、唯一稳定 rollout 分桶、加密 outbox、Browser 回执、Meta/TikTok/Google 唯一 Provider Adapter、production/dev 严格分离的三组 Queue/DLQ、D1 恢复、平台回执、Server-only circuit，以及 30 分钟全链路候选自动验证与激活后 smoke 回滚均已完成。Queue 只携带最小定位消息，跨 provider 不一致零平台调用；rollout 降低立即停止未发送 Server Delivery，熔断只暂停 Server 并保留恢复依据。候选测试码仅加密临时保存，不进入业务投递、审计或日志，候选验证失败不改写旧 Active、运行策略或线上熔断。业务 Service Binding 和 Browser SDK 仍待后续任务；独立 Worker 尚未部署或切换 production 流量。
 - TikTok 与 Google 的后续 production 验收纳入独立 Attribution Worker 迁移，不再在旧运行时增加平台专属流程。
 - 广告花费、campaign、ad set、ad 数据导入不属于当前 Pixel/Server API 同步范围。
 - Cloudflare Stream 视频链路和完整 zip 异步导入仍待实现。

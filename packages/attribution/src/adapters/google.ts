@@ -77,6 +77,7 @@ export function createGoogleAdapter(
   return {
     provider: 'google',
     eventName,
+    normalizeTestEventCode,
     validateCandidate,
     buildBrowserInstruction,
     deliverServerEvent,
@@ -88,11 +89,22 @@ export function createGoogleAdapter(
     return 'conversion'
   }
 
+  function normalizeTestEventCode(
+    value: unknown,
+  ): string | undefined | null {
+    return value === undefined || value === null || value === ''
+      ? undefined
+      : null
+  }
+
   async function validateCandidate(
     input: CandidateValidationInput,
   ): Promise<ValidationEvidence> {
     assertCandidateBase(input, 'google')
     const config = googleConfig(input.publicConfig)
+    if (normalizeTestEventCode(input.testEventCode) === null) {
+      throw adapterInputInvalid()
+    }
     parseServiceAccount(input.credential)
     assertCanonicalBindings(input, binding => {
       return GOOGLE_DESTINATION_PATTERN.test(binding.browserDestination)
@@ -139,6 +151,9 @@ export function createGoogleAdapter(
     input: ServerDeliveryInput,
   ): Promise<ProviderDeliveryResult> {
     assertServerInput(input, 'google')
+    if (normalizeTestEventCode(input.testEventCode) === null) {
+      throw adapterInputInvalid()
+    }
     const config = googleConfig(input.publicConfig)
     if (!ACCOUNT_ID_PATTERN.test(input.destination)) {
       throw adapterInputInvalid()

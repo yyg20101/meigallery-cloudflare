@@ -8,6 +8,9 @@ import {
 import type { AttributionQueueMessage } from './domain/queue'
 import { runAttributionMaintenance } from './scheduled'
 import { consumeAttributionQueue } from './services/queue-consumer'
+export {
+  CandidateValidationWorkflow,
+} from './workflows/candidate-validation'
 
 interface AttributionVariables {
   attributionEnvironment: AttributionEnvironment

@@ -49,6 +49,7 @@ const FOREIGN_IDENTIFIER_KEYS = new Set([
 ])
 const TRANSIENT_CODES = new Set([1, 2, 4, 17, 32, 341, 613])
 const PIXEL_ID_PATTERN = /^\d{5,30}$/
+const TEST_EVENT_CODE_PATTERN = /^TEST\d{1,20}$/
 const FACEBOOK_COOKIE_PATTERN =
   /^fb\.1\.\d{10,16}\.[A-Za-z0-9._-]{1,1000}$/
 const ACTIVE_EVENTS = new Set<CanonicalConversionEvent>([
@@ -68,6 +69,7 @@ export function createMetaAdapter(
   return {
     provider: 'meta',
     eventName,
+    normalizeTestEventCode,
     validateCandidate,
     buildBrowserInstruction,
     deliverServerEvent,
@@ -77,6 +79,19 @@ export function createMetaAdapter(
   function eventName(event: CanonicalConversionEvent): string {
     if (!isCanonicalEvent(event)) throw adapterInputInvalid()
     return event
+  }
+
+  function normalizeTestEventCode(
+    value: unknown,
+  ): string | undefined | null {
+    if (value === undefined || value === null || value === '') {
+      return undefined
+    }
+    if (typeof value !== 'string') return null
+    const normalized = value.trim().toUpperCase()
+    return TEST_EVENT_CODE_PATTERN.test(normalized)
+      ? normalized
+      : null
   }
 
   async function validateCandidate(
@@ -89,6 +104,12 @@ export function createMetaAdapter(
     assertCanonicalBindings(input, binding =>
       binding.browserDestination === 'meta_pixel'
       && binding.serverDestination === 'meta_capi')
+    if (
+      input.testEventCode !== undefined
+      && normalizeTestEventCode(input.testEventCode) !== input.testEventCode
+    ) {
+      throw adapterInputInvalid()
+    }
     return validationEvidence(runtime, input)
   }
 
@@ -126,6 +147,13 @@ export function createMetaAdapter(
 
     const userData = metaUserData(input)
     if (Object.keys(userData).length === 0) throw adapterInputInvalid()
+    const testEventCode = normalizeTestEventCode(input.testEventCode)
+    if (
+      (input.validateOnly && !testEventCode)
+      || (!input.validateOnly && input.testEventCode !== undefined)
+    ) {
+      throw adapterInputInvalid()
+    }
     const body = {
       data: [{
         event_name: eventName(input.canonicalEvent),
@@ -135,6 +163,7 @@ export function createMetaAdapter(
         event_source_url: input.pageUrl,
         user_data: userData,
       }],
+      ...(testEventCode ? { test_event_code: testEventCode } : {}),
     }
 
     let response: Response

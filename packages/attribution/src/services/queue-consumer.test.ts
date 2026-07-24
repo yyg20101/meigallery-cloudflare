@@ -97,6 +97,9 @@ describe('归因 Queue Consumer', () => {
       },
       validateOnly: false,
     } satisfies Partial<ServerDeliveryInput>)
+    expect(deliver.mock.calls[0]?.[0]).not.toHaveProperty(
+      'testEventCode',
+    )
     expect(item.ack).toHaveBeenCalledOnce()
     expect(item.retry).not.toHaveBeenCalled()
     expect(await delivery()).toMatchObject({
@@ -388,6 +391,7 @@ function adapter(
   return {
     provider,
     eventName: event => event,
+    normalizeTestEventCode: () => undefined,
     validateCandidate: vi.fn(),
     buildBrowserInstruction: vi.fn(),
     deliverServerEvent: deliver,

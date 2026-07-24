@@ -9,6 +9,7 @@ import {
   hashedEmail,
   isIdentifier,
   isQueueMessage,
+  openValidationTestEventCode,
   openServerPayload,
   outboxExpired,
   pageUrl,
@@ -180,7 +181,18 @@ async function consumePrimary(
       'binding_state_invalid',
     )
   }
-  if (row.circuitState === 'server_open') {
+  if (row.factOrigin === 'synthetic' && !row.candidateValidationValid) {
+    return rejectAndOpenCircuit(
+      message,
+      row,
+      environment,
+      'candidate_validation_state_invalid',
+    )
+  }
+  if (
+    row.factOrigin === 'live'
+    && row.circuitState === 'server_open'
+  ) {
     await parkForOpenCircuit(
       environment.db,
       row,
@@ -189,7 +201,10 @@ async function consumePrimary(
     message.ack()
     return 'skipped'
   }
-  if (!await runtimeAllowsDelivery(row)) {
+  if (
+    row.factOrigin === 'live'
+    && !await runtimeAllowsDelivery(row)
+  ) {
     await cancelForRuntimePolicy(
       environment.db,
       row,
@@ -204,7 +219,13 @@ async function consumePrimary(
       trustedNow(environment.now),
     )
   ) {
-    await rejectLocally(environment, row, 'outbox_expired')
+    await rejectLocally(
+      environment,
+      row,
+      'outbox_expired',
+      undefined,
+      row.factOrigin === 'live',
+    )
     message.ack()
     return 'rejected'
   }
@@ -226,6 +247,7 @@ async function consumePrimary(
 
   let payload
   let credential: string
+  let testEventCode: string | undefined
   try {
     payload = await openServerPayload(
       environment.dataEncryptionKeys,
@@ -239,6 +261,11 @@ async function consumePrimary(
         versionId: row.versionId,
         envelope: row.credentialEnvelope,
       },
+    )
+    testEventCode = await openValidationTestEventCode(
+      environment.dataEncryptionKeys,
+      row,
+      trustedNow(environment.now),
     )
   } catch (error) {
     const code = error instanceof AttributionDomainError
@@ -291,6 +318,7 @@ async function consumePrimary(
       ...payload.requestMetadata,
       consent: payload.consent,
       validateOnly: row.factOrigin === 'synthetic',
+      ...(testEventCode ? { testEventCode } : {}),
     })
   } catch (error) {
     if (error instanceof AttributionDomainError) {
@@ -337,6 +365,7 @@ async function consumePrimary(
       connectionId: row.connectionId,
       provider: row.provider,
       status: providerResult.classification,
+      factOrigin: row.factOrigin,
     })
     message.ack()
     return 'accepted'
@@ -350,6 +379,7 @@ async function consumePrimary(
         ...providerResult,
         classification: 'retryable',
       },
+      row.factOrigin === 'live',
     )
     if (opened) {
       message.ack()
@@ -369,8 +399,11 @@ async function consumePrimary(
     code,
   )
   if (
+    row.factOrigin === 'live'
+    && (
     providerResult.classification === 'credential_invalid'
     || providerResult.classification === 'destination_invalid'
+    )
   ) {
     await openServerCircuitForFailure(environment, {
       connectionId: row.connectionId,
@@ -435,7 +468,11 @@ async function consumeDeadLetter(
     message.ack()
     return 'skipped'
   }
-  await markDeadLetter(environment, row)
+  await markDeadLetter(
+    environment,
+    row,
+    row.factOrigin === 'live',
+  )
   message.ack()
   return 'deadLettered'
 }
@@ -496,6 +533,7 @@ async function retryProviderDelivery(
       provider: row.provider,
       classification: 'retryable',
     },
+    row.factOrigin === 'live',
   )
   if (opened) {
     message.ack()
@@ -511,12 +549,20 @@ async function rejectAndOpenCircuit(
   code: string,
   attempt?: number,
 ): Promise<'rejected'> {
-  await rejectLocally(environment, row, code, attempt)
-  await openServerCircuitForFailure(environment, {
-    connectionId: row.connectionId,
-    provider: row.provider,
+  await rejectLocally(
+    environment,
+    row,
     code,
-  })
+    attempt,
+    row.factOrigin === 'live',
+  )
+  if (row.factOrigin === 'live') {
+    await openServerCircuitForFailure(environment, {
+      connectionId: row.connectionId,
+      provider: row.provider,
+      code,
+    })
+  }
   message.ack()
   return 'rejected'
 }

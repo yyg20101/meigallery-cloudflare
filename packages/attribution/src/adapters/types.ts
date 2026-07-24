@@ -18,6 +18,7 @@ export interface CandidateValidationInput {
   publicConfig: Record<string, string>
   credential: string
   bindings: AttributionCandidateBindingInput[]
+  testEventCode?: string
 }
 
 export interface ValidationEvidence {
@@ -83,6 +84,7 @@ export interface ServerDeliveryInput {
   userAgent?: string
   consent: ServerDeliveryConsent
   validateOnly: boolean
+  testEventCode?: string
 }
 
 export type ProviderDeliveryClassification =
@@ -132,6 +134,9 @@ export type QualitySignalResult =
 export interface AttributionProviderAdapter {
   readonly provider: AttributionProvider
   eventName(event: CanonicalConversionEvent): string
+  normalizeTestEventCode(
+    value: unknown,
+  ): string | undefined | null
   validateCandidate(
     input: CandidateValidationInput,
   ): Promise<ValidationEvidence>
