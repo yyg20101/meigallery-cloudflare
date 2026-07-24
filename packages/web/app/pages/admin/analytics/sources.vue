@@ -226,11 +226,11 @@ async function copyTrackingLink(item: Pick<TrackingSourceMetric, 'trackingPath'>
         <section class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
           <div class="flex items-start justify-between gap-3">
             <div>
-              <h2 class="text-sm font-semibold text-gray-900">投放追踪链接</h2>
-              <p class="mt-1 text-xs leading-5 text-gray-500">广告测试链接已迁移到归因中心，按 campaign 和 content 查看有效联系与注册。</p>
+              <h2 class="text-sm font-semibold text-gray-900">广告投放连接</h2>
+              <p class="mt-1 text-xs leading-5 text-gray-500">广告投放来源由归因连接统一生成并固定绑定平台与团队。</p>
             </div>
-            <NuxtLink to="/admin/attribution/links" class="inline-flex items-center rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
-              管理投放追踪链接
+            <NuxtLink to="/admin/attribution/connections" class="inline-flex items-center rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+              管理归因连接
             </NuxtLink>
           </div>
         </section>

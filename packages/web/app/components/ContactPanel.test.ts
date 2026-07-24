@@ -10,11 +10,10 @@ const nuxtLinkStub = {
 
 const contactMethodItemStub = {
   props: ['method'],
-  emits: ['activate', 'inspect'],
+  emits: ['inspect'],
   template: `
     <div>
-      <button class="contact-method" type="button" @click="$emit('activate', method.id, method.platform, 'open_link')">{{ method.label }}</button>
-      <button class="contact-copy" type="button" @click="$emit('activate', method.id, method.platform, 'copy')">复制</button>
+      <span class="contact-method">{{ method.label }}</span>
       <button class="contact-qr" type="button" @click="$emit('inspect', method.id, method.platform, 'qr_expand')">二维码</button>
     </div>
   `,
@@ -29,8 +28,8 @@ async function mountPanel() {
     linkUrl: 'https://t.me/meigallery',
     qrCodeUrl: '/api/contact-methods/contact-1/qrcode',
     sortOrder: 0,
+    attributionCapability: 'capability_0123456789',
   }])
-  const trackContact = vi.fn()
   const trackAnalytics = vi.fn()
 
   vi.stubGlobal('useContactMethods', () => ({
@@ -45,7 +44,7 @@ async function mountPanel() {
     rulesModalContent: ref('## 服务流程\n\n- 看规则\n- 联系站长\n- 开通访问'),
     rulesPageUrl: ref('/rules'),
   }))
-  vi.stubGlobal('useTracking', () => ({ trackContact, trackAnalytics }))
+  vi.stubGlobal('useTracking', () => ({ trackAnalytics }))
 
   const wrapper = mount({
     render: () => h(Suspense, null, { default: () => h(ContactPanel) }),
@@ -54,7 +53,7 @@ async function mountPanel() {
   })
 
   await flushPromises()
-  return { wrapper, trackContact, trackAnalytics }
+  return { wrapper, trackAnalytics }
 }
 
 describe('ContactPanel', () => {
@@ -74,50 +73,17 @@ describe('ContactPanel', () => {
   })
 
   it('打开联系面板只记录面板分析，不创建 Contact', async () => {
-    const { wrapper, trackContact, trackAnalytics } = await mountPanel()
+    const { wrapper, trackAnalytics } = await mountPanel()
 
     await wrapper.get('button[aria-label="打开联系方式"]').trigger('click')
 
-    expect(trackContact).not.toHaveBeenCalled()
     expect(trackAnalytics).toHaveBeenCalledWith('contact_panel_open', expect.objectContaining({
       props: { location: 'floating_contact_panel' },
     }))
   })
 
-  it('收到已确认的原生链接 activation 后才创建 Contact', async () => {
-    const { wrapper, trackContact } = await mountPanel()
-
-    await wrapper.get('button[aria-label="打开联系方式"]').trigger('click')
-    await wrapper.get('.contact-method').trigger('click')
-
-    expect(trackContact).toHaveBeenCalledWith({
-      contactMethodId: 'contact-1',
-      methodType: 'telegram',
-      actionType: 'open_link',
-    })
-    expect(JSON.stringify(trackContact.mock.calls)).not.toContain('@meigallery')
-  })
-
-  it('复制只记录 contact_value_copy 且不创建 Contact', async () => {
-    const { wrapper, trackContact, trackAnalytics } = await mountPanel()
-
-    await wrapper.get('button[aria-label="打开联系方式"]').trigger('click')
-    await wrapper.get('.contact-copy').trigger('click')
-
-    expect(trackContact).not.toHaveBeenCalled()
-    expect(trackAnalytics).toHaveBeenCalledWith('contact_value_copy', {
-      entityType: 'contact',
-      props: {
-        contact_method_id: 'contact-1',
-        method_type: 'telegram',
-        action_type: 'copy',
-        location: 'floating_contact_panel',
-      },
-    })
-  })
-
   it('二维码展开只记录分析且不创建 Contact', async () => {
-    const { wrapper, trackContact, trackAnalytics } = await mountPanel()
+    const { wrapper, trackAnalytics } = await mountPanel()
 
     await wrapper.get('button[aria-label="打开联系方式"]').trigger('click')
     await wrapper.get('.contact-qr').trigger('click')
@@ -131,17 +97,5 @@ describe('ContactPanel', () => {
         location: 'floating_contact_panel',
       },
     })
-    expect(trackContact).not.toHaveBeenCalled()
-  })
-
-  it('Contact 上报 reject 时调用方不会抛出未处理异常', async () => {
-    const { wrapper, trackContact } = await mountPanel()
-    trackContact.mockRejectedValueOnce(new Error('conversion api failed'))
-
-    await wrapper.get('button[aria-label="打开联系方式"]').trigger('click')
-    await expect(wrapper.get('.contact-method').trigger('click')).resolves.toBeUndefined()
-    await flushPromises()
-
-    expect(trackContact).toHaveBeenCalledOnce()
   })
 })

@@ -97,6 +97,8 @@ export type {
   PlatformPublicConfig,
 } from './ad-attribution'
 
+export * from './attribution-runtime'
+
 export type ConversionActionType =
   | 'contact'
   | 'lead'

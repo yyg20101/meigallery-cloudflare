@@ -9,7 +9,7 @@ const {
   rulesModalContent,
   rulesPageUrl,
 } = useSiteSettings()
-const { trackContact, trackAnalytics } = useTracking()
+const { trackAnalytics } = useTracking()
 
 await fetchContactMethods()
 
@@ -27,23 +27,6 @@ function toggleOpen() {
   if (contactOpen.value) {
     trackContactPanelOpen()
   }
-}
-
-function trackContactMethod(contactMethodId: string, methodType: string, actionType = 'unknown') {
-  if (actionType === 'copy') {
-    trackAnalytics('contact_value_copy', {
-      entityType: 'contact',
-      props: {
-        contact_method_id: contactMethodId,
-        method_type: methodType,
-        action_type: 'copy',
-        location: 'floating_contact_panel',
-      },
-    })
-    return
-  }
-  if (actionType !== 'open_link') return
-  void Promise.resolve(trackContact({ contactMethodId, methodType, actionType })).catch(() => {})
 }
 
 function trackContactInspection(contactMethodId: string, methodType: string, actionType: string) {
@@ -191,7 +174,6 @@ function trackRulesPageClick() {
             v-for="method in contactMethods"
             :key="method.id"
             :method="method"
-            @activate="trackContactMethod"
             @inspect="trackContactInspection"
           />
         </div>

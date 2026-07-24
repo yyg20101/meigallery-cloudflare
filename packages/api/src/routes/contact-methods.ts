@@ -3,6 +3,8 @@ import type { Bindings, Variables } from '../index'
 import { safeContactLinkUrl } from '../utils/contact-link-url'
 import { isExpectedContactQrCodeKey } from '../utils/contact-qrcode'
 import { generateContactLink } from '@meigallery/shared/constants'
+import { digestAttributionContactDestination } from '@meigallery/shared/utils'
+import { createAttributionServiceClient } from '../services/attribution-service-client'
 
 export const contactMethodRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -39,7 +41,38 @@ contactMethodRoutes.get('/', async (c) => {
     sortOrder: row.sort_order,
   }))
 
-  return c.json({ data })
+  const attributionCapabilities = new Map<string, string>()
+  if (data.length > 0) {
+    try {
+      const inputs = await Promise.all(data.map(async method => ({
+        contactMethodId: method.id,
+        platform: method.platform,
+        destinationDigest: await digestAttributionContactDestination({
+          value: method.value,
+          linkUrl: method.linkUrl,
+        }),
+      })))
+      const capabilities = await createAttributionServiceClient(
+        c.env.ATTRIBUTION,
+      ).getSignedContactCapabilities(inputs)
+      for (const item of capabilities) {
+        attributionCapabilities.set(
+          item.contactMethodId,
+          item.attributionCapability,
+        )
+      }
+    } catch {
+      // 联系方式属于核心公开数据；归因不可用时只降级 capability。
+    }
+  }
+
+  return c.json({
+    data: data.map(method => ({
+      ...method,
+      attributionCapability:
+        attributionCapabilities.get(method.id) ?? null,
+    })),
+  })
 })
 
 /**
