@@ -12,7 +12,7 @@ crons = ["*/15 * * * *", "17 3 * * *"]
 [[d1_databases]]
 binding = "DB"
 database_name = "meigallery-attribution-db"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "94fd6a1c-02e0-47fc-ba75-72b36b43dd39"
 migrations_dir = "migrations"
 
 [[queues.producers]]
@@ -90,7 +90,7 @@ crons = []
 [[env.dev.d1_databases]]
 binding = "DB"
 database_name = "meigallery-attribution-db-dev"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "dc65241f-cc80-49e3-933c-f477f0e9575c"
 migrations_dir = "migrations"
 
 [[env.dev.queues.producers]]

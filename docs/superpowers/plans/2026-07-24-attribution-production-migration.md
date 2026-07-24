@@ -57,7 +57,7 @@ docs/PROJECT_STATUS.md
 - Consumes: 已登录 Wrangler 和 Cloudflare 账户。
 - Produces: production/dev D1、三条 production Queue 与 DLQ、Worker 配置中的真实资源 ID。
 
-- [ ] **Step 1: 写资源计划失败测试**
+- [x] **Step 1: 写资源计划失败测试**
 
 ```js
 test('资源计划不会修改 API Worker 的 D1 或 Queue', () => {
@@ -78,7 +78,7 @@ test('资源计划不会修改 API Worker 的 D1 或 Queue', () => {
 })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -88,9 +88,9 @@ node --test scripts/provision-attribution-resources.test.mjs
 
 Expected: FAIL，脚本不存在。
 
-- [ ] **Step 3: 实现可重复执行的资源脚本**
+- [x] **Step 3: 实现可重复执行的资源脚本**
 
-脚本先调用 `wrangler d1 list --json` 和 `wrangler queues list --json`，只创建缺失资源；已有同名资源复用其真实 ID。写入 `wrangler.toml` 时只替换 `database_id` 精确字段，并在写入后重新解析确认：
+脚本先调用 `wrangler d1 list --json` 和 `wrangler queues list`，只创建缺失资源；已有同名资源复用其真实 ID。当前 Wrangler 4 的 Queue 列表没有 JSON 参数，因此脚本按表头识别 `id` / `name` 列，不依赖固定列序。写入 `wrangler.toml` 时只替换 `database_id` 精确字段，并在写入后重新解析确认：
 
 ```js
 const required = {
@@ -108,7 +108,7 @@ const required = {
 
 脚本输出只包含资源名称和非敏感 ID，不输出 secret。
 
-- [ ] **Step 4: 运行 dry-run 和真实资源创建**
+- [x] **Step 4: 运行 dry-run 和真实资源创建**
 
 Run:
 
@@ -120,7 +120,11 @@ corepack pnpm --filter @meigallery/attribution build
 
 Expected: dry-run 输出 `2 D1 / 6 Queues`；apply 输出每个资源 `created` 或 `reused`；构建退出码为 `0`。
 
-- [ ] **Step 5: 设置独立 Secret**
+- [ ] **Step 5: 首次 shadow 部署后设置独立 Secret**
+
+首次执行时目标 Worker 尚不存在，`wrangler secret put` 不得用于隐式创建未知版本。
+本步骤与 Task 2 Step 4 连续执行：先部署默认 `shadow` 的 Worker，再立即通过标准输入
+设置三把 Secret，并重新部署、核验 `runtimeMode=shadow`。已有 Secret 只复用，不覆盖。
 
 Run:
 
@@ -132,7 +136,7 @@ openssl rand -base64 48 | corepack pnpm --filter @meigallery/attribution exec wr
 
 Expected: Wrangler 分别输出 secret uploaded；终端不得回显 secret 值。
 
-- [ ] **Step 6: 提交非敏感资源配置**
+- [x] **Step 6: 提交非敏感资源配置**
 
 ```bash
 git add scripts/provision-attribution-resources* packages/attribution/wrangler.toml docs/DEPLOYMENT.md

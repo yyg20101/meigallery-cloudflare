@@ -147,6 +147,30 @@ corepack pnpm verify:release
 
 达到以下任一阈值时进入 Phase 9 规模增强评估，而不是临时放宽当前预算：采集接口 P95 > 300ms 且主要耗时来自 D1 写入；或 D1 rows written 超过 80,000/day 的 80% 连续 3 天。Phase 9 才评估 Cloudflare Queues 批处理和 Workers Analytics Engine；评估前必须重新核对 Cloudflare 官方 limits、pricing、batching、retry 和 retention 文档。
 
+### 独立归因资源预配
+
+独立 Attribution Worker 只使用 `meigallery-attribution-*` 资源，不复用 API
+Worker 的 `meigallery-db` 或 `meigallery-ad-*` Queue。资源预配必须使用仓库脚本：
+
+```bash
+node scripts/provision-attribution-resources.mjs --dry-run
+node scripts/provision-attribution-resources.mjs --apply
+```
+
+脚本固定管理 2 个 D1（production/dev）与 6 个 production Queue/DLQ；先列举并
+复用同名资源，只创建缺失项。所有资源创建后会重新查询确认，随后只更新
+`packages/attribution/wrangler.toml` 中两个精确匹配的 `database_id`。输出只包含
+资源名称与非敏感 ID，不处理或输出任何平台凭证。
+
+dev 只用于数据库迁移演练和代码逻辑验证，不创建或连接真实广告平台 Queue，不写入
+production 平台测试事件。production Secret 只能在默认 `shadow` 的 Attribution
+Worker 首次部署后通过 `wrangler secret put` 的标准输入设置；不得通过参数、文件、
+日志或后台响应传递明文。
+
+Free 账户达到 D1 上限时禁止复用主 API D1。只能清理同时满足“已有仓库外备份、无表、
+无近期读写、无 Worker 绑定、无代码引用”的孤立数据库，或升级账户容量；无法证明时
+停止预配。
+
 ### Meta 正式投放上线顺序
 
 Meta 正式事件仅为 `Contact`、`CompleteRegistration`。`attribution_conversion_facts` 是唯一事实源，Pixel / CAPI 只是同步渠道，关闭或失败都不得阻断站内转化记账。
