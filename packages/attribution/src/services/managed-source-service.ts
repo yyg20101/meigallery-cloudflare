@@ -33,9 +33,79 @@ export interface ManagedSourceProof {
   proof: string
 }
 
+export interface AdminManagedSourceView {
+  id: string
+  provider: AttributionProvider
+  connectionId: string
+  campaign: string
+  medium: string
+  content: string
+  expiresAt: string | null
+  enabled: boolean
+  createdAt: string
+}
+
+export interface CreateAdminManagedSourceInput extends CreateManagedSourceInput {
+  actorId: number
+  idempotencyKey: string
+}
+
+export interface CreateAdminManagedSourceResult {
+  source: AdminManagedSourceView
+  proof: string | null
+  proofDelivery: 'issued_once' | 'not_recoverable'
+  replayed: boolean
+}
+
+export interface DisableAdminManagedSourceInput {
+  connectionId: string
+  sourceId: string
+  actorId: number
+  idempotencyKey: string
+}
+
+export interface DisableAdminManagedSourceResult {
+  source: AdminManagedSourceView
+  disabled: true
+}
+
+export interface ListAdminManagedSourcesInput {
+  connectionId: string
+  actorId: number
+  idempotencyKey: string
+}
+
+export interface ListAdminManagedSourcesResult {
+  connectionId: string
+  sources: AdminManagedSourceView[]
+}
+
 interface EligibleConnectionRow {
   provider: string
   connection_id: string
+}
+
+interface ManagedSourceRow {
+  id: string
+  provider: string
+  connection_id: string
+  campaign: string
+  medium: string
+  content: string
+  expires_at: string | null
+  enabled: number
+  created_at: string
+}
+
+interface CommandReceiptRow {
+  command_type: string
+  request_hash: string
+  result_json: string
+}
+
+interface CreateAdminManagedSourceReceipt {
+  source: AdminManagedSourceView
+  proofRecovery: 'unavailable'
 }
 
 const PROVIDERS = new Set<AttributionProvider>([
@@ -43,6 +113,10 @@ const PROVIDERS = new Set<AttributionProvider>([
   'tiktok',
   'google',
 ])
+
+const CREATE_ADMIN_SOURCE = 'create_managed_source'
+const DISABLE_ADMIN_SOURCE = 'disable_managed_source'
+const LIST_ADMIN_SOURCES = 'list_managed_sources'
 
 export async function createManagedSource(
   environment: ManagedSourceEnvironment,
@@ -107,6 +181,305 @@ export async function createManagedSource(
     connectionId: connection.connectionId,
     proof,
   }
+}
+
+export async function createAdminManagedSource(
+  environment: ManagedSourceEnvironment,
+  input: CreateAdminManagedSourceInput,
+): Promise<CreateAdminManagedSourceResult> {
+  validateAdminCommand(input)
+  validateIdentifier(input.connectionId)
+  validateMetadata(input.campaign)
+  validateMetadata(input.medium)
+  validateMetadata(input.content)
+
+  const now = validNow(environment.now ?? (() => new Date()))
+  const expiresAt = normalizedExpiry(input.expiresAt, now)
+  const requestHash = await hashAdminCommand(CREATE_ADMIN_SOURCE, {
+    actorId: input.actorId,
+    connectionId: input.connectionId,
+    campaign: input.campaign,
+    medium: input.medium,
+    content: input.content,
+    expiresAt,
+  })
+  const replay = await readAdminReceipt<CreateAdminManagedSourceReceipt>(
+    environment.db,
+    input.idempotencyKey,
+    CREATE_ADMIN_SOURCE,
+    requestHash,
+  )
+  if (replay) return replayedCreateResult(replay)
+
+  const connection = await findEligibleConnection(
+    environment.db,
+    input.connectionId,
+  )
+  if (!connection) {
+    throw new AttributionDomainError('ATTRIBUTION_CONNECTION_NOT_FOUND')
+  }
+
+  const proofBytes = (
+    environment.randomBytes
+    ?? (() => crypto.getRandomValues(new Uint8Array(32)))
+  )()
+  if (!(proofBytes instanceof Uint8Array) || proofBytes.byteLength !== 32) {
+    throw commandInvalid()
+  }
+  const proof = encodeBase64Url(proofBytes)
+  const proofHash = await managedSourceHash(proof)
+  const idFactory = environment.idFactory
+    ?? (prefix => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}`)
+  const sourceId = idFactory('source')
+  const auditId = idFactory('audit')
+  validateIdentifier(sourceId)
+  validateIdentifier(auditId)
+
+  const source: AdminManagedSourceView = {
+    id: sourceId,
+    provider: connection.provider,
+    connectionId: connection.connectionId,
+    campaign: input.campaign,
+    medium: input.medium,
+    content: input.content,
+    expiresAt,
+    enabled: true,
+    createdAt: now,
+  }
+  const receipt: CreateAdminManagedSourceReceipt = {
+    source,
+    proofRecovery: 'unavailable',
+  }
+
+  try {
+    const results = await environment.db.batch([
+      environment.db.prepare(`
+        INSERT INTO attribution_managed_sources (
+          id, provider, connection_id, campaign, medium, content,
+          proof_hash, expires_at, enabled, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+      `).bind(
+        source.id,
+        source.provider,
+        source.connectionId,
+        source.campaign,
+        source.medium,
+        source.content,
+        proofHash,
+        source.expiresAt,
+        source.createdAt,
+      ),
+      auditStatement(environment.db, {
+        id: auditId,
+        actorId: input.actorId,
+        commandType: CREATE_ADMIN_SOURCE,
+        connectionId: source.connectionId,
+        outcome: 'created',
+        detail: {
+          sourceId: source.id,
+          campaign: source.campaign,
+          medium: source.medium,
+          content: source.content,
+          expiresAt: source.expiresAt,
+        },
+        timestamp: now,
+        requirePreviousChange: true,
+      }),
+      receiptStatement(
+        environment.db,
+        input.idempotencyKey,
+        CREATE_ADMIN_SOURCE,
+        requestHash,
+        receipt,
+        now,
+        true,
+      ),
+    ])
+    if (Number(results[0]?.meta.changes ?? 0) !== 1) {
+      throw commandFailed()
+    }
+  } catch {
+    const raced = await readAdminReceipt<CreateAdminManagedSourceReceipt>(
+      environment.db,
+      input.idempotencyKey,
+      CREATE_ADMIN_SOURCE,
+      requestHash,
+    )
+    if (raced) return replayedCreateResult(raced)
+    throw commandFailed()
+  }
+
+  return {
+    source,
+    proof,
+    proofDelivery: 'issued_once',
+    replayed: false,
+  }
+}
+
+export async function disableAdminManagedSource(
+  environment: ManagedSourceEnvironment,
+  input: DisableAdminManagedSourceInput,
+): Promise<DisableAdminManagedSourceResult> {
+  validateAdminCommand(input)
+  validateIdentifier(input.connectionId)
+  validateIdentifier(input.sourceId)
+
+  const requestHash = await hashAdminCommand(DISABLE_ADMIN_SOURCE, {
+    actorId: input.actorId,
+    connectionId: input.connectionId,
+    sourceId: input.sourceId,
+  })
+  const replay = await readAdminReceipt<DisableAdminManagedSourceResult>(
+    environment.db,
+    input.idempotencyKey,
+    DISABLE_ADMIN_SOURCE,
+    requestHash,
+  )
+  if (replay) return replay
+
+  const row = await findManagedSource(
+    environment.db,
+    input.connectionId,
+    input.sourceId,
+  )
+  if (!row) {
+    throw new AttributionDomainError('ATTRIBUTION_CONNECTION_NOT_FOUND')
+  }
+
+  const now = validNow(environment.now ?? (() => new Date()))
+  const source = managedSourceView(row, false)
+  const result: DisableAdminManagedSourceResult = {
+    source,
+    disabled: true,
+  }
+  const idFactory = environment.idFactory
+    ?? (prefix => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}`)
+  const auditId = idFactory('audit')
+  validateIdentifier(auditId)
+
+  try {
+    const results = await environment.db.batch([
+      environment.db.prepare(`
+        UPDATE attribution_managed_sources
+        SET enabled = 0
+        WHERE id = ?
+          AND connection_id = ?
+      `).bind(input.sourceId, input.connectionId),
+      auditStatement(environment.db, {
+        id: auditId,
+        actorId: input.actorId,
+        commandType: DISABLE_ADMIN_SOURCE,
+        connectionId: input.connectionId,
+        outcome: 'disabled',
+        detail: { sourceId: input.sourceId },
+        timestamp: now,
+        requirePreviousChange: true,
+      }),
+      receiptStatement(
+        environment.db,
+        input.idempotencyKey,
+        DISABLE_ADMIN_SOURCE,
+        requestHash,
+        result,
+        now,
+        true,
+      ),
+    ])
+    if (Number(results[0]?.meta.changes ?? 0) !== 1) {
+      throw commandFailed()
+    }
+  } catch {
+    const raced = await readAdminReceipt<DisableAdminManagedSourceResult>(
+      environment.db,
+      input.idempotencyKey,
+      DISABLE_ADMIN_SOURCE,
+      requestHash,
+    )
+    if (raced) return raced
+    throw commandFailed()
+  }
+  return result
+}
+
+export async function listAdminManagedSources(
+  environment: ManagedSourceEnvironment,
+  input: ListAdminManagedSourcesInput,
+): Promise<ListAdminManagedSourcesResult> {
+  validateAdminCommand(input)
+  validateIdentifier(input.connectionId)
+
+  const requestHash = await hashAdminCommand(LIST_ADMIN_SOURCES, {
+    actorId: input.actorId,
+    connectionId: input.connectionId,
+  })
+  const replay = await readAdminReceipt<ListAdminManagedSourcesResult>(
+    environment.db,
+    input.idempotencyKey,
+    LIST_ADMIN_SOURCES,
+    requestHash,
+  )
+  if (replay) return replay
+
+  const connection = await findConnection(
+    environment.db,
+    input.connectionId,
+  )
+  if (!connection) {
+    throw new AttributionDomainError('ATTRIBUTION_CONNECTION_NOT_FOUND')
+  }
+  const rows = await environment.db.prepare(`
+    SELECT id, provider, connection_id, campaign, medium, content,
+           expires_at, enabled, created_at
+    FROM attribution_managed_sources
+    WHERE connection_id = ?
+      AND provider = ?
+    ORDER BY created_at DESC, id ASC
+  `).bind(
+    connection.connectionId,
+    connection.provider,
+  ).all<ManagedSourceRow>()
+  const result: ListAdminManagedSourcesResult = {
+    connectionId: connection.connectionId,
+    sources: rows.results.map(row => managedSourceView(row)),
+  }
+
+  const now = validNow(environment.now ?? (() => new Date()))
+  const idFactory = environment.idFactory
+    ?? (prefix => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}`)
+  const auditId = idFactory('audit')
+  validateIdentifier(auditId)
+  try {
+    await environment.db.batch([
+      auditStatement(environment.db, {
+        id: auditId,
+        actorId: input.actorId,
+        commandType: LIST_ADMIN_SOURCES,
+        connectionId: input.connectionId,
+        outcome: 'listed',
+        detail: { sourceCount: result.sources.length },
+        timestamp: now,
+      }),
+      receiptStatement(
+        environment.db,
+        input.idempotencyKey,
+        LIST_ADMIN_SOURCES,
+        requestHash,
+        result,
+        now,
+      ),
+    ])
+  } catch {
+    const raced = await readAdminReceipt<ListAdminManagedSourcesResult>(
+      environment.db,
+      input.idempotencyKey,
+      LIST_ADMIN_SOURCES,
+      requestHash,
+    )
+    if (raced) return raced
+    throw commandFailed()
+  }
+  return result
 }
 
 export function createManagedSourceRoutingRepository(
@@ -238,6 +611,38 @@ async function findEligibleConnection(
   return routeCandidate(row)
 }
 
+async function findConnection(
+  db: D1Database,
+  connectionId: string,
+): Promise<AttributionRouteCandidate | null> {
+  const row = await db.prepare(`
+    SELECT provider, id AS connection_id
+    FROM attribution_connections
+    WHERE id = ?
+    LIMIT 1
+  `).bind(connectionId).first<EligibleConnectionRow>()
+  return routeCandidate(row)
+}
+
+async function findManagedSource(
+  db: D1Database,
+  connectionId: string,
+  sourceId: string,
+): Promise<ManagedSourceRow | null> {
+  return db.prepare(`
+    SELECT source.id, source.provider, source.connection_id,
+           source.campaign, source.medium, source.content,
+           source.expires_at, source.enabled, source.created_at
+    FROM attribution_managed_sources AS source
+    INNER JOIN attribution_connections AS connection
+      ON connection.id = source.connection_id
+     AND connection.provider = source.provider
+    WHERE source.id = ?
+      AND source.connection_id = ?
+    LIMIT 1
+  `).bind(sourceId, connectionId).first<ManagedSourceRow>()
+}
+
 function routeCandidate(
   row: EligibleConnectionRow | null,
 ): AttributionRouteCandidate | null {
@@ -256,6 +661,143 @@ function routeCandidate(
 
 async function managedSourceHash(proof: string): Promise<string> {
   return sha256Hex(`managed-source:v1:${proof}`)
+}
+
+function managedSourceView(
+  row: ManagedSourceRow,
+  enabled = row.enabled === 1,
+): AdminManagedSourceView {
+  const candidate = routeCandidate({
+    provider: row.provider,
+    connection_id: row.connection_id,
+  })
+  if (!candidate || !isIdentifier(row.id)) throw commandFailed()
+  return {
+    id: row.id,
+    provider: candidate.provider,
+    connectionId: candidate.connectionId,
+    campaign: row.campaign,
+    medium: row.medium,
+    content: row.content,
+    expiresAt: row.expires_at,
+    enabled,
+    createdAt: row.created_at,
+  }
+}
+
+function replayedCreateResult(
+  receipt: CreateAdminManagedSourceReceipt,
+): CreateAdminManagedSourceResult {
+  if (receipt.proofRecovery !== 'unavailable') throw commandFailed()
+  return {
+    source: receipt.source,
+    proof: null,
+    proofDelivery: 'not_recoverable',
+    replayed: true,
+  }
+}
+
+async function readAdminReceipt<T>(
+  db: D1Database,
+  idempotencyKey: string,
+  commandType: string,
+  requestHash: string,
+): Promise<T | null> {
+  const row = await db.prepare(`
+    SELECT command_type, request_hash, result_json
+    FROM attribution_command_receipts
+    WHERE idempotency_key = ?
+    LIMIT 1
+  `).bind(idempotencyKey).first<CommandReceiptRow>()
+  if (!row) return null
+  if (
+    row.command_type !== commandType
+    || row.request_hash !== requestHash
+  ) {
+    throw new AttributionDomainError('ATTRIBUTION_IDEMPOTENCY_CONFLICT')
+  }
+  try {
+    return JSON.parse(row.result_json) as T
+  } catch {
+    throw commandFailed()
+  }
+}
+
+interface AuditStatementInput {
+  id: string
+  actorId: number
+  commandType: string
+  connectionId: string
+  outcome: string
+  detail: Record<string, unknown>
+  timestamp: string
+  requirePreviousChange?: boolean
+}
+
+function auditStatement(
+  db: D1Database,
+  input: AuditStatementInput,
+): D1PreparedStatement {
+  const condition = input.requirePreviousChange ? ' WHERE changes() = 1' : ''
+  return db.prepare(`
+    INSERT INTO attribution_audit_logs (
+      id, actor_id, command_type, connection_id,
+      outcome, detail_json, created_at
+    )
+    SELECT ?, ?, ?, ?, ?, ?, ?${condition}
+  `).bind(
+    input.id,
+    input.actorId,
+    input.commandType,
+    input.connectionId,
+    input.outcome,
+    JSON.stringify(input.detail),
+    input.timestamp,
+  )
+}
+
+function receiptStatement(
+  db: D1Database,
+  idempotencyKey: string,
+  commandType: string,
+  requestHash: string,
+  result: unknown,
+  timestamp: string,
+  requirePreviousChange = false,
+): D1PreparedStatement {
+  const condition = requirePreviousChange ? ' WHERE changes() = 1' : ''
+  return db.prepare(`
+    INSERT INTO attribution_command_receipts (
+      idempotency_key, command_type, request_hash, result_json, created_at
+    )
+    SELECT ?, ?, ?, ?, ?${condition}
+  `).bind(
+    idempotencyKey,
+    commandType,
+    requestHash,
+    JSON.stringify(result),
+    timestamp,
+  )
+}
+
+async function hashAdminCommand(
+  commandType: string,
+  payload: Record<string, unknown>,
+): Promise<string> {
+  return sha256Hex(JSON.stringify({ commandType, payload }))
+}
+
+function validateAdminCommand(input: {
+  actorId: number
+  idempotencyKey: string
+}): void {
+  if (
+    !Number.isSafeInteger(input.actorId)
+    || input.actorId < 1
+    || !isIdentifier(input.idempotencyKey)
+  ) {
+    throw commandInvalid()
+  }
 }
 
 function isOpaqueProof(value: unknown): value is string {
