@@ -151,7 +151,7 @@ max_retries = 3
 
 [env.dev.vars]
 APP_ENV = "dev"
-ATTRIBUTION_PUBLIC_ORIGINS = "http://localhost:3000"
+ATTRIBUTION_PUBLIC_ORIGINS = "http://localhost:3000,https://meigallery-web-dev.wajie.workers.dev"
 ATTRIBUTION_COOKIE_DOMAIN = ""
 
 [env.dev.observability]

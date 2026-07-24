@@ -1,4 +1,5 @@
 import type {
+  AttributionBrowserInstructionV1,
   AttributionProvider,
   CanonicalConversionEvent,
 } from '@meigallery/shared'
@@ -43,17 +44,7 @@ export interface BrowserInstructionInput {
   receiptToken: string
 }
 
-export interface BrowserInstruction {
-  schemaVersion: 1
-  deliveryId: string
-  provider: AttributionProvider
-  canonicalEvent: CanonicalConversionEvent
-  eventName: string
-  destination: string
-  externalEventId: string
-  receiptToken: string
-  payload: Record<string, string | number | boolean>
-}
+export type BrowserInstruction = AttributionBrowserInstructionV1
 
 export interface ServerDeliveryConsent {
   marketingAllowed: boolean

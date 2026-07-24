@@ -13,7 +13,6 @@ import {
   dispatchAttributionBusinessOutboxImmediately,
 } from '../services/attribution-business-outbox'
 import { hashInviteCode } from '../services/invite-codes'
-import { createMarketingConsentReceipt } from '../utils/marketing-consent-receipt'
 import { authRoutes } from './auth'
 
 vi.mock('../services/attribution-business-outbox', () => ({
@@ -183,14 +182,21 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
     })
   })
 
-  it('未获得营销授权时仍创建第一方业务事件，但不包含邮箱摘要', async () => {
+  it('请求体伪造 granted 不能越过 Worker 的 choice_required 判定', async () => {
     const db = createRegisterDb()
-    const response = await register(db, {
-      attribution: {
-        ...grantedAttribution(),
-        consentState: 'denied',
+    const response = await register(
+      db,
+      {
+        attribution: {
+          ...grantedAttribution(),
+          consentState: 'granted',
+        },
       },
-    })
+      {
+        privacyToken: null,
+        privacyDecision: 'choice_required',
+      },
+    )
 
     expect(response.status).toBe(201)
     expect(buildOutboxMock.mock.calls[0]?.[1]).toMatchObject({
@@ -203,7 +209,7 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
     })
   })
 
-  it('营销授权 receipt 解析异常时按拒绝状态完成注册', async () => {
+  it('Attribution Worker 隐私判定异常时按拒绝状态完成注册', async () => {
     const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(
       () => undefined,
     )
@@ -211,7 +217,7 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
     const response = await register(
       db,
       { attribution: grantedAttribution() },
-      { failConsentResolution: true },
+      { failPrivacyResolution: true },
     )
 
     expect(response.status).toBe(201)
@@ -223,8 +229,8 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
       },
     })
     expect(consoleWarn).toHaveBeenCalledWith(
-      '[auth.register] 营销授权解析失败，按拒绝状态继续注册',
-      { code: 'REGISTRATION_MARKETING_CONSENT_RESOLUTION_FAILED' },
+      '[auth.register] 归因隐私判定失败，按拒绝状态继续注册',
+      { code: 'REGISTRATION_ATTRIBUTION_PRIVACY_RESOLUTION_FAILED' },
     )
   })
 
@@ -323,7 +329,6 @@ function grantedAttribution() {
     utmMedium: 'paid_social',
     utmCampaign: 'registration',
     utmContent: 'hero',
-    consentState: 'granted',
   }
 }
 
@@ -331,38 +336,53 @@ async function register(
   db: ReturnType<typeof createRegisterDb>,
   extra: Record<string, unknown>,
   options: {
-    withTrustedReceipt?: boolean
-    failConsentResolution?: boolean
+    failPrivacyResolution?: boolean
     contextToken?: string | null
+    privacyToken?: string | null
+    privacyDecision?: 'granted' | 'denied' | 'choice_required'
   } = {},
 ) {
-  const requestedConsent = (
-    extra.attribution as { consentState?: unknown } | undefined
-  )?.consentState
-  const withTrustedReceipt = options.withTrustedReceipt ?? true
-  const receipt = withTrustedReceipt && requestedConsent === 'granted'
-    ? await createMarketingConsentReceipt(
-        'test-session-secret',
-        'granted',
-      )
-    : ''
+  const privacyDecision = options.privacyDecision ?? 'granted'
   const bindings = {
     APP_ENV: 'local',
     DB: db,
     SESSION_SECRET: 'test-session-secret',
     ATTRIBUTION: {
-      fetch: vi.fn(async () => new Response(null, { status: 503 })),
+      fetch: vi.fn(async (request: Request) => {
+        if (
+          request.url
+          === 'https://attribution.internal/internal/v1/privacy-decision'
+        ) {
+          if (options.failPrivacyResolution) {
+            return new Response(null, { status: 503 })
+          }
+          if (privacyDecision === 'granted') {
+            return Response.json({
+              state: 'granted',
+              reason: 'explicit',
+            })
+          }
+          if (privacyDecision === 'denied') {
+            return Response.json({
+              state: 'denied',
+              reason: 'explicit',
+            })
+          }
+          return Response.json({
+            state: 'choice_required',
+            reason: 'policy_default',
+          })
+        }
+        return new Response(null, { status: 503 })
+      }),
     },
   } as unknown as Bindings
-  if (options.failConsentResolution) {
-    Object.defineProperty(bindings, 'SESSION_SECRET', {
-      get() {
-        throw new Error('secret unavailable')
-      },
-    })
-  }
   const cookies = [
-    receipt ? `mei_marketing_consent_receipt=${receipt}` : '',
+    options.privacyToken === null
+      ? ''
+      : `__Secure-mg_attribution_privacy=${
+        options.privacyToken ?? 'opaque_privacy_token'
+      }`,
     options.contextToken === null
       ? ''
       : `__Secure-mg_attribution_context=${

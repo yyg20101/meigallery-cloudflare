@@ -4,6 +4,10 @@ import type {
 } from './ad-attribution'
 
 export const ATTRIBUTION_CONTRACT_VERSION = 1 as const
+export const ATTRIBUTION_CONTEXT_COOKIE_NAME =
+  '__Secure-mg_attribution_context'
+export const ATTRIBUTION_PRIVACY_COOKIE_NAME =
+  '__Secure-mg_attribution_privacy'
 
 export type AttributionProvider = AdAttributionProvider
 
@@ -50,6 +54,18 @@ export interface AttributionRuntimeLeaseV1 {
   issuedAt: number
   expiresAt: number
   signature: string
+}
+
+export interface AttributionBrowserInstructionV1 {
+  schemaVersion: typeof ATTRIBUTION_CONTRACT_VERSION
+  deliveryId: string
+  provider: AttributionProvider
+  canonicalEvent: CanonicalConversionEvent
+  eventName: string
+  destination: string
+  externalEventId: string
+  receiptToken: string
+  payload: Record<string, string | number | boolean>
 }
 
 export interface AttributionServiceContractV1 {

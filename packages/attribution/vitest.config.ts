@@ -8,6 +8,10 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      '@meigallery/shared/utils': resolve(
+        __dirname,
+        '../shared/src/utils/index.ts',
+      ),
       '@meigallery/shared': resolve(__dirname, '../shared/src/types/index.ts'),
       'cloudflare:workers': resolve(
         __dirname,

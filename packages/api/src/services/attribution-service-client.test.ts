@@ -7,6 +7,56 @@ import {
 } from './attribution-service-client'
 
 describe('Attribution Service Binding client', () => {
+  it('仅向固定内部路径发送不透明隐私凭据并严格读取判定', async () => {
+    const fetch = vi.fn(async () => Response.json({
+      state: 'granted',
+      reason: 'explicit',
+    }))
+    const client = createAttributionServiceClient(binding(fetch))
+    const input = {
+      privacyToken: 'opaque_signed_privacy_token',
+      country: 'US',
+      gpc: false,
+    }
+
+    await expect(client.resolvePrivacyDecision(input)).resolves.toEqual({
+      state: 'granted',
+      reason: 'explicit',
+    })
+
+    const request = fetch.mock.calls[0]?.[0]
+    expect(request?.url).toBe(
+      'https://attribution.internal/internal/v1/privacy-decision',
+    )
+    expect(request?.method).toBe('POST')
+    expect(await request?.json()).toEqual(input)
+  })
+
+  it('隐私判定拒绝额外输入和不可能的响应状态组合', async () => {
+    const fetch = vi.fn(async () => Response.json({
+      state: 'granted',
+      reason: 'gpc',
+    }))
+    const client = createAttributionServiceClient(binding(fetch))
+
+    await expect(client.resolvePrivacyDecision({
+      privacyToken: null,
+      country: 'us',
+      gpc: false,
+    })).rejects.toMatchObject({
+      code: 'ATTRIBUTION_PRIVACY_DECISION_INPUT_INVALID',
+    })
+    expect(fetch).not.toHaveBeenCalled()
+
+    await expect(client.resolvePrivacyDecision({
+      privacyToken: null,
+      country: null,
+      gpc: false,
+    })).rejects.toMatchObject({
+      code: 'ATTRIBUTION_PRIVACY_DECISION_RESPONSE_INVALID',
+    })
+  })
+
   it('仅向固定内部注册路径发送通过 V1 guard 的 CompleteRegistration', async () => {
     const fetch = vi.fn(async (request: Request) => Response.json({
       accepted: true,

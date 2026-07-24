@@ -105,14 +105,14 @@ describe('Web API 代理头部白名单', () => {
     Object.defineProperty(headers, 'getSetCookie', {
       value: () => [
         'mei_session=abc; Path=/; HttpOnly; Secure; SameSite=Lax',
-        'mei_marketing_consent_receipt=receipt; Path=/; HttpOnly; Secure; SameSite=Lax',
+        'mei_session=receipt; Path=/; HttpOnly; Secure; SameSite=Lax',
       ],
     })
 
     expect(apiProxyResponseHeaderEntries(headers)).toEqual([
       ['content-type', 'application/json'],
       ['set-cookie', 'mei_session=abc; Path=/; HttpOnly; Secure; SameSite=Lax'],
-      ['set-cookie', 'mei_marketing_consent_receipt=receipt; Path=/; HttpOnly; Secure; SameSite=Lax'],
+      ['set-cookie', 'mei_session=receipt; Path=/; HttpOnly; Secure; SameSite=Lax'],
     ])
   })
 })

@@ -520,33 +520,17 @@ test.describe('核心页面 smoke', () => {
     expect(serialized).not.toContain('imports/')
   })
 
-  test('marketing receipt 依赖请求通过 Web 同源代理并转发 HttpOnly cookie', async ({ request, page }) => {
+  test('认证请求通过 Web 同源代理并转发 HttpOnly session cookie', async ({ request, page }) => {
     await request.patch(`${apiURL}/api/test/auth`, { data: { authenticated: false } })
-    await request.patch(`${apiURL}/api/test/marketing-consent-state`, { data: { state: 'limited' } })
     const protectedRequestUrls: string[] = []
     page.on('request', (browserRequest) => {
-      if (/\/api\/(marketing-consent|conversions\/events|auth\/register|me)$/.test(new URL(browserRequest.url()).pathname)) {
+      if (/\/api\/(auth\/register|me)$/.test(new URL(browserRequest.url()).pathname)) {
         protectedRequestUrls.push(browserRequest.url())
       }
     })
 
     await page.goto('/register?invite=TESTCODE')
     await page.waitForLoadState('networkidle')
-    const [consentResponse] = await Promise.all([
-      page.waitForResponse(response => response.url().endsWith('/api/marketing-consent') && response.request().method() === 'PUT'),
-      page.getByRole('button', { name: '允许效果分析' }).click(),
-    ])
-    expect((await consentResponse.allHeaders())['set-cookie']).toContain('mei_marketing_consent_receipt=mock-granted')
-
-    await page.getByRole('button', { name: '打开联系方式' }).click()
-    await page.route('https://t.me/**', route => route.abort())
-    await page.getByRole('link', { name: /Telegram/ }).click({ noWaitAfter: true })
-    await expect.poll(async () => {
-      const body = await (await request.get(`${apiURL}/api/test/analytics-events`)).json()
-      return body.receiptProtectedRequests.some((item: { endpoint?: string }) => item.endpoint === '/api/conversions/events')
-    }).toBe(true)
-    await page.getByRole('button', { name: '关闭联系方式' }).click()
-
     await page.getByPlaceholder('英文字母和数字，3-20 位').fill('receiptuser')
     await page.getByPlaceholder('your@email.com').fill('receiptuser@example.test')
     await page.getByPlaceholder('至少 8 位').fill('Password123')
@@ -556,8 +540,7 @@ test.describe('核心页面 smoke', () => {
 
     const registrationPayload = await (await request.get(`${apiURL}/api/test/analytics-events`)).json()
     expect(registrationPayload.receiptProtectedRequests).toEqual(expect.arrayContaining([
-      expect.objectContaining({ endpoint: '/api/conversions/events', cookie: expect.stringContaining('mei_marketing_consent_receipt=mock-granted') }),
-      expect.objectContaining({ endpoint: '/api/auth/register', cookie: expect.stringContaining('mei_marketing_consent_receipt=mock-granted') }),
+      expect.objectContaining({ endpoint: '/api/auth/register' }),
     ]))
 
     await request.post(`${apiURL}/api/test/receipt-protected-requests/clear`)
@@ -575,63 +558,9 @@ test.describe('核心页面 smoke', () => {
     const renewedSessionRequests = renewedPayload.receiptProtectedRequests.filter((item: { endpoint?: string }) => item.endpoint === '/api/me')
     expect(renewedSessionRequests.length).toBeGreaterThan(0)
     expect(renewedSessionRequests.every((item: { cookie?: string }) => item.cookie?.includes('mei_session=renewed-session'))).toBe(true)
-    expect(protectedRequestUrls.length).toBeGreaterThanOrEqual(5)
+    expect(protectedRequestUrls.length).toBeGreaterThanOrEqual(3)
     expect(protectedRequestUrls.every(url => new URL(url).origin === new URL(page.url()).origin)).toBe(true)
     expect(protectedRequestUrls.some(url => url.includes('meigallery-api-dev.wajie.workers.dev'))).toBe(false)
-  })
-
-  test('TikTok Pixel 仅在授权后的公开页面加载并发送首次 PageView', async ({ request, page }) => {
-    const pixelId = 'C123456789ABCDEF'
-    const scriptRequests: string[] = []
-    await request.patch(`${apiURL}/api/admin/settings`, {
-      data: {
-        ad_platform_browser_connections: [{
-          provider: 'tiktok',
-          destinationId: pixelId,
-          debugEnabled: false,
-          mode: 'test',
-        }],
-      },
-    })
-    await request.patch(`${apiURL}/api/test/marketing-consent-state`, { data: { state: 'granted' } })
-    await page.route('https://analytics.tiktok.com/**', async (route) => {
-      scriptRequests.push(route.request().url())
-      await route.fulfill({ contentType: 'application/javascript', body: 'window.__tiktokSdkTestLoaded = true' })
-    })
-
-    try {
-      await page.goto('/')
-      await expect.poll(() => scriptRequests.length).toBe(0)
-
-      await page.goto('/?ttclid=tiktok-click-test')
-      await expect.poll(() => scriptRequests.length).toBe(1)
-      expect(scriptRequests[0]).toContain(`sdkid=${pixelId}`)
-      expect(scriptRequests[0]).toContain('lib=ttq')
-      await expect.poll(() => page.evaluate(() => Boolean((window as Window & { __tiktokSdkTestLoaded?: boolean }).__tiktokSdkTestLoaded))).toBe(true)
-
-      const state = await page.evaluate(() => {
-        const script = document.head.querySelector<HTMLScriptElement>('script[src*="analytics.tiktok.com/i18n/pixel/events.js"]')
-        const queue = window.ttq as unknown as unknown[] | undefined
-        return {
-          inHead: Boolean(script),
-          async: script?.async,
-          referrerPolicy: script?.referrerPolicy,
-          queuedPageViews: queue?.filter(item => Array.isArray(item) && item[0] === 'page').length ?? 0,
-        }
-      })
-      expect(state).toEqual({ inHead: true, async: true, referrerPolicy: 'no-referrer', queuedPageViews: 1 })
-
-      await page.goto('/?fbclid=meta-click-test')
-      await expect.poll(() => scriptRequests.length).toBe(1)
-
-      await page.goto('/admin')
-      await expect.poll(() => scriptRequests.length).toBe(1)
-      await expect(page.locator('head script[src*="analytics.tiktok.com"]')).toHaveCount(0)
-    }
-    finally {
-      await request.patch(`${apiURL}/api/admin/settings`, { data: { ad_platform_browser_connections: [] } })
-      await request.patch(`${apiURL}/api/test/marketing-consent-state`, { data: { state: 'limited' } })
-    }
   })
 
   test('Web 同源代理完整保留 multipart 二进制字节', async ({ page }) => {

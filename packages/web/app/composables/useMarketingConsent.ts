@@ -3,18 +3,24 @@ import type {
   MarketingConsentDecisionSource,
   MarketingConsentPolicyMode,
 } from '@meigallery/shared'
-import { canTrackMarketing as isMarketingTrackingAllowed, normalizeMarketingConsent } from '~/utils/marketingConsent'
+import {
+  canTrackMarketing as isMarketingTrackingAllowed,
+  normalizeMarketingConsent,
+} from '~/utils/marketingConsent'
 
 type MarketingConsentResponse = {
   state?: unknown
+  reason?: unknown
   policyMode?: unknown
-  decisionSource?: unknown
   requiresChoice?: unknown
   policyVersion?: unknown
 }
 
 export function useMarketingConsent() {
-  const { api } = useApi()
+  const config = useRuntimeConfig()
+  const baseUrl = attributionBaseUrl(
+    String(config.public.attributionBaseUrl ?? ''),
+  )
   const state = useState<AnalyticsConsentState>('marketing-consent-state', () => 'limited')
   const pending = useState<boolean>('marketing-consent-pending', () => false)
   const policyMode = useState<MarketingConsentPolicyMode>('marketing-consent-policy-mode', () => 'prior_consent')
@@ -25,7 +31,7 @@ export function useMarketingConsent() {
 
   async function refresh() {
     try {
-      const response = await api<MarketingConsentResponse>('/api/marketing-consent')
+      const response = await request('/v1/privacy-decision')
       applyTrustedResponse(response)
     }
     catch (error) {
@@ -37,9 +43,13 @@ export function useMarketingConsent() {
   async function update(nextState: 'granted' | 'denied') {
     pending.value = true
     try {
-      const response = await api<MarketingConsentResponse>('/api/marketing-consent', {
+      const response = await request('/v1/privacy-decision', {
         method: 'PUT',
-        body: { state: nextState },
+        body: JSON.stringify({
+          choice: nextState,
+          idempotencyKey:
+            `privacy_${crypto.randomUUID().replaceAll('-', '')}`,
+        }),
       })
       applyTrustedResponse(response)
     }
@@ -59,11 +69,37 @@ export function useMarketingConsent() {
   function applyTrustedResponse(response: MarketingConsentResponse) {
     state.value = trustedResponseState(response.state)
     policyMode.value = trustedPolicyMode(response.policyMode)
-    decisionSource.value = trustedDecisionSource(response.decisionSource)
+    decisionSource.value = trustedDecisionSource(response.reason)
     requiresChoice.value = response.requiresChoice === true && state.value === 'limited'
     policyVersion.value = Number.isSafeInteger(response.policyVersion) && Number(response.policyVersion) > 0
       ? Number(response.policyVersion)
       : 0
+  }
+
+  async function request(
+    path: '/v1/privacy-decision',
+    input: { method?: 'PUT'; body?: string } = {},
+  ): Promise<MarketingConsentResponse> {
+    const response = await globalThis.fetch(`${baseUrl}${path}`, {
+      method: input.method ?? 'GET',
+      credentials: 'include',
+      headers: input.body
+        ? { 'Content-Type': 'application/json' }
+        : undefined,
+      body: input.body,
+    })
+    if (!response.ok) throw new Error('ATTRIBUTION_PRIVACY_UNAVAILABLE')
+    const value: unknown = await response.json()
+    if (
+      !value
+      || typeof value !== 'object'
+      || !('data' in value)
+      || !value.data
+      || typeof value.data !== 'object'
+    ) {
+      throw new Error('ATTRIBUTION_PRIVACY_RESPONSE_INVALID')
+    }
+    return value.data as MarketingConsentResponse
   }
 
   function applyFallbackState() {
@@ -104,7 +140,38 @@ function trustedDecisionSource(value: unknown): MarketingConsentDecisionSource {
     || value === 'regional_default'
     || value === 'gpc'
     || value === 'disabled'
-    || value === 'request_limit'
     ? value
     : 'choice_required'
+}
+
+function attributionBaseUrl(value: string): string {
+  const normalized = value.trim().replace(/\/+$/u, '')
+  if (!normalized) return ''
+  try {
+    const url = new URL(normalized)
+    if (
+      url.username
+      || url.password
+      || url.pathname !== '/'
+      || url.search
+      || url.hash
+      || (
+        url.protocol !== 'https:'
+        && !(
+          url.protocol === 'http:'
+          && (
+            url.hostname === 'localhost'
+            || url.hostname === '127.0.0.1'
+            || url.hostname === '[::1]'
+          )
+        )
+      )
+    ) {
+      return ''
+    }
+    return url.origin
+  }
+  catch {
+    return ''
+  }
 }

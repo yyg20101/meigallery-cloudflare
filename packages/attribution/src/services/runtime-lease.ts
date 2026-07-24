@@ -49,7 +49,7 @@ interface EligibleRuntimeRow {
 }
 
 const LEASE_PURPOSE = 'runtime-lease'
-const LEASE_SECONDS = 30 * 60
+export const RUNTIME_LEASE_SECONDS = 30 * 60
 const DELAYED_EVENT_WINDOW_MS = 24 * 60 * 60 * 1_000
 const PROVIDERS = new Set<AttributionProvider>([
   'meta',
@@ -69,7 +69,7 @@ export async function issueRuntimeLease(
   validateIdentity(input)
   const now = trustedNowSeconds(environment.now)
   const runtime = await requireEligibleRuntime(environment.db, input)
-  const expiresAt = now + LEASE_SECONDS
+  const expiresAt = now + RUNTIME_LEASE_SECONDS
   if (!Number.isSafeInteger(expiresAt)) throw leaseInvalid()
   const payload: RuntimeLeasePayload = {
     schemaVersion: 1,
@@ -222,7 +222,8 @@ async function verifiedPayload(
     || !Number.isSafeInteger(parsed.issuedAt)
     || !Number.isSafeInteger(parsed.expiresAt)
     || Number(parsed.issuedAt) < 1
-    || Number(parsed.expiresAt) - Number(parsed.issuedAt) !== LEASE_SECONDS
+    || Number(parsed.expiresAt) - Number(parsed.issuedAt)
+      !== RUNTIME_LEASE_SECONDS
   ) {
     throw leaseInvalid()
   }

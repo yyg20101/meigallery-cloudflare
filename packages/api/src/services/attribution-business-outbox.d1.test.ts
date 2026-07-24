@@ -246,8 +246,14 @@ describe('注册业务 outbox D1 服务', () => {
       instructionToken: 'instruction_token_0123456789',
     }))
     const client: AttributionServiceClient = {
+      async resolvePrivacyDecision() {
+        return { state: 'denied', reason: 'explicit' }
+      },
       ingestRegistrationEvent: ingest,
       getSignedBrowserInstruction: instruction,
+      async getSignedContactCapabilities() {
+        return []
+      },
     }
 
     const first = await dispatchAttributionBusinessOutboxImmediately(
@@ -332,9 +338,15 @@ function serviceClient(
   ingestRegistrationEvent: AttributionServiceClient['ingestRegistrationEvent'],
 ): AttributionServiceClient {
   return {
+    async resolvePrivacyDecision() {
+      return { state: 'denied', reason: 'explicit' }
+    },
     ingestRegistrationEvent,
     async getSignedBrowserInstruction() {
       return { instructionToken: 'instruction_token_0123456789' }
+    },
+    async getSignedContactCapabilities() {
+      return []
     },
   }
 }

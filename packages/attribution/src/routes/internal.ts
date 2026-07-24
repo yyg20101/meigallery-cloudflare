@@ -20,6 +20,13 @@ import {
   recordCanonicalFact,
 } from '../services/fact-service'
 import {
+  readPrivacyChoiceToken,
+} from '../services/privacy-choice'
+import {
+  readPrivacyPolicy,
+  resolvePrivacyDecision,
+} from '../services/privacy-policy'
+import {
   enqueueServerDelivery,
 } from '../services/secure-outbox'
 
@@ -69,6 +76,40 @@ export function createInternalAttributionRoutes(
   options: InternalAttributionRouteOptions = {},
 ) {
   const routes = new Hono<InternalRouteEnvironment>()
+
+  routes.post('/privacy-decision', async (c) => {
+    const body = await readJson(c.req.raw)
+    const input = parsePrivacyDecisionRequest(body)
+    if (!input) {
+      return c.json({
+        statusCode: 400,
+        message: '归因隐私判定请求格式无效',
+        code: 'ATTRIBUTION_PRIVACY_DECISION_REQUEST_INVALID',
+      }, 400)
+    }
+
+    try {
+      const runtime = c.get('attributionEnvironment')
+      const policy = await readPrivacyPolicy(c.env.DB)
+      const choice = await readPrivacyChoiceToken({
+        signingKeys: runtime.signingKeys,
+        nowSeconds: () => Math.floor(
+          trustedNow(options.now).getTime() / 1_000,
+        ),
+      }, input.privacyToken)
+      return c.json(resolvePrivacyDecision(policy, {
+        country: input.country,
+        choice,
+        gpc: input.gpc,
+      }))
+    } catch {
+      return c.json({
+        statusCode: 503,
+        message: '归因隐私判定暂时不可用',
+        code: 'ATTRIBUTION_PRIVACY_DECISION_UNAVAILABLE',
+      }, 503)
+    }
+  })
 
   routes.post('/registration-events', async (c) => {
     const body = await readJson(c.req.raw)
@@ -246,6 +287,40 @@ export function createInternalAttributionRoutes(
 
 export const internalAttributionRoutes = createInternalAttributionRoutes()
 export const internalRoutes = internalAttributionRoutes
+
+function parsePrivacyDecisionRequest(value: unknown): {
+  privacyToken: string | null
+  country: string | null
+  gpc: boolean
+} | null {
+  if (
+    !isPlainRecord(value)
+    || !hasExactKeys(value, ['privacyToken', 'country', 'gpc'])
+    || !(
+      value.privacyToken === null
+      || (
+        typeof value.privacyToken === 'string'
+        && value.privacyToken.length > 0
+        && value.privacyToken.length <= 4_096
+        && !/\p{Cc}/u.test(value.privacyToken)
+      )
+    )
+    || !(
+      value.country === null
+      || (
+        typeof value.country === 'string'
+        && /^[A-Z]{2}$/.test(value.country)
+      )
+    )
+    || typeof value.gpc !== 'boolean'
+  ) return null
+
+  return {
+    privacyToken: value.privacyToken,
+    country: value.country,
+    gpc: value.gpc,
+  }
+}
 
 async function readBrowserDelivery(
   db: D1Database,

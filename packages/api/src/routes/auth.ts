@@ -14,10 +14,12 @@ import {
 import { validateUsername } from '@meigallery/shared/utils'
 import { getTurnstileConfigError, validateTurnstile } from '../utils/turnstile'
 import { consumeInviteCodeForRegistration } from '../services/invite-codes'
-import type { AnalyticsConsentState } from '@meigallery/shared'
+import {
+  ATTRIBUTION_CONTEXT_COOKIE_NAME,
+  ATTRIBUTION_PRIVACY_COOKIE_NAME,
+} from '@meigallery/shared'
 import { getCookie } from 'hono/cookie'
 import { hashAdPlatformEmail } from '../utils/ad-platform-identifiers'
-import { resolveRequestMarketingConsent } from '../utils/marketing-consent-request'
 import { createAdConsentSnapshot } from '../utils/marketing-consent-receipt'
 import {
   buildCompleteRegistrationOutboxStatement,
@@ -30,11 +32,9 @@ type RegistrationAttributionContext = {
   sessionId?: string
   path?: string
   sourceChannel?: string
-  consentState?: AnalyticsConsentState
 }
 
 const CONVERSION_ID_RE = /^[A-Za-z0-9_-]{8,120}$/
-const ATTRIBUTION_CONTEXT_COOKIE = '__Secure-mg_attribution_context'
 
 export const authRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -233,19 +233,26 @@ authRoutes.post('/register', async (c) => {
 
   // 创建用户（自增 ID）
   const passwordHash = await hashPassword(body.password)
-  const requestedConsentState = normalizeConsentState(
-    isPlainRecord(body.attribution)
-      ? body.attribution.consentState
-      : undefined,
+  const attributionClient = createAttributionServiceClient(
+    c.env.ATTRIBUTION,
   )
   let consentSnapshot = createAdConsentSnapshot('denied')
   try {
-    consentSnapshot = (
-      await resolveRequestMarketingConsent(c, requestedConsentState)
-    ).consent
+    const decision = await attributionClient.resolvePrivacyDecision({
+      privacyToken: readOpaqueAttributionCookie(
+        c,
+        ATTRIBUTION_PRIVACY_COOKIE_NAME,
+        1,
+      ),
+      country: normalizeRequestCountry(c.req.header('CF-IPCountry')),
+      gpc: c.req.header('Sec-GPC') === '1',
+    })
+    consentSnapshot = createAdConsentSnapshot(
+      decision.state === 'granted' ? 'granted' : 'denied',
+    )
   } catch {
-    console.warn('[auth.register] 营销授权解析失败，按拒绝状态继续注册', {
-      code: 'REGISTRATION_MARKETING_CONSENT_RESOLUTION_FAILED',
+    console.warn('[auth.register] 归因隐私判定失败，按拒绝状态继续注册', {
+      code: 'REGISTRATION_ATTRIBUTION_PRIVACY_RESOLUTION_FAILED',
     })
   }
   const occurredAt = new Date().toISOString()
@@ -311,7 +318,7 @@ authRoutes.post('/register', async (c) => {
   try {
     const dispatch = await dispatchAttributionBusinessOutboxImmediately(
       db,
-      createAttributionServiceClient(c.env.ATTRIBUTION),
+      attributionClient,
       outboxId,
     )
     attributionInstructionToken = dispatch.instructionToken
@@ -355,13 +362,32 @@ function normalizeRegistrationAttribution(value: unknown, userId: number) {
 function readOpaqueAttributionContextToken(
   c: Parameters<typeof getCookie>[0],
 ): string | null {
-  const value = getCookie(c, ATTRIBUTION_CONTEXT_COOKIE)
+  return readOpaqueAttributionCookie(
+    c,
+    ATTRIBUTION_CONTEXT_COOKIE_NAME,
+    4,
+  )
+}
+
+function readOpaqueAttributionCookie(
+  c: Parameters<typeof getCookie>[0],
+  name: string,
+  minimumLength: number,
+): string | null {
+  const value = getCookie(c, name)
   return typeof value === 'string'
-    && value.length >= 4
+    && value.length >= minimumLength
     && value.length <= 4_096
     && !/\p{Cc}/u.test(value)
     ? value
     : null
+}
+
+function normalizeRequestCountry(value: unknown): string | null {
+  const normalized = typeof value === 'string'
+    ? value.trim().toUpperCase()
+    : ''
+  return /^[A-Z]{2}$/.test(normalized) ? normalized : null
 }
 
 function normalizeRegistrationPagePath(value: unknown) {
@@ -390,10 +416,6 @@ function normalizeRegistrationPagePath(value: unknown) {
 function normalizeConversionId(value: unknown) {
   const normalized = typeof value === 'string' ? value.trim() : ''
   return CONVERSION_ID_RE.test(normalized) ? normalized : ''
-}
-
-function normalizeConsentState(value: unknown): AnalyticsConsentState {
-  return value === 'granted' || value === 'denied' ? value : 'limited'
 }
 
 function normalizeText(value: unknown, maxLength: number) {

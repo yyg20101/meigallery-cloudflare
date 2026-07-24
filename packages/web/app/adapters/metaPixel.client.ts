@@ -1,6 +1,6 @@
 import type {
+  AttributionBrowserInstructionV1,
   AdBrowserPublicConfig,
-  AdBrowserInstruction,
   AdBrowserSignal,
   AdConsentSnapshot,
 } from '@meigallery/shared'
@@ -64,11 +64,11 @@ export function createMetaPixelAdapter() {
     return call('init', pixelId)
   }
 
-  async function track(instruction: AdBrowserInstruction) {
+  async function track(instruction: AttributionBrowserInstructionV1) {
     if (!validInstruction(instruction)) return false
     return call(
       'track',
-      instruction.descriptor.browserEventName,
+      instruction.eventName,
       instruction.payload,
       { eventID: instruction.externalEventId },
     )
@@ -97,11 +97,11 @@ export function createMetaPixelAdapter() {
 
 export const metaPixelAdapter = createMetaPixelAdapter()
 
-function validInstruction(instruction: AdBrowserInstruction) {
+function validInstruction(instruction: AttributionBrowserInstructionV1) {
   return instruction.provider === 'meta'
-    && instruction.descriptor.provider === 'meta'
-    && instruction.descriptor.canonicalEvent === instruction.canonicalEvent
-    && instruction.descriptor.browserEventName === instruction.canonicalEvent
+    && instruction.schemaVersion === 1
+    && instruction.eventName === instruction.canonicalEvent
+    && instruction.destination === 'meta_pixel'
     && EXTERNAL_EVENT_ID_PATTERN.test(instruction.externalEventId)
 }
 

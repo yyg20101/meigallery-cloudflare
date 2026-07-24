@@ -27,6 +27,9 @@ import {
   verifyContactCapability,
 } from '../services/contact-capability'
 import {
+  issuePrivacyChoiceToken,
+} from '../services/privacy-choice'
+import {
   clearAttributionRuntimeDatabase,
 } from '../test/attribution-schema'
 import {
@@ -109,6 +112,79 @@ beforeEach(async () => {
 })
 
 describe('Attribution Worker 内部 Service Binding 路由', () => {
+  it('只依据签名隐私选择、地区策略与 GPC 返回权威判定', async () => {
+    const privacyToken = await issuePrivacyChoiceToken({
+      signingKeys: { current: signingKey },
+      nowSeconds: () => Math.floor(fixedNow.getTime() / 1_000),
+    }, 'granted')
+
+    const granted = await request(
+      '/internal/v1/privacy-decision',
+      'POST',
+      {
+        privacyToken,
+        country: 'US',
+        gpc: false,
+      },
+    )
+    expect(granted.status).toBe(200)
+    expect(await granted.json()).toEqual({
+      state: 'granted',
+      reason: 'explicit',
+    })
+
+    const unsigned = await request(
+      '/internal/v1/privacy-decision',
+      'POST',
+      {
+        privacyToken: 'unsigned-browser-value',
+        country: 'US',
+        gpc: false,
+      },
+    )
+    expect(await unsigned.json()).toEqual({
+      state: 'choice_required',
+      reason: 'policy_default',
+    })
+
+    const gpc = await request(
+      '/internal/v1/privacy-decision',
+      'POST',
+      {
+        privacyToken,
+        country: 'US',
+        gpc: true,
+      },
+    )
+    expect(await gpc.json()).toEqual({
+      state: 'denied',
+      reason: 'gpc',
+    })
+  })
+
+  it('严格拒绝带额外字段或非规范地区的隐私判定请求', async () => {
+    for (const body of [
+      {
+        privacyToken: null,
+        country: 'usa',
+        gpc: false,
+      },
+      {
+        privacyToken: null,
+        country: null,
+        gpc: false,
+        consentState: 'granted',
+      },
+    ]) {
+      const response = await request(
+        '/internal/v1/privacy-decision',
+        'POST',
+        body,
+      )
+      expect(response.status).toBe(400)
+    }
+  })
+
   it('注册只接受共享 guard 的 CompleteRegistration 并进入加密 outbox 与对应 Queue', async () => {
     const event = await registrationEvent()
     const response = await request(

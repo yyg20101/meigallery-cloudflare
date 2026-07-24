@@ -127,6 +127,7 @@ const contactMethods = [
     qrCodeUrl: null,
     sortOrder: 1,
     enabled: true,
+    attributionCapability: 'capability_playwright_contact_1',
   },
 ]
 
@@ -160,13 +161,8 @@ const analyticsBatches = []
 const sessionEndBatches = []
 const registrations = []
 const receiptProtectedRequests = []
-const conversionRequests = []
-const browserAttemptReceipts = []
 let authenticated = true
 let sessionCookieRequired = false
-let marketingConsentState = 'granted'
-let currentAttributionProvider = null
-let currentAttributionResolution = 'none'
 let adminAnalyticsEmpty = false
 const adminAttributionRequests = []
 const adminAttributionActions = []
@@ -180,13 +176,8 @@ function resetPublicSettings() {
   sessionEndBatches.length = 0
   registrations.length = 0
   receiptProtectedRequests.length = 0
-  conversionRequests.length = 0
-  browserAttemptReceipts.length = 0
   authenticated = true
   sessionCookieRequired = false
-  marketingConsentState = 'granted'
-  currentAttributionProvider = null
-  currentAttributionResolution = 'none'
   adminAnalyticsEmpty = false
   adminAttributionRequests.length = 0
   adminAttributionActions.length = 0
@@ -217,43 +208,6 @@ function publicSettings() {
 function adminSettings() {
   const now = new Date('2026-06-01T00:00:00.000Z').toISOString()
   return Object.fromEntries(Object.entries(mutablePublicSettings).map(([key, value]) => [key, { value, updatedAt: now }]))
-}
-
-const attributionBrowserConfigs = {
-  meta: { provider: 'meta', pixelId: '1234567890' },
-  tiktok: { provider: 'tiktok', pixelCode: 'C123456789ABCDEF' },
-  google: { provider: 'google', tagId: 'AW-123456789' },
-}
-
-function attributionBrowserInstruction(provider, canonicalEvent) {
-  const eventSlug = canonicalEvent === 'Contact' ? 'contact' : 'registration'
-  const browserDestination = provider === 'google'
-    ? `AW-123456789/${eventSlug}`
-    : `${provider}_pixel`
-  return {
-    deliveryId: `delivery_${provider}_${eventSlug}`,
-    provider,
-    canonicalEvent,
-    externalEventId: `e2e_${provider}_${eventSlug}`,
-    receiptToken: `v1.${'a'.repeat(16)}.${'b'.repeat(43)}`,
-    descriptor: {
-      provider,
-      canonicalEvent,
-      browserEventName: provider === 'google' ? 'conversion' : canonicalEvent,
-      browserDestination,
-      serverDestination: `${provider}_events_api`,
-    },
-    payload: { test_case: 'platform_isolation' },
-  }
-}
-
-function resolvedTrackingInstructions(canonicalEvent, attribution) {
-  if (marketingConsentState !== 'granted'
-    || currentAttributionResolution !== 'matched'
-    || !currentAttributionProvider
-    || attribution?.consentState !== 'granted'
-    || attribution?.adAttributionState !== 'resolved') return []
-  return [attributionBrowserInstruction(currentAttributionProvider, canonicalEvent)]
 }
 
 async function readJsonBody(req) {
@@ -888,15 +842,6 @@ function handleApi(req, res) {
       events: analyticsBatches.flatMap(batch => Array.isArray(batch.events) ? batch.events : []),
     })
   }
-  if (url.pathname === '/api/test/ad-attribution-events') {
-    return json(res, {
-      provider: currentAttributionProvider,
-      resolution: currentAttributionResolution,
-      conversions: conversionRequests,
-      browserAttempts: browserAttemptReceipts,
-      registrations,
-    })
-  }
   if (url.pathname === '/api/test/receipt-protected-requests/clear' && req.method === 'POST') {
     receiptProtectedRequests.length = 0
     return json(res, { ok: true })
@@ -919,63 +864,7 @@ function handleApi(req, res) {
       .catch(() => json(res, { statusCode: 400, message: '认证状态请求无效' }, 400))
     return
   }
-  if (url.pathname === '/api/test/marketing-consent-state' && req.method === 'PATCH') {
-    readJsonBody(req)
-      .then((body) => {
-        marketingConsentState = body.state === 'granted' || body.state === 'denied' ? body.state : 'limited'
-        json(res, { state: marketingConsentState })
-      })
-      .catch(() => json(res, { statusCode: 400, message: '营销授权测试状态无效' }, 400))
-    return
-  }
   if (url.pathname === '/api/settings/public') return json(res, publicSettings())
-  if (url.pathname === '/api/ad-attribution' && req.method === 'PUT') {
-    readJsonBody(req)
-      .then((body) => {
-        const providers = [
-          Boolean(String(body.fbclid || '').trim()) && 'meta',
-          Boolean(String(body.ttclid || '').trim()) && 'tiktok',
-          Boolean(String(body.gclid || body.gbraid || body.wbraid || '').trim()) && 'google',
-        ].filter(Boolean)
-        const provider = providers.length === 1 ? providers[0] : null
-        currentAttributionProvider = provider
-        currentAttributionResolution = providers.length > 1 ? 'conflict' : provider ? 'matched' : 'none'
-        json(res, {
-          provider,
-          resolution: currentAttributionResolution,
-          expiresInSeconds: 1_800,
-        })
-      })
-      .catch(() => json(res, { statusCode: 400, message: '广告来源请求无效' }, 400))
-    return
-  }
-  if (url.pathname === '/api/ad-attribution/bootstrap' && req.method === 'GET') {
-    const publicConfig = currentAttributionProvider ? attributionBrowserConfigs[currentAttributionProvider] : null
-    return json(res, { provider: currentAttributionProvider, publicConfig })
-  }
-  if (url.pathname === '/api/ad-attribution' && req.method === 'DELETE') {
-    currentAttributionProvider = null
-    currentAttributionResolution = 'none'
-    return json(res, { provider: null, resolution: 'none', expiresInSeconds: 1_800 })
-  }
-  if (url.pathname === '/api/marketing-consent' && req.method === 'GET') {
-    return json(res, marketingConsentResponse())
-  }
-  if (url.pathname === '/api/marketing-consent' && req.method === 'PUT') {
-    readJsonBody(req)
-      .then((body) => {
-        if (body.state !== 'granted' && body.state !== 'denied') {
-          json(res, { code: 'MARKETING_CONSENT_INVALID', message: '营销授权状态无效' }, 400)
-          return
-        }
-        marketingConsentState = body.state
-        json(res, marketingConsentResponse(), 200, {
-          'Set-Cookie': `mei_marketing_consent_receipt=mock-${marketingConsentState}; Path=/; HttpOnly; SameSite=Lax`,
-        })
-      })
-      .catch(() => json(res, { code: 'MARKETING_CONSENT_INVALID', message: '营销授权请求无效' }, 400))
-    return
-  }
   if (url.pathname === '/api/me') {
     const cookie = String(req.headers.cookie || '')
     receiptProtectedRequests.push({ endpoint: '/api/me', cookie })
@@ -1038,37 +927,12 @@ function handleApi(req, res) {
           role: 'user',
           membershipRank: 0,
           membershipName: 'free',
-          trackingInstructions: resolvedTrackingInstructions('CompleteRegistration', body.attribution),
+          attributionInstructionToken: null,
         }, 200, {
           'Set-Cookie': 'mei_session=mock-session; Path=/; HttpOnly; SameSite=Lax',
         })
       })
       .catch(() => json(res, { statusCode: 400, message: '注册请求无效' }, 400))
-    return
-  }
-  if (url.pathname === '/api/conversions/events' && req.method === 'POST') {
-    receiptProtectedRequests.push({ endpoint: '/api/conversions/events', cookie: req.headers.cookie || '' })
-    readJsonBody(req)
-      .then((body) => {
-        conversionRequests.push(body)
-        json(res, {
-          data: {
-            id: `fact_contact_${conversionRequests.length}`,
-            created: true,
-            trackingInstructions: resolvedTrackingInstructions('Contact', body),
-          },
-        })
-      })
-      .catch(() => json(res, { statusCode: 400, message: '转化事件请求无效' }, 400))
-    return
-  }
-  if (url.pathname === '/api/conversions/browser-attempt' && req.method === 'POST') {
-    readJsonBody(req)
-      .then((body) => {
-        browserAttemptReceipts.push(body)
-        json(res, { accepted: true })
-      })
-      .catch(() => json(res, { statusCode: 400, message: '浏览器投递回执无效' }, 400))
     return
   }
   if (url.pathname === '/api/cases') return json(res, { data: cases, total: cases.length })
@@ -1224,17 +1088,6 @@ function handleApi(req, res) {
   }
 
   notFound(res)
-}
-
-function marketingConsentResponse() {
-  const requiresChoice = marketingConsentState === 'limited'
-  return {
-    state: marketingConsentState,
-    policyMode: requiresChoice ? 'prior_consent' : 'notice_opt_out',
-    decisionSource: requiresChoice ? 'choice_required' : 'explicit',
-    requiresChoice,
-    policyVersion: 1,
-  }
 }
 
 const server = createServer(handleApi)

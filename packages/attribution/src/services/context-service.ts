@@ -1,4 +1,7 @@
-import type { AttributionProvider } from '@meigallery/shared'
+import {
+  ATTRIBUTION_CONTEXT_COOKIE_NAME,
+  type AttributionProvider,
+} from '@meigallery/shared'
 import type { AttributionRouteCandidate } from '../domain/routing'
 import { AttributionDomainError } from '../domain/errors'
 import {
@@ -14,9 +17,6 @@ import {
   type AttributionSigningKeys,
 } from '../security/signed-token'
 import type { AttributionPrivacyDecision } from './privacy-policy'
-
-export const ATTRIBUTION_CONTEXT_COOKIE =
-  '__Secure-mg_attribution_context'
 
 export interface AttributionContextEnvironment {
   db: D1Database
@@ -545,7 +545,7 @@ function contextCookie(
   configuredDomain: string | undefined,
 ): string {
   const attributes = [
-    `${ATTRIBUTION_CONTEXT_COOKIE}=${token}`,
+    `${ATTRIBUTION_CONTEXT_COOKIE_NAME}=${token}`,
     'Path=/',
     `Max-Age=${maxAge}`,
     'HttpOnly',

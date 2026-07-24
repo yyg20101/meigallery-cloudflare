@@ -8,55 +8,99 @@ import { describe, expect, it } from 'vitest'
 type SourceFile = { filePath: string; source: string }
 
 const appDir = join(cwd(), 'app')
-const adapterPath = resolve(appDir, 'adapters/metaPixel.client.ts')
-const platformAdapterPath = resolve(appDir, 'adapters/adPlatformBrowser.client.ts')
-const useTrackingPath = resolve(appDir, 'composables/useTracking.ts')
+const registryPath = resolve(appDir, 'adapters/registry.client.ts')
+const attributionPluginPath = resolve(
+  appDir,
+  'plugins/attribution.client.ts',
+)
 const attributionAdminDir = resolve(appDir, 'pages/admin/attribution')
-const forbiddenImportTargets = new Set([
-  resolve(appDir, 'composables/useConversionTracking.ts'),
-  resolve(appDir, 'composables/useFacebookPixel.ts'),
-])
+const providerAdapterPaths = new Set([
+  resolve(appDir, 'adapters/metaPixel.client.ts'),
+  resolve(appDir, 'adapters/tiktokPixel.client.ts'),
+  resolve(appDir, 'adapters/googleAds.client.ts'),
+].map(normalizeTarget))
+const obsoletePaths = [
+  'adapters/adPlatformBrowser.client.ts',
+  'adapters/adPlatformBrowser.client.test.ts',
+  'plugins/ad-platform.client.ts',
+  'plugins/ad-platform.client.test.ts',
+  'composables/useConversionTracking.ts',
+  'composables/useConversionTracking.test.ts',
+  'composables/useFacebookPixel.ts',
+  'utils/facebookPixel.ts',
+  'utils/facebookPixel.test.ts',
+]
+const legacySourcePatterns = [
+  ['/api/ad-attribution', '旧 ad-attribution API'],
+  ['/api/conversions', '旧 conversions API'],
+  ['trackingInstructions', '旧 trackingInstructions'],
+  ['adPlatformBrowser', '旧 Browser adapter'],
+  ['useConversionTracking', '旧 conversion composable'],
+  ['useFacebookPixel', '旧 Facebook composable'],
+] as const
 
 function collectSourceFiles(dir: string): string[] {
   if (!existsSync(dir)) return []
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const fullPath = join(dir, entry.name)
     if (entry.isDirectory()) return collectSourceFiles(fullPath)
-    return entry.isFile() && /\.(?:[cm]?[jt]s|vue)$/.test(entry.name) ? [fullPath] : []
+    return entry.isFile() && /\.(?:[cm]?[jt]s|vue)$/.test(entry.name)
+      ? [fullPath]
+      : []
   })
 }
 
 function inspectSources(files: SourceFile[]) {
   return files.flatMap(({ filePath, source }) => {
     if (isTestFile(filePath)) return []
-
     const violations: string[] = []
+    const normalizedFile = normalizeTarget(filePath)
     const relativePath = relative(appDir, filePath)
-    if (normalizeTarget(filePath) !== normalizeTarget(adapterPath) && /window\.fbq/.test(source)) {
-      violations.push(`${relativePath}: direct window.fbq`)
+
+    for (const [pattern, label] of legacySourcePatterns) {
+      if (source.includes(pattern)) {
+        violations.push(`${relativePath}: ${label}`)
+      }
     }
-    if (/use(?:FacebookPixel|ConversionTracking)\s*\(/.test(source)) {
-      violations.push(`${relativePath}: legacy Tracking call`)
-    }
-    if (
-      normalizeTarget(filePath) !== normalizeTarget(adapterPath)
-      && normalizeTarget(filePath) !== normalizeTarget(platformAdapterPath)
-      && usesIdentifier(filePath, source, 'metaPixelAdapter')
-    ) {
-      violations.push(`${relativePath}: direct metaPixelAdapter identifier`)
+
+    const ownedGlobals: Array<[RegExp, string, string]> = [
+      [
+        /\bwindow\.(?:fbq|_fbq)\b/u,
+        normalizeTarget(resolve(appDir, 'adapters/metaPixel.client.ts')),
+        'Meta global',
+      ],
+      [
+        /\bwindow\.(?:ttq|TiktokAnalyticsObject)\b/u,
+        normalizeTarget(resolve(appDir, 'adapters/tiktokPixel.client.ts')),
+        'TikTok global',
+      ],
+      [
+        /\bwindow\.(?:gtag|dataLayer)\b/u,
+        normalizeTarget(resolve(appDir, 'adapters/googleAds.client.ts')),
+        'Google global',
+      ],
+    ]
+    for (const [pattern, owner, label] of ownedGlobals) {
+      if (normalizedFile !== owner && pattern.test(source)) {
+        violations.push(`${relativePath}: direct ${label}`)
+      }
     }
 
     for (const specifier of readImportSpecifiers(filePath, source)) {
       const target = resolveImportTarget(filePath, specifier)
       if (!target) continue
-      if (normalizeTarget(target) === normalizeTarget(adapterPath) && normalizeTarget(filePath) !== normalizeTarget(platformAdapterPath)) {
-        violations.push(`${relativePath}: imports Meta Pixel adapter`)
+      const normalizedTarget = normalizeTarget(target)
+      if (
+        providerAdapterPaths.has(normalizedTarget)
+        && normalizedFile !== normalizeTarget(registryPath)
+      ) {
+        violations.push(`${relativePath}: imports provider adapter`)
       }
-      if (normalizeTarget(target) === normalizeTarget(platformAdapterPath) && normalizeTarget(filePath) !== normalizeTarget(useTrackingPath)) {
-        violations.push(`${relativePath}: imports ad platform adapter`)
-      }
-      if (forbiddenImportTargets.has(withTypeScriptExtension(target))) {
-        violations.push(`${relativePath}: imports legacy Tracking module`)
+      if (
+        normalizedTarget === normalizeTarget(registryPath)
+        && normalizedFile !== normalizeTarget(attributionPluginPath)
+      ) {
+        violations.push(`${relativePath}: imports attribution registry`)
       }
     }
     return violations
@@ -65,15 +109,34 @@ function inspectSources(files: SourceFile[]) {
 
 function readImportSpecifiers(filePath: string, source: string) {
   return scriptBlocks(filePath, source).flatMap((script, index) => {
-    const sourceFile = ts.createSourceFile(`${filePath}:${index}.ts`, script, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
+    const sourceFile = ts.createSourceFile(
+      `${filePath}:${index}.ts`,
+      script,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS,
+    )
     const specifiers: string[] = []
     const visit = (node: ts.Node) => {
-      if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+      if (
+        (ts.isImportDeclaration(node) || ts.isExportDeclaration(node))
+        && node.moduleSpecifier
+        && ts.isStringLiteral(node.moduleSpecifier)
+      ) {
         specifiers.push(node.moduleSpecifier.text)
       }
-      if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      if (
+        ts.isCallExpression(node)
+        && node.expression.kind === ts.SyntaxKind.ImportKeyword
+      ) {
         const [argument] = node.arguments
-        if (argument && (ts.isStringLiteral(argument) || ts.isNoSubstitutionTemplateLiteral(argument))) {
+        if (
+          argument
+          && (
+            ts.isStringLiteral(argument)
+            || ts.isNoSubstitutionTemplateLiteral(argument)
+          )
+        ) {
           specifiers.push(argument.text)
         }
       }
@@ -84,132 +147,163 @@ function readImportSpecifiers(filePath: string, source: string) {
   })
 }
 
-function usesIdentifier(filePath: string, source: string, identifier: string) {
-  return scriptBlocks(filePath, source).some((script, index) => {
-    const sourceFile = ts.createSourceFile(`${filePath}:${index}.ts`, script, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
-    let found = false
-    const visit = (node: ts.Node) => {
-      if (ts.isIdentifier(node) && node.text === identifier) found = true
-      if (!found) ts.forEachChild(node, visit)
-    }
-    visit(sourceFile)
-    return found
-  })
-}
-
 function scriptBlocks(filePath: string, source: string) {
   if (!filePath.endsWith('.vue')) return [source]
-  return [...source.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)].map(match => match[1] ?? '')
+  return [
+    ...source.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/giu),
+  ].map(match => match[1] ?? '')
 }
 
 function resolveImportTarget(importer: string, specifier: string) {
-  const cleanSpecifier = specifier.split(/[?#]/, 1)[0] ?? ''
-  if (cleanSpecifier.startsWith('~/') || cleanSpecifier.startsWith('@/')) {
+  const cleanSpecifier = specifier.split(/[?#]/u, 1)[0] ?? ''
+  if (
+    cleanSpecifier.startsWith('~/')
+    || cleanSpecifier.startsWith('@/')
+  ) {
     return resolve(appDir, cleanSpecifier.slice(2))
   }
-  if (cleanSpecifier.startsWith('.')) return resolve(dirname(importer), cleanSpecifier)
+  if (cleanSpecifier.startsWith('.')) {
+    return resolve(dirname(importer), cleanSpecifier)
+  }
   return null
 }
 
 function normalizeTarget(filePath: string) {
-  return resolve(filePath).replace(/\.(?:[cm]?[jt]sx?)$/, '')
-}
-
-function withTypeScriptExtension(filePath: string) {
-  return `${normalizeTarget(filePath)}.ts`
+  return resolve(filePath).replace(/\.(?:[cm]?[jt]sx?)$/u, '')
 }
 
 function isTestFile(filePath: string) {
-  return /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(filePath)
+  return /\.(?:test|spec)\.[cm]?[jt]sx?$/u.test(filePath)
 }
 
-describe('Web Tracking 架构边界', () => {
-  it('旧 Tracking 兼容入口和 Pixel utility 已删除', () => {
-    const obsoletePaths = [
-      'composables/useConversionTracking.ts',
-      'composables/useConversionTracking.test.ts',
-      'composables/useFacebookPixel.ts',
-      'utils/facebookPixel.ts',
-      'utils/facebookPixel.test.ts',
-    ]
-
-    expect(obsoletePaths.filter(filePath => existsSync(join(appDir, filePath)))).toEqual([])
+describe('Web 归因架构边界', () => {
+  it('旧 Browser 链路和兼容入口已删除', () => {
+    expect(
+      obsoletePaths.filter(filePath => existsSync(join(appDir, filePath))),
+    ).toEqual([])
   })
 
-  it('业务层只访问通用广告 adapter，只有平台 adapter 可访问 Meta adapter 和 window.fbq', () => {
-    const files = collectSourceFiles(appDir).map(filePath => ({ filePath, source: readFileSync(filePath, 'utf8') }))
-
+  it('只有 registry 可导入平台 adapter，只有 attribution plugin 可管理 registry', () => {
+    const files = collectSourceFiles(appDir).map(filePath => ({
+      filePath,
+      source: readFileSync(filePath, 'utf8'),
+    }))
     expect(inspectSources(files)).toEqual([])
   })
 
-  it('归因后台页面不包含平台控制流或硬编码平台选项', () => {
-    const violations = collectSourceFiles(attributionAdminDir).flatMap((filePath) => {
-      if (isTestFile(filePath)) return []
-      const source = readFileSync(filePath, 'utf8')
-      const relativePath = relative(appDir, filePath)
-      return [
-        ...(source.match(/(?:===|!==)\s*['"](?:meta|tiktok|google)['"]/g) ?? []),
-        ...(source.match(/<option\b[^>]*\bvalue=['"](?:meta|tiktok|google)['"]/g) ?? []),
-      ].map(match => `${relativePath}: ${match}`)
-    })
-
-    expect(violations).toEqual([])
-  })
-
-  it('解析 alias/相对静态与动态 import、auto-import 标识符和直接 fbq，并豁免 Facade、adapter 与测试', () => {
+  it('扫描静态、动态、alias、相对导入及平台全局变量', () => {
     const violations = inspectSources([
-      { filePath: join(appDir, 'pages/direct.ts'), source: "import '../adapters/metaPixel.client'" },
-      { filePath: join(appDir, 'components/dynamic.vue'), source: "<script setup>void import('~/adapters/metaPixel.client')</script>" },
-      { filePath: join(appDir, 'pages/at-static.ts'), source: "import '@/adapters/metaPixel.client'" },
-      { filePath: join(appDir, 'components/at-dynamic.vue'), source: "<script setup>void import('@/adapters/metaPixel.client')</script>" },
-      { filePath: join(appDir, 'layouts/template-dynamic.ts'), source: 'void import(`~/adapters/metaPixel.client`)' },
-      { filePath: join(appDir, 'layouts/legacy.ts'), source: "import '../composables/useConversionTracking'" },
-      { filePath: join(appDir, 'composables/bypass.ts'), source: 'window.fbq?.()' },
-      { filePath: join(appDir, 'components/auto-import.vue'), source: '<script setup>metaPixelAdapter.pageView()</script>' },
-      { filePath: useTrackingPath, source: "import { dispatchAdBrowserInstruction } from '~/adapters/adPlatformBrowser.client'; void dispatchAdBrowserInstruction" },
-      { filePath: platformAdapterPath, source: "import { metaPixelAdapter } from './metaPixel.client'; void metaPixelAdapter" },
-      { filePath: adapterPath, source: 'export const metaPixelAdapter = {}; window.fbq?.()' },
-      { filePath: join(appDir, 'pages/allowed.test.ts'), source: "import('../adapters/metaPixel.client'); metaPixelAdapter.pageView(); window.fbq?.()" },
+      {
+        filePath: join(appDir, 'pages/provider.ts'),
+        source: "import '../adapters/metaPixel.client'",
+      },
+      {
+        filePath: join(appDir, 'components/provider.vue'),
+        source:
+          "<script setup>void import('~/adapters/tiktokPixel.client')</script>",
+      },
+      {
+        filePath: join(appDir, 'composables/registry.ts'),
+        source: "import '@/adapters/registry.client'",
+      },
+      {
+        filePath: join(appDir, 'layouts/globals.ts'),
+        source: 'window.fbq?.(); window.ttq?.(); window.gtag?.()',
+      },
+      {
+        filePath: join(appDir, 'pages/legacy.ts'),
+        source: "void fetch('/api/conversions/contact')",
+      },
+      {
+        filePath: registryPath,
+        source: "import './metaPixel.client'",
+      },
+      {
+        filePath: attributionPluginPath,
+        source: "import '~/adapters/registry.client'",
+      },
     ])
 
     expect(violations).toEqual([
-      'pages/direct.ts: imports Meta Pixel adapter',
-      'components/dynamic.vue: imports Meta Pixel adapter',
-      'pages/at-static.ts: imports Meta Pixel adapter',
-      'components/at-dynamic.vue: imports Meta Pixel adapter',
-      'layouts/template-dynamic.ts: imports Meta Pixel adapter',
-      'layouts/legacy.ts: imports legacy Tracking module',
-      'composables/bypass.ts: direct window.fbq',
-      'components/auto-import.vue: direct metaPixelAdapter identifier',
+      'pages/provider.ts: imports provider adapter',
+      'components/provider.vue: imports provider adapter',
+      'composables/registry.ts: imports attribution registry',
+      'layouts/globals.ts: direct Meta global',
+      'layouts/globals.ts: direct TikTok global',
+      'layouts/globals.ts: direct Google global',
+      'pages/legacy.ts: 旧 conversions API',
     ])
   })
 
+  it('归因后台页面不包含平台控制流或硬编码平台选项', () => {
+    const violations = collectSourceFiles(attributionAdminDir).flatMap(
+      (filePath) => {
+        if (isTestFile(filePath)) return []
+        const source = readFileSync(filePath, 'utf8')
+        const relativePath = relative(appDir, filePath)
+        return [
+          ...(
+            source.match(
+              /(?:===|!==)\s*['"](?:meta|tiktok|google)['"]/gu,
+            ) ?? []
+          ),
+          ...(
+            source.match(
+              /<option\b[^>]*\bvalue=['"](?:meta|tiktok|google)['"]/gu,
+            ) ?? []
+          ),
+        ].map(match => `${relativePath}: ${match}`)
+      },
+    )
+    expect(violations).toEqual([])
+  })
+
   it.each([
-    ['alias adapter', "import { metaPixelAdapter } from '~/adapters/metaPixel.client'\nvoid metaPixelAdapter\n"],
-    ['@ alias adapter', "import { metaPixelAdapter } from '@/adapters/metaPixel.client'\nvoid metaPixelAdapter\n"],
-    ['relative adapter', "import { metaPixelAdapter } from '../adapters/metaPixel.client'\nvoid metaPixelAdapter\n"],
-    ['relative conversion composable', "import '../composables/useConversionTracking'\n"],
-    ['relative Pixel composable', "import '../composables/useFacebookPixel'\n"],
-  ])('ESLint 拒绝受保护源码导入 %s', async (_label, source) => {
+    [
+      'provider adapter',
+      "import { metaPixelAdapter } from '~/adapters/metaPixel.client'\n",
+    ],
+    [
+      'registry',
+      "import { trackBrowserTrackingSignal } from '~/adapters/registry.client'\n",
+    ],
+    [
+      '旧接口',
+      "import '~/composables/useConversionTracking'\n",
+    ],
+  ])('ESLint 拒绝业务源码导入 %s', async (_label, source) => {
     const projectRoot = resolve(cwd(), '../..')
     const eslint = new ESLint({ cwd: projectRoot })
     const [result] = await eslint.lintText(source, {
-      filePath: join(projectRoot, 'packages/web/app/pages/architecture-fixture.ts'),
+      filePath: join(
+        projectRoot,
+        'packages/web/app/pages/architecture-fixture.ts',
+      ),
     })
-
     expect(result?.messages).toEqual(expect.arrayContaining([
-      expect.objectContaining({ ruleId: 'no-restricted-imports', severity: 2 }),
+      expect.objectContaining({
+        ruleId: 'no-restricted-imports',
+        severity: 2,
+      }),
     ]))
   })
 
-  it('ESLint 允许 useTracking 导入通用广告 adapter', async () => {
+  it('ESLint 允许 attribution plugin 导入 registry', async () => {
     const projectRoot = resolve(cwd(), '../..')
     const eslint = new ESLint({ cwd: projectRoot })
     const [result] = await eslint.lintText(
-      "import { dispatchAdBrowserInstruction } from '~/adapters/adPlatformBrowser.client'\nvoid dispatchAdBrowserInstruction\n",
-      { filePath: join(projectRoot, 'packages/web/app/composables/useTracking.ts') },
+      "import '~/adapters/registry.client'\n",
+      {
+        filePath: join(
+          projectRoot,
+          'packages/web/app/plugins/attribution.client.ts',
+        ),
+      },
     )
-
-    expect(result?.messages.filter(message => message.ruleId === 'no-restricted-imports')).toEqual([])
+    expect(
+      result?.messages.filter(
+        message => message.ruleId === 'no-restricted-imports',
+      ),
+    ).toEqual([])
   })
 })

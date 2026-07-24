@@ -6,6 +6,7 @@ import {
   type AttributionEnvironment,
 } from './env'
 import type { AttributionQueueMessage } from './domain/queue'
+import { browserAttributionRoutes } from './routes/browser'
 import { internalRoutes } from './routes/internal'
 import { runAttributionMaintenance } from './scheduled'
 import { consumeAttributionQueue } from './services/queue-consumer'
@@ -42,6 +43,7 @@ app.get('/health', c => c.json({
   status: 'ok',
   contractVersion: ATTRIBUTION_CONTRACT_VERSION,
 }))
+app.route('/', browserAttributionRoutes)
 app.route('/internal/v1', internalRoutes)
 
 export default {

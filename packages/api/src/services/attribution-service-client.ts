@@ -4,6 +4,7 @@ import {
 } from '@meigallery/shared'
 
 const ATTRIBUTION_INTERNAL_ORIGIN = 'https://attribution.internal'
+const PRIVACY_DECISION_PATH = '/internal/v1/privacy-decision'
 const REGISTRATION_EVENTS_PATH = '/internal/v1/registration-events'
 const CONTACT_CAPABILITIES_PATH = '/internal/v1/contact-capabilities'
 const BROWSER_INSTRUCTION_PATH_PREFIX = '/internal/v1/events/'
@@ -17,6 +18,9 @@ export interface AttributionServiceBinding {
 }
 
 export interface AttributionServiceClient {
+  resolvePrivacyDecision(
+    input: AttributionPrivacyDecisionInput,
+  ): Promise<AttributionPrivacyDecisionResult>
   ingestRegistrationEvent(
     input: AttributionBusinessEventV1,
   ): Promise<{ accepted: true; eventId: string }>
@@ -27,6 +31,29 @@ export interface AttributionServiceClient {
     input: AttributionContactCapabilityInput[],
   ): Promise<AttributionContactCapabilityResult[]>
 }
+
+export interface AttributionPrivacyDecisionInput {
+  privacyToken: string | null
+  country: string | null
+  gpc: boolean
+}
+
+export type AttributionPrivacyDecisionResult =
+  | {
+      state: 'granted'
+      reason: 'explicit' | 'regional_default'
+    }
+  | {
+      state: 'denied'
+      reason: 'gpc' | 'disabled' | 'explicit'
+    }
+  | {
+      state: 'choice_required'
+      reason:
+        | 'policy_default'
+        | 'prior_consent_region'
+        | 'unknown_region'
+    }
 
 export interface AttributionContactCapabilityInput {
   contactMethodId: string
@@ -55,6 +82,37 @@ export function createAttributionServiceClient(
   binding: AttributionServiceBinding,
 ): AttributionServiceClient {
   return {
+    async resolvePrivacyDecision(input) {
+      const normalized = normalizePrivacyDecisionInput(input)
+      const response = await binding.fetch(new Request(
+        `${ATTRIBUTION_INTERNAL_ORIGIN}${PRIVACY_DECISION_PATH}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify(normalized),
+          redirect: 'error',
+        },
+      ))
+      if (!response.ok) {
+        throw new AttributionServiceClientError(
+          'ATTRIBUTION_PRIVACY_DECISION_FAILED',
+          response.status,
+        )
+      }
+
+      const result = await readJsonRecord(response)
+      if (!isPrivacyDecisionResult(result)) {
+        throw new AttributionServiceClientError(
+          'ATTRIBUTION_PRIVACY_DECISION_RESPONSE_INVALID',
+          response.status,
+        )
+      }
+      return result
+    },
+
     async ingestRegistrationEvent(input) {
       if (
         !isAttributionBusinessEventV1(input)
@@ -169,6 +227,61 @@ export function createAttributionServiceClient(
       )
     },
   }
+}
+
+function normalizePrivacyDecisionInput(
+  value: AttributionPrivacyDecisionInput,
+): AttributionPrivacyDecisionInput {
+  if (
+    !isExactUnknownRecord(value, [
+      'privacyToken',
+      'country',
+      'gpc',
+    ])
+    || !(
+      value.privacyToken === null
+      || (
+        typeof value.privacyToken === 'string'
+        && value.privacyToken.length > 0
+        && value.privacyToken.length <= 4_096
+        && !/\p{Cc}/u.test(value.privacyToken)
+      )
+    )
+    || !(
+      value.country === null
+      || (
+        typeof value.country === 'string'
+        && /^[A-Z]{2}$/.test(value.country)
+      )
+    )
+    || typeof value.gpc !== 'boolean'
+  ) {
+    throw new AttributionServiceClientError(
+      'ATTRIBUTION_PRIVACY_DECISION_INPUT_INVALID',
+    )
+  }
+  return { ...value }
+}
+
+function isPrivacyDecisionResult(
+  value: Record<string, unknown>,
+): value is AttributionPrivacyDecisionResult {
+  if (!isExactUnknownRecord(value, ['state', 'reason'])) return false
+  if (value.state === 'granted') {
+    return value.reason === 'explicit'
+      || value.reason === 'regional_default'
+  }
+  if (value.state === 'denied') {
+    return value.reason === 'gpc'
+      || value.reason === 'disabled'
+      || value.reason === 'explicit'
+  }
+  return value.state === 'choice_required'
+    && (
+      value.reason === 'policy_default'
+      || value.reason === 'prior_consent_region'
+      || value.reason === 'unknown_region'
+    )
 }
 
 async function readJsonRecord(response: Response): Promise<Record<string, unknown>> {
@@ -301,6 +414,17 @@ function isExactRecord(
   value: unknown,
   keys: string[],
 ): value is Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const entries = Object.keys(value)
+  return entries.length === keys.length
+    && keys.every(key => key in value)
+    && entries.every(key => keys.includes(key))
+}
+
+function isExactUnknownRecord(
+  value: unknown,
+  keys: string[],
+): value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   const entries = Object.keys(value)
   return entries.length === keys.length
