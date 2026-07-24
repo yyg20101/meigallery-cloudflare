@@ -53,6 +53,18 @@ describe('归因投递 Planner', () => {
     }))).toEqual([])
   })
 
+  it('拒绝广告用户数据时保留 Browser 且不规划 Server', async () => {
+    expect(await planDeliveries(input({
+      serverDataAllowed: false,
+    }))).toEqual([
+      {
+        provider: 'meta',
+        transport: 'browser',
+        destination: 'meta_browser',
+      },
+    ])
+  })
+
   it('稳定分桶对同一 external event id 始终返回同一计划', async () => {
     const first = await planDeliveries(input({
       runtimePolicy: policy({
@@ -79,6 +91,7 @@ function input(
     versionId: 'ver_meta',
     provider: 'meta',
     eventName: 'Contact',
+    serverDataAllowed: true,
     runtimePolicy: policy(),
     binding: {
       enabled: true,

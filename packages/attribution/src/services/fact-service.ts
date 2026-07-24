@@ -201,6 +201,7 @@ export async function recordCanonicalFact(
         versionId: route.versionId,
         provider: route.provider,
         eventName: event.eventName,
+        serverDataAllowed: event.consent.adUserDataAllowed,
         runtimePolicy: route.runtimePolicy,
         binding: route.binding,
       })
@@ -537,9 +538,10 @@ async function prepareDeliveries(
           eventName: event.eventName,
           occurredAt: event.occurredAt,
           consent: event.consent,
-          payload: serverEventPayload(event),
+          payload: normalizedPayload(event),
           context: {
             sourceId: route.context.sourceId,
+            issuedAt: route.context.issuedAt,
             identifiers: route.context.identifiers,
           },
           requestMetadata,
@@ -737,18 +739,6 @@ function normalizedPayload(
       ? {}
       : { hashedEmail: payload.hashedEmail }),
   }
-}
-
-function serverEventPayload(
-  event: AttributionBusinessEventV1,
-): Record<string, unknown> {
-  if (
-    event.eventName === 'CompleteRegistration'
-    && !event.consent.adUserDataAllowed
-  ) {
-    return {}
-  }
-  return normalizedPayload(event)
 }
 
 function normalizeRequestMetadata(

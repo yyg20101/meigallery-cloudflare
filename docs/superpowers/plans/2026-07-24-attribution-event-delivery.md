@@ -553,12 +553,15 @@ export interface DeliveryPlanInput {
   versionId: string
   provider: AttributionProvider
   eventName: CanonicalConversionEvent
+  serverDataAllowed: boolean
   runtimePolicy: AttributionRuntimePolicy
   binding: DeliveryPlanBinding
 }
 ```
 
 当 `browserEnabled=true` 创建一条 Browser delivery；当 `serverEnabled=true`、熔断关闭且稳定分桶小于 effective 时创建一条 Server delivery。事实、delivery 和加密 outbox 使用同一 D1 `batch` 写入。
+`marketingAllowed=true` 允许 Browser 投递；只有 `serverDataAllowed=true` 才规划
+Server 投递，避免在 Queue 里制造注定失败的 CAPI 任务。
 原始 `dedupeKey` 只在进程内参与 SHA-256 计算，D1 仅保存 `dedupe_hash`；业务
 `event_id`、`dedupe_hash` 与归因 `external_event_id` 分别保持唯一，冲突直接拒绝覆盖。
 Browser outbox 只保存浏览器投递必需字段，不携带上下文标识符、IP、UA 或业务用户数据；
@@ -599,8 +602,13 @@ git commit -m "feat: 统一归因事实与投递计划"
 **Interfaces:**
 - Consumes: Canonical Event、不可变版本配置和解密后的当前 provider 凭证。
 - Produces: `AttributionProviderAdapter` 以及 Meta、TikTok、Google 唯一实现。
+- Queue 使用 Worker 已验证的公开站点 origin 与事件路径构造
+  `pageUrl`；Connection 和 Adapter 不保存 dev/production 域名。
+- `validateCandidate` 只验证候选配置、凭证结构和事件绑定。远端权限及
+  destination 可用性由后续单次验证流程通过真实平台测试事件确认，不能把
+  `credentialFormatValid` 解释为远端授权成功。
 
-- [ ] **Step 1: 写 Adapter 契约和跨平台拒绝测试**
+- [x] **Step 1: 写 Adapter 契约和跨平台拒绝测试**
 
 ```ts
 export interface AttributionProviderAdapter {
@@ -626,7 +634,7 @@ expect(tiktokAdapter.eventName('CompleteRegistration')).toBe('CompleteRegistrati
 expect(googleAdapter.eventName('Contact')).toBe('conversion')
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -636,7 +644,7 @@ corepack pnpm --filter @meigallery/attribution exec vitest run src/adapters
 
 Expected: FAIL，Adapter 尚未实现。
 
-- [ ] **Step 3: 迁移并收口三平台协议**
+- [x] **Step 3: 迁移并收口三平台协议**
 
 注册表只允许：
 
@@ -657,7 +665,7 @@ export function getProviderAdapter(provider: AttributionProvider) {
 
 平台 HTTP 请求、字段名、错误分类和质量读取分别留在对应文件。核心服务不得出现 `provider === 'meta'`、`provider === 'tiktok'` 或 `provider === 'google'`。
 
-- [ ] **Step 4: 运行 Adapter 测试和边界扫描**
+- [x] **Step 4: 运行 Adapter 测试和边界扫描**
 
 Run:
 
@@ -668,12 +676,20 @@ rg -n "provider === '(meta|tiktok|google)'" packages/attribution/src --glob '!ad
 
 Expected: Adapter 测试 PASS；`rg` 无输出。
 
-- [ ] **Step 5: 提交**
+Result: Meta/TikTok/Google Adapter 共 31 项测试通过；核心服务平台特判扫描、
+访问令牌和 Test Event Code 扫描均无输出。Meta Dataset Quality 异常结构会
+返回明确错误；Server outbox 保存签名上下文时间，Browser outbox 继续保持最小化。
+
+- [x] **Step 5: 提交**
 
 ```bash
 git add packages/attribution/src/adapters
 git commit -m "feat: 统一三平台归因 Adapter"
 ```
+
+Result: Attribution 全量 `27` 个测试文件、`156` 项测试通过；
+Attribution/API TypeScript、Attribution Worker dry-run 和 Web production build
+均通过。本阶段只形成本地提交，独立 Worker 尚未部署，production 保持不变。
 
 ### Task 6: 实现加密 Outbox、Queue 和熔断
 

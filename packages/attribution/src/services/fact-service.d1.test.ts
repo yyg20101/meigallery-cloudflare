@@ -95,6 +95,30 @@ describe('Canonical Fact 与原子投递', () => {
     expect(fact?.dedupe_hash).not.toContain('session-1')
   })
 
+  it('拒绝广告用户数据时只创建 Browser delivery', async () => {
+    const input = await attributedContact()
+    const result = await recordCanonicalFact(
+      environment(),
+      {
+        ...input.event,
+        consent: {
+          ...input.event.consent,
+          adUserDataAllowed: false,
+        },
+      },
+      input.options,
+    )
+
+    expect(result.deliveries.map(item => item.transport)).toEqual([
+      'browser',
+    ])
+    expect(await scalar(`
+      SELECT COUNT(*) AS value
+      FROM attribution_deliveries
+      WHERE transport = 'server'
+    `)).toBe(0)
+  })
+
   it.each([
     ['无上下文', null],
     ['篡改上下文', 'tampered'],
@@ -265,6 +289,7 @@ describe('Canonical Fact 与原子投递', () => {
       externalEventId: result.externalEventId,
       eventName: 'Contact',
       context: {
+        issuedAt: Math.floor(fixedNow.getTime() / 1_000),
         identifiers: { fbclid: 'fbclid-meta-only' },
       },
     })

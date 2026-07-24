@@ -19,6 +19,7 @@ export interface DeliveryPlanInput {
   versionId: string
   provider: AttributionProvider
   eventName: CanonicalConversionEvent
+  serverDataAllowed: boolean
   runtimePolicy: AttributionRuntimePolicy
   binding: DeliveryPlanBinding
 }
@@ -59,7 +60,8 @@ export async function planDeliveries(
   }
 
   if (
-    input.runtimePolicy.serverEnabled
+    input.serverDataAllowed
+    && input.runtimePolicy.serverEnabled
     && input.runtimePolicy.circuitState === 'closed'
     && input.runtimePolicy.serverEffectivePercentage > 0
     && input.binding.serverDestination.length > 0
@@ -98,6 +100,7 @@ function validateInput(input: DeliveryPlanInput): void {
     || !isIdentifier(input.versionId)
     || !PROVIDERS.has(input.provider)
     || !EVENTS.has(input.eventName)
+    || typeof input.serverDataAllowed !== 'boolean'
     || !isDestination(input.binding?.browserDestination)
     || !isDestination(input.binding?.serverDestination)
     || typeof input.binding.enabled !== 'boolean'
