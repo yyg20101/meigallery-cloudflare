@@ -694,7 +694,7 @@ git commit -m "feat: 隔离归因凭证加密仓库"
 - Consumes: Task 3 Schema、Task 4 凭证 envelope。
 - Produces: `normalizeCandidateInput()`、`hashCandidateIdentity()`、`readConnectionAggregate()`。
 
-- [ ] **Step 1: 写标准化与快照失败测试**
+- [x] **Step 1: 写标准化与快照失败测试**
 
 ```ts
 it('字段顺序和空白不同但语义相同的候选得到相同 hash', async () => {
@@ -720,7 +720,7 @@ it('字段顺序和空白不同但语义相同的候选得到相同 hash', async
 })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -730,7 +730,7 @@ corepack pnpm --filter @meigallery/attribution exec vitest run src/domain/normal
 
 Expected: FAIL，函数尚未定义。
 
-- [ ] **Step 3: 实现领域类型和稳定哈希**
+- [x] **Step 3: 实现领域类型和稳定哈希**
 
 `normalizeCandidateInput()` 必须：
 
@@ -749,7 +749,7 @@ return {
 
 `hashCandidateIdentity()` 使用 SHA-256 和稳定 JSON；仓库一次读取 connection、active version、live candidate、runtime policy、bindings、credential metadata，并把重复行或 provider 不一致视为 `ATTRIBUTION_CONNECTION_SNAPSHOT_INVALID`。
 
-- [ ] **Step 4: 运行测试**
+- [x] **Step 4: 运行测试**
 
 Run:
 
@@ -759,7 +759,7 @@ corepack pnpm --filter @meigallery/attribution exec vitest run src/domain/normal
 
 Expected: PASS，包括 provider 不一致和重复 credential 行拒绝用例。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add packages/attribution/src/domain packages/attribution/src/repositories
