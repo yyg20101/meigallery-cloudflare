@@ -646,7 +646,7 @@ git commit -m "feat: 完善归因质量与事故看板"
 - Consumes: 完整后台控制面。
 - Produces: 身份候选、运行控制、重复点击、失败保持 Active、多连接和日期筛选 E2E 证据。
 
-- [ ] **Step 1: 写 E2E 场景**
+- [x] **Step 1: 写 E2E 场景**
 
 ```ts
 test('候选失败不影响 Active 和运行策略', async ({ page }) => {
@@ -666,7 +666,7 @@ test('运行策略重复提交保持幂等', async ({ page }) => {
 })
 ```
 
-- [ ] **Step 2: 运行 E2E 确认失败**
+- [x] **Step 2: 运行 E2E 确认失败**
 
 Run:
 
@@ -676,13 +676,19 @@ corepack pnpm --filter @meigallery/web exec playwright test tests/e2e/admin-attr
 
 Expected: FAIL，mock 和选择器尚未对齐新控制面。
 
-- [ ] **Step 3: 完成 mock、移动布局和边界测试**
+- [x] **Step 3: 完成 mock、移动布局和边界测试**
 
 Mock API 必须记录每个 `Idempotency-Key` 的写入次数，并在重复请求时返回第一次结果。移动端 375x812 下，导航允许横向滚动但页面主体不得横向溢出；所有开关有可访问 label，确认对话框有焦点锁定。
 边界测试还必须断言旧 `platforms`、`links`、`conversions`、`readiness` 路由和四个旧编辑器均不存在，
 后台源码不再请求旧 `/api/admin/attribution/platforms`、`/links` 或 `/conversions`。
 
-- [ ] **Step 4: 运行阶段验收**
+Result: 新控制面 E2E 已覆盖候选失败不替换 Active、运行策略双击与同键重放只写一次、
+同平台多连接及单日上下文；375x812 移动端无页面级横向溢出，导航独立滚动，
+危险操作对话框保持焦点锁定。Web 同源代理现已透传 `Idempotency-Key`，mock
+会记录请求次数与实际写入次数并重放首次响应；旧控制面 mock、路由与编辑器由
+架构边界测试持续禁止。
+
+- [x] **Step 4: 运行阶段验收**
 
 Run:
 
@@ -696,7 +702,12 @@ git diff --check
 
 Expected: 全部 PASS；后台不包含旧 Meta 专属运维页、commit 门禁或 revision 控件。
 
-- [ ] **Step 5: 提交**
+Result: Web 完整单测 `60` 个文件、`287` 项通过；API 归因代理 `8` 项通过；
+控制面 E2E 在 5 个视口共 `25` 项通过，最后一次 Chromium 复跑 `5` 项通过。
+API TypeScript、Nuxt typecheck、Cloudflare Worker 生产构建和 `git diff --check`
+均通过。真实 Chrome 复核确认总览、连接详情、筛选和新版路由正常，无页面级横向溢出。
+
+- [x] **Step 5: 提交**
 
 ```bash
 git add packages/web/tests/e2e packages/web/app/architecture-boundaries.test.ts packages/web/app

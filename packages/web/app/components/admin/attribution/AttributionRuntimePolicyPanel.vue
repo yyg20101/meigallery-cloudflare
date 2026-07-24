@@ -27,6 +27,13 @@ const draft = reactive<SetRuntimePolicyRequest>({
   serverEnabled: false,
   serverTargetPercentage: 0,
 })
+const dirty = computed(() => (
+  draft.enabled !== props.connection.runtime.enabled
+  || draft.browserEnabled !== props.connection.runtime.browserEnabled
+  || draft.serverEnabled !== props.connection.runtime.serverEnabled
+  || draft.serverTargetPercentage
+    !== props.connection.runtime.serverTargetPercentage
+))
 
 watch(
   () => props.connection.runtime,
@@ -40,6 +47,7 @@ watch(
 )
 
 function save() {
+  if (!dirty.value || props.disabled || props.saving) return
   emit('save', {
     enabled: draft.enabled,
     browserEnabled: draft.browserEnabled,
@@ -170,7 +178,7 @@ function save() {
     <div class="flex min-w-0 flex-wrap items-center gap-3 border-t border-gray-200 px-3 py-4 sm:px-5">
       <button
         type="button"
-        :disabled="disabled || saving"
+        :disabled="disabled || saving || !dirty"
         class="min-h-10 bg-gray-950 px-4 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
         @click="save"
       >

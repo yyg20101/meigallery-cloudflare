@@ -299,7 +299,7 @@ function submit() {
         :disabled="disabled || saving"
         class="min-h-10 bg-gray-950 px-4 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {{ saving ? '保存中...' : '保存并开始验证' }}
+        {{ saving ? '保存中...' : '保存并自动验证' }}
       </button>
       <span class="text-sm text-gray-500">
         运行策略保持不变

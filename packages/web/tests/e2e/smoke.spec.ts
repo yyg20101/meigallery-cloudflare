@@ -31,9 +31,9 @@ async function expectAdminContainersWithinViewport(page: import('@playwright/tes
         { selector: '[data-attribution-refresh]' },
         { selector: '[data-attribution-tabs]', allowHorizontalOverflow: true },
         { selector: '[data-attribution-tab-list]', allowHorizontalOverflow: true },
-        { selector: '[data-attribution-tab]', exactCount: 7, allowHorizontalOverflow: true },
+        { selector: '[data-attribution-tab]', exactCount: 8, allowHorizontalOverflow: true },
       )
-      if (['/admin/attribution', '/admin/attribution/deliveries', '/admin/attribution/verifications', '/admin/attribution/audit'].includes(location.pathname)) {
+      if (['/admin/attribution', '/admin/attribution/deliveries', '/admin/attribution/verifications', '/admin/attribution/incidents', '/admin/attribution/audit'].includes(location.pathname)) {
         requirements.push(
           { selector: '[data-attribution-range-group]' },
           { selector: '[data-attribution-range-control]', minCount: 4 },
@@ -43,23 +43,15 @@ async function expectAdminContainersWithinViewport(page: import('@playwright/tes
     }
     if (location.pathname === '/admin/attribution') {
       requirements.push(
-        { selector: '[data-evidence-rail]', allowHorizontalOverflow: true },
-        { selector: '[data-attribution-section]', exactCount: 4 },
-        { selector: '[data-attribution-trend]', minCount: 3 },
-      )
-    }
-    if (location.pathname === '/admin/attribution/platforms') {
-      requirements.push(
-        { selector: '[data-attribution-connection-editor]' },
-        { selector: '[data-attribution-binding-editor]' },
-        { selector: '[data-attribution-credential-editor]' },
-        { selector: '[data-attribution-rollout-control]' },
+        { selector: '[data-attribution-section]', exactCount: 2 },
+        { selector: '[data-attribution-delivery-funnel]' },
+        { selector: '[data-attribution-trend]' },
       )
     }
     if (location.pathname === '/admin/attribution/deliveries') {
       requirements.push(
-        { selector: '[data-attribution-rollout-control]' },
-        { selector: '[data-attribution-incident-list]' },
+        { selector: '[data-attribution-health]' },
+        { selector: '[data-attribution-delivery-funnel]' },
       )
     }
 
@@ -78,13 +70,10 @@ async function expectAdminContainersWithinViewport(page: import('@playwright/tes
       '[data-attribution-range-group]',
       '[data-attribution-tabs]',
       '[data-attribution-tab-list]',
-      '[data-evidence-rail]',
       '[data-attribution-section]',
-      '[data-attribution-connection-editor]',
-      '[data-attribution-binding-editor]',
-      '[data-attribution-credential-editor]',
+      '[data-attribution-delivery-funnel]',
+      '[data-attribution-health]',
       '[data-attribution-verification-panel]',
-      '[data-attribution-rollout-control]',
       '[data-attribution-incident-list]',
       '[data-attribution-trend]',
     ])
@@ -412,30 +401,35 @@ test.describe('核心页面 smoke', () => {
     expect(hasHorizontalOverflow).toBe(false)
   })
 
-  test('后台广告归因总览可查看四层证据、单日归因和平台连接', async ({ page }, testInfo) => {
+  test('后台广告归因总览可核对统一投递阶段、单日数据和多连接', async ({ page }, testInfo) => {
     await page.goto('/admin/attribution')
     await expect(page.locator('main h1')).toHaveText('广告归因总览')
-    await expect(page.getByText('统一核对 Meta、TikTok 与 Google 的业务事实、投递状态、质量和容量。')).toBeVisible()
+    await expect(page.getByText('按业务事实、Browser 回执和 Server 投递阶段核对归因结果。')).toBeVisible()
 
     const sections = page.locator('[data-attribution-section]')
-    await expect(sections).toHaveCount(4)
+    await expect(sections).toHaveCount(2)
     expect(await sections.evaluateAll(elements => elements.map(element => element.getAttribute('data-attribution-section')))).toEqual([
-      'business', 'delivery', 'quality', 'capacity',
+      'operations', 'quality',
     ])
-    for (const label of ['站内事实', 'Browser 回执', 'Server 状态', '质量证据']) {
-      await expect(page.locator('[data-evidence-rail]')).toContainText(label)
+    const funnel = page.locator('[data-attribution-delivery-funnel]')
+    for (const label of [
+      '业务事实',
+      '已归因事实',
+      'Browser Attempted',
+      'Server Planned',
+      'Server Queued',
+      'Server Processed',
+    ]) {
+      await expect(funnel).toContainText(label)
     }
-
-    await expect(page.getByText('Meta · 生产运行', { exact: true })).toBeVisible()
-    await expect(page.getByRole('link', { name: '管理平台连接' })).toBeVisible()
-
-    const deliverySection = page.locator('[data-attribution-section="delivery"]')
-    await expect(deliverySection.getByRole('heading', { name: 'Meta Pixel 与 Conversions API' })).toBeVisible()
-    const deliveryItems = deliverySection.locator('[data-health-item]')
-    await expect(deliveryItems.filter({ hasText: /^Browser 已尝试\s*12$/ })).toHaveCount(1)
-    await expect(deliveryItems.filter({ hasText: /^Server 已接收\s*9$/ })).toHaveCount(1)
-    await expect(page.locator('[data-attribution-section="quality"]').getByRole('heading', { name: '配对与匹配覆盖' })).toBeVisible()
-    await expect(page.locator('[data-attribution-section="capacity"]').getByRole('heading', { name: 'UTC 配额日内部估算' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '业务与投递趋势' }))
+      .toBeVisible()
+    await expect(page.locator('[data-attribution-section="quality"]')
+      .getByRole('heading', { name: '平台质量' })).toBeVisible()
+    await expect(page.getByRole('combobox', { name: '平台' }))
+      .toHaveValue('')
+    await expect(page.getByRole('combobox', { name: '连接' }))
+      .toHaveValue('')
     await expect(page.getByText('已同步', { exact: true })).toHaveCount(0)
     await expectAdminContainersWithinViewport(page)
     if (process.env.TASK8_SCREENSHOT_DIR) {
@@ -446,12 +440,23 @@ test.describe('核心页面 smoke', () => {
     }
 
     await page.getByRole('button', { name: '单日' }).click()
-    await page.getByLabel('选择归因日期').fill('2026-07-09')
-    await page.locator('[data-attribution-tabs]').getByRole('link', { name: '平台连接', exact: true }).click()
+    await page.getByLabel('选择归因日期').fill('2026-07-23')
+    await page.getByRole('combobox', { name: '平台' }).selectOption('meta')
+    await page.locator('[data-attribution-tabs]')
+      .getByRole('link', { name: '连接', exact: true })
+      .click()
 
-    await expect(page).toHaveURL(/\/admin\/attribution\/platforms\?provider=meta/)
-    await expect(page.getByRole('heading', { name: 'Meta 连接' })).toBeVisible()
-    await expect(page.getByText('Pixel ID / Dataset ID', { exact: true })).toBeVisible()
+    await expect(page).toHaveURL(
+      /\/admin\/attribution\/connections\?provider=meta/,
+    )
+    await expect(page.getByRole('heading', { name: '归因连接' }))
+      .toBeVisible()
+    await expect(page.getByText('Meta 美国 BJ 团队', { exact: true }))
+      .toBeVisible()
+    await expect(page.getByText('Meta 美国 WA 团队', { exact: true }))
+      .toBeVisible()
+    await expect(page.getByText('TikTok 美国团队', { exact: true }))
+      .toHaveCount(0)
     await expectAdminContainersWithinViewport(page)
   })
 

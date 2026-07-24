@@ -28,6 +28,11 @@ const runtimeManager = useAttributionRuntimePolicy()
 const sourceManager = useAttributionManagedSources()
 const generatedUrl = ref('')
 const actionError = ref('')
+const confirmationOpen = ref(false)
+const confirmationAction = ref<
+  'rollback' | 'disable-connection' | 'disable-source' | null
+>(null)
+const confirmationSourceId = ref('')
 
 const connectionId = computed(() => {
   const value = route.params.id
@@ -49,6 +54,30 @@ const commandSaving = computed(() => (
   || runtimeManager.saving.value
   || sourceManager.saving.value
 ))
+const confirmation = computed(() => {
+  if (confirmationAction.value === 'rollback') {
+    return {
+      title: '确认回滚',
+      message: '确认回滚到上一生产版本？当前运行策略保持不变。',
+      confirmLabel: '确认回滚',
+      destructive: false,
+    }
+  }
+  if (confirmationAction.value === 'disable-connection') {
+    return {
+      title: '确认停用连接',
+      message: '确认停用此连接？该连接将不再接收新的归因流量。',
+      confirmLabel: '确认停用',
+      destructive: true,
+    }
+  }
+  return {
+    title: '确认停用投放来源',
+    message: '确认停用此投放来源？已发出的链接将不再建立新归因。',
+    confirmLabel: '确认停用',
+    destructive: true,
+  }
+})
 
 onMounted(() => void refresh())
 
@@ -70,6 +99,7 @@ function synchronize(next: AttributionConnectionView) {
 }
 
 async function saveCandidate(payload: CreateCandidateRequest) {
+  if (candidateManager.saving.value) return
   actionError.value = ''
   try {
     const next = await candidateManager.saveCandidate(
@@ -87,6 +117,10 @@ async function saveCandidate(payload: CreateCandidateRequest) {
 }
 
 async function saveRuntimePolicy(payload: SetRuntimePolicyRequest) {
+  if (
+    runtimeManager.saving.value
+    || runtimePolicyMatchesCurrent(payload)
+  ) return
   actionError.value = ''
   try {
     const next = await runtimeManager.saveRuntimePolicy(
@@ -103,11 +137,46 @@ async function saveRuntimePolicy(payload: SetRuntimePolicyRequest) {
   }
 }
 
+function runtimePolicyMatchesCurrent(
+  payload: SetRuntimePolicyRequest,
+): boolean {
+  const current = runtimeManager.connection.value?.runtime
+  return Boolean(
+    current
+    && current.enabled === payload.enabled
+    && current.browserEnabled === payload.browserEnabled
+    && current.serverEnabled === payload.serverEnabled
+    && current.serverTargetPercentage === payload.serverTargetPercentage
+  )
+}
+
+function requestConfirmation(
+  action: 'rollback' | 'disable-connection' | 'disable-source',
+  sourceId = '',
+) {
+  confirmationAction.value = action
+  confirmationSourceId.value = sourceId
+  confirmationOpen.value = true
+}
+
+function closeConfirmation() {
+  if (commandSaving.value) return
+  confirmationOpen.value = false
+  confirmationAction.value = null
+  confirmationSourceId.value = ''
+}
+
+async function confirmAction() {
+  const action = confirmationAction.value
+  if (!action) return
+  if (action === 'rollback') await rollback()
+  else if (action === 'disable-connection') await disableConnection()
+  else await disableSource(confirmationSourceId.value)
+  if (!pageError.value) closeConfirmation()
+}
+
 async function rollback() {
-  if (
-    import.meta.client
-    && !window.confirm('确认回滚到上一生产版本？当前运行策略保持不变。')
-  ) return
+  if (runtimeManager.saving.value) return
   actionError.value = ''
   try {
     const next = await runtimeManager.rollback(connectionId.value)
@@ -119,10 +188,7 @@ async function rollback() {
 }
 
 async function disableConnection() {
-  if (
-    import.meta.client
-    && !window.confirm('确认停用此连接？该连接将不再接收新的归因流量。')
-  ) return
+  if (runtimeManager.saving.value) return
   actionError.value = ''
   try {
     const next = await runtimeManager.disable(connectionId.value)
@@ -134,6 +200,7 @@ async function disableConnection() {
 }
 
 async function createSource(input: CreateAttributionManagedSourceRequest) {
+  if (sourceManager.saving.value) return
   actionError.value = ''
   generatedUrl.value = ''
   try {
@@ -159,10 +226,7 @@ async function createSource(input: CreateAttributionManagedSourceRequest) {
 }
 
 async function disableSource(sourceId: string) {
-  if (
-    import.meta.client
-    && !window.confirm('确认停用此投放来源？已发出的链接将不再建立新归因。')
-  ) return
+  if (sourceManager.saving.value) return
   actionError.value = ''
   try {
     await sourceManager.disableSource(connectionId.value, sourceId)
@@ -240,8 +304,8 @@ async function disableSource(sourceId: string) {
         :disabled="!isOwner"
         :saving="runtimeManager.saving.value"
         @save="saveRuntimePolicy"
-        @rollback="rollback"
-        @disable="disableConnection"
+        @rollback="requestConfirmation('rollback')"
+        @disable="requestConfirmation('disable-connection')"
       />
 
       <AttributionManagedSourceList
@@ -251,7 +315,7 @@ async function disableSource(sourceId: string) {
         :disabled="!isOwner"
         :saving="sourceManager.saving.value"
         @create="createSource"
-        @disable="disableSource"
+        @disable="sourceId => requestConfirmation('disable-source', sourceId)"
         @clear-generated="generatedUrl = ''"
       />
 
@@ -263,5 +327,59 @@ async function disableSource(sourceId: string) {
         正在处理，请勿重复提交。
       </p>
     </template>
+
+    <UModal
+      v-model:open="confirmationOpen"
+      :dismissible="!commandSaving"
+      :title="confirmation.title"
+    >
+      <template #content>
+        <div
+          data-attribution-confirm-dialog
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="attribution-confirm-title"
+          aria-describedby="attribution-confirm-description"
+          class="p-5 sm:p-6"
+        >
+          <h2
+            id="attribution-confirm-title"
+            class="text-base font-semibold text-gray-900"
+          >
+            {{ confirmation.title }}
+          </h2>
+          <p
+            id="attribution-confirm-description"
+            class="mt-2 text-sm leading-6 text-gray-600"
+          >
+            {{ confirmation.message }}
+          </p>
+          <div class="mt-5 flex flex-wrap justify-end gap-3">
+            <button
+              type="button"
+              :disabled="commandSaving"
+              autofocus
+              class="min-h-10 border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              @click="closeConfirmation"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              :disabled="commandSaving"
+              :class="[
+                'min-h-10 px-4 text-sm font-medium text-white disabled:opacity-50',
+                confirmation.destructive
+                  ? 'bg-red-700 hover:bg-red-600'
+                  : 'bg-gray-950 hover:bg-gray-800',
+              ]"
+              @click="confirmAction"
+            >
+              {{ commandSaving ? '处理中...' : confirmation.confirmLabel }}
+            </button>
+          </div>
+        </div>
+      </template>
+    </UModal>
   </AttributionPageShell>
 </template>

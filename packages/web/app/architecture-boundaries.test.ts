@@ -30,9 +30,25 @@ const obsoletePaths = [
   'utils/facebookPixel.ts',
   'utils/facebookPixel.test.ts',
 ]
+const obsoleteAdminAttributionPaths = [
+  'pages/admin/attribution/platforms.vue',
+  'pages/admin/attribution/links.vue',
+  'pages/admin/attribution/conversions.vue',
+  'pages/admin/attribution/readiness.vue',
+  'components/admin/attribution/AttributionPlatformConnectionEditor.vue',
+  'components/admin/attribution/AttributionCredentialEditor.vue',
+  'components/admin/attribution/AttributionEventBindingEditor.vue',
+  'components/admin/attribution/AttributionRolloutControl.vue',
+  'components/admin/attribution/AttributionProviderSwitch.vue',
+  'composables/useAttributionProvider.ts',
+]
 const legacySourcePatterns = [
   ['/api/ad-attribution', '旧 ad-attribution API'],
   ['/api/conversions', '旧 conversions API'],
+  ['/api/admin/attribution/platforms', '旧归因平台控制面 API'],
+  ['/api/admin/attribution/links', '旧归因投放链接 API'],
+  ['/api/admin/attribution/conversions', '旧归因转化 API'],
+  ['/api/admin/attribution/readiness', '旧归因发布检查 API'],
   ['trackingInstructions', '旧 trackingInstructions'],
   ['adPlatformBrowser', '旧 Browser adapter'],
   ['useConversionTracking', '旧 conversion composable'],
@@ -180,6 +196,14 @@ describe('Web 归因架构边界', () => {
   it('旧 Browser 链路和兼容入口已删除', () => {
     expect(
       obsoletePaths.filter(filePath => existsSync(join(appDir, filePath))),
+    ).toEqual([])
+  })
+
+  it('旧归因控制面路由、编辑器和平台切换层已删除', () => {
+    expect(
+      obsoleteAdminAttributionPaths.filter(
+        filePath => existsSync(join(appDir, filePath)),
+      ),
     ).toEqual([])
   })
 

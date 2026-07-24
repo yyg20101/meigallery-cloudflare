@@ -11,6 +11,7 @@ describe('Web API 代理头部白名单', () => {
     expect(filterApiProxyRequestHeaders({
       Cookie: ' mei_session=abc ',
       'Content-Type': ' application/json ',
+      'Idempotency-Key': ' attribution-command-1 ',
       Accept: ' application/json ',
       Authorization: ' Bearer import-token ',
       'CF-Connecting-IP': '203.0.113.10',
@@ -26,6 +27,7 @@ describe('Web API 代理头部白名单', () => {
       'cf-ipcountry': 'GB',
       'content-type': 'application/json',
       cookie: 'mei_session=abc',
+      'idempotency-key': 'attribution-command-1',
       'sec-gpc': '1',
       'user-agent': 'Mozilla/5.0',
       'x-forwarded-for': '203.0.113.10, 198.51.100.2',

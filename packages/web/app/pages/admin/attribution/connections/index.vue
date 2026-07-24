@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import type { AttributionProvider } from '@meigallery/shared'
+import type {
+  AttributionProvider,
+} from '@meigallery/shared'
 import AttributionConnectionFilter from '~/components/admin/attribution/AttributionConnectionFilter.vue'
 import AttributionConnectionList from '~/components/admin/attribution/AttributionConnectionList.vue'
 import AttributionPageShell from '~/components/admin/attribution/AttributionPageShell.vue'
