@@ -37,16 +37,18 @@ beforeEach(async () => {
 })
 
 describe('credential retention', () => {
-  it('只保留最近一个 retired 凭证且最多 7 天', async () => {
-    await retireVersion(db, 'ver_oldest', '2026-07-01T00:00:00.000Z')
+  it('每个 retired 凭证分别保留 7 天，支持连续版本切换', async () => {
+    await retireVersion(db, 'ver_previous', '2026-07-23T00:00:00.000Z')
     await retireVersion(db, 'ver_latest', '2026-07-24T00:00:00.000Z')
 
-    await enforceCredentialRetention(
+    expect(await enforceCredentialRetention(
       db,
       new Date('2026-07-24T00:00:00.000Z'),
-    )
+    )).toEqual({ deleted: 0, scheduled: 2 })
 
-    expect(await credentialExists(db, 'ver_oldest')).toBe(false)
+    expect(await credentialExists(db, 'ver_previous')).toBe(true)
+    expect(await credentialDestroyAfter(db, 'ver_previous'))
+      .toBe('2026-07-30T00:00:00.000Z')
     expect(await credentialDestroyAfter(db, 'ver_latest'))
       .toBe('2026-07-31T00:00:00.000Z')
   })

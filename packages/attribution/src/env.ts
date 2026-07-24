@@ -1,3 +1,6 @@
+import type { AttributionEncryptionKeys } from './security/data-envelope'
+import type { AttributionSigningKeys } from './security/signed-token'
+
 export type AttributionAppEnvironment = 'production' | 'dev' | 'local'
 
 export interface AttributionBindings {
@@ -7,16 +10,19 @@ export interface AttributionBindings {
   ATTRIBUTION_COOKIE_DOMAIN: string
   ATTRIBUTION_CREDENTIAL_MASTER_KEY_CURRENT: string
   ATTRIBUTION_CREDENTIAL_MASTER_KEY_PREVIOUS?: string
-  ATTRIBUTION_SIGNING_KEY: string
+  ATTRIBUTION_SIGNING_KEY_CURRENT: string
+  ATTRIBUTION_SIGNING_KEY_PREVIOUS?: string
+  ATTRIBUTION_DATA_ENCRYPTION_KEY_CURRENT: string
+  ATTRIBUTION_DATA_ENCRYPTION_KEY_PREVIOUS?: string
 }
 
 export interface AttributionEnvironment {
   appEnvironment: AttributionAppEnvironment
   publicOrigins: readonly string[]
   cookieDomain: string | null
-  credentialMasterKeyCurrent: string
-  credentialMasterKeyPrevious: string | null
-  signingKey: string
+  credentialMasterKeys: AttributionEncryptionKeys
+  signingKeys: AttributionSigningKeys
+  dataEncryptionKeys: AttributionEncryptionKeys
 }
 
 const APP_ENVIRONMENTS = new Set<AttributionAppEnvironment>([
@@ -25,10 +31,27 @@ const APP_ENVIRONMENTS = new Set<AttributionAppEnvironment>([
   'local',
 ])
 
-function requireValue(value: string | undefined, name: string): string {
+const encoder = new TextEncoder()
+
+function requireSecret(value: string | undefined, name: string): string {
   const normalized = value?.trim()
   if (!normalized) {
     throw new Error(`${name}_REQUIRED`)
+  }
+  if (encoder.encode(normalized).byteLength < 32 || normalized.length > 4096) {
+    throw new Error(`${name}_INVALID`)
+  }
+  return normalized
+}
+
+function optionalSecret(
+  value: string | undefined,
+  name: string,
+): string | undefined {
+  const normalized = value?.trim()
+  if (!normalized) return undefined
+  if (encoder.encode(normalized).byteLength < 32 || normalized.length > 4096) {
+    throw new Error(`${name}_INVALID`)
   }
   return normalized
 }
@@ -115,15 +138,35 @@ export function parseAttributionEnvironment(
       bindings.ATTRIBUTION_COOKIE_DOMAIN,
       bindings.APP_ENV,
     ),
-    credentialMasterKeyCurrent: requireValue(
-      bindings.ATTRIBUTION_CREDENTIAL_MASTER_KEY_CURRENT,
-      'ATTRIBUTION_CREDENTIAL_MASTER_KEY_CURRENT',
-    ),
-    credentialMasterKeyPrevious:
-      bindings.ATTRIBUTION_CREDENTIAL_MASTER_KEY_PREVIOUS?.trim() || null,
-    signingKey: requireValue(
-      bindings.ATTRIBUTION_SIGNING_KEY,
-      'ATTRIBUTION_SIGNING_KEY',
-    ),
+    credentialMasterKeys: {
+      current: requireSecret(
+        bindings.ATTRIBUTION_CREDENTIAL_MASTER_KEY_CURRENT,
+        'ATTRIBUTION_CREDENTIAL_MASTER_KEY_CURRENT',
+      ),
+      previous: optionalSecret(
+        bindings.ATTRIBUTION_CREDENTIAL_MASTER_KEY_PREVIOUS,
+        'ATTRIBUTION_CREDENTIAL_MASTER_KEY_PREVIOUS',
+      ),
+    },
+    signingKeys: {
+      current: requireSecret(
+        bindings.ATTRIBUTION_SIGNING_KEY_CURRENT,
+        'ATTRIBUTION_SIGNING_KEY_CURRENT',
+      ),
+      previous: optionalSecret(
+        bindings.ATTRIBUTION_SIGNING_KEY_PREVIOUS,
+        'ATTRIBUTION_SIGNING_KEY_PREVIOUS',
+      ),
+    },
+    dataEncryptionKeys: {
+      current: requireSecret(
+        bindings.ATTRIBUTION_DATA_ENCRYPTION_KEY_CURRENT,
+        'ATTRIBUTION_DATA_ENCRYPTION_KEY_CURRENT',
+      ),
+      previous: optionalSecret(
+        bindings.ATTRIBUTION_DATA_ENCRYPTION_KEY_PREVIOUS,
+        'ATTRIBUTION_DATA_ENCRYPTION_KEY_PREVIOUS',
+      ),
+    },
   }
 }

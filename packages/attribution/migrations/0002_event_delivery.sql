@@ -8,7 +8,10 @@ CREATE TABLE attribution_managed_sources (
   campaign TEXT NOT NULL,
   medium TEXT NOT NULL,
   content TEXT NOT NULL,
-  proof_hmac TEXT NOT NULL UNIQUE,
+  proof_hash TEXT NOT NULL UNIQUE CHECK (
+    length(proof_hash) = 64
+    AND proof_hash NOT GLOB '*[^0-9a-f]*'
+  ),
   expires_at TEXT,
   enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)),
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -23,8 +26,16 @@ CREATE TABLE attribution_contexts (
   connection_id TEXT NOT NULL
     REFERENCES attribution_connections(id) ON DELETE CASCADE,
   source_id TEXT
-    REFERENCES attribution_managed_sources(id) ON DELETE SET NULL,
-  identifiers_json TEXT NOT NULL CHECK (json_valid(identifiers_json)),
+    REFERENCES attribution_managed_sources(id) ON DELETE CASCADE,
+  identifiers_envelope_json TEXT NOT NULL
+    CHECK (
+      json_valid(identifiers_envelope_json)
+      AND json_extract(identifiers_envelope_json, '$.schemaVersion') IS 1
+      AND json_type(identifiers_envelope_json, '$.keyId') IS 'text'
+      AND json_type(identifiers_envelope_json, '$.iv') IS 'text'
+      AND json_type(identifiers_envelope_json, '$.ciphertext') IS 'text'
+      AND json_type(identifiers_envelope_json, '$.tag') IS 'text'
+    ),
   issued_at INTEGER NOT NULL CHECK (issued_at > 0),
   expires_at INTEGER NOT NULL CHECK (expires_at > issued_at)
 );

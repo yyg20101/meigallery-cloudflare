@@ -17,7 +17,6 @@ let miniflare: Miniflare
 let db: D1Database
 let sequence = 0
 
-const signingKey = 'routing-signing-key'
 const fixedNow = new Date('2026-07-24T04:00:00.000Z')
 
 beforeAll(async () => {
@@ -61,21 +60,21 @@ describe('managed source service', () => {
       content: 'creative-a',
     })
     const stored = await db.prepare(`
-      SELECT provider, connection_id, proof_hmac
+      SELECT provider, connection_id, proof_hash
       FROM attribution_managed_sources
       WHERE id = ?
     `).bind(source.id).first<{
       provider: string
       connection_id: string
-      proof_hmac: string
+      proof_hash: string
     }>()
 
     expect(stored).toMatchObject({
       provider,
       connection_id: connectionId,
     })
-    expect(stored?.proof_hmac).not.toBe(source.proof)
-    expect(stored?.proof_hmac).toMatch(/^[a-f0-9]{64}$/)
+    expect(stored?.proof_hash).not.toBe(source.proof)
+    expect(stored?.proof_hash).toMatch(/^[a-f0-9]{64}$/)
 
     const result = await resolveAttributionRoute(
       createManagedSourceRoutingRepository(environment()),
@@ -117,6 +116,18 @@ describe('managed source service', () => {
       .not.toContain('proof')
   })
 
+  it('D1 拒绝非 SHA-256 格式的来源摘要', async () => {
+    await expect(db.prepare(`
+      INSERT INTO attribution_managed_sources (
+        id, provider, connection_id, campaign, medium, content,
+        proof_hash, enabled
+      ) VALUES (
+        'source_invalid_hash', 'meta', 'conn_meta_a', 'launch',
+        'paid_social', 'creative-a', 'not-a-sha256-digest', 1
+      )
+    `).run()).rejects.toThrow()
+  })
+
   it('同平台多连接仅有 click ID 时记录一个开放 Incident', async () => {
     await seedActiveConnection(db, 'conn_meta_b', 'meta')
     const repository = createManagedSourceRoutingRepository(environment())
@@ -142,7 +153,6 @@ describe('managed source service', () => {
 function environment() {
   return {
     db,
-    signingKey,
     now: () => fixedNow,
     idFactory: (prefix: string) => `${prefix}_${++sequence}`,
     randomBytes: () => Uint8Array.from(

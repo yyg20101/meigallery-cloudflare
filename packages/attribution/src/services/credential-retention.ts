@@ -2,7 +2,6 @@ import { AttributionDomainError } from '../domain/errors'
 
 interface RetiredCredentialRow {
   version_id: string
-  connection_id: string
   status: 'failed' | 'superseded' | 'retired'
   retired_at: string | null
 }
@@ -22,7 +21,6 @@ export async function enforceCredentialRetention(
   const result = await db.prepare(`
     SELECT
       version.id AS version_id,
-      version.connection_id,
       version.status,
       version.retired_at
     FROM attribution_connection_versions AS version
@@ -30,14 +28,12 @@ export async function enforceCredentialRetention(
       ON credential.version_id = version.id
     WHERE version.status IN ('failed','superseded','retired')
     ORDER BY
-      version.connection_id ASC,
       CASE version.status WHEN 'retired' THEN 0 ELSE 1 END ASC,
       version.retired_at DESC,
       version.created_at DESC,
       version.id DESC
   `).all<RetiredCredentialRow>()
 
-  const seenConnections = new Set<string>()
   const statements: D1PreparedStatement[] = []
   let deleted = 0
   let scheduled = 0
@@ -51,13 +47,6 @@ export async function enforceCredentialRetention(
 
     const retiredAt = parseTimestamp(row.retired_at)
 
-    if (seenConnections.has(row.connection_id)) {
-      statements.push(deleteCredential(db, row.version_id))
-      deleted += 1
-      continue
-    }
-
-    seenConnections.add(row.connection_id)
     const destroyAfter = new Date(retiredAt.getTime() + RETENTION_MS)
     if (destroyAfter.getTime() <= now.getTime()) {
       statements.push(deleteCredential(db, row.version_id))

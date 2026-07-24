@@ -5,10 +5,11 @@ import type {
   AttributionRoutingRepository,
 } from '../domain/routing'
 import { AttributionDomainError } from '../domain/errors'
+import { sha256Hex } from '../security/digest'
+import { encodeBase64Url } from '../security/signed-token'
 
 export interface ManagedSourceEnvironment {
   db: D1Database
-  signingKey: string
   now?: () => Date
   idFactory?: (prefix: string) => string
   randomBytes?: () => Uint8Array
@@ -37,7 +38,6 @@ interface EligibleConnectionRow {
   connection_id: string
 }
 
-const encoder = new TextEncoder()
 const PROVIDERS = new Set<AttributionProvider>([
   'meta',
   'tiktok',
@@ -49,7 +49,6 @@ export async function createManagedSource(
   input: CreateManagedSourceInput,
 ): Promise<ManagedSourceProof> {
   const now = validNow(environment.now ?? (() => new Date()))
-  validateSigningKey(environment.signingKey)
   validateIdentifier(input.connectionId)
   validateMetadata(input.campaign)
   validateMetadata(input.medium)
@@ -72,8 +71,8 @@ export async function createManagedSource(
     throw commandInvalid()
   }
 
-  const proof = base64Url(proofBytes)
-  const proofHmac = await managedSourceHmac(environment.signingKey, proof)
+  const proof = encodeBase64Url(proofBytes)
+  const proofHash = await managedSourceHash(proof)
   const idFactory = environment.idFactory
     ?? (prefix => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}`)
   const id = idFactory('source')
@@ -84,7 +83,7 @@ export async function createManagedSource(
     result = await environment.db.prepare(`
       INSERT INTO attribution_managed_sources (
         id, provider, connection_id, campaign, medium, content,
-        proof_hmac, expires_at, enabled, created_at
+        proof_hash, expires_at, enabled, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
     `).bind(
       id,
@@ -93,7 +92,7 @@ export async function createManagedSource(
       input.campaign,
       input.medium,
       input.content,
-      proofHmac,
+      proofHash,
       expiresAt,
       now,
     ).run()
@@ -113,7 +112,6 @@ export async function createManagedSource(
 export function createManagedSourceRoutingRepository(
   environment: ManagedSourceEnvironment,
 ): AttributionRoutingRepository {
-  validateSigningKey(environment.signingKey)
   const now = environment.now ?? (() => new Date())
   const idFactory = environment.idFactory
     ?? (prefix => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}`)
@@ -121,7 +119,7 @@ export function createManagedSourceRoutingRepository(
   return {
     async resolveManagedSource(proof) {
       if (!isOpaqueProof(proof)) return null
-      const proofHmac = await managedSourceHmac(environment.signingKey, proof)
+      const proofHash = await managedSourceHash(proof)
       const timestamp = validNow(now)
       const row = await environment.db.prepare(`
         SELECT source.provider, source.connection_id
@@ -138,14 +136,14 @@ export function createManagedSourceRoutingRepository(
           ON policy.connection_id = connection.id
          AND policy.enabled = 1
          AND (policy.browser_enabled = 1 OR policy.server_enabled = 1)
-        WHERE source.proof_hmac = ?
+        WHERE source.proof_hash = ?
           AND source.enabled = 1
           AND (
             source.expires_at IS NULL
             OR julianday(source.expires_at) > julianday(?)
           )
         LIMIT 1
-      `).bind(proofHmac, timestamp).first<EligibleConnectionRow>()
+      `).bind(proofHash, timestamp).first<EligibleConnectionRow>()
       return routeCandidate(row)
     },
 
@@ -256,33 +254,8 @@ function routeCandidate(
   }
 }
 
-async function managedSourceHmac(
-  signingKey: string,
-  proof: string,
-): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(signingKey),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  )
-  const signature = await crypto.subtle.sign(
-    'HMAC',
-    key,
-    encoder.encode(`managed-source:v1:${proof}`),
-  )
-  return [...new Uint8Array(signature)]
-    .map(byte => byte.toString(16).padStart(2, '0'))
-    .join('')
-}
-
-function base64Url(bytes: Uint8Array): string {
-  const binary = String.fromCharCode(...bytes)
-  return btoa(binary)
-    .replaceAll('+', '-')
-    .replaceAll('/', '_')
-    .replace(/=+$/u, '')
+async function managedSourceHash(proof: string): Promise<string> {
+  return sha256Hex(`managed-source:v1:${proof}`)
 }
 
 function isOpaqueProof(value: unknown): value is string {
@@ -313,12 +286,6 @@ function validNow(now: () => Date): string {
   const value = now()
   if (!Number.isFinite(value.getTime())) throw commandInvalid()
   return value.toISOString()
-}
-
-function validateSigningKey(value: unknown): asserts value is string {
-  if (typeof value !== 'string' || value.length === 0 || value.length > 4096) {
-    throw commandInvalid()
-  }
 }
 
 function validateIdentifier(value: unknown): asserts value is string {

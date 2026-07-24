@@ -126,7 +126,8 @@ Run:
 
 ```bash
 openssl rand -base64 48 | corepack pnpm --filter @meigallery/attribution exec wrangler secret put ATTRIBUTION_CREDENTIAL_MASTER_KEY_CURRENT --env=""
-openssl rand -base64 48 | corepack pnpm --filter @meigallery/attribution exec wrangler secret put ATTRIBUTION_SIGNING_KEY --env=""
+openssl rand -base64 48 | corepack pnpm --filter @meigallery/attribution exec wrangler secret put ATTRIBUTION_SIGNING_KEY_CURRENT --env=""
+openssl rand -base64 48 | corepack pnpm --filter @meigallery/attribution exec wrangler secret put ATTRIBUTION_DATA_ENCRYPTION_KEY_CURRENT --env=""
 ```
 
 Expected: Wrangler 分别输出 secret uploaded；终端不得回显 secret 值。
@@ -365,7 +366,7 @@ Expected: FAIL，核验脚本不存在。
 ```js
 {
   connections: [{ id, provider, activeTargetHash, runtimePolicyHash }],
-  managedSources: [{ id, connectionId, proofHmac }],
+  managedSources: [{ id, connectionId, proofHash }],
   facts: { count, idSetHash },
   pendingDeliveries: { count, idSetHash },
   incidents: { openCriticalCount },

@@ -51,8 +51,9 @@ describe('credential vault', () => {
     const currentEnvelope = await sealCredential({ current }, {
       versionId: 'ver_2',
       provider: 'google',
-      plaintext: 'current-secret',
+      plaintext: 'previous-secret',
     })
+    expect(currentEnvelope.fingerprint).toBe(envelope.fingerprint)
     await expect(openCredential({ current: previous }, {
       versionId: 'ver_2',
       provider: 'google',

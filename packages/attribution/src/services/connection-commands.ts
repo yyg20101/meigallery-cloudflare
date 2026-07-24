@@ -279,7 +279,6 @@ export function createAttributionConnectionCommands(
 
     const aggregate = await requireAggregate(input.connectionId)
     const credentialFingerprint = await fingerprintCredential(
-      options.credentialKeys.current,
       input.credential,
     )
     const normalized = normalizeCandidateInput({

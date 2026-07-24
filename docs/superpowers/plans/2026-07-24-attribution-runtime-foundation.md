@@ -238,8 +238,12 @@ describe('attribution worker', () => {
       ATTRIBUTION_PUBLIC_ORIGINS: 'http://localhost:3000',
       ATTRIBUTION_COOKIE_DOMAIN: '',
       DB: {} as D1Database,
-      ATTRIBUTION_CREDENTIAL_MASTER_KEY_CURRENT: 'test-key',
-      ATTRIBUTION_SIGNING_KEY: 'test-signing-key',
+      ATTRIBUTION_CREDENTIAL_MASTER_KEY_CURRENT:
+        'test-credential-master-key-with-32-bytes',
+      ATTRIBUTION_SIGNING_KEY_CURRENT:
+        'test-signing-key-current-with-32-bytes',
+      ATTRIBUTION_DATA_ENCRYPTION_KEY_CURRENT:
+        'test-data-encryption-key-with-32-bytes',
     })
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({
@@ -302,7 +306,10 @@ export interface AttributionBindings {
   ATTRIBUTION_COOKIE_DOMAIN: string
   ATTRIBUTION_CREDENTIAL_MASTER_KEY_CURRENT: string
   ATTRIBUTION_CREDENTIAL_MASTER_KEY_PREVIOUS?: string
-  ATTRIBUTION_SIGNING_KEY: string
+  ATTRIBUTION_SIGNING_KEY_CURRENT: string
+  ATTRIBUTION_SIGNING_KEY_PREVIOUS?: string
+  ATTRIBUTION_DATA_ENCRYPTION_KEY_CURRENT: string
+  ATTRIBUTION_DATA_ENCRYPTION_KEY_PREVIOUS?: string
 }
 ```
 
@@ -600,11 +607,12 @@ describe('credential vault', () => {
   })
 })
 
-it('只保留最近一个 retired 凭证且最多 7 天', async () => {
-  await retireVersion(db, 'ver_oldest', '2026-07-01T00:00:00.000Z')
+it('每个 retired 凭证分别保留 7 天', async () => {
+  await retireVersion(db, 'ver_previous', '2026-07-23T00:00:00.000Z')
   await retireVersion(db, 'ver_latest', '2026-07-24T00:00:00.000Z')
   await enforceCredentialRetention(db, new Date('2026-07-24T00:00:00.000Z'))
-  expect(await credentialExists(db, 'ver_oldest')).toBe(false)
+  expect(await credentialDestroyAfter(db, 'ver_previous'))
+    .toBe('2026-07-30T00:00:00.000Z')
   expect(await credentialDestroyAfter(db, 'ver_latest'))
     .toBe('2026-07-31T00:00:00.000Z')
 })
@@ -620,7 +628,7 @@ corepack pnpm --filter @meigallery/attribution exec vitest run src/services/cred
 
 Expected: FAIL，模块不存在。
 
-- [x] **Step 3: 实现 AES-GCM 与 HMAC 指纹**
+- [x] **Step 3: 实现统一 AES-GCM envelope 与稳定凭证指纹**
 
 实现固定签名：
 
@@ -645,7 +653,6 @@ export async function openCredential(
 ): Promise<string>
 
 export async function fingerprintCredential(
-  key: string,
   plaintext: string,
 ): Promise<string>
 ```
@@ -654,15 +661,18 @@ AAD 必须严格为：
 
 ```ts
 const aad = new TextEncoder().encode(
-  `credential:v1:${input.provider}:${input.versionId}`,
+  `attribution-data:v1:credential:${input.provider}:${input.versionId}`,
 )
 ```
 
 解密失败统一抛出不含原始错误的 `AttributionDomainError('ATTRIBUTION_CREDENTIAL_AAD_MISMATCH')`。
+凭证与第一方上下文共用唯一 AES-GCM envelope 内核，禁止再维护第二套 IV、AAD、Base64 或密钥选择实现。
+`fingerprintCredential()` 使用带领域前缀的稳定 SHA-256，只用于高熵平台凭证等值判断，不随加密主密钥轮换而变化，也不得作为凭证或鉴权材料。
 
-`enforceCredentialRetention()` 对每个 connection 只保留最近一个 `retired` 版本的密文，并把
-`destroy_after` 固定为 `retired_at + 7 days`；更早 retired 版本的 credential 当次事务立即删除。
-到期 Cron 删除最后一个 retired credential，但不得删除当前 `active` 或 `draining` credential。
+`enforceCredentialRetention()` 对每个 `retired` 版本分别把 `destroy_after` 固定为
+`retired_at + 7 days`；不得因为同一连接再次切换版本而提前删除仍在窗口内的 credential。
+到期 Cron 删除对应 retired credential，但不得删除当前 `active` 或 `draining` credential。
+`failed` 与 `superseded` 候选从未承载合法运行租约，其 credential 立即删除。
 
 - [x] **Step 4: 运行测试**
 

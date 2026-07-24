@@ -1,18 +1,15 @@
 import type { AttributionProvider } from '@meigallery/shared'
 import { AttributionDomainError } from '../domain/errors'
+import {
+  openAttributionData,
+  sealAttributionData,
+  type AttributionDataEnvelope,
+  type AttributionEncryptionKeys,
+} from '../security/data-envelope'
+import { sha256Hex } from '../security/digest'
 
-export interface CredentialEnvelope {
-  schemaVersion: 1
-  keyId: string
-  iv: string
-  ciphertext: string
-  tag: string
+export interface CredentialEnvelope extends AttributionDataEnvelope {
   fingerprint: string
-}
-
-interface CredentialKeys {
-  current: string
-  previous?: string
 }
 
 interface CredentialIdentity {
@@ -28,139 +25,82 @@ interface OpenCredentialInput extends CredentialIdentity {
   envelope: CredentialEnvelope
 }
 
+const CREDENTIAL_PURPOSE = 'credential'
 const encoder = new TextEncoder()
-const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: false })
-const IV_LENGTH = 12
-const TAG_LENGTH = 16
 
 export async function sealCredential(
-  keys: Pick<CredentialKeys, 'current'>,
+  keys: Pick<AttributionEncryptionKeys, 'current'>,
   input: SealCredentialInput,
 ): Promise<CredentialEnvelope> {
   assertCredentialInput(keys.current, input)
-
-  const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH))
-  const encryptionKey = await importEncryptionKey(keys.current)
-  const encrypted = new Uint8Array(await crypto.subtle.encrypt({
-    name: 'AES-GCM',
-    iv,
-    additionalData: credentialAad(input),
-    tagLength: TAG_LENGTH * 8,
-  }, encryptionKey, encoder.encode(input.plaintext)))
-
-  const ciphertext = encrypted.slice(0, -TAG_LENGTH)
-  const tag = encrypted.slice(-TAG_LENGTH)
-
-  return {
-    schemaVersion: 1,
-    keyId: await credentialKeyId(keys.current),
-    iv: encodeBase64Url(iv),
-    ciphertext: encodeBase64Url(ciphertext),
-    tag: encodeBase64Url(tag),
-    fingerprint: await fingerprintCredential(keys.current, input.plaintext),
+  try {
+    return {
+      ...await sealAttributionData(keys, {
+        purpose: CREDENTIAL_PURPOSE,
+        identity: credentialIdentity(input),
+        plaintext: input.plaintext,
+      }),
+      fingerprint: await fingerprintCredential(input.plaintext),
+    }
+  } catch {
+    throw new AttributionDomainError('ATTRIBUTION_CREDENTIAL_INVALID')
   }
 }
 
 export async function openCredential(
-  keys: CredentialKeys,
+  keys: AttributionEncryptionKeys,
   input: OpenCredentialInput,
 ): Promise<string> {
   try {
     assertCredentialIdentity(input)
-    assertEnvelope(input.envelope)
-
-    const keyMaterial = await findKeyMaterial(keys, input.envelope.keyId)
-    if (!keyMaterial) {
-      throw new Error('key not found')
-    }
-
-    const ciphertext = decodeBase64Url(input.envelope.ciphertext)
-    const tag = decodeBase64Url(input.envelope.tag)
-    const encrypted = new Uint8Array(ciphertext.length + tag.length)
-    encrypted.set(ciphertext)
-    encrypted.set(tag, ciphertext.length)
-
-    const plaintext = await crypto.subtle.decrypt({
-      name: 'AES-GCM',
-      iv: decodeBase64Url(input.envelope.iv),
-      additionalData: credentialAad(input),
-      tagLength: TAG_LENGTH * 8,
-    }, await importEncryptionKey(keyMaterial), encrypted)
-
-    const decoded = decoder.decode(plaintext)
-    if (
-      await fingerprintCredential(keyMaterial, decoded)
-      !== input.envelope.fingerprint
-    ) {
+    assertCredentialEnvelope(input.envelope)
+    const plaintext = await openAttributionData(keys, {
+      purpose: CREDENTIAL_PURPOSE,
+      identity: credentialIdentity(input),
+      envelope: baseEnvelope(input.envelope),
+    })
+    if (!await credentialFingerprintMatches(
+      plaintext,
+      input.envelope.fingerprint,
+    )) {
       throw new Error('fingerprint mismatch')
     }
-    return decoded
+    return plaintext
   } catch {
     throw new AttributionDomainError('ATTRIBUTION_CREDENTIAL_AAD_MISMATCH')
   }
 }
 
 export async function fingerprintCredential(
-  key: string,
   plaintext: string,
 ): Promise<string> {
-  if (!key.trim() || !plaintext) {
+  if (!plaintext) {
     throw new AttributionDomainError('ATTRIBUTION_CREDENTIAL_INVALID')
   }
-
-  const hmacKey = await crypto.subtle.importKey(
-    'raw',
-    await deriveBytes('fingerprint', key),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  )
-  const signature = await crypto.subtle.sign(
-    'HMAC',
-    hmacKey,
-    encoder.encode(plaintext),
-  )
-  return toHex(new Uint8Array(signature))
+  return sha256Hex(`credential-fingerprint:v1:${plaintext}`)
 }
 
-function credentialAad(input: CredentialIdentity): Uint8Array {
-  return encoder.encode(`credential:v1:${input.provider}:${input.versionId}`)
+async function credentialFingerprintMatches(
+  plaintext: string,
+  expected: string,
+): Promise<boolean> {
+  return await fingerprintCredential(plaintext) === expected
 }
 
-async function importEncryptionKey(key: string): Promise<CryptoKey> {
-  return crypto.subtle.importKey(
-    'raw',
-    await deriveBytes('encryption', key),
-    { name: 'AES-GCM' },
-    false,
-    ['encrypt', 'decrypt'],
-  )
+function credentialIdentity(input: CredentialIdentity): string {
+  return `${input.provider}:${input.versionId}`
 }
 
-async function credentialKeyId(key: string): Promise<string> {
-  const bytes = await deriveBytes('key-id', key)
-  return toHex(bytes.slice(0, 16))
-}
-
-async function deriveBytes(purpose: string, key: string): Promise<Uint8Array> {
-  if (!key.trim()) {
-    throw new AttributionDomainError('ATTRIBUTION_CREDENTIAL_INVALID')
+function baseEnvelope(
+  envelope: CredentialEnvelope,
+): AttributionDataEnvelope {
+  return {
+    schemaVersion: envelope.schemaVersion,
+    keyId: envelope.keyId,
+    iv: envelope.iv,
+    ciphertext: envelope.ciphertext,
+    tag: envelope.tag,
   }
-  return new Uint8Array(await crypto.subtle.digest(
-    'SHA-256',
-    encoder.encode(`attribution:${purpose}:${key}`),
-  ))
-}
-
-async function findKeyMaterial(
-  keys: CredentialKeys,
-  keyId: string,
-): Promise<string | null> {
-  if (await credentialKeyId(keys.current) === keyId) return keys.current
-  if (keys.previous && await credentialKeyId(keys.previous) === keyId) {
-    return keys.previous
-  }
-  return null
 }
 
 function assertCredentialInput(
@@ -168,7 +108,8 @@ function assertCredentialInput(
   input: SealCredentialInput,
 ): void {
   assertCredentialIdentity(input)
-  if (!key.trim() || !input.plaintext) {
+  validateKey(key)
+  if (!input.plaintext) {
     throw new AttributionDomainError('ATTRIBUTION_CREDENTIAL_INVALID')
   }
 }
@@ -182,43 +123,24 @@ function assertCredentialIdentity(input: CredentialIdentity): void {
   }
 }
 
-function assertEnvelope(envelope: CredentialEnvelope): void {
+function assertCredentialEnvelope(
+  envelope: CredentialEnvelope,
+): void {
   if (
-    envelope.schemaVersion !== 1
-    || !/^[0-9a-f]{32}$/.test(envelope.keyId)
+    !envelope
     || !/^[0-9a-f]{64}$/.test(envelope.fingerprint)
-    || decodeBase64Url(envelope.iv).length !== IV_LENGTH
-    || decodeBase64Url(envelope.tag).length !== TAG_LENGTH
-    || decodeBase64Url(envelope.ciphertext).length === 0
   ) {
     throw new AttributionDomainError('ATTRIBUTION_CREDENTIAL_INVALID')
   }
 }
 
-function encodeBase64Url(bytes: Uint8Array): string {
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary)
-    .replaceAll('+', '-')
-    .replaceAll('/', '_')
-    .replace(/=+$/u, '')
-}
-
-function decodeBase64Url(value: string): Uint8Array {
-  if (!value || !/^[A-Za-z0-9_-]+$/u.test(value)) {
+function validateKey(value: unknown): asserts value is string {
+  if (
+    typeof value !== 'string'
+    || value.trim().length === 0
+    || encoder.encode(value).byteLength < 32
+    || value.length > 4096
+  ) {
     throw new AttributionDomainError('ATTRIBUTION_CREDENTIAL_INVALID')
   }
-
-  const base64 = value
-    .replaceAll('-', '+')
-    .replaceAll('_', '/')
-    .padEnd(Math.ceil(value.length / 4) * 4, '=')
-  const binary = atob(base64)
-  return Uint8Array.from(binary, character => character.charCodeAt(0))
-}
-
-function toHex(bytes: Uint8Array): string {
-  return [...bytes]
-    .map(byte => byte.toString(16).padStart(2, '0'))
-    .join('')
 }

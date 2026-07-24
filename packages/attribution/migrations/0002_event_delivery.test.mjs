@@ -39,6 +39,19 @@ test('事件 Schema 具备完整事实、投递和隐私边界', async () => {
     migration,
     /CHECK\s*\(fact_origin IN \('live','synthetic'\)\)/i,
   )
+  assert.match(migration, /\bproof_hash\s+TEXT\s+NOT NULL\s+UNIQUE\b/i)
+  assert.doesNotMatch(migration, /\bproof_hmac\b/i)
+  assert.match(migration, /\bidentifiers_envelope_json\b/i)
+  assert.doesNotMatch(migration, /\bidentifiers_json\b/i)
+  assert.match(
+    migration,
+    /json_extract\(identifiers_envelope_json,\s*'\$\.schemaVersion'\)\s+IS\s+1/i,
+  )
+  assert.match(migration, /json_type\(identifiers_envelope_json,\s*'\$\.tag'\)/i)
+  assert.match(
+    migration,
+    /source_id\s+TEXT\s+REFERENCES attribution_managed_sources\(id\)\s+ON DELETE CASCADE/i,
+  )
   assert.doesNotMatch(
     migration,
     /release_commit|verified_commit|connection_revision|credential_revision/i,

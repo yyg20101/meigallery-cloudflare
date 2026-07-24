@@ -10,8 +10,12 @@ function createBindings(
     ATTRIBUTION_PUBLIC_ORIGINS: 'http://localhost:3000',
     ATTRIBUTION_COOKIE_DOMAIN: '',
     DB: {} as D1Database,
-    ATTRIBUTION_CREDENTIAL_MASTER_KEY_CURRENT: 'test-key',
-    ATTRIBUTION_SIGNING_KEY: 'test-signing-key',
+    ATTRIBUTION_CREDENTIAL_MASTER_KEY_CURRENT:
+      'test-credential-master-key-with-32-bytes',
+    ATTRIBUTION_SIGNING_KEY_CURRENT:
+      'test-signing-key-current-with-32-bytes',
+    ATTRIBUTION_DATA_ENCRYPTION_KEY_CURRENT:
+      'test-data-encryption-key-with-32-bytes',
     ...overrides,
   }
 }
@@ -38,7 +42,14 @@ describe('attribution worker', () => {
       ATTRIBUTION_COOKIE_DOMAIN: '',
     }],
     ['空凭证主密钥', { ATTRIBUTION_CREDENTIAL_MASTER_KEY_CURRENT: ' ' }],
-    ['空签名密钥', { ATTRIBUTION_SIGNING_KEY: ' ' }],
+    ['空签名密钥', { ATTRIBUTION_SIGNING_KEY_CURRENT: ' ' }],
+    ['过短签名密钥', { ATTRIBUTION_SIGNING_KEY_CURRENT: 'weak' }],
+    ['空数据加密密钥', {
+      ATTRIBUTION_DATA_ENCRYPTION_KEY_CURRENT: ' ',
+    }],
+    ['过短 previous 密钥', {
+      ATTRIBUTION_SIGNING_KEY_PREVIOUS: 'weak',
+    }],
   ])('%s 时 fail closed', async (_label, overrides) => {
     const response = await app.request(
       '/health',

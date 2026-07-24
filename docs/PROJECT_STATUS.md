@@ -86,7 +86,7 @@
 
 - 独立 Attribution Worker 阶段 1 已完成：独立 package 与 D1 schema、加密凭证仓库、不可变候选版本、原子激活/回滚、独立运行策略、凭证保留 Cron 和专属部署门禁均已通过测试。资源仍使用哨兵 ID，尚未部署或切换 production 流量。
 - 普通根 `deploy` 和 `scripts/deploy.sh` 只部署 API/Web；Attribution Worker 只能通过 `scripts/deploy-attribution.sh` 显式发布，普通业务发布不会改变归因 Active Version、运行策略或凭证。
-- 独立 Attribution Worker 阶段 2 已开始：事件投递 Schema、32 字节 opaque 管理来源 Proof、HMAC-only 持久化和严格单连接路由已完成；普通 UTM 不得声明 provider，跨平台 click ID 冲突及同平台多连接歧义均零路由并创建 Incident。运行租约、Canonical Event、Meta/TikTok/Google Adapter 与独立 Queue 继续按阶段计划实施；迁移前保持现有 production Active 配置，禁止继续扩展旧连接保存模型。
+- 独立 Attribution Worker 阶段 2 已开始：事件投递 Schema、32 字节 opaque 管理来源 Proof、SHA-256 摘要持久化、严格单连接路由、地区隐私决策、加密 HttpOnly 第一方上下文、由 D1 Active Version 签发的 30 分钟不可变运行租约、24 小时离线补交边界和 draining 版本退休均已完成；普通 UTM 不得声明 provider，跨平台 click ID 冲突及同平台多连接歧义均零路由并创建 Incident。Canonical Event、Meta/TikTok/Google Adapter 与独立 Queue 继续按阶段计划实施；迁移前保持现有 production Active 配置，禁止继续扩展旧连接保存模型。
 - TikTok 与 Google 的后续 production 验收纳入独立 Attribution Worker 迁移，不再在旧运行时增加平台专属流程。
 - 广告花费、campaign、ad set、ad 数据导入不属于当前 Pixel/Server API 同步范围。
 - Cloudflare Stream 视频链路和完整 zip 异步导入仍待实现。

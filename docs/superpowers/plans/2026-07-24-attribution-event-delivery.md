@@ -92,7 +92,10 @@ CREATE TABLE attribution_managed_sources (
   campaign TEXT NOT NULL,
   medium TEXT NOT NULL,
   content TEXT NOT NULL,
-  proof_hmac TEXT NOT NULL UNIQUE,
+  proof_hash TEXT NOT NULL UNIQUE CHECK (
+    length(proof_hash) = 64
+    AND proof_hash NOT GLOB '*[^0-9a-f]*'
+  ),
   expires_at TEXT,
   enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)),
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -103,7 +106,8 @@ CREATE TABLE attribution_contexts (
   provider TEXT NOT NULL,
   connection_id TEXT NOT NULL,
   source_id TEXT,
-  identifiers_json TEXT NOT NULL,
+  identifiers_envelope_json TEXT NOT NULL
+    CHECK (json_extract(identifiers_envelope_json, '$.schemaVersion') IS 1),
   issued_at INTEGER NOT NULL,
   expires_at INTEGER NOT NULL
 );
@@ -276,10 +280,10 @@ Expected: FAIL，路由服务不存在。
 ```ts
 const proofBytes = crypto.getRandomValues(new Uint8Array(32))
 const proof = base64Url(proofBytes)
-const proofHmac = await hmac(signingKey, `managed-source:v1:${proof}`)
+const proofHash = await sha256(`managed-source:v1:${proof}`)
 ```
 
-D1 只保存 `proof_hmac`。`resolveAttributionRoute()` 固定执行：
+D1 只保存 256-bit 随机 proof 的 `proof_hash`，proof 不依赖运行签名密钥。`resolveAttributionRoute()` 固定执行：
 
 ```ts
 if (validManagedSource) return exactManagedConnection
@@ -326,38 +330,40 @@ git commit -m "feat: 实现归因来源严格路由"
 - Consumes: Task 2 路由结果、Cloudflare country、`Sec-GPC`、用户选择、Active Version 和运行策略。
 - Produces: `resolvePrivacyDecision()`、`savePrivacyPolicy()`、`issueAttributionContext()`、`resolveAttributionContext()`、`issueRuntimeLease()`、`verifyRuntimeLease()`、`retireDrainedVersions()`。
 
-- [ ] **Step 1: 写租约失败测试**
+- [x] **Step 1: 写租约失败测试**
 
 ```ts
 it('Active 切换后旧租约仍锁定旧版本', async () => {
-  const lease = await issueRuntimeLease(keys, {
+  const lease = await issueRuntimeLease({ db, signingKeys, now }, {
     connectionId: 'conn_meta_a',
-    versionId: 'ver_old',
     provider: 'meta',
-    nowSeconds: 1_000,
+    privacyState: 'granted',
   })
-  repository.activeVersionId = 'ver_new'
-  const verified = await verifyRuntimeLease(keys, lease, 1_100)
+  await switchActiveVersion(db, 'ver_new')
+  const verified = await verifyRuntimeLease({ signingKeys, now }, lease)
   expect(verified.versionId).toBe('ver_old')
 })
 
 it('租约超过 30 分钟后拒绝新事件', async () => {
-  const lease = await issueRuntimeLease(keys, inputAt(1_000))
-  await expect(verifyRuntimeLease(keys, lease, 2_801))
+  const lease = await issueRuntimeLease({ db, signingKeys, now }, input)
+  now.setTime(now.getTime() + 30 * 60 * 1_000 + 1)
+  await expect(verifyRuntimeLease({ signingKeys, now: () => now }, lease))
     .rejects.toThrow('ATTRIBUTION_RUNTIME_LEASE_EXPIRED')
 })
 
 it('draining 满 30 分钟后退休但仍接受租约内已发生的 24 小时补交', async () => {
   await retireDrainedVersions(db, new Date('2026-07-24T00:30:00.000Z'))
   expect((await version(db, 'ver_old')).status).toBe('retired')
-  expect(await verifyDelayedEvent(oldLease, {
+  expect(await verifyDelayedEvent({
+    signingKeys,
+    now: () => new Date('2026-07-24T20:00:00.000Z'),
+  }, oldLease, {
     occurredAt: '2026-07-24T00:29:59.000Z',
-    receivedAt: '2026-07-24T20:00:00.000Z',
   })).toMatchObject({ accepted: true, versionId: 'ver_old' })
 })
 ```
 
-- [ ] **Step 2: 写地区与 GPC 决策失败测试**
+- [x] **Step 2: 写地区与 GPC 决策失败测试**
 
 ```ts
 it.each([
@@ -385,7 +391,7 @@ it('上下文只通过 HttpOnly 第一方 Cookie 返回且篡改后失效', asyn
 })
 ```
 
-- [ ] **Step 3: 运行测试确认失败**
+- [x] **Step 3: 运行测试确认失败**
 
 Run:
 
@@ -395,7 +401,7 @@ corepack pnpm --filter @meigallery/attribution exec vitest run src/services/priv
 
 Expected: FAIL，模块不存在。
 
-- [ ] **Step 4: 实现地区策略、签名上下文和租约**
+- [x] **Step 4: 实现地区策略、签名上下文和租约**
 
 隐私优先级固定为：
 
@@ -412,6 +418,8 @@ return granted('regional_default')
 
 只有 `granted` 才能签发归因上下文和运行租约。`choice_required` 与 `denied` 仍允许保存最小一方业务事实，但 Planner 必须返回零广告 Delivery。策略写入使用独立幂等命令，国家代码标准化为大写、去重、排序的 ISO 3166-1 alpha-2 列表。
 
+签发租约时，Worker 必须自行从 D1 读取连接当前 `Active Version` 和启用中的运行策略，
+调用方只能提交 `connectionId`、`provider` 与隐私状态，不能指定 `versionId` 或服务器时间。
 上下文与租约签名必须覆盖全部路由身份：
 
 ```ts
@@ -423,12 +431,16 @@ const leasePayload = {
   issuedAt: nowSeconds,
   expiresAt: nowSeconds + 30 * 60,
 }
-const signature = await hmac(signingKey, stableJson(leasePayload))
+const token = await signAttributionToken(
+  signingKeys.current,
+  'runtime-lease',
+  leasePayload,
+)
 ```
 
 `draining` 版本只在签名租约的 `versionId` 与事实相同且事件发生时间不晚于租约 `expiresAt` 时接受；离线到达时间不得晚于事件发生后 24 小时。
 `retireDrainedVersions()` 在 `draining_at + 30 minutes` 后把版本设为 `retired` 并启动 7 天凭证
-保留计时；已签发租约的迟到事件仍按其 `occurredAt` 和 24 小时接收窗口验证，不会改投新 Active。
+保留计时；每个 retired 版本分别保留自身凭证 7 天，不因后续再次切换而提前删除。已签发租约的迟到事件仍按其 `occurredAt` 和 Worker 可信接收时间的 24 小时窗口验证，不会改投新 Active。版本切换不撤销租约，但管理员关闭连接总闸后，既有租约立即停止投递。
 
 签名上下文只通过名为 `__Secure-mg_attribution_context` 的
 `HttpOnly; Secure; SameSite=Lax; Path=/` Cookie 传递，不返回给 JavaScript；生产响应的
@@ -438,7 +450,14 @@ const signature = await hmac(signingKey, stableJson(leasePayload))
 回显。只有 Attribution Worker 可以验签并解析 connection/version/provider；缺失 Cookie 表示
 无归因来源，篡改 Cookie 表示无投递并创建安全 Incident，二者都不得阻断正常业务。
 
-- [ ] **Step 5: 运行测试**
+上下文中的 `fbclid`、`ttclid`、`gclid`、`gbraid`、`wbraid` 必须使用
+`ATTRIBUTION_DATA_ENCRYPTION_KEY_CURRENT` 形成带 AAD 的 AES-GCM envelope，D1 字段固定为
+`identifiers_envelope_json`，禁止明文持久化。Meta 只保留 `fbclid`，TikTok 只保留
+`ttclid`，Google 只保留 `gclid/gbraid/wbraid`，其他平台标识必须在写入前丢弃。
+签名与数据加密密钥均采用 current/previous 轮换；previous 至少保留到旧上下文最长 30 天寿命结束。
+管理来源自然过期只阻止新上下文，人工停用或删除来源必须立即撤销既有上下文。
+
+- [x] **Step 5: 运行测试**
 
 Run:
 
@@ -448,7 +467,7 @@ corepack pnpm --filter @meigallery/attribution exec vitest run src/services/priv
 
 Expected: PASS；GPC 和显式拒绝优先；未知地区 fail closed；篡改 connection、version、provider 或时间任一字段均失败。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add packages/attribution/src/services/privacy-policy* packages/attribution/src/services/context-service* packages/attribution/src/services/runtime-lease* packages/attribution/src/services/version-retirement*
@@ -936,7 +955,8 @@ interface ContactCapabilityV1 {
 ```
 
 签名输入为 `contact-capability:v1:${base64Url(stableJson(payload))}`，使用
-`ATTRIBUTION_SIGNING_KEY` HMAC-SHA256。
+`ATTRIBUTION_SIGNING_KEY_CURRENT` HMAC-SHA256；轮换窗口仅允许
+`ATTRIBUTION_SIGNING_KEY_PREVIOUS` 验证既有短期 token。
 
 - [ ] **Step 4: 运行测试**
 
