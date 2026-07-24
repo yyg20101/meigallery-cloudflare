@@ -434,7 +434,13 @@ function parseContextRequest(value: unknown): {
   if (!validIdentifier(value.idempotencyKey)) return null
   if (value.proof !== undefined && !validProof(value.proof)) return null
   const identifiers = parseIdentifiers(value.identifiers)
-  if (!identifiers || Object.keys(identifiers).length === 0) return null
+  if (
+    !identifiers
+    || (
+      value.proof === undefined
+      && Object.keys(identifiers).length === 0
+    )
+  ) return null
   return {
     idempotencyKey: value.idempotencyKey,
     ...(value.proof === undefined ? {} : { proof: value.proof }),

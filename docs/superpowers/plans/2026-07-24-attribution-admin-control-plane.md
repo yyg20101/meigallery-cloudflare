@@ -435,6 +435,12 @@ git commit -m "refactor: 分离归因后台写命令"
 - Consumes: Task 3 composable。
 - Produces: provider 分组多连接列表和完全分开的身份/运行控制界面。
 
+- [x] **前置修复：管理投放来源凭证可独立解析**
+
+  新建投放来源返回的一次性凭证无需等待 Meta、TikTok 或 Google 附加点击标识即可签发
+  一方上下文；无凭证的请求仍必须包含合法平台点击标识。浏览器路由回归测试与
+  Attribution Worker 类型检查已通过。
+
 - [ ] **Step 1: 写页面语义失败测试**
 
 ```ts

@@ -20,6 +20,7 @@ import type {
   AttributionEnvironment,
 } from '../env'
 import { issueContactCapability } from '../services/contact-capability'
+import { createManagedSource } from '../services/managed-source-service'
 import { clearAttributionRuntimeDatabase } from '../test/attribution-schema'
 import {
   createBrowserAttributionRoutes,
@@ -130,6 +131,40 @@ describe('Attribution Worker Browser 公开路由', () => {
         expiresAt: Math.floor(fixedNow.getTime() / 1_000) + 30 * 24 * 60 * 60,
       },
     })
+  })
+
+  it('管理投放来源凭证无需依赖平台点击标识即可签发上下文', async () => {
+    const source = await createManagedSource({
+      db,
+      now: () => fixedNow,
+    }, {
+      connectionId: 'conn_meta',
+      campaign: 'us_bj',
+      medium: 'paid_social',
+      content: 'creative_a',
+    })
+
+    const response = await request('/v1/context', 'PUT', {
+      idempotencyKey: 'context_managed_source',
+      proof: source.proof,
+      identifiers: {},
+    })
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({
+      data: {
+        issued: true,
+        expiresAt: Math.floor(fixedNow.getTime() / 1_000) + 30 * 24 * 60 * 60,
+      },
+    })
+    expect(response.headers.get('Set-Cookie')).toMatch(
+      /HttpOnly; Secure; SameSite=Lax/,
+    )
+    expect(await scalar(`
+      SELECT COUNT(*) AS value
+      FROM attribution_contexts
+      WHERE source_id = '${source.id}'
+    `)).toBe(1)
   })
 
   it('GPC 优先于显式授权并且 runtime-config fail closed', async () => {
