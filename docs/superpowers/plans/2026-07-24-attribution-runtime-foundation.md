@@ -993,7 +993,7 @@ git commit -m "feat: 分离归因运行策略命令"
 - Consumes: 独立 package 和 Worker 配置。
 - Produces: 普通部署不触碰 Attribution；归因部署只能由专属脚本触发。
 
-- [ ] **Step 1: 写边界失败测试**
+- [x] **Step 1: 写边界失败测试**
 
 ```ts
 import { expect, it } from 'vitest'
@@ -1011,7 +1011,7 @@ it('归因运行时不导入业务 API', async () => {
 部署脚本测试断言普通 `production` 路径不包含 `@meigallery/attribution deploy`，专属脚本只部署 attribution。
 scheduled 测试使用固定时间断言到期 retired credential 被删除，Active/Draining credential 保持不变。
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -1022,7 +1022,7 @@ node --test scripts/deploy-attribution.test.mjs
 
 Expected: FAIL，专属脚本尚不存在。
 
-- [ ] **Step 3: 实现专属脚本和根命令**
+- [x] **Step 3: 实现专属脚本和根命令**
 
 根 `package.json` 增加：
 
@@ -1060,7 +1060,7 @@ export async function runAttributionMaintenance(env: AttributionBindings, now: D
 }
 ```
 
-- [ ] **Step 4: 运行阶段验收**
+- [x] **Step 4: 运行阶段验收**
 
 Run:
 
@@ -1074,7 +1074,7 @@ git diff --check
 
 Expected: 全部 PASS，dry-run 产物只包含 `meigallery-attribution`。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add package.json scripts/deploy-attribution.sh scripts/deploy-attribution.test.mjs packages/attribution

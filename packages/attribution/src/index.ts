@@ -5,12 +5,13 @@ import {
   type AttributionBindings,
   type AttributionEnvironment,
 } from './env'
+import { runAttributionMaintenance } from './scheduled'
 
 interface AttributionVariables {
   attributionEnvironment: AttributionEnvironment
 }
 
-const app = new Hono<{
+export const app = new Hono<{
   Bindings: AttributionBindings
   Variables: AttributionVariables
 }>()
@@ -36,4 +37,13 @@ app.get('/health', c => c.json({
   contractVersion: ATTRIBUTION_CONTRACT_VERSION,
 }))
 
-export default app
+export default {
+  fetch(request, env, ctx) {
+    return app.fetch(request, env, ctx)
+  },
+  scheduled(controller, env, ctx) {
+    ctx.waitUntil(
+      runAttributionMaintenance(env, new Date(controller.scheduledTime)),
+    )
+  },
+} satisfies ExportedHandler<AttributionBindings>
