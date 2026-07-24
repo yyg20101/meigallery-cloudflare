@@ -423,9 +423,7 @@ git commit -m "refactor: 分离归因后台写命令"
 - Create: `packages/web/app/components/admin/attribution/AttributionManagedSourceList.vue`
 - Delete: `packages/web/app/pages/admin/attribution/links.vue`
 - Delete: `packages/web/app/components/admin/attribution/AttributionCredentialEditor.vue`
-- Delete: `packages/web/app/components/admin/attribution/AttributionEventBindingEditor.vue`
 - Delete: `packages/web/app/components/admin/attribution/AttributionPlatformConnectionEditor.vue`
-- Delete: `packages/web/app/components/admin/attribution/AttributionRolloutControl.vue`
 - Modify: `packages/web/app/components/admin/attribution/AttributionPageShell.vue`
 - Modify: `packages/web/app/layouts/admin.vue`
 - Modify: `packages/web/app/pages/admin/analytics/sources.vue`
@@ -441,7 +439,7 @@ git commit -m "refactor: 分离归因后台写命令"
   一方上下文；无凭证的请求仍必须包含合法平台点击标识。浏览器路由回归测试与
   Attribution Worker 类型检查已通过。
 
-- [ ] **Step 1: 写页面语义失败测试**
+- [x] **Step 1: 写页面语义失败测试**
 
 ```ts
 it('候选验证中仍显示生产继续运行且没有运行开关', async () => {
@@ -457,7 +455,7 @@ it('页面不显示内部实现字段', async () => {
 })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -467,7 +465,7 @@ corepack pnpm --filter @meigallery/web exec vitest run app/pages/admin/attributi
 
 Expected: FAIL，新页面不存在。
 
-- [ ] **Step 3: 实现页面信息架构**
+- [x] **Step 3: 实现页面信息架构**
 
 导航固定为：
 
@@ -511,7 +509,7 @@ const attributionNavigation = [
 后台导航、数据分析来源页和所有内部链接直接改为 `/admin/attribution/connections`。身份表单是
 公开配置、凭证和事件映射的唯一编辑入口，已删除的四个旧编辑器不得被新组件包装复用。
 
-- [ ] **Step 4: 运行页面测试和构建**
+- [x] **Step 4: 运行页面测试和构建**
 
 Run:
 
@@ -520,9 +518,11 @@ corepack pnpm --filter @meigallery/web exec vitest run app/pages/admin/attributi
 corepack pnpm --filter @meigallery/web exec nuxt build
 ```
 
-Expected: PASS，页面在 375px 与 1440px 宽度无横向溢出。
+Result: 页面语义测试、完整 Web 单测（287 项）、Web 类型检查、API 类型检查和生产构建
+通过。375px 与 1440px 的真实浏览器截图和横向溢出检查统一在 Task 7 执行，避免在没有
+认证测试环境时把结构断言误写成视觉验收。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add packages/web/app/pages/admin/attribution packages/web/app/components/admin/attribution packages/web/app/layouts/admin.vue packages/web/app/pages/admin/analytics/sources.vue
@@ -545,6 +545,8 @@ git commit -m "feat: 重构归因连接与运行控制页面"
 - Delete: `packages/web/app/utils/attributionReadiness.ts`
 - Delete: `packages/web/app/utils/attributionReadiness.test.ts`
 - Delete: `packages/web/app/components/admin/attribution/AttributionProviderSwitch.vue`
+- Delete: `packages/web/app/components/admin/attribution/AttributionEventBindingEditor.vue`
+- Delete: `packages/web/app/components/admin/attribution/AttributionRolloutControl.vue`
 - Modify: `packages/web/app/components/admin/attribution/AttributionHealthStrip.vue`
 - Modify: `packages/web/app/components/admin/attribution/AttributionIncidentList.vue`
 - Modify: `packages/web/app/components/admin/attribution/AttributionVerificationPanel.vue`

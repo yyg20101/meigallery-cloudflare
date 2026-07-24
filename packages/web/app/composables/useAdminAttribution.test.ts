@@ -12,6 +12,7 @@ import {
   normalizeAttributionRangePreset,
   useAttributionCandidate,
   useAttributionConnections,
+  useAttributionManagedSources,
   useAttributionQuality,
   useAttributionRuntimePolicy,
 } from './useAdminAttribution'
@@ -166,6 +167,75 @@ describe('归因控制面 composable', () => {
     ])
     expect(connections.initialized.value).toBe(true)
     expect(quality.rows.value).toEqual([])
+  })
+
+  it('管理投放来源只在创建响应中交付一次性凭证', async () => {
+    const client = mockClient()
+    client.request.mockResolvedValueOnce({
+      data: { connectionId: 'conn_meta_a', sources: [] },
+    })
+    const state = useAttributionManagedSources(client)
+    await state.load('conn_meta_a')
+
+    const pending = deferred<{
+      data: {
+        source: {
+          id: string
+          provider: 'meta'
+          connectionId: string
+          campaign: string
+          medium: string
+          content: string
+          expiresAt: null
+          enabled: true
+          createdAt: string
+        }
+        proof: string
+        proofDelivery: 'issued_once'
+        replayed: false
+      }
+    }>()
+    client.request.mockReturnValueOnce(pending.promise)
+    const input = {
+      campaign: 'us_bj',
+      medium: 'paid_social',
+      content: 'creative_a',
+    }
+    const first = state.create('conn_meta_a', input)
+    const second = state.create('conn_meta_a', input)
+    expect(second).toBe(first)
+
+    pending.resolve({
+      data: {
+        source: {
+          id: 'source_meta_a',
+          provider: 'meta',
+          connectionId: 'conn_meta_a',
+          campaign: input.campaign,
+          medium: input.medium,
+          content: input.content,
+          expiresAt: null,
+          enabled: true,
+          createdAt: '2026-07-24T10:00:00.000Z',
+        },
+        proof: 'proof_issued_once',
+        proofDelivery: 'issued_once',
+        replayed: false,
+      },
+    })
+
+    const created = await first
+    expect(created.proof).toBe('proof_issued_once')
+    expect(JSON.stringify(state.sources.value)).not.toContain('proof')
+    expect(client.request).toHaveBeenLastCalledWith(
+      '/api/admin/attribution-runtime/connections/conn_meta_a/sources',
+      expect.objectContaining({
+        method: 'POST',
+        headers: {
+          'Idempotency-Key': '00000000-0000-4000-8000-000000000001',
+        },
+      }),
+    )
   })
 })
 

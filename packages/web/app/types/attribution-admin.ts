@@ -164,6 +164,11 @@ export interface CreateAttributionManagedSourceResult {
   replayed: boolean
 }
 
+export interface DisableAttributionManagedSourceResult {
+  source: AttributionManagedSourceView
+  disabled: true
+}
+
 export interface AttributionAdminApiResponse<T> {
   data: T
 }

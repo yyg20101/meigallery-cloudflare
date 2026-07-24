@@ -32,7 +32,7 @@ describe('AttributionPageShell', () => {
     expect((input.element as HTMLInputElement).value).toBe('2026-07-09')
   })
 
-  it('展示统一归因后台六个标签', () => {
+  it('展示统一归因后台八个标签', () => {
     const wrapper = mount(AttributionPageShell, {
       props: {
         title: '归因中心',
@@ -41,7 +41,16 @@ describe('AttributionPageShell', () => {
       global: { stubs: { NuxtLink: nuxtLinkStub } },
     })
 
-    for (const label of ['总览', '平台连接', '事件绑定', '投递质量', '验证记录', '审计日志']) {
+    for (const label of [
+      '总览',
+      '连接',
+      '事件映射',
+      '投递质量',
+      '验证记录',
+      'Incident',
+      '地区策略',
+      '审计日志',
+    ]) {
       expect(wrapper.text()).toContain(label)
     }
     expect(wrapper.text()).not.toContain('投放链接')
@@ -65,9 +74,9 @@ describe('AttributionPageShell', () => {
       path: '/admin/attribution/deliveries',
       query: { range: 'day', date: '2026-07-09', provider: 'meta' },
     }))
-    const platform = wrapper.findAll('a').find(item => item.text() === '平台连接')
-    expect(platform?.attributes('data-to')).toBe(JSON.stringify({
-      path: '/admin/attribution/platforms',
+    const connection = wrapper.findAll('a').find(item => item.text() === '连接')
+    expect(connection?.attributes('data-to')).toBe(JSON.stringify({
+      path: '/admin/attribution/connections',
       query: { provider: 'meta' },
     }))
     const audit = wrapper.findAll('a').find(item => item.text() === '审计日志')

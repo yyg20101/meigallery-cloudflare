@@ -62,7 +62,7 @@ async function saveBindings() {
   >
     <AttributionProviderSwitch v-model="selectedProvider" />
     <div v-if="!connection" class="border-y border-amber-200 bg-amber-50 px-3 py-4 text-sm text-amber-900 sm:px-5">
-      当前平台尚未建立连接。<NuxtLink :to="{ path: '/admin/attribution/platforms', query: { provider: selectedProvider } }" class="font-medium underline">前往平台连接</NuxtLink>
+      当前平台尚未建立连接。<NuxtLink :to="{ path: '/admin/attribution/connections', query: { provider: selectedProvider } }" class="font-medium underline">前往归因连接</NuxtLink>
     </div>
     <form v-else class="space-y-4" @submit.prevent="saveBindings">
       <AttributionEventBindingEditor v-model="draft.eventBindings" :platform="platform" :disabled="!isOwner || manager.saving.value" />

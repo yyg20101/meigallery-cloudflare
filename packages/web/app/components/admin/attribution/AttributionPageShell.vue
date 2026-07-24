@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { AttributionRangePreset } from '~/composables/useAdminAttribution'
 import { ATTRIBUTION_RANGE_OPTIONS, attributionRouteQuery } from '~/composables/useAdminAttribution'
-import { normalizeAttributionPlatformProvider } from '~/utils/attributionPlatforms'
+import { ATTRIBUTION_PLATFORM_PROVIDERS } from '~/utils/attributionPlatforms'
 
 const props = withDefaults(defineProps<{
   title: string
@@ -33,13 +33,25 @@ const route = useRoute()
 
 const tabs = [
   { label: '总览', to: '/admin/attribution', range: true, provider: true },
-  { label: '平台连接', to: '/admin/attribution/platforms', range: false, provider: true },
-  { label: '事件绑定', to: '/admin/attribution/bindings', range: false, provider: true },
+  { label: '连接', to: '/admin/attribution/connections', range: false, provider: true },
+  { label: '事件映射', to: '/admin/attribution/bindings', range: false, provider: true },
   { label: '投递质量', to: '/admin/attribution/deliveries', range: true, provider: true },
   { label: '验证记录', to: '/admin/attribution/verifications', range: true, provider: true },
+  { label: 'Incident', to: '/admin/attribution/incidents', range: false, provider: true },
   { label: '地区策略', to: '/admin/attribution/privacy', range: false, provider: false },
   { label: '审计日志', to: '/admin/attribution/audit', range: true, provider: false },
 ]
+
+const currentProvider = computed(() => {
+  const value = Array.isArray(route.query.provider)
+    ? route.query.provider[0]
+    : route.query.provider
+  return ATTRIBUTION_PLATFORM_PROVIDERS.includes(
+    value as typeof ATTRIBUTION_PLATFORM_PROVIDERS[number],
+  )
+    ? value as typeof ATTRIBUTION_PLATFORM_PROVIDERS[number]
+    : ''
+})
 
 const tabLinks = computed(() => tabs.map(tab => ({
   ...tab,
@@ -47,7 +59,9 @@ const tabLinks = computed(() => tabs.map(tab => ({
     path: tab.to,
     query: {
       ...(tab.range ? attributionRouteQuery(props.range, props.date || '') : {}),
-      ...(tab.provider ? { provider: normalizeAttributionPlatformProvider(route.query.provider) } : {}),
+      ...(tab.provider && currentProvider.value
+        ? { provider: currentProvider.value }
+        : {}),
     },
   },
 })))

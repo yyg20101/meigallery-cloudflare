@@ -101,7 +101,7 @@ const capacityRows = computed(() => {
   }))
 })
 const capacityWarning = computed(() => capacityRows.value.some(item => item.warning))
-const platformRoute = computed(() => ({ path: '/admin/attribution/platforms', query: { provider: selectedProvider.value } }))
+const platformRoute = computed(() => ({ path: '/admin/attribution/connections', query: { provider: selectedProvider.value } }))
 
 const businessSeries = [
   { key: 'business.contactCount', label: '有效联系', layer: 'business' as const, aggregation: { type: 'sum' as const } },
@@ -172,7 +172,7 @@ function serverSuccess(row: BreakdownData['rows'][number]) {
           <p class="mt-0.5 truncate text-xs text-gray-500">{{ selectedConnection?.mode || 'disabled' }} · rollout {{ selectedConnection?.rolloutEffectivePercentage ?? 0 }}%</p>
         </div>
       </div>
-      <NuxtLink :to="platformRoute" class="w-fit text-sm font-medium text-blue-700 hover:text-blue-900">管理平台连接</NuxtLink>
+      <NuxtLink :to="platformRoute" class="w-fit text-sm font-medium text-blue-700 hover:text-blue-900">管理归因连接</NuxtLink>
     </section>
 
     <div data-evidence-rail class="min-w-0 overflow-x-auto border-b border-gray-200 bg-white py-2">

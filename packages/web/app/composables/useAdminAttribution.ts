@@ -18,10 +18,14 @@ import type {
   AttributionAdminApiResponse,
   AttributionAdminClient,
   AttributionConnectionView,
+  AttributionManagedSourceView,
   AttributionQualityQuery,
   AttributionQualityView,
+  CreateAttributionManagedSourceRequest,
+  CreateAttributionManagedSourceResult,
   CreateAttributionConnectionRequest,
   CreateCandidateRequest,
+  DisableAttributionManagedSourceResult,
   SetRuntimePolicyRequest,
 } from '~/types/attribution-admin'
 import { resolveApiErrorMessage } from '~/utils/apiErrorMessage'
@@ -799,6 +803,181 @@ export function useAttributionQuality(
   }
 }
 
+export function useAttributionManagedSources(
+  client: AttributionAdminClient = attributionAdminClient(),
+) {
+  const connectionId = ref('')
+  const sources = ref<AttributionManagedSourceView[]>([])
+  const loading = ref(false)
+  const initialized = ref(false)
+  const error = ref('')
+  let requestRevision = 0
+  let pending: {
+    operation: 'create' | 'disable'
+    connectionId: string
+    sourceId?: string
+    promise: Promise<unknown>
+  } | null = null
+
+  async function load(
+    value: string,
+  ): Promise<AttributionManagedSourceView[]> {
+    const normalizedId = attributionConnectionId(value)
+    const revision = ++requestRevision
+    loading.value = true
+    error.value = ''
+    try {
+      const result = await client.request<
+        AttributionAdminApiResponse<{
+          connectionId: string
+          sources: AttributionManagedSourceView[]
+        }>
+      >(
+        `${ATTRIBUTION_ADMIN_BASE}/connections/`
+        + `${encodeURIComponent(normalizedId)}/sources`,
+      )
+      if (revision === requestRevision) {
+        connectionId.value = normalizedId
+        sources.value = result.data.sources
+        initialized.value = true
+      }
+      return result.data.sources
+    } catch (cause) {
+      if (revision === requestRevision) {
+        initialized.value = false
+        error.value = resolveApiErrorMessage(
+          cause,
+          '投放来源加载失败',
+        )
+      }
+      throw cause
+    } finally {
+      if (revision === requestRevision) loading.value = false
+    }
+  }
+
+  function create(
+    value: string,
+    input: CreateAttributionManagedSourceRequest,
+  ): Promise<CreateAttributionManagedSourceResult> {
+    const normalizedId = attributionConnectionId(value)
+    if (
+      pending?.operation === 'create'
+      && pending.connectionId === normalizedId
+    ) {
+      return pending.promise as Promise<CreateAttributionManagedSourceResult>
+    }
+    ensureSourceCommandReady(normalizedId)
+    error.value = ''
+    let operation!: Promise<CreateAttributionManagedSourceResult>
+    operation = client.request<
+      AttributionAdminApiResponse<CreateAttributionManagedSourceResult>
+    >(
+      `${ATTRIBUTION_ADMIN_BASE}/connections/`
+      + `${encodeURIComponent(normalizedId)}/sources`,
+      {
+        method: 'POST',
+        headers: idempotencyHeaders(client),
+        body: input,
+      },
+    ).then((result) => {
+      upsertManagedSource(sources.value, result.data.source)
+      return result.data
+    }).catch((cause) => {
+      error.value = resolveApiErrorMessage(
+        cause,
+        '投放来源创建失败',
+      )
+      throw cause
+    }).finally(() => {
+      if (pending?.promise === operation) pending = null
+    })
+    pending = {
+      operation: 'create',
+      connectionId: normalizedId,
+      promise: operation,
+    }
+    return operation
+  }
+
+  function disableSource(
+    value: string,
+    sourceId: string,
+  ): Promise<DisableAttributionManagedSourceResult> {
+    const normalizedId = attributionConnectionId(value)
+    const normalizedSourceId = attributionConnectionId(sourceId)
+    if (
+      pending?.operation === 'disable'
+      && pending.connectionId === normalizedId
+      && pending.sourceId === normalizedSourceId
+    ) {
+      return pending.promise as Promise<
+        DisableAttributionManagedSourceResult
+      >
+    }
+    ensureSourceCommandReady(normalizedId)
+    error.value = ''
+    let operation!: Promise<DisableAttributionManagedSourceResult>
+    operation = client.request<
+      AttributionAdminApiResponse<DisableAttributionManagedSourceResult>
+    >(
+      `${ATTRIBUTION_ADMIN_BASE}/connections/`
+      + `${encodeURIComponent(normalizedId)}/sources/`
+      + `${encodeURIComponent(normalizedSourceId)}/disable`,
+      {
+        method: 'POST',
+        headers: idempotencyHeaders(client),
+      },
+    ).then((result) => {
+      upsertManagedSource(sources.value, result.data.source)
+      return result.data
+    }).catch((cause) => {
+      error.value = resolveApiErrorMessage(
+        cause,
+        '投放来源停用失败',
+      )
+      throw cause
+    }).finally(() => {
+      if (pending?.promise === operation) pending = null
+    })
+    pending = {
+      operation: 'disable',
+      connectionId: normalizedId,
+      sourceId: normalizedSourceId,
+      promise: operation,
+    }
+    return operation
+  }
+
+  function ensureSourceCommandReady(normalizedId: string): void {
+    if (
+      pending
+      || !initialized.value
+      || loading.value
+      || connectionId.value !== normalizedId
+    ) {
+      throw attributionFormNotReady()
+    }
+  }
+
+  return {
+    sources,
+    loading,
+    initialized,
+    saving: computed(() => pending !== null),
+    canSave: computed(() => (
+      initialized.value
+      && !loading.value
+      && pending === null
+      && connectionId.value.length > 0
+    )),
+    error,
+    load,
+    create,
+    disableSource,
+  }
+}
+
 function attributionAdminClient(): AttributionAdminClient {
   const { api } = useApi()
   return {
@@ -843,6 +1022,18 @@ function upsertConnection(
     return
   }
   connections.splice(index, 1, connection)
+}
+
+function upsertManagedSource(
+  sources: AttributionManagedSourceView[],
+  source: AttributionManagedSourceView,
+): void {
+  const index = sources.findIndex(item => item.id === source.id)
+  if (index < 0) {
+    sources.unshift(source)
+    return
+  }
+  sources.splice(index, 1, source)
 }
 
 export function useAdminAttributionPlatforms() {
