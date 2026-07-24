@@ -2,6 +2,7 @@ import type { AttributionBusinessEventV1 } from '@meigallery/shared'
 import { describe, expect, it, vi } from 'vitest'
 import {
   AttributionServiceClientError,
+  createAttributionMigrationClient,
   createAttributionServiceClient,
   type AttributionServiceBinding,
 } from './attribution-service-client'
@@ -244,6 +245,64 @@ describe('Attribution Service Binding client', () => {
       .rejects.toMatchObject({
         code: 'ATTRIBUTION_CONTACT_CAPABILITY_RESPONSE_INVALID',
       })
+  })
+
+  it('迁移客户端只通过固定内部路径查询既有回执', async () => {
+    const fetch = vi.fn(async () => Response.json({ data: {} }))
+    const client = createAttributionMigrationClient(binding(fetch))
+
+    await client.readImportResult({
+      runId: 'migration-production-v1',
+      actorId: 7,
+    })
+
+    const request = fetch.mock.calls[0]?.[0]
+    expect(request?.url).toBe(
+      'https://attribution.internal/internal/migration/v1'
+      + '/imports/migration-production-v1',
+    )
+    expect(request?.method).toBe('GET')
+    expect(request?.headers.get('X-Attribution-Actor-Id')).toBe('7')
+    expect(request?.headers.get('X-Attribution-Actor-Role')).toBe('owner')
+  })
+
+  it('迁移客户端只把内存快照发送到固定内部路径', async () => {
+    const fetch = vi.fn(async () => Response.json({ data: {} }))
+    const client = createAttributionMigrationClient(binding(fetch))
+    const snapshot = {
+      schemaVersion: 1 as const,
+      capturedAt: '2026-07-24T08:00:00.000Z',
+      windowStartedAt: '2026-06-24T08:00:00.000Z',
+      connections: [],
+      managedSources: [],
+      liveFacts: [],
+      historyDaily: [],
+      privacyPolicy: {
+        defaultMode: 'notice_opt_out' as const,
+        priorConsentCountryCodes: [],
+        policyVersion: 1,
+        updatedAt: '2026-07-24T08:00:00.000Z',
+      },
+    }
+
+    await client.importSnapshot({
+      runId: 'migration-production-v1',
+      actorId: 7,
+      snapshot,
+    })
+
+    const request = fetch.mock.calls[0]?.[0]
+    expect(request?.url).toBe(
+      'https://attribution.internal/internal/migration/v1/import',
+    )
+    expect(request?.headers.get('Idempotency-Key'))
+      .toBe('migration-production-v1')
+    expect(request?.headers.get('X-Attribution-Actor-Id')).toBe('7')
+    expect(request?.headers.get('X-Attribution-Actor-Role')).toBe('owner')
+    expect(await request?.json()).toEqual({
+      runId: 'migration-production-v1',
+      snapshot,
+    })
   })
 })
 

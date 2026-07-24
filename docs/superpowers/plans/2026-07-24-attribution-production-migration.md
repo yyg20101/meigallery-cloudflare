@@ -242,6 +242,9 @@ git commit -m "deploy: 以暗模式发布独立归因运行时"
 ### Task 3: 实现受控内存凭证迁移
 
 **Files:**
+- Create: `packages/shared/src/types/attribution-migration.ts`
+- Modify: `packages/shared/src/constants/index.ts`
+- Modify: `packages/api/src/services/attribution-service-client.ts`
 - Create: `packages/api/src/services/attribution-migration-export.ts`
 - Create: `packages/api/src/services/attribution-migration-export.test.ts`
 - Create: `packages/api/src/routes/admin/attribution-migration.ts`
@@ -249,14 +252,16 @@ git commit -m "deploy: 以暗模式发布独立归因运行时"
 - Create: `packages/attribution/src/services/migration-import.ts`
 - Create: `packages/attribution/src/services/migration-import.d1.test.ts`
 - Create: `packages/attribution/src/routes/migration.ts`
+- Create: `packages/attribution/migrations/0005_migration_history.sql`
+- Modify: `packages/attribution/src/index.ts`
 - Create: `scripts/migrate-attribution-runtime.mjs`
 - Create: `scripts/migrate-attribution-runtime.test.mjs`
 
 **Interfaces:**
 - Consumes: 旧 API D1 密文和旧 API Worker Secret。
-- Produces: 新 D1 的连接、Active 版本、运行策略、来源 proof HMAC、窗口内事实和历史摘要。
+- Produces: 新 D1 的连接、Active 版本、运行策略、来源 proof 不可逆摘要、窗口内事实和历史摘要。
 
-- [ ] **Step 1: 写明文泄露和幂等失败测试**
+- [x] **Step 1: 写明文泄露和幂等失败测试**
 
 ```ts
 it('迁移响应、日志和审计不含凭证明文', async () => {
@@ -274,7 +279,7 @@ it('重复迁移返回相同集合且零新增版本', async () => {
 })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -286,22 +291,25 @@ node --test scripts/migrate-attribution-runtime.test.mjs
 
 Expected: FAIL，迁移模块不存在。
 
-- [ ] **Step 3: 实现一次性迁移流**
+- [x] **Step 3: 实现一次性迁移流**
 
 旧 API 迁移服务执行：
 
 ```ts
 const oldCredential = await decryptOldCredentialInMemory(oldEnvelope)
 try {
-  return await attributionBinding.fetch('/internal/v1/migration/import', {
+  return await attributionBinding.fetch('/internal/migration/v1/import', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Idempotency-Key': migrationRunId,
     },
     body: JSON.stringify({
-      ...sanitizedSnapshot,
-      credential: { type: credentialType, plaintext: oldCredential },
+      runId: migrationRunId,
+      snapshot: attachPlaintextCredentials(
+        sanitizedSnapshot,
+        oldCredential,
+      ),
     }),
   })
 }
@@ -310,9 +318,12 @@ finally {
 }
 ```
 
-禁止 `console.log(snapshot)`，禁止脚本接收 token 参数。迁移来源 proof 时把旧原始 proof 通过 Service Binding 发送，新 Worker只保存 HMAC。导入保持现有 `connection_id`、source ID、配置和 rollout。
+禁止 `console.log(snapshot)`，禁止脚本接收 token 参数。迁移来源 proof 时把旧原始 proof 通过 Service Binding 发送，新 Worker
+只保存不可逆摘要。导入保持现有 `connection_id`、source ID、配置和 rollout。
+历史补偿事实只迁移匿名日汇总；窗口内实时事实保留事实 ID 与去重键，
+不重放旧 Browser/Server delivery。
 
-- [ ] **Step 4: 运行迁移测试**
+- [x] **Step 4: 运行迁移测试**
 
 Run:
 
@@ -324,7 +335,7 @@ node --test scripts/migrate-attribution-runtime.test.mjs
 
 Expected: PASS，测试输出不含任何 fixture token。
 
-- [ ] **Step 5: 提交迁移能力**
+- [x] **Step 5: 提交迁移能力**
 
 ```bash
 git add packages/api/src/services/attribution-migration-export* packages/api/src/routes/admin/attribution-migration* packages/attribution/src/services/migration-import* packages/attribution/src/routes/migration.ts scripts/migrate-attribution-runtime*
@@ -387,7 +398,7 @@ Run:
 ```bash
 node scripts/export-production-d1-backup.mjs
 corepack pnpm --filter @meigallery/attribution exec wrangler d1 time-travel info meigallery-attribution-db --env=""
-node scripts/migrate-attribution-runtime.mjs --environment=production
+node scripts/migrate-attribution-runtime.mjs
 node scripts/verify-attribution-cutover.mjs migrated
 ```
 

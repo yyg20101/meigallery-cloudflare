@@ -128,6 +128,8 @@ export const ATTRIBUTION_SERVICE_BINDING = {
   ADMIN_PATH_PREFIX: '/admin/attribution',
   ADMIN_PROXY_PUBLIC_PATH_PREFIX:
     '/api/admin/attribution-runtime',
+  MIGRATION_PATH_PREFIX: '/internal/migration/v1',
+  MIGRATION_MAX_BODY_BYTES: 8 * 1024 * 1024,
   ADMIN_PROXY_MAX_BODY_BYTES: 64 * 1024,
   ADMIN_PROXY_MAX_URL_LENGTH: 4 * 1024,
   HEADERS: {

@@ -52,7 +52,7 @@ export async function listAdminAttributionOperations(
   input: AdminAttributionOperationsQuery,
 ): Promise<AdminAttributionOperationView[]> {
   const query = normalizeOperationsQuery(input)
-  const rows = await db.prepare(`
+  const liveRows = await db.prepare(`
     SELECT
       date(datetime(fact.occurred_at, '+8 hours')) AS date,
       fact.provider,
@@ -123,7 +123,68 @@ export async function listAdminAttributionOperations(
     query.connectionId ?? null,
   ).all<OperationRow>()
 
-  return rows.results.map(row => ({
+  const historyRows = await db.prepare(`
+    SELECT
+      history.date,
+      NULLIF(history.provider, 'none') AS provider,
+      connection.id AS connection_id,
+      connection.name AS connection_name,
+      SUM(CASE
+        WHEN history.event_name = 'Contact' THEN history.fact_count
+        ELSE 0
+      END) AS contact_count,
+      SUM(CASE
+        WHEN history.event_name = 'CompleteRegistration'
+          THEN history.fact_count
+        ELSE 0
+      END) AS complete_registration_count,
+      SUM(history.fact_count) AS fact_count,
+      SUM(CASE
+        WHEN history.attribution_source = 'context'
+          THEN history.fact_count
+        ELSE 0
+      END) AS attributed_fact_count,
+      SUM(CASE
+        WHEN history.attribution_source = 'context' THEN 0
+        ELSE history.fact_count
+      END) AS unattributed_fact_count,
+      0 AS browser_attempted,
+      0 AS server_planned,
+      0 AS server_queued,
+      0 AS server_processed,
+      0 AS server_rejected,
+      0 AS server_dead_letter
+    FROM attribution_history_daily AS history
+    LEFT JOIN attribution_connections AS connection
+      ON connection.provider = history.provider
+     AND connection.is_default = 1
+    WHERE history.date BETWEEN ? AND ?
+      AND (? IS NULL OR history.provider = ?)
+      AND (? IS NULL OR connection.id = ?)
+    GROUP BY
+      history.date,
+      NULLIF(history.provider, 'none'),
+      connection.id,
+      connection.name
+  `).bind(
+    query.dateFrom,
+    query.dateTo,
+    query.provider ?? null,
+    query.provider ?? null,
+    query.connectionId ?? null,
+    query.connectionId ?? null,
+  ).all<OperationRow>()
+
+  return mergeOperationRows([
+    ...liveRows.results,
+    ...historyRows.results,
+  ])
+}
+
+function operationView(
+  row: OperationRow,
+): AdminAttributionOperationView {
+  return {
     date: validDate(row.date),
     provider: row.provider === null
       ? null
@@ -143,7 +204,44 @@ export async function listAdminAttributionOperations(
     serverProcessed: count(row.server_processed),
     serverRejected: count(row.server_rejected),
     serverDeadLetter: count(row.server_dead_letter),
-  }))
+  }
+}
+
+function mergeOperationRows(
+  rows: OperationRow[],
+): AdminAttributionOperationView[] {
+  const merged = new Map<string, AdminAttributionOperationView>()
+  for (const row of rows) {
+    const current = operationView(row)
+    const key = JSON.stringify([
+      current.date,
+      current.provider,
+      current.connectionId,
+    ])
+    const existing = merged.get(key)
+    if (!existing) {
+      merged.set(key, current)
+      continue
+    }
+    existing.contactCount += current.contactCount
+    existing.completeRegistrationCount +=
+      current.completeRegistrationCount
+    existing.factCount += current.factCount
+    existing.attributedFactCount += current.attributedFactCount
+    existing.unattributedFactCount += current.unattributedFactCount
+    existing.browserAttempted += current.browserAttempted
+    existing.serverPlanned += current.serverPlanned
+    existing.serverQueued += current.serverQueued
+    existing.serverProcessed += current.serverProcessed
+    existing.serverRejected += current.serverRejected
+    existing.serverDeadLetter += current.serverDeadLetter
+  }
+  return [...merged.values()].sort((left, right) =>
+    left.date.localeCompare(right.date)
+    || Number(left.connectionId === '') - Number(right.connectionId === '')
+    || (left.provider ?? '').localeCompare(right.provider ?? '')
+    || left.connectionName.localeCompare(right.connectionName)
+    || left.connectionId.localeCompare(right.connectionId))
 }
 
 function normalizeOperationsQuery(

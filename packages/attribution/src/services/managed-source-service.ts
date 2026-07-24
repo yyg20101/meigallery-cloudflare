@@ -5,7 +5,6 @@ import type {
 } from '../domain/routing'
 import { AttributionDomainError } from '../domain/errors'
 import { sha256Hex } from '../security/digest'
-import { encodeBase64Url } from '../security/signed-token'
 
 export interface ManagedSourceEnvironment {
   db: D1Database
@@ -141,7 +140,7 @@ export async function createManagedSource(
     throw commandInvalid()
   }
 
-  const proof = encodeBase64Url(proofBytes)
+  const proof = encodeProof(proofBytes)
   const proofHash = await managedSourceHash(proof)
   const idFactory = environment.idFactory
     ?? (prefix => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}`)
@@ -222,7 +221,7 @@ export async function createAdminManagedSource(
   if (!(proofBytes instanceof Uint8Array) || proofBytes.byteLength !== 32) {
     throw commandInvalid()
   }
-  const proof = encodeBase64Url(proofBytes)
+  const proof = encodeProof(proofBytes)
   const proofHash = await managedSourceHash(proof)
   const idFactory = environment.idFactory
     ?? (prefix => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}`)
@@ -749,8 +748,13 @@ function validateAdminCommand(input: {
 
 function isOpaqueProof(value: unknown): value is string {
   return typeof value === 'string'
-    && value.length === 43
-    && /^[A-Za-z0-9_-]{43}$/.test(value)
+    && /^[a-f0-9]{64}$/.test(value)
+}
+
+function encodeProof(value: Uint8Array): string {
+  return [...value]
+    .map(byte => byte.toString(16).padStart(2, '0'))
+    .join('')
 }
 
 function normalizedExpiry(

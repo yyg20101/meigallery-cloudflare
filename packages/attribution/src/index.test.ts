@@ -46,17 +46,39 @@ describe('attribution worker', () => {
   })
 
   it('公网默认入口不挂载内部 Service Binding 路由', async () => {
-    const response = await app.request(
-      '/internal/v1/registration-events',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}',
-      },
-      createBindings(),
-    )
+    const [
+      eventResponse,
+      migrationResponse,
+      migrationStatusResponse,
+    ] = await Promise.all([
+      app.request(
+        '/internal/v1/registration-events',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        },
+        createBindings(),
+      ),
+      app.request(
+        '/internal/migration/v1/import',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        },
+        createBindings(),
+      ),
+      app.request(
+        '/internal/migration/v1/imports/migration-production-v1',
+        {},
+        createBindings(),
+      ),
+    ])
 
-    expect(response.status).toBe(404)
+    expect(eventResponse.status).toBe(404)
+    expect(migrationResponse.status).toBe(404)
+    expect(migrationStatusResponse.status).toBe(404)
   })
 
   it('命名 Service Binding 入口按固定 /internal/v1 前缀挂载', async () => {

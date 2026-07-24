@@ -27,6 +27,8 @@ const MIGRATIONS = [
   '../../migrations/0001_attribution_runtime.sql',
   '../../migrations/0002_event_delivery.sql',
   '../../migrations/0003_queue_runtime.sql',
+  '../../migrations/0004_runtime_state.sql',
+  '../../migrations/0005_migration_history.sql',
 ].map(path => readFileSync(new URL(path, import.meta.url), 'utf8'))
 const now = new Date('2026-07-24T08:00:00.000Z')
 const owner: AdminAttributionActor = {

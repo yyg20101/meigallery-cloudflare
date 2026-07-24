@@ -15,6 +15,7 @@ import {
 } from './routes/admin'
 import { browserAttributionRoutes } from './routes/browser'
 import { internalRoutes } from './routes/internal'
+import { createAttributionMigrationRoutes } from './routes/migration'
 import { runAttributionMaintenance } from './scheduled'
 import { consumeAttributionQueue } from './services/queue-consumer'
 import {
@@ -86,6 +87,12 @@ attributionServiceApp.use(
   requireActiveRuntime(false),
 )
 attributionServiceApp.route('/internal/v1', internalRoutes)
+attributionServiceApp.route(
+  ATTRIBUTION_SERVICE_BINDING.MIGRATION_PATH_PREFIX,
+  createAttributionMigrationRoutes({
+    authorize: async request => readServiceBindingActor(request),
+  }),
+)
 attributionServiceApp.route(
   '/admin/attribution',
   createAdminAttributionRoutes({

@@ -89,6 +89,7 @@ import type {
 export type {
   AdBrowserPublicConfig,
   AdAttributionProvider,
+  AttributionCredentialType,
   AdBrowserInstruction,
   AdBrowserSignal,
   AdConsentSnapshot,
@@ -98,6 +99,7 @@ export type {
 } from './ad-attribution'
 
 export * from './attribution-runtime'
+export * from './attribution-migration'
 
 export type ConversionActionType =
   | 'contact'

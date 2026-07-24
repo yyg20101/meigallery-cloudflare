@@ -170,7 +170,7 @@ describe('managed source service', () => {
         connectionId: 'conn_meta_a',
         campaign: 'admin-launch',
       },
-      proof: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
+      proof: expect.stringMatching(/^[a-f0-9]{64}$/),
       proofDelivery: 'issued_once',
       replayed: false,
     })

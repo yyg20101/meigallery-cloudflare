@@ -1,5 +1,9 @@
 export type AdAttributionProvider = 'meta' | 'tiktok' | 'google'
 
+export type AttributionCredentialType =
+  | 'access_token'
+  | 'service_account_json'
+
 export type CanonicalConversionEvent = 'Contact' | 'CompleteRegistration'
 
 export type AdBrowserSignal = 'PageView' | 'ViewContent' | 'Search'

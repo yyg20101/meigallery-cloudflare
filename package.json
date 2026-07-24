@@ -20,6 +20,7 @@
     "verify:dev-rehearsal": "node scripts/verify-release.mjs dev-rehearsal",
     "verify:release": "node scripts/verify-release.mjs release",
     "backup:production": "node scripts/export-production-d1-backup.mjs",
+    "migrate:attribution:production": "node scripts/migrate-attribution-runtime.mjs",
     "verify:seo:production": "node scripts/verify-production-seo.mjs",
     "test:attribution": "corepack pnpm --filter @meigallery/attribution test",
     "test:scripts": "node --test scripts/*.test.mjs packages/api/migrations/*.test.mjs",

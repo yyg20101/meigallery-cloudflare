@@ -1,9 +1,12 @@
 import {
   isAttributionBusinessEventV1,
   type AttributionBusinessEventV1,
+  type AttributionMigrationSnapshotV1,
 } from '@meigallery/shared'
+import { ATTRIBUTION_SERVICE_BINDING } from '@meigallery/shared/constants'
 
-const ATTRIBUTION_INTERNAL_ORIGIN = 'https://attribution.internal'
+const ATTRIBUTION_INTERNAL_ORIGIN =
+  ATTRIBUTION_SERVICE_BINDING.INTERNAL_ORIGIN
 const PRIVACY_DECISION_PATH = '/internal/v1/privacy-decision'
 const REGISTRATION_EVENTS_PATH = '/internal/v1/registration-events'
 const CONTACT_CAPABILITIES_PATH = '/internal/v1/contact-capabilities'
@@ -30,6 +33,18 @@ export interface AttributionServiceClient {
   getSignedContactCapabilities(
     input: AttributionContactCapabilityInput[],
   ): Promise<AttributionContactCapabilityResult[]>
+}
+
+export interface AttributionMigrationClient {
+  readImportResult(input: {
+    runId: string
+    actorId: number
+  }): Promise<Response>
+  importSnapshot(input: {
+    runId: string
+    actorId: number
+    snapshot: AttributionMigrationSnapshotV1
+  }): Promise<Response>
 }
 
 export interface AttributionPrivacyDecisionInput {
@@ -226,6 +241,85 @@ export function createAttributionServiceClient(
         response.status,
       )
     },
+  }
+}
+
+export function createAttributionMigrationClient(
+  binding: AttributionServiceBinding,
+): AttributionMigrationClient {
+  return {
+    async readImportResult(input) {
+      const identity = normalizeMigrationIdentity(input)
+      return binding.fetch(new Request(
+        `${ATTRIBUTION_SERVICE_BINDING.INTERNAL_ORIGIN}`
+          + `${ATTRIBUTION_SERVICE_BINDING.MIGRATION_PATH_PREFIX}`
+          + `/imports/${encodeURIComponent(identity.runId)}`,
+        {
+          method: 'GET',
+          headers: migrationHeaders(identity),
+          redirect: 'error',
+        },
+      ))
+    },
+
+    async importSnapshot(input) {
+      const identity = normalizeMigrationIdentity(input)
+      if (!isPlainRecord(input.snapshot)) {
+        throw new AttributionServiceClientError(
+          'ATTRIBUTION_MIGRATION_INPUT_INVALID',
+        )
+      }
+      return binding.fetch(new Request(
+        `${ATTRIBUTION_SERVICE_BINDING.INTERNAL_ORIGIN}`
+          + `${ATTRIBUTION_SERVICE_BINDING.MIGRATION_PATH_PREFIX}/import`,
+        {
+          method: 'POST',
+          headers: {
+            ...migrationHeaders(identity),
+            'Content-Type': 'application/json',
+            'Idempotency-Key': identity.runId,
+          },
+          body: JSON.stringify({
+            runId: identity.runId,
+            snapshot: input.snapshot,
+          }),
+          redirect: 'error',
+        },
+      ))
+    },
+  }
+}
+
+function normalizeMigrationIdentity(input: {
+  runId: string
+  actorId: number
+}) {
+  if (
+    !EVENT_ID_PATTERN.test(input.runId)
+    || !Number.isSafeInteger(input.actorId)
+    || input.actorId < 1
+  ) {
+    throw new AttributionServiceClientError(
+      'ATTRIBUTION_MIGRATION_INPUT_INVALID',
+    )
+  }
+  return {
+    runId: input.runId,
+    actorId: input.actorId,
+  }
+}
+
+function migrationHeaders(input: {
+  runId: string
+  actorId: number
+}) {
+  return {
+    Accept: 'application/json',
+    [ATTRIBUTION_SERVICE_BINDING.HEADERS.ACTOR_ID]:
+      String(input.actorId),
+    [ATTRIBUTION_SERVICE_BINDING.HEADERS.ACTOR_ROLE]: 'owner',
+    [ATTRIBUTION_SERVICE_BINDING.HEADERS.REQUEST_ID]:
+      `migration_request_${input.runId}`,
   }
 }
 
@@ -430,6 +524,15 @@ function isExactUnknownRecord(
   return entries.length === keys.length
     && keys.every(key => key in value)
     && entries.every(key => keys.includes(key))
+}
+
+function isPlainRecord(
+  value: unknown,
+): value is Record<string, unknown> {
+  return typeof value === 'object'
+    && value !== null
+    && !Array.isArray(value)
+    && Object.getPrototypeOf(value) === Object.prototype
 }
 
 function isSafeText(value: unknown, maximum: number) {
