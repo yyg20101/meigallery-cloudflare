@@ -1,5 +1,4 @@
 import { readFileSync } from 'node:fs'
-import type { AttributionProvider } from '@meigallery/shared'
 import { Miniflare } from 'miniflare'
 import {
   afterAll,

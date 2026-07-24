@@ -1,5 +1,4 @@
 import type {
-  AdBrowserPublicConfig,
   AdConsentSnapshot,
   AttributionBrowserInstructionV1,
 } from '@meigallery/shared'

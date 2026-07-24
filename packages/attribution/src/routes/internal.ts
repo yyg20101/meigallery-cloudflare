@@ -38,7 +38,7 @@ export interface InternalAttributionRouteOptions {
   now?: () => Date
 }
 
-export interface ContactCapabilityRequestItem extends ContactCapabilityInput {}
+export type ContactCapabilityRequestItem = ContactCapabilityInput
 
 export interface ContactCapabilityResponseItem
   extends ContactCapabilityRequestItem {

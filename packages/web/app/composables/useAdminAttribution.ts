@@ -199,8 +199,7 @@ export function useAttributionConnections(
       return Promise.reject(attributionFormNotReady())
     }
     error.value = ''
-    let operation!: Promise<AttributionConnectionView>
-    operation = client.request<
+    const operation = client.request<
       AttributionAdminApiResponse<AttributionConnectionView>
     >(`${ATTRIBUTION_ADMIN_BASE}/connections`, {
       method: 'POST',
@@ -310,8 +309,7 @@ export function useAttributionCandidate(
     }
 
     error.value = ''
-    let operation!: Promise<AttributionConnectionView>
-    operation = client.request<
+    const operation = client.request<
       AttributionAdminApiResponse<AttributionConnectionView>
     >(
       `${ATTRIBUTION_ADMIN_BASE}/connections/`
@@ -422,8 +420,7 @@ export function useAttributionRuntimePolicy(
     }
 
     error.value = ''
-    let command!: Promise<AttributionConnectionView>
-    command = client.request<
+    const command = client.request<
       AttributionAdminApiResponse<AttributionConnectionView>
     >(
       `${ATTRIBUTION_ADMIN_BASE}/connections/`
@@ -634,8 +631,7 @@ export function useAttributionPrivacyPolicy(
       return Promise.reject(attributionFormNotReady())
     }
     error.value = ''
-    let operation!: Promise<AttributionPrivacyPolicyView>
-    operation = client.request<
+    const operation = client.request<
       AttributionAdminApiResponse<AttributionPrivacyPolicyView>
     >(`${ATTRIBUTION_ADMIN_BASE}/privacy-policy`, {
       method: 'PATCH',
@@ -740,8 +736,7 @@ export function useAttributionManagedSources(
     }
     ensureSourceCommandReady(normalizedId)
     error.value = ''
-    let operation!: Promise<CreateAttributionManagedSourceResult>
-    operation = client.request<
+    const operation = client.request<
       AttributionAdminApiResponse<CreateAttributionManagedSourceResult>
     >(
       `${ATTRIBUTION_ADMIN_BASE}/connections/`
@@ -788,8 +783,7 @@ export function useAttributionManagedSources(
     }
     ensureSourceCommandReady(normalizedId)
     error.value = ''
-    let operation!: Promise<DisableAttributionManagedSourceResult>
-    operation = client.request<
+    const operation = client.request<
       AttributionAdminApiResponse<DisableAttributionManagedSourceResult>
     >(
       `${ATTRIBUTION_ADMIN_BASE}/connections/`

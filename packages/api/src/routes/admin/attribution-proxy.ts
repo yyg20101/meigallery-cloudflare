@@ -116,7 +116,8 @@ function normalizeRelativePath(value: string | undefined): string | null {
   if (
     !normalized
     || normalized.length > 2_048
-    || /[\u0000-\u001f\\]/.test(normalized)
+    || normalized.includes('\\')
+    || containsControlCharacter(normalized)
   ) {
     return null
   }
@@ -133,11 +134,17 @@ function normalizeRelativePath(value: string | undefined): string | null {
       || decoded === '..'
       || decoded.includes('/')
       || decoded.includes('\\')
-      || /[\u0000-\u001f]/.test(decoded)
+      || containsControlCharacter(decoded)
   })) {
     return null
   }
   return normalized
+}
+
+function containsControlCharacter(value: string): boolean {
+  return Array.from(value).some(
+    character => character.charCodeAt(0) <= 0x1f,
+  )
 }
 
 function relativePathFromPublicPath(path: string): string | null {

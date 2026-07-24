@@ -55,7 +55,7 @@ const cases: Array<{
 ]
 
 test.describe('统一归因 Browser runtime 隔离', () => {
-  test.beforeEach(({}, testInfo) => {
+  test.beforeEach((_, testInfo) => {
     test.skip(
       testInfo.project.name !== 'chromium',
       '归因平台网络隔离只执行一次标准浏览器门禁',

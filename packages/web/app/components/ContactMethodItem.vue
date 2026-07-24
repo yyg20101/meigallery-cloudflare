@@ -24,7 +24,7 @@ const hasQr = computed(() => Boolean(safeQrCodeUrl.value))
 async function activateLink() {
   const href = safeActionHref.value
   if (!href) return
-  let pendingWindow: Window | null = null
+  let pendingWindow: Window | null
   try {
     pendingWindow = window.open('about:blank', '_blank')
     if (pendingWindow) pendingWindow.opener = null

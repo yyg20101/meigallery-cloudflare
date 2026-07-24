@@ -150,7 +150,7 @@ export function createAdminAttributionRoutes(
   const now = options.now ?? (() => new Date())
 
   routes.use('*', async (c, next) => {
-    let actor: AdminAttributionActor | null = null
+    let actor: AdminAttributionActor | null
     try {
       actor = await authorize(c.req.raw, c.env)
     } catch {

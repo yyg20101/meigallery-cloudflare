@@ -58,7 +58,7 @@ describe('Attribution Service Binding client', () => {
   })
 
   it('仅向固定内部注册路径发送通过 V1 guard 的 CompleteRegistration', async () => {
-    const fetch = vi.fn(async (request: Request) => Response.json({
+    const fetch = vi.fn(async (_request: Request) => Response.json({
       accepted: true,
       eventId: 'registration_user_42',
     }))

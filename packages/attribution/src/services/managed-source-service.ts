@@ -1,7 +1,6 @@
 import type { AttributionProvider } from '@meigallery/shared'
 import type {
   AttributionRouteCandidate,
-  AttributionRoutingIncident,
   AttributionRoutingRepository,
 } from '../domain/routing'
 import { AttributionDomainError } from '../domain/errors'

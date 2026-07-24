@@ -485,7 +485,7 @@ export function createAttributionBrowserClient(
 export type AttributionBrowserClient =
   ReturnType<typeof createAttributionBrowserClient>
 
-export default defineNuxtPlugin((nuxtApp) => {
+export default defineNuxtPlugin(() => {
   const config = useRuntimeConfig()
   const router = useRouter()
   const route = useRoute()
@@ -868,7 +868,7 @@ function trustedNow(now: () => Date): Date {
 }
 
 function isAllowedRoute(fullPath: string): boolean {
-  let pathname = fullPath
+  let pathname: string
   try {
     pathname = new URL(fullPath, 'https://site.invalid').pathname
   }
