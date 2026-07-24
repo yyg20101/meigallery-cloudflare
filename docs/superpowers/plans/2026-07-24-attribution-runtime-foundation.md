@@ -903,7 +903,7 @@ git commit -m "feat: 实现归因候选原子激活状态机"
 - Consumes: 稳定 `connection_id` 和 Active 快照健康检查。
 - Produces: `setRuntimePolicy()`、`openServerCircuit()`、`closeServerCircuit()`。
 
-- [ ] **Step 1: 写隔离失败测试**
+- [x] **Step 1: 写隔离失败测试**
 
 ```ts
 it('调整 rollout 不改变 Active Version', async () => {
@@ -925,7 +925,7 @@ it('调整 rollout 不改变 Active Version', async () => {
 
 另写测试证明 target 降低立即生效、target 提高健康检查失败时策略整体不变、重复值零写入。
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -935,7 +935,7 @@ corepack pnpm --filter @meigallery/attribution exec vitest run src/services/runt
 
 Expected: FAIL，运行策略命令不存在。
 
-- [ ] **Step 3: 实现运行策略命令**
+- [x] **Step 3: 实现运行策略命令**
 
 固定健康检查接口：
 
@@ -960,7 +960,7 @@ const effective = input.serverTargetPercentage <= current.serverEffectivePercent
 
 若 target 提高但健康检查失败，抛出 `ATTRIBUTION_RUNTIME_PROMOTION_BLOCKED`，不得部分写入 target。`openServerCircuit()` 只设置 `circuit_state='server_open'` 和 `server_effective_percentage=0`，不得修改 Browser。
 
-- [ ] **Step 4: 运行测试**
+- [x] **Step 4: 运行测试**
 
 Run:
 
@@ -970,7 +970,7 @@ corepack pnpm --filter @meigallery/attribution exec vitest run src/services/runt
 
 Expected: PASS，Active Version 在所有运行策略用例中不变。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add packages/attribution/src/services/runtime-policy-commands*
