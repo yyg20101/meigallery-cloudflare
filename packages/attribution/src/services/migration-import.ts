@@ -1,9 +1,10 @@
 import type {
   AttributionMigrationConnectionV1,
   AttributionMigrationHistoryDailyV1,
+  AttributionMigrationInitialSnapshotV1,
   AttributionMigrationImportResultV1,
-  AttributionMigrationLiveFactV1,
   AttributionMigrationManagedSourceV1,
+  AttributionMigrationReconcileSnapshotV1,
   AttributionMigrationSnapshotV1,
   AttributionProvider,
 } from '@meigallery/shared'
@@ -49,11 +50,23 @@ export async function readAttributionMigrationImportResult(
     migrationReceiptKey(runId),
   )
   if (!row) return null
-  if (row.command_type !== MIGRATION_COMMAND) {
+  if (
+    row.command_type !== INITIAL_MIGRATION_COMMAND
+    && row.command_type !== RECONCILE_MIGRATION_COMMAND
+  ) {
+    throw migrationError('ATTRIBUTION_MIGRATION_RECEIPT_INVALID')
+  }
+  const result = parseMigrationReceipt(row, runId)
+  if (
+    (result.phase === 'initial'
+      && row.command_type !== INITIAL_MIGRATION_COMMAND)
+    || (result.phase === 'reconcile'
+      && row.command_type !== RECONCILE_MIGRATION_COMMAND)
+  ) {
     throw migrationError('ATTRIBUTION_MIGRATION_RECEIPT_INVALID')
   }
   return {
-    ...parseMigrationReceipt(row, runId),
+    ...result,
     replayed: true,
   }
 }
@@ -71,6 +84,13 @@ interface MigrationReceiptRow {
   result_json: string
 }
 
+interface MigrationManifestRow {
+  source_configuration_hash: string
+  credential_set_hash: string
+  initial_captured_at: string
+  status: string
+}
+
 const PROVIDERS = new Set<AttributionProvider>([
   'meta',
   'tiktok',
@@ -83,9 +103,9 @@ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 const COUNTRY_PATTERN = /^[A-Z]{2}$/
 const MAX_CONNECTIONS = 100
 const MAX_SOURCES = 10_000
-const MAX_LIVE_FACTS = 20_000
 const MAX_HISTORY_ROWS = 20_000
-const MIGRATION_COMMAND = 'migration_import'
+const INITIAL_MIGRATION_COMMAND = 'migration_import'
+const RECONCILE_MIGRATION_COMMAND = 'migration_reconcile'
 
 export async function importAttributionMigrationSnapshot(
   environment: AttributionMigrationImportEnvironment,
@@ -93,15 +113,33 @@ export async function importAttributionMigrationSnapshot(
 ): Promise<AttributionMigrationImportResultV1> {
   try {
     validateRequest(request)
-    return await importValidatedSnapshot(environment, request)
+    return request.snapshot.phase === 'initial'
+      ? await importInitialSnapshot(environment, {
+        ...request,
+        snapshot: request.snapshot,
+      })
+      : await reconcileSnapshot(environment, {
+        ...request,
+        snapshot: request.snapshot,
+      })
   } finally {
     clearPlaintextCredentials(request)
   }
 }
 
-async function importValidatedSnapshot(
+interface InitialMigrationRequest
+  extends Omit<AttributionMigrationImportRequest, 'snapshot'> {
+  snapshot: AttributionMigrationInitialSnapshotV1
+}
+
+interface ReconcileMigrationRequest
+  extends Omit<AttributionMigrationImportRequest, 'snapshot'> {
+  snapshot: AttributionMigrationReconcileSnapshotV1
+}
+
+async function importInitialSnapshot(
   environment: AttributionMigrationImportEnvironment,
-  request: AttributionMigrationImportRequest,
+  request: InitialMigrationRequest,
 ): Promise<AttributionMigrationImportResultV1> {
   const now = validNow(environment.now ?? (() => new Date()))
   const state = await readAttributionRuntimeState(environment.db)
@@ -113,6 +151,7 @@ async function importValidatedSnapshot(
     environment,
     request.snapshot.connections,
   )
+  const credentialSetHash = await preparedCredentialSetHash(prepared)
   const safeSnapshot = await safeSnapshotIdentity(
     request.snapshot,
     prepared,
@@ -125,6 +164,7 @@ async function importValidatedSnapshot(
   const replay = await readMigrationReceipt(
     environment.db,
     receiptKey,
+    INITIAL_MIGRATION_COMMAND,
     requestHash,
     request.runId,
   )
@@ -135,6 +175,7 @@ async function importValidatedSnapshot(
     request.runId,
     requestHash,
     request.snapshot,
+    credentialSetHash,
   )
   const statements = await migrationStatements(
     environment.db,
@@ -158,6 +199,95 @@ async function importValidatedSnapshot(
     const raced = await readMigrationReceipt(
       environment.db,
       receiptKey,
+      INITIAL_MIGRATION_COMMAND,
+      requestHash,
+      request.runId,
+    )
+    if (raced) return { ...raced, replayed: true }
+    if (error instanceof AttributionMigrationError) throw error
+    throw migrationError('ATTRIBUTION_MIGRATION_WRITE_FAILED')
+  }
+
+  return result
+}
+
+async function reconcileSnapshot(
+  environment: AttributionMigrationImportEnvironment,
+  request: ReconcileMigrationRequest,
+): Promise<AttributionMigrationImportResultV1> {
+  const now = validNow(environment.now ?? (() => new Date()))
+  const state = await readAttributionRuntimeState(environment.db)
+  if (state.mode !== 'shadow' && state.mode !== 'bridge') {
+    throw migrationError('ATTRIBUTION_MIGRATION_RUNTIME_MODE_INVALID')
+  }
+
+  const safeSnapshot = await safeSnapshotIdentity(request.snapshot, [])
+  const requestHash = await sha256Hex(stableJson({
+    runId: request.runId,
+    snapshot: safeSnapshot,
+  }))
+  const receiptKey = migrationReceiptKey(request.runId)
+  const replay = await readMigrationReceipt(
+    environment.db,
+    receiptKey,
+    RECONCILE_MIGRATION_COMMAND,
+    requestHash,
+    request.runId,
+  )
+  if (replay) return { ...replay, replayed: true }
+
+  const manifest = await readMigrationManifest(
+    environment.db,
+    request.snapshot.initialRunId,
+  )
+  if (!manifest) {
+    throw migrationError('ATTRIBUTION_MIGRATION_INITIAL_IMPORT_MISSING')
+  }
+  if (manifest.status !== 'initial_imported') {
+    throw migrationError('ATTRIBUTION_MIGRATION_ALREADY_RECONCILED')
+  }
+  if (
+    manifest.source_configuration_hash
+      !== request.snapshot.sourceConfigurationHash
+    || Date.parse(request.snapshot.capturedAt)
+      < Date.parse(manifest.initial_captured_at)
+  ) {
+    throw migrationError('ATTRIBUTION_MIGRATION_SOURCE_CHANGED')
+  }
+  await assertReconcileSources(
+    environment.db,
+    request.snapshot.managedSources,
+  )
+
+  const result = migrationResult(
+    request.runId,
+    requestHash,
+    request.snapshot,
+    manifest.credential_set_hash,
+  )
+  const statements = await reconcileStatements(
+    environment.db,
+    request,
+    result,
+    receiptKey,
+    now,
+  )
+
+  try {
+    const outcomes = await environment.db.batch(statements)
+    const requiredOneChangeFrom = statements.length - 3
+    if (
+      outcomes.length !== statements.length
+      || outcomes.slice(requiredOneChangeFrom).some(outcome =>
+        Number(outcome.meta.changes ?? 0) !== 1)
+    ) {
+      throw migrationError('ATTRIBUTION_MIGRATION_WRITE_FAILED')
+    }
+  } catch (error) {
+    const raced = await readMigrationReceipt(
+      environment.db,
+      receiptKey,
+      RECONCILE_MIGRATION_COMMAND,
       requestHash,
       request.runId,
     )
@@ -213,21 +343,13 @@ async function prepareConnections(
 
 async function migrationStatements(
   db: D1Database,
-  request: AttributionMigrationImportRequest,
+  request: InitialMigrationRequest,
   prepared: PreparedConnection[],
   result: AttributionMigrationImportResultV1,
   receiptKey: string,
   now: string,
 ): Promise<D1PreparedStatement[]> {
   const statements: D1PreparedStatement[] = []
-  const versionByConnection = new Map(
-    prepared.map(item => [item.input.id, item.versionId]),
-  )
-  const connectionByProvider = new Map(
-    prepared
-      .filter(item => item.input.isDefault)
-      .map(item => [item.input.provider, item.input.id]),
-  )
 
   for (const item of prepared) {
     const connection = item.input
@@ -250,7 +372,7 @@ async function migrationStatements(
           id, connection_id, provider, base_active_version_id, status,
           public_config_json, config_hash, created_by, created_at,
           validated_at, activated_at
-        ) VALUES (?, ?, ?, NULL, 'active', ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, NULL, 'candidate', ?, ?, ?, ?, NULL, NULL)
       `).bind(
         item.versionId,
         connection.id,
@@ -259,8 +381,6 @@ async function migrationStatements(
         item.configHash,
         request.actorId,
         connection.createdAt,
-        connection.updatedAt,
-        connection.updatedAt,
       ),
       db.prepare(`
         INSERT INTO attribution_version_credentials (
@@ -301,29 +421,16 @@ async function migrationStatements(
         connection.browserEnabled ? 1 : 0,
         connection.serverEnabled ? 1 : 0,
         connection.serverTargetPercentage,
-        connection.serverEffectivePercentage,
+        0,
         connection.circuitState,
         request.actorId,
         connection.updatedAt,
       ),
-      db.prepare(`
-        UPDATE attribution_connections
-        SET active_version_id = ?
-        WHERE id = ? AND active_version_id IS NULL
-      `).bind(item.versionId, connection.id),
     )
   }
 
   for (const source of request.snapshot.managedSources) {
     statements.push(await managedSourceStatement(db, source, now))
-  }
-  for (const fact of request.snapshot.liveFacts) {
-    statements.push(await liveFactStatement(
-      db,
-      fact,
-      versionByConnection,
-      connectionByProvider,
-    ))
   }
   for (const history of request.snapshot.historyDaily) {
     statements.push(historyStatement(
@@ -352,6 +459,31 @@ async function migrationStatements(
       request.snapshot.privacyPolicy.updatedAt,
     ),
     db.prepare(`
+      INSERT INTO attribution_migration_manifests (
+        initial_run_id, initial_snapshot_hash,
+        source_configuration_hash, credential_set_hash,
+        initial_captured_at,
+        desired_runtime_policies_json, status, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, 'initial_imported', ?)
+    `).bind(
+      request.runId,
+      result.snapshotHash,
+      result.sourceConfigurationHash,
+      result.credentialSetHash,
+      result.capturedAt,
+      JSON.stringify(request.snapshot.connections.map(connection => ({
+        connectionId: connection.id,
+        enabled: connection.enabled,
+        browserEnabled: connection.browserEnabled,
+        serverEnabled: connection.serverEnabled,
+        serverTargetPercentage: connection.serverTargetPercentage,
+        serverEffectivePercentage:
+          connection.serverEffectivePercentage,
+        circuitState: connection.circuitState,
+      }))),
+      now,
+    ),
+    db.prepare(`
       INSERT INTO attribution_audit_logs (
         id, actor_id, command_type, connection_id, outcome,
         detail_json, created_at
@@ -359,9 +491,10 @@ async function migrationStatements(
     `).bind(
       `audit_migration_${result.snapshotHash.slice(0, 24)}`,
       request.actorId,
-      MIGRATION_COMMAND,
+      INITIAL_MIGRATION_COMMAND,
       JSON.stringify({
         runId: result.runId,
+        phase: result.phase,
         snapshotHash: result.snapshotHash,
         counts: result.counts,
       }),
@@ -374,7 +507,83 @@ async function migrationStatements(
       ) VALUES (?, ?, ?, ?, ?)
     `).bind(
       receiptKey,
-      MIGRATION_COMMAND,
+      INITIAL_MIGRATION_COMMAND,
+      result.snapshotHash,
+      JSON.stringify(result),
+      now,
+    ),
+  )
+  return statements
+}
+
+async function reconcileStatements(
+  db: D1Database,
+  request: ReconcileMigrationRequest,
+  result: AttributionMigrationImportResultV1,
+  receiptKey: string,
+  now: string,
+): Promise<D1PreparedStatement[]> {
+  const statements: D1PreparedStatement[] = [
+    db.prepare('DELETE FROM attribution_managed_sources'),
+  ]
+  for (const source of request.snapshot.managedSources) {
+    statements.push(await managedSourceStatement(db, source, now))
+  }
+  statements.push(
+    db.prepare('DELETE FROM attribution_history_daily'),
+  )
+  for (const history of request.snapshot.historyDaily) {
+    statements.push(historyStatement(
+      db,
+      history,
+      request.snapshot.capturedAt,
+    ))
+  }
+  statements.push(
+    db.prepare(`
+      UPDATE attribution_migration_manifests
+      SET status = 'reconciled',
+          reconcile_run_id = ?,
+          reconcile_snapshot_hash = ?,
+          reconciled_captured_at = ?,
+          reconciled_at = ?
+      WHERE initial_run_id = ?
+        AND source_configuration_hash = ?
+        AND status = 'initial_imported'
+    `).bind(
+      request.runId,
+      result.snapshotHash,
+      request.snapshot.capturedAt,
+      now,
+      request.snapshot.initialRunId,
+      request.snapshot.sourceConfigurationHash,
+    ),
+    db.prepare(`
+      INSERT INTO attribution_audit_logs (
+        id, actor_id, command_type, connection_id, outcome,
+        detail_json, created_at
+      ) VALUES (?, ?, ?, 'migration', 'reconciled', ?, ?)
+    `).bind(
+      `audit_reconcile_${result.snapshotHash.slice(0, 24)}`,
+      request.actorId,
+      RECONCILE_MIGRATION_COMMAND,
+      JSON.stringify({
+        runId: result.runId,
+        initialRunId: request.snapshot.initialRunId,
+        phase: result.phase,
+        snapshotHash: result.snapshotHash,
+        counts: result.counts,
+      }),
+      now,
+    ),
+    db.prepare(`
+      INSERT INTO attribution_command_receipts (
+        idempotency_key, command_type, request_hash,
+        result_json, created_at
+      ) VALUES (?, ?, ?, ?, ?)
+    `).bind(
+      receiptKey,
+      RECONCILE_MIGRATION_COMMAND,
       result.snapshotHash,
       JSON.stringify(result),
       now,
@@ -407,45 +616,6 @@ async function managedSourceStatement(
   )
 }
 
-async function liveFactStatement(
-  db: D1Database,
-  fact: AttributionMigrationLiveFactV1,
-  versionByConnection: Map<string, string>,
-  connectionByProvider: Map<AttributionProvider, string>,
-) {
-  const connectionId = fact.provider
-    ? connectionByProvider.get(fact.provider) ?? null
-    : null
-  if (fact.provider && !connectionId) {
-    throw migrationError('ATTRIBUTION_MIGRATION_PROVIDER_AMBIGUOUS')
-  }
-  const versionId = connectionId
-    ? versionByConnection.get(connectionId) ?? null
-    : null
-  return db.prepare(`
-    INSERT INTO attribution_facts (
-      id, event_id, event_name, fact_origin, dedupe_hash,
-      event_fingerprint, connection_id, version_id, provider,
-      external_event_id, occurred_at, consent_json,
-      analytics_dimensions_json, created_at
-    ) VALUES (?, ?, ?, 'live', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).bind(
-    fact.id,
-    fact.eventId,
-    fact.eventName,
-    await sha256Hex(`fact-dedupe:v1:${fact.dedupeKey}`),
-    await sha256Hex(`migrated-fact:v1:${stableJson(fact)}`),
-    connectionId,
-    versionId,
-    fact.provider,
-    fact.provider ? fact.externalEventId : null,
-    fact.occurredAt,
-    JSON.stringify(fact.consent),
-    JSON.stringify(fact.analyticsDimensions),
-    fact.createdAt,
-  )
-}
-
 function historyStatement(
   db: D1Database,
   history: AttributionMigrationHistoryDailyV1,
@@ -473,14 +643,26 @@ async function safeSnapshotIdentity(
   snapshot: AttributionMigrationSnapshotV1,
   prepared: PreparedConnection[],
 ) {
+  if (snapshot.phase === 'reconcile') {
+    return {
+      ...snapshot,
+      managedSources: await Promise.all(snapshot.managedSources.map(
+        async source => ({
+          ...source,
+          proof: await managedSourceHash(source.proof),
+        }),
+      )),
+    }
+  }
   const credentials = new Map(prepared.map(item => [
     item.input.id,
     item.credential.fingerprint,
   ]))
   return {
     schemaVersion: snapshot.schemaVersion,
+    phase: snapshot.phase,
     capturedAt: snapshot.capturedAt,
-    windowStartedAt: snapshot.windowStartedAt,
+    sourceConfigurationHash: snapshot.sourceConfigurationHash,
     connections: snapshot.connections.map(connection => ({
       ...connection,
       credential: {
@@ -494,7 +676,6 @@ async function safeSnapshotIdentity(
         proof: await managedSourceHash(source.proof),
       }),
     )),
-    liveFacts: snapshot.liveFacts,
     historyDaily: snapshot.historyDaily,
     privacyPolicy: snapshot.privacyPolicy,
   }
@@ -503,13 +684,15 @@ async function safeSnapshotIdentity(
 async function readMigrationReceipt(
   db: D1Database,
   receiptKey: string,
+  command: typeof INITIAL_MIGRATION_COMMAND
+    | typeof RECONCILE_MIGRATION_COMMAND,
   requestHash: string,
   runId: string,
 ): Promise<AttributionMigrationImportResultV1 | null> {
   const row = await readMigrationReceiptRow(db, receiptKey)
   if (!row) return null
   if (
-    row.command_type !== MIGRATION_COMMAND
+    row.command_type !== command
     || row.request_hash !== requestHash
   ) {
     throw migrationError('ATTRIBUTION_MIGRATION_IDEMPOTENCY_CONFLICT')
@@ -529,6 +712,39 @@ async function readMigrationReceiptRow(
   `).bind(receiptKey).first<MigrationReceiptRow>()
 }
 
+async function readMigrationManifest(
+  db: D1Database,
+  initialRunId: string,
+): Promise<MigrationManifestRow | null> {
+  return db.prepare(`
+    SELECT source_configuration_hash, credential_set_hash,
+           initial_captured_at, status
+    FROM attribution_migration_manifests
+    WHERE initial_run_id = ?
+    LIMIT 1
+  `).bind(initialRunId).first<MigrationManifestRow>()
+}
+
+async function assertReconcileSources(
+  db: D1Database,
+  sources: AttributionMigrationManagedSourceV1[],
+): Promise<void> {
+  const connections = (await db.prepare(`
+    SELECT id, provider
+    FROM attribution_connections
+  `).all<{ id: string; provider: string }>()).results
+  const providers = new Map(
+    connections.map(connection => [
+      connection.id,
+      connection.provider,
+    ]),
+  )
+  if (sources.some(source =>
+    providers.get(source.connectionId) !== source.provider)) {
+    throw migrationError('ATTRIBUTION_MIGRATION_SOURCE_INVALID')
+  }
+}
+
 function parseMigrationReceipt(
   row: MigrationReceiptRow,
   runId: string,
@@ -540,9 +756,18 @@ function parseMigrationReceipt(
     if (
       !isPlainRecord(parsed)
       || parsed.runId !== runId
+      || (
+        parsed.phase !== 'initial'
+        && parsed.phase !== 'reconcile'
+      )
       || typeof parsed.snapshotHash !== 'string'
       || !PROOF_PATTERN.test(parsed.snapshotHash)
       || parsed.snapshotHash !== row.request_hash
+      || typeof parsed.sourceConfigurationHash !== 'string'
+      || !PROOF_PATTERN.test(parsed.sourceConfigurationHash)
+      || typeof parsed.credentialSetHash !== 'string'
+      || !PROOF_PATTERN.test(parsed.credentialSetHash)
+      || !isTimestamp(parsed.capturedAt)
       || typeof parsed.replayed !== 'boolean'
       || !validImportCounts(parsed.counts)
     ) {
@@ -564,8 +789,8 @@ function validImportCounts(
     'credentials',
     'bindings',
     'managedSources',
-    'liveFacts',
     'historyRows',
+    'historyFacts',
   ] as const
   return keys.every(key =>
     Number.isSafeInteger(value[key])
@@ -578,7 +803,9 @@ async function assertEmptyMigrationTarget(db: D1Database): Promise<void> {
       (SELECT COUNT(*) FROM attribution_connections)
       + (SELECT COUNT(*) FROM attribution_managed_sources)
       + (SELECT COUNT(*) FROM attribution_facts)
-      + (SELECT COUNT(*) FROM attribution_history_daily) AS row_count
+      + (SELECT COUNT(*) FROM attribution_history_daily)
+      + (SELECT COUNT(*) FROM attribution_migration_manifests)
+        AS row_count
   `).first<{ row_count: number }>()
   if (Number(row?.row_count ?? -1) !== 0) {
     throw migrationError('ATTRIBUTION_MIGRATION_TARGET_NOT_EMPTY')
@@ -601,29 +828,40 @@ function validateSnapshot(snapshot: AttributionMigrationSnapshotV1): void {
   if (
     !isPlainRecord(snapshot)
     || snapshot.schemaVersion !== 1
+    || (
+      snapshot.phase !== 'initial'
+      && snapshot.phase !== 'reconcile'
+    )
     || !isTimestamp(snapshot.capturedAt)
-    || !isTimestamp(snapshot.windowStartedAt)
-    || Date.parse(snapshot.windowStartedAt) > Date.parse(snapshot.capturedAt)
-    || !Array.isArray(snapshot.connections)
-    || snapshot.connections.length < 1
-    || snapshot.connections.length > MAX_CONNECTIONS
+    || typeof snapshot.sourceConfigurationHash !== 'string'
+    || !PROOF_PATTERN.test(snapshot.sourceConfigurationHash)
     || !Array.isArray(snapshot.managedSources)
     || snapshot.managedSources.length > MAX_SOURCES
-    || !Array.isArray(snapshot.liveFacts)
-    || snapshot.liveFacts.length > MAX_LIVE_FACTS
     || !Array.isArray(snapshot.historyDaily)
     || snapshot.historyDaily.length > MAX_HISTORY_ROWS
   ) {
     throw migrationError('ATTRIBUTION_MIGRATION_INPUT_INVALID')
   }
-  snapshot.connections.forEach(validateConnection)
-  validateUniqueConnections(snapshot.connections)
-  snapshot.managedSources.forEach(source =>
-    validateManagedSource(source, snapshot.connections))
-  snapshot.liveFacts.forEach(fact =>
-    validateLiveFact(fact, snapshot.connections))
+  if (snapshot.phase === 'initial') {
+    if (
+      !Array.isArray(snapshot.connections)
+      || snapshot.connections.length < 1
+      || snapshot.connections.length > MAX_CONNECTIONS
+    ) {
+      throw migrationError('ATTRIBUTION_MIGRATION_INPUT_INVALID')
+    }
+    snapshot.connections.forEach(validateConnection)
+    validateUniqueConnections(snapshot.connections)
+    snapshot.managedSources.forEach(source =>
+      validateManagedSource(source, snapshot.connections))
+    validatePrivacyPolicy(snapshot.privacyPolicy)
+  } else {
+    if (!IDENTIFIER_PATTERN.test(snapshot.initialRunId)) {
+      throw migrationError('ATTRIBUTION_MIGRATION_INPUT_INVALID')
+    }
+    snapshot.managedSources.forEach(validateManagedSourceShape)
+  }
   snapshot.historyDaily.forEach(validateHistory)
-  validatePrivacyPolicy(snapshot.privacyPolicy)
 }
 
 function validateConnection(
@@ -701,14 +939,25 @@ function validateManagedSource(
   source: AttributionMigrationManagedSourceV1,
   connections: AttributionMigrationConnectionV1[],
 ): void {
+  validateManagedSourceShape(source)
   const connection = connections.find(item =>
     item.id === source.connectionId)
+  if (
+    !connection
+    || connection.provider !== source.provider
+  ) {
+    throw migrationError('ATTRIBUTION_MIGRATION_INPUT_INVALID')
+  }
+}
+
+function validateManagedSourceShape(
+  source: AttributionMigrationManagedSourceV1,
+): void {
   if (
     !isPlainRecord(source)
     || !IDENTIFIER_PATTERN.test(source.id)
     || !PROVIDERS.has(source.provider)
-    || !connection
-    || connection.provider !== source.provider
+    || !IDENTIFIER_PATTERN.test(source.connectionId)
     || !isSafeText(source.campaign, 1_000)
     || !isSafeText(source.medium, 1_000)
     || !isSafeText(source.content, 1_000, true)
@@ -719,42 +968,6 @@ function validateManagedSource(
       && !isTimestamp(source.expiresAt)
     )
     || !isTimestamp(source.createdAt)
-  ) {
-    throw migrationError('ATTRIBUTION_MIGRATION_INPUT_INVALID')
-  }
-}
-
-function validateLiveFact(
-  fact: AttributionMigrationLiveFactV1,
-  connections: AttributionMigrationConnectionV1[],
-): void {
-  if (
-    !isPlainRecord(fact)
-    || !IDENTIFIER_PATTERN.test(fact.id)
-    || !IDENTIFIER_PATTERN.test(fact.eventId)
-    || (
-      fact.eventName !== 'Contact'
-      && fact.eventName !== 'CompleteRegistration'
-    )
-    || !isSafeText(fact.dedupeKey, 240)
-    || (
-      fact.provider !== null
-      && !PROVIDERS.has(fact.provider)
-    )
-    || (
-      fact.provider !== null
-      && !connections.some(item => item.provider === fact.provider)
-    )
-    || (
-      fact.provider === null
-        ? fact.externalEventId !== null
-        : !IDENTIFIER_PATTERN.test(fact.externalEventId ?? '')
-    )
-    || !isTimestamp(fact.occurredAt)
-    || !isConsent(fact.consent)
-    || !isPlainRecord(fact.analyticsDimensions)
-    || stableJson(fact.analyticsDimensions).length > 32_768
-    || !isTimestamp(fact.createdAt)
   ) {
     throw migrationError('ATTRIBUTION_MIGRATION_INPUT_INVALID')
   }
@@ -792,7 +1005,7 @@ function validateHistory(
 }
 
 function validatePrivacyPolicy(
-  policy: AttributionMigrationSnapshotV1['privacyPolicy'],
+  policy: AttributionMigrationInitialSnapshotV1['privacyPolicy'],
 ): void {
   if (
     !isPlainRecord(policy)
@@ -815,25 +1028,48 @@ function migrationResult(
   runId: string,
   snapshotHash: string,
   snapshot: AttributionMigrationSnapshotV1,
+  credentialSetHash: string,
 ): AttributionMigrationImportResultV1 {
+  const connections = snapshot.phase === 'initial'
+    ? snapshot.connections
+    : []
   return {
     runId,
+    phase: snapshot.phase,
     snapshotHash,
+    sourceConfigurationHash: snapshot.sourceConfigurationHash,
+    credentialSetHash,
+    capturedAt: snapshot.capturedAt,
     replayed: false,
     counts: {
-      connections: snapshot.connections.length,
-      versions: snapshot.connections.length,
-      credentials: snapshot.connections.length,
-      bindings: snapshot.connections.reduce(
+      connections: connections.length,
+      versions: connections.length,
+      credentials: connections.length,
+      bindings: connections.reduce(
         (total, connection) =>
           total + connection.eventBindings.length,
         0,
       ),
       managedSources: snapshot.managedSources.length,
-      liveFacts: snapshot.liveFacts.length,
       historyRows: snapshot.historyDaily.length,
+      historyFacts: snapshot.historyDaily.reduce(
+        (total, history) => total + history.factCount,
+        0,
+      ),
     },
   }
+}
+
+async function preparedCredentialSetHash(
+  prepared: PreparedConnection[],
+): Promise<string> {
+  return sha256Hex(stableJson(prepared
+    .map(item => ({
+      connectionId: item.input.id,
+      fingerprint: item.credential.fingerprint,
+    }))
+    .sort((left, right) =>
+      left.connectionId.localeCompare(right.connectionId))))
 }
 
 function migrationReceiptKey(runId: string): string {
@@ -923,15 +1159,6 @@ function isStringRecord(
     && Object.entries(value).every(([key, item]) =>
       /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(key)
       && isSafeText(item, 2_048))
-}
-
-function isConsent(
-  value: unknown,
-): value is AttributionMigrationLiveFactV1['consent'] {
-  return isPlainRecord(value)
-    && typeof value.marketingAllowed === 'boolean'
-    && typeof value.adUserDataAllowed === 'boolean'
-    && typeof value.adPersonalizationAllowed === 'boolean'
 }
 
 function isPlainRecord(

@@ -32,7 +32,11 @@ describe('归因迁移内部路由', () => {
         .toBe(SECRET)
       return {
         runId: RUN_ID,
+        phase: 'initial',
         snapshotHash: 'a'.repeat(64),
+        sourceConfigurationHash: 'b'.repeat(64),
+        credentialSetHash: 'c'.repeat(64),
+        capturedAt: '2026-07-24T12:00:00.000Z',
         replayed: false,
         counts: {},
       }
@@ -81,7 +85,11 @@ describe('归因迁移内部路由', () => {
       runId === RUN_ID
         ? {
             runId,
+            phase: 'initial',
             snapshotHash: 'a'.repeat(64),
+            sourceConfigurationHash: 'b'.repeat(64),
+            credentialSetHash: 'c'.repeat(64),
+            capturedAt: '2026-07-24T12:00:00.000Z',
             replayed: true,
             counts: {},
           }
@@ -150,6 +158,7 @@ function migrationRequest(overrides: {
   const body: Record<string, unknown> = {
     runId: RUN_ID,
     snapshot: {
+      phase: 'initial',
       connections: [{
         credential: { plaintext: SECRET },
       }],

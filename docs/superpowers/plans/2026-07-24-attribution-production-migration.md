@@ -4,7 +4,7 @@
 
 **Goal:** 将现有生产归因无双投递地迁移到独立 Attribution Worker，保持现有投放链接和有效配置，完成全集合对账后彻底删除主 API/Web 的旧运行代码、旧表和临时迁移桥。
 
-**Architecture:** 新运行时先以暗模式部署并导入旧系统快照，只有 synthetic 测试可以向平台发送；切换时先进入仅接受 Service Binding 转发的 `bridge`，再用主 API D1 的一次性单写者状态停止旧写，最后开放新公共入口。30 分钟旧页面排空和 24 小时观察完成后删除桥接代码与旧表，Git 历史只保留迁移事实。
+**Architecture:** 先发布单写者门禁和默认 `shadow` 的新运行时，再导入不可变配置候选、来源及截至水位的匿名历史日报；旧事实绝不进入新活动事实表。候选 synthetic 验证通过后将旧写者切到 `draining`，等待在途事务排空，再执行一次不读取凭证的最终历史/来源对账。集合摘要、源配置摘要、目标凭证集合摘要全部一致后，才允许 `shadow -> bridge -> active` 和 `old -> draining -> new` 单向切换。30 分钟旧页面排空和 24 小时观察完成后删除桥接代码与旧表，Git 历史只保留迁移事实。
 
 **Tech Stack:** Cloudflare Workers、D1、Queues、Service Bindings、Wrangler 4、Node.js、Hono、Nuxt、Vitest、Playwright。
 
@@ -16,6 +16,10 @@
 - 凭证明文不得进入命令参数、文件、日志、审计、响应或剪贴板。
 - 暗模式不得发送普通生产 delivery，只允许带单次 Test Event Code 的 synthetic 事实。
 - 切换全过程只有一个生产写者；旧入口在切换后只转发，不再创建旧事实或旧 delivery。
+- 旧 Contact/CompleteRegistration 只迁移为不可投递的匿名历史日报；新 `attribution_facts` 在切换前不得存在 `fact_origin='live'`。
+- 初始导入只创建 `candidate`，`active_version_id` 保持空，Server effective 固定为 0；平台 synthetic 验证成功后才可激活候选。
+- 初始导入和最终对账之间必须冻结旧配置写入口；最终对账用独立 runId 绑定初始 runId，原子替换历史日报与管理来源。
+- 生产执行顺序固定为：单写者门禁准备发布 → shadow 发布 → 双 D1 备份 → 初始导入 → synthetic 验证 → old draining/排空 → 最终对账 → bridge/active 切换。
 - 现有 connection ID、managed source ID 和原始投放链接必须保持有效。
 - 任何集合不一致、跨 provider delivery、重复 event ID 或 critical Incident 立即回滚。
 - 迁移桥、owner flag、旧 Queue consumer 和旧管理 API 必须在观察期结束后删除。
@@ -259,7 +263,7 @@ git commit -m "deploy: 以暗模式发布独立归因运行时"
 
 **Interfaces:**
 - Consumes: 旧 API D1 密文和旧 API Worker Secret。
-- Produces: 新 D1 的连接、Active 版本、运行策略、来源 proof 不可逆摘要、窗口内事实和历史摘要。
+- Produces: 新 D1 的连接候选、effective=0 的运行策略、来源 proof 不可逆摘要、全量匿名历史日报、迁移清单和最终对账回执。
 
 - [x] **Step 1: 写明文泄露和幂等失败测试**
 
@@ -320,8 +324,11 @@ finally {
 
 禁止 `console.log(snapshot)`，禁止脚本接收 token 参数。迁移来源 proof 时把旧原始 proof 通过 Service Binding 发送，新 Worker
 只保存不可逆摘要。导入保持现有 `connection_id`、source ID、配置和 rollout。
-历史补偿事实只迁移匿名日汇总；窗口内实时事实保留事实 ID 与去重键，
-不重放旧 Browser/Server delivery。
+所有旧事实都按北京时间业务日迁移为匿名日汇总，`live` 映射为
+`archived_live`；禁止向新 `attribution_facts` 写入旧事实，也不重放旧
+Browser/Server delivery。初始导入只创建候选版本并保存期望运行策略，
+实际 Server effective 为 0。旧写者排空后执行 `reconcile`，不再次读取凭证，
+原子替换管理来源和历史日报。
 
 - [x] **Step 4: 运行迁移测试**
 
@@ -342,7 +349,7 @@ git add packages/api/src/services/attribution-migration-export* packages/api/src
 git commit -m "feat: 安全迁移现有归因配置与凭证"
 ```
 
-### Task 4: 备份生产并执行暗模式迁移
+### Task 4: 完成迁移核验工具并准备 shadow 发布
 
 **Files:**
 - Create: `scripts/verify-attribution-cutover.mjs`
@@ -353,7 +360,7 @@ git commit -m "feat: 安全迁移现有归因配置与凭证"
 - Consumes: 两个生产 D1 和迁移服务。
 - Produces: 可机器核验的迁移清单、集合摘要和回滚 bookmark。
 
-- [ ] **Step 1: 写 preflight 失败测试**
+- [x] **Step 1: 写 preflight 失败测试**
 
 ```js
 test('preflight 要求旧写者唯一且新运行时为 shadow', async () => {
@@ -365,7 +372,7 @@ test('preflight 要求旧写者唯一且新运行时为 shadow', async () => {
 })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -375,7 +382,7 @@ node --test scripts/verify-attribution-cutover.test.mjs
 
 Expected: FAIL，核验脚本不存在。
 
-- [ ] **Step 3: 实现全集合摘要**
+- [x] **Step 3: 实现全集合摘要**
 
 摘要必须包含：
 
@@ -383,7 +390,7 @@ Expected: FAIL，核验脚本不存在。
 {
   connections: [{ id, provider, activeTargetHash, runtimePolicyHash }],
   managedSources: [{ id, connectionId, proofHash }],
-  facts: { count, idSetHash },
+  history: { rowCount, factCount, contentHash },
   pendingDeliveries: { count, idSetHash },
   incidents: { openCriticalCount },
 }
@@ -391,7 +398,21 @@ Expected: FAIL，核验脚本不存在。
 
 脚本只输出 hash、count 和稳定 ID，不输出 public target 原值、凭证、proof、IP、UA 或 Cookie。
 
-- [ ] **Step 4: 执行生产备份和迁移**
+- [x] **Step 4: 将迁移协议收口为历史归档和最终对账**
+
+要求：
+
+- `sourceConfigurationHash` 覆盖连接、事件绑定、凭证 revision、运行策略和隐私策略。
+- `credentialSetHash` 由旧 API 与新 Worker 分别从内存明文/重新加密结果独立计算，不写日志或审计。
+- 初始导入和最终对账回执都包含精确 `capturedAt`、历史行数和历史事实总数。
+- 核验目标活动事实必须为 0，来源、历史、隐私、配置和凭证摘要全部一致。
+
+- [ ] **Step 5: 先合入单写者门禁和 shadow 准备版本**
+
+禁止在 Task 5 完成前执行任何生产数据迁移。准备版本只创建 migration 路由、
+owner/epoch 门禁和默认 `shadow` Worker；不得改变旧生产归因写者。
+
+- [ ] **Step 6: 执行生产备份和初始迁移**
 
 Run:
 
@@ -399,12 +420,13 @@ Run:
 node scripts/export-production-d1-backup.mjs
 corepack pnpm --filter @meigallery/attribution exec wrangler d1 time-travel info meigallery-attribution-db --env=""
 node scripts/migrate-attribution-runtime.mjs
+node scripts/migrate-attribution-runtime.mjs --phase initial
 node scripts/verify-attribution-cutover.mjs migrated
 ```
 
-Expected: 输出旧 API D1 backup 路径、Attribution D1 bookmark、`MIGRATION_SET_MATCHED`；新运行时仍为 `shadow`，普通 production delivery 为 `0`。
+Expected: 输出旧 API D1 backup 路径、Attribution D1 bookmark、`MIGRATION_SET_MATCHED`；新运行时仍为 `shadow`，候选未激活、普通 production delivery 和活动事实均为 `0`。
 
-- [ ] **Step 5: 执行三平台可用连接的 synthetic 测试**
+- [ ] **Step 7: 执行三平台可用连接的 synthetic 测试**
 
 Run:
 
@@ -417,7 +439,23 @@ Expected: 每个已配置且启用的连接都完成 `Contact` 和 `CompleteRegi
 脚本只在 TTY 中无回显读取当前平台测试码，直接调用候选验证入口；测试码不进入命令参数、环境变量、
 文件或输出，验证终态后新 D1 的临时密文立即删除。
 
-- [ ] **Step 6: 提交核验工具和状态**
+- [ ] **Step 8: 冻结旧写者并执行最终对账**
+
+Run:
+
+```bash
+node scripts/migrate-attribution-runtime.mjs \
+  --phase reconcile \
+  --initial-run-id migration-production-v1 \
+  --run-id migration-production-reconcile-v1
+node scripts/verify-attribution-cutover.mjs migrated \
+  --run-id migration-production-reconcile-v1
+```
+
+Expected: 配置摘要未变化，历史与来源集合精确一致，目标活动事实为 0，
+manifest 状态为 `reconciled`。
+
+- [ ] **Step 9: 提交核验工具和状态**
 
 ```bash
 git add scripts/verify-attribution-cutover* docs/PROJECT_STATUS.md

@@ -51,6 +51,8 @@ export function createAdminAttributionMigrationRoutes(
       const result = await runMigration(c.env, {
         runId: body.runId,
         actorId: Number(actorId),
+        phase: body.phase,
+        initialRunId: body.initialRunId,
       })
       await audit(c.env.DB, {
         adminId: Number(actorId),
@@ -59,7 +61,10 @@ export function createAdminAttributionMigrationRoutes(
         targetId: body.runId,
         afterValue: {
           runId: result.runId,
+          phase: result.phase,
           snapshotHash: result.snapshotHash,
+          sourceConfigurationHash: result.sourceConfigurationHash,
+          capturedAt: result.capturedAt,
           replayed: result.replayed,
           counts: result.counts,
         },
@@ -82,6 +87,10 @@ export function createAdminAttributionMigrationRoutes(
           error.code === 'ATTRIBUTION_MIGRATION_IDEMPOTENCY_CONFLICT'
           || error.code === 'ATTRIBUTION_MIGRATION_RUNTIME_MODE_INVALID'
           || error.code === 'ATTRIBUTION_MIGRATION_TARGET_NOT_EMPTY'
+          || error.code === 'ATTRIBUTION_MIGRATION_SOURCE_CHANGED'
+          || error.code === 'ATTRIBUTION_MIGRATION_ALREADY_RECONCILED'
+          || error.code
+            === 'ATTRIBUTION_MIGRATION_INITIAL_IMPORT_MISSING'
         ) {
           return errorJson(c, 409, '归因迁移状态冲突', {
             code: error.code,
@@ -129,16 +138,45 @@ async function readBoundedJson(request: Request): Promise<unknown> {
   }
 }
 
-function parseBody(value: unknown): { runId: string } {
+function parseBody(value: unknown): {
+  runId: string
+  phase: 'initial' | 'reconcile'
+  initialRunId?: string
+} {
   if (
     !isRecord(value)
-    || Object.keys(value).length !== 1
     || typeof value.runId !== 'string'
     || !IDENTIFIER_PATTERN.test(value.runId)
   ) {
     throw requestError(400, 'ATTRIBUTION_MIGRATION_REQUEST_INVALID')
   }
-  return { runId: value.runId }
+  const phase = value.phase ?? 'initial'
+  if (
+    (phase !== 'initial' && phase !== 'reconcile')
+    || (
+      phase === 'initial'
+        ? (
+          value.initialRunId !== undefined
+          || Object.keys(value).some(key =>
+            !['runId', 'phase'].includes(key))
+        )
+        : (
+          typeof value.initialRunId !== 'string'
+          || !IDENTIFIER_PATTERN.test(value.initialRunId)
+          || Object.keys(value).some(key =>
+            !['runId', 'phase', 'initialRunId'].includes(key))
+        )
+    )
+  ) {
+    throw requestError(400, 'ATTRIBUTION_MIGRATION_REQUEST_INVALID')
+  }
+  return phase === 'initial'
+    ? { runId: value.runId, phase }
+    : {
+      runId: value.runId,
+      phase,
+      initialRunId: value.initialRunId as string,
+    }
 }
 
 function invalidRequest(c: Parameters<typeof errorJson>[0]) {

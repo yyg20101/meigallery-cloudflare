@@ -72,8 +72,8 @@ describe('归因运行时迁移导入', () => {
         credentials: 1,
         bindings: 2,
         managedSources: 1,
-        liveFacts: 1,
-        historyRows: 1,
+        historyRows: 2,
+        historyFacts: 38,
       },
     })
     expect(JSON.stringify(result)).not.toContain(CREDENTIAL)
@@ -91,16 +91,29 @@ describe('归因运行时迁移导入', () => {
     )).toBe(1)
     expect(await scalar(
       'SELECT COUNT(*) AS value FROM attribution_facts',
-    )).toBe(1)
+    )).toBe(0)
 
     const connection = await db.prepare(`
       SELECT id, active_version_id
       FROM attribution_connections
       WHERE id = 'conn_meta'
-    `).first<{ id: string; active_version_id: string }>()
+    `).first<{ id: string; active_version_id: string | null }>()
     expect(connection).toEqual({
       id: 'conn_meta',
-      active_version_id: 'version_migrated_conn_meta',
+      active_version_id: null,
+    })
+    expect(await db.prepare(`
+      SELECT status
+      FROM attribution_connection_versions
+      WHERE id = 'version_migrated_conn_meta'
+    `).first()).toEqual({ status: 'candidate' })
+    expect(await db.prepare(`
+      SELECT server_target_percentage, server_effective_percentage
+      FROM attribution_runtime_policies
+      WHERE connection_id = 'conn_meta'
+    `).first()).toEqual({
+      server_target_percentage: 10,
+      server_effective_percentage: 0,
     })
   })
 
@@ -154,6 +167,69 @@ describe('归因运行时迁移导入', () => {
       request(),
     )).rejects.toThrow('ATTRIBUTION_MIGRATION_RUNTIME_MODE_INVALID')
   })
+
+  it('冻结后对账原子替换历史和来源，且配置变化时拒绝', async () => {
+    await importAttributionMigrationSnapshot(environment(), request())
+    const reconcile = reconcileRequest()
+
+    const result = await importAttributionMigrationSnapshot(
+      environment(),
+      reconcile,
+    )
+
+    expect(result).toMatchObject({
+      phase: 'reconcile',
+      counts: {
+        connections: 0,
+        managedSources: 1,
+        historyRows: 1,
+        historyFacts: 39,
+      },
+    })
+    expect(await scalar(
+      'SELECT COUNT(*) AS value FROM attribution_facts',
+    )).toBe(0)
+    expect(await scalar(`
+      SELECT COALESCE(SUM(fact_count), 0) AS value
+      FROM attribution_history_daily
+    `)).toBe(39)
+    expect(await db.prepare(`
+      SELECT status, reconcile_run_id
+      FROM attribution_migration_manifests
+      WHERE initial_run_id = 'migration-production-v1'
+    `).first()).toEqual({
+      status: 'reconciled',
+      reconcile_run_id: 'migration-production-reconcile-v1',
+    })
+
+    const replay = reconcileRequest()
+    await expect(importAttributionMigrationSnapshot(
+      environment(),
+      replay,
+    )).resolves.toEqual({
+      ...result,
+      replayed: true,
+    })
+
+    await clearAttributionRuntimeDatabase(db)
+    await db.prepare(`
+      INSERT INTO attribution_privacy_policy (
+        id, default_mode, prior_consent_country_codes_json, policy_version
+      ) VALUES ('global', 'prior_consent', '[]', 1)
+    `).run()
+    await db.prepare(`
+      UPDATE attribution_runtime_state
+      SET mode = 'shadow', activated_at = NULL, updated_at = ?
+      WHERE id = 'global'
+    `).bind(NOW.toISOString()).run()
+    await importAttributionMigrationSnapshot(environment(), request())
+    const changed = reconcileRequest()
+    changed.snapshot.sourceConfigurationHash = 'c'.repeat(64)
+    await expect(importAttributionMigrationSnapshot(
+      environment(),
+      changed,
+    )).rejects.toThrow('ATTRIBUTION_MIGRATION_SOURCE_CHANGED')
+  })
 })
 
 function environment(): AttributionMigrationImportEnvironment {
@@ -170,8 +246,9 @@ function request() {
     actorId: 1,
     snapshot: {
       schemaVersion: 1 as const,
+      phase: 'initial' as const,
       capturedAt: '2026-07-24T11:55:00.000Z',
-      windowStartedAt: '2026-06-24T11:55:00.000Z',
+      sourceConfigurationHash: 'b'.repeat(64),
       connections: [{
         id: 'conn_meta',
         provider: 'meta' as const,
@@ -217,26 +294,16 @@ function request() {
         expiresAt: null,
         createdAt: '2026-07-21T00:54:56.000Z',
       }],
-      liveFacts: [{
-        id: 'fact_meta_contact',
-        eventId: 'event_meta_contact',
-        eventName: 'Contact' as const,
-        dedupeKey: 'contact:visitor:test',
-        provider: 'meta' as const,
-        externalEventId: 'event_meta_contact',
-        occurredAt: '2026-07-23T03:14:10.336Z',
-        consent: {
-          marketingAllowed: true,
-          adUserDataAllowed: true,
-          adPersonalizationAllowed: true,
-        },
-        analyticsDimensions: {
-          sourceChannel: 'ad',
-          trackingSourceSlug: 'ad-a3f2d25895358a',
-        },
-        createdAt: '2026-07-23T03:14:10.336Z',
-      }],
       historyDaily: [{
+        date: '2026-07-23',
+        eventName: 'Contact' as const,
+        factOrigin: 'archived_live' as const,
+        provider: 'meta' as const,
+        attributionSource: 'managed_link',
+        factCount: 1,
+        firstOccurredAt: '2026-07-23T03:14:10.336Z',
+        lastOccurredAt: '2026-07-23T03:14:10.336Z',
+      }, {
         date: '2026-07-14',
         eventName: 'Contact' as const,
         factOrigin: 'historical_backfill' as const,
@@ -252,6 +319,31 @@ function request() {
         policyVersion: 2,
         updatedAt: '2026-07-18T06:43:16.000Z',
       },
+    },
+  }
+}
+
+function reconcileRequest() {
+  return {
+    runId: 'migration-production-reconcile-v1',
+    actorId: 1,
+    snapshot: {
+      schemaVersion: 1 as const,
+      phase: 'reconcile' as const,
+      initialRunId: 'migration-production-v1',
+      capturedAt: '2026-07-24T12:00:00.000Z',
+      sourceConfigurationHash: 'b'.repeat(64),
+      managedSources: request().snapshot.managedSources,
+      historyDaily: [{
+        date: '2026-07-23',
+        eventName: 'Contact' as const,
+        factOrigin: 'archived_live' as const,
+        provider: 'meta' as const,
+        attributionSource: 'managed_link',
+        factCount: 39,
+        firstOccurredAt: '2026-07-23T03:14:10.336Z',
+        lastOccurredAt: '2026-07-24T11:59:59.000Z',
+      }],
     },
   }
 }

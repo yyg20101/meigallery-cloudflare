@@ -11,7 +11,11 @@ import {
 const RUN_ID = 'migration-production-v1'
 const RESULT = {
   runId: RUN_ID,
+  phase: 'initial' as const,
   snapshotHash: 'a'.repeat(64),
+  sourceConfigurationHash: 'b'.repeat(64),
+  credentialSetHash: 'c'.repeat(64),
+  capturedAt: '2026-07-24T12:00:00.000Z',
   replayed: false,
   counts: {
     connections: 2,
@@ -19,8 +23,8 @@ const RESULT = {
     credentials: 2,
     bindings: 4,
     managedSources: 1,
-    liveFacts: 10,
     historyRows: 3,
+    historyFacts: 10,
   },
 }
 
@@ -30,6 +34,8 @@ describe('后台归因运行时迁移', () => {
       expect(options).toEqual({
         runId: RUN_ID,
         actorId: 7,
+        phase: 'initial',
+        initialRunId: undefined,
       })
       return RESULT
     })
@@ -56,10 +62,48 @@ describe('后台归因运行时迁移', () => {
         targetId: RUN_ID,
         afterValue: {
           runId: RUN_ID,
+          phase: 'initial',
           snapshotHash: 'a'.repeat(64),
+          sourceConfigurationHash: 'b'.repeat(64),
+          capturedAt: RESULT.capturedAt,
           replayed: false,
           counts: RESULT.counts,
         },
+      }),
+    )
+  })
+
+  it('最终对账必须显式绑定初始迁移 runId', async () => {
+    const runMigration = vi.fn(async () => ({
+      ...RESULT,
+      runId: 'migration-production-reconcile-v1',
+      phase: 'reconcile' as const,
+    }))
+    const response = await app({
+      userId: 7,
+      role: 'owner',
+      runMigration,
+      writeAudit: vi.fn(),
+    }).request(
+      '/api/admin/attribution-migration',
+      request({
+        idempotencyKey: 'migration-production-reconcile-v1',
+        body: {
+          runId: 'migration-production-reconcile-v1',
+          phase: 'reconcile',
+          initialRunId: RUN_ID,
+        },
+      }),
+      bindings(),
+    )
+
+    expect(response.status).toBe(200)
+    expect(runMigration).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        runId: 'migration-production-reconcile-v1',
+        phase: 'reconcile',
+        initialRunId: RUN_ID,
       }),
     )
   })

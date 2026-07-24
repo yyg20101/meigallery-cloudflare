@@ -185,7 +185,9 @@ function parseMigrationBody(value: unknown): MigrationBody {
 }
 
 function clearMigrationBodySecrets(value: MigrationBody | null): void {
-  const connections = value?.snapshot?.connections
+  const snapshot = value?.snapshot
+  if (!snapshot || snapshot.phase !== 'initial') return
+  const connections = snapshot.connections
   if (!Array.isArray(connections)) return
   for (const connection of connections) {
     if (
@@ -213,6 +215,9 @@ function migrationFailureResponse(
       error.code === 'ATTRIBUTION_MIGRATION_IDEMPOTENCY_CONFLICT'
       || error.code === 'ATTRIBUTION_MIGRATION_RUNTIME_MODE_INVALID'
       || error.code === 'ATTRIBUTION_MIGRATION_TARGET_NOT_EMPTY'
+      || error.code === 'ATTRIBUTION_MIGRATION_SOURCE_CHANGED'
+      || error.code === 'ATTRIBUTION_MIGRATION_ALREADY_RECONCILED'
+      || error.code === 'ATTRIBUTION_MIGRATION_INITIAL_IMPORT_MISSING'
     ) {
       return migrationErrorResponse(c, 409, error.code)
     }

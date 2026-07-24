@@ -10,7 +10,11 @@ const RUN_ID = 'migration-production-v1'
 const SESSION = 'a'.repeat(64)
 const RESULT = {
   runId: RUN_ID,
+  phase: 'initial',
   snapshotHash: 'b'.repeat(64),
+  sourceConfigurationHash: 'c'.repeat(64),
+  credentialSetHash: 'd'.repeat(64),
+  capturedAt: '2026-07-24T12:00:00.000Z',
   replayed: false,
   counts: {
     connections: 2,
@@ -18,8 +22,8 @@ const RESULT = {
     credentials: 2,
     bindings: 4,
     managedSources: 1,
-    liveFacts: 10,
     historyRows: 3,
+    historyFacts: 10,
   },
 }
 
@@ -28,16 +32,38 @@ describe('归因运行时迁移脚本', () => {
     assert.deepEqual(parseMigrationArgs([]), {
       apiUrl: 'https://api.616618.xyz',
       runId: RUN_ID,
+      phase: 'initial',
+      initialRunId: undefined,
     })
     assert.deepEqual(parseMigrationArgs([
       '--run-id',
       'migration-retry-2',
-      '--api-url',
-      'https://api.example.com/',
     ]), {
-      apiUrl: 'https://api.example.com',
+      apiUrl: 'https://api.616618.xyz',
       runId: 'migration-retry-2',
+      phase: 'initial',
+      initialRunId: undefined,
     })
+    assert.deepEqual(parseMigrationArgs([
+      '--run-id',
+      'migration-reconcile-1',
+      '--phase',
+      'reconcile',
+      '--initial-run-id',
+      RUN_ID,
+    ]), {
+      apiUrl: 'https://api.616618.xyz',
+      runId: 'migration-reconcile-1',
+      phase: 'reconcile',
+      initialRunId: RUN_ID,
+    })
+    assert.throws(
+      () => parseMigrationArgs([
+        '--api-url',
+        'https://api.example.com/',
+      ]),
+      /ATTRIBUTION_MIGRATION_ARGUMENT_INVALID/,
+    )
     assert.throws(
       () => parseMigrationArgs(['--token', 'secret']),
       /ATTRIBUTION_MIGRATION_ARGUMENT_INVALID/,
@@ -68,9 +94,7 @@ describe('归因运行时迁移脚本', () => {
     let request
     const result = await runAttributionMigration({
       argv: [],
-      env: {
-        MEIGALLERY_ADMIN_SESSION_COOKIE: SESSION,
-      },
+      promptSession: async () => SESSION,
       fetch: async (input, init) => {
         request = { input, init }
         return Response.json({ data: RESULT })
@@ -84,7 +108,10 @@ describe('归因运行时迁移脚本', () => {
       'https://api.616618.xyz/api/admin/attribution-migration',
     )
     assert.equal(request.init.headers.Cookie, `mei_session=${SESSION}`)
-    assert.deepEqual(JSON.parse(request.init.body), { runId: RUN_ID })
+    assert.deepEqual(JSON.parse(request.init.body), {
+      runId: RUN_ID,
+      phase: 'initial',
+    })
     assert.equal(JSON.stringify(result).includes(SESSION), false)
     assert.equal(logs.join('\n').includes(SESSION), false)
   })
@@ -93,9 +120,7 @@ describe('归因运行时迁移脚本', () => {
     await assert.rejects(
       runAttributionMigration({
         argv: [],
-        env: {
-          MEIGALLERY_ADMIN_SESSION_COOKIE: SESSION,
-        },
+        promptSession: async () => SESSION,
         fetch: async () => Response.json({
           code: 'ATTRIBUTION_MIGRATION_TARGET_NOT_EMPTY',
           detail: `sensitive-${SESSION}`,

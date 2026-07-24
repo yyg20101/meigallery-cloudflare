@@ -47,23 +47,6 @@ export interface AttributionMigrationManagedSourceV1 {
   createdAt: string
 }
 
-export interface AttributionMigrationLiveFactV1 {
-  id: string
-  eventId: string
-  eventName: CanonicalConversionEvent
-  dedupeKey: string
-  provider: AdAttributionProvider | null
-  externalEventId: string | null
-  occurredAt: string
-  consent: {
-    marketingAllowed: boolean
-    adUserDataAllowed: boolean
-    adPersonalizationAllowed: boolean
-  }
-  analyticsDimensions: Record<string, unknown>
-  createdAt: string
-}
-
 export interface AttributionMigrationHistoryDailyV1 {
   date: string
   eventName: CanonicalConversionEvent
@@ -75,13 +58,13 @@ export interface AttributionMigrationHistoryDailyV1 {
   lastOccurredAt: string
 }
 
-export interface AttributionMigrationSnapshotV1 {
+export interface AttributionMigrationInitialSnapshotV1 {
   schemaVersion: 1
+  phase: 'initial'
   capturedAt: string
-  windowStartedAt: string
+  sourceConfigurationHash: string
   connections: AttributionMigrationConnectionV1[]
   managedSources: AttributionMigrationManagedSourceV1[]
-  liveFacts: AttributionMigrationLiveFactV1[]
   historyDaily: AttributionMigrationHistoryDailyV1[]
   privacyPolicy: {
     defaultMode: 'notice_opt_out' | 'prior_consent' | 'disabled'
@@ -91,19 +74,37 @@ export interface AttributionMigrationSnapshotV1 {
   }
 }
 
+export interface AttributionMigrationReconcileSnapshotV1 {
+  schemaVersion: 1
+  phase: 'reconcile'
+  initialRunId: string
+  capturedAt: string
+  sourceConfigurationHash: string
+  managedSources: AttributionMigrationManagedSourceV1[]
+  historyDaily: AttributionMigrationHistoryDailyV1[]
+}
+
+export type AttributionMigrationSnapshotV1 =
+  | AttributionMigrationInitialSnapshotV1
+  | AttributionMigrationReconcileSnapshotV1
+
 export interface AttributionMigrationImportCountsV1 {
   connections: number
   versions: number
   credentials: number
   bindings: number
   managedSources: number
-  liveFacts: number
   historyRows: number
+  historyFacts: number
 }
 
 export interface AttributionMigrationImportResultV1 {
   runId: string
+  phase: 'initial' | 'reconcile'
   snapshotHash: string
+  sourceConfigurationHash: string
+  credentialSetHash: string
+  capturedAt: string
   replayed: boolean
   counts: AttributionMigrationImportCountsV1
 }

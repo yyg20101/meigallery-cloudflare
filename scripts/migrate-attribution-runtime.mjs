@@ -8,41 +8,47 @@ const SESSION_PATTERN = /^[a-f0-9]{64}$/
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9:_-]{1,160}$/
 const MAX_RESPONSE_BYTES = 64 * 1024
 
-export function parseMigrationArgs(argv, env = process.env) {
+export function parseMigrationArgs(argv) {
   const input = argv[0] === '--' ? argv.slice(1) : [...argv]
   const options = {
-    apiUrl: env.ATTRIBUTION_MIGRATION_API_URL || DEFAULT_API_URL,
-    runId: env.ATTRIBUTION_MIGRATION_RUN_ID || DEFAULT_RUN_ID,
+    runId: DEFAULT_RUN_ID,
+    phase: 'initial',
+    initialRunId: undefined,
   }
   for (let index = 0; index < input.length; index += 1) {
     const argument = input[index]
-    if (argument === '--api-url') {
-      options.apiUrl = requireArgument(input[++index], argument)
-      continue
-    }
     if (argument === '--run-id') {
       options.runId = requireArgument(input[++index], argument)
       continue
     }
+    if (argument === '--phase') {
+      options.phase = requireArgument(input[++index], argument)
+      continue
+    }
+    if (argument === '--initial-run-id') {
+      options.initialRunId = requireArgument(input[++index], argument)
+      continue
+    }
     throw new Error(`ATTRIBUTION_MIGRATION_ARGUMENT_INVALID:${argument}`)
-  }
-  const url = new URL(options.apiUrl)
-  if (
-    url.protocol !== 'https:'
-    || url.username
-    || url.password
-    || url.search
-    || url.hash
-    || (url.pathname !== '/' && url.pathname !== '')
-  ) {
-    throw new Error('ATTRIBUTION_MIGRATION_API_URL_INVALID')
   }
   if (!IDENTIFIER_PATTERN.test(options.runId)) {
     throw new Error('ATTRIBUTION_MIGRATION_RUN_ID_INVALID')
   }
+  if (
+    (options.phase !== 'initial' && options.phase !== 'reconcile')
+    || (
+      options.phase === 'initial'
+        ? options.initialRunId !== undefined
+        : !IDENTIFIER_PATTERN.test(options.initialRunId ?? '')
+    )
+  ) {
+    throw new Error('ATTRIBUTION_MIGRATION_PHASE_INVALID')
+  }
   return {
-    apiUrl: url.origin,
+    apiUrl: DEFAULT_API_URL,
     runId: options.runId,
+    phase: options.phase,
+    initialRunId: options.initialRunId,
   }
 }
 
@@ -62,11 +68,9 @@ export function normalizeOwnerSession(value) {
 }
 
 export async function runAttributionMigration(options = {}) {
-  const env = options.env ?? process.env
-  const parsed = parseMigrationArgs(options.argv ?? [], env)
+  const parsed = parseMigrationArgs(options.argv ?? [])
   const promptSession = options.promptSession ?? readHiddenOwnerSession
-  const sessionInput = env.MEIGALLERY_ADMIN_SESSION_COOKIE
-    || await promptSession()
+  const sessionInput = await promptSession()
   const cookie = normalizeOwnerSession(sessionInput)
   const fetchImpl = options.fetch ?? globalThis.fetch
   const log = options.log ?? console.log
@@ -81,7 +85,16 @@ export async function runAttributionMigration(options = {}) {
         'Idempotency-Key': parsed.runId,
         Cookie: cookie,
       },
-      body: JSON.stringify({ runId: parsed.runId }),
+      body: JSON.stringify(parsed.phase === 'initial'
+        ? {
+          runId: parsed.runId,
+          phase: parsed.phase,
+        }
+        : {
+          runId: parsed.runId,
+          phase: parsed.phase,
+          initialRunId: parsed.initialRunId,
+        }),
       redirect: 'error',
       signal: AbortSignal.timeout(120_000),
     },
@@ -96,7 +109,10 @@ export async function runAttributionMigration(options = {}) {
   log(JSON.stringify({
     status: 'completed',
     runId: result.runId,
+    phase: result.phase,
     snapshotHash: result.snapshotHash,
+    sourceConfigurationHash: result.sourceConfigurationHash,
+    capturedAt: result.capturedAt,
     replayed: result.replayed,
     counts: result.counts,
   }))
@@ -165,8 +181,14 @@ function parseResult(value, expectedRunId) {
   if (
     !isRecord(data)
     || data.runId !== expectedRunId
+    || (data.phase !== 'initial' && data.phase !== 'reconcile')
     || typeof data.snapshotHash !== 'string'
     || !/^[a-f0-9]{64}$/.test(data.snapshotHash)
+    || typeof data.sourceConfigurationHash !== 'string'
+    || !/^[a-f0-9]{64}$/.test(data.sourceConfigurationHash)
+    || typeof data.credentialSetHash !== 'string'
+    || !/^[a-f0-9]{64}$/.test(data.credentialSetHash)
+    || !isCanonicalTimestamp(data.capturedAt)
     || typeof data.replayed !== 'boolean'
     || !isRecord(data.counts)
   ) {
@@ -178,8 +200,8 @@ function parseResult(value, expectedRunId) {
     'credentials',
     'bindings',
     'managedSources',
-    'liveFacts',
     'historyRows',
+    'historyFacts',
   ]
   if (countKeys.some(key =>
     !Number.isSafeInteger(data.counts[key])
@@ -187,6 +209,13 @@ function parseResult(value, expectedRunId) {
     throw new Error('ATTRIBUTION_MIGRATION_RESPONSE_INVALID')
   }
   return data
+}
+
+function isCanonicalTimestamp(value) {
+  if (typeof value !== 'string') return false
+  const parsed = new Date(value)
+  return Number.isFinite(parsed.getTime())
+    && parsed.toISOString() === value
 }
 
 function safeCode(value) {

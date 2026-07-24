@@ -271,11 +271,11 @@ describe('Attribution Service Binding client', () => {
     const client = createAttributionMigrationClient(binding(fetch))
     const snapshot = {
       schemaVersion: 1 as const,
+      phase: 'initial' as const,
       capturedAt: '2026-07-24T08:00:00.000Z',
-      windowStartedAt: '2026-06-24T08:00:00.000Z',
+      sourceConfigurationHash: 'a'.repeat(64),
       connections: [],
       managedSources: [],
-      liveFacts: [],
       historyDaily: [],
       privacyPolicy: {
         defaultMode: 'notice_opt_out' as const,

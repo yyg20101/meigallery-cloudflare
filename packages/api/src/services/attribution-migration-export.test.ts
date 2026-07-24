@@ -1,9 +1,19 @@
+import { createHash } from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
 import {
   exportAndImportAttributionMigration,
 } from './attribution-migration-export'
 
 const CREDENTIAL = 'old-api-plaintext-credential'
+const CREDENTIAL_FINGERPRINT = createHash('sha256')
+  .update(`credential-fingerprint:v1:${CREDENTIAL}`)
+  .digest('hex')
+const CREDENTIAL_SET_HASH = createHash('sha256')
+  .update(JSON.stringify([{
+    connectionId: 'conn_meta',
+    fingerprint: CREDENTIAL_FINGERPRINT,
+  }]))
+  .digest('hex')
 
 describe('旧归因运行时导出', () => {
   it('只通过 Service Binding 传递内存凭证，结果和日志不含明文', async () => {
@@ -19,12 +29,17 @@ describe('旧归因运行时导出', () => {
       expect(body.snapshot.connections[0]?.credential.plaintext)
         .toBe(CREDENTIAL)
       expect(body.snapshot.connections[0]?.enabled).toBe(true)
-      expect(body.snapshot.liveFacts).toHaveLength(1)
-      expect(body.snapshot.historyDaily).toHaveLength(1)
+      expect(body.snapshot.phase).toBe('initial')
+      expect(body.snapshot).not.toHaveProperty('liveFacts')
+      expect(body.snapshot.historyDaily).toHaveLength(2)
       return Response.json({
         data: {
           runId: 'migration-production-v1',
+          phase: 'initial',
           snapshotHash: 'a'.repeat(64),
+          sourceConfigurationHash: 'b'.repeat(64),
+          credentialSetHash: CREDENTIAL_SET_HASH,
+          capturedAt: '2026-07-24T12:00:00.000Z',
           replayed: false,
           counts: {
             connections: 1,
@@ -32,8 +47,8 @@ describe('旧归因运行时导出', () => {
             credentials: 1,
             bindings: 2,
             managedSources: 1,
-            liveFacts: 1,
-            historyRows: 1,
+            historyRows: 2,
+            historyFacts: 38,
           },
         },
       })
@@ -104,6 +119,50 @@ describe('旧归因运行时导出', () => {
     expect(readCredential).not.toHaveBeenCalled()
     expect(result).toEqual(migrationResult(true))
   })
+
+  it('最终对账不读取或传输凭证明文，并覆盖截止水位内全部历史', async () => {
+    const readCredential = vi.fn(async () => CREDENTIAL)
+    const fetch = vi.fn(async (request: Request) => {
+      if (request.method === 'GET') return migrationNotFound()
+      const body = await request.json() as {
+        snapshot: Record<string, unknown> & {
+          historyDaily: Array<{ factCount: number }>
+        }
+      }
+      expect(body.snapshot.phase).toBe('reconcile')
+      expect(body.snapshot.initialRunId)
+        .toBe('migration-production-v1')
+      expect(body.snapshot).not.toHaveProperty('connections')
+      expect(body.snapshot).not.toHaveProperty('privacyPolicy')
+      expect(body.snapshot.historyDaily.reduce(
+        (total, row) => total + row.factCount,
+        0,
+      )).toBe(38)
+      return Response.json({
+        data: migrationResult(false, {
+          runId: 'migration-production-reconcile-v1',
+          phase: 'reconcile',
+          connections: 0,
+          versions: 0,
+          credentials: 0,
+          bindings: 0,
+        }),
+      })
+    })
+
+    await exportAndImportAttributionMigration(
+      fixtureEnvironment(fetch, readCredential),
+      {
+        runId: 'migration-production-reconcile-v1',
+        initialRunId: 'migration-production-v1',
+        phase: 'reconcile',
+        actorId: 1,
+        now: new Date('2026-07-24T12:00:00.000Z'),
+      },
+    )
+
+    expect(readCredential).not.toHaveBeenCalled()
+  })
 })
 
 function fixtureEnvironment(
@@ -157,19 +216,16 @@ function fixtureEnvironment(
       status: 'active',
       created_at: '2026-07-21 00:54:56',
     }],
-    facts: [{
-      id: 'fact_meta_contact',
-      canonical_event: 'Contact',
-      external_event_id: 'event_meta_contact',
-      attribution_provider: 'meta',
-      occurred_at: '2026-07-23T03:14:10.336Z',
-      dedupe_key: 'contact:visitor:test',
-      consent_snapshot_json:
-        '{"marketingAllowed":true,"adUserDataAllowed":true,"adPersonalizationAllowed":true}',
-      analytics_dimensions_json: '{"sourceChannel":"ad"}',
-      created_at: '2026-07-23 03:14:10',
-    }],
     history: [{
+      date: '2026-07-23',
+      canonical_event: 'Contact',
+      fact_origin: 'archived_live',
+      attribution_provider: 'meta',
+      attribution_source: 'managed_link',
+      fact_count: 1,
+      first_occurred_at: '2026-07-23T03:14:10.336Z',
+      last_occurred_at: '2026-07-23T03:14:10.336Z',
+    }, {
       date: '2026-07-14',
       canonical_event: 'Contact',
       fact_origin: 'historical_backfill',
@@ -188,8 +244,12 @@ function fixtureEnvironment(
   }
   const db = {
     prepare(sql: string) {
+      let bindings: unknown[] = []
       return {
-        bind() { return this },
+        bind(...values: unknown[]) {
+          bindings = values
+          return this
+        },
         async all() {
           if (sql.includes('FROM attribution_platform_connections')) {
             return { results: rows.connections }
@@ -204,13 +264,19 @@ function fixtureEnvironment(
             return { results: rows.sources }
           }
           if (sql.includes('FROM attribution_conversion_facts')) {
-            if (sql.includes('COUNT(*) AS fact_count')) {
-              expect(sql).toContain(
-                "date(datetime(occurred_at, '+8 hours'))",
-              )
-              return { results: rows.history }
-            }
-            return { results: rows.facts }
+            expect(sql).toContain(
+              "date(datetime(occurred_at, '+8 hours'))",
+            )
+            expect(sql).toContain(
+              "fact_origin IN ('live','historical_backfill')",
+            )
+            expect(sql).toContain(
+              'julianday(occurred_at) <= julianday(?)',
+            )
+            expect(bindings).toEqual([
+              '2026-07-24T12:00:00.000Z',
+            ])
+            return { results: rows.history }
           }
           return { results: [] }
         },
@@ -239,19 +305,33 @@ function migrationNotFound() {
   }, { status: 404 })
 }
 
-function migrationResult(replayed: boolean) {
+function migrationResult(
+  replayed: boolean,
+  overrides: Partial<{
+    runId: string
+    phase: 'initial' | 'reconcile'
+    connections: number
+    versions: number
+    credentials: number
+    bindings: number
+  }> = {},
+) {
   return {
-    runId: 'migration-production-v1',
+    runId: overrides.runId ?? 'migration-production-v1',
+    phase: overrides.phase ?? 'initial',
     snapshotHash: 'a'.repeat(64),
+    sourceConfigurationHash: 'b'.repeat(64),
+    credentialSetHash: CREDENTIAL_SET_HASH,
+    capturedAt: '2026-07-24T12:00:00.000Z',
     replayed,
     counts: {
-      connections: 1,
-      versions: 1,
-      credentials: 1,
-      bindings: 2,
+      connections: overrides.connections ?? 1,
+      versions: overrides.versions ?? 1,
+      credentials: overrides.credentials ?? 1,
+      bindings: overrides.bindings ?? 2,
       managedSources: 1,
-      liveFacts: 1,
-      historyRows: 1,
+      historyRows: 2,
+      historyFacts: 38,
     },
   }
 }

@@ -1,9 +1,10 @@
 import type {
   AttributionMigrationConnectionV1,
   AttributionMigrationHistoryDailyV1,
+  AttributionMigrationInitialSnapshotV1,
   AttributionMigrationImportResultV1,
-  AttributionMigrationLiveFactV1,
   AttributionMigrationManagedSourceV1,
+  AttributionMigrationReconcileSnapshotV1,
   AttributionMigrationRolloutPercentage,
   AttributionMigrationSnapshotV1,
   AttributionProvider,
@@ -28,6 +29,8 @@ export interface AttributionMigrationExportEnvironment {
 export interface AttributionMigrationExportOptions {
   runId: string
   actorId: number
+  phase?: 'initial' | 'reconcile'
+  initialRunId?: string
   now?: Date
   logger?: {
     info(message: string, detail?: Record<string, unknown>): void
@@ -78,18 +81,6 @@ interface SourceRow {
   created_at: string
 }
 
-interface LiveFactRow {
-  id: string
-  canonical_event: string
-  external_event_id: string
-  attribution_provider: string | null
-  occurred_at: string
-  dedupe_key: string
-  consent_snapshot_json: string
-  analytics_dimensions_json: string
-  created_at: string
-}
-
 interface HistoryRow {
   date: string
   canonical_event: string
@@ -120,8 +111,7 @@ const PERCENTAGES = new Set<AttributionMigrationRolloutPercentage>([
   100,
 ])
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9:_-]{1,160}$/
-const MINIMUM_WINDOW_DAYS = 30
-const MAXIMUM_WINDOW_DAYS = 365
+const HASH_PATTERN = /^[a-f0-9]{64}$/
 const MAX_IMPORT_RESPONSE_BYTES = 64 * 1024
 
 export async function exportAndImportAttributionMigration(
@@ -137,19 +127,24 @@ export async function exportAndImportAttributionMigration(
 
   const capturedAt = validDate(options.now ?? new Date())
   const source = await readSourceRows(environment.DB)
-  const windowDays = migrationWindowDays(source.connections)
-  const windowStartedAt = new Date(
-    capturedAt.getTime() - windowDays * 24 * 60 * 60 * 1_000,
-  )
+  const sourceConfigurationHash = await configurationHash(source)
   let snapshot: AttributionMigrationSnapshotV1 | null = null
 
   try {
-    snapshot = await buildSnapshot(
-      environment,
-      source,
-      capturedAt,
-      windowStartedAt,
-    )
+    snapshot = (options.phase ?? 'initial') === 'initial'
+      ? await buildInitialSnapshot(
+        environment,
+        source,
+        capturedAt,
+        sourceConfigurationHash,
+      )
+      : await buildReconcileSnapshot(
+        environment.DB,
+        source,
+        capturedAt,
+        sourceConfigurationHash,
+        options.initialRunId!,
+      )
     const response = await client.importSnapshot({
       runId: options.runId,
       actorId: options.actorId,
@@ -166,6 +161,13 @@ export async function exportAndImportAttributionMigration(
       throw migrationError(code)
     }
     const result = parseImportResult(body, options.runId)
+    if (
+      snapshot.phase === 'initial'
+      && result.credentialSetHash
+        !== await sourceCredentialSetHash(snapshot.connections)
+    ) {
+      throw migrationError('ATTRIBUTION_MIGRATION_CREDENTIAL_MISMATCH')
+    }
     options.logger?.info('归因迁移导入完成', {
       runId: result.runId,
       replayed: result.replayed,
@@ -257,40 +259,90 @@ async function readSourceRows(db: D1Database) {
   }
 }
 
-async function buildSnapshot(
+async function configurationHash(
+  source: Awaited<ReturnType<typeof readSourceRows>>,
+): Promise<string> {
+  const policy = privacyPolicy(source.privacyPolicy)
+  return sha256Hex(stableJson({
+    connections: source.connections.map(row => ({
+      id: row.id,
+      provider: row.provider,
+      enabled: row.enabled,
+      mode: row.mode,
+      browserEnabled: row.browser_enabled,
+      serverEnabled: row.server_enabled,
+      publicConfig: jsonRecord(row.public_config_json),
+      attributionWindowDays: row.attribution_window_days,
+      rolloutTargetPercentage: row.rollout_target_percentage,
+      rolloutEffectivePercentage: row.rollout_effective_percentage,
+      credentialRevision: row.credential_revision,
+    })),
+    bindings: source.bindings,
+    credentials: source.credentials,
+    privacyPolicy: {
+      defaultMode: policy.defaultMode,
+      priorConsentCountryCodes: policy.priorConsentCountryCodes,
+      policyVersion: policy.policyVersion,
+    },
+  }))
+}
+
+async function buildInitialSnapshot(
   environment: AttributionMigrationExportEnvironment,
   source: Awaited<ReturnType<typeof readSourceRows>>,
   capturedAt: Date,
-  windowStartedAt: Date,
-): Promise<AttributionMigrationSnapshotV1> {
+  sourceConfigurationHash: string,
+): Promise<AttributionMigrationInitialSnapshotV1> {
   const connections = await buildConnections(environment, source)
   try {
     const connectionByProvider = new Map(
       connections.map(connection => [connection.provider, connection.id]),
     )
-    const liveFacts = await readLiveFacts(
-      environment.DB,
-      windowStartedAt,
-    )
     const historyDaily = await readHistory(
       environment.DB,
-      windowStartedAt,
+      capturedAt,
     )
 
     return {
       schemaVersion: 1,
+      phase: 'initial',
       capturedAt: capturedAt.toISOString(),
-      windowStartedAt: windowStartedAt.toISOString(),
+      sourceConfigurationHash,
       connections,
       managedSources: source.sources.map(row =>
         managedSource(row, connectionByProvider)),
-      liveFacts: liveFacts.map(liveFact),
       historyDaily: historyDaily.map(historyRow),
       privacyPolicy: privacyPolicy(source.privacyPolicy),
     }
   } catch (error) {
     clearSnapshotCredentials({ connections } as AttributionMigrationSnapshotV1)
     throw error
+  }
+}
+
+async function buildReconcileSnapshot(
+  db: D1Database,
+  source: Awaited<ReturnType<typeof readSourceRows>>,
+  capturedAt: Date,
+  sourceConfigurationHash: string,
+  initialRunId: string,
+): Promise<AttributionMigrationReconcileSnapshotV1> {
+  const connectionByProvider = new Map(
+    source.connections.map(connection => [
+      providerValue(connection.provider),
+      identifier(connection.id),
+    ]),
+  )
+  const historyDaily = await readHistory(db, capturedAt)
+  return {
+    schemaVersion: 1,
+    phase: 'reconcile',
+    initialRunId,
+    capturedAt: capturedAt.toISOString(),
+    sourceConfigurationHash,
+    managedSources: source.sources.map(row =>
+      managedSource(row, connectionByProvider)),
+    historyDaily: historyDaily.map(historyRow),
   }
 }
 
@@ -372,24 +424,9 @@ async function buildConnections(
   }
 }
 
-async function readLiveFacts(
-  db: D1Database,
-  windowStartedAt: Date,
-): Promise<LiveFactRow[]> {
-  return (await db.prepare(`
-    SELECT id, canonical_event, external_event_id,
-           attribution_provider, occurred_at, dedupe_key,
-           consent_snapshot_json, analytics_dimensions_json, created_at
-    FROM attribution_conversion_facts
-    WHERE fact_origin = 'live'
-      AND julianday(occurred_at) >= julianday(?)
-    ORDER BY occurred_at, id
-  `).bind(windowStartedAt.toISOString()).all<LiveFactRow>()).results
-}
-
 async function readHistory(
   db: D1Database,
-  windowStartedAt: Date,
+  capturedAt: Date,
 ): Promise<HistoryRow[]> {
   return (await db.prepare(`
     SELECT
@@ -405,11 +442,8 @@ async function readHistory(
       MIN(occurred_at) AS first_occurred_at,
       MAX(occurred_at) AS last_occurred_at
     FROM attribution_conversion_facts
-    WHERE fact_origin = 'historical_backfill'
-       OR (
-         fact_origin = 'live'
-         AND julianday(occurred_at) < julianday(?)
-       )
+    WHERE fact_origin IN ('live','historical_backfill')
+      AND julianday(occurred_at) <= julianday(?)
     GROUP BY
       date(datetime(occurred_at, '+8 hours')),
       canonical_event,
@@ -420,7 +454,7 @@ async function readHistory(
       attribution_provider,
       attribution_source
     ORDER BY date, canonical_event, attribution_provider
-  `).bind(windowStartedAt.toISOString()).all<HistoryRow>()).results
+  `).bind(capturedAt.toISOString()).all<HistoryRow>()).results
 }
 
 function managedSource(
@@ -442,32 +476,6 @@ function managedSource(
     proof: row.link_proof,
     enabled: row.status === 'active',
     expiresAt: null,
-    createdAt: isoTimestamp(row.created_at),
-  }
-}
-
-function liveFact(row: LiveFactRow): AttributionMigrationLiveFactV1 {
-  const provider = row.attribution_provider === null
-    ? null
-    : providerValue(row.attribution_provider)
-  const eventId = identifier(row.external_event_id)
-  const consent = jsonRecord(row.consent_snapshot_json)
-  return {
-    id: identifier(row.id),
-    eventId,
-    eventName: canonicalEvent(row.canonical_event),
-    dedupeKey: safeText(row.dedupe_key, 240),
-    provider,
-    externalEventId: provider ? eventId : null,
-    occurredAt: isoTimestamp(row.occurred_at),
-    consent: {
-      marketingAllowed: booleanValue(consent.marketingAllowed),
-      adUserDataAllowed: booleanValue(consent.adUserDataAllowed),
-      adPersonalizationAllowed: booleanValue(
-        consent.adPersonalizationAllowed,
-      ),
-    },
-    analyticsDimensions: jsonRecord(row.analytics_dimensions_json),
     createdAt: isoTimestamp(row.created_at),
   }
 }
@@ -500,7 +508,7 @@ function historyRow(
 
 function privacyPolicy(
   row: PrivacyPolicyRow | null,
-): AttributionMigrationSnapshotV1['privacyPolicy'] {
+): AttributionMigrationInitialSnapshotV1['privacyPolicy'] {
   if (
     !row
     || !['notice_opt_out', 'prior_consent', 'disabled']
@@ -524,7 +532,7 @@ function privacyPolicy(
     throw migrationError('ATTRIBUTION_MIGRATION_PRIVACY_POLICY_INVALID')
   }
   const defaultMode = row.default_mode as
-    AttributionMigrationSnapshotV1['privacyPolicy']['defaultMode']
+    AttributionMigrationInitialSnapshotV1['privacyPolicy']['defaultMode']
   return {
     defaultMode,
     priorConsentCountryCodes: [...new Set(countries)].sort(),
@@ -558,8 +566,14 @@ function parseImportResult(
     : null
   if (
     data.runId !== runId
+    || (data.phase !== 'initial' && data.phase !== 'reconcile')
     || typeof data.snapshotHash !== 'string'
-    || !/^[a-f0-9]{64}$/.test(data.snapshotHash)
+    || !HASH_PATTERN.test(data.snapshotHash)
+    || typeof data.sourceConfigurationHash !== 'string'
+    || !HASH_PATTERN.test(data.sourceConfigurationHash)
+    || typeof data.credentialSetHash !== 'string'
+    || !HASH_PATTERN.test(data.credentialSetHash)
+    || !isCanonicalTimestamp(data.capturedAt)
     || typeof data.replayed !== 'boolean'
     || !counts
   ) {
@@ -571,8 +585,8 @@ function parseImportResult(
     'credentials',
     'bindings',
     'managedSources',
-    'liveFacts',
     'historyRows',
+    'historyFacts',
   ] as const
   if (keys.some(key =>
     !Number.isSafeInteger(counts[key])
@@ -585,20 +599,10 @@ function parseImportResult(
 function clearSnapshotCredentials(
   snapshot: AttributionMigrationSnapshotV1,
 ): void {
+  if (snapshot.phase !== 'initial') return
   for (const connection of snapshot.connections) {
     connection.credential.plaintext = ''
   }
-}
-
-function migrationWindowDays(rows: ConnectionRow[]): number {
-  const values = rows.map(row => Number(row.attribution_window_days))
-  if (values.some(value =>
-    !Number.isSafeInteger(value)
-    || value < 1
-    || value > MAXIMUM_WINDOW_DAYS)) {
-    throw migrationError('ATTRIBUTION_MIGRATION_WINDOW_INVALID')
-  }
-  return Math.max(MINIMUM_WINDOW_DAYS, ...values)
 }
 
 function providerValue(value: unknown): AttributionProvider {
@@ -670,13 +674,6 @@ function booleanInteger(value: unknown): boolean {
   return value === 1
 }
 
-function booleanValue(value: unknown): boolean {
-  if (typeof value !== 'boolean') {
-    throw migrationError('ATTRIBUTION_MIGRATION_BOOLEAN_INVALID')
-  }
-  return value
-}
-
 function stringRecord(value: string): Record<string, string> {
   const record = jsonRecord(value)
   if (
@@ -735,13 +732,60 @@ function safeErrorCode(value: unknown): string {
 }
 
 function validateOptions(options: AttributionMigrationExportOptions): void {
+  const phase = options.phase ?? 'initial'
   if (
     !IDENTIFIER_PATTERN.test(options.runId)
     || !Number.isSafeInteger(options.actorId)
     || options.actorId < 1
+    || (phase !== 'initial' && phase !== 'reconcile')
+    || (
+      phase === 'initial'
+        ? options.initialRunId !== undefined
+        : !IDENTIFIER_PATTERN.test(options.initialRunId ?? '')
+    )
   ) {
     throw migrationError('ATTRIBUTION_MIGRATION_OPTIONS_INVALID')
   }
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(value),
+  )
+  return [...new Uint8Array(digest)]
+    .map(byte => byte.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+async function sourceCredentialSetHash(
+  connections: AttributionMigrationConnectionV1[],
+): Promise<string> {
+  const identities = await Promise.all(connections.map(
+    async connection => ({
+      connectionId: connection.id,
+      fingerprint: await sha256Hex(
+        `credential-fingerprint:v1:`
+          + connection.credential.plaintext,
+      ),
+    }),
+  ))
+  return sha256Hex(stableJson(identities.sort((left, right) =>
+    left.connectionId.localeCompare(right.connectionId))))
+}
+
+function stableJson(value: unknown): string {
+  return JSON.stringify(sortJson(value))
+}
+
+function sortJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortJson)
+  if (!isPlainRecord(value)) return value
+  return Object.fromEntries(
+    Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => [key, sortJson(item)]),
+  )
 }
 
 function isPlainRecord(
@@ -752,6 +796,13 @@ function isPlainRecord(
   }
   const prototype = Object.getPrototypeOf(value)
   return prototype === Object.prototype || prototype === null
+}
+
+function isCanonicalTimestamp(value: unknown): value is string {
+  if (typeof value !== 'string') return false
+  const parsed = new Date(value)
+  return Number.isFinite(parsed.getTime())
+    && parsed.toISOString() === value
 }
 
 export class AttributionMigrationExportError extends Error {

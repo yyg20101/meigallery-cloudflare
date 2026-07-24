@@ -215,7 +215,7 @@ describe('管理员归因运营读模型', () => {
           'Contact',
           'archived_live',
           'meta',
-          'context',
+          'managed_link',
           3,
           '2026-07-23T16:00:00.000Z',
           '2026-07-23T16:04:00.000Z',

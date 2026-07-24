@@ -140,12 +140,12 @@ export async function listAdminAttributionOperations(
       END) AS complete_registration_count,
       SUM(history.fact_count) AS fact_count,
       SUM(CASE
-        WHEN history.attribution_source = 'context'
+        WHEN history.provider <> 'none'
           THEN history.fact_count
         ELSE 0
       END) AS attributed_fact_count,
       SUM(CASE
-        WHEN history.attribution_source = 'context' THEN 0
+        WHEN history.provider <> 'none' THEN 0
         ELSE history.fact_count
       END) AS unattributed_fact_count,
       0 AS browser_attempted,

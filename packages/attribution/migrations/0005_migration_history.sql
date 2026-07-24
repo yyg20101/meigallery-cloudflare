@@ -30,3 +30,37 @@ CREATE TABLE attribution_history_daily (
 
 CREATE INDEX attribution_history_daily_event_date
   ON attribution_history_daily(event_name, date DESC);
+
+CREATE TABLE attribution_migration_manifests (
+  initial_run_id TEXT PRIMARY KEY,
+  initial_snapshot_hash TEXT NOT NULL UNIQUE,
+  source_configuration_hash TEXT NOT NULL,
+  credential_set_hash TEXT NOT NULL,
+  initial_captured_at TEXT NOT NULL,
+  desired_runtime_policies_json TEXT NOT NULL
+    CHECK (json_valid(desired_runtime_policies_json)),
+  status TEXT NOT NULL CHECK (
+    status IN ('initial_imported','reconciled')
+  ),
+  reconcile_run_id TEXT UNIQUE,
+  reconcile_snapshot_hash TEXT UNIQUE,
+  reconciled_captured_at TEXT,
+  created_at TEXT NOT NULL,
+  reconciled_at TEXT,
+  CHECK (
+    (
+      status = 'initial_imported'
+      AND reconcile_run_id IS NULL
+      AND reconcile_snapshot_hash IS NULL
+      AND reconciled_captured_at IS NULL
+      AND reconciled_at IS NULL
+    )
+    OR (
+      status = 'reconciled'
+      AND reconcile_run_id IS NOT NULL
+      AND reconcile_snapshot_hash IS NOT NULL
+      AND reconciled_captured_at IS NOT NULL
+      AND reconciled_at IS NOT NULL
+    )
+  )
+);
