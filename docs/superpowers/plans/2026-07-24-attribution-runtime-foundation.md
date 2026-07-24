@@ -56,7 +56,7 @@ packages/attribution/migrations/0001_attribution_runtime.test.mjs
 - Consumes: 现有 `AdAttributionProvider`、`CanonicalConversionEvent` 和 `PlatformPublicConfig`。
 - Produces: `AttributionProvider`、`ConnectionVersionStatus`、`AttributionBusinessEventV1`、`AttributionRuntimeLeaseV1`、`AttributionServiceContractV1`。
 
-- [ ] **Step 1: 写契约失败测试**
+- [x] **Step 1: 写契约失败测试**
 
 ```ts
 import { describe, expect, it } from 'vitest'
@@ -92,7 +92,7 @@ describe('attribution runtime contract', () => {
 })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -102,7 +102,7 @@ corepack pnpm --filter @meigallery/shared exec vitest run src/types/attribution-
 
 Expected: FAIL，提示无法解析 `./attribution-runtime`。
 
-- [ ] **Step 3: 实现共享契约**
+- [x] **Step 3: 实现共享契约**
 
 ```ts
 import type { AdAttributionProvider, CanonicalConversionEvent } from './ad-attribution'
@@ -192,7 +192,7 @@ function isCanonicalPayload(eventName: unknown, value: unknown) {
 export * from './attribution-runtime'
 ```
 
-- [ ] **Step 4: 运行共享包测试和类型检查**
+- [x] **Step 4: 运行共享包测试和类型检查**
 
 Run:
 
@@ -203,7 +203,7 @@ corepack pnpm --filter @meigallery/shared exec tsc --noEmit
 
 Expected: PASS，退出码为 `0`。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add packages/shared/src/types
