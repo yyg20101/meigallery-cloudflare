@@ -63,6 +63,20 @@ describe('credential retention', () => {
     expect(await credentialExists(db, 'ver_retired')).toBe(false)
     expect(await credentialExists(db, 'ver_active')).toBe(true)
   })
+
+  it.each(['failed', 'superseded'] as const)(
+    '%s 候选凭证立即删除',
+    async (status) => {
+      await seedDiscardedVersion(db, `ver_${status}`, status)
+
+      await enforceCredentialRetention(
+        db,
+        new Date('2026-07-24T00:00:00.000Z'),
+      )
+
+      expect(await credentialExists(db, `ver_${status}`)).toBe(false)
+    },
+  )
 })
 
 async function retireVersion(
@@ -86,6 +100,27 @@ async function seedVersion(
         config_hash, created_by, retired_at
       ) VALUES (?, 'conn_meta', 'meta', ?, '{}', ?, 1, ?)
     `).bind(versionId, status, `hash_${versionId}`, retiredAt),
+    database.prepare(`
+      INSERT INTO attribution_version_credentials (
+        version_id, provider, schema_version, key_id, iv, ciphertext,
+        tag, credential_fingerprint
+      ) VALUES (?, 'meta', 1, 'key', 'iv', 'ciphertext', 'tag', ?)
+    `).bind(versionId, `fingerprint_${versionId}`),
+  ])
+}
+
+async function seedDiscardedVersion(
+  database: D1Database,
+  versionId: string,
+  status: 'failed' | 'superseded',
+) {
+  await database.batch([
+    database.prepare(`
+      INSERT INTO attribution_connection_versions (
+        id, connection_id, provider, status, public_config_json,
+        config_hash, created_by
+      ) VALUES (?, 'conn_meta', 'meta', ?, '{}', ?, 1)
+    `).bind(versionId, status, `hash_${versionId}`),
     database.prepare(`
       INSERT INTO attribution_version_credentials (
         version_id, provider, schema_version, key_id, iv, ciphertext,

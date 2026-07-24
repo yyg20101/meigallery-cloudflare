@@ -777,7 +777,7 @@ git commit -m "feat: 建立归因连接聚合读模型"
 - Consumes: `readConnectionAggregate()`、凭证仓库和候选哈希。
 - Produces: `createConnection()`、`createCandidate()`、`beginCandidateValidation()`、`markCandidateReady()`、`activateCandidate()`、`rollbackActiveVersion()`、`disableConnection()`。
 
-- [ ] **Step 1: 写状态机失败测试**
+- [x] **Step 1: 写状态机失败测试**
 
 必须覆盖以下表驱动用例：
 
@@ -829,7 +829,7 @@ it('同 provider 不允许两个默认连接', async () => {
 })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -839,7 +839,7 @@ corepack pnpm --filter @meigallery/attribution exec vitest run src/services/conn
 
 Expected: FAIL，命令未实现。
 
-- [ ] **Step 3: 实现唯一写入口**
+- [x] **Step 3: 实现唯一写入口**
 
 导出固定接口：
 
@@ -875,7 +875,7 @@ if (receipt) {
 Active、新候选和连接指针，写审计并删除 fence。任一语句失败会回滚整个 batch，不能使用
 “先更新再读取修补”的补偿流程。
 
-- [ ] **Step 4: 运行故障注入与幂等测试**
+- [x] **Step 4: 运行故障注入与幂等测试**
 
 Run:
 
@@ -885,7 +885,7 @@ corepack pnpm --filter @meigallery/attribution exec vitest run src/services/conn
 
 Expected: PASS；重复候选为零新增版本、零新增审计；故障注入后旧 Active 保持不变。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add packages/attribution/src/services/connection-commands*

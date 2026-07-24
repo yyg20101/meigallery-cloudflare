@@ -115,6 +115,45 @@ CREATE TABLE attribution_activation_fences (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TRIGGER attribution_activation_fence_validate
+BEFORE INSERT ON attribution_activation_fences
+BEGIN
+  SELECT CASE
+    WHEN NOT EXISTS (
+      SELECT 1
+      FROM attribution_connections AS connection
+      INNER JOIN attribution_connection_versions AS candidate
+        ON candidate.id = NEW.candidate_version_id
+       AND candidate.connection_id = connection.id
+      WHERE connection.id = NEW.connection_id
+        AND NEW.expected_active_version_id IS connection.active_version_id
+        AND candidate.provider = connection.provider
+        AND (
+          connection.active_version_id IS NULL
+          OR EXISTS (
+            SELECT 1
+            FROM attribution_connection_versions AS current_active
+            WHERE current_active.id = connection.active_version_id
+              AND current_active.connection_id = connection.id
+              AND current_active.provider = connection.provider
+              AND current_active.status = 'active'
+          )
+        )
+        AND (
+          (
+            candidate.status = 'ready'
+            AND candidate.base_active_version_id IS connection.active_version_id
+          )
+          OR (
+            candidate.status = 'draining'
+            AND connection.active_version_id IS NOT NULL
+          )
+        )
+    )
+    THEN RAISE(ABORT, 'ATTRIBUTION_ACTIVE_VERSION_CHANGED')
+  END;
+END;
+
 CREATE TABLE attribution_audit_logs (
   id TEXT PRIMARY KEY,
   actor_id INTEGER NOT NULL,

@@ -24,4 +24,9 @@ test('基线 Schema 不包含 Git 或旧 revision 门禁', async () => {
   ]) {
     assert.match(migration, new RegExp(`CREATE TABLE ${table}`))
   }
+  assert.match(
+    migration,
+    /CREATE TRIGGER attribution_activation_fence_validate/,
+  )
+  assert.match(migration, /ATTRIBUTION_ACTIVE_VERSION_CHANGED/)
 })
