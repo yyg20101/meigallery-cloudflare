@@ -48,6 +48,28 @@ describe('useApi 浏览器请求目标', () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/analytics/events')
     expect(fetchMock.mock.calls[0]?.[0]).not.toContain(configuredApi)
   })
+
+  it('保留归因写命令的幂等键并与 JSON 请求头合并', async () => {
+    const { api } = useApi()
+
+    await api('/api/admin/attribution-runtime/connections/conn_meta/candidates', {
+      method: 'POST',
+      headers: {
+        'Idempotency-Key': 'command-1',
+      },
+      body: { publicConfig: { pixelId: '123' } },
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/admin/attribution-runtime/connections/conn_meta/candidates',
+      expect.objectContaining({
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'command-1',
+        },
+      }),
+    )
+  })
 })
 
 describe('useApi SSR Service Binding', () => {

@@ -5,6 +5,10 @@ import type {
   CanonicalConversionEvent,
 } from '@meigallery/shared'
 import type { AdPlatformConnectionData, AdPlatformVerificationStatus } from '~/composables/useAdminAttribution'
+import type {
+  CreateCandidateRequest,
+  SetRuntimePolicyRequest,
+} from '~/types/attribution-admin'
 
 export type AttributionPlatformProvider = AdPlatformProvider
 export type AttributionCredentialType = 'access_token' | 'service_account_json'
@@ -79,6 +83,11 @@ export interface AttributionPlatformConnectionDraft {
   publicConfig: Record<string, string>
   eventBindings: AttributionEventBindingDraft[]
   rolloutTargetPercentage: AdPlatformRolloutPercentage
+}
+
+export interface AttributionCandidateDraft {
+  publicConfig: Record<string, string>
+  eventBindings: AttributionEventBindingDraft[]
 }
 
 const STANDARD_EVENTS = [
@@ -197,6 +206,74 @@ export function emptyAttributionPlatformConnectionDraft(
       serverDestination: binding.server.defaultValue,
     })),
     rolloutTargetPercentage: 0,
+  }
+}
+
+export function emptyAttributionCandidateDraft(
+  platform: AttributionPlatformDefinition = ATTRIBUTION_PLATFORMS[0]!,
+): AttributionCandidateDraft {
+  return {
+    publicConfig: Object.fromEntries(
+      platform.publicConfigFields.map(field => [field.key, '']),
+    ),
+    eventBindings: platform.eventBindings.map(binding => ({
+      canonicalEvent: binding.canonicalEvent,
+      enabled: true,
+      browserDestination: binding.browser.defaultValue,
+      serverDestination: binding.server.defaultValue,
+    })),
+  }
+}
+
+export function attributionCandidatePayload(
+  platform: AttributionPlatformDefinition,
+  draft: AttributionCandidateDraft,
+  options: {
+    credentialPlaintext?: string
+    testEventCode?: string
+  } = {},
+): CreateCandidateRequest {
+  const publicConfig = Object.fromEntries(
+    platform.publicConfigFields
+      .map(field => [
+        field.key,
+        String(draft.publicConfig[field.key] ?? '').trim(),
+      ] as const)
+      .filter(([, value], index) => (
+        platform.publicConfigFields[index]!.required || value.length > 0
+      )),
+  )
+  const credentialPlaintext =
+    String(options.credentialPlaintext ?? '').trim()
+  const testEventCode = String(options.testEventCode ?? '').trim()
+  return {
+    publicConfig,
+    eventBindings: draft.eventBindings.map(binding => ({
+      canonicalEvent: binding.canonicalEvent,
+      enabled: binding.enabled,
+      browserDestination: binding.browserDestination.trim(),
+      serverDestination: binding.serverDestination.trim(),
+    })),
+    ...(credentialPlaintext
+      ? {
+          credential: {
+            type: platform.credential.type,
+            plaintext: credentialPlaintext,
+          },
+        }
+      : {}),
+    ...(testEventCode ? { testEventCode } : {}),
+  }
+}
+
+export function attributionRuntimePolicyPayload(
+  policy: SetRuntimePolicyRequest,
+): SetRuntimePolicyRequest {
+  return {
+    enabled: policy.enabled,
+    browserEnabled: policy.browserEnabled,
+    serverEnabled: policy.serverEnabled,
+    serverTargetPercentage: policy.serverTargetPercentage,
   }
 }
 

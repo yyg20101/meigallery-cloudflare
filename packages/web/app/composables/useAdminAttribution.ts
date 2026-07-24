@@ -4,7 +4,27 @@ import type {
   AdPlatformTrackingMode,
   AnalyticsRangeQuery,
 } from '@meigallery/shared'
-import type { ComputedRef, Ref } from 'vue'
+import { ATTRIBUTION_SERVICE_BINDING } from '@meigallery/shared/constants'
+import {
+  computed,
+  onMounted,
+  onScopeDispose,
+  ref,
+  watch,
+  type ComputedRef,
+  type Ref,
+} from 'vue'
+import type {
+  AttributionAdminApiResponse,
+  AttributionAdminClient,
+  AttributionConnectionView,
+  AttributionQualityQuery,
+  AttributionQualityView,
+  CreateAttributionConnectionRequest,
+  CreateCandidateRequest,
+  SetRuntimePolicyRequest,
+} from '~/types/attribution-admin'
+import { resolveApiErrorMessage } from '~/utils/apiErrorMessage'
 
 export type AttributionRangePreset = '7d' | '30d' | '90d' | 'day'
 export type AttributionDashboardProvider = AdPlatformProvider
@@ -404,6 +424,425 @@ export function useAdminAttribution<T>(
     loadedAt,
     refresh,
   }
+}
+
+const ATTRIBUTION_ADMIN_BASE =
+  ATTRIBUTION_SERVICE_BINDING.ADMIN_PROXY_PUBLIC_PATH_PREFIX
+
+export function useAttributionConnections(
+  client: AttributionAdminClient = attributionAdminClient(),
+  options: { autoLoad?: boolean } = {},
+) {
+  const connections = ref<AttributionConnectionView[]>([])
+  const loading = ref(false)
+  const initialized = ref(false)
+  const error = ref('')
+  let requestRevision = 0
+  let pendingCreate: Promise<AttributionConnectionView> | null = null
+
+  async function refresh(): Promise<AttributionConnectionView[]> {
+    const revision = ++requestRevision
+    loading.value = true
+    error.value = ''
+    try {
+      const result = await client.request<
+        AttributionAdminApiResponse<AttributionConnectionView[]>
+      >(`${ATTRIBUTION_ADMIN_BASE}/connections`)
+      if (revision !== requestRevision) return connections.value
+      connections.value = result.data
+      initialized.value = true
+      return result.data
+    } catch (cause) {
+      if (revision === requestRevision) {
+        initialized.value = false
+        error.value = resolveApiErrorMessage(
+          cause,
+          '归因连接加载失败',
+        )
+      }
+      throw cause
+    } finally {
+      if (revision === requestRevision) loading.value = false
+    }
+  }
+
+  function createConnection(
+    input: CreateAttributionConnectionRequest,
+  ): Promise<AttributionConnectionView> {
+    if (pendingCreate) return pendingCreate
+    if (!initialized.value || loading.value) {
+      return Promise.reject(attributionFormNotReady())
+    }
+    error.value = ''
+    let operation!: Promise<AttributionConnectionView>
+    operation = client.request<
+      AttributionAdminApiResponse<AttributionConnectionView>
+    >(`${ATTRIBUTION_ADMIN_BASE}/connections`, {
+      method: 'POST',
+      headers: idempotencyHeaders(client),
+      body: input,
+    }).then((result) => {
+      upsertConnection(connections.value, result.data)
+      return result.data
+    }).catch((cause) => {
+      error.value = resolveApiErrorMessage(
+        cause,
+        '归因连接创建失败',
+      )
+      throw cause
+    }).finally(() => {
+      if (pendingCreate === operation) pendingCreate = null
+    })
+    pendingCreate = operation
+    return operation
+  }
+
+  if (options.autoLoad !== false) {
+    onMounted(() => void refresh().catch(() => undefined))
+  }
+
+  return {
+    connections,
+    loading,
+    initialized,
+    creating: computed(() => pendingCreate !== null),
+    canCreate: computed(
+      () => initialized.value && !loading.value && !pendingCreate,
+    ),
+    error,
+    refresh,
+    createConnection,
+  }
+}
+
+export function useAttributionCandidate(
+  client: AttributionAdminClient = attributionAdminClient(),
+) {
+  const connection = ref<AttributionConnectionView | null>(null)
+  const loading = ref(false)
+  const initialized = ref(false)
+  const error = ref('')
+  let requestRevision = 0
+  let pending: {
+    connectionId: string
+    promise: Promise<AttributionConnectionView>
+  } | null = null
+
+  async function load(
+    connectionId: string,
+  ): Promise<AttributionConnectionView> {
+    const normalizedId = attributionConnectionId(connectionId)
+    const revision = ++requestRevision
+    loading.value = true
+    initialized.value = false
+    error.value = ''
+    try {
+      const result = await client.request<
+        AttributionAdminApiResponse<AttributionConnectionView>
+      >(
+        `${ATTRIBUTION_ADMIN_BASE}/connections/`
+        + encodeURIComponent(normalizedId),
+      )
+      if (revision === requestRevision) {
+        connection.value = result.data
+        initialized.value = true
+      }
+      return result.data
+    } catch (cause) {
+      if (revision === requestRevision) {
+        connection.value = null
+        error.value = resolveApiErrorMessage(
+          cause,
+          '归因连接加载失败',
+        )
+      }
+      throw cause
+    } finally {
+      if (revision === requestRevision) loading.value = false
+    }
+  }
+
+  function initialize(value: AttributionConnectionView): void {
+    connection.value = value
+    initialized.value = true
+    loading.value = false
+    error.value = ''
+  }
+
+  function saveCandidate(
+    connectionId: string,
+    input: CreateCandidateRequest,
+  ): Promise<AttributionConnectionView> {
+    const normalizedId = attributionConnectionId(connectionId)
+    if (pending?.connectionId === normalizedId) return pending.promise
+    if (
+      pending
+      || !initialized.value
+      || loading.value
+      || connection.value?.id !== normalizedId
+    ) {
+      return Promise.reject(attributionFormNotReady())
+    }
+
+    error.value = ''
+    let operation!: Promise<AttributionConnectionView>
+    operation = client.request<
+      AttributionAdminApiResponse<AttributionConnectionView>
+    >(
+      `${ATTRIBUTION_ADMIN_BASE}/connections/`
+      + `${encodeURIComponent(normalizedId)}/candidates`,
+      {
+        method: 'POST',
+        headers: idempotencyHeaders(client),
+        body: input,
+      },
+    ).then((result) => {
+      connection.value = result.data
+      return result.data
+    }).catch((cause) => {
+      error.value = resolveApiErrorMessage(
+        cause,
+        '身份候选保存失败',
+      )
+      throw cause
+    }).finally(() => {
+      if (pending?.promise === operation) pending = null
+    })
+    pending = { connectionId: normalizedId, promise: operation }
+    return operation
+  }
+
+  return {
+    connection,
+    candidate: computed(() => connection.value?.candidate ?? null),
+    loading,
+    initialized,
+    saving: computed(() => pending !== null),
+    canSave: computed(() => (
+      initialized.value
+      && !loading.value
+      && pending === null
+      && connection.value !== null
+    )),
+    error,
+    load,
+    initialize,
+    saveCandidate,
+  }
+}
+
+export function useAttributionRuntimePolicy(
+  client: AttributionAdminClient = attributionAdminClient(),
+) {
+  const connection = ref<AttributionConnectionView | null>(null)
+  const initialized = ref(false)
+  const error = ref('')
+  let pending: {
+    operation: 'save' | 'rollback' | 'disable'
+    connectionId: string
+    promise: Promise<AttributionConnectionView>
+  } | null = null
+
+  function initialize(value: AttributionConnectionView): void {
+    connection.value = value
+    initialized.value = true
+    error.value = ''
+  }
+
+  function saveRuntimePolicy(
+    connectionId: string,
+    input: SetRuntimePolicyRequest,
+  ): Promise<AttributionConnectionView> {
+    return runCommand(
+      'save',
+      connectionId,
+      'PATCH',
+      'runtime-policy',
+      input,
+    )
+  }
+
+  function rollback(
+    connectionId: string,
+  ): Promise<AttributionConnectionView> {
+    return runCommand('rollback', connectionId, 'POST', 'rollback')
+  }
+
+  function disable(
+    connectionId: string,
+  ): Promise<AttributionConnectionView> {
+    return runCommand('disable', connectionId, 'POST', 'disable')
+  }
+
+  function runCommand(
+    operationName: 'save' | 'rollback' | 'disable',
+    connectionId: string,
+    method: 'POST' | 'PATCH',
+    suffix: string,
+    body?: SetRuntimePolicyRequest,
+  ): Promise<AttributionConnectionView> {
+    const normalizedId = attributionConnectionId(connectionId)
+    if (
+      pending?.operation === operationName
+      && pending.connectionId === normalizedId
+    ) {
+      return pending.promise
+    }
+    if (
+      pending
+      || !initialized.value
+      || connection.value?.id !== normalizedId
+    ) {
+      return Promise.reject(attributionFormNotReady())
+    }
+
+    error.value = ''
+    let command!: Promise<AttributionConnectionView>
+    command = client.request<
+      AttributionAdminApiResponse<AttributionConnectionView>
+    >(
+      `${ATTRIBUTION_ADMIN_BASE}/connections/`
+      + `${encodeURIComponent(normalizedId)}/${suffix}`,
+      {
+        method,
+        headers: idempotencyHeaders(client),
+        ...(body === undefined ? {} : { body }),
+      },
+    ).then((result) => {
+      connection.value = result.data
+      return result.data
+    }).catch((cause) => {
+      error.value = resolveApiErrorMessage(
+        cause,
+        operationName === 'save'
+          ? '运行策略保存失败'
+          : operationName === 'rollback'
+            ? '连接回滚失败'
+            : '连接停用失败',
+      )
+      throw cause
+    }).finally(() => {
+      if (pending?.promise === command) pending = null
+    })
+    pending = {
+      operation: operationName,
+      connectionId: normalizedId,
+      promise: command,
+    }
+    return command
+  }
+
+  return {
+    connection,
+    runtime: computed(() => connection.value?.runtime ?? null),
+    initialized,
+    saving: computed(() => pending !== null),
+    canSave: computed(() => (
+      initialized.value
+      && pending === null
+      && connection.value !== null
+    )),
+    error,
+    initialize,
+    saveRuntimePolicy,
+    rollback,
+    disable,
+  }
+}
+
+export function useAttributionQuality(
+  client: AttributionAdminClient = attributionAdminClient(),
+) {
+  const rows = ref<AttributionQualityView[]>([])
+  const loading = ref(false)
+  const initialized = ref(false)
+  const error = ref('')
+  let requestRevision = 0
+
+  async function refresh(
+    query: AttributionQualityQuery = {},
+  ): Promise<AttributionQualityView[]> {
+    const revision = ++requestRevision
+    loading.value = true
+    error.value = ''
+    try {
+      const result = await client.request<
+        AttributionAdminApiResponse<AttributionQualityView[]>
+      >(`${ATTRIBUTION_ADMIN_BASE}/quality`, {
+        query: { ...query },
+      })
+      if (revision === requestRevision) {
+        rows.value = result.data
+        initialized.value = true
+      }
+      return result.data
+    } catch (cause) {
+      if (revision === requestRevision) {
+        initialized.value = false
+        error.value = resolveApiErrorMessage(
+          cause,
+          '归因质量加载失败',
+        )
+      }
+      throw cause
+    } finally {
+      if (revision === requestRevision) loading.value = false
+    }
+  }
+
+  return {
+    rows,
+    loading,
+    initialized,
+    error,
+    refresh,
+  }
+}
+
+function attributionAdminClient(): AttributionAdminClient {
+  const { api } = useApi()
+  return {
+    request<T>(path: string, options = {}) {
+      return api<T>(path, options)
+    },
+    createIdempotencyKey() {
+      return crypto.randomUUID()
+    },
+  }
+}
+
+function idempotencyHeaders(
+  client: AttributionAdminClient,
+): Record<string, string> {
+  const key = client.createIdempotencyKey().trim()
+  if (!/^[A-Za-z0-9:_-]{1,240}$/.test(key)) {
+    throw new Error('ATTRIBUTION_IDEMPOTENCY_KEY_UNAVAILABLE')
+  }
+  return { 'Idempotency-Key': key }
+}
+
+function attributionConnectionId(value: string): string {
+  const normalized = value.trim()
+  if (!/^[A-Za-z0-9:_-]{1,240}$/.test(normalized)) {
+    throw new Error('ATTRIBUTION_CONNECTION_ID_INVALID')
+  }
+  return normalized
+}
+
+function attributionFormNotReady(): Error {
+  return new Error('ATTRIBUTION_FORM_NOT_READY')
+}
+
+function upsertConnection(
+  connections: AttributionConnectionView[],
+  connection: AttributionConnectionView,
+): void {
+  const index = connections.findIndex(item => item.id === connection.id)
+  if (index < 0) {
+    connections.push(connection)
+    return
+  }
+  connections.splice(index, 1, connection)
 }
 
 export function useAdminAttributionPlatforms() {

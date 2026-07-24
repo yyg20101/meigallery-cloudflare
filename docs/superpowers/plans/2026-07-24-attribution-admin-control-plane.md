@@ -314,7 +314,7 @@ git commit -m "feat: 代理归因控制面并统一 Owner 鉴权"
 - Consumes: Task 1 的脱敏 View Model。
 - Produces: `useAttributionConnections()`、`useAttributionCandidate()`、`useAttributionRuntimePolicy()`、`useAttributionQuality()`。
 
-- [ ] **Step 1: 写异步初始化和并发失败测试**
+- [x] **Step 1: 写异步初始化和并发失败测试**
 
 ```ts
 it('加载完成前保存按钮保持禁用且不会提交空默认值', async () => {
@@ -336,7 +336,7 @@ it('重复点击保存复用同一个幂等键和 Promise', async () => {
 })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -346,7 +346,7 @@ corepack pnpm --filter @meigallery/web exec vitest run app/composables/useAdminA
 
 Expected: FAIL，旧 composable 不满足新接口。
 
-- [ ] **Step 3: 实现按命令拆分的 composable**
+- [x] **Step 3: 实现按命令拆分的 composable**
 
 身份保存 payload：
 
@@ -377,7 +377,7 @@ export interface SetRuntimePolicyRequest {
 
 两个 payload 类型和提交函数不得共享对象。每次新用户动作生成一个 UUID 幂等键；同一 pending Promise 内复用该键。
 
-- [ ] **Step 4: 运行 composable 测试**
+- [x] **Step 4: 运行 composable 测试**
 
 Run:
 
@@ -387,10 +387,24 @@ corepack pnpm --filter @meigallery/web exec vitest run app/composables/useAdminA
 
 Expected: PASS，加载前、错误后和重复点击均不会提交空配置。
 
-- [ ] **Step 5: 提交**
+实际结果：
+
+- 新控制面 composable、平台 Schema 和统一 API 请求头测试共 `20` 项通过。
+- Web 完整套件 `61` 个测试文件、`287` 项测试通过。
+- Web `vue-tsc --noEmit`、生产 Nuxt build 和 API TypeScript 检查通过。
+- 身份候选与运行策略使用不同类型和不同写命令；重复点击复用同一
+  Promise 与 `Idempotency-Key`。
+- Web 只通过 `/api/admin/attribution-runtime/*` 访问新的控制面；统一
+  `useApi` 在 CSR、SSR 和 Service Binding 请求中保留幂等键。
+
+- [x] **Step 5: 提交**
 
 ```bash
-git add packages/web/app/types/attribution-admin.ts packages/web/app/composables/useAdminAttribution* packages/web/app/utils/attributionPlatforms*
+git add packages/web/app/types/attribution-admin.ts \
+  packages/web/app/composables/useAdminAttribution* \
+  packages/web/app/composables/useApi* \
+  packages/web/app/utils/attributionPlatforms* \
+  docs/superpowers/plans/2026-07-24-attribution-admin-control-plane.md
 git commit -m "refactor: 分离归因后台写命令"
 ```
 
