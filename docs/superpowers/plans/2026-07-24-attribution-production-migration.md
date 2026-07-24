@@ -35,7 +35,7 @@ scripts/verify-attribution-cutover.mjs
 scripts/verify-attribution-cutover.test.mjs
 packages/api/migrations/0059_attribution_runtime_cutover.sql
 packages/api/migrations/0060_drop_legacy_attribution_runtime.sql
-packages/attribution/migrations/0003_runtime_state.sql
+packages/attribution/migrations/0004_runtime_state.sql
 packages/api/src/services/attribution-migration-export.ts
 packages/api/src/routes/admin/attribution-migration.ts
 packages/attribution/src/routes/migration.ts
@@ -122,19 +122,20 @@ Expected: dry-run 输出 `2 D1 / 6 Queues`；apply 输出每个资源 `created` 
 
 - [ ] **Step 5: 首次 shadow 部署后设置独立 Secret**
 
-首次执行时目标 Worker 尚不存在，`wrangler secret put` 不得用于隐式创建未知版本。
-本步骤与 Task 2 Step 4 连续执行：先部署默认 `shadow` 的 Worker，再立即通过标准输入
-设置三把 Secret，并重新部署、核验 `runtimeMode=shadow`。已有 Secret 只复用，不覆盖。
+首次执行时目标 Worker 尚不存在，`wrangler secret put` 不得逐次创建三个半配置版本。
+本步骤与 Task 2 Step 4 连续执行：先应用 D1 migration，再由一次性 bootstrap 工具把
+默认 `shadow` 代码和三把内存随机 Secret 原子部署到同一个版本。已有 Worker 时工具必须
+拒绝运行，已有 Secret 只复用、不覆盖。
 
 Run:
 
 ```bash
-openssl rand -base64 48 | corepack pnpm --filter @meigallery/attribution exec wrangler secret put ATTRIBUTION_CREDENTIAL_MASTER_KEY_CURRENT --env=""
-openssl rand -base64 48 | corepack pnpm --filter @meigallery/attribution exec wrangler secret put ATTRIBUTION_SIGNING_KEY_CURRENT --env=""
-openssl rand -base64 48 | corepack pnpm --filter @meigallery/attribution exec wrangler secret put ATTRIBUTION_DATA_ENCRYPTION_KEY_CURRENT --env=""
+node scripts/bootstrap-attribution-worker.mjs --dry-run
+node scripts/bootstrap-attribution-worker.mjs --apply
 ```
 
-Expected: Wrangler 分别输出 secret uploaded；终端不得回显 secret 值。
+Expected: Wrangler 只部署一个 `shadow` 版本并原子配置三个 Secret；终端不得回显
+secret 值。
 
 - [x] **Step 6: 提交非敏感资源配置**
 
@@ -146,8 +147,8 @@ git commit -m "deploy: 配置独立归因 Cloudflare 资源"
 ### Task 2: 部署暗模式 Attribution Worker
 
 **Files:**
-- Create: `packages/attribution/migrations/0003_runtime_state.sql`
-- Create: `packages/attribution/migrations/0003_runtime_state.test.mjs`
+- Create: `packages/attribution/migrations/0004_runtime_state.sql`
+- Create: `packages/attribution/migrations/0004_runtime_state.test.mjs`
 - Modify: `packages/attribution/src/env.ts`
 - Modify: `packages/attribution/src/index.ts`
 - Modify: `packages/attribution/wrangler.toml`
@@ -158,7 +159,7 @@ git commit -m "deploy: 配置独立归因 Cloudflare 资源"
 - Consumes: 独立资源和 Secret。
 - Produces: `runtimeMode='shadow'`，公共业务事件返回 `503 ATTRIBUTION_NOT_ACTIVE`，synthetic 验证可运行。
 
-- [ ] **Step 1: 写暗模式失败测试**
+- [x] **Step 1: 写暗模式失败测试**
 
 ```ts
 it('shadow 拒绝普通事实，bridge 只接受内部转发', async () => {
@@ -177,20 +178,20 @@ it('shadow 拒绝普通事实，bridge 只接受内部转发', async () => {
 })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
 ```bash
-node --test packages/attribution/migrations/0003_runtime_state.test.mjs
+node --test packages/attribution/migrations/0004_runtime_state.test.mjs
 corepack pnpm --filter @meigallery/attribution exec vitest run src/runtime-mode.test.ts
 ```
 
 Expected: 两条命令均 FAIL，运行时状态表和模式门禁尚未实现。
 
-- [ ] **Step 3: 实现运行时模式**
+- [x] **Step 3: 实现运行时模式**
 
-`0003_runtime_state.sql` 创建 Attribution D1 单行状态表；模式只保存在该表中，不使用环境或
+`0004_runtime_state.sql` 创建 Attribution D1 单行状态表；模式只保存在该表中，不使用环境或
 Git commit 决策：
 
 ```sql
@@ -228,13 +229,13 @@ corepack pnpm --filter @meigallery/attribution exec wrangler d1 migrations apply
 curl --fail https://track.616618.xyz/health
 ```
 
-Expected: `0003_runtime_state.sql` 只应用一次；Worker 部署成功；健康检查返回 `status=ok`
+Expected: `0004_runtime_state.sql` 只应用一次；Worker 部署成功；健康检查返回 `status=ok`
 和 `runtimeMode=shadow`。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
-git add packages/attribution/migrations/0003_runtime_state.sql packages/attribution/migrations/0003_runtime_state.test.mjs packages/attribution/src/env.ts packages/attribution/src/index.ts packages/attribution/src/runtime-mode.test.ts packages/attribution/wrangler.toml scripts/deploy-attribution.sh
+git add packages/attribution/migrations/0004_runtime_state.sql packages/attribution/migrations/0004_runtime_state.test.mjs packages/attribution/src/env.ts packages/attribution/src/index.ts packages/attribution/src/runtime-mode.test.ts packages/attribution/wrangler.toml scripts/deploy-attribution.sh
 git commit -m "deploy: 以暗模式发布独立归因运行时"
 ```
 

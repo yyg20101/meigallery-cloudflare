@@ -13,7 +13,7 @@ function createBindings(
     APP_ENV: 'local',
     ATTRIBUTION_PUBLIC_ORIGINS: 'http://localhost:3000',
     ATTRIBUTION_COOKIE_DOMAIN: '',
-    DB: {} as D1Database,
+    DB: activeRuntimeDb(),
     ATTRIBUTION_CREDENTIAL_MASTER_KEY_CURRENT:
       'test-credential-master-key-with-32-bytes',
     ATTRIBUTION_SIGNING_KEY_CURRENT:
@@ -33,7 +33,7 @@ function createBindings(
 }
 
 describe('attribution worker', () => {
-  it('健康检查不依赖业务 API', async () => {
+  it('健康检查读取 D1 运行模式但不依赖业务表', async () => {
     const response = await app.request('/health', {}, createBindings())
 
     expect(response.status).toBe(200)
@@ -41,6 +41,7 @@ describe('attribution worker', () => {
       service: 'meigallery-attribution',
       status: 'ok',
       contractVersion: 1,
+      runtimeMode: 'active',
     })
   })
 
@@ -193,3 +194,20 @@ describe('attribution worker', () => {
     })
   })
 })
+
+function activeRuntimeDb(): D1Database {
+  return {
+    prepare: (query: string) => ({
+      bind() {
+        return this
+      },
+      first: async () => query.includes('attribution_runtime_state')
+        ? {
+            mode: 'active',
+            activated_at: '2026-07-24T00:00:00.000Z',
+            updated_at: '2026-07-24T00:00:00.000Z',
+          }
+        : null,
+    }),
+  } as unknown as D1Database
+}

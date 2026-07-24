@@ -4,6 +4,9 @@ main = "src/index.ts"
 compatibility_date = "2026-05-26"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = false
+routes = [
+  { pattern = "track.616618.xyz", custom_domain = true }
+]
 
 [triggers]
 # 每 15 分钟执行完整恢复维护；每日 03:17 UTC 执行容量与质量日报。
@@ -75,6 +78,13 @@ max_retries = 3
 APP_ENV = "production"
 ATTRIBUTION_PUBLIC_ORIGINS = "https://616618.xyz,https://www.616618.xyz"
 ATTRIBUTION_COOKIE_DOMAIN = ".616618.xyz"
+
+[secrets]
+required = [
+  "ATTRIBUTION_CREDENTIAL_MASTER_KEY_CURRENT",
+  "ATTRIBUTION_SIGNING_KEY_CURRENT",
+  "ATTRIBUTION_DATA_ENCRYPTION_KEY_CURRENT",
+]
 
 [observability]
 enabled = true

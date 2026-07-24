@@ -164,8 +164,33 @@ node scripts/provision-attribution-resources.mjs --apply
 
 dev 只用于数据库迁移演练和代码逻辑验证，不创建或连接真实广告平台 Queue，不写入
 production 平台测试事件。production Secret 只能在默认 `shadow` 的 Attribution
-Worker 首次部署后通过 `wrangler secret put` 的标准输入设置；不得通过参数、文件、
-日志或后台响应传递明文。
+Worker 首次部署时通过一次性 bootstrap 工具原子设置：
+
+```bash
+node scripts/bootstrap-attribution-worker.mjs --dry-run
+node scripts/bootstrap-attribution-worker.mjs --apply
+```
+
+工具在内存中独立生成三把随机密钥，并通过 `/dev/stdin` 传入
+`wrangler deploy --secrets-file`，使代码和全部 Secret 进入同一个 `shadow` 版本。明文
+不得进入参数、磁盘文件、日志或后台响应。目标 Worker 已存在时工具必须拒绝执行，常规
+部署不得自动生成或轮换 Secret。
+
+首次部署只允许在 release 已合入且工作区为干净 `main` 后执行：
+
+```bash
+./scripts/deploy-attribution.sh production bootstrap
+```
+
+后续版本使用：
+
+```bash
+./scripts/deploy-attribution.sh production
+```
+
+两种模式都按 `test -> typecheck -> build -> D1 migration -> deploy -> health` 执行；
+健康检查必须返回 `status=ok` 与 `shadow|bridge|active` 中的数据库运行模式。部署脚本
+只发布代码，不自动改变模式，不读取 Git commit、revision 或部署 ID 来决定归因是否运行。
 
 Free 账户达到 D1 上限时禁止复用主 API D1。只能清理同时满足“已有仓库外备份、无表、
 无近期读写、无 Worker 绑定、无代码引用”的孤立数据库，或升级账户容量；无法证明时
