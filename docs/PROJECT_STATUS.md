@@ -83,7 +83,8 @@
 
 ## 规划
 
-- TikTok 继续完成真实广告来源下 Browser / Server 配对去重与 `10% -> 50% -> 100%` 观察；Google 仍需 production 凭证、转化操作、异步 request status 与分级 rollout 验收。
+- 独立 Attribution Worker、独立 D1/Queue、不可变候选版本和零中断激活架构已确认但尚未实施；迁移前保持现有 production Active 配置，禁止继续扩展旧连接保存模型。
+- TikTok 与 Google 的后续 production 验收纳入独立 Attribution Worker 迁移，不再在旧运行时增加平台专属流程。
 - 广告花费、campaign、ad set、ad 数据导入不属于当前 Pixel/Server API 同步范围。
 - Cloudflare Stream 视频链路和完整 zip 异步导入仍待实现。
 
@@ -94,6 +95,7 @@
 - `docs/DEPLOYMENT.md`：Cloudflare 资源和发布流程。
 - `docs/GIT_WORKFLOW.md`：分支、PR、tag 和 commit 规范。
 - `docs/AD_PLATFORM_ARCHITECTURE.md`：通用广告归因架构。
+- `docs/superpowers/specs/2026-07-24-attribution-runtime-isolation-design.md`：独立归因运行时、零中断版本切换与迁移的唯一目标设计。
 - `docs/UI_DATA_ANALYTICS_DASHBOARD.md`：后台数据分析看板口径。
 - `docs/TELEGRAM_IMPORT_API.md`：外部导入 API 契约。
 - `docs/SEO_CONFIGURATION.md`：SEO 配置。

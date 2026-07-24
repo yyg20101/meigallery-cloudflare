@@ -619,6 +619,8 @@ INSERT INTO site_settings (key, value) VALUES
 
 ### 转化账本与归因中心表 `[当前实现]`
 
+> 架构状态：本节记录当前 production 实现。独立 Attribution Worker、独立 D1/Queue、不可变候选版本和零中断激活已经完成设计确认，但尚未迁移上线；目标架构及迁移边界以 `docs/superpowers/specs/2026-07-24-attribution-runtime-isolation-design.md` 为唯一依据。实现期间禁止继续扩展当前“连接保存即换版本”的模型，也不得提前把目标能力标记为当前实现。
+
 归因中心把“站内可信事实”和“外部广告平台同步”分开维护：`attribution_conversion_facts` 是唯一事实源，Pixel / Server API 只是 delivery 渠道。后台 `/admin/analytics` 仍是一方行为分析大盘；广告来源、有效联系、完成注册、按平台投递、匹配覆盖和发布诊断统一放在 `/admin/attribution`。
 
 后台归因 UI 使用 `总览 / 平台连接 / 事件绑定 / 投递质量 / 验证记录 / 地区策略 / 审计日志` 七个主入口。平台选择通过 URL `provider` 显式传递，API 不提供隐式默认平台。连接的公开配置、事件映射和加密凭证必须在同一平台事务中保存；凭证明文不回显，平台 rollout 不由部署脚本自动修改。
