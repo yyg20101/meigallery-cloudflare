@@ -3,7 +3,13 @@ import { defineComponent } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
 import AttributionPageShell from './AttributionPageShell.vue'
 
-vi.stubGlobal('useRoute', () => ({ path: '/admin/attribution', query: { provider: 'meta' } }))
+vi.stubGlobal('useRoute', () => ({
+  path: '/admin/attribution',
+  query: {
+    provider: 'meta',
+    connectionId: 'conn_meta_a',
+  },
+}))
 vi.stubGlobal('formatAnalyticsNumber', (value: unknown) => String(value ?? 0))
 
 const nuxtLinkStub = defineComponent({
@@ -59,7 +65,7 @@ describe('AttributionPageShell', () => {
     expect(wrapper.text()).not.toContain('重复诊断')
   })
 
-  it('只在需要范围和平台上下文的标签保留对应 query', () => {
+  it('只在需要范围、平台和连接上下文的标签保留对应 query', () => {
     const wrapper = mount(AttributionPageShell, {
       props: {
         title: '归因中心',
@@ -72,7 +78,12 @@ describe('AttributionPageShell', () => {
     const delivery = wrapper.findAll('a').find(item => item.text() === '投递质量')
     expect(delivery?.attributes('data-to')).toBe(JSON.stringify({
       path: '/admin/attribution/deliveries',
-      query: { range: 'day', date: '2026-07-09', provider: 'meta' },
+      query: {
+        range: 'day',
+        date: '2026-07-09',
+        provider: 'meta',
+        connectionId: 'conn_meta_a',
+      },
     }))
     const connection = wrapper.findAll('a').find(item => item.text() === '连接')
     expect(connection?.attributes('data-to')).toBe(JSON.stringify({
@@ -82,7 +93,12 @@ describe('AttributionPageShell', () => {
     const audit = wrapper.findAll('a').find(item => item.text() === '审计日志')
     expect(audit?.attributes('data-to')).toBe(JSON.stringify({
       path: '/admin/attribution/audit',
-      query: { range: 'day', date: '2026-07-09' },
+      query: {
+        range: 'day',
+        date: '2026-07-09',
+        provider: 'meta',
+        connectionId: 'conn_meta_a',
+      },
     }))
   })
 })

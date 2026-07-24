@@ -89,17 +89,95 @@ export interface AttributionQualityView {
   availability: 'available' | 'unavailable' | 'error'
 }
 
+export interface AttributionDateRangeQuery {
+  dateFrom?: string
+  dateTo?: string
+  provider?: AttributionProvider
+  connectionId?: string
+  limit?: number
+}
+
+export interface AttributionOperationView {
+  date: string
+  provider: AttributionProvider | null
+  connectionId: string
+  connectionName: string
+  contactCount: number
+  completeRegistrationCount: number
+  factCount: number
+  attributedFactCount: number
+  unattributedFactCount: number
+  browserAttempted: number
+  serverPlanned: number
+  serverQueued: number
+  serverProcessed: number
+  serverRejected: number
+  serverDeadLetter: number
+}
+
+export type AttributionOperationMetrics = Omit<
+  AttributionOperationView,
+  'date' | 'provider' | 'connectionId' | 'connectionName'
+>
+
+export interface AttributionBindingView {
+  canonicalEvent: CanonicalConversionEvent
+  enabled: boolean
+  browserDestination: string
+  serverDestination: string
+}
+
+export interface AttributionConnectionBindingsView {
+  provider: AttributionProvider
+  connectionId: string
+  connectionName: string
+  active: {
+    state: 'active' | 'not_configured'
+    bindings: AttributionBindingView[]
+  }
+  candidate: null | {
+    state: 'candidate' | 'validating' | 'ready' | 'failed'
+    bindings: AttributionBindingView[]
+  }
+}
+
+export interface AttributionVerificationView {
+  provider: AttributionProvider
+  connectionId: string
+  connectionName: string
+  status: 'queued' | 'running' | 'verified' | 'failed' | 'timed_out'
+  failureCode: string
+  candidateChecked: boolean
+  pairedEventCount: number
+  createdAt: string
+  startedAt: string
+  completedAt: string
+}
+
 export type AttributionIncidentProvider =
   | AttributionProvider
   | 'cloudflare'
   | 'system'
 
 export interface AttributionIncidentQuery {
+  dateFrom?: string
+  dateTo?: string
   provider?: AttributionIncidentProvider
   connectionId?: string
   severity?: 'warning' | 'critical'
   status?: 'open' | 'resolved'
   limit?: number
+}
+
+export interface AttributionAuditView {
+  provider: AttributionProvider | null
+  connectionId: string
+  connectionName: string
+  actorId: number
+  commandType: string
+  outcome: string
+  summary: string
+  createdAt: string
 }
 
 export interface AttributionIncidentView {

@@ -303,6 +303,53 @@ describe('独立 Attribution Worker 管理路由', () => {
     })
     expect(await tableCount('attribution_connections')).toBe(0)
   })
+
+  it('运营读接口统一由独立 Worker 提供并严格校验日期', async () => {
+    const app = testApp(owner)
+    const operations = await app.request(
+      '/admin/attribution/operations'
+      + '?dateFrom=2026-07-24&dateTo=2026-07-24',
+      {},
+      bindings(),
+    )
+    const bindingsResponse = await app.request(
+      '/admin/attribution/bindings',
+      {},
+      bindings(),
+    )
+    const verifications = await app.request(
+      '/admin/attribution/verifications'
+      + '?dateFrom=2026-07-24&dateTo=2026-07-24',
+      {},
+      bindings(),
+    )
+    const audit = await app.request(
+      '/admin/attribution/audit'
+      + '?dateFrom=2026-07-24&dateTo=2026-07-24',
+      {},
+      bindings(),
+    )
+
+    expect(operations.status).toBe(200)
+    expect(await operations.json()).toEqual({ data: [] })
+    expect(bindingsResponse.status).toBe(200)
+    expect(await bindingsResponse.json()).toEqual({ data: [] })
+    expect(verifications.status).toBe(200)
+    expect(await verifications.json()).toEqual({ data: [] })
+    expect(audit.status).toBe(200)
+    expect(await audit.json()).toEqual({ data: [] })
+
+    const invalidDate = await app.request(
+      '/admin/attribution/operations'
+      + '?dateFrom=2026-99-99&dateTo=2026-07-24',
+      {},
+      bindings(),
+    )
+    expect(invalidDate.status).toBe(400)
+    expect(await invalidDate.json()).toMatchObject({
+      error: { code: 'ATTRIBUTION_REQUEST_INVALID' },
+    })
+  })
 })
 
 type TestEnvironment = {

@@ -16,6 +16,12 @@ import type {
   AttributionEnvironment,
 } from '../env'
 import {
+  listAdminAttributionAudit,
+} from '../read-models/admin-audit'
+import {
+  listAdminAttributionBindings,
+} from '../read-models/admin-bindings'
+import {
   listAdminAttributionConnections,
   readAdminAttributionConnection,
 } from '../read-models/admin-connections'
@@ -24,11 +30,17 @@ import {
   type AdminAttributionIncidentProvider,
 } from '../read-models/admin-incidents'
 import {
+  listAdminAttributionOperations,
+} from '../read-models/admin-operations'
+import {
   readAdminAttributionPrivacyPolicy,
 } from '../read-models/admin-privacy'
 import {
   listAdminAttributionQuality,
 } from '../read-models/admin-quality'
+import {
+  listAdminAttributionVerifications,
+} from '../read-models/admin-verifications'
 import { sha256Hex } from '../security/digest'
 import {
   createAttributionConnectionCommands,
@@ -355,10 +367,51 @@ export function createAdminAttributionRoutes(
     const limit = optionalLimit(c.req.query('limit'))
     return c.json({
       data: await listAdminAttributionQuality(c.env.DB, {
-        dateFrom: optionalQuery(c.req.query('dateFrom')),
-        dateTo: optionalQuery(c.req.query('dateTo')),
+        dateFrom: optionalDate(c.req.query('dateFrom')),
+        dateTo: optionalDate(c.req.query('dateTo')),
         provider: optionalProvider(c.req.query('provider')),
-        connectionId: optionalQuery(c.req.query('connectionId')),
+        connectionId: optionalIdentifier(
+          c.req.query('connectionId'),
+        ),
+        ...(limit === undefined ? {} : { limit }),
+      }),
+    })
+  })
+
+  routes.get('/operations', async (c) => {
+    return c.json({
+      data: await listAdminAttributionOperations(c.env.DB, {
+        dateFrom: requiredDate(c.req.query('dateFrom')),
+        dateTo: requiredDate(c.req.query('dateTo')),
+        provider: optionalProvider(c.req.query('provider')),
+        connectionId: optionalIdentifier(
+          c.req.query('connectionId'),
+        ),
+      }),
+    })
+  })
+
+  routes.get('/bindings', async (c) => {
+    return c.json({
+      data: await listAdminAttributionBindings(c.env.DB, {
+        provider: optionalProvider(c.req.query('provider')),
+        connectionId: optionalIdentifier(
+          c.req.query('connectionId'),
+        ),
+      }),
+    })
+  })
+
+  routes.get('/verifications', async (c) => {
+    const limit = optionalLimit(c.req.query('limit'))
+    return c.json({
+      data: await listAdminAttributionVerifications(c.env.DB, {
+        dateFrom: optionalDate(c.req.query('dateFrom')),
+        dateTo: optionalDate(c.req.query('dateTo')),
+        provider: optionalProvider(c.req.query('provider')),
+        connectionId: optionalIdentifier(
+          c.req.query('connectionId'),
+        ),
         ...(limit === undefined ? {} : { limit }),
       }),
     })
@@ -368,10 +421,29 @@ export function createAdminAttributionRoutes(
     const limit = optionalLimit(c.req.query('limit'))
     return c.json({
       data: await listAdminAttributionIncidents(c.env.DB, {
+        dateFrom: optionalDate(c.req.query('dateFrom')),
+        dateTo: optionalDate(c.req.query('dateTo')),
         provider: optionalIncidentProvider(c.req.query('provider')),
-        connectionId: optionalQuery(c.req.query('connectionId')),
+        connectionId: optionalIdentifier(
+          c.req.query('connectionId'),
+        ),
         severity: optionalSeverity(c.req.query('severity')),
         status: optionalIncidentStatus(c.req.query('status')),
+        ...(limit === undefined ? {} : { limit }),
+      }),
+    })
+  })
+
+  routes.get('/audit', async (c) => {
+    const limit = optionalLimit(c.req.query('limit'))
+    return c.json({
+      data: await listAdminAttributionAudit(c.env.DB, {
+        dateFrom: optionalDate(c.req.query('dateFrom')),
+        dateTo: optionalDate(c.req.query('dateTo')),
+        provider: optionalProvider(c.req.query('provider')),
+        connectionId: optionalIdentifier(
+          c.req.query('connectionId'),
+        ),
         ...(limit === undefined ? {} : { limit }),
       }),
     })
@@ -718,8 +790,31 @@ function booleanValue(value: unknown): boolean {
   return value
 }
 
-function optionalQuery(value: string | undefined): string | undefined {
-  return value === undefined || value === '' ? undefined : value
+function optionalIdentifier(
+  value: string | undefined,
+): string | undefined {
+  return value === undefined || value === ''
+    ? undefined
+    : identifier(value)
+}
+
+function optionalDate(value: string | undefined): string | undefined {
+  if (value === undefined || value === '') return undefined
+  return requiredDate(value)
+}
+
+function requiredDate(value: string | undefined): string {
+  if (value === undefined || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw routeError(400, 'ATTRIBUTION_REQUEST_INVALID')
+  }
+  const parsed = new Date(`${value}T00:00:00.000Z`)
+  if (
+    !Number.isFinite(parsed.getTime())
+    || parsed.toISOString().slice(0, 10) !== value
+  ) {
+    throw routeError(400, 'ATTRIBUTION_REQUEST_INVALID')
+  }
+  return value
 }
 
 function optionalProvider(

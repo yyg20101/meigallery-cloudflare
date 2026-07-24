@@ -32,14 +32,14 @@ const emit = defineEmits<{
 const route = useRoute()
 
 const tabs = [
-  { label: '总览', to: '/admin/attribution', range: true, provider: true },
-  { label: '连接', to: '/admin/attribution/connections', range: false, provider: true },
-  { label: '事件映射', to: '/admin/attribution/bindings', range: false, provider: true },
-  { label: '投递质量', to: '/admin/attribution/deliveries', range: true, provider: true },
-  { label: '验证记录', to: '/admin/attribution/verifications', range: true, provider: true },
-  { label: 'Incident', to: '/admin/attribution/incidents', range: false, provider: true },
-  { label: '地区策略', to: '/admin/attribution/privacy', range: false, provider: false },
-  { label: '审计日志', to: '/admin/attribution/audit', range: true, provider: false },
+  { label: '总览', to: '/admin/attribution', range: true, provider: true, connection: true },
+  { label: '连接', to: '/admin/attribution/connections', range: false, provider: true, connection: false },
+  { label: '事件映射', to: '/admin/attribution/bindings', range: false, provider: true, connection: true },
+  { label: '投递质量', to: '/admin/attribution/deliveries', range: true, provider: true, connection: true },
+  { label: '验证记录', to: '/admin/attribution/verifications', range: true, provider: true, connection: true },
+  { label: 'Incident', to: '/admin/attribution/incidents', range: true, provider: true, connection: true },
+  { label: '地区策略', to: '/admin/attribution/privacy', range: false, provider: false, connection: false },
+  { label: '审计日志', to: '/admin/attribution/audit', range: true, provider: true, connection: true },
 ]
 
 const currentProvider = computed(() => {
@@ -53,6 +53,16 @@ const currentProvider = computed(() => {
     : ''
 })
 
+const currentConnectionId = computed(() => {
+  const value = Array.isArray(route.query.connectionId)
+    ? route.query.connectionId[0]
+    : route.query.connectionId
+  return typeof value === 'string'
+    && /^[A-Za-z0-9:_-]{1,240}$/.test(value)
+    ? value
+    : ''
+})
+
 const tabLinks = computed(() => tabs.map(tab => ({
   ...tab,
   route: {
@@ -61,6 +71,9 @@ const tabLinks = computed(() => tabs.map(tab => ({
       ...(tab.range ? attributionRouteQuery(props.range, props.date || '') : {}),
       ...(tab.provider && currentProvider.value
         ? { provider: currentProvider.value }
+        : {}),
+      ...(tab.connection && currentConnectionId.value
+        ? { connectionId: currentConnectionId.value }
         : {}),
     },
   },

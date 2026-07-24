@@ -6,7 +6,7 @@ import type {
   CreateCandidateRequest,
 } from '~/types/attribution-admin'
 import {
-  attributionDuplicateRate,
+  attributionReadModelDateQuery,
   attributionRangeQuery,
   attributionRouteQuery,
   normalizeAttributionRangePreset,
@@ -32,8 +32,17 @@ describe('useAdminAttribution', () => {
     expect(normalizeAttributionRangePreset('unknown')).toBe('7d')
   })
 
-  it('重复率按 duplicate / total 计算', () => {
-    expect(attributionDuplicateRate(1, 99)).toBeCloseTo(0.01)
+  it('单日读模型查询只包含同一个北京时间自然日', () => {
+    expect(
+      attributionReadModelDateQuery(
+        'day',
+        '2026-07-09',
+        new Date('2026-07-24T01:00:00.000Z'),
+      ),
+    ).toEqual({
+      dateFrom: '2026-07-09',
+      dateTo: '2026-07-09',
+    })
   })
 })
 

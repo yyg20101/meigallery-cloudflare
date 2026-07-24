@@ -5,6 +5,8 @@ import { getProviderAdapter } from '../adapters/registry'
 import { AttributionDomainError } from '../domain/errors'
 
 export interface AdminAttributionIncidentQuery {
+  dateFrom?: string
+  dateTo?: string
   provider?: AdminAttributionIncidentProvider
   connectionId?: string
   severity?: 'warning' | 'critical'
@@ -81,6 +83,12 @@ export async function listAdminAttributionIncidents(
       AND (? IS NULL OR incident.connection_id = ?)
       AND (? IS NULL OR incident.severity = ?)
       AND (? IS NULL OR incident.status = ?)
+      AND (? IS NULL OR date(
+        datetime(incident.detected_at, '+8 hours')
+      ) >= ?)
+      AND (? IS NULL OR date(
+        datetime(incident.detected_at, '+8 hours')
+      ) <= ?)
     ORDER BY incident.detected_at DESC, incident.id DESC
     LIMIT ?
   `).bind(
@@ -92,6 +100,10 @@ export async function listAdminAttributionIncidents(
     filters.severity ?? null,
     filters.status ?? null,
     filters.status ?? null,
+    filters.dateFrom ?? null,
+    filters.dateFrom ?? null,
+    filters.dateTo ?? null,
+    filters.dateTo ?? null,
     filters.limit,
   ).all<IncidentRow>()
 
@@ -125,6 +137,9 @@ function normalizeIncidentQuery(
     ? undefined
     : parseAdminAttributionIncidentProvider(input.provider)
   const connectionId = normalizeText(input.connectionId)
+  const dateFrom = normalizeDate(input.dateFrom)
+  const dateTo = normalizeDate(input.dateTo)
+  if (dateFrom && dateTo && dateFrom > dateTo) throw queryInvalid()
   if (
     input.severity !== undefined
     && input.severity !== 'warning'
@@ -146,10 +161,25 @@ function normalizeIncidentQuery(
   return {
     provider,
     connectionId,
+    dateFrom,
+    dateTo,
     severity: input.severity,
     status: input.status,
     limit,
   }
+}
+
+function normalizeDate(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw queryInvalid()
+  const parsed = new Date(`${value}T00:00:00.000Z`)
+  if (
+    !Number.isFinite(parsed.getTime())
+    || parsed.toISOString().slice(0, 10) !== value
+  ) {
+    throw queryInvalid()
+  }
+  return value
 }
 
 export function parseAdminAttributionIncidentProvider(

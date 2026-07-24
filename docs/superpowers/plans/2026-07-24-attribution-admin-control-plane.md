@@ -557,7 +557,7 @@ git commit -m "feat: 重构归因连接与运行控制页面"
 - Consumes: 归因读模型的聚合指标。
 - Produces: 可按日期和 provider/connection 筛选的运营视图。
 
-- [ ] **Step 1: 写指标口径失败测试**
+- [x] **Step 1: 写指标口径失败测试**
 
 ```ts
 it('业务事实与投递状态分开展示', () => {
@@ -584,7 +584,7 @@ it('地区策略明确区分事先同意和告知退出地区', () => {
 })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -594,7 +594,7 @@ corepack pnpm --filter @meigallery/web exec vitest run app/pages/admin/attributi
 
 Expected: FAIL，新指标组件尚未实现。
 
-- [ ] **Step 3: 实现运营视图**
+- [x] **Step 3: 实现运营视图**
 
 日期筛选继续支持 `7 天`、`30 天`、`90 天` 和 `单日`。漏斗顺序固定为：
 
@@ -609,7 +609,7 @@ Expected: FAIL，新指标组件尚未实现。
 回到连接详情并创建完整候选。所有运营页统一使用 `AttributionConnectionFilter`，不再以 provider
 作为唯一筛选主键。旧转化页、readiness 页、ProviderSwitch 和 readiness serializer 同任务删除。
 
-- [ ] **Step 4: 运行页面测试**
+- [x] **Step 4: 运行页面测试**
 
 Run:
 
@@ -619,7 +619,14 @@ corepack pnpm --filter @meigallery/web exec vitest run app/pages/admin/attributi
 
 Expected: PASS，单日查询只展示该自然日数据。
 
-- [ ] **Step 5: 提交**
+Result: Web 完整套件 `60` 个测试文件、`286` 项测试通过；Attribution
+完整套件 `41` 个测试文件、`289` 项测试通过。API、Attribution、Web
+类型检查和 Nuxt 生产构建通过；新增 D1 测试确认 synthetic 事实不会进入运营
+数据，Incident 单日筛选使用北京时间自然日。后台运行时代码已无旧
+`/api/admin/attribution/platforms`、readiness 页面或 provider-only
+编辑组件引用。
+
+- [x] **Step 5: 提交**
 
 ```bash
 git add packages/web/app/pages/admin/attribution packages/web/app/components/admin/attribution
