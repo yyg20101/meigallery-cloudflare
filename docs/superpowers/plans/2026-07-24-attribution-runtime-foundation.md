@@ -225,7 +225,7 @@ git commit -m "feat: 建立归因运行时版本化契约"
 - Consumes: `@meigallery/shared` 契约。
 - Produces: 独立 Worker `app`、`AttributionBindings` 和 `/health`。
 
-- [ ] **Step 1: 写 Worker 失败测试**
+- [x] **Step 1: 写 Worker 失败测试**
 
 ```ts
 import { describe, expect, it } from 'vitest'
@@ -251,7 +251,7 @@ describe('attribution worker', () => {
 })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -261,7 +261,7 @@ corepack pnpm --filter @meigallery/attribution test
 
 Expected: FAIL，workspace 中尚不存在 `@meigallery/attribution`。
 
-- [ ] **Step 3: 创建包与 Worker**
+- [x] **Step 3: 创建包与 Worker**
 
 `packages/attribution/package.json`：
 
@@ -362,7 +362,7 @@ database ID 原子替换该值。
 `616618.xyz`、`localhost:3000` 或基于 `APP_ENV` 选择域名的条件分支。启动时解析并校验
 `ATTRIBUTION_PUBLIC_ORIGINS`；空值、非法 URL、通配符或生产环境空 Cookie domain 必须 fail closed。
 
-- [ ] **Step 4: 安装 workspace lockfile 并验证**
+- [x] **Step 4: 安装 workspace lockfile 并验证**
 
 Run:
 
@@ -374,7 +374,7 @@ corepack pnpm --filter @meigallery/attribution typecheck
 
 Expected: 健康检查 PASS，类型检查退出码为 `0`。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add packages/attribution pnpm-lock.yaml

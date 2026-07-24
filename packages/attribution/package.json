@@ -1,0 +1,24 @@
+{
+  "name": "@meigallery/attribution",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "build": "wrangler deploy --env=\"\" --dry-run --outdir=dist",
+    "deploy": "wrangler deploy --env=\"\"",
+    "dev": "wrangler dev"
+  },
+  "dependencies": {
+    "@meigallery/shared": "workspace:*",
+    "hono": "^4.12.29"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260712.1",
+    "miniflare": "4.20260708.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10",
+    "wrangler": "^4.110.0"
+  }
+}

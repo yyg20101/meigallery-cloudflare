@@ -1,0 +1,45 @@
+# MeiGallery 独立归因 Worker
+name = "meigallery-attribution"
+main = "src/index.ts"
+compatibility_date = "2026-05-26"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+
+[[d1_databases]]
+binding = "DB"
+database_name = "meigallery-attribution-db"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+[vars]
+APP_ENV = "production"
+ATTRIBUTION_PUBLIC_ORIGINS = "https://616618.xyz,https://www.616618.xyz"
+ATTRIBUTION_COOKIE_DOMAIN = ".616618.xyz"
+
+[observability]
+enabled = true
+head_sampling_rate = 0.05
+
+[env.dev]
+name = "meigallery-attribution-dev"
+workers_dev = true
+
+[[env.dev.d1_databases]]
+binding = "DB"
+database_name = "meigallery-attribution-db-dev"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+[env.dev.vars]
+APP_ENV = "dev"
+ATTRIBUTION_PUBLIC_ORIGINS = "http://localhost:3000"
+ATTRIBUTION_COOKIE_DOMAIN = ""
+
+[env.dev.observability]
+enabled = true
+head_sampling_rate = 0.1
+
+# 敏感变量必须通过 wrangler secret put 设置：
+# ATTRIBUTION_CREDENTIAL_MASTER_KEY_CURRENT
+# ATTRIBUTION_CREDENTIAL_MASTER_KEY_PREVIOUS（仅密钥轮换窗口）
+# ATTRIBUTION_SIGNING_KEY
