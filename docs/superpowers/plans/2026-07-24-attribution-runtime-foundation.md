@@ -392,7 +392,7 @@ git commit -m "feat: 创建独立归因 Worker"
 - Consumes: Task 1 的状态枚举。
 - Produces: 连接、版本、凭证、映射、运行策略、幂等回执、审计和 Incident 的唯一新 Schema。
 
-- [ ] **Step 1: 写 Schema 失败测试**
+- [x] **Step 1: 写 Schema 失败测试**
 
 ```js
 import assert from 'node:assert/strict'
@@ -416,7 +416,7 @@ test('基线 Schema 不包含 Git 或旧 revision 门禁', () => {
 })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -426,7 +426,7 @@ node --test packages/attribution/migrations/0001_attribution_runtime.test.mjs
 
 Expected: FAIL，迁移文件不存在。
 
-- [ ] **Step 3: 编写基线迁移**
+- [x] **Step 3: 编写基线迁移**
 
 迁移必须包含以下核心约束，字段名保持一致：
 
@@ -541,7 +541,7 @@ CREATE TABLE attribution_incidents (
 );
 ```
 
-- [ ] **Step 4: 运行 Schema 测试和本地迁移**
+- [x] **Step 4: 运行 Schema 测试和本地迁移**
 
 Run:
 
@@ -552,7 +552,7 @@ corepack pnpm --filter @meigallery/attribution exec wrangler d1 migrations apply
 
 Expected: 测试 PASS，Wrangler 输出 `1 migration applied`。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add packages/attribution/migrations packages/attribution/src/test
