@@ -1,3 +1,6 @@
+import type { AttributionProvider } from '@meigallery/shared'
+import type { AttributionQueueMessage } from './domain/queue'
+import { isAllowedAttributionOrigin } from './domain/origin-policy'
 import type { AttributionEncryptionKeys } from './security/data-envelope'
 import type { AttributionSigningKeys } from './security/signed-token'
 
@@ -14,6 +17,9 @@ export interface AttributionBindings {
   ATTRIBUTION_SIGNING_KEY_PREVIOUS?: string
   ATTRIBUTION_DATA_ENCRYPTION_KEY_CURRENT: string
   ATTRIBUTION_DATA_ENCRYPTION_KEY_PREVIOUS?: string
+  META_QUEUE: Queue<AttributionQueueMessage>
+  TIKTOK_QUEUE: Queue<AttributionQueueMessage>
+  GOOGLE_QUEUE: Queue<AttributionQueueMessage>
 }
 
 export interface AttributionEnvironment {
@@ -23,6 +29,9 @@ export interface AttributionEnvironment {
   credentialMasterKeys: AttributionEncryptionKeys
   signingKeys: AttributionSigningKeys
   dataEncryptionKeys: AttributionEncryptionKeys
+  queues: Readonly<
+    Record<AttributionProvider, Queue<AttributionQueueMessage>>
+  >
 }
 
 const APP_ENVIRONMENTS = new Set<AttributionAppEnvironment>([
@@ -56,7 +65,10 @@ function optionalSecret(
   return normalized
 }
 
-function parsePublicOrigins(value: string): readonly string[] {
+function parsePublicOrigins(
+  value: string,
+  appEnvironment: AttributionAppEnvironment,
+): readonly string[] {
   const values = value
     .split(',')
     .map(origin => origin.trim())
@@ -79,7 +91,7 @@ function parsePublicOrigins(value: string): readonly string[] {
     }
 
     if (
-      !['http:', 'https:'].includes(url.protocol)
+      !isAllowedAttributionOrigin(url, appEnvironment)
       || url.username
       || url.password
       || url.pathname !== '/'
@@ -121,6 +133,16 @@ function parseCookieDomain(
   return `.${hostname}`
 }
 
+function requireQueue(
+  value: Queue<AttributionQueueMessage> | undefined,
+  name: string,
+): Queue<AttributionQueueMessage> {
+  if (!value || typeof value.send !== 'function') {
+    throw new Error(`${name}_REQUIRED`)
+  }
+  return value
+}
+
 export function parseAttributionEnvironment(
   bindings: AttributionBindings,
 ): AttributionEnvironment {
@@ -133,7 +155,10 @@ export function parseAttributionEnvironment(
 
   return {
     appEnvironment: bindings.APP_ENV,
-    publicOrigins: parsePublicOrigins(bindings.ATTRIBUTION_PUBLIC_ORIGINS),
+    publicOrigins: parsePublicOrigins(
+      bindings.ATTRIBUTION_PUBLIC_ORIGINS,
+      bindings.APP_ENV,
+    ),
     cookieDomain: parseCookieDomain(
       bindings.ATTRIBUTION_COOKIE_DOMAIN,
       bindings.APP_ENV,
@@ -167,6 +192,11 @@ export function parseAttributionEnvironment(
         bindings.ATTRIBUTION_DATA_ENCRYPTION_KEY_PREVIOUS,
         'ATTRIBUTION_DATA_ENCRYPTION_KEY_PREVIOUS',
       ),
+    },
+    queues: {
+      meta: requireQueue(bindings.META_QUEUE, 'META_QUEUE'),
+      tiktok: requireQueue(bindings.TIKTOK_QUEUE, 'TIKTOK_QUEUE'),
+      google: requireQueue(bindings.GOOGLE_QUEUE, 'GOOGLE_QUEUE'),
     },
   }
 }

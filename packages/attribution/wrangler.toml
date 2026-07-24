@@ -6,14 +6,65 @@ compatibility_flags = ["nodejs_compat"]
 workers_dev = false
 
 [triggers]
-# 每日 03:17 UTC 执行凭证保留维护，避开整点集中调度。
-crons = ["17 3 * * *"]
+# 每 5 分钟恢复 D1 Outbox；每日 03:17 UTC 清理到期凭证。
+crons = ["*/5 * * * *", "17 3 * * *"]
 
 [[d1_databases]]
 binding = "DB"
 database_name = "meigallery-attribution-db"
 database_id = "00000000-0000-0000-0000-000000000000"
 migrations_dir = "migrations"
+
+[[queues.producers]]
+binding = "META_QUEUE"
+queue = "meigallery-attribution-meta"
+
+[[queues.producers]]
+binding = "TIKTOK_QUEUE"
+queue = "meigallery-attribution-tiktok"
+
+[[queues.producers]]
+binding = "GOOGLE_QUEUE"
+queue = "meigallery-attribution-google"
+
+[[queues.consumers]]
+queue = "meigallery-attribution-meta"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "meigallery-attribution-meta-dlq"
+
+[[queues.consumers]]
+queue = "meigallery-attribution-tiktok"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "meigallery-attribution-tiktok-dlq"
+
+[[queues.consumers]]
+queue = "meigallery-attribution-google"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "meigallery-attribution-google-dlq"
+
+[[queues.consumers]]
+queue = "meigallery-attribution-meta-dlq"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 3
+
+[[queues.consumers]]
+queue = "meigallery-attribution-tiktok-dlq"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 3
+
+[[queues.consumers]]
+queue = "meigallery-attribution-google-dlq"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 3
 
 [vars]
 APP_ENV = "production"
@@ -36,6 +87,57 @@ binding = "DB"
 database_name = "meigallery-attribution-db-dev"
 database_id = "00000000-0000-0000-0000-000000000000"
 migrations_dir = "migrations"
+
+[[env.dev.queues.producers]]
+binding = "META_QUEUE"
+queue = "meigallery-attribution-meta-dev"
+
+[[env.dev.queues.producers]]
+binding = "TIKTOK_QUEUE"
+queue = "meigallery-attribution-tiktok-dev"
+
+[[env.dev.queues.producers]]
+binding = "GOOGLE_QUEUE"
+queue = "meigallery-attribution-google-dev"
+
+[[env.dev.queues.consumers]]
+queue = "meigallery-attribution-meta-dev"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "meigallery-attribution-meta-dev-dlq"
+
+[[env.dev.queues.consumers]]
+queue = "meigallery-attribution-tiktok-dev"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "meigallery-attribution-tiktok-dev-dlq"
+
+[[env.dev.queues.consumers]]
+queue = "meigallery-attribution-google-dev"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "meigallery-attribution-google-dev-dlq"
+
+[[env.dev.queues.consumers]]
+queue = "meigallery-attribution-meta-dev-dlq"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 3
+
+[[env.dev.queues.consumers]]
+queue = "meigallery-attribution-tiktok-dev-dlq"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 3
+
+[[env.dev.queues.consumers]]
+queue = "meigallery-attribution-google-dev-dlq"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 3
 
 [env.dev.vars]
 APP_ENV = "dev"

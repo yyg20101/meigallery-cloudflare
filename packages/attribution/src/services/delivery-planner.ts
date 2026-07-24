@@ -4,7 +4,7 @@ import type {
 } from '@meigallery/shared'
 import type { AttributionRuntimePolicy } from '../domain/connection'
 import { AttributionDomainError } from '../domain/errors'
-import { sha256Hex } from '../security/digest'
+import { isServerRolloutEligible } from './server-rollout'
 
 export interface DeliveryPlanBinding {
   enabled: boolean
@@ -65,7 +65,14 @@ export async function planDeliveries(
     && input.runtimePolicy.circuitState === 'closed'
     && input.runtimePolicy.serverEffectivePercentage > 0
     && input.binding.serverDestination.length > 0
-    && await isInServerBucket(input)
+    && await isServerRolloutEligible({
+      provider: input.provider,
+      connectionId: input.connectionId,
+      versionId: input.versionId,
+      externalEventId: input.externalEventId,
+      effectivePercentage:
+        input.runtimePolicy.serverEffectivePercentage,
+    })
   ) {
     planned.push({
       provider: input.provider,
@@ -74,21 +81,6 @@ export async function planDeliveries(
     })
   }
   return planned
-}
-
-async function isInServerBucket(
-  input: DeliveryPlanInput,
-): Promise<boolean> {
-  if (input.runtimePolicy.serverEffectivePercentage === 100) return true
-  const digest = await sha256Hex([
-    'delivery-bucket:v1',
-    input.provider,
-    input.connectionId,
-    input.versionId,
-    input.externalEventId,
-  ].join(':'))
-  const bucket = Number.parseInt(digest.slice(0, 8), 16) % 100
-  return bucket < input.runtimePolicy.serverEffectivePercentage
 }
 
 function validateInput(input: DeliveryPlanInput): void {

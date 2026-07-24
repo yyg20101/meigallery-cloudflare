@@ -22,6 +22,7 @@ export interface AttributionBusinessEventV1 {
   eventId: string
   eventName: CanonicalConversionEvent
   occurredAt: string
+  pagePath: string
   dedupeKey: string
   sourceContextToken: string | null
   consent: {
@@ -71,6 +72,7 @@ export function isAttributionBusinessEventV1(
     'eventId',
     'eventName',
     'occurredAt',
+    'pagePath',
     'dedupeKey',
     'sourceContextToken',
     'consent',
@@ -83,6 +85,7 @@ export function isAttributionBusinessEventV1(
     && isIdentifier(value.dedupeKey, 240)
     && typeof value.occurredAt === 'string'
     && Number.isFinite(Date.parse(value.occurredAt))
+    && isSafePagePath(value.pagePath)
     && (value.sourceContextToken === null || isNonEmptyText(value.sourceContextToken, 4_096))
     && isConsentV1(value.consent)
     && isCanonicalPayload(value.eventName, value.payload)
@@ -149,4 +152,27 @@ function isNonEmptyText(value: unknown, maximum: number) {
     && value.trim().length > 0
     && value.length <= maximum
     && !/\p{Cc}/u.test(value)
+}
+
+function isSafePagePath(value: unknown) {
+  if (
+    typeof value !== 'string'
+    || value.length === 0
+    || value.length > 2_048
+    || !value.startsWith('/')
+    || value.startsWith('//')
+    || value.includes('\\')
+    || value.includes('#')
+    || /\p{Cc}/u.test(value)
+  ) {
+    return false
+  }
+  try {
+    const base = new URL('https://attribution.invalid/')
+    const resolved = new URL(value, base)
+    return resolved.origin === base.origin
+      && `${resolved.pathname}${resolved.search}` === value
+  } catch {
+    return false
+  }
 }

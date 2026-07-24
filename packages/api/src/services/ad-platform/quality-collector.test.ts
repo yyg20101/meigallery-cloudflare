@@ -35,7 +35,7 @@ beforeEach(() => {
     state: 'ready',
     connection: {
       id: 'conn_meta', provider: 'meta', enabled: true, mode: 'production',
-      publicConfig: { pixelId: '1277657707436781' }, credentialRevision: 'credential_revision',
+      publicConfig: { pixelId: '1234567890123456' }, credentialRevision: 'credential_revision',
     },
   })
   mocks.readCredential.mockResolvedValue('private-token')

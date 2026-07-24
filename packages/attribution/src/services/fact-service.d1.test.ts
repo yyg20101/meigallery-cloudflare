@@ -194,6 +194,20 @@ describe('Canonical Fact 与原子投递', () => {
     )).rejects.toThrow('ATTRIBUTION_IDEMPOTENCY_CONFLICT')
   })
 
+  it('同一 dedupe key 但页面路径不同也拒绝覆盖既有事实', async () => {
+    const input = await attributedContact()
+    await recordCanonicalFact(environment(), input.event, input.options)
+
+    await expect(recordCanonicalFact(
+      environment(),
+      {
+        ...input.event,
+        pagePath: '/gallery/another-contact',
+      },
+      input.options,
+    )).rejects.toThrow('ATTRIBUTION_IDEMPOTENCY_CONFLICT')
+  })
+
   it('同一业务 event id 不允许以不同 dedupe key 创建第二事实', async () => {
     const input = await attributedContact()
     await recordCanonicalFact(environment(), input.event, input.options)
@@ -438,6 +452,7 @@ function contactEvent(): AttributionBusinessEventV1 {
     eventId: 'evt_contact_01',
     eventName: 'Contact',
     occurredAt: fixedNow.toISOString(),
+    pagePath: '/gallery/contact-test',
     dedupeKey: 'contact:session-1:telegram:contact-1',
     sourceContextToken: null,
     consent: {
@@ -459,6 +474,7 @@ function registrationEvent(): AttributionBusinessEventV1 {
     eventId: 'evt_registration_01',
     eventName: 'CompleteRegistration',
     occurredAt: fixedNow.toISOString(),
+    pagePath: '/register',
     dedupeKey: 'complete_registration:user:1001',
     sourceContextToken: null,
     consent: {

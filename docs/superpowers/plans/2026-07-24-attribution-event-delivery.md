@@ -697,9 +697,15 @@ Attribution/API TypeScript、Attribution Worker dry-run 和 Web production build
 - Create: `packages/attribution/src/services/secure-outbox.ts`
 - Create: `packages/attribution/src/services/secure-outbox.test.ts`
 - Create: `packages/attribution/src/services/queue-consumer.ts`
-- Create: `packages/attribution/src/services/queue-consumer.d1.test.ts`
+- Create: `packages/attribution/src/services/queue-consumer.test.ts`
+- Create: `packages/attribution/src/services/queue-contract.ts`
+- Create: `packages/attribution/src/services/queue-snapshot.ts`
+- Create: `packages/attribution/src/services/queue-repository.ts`
+- Create: `packages/attribution/src/services/queue-types.ts`
 - Create: `packages/attribution/src/services/circuit-breaker.ts`
 - Create: `packages/attribution/src/services/circuit-breaker.test.ts`
+- Create: `packages/attribution/src/services/server-rollout.ts`
+- Create: `packages/attribution/migrations/0003_queue_runtime.sql`
 - Modify: `packages/attribution/src/env.ts`
 - Modify: `packages/attribution/src/index.ts`
 - Modify: `packages/attribution/wrangler.toml`
@@ -708,7 +714,7 @@ Attribution/API TypeScript、Attribution Worker dry-run 和 Web production build
 - Consumes: Server delivery outbox 和 Provider Adapter。
 - Produces: 平台专属 Queue consumer、DLQ、D1 恢复和 Server-only circuit。
 
-- [ ] **Step 1: 写 Queue 故障测试**
+- [x] **Step 1: 写 Queue 故障测试**
 
 ```ts
 it('TikTok consumer 拒绝 Meta 消息', async () => {
@@ -727,7 +733,7 @@ it('连续瞬时错误只打开 Server 熔断', async () => {
 })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -737,7 +743,7 @@ corepack pnpm --filter @meigallery/attribution exec vitest run src/services/secu
 
 Expected: FAIL，Queue 服务不存在。
 
-- [ ] **Step 3: 实现三条物理 Queue**
+- [x] **Step 3: 实现三条物理 Queue**
 
 绑定名称固定为：
 
@@ -757,7 +763,7 @@ queue = "meigallery-attribution-google"
 
 每条 Queue 配置对应 DLQ。consumer 先比较物理 provider、消息 provider、delivery provider 和 version provider，四者不一致立即拒绝并创建 critical Incident。429、5xx、网络超时分类为 transient；权限、目标资源不匹配和 payload schema 错误分类为 deterministic。
 
-- [ ] **Step 4: 运行 Queue、恢复和熔断测试**
+- [x] **Step 4: 运行 Queue、恢复和熔断测试**
 
 Run:
 
@@ -767,12 +773,24 @@ corepack pnpm --filter @meigallery/attribution exec vitest run src/services/secu
 
 Expected: PASS；D1 outbox 可在 Queue 消息过期后复投，复投仍使用原 `external_event_id`。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add packages/attribution/src packages/attribution/wrangler.toml
 git commit -m "feat: 隔离归因平台队列与服务端熔断"
 ```
+
+Result: Attribution 全量 `30` 个测试文件、`180` 项测试通过，
+三份 migration 的 `4` 项约束测试、Shared 事件契约、Attribution/API
+TypeScript 和 Web production build 均通过；production/dev Wrangler
+dry-run 分别只绑定各自的 Meta、TikTok、Google Queue。Queue 消息只含
+`provider + deliveryId`，D1 保留加密 outbox 恢复依据；物理 Queue、消息、
+Delivery、Fact、Connection、Version、Outbox 和 Credential 的 provider
+不一致时零平台调用并创建 critical Incident。rollout 降低立即取消未发送
+Server Delivery，Server circuit 打开仅暂停 Server 并保留 outbox，Browser
+保持启用。production 仅接受 HTTPS 站点；dev/local 仅允许回环 HTTP 且必须
+显式注入 Mock Adapter，未注入时拒绝投递，绝不调用真实平台。本阶段仅形成
+本地提交，未部署独立 Worker，production 保持不变。
 
 ### Task 7: 实现全链路候选验证和自动激活
 

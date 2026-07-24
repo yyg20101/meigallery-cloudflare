@@ -5,7 +5,9 @@ import {
   type AttributionBindings,
   type AttributionEnvironment,
 } from './env'
+import type { AttributionQueueMessage } from './domain/queue'
 import { runAttributionMaintenance } from './scheduled'
+import { consumeAttributionQueue } from './services/queue-consumer'
 
 interface AttributionVariables {
   attributionEnvironment: AttributionEnvironment
@@ -42,8 +44,36 @@ export default {
     return app.fetch(request, env, ctx)
   },
   scheduled(controller, env, ctx) {
+    let parsed: AttributionEnvironment
+    try {
+      parsed = parseAttributionEnvironment(env)
+    } catch {
+      return
+    }
+    const task = controller.cron === '17 3 * * *'
+      ? 'credentials'
+      : 'queue'
     ctx.waitUntil(
-      runAttributionMaintenance(env, new Date(controller.scheduledTime)),
+      runAttributionMaintenance({
+        db: env.DB,
+        queues: parsed.queues,
+      }, new Date(controller.scheduledTime), task),
     )
   },
-} satisfies ExportedHandler<AttributionBindings>
+  async queue(batch, env) {
+    let parsed: AttributionEnvironment
+    try {
+      parsed = parseAttributionEnvironment(env)
+    } catch {
+      batch.retryAll({ delaySeconds: 300 })
+      return
+    }
+    await consumeAttributionQueue(batch, {
+      db: env.DB,
+      appEnvironment: parsed.appEnvironment,
+      publicOrigins: parsed.publicOrigins,
+      credentialMasterKeys: parsed.credentialMasterKeys,
+      dataEncryptionKeys: parsed.dataEncryptionKeys,
+    })
+  },
+} satisfies ExportedHandler<AttributionBindings, AttributionQueueMessage>

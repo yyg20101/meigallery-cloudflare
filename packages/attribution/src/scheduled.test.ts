@@ -4,10 +4,11 @@ import { Miniflare } from 'miniflare'
 import { clearAttributionRuntimeDatabase } from './test/attribution-schema'
 import { runAttributionMaintenance } from './scheduled'
 
-const MIGRATION = readFileSync(
-  new URL('../migrations/0001_attribution_runtime.sql', import.meta.url),
-  'utf8',
-)
+const MIGRATIONS = [
+  '../migrations/0001_attribution_runtime.sql',
+  '../migrations/0002_event_delivery.sql',
+  '../migrations/0003_queue_runtime.sql',
+].map(path => readFileSync(new URL(path, import.meta.url), 'utf8'))
 
 let miniflare: Miniflare
 let db: D1Database
@@ -20,7 +21,9 @@ beforeAll(async () => {
     d1Databases: { DB: 'scheduled-maintenance' },
   })
   db = (await miniflare.getBindings<{ DB: D1Database }>()).DB
-  await db.exec(MIGRATION.replace(/\s*\r?\n\s*/g, ' '))
+  for (const migration of MIGRATIONS) {
+    await db.exec(migration.replace(/\s*\r?\n\s*/g, ' '))
+  }
 })
 
 afterAll(async () => {
@@ -54,15 +57,33 @@ it('定时维护只清除到期 retired 凭证并保留 Active 与 Draining', as
   })
 
   const result = await runAttributionMaintenance(
-    { DB: db },
+    {
+      db,
+      queues: {
+        meta: queue(),
+        tiktok: queue(),
+        google: queue(),
+      },
+    },
     new Date('2026-07-24T00:00:00.000Z'),
+    'credentials',
   )
 
-  expect(result).toEqual({ deleted: 1, scheduled: 0 })
+  expect(result).toEqual({
+    credentialRetention: { deleted: 1, scheduled: 0 },
+    outboxRecovery: null,
+    expiredOutbox: null,
+  })
   expect(await credentialExists(db, 'ver_active')).toBe(true)
   expect(await credentialExists(db, 'ver_draining')).toBe(true)
   expect(await credentialExists(db, 'ver_retired')).toBe(false)
 })
+
+function queue() {
+  return {
+    send: async () => undefined,
+  } as unknown as Queue<never>
+}
 
 async function seedCredentialVersion(
   database: D1Database,

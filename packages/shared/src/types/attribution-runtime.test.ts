@@ -12,6 +12,7 @@ describe('归因运行时共享契约', () => {
       eventId: 'evt_01',
       eventName: 'Contact',
       occurredAt: '2026-07-24T00:00:00.000Z',
+      pagePath: '/gallery/example?ref=contact',
       dedupeKey: 'contact:s1:telegram:c1',
       sourceContextToken: 'ctx_token',
       consent: {
@@ -32,6 +33,14 @@ describe('归因运行时共享契约', () => {
     expect(isAttributionBusinessEventV1({ ...contact, sourceContextToken: 123 })).toBe(false)
     expect(isAttributionBusinessEventV1({ ...contact, eventName: 'PageView' })).toBe(false)
     expect(isAttributionBusinessEventV1({ ...contact, schemaVersion: 2 })).toBe(false)
+    expect(isAttributionBusinessEventV1({
+      ...contact,
+      pagePath: 'https://evil.example/contact',
+    })).toBe(false)
+    expect(isAttributionBusinessEventV1({
+      ...contact,
+      pagePath: '//evil.example/contact',
+    })).toBe(false)
   })
 
   it('严格校验 Contact 与 CompleteRegistration 的业务载荷', () => {
@@ -39,6 +48,7 @@ describe('归因运行时共享契约', () => {
       schemaVersion: 1,
       eventId: 'evt_02',
       occurredAt: '2026-07-24T00:00:00.000Z',
+      pagePath: '/register',
       dedupeKey: 'registration:user:1',
       sourceContextToken: null,
       consent: {

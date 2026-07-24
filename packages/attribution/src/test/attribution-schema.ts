@@ -8,6 +8,7 @@ export const ATTRIBUTION_RUNTIME_TABLES = [
   'attribution_activation_fences',
   'attribution_audit_logs',
   'attribution_incidents',
+  'attribution_circuit_observations',
 ] as const
 
 export const ATTRIBUTION_EVENT_TABLES = [
@@ -17,6 +18,7 @@ export const ATTRIBUTION_EVENT_TABLES = [
   'attribution_deliveries',
   'attribution_outbox',
   'attribution_browser_receipts',
+  'attribution_delivery_receipts',
   'attribution_validations',
   'attribution_validation_secrets',
   'attribution_quality_daily',
@@ -25,6 +27,7 @@ export const ATTRIBUTION_EVENT_TABLES = [
 
 const DELETE_ORDER = [
   'attribution_browser_receipts',
+  'attribution_delivery_receipts',
   'attribution_outbox',
   'attribution_deliveries',
   'attribution_facts',
@@ -42,6 +45,7 @@ const DELETE_ORDER = [
   'attribution_command_receipts',
   'attribution_audit_logs',
   'attribution_incidents',
+  'attribution_circuit_observations',
   'attribution_connections',
 ] as const
 

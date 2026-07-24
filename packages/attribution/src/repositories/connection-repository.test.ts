@@ -159,7 +159,7 @@ function version(id: string, status: 'active' | 'ready') {
     provider: 'meta',
     base_active_version_id: status === 'active' ? null : 'ver_active',
     status,
-    public_config_json: '{"pixelId":"1615446443914929"}',
+    public_config_json: '{"pixelId":"1234567890123456"}',
     config_hash: `hash_${id}`,
     created_by: 1,
     created_at: '2026-07-24T00:00:00.000Z',

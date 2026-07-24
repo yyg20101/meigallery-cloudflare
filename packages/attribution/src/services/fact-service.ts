@@ -537,6 +537,7 @@ async function prepareDeliveries(
           externalEventId,
           eventName: event.eventName,
           occurredAt: event.occurredAt,
+          pagePath: event.pagePath,
           consent: event.consent,
           payload: normalizedPayload(event),
           context: {
@@ -657,6 +658,7 @@ async function fingerprintEvent(
     eventId: event.eventId,
     eventName: event.eventName,
     occurredAt: event.occurredAt,
+    pagePath: event.pagePath,
     dedupeKey: event.dedupeKey,
     factOrigin,
     consent: event.consent,

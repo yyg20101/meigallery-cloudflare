@@ -17,7 +17,7 @@
 ## 环境与部署
 
 - production：`meigallery-web`、`meigallery-api`、`meigallery-db`。
-- dev：独立 Worker 和 D1，不绑定真实广告平台 Queue 或凭证，不请求 Meta/TikTok/Google API。
+- dev：独立 Worker、D1 和专属 Queue，不绑定 production Queue 或真实凭证；只允许回环 HTTP 和显式 Mock Adapter，不请求 Meta/TikTok/Google API。
 - production 只允许通过 PR 合入 `main` 后，在干净 `main` 执行 `./scripts/deploy.sh production`。
 - release PR/CI 承担完整测试；部署脚本只执行快速代码门禁、必要的 D1 备份、migration、两个 Worker 部署、通用归因健康校验、identity 和 SEO smoke。
 - 非关键、非关联或阶段性提交默认保留本地；功能闭环、需要 CI/协作或准备部署时再统一推送。
@@ -86,7 +86,7 @@
 
 - 独立 Attribution Worker 阶段 1 已完成：独立 package 与 D1 schema、加密凭证仓库、不可变候选版本、原子激活/回滚、独立运行策略、凭证保留 Cron 和专属部署门禁均已通过测试。资源仍使用哨兵 ID，尚未部署或切换 production 流量。
 - 普通根 `deploy` 和 `scripts/deploy.sh` 只部署 API/Web；Attribution Worker 只能通过 `scripts/deploy-attribution.sh` 显式发布，普通业务发布不会改变归因 Active Version、运行策略或凭证。
-- 独立 Attribution Worker 阶段 2 已开始：事件投递 Schema、32 字节 opaque 管理来源 Proof、SHA-256 摘要持久化、严格单连接路由、地区隐私决策、加密 HttpOnly 第一方上下文、由 D1 Active Version 签发的 30 分钟不可变运行租约、24 小时离线补交边界、draining 版本退休，以及 Canonical Fact、业务事件去重、Browser/Server 同 `external_event_id` 配对、稳定投递分桶、加密 outbox、Browser 回执和 Meta/TikTok/Google 唯一 Provider Adapter 均已完成；原始 dedupe 与 Server 用户数据不会进入明文 Browser 路径，跨 provider 上下文/租约错配严格零投递，拒绝广告用户数据时只规划 Browser 投递。独立 Queue 继续按阶段计划实施；迁移前保持现有 production Active 配置，禁止继续扩展旧连接保存模型。
+- 独立 Attribution Worker 阶段 2 正在执行：事件投递 Schema、32 字节 opaque 管理来源 Proof、SHA-256 摘要持久化、严格单连接路由、地区隐私决策、加密 HttpOnly 第一方上下文、由 D1 Active Version 签发的 30 分钟不可变运行租约、24 小时离线补交边界、draining 版本退休、Canonical Fact、业务事件去重、Browser/Server 同 `external_event_id` 配对、唯一稳定 rollout 分桶、加密 outbox、Browser 回执、Meta/TikTok/Google 唯一 Provider Adapter，以及 production/dev 严格分离的三组 Queue/DLQ、D1 恢复、平台回执和 Server-only circuit 均已完成。Queue 只携带最小定位消息，跨 provider 不一致零平台调用；rollout 降低立即停止未发送 Server Delivery，熔断只暂停 Server 并保留恢复依据。全链路候选验证、业务 Service Binding 和 Browser SDK 仍待后续任务；独立 Worker 尚未部署或切换 production 流量。
 - TikTok 与 Google 的后续 production 验收纳入独立 Attribution Worker 迁移，不再在旧运行时增加平台专属流程。
 - 广告花费、campaign、ad set、ad 数据导入不属于当前 Pixel/Server API 同步范围。
 - Cloudflare Stream 视频链路和完整 zip 异步导入仍待实现。

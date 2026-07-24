@@ -5,6 +5,9 @@ import type { AttributionBindings } from './env'
 function createBindings(
   overrides: Partial<AttributionBindings> = {},
 ): AttributionBindings {
+  const queue = {
+    send: async () => undefined,
+  } as unknown as AttributionBindings['META_QUEUE']
   return {
     APP_ENV: 'local',
     ATTRIBUTION_PUBLIC_ORIGINS: 'http://localhost:3000',
@@ -16,6 +19,9 @@ function createBindings(
       'test-signing-key-current-with-32-bytes',
     ATTRIBUTION_DATA_ENCRYPTION_KEY_CURRENT:
       'test-data-encryption-key-with-32-bytes',
+    META_QUEUE: queue,
+    TIKTOK_QUEUE: queue,
+    GOOGLE_QUEUE: queue,
     ...overrides,
   }
 }
@@ -41,6 +47,16 @@ describe('attribution worker', () => {
       ATTRIBUTION_PUBLIC_ORIGINS: 'https://example.com',
       ATTRIBUTION_COOKIE_DOMAIN: '',
     }],
+    ['生产环境 HTTP Origin', {
+      APP_ENV: 'production' as const,
+      ATTRIBUTION_PUBLIC_ORIGINS: 'http://example.com',
+      ATTRIBUTION_COOKIE_DOMAIN: '.example.com',
+    }],
+    ['开发环境远程 HTTP Origin', {
+      APP_ENV: 'dev' as const,
+      ATTRIBUTION_PUBLIC_ORIGINS: 'http://dev.example.com',
+      ATTRIBUTION_COOKIE_DOMAIN: '',
+    }],
     ['空凭证主密钥', { ATTRIBUTION_CREDENTIAL_MASTER_KEY_CURRENT: ' ' }],
     ['空签名密钥', { ATTRIBUTION_SIGNING_KEY_CURRENT: ' ' }],
     ['过短签名密钥', { ATTRIBUTION_SIGNING_KEY_CURRENT: 'weak' }],
@@ -49,6 +65,15 @@ describe('attribution worker', () => {
     }],
     ['过短 previous 密钥', {
       ATTRIBUTION_SIGNING_KEY_PREVIOUS: 'weak',
+    }],
+    ['缺少 Meta Queue', {
+      META_QUEUE: undefined,
+    }],
+    ['缺少 TikTok Queue', {
+      TIKTOK_QUEUE: undefined,
+    }],
+    ['缺少 Google Queue', {
+      GOOGLE_QUEUE: undefined,
     }],
   ])('%s 时 fail closed', async (_label, overrides) => {
     const response = await app.request(

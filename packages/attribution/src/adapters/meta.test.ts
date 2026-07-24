@@ -46,8 +46,8 @@ describe('Meta Adapter', () => {
     await expect(metaAdapter.validateCandidate({
       ...candidate('meta'),
       publicConfig: {
-        pixelId: '1615446443914929',
-        pixelCode: 'D9AF43RC77U133LMNMM0',
+        pixelId: '1234567890123456',
+        pixelCode: 'TIKTOKPIXELDEMOABCDEF',
       },
     })).rejects.toThrow('ATTRIBUTION_ADAPTER_INPUT_INVALID')
   })
@@ -63,7 +63,7 @@ describe('Meta Adapter', () => {
     const result = await adapter.deliverServerEvent(
       serverInput('meta', {
         destination: 'meta_capi',
-        publicConfig: { pixelId: '1615446443914929' },
+        publicConfig: { pixelId: '1234567890123456' },
         identifiers: { fbclid: 'fb-click-1' },
       }),
     )
@@ -77,7 +77,7 @@ describe('Meta Adapter', () => {
     expect(fetcher).toHaveBeenCalledOnce()
     const [url, init] = fetcher.mock.calls[0]!
     expect(String(url)).toBe(
-      'https://graph.facebook.com/v25.0/1615446443914929/events',
+      'https://graph.facebook.com/v25.0/1234567890123456/events',
     )
     expect(String(url)).not.toContain('access_token')
     expect(init.headers).toMatchObject({
@@ -161,7 +161,7 @@ describe('Meta Adapter', () => {
       provider: 'meta',
       connectionId: 'conn_meta',
       versionId: 'ver_meta',
-      publicConfig: { pixelId: '1615446443914929' },
+      publicConfig: { pixelId: '1234567890123456' },
       credential: 'meta-access-token',
     })).resolves.toEqual({
       availability: 'available',
@@ -197,7 +197,7 @@ describe('Meta Adapter', () => {
       provider: 'meta',
       connectionId: 'conn_meta',
       versionId: 'ver_meta',
-      publicConfig: { pixelId: '1615446443914929' },
+      publicConfig: { pixelId: '1234567890123456' },
       credential: 'meta-access-token',
     })).resolves.toEqual({
       availability: 'error',
@@ -213,7 +213,7 @@ function candidate(provider: 'meta'): CandidateValidationInput {
     provider,
     connectionId: 'conn_meta',
     versionId: 'ver_meta',
-    publicConfig: { pixelId: '1615446443914929' },
+    publicConfig: { pixelId: '1234567890123456' },
     credential: 'meta-access-token',
     bindings: [
       {
@@ -263,7 +263,7 @@ function serverInput(
     occurredAt: '2026-07-24T00:00:00.000Z',
     pageUrl: 'https://example.test/contact',
     destination: 'meta_capi',
-    publicConfig: { pixelId: '1615446443914929' },
+    publicConfig: { pixelId: '1234567890123456' },
     credential: 'meta-access-token',
     identifiers: { fbclid: 'fb-click-1' },
     contextIssuedAt: 1_784_851_200,

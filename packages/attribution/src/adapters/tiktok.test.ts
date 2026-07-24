@@ -70,7 +70,7 @@ describe('TikTok Adapter', () => {
     const body = JSON.parse(String(init.body))
     expect(body).toMatchObject({
       event_source: 'web',
-      event_source_id: 'D9AF43RC77U133LMNMM0',
+      event_source_id: 'TIKTOKPIXELDEMOABCDEF',
     })
     expect(body.data[0]).toMatchObject({
       event: 'Contact',
@@ -129,7 +129,7 @@ describe('TikTok Adapter', () => {
       provider: 'tiktok',
       connectionId: 'conn_tiktok',
       versionId: 'ver_tiktok',
-      publicConfig: { pixelCode: 'D9AF43RC77U133LMNMM0' },
+      publicConfig: { pixelCode: 'TIKTOKPIXELDEMOABCDEF' },
       credential: 'tiktok-access-token',
     })).resolves.toMatchObject({
       availability: 'unavailable',
@@ -144,7 +144,7 @@ function candidate(): CandidateValidationInput {
     provider: 'tiktok',
     connectionId: 'conn_tiktok',
     versionId: 'ver_tiktok',
-    publicConfig: { pixelCode: 'D9AF43RC77U133LMNMM0' },
+    publicConfig: { pixelCode: 'TIKTOKPIXELDEMOABCDEF' },
     credential: 'tiktok-access-token',
     bindings: [
       {
@@ -187,7 +187,7 @@ function serverInput(): ServerDeliveryInput {
     occurredAt: '2026-07-24T00:00:00.000Z',
     pageUrl: 'https://example.test/contact',
     destination: 'tiktok_events_api',
-    publicConfig: { pixelCode: 'D9AF43RC77U133LMNMM0' },
+    publicConfig: { pixelCode: 'TIKTOKPIXELDEMOABCDEF' },
     credential: 'tiktok-access-token',
     identifiers: { ttclid: 'tt-click-1' },
     contextIssuedAt: 1_784_851_200,

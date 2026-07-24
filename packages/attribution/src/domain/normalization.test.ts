@@ -8,7 +8,7 @@ describe('候选版本标准化', () => {
   it('字段顺序和空白不同但语义相同的候选得到相同 hash', async () => {
     const first = await hashCandidateIdentity(normalizeCandidateInput({
       provider: 'meta',
-      publicConfig: { pixelId: ' 1615446443914929 ' },
+      publicConfig: { pixelId: ' 1234567890123456 ' },
       bindings: [
         {
           canonicalEvent: 'Contact',
@@ -27,7 +27,7 @@ describe('候选版本标准化', () => {
     }))
     const second = await hashCandidateIdentity(normalizeCandidateInput({
       provider: 'meta',
-      publicConfig: { pixelId: '1615446443914929' },
+      publicConfig: { pixelId: '1234567890123456' },
       bindings: [
         {
           canonicalEvent: 'CompleteRegistration',
