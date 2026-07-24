@@ -9,6 +9,8 @@ const MIGRATIONS = [
   '../migrations/0001_attribution_runtime.sql',
   '../migrations/0002_event_delivery.sql',
   '../migrations/0003_queue_runtime.sql',
+  '../migrations/0004_runtime_state.sql',
+  '../migrations/0006_runtime_owner_epoch.sql',
 ].map(path => readFileSync(new URL(path, import.meta.url), 'utf8'))
 
 let miniflare: Miniflare

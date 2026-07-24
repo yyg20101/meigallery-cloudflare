@@ -14,6 +14,7 @@ const MIGRATION = [
   '../../migrations/0003_queue_runtime.sql',
   '../../migrations/0004_runtime_state.sql',
   '../../migrations/0005_migration_history.sql',
+  '../../migrations/0006_runtime_owner_epoch.sql',
 ].map(path => readFileSync(
   new URL(path, import.meta.url),
   'utf8',
@@ -52,7 +53,12 @@ beforeEach(async () => {
   `).run()
   await db.prepare(`
     UPDATE attribution_runtime_state
-    SET mode = 'shadow', activated_at = NULL, updated_at = ?
+    SET mode = 'shadow',
+        activated_at = NULL,
+        bridge_owner_epoch = NULL,
+        active_owner_epoch = NULL,
+        fenced_owner_epoch = NULL,
+        updated_at = ?
     WHERE id = 'global'
   `).bind(NOW.toISOString()).run()
 })
@@ -158,7 +164,11 @@ describe('归因运行时迁移导入', () => {
   it('只接受 shadow 或 bridge，active 禁止重新导入', async () => {
     await db.prepare(`
       UPDATE attribution_runtime_state
-      SET mode = 'active', activated_at = ?
+      SET mode = 'active',
+          activated_at = ?,
+          bridge_owner_epoch = 2,
+          active_owner_epoch = 3,
+          fenced_owner_epoch = NULL
       WHERE id = 'global'
     `).bind(NOW.toISOString()).run()
 
@@ -219,7 +229,12 @@ describe('归因运行时迁移导入', () => {
     `).run()
     await db.prepare(`
       UPDATE attribution_runtime_state
-      SET mode = 'shadow', activated_at = NULL, updated_at = ?
+      SET mode = 'shadow',
+          activated_at = NULL,
+          bridge_owner_epoch = NULL,
+          active_owner_epoch = NULL,
+          fenced_owner_epoch = NULL,
+          updated_at = ?
       WHERE id = 'global'
     `).bind(NOW.toISOString()).run()
     await importAttributionMigrationSnapshot(environment(), request())

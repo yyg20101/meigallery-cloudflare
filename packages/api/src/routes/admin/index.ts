@@ -22,6 +22,9 @@ import { adminAttributionProxyRoutes } from './attribution-proxy'
 import {
   adminAttributionMigrationRoutes,
 } from './attribution-migration'
+import {
+  adminAttributionCutoverRoutes,
+} from './attribution-cutover'
 
 export const adminRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -72,5 +75,9 @@ adminRoutes.route('/attribution', adminAttributionRoutes)
 adminRoutes.route(
   '/attribution-migration',
   adminAttributionMigrationRoutes,
+)
+adminRoutes.route(
+  '/attribution-cutover',
+  adminAttributionCutoverRoutes,
 )
 adminRoutes.route('/', adminMediaRoutes)

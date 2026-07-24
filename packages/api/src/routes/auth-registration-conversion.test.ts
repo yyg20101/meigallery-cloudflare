@@ -96,6 +96,9 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
       db,
       expect.anything(),
       'registration_user_42',
+      expect.objectContaining({
+        dispatchLegacy: expect.any(Function),
+      }),
     )
     expect(db.events).toEqual([
       'registration_transaction',

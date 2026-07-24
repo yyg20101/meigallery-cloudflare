@@ -38,6 +38,13 @@ import { collectAttributionQuality } from './services/ad-platform/quality-collec
 import { reconcileGoogleDeliveryDiagnostics } from './services/ad-platform/google-diagnostics-service'
 import { dispatchAttributionBusinessOutbox } from './services/attribution-business-outbox'
 import { createAttributionServiceClient } from './services/attribution-service-client'
+import {
+  isAttributionForwardingOwner,
+  readAttributionRuntimeOwner,
+} from './services/attribution-runtime-owner'
+import {
+  recoverRegistrationConversionFacts,
+} from './services/registration-conversion-recovery'
 
 /** Hono 应用绑定类型 */
 export type Bindings = {
@@ -286,31 +293,69 @@ async function handleScheduled(event: ScheduledEvent, env: Bindings): Promise<vo
   const db = env.DB
 
   if (event.cron === ATTRIBUTION_RECOVERY_CRON) {
+    let runtimeOwner: Awaited<
+      ReturnType<typeof readAttributionRuntimeOwner>
+    > | null = null
     try {
-      const dispatch = await dispatchAttributionBusinessOutbox(
-        db,
-        createAttributionServiceClient(env.ATTRIBUTION),
-        { limit: 100, now: new Date(event.scheduledTime) },
-      )
-      console.log('[cron] 注册归因业务 Outbox 投递完成:', dispatch)
+      runtimeOwner = await readAttributionRuntimeOwner(db)
     } catch {
-      console.error('[cron] 注册归因业务 Outbox 投递失败:', {
-        errorCode: 'attribution_business_outbox_dispatch_failed',
+      console.error('[cron] 归因运行所有权读取失败:', {
+        errorCode: 'attribution_runtime_owner_unavailable',
       })
     }
 
-    if (shouldRecoverAttributionOutbox(event)) {
+    if (runtimeOwner && isAttributionForwardingOwner(runtimeOwner)) {
+      try {
+        const dispatch = await dispatchAttributionBusinessOutbox(
+          db,
+          createAttributionServiceClient(env.ATTRIBUTION),
+          { limit: 100, now: new Date(event.scheduledTime) },
+        )
+        console.log('[cron] 注册归因业务 Outbox 投递完成:', dispatch)
+      } catch {
+        console.error('[cron] 注册归因业务 Outbox 投递失败:', {
+          errorCode: 'attribution_business_outbox_dispatch_failed',
+        })
+      }
+    }
+    if (runtimeOwner && runtimeOwner.owner !== 'new') {
+      try {
+        const recovery = await recoverRegistrationConversionFacts(
+          db,
+          new Date(event.scheduledTime),
+        )
+        console.log('[cron] 注册归因事实恢复完成:', recovery)
+      } catch {
+        console.error('[cron] 注册归因事实恢复失败:', {
+          errorCode: 'registration_conversion_recovery_failed',
+        })
+      }
+    }
+
+    if (
+      runtimeOwner
+      && runtimeOwner.owner !== 'new'
+      && shouldRecoverAttributionOutbox(event)
+    ) {
       try {
         const recovery = await recoverAttributionOutbox(env, 100)
-        console.log('[cron] 统一广告平台 Outbox 恢复完成:', recovery)
+        console.log('[cron] 旧归因 Outbox 恢复完成:', recovery)
       } catch {
-        console.error('[cron] 统一广告平台 Outbox 恢复失败:', { errorCode: 'attribution_outbox_recovery_failed' })
+        console.error('[cron] 旧归因 Outbox 恢复失败:', {
+          errorCode: 'attribution_outbox_recovery_failed',
+        })
       }
       try {
-        const diagnostics = await reconcileGoogleDeliveryDiagnostics(env, new Date(event.scheduledTime), 40)
-        console.log('[cron] Google 异步诊断对账完成:', diagnostics)
+        const diagnostics = await reconcileGoogleDeliveryDiagnostics(
+          env,
+          new Date(event.scheduledTime),
+          40,
+        )
+        console.log('[cron] 旧 Google 异步诊断对账完成:', diagnostics)
       } catch {
-        console.error('[cron] Google 异步诊断对账失败:', { errorCode: 'google_diagnostic_reconciliation_failed' })
+        console.error('[cron] 旧 Google 异步诊断对账失败:', {
+          errorCode: 'google_diagnostic_reconciliation_failed',
+        })
       }
     }
 
@@ -385,10 +430,16 @@ async function handleScheduled(event: ScheduledEvent, env: Bindings): Promise<vo
 
   // 4. 平台质量采集独立于投递，失败不阻断其他维护任务。
   try {
-    const quality = await collectAttributionQuality(env, new Date(event.scheduledTime))
-    console.log('[cron] 广告平台质量采集完成:', quality)
+    const runtimeOwner = await readAttributionRuntimeOwner(db)
+    if (runtimeOwner.owner !== 'new') {
+      const quality = await collectAttributionQuality(
+        env,
+        new Date(event.scheduledTime),
+      )
+      console.log('[cron] 旧广告平台质量采集完成:', quality)
+    }
   } catch {
-    console.error('[cron] 广告平台质量采集失败:', {
+    console.error('[cron] 旧广告平台质量采集失败:', {
       errorCode: 'attribution_quality_collection_failed',
     })
   }
@@ -427,6 +478,17 @@ export default {
     ctx.waitUntil(handleScheduled(event, env))
   },
   queue: async (batch: MessageBatch<AdPlatformQueueMessage>, env: Bindings) => {
+    let runtimeOwner
+    try {
+      runtimeOwner = await readAttributionRuntimeOwner(env.DB)
+    } catch {
+      batch.retryAll({ delaySeconds: 300 })
+      return
+    }
+    if (runtimeOwner.owner === 'new') {
+      batch.ackAll()
+      return
+    }
     const { handleAttributionQueueBatch } = await import('./services/ad-platform/queue-runtime')
     await handleAttributionQueueBatch(batch, env)
   },

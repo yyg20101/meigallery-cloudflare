@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { ATTRIBUTION_SERVICE_BINDING } from '@meigallery/shared/constants'
-import { app, attributionServiceApp } from './index'
+import worker, { app, attributionServiceApp } from './index'
 import type { AttributionBindings } from './env'
 
 function createBindings(
@@ -86,7 +86,11 @@ describe('attribution worker', () => {
       '/internal/v1/registration-events',
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          [ATTRIBUTION_SERVICE_BINDING.HEADERS.RUNTIME_OWNER]: 'new',
+          [ATTRIBUTION_SERVICE_BINDING.HEADERS.RUNTIME_EPOCH]: '3',
+        },
         body: '{}',
       },
       createBindings(),
@@ -160,6 +164,36 @@ describe('attribution worker', () => {
     expect(await ownerActor.json()).toEqual({ data: [] })
   })
 
+  it.each(['shadow', 'bridge', 'fenced'] as const)(
+    '%s 的 Queue/Cron 进入统一 D1 可投递视图且不触发顶层批量重试',
+    async (mode) => {
+      const retryAll = vi.fn()
+      const queries: string[] = []
+      const env = createBindings({ DB: runtimeDb(mode, queries) })
+      await worker.queue({
+        queue: 'meigallery-attribution-meta',
+        messages: [],
+        retryAll,
+      } as unknown as MessageBatch, env)
+      expect(retryAll).not.toHaveBeenCalled()
+
+      let scheduledTask: Promise<unknown> | null = null
+      worker.scheduled({
+        cron: '*/5 * * * *',
+        scheduledTime: Date.parse('2026-07-24T00:00:00.000Z'),
+      } as ScheduledController, env, {
+        waitUntil(task) {
+          scheduledTask = task
+        },
+      } as ExecutionContext)
+      await scheduledTask
+      expect(scheduledTask).not.toBeNull()
+      expect(queries.some(query =>
+        query.includes('attribution_runtime_dispatchable_deliveries'),
+      )).toBe(true)
+    },
+  )
+
   it.each([
     ['空 Origin', { ATTRIBUTION_PUBLIC_ORIGINS: '' }],
     ['通配符 Origin', { ATTRIBUTION_PUBLIC_ORIGINS: '*' }],
@@ -227,9 +261,45 @@ function activeRuntimeDb(): D1Database {
         ? {
             mode: 'active',
             activated_at: '2026-07-24T00:00:00.000Z',
+            bridge_owner_epoch: 2,
+            active_owner_epoch: 3,
+            fenced_owner_epoch: null,
             updated_at: '2026-07-24T00:00:00.000Z',
           }
         : null,
     }),
+  } as unknown as D1Database
+}
+
+function runtimeDb(
+  mode: 'shadow' | 'bridge' | 'fenced',
+  queries: string[],
+): D1Database {
+  return {
+    prepare: (query: string) => {
+      queries.push(query)
+      return {
+        bind() {
+          return this
+        },
+        first: async () => query.includes('attribution_runtime_state')
+          ? {
+              mode,
+              activated_at: null,
+              bridge_owner_epoch: mode === 'bridge' ? 2 : null,
+              active_owner_epoch: null,
+              fenced_owner_epoch: mode === 'fenced' ? 4 : null,
+              updated_at: '2026-07-24T00:00:00.000Z',
+            }
+          : null,
+        all: async () => ({ results: [] }),
+        run: async () => ({ success: true, meta: { changes: 0 } }),
+      }
+    },
+    batch: async (statements: D1PreparedStatement[]) => statements.map(() => ({
+      success: true,
+      meta: { changes: 0 },
+      results: [],
+    })),
   } as unknown as D1Database
 }

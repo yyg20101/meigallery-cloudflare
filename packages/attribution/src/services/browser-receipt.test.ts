@@ -7,6 +7,8 @@ import { recordBrowserReceipt } from './browser-receipt'
 const MIGRATIONS = [
   '../../migrations/0001_attribution_runtime.sql',
   '../../migrations/0002_event_delivery.sql',
+  '../../migrations/0004_runtime_state.sql',
+  '../../migrations/0006_runtime_owner_epoch.sql',
 ].map(path => readFileSync(new URL(path, import.meta.url), 'utf8'))
 const now = new Date('2026-07-24T00:01:00.000Z')
 let miniflare: Miniflare
@@ -110,8 +112,8 @@ function delivery(
   return db.prepare(`
     INSERT INTO attribution_deliveries (
       id, fact_id, connection_id, version_id, provider,
-      transport, destination, external_event_id, status
-    ) VALUES (?, 'fact_1', 'conn_meta', 'ver_meta', 'meta', ?, ?, ?, 'planned')
+      transport, destination, external_event_id, runtime_owner_epoch, status
+    ) VALUES (?, 'fact_1', 'conn_meta', 'ver_meta', 'meta', ?, ?, ?, 2, 'planned')
   `).bind(
     id,
     transport,

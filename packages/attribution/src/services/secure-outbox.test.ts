@@ -15,6 +15,8 @@ const MIGRATIONS = [
   '../../migrations/0001_attribution_runtime.sql',
   '../../migrations/0002_event_delivery.sql',
   '../../migrations/0003_queue_runtime.sql',
+  '../../migrations/0004_runtime_state.sql',
+  '../../migrations/0006_runtime_owner_epoch.sql',
 ].map(path => readFileSync(new URL(path, import.meta.url), 'utf8'))
 const now = new Date('2026-07-24T03:00:00.000Z')
 let miniflare: Miniflare
@@ -39,6 +41,16 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await clearAttributionRuntimeDatabase(db)
+  await db.prepare(`
+    UPDATE attribution_runtime_state
+    SET mode = 'active',
+        activated_at = ?,
+        bridge_owner_epoch = 2,
+        active_owner_epoch = 3,
+        fenced_owner_epoch = NULL,
+        updated_at = ?
+    WHERE id = 'global'
+  `).bind(now.toISOString(), now.toISOString()).run()
   await seedDelivery()
 })
 
@@ -105,6 +117,101 @@ describe('加密 Outbox 调度', () => {
     expect((await deliveryState()).external_event_id).toBe(
       'attr1_meta_contact_event',
     )
+  })
+
+  it('bridge 的 Cron 恢复匹配 owner epoch 的待发送 Delivery', async () => {
+    await db.batch([
+      db.prepare(`
+        UPDATE attribution_runtime_state
+        SET mode = 'bridge',
+            activated_at = NULL,
+            bridge_owner_epoch = 2,
+            active_owner_epoch = NULL,
+            fenced_owner_epoch = NULL,
+            updated_at = ?
+        WHERE id = 'global'
+      `).bind(now.toISOString()),
+      db.prepare(`
+        UPDATE attribution_deliveries
+        SET runtime_owner_epoch = 2
+        WHERE id = 'delivery_meta'
+      `),
+    ])
+    const meta = queue()
+
+    expect(await recoverPendingServerOutbox({
+      db,
+      queues: queues(meta),
+      now: () => new Date(now.getTime() + 6 * 60_000),
+    })).toEqual({
+      attempted: 1,
+      enqueued: 1,
+      failed: 0,
+      expired: 0,
+      paused: 0,
+    })
+    expect(meta.send).toHaveBeenCalledOnce()
+    expect(await deliveryState()).toMatchObject({
+      status: 'queued',
+      runtime_owner_epoch: 2,
+    })
+  })
+
+  it('重新启用后不领取旧 owner epoch 的直接请求或 Cron Outbox', async () => {
+    await db.prepare(`
+      UPDATE attribution_runtime_state
+      SET mode = 'active',
+          activated_at = ?,
+          bridge_owner_epoch = 5,
+          active_owner_epoch = 6,
+          fenced_owner_epoch = NULL,
+          updated_at = ?
+      WHERE id = 'global'
+    `).bind(now.toISOString(), now.toISOString()).run()
+    const meta = queue()
+    const environment = {
+      db,
+      queues: queues(meta),
+      now: () => new Date(now.getTime() + 6 * 60_000),
+    }
+
+    expect(await enqueueServerDelivery(environment, {
+      provider: 'meta',
+      deliveryId: 'delivery_meta',
+    })).toBe('not_pending')
+    expect(await recoverPendingServerOutbox(environment)).toEqual({
+      attempted: 0,
+      enqueued: 0,
+      failed: 0,
+      expired: 0,
+      paused: 0,
+    })
+    expect(meta.send).not.toHaveBeenCalled()
+    expect(await deliveryState()).toMatchObject({
+      status: 'planned',
+      runtime_owner_epoch: 3,
+    })
+    expect(await outboxExists()).toBe(true)
+  })
+
+  it('fenced 原子取消待发送 Server Delivery 并销毁 Outbox', async () => {
+    await db.prepare(`
+      UPDATE attribution_runtime_state
+      SET mode = 'fenced',
+          activated_at = NULL,
+          bridge_owner_epoch = NULL,
+          active_owner_epoch = NULL,
+          fenced_owner_epoch = 4,
+          updated_at = ?
+      WHERE id = 'global'
+    `).bind(now.toISOString()).run()
+
+    expect(await deliveryState()).toMatchObject({
+      status: 'cancelled',
+      last_error_code: 'runtime_fenced',
+      runtime_owner_epoch: 3,
+    })
+    expect(await outboxExists()).toBe(false)
   })
 
   it('过期 outbox 拒绝 Delivery、删除密文且不发送 Queue', async () => {
@@ -267,11 +374,11 @@ async function seedDelivery() {
       INSERT INTO attribution_deliveries (
         id, fact_id, connection_id, version_id, provider,
         transport, destination, external_event_id, status,
-        created_at, updated_at
+        runtime_owner_epoch, created_at, updated_at
       ) VALUES (
         'delivery_meta', 'fact_meta', 'conn_meta', 'ver_meta', 'meta',
         'server', 'meta_capi', 'attr1_meta_contact_event', 'planned',
-        ?, ?
+        3, ?, ?
       )
     `).bind(now.toISOString(), now.toISOString()),
     db.prepare(`
@@ -291,7 +398,12 @@ async function seedDelivery() {
 
 async function deliveryState() {
   return db.prepare(`
-    SELECT status, queue_attempt_count, external_event_id, last_error_code
+    SELECT
+      status,
+      queue_attempt_count,
+      external_event_id,
+      last_error_code,
+      runtime_owner_epoch
     FROM attribution_deliveries
     WHERE id = 'delivery_meta'
   `).first<{
@@ -299,6 +411,7 @@ async function deliveryState() {
     queue_attempt_count: number
     external_event_id: string
     last_error_code: string
+    runtime_owner_epoch: number
   }>()
 }
 

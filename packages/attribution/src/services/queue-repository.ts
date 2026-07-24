@@ -40,6 +40,11 @@ export async function claimDelivery(
       AND attempt_count = ?
       AND last_error_code = ?
       AND updated_at = ?
+      AND EXISTS (
+        SELECT 1
+        FROM attribution_runtime_dispatchable_deliveries AS eligible
+        WHERE eligible.delivery_id = attribution_deliveries.id
+      )
   `).bind(
     now.toISOString(),
     row.deliveryId,

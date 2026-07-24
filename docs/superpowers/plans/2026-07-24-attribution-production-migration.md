@@ -469,9 +469,15 @@ git commit -m "test: 完成归因生产迁移预检"
 - Create: `packages/api/migrations/0059_attribution_runtime_cutover.test.mjs`
 - Create: `packages/api/src/services/attribution-runtime-owner.ts`
 - Create: `packages/api/src/services/attribution-runtime-owner.test.ts`
+- Create: `packages/api/src/services/attribution-cutover-preflight.ts`
+- Create: `packages/api/src/routes/admin/attribution-cutover.ts`
+- Create: `packages/api/src/services/legacy-registration-outbox-dispatcher.ts`
 - Modify: `packages/api/src/routes/conversions.ts`
 - Modify: `packages/api/src/services/conversions.ts`
 - Modify: `packages/api/src/routes/auth.ts`
+- Modify: `packages/api/src/services/attribution-business-outbox.ts`
+- Create: `packages/attribution/migrations/0006_runtime_owner_epoch.sql`
+- Modify: `packages/attribution/src/services/runtime-state.ts`
 - Create: `packages/attribution/src/services/runtime-activation.ts`
 - Create: `packages/attribution/src/services/runtime-activation.d1.test.ts`
 - Modify: `scripts/verify-attribution-cutover.mjs`
@@ -480,7 +486,7 @@ git commit -m "test: 完成归因生产迁移预检"
 - Consumes: 暗模式新运行时和旧生产入口。
 - Produces: `old -> draining -> new` 单调单写状态；旧页面只转发到新 Worker。
 
-- [ ] **Step 1: 写双写防护失败测试**
+- [x] **Step 1: 写双写防护失败测试**
 
 ```ts
 it('owner=new 后旧入口只转发且不写旧事实或 delivery', async () => {
@@ -500,7 +506,7 @@ it('owner 状态不可从 new 回到 old，只有显式 restore 命令可以回�
 })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -512,7 +518,7 @@ corepack pnpm --filter @meigallery/attribution exec vitest run src/services/runt
 
 Expected: FAIL，owner 状态和激活命令不存在。
 
-- [ ] **Step 3: 实现单写状态**
+- [x] **Step 3: 实现单写状态**
 
 API D1：
 
@@ -525,20 +531,40 @@ CREATE TABLE attribution_runtime_cutover (
 INSERT INTO attribution_runtime_cutover (id, owner) VALUES ('global', 'old');
 ```
 
-切换顺序固定为：
+切换由 API 的 Owner-only 控制面统一协调，顺序固定为：
 
 ```text
-1. Attribution D1: shadow -> bridge
-2. API D1: old -> draining
+1. Attribution D1: shadow -> bridge（绑定 owner epoch=2）
+2. API D1: old -> draining（CAS 到同一 epoch=2）
 3. 旧 API 路由停止旧写并通过 Service Binding 转发
-4. Attribution D1: bridge -> active
-5. API D1: draining -> new
+4. Attribution D1: bridge -> active（绑定 owner epoch=3）
+5. API D1: draining -> new（CAS 到同一 epoch=3）
 6. 部署新 Web SDK
 ```
 
 旧 Contact 和注册入口在 `draining/new` 下只通过 Service Binding 转发；禁止调用旧 Planner、旧 outbox 或旧 Queue。
+注册事务先写唯一业务 Outbox，Outbox 固化 `routing_owner + owner_epoch`，消费前和发送前均核对实际
+owner；旧 owner 仅由集中式临时 dispatcher 消费，Task 8 删除该迁移桥。
 
-- [ ] **Step 4: 运行双写防护测试**
+显式回滚先把 Attribution 运行时切到下一 epoch 的 `fenced`，公共入口、Service Binding 业务入口、
+Queue 和 Cron 全部停止，再由 API CAS 恢复 `old` 到同一 epoch。`fenced -> bridge -> active`
+只能逐 epoch 重新切换，禁止任意跳号或同模式改绑。通用后台代理不得调用运行时 transition；
+状态命令和 API owner 命令都持久化幂等回执，网络响应丢失后使用原键重放不会再次推进状态。
+
+Attribution Delivery 在创建事务内固化 `runtime_owner_epoch`。Queue 领取与 Cron Outbox 恢复只能读取
+同一个 D1 可投递视图：`bridge` 仅接受匹配 bridge epoch，`active` 仅接受当前 bridge/active
+epoch，首轮 `shadow` 仅允许 epoch=2 的 synthetic 验证。进入 `fenced` 时 D1 trigger 在同一
+事务中取消全部未完成 Server Delivery 并删除对应 Outbox；因此旧 epoch 即使在回滚后重新启用
+Worker，也不能再次进入平台发送链路。Queue/Cron 入口不再设置第二层模式判断，避免阻断
+`shadow` synthetic 验证或 `bridge` 恢复；所有后台发送资格只由该 D1 视图决定。
+
+`0006_runtime_owner_epoch.sql` 兼容迁移前已经处于 `bridge/active` 的运行时状态：旧 `bridge`
+确定映射到 epoch=2，旧 `active` 确定映射到 bridge epoch=2、active epoch=3。该映射仅用于
+补全运行时所有权，不保留旧运行代码或兼容分支。历史 `0002` 不回写字段；`0006` 将旧投递
+标记为 epoch=1 隔离态，取消未完成 Server Delivery 并删除 Outbox，随后用数据库 trigger
+强制新投递显式提供 epoch>=2。真实旧 Schema、旧 Delivery 和旧 Outbox 的升级测试均已覆盖。
+
+- [x] **Step 4: 运行双写防护测试**
 
 Run:
 
@@ -547,12 +573,14 @@ corepack pnpm --filter @meigallery/api exec vitest run src/services/attribution-
 corepack pnpm --filter @meigallery/attribution exec vitest run src/services/runtime-activation.d1.test.ts
 ```
 
-Expected: PASS，任意 owner 状态下最多一个事实写者。
+Expected: PASS，任意 owner 状态下最多一个事实写者；跨 epoch Outbox、编码路径绕过、
+重复切换和重复回滚均被拒绝或返回原回执。旧 epoch=3 在重新启用到 epoch=5/6 后，
+直接 enqueue 与 Cron 恢复均为零；`fenced` 原子清理未完成 Server Outbox。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
-git add packages/api/migrations/0059_attribution_runtime_cutover* packages/api/src/services/attribution-runtime-owner* packages/api/src/routes/conversions.ts packages/api/src/services/conversions.ts packages/api/src/routes/auth.ts packages/attribution/src/services/runtime-activation* scripts/verify-attribution-cutover.mjs
+git add packages/api packages/attribution packages/shared scripts/verify-attribution-cutover* docs/PROJECT_STATUS.md docs/superpowers/plans/2026-07-24-attribution-production-migration.md
 git commit -m "feat: 建立归因生产单写切换"
 ```
 

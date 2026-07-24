@@ -33,6 +33,7 @@ test('事件 Schema 具备完整事实、投递和隐私边界', async () => {
     migration,
     /CHECK\s*\(transport IN \('browser','server'\)\)/i,
   )
+  assert.doesNotMatch(migration, /runtime_owner_epoch/i)
   assert.match(
     migration,
     /CHECK\s*\(\s*event_name\s+IN\s*\('Contact','CompleteRegistration'\)\s*\)/i,

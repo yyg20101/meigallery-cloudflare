@@ -14,8 +14,12 @@ const MAX_COMMAND_OUTPUT_BYTES = 16 * 1024 * 1024
 
 export function evaluatePreflight(input) {
   const result = {
-    oldWriter: input.oldWriter,
+    oldRuntimeOwner: input.oldRuntimeOwner,
+    oldOwnerEpoch: positiveInteger(input.oldOwnerEpoch),
     newRuntimeMode: input.newRuntimeMode,
+    bridgeOwnerEpoch: nullablePositiveInteger(input.bridgeOwnerEpoch),
+    activeOwnerEpoch: nullablePositiveInteger(input.activeOwnerEpoch),
+    fencedOwnerEpoch: nullablePositiveInteger(input.fencedOwnerEpoch),
     productionDeliveryCountNew: nonNegativeInteger(
       input.productionDeliveryCountNew,
     ),
@@ -30,8 +34,11 @@ export function evaluatePreflight(input) {
   return {
     ...result,
     ready:
-      result.oldWriter === 'active'
+      result.oldRuntimeOwner === 'old'
       && result.newRuntimeMode === 'shadow'
+      && result.bridgeOwnerEpoch === null
+      && result.activeOwnerEpoch === null
+      && result.fencedOwnerEpoch === null
       && result.productionDeliveryCountNew === 0
       && result.openCriticalCountNew === 0
       && (
@@ -213,18 +220,21 @@ export async function runCutoverVerification(options = {}) {
 
 async function readPreflight(queryOld, queryNew, requireEmptyTarget) {
   const [
-    oldConnections,
+    oldRuntimeState,
     runtimeState,
     newDeliveryCount,
     newCriticalCount,
     newTargetCount,
   ] = await Promise.all([
     queryOld(`
-      SELECT COUNT(*) AS row_count
-      FROM attribution_platform_connections
+      SELECT owner, owner_epoch
+      FROM attribution_runtime_cutover
+      WHERE id = 'global'
+      LIMIT 1
     `),
     queryNew(`
-      SELECT mode
+      SELECT mode, bridge_owner_epoch, active_owner_epoch,
+             fenced_owner_epoch
       FROM attribution_runtime_state
       WHERE id = 'global'
       LIMIT 1
@@ -252,10 +262,21 @@ async function readPreflight(queryOld, queryNew, requireEmptyTarget) {
     `),
   ])
   return evaluatePreflight({
-    oldWriter: integerCell(oldConnections, 'row_count') > 0
-      ? 'active'
-      : 'missing',
+    oldRuntimeOwner: stringCell(oldRuntimeState, 'owner'),
+    oldOwnerEpoch: integerCell(oldRuntimeState, 'owner_epoch'),
     newRuntimeMode: stringCell(runtimeState, 'mode'),
+    bridgeOwnerEpoch: nullablePositiveIntegerCell(
+      runtimeState,
+      'bridge_owner_epoch',
+    ),
+    activeOwnerEpoch: nullablePositiveIntegerCell(
+      runtimeState,
+      'active_owner_epoch',
+    ),
+    fencedOwnerEpoch: nullablePositiveIntegerCell(
+      runtimeState,
+      'fenced_owner_epoch',
+    ),
     productionDeliveryCountNew: integerCell(
       newDeliveryCount,
       'row_count',
@@ -875,6 +896,13 @@ function integerCell(rows, key) {
   return nonNegativeInteger(rows[0]?.[key])
 }
 
+function nullablePositiveIntegerCell(rows, key) {
+  if (!Array.isArray(rows) || rows.length !== 1) {
+    throw cutoverError('D1_RESPONSE_INVALID')
+  }
+  return nullablePositiveInteger(rows[0]?.[key])
+}
+
 function stringCell(rows, key) {
   if (
     !Array.isArray(rows)
@@ -1047,6 +1075,10 @@ function positiveInteger(value) {
   const parsed = nonNegativeInteger(value)
   if (parsed < 1) throw cutoverError('INTEGER_INVALID')
   return parsed
+}
+
+function nullablePositiveInteger(value) {
+  return value === null ? null : positiveInteger(value)
 }
 
 function publicDigest(value) {

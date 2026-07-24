@@ -30,6 +30,8 @@ import {
 const MIGRATIONS = [
   '../../migrations/0001_attribution_runtime.sql',
   '../../migrations/0002_event_delivery.sql',
+  '../../migrations/0004_runtime_state.sql',
+  '../../migrations/0006_runtime_owner_epoch.sql',
 ].map(path => readFileSync(new URL(path, import.meta.url), 'utf8'))
 const fixedNow = new Date('2026-07-24T08:00:00.000Z')
 const signingKey = 'browser-route-signing-key-current-at-least-32-bytes'
@@ -89,6 +91,16 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await clearAttributionRuntimeDatabase(db)
+  await db.prepare(`
+    UPDATE attribution_runtime_state
+    SET mode = 'active',
+        activated_at = ?,
+        bridge_owner_epoch = 2,
+        active_owner_epoch = 3,
+        fenced_owner_epoch = NULL,
+        updated_at = ?
+    WHERE id = 'global'
+  `).bind(fixedNow.toISOString(), fixedNow.toISOString()).run()
   sequence = 0
   await seedMetaConnection()
   await db.prepare(`

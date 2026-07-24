@@ -82,10 +82,6 @@ app.get('/health', async (c) => {
 app.use('/v1/*', requireActiveRuntime(true))
 app.route('/', browserAttributionRoutes)
 
-attributionServiceApp.use(
-  '/internal/v1/*',
-  requireActiveRuntime(false),
-)
 attributionServiceApp.route('/internal/v1', internalRoutes)
 attributionServiceApp.route(
   ATTRIBUTION_SERVICE_BINDING.MIGRATION_PATH_PREFIX,
@@ -117,18 +113,13 @@ export default {
   },
   scheduled(controller, env, ctx) {
     ctx.waitUntil(
-      runScheduledIfActive(controller, env),
+      runScheduledMaintenance(controller, env),
     )
   },
   async queue(batch, env) {
     let parsed: AttributionEnvironment
     try {
       parsed = parseAttributionEnvironment(env)
-      const state = await readAttributionRuntimeState(env.DB)
-      if (state.mode !== 'active') {
-        batch.retryAll({ delaySeconds: 300 })
-        return
-      }
     } catch {
       batch.retryAll({ delaySeconds: 300 })
       return
@@ -176,15 +167,13 @@ function requireActiveRuntime(includeCors: boolean) {
   })
 }
 
-async function runScheduledIfActive(
+async function runScheduledMaintenance(
   controller: ScheduledController,
   env: AttributionBindings,
 ) {
   let parsed: AttributionEnvironment
   try {
     parsed = parseAttributionEnvironment(env)
-    const state = await readAttributionRuntimeState(env.DB)
-    if (state.mode !== 'active') return
   } catch {
     return
   }

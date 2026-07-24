@@ -222,16 +222,24 @@ describe('归因生产切换核验', () => {
     )
   })
 
-  it('preflight 要求旧写者唯一且新运行时为 shadow', () => {
+  it('preflight 要求旧 owner 与 shadow epoch 均为初始状态', () => {
     const result = evaluatePreflight({
-      oldWriter: 'active',
+      oldRuntimeOwner: 'old',
+      oldOwnerEpoch: 1,
       newRuntimeMode: 'shadow',
+      bridgeOwnerEpoch: null,
+      activeOwnerEpoch: null,
+      fencedOwnerEpoch: null,
       productionDeliveryCountNew: 0,
       openCriticalCountNew: 0,
     })
 
-    assert.equal(result.oldWriter, 'active')
+    assert.equal(result.oldRuntimeOwner, 'old')
+    assert.equal(result.oldOwnerEpoch, 1)
     assert.equal(result.newRuntimeMode, 'shadow')
+    assert.equal(result.bridgeOwnerEpoch, null)
+    assert.equal(result.activeOwnerEpoch, null)
+    assert.equal(result.fencedOwnerEpoch, null)
     assert.equal(result.productionDeliveryCountNew, 0)
     assert.equal(result.ready, true)
   })
@@ -242,9 +250,19 @@ describe('归因生产切换核验', () => {
         mode: 'preflight',
         runId: 'migration-production-v1',
       },
-      queryOld: async () => [{ row_count: 1 }],
+      queryOld: async () => [{
+        owner: 'old',
+        owner_epoch: 1,
+      }],
       queryNew: async (sql) => {
-        if (sql.includes('SELECT mode')) return [{ mode: 'shadow' }]
+        if (sql.includes('SELECT mode')) {
+          return [{
+            mode: 'shadow',
+            bridge_owner_epoch: null,
+            active_owner_epoch: null,
+            fenced_owner_epoch: null,
+          }]
+        }
         return [{ row_count: 0 }]
       },
     })
@@ -256,16 +274,44 @@ describe('归因生产切换核验', () => {
     assert.equal(result.preflight.ready, true)
   })
 
-  it('拒绝 bridge/active 或已经产生普通投递的目标运行时', () => {
+  it('拒绝错误 owner、已占用 epoch 或已经产生普通投递的目标运行时', () => {
     assert.equal(evaluatePreflight({
-      oldWriter: 'active',
-      newRuntimeMode: 'active',
+      oldRuntimeOwner: 'draining',
+      oldOwnerEpoch: 1,
+      newRuntimeMode: 'shadow',
+      bridgeOwnerEpoch: null,
+      activeOwnerEpoch: null,
+      fencedOwnerEpoch: null,
       productionDeliveryCountNew: 0,
       openCriticalCountNew: 0,
     }).ready, false)
     assert.equal(evaluatePreflight({
-      oldWriter: 'active',
+      oldRuntimeOwner: 'old',
+      oldOwnerEpoch: 3,
+      newRuntimeMode: 'active',
+      bridgeOwnerEpoch: 2,
+      activeOwnerEpoch: 2,
+      fencedOwnerEpoch: null,
+      productionDeliveryCountNew: 0,
+      openCriticalCountNew: 0,
+    }).ready, false)
+    assert.equal(evaluatePreflight({
+      oldRuntimeOwner: 'old',
+      oldOwnerEpoch: 3,
       newRuntimeMode: 'shadow',
+      bridgeOwnerEpoch: 2,
+      activeOwnerEpoch: null,
+      fencedOwnerEpoch: null,
+      productionDeliveryCountNew: 0,
+      openCriticalCountNew: 0,
+    }).ready, false)
+    assert.equal(evaluatePreflight({
+      oldRuntimeOwner: 'old',
+      oldOwnerEpoch: 3,
+      newRuntimeMode: 'shadow',
+      bridgeOwnerEpoch: null,
+      activeOwnerEpoch: null,
+      fencedOwnerEpoch: null,
       productionDeliveryCountNew: 1,
       openCriticalCountNew: 0,
     }).ready, false)

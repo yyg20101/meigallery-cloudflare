@@ -29,7 +29,9 @@ const MIGRATION = [
   '../../migrations/0001_attribution_runtime.sql',
   '../../migrations/0002_event_delivery.sql',
   '../../migrations/0003_queue_runtime.sql',
+  '../../migrations/0004_runtime_state.sql',
   '../../migrations/0005_migration_history.sql',
+  '../../migrations/0006_runtime_owner_epoch.sql',
 ].map(path => readFileSync(
   new URL(path, import.meta.url),
   'utf8',
@@ -610,6 +612,7 @@ async function seedDelivery(
       destination,
       external_event_id,
       status,
+      runtime_owner_epoch,
       queue_attempt_count,
       created_at,
       updated_at
@@ -623,6 +626,7 @@ async function seedDelivery(
       ?,
       ?,
       ?,
+      2,
       ?,
       '2026-07-23T16:06:00.000Z',
       '2026-07-23T16:10:00.000Z'

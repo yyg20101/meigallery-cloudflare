@@ -26,12 +26,23 @@ import {
   dispatchAttributionBusinessOutboxImmediately,
 } from '../services/attribution-business-outbox'
 import { createAttributionServiceClient } from '../services/attribution-service-client'
+import {
+  createLegacyRegistrationOutboxDispatcher,
+} from '../services/legacy-registration-outbox-dispatcher'
 
 type RegistrationAttributionContext = {
   visitorId?: string
   sessionId?: string
+  occurredAt?: string
+  routeName?: string
   path?: string
   sourceChannel?: string
+  sourceName?: string
+  trackingSourceSlug?: string
+  utmSource?: string
+  utmMedium?: string
+  utmCampaign?: string
+  utmContent?: string
 }
 
 const CONVERSION_ID_RE = /^[A-Za-z0-9_-]{8,120}$/
@@ -320,6 +331,25 @@ authRoutes.post('/register', async (c) => {
       db,
       attributionClient,
       outboxId,
+      {
+        dispatchLegacy: createLegacyRegistrationOutboxDispatcher(c, {
+          userId,
+          visitorId: attribution.visitorId,
+          sessionId: attribution.sessionId,
+          occurredAt,
+          routeName: attribution.routeName,
+          pagePath,
+          sourceChannel: attribution.sourceChannel,
+          sourceName: attribution.sourceName,
+          trackingSourceSlug: attribution.trackingSourceSlug,
+          utmSource: attribution.utmSource,
+          utmMedium: attribution.utmMedium,
+          utmCampaign: attribution.utmCampaign,
+          utmContent: attribution.utmContent,
+          consentSnapshot,
+          hashedEmail,
+        }),
+      },
     )
     attributionInstructionToken = dispatch.instructionToken
     if (!dispatch.accepted) {
@@ -354,8 +384,16 @@ function normalizeRegistrationAttribution(value: unknown, userId: number) {
   return {
     visitorId: normalizeConversionId(input.visitorId) || fallbackId,
     sessionId: normalizeConversionId(input.sessionId) || fallbackId,
+    occurredAt: normalizeOccurredAt(input.occurredAt),
+    routeName: normalizeText(input.routeName, 120),
     path: normalizeText(input.path, 240),
     sourceChannel: normalizeText(input.sourceChannel, 40) || 'unknown',
+    sourceName: normalizeText(input.sourceName, 120),
+    trackingSourceSlug: normalizeText(input.trackingSourceSlug, 120),
+    utmSource: normalizeText(input.utmSource, 120),
+    utmMedium: normalizeText(input.utmMedium, 120),
+    utmCampaign: normalizeText(input.utmCampaign, 120),
+    utmContent: normalizeText(input.utmContent, 120),
   }
 }
 
@@ -416,6 +454,13 @@ function normalizeRegistrationPagePath(value: unknown) {
 function normalizeConversionId(value: unknown) {
   const normalized = typeof value === 'string' ? value.trim() : ''
   return CONVERSION_ID_RE.test(normalized) ? normalized : ''
+}
+
+function normalizeOccurredAt(value: unknown) {
+  const parsed = new Date(typeof value === 'string' ? value : '')
+  return Number.isNaN(parsed.getTime())
+    ? new Date().toISOString()
+    : parsed.toISOString()
 }
 
 function normalizeText(value: unknown, maxLength: number) {

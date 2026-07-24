@@ -3,6 +3,11 @@ import {
   type AttributionBusinessEventV1,
 } from '@meigallery/shared'
 import type { AttributionServiceClient } from './attribution-service-client'
+import {
+  assertAttributionRuntimeOwner,
+  isAttributionForwardingOwner,
+  readAttributionRuntimeOwner,
+} from './attribution-runtime-owner'
 
 const DEFAULT_DISPATCH_LIMIT = 25
 const MAX_DISPATCH_LIMIT = 100
@@ -24,6 +29,8 @@ export interface AttributionBusinessOutboxClaim {
   event: AttributionBusinessEventV1
   attemptCount: number
   claimToken: string
+  routingOwner: 'old' | 'draining' | 'new'
+  ownerEpoch: number
 }
 
 export interface AttributionBusinessOutboxDispatchResult {
@@ -39,6 +46,14 @@ export interface AttributionBusinessOutboxImmediateResult {
   instructionToken: string | null
 }
 
+export type AttributionLegacyRegistrationDispatcher = (
+  event: AttributionBusinessEventV1,
+  ownership: {
+    owner: 'old'
+    epoch: number
+  },
+) => Promise<void>
+
 type AttributionBusinessOutboxRow = {
   id: string
   event_id: string
@@ -46,6 +61,8 @@ type AttributionBusinessOutboxRow = {
   payload_json: string
   attempt_count: number
   claim_token: string
+  routing_owner: string
+  owner_epoch: number
 }
 
 /**
@@ -76,7 +93,9 @@ export function buildCompleteRegistrationOutboxStatement(
       event_id,
       dedupe_key,
       event_name,
-      payload_json
+      payload_json,
+      routing_owner,
+      owner_epoch
     )
     SELECT
       'registration_user_' || CAST(last_insert_rowid() AS TEXT),
@@ -100,8 +119,12 @@ export function buildCompleteRegistrationOutboxStatement(
           'userId', last_insert_rowid()
           ${hashedEmailEntry}
         )
-      )
-    WHERE last_insert_rowid() > 0
+      ),
+      runtime.owner,
+      runtime.owner_epoch
+    FROM attribution_runtime_cutover AS runtime
+    WHERE runtime.id = 'global'
+      AND last_insert_rowid() > 0
     ON CONFLICT(id) DO NOTHING
     RETURNING id, event_id
   `).bind(
@@ -145,6 +168,14 @@ export async function claimAttributionBusinessOutbox(
       SELECT id
       FROM attribution_business_outbox
       WHERE status IN ('pending', 'dispatching')
+        AND EXISTS (
+          SELECT 1
+          FROM attribution_runtime_cutover AS runtime
+          WHERE runtime.id = 'global'
+            AND runtime.owner = attribution_business_outbox.routing_owner
+            AND runtime.owner_epoch =
+              attribution_business_outbox.owner_epoch
+        )
         AND julianday(next_attempt_at) <= julianday(?)
         ${outboxFilter}
       ORDER BY next_attempt_at ASC, created_at ASC, id ASC
@@ -156,7 +187,9 @@ export async function claimAttributionBusinessOutbox(
       event_name,
       payload_json,
       attempt_count,
-      claim_token
+      claim_token,
+      routing_owner,
+      owner_epoch
   `).bind(
     leaseUntil,
     nowIso,
@@ -237,6 +270,10 @@ export async function dispatchAttributionBusinessOutbox(
   client: AttributionServiceClient,
   options: { limit?: number; now?: Date } = {},
 ): Promise<AttributionBusinessOutboxDispatchResult> {
+  const ownership = await readAttributionRuntimeOwner(db)
+  if (!isAttributionForwardingOwner(ownership)) {
+    return { claimed: 0, accepted: 0, failed: 0 }
+  }
   const claims = await claimAttributionBusinessOutbox(db, options)
   const result: AttributionBusinessOutboxDispatchResult = {
     claimed: claims.length,
@@ -246,7 +283,20 @@ export async function dispatchAttributionBusinessOutbox(
 
   for (const claim of claims) {
     try {
-      await client.ingestRegistrationEvent(claim.event)
+      await assertAttributionRuntimeOwner(db, {
+        owner: claim.routingOwner,
+        epoch: claim.ownerEpoch,
+      })
+      if (
+        claim.routingOwner !== 'draining'
+        && claim.routingOwner !== 'new'
+      ) {
+        throw new Error('ATTRIBUTION_BUSINESS_OUTBOX_OWNER_INVALID')
+      }
+      await client.ingestRegistrationEvent(claim.event, {
+        owner: claim.routingOwner,
+        epoch: claim.ownerEpoch,
+      })
       const completed = await completeAttributionBusinessOutbox(
         db,
         claim,
@@ -270,12 +320,24 @@ export async function dispatchAttributionBusinessOutboxImmediately(
   db: D1Database,
   client: AttributionServiceClient,
   outboxId: string,
-  now = new Date(),
+  options: {
+    now?: Date
+    dispatchLegacy?: AttributionLegacyRegistrationDispatcher
+  } = {},
 ): Promise<AttributionBusinessOutboxImmediateResult> {
   const normalizedId = normalizeOutboxId(outboxId)
+  const ownership = await readAttributionRuntimeOwner(db)
+  if (ownership.owner === 'old' && !options.dispatchLegacy) {
+    return {
+      outboxId: normalizedId,
+      eventId: normalizedId,
+      accepted: false,
+      instructionToken: null,
+    }
+  }
   const claims = await claimAttributionBusinessOutbox(db, {
     limit: 1,
-    now,
+    now: options.now,
     outboxId: normalizedId,
   })
   const claim = claims[0]
@@ -293,13 +355,40 @@ export async function dispatchAttributionBusinessOutboxImmediately(
       outboxId: normalizedId,
       eventId: completed,
       accepted: true,
-      instructionToken: await readInstructionToken(client, completed),
+      instructionToken: isAttributionForwardingOwner(ownership)
+        ? await readInstructionToken(
+            client,
+            completed,
+            ownership,
+          )
+        : null,
     }
   }
 
   try {
-    await client.ingestRegistrationEvent(claim.event)
-    const completed = await completeAttributionBusinessOutbox(db, claim, now)
+    await assertAttributionRuntimeOwner(db, {
+      owner: claim.routingOwner,
+      epoch: claim.ownerEpoch,
+    })
+    if (claim.routingOwner === 'old') {
+      await options.dispatchLegacy?.(claim.event, {
+        owner: 'old',
+        epoch: claim.ownerEpoch,
+      })
+      if (!options.dispatchLegacy) {
+        throw new Error('ATTRIBUTION_LEGACY_DISPATCH_UNAVAILABLE')
+      }
+    } else {
+      await client.ingestRegistrationEvent(claim.event, {
+        owner: claim.routingOwner,
+        epoch: claim.ownerEpoch,
+      })
+    }
+    const completed = await completeAttributionBusinessOutbox(
+      db,
+      claim,
+      options.now,
+    )
     if (!completed) {
       return {
         outboxId: claim.id,
@@ -312,11 +401,17 @@ export async function dispatchAttributionBusinessOutboxImmediately(
       outboxId: claim.id,
       eventId: claim.eventId,
       accepted: true,
-      instructionToken: await readInstructionToken(client, claim.eventId),
+      instructionToken: isAttributionForwardingOwner(ownership)
+        ? await readInstructionToken(
+            client,
+            claim.eventId,
+            ownership,
+          )
+        : null,
     }
   }
   catch {
-    await failAttributionBusinessOutbox(db, claim, now)
+    await failAttributionBusinessOutbox(db, claim, options.now)
     return {
       outboxId: claim.id,
       eventId: claim.eventId,
@@ -365,6 +460,13 @@ function parseClaim(
     || !Number.isSafeInteger(row.attempt_count)
     || row.attempt_count < 1
     || !/^[0-9a-f]{32}$/.test(row.claim_token)
+    || (
+      row.routing_owner !== 'old'
+      && row.routing_owner !== 'draining'
+      && row.routing_owner !== 'new'
+    )
+    || !Number.isSafeInteger(row.owner_epoch)
+    || row.owner_epoch < 1
   ) {
     throw new Error('ATTRIBUTION_BUSINESS_OUTBOX_PAYLOAD_INVALID')
   }
@@ -374,6 +476,8 @@ function parseClaim(
     event,
     attemptCount: row.attempt_count,
     claimToken: row.claim_token,
+    routingOwner: row.routing_owner,
+    ownerEpoch: row.owner_epoch,
   }
 }
 
@@ -393,9 +497,16 @@ async function readCompletedEventId(
 async function readInstructionToken(
   client: AttributionServiceClient,
   eventId: string,
+  ownership: {
+    owner: 'draining' | 'new'
+    epoch: number
+  },
 ): Promise<string | null> {
   try {
-    const result = await client.getSignedBrowserInstruction({ eventId })
+    const result = await client.getSignedBrowserInstruction(
+      { eventId },
+      ownership,
+    )
     return result.instructionToken
   }
   catch {

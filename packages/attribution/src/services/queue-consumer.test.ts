@@ -13,6 +13,8 @@ import {
   consumeAttributionQueue,
   type AttributionQueueConsumerEnvironment,
 } from './queue-consumer'
+import { claimDelivery } from './queue-repository'
+import { readDeliverySnapshot } from './queue-snapshot'
 import type { AttributionQueueMessage } from './secure-outbox'
 import { clearAttributionRuntimeDatabase } from '../test/attribution-schema'
 
@@ -20,6 +22,8 @@ const MIGRATIONS = [
   '../../migrations/0001_attribution_runtime.sql',
   '../../migrations/0002_event_delivery.sql',
   '../../migrations/0003_queue_runtime.sql',
+  '../../migrations/0004_runtime_state.sql',
+  '../../migrations/0006_runtime_owner_epoch.sql',
 ].map(path => readFileSync(new URL(path, import.meta.url), 'utf8'))
 const now = new Date('2026-07-24T05:00:00.000Z')
 const credentialKeys = {
@@ -50,10 +54,79 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await clearAttributionRuntimeDatabase(db)
+  await db.prepare(`
+    UPDATE attribution_runtime_state
+    SET mode = 'active',
+        activated_at = ?,
+        bridge_owner_epoch = 2,
+        active_owner_epoch = 3,
+        fenced_owner_epoch = NULL,
+        updated_at = ?
+    WHERE id = 'global'
+  `).bind(now.toISOString(), now.toISOString()).run()
   await seedMetaDelivery()
 })
 
 describe('归因 Queue Consumer', () => {
+  it('shadow 仅允许 synthetic 候选验证领取投递', async () => {
+    await setSyntheticFactAndRuntime('shadow')
+    const row = await readDeliverySnapshot(db, 'delivery_meta')
+
+    expect(row).not.toBeNull()
+    expect(await claimDelivery(db, row!, now)).toBe(1)
+    expect(await delivery()).toMatchObject({
+      status: 'retrying',
+      attempt_count: 1,
+      last_error_code: 'processing',
+    })
+  })
+
+  it('fenced 原子取消 synthetic 候选投递并删除 outbox', async () => {
+    await setSyntheticFactAndRuntime('fenced')
+
+    expect(await readDeliverySnapshot(db, 'delivery_meta')).toBeNull()
+    expect(await delivery()).toMatchObject({
+      status: 'cancelled',
+      attempt_count: 0,
+      last_error_code: 'runtime_fenced',
+    })
+    expect(await outboxExists()).toBe(false)
+  })
+
+  it('fenced 后既有 Queue 消息只确认取消态且不调用平台', async () => {
+    await db.prepare(`
+      UPDATE attribution_runtime_state
+      SET mode = 'fenced',
+          activated_at = NULL,
+          bridge_owner_epoch = NULL,
+          active_owner_epoch = NULL,
+          fenced_owner_epoch = 4,
+          updated_at = ?
+      WHERE id = 'global'
+    `).bind(now.toISOString()).run()
+    const deliver = vi.fn()
+    const item = queueMessage()
+
+    expect(await consumeAttributionQueue(
+      queueBatch('meigallery-attribution-meta', [item.message]),
+      environment(adapter('meta', deliver)),
+    )).toEqual({
+      accepted: 0,
+      retried: 0,
+      rejected: 0,
+      deadLettered: 0,
+      skipped: 1,
+    })
+    expect(deliver).not.toHaveBeenCalled()
+    expect(item.ack).toHaveBeenCalledOnce()
+    expect(item.retry).not.toHaveBeenCalled()
+    expect(await delivery()).toMatchObject({
+      status: 'cancelled',
+      attempt_count: 0,
+      last_error_code: 'runtime_fenced',
+    })
+  })
+
   it('解密同一 provider 的凭据与事件并只完成一次投递', async () => {
     const deliver = vi.fn().mockResolvedValue({
       provider: 'meta',
@@ -581,11 +654,11 @@ async function seedMetaDelivery() {
       INSERT INTO attribution_deliveries (
         id, fact_id, connection_id, version_id, provider,
         transport, destination, external_event_id, status,
-        created_at, updated_at
+        runtime_owner_epoch, created_at, updated_at
       ) VALUES (
         'delivery_meta', 'fact_meta', 'conn_meta', 'ver_meta', 'meta',
         'server', 'meta_capi', 'attr1_meta_contact_event', 'queued',
-        ?, ?
+        3, ?, ?
       )
     `).bind(now.toISOString(), now.toISOString()),
     db.prepare(`
@@ -602,6 +675,52 @@ async function seedMetaDelivery() {
       outbox.ciphertext,
       outbox.tag,
       new Date(now.getTime() + 60 * 60_000).toISOString(),
+      now.toISOString(),
+    ),
+  ])
+}
+
+async function setSyntheticFactAndRuntime(
+  mode: 'shadow' | 'fenced',
+) {
+  await db.batch([
+    db.prepare(`
+      UPDATE attribution_connection_versions
+      SET status = 'validating',
+          activated_at = NULL
+      WHERE id = 'ver_meta'
+    `),
+    db.prepare(`
+      UPDATE attribution_facts
+      SET fact_origin = 'synthetic'
+      WHERE id = 'fact_meta'
+    `),
+    db.prepare(`
+      UPDATE attribution_deliveries
+      SET runtime_owner_epoch = 2
+      WHERE id = 'delivery_meta'
+    `),
+    db.prepare(`
+      INSERT INTO attribution_validations (
+        id, candidate_version_id, provider, status,
+        evidence_json, started_at, created_at
+      ) VALUES (
+        'validation_meta', 'ver_meta', 'meta', 'running',
+        '{}', ?, ?
+      )
+    `).bind(now.toISOString(), now.toISOString()),
+    db.prepare(`
+      UPDATE attribution_runtime_state
+      SET mode = ?,
+          activated_at = NULL,
+          bridge_owner_epoch = NULL,
+          active_owner_epoch = NULL,
+          fenced_owner_epoch = ?,
+          updated_at = ?
+      WHERE id = 'global'
+    `).bind(
+      mode,
+      mode === 'fenced' ? 4 : null,
       now.toISOString(),
     ),
   ])

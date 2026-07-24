@@ -136,6 +136,8 @@ export const ATTRIBUTION_SERVICE_BINDING = {
     ACTOR_ID: 'X-Attribution-Actor-Id',
     ACTOR_ROLE: 'X-Attribution-Actor-Role',
     REQUEST_ID: 'X-Attribution-Request-Id',
+    RUNTIME_OWNER: 'X-Attribution-Runtime-Owner',
+    RUNTIME_EPOCH: 'X-Attribution-Runtime-Epoch',
   },
 } as const
 

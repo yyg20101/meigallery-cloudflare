@@ -9,26 +9,50 @@ const ATTRIBUTION_INTERNAL_ORIGIN =
   ATTRIBUTION_SERVICE_BINDING.INTERNAL_ORIGIN
 const PRIVACY_DECISION_PATH = '/internal/v1/privacy-decision'
 const REGISTRATION_EVENTS_PATH = '/internal/v1/registration-events'
+const CONTACT_EVENTS_PATH = '/internal/v1/contact-events'
+const LEGACY_CONTEXT_PATH = '/internal/v1/legacy-context'
+const RUNTIME_STATE_PATH = '/internal/v1/runtime-state'
+const RUNTIME_TRANSITION_PATH =
+  `${ATTRIBUTION_SERVICE_BINDING.ADMIN_PATH_PREFIX}`
+  + '/runtime-state/transition'
 const CONTACT_CAPABILITIES_PATH = '/internal/v1/contact-capabilities'
 const BROWSER_INSTRUCTION_PATH_PREFIX = '/internal/v1/events/'
 const EVENT_ID_PATTERN = /^[A-Za-z0-9:_-]{1,160}$/
 const CONTACT_ID_PATTERN = /^[A-Za-z0-9:_-]{1,160}$/
 const DESTINATION_DIGEST_PATTERN = /^[0-9a-f]{64}$/
 const CONTACT_BATCH_LIMIT = 100
+const PROVIDER_IDENTIFIER_KEYS = {
+  meta: new Set(['fbclid']),
+  tiktok: new Set(['ttclid']),
+  google: new Set(['gclid', 'gbraid', 'wbraid']),
+} as const
 
 export interface AttributionServiceBinding {
   fetch(request: Request): Promise<Response>
 }
 
 export interface AttributionServiceClient {
+  readRuntimeState(): Promise<AttributionRuntimeReadiness>
+  transitionRuntimeState(
+    input: AttributionRuntimeTransitionInput,
+  ): Promise<AttributionRuntimeState>
   resolvePrivacyDecision(
     input: AttributionPrivacyDecisionInput,
   ): Promise<AttributionPrivacyDecisionResult>
   ingestRegistrationEvent(
     input: AttributionBusinessEventV1,
+    ownership: AttributionRuntimeWriteOwnership,
   ): Promise<{ accepted: true; eventId: string }>
+  ingestContactEvent(
+    input: AttributionContactBridgeEventInput,
+    ownership: AttributionRuntimeWriteOwnership,
+  ): Promise<{ accepted: true; eventId: string }>
+  translateLegacyContext(
+    input: AttributionLegacyContextInput,
+  ): Promise<{ sourceContextToken: string }>
   getSignedBrowserInstruction(
     input: { eventId: string },
+    ownership: AttributionRuntimeWriteOwnership,
   ): Promise<{ instructionToken: string }>
   getSignedContactCapabilities(
     input: AttributionContactCapabilityInput[],
@@ -51,6 +75,48 @@ export interface AttributionPrivacyDecisionInput {
   privacyToken: string | null
   country: string | null
   gpc: boolean
+}
+
+export interface AttributionRuntimeWriteOwnership {
+  owner: 'draining' | 'new'
+  epoch: number
+}
+
+export interface AttributionRuntimeState {
+  mode: 'shadow' | 'bridge' | 'active' | 'fenced'
+  activatedAt: string | null
+  bridgeOwnerEpoch: number | null
+  activeOwnerEpoch: number | null
+  fencedOwnerEpoch: number | null
+  updatedAt: string
+}
+
+export interface AttributionRuntimeReadiness
+  extends AttributionRuntimeState {
+  migrationReconciled: boolean
+  inFlightServerDeliveries: number
+}
+
+export interface AttributionRuntimeTransitionInput {
+  targetMode: 'bridge' | 'active' | 'fenced'
+  sourceOwnerEpoch: number
+  actorId: number
+  reason: string
+  idempotencyKey: string
+}
+
+export interface AttributionContactBridgeEventInput {
+  event: AttributionBusinessEventV1
+  requestMetadata: {
+    clientIp?: string
+    userAgent?: string
+  }
+}
+
+export interface AttributionLegacyContextInput {
+  provider: 'meta' | 'tiktok' | 'google'
+  identifiers: Record<string, string>
+  idempotencyKey: string
 }
 
 export type AttributionPrivacyDecisionResult =
@@ -97,6 +163,70 @@ export function createAttributionServiceClient(
   binding: AttributionServiceBinding,
 ): AttributionServiceClient {
   return {
+    async readRuntimeState() {
+      const response = await binding.fetch(new Request(
+        `${ATTRIBUTION_INTERNAL_ORIGIN}${RUNTIME_STATE_PATH}`,
+        {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+          redirect: 'error',
+        },
+      ))
+      if (!response.ok) {
+        throw new AttributionServiceClientError(
+          'ATTRIBUTION_RUNTIME_STATE_FAILED',
+          response.status,
+        )
+      }
+      const result = await readJsonRecord(response)
+      if (!isRuntimeReadiness(result)) {
+        throw new AttributionServiceClientError(
+          'ATTRIBUTION_RUNTIME_STATE_RESPONSE_INVALID',
+          response.status,
+        )
+      }
+      return result
+    },
+
+    async transitionRuntimeState(input) {
+      const normalized = normalizeRuntimeTransitionInput(input)
+      const response = await binding.fetch(new Request(
+        `${ATTRIBUTION_INTERNAL_ORIGIN}${RUNTIME_TRANSITION_PATH}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            'Idempotency-Key': normalized.idempotencyKey,
+            ...runtimeCommandHeaders(normalized),
+          },
+          body: JSON.stringify({
+            targetMode: normalized.targetMode,
+            sourceOwnerEpoch: normalized.sourceOwnerEpoch,
+            reason: normalized.reason,
+          }),
+          redirect: 'error',
+        },
+      ))
+      if (!response.ok) {
+        throw new AttributionServiceClientError(
+          'ATTRIBUTION_RUNTIME_TRANSITION_FAILED',
+          response.status,
+        )
+      }
+      const result = await readJsonRecord(response)
+      if (
+        !isExactUnknownRecord(result, ['data'])
+        || !isRuntimeState(result.data)
+      ) {
+        throw new AttributionServiceClientError(
+          'ATTRIBUTION_RUNTIME_TRANSITION_RESPONSE_INVALID',
+          response.status,
+        )
+      }
+      return result.data
+    },
+
     async resolvePrivacyDecision(input) {
       const normalized = normalizePrivacyDecisionInput(input)
       const response = await binding.fetch(new Request(
@@ -128,7 +258,7 @@ export function createAttributionServiceClient(
       return result
     },
 
-    async ingestRegistrationEvent(input) {
+    async ingestRegistrationEvent(input, ownership) {
       if (
         !isAttributionBusinessEventV1(input)
         || input.eventName !== 'CompleteRegistration'
@@ -145,6 +275,7 @@ export function createAttributionServiceClient(
           headers: {
             'Content-Type': 'application/json',
             Accept: 'application/json',
+            ...runtimeWriteHeaders(ownership),
           },
           body: JSON.stringify(input),
           redirect: 'error',
@@ -170,7 +301,85 @@ export function createAttributionServiceClient(
       return { accepted: true, eventId: input.eventId }
     },
 
-    async getSignedBrowserInstruction(input) {
+    async ingestContactEvent(input, ownership) {
+      if (
+        !isPlainRecord(input)
+        || !isAttributionBusinessEventV1(input.event)
+        || input.event.eventName !== 'Contact'
+        || !isRequestMetadata(input.requestMetadata)
+      ) {
+        throw new AttributionServiceClientError(
+          'ATTRIBUTION_CONTACT_EVENT_INVALID',
+        )
+      }
+      const response = await binding.fetch(new Request(
+        `${ATTRIBUTION_INTERNAL_ORIGIN}${CONTACT_EVENTS_PATH}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            ...runtimeWriteHeaders(ownership),
+          },
+          body: JSON.stringify(input),
+          redirect: 'error',
+        },
+      ))
+      if (!response.ok) {
+        throw new AttributionServiceClientError(
+          'ATTRIBUTION_CONTACT_INGEST_FAILED',
+          response.status,
+        )
+      }
+      const result = await readJsonRecord(response)
+      if (
+        result.accepted !== true
+        || result.eventId !== input.event.eventId
+      ) {
+        throw new AttributionServiceClientError(
+          'ATTRIBUTION_CONTACT_INGEST_RESPONSE_INVALID',
+          response.status,
+        )
+      }
+      return { accepted: true, eventId: input.event.eventId }
+    },
+
+    async translateLegacyContext(input) {
+      const normalized = normalizeLegacyContextInput(input)
+      const response = await binding.fetch(new Request(
+        `${ATTRIBUTION_INTERNAL_ORIGIN}${LEGACY_CONTEXT_PATH}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify(normalized),
+          redirect: 'error',
+        },
+      ))
+      if (!response.ok) {
+        throw new AttributionServiceClientError(
+          'ATTRIBUTION_LEGACY_CONTEXT_FAILED',
+          response.status,
+        )
+      }
+      const result = await readJsonRecord(response)
+      if (
+        typeof result.sourceContextToken !== 'string'
+        || result.sourceContextToken.length < 16
+        || result.sourceContextToken.length > 4_096
+        || /\p{Cc}/u.test(result.sourceContextToken)
+      ) {
+        throw new AttributionServiceClientError(
+          'ATTRIBUTION_LEGACY_CONTEXT_RESPONSE_INVALID',
+          response.status,
+        )
+      }
+      return { sourceContextToken: result.sourceContextToken }
+    },
+
+    async getSignedBrowserInstruction(input, ownership) {
       if (!EVENT_ID_PATTERN.test(input.eventId)) {
         throw new AttributionServiceClientError(
           'ATTRIBUTION_BROWSER_INSTRUCTION_INPUT_INVALID',
@@ -182,7 +391,10 @@ export function createAttributionServiceClient(
         `${ATTRIBUTION_INTERNAL_ORIGIN}${BROWSER_INSTRUCTION_PATH_PREFIX}${eventId}/browser-instruction`,
         {
           method: 'GET',
-          headers: { Accept: 'application/json' },
+          headers: {
+            Accept: 'application/json',
+            ...runtimeWriteHeaders(ownership),
+          },
           redirect: 'error',
         },
       ))
@@ -323,6 +535,56 @@ function migrationHeaders(input: {
   }
 }
 
+function normalizeRuntimeTransitionInput(
+  input: AttributionRuntimeTransitionInput,
+): AttributionRuntimeTransitionInput {
+  if (
+    !isExactUnknownRecord(input, [
+      'targetMode',
+      'sourceOwnerEpoch',
+      'actorId',
+      'reason',
+      'idempotencyKey',
+    ])
+    || (
+      input.targetMode !== 'bridge'
+      && input.targetMode !== 'active'
+      && input.targetMode !== 'fenced'
+    )
+    || !Number.isSafeInteger(input.sourceOwnerEpoch)
+    || Number(input.sourceOwnerEpoch) < 2
+    || !Number.isSafeInteger(input.actorId)
+    || Number(input.actorId) < 1
+    || typeof input.reason !== 'string'
+    || input.reason.trim().length < 4
+    || input.reason.trim().length > 240
+    || /\p{Cc}/u.test(input.reason)
+    || typeof input.idempotencyKey !== 'string'
+    || !EVENT_ID_PATTERN.test(input.idempotencyKey)
+  ) {
+    throw new AttributionServiceClientError(
+      'ATTRIBUTION_RUNTIME_TRANSITION_INPUT_INVALID',
+    )
+  }
+  return {
+    targetMode: input.targetMode,
+    sourceOwnerEpoch: Number(input.sourceOwnerEpoch),
+    actorId: Number(input.actorId),
+    reason: input.reason.trim(),
+    idempotencyKey: input.idempotencyKey,
+  }
+}
+
+function runtimeCommandHeaders(input: AttributionRuntimeTransitionInput) {
+  return {
+    [ATTRIBUTION_SERVICE_BINDING.HEADERS.ACTOR_ID]:
+      String(input.actorId),
+    [ATTRIBUTION_SERVICE_BINDING.HEADERS.ACTOR_ROLE]: 'owner',
+    [ATTRIBUTION_SERVICE_BINDING.HEADERS.REQUEST_ID]:
+      `runtime_request_${input.idempotencyKey}`.slice(0, 160),
+  }
+}
+
 function normalizePrivacyDecisionInput(
   value: AttributionPrivacyDecisionInput,
 ): AttributionPrivacyDecisionInput {
@@ -357,6 +619,72 @@ function normalizePrivacyDecisionInput(
   return { ...value }
 }
 
+function runtimeWriteHeaders(
+  ownership: AttributionRuntimeWriteOwnership,
+) {
+  if (
+    (ownership.owner !== 'draining' && ownership.owner !== 'new')
+    || !Number.isSafeInteger(ownership.epoch)
+    || ownership.epoch < 2
+  ) {
+    throw new AttributionServiceClientError(
+      'ATTRIBUTION_RUNTIME_WRITE_OWNERSHIP_INVALID',
+    )
+  }
+  return {
+    [ATTRIBUTION_SERVICE_BINDING.HEADERS.RUNTIME_OWNER]:
+      ownership.owner,
+    [ATTRIBUTION_SERVICE_BINDING.HEADERS.RUNTIME_EPOCH]:
+      String(ownership.epoch),
+  }
+}
+
+function normalizeLegacyContextInput(
+  input: AttributionLegacyContextInput,
+): AttributionLegacyContextInput {
+  if (
+    !isExactUnknownRecord(input, [
+      'provider',
+      'identifiers',
+      'idempotencyKey',
+    ])
+    || !['meta', 'tiktok', 'google'].includes(input.provider)
+    || !EVENT_ID_PATTERN.test(input.idempotencyKey)
+    || !isPlainRecord(input.identifiers)
+    || Object.keys(input.identifiers).length
+      > PROVIDER_IDENTIFIER_KEYS[input.provider].size
+    || Object.entries(input.identifiers).some(([key, value]) =>
+      !PROVIDER_IDENTIFIER_KEYS[input.provider].has(key)
+      || typeof value !== 'string'
+      || value.length === 0
+      || value.length > 1_024
+      || /\p{Cc}/u.test(value))
+  ) {
+    throw new AttributionServiceClientError(
+      'ATTRIBUTION_LEGACY_CONTEXT_INPUT_INVALID',
+    )
+  }
+  return {
+    provider: input.provider,
+    identifiers: { ...input.identifiers },
+    idempotencyKey: input.idempotencyKey,
+  }
+}
+
+function isRequestMetadata(
+  value: unknown,
+): value is AttributionContactBridgeEventInput['requestMetadata'] {
+  if (!isPlainRecord(value)) return false
+  const keys = Object.keys(value)
+  return keys.every(key => key === 'clientIp' || key === 'userAgent')
+    && keys.length <= 2
+    && Object.values(value).every(item =>
+      typeof item === 'string'
+      && item.length > 0
+      && item.length <= 1_024
+      && !/\p{Cc}/u.test(item))
+}
+
 function isPrivacyDecisionResult(
   value: Record<string, unknown>,
 ): value is AttributionPrivacyDecisionResult {
@@ -376,6 +704,86 @@ function isPrivacyDecisionResult(
       || value.reason === 'prior_consent_region'
       || value.reason === 'unknown_region'
     )
+}
+
+function isRuntimeReadiness(
+  value: unknown,
+): value is AttributionRuntimeReadiness {
+  if (!isExactUnknownRecord(value, [
+    'mode',
+    'activatedAt',
+    'bridgeOwnerEpoch',
+    'activeOwnerEpoch',
+    'fencedOwnerEpoch',
+    'updatedAt',
+    'migrationReconciled',
+    'inFlightServerDeliveries',
+  ])) {
+    return false
+  }
+  return isRuntimeStateShape(value)
+    && typeof value.migrationReconciled === 'boolean'
+    && Number.isSafeInteger(value.inFlightServerDeliveries)
+    && Number(value.inFlightServerDeliveries) >= 0
+}
+
+function isRuntimeState(
+  value: unknown,
+): value is AttributionRuntimeState {
+  if (!isExactUnknownRecord(value, [
+    'mode',
+    'activatedAt',
+    'bridgeOwnerEpoch',
+    'activeOwnerEpoch',
+    'fencedOwnerEpoch',
+    'updatedAt',
+  ])) {
+    return false
+  }
+  return isRuntimeStateShape(value)
+}
+
+function isRuntimeStateShape(
+  value: Record<string, unknown>,
+): boolean {
+  if (
+    (value.mode !== 'shadow'
+      && value.mode !== 'bridge'
+      && value.mode !== 'active'
+      && value.mode !== 'fenced')
+    || typeof value.updatedAt !== 'string'
+    || !isCanonicalTimestamp(value.updatedAt)
+  ) {
+    return false
+  }
+  if (value.mode === 'shadow') {
+    return value.activatedAt === null
+      && value.bridgeOwnerEpoch === null
+      && value.activeOwnerEpoch === null
+      && value.fencedOwnerEpoch === null
+  }
+  if (value.mode === 'bridge') {
+    return value.activatedAt === null
+      && Number.isSafeInteger(value.bridgeOwnerEpoch)
+      && Number(value.bridgeOwnerEpoch) >= 2
+      && value.activeOwnerEpoch === null
+      && value.fencedOwnerEpoch === null
+  }
+  if (value.mode === 'fenced') {
+    return value.activatedAt === null
+      && value.bridgeOwnerEpoch === null
+      && value.activeOwnerEpoch === null
+      && Number.isSafeInteger(value.fencedOwnerEpoch)
+      && Number(value.fencedOwnerEpoch) >= 3
+  }
+  return typeof value.activatedAt === 'string'
+    && isCanonicalTimestamp(value.activatedAt)
+    && Number.isSafeInteger(value.bridgeOwnerEpoch)
+    && Number(value.bridgeOwnerEpoch) >= 2
+    && Number.isSafeInteger(value.activeOwnerEpoch)
+    && Number(value.activeOwnerEpoch)
+      === Number(value.bridgeOwnerEpoch) + 1
+    && value.fencedOwnerEpoch === null
 }
 
 async function readJsonRecord(response: Response): Promise<Record<string, unknown>> {
@@ -548,4 +956,10 @@ function contactKey(input: AttributionContactCapabilityInput) {
     input.platform,
     input.destinationDigest,
   ].join('\u001f')
+}
+
+function isCanonicalTimestamp(value: string): boolean {
+  const parsed = new Date(value)
+  return Number.isFinite(parsed.getTime())
+    && parsed.toISOString() === value
 }
