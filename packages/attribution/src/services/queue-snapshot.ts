@@ -248,10 +248,6 @@ function parseSnapshot(row: DeliverySnapshotRow): DeliverySnapshot {
     && isIdentifier(row.validation_id)
     && row.validation_provider === provider
     && row.validation_status === 'running'
-    && (
-      provider === 'google'
-      || validationSecretEnvelope !== null
-    )
   return {
     deliveryId: row.delivery_id,
     factId: row.fact_id,

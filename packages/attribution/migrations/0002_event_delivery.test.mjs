@@ -17,6 +17,7 @@ test('事件 Schema 具备完整事实、投递和隐私边界', async () => {
     'attribution_validations',
     'attribution_validation_secrets',
     'attribution_quality_daily',
+    'attribution_capacity_daily',
     'attribution_privacy_policy',
   ]) {
     assert.match(migration, new RegExp(`CREATE TABLE ${table}`))

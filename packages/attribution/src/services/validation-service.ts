@@ -22,6 +22,7 @@ import { signAttributionToken } from '../security/signed-token'
 import {
   createAttributionConnectionCommands,
 } from './connection-commands'
+import { readCapacityGate } from './capacity-monitor'
 import { openCredential, type CredentialEnvelope } from './credential-vault'
 import {
   recordCandidateSyntheticFact,
@@ -151,13 +152,7 @@ export async function startCandidateValidation(
   const testEventCode = adapter.normalizeTestEventCode(
     input.testEventCode,
   )
-  if (
-    testEventCode === null
-    || (
-      candidate.provider !== 'google'
-      && testEventCode === undefined
-    )
-  ) {
+  if (testEventCode === null) {
     throw new Error('ATTRIBUTION_VALIDATION_TEST_CODE_INVALID')
   }
 
@@ -178,6 +173,7 @@ export async function startCandidateValidation(
   }
 
   const now = trustedNow(environment.now)
+  await assertNonEssentialCapacity(environment.db, now)
   const idFactory = validationIdFactory(environment)
   const validationId = identifier(idFactory('validation'))
   const secretEnvelope = testEventCode
@@ -257,10 +253,7 @@ export async function prepareCandidateValidation(
   const adapter = providerAdapter(environment, snapshot.provider)
   const credential = await openSnapshotCredential(environment, snapshot)
   const testEventCode = await openValidationSecret(environment, snapshot)
-  if (
-    snapshot.provider !== 'google'
-    && !testEventCode
-  ) {
+  if (adapter.normalizeTestEventCode(testEventCode) === null) {
     throw new Error('ATTRIBUTION_VALIDATION_TEST_CODE_INVALID')
   }
   const evidence = await adapter.validateCandidate({
@@ -303,6 +296,10 @@ export async function createCandidateSyntheticFacts(
   ) {
     throw new Error('ATTRIBUTION_VALIDATION_STATE_INVALID')
   }
+  await assertNonEssentialCapacity(
+    environment.db,
+    trustedNow(environment.now),
+  )
   const facts: CanonicalFactResult[] = []
   for (const eventName of EVENTS) {
     const fact = await recordCandidateSyntheticFact({
@@ -878,6 +875,16 @@ async function mergeEvidence(
     JSON.stringify({ ...current, ...evidence }),
     validationId,
   ).run()
+}
+
+async function assertNonEssentialCapacity(
+  db: D1Database,
+  now: Date,
+): Promise<void> {
+  const gate = await readCapacityGate(db, now.toISOString().slice(0, 10))
+  if (gate.observed && !gate.allowNonEssential) {
+    throw new Error('ATTRIBUTION_CAPACITY_NONESSENTIAL_PAUSED')
+  }
 }
 
 function providerAdapter(

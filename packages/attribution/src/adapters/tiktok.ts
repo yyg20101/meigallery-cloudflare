@@ -71,7 +71,7 @@ export function createTikTokAdapter(
     value: unknown,
   ): string | undefined | null {
     if (value === undefined || value === null || value === '') {
-      return undefined
+      return null
     }
     if (typeof value !== 'string') return null
     const normalized = value.trim()

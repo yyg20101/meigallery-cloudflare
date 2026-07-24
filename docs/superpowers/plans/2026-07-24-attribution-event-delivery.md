@@ -1070,7 +1070,7 @@ git commit -m "feat: 通过 Service Binding 投递注册归因"
 - Consumes: `/v1/context`、`/v1/runtime-config`、`/v1/events/contact`、`/v1/browser-receipts`。
 - Produces: 页面初始化、Contact sendBeacon/keepalive、本地有限重试和三平台 Browser Adapter。
 
-- [ ] **Step 1: 写 Browser 失败测试**
+- [x] **Step 1: 写 Browser 失败测试**
 
 ```ts
 it('只加载可信来源对应的 Pixel', async () => {
@@ -1124,7 +1124,7 @@ it('业务 Tracking 只把 Contact 委托给唯一归因 facade 一次', async (
 })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -1135,7 +1135,7 @@ corepack pnpm --filter @meigallery/attribution exec vitest run src/routes/browse
 
 Expected: FAIL，新插件和公开路由不存在。
 
-- [ ] **Step 3: 实现公开路由和 SDK**
+- [x] **Step 3: 实现公开路由和 SDK**
 
 路由固定为：
 
@@ -1186,7 +1186,7 @@ ContactMethodItem/ContactPanel
 架构测试扫描所有非测试 Web 源码，确保只有 `registry.client.ts` 可以导入 provider adapter，
 只有 `attribution.client.ts` 可以管理初始化和 teardown。
 
-- [ ] **Step 4: 运行 Browser、E2E 和隔离测试**
+- [x] **Step 4: 运行 Browser、E2E 和隔离测试**
 
 Run:
 
@@ -1198,7 +1198,7 @@ corepack pnpm --filter @meigallery/web exec playwright test tests/e2e/attributio
 
 Expected: PASS；Meta 来源只出现 Meta 网络请求，TikTok 和 Google 请求数为 `0`，其他矩阵同理。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add packages/attribution/src/routes packages/attribution/src/index.ts packages/web/app/adapters packages/web/app/plugins packages/web/app/composables/useAdAttribution* packages/web/app/composables/useTracking* packages/web/app/composables/useMarketingConsent* packages/web/app/components/ContactMethodItem.vue packages/web/app/components/ContactPanel.vue packages/web/app/architecture-boundaries.test.ts packages/web/tests/e2e/attribution-runtime.spec.ts
@@ -1219,7 +1219,7 @@ git commit -m "feat: 完成归因 Browser 与 Server 配对"
 - Consumes: 每日事实、delivery、Queue 和 D1 使用聚合。
 - Produces: 70%、85%、95% 容量告警、平台质量日报和阶段验收。
 
-- [ ] **Step 1: 写容量阈值失败测试**
+- [x] **Step 1: 写容量阈值失败测试**
 
 ```ts
 it.each([
@@ -1245,7 +1245,7 @@ it('质量 API 无权限只记录 unavailable 且不修改运行策略', async (
 })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -1255,7 +1255,7 @@ corepack pnpm --filter @meigallery/attribution exec vitest run src/services/capa
 
 Expected: FAIL，容量服务不存在。
 
-- [ ] **Step 3: 实现日报聚合与边界扫描**
+- [x] **Step 3: 实现日报聚合与边界扫描**
 
 容量服务只读取按日聚合，不做后台全表扫描。质量收集器通过 Adapter 注册表逐连接调用
 `readQualitySignal()`，把 `available`、`unavailable` 或 `error` 写入日报；任何结果都不得调用
@@ -1274,7 +1274,7 @@ import、Git commit 字段和跨 provider Queue 使用。
 Attribution scheduled handler 每 15 分钟依次执行 `retireDrainedVersions()`、过期 outbox 恢复和
 credential retention；每日执行质量与容量聚合。单项失败记录结构化 Incident，后续任务仍继续。
 
-- [ ] **Step 4: 运行阶段门禁**
+- [x] **Step 4: 运行阶段门禁**
 
 Run:
 
@@ -1289,7 +1289,7 @@ git diff --check
 
 Expected: 全部退出码为 `0`；构建仍未切换生产路由。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add packages/attribution

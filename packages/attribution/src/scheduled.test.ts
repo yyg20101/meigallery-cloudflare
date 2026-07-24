@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest'
 import { Miniflare } from 'miniflare'
 import { clearAttributionRuntimeDatabase } from './test/attribution-schema'
 import { runAttributionMaintenance } from './scheduled'
+import { recordCapacityUsage } from './services/capacity-monitor'
 
 const MIGRATIONS = [
   '../migrations/0001_attribution_runtime.sql',
@@ -64,19 +65,76 @@ it('定时维护只清除到期 retired 凭证并保留 Active 与 Draining', as
         tiktok: queue(),
         google: queue(),
       },
+      credentialMasterKeys: {
+        current: 'scheduled-test-master-key-at-least-32-bytes',
+      },
     },
     new Date('2026-07-24T00:00:00.000Z'),
-    'credentials',
+    'interval',
   )
 
-  expect(result).toEqual({
+  expect(result).toMatchObject({
+    versionRetirement: null,
     credentialRetention: { deleted: 1, scheduled: 0 },
-    outboxRecovery: null,
-    expiredOutbox: null,
+    outboxRecovery: {
+      attempted: 0,
+      enqueued: 0,
+      failed: 0,
+      expired: 0,
+      paused: 0,
+    },
+    expiredOutbox: 0,
+    failures: ['version_retirement_failed'],
+  })
+  expect(await db.prepare(`
+    SELECT status, code
+    FROM attribution_incidents
+    WHERE id = 'maintenance:version_retirement_failed'
+  `).first()).toEqual({
+    status: 'open',
+    code: 'version_retirement_failed',
   })
   expect(await credentialExists(db, 'ver_active')).toBe(true)
   expect(await credentialExists(db, 'ver_draining')).toBe(true)
   expect(await credentialExists(db, 'ver_retired')).toBe(false)
+})
+
+it('账户容量达到 85% 后每日任务跳过非必要质量请求', async () => {
+  await recordCapacityUsage(db, {
+    schemaVersion: 1,
+    date: '2026-07-24',
+    measuredAt: '2026-07-24T23:50:00.000Z',
+    source: 'cloudflare-account-analytics',
+    workerRequests: 85_000,
+    d1RowsRead: 0,
+    d1RowsWritten: 0,
+    queueOperations: 0,
+  })
+
+  const result = await runAttributionMaintenance(
+    {
+      db,
+      queues: {
+        meta: queue(),
+        tiktok: queue(),
+        google: queue(),
+      },
+      credentialMasterKeys: {
+        current: 'scheduled-test-master-key-at-least-32-bytes',
+      },
+    },
+    new Date('2026-07-24T23:55:00.000Z'),
+    'daily',
+  )
+
+  expect(result.capacityGate).toMatchObject({
+    observed: true,
+    level: 'high',
+    allowNonEssential: false,
+    allowServerEnqueue: true,
+  })
+  expect(result.qualityCollection).toBeNull()
+  expect(result.failures).toEqual([])
 })
 
 function queue() {

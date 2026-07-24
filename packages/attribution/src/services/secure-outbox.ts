@@ -3,6 +3,7 @@ import type {
 } from '../env'
 import type { AttributionProvider } from '@meigallery/shared'
 import type { AttributionQueueMessage } from '../domain/queue'
+import { readCapacityGate } from './capacity-monitor'
 
 export type { AttributionQueueMessage } from '../domain/queue'
 
@@ -20,6 +21,7 @@ export type EnqueueDeliveryResult =
   | 'enqueued'
   | 'failed'
   | 'expired'
+  | 'capacity_paused'
   | 'not_pending'
 
 export interface OutboxRecoveryResult {
@@ -27,10 +29,12 @@ export interface OutboxRecoveryResult {
   enqueued: number
   failed: number
   expired: number
+  paused: number
 }
 
 interface OutboxDeliveryRow {
   delivery_id: string
+  connection_id: string
   provider: string
   status: string
   queue_attempt_count: number
@@ -79,6 +83,19 @@ export async function enqueueServerDelivery(
     return await rejectExpired(environment.db, row, now)
       ? 'expired'
       : 'not_pending'
+  }
+  const gate = await readCapacityGate(
+    environment.db,
+    now.toISOString().slice(0, 10),
+  )
+  if (
+    gate.observed
+    && (
+      (mode === 'candidate_validation' && !gate.allowNonEssential)
+      || (mode === 'runtime' && !gate.allowServerEnqueue)
+    )
+  ) {
+    return 'capacity_paused'
   }
 
   const queueAttempt = row.queue_attempt_count + 1
@@ -150,7 +167,13 @@ export async function recoverPendingServerOutbox(
   const now = trustedNow(environment.now)
   const normalizedLimit = normalizeLimit(limit)
   if (normalizedLimit === 0) {
-    return { attempted: 0, enqueued: 0, failed: 0, expired: 0 }
+    return {
+      attempted: 0,
+      enqueued: 0,
+      failed: 0,
+      expired: 0,
+      paused: 0,
+    }
   }
   const cutoff = new Date(now.getTime() - STALE_AFTER_MS).toISOString()
   const result = await environment.db.prepare(`
@@ -207,6 +230,7 @@ export async function recoverPendingServerOutbox(
     enqueued: 0,
     failed: 0,
     expired: 0,
+    paused: 0,
   }
   for (const row of result.results) {
     if (!isProvider(row.provider) || !isIdentifier(row.delivery_id)) continue
@@ -221,6 +245,7 @@ export async function recoverPendingServerOutbox(
     if (outcome === 'enqueued') summary.enqueued += 1
     if (outcome === 'failed') summary.failed += 1
     if (outcome === 'expired') summary.expired += 1
+    if (outcome === 'capacity_paused') summary.paused += 1
   }
   return summary
 }
@@ -236,6 +261,7 @@ export async function purgeExpiredServerOutbox(
   const result = await db.prepare(`
     SELECT
       delivery.id AS delivery_id,
+      delivery.connection_id,
       delivery.provider,
       delivery.status,
       delivery.queue_attempt_count,
@@ -295,6 +321,7 @@ async function readOutboxDelivery(
   const row = await db.prepare(`
     SELECT
       delivery.id AS delivery_id,
+      delivery.connection_id,
       delivery.provider,
       delivery.status,
       delivery.queue_attempt_count,
@@ -359,6 +386,49 @@ async function rejectExpired(
       row.updated_at,
     ),
     db.prepare(`
+      INSERT INTO attribution_incidents (
+        id,
+        provider,
+        connection_id,
+        severity,
+        status,
+        code,
+        affected_transport,
+        affected_fact_count,
+        affected_delivery_count,
+        opened_at,
+        detected_at
+      )
+      SELECT
+        ?,
+        provider,
+        connection_id,
+        'critical',
+        'open',
+        'outbox_recovery_expired',
+        'server',
+        1,
+        1,
+        ?,
+        ?
+      FROM attribution_deliveries
+      WHERE id = ?
+        AND provider = ?
+        AND status = 'rejected'
+        AND last_error_code = 'outbox_expired'
+      ON CONFLICT(id) DO UPDATE SET
+        status = 'open',
+        detected_at = excluded.detected_at,
+        resolved_at = NULL,
+        resolution = ''
+    `).bind(
+      `outbox-expired:${row.delivery_id}`,
+      now.toISOString(),
+      now.toISOString(),
+      row.delivery_id,
+      row.provider,
+    ),
+    db.prepare(`
       DELETE FROM attribution_outbox
       WHERE delivery_id = ?
         AND provider = ?
@@ -377,7 +447,7 @@ async function rejectExpired(
       row.provider,
     ),
   ])
-  return changed(results[1])
+  return changed(results[2])
 }
 
 function recoverable(row: OutboxDeliveryRow, now: Date): boolean {
@@ -399,6 +469,7 @@ function timestamp(value: string): number {
 
 function validRow(row: OutboxDeliveryRow): boolean {
   return isIdentifier(row.delivery_id)
+    && isIdentifier(row.connection_id)
     && isProvider(row.provider)
     && Number.isSafeInteger(row.queue_attempt_count)
     && row.queue_attempt_count >= 0

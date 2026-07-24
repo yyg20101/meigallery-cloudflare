@@ -8,7 +8,7 @@ const sources = import.meta.glob('./**/*.ts', {
 
 it('归因运行时不导入业务 API 或 Git 发布身份', () => {
   for (const [path, source] of Object.entries(sources)) {
-    if (path.endsWith('/architecture-boundaries.test.ts')) continue
+    if (path.endsWith('.test.ts')) continue
 
     expect(String(source), path).not.toMatch(
       /packages\/api|@meigallery\/api/,

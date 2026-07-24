@@ -242,6 +242,18 @@ async function consumePrimary(
     )
   }
 
+  const adapter = (environment.adapterFor ?? getProviderAdapter)(
+    row.provider,
+  )
+  if (adapter.provider !== row.provider) {
+    return rejectAndOpenCircuit(
+      message,
+      row,
+      environment,
+      'adapter_provider_mismatch',
+    )
+  }
+
   const attempt = await claimForDelivery(message, row, environment)
   if (attempt === null) return 'retried'
 
@@ -266,6 +278,7 @@ async function consumePrimary(
       environment.dataEncryptionKeys,
       row,
       trustedNow(environment.now),
+      adapter,
     )
   } catch (error) {
     const code = error instanceof AttributionDomainError
@@ -277,19 +290,6 @@ async function consumePrimary(
       row,
       environment,
       code,
-      attempt,
-    )
-  }
-
-  const adapter = (environment.adapterFor ?? getProviderAdapter)(
-    row.provider,
-  )
-  if (adapter.provider !== row.provider) {
-    return rejectAndOpenCircuit(
-      message,
-      row,
-      environment,
-      'adapter_provider_mismatch',
       attempt,
     )
   }

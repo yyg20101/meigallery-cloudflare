@@ -20,6 +20,7 @@ import {
   createAttributionConnectionCommands,
   type CreateCandidateInput,
 } from './connection-commands'
+import { recordCapacityUsage } from './capacity-monitor'
 import {
   consumeAttributionQueue,
   type AttributionQueueConsumerEnvironment,
@@ -84,6 +85,36 @@ beforeEach(async () => {
 })
 
 describe('候选版本全链路验证', () => {
+  it('账户容量达到 85% 时不创建候选验证或 synthetic 事实', async () => {
+    const { candidateId } = await seedConnection()
+    await recordCapacityUsage(db, {
+      schemaVersion: 1,
+      date: '2026-07-24',
+      measuredAt: '2026-07-24T07:59:00.000Z',
+      source: 'cloudflare-account-analytics',
+      workerRequests: 85_000,
+      d1RowsRead: 0,
+      d1RowsWritten: 0,
+      queueOperations: 0,
+    })
+
+    await expect(startCandidateValidation(
+      validationEnvironment(adapter()),
+      {
+        connectionId: 'conn_meta',
+        candidateId,
+        actorId: 1,
+        testEventCode: TEST_CODE,
+      },
+    )).rejects.toThrow('ATTRIBUTION_CAPACITY_NONESSENTIAL_PAUSED')
+    expect(await scalar(
+      'SELECT COUNT(*) AS value FROM attribution_validations',
+    )).toBe(0)
+    expect(await scalar(
+      "SELECT COUNT(*) AS value FROM attribution_facts WHERE fact_origin = 'synthetic'",
+    )).toBe(0)
+  })
+
   it('配置验证失败时旧 Active 与运行策略保持不变并销毁测试码', async () => {
     const { candidateId, oldActiveId } = await seedConnection()
     const beforePolicy = await policy()

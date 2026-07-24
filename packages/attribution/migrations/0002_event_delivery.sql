@@ -206,6 +206,27 @@ CREATE TABLE attribution_quality_daily (
   PRIMARY KEY (date, connection_id, metric_key)
 );
 
+CREATE TABLE attribution_capacity_daily (
+  date TEXT PRIMARY KEY,
+  worker_requests INTEGER NOT NULL CHECK (worker_requests >= 0),
+  d1_rows_read INTEGER NOT NULL CHECK (d1_rows_read >= 0),
+  d1_rows_written INTEGER NOT NULL CHECK (d1_rows_written >= 0),
+  queue_operations INTEGER NOT NULL CHECK (queue_operations >= 0),
+  measured_at TEXT NOT NULL,
+  source TEXT NOT NULL CHECK (
+    source = 'cloudflare-account-analytics'
+  ),
+  overall_level TEXT NOT NULL CHECK (
+    overall_level IN ('ok','warning','high','critical')
+  ),
+  allow_nonessential INTEGER NOT NULL CHECK (
+    allow_nonessential IN (0,1)
+  ),
+  allow_server_enqueue INTEGER NOT NULL CHECK (
+    allow_server_enqueue IN (0,1)
+  )
+);
+
 CREATE TABLE attribution_privacy_policy (
   id TEXT PRIMARY KEY CHECK (id = 'global'),
   default_mode TEXT NOT NULL CHECK (

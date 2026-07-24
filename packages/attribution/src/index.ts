@@ -58,12 +58,13 @@ export default {
       return
     }
     const task = controller.cron === '17 3 * * *'
-      ? 'credentials'
-      : 'queue'
+      ? 'daily'
+      : 'interval'
     ctx.waitUntil(
       runAttributionMaintenance({
         db: env.DB,
         queues: parsed.queues,
+        credentialMasterKeys: parsed.credentialMasterKeys,
       }, new Date(controller.scheduledTime), task),
     )
   },

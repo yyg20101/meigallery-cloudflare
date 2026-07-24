@@ -2,6 +2,7 @@ import type {
   AttributionProvider,
   CanonicalConversionEvent,
 } from '@meigallery/shared'
+import type { AttributionProviderAdapter } from '../adapters/types'
 import { AttributionDomainError } from '../domain/errors'
 import { isAllowedAttributionOrigin } from '../domain/origin-policy'
 import type { AttributionQueueMessage } from '../domain/queue'
@@ -79,6 +80,7 @@ export async function openValidationTestEventCode(
   keys: AttributionEncryptionKeys,
   row: DeliverySnapshot,
   now: Date,
+  adapter: AttributionProviderAdapter,
 ): Promise<string | undefined> {
   if (row.factOrigin === 'live') return undefined
   if (
@@ -91,7 +93,11 @@ export async function openValidationTestEventCode(
   ) {
     throw queueInvalid()
   }
-  if (row.provider === 'google') return undefined
+  if (!row.validationSecretEnvelope && !row.validationSecretExpiresAt) {
+    const normalized = adapter.normalizeTestEventCode(undefined)
+    if (normalized === null) throw queueInvalid()
+    return normalized
+  }
   if (
     !row.validationSecretEnvelope
     || !row.validationSecretExpiresAt
@@ -110,7 +116,9 @@ export async function openValidationTestEventCode(
   if (!isSafeText(value, 128) || value.trim() !== value) {
     throw queueInvalid()
   }
-  return value
+  const normalized = adapter.normalizeTestEventCode(value)
+  if (normalized === null || normalized !== value) throw queueInvalid()
+  return normalized
 }
 
 export function assertPayloadMatchesSnapshot(

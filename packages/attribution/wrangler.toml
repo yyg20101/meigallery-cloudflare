@@ -6,8 +6,8 @@ compatibility_flags = ["nodejs_compat"]
 workers_dev = false
 
 [triggers]
-# 每 5 分钟恢复 D1 Outbox；每日 03:17 UTC 清理到期凭证。
-crons = ["*/5 * * * *", "17 3 * * *"]
+# 每 15 分钟执行完整恢复维护；每日 03:17 UTC 执行容量与质量日报。
+crons = ["*/15 * * * *", "17 3 * * *"]
 
 [[d1_databases]]
 binding = "DB"

@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { Miniflare } from 'miniflare'
+import { ATTRIBUTION_CONTEXT_COOKIE_NAME } from '@meigallery/shared'
 import { clearAttributionRuntimeDatabase } from '../test/attribution-schema'
 import {
-  ATTRIBUTION_CONTEXT_COOKIE,
   issueAttributionContextResponse,
   resolveAttributionContext,
 } from './context-service'
@@ -388,7 +388,7 @@ function environment() {
 }
 
 function cookieValue(setCookie: string): string {
-  const match = new RegExp(`${ATTRIBUTION_CONTEXT_COOKIE}=([^;]+)`).exec(
+  const match = new RegExp(`${ATTRIBUTION_CONTEXT_COOKIE_NAME}=([^;]+)`).exec(
     setCookie,
   )
   if (!match?.[1]) throw new Error('context cookie missing')

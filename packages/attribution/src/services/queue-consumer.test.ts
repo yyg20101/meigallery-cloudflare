@@ -173,6 +173,35 @@ describe('归因 Queue Consumer', () => {
     expect(await incident('queue_provider_mismatch')).toBeTruthy()
   })
 
+  it('Adapter provider 错配时在解密任何敏感数据前拒绝', async () => {
+    await db.prepare(`
+      UPDATE attribution_version_credentials
+      SET ciphertext = 'corrupted'
+      WHERE version_id = 'ver_meta'
+    `).run()
+    const deliver = vi.fn()
+    const item = queueMessage()
+
+    await consumeAttributionQueue(
+      queueBatch('meigallery-attribution-meta', [item.message]),
+      environment(adapter('tiktok', deliver)),
+    )
+
+    expect(deliver).not.toHaveBeenCalled()
+    expect(item.ack).toHaveBeenCalledOnce()
+    expect(item.retry).not.toHaveBeenCalled()
+    expect(await delivery()).toMatchObject({
+      status: 'rejected',
+      attempt_count: 0,
+      last_error_code: 'adapter_provider_mismatch',
+    })
+    expect(await outboxExists()).toBe(false)
+    expect(await policy()).toMatchObject({
+      browser_enabled: 1,
+      circuit_state: 'server_open',
+    })
+  })
+
   it('平台暂时故障时保留 outbox、记录回执并退避重试', async () => {
     const deliver = vi.fn().mockResolvedValue({
       provider: 'meta',

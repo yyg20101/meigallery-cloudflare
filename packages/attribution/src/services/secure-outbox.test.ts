@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Miniflare } from 'miniflare'
 import { clearAttributionRuntimeDatabase } from '../test/attribution-schema'
+import { recordCapacityUsage } from './capacity-monitor'
 import {
   enqueueServerDelivery,
   physicalQueue,
@@ -94,6 +95,7 @@ describe('加密 Outbox 调度', () => {
       enqueued: 1,
       failed: 0,
       expired: 0,
+      paused: 0,
     })
     expect(recovered.send).toHaveBeenCalledWith({
       schemaVersion: 1,
@@ -123,6 +125,44 @@ describe('加密 Outbox 调度', () => {
       last_error_code: 'outbox_expired',
     })
     expect(await outboxExists()).toBe(false)
+    expect(await db.prepare(`
+      SELECT severity, status, code
+      FROM attribution_incidents
+      WHERE id = 'outbox-expired:delivery_meta'
+    `).first()).toEqual({
+      severity: 'critical',
+      status: 'open',
+      code: 'outbox_recovery_expired',
+    })
+  })
+
+  it('达到账户级 95% 时保留密文 Outbox 并暂停 Queue enqueue', async () => {
+    await recordCapacityUsage(db, {
+      schemaVersion: 1,
+      date: '2026-07-24',
+      measuredAt: '2026-07-24T02:59:00.000Z',
+      source: 'cloudflare-account-analytics',
+      workerRequests: 0,
+      d1RowsRead: 0,
+      d1RowsWritten: 0,
+      queueOperations: 9_500,
+    })
+    const meta = queue()
+
+    expect(await enqueueServerDelivery({
+      db,
+      queues: queues(meta),
+      now: () => now,
+    }, {
+      provider: 'meta',
+      deliveryId: 'delivery_meta',
+    })).toBe('capacity_paused')
+    expect(meta.send).not.toHaveBeenCalled()
+    expect(await deliveryState()).toMatchObject({
+      status: 'planned',
+      queue_attempt_count: 0,
+    })
+    expect(await outboxExists()).toBe(true)
   })
 
   it('非法 expires_at 也按过期处理且不依赖运行策略联表', async () => {
