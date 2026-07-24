@@ -68,7 +68,7 @@ describe('独立运行策略命令', () => {
     expect(after?.runtimePolicy.serverEffectivePercentage).toBe(50)
   })
 
-  it('target 降低立即生效，重复值零写入', async () => {
+  it('target 降低立即生效，重复值不推进策略或审计', async () => {
     const check = vi.fn().mockResolvedValue(HEALTHY)
     const env = environment(check)
 
@@ -95,6 +95,33 @@ describe('独立运行策略命令', () => {
 
     expect(await policyRow()).toEqual(before)
     expect(await auditCountValue()).toBe(0)
+  })
+
+  it('并发重复调整只推进一次 generation，并返回同一回执', async () => {
+    const env = environment()
+    const input = policyInput(50, 'policy-concurrent')
+    const results = await Promise.all([
+      setRuntimePolicy(env, input),
+      setRuntimePolicy(env, input),
+    ])
+
+    expect(results[1]).toEqual(results[0])
+    expect(await runtimeGeneration()).toBe(2)
+    expect(await auditCountValue()).toBe(1)
+    expect(await receiptCountValue('policy-concurrent')).toBe(1)
+  })
+
+  it('策略 no-op 仍绑定幂等键，禁止随后改作其他请求', async () => {
+    const env = environment()
+    await setRuntimePolicy(env, policyInput(10, 'policy-noop-key'))
+
+    await expect(setRuntimePolicy(
+      env,
+      policyInput(50, 'policy-noop-key'),
+    )).rejects.toThrow('ATTRIBUTION_IDEMPOTENCY_CONFLICT')
+    expect(await runtimeGeneration()).toBe(1)
+    expect(await auditCountValue()).toBe(0)
+    expect(await receiptCountValue('policy-noop-key')).toBe(1)
   })
 
   it('Server 熔断不修改 Browser 或 Active，恢复前重新检查健康', async () => {
@@ -234,5 +261,14 @@ async function auditCountValue() {
     SELECT COUNT(*) AS value
     FROM attribution_audit_logs
   `).first<{ value: number }>()
+  return Number(row?.value ?? 0)
+}
+
+async function receiptCountValue(idempotencyKey: string) {
+  const row = await db.prepare(`
+    SELECT COUNT(*) AS value
+    FROM attribution_command_receipts
+    WHERE idempotency_key = ?
+  `).bind(idempotencyKey).first<{ value: number }>()
   return Number(row?.value ?? 0)
 }

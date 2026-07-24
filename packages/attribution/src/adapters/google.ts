@@ -77,6 +77,7 @@ export function createGoogleAdapter(
   return {
     provider: 'google',
     eventName,
+    activeTarget,
     normalizeTestEventCode,
     validateCandidate,
     buildBrowserInstruction,
@@ -87,6 +88,12 @@ export function createGoogleAdapter(
   function eventName(event: CanonicalConversionEvent): string {
     if (!isCanonicalEvent(event)) throw adapterInputInvalid()
     return 'conversion'
+  }
+
+  function activeTarget(
+    publicConfig: Record<string, string>,
+  ): string {
+    return googleConfig(publicConfig).tagId!
   }
 
   function normalizeTestEventCode(

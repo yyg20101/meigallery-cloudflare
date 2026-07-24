@@ -7,6 +7,20 @@ import type {
 } from './types'
 
 describe('Google Adapter', () => {
+  it('只从严格公开配置生成 Active Tag 目标', () => {
+    expect(googleAdapter.activeTarget({
+      tagId: 'AW-123456789',
+      customerId: '1234567890',
+      cloudProjectId: 'meigallery-ads',
+    })).toBe('AW-123456789')
+    expect(() => googleAdapter.activeTarget({
+      tagId: 'AW-123456789',
+      customerId: '1234567890',
+      cloudProjectId: 'meigallery-ads',
+      credential: 'secret',
+    })).toThrow('ATTRIBUTION_ADAPTER_INPUT_INVALID')
+  })
+
   it('将 Canonical Event 映射为 Google conversion 指令', () => {
     expect(googleAdapter.eventName('Contact')).toBe('conversion')
     expect(googleAdapter.eventName('CompleteRegistration')).toBe(

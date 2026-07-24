@@ -92,6 +92,7 @@ export async function setRuntimePolicy(
     browserEnabled: input.browserEnabled,
     serverEnabled: input.serverEnabled,
     serverTargetPercentage: input.serverTargetPercentage,
+    actorId: input.actorId,
   })
   const receipt = await readReceipt<RuntimePolicyView>(
     environment.db,
@@ -128,7 +129,13 @@ export async function setRuntimePolicy(
     circuitState: current.circuitState,
   }
   if (policyMatches(current, desired)) {
-    return policyView(input.connectionId, current)
+    return persistNoopReceipt(
+      environment,
+      input,
+      'set_runtime_policy',
+      requestHash,
+      policyView(input.connectionId, current),
+    )
   }
 
   return writeRuntimePolicy(environment, {
@@ -154,6 +161,7 @@ export async function openServerCircuit(
   validateRuntimeCommand(input)
   const requestHash = await hashCommand('openServerCircuit', {
     connectionId: input.connectionId,
+    actorId: input.actorId,
   })
   const receipt = await readReceipt<RuntimePolicyView>(
     environment.db,
@@ -173,7 +181,13 @@ export async function openServerCircuit(
     circuitState: 'server_open',
   }
   if (policyMatches(current, desired)) {
-    return policyView(input.connectionId, current)
+    return persistNoopReceipt(
+      environment,
+      input,
+      'open_server_circuit',
+      requestHash,
+      policyView(input.connectionId, current),
+    )
   }
 
   return writeRuntimePolicy(environment, {
@@ -196,6 +210,7 @@ export async function closeServerCircuit(
   validateRuntimeCommand(input)
   const requestHash = await hashCommand('closeServerCircuit', {
     connectionId: input.connectionId,
+    actorId: input.actorId,
   })
   const receipt = await readReceipt<RuntimePolicyView>(
     environment.db,
@@ -207,7 +222,13 @@ export async function closeServerCircuit(
   const aggregate = await requireAggregate(environment, input.connectionId)
   const current = aggregate.runtimePolicy
   if (current.circuitState === 'closed') {
-    return policyView(input.connectionId, current)
+    return persistNoopReceipt(
+      environment,
+      input,
+      'close_server_circuit',
+      requestHash,
+      policyView(input.connectionId, current),
+    )
   }
 
   const effectivePercentage = current.enabled
@@ -320,10 +341,22 @@ async function writeRuntimePolicy(
       ),
     ])
   } catch {
+    const raced = await readReceipt<RuntimePolicyView>(
+      environment.db,
+      command.input.idempotencyKey,
+      command.requestHash,
+    )
+    if (raced) return raced
     throw commandFailed()
   }
 
   if (Number(batchResults[0]?.meta.changes ?? 0) !== 1) {
+    const raced = await readReceipt<RuntimePolicyView>(
+      environment.db,
+      command.input.idempotencyKey,
+      command.requestHash,
+    )
+    if (raced) return raced
     throw commandFailed()
   }
   return result
@@ -382,6 +415,46 @@ async function readReceipt<T>(
   } catch {
     throw commandFailed()
   }
+}
+
+async function persistNoopReceipt<T>(
+  environment: RuntimePolicyCommandEnvironment,
+  input: RuntimeCommandInput,
+  commandType: string,
+  requestHash: string,
+  result: T,
+): Promise<T> {
+  const timestamp = validNow(environment.now ?? (() => new Date()))
+  try {
+    const write = await environment.db.prepare(`
+      INSERT INTO attribution_command_receipts (
+        idempotency_key, command_type, request_hash,
+        result_json, created_at
+      ) VALUES (?, ?, ?, ?, ?)
+    `).bind(
+      input.idempotencyKey,
+      commandType,
+      requestHash,
+      JSON.stringify(result),
+      timestamp,
+    ).run()
+    if (Number(write.meta.changes ?? 0) === 1) return result
+  } catch {
+    const raced = await readReceipt<T>(
+      environment.db,
+      input.idempotencyKey,
+      requestHash,
+    )
+    if (raced) return raced
+    throw commandFailed()
+  }
+  const raced = await readReceipt<T>(
+    environment.db,
+    input.idempotencyKey,
+    requestHash,
+  )
+  if (raced) return raced
+  throw commandFailed()
 }
 
 function policyMatches(

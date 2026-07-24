@@ -124,6 +124,12 @@ export async function readPrivacyPolicy(
   }
 }
 
+export async function readPrivacyPolicyStrict(
+  db: D1Database,
+): Promise<AttributionPrivacyPolicy> {
+  return requirePolicy(db)
+}
+
 export async function savePrivacyPolicy(
   environment: PrivacyPolicyCommandEnvironment,
   input: SavePrivacyPolicyInput,

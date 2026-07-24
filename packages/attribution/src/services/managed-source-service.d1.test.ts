@@ -234,7 +234,7 @@ describe('managed source service', () => {
     expect(await countRows('attribution_audit_logs')).toBe(1)
   })
 
-  it('管理员列表不返回 proof 或 proof_hash，并对读取进行幂等审计', async () => {
+  it('管理员列表不返回 proof 或 proof_hash，且纯读取不写审计或回执', async () => {
     const created = await createAdminManagedSource(environment(), {
       connectionId: 'conn_tiktok_a',
       campaign: 'list-campaign',
@@ -245,8 +245,6 @@ describe('managed source service', () => {
     })
     const input = {
       connectionId: 'conn_tiktok_a',
-      actorId: 51,
-      idempotencyKey: 'idem_list_sources',
     }
 
     const first = await listAdminManagedSources(environment(), input)
@@ -261,8 +259,8 @@ describe('managed source service', () => {
     expect(serialized).not.toContain(created.proof as string)
     expect(serialized).not.toContain('proof_hash')
     expect(serialized).not.toContain('"proof":')
-    expect(await auditCount('list_managed_sources')).toBe(1)
-    expect(await receiptCount('idem_list_sources')).toBe(1)
+    expect(await auditCount('list_managed_sources')).toBe(0)
+    expect(await receiptCount('idem_list_sources')).toBe(0)
   })
 
   it('管理员停用校验连接归属并且相同命令只审计一次', async () => {

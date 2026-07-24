@@ -16,7 +16,9 @@ import {
 import { readConnectionAggregate } from '../repositories/connection-repository'
 import {
   fingerprintCredential,
+  openCredential,
   sealCredential,
+  type CredentialEnvelope,
 } from './credential-vault'
 
 export interface ConnectionView {
@@ -63,7 +65,8 @@ export interface CreateCandidateInput extends CommandInput {
   connectionId: string
   publicConfig: Record<string, string>
   bindings: readonly AttributionCandidateBindingInput[]
-  credential: string
+  credential?: string
+  validationContextDigest?: string
 }
 
 export interface BeginValidationInput extends CommandInput {
@@ -85,6 +88,10 @@ export interface RollbackInput extends CommandInput {
   expectedActiveVersionId: string
 }
 
+export interface RollbackPreviousInput extends CommandInput {
+  connectionId: string
+}
+
 export interface DisableConnectionInput extends CommandInput {
   connectionId: string
 }
@@ -96,6 +103,7 @@ export interface AttributionConnectionCommands {
   markCandidateReady(input: MarkReadyInput): Promise<CandidateView>
   activateCandidate(input: ActivateCandidateInput): Promise<ConnectionView>
   rollbackActiveVersion(input: RollbackInput): Promise<ConnectionView>
+  rollbackPreviousVersion(input: RollbackPreviousInput): Promise<ConnectionView>
   disableConnection(input: DisableConnectionInput): Promise<RuntimePolicyView>
 }
 
@@ -120,6 +128,15 @@ interface RollbackTargetRow {
   provider: string
   status: string
   credential_version_id: string | null
+}
+
+interface ActiveCredentialRow {
+  schema_version: number
+  key_id: string
+  iv: string
+  ciphertext: string
+  tag: string
+  credential_fingerprint: string
 }
 
 const encoder = new TextEncoder()
@@ -161,6 +178,7 @@ export function createAttributionConnectionCommands(
       transitionCandidate(input, 'validating', 'ready'),
     activateCandidate,
     rollbackActiveVersion,
+    rollbackPreviousVersion,
     disableConnection,
   }
 
@@ -182,6 +200,7 @@ export function createAttributionConnectionCommands(
       provider: input.provider,
       name: input.name.trim(),
       isDefault: input.isDefault,
+      actorId: input.actorId,
     })
     const receipt = await readReceipt<ConnectionView>(
       input.idempotencyKey,
@@ -196,7 +215,14 @@ export function createAttributionConnectionCommands(
         view.provider === input.provider
         && view.name === input.name.trim()
         && view.isDefault === input.isDefault
-      ) return view
+      ) {
+        return persistNoopReceipt(
+          input.idempotencyKey,
+          'create_connection',
+          requestHash,
+          view,
+        )
+      }
       throw commandInvalid()
     }
 
@@ -253,6 +279,11 @@ export function createAttributionConnectionCommands(
         ),
       ])
     } catch (error) {
+      const raced = await readReceipt<ConnectionView>(
+        input.idempotencyKey,
+        requestHash,
+      )
+      if (raced) return raced
       if (
         input.isDefault
         && errorMessage(error).includes(
@@ -273,13 +304,28 @@ export function createAttributionConnectionCommands(
     input: CreateCandidateInput,
   ): Promise<CandidateView> {
     validateCommandInput(input)
-    if (!isIdentifier(input.connectionId) || !input.credential) {
+    if (
+      !isIdentifier(input.connectionId)
+      || (
+        input.credential !== undefined
+        && (
+          typeof input.credential !== 'string'
+          || input.credential.length === 0
+        )
+      )
+      || (
+        input.validationContextDigest !== undefined
+        && !/^[a-f0-9]{64}$/.test(input.validationContextDigest)
+      )
+    ) {
       throw commandInvalid()
     }
 
     const aggregate = await requireAggregate(input.connectionId)
+    const credential = input.credential
+      ?? await openActiveCredential(aggregate)
     const credentialFingerprint = await fingerprintCredential(
-      input.credential,
+      credential,
     )
     const normalized = normalizeCandidateInput({
       provider: aggregate.connection.provider,
@@ -287,20 +333,35 @@ export function createAttributionConnectionCommands(
       bindings: input.bindings,
       credentialFingerprint,
     })
-    const requestHash = await hashCandidateIdentity(normalized)
-
-    if (aggregate.activeVersion?.configHash === requestHash) {
-      return candidateView(aggregate.activeVersion)
-    }
-    if (aggregate.liveCandidate?.configHash === requestHash) {
-      return candidateView(aggregate.liveCandidate)
-    }
-
+    const configHash = await hashCandidateIdentity(normalized)
+    const requestHash = await hashCommand('createCandidate', {
+      connectionId: input.connectionId,
+      configHash,
+      validationContextDigest: input.validationContextDigest ?? '',
+      actorId: input.actorId,
+    })
     const receipt = await readReceipt<CandidateView>(
       input.idempotencyKey,
       requestHash,
     )
     if (receipt) return receipt
+
+    if (aggregate.activeVersion?.configHash === configHash) {
+      return persistNoopReceipt(
+        input.idempotencyKey,
+        'create_candidate',
+        requestHash,
+        candidateView(aggregate.activeVersion),
+      )
+    }
+    if (aggregate.liveCandidate?.configHash === configHash) {
+      return persistNoopReceipt(
+        input.idempotencyKey,
+        'create_candidate',
+        requestHash,
+        candidateView(aggregate.liveCandidate),
+      )
+    }
 
     const versionId = idFactory('version')
     const timestamp = validNow(now)
@@ -309,7 +370,7 @@ export function createAttributionConnectionCommands(
       {
         versionId,
         provider: aggregate.connection.provider,
-        plaintext: input.credential,
+        plaintext: credential,
       },
     )
     const result: CandidateView = {
@@ -317,7 +378,7 @@ export function createAttributionConnectionCommands(
       connectionId: aggregate.connection.id,
       provider: aggregate.connection.provider,
       status: 'candidate',
-      configHash: requestHash,
+      configHash,
       baseActiveVersionId: aggregate.connection.activeVersionId,
     }
 
@@ -405,6 +466,11 @@ export function createAttributionConnectionCommands(
     try {
       await db.batch(statements)
     } catch {
+      const raced = await readReceipt<CandidateView>(
+        input.idempotencyKey,
+        requestHash,
+      )
+      if (raced) return raced
       throw commandFailed()
     }
     return result
@@ -428,6 +494,7 @@ export function createAttributionConnectionCommands(
       candidateId: input.candidateId,
       expectedStatus,
       targetStatus,
+      actorId: input.actorId,
     })
     const receipt = await readReceipt<CandidateView>(
       input.idempotencyKey,
@@ -440,7 +507,16 @@ export function createAttributionConnectionCommands(
     if (!candidate || candidate.id !== input.candidateId) {
       throw versionStateInvalid()
     }
-    if (candidate.status === targetStatus) return candidateView(candidate)
+    if (candidate.status === targetStatus) {
+      return persistNoopReceipt(
+        input.idempotencyKey,
+        targetStatus === 'validating'
+          ? 'begin_candidate_validation'
+          : 'mark_candidate_ready',
+        requestHash,
+        candidateView(candidate),
+      )
+    }
     if (
       candidate.status !== expectedStatus
       || !canTransitionConnectionVersion(candidate.status, targetStatus)
@@ -459,38 +535,53 @@ export function createAttributionConnectionCommands(
     const updateBindings = targetStatus === 'ready'
       ? [timestamp, candidate.id, expectedStatus]
       : [candidate.id, expectedStatus]
-    const batchResults = await db.batch([
-      db.prepare(`
-        UPDATE attribution_connection_versions
-        SET status = ?${timestampColumn}
-        WHERE id = ? AND status = ?
-      `).bind(targetStatus, ...updateBindings),
-      auditStatement(db, {
-        id: idFactory('audit'),
-        actorId: input.actorId,
-        commandType: targetStatus === 'validating'
-          ? 'begin_candidate_validation'
-          : 'mark_candidate_ready',
-        connectionId: input.connectionId,
-        outcome: targetStatus,
-        detail: { versionId: candidate.id },
-        timestamp,
-        requirePreviousChange: true,
-      }),
-      receiptStatement(
-        db,
+    let batchResults: D1Result<unknown>[]
+    try {
+      batchResults = await db.batch([
+        db.prepare(`
+          UPDATE attribution_connection_versions
+          SET status = ?${timestampColumn}
+          WHERE id = ? AND status = ?
+        `).bind(targetStatus, ...updateBindings),
+        auditStatement(db, {
+          id: idFactory('audit'),
+          actorId: input.actorId,
+          commandType: targetStatus === 'validating'
+            ? 'begin_candidate_validation'
+            : 'mark_candidate_ready',
+          connectionId: input.connectionId,
+          outcome: targetStatus,
+          detail: { versionId: candidate.id },
+          timestamp,
+          requirePreviousChange: true,
+        }),
+        receiptStatement(
+          db,
+          input.idempotencyKey,
+          targetStatus === 'validating'
+            ? 'begin_candidate_validation'
+            : 'mark_candidate_ready',
+          requestHash,
+          result,
+          timestamp,
+          true,
+        ),
+      ])
+    } catch {
+      const raced = await readReceipt<CandidateView>(
         input.idempotencyKey,
-        targetStatus === 'validating'
-          ? 'begin_candidate_validation'
-          : 'mark_candidate_ready',
         requestHash,
-        result,
-        timestamp,
-        true,
-      ),
-    ])
+      )
+      if (raced) return raced
+      throw commandFailed()
+    }
 
     if (Number(batchResults[0]?.meta.changes ?? 0) !== 1) {
+      const raced = await readReceipt<CandidateView>(
+        input.idempotencyKey,
+        requestHash,
+      )
+      if (raced) return raced
       throw versionStateInvalid()
     }
     return result
@@ -515,6 +606,7 @@ export function createAttributionConnectionCommands(
       connectionId: input.connectionId,
       candidateId: input.candidateId,
       expectedBaseActiveVersionId: input.expectedBaseActiveVersionId,
+      actorId: input.actorId,
     })
     const receipt = await readReceipt<ConnectionView>(
       input.idempotencyKey,
@@ -524,7 +616,12 @@ export function createAttributionConnectionCommands(
 
     const aggregate = await requireAggregate(input.connectionId)
     if (aggregate.connection.activeVersionId === input.candidateId) {
-      return connectionView(aggregate)
+      return persistNoopReceipt(
+        input.idempotencyKey,
+        'activate_candidate',
+        requestHash,
+        connectionView(aggregate),
+      )
     }
     const candidate = aggregate.liveCandidate
     if (!candidate || candidate.id !== input.candidateId) {
@@ -608,7 +705,16 @@ export function createAttributionConnectionCommands(
       `).bind(input.connectionId),
     )
 
-    await executeFencedBatch(statements)
+    try {
+      await executeFencedBatch(statements)
+    } catch (error) {
+      const raced = await readReceipt<ConnectionView>(
+        input.idempotencyKey,
+        requestHash,
+      )
+      if (raced) return raced
+      throw error
+    }
     return result
   }
 
@@ -628,6 +734,7 @@ export function createAttributionConnectionCommands(
       connectionId: input.connectionId,
       targetVersionId: input.targetVersionId,
       expectedActiveVersionId: input.expectedActiveVersionId,
+      actorId: input.actorId,
     })
     const receipt = await readReceipt<ConnectionView>(
       input.idempotencyKey,
@@ -637,7 +744,12 @@ export function createAttributionConnectionCommands(
 
     const aggregate = await requireAggregate(input.connectionId)
     if (aggregate.connection.activeVersionId === input.targetVersionId) {
-      return connectionView(aggregate)
+      return persistNoopReceipt(
+        input.idempotencyKey,
+        'rollback_active_version',
+        requestHash,
+        connectionView(aggregate),
+      )
     }
     const target = await db.prepare(`
       SELECT
@@ -661,80 +773,180 @@ export function createAttributionConnectionCommands(
       throw versionStateInvalid()
     }
 
+    return executeRollback({
+      connectionId: input.connectionId,
+      target,
+      expectedActiveVersionId: input.expectedActiveVersionId,
+      actorId: input.actorId,
+      idempotencyKey: input.idempotencyKey,
+      requestHash,
+      commandType: 'rollback_active_version',
+    })
+  }
+
+  async function rollbackPreviousVersion(
+    input: RollbackPreviousInput,
+  ): Promise<ConnectionView> {
+    validateCommandInput(input)
+    if (!isIdentifier(input.connectionId)) throw commandInvalid()
+    const requestHash = await hashCommand('rollbackPreviousVersion', {
+      connectionId: input.connectionId,
+      actorId: input.actorId,
+    })
+    const receipt = await readReceipt<ConnectionView>(
+      input.idempotencyKey,
+      requestHash,
+    )
+    if (receipt) return receipt
+
+    const aggregate = await requireAggregate(input.connectionId)
+    const active = aggregate.activeVersion
+    if (
+      !active
+      || !active.baseActiveVersionId
+      || !isIdentifier(active.baseActiveVersionId)
+    ) {
+      throw versionStateInvalid()
+    }
+    const target = await db.prepare(`
+      SELECT
+        version.id,
+        version.connection_id,
+        version.provider,
+        version.status,
+        credential.version_id AS credential_version_id
+      FROM attribution_connection_versions AS version
+      LEFT JOIN attribution_version_credentials AS credential
+        ON credential.version_id = version.id
+      WHERE version.id = ?
+        AND version.connection_id = ?
+    `).bind(
+      active.baseActiveVersionId,
+      input.connectionId,
+    ).first<RollbackTargetRow>()
+    if (
+      !target
+      || target.provider !== aggregate.connection.provider
+      || target.status !== 'draining'
+      || target.credential_version_id !== target.id
+    ) {
+      throw versionStateInvalid()
+    }
+
+    return executeRollback({
+      connectionId: input.connectionId,
+      target,
+      expectedActiveVersionId: active.id,
+      actorId: input.actorId,
+      idempotencyKey: input.idempotencyKey,
+      requestHash,
+      commandType: 'rollback_previous_version',
+    })
+  }
+
+  async function executeRollback(input: {
+    connectionId: string
+    target: RollbackTargetRow
+    expectedActiveVersionId: string
+    actorId: number
+    idempotencyKey: string
+    requestHash: string
+    commandType:
+      | 'rollback_active_version'
+      | 'rollback_previous_version'
+  }): Promise<ConnectionView> {
     const timestamp = validNow(now)
+    const aggregate = await requireAggregate(input.connectionId)
+    if (
+      aggregate.connection.activeVersionId
+      !== input.expectedActiveVersionId
+    ) {
+      throw new AttributionDomainError(
+        'ATTRIBUTION_ACTIVE_VERSION_CHANGED',
+      )
+    }
     const result: ConnectionView = {
       ...connectionView(aggregate),
-      activeVersionId: target.id,
+      activeVersionId: input.target.id,
     }
-    await executeFencedBatch([
-      db.prepare(`
-        INSERT INTO attribution_activation_fences (
-          connection_id, candidate_version_id,
-          expected_active_version_id, created_at
-        ) VALUES (?, ?, ?, ?)
-      `).bind(
-        input.connectionId,
-        target.id,
-        input.expectedActiveVersionId,
-        timestamp,
-      ),
-      db.prepare(`
-        UPDATE attribution_connection_versions
-        SET status = 'retired', retired_at = ?
-        WHERE id = ? AND connection_id = ? AND status = 'active'
-      `).bind(
-        timestamp,
-        input.expectedActiveVersionId,
-        input.connectionId,
-      ),
-      db.prepare(`
-        UPDATE attribution_connection_versions
-        SET status = 'active',
-            draining_at = NULL,
-            retired_at = NULL,
-            activated_at = ?
-        WHERE id = ? AND connection_id = ? AND status = 'draining'
-      `).bind(timestamp, target.id, input.connectionId),
-      db.prepare(`
-        UPDATE attribution_version_credentials
-        SET destroy_after = NULL
-        WHERE version_id = ?
-      `).bind(target.id),
-      db.prepare(`
-        UPDATE attribution_connections
-        SET active_version_id = ?, updated_at = ?
-        WHERE id = ? AND active_version_id IS ?
-      `).bind(
-        target.id,
-        timestamp,
-        input.connectionId,
-        input.expectedActiveVersionId,
-      ),
-      auditStatement(db, {
-        id: idFactory('audit'),
-        actorId: input.actorId,
-        commandType: 'rollback_active_version',
-        connectionId: input.connectionId,
-        outcome: 'active',
-        detail: {
-          versionId: target.id,
-          replacedActiveVersionId: input.expectedActiveVersionId,
-        },
-        timestamp,
-      }),
-      receiptStatement(
-        db,
+    try {
+      await executeFencedBatch([
+        db.prepare(`
+          INSERT INTO attribution_activation_fences (
+            connection_id, candidate_version_id,
+            expected_active_version_id, created_at
+          ) VALUES (?, ?, ?, ?)
+        `).bind(
+          input.connectionId,
+          input.target.id,
+          input.expectedActiveVersionId,
+          timestamp,
+        ),
+        db.prepare(`
+          UPDATE attribution_connection_versions
+          SET status = 'retired', retired_at = ?
+          WHERE id = ? AND connection_id = ? AND status = 'active'
+        `).bind(
+          timestamp,
+          input.expectedActiveVersionId,
+          input.connectionId,
+        ),
+        db.prepare(`
+          UPDATE attribution_connection_versions
+          SET status = 'active',
+              draining_at = NULL,
+              retired_at = NULL,
+              activated_at = ?
+          WHERE id = ? AND connection_id = ? AND status = 'draining'
+        `).bind(timestamp, input.target.id, input.connectionId),
+        db.prepare(`
+          UPDATE attribution_version_credentials
+          SET destroy_after = NULL
+          WHERE version_id = ?
+        `).bind(input.target.id),
+        db.prepare(`
+          UPDATE attribution_connections
+          SET active_version_id = ?, updated_at = ?
+          WHERE id = ? AND active_version_id IS ?
+        `).bind(
+          input.target.id,
+          timestamp,
+          input.connectionId,
+          input.expectedActiveVersionId,
+        ),
+        auditStatement(db, {
+          id: idFactory('audit'),
+          actorId: input.actorId,
+          commandType: input.commandType,
+          connectionId: input.connectionId,
+          outcome: 'active',
+          detail: {
+            versionId: input.target.id,
+            replacedActiveVersionId: input.expectedActiveVersionId,
+          },
+          timestamp,
+        }),
+        receiptStatement(
+          db,
+          input.idempotencyKey,
+          input.commandType,
+          input.requestHash,
+          result,
+          timestamp,
+        ),
+        db.prepare(`
+          DELETE FROM attribution_activation_fences
+          WHERE connection_id = ?
+        `).bind(input.connectionId),
+      ])
+    } catch (error) {
+      const raced = await readReceipt<ConnectionView>(
         input.idempotencyKey,
-        'rollback_active_version',
-        requestHash,
-        result,
-        timestamp,
-      ),
-      db.prepare(`
-        DELETE FROM attribution_activation_fences
-        WHERE connection_id = ?
-      `).bind(input.connectionId),
-    ])
+        input.requestHash,
+      )
+      if (raced) return raced
+      throw error
+    }
     return result
   }
 
@@ -746,6 +958,7 @@ export function createAttributionConnectionCommands(
 
     const requestHash = await hashCommand('disableConnection', {
       connectionId: input.connectionId,
+      actorId: input.actorId,
     })
     const receipt = await readReceipt<RuntimePolicyView>(
       input.idempotencyKey,
@@ -755,7 +968,12 @@ export function createAttributionConnectionCommands(
 
     const aggregate = await requireAggregate(input.connectionId)
     if (!aggregate.runtimePolicy.enabled) {
-      return runtimePolicyView(input.connectionId, aggregate.runtimePolicy)
+      return persistNoopReceipt(
+        input.idempotencyKey,
+        'disable_connection',
+        requestHash,
+        runtimePolicyView(input.connectionId, aggregate.runtimePolicy),
+      )
     }
 
     const timestamp = validNow(now)
@@ -765,43 +983,103 @@ export function createAttributionConnectionCommands(
       serverEffectivePercentage: 0,
       runtimeGeneration: aggregate.runtimePolicy.runtimeGeneration + 1,
     }
-    const batchResults = await db.batch([
-      db.prepare(`
-        UPDATE attribution_runtime_policies
-        SET enabled = 0,
-            server_effective_percentage = 0,
-            runtime_generation = runtime_generation + 1,
-            updated_by = ?,
-            updated_at = ?
-        WHERE connection_id = ? AND enabled = 1
-      `).bind(input.actorId, timestamp, input.connectionId),
-      auditStatement(db, {
-        id: idFactory('audit'),
-        actorId: input.actorId,
-        commandType: 'disable_connection',
-        connectionId: input.connectionId,
-        outcome: 'disabled',
-        detail: {
-          previousEffectivePercentage:
-            aggregate.runtimePolicy.serverEffectivePercentage,
-        },
-        timestamp,
-        requirePreviousChange: true,
-      }),
-      receiptStatement(
-        db,
+    let batchResults: D1Result<unknown>[]
+    try {
+      batchResults = await db.batch([
+        db.prepare(`
+          UPDATE attribution_runtime_policies
+          SET enabled = 0,
+              server_effective_percentage = 0,
+              runtime_generation = runtime_generation + 1,
+              updated_by = ?,
+              updated_at = ?
+          WHERE connection_id = ? AND enabled = 1
+        `).bind(input.actorId, timestamp, input.connectionId),
+        auditStatement(db, {
+          id: idFactory('audit'),
+          actorId: input.actorId,
+          commandType: 'disable_connection',
+          connectionId: input.connectionId,
+          outcome: 'disabled',
+          detail: {
+            previousEffectivePercentage:
+              aggregate.runtimePolicy.serverEffectivePercentage,
+          },
+          timestamp,
+          requirePreviousChange: true,
+        }),
+        receiptStatement(
+          db,
+          input.idempotencyKey,
+          'disable_connection',
+          requestHash,
+          result,
+          timestamp,
+          true,
+        ),
+      ])
+    } catch {
+      const raced = await readReceipt<RuntimePolicyView>(
         input.idempotencyKey,
-        'disable_connection',
         requestHash,
-        result,
-        timestamp,
-        true,
-      ),
-    ])
+      )
+      if (raced) return raced
+      throw commandFailed()
+    }
     if (Number(batchResults[0]?.meta.changes ?? 0) !== 1) {
+      const raced = await readReceipt<RuntimePolicyView>(
+        input.idempotencyKey,
+        requestHash,
+      )
+      if (raced) return raced
       throw versionStateInvalid()
     }
     return result
+  }
+
+  async function openActiveCredential(
+    aggregate: AttributionConnectionAggregate,
+  ): Promise<string> {
+    const active = aggregate.activeVersion
+    if (!active) throw versionStateInvalid()
+    const row = await db.prepare(`
+      SELECT
+        schema_version,
+        key_id,
+        iv,
+        ciphertext,
+        tag,
+        credential_fingerprint
+      FROM attribution_version_credentials
+      WHERE version_id = ?
+        AND provider = ?
+      LIMIT 1
+    `).bind(
+      active.id,
+      aggregate.connection.provider,
+    ).first<ActiveCredentialRow>()
+    if (!row || row.schema_version !== 1) throw versionStateInvalid()
+    const envelope: CredentialEnvelope = {
+      schemaVersion: 1,
+      keyId: row.key_id,
+      iv: row.iv,
+      ciphertext: row.ciphertext,
+      tag: row.tag,
+      fingerprint: row.credential_fingerprint,
+    }
+    return openCredential(
+      {
+        current: options.credentialKeys.current,
+        ...(options.credentialKeys.previous
+          ? { previous: options.credentialKeys.previous }
+          : {}),
+      },
+      {
+        provider: aggregate.connection.provider,
+        versionId: active.id,
+        envelope,
+      },
+    )
   }
 
   async function requireAggregate(
@@ -832,6 +1110,39 @@ export function createAttributionConnectionCommands(
     } catch {
       throw commandFailed()
     }
+  }
+
+  async function persistNoopReceipt<T>(
+    idempotencyKey: string,
+    commandType: string,
+    requestHash: string,
+    result: T,
+  ): Promise<T> {
+    const timestamp = validNow(now)
+    try {
+      const write = await receiptStatement(
+        db,
+        idempotencyKey,
+        commandType,
+        requestHash,
+        result,
+        timestamp,
+      ).run()
+      if (Number(write.meta.changes ?? 0) === 1) return result
+    } catch {
+      const raced = await readReceipt<T>(
+        idempotencyKey,
+        requestHash,
+      )
+      if (raced) return raced
+      throw commandFailed()
+    }
+    const raced = await readReceipt<T>(
+      idempotencyKey,
+      requestHash,
+    )
+    if (raced) return raced
+    throw commandFailed()
   }
 
   async function executeFencedBatch(

@@ -71,8 +71,6 @@ export interface DisableAdminManagedSourceResult {
 
 export interface ListAdminManagedSourcesInput {
   connectionId: string
-  actorId: number
-  idempotencyKey: string
 }
 
 export interface ListAdminManagedSourcesResult {
@@ -116,7 +114,6 @@ const PROVIDERS = new Set<AttributionProvider>([
 
 const CREATE_ADMIN_SOURCE = 'create_managed_source'
 const DISABLE_ADMIN_SOURCE = 'disable_managed_source'
-const LIST_ADMIN_SOURCES = 'list_managed_sources'
 
 export async function createManagedSource(
   environment: ManagedSourceEnvironment,
@@ -406,20 +403,7 @@ export async function listAdminManagedSources(
   environment: ManagedSourceEnvironment,
   input: ListAdminManagedSourcesInput,
 ): Promise<ListAdminManagedSourcesResult> {
-  validateAdminCommand(input)
   validateIdentifier(input.connectionId)
-
-  const requestHash = await hashAdminCommand(LIST_ADMIN_SOURCES, {
-    actorId: input.actorId,
-    connectionId: input.connectionId,
-  })
-  const replay = await readAdminReceipt<ListAdminManagedSourcesResult>(
-    environment.db,
-    input.idempotencyKey,
-    LIST_ADMIN_SOURCES,
-    requestHash,
-  )
-  if (replay) return replay
 
   const connection = await findConnection(
     environment.db,
@@ -442,42 +426,6 @@ export async function listAdminManagedSources(
   const result: ListAdminManagedSourcesResult = {
     connectionId: connection.connectionId,
     sources: rows.results.map(row => managedSourceView(row)),
-  }
-
-  const now = validNow(environment.now ?? (() => new Date()))
-  const idFactory = environment.idFactory
-    ?? (prefix => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}`)
-  const auditId = idFactory('audit')
-  validateIdentifier(auditId)
-  try {
-    await environment.db.batch([
-      auditStatement(environment.db, {
-        id: auditId,
-        actorId: input.actorId,
-        commandType: LIST_ADMIN_SOURCES,
-        connectionId: input.connectionId,
-        outcome: 'listed',
-        detail: { sourceCount: result.sources.length },
-        timestamp: now,
-      }),
-      receiptStatement(
-        environment.db,
-        input.idempotencyKey,
-        LIST_ADMIN_SOURCES,
-        requestHash,
-        result,
-        now,
-      ),
-    ])
-  } catch {
-    const raced = await readAdminReceipt<ListAdminManagedSourcesResult>(
-      environment.db,
-      input.idempotencyKey,
-      LIST_ADMIN_SOURCES,
-      requestHash,
-    )
-    if (raced) return raced
-    throw commandFailed()
   }
   return result
 }

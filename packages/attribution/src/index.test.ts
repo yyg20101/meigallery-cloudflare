@@ -60,6 +60,16 @@ describe('attribution worker', () => {
     })
   })
 
+  it('公共网络直接访问管理路由始终返回 404', async () => {
+    const response = await app.request(
+      '/admin/attribution/connections',
+      {},
+      createBindings(),
+    )
+
+    expect(response.status).toBe(404)
+  })
+
   it.each([
     ['空 Origin', { ATTRIBUTION_PUBLIC_ORIGINS: '' }],
     ['通配符 Origin', { ATTRIBUTION_PUBLIC_ORIGINS: '*' }],

@@ -69,6 +69,7 @@ export function createMetaAdapter(
   return {
     provider: 'meta',
     eventName,
+    activeTarget,
     normalizeTestEventCode,
     validateCandidate,
     buildBrowserInstruction,
@@ -79,6 +80,14 @@ export function createMetaAdapter(
   function eventName(event: CanonicalConversionEvent): string {
     if (!isCanonicalEvent(event)) throw adapterInputInvalid()
     return event
+  }
+
+  function activeTarget(
+    publicConfig: Record<string, string>,
+  ): string {
+    return exactStringConfig(publicConfig, {
+      pixelId: PIXEL_ID_PATTERN,
+    }).pixelId!
   }
 
   function normalizeTestEventCode(

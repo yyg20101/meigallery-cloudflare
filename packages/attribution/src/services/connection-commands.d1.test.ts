@@ -97,6 +97,74 @@ describe('归因连接命令', () => {
     })).rejects.toThrow('ATTRIBUTION_IDEMPOTENCY_CONFLICT')
   })
 
+  it('候选幂等摘要绑定连接和 actor，语义 no-op 也保留键', async () => {
+    const commands = createCommands()
+    await commands.createConnection(
+      connectionInput('conn_meta_a', 'meta', true),
+    )
+    await commands.createConnection(
+      connectionInput('conn_meta_b', 'meta', false),
+    )
+    await commands.createCandidate(
+      candidateInput('conn_meta_a', 'pixel-a', 'candidate-origin'),
+    )
+
+    const noOp = await commands.createCandidate(
+      candidateInput('conn_meta_a', 'pixel-a', 'candidate-semantic-noop'),
+    )
+    expect(noOp.connectionId).toBe('conn_meta_a')
+    await expect(commands.createCandidate(
+      candidateInput('conn_meta_a', 'pixel-b', 'candidate-semantic-noop'),
+    )).rejects.toThrow('ATTRIBUTION_IDEMPOTENCY_CONFLICT')
+
+    await expect(commands.createCandidate({
+      ...candidateInput(
+        'conn_meta_b',
+        'pixel-a',
+        'candidate-origin',
+      ),
+    })).rejects.toThrow('ATTRIBUTION_IDEMPOTENCY_CONFLICT')
+    await commands.createCandidate({
+      ...candidateInput(
+        'conn_meta_a',
+        'pixel-a',
+        'candidate-other-actor',
+      ),
+      actorId: 2,
+    })
+    await expect(commands.createCandidate({
+      ...candidateInput(
+        'conn_meta_a',
+        'pixel-b',
+        'candidate-other-actor',
+      ),
+      actorId: 1,
+    })).rejects.toThrow('ATTRIBUTION_IDEMPOTENCY_CONFLICT')
+  })
+
+  it('候选未提交新凭据时从当前 Active 安全复用凭据', async () => {
+    const commands = createCommands()
+    await commands.createConnection(connectionInput('conn_meta', 'meta', true))
+    const first = await readyCandidate(commands, 'pixel-a', 'first')
+    await commands.activateCandidate({
+      connectionId: 'conn_meta',
+      candidateId: first.id,
+      expectedBaseActiveVersionId: null,
+      idempotencyKey: 'activate-first',
+      actorId: 1,
+    })
+    const activeFingerprint = await credentialFingerprint(first.id)
+
+    const next = await commands.createCandidate({
+      ...candidateInput('conn_meta', 'pixel-b', 'candidate-without-token'),
+      credential: undefined,
+    })
+
+    expect(next.status).toBe('candidate')
+    expect(await credentialFingerprint(next.id)).toBe(activeFingerprint)
+    expect(await credentialExists(next.id)).toBe(true)
+  })
+
   it('stale base 激活失败且故障注入会原子回滚旧 Active', async () => {
     const commands = createCommands()
     await commands.createConnection(connectionInput('conn_meta', 'meta', true))
@@ -175,13 +243,16 @@ describe('归因连接命令', () => {
     )).toBe(auditCount)
     expect((await version(first.id)).status).toBe('draining')
 
-    const rolledBack = await commands.rollbackActiveVersion({
+    const rolledBack = await commands.rollbackPreviousVersion({
       connectionId: 'conn_meta',
-      targetVersionId: first.id,
-      expectedActiveVersionId: second.id,
       idempotencyKey: 'rollback-first',
       actorId: 1,
     })
+    expect((await commands.rollbackPreviousVersion({
+      connectionId: 'conn_meta',
+      idempotencyKey: 'rollback-first',
+      actorId: 1,
+    })).activeVersionId).toBe(first.id)
     expect(rolledBack.activeVersionId).toBe(first.id)
     expect((await version(first.id)).status).toBe('active')
     expect((await version(second.id)).status).toBe('retired')
@@ -306,6 +377,17 @@ async function credentialExists(versionId: string) {
     FROM attribution_version_credentials
     WHERE version_id = ?
   `).bind(versionId).first())
+}
+
+async function credentialFingerprint(versionId: string) {
+  const row = await db.prepare(`
+    SELECT credential_fingerprint
+    FROM attribution_version_credentials
+    WHERE version_id = ?
+  `).bind(versionId).first<{
+    credential_fingerprint: string
+  }>()
+  return row?.credential_fingerprint ?? null
 }
 
 async function scalar(sql: string) {

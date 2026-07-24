@@ -155,24 +155,32 @@ export async function startCandidateValidation(
   if (testEventCode === null) {
     throw new Error('ATTRIBUTION_VALIDATION_TEST_CODE_INVALID')
   }
+  const now = trustedNow(environment.now)
 
   const existing = await readLiveValidation(
     environment.db,
     input.candidateId,
   )
   if (existing) {
-    await launchWorkflow(
-      environment.workflow,
-      existing.validationId,
+    if (
+      candidate.status !== 'candidate'
+      && candidate.status !== 'validating'
+    ) {
+      throw new Error('ATTRIBUTION_VALIDATION_CANDIDATE_INVALID')
+    }
+    return resumeCandidateValidation(
+      environment,
+      input,
+      existing,
+      now,
       true,
+      false,
     )
-    return existing
   }
   if (candidate.status !== 'candidate') {
     throw new Error('ATTRIBUTION_VALIDATION_CANDIDATE_INVALID')
   }
 
-  const now = trustedNow(environment.now)
   await assertNonEssentialCapacity(environment.db, now)
   const idFactory = validationIdFactory(environment)
   const validationId = identifier(idFactory('validation'))
@@ -214,29 +222,86 @@ export async function startCandidateValidation(
       new Date(now.getTime() + VALIDATION_WINDOW_MS).toISOString(),
     ))
   }
-  const results = await environment.db.batch(statements)
-  if (results.some(result => Number(result.meta.changes ?? 0) !== 1)) {
+  let results: D1Result<unknown>[]
+  try {
+    results = await environment.db.batch(statements)
+  } catch {
+    const raced = await readLiveValidation(
+      environment.db,
+      input.candidateId,
+    )
+    if (raced) {
+      return resumeCandidateValidation(
+        environment,
+        input,
+        raced,
+        now,
+        true,
+        false,
+      )
+    }
     throw new Error('ATTRIBUTION_VALIDATION_PERSIST_FAILED')
   }
+  if (results.some(result => Number(result.meta.changes ?? 0) !== 1)) {
+    const raced = await readLiveValidation(
+      environment.db,
+      input.candidateId,
+    )
+    if (raced) {
+      return resumeCandidateValidation(
+        environment,
+        input,
+        raced,
+        now,
+        true,
+        false,
+      )
+    }
+    throw new Error('ATTRIBUTION_VALIDATION_PERSIST_FAILED')
+  }
+  return resumeCandidateValidation(
+    environment,
+    input,
+    { validationId, status: 'queued' },
+    now,
+    false,
+    true,
+  )
+}
+
+async function resumeCandidateValidation(
+  environment: CandidateValidationEnvironment,
+  input: StartCandidateValidationInput,
+  validation: CandidateValidationStart,
+  now: Date,
+  tolerateExistingWorkflow: boolean,
+  abandonOnTransitionFailure: boolean,
+): Promise<CandidateValidationStart> {
   const commands = connectionCommands(environment)
   try {
     await commands.beginCandidateValidation({
       connectionId: input.connectionId,
       candidateId: input.candidateId,
       actorId: input.actorId,
-      idempotencyKey: `validation:${validationId}:begin`,
+      idempotencyKey: `validation:${validation.validationId}:begin`,
     })
   } catch (error) {
-    await abandonQueuedValidation(
-      environment.db,
-      validationId,
-      'candidate_validation_start_failed',
-      now,
-    )
+    if (abandonOnTransitionFailure) {
+      await abandonQueuedValidation(
+        environment.db,
+        validation.validationId,
+        'candidate_validation_start_failed',
+        now,
+      )
+    }
     throw error
   }
-  await launchWorkflow(environment.workflow, validationId, false)
-  return { validationId, status: 'queued' }
+  await launchWorkflow(
+    environment.workflow,
+    validation.validationId,
+    tolerateExistingWorkflow,
+  )
+  return validation
 }
 
 export async function prepareCandidateValidation(

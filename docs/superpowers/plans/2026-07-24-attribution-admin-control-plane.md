@@ -55,7 +55,7 @@ packages/web/tests/e2e/admin-attribution.spec.ts
 - Consumes: 连接命令、运行策略命令、验证服务和聚合表。
 - Produces: 设计文档第 15 节的管理员 API，响应为脱敏 View。
 
-- [ ] **Step 1: 写脱敏和幂等失败测试**
+- [x] **Step 1: 写脱敏和幂等失败测试**
 
 ```ts
 it('连接列表不泄露内部字段', async () => {
@@ -77,7 +77,7 @@ it('写请求缺少幂等键时拒绝', async () => {
 })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -87,7 +87,7 @@ corepack pnpm --filter @meigallery/attribution exec vitest run src/routes/admin.
 
 Expected: FAIL，管理路由和读模型不存在。
 
-- [ ] **Step 3: 实现稳定 View Model 和路由**
+- [x] **Step 3: 实现稳定 View Model 和路由**
 
 连接 View 固定为：
 
@@ -124,20 +124,26 @@ export interface AdminAttributionConnectionView {
 
 ```ts
 GET    /admin/attribution/connections
+GET    /admin/attribution/connections/:id
 POST   /admin/attribution/connections
 POST   /admin/attribution/connections/:id/candidates
-GET    /admin/attribution/connections/:id/candidates/:candidateId
+GET    /admin/attribution/connections/:id/candidate
 PATCH  /admin/attribution/connections/:id/runtime-policy
 POST   /admin/attribution/connections/:id/rollback
 POST   /admin/attribution/connections/:id/disable
 GET    /admin/attribution/connections/:id/sources
 POST   /admin/attribution/connections/:id/sources
 POST   /admin/attribution/connections/:id/sources/:sourceId/disable
+GET    /admin/attribution/quality
+GET    /admin/attribution/incidents
 GET    /admin/attribution/privacy-policy
 PATCH  /admin/attribution/privacy-policy
 ```
 
-- [ ] **Step 4: 运行路由测试**
+候选读取只按连接返回脱敏状态，不向 Web 暴露 `candidateId` 或
+`versionId`。GET 为纯读取；幂等键只用于修改命令。
+
+- [x] **Step 4: 运行路由测试**
 
 Run:
 
@@ -147,7 +153,11 @@ corepack pnpm --filter @meigallery/attribution exec vitest run src/routes/admin.
 
 Expected: PASS；重复 `Idempotency-Key` 返回同一领域结果且 D1 行数不变。
 
-- [ ] **Step 5: 提交**
+实际结果：Attribution 完整套件 `40` 个测试文件、`280` 项测试通过；
+包含并发重复创建、候选自动验证、Workflow 同实例恢复、跨连接幂等隔离、
+请求体上限、公开管理路由默认 `404` 和脱敏快照损坏关闭。
+
+- [x] **Step 5: 提交**
 
 ```bash
 git add packages/attribution/src/routes/admin* packages/attribution/src/read-models packages/attribution/src/index.ts

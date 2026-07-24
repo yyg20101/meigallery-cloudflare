@@ -6,6 +6,7 @@ import {
   type AttributionEnvironment,
 } from './env'
 import type { AttributionQueueMessage } from './domain/queue'
+import { createAdminAttributionRoutes } from './routes/admin'
 import { browserAttributionRoutes } from './routes/browser'
 import { internalRoutes } from './routes/internal'
 import { runAttributionMaintenance } from './scheduled'
@@ -45,6 +46,10 @@ app.get('/health', c => c.json({
 }))
 app.route('/', browserAttributionRoutes)
 app.route('/internal/v1', internalRoutes)
+app.route(
+  '/admin/attribution',
+  createAdminAttributionRoutes(),
+)
 
 export default {
   fetch(request, env, ctx) {

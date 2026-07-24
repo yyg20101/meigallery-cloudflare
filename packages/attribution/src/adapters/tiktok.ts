@@ -55,6 +55,7 @@ export function createTikTokAdapter(
   return {
     provider: 'tiktok',
     eventName,
+    activeTarget,
     normalizeTestEventCode,
     validateCandidate,
     buildBrowserInstruction,
@@ -65,6 +66,14 @@ export function createTikTokAdapter(
   function eventName(event: CanonicalConversionEvent): string {
     if (!isCanonicalEvent(event)) throw adapterInputInvalid()
     return event
+  }
+
+  function activeTarget(
+    publicConfig: Record<string, string>,
+  ): string {
+    return exactStringConfig(publicConfig, {
+      pixelCode: PIXEL_CODE_PATTERN,
+    }).pixelCode!
   }
 
   function normalizeTestEventCode(

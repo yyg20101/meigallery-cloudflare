@@ -125,6 +125,7 @@ export type QualitySignalResult =
 export interface AttributionProviderAdapter {
   readonly provider: AttributionProvider
   eventName(event: CanonicalConversionEvent): string
+  activeTarget(publicConfig: Record<string, string>): string
   normalizeTestEventCode(
     value: unknown,
   ): string | undefined | null

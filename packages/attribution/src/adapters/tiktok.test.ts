@@ -7,6 +7,16 @@ import type {
 } from './types'
 
 describe('TikTok Adapter', () => {
+  it('只从严格公开配置生成 Active Pixel 目标', () => {
+    expect(tiktokAdapter.activeTarget({
+      pixelCode: 'TIKTOKPIXELDEMOABCDEF',
+    })).toBe('TIKTOKPIXELDEMOABCDEF')
+    expect(() => tiktokAdapter.activeTarget({
+      pixelCode: 'TIKTOKPIXELDEMOABCDEF',
+      accessToken: 'secret',
+    })).toThrow('ATTRIBUTION_ADAPTER_INPUT_INVALID')
+  })
+
   it('保持标准事件名并构造最小 Browser 指令', () => {
     expect(tiktokAdapter.eventName('Contact')).toBe('Contact')
     expect(tiktokAdapter.eventName('CompleteRegistration')).toBe(
