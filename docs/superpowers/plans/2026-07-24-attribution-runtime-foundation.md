@@ -572,7 +572,7 @@ git commit -m "feat: 建立归因运行时基线数据库"
 - Consumes: `ATTRIBUTION_CREDENTIAL_MASTER_KEY_CURRENT`。
 - Produces: `sealCredential()`、`openCredential()`、`fingerprintCredential()`；只返回密文或内存明文。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```ts
 import { describe, expect, it } from 'vitest'
@@ -610,7 +610,7 @@ it('只保留最近一个 retired 凭证且最多 7 天', async () => {
 })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -620,7 +620,7 @@ corepack pnpm --filter @meigallery/attribution exec vitest run src/services/cred
 
 Expected: FAIL，模块不存在。
 
-- [ ] **Step 3: 实现 AES-GCM 与 HMAC 指纹**
+- [x] **Step 3: 实现 AES-GCM 与 HMAC 指纹**
 
 实现固定签名：
 
@@ -664,7 +664,7 @@ const aad = new TextEncoder().encode(
 `destroy_after` 固定为 `retired_at + 7 days`；更早 retired 版本的 credential 当次事务立即删除。
 到期 Cron 删除最后一个 retired credential，但不得删除当前 `active` 或 `draining` credential。
 
-- [ ] **Step 4: 运行测试**
+- [x] **Step 4: 运行测试**
 
 Run:
 
@@ -674,7 +674,7 @@ corepack pnpm --filter @meigallery/attribution exec vitest run src/services/cred
 
 Expected: PASS，且测试输出不包含 `secret-token`。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add packages/attribution/src/services/credential-vault* packages/attribution/src/services/credential-retention* packages/attribution/src/domain/errors.ts
