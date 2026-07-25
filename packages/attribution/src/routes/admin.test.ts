@@ -374,6 +374,40 @@ describe('独立 Attribution Worker 管理路由', () => {
       /validationId|versionId|credential|fingerprint|token|testEventCode/i,
     )
     expect(await tableCount('attribution_validations')).toBe(1)
+    const validationStatus = await app.request(
+      `/admin/attribution/connections/${connectionId}`
+      + '/candidate/validation',
+      {
+        headers: {
+          'Idempotency-Key': 'validate_migrated_meta_candidate',
+        },
+      },
+      environmentBindings,
+    )
+    expect(validationStatus.status).toBe(200)
+    expect(await validationStatus.json()).toMatchObject({
+      data: {
+        provider: 'meta',
+        connectionId,
+        status: 'queued',
+        candidateChecked: false,
+        pairedEventCount: 0,
+      },
+    })
+    const unknownValidation = await app.request(
+      `/admin/attribution/connections/${connectionId}`
+      + '/candidate/validation',
+      {
+        headers: {
+          'Idempotency-Key': 'another_validation_operation',
+        },
+      },
+      environmentBindings,
+    )
+    expect(unknownValidation.status).toBe(404)
+    expect(await unknownValidation.json()).toMatchObject({
+      error: { code: 'ATTRIBUTION_VALIDATION_NOT_FOUND' },
+    })
     const conflict = await request('TEST67890')
     expect(conflict.status).toBe(409)
     expect(await conflict.json()).toMatchObject({
