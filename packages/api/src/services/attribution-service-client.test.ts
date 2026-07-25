@@ -28,6 +28,7 @@ describe('Attribution Service Binding client', () => {
       'https://attribution.internal/internal/v1/runtime-state',
     )
     expect(request?.method).toBe('GET')
+    expect(request?.redirect).toBe('manual')
   })
 
   it('拒绝 epoch 形状与运行模式不一致的状态响应', async () => {
@@ -449,6 +450,7 @@ describe('Attribution Service Binding client', () => {
       + '/imports/migration-production-v1',
     )
     expect(request?.method).toBe('GET')
+    expect(request?.redirect).toBe('manual')
     expect(request?.headers.get('X-Attribution-Actor-Id')).toBe('7')
     expect(request?.headers.get('X-Attribution-Actor-Role')).toBe('owner')
   })
