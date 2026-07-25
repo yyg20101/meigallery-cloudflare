@@ -2,7 +2,10 @@ import { readFileSync } from 'node:fs'
 import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest'
 import { Miniflare } from 'miniflare'
 import { clearAttributionRuntimeDatabase } from './test/attribution-schema'
-import { runAttributionMaintenance } from './scheduled'
+import {
+  maintenanceTaskForScheduledTime,
+  runAttributionMaintenance,
+} from './scheduled'
 import { recordCapacityUsage } from './services/capacity-monitor'
 
 const MIGRATIONS = [
@@ -40,6 +43,26 @@ beforeEach(async () => {
       id, provider, name, is_default
     ) VALUES ('conn_meta', 'meta', 'default', 1)
   `).run()
+})
+
+it.each([
+  ['2026-07-24T03:15:00.000Z', 'all'],
+  ['2026-07-24T03:00:00.000Z', 'interval'],
+  ['2026-07-24T03:30:00.000Z', 'interval'],
+  ['2026-07-24T15:15:00.000Z', 'interval'],
+] as const)(
+  '单 Cron 在 %s 选择 %s 维护任务',
+  (scheduledAt, expectedTask) => {
+    expect(maintenanceTaskForScheduledTime(
+      Date.parse(scheduledAt),
+    )).toBe(expectedTask)
+  },
+)
+
+it('单 Cron 拒绝无效触发时间', () => {
+  expect(() => maintenanceTaskForScheduledTime(Number.NaN)).toThrow(
+    'ATTRIBUTION_MAINTENANCE_SCHEDULED_TIME_INVALID',
+  )
 })
 
 it('定时维护只清除到期 retired 凭证并保留 Active 与 Draining', async () => {
