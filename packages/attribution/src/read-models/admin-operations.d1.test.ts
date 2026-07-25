@@ -29,6 +29,9 @@ const MIGRATION = [
   '../../migrations/0001_attribution_runtime.sql',
   '../../migrations/0002_event_delivery.sql',
   '../../migrations/0003_queue_runtime.sql',
+  '../../migrations/0004_runtime_state.sql',
+  '../../migrations/0005_migration_history.sql',
+  '../../migrations/0006_runtime_owner_epoch.sql',
 ].map(path => readFileSync(
   new URL(path, import.meta.url),
   'utf8',
@@ -183,6 +186,87 @@ describe('管理员归因运营读模型', () => {
         factCount: 1,
         attributedFactCount: 0,
         unattributedFactCount: 1,
+        browserAttempted: 0,
+        serverPlanned: 0,
+        serverQueued: 0,
+        serverProcessed: 0,
+        serverRejected: 0,
+        serverDeadLetter: 0,
+      },
+    ])
+  })
+
+  it('迁移历史日汇总与同日实时事实合并且不虚构投递', async () => {
+    await seedConnection()
+    await seedFact({
+      id: 'fact_live_contact',
+      eventName: 'Contact',
+      connectionId: 'connection_meta_us',
+      versionId: 'version_meta_active',
+      provider: 'meta',
+      externalEventId: 'external_live_contact',
+      dedupeChar: 'e',
+    })
+    await db.prepare(`
+      INSERT INTO attribution_history_daily (
+        date, event_name, fact_origin, provider, attribution_source,
+        fact_count, first_occurred_at, last_occurred_at, captured_at
+      ) VALUES
+        (
+          '2026-07-24',
+          'Contact',
+          'archived_live',
+          'meta',
+          'managed_link',
+          3,
+          '2026-07-23T16:00:00.000Z',
+          '2026-07-23T16:04:00.000Z',
+          '2026-07-24T12:00:00.000Z'
+        ),
+        (
+          '2026-07-24',
+          'CompleteRegistration',
+          'historical_backfill',
+          'none',
+          'none',
+          2,
+          '2026-07-23T17:00:00.000Z',
+          '2026-07-23T18:00:00.000Z',
+          '2026-07-24T12:00:00.000Z'
+        )
+    `).run()
+
+    await expect(listAdminAttributionOperations(db, {
+      dateFrom: '2026-07-24',
+      dateTo: '2026-07-24',
+    })).resolves.toEqual([
+      {
+        date: '2026-07-24',
+        provider: 'meta',
+        connectionId: 'connection_meta_us',
+        connectionName: '美国 BJ 团队',
+        contactCount: 4,
+        completeRegistrationCount: 0,
+        factCount: 4,
+        attributedFactCount: 4,
+        unattributedFactCount: 0,
+        browserAttempted: 0,
+        serverPlanned: 0,
+        serverQueued: 0,
+        serverProcessed: 0,
+        serverRejected: 0,
+        serverDeadLetter: 0,
+      },
+      {
+        date: '2026-07-24',
+        provider: null,
+        connectionId: '',
+        connectionName: '',
+        contactCount: 0,
+        completeRegistrationCount: 2,
+        factCount: 2,
+        attributedFactCount: 0,
+        unattributedFactCount: 2,
         browserAttempted: 0,
         serverPlanned: 0,
         serverQueued: 0,
@@ -528,6 +612,7 @@ async function seedDelivery(
       destination,
       external_event_id,
       status,
+      runtime_owner_epoch,
       queue_attempt_count,
       created_at,
       updated_at
@@ -541,6 +626,7 @@ async function seedDelivery(
       ?,
       ?,
       ?,
+      2,
       ?,
       '2026-07-23T16:06:00.000Z',
       '2026-07-23T16:10:00.000Z'

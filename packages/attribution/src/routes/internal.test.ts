@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import type {
   AttributionBusinessEventV1,
 } from '@meigallery/shared'
+import { ATTRIBUTION_SERVICE_BINDING } from '@meigallery/shared/constants'
 import { Hono } from 'hono'
 import { Miniflare } from 'miniflare'
 import {
@@ -22,6 +23,7 @@ import {
 } from '../security/signed-token'
 import {
   issueAttributionContextResponse,
+  resolveAttributionContext,
 } from '../services/context-service'
 import {
   verifyContactCapability,
@@ -40,6 +42,9 @@ import {
 const MIGRATIONS = [
   '../../migrations/0001_attribution_runtime.sql',
   '../../migrations/0002_event_delivery.sql',
+  '../../migrations/0004_runtime_state.sql',
+  '../../migrations/0005_migration_history.sql',
+  '../../migrations/0006_runtime_owner_epoch.sql',
 ].map(path => readFileSync(new URL(path, import.meta.url), 'utf8'))
 const fixedNow = new Date('2026-07-24T08:00:00.000Z')
 const signingKey = 'internal-route-signing-key-current-32-bytes'
@@ -104,6 +109,16 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await clearAttributionRuntimeDatabase(db)
+  await db.prepare(`
+    UPDATE attribution_runtime_state
+    SET mode = 'bridge',
+        activated_at = NULL,
+        updated_at = ?,
+        bridge_owner_epoch = 2,
+        active_owner_epoch = NULL,
+        fenced_owner_epoch = NULL
+    WHERE id = 'global'
+  `).bind(fixedNow.toISOString()).run()
   sequence = 0
   metaQueue.send.mockClear()
   tiktokQueue.send.mockClear()
@@ -112,6 +127,24 @@ beforeEach(async () => {
 })
 
 describe('Attribution Worker 内部 Service Binding 路由', () => {
+  it('只读返回运行模式、owner epoch 与最终对账状态', async () => {
+    const response = await request(
+      '/internal/v1/runtime-state',
+      'GET',
+    )
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({
+      mode: 'bridge',
+      activatedAt: null,
+      bridgeOwnerEpoch: 2,
+      activeOwnerEpoch: null,
+      fencedOwnerEpoch: null,
+      updatedAt: fixedNow.toISOString(),
+      migrationReconciled: false,
+      inFlightServerDeliveries: 0,
+    })
+  })
+
   it('只依据签名隐私选择、地区策略与 GPC 返回权威判定', async () => {
     const privacyToken = await issuePrivacyChoiceToken({
       signingKeys: { current: signingKey },
@@ -249,6 +282,130 @@ describe('Attribution Worker 内部 Service Binding 路由', () => {
       'SELECT COUNT(*) AS value FROM attribution_deliveries',
     )).toBe(2)
     expect(metaQueue.send).toHaveBeenCalledOnce()
+  })
+
+  it('注册、联系和浏览器指令严格拒绝缺失或错误的运行所有权', async () => {
+    const event = await registrationEvent()
+    const missing = await request(
+      '/internal/v1/registration-events',
+      'POST',
+      event,
+      { includeOwnership: false },
+    )
+    expect(missing.status).toBe(503)
+
+    const stale = await request(
+      '/internal/v1/registration-events',
+      'POST',
+      event,
+      { owner: 'draining', epoch: 3 },
+    )
+    expect(stale.status).toBe(503)
+    expect(await scalar(
+      'SELECT COUNT(*) AS value FROM attribution_facts',
+    )).toBe(0)
+  })
+
+  it('桥接期将旧 provider 上下文幂等翻译为新运行时 token', async () => {
+    const body = {
+      provider: 'meta',
+      identifiers: {
+        fbclid: 'legacy-fb-click',
+      },
+      idempotencyKey: 'legacy_context_1001',
+    }
+    const first = await request(
+      '/internal/v1/legacy-context',
+      'POST',
+      body,
+    )
+    const second = await request(
+      '/internal/v1/legacy-context',
+      'POST',
+      body,
+    )
+    const firstBody = await first.json<{
+      sourceContextToken: string
+    }>()
+    const secondBody = await second.json<{
+      sourceContextToken: string
+    }>()
+
+    expect(first.status).toBe(200)
+    expect(second.status).toBe(200)
+    expect(secondBody).toEqual(firstBody)
+    expect(await resolveAttributionContext({
+      db,
+      signingKeys: { current: signingKey },
+      encryptionKeys: { current: dataKey },
+      nowSeconds: () => Math.floor(fixedNow.getTime() / 1_000),
+    }, firstBody.sourceContextToken)).toMatchObject({
+      provider: 'meta',
+      connectionId: 'conn_meta',
+      sourceId: null,
+      identifiers: {
+        fbclid: 'legacy-fb-click',
+      },
+    })
+    expect(await scalar(
+      'SELECT COUNT(*) AS value FROM attribution_contexts',
+    )).toBe(1)
+  })
+
+  it('桥接期内部 Contact 只按上下文 provider 创建投递并保留请求匹配数据', async () => {
+    const sourceContextToken = await contextToken()
+    const event: AttributionBusinessEventV1 = {
+      schemaVersion: 1,
+      eventId: 'contact_event_1001',
+      eventName: 'Contact',
+      occurredAt: fixedNow.toISOString(),
+      pagePath: '/gallery',
+      dedupeKey: 'contact:session:1001',
+      sourceContextToken,
+      consent: {
+        marketingAllowed: true,
+        adUserDataAllowed: true,
+        adPersonalizationAllowed: false,
+      },
+      payload: {
+        contactMethodId: 'contact_telegram_1',
+        contactPlatform: 'telegram',
+        contactAction: 'open_link',
+      },
+    }
+    const response = await request(
+      '/internal/v1/contact-events',
+      'POST',
+      {
+        event,
+        requestMetadata: {
+          clientIp: '192.0.2.10',
+          userAgent: 'Attribution bridge test',
+        },
+      },
+    )
+
+    expect(response.status).toBe(202)
+    expect(await response.json()).toEqual({
+      accepted: true,
+      eventId: event.eventId,
+    })
+    expect(await db.prepare(`
+      SELECT provider, event_name
+      FROM attribution_facts
+      WHERE event_id = ?
+    `).bind(event.eventId).first()).toEqual({
+      provider: 'meta',
+      event_name: 'Contact',
+    })
+    expect(await scalar(`
+      SELECT COUNT(*) AS value
+      FROM attribution_deliveries
+      WHERE provider = 'meta'
+    `)).toBe(2)
+    expect(metaQueue.send).toHaveBeenCalledOnce()
+    expect(tiktokQueue.send).not.toHaveBeenCalled()
+    expect(googleQueue.send).not.toHaveBeenCalled()
   })
 
   it.each([
@@ -504,8 +661,10 @@ async function seedMetaConnection(): Promise<void> {
   await db.batch([
     db.prepare(`
       INSERT INTO attribution_connections (
-        id, provider, name, active_version_id
-      ) VALUES ('conn_meta', 'meta', 'Meta production', 'ver_meta')
+        id, provider, name, is_default, active_version_id
+      ) VALUES (
+        'conn_meta', 'meta', 'Meta production', 1, 'ver_meta'
+      )
     `),
     db.prepare(`
       INSERT INTO attribution_connection_versions (
@@ -527,6 +686,15 @@ async function seedMetaConnection(): Promise<void> {
       )
     `),
     db.prepare(`
+      INSERT INTO attribution_version_bindings (
+        version_id, canonical_event, enabled,
+        browser_destination, server_destination
+      ) VALUES (
+        'ver_meta', 'Contact', 1,
+        'meta_pixel', 'meta_capi'
+      )
+    `),
+    db.prepare(`
       INSERT INTO attribution_runtime_policies (
         connection_id, enabled, browser_enabled, server_enabled,
         server_target_percentage, server_effective_percentage,
@@ -543,12 +711,27 @@ async function request(
   path: string,
   method: 'GET' | 'POST',
   body?: unknown,
+  ownership: {
+    includeOwnership?: boolean
+    owner?: 'draining' | 'new'
+    epoch?: number
+  } = {},
 ): Promise<Response> {
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+  }
+  if (body !== undefined) headers['Content-Type'] = 'application/json'
+  if (ownership.includeOwnership !== false) {
+    headers[
+      ATTRIBUTION_SERVICE_BINDING.HEADERS.RUNTIME_OWNER
+    ] = ownership.owner ?? 'draining'
+    headers[
+      ATTRIBUTION_SERVICE_BINDING.HEADERS.RUNTIME_EPOCH
+    ] = String(ownership.epoch ?? 2)
+  }
   return app.request(path, {
     method,
-    headers: body === undefined
-      ? undefined
-      : { 'Content-Type': 'application/json' },
+    headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   }, bindings())
 }

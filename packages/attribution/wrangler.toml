@@ -4,6 +4,9 @@ main = "src/index.ts"
 compatibility_date = "2026-05-26"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = false
+routes = [
+  { pattern = "track.616618.xyz", custom_domain = true }
+]
 
 [triggers]
 # 每 15 分钟执行完整恢复维护；每日 03:17 UTC 执行容量与质量日报。
@@ -12,7 +15,7 @@ crons = ["*/15 * * * *", "17 3 * * *"]
 [[d1_databases]]
 binding = "DB"
 database_name = "meigallery-attribution-db"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "94fd6a1c-02e0-47fc-ba75-72b36b43dd39"
 migrations_dir = "migrations"
 
 [[queues.producers]]
@@ -76,6 +79,13 @@ APP_ENV = "production"
 ATTRIBUTION_PUBLIC_ORIGINS = "https://616618.xyz,https://www.616618.xyz"
 ATTRIBUTION_COOKIE_DOMAIN = ".616618.xyz"
 
+[secrets]
+required = [
+  "ATTRIBUTION_CREDENTIAL_MASTER_KEY_CURRENT",
+  "ATTRIBUTION_SIGNING_KEY_CURRENT",
+  "ATTRIBUTION_DATA_ENCRYPTION_KEY_CURRENT",
+]
+
 [observability]
 enabled = true
 head_sampling_rate = 0.05
@@ -90,7 +100,7 @@ crons = []
 [[env.dev.d1_databases]]
 binding = "DB"
 database_name = "meigallery-attribution-db-dev"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "dc65241f-cc80-49e3-933c-f477f0e9575c"
 migrations_dir = "migrations"
 
 [[env.dev.queues.producers]]

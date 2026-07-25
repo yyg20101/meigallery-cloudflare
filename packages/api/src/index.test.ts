@@ -53,6 +53,24 @@ describe('统一 Queue 与 Cron 入口', () => {
     expect(acknowledged).toBe(true)
   })
 
+  it('owner=new 时旧 Queue 只确认批次，不再执行旧投递', async () => {
+    let acknowledged = false
+    await app.queue({
+      queue: 'meigallery-ad-meta',
+      messages: [],
+      ackAll() { acknowledged = true },
+      retryAll() {},
+    } as unknown as MessageBatch<{
+      schemaVersion: 1
+      deliveryId: string
+      provider: 'meta'
+    }>, {
+      APP_ENV: 'production',
+      DB: emptyDb([], 'new'),
+    } as unknown as Bindings)
+    expect(acknowledged).toBe(true)
+  })
+
   it('每 15 分钟 Cron 执行统一 Outbox 恢复，午夜继续执行每日维护', async () => {
     const sql: string[] = []
     let work: Promise<unknown> | undefined
@@ -104,13 +122,24 @@ describe('公开设置广告配置隔离', () => {
   })
 })
 
-function emptyDb(calls: string[] = []) {
+function emptyDb(
+  calls: string[] = [],
+  owner: 'old' | 'draining' | 'new' = 'old',
+) {
   return {
     prepare(sql: string) {
       calls.push(sql)
       return {
         bind() { return this },
-        first: async () => null,
+        first: async () => sql.includes(
+          'FROM attribution_runtime_cutover',
+        ) ? {
+          owner,
+          owner_epoch:
+            owner === 'old' ? 1 : owner === 'draining' ? 2 : 3,
+          changed_by: null,
+          changed_at: '2026-07-24T00:00:00.000Z',
+        } : null,
         all: async () => ({ results: [] }),
         run: async () => ({ meta: { changes: 0 } }),
       }

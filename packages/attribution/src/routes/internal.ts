@@ -1,9 +1,10 @@
 import {
   isAttributionBusinessEventV1,
+  type AttributionBusinessEventV1,
   type AttributionProvider,
   type CanonicalConversionEvent,
 } from '@meigallery/shared'
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { getProviderAdapter } from '../adapters/registry'
 import type {
   AttributionBindings,
@@ -12,6 +13,10 @@ import type {
 import {
   signAttributionToken,
 } from '../security/signed-token'
+import {
+  issueAttributionContextToken,
+  type AttributionContextIdentifiers,
+} from '../services/context-service'
 import {
   issueContactCapability,
   type ContactCapabilityInput,
@@ -26,6 +31,15 @@ import {
   readPrivacyPolicy,
   resolvePrivacyDecision,
 } from '../services/privacy-policy'
+import {
+  assertAttributionRuntimeBridgeReadable,
+  assertAttributionRuntimeWriteOwnership,
+  readAttributionRuntimeWriteOwnership,
+  type AttributionRuntimeWriteOwnership,
+} from '../services/runtime-activation'
+import {
+  readAttributionRuntimeReadiness,
+} from '../services/runtime-state'
 import {
   enqueueServerDelivery,
 } from '../services/secure-outbox'
@@ -56,6 +70,25 @@ interface BrowserDeliveryRow {
   occurred_at: string
 }
 
+interface DefaultConnectionRow {
+  connection_id: string
+  provider: string
+}
+
+interface ContactBridgeRequest {
+  event: AttributionBusinessEventV1
+  requestMetadata: {
+    clientIp?: string
+    userAgent?: string
+  }
+}
+
+interface LegacyContextRequest {
+  provider: AttributionProvider
+  identifiers: AttributionContextIdentifiers
+  idempotencyKey: string
+}
+
 const MAX_CONTACT_CAPABILITIES = 100
 const BROWSER_INSTRUCTION_LIFETIME_SECONDS = 5 * 60
 const EVENT_MAX_AGE_SECONDS = 24 * 60 * 60
@@ -66,6 +99,13 @@ const PROVIDERS = new Set<AttributionProvider>([
   'tiktok',
   'google',
 ])
+const PROVIDER_IDENTIFIER_KEYS: Readonly<
+  Record<AttributionProvider, readonly string[]>
+> = {
+  meta: ['fbclid'],
+  tiktok: ['ttclid'],
+  google: ['gclid', 'gbraid', 'wbraid'],
+}
 
 type InternalRouteEnvironment = {
   Bindings: AttributionBindings
@@ -76,6 +116,18 @@ export function createInternalAttributionRoutes(
   options: InternalAttributionRouteOptions = {},
 ) {
   const routes = new Hono<InternalRouteEnvironment>()
+
+  routes.get('/runtime-state', async (c) => {
+    try {
+      return c.json(await readAttributionRuntimeReadiness(c.env.DB))
+    } catch {
+      return c.json({
+        statusCode: 503,
+        message: '归因运行状态暂时不可用',
+        code: 'ATTRIBUTION_RUNTIME_STATE_UNAVAILABLE',
+      }, 503)
+    }
+  })
 
   routes.post('/privacy-decision', async (c) => {
     const body = await readJson(c.req.raw)
@@ -112,6 +164,14 @@ export function createInternalAttributionRoutes(
   })
 
   routes.post('/registration-events', async (c) => {
+    let ownership
+    try {
+      ownership = readAttributionRuntimeWriteOwnership(c.req.raw)
+      await assertAttributionRuntimeWriteOwnership(c.env.DB, ownership)
+    } catch {
+      return runtimeOwnershipUnavailable(c)
+    }
+
     const body = await readJson(c.req.raw)
     if (
       !isAttributionBusinessEventV1(body)
@@ -132,23 +192,15 @@ export function createInternalAttributionRoutes(
         signingKeys: runtime.signingKeys,
         encryptionKeys: runtime.dataEncryptionKeys,
         now: () => now,
-      }, body)
-      for (const delivery of result.deliveries) {
-        if (
-          delivery.transport !== 'server'
-          || delivery.status !== 'planned'
-        ) {
-          continue
-        }
-        await enqueueServerDelivery({
-          db: c.env.DB,
-          queues: runtime.queues,
-          now: () => now,
-        }, {
-          provider: delivery.provider,
-          deliveryId: delivery.id,
-        })
-      }
+      }, body, {
+        runtimeWriteOwnership: ownership,
+      })
+      await enqueuePlannedServerDeliveries(
+        c.env.DB,
+        runtime,
+        now,
+        result.deliveries,
+      )
       return c.json({
         accepted: true as const,
         eventId: body.eventId,
@@ -162,9 +214,119 @@ export function createInternalAttributionRoutes(
     }
   })
 
+  routes.post('/contact-events', async (c) => {
+    let ownership: AttributionRuntimeWriteOwnership
+    try {
+      ownership = readAttributionRuntimeWriteOwnership(c.req.raw)
+      await assertAttributionRuntimeWriteOwnership(c.env.DB, ownership)
+    } catch {
+      return runtimeOwnershipUnavailable(c)
+    }
+
+    const body = parseContactBridgeRequest(await readJson(c.req.raw))
+    if (!body) {
+      return c.json({
+        statusCode: 400,
+        message: '联系归因事件格式无效',
+        code: 'ATTRIBUTION_CONTACT_EVENT_INVALID',
+      }, 400)
+    }
+
+    try {
+      const runtime = c.get('attributionEnvironment')
+      const now = trustedNow(options.now)
+      const result = await recordCanonicalFact({
+        db: c.env.DB,
+        signingKeys: runtime.signingKeys,
+        encryptionKeys: runtime.dataEncryptionKeys,
+        now: () => now,
+      }, body.event, {
+        allowImplicitContactLease: true,
+        runtimeWriteOwnership: ownership,
+        requestMetadata: body.requestMetadata,
+      })
+      await enqueuePlannedServerDeliveries(
+        c.env.DB,
+        runtime,
+        now,
+        result.deliveries,
+      )
+      return c.json({
+        accepted: true as const,
+        eventId: body.event.eventId,
+      }, 202)
+    } catch {
+      return c.json({
+        statusCode: 503,
+        message: '联系归因事件暂时无法接收',
+        code: 'ATTRIBUTION_CONTACT_EVENT_UNAVAILABLE',
+      }, 503)
+    }
+  })
+
+  routes.post('/legacy-context', async (c) => {
+    try {
+      await assertAttributionRuntimeBridgeReadable(c.env.DB)
+    } catch {
+      return c.json({
+        statusCode: 503,
+        message: '归因上下文桥接尚未就绪',
+        code: 'ATTRIBUTION_CONTEXT_BRIDGE_NOT_READY',
+      }, 503)
+    }
+
+    const input = parseLegacyContextRequest(await readJson(c.req.raw))
+    if (!input) {
+      return c.json({
+        statusCode: 400,
+        message: '归因上下文桥接请求格式无效',
+        code: 'ATTRIBUTION_LEGACY_CONTEXT_INVALID',
+      }, 400)
+    }
+
+    try {
+      const runtime = c.get('attributionEnvironment')
+      const route = await readDefaultConnectionRoute(
+        c.env.DB,
+        input.provider,
+      )
+      const issued = await issueAttributionContextToken({
+        db: c.env.DB,
+        signingKeys: runtime.signingKeys,
+        encryptionKeys: runtime.dataEncryptionKeys,
+        nowSeconds: () => Math.floor(
+          trustedNow(options.now).getTime() / 1_000,
+        ),
+      }, {
+        privacyDecision: {
+          state: 'granted',
+          reason: 'regional_default',
+        },
+        route,
+        sourceId: null,
+        identifiers: input.identifiers,
+        idempotencyKey: input.idempotencyKey,
+      })
+      return c.json({ sourceContextToken: issued.token })
+    } catch {
+      return c.json({
+        statusCode: 503,
+        message: '归因上下文暂时无法桥接',
+        code: 'ATTRIBUTION_LEGACY_CONTEXT_UNAVAILABLE',
+      }, 503)
+    }
+  })
+
   routes.get(
     '/events/:eventId/browser-instruction',
     async (c) => {
+      try {
+        const ownership = readAttributionRuntimeWriteOwnership(c.req.raw)
+        await assertAttributionRuntimeWriteOwnership(c.env.DB, ownership)
+      } catch {
+        return runtimeOwnershipUnavailable(c)
+      }
+
       const eventId = c.req.param('eventId')
       if (!IDENTIFIER_PATTERN.test(eventId)) {
         return c.json({
@@ -287,6 +449,149 @@ export function createInternalAttributionRoutes(
 
 export const internalAttributionRoutes = createInternalAttributionRoutes()
 export const internalRoutes = internalAttributionRoutes
+
+async function enqueuePlannedServerDeliveries(
+  db: D1Database,
+  runtime: AttributionEnvironment,
+  now: Date,
+  deliveries: Awaited<
+    ReturnType<typeof recordCanonicalFact>
+  >['deliveries'],
+): Promise<void> {
+  for (const delivery of deliveries) {
+    if (
+      delivery.transport !== 'server'
+      || delivery.status !== 'planned'
+    ) {
+      continue
+    }
+    await enqueueServerDelivery({
+      db,
+      queues: runtime.queues,
+      now: () => now,
+    }, {
+      provider: delivery.provider,
+      deliveryId: delivery.id,
+    })
+  }
+}
+
+function runtimeOwnershipUnavailable(
+  c: Context<InternalRouteEnvironment>,
+) {
+  return c.json({
+    statusCode: 503,
+    message: '归因运行所有权无效',
+    code: 'ATTRIBUTION_RUNTIME_WRITE_OWNERSHIP_REJECTED',
+  }, 503)
+}
+
+function parseContactBridgeRequest(
+  value: unknown,
+): ContactBridgeRequest | null {
+  if (
+    !isPlainRecord(value)
+    || !hasExactKeys(value, ['event', 'requestMetadata'])
+    || !isAttributionBusinessEventV1(value.event)
+    || value.event.eventName !== 'Contact'
+    || !isPlainRecord(value.requestMetadata)
+  ) {
+    return null
+  }
+  const metadata = value.requestMetadata
+  if (
+    !Object.keys(metadata).every(
+      key => key === 'clientIp' || key === 'userAgent',
+    )
+    || !Object.values(metadata).every(
+      item => isSafeText(item, 1_024),
+    )
+  ) {
+    return null
+  }
+  return {
+    event: value.event,
+    requestMetadata: {
+      ...(typeof metadata.clientIp === 'string'
+        ? { clientIp: metadata.clientIp }
+        : {}),
+      ...(typeof metadata.userAgent === 'string'
+        ? { userAgent: metadata.userAgent }
+        : {}),
+    },
+  }
+}
+
+function parseLegacyContextRequest(
+  value: unknown,
+): LegacyContextRequest | null {
+  if (
+    !isPlainRecord(value)
+    || !hasExactKeys(value, [
+      'provider',
+      'identifiers',
+      'idempotencyKey',
+    ])
+    || !PROVIDERS.has(value.provider as AttributionProvider)
+    || !IDENTIFIER_PATTERN.test(String(value.idempotencyKey ?? ''))
+    || !isPlainRecord(value.identifiers)
+  ) {
+    return null
+  }
+  const provider = value.provider as AttributionProvider
+  const allowedKeys = PROVIDER_IDENTIFIER_KEYS[provider]
+  if (
+    Object.keys(value.identifiers).length > allowedKeys.length
+    || !Object.entries(value.identifiers).every(([key, identifier]) =>
+      allowedKeys.includes(key)
+      && isSafeText(identifier, 1_024))
+  ) {
+    return null
+  }
+  return {
+    provider,
+    identifiers: { ...value.identifiers },
+    idempotencyKey: value.idempotencyKey as string,
+  }
+}
+
+async function readDefaultConnectionRoute(
+  db: D1Database,
+  provider: AttributionProvider,
+): Promise<{
+  provider: AttributionProvider
+  connectionId: string
+}> {
+  const row = await db.prepare(`
+    SELECT
+      connection.id AS connection_id,
+      connection.provider
+    FROM attribution_connections AS connection
+    INNER JOIN attribution_connection_versions AS version
+      ON version.id = connection.active_version_id
+     AND version.connection_id = connection.id
+     AND version.provider = connection.provider
+     AND version.status = 'active'
+    INNER JOIN attribution_runtime_policies AS policy
+      ON policy.connection_id = connection.id
+     AND policy.enabled = 1
+     AND (policy.browser_enabled = 1 OR policy.server_enabled = 1)
+    WHERE connection.provider = ?
+      AND connection.is_default = 1
+    LIMIT 1
+  `).bind(provider).first<DefaultConnectionRow>()
+  if (
+    !row
+    || row.provider !== provider
+    || !IDENTIFIER_PATTERN.test(row.connection_id)
+  ) {
+    throw new Error('ATTRIBUTION_DEFAULT_CONNECTION_NOT_FOUND')
+  }
+  return {
+    provider,
+    connectionId: row.connection_id,
+  }
+}
 
 function parsePrivacyDecisionRequest(value: unknown): {
   privacyToken: string | null

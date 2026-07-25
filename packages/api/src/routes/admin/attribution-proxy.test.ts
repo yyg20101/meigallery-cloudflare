@@ -112,6 +112,66 @@ describe('归因管理 Service Binding 代理', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 
+  it('通用后台代理禁止绕过专用 cutover 控制面推进 runtime', async () => {
+    const fetch = vi.fn(async () => Response.json({ data: {} }))
+    const response = await createApp({
+      userId: 1,
+      role: 'owner',
+      fetch,
+    }).request(
+      '/api/admin/attribution-runtime/runtime-state/transition',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'bypass_runtime_transition',
+        },
+        body: JSON.stringify({
+          targetMode: 'active',
+          sourceOwnerEpoch: 99,
+          reason: '绕过统一切换控制面',
+        }),
+      },
+      bindings(fetch),
+    )
+
+    expect(response.status).toBe(403)
+    expect(await response.json()).toMatchObject({
+      code: 'ATTRIBUTION_ADMIN_PROXY_CONTROL_PLANE_FORBIDDEN',
+    })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('百分号编码路径也不能绕过专用 cutover 控制面', async () => {
+    const fetch = vi.fn(async () => Response.json({ data: {} }))
+    const response = await createApp({
+      userId: 1,
+      role: 'owner',
+      fetch,
+    }).request(
+      '/api/admin/attribution-runtime/runtime-state/%74ransition',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'encoded_bypass_runtime_transition',
+        },
+        body: JSON.stringify({
+          targetMode: 'bridge',
+          sourceOwnerEpoch: 2,
+          reason: '不得绕过统一切换控制面',
+        }),
+      },
+      bindings(fetch),
+    )
+
+    expect(response.status).toBe(403)
+    expect(await response.json()).toMatchObject({
+      code: 'ATTRIBUTION_ADMIN_PROXY_CONTROL_PLANE_FORBIDDEN',
+    })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
   it('在代理层拒绝超大请求体，不把压力传递给独立 Worker', async () => {
     const fetch = vi.fn(async () => Response.json({ data: [] }))
     const response = await createApp({

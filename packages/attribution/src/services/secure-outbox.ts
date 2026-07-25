@@ -117,6 +117,11 @@ export async function enqueueServerDelivery(
         WHERE outbox.delivery_id = attribution_deliveries.id
           AND outbox.provider = attribution_deliveries.provider
       )
+      AND EXISTS (
+        SELECT 1
+        FROM attribution_runtime_dispatchable_deliveries AS eligible
+        WHERE eligible.delivery_id = attribution_deliveries.id
+      )
   `).bind(
     queueAttempt,
     now.toISOString(),
@@ -189,6 +194,8 @@ export async function recoverPendingServerOutbox(
     INNER JOIN attribution_outbox AS outbox
       ON outbox.delivery_id = delivery.id
      AND outbox.provider = delivery.provider
+    INNER JOIN attribution_runtime_dispatchable_deliveries AS eligible
+      ON eligible.delivery_id = delivery.id
     INNER JOIN attribution_runtime_policies AS policy
       ON policy.connection_id = delivery.connection_id
     LEFT JOIN attribution_validations AS validation

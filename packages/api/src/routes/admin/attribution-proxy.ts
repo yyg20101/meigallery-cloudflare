@@ -39,6 +39,11 @@ export function createAdminAttributionProxyRoutes(
         code: 'ATTRIBUTION_ADMIN_PROXY_PATH_INVALID',
       })
     }
+    if (relativePath === 'runtime-state/transition') {
+      return errorJson(c, 403, '归因运行时只能通过切换控制面变更', {
+        code: 'ATTRIBUTION_ADMIN_PROXY_CONTROL_PLANE_FORBIDDEN',
+      })
+    }
 
     const actorId = c.get('userId')
     if (!Number.isSafeInteger(actorId) || Number(actorId) <= 0) {
@@ -122,23 +127,27 @@ function normalizeRelativePath(value: string | undefined): string | null {
     return null
   }
   const segments = normalized.split('/')
-  if (segments.some((segment) => {
-    if (!segment) return true
+  const decodedSegments: string[] = []
+  for (const segment of segments) {
+    if (!segment) return null
     let decoded: string
     try {
       decoded = decodeURIComponent(segment)
     } catch {
-      return true
+      return null
     }
-    return decoded === '.'
+    if (
+      decoded === '.'
       || decoded === '..'
       || decoded.includes('/')
       || decoded.includes('\\')
       || containsControlCharacter(decoded)
-  })) {
-    return null
+    ) {
+      return null
+    }
+    decodedSegments.push(decoded)
   }
-  return normalized
+  return decodedSegments.join('/')
 }
 
 function containsControlCharacter(value: string): boolean {
@@ -158,8 +167,12 @@ function buildInternalUrl(
   relativePath: string,
   search: string,
 ): string | null {
+  const encodedPath = relativePath
+    .split('/')
+    .map(segment => encodeURIComponent(segment))
+    .join('/')
   const value = `${ATTRIBUTION_SERVICE_BINDING.INTERNAL_ORIGIN}`
-    + `${ATTRIBUTION_SERVICE_BINDING.ADMIN_PATH_PREFIX}/${relativePath}`
+    + `${ATTRIBUTION_SERVICE_BINDING.ADMIN_PATH_PREFIX}/${encodedPath}`
     + search
   if (value.length > ATTRIBUTION_SERVICE_BINDING.ADMIN_PROXY_MAX_URL_LENGTH) {
     return null

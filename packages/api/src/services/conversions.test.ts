@@ -11,7 +11,7 @@ describe('统一转换事实', () => {
       visitorId: 'visitor_123', sessionId: 'session_123', occurredAt: '2026-07-15T00:00:00.000Z',
       consentSnapshot: createAdConsentSnapshot('denied'), attributionSource: 'none', contactMethodId: 'contact_123', contactPlatform: 'telegram',
       actionType: 'open_link', metadata: { source: 'unit' },
-    })
+    }, oldOwnership)
 
     expect(result).toMatchObject({ created: true, actionType: 'contact', trackingInstructions: [] })
     expect(db.batches).toHaveLength(1)
@@ -26,7 +26,7 @@ describe('统一转换事实', () => {
     const result = await recordContact({ DB: db as unknown as D1Database, AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT: MASTER_KEY }, {
       visitorId: 'visitor_123', sessionId: 'session_123', occurredAt: '2026-07-15T00:00:00.000Z',
       consentSnapshot: createAdConsentSnapshot('denied'), contactMethodId: 'contact_123', contactPlatform: 'telegram', actionType: 'open_link',
-    })
+    }, oldOwnership)
     expect(result).toMatchObject({ id: 'fact_existing', actionType: 'contact', created: false, duplicateOf: 'fact_existing' })
     expect(result.trackingInstructions).toMatchObject([{ externalEventId: 'mg3_existing', canonicalEvent: 'Contact' }])
     expect(db.batches).toHaveLength(0)
@@ -37,7 +37,7 @@ describe('统一转换事实', () => {
     const result = await recordContact({ DB: db as unknown as D1Database, AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT: MASTER_KEY }, {
       visitorId: 'visitor_123', sessionId: 'session_123', occurredAt: '2026-07-15T00:00:00.000Z',
       consentSnapshot: createAdConsentSnapshot('denied'), contactMethodId: 'contact_123', contactPlatform: 'telegram', actionType: 'open_link',
-    })
+    }, oldOwnership)
 
     expect(result.trackingInstructions[0]).toMatchObject({
       provider: 'google',
@@ -63,14 +63,22 @@ function createDb(existingId?: string, provider: 'meta' | 'google' = 'meta') {
       return {
         bind(...params: unknown[]) {
           return {
-            first: async <T>() => sql.includes('attribution_conversion_facts') && existingId ? ({ id: existingId, canonical_event: 'Contact', external_event_id: 'mg3_existing' } as T) : null,
+            first: async <T>() => sql.includes('attribution_runtime_cutover')
+              ? ({ owner: 'old', owner_epoch: 1, changed_by: null, changed_at: '2026-07-24T00:00:00.000Z' } as T)
+              : sql.includes('attribution_conversion_facts') && existingId
+                ? ({ id: existingId, canonical_event: 'Contact', external_event_id: 'mg3_existing' } as T)
+                : null,
             all: async <T>() => ({ results: sql.includes('attribution_deliveries') && existingId ? ([delivery] as T[]) : [] as T[] }),
             run: async () => ({ meta: { changes: 1 } }),
             __sql: sql,
             __params: params,
           }
         },
-        first: async <T>() => sql.includes('attribution_conversion_facts') && existingId ? ({ id: existingId, canonical_event: 'Contact', external_event_id: 'mg3_existing' } as T) : null,
+        first: async <T>() => sql.includes('attribution_runtime_cutover')
+          ? ({ owner: 'old', owner_epoch: 1, changed_by: null, changed_at: '2026-07-24T00:00:00.000Z' } as T)
+          : sql.includes('attribution_conversion_facts') && existingId
+            ? ({ id: existingId, canonical_event: 'Contact', external_event_id: 'mg3_existing' } as T)
+            : null,
         all: async <T>() => ({ results: sql.includes('attribution_deliveries') && existingId ? ([delivery] as T[]) : [] as T[] }),
       }
     },
@@ -80,3 +88,5 @@ function createDb(existingId?: string, provider: 'meta' | 'google' = 'meta') {
     },
   }
 }
+
+const oldOwnership = { owner: 'old' as const, epoch: 1 }

@@ -11,6 +11,8 @@ import { issueRuntimeLease } from './runtime-lease'
 const MIGRATIONS = [
   '../../migrations/0001_attribution_runtime.sql',
   '../../migrations/0002_event_delivery.sql',
+  '../../migrations/0004_runtime_state.sql',
+  '../../migrations/0006_runtime_owner_epoch.sql',
 ].map(path => readFileSync(new URL(path, import.meta.url), 'utf8'))
 const signingKey = 'fact-signing-key-current-with-at-least-32-bytes'
 const encryptionKey = 'fact-encryption-key-current-at-least-32-bytes'
@@ -38,6 +40,16 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await clearAttributionRuntimeDatabase(db)
+  await db.prepare(`
+    UPDATE attribution_runtime_state
+    SET mode = 'active',
+        activated_at = ?,
+        bridge_owner_epoch = 2,
+        active_owner_epoch = 3,
+        fenced_owner_epoch = NULL,
+        updated_at = ?
+    WHERE id = 'global'
+  `).bind(fixedNow.toISOString(), fixedNow.toISOString()).run()
   sequence = 0
   await seedProvider('meta')
   await seedProvider('tiktok')
@@ -45,6 +57,36 @@ beforeEach(async () => {
 })
 
 describe('Canonical Fact 与原子投递', () => {
+  it('owner epoch 在持久化前变化时原子拒绝事实与 delivery', async () => {
+    await db.prepare(`
+      UPDATE attribution_runtime_state
+      SET mode = 'active',
+          activated_at = ?,
+          bridge_owner_epoch = 4,
+          active_owner_epoch = 5,
+          fenced_owner_epoch = NULL,
+          updated_at = ?
+      WHERE id = 'global'
+    `).bind(fixedNow.toISOString(), fixedNow.toISOString()).run()
+
+    await expect(recordCanonicalFact(
+      environment(),
+      registrationEvent(),
+      {
+        runtimeWriteOwnership: {
+          owner: 'new',
+          epoch: 3,
+        },
+      },
+    )).rejects.toThrow()
+    expect(await scalar(
+      'SELECT COUNT(*) AS value FROM attribution_facts',
+    )).toBe(0)
+    expect(await scalar(
+      'SELECT COUNT(*) AS value FROM attribution_deliveries',
+    )).toBe(0)
+  })
+
   it('同一事实重复和并发提交只保留一组 Browser/Server delivery', async () => {
     const input = await attributedContact()
     const [first, second] = await Promise.all([
@@ -129,7 +171,7 @@ describe('Canonical Fact 与原子投递', () => {
     const result = await recordCanonicalFact(environment(), {
       ...registrationEvent(),
       sourceContextToken,
-    })
+    }, liveOptions())
 
     expect(result.factId).toBeTruthy()
     expect(result.externalEventId).toBeNull()
@@ -147,9 +189,29 @@ describe('Canonical Fact 与原子投递', () => {
     const result = await recordCanonicalFact(environment(), {
       ...contactEvent(),
       sourceContextToken,
-    })
+    }, liveOptions())
 
     expect(result.deliveries).toEqual([])
+  })
+
+  it('仅受信内部桥接可为 Contact 签发当前运行租约', async () => {
+    const sourceContextToken = await contextToken('meta')
+    const result = await recordCanonicalFact(environment(), {
+      ...contactEvent(),
+      sourceContextToken,
+    }, {
+      allowImplicitContactLease: true,
+      ...liveOptions(),
+    })
+
+    expect(result.deliveries.map(item => item.provider)).toEqual([
+      'meta',
+      'meta',
+    ])
+    expect(result.deliveries.map(item => item.transport)).toEqual([
+      'browser',
+      'server',
+    ])
   })
 
   it('Meta 上下文配 TikTok 租约时保留事实但严格零投递', async () => {
@@ -168,6 +230,7 @@ describe('Canonical Fact 与原子投递', () => {
       sourceContextToken,
     }, {
       runtimeLeaseToken,
+      ...liveOptions(),
     })
 
     expect(result.factId).toBeTruthy()
@@ -393,7 +456,13 @@ function environment() {
 
 async function attributedContact(): Promise<{
   event: AttributionBusinessEventV1
-  options: { runtimeLeaseToken: string }
+  options: {
+    runtimeLeaseToken: string
+    runtimeWriteOwnership: {
+      owner: 'new'
+      epoch: number
+    }
+  }
 }> {
   const sourceContextToken = await contextToken('meta')
   const runtimeLeaseToken = await issueRuntimeLease({
@@ -410,7 +479,19 @@ async function attributedContact(): Promise<{
       ...contactEvent(),
       sourceContextToken,
     },
-    options: { runtimeLeaseToken },
+    options: {
+      runtimeLeaseToken,
+      ...liveOptions(),
+    },
+  }
+}
+
+function liveOptions() {
+  return {
+    runtimeWriteOwnership: {
+      owner: 'new' as const,
+      epoch: 3,
+    },
   }
 }
 

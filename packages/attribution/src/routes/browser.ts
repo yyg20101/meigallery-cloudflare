@@ -56,6 +56,9 @@ import {
   issueRuntimeLease,
   RUNTIME_LEASE_SECONDS,
 } from '../services/runtime-lease'
+import {
+  readAttributionRuntimeState,
+} from '../services/runtime-state'
 
 export interface BrowserAttributionVariables {
   attributionEnvironment: AttributionEnvironment
@@ -357,6 +360,13 @@ export function createBrowserAttributionRoutes(
       },
     }
     try {
+      const runtimeState = await readAttributionRuntimeState(c.env.DB)
+      if (
+        runtimeState.mode !== 'active'
+        || runtimeState.activeOwnerEpoch === null
+      ) {
+        throw new Error('ATTRIBUTION_NOT_ACTIVE')
+      }
       const result = await recordCanonicalFact({
         db: c.env.DB,
         signingKeys: runtime.signingKeys,
@@ -367,6 +377,10 @@ export function createBrowserAttributionRoutes(
         runtimeLeaseToken: privacy.decision.state === 'granted'
           ? input.runtimeLeaseToken
           : null,
+        runtimeWriteOwnership: {
+          owner: 'new',
+          epoch: runtimeState.activeOwnerEpoch,
+        },
       })
       const browserDelivery = result.deliveries.filter(
         item => item.transport === 'browser',
@@ -880,7 +894,7 @@ function validIdentifier(value: unknown): value is string {
 
 function validProof(value: unknown): value is string {
   return typeof value === 'string'
-    && /^[A-Za-z0-9_-]{43}$/.test(value)
+    && /^[a-f0-9]{64}$/.test(value)
 }
 
 function validDestination(value: string): boolean {

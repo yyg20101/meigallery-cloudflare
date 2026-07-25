@@ -59,6 +59,10 @@ import {
   type RuntimePromotionHealthChecker,
 } from '../services/runtime-policy-commands'
 import {
+  readAttributionRuntimeReadiness,
+  transitionAttributionRuntimeModeCommand,
+} from '../services/runtime-state'
+import {
   startCandidateValidation,
 } from '../services/validation-service'
 
@@ -124,6 +128,12 @@ interface SavePrivacyPolicyRequest {
   priorConsentCountryCodes: string[]
 }
 
+interface TransitionRuntimeModeRequest {
+  targetMode: 'bridge' | 'active' | 'fenced'
+  sourceOwnerEpoch: number
+  reason: string
+}
+
 const MAX_JSON_BYTES = 64 * 1024
 const MAX_CREDENTIAL_BYTES = 32 * 1024
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9:_-]{1,240}$/
@@ -177,6 +187,30 @@ export function createAdminAttributionRoutes(
   routes.get('/connections', async (c) => {
     return c.json({
       data: await listAdminAttributionConnections(c.env.DB),
+    })
+  })
+
+  routes.get('/runtime-state', async (c) => {
+    return c.json({
+      data: await readAttributionRuntimeReadiness(c.env.DB),
+    })
+  })
+
+  routes.post('/runtime-state/transition', async (c) => {
+    const idempotencyKey = requireIdempotencyKey(c.req.raw)
+    const input = parseRuntimeModeTransitionRequest(
+      await readJson(c.req.raw),
+    )
+    const actor = c.get('adminAttributionActor')
+    return c.json({
+      data: await transitionAttributionRuntimeModeCommand({
+        db: c.env.DB,
+        now,
+      }, {
+        ...input,
+        actorId: actor.actorId,
+        idempotencyKey,
+      }),
     })
   })
 
@@ -674,6 +708,32 @@ function parsePrivacyPolicyRequest(
   }
 }
 
+function parseRuntimeModeTransitionRequest(
+  value: unknown,
+): TransitionRuntimeModeRequest {
+  const input = exactRecord(value, [
+    'targetMode',
+    'sourceOwnerEpoch',
+    'reason',
+  ])
+  if (
+    (
+      input.targetMode !== 'bridge'
+      && input.targetMode !== 'active'
+      && input.targetMode !== 'fenced'
+    )
+    || !Number.isSafeInteger(input.sourceOwnerEpoch)
+    || Number(input.sourceOwnerEpoch) < 2
+  ) {
+    throw routeError(400, 'ATTRIBUTION_REQUEST_INVALID')
+  }
+  return {
+    targetMode: input.targetMode,
+    sourceOwnerEpoch: Number(input.sourceOwnerEpoch),
+    reason: text(input.reason, 240),
+  }
+}
+
 function publicConfig(value: unknown): Record<string, string> {
   if (!isRecord(value)) {
     throw routeError(400, 'ATTRIBUTION_REQUEST_INVALID')
@@ -952,6 +1012,9 @@ function domainErrorStatus(
     || code === 'ATTRIBUTION_ACTIVE_VERSION_CHANGED'
     || code === 'ATTRIBUTION_VERSION_STATE_INVALID'
     || code === 'ATTRIBUTION_RUNTIME_PROMOTION_BLOCKED'
+    || code === 'ATTRIBUTION_RUNTIME_MIGRATION_NOT_READY'
+    || code === 'ATTRIBUTION_RUNTIME_IN_FLIGHT_DELIVERY'
+    || code === 'ATTRIBUTION_RUNTIME_TRANSITION_INVALID'
   ) {
     return 409
   }

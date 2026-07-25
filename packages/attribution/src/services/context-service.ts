@@ -43,6 +43,12 @@ export interface IssueAttributionContextInput {
   idempotencyKey: string
 }
 
+export interface IssuedAttributionContextToken {
+  token: string
+  expiresAt: number
+  maxAgeSeconds: number
+}
+
 export interface ResolvedAttributionContext extends AttributionRouteCandidate {
   contextId: string
   issuedVersionId: string
@@ -109,6 +115,29 @@ export async function issueAttributionContextResponse(
   environment: AttributionContextEnvironment,
   input: IssueAttributionContextInput,
 ): Promise<Response> {
+  const issued = await issueAttributionContextToken(environment, input)
+  return new Response(JSON.stringify({
+    data: {
+      issued: true,
+      expiresAt: issued.expiresAt,
+    },
+  }), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Set-Cookie': contextCookie(
+        issued.token,
+        issued.maxAgeSeconds,
+        environment.cookieDomain,
+      ),
+    },
+  })
+}
+
+export async function issueAttributionContextToken(
+  environment: AttributionContextEnvironment,
+  input: IssueAttributionContextInput,
+): Promise<IssuedAttributionContextToken> {
   if (input.privacyDecision.state !== 'granted') {
     throw new AttributionDomainError('ATTRIBUTION_CONTEXT_NOT_GRANTED')
   }
@@ -136,7 +165,7 @@ export async function issueAttributionContextResponse(
     input.idempotencyKey,
     requestHash,
   )
-  if (existing) return contextResponse(environment, existing, now)
+  if (existing) return contextToken(environment, existing, now)
 
   const connection = await requireEligibleConnection(
     environment.db,
@@ -213,17 +242,17 @@ export async function issueAttributionContextResponse(
       input.idempotencyKey,
       requestHash,
     )
-    if (raced) return contextResponse(environment, raced, now)
+    if (raced) return contextToken(environment, raced, now)
     throw contextInvalid()
   }
-  return contextResponse(environment, payload, now)
+  return contextToken(environment, payload, now)
 }
 
-async function contextResponse(
+async function contextToken(
   environment: AttributionContextEnvironment,
   payload: ContextPayload,
   now: number,
-): Promise<Response> {
+): Promise<IssuedAttributionContextToken> {
   if (now < payload.issuedAt || now >= payload.expiresAt) {
     throw contextInvalid()
   }
@@ -237,25 +266,14 @@ async function contextResponse(
   } catch {
     throw contextInvalid()
   }
-  return new Response(JSON.stringify({
-    data: {
-      issued: true,
-      expiresAt: payload.expiresAt,
-    },
-  }), {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/json; charset=utf-8',
-      'Set-Cookie': contextCookie(
-        token,
-        Math.min(
-          CONTEXT_MAX_AGE_SECONDS,
-          Math.max(0, payload.expiresAt - now),
-        ),
-        environment.cookieDomain,
-      ),
-    },
-  })
+  return {
+    token,
+    expiresAt: payload.expiresAt,
+    maxAgeSeconds: Math.min(
+      CONTEXT_MAX_AGE_SECONDS,
+      Math.max(0, payload.expiresAt - now),
+    ),
+  }
 }
 
 export async function resolveAttributionContext(

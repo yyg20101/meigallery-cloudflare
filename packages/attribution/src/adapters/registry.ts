@@ -1,4 +1,5 @@
 import type {
+  AttributionCredentialType,
   AttributionProvider,
 } from '@meigallery/shared'
 import { AttributionDomainError } from '../domain/errors'
@@ -9,27 +10,53 @@ import type {
   AttributionProviderAdapter,
 } from './types'
 
-const adapters: ReadonlyMap<
+interface AttributionProviderRegistration {
+  adapter: AttributionProviderAdapter
+  credentialType: AttributionCredentialType
+}
+
+const registrations: ReadonlyMap<
   AttributionProvider,
-  AttributionProviderAdapter
+  AttributionProviderRegistration
 > = new Map([
-  ['meta', metaAdapter],
-  ['tiktok', tiktokAdapter],
-  ['google', googleAdapter],
+  ['meta', {
+    adapter: metaAdapter,
+    credentialType: 'access_token',
+  }],
+  ['tiktok', {
+    adapter: tiktokAdapter,
+    credentialType: 'access_token',
+  }],
+  ['google', {
+    adapter: googleAdapter,
+    credentialType: 'service_account_json',
+  }],
 ])
 
 export function getProviderAdapter(
   provider: unknown,
 ): AttributionProviderAdapter {
-  const adapter = typeof provider === 'string'
-    ? adapters.get(provider as AttributionProvider)
+  return getProviderRegistration(provider).adapter
+}
+
+export function getProviderCredentialType(
+  provider: unknown,
+): AttributionCredentialType {
+  return getProviderRegistration(provider).credentialType
+}
+
+function getProviderRegistration(
+  provider: unknown,
+): AttributionProviderRegistration {
+  const registration = typeof provider === 'string'
+    ? registrations.get(provider as AttributionProvider)
     : undefined
-  if (!adapter) {
+  if (!registration) {
     throw new AttributionDomainError('ATTRIBUTION_PROVIDER_UNSUPPORTED')
   }
-  return adapter
+  return registration
 }
 
 export function listProviderAdapters(): AttributionProviderAdapter[] {
-  return [...adapters.values()]
+  return [...registrations.values()].map(item => item.adapter)
 }

@@ -20,7 +20,7 @@ describe('注册转化事实修复任务', () => {
     })
   })
 
-  it('扫描任意年龄的缺失事实用户，每批最多 100 个且事件 ID 只由用户 ID 决定', async () => {
+  it('只扫描已超过实时投递窗口的缺失事实用户，每批最多 100 个', async () => {
     const db = createRecoveryDb([
       { id: 41, created_at: '2020-01-01T07:00:00.000Z' },
       { id: 42, created_at: '2026-07-10T08:00:00.000Z' },
@@ -33,14 +33,18 @@ describe('注册转化事实修复任务', () => {
 
     expect(result).toEqual({ scanned: 2, created: 2, existing: 0, failed: 0 })
     const scan = db.calls.find(call => call.sql.includes('FROM users u'))
-    expect(scan?.sql).not.toContain('-24 hours')
+    expect(scan?.sql).toContain('datetime(u.created_at) <= datetime(?)')
     expect(scan?.sql).toContain("fact.canonical_event = 'CompleteRegistration'")
     expect(scan?.sql).toContain("json_extract(fact.analytics_dimensions_json, '$.userId')")
     expect(scan?.sql).not.toContain('analytics_conversion_actions')
     expect(scan?.sql).toContain('LIMIT 100')
     expect(scan?.sql).not.toContain('email')
     expect(scan?.sql).not.toContain('meta_external_id')
-    expect(scan?.params).toEqual([0])
+    expect(scan?.params).toEqual([
+      0,
+      '2026-07-10T08:50:00.000Z',
+      'old',
+    ])
     expect(recordFactOnlyMock).toHaveBeenNthCalledWith(1, expect.anything(), {
       userId: 41,
       occurredAt: '2020-01-01T07:00:00.000Z',
@@ -48,19 +52,25 @@ describe('注册转化事实修复任务', () => {
       sessionId: 'registration_user_41',
       sourceChannel: 'unknown',
       metadata: { method: 'email', recovery: true },
+    }, {
+      owner: 'old',
+      epoch: 1,
+      changedBy: null,
+      changedAt: '2026-07-24T00:00:00.000Z',
     })
-    expect(recordFactOnlyMock.mock.calls.every(call => call.length === 2)).toBe(true)
+    expect(recordFactOnlyMock.mock.calls.every(call => call.length === 3)).toBe(true)
   })
 
-  it('连续批次通过 NOT EXISTS 向后推进，失败行不会永久挡住后续用户', async () => {
+  it('失败时保留游标，下次成功后再继续推进，避免静默漏数', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    const users = Array.from({ length: 205 }, (_, index) => ({
+    const users = Array.from({ length: 3 }, (_, index) => ({
       id: index + 1,
       created_at: `2020-01-01T00:${String(index % 60).padStart(2, '0')}:00.000Z`,
     }))
     const db = createPagedRecoveryDb(users)
-    recordFactOnlyMock.mockImplementation(async (_db, input) => {
-      if (input.userId === 1) throw new Error('稳定故障行')
+    recordFactOnlyMock
+      .mockRejectedValueOnce(new Error('暂时故障'))
+      .mockImplementation(async (_db, input) => {
       db.completed.add(input.userId)
       return {
         id: `conv_${input.userId}`,
@@ -69,46 +79,17 @@ describe('注册转化事实修复任务', () => {
         duplicateOf: '',
         trackingInstructions: [],
       }
-    })
+      })
 
     const first = await recoverRegistrationConversionFacts(db as unknown as D1Database)
     const second = await recoverRegistrationConversionFacts(db as unknown as D1Database)
-    const third = await recoverRegistrationConversionFacts(db as unknown as D1Database)
 
-    expect(first).toMatchObject({ scanned: 100, created: 99, failed: 1 })
-    expect(second).toMatchObject({ scanned: 100, created: 100, failed: 0 })
-    expect(third).toMatchObject({ scanned: 5, created: 5, failed: 0 })
-    expect(db.completed.size).toBe(204)
-    expect(db.completed.has(205)).toBe(true)
+    expect(first).toMatchObject({ scanned: 3, created: 0, failed: 1 })
+    expect(second).toMatchObject({ scanned: 3, created: 3, failed: 0 })
+    expect(db.completed).toEqual(new Set([1, 2, 3]))
   })
 
-  it('即使前 100 行持续失败，cursor 仍让下一批覆盖后续缺失事实', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    const users = Array.from({ length: 105 }, (_, index) => ({
-      id: index + 1,
-      created_at: '2020-01-01T00:00:00.000Z',
-    }))
-    const db = createPagedRecoveryDb(users)
-    recordFactOnlyMock.mockImplementation(async (_database, input) => {
-      if (input.userId <= 100) throw new Error('持续故障')
-      db.completed.add(input.userId)
-      return {
-        id: `conv_${input.userId}`,
-        actionType: 'complete_registration',
-        created: true,
-        duplicateOf: '',
-        trackingInstructions: [],
-      }
-    })
-
-    expect(await recoverRegistrationConversionFacts(db as unknown as D1Database))
-      .toMatchObject({ scanned: 100, failed: 100 })
-    expect(await recoverRegistrationConversionFacts(db as unknown as D1Database))
-      .toMatchObject({ scanned: 5, created: 5, failed: 0 })
-    expect(db.completed.has(105)).toBe(true)
-  })
-
-  it('逐用户隔离失败且不要求任何 Meta delivery 环境', async () => {
+  it('单行失败即停止本批，不越过失败用户推进游标', async () => {
     recordFactOnlyMock
       .mockRejectedValueOnce(new Error('private failure'))
       .mockResolvedValueOnce({
@@ -126,15 +107,59 @@ describe('注册转化事实修复任务', () => {
 
     const result = await recoverRegistrationConversionFacts(db as unknown as D1Database)
 
-    expect(result).toEqual({ scanned: 2, created: 0, existing: 1, failed: 1 })
-    expect(recordFactOnlyMock).toHaveBeenCalledTimes(2)
+    expect(result).toEqual({ scanned: 2, created: 0, existing: 0, failed: 1 })
+    expect(recordFactOnlyMock).toHaveBeenCalledTimes(1)
     expect(JSON.stringify(consoleError.mock.calls)).not.toContain('private failure')
   })
 
-  it('不扫描 created_at 在未来的用户', async () => {
+  it('draining 只选择 routing_owner=old 的注册，new 完全停止旧补偿', async () => {
+    const drainingDb = createRecoveryDb([
+      { id: 41, created_at: '2026-07-10T07:00:00.000Z' },
+    ], { owner: 'draining' })
+    await recoverRegistrationConversionFacts(
+      drainingDb as unknown as D1Database,
+    )
+    const scan = drainingDb.calls.find(
+      call => call.sql.includes('FROM users u'),
+    )
+    expect(scan?.sql).toContain(
+      "business_outbox.routing_owner = 'old'",
+    )
+    expect(scan?.params).toEqual([
+      0,
+      expect.any(String),
+      'draining',
+    ])
+    expect(recordFactOnlyMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        owner: 'draining',
+        epoch: 2,
+      }),
+    )
+
+    recordFactOnlyMock.mockClear()
+    const newDb = createRecoveryDb([], { owner: 'new' })
+    await expect(recoverRegistrationConversionFacts(
+      newDb as unknown as D1Database,
+    )).resolves.toEqual({
+      scanned: 0,
+      created: 0,
+      existing: 0,
+      failed: 0,
+    })
+    expect(newDb.calls.some(
+      call => call.sql.includes('FROM users u'),
+    )).toBe(false)
+    expect(recordFactOnlyMock).not.toHaveBeenCalled()
+  })
+
+  it('不扫描仍在实时投递等待窗口或未来的用户', async () => {
     const db = createRecoveryDb([
+      { id: 98, created_at: '2026-07-10T08:55:00.000Z' },
       { id: 99, created_at: '2999-01-01T00:00:00.000Z' },
-    ], { excludeFutureWhenUpperBounded: true })
+    ], { respectMatureBefore: true })
 
     const result = await recoverRegistrationConversionFacts(
       db as unknown as D1Database,
@@ -142,7 +167,7 @@ describe('注册转化事实修复任务', () => {
     )
 
     const scan = db.calls.find(call => call.sql.includes('FROM users u'))
-    expect(scan?.sql).toContain("datetime(u.created_at) <= datetime('now')")
+    expect(scan?.sql).toContain('datetime(u.created_at) <= datetime(?)')
     expect(result).toEqual({ scanned: 0, created: 0, existing: 0, failed: 0 })
     expect(recordFactOnlyMock).not.toHaveBeenCalled()
   })
@@ -151,7 +176,10 @@ describe('注册转化事实修复任务', () => {
 type RecoveryUser = { id: number; created_at: string }
 type PreparedCall = { sql: string; params: unknown[] }
 
-function createRecoveryDb(users: RecoveryUser[], options: { excludeFutureWhenUpperBounded?: boolean } = {}) {
+function createRecoveryDb(users: RecoveryUser[], options: {
+  respectMatureBefore?: boolean
+  owner?: 'old' | 'draining' | 'new'
+} = {}) {
   const calls: PreparedCall[] = []
   let cursor = 0
   return {
@@ -165,14 +193,17 @@ function createRecoveryDb(users: RecoveryUser[], options: { excludeFutureWhenUpp
           return this
         },
         async all<T>() {
-          const results = options.excludeFutureWhenUpperBounded
-            && sql.includes("datetime(u.created_at) <= datetime('now')")
-            ? []
+          const results = options.respectMatureBefore
+            && sql.includes('datetime(u.created_at) <= datetime(?)')
+            ? users.filter(user =>
+                user.created_at <= String(call.params[1] ?? ''))
             : users
           return { results: results as T[] }
         },
         async first<T>() {
-          return sql.includes('FROM site_settings')
+          return sql.includes('FROM attribution_runtime_cutover')
+            ? (runtimeOwner(options.owner ?? 'old') as T)
+            : sql.includes('FROM site_settings')
             ? ({ value: String(cursor) } as T)
             : null
         },
@@ -195,7 +226,9 @@ function createPagedRecoveryDb(users: RecoveryUser[]) {
       return {
         bind(...values: unknown[]) { params = values; return this },
         async first<T>() {
-          return sql.includes('FROM site_settings')
+          return sql.includes('FROM attribution_runtime_cutover')
+            ? (runtimeOwner('old') as T)
+            : sql.includes('FROM site_settings')
             ? ({ value: String(cursor) } as T)
             : null
         },
@@ -211,5 +244,14 @@ function createPagedRecoveryDb(users: RecoveryUser[]) {
         },
       }
     },
+  }
+}
+
+function runtimeOwner(owner: 'old' | 'draining' | 'new') {
+  return {
+    owner,
+    owner_epoch: owner === 'old' ? 1 : owner === 'draining' ? 2 : 3,
+    changed_by: null,
+    changed_at: '2026-07-24T00:00:00.000Z',
   }
 }

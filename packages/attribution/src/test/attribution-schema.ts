@@ -5,6 +5,7 @@ export const ATTRIBUTION_RUNTIME_TABLES = [
   'attribution_version_bindings',
   'attribution_runtime_policies',
   'attribution_command_receipts',
+  'attribution_migration_manifests',
   'attribution_activation_fences',
   'attribution_audit_logs',
   'attribution_incidents',
@@ -23,6 +24,7 @@ export const ATTRIBUTION_EVENT_TABLES = [
   'attribution_validation_secrets',
   'attribution_quality_daily',
   'attribution_capacity_daily',
+  'attribution_history_daily',
   'attribution_privacy_policy',
 ] as const
 
@@ -38,6 +40,8 @@ const DELETE_ORDER = [
   'attribution_validations',
   'attribution_quality_daily',
   'attribution_capacity_daily',
+  'attribution_history_daily',
+  'attribution_migration_manifests',
   'attribution_privacy_policy',
   'attribution_activation_fences',
   'attribution_version_credentials',

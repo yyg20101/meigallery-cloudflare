@@ -35,7 +35,7 @@ describe('架构依赖边界', () => {
     expect(violations).toEqual([])
   })
 
-  it('注册路由只写业务 outbox，不再进入旧注册归因链路', async () => {
+  it('注册路由只写业务 outbox，旧写者仅由切换 dispatcher 调用', async () => {
     const auth = await readFile(
       new URL('./routes/auth.ts', import.meta.url),
       'utf8',
@@ -46,10 +46,13 @@ describe('架构依赖边界', () => {
     )
 
     expect(auth).toContain('buildCompleteRegistrationOutboxStatement')
+    expect(auth).toContain(
+      'createLegacyRegistrationOutboxDispatcher',
+    )
     expect(auth).not.toContain('recordRegistration')
     expect(auth).not.toContain('loadAttributionCryptoKeys')
     expect(auth).not.toContain('conversion_external_id')
-    expect(index).not.toContain('recoverRegistrationConversionFacts')
+    expect(index).toContain('recoverRegistrationConversionFacts')
   })
 })
 

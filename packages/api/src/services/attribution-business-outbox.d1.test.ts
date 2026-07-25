@@ -46,14 +46,39 @@ beforeAll(async () => {
   await db.exec(MIGRATION
     .replace(/^--.*$/gm, '')
     .replace(/\s*\r?\n\s*/g, ' '))
+  await db.exec(`
+    CREATE TABLE attribution_runtime_cutover (
+      id TEXT PRIMARY KEY,
+      owner TEXT NOT NULL,
+      owner_epoch INTEGER NOT NULL,
+      changed_by INTEGER,
+      changed_at TEXT NOT NULL
+    );
+    INSERT INTO attribution_runtime_cutover (
+      id, owner, owner_epoch, changed_by, changed_at
+    ) VALUES (
+      'global', 'draining', 2, 1, '2026-07-24T00:00:00.000Z'
+    );
+    ALTER TABLE attribution_business_outbox
+      ADD COLUMN routing_owner TEXT NOT NULL DEFAULT 'old';
+    ALTER TABLE attribution_business_outbox
+      ADD COLUMN owner_epoch INTEGER NOT NULL DEFAULT 1;
+  `.replace(/\s*\r?\n\s*/g, ' '))
 })
 
 beforeEach(async () => {
-  await db.exec(`
+  await db.exec(cleanSql(`
     DELETE FROM attribution_business_outbox;
     DELETE FROM users;
     DELETE FROM sqlite_sequence WHERE name = 'users';
-  `)
+    UPDATE attribution_runtime_cutover
+    SET
+      owner = 'draining',
+      owner_epoch = 2,
+      changed_by = 1,
+      changed_at = '2026-07-24T00:00:00.000Z'
+    WHERE id = 'global';
+  `))
 })
 
 afterAll(async () => miniflare.dispose())
@@ -94,6 +119,83 @@ describe('注册业务 outbox D1 服务', () => {
       status: 'pending',
       attempt_count: 0,
       completed_at: null,
+      routing_owner: 'draining',
+      owner_epoch: 2,
+    })
+  })
+
+  it('old owner 的注册事件保留在业务 D1 且不会投递到新运行时', async () => {
+    await setRuntimeOwner('old', 1)
+    await seedRegistration()
+    await makeDue('registration_user_1', FIRST_ATTEMPT)
+    const ingest = vi.fn()
+
+    await expect(dispatchAttributionBusinessOutbox(
+      db,
+      serviceClient(ingest),
+      { now: FIRST_ATTEMPT },
+    )).resolves.toEqual({ claimed: 0, accepted: 0, failed: 0 })
+    expect(ingest).not.toHaveBeenCalled()
+    expect(await readOutbox('registration_user_1')).toMatchObject({
+      routing_owner: 'old',
+      owner_epoch: 1,
+      status: 'pending',
+    })
+  })
+
+  it('old owner 由旧本地写者消费同一业务 outbox 并完成', async () => {
+    await setRuntimeOwner('old', 1)
+    await seedRegistration()
+    await makeDue('registration_user_1', FIRST_ATTEMPT)
+    const ingest = vi.fn()
+    const dispatchLegacy = vi.fn(async () => {})
+
+    const result = await dispatchAttributionBusinessOutboxImmediately(
+      db,
+      serviceClient(ingest),
+      'registration_user_1',
+      {
+        now: FIRST_ATTEMPT,
+        dispatchLegacy,
+      },
+    )
+
+    expect(result).toMatchObject({
+      accepted: true,
+      eventId: 'registration_user_1',
+      instructionToken: null,
+    })
+    expect(dispatchLegacy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: 'registration_user_1',
+        eventName: 'CompleteRegistration',
+      }),
+      { owner: 'old', epoch: 1 },
+    )
+    expect(ingest).not.toHaveBeenCalled()
+    expect(await readOutbox('registration_user_1')).toMatchObject({
+      status: 'completed',
+      routing_owner: 'old',
+      owner_epoch: 1,
+    })
+  })
+
+  it('切换后的新 owner 不会消费旧 epoch 遗留事件', async () => {
+    await seedRegistration()
+    await makeDue('registration_user_1', FIRST_ATTEMPT)
+    await setRuntimeOwner('new', 3)
+    const ingest = vi.fn()
+
+    await expect(dispatchAttributionBusinessOutbox(
+      db,
+      serviceClient(ingest),
+      { now: FIRST_ATTEMPT },
+    )).resolves.toEqual({ claimed: 0, accepted: 0, failed: 0 })
+    expect(ingest).not.toHaveBeenCalled()
+    expect(await readOutbox('registration_user_1')).toMatchObject({
+      status: 'pending',
+      routing_owner: 'draining',
+      owner_epoch: 2,
     })
   })
 
@@ -134,6 +236,8 @@ describe('注册业务 outbox D1 服务', () => {
       id: 'registration_user_1',
       eventId: 'registration_user_1',
       attemptCount: 1,
+      routingOwner: 'draining',
+      ownerEpoch: 2,
     })
     expect(claim?.claimToken).toMatch(/^[0-9a-f]{32}$/)
 
@@ -245,28 +349,20 @@ describe('注册业务 outbox D1 服务', () => {
     const instruction = vi.fn(async () => ({
       instructionToken: 'instruction_token_0123456789',
     }))
-    const client: AttributionServiceClient = {
-      async resolvePrivacyDecision() {
-        return { state: 'denied', reason: 'explicit' }
-      },
-      ingestRegistrationEvent: ingest,
-      getSignedBrowserInstruction: instruction,
-      async getSignedContactCapabilities() {
-        return []
-      },
-    }
+    const client = serviceClient(ingest)
+    client.getSignedBrowserInstruction = instruction
 
     const first = await dispatchAttributionBusinessOutboxImmediately(
       db,
       client,
       'registration_user_1',
-      FIRST_ATTEMPT,
+      { now: FIRST_ATTEMPT },
     )
     const duplicate = await dispatchAttributionBusinessOutboxImmediately(
       db,
       client,
       'registration_user_1',
-      new Date('2026-07-24T08:00:01.000Z'),
+      { now: new Date('2026-07-24T08:00:01.000Z') },
     )
 
     expect(first).toEqual({
@@ -323,6 +419,8 @@ async function readOutbox(id: string) {
     attempt_count: number
     claim_token: string | null
     completed_at: string | null
+    routing_owner: string
+    owner_epoch: number
   }>()
 }
 
@@ -338,10 +436,31 @@ function serviceClient(
   ingestRegistrationEvent: AttributionServiceClient['ingestRegistrationEvent'],
 ): AttributionServiceClient {
   return {
+    async readRuntimeState() {
+      return {
+        mode: 'bridge',
+        activatedAt: null,
+        bridgeOwnerEpoch: 2,
+        activeOwnerEpoch: null,
+        fencedOwnerEpoch: null,
+        updatedAt: '2026-07-24T00:00:00.000Z',
+        migrationReconciled: true,
+        inFlightServerDeliveries: 0,
+      }
+    },
+    async transitionRuntimeState() {
+      throw new Error('not implemented')
+    },
     async resolvePrivacyDecision() {
       return { state: 'denied', reason: 'explicit' }
     },
     ingestRegistrationEvent,
+    async ingestContactEvent() {
+      throw new Error('not implemented')
+    },
+    async translateLegacyContext() {
+      throw new Error('not implemented')
+    },
     async getSignedBrowserInstruction() {
       return { instructionToken: 'instruction_token_0123456789' }
     },
@@ -349,4 +468,19 @@ function serviceClient(
       return []
     },
   }
+}
+
+async function setRuntimeOwner(
+  owner: 'old' | 'draining' | 'new',
+  epoch: number,
+) {
+  await db.prepare(`
+    UPDATE attribution_runtime_cutover
+    SET owner = ?, owner_epoch = ?, changed_at = ?
+    WHERE id = 'global'
+  `).bind(owner, epoch, FIRST_ATTEMPT.toISOString()).run()
+}
+
+function cleanSql(value: string) {
+  return value.replace(/\s*\r?\n\s*/gu, ' ').trim()
 }

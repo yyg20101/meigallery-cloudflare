@@ -23,13 +23,23 @@ test('专属脚本只部署归因 Worker 且按门禁顺序执行', async () => 
 
   assert.doesNotMatch(source, /@meigallery\/api|@meigallery\/web/)
   assert.match(source, /ATTRIBUTION_D1_RESOURCE_NOT_PROVISIONED/)
+  assert.match(source, /ATTRIBUTION_DEPLOY_ENV_INVALID/)
+  assert.match(source, /ATTRIBUTION_DEPLOY_BRANCH_INVALID/)
+  assert.match(source, /ATTRIBUTION_DEPLOY_WORKTREE_DIRTY/)
+  assert.match(source, /bootstrap-attribution-worker\.mjs/)
+  assert.match(source, /https:\/\/track\.616618\.xyz\/health/)
+  assert.doesNotMatch(
+    source,
+    /commit_sha|git_commit|revision.*(gate|allow|deny)/i,
+  )
 
   const steps = [
     'test',
     'typecheck',
     'build',
     'd1 migrations apply',
-    'deploy',
+    'deploy_attribution',
+    'verify_health',
   ]
   let previousIndex = -1
   for (const step of steps) {

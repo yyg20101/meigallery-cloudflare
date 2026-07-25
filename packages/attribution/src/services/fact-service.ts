@@ -31,6 +31,13 @@ import {
   verifyRuntimeLease,
   type RuntimeLeasePayload,
 } from './runtime-lease'
+import type {
+  AttributionRuntimeDispatchOwnership,
+  AttributionRuntimeWriteOwnership,
+} from './runtime-activation'
+import {
+  readSyntheticRuntimeDispatchOwnership,
+} from './runtime-activation'
 
 export interface CanonicalFactEnvironment {
   db: D1Database
@@ -40,13 +47,17 @@ export interface CanonicalFactEnvironment {
   idFactory?: (prefix: string) => string
 }
 
-export interface CanonicalFactOptions {
+interface FactPreparationOptions {
   runtimeLeaseToken?: string | null
-  factOrigin?: 'live' | 'synthetic'
+  allowImplicitContactLease?: boolean
   requestMetadata?: {
     clientIp?: string
     userAgent?: string
   }
+}
+
+export interface CanonicalFactOptions extends FactPreparationOptions {
+  runtimeWriteOwnership: AttributionRuntimeWriteOwnership
 }
 
 export interface CanonicalFactDelivery {
@@ -167,10 +178,10 @@ const encoder = new TextEncoder()
 export async function recordCanonicalFact(
   environment: CanonicalFactEnvironment,
   event: AttributionBusinessEventV1,
-  options: CanonicalFactOptions = {},
+  options: CanonicalFactOptions,
 ): Promise<CanonicalFactResult> {
   const now = trustedNow(environment.now)
-  const factOrigin = options.factOrigin ?? 'live'
+  const factOrigin = 'live'
   validateEvent(event, factOrigin, now)
   const eventFingerprint = await fingerprintEvent(event, factOrigin)
   const dedupeHash = await sha256Hex(
@@ -194,6 +205,7 @@ export async function recordCanonicalFact(
     eventFingerprint,
     dedupeHash,
     route,
+    options.runtimeWriteOwnership,
   )
 }
 
@@ -263,12 +275,14 @@ export async function recordCandidateSyntheticFact(
   if (existing) return existing
   await ensureEventIdAvailable(environment.db, event.eventId)
   const route = await readCandidateFactRoute(environment.db, input, now)
+  const dispatchOwnership = await readSyntheticRuntimeDispatchOwnership(
+    environment.db,
+  )
 
   return persistFact(
     environment,
     event,
     {
-      factOrigin: 'synthetic',
       requestMetadata: {
         clientIp: '192.0.2.1',
         userAgent: 'MeiGallery Attribution Validation/1.0',
@@ -279,6 +293,7 @@ export async function recordCandidateSyntheticFact(
     eventFingerprint,
     dedupeHash,
     route,
+    dispatchOwnership,
     hashedEmail,
   )
 }
@@ -286,12 +301,13 @@ export async function recordCandidateSyntheticFact(
 async function persistFact(
   environment: CanonicalFactEnvironment,
   event: AttributionBusinessEventV1,
-  options: CanonicalFactOptions,
+  options: FactPreparationOptions,
   factOrigin: 'live' | 'synthetic',
   now: Date,
   eventFingerprint: string,
   dedupeHash: string,
   route: FactRoute | null,
+  dispatchOwnership: AttributionRuntimeDispatchOwnership,
   syntheticHashedEmail?: string,
 ): Promise<CanonicalFactResult> {
   const idFactory = environment.idFactory
@@ -332,36 +348,28 @@ async function persistFact(
     : []
 
   const statements = [
-    environment.db.prepare(`
-      INSERT INTO attribution_facts (
-        id, event_id, event_name, fact_origin, dedupe_hash,
-        event_fingerprint,
-        connection_id, version_id, provider, external_event_id,
-        occurred_at, consent_json, analytics_dimensions_json, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(
-      factId,
-      event.eventId,
-      event.eventName,
-      factOrigin,
-      dedupeHash,
-      eventFingerprint,
-      route?.connectionId ?? null,
-      route?.versionId ?? null,
-      route?.provider ?? null,
-      externalEventId,
-      event.occurredAt,
-      JSON.stringify(event.consent),
-      JSON.stringify(analyticsDimensions(event)),
-      now.toISOString(),
+    factInsertStatement(
+      environment.db,
+      {
+        factId,
+        event,
+        factOrigin,
+        dedupeHash,
+        eventFingerprint,
+        route,
+        externalEventId,
+        createdAt: now.toISOString(),
+      },
+      dispatchOwnership,
     ),
     ...deliveries.flatMap(delivery => [
       environment.db.prepare(`
         INSERT INTO attribution_deliveries (
           id, fact_id, connection_id, version_id, provider,
           transport, destination, external_event_id, status,
+          runtime_owner_epoch,
           created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'planned', ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'planned', ?, ?, ?)
       `).bind(
         delivery.result.id,
         factId,
@@ -371,6 +379,7 @@ async function persistFact(
         delivery.result.transport,
         delivery.result.destination,
         delivery.result.externalEventId,
+        dispatchOwnership.epoch,
         now.toISOString(),
         now.toISOString(),
       ),
@@ -421,6 +430,101 @@ async function persistFact(
     externalEventId,
     deliveries: deliveries.map(item => item.result),
   }
+}
+
+function factInsertStatement(
+  db: D1Database,
+  input: {
+    factId: string
+    event: AttributionBusinessEventV1
+    factOrigin: 'live' | 'synthetic'
+    dedupeHash: string
+    eventFingerprint: string
+    route: FactRoute | null
+    externalEventId: string | null
+    createdAt: string
+  },
+  ownership: AttributionRuntimeDispatchOwnership,
+): D1PreparedStatement {
+  const guard = ownership.owner === 'synthetic'
+    ? `
+      WHERE EXISTS (
+        SELECT 1
+        FROM attribution_runtime_state
+        WHERE id = 'global'
+          AND (
+            (mode = 'shadow' AND ? = 2)
+            OR (
+              mode = 'bridge'
+              AND bridge_owner_epoch = ?
+            )
+            OR (
+              mode = 'active'
+              AND ? IN (bridge_owner_epoch, active_owner_epoch)
+            )
+          )
+      )
+    `
+    : `
+      WHERE EXISTS (
+        SELECT 1
+        FROM attribution_runtime_state
+        WHERE id = 'global'
+          AND (
+            (
+              ? = 'draining'
+              AND mode IN ('bridge', 'active')
+              AND bridge_owner_epoch = ?
+            )
+            OR (
+              ? = 'new'
+              AND mode = 'active'
+              AND active_owner_epoch = ?
+            )
+          )
+      )
+    `
+  const statement = db.prepare(`
+    INSERT INTO attribution_facts (
+      id, event_id, event_name, fact_origin, dedupe_hash,
+      event_fingerprint,
+      connection_id, version_id, provider, external_event_id,
+      occurred_at, consent_json, analytics_dimensions_json, created_at
+    )
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+    ${guard}
+  `)
+  const values = [
+    input.factId,
+    input.event.eventId,
+    input.event.eventName,
+    input.factOrigin,
+    input.dedupeHash,
+    input.eventFingerprint,
+    input.route?.connectionId ?? null,
+    input.route?.versionId ?? null,
+    input.route?.provider ?? null,
+    input.externalEventId,
+    input.event.occurredAt,
+    JSON.stringify(input.event.consent),
+    JSON.stringify(analyticsDimensions(input.event)),
+    input.createdAt,
+  ]
+  if (ownership.owner === 'synthetic') {
+    return statement.bind(
+      ...values,
+      ownership.epoch,
+      ownership.epoch,
+      ownership.epoch,
+    )
+  }
+  return statement.bind(
+    ...values,
+    ownership.owner,
+    ownership.epoch,
+    ownership.owner,
+    ownership.epoch,
+  )
 }
 
 async function readCandidateFactRoute(
@@ -527,6 +631,7 @@ async function resolveFactRoute(
   if (
     event.eventName === 'Contact'
     && !options.runtimeLeaseToken
+    && options.allowImplicitContactLease !== true
   ) {
     return null
   }
@@ -689,7 +794,7 @@ async function readRuntimeSnapshot(
 async function prepareDeliveries(
   environment: CanonicalFactEnvironment,
   event: AttributionBusinessEventV1,
-  options: CanonicalFactOptions,
+  options: FactPreparationOptions,
   route: FactRoute,
   factId: string,
   externalEventId: string,
@@ -950,7 +1055,7 @@ function normalizedPayload(
 }
 
 function normalizeRequestMetadata(
-  value: CanonicalFactOptions['requestMetadata'],
+  value: FactPreparationOptions['requestMetadata'],
   allowed: boolean,
 ): Record<string, string> {
   if (!allowed || value === undefined) return {}

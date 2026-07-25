@@ -27,6 +27,9 @@ const MIGRATIONS = [
   '../../migrations/0001_attribution_runtime.sql',
   '../../migrations/0002_event_delivery.sql',
   '../../migrations/0003_queue_runtime.sql',
+  '../../migrations/0004_runtime_state.sql',
+  '../../migrations/0005_migration_history.sql',
+  '../../migrations/0006_runtime_owner_epoch.sql',
 ].map(path => readFileSync(new URL(path, import.meta.url), 'utf8'))
 const now = new Date('2026-07-24T08:00:00.000Z')
 const owner: AdminAttributionActor = {
@@ -60,6 +63,16 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await clearAttributionRuntimeDatabase(db)
+  await db.prepare(`
+    UPDATE attribution_runtime_state
+    SET mode = 'shadow',
+        activated_at = NULL,
+        bridge_owner_epoch = NULL,
+        active_owner_epoch = NULL,
+        fenced_owner_epoch = NULL,
+        updated_at = ?
+    WHERE id = 'global'
+  `).bind('2026-07-24T00:00:00.000Z').run()
   workflowCreateBatch.mockReset().mockResolvedValue([])
   workflowStatus.mockClear()
   workflowGet.mockClear()
@@ -217,7 +230,7 @@ describe('独立 Attribution Worker 管理路由', () => {
     const connectionId = (
       await created.json() as { data: { id: string } }
     ).data.id
-    const request = (testEventCode = 'TEST25079') => app.request(
+    const request = (testEventCode = 'TEST12345') => app.request(
       `/admin/attribution/connections/${connectionId}/candidates`,
       {
         method: 'POST',
@@ -276,7 +289,7 @@ describe('独立 Attribution Worker 管理路由', () => {
     expect(await tableCount('attribution_connection_versions')).toBe(1)
     expect(await tableCount('attribution_validations')).toBe(1)
 
-    const conflict = await request('TEST68337')
+    const conflict = await request('TEST67890')
     expect(conflict.status).toBe(409)
     expect(await conflict.json()).toMatchObject({
       error: { code: 'ATTRIBUTION_IDEMPOTENCY_CONFLICT' },
@@ -302,6 +315,63 @@ describe('独立 Attribution Worker 管理路由', () => {
       error: { code: 'ATTRIBUTION_REQUEST_TOO_LARGE' },
     })
     expect(await tableCount('attribution_connections')).toBe(0)
+  })
+
+  it('运行模式切换要求最终对账并保持命令幂等', async () => {
+    const app = testApp(owner)
+    const blocked = await app.request(
+      '/admin/attribution/runtime-state/transition',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'runtime_bridge_blocked',
+        },
+        body: JSON.stringify({
+          targetMode: 'bridge',
+          sourceOwnerEpoch: 2,
+          reason: '完成最终对账并启动桥接',
+        }),
+      },
+      bindings(),
+    )
+    expect(blocked.status).toBe(409)
+    expect(await blocked.json()).toMatchObject({
+      error: { code: 'ATTRIBUTION_RUNTIME_MIGRATION_NOT_READY' },
+    })
+
+    await insertReconciledManifest()
+    const request = () => app.request(
+      '/admin/attribution/runtime-state/transition',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'runtime_bridge_ready',
+        },
+        body: JSON.stringify({
+          targetMode: 'bridge',
+          sourceOwnerEpoch: 2,
+          reason: '完成最终对账并启动桥接',
+        }),
+      },
+      bindings(),
+    )
+    const first = await request()
+    const replay = await request()
+    expect(first.status).toBe(200)
+    expect(replay.status).toBe(200)
+    const firstBody = await first.json()
+    const replayBody = await replay.json()
+    expect(replayBody).toEqual(firstBody)
+    expect(firstBody).toMatchObject({
+      data: {
+        mode: 'bridge',
+        bridgeOwnerEpoch: 2,
+      },
+    })
+    expect(await tableCount('attribution_audit_logs')).toBe(1)
+    expect(await tableCount('attribution_command_receipts')).toBe(1)
   })
 
   it('运营读接口统一由独立 Worker 提供并严格校验日期', async () => {
@@ -431,4 +501,34 @@ async function tableCount(table: string): Promise<number> {
     `SELECT COUNT(*) AS count FROM ${table}`,
   ).first<{ count: number }>()
   return Number(row?.count ?? 0)
+}
+
+async function insertReconciledManifest() {
+  await db.prepare(`
+    INSERT INTO attribution_migration_manifests (
+      initial_run_id,
+      initial_snapshot_hash,
+      source_configuration_hash,
+      credential_set_hash,
+      initial_captured_at,
+      desired_runtime_policies_json,
+      status,
+      reconcile_run_id,
+      reconcile_snapshot_hash,
+      reconciled_captured_at,
+      created_at,
+      reconciled_at
+    ) VALUES (?, ?, ?, ?, ?, '{}', 'reconciled', ?, ?, ?, ?, ?)
+  `).bind(
+    'initial_admin_runtime',
+    'a'.repeat(64),
+    'b'.repeat(64),
+    'c'.repeat(64),
+    '2026-07-24T00:00:00.000Z',
+    'reconcile_admin_runtime',
+    'd'.repeat(64),
+    '2026-07-24T00:01:00.000Z',
+    '2026-07-24T00:00:00.000Z',
+    '2026-07-24T00:01:00.000Z',
+  ).run()
 }
