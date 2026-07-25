@@ -68,30 +68,40 @@ describe('归因生产切换操作工具', () => {
               connection('conn_meta', 'meta', {
                 state: 'candidate',
               }),
-              connection('conn_tiktok', 'tiktok', null),
+              connection(
+                'conn_tiktok',
+                'tiktok',
+                null,
+                'not_configured',
+              ),
               connection('conn_google', 'google', {
                 state: 'candidate',
               }),
             ],
           })
         }
-        if (url.pathname.endsWith('/candidate/validation')) {
+        if (
+          url.pathname.endsWith('/candidate/validation')
+          && init.method === 'POST'
+        ) {
           return Response.json({ data: {} })
         }
-        if (url.pathname.endsWith('/verifications')) {
-          const connectionId = url.searchParams.get('connectionId')
+        if (url.pathname.endsWith('/candidate/validation')) {
+          const connectionId = url.pathname.includes('conn_meta')
+            ? 'conn_meta'
+            : 'conn_google'
           const provider = connectionId === 'conn_meta'
             ? 'meta'
             : 'google'
           return Response.json({
-            data: [{
+            data: {
               provider,
               connectionId,
               status: 'verified',
               failureCode: '',
               candidateChecked: true,
               pairedEventCount: 2,
-            }],
+            },
           })
         }
         return Response.json({
@@ -129,7 +139,8 @@ describe('归因生产切换操作工具', () => {
       ],
     })
     const posts = calls.filter(call =>
-      call.path.endsWith('/candidate/validation'))
+      call.method === 'POST'
+      && call.path.endsWith('/candidate/validation'))
     assert.equal(posts.length, 2)
     assert.equal(
       JSON.parse(posts.find(call =>
@@ -145,8 +156,49 @@ describe('归因生产切换操作工具', () => {
       /^attribution-operation:[a-f0-9]{64}$/.test(
         call.headers['idempotency-key'],
       )))
+    const reads = calls.filter(call =>
+      call.method === 'GET'
+      && call.path.endsWith('/candidate/validation'))
+    assert.equal(reads.length, 2)
+    assert.ok(reads.every(read => posts.some(post =>
+      post.path === read.path
+      && post.headers['idempotency-key']
+        === read.headers['idempotency-key'])))
     assert.equal(logs.join('\n').includes(SESSION), false)
     assert.equal(logs.join('\n').includes('TEST12345'), false)
+  })
+
+  it('已激活且没有候选的连接不重复发起 synthetic', async () => {
+    const calls = []
+    const result = await runAttributionCutoverOperation({
+      argv: ['synthetic'],
+      promptSession: async () => SESSION,
+      promptTestCode: async () => {
+        throw new Error('不应读取测试码')
+      },
+      fetch: async (input, init = {}) => {
+        const url = new URL(input)
+        calls.push({ path: url.pathname, method: init.method })
+        return Response.json({
+          data: [connection('conn_meta', 'meta', null)],
+        })
+      },
+      log: () => undefined,
+    })
+
+    assert.deepEqual(result, {
+      status: 'ATTRIBUTION_SYNTHETIC_VERIFIED',
+      results: [{
+        provider: 'meta',
+        connectionId: 'conn_meta',
+        status: 'already_verified',
+        pairedEventCount: 0,
+      }],
+    })
+    assert.deepEqual(calls, [{
+      path: '/api/admin/attribution-runtime/connections',
+      method: 'GET',
+    }])
   })
 
   it('激活严格按 old 到 draining 再到 new 推进', async () => {
@@ -290,7 +342,12 @@ describe('归因生产切换操作工具', () => {
   })
 })
 
-function connection(id, provider, candidate) {
+function connection(
+  id,
+  provider,
+  candidate,
+  state = candidate ? 'not_configured' : 'active',
+) {
   const names = {
     meta: 'Meta 主连接',
     tiktok: 'TikTok 主连接',
@@ -300,7 +357,7 @@ function connection(id, provider, candidate) {
     id,
     provider,
     name: names[provider],
-    state: candidate ? 'not_configured' : 'not_configured',
+    state,
     candidate,
   }
 }

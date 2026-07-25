@@ -221,28 +221,8 @@ export async function startCandidateValidation(
     )
   }
 
-  const existing = await readLiveValidation(
-    environment.db,
-    input.candidateId,
-  )
-  if (existing) {
-    if (existing.requestHash !== requestHash) {
-      throw new Error('ATTRIBUTION_VALIDATION_IDEMPOTENCY_CONFLICT')
-    }
-    if (
-      candidate.status !== 'candidate'
-      && candidate.status !== 'validating'
-    ) {
-      throw new Error('ATTRIBUTION_VALIDATION_CANDIDATE_INVALID')
-    }
-    return resumeCandidateValidation(
-      environment,
-      input,
-      existing,
-      now,
-      true,
-      false,
-    )
+  if (await hasLiveValidation(environment.db, input.candidateId)) {
+    throw new Error('ATTRIBUTION_VALIDATION_IDEMPOTENCY_CONFLICT')
   }
   if (candidate.status !== 'candidate') {
     throw new Error('ATTRIBUTION_VALIDATION_CANDIDATE_INVALID')
@@ -334,16 +314,22 @@ export async function startCurrentCandidateValidation(
   identifier(input.connectionId)
   identifier(input.idempotencyKey)
   positiveInteger(input.actorId)
+  const idempotencyKey =
+    await currentCandidateValidationIdempotencyKey(
+      input.connectionId,
+      input.idempotencyKey,
+    )
 
   const replay = await readConnectionValidationByIdempotencyKey(
     environment.db,
     input.connectionId,
-    input.idempotencyKey,
+    idempotencyKey,
   )
   if (replay) {
     return startCandidateValidation(environment, {
       ...input,
       candidateId: replay.candidateId,
+      idempotencyKey,
     })
   }
 
@@ -361,7 +347,22 @@ export async function startCurrentCandidateValidation(
   return startCandidateValidation(environment, {
     ...input,
     candidateId: identifier(candidate.id),
+    idempotencyKey,
   })
+}
+
+export async function currentCandidateValidationIdempotencyKey(
+  connectionId: string,
+  idempotencyKey: string,
+): Promise<string> {
+  identifier(connectionId)
+  identifier(idempotencyKey)
+  return `candidate-validation:${await sha256Hex(JSON.stringify([
+    'current-candidate-validation',
+    1,
+    connectionId,
+    idempotencyKey,
+  ]))}`
 }
 
 async function resumeCandidateValidation(
@@ -874,28 +875,18 @@ async function readCandidateForStart(
   }
 }
 
-async function readLiveValidation(
+async function hasLiveValidation(
   db: D1Database,
   candidateId: string,
-): Promise<LiveCandidateValidationStart | null> {
+): Promise<boolean> {
   const row = await db.prepare(`
-    SELECT id, status, request_hash
+    SELECT 1 AS present
     FROM attribution_validations
     WHERE candidate_version_id = ?
       AND status IN ('queued','running')
     LIMIT 1
-  `).bind(candidateId).first<{
-    id: string
-    status: 'queued' | 'running'
-    request_hash: string
-  }>()
-  return row
-    ? {
-        validationId: identifier(row.id),
-        status: row.status,
-        requestHash: digest(row.request_hash),
-      }
-    : null
+  `).bind(candidateId).first<{ present: number }>()
+  return row?.present === 1
 }
 
 async function recoverRacedValidation(
@@ -938,22 +929,10 @@ async function recoverRacedValidation(
       false,
     )
   }
-  const live = await readLiveValidation(
-    environment.db,
-    input.candidateId,
-  )
-  if (!live) return null
-  if (live.requestHash !== requestHash) {
+  if (await hasLiveValidation(environment.db, input.candidateId)) {
     throw new Error('ATTRIBUTION_VALIDATION_IDEMPOTENCY_CONFLICT')
   }
-  return resumeCandidateValidation(
-    environment,
-    input,
-    live,
-    now,
-    true,
-    false,
-  )
+  return null
 }
 
 async function readValidationByIdempotencyKey(

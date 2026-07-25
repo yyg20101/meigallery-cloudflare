@@ -40,6 +40,7 @@ import {
 } from '../read-models/admin-quality'
 import {
   listAdminAttributionVerifications,
+  readAdminAttributionVerificationByIdempotencyKey,
 } from '../read-models/admin-verifications'
 import { sha256Hex } from '../security/digest'
 import {
@@ -63,6 +64,7 @@ import {
   transitionAttributionRuntimeModeCommand,
 } from '../services/runtime-state'
 import {
+  currentCandidateValidationIdempotencyKey,
   startCandidateValidation,
   startCurrentCandidateValidation,
 } from '../services/validation-service'
@@ -303,6 +305,24 @@ export function createAdminAttributionRoutes(
       c.req.param('id'),
     )
     return c.json({ data: view.candidate })
+  })
+
+  routes.get('/connections/:id/candidate/validation', async (c) => {
+    const connectionId = identifier(c.req.param('id'))
+    const idempotencyKey =
+      await currentCandidateValidationIdempotencyKey(
+        connectionId,
+        requireIdempotencyKey(c.req.raw),
+      )
+    const verification =
+      await readAdminAttributionVerificationByIdempotencyKey(
+        c.env.DB,
+        { connectionId, idempotencyKey },
+      )
+    if (!verification) {
+      throw routeError(404, 'ATTRIBUTION_VALIDATION_NOT_FOUND')
+    }
+    return c.json({ data: verification })
   })
 
   routes.post('/connections/:id/candidate/validation', async (c) => {

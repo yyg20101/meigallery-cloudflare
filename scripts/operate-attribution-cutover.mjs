@@ -72,7 +72,7 @@ async function runSyntheticValidation(context) {
   })
   const connections = parseConnections(response)
   const results = []
-  const pending = []
+  const submitted = []
 
   for (const connection of connections) {
     if (connection.candidate?.state === 'failed') {
@@ -101,24 +101,30 @@ async function runSyntheticValidation(context) {
           connection.provider,
           connection.name,
         )
+    const idempotencyKey = operationKey(
+      'synthetic',
+      context.runId,
+      connection.id,
+    )
     await requestJson(context, {
       path:
         '/api/admin/attribution-runtime/connections/'
         + `${encodeURIComponent(connection.id)}/candidate/validation`,
       method: 'POST',
-      idempotencyKey: operationKey(
-        'synthetic',
-        context.runId,
-        connection.id,
-      ),
+      idempotencyKey,
       body: testEventCode === undefined
         ? {}
         : { testEventCode },
     })
-    pending.push(pollConnectionVerification(context, connection))
+    submitted.push({ connection, idempotencyKey })
   }
 
-  results.push(...await Promise.all(pending))
+  results.push(...await Promise.all(submitted.map(input =>
+    pollConnectionVerification(
+      context,
+      input.connection,
+      input.idempotencyKey,
+    ))))
   results.sort((left, right) =>
     PROVIDERS.indexOf(left.provider) - PROVIDERS.indexOf(right.provider)
     || left.connectionId.localeCompare(right.connectionId))
@@ -128,44 +134,69 @@ async function runSyntheticValidation(context) {
   }
 }
 
-async function pollConnectionVerification(context, connection) {
+async function pollConnectionVerification(
+  context,
+  connection,
+  idempotencyKey,
+) {
   const deadline = context.now() + context.pollTimeoutMs
   while (context.now() <= deadline) {
     const response = await requestJson(context, {
       path:
-        '/api/admin/attribution-runtime/verifications'
-        + `?connectionId=${encodeURIComponent(connection.id)}&limit=1`,
+        '/api/admin/attribution-runtime/connections/'
+        + `${encodeURIComponent(connection.id)}/candidate/validation`,
+      idempotencyKey,
     })
-    const verification = parseLatestVerification(
+    const verification = parseCurrentVerification(
       response,
       connection,
     )
-    if (verification) {
-      if (verification.status === 'verified') {
-        if (
-          !verification.candidateChecked
-          || verification.pairedEventCount !== 2
-        ) {
-          throw operationError('SYNTHETIC_EVIDENCE_INCOMPLETE')
-        }
-        return {
-          provider: connection.provider,
-          connectionId: connection.id,
-          status: 'verified',
-          pairedEventCount: verification.pairedEventCount,
-        }
+    if (verification.status === 'verified') {
+      if (
+        !verification.candidateChecked
+        || verification.pairedEventCount !== 2
+      ) {
+        throw operationError('SYNTHETIC_EVIDENCE_INCOMPLETE')
       }
-      if (TERMINAL_VALIDATION_STATES.has(verification.status)) {
-        throw operationError(
-          verification.status === 'timed_out'
-            ? 'SYNTHETIC_TIMED_OUT'
-            : safeFailureSuffix(verification.failureCode),
-        )
+      return {
+        provider: connection.provider,
+        connectionId: connection.id,
+        status: 'verified',
+        pairedEventCount: verification.pairedEventCount,
       }
+    }
+    if (TERMINAL_VALIDATION_STATES.has(verification.status)) {
+      throw operationError(
+        verification.status === 'timed_out'
+          ? 'SYNTHETIC_TIMED_OUT'
+          : safeFailureSuffix(verification.failureCode),
+      )
     }
     await context.sleep(context.pollIntervalMs)
   }
   throw operationError('SYNTHETIC_TIMED_OUT')
+}
+
+function parseCurrentVerification(value, connection) {
+  const row = recordData(value)
+  if (
+    !isRecord(row)
+    || row.connectionId !== connection.id
+    || row.provider !== connection.provider
+    || typeof row.candidateChecked !== 'boolean'
+    || !Number.isSafeInteger(row.pairedEventCount)
+    || Number(row.pairedEventCount) < 0
+  ) {
+    throw operationError('RESPONSE_INVALID')
+  }
+  return {
+    status: validationStatus(row.status),
+    failureCode: typeof row.failureCode === 'string'
+      ? row.failureCode
+      : '',
+    candidateChecked: row.candidateChecked,
+    pairedEventCount: Number(row.pairedEventCount),
+  }
 }
 
 async function activateRuntime(context) {
@@ -328,31 +359,6 @@ function parseConnections(value) {
   return connections.sort((left, right) =>
     PROVIDERS.indexOf(left.provider) - PROVIDERS.indexOf(right.provider)
     || left.id.localeCompare(right.id))
-}
-
-function parseLatestVerification(value, connection) {
-  const data = recordData(value)
-  if (!Array.isArray(data)) throw operationError('RESPONSE_INVALID')
-  if (data.length === 0) return null
-  const row = data[0]
-  if (
-    !isRecord(row)
-    || row.connectionId !== connection.id
-    || row.provider !== connection.provider
-    || typeof row.candidateChecked !== 'boolean'
-    || !Number.isSafeInteger(row.pairedEventCount)
-    || Number(row.pairedEventCount) < 0
-  ) {
-    throw operationError('RESPONSE_INVALID')
-  }
-  return {
-    status: validationStatus(row.status),
-    failureCode: typeof row.failureCode === 'string'
-      ? row.failureCode
-      : '',
-    candidateChecked: row.candidateChecked,
-    pairedEventCount: Number(row.pairedEventCount),
-  }
 }
 
 function parseCutoverPreflight(value) {

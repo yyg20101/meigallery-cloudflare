@@ -41,23 +41,32 @@ export function readHiddenInput(
   return new Promise((resolve, reject) => {
     const originalRawMode = stdin.isRaw
     let value = ''
+    let settled = false
 
     const cleanup = () => {
       stdin.off('data', onData)
+      stdin.off('error', onError)
       stdin.setRawMode(Boolean(originalRawMode))
       stdin.pause()
       stdout.write('\n')
     }
+    const settle = (callback, result) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      callback(result)
+    }
     const onData = (chunk) => {
       for (const character of String(chunk)) {
         if (character === '\u0003') {
-          cleanup()
-          reject(new Error('ATTRIBUTION_OPERATION_CANCELLED'))
+          settle(
+            reject,
+            new Error('ATTRIBUTION_OPERATION_CANCELLED'),
+          )
           return
         }
         if (character === '\r' || character === '\n') {
-          cleanup()
-          resolve(value)
+          settle(resolve, value)
           return
         }
         if (character === '\u007f' || character === '\b') {
@@ -69,10 +78,19 @@ export function readHiddenInput(
         }
       }
     }
+    const onError = (error) => {
+      settle(
+        reject,
+        error instanceof Error
+          ? error
+          : new Error('ATTRIBUTION_OPERATION_INPUT_FAILED'),
+      )
+    }
 
     stdin.setEncoding('utf8')
     stdin.setRawMode(true)
     stdin.resume()
     stdin.on('data', onData)
+    stdin.on('error', onError)
   })
 }
