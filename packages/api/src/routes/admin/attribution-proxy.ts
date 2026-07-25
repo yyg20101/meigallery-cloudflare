@@ -255,25 +255,10 @@ function unavailable(
   })
 }
 
-function logUpstreamFailure(error: unknown) {
-  const name = error instanceof Error
-    ? sanitizeLogValue(error.name, 'Error')
-    : 'UnknownError'
-  const message = error instanceof Error
-    ? sanitizeLogValue(error.message, 'unknown')
-    : 'unknown'
+function logUpstreamFailure(_error: unknown) {
   console.error('ATTRIBUTION_ADMIN_PROXY_FETCH_FAILED', {
-    name,
-    message,
+    category: 'service_binding_fetch_failed',
   })
-}
-
-function sanitizeLogValue(value: string, fallback: string) {
-  const sanitized = Array.from(value)
-    .filter(character => character.charCodeAt(0) > 0x1f)
-    .join('')
-    .slice(0, 240)
-  return sanitized || fallback
 }
 
 class ProxyRequestError extends Error {
