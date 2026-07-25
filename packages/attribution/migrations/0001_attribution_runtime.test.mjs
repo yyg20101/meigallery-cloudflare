@@ -28,5 +28,13 @@ test('基线 Schema 不包含 Git 或旧 revision 门禁', async () => {
     migration,
     /CREATE TRIGGER attribution_activation_fence_validate/,
   )
+  assert.match(
+    migration,
+    /BEFORE INSERT ON attribution_activation_fences\s+WHEN NOT EXISTS \(/,
+  )
+  assert.doesNotMatch(
+    migration,
+    /CREATE TRIGGER attribution_activation_fence_validate[\s\S]*?SELECT CASE/,
+  )
   assert.match(migration, /ATTRIBUTION_ACTIVE_VERSION_CHANGED/)
 })
