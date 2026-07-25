@@ -15,6 +15,7 @@
 - 旧凭证只能由旧 API Worker 在内存中解密，通过 Service Binding 发送给新 Worker并立即重新加密。
 - 凭证明文不得进入命令参数、文件、日志、审计、响应或剪贴板。
 - 暗模式不得发送普通生产 delivery，只允许带单次 Test Event Code 的 synthetic 事实。
+- `verify-attribution-cutover.mjs` 永远只读；迁移、候选验证、切换和回滚统一由带 Owner 鉴权与持久化幂等键的操作脚本执行。
 - 切换全过程只有一个生产写者；旧入口在切换后只转发，不再创建旧事实或旧 delivery。
 - 旧 Contact/CompleteRegistration 只迁移为不可投递的匿名历史日报；新 `attribution_facts` 在切换前不得存在 `fact_origin='live'`。
 - 初始导入只创建 `candidate`，`active_version_id` 保持空，Server effective 固定为 0；平台 synthetic 验证成功后才可激活候选。
@@ -124,7 +125,7 @@ corepack pnpm --filter @meigallery/attribution build
 
 Expected: dry-run 输出 `2 D1 / 6 Queues`；apply 输出每个资源 `created` 或 `reused`；构建退出码为 `0`。
 
-- [ ] **Step 5: 首次 shadow 部署后设置独立 Secret**
+- [x] **Step 5: 首次 shadow 部署后设置独立 Secret**
 
 首次执行时目标 Worker 尚不存在，`wrangler secret put` 不得逐次创建三个半配置版本。
 本步骤与 Task 2 Step 4 连续执行：先应用 D1 migration，再由一次性 bootstrap 工具把
@@ -223,7 +224,7 @@ routes = [
 production Wrangler 配置为 `https://616618.xyz,https://www.616618.xyz`。源码不得写死域名，
 Service Binding 内部路由不返回 CORS header。
 
-- [ ] **Step 4: 应用新 D1 migration 并部署**
+- [x] **Step 4: 应用新 D1 migration 并部署**
 
 Run:
 
@@ -354,6 +355,9 @@ git commit -m "feat: 安全迁移现有归因配置与凭证"
 **Files:**
 - Create: `scripts/verify-attribution-cutover.mjs`
 - Create: `scripts/verify-attribution-cutover.test.mjs`
+- Create: `scripts/operate-attribution-cutover.mjs`
+- Create: `scripts/operate-attribution-cutover.test.mjs`
+- Create: `scripts/lib/owner-session.mjs`
 - Modify: `docs/PROJECT_STATUS.md`
 
 **Interfaces:**
@@ -407,7 +411,7 @@ Expected: FAIL，核验脚本不存在。
 - 初始导入和最终对账回执都包含精确 `capturedAt`、历史行数和历史事实总数。
 - 核验目标活动事实必须为 0，来源、历史、隐私、配置和凭证摘要全部一致。
 
-- [ ] **Step 5: 先合入单写者门禁和 shadow 准备版本**
+- [x] **Step 5: 先合入单写者门禁和 shadow 准备版本**
 
 禁止在 Task 5 完成前执行任何生产数据迁移。准备版本只创建 migration 路由、
 owner/epoch 门禁和默认 `shadow` Worker；不得改变旧生产归因写者。
@@ -431,13 +435,15 @@ Expected: 输出旧 API D1 backup 路径、Attribution D1 bookmark、`MIGRATION_
 Run:
 
 ```bash
-node scripts/verify-attribution-cutover.mjs synthetic --prompt-test-codes
+node scripts/operate-attribution-cutover.mjs synthetic \
+  --run-id cutover-production-v1
 ```
 
 Expected: 每个已配置且启用的连接都完成 `Contact` 和 `CompleteRegistration` synthetic 事实；未配置平台明确显示 `SKIPPED_NOT_CONFIGURED`；测试事实不进入业务指标。
 
-脚本只在 TTY 中无回显读取当前平台测试码，直接调用候选验证入口；测试码不进入命令参数、环境变量、
-文件或输出，验证终态后新 D1 的临时密文立即删除。
+脚本只在 TTY 中无回显读取 Owner 会话和当前平台测试码，直接调用幂等候选验证入口；测试码不进入
+命令参数、环境变量、文件或输出，验证终态后新 D1 的临时密文立即删除。重复执行同一 runId 只能
+恢复同一验证，不得创建第二条验证或替换测试码。
 
 - [ ] **Step 8: 冻结旧写者并执行最终对账**
 
@@ -597,7 +603,7 @@ git commit -m "feat: 建立归因生产单写切换"
 - Consumes: 单写切换命令和新 Web SDK。
 - Produces: 新运行时成为唯一写者；普通 API/Web 发布不部署 Attribution。
 
-- [ ] **Step 1: 写部署隔离失败测试**
+- [x] **Step 1: 写部署隔离失败测试**
 
 ```js
 test('普通 production deploy 不部署 Attribution Worker', () => {
@@ -628,11 +634,13 @@ Expected: 输出 `ATTRIBUTION_CUTOVER_PREFLIGHT_OK`；若任何配置、Queue、
 Run:
 
 ```bash
-node scripts/verify-attribution-cutover.mjs activate
+node scripts/operate-attribution-cutover.mjs activate \
+  --run-id cutover-production-v1
 ./scripts/deploy.sh production
 ```
 
-Expected: 激活命令输出 `RUNTIME_OWNER_NEW`；部署只更新 API/Web，Attribution Worker 版本保持不变。
+Expected: 激活命令进入 `draining` 后自动等待旧工作排空，再输出 `RUNTIME_OWNER_NEW`；
+超时保持阻断且不得强制推进。部署只更新 API/Web，Attribution Worker 版本保持不变。
 
 - [ ] **Step 4: 执行真实生产 smoke**
 

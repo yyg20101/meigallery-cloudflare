@@ -16,6 +16,9 @@ import type {
   AttributionEnvironment,
 } from '../env'
 import { parseAttributionEnvironment } from '../env'
+import {
+  createAttributionConnectionCommands,
+} from '../services/connection-commands'
 import { clearAttributionRuntimeDatabase } from '../test/attribution-schema'
 import {
   createAdminAttributionRoutes,
@@ -30,6 +33,7 @@ const MIGRATIONS = [
   '../../migrations/0004_runtime_state.sql',
   '../../migrations/0005_migration_history.sql',
   '../../migrations/0006_runtime_owner_epoch.sql',
+  '../../migrations/0007_validation_idempotency.sql',
 ].map(path => readFileSync(new URL(path, import.meta.url), 'utf8'))
 const now = new Date('2026-07-24T08:00:00.000Z')
 const owner: AdminAttributionActor = {
@@ -293,6 +297,89 @@ describe('独立 Attribution Worker 管理路由', () => {
     expect(conflict.status).toBe(409)
     expect(await conflict.json()).toMatchObject({
       error: { code: 'ATTRIBUTION_IDEMPOTENCY_CONFLICT' },
+    })
+  })
+
+  it('初始迁移候选可通过独立幂等入口启动验证', async () => {
+    workflowCreateBatch
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new Error('instance already exists'))
+    const app = testApp(owner)
+    const environmentBindings = bindings()
+    const runtime = parseAttributionEnvironment(environmentBindings)
+    const created = await app.request(
+      '/admin/attribution/connections',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'create_meta_for_migrated_candidate',
+        },
+        body: JSON.stringify(validConnectionInput()),
+      },
+      environmentBindings,
+    )
+    const connectionId = (
+      await created.json() as { data: { id: string } }
+    ).data.id
+    await createAttributionConnectionCommands({
+      db,
+      credentialKeys: runtime.credentialMasterKeys,
+      now: () => now,
+      idFactory: prefix => `${prefix}_migrated_candidate`,
+    }).createCandidate({
+      connectionId,
+      publicConfig: { pixelId: '1615446443914929' },
+      credential: 'meta-migrated-candidate-token',
+      bindings: [
+        {
+          canonicalEvent: 'Contact',
+          enabled: true,
+          browserDestination: 'meta_pixel',
+          serverDestination: 'meta_capi',
+        },
+        {
+          canonicalEvent: 'CompleteRegistration',
+          enabled: true,
+          browserDestination: 'meta_pixel',
+          serverDestination: 'meta_capi',
+        },
+      ],
+      actorId: owner.actorId,
+      idempotencyKey: 'import_meta_candidate',
+    })
+
+    const request = (testEventCode = 'TEST12345') => app.request(
+      `/admin/attribution/connections/${connectionId}`
+      + '/candidate/validation',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'validate_migrated_meta_candidate',
+        },
+        body: JSON.stringify({ testEventCode }),
+      },
+      environmentBindings,
+    )
+    const first = await request()
+    const replay = await request()
+
+    expect(first.status).toBe(200)
+    expect(replay.status).toBe(200)
+    const firstBody = await first.json()
+    const replayBody = await replay.json()
+    expect(replayBody).toEqual(firstBody)
+    expect(JSON.stringify(firstBody)).not.toMatch(
+      /validationId|versionId|credential|fingerprint|token|testEventCode/i,
+    )
+    expect(await tableCount('attribution_validations')).toBe(1)
+    const conflict = await request('TEST67890')
+    expect(conflict.status).toBe(409)
+    expect(await conflict.json()).toMatchObject({
+      error: {
+        code: 'ATTRIBUTION_VALIDATION_IDEMPOTENCY_CONFLICT',
+      },
     })
   })
 
