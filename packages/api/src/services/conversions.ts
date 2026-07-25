@@ -12,8 +12,16 @@ import { buildAttributionDeliveryPlan } from './ad-platform/planner'
 import { issueBrowserAttemptReceiptToken } from './ad-platform/browser-attempt-receipt'
 import { getAdPlatformDefinition } from './ad-platform/registry'
 import { enqueueAttributionDelivery, getAttributionQueue } from './ad-platform/secure-outbox'
+import {
+  assertAttributionRuntimeOwner,
+  type AttributionRuntimeOwnerState,
+} from './attribution-runtime-owner'
 
 type ConversionEnv = Pick<Bindings, 'DB' | 'SITE_URL' | 'AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT' | 'AD_PLATFORM_CREDENTIAL_MASTER_KEY_PREVIOUS' | 'AD_META_QUEUE' | 'AD_TIKTOK_QUEUE' | 'AD_GOOGLE_QUEUE'>
+export type AttributionFactWriteOwnership = Pick<
+  AttributionRuntimeOwnerState,
+  'owner' | 'epoch'
+>
 type ConversionBaseInput = {
   visitorId: string; sessionId: string; userId?: number | null; occurredAt: string; routeName?: string; path?: string
   sourceChannel?: AnalyticsSourceChannel | string; sourceName?: string; trackingSourceSlug?: string; utmSource?: string; utmMedium?: string; utmCampaign?: string; utmContent?: string
@@ -24,16 +32,20 @@ export type RecordRegistrationInput = ConversionBaseInput & { userId: number; ha
 export type RecordRegistrationFactOnlyInput = Pick<RecordRegistrationInput, 'userId' | 'visitorId' | 'sessionId' | 'occurredAt' | 'sourceChannel' | 'sourceName' | 'trackingSourceSlug' | 'utmSource' | 'utmMedium' | 'utmCampaign' | 'utmContent' | 'metadata'>
 export interface RecordConversionResult { id: string; actionType: 'contact' | 'complete_registration'; created: boolean; duplicateOf: string; trackingInstructions: AdBrowserInstruction[] }
 
-export async function recordContact(env: ConversionEnv, input: RecordContactInput): Promise<RecordConversionResult> {
+export async function recordContact(env: ConversionEnv, input: RecordContactInput, ownership: AttributionFactWriteOwnership): Promise<RecordConversionResult> {
   if (input.actionType !== 'open_link' || !identifier(input.contactMethodId) || !input.contactPlatform.trim()) throw new Error('PUBLIC_CONVERSION_ACTION_INVALID')
-  return recordLiveFact(env, { ...input, canonicalEvent: 'Contact', actionType: 'contact', methodType: input.contactPlatform, actionTarget: input.contactMethodId })
+  return recordLiveFact(env, { ...input, canonicalEvent: 'Contact', actionType: 'contact', methodType: input.contactPlatform, actionTarget: input.contactMethodId }, ownership)
 }
-export async function recordRegistration(env: ConversionEnv, input: RecordRegistrationInput): Promise<RecordConversionResult> {
-  return recordLiveFact(env, { ...input, canonicalEvent: 'CompleteRegistration', actionType: 'complete_registration', methodType: 'email', actionTarget: `user_${input.userId}` })
+export async function recordRegistration(env: ConversionEnv, input: RecordRegistrationInput, ownership: AttributionFactWriteOwnership): Promise<RecordConversionResult> {
+  return recordLiveFact(env, { ...input, canonicalEvent: 'CompleteRegistration', actionType: 'complete_registration', methodType: 'email', actionTarget: `user_${input.userId}` }, ownership)
 }
 
 /** 历史补偿仅创建不可变事实，使用 Task 4 的 denied snapshot。 */
-export async function recordRegistrationFactOnly(db: D1Database, input: RecordRegistrationFactOnlyInput): Promise<RecordConversionResult> {
+export async function recordRegistrationFactOnly(db: D1Database, input: RecordRegistrationFactOnlyInput, ownership: AttributionFactWriteOwnership): Promise<RecordConversionResult> {
+  if (ownership.owner !== 'old' && ownership.owner !== 'draining') {
+    throw new Error('ATTRIBUTION_HISTORICAL_WRITE_OWNER_INVALID')
+  }
+  await assertAttributionRuntimeOwner(db, ownership)
   const occurredAt = iso(input.occurredAt)
   const dedupeKey = buildConversionDedupeKey({ actionType: 'complete_registration', userId: input.userId, visitorId: input.visitorId, sessionId: input.sessionId, occurredDate: occurredAt.slice(0, 10) })
   const existing = await findFact(db, dedupeKey)
@@ -41,16 +53,22 @@ export async function recordRegistrationFactOnly(db: D1Database, input: RecordRe
   const id = generateId('fact')
   try {
     const consentSnapshot = createAdConsentSnapshot('denied')
-    await db.batch([factStatement(db, { id, canonicalEvent: 'CompleteRegistration', factOrigin: 'historical_backfill', externalEventId: null, provider: null, source: 'none', contextId: null, occurredAt, dedupeKey, consentSnapshot, dimensions: dimensions({ ...input, consentSnapshot }, {}) })])
+    const outcomes = await db.batch([factStatement(db, { id, canonicalEvent: 'CompleteRegistration', factOrigin: 'historical_backfill', externalEventId: null, provider: null, source: 'none', contextId: null, occurredAt, dedupeKey, consentSnapshot, dimensions: dimensions({ ...input, consentSnapshot }, {}), ownership })])
+    requireFactBatch(outcomes, 1)
   } catch (error) {
     const concurrent = await findFact(db, dedupeKey)
     if (concurrent) return duplicate(concurrent.id, 'complete_registration', [])
+    await assertAttributionRuntimeOwner(db, ownership)
     throw error
   }
   return { id, actionType: 'complete_registration', created: true, duplicateOf: '', trackingInstructions: [] }
 }
 
-async function recordLiveFact(env: ConversionEnv, input: ConversionBaseInput & { actionType: 'contact' | 'complete_registration'; canonicalEvent: CanonicalConversionEvent; methodType: string; actionTarget: string; hashedEmail?: string }) {
+async function recordLiveFact(env: ConversionEnv, input: ConversionBaseInput & { actionType: 'contact' | 'complete_registration'; canonicalEvent: CanonicalConversionEvent; methodType: string; actionTarget: string; hashedEmail?: string }, ownership: AttributionFactWriteOwnership) {
+  if (ownership.owner !== 'old') {
+    throw new Error('ATTRIBUTION_LIVE_WRITE_OWNER_INVALID')
+  }
+  await assertAttributionRuntimeOwner(env.DB, ownership)
   const occurredAt = iso(input.occurredAt)
   const eventTime = unixSeconds(occurredAt)
   const dedupeKey = buildConversionDedupeKey({ actionType: input.actionType, userId: input.userId ?? undefined, visitorId: input.visitorId, sessionId: input.sessionId, occurredDate: occurredAt.slice(0, 10), methodType: input.methodType, actionTarget: input.actionTarget })
@@ -70,13 +88,17 @@ async function recordLiveFact(env: ConversionEnv, input: ConversionBaseInput & {
     serverAllowed: Boolean(pageUrl) && serverMatchAvailable(definition, matchSignals, input.hashedEmail, adPlatformUserData), connection: snapshot,
   })
   const statements: D1PreparedStatement[] = [
-    factStatement(env.DB, { id, canonicalEvent: input.canonicalEvent, factOrigin: 'live', externalEventId: plan.externalEventId, provider: context.provider, source: context.source, contextId: context.context?.contextId ?? null, occurredAt, dedupeKey, consentSnapshot: input.consentSnapshot, dimensions: dimensions(input, { methodType: input.methodType, actionTarget: input.actionTarget }) }),
+    factStatement(env.DB, { id, canonicalEvent: input.canonicalEvent, factOrigin: 'live', externalEventId: plan.externalEventId, provider: context.provider, source: context.source, contextId: context.context?.contextId ?? null, occurredAt, dedupeKey, consentSnapshot: input.consentSnapshot, dimensions: dimensions(input, { methodType: input.methodType, actionTarget: input.actionTarget }), ownership }),
     ...plan.deliveries.map(delivery => deliveryStatement(env.DB, id, snapshot, delivery)),
     ...await outboxStatements(env.DB, keys, id, input.canonicalEvent, eventTime, pageUrl, input.hashedEmail, adPlatformUserData, input.consentSnapshot, snapshot, plan.deliveries),
   ]
-  try { await env.DB.batch(statements) } catch (error) {
+  try {
+    const outcomes = await env.DB.batch(statements)
+    requireFactBatch(outcomes, statements.length)
+  } catch (error) {
     const concurrent = await findFact(env.DB, dedupeKey)
     if (concurrent) return duplicate(concurrent.id, input.actionType, await existingBrowserInstructions(env.DB, keys, concurrent))
+    await assertAttributionRuntimeOwner(env.DB, ownership)
     throw error
   }
   await Promise.allSettled(plan.deliveries
@@ -101,8 +123,23 @@ async function outboxStatements(db: D1Database, keys: Awaited<ReturnType<typeof 
   }))
 }
 
-function factStatement(db: D1Database, input: { id: string; canonicalEvent: CanonicalConversionEvent; factOrigin: 'live' | 'historical_backfill'; externalEventId: string | null; provider: AdAttributionProvider | null; source: string; contextId: string | null; occurredAt: string; dedupeKey: string; consentSnapshot: AdConsentSnapshot; dimensions: Record<string, unknown> }) {
-  return db.prepare(`INSERT INTO attribution_conversion_facts (id, canonical_event, fact_origin, external_event_id, attribution_provider, attribution_source, attribution_context_id, occurred_at, dedupe_key, consent_snapshot_json, analytics_dimensions_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(input.id, input.canonicalEvent, input.factOrigin, input.externalEventId, input.provider, input.source, input.contextId, input.occurredAt, input.dedupeKey, JSON.stringify(input.consentSnapshot), JSON.stringify(input.dimensions))
+function factStatement(db: D1Database, input: { id: string; canonicalEvent: CanonicalConversionEvent; factOrigin: 'live' | 'historical_backfill'; externalEventId: string | null; provider: AdAttributionProvider | null; source: string; contextId: string | null; occurredAt: string; dedupeKey: string; consentSnapshot: AdConsentSnapshot; dimensions: Record<string, unknown>; ownership: AttributionFactWriteOwnership }) {
+  return db.prepare(`
+    INSERT INTO attribution_conversion_facts (
+      id, canonical_event, fact_origin, external_event_id,
+      attribution_provider, attribution_source,
+      attribution_context_id, occurred_at, dedupe_key,
+      consent_snapshot_json, analytics_dimensions_json
+    )
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+    WHERE EXISTS (
+      SELECT 1
+      FROM attribution_runtime_cutover
+      WHERE id = 'global'
+        AND owner = ?
+        AND owner_epoch = ?
+    )
+  `).bind(input.id, input.canonicalEvent, input.factOrigin, input.externalEventId, input.provider, input.source, input.contextId, input.occurredAt, input.dedupeKey, JSON.stringify(input.consentSnapshot), JSON.stringify(input.dimensions), input.ownership.owner, input.ownership.epoch)
 }
 function deliveryStatement(db: D1Database, factId: string, snapshot: Awaited<ReturnType<typeof readAttributionConnectionSnapshot>>, delivery: Awaited<ReturnType<typeof buildAttributionDeliveryPlan>>['deliveries'][number]) {
   if (snapshot.state !== 'ready') throw new Error('ATTRIBUTION_CONNECTION_INVALID')
@@ -159,3 +196,11 @@ function unixSeconds(value: string) { return Math.floor(new Date(value).getTime(
 function text(value: unknown) { return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, 240) }
 function identifier(value: unknown) { return typeof value === 'string' && /^[A-Za-z0-9_-]{1,160}$/.test(value) }
 function validHash(value: unknown): value is string { return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value) }
+function requireFactBatch(outcomes: D1Result<unknown>[], expected: number) {
+  if (
+    outcomes.length !== expected
+    || outcomes.some(outcome => Number(outcome.meta.changes ?? 0) !== 1)
+  ) {
+    throw new Error('ATTRIBUTION_FACT_WRITE_FAILED')
+  }
+}

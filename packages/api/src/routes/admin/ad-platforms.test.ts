@@ -77,7 +77,7 @@ describe('通用广告平台连接路由', () => {
   })
 
   it.each([
-    ['meta', { provider: 'meta', pixelId: '1277657707436781' }, 'access_token'],
+    ['meta', { provider: 'meta', pixelId: '1234567890123456' }, 'access_token'],
     ['tiktok', { provider: 'tiktok', pixelCode: 'ABCDEF123456' }, 'access_token'],
     ['google', { provider: 'google', tagId: 'AW-123456789', customerId: '1234567890', cloudProjectId: 'gallery-project' }, 'service_account_json'],
   ] as const)('%s 使用同一个通用保存命令', async (provider, publicConfig, credentialType) => {
@@ -196,11 +196,11 @@ describe('通用广告平台连接路由', () => {
     const noOrigin = await createApp('owner').request('https://api.example.test/platforms/meta', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(connectionBody({ provider: 'meta', pixelId: '1277657707436781' }, 'access_token')),
+      body: JSON.stringify(connectionBody({ provider: 'meta', pixelId: '1234567890123456' }, 'access_token')),
     }, env)
     const nonOwner = await request(createApp('admin'), '/platforms/meta', {
       method: 'PATCH',
-      body: JSON.stringify(connectionBody({ provider: 'meta', pixelId: '1277657707436781' }, 'access_token')),
+      body: JSON.stringify(connectionBody({ provider: 'meta', pixelId: '1234567890123456' }, 'access_token')),
     })
 
     expect(noOrigin.status).toBe(403)
@@ -210,7 +210,7 @@ describe('通用广告平台连接路由', () => {
   })
 
   it('生产写操作拒绝 dev、非法 actor 和未知平台', async () => {
-    const body = JSON.stringify(connectionBody({ provider: 'meta', pixelId: '1277657707436781' }, 'access_token'))
+    const body = JSON.stringify(connectionBody({ provider: 'meta', pixelId: '1234567890123456' }, 'access_token'))
     const [development, invalidActor, unsupported] = await Promise.all([
       request(createApp('owner'), '/platforms/meta', { method: 'PATCH', body }, { ...env, APP_ENV: 'dev' } as Bindings),
       request(createApp('owner', 0), '/platforms/meta', { method: 'PATCH', body }),
@@ -222,7 +222,7 @@ describe('通用广告平台连接路由', () => {
   })
 
   it('连接保存允许沿用现有凭证，并拒绝非法凭证结构', async () => {
-    const withoutCredential = connectionBody({ provider: 'meta', pixelId: '1277657707436781' }, 'access_token')
+    const withoutCredential = connectionBody({ provider: 'meta', pixelId: '1234567890123456' }, 'access_token')
     delete (withoutCredential as { credential?: unknown }).credential
     const valid = await request(createApp('owner'), '/platforms/meta', {
       method: 'PATCH', body: JSON.stringify(withoutCredential),
@@ -230,7 +230,7 @@ describe('通用广告平台连接路由', () => {
     const invalid = await request(createApp('owner'), '/platforms/meta', {
       method: 'PATCH',
       body: JSON.stringify({
-        ...connectionBody({ provider: 'meta', pixelId: '1277657707436781' }, 'access_token'),
+        ...connectionBody({ provider: 'meta', pixelId: '1234567890123456' }, 'access_token'),
         credential: { type: 'password', plaintext: '' },
       }),
     })
@@ -248,7 +248,7 @@ describe('通用广告平台连接路由', () => {
     const extraField = await request(createApp('owner'), '/platforms/meta', {
       method: 'PATCH',
       body: JSON.stringify({
-        ...connectionBody({ provider: 'meta', pixelId: '1277657707436781' }, 'access_token'),
+        ...connectionBody({ provider: 'meta', pixelId: '1234567890123456' }, 'access_token'),
         accessToken: 'must-not-be-accepted',
       }),
     })
@@ -279,7 +279,7 @@ describe('通用广告平台连接路由', () => {
     mocks.savePlatformConnection.mockRejectedValueOnce(new Error('credential-value: internal failure'))
     const response = await request(createApp('owner'), '/platforms/meta', {
       method: 'PATCH',
-      body: JSON.stringify(connectionBody({ provider: 'meta', pixelId: '1277657707436781' }, 'access_token')),
+      body: JSON.stringify(connectionBody({ provider: 'meta', pixelId: '1234567890123456' }, 'access_token')),
     })
     const body = await response.text()
 

@@ -1,0 +1,177 @@
+# MeiGallery 独立归因 Worker
+name = "meigallery-attribution"
+main = "src/index.ts"
+compatibility_date = "2026-05-26"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+routes = [
+  { pattern = "track.616618.xyz", custom_domain = true }
+]
+
+[triggers]
+# 每 15 分钟执行完整恢复维护；每日 03:17 UTC 执行容量与质量日报。
+crons = ["*/15 * * * *", "17 3 * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "meigallery-attribution-db"
+database_id = "94fd6a1c-02e0-47fc-ba75-72b36b43dd39"
+migrations_dir = "migrations"
+
+[[queues.producers]]
+binding = "META_QUEUE"
+queue = "meigallery-attribution-meta"
+
+[[queues.producers]]
+binding = "TIKTOK_QUEUE"
+queue = "meigallery-attribution-tiktok"
+
+[[queues.producers]]
+binding = "GOOGLE_QUEUE"
+queue = "meigallery-attribution-google"
+
+[[workflows]]
+name = "meigallery-attribution-candidate-validation"
+binding = "ATTRIBUTION_CANDIDATE_VALIDATION_WORKFLOW"
+class_name = "CandidateValidationWorkflow"
+
+[[queues.consumers]]
+queue = "meigallery-attribution-meta"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "meigallery-attribution-meta-dlq"
+
+[[queues.consumers]]
+queue = "meigallery-attribution-tiktok"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "meigallery-attribution-tiktok-dlq"
+
+[[queues.consumers]]
+queue = "meigallery-attribution-google"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "meigallery-attribution-google-dlq"
+
+[[queues.consumers]]
+queue = "meigallery-attribution-meta-dlq"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 3
+
+[[queues.consumers]]
+queue = "meigallery-attribution-tiktok-dlq"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 3
+
+[[queues.consumers]]
+queue = "meigallery-attribution-google-dlq"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 3
+
+[vars]
+APP_ENV = "production"
+ATTRIBUTION_PUBLIC_ORIGINS = "https://616618.xyz,https://www.616618.xyz"
+ATTRIBUTION_COOKIE_DOMAIN = ".616618.xyz"
+
+[secrets]
+required = [
+  "ATTRIBUTION_CREDENTIAL_MASTER_KEY_CURRENT",
+  "ATTRIBUTION_SIGNING_KEY_CURRENT",
+  "ATTRIBUTION_DATA_ENCRYPTION_KEY_CURRENT",
+]
+
+[observability]
+enabled = true
+head_sampling_rate = 0.05
+
+[env.dev]
+name = "meigallery-attribution-dev"
+workers_dev = true
+
+[env.dev.triggers]
+crons = []
+
+[[env.dev.d1_databases]]
+binding = "DB"
+database_name = "meigallery-attribution-db-dev"
+database_id = "dc65241f-cc80-49e3-933c-f477f0e9575c"
+migrations_dir = "migrations"
+
+[[env.dev.queues.producers]]
+binding = "META_QUEUE"
+queue = "meigallery-attribution-meta-dev"
+
+[[env.dev.queues.producers]]
+binding = "TIKTOK_QUEUE"
+queue = "meigallery-attribution-tiktok-dev"
+
+[[env.dev.queues.producers]]
+binding = "GOOGLE_QUEUE"
+queue = "meigallery-attribution-google-dev"
+
+[[env.dev.workflows]]
+name = "meigallery-attribution-candidate-validation-dev"
+binding = "ATTRIBUTION_CANDIDATE_VALIDATION_WORKFLOW"
+class_name = "CandidateValidationWorkflow"
+
+[[env.dev.queues.consumers]]
+queue = "meigallery-attribution-meta-dev"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "meigallery-attribution-meta-dev-dlq"
+
+[[env.dev.queues.consumers]]
+queue = "meigallery-attribution-tiktok-dev"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "meigallery-attribution-tiktok-dev-dlq"
+
+[[env.dev.queues.consumers]]
+queue = "meigallery-attribution-google-dev"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "meigallery-attribution-google-dev-dlq"
+
+[[env.dev.queues.consumers]]
+queue = "meigallery-attribution-meta-dev-dlq"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 3
+
+[[env.dev.queues.consumers]]
+queue = "meigallery-attribution-tiktok-dev-dlq"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 3
+
+[[env.dev.queues.consumers]]
+queue = "meigallery-attribution-google-dev-dlq"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 3
+
+[env.dev.vars]
+APP_ENV = "dev"
+ATTRIBUTION_PUBLIC_ORIGINS = "http://localhost:3000,https://meigallery-web-dev.wajie.workers.dev"
+ATTRIBUTION_COOKIE_DOMAIN = ""
+
+[env.dev.observability]
+enabled = true
+head_sampling_rate = 0.1
+
+# 敏感变量必须通过 wrangler secret put 设置：
+# ATTRIBUTION_CREDENTIAL_MASTER_KEY_CURRENT
+# ATTRIBUTION_CREDENTIAL_MASTER_KEY_PREVIOUS（仅密钥轮换窗口）
+# ATTRIBUTION_SIGNING_KEY_CURRENT
+# ATTRIBUTION_SIGNING_KEY_PREVIOUS（仅密钥轮换窗口）
+# ATTRIBUTION_DATA_ENCRYPTION_KEY_CURRENT
+# ATTRIBUTION_DATA_ENCRYPTION_KEY_PREVIOUS（仅密钥轮换窗口）

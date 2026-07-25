@@ -1,4 +1,7 @@
-import type { AdAttributionProvider } from '@meigallery/shared'
+import type {
+  AdAttributionProvider,
+  AttributionCredentialType,
+} from '@meigallery/shared'
 import {
   decryptAttributionValue,
   deriveAttributionHmacKey,
@@ -12,7 +15,7 @@ const CREDENTIAL_TYPES = new Set<AttributionCredentialType>(['access_token', 'se
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9_-]{1,160}$/
 const FINGERPRINT_HEX_LENGTH = 32
 
-export type AttributionCredentialType = 'access_token' | 'service_account_json'
+export type { AttributionCredentialType } from '@meigallery/shared'
 
 export interface SaveCredentialInput {
   connectionId: string

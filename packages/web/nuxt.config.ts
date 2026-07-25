@@ -45,6 +45,7 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       apiBaseUrl: 'http://localhost:8787', // API Worker 地址，生产环境覆盖
+      attributionBaseUrl: 'http://localhost:8790',
       appEnv: 'development',
       turnstileSiteKey: '',
       siteUrl: 'http://localhost:3000',

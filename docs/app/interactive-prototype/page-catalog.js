@@ -1,0 +1,175 @@
+(function () {
+  "use strict";
+
+  const p0Pages = new Set([
+    "APP-AUTH-01", "APP-AUTH-02", "APP-AUTH-03", "APP-AUTH-06",
+    "APP-DSC-01", "APP-DSC-02", "APP-DSC-04", "APP-DSC-05", "APP-DSC-07", "APP-DSC-08", "APP-DSC-09",
+    "APP-INT-01", "APP-INT-02",
+    "APP-MSG-01", "APP-MSG-02", "APP-MSG-03", "APP-MSG-04", "APP-MSG-05",
+    "APP-MBR-01", "APP-MBR-02", "APP-MBR-03", "APP-WAL-01", "APP-WAL-02",
+    "APP-SET-01", "APP-SET-06", "APP-SET-07", "APP-SET-08", "APP-SET-11",
+    "APP-SYS-03", "APP-SYS-04",
+    "ADM-PER-01", "ADM-PER-02", "ADM-PER-03", "ADM-PER-04", "ADM-PER-05", "ADM-PER-06",
+    "ADM-MSG-01", "ADM-MSG-02", "ADM-MSG-03", "ADM-MSG-04",
+    "ADM-SAF-01", "ADM-SAF-02", "ADM-SAF-03", "ADM-SAF-04",
+    "ADM-MBR-03", "ADM-MBR-04", "ADM-MBR-05",
+    "ADM-WAL-01", "ADM-WAL-02", "ADM-WAL-03", "ADM-WAL-04", "ADM-WAL-06",
+    "ADM-AUD-01", "ADM-AUD-02"
+  ]);
+
+  const p2Pages = new Set([
+    "ADM-OV-02", "ADM-OV-03", "ADM-REC-03", "ADM-WAL-05", "ADM-NTF-03", "ADM-AUD-03", "ADM-AUD-04"
+  ]);
+
+  const priorityFor = id => p0Pages.has(id) ? "P0" : p2Pages.has(id) ? "P2" : "P1";
+
+  const page = (id, route, name, purpose, primary, states, template, next, entry, secondary = []) => ({
+    id,
+    platform: id.startsWith("APP-") ? "mobile" : "admin",
+    priority: priorityFor(id),
+    route,
+    name,
+    purpose,
+    primary,
+    states,
+    template,
+    next,
+    entry,
+    secondary
+  });
+
+  const mobile = [
+    page("APP-AUTH-01", "/launch", "启动与会话恢复", "在进入业务前恢复配置、账号会话和最低版本约束。", "继续进入", ["首次", "恢复中", "离线", "升级", "维护"], "launch", "APP-AUTH-02", "冷启动、回到前台或深链唤起", ["重试", "查看帮助"]),
+    page("APP-AUTH-02", "/auth/login", "登录", "让观看者使用服务端启用的方式安全登录，并明确条款与隐私入口。", "手机号登录", ["正常", "输入错误", "验证中", "频控", "账号受限"], "auth", "APP-DSC-01", "启动页、权限门槛或登录后回跳", ["获取验证码", "查看协议", "帮助"]),
+    page("APP-AUTH-03", "/auth/register", "注册", "只创建观看者账号，不创建公开真人资料。", "创建观看者账号", ["正常", "标识占用", "验证码失效", "地区不可用"], "auth", "APP-AUTH-05", "登录页选择注册", ["重新发送", "查看条款"]),
+    page("APP-AUTH-04", "/auth/challenge", "风险验证", "在敏感登录或账号操作前完成二次验证并解释触发原因。", "完成验证", ["等待", "失败", "次数限制"], "challenge", "APP-DSC-01", "登录风险、设备变化或敏感操作", ["重新发送", "退出账号"]),
+    page("APP-AUTH-05", "/onboarding/preferences", "初始偏好", "收集可跳过的地区与内容偏好，用于非关系型内容推荐。", "保存偏好", ["正常", "空目录", "保存失败", "非个性化说明"], "preferences", "APP-DSC-01", "首次注册成功", ["跳过", "查看用途"]),
+    page("APP-AUTH-06", "/legal/{document}", "条款与隐私文档", "展示生效版本、更新时间和完整正文，支持从原入口返回。", "返回原页面", ["正常", "加载失败", "版本更新"], "document", "APP-AUTH-02", "登录、注册、设置与关于页", ["切换文档", "重新加载"]),
+
+    page("APP-DSC-01", "/discover", "推荐首页", "按地区、内容热度和用户偏好展示已认证、已发布的真人资料。", "查看真人详情", ["正常", "首次空", "骨架", "分页", "离线缓存", "规则刷新"], "discover", "APP-DSC-07", "登录完成、底部推荐 Tab 或返回首页", ["搜索", "筛选", "切换频道", "查看通知"]),
+    page("APP-DSC-02", "/discover/regions", "地区选择", "用模糊地区层级控制内容范围，不申请或展示精确定位。", "应用地区", ["正常", "定位未使用", "目录更新", "无结果"], "selection", "APP-DSC-01", "推荐页地区入口或筛选页", ["搜索地区", "清除选择"]),
+    page("APP-DSC-03", "/discover/categories", "分类", "按身份、职业、风格和内容类型组织可浏览主题。", "进入分类", ["正常", "空分类", "目录失效"], "categories", "APP-DSC-01", "推荐频道或搜索入口", ["收藏主题", "查看全部"]),
+    page("APP-DSC-04", "/search", "搜索", "搜索展示名、地区、职业与标签，并明确无结果原因。", "提交搜索", ["初始", "输入中", "有结果", "无结果", "历史关闭"], "search", "APP-DSC-07", "推荐页搜索框", ["清除历史", "打开筛选"]),
+    page("APP-DSC-05", "/search/filters", "筛选", "配置基础与会员高级条件，实时反馈预计结果数。", "应用筛选", ["正常", "权益门槛", "目录冲突", "无结果"], "filter", "APP-DSC-04", "搜索页或推荐页筛选入口", ["清空", "保存条件"]),
+    page("APP-DSC-06", "/saved-filters", "已保存条件", "管理常用筛选条件并安全处理目录词条变化。", "使用条件", ["正常", "空", "额度满", "标签已合并"], "saved", "APP-DSC-04", "筛选页保存入口或我的页面", ["重命名", "删除"]),
+    page("APP-DSC-07", "/person/{profileId}", "真人详情", "呈现授权资料、认证范围、平台维护说明和单向互动入口。", "发起话题", ["正常", "下架", "受限", "离线摘要", "媒体不可用"], "profile", "APP-MSG-02", "推荐、搜索、关注、喜欢、收藏或历史", ["喜欢", "关注", "收藏", "查看认证", "举报"]),
+    page("APP-DSC-08", "/person/{profileId}/media", "媒体浏览", "安全浏览已授权图片，支持分页、缩放、说明和举报。", "查看下一张", ["正常", "凭证刷新", "加载失败", "内容隐藏"], "media", "APP-DSC-07", "真人详情媒体区域", ["缩放", "查看说明", "举报"]),
+    page("APP-DSC-09", "/person/{profileId}/verification", "认证说明", "解释平台实际核验的范围、更新时间和失效条件。", "返回真人详情", ["正常", "认证失效", "资料变化"], "verification", "APP-DSC-07", "真人详情认证标识", ["查看平台说明", "举报问题"]),
+
+    page("APP-INT-01", "/following", "关注更新", "聚合已关注真人的新公开内容，不暗示双向关系。", "查看更新", ["正常", "首次空", "无更新", "资料下架"], "feed", "APP-DSC-07", "底部关注 Tab", ["筛选更新", "取消关注"]),
+    page("APP-INT-02", "/likes", "喜欢", "保存用户喜欢过的真人，支持独立撤销。", "查看真人", ["正常", "空", "资料不可用"], "people-list", "APP-DSC-07", "我的页面或互动入口", ["取消喜欢", "筛选"]),
+    page("APP-INT-03", "/favorites", "收藏夹", "以文件夹管理收藏的真人资料，不形成关系状态。", "打开收藏夹", ["正常", "空", "额度满", "离线"], "folders", "APP-INT-04", "我的页面或详情收藏动作", ["新建文件夹", "重命名", "删除"]),
+    page("APP-INT-04", "/favorites/{folderId}", "收藏夹详情", "展示文件夹内真人并支持移动或移除。", "查看真人", ["正常", "文件夹已删除", "资料下架"], "people-list", "APP-DSC-07", "收藏夹列表", ["移动", "移除", "编辑名称"]),
+    page("APP-INT-05", "/history", "浏览历史", "按时间展示浏览记录，并允许逐条或全部清除。", "查看历史详情", ["正常", "空", "保留到期", "清除失败"], "history", "APP-DSC-07", "我的页面", ["删除单条", "全部清除"]),
+
+    page("APP-MSG-01", "/messages", "平台话题", "列出由平台运营接收的话题会话，明确接收主体、未读和限制状态。", "打开话题", ["正常", "首次空", "离线", "会话受限"], "chat-list", "APP-MSG-03", "底部消息 Tab", ["筛选未读", "静音"]),
+    page("APP-MSG-02", "/messages/start/{profileId}", "发起话题确认", "在创建话题前披露平台接收、会员资格、额度和不保证回复。", "确认发起话题", ["正常", "无会员", "额度尽", "资料失效", "已有话题"], "confirm", "APP-MSG-03", "真人详情“发起话题”按钮", ["查看会员", "取消"]),
+    page("APP-MSG-03", "/messages/{conversationId}", "话题会话", "让有效会员发送文本消息，并持续披露由平台管理员接收和处理。", "发送消息", ["正常", "补拉", "审核中", "只读", "冻结", "关闭"], "chat", "APP-MSG-04", "平台话题列表或发起确认", ["表情", "撤回", "打开会话设置"]),
+    page("APP-MSG-04", "/messages/{conversationId}/details", "会话设置", "管理静音、举报、拉黑和关闭，同时重复展示接收主体。", "保存会话设置", ["正常", "操作失败", "已关闭"], "settings", "APP-MSG-01", "会话页右上角菜单", ["举报", "拉黑", "关闭会话"]),
+    page("APP-MSG-05", "/notifications/{category}", "通知列表", "按消息、互动、会员金币、系统安全和营销分类展示站内通知。", "打开通知", ["正常", "首次空", "分页失败", "实时离线"], "notifications", "APP-MSG-06", "推荐页铃铛或消息页通知入口", ["全部已读", "切换分类"]),
+    page("APP-MSG-06", "/notifications/detail/{notificationId}", "通知详情", "展示用户安全正文、事件时间、目标当前状态和可执行下一步。", "前往相关页面", ["正常", "目标失效", "无权限", "需要升级"], "notice-detail", "APP-SET-01", "通知列表", ["返回列表", "查看帮助"]),
+
+    page("APP-MBR-01", "/membership", "五级会员目录", "展示心遇、心悦、心知、心契、心耀五级精确权益，并进入站内申请。", "提交会员申请", ["免费", "已有申请", "待生效", "同步失败"], "membership", "APP-MBR-03", "真人详情门槛或我的会员卡", ["切换等级", "查看当前权益"]),
+    page("APP-MBR-02", "/membership/current", "当前权益", "展示当前等级、有效期、可用权益和当期额度事实。", "查看权益说明", ["正常", "即将到期", "到期", "撤销", "受限"], "benefits", "APP-MBR-03", "我的会员卡或会员目录", ["查看会话额度", "联系帮助"]),
+    page("APP-MBR-03", "/membership/apply", "会员申请与状态", "提交期望等级和可选说明，查看人工处理状态；会员仅在管理员发放后生效。", "提交会员申请", ["未申请", "已提交", "处理中", "待补充", "已通过", "已拒绝", "已取消"], "membership-application", "APP-MBR-02", "会员目录或权益页", ["取消申请", "补充说明", "联系平台"]),
+    page("APP-WAL-01", "/wallet", "金币钱包", "只读展示余额、最后同步时间和管理员调整规则。", "查看金币明细", ["正常", "空钱包", "离线缓存", "同步失败"], "wallet", "APP-WAL-02", "我的金币卡", ["查看规则", "刷新余额"]),
+    page("APP-WAL-02", "/wallet/entries", "金币明细", "按全部、增加和扣减筛选不可覆盖的有效分录。", "查看分录详情", ["正常", "首次空", "分页", "对账维护"], "ledger", "APP-WAL-03", "钱包页", ["筛选方向", "加载更多"]),
+    page("APP-WAL-03", "/wallet/entries/{entryId}", "金币分录详情", "展示方向、数量、原因、安全业务单号、冲正关系和申诉入口。", "提交申诉", ["正常", "分录不可用", "冲正中"], "ledger-detail", "APP-SET-08", "金币明细", ["复制业务单号", "查看冲正"]),
+
+    page("APP-SET-01", "/me", "我的", "汇总私有账号、会员、金币、设置、帮助和数据权利入口。", "查看账号资料", ["正常", "账号受限", "摘要同步失败"], "me", "APP-SET-02", "底部我的 Tab", ["查看会员", "查看钱包", "进入设置"]),
+    page("APP-SET-02", "/me/account", "账号资料", "编辑只用于识别本人账号的昵称与头像，不生成公开真人资料。", "保存账号资料", ["正常", "保存失败", "需要重新验证"], "account", "APP-SET-01", "我的页面", ["更换头像", "验证登录标识"]),
+    page("APP-SET-03", "/me/devices", "设备管理", "查看当前和其他登录设备，并可远程退出。", "退出其他设备", ["正常", "仅当前设备", "撤销失败"], "devices", "APP-SET-01", "我的页面账号与安全", ["查看设备详情"]),
+    page("APP-SET-04", "/me/privacy", "隐私与推荐", "管理个性化推荐、浏览历史和可选分析，并解释用途。", "保存隐私设置", ["正常", "保存冲突", "政策更新"], "toggles", "APP-SET-01", "我的页面隐私入口", ["查看用途", "清除历史"]),
+    page("APP-SET-05", "/me/notification-preferences", "站内通知偏好", "管理消息、互动、营销通知，同时保留不可关闭的必要通知。", "保存通知偏好", ["正常", "同步失败", "策略变化"], "toggles", "APP-SET-01", "我的页面通知设置", ["恢复默认"]),
+    page("APP-SET-06", "/me/blocks", "拉黑名单", "查看已拉黑真人、影响说明并支持解除拉黑。", "解除拉黑", ["正常", "空", "解除失败"], "people-list", "APP-SET-01", "我的页面隐私与安全", ["查看真人", "查看影响"]),
+    page("APP-SET-07", "/me/reports", "举报记录", "展示举报对象、时间和用户可见处理进度。", "查看举报进度", ["正常", "空", "状态延迟"], "cases", "APP-SET-01", "我的页面帮助与安全", ["查看说明"]),
+    page("APP-SET-08", "/me/appeals", "申诉", "创建申诉、说明证据并跟踪独立复核进度。", "提交申诉", ["正常", "已有处理中", "提交失败"], "appeal", "APP-SET-07", "账号受限、举报记录或分录详情", ["补充说明", "查看进度"]),
+    page("APP-SET-09", "/me/data-export", "数据导出", "说明可导出范围，创建任务并在重新验证后下载。", "创建导出任务", ["正常", "处理中", "失败", "已过期", "需要重新验证"], "task", "APP-SET-01", "我的页面数据权利", ["下载", "重新创建"]),
+    page("APP-SET-10", "/me/delete-account", "注销账号", "解释不可逆影响、阻塞项、重新验证和可取消阶段。", "提交注销申请", ["正常", "存在阻塞项", "处理中", "失败"], "danger", "APP-AUTH-01", "我的页面数据权利", ["取消申请", "重新验证"]),
+    page("APP-SET-11", "/help", "帮助中心", "提供服务说明、主题搜索、常见问题和联系平台入口。", "打开帮助主题", ["正常", "离线", "无结果"], "help", "APP-SET-01", "登录、设置、错误和业务说明入口", ["搜索", "联系平台"]),
+    page("APP-SET-12", "/about", "关于与法律", "展示 App 版本、协议、隐私政策和开源许可。", "查看法律文档", ["正常", "文档不可用"], "about", "APP-AUTH-06", "我的页面", ["查看版本信息", "查看许可"]),
+
+    page("APP-SYS-01", "system://upgrade", "强制升级", "当当前版本无法安全支持服务端能力时阻止继续操作。", "更新 App", ["必须升级", "商店不可用"], "system", "APP-AUTH-01", "启动检查或未知能力门槛", ["返回", "查看帮助"]),
+    page("APP-SYS-02", "system://maintenance", "服务维护", "说明服务暂不可用，缓存内容不代表最新事实。", "重新尝试", ["维护中", "部分恢复"], "system", "APP-AUTH-01", "启动或任意服务请求", ["查看帮助"]),
+    page("APP-SYS-03", "system://restricted", "账号受限", "展示限制范围、原因类别和申诉入口，不泄露内部规则。", "查看限制详情", ["部分受限", "全部受限"], "system", "APP-SET-08", "登录、敏感操作或安全事件", ["申诉", "退出账号"]),
+    page("APP-SYS-04", "system://unavailable", "对象不可用", "在资料、会话或通知目标失效时提供安全返回路径。", "返回推荐", ["已下架", "无权限", "已删除"], "system", "APP-DSC-01", "对象深链或状态刷新", ["查看帮助"]),
+    page("APP-SYS-05", "system://region", "地区不可用", "说明当前地区尚未开放服务并停止业务入口。", "查看地区说明", ["未开放", "政策变化"], "system", "APP-AUTH-01", "注册、登录或地区切换", ["退出"])
+  ];
+
+  const admin = [
+    page("ADM-OV-01", "/admin/app", "运营总览", "按权限范围汇总供给、发现、消息、会员、钱包、安全与平台健康。", "进入专题", ["正常", "数据延迟", "质量异常", "部分无权限"], "dashboard", "ADM-OV-02", "后台登录后的默认首页", ["切换范围", "切换时间"]),
+    page("ADM-OV-02", "/admin/app/incidents", "异常中心", "集中处理跨领域异常、优先级、责任人与 Runbook。", "认领异常", ["正常", "P0/P1", "未分配", "已缓解"], "queue", "ADM-OV-03", "运营总览异常卡或全局任务入口", ["筛选优先级", "关联 Runbook"]),
+    page("ADM-OV-03", "/admin/app/incidents/{id}", "异常详情", "记录影响、时间线、处置动作和受控安全开关。", "添加处置记录", ["正常", "影响扩大", "并发更新", "证据不足"], "incident", "ADM-OV-02", "异常中心", ["更新状态", "执行安全开关", "关闭异常"]),
+
+    page("ADM-PER-01", "/admin/app/persons", "真人列表", "管理真人草稿、认证和发布双状态，并进入新建或审核。", "新建真人", ["正常", "草稿", "待审", "已发布", "已暂停", "争议"], "table", "ADM-PER-02", "真人与内容导航", ["批量导入", "筛选状态", "进入审核"]),
+    page("ADM-PER-02", "/admin/app/persons/new", "手动新建真人", "创建带来源、授权、主体和媒体信息的真人草稿。", "保存草稿", ["正常", "缺少来源", "重复候选", "媒体失败"], "form", "ADM-PER-03", "真人列表主操作", ["提交认证", "检测重复"]),
+    page("ADM-PER-03", "/admin/app/persons/{id}", "真人工作台", "在版本化工作台中分区维护事实、草稿、认证和发布状态。", "发起认证审核", ["正常", "认证待审", "发布待审", "授权过期"], "workbench", "ADM-PER-05", "真人列表或导入结果", ["编辑草稿", "查看版本", "预览 App"]),
+    page("ADM-PER-04", "/admin/app/imports", "导入任务", "上传或引用导入包，逐项校验并允许部分失败重试。", "执行导入", ["正常", "校验中", "部分失败", "已暂停", "已完成"], "import", "ADM-PER-03", "真人列表批量导入", ["上传包", "查看失败", "重试失败项"]),
+    page("ADM-PER-05", "/admin/app/verifications/{id}", "认证审核", "独立检查主体存在性、成年、授权范围、资料一致性与媒体权利。", "通过认证", ["正常", "证据不足", "版本冲突", "需要复核"], "review", "ADM-PER-06", "真人工作台提交认证", ["退回补充", "拒绝", "升级法务"]),
+    page("ADM-PER-06", "/admin/app/publications/{id}", "发布审核", "预览锁定版本并校验认证、授权、公开字段和媒体安全。", "发布到 App", ["正常", "未认证", "授权失效", "投影失败"], "review", "ADM-PER-01", "认证通过后发起发布", ["暂停", "归档", "查看公开预览"]),
+
+    page("ADM-TAX-01", "/admin/app/taxonomy", "Taxonomy 目录树", "维护地区、身份、职业、风格与内容类型的版本化目录。", "新建词条", ["正常", "草稿目录", "生效目录", "归档目录"], "tree", "ADM-TAX-02", "发现运营导航", ["搜索词条", "选择版本"]),
+    page("ADM-TAX-02", "/admin/app/taxonomy/{termId}", "词条详情", "编辑词条、别名和旧值映射，并预览合并影响。", "保存词条草稿", ["正常", "被引用", "合并冲突", "版本过期"], "term", "ADM-TAX-03", "目录树选择词条", ["添加别名", "合并预览"]),
+    page("ADM-TAX-03", "/admin/app/taxonomy/releases/{id}", "目录发布", "校验目录变更对资料、筛选和客户端兼容性的影响。", "提交目录发布", ["正常", "未知引用", "客户端不兼容", "待复核"], "release", "ADM-TAX-01", "目录版本页", ["影响预览", "回滚"]),
+    page("ADM-REC-01", "/admin/app/recommendation/rules", "推荐规则版本", "管理候选、排序和热度规则的草稿、生效、灰度与回滚。", "创建规则草稿", ["正常", "当前生效", "灰度中", "已回滚"], "rules", "ADM-REC-02", "发现运营导航", ["复制版本", "停用"]),
+    page("ADM-REC-02", "/admin/app/recommendation/rules/{id}", "推荐规则编辑", "配置候选和排序因子，安全过滤固定为不可关闭前置。", "提交规则审核", ["正常", "Schema 错误", "触碰安全过滤", "并发冲突"], "editor", "ADM-REC-03", "规则版本列表", ["保存草稿", "查看差异"]),
+    page("ADM-REC-03", "/admin/app/recommendation/rules/{id}/preview", "推荐 Dry-run", "使用合成场景比较新旧规则结果，不读取不必要的用户敏感数据。", "运行对比", ["正常", "样本不足", "数据延迟"], "compare", "ADM-REC-02", "规则编辑页", ["切换场景", "查看解释"]),
+    page("ADM-REC-04", "/admin/app/recommendation/placements", "运营精选", "为人工精选资料配置位置、时间和“平台精选”披露。", "创建排期", ["正常", "时间冲突", "资料下架"], "calendar", "ADM-REC-01", "发现运营导航", ["预览披露", "暂停排期"]),
+
+    page("ADM-MSG-01", "/admin/app/conversations", "会话队列", "按运营组、地区、等待时间、会员等级和安全状态分配会话。", "领取会话", ["正常", "待分配", "待平台", "待用户", "安全审核"], "queue", "ADM-MSG-02", "互动与安全导航", ["筛选队列", "批量分组"]),
+    page("ADM-MSG-02", "/admin/app/conversations/{id}", "会话工作台", "以固定平台身份回复、记录内部备注、转派和升级安全审核。", "以平台身份回复", ["正常", "租约冲突", "只读", "冻结", "关闭"], "conversation", "ADM-MSG-01", "会话队列", ["内部备注", "转派", "升级安全"]),
+    page("ADM-MSG-03", "/admin/app/conversation-groups", "分组与班次", "配置运营组、班次、容量和自动分配规则。", "保存分配规则", ["正常", "无值班", "过载", "配置冲突"], "schedule", "ADM-MSG-01", "会话管理导航", ["调整班次", "查看容量"]),
+    page("ADM-MSG-04", "/admin/app/conversation-quality", "会话质量与抽检", "在受控样本上检查身份披露、服务质量和违规文案。", "记录抽检结论", ["正常", "无正文授权", "披露缺失"], "quality", "ADM-MSG-01", "平台话题运营组长质量入口", ["选择样本", "创建改进任务"]),
+
+    page("ADM-SAF-01", "/admin/app/reviews", "安全审核队列", "按优先级和时限分配真人、媒体、会话和消息举报案件。", "领取案件", ["正常", "P0", "超时", "未分配"], "queue", "ADM-SAF-02", "互动与安全导航或举报事件", ["调整优先级", "升级案件"]),
+    page("ADM-SAF-02", "/admin/app/reviews/{caseId}", "安全案件详情", "只展示处置所需的最小证据，并联动资料暂停、会话限制或账号限制。", "提交处置", ["正常", "证据受限", "并发冲突", "已冻结"], "case", "ADM-SAF-01", "安全审核队列", ["请求补充", "升级复核"]),
+    page("ADM-SAF-03", "/admin/app/appeals", "申诉队列", "把申诉分配给与原处置人员隔离的复核人员。", "分配申诉", ["正常", "原审核人隔离", "逾期"], "queue", "ADM-SAF-04", "安全与申诉导航", ["筛选状态", "调整优先级"]),
+    page("ADM-SAF-04", "/admin/app/appeals/{id}", "申诉详情", "独立复核原事实、处置和新增说明，记录维持或改判理由。", "提交复核结论", ["正常", "证据不足", "需要升级"], "case", "ADM-SAF-03", "申诉队列", ["维持原判", "改判", "请求补充"]),
+
+    page("ADM-MBR-01", "/admin/app/membership/catalogs", "五级会员目录", "版本化配置五级会员名称、rank 和 entitlement 组合。", "新建目录版本", ["正常", "草稿", "生效", "待回滚"], "catalog", "ADM-MBR-02", "会员与金币导航", ["比较版本", "提交发布"]),
+    page("ADM-MBR-02", "/admin/app/entitlements", "Entitlement 定义", "管理稳定能力键、参数 Schema 和客户端兼容范围。", "新建 Entitlement", ["正常", "未知客户端", "合并冲突"], "definition", "ADM-MBR-01", "会员目录或技术配置入口", ["Schema 校验", "影响查询"]),
+    page("ADM-MBR-03", "/admin/app/membership/applications", "会员申请与发放队列", "受理用户申请、搜索账号、查看处理与发放时间线，并进入发放申请。", "受理会员申请", ["待处理", "处理中", "待补充", "已通过", "已拒绝", "直接发放"], "grant-list", "ADM-MBR-04", "会员与金币导航", ["领取申请", "查看账号", "查看时间线"]),
+    page("ADM-MBR-04", "/admin/app/membership/grants/new", "会员发放申请", "填写等级、有效期、来源、业务单号、用户说明和内部原因。", "提交发放申请", ["正常", "账号错误", "高风险", "重复业务单"], "form", "ADM-MBR-05", "发放记录主操作", ["保存草稿", "预览权益差异"]),
+    page("ADM-MBR-05", "/admin/app/membership/reviews/{id}", "会员发放复核", "由独立复核人比较前后权益并批准或拒绝。", "批准发放", ["正常", "发起人冲突", "账号状态已变"], "approval", "ADM-MBR-03", "复核任务队列", ["拒绝", "查看申请来源"]),
+    page("ADM-MBR-06", "/admin/app/membership/migrations", "旧会员映射", "对 legacy vip/svip 证据执行 Dry-run、逐项复核和受控迁移。", "执行迁移", ["正常", "证据不足", "映射冲突"], "migration", "ADM-MBR-03", "迁移工作台", ["运行 Dry-run", "导出冲突"]),
+
+    page("ADM-WAL-01", "/admin/app/wallets", "钱包查询", "按稳定账号搜索余额、有效分录和对账状态。", "查看钱包", ["正常", "账号受限", "对账异常"], "wallet-search", "ADM-WAL-02", "会员与金币导航", ["搜索账号", "筛选异常"]),
+    page("ADM-WAL-02", "/admin/app/wallets/{accountId}", "钱包详情", "展示余额、sequence、分录与冲正关系，不允许直接编辑余额。", "新建调币申请", ["正常", "余额锁定", "Sequence 异常"], "wallet-admin", "ADM-WAL-03", "钱包查询", ["查看分录", "查看冲正"]),
+    page("ADM-WAL-03", "/admin/app/coin-adjustments/new", "调币申请", "填写加币或扣币数量、标准原因、用户说明、内部备注和业务单号。", "提交调币申请", ["正常", "预计负余额", "高风险", "重复业务单"], "form", "ADM-WAL-04", "钱包详情", ["保存草稿", "预览余额"]),
+    page("ADM-WAL-04", "/admin/app/coin-adjustments/{id}/review", "调币复核", "由不同管理员复核余额变化、阈值、原因和业务证据。", "批准并入账", ["正常", "余额已变化", "发起人冲突"], "approval", "ADM-WAL-02", "复核任务队列", ["拒绝", "查看原始分录"]),
+    page("ADM-WAL-05", "/admin/app/coin-adjustment-batches", "批量调币任务", "上传、校验和复核批量调币，逐项返回结果并允许重试失败项。", "提交批量复核", ["正常", "部分成功", "重复项", "总额异常"], "batch", "ADM-WAL-06", "钱包运营工具", ["上传文件", "暂停", "重试失败项"]),
+    page("ADM-WAL-06", "/admin/app/reconciliation", "钱包对账差异", "识别余额、sequence 和有效分录差异，通过追加式 forward-fix 修复。", "认领差异", ["正常", "钱包冻结", "差异未解释"], "reconciliation", "ADM-WAL-02", "运营总览或钱包异常入口", ["重建验证", "创建修复申请"]),
+
+    page("ADM-NTF-01", "/admin/app/notifications/events", "通知事件定义", "查看事件 Schema、必要性、敏感字段策略和版本状态。", "查看事件版本", ["正常", "未登记", "已停用"], "event", "ADM-NTF-02", "站内通知导航", ["筛选必要通知", "查看消费者"]),
+    page("ADM-NTF-02", "/admin/app/notifications/templates/{id}", "通知模板版本", "编辑用户安全文案、变量、地区与语言版本并提交审核。", "提交模板审核", ["正常", "变量缺失", "地区冲突", "语言冲突"], "template-editor", "ADM-NTF-03", "通知事件定义", ["保存草稿", "预览变量"]),
+    page("ADM-NTF-03", "/admin/app/notifications/deliveries", "通知生成结果", "查询事件生成、失败、抑制和防重结果，不查看不必要的正文。", "查看生成详情", ["正常", "积压", "模板失败", "重复抑制"], "delivery", "ADM-NTF-01", "站内通知导航或异常卡", ["筛选失败", "查看防重键"]),
+    page("ADM-AUD-01", "/admin/app/audit", "审计查询", "按动作、对象、操作者、时间和请求链查询不可编辑审计事件。", "执行审计查询", ["正常", "范围过大", "完整性告警"], "audit", "ADM-AUD-02", "审计导航或业务对象审计入口", ["保存查询", "申请导出"]),
+    page("ADM-AUD-02", "/admin/app/audit/{eventId}", "审计详情", "展示事件时间线、脱敏前后差异和申请/批准/执行关系。", "查看关联事件", ["正常", "关联缺失", "敏感字段受限"], "audit-detail", "ADM-AUD-01", "审计查询结果", ["复制请求 ID", "查看业务对象"]),
+    page("ADM-AUD-03", "/admin/app/audit/integrity", "审计完整性状态", "检查 sequence 缺口、高风险业务无审计和校验任务结果。", "运行完整性校验", ["正常", "Sequence 缺口", "业务无审计"], "integrity", "ADM-AUD-01", "审计导航或异常中心", ["查看异常", "创建事件"]),
+    page("ADM-AUD-04", "/admin/app/audit/exports", "受控导出", "通过申请、复核、短期凭证和范围再校验导出审计数据。", "提交导出申请", ["正常", "待批准", "已过期", "范围变化"], "export", "ADM-AUD-01", "审计查询", ["查看申请", "下载已批准文件"])
+  ];
+
+  const groups = [
+    { id: "AUTH", platform: "mobile", name: "启动与认证", prefix: "APP-AUTH" },
+    { id: "DSC", platform: "mobile", name: "发现与真人", prefix: "APP-DSC" },
+    { id: "INT", platform: "mobile", name: "互动与历史", prefix: "APP-INT" },
+    { id: "MSG", platform: "mobile", name: "平台话题与通知", prefix: "APP-MSG" },
+    { id: "MBR", platform: "mobile", name: "会员与金币", prefix: "APP-MBR", extraPrefixes: ["APP-WAL"] },
+    { id: "SET", platform: "mobile", name: "我的与设置", prefix: "APP-SET" },
+    { id: "SYS", platform: "mobile", name: "系统状态", prefix: "APP-SYS" },
+    { id: "OV", platform: "admin", name: "总览与异常", prefix: "ADM-OV" },
+    { id: "PER", platform: "admin", name: "真人与内容", prefix: "ADM-PER" },
+    { id: "TAX", platform: "admin", name: "发现运营", prefix: "ADM-TAX", extraPrefixes: ["ADM-REC"] },
+    { id: "MSG-A", platform: "admin", name: "平台话题运营", prefix: "ADM-MSG" },
+    { id: "SAF", platform: "admin", name: "安全与申诉", prefix: "ADM-SAF" },
+    { id: "MBR-A", platform: "admin", name: "会员与金币", prefix: "ADM-MBR", extraPrefixes: ["ADM-WAL"] },
+    { id: "NTF", platform: "admin", name: "通知与审计", prefix: "ADM-NTF", extraPrefixes: ["ADM-AUD"] }
+  ];
+
+  window.MeiGalleryPageCatalog = {
+    pages: [...mobile, ...admin],
+    mobile,
+    admin,
+    groups
+  };
+})();

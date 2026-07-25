@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { ATTRIBUTION_SERVICE_BINDING } from '@meigallery/shared/constants'
 import { describe, expect, it } from 'vitest'
 import app from './index'
 import type { Bindings } from './index'
@@ -21,6 +22,25 @@ describe('API CORS 安全配置', () => {
     const res = await app.fetch(new Request('https://api.test/api/health', { headers: { Origin: 'https://www.616618.xyz' } }), env('https://616618.xyz,https://www.616618.xyz'), {} as ExecutionContext)
     expect(res.headers.get('access-control-allow-origin')).toBe('https://www.616618.xyz')
   })
+
+  it('归因写命令预检明确允许 Idempotency-Key', async () => {
+    const res = await app.fetch(new Request(
+      'https://api.test/api/admin/attribution-runtime/connections',
+      {
+        method: 'OPTIONS',
+        headers: {
+          Origin: 'https://616618.xyz',
+          'Access-Control-Request-Method': 'POST',
+          'Access-Control-Request-Headers':
+            'content-type,idempotency-key',
+        },
+      },
+    ), env('https://616618.xyz'), {} as ExecutionContext)
+
+    expect(res.status).toBe(204)
+    expect(res.headers.get('access-control-allow-headers'))
+      .toContain('Idempotency-Key')
+  })
 })
 
 describe('统一 Queue 与 Cron 入口', () => {
@@ -29,6 +49,24 @@ describe('统一 Queue 与 Cron 入口', () => {
     let acknowledged = false
     await app.queue({ queue: 'unknown-queue', messages: [{ body: { schemaVersion: 1, deliveryId: 'delivery_1', provider: 'meta' }, attempts: 1, ack, retry() {} }] } as unknown as MessageBatch<{ schemaVersion: 1; deliveryId: string; provider: 'meta' }>, {
       APP_ENV: 'production', DB: emptyDb(),
+    } as unknown as Bindings)
+    expect(acknowledged).toBe(true)
+  })
+
+  it('owner=new 时旧 Queue 只确认批次，不再执行旧投递', async () => {
+    let acknowledged = false
+    await app.queue({
+      queue: 'meigallery-ad-meta',
+      messages: [],
+      ackAll() { acknowledged = true },
+      retryAll() {},
+    } as unknown as MessageBatch<{
+      schemaVersion: 1
+      deliveryId: string
+      provider: 'meta'
+    }>, {
+      APP_ENV: 'production',
+      DB: emptyDb([], 'new'),
     } as unknown as Bindings)
     expect(acknowledged).toBe(true)
   })
@@ -53,6 +91,9 @@ describe('统一 Queue 与 Cron 入口', () => {
     expect(config).not.toContain('TIKTOK_EVENTS_QUEUE')
     for (const queue of ['meigallery-ad-meta', 'meigallery-ad-meta-dlq', 'meigallery-ad-tiktok', 'meigallery-ad-tiktok-dlq', 'meigallery-ad-google', 'meigallery-ad-google-dlq']) expect(config).toContain(queue)
     expect((config.match(/max_retries = 3/g) ?? [])).toHaveLength(3)
+    expect(config).toContain(
+      `entrypoint = "${ATTRIBUTION_SERVICE_BINDING.ENTRYPOINT}"`,
+    )
   })
 })
 
@@ -81,13 +122,24 @@ describe('公开设置广告配置隔离', () => {
   })
 })
 
-function emptyDb(calls: string[] = []) {
+function emptyDb(
+  calls: string[] = [],
+  owner: 'old' | 'draining' | 'new' = 'old',
+) {
   return {
     prepare(sql: string) {
       calls.push(sql)
       return {
         bind() { return this },
-        first: async () => null,
+        first: async () => sql.includes(
+          'FROM attribution_runtime_cutover',
+        ) ? {
+          owner,
+          owner_epoch:
+            owner === 'old' ? 1 : owner === 'draining' ? 2 : 3,
+          changed_by: null,
+          changed_at: '2026-07-24T00:00:00.000Z',
+        } : null,
         all: async () => ({ results: [] }),
         run: async () => ({ meta: { changes: 0 } }),
       }

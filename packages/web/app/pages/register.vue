@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { validateUsername } from '@meigallery/shared/utils'
-import type { AdBrowserInstruction, InviteCodeStatusResponse } from '@meigallery/shared'
+import type { InviteCodeStatusResponse } from '@meigallery/shared'
 
 const { register, sendCode, checkUsername, isLoggedIn } = useAuth()
 const { api } = useApi()
@@ -201,7 +201,7 @@ async function onDirectRegister() {
       ...buildInviteRegistrationContext(),
       attribution: await tracking.buildRegistrationAttributionContext(),
     })
-    await completeRegistration(result.trackingInstructions)
+    await completeRegistration(result.attributionInstructionToken)
     router.push('/')
   } catch (e: any) {
     analytics.track('register_failed', {
@@ -265,7 +265,7 @@ async function onSubmitWithCode() {
       ...buildInviteRegistrationContext(),
       attribution: await tracking.buildRegistrationAttributionContext(),
     })
-    await completeRegistration(result.trackingInstructions)
+    await completeRegistration(result.attributionInstructionToken)
     router.push('/')
   } catch (e: any) {
     analytics.track('register_failed', {
@@ -352,9 +352,22 @@ function trackRegisterSubmit() {
   })
 }
 
-async function completeRegistration(trackingInstructions: AdBrowserInstruction[]) {
+async function completeRegistration(
+  attributionInstructionToken: string | null,
+) {
+  let attribution: Awaited<
+    ReturnType<typeof tracking.consumeRegistrationInstruction>
+  > = null
+  try {
+    attribution = await tracking.consumeRegistrationInstruction(
+      attributionInstructionToken,
+    )
+  }
+  catch {
+    // 注册已经完成，浏览器侧投递失败不得改变业务成功结果。
+  }
   analytics.track('register_success', {
-    eventId: trackingInstructions[0]?.externalEventId || '',
+    eventId: attribution?.externalEventId || '',
     entityType: 'auth',
     flush: true,
     props: {
@@ -362,11 +375,6 @@ async function completeRegistration(trackingInstructions: AdBrowserInstruction[]
       invite_code_id: validInviteCodeId.value || undefined,
     },
   })
-  try {
-    await tracking.executeBrowserInstructions(trackingInstructions)
-  } catch {
-    // 注册已成功时，Pixel 执行失败不能影响跳转或误记注册失败。
-  }
 }
 
 function normalizeInviteCode(value: unknown) {

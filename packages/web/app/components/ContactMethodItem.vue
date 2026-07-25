@@ -5,9 +5,9 @@ import { normalizeContactActionUrl, normalizeContactQrCodeUrl } from '~/utils/co
 
 const props = defineProps<{ method: ContactMethod }>()
 const emit = defineEmits<{
-  activate: [contactMethodId: string, methodType: string, actionType: 'open_link' | 'copy']
   inspect: [contactMethodId: string, methodType: string, actionType: 'qr_expand']
 }>()
+const { trackContact } = useTracking()
 
 const showQr = ref(false)
 const isHovering = ref(false)
@@ -21,8 +21,29 @@ const hasLink = computed(() => Boolean(safeActionHref.value))
 const safeQrCodeUrl = computed(() => normalizeContactQrCodeUrl(props.method.qrCodeUrl))
 const hasQr = computed(() => Boolean(safeQrCodeUrl.value))
 
-function activateLink() {
-  emit('activate', props.method.id, props.method.platform, 'open_link')
+async function activateLink() {
+  const href = safeActionHref.value
+  if (!href) return
+  let pendingWindow: Window | null
+  try {
+    pendingWindow = window.open('about:blank', '_blank')
+    if (pendingWindow) pendingWindow.opener = null
+  } catch {
+    pendingWindow = null
+  }
+
+  try {
+    await trackContact({
+      contactMethodId: props.method.id,
+      methodType: props.method.platform,
+      actionType: 'open_link',
+      linkUrl: props.method.linkUrl,
+      value: props.method.value,
+      attributionCapability: props.method.attributionCapability,
+    })
+  } finally {
+    navigateToContact(href, pendingWindow)
+  }
 }
 
 function activateLinkWithSpace(event: KeyboardEvent) {
@@ -35,7 +56,15 @@ function toggleQr() {
 }
 
 async function activateCopy() {
-  if (await copyValue()) emit('activate', props.method.id, props.method.platform, 'copy')
+  if (!await copyValue()) return
+  await trackContact({
+    contactMethodId: props.method.id,
+    methodType: props.method.platform,
+    actionType: 'copy',
+    linkUrl: props.method.linkUrl,
+    value: props.method.value,
+    attributionCapability: props.method.attributionCapability,
+  })
 }
 
 async function copyValue() {
@@ -70,6 +99,18 @@ async function copyValue() {
   setTimeout(() => { copied.value = false }, 2_000)
   return true
 }
+
+function navigateToContact(href: string, target: Window | null) {
+  try {
+    if (target && !target.closed) {
+      target.location.replace(href)
+      return
+    }
+    window.location.assign(href)
+  } catch {
+    // 浏览器若阻止新窗口，保留页面可继续手动操作。
+  }
+}
 </script>
 
 <template>
@@ -87,7 +128,7 @@ async function copyValue() {
         rel="noopener noreferrer nofollow"
         referrerpolicy="no-referrer"
         class="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-1.5 py-1.5 text-left focus:outline-none focus:ring-2 focus:ring-[#d6c39a] focus:ring-offset-1"
-        @click="activateLink"
+        @click.prevent="activateLink"
         @keydown.space.prevent="activateLinkWithSpace"
       >
         <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#fff7ed] to-gray-100 text-gray-600 ring-1 ring-white">

@@ -36,12 +36,13 @@ export default defineConfig({
       },
     },
     {
-      command: `NUXT_PUBLIC_API_BASE_URL=${apiURL} NUXT_PUBLIC_APP_ENV=test NUXT_PUBLIC_SITE_URL=${baseURL} NUXT_PUBLIC_DEV_ADMIN_DATA_WARNING=true corepack pnpm exec nuxt dev --host ${parsedBaseURL.hostname} --port ${parsedBaseURL.port || (parsedBaseURL.protocol === 'https:' ? '443' : '80')}`,
+      command: `NUXT_PUBLIC_API_BASE_URL=${apiURL} NUXT_PUBLIC_ATTRIBUTION_BASE_URL=${apiURL} NUXT_PUBLIC_APP_ENV=test NUXT_PUBLIC_SITE_URL=${baseURL} NUXT_PUBLIC_DEV_ADMIN_DATA_WARNING=true corepack pnpm exec nuxt dev --host ${parsedBaseURL.hostname} --port ${parsedBaseURL.port || (parsedBaseURL.protocol === 'https:' ? '443' : '80')}`,
       url: baseURL,
       reuseExistingServer: reuseServer,
       timeout: 120_000,
       env: {
         NUXT_PUBLIC_API_BASE_URL: apiURL,
+        NUXT_PUBLIC_ATTRIBUTION_BASE_URL: apiURL,
         NUXT_PUBLIC_APP_ENV: 'test',
         NUXT_PUBLIC_SITE_URL: baseURL,
         NUXT_PUBLIC_DEV_ADMIN_DATA_WARNING: 'true',

@@ -22,6 +22,12 @@ migrations_dir = "migrations"
 binding = "R2"
 bucket_name = "meigallery-media"
 
+# 独立归因 Worker，仅通过私有 Service Binding 调用。
+[[services]]
+binding = "ATTRIBUTION"
+service = "meigallery-attribution"
+entrypoint = "AttributionServiceEntrypoint"
+
 # Email Service（发送事务性邮件）
 [[send_email]]
 name = "EMAIL"
@@ -117,6 +123,11 @@ migrations_dir = "migrations"
 [[env.dev.r2_buckets]]
 binding = "R2"
 bucket_name = "meigallery-media-dev"
+
+[[env.dev.services]]
+binding = "ATTRIBUTION"
+service = "meigallery-attribution-dev"
+entrypoint = "AttributionServiceEntrypoint"
 
 [[env.dev.send_email]]
 name = "EMAIL"

@@ -1,10 +1,11 @@
 import type {
   AdPlatformProvider,
-  AdPlatformRolloutPercentage,
-  AdPlatformTrackingMode,
   CanonicalConversionEvent,
 } from '@meigallery/shared'
-import type { AdPlatformConnectionData, AdPlatformVerificationStatus } from '~/composables/useAdminAttribution'
+import type {
+  CreateCandidateRequest,
+  SetRuntimePolicyRequest,
+} from '~/types/attribution-admin'
 
 export type AttributionPlatformProvider = AdPlatformProvider
 export type AttributionCredentialType = 'access_token' | 'service_account_json'
@@ -71,14 +72,9 @@ export interface AttributionEventBindingDraft {
   serverDestination: string
 }
 
-export interface AttributionPlatformConnectionDraft {
-  enabled: boolean
-  mode: AdPlatformTrackingMode
-  browserEnabled: boolean
-  serverEnabled: boolean
+export interface AttributionCandidateDraft {
   publicConfig: Record<string, string>
   eventBindings: AttributionEventBindingDraft[]
-  rolloutTargetPercentage: AdPlatformRolloutPercentage
 }
 
 const STANDARD_EVENTS = [
@@ -172,76 +168,44 @@ export function attributionPlatformDefinition(provider: AttributionPlatformProvi
   return ATTRIBUTION_PLATFORMS.find(item => item.provider === provider) ?? ATTRIBUTION_PLATFORMS[0]!
 }
 
-export function normalizeAttributionPlatformProvider(value: unknown): AttributionPlatformProvider {
-  const raw = Array.isArray(value) ? value[0] : value
-  return ATTRIBUTION_PLATFORM_PROVIDERS.includes(raw as AttributionPlatformProvider)
-    ? raw as AttributionPlatformProvider
-    : ATTRIBUTION_PLATFORMS[0]!.provider
-}
-
-export const normalizeAttributionDashboardProvider = normalizeAttributionPlatformProvider
-
-export function emptyAttributionPlatformConnectionDraft(
+export function emptyAttributionCandidateDraft(
   platform: AttributionPlatformDefinition = ATTRIBUTION_PLATFORMS[0]!,
-): AttributionPlatformConnectionDraft {
+): AttributionCandidateDraft {
   return {
-    enabled: false,
-    mode: 'disabled',
-    browserEnabled: false,
-    serverEnabled: false,
-    publicConfig: Object.fromEntries(platform.publicConfigFields.map(field => [field.key, ''])),
+    publicConfig: Object.fromEntries(
+      platform.publicConfigFields.map(field => [field.key, '']),
+    ),
     eventBindings: platform.eventBindings.map(binding => ({
       canonicalEvent: binding.canonicalEvent,
       enabled: true,
       browserDestination: binding.browser.defaultValue,
       serverDestination: binding.server.defaultValue,
     })),
-    rolloutTargetPercentage: 0,
   }
 }
 
-export function attributionConnectionToDraft(
-  connection: AdPlatformConnectionData | null | undefined,
+export function attributionCandidatePayload(
   platform: AttributionPlatformDefinition,
-): AttributionPlatformConnectionDraft {
-  if (!connection) return emptyAttributionPlatformConnectionDraft(platform)
-  const publicConfig = Object.fromEntries(platform.publicConfigFields.map(field => [field.key, String(connection.publicConfig[field.key] ?? '')]))
+  draft: AttributionCandidateDraft,
+  options: {
+    credentialPlaintext?: string
+    testEventCode?: string
+  } = {},
+): CreateCandidateRequest {
+  const publicConfig = Object.fromEntries(
+    platform.publicConfigFields
+      .map(field => [
+        field.key,
+        String(draft.publicConfig[field.key] ?? '').trim(),
+      ] as const)
+      .filter(([, value], index) => (
+        platform.publicConfigFields[index]!.required || value.length > 0
+      )),
+  )
+  const credentialPlaintext =
+    String(options.credentialPlaintext ?? '').trim()
+  const testEventCode = String(options.testEventCode ?? '').trim()
   return {
-    enabled: connection.enabled,
-    mode: connection.mode,
-    browserEnabled: connection.browserEnabled,
-    serverEnabled: connection.serverEnabled,
-    publicConfig,
-    eventBindings: platform.eventBindings.map((definition) => {
-      const binding = connection.eventBindings.find(item => item.canonicalEvent === definition.canonicalEvent)
-      return {
-        canonicalEvent: definition.canonicalEvent,
-        enabled: binding?.enabled ?? true,
-        browserDestination: binding?.browserDestination ?? definition.browser.defaultValue,
-        serverDestination: binding?.serverDestination ?? definition.server.defaultValue,
-      }
-    }),
-    rolloutTargetPercentage: connection.rolloutTargetPercentage,
-  }
-}
-
-export function attributionConnectionPayload(
-  platform: AttributionPlatformDefinition,
-  draft: AttributionPlatformConnectionDraft,
-  credentialPlaintext = '',
-) {
-  const publicConfig = Object.fromEntries([
-    ['provider', platform.provider],
-    ...platform.publicConfigFields
-      .map(field => [field.key, String(draft.publicConfig[field.key] ?? '').trim()] as const)
-      .filter(([, value], index) => platform.publicConfigFields[index]!.required || value.length > 0),
-  ])
-  const plaintext = credentialPlaintext.trim()
-  return {
-    enabled: draft.enabled,
-    mode: draft.mode,
-    browserEnabled: draft.browserEnabled,
-    serverEnabled: draft.serverEnabled,
     publicConfig,
     eventBindings: draft.eventBindings.map(binding => ({
       canonicalEvent: binding.canonicalEvent,
@@ -249,26 +213,25 @@ export function attributionConnectionPayload(
       browserDestination: binding.browserDestination.trim(),
       serverDestination: binding.serverDestination.trim(),
     })),
-    ...(plaintext ? { credential: { type: platform.credential.type, plaintext } } : {}),
-    rolloutTargetPercentage: draft.rolloutTargetPercentage,
+    ...(credentialPlaintext
+      ? {
+          credential: {
+            type: platform.credential.type,
+            plaintext: credentialPlaintext,
+          },
+        }
+      : {}),
+    ...(testEventCode ? { testEventCode } : {}),
   }
 }
 
-export function attributionConnectionStateLabel(connection: AdPlatformConnectionData | null | undefined) {
-  if (!connection) return '未配置'
-  if (!connection.enabled || connection.mode === 'disabled') return '已停用'
-  return connection.mode === 'production' ? '生产运行' : '测试模式'
-}
-
-export function attributionVerificationStatusLabel(status: AdPlatformVerificationStatus | '') {
-  const labels: Record<AdPlatformVerificationStatus, string> = {
-    queued: '排队中',
-    running: '自动验证中',
-    awaiting_human_evidence: '待人工确认',
-    verified: '已验证',
-    failed: '验证失败',
-    timed_out: '已超时',
-    invalidated: '已失效',
+export function attributionRuntimePolicyPayload(
+  policy: SetRuntimePolicyRequest,
+): SetRuntimePolicyRequest {
+  return {
+    enabled: policy.enabled,
+    browserEnabled: policy.browserEnabled,
+    serverEnabled: policy.serverEnabled,
+    serverTargetPercentage: policy.serverTargetPercentage,
   }
-  return status ? labels[status] : '尚未验证'
 }

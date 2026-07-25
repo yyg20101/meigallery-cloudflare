@@ -20,12 +20,16 @@ afterEach(() => vi.unstubAllGlobals())
 
 describe('useAuth 注册', () => {
   it('registration POST 复用统一 API 客户端以转发 HttpOnly cookie', async () => {
-    api.mockResolvedValue({ id: 22, email: 'mei@example.com', trackingInstructions: [] })
+    api.mockResolvedValue({
+      id: 22,
+      email: 'mei@example.com',
+      attributionInstructionToken: null,
+    })
     const params = {
       email: 'mei@example.com',
       password: 'password123',
       username: 'meiuser',
-      attribution: { consentState: 'granted' as const },
+      attribution: { path: '/register' },
     }
 
     await useAuth().register(params)

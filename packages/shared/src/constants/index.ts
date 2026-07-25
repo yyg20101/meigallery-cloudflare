@@ -121,5 +121,25 @@ export const ATTRIBUTION_LIMITS = {
   CONVERSION_DETAIL_SAMPLE_LIMIT: 200,
 } as const
 
+/** 独立归因 Worker 私有 Service Binding 控制面契约 */
+export const ATTRIBUTION_SERVICE_BINDING = {
+  ENTRYPOINT: 'AttributionServiceEntrypoint',
+  INTERNAL_ORIGIN: 'https://attribution.internal',
+  ADMIN_PATH_PREFIX: '/admin/attribution',
+  ADMIN_PROXY_PUBLIC_PATH_PREFIX:
+    '/api/admin/attribution-runtime',
+  MIGRATION_PATH_PREFIX: '/internal/migration/v1',
+  MIGRATION_MAX_BODY_BYTES: 8 * 1024 * 1024,
+  ADMIN_PROXY_MAX_BODY_BYTES: 64 * 1024,
+  ADMIN_PROXY_MAX_URL_LENGTH: 4 * 1024,
+  HEADERS: {
+    ACTOR_ID: 'X-Attribution-Actor-Id',
+    ACTOR_ROLE: 'X-Attribution-Actor-Role',
+    REQUEST_ID: 'X-Attribution-Request-Id',
+    RUNTIME_OWNER: 'X-Attribution-Runtime-Owner',
+    RUNTIME_EPOCH: 'X-Attribution-Runtime-Epoch',
+  },
+} as const
+
 export { CONTACT_PLATFORMS, CONTACT_PLATFORM_KEYS, canGenerateContactLink, generateContactLink } from './contact-platforms'
 export type { ContactPlatformConfig } from './contact-platforms'

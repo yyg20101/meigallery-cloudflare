@@ -18,9 +18,18 @@ import { adminInviteCodeRoutes } from './invite-codes'
 import { adminAnalyticsRoutes } from './analytics'
 import { adminTrackingSourceRoutes } from './tracking-sources'
 import { adminAttributionRoutes } from './attribution'
+import { adminAttributionProxyRoutes } from './attribution-proxy'
+import {
+  adminAttributionMigrationRoutes,
+} from './attribution-migration'
+import {
+  adminAttributionCutoverRoutes,
+} from './attribution-cutover'
 
 export const adminRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
+// 独立控制面自行执行登录与 Owner 鉴权，必须先于通用 admin 中间件挂载。
+adminRoutes.route('/attribution-runtime', adminAttributionProxyRoutes)
 adminRoutes.use('*', requireAdmin)
 
 adminRoutes.get('/dashboard', async (c) => {
@@ -63,4 +72,12 @@ adminRoutes.route('/invite-codes', adminInviteCodeRoutes)
 adminRoutes.route('/tracking-sources', adminTrackingSourceRoutes)
 adminRoutes.route('/analytics', adminAnalyticsRoutes)
 adminRoutes.route('/attribution', adminAttributionRoutes)
+adminRoutes.route(
+  '/attribution-migration',
+  adminAttributionMigrationRoutes,
+)
+adminRoutes.route(
+  '/attribution-cutover',
+  adminAttributionCutoverRoutes,
+)
 adminRoutes.route('/', adminMediaRoutes)

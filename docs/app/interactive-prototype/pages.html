@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#f8f7f8" />
+    <title>MeiGallery App 1.0 逐页交互设计库</title>
+    <link rel="icon" href="./assets/icons/heart.svg" />
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./page-library.css" />
+  </head>
+  <body class="page-library-body">
+    <div class="prototype-app page-library-app">
+      <header class="topbar">
+        <a class="brand-lockup brand-link" href="./index.html" aria-label="返回关键旅程原型">
+          <span class="brand-mark" aria-hidden="true">M</span>
+          <div>
+            <strong>MeiGallery</strong>
+            <span>App 1.0 逐页交互设计库</span>
+          </div>
+        </a>
+
+        <div class="topbar-meta">
+          <span class="demo-badge"><span class="demo-dot"></span>92 页 · 独立设计</span>
+          <span class="version-badge" id="coverage-badge">移动端 49 · 后台 43</span>
+          <button class="icon-button mobile-only" type="button" data-action="toggle-catalog" aria-label="打开页面目录" title="页面目录">
+            <img src="./assets/icons/menu.svg" alt="" />
+          </button>
+          <a class="quiet-button" href="./index.html">
+            <img src="./assets/icons/arrow-right.svg" alt="" />
+            关键旅程
+          </a>
+          <button class="quiet-button" type="button" data-action="reset-page">
+            <img src="./assets/icons/refresh.svg" alt="" />
+            重置状态
+          </button>
+        </div>
+      </header>
+
+      <main class="workspace page-workspace">
+        <aside class="scene-sidebar page-catalog" id="page-catalog" aria-label="页面设计目录">
+          <div class="sidebar-heading page-catalog-heading">
+            <div>
+              <span>页面设计目录</span>
+              <small>每页均可单独访问与评审</small>
+            </div>
+          </div>
+          <label class="catalog-search">
+            <img src="./assets/icons/search.svg" alt="" />
+            <input id="page-search" type="search" placeholder="搜索 Page ID 或页面名称" autocomplete="off" />
+          </label>
+          <div class="platform-switch" role="tablist" aria-label="平台筛选">
+            <button type="button" class="active" data-action="set-platform" data-platform="mobile" role="tab">移动端 <span>49</span></button>
+            <button type="button" data-action="set-platform" data-platform="admin" role="tab">管理后台 <span>43</span></button>
+          </div>
+          <nav class="page-nav" id="page-nav"></nav>
+          <div class="sidebar-note">
+            <img src="./assets/icons/file-description.svg" alt="" />
+            <p>点击页面后可切换正常、空、错误、受限等状态。键盘使用 ↑、↓ 切换页面。</p>
+          </div>
+        </aside>
+
+        <section class="stage page-stage" aria-live="polite">
+          <div class="stage-heading page-stage-heading">
+            <div>
+              <span class="eyebrow" id="page-kicker">移动端 · 启动与认证</span>
+              <h1 id="page-title">启动与会话恢复</h1>
+              <p class="page-route" id="page-route">APP-AUTH-01 · /launch</p>
+            </div>
+            <div class="stage-status page-stage-status">
+              <span id="page-progress-text">01 / 92</span>
+              <span class="state-pill" id="page-state-pill">首次</span>
+              <button class="icon-button mobile-only" type="button" data-action="toggle-page-inspector" aria-label="查看页面说明">
+                <img src="./assets/icons/file-description.svg" alt="" />
+              </button>
+            </div>
+          </div>
+          <div class="page-state-switcher" id="page-state-switcher" aria-label="页面状态"></div>
+          <div class="device-stage page-device-stage" id="page-device-stage"></div>
+        </section>
+
+        <aside class="inspector page-inspector" id="page-inspector" aria-label="页面设计说明">
+          <div class="inspector-header">
+            <span class="eyebrow">单页设计说明</span>
+            <button class="icon-button mobile-only" type="button" data-action="toggle-page-inspector" aria-label="关闭页面说明" title="关闭">
+              <img src="./assets/icons/x.svg" alt="" />
+            </button>
+          </div>
+          <div id="page-inspector-content"></div>
+        </aside>
+      </main>
+
+      <footer class="bottombar page-bottombar">
+        <button class="nav-button" type="button" data-action="previous-page">
+          <img src="./assets/icons/chevron-left.svg" alt="" />
+          上一页面
+        </button>
+        <div class="page-footer-center">
+          <span id="page-footer-label">APP-AUTH-01</span>
+          <div class="progress-track" aria-hidden="true"><span id="page-progress-bar"></span></div>
+        </div>
+        <button class="nav-button primary" type="button" data-action="next-page">
+          下一页面
+          <img src="./assets/icons/chevron-right.svg" alt="" />
+        </button>
+      </footer>
+    </div>
+
+    <div class="toast-region" aria-live="polite" aria-atomic="true" id="toast-region"></div>
+    <div class="modal-layer" id="modal-layer" hidden></div>
+    <script src="./page-catalog.js"></script>
+    <script src="./page-library.js"></script>
+  </body>
+</html>

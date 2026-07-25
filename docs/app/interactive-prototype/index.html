@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#f8f7f8" />
+    <title>MeiGallery App 1.0 高保真交互原型</title>
+    <link rel="icon" href="./assets/icons/heart.svg" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="prototype-app">
+      <header class="topbar">
+        <div class="brand-lockup" aria-label="MeiGallery 原型">
+          <span class="brand-mark" aria-hidden="true">M</span>
+          <div>
+            <strong>MeiGallery</strong>
+            <span>App 1.0 高保真交互原型</span>
+          </div>
+        </div>
+
+        <div class="topbar-meta">
+          <span class="demo-badge"><span class="demo-dot"></span>演示数据，非真实人物</span>
+          <span class="version-badge">需求确认版 · 1.0</span>
+          <button class="icon-button mobile-only" type="button" data-action="toggle-scenes" aria-label="打开场景目录" title="场景目录">
+            <img src="./assets/icons/menu.svg" alt="" />
+          </button>
+          <button class="quiet-button" type="button" data-action="show-overview">
+            <img src="./assets/icons/file-description.svg" alt="" />
+            业务总览
+          </button>
+          <a class="quiet-button" href="./pages.html">
+            <img src="./assets/icons/photo-scan.svg" alt="" />
+            逐页设计
+          </a>
+          <button class="quiet-button" type="button" data-action="reset">
+            <img src="./assets/icons/refresh.svg" alt="" />
+            重置演示
+          </button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <aside class="scene-sidebar" id="scene-sidebar" aria-label="演示场景">
+          <div class="sidebar-heading">
+            <span>演示场景</span>
+            <small>8 个关键业务旅程</small>
+          </div>
+          <nav class="scene-nav" id="scene-nav"></nav>
+          <div class="sidebar-note">
+            <img src="./assets/icons/sparkles.svg" alt="" />
+            <p>点击高亮控件即可推进演示。键盘可使用 ← 和 → 切换场景。</p>
+          </div>
+        </aside>
+
+        <section class="stage" aria-live="polite">
+          <div class="stage-heading">
+            <div>
+              <span class="eyebrow" id="scene-kicker">移动端 · 首次进入</span>
+              <h1 id="scene-title">欢迎与登录</h1>
+            </div>
+            <div class="stage-status">
+              <span id="scene-progress-text">01 / 08</span>
+              <span class="state-pill" id="scene-state">未登录</span>
+            </div>
+          </div>
+          <div class="device-stage" id="device-stage"></div>
+        </section>
+
+        <aside class="inspector" id="inspector" aria-label="场景说明">
+          <div class="inspector-header">
+            <span class="eyebrow">本场景说明</span>
+            <button class="icon-button mobile-only" type="button" data-action="toggle-inspector" aria-label="关闭场景说明" title="关闭">
+              <img src="./assets/icons/x.svg" alt="" />
+            </button>
+          </div>
+          <div id="inspector-content"></div>
+        </aside>
+      </main>
+
+      <footer class="bottombar">
+        <button class="nav-button" type="button" data-action="previous">
+          <img src="./assets/icons/chevron-left.svg" alt="" />
+          上一个场景
+        </button>
+        <div class="progress-track" aria-hidden="true"><span id="progress-bar"></span></div>
+        <button class="nav-button primary" type="button" data-action="next">
+          下一个场景
+          <img src="./assets/icons/chevron-right.svg" alt="" />
+        </button>
+      </footer>
+    </div>
+
+    <div class="toast-region" aria-live="polite" aria-atomic="true" id="toast-region"></div>
+    <div class="modal-layer" id="modal-layer" hidden></div>
+    <script src="./app.js"></script>
+  </body>
+</html>
