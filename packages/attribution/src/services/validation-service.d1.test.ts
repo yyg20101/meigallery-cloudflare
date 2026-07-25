@@ -34,6 +34,7 @@ import {
   prepareCandidateValidation,
   readCandidateDeliveryState,
   startCandidateValidation,
+  startCurrentCandidateValidation,
   verifyCandidateBrowserPairing,
   type CandidateValidationEnvironment,
 } from './validation-service'
@@ -44,6 +45,7 @@ const MIGRATIONS = [
   '../../migrations/0003_queue_runtime.sql',
   '../../migrations/0004_runtime_state.sql',
   '../../migrations/0006_runtime_owner_epoch.sql',
+  '../../migrations/0007_validation_idempotency.sql',
 ].map(path => readFileSync(new URL(path, import.meta.url), 'utf8'))
 const NOW = new Date('2026-07-24T08:00:00.000Z')
 const CREDENTIAL_KEYS = {
@@ -266,6 +268,103 @@ describe('候选版本全链路验证', () => {
     expect(await scalar(
       'SELECT COUNT(*) AS value FROM attribution_validations',
     )).toBe(1)
+    const persisted = await db.prepare(`
+      SELECT idempotency_key, request_hash
+      FROM attribution_validations
+      LIMIT 1
+    `).first<{
+      idempotency_key: string
+      request_hash: string
+    }>()
+    expect(persisted?.idempotency_key).toMatch(
+      /^candidate-validation:[a-f0-9]{64}$/,
+    )
+    expect(persisted?.request_hash).toMatch(/^[a-f0-9]{64}$/)
+    expect(JSON.stringify(persisted)).not.toContain(TEST_CODE)
+
+    await expect(startCandidateValidation(environment, {
+      ...input,
+      testEventCode: 'TEST67890',
+    })).rejects.toThrow(
+      'ATTRIBUTION_VALIDATION_IDEMPOTENCY_CONFLICT',
+    )
+  })
+
+  it('不同幂等键不能接管已经运行的候选验证', async () => {
+    const { candidateId } = await seedConnection()
+    const environment = validationEnvironment(adapter())
+    const input = {
+      connectionId: 'conn_meta',
+      candidateId,
+      actorId: 1,
+      testEventCode: TEST_CODE,
+    }
+
+    await startCandidateValidation(environment, {
+      ...input,
+      idempotencyKey: 'validation_operation_one',
+    })
+
+    await expect(startCandidateValidation(environment, {
+      ...input,
+      idempotencyKey: 'validation_operation_two',
+    })).rejects.toThrow(
+      'ATTRIBUTION_VALIDATION_IDEMPOTENCY_CONFLICT',
+    )
+    expect(await scalar(
+      'SELECT COUNT(*) AS value FROM attribution_validations',
+    )).toBe(1)
+  })
+
+  it('相同调用键在不同连接下保持独立幂等命名空间', async () => {
+    await seedConnection()
+    const commands = createAttributionConnectionCommands({
+      db,
+      credentialKeys: CREDENTIAL_KEYS,
+      now: () => NOW,
+      idFactory: prefix => `${prefix}_second_${++idSequence}`,
+    })
+    await commands.createConnection({
+      id: 'conn_meta_second',
+      provider: 'meta',
+      name: 'Meta validation second',
+      isDefault: false,
+      idempotencyKey: 'create_conn_meta_second',
+      actorId: 1,
+    })
+    await commands.createCandidate({
+      ...candidate('pixel-second', 'candidate_second'),
+      connectionId: 'conn_meta_second',
+    })
+    const environment = validationEnvironment(adapter())
+    const sharedInput = {
+      actorId: 1,
+      testEventCode: TEST_CODE,
+      idempotencyKey: 'shared_validation_operation',
+    }
+
+    const first = await startCurrentCandidateValidation(environment, {
+      ...sharedInput,
+      connectionId: 'conn_meta',
+    })
+    const second = await startCurrentCandidateValidation(environment, {
+      ...sharedInput,
+      connectionId: 'conn_meta_second',
+    })
+
+    expect(first.validationId).not.toBe(second.validationId)
+    const keys = await db.prepare(`
+      SELECT idempotency_key
+      FROM attribution_validations
+      ORDER BY idempotency_key
+    `).all<{ idempotency_key: string }>()
+    expect(keys.results).toHaveLength(2)
+    expect(new Set(keys.results.map(row => row.idempotency_key)).size)
+      .toBe(2)
+    expect(keys.results.every(row =>
+      /^candidate-validation:[a-f0-9]{64}$/.test(
+        row.idempotency_key,
+      ))).toBe(true)
   })
 
   it('Workflow 重放复用稳定事实且不会重复发送 Queue', async () => {

@@ -23,6 +23,7 @@ import {
 } from './admin-operations'
 import {
   listAdminAttributionVerifications,
+  readAdminAttributionVerificationByIdempotencyKey,
 } from './admin-verifications'
 
 const MIGRATION = [
@@ -32,6 +33,7 @@ const MIGRATION = [
   '../../migrations/0004_runtime_state.sql',
   '../../migrations/0005_migration_history.sql',
   '../../migrations/0006_runtime_owner_epoch.sql',
+  '../../migrations/0007_validation_idempotency.sql',
 ].map(path => readFileSync(
   new URL(path, import.meta.url),
   'utf8',
@@ -336,7 +338,9 @@ describe('管理员归因运营读模型', () => {
         failure_code,
         started_at,
         completed_at,
-        created_at
+        created_at,
+        idempotency_key,
+        request_hash
       ) VALUES (
         'validation_internal_secret',
         'version_meta_candidate',
@@ -346,7 +350,9 @@ describe('管理员归因运营读模型', () => {
         '',
         '2026-07-24T01:01:00.000Z',
         '2026-07-24T01:03:00.000Z',
-        '2026-07-24T01:00:00.000Z'
+        '2026-07-24T01:00:00.000Z',
+        'candidate-validation:operation-key',
+        '${'a'.repeat(64)}'
       )
     `).run()
 
@@ -369,6 +375,18 @@ describe('管理员归因运营读模型', () => {
     }])
     expect(JSON.stringify(rows)).not.toContain('validation_internal_secret')
     expect(JSON.stringify(rows)).not.toContain('secret-a')
+    await expect(
+      readAdminAttributionVerificationByIdempotencyKey(db, {
+        connectionId: 'connection_meta_us',
+        idempotencyKey: 'candidate-validation:operation-key',
+      }),
+    ).resolves.toEqual(rows[0])
+    await expect(
+      readAdminAttributionVerificationByIdempotencyKey(db, {
+        connectionId: 'connection_meta_us',
+        idempotencyKey: 'candidate-validation:missing',
+      }),
+    ).resolves.toBeNull()
   })
 
   it('审计日志不返回内部命令详情和身份材料', async () => {

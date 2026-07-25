@@ -1,12 +1,20 @@
 #!/usr/bin/env node
 
 import { pathToFileURL } from 'node:url'
+import {
+  normalizeOwnerSession,
+  readHiddenOwnerSession,
+} from './lib/owner-session.mjs'
 
 const DEFAULT_API_URL = 'https://api.616618.xyz'
 const DEFAULT_RUN_ID = 'migration-production-v1'
-const SESSION_PATTERN = /^[a-f0-9]{64}$/
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9:_-]{1,160}$/
 const MAX_RESPONSE_BYTES = 64 * 1024
+
+export {
+  normalizeOwnerSession,
+  readHiddenOwnerSession,
+}
 
 export function parseMigrationArgs(argv) {
   const input = argv[0] === '--' ? argv.slice(1) : [...argv]
@@ -50,21 +58,6 @@ export function parseMigrationArgs(argv) {
     phase: options.phase,
     initialRunId: options.initialRunId,
   }
-}
-
-export function normalizeOwnerSession(value) {
-  const input = String(value ?? '').trim()
-  const token = input.includes('=')
-    ? input
-      .split(';')
-      .map(item => item.trim())
-      .find(item => item.startsWith('mei_session='))
-      ?.slice('mei_session='.length)
-    : input
-  if (!token || !SESSION_PATTERN.test(token)) {
-    throw new Error('ATTRIBUTION_MIGRATION_ADMIN_SESSION_INVALID')
-  }
-  return `mei_session=${token}`
 }
 
 export async function runAttributionMigration(options = {}) {
@@ -117,51 +110,6 @@ export async function runAttributionMigration(options = {}) {
     counts: result.counts,
   }))
   return result
-}
-
-export async function readHiddenOwnerSession() {
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    throw new Error('ATTRIBUTION_MIGRATION_ADMIN_SESSION_REQUIRED')
-  }
-  process.stdout.write('请输入 Owner 会话 token（输入不会显示）: ')
-  return new Promise((resolve, reject) => {
-    const stdin = process.stdin
-    const originalRawMode = stdin.isRaw
-    let value = ''
-
-    const cleanup = () => {
-      stdin.off('data', onData)
-      stdin.setRawMode(Boolean(originalRawMode))
-      stdin.pause()
-      process.stdout.write('\n')
-    }
-    const onData = (chunk) => {
-      for (const character of String(chunk)) {
-        if (character === '\u0003') {
-          cleanup()
-          reject(new Error('ATTRIBUTION_MIGRATION_CANCELLED'))
-          return
-        }
-        if (character === '\r' || character === '\n') {
-          cleanup()
-          resolve(value)
-          return
-        }
-        if (character === '\u007f' || character === '\b') {
-          value = value.slice(0, -1)
-          continue
-        }
-        if (character >= ' ' && value.length < 8_192) {
-          value += character
-        }
-      }
-    }
-
-    stdin.setEncoding('utf8')
-    stdin.setRawMode(true)
-    stdin.resume()
-    stdin.on('data', onData)
-  })
 }
 
 async function readBoundedJson(response) {

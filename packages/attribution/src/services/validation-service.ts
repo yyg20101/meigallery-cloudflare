@@ -11,6 +11,7 @@ import type {
   AttributionAppEnvironment,
   CandidateValidationWorkflowPayload,
 } from '../env'
+import { sha256Hex } from '../security/digest'
 import {
   openAttributionData,
   sealAttributionData,
@@ -53,11 +54,25 @@ export interface StartCandidateValidationInput {
   candidateId: string
   actorId: number
   testEventCode?: string
+  idempotencyKey?: string
+}
+
+export interface StartCurrentCandidateValidationInput {
+  connectionId: string
+  actorId: number
+  testEventCode?: string
+  idempotencyKey: string
 }
 
 export interface CandidateValidationStart {
   validationId: string
+  status: 'queued' | 'running' | 'verified' | 'failed' | 'timed_out'
+}
+
+interface LiveCandidateValidationStart {
+  validationId: string
   status: 'queued' | 'running'
+  requestHash: string
 }
 
 export interface CandidateDeliveryState {
@@ -155,13 +170,37 @@ export async function startCandidateValidation(
   if (testEventCode === null) {
     throw new Error('ATTRIBUTION_VALIDATION_TEST_CODE_INVALID')
   }
+  const idempotencyKey = input.idempotencyKey
+    ?? `candidate-validation:${await sha256Hex(input.candidateId)}`
+  identifier(idempotencyKey)
+  const requestHash = await candidateValidationRequestHash({
+    connectionId: input.connectionId,
+    candidateId: input.candidateId,
+    provider: candidate.provider,
+    testEventCode,
+  })
   const now = trustedNow(environment.now)
 
-  const existing = await readLiveValidation(
+  const idempotent = await readValidationByIdempotencyKey(
     environment.db,
-    input.candidateId,
+    idempotencyKey,
   )
-  if (existing) {
+  if (idempotent) {
+    if (
+      idempotent.candidateId !== input.candidateId
+      || idempotent.requestHash !== requestHash
+    ) {
+      throw new Error('ATTRIBUTION_VALIDATION_IDEMPOTENCY_CONFLICT')
+    }
+    if (
+      idempotent.status !== 'queued'
+      && idempotent.status !== 'running'
+    ) {
+      return {
+        validationId: idempotent.validationId,
+        status: idempotent.status,
+      }
+    }
     if (
       candidate.status !== 'candidate'
       && candidate.status !== 'validating'
@@ -171,11 +210,19 @@ export async function startCandidateValidation(
     return resumeCandidateValidation(
       environment,
       input,
-      existing,
+      {
+        validationId: idempotent.validationId,
+        status: idempotent.status,
+        requestHash: idempotent.requestHash,
+      },
       now,
       true,
       false,
     )
+  }
+
+  if (await hasLiveValidation(environment.db, input.candidateId)) {
+    throw new Error('ATTRIBUTION_VALIDATION_IDEMPOTENCY_CONFLICT')
   }
   if (candidate.status !== 'candidate') {
     throw new Error('ATTRIBUTION_VALIDATION_CANDIDATE_INVALID')
@@ -199,13 +246,16 @@ export async function startCandidateValidation(
     environment.db.prepare(`
       INSERT INTO attribution_validations (
         id, candidate_version_id, provider, status,
-        evidence_json, failure_code, created_at
-      ) VALUES (?, ?, ?, 'queued', '{}', '', ?)
+        evidence_json, failure_code, created_at,
+        idempotency_key, request_hash
+      ) VALUES (?, ?, ?, 'queued', '{}', '', ?, ?, ?)
     `).bind(
       validationId,
       input.candidateId,
       candidate.provider,
       now.toISOString(),
+      idempotencyKey,
+      requestHash,
     ),
   ]
   if (secretEnvelope) {
@@ -226,53 +276,99 @@ export async function startCandidateValidation(
   try {
     results = await environment.db.batch(statements)
   } catch {
-    const raced = await readLiveValidation(
-      environment.db,
-      input.candidateId,
+    const raced = await recoverRacedValidation(
+      environment,
+      input,
+      idempotencyKey,
+      requestHash,
+      now,
     )
-    if (raced) {
-      return resumeCandidateValidation(
-        environment,
-        input,
-        raced,
-        now,
-        true,
-        false,
-      )
-    }
+    if (raced) return raced
     throw new Error('ATTRIBUTION_VALIDATION_PERSIST_FAILED')
   }
   if (results.some(result => Number(result.meta.changes ?? 0) !== 1)) {
-    const raced = await readLiveValidation(
-      environment.db,
-      input.candidateId,
+    const raced = await recoverRacedValidation(
+      environment,
+      input,
+      idempotencyKey,
+      requestHash,
+      now,
     )
-    if (raced) {
-      return resumeCandidateValidation(
-        environment,
-        input,
-        raced,
-        now,
-        true,
-        false,
-      )
-    }
+    if (raced) return raced
     throw new Error('ATTRIBUTION_VALIDATION_PERSIST_FAILED')
   }
   return resumeCandidateValidation(
     environment,
     input,
-    { validationId, status: 'queued' },
+    { validationId, status: 'queued', requestHash },
     now,
     false,
     true,
   )
 }
 
+export async function startCurrentCandidateValidation(
+  environment: CandidateValidationEnvironment,
+  input: StartCurrentCandidateValidationInput,
+): Promise<CandidateValidationStart> {
+  identifier(input.connectionId)
+  identifier(input.idempotencyKey)
+  positiveInteger(input.actorId)
+  const idempotencyKey =
+    await currentCandidateValidationIdempotencyKey(
+      input.connectionId,
+      input.idempotencyKey,
+    )
+
+  const replay = await readConnectionValidationByIdempotencyKey(
+    environment.db,
+    input.connectionId,
+    idempotencyKey,
+  )
+  if (replay) {
+    return startCandidateValidation(environment, {
+      ...input,
+      candidateId: replay.candidateId,
+      idempotencyKey,
+    })
+  }
+
+  const candidate = await environment.db.prepare(`
+    SELECT id
+    FROM attribution_connection_versions
+    WHERE connection_id = ?
+      AND status IN ('candidate','validating')
+    ORDER BY created_at DESC, id DESC
+    LIMIT 1
+  `).bind(input.connectionId).first<{ id: string }>()
+  if (!candidate) {
+    throw new Error('ATTRIBUTION_VALIDATION_CANDIDATE_INVALID')
+  }
+  return startCandidateValidation(environment, {
+    ...input,
+    candidateId: identifier(candidate.id),
+    idempotencyKey,
+  })
+}
+
+export async function currentCandidateValidationIdempotencyKey(
+  connectionId: string,
+  idempotencyKey: string,
+): Promise<string> {
+  identifier(connectionId)
+  identifier(idempotencyKey)
+  return `candidate-validation:${await sha256Hex(JSON.stringify([
+    'current-candidate-validation',
+    1,
+    connectionId,
+    idempotencyKey,
+  ]))}`
+}
+
 async function resumeCandidateValidation(
   environment: CandidateValidationEnvironment,
   input: StartCandidateValidationInput,
-  validation: CandidateValidationStart,
+  validation: LiveCandidateValidationStart,
   now: Date,
   tolerateExistingWorkflow: boolean,
   abandonOnTransitionFailure: boolean,
@@ -779,22 +875,113 @@ async function readCandidateForStart(
   }
 }
 
-async function readLiveValidation(
+async function hasLiveValidation(
   db: D1Database,
   candidateId: string,
-): Promise<CandidateValidationStart | null> {
+): Promise<boolean> {
   const row = await db.prepare(`
-    SELECT id, status
+    SELECT 1 AS present
     FROM attribution_validations
     WHERE candidate_version_id = ?
       AND status IN ('queued','running')
     LIMIT 1
-  `).bind(candidateId).first<{
+  `).bind(candidateId).first<{ present: number }>()
+  return row?.present === 1
+}
+
+async function recoverRacedValidation(
+  environment: CandidateValidationEnvironment,
+  input: StartCandidateValidationInput,
+  idempotencyKey: string,
+  requestHash: string,
+  now: Date,
+): Promise<CandidateValidationStart | null> {
+  const idempotent = await readValidationByIdempotencyKey(
+    environment.db,
+    idempotencyKey,
+  )
+  if (idempotent) {
+    if (
+      idempotent.candidateId !== input.candidateId
+      || idempotent.requestHash !== requestHash
+    ) {
+      throw new Error('ATTRIBUTION_VALIDATION_IDEMPOTENCY_CONFLICT')
+    }
+    if (
+      idempotent.status !== 'queued'
+      && idempotent.status !== 'running'
+    ) {
+      return {
+        validationId: idempotent.validationId,
+        status: idempotent.status,
+      }
+    }
+    return resumeCandidateValidation(
+      environment,
+      input,
+      {
+        validationId: idempotent.validationId,
+        status: idempotent.status,
+        requestHash: idempotent.requestHash,
+      },
+      now,
+      true,
+      false,
+    )
+  }
+  if (await hasLiveValidation(environment.db, input.candidateId)) {
+    throw new Error('ATTRIBUTION_VALIDATION_IDEMPOTENCY_CONFLICT')
+  }
+  return null
+}
+
+async function readValidationByIdempotencyKey(
+  db: D1Database,
+  idempotencyKey: string,
+): Promise<{
+  validationId: string
+  candidateId: string
+  status: CandidateValidationStart['status']
+  requestHash: string
+} | null> {
+  const row = await db.prepare(`
+    SELECT id, candidate_version_id, status, request_hash
+    FROM attribution_validations
+    WHERE idempotency_key = ?
+    LIMIT 1
+  `).bind(idempotencyKey).first<{
     id: string
-    status: 'queued' | 'running'
+    candidate_version_id: string
+    status: CandidateValidationStart['status']
+    request_hash: string
+  }>()
+  if (!row) return null
+  return {
+    validationId: identifier(row.id),
+    candidateId: identifier(row.candidate_version_id),
+    status: validationStatus(row.status),
+    requestHash: digest(row.request_hash),
+  }
+}
+
+async function readConnectionValidationByIdempotencyKey(
+  db: D1Database,
+  connectionId: string,
+  idempotencyKey: string,
+): Promise<{ candidateId: string } | null> {
+  const row = await db.prepare(`
+    SELECT validation.candidate_version_id
+    FROM attribution_validations AS validation
+    INNER JOIN attribution_connection_versions AS version
+      ON version.id = validation.candidate_version_id
+     AND version.connection_id = ?
+    WHERE validation.idempotency_key = ?
+    LIMIT 1
+  `).bind(connectionId, idempotencyKey).first<{
+    candidate_version_id: string
   }>()
   return row
-    ? { validationId: identifier(row.id), status: row.status }
+    ? { candidateId: identifier(row.candidate_version_id) }
     : null
 }
 
@@ -1090,6 +1277,47 @@ function validateStartInput(input: StartCandidateValidationInput): void {
   identifier(input.connectionId)
   identifier(input.candidateId)
   positiveInteger(input.actorId)
+  if (input.idempotencyKey !== undefined) {
+    identifier(input.idempotencyKey)
+  }
+}
+
+async function candidateValidationRequestHash(input: {
+  connectionId: string
+  candidateId: string
+  provider: AttributionProvider
+  testEventCode: string | undefined
+}): Promise<string> {
+  return sha256Hex(JSON.stringify([
+    'candidate-validation-request',
+    1,
+    input.connectionId,
+    input.candidateId,
+    input.provider,
+    input.testEventCode ?? null,
+  ]))
+}
+
+function validationStatus(
+  value: unknown,
+): CandidateValidationStart['status'] {
+  if (
+    value === 'queued'
+    || value === 'running'
+    || value === 'verified'
+    || value === 'failed'
+    || value === 'timed_out'
+  ) {
+    return value
+  }
+  throw new Error('ATTRIBUTION_VALIDATION_STATE_INVALID')
+}
+
+function digest(value: unknown): string {
+  if (typeof value !== 'string' || !/^[a-f0-9]{64}$/.test(value)) {
+    throw new Error('ATTRIBUTION_VALIDATION_REQUEST_HASH_INVALID')
+  }
+  return value
 }
 
 function validationIdFactory(

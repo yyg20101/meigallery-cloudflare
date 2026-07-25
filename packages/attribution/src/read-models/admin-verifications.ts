@@ -38,36 +38,40 @@ interface VerificationRow {
   completed_at: string | null
 }
 
+const VERIFICATION_SELECT = `
+  SELECT
+    validation.provider,
+    connection.id AS connection_id,
+    connection.name AS connection_name,
+    validation.status,
+    validation.failure_code,
+    CASE
+      WHEN json_type(validation.evidence_json, '$.candidate') IS NULL
+      THEN 0 ELSE 1
+    END AS candidate_checked,
+    json_extract(
+      validation.evidence_json,
+      '$.browserPairing.pairedEvents'
+    ) AS paired_event_count,
+    validation.created_at,
+    validation.started_at,
+    validation.completed_at
+  FROM attribution_validations AS validation
+  INNER JOIN attribution_connection_versions AS version
+    ON version.id = validation.candidate_version_id
+   AND version.provider = validation.provider
+  INNER JOIN attribution_connections AS connection
+    ON connection.id = version.connection_id
+   AND connection.provider = validation.provider
+`
+
 export async function listAdminAttributionVerifications(
   db: D1Database,
   input: AdminAttributionVerificationsQuery,
 ): Promise<AdminAttributionVerificationView[]> {
   const query = normalizeQuery(input)
   const rows = await db.prepare(`
-    SELECT
-      validation.provider,
-      connection.id AS connection_id,
-      connection.name AS connection_name,
-      validation.status,
-      validation.failure_code,
-      CASE
-        WHEN json_type(validation.evidence_json, '$.candidate') IS NULL
-        THEN 0 ELSE 1
-      END AS candidate_checked,
-      json_extract(
-        validation.evidence_json,
-        '$.browserPairing.pairedEvents'
-      ) AS paired_event_count,
-      validation.created_at,
-      validation.started_at,
-      validation.completed_at
-    FROM attribution_validations AS validation
-    INNER JOIN attribution_connection_versions AS version
-      ON version.id = validation.candidate_version_id
-     AND version.provider = validation.provider
-    INNER JOIN attribution_connections AS connection
-      ON connection.id = version.connection_id
-     AND connection.provider = validation.provider
+    ${VERIFICATION_SELECT}
     WHERE (? IS NULL OR date(
       datetime(validation.created_at, '+8 hours')
     ) >= ?)
@@ -90,7 +94,31 @@ export async function listAdminAttributionVerifications(
     query.limit,
   ).all<VerificationRow>()
 
-  return rows.results.map(row => ({
+  return rows.results.map(toVerificationView)
+}
+
+export async function readAdminAttributionVerificationByIdempotencyKey(
+  db: D1Database,
+  input: {
+    connectionId: string
+    idempotencyKey: string
+  },
+): Promise<AdminAttributionVerificationView | null> {
+  const connectionId = identifier(input.connectionId)
+  const idempotencyKey = identifier(input.idempotencyKey)
+  const row = await db.prepare(`
+    ${VERIFICATION_SELECT}
+    WHERE connection.id = ?
+      AND validation.idempotency_key = ?
+    LIMIT 1
+  `).bind(connectionId, idempotencyKey).first<VerificationRow>()
+  return row ? toVerificationView(row) : null
+}
+
+function toVerificationView(
+  row: VerificationRow,
+): AdminAttributionVerificationView {
+  return {
     provider: getProviderAdapter(row.provider).provider,
     connectionId: identifier(row.connection_id),
     connectionName: text(row.connection_name),
@@ -103,7 +131,7 @@ export async function listAdminAttributionVerifications(
     completedAt: row.completed_at === null
       ? ''
       : timestamp(row.completed_at),
-  }))
+  }
 }
 
 function normalizeQuery(
