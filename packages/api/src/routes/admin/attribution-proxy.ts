@@ -2,6 +2,7 @@ import { ATTRIBUTION_SERVICE_BINDING } from '@meigallery/shared/constants'
 import { Hono } from 'hono'
 import type { Bindings, Variables } from '../../index'
 import { requireAuth, requireOwner } from '../../middleware/auth'
+import { createAttributionServiceRequest } from '../../services/attribution-service-request'
 import { errorJson } from '../../utils/api-error'
 
 export interface AdminAttributionProxyRouteOptions {
@@ -98,14 +99,16 @@ export function createAdminAttributionProxyRoutes(
     )
 
     try {
-      const upstream = await c.env.ATTRIBUTION.fetch(new Request(target, {
-        method,
-        headers,
-        body,
-        redirect: 'error',
-      }))
+      const upstream = await c.env.ATTRIBUTION.fetch(
+        createAttributionServiceRequest(target, {
+          method,
+          headers,
+          body,
+        }),
+      )
       return sanitizeUpstreamResponse(upstream)
-    } catch {
+    } catch (error) {
+      logUpstreamFailure(error)
       return unavailable(c)
     }
   })
@@ -249,6 +252,12 @@ function unavailable(
 ) {
   return errorJson(c, 503, '归因管理服务暂时不可用', {
     code: 'ATTRIBUTION_ADMIN_PROXY_UNAVAILABLE',
+  })
+}
+
+function logUpstreamFailure(_error: unknown) {
+  console.error('ATTRIBUTION_ADMIN_PROXY_FETCH_FAILED', {
+    category: 'service_binding_fetch_failed',
   })
 }
 

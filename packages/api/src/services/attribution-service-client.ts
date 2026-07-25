@@ -4,6 +4,7 @@ import {
   type AttributionMigrationSnapshotV1,
 } from '@meigallery/shared'
 import { ATTRIBUTION_SERVICE_BINDING } from '@meigallery/shared/constants'
+import { createAttributionServiceRequest } from './attribution-service-request'
 
 const ATTRIBUTION_INTERNAL_ORIGIN =
   ATTRIBUTION_SERVICE_BINDING.INTERNAL_ORIGIN
@@ -164,12 +165,11 @@ export function createAttributionServiceClient(
 ): AttributionServiceClient {
   return {
     async readRuntimeState() {
-      const response = await binding.fetch(new Request(
+      const response = await binding.fetch(createAttributionServiceRequest(
         `${ATTRIBUTION_INTERNAL_ORIGIN}${RUNTIME_STATE_PATH}`,
         {
           method: 'GET',
           headers: { Accept: 'application/json' },
-          redirect: 'error',
         },
       ))
       if (!response.ok) {
@@ -190,7 +190,7 @@ export function createAttributionServiceClient(
 
     async transitionRuntimeState(input) {
       const normalized = normalizeRuntimeTransitionInput(input)
-      const response = await binding.fetch(new Request(
+      const response = await binding.fetch(createAttributionServiceRequest(
         `${ATTRIBUTION_INTERNAL_ORIGIN}${RUNTIME_TRANSITION_PATH}`,
         {
           method: 'POST',
@@ -205,7 +205,6 @@ export function createAttributionServiceClient(
             sourceOwnerEpoch: normalized.sourceOwnerEpoch,
             reason: normalized.reason,
           }),
-          redirect: 'error',
         },
       ))
       if (!response.ok) {
@@ -229,7 +228,7 @@ export function createAttributionServiceClient(
 
     async resolvePrivacyDecision(input) {
       const normalized = normalizePrivacyDecisionInput(input)
-      const response = await binding.fetch(new Request(
+      const response = await binding.fetch(createAttributionServiceRequest(
         `${ATTRIBUTION_INTERNAL_ORIGIN}${PRIVACY_DECISION_PATH}`,
         {
           method: 'POST',
@@ -238,7 +237,6 @@ export function createAttributionServiceClient(
             Accept: 'application/json',
           },
           body: JSON.stringify(normalized),
-          redirect: 'error',
         },
       ))
       if (!response.ok) {
@@ -268,7 +266,7 @@ export function createAttributionServiceClient(
         )
       }
 
-      const response = await binding.fetch(new Request(
+      const response = await binding.fetch(createAttributionServiceRequest(
         `${ATTRIBUTION_INTERNAL_ORIGIN}${REGISTRATION_EVENTS_PATH}`,
         {
           method: 'POST',
@@ -278,7 +276,6 @@ export function createAttributionServiceClient(
             ...runtimeWriteHeaders(ownership),
           },
           body: JSON.stringify(input),
-          redirect: 'error',
         },
       ))
       if (!response.ok) {
@@ -312,7 +309,7 @@ export function createAttributionServiceClient(
           'ATTRIBUTION_CONTACT_EVENT_INVALID',
         )
       }
-      const response = await binding.fetch(new Request(
+      const response = await binding.fetch(createAttributionServiceRequest(
         `${ATTRIBUTION_INTERNAL_ORIGIN}${CONTACT_EVENTS_PATH}`,
         {
           method: 'POST',
@@ -322,7 +319,6 @@ export function createAttributionServiceClient(
             ...runtimeWriteHeaders(ownership),
           },
           body: JSON.stringify(input),
-          redirect: 'error',
         },
       ))
       if (!response.ok) {
@@ -346,7 +342,7 @@ export function createAttributionServiceClient(
 
     async translateLegacyContext(input) {
       const normalized = normalizeLegacyContextInput(input)
-      const response = await binding.fetch(new Request(
+      const response = await binding.fetch(createAttributionServiceRequest(
         `${ATTRIBUTION_INTERNAL_ORIGIN}${LEGACY_CONTEXT_PATH}`,
         {
           method: 'POST',
@@ -355,7 +351,6 @@ export function createAttributionServiceClient(
             Accept: 'application/json',
           },
           body: JSON.stringify(normalized),
-          redirect: 'error',
         },
       ))
       if (!response.ok) {
@@ -387,7 +382,7 @@ export function createAttributionServiceClient(
       }
 
       const eventId = encodeURIComponent(input.eventId)
-      const response = await binding.fetch(new Request(
+      const response = await binding.fetch(createAttributionServiceRequest(
         `${ATTRIBUTION_INTERNAL_ORIGIN}${BROWSER_INSTRUCTION_PATH_PREFIX}${eventId}/browser-instruction`,
         {
           method: 'GET',
@@ -395,7 +390,6 @@ export function createAttributionServiceClient(
             Accept: 'application/json',
             ...runtimeWriteHeaders(ownership),
           },
-          redirect: 'error',
         },
       ))
       if (!response.ok) {
@@ -421,7 +415,7 @@ export function createAttributionServiceClient(
 
     async getSignedContactCapabilities(input) {
       const contacts = normalizeContactCapabilityInput(input)
-      const response = await binding.fetch(new Request(
+      const response = await binding.fetch(createAttributionServiceRequest(
         `${ATTRIBUTION_INTERNAL_ORIGIN}${CONTACT_CAPABILITIES_PATH}`,
         {
           method: 'POST',
@@ -430,7 +424,6 @@ export function createAttributionServiceClient(
             Accept: 'application/json',
           },
           body: JSON.stringify({ contacts }),
-          redirect: 'error',
         },
       ))
       if (!response.ok) {
@@ -462,14 +455,13 @@ export function createAttributionMigrationClient(
   return {
     async readImportResult(input) {
       const identity = normalizeMigrationIdentity(input)
-      return binding.fetch(new Request(
+      return binding.fetch(createAttributionServiceRequest(
         `${ATTRIBUTION_SERVICE_BINDING.INTERNAL_ORIGIN}`
           + `${ATTRIBUTION_SERVICE_BINDING.MIGRATION_PATH_PREFIX}`
           + `/imports/${encodeURIComponent(identity.runId)}`,
         {
           method: 'GET',
           headers: migrationHeaders(identity),
-          redirect: 'error',
         },
       ))
     },
@@ -481,7 +473,7 @@ export function createAttributionMigrationClient(
           'ATTRIBUTION_MIGRATION_INPUT_INVALID',
         )
       }
-      return binding.fetch(new Request(
+      return binding.fetch(createAttributionServiceRequest(
         `${ATTRIBUTION_SERVICE_BINDING.INTERNAL_ORIGIN}`
           + `${ATTRIBUTION_SERVICE_BINDING.MIGRATION_PATH_PREFIX}/import`,
         {
@@ -495,7 +487,6 @@ export function createAttributionMigrationClient(
             runId: identity.runId,
             snapshot: input.snapshot,
           }),
-          redirect: 'error',
         },
       ))
     },
