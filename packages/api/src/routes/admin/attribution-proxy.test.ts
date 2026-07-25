@@ -217,6 +217,7 @@ describe('归因管理 Service Binding 代理', () => {
     )
 
     expect(response.status).toBe(200)
+    expect(fetch.mock.calls[0]?.[0].redirect).toBe('manual')
     expect(response.headers.get('Content-Type')).toContain(
       'application/json',
     )
@@ -226,6 +227,7 @@ describe('归因管理 Service Binding 代理', () => {
   })
 
   it('Service Binding 异常时只返回稳定错误，不泄漏异常详情', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
     const fetch = vi.fn(async () => {
       throw new Error('private binding and credential detail')
     })
@@ -245,6 +247,15 @@ describe('归因管理 Service Binding 代理', () => {
       code: 'ATTRIBUTION_ADMIN_PROXY_UNAVAILABLE',
     })
     expect(text).not.toContain('private binding')
+    expect(log).toHaveBeenCalledWith(
+      'ATTRIBUTION_ADMIN_PROXY_FETCH_FAILED',
+      {
+        category: 'service_binding_fetch_failed',
+      },
+    )
+    expect(JSON.stringify(log.mock.calls))
+      .not.toContain('private binding and credential detail')
+    log.mockRestore()
   })
 })
 
