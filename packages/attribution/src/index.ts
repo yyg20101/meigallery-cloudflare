@@ -16,7 +16,10 @@ import {
 import { browserAttributionRoutes } from './routes/browser'
 import { internalRoutes } from './routes/internal'
 import { createAttributionMigrationRoutes } from './routes/migration'
-import { runAttributionMaintenance } from './scheduled'
+import {
+  maintenanceTaskForScheduledTime,
+  runAttributionMaintenance,
+} from './scheduled'
 import { consumeAttributionQueue } from './services/queue-consumer'
 import {
   readAttributionRuntimeState,
@@ -177,14 +180,13 @@ async function runScheduledMaintenance(
   } catch {
     return
   }
-  const task = controller.cron === '17 3 * * *'
-    ? 'daily'
-    : 'interval'
   await runAttributionMaintenance({
     db: env.DB,
     queues: parsed.queues,
     credentialMasterKeys: parsed.credentialMasterKeys,
-  }, new Date(controller.scheduledTime), task)
+  }, new Date(controller.scheduledTime), maintenanceTaskForScheduledTime(
+    controller.scheduledTime,
+  ))
 }
 
 function applyRuntimeGateCors(

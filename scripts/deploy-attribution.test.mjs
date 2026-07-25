@@ -77,7 +77,7 @@ test('根命令显式区分归因构建、测试和部署', async () => {
   )
 })
 
-test('生产启用凭证维护 Cron，dev 明确禁用', async () => {
+test('production 复用单个维护 Cron，dev 明确禁用', async () => {
   const source = await readFile(
     new URL('packages/attribution/wrangler.toml', ROOT_URL),
     'utf8',
@@ -87,11 +87,11 @@ test('生产启用凭证维护 Cron，dev 明确禁用', async () => {
 
   assert.match(
     productionTriggers,
-    /crons\s*=\s*\[[^\]]*"\*\/15 \* \* \* \*"[^\]]*\]/,
+    /crons\s*=\s*\[\s*"\*\/15 \* \* \* \*"\s*\]/,
   )
-  assert.match(
+  assert.doesNotMatch(
     productionTriggers,
-    /crons\s*=\s*\[[^\]]*"17 3 \* \* \*"[^\]]*\]/,
+    /17 3 \* \* \*/,
   )
   assert.match(devTriggers, /crons\s*=\s*\[\s*\]/)
 })

@@ -42,6 +42,19 @@ export interface AttributionMaintenanceResult {
   failures: string[]
 }
 
+export function maintenanceTaskForScheduledTime(
+  scheduledTime: number,
+): AttributionMaintenanceTask {
+  const scheduledAt = new Date(scheduledTime)
+  if (!Number.isFinite(scheduledAt.getTime())) {
+    throw new Error('ATTRIBUTION_MAINTENANCE_SCHEDULED_TIME_INVALID')
+  }
+  return scheduledAt.getUTCHours() === 3
+    && scheduledAt.getUTCMinutes() === 15
+    ? 'all'
+    : 'interval'
+}
+
 export async function runAttributionMaintenance(
   environment: AttributionMaintenanceEnvironment,
   now: Date,
