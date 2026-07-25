@@ -64,6 +64,7 @@ import {
 } from '../services/runtime-state'
 import {
   startCandidateValidation,
+  startCurrentCandidateValidation,
 } from '../services/validation-service'
 
 export interface AdminAttributionActor {
@@ -106,6 +107,10 @@ interface CreateCandidateRequest {
     plaintext: string
   }
   eventBindings: AttributionCandidateBindingInput[]
+  testEventCode?: string
+}
+
+interface StartCandidateValidationRequest {
   testEventCode?: string
 }
 
@@ -282,6 +287,8 @@ export function createAdminAttributionRoutes(
         candidateId: candidate.id,
         actorId: actor.actorId,
         testEventCode: input.testEventCode,
+        idempotencyKey:
+          `candidate-validation:${await sha256Hex(idempotencyKey)}`,
       })
     }
 
@@ -296,6 +303,35 @@ export function createAdminAttributionRoutes(
       c.req.param('id'),
     )
     return c.json({ data: view.candidate })
+  })
+
+  routes.post('/connections/:id/candidate/validation', async (c) => {
+    const idempotencyKey = requireIdempotencyKey(c.req.raw)
+    const input = parseCandidateValidationRequest(
+      await readJson(c.req.raw),
+    )
+    const connectionId = identifier(c.req.param('id'))
+    const actor = c.get('adminAttributionActor')
+    const runtime = c.get('attributionEnvironment')
+    await startCurrentCandidateValidation({
+      db: c.env.DB,
+      appEnvironment: runtime.appEnvironment,
+      credentialMasterKeys: runtime.credentialMasterKeys,
+      dataEncryptionKeys: runtime.dataEncryptionKeys,
+      signingKeys: runtime.signingKeys,
+      queues: runtime.queues,
+      workflow: runtime.validationWorkflow,
+      adapterFor: options.adapterFor,
+      now,
+    }, {
+      connectionId,
+      actorId: actor.actorId,
+      testEventCode: input.testEventCode,
+      idempotencyKey,
+    })
+    return c.json({
+      data: await requireConnectionView(c.env.DB, connectionId),
+    })
   })
 
   routes.patch('/connections/:id/runtime-policy', async (c) => {
@@ -633,6 +669,15 @@ function parseCreateCandidateRequest(
     result.testEventCode = text(input.testEventCode, 256)
   }
   return result
+}
+
+function parseCandidateValidationRequest(
+  value: unknown,
+): StartCandidateValidationRequest {
+  const input = exactRecord(value, ['testEventCode'])
+  return input.testEventCode === undefined
+    ? {}
+    : { testEventCode: text(input.testEventCode, 256) }
 }
 
 function parseRuntimePolicyRequest(
@@ -992,6 +1037,16 @@ function errorResponse(error: unknown): {
         status: 409,
         code: error.message,
         message: '当前状态不允许启动候选验证',
+      }
+    }
+    if (
+      error.message
+      === 'ATTRIBUTION_VALIDATION_IDEMPOTENCY_CONFLICT'
+    ) {
+      return {
+        status: 409,
+        code: error.message,
+        message: '候选验证幂等键已用于其他请求',
       }
     }
   }

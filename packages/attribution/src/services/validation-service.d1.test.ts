@@ -44,6 +44,7 @@ const MIGRATIONS = [
   '../../migrations/0003_queue_runtime.sql',
   '../../migrations/0004_runtime_state.sql',
   '../../migrations/0006_runtime_owner_epoch.sql',
+  '../../migrations/0007_validation_idempotency.sql',
 ].map(path => readFileSync(new URL(path, import.meta.url), 'utf8'))
 const NOW = new Date('2026-07-24T08:00:00.000Z')
 const CREDENTIAL_KEYS = {
@@ -266,6 +267,26 @@ describe('候选版本全链路验证', () => {
     expect(await scalar(
       'SELECT COUNT(*) AS value FROM attribution_validations',
     )).toBe(1)
+    const persisted = await db.prepare(`
+      SELECT idempotency_key, request_hash
+      FROM attribution_validations
+      LIMIT 1
+    `).first<{
+      idempotency_key: string
+      request_hash: string
+    }>()
+    expect(persisted?.idempotency_key).toMatch(
+      /^candidate-validation:[a-f0-9]{64}$/,
+    )
+    expect(persisted?.request_hash).toMatch(/^[a-f0-9]{64}$/)
+    expect(JSON.stringify(persisted)).not.toContain(TEST_CODE)
+
+    await expect(startCandidateValidation(environment, {
+      ...input,
+      testEventCode: 'TEST67890',
+    })).rejects.toThrow(
+      'ATTRIBUTION_VALIDATION_IDEMPOTENCY_CONFLICT',
+    )
   })
 
   it('Workflow 重放复用稳定事实且不会重复发送 Queue', async () => {

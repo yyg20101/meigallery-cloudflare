@@ -192,6 +192,30 @@ node scripts/bootstrap-attribution-worker.mjs --apply
 健康检查必须返回 `status=ok` 与 `shadow|bridge|active` 中的数据库运行模式。部署脚本
 只发布代码，不自动改变模式，不读取 Git commit、revision 或部署 ID 来决定归因是否运行。
 
+生产迁移严格分离只读核验与有状态操作：
+
+```bash
+node scripts/verify-attribution-cutover.mjs preflight
+node scripts/migrate-attribution-runtime.mjs --phase initial
+node scripts/operate-attribution-cutover.mjs synthetic \
+  --run-id cutover-production-v1
+node scripts/migrate-attribution-runtime.mjs \
+  --phase reconcile \
+  --initial-run-id migration-production-v1 \
+  --run-id migration-production-reconcile-v1
+node scripts/verify-attribution-cutover.mjs migrated \
+  --run-id migration-production-reconcile-v1
+node scripts/operate-attribution-cutover.mjs activate \
+  --run-id cutover-production-v1
+```
+
+`verify-attribution-cutover.mjs` 只读取两个 D1，不修改运行状态。迁移、候选 synthetic、
+`old -> draining -> new` 切换与显式回滚均通过 Owner-only API 执行，并使用持久化幂等键。
+Owner 会话和 Meta/TikTok Test Event Code 只能在 TTY 中无回显输入，不得通过命令参数、
+环境变量、文件或日志传递。候选验证重复点击只恢复同一次操作；相同幂等键对应不同测试码时
+必须返回冲突。激活命令进入 `draining` 后会在固定超时内自动等待旧工作排空；超时只返回
+阻断，不会跳过对账或强制推进到 `new`。
+
 Free 账户达到 D1 上限时禁止复用主 API D1。只能清理同时满足“已有仓库外备份、无表、
 无近期读写、无 Worker 绑定、无代码引用”的孤立数据库，或升级账户容量；无法证明时
 停止预配。

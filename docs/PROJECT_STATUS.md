@@ -49,7 +49,7 @@
 - 单条事实最多属于一个 provider；跨平台冲突或无可信来源时只保留站内事实，零广告投递。
 - 前端只消费 provider-aware `trackingInstructions`，按唯一 provider adapter 发送 Browser 事件。
 - Owner 在统一后台原子保存 destination、事件映射、加密凭证、模式和开关；明文凭证不回显、不记录。
-- Test Event Code 仅是单次验证参数，不持久化，正式事件不携带测试码。
+- Test Event Code 仅在单次候选验证期间加密暂存，验证终态后立即销毁；不进入业务事实、投递、审计或日志，正式事件不携带测试码。
 - Meta Dataset Quality 由通用 collector 写入 `attribution_quality_snapshots`。
 - Google Data Manager 已实现可信 Consent、`requestId` 接收校验和 `requestStatus.retrieve` 异步诊断；TikTok 质量在后台明确要求 Events Manager 人工证据，不伪造平台质量分。
 - Meta/TikTok Server 投递会在营销授权有效时使用 Cloudflare 可信 IP 与浏览器 User-Agent 提升匹配质量；该组合只进入 24 小时加密 Outbox，不进入事实、分析、日志或 Google 请求。
@@ -67,6 +67,9 @@
 
 ## Production 归因状态
 
+- 2026-07-25 已部署独立 `meigallery-attribution` Worker，Custom Domain 为 `track.616618.xyz`，运行模式保持 `shadow`，尚未接收 production 业务流量。独立 production D1 已应用 `0001` 至 `0006`，三把 Worker Secret、三组平台 Queue/DLQ、候选验证 Workflow 和健康检查均已核验。
+- Attribution Worker 复用单一 `*/15` Cron：常规执行区间维护，UTC 03:15 同轮追加每日维护。Cloudflare Free 账户当前 5 个 Cron 配额全部有明确归属，没有删除或借用其他项目调度。
+- 旧 production D1 已完成仓库外备份，新 Attribution D1 已记录迁移前 Time Travel bookmark。当前仍由旧 API 运行时唯一写入；新 D1 尚未导入连接、来源、历史或活动事实，因此不存在双投递。
 - 最新 production 代码提交为 `e13d7f1276d18937d571d5eab05af8eaeb985e54`，版本标签为 `v0.4.17`；2026-07-24 已同步核对 API/Web release identity、D1 migration、六组广告平台 Queue/DLQ、连接配置、事件绑定、rollout、incident、Outbox、Delivery 和 provider 一致性，全部通过。
 - 本次 production 受控探针使用可信 Meta 来源且落在 Server 10% 分桶外，只生成一条 Contact Browser 指令，未生成 CAPI Delivery；探针事实和回执已清除。历史三条零投递事实均早于 `v0.4.17`，因当时未持久化可匹配 payload，不做不可靠回填。
 - Meta 使用 production 连接并已完成真实 Contact / CompleteRegistration 验证，当前 rollout 以后台实时值为准；最近确认值为 `10%`。
@@ -95,13 +98,14 @@
 
 ## 规划
 
-- 独立 Attribution Worker 阶段 1 已完成：独立 package 与 D1 schema、加密凭证仓库、不可变候选版本、原子激活/回滚、独立运行策略、凭证保留 Cron 和专属部署门禁均已通过测试。production/dev 独立 D1 与三平台 Queue/DLQ 已创建，Worker 尚未部署或切换 production 流量。
+- 独立 Attribution Worker 阶段 1 已完成并以 `shadow` 部署 production：独立 package 与 D1 schema、加密凭证仓库、不可变候选版本、原子激活/回滚、独立运行策略、凭证保留 Cron 和专属部署门禁均已通过测试。production/dev 独立 D1 与三平台 Queue/DLQ 已创建；production 流量尚未切换。
 - 普通根 `deploy` 和 `scripts/deploy.sh` 只部署 API/Web；Attribution Worker 只能通过 `scripts/deploy-attribution.sh` 显式发布，普通业务发布不会改变归因 Active Version、运行策略或凭证。
 - 独立 Attribution Worker 阶段 2 已在本地完成：事件投递 Schema、32 字节 opaque 管理来源 Proof、SHA-256 摘要持久化、严格单连接路由、地区隐私决策、加密 HttpOnly 第一方上下文、由 D1 Active Version 签发的 30 分钟不可变运行租约、24 小时离线补交边界、draining 版本退休、Canonical Fact、业务事件去重、Browser/Server 同 `external_event_id` 配对、唯一稳定 rollout 分桶、加密 outbox、Browser 回执、Meta/TikTok/Google 唯一 Provider Adapter、production/dev 严格分离的三组 Queue/DLQ、D1 恢复、平台回执、Server-only circuit，以及 30 分钟全链路候选自动验证与激活后 smoke 回滚均已完成。API 注册与 `CompleteRegistration` 业务 outbox 已同事务，API 通过唯一 `ATTRIBUTION` Service Binding client 获取权威隐私判定并投递事件；联系方式只向独立 Worker 发送目标摘要并获得最长 24 小时的签名 capability，Binding 故障不影响核心业务响应。Browser SDK、公开路由、三平台唯一 Registry、Contact 与注册签名指令、24 小时有限重试以及 5 场景平台网络隔离门禁已完成；旧 Web Browser Adapter、旧插件、旧浏览器标识工具和旧 E2E API 夹具已删除。Queue 只携带最小定位消息，跨 provider 不一致零平台调用；rollout 降低立即停止未发送 Server Delivery，熔断只暂停 Server 并保留恢复依据。候选测试码仅加密临时保存，不进入业务投递、审计或日志，候选验证失败不改写旧 Active、运行策略或线上熔断。
 - 阶段 2 容量与运维门禁已完成：容量只接受 Cloudflare 账户分析的实际 Workers、D1 和 Queue operations 日快照，不以消息估算或按 provider 重复计算 Free 额度；70% 告警、85% 暂停 synthetic/质量请求、95% 暂停新 Server 入队并保留加密 outbox，Browser 和事实记录持续运行。平台质量信号只写日报，不修改运行策略；15 分钟维护任务按顺序执行版本退休、过期清理、最早 outbox 恢复和凭证保留，单项失败创建 Incident 后继续。最终隔离回归拒绝核心 provider 分支、业务 API import、Git revision/commit 耦合、跨 provider Queue、硬编码 production/dev 域名和按环境选择域名。
 - 独立 Attribution Worker 阶段 3 Task 1-2 已在本地完成：连接、候选、运行策略、Managed Source、质量、Incident 和隐私策略均通过领域命令或脱敏读模型访问；候选保存后自动验证且不向 Web 暴露内部 version/candidate ID；GET 保持纯读取，写命令严格绑定 actor、连接、配置与验证上下文，并覆盖并发重放。主 API 已提供仅 Owner 可访问的 `/api/admin/attribution-runtime/*` 代理，浏览器身份头、Cookie 和 Authorization 不会进入独立 Worker。内部事件和管理路由已迁入 Cloudflare 命名 `AttributionServiceEntrypoint`，默认公网 `fetch` 不再挂载这两组路由，API binding 显式绑定该 entrypoint，且未引入第二套共享认证 secret。尚未重构后台 UI。
-- 独立 Attribution Worker 生产迁移 Task 5 已在本地完成：API D1 使用 `old -> draining -> new` 单写者状态与连续 epoch，Attribution D1 使用 `shadow -> bridge -> active` 并提供显式 `fenced` 回滚；两侧状态只能由 API Owner-only 控制面协调推进，通用后台代理不能绕过。Contact 写入、注册业务 Outbox、旧注册临时 dispatcher、历史补偿、Queue 和 Cron 均按实际 owner/epoch 关闭竞态；每条 Delivery 固化 `runtime_owner_epoch`，Queue 与 Cron 不再设置独立模式门禁，只读取同一个 D1 可投递视图，旧 epoch 不能跨回滚周期复投；进入 `fenced` 时 D1 原子取消未完成 Server Delivery 并删除对应 Outbox。`0002` 历史 Schema 保持不变，`0006` 可直接升级无 epoch 的旧 D1：既有待发送 Server Delivery 进入不可投递的 epoch=1 隔离区并销毁 Outbox，新写入必须显式提供 epoch>=2。重复切换、响应丢失重放和显式回滚都有持久化幂等回执。API 123 个测试文件 1044 条用例、Attribution 46 个测试文件 337 条用例、Shared 16 条用例、两侧类型检查、18 项 SQL/切换核验及 API/Attribution/Web production build 均已通过。
-- 上述独立运行时能力尚未部署或切换 production 流量。迁移协议已收口为“全量匿名历史归档 + 最终水位对账”：旧事实不会进入新活动事实表，初始连接只创建候选且 Server effective 为 0；旧 API 与新 Worker 会独立核对源配置摘要和凭证集合摘要，旧写者排空后再原子替换来源与历史日报。下一步进入 Task 6：先通过 release PR 发布默认 `old + shadow` 的准备版本，再备份两个 production D1、记录 Time Travel bookmark，随后执行初始导入、synthetic 验证、最终对账和原子切换。缺少当日 Cloudflare 账户容量快照时系统保持可用且不伪造容量状态。
+- 独立 Attribution Worker 生产迁移 Task 5 已在本地完成：API D1 使用 `old -> draining -> new` 单写者状态与连续 epoch，Attribution D1 使用 `shadow -> bridge -> active` 并提供显式 `fenced` 回滚；两侧状态只能由 API Owner-only 控制面协调推进，通用后台代理不能绕过。Contact 写入、注册业务 Outbox、旧注册临时 dispatcher、历史补偿、Queue 和 Cron 均按实际 owner/epoch 关闭竞态；每条 Delivery 固化 `runtime_owner_epoch`，Queue 与 Cron 不再设置独立模式门禁，只读取同一个 D1 可投递视图，旧 epoch 不能跨回滚周期复投；进入 `fenced` 时 D1 原子取消未完成 Server Delivery 并删除对应 Outbox。`0002` 历史 Schema 保持不变，`0006` 可直接升级无 epoch 的旧 D1：既有待发送 Server Delivery 进入不可投递的 epoch=1 隔离区并销毁 Outbox，新写入必须显式提供 epoch>=2。重复切换、响应丢失重放和显式回滚都有持久化幂等回执。
+- 候选验证幂等入口与统一 production 操作 CLI 已在本地完成：`0007` 为现有验证补齐不可重放的历史幂等标识和请求摘要，新请求按连接、候选、平台及临时测试码摘要拒绝冲突；重复操作只恢复同一验证，不回显 version、凭证、Owner 会话或测试码。激活命令严格执行 `old -> draining -> new`，进入 draining 后自动等待旧工作排空，超时保持阻断。API 123 个测试文件 1044 条用例、Attribution 46 个测试文件 343 条用例、Web 60 个测试文件 287 条用例、Shared 16 条用例、脚本与历史迁移 157 条用例、全仓 lint/类型检查及 API/Attribution/Web production build 均已通过。
+- 生产准备版本与 `shadow` Worker 已发布，双 D1 备份锚点已建立，尚未切换 production 流量；本轮候选验证与操作 CLI 改动尚未部署。迁移协议已收口为“全量匿名历史归档 + 最终水位对账”：旧事实不会进入新活动事实表，初始连接只创建候选且 Server effective 为 0；旧 API 与新 Worker 会独立核对源配置摘要和凭证集合摘要，旧写者排空后再原子替换来源与历史日报。下一步通过 PR 发布本轮准备版本，再执行初始导入、三平台 synthetic、最终对账及 `old -> draining -> new` 原子切换。缺少当日 Cloudflare 账户容量快照时系统保持可用且不伪造容量状态。
 - TikTok 与 Google 的后续 production 验收纳入独立 Attribution Worker 迁移，不再在旧运行时增加平台专属流程。
 - 广告花费、campaign、ad set、ad 数据导入不属于当前 Pixel/Server API 同步范围。
 - Cloudflare Stream 视频链路和完整 zip 异步导入仍待实现。
