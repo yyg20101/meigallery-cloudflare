@@ -127,7 +127,6 @@ const contactMethods = [
     qrCodeUrl: null,
     sortOrder: 1,
     enabled: true,
-    attributionCapability: 'capability_playwright_contact_1',
   },
 ]
 
@@ -161,14 +160,16 @@ const analyticsBatches = []
 const sessionEndBatches = []
 const registrations = []
 const receiptProtectedRequests = []
+const conversionRequests = []
+const browserAttemptReceipts = []
 let authenticated = true
 let sessionCookieRequired = false
+let marketingConsentState = 'granted'
+let currentAttributionProvider = null
+let currentAttributionResolution = 'none'
 let adminAnalyticsEmpty = false
 const adminAttributionRequests = []
-const adminAttributionCommands = new Map()
-const adminAttributionConnections = []
-const adminAttributionManagedSources = new Map()
-let adminAttributionPrivacyPolicy = null
+const adminAttributionActions = []
 
 function resetPublicSettings() {
   for (const key of Object.keys(mutablePublicSettings)) {
@@ -179,11 +180,16 @@ function resetPublicSettings() {
   sessionEndBatches.length = 0
   registrations.length = 0
   receiptProtectedRequests.length = 0
+  conversionRequests.length = 0
+  browserAttemptReceipts.length = 0
   authenticated = true
   sessionCookieRequired = false
+  marketingConsentState = 'granted'
+  currentAttributionProvider = null
+  currentAttributionResolution = 'none'
   adminAnalyticsEmpty = false
   adminAttributionRequests.length = 0
-  resetAdminAttribution()
+  adminAttributionActions.length = 0
 }
 
 function json(res, data, status = 200, extraHeaders = {}) {
@@ -191,7 +197,7 @@ function json(res, data, status = 200, extraHeaders = {}) {
   res.writeHead(status, {
     'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Credentials': 'true',
-    'Access-Control-Allow-Headers': 'content-type,idempotency-key',
+    'Access-Control-Allow-Headers': 'content-type',
     'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': Buffer.byteLength(body),
@@ -211,6 +217,43 @@ function publicSettings() {
 function adminSettings() {
   const now = new Date('2026-06-01T00:00:00.000Z').toISOString()
   return Object.fromEntries(Object.entries(mutablePublicSettings).map(([key, value]) => [key, { value, updatedAt: now }]))
+}
+
+const attributionBrowserConfigs = {
+  meta: { provider: 'meta', pixelId: '1234567890' },
+  tiktok: { provider: 'tiktok', pixelCode: 'C123456789ABCDEF' },
+  google: { provider: 'google', tagId: 'AW-123456789' },
+}
+
+function attributionBrowserInstruction(provider, canonicalEvent) {
+  const eventSlug = canonicalEvent === 'Contact' ? 'contact' : 'registration'
+  const browserDestination = provider === 'google'
+    ? `AW-123456789/${eventSlug}`
+    : `${provider}_pixel`
+  return {
+    deliveryId: `delivery_${provider}_${eventSlug}`,
+    provider,
+    canonicalEvent,
+    externalEventId: `e2e_${provider}_${eventSlug}`,
+    receiptToken: `v1.${'a'.repeat(16)}.${'b'.repeat(43)}`,
+    descriptor: {
+      provider,
+      canonicalEvent,
+      browserEventName: provider === 'google' ? 'conversion' : canonicalEvent,
+      browserDestination,
+      serverDestination: `${provider}_events_api`,
+    },
+    payload: { test_case: 'platform_isolation' },
+  }
+}
+
+function resolvedTrackingInstructions(canonicalEvent, attribution) {
+  if (marketingConsentState !== 'granted'
+    || currentAttributionResolution !== 'matched'
+    || !currentAttributionProvider
+    || attribution?.consentState !== 'granted'
+    || attribution?.adAttributionState !== 'resolved') return []
+  return [attributionBrowserInstruction(currentAttributionProvider, canonicalEvent)]
 }
 
 async function readJsonBody(req) {
@@ -478,584 +521,324 @@ function adminAnalyticsResponse(pathname, searchParams) {
   }
 }
 
-function clone(value) {
-  return JSON.parse(JSON.stringify(value))
+function adminAttributionResponse(pathname, searchParams) {
+  const range = analyticsRange(searchParams)
+  const requestedProvider = searchParams.get('provider')
+  const provider = ['meta', 'tiktok', 'google'].includes(requestedProvider) ? requestedProvider : 'meta'
+  const usage = { rowsRead: 86, rowsWritten: 0, durationMs: 9 }
+  const links = [
+    {
+      id: 'ats_meta_a',
+      name: 'Meta 广告 A',
+      sourceLabel: 'Meta 广告 A',
+      channel: 'ad',
+      slug: 'meta-ad-a',
+      sourceCode: 'meta-ad-a',
+      adProvider: 'meta',
+      targetPath: '/',
+      utmSource: 'meta-ad-a',
+      utmMedium: 'paid_social',
+      utmCampaign: 'july-contact',
+      utmContent: 'chat-a',
+      status: 'active',
+      note: '测试广告 A',
+      trackingPath: '/?mg_source=meta-ad-a&utm_source=meta-ad-a&utm_medium=paid_social&utm_campaign=july-contact&utm_content=chat-a',
+      sessionCount: 18,
+      pageViewCount: 44,
+      galleryDetailCount: 12,
+      contactClickCount: 4,
+      registerCount: 2,
+      membershipGrantCount: 1,
+      activeSecondsTotal: 820,
+      contactCount: 4,
+      leadCount: 3,
+      completeRegistrationCount: 2,
+      startTrialCount: 0,
+      conversionMembershipGrantCount: 1,
+    },
+  ]
+
+  const dates = range.days === 1 ? [range.from] : ['2026-07-08', '2026-07-09', '2026-07-10']
+  const deliveryMetrics = (index = 0) => ({
+    browserAttempted: index + 3,
+    server: {
+      planned: 0,
+      queued: index === 2 ? 1 : 0,
+      accepted: index + 1,
+      processed: 1,
+      retrying: 0,
+      rejected: index === 1 ? 1 : 0,
+      deadLetter: 0,
+      cancelled: 0,
+    },
+    queueRetryCount: index === 1 ? 1 : 0,
+    queueEnqueueCount: index + 2,
+  })
+  const trendRows = dates.map((date, index) => ({
+    date,
+    business: { contactCount: index + 1, completeRegistrationCount: index, factCount: index * 2 + 1 },
+    delivery: deliveryMetrics(index),
+  }))
+
+  if (pathname.endsWith('/summary')) {
+    return {
+      range,
+      usage,
+      data: {
+        provider,
+        business: { contactCount: 6, completeRegistrationCount: 3, factCount: 9 },
+        delivery: {
+          browserAttempted: 12,
+          server: { planned: 0, queued: 1, accepted: 6, processed: 3, retrying: 0, rejected: 1, deadLetter: 0, cancelled: 0 },
+          queueRetryCount: 2,
+          queueEnqueueCount: 10,
+        },
+        routing: {
+          totalFactCount: 12,
+          attributedFactCount: 9,
+          unattributedFactCount: 2,
+          conflictFactCount: 1,
+          byProvider: { meta: 5, tiktok: 3, google: 1 },
+        },
+      },
+    }
+  }
+  if (pathname.endsWith('/trends')) return { range, usage, data: { provider, granularity: 'day', rows: trendRows } }
+  if (pathname.endsWith('/quality')) {
+    const metric = (numerator, denominator) => ({ availability: denominator ? 'available' : 'unavailable', numerator, denominator, rate: denominator ? numerator / denominator : null })
+    const qualityRow = {
+      date: dates.at(-1),
+      canonicalEvent: 'Contact',
+      metricKey: 'event_match_quality',
+      value: 0.86,
+      availability: 'available',
+      status: 'available',
+      errorCategory: '',
+      collectedAt: `${dates.at(-1)}T09:30:00.000Z`,
+    }
+    return {
+      range,
+      usage,
+      data: {
+        provider,
+        pairing: {
+          summary: metric(8, 9),
+          rows: dates.map((date, index) => ({ date, ...metric(index + 1, index + 2) })),
+        },
+        match: {
+          summary: metric(8, 9),
+          signals: [
+            { key: provider === 'meta' ? 'fbp' : provider === 'tiktok' ? 'ttp' : 'gclid', ...metric(8, 9) },
+            { key: 'external_id', ...metric(7, 9) },
+          ],
+          rows: dates.map((date, index) => ({ date, ...metric(index + 1, index + 2) })),
+        },
+        platformQuality: { availability: 'available', latest: qualityRow, rows: [qualityRow] },
+      },
+    }
+  }
+  if (pathname.endsWith('/breakdown')) return { range, usage, data: { provider, dimension: searchParams.get('dimension') || 'utm_campaign', rows: [{ value: 'july-contact', factCount: 6, contactCount: 4, completeRegistrationCount: 2, delivery: deliveryMetrics(2) }] } }
+  if (pathname.endsWith('/capacity')) {
+    const capacityMetric = (value, safetyLimit) => ({ value, safetyLimit, ratio: value / safetyLimit, warning: value >= safetyLimit })
+    return {
+      usage,
+      data: {
+        date: searchParams.get('date') || dates.at(-1),
+        timeZone: 'Asia/Shanghai',
+        note: '项目内部估算，不代表 Cloudflare 官方账单。',
+        inputs: { factCount: 9, deliveryCount: 21, browserAttemptCount: 12, serverDeliveryCount: 9, adapterAttemptCount: 9, queueAttemptCount: 10, terminalServerDeliveryCount: 8, providerReceiptCount: 20, workflowStepCount: 3 },
+        metrics: {
+          workerRequests: capacityMetric(120, 70_000),
+          queueOperations: capacityMetric(30, 7_000),
+          d1RowsRead: capacityMetric(860, 3_500_000),
+          d1RowsWritten: capacityMetric(90, 70_000),
+          workflowSteps: capacityMetric(3, 2_100),
+          serverConversions: capacityMetric(9, 2_000),
+        },
+      },
+    }
+  }
+  if (pathname.endsWith('/platforms')) return { data: ['meta', 'tiktok', 'google'].map(platformConnection) }
+
+  if (pathname.endsWith('/overview')) {
+    return {
+      range,
+      usage,
+      data: {
+        totals: {
+          contact_count: 4,
+          lead_count: 3,
+          complete_registration_count: 2,
+          start_trial_count: 0,
+          membership_grant_count: 1,
+        },
+        trend: [
+          { date: '2026-07-07', contact_count: 1, lead_count: 1, complete_registration_count: 0, start_trial_count: 0, membership_grant_count: 0 },
+          { date: '2026-07-08', contact_count: 1, lead_count: 1, complete_registration_count: 1, start_trial_count: 0, membership_grant_count: 0 },
+          { date: '2026-07-09', contact_count: 2, lead_count: 1, complete_registration_count: 1, start_trial_count: 0, membership_grant_count: 1 },
+        ],
+        meta: {
+          sent_count: 6,
+          failed_count: 0,
+          skipped_count: 1,
+          duplicate_suppressed_count: 1,
+          last_sent_at: '2026-07-09T09:30:00.000Z',
+        },
+        metaTrend: [
+          { date: '2026-07-07', sent_count: 2, failed_count: 0, skipped_count: 0, duplicate_suppressed_count: 0 },
+          { date: '2026-07-08', sent_count: 2, failed_count: 0, skipped_count: 1, duplicate_suppressed_count: 0 },
+          { date: '2026-07-09', sent_count: 2, failed_count: 0, skipped_count: 0, duplicate_suppressed_count: 1 },
+        ],
+        duplicates: {
+          duplicate_suppressed_count: 1,
+          duplicate_action_count: 1,
+          duplicate_rate: 0.125,
+        },
+        risks: [{ key: 'meta_skipped', level: 'info', message: '部分 Meta 投递被跳过' }],
+      },
+    }
+  }
+
+  if (pathname.endsWith('/conversions')) {
+    return {
+      range,
+      usage,
+      data: {
+        provider,
+        byAction: [
+          { action_type: 'contact', action_count: 4, unique_session_count: 4 },
+          { action_type: 'complete_registration', action_count: 2, unique_session_count: 2 },
+        ],
+        bySource: [
+          { source_channel: 'ad', source_name: `${provider}-ad-a`, utm_campaign: 'july-contact', utm_content: 'chat-a', contact_count: 4, complete_registration_count: 2 },
+        ],
+        samples: [
+          { id: 'conv_1', action_type: 'contact', occurred_at: '2026-07-09T09:10:00.000Z', source_channel: 'ad', source_name: `${provider}-ad-a`, tracking_source_slug: `${provider}-ad-a`, utm_campaign: 'july-contact', utm_content: 'chat-a', method_type: 'telegram', action_target: 'floating_contact_panel', route_name: 'gallery-detail', path: '/gallery/summer-portrait', duplicate_of: '', attribution_provider: provider },
+        ],
+      },
+    }
+  }
+
+  if (pathname.endsWith('/links')) return { range, usage, data: { provider, links: links.filter(link => link.adProvider === provider) } }
+
+  if (pathname.endsWith('/meta')) {
+    return {
+      range,
+      usage,
+      data: {
+        totals: {
+          pixel_attempted_count: 8,
+          pixel_pending_count: 0,
+          pixel_skipped_count: 1,
+          capi_sent_count: 6,
+          capi_failed_count: 2,
+          capi_skipped_count: 1,
+          retry_exhausted_count: 1,
+          duplicate_suppressed_count: 1,
+        },
+        deliveries: [
+          { provider: 'meta', transport: 'browser', event_name: 'Contact', status: 'attempted', skip_reason: '', delivery_count: 8 },
+          { provider: 'meta', transport: 'server', event_name: 'Contact', status: 'sent', skip_reason: '', delivery_count: 6 },
+          { provider: 'meta', transport: 'server', event_name: 'CompleteRegistration', status: 'failed', skip_reason: 'retry_exhausted', delivery_count: 2 },
+          { provider: 'meta', transport: 'server', event_name: 'Contact', status: 'skipped', skip_reason: 'queue_not_configured', delivery_count: 1 },
+        ],
+        lastSentAt: '2026-07-09T09:30:00.000Z',
+        queueBindingPresent: true,
+        connection: {
+          state: 'unverified',
+          environment: 'production',
+          pixelIdConfigured: true,
+          tokenConfigured: true,
+          verifiedAt: null,
+          verifiedCommit: null,
+          graphApiVersion: 'v25.0',
+          datasetQualityStatus: 'not_checked',
+          invalidationReason: 'verification_missing',
+        },
+        keyRotation: {
+          currentKeyValid: true,
+          previousKeyConfigured: true,
+          previousKeyValid: true,
+          previousSameAsCurrent: false,
+          previousOutboxCount: 0,
+          previousActiveDeliveryCount: 0,
+          canRemovePrevious: true,
+        },
+        settings: {
+          enabled: true,
+          browser_enabled: true,
+          server_enabled: false,
+          mode: 'test',
+        },
+      },
+    }
+  }
+
+  if (pathname.endsWith('/duplicates')) {
+    return {
+      range,
+      usage,
+      data: {
+        provider,
+        duplicateSuppressedCount: 1,
+        duplicateActionCount: 1,
+        duplicateRate: 0.125,
+        samples: [
+          { id: 'convdup_1', action_type: 'contact', occurred_at: '2026-07-09T09:11:00.000Z', source_channel: 'ad', source_name: `${provider}-ad-a`, tracking_source_slug: `${provider}-ad-a`, utm_campaign: 'july-contact', utm_content: 'chat-a', method_type: 'telegram', action_target: 'floating_contact_panel', duplicate_of: 'conv_1', attribution_provider: provider },
+        ],
+      },
+    }
+  }
+
+  return { range, usage, data: {} }
 }
 
-function attributionRuntimePolicy(
-  serverTargetPercentage = 10,
-  overrides = {},
-) {
+function platformConnection(provider) {
+  const configs = {
+    meta: { provider: 'meta', pixelId: '123456789012345' },
+    tiktok: { provider: 'tiktok', pixelCode: 'C123456789ABCDEF' },
+    google: { provider: 'google', tagId: 'AW-123456789', customerId: '1234567890', cloudProjectId: 'meigallery-ads' },
+  }
+  const destinations = {
+    meta: [['meta_pixel', 'meta_capi'], ['meta_pixel', 'meta_capi']],
+    tiktok: [['tiktok_pixel', 'tiktok_events_api'], ['tiktok_pixel', 'tiktok_events_api']],
+    google: [['AW-123456789/ContactLabel', '1234567890'], ['AW-123456789/RegisterLabel', '1234567891']],
+  }
+  const credentialTypes = { meta: 'access_token', tiktok: 'access_token', google: 'service_account_json' }
   return {
+    connectionId: `conn_${provider}`,
+    provider,
     enabled: true,
+    mode: 'production',
     browserEnabled: true,
     serverEnabled: true,
-    serverTargetPercentage,
-    serverEffectivePercentage: serverTargetPercentage,
-    circuitState: 'closed',
-    ...overrides,
+    publicConfig: configs[provider],
+    eventBindings: ['Contact', 'CompleteRegistration'].map((canonicalEvent, index) => ({
+      canonicalEvent,
+      enabled: true,
+      browserDestination: destinations[provider][index][0],
+      serverDestination: destinations[provider][index][1],
+    })),
+    rolloutTargetPercentage: 10,
+    rolloutEffectivePercentage: 10,
+    connectionRevision: `connection_revision_${provider}`,
+    credential: { configured: true, type: credentialTypes[provider], revision: `credential_revision_${provider}` },
   }
 }
 
-function attributionConnectionFixture({
-  id,
-  provider,
-  name,
-  activeTarget,
-  isDefault = false,
-  serverTargetPercentage = 10,
-}) {
+function platformVerification(provider, attempt = 1) {
   return {
-    id,
+    id: `verify:${provider}:connection_revision_${provider}:${attempt}`,
     provider,
-    name,
-    isDefault,
-    state: 'active',
-    activeTarget,
-    candidate: null,
-    runtime: attributionRuntimePolicy(serverTargetPercentage),
-    health: {
-      level: 'healthy',
-      lastDeliveryAt: '2026-07-24T02:30:00.000Z',
-    },
+    connectionRevision: `connection_revision_${provider}`,
+    credentialRevision: `credential_revision_${provider}`,
+    attempt,
+    status: 'awaiting_human_evidence',
+    evidence: { automatic: { received: true } },
+    startedAt: '2026-07-15T08:00:00.000Z',
+    completedAt: '',
+    updatedAt: '2026-07-15T08:01:00.000Z',
   }
-}
-
-function defaultAdminAttributionConnections() {
-  return [
-    attributionConnectionFixture({
-      id: 'conn_meta_a',
-      provider: 'meta',
-      name: 'Meta 美国 BJ 团队',
-      activeTarget: '1615446443914929',
-      isDefault: true,
-    }),
-    attributionConnectionFixture({
-      id: 'conn_meta_b',
-      provider: 'meta',
-      name: 'Meta 美国 WA 团队',
-      activeTarget: '1566612068298913',
-    }),
-    attributionConnectionFixture({
-      id: 'conn_tiktok_a',
-      provider: 'tiktok',
-      name: 'TikTok 美国团队',
-      activeTarget: 'D9AF43RC77U133LMNMM0',
-      isDefault: true,
-      serverTargetPercentage: 100,
-    }),
-    attributionConnectionFixture({
-      id: 'conn_google_a',
-      provider: 'google',
-      name: 'Google 美国搜索团队',
-      activeTarget: 'AW-123456789',
-      isDefault: true,
-      serverTargetPercentage: 0,
-    }),
-  ]
-}
-
-function resetAdminAttribution() {
-  adminAttributionCommands.clear()
-  adminAttributionConnections.splice(
-    0,
-    adminAttributionConnections.length,
-    ...defaultAdminAttributionConnections(),
-  )
-  adminAttributionManagedSources.clear()
-  for (const connection of adminAttributionConnections) {
-    adminAttributionManagedSources.set(connection.id, [])
-  }
-  adminAttributionPrivacyPolicy = {
-    availability: 'available',
-    defaultMode: 'notice_opt_out',
-    priorConsentCountryCodes: ['AT', 'BE', 'DE', 'FR', 'GB'],
-    policyVersion: 3,
-    updatedAt: '2026-07-24T01:00:00.000Z',
-  }
-}
-
-function attributionConnection(id) {
-  return adminAttributionConnections.find(connection => connection.id === id)
-}
-
-function attributionFilteredConnections(searchParams) {
-  const provider = searchParams.get('provider') || ''
-  const connectionId = searchParams.get('connectionId') || ''
-  return adminAttributionConnections.filter(connection => (
-    (!provider || connection.provider === provider)
-    && (!connectionId || connection.id === connectionId)
-  ))
-}
-
-function attributionDates(searchParams) {
-  const dateFrom = searchParams.get('dateFrom')
-  const dateTo = searchParams.get('dateTo')
-  if (dateFrom && dateFrom === dateTo) return [dateFrom]
-  return ['2026-07-22', '2026-07-23', '2026-07-24']
-}
-
-function attributionEventBindings(provider) {
-  const destinations = {
-    meta: ['meta_pixel', 'meta_capi'],
-    tiktok: ['tiktok_pixel', 'tiktok_events_api'],
-    google: ['AW-123456789/ContactLabel', '1234567890'],
-  }
-  const [browserDestination, serverDestination] =
-    destinations[provider] || destinations.meta
-  return ['Contact', 'CompleteRegistration'].map(canonicalEvent => ({
-    canonicalEvent,
-    enabled: true,
-    browserDestination,
-    serverDestination,
-  }))
-}
-
-function attributionOperations(searchParams) {
-  return attributionDates(searchParams).flatMap((date, dateIndex) =>
-    attributionFilteredConnections(searchParams).map(
-      (connection, connectionIndex) => {
-        const offset = dateIndex + connectionIndex
-        const factCount = 5 + offset
-        return {
-          date,
-          provider: connection.provider,
-          connectionId: connection.id,
-          connectionName: connection.name,
-          contactCount: 3 + offset,
-          completeRegistrationCount: 1 + dateIndex,
-          factCount,
-          attributedFactCount: factCount - 1,
-          unattributedFactCount: 1,
-          browserAttempted: factCount,
-          serverPlanned: factCount,
-          serverQueued: factCount - 1,
-          serverProcessed: factCount - 2,
-          serverRejected: offset % 2,
-          serverDeadLetter: 0,
-        }
-      },
-    ))
-}
-
-function attributionQuality(searchParams) {
-  const date = attributionDates(searchParams).at(-1)
-  return attributionFilteredConnections(searchParams).map(
-    (connection, index) => ({
-      date,
-      provider: connection.provider,
-      connectionId: connection.id,
-      connectionName: connection.name,
-      metricKey: 'event_match_quality',
-      numerator: 8 + index,
-      denominator: 10 + index,
-      value: (8 + index) / (10 + index),
-      availability: 'available',
-    }),
-  )
-}
-
-function attributionBindings(searchParams) {
-  return attributionFilteredConnections(searchParams).map(connection => ({
-    provider: connection.provider,
-    connectionId: connection.id,
-    connectionName: connection.name,
-    active: {
-      state: connection.state === 'not_configured'
-        ? 'not_configured'
-        : 'active',
-      bindings: attributionEventBindings(connection.provider),
-    },
-    candidate: connection.candidate
-      ? {
-          state: connection.candidate.state,
-          bindings: attributionEventBindings(connection.provider),
-        }
-      : null,
-  }))
-}
-
-function attributionVerifications(searchParams) {
-  return attributionFilteredConnections(searchParams).map(connection => ({
-    provider: connection.provider,
-    connectionId: connection.id,
-    connectionName: connection.name,
-    status: connection.candidate?.state === 'failed'
-      ? 'failed'
-      : 'verified',
-    failureCode: connection.candidate?.failureCode || '',
-    candidateChecked: Boolean(connection.candidate),
-    pairedEventCount: 2,
-    createdAt: '2026-07-24T01:30:00.000Z',
-    startedAt: '2026-07-24T01:30:02.000Z',
-    completedAt: '2026-07-24T01:30:05.000Z',
-  }))
-}
-
-function attributionIncidents(searchParams) {
-  const rows = [{
-    id: 'incident_meta_a_warning',
-    provider: 'meta',
-    connectionId: 'conn_meta_a',
-    connectionName: 'Meta 美国 BJ 团队',
-    severity: 'warning',
-    code: 'server_delivery_delayed',
-    affectedChannel: 'server',
-    affectedEvent: 'Contact',
-    openedAt: '2026-07-23T08:00:00.000Z',
-    detectedAt: '2026-07-23T08:03:00.000Z',
-    recoveredAt: '2026-07-23T08:08:00.000Z',
-    affectedFactCount: 2,
-    affectedDeliveryCount: 2,
-    automaticAction: 'retry',
-    recoveryStatus: 'recovered',
-  }]
-  const provider = searchParams.get('provider')
-  const connectionId = searchParams.get('connectionId')
-  const dateFrom = searchParams.get('dateFrom')
-  const dateTo = searchParams.get('dateTo')
-  return rows.filter(row => (
-    (!provider || row.provider === provider)
-    && (!connectionId || row.connectionId === connectionId)
-    && (!dateFrom || row.openedAt.slice(0, 10) >= dateFrom)
-    && (!dateTo || row.openedAt.slice(0, 10) <= dateTo)
-  ))
-}
-
-function attributionAudit(searchParams) {
-  return attributionFilteredConnections(searchParams).map(connection => ({
-    provider: connection.provider,
-    connectionId: connection.id,
-    connectionName: connection.name,
-    actorId: 1,
-    commandType: 'set_runtime_policy',
-    outcome: 'updated',
-    summary: '更新运行策略',
-    createdAt: '2026-07-24T02:00:00.000Z',
-  }))
-}
-
-function attributionReadResponse(pathname, searchParams) {
-  if (pathname.endsWith('/connections')) {
-    return clone(adminAttributionConnections)
-  }
-  if (pathname.endsWith('/operations')) {
-    return attributionOperations(searchParams)
-  }
-  if (pathname.endsWith('/quality')) {
-    return attributionQuality(searchParams)
-  }
-  if (pathname.endsWith('/bindings')) {
-    return attributionBindings(searchParams)
-  }
-  if (pathname.endsWith('/verifications')) {
-    return attributionVerifications(searchParams)
-  }
-  if (pathname.endsWith('/incidents')) {
-    return attributionIncidents(searchParams)
-  }
-  if (pathname.endsWith('/audit')) {
-    return attributionAudit(searchParams)
-  }
-  if (pathname.endsWith('/privacy-policy')) {
-    return clone(adminAttributionPrivacyPolicy)
-  }
-  return null
-}
-
-function attributionCommandSummary() {
-  const commands = [...adminAttributionCommands.values()].map(command => ({
-    key: command.key,
-    type: command.type,
-    path: command.path,
-    requests: command.requests,
-    writes: command.writes,
-  }))
-  return {
-    commands,
-    writesByType: commands.reduce((totals, command) => {
-      totals[command.type] = (totals[command.type] || 0) + command.writes
-      return totals
-    }, {}),
-  }
-}
-
-function runAttributionCommand(req, res, url, type, execute) {
-  readJsonBody(req)
-    .then((body) => {
-      const key = String(req.headers['idempotency-key'] || '').trim()
-      if (!key) {
-        json(res, {
-          error: {
-            code: 'ATTRIBUTION_IDEMPOTENCY_KEY_REQUIRED',
-            message: '缺少 Idempotency-Key',
-          },
-        }, 400)
-        return
-      }
-      const signature = JSON.stringify({
-        method: req.method,
-        path: url.pathname,
-        body,
-      })
-      const existing = adminAttributionCommands.get(key)
-      if (existing) {
-        existing.requests += 1
-        if (existing.signature !== signature) {
-          json(res, {
-            error: {
-              code: 'ATTRIBUTION_IDEMPOTENCY_CONFLICT',
-              message: '幂等键已用于不同命令',
-            },
-          }, 409)
-          return
-        }
-        json(res, clone(existing.response))
-        return
-      }
-
-      const response = { data: clone(execute(body)) }
-      adminAttributionCommands.set(key, {
-        key,
-        type,
-        path: url.pathname,
-        signature,
-        requests: 1,
-        writes: 1,
-        response: clone(response),
-      })
-      json(res, response)
-    })
-    .catch(() => json(res, {
-      error: {
-        code: 'ATTRIBUTION_COMMAND_INVALID',
-        message: '归因命令请求无效',
-      },
-    }, 400))
-}
-
-function handleAdminAttributionRuntime(req, res, url) {
-  const prefix = '/api/admin/attribution-runtime'
-  if (
-    url.pathname !== prefix
-    && !url.pathname.startsWith(`${prefix}/`)
-  ) return false
-
-  if (req.method === 'GET') {
-    adminAttributionRequests.push({
-      path: url.pathname,
-      query: Object.fromEntries(url.searchParams.entries()),
-    })
-  }
-
-  if (req.method === 'GET') {
-    const sourceListMatch = url.pathname.match(
-      /^\/api\/admin\/attribution-runtime\/connections\/([^/]+)\/sources$/,
-    )
-    if (sourceListMatch) {
-      const connectionId = decodeURIComponent(sourceListMatch[1])
-      json(res, {
-        data: {
-          connectionId,
-          sources: clone(
-            adminAttributionManagedSources.get(connectionId) || [],
-          ),
-        },
-      })
-      return true
-    }
-
-    const connectionMatch = url.pathname.match(
-      /^\/api\/admin\/attribution-runtime\/connections\/([^/]+)$/,
-    )
-    if (connectionMatch) {
-      const connection = attributionConnection(
-        decodeURIComponent(connectionMatch[1]),
-      )
-      if (connection) json(res, { data: clone(connection) })
-      else notFound(res)
-      return true
-    }
-
-    const data = attributionReadResponse(url.pathname, url.searchParams)
-    if (data === null) notFound(res)
-    else json(res, { data })
-    return true
-  }
-
-  if (
-    req.method === 'POST'
-    && url.pathname === `${prefix}/connections`
-  ) {
-    runAttributionCommand(req, res, url, 'createConnection', (body) => {
-      const provider = String(body.provider || 'meta')
-      const connection = attributionConnectionFixture({
-        id: `conn_${provider}_${adminAttributionConnections.length + 1}`,
-        provider,
-        name: String(body.name || '未命名连接'),
-        activeTarget: '',
-        isDefault: Boolean(body.isDefault),
-        serverTargetPercentage: 0,
-      })
-      connection.state = 'not_configured'
-      connection.runtime = attributionRuntimePolicy(0, {
-        enabled: false,
-        browserEnabled: false,
-        serverEnabled: false,
-      })
-      adminAttributionConnections.push(connection)
-      adminAttributionManagedSources.set(connection.id, [])
-      return connection
-    })
-    return true
-  }
-
-  const candidateMatch = url.pathname.match(
-    /^\/api\/admin\/attribution-runtime\/connections\/([^/]+)\/candidates$/,
-  )
-  if (req.method === 'POST' && candidateMatch) {
-    runAttributionCommand(req, res, url, 'createCandidate', (body) => {
-      const connection = attributionConnection(
-        decodeURIComponent(candidateMatch[1]),
-      )
-      if (!connection) throw new Error('connection not found')
-      const failed = Object.values(body.publicConfig || {})
-        .some(value => value === '00000')
-      connection.candidate = {
-        state: failed ? 'failed' : 'validating',
-        createdAt: '2026-07-24T03:00:00.000Z',
-        failureCode: failed ? 'identity_not_found' : '',
-        productionContinues: true,
-      }
-      return connection
-    })
-    return true
-  }
-
-  const runtimeMatch = url.pathname.match(
-    /^\/api\/admin\/attribution-runtime\/connections\/([^/]+)\/runtime-policy$/,
-  )
-  if (req.method === 'PATCH' && runtimeMatch) {
-    runAttributionCommand(req, res, url, 'setRuntimePolicy', (body) => {
-      const connection = attributionConnection(
-        decodeURIComponent(runtimeMatch[1]),
-      )
-      if (!connection) throw new Error('connection not found')
-      connection.runtime = {
-        ...connection.runtime,
-        enabled: Boolean(body.enabled),
-        browserEnabled: Boolean(body.browserEnabled),
-        serverEnabled: Boolean(body.serverEnabled),
-        serverTargetPercentage: Number(body.serverTargetPercentage),
-        serverEffectivePercentage: Number(body.serverTargetPercentage),
-      }
-      connection.state = connection.runtime.enabled ? 'active' : 'disabled'
-      return connection
-    })
-    return true
-  }
-
-  const rollbackMatch = url.pathname.match(
-    /^\/api\/admin\/attribution-runtime\/connections\/([^/]+)\/rollback$/,
-  )
-  if (req.method === 'POST' && rollbackMatch) {
-    runAttributionCommand(req, res, url, 'rollbackConnection', () => {
-      const connection = attributionConnection(
-        decodeURIComponent(rollbackMatch[1]),
-      )
-      if (!connection) throw new Error('connection not found')
-      return connection
-    })
-    return true
-  }
-
-  const disableMatch = url.pathname.match(
-    /^\/api\/admin\/attribution-runtime\/connections\/([^/]+)\/disable$/,
-  )
-  if (req.method === 'POST' && disableMatch) {
-    runAttributionCommand(req, res, url, 'disableConnection', () => {
-      const connection = attributionConnection(
-        decodeURIComponent(disableMatch[1]),
-      )
-      if (!connection) throw new Error('connection not found')
-      connection.state = 'disabled'
-      connection.runtime = {
-        ...connection.runtime,
-        enabled: false,
-        serverEffectivePercentage: 0,
-      }
-      return connection
-    })
-    return true
-  }
-
-  const createSourceMatch = url.pathname.match(
-    /^\/api\/admin\/attribution-runtime\/connections\/([^/]+)\/sources$/,
-  )
-  if (req.method === 'POST' && createSourceMatch) {
-    runAttributionCommand(req, res, url, 'createManagedSource', (body) => {
-      const connectionId = decodeURIComponent(createSourceMatch[1])
-      const connection = attributionConnection(connectionId)
-      if (!connection) throw new Error('connection not found')
-      const rows = adminAttributionManagedSources.get(connectionId) || []
-      const source = {
-        id: `source_${connectionId}_${rows.length + 1}`,
-        provider: connection.provider,
-        connectionId,
-        campaign: String(body.campaign || ''),
-        medium: String(body.medium || ''),
-        content: String(body.content || ''),
-        expiresAt: body.expiresAt || null,
-        enabled: true,
-        createdAt: '2026-07-24T03:10:00.000Z',
-      }
-      rows.unshift(source)
-      adminAttributionManagedSources.set(connectionId, rows)
-      return {
-        source,
-        proof: 'playwright_managed_source_proof',
-        proofDelivery: 'issued_once',
-        replayed: false,
-      }
-    })
-    return true
-  }
-
-  const disableSourceMatch = url.pathname.match(
-    /^\/api\/admin\/attribution-runtime\/connections\/([^/]+)\/sources\/([^/]+)\/disable$/,
-  )
-  if (req.method === 'POST' && disableSourceMatch) {
-    runAttributionCommand(req, res, url, 'disableManagedSource', () => {
-      const connectionId = decodeURIComponent(disableSourceMatch[1])
-      const sourceId = decodeURIComponent(disableSourceMatch[2])
-      const source = (adminAttributionManagedSources.get(connectionId) || [])
-        .find(item => item.id === sourceId)
-      if (!source) throw new Error('source not found')
-      source.enabled = false
-      return { source, disabled: true }
-    })
-    return true
-  }
-
-  if (
-    req.method === 'PATCH'
-    && url.pathname === `${prefix}/privacy-policy`
-  ) {
-    runAttributionCommand(req, res, url, 'savePrivacyPolicy', (body) => {
-      adminAttributionPrivacyPolicy = {
-        ...adminAttributionPrivacyPolicy,
-        defaultMode: body.defaultMode,
-        priorConsentCountryCodes: body.priorConsentCountryCodes,
-        policyVersion: adminAttributionPrivacyPolicy.policyVersion + 1,
-        updatedAt: '2026-07-24T03:20:00.000Z',
-      }
-      return adminAttributionPrivacyPolicy
-    })
-    return true
-  }
-
-  notFound(res)
-  return true
 }
 
 function handleApi(req, res) {
@@ -1065,7 +848,7 @@ function handleApi(req, res) {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': allowedOrigin,
       'Access-Control-Allow-Credentials': 'true',
-      'Access-Control-Allow-Headers': 'content-type,idempotency-key',
+      'Access-Control-Allow-Headers': 'content-type',
       'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
     })
     res.end()
@@ -1093,8 +876,8 @@ function handleApi(req, res) {
     adminAttributionRequests.length = 0
     return json(res, { ok: true })
   }
-  if (url.pathname === '/api/test/admin-attribution-commands') {
-    return json(res, attributionCommandSummary())
+  if (url.pathname === '/api/test/admin-attribution-actions') {
+    return json(res, { actions: adminAttributionActions })
   }
   if (url.pathname === '/api/test/analytics-events') {
     return json(res, {
@@ -1103,6 +886,15 @@ function handleApi(req, res) {
       registrations,
       receiptProtectedRequests,
       events: analyticsBatches.flatMap(batch => Array.isArray(batch.events) ? batch.events : []),
+    })
+  }
+  if (url.pathname === '/api/test/ad-attribution-events') {
+    return json(res, {
+      provider: currentAttributionProvider,
+      resolution: currentAttributionResolution,
+      conversions: conversionRequests,
+      browserAttempts: browserAttemptReceipts,
+      registrations,
     })
   }
   if (url.pathname === '/api/test/receipt-protected-requests/clear' && req.method === 'POST') {
@@ -1127,7 +919,63 @@ function handleApi(req, res) {
       .catch(() => json(res, { statusCode: 400, message: '认证状态请求无效' }, 400))
     return
   }
+  if (url.pathname === '/api/test/marketing-consent-state' && req.method === 'PATCH') {
+    readJsonBody(req)
+      .then((body) => {
+        marketingConsentState = body.state === 'granted' || body.state === 'denied' ? body.state : 'limited'
+        json(res, { state: marketingConsentState })
+      })
+      .catch(() => json(res, { statusCode: 400, message: '营销授权测试状态无效' }, 400))
+    return
+  }
   if (url.pathname === '/api/settings/public') return json(res, publicSettings())
+  if (url.pathname === '/api/ad-attribution' && req.method === 'PUT') {
+    readJsonBody(req)
+      .then((body) => {
+        const providers = [
+          Boolean(String(body.fbclid || '').trim()) && 'meta',
+          Boolean(String(body.ttclid || '').trim()) && 'tiktok',
+          Boolean(String(body.gclid || body.gbraid || body.wbraid || '').trim()) && 'google',
+        ].filter(Boolean)
+        const provider = providers.length === 1 ? providers[0] : null
+        currentAttributionProvider = provider
+        currentAttributionResolution = providers.length > 1 ? 'conflict' : provider ? 'matched' : 'none'
+        json(res, {
+          provider,
+          resolution: currentAttributionResolution,
+          expiresInSeconds: 1_800,
+        })
+      })
+      .catch(() => json(res, { statusCode: 400, message: '广告来源请求无效' }, 400))
+    return
+  }
+  if (url.pathname === '/api/ad-attribution/bootstrap' && req.method === 'GET') {
+    const publicConfig = currentAttributionProvider ? attributionBrowserConfigs[currentAttributionProvider] : null
+    return json(res, { provider: currentAttributionProvider, publicConfig })
+  }
+  if (url.pathname === '/api/ad-attribution' && req.method === 'DELETE') {
+    currentAttributionProvider = null
+    currentAttributionResolution = 'none'
+    return json(res, { provider: null, resolution: 'none', expiresInSeconds: 1_800 })
+  }
+  if (url.pathname === '/api/marketing-consent' && req.method === 'GET') {
+    return json(res, marketingConsentResponse())
+  }
+  if (url.pathname === '/api/marketing-consent' && req.method === 'PUT') {
+    readJsonBody(req)
+      .then((body) => {
+        if (body.state !== 'granted' && body.state !== 'denied') {
+          json(res, { code: 'MARKETING_CONSENT_INVALID', message: '营销授权状态无效' }, 400)
+          return
+        }
+        marketingConsentState = body.state
+        json(res, marketingConsentResponse(), 200, {
+          'Set-Cookie': `mei_marketing_consent_receipt=mock-${marketingConsentState}; Path=/; HttpOnly; SameSite=Lax`,
+        })
+      })
+      .catch(() => json(res, { code: 'MARKETING_CONSENT_INVALID', message: '营销授权请求无效' }, 400))
+    return
+  }
   if (url.pathname === '/api/me') {
     const cookie = String(req.headers.cookie || '')
     receiptProtectedRequests.push({ endpoint: '/api/me', cookie })
@@ -1190,12 +1038,37 @@ function handleApi(req, res) {
           role: 'user',
           membershipRank: 0,
           membershipName: 'free',
-          attributionInstructionToken: null,
+          trackingInstructions: resolvedTrackingInstructions('CompleteRegistration', body.attribution),
         }, 200, {
           'Set-Cookie': 'mei_session=mock-session; Path=/; HttpOnly; SameSite=Lax',
         })
       })
       .catch(() => json(res, { statusCode: 400, message: '注册请求无效' }, 400))
+    return
+  }
+  if (url.pathname === '/api/conversions/events' && req.method === 'POST') {
+    receiptProtectedRequests.push({ endpoint: '/api/conversions/events', cookie: req.headers.cookie || '' })
+    readJsonBody(req)
+      .then((body) => {
+        conversionRequests.push(body)
+        json(res, {
+          data: {
+            id: `fact_contact_${conversionRequests.length}`,
+            created: true,
+            trackingInstructions: resolvedTrackingInstructions('Contact', body),
+          },
+        })
+      })
+      .catch(() => json(res, { statusCode: 400, message: '转化事件请求无效' }, 400))
+    return
+  }
+  if (url.pathname === '/api/conversions/browser-attempt' && req.method === 'POST') {
+    readJsonBody(req)
+      .then((body) => {
+        browserAttemptReceipts.push(body)
+        json(res, { accepted: true })
+      })
+      .catch(() => json(res, { statusCode: 400, message: '浏览器投递回执无效' }, 400))
     return
   }
   if (url.pathname === '/api/cases') return json(res, { data: cases, total: cases.length })
@@ -1240,7 +1113,45 @@ function handleApi(req, res) {
   if (url.pathname.startsWith('/api/admin/analytics/')) {
     return json(res, adminAnalyticsResponse(url.pathname, url.searchParams))
   }
-  if (handleAdminAttributionRuntime(req, res, url)) return
+  const platformConnectionMatch = url.pathname.match(/^\/api\/admin\/attribution\/platforms\/(meta|tiktok|google)$/)
+  if (platformConnectionMatch && req.method === 'PATCH') {
+    readJsonBody(req)
+      .then(body => {
+        adminAttributionActions.push({ type: 'save_connection', provider: platformConnectionMatch[1], body })
+        json(res, { data: platformConnection(platformConnectionMatch[1]) })
+      })
+      .catch(() => json(res, { statusCode: 400, message: '连接配置请求无效' }, 400))
+    return
+  }
+  const platformVerificationMatch = url.pathname.match(/^\/api\/admin\/attribution\/platforms\/(meta|tiktok|google)\/(verify|reverify|verification)$/)
+  if (platformVerificationMatch) {
+    const provider = platformVerificationMatch[1]
+    const action = platformVerificationMatch[2]
+    if (req.method === 'GET' && action === 'verification') return json(res, { data: platformVerification(provider) })
+    if (req.method === 'POST' && (action === 'verify' || action === 'reverify')) {
+      readJsonBody(req).then((body) => {
+        adminAttributionActions.push({ type: action, provider, body })
+        json(res, { data: platformVerification(provider, action === 'reverify' ? 2 : 1) }, 202)
+      }).catch(() => json(res, { statusCode: 400, message: '验证请求无效' }, 400))
+      return
+    }
+  }
+  const platformVerificationRecordMatch = url.pathname.match(/^\/api\/admin\/attribution\/platforms\/(meta|tiktok|google)\/verifications\/([^/]+)$/)
+  if (platformVerificationRecordMatch && req.method === 'GET') {
+    return json(res, { data: platformVerification(platformVerificationRecordMatch[1]) })
+  }
+  const platformEvidenceMatch = url.pathname.match(/^\/api\/admin\/attribution\/platforms\/(meta|tiktok|google)\/verifications\/([^/]+)\/evidence$/)
+  if (platformEvidenceMatch && req.method === 'POST') {
+    readJsonBody(req).then((body) => {
+      adminAttributionActions.push({ type: 'evidence', provider: platformEvidenceMatch[1], body })
+      json(res, { data: platformVerification(platformEvidenceMatch[1]) }, 202)
+    }).catch(() => json(res, { statusCode: 400, message: '证据请求无效' }, 400))
+    return
+  }
+  if (url.pathname.startsWith('/api/admin/attribution/')) {
+    adminAttributionRequests.push({ path: url.pathname, query: Object.fromEntries(url.searchParams.entries()) })
+    return json(res, adminAttributionResponse(url.pathname, url.searchParams))
+  }
   if (url.pathname === '/api/admin/tracking-sources' && req.method === 'POST') {
     readJsonBody(req)
       .then((body) => {
@@ -1315,7 +1226,16 @@ function handleApi(req, res) {
   notFound(res)
 }
 
-resetPublicSettings()
+function marketingConsentResponse() {
+  const requiresChoice = marketingConsentState === 'limited'
+  return {
+    state: marketingConsentState,
+    policyMode: requiresChoice ? 'prior_consent' : 'notice_opt_out',
+    decisionSource: requiresChoice ? 'choice_required' : 'explicit',
+    requiresChoice,
+    policyVersion: 1,
+  }
+}
 
 const server = createServer(handleApi)
 

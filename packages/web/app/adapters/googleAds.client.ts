@@ -1,6 +1,6 @@
 import type {
-  AttributionBrowserInstructionV1,
   AdBrowserPublicConfig,
+  AdBrowserInstruction,
   AdBrowserSignal,
   AdConsentSnapshot,
 } from '@meigallery/shared'
@@ -75,11 +75,11 @@ export function createGoogleAdsAdapter() {
     return true
   }
 
-  async function track(instruction: AttributionBrowserInstructionV1) {
+  async function track(instruction: AdBrowserInstruction) {
     if (!initialized || !window.gtag || !validInstruction(instruction, activeTagId)) return false
     window.gtag('event', 'conversion', {
       ...safePayload(instruction.payload),
-      send_to: instruction.destination,
+      send_to: instruction.descriptor.browserDestination,
       transaction_id: instruction.externalEventId,
     })
     return true
@@ -117,15 +117,13 @@ export function createGoogleAdsAdapter() {
 
 export const googleAdsAdapter = createGoogleAdsAdapter()
 
-function validInstruction(
-  instruction: AttributionBrowserInstructionV1,
-  activeTagId: string,
-) {
+function validInstruction(instruction: AdBrowserInstruction, activeTagId: string) {
   return instruction.provider === 'google'
-    && instruction.schemaVersion === 1
-    && instruction.eventName === 'conversion'
-    && GOOGLE_DESTINATION_PATTERN.test(instruction.destination)
-    && instruction.destination.startsWith(`${activeTagId}/`)
+    && instruction.descriptor.provider === 'google'
+    && instruction.descriptor.canonicalEvent === instruction.canonicalEvent
+    && instruction.descriptor.browserEventName === 'conversion'
+    && GOOGLE_DESTINATION_PATTERN.test(instruction.descriptor.browserDestination)
+    && instruction.descriptor.browserDestination.startsWith(`${activeTagId}/`)
     && EXTERNAL_EVENT_ID_PATTERN.test(instruction.externalEventId)
 }
 

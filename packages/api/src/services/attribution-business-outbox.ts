@@ -1,5 +1,6 @@
 import {
   isAttributionBusinessEventV1,
+  type AdBrowserInstruction,
   type AttributionBusinessEventV1,
 } from '@meigallery/shared'
 import type { AttributionServiceClient } from './attribution-service-client'
@@ -44,6 +45,7 @@ export interface AttributionBusinessOutboxImmediateResult {
   eventId: string
   accepted: boolean
   instructionToken: string | null
+  trackingInstructions: AdBrowserInstruction[]
 }
 
 export type AttributionLegacyRegistrationDispatcher = (
@@ -52,7 +54,7 @@ export type AttributionLegacyRegistrationDispatcher = (
     owner: 'old'
     epoch: number
   },
-) => Promise<void>
+) => Promise<AdBrowserInstruction[]>
 
 type AttributionBusinessOutboxRow = {
   id: string
@@ -333,6 +335,7 @@ export async function dispatchAttributionBusinessOutboxImmediately(
       eventId: normalizedId,
       accepted: false,
       instructionToken: null,
+      trackingInstructions: [],
     }
   }
   const claims = await claimAttributionBusinessOutbox(db, {
@@ -349,6 +352,7 @@ export async function dispatchAttributionBusinessOutboxImmediately(
         eventId: normalizedId,
         accepted: false,
         instructionToken: null,
+        trackingInstructions: [],
       }
     }
     return {
@@ -362,6 +366,7 @@ export async function dispatchAttributionBusinessOutboxImmediately(
             ownership,
           )
         : null,
+      trackingInstructions: [],
     }
   }
 
@@ -370,11 +375,12 @@ export async function dispatchAttributionBusinessOutboxImmediately(
       owner: claim.routingOwner,
       epoch: claim.ownerEpoch,
     })
+    let trackingInstructions: AdBrowserInstruction[] = []
     if (claim.routingOwner === 'old') {
-      await options.dispatchLegacy?.(claim.event, {
+      trackingInstructions = await options.dispatchLegacy?.(claim.event, {
         owner: 'old',
         epoch: claim.ownerEpoch,
-      })
+      }) ?? []
       if (!options.dispatchLegacy) {
         throw new Error('ATTRIBUTION_LEGACY_DISPATCH_UNAVAILABLE')
       }
@@ -395,6 +401,7 @@ export async function dispatchAttributionBusinessOutboxImmediately(
         eventId: claim.eventId,
         accepted: false,
         instructionToken: null,
+        trackingInstructions: [],
       }
     }
     return {
@@ -408,6 +415,7 @@ export async function dispatchAttributionBusinessOutboxImmediately(
             ownership,
           )
         : null,
+      trackingInstructions,
     }
   }
   catch {
@@ -417,6 +425,7 @@ export async function dispatchAttributionBusinessOutboxImmediately(
       eventId: claim.eventId,
       accepted: false,
       instructionToken: null,
+      trackingInstructions: [],
     }
   }
 }

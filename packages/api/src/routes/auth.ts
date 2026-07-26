@@ -326,6 +326,9 @@ authRoutes.post('/register', async (c) => {
   await createSession(c, userId)
 
   let attributionInstructionToken: string | null = null
+  let trackingInstructions: Awaited<
+    ReturnType<typeof dispatchAttributionBusinessOutboxImmediately>
+  >['trackingInstructions'] = []
   try {
     const dispatch = await dispatchAttributionBusinessOutboxImmediately(
       db,
@@ -352,6 +355,7 @@ authRoutes.post('/register', async (c) => {
       },
     )
     attributionInstructionToken = dispatch.instructionToken
+    trackingInstructions = dispatch.trackingInstructions
     if (!dispatch.accepted) {
       console.warn('[auth.register] 注册归因等待 outbox 重试', {
         userId,
@@ -375,6 +379,7 @@ authRoutes.post('/register', async (c) => {
     membershipRank: 0,
     membershipExpiry: null,
     attributionInstructionToken,
+    trackingInstructions,
   }, 201)
 })
 

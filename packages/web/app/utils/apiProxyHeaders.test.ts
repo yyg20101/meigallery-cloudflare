@@ -11,7 +11,6 @@ describe('Web API 代理头部白名单', () => {
     expect(filterApiProxyRequestHeaders({
       Cookie: ' mei_session=abc ',
       'Content-Type': ' application/json ',
-      'Idempotency-Key': ' attribution-command-1 ',
       Accept: ' application/json ',
       Authorization: ' Bearer import-token ',
       'CF-Connecting-IP': '203.0.113.10',
@@ -27,7 +26,6 @@ describe('Web API 代理头部白名单', () => {
       'cf-ipcountry': 'GB',
       'content-type': 'application/json',
       cookie: 'mei_session=abc',
-      'idempotency-key': 'attribution-command-1',
       'sec-gpc': '1',
       'user-agent': 'Mozilla/5.0',
       'x-forwarded-for': '203.0.113.10, 198.51.100.2',
@@ -107,14 +105,14 @@ describe('Web API 代理头部白名单', () => {
     Object.defineProperty(headers, 'getSetCookie', {
       value: () => [
         'mei_session=abc; Path=/; HttpOnly; Secure; SameSite=Lax',
-        'mei_session=receipt; Path=/; HttpOnly; Secure; SameSite=Lax',
+        'mei_marketing_consent_receipt=receipt; Path=/; HttpOnly; Secure; SameSite=Lax',
       ],
     })
 
     expect(apiProxyResponseHeaderEntries(headers)).toEqual([
       ['content-type', 'application/json'],
       ['set-cookie', 'mei_session=abc; Path=/; HttpOnly; Secure; SameSite=Lax'],
-      ['set-cookie', 'mei_session=receipt; Path=/; HttpOnly; Secure; SameSite=Lax'],
+      ['set-cookie', 'mei_marketing_consent_receipt=receipt; Path=/; HttpOnly; Secure; SameSite=Lax'],
     ])
   })
 })

@@ -1,9 +1,9 @@
 import type {
   AdAttributionProvider,
   AdBrowserPublicConfig,
+  AdBrowserInstruction,
   AdBrowserSignal,
   AdConsentSnapshot,
-  AttributionBrowserInstructionV1,
 } from '@meigallery/shared'
 import { googleAdsAdapter } from './googleAds.client'
 import { metaPixelAdapter } from './metaPixel.client'
@@ -13,7 +13,7 @@ type BrowserEventPayload = Record<string, string | number | boolean>
 
 export interface BrowserTrackingAdapter {
   initialize(config: AdBrowserPublicConfig, consent: AdConsentSnapshot): Promise<boolean>
-  track(instruction: AttributionBrowserInstructionV1): Promise<boolean>
+  track(instruction: AdBrowserInstruction): Promise<boolean>
   trackSignal(signal: AdBrowserSignal, payload: BrowserEventPayload): Promise<boolean>
   teardown(): Promise<void>
 }
@@ -27,17 +27,15 @@ const adapters: ReadonlyMap<AdAttributionProvider, BrowserTrackingAdapter> = new
 let activeProvider: AdAttributionProvider | null = null
 let lifecycleQueue: Promise<void> = Promise.resolve()
 
-export async function initializeBrowserTrackingProvider(config: AdBrowserPublicConfig, consent: AdConsentSnapshot) {
+export async function initializeAdBrowserProvider(config: AdBrowserPublicConfig, consent: AdConsentSnapshot) {
   return serializeLifecycle(async () => {
     if (!consent.marketingAllowed) {
       await teardownActiveProvider()
       return false
     }
-
     const adapter = adapters.get(config.provider)
     if (!adapter) return false
     if (activeProvider && activeProvider !== config.provider) await teardownActiveProvider()
-
     try {
       const initialized = await adapter.initialize(config, consent)
       if (!initialized) {
@@ -56,9 +54,7 @@ export async function initializeBrowserTrackingProvider(config: AdBrowserPublicC
   })
 }
 
-export async function executeBrowserTrackingInstruction(
-  instruction: AttributionBrowserInstructionV1,
-) {
+export async function executeAdBrowserInstruction(instruction: AdBrowserInstruction) {
   return serializeLifecycle(async () => {
     if (instruction.provider !== activeProvider) return false
     try {
@@ -70,7 +66,7 @@ export async function executeBrowserTrackingInstruction(
   })
 }
 
-export async function trackBrowserTrackingSignal(
+export async function trackAdBrowserSignal(
   provider: AdAttributionProvider,
   signal: AdBrowserSignal,
   payload: BrowserEventPayload,
@@ -86,18 +82,18 @@ export async function trackBrowserTrackingSignal(
   })
 }
 
-export async function teardownBrowserTrackingProviders() {
+export async function teardownAllAdBrowserProviders() {
   return serializeLifecycle(teardownActiveProvider)
-}
-
-export function isRegisteredBrowserTrackingProvider(value: unknown): value is AdAttributionProvider {
-  return typeof value === 'string' && adapters.has(value as AdAttributionProvider)
 }
 
 async function teardownActiveProvider() {
   const provider = activeProvider
   activeProvider = null
   if (provider) await safeTeardown(adapters.get(provider))
+}
+
+export function isRegisteredAdBrowserProvider(value: unknown): value is AdAttributionProvider {
+  return typeof value === 'string' && adapters.has(value as AdAttributionProvider)
 }
 
 function serializeLifecycle<T>(operation: () => Promise<T>): Promise<T> {
