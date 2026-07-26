@@ -35,7 +35,7 @@ function mountPage(
       platformQuality: { availability: 'unavailable', latest: platformQualityLatest, rows: [] },
     }),
     '/api/admin/attribution/platforms': state(['meta', 'tiktok', 'google'].map(provider => ({
-      provider, enabled: true, browserEnabled: true, serverEnabled: true, mode: 'production', rolloutEffectivePercentage: 100,
+      provider, enabled: true, browserEnabled: true, serverEnabled: true,
     }))),
     '/api/admin/attribution/breakdown': state({ provider: initialProvider, dimension: 'utm_campaign', rows: [] }),
     '/api/admin/attribution/capacity': state({

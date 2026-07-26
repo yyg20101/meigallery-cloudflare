@@ -309,13 +309,9 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/admin/attribution/breakdown?provider=meta\|tiktok\|google` | 按 campaign、utm_content 或追踪来源拆分 | admin+ |
 | GET | `/api/admin/attribution/conversions?provider=meta\|tiktok\|google` | 返回平台隔离的 Contact / CompleteRegistration 明细 | admin+ |
 | GET | `/api/admin/attribution/platforms` | 返回通用平台连接列表，不返回凭证明文 | admin+ |
-| GET | `/api/admin/attribution/platforms/:provider` | 返回单个平台连接、事件映射和验证状态 | admin+ |
-| PATCH | `/api/admin/attribution/platforms/:provider` | 原子保存公开配置、加密凭证、事件映射、开关和 rollout | owner |
-| POST | `/api/admin/attribution/platforms/:provider/verify` | 启动通用连接验证 Workflow；临时测试参数不持久化 | owner |
-| POST | `/api/admin/attribution/platforms/:provider/reverify` | 强制重新验证当前连接版本 | owner |
-| GET | `/api/admin/attribution/platforms/:provider/verification` | 返回当前连接版本的最新验证状态 | admin+ |
-| GET | `/api/admin/attribution/platforms/:provider/verifications/:verificationId` | 返回指定验证任务状态 | admin+ |
-| POST | `/api/admin/attribution/platforms/:provider/verifications/:verificationId/evidence` | 提交验证所需的人工平台证据 | owner |
+| GET | `/api/admin/attribution/platforms/:provider` | 返回单个平台连接和事件映射，不返回凭证明文 | admin+ |
+| PATCH | `/api/admin/attribution/platforms/:provider` | 原子保存公开配置、加密凭证、事件映射和通道开关 | owner |
+| POST | `/api/admin/attribution/platforms/:provider/test` | 使用当前配置立即测试平台连接；临时测试参数不持久化 | owner |
 | POST | `/api/admin/legacy-import/sources` | 创建旧站来源 | admin+ |
 | POST | `/api/admin/legacy-import/jobs` | 启动旧站迁移 | admin+ |
 | GET | `/api/admin/legacy-import/jobs/:id` | 迁移任务详情 | admin+ |
@@ -325,8 +321,6 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | POST | `/api/admin/legacy-import/download-pending` | 批量下载旧站待处理图片 | admin+ |
 | POST | `/api/admin/legacy-import/migrate/retry-failed` | 重置旧站下载失败图片 | admin+ |
 | POST | `/api/admin/legacy-import/migrate/set-covers` | 批量设置旧站迁移图库封面 | admin+ |
-
-`/api/meta/resource-attestation` 复用公开 API 的 IP 应用内限流，并要求生产 WAF 配置独立 IP Rate Limiting Rule。ticket 签发与消费响应统一使用 `Cache-Control: no-store`，响应、审计和错误信息均不得回显已消费 ticket。
 
 ## 8. D1 数据库 Schema `[当前实现]`
 
@@ -619,11 +613,9 @@ INSERT INTO site_settings (key, value) VALUES
 
 ### 转化账本与归因中心表 `[当前实现]`
 
-> 架构状态：本节记录当前 production 实现。独立 Attribution Worker、独立 D1/Queue、不可变候选版本和零中断激活已经完成设计确认，但尚未迁移上线；目标架构及迁移边界以 `docs/superpowers/specs/2026-07-24-attribution-runtime-isolation-design.md` 为唯一依据。实现期间禁止继续扩展当前“连接保存即换版本”的模型，也不得提前把目标能力标记为当前实现。
+归因只在 API Worker 内运行。`attribution_conversion_facts` 是唯一站内事实源，Browser Pixel 与 Server API 只是投递渠道；不再存在独立归因 Worker、双写桥、运行时所有权、cutover、候选版本、rollout 或 commit 绑定。
 
-归因中心把“站内可信事实”和“外部广告平台同步”分开维护：`attribution_conversion_facts` 是唯一事实源，Pixel / Server API 只是 delivery 渠道。后台 `/admin/analytics` 仍是一方行为分析大盘；广告来源、有效联系、完成注册、按平台投递、匹配覆盖和发布诊断统一放在 `/admin/attribution`。
-
-后台归因 UI 使用 `总览 / 平台连接 / 事件绑定 / 投递质量 / 验证记录 / 地区策略 / 审计日志` 七个主入口。平台选择通过 URL `provider` 显式传递，API 不提供隐式默认平台。连接的公开配置、事件映射和加密凭证必须在同一平台事务中保存；凭证明文不回显，平台 rollout 不由部署脚本自动修改。
+后台归因 UI 使用 `总览 / 平台连接 / 事件绑定 / 投递质量 / 连接诊断 / 地区策略 / 审计日志` 七个入口。平台选择通过 URL `provider` 显式传递，API 不提供隐式默认平台。连接公开配置、事件映射、通道开关和加密凭证在一个事务中保存；凭证明文不回显。连接测试是同步、幂等的即时诊断，不创建验证任务，也不改变生产配置。
 
 #### 归因事实所有权 `[当前实现]`
 
@@ -640,11 +632,10 @@ INSERT INTO site_settings (key, value) VALUES
 | `attribution_conversion_facts` | `[当前实现]` | Contact / CompleteRegistration 唯一事实源；记录唯一 provider、可信来源、授权快照和分析维度。 |
 | `attribution_deliveries` | `[当前实现]` | Browser/Server 投递账本；记录 provider、event ID、连接/凭证版本、状态、lease、错误和重试。 |
 | `attribution_outbox` | `[当前实现]` | 按 provider 隔离的加密临时匹配上下文；发送成功或安全终止后删除。 |
-| `attribution_platform_connections` | `[当前实现]` | 平台公开配置、模式、开关、连接版本和 rollout。 |
+| `attribution_platform_connections` | `[当前实现]` | 平台公开配置、Browser/Server 开关和稳定 Outbox scope。历史 mode/rollout 列仅保留数据库升级兼容，运行时不读取。 |
 | `attribution_event_bindings` | `[当前实现]` | 标准事件到 Browser/Server destination 的映射。 |
 | `attribution_credentials` | `[当前实现]` | 通用主密钥加密的平台 Token 或 Service Account。 |
 | `attribution_provider_receipts` | `[当前实现]` | 来源和 Browser 回执，不保存明文凭证。 |
-| `attribution_verifications` | `[当前实现]` | 三平台通用连接验证状态和脱敏证据。 |
 | `attribution_incidents` | `[当前实现]` | 平台运行故障与降级记录。 |
 | `attribution_quality_snapshots` | `[当前实现]` | 匹配覆盖与平台质量指标。 |
 | `attribution_usage_daily` | `[当前实现]` | 平台调用量、预算和容量统计。 |
@@ -652,7 +643,7 @@ INSERT INTO site_settings (key, value) VALUES
 
 实现约束：
 
-- `0051_unified_attribution_expand.sql` 创建最终 11 张 `attribution_*` 表；`0052_unified_attribution_contract.sql` 迁移仍有价值的 Meta 质量历史，并删除旧事实、投递、连接、验证、Outbox、Meta 运维表、桥接 trigger 和平台专用用户标识。
+- `0051_unified_attribution_expand.sql` 建立统一归因表；`0052_unified_attribution_contract.sql` 迁移仍有价值的 Meta 质量历史；`0060_attribution_control_plane_cleanup.sql` 删除验证任务、业务双写、cutover、命令和冻结 trigger，保留事实、投递、加密 Outbox、平台 Queue、质量与事故数据。
 - `0055_attribution_tracking_integrity.sql` 将管理广告链接历史来源统一修正为 `ad`、为每个管理来源生成唯一 `link_proof`、只以 `contact_method_click` 计有效联系、按事件发生的北京时间自然日重建来源/页面/邀请日报，并允许 tracking source 绑定 Google；只有数据库匹配的 `mg_source + mg_proof` 才能建立平台来源，普通 UTM 和自然流量不做推测性回填。
 - `0056_attribution_fact_source_integrity.sql` 从活跃事实源清除旧版仅凭 UTM 推测出的平台归因及其 Delivery/Receipt/Outbox，并在 D1 层强制事实来源组合：无平台事实只能使用 `none/conflict`，Meta/TikTok/Google 平台事实只能使用 `click_id/managed_link`。migration 前 production D1 备份与 Time Travel 保留原始审计证据。
 - `0057_contact_aggregate_integrity.sql` 只从强制完整保留的 `contact_method_click` 原始事实重建 `analytics_daily_events` 联系趋势与 `analytics_source_click_daily` 来源联系点击；使用北京时间业务日，并排除没有来源名或邀请码的纯 direct 流量。production 门禁对原始事实和两个联系日报做双向集合对账。
@@ -673,21 +664,22 @@ INSERT INTO site_settings (key, value) VALUES
 - `consent_state=denied/limited` 时只保留站内必要事实，不创建任何广告平台 Browser / Server delivery；`granted` 才允许按唯一可信来源加载对应平台 Pixel 和 Server API。地区策略只决定是否投递，不改变 Meta/TikTok/Google 单平台来源隔离。浏览器 Pixel 以公开授权 API 返回状态为准，Server API 每次独立执行同一地区与授权判定。
 - 每个平台的 Browser / Server delivery 使用同一 `external_event_id`；Pixel `attempted` 仅说明浏览器已尝试调用，不代表平台接收。Server delivery 只有在平台响应满足严格成功契约时才进入 `accepted`；Google 还必须等待异步诊断进入 `processed`。平台接收或处理完成仍不代表广告归因成功。
 - 仅在可信营销授权有效时，从 Cloudflare `CF-Connecting-IP` 与原始 `User-Agent` 读取完整网络匹配上下文；两者必须同时通过格式校验，只能进入 24 小时加密 Outbox，并仅由 Meta/TikTok Server adapter 解密使用。原始 IP/UA 不得进入事实表、分析维度、日志、响应、审计或 Google 请求；缺少完整网络上下文且没有平台 Cookie、Click ID 或哈希身份时，不创建无效 Server delivery。
-- `/api/admin/attribution/*` 需要 admin+；连接、凭证、验证和 rollout 修改需要 owner，并写入 `admin_audit_logs`。
+- `/api/admin/attribution/*` 需要 admin+；连接、凭证和事件映射修改需要 owner，并写入 `admin_audit_logs`。
 - Meta/TikTok/Google Server API 仅在 production 通过各自 `AD_META_QUEUE`、`AD_TIKTOK_QUEUE`、`AD_GOOGLE_QUEUE` 异步投递；主 Queue/DLQ 固定为 6 条 `meigallery-ad-*` 资源。dev/local 不绑定广告 Queue、不配置平台凭证、不调用真实平台 API。
-- 三个平台共享通用 Planner、Outbox、CAS 状态机和恢复算法，但物理 Queue、destination、connection revision、credential revision 和 rollout namespace 独立；所有读写必须限定唯一 provider，禁止交叉解密、投递、恢复或 fan-out。
+- 三个平台共享通用 Planner、加密 Outbox、delivery lease 和恢复算法，但物理 Queue、destination、稳定 Outbox scope 与 credential version 独立；所有读写必须限定唯一 provider，禁止交叉解密、投递、恢复或 fan-out。
 - 平台 Token/OAuth 凭证由 Owner 通过统一后台写入 D1 加密凭证库；Worker secret 只保存 `AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT/PREVIOUS`。凭证明文不返回前端、不写审计或日志。
-- Meta/TikTok Test Event Code 是单次验证参数，不属于长期凭据；代码不落 D1、不进入审计和响应，正式事件禁止携带测试码。
+- Meta/TikTok Test Event Code 是单次连接测试参数，不属于长期凭据；代码不落 D1、不进入审计和响应，正式事件禁止携带测试码。
 - Queue 发送失败不得阻塞站内转化账本写入；delivery 使用 `planned`、`queued`、`retrying`、`accepted`、`processed`、`rejected`、`dead_letter`、`cancelled` 状态，并用 `last_error_code` 区分缺失 Queue、凭证、过期或平台拒绝。
 - Queue consumer 使用 `attribution_deliveries` 的短期 lease 和 D1 CAS；loser 不请求外部平台，重试复用原 event ID，`accepted/processed` 不可回归，lease token 不进入日志、响应或报告。
 - 平台质量必须按真实证据展示：Meta 由 Dataset Quality collector 自动采集；TikTok 在没有项目可安全调用的质量 API 时明确要求 Events Manager 人工证据；Google 使用 `requestStatus.retrieve` 结果写入处理质量。无数据或不支持不得显示为 0 分。
 
-### 通用归因 Contract 与生产门禁
+### 生产发布约束
 
-- `0052` 执行前要求旧 Contact/CompleteRegistration 已被通用事实覆盖、旧 Server delivery 静止、旧 Outbox 清空；失败时 migration 整体回滚。
-- 若 `0052` 或 `0055` 待执行，部署脚本先把 production D1 export、Time Travel bookmark、Git commit 和 SHA-256 manifest 写入 `~/.meigallery/production-backups/d1`，文件不进入仓库。
-- migration 后实时门禁要求 `0052`、`0053`、`0055` 已应用、启用的 production 连接具有当前验证、无 critical incident、无过期 Outbox、无 dead letter 且 effective rollout 不超过 target；部署前门禁不要求本次待应用的 `0055` 已存在。
-- 严格 Test Event 只允许 Contact / CompleteRegistration。平台后台确认通过后由 Owner 人工设置 mode、Server 开关和 rollout，部署流程不改变业务运行参数。
+- CI 对完整代码执行一次测试、类型检查和构建。生产发布不重复全量 CI，只验证受影响 Worker、执行必要 migration、部署并做生产 smoke。
+- API 与 Web 可以独立发布，二者 commit 不要求相同；普通功能提交不会改变归因连接、凭证或事件映射。
+- migration `0060` 执行前必须创建 production D1 export 和 Time Travel bookmark；失败时 migration 整体回滚。
+- 生产 smoke 只以结构性条件阻断：`0060` 已应用、地区策略存在、启用连接配置完整。dead letter、过期 Outbox、质量告警和 incident 进入诊断告警，不阻止紧急修复发布。
+- 连接测试只验证当前配置和平台响应，不修改通道开关，不创建长期状态，不与 Git commit 绑定。
 
 成本与索引口径：
 

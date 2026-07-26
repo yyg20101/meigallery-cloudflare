@@ -41,7 +41,7 @@ describe('AttributionPageShell', () => {
       global: { stubs: { NuxtLink: nuxtLinkStub } },
     })
 
-    for (const label of ['总览', '平台连接', '事件绑定', '投递质量', '验证记录', '审计日志']) {
+    for (const label of ['总览', '平台连接', '事件绑定', '投递质量', '连接诊断', '审计日志']) {
       expect(wrapper.text()).toContain(label)
     }
     expect(wrapper.text()).not.toContain('投放链接')

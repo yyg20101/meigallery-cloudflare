@@ -33,7 +33,7 @@ async function expectAdminContainersWithinViewport(page: import('@playwright/tes
         { selector: '[data-attribution-tab-list]', allowHorizontalOverflow: true },
         { selector: '[data-attribution-tab]', exactCount: 7, allowHorizontalOverflow: true },
       )
-      if (['/admin/attribution', '/admin/attribution/deliveries', '/admin/attribution/verifications', '/admin/attribution/audit'].includes(location.pathname)) {
+      if (['/admin/attribution', '/admin/attribution/deliveries', '/admin/attribution/audit'].includes(location.pathname)) {
         requirements.push(
           { selector: '[data-attribution-range-group]' },
           { selector: '[data-attribution-range-control]', minCount: 4 },
@@ -53,14 +53,15 @@ async function expectAdminContainersWithinViewport(page: import('@playwright/tes
         { selector: '[data-attribution-connection-editor]' },
         { selector: '[data-attribution-binding-editor]' },
         { selector: '[data-attribution-credential-editor]' },
-        { selector: '[data-attribution-rollout-control]' },
       )
     }
     if (location.pathname === '/admin/attribution/deliveries') {
       requirements.push(
-        { selector: '[data-attribution-rollout-control]' },
         { selector: '[data-attribution-incident-list]' },
       )
+    }
+    if (location.pathname === '/admin/attribution/diagnostics') {
+      requirements.push({ selector: '[data-attribution-diagnostic]' })
     }
 
     const containerSelectors = new Set([
@@ -83,8 +84,7 @@ async function expectAdminContainersWithinViewport(page: import('@playwright/tes
       '[data-attribution-connection-editor]',
       '[data-attribution-binding-editor]',
       '[data-attribution-credential-editor]',
-      '[data-attribution-verification-panel]',
-      '[data-attribution-rollout-control]',
+      '[data-attribution-diagnostic]',
       '[data-attribution-incident-list]',
       '[data-attribution-trend]',
     ])

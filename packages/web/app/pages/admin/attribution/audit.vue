@@ -17,7 +17,7 @@ const auditLogs = useAdminAttribution<AttributionAuditLog[]>('/api/admin/audit-l
   query: { page: 1, pageSize: 100 },
 })
 
-const attributionTargetTypes = new Set(['attribution_platform_connection', 'ad_platform_verification'])
+const attributionTargetTypes = new Set(['attribution_platform_connection'])
 const rows = computed(() => (auditLogs.data.value || []).filter(log => (
   attributionTargetTypes.has(log.target_type) && withinSelectedRange(log.created_at)
 )))

@@ -10,7 +10,7 @@ test('统一导航按上下文保留平台和日期，Google 字段完全由 Sch
   await page.goto('/admin/attribution/platforms?provider=google')
 
   const tabs = page.locator('[data-attribution-tabs]')
-  for (const label of ['总览', '平台连接', '事件绑定', '投递质量', '验证记录', '审计日志']) {
+  for (const label of ['总览', '平台连接', '事件绑定', '投递质量', '连接诊断', '审计日志']) {
     await expect(tabs.getByRole('link', { name: label, exact: true })).toBeVisible()
   }
   await expect(page.getByRole('heading', { name: 'Google Ads 连接' })).toBeVisible()
@@ -32,31 +32,29 @@ test('统一导航按上下文保留平台和日期，Google 字段完全由 Sch
   await page.locator('[data-attribution-tabs]').getByRole('link', { name: '投递质量', exact: true }).click()
   await expect(page).toHaveURL(/provider=google/)
   await expect(page).toHaveURL(/range=7d/)
-  await expect(page.getByText('Server target', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('Server', { exact: true }).first()).toBeVisible()
 })
 
-test('测试码只在单次验证请求内存在，重新验证必须二次确认', async ({ page, request }) => {
-  await page.goto('/admin/attribution/verifications?provider=meta&range=7d')
+test('连接测试同步完成，重复调用保持同一无状态入口', async ({ page, request }) => {
+  await page.goto('/admin/attribution/diagnostics?provider=meta')
   const testCode = page.getByLabel('Test Event Code')
 
   await expect(testCode).toBeVisible()
-  await testCode.fill('TEST_PLAYWRIGHT_ONCE')
-  await testCode.press('Enter')
+  await testCode.fill('TEST12345')
+  await page.getByRole('button', { name: '测试连接', exact: true }).click()
   await expect(testCode).toHaveValue('')
-  await expect(page.getByText('验证已启动', { exact: true })).toBeVisible()
-  await expect(page.getByText('TEST_PLAYWRIGHT_ONCE')).toHaveCount(0)
+  await expect(page.getByText('连接测试通过', { exact: true })).toBeVisible()
+  await expect(page.getByText('TEST12345')).toHaveCount(0)
 
-  await testCode.fill('TEST_PLAYWRIGHT_REVERIFY')
-  await page.getByRole('button', { name: '重新验证', exact: true }).click()
-  await expect(page.getByText('重新验证会创建新的验证尝试，当前验证记录保留。')).toBeVisible()
-  await page.getByRole('button', { name: '确认重新验证', exact: true }).click()
+  await testCode.fill('TEST12345')
+  await page.getByRole('button', { name: '测试连接', exact: true }).click()
   await expect(testCode).toHaveValue('')
-  await expect(page.getByText('重新验证已启动', { exact: true })).toBeVisible()
+  await expect(page.getByText('连接测试通过', { exact: true })).toBeVisible()
 
   const actions = await (await request.get(`${apiURL}/api/test/admin-attribution-actions`)).json()
-  expect(actions.actions.filter((item: { type: string }) => item.type === 'verify' || item.type === 'reverify')).toEqual([
-    { type: 'verify', provider: 'meta', body: { testEventCode: 'TEST_PLAYWRIGHT_ONCE' } },
-    { type: 'reverify', provider: 'meta', body: { testEventCode: 'TEST_PLAYWRIGHT_REVERIFY' } },
+  expect(actions.actions.filter((item: { type: string }) => item.type === 'test_connection')).toEqual([
+    { type: 'test_connection', provider: 'meta', body: { testEventCode: 'TEST12345' } },
+    { type: 'test_connection', provider: 'meta', body: { testEventCode: 'TEST12345' } },
   ])
 })
 

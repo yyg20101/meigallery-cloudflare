@@ -1,6 +1,5 @@
 import type {
   ActiveConversionActionType,
-  AdPlatformTrackingMode,
   CanonicalConversionEvent,
   ConversionActionType,
 } from '../types'
@@ -46,10 +45,6 @@ export function buildExternalEventIdBasis(
     throw new Error('外部投递只允许活动转化事件')
   }
   return `${input.eventName}:${buildConversionDedupeKey(input)}`
-}
-
-export function normalizeAdPlatformTrackingMode(value: unknown): AdPlatformTrackingMode {
-  return value === 'test' || value === 'production' ? value : 'disabled'
 }
 
 function normalizePart(value: unknown) {

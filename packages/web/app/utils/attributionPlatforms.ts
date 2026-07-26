@@ -1,10 +1,8 @@
 import type {
   AdPlatformProvider,
-  AdPlatformRolloutPercentage,
-  AdPlatformTrackingMode,
   CanonicalConversionEvent,
 } from '@meigallery/shared'
-import type { AdPlatformConnectionData, AdPlatformVerificationStatus } from '~/composables/useAdminAttribution'
+import type { AdPlatformConnectionData } from '~/composables/useAdminAttribution'
 
 export type AttributionPlatformProvider = AdPlatformProvider
 export type AttributionCredentialType = 'access_token' | 'service_account_json'
@@ -73,12 +71,10 @@ export interface AttributionEventBindingDraft {
 
 export interface AttributionPlatformConnectionDraft {
   enabled: boolean
-  mode: AdPlatformTrackingMode
   browserEnabled: boolean
   serverEnabled: boolean
   publicConfig: Record<string, string>
   eventBindings: AttributionEventBindingDraft[]
-  rolloutTargetPercentage: AdPlatformRolloutPercentage
 }
 
 const STANDARD_EVENTS = [
@@ -186,7 +182,6 @@ export function emptyAttributionPlatformConnectionDraft(
 ): AttributionPlatformConnectionDraft {
   return {
     enabled: false,
-    mode: 'disabled',
     browserEnabled: false,
     serverEnabled: false,
     publicConfig: Object.fromEntries(platform.publicConfigFields.map(field => [field.key, ''])),
@@ -196,7 +191,6 @@ export function emptyAttributionPlatformConnectionDraft(
       browserDestination: binding.browser.defaultValue,
       serverDestination: binding.server.defaultValue,
     })),
-    rolloutTargetPercentage: 0,
   }
 }
 
@@ -208,7 +202,6 @@ export function attributionConnectionToDraft(
   const publicConfig = Object.fromEntries(platform.publicConfigFields.map(field => [field.key, String(connection.publicConfig[field.key] ?? '')]))
   return {
     enabled: connection.enabled,
-    mode: connection.mode,
     browserEnabled: connection.browserEnabled,
     serverEnabled: connection.serverEnabled,
     publicConfig,
@@ -221,7 +214,6 @@ export function attributionConnectionToDraft(
         serverDestination: binding?.serverDestination ?? definition.server.defaultValue,
       }
     }),
-    rolloutTargetPercentage: connection.rolloutTargetPercentage,
   }
 }
 
@@ -239,7 +231,6 @@ export function attributionConnectionPayload(
   const plaintext = credentialPlaintext.trim()
   return {
     enabled: draft.enabled,
-    mode: draft.mode,
     browserEnabled: draft.browserEnabled,
     serverEnabled: draft.serverEnabled,
     publicConfig,
@@ -250,25 +241,10 @@ export function attributionConnectionPayload(
       serverDestination: binding.serverDestination.trim(),
     })),
     ...(plaintext ? { credential: { type: platform.credential.type, plaintext } } : {}),
-    rolloutTargetPercentage: draft.rolloutTargetPercentage,
   }
 }
 
 export function attributionConnectionStateLabel(connection: AdPlatformConnectionData | null | undefined) {
   if (!connection) return '未配置'
-  if (!connection.enabled || connection.mode === 'disabled') return '已停用'
-  return connection.mode === 'production' ? '生产运行' : '测试模式'
-}
-
-export function attributionVerificationStatusLabel(status: AdPlatformVerificationStatus | '') {
-  const labels: Record<AdPlatformVerificationStatus, string> = {
-    queued: '排队中',
-    running: '自动验证中',
-    awaiting_human_evidence: '待人工确认',
-    verified: '已验证',
-    failed: '验证失败',
-    timed_out: '已超时',
-    invalidated: '已失效',
-  }
-  return status ? labels[status] : '尚未验证'
+  return connection.enabled ? '生产运行' : '已停用'
 }

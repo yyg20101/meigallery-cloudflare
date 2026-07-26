@@ -89,7 +89,6 @@ import type {
 export type {
   AdBrowserPublicConfig,
   AdAttributionProvider,
-  AttributionCredentialType,
   AdBrowserInstruction,
   AdBrowserSignal,
   AdConsentSnapshot,
@@ -97,9 +96,6 @@ export type {
   PlatformEventDescriptor,
   PlatformPublicConfig,
 } from './ad-attribution'
-
-export * from './attribution-runtime'
-export * from './attribution-migration'
 
 export type ConversionActionType =
   | 'contact'
@@ -118,10 +114,6 @@ export type AdPlatformProvider = SharedAdAttributionProvider
 export type AdDeliveryTransport = 'browser' | 'server'
 
 export type AdPlatformConversionEventName = CanonicalConversionEvent
-
-export type AdPlatformTrackingMode = 'disabled' | 'test' | 'production'
-
-export type AdPlatformRolloutPercentage = 0 | 10 | 50 | 100
 
 export type PublicConversionActionType = Extract<ActiveConversionActionType, 'contact'>
 
@@ -153,26 +145,6 @@ export interface AdPlatformQueueMessage {
   deliveryId: string
   provider: SharedAdAttributionProvider
 }
-
-export type ConversionSkipReason =
-  | 'disabled'
-  | 'missing_secret'
-  | 'missing_pixel_id'
-  | 'missing_queue'
-  | 'queue_send_failed'
-  | 'unsupported_event'
-  | 'consent_denied'
-  | 'invalid_payload'
-  | 'connection_unverified'
-  | 'missing_data_key'
-  | 'invalid_data_key'
-  | 'invalid_sensitive_context'
-  | 'rollout_excluded'
-  | 'circuit_open'
-  | 'missing_stable_id'
-  | 'secure_context_expired'
-  | 'secure_context_invalid'
-  | 'queue_message_invalid'
 
 /** 分析设备类型 */
 export type AnalyticsDeviceType = 'desktop' | 'tablet' | 'mobile' | 'unknown'

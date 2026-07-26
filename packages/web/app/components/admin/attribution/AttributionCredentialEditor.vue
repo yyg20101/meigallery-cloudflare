@@ -4,12 +4,10 @@ import type { AttributionPlatformDefinition } from '~/utils/attributionPlatforms
 const props = withDefaults(defineProps<{
   platform: AttributionPlatformDefinition
   configured?: boolean
-  revision?: string
   modelValue: string
   disabled?: boolean
 }>(), {
   configured: false,
-  revision: '',
   disabled: false,
 })
 
@@ -59,7 +57,7 @@ async function readCredentialFile(event: Event) {
         <div class="flex min-w-0 items-center justify-between gap-3">
           <div>
             <h2 class="text-base font-semibold text-gray-900">Server 凭证</h2>
-            <p class="mt-1 text-xs text-gray-500">{{ configured ? `已配置 · r${revision}` : '尚未配置' }}</p>
+            <p class="mt-1 text-xs text-gray-500">{{ configured ? '已配置；留空可继续使用现有凭证' : '尚未配置' }}</p>
           </div>
         </div>
         <label class="mt-3 block max-w-2xl">

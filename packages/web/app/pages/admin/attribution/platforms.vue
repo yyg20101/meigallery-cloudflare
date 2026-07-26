@@ -4,7 +4,6 @@ import AttributionEventBindingEditor from '~/components/admin/attribution/Attrib
 import AttributionPageShell from '~/components/admin/attribution/AttributionPageShell.vue'
 import AttributionPlatformConnectionEditor from '~/components/admin/attribution/AttributionPlatformConnectionEditor.vue'
 import AttributionProviderSwitch from '~/components/admin/attribution/AttributionProviderSwitch.vue'
-import AttributionRolloutControl from '~/components/admin/attribution/AttributionRolloutControl.vue'
 import { useAdminAttributionPlatforms } from '~/composables/useAdminAttribution'
 import type { AttributionPlatformConnectionDraft, AttributionPlatformProvider } from '~/utils/attributionPlatforms'
 import {
@@ -98,15 +97,8 @@ async function save() {
         v-model="credentialPlaintext"
         :platform="platform"
         :configured="connection?.credential.configured"
-        :revision="connection?.credential.revision"
         :disabled="!isOwner || manager.saving.value"
         @error="credentialError = $event"
-      />
-      <AttributionRolloutControl
-        v-model:browser-enabled="draft.browserEnabled"
-        v-model:server-target-percentage="draft.rolloutTargetPercentage"
-        :server-effective-percentage="connection?.rolloutEffectivePercentage"
-        :disabled="!isOwner || manager.saving.value"
       />
       <div class="flex min-w-0 flex-wrap items-center gap-3 border-y border-gray-200 bg-white px-3 py-4 sm:px-5">
         <button v-if="isOwner" type="submit" :disabled="manager.saving.value" class="rounded-md bg-gray-950 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50">

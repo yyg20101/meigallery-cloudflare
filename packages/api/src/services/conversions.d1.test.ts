@@ -17,31 +17,10 @@ beforeAll(async () => {
   miniflare = new Miniflare({ modules: true, script: 'export default { fetch() { return new Response("ok") } }', compatibilityDate: '2026-05-26', d1Databases: { DB: 'test' } })
   db = (await miniflare.getBindings<{ DB: D1Database }>()).DB
   await db.exec(MIGRATION.replace(/\s*\r?\n\s*/g, ' '))
-  await db.exec(`
-    CREATE TABLE attribution_runtime_cutover (
-      id TEXT PRIMARY KEY,
-      owner TEXT NOT NULL,
-      owner_epoch INTEGER NOT NULL,
-      changed_by INTEGER,
-      changed_at TEXT NOT NULL
-    );
-    INSERT INTO attribution_runtime_cutover
-      (id, owner, owner_epoch, changed_by, changed_at)
-    VALUES
-      ('global', 'old', 1, NULL, '2026-07-24T00:00:00.000Z');
-  `.replace(/\s*\r?\n\s*/g, ' '))
 })
 
 beforeEach(async () => {
   await db.exec(`DELETE FROM attribution_outbox; DELETE FROM attribution_deliveries; DELETE FROM attribution_conversion_facts; DELETE FROM attribution_credentials; DELETE FROM attribution_event_bindings; DELETE FROM attribution_platform_connections;`)
-  await db.prepare(`
-    UPDATE attribution_runtime_cutover
-    SET owner = 'old',
-        owner_epoch = 1,
-        changed_by = NULL,
-        changed_at = '2026-07-24T00:00:00.000Z'
-    WHERE id = 'global'
-  `).run()
 })
 
 afterAll(async () => { await miniflare.dispose() })
@@ -50,7 +29,7 @@ describe('统一事实 D1 原子写入', () => {
   it('D1 batch 成功后立即尝试入队，入队失败不回滚事实或 Outbox', async () => {
     await seed('meta')
     const send = vi.fn().mockRejectedValue(new Error('queue unavailable'))
-    const result = await recordRegistration({ ...env(), AD_META_QUEUE: { send } } as never, registrationInput('meta'), oldOwnership)
+    const result = await recordRegistration({ ...env(), AD_META_QUEUE: { send } } as never, registrationInput('meta'))
     expect(send).toHaveBeenCalledWith({ schemaVersion: 1, deliveryId: expect.any(String), provider: 'meta' })
     expect((await db.prepare('SELECT id FROM attribution_conversion_facts WHERE id = ?').bind(result.id).first())?.id).toBe(result.id)
     expect(await db.prepare('SELECT delivery_id FROM attribution_outbox').first()).not.toBeNull()
@@ -66,7 +45,7 @@ describe('统一事实 D1 原子写入', () => {
       },
       batch: db.batch.bind(db),
     } as unknown as D1Database
-    const result = await recordRegistration({ ...env(), DB: enqueueReadFailureDb, AD_META_QUEUE: { send: vi.fn() } } as never, registrationInput('meta'), oldOwnership)
+    const result = await recordRegistration({ ...env(), DB: enqueueReadFailureDb, AD_META_QUEUE: { send: vi.fn() } } as never, registrationInput('meta'))
     expect(result.created).toBe(true)
     expect((await db.prepare('SELECT id FROM attribution_conversion_facts WHERE id = ?').bind(result.id).first())?.id).toBe(result.id)
     expect(await db.prepare('SELECT delivery_id FROM attribution_outbox').first()).not.toBeNull()
@@ -79,7 +58,7 @@ describe('统一事实 D1 原子写入', () => {
   ] as const)('%s 只将允许的匹配信号写入加密 Outbox', async (provider, expectedMatchSignals, expectedNetworkContext) => {
     await seed(provider)
     const logs = vi.spyOn(console, 'log')
-    const result = await recordRegistration(env(), registrationInput(provider), oldOwnership)
+    const result = await recordRegistration(env(), registrationInput(provider))
     logs.mockRestore()
 
     const fact = await db.prepare(`SELECT * FROM attribution_conversion_facts WHERE id = ?`).bind(result.id).first()
@@ -113,7 +92,7 @@ describe('统一事实 D1 原子写入', () => {
     await seed('meta')
     const input = registrationInput('meta')
     input.adPlatformUserData = { fbp: FBP_PRIVATE, ttclid: 'ttclid_private', ttp: 'ttp_private', clientIpAddress: '203.0.113.42', clientUserAgent: 'Private Browser/1.0' }
-    const result = await recordRegistration(env(), input, oldOwnership)
+    const result = await recordRegistration(env(), input)
     const outbox = await db.prepare(`SELECT key_id, iv, ciphertext, tag FROM attribution_outbox`).first<{ key_id: string; iv: string; ciphertext: string; tag: string }>()
     await expect(decryptPayload('meta', result.id, outbox!)).resolves.toMatchObject({ matchSignals: { fbp: FBP_PRIVATE, fbc: 'fb.1.1784534400000.fbclid_private' } })
   })
@@ -124,7 +103,7 @@ describe('统一事实 D1 原子写入', () => {
     input.hashedEmail = undefined
     input.attributionContext = { ...input.attributionContext!, source: 'managed_link', identifiers: {} }
     input.adPlatformUserData = {}
-    const result = await recordRegistration(env(), input, oldOwnership)
+    const result = await recordRegistration(env(), input)
 
     expect(result.trackingInstructions).toHaveLength(1)
     expect((await db.prepare(`SELECT count(*) AS count FROM attribution_deliveries WHERE transport = 'server'`).first<{ count: number }>())?.count).toBe(0)
@@ -133,7 +112,7 @@ describe('统一事实 D1 原子写入', () => {
 
   it.each([undefined, 'ftp://gallery.example.test'])('SITE_URL 为 %s 时只写 Fact 与 Browser Delivery', async siteUrl => {
     await seed('meta')
-    const result = await recordRegistration({ ...env(), SITE_URL: siteUrl }, registrationInput('meta'), oldOwnership)
+    const result = await recordRegistration({ ...env(), SITE_URL: siteUrl }, registrationInput('meta'))
     expect(result.trackingInstructions).toHaveLength(1)
     expect((await db.prepare(`SELECT count(*) AS count FROM attribution_conversion_facts`).first<{ count: number }>())?.count).toBe(1)
     expect((await db.prepare(`SELECT count(*) AS count FROM attribution_deliveries WHERE transport = 'browser'`).first<{ count: number }>())?.count).toBe(1)
@@ -143,7 +122,6 @@ describe('统一事实 D1 原子写入', () => {
 })
 
 function env() { return { DB: db, SITE_URL: 'https://gallery.example.test', AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT: MASTER_KEY } }
-const oldOwnership = { owner: 'old' as const, epoch: 1 }
 function registrationInput(provider: 'meta' | 'tiktok' | 'google'): RecordRegistrationInput {
   return {
     userId: 42, visitorId: 'visitor_42', sessionId: 'session_42', occurredAt: '2026-07-15T00:00:00.000Z', path: '/register',
@@ -155,7 +133,7 @@ function registrationInput(provider: 'meta' | 'tiktok' | 'google'): RecordRegist
 }
 async function seed(provider: 'meta' | 'tiktok' | 'google') {
   const config = provider === 'meta'
-    ? '{"pixelId":"1234567890123456"}'
+    ? '{"pixelId":"123456789012345"}'
     : provider === 'tiktok'
       ? '{"pixelCode":"ABCDEF1234"}'
       : '{"tagId":"AW-12345","customerId":"1","cloudProjectId":"project"}'

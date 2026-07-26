@@ -169,7 +169,9 @@ function serverSuccess(row: BreakdownData['rows'][number]) {
         <span :class="platform.accentClass" class="h-8 w-1 shrink-0 rounded-sm" aria-hidden="true" />
         <div class="min-w-0">
           <p class="text-sm font-semibold text-gray-900">{{ platform.label }} · {{ attributionConnectionStateLabel(selectedConnection) }}</p>
-          <p class="mt-0.5 truncate text-xs text-gray-500">{{ selectedConnection?.mode || 'disabled' }} · rollout {{ selectedConnection?.rolloutEffectivePercentage ?? 0 }}%</p>
+          <p class="mt-0.5 truncate text-xs text-gray-500">
+            Browser {{ selectedConnection?.browserEnabled ? '开启' : '关闭' }} · Server {{ selectedConnection?.serverEnabled ? '开启' : '关闭' }}
+          </p>
         </div>
       </div>
       <NuxtLink :to="platformRoute" class="w-fit text-sm font-medium text-blue-700 hover:text-blue-900">管理平台连接</NuxtLink>

@@ -171,7 +171,7 @@ describe('公开广告来源 API', () => {
     expectClearsAttributionCookie(response)
   })
 
-  it('非法 JSON 清除归因 Cookie，未签名来源继承当前上下文', async () => {
+  it('非法 JSON 清除归因 Cookie，未签名来源继承现有上下文', async () => {
     const initial = await request({ ttclid: 'old-tiktok-click' })
     const consent = await createMarketingConsentReceipt(SECRET, 'granted')
     const cookie = trustedCookie(consent, initial)
@@ -189,7 +189,7 @@ describe('公开广告来源 API', () => {
     expect(unavailable.headers.get('set-cookie')).toBeNull()
   })
 
-  it('显式清理删除归因上下文 Cookie', async () => {
+  it('显式清理删除归因 Cookie', async () => {
     const response = await app().request('https://api.616618.xyz/api/ad-attribution', {
       method: 'DELETE',
     }, env())
@@ -223,7 +223,6 @@ describe('公开广告来源 API', () => {
     ['连接不存在', true, { state: 'connection_invalid', reason: 'not_found' }],
     ['连接未启用', true, readySnapshot('meta', { provider: 'meta', pixelId: '123456789' }, { enabled: false })],
     ['浏览器未启用', true, readySnapshot('meta', { provider: 'meta', pixelId: '123456789' }, { browserEnabled: false })],
-    ['连接 disabled', true, readySnapshot('meta', { provider: 'meta', pixelId: '123456789' }, { mode: 'disabled' })],
   ])('bootstrap 在%s时返回严格空响应', async (_label, withConsent, snapshot) => {
     const initial = await request({ fbclid: 'meta-click-id' })
     const consent = await createMarketingConsentReceipt(SECRET, 'granted')
@@ -318,7 +317,7 @@ function expectClearsAttributionCookie(response: Response) {
 function readySnapshot(
   provider: 'meta' | 'tiktok' | 'google',
   publicConfig: Record<string, string>,
-  override: { enabled?: boolean; browserEnabled?: boolean; mode?: 'disabled' | 'test' | 'production' } = {},
+  override: { enabled?: boolean; browserEnabled?: boolean } = {},
 ) {
   const { provider: _provider, ...storedConfig } = publicConfig
   return {
@@ -327,16 +326,12 @@ function readySnapshot(
       id: `connection_${provider}`,
       provider,
       enabled: override.enabled ?? true,
-      mode: override.mode ?? 'production',
       browserEnabled: override.browserEnabled ?? true,
       serverEnabled: true,
       publicConfig: storedConfig,
-      connectionRevision: 'revision_1',
-      credentialRevision: 'credential_1',
-      rolloutTargetPercentage: 100,
-      rolloutEffectivePercentage: 100,
+      outboxScope: 'connection_scope_1',
     },
     bindings: new Map(),
-    credential: { type: provider === 'google' ? 'service_account_json' : 'access_token', schemaVersion: 1, credentialRevision: 'credential_1' },
+    credential: { type: provider === 'google' ? 'service_account_json' : 'access_token', schemaVersion: 1, revision: 'credential_1' },
   }
 }
