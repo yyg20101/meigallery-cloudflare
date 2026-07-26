@@ -1,7 +1,5 @@
 import type {
   AdPlatformProvider,
-  AdPlatformRolloutPercentage,
-  AdPlatformTrackingMode,
   AnalyticsRangeQuery,
 } from '@meigallery/shared'
 import type { ComputedRef, Ref } from 'vue'
@@ -9,26 +7,6 @@ import type { ComputedRef, Ref } from 'vue'
 export type AttributionRangePreset = '7d' | '30d' | '90d' | 'day'
 export type AttributionDashboardProvider = AdPlatformProvider
 export type EvidenceLayer = 'business' | 'browser' | 'server' | 'quality'
-export type MetaConnectionState = 'not_configured' | 'unverified' | 'verified' | 'configuration_changed'
-
-export interface AdPlatformConnectionStatusData {
-  provider: AdPlatformProvider
-  environment: 'production'
-  enabled: boolean
-  browserEnabled: boolean
-  serverEnabled: boolean
-  destinationId: string
-  debugEnabled: boolean
-  rolloutPercentage: AdPlatformRolloutPercentage
-  destinationConfigured: boolean
-  serverCredentialConfigured: boolean
-  serverQueueConfigured: boolean
-  serverDataKeyConfigured: boolean
-  mode: AdPlatformTrackingMode
-  state: 'not_configured' | 'unverified' | 'verified' | 'invalidated'
-  verifiedAt: string
-  verifiedCommit: string
-}
 
 export interface AdPlatformEventBindingData {
   canonicalEvent: 'Contact' | 'CompleteRegistration'
@@ -41,57 +19,23 @@ export interface AdPlatformConnectionData {
   connectionId: string
   provider: AdPlatformProvider
   enabled: boolean
-  mode: AdPlatformTrackingMode
   browserEnabled: boolean
   serverEnabled: boolean
   publicConfig: Record<string, string>
   eventBindings: AdPlatformEventBindingData[]
-  rolloutTargetPercentage: AdPlatformRolloutPercentage
-  rolloutEffectivePercentage: AdPlatformRolloutPercentage
-  connectionRevision: string
   credential: {
     configured: true
     type: 'access_token' | 'service_account_json'
-    revision: string
   }
 }
 
-export type AdPlatformVerificationStatus =
-  | 'queued'
-  | 'running'
-  | 'awaiting_human_evidence'
-  | 'verified'
-  | 'failed'
-  | 'timed_out'
-  | 'invalidated'
-
-export interface AdPlatformVerificationData {
-  id: string
+export interface AdPlatformDiagnosticData {
   provider: AdPlatformProvider
-  connectionRevision: string
-  credentialRevision: string
-  attempt: number
-  status: AdPlatformVerificationStatus
-  evidence: {
-    automatic?: Record<string, unknown>
-    human?: { confirmed: true; reference?: string; confirmedAt: string }
-    failureCode?: string
-  }
-  startedAt: string
-  completedAt: string
-  updatedAt: string
-}
-
-export interface MetaConnectionStatusData {
-  state: MetaConnectionState
-  environment: 'dev' | 'production'
-  pixelIdConfigured: boolean
-  tokenConfigured: boolean
-  verifiedAt: string | null
-  verifiedCommit: string | null
-  graphApiVersion: 'v25.0'
-  datasetQualityStatus: 'not_checked' | 'available' | 'permission_denied' | 'error'
-  invalidationReason: string
+  ok: true
+  testedAt: string
+  testEventsSent: number
+  externalEventIds: string[]
+  requestIds: string[]
 }
 
 export interface AttributionDeliveryMetrics {
@@ -202,61 +146,6 @@ export interface AttributionCapacityData {
     ratio: number
     warning: boolean
   }>
-}
-
-export interface MetaIncident {
-  id: string
-  environment: string
-  status: 'open' | 'closed'
-  severity: string
-  triggerCode: string
-  triggerSummary: string
-  targetPercentage: number
-  effectivePercentage: number
-  evidence: Record<string, number | string>
-  openedAt: string
-  lastObservedAt: string
-  closedAt: string | null
-  resolution: string
-}
-
-export interface MetaRolloutSnapshot {
-  environment: 'dev' | 'production' | 'invalid'
-  targetPercentage: AdPlatformRolloutPercentage
-  effectivePercentage: AdPlatformRolloutPercentage
-  connectionVerified: boolean
-  liveEvidencePresent: boolean
-  openIncident: MetaIncident | null
-  metrics: {
-    sent: number
-    failed: number
-    permissionErrors: number
-    retryExhausted: number
-    stalePending: number
-    criticalQualityDiagnostics: number
-  }
-  metricsStatus: { available: boolean; errorCode: string | null }
-  promotion: {
-    from: AdPlatformRolloutPercentage
-    to: AdPlatformRolloutPercentage
-    allowed: boolean
-    requiresOverrideReason: boolean
-    blockers: string[]
-    hardBlockers: string[]
-  }
-}
-
-export interface MetaStatusData {
-  connection: MetaConnectionStatusData
-  rollout: MetaRolloutSnapshot
-  activity: AttributionSummaryData
-}
-
-export interface AttributionReadinessData {
-  ready: boolean
-  checks: Array<{ key: string; label: string; level: 'blocker' | 'warning'; ok: boolean; detail: string }>
-  settings: Record<string, unknown>
-  verifications: Record<string, unknown>
 }
 
 export interface AttributionRangeState {
@@ -409,14 +298,12 @@ export function useAdminAttribution<T>(
 export function useAdminAttributionPlatforms() {
   const { api } = useApi()
   const connections = ref<AdPlatformConnectionData[]>([])
-  const verifications = ref<Partial<Record<AdPlatformProvider, AdPlatformVerificationData | null>>>({})
+  const diagnostics = ref<Partial<Record<AdPlatformProvider, AdPlatformDiagnosticData | null>>>({})
   const loading = ref(false)
   const saving = ref(false)
-  const verifying = ref(false)
+  const testing = ref(false)
   const error = ref('')
   const message = ref('')
-  const pollTimers = new Map<AdPlatformProvider, ReturnType<typeof setTimeout>>()
-  const evidencePollAttempts = new Map<AdPlatformProvider, number>()
 
   async function refreshConnections() {
     loading.value = true
@@ -445,8 +332,8 @@ export function useAdminAttributionPlatforms() {
       const index = connections.value.findIndex(item => item.provider === provider)
       if (index >= 0) connections.value.splice(index, 1, result.data)
       else connections.value.push(result.data)
-      verifications.value[provider] = null
-      message.value = '连接已保存，旧验证记录已失效'
+      diagnostics.value[provider] = null
+      message.value = '连接已保存'
       return result.data
     }
     catch (cause) {
@@ -458,117 +345,31 @@ export function useAdminAttributionPlatforms() {
     }
   }
 
-  async function refreshVerification(provider: AdPlatformProvider, verificationId = '') {
-    try {
-      const suffix = verificationId ? `/verifications/${encodeURIComponent(verificationId)}` : '/verification'
-      const result = await api<AttributionApiResponse<AdPlatformVerificationData>>(`/api/admin/attribution/platforms/${provider}${suffix}`)
-      verifications.value[provider] = result.data
-      scheduleVerificationPoll(result.data)
-      return result.data
-    }
-    catch (cause) {
-      if (apiErrorStatus(cause) === 404) {
-        verifications.value[provider] = null
-        stopVerificationPoll(provider)
-        return null
-      }
-      error.value = resolveApiErrorMessage(cause, '连接验证状态加载失败')
-      throw cause
-    }
-  }
-
-  async function startVerification(
-    provider: AdPlatformProvider,
-    testEventCode = '',
-    reverify = false,
-  ) {
-    verifying.value = true
+  async function testConnection(provider: AdPlatformProvider, testEventCode = '') {
+    testing.value = true
     error.value = ''
     message.value = ''
     try {
       const code = testEventCode.trim()
-      const result = await api<AttributionApiResponse<AdPlatformVerificationData>>(
-        `/api/admin/attribution/platforms/${provider}/${reverify ? 'reverify' : 'verify'}`,
+      const result = await api<AttributionApiResponse<AdPlatformDiagnosticData>>(
+        `/api/admin/attribution/platforms/${provider}/test`,
         {
           method: 'POST',
           body: code ? { testEventCode: code } : {},
         },
       )
-      verifications.value[provider] = result.data
-      message.value = reverify ? '重新验证已启动' : '验证已启动'
-      scheduleVerificationPoll(result.data, true)
+      diagnostics.value[provider] = result.data
+      message.value = '连接测试通过'
       return result.data
     }
     catch (cause) {
-      error.value = resolveApiErrorMessage(cause, reverify ? '重新验证启动失败' : '连接验证启动失败')
+      diagnostics.value[provider] = null
+      error.value = resolveApiErrorMessage(cause, '连接测试失败')
       throw cause
     }
     finally {
-      verifying.value = false
+      testing.value = false
     }
-  }
-
-  async function confirmVerificationEvidence(
-    provider: AdPlatformProvider,
-    verificationId: string,
-    reference = '',
-  ) {
-    verifying.value = true
-    error.value = ''
-    message.value = ''
-    try {
-      const normalizedReference = reference.trim()
-      const result = await api<AttributionApiResponse<AdPlatformVerificationData>>(
-        `/api/admin/attribution/platforms/${provider}/verifications/${encodeURIComponent(verificationId)}/evidence`,
-        {
-          method: 'POST',
-          body: { confirmed: true, ...(normalizedReference ? { reference: normalizedReference } : {}) },
-        },
-      )
-      verifications.value[provider] = result.data
-      message.value = '人工证据已提交'
-      evidencePollAttempts.set(provider, 0)
-      scheduleVerificationPoll(result.data, true)
-      return result.data
-    }
-    catch (cause) {
-      error.value = resolveApiErrorMessage(cause, '人工证据提交失败')
-      throw cause
-    }
-    finally {
-      verifying.value = false
-    }
-  }
-
-  function scheduleVerificationPoll(verification: AdPlatformVerificationData, immediate = false) {
-    stopVerificationPoll(verification.provider)
-    if (!['queued', 'running', 'awaiting_human_evidence'].includes(verification.status)) {
-      evidencePollAttempts.delete(verification.provider)
-      return
-    }
-    if (verification.status === 'awaiting_human_evidence') {
-      const attempt = evidencePollAttempts.get(verification.provider)
-      if (attempt === undefined && !immediate) return
-      if (attempt !== undefined) {
-        if (attempt >= 60) {
-          evidencePollAttempts.delete(verification.provider)
-          message.value = '验证仍在处理，请稍后刷新状态'
-          return
-        }
-        evidencePollAttempts.set(verification.provider, attempt + 1)
-      }
-    }
-    const delay = immediate ? 800 : 2_000
-    pollTimers.set(verification.provider, setTimeout(() => {
-      pollTimers.delete(verification.provider)
-      void refreshVerification(verification.provider, verification.id).catch(() => undefined)
-    }, delay))
-  }
-
-  function stopVerificationPoll(provider: AdPlatformProvider) {
-    const timer = pollTimers.get(provider)
-    if (timer) clearTimeout(timer)
-    pollTimers.delete(provider)
   }
 
   function clearFeedback() {
@@ -576,25 +377,17 @@ export function useAdminAttributionPlatforms() {
     message.value = ''
   }
 
-  onScopeDispose(() => {
-    for (const timer of pollTimers.values()) clearTimeout(timer)
-    pollTimers.clear()
-    evidencePollAttempts.clear()
-  })
-
   return {
     connections,
-    verifications,
+    diagnostics,
     loading,
     saving,
-    verifying,
+    testing,
     error,
     message,
     refreshConnections,
     saveConnection,
-    refreshVerification,
-    startVerification,
-    confirmVerificationEvidence,
+    testConnection,
     clearFeedback,
   }
 }
@@ -619,33 +412,6 @@ export function attributionDuplicateRate(duplicate: unknown, total: unknown) {
   const duplicateCount = Math.max(0, Number(duplicate ?? 0))
   const totalCount = Math.max(1, Number(total ?? 0))
   return duplicateCount / totalCount
-}
-
-export function metaConnectionStateLabel(state: MetaConnectionState) {
-  if (state === 'verified') return '已验证'
-  if (state === 'configuration_changed') return '配置已变更'
-  if (state === 'not_configured') return '未配置'
-  return '未验证'
-}
-
-export function metaConnectionReasonLabel(reason: string) {
-  const labels: Record<string, string> = {
-    pixel_id_missing: 'Pixel ID 未配置',
-    access_token_missing: 'CAPI token 未配置',
-    tracking_mode_disabled: 'Meta tracking mode 已关闭',
-    release_commit_invalid: '当前 release commit 无效',
-    verification_missing: '尚未完成连接验证',
-    pixel_id_changed: 'Pixel ID 已变化',
-    access_token_changed: 'CAPI token 已变化',
-    graph_api_version_changed: 'Graph API 版本已变化',
-    verification_revision_missing: '历史连接验证需要重新验证',
-    verification_invalidated: '原连接验证已失效',
-  }
-  return labels[reason] || (reason ? '连接状态需要重新验证' : '连接配置与验证记录一致')
-}
-
-export function canVerifyMetaConnection(connection: MetaConnectionStatusData | null | undefined, isOwner: boolean) {
-  return isOwner && (connection?.environment === 'dev' || connection?.environment === 'production')
 }
 
 export function normalizeAttributionRangePreset(value: unknown, fallback: AttributionRangePreset = '7d'): AttributionRangePreset {
@@ -674,11 +440,4 @@ function todayDateInputValue() {
   const now = new Date()
   const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000)
   return local.toISOString().slice(0, 10)
-}
-
-function apiErrorStatus(error: unknown) {
-  if (!error || typeof error !== 'object') return 0
-  return Number((error as { statusCode?: unknown; status?: unknown }).statusCode
-    ?? (error as { status?: unknown }).status
-    ?? 0)
 }

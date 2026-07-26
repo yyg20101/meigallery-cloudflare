@@ -809,7 +809,6 @@ function platformConnection(provider) {
     connectionId: `conn_${provider}`,
     provider,
     enabled: true,
-    mode: 'production',
     browserEnabled: true,
     serverEnabled: true,
     publicConfig: configs[provider],
@@ -819,25 +818,18 @@ function platformConnection(provider) {
       browserDestination: destinations[provider][index][0],
       serverDestination: destinations[provider][index][1],
     })),
-    rolloutTargetPercentage: 10,
-    rolloutEffectivePercentage: 10,
-    connectionRevision: `connection_revision_${provider}`,
-    credential: { configured: true, type: credentialTypes[provider], revision: `credential_revision_${provider}` },
+    credential: { configured: true, type: credentialTypes[provider] },
   }
 }
 
-function platformVerification(provider, attempt = 1) {
+function platformDiagnostic(provider) {
   return {
-    id: `verify:${provider}:connection_revision_${provider}:${attempt}`,
     provider,
-    connectionRevision: `connection_revision_${provider}`,
-    credentialRevision: `credential_revision_${provider}`,
-    attempt,
-    status: 'awaiting_human_evidence',
-    evidence: { automatic: { received: true } },
-    startedAt: '2026-07-15T08:00:00.000Z',
-    completedAt: '',
-    updatedAt: '2026-07-15T08:01:00.000Z',
+    ok: true,
+    testedAt: '2026-07-15T08:01:00.000Z',
+    testEventsSent: provider === 'google' ? 0 : 2,
+    externalEventIds: [],
+    requestIds: [],
   }
 }
 
@@ -1123,29 +1115,12 @@ function handleApi(req, res) {
       .catch(() => json(res, { statusCode: 400, message: '连接配置请求无效' }, 400))
     return
   }
-  const platformVerificationMatch = url.pathname.match(/^\/api\/admin\/attribution\/platforms\/(meta|tiktok|google)\/(verify|reverify|verification)$/)
-  if (platformVerificationMatch) {
-    const provider = platformVerificationMatch[1]
-    const action = platformVerificationMatch[2]
-    if (req.method === 'GET' && action === 'verification') return json(res, { data: platformVerification(provider) })
-    if (req.method === 'POST' && (action === 'verify' || action === 'reverify')) {
-      readJsonBody(req).then((body) => {
-        adminAttributionActions.push({ type: action, provider, body })
-        json(res, { data: platformVerification(provider, action === 'reverify' ? 2 : 1) }, 202)
-      }).catch(() => json(res, { statusCode: 400, message: '验证请求无效' }, 400))
-      return
-    }
-  }
-  const platformVerificationRecordMatch = url.pathname.match(/^\/api\/admin\/attribution\/platforms\/(meta|tiktok|google)\/verifications\/([^/]+)$/)
-  if (platformVerificationRecordMatch && req.method === 'GET') {
-    return json(res, { data: platformVerification(platformVerificationRecordMatch[1]) })
-  }
-  const platformEvidenceMatch = url.pathname.match(/^\/api\/admin\/attribution\/platforms\/(meta|tiktok|google)\/verifications\/([^/]+)\/evidence$/)
-  if (platformEvidenceMatch && req.method === 'POST') {
+  const platformDiagnosticMatch = url.pathname.match(/^\/api\/admin\/attribution\/platforms\/(meta|tiktok|google)\/test$/)
+  if (platformDiagnosticMatch && req.method === 'POST') {
     readJsonBody(req).then((body) => {
-      adminAttributionActions.push({ type: 'evidence', provider: platformEvidenceMatch[1], body })
-      json(res, { data: platformVerification(platformEvidenceMatch[1]) }, 202)
-    }).catch(() => json(res, { statusCode: 400, message: '证据请求无效' }, 400))
+      adminAttributionActions.push({ type: 'test_connection', provider: platformDiagnosticMatch[1], body })
+      json(res, { data: platformDiagnostic(platformDiagnosticMatch[1]) })
+    }).catch(() => json(res, { statusCode: 400, message: '测试请求无效' }, 400))
     return
   }
   if (url.pathname.startsWith('/api/admin/attribution/')) {

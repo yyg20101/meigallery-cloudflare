@@ -31,7 +31,7 @@ describe('三平台连接 Schema', () => {
     }
     expect(credential.get('input[type="file"]').attributes('accept')).toContain('.json')
     expect(connection.text()).not.toContain('Access Token')
-    expect(connection.get('[data-connection-controls]').findAll('input[type="checkbox"]')).toHaveLength(2)
+    expect(connection.get('[data-connection-controls]').findAll('input[type="checkbox"]')).toHaveLength(3)
   })
 
   it('凭证明文不进入可见文本，空的可选 Manager ID 不进入请求', () => {

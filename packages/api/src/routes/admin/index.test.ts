@@ -38,31 +38,4 @@ describe('后台父路由鉴权', () => {
 
     expect(res.status).toBe(200)
   })
-
-  it.each([
-    [null, 401, 0],
-    ['admin', 403, 0],
-    ['owner', 200, 1],
-  ] as const)(
-    '归因独立控制面在真实挂载下 role=%s 返回 %s',
-    async (role, status, calls) => {
-      let bindingCalls = 0
-      const res = await createApp(role).request(
-        '/api/admin/attribution-runtime/connections',
-        {},
-        {
-          DB: db,
-          ATTRIBUTION: {
-            fetch: async () => {
-              bindingCalls += 1
-              return Response.json({ data: [] })
-            },
-          },
-        } as unknown as Bindings,
-      )
-
-      expect(res.status).toBe(status)
-      expect(bindingCalls).toBe(calls)
-    },
-  )
 })

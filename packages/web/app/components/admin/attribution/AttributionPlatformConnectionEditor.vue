@@ -35,7 +35,7 @@ function updatePublicConfig(key: string, value: string) {
         <span :class="platform.accentClass" class="h-8 w-1 shrink-0 rounded-sm" aria-hidden="true" />
         <div class="min-w-0">
           <h2 class="text-base font-semibold text-gray-900">{{ platform.label }} 连接</h2>
-          <p class="mt-1 text-xs text-gray-500">连接版本 {{ connection?.connectionRevision || '-' }}</p>
+          <p class="mt-1 text-xs text-gray-500">统一控制 Browser 与 Server 投递</p>
         </div>
       </div>
       <span :class="connection ? platform.badgeClass : 'border-gray-200 bg-gray-50 text-gray-600'" class="w-fit rounded-md border px-2.5 py-1 text-xs font-medium">
@@ -43,7 +43,7 @@ function updatePublicConfig(key: string, value: string) {
       </span>
     </div>
 
-    <dl data-connection-status-rail class="grid grid-cols-2 border-b border-gray-200 md:grid-cols-5">
+    <dl data-connection-status-rail class="grid grid-cols-3 border-b border-gray-200">
       <div class="px-3 py-3 md:border-r md:border-gray-200">
         <dt class="text-xs text-gray-500">Browser</dt>
         <dd class="mt-1 text-sm font-semibold text-gray-900">{{ connection?.browserEnabled ? '已启用' : '已关闭' }}</dd>
@@ -54,15 +54,7 @@ function updatePublicConfig(key: string, value: string) {
       </div>
       <div class="px-3 py-3 md:border-r md:border-gray-200">
         <dt class="text-xs text-gray-500">凭证</dt>
-        <dd class="mt-1 text-sm font-semibold text-gray-900">{{ connection?.credential.configured ? `已配置 · r${connection.credential.revision}` : '未配置' }}</dd>
-      </div>
-      <div class="px-3 py-3 md:border-r md:border-gray-200">
-        <dt class="text-xs text-gray-500">Server target</dt>
-        <dd class="mt-1 text-sm font-semibold tabular-nums text-gray-900">{{ connection?.rolloutTargetPercentage ?? 0 }}%</dd>
-      </div>
-      <div class="col-span-2 px-3 py-3 md:col-span-1">
-        <dt class="text-xs text-gray-500">Server effective</dt>
-        <dd class="mt-1 text-sm font-semibold tabular-nums text-gray-900">{{ connection?.rolloutEffectivePercentage ?? 0 }}%</dd>
+        <dd class="mt-1 text-sm font-semibold text-gray-900">{{ connection?.credential.configured ? '已配置' : '未配置' }}</dd>
       </div>
     </dl>
 
@@ -81,23 +73,14 @@ function updatePublicConfig(key: string, value: string) {
         >
       </label>
 
-      <label class="min-w-0">
-        <span class="mb-1 block text-xs font-medium text-gray-600">运行模式</span>
-        <select
-          :value="modelValue.mode"
-          class="h-10 w-full rounded-md border border-gray-300 px-3 text-sm"
-          @change="update('mode', ($event.target as HTMLSelectElement).value as AttributionPlatformConnectionDraft['mode'])"
-        >
-          <option value="disabled">关闭</option>
-          <option value="test">测试</option>
-          <option value="production">生产</option>
-        </select>
-      </label>
-
-      <div data-connection-controls class="grid gap-3 border-y border-gray-200 py-4 sm:col-span-2 sm:grid-cols-2 lg:col-span-4">
+      <div data-connection-controls class="grid gap-3 border-y border-gray-200 py-4 sm:col-span-2 sm:grid-cols-3 lg:col-span-4">
         <label class="flex min-h-9 items-center gap-2 text-sm text-gray-700">
           <input :checked="modelValue.enabled" type="checkbox" @change="update('enabled', ($event.target as HTMLInputElement).checked)">
           启用连接
+        </label>
+        <label class="flex min-h-9 items-center gap-2 text-sm text-gray-700">
+          <input :checked="modelValue.browserEnabled" type="checkbox" @change="update('browserEnabled', ($event.target as HTMLInputElement).checked)">
+          {{ platform.browserLabel }}
         </label>
         <label class="flex min-h-9 items-center gap-2 text-sm text-gray-700">
           <input :checked="modelValue.serverEnabled" type="checkbox" @change="update('serverEnabled', ($event.target as HTMLInputElement).checked)">

@@ -1,13 +1,12 @@
 import { Hono } from 'hono'
 import { getCookie } from 'hono/cookie'
-import { ATTRIBUTION_CONTEXT_COOKIE_NAME } from '@meigallery/shared'
 import type { Bindings, Variables } from '../index'
-import { routeContactConversion } from '../services/attribution-contact-router'
+import { recordContact } from '../services/conversions'
 import { errorJson } from '../utils/api-error'
 import { safeContactLinkUrl } from '../utils/contact-link-url'
 import { generateContactLink } from '@meigallery/shared/constants'
 import { resolveRequestMarketingConsent } from '../utils/marketing-consent-request'
-import { AD_ATTRIBUTION_CONTEXT_COOKIE } from '../utils/ad-attribution-cookie'
+import { AD_ATTRIBUTION_CONTEXT_COOKIE } from './ad-attribution'
 import { loadAttributionCryptoKeys } from '../utils/attribution-crypto'
 import { resolveTrustedAdAttributionContext } from '../utils/ad-attribution-context'
 import { buildAdPlatformUserData, readAdPlatformBrowserIdentifiersFromRequest } from '../utils/ad-platform-identifiers'
@@ -47,8 +46,7 @@ conversionRoutes.post('/events', async (c) => {
   const adPlatformUserData = consentSnapshot.marketingAllowed
     ? buildAdPlatformUserData(c.req.raw, readAdPlatformBrowserIdentifiersFromRequest(c.req.raw))
     : undefined
-  const result = await routeContactConversion(c.env, {
-    conversion: {
+  const result = await recordContact(c.env, {
     visitorId, sessionId, userId: c.get('userId'), occurredAt: String(body.occurredAt || new Date().toISOString()),
     routeName: text(body.routeName, 120), path: text(body.path, 240), sourceChannel: text(body.sourceChannel, 40) || 'unknown',
     sourceName: text(body.sourceName, 120), trackingSourceSlug: text(body.trackingSourceSlug, 120),
@@ -56,21 +54,6 @@ conversionRoutes.post('/events', async (c) => {
     consentSnapshot, attributionContext, attributionSource: attributionContext ? 'context' : 'none', adPlatformUserData,
     contactMethodId: contact.id, contactPlatform: contact.platform, actionType: 'open_link',
     metadata: isPlainRecord(body.metadata) ? body.metadata : {},
-    },
-    sourceContextToken: consentSnapshot.marketingAllowed
-      ? readOpaqueAttributionContextToken(c)
-      : null,
-    legacyContext: attributionContext,
-    requestMetadata: consentSnapshot.adUserDataAllowed
-      ? {
-          ...(adPlatformUserData?.clientIpAddress
-            ? { clientIp: adPlatformUserData.clientIpAddress }
-            : {}),
-          ...(adPlatformUserData?.clientUserAgent
-            ? { userAgent: adPlatformUserData.clientUserAgent }
-            : {}),
-        }
-      : {},
   })
   return c.json({ data: result }, result.created ? 201 : 200)
 })
@@ -110,18 +93,6 @@ async function trustedAttributionContext(c: Parameters<typeof getCookie>[0]) {
     const context = await resolveTrustedAdAttributionContext(keys, getCookie(c, AD_ATTRIBUTION_CONTEXT_COOKIE))
     return context
   } catch { return null }
-}
-
-function readOpaqueAttributionContextToken(
-  c: Parameters<typeof getCookie>[0],
-): string | null {
-  const value = getCookie(c, ATTRIBUTION_CONTEXT_COOKIE_NAME)
-  return typeof value === 'string'
-    && value.length >= 4
-    && value.length <= 4_096
-    && !/\p{Cc}/u.test(value)
-    ? value
-    : null
 }
 
 function conversionId(value: unknown) { const normalized = typeof value === 'string' ? value.trim() : ''; return CONVERSION_ID_RE.test(normalized) ? normalized : '' }

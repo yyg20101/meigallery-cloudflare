@@ -106,6 +106,9 @@ gallery-001,夏日写真,summer-portrait-001,广东,甜美,清新,"长发,户外
 - 业务逻辑中避免硬编码会员名称，使用等级 rank 或配置化权限判断。
 - 原始媒体存储在私有 bucket 或受保护服务中，公开变体通过显式 URL 分发。
 - 为权限校验、导入解析、会员到期和搜索过滤编写重点测试。
+- 归因只允许 `packages/api` 一个运行时、`attribution_conversion_facts` 一个事实入口和一套 Planner/Outbox/delivery 状态机；新增平台只能通过 registry 和 adapter 接入。
+- 禁止重新引入独立归因 Worker、业务双写、owner/epoch/cutover、shadow、按比例 rollout、验证 Workflow、Git commit 发布门禁或平台专属事实链路。
+- 运行期 dead letter、过期 Outbox、质量告警和 incident 只用于诊断，不得阻止紧急修复部署；鉴权、凭证结构、migration 和生产可用性仍是必要门禁。
 
 ## Git 分支策略
 
@@ -131,13 +134,14 @@ gallery-001,夏日写真,summer-portrait-001,广东,甜美,清新,"长发,户外
 
 | 环境 | 触发 | Worker 名称 |
 |------|------|-------------|
-| 生产 | 手动 `./scripts/deploy.sh production` 或等价 wrangler 命令 | `meigallery-api` / `meigallery-web` |
-| 开发 | 手动 `./scripts/deploy.sh dev` | `meigallery-api-dev` / `meigallery-web-dev` |
+| 生产 | 手动 `./scripts/deploy.sh production api\|web\|all` | `meigallery-api` / `meigallery-web` |
+| 开发 | 手动 `./scripts/deploy.sh dev api\|web\|all` | `meigallery-api-dev` / `meigallery-web-dev` |
 | 本地 | `corepack pnpm dev` | localhost:8787 / localhost:3000 |
 
 CI 配置位于 `.github/workflows/`：
 - `ci.yml`：PR 和 dev 推送触发，运行测试 + 类型检查 + 构建验证
 - 当前没有生产自动部署 workflow；GitHub Actions 不负责生产部署，避免合入 `main` 后自动影响线上用户。
+- API production 先上传不接流量的 Worker Version，再执行 D1 migration，成功后激活；Web 和 API 按实际影响范围独立部署。
 
 首次部署前需执行 `./scripts/setup.sh` 创建 Cloudflare 资源。
 

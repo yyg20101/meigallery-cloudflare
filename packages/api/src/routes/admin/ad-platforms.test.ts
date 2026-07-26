@@ -8,9 +8,8 @@ const mocks = vi.hoisted(() => ({
   getPlatformConnection: vi.fn(),
   listPlatformConnections: vi.fn(),
   savePlatformConnection: vi.fn(),
-  getPlatformVerification: vi.fn(),
-  startPlatformVerification: vi.fn(),
-  submitPlatformVerificationEvidence: vi.fn(),
+  testPlatformConnection: vi.fn(),
+  auditRuns: [] as Array<{ sql: string; params: unknown[] }>,
 }))
 
 vi.mock('../../services/ad-platform/connection-service', async importOriginal => ({
@@ -20,27 +19,45 @@ vi.mock('../../services/ad-platform/connection-service', async importOriginal =>
   savePlatformConnection: mocks.savePlatformConnection,
 }))
 
-vi.mock('../../workflows/ad-platform-verification', () => ({
-  getPlatformVerification: mocks.getPlatformVerification,
-  startPlatformVerification: mocks.startPlatformVerification,
-  submitPlatformVerificationEvidence: mocks.submitPlatformVerificationEvidence,
+vi.mock('../../services/ad-platform/connection-diagnostics', () => ({
+  testPlatformConnection: mocks.testPlatformConnection,
 }))
 
 const env = {
   APP_ENV: 'production',
   SITE_URL: 'https://gallery.example.test',
   CORS_ORIGIN: 'https://gallery.example.test',
-  DB: {},
+  DB: {
+    prepare(sql: string) {
+      let params: unknown[] = []
+      return {
+        bind(...values: unknown[]) {
+          params = values
+          return this
+        },
+        async run() {
+          mocks.auditRuns.push({ sql, params })
+          return { meta: { changes: 1 } }
+        },
+      }
+    },
+  },
 } as unknown as Bindings
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.auditRuns.length = 0
   mocks.listPlatformConnections.mockResolvedValue([])
   mocks.getPlatformConnection.mockResolvedValue(null)
   mocks.savePlatformConnection.mockImplementation(async (_env, command) => ({ ...command, connectionId: `conn_${command.provider}` }))
-  mocks.startPlatformVerification.mockImplementation(async (_env, input) => ({ id: `verify:${input.provider}:1`, attempt: input.reverify ? 2 : 1 }))
-  mocks.getPlatformVerification.mockResolvedValue(null)
-  mocks.submitPlatformVerificationEvidence.mockResolvedValue({ id: 'verify:meta:1', status: 'awaiting_human_evidence' })
+  mocks.testPlatformConnection.mockImplementation(async (_env, input) => ({
+    provider: input.provider,
+    ok: true,
+    testedAt: '2026-07-26T00:00:00.000Z',
+    testEventsSent: 2,
+    externalEventIds: [],
+    requestIds: [],
+  }))
 })
 
 describe('通用广告平台连接路由', () => {
@@ -77,7 +94,7 @@ describe('通用广告平台连接路由', () => {
   })
 
   it.each([
-    ['meta', { provider: 'meta', pixelId: '1234567890123456' }, 'access_token'],
+    ['meta', { provider: 'meta', pixelId: '123456789012345' }, 'access_token'],
     ['tiktok', { provider: 'tiktok', pixelCode: 'ABCDEF123456' }, 'access_token'],
     ['google', { provider: 'google', tagId: 'AW-123456789', customerId: '1234567890', cloudProjectId: 'gallery-project' }, 'service_account_json'],
   ] as const)('%s 使用同一个通用保存命令', async (provider, publicConfig, credentialType) => {
@@ -96,96 +113,48 @@ describe('通用广告平台连接路由', () => {
     expect(response.headers.get('Cache-Control')).toBe('no-store')
   })
 
-  it('重复验证与重新验证只通过通用 reverify 标志区分', async () => {
+  it('连接测试同步返回结果，重复调用使用同一无状态入口', async () => {
     const app = createApp('owner')
-    const first = await request(app, '/platforms/meta/verify', {
+    const first = await request(app, '/platforms/meta/test', {
       method: 'POST',
       body: JSON.stringify({ testEventCode: 'TEST90001' }),
     })
-    const second = await request(app, '/platforms/meta/verify', {
+    const second = await request(app, '/platforms/meta/test', {
       method: 'POST',
-      body: JSON.stringify({ testEventCode: 'TEST99999' }),
-    })
-    const restarted = await request(app, '/platforms/meta/reverify', {
-      method: 'POST',
-      body: JSON.stringify({ testEventCode: 'TEST90002' }),
+      body: JSON.stringify({ testEventCode: 'TEST90001' }),
     })
 
-    expect([first.status, second.status, restarted.status]).toEqual([202, 202, 202])
-    expect(mocks.startPlatformVerification).toHaveBeenNthCalledWith(1, env, expect.objectContaining({ provider: 'meta', actorId: 7, reverify: false }))
-    expect(mocks.startPlatformVerification).toHaveBeenNthCalledWith(2, env, expect.objectContaining({ provider: 'meta', actorId: 7, reverify: false }))
-    expect(mocks.startPlatformVerification).toHaveBeenNthCalledWith(3, env, expect.objectContaining({ provider: 'meta', actorId: 7, reverify: true }))
+    expect([first.status, second.status]).toEqual([200, 200])
+    expect(mocks.testPlatformConnection).toHaveBeenNthCalledWith(1, env, { provider: 'meta', testEventCode: 'TEST90001' })
+    expect(mocks.testPlatformConnection).toHaveBeenNthCalledWith(2, env, { provider: 'meta', testEventCode: 'TEST90001' })
+    expect(mocks.auditRuns).toHaveLength(2)
+    expect(mocks.auditRuns.every(item =>
+      item.sql.includes('test_attribution_platform_connection')
+      && item.params[1] === 7
+      && item.params[2] === 'conn_meta'
+      && item.params[3] === '{"provider":"meta"}',
+    )).toBe(true)
   })
 
-  it('人工证据带审计 actor 发送给所属 Workflow', async () => {
-    const response = await request(createApp('owner'), '/platforms/meta/verifications/verify:meta:1/evidence', {
-      method: 'POST',
-      body: JSON.stringify({ confirmed: true, reference: 'Events Manager 已确认' }),
-    })
-
-    expect(response.status).toBe(202)
-    expect(mocks.submitPlatformVerificationEvidence).toHaveBeenCalledWith(env, {
-      provider: 'meta',
-      verificationId: 'verify:meta:1',
-      actorId: 7,
-      reference: 'Events Manager 已确认',
-    })
-  })
-
-  it('验证状态支持读取最新记录和指定记录，并拒绝非法编号', async () => {
-    mocks.getPlatformVerification
-      .mockResolvedValueOnce({ id: 'verify:meta:latest' })
-      .mockResolvedValueOnce({ id: 'verify:meta:1' })
-      .mockResolvedValueOnce(null)
-      .mockRejectedValueOnce(new Error('read failed'))
-
-    const [latest, selected, missing, invalid, failed] = await Promise.all([
-      request(createApp('admin'), '/platforms/meta/verification', { method: 'GET' }),
-      request(createApp('admin'), '/platforms/meta/verifications/verify:meta:1', { method: 'GET' }),
-      request(createApp('admin'), '/platforms/meta/verifications/verify:meta:2', { method: 'GET' }),
-      request(createApp('admin'), '/platforms/meta/verifications/invalid!', { method: 'GET' }),
-      request(createApp('admin'), '/platforms/google/verification', { method: 'GET' }),
-    ])
-
-    expect(latest.status).toBe(200)
-    expect(selected.status).toBe(200)
-    expect(missing.status).toBe(404)
-    expect(invalid.status).toBe(400)
-    expect(failed.status).toBe(503)
-  })
-
-  it('验证和人工证据允许省略临时字段，并拒绝额外或错误字段', async () => {
-    const [verify, evidence, badVerify, badEvidence, badId] = await Promise.all([
-      request(createApp('owner'), '/platforms/meta/verify', { method: 'POST', body: '{}' }),
-      request(createApp('owner'), '/platforms/meta/verifications/verify:meta:1/evidence', {
-        method: 'POST', body: JSON.stringify({ confirmed: true }),
-      }),
-      request(createApp('owner'), '/platforms/meta/verify', {
+  it('连接测试允许省略临时测试码，并拒绝额外字段', async () => {
+    const [test, badTest] = await Promise.all([
+      request(createApp('owner'), '/platforms/google/test', { method: 'POST', body: '{}' }),
+      request(createApp('owner'), '/platforms/meta/test', {
         method: 'POST', body: JSON.stringify({ testEventCode: '', extra: true }),
       }),
-      request(createApp('owner'), '/platforms/meta/verifications/verify:meta:1/evidence', {
-        method: 'POST', body: JSON.stringify({ confirmed: false }),
-      }),
-      request(createApp('owner'), '/platforms/meta/verifications/invalid!/evidence', {
-        method: 'POST', body: JSON.stringify({ confirmed: true }),
-      }),
     ])
 
-    expect(verify.status).toBe(202)
-    expect(evidence.status).toBe(202)
-    expect(badVerify.status).toBe(400)
-    expect(badEvidence.status).toBe(400)
-    expect(badId.status).toBe(400)
+    expect(test.status).toBe(200)
+    expect(badTest.status).toBe(400)
   })
 
   it.each([
-    ['AD_PLATFORM_VERIFICATION_NOT_FOUND', 404],
-    ['AD_PLATFORM_VERIFICATION_INPUT_INVALID', 400],
+    ['AD_PLATFORM_CONNECTION_TEST_INPUT_INVALID', 400],
     ['AD_PLATFORM_CONNECTION_INVALID', 409],
     ['UNEXPECTED_INTERNAL_DETAIL', 503],
-  ] as const)('验证错误 %s 映射为 %s', async (code, status) => {
-    mocks.startPlatformVerification.mockRejectedValueOnce(new Error(code))
-    const response = await request(createApp('owner'), '/platforms/meta/verify', {
+  ] as const)('诊断错误 %s 映射为 %s', async (code, status) => {
+    mocks.testPlatformConnection.mockRejectedValueOnce(new Error(code))
+    const response = await request(createApp('owner'), '/platforms/meta/test', {
       method: 'POST', body: '{}',
     })
     expect(response.status).toBe(status)
@@ -196,11 +165,11 @@ describe('通用广告平台连接路由', () => {
     const noOrigin = await createApp('owner').request('https://api.example.test/platforms/meta', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(connectionBody({ provider: 'meta', pixelId: '1234567890123456' }, 'access_token')),
+      body: JSON.stringify(connectionBody({ provider: 'meta', pixelId: '123456789012345' }, 'access_token')),
     }, env)
     const nonOwner = await request(createApp('admin'), '/platforms/meta', {
       method: 'PATCH',
-      body: JSON.stringify(connectionBody({ provider: 'meta', pixelId: '1234567890123456' }, 'access_token')),
+      body: JSON.stringify(connectionBody({ provider: 'meta', pixelId: '123456789012345' }, 'access_token')),
     })
 
     expect(noOrigin.status).toBe(403)
@@ -210,7 +179,7 @@ describe('通用广告平台连接路由', () => {
   })
 
   it('生产写操作拒绝 dev、非法 actor 和未知平台', async () => {
-    const body = JSON.stringify(connectionBody({ provider: 'meta', pixelId: '1234567890123456' }, 'access_token'))
+    const body = JSON.stringify(connectionBody({ provider: 'meta', pixelId: '123456789012345' }, 'access_token'))
     const [development, invalidActor, unsupported] = await Promise.all([
       request(createApp('owner'), '/platforms/meta', { method: 'PATCH', body }, { ...env, APP_ENV: 'dev' } as Bindings),
       request(createApp('owner', 0), '/platforms/meta', { method: 'PATCH', body }),
@@ -222,7 +191,7 @@ describe('通用广告平台连接路由', () => {
   })
 
   it('连接保存允许沿用现有凭证，并拒绝非法凭证结构', async () => {
-    const withoutCredential = connectionBody({ provider: 'meta', pixelId: '1234567890123456' }, 'access_token')
+    const withoutCredential = connectionBody({ provider: 'meta', pixelId: '123456789012345' }, 'access_token')
     delete (withoutCredential as { credential?: unknown }).credential
     const valid = await request(createApp('owner'), '/platforms/meta', {
       method: 'PATCH', body: JSON.stringify(withoutCredential),
@@ -230,7 +199,7 @@ describe('通用广告平台连接路由', () => {
     const invalid = await request(createApp('owner'), '/platforms/meta', {
       method: 'PATCH',
       body: JSON.stringify({
-        ...connectionBody({ provider: 'meta', pixelId: '1234567890123456' }, 'access_token'),
+        ...connectionBody({ provider: 'meta', pixelId: '123456789012345' }, 'access_token'),
         credential: { type: 'password', plaintext: '' },
       }),
     })
@@ -248,7 +217,7 @@ describe('通用广告平台连接路由', () => {
     const extraField = await request(createApp('owner'), '/platforms/meta', {
       method: 'PATCH',
       body: JSON.stringify({
-        ...connectionBody({ provider: 'meta', pixelId: '1234567890123456' }, 'access_token'),
+        ...connectionBody({ provider: 'meta', pixelId: '123456789012345' }, 'access_token'),
         accessToken: 'must-not-be-accepted',
       }),
     })
@@ -279,7 +248,7 @@ describe('通用广告平台连接路由', () => {
     mocks.savePlatformConnection.mockRejectedValueOnce(new Error('credential-value: internal failure'))
     const response = await request(createApp('owner'), '/platforms/meta', {
       method: 'PATCH',
-      body: JSON.stringify(connectionBody({ provider: 'meta', pixelId: '1234567890123456' }, 'access_token')),
+      body: JSON.stringify(connectionBody({ provider: 'meta', pixelId: '123456789012345' }, 'access_token')),
     })
     const body = await response.text()
 
@@ -323,7 +292,6 @@ function connectionBody(
   const google = publicConfig.provider === 'google'
   return {
     enabled: true,
-    mode: 'production',
     browserEnabled: true,
     serverEnabled: true,
     publicConfig,
@@ -337,6 +305,5 @@ function connectionBody(
           { canonicalEvent: 'CompleteRegistration', enabled: true },
         ],
     credential: { type: credentialType, plaintext: 'credential-value' },
-    rolloutTargetPercentage: 0,
   }
 }

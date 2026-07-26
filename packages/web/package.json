@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "nuxt dev",
     "build": "nuxt build",
-    "deploy": "wrangler deploy --env=\"\"",
+    "deploy": "node -e \"console.error('PRODUCTION_DEPLOY_REQUIRES_ROOT_SCRIPT'); process.exit(1)\"",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "typecheck": "nuxt prepare && vue-tsc --noEmit",
