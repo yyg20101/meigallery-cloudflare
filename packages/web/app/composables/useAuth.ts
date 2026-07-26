@@ -2,6 +2,7 @@
  * 认证 composable
  * 管理用户状态、登录、注册、登出、验证码、密码重置
  */
+import type { AdBrowserInstruction, AnalyticsConsentState } from '@meigallery/shared'
 
 type RegistrationAttributionContext = {
   visitorId?: string
@@ -10,6 +11,15 @@ type RegistrationAttributionContext = {
   routeName?: string
   path?: string
   sourceChannel?: string
+  sourceName?: string
+  trackingSourceSlug?: string
+  utmSource?: string
+  utmMedium?: string
+  utmCampaign?: string
+  utmContent?: string
+  consentState?: AnalyticsConsentState
+  adAttributionState?: 'resolved' | 'suppress'
+  browserIdentifiers?: unknown
 }
 
 export function useAuth() {
@@ -93,9 +103,7 @@ export function useAuth() {
     turnstileToken?: string
     attribution?: RegistrationAttributionContext
   }) {
-    const result = await api<UserInfo & {
-      attributionInstructionToken: string | null
-    }>('/api/auth/register', {
+    const result = await api<UserInfo & { trackingInstructions: AdBrowserInstruction[] }>('/api/auth/register', {
       method: 'POST',
       body: params,
     })

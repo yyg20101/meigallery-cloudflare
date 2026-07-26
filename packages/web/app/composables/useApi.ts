@@ -11,13 +11,6 @@
 import { apiProxyResponseHeaderEntries } from '~/utils/apiProxyHeaders'
 import { appendResponseHeader } from 'h3'
 
-export interface ApiRequestOptions {
-  method?: string
-  body?: unknown
-  query?: Record<string, string | number | undefined>
-  headers?: Record<string, string>
-}
-
 export function useApi() {
   const config = useRuntimeConfig()
   const appEnv = String(config.public.appEnv || 'development')
@@ -67,10 +60,10 @@ export function useApi() {
     }
   }
 
-  async function ssrFetch<T>(
-    fullPath: string,
-    options?: ApiRequestOptions,
-  ): Promise<T> {
+  async function ssrFetch<T>(fullPath: string, options?: {
+    method?: string
+    body?: unknown
+  }): Promise<T> {
     const event = useRequestEvent()
     const apiBinding = (event?.context as Record<string, any>)?.cloudflare?.env?.API_SERVICE
     const isTestEnvironment = config.public.appEnv === 'test'
@@ -80,11 +73,11 @@ export function useApi() {
       // Cloudflare Workers 环境：Service Binding 直连（域名仅占位，路由取决于路径）
       const init: RequestInit = {
         method: options?.method || 'GET',
-        headers: requestHeadersWithBody(options),
       }
       if (isFormDataBody(options?.body)) {
         init.body = options.body
       } else if (options?.body) {
+        (init as any).headers = { 'Content-Type': 'application/json' }
         init.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body)
       }
       // 转发原始请求的 cookie（用于认证场景）
@@ -99,11 +92,11 @@ export function useApi() {
     const apiBaseUrl = config.public.apiBaseUrl as string
     const fetchOpts: RequestInit = {
       method: options?.method || 'GET',
-      headers: requestHeadersWithBody(options),
     }
     if (isFormDataBody(options?.body)) {
       fetchOpts.body = options.body
     } else if (options?.body) {
+      fetchOpts.headers = { 'Content-Type': 'application/json' }
       fetchOpts.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body)
     }
     if (requestHeaders.cookie) {
@@ -124,7 +117,11 @@ export function useApi() {
 
   async function api<T = unknown>(
     path: string,
-    options?: ApiRequestOptions,
+    options?: {
+      method?: string
+      body?: unknown
+      query?: Record<string, string | number | undefined>
+    },
   ): Promise<T> {
     const method = options?.method || 'GET'
     confirmDevAdminWrite(path, method)
@@ -140,43 +137,17 @@ export function useApi() {
     const fetchOptions: Record<string, unknown> = {
       method,
       credentials: 'include',
-      headers: requestHeadersWithBody(options),
     }
     if (isFormDataBody(options?.body)) {
       fetchOptions.body = options.body
     } else if (options?.body) {
+      fetchOptions.headers = { 'Content-Type': 'application/json' }
       fetchOptions.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body)
     }
     return $fetch<T>(fullPath, fetchOptions as any)
   }
 
   return { api, baseURL: '' }
-}
-
-function requestHeadersWithBody(
-  options: ApiRequestOptions | undefined,
-): Record<string, string> {
-  const headers = { ...(options?.headers ?? {}) }
-  if (
-    options?.body
-    && !isFormDataRequestBody(options.body)
-    && !hasHeader(headers, 'content-type')
-  ) {
-    headers['Content-Type'] = 'application/json'
-  }
-  return headers
-}
-
-function isFormDataRequestBody(body: unknown): body is FormData {
-  return typeof FormData !== 'undefined' && body instanceof FormData
-}
-
-function hasHeader(
-  headers: Record<string, string>,
-  expectedName: string,
-): boolean {
-  const normalized = expectedName.toLowerCase()
-  return Object.keys(headers).some(name => name.toLowerCase() === normalized)
 }
 
 function forwardSsrResponseCookies(event: ReturnType<typeof useRequestEvent>, response: Response) {

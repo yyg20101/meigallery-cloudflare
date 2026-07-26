@@ -1,6 +1,6 @@
 import type {
-  AttributionBrowserInstructionV1,
   AdBrowserPublicConfig,
+  AdBrowserInstruction,
   AdBrowserSignal,
   AdConsentSnapshot,
 } from '@meigallery/shared'
@@ -76,10 +76,10 @@ export function createTikTokPixelAdapter() {
     return true
   }
 
-  async function track(instruction: AttributionBrowserInstructionV1) {
+  async function track(instruction: AdBrowserInstruction) {
     if (!window.ttq || !initialized || !validInstruction(instruction)) return false
     window.ttq.track?.(
-      instruction.eventName,
+      instruction.descriptor.browserEventName,
       instruction.payload,
       { event_id: instruction.externalEventId },
     )
@@ -111,11 +111,11 @@ export function createTikTokPixelAdapter() {
 
 export const tiktokPixelAdapter = createTikTokPixelAdapter()
 
-function validInstruction(instruction: AttributionBrowserInstructionV1) {
+function validInstruction(instruction: AdBrowserInstruction) {
   return instruction.provider === 'tiktok'
-    && instruction.schemaVersion === 1
-    && instruction.eventName === instruction.canonicalEvent
-    && instruction.destination === 'tiktok_pixel'
+    && instruction.descriptor.provider === 'tiktok'
+    && instruction.descriptor.canonicalEvent === instruction.canonicalEvent
+    && instruction.descriptor.browserEventName === instruction.canonicalEvent
     && EXTERNAL_EVENT_ID_PATTERN.test(instruction.externalEventId)
 }
 

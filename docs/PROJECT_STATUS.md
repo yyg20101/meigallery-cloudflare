@@ -1,6 +1,6 @@
 # 项目状态
 
-更新时间：2026-07-25。
+更新时间：2026-07-26。
 
 ## 文档边界
 
@@ -67,6 +67,7 @@
 
 ## Production 归因状态
 
+- 2026-07-26 发现 Web 曾提前调用仍处于 `shadow` 的 `track.616618.xyz`，公开 `/v1/*` 因运行模式门禁返回 `503 ATTRIBUTION_NOT_ACTIVE`，导致 Browser Pixel 不初始化。production Web 已先回滚到已验证的 `e13d7f1` 构建恢复当前 API 单写链路；代码门禁明确要求正式切换前不得配置 `NUXT_PUBLIC_ATTRIBUTION_BASE_URL` 或启用独立运行时浏览器插件。旧 owner 的注册 outbox 同时把已生成的 Browser 指令返回 Web，避免 `CompleteRegistration` 只剩 Server 投递。独立 Attribution Worker 继续保持 `shadow`，不得接收 production 业务流量。
 - 2026-07-25 已部署独立 `meigallery-attribution` Worker，Custom Domain 为 `track.616618.xyz`，运行模式保持 `shadow`，尚未接收 production 业务流量。独立 production D1 已应用 `0001` 至 `0006`，三把 Worker Secret、三组平台 Queue/DLQ、候选验证 Workflow 和健康检查均已核验。
 - Attribution Worker 复用单一 `*/15` Cron：常规执行区间维护，UTC 03:15 同轮追加每日维护。Cloudflare Free 账户当前 5 个 Cron 配额全部有明确归属，没有删除或借用其他项目调度。
 - 旧 production D1 已完成仓库外备份，新 Attribution D1 已记录迁移前 Time Travel bookmark。当前仍由旧 API 运行时唯一写入；新 D1 尚未导入连接、来源、历史或活动事实，因此不存在双投递。

@@ -47,6 +47,7 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
       eventId: 'registration_user_42',
       accepted: true,
       instructionToken: 'instruction_token_0123456789',
+      trackingInstructions: [],
     })
   })
 
@@ -63,6 +64,7 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
         eventId: 'registration_user_42',
         accepted: true,
         instructionToken: 'instruction_token_0123456789',
+        trackingInstructions: [],
       }
     })
 
@@ -110,8 +112,8 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
     expect(body).toMatchObject({
       id: 42,
       attributionInstructionToken: 'instruction_token_0123456789',
+      trackingInstructions: [],
     })
-    expect(body).not.toHaveProperty('trackingInstructions')
     expect(JSON.stringify(body)).not.toContain('opaque_context_token')
   })
 
@@ -270,6 +272,7 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
       eventId: 'registration_user_42',
       accepted: false,
       instructionToken: null,
+      trackingInstructions: [],
     })
     const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(
       () => undefined,

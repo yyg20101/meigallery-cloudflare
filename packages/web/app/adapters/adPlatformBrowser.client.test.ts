@@ -19,14 +19,18 @@ const consent = {
 }
 
 const metaInstruction = {
-  schemaVersion: 1 as const,
   deliveryId: 'delivery_meta_browser',
   provider: 'meta' as const,
   canonicalEvent: 'Contact' as const,
-  eventName: 'Contact',
-  destination: 'meta_pixel',
   externalEventId: 'mg3_meta_contact',
   receiptToken: `v1.${'a'.repeat(16)}.${'b'.repeat(43)}`,
+  descriptor: {
+    provider: 'meta' as const,
+    canonicalEvent: 'Contact' as const,
+    browserEventName: 'Contact',
+    browserDestination: 'meta_pixel',
+    serverDestination: 'meta_capi',
+  },
   payload: { method_type: 'telegram' },
 }
 
@@ -43,22 +47,22 @@ describe('浏览器广告平台 adapter registry', () => {
   })
 
   it('使用 Map 注册三平台且拒绝对象原型键', async () => {
-    const { isRegisteredBrowserTrackingProvider } = await import('./registry.client')
+    const { isRegisteredAdBrowserProvider } = await import('./adPlatformBrowser.client')
 
-    expect(isRegisteredBrowserTrackingProvider('meta')).toBe(true)
-    expect(isRegisteredBrowserTrackingProvider('tiktok')).toBe(true)
-    expect(isRegisteredBrowserTrackingProvider('google')).toBe(true)
-    expect(isRegisteredBrowserTrackingProvider('__proto__')).toBe(false)
-    expect(isRegisteredBrowserTrackingProvider('constructor')).toBe(false)
+    expect(isRegisteredAdBrowserProvider('meta')).toBe(true)
+    expect(isRegisteredAdBrowserProvider('tiktok')).toBe(true)
+    expect(isRegisteredAdBrowserProvider('google')).toBe(true)
+    expect(isRegisteredAdBrowserProvider('__proto__')).toBe(false)
+    expect(isRegisteredAdBrowserProvider('constructor')).toBe(false)
   })
 
   it('只向当前 active provider 分发 instruction 和 signal', async () => {
-    const { executeBrowserTrackingInstruction, initializeBrowserTrackingProvider, trackBrowserTrackingSignal } = await import('./registry.client')
+    const { executeAdBrowserInstruction, initializeAdBrowserProvider, trackAdBrowserSignal } = await import('./adPlatformBrowser.client')
 
-    await expect(initializeBrowserTrackingProvider({ provider: 'meta', pixelId: '123456789' }, consent)).resolves.toBe(true)
-    await expect(executeBrowserTrackingInstruction(metaInstruction)).resolves.toBe(true)
-    await expect(trackBrowserTrackingSignal('meta', 'PageView', {})).resolves.toBe(true)
-    await expect(executeBrowserTrackingInstruction({ ...metaInstruction, provider: 'tiktok' })).resolves.toBe(false)
+    await expect(initializeAdBrowserProvider({ provider: 'meta', pixelId: '123456789' }, consent)).resolves.toBe(true)
+    await expect(executeAdBrowserInstruction(metaInstruction)).resolves.toBe(true)
+    await expect(trackAdBrowserSignal('meta', 'PageView', {})).resolves.toBe(true)
+    await expect(executeAdBrowserInstruction({ ...metaInstruction, provider: 'tiktok' })).resolves.toBe(false)
 
     expect(adapters.meta.initialize).toHaveBeenCalledWith({ provider: 'meta', pixelId: '123456789' }, consent)
     expect(adapters.meta.track).toHaveBeenCalledWith(metaInstruction)
@@ -72,20 +76,20 @@ describe('浏览器广告平台 adapter registry', () => {
     adapters.tiktok.teardown.mockImplementation(async () => { order.push('tiktok:teardown') })
     adapters.tiktok.initialize.mockImplementation(async () => { order.push('tiktok:initialize'); return true })
     adapters.google.initialize.mockImplementation(async () => { order.push('google:initialize'); return true })
-    const { initializeBrowserTrackingProvider } = await import('./registry.client')
+    const { initializeAdBrowserProvider } = await import('./adPlatformBrowser.client')
 
-    await initializeBrowserTrackingProvider({ provider: 'meta', pixelId: '123456789' }, consent)
-    await initializeBrowserTrackingProvider({ provider: 'tiktok', pixelCode: 'C123456789ABCDEF' }, consent)
-    await initializeBrowserTrackingProvider({ provider: 'google', tagId: 'AW-123456789' }, consent)
+    await initializeAdBrowserProvider({ provider: 'meta', pixelId: '123456789' }, consent)
+    await initializeAdBrowserProvider({ provider: 'tiktok', pixelCode: 'C123456789ABCDEF' }, consent)
+    await initializeAdBrowserProvider({ provider: 'google', tagId: 'AW-123456789' }, consent)
 
     expect(order).toEqual(['meta:teardown', 'tiktok:initialize', 'tiktok:teardown', 'google:initialize'])
   })
 
   it('未授权时不初始化且会卸载 active provider', async () => {
-    const { initializeBrowserTrackingProvider } = await import('./registry.client')
-    await initializeBrowserTrackingProvider({ provider: 'meta', pixelId: '123456789' }, consent)
+    const { initializeAdBrowserProvider } = await import('./adPlatformBrowser.client')
+    await initializeAdBrowserProvider({ provider: 'meta', pixelId: '123456789' }, consent)
 
-    await expect(initializeBrowserTrackingProvider(
+    await expect(initializeAdBrowserProvider(
       { provider: 'meta', pixelId: '123456789' },
       { ...consent, marketingAllowed: false, adUserDataAllowed: false },
     )).resolves.toBe(false)
@@ -106,10 +110,10 @@ describe('浏览器广告平台 adapter registry', () => {
     })
     adapters.meta.teardown.mockImplementation(async () => { order.push('meta:teardown') })
     adapters.tiktok.initialize.mockImplementation(async () => { order.push('tiktok:initialize'); return true })
-    const { initializeBrowserTrackingProvider } = await import('./registry.client')
+    const { initializeAdBrowserProvider } = await import('./adPlatformBrowser.client')
 
-    const meta = initializeBrowserTrackingProvider({ provider: 'meta', pixelId: '123456789' }, consent)
-    const tiktok = initializeBrowserTrackingProvider({ provider: 'tiktok', pixelCode: 'C123456789ABCDEF' }, consent)
+    const meta = initializeAdBrowserProvider({ provider: 'meta', pixelId: '123456789' }, consent)
+    const tiktok = initializeAdBrowserProvider({ provider: 'tiktok', pixelCode: 'C123456789ABCDEF' }, consent)
     await Promise.resolve()
 
     expect(order).toEqual(['meta:initialize:start'])
@@ -125,12 +129,12 @@ describe('浏览器广告平台 adapter registry', () => {
   })
 
   it('当前 provider 重新初始化失败时 fail closed 并卸载旧实例', async () => {
-    const { executeBrowserTrackingInstruction, initializeBrowserTrackingProvider } = await import('./registry.client')
-    await initializeBrowserTrackingProvider({ provider: 'meta', pixelId: '123456789' }, consent)
+    const { executeAdBrowserInstruction, initializeAdBrowserProvider } = await import('./adPlatformBrowser.client')
+    await initializeAdBrowserProvider({ provider: 'meta', pixelId: '123456789' }, consent)
     adapters.meta.initialize.mockResolvedValueOnce(false)
 
-    await expect(initializeBrowserTrackingProvider({ provider: 'meta', pixelId: '987654321' }, consent)).resolves.toBe(false)
-    await expect(executeBrowserTrackingInstruction(metaInstruction)).resolves.toBe(false)
+    await expect(initializeAdBrowserProvider({ provider: 'meta', pixelId: '987654321' }, consent)).resolves.toBe(false)
+    await expect(executeAdBrowserInstruction(metaInstruction)).resolves.toBe(false)
 
     expect(adapters.meta.teardown).toHaveBeenCalledOnce()
     expect(adapters.meta.track).not.toHaveBeenCalled()

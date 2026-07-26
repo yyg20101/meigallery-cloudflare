@@ -47,7 +47,7 @@ export function createLegacyRegistrationOutboxDispatcher(
     const attributionContext = input.consentSnapshot.marketingAllowed
       ? await trustedLegacyContext(context)
       : null
-    await recordRegistration(context.env, {
+    const result = await recordRegistration(context.env, {
       userId: input.userId,
       visitorId: input.visitorId,
       sessionId: input.sessionId,
@@ -73,6 +73,7 @@ export function createLegacyRegistrationOutboxDispatcher(
       hashedEmail: input.hashedEmail,
       metadata: { method: 'email' },
     }, ownership)
+    return result.trackingInstructions
   }
 }
 

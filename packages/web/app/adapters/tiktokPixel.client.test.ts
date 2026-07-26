@@ -10,14 +10,18 @@ const consent = {
 
 function instruction(provider: 'tiktok' | 'meta' = 'tiktok') {
   return {
-    schemaVersion: 1 as const,
     deliveryId: 'delivery_tiktok_registration_1',
     provider,
     canonicalEvent: 'CompleteRegistration' as const,
-    eventName: 'CompleteRegistration',
-    destination: 'tiktok_pixel',
     externalEventId: 'mg3_tiktok_registration_1',
     receiptToken: `v1.${'a'.repeat(16)}.${'b'.repeat(43)}`,
+    descriptor: {
+      provider,
+      canonicalEvent: 'CompleteRegistration' as const,
+      browserEventName: 'CompleteRegistration',
+      browserDestination: 'tiktok_pixel',
+      serverDestination: 'tiktok_events_api',
+    },
     payload: { content_type: 'registration' },
   }
 }

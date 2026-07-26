@@ -1,96 +1,108 @@
 <script setup lang="ts">
-import type {
-  AttributionVerificationView,
-} from '~/types/attribution-admin'
-import {
-  attributionPlatformDefinition,
-} from '~/utils/attributionPlatforms'
+import type { AdPlatformVerificationData } from '~/composables/useAdminAttribution'
+import type { AttributionPlatformDefinition } from '~/utils/attributionPlatforms'
+import { attributionVerificationStatusLabel } from '~/utils/attributionPlatforms'
 
-withDefaults(defineProps<{
-  records?: AttributionVerificationView[]
+const props = withDefaults(defineProps<{
+  platform: AttributionPlatformDefinition
+  verification: AdPlatformVerificationData | null
+  loading?: boolean
+  disabled?: boolean
 }>(), {
-  records: () => [],
+  loading: false,
+  disabled: false,
 })
 
-function statusLabel(
-  status: AttributionVerificationView['status'],
-): string {
-  if (status === 'queued') return '等待验证'
-  if (status === 'running') return '验证中'
-  if (status === 'verified') return '已验证'
-  if (status === 'timed_out') return '已超时'
-  return '验证失败'
+const emit = defineEmits<{
+  verify: [testEventCode: string]
+  reverify: [testEventCode: string]
+  confirmEvidence: [reference: string]
+  refresh: []
+}>()
+
+const testEventCode = defineModel<string>('testEventCode', { default: '' })
+const evidenceReference = ref('')
+const confirmingReverify = ref(false)
+
+const active = computed(() => ['queued', 'running'].includes(props.verification?.status || ''))
+const testCodeReady = computed(() => !props.platform.testEvent || testEventCode.value.trim().length > 0)
+
+function requestVerification() {
+  emit('verify', testEventCode.value)
+}
+
+function confirmReverification() {
+  confirmingReverify.value = false
+  emit('reverify', testEventCode.value)
+}
+
+function submitEvidence() {
+  emit('confirmEvidence', evidenceReference.value)
+  evidenceReference.value = ''
 }
 </script>
 
 <template>
-  <section
-    data-attribution-verification-panel
-    class="min-w-0 border-y border-gray-200 bg-white"
-  >
-    <div class="border-b border-gray-200 px-3 py-4 sm:px-5">
-      <h2 class="text-base font-semibold text-gray-900">候选验证记录</h2>
-      <p class="mt-1 text-xs leading-5 text-gray-500">
-        每次创建完整身份候选都会自动生成一条验证记录。
-      </p>
+  <section data-attribution-verification-panel class="min-w-0 border-y border-gray-200 bg-white">
+    <div class="flex min-w-0 flex-col gap-3 border-b border-gray-200 px-3 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-5">
+      <div>
+        <h2 class="text-base font-semibold text-gray-900">连接验证</h2>
+        <p class="mt-1 text-xs text-gray-500">第 {{ verification?.attempt || 0 }} 次 · {{ attributionVerificationStatusLabel(verification?.status || '') }}</p>
+      </div>
+      <button type="button" class="w-fit rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50" :disabled="loading" @click="emit('refresh')">
+        刷新状态
+      </button>
     </div>
-    <div v-if="records.length" class="overflow-x-auto">
-      <table class="w-full min-w-[54rem] text-left text-sm">
-        <thead class="border-b border-gray-200 bg-gray-50 text-xs text-gray-500">
-          <tr>
-            <th class="px-3 py-2 font-medium sm:px-5">平台 / 连接</th>
-            <th class="px-3 py-2 font-medium">状态</th>
-            <th class="px-3 py-2 font-medium">身份检查</th>
-            <th class="px-3 py-2 font-medium">Browser 配对</th>
-            <th class="px-3 py-2 font-medium">开始时间</th>
-            <th class="px-3 py-2 font-medium">完成时间</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-gray-100">
-          <tr v-for="record in records" :key="`${record.connectionId}:${record.createdAt}`">
-            <td class="px-3 py-3 sm:px-5">
-              <p class="font-medium text-gray-900">
-                {{ attributionPlatformDefinition(record.provider).label }}
-                / {{ record.connectionName }}
-              </p>
-            </td>
-            <td class="px-3 py-3">
-              <span
-                class="font-medium"
-                :class="record.status === 'verified'
-                  ? 'text-emerald-700'
-                  : record.status === 'failed' || record.status === 'timed_out'
-                    ? 'text-red-700'
-                    : 'text-amber-700'"
-              >
-                {{ statusLabel(record.status) }}
-              </span>
-              <p v-if="record.failureCode" class="mt-1 text-xs text-red-600">
-                {{ record.failureCode }}
-              </p>
-            </td>
-            <td class="px-3 py-3 text-gray-700">
-              {{ record.candidateChecked ? '已完成' : '未完成' }}
-            </td>
-            <td class="px-3 py-3 tabular-nums text-gray-700">
-              {{ record.pairedEventCount }} 个事件
-            </td>
-            <td class="px-3 py-3 text-gray-600">
-              {{ record.startedAt
-                ? formatAnalyticsDateTime(record.startedAt)
-                : '-' }}
-            </td>
-            <td class="px-3 py-3 text-gray-600">
-              {{ record.completedAt
-                ? formatAnalyticsDateTime(record.completedAt)
-                : '-' }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+
+    <dl class="grid grid-cols-2 border-b border-gray-200 md:grid-cols-4">
+      <div class="px-3 py-3 md:border-r md:border-gray-200"><dt class="text-xs text-gray-500">状态</dt><dd class="mt-1 text-sm font-semibold text-gray-900">{{ attributionVerificationStatusLabel(verification?.status || '') }}</dd></div>
+      <div class="px-3 py-3 md:border-r md:border-gray-200"><dt class="text-xs text-gray-500">连接版本</dt><dd class="mt-1 truncate text-sm font-semibold text-gray-900">{{ verification?.connectionRevision || '-' }}</dd></div>
+      <div class="px-3 py-3 md:border-r md:border-gray-200"><dt class="text-xs text-gray-500">开始时间</dt><dd class="mt-1 text-sm font-semibold text-gray-900">{{ verification?.startedAt ? formatAnalyticsDateTime(verification.startedAt) : '-' }}</dd></div>
+      <div class="px-3 py-3"><dt class="text-xs text-gray-500">完成时间</dt><dd class="mt-1 text-sm font-semibold text-gray-900">{{ verification?.completedAt ? formatAnalyticsDateTime(verification.completedAt) : '-' }}</dd></div>
+    </dl>
+
+    <form class="grid gap-4 px-3 py-5 sm:px-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end" @submit.prevent="requestVerification">
+      <label v-if="platform.testEvent" class="min-w-0 max-w-xl">
+        <span class="mb-1 block text-xs font-medium text-gray-600">{{ platform.testEvent.label }}</span>
+        <input
+          v-model="testEventCode"
+          :pattern="platform.testEvent.pattern"
+          :placeholder="platform.testEvent.placeholder"
+          :maxlength="platform.testEvent.maxLength"
+          :disabled="disabled || loading"
+          type="password"
+          autocomplete="off"
+          required
+          class="h-10 w-full rounded-md border border-gray-300 px-3 text-sm focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
+        >
+      </label>
+      <div v-else class="text-sm text-gray-600">{{ platform.label }} 自动验证无需测试码。</div>
+      <div class="flex min-w-0 flex-wrap gap-2">
+        <button type="submit" :disabled="disabled || loading || active || !testCodeReady" class="rounded-md bg-gray-950 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50">
+          {{ active ? '验证进行中' : '验证连接' }}
+        </button>
+        <button v-if="verification" type="button" :disabled="disabled || loading || active || !testCodeReady" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50" @click="confirmingReverify = true">
+          重新验证
+        </button>
+      </div>
+    </form>
+
+    <div v-if="confirmingReverify" role="alert" class="flex min-w-0 flex-col gap-3 border-t border-amber-200 bg-amber-50 px-3 py-4 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+      <p>重新验证会创建新的验证尝试，当前验证记录保留。</p>
+      <div class="flex shrink-0 gap-2">
+        <button type="button" class="rounded-md border border-amber-300 bg-white px-3 py-2 font-medium" @click="confirmingReverify = false">取消</button>
+        <button type="button" class="rounded-md bg-amber-900 px-3 py-2 font-medium text-white" @click="confirmReverification">确认重新验证</button>
+      </div>
     </div>
-    <p v-else class="px-3 py-10 text-center text-sm text-gray-500 sm:px-5">
-      当前范围没有候选验证记录
-    </p>
+
+    <form v-if="verification?.status === 'awaiting_human_evidence'" class="grid gap-3 border-t border-gray-200 px-3 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end sm:px-5" @submit.prevent="submitEvidence">
+      <label class="min-w-0">
+        <span class="mb-1 block text-xs font-medium text-gray-600">平台证据引用（可选）</span>
+        <input v-model="evidenceReference" maxlength="500" autocomplete="off" class="h-10 w-full rounded-md border border-gray-300 px-3 text-sm focus:border-gray-500 focus:outline-none">
+      </label>
+      <button type="submit" :disabled="disabled || loading" class="rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-50">确认平台已收到测试事件</button>
+    </form>
+
+    <p v-if="verification?.evidence.failureCode" class="border-t border-red-200 bg-red-50 px-3 py-3 text-sm text-red-700 sm:px-5">{{ verification.evidence.failureCode }}</p>
   </section>
 </template>

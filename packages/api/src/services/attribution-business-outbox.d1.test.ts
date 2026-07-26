@@ -9,7 +9,10 @@ import {
   it,
   vi,
 } from 'vitest'
-import { isAttributionBusinessEventV1 } from '@meigallery/shared'
+import {
+  isAttributionBusinessEventV1,
+  type AdBrowserInstruction,
+} from '@meigallery/shared'
 import {
   buildCompleteRegistrationOutboxStatement,
   claimAttributionBusinessOutbox,
@@ -148,7 +151,22 @@ describe('注册业务 outbox D1 服务', () => {
     await seedRegistration()
     await makeDue('registration_user_1', FIRST_ATTEMPT)
     const ingest = vi.fn()
-    const dispatchLegacy = vi.fn(async () => {})
+    const legacyInstruction: AdBrowserInstruction = {
+      deliveryId: 'delivery_legacy_registration',
+      provider: 'meta',
+      canonicalEvent: 'CompleteRegistration',
+      externalEventId: 'mav_registration_legacy',
+      receiptToken: 'receipt_token_legacy_registration',
+      descriptor: {
+        provider: 'meta',
+        canonicalEvent: 'CompleteRegistration',
+        browserEventName: 'CompleteRegistration',
+        browserDestination: 'meta_pixel',
+        serverDestination: 'meta_conversions_api',
+      },
+      payload: {},
+    }
+    const dispatchLegacy = vi.fn(async () => [legacyInstruction])
 
     const result = await dispatchAttributionBusinessOutboxImmediately(
       db,
@@ -164,6 +182,7 @@ describe('注册业务 outbox D1 服务', () => {
       accepted: true,
       eventId: 'registration_user_1',
       instructionToken: null,
+      trackingInstructions: [legacyInstruction],
     })
     expect(dispatchLegacy).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -370,6 +389,7 @@ describe('注册业务 outbox D1 服务', () => {
       eventId: 'registration_user_1',
       accepted: true,
       instructionToken: 'instruction_token_0123456789',
+      trackingInstructions: [],
     })
     expect(duplicate).toEqual(first)
     expect(ingest).toHaveBeenCalledTimes(1)
