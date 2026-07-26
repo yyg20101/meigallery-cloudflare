@@ -4,15 +4,20 @@ import assert from 'node:assert/strict'
 
 const source = readFileSync(new URL('./deploy.sh', import.meta.url), 'utf8')
 
-test('生产 API 先上传不可见 Version，再迁移并激活', () => {
-  const upload = source.indexOf('wrangler versions upload')
+test('生产 API/Web 先上传不可见 Version，再迁移并快速激活', () => {
+  const apiUpload = source.indexOf('--filter @meigallery/api exec wrangler versions upload')
+  const webUpload = source.indexOf('--filter @meigallery/web exec wrangler versions upload')
   const migrate = source.indexOf('wrangler d1 migrations apply')
-  const activate = source.indexOf('wrangler versions deploy')
+  const apiActivate = source.indexOf('--filter @meigallery/api exec wrangler versions deploy')
+  const webActivate = source.indexOf('--filter @meigallery/web exec wrangler versions deploy')
 
-  assert.ok(upload > 0)
-  assert.ok(migrate > upload)
-  assert.ok(activate > migrate)
-  assert.match(source, /--version-tag "\$\{RELEASE_TAG\}@100%"/)
+  assert.ok(apiUpload > 0)
+  assert.ok(webUpload > apiUpload)
+  assert.ok(migrate > webUpload)
+  assert.ok(apiActivate > migrate)
+  assert.ok(webActivate > apiActivate)
+  assert.match(source, /--version-tag "\$\{API_RELEASE_TAG\}@100%"/)
+  assert.match(source, /--version-tag "\$\{WEB_RELEASE_TAG\}@100%"/)
 })
 
 test('部署脚本不重复完整 CI，烟测按 Worker 范围执行', () => {

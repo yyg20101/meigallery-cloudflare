@@ -48,7 +48,7 @@ Web 和 API 都部署为 Cloudflare Workers，不使用 Cloudflare Pages。
 - Web 部署通过 Nuxt build。
 - 只在部署 API 时检查和应用 D1 migration。
 - 只在高风险 migration 待执行时导出 production D1 备份。
-- API 先上传不接流量的 Worker Version，再执行 migration，成功后一次性激活；上传本身完成 Worker 构建校验，migration 失败时线上继续使用旧 Version。
+- API 与 Web 都先上传不接流量的 Worker Version，再执行 migration；成功后连续激活两个已就绪 Version，避免迁移后才上传 Web 造成新旧归因协议并存。上传本身完成 Worker 构建校验，migration 失败时线上继续使用旧 Version。
 - 部署后仅验证受影响服务。
 
 生产验证不要求 API 和 Web 的 Git commit 相同。commit 仍写入 Worker 供观察和排障，但不参与运行时或发布放行。
