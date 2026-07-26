@@ -12,6 +12,7 @@ beforeAll(async () => {
   miniflare = new Miniflare({ modules: true, script: 'export default { fetch() { return new Response("ok") } }', compatibilityDate: '2026-05-26', d1Databases: { DB: 'secure-outbox' } })
   db = (await miniflare.getBindings<{ DB: D1Database }>()).DB
   await db.exec(MIGRATION.replace(/\s*\r?\n\s*/g, ' '))
+  await db.exec('CREATE TABLE site_settings (key TEXT PRIMARY KEY);')
   await db.exec(CLEANUP_MIGRATION.replace(/\s*\r?\n\s*/g, ' '))
 })
 afterAll(async () => { await miniflare.dispose() })

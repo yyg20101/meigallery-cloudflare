@@ -57,6 +57,7 @@ beforeAll(async () => {
   })
   db = (await miniflare.getBindings<{ DB: D1Database }>()).DB
   await db.exec(MIGRATION.replace(/\s*\r?\n\s*/g, ' '))
+  await db.exec('CREATE TABLE site_settings (key TEXT PRIMARY KEY);')
   await db.exec(CLEANUP_MIGRATION.replace(/\s*\r?\n\s*/g, ' '))
   await db.exec(LINK_SCHEMA.replace(/\s*\r?\n\s*/g, ' '))
 })

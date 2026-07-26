@@ -39,6 +39,7 @@ beforeAll(async () => {
   db = (await miniflare.getBindings<{ DB: D1Database }>()).DB
   await db.exec(MIGRATION.replace(/\s*\r?\n\s*/g, ' '))
   const supportSchema = `
+    CREATE TABLE site_settings (key TEXT PRIMARY KEY);
     CREATE TABLE users (id INTEGER PRIMARY KEY);
     CREATE TABLE admin_audit_logs (
       id TEXT PRIMARY KEY,
