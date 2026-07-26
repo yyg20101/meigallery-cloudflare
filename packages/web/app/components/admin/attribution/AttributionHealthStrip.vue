@@ -6,7 +6,7 @@ const props = withDefaults(defineProps<{
   browserEnabled?: boolean
   serverEnabled?: boolean
   browserAttempted?: number
-  serverProcessed?: number
+  serverAccepted?: number
   serverPending?: number
   serverFailed?: number
 }>(), {
@@ -16,7 +16,7 @@ const props = withDefaults(defineProps<{
   browserEnabled: undefined,
   serverEnabled: undefined,
   browserAttempted: 0,
-  serverProcessed: 0,
+  serverAccepted: 0,
   serverPending: 0,
   serverFailed: 0,
 })
@@ -31,7 +31,7 @@ const items = computed(() => [
   { label: `${props.browserLabel} 状态`, ...status(props.browserEnabled) },
   { label: `${props.serverLabel} 状态`, ...status(props.serverEnabled) },
   { label: 'Browser 已尝试', value: formatAnalyticsNumber(props.browserAttempted), tone: 'gold' },
-  { label: 'Server 已处理', value: formatAnalyticsNumber(props.serverProcessed), tone: 'blue' },
+  { label: 'Server 已接收', value: formatAnalyticsNumber(props.serverAccepted), tone: 'blue' },
   { label: 'Server 处理中', value: formatAnalyticsNumber(props.serverPending), tone: props.serverPending > 0 ? 'gold' : 'gray' },
   { label: 'Server 失败', value: formatAnalyticsNumber(props.serverFailed), tone: props.serverFailed > 0 ? 'red' : 'gray' },
 ])

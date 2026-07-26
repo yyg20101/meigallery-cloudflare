@@ -3,7 +3,6 @@ import type { ActiveConversionActionType, AdPlatformConversionEventName } from '
 import {
   buildConversionDedupeKey,
   buildExternalEventIdBasis,
-  normalizeAdPlatformTrackingMode,
 } from '@meigallery/shared/utils'
 import {
   buildExternalEventId,
@@ -41,7 +40,7 @@ describe('conversion utils', () => {
     } as never)).toThrow('外部投递只允许活动转化事件')
   })
 
-  it('共享契约生成稳定事件 ID 并保守归一化平台模式', async () => {
+  it('共享契约生成稳定事件 ID', async () => {
     const input = {
       actionType: 'contact' as const,
       sessionId: 'session_abc',
@@ -58,9 +57,6 @@ describe('conversion utils', () => {
     const second = await buildExternalEventId('stable-server-secret', { ...input, eventName: 'Contact' })
     expect(first).toBe(second)
     expect(first).not.toContain('session_abc')
-    expect(normalizeAdPlatformTrackingMode('production')).toBe('production')
-    expect(normalizeAdPlatformTrackingMode('hybrid')).toBe('disabled')
-    expect(normalizeAdPlatformTrackingMode('limited')).toBe('disabled')
   })
 
   it('活动广告平台契约只包含联系和注册', () => {

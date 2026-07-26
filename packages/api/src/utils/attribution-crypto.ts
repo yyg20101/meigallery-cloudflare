@@ -6,7 +6,7 @@ const BASE64_KEY_PATTERN = /^(?:[A-Za-z0-9+/]{4}){10}[A-Za-z0-9+/]{3}=$/
 const BASE64_URL_PATTERN = /^[A-Za-z0-9_-]+$/
 const CONTROL_CHARACTER_PATTERN = /\p{Cc}/u
 const PURPOSES = new Set<AttributionCryptoPurpose>([
-  'credential', 'outbox', 'context', 'verification_input', 'event_id', 'browser_receipt',
+  'credential', 'outbox', 'context', 'event_id', 'browser_receipt',
 ])
 const AAD_FIELDS = new Set(['purpose', 'provider', 'subjectId', 'revision'])
 const ENVELOPE_FIELDS = new Set(['schemaVersion', 'keyId', 'iv', 'ciphertext', 'tag'])
@@ -16,7 +16,7 @@ const rootKeys = new WeakMap<AttributionDerivedKeyRoot, CryptoKey>()
 
 type AesKeyUsage = 'encrypt' | 'decrypt'
 
-export type AttributionCryptoPurpose = 'credential' | 'outbox' | 'context' | 'verification_input' | 'event_id' | 'browser_receipt'
+export type AttributionCryptoPurpose = 'credential' | 'outbox' | 'context' | 'event_id' | 'browser_receipt'
 
 export interface AttributionAad {
   purpose: AttributionCryptoPurpose

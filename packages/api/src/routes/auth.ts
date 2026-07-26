@@ -14,21 +14,15 @@ import {
 import { validateUsername } from '@meigallery/shared/utils'
 import { getTurnstileConfigError, validateTurnstile } from '../utils/turnstile'
 import { consumeInviteCodeForRegistration } from '../services/invite-codes'
-import {
-  ATTRIBUTION_CONTEXT_COOKIE_NAME,
-  ATTRIBUTION_PRIVACY_COOKIE_NAME,
-} from '@meigallery/shared'
+import type { AdConsentSnapshot, AnalyticsConsentState } from '@meigallery/shared'
+import { recordRegistration } from '../services/conversions'
 import { getCookie } from 'hono/cookie'
-import { hashAdPlatformEmail } from '../utils/ad-platform-identifiers'
+import { AD_ATTRIBUTION_CONTEXT_COOKIE } from './ad-attribution'
+import { loadAttributionCryptoKeys } from '../utils/attribution-crypto'
+import { resolveTrustedAdAttributionContext } from '../utils/ad-attribution-context'
+import { buildAdPlatformUserData, hashAdPlatformEmail, readAdPlatformBrowserIdentifiersFromRequest } from '../utils/ad-platform-identifiers'
+import { resolveRequestMarketingConsent } from '../utils/marketing-consent-request'
 import { createAdConsentSnapshot } from '../utils/marketing-consent-receipt'
-import {
-  buildCompleteRegistrationOutboxStatement,
-  dispatchAttributionBusinessOutboxImmediately,
-} from '../services/attribution-business-outbox'
-import { createAttributionServiceClient } from '../services/attribution-service-client'
-import {
-  createLegacyRegistrationOutboxDispatcher,
-} from '../services/legacy-registration-outbox-dispatcher'
 
 type RegistrationAttributionContext = {
   visitorId?: string
@@ -43,6 +37,8 @@ type RegistrationAttributionContext = {
   utmMedium?: string
   utmCampaign?: string
   utmContent?: string
+  consentState?: AnalyticsConsentState
+  adAttributionState?: 'resolved' | 'suppress'
 }
 
 const CONVERSION_ID_RE = /^[A-Za-z0-9_-]{8,120}$/
@@ -244,64 +240,34 @@ authRoutes.post('/register', async (c) => {
 
   // 创建用户（自增 ID）
   const passwordHash = await hashPassword(body.password)
-  const attributionClient = createAttributionServiceClient(
-    c.env.ATTRIBUTION,
-  )
-  let consentSnapshot = createAdConsentSnapshot('denied')
-  try {
-    const decision = await attributionClient.resolvePrivacyDecision({
-      privacyToken: readOpaqueAttributionCookie(
-        c,
-        ATTRIBUTION_PRIVACY_COOKIE_NAME,
-        1,
-      ),
-      country: normalizeRequestCountry(c.req.header('CF-IPCountry')),
-      gpc: c.req.header('Sec-GPC') === '1',
-    })
-    consentSnapshot = createAdConsentSnapshot(
-      decision.state === 'granted' ? 'granted' : 'denied',
+  const conversionExternalId = generateConversionExternalId()
+
+  const insertResult = await db
+    .prepare(
+      `INSERT INTO users (email, username, nickname, password_hash, role, status, email_verified, conversion_external_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-  } catch {
-    console.warn('[auth.register] 归因隐私判定失败，按拒绝状态继续注册', {
-      code: 'REGISTRATION_ATTRIBUTION_PRIVACY_RESOLUTION_FAILED',
-    })
-  }
-  const occurredAt = new Date().toISOString()
-  const pagePath = normalizeRegistrationPagePath(
-    isPlainRecord(body.attribution)
-      ? body.attribution.path
-      : body.landingPath,
-  )
-  const sourceContextToken = readOpaqueAttributionContextToken(c)
-  const attributionConsent = {
-    marketingAllowed: consentSnapshot.marketingAllowed,
-    adUserDataAllowed: consentSnapshot.adUserDataAllowed,
-    adPersonalizationAllowed:
-      consentSnapshot.adPersonalizationAllowed,
-  }
-  const hashedEmail = attributionConsent.adUserDataAllowed
-    ? await hashAdPlatformEmail(email)
-    : undefined
-  const transaction = await db.batch([
-    db.prepare(
-      `INSERT INTO users (email, username, nickname, password_hash, role, status, email_verified)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    )
-      .bind(email, username, body.nickname?.trim() || null, passwordHash, 'user', 'active', emailVerified),
-    buildCompleteRegistrationOutboxStatement(db, {
-      occurredAt,
-      pagePath,
-      sourceContextToken,
-      consent: attributionConsent,
-      hashedEmail,
-    }),
-  ])
-  const userId = Number(transaction[0]?.meta.last_row_id)
-  if (!Number.isSafeInteger(userId) || userId <= 0) {
-    throw new Error('REGISTRATION_TRANSACTION_RESULT_INVALID')
-  }
-  const outboxId = `registration_user_${userId}`
+    .bind(email, username, body.nickname?.trim() || null, passwordHash, 'user', 'active', emailVerified, conversionExternalId)
+    .run()
+  const userId = insertResult.meta.last_row_id
   const attribution = normalizeRegistrationAttribution(body.attribution, userId)
+  let consentSnapshot: AdConsentSnapshot = createAdConsentSnapshot('denied')
+  try {
+    const marketingConsent = await resolveRequestMarketingConsent(c, attribution.consentState)
+    attribution.consentState = marketingConsent.state
+    consentSnapshot = marketingConsent.consent
+  }
+  catch {
+    attribution.consentState = 'denied'
+    console.warn('[auth.register] 营销授权解析失败，按拒绝状态继续注册', {
+      userId,
+      code: 'REGISTRATION_MARKETING_CONSENT_RESOLUTION_FAILED',
+    })
+  }
+  const attributionContext = consentSnapshot.marketingAllowed
+    && attribution.adAttributionState !== 'suppress'
+    ? await trustedRegistrationAttributionContext(c)
+    : null
   const hasAttribution = isPlainRecord(body.attribution)
 
   if (body.inviteCode) {
@@ -325,43 +291,37 @@ authRoutes.post('/register', async (c) => {
   // 创建会话
   await createSession(c, userId)
 
-  let attributionInstructionToken: string | null = null
+  let trackingInstructions = [] as Awaited<ReturnType<typeof recordRegistration>>['trackingInstructions']
   try {
-    const dispatch = await dispatchAttributionBusinessOutboxImmediately(
-      db,
-      attributionClient,
-      outboxId,
-      {
-        dispatchLegacy: createLegacyRegistrationOutboxDispatcher(c, {
-          userId,
-          visitorId: attribution.visitorId,
-          sessionId: attribution.sessionId,
-          occurredAt,
-          routeName: attribution.routeName,
-          pagePath,
-          sourceChannel: attribution.sourceChannel,
-          sourceName: attribution.sourceName,
-          trackingSourceSlug: attribution.trackingSourceSlug,
-          utmSource: attribution.utmSource,
-          utmMedium: attribution.utmMedium,
-          utmCampaign: attribution.utmCampaign,
-          utmContent: attribution.utmContent,
-          consentSnapshot,
-          hashedEmail,
-        }),
-      },
-    )
-    attributionInstructionToken = dispatch.instructionToken
-    if (!dispatch.accepted) {
-      console.warn('[auth.register] 注册归因等待 outbox 重试', {
-        userId,
-        code: 'REGISTRATION_ATTRIBUTION_PENDING',
-      })
-    }
-  } catch {
-    console.warn('[auth.register] 注册归因即时投递失败，保留 outbox 重试', {
+    const adPlatformUserData = consentSnapshot.marketingAllowed
+      ? buildAdPlatformUserData(c.req.raw, readAdPlatformBrowserIdentifiersFromRequest(c.req.raw))
+      : undefined
+    const registration = await recordRegistration(c.env, {
       userId,
-      code: 'REGISTRATION_ATTRIBUTION_DISPATCH_FAILED',
+      visitorId: attribution.visitorId,
+      sessionId: attribution.sessionId,
+      occurredAt: attribution.occurredAt,
+      routeName: attribution.routeName,
+      path: attribution.path,
+      sourceChannel: attribution.sourceChannel,
+      sourceName: attribution.sourceName,
+      trackingSourceSlug: attribution.trackingSourceSlug,
+      utmSource: attribution.utmSource,
+      utmMedium: attribution.utmMedium,
+      utmCampaign: attribution.utmCampaign,
+      utmContent: attribution.utmContent,
+      consentSnapshot,
+      attributionContext,
+      attributionSource: attributionContext ? 'context' : 'none',
+      adPlatformUserData,
+      hashedEmail: consentSnapshot.marketingAllowed ? await hashAdPlatformEmail(email) : undefined,
+      metadata: { method: 'email' },
+    })
+    trackingInstructions = registration.trackingInstructions
+  } catch {
+    console.error('[auth.register] 注册转化事实写入失败', {
+      userId,
+      code: 'REGISTRATION_CONVERSION_WRITE_FAILED',
     })
   }
 
@@ -374,9 +334,22 @@ authRoutes.post('/register', async (c) => {
     status: 'active',
     membershipRank: 0,
     membershipExpiry: null,
-    attributionInstructionToken,
+    trackingInstructions,
   }, 201)
 })
+
+function generateConversionExternalId() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+  return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
+}
+
+async function trustedRegistrationAttributionContext(c: Parameters<typeof getCookie>[0]) {
+  try {
+    const keys = await loadAttributionCryptoKeys(c.env)
+    const context = await resolveTrustedAdAttributionContext(keys, getCookie(c, AD_ATTRIBUTION_CONTEXT_COOKIE))
+    return context
+  } catch { return null }
+}
 
 function normalizeRegistrationAttribution(value: unknown, userId: number) {
   const input = isPlainRecord(value) ? value : {}
@@ -394,60 +367,8 @@ function normalizeRegistrationAttribution(value: unknown, userId: number) {
     utmMedium: normalizeText(input.utmMedium, 120),
     utmCampaign: normalizeText(input.utmCampaign, 120),
     utmContent: normalizeText(input.utmContent, 120),
-  }
-}
-
-function readOpaqueAttributionContextToken(
-  c: Parameters<typeof getCookie>[0],
-): string | null {
-  return readOpaqueAttributionCookie(
-    c,
-    ATTRIBUTION_CONTEXT_COOKIE_NAME,
-    4,
-  )
-}
-
-function readOpaqueAttributionCookie(
-  c: Parameters<typeof getCookie>[0],
-  name: string,
-  minimumLength: number,
-): string | null {
-  const value = getCookie(c, name)
-  return typeof value === 'string'
-    && value.length >= minimumLength
-    && value.length <= 4_096
-    && !/\p{Cc}/u.test(value)
-    ? value
-    : null
-}
-
-function normalizeRequestCountry(value: unknown): string | null {
-  const normalized = typeof value === 'string'
-    ? value.trim().toUpperCase()
-    : ''
-  return /^[A-Z]{2}$/.test(normalized) ? normalized : null
-}
-
-function normalizeRegistrationPagePath(value: unknown) {
-  const candidate = typeof value === 'string' ? value.trim() : ''
-  if (
-    candidate.length === 0
-    || candidate.length > 2_048
-    || !candidate.startsWith('/')
-    || candidate.startsWith('//')
-    || candidate.includes('\\')
-    || candidate.includes('#')
-    || /\p{Cc}/u.test(candidate)
-  ) return '/register'
-  try {
-    const base = new URL('https://registration.invalid/')
-    const resolved = new URL(candidate, base)
-    return resolved.origin === base.origin
-      && `${resolved.pathname}${resolved.search}` === candidate
-      ? candidate
-      : '/register'
-  } catch {
-    return '/register'
+    consentState: normalizeConsentState(input.consentState),
+    adAttributionState: input.adAttributionState === 'resolved' ? 'resolved' as const : 'suppress' as const,
   }
 }
 
@@ -458,9 +379,11 @@ function normalizeConversionId(value: unknown) {
 
 function normalizeOccurredAt(value: unknown) {
   const parsed = new Date(typeof value === 'string' ? value : '')
-  return Number.isNaN(parsed.getTime())
-    ? new Date().toISOString()
-    : parsed.toISOString()
+  return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString()
+}
+
+function normalizeConsentState(value: unknown): AnalyticsConsentState {
+  return value === 'granted' || value === 'denied' ? value : 'limited'
 }
 
 function normalizeText(value: unknown, maxLength: number) {

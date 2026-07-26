@@ -5,7 +5,6 @@ const ALLOWED_API_PROXY_REQUEST_HEADERS = new Set([
   'cf-ipcountry',
   'content-type',
   'cookie',
-  'idempotency-key',
   'sec-gpc',
   'user-agent',
   'x-forwarded-for',

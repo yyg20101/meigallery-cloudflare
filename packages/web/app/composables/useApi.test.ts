@@ -26,10 +26,10 @@ describe('useApi 浏览器请求目标', () => {
   it('所有浏览器请求统一通过当前 Web /api 代理', async () => {
     const { api } = useApi()
 
-    await api('/api/profile', { method: 'PUT', body: { nickname: 'Mei' } })
+    await api('/api/marketing-consent', { method: 'PUT', body: { state: 'granted' } })
     await api('/api/settings/public')
 
-    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/profile', expect.objectContaining({
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/marketing-consent', expect.objectContaining({
       method: 'PUT',
       credentials: 'include',
     }))
@@ -43,32 +43,10 @@ describe('useApi 浏览器请求目标', () => {
     const configuredApi = wrangler.match(/NUXT_PUBLIC_API_BASE_URL\s*=\s*"(https:\/\/meigallery-api-dev[^"]+)"/)?.[1]
     expect(configuredApi).toBe('https://meigallery-api-dev.wajie.workers.dev')
 
-    await useApi().api('/api/analytics/events', { method: 'POST', body: {} })
+    await useApi().api('/api/conversions/events', { method: 'POST', body: {} })
 
-    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/analytics/events')
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/conversions/events')
     expect(fetchMock.mock.calls[0]?.[0]).not.toContain(configuredApi)
-  })
-
-  it('保留归因写命令的幂等键并与 JSON 请求头合并', async () => {
-    const { api } = useApi()
-
-    await api('/api/admin/attribution-runtime/connections/conn_meta/candidates', {
-      method: 'POST',
-      headers: {
-        'Idempotency-Key': 'command-1',
-      },
-      body: { publicConfig: { pixelId: '123' } },
-    })
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/admin/attribution-runtime/connections/conn_meta/candidates',
-      expect.objectContaining({
-        headers: {
-          'Content-Type': 'application/json',
-          'Idempotency-Key': 'command-1',
-        },
-      }),
-    )
   })
 })
 
@@ -78,7 +56,7 @@ describe('useApi SSR Service Binding', () => {
     Object.defineProperty(headers, 'getSetCookie', {
       value: () => [
         'mei_session=renewed; Path=/; HttpOnly',
-        'mei_session=receipt; Path=/; HttpOnly',
+        'mei_marketing_consent_receipt=receipt; Path=/; HttpOnly',
       ],
     })
     const binding = {
@@ -106,7 +84,7 @@ describe('useApi SSR Service Binding', () => {
     }))
     expect(h3Mocks.appendResponseHeader.mock.calls).toEqual([
       [event, 'set-cookie', 'mei_session=renewed; Path=/; HttpOnly'],
-      [event, 'set-cookie', 'mei_session=receipt; Path=/; HttpOnly'],
+      [event, 'set-cookie', 'mei_marketing_consent_receipt=receipt; Path=/; HttpOnly'],
     ])
   })
 

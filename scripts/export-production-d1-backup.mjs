@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 
 import { createHash, randomUUID } from 'node:crypto'
+import { execFile } from 'node:child_process'
 import { chmod, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path, { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { runCommand as defaultRunCommand } from './release-verification-lib.mjs'
+import { promisify } from 'node:util'
+
+const execFileAsync = promisify(execFile)
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url))
 const ROOT_DIR = dirname(SCRIPTS_DIR)
@@ -135,6 +138,28 @@ async function runWrangler(args, name, options = {}) {
 
 function ensurePassed(step, code) {
   if (step?.status !== 'passed') throw new Error(code)
+}
+
+async function defaultRunCommand(command, args, options = {}) {
+  try {
+    const result = await execFileAsync(command, args, {
+      cwd: options.cwd,
+      encoding: 'utf8',
+      maxBuffer: 20 * 1024 * 1024,
+    })
+    return {
+      status: 'passed',
+      stdout: result.stdout,
+      stderr: result.stderr,
+    }
+  }
+  catch (error) {
+    return {
+      status: 'failed',
+      stdout: String(error?.stdout || ''),
+      stderr: String(error?.stderr || ''),
+    }
+  }
 }
 
 function isInside(candidate, parent) {

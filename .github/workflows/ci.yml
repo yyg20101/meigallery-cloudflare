@@ -36,6 +36,9 @@ jobs:
       - name: 脚本测试
         run: pnpm test:scripts
 
+      - name: 校验 dev 资源隔离
+        run: node scripts/verify-dev-resources.mjs
+
       - name: API 类型检查
         run: pnpm --filter @meigallery/api exec tsc --noEmit
 
@@ -48,10 +51,7 @@ jobs:
       - name: Shared 单元测试
         run: pnpm --filter @meigallery/shared test
 
-      - name: API 单元测试
-        run: pnpm --filter @meigallery/api test
-
-      - name: API 覆盖率
+      - name: API 测试与覆盖率
         run: pnpm --filter @meigallery/api test:coverage
 
       - name: 上传 API 覆盖率报告

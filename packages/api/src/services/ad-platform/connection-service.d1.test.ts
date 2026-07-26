@@ -11,6 +11,10 @@ import {
 import { readAttributionCredential } from './credential-vault'
 
 const MIGRATION = readFileSync(new URL('../../../migrations/0051_unified_attribution_expand.sql', import.meta.url), 'utf8')
+const CLEANUP_MIGRATION = readFileSync(
+  new URL('../../../migrations/0060_attribution_control_plane_cleanup.sql', import.meta.url),
+  'utf8',
+)
 const MASTER_KEY = toBase64(Uint8Array.from({ length: 32 }, (_, index) => index + 1))
 const ACTOR_ID = 41
 const META_TOKEN = 'meta-token-must-never-leak'
@@ -44,12 +48,15 @@ beforeAll(async () => {
     );
   `
   for (const statement of unstable_splitSqlQuery(supportSchema)) await db.prepare(statement).run()
+  for (const statement of unstable_splitSqlQuery(CLEANUP_MIGRATION)) await db.prepare(statement).run()
   googleCredential = await validGoogleServiceAccount()
 }, 30_000)
 
 beforeEach(async () => {
   await db.exec(`
-    DELETE FROM attribution_verifications;
+    DELETE FROM attribution_outbox;
+    DELETE FROM attribution_deliveries;
+    DELETE FROM attribution_conversion_facts;
     DELETE FROM attribution_event_bindings;
     DELETE FROM attribution_credentials;
     DELETE FROM attribution_platform_connections;
@@ -67,7 +74,7 @@ afterEach(async () => {
 afterAll(async () => miniflare.dispose())
 
 describe('统一广告平台连接原子服务', () => {
-  it('通过同一服务保存三平台，并生成可安全用于 Workflow ID 的固定 revision', async () => {
+  it('通过同一服务保存三平台，且内部版本不暴露给管理端', async () => {
     const meta = await savePlatformConnection(env(), metaCommand())
     const tiktok = await savePlatformConnection(env(), tiktokCommand())
     const google = await savePlatformConnection(env(), googleCommand())
@@ -77,11 +84,7 @@ describe('统一广告平台连接原子服务', () => {
       'conn_tiktok',
       'conn_google',
     ])
-    for (const connection of [meta, tiktok, google]) {
-      expect(connection.connectionRevision).toMatch(/^[0-9a-f]{24}$/)
-      expect(connection.credential.revision).toMatch(/^[0-9a-f]{24}$/)
-      expect(`verify:${connection.provider}:${connection.connectionId}:${connection.connectionRevision}:${connection.credential.revision}:${Number.MAX_SAFE_INTEGER}`.length).toBeLessThan(100)
-    }
+    expect(JSON.stringify([meta, tiktok, google])).not.toMatch(/connectionRevision|credentialRevision|revision/)
     expect(await countRows('attribution_platform_connections')).toBe(3)
     expect(await countRows('attribution_event_bindings')).toBe(6)
     expect(await countRows('attribution_credentials')).toBe(3)
@@ -119,54 +122,100 @@ describe('统一广告平台连接原子服务', () => {
     expect(await countRows('admin_audit_logs')).toBe(0)
   })
 
-  it('更新未带 credential 时保留原 credential revision 和原密文', async () => {
-    const first = await savePlatformConnection(env(), metaCommand())
-    const before = await db.prepare(`SELECT id, ciphertext FROM attribution_credentials`).first<{ id: string; ciphertext: string }>()
+  it('更新配置时轮换连接作用域并保留原凭证和密文', async () => {
+    await savePlatformConnection(env(), metaCommand())
+    const before = await db.prepare(`
+      SELECT credential.id, credential.ciphertext, credential.credential_revision, connection.connection_revision
+      FROM attribution_credentials credential
+      JOIN attribution_platform_connections connection ON connection.id = credential.connection_id
+    `).first<{ id: string; ciphertext: string; credential_revision: string; connection_revision: string }>()
     const command = metaCommand({
-      mode: 'test',
-      rolloutTargetPercentage: 10,
       publicConfig: { provider: 'meta', pixelId: '1277657707436782' },
     })
     delete command.credential
 
-    const updated = await savePlatformConnection(env(), command)
-    const after = await db.prepare(`SELECT id, ciphertext FROM attribution_credentials`).first<{ id: string; ciphertext: string }>()
+    await savePlatformConnection(env(), command)
+    const after = await db.prepare(`
+      SELECT credential.id, credential.ciphertext, credential.credential_revision, connection.connection_revision
+      FROM attribution_credentials credential
+      JOIN attribution_platform_connections connection ON connection.id = credential.connection_id
+    `).first<{ id: string; ciphertext: string; credential_revision: string; connection_revision: string }>()
 
-    expect(updated.connectionRevision).not.toBe(first.connectionRevision)
-    expect(updated.credential.revision).toBe(first.credential.revision)
-    expect(after).toEqual(before)
+    expect(after?.connection_revision).not.toBe(before?.connection_revision)
+    expect(after?.credential_revision).toBe(before?.credential_revision)
+    expect(after?.id).toBe(before?.id)
+    expect(after?.ciphertext).toBe(before?.ciphertext)
     await expect(readAttributionCredential(env(), {
       connectionId: 'conn_meta',
       provider: 'meta',
       credentialType: 'access_token',
-      credentialRevision: first.credential.revision,
+      credentialRevision: before!.credential_revision,
     })).resolves.toBe(META_TOKEN)
   })
 
-  it('显式 credential 轮换生成新 revision 并原子替换旧凭证', async () => {
-    const first = await savePlatformConnection(env(), metaCommand())
-    const rotated = await savePlatformConnection(env(), metaCommand({
+  it('连接变更原子取消未完成投递并删除 Outbox，已完成投递保持不变', async () => {
+    await savePlatformConnection(env(), metaCommand())
+    await db.batch([
+      factStatement('fact_pending', 'event_pending', 'dedupe_pending'),
+      factStatement('fact_done', 'event_done', 'dedupe_done'),
+      deliveryStatement('delivery_pending', 'fact_pending', 'queued'),
+      deliveryStatement('delivery_done', 'fact_done', 'processed'),
+      db.prepare(`
+        INSERT INTO attribution_outbox (
+          delivery_id, provider, schema_version, key_id, iv, ciphertext, tag, expires_at
+        ) VALUES ('delivery_pending', 'meta', 1, '1234567890abcdef', 'iv', 'ciphertext', 'tag', '2099-01-01T00:00:00.000Z')
+      `),
+    ])
+
+    const command = metaCommand({
+      publicConfig: { provider: 'meta', pixelId: '123456789012346' },
+    })
+    delete command.credential
+    await savePlatformConnection(env(), command)
+
+    const deliveries = await db.prepare(`
+      SELECT id, status, last_error_code
+      FROM attribution_deliveries
+      ORDER BY id
+    `).all<{ id: string; status: string; last_error_code: string }>()
+    expect(deliveries.results).toEqual([
+      { id: 'delivery_done', status: 'processed', last_error_code: '' },
+      { id: 'delivery_pending', status: 'cancelled', last_error_code: 'connection_updated' },
+    ])
+    expect(await countRows('attribution_outbox')).toBe(0)
+    expect(await countRows('attribution_conversion_facts')).toBe(2)
+  })
+
+  it('显式 credential 轮换并原子替换旧凭证', async () => {
+    await savePlatformConnection(env(), metaCommand())
+    const before = await db.prepare('SELECT credential_revision FROM attribution_credentials')
+      .first<{ credential_revision: string }>()
+    await savePlatformConnection(env(), metaCommand({
       credential: { type: 'access_token', plaintext: ROTATED_META_TOKEN },
     }))
+    const after = await db.prepare('SELECT credential_revision FROM attribution_credentials')
+      .first<{ credential_revision: string }>()
 
-    expect(rotated.credential.revision).not.toBe(first.credential.revision)
+    expect(after?.credential_revision).not.toBe(before?.credential_revision)
     expect(await countRows('attribution_credentials')).toBe(1)
     await expect(readAttributionCredential(env(), {
       connectionId: 'conn_meta',
       provider: 'meta',
       credentialType: 'access_token',
-      credentialRevision: rotated.credential.revision,
+      credentialRevision: after!.credential_revision,
     })).resolves.toBe(ROTATED_META_TOKEN)
     await expect(readAttributionCredential(env(), {
       connectionId: 'conn_meta',
       provider: 'meta',
       credentialType: 'access_token',
-      credentialRevision: first.credential.revision,
+      credentialRevision: before!.credential_revision,
     })).rejects.toMatchObject({ code: 'ATTRIBUTION_CREDENTIAL_NOT_FOUND' })
   })
 
   it('batch 最后一条 SQL 失败时回滚连接、凭证、绑定和审计', async () => {
-    const first = await savePlatformConnection(env(), metaCommand())
+    await savePlatformConnection(env(), metaCommand())
+    const credential = await db.prepare('SELECT credential_revision FROM attribution_credentials')
+      .first<{ credential_revision: string }>()
     const beforeConnection = await tableRows('attribution_platform_connections')
     const beforeBindings = await tableRows('attribution_event_bindings')
     const beforeCredentials = await tableRows('attribution_credentials')
@@ -192,7 +241,7 @@ describe('统一广告平台连接原子服务', () => {
       connectionId: 'conn_meta',
       provider: 'meta',
       credentialType: 'access_token',
-      credentialRevision: first.credential.revision,
+      credentialRevision: credential!.credential_revision,
     })).resolves.toBe(META_TOKEN)
   })
 
@@ -209,48 +258,6 @@ describe('统一广告平台连接原子服务', () => {
       credential: { type: 'service_account_json', plaintext: '{}' },
     }))).rejects.toMatchObject({ code: 'AD_PLATFORM_CONNECTION_CREDENTIAL_INVALID' })
     expect(batch).not.toHaveBeenCalled()
-  })
-
-  it('任一保存原子失效旧 verification，并清除尚未完成的测试输入', async () => {
-    const first = await savePlatformConnection(env(), metaCommand())
-    await db.prepare(`
-      INSERT INTO attribution_verifications (
-        id, connection_id, provider, connection_revision, credential_revision,
-        attempt, status, started_at
-      ) VALUES ('verification_old', ?, 'meta', ?, ?, 1, 'verified', datetime('now'))
-    `).bind(first.connectionId, first.connectionRevision, first.credential.revision).run()
-    await db.prepare(`
-      INSERT INTO attribution_verifications (
-        id, connection_id, provider, connection_revision, credential_revision,
-        attempt, status, evidence_json, started_at
-      ) VALUES ('verification_queued', ?, 'meta', ?, ?, 2, 'queued', ?, datetime('now'))
-    `).bind(
-      first.connectionId,
-      first.connectionRevision,
-      first.credential.revision,
-      JSON.stringify({ schemaVersion: 1, verificationInput: { ciphertext: 'must-clear' } }),
-    ).run()
-
-    const command = metaCommand({ mode: 'test' })
-    delete command.credential
-    const updated = await savePlatformConnection(env(), command)
-    const currentVerification = await db.prepare(`
-      SELECT verification.id
-      FROM attribution_verifications AS verification
-      JOIN attribution_platform_connections AS connection ON connection.id = verification.connection_id
-      WHERE verification.connection_revision = connection.connection_revision
-        AND verification.credential_revision = connection.credential_revision
-    `).first<{ id: string }>()
-
-    expect(updated.connectionRevision).not.toBe(first.connectionRevision)
-    expect(updated.credential.revision).toBe(first.credential.revision)
-    expect(currentVerification).toBeNull()
-    const invalidated = await db.prepare(`
-      SELECT id, status, evidence_json FROM attribution_verifications ORDER BY attempt
-    `).all<{ id: string; status: string; evidence_json: string }>()
-    expect(invalidated.results.map(row => row.status)).toEqual(['invalidated', 'invalidated'])
-    expect(invalidated.results[1]?.evidence_json).not.toMatch(/ciphertext|must-clear|verificationInput/)
-    expect(invalidated.results[1]?.evidence_json).toContain('AD_PLATFORM_VERIFICATION_REVISION_INVALID')
   })
 
   it('审计与服务返回值不包含明文、密文、IV 或指纹', async () => {
@@ -270,17 +277,15 @@ describe('统一广告平台连接原子服务', () => {
     ['事件缺失', () => ({ ...metaCommand(), eventBindings: [{ canonicalEvent: 'Contact', enabled: true }] }), 'AD_PLATFORM_CONNECTION_BINDINGS_INVALID'],
     ['事件重复', () => ({ ...metaCommand(), eventBindings: [{ canonicalEvent: 'Contact', enabled: true }, { canonicalEvent: 'Contact', enabled: true }] }), 'AD_PLATFORM_CONNECTION_BINDINGS_INVALID'],
     ['Meta 跨平台 destination', () => ({ ...metaCommand(), eventBindings: [{ canonicalEvent: 'Contact', enabled: true, browserDestination: 'tiktok_pixel' }, { canonicalEvent: 'CompleteRegistration', enabled: true }] }), 'AD_PLATFORM_CONNECTION_BINDINGS_INVALID'],
-    ['非法 rollout', () => ({ ...metaCommand(), rolloutTargetPercentage: 25 as never }), 'AD_PLATFORM_CONNECTION_ROLLOUT_INVALID'],
-    ['生产连接双出口关闭', () => ({ ...metaCommand(), browserEnabled: false, serverEnabled: false, rolloutTargetPercentage: 0 }), 'AD_PLATFORM_CONNECTION_STATE_INVALID'],
-    ['生产连接没有实际投递出口', () => ({ ...metaCommand(), browserEnabled: false, serverEnabled: true, rolloutTargetPercentage: 0 }), 'AD_PLATFORM_CONNECTION_STATE_INVALID'],
+    ['生产连接双出口关闭', () => ({ ...metaCommand(), browserEnabled: false, serverEnabled: false }), 'AD_PLATFORM_CONNECTION_STATE_INVALID'],
   ] as const)('%s 被稳定错误码拒绝', async (_label, command, code) => {
     await expect(savePlatformConnection(env(), command() as SavePlatformConnectionCommand)).rejects.toMatchObject({ code })
     expect(await countRows('attribution_platform_connections')).toBe(0)
   })
 
   it.each([
-    ['Browser 单出口', { browserEnabled: true, serverEnabled: false, rolloutTargetPercentage: 0 as const }],
-    ['Server 单出口', { browserEnabled: false, serverEnabled: true, rolloutTargetPercentage: 10 as const }],
+    ['Browser 单出口', { browserEnabled: true, serverEnabled: false }],
+    ['Server 单出口', { browserEnabled: false, serverEnabled: true }],
   ])('生产连接允许%s', async (_label, overrides) => {
     await expect(savePlatformConnection(env(), metaCommand(overrides))).resolves.toMatchObject(overrides)
   })
@@ -323,16 +328,14 @@ function metaCommand(overrides: Partial<SavePlatformConnectionCommand> = {}): Sa
   return {
     provider: 'meta',
     enabled: true,
-    mode: 'production',
     browserEnabled: true,
     serverEnabled: true,
-    publicConfig: { provider: 'meta', pixelId: '1234567890123456' },
+    publicConfig: { provider: 'meta', pixelId: '123456789012345' },
     eventBindings: [
       { canonicalEvent: 'Contact', enabled: true },
       { canonicalEvent: 'CompleteRegistration', enabled: true },
     ],
     credential: { type: 'access_token', plaintext: META_TOKEN },
-    rolloutTargetPercentage: 100,
     actorId: ACTOR_ID,
     ...overrides,
   }
@@ -342,7 +345,6 @@ function tiktokCommand(): SavePlatformConnectionCommand {
   return {
     provider: 'tiktok',
     enabled: true,
-    mode: 'test',
     browserEnabled: true,
     serverEnabled: true,
     publicConfig: { provider: 'tiktok', pixelCode: 'ABCDEF123456' },
@@ -351,7 +353,6 @@ function tiktokCommand(): SavePlatformConnectionCommand {
       { canonicalEvent: 'CompleteRegistration', enabled: true, browserDestination: 'tiktok_pixel', serverDestination: 'tiktok_events_api' },
     ],
     credential: { type: 'access_token', plaintext: 'tiktok-token' },
-    rolloutTargetPercentage: 10,
     actorId: ACTOR_ID,
   }
 }
@@ -360,7 +361,6 @@ function googleCommand(): SavePlatformConnectionCommand {
   return {
     provider: 'google',
     enabled: true,
-    mode: 'test',
     browserEnabled: true,
     serverEnabled: true,
     publicConfig: {
@@ -374,9 +374,27 @@ function googleCommand(): SavePlatformConnectionCommand {
       { canonicalEvent: 'CompleteRegistration', enabled: true, browserDestination: 'AW-123456789/REGISTRATION_LABEL', serverDestination: '987654321' },
     ],
     credential: { type: 'service_account_json', plaintext: googleCredential },
-    rolloutTargetPercentage: 50,
     actorId: ACTOR_ID,
   }
+}
+
+function factStatement(id: string, externalEventId: string, dedupeKey: string) {
+  return db.prepare(`
+    INSERT INTO attribution_conversion_facts (
+      id, canonical_event, fact_origin, external_event_id, attribution_provider,
+      attribution_source, occurred_at, dedupe_key, consent_snapshot_json,
+      analytics_dimensions_json
+    ) VALUES (?, 'Contact', 'live', ?, 'meta', 'context', datetime('now'), ?, '{}', '{}')
+  `).bind(id, externalEventId, dedupeKey)
+}
+
+function deliveryStatement(id: string, factId: string, status: 'queued' | 'processed') {
+  return db.prepare(`
+    INSERT INTO attribution_deliveries (
+      id, fact_id, connection_id, provider, transport, status, destination,
+      match_signals_json
+    ) VALUES (?, ?, 'conn_meta', 'meta', 'server', ?, 'meta_capi', '{}')
+  `).bind(id, factId, status)
 }
 
 async function countRows(table: string) {

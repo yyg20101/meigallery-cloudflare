@@ -2,10 +2,7 @@ import type {
   AdPlatformProvider,
   CanonicalConversionEvent,
 } from '@meigallery/shared'
-import type {
-  CreateCandidateRequest,
-  SetRuntimePolicyRequest,
-} from '~/types/attribution-admin'
+import type { AdPlatformConnectionData } from '~/composables/useAdminAttribution'
 
 export type AttributionPlatformProvider = AdPlatformProvider
 export type AttributionCredentialType = 'access_token' | 'service_account_json'
@@ -72,7 +69,10 @@ export interface AttributionEventBindingDraft {
   serverDestination: string
 }
 
-export interface AttributionCandidateDraft {
+export interface AttributionPlatformConnectionDraft {
+  enabled: boolean
+  browserEnabled: boolean
+  serverEnabled: boolean
   publicConfig: Record<string, string>
   eventBindings: AttributionEventBindingDraft[]
 }
@@ -168,13 +168,23 @@ export function attributionPlatformDefinition(provider: AttributionPlatformProvi
   return ATTRIBUTION_PLATFORMS.find(item => item.provider === provider) ?? ATTRIBUTION_PLATFORMS[0]!
 }
 
-export function emptyAttributionCandidateDraft(
+export function normalizeAttributionPlatformProvider(value: unknown): AttributionPlatformProvider {
+  const raw = Array.isArray(value) ? value[0] : value
+  return ATTRIBUTION_PLATFORM_PROVIDERS.includes(raw as AttributionPlatformProvider)
+    ? raw as AttributionPlatformProvider
+    : ATTRIBUTION_PLATFORMS[0]!.provider
+}
+
+export const normalizeAttributionDashboardProvider = normalizeAttributionPlatformProvider
+
+export function emptyAttributionPlatformConnectionDraft(
   platform: AttributionPlatformDefinition = ATTRIBUTION_PLATFORMS[0]!,
-): AttributionCandidateDraft {
+): AttributionPlatformConnectionDraft {
   return {
-    publicConfig: Object.fromEntries(
-      platform.publicConfigFields.map(field => [field.key, '']),
-    ),
+    enabled: false,
+    browserEnabled: false,
+    serverEnabled: false,
+    publicConfig: Object.fromEntries(platform.publicConfigFields.map(field => [field.key, ''])),
     eventBindings: platform.eventBindings.map(binding => ({
       canonicalEvent: binding.canonicalEvent,
       enabled: true,
@@ -184,28 +194,45 @@ export function emptyAttributionCandidateDraft(
   }
 }
 
-export function attributionCandidatePayload(
+export function attributionConnectionToDraft(
+  connection: AdPlatformConnectionData | null | undefined,
   platform: AttributionPlatformDefinition,
-  draft: AttributionCandidateDraft,
-  options: {
-    credentialPlaintext?: string
-    testEventCode?: string
-  } = {},
-): CreateCandidateRequest {
-  const publicConfig = Object.fromEntries(
-    platform.publicConfigFields
-      .map(field => [
-        field.key,
-        String(draft.publicConfig[field.key] ?? '').trim(),
-      ] as const)
-      .filter(([, value], index) => (
-        platform.publicConfigFields[index]!.required || value.length > 0
-      )),
-  )
-  const credentialPlaintext =
-    String(options.credentialPlaintext ?? '').trim()
-  const testEventCode = String(options.testEventCode ?? '').trim()
+): AttributionPlatformConnectionDraft {
+  if (!connection) return emptyAttributionPlatformConnectionDraft(platform)
+  const publicConfig = Object.fromEntries(platform.publicConfigFields.map(field => [field.key, String(connection.publicConfig[field.key] ?? '')]))
   return {
+    enabled: connection.enabled,
+    browserEnabled: connection.browserEnabled,
+    serverEnabled: connection.serverEnabled,
+    publicConfig,
+    eventBindings: platform.eventBindings.map((definition) => {
+      const binding = connection.eventBindings.find(item => item.canonicalEvent === definition.canonicalEvent)
+      return {
+        canonicalEvent: definition.canonicalEvent,
+        enabled: binding?.enabled ?? true,
+        browserDestination: binding?.browserDestination ?? definition.browser.defaultValue,
+        serverDestination: binding?.serverDestination ?? definition.server.defaultValue,
+      }
+    }),
+  }
+}
+
+export function attributionConnectionPayload(
+  platform: AttributionPlatformDefinition,
+  draft: AttributionPlatformConnectionDraft,
+  credentialPlaintext = '',
+) {
+  const publicConfig = Object.fromEntries([
+    ['provider', platform.provider],
+    ...platform.publicConfigFields
+      .map(field => [field.key, String(draft.publicConfig[field.key] ?? '').trim()] as const)
+      .filter(([, value], index) => platform.publicConfigFields[index]!.required || value.length > 0),
+  ])
+  const plaintext = credentialPlaintext.trim()
+  return {
+    enabled: draft.enabled,
+    browserEnabled: draft.browserEnabled,
+    serverEnabled: draft.serverEnabled,
     publicConfig,
     eventBindings: draft.eventBindings.map(binding => ({
       canonicalEvent: binding.canonicalEvent,
@@ -213,25 +240,11 @@ export function attributionCandidatePayload(
       browserDestination: binding.browserDestination.trim(),
       serverDestination: binding.serverDestination.trim(),
     })),
-    ...(credentialPlaintext
-      ? {
-          credential: {
-            type: platform.credential.type,
-            plaintext: credentialPlaintext,
-          },
-        }
-      : {}),
-    ...(testEventCode ? { testEventCode } : {}),
+    ...(plaintext ? { credential: { type: platform.credential.type, plaintext } } : {}),
   }
 }
 
-export function attributionRuntimePolicyPayload(
-  policy: SetRuntimePolicyRequest,
-): SetRuntimePolicyRequest {
-  return {
-    enabled: policy.enabled,
-    browserEnabled: policy.browserEnabled,
-    serverEnabled: policy.serverEnabled,
-    serverTargetPercentage: policy.serverTargetPercentage,
-  }
+export function attributionConnectionStateLabel(connection: AdPlatformConnectionData | null | undefined) {
+  if (!connection) return '未配置'
+  return connection.enabled ? '生产运行' : '已停用'
 }

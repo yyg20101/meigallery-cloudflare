@@ -10,7 +10,7 @@ const api = vi.fn()
 const push = vi.fn()
 const replace = vi.fn()
 const track = vi.fn()
-const consumeRegistrationInstruction = vi.fn()
+const executeBrowserInstructions = vi.fn()
 const buildRegistrationAttributionContext = vi.fn()
 
 describe('register page', () => {
@@ -18,7 +18,21 @@ describe('register page', () => {
     register.mockReset()
     register.mockResolvedValue({
       id: 1,
-      attributionInstructionToken: 'instruction_token_0123456789',
+      trackingInstructions: [{
+        deliveryId: 'delivery_meta_registration',
+        provider: 'meta',
+        canonicalEvent: 'CompleteRegistration',
+        externalEventId: 'mg3_registration_1',
+        receiptToken: `v1.${'a'.repeat(16)}.${'b'.repeat(43)}`,
+        descriptor: {
+          provider: 'meta',
+          canonicalEvent: 'CompleteRegistration',
+          browserEventName: 'CompleteRegistration',
+          browserDestination: 'meta_pixel',
+          serverDestination: 'meta_capi',
+        },
+        payload: { method: 'email' },
+      }],
     })
     sendCode.mockReset()
     checkUsername.mockReset()
@@ -28,15 +42,14 @@ describe('register page', () => {
     push.mockReset()
     replace.mockReset()
     track.mockReset()
-    consumeRegistrationInstruction.mockReset()
-    consumeRegistrationInstruction.mockResolvedValue({
-      eventId: 'evt_registration_1',
-      externalEventId: 'mg3_registration_1',
-    })
+    executeBrowserInstructions.mockReset()
+    executeBrowserInstructions.mockResolvedValue(undefined)
     buildRegistrationAttributionContext.mockReset()
     buildRegistrationAttributionContext.mockReturnValue({
       visitorId: 'visitor_1',
       sessionId: 'session_1',
+      occurredAt: '2026-07-10T08:00:00.000Z',
+      routeName: 'register',
       path: '/register',
       sourceChannel: 'ad',
       sourceName: 'meta',
@@ -45,6 +58,8 @@ describe('register page', () => {
       utmMedium: 'paid_social',
       utmCampaign: 'summer',
       utmContent: 'hero',
+      consentState: 'granted',
+      browserIdentifiers: { fbp: 'fb.1.1700000000000.123456789' },
     })
 
     vi.stubGlobal('useAuth', () => ({
@@ -72,9 +87,10 @@ describe('register page', () => {
         },
       }),
     }))
-    vi.stubGlobal('useTracking', () => ({
-      consumeRegistrationInstruction,
-      buildRegistrationAttributionContext,
+    vi.stubGlobal('useTracking', () => ({ executeBrowserInstructions, buildRegistrationAttributionContext }))
+    vi.stubGlobal('useMarketingConsent', () => ({
+      state: ref('granted'),
+      canTrackMarketing: ref(true),
     }))
     vi.stubGlobal('useSiteSettings', () => ({ siteName: ref('MeiGallery') }))
     vi.stubGlobal('useTurnstile', () => ({
@@ -117,6 +133,8 @@ describe('register page', () => {
       attribution: {
         visitorId: 'visitor_1',
         sessionId: 'session_1',
+        occurredAt: '2026-07-10T08:00:00.000Z',
+        routeName: 'register',
         path: '/register',
         sourceChannel: 'ad',
         sourceName: 'meta',
@@ -125,23 +143,23 @@ describe('register page', () => {
         utmMedium: 'paid_social',
         utmCampaign: 'summer',
         utmContent: 'hero',
+        consentState: 'granted',
+        browserIdentifiers: { fbp: 'fb.1.1700000000000.123456789' },
       },
     }))
     expect(buildRegistrationAttributionContext).toHaveBeenCalledOnce()
     expect(register.mock.calls[0]?.[0]).not.toHaveProperty('actionType')
     expect(register.mock.calls[0]?.[0]).not.toHaveProperty('userId')
-    expect(consumeRegistrationInstruction).toHaveBeenCalledWith(
-      'instruction_token_0123456789',
-    )
+    expect(executeBrowserInstructions).toHaveBeenCalledWith([
+      expect.objectContaining({ canonicalEvent: 'CompleteRegistration', externalEventId: 'mg3_registration_1' }),
+    ])
     expect(track).toHaveBeenCalledWith('register_success', expect.objectContaining({ eventId: 'mg3_registration_1' }))
     expect(push).toHaveBeenCalledWith('/')
     expect(track).not.toHaveBeenCalledWith('register_failed', expect.anything())
   })
 
   it('Pixel 指令执行失败不误记注册失败且仍跳转首页', async () => {
-    consumeRegistrationInstruction.mockRejectedValueOnce(
-      new Error('pixel failed'),
-    )
+    executeBrowserInstructions.mockRejectedValueOnce(new Error('pixel failed'))
     const wrapper = mount(RegisterPage, {
       global: {
         stubs: {

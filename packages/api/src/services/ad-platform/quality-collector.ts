@@ -24,8 +24,7 @@ export async function collectAttributionQuality(
   if (env.APP_ENV !== 'production') return skipped('environment_not_supported')
   const snapshot = await readAttributionConnectionSnapshot(env.DB, 'meta')
   if (snapshot.state !== 'ready'
-    || !snapshot.connection.enabled
-    || snapshot.connection.mode !== 'production') return skipped('connection_not_ready')
+    || !snapshot.connection.enabled) return skipped('connection_not_ready')
 
   const datasetId = String(snapshot.connection.publicConfig.pixelId || '')
   if (!/^\d{5,30}$/.test(datasetId)) return skipped('destination_not_configured')
@@ -36,7 +35,7 @@ export async function collectAttributionQuality(
       connectionId: snapshot.connection.id,
       provider: 'meta',
       credentialType: 'access_token',
-      credentialRevision: snapshot.connection.credentialRevision,
+      credentialRevision: snapshot.credential.revision,
     })
   }
   catch {

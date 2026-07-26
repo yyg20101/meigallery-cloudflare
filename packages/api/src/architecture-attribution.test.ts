@@ -18,6 +18,21 @@ const finalFactFiles = [
 ]
 
 describe('通用广告归因架构边界', () => {
+  it('仓库只保留 API 单一归因运行时，不得恢复旧控制面', () => {
+    const forbiddenPaths = [
+      /^packages\/attribution\//,
+      /^packages\/api\/src\/routes\/admin\/attribution-(?:cutover|migration|proxy)/,
+      /^packages\/api\/src\/services\/attribution-(?:business-outbox|cutover-preflight|migration-export|runtime-owner|service-client|service-request)/,
+      /^packages\/api\/src\/workflows\/ad-platform-verification/,
+      /^scripts\/(?:bootstrap-attribution-worker|deploy-attribution|migrate-attribution-runtime|operate-attribution-cutover|provision-attribution-resources|verify-attribution-cutover)/,
+    ]
+    const violations = trackedFiles().filter(filePath =>
+      forbiddenPaths.some(pattern => pattern.test(filePath)),
+    )
+
+    expect(violations).toEqual([])
+  })
+
   it('业务编排只依赖通用注册表和协议，不包含平台控制流或平台服务 import', () => {
     const violations = orchestrationFiles.flatMap((filePath) => {
       const source = sourceFile(filePath)
@@ -82,13 +97,17 @@ function sourceFile(filePath: string) {
 }
 
 function trackedTextFiles() {
-  return execFileSync('git', ['ls-files', '-z', '--', 'packages', 'scripts', 'docs'], {
+  return trackedFiles()
+    .filter(filePath => /\.(?:[cm]?[jt]s|vue|json|toml|ya?ml|md|sql|env(?:\.example)?)$/.test(filePath))
+    .map(filePath => relative(repositoryRoot, resolve(repositoryRoot, filePath)))
+    .filter(filePath => existsSync(resolve(repositoryRoot, filePath)))
+}
+
+function trackedFiles() {
+  return execFileSync('git', ['ls-files', '-z'], {
     cwd: repositoryRoot,
     encoding: 'utf8',
   })
     .split('\0')
     .filter(Boolean)
-    .filter(filePath => /\.(?:[cm]?[jt]s|vue|json|toml|ya?ml|md|sql|env(?:\.example)?)$/.test(filePath))
-    .map(filePath => relative(repositoryRoot, resolve(repositoryRoot, filePath)))
-    .filter(filePath => existsSync(resolve(repositoryRoot, filePath)))
 }

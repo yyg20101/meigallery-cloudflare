@@ -44,17 +44,16 @@ main (生产)
 
 ### 发布上线
 
-常规发布遵循以下放行链。`Contact`、`Lead`、`CompleteRegistration` 是唯一正式 Meta 事件，`StartTrial` 不支持：
+常规发布遵循以下放行链：
 
-1. 从 `dev` 创建 `release/vX.Y.Z`，完成本地测试、类型检查、构建和 Worker dry-run。
-2. 推送 release 分支，通过 GitHub CI 后以 PR 合入 `main`，生产部署只允许从干净的 `main` 执行。
-3. release PR/CI 完成完整测试、覆盖率、类型检查、构建和归因隔离门禁；`./scripts/deploy.sh production` 不重复执行整套 `verify:release`。
-4. production 只允许从干净 `main` 执行。`0052` 待应用时按 `verify:quick -> D1 backup -> migration -> API/Web -> 通用归因健康校验 -> smoke` 执行，任一步失败按阶段停止。
-5. 普通业务发布在 `0052` 已应用后跳过 Contract 前备份，不重复历史回填或平台测试事件，也不修改已验证的平台连接、凭证和 rollout。
-6. 部署后严格校验两个 Worker 的 release commit 与当前 `main` HEAD 一致。
-7. 部署脚本不得修改 Meta/TikTok 的 enabled、mode、rollout、incident 或凭证；新接入平台必须保持默认关闭，待独立验证后再人工启用。
-8. 部署后核对 Meta 连接、rollout、Queue/DLQ 和 incident 与部署前一致，并确认 TikTok 仍为关闭态。
-9. 稳定后打 tag，将 `main` 合并回 `dev`，再删除 release 分支。
+1. 从 `dev` 创建 `release/vX.Y.Z`，完成针对性本地验证。
+2. 推送 release 分支，通过 GitHub CI 后以 PR 合入 `main`。
+3. 完整 lint、测试、覆盖率、类型、Playwright 和构建只在 CI 执行一次。
+4. 从干净 `main` 按影响范围运行 `./scripts/deploy.sh production api|web|all`。
+5. API 发布才检查 D1 migration；高风险 migration 自动先备份。
+6. 部署脚本不得修改平台连接开关、凭证或事件绑定，也不发送测试事件。
+7. 生产烟测只核对受影响 Worker；API/Web commit 允许不同，不作为归因门禁。
+8. 稳定后打 tag，将 `main` 合并回 `dev`，再删除 release 分支。
 
 ### 紧急修复
 
@@ -64,7 +63,7 @@ main (生产)
 2. 从当前生产 `main` 创建 `fix/urgent-xxx`，只提交解除线上影响所需的最小改动，禁止夹带重构、依赖升级和非关联清理。
 3. 发布前核心门禁限定为：受影响模块定向测试、API 类型检查、受影响 Worker 构建、`git diff --check` 和生产关键链路 smoke。鉴权、数据迁移、凭证、安全边界相关检查仍不得跳过。
 4. 核心门禁通过后立即创建 PR 合入 `main` 并手动部署生产；允许完整 CI 的无关长耗时任务在发布后继续，但已失败的核心检查不得强行放行。
-5. 部署后立即核对 Worker commit、核心健康门禁、关键业务 smoke、Queue/DLQ、incident 和回滚条件；不满足预期时立刻回滚，不继续叠加补丁。
+5. 部署后立即核对受影响 Worker、关键业务 smoke、Queue/DLQ、incident 和回滚条件；不满足预期时立刻回滚，不继续叠加补丁。
 6. 线上恢复后继续完成完整 CI、全量回归、根因分析、事故窗口数据补偿评估和相邻风险核查。无法安全补发的数据必须保留审计事实并明确记录，不得伪造用户或平台匹配数据。
 7. 稳定后打修订版本 tag，将 `main` 合并回 `dev`，记录事故原因和防复发约束，再处理后续非紧急优化。
 
@@ -118,8 +117,8 @@ main (生产)
 
 | 环境 | 触发方式 | 分支 | Worker 名称 |
 |------|----------|------|-------------|
-| 生产（production） | 手动 `corepack pnpm --filter ... exec wrangler deploy --env=""` | `main` | `meigallery-api` / `meigallery-web` |
-| 开发（dev） | 手动 `./scripts/deploy.sh dev` 或 dev 专用配置 | `dev` / `feature/*` | `meigallery-api-dev` / `meigallery-web-dev` |
+| 生产（production） | 手动 `./scripts/deploy.sh production api\|web\|all` | `main` | `meigallery-api` / `meigallery-web` |
+| 开发（dev） | 手动 `./scripts/deploy.sh dev api\|web\|all` | `dev` / `feature/*` | `meigallery-api-dev` / `meigallery-web-dev` |
 | 本地（local） | `corepack pnpm dev` | 任意 | localhost:8787 / localhost:3000 |
 
 ## 代码审查

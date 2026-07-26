@@ -3,13 +3,7 @@ import { defineComponent } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
 import AttributionPageShell from './AttributionPageShell.vue'
 
-vi.stubGlobal('useRoute', () => ({
-  path: '/admin/attribution',
-  query: {
-    provider: 'meta',
-    connectionId: 'conn_meta_a',
-  },
-}))
+vi.stubGlobal('useRoute', () => ({ path: '/admin/attribution', query: { provider: 'meta' } }))
 vi.stubGlobal('formatAnalyticsNumber', (value: unknown) => String(value ?? 0))
 
 const nuxtLinkStub = defineComponent({
@@ -38,7 +32,7 @@ describe('AttributionPageShell', () => {
     expect((input.element as HTMLInputElement).value).toBe('2026-07-09')
   })
 
-  it('展示统一归因后台八个标签', () => {
+  it('展示统一归因后台六个标签', () => {
     const wrapper = mount(AttributionPageShell, {
       props: {
         title: '归因中心',
@@ -47,16 +41,7 @@ describe('AttributionPageShell', () => {
       global: { stubs: { NuxtLink: nuxtLinkStub } },
     })
 
-    for (const label of [
-      '总览',
-      '连接',
-      '事件映射',
-      '投递质量',
-      '验证记录',
-      'Incident',
-      '地区策略',
-      '审计日志',
-    ]) {
+    for (const label of ['总览', '平台连接', '事件绑定', '投递质量', '连接诊断', '审计日志']) {
       expect(wrapper.text()).toContain(label)
     }
     expect(wrapper.text()).not.toContain('投放链接')
@@ -65,7 +50,7 @@ describe('AttributionPageShell', () => {
     expect(wrapper.text()).not.toContain('重复诊断')
   })
 
-  it('只在需要范围、平台和连接上下文的标签保留对应 query', () => {
+  it('只在需要范围和平台上下文的标签保留对应 query', () => {
     const wrapper = mount(AttributionPageShell, {
       props: {
         title: '归因中心',
@@ -78,27 +63,17 @@ describe('AttributionPageShell', () => {
     const delivery = wrapper.findAll('a').find(item => item.text() === '投递质量')
     expect(delivery?.attributes('data-to')).toBe(JSON.stringify({
       path: '/admin/attribution/deliveries',
-      query: {
-        range: 'day',
-        date: '2026-07-09',
-        provider: 'meta',
-        connectionId: 'conn_meta_a',
-      },
+      query: { range: 'day', date: '2026-07-09', provider: 'meta' },
     }))
-    const connection = wrapper.findAll('a').find(item => item.text() === '连接')
-    expect(connection?.attributes('data-to')).toBe(JSON.stringify({
-      path: '/admin/attribution/connections',
+    const platform = wrapper.findAll('a').find(item => item.text() === '平台连接')
+    expect(platform?.attributes('data-to')).toBe(JSON.stringify({
+      path: '/admin/attribution/platforms',
       query: { provider: 'meta' },
     }))
     const audit = wrapper.findAll('a').find(item => item.text() === '审计日志')
     expect(audit?.attributes('data-to')).toBe(JSON.stringify({
       path: '/admin/attribution/audit',
-      query: {
-        range: 'day',
-        date: '2026-07-09',
-        provider: 'meta',
-        connectionId: 'conn_meta_a',
-      },
+      query: { range: 'day', date: '2026-07-09' },
     }))
   })
 })
