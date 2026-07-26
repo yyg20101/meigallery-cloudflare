@@ -19,7 +19,7 @@ export interface SaveCredentialInput {
   provider: AdAttributionProvider
   credentialType: AttributionCredentialType
   plaintext: string
-  credentialRevision: string
+  encryptionContext: string
   createdBy: number
 }
 
@@ -28,7 +28,7 @@ export interface PreparedAttributionCredential {
   connectionId: string
   provider: AdAttributionProvider
   credentialType: AttributionCredentialType
-  credentialRevision: string
+  encryptionContext: string
   schemaVersion: 1
   keyId: string
   iv: string
@@ -65,7 +65,7 @@ export class CredentialVaultError extends Error {
 export async function saveAttributionCredential(
   env: CredentialVaultEnv,
   input: SaveCredentialInput,
-): Promise<{ id: string; credentialRevision: string }> {
+): Promise<{ id: string; encryptionContext: string }> {
   await validateSaveInput(input)
   await requireConnection(env.DB, input.connectionId, input.provider)
   const prepared = await prepareAttributionCredential(env, input)
@@ -73,21 +73,20 @@ export async function saveAttributionCredential(
     await env.DB.batch([
       env.DB.prepare(`
         DELETE FROM attribution_credentials
-        WHERE connection_id = ? AND provider = ? AND credential_type = ?
-      `).bind(input.connectionId, input.provider, input.credentialType),
+        WHERE connection_id = ? AND credential_type = ?
+      `).bind(input.connectionId, input.credentialType),
       env.DB.prepare(`
         INSERT INTO attribution_credentials (
-          id, connection_id, provider, credential_type, schema_version, key_id,
-          iv, ciphertext, tag, fingerprint, credential_revision, created_by, updated_at
+          id, connection_id, credential_type, schema_version, key_id,
+          iv, ciphertext, tag, fingerprint, encryption_context, created_by, updated_at
         ) VALUES (
           ?,
           (SELECT id FROM attribution_platform_connections WHERE id = ? AND provider = ?),
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')
         )
       `).bind(
         prepared.id,
         input.connectionId,
-        input.provider,
         input.provider,
         input.credentialType,
         prepared.schemaVersion,
@@ -96,7 +95,7 @@ export async function saveAttributionCredential(
         prepared.ciphertext,
         prepared.tag,
         prepared.fingerprint,
-        input.credentialRevision,
+        input.encryptionContext,
         input.createdBy,
       ),
     ])
@@ -105,7 +104,7 @@ export async function saveAttributionCredential(
     throw vaultError('ATTRIBUTION_CREDENTIAL_WRITE_FAILED')
   }
 
-  return { id: prepared.id, credentialRevision: input.credentialRevision }
+  return { id: prepared.id, encryptionContext: input.encryptionContext }
 }
 
 /** 完成凭证校验与封装，但把实际写入留给调用方的原子 batch。 */
@@ -127,7 +126,7 @@ export async function prepareAttributionCredential(
       connectionId: input.connectionId,
       provider: input.provider,
       credentialType: input.credentialType,
-      credentialRevision: input.credentialRevision,
+      encryptionContext: input.encryptionContext,
       schemaVersion: envelope.schemaVersion,
       keyId: envelope.keyId,
       iv: envelope.iv,
@@ -152,15 +151,15 @@ export async function readAttributionCredential(
     SELECT credential.schema_version, credential.key_id, credential.iv, credential.ciphertext, credential.tag
     FROM attribution_credentials AS credential
     JOIN attribution_platform_connections AS connection
-      ON connection.id = credential.connection_id AND connection.provider = credential.provider
-    WHERE credential.connection_id = ? AND credential.provider = ?
-      AND credential.credential_type = ? AND credential.credential_revision = ?
+      ON connection.id = credential.connection_id
+    WHERE credential.connection_id = ? AND connection.provider = ?
+      AND credential.credential_type = ? AND credential.encryption_context = ?
     LIMIT 1
   `).bind(
     input.connectionId,
     input.provider,
     input.credentialType,
-    input.credentialRevision,
+    input.encryptionContext,
   ).first<CredentialEnvelopeRow>()
   if (!row) throw vaultError('ATTRIBUTION_CREDENTIAL_NOT_FOUND')
 
@@ -202,7 +201,7 @@ async function validateSaveInput(input: SaveCredentialInput) {
 
 function validateReadInput(input: Omit<SaveCredentialInput, 'plaintext' | 'createdBy'>) {
   if (!isProvider(input.provider) || !CREDENTIAL_TYPES.has(input.credentialType)
-    || !isIdentifier(input.connectionId) || !isIdentifier(input.credentialRevision)) {
+    || !isIdentifier(input.connectionId) || !isIdentifier(input.encryptionContext)) {
     throw vaultError('ATTRIBUTION_CREDENTIAL_INPUT_INVALID')
   }
 }
@@ -234,12 +233,12 @@ async function isGoogleServiceAccount(value: string) {
   }
 }
 
-function credentialAad(input: Pick<SaveCredentialInput, 'connectionId' | 'provider' | 'credentialRevision'>) {
+function credentialAad(input: Pick<SaveCredentialInput, 'connectionId' | 'provider' | 'encryptionContext'>) {
   return {
     purpose: 'credential' as const,
     provider: input.provider,
     subjectId: input.connectionId,
-    revision: input.credentialRevision,
+    scope: input.encryptionContext,
   }
 }
 

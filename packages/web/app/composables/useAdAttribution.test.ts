@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
-import { useAdAttribution } from './useAdAttribution'
+import { requiresFullReload, useAdAttribution } from './useAdAttribution'
 
 const stateStore = new Map<string, ReturnType<typeof ref>>()
 const api = vi.fn()
@@ -21,6 +21,13 @@ afterEach(() => {
 })
 
 describe('useAdAttribution', () => {
+  it('已加载平台发生变化或变为空时要求整页刷新', () => {
+    expect(requiresFullReload('meta', 'tiktok')).toBe(true)
+    expect(requiresFullReload('tiktok', 'google')).toBe(true)
+    expect(requiresFullReload('meta', 'meta')).toBe(false)
+    expect(requiresFullReload(null, 'meta')).toBe(false)
+    expect(requiresFullReload('meta', null)).toBe(true)
+  })
   it.each([
     ['meta', { provider: 'meta', pixelId: '123456789' }],
     ['tiktok', { provider: 'tiktok', pixelCode: 'C123456789ABCDEF' }],
@@ -141,7 +148,7 @@ describe('useAdAttribution', () => {
     expect(attribution.resolution.value).toBe('conflict')
   })
 
-  it('来源验证失败时本地降级并请求服务端清除旧 receipt', async () => {
+  it('来源验证失败时本地降级并请求服务端清除旧上下文', async () => {
     api.mockRejectedValueOnce(new Error('network'))
     api.mockResolvedValueOnce({ provider: null, resolution: 'none', expiresInSeconds: null })
     api.mockResolvedValueOnce({ provider: 'meta', resolution: 'matched', expiresInSeconds: 1_800 })
@@ -159,27 +166,7 @@ describe('useAdAttribution', () => {
     expect(api).toHaveBeenCalledTimes(3)
   })
 
-  it('客户端缓存不超过服务端返回的 receipt 剩余寿命', async () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-07-13T00:00:00.000Z'))
-    api
-      .mockResolvedValueOnce({ provider: 'meta', resolution: 'matched', expiresInSeconds: 1_800 })
-      .mockResolvedValueOnce({ provider: 'meta', resolution: 'inherited', expiresInSeconds: 60 })
-      .mockResolvedValueOnce({ provider: null, resolution: 'none', expiresInSeconds: null })
-    const attribution = useAdAttribution()
-    const route = { path: '/expiring-source', query: { fbclid: 'meta-click' } }
-
-    await attribution.resolve(route)
-    vi.advanceTimersByTime(29 * 60 * 1_000 + 1)
-    await attribution.resolve(route)
-    vi.advanceTimersByTime(59 * 1_000)
-    await attribution.resolve(route)
-
-    expect(api).toHaveBeenCalledTimes(3)
-    expect(attribution.provider.value).toBeNull()
-  })
-
-  it('provider 与 resolution 不一致时失败关闭并清除服务端 receipt', async () => {
+  it('provider 与 resolution 不一致时失败关闭并清除服务端上下文', async () => {
     api
       .mockResolvedValueOnce({ provider: 'tiktok', resolution: 'conflict', expiresInSeconds: 1_800 })
       .mockResolvedValueOnce({ provider: null, resolution: 'none', expiresInSeconds: null })
@@ -253,7 +240,7 @@ describe('useAdAttribution', () => {
     expect(requestBody.ttclid).toHaveLength(1_001)
   })
 
-  it('clear 同时清除本地状态和服务端 receipt', async () => {
+  it('clear 同时清除本地状态和服务端上下文', async () => {
     api.mockResolvedValueOnce({ provider: 'meta', resolution: 'matched', expiresInSeconds: 1_800 })
     api.mockResolvedValueOnce({ provider: null, resolution: 'none', expiresInSeconds: null })
     const attribution = useAdAttribution()

@@ -23,7 +23,7 @@ type DiagnosticRow = {
   connection_id: string
   canonical_event: string
   public_config_json: string
-  credential_revision: string
+  encryption_context: string
   accepted_at: string
   receipt_json: string | null
   diagnostic_count: number
@@ -91,7 +91,7 @@ export async function reconcileGoogleDeliveryDiagnostics(
         connectionId: row.connection_id,
         provider: 'google',
         credentialType: 'service_account_json',
-        credentialRevision: row.credential_revision,
+        encryptionContext: row.encryption_context,
       })
       diagnostic = await (dependencies.retrieveStatus ?? retrieveGoogleRequestStatus)({
         requestId,
@@ -129,7 +129,7 @@ async function listAcceptedGoogleDeliveries(db: D1Database, now: Date, limit: nu
         delivery.connection_id,
         fact.canonical_event,
         connection.public_config_json,
-        connection.credential_revision,
+        credential.encryption_context,
         delivery.accepted_at,
         (
           SELECT receipt.receipt_json
@@ -159,6 +159,8 @@ async function listAcceptedGoogleDeliveries(db: D1Database, now: Date, limit: nu
         ON fact.id = delivery.fact_id AND fact.attribution_provider = delivery.provider
       JOIN attribution_platform_connections AS connection
         ON connection.id = delivery.connection_id AND connection.provider = delivery.provider
+      JOIN attribution_credentials AS credential
+        ON credential.connection_id = connection.id
       WHERE delivery.provider = 'google'
         AND delivery.transport = 'server'
         AND delivery.status = 'accepted'

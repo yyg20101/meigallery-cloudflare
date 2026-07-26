@@ -44,7 +44,7 @@ beforeEach(() => {
       ['Contact', { enabled: true, browserDestination: 'meta_pixel', serverDestination: 'meta_capi' }],
       ['CompleteRegistration', { enabled: true, browserDestination: 'meta_pixel', serverDestination: 'meta_capi' }],
     ]),
-    credential: { type: 'access_token', schemaVersion: 1, revision: 'credential_1' },
+    credential: { type: 'access_token', schemaVersion: 1, encryptionContext: 'credential_context_1' },
   })
   mocks.test.mockResolvedValue({
     schemaVersion: 1,

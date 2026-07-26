@@ -37,7 +37,7 @@ beforeEach(() => {
       id: 'conn_meta', provider: 'meta', enabled: true,
       publicConfig: { pixelId: '123456789012345' },
     },
-    credential: { type: 'access_token', schemaVersion: 1, revision: 'credential_revision' },
+    credential: { type: 'access_token', schemaVersion: 1, encryptionContext: 'credential_context' },
   })
   mocks.readCredential.mockResolvedValue('private-token')
 })
@@ -56,7 +56,7 @@ describe('通用归因质量采集', () => {
     }, new Date('2026-07-16T00:00:00.000Z'))
     expect(result).toEqual({ status: 'success', metricCount: 1, errorCategory: '' })
     expect(mocks.readCredential).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      connectionId: 'conn_meta', provider: 'meta', credentialRevision: 'credential_revision',
+      connectionId: 'conn_meta', provider: 'meta', encryptionContext: 'credential_context',
     }))
     expect(statements).toHaveLength(1)
     expect(statements[0]?.sql).toContain('INSERT INTO attribution_quality_snapshots')

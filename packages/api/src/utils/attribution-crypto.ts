@@ -6,9 +6,9 @@ const BASE64_KEY_PATTERN = /^(?:[A-Za-z0-9+/]{4}){10}[A-Za-z0-9+/]{3}=$/
 const BASE64_URL_PATTERN = /^[A-Za-z0-9_-]+$/
 const CONTROL_CHARACTER_PATTERN = /\p{Cc}/u
 const PURPOSES = new Set<AttributionCryptoPurpose>([
-  'credential', 'outbox', 'context', 'event_id', 'browser_receipt',
+  'credential', 'outbox', 'context', 'event_id',
 ])
-const AAD_FIELDS = new Set(['purpose', 'provider', 'subjectId', 'revision'])
+const AAD_FIELDS = new Set(['purpose', 'provider', 'subjectId', 'scope'])
 const ENVELOPE_FIELDS = new Set(['schemaVersion', 'keyId', 'iv', 'ciphertext', 'tag'])
 const HKDF_SALT = new TextEncoder().encode('meigallery-attribution-hkdf-salt-v1')
 const writableRoots = new WeakSet<AttributionDerivedKeyRoot>()
@@ -16,13 +16,13 @@ const rootKeys = new WeakMap<AttributionDerivedKeyRoot, CryptoKey>()
 
 type AesKeyUsage = 'encrypt' | 'decrypt'
 
-export type AttributionCryptoPurpose = 'credential' | 'outbox' | 'context' | 'event_id' | 'browser_receipt'
+export type AttributionCryptoPurpose = 'credential' | 'outbox' | 'context' | 'event_id'
 
 export interface AttributionAad {
   purpose: AttributionCryptoPurpose
   provider: string
   subjectId: string
-  revision: string
+  scope: string
 }
 
 export interface AttributionEncryptedEnvelope {
@@ -219,13 +219,14 @@ function encodeAad(value: AttributionAad) {
   if (!PURPOSES.has(value.purpose)
     || !isSafeIdentifier(value.provider)
     || !isSafeIdentifier(value.subjectId)
-    || !isSafeIdentifier(value.revision)) throw contextError()
+    || !isSafeIdentifier(value.scope)) throw contextError()
+  // schemaVersion 1 的附加认证数据已经用于现有密文，序列化键保持不变以避免凭证失效。
   return new TextEncoder().encode(JSON.stringify({
     schemaVersion: 1,
     purpose: value.purpose,
     provider: value.provider,
     subjectId: value.subjectId,
-    revision: value.revision,
+    revision: value.scope,
   }))
 }
 

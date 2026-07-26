@@ -1,4 +1,4 @@
-import type { AdAttributionProvider, AdConsentSnapshot, AdPlatformQueueMessage, CanonicalConversionEvent } from '@meigallery/shared'
+import type { AdAttributionProvider, AdPlatformQueueMessage, CanonicalConversionEvent } from '@meigallery/shared'
 import { decryptAttributionValue, loadAttributionCryptoKeys } from '../../utils/attribution-crypto'
 import { isValidAdPlatformIpAddress, isValidAdPlatformUserAgent } from '../../utils/ad-platform-identifiers'
 import { CredentialVaultError, readAttributionCredential } from './credential-vault'
@@ -6,7 +6,6 @@ import { getAdPlatformDefinition } from './registry'
 import { deleteAttributionOutbox } from './secure-outbox'
 import { deliverServerEvent, type ServerDeliveryInput, type ServerDeliveryResult } from './server-adapter'
 
-const LEASE_STALE_MINUTES = 5
 const PERMANENT_CREDENTIAL_ERRORS = new Set([
   'ATTRIBUTION_CREDENTIAL_INPUT_INVALID',
   'ATTRIBUTION_CREDENTIAL_CONNECTION_NOT_FOUND',
@@ -29,7 +28,7 @@ type QueueEnv = {
   AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT?: string
   AD_PLATFORM_CREDENTIAL_MASTER_KEY_PREVIOUS?: string
 }
-type QueueMessage = { body: unknown; attempts: number; ack(): void; retry(): void }
+type QueueMessage = { body: unknown; ack(): void; retry(): void }
 export type AttributionDeliveryQueueRow = {
   delivery_id: string
   delivery_provider: string
@@ -42,8 +41,9 @@ export type AttributionDeliveryQueueRow = {
   connection_id: string
   connection_provider: string
   public_config_json: string
-  connection_revision: string
-  credential_revision: string
+  outbox_scope: string
+  credential_type: string
+  encryption_context: string
   destination: string
   outbox_provider: string | null
   schema_version: number | null
@@ -63,7 +63,6 @@ type DecryptedPayload = {
   hashedEmail?: string
   clientIpAddress?: string
   clientUserAgent?: string
-  consent: AdConsentSnapshot
 }
 type DeliveryOutcome = { result: ServerDeliveryResult; errorCode?: string }
 type Dependencies = {
@@ -111,7 +110,7 @@ export async function handleAttributionQueueBatch(batch: MessageBatch<AdPlatform
         continue
       }
 
-      const token = await claimLease(env.DB, row, message.attempts)
+      const token = await beginDeliveryAttempt(env.DB, row)
       if (token === null) {
         safeAck(message)
         continue
@@ -164,11 +163,12 @@ async function readDelivery(db: D1Database, deliveryId: string): Promise<Attribu
     SELECT d.id AS delivery_id, d.provider AS delivery_provider, d.status, d.attempt_count, d.updated_at,
       d.fact_id, f.canonical_event, f.attribution_provider AS fact_provider,
       c.id AS connection_id, c.provider AS connection_provider, c.public_config_json,
-      c.connection_revision, c.credential_revision, d.destination,
+      c.outbox_scope, credential.credential_type, credential.encryption_context, d.destination,
       o.provider AS outbox_provider, o.schema_version, o.key_id, o.iv, o.ciphertext, o.tag, o.expires_at
     FROM attribution_deliveries AS d
     JOIN attribution_conversion_facts AS f ON f.id = d.fact_id
     JOIN attribution_platform_connections AS c ON c.id = d.connection_id
+    JOIN attribution_credentials AS credential ON credential.connection_id = c.id
     LEFT JOIN attribution_outbox AS o ON o.delivery_id = d.id
     WHERE d.id = ? AND d.transport = 'server'
     LIMIT 1
@@ -179,14 +179,12 @@ function consistent(row: AttributionDeliveryQueueRow, provider: AdAttributionPro
   return row.delivery_provider === provider
     && row.fact_provider === provider
     && row.connection_provider === provider
+    && row.credential_type === (provider === 'google' ? 'service_account_json' : 'access_token')
     && (terminal(row.status) ? row.outbox_provider === null || row.outbox_provider === provider : row.outbox_provider === provider)
 }
 
-async function claimLease(db: D1Database, row: AttributionDeliveryQueueRow, attempts: number) {
-  const queueAttempts = Number.isSafeInteger(attempts) && attempts > 0 ? attempts : 1
-  const retryEligible = row.status === 'retrying'
-    && (row.attempt_count < queueAttempts || stale(row.updated_at))
-  if (row.status !== 'queued' && !retryEligible) return null
+async function beginDeliveryAttempt(db: D1Database, row: AttributionDeliveryQueueRow) {
+  if (row.status !== 'queued' && row.status !== 'retrying') return null
 
   const token = row.attempt_count + 1
   const result = await db.prepare(`
@@ -226,7 +224,7 @@ async function deliver(row: AttributionDeliveryQueueRow, env: QueueEnv, dependen
   try {
     plaintext = await decryptAttributionValue({
       keys,
-      aad: { purpose: 'outbox', provider: row.delivery_provider, subjectId: row.fact_id, revision: row.connection_revision },
+      aad: { purpose: 'outbox', provider: row.delivery_provider, subjectId: row.fact_id, scope: row.outbox_scope },
       envelope: { schemaVersion: 1, keyId: row.key_id, iv: row.iv, ciphertext: row.ciphertext, tag: row.tag },
     })
   }
@@ -245,7 +243,7 @@ async function deliver(row: AttributionDeliveryQueueRow, env: QueueEnv, dependen
       connectionId: row.connection_id,
       provider: row.delivery_provider as AdAttributionProvider,
       credentialType: row.delivery_provider === 'google' ? 'service_account_json' : 'access_token',
-      credentialRevision: row.credential_revision,
+      encryptionContext: row.encryption_context,
     })
   }
   catch (error) {
@@ -276,8 +274,7 @@ function parsePayload(plaintext: string, row: AttributionDeliveryQueueRow): Decr
       || !validUrl(value.pageUrl)
       || typeof value.destination !== 'string'
       || value.destination !== row.destination
-      || !plainSignals(value.matchSignals)
-      || !validConsent(value.consent)) return null
+      || !plainSignals(value.matchSignals)) return null
     if (value.hashedEmail !== undefined && (typeof value.hashedEmail !== 'string' || !/^[a-f0-9]{64}$/.test(value.hashedEmail))) return null
     const definition = getAdPlatformDefinition(row.delivery_provider)
     if (!definition) return null
@@ -315,17 +312,6 @@ function parseConfig(value: string): Record<string, string> | null {
 function plainSignals(value: unknown): value is Record<string, string> {
   return isPlainRecord(value)
     && Object.entries(value).every(([key, item]) => identifier(key) && typeof item === 'string' && item.length > 0 && item.length <= 1_000)
-}
-
-function validConsent(value: unknown): value is AdConsentSnapshot {
-  if (!isPlainRecord(value) || Reflect.ownKeys(value).length !== 5) return false
-  const decidedAt = ownDataProperty(value, 'decidedAt')
-  return ownDataProperty(value, 'consentVersion') === 1
-    && ownDataProperty(value, 'marketingAllowed') === true
-    && ownDataProperty(value, 'adUserDataAllowed') === true
-    && typeof ownDataProperty(value, 'adPersonalizationAllowed') === 'boolean'
-    && typeof decidedAt === 'string'
-    && Number.isFinite(Date.parse(decidedAt))
 }
 
 async function finalizeDelivery(
@@ -456,12 +442,6 @@ function parseExpiry(value: string | null) {
   if (typeof value !== 'string') return null
   const parsed = Date.parse(value)
   return Number.isFinite(parsed) ? parsed : null
-}
-
-function stale(value: string) {
-  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value) ? `${value.replace(' ', 'T')}Z` : value
-  const parsed = Date.parse(normalized)
-  return Number.isFinite(parsed) && parsed <= Date.now() - LEASE_STALE_MINUTES * 60_000
 }
 
 function terminal(status: string) {

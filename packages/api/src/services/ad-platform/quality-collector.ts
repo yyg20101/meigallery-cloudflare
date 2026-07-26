@@ -35,7 +35,7 @@ export async function collectAttributionQuality(
       connectionId: snapshot.connection.id,
       provider: 'meta',
       credentialType: 'access_token',
-      credentialRevision: snapshot.credential.revision,
+      encryptionContext: snapshot.credential.encryptionContext,
     })
   }
   catch {

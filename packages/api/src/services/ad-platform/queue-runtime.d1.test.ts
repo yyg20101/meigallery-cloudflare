@@ -10,6 +10,7 @@ import { purgeExpiredAttributionOutbox } from './secure-outbox'
 
 const MASTER_KEY = Buffer.alloc(32, 7).toString('base64')
 const MIGRATION = readFileSync(new URL('../../../migrations/0051_unified_attribution_expand.sql', import.meta.url), 'utf8')
+const CLEANUP_MIGRATION = readFileSync(new URL('../../../migrations/0061_attribution_source_router_cleanup.sql', import.meta.url), 'utf8')
 let miniflare: Miniflare
 let db: D1Database
 
@@ -17,6 +18,7 @@ beforeAll(async () => {
   miniflare = new Miniflare({ modules: true, script: 'export default { fetch() { return new Response("ok") } }', compatibilityDate: '2026-05-26', d1Databases: { DB: 'queue-runtime' } })
   db = (await miniflare.getBindings<{ DB: D1Database }>()).DB
   await db.exec(MIGRATION.replace(/\s*\r?\n\s*/g, ' '))
+  await db.exec(CLEANUP_MIGRATION.replace(/\s*\r?\n\s*/g, ' '))
 })
 afterAll(async () => { await miniflare.dispose() })
 beforeEach(async () => {
@@ -258,7 +260,7 @@ describe('统一广告平台 Queue 运行时', () => {
     expect(message.ack).toHaveBeenCalledOnce()
   })
 
-  it('迟到 lease 的 retry 写回不能覆盖后继消费者的 accepted 终态', async () => {
+  it('迟到 retry 写回不能覆盖后继消费者的 accepted 终态', async () => {
     await seed('queued')
     const firstResult = deferred<{ classification: 'retryable' }>()
     const firstMessage = queueMessage(undefined, 1)
@@ -400,23 +402,6 @@ describe('统一广告平台 Queue 运行时', () => {
     expect(await db.prepare('SELECT delivery_id FROM attribution_outbox').first()).toBeNull()
   })
 
-  it.each([
-    ['缺失 Consent', undefined],
-    ['拒绝广告用户数据', { consentVersion: 1, marketingAllowed: true, adUserDataAllowed: false, adPersonalizationAllowed: false, decidedAt: '2026-07-15T00:00:00.000Z' }],
-  ])('%s 时发送前 fail closed，不调用 Adapter', async (_name, consent) => {
-    await seed('queued')
-    await db.prepare('DELETE FROM attribution_outbox').run()
-    await (await encryptedOutboxStatement('meta', { consent })).run()
-    const message = queueMessage()
-    const deliver = vi.fn()
-    await handleAttributionQueueBatch(batch([message]), env(), { readCredential: async () => 'secret', deliver })
-    expect(deliver).not.toHaveBeenCalled()
-    expect(message.ack).toHaveBeenCalledOnce()
-    expect((await deliveryState('meta')).status).toBe('rejected')
-    expect((await deliveryState('meta')).last_error_code).toBe('outbox_invalid')
-    expect(await db.prepare('SELECT delivery_id FROM attribution_outbox').first()).toBeNull()
-  })
-
   it('ack 抛异常时不调用 retry，并继续处理同批下一条消息', async () => {
     await seed('queued')
     const malformed = queueMessage({ schemaVersion: 1, deliveryId: 'delivery_meta', provider: 'meta', unexpected: true })
@@ -455,8 +440,9 @@ async function seed(status: DeliveryStatus, provider: AdAttributionProvider = 'm
       ? '{"pixelCode":"ABCDEF1234"}'
       : '{"tagId":"AW-12345","customerId":"12345","cloudProjectId":"project-1"}'
   const statements = [
-    db.prepare('INSERT INTO attribution_platform_connections (id, provider, public_config_json, connection_revision, credential_revision) VALUES (?, ?, ?, ?, ?)').bind(connectionId, provider, config, 'revision_1', 'credential_1'),
-    db.prepare("INSERT INTO attribution_conversion_facts (id, canonical_event, fact_origin, external_event_id, attribution_provider, attribution_source, occurred_at, dedupe_key, consent_snapshot_json, analytics_dimensions_json) VALUES (?, 'CompleteRegistration', 'live', ?, ?, 'context', '2026-07-15T00:00:00.000Z', ?, '{}', '{}')").bind(factId, `mg3_${provider}_${'a'.repeat(32)}`, provider, `dedupe_${provider}`),
+    db.prepare('INSERT INTO attribution_platform_connections (id, provider, public_config_json, outbox_scope) VALUES (?, ?, ?, ?)').bind(connectionId, provider, config, 'outbox_scope_1'),
+    db.prepare("INSERT INTO attribution_credentials (id, connection_id, credential_type, schema_version, key_id, iv, ciphertext, tag, fingerprint, encryption_context) VALUES (?, ?, ?, 1, '0123456789abcdef', 'iv', 'ciphertext', 'tag', 'fingerprint', 'credential_context_1')").bind(`credential_${provider}`, connectionId, provider === 'google' ? 'service_account_json' : 'access_token'),
+    db.prepare("INSERT INTO attribution_conversion_facts (id, canonical_event, fact_origin, external_event_id, attribution_provider, attribution_source, occurred_at, dedupe_key, analytics_dimensions_json) VALUES (?, 'CompleteRegistration', 'live', ?, ?, 'click_id', '2026-07-15T00:00:00.000Z', ?, '{}')").bind(factId, `mg3_${provider}_${'a'.repeat(32)}`, provider, `dedupe_${provider}`),
     db.prepare("INSERT INTO attribution_deliveries (id, fact_id, connection_id, provider, transport, status, destination, updated_at) VALUES (?, ?, ?, ?, 'server', ?, 'destination_1', '2026-07-15 00:00:00')").bind(deliveryId, factId, connectionId, provider, status),
   ]
   if (withOutbox) statements.push(await encryptedOutboxStatement(provider, outboxOverrides))
@@ -466,8 +452,8 @@ async function seed(status: DeliveryStatus, provider: AdAttributionProvider = 'm
 async function encryptedOutboxStatement(provider: AdAttributionProvider, overrides: Record<string, unknown> = {}) {
   const envelope = await encryptAttributionValue({
     keys: await loadAttributionCryptoKeys({ AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT: MASTER_KEY }),
-    aad: { purpose: 'outbox', provider, subjectId: `fact_${provider}`, revision: 'revision_1' },
-    plaintext: JSON.stringify({ canonicalEvent: 'CompleteRegistration', externalEventId: `mg3_${'a'.repeat(43)}`, eventTime: 1784073600, pageUrl: 'https://gallery.example.test/register', destination: 'destination_1', matchSignals: provider === 'google' ? { gclid: 'gclid_1' } : { fbp: 'fbp_1' }, consent: { consentVersion: 1, marketingAllowed: true, adUserDataAllowed: true, adPersonalizationAllowed: true, decidedAt: '2026-07-15T00:00:00.000Z' }, ...overrides }),
+    aad: { purpose: 'outbox', provider, subjectId: `fact_${provider}`, scope: 'outbox_scope_1' },
+    plaintext: JSON.stringify({ canonicalEvent: 'CompleteRegistration', externalEventId: `mg3_${'a'.repeat(43)}`, eventTime: 1784073600, pageUrl: 'https://gallery.example.test/register', destination: 'destination_1', matchSignals: provider === 'google' ? { gclid: 'gclid_1' } : { fbp: 'fbp_1' }, ...overrides }),
   })
   return db.prepare("INSERT INTO attribution_outbox (delivery_id, provider, schema_version, key_id, iv, ciphertext, tag, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, '2099-01-01T00:00:00.000Z')").bind(`delivery_${provider}`, provider, envelope.schemaVersion, envelope.keyId, envelope.iv, envelope.ciphertext, envelope.tag)
 }
@@ -488,10 +474,13 @@ async function incidentRows() {
 async function readDeliveryRow(provider: AdAttributionProvider) {
   return db.prepare(`
     SELECT d.id AS delivery_id, d.provider AS delivery_provider, d.status, d.attempt_count, d.updated_at, d.fact_id, f.canonical_event, f.attribution_provider AS fact_provider,
-      c.id AS connection_id, c.provider AS connection_provider, c.public_config_json, c.connection_revision, c.credential_revision, d.destination,
+      c.id AS connection_id, c.provider AS connection_provider, c.public_config_json,
+      c.outbox_scope, credential.credential_type, credential.encryption_context, d.destination,
       o.provider AS outbox_provider, o.schema_version, o.key_id, o.iv, o.ciphertext, o.tag, o.expires_at
     FROM attribution_deliveries d JOIN attribution_conversion_facts f ON f.id = d.fact_id
-    JOIN attribution_platform_connections c ON c.id = d.connection_id LEFT JOIN attribution_outbox o ON o.delivery_id = d.id
+    JOIN attribution_platform_connections c ON c.id = d.connection_id
+    JOIN attribution_credentials credential ON credential.connection_id = c.id
+    LEFT JOIN attribution_outbox o ON o.delivery_id = d.id
     WHERE d.id = ?
   `).bind(`delivery_${provider}`).first<AttributionDeliveryQueueRow>() as Promise<AttributionDeliveryQueueRow>
 }

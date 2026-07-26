@@ -2,7 +2,6 @@ import type {
   AdBrowserPublicConfig,
   AdBrowserInstruction,
   AdBrowserSignal,
-  AdConsentSnapshot,
 } from '@meigallery/shared'
 
 type TikTokPixelPayload = Record<string, string | number | boolean>
@@ -39,8 +38,8 @@ export function createTikTokPixelAdapter() {
   let ownedScript: HTMLScriptElement | null = null
   let ownedQueue: TikTokQueue | null = null
 
-  async function initialize(config: AdBrowserPublicConfig, consent: AdConsentSnapshot) {
-    if (!isClientRuntime() || config.provider !== 'tiktok' || !consent.marketingAllowed) return false
+  async function initialize(config: AdBrowserPublicConfig) {
+    if (!isClientRuntime() || config.provider !== 'tiktok') return false
     const pixelId = normalizeTikTokPixelId(config.pixelCode)
     if (!pixelId) return false
     if (initialized && activePixelId === pixelId && window.ttq) return true

@@ -6,6 +6,7 @@ import type { Bindings, Variables } from '../../index'
 import { adminAttributionRoutes } from './attribution'
 
 const MIGRATION = readFileSync(new URL('../../../migrations/0051_unified_attribution_expand.sql', import.meta.url), 'utf8')
+const CLEANUP_MIGRATION = readFileSync(new URL('../../../migrations/0061_attribution_source_router_cleanup.sql', import.meta.url), 'utf8')
 const LINK_SCHEMA = `
   CREATE TABLE users (id INTEGER PRIMARY KEY);
   INSERT INTO users (id) VALUES (1);
@@ -56,6 +57,7 @@ beforeAll(async () => {
   })
   db = (await miniflare.getBindings<{ DB: D1Database }>()).DB
   await db.exec(MIGRATION.replace(/\s*\r?\n\s*/g, ' '))
+  await db.exec(CLEANUP_MIGRATION.replace(/\s*\r?\n\s*/g, ' '))
   await db.exec(LINK_SCHEMA.replace(/\s*\r?\n\s*/g, ' '))
 })
 
@@ -269,9 +271,8 @@ function trackingSource(id: string, name: string, slug: string, provider: 'meta'
 
 function connection(provider: 'meta' | 'google') {
   return db.prepare(`INSERT INTO attribution_platform_connections (
-    id, provider, enabled, mode, browser_enabled, server_enabled, public_config_json,
-    rollout_target_percentage, rollout_effective_percentage, connection_revision, credential_revision
-  ) VALUES (?, ?, 1, 'production', 1, 1, '{}', 100, 100, 'revision_1', 'credential_1')`).bind(`conn_${provider}`, provider)
+    id, provider, enabled, browser_enabled, server_enabled, public_config_json, outbox_scope
+  ) VALUES (?, ?, 1, 1, 1, '{}', 'outbox_scope_1')`).bind(`conn_${provider}`, provider)
 }
 
 function fact(
@@ -284,8 +285,8 @@ function fact(
 ) {
   return db.prepare(`INSERT INTO attribution_conversion_facts (
     id, canonical_event, fact_origin, external_event_id, attribution_provider, attribution_source,
-    occurred_at, dedupe_key, consent_snapshot_json, analytics_dimensions_json
-  ) VALUES (?, ?, 'live', ?, ?, 'context', '2026-07-15T04:00:00.000Z', ?, '{}', ?)`).bind(
+    occurred_at, dedupe_key, analytics_dimensions_json
+  ) VALUES (?, ?, 'live', ?, ?, 'click_id', '2026-07-15T04:00:00.000Z', ?, ?)`).bind(
     id,
     event,
     `mg3_${id}`,

@@ -11,6 +11,7 @@ import {
 } from './attribution-dashboard'
 
 const MIGRATION = readFileSync(new URL('../../migrations/0051_unified_attribution_expand.sql', import.meta.url), 'utf8')
+const CLEANUP_MIGRATION = readFileSync(new URL('../../migrations/0061_attribution_source_router_cleanup.sql', import.meta.url), 'utf8')
 let miniflare: Miniflare
 let db: D1Database
 
@@ -23,6 +24,7 @@ beforeAll(async () => {
   })
   db = (await miniflare.getBindings<{ DB: D1Database }>()).DB
   await db.exec(MIGRATION.replace(/\s*\r?\n\s*/g, ' '))
+  await db.exec(CLEANUP_MIGRATION.replace(/\s*\r?\n\s*/g, ' '))
 })
 
 beforeEach(async () => {
@@ -139,7 +141,7 @@ describe('统一归因看板最终事实口径', () => {
 
   it('容量估算将 UTC 16:00 后的数据计入北京时间次日', async () => {
     await db.batch([
-      fact('fact_bj_midnight', 'Contact', 'meta', 'context', 'beijing-next-day'),
+      fact('fact_bj_midnight', 'Contact', 'meta', 'click_id', 'beijing-next-day'),
       delivery('delivery_bj_midnight', 'fact_bj_midnight', 'meta', 'server', 'processed', 1, 1, ['fbc']),
       receipt('receipt_bj_midnight', 'delivery_bj_midnight', 'meta', 'server_delivery', 'accepted'),
     ])
@@ -282,11 +284,11 @@ async function seedDashboardFacts() {
     connection('meta'),
     connection('tiktok'),
     connection('google'),
-    fact('fact_meta_contact', 'Contact', 'meta', 'context', 'meta-campaign'),
-    fact('fact_meta_registration', 'CompleteRegistration', 'meta', 'context', 'meta-campaign'),
-    fact('fact_tiktok_contact', 'Contact', 'tiktok', 'context', 'tiktok-campaign'),
-    fact('fact_google_contact', 'Contact', 'google', 'context', 'google-campaign'),
-    fact('fact_google_registration', 'CompleteRegistration', 'google', 'context', 'google-campaign'),
+    fact('fact_meta_contact', 'Contact', 'meta', 'click_id', 'meta-campaign'),
+    fact('fact_meta_registration', 'CompleteRegistration', 'meta', 'click_id', 'meta-campaign'),
+    fact('fact_tiktok_contact', 'Contact', 'tiktok', 'click_id', 'tiktok-campaign'),
+    fact('fact_google_contact', 'Contact', 'google', 'click_id', 'google-campaign'),
+    fact('fact_google_registration', 'CompleteRegistration', 'google', 'click_id', 'google-campaign'),
     fact('fact_unattributed', 'Contact', null, 'none', 'organic'),
     fact('fact_conflict', 'CompleteRegistration', null, 'conflict', 'conflict'),
     delivery('delivery_meta_browser', 'fact_meta_contact', 'meta', 'browser', 'planned', 0, 0, []),
@@ -310,10 +312,9 @@ async function seedDashboardFacts() {
 function connection(provider: 'meta' | 'tiktok' | 'google') {
   return db.prepare(`
     INSERT INTO attribution_platform_connections (
-      id, provider, enabled, mode, browser_enabled, server_enabled,
-      public_config_json, rollout_target_percentage, rollout_effective_percentage,
-      connection_revision, credential_revision
-    ) VALUES (?, ?, 1, 'production', 1, 1, '{}', 100, 100, 'revision_1', 'credential_1')
+      id, provider, enabled, browser_enabled, server_enabled,
+      public_config_json, outbox_scope
+    ) VALUES (?, ?, 1, 1, 1, '{}', 'outbox_scope_1')
   `).bind(`conn_${provider}`, provider)
 }
 
@@ -321,15 +322,14 @@ function fact(
   id: string,
   canonicalEvent: 'Contact' | 'CompleteRegistration',
   provider: 'meta' | 'tiktok' | 'google' | null,
-  source: 'context' | 'none' | 'conflict',
+  source: 'click_id' | 'none' | 'conflict',
   campaign: string,
 ) {
   return db.prepare(`
     INSERT INTO attribution_conversion_facts (
       id, canonical_event, fact_origin, external_event_id, attribution_provider,
-      attribution_source, occurred_at, dedupe_key, consent_snapshot_json,
-      analytics_dimensions_json
-    ) VALUES (?, ?, 'live', ?, ?, ?, '2026-07-15T04:00:00.000Z', ?, '{}', ?)
+      attribution_source, occurred_at, dedupe_key, analytics_dimensions_json
+    ) VALUES (?, ?, 'live', ?, ?, ?, '2026-07-15T04:00:00.000Z', ?, ?)
   `).bind(
     id,
     canonicalEvent,

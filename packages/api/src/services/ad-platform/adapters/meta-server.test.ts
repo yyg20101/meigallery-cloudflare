@@ -8,7 +8,6 @@ const input = {
   eventTime: 1_784_256_123, pageUrl: 'https://meigallery.example/contact', destination: 'meta_capi',
   matchSignals: { fbc: 'fb.1.1784256123000.click', fbp: 'fb.1.123.browser' }, hashedEmail: 'a'.repeat(64),
   clientIpAddress: '203.0.113.42', clientUserAgent: 'Private Browser/1.0',
-  consent: { consentVersion: 1, marketingAllowed: true, adUserDataAllowed: true, adPersonalizationAllowed: true, decidedAt: '2026-07-17T02:40:00.000Z' },
 }
 
 describe('Meta 服务端 Adapter', () => {

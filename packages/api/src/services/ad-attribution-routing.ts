@@ -9,7 +9,6 @@ export interface AdAttributionSignals {
   gclid?: unknown
   gbraid?: unknown
   wbraid?: unknown
-  utmSource?: unknown
   trackingSourceSlug?: unknown
   managedLinkProof?: unknown
 }
@@ -24,9 +23,15 @@ export interface AdAttributionRoutingResult {
 type TrackingSourceProviderRow = { ad_provider: string }
 
 const CLICK_ID_MAX_LENGTH = 1_000
-const META_SOURCE_ALIASES = new Set(['facebook-ad', 'facebook-ads', 'facebookads', 'instagram-ad', 'instagram-ads', 'meta-ad', 'meta-ads'])
-const TIKTOK_SOURCE_ALIASES = new Set(['tiktok-ad', 'tiktok-ads', 'tiktokads'])
-const GOOGLE_SOURCE_ALIASES = new Set(['google-ad', 'google-ads', 'googleads', 'adwords'])
+
+export interface AdAttributionSourceInput {
+  clickIdentifiers: Partial<Record<
+    AdAttributionProvider,
+    Record<string, string>
+  >>
+  managedProvider: AdAttributionProvider | null
+  inheritedProvider: AdAttributionProvider | null
+}
 
 export async function resolveAdAttributionRouting(
   db: Pick<D1Database, 'prepare'>,
@@ -34,29 +39,39 @@ export async function resolveAdAttributionRouting(
   inheritedProvider: AdAttributionProvider | null,
 ): Promise<AdAttributionRoutingResult> {
   const normalized = normalizeSignals(signals)
-  if (normalized.invalid) return inheritedProvider ? inherited(inheritedProvider) : none()
+  if (normalized.invalid) return conflict()
+  const managedProvider = await resolveManagedLinkProvider(db, normalized)
+  if (normalized.trackingSourceSlug && !managedProvider) return conflict()
 
-  const clickProviders = new Map<AdAttributionProvider, Record<string, string>>()
-  addClickIdentifier(clickProviders, 'meta', 'fbclid', normalized.fbclid)
-  addClickIdentifier(clickProviders, 'tiktok', 'ttclid', normalized.ttclid)
-  addClickIdentifier(clickProviders, 'google', 'gclid', normalized.gclid)
-  addClickIdentifier(clickProviders, 'google', 'gbraid', normalized.gbraid)
-  addClickIdentifier(clickProviders, 'google', 'wbraid', normalized.wbraid)
+  return resolveAdAttributionSource({
+    clickIdentifiers: buildClickIdentifiers(normalized),
+    managedProvider,
+    inheritedProvider,
+  })
+}
 
-  const managed = await resolveManagedLinkProvider(db, normalized)
-  const aliasProvider = providerFromAlias(normalized.utmSource)
+export function resolveAdAttributionSource(
+  input: AdAttributionSourceInput,
+): AdAttributionRoutingResult {
+  const clickProviders = Object.entries(input.clickIdentifiers)
+    .filter((entry): entry is [
+      AdAttributionProvider,
+      Record<string, string>,
+    ] => Boolean(entry[1] && Object.keys(entry[1]).length > 0))
   const explicitProviders = new Set<AdAttributionProvider>([
-    ...clickProviders.keys(),
-    ...(managed ? [managed] : []),
-    ...(aliasProvider ? [aliasProvider] : []),
+    ...clickProviders.map(([provider]) => provider),
+    ...(input.managedProvider ? [input.managedProvider] : []),
   ])
   if (explicitProviders.size > 1) return conflict()
 
-  const [click] = clickProviders
+  const click = clickProviders[0]
   if (click) return matched(click[0], 'click_id', click[1])
-  if (managed) return matched(managed, 'managed_link')
-  if (aliasProvider && inheritedProvider && aliasProvider !== inheritedProvider) return conflict()
-  return inheritedProvider ? inherited(inheritedProvider) : none()
+  if (input.managedProvider) {
+    return matched(input.managedProvider, 'managed_link')
+  }
+  return input.inheritedProvider
+    ? inherited(input.inheritedProvider)
+    : none()
 }
 
 async function resolveManagedLinkProvider(
@@ -83,7 +98,6 @@ function normalizeSignals(signals: AdAttributionSignals) {
   const gclid = normalizeOptionalSignal(signals.gclid, CLICK_ID_MAX_LENGTH)
   const gbraid = normalizeOptionalSignal(signals.gbraid, CLICK_ID_MAX_LENGTH)
   const wbraid = normalizeOptionalSignal(signals.wbraid, CLICK_ID_MAX_LENGTH)
-  const utmSource = normalizeOptionalSignal(signals.utmSource, 120)
   const trackingSource = normalizeOptionalSignal(signals.trackingSourceSlug, 120)
   const managedProof = normalizeOptionalSignal(signals.managedLinkProof, 64)
   const trackingSourceSlug = trackingSource.provided ? normalizeSlug(trackingSource.value) : ''
@@ -96,11 +110,10 @@ function normalizeSignals(signals: AdAttributionSignals) {
     gclid: gclid.value,
     gbraid: gbraid.value,
     wbraid: wbraid.value,
-    utmSource: utmSource.value,
     trackingSourceSlug,
     managedLinkProof,
     invalid: [
-      fbclid, ttclid, gclid, gbraid, wbraid, utmSource, trackingSource, managedProof,
+      fbclid, ttclid, gclid, gbraid, wbraid, trackingSource, managedProof,
     ].some(item => item.invalid)
       || (trackingSource.provided && !trackingSourceSlug)
       || (managedProof.provided && !managedLinkProof)
@@ -108,14 +121,24 @@ function normalizeSignals(signals: AdAttributionSignals) {
   }
 }
 
-function addClickIdentifier(
-  providers: Map<AdAttributionProvider, Record<string, string>>,
-  provider: AdAttributionProvider,
-  key: string,
-  value: string,
-) {
-  if (!value) return
-  providers.set(provider, { ...(providers.get(provider) ?? {}), [key]: value })
+function buildClickIdentifiers(
+  signals: ReturnType<typeof normalizeSignals>,
+): AdAttributionSourceInput['clickIdentifiers'] {
+  return {
+    ...(signals.fbclid ? { meta: { fbclid: signals.fbclid } } : {}),
+    ...(signals.ttclid ? { tiktok: { ttclid: signals.ttclid } } : {}),
+    ...(
+      signals.gclid || signals.gbraid || signals.wbraid
+        ? {
+            google: Object.fromEntries(Object.entries({
+              gclid: signals.gclid,
+              gbraid: signals.gbraid,
+              wbraid: signals.wbraid,
+            }).filter((entry): entry is [string, string] => Boolean(entry[1]))),
+          }
+        : {}
+    ),
+  }
 }
 
 function matched(provider: AdAttributionProvider, source: AdAttributionSource, identifiers: Record<string, string> = {}) {
@@ -132,14 +155,6 @@ function none() {
 
 function conflict() {
   return { provider: null, resolution: 'conflict' as const, source: null, identifiers: {} }
-}
-
-function providerFromAlias(value: string): AdAttributionProvider | null {
-  const normalized = value.toLowerCase().replace(/[_\s]+/g, '-').replace(/-+/g, '-')
-  if (META_SOURCE_ALIASES.has(normalized)) return 'meta'
-  if (TIKTOK_SOURCE_ALIASES.has(normalized)) return 'tiktok'
-  if (GOOGLE_SOURCE_ALIASES.has(normalized)) return 'google'
-  return null
 }
 
 function normalizeOptionalSignal(value: unknown, maxLength: number) {

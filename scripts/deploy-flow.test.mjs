@@ -21,3 +21,16 @@ test('部署脚本不重复完整 CI，烟测按 Worker 范围执行', () => {
   assert.doesNotMatch(source, /--dry-run/)
   assert.match(source, /verify-production\.mjs "\$SCOPE"/)
 })
+
+test('广告来源路由迁移独立验证并在 production 执行前备份', () => {
+  const migration = '0061_attribution_source_router_cleanup'
+  const migrationCheck = source.indexOf(`${migration}.test.mjs`)
+  const backup = source.indexOf('export-production-d1-backup.mjs')
+  const apply = source.indexOf('wrangler d1 migrations apply')
+
+  assert.ok(migrationCheck > 0)
+  assert.ok(backup > migrationCheck)
+  assert.ok(apply > backup)
+  assert.doesNotMatch(source, /attribution_privacy_policy|0053_attribution_privacy_policy/)
+  assert.doesNotMatch(source, /0060_attribution_control_plane_cleanup/)
+})

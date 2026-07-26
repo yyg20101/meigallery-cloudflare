@@ -4,6 +4,7 @@ import { Miniflare } from 'miniflare'
 import { enqueueAttributionDelivery, purgeExpiredAttributionOutbox } from './secure-outbox'
 
 const MIGRATION = readFileSync(new URL('../../../migrations/0051_unified_attribution_expand.sql', import.meta.url), 'utf8')
+const CLEANUP_MIGRATION = readFileSync(new URL('../../../migrations/0061_attribution_source_router_cleanup.sql', import.meta.url), 'utf8')
 let miniflare: Miniflare
 let db: D1Database
 
@@ -11,6 +12,7 @@ beforeAll(async () => {
   miniflare = new Miniflare({ modules: true, script: 'export default { fetch() { return new Response("ok") } }', compatibilityDate: '2026-05-26', d1Databases: { DB: 'secure-outbox' } })
   db = (await miniflare.getBindings<{ DB: D1Database }>()).DB
   await db.exec(MIGRATION.replace(/\s*\r?\n\s*/g, ' '))
+  await db.exec(CLEANUP_MIGRATION.replace(/\s*\r?\n\s*/g, ' '))
 })
 afterAll(async () => { await miniflare.dispose() })
 beforeEach(async () => { await db.exec('DELETE FROM attribution_outbox; DELETE FROM attribution_deliveries; DELETE FROM attribution_conversion_facts; DELETE FROM attribution_platform_connections;') })
@@ -58,8 +60,8 @@ describe('统一归因安全 Outbox', () => {
 
 async function seed(expiresAt = "'2099-01-01T00:00:00.000Z'") {
   await db.batch([
-    db.prepare("INSERT INTO attribution_platform_connections (id, provider, public_config_json, connection_revision, credential_revision) VALUES ('conn_meta', 'meta', '{}', 'revision_1', 'credential_1')"),
-    db.prepare("INSERT INTO attribution_conversion_facts (id, canonical_event, fact_origin, external_event_id, attribution_provider, attribution_source, occurred_at, dedupe_key, consent_snapshot_json, analytics_dimensions_json) VALUES ('fact_meta', 'Contact', 'live', 'mg3_fact_meta', 'meta', 'context', '2026-07-15T00:00:00.000Z', 'dedupe_meta', '{}', '{}')"),
+    db.prepare("INSERT INTO attribution_platform_connections (id, provider, public_config_json, outbox_scope) VALUES ('conn_meta', 'meta', '{}', 'outbox_scope_1')"),
+    db.prepare("INSERT INTO attribution_conversion_facts (id, canonical_event, fact_origin, external_event_id, attribution_provider, attribution_source, occurred_at, dedupe_key, analytics_dimensions_json) VALUES ('fact_meta', 'Contact', 'live', 'mg3_fact_meta', 'meta', 'click_id', '2026-07-15T00:00:00.000Z', 'dedupe_meta', '{}')"),
     db.prepare("INSERT INTO attribution_deliveries (id, fact_id, connection_id, provider, transport, status) VALUES ('delivery_meta', 'fact_meta', 'conn_meta', 'meta', 'server', 'planned')"),
     db.prepare(`INSERT INTO attribution_outbox (delivery_id, provider, schema_version, key_id, iv, ciphertext, tag, expires_at) VALUES ('delivery_meta', 'meta', 1, '0123456789abcdef', 'AQIDBAUGBwgJCgsM', 'cipher', 'AQIDBAUGBwgJCgsMDQ4PEA', ${expiresAt})`),
   ])

@@ -14,15 +14,12 @@ import {
 import { validateUsername } from '@meigallery/shared/utils'
 import { getTurnstileConfigError, validateTurnstile } from '../utils/turnstile'
 import { consumeInviteCodeForRegistration } from '../services/invite-codes'
-import type { AdConsentSnapshot, AnalyticsConsentState } from '@meigallery/shared'
 import { recordRegistration } from '../services/conversions'
 import { getCookie } from 'hono/cookie'
 import { AD_ATTRIBUTION_CONTEXT_COOKIE } from './ad-attribution'
 import { loadAttributionCryptoKeys } from '../utils/attribution-crypto'
 import { resolveTrustedAdAttributionContext } from '../utils/ad-attribution-context'
 import { buildAdPlatformUserData, hashAdPlatformEmail, readAdPlatformBrowserIdentifiersFromRequest } from '../utils/ad-platform-identifiers'
-import { resolveRequestMarketingConsent } from '../utils/marketing-consent-request'
-import { createAdConsentSnapshot } from '../utils/marketing-consent-receipt'
 
 type RegistrationAttributionContext = {
   visitorId?: string
@@ -37,8 +34,6 @@ type RegistrationAttributionContext = {
   utmMedium?: string
   utmCampaign?: string
   utmContent?: string
-  consentState?: AnalyticsConsentState
-  adAttributionState?: 'resolved' | 'suppress'
 }
 
 const CONVERSION_ID_RE = /^[A-Za-z0-9_-]{8,120}$/
@@ -251,23 +246,7 @@ authRoutes.post('/register', async (c) => {
     .run()
   const userId = insertResult.meta.last_row_id
   const attribution = normalizeRegistrationAttribution(body.attribution, userId)
-  let consentSnapshot: AdConsentSnapshot = createAdConsentSnapshot('denied')
-  try {
-    const marketingConsent = await resolveRequestMarketingConsent(c, attribution.consentState)
-    attribution.consentState = marketingConsent.state
-    consentSnapshot = marketingConsent.consent
-  }
-  catch {
-    attribution.consentState = 'denied'
-    console.warn('[auth.register] 营销授权解析失败，按拒绝状态继续注册', {
-      userId,
-      code: 'REGISTRATION_MARKETING_CONSENT_RESOLUTION_FAILED',
-    })
-  }
-  const attributionContext = consentSnapshot.marketingAllowed
-    && attribution.adAttributionState !== 'suppress'
-    ? await trustedRegistrationAttributionContext(c)
-    : null
+  const attributionContext = await trustedRegistrationAttributionContext(c)
   const hasAttribution = isPlainRecord(body.attribution)
 
   if (body.inviteCode) {
@@ -293,7 +272,7 @@ authRoutes.post('/register', async (c) => {
 
   let trackingInstructions = [] as Awaited<ReturnType<typeof recordRegistration>>['trackingInstructions']
   try {
-    const adPlatformUserData = consentSnapshot.marketingAllowed
+    const adPlatformUserData = attributionContext
       ? buildAdPlatformUserData(c.req.raw, readAdPlatformBrowserIdentifiersFromRequest(c.req.raw))
       : undefined
     const registration = await recordRegistration(c.env, {
@@ -310,11 +289,10 @@ authRoutes.post('/register', async (c) => {
       utmMedium: attribution.utmMedium,
       utmCampaign: attribution.utmCampaign,
       utmContent: attribution.utmContent,
-      consentSnapshot,
       attributionContext,
       attributionSource: attributionContext ? 'context' : 'none',
       adPlatformUserData,
-      hashedEmail: consentSnapshot.marketingAllowed ? await hashAdPlatformEmail(email) : undefined,
+      hashedEmail: attributionContext ? await hashAdPlatformEmail(email) : undefined,
       metadata: { method: 'email' },
     })
     trackingInstructions = registration.trackingInstructions
@@ -367,8 +345,6 @@ function normalizeRegistrationAttribution(value: unknown, userId: number) {
     utmMedium: normalizeText(input.utmMedium, 120),
     utmCampaign: normalizeText(input.utmCampaign, 120),
     utmContent: normalizeText(input.utmContent, 120),
-    consentState: normalizeConsentState(input.consentState),
-    adAttributionState: input.adAttributionState === 'resolved' ? 'resolved' as const : 'suppress' as const,
   }
 }
 
@@ -380,10 +356,6 @@ function normalizeConversionId(value: unknown) {
 function normalizeOccurredAt(value: unknown) {
   const parsed = new Date(typeof value === 'string' ? value : '')
   return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString()
-}
-
-function normalizeConsentState(value: unknown): AnalyticsConsentState {
-  return value === 'granted' || value === 'denied' ? value : 'limited'
 }
 
 function normalizeText(value: unknown, maxLength: number) {

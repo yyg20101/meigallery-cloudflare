@@ -100,19 +100,19 @@ describe('Web API 代理头部白名单', () => {
     }
   })
 
-  it('逐条保留多个 Set-Cookie，避免注册 session 与 receipt 被逗号合并', () => {
+  it('逐条保留多个 Set-Cookie，避免 session 与归因上下文被逗号合并', () => {
     const headers = new Headers({ 'Content-Type': 'application/json', Server: 'hidden' })
     Object.defineProperty(headers, 'getSetCookie', {
       value: () => [
         'mei_session=abc; Path=/; HttpOnly; Secure; SameSite=Lax',
-        'mei_marketing_consent_receipt=receipt; Path=/; HttpOnly; Secure; SameSite=Lax',
+        'mei_ad_attribution=context; Path=/; HttpOnly; Secure; SameSite=Lax',
       ],
     })
 
     expect(apiProxyResponseHeaderEntries(headers)).toEqual([
       ['content-type', 'application/json'],
       ['set-cookie', 'mei_session=abc; Path=/; HttpOnly; Secure; SameSite=Lax'],
-      ['set-cookie', 'mei_marketing_consent_receipt=receipt; Path=/; HttpOnly; Secure; SameSite=Lax'],
+      ['set-cookie', 'mei_ad_attribution=context; Path=/; HttpOnly; Secure; SameSite=Lax'],
     ])
   })
 })

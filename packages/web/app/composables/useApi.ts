@@ -133,7 +133,7 @@ export function useApi() {
       return ssrFetch<T>(fullPath, options)
     }
 
-    // 浏览器统一走 Web 同源代理，保证 session 与授权 receipt 共用同一 host-only cookie 域。
+    // 浏览器统一走 Web 同源代理，保证 session 与归因来源上下文共用同一 host-only cookie 域。
     const fetchOptions: Record<string, unknown> = {
       method,
       credentials: 'include',

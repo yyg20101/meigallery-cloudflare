@@ -20,8 +20,6 @@ import { useTracking } from './useTracking'
 
 const api = vi.fn()
 const trackAnalytics = vi.fn()
-const marketingConsentState = ref<'granted' | 'limited' | 'denied'>('granted')
-const canTrackMarketing = ref(true)
 const attributionProvider = ref<'meta' | 'tiktok' | 'google' | null>('meta')
 const attributionResolution = ref<'matched' | 'inherited' | 'none' | 'conflict'>('matched')
 const publicConfig = ref<Record<string, string> | null>({ provider: 'meta', pixelId: '123456789' })
@@ -40,11 +38,9 @@ let route = {
 }
 
 const metaInstruction = {
-  deliveryId: 'delivery_meta_browser',
   provider: 'meta' as const,
   canonicalEvent: 'Contact' as const,
   externalEventId: 'mg3_contact_123',
-  receiptToken: `v1.${'a'.repeat(16)}.${'b'.repeat(43)}`,
   descriptor: {
     provider: 'meta' as const,
     canonicalEvent: 'Contact' as const,
@@ -63,8 +59,6 @@ describe('useTracking', () => {
     adapter.execute.mockReset().mockResolvedValue(true)
     adapter.signal.mockReset().mockResolvedValue(true)
     adapter.teardown.mockReset().mockResolvedValue(undefined)
-    marketingConsentState.value = 'granted'
-    canTrackMarketing.value = true
     attributionProvider.value = 'meta'
     attributionResolution.value = 'matched'
     publicConfig.value = { provider: 'meta', pixelId: '123456789' }
@@ -98,7 +92,6 @@ describe('useTracking', () => {
       }),
       track: trackAnalytics,
     }))
-    vi.stubGlobal('useMarketingConsent', () => ({ state: marketingConsentState, canTrackMarketing }))
     vi.stubGlobal('useAdAttribution', () => ({
       provider: attributionProvider,
       resolution: attributionResolution,
@@ -130,22 +123,13 @@ describe('useTracking', () => {
         actionType: 'open_link',
         contactMethodId: 'contact_123',
         methodType: 'telegram',
-        adAttributionState: 'resolved',
       }),
     }))
     const body = api.mock.calls[0]?.[1]?.body as Record<string, unknown>
     expect(body).not.toHaveProperty('actionTarget')
     expect(JSON.stringify(body)).not.toContain('actionType":"contact')
-    expect(adapter.initialize).toHaveBeenCalledWith(publicConfig.value, expect.objectContaining({ marketingAllowed: true }))
+    expect(adapter.initialize).toHaveBeenCalledWith(publicConfig.value)
     expect(adapter.execute).toHaveBeenCalledWith(metaInstruction)
-    expect(api).toHaveBeenCalledWith('/api/conversions/browser-attempt', {
-      method: 'POST',
-      body: {
-        deliveryId: 'delivery_meta_browser',
-        provider: 'meta',
-        receiptToken: metaInstruction.receiptToken,
-      },
-    })
     expect(trackAnalytics).toHaveBeenCalledWith('contact_method_click', expect.objectContaining({ eventId: 'mg3_contact_123' }))
   })
 
@@ -170,7 +154,7 @@ describe('useTracking', () => {
     expect(adapter.execute).toHaveBeenCalledWith(metaInstruction)
   })
 
-  it('平台脚本未执行成功时不提交 Browser attempted 回执', async () => {
+  it('平台脚本执行失败不影响已经完成的联系业务事实', async () => {
     api.mockResolvedValueOnce({ data: { id: 'fact_1', created: true, trackingInstructions: [metaInstruction] } })
     adapter.execute.mockResolvedValueOnce(false)
 
@@ -180,7 +164,7 @@ describe('useTracking', () => {
       actionType: 'open_link',
     })
 
-    expect(api.mock.calls.some(call => call[0] === '/api/conversions/browser-attempt')).toBe(false)
+    expect(api.mock.calls.filter(call => call[0] === '/api/conversions/events')).toHaveLength(1)
   })
 
   it('Contact 遇到业务 4xx 时不重试', async () => {
@@ -211,23 +195,9 @@ describe('useTracking', () => {
   it('跨 provider instruction 和旧 instruction 结构均 fail closed', async () => {
     await useTracking().executeBrowserInstructions([
       { ...metaInstruction, provider: 'tiktok' },
-      { provider: 'meta', eventName: 'Contact', eventId: 'legacy', deliveryId: 'delivery', receiptToken: 'receipt', payload: {} },
+      { provider: 'meta', eventName: 'Contact', eventId: 'legacy', payload: {} },
     ] as never)
 
-    expect(adapter.execute).not.toHaveBeenCalled()
-  })
-
-  it.each(['limited', 'denied'] as const)('%s 时 Contact 仍写一方事实但不调用广告平台', async (consent) => {
-    marketingConsentState.value = consent
-    canTrackMarketing.value = false
-    api.mockResolvedValueOnce({ data: { trackingInstructions: [metaInstruction] } })
-
-    await useTracking().trackContact({ contactMethodId: 'contact_123', methodType: 'telegram', actionType: 'open_link' })
-
-    expect(api).toHaveBeenCalledWith('/api/conversions/events', expect.objectContaining({
-      body: expect.objectContaining({ actionType: 'open_link', consentState: consent, adAttributionState: 'suppress' }),
-    }))
-    expect(adapter.initialize).not.toHaveBeenCalled()
     expect(adapter.execute).not.toHaveBeenCalled()
   })
 
@@ -236,10 +206,7 @@ describe('useTracking', () => {
 
     expect(resolveAdAttribution).toHaveBeenCalledWith(route)
     expect(bootstrapAdAttribution).toHaveBeenCalledOnce()
-    expect(adapter.initialize).toHaveBeenCalledWith(
-      { provider: 'meta', pixelId: '123456789' },
-      expect.objectContaining({ marketingAllowed: true, adPersonalizationAllowed: false }),
-    )
+    expect(adapter.initialize).toHaveBeenCalledWith({ provider: 'meta', pixelId: '123456789' })
     expect(adapter.signal).toHaveBeenCalledWith('meta', 'PageView', {})
   })
 
@@ -254,7 +221,7 @@ describe('useTracking', () => {
     await useTracking().trackPageView()
 
     expect(adapter.initialize).toHaveBeenCalledOnce()
-    expect(adapter.initialize).toHaveBeenCalledWith(publicConfig.value, expect.any(Object))
+    expect(adapter.initialize).toHaveBeenCalledWith(publicConfig.value)
     expect(adapter.signal).toHaveBeenCalledWith('google', 'PageView', {})
   })
 
@@ -270,15 +237,13 @@ describe('useTracking', () => {
     expect(adapter.signal).toHaveBeenCalledWith('meta', 'Search', { search_string: '联系 [redacted_email]', result_count: 7 })
   })
 
-  it('未授权时零初始化、清除项目 click cookie、来源 context 并 teardown', async () => {
-    document.cookie = 'mg_ttclid=stored-click; Path=/'
-    marketingConsentState.value = 'denied'
-    canTrackMarketing.value = false
+  it('自然流量且没有历史来源时不初始化任何广告平台', async () => {
+    attributionProvider.value = null
+    attributionResolution.value = 'none'
+    publicConfig.value = null
 
     await useTracking().trackPageView()
 
-    expect(document.cookie).not.toContain('mg_ttclid=stored-click')
-    expect(clearAdAttribution).toHaveBeenCalledOnce()
     expect(adapter.teardown).toHaveBeenCalledOnce()
     expect(adapter.initialize).not.toHaveBeenCalled()
   })

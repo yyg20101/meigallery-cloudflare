@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { reconcileGoogleDeliveryDiagnostics } from './google-diagnostics-service'
 
 const MIGRATION = readFileSync(new URL('../../../migrations/0051_unified_attribution_expand.sql', import.meta.url), 'utf8')
+const CLEANUP_MIGRATION = readFileSync(new URL('../../../migrations/0061_attribution_source_router_cleanup.sql', import.meta.url), 'utf8')
 let miniflare: Miniflare
 let db: D1Database
 
@@ -11,6 +12,7 @@ beforeAll(async () => {
   miniflare = new Miniflare({ modules: true, script: 'export default { fetch() { return new Response("ok") } }', compatibilityDate: '2026-05-26', d1Databases: { DB: 'test' } })
   db = (await miniflare.getBindings<{ DB: D1Database }>()).DB
   await db.exec(MIGRATION.replace(/\s*\r?\n\s*/g, ' '))
+  await db.exec(CLEANUP_MIGRATION.replace(/\s*\r?\n\s*/g, ' '))
 })
 
 beforeEach(async () => {
@@ -144,13 +146,13 @@ function dependencies(retrieveStatus: ReturnType<typeof vi.fn>) {
 async function seedAccepted(acceptedAt: string, receiptJson = '{"status":200,"requestId":"request_123"}') {
   await db.batch([
     db.prepare(`INSERT INTO attribution_platform_connections (
-      id, provider, enabled, mode, browser_enabled, server_enabled, public_config_json,
-      connection_revision, credential_revision
-    ) VALUES ('conn_google', 'google', 1, 'production', 1, 1, ?, 'revision_1', 'credential_1')`).bind(JSON.stringify({ tagId: 'AW-12345', customerId: '12345', cloudProjectId: 'project-1' })),
+      id, provider, enabled, browser_enabled, server_enabled, public_config_json, outbox_scope
+    ) VALUES ('conn_google', 'google', 1, 1, 1, ?, 'outbox_scope_1')`).bind(JSON.stringify({ tagId: 'AW-12345', customerId: '12345', cloudProjectId: 'project-1' })),
+    credentialStatement(),
     db.prepare(`INSERT INTO attribution_conversion_facts (
       id, canonical_event, fact_origin, external_event_id, attribution_provider,
-      attribution_source, occurred_at, dedupe_key, consent_snapshot_json, analytics_dimensions_json
-    ) VALUES ('fact_google', 'Contact', 'live', ?, 'google', 'context', ?, 'dedupe_google', '{}', '{}')`).bind(`mg3_${'g'.repeat(43)}`, acceptedAt),
+      attribution_source, occurred_at, dedupe_key, analytics_dimensions_json
+    ) VALUES ('fact_google', 'Contact', 'live', ?, 'google', 'click_id', ?, 'dedupe_google', '{}')`).bind(`mg3_${'g'.repeat(43)}`, acceptedAt),
     db.prepare(`INSERT INTO attribution_deliveries (
       id, fact_id, connection_id, provider, transport, status, destination, accepted_at, updated_at
     ) VALUES ('delivery_google', 'fact_google', 'conn_google', 'google', 'server', 'accepted', '123456789', ?, ?)`).bind(acceptedAt, acceptedAt),
@@ -162,10 +164,10 @@ async function seedAccepted(acceptedAt: string, receiptJson = '{"status":200,"re
 
 async function seedBacklog() {
   await db.prepare(`INSERT INTO attribution_platform_connections (
-    id, provider, enabled, mode, browser_enabled, server_enabled, public_config_json,
-    connection_revision, credential_revision
-  ) VALUES ('conn_google', 'google', 1, 'production', 1, 1, ?, 'revision_1', 'credential_1')`)
+    id, provider, enabled, browser_enabled, server_enabled, public_config_json, outbox_scope
+  ) VALUES ('conn_google', 'google', 1, 1, 1, ?, 'outbox_scope_1')`)
     .bind(JSON.stringify({ tagId: 'AW-12345', customerId: '12345', cloudProjectId: 'project-1' })).run()
+  await credentialStatement().run()
 
   const statements: D1PreparedStatement[] = []
   for (let index = 0; index < 41; index += 1) {
@@ -176,8 +178,8 @@ async function seedBacklog() {
     statements.push(
       db.prepare(`INSERT INTO attribution_conversion_facts (
         id, canonical_event, fact_origin, external_event_id, attribution_provider,
-        attribution_source, occurred_at, dedupe_key, consent_snapshot_json, analytics_dimensions_json
-      ) VALUES (?, 'Contact', 'live', ?, 'google', 'context', ?, ?, '{}', '{}')`)
+        attribution_source, occurred_at, dedupe_key, analytics_dimensions_json
+      ) VALUES (?, 'Contact', 'live', ?, 'google', 'click_id', ?, ?, '{}')`)
         .bind(factId, `mg3_${String(index).padStart(43, '0')}`, acceptedAt, `dedupe_${suffix}`),
       db.prepare(`INSERT INTO attribution_deliveries (
         id, fact_id, connection_id, provider, transport, status, destination, accepted_at, updated_at
@@ -200,10 +202,10 @@ async function seedBacklog() {
 
 async function seedTimeoutPriorityBacklog() {
   await db.prepare(`INSERT INTO attribution_platform_connections (
-    id, provider, enabled, mode, browser_enabled, server_enabled, public_config_json,
-    connection_revision, credential_revision
-  ) VALUES ('conn_google', 'google', 1, 'production', 1, 1, ?, 'revision_1', 'credential_1')`)
+    id, provider, enabled, browser_enabled, server_enabled, public_config_json, outbox_scope
+  ) VALUES ('conn_google', 'google', 1, 1, 1, ?, 'outbox_scope_1')`)
     .bind(JSON.stringify({ tagId: 'AW-12345', customerId: '12345', cloudProjectId: 'project-1' })).run()
+  await credentialStatement().run()
 
   const statements: D1PreparedStatement[] = []
   for (let index = 0; index < 41; index += 1) {
@@ -215,8 +217,8 @@ async function seedTimeoutPriorityBacklog() {
     statements.push(
       db.prepare(`INSERT INTO attribution_conversion_facts (
         id, canonical_event, fact_origin, external_event_id, attribution_provider,
-        attribution_source, occurred_at, dedupe_key, consent_snapshot_json, analytics_dimensions_json
-      ) VALUES (?, 'Contact', 'live', ?, 'google', 'context', ?, ?, '{}', '{}')`)
+        attribution_source, occurred_at, dedupe_key, analytics_dimensions_json
+      ) VALUES (?, 'Contact', 'live', ?, 'google', 'click_id', ?, ?, '{}')`)
         .bind(factId, `mg3_${String(index + 100).padStart(43, '0')}`, acceptedAt, `dedupe_${suffix}`),
       db.prepare(`INSERT INTO attribution_deliveries (
         id, fact_id, connection_id, provider, transport, status, destination, accepted_at, updated_at
@@ -239,6 +241,19 @@ async function seedTimeoutPriorityBacklog() {
 
 async function delivery() {
   return db.prepare('SELECT status, last_error_code, processed_at FROM attribution_deliveries WHERE id = ?').bind('delivery_google').first<{ status: string; last_error_code: string; processed_at: string | null }>()
+}
+
+function credentialStatement() {
+  return db.prepare(`
+    INSERT INTO attribution_credentials (
+      id, connection_id, credential_type, schema_version, key_id,
+      iv, ciphertext, tag, fingerprint, encryption_context
+    ) VALUES (
+      'credential_google', 'conn_google', 'service_account_json', 1,
+      '0123456789abcdef', 'iv', 'ciphertext', 'tag', 'fingerprint',
+      'credential_context_1'
+    )
+  `)
 }
 
 async function receipts() {

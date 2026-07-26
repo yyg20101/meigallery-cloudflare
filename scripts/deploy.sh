@@ -76,19 +76,14 @@ if [ "$RUN_API" = "true" ]; then
     fi
   fi
 
-  if [[ "$UNAPPLIED_MIGRATIONS" == *"0060_attribution_control_plane_cleanup"* ]]; then
-    echo "[API] 验证待执行的归因控制面清理 migration..."
-    node --test packages/api/migrations/0060_attribution_control_plane_cleanup.test.mjs
+  if [[ "$UNAPPLIED_MIGRATIONS" == *"0061_attribution_source_router_cleanup"* ]]; then
+    echo "[API] 验证待执行的广告来源路由清理 migration..."
+    node --test packages/api/migrations/0061_attribution_source_router_cleanup.test.mjs
   fi
 
   if [ "$IS_PRODUCTION" = "true" ]; then
-    if [[ "$UNAPPLIED_MIGRATIONS" == *"0052_unified_attribution_contract"* ]] \
-      || [[ "$UNAPPLIED_MIGRATIONS" == *"0053_attribution_privacy_policy"* ]] \
-      || [[ "$UNAPPLIED_MIGRATIONS" == *"0055_attribution_tracking_integrity"* ]] \
-      || [[ "$UNAPPLIED_MIGRATIONS" == *"0056_attribution_fact_source_integrity"* ]] \
-      || [[ "$UNAPPLIED_MIGRATIONS" == *"0057_contact_aggregate_integrity"* ]] \
-      || [[ "$UNAPPLIED_MIGRATIONS" == *"0060_attribution_control_plane_cleanup"* ]]; then
-      echo "[API] 高风险 migration 待执行，导出 production D1 备份..."
+    if [[ "$UNAPPLIED_MIGRATIONS" == *"0061_attribution_source_router_cleanup"* ]]; then
+      echo "[API] 广告来源路由清理 migration 待执行，导出 production D1 备份..."
       node scripts/export-production-d1-backup.mjs
     fi
   fi

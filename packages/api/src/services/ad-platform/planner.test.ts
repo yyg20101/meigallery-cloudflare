@@ -8,7 +8,7 @@ const cryptoKeys = () => loadAttributionCryptoKeys({ AD_PLATFORM_CREDENTIAL_MAST
 describe('归因投递 Planner', () => {
   it('同一事实为 Browser 与 Server 生成相同的 mg3_ externalEventId', async () => {
     const plan = await buildAttributionDeliveryPlan({
-      factId: 'fact_1', provider: 'meta', canonicalEvent: 'Contact', consentGranted: true,
+      factId: 'fact_1', provider: 'meta', canonicalEvent: 'Contact',
       sourceAvailable: true, cryptoKeys: await cryptoKeys(),
       connection: readyConnection('meta'),
     })
@@ -21,11 +21,10 @@ describe('归因投递 Planner', () => {
   it.each([
     ['无来源', false, true],
     ['冲突来源', true, false],
-    ['拒绝同意', true, true, false],
-  ])('%s 时不创建广告 Delivery', async (_label, sourceAvailable, providerSelected, consentGranted = true) => {
+  ])('%s 时不创建广告 Delivery', async (_label, sourceAvailable, providerSelected) => {
     const plan = await buildAttributionDeliveryPlan({
       factId: 'fact_2', provider: providerSelected ? 'tiktok' : null, canonicalEvent: 'Contact',
-      consentGranted, sourceAvailable, cryptoKeys: await cryptoKeys(),
+      sourceAvailable, cryptoKeys: await cryptoKeys(),
       connection: readyConnection('tiktok'),
     })
     expect(plan.deliveries).toEqual([])
@@ -33,7 +32,7 @@ describe('归因投递 Planner', () => {
 
   it('Google 的 Contact 和 CompleteRegistration 使用不同 destination', async () => {
     const input = {
-      factId: 'fact_google', provider: 'google' as const, consentGranted: true, sourceAvailable: true,
+      factId: 'fact_google', provider: 'google' as const, sourceAvailable: true,
       cryptoKeys: await cryptoKeys(), connection: readyConnection('google'),
     }
     const contact = await buildAttributionDeliveryPlan({ ...input, canonicalEvent: 'Contact' })
@@ -58,7 +57,7 @@ describe('归因投递 Planner', () => {
 
   it('未知 provider fail closed', async () => {
     const plan = await buildAttributionDeliveryPlan({
-      factId: 'fact_unknown', provider: 'unknown', canonicalEvent: 'Contact', consentGranted: true,
+      factId: 'fact_unknown', provider: 'unknown', canonicalEvent: 'Contact',
       sourceAvailable: true, cryptoKeys: await cryptoKeys(), connection: readyConnection('meta'),
     })
     expect(plan.deliveries).toEqual([])
@@ -67,7 +66,7 @@ describe('归因投递 Planner', () => {
   it.each([false, true])('Server 开关为 %s 时按二元状态计划', async serverEnabled => {
     const plan = await buildAttributionDeliveryPlan({
       factId: `fact_server_${serverEnabled}`, provider: 'meta', canonicalEvent: 'Contact',
-      consentGranted: true, sourceAvailable: true, cryptoKeys: await cryptoKeys(),
+      sourceAvailable: true, cryptoKeys: await cryptoKeys(),
       connection: readyConnection('meta', serverEnabled),
     })
     expect(plan.deliveries.filter(item => item.transport === 'browser')).toHaveLength(1)
@@ -94,6 +93,6 @@ function readyConnection(provider: 'meta' | 'tiktok' | 'google', serverEnabled =
       ['Contact', contactBinding],
       ['CompleteRegistration', registrationBinding],
     ]),
-    credential: { type: 'access_token', schemaVersion: 1, revision: 'credential_1' },
+    credential: { type: 'access_token', schemaVersion: 1, encryptionContext: 'credential_context_1' },
   }
 }

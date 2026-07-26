@@ -66,20 +66,8 @@ export type AnalyticsEntityType =
   | 'page'
   | 'system'
 
-/** 分析授权/采集状态 */
+/** 站内一方分析采集状态，与广告平台 Pixel 来源路由无关。 */
 export type AnalyticsConsentState = 'granted' | 'limited' | 'denied'
-
-/** 营销衡量地区策略 */
-export type MarketingConsentPolicyMode = 'notice_opt_out' | 'prior_consent' | 'disabled'
-
-/** 营销衡量决策来源 */
-export type MarketingConsentDecisionSource =
-  | 'explicit'
-  | 'regional_default'
-  | 'choice_required'
-  | 'gpc'
-  | 'disabled'
-  | 'request_limit'
 
 import type {
   AdAttributionProvider as SharedAdAttributionProvider,
@@ -91,7 +79,6 @@ export type {
   AdAttributionProvider,
   AdBrowserInstruction,
   AdBrowserSignal,
-  AdConsentSnapshot,
   CanonicalConversionEvent,
   PlatformEventDescriptor,
   PlatformPublicConfig,

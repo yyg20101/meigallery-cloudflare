@@ -2,7 +2,6 @@ import type {
   AdBrowserPublicConfig,
   AdBrowserInstruction,
   AdBrowserSignal,
-  AdConsentSnapshot,
 } from '@meigallery/shared'
 
 type BrowserPayload = Record<string, string | number | boolean>
@@ -33,8 +32,8 @@ export function createGoogleAdsAdapter() {
   let ownedDataLayer: DataLayer | null = null
   let ownedGtag: Gtag | null = null
 
-  async function initialize(config: AdBrowserPublicConfig, consent: AdConsentSnapshot) {
-    if (!isClientRuntime() || config.provider !== 'google' || !hasBasicConsent(consent)) return false
+  async function initialize(config: AdBrowserPublicConfig) {
+    if (!isClientRuntime() || config.provider !== 'google') return false
     const tagId = normalizeGoogleTagId(config.tagId)
     if (!tagId) return false
     if (initialized && activeTagId === tagId && window.gtag) return true
@@ -47,19 +46,6 @@ export function createGoogleAdsAdapter() {
     const gtag = (...args: unknown[]) => dataLayer.push(args)
     window.gtag = gtag
     ownedGtag = gtag
-
-    gtag('consent', 'default', {
-      ad_storage: 'denied',
-      ad_user_data: 'denied',
-      ad_personalization: 'denied',
-      analytics_storage: 'denied',
-    })
-    gtag('consent', 'update', {
-      ad_storage: 'granted',
-      ad_user_data: 'granted',
-      ad_personalization: consent.adPersonalizationAllowed ? 'granted' : 'denied',
-      analytics_storage: 'denied',
-    })
 
     const script = document.createElement('script')
     script.async = true
@@ -92,14 +78,6 @@ export function createGoogleAdsAdapter() {
   }
 
   async function teardown() {
-    if (initialized && ownedGtag && isClientRuntime() && window.gtag === ownedGtag) {
-      ownedGtag('consent', 'update', {
-        ad_storage: 'denied',
-        ad_user_data: 'denied',
-        ad_personalization: 'denied',
-        analytics_storage: 'denied',
-      })
-    }
     ownedScript?.remove()
     if (isClientRuntime()) {
       if (window.gtag === ownedGtag) delete window.gtag
@@ -133,10 +111,6 @@ function safePayload(payload: BrowserPayload) {
     && key.length <= 80
     && (typeof value === 'boolean' || typeof value === 'number' || (typeof value === 'string' && value.length <= 200 && !/[@\r\n]/.test(value)))
   )))
-}
-
-function hasBasicConsent(consent: AdConsentSnapshot) {
-  return consent.marketingAllowed === true && consent.adUserDataAllowed === true
 }
 
 function normalizeGoogleTagId(value: unknown) {

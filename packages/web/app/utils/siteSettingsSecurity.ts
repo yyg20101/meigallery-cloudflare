@@ -149,11 +149,6 @@ export function normalizeInternalPath(value: unknown) {
   }
 }
 
-export function normalizeSiteSettingPixelId(value: unknown) {
-  const pixelId = String(value ?? '').trim()
-  return /^\d{5,30}$/.test(pixelId) ? pixelId : ''
-}
-
 export function safeSiteText(key: string, value: unknown): string {
   const config = SITE_TEXT_LIMITS[key]
   if (!config || value === null || value === undefined) return ''

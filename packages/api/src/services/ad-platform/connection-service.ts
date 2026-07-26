@@ -13,7 +13,7 @@ import { readAttributionConnectionSnapshot } from './connections'
 import { getAdPlatformDefinition, listAdPlatformProviders } from './registry'
 
 const CANONICAL_EVENTS = ['Contact', 'CompleteRegistration'] as const
-const REVISION_BYTES = 12
+const OPAQUE_ID_BYTES = 12
 const BINDING_FIELDS = new Set(['canonicalEvent', 'enabled', 'browserDestination', 'serverDestination'])
 
 export interface PlatformEventBindingInput {
@@ -49,8 +49,8 @@ export interface PlatformConnectionView {
 }
 
 type PersistedPlatformConnection = Omit<PlatformConnectionView, 'credential'> & {
-  connectionRevision: string
-  credential: PlatformConnectionView['credential'] & { revision: string }
+  outboxScope: string
+  credential: PlatformConnectionView['credential'] & { encryptionContext: string }
 }
 
 export type PlatformConnectionServiceEnv = CredentialVaultEnv
@@ -83,15 +83,13 @@ type ExistingConnectionRow = {
   enabled: number
   browser_enabled: number
   server_enabled: number
-  connection_revision: string
-  credential_revision: string
+  outbox_scope: string
 }
 
 type ExistingCredentialRow = {
   id: string
-  provider: string
   credential_type: string
-  credential_revision: string
+  encryption_context: string
 }
 
 type ExistingState = {
@@ -113,10 +111,12 @@ export async function savePlatformConnection(
   const eventBindings = validateEventBindings(command.eventBindings, publicConfig, definition)
   const connectionId = `conn_${definition.provider}`
   const existing = await readExistingState(env.DB, connectionId, definition.provider)
-  const connectionRevision = createRevision()
-  const credentialRevision = command.credential ? createRevision() : existing?.connection.credential_revision
+  const outboxScope = existing?.connection.outbox_scope ?? createOpaqueId()
+  const encryptionContext = command.credential
+    ? createOpaqueId()
+    : existing?.credentials[0]?.encryption_context
 
-  if (!credentialRevision) throw serviceError('AD_PLATFORM_CONNECTION_CREDENTIAL_REQUIRED')
+  if (!encryptionContext) throw serviceError('AD_PLATFORM_CONNECTION_CREDENTIAL_REQUIRED')
   if (!command.credential && !hasReusableCredential(existing, definition.credentialSchema.type)) {
     throw serviceError('AD_PLATFORM_CONNECTION_CREDENTIAL_REQUIRED')
   }
@@ -131,7 +131,7 @@ export async function savePlatformConnection(
       provider: definition.provider,
       credentialType: command.credential.type,
       plaintext: command.credential.plaintext,
-      credentialRevision,
+      encryptionContext,
       createdBy: command.actorId,
     })
   }
@@ -144,11 +144,11 @@ export async function savePlatformConnection(
     serverEnabled: command.serverEnabled,
     publicConfig: { provider: definition.provider, ...publicConfig } as PlatformPublicConfig,
     eventBindings,
-    connectionRevision,
+    outboxScope,
     credential: {
       configured: true,
       type: definition.credentialSchema.type,
-      revision: credentialRevision,
+      encryptionContext,
     },
   }
 
@@ -283,7 +283,7 @@ async function readExistingState(
   try {
     const rows = await db.prepare(`
       SELECT id, provider, enabled, browser_enabled, server_enabled,
-        connection_revision, credential_revision
+        outbox_scope
       FROM attribution_platform_connections
       WHERE id = ? OR provider = ?
     `).bind(connectionId, provider).all<ExistingConnectionRow>()
@@ -292,7 +292,7 @@ async function readExistingState(
       throw serviceError('AD_PLATFORM_CONNECTION_STATE_INVALID')
     }
     const credentials = await db.prepare(`
-      SELECT id, provider, credential_type, credential_revision
+      SELECT id, credential_type, encryption_context
       FROM attribution_credentials
       WHERE connection_id = ?
       ORDER BY id
@@ -311,9 +311,8 @@ function hasReusableCredential(
 ) {
   if (!existing || existing.credentials.length !== 1) return false
   const credential = existing.credentials[0]!
-  return credential.provider === existing.connection.provider
-    && credential.credential_type === credentialType
-    && credential.credential_revision === existing.connection.credential_revision
+  return credential.credential_type === credentialType
+    && Boolean(credential.encryption_context)
 }
 
 async function prepareCredential(
@@ -343,9 +342,8 @@ function insertStatements(
     db.prepare(`
       INSERT INTO attribution_platform_connections (
         id, provider, enabled, browser_enabled, server_enabled,
-        public_config_json, attribution_window_days,
-        connection_revision, credential_revision, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, 30, ?, ?, datetime('now'))
+        public_config_json, outbox_scope, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
     `).bind(
       result.connectionId,
       result.provider,
@@ -353,8 +351,7 @@ function insertStatements(
       flag(result.browserEnabled),
       flag(result.serverEnabled),
       JSON.stringify(publicConfig),
-      result.connectionRevision,
-      result.credential.revision,
+      result.outboxScope,
     ),
     insertCredentialStatement(db, credential),
     ...replaceBindingStatements(db, result),
@@ -372,37 +369,15 @@ function updateStatements(
 ) {
   const statements: D1PreparedStatement[] = [
     db.prepare(`
-      UPDATE attribution_deliveries
-      SET status = 'cancelled', last_error_code = 'connection_updated',
-        last_error_message = '', updated_at = datetime('now')
-      WHERE connection_id = ? AND provider = ?
-        AND status IN ('planned', 'queued', 'retrying')
-    `).bind(result.connectionId, result.provider),
-    db.prepare(`
-      DELETE FROM attribution_outbox
-      WHERE provider = ?
-        AND EXISTS (
-          SELECT 1
-          FROM attribution_deliveries AS delivery
-          WHERE delivery.id = attribution_outbox.delivery_id
-            AND delivery.connection_id = ?
-            AND delivery.provider = ?
-            AND delivery.status = 'cancelled'
-            AND delivery.last_error_code = 'connection_updated'
-        )
-    `).bind(result.provider, result.connectionId, result.provider),
-    db.prepare(`
     UPDATE attribution_platform_connections
     SET enabled = ?, browser_enabled = ?, server_enabled = ?, public_config_json = ?,
-      connection_revision = ?, credential_revision = ?, updated_at = datetime('now')
+      updated_at = datetime('now')
     WHERE id = ? AND provider = ?
   `).bind(
     flag(result.enabled),
     flag(result.browserEnabled),
     flag(result.serverEnabled),
     JSON.stringify(publicConfig),
-    result.connectionRevision,
-    result.credential.revision,
     result.connectionId,
     result.provider,
   )]
@@ -415,8 +390,8 @@ function updateStatements(
   else {
     statements.push(db.prepare(`
       UPDATE attribution_credentials SET updated_at = updated_at
-      WHERE connection_id = ? AND provider = ? AND credential_type = ? AND credential_revision = ?
-    `).bind(result.connectionId, result.provider, result.credential.type, result.credential.revision))
+      WHERE connection_id = ? AND credential_type = ? AND encryption_context = ?
+    `).bind(result.connectionId, result.credential.type, result.credential.encryptionContext))
   }
   statements.push(
     ...replaceBindingStatements(db, result),
@@ -430,18 +405,16 @@ function replaceBindingStatements(db: D1Database, result: PersistedPlatformConne
     db.prepare(`DELETE FROM attribution_event_bindings WHERE connection_id = ?`).bind(result.connectionId),
     ...result.eventBindings.map(binding => db.prepare(`
       INSERT INTO attribution_event_bindings (
-        id, connection_id, provider, canonical_event, enabled,
-        browser_destination, server_destination, mapping_revision, config_json, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', datetime('now'))
+        id, connection_id, canonical_event, enabled,
+        browser_destination, server_destination, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
     `).bind(
       bindingId(result.provider, binding.canonicalEvent),
       result.connectionId,
-      result.provider,
       binding.canonicalEvent,
       flag(binding.enabled),
       binding.browserDestination,
       binding.serverDestination,
-      result.connectionRevision,
     )),
   ]
 }
@@ -449,13 +422,12 @@ function replaceBindingStatements(db: D1Database, result: PersistedPlatformConne
 function insertCredentialStatement(db: D1Database, credential: PreparedAttributionCredential) {
   return db.prepare(`
     INSERT INTO attribution_credentials (
-      id, connection_id, provider, credential_type, schema_version, key_id,
-      iv, ciphertext, tag, fingerprint, credential_revision, created_by, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      id, connection_id, credential_type, schema_version, key_id,
+      iv, ciphertext, tag, fingerprint, encryption_context, created_by, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
   `).bind(
     credential.id,
     credential.connectionId,
-    credential.provider,
     credential.credentialType,
     credential.schemaVersion,
     credential.keyId,
@@ -463,7 +435,7 @@ function insertCredentialStatement(db: D1Database, credential: PreparedAttributi
     credential.ciphertext,
     credential.tag,
     credential.fingerprint,
-    credential.credentialRevision,
+    credential.encryptionContext,
     credential.createdBy,
   )
 }
@@ -480,7 +452,7 @@ function auditStatement(
       id, admin_id, action, target_type, target_id, before_value, after_value
     ) VALUES (?, ?, 'save_attribution_platform_connection', 'attribution_platform_connection', ?, ?, ?)
   `).bind(
-    `audit_${createRevision()}`,
+    `audit_${createOpaqueId()}`,
     actorId,
     result.connectionId,
     before ? JSON.stringify({
@@ -519,9 +491,9 @@ function bindingId(provider: AdAttributionProvider, event: CanonicalConversionEv
   return `binding_${provider}_${event === 'Contact' ? 'contact' : 'registration'}`
 }
 
-function createRevision() {
+function createOpaqueId() {
   try {
-    const bytes = crypto.getRandomValues(new Uint8Array(REVISION_BYTES))
+    const bytes = crypto.getRandomValues(new Uint8Array(OPAQUE_ID_BYTES))
     return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
   }
   catch {
