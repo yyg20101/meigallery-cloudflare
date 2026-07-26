@@ -15,7 +15,7 @@ export interface PlannedAttributionDelivery {
   browserInstruction?: AdBrowserInstruction
 }
 
-export interface AttributionDeliveryPlan { externalEventId: string; deliveries: PlannedAttributionDelivery[]; rolloutBucket: number | null }
+export interface AttributionDeliveryPlan { externalEventId: string; deliveries: PlannedAttributionDelivery[] }
 
 export async function buildAttributionDeliveryPlan(input: {
   factId: string
@@ -23,7 +23,6 @@ export async function buildAttributionDeliveryPlan(input: {
   canonicalEvent: CanonicalConversionEvent
   consentGranted: boolean
   sourceAvailable: boolean
-  stableId: string
   serverAllowed?: boolean
   cryptoKeys?: AttributionCryptoKeys
   eventKey?: CryptoKey
@@ -34,11 +33,11 @@ export async function buildAttributionDeliveryPlan(input: {
   if (!eventKey) throw new Error('ATTRIBUTION_EVENT_KEY_UNAVAILABLE')
   const externalEventId = await buildAdExternalEventIdFromKey(eventKey, input.factId, input.canonicalEvent)
   const definition = getAdPlatformDefinition(input.provider)
-  if (!definition || !input.consentGranted || !input.sourceAvailable || input.connection.state !== 'ready') return { externalEventId, deliveries: [], rolloutBucket: null }
+  if (!definition || !input.consentGranted || !input.sourceAvailable || input.connection.state !== 'ready') return { externalEventId, deliveries: [] }
   const { connection, bindings } = input.connection
   const descriptor = definition.describeEvent({ canonicalEvent: input.canonicalEvent })
   const binding = bindings.get(input.canonicalEvent)
-  if (!descriptor || !binding || !binding.enabled || !connection.enabled || connection.mode === 'disabled') return { externalEventId, deliveries: [], rolloutBucket: null }
+  if (!descriptor || !binding || !binding.enabled || !connection.enabled) return { externalEventId, deliveries: [] }
   const boundDescriptor = {
     ...descriptor,
     browserDestination: binding.browserDestination,
@@ -65,15 +64,8 @@ export async function buildAttributionDeliveryPlan(input: {
       },
     })
   }
-  const rolloutBucket = input.stableId.trim() ? await attributionPlannerRolloutBucket(`${connection.id}:${connection.connectionRevision}`, input.stableId) : null
-  if (input.serverAllowed !== false && connection.serverEnabled && definition.capabilities.transports.includes('server') && rolloutBucket !== null && rolloutBucket < connection.rolloutEffectivePercentage) {
+  if (input.serverAllowed !== false && connection.serverEnabled && definition.capabilities.transports.includes('server')) {
     deliveries.push({ id: crypto.randomUUID(), provider: connection.provider, transport: 'server', destination: binding.serverDestination, externalEventId, matchSignals: input.matchSignals ?? {} })
   }
-  return { externalEventId, deliveries, rolloutBucket }
-}
-
-/** 为 rollout 提供可复现的稳定分桶，不包含任何平台特例。 */
-export async function attributionPlannerRolloutBucket(namespace: string, stableId: string) {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${namespace}\n${stableId.trim()}`))
-  return new DataView(digest).getUint32(0, false) % 100
+  return { externalEventId, deliveries }
 }

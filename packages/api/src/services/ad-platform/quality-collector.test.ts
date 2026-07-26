@@ -34,9 +34,10 @@ beforeEach(() => {
   mocks.readSnapshot.mockResolvedValue({
     state: 'ready',
     connection: {
-      id: 'conn_meta', provider: 'meta', enabled: true, mode: 'production',
-      publicConfig: { pixelId: '1234567890123456' }, credentialRevision: 'credential_revision',
+      id: 'conn_meta', provider: 'meta', enabled: true,
+      publicConfig: { pixelId: '123456789012345' },
     },
+    credential: { type: 'access_token', schemaVersion: 1, revision: 'credential_revision' },
   })
   mocks.readCredential.mockResolvedValue('private-token')
 })

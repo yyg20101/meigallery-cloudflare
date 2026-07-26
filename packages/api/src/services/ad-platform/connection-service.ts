@@ -1,6 +1,5 @@
 import type {
   AdAttributionProvider,
-  AdPlatformTrackingMode,
   CanonicalConversionEvent,
   PlatformPublicConfig,
 } from '@meigallery/shared'
@@ -14,8 +13,6 @@ import { readAttributionConnectionSnapshot } from './connections'
 import { getAdPlatformDefinition, listAdPlatformProviders } from './registry'
 
 const CANONICAL_EVENTS = ['Contact', 'CompleteRegistration'] as const
-const ROLLOUT_PERCENTAGES = new Set([0, 10, 50, 100])
-const MODE_VALUES = new Set<AdPlatformTrackingMode>(['disabled', 'test', 'production'])
 const REVISION_BYTES = 12
 const BINDING_FIELDS = new Set(['canonicalEvent', 'enabled', 'browserDestination', 'serverDestination'])
 
@@ -29,13 +26,11 @@ export interface PlatformEventBindingInput {
 export interface SavePlatformConnectionCommand {
   provider: AdAttributionProvider
   enabled: boolean
-  mode: AdPlatformTrackingMode
   browserEnabled: boolean
   serverEnabled: boolean
   publicConfig: PlatformPublicConfig
   eventBindings: PlatformEventBindingInput[]
   credential?: { type: 'access_token' | 'service_account_json'; plaintext: string }
-  rolloutTargetPercentage: 0 | 10 | 50 | 100
   actorId: number
 }
 
@@ -43,19 +38,19 @@ export interface PlatformConnectionView {
   connectionId: string
   provider: AdAttributionProvider
   enabled: boolean
-  mode: AdPlatformTrackingMode
   browserEnabled: boolean
   serverEnabled: boolean
   publicConfig: PlatformPublicConfig
   eventBindings: Array<Required<PlatformEventBindingInput>>
-  rolloutTargetPercentage: 0 | 10 | 50 | 100
-  rolloutEffectivePercentage: 0 | 10 | 50 | 100
-  connectionRevision: string
   credential: {
     configured: true
     type: 'access_token' | 'service_account_json'
-    revision: string
   }
+}
+
+type PersistedPlatformConnection = Omit<PlatformConnectionView, 'credential'> & {
+  connectionRevision: string
+  credential: PlatformConnectionView['credential'] & { revision: string }
 }
 
 export type PlatformConnectionServiceEnv = CredentialVaultEnv
@@ -64,8 +59,6 @@ export type PlatformConnectionErrorCode =
   | 'AD_PLATFORM_CONNECTION_PROVIDER_INVALID'
   | 'AD_PLATFORM_CONNECTION_CONFIG_INVALID'
   | 'AD_PLATFORM_CONNECTION_BINDINGS_INVALID'
-  | 'AD_PLATFORM_CONNECTION_MODE_INVALID'
-  | 'AD_PLATFORM_CONNECTION_ROLLOUT_INVALID'
   | 'AD_PLATFORM_CONNECTION_ACTOR_INVALID'
   | 'AD_PLATFORM_CONNECTION_CREDENTIAL_REQUIRED'
   | 'AD_PLATFORM_CONNECTION_CREDENTIAL_INVALID'
@@ -88,11 +81,8 @@ type ExistingConnectionRow = {
   id: string
   provider: string
   enabled: number
-  mode: string
   browser_enabled: number
   server_enabled: number
-  rollout_target_percentage: number
-  rollout_effective_percentage: number
   connection_revision: string
   credential_revision: string
 }
@@ -146,17 +136,14 @@ export async function savePlatformConnection(
     })
   }
 
-  const result: PlatformConnectionView = {
+  const result: PersistedPlatformConnection = {
     connectionId,
     provider: definition.provider,
     enabled: command.enabled,
-    mode: command.mode,
     browserEnabled: command.browserEnabled,
     serverEnabled: command.serverEnabled,
     publicConfig: { provider: definition.provider, ...publicConfig } as PlatformPublicConfig,
     eventBindings,
-    rolloutTargetPercentage: command.rolloutTargetPercentage,
-    rolloutEffectivePercentage: 0,
     connectionRevision,
     credential: {
       configured: true,
@@ -174,7 +161,7 @@ export async function savePlatformConnection(
   catch {
     throw serviceError('AD_PLATFORM_CONNECTION_WRITE_FAILED')
   }
-  return result
+  return publicConnectionView(result)
 }
 
 export async function getPlatformConnection(
@@ -189,15 +176,10 @@ export async function getPlatformConnection(
       if (snapshot.reason === 'not_found') return null
       throw serviceError('AD_PLATFORM_CONNECTION_STATE_INVALID')
     }
-    if (!isRolloutPercentage(snapshot.connection.rolloutTargetPercentage)
-      || !isRolloutPercentage(snapshot.connection.rolloutEffectivePercentage)) {
-      throw serviceError('AD_PLATFORM_CONNECTION_STATE_INVALID')
-    }
     return {
       connectionId: snapshot.connection.id,
       provider: snapshot.connection.provider,
       enabled: snapshot.connection.enabled,
-      mode: snapshot.connection.mode,
       browserEnabled: snapshot.connection.browserEnabled,
       serverEnabled: snapshot.connection.serverEnabled,
       publicConfig: { provider: snapshot.connection.provider, ...snapshot.connection.publicConfig } as PlatformPublicConfig,
@@ -207,13 +189,9 @@ export async function getPlatformConnection(
         browserDestination: snapshot.bindings.get(canonicalEvent)!.browserDestination,
         serverDestination: snapshot.bindings.get(canonicalEvent)!.serverDestination,
       })),
-      rolloutTargetPercentage: snapshot.connection.rolloutTargetPercentage,
-      rolloutEffectivePercentage: snapshot.connection.rolloutEffectivePercentage,
-      connectionRevision: snapshot.connection.connectionRevision,
       credential: {
         configured: true,
         type: snapshot.credential.type,
-        revision: snapshot.credential.credentialRevision,
       },
     }
   }
@@ -239,13 +217,8 @@ function validateCommonCommand(command: SavePlatformConnectionCommand) {
     || typeof command.serverEnabled !== 'boolean') {
     throw serviceError('AD_PLATFORM_CONNECTION_STATE_INVALID')
   }
-  if (!MODE_VALUES.has(command.mode)) throw serviceError('AD_PLATFORM_CONNECTION_MODE_INVALID')
-  if (!isRolloutPercentage(command.rolloutTargetPercentage)) {
-    throw serviceError('AD_PLATFORM_CONNECTION_ROLLOUT_INVALID')
-  }
-  const hasActiveTransport = command.browserEnabled
-    || (command.serverEnabled && command.rolloutTargetPercentage > 0)
-  if (command.enabled && command.mode === 'production' && !hasActiveTransport) {
+  const hasActiveTransport = command.browserEnabled || command.serverEnabled
+  if (command.enabled && !hasActiveTransport) {
     throw serviceError('AD_PLATFORM_CONNECTION_STATE_INVALID')
   }
   if (!Number.isSafeInteger(command.actorId) || command.actorId <= 0) {
@@ -309,8 +282,7 @@ async function readExistingState(
 ): Promise<ExistingState | null> {
   try {
     const rows = await db.prepare(`
-      SELECT id, provider, enabled, mode, browser_enabled, server_enabled,
-        rollout_target_percentage, rollout_effective_percentage,
+      SELECT id, provider, enabled, browser_enabled, server_enabled,
         connection_revision, credential_revision
       FROM attribution_platform_connections
       WHERE id = ? OR provider = ?
@@ -362,7 +334,7 @@ async function prepareCredential(
 
 function insertStatements(
   db: D1Database,
-  result: PlatformConnectionView,
+  result: PersistedPlatformConnection,
   publicConfig: Record<string, string>,
   credential: PreparedAttributionCredential,
   actorId: number,
@@ -370,19 +342,17 @@ function insertStatements(
   return [
     db.prepare(`
       INSERT INTO attribution_platform_connections (
-        id, provider, enabled, mode, browser_enabled, server_enabled,
-        public_config_json, attribution_window_days, rollout_target_percentage,
-        rollout_effective_percentage, connection_revision, credential_revision, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 30, ?, 0, ?, ?, datetime('now'))
+        id, provider, enabled, browser_enabled, server_enabled,
+        public_config_json, attribution_window_days,
+        connection_revision, credential_revision, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, 30, ?, ?, datetime('now'))
     `).bind(
       result.connectionId,
       result.provider,
       flag(result.enabled),
-      result.mode,
       flag(result.browserEnabled),
       flag(result.serverEnabled),
       JSON.stringify(publicConfig),
-      result.rolloutTargetPercentage,
       result.connectionRevision,
       result.credential.revision,
     ),
@@ -395,31 +365,47 @@ function insertStatements(
 function updateStatements(
   db: D1Database,
   existing: ExistingState,
-  result: PlatformConnectionView,
+  result: PersistedPlatformConnection,
   publicConfig: Record<string, string>,
   credential: PreparedAttributionCredential | null,
   actorId: number,
 ) {
-  const statements: D1PreparedStatement[] = [db.prepare(`
+  const statements: D1PreparedStatement[] = [
+    db.prepare(`
+      UPDATE attribution_deliveries
+      SET status = 'cancelled', last_error_code = 'connection_updated',
+        last_error_message = '', updated_at = datetime('now')
+      WHERE connection_id = ? AND provider = ?
+        AND status IN ('planned', 'queued', 'retrying')
+    `).bind(result.connectionId, result.provider),
+    db.prepare(`
+      DELETE FROM attribution_outbox
+      WHERE provider = ?
+        AND EXISTS (
+          SELECT 1
+          FROM attribution_deliveries AS delivery
+          WHERE delivery.id = attribution_outbox.delivery_id
+            AND delivery.connection_id = ?
+            AND delivery.provider = ?
+            AND delivery.status = 'cancelled'
+            AND delivery.last_error_code = 'connection_updated'
+        )
+    `).bind(result.provider, result.connectionId, result.provider),
+    db.prepare(`
     UPDATE attribution_platform_connections
-    SET enabled = CASE WHEN provider = ? AND connection_revision = ? THEN ? ELSE NULL END,
-      mode = ?, browser_enabled = ?, server_enabled = ?, public_config_json = ?,
-      rollout_target_percentage = ?, rollout_effective_percentage = 0,
+    SET enabled = ?, browser_enabled = ?, server_enabled = ?, public_config_json = ?,
       connection_revision = ?, credential_revision = ?, updated_at = datetime('now')
-    WHERE id = ?
+    WHERE id = ? AND provider = ?
   `).bind(
-    result.provider,
-    existing.connection.connection_revision,
     flag(result.enabled),
-    result.mode,
     flag(result.browserEnabled),
     flag(result.serverEnabled),
     JSON.stringify(publicConfig),
-    result.rolloutTargetPercentage,
     result.connectionRevision,
     result.credential.revision,
     result.connectionId,
-  ), invalidateVerificationsStatement(db, result.connectionId)]
+    result.provider,
+  )]
   if (credential) {
     statements.push(
       db.prepare(`DELETE FROM attribution_credentials WHERE connection_id = ?`).bind(result.connectionId),
@@ -439,32 +425,17 @@ function updateStatements(
   return statements
 }
 
-function replaceBindingStatements(db: D1Database, result: PlatformConnectionView) {
+function replaceBindingStatements(db: D1Database, result: PersistedPlatformConnection) {
   return [
     db.prepare(`DELETE FROM attribution_event_bindings WHERE connection_id = ?`).bind(result.connectionId),
     ...result.eventBindings.map(binding => db.prepare(`
       INSERT INTO attribution_event_bindings (
         id, connection_id, provider, canonical_event, enabled,
         browser_destination, server_destination, mapping_revision, config_json, updated_at
-      ) VALUES (
-        ?,
-        (SELECT connection.id FROM attribution_platform_connections AS connection
-          JOIN attribution_credentials AS credential
-            ON credential.connection_id = connection.id AND credential.provider = connection.provider
-          WHERE connection.id = ? AND connection.provider = ?
-            AND connection.connection_revision = ? AND connection.credential_revision = ?
-            AND credential.credential_type = ? AND credential.credential_revision = ?
-          LIMIT 1),
-        ?, ?, ?, ?, ?, ?, '{}', datetime('now')
-      )
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', datetime('now'))
     `).bind(
       bindingId(result.provider, binding.canonicalEvent),
       result.connectionId,
-      result.provider,
-      result.connectionRevision,
-      result.credential.revision,
-      result.credential.type,
-      result.credential.revision,
       result.provider,
       binding.canonicalEvent,
       flag(binding.enabled),
@@ -497,26 +468,10 @@ function insertCredentialStatement(db: D1Database, credential: PreparedAttributi
   )
 }
 
-function invalidateVerificationsStatement(db: D1Database, connectionId: string) {
-  return db.prepare(`
-    UPDATE attribution_verifications
-    SET status = 'invalidated',
-      evidence_json = CASE
-        WHEN status IN ('queued', 'running', 'awaiting_human_evidence')
-          THEN '{"schemaVersion":1,"failureCode":"AD_PLATFORM_VERIFICATION_REVISION_INVALID"}'
-        ELSE evidence_json
-      END,
-      completed_at = COALESCE(completed_at, datetime('now')),
-      updated_at = datetime('now')
-    WHERE connection_id = ?
-      AND status IN ('queued', 'running', 'awaiting_human_evidence', 'verified')
-  `).bind(connectionId)
-}
-
 function auditStatement(
   db: D1Database,
   before: ExistingConnectionRow | null,
-  result: PlatformConnectionView,
+  result: PersistedPlatformConnection,
   actorId: number,
   credentialRotated: boolean,
 ) {
@@ -530,30 +485,34 @@ function auditStatement(
     result.connectionId,
     before ? JSON.stringify({
       enabled: before.enabled === 1,
-      mode: before.mode,
       browserEnabled: before.browser_enabled === 1,
       serverEnabled: before.server_enabled === 1,
-      rolloutTargetPercentage: before.rollout_target_percentage,
-      rolloutEffectivePercentage: before.rollout_effective_percentage,
-      connectionRevision: before.connection_revision,
     }) : null,
     JSON.stringify({
       provider: result.provider,
       enabled: result.enabled,
-      mode: result.mode,
       browserEnabled: result.browserEnabled,
       serverEnabled: result.serverEnabled,
-      rolloutTargetPercentage: result.rolloutTargetPercentage,
-      rolloutEffectivePercentage: result.rolloutEffectivePercentage,
-      connectionRevision: result.connectionRevision,
       boundEvents: result.eventBindings.map(binding => binding.canonicalEvent),
       credentialRotated,
     }),
   )
 }
 
-function isRolloutPercentage(value: unknown): value is 0 | 10 | 50 | 100 {
-  return typeof value === 'number' && ROLLOUT_PERCENTAGES.has(value)
+function publicConnectionView(result: PersistedPlatformConnection): PlatformConnectionView {
+  return {
+    connectionId: result.connectionId,
+    provider: result.provider,
+    enabled: result.enabled,
+    browserEnabled: result.browserEnabled,
+    serverEnabled: result.serverEnabled,
+    publicConfig: result.publicConfig,
+    eventBindings: result.eventBindings,
+    credential: {
+      configured: true,
+      type: result.credential.type,
+    },
+  }
 }
 
 function bindingId(provider: AdAttributionProvider, event: CanonicalConversionEvent) {

@@ -9,7 +9,7 @@
     "test:watch": "vitest",
     "dev": "wrangler dev",
     "build": "wrangler deploy --env=\"\" --dry-run --outdir=dist",
-    "deploy": "wrangler deploy --env=\"\"",
+    "deploy": "node -e \"console.error('PRODUCTION_DEPLOY_REQUIRES_ROOT_SCRIPT'); process.exit(1)\"",
     "typecheck": "tsc --noEmit",
     "db:migrate:local": "wrangler d1 migrations apply meigallery-db --local",
     "db:migrate:remote": "node -e \"console.error('PRODUCTION_MIGRATION_REQUIRES_DEPLOY_SCRIPT'); process.exit(1)\""

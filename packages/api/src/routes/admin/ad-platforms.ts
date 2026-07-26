@@ -1,7 +1,6 @@
 import { Hono, type Context } from 'hono'
 import type {
   AdAttributionProvider,
-  AdPlatformTrackingMode,
   PlatformPublicConfig,
 } from '@meigallery/shared'
 import type { Bindings, Variables } from '../../index'
@@ -13,33 +12,25 @@ import {
   type PlatformEventBindingInput,
   type SavePlatformConnectionCommand,
 } from '../../services/ad-platform/connection-service'
+import { testPlatformConnection } from '../../services/ad-platform/connection-diagnostics'
 import { getAdPlatformDefinition } from '../../services/ad-platform/registry'
-import {
-  getPlatformVerification,
-  startPlatformVerification,
-  submitPlatformVerificationEvidence,
-} from '../../workflows/ad-platform-verification'
 import { errorJson } from '../../utils/api-error'
+import { generateId } from '../../utils/db'
 
 type AdminAdPlatformContext = Context<{ Bindings: Bindings; Variables: Variables }>
 type MutationGuardResult = ReturnType<typeof errorJson> | null
 
 const CONNECTION_FIELDS = new Set([
   'enabled',
-  'mode',
   'browserEnabled',
   'serverEnabled',
   'publicConfig',
   'eventBindings',
   'credential',
-  'rolloutTargetPercentage',
 ])
-const VERIFY_FIELDS = new Set(['testEventCode'])
-const EVIDENCE_FIELDS = new Set(['confirmed', 'reference'])
+const TEST_FIELDS = new Set(['testEventCode'])
 const MAX_CONNECTION_BODY_BYTES = 64 * 1024
-const MAX_VERIFICATION_BODY_BYTES = 4 * 1024
-const TRACKING_MODES = new Set<AdPlatformTrackingMode>(['disabled', 'test', 'production'])
-const ROLLOUT_PERCENTAGES = new Set([0, 10, 50, 100])
+const MAX_TEST_BODY_BYTES = 4 * 1024
 
 export const adminAdPlatformRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -86,87 +77,45 @@ adminAdPlatformRoutes.patch('/:provider', async (c) => {
   }
 })
 
-adminAdPlatformRoutes.post('/:provider/verify', async (c) => startVerificationRoute(c, false))
-adminAdPlatformRoutes.post('/:provider/reverify', async (c) => startVerificationRoute(c, true))
-
-adminAdPlatformRoutes.get('/:provider/verification', async (c) => {
-  const provider = providerFromPath(c.req.param('provider'))
-  if (!provider) return unsupportedProvider(c)
-  try {
-    const verification = await getPlatformVerification(c.env.DB, provider)
-    return verification
-      ? c.json({ data: verification })
-      : errorJson(c, 404, '尚无连接验证记录', { code: 'AD_PLATFORM_VERIFICATION_NOT_FOUND' })
-  }
-  catch {
-    return errorJson(c, 503, '连接验证状态暂时不可用', { code: 'AD_PLATFORM_VERIFICATION_READ_FAILED' })
-  }
-})
-
-adminAdPlatformRoutes.get('/:provider/verifications/:verificationId', async (c) => {
-  const provider = providerFromPath(c.req.param('provider'))
-  if (!provider) return unsupportedProvider(c)
-  const verificationId = c.req.param('verificationId')
-  if (!validVerificationId(verificationId)) return invalidRequest(c)
-  try {
-    const verification = await getPlatformVerification(c.env.DB, provider, verificationId)
-    return verification
-      ? c.json({ data: verification })
-      : errorJson(c, 404, '连接验证记录不存在', { code: 'AD_PLATFORM_VERIFICATION_NOT_FOUND' })
-  }
-  catch {
-    return errorJson(c, 503, '连接验证状态暂时不可用', { code: 'AD_PLATFORM_VERIFICATION_READ_FAILED' })
-  }
-})
-
-adminAdPlatformRoutes.post('/:provider/verifications/:verificationId/evidence', async (c) => {
-  const blocked = guardMutation(c)
-  if (blocked) return blocked
-  const provider = providerFromPath(c.req.param('provider'))
-  if (!provider) return unsupportedProvider(c)
-  const verificationId = c.req.param('verificationId')
-  if (!validVerificationId(verificationId)) return invalidRequest(c)
-  try {
-    const body = await readJsonRecord(c, MAX_VERIFICATION_BODY_BYTES)
-    if (!hasOnlyFields(body, EVIDENCE_FIELDS) || body.confirmed !== true
-      || body.reference !== undefined && !validEvidenceReference(body.reference)) {
-      return invalidRequest(c)
-    }
-    const result = await submitPlatformVerificationEvidence(c.env, {
-      provider,
-      verificationId,
-      actorId: c.get('userId')!,
-      ...(body.reference === undefined ? {} : { reference: String(body.reference).trim() }),
-    })
-    return c.json({ data: result }, 202)
-  }
-  catch (error) {
-    return verificationErrorResponse(c, error)
-  }
-})
-
-async function startVerificationRoute(c: AdminAdPlatformContext, reverify: boolean) {
+adminAdPlatformRoutes.post('/:provider/test', async (c) => {
   const blocked = guardMutation(c)
   if (blocked) return blocked
   const provider = providerFromPath(c.req.param('provider'))
   if (!provider) return unsupportedProvider(c)
   try {
-    const body = await readJsonRecord(c, MAX_VERIFICATION_BODY_BYTES)
-    if (!hasOnlyFields(body, VERIFY_FIELDS)
+    const body = await readJsonRecord(c, MAX_TEST_BODY_BYTES)
+    if (!hasOnlyFields(body, TEST_FIELDS)
       || body.testEventCode !== undefined && !validShortText(body.testEventCode, 128)) {
       return invalidRequest(c)
     }
-    const result = await startPlatformVerification(c.env, {
+    await recordConnectionTestAudit(c.env.DB, Number(c.get('userId')), provider)
+    const result = await testPlatformConnection(c.env, {
       provider,
-      actorId: c.get('userId')!,
-      reverify,
       ...(body.testEventCode === undefined ? {} : { testEventCode: String(body.testEventCode).trim() }),
     })
-    return c.json({ data: result }, 202)
+    return c.json({ data: result })
   }
   catch (error) {
-    return verificationErrorResponse(c, error)
+    return diagnosticErrorResponse(c, error)
   }
+})
+
+async function recordConnectionTestAudit(
+  db: D1Database,
+  actorId: number,
+  provider: AdAttributionProvider,
+) {
+  await db.prepare(`
+    INSERT INTO admin_audit_logs (
+      id, admin_id, action, target_type, target_id, before_value, after_value
+    ) VALUES (?, ?, 'test_attribution_platform_connection',
+      'attribution_platform_connection', ?, NULL, ?)
+  `).bind(
+    generateId('audit'),
+    actorId,
+    `conn_${provider}`,
+    JSON.stringify({ provider }),
+  ).run()
 }
 
 function parseConnectionCommand(
@@ -178,8 +127,6 @@ function parseConnectionCommand(
     || typeof body.enabled !== 'boolean'
     || typeof body.browserEnabled !== 'boolean'
     || typeof body.serverEnabled !== 'boolean'
-    || !TRACKING_MODES.has(body.mode as AdPlatformTrackingMode)
-    || !ROLLOUT_PERCENTAGES.has(body.rolloutTargetPercentage as number)
     || !Number.isSafeInteger(actorId) || Number(actorId) <= 0
     || !isPlainRecord(body.publicConfig)
     || !Array.isArray(body.eventBindings)) {
@@ -189,13 +136,11 @@ function parseConnectionCommand(
   return {
     provider,
     enabled: body.enabled,
-    mode: body.mode as AdPlatformTrackingMode,
     browserEnabled: body.browserEnabled,
     serverEnabled: body.serverEnabled,
     publicConfig: body.publicConfig as PlatformPublicConfig,
     eventBindings: body.eventBindings as PlatformEventBindingInput[],
     ...(credential ? { credential } : {}),
-    rolloutTargetPercentage: body.rolloutTargetPercentage as 0 | 10 | 50 | 100,
     actorId: Number(actorId),
   }
 }
@@ -269,26 +214,21 @@ function connectionErrorResponse(c: AdminAdPlatformContext, error: unknown) {
   return invalidRequest(c)
 }
 
-function verificationErrorResponse(c: AdminAdPlatformContext, error: unknown) {
+function diagnosticErrorResponse(c: AdminAdPlatformContext, error: unknown) {
   const code = safeErrorCode(error)
   if (code === 'AD_PLATFORM_REQUEST_TOO_LARGE') {
     return errorJson(c, 413, '请求体过大', { code })
   }
-  if (code === 'AD_PLATFORM_VERIFICATION_NOT_FOUND') {
-    return errorJson(c, 404, '连接验证记录不存在', { code })
-  }
-  if (code === 'AD_PLATFORM_VERIFICATION_INPUT_INVALID'
-    || code === 'AD_PLATFORM_VERIFICATION_TEST_CODE_INVALID'
+  if (code === 'AD_PLATFORM_CONNECTION_TEST_INPUT_INVALID'
     || code === 'AD_PLATFORM_REQUEST_INVALID') {
     return errorJson(c, 400, '连接验证参数无效', { code })
   }
   if (code === 'AD_PLATFORM_CONNECTION_INVALID'
-    || code === 'AD_PLATFORM_VERIFICATION_PRODUCTION_MODE_REQUIRED'
-    || code === 'AD_PLATFORM_VERIFICATION_EVIDENCE_NOT_EXPECTED') {
-    return errorJson(c, 409, '连接当前状态不允许执行此操作', { code })
+    || code === 'AD_PLATFORM_CONNECTION_TEST_CODE_REQUIRED') {
+    return errorJson(c, 409, '连接配置不完整，无法测试', { code })
   }
-  return errorJson(c, 503, '广告平台连接验证暂时不可用', {
-    code: code || 'AD_PLATFORM_VERIFICATION_UNAVAILABLE',
+  return errorJson(c, 503, '广告平台连接测试暂时不可用', {
+    code: code || 'AD_PLATFORM_CONNECTION_TEST_UNAVAILABLE',
   })
 }
 
@@ -311,14 +251,6 @@ function normalizeOrigin(value: unknown) {
   catch {
     return ''
   }
-}
-
-function validVerificationId(value: unknown): value is string {
-  return typeof value === 'string' && /^[A-Za-z0-9:_-]{1,100}$/.test(value)
-}
-
-function validEvidenceReference(value: unknown) {
-  return validShortText(value, 240)
 }
 
 function validShortText(value: unknown, maxLength: number): value is string {

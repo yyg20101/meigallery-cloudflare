@@ -10,14 +10,18 @@ const consent = {
 
 function instruction(provider: 'meta' | 'tiktok' = 'meta') {
   return {
-    schemaVersion: 1 as const,
     deliveryId: 'delivery_meta_contact_1',
     provider,
     canonicalEvent: 'Contact' as const,
-    eventName: 'Contact',
-    destination: 'meta_pixel',
     externalEventId: 'mg3_meta_contact_1',
     receiptToken: `v1.${'a'.repeat(16)}.${'b'.repeat(43)}`,
+    descriptor: {
+      provider,
+      canonicalEvent: 'Contact' as const,
+      browserEventName: 'Contact',
+      browserDestination: 'meta_pixel',
+      serverDestination: 'meta_capi',
+    },
     payload: { method_type: 'telegram' },
   }
 }
