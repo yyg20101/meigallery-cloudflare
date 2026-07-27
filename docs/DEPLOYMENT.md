@@ -117,6 +117,8 @@ node scripts/export-production-d1-backup.mjs
 
 `0062_attribution_runtime_garbage_cleanup.sql` 只删除早于当前连接配置的质量快照和无读取方的空 usage 表。部署前后必须核对连接、凭证、事件映射和业务事实数量不变。
 
+`0063_attribution_tracking_source_contract.sql` 只重建推广来源表并删除旧 proof 列。部署脚本必须先导出生产 D1 备份，再应用 migration；迁移前后逐字段核对全部推广来源，且生产验证要求该旧列为零。
+
 `0017_cases_cleanup.sql` 仍需先完成 R2 Cases 专项核验，确认后显式设置：
 
 ```bash
