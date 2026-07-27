@@ -36,6 +36,8 @@ fi
 
 PNPM=(corepack pnpm)
 GIT_COMMIT="$(git rev-parse HEAD)"
+API_RELEASE_TAG=""
+WEB_RELEASE_TAG=""
 
 echo "=== MeiGallery 部署 (环境: $ENV, 范围: $SCOPE) ==="
 
@@ -76,39 +78,48 @@ if [ "$RUN_API" = "true" ]; then
     fi
   fi
 
-  if [[ "$UNAPPLIED_MIGRATIONS" == *"0060_attribution_control_plane_cleanup"* ]]; then
-    echo "[API] 验证待执行的归因控制面清理 migration..."
-    node --test packages/api/migrations/0060_attribution_control_plane_cleanup.test.mjs
+  if [[ "$UNAPPLIED_MIGRATIONS" == *"0061_attribution_source_router_cleanup"* ]]; then
+    echo "[API] 验证待执行的广告来源路由清理 migration..."
+    node --test packages/api/migrations/0061_attribution_source_router_cleanup.test.mjs
   fi
 
   if [ "$IS_PRODUCTION" = "true" ]; then
-    if [[ "$UNAPPLIED_MIGRATIONS" == *"0052_unified_attribution_contract"* ]] \
-      || [[ "$UNAPPLIED_MIGRATIONS" == *"0053_attribution_privacy_policy"* ]] \
-      || [[ "$UNAPPLIED_MIGRATIONS" == *"0055_attribution_tracking_integrity"* ]] \
-      || [[ "$UNAPPLIED_MIGRATIONS" == *"0056_attribution_fact_source_integrity"* ]] \
-      || [[ "$UNAPPLIED_MIGRATIONS" == *"0057_contact_aggregate_integrity"* ]] \
-      || [[ "$UNAPPLIED_MIGRATIONS" == *"0060_attribution_control_plane_cleanup"* ]]; then
-      echo "[API] 高风险 migration 待执行，导出 production D1 备份..."
+    if [[ "$UNAPPLIED_MIGRATIONS" == *"0061_attribution_source_router_cleanup"* ]]; then
+      echo "[API] 广告来源路由清理 migration 待执行，导出 production D1 备份..."
       node scripts/export-production-d1-backup.mjs
     fi
   fi
 
-  if [ "$IS_PRODUCTION" = "true" ]; then
-    RELEASE_TAG="production-${GIT_COMMIT:0:12}-$(date -u +%Y%m%d%H%M%S)"
+fi
+
+if [ "$IS_PRODUCTION" = "true" ]; then
+  RELEASE_TAG_PREFIX="production-${GIT_COMMIT:0:12}-$(date -u +%Y%m%d%H%M%S)"
+  if [ "$RUN_API" = "true" ]; then
+    API_RELEASE_TAG="${RELEASE_TAG_PREFIX}-api"
     echo "[API] 上传待激活 Version..."
     "${PNPM[@]}" --filter @meigallery/api exec wrangler versions upload "${ENV_ARGS[@]}" \
-      --tag "$RELEASE_TAG" \
+      --tag "$API_RELEASE_TAG" \
       --message "production ${GIT_COMMIT}" \
       --var "RELEASE_COMMIT:${GIT_COMMIT}"
   fi
+  if [ "$RUN_WEB" = "true" ]; then
+    WEB_RELEASE_TAG="${RELEASE_TAG_PREFIX}-web"
+    echo "[Web] 上传待激活 Version..."
+    "${PNPM[@]}" --filter @meigallery/web exec wrangler versions upload "${ENV_ARGS[@]}" \
+      --tag "$WEB_RELEASE_TAG" \
+      --message "production ${GIT_COMMIT}" \
+      --var "RELEASE_COMMIT:${GIT_COMMIT}"
+  fi
+fi
 
+if [ "$RUN_API" = "true" ]; then
   echo "[API] 应用 D1 migration..."
   "${PNPM[@]}" --filter @meigallery/api exec wrangler d1 migrations apply "$D1_DB" "${ENV_ARGS[@]}" --remote
 
   if [ "$IS_PRODUCTION" = "true" ]; then
     echo "[API] 激活已上传 Version..."
     "${PNPM[@]}" --filter @meigallery/api exec wrangler versions deploy "${ENV_ARGS[@]}" \
-      --version-tag "${RELEASE_TAG}@100%" \
+      --version-tag "${API_RELEASE_TAG}@100%" \
       --message "production ${GIT_COMMIT}" \
       --yes
   else
@@ -118,8 +129,16 @@ if [ "$RUN_API" = "true" ]; then
 fi
 
 if [ "$RUN_WEB" = "true" ]; then
-  echo "[Web] 部署 Worker..."
-  "${PNPM[@]}" --filter @meigallery/web exec wrangler deploy "${ENV_ARGS[@]}" --var "RELEASE_COMMIT:${GIT_COMMIT}"
+  if [ "$IS_PRODUCTION" = "true" ]; then
+    echo "[Web] 激活已上传 Version..."
+    "${PNPM[@]}" --filter @meigallery/web exec wrangler versions deploy "${ENV_ARGS[@]}" \
+      --version-tag "${WEB_RELEASE_TAG}@100%" \
+      --message "production ${GIT_COMMIT}" \
+      --yes
+  else
+    echo "[Web] 部署 Worker..."
+    "${PNPM[@]}" --filter @meigallery/web exec wrangler deploy "${ENV_ARGS[@]}" --var "RELEASE_COMMIT:${GIT_COMMIT}"
+  fi
 fi
 
 if [ "$IS_PRODUCTION" = "true" ]; then

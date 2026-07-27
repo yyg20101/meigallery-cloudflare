@@ -37,12 +37,12 @@ export async function testPlatformConnection(
     connectionId: snapshot.connection.id,
     provider: input.provider,
     credentialType: snapshot.credential.type,
-    credentialRevision: snapshot.credential.revision,
+    encryptionContext: snapshot.credential.encryptionContext,
   })
   const diagnosticId = await deterministicDiagnosticId(
     input.provider,
     snapshot.connection.outboxScope,
-    snapshot.credential.revision,
+    snapshot.credential.encryptionContext,
     testEventCode,
   )
   const evidence = await adapter.test({
@@ -70,12 +70,12 @@ export async function testPlatformConnection(
 async function deterministicDiagnosticId(
   provider: AdAttributionProvider,
   outboxScope: string,
-  credentialRevision: string,
+  encryptionContext: string,
   testEventCode: string | undefined,
 ) {
   const digest = new Uint8Array(await crypto.subtle.digest(
     'SHA-256',
-    new TextEncoder().encode([provider, outboxScope, credentialRevision, testEventCode || ''].join('\0')),
+    new TextEncoder().encode([provider, outboxScope, encryptionContext, testEventCode || ''].join('\0')),
   ))
   return `diag_${provider}_${Array.from(digest.slice(0, 16), byte => byte.toString(16).padStart(2, '0')).join('')}`
 }

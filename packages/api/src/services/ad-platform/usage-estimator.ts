@@ -1,7 +1,7 @@
 export interface AttributionUsageInputs {
   factCount: number
   deliveryCount: number
-  browserAttemptCount: number
+  browserDeliveryCount: number
   serverDeliveryCount: number
   adapterAttemptCount: number
   queueAttemptCount: number
@@ -31,7 +31,7 @@ export type AttributionUsageMetric = {
  */
 export function estimateAttributionUsage(inputs: AttributionUsageInputs) {
   const values = {
-    workerRequests: inputs.factCount + inputs.browserAttemptCount + inputs.adapterAttemptCount,
+    workerRequests: inputs.factCount + inputs.adapterAttemptCount,
     queueOperations: inputs.serverDeliveryCount + inputs.queueAttemptCount + inputs.adapterAttemptCount,
     d1RowsRead: inputs.factCount * 4
       + inputs.serverDeliveryCount * 2

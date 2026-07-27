@@ -2,7 +2,6 @@ import type { AdAttributionProvider, AdBrowserInstruction, CanonicalConversionEv
 import { buildAdExternalEventIdFromKey } from '@meigallery/shared/utils'
 import { deriveAttributionHmacKey, type AttributionCryptoKeys } from '../../utils/attribution-crypto'
 import type { AttributionConnectionSnapshot } from './connections'
-import { issueBrowserAttemptReceiptToken } from './browser-attempt-receipt'
 import { getAdPlatformDefinition } from './registry'
 
 export interface PlannedAttributionDelivery {
@@ -21,7 +20,6 @@ export async function buildAttributionDeliveryPlan(input: {
   factId: string
   provider: unknown
   canonicalEvent: CanonicalConversionEvent
-  consentGranted: boolean
   sourceAvailable: boolean
   serverAllowed?: boolean
   cryptoKeys?: AttributionCryptoKeys
@@ -33,7 +31,7 @@ export async function buildAttributionDeliveryPlan(input: {
   if (!eventKey) throw new Error('ATTRIBUTION_EVENT_KEY_UNAVAILABLE')
   const externalEventId = await buildAdExternalEventIdFromKey(eventKey, input.factId, input.canonicalEvent)
   const definition = getAdPlatformDefinition(input.provider)
-  if (!definition || !input.consentGranted || !input.sourceAvailable || input.connection.state !== 'ready') return { externalEventId, deliveries: [] }
+  if (!definition || !input.sourceAvailable || input.connection.state !== 'ready') return { externalEventId, deliveries: [] }
   const { connection, bindings } = input.connection
   const descriptor = definition.describeEvent({ canonicalEvent: input.canonicalEvent })
   const binding = bindings.get(input.canonicalEvent)
@@ -45,20 +43,13 @@ export async function buildAttributionDeliveryPlan(input: {
   }
   const deliveries: PlannedAttributionDelivery[] = []
   if (connection.browserEnabled && definition.capabilities.transports.includes('browser')) {
-    if (!input.cryptoKeys) throw new Error('ATTRIBUTION_RECEIPT_KEY_UNAVAILABLE')
     const deliveryId = crypto.randomUUID()
     deliveries.push({
       id: deliveryId, provider: connection.provider, transport: 'browser', destination: binding.browserDestination, externalEventId, matchSignals: {},
       browserInstruction: {
-        deliveryId,
         provider: connection.provider,
         canonicalEvent: input.canonicalEvent,
         externalEventId,
-        receiptToken: await issueBrowserAttemptReceiptToken(input.cryptoKeys, {
-          deliveryId,
-          provider: connection.provider,
-          externalEventId,
-        }),
         descriptor: boundDescriptor,
         payload: {},
       },

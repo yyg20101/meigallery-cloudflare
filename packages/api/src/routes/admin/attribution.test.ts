@@ -6,6 +6,7 @@ import type { Bindings, Variables } from '../../index'
 import { adminAttributionRoutes } from './attribution'
 
 const MIGRATION = readFileSync(new URL('../../../migrations/0051_unified_attribution_expand.sql', import.meta.url), 'utf8')
+const CLEANUP_MIGRATION = readFileSync(new URL('../../../migrations/0061_attribution_source_router_cleanup.sql', import.meta.url), 'utf8')
 const LINK_SCHEMA = `
   CREATE TABLE users (id INTEGER PRIMARY KEY);
   INSERT INTO users (id) VALUES (1);
@@ -56,6 +57,8 @@ beforeAll(async () => {
   })
   db = (await miniflare.getBindings<{ DB: D1Database }>()).DB
   await db.exec(MIGRATION.replace(/\s*\r?\n\s*/g, ' '))
+  await db.exec('CREATE TABLE site_settings (key TEXT PRIMARY KEY);')
+  await db.exec(CLEANUP_MIGRATION.replace(/\s*\r?\n\s*/g, ' '))
   await db.exec(LINK_SCHEMA.replace(/\s*\r?\n\s*/g, ' '))
 })
 
@@ -86,12 +89,12 @@ describe('统一归因后台 API', () => {
     expect((await summary.json()).data).toMatchObject({
       provider: 'google',
       business: { contactCount: 1, completeRegistrationCount: 1, factCount: 2 },
-      delivery: { browserAttempted: 1, server: { accepted: 1, deadLetter: 1 }, queueRetryCount: 2 },
+      delivery: { browserPlanned: 2, server: { accepted: 1, deadLetter: 1 }, queueRetryCount: 2 },
     })
     expect((await trends.json()).data.rows).toHaveLength(1)
     expect((await quality.json()).data).toMatchObject({
       provider: 'google',
-      pairing: { summary: { numerator: 1, denominator: 2, rate: 0.5 } },
+      pairing: { summary: { numerator: 2, denominator: 2, rate: 1 } },
       match: { summary: { numerator: 1, denominator: 2, rate: 0.5 } },
     })
     expect((await breakdown.json()).data.rows[0]).toMatchObject({
@@ -99,7 +102,7 @@ describe('统一归因后台 API', () => {
     })
   })
 
-  it('conversions 只返回最终 Fact、Delivery 和签名 Browser 回执口径', async () => {
+  it('conversions 只返回最终 Fact、Delivery 和 Browser 计划口径', async () => {
     const response = await request(`/conversions?${RANGE}&provider=google`)
     const body = await response.json() as {
       data: { byEvent: Array<Record<string, unknown>>; bySource: Array<Record<string, unknown>>; samples: Array<Record<string, unknown>> }
@@ -112,8 +115,8 @@ describe('统一归因后台 API', () => {
     ])
     expect(body.data.bySource[0]).toMatchObject({ source_name: 'google-source', fact_count: 2 })
     expect(body.data.samples).toEqual(expect.arrayContaining([
-      expect.objectContaining({ canonical_event: 'Contact', browser_attempted: 1, server_status: 'accepted' }),
-      expect.objectContaining({ canonical_event: 'CompleteRegistration', browser_attempted: 0, server_status: 'dead_letter', retry_count: 2 }),
+      expect.objectContaining({ canonical_event: 'Contact', browser_planned: 1, server_status: 'accepted' }),
+      expect.objectContaining({ canonical_event: 'CompleteRegistration', browser_planned: 1, server_status: 'dead_letter', retry_count: 2 }),
     ]))
   })
 
@@ -252,9 +255,6 @@ async function seed() {
     delivery('google_server_contact', 'fact_google_contact', 'google', 'server', 'accepted', 1, ['gclid']),
     delivery('google_browser_registration', 'fact_google_registration', 'google', 'browser', 'planned', 0, []),
     delivery('google_server_registration', 'fact_google_registration', 'google', 'server', 'dead_letter', 3, []),
-    db.prepare(`INSERT INTO attribution_provider_receipts (
-      id, delivery_id, provider, receipt_type, status, receipt_json, received_at
-    ) VALUES ('receipt_google_browser', 'google_browser_contact', 'google', 'browser_attempt', 'attempted', '{}', '2026-07-15T04:00:00.000Z')`),
   ])
 }
 
@@ -269,9 +269,8 @@ function trackingSource(id: string, name: string, slug: string, provider: 'meta'
 
 function connection(provider: 'meta' | 'google') {
   return db.prepare(`INSERT INTO attribution_platform_connections (
-    id, provider, enabled, mode, browser_enabled, server_enabled, public_config_json,
-    rollout_target_percentage, rollout_effective_percentage, connection_revision, credential_revision
-  ) VALUES (?, ?, 1, 'production', 1, 1, '{}', 100, 100, 'revision_1', 'credential_1')`).bind(`conn_${provider}`, provider)
+    id, provider, enabled, browser_enabled, server_enabled, public_config_json, outbox_scope
+  ) VALUES (?, ?, 1, 1, 1, '{}', 'outbox_scope_1')`).bind(`conn_${provider}`, provider)
 }
 
 function fact(
@@ -284,8 +283,8 @@ function fact(
 ) {
   return db.prepare(`INSERT INTO attribution_conversion_facts (
     id, canonical_event, fact_origin, external_event_id, attribution_provider, attribution_source,
-    occurred_at, dedupe_key, consent_snapshot_json, analytics_dimensions_json
-  ) VALUES (?, ?, 'live', ?, ?, 'context', '2026-07-15T04:00:00.000Z', ?, '{}', ?)`).bind(
+    occurred_at, dedupe_key, analytics_dimensions_json
+  ) VALUES (?, ?, 'live', ?, ?, 'click_id', '2026-07-15T04:00:00.000Z', ?, ?)`).bind(
     id,
     event,
     `mg3_${id}`,

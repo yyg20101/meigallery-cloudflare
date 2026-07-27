@@ -9,13 +9,13 @@ describe('AttributionTrendPanel', () => {
     const wrapper = mount(AttributionTrendPanel, {
       props: {
         title: '投递趋势',
-        description: '逐日对比 Browser 回执和 Server API 接收。',
+        description: '逐日对比 Browser 指令和 Server API 接收。',
         rows: [
-          { date: '2026-07-09', delivery: { browserAttempted: 2, server: { accepted: 1 } } },
-          { date: '2026-07-10', delivery: { browserAttempted: 4, server: { accepted: 3 } } },
+          { date: '2026-07-09', delivery: { browserPlanned: 2, server: { accepted: 1 } } },
+          { date: '2026-07-10', delivery: { browserPlanned: 4, server: { accepted: 3 } } },
         ],
         series: [
-          { key: 'delivery.browserAttempted', label: 'Browser 已尝试', layer: 'browser' },
+          { key: 'delivery.browserPlanned', label: 'Browser 指令', layer: 'browser' },
           { key: 'delivery.server.accepted', label: 'Server API 接收', layer: 'server' },
         ],
       },
@@ -28,7 +28,7 @@ describe('AttributionTrendPanel', () => {
     for (const path of wrapper.findAll('[data-trend-path]')) {
       expect(path.attributes('d')?.trim().length).toBeGreaterThan(0)
     }
-    expect(wrapper.get('[data-trend-summary]').text()).toContain('Browser 已尝试 6')
+    expect(wrapper.get('[data-trend-summary]').text()).toContain('Browser 指令 6')
     expect(wrapper.get('[data-trend-summary]').text()).toContain('Server API 接收 4')
     expect(wrapper.find('[data-evidence-layer="browser"]').exists()).toBe(true)
     expect(wrapper.find('[data-evidence-layer="server"]').exists()).toBe(true)

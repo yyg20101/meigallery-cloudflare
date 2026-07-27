@@ -7,7 +7,6 @@ const input = {
   eventTime: 1_784_256_123, pageUrl: 'https://meigallery.example/register', destination: 'tiktok_events_api',
   matchSignals: { ttclid: 'tt-click-id', ttp: 'ttp-cookie' }, hashedEmail: 'b'.repeat(64),
   clientIpAddress: '203.0.113.42', clientUserAgent: 'Private Browser/1.0',
-  consent: { consentVersion: 1, marketingAllowed: true, adUserDataAllowed: true, adPersonalizationAllowed: true, decidedAt: '2026-07-17T02:40:00.000Z' },
 }
 
 describe('TikTok 服务端 Adapter', () => {

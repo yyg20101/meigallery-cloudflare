@@ -17,7 +17,7 @@ describe('归因 Cloudflare Free 容量内部估算', () => {
     const result = estimateAttributionUsage({
       factCount: 100,
       deliveryCount: 180,
-      browserAttemptCount: 80,
+      browserDeliveryCount: 80,
       serverDeliveryCount: 100,
       adapterAttemptCount: 110,
       queueAttemptCount: 100,
@@ -28,7 +28,7 @@ describe('归因 Cloudflare Free 容量内部估算', () => {
 
     expect(result.note).toContain('项目内部估算')
     expect(result.metrics).toMatchObject({
-      workerRequests: { value: 290, safetyLimit: 70_000, warning: false },
+      workerRequests: { value: 210, safetyLimit: 70_000, warning: false },
       queueOperations: { value: 310, safetyLimit: 7_000, warning: false },
       d1RowsRead: { value: 1_140, safetyLimit: 3_500_000, warning: false },
       d1RowsWritten: { value: 880, safetyLimit: 70_000, warning: false },
@@ -41,7 +41,7 @@ describe('归因 Cloudflare Free 容量内部估算', () => {
     const result = estimateAttributionUsage({
       factCount: 70_000,
       deliveryCount: 0,
-      browserAttemptCount: 0,
+      browserDeliveryCount: 0,
       serverDeliveryCount: 2_000,
       adapterAttemptCount: 0,
       queueAttemptCount: 5_000,

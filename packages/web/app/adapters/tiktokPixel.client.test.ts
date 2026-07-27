@@ -1,20 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const consent = {
-  consentVersion: 1,
-  marketingAllowed: true,
-  adUserDataAllowed: true,
-  adPersonalizationAllowed: false,
-  decidedAt: '2026-07-15T00:00:00.000Z',
-}
-
 function instruction(provider: 'tiktok' | 'meta' = 'tiktok') {
   return {
-    deliveryId: 'delivery_tiktok_registration_1',
     provider,
     canonicalEvent: 'CompleteRegistration' as const,
     externalEventId: 'mg3_tiktok_registration_1',
-    receiptToken: `v1.${'a'.repeat(16)}.${'b'.repeat(43)}`,
     descriptor: {
       provider,
       canonicalEvent: 'CompleteRegistration' as const,
@@ -40,26 +30,12 @@ describe('TikTok Pixel adapter', () => {
     vi.restoreAllMocks()
   })
 
-  it('未同意时零脚本和零平台调用', async () => {
-    const { createTikTokPixelAdapter } = await import('./tiktokPixel.client')
-    const adapter = createTikTokPixelAdapter()
-    const append = vi.spyOn(document.head, 'appendChild')
-
-    await expect(adapter.initialize(
-      { provider: 'tiktok', pixelCode: 'C123456789ABCDEF' },
-      { ...consent, marketingAllowed: false },
-    )).resolves.toBe(false)
-
-    expect(append).not.toHaveBeenCalled()
-    expect(window.ttq).toBeUndefined()
-  })
-
   it('使用 externalEventId 发送 TikTok event_id 并映射安全 signal', async () => {
     const { createTikTokPixelAdapter } = await import('./tiktokPixel.client')
     const adapter = createTikTokPixelAdapter()
     vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T) => node)
 
-    await expect(adapter.initialize({ provider: 'tiktok', pixelCode: 'C123456789ABCDEF' }, consent)).resolves.toBe(true)
+    await expect(adapter.initialize({ provider: 'tiktok', pixelCode: 'C123456789ABCDEF' })).resolves.toBe(true)
     await expect(adapter.trackSignal('PageView', {})).resolves.toBe(true)
     await expect(adapter.trackSignal('Search', { search_string: 'portrait' })).resolves.toBe(true)
     await expect(adapter.track(instruction())).resolves.toBe(true)
@@ -75,7 +51,7 @@ describe('TikTok Pixel adapter', () => {
     const { createTikTokPixelAdapter } = await import('./tiktokPixel.client')
     const adapter = createTikTokPixelAdapter()
     vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T) => node)
-    await adapter.initialize({ provider: 'tiktok', pixelCode: 'C123456789ABCDEF' }, consent)
+    await adapter.initialize({ provider: 'tiktok', pixelCode: 'C123456789ABCDEF' })
 
     await expect(adapter.track(instruction('meta'))).resolves.toBe(false)
     await expect(adapter.track({ ...instruction(), externalEventId: 'person@example.com' })).resolves.toBe(false)
@@ -90,7 +66,7 @@ describe('TikTok Pixel adapter', () => {
     const { createTikTokPixelAdapter } = await import('./tiktokPixel.client')
     const adapter = createTikTokPixelAdapter()
 
-    await expect(adapter.initialize({ provider: 'tiktok', pixelCode: 'C123456789ABCDEF' }, consent)).resolves.toBe(false)
+    await expect(adapter.initialize({ provider: 'tiktok', pixelCode: 'C123456789ABCDEF' })).resolves.toBe(false)
     await adapter.teardown()
 
     expect(window.ttq).toBe(thirdPartyQueue)

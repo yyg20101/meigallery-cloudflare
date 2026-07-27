@@ -8,7 +8,7 @@ import {
 
 const MASTER_KEY = toBase64(Uint8Array.from({ length: 32 }, (_, index) => index + 1))
 const CONNECTION_ID = 'connection-001'
-const CREDENTIAL_REVISION = 'credential-revision-001'
+const ENCRYPTION_CONTEXT = 'credential-context-001'
 
 let miniflare: Miniflare
 let db: D1Database
@@ -30,7 +30,6 @@ beforeAll(async () => {
     CREATE TABLE attribution_credentials (
       id TEXT PRIMARY KEY,
       connection_id TEXT NOT NULL REFERENCES attribution_platform_connections(id) ON DELETE CASCADE,
-      provider TEXT NOT NULL,
       credential_type TEXT NOT NULL,
       schema_version INTEGER NOT NULL,
       key_id TEXT NOT NULL,
@@ -38,11 +37,11 @@ beforeAll(async () => {
       ciphertext TEXT NOT NULL,
       tag TEXT NOT NULL,
       fingerprint TEXT NOT NULL,
-      credential_revision TEXT NOT NULL,
+      encryption_context TEXT NOT NULL,
       created_by INTEGER,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-      UNIQUE (connection_id, credential_type, credential_revision)
+      UNIQUE (connection_id, credential_type)
     );
   `
   for (const statement of unstable_splitSqlQuery(schema)) await db.prepare(statement).run()
@@ -66,18 +65,17 @@ describe('归因凭证 D1 库', () => {
       provider: 'meta',
       credentialType: 'access_token',
       plaintext,
-      credentialRevision: CREDENTIAL_REVISION,
+      encryptionContext: ENCRYPTION_CONTEXT,
       createdBy: 41,
     })
     const row = await db.prepare(`SELECT * FROM attribution_credentials`).first<Record<string, unknown>>()
 
-    expect(saved).toMatchObject({ credentialRevision: CREDENTIAL_REVISION })
+    expect(saved).toMatchObject({ encryptionContext: ENCRYPTION_CONTEXT })
     expect(row).toMatchObject({
       connection_id: CONNECTION_ID,
-      provider: 'meta',
       credential_type: 'access_token',
       schema_version: 1,
-      credential_revision: CREDENTIAL_REVISION,
+      encryption_context: ENCRYPTION_CONTEXT,
       created_by: 41,
     })
     expect(String(row?.fingerprint)).toMatch(/^[0-9a-f]{32}$/)
@@ -86,29 +84,29 @@ describe('归因凭证 D1 库', () => {
       connectionId: CONNECTION_ID,
       provider: 'meta',
       credentialType: 'access_token',
-      credentialRevision: CREDENTIAL_REVISION,
+      encryptionContext: ENCRYPTION_CONTEXT,
     })).resolves.toBe(plaintext)
   })
 
   it('替换凭证使用单个 D1 原子 batch，并保留失败前的凭证', async () => {
     const first = `token-${crypto.randomUUID()}`
     const second = `token-${crypto.randomUUID()}`
-    await saveAttributionCredential(env(), metaInput(first, CREDENTIAL_REVISION))
+    await saveAttributionCredential(env(), metaInput(first, ENCRYPTION_CONTEXT))
 
     await expect(saveAttributionCredential(env(), {
-      ...metaInput(second, 'credential-revision-002'),
+      ...metaInput(second, 'credential-context-002'),
       credentialType: 'service_account_json',
     })).rejects.toMatchObject({ code: 'ATTRIBUTION_CREDENTIAL_INPUT_INVALID' })
     await expect(readAttributionCredential(env(), {
       connectionId: CONNECTION_ID,
       provider: 'meta',
       credentialType: 'access_token',
-      credentialRevision: CREDENTIAL_REVISION,
+      encryptionContext: ENCRYPTION_CONTEXT,
     })).resolves.toBe(first)
 
-    await saveAttributionCredential(env(), metaInput(second, 'credential-revision-002'))
-    const rows = await db.prepare(`SELECT credential_revision FROM attribution_credentials`).all<{ credential_revision: string }>()
-    expect(rows.results).toEqual([{ credential_revision: 'credential-revision-002' }])
+    await saveAttributionCredential(env(), metaInput(second, 'credential-context-002'))
+    const rows = await db.prepare(`SELECT encryption_context FROM attribution_credentials`).all<{ encryption_context: string }>()
+    expect(rows.results).toEqual([{ encryption_context: 'credential-context-002' }])
   })
 
   it('Google 仅接受完整且结构有效的 service_account_json', async () => {
@@ -121,15 +119,15 @@ describe('归因凭证 D1 库', () => {
       provider: 'google',
       credentialType: 'service_account_json',
       plaintext: serviceAccount,
-      credentialRevision: CREDENTIAL_REVISION,
+      encryptionContext: ENCRYPTION_CONTEXT,
       createdBy: 41,
-    })).resolves.toMatchObject({ credentialRevision: CREDENTIAL_REVISION })
+    })).resolves.toMatchObject({ encryptionContext: ENCRYPTION_CONTEXT })
     await expect(saveAttributionCredential(env(), {
       connectionId: CONNECTION_ID,
       provider: 'google',
       credentialType: 'access_token',
       plaintext: `token-${crypto.randomUUID()}`,
-      credentialRevision: 'credential-revision-002',
+      encryptionContext: 'credential-context-002',
       createdBy: 41,
     })).rejects.toMatchObject({ code: 'ATTRIBUTION_CREDENTIAL_INPUT_INVALID' })
 
@@ -141,7 +139,7 @@ describe('归因凭证 D1 库', () => {
       provider: 'google',
       credentialType: 'service_account_json',
       plaintext: forgedKey,
-      credentialRevision: 'credential-revision-003',
+      encryptionContext: 'credential-context-003',
       createdBy: 41,
     }))
     expect(forgedError).toMatchObject({ code: 'ATTRIBUTION_CREDENTIAL_INPUT_INVALID' })
@@ -152,7 +150,7 @@ describe('归因凭证 D1 库', () => {
       provider: 'google',
       credentialType: 'service_account_json',
       plaintext: await validGoogleServiceAccount({ type: 'user_account' }),
-      credentialRevision: 'credential-revision-004',
+      encryptionContext: 'credential-context-004',
       createdBy: 41,
     })).rejects.toMatchObject({ code: 'ATTRIBUTION_CREDENTIAL_INPUT_INVALID' })
     await expect(saveAttributionCredential(env(), {
@@ -160,7 +158,7 @@ describe('归因凭证 D1 库', () => {
       provider: 'google',
       credentialType: 'service_account_json',
       plaintext: await validGoogleServiceAccount({ client_email: 'service@example.com' }),
-      credentialRevision: 'credential-revision-005',
+      encryptionContext: 'credential-context-005',
       createdBy: 41,
     })).rejects.toMatchObject({ code: 'ATTRIBUTION_CREDENTIAL_INPUT_INVALID' })
     await expect(saveAttributionCredential(env(), {
@@ -168,38 +166,38 @@ describe('归因凭证 D1 库', () => {
       provider: 'google',
       credentialType: 'service_account_json',
       plaintext: await validGoogleServiceAccount({ token_uri: 'https://example.com/token' }),
-      credentialRevision: 'credential-revision-006',
+      encryptionContext: 'credential-context-006',
       createdBy: 41,
     })).rejects.toMatchObject({ code: 'ATTRIBUTION_CREDENTIAL_INPUT_INVALID' })
   })
 
   it('precheck 后连接 provider 被替换时，原子写入拒绝且旧凭证保持不变', async () => {
     const first = `token-${crypto.randomUUID()}`
-    await saveAttributionCredential(env(), metaInput(first, CREDENTIAL_REVISION))
+    await saveAttributionCredential(env(), metaInput(first, ENCRYPTION_CONTEXT))
     const racingDb = replaceConnectionBeforeBatch()
 
     await expect(saveAttributionCredential(env(racingDb), metaInput(
       `token-${crypto.randomUUID()}`,
-      'credential-revision-002',
+      'credential-context-002',
     ))).rejects.toMatchObject({ code: 'ATTRIBUTION_CREDENTIAL_WRITE_FAILED' })
     await expect(db.prepare(`
-      SELECT credential_revision FROM attribution_credentials
-      WHERE connection_id = ? AND provider = ? AND credential_type = ?
-    `).bind(CONNECTION_ID, 'meta', 'access_token').first<{ credential_revision: string }>())
-      .resolves.toEqual({ credential_revision: CREDENTIAL_REVISION })
+      SELECT encryption_context FROM attribution_credentials
+      WHERE connection_id = ? AND credential_type = ?
+    `).bind(CONNECTION_ID, 'access_token').first<{ encryption_context: string }>())
+      .resolves.toEqual({ encryption_context: ENCRYPTION_CONTEXT })
     await db.prepare(`UPDATE attribution_platform_connections SET provider = 'meta' WHERE id = ?`)
       .bind(CONNECTION_ID).run()
     await expect(readAttributionCredential(env(), {
       connectionId: CONNECTION_ID,
       provider: 'meta',
       credentialType: 'access_token',
-      credentialRevision: CREDENTIAL_REVISION,
+      encryptionContext: ENCRYPTION_CONTEXT,
     })).resolves.toBe(first)
   })
 
   it('读取凭证时连接 provider 不匹配视为不存在', async () => {
     const plaintext = `token-${crypto.randomUUID()}`
-    await saveAttributionCredential(env(), metaInput(plaintext, CREDENTIAL_REVISION))
+    await saveAttributionCredential(env(), metaInput(plaintext, ENCRYPTION_CONTEXT))
     await db.prepare(`UPDATE attribution_platform_connections SET provider = 'tiktok' WHERE id = ?`)
       .bind(CONNECTION_ID).run()
 
@@ -207,24 +205,24 @@ describe('归因凭证 D1 库', () => {
       connectionId: CONNECTION_ID,
       provider: 'meta',
       credentialType: 'access_token',
-      credentialRevision: CREDENTIAL_REVISION,
+      encryptionContext: ENCRYPTION_CONTEXT,
     })).rejects.toMatchObject({ code: 'ATTRIBUTION_CREDENTIAL_NOT_FOUND' })
   })
 
-  it('错误 provider、错误 revision 和篡改密文均不泄漏内部细节', async () => {
+  it('错误 provider、错误加密上下文和篡改密文均不泄漏内部细节', async () => {
     const plaintext = `token-${crypto.randomUUID()}`
-    await saveAttributionCredential(env(), metaInput(plaintext, CREDENTIAL_REVISION))
+    await saveAttributionCredential(env(), metaInput(plaintext, ENCRYPTION_CONTEXT))
     await expect(readAttributionCredential(env(), {
       connectionId: CONNECTION_ID,
       provider: 'tiktok',
       credentialType: 'access_token',
-      credentialRevision: CREDENTIAL_REVISION,
+      encryptionContext: ENCRYPTION_CONTEXT,
     })).rejects.toMatchObject({ code: 'ATTRIBUTION_CREDENTIAL_NOT_FOUND' })
     await expect(readAttributionCredential(env(), {
       connectionId: CONNECTION_ID,
       provider: 'meta',
       credentialType: 'access_token',
-      credentialRevision: 'credential-revision-002',
+      encryptionContext: 'credential-context-002',
     })).rejects.toMatchObject({ code: 'ATTRIBUTION_CREDENTIAL_NOT_FOUND' })
 
     await db.prepare(`UPDATE attribution_credentials SET ciphertext = 'AA' WHERE connection_id = ?`)
@@ -233,7 +231,7 @@ describe('归因凭证 D1 库', () => {
       connectionId: CONNECTION_ID,
       provider: 'meta',
       credentialType: 'access_token',
-      credentialRevision: CREDENTIAL_REVISION,
+      encryptionContext: ENCRYPTION_CONTEXT,
     })).rejects.toMatchObject({ code: 'ATTRIBUTION_CREDENTIAL_DECRYPT_FAILED' })
   })
 })
@@ -245,13 +243,13 @@ function env(database: D1Database = db) {
   }
 }
 
-function metaInput(plaintext: string, credentialRevision: string) {
+function metaInput(plaintext: string, encryptionContext: string) {
   return {
     connectionId: CONNECTION_ID,
     provider: 'meta' as const,
     credentialType: 'access_token' as const,
     plaintext,
-    credentialRevision,
+    encryptionContext,
     createdBy: 41,
   }
 }

@@ -8,8 +8,7 @@ import {
 } from './verify-production.mjs'
 
 const healthyState = {
-  controlPlaneCleanupMigrationCount: 1,
-  privacyPolicyRowCount: 1,
+  sourceRouterCleanupMigrationCount: 1,
   invalidConnectionCount: 0,
   openCriticalIncidentCount: 0,
   expiredOutboxCount: 0,
@@ -48,26 +47,31 @@ describe('生产快速验证', () => {
   it('migration 缺失阻断，配置和运行异常只警告且不妨碍修复发布', () => {
     assert.throws(() => assertAttributionStructure({
       ...healthyState,
-      controlPlaneCleanupMigrationCount: 0,
-    }), /controlPlaneCleanupMigrationCount/)
+      sourceRouterCleanupMigrationCount: 0,
+    }), /sourceRouterCleanupMigrationCount/)
     assert.doesNotThrow(() => assertAttributionStructure({
       ...healthyState,
       invalidConnectionCount: 1,
     }))
     assert.deepEqual(attributionWarnings({
       ...healthyState,
-      privacyPolicyRowCount: 0,
       invalidConnectionCount: 1,
       deadLetterCount: 2,
       expiredOutboxCount: 1,
-    }), ['privacyPolicyInvalid=1', 'invalidConnectionCount=1', 'expiredOutboxCount=1', 'deadLetterCount=2'])
+    }), ['invalidConnectionCount=1', 'expiredOutboxCount=1', 'deadLetterCount=2'])
   })
 
   it('D1 响应解析为稳定字段', async () => {
+    let query = ''
     const state = await queryAttributionState({
-      runCommand: async () => d1Result(healthyState),
+      runCommand: async (_command, args) => {
+        query = String(args[args.indexOf('--command') + 1] || '')
+        return d1Result(healthyState)
+      },
     })
     assert.deepEqual(state, healthyState)
+    assert.match(query, /0061_attribution_source_router_cleanup\.sql/)
+    assert.doesNotMatch(query, /attribution_privacy_policy|credential_revision|connection_revision|binding\.provider/)
   })
 })
 

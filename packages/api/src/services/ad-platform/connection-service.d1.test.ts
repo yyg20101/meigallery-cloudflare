@@ -15,6 +15,10 @@ const CLEANUP_MIGRATION = readFileSync(
   new URL('../../../migrations/0060_attribution_control_plane_cleanup.sql', import.meta.url),
   'utf8',
 )
+const SOURCE_ROUTER_MIGRATION = readFileSync(
+  new URL('../../../migrations/0061_attribution_source_router_cleanup.sql', import.meta.url),
+  'utf8',
+)
 const MASTER_KEY = toBase64(Uint8Array.from({ length: 32 }, (_, index) => index + 1))
 const ACTOR_ID = 41
 const META_TOKEN = 'meta-token-must-never-leak'
@@ -35,6 +39,7 @@ beforeAll(async () => {
   db = (await miniflare.getBindings<{ DB: D1Database }>()).DB
   await db.exec(MIGRATION.replace(/\s*\r?\n\s*/g, ' '))
   const supportSchema = `
+    CREATE TABLE site_settings (key TEXT PRIMARY KEY);
     CREATE TABLE users (id INTEGER PRIMARY KEY);
     CREATE TABLE admin_audit_logs (
       id TEXT PRIMARY KEY,
@@ -49,6 +54,7 @@ beforeAll(async () => {
   `
   for (const statement of unstable_splitSqlQuery(supportSchema)) await db.prepare(statement).run()
   for (const statement of unstable_splitSqlQuery(CLEANUP_MIGRATION)) await db.prepare(statement).run()
+  for (const statement of unstable_splitSqlQuery(SOURCE_ROUTER_MIGRATION)) await db.prepare(statement).run()
   googleCredential = await validGoogleServiceAccount()
 }, 30_000)
 
@@ -74,7 +80,7 @@ afterEach(async () => {
 afterAll(async () => miniflare.dispose())
 
 describe('统一广告平台连接原子服务', () => {
-  it('通过同一服务保存三平台，且内部版本不暴露给管理端', async () => {
+  it('通过同一服务保存三平台，且加密上下文不暴露给管理端', async () => {
     const meta = await savePlatformConnection(env(), metaCommand())
     const tiktok = await savePlatformConnection(env(), tiktokCommand())
     const google = await savePlatformConnection(env(), googleCommand())
@@ -84,15 +90,19 @@ describe('统一广告平台连接原子服务', () => {
       'conn_tiktok',
       'conn_google',
     ])
-    expect(JSON.stringify([meta, tiktok, google])).not.toMatch(/connectionRevision|credentialRevision|revision/)
+    expect(JSON.stringify([meta, tiktok, google])).not.toMatch(/outboxScope|encryptionContext|ciphertext/)
     expect(await countRows('attribution_platform_connections')).toBe(3)
     expect(await countRows('attribution_event_bindings')).toBe(6)
     expect(await countRows('attribution_credentials')).toBe(3)
     expect(await countRows('admin_audit_logs')).toBe(3)
 
     const bindings = await db.prepare(`
-      SELECT provider, canonical_event, browser_destination, server_destination
-      FROM attribution_event_bindings ORDER BY provider, canonical_event
+      SELECT connection.provider, binding.canonical_event,
+        binding.browser_destination, binding.server_destination
+      FROM attribution_event_bindings AS binding
+      JOIN attribution_platform_connections AS connection
+        ON connection.id = binding.connection_id
+      ORDER BY connection.provider, binding.canonical_event
     `).all<Record<string, unknown>>()
     expect(bindings.results).toEqual(expect.arrayContaining([
       expect.objectContaining({ provider: 'meta', browser_destination: 'meta_pixel', server_destination: 'meta_capi' }),
@@ -122,13 +132,13 @@ describe('统一广告平台连接原子服务', () => {
     expect(await countRows('admin_audit_logs')).toBe(0)
   })
 
-  it('更新配置时轮换连接作用域并保留原凭证和密文', async () => {
+  it('更新配置时保持 Outbox scope、原凭证和密文稳定', async () => {
     await savePlatformConnection(env(), metaCommand())
     const before = await db.prepare(`
-      SELECT credential.id, credential.ciphertext, credential.credential_revision, connection.connection_revision
+      SELECT credential.id, credential.ciphertext, credential.encryption_context, connection.outbox_scope
       FROM attribution_credentials credential
       JOIN attribution_platform_connections connection ON connection.id = credential.connection_id
-    `).first<{ id: string; ciphertext: string; credential_revision: string; connection_revision: string }>()
+    `).first<{ id: string; ciphertext: string; encryption_context: string; outbox_scope: string }>()
     const command = metaCommand({
       publicConfig: { provider: 'meta', pixelId: '1277657707436782' },
     })
@@ -136,24 +146,24 @@ describe('统一广告平台连接原子服务', () => {
 
     await savePlatformConnection(env(), command)
     const after = await db.prepare(`
-      SELECT credential.id, credential.ciphertext, credential.credential_revision, connection.connection_revision
+      SELECT credential.id, credential.ciphertext, credential.encryption_context, connection.outbox_scope
       FROM attribution_credentials credential
       JOIN attribution_platform_connections connection ON connection.id = credential.connection_id
-    `).first<{ id: string; ciphertext: string; credential_revision: string; connection_revision: string }>()
+    `).first<{ id: string; ciphertext: string; encryption_context: string; outbox_scope: string }>()
 
-    expect(after?.connection_revision).not.toBe(before?.connection_revision)
-    expect(after?.credential_revision).toBe(before?.credential_revision)
+    expect(after?.outbox_scope).toBe(before?.outbox_scope)
+    expect(after?.encryption_context).toBe(before?.encryption_context)
     expect(after?.id).toBe(before?.id)
     expect(after?.ciphertext).toBe(before?.ciphertext)
     await expect(readAttributionCredential(env(), {
       connectionId: 'conn_meta',
       provider: 'meta',
       credentialType: 'access_token',
-      credentialRevision: before!.credential_revision,
+      encryptionContext: before!.encryption_context,
     })).resolves.toBe(META_TOKEN)
   })
 
-  it('连接变更原子取消未完成投递并删除 Outbox，已完成投递保持不变', async () => {
+  it('普通连接配置变更不取消未完成投递或删除 Outbox', async () => {
     await savePlatformConnection(env(), metaCommand())
     await db.batch([
       factStatement('fact_pending', 'event_pending', 'dedupe_pending'),
@@ -180,42 +190,42 @@ describe('统一广告平台连接原子服务', () => {
     `).all<{ id: string; status: string; last_error_code: string }>()
     expect(deliveries.results).toEqual([
       { id: 'delivery_done', status: 'processed', last_error_code: '' },
-      { id: 'delivery_pending', status: 'cancelled', last_error_code: 'connection_updated' },
+      { id: 'delivery_pending', status: 'queued', last_error_code: '' },
     ])
-    expect(await countRows('attribution_outbox')).toBe(0)
+    expect(await countRows('attribution_outbox')).toBe(1)
     expect(await countRows('attribution_conversion_facts')).toBe(2)
   })
 
   it('显式 credential 轮换并原子替换旧凭证', async () => {
     await savePlatformConnection(env(), metaCommand())
-    const before = await db.prepare('SELECT credential_revision FROM attribution_credentials')
-      .first<{ credential_revision: string }>()
+    const before = await db.prepare('SELECT encryption_context FROM attribution_credentials')
+      .first<{ encryption_context: string }>()
     await savePlatformConnection(env(), metaCommand({
       credential: { type: 'access_token', plaintext: ROTATED_META_TOKEN },
     }))
-    const after = await db.prepare('SELECT credential_revision FROM attribution_credentials')
-      .first<{ credential_revision: string }>()
+    const after = await db.prepare('SELECT encryption_context FROM attribution_credentials')
+      .first<{ encryption_context: string }>()
 
-    expect(after?.credential_revision).not.toBe(before?.credential_revision)
+    expect(after?.encryption_context).not.toBe(before?.encryption_context)
     expect(await countRows('attribution_credentials')).toBe(1)
     await expect(readAttributionCredential(env(), {
       connectionId: 'conn_meta',
       provider: 'meta',
       credentialType: 'access_token',
-      credentialRevision: after!.credential_revision,
+      encryptionContext: after!.encryption_context,
     })).resolves.toBe(ROTATED_META_TOKEN)
     await expect(readAttributionCredential(env(), {
       connectionId: 'conn_meta',
       provider: 'meta',
       credentialType: 'access_token',
-      credentialRevision: before!.credential_revision,
+      encryptionContext: before!.encryption_context,
     })).rejects.toMatchObject({ code: 'ATTRIBUTION_CREDENTIAL_NOT_FOUND' })
   })
 
   it('batch 最后一条 SQL 失败时回滚连接、凭证、绑定和审计', async () => {
     await savePlatformConnection(env(), metaCommand())
-    const credential = await db.prepare('SELECT credential_revision FROM attribution_credentials')
-      .first<{ credential_revision: string }>()
+    const credential = await db.prepare('SELECT encryption_context FROM attribution_credentials')
+      .first<{ encryption_context: string }>()
     const beforeConnection = await tableRows('attribution_platform_connections')
     const beforeBindings = await tableRows('attribution_event_bindings')
     const beforeCredentials = await tableRows('attribution_credentials')
@@ -241,7 +251,7 @@ describe('统一广告平台连接原子服务', () => {
       connectionId: 'conn_meta',
       provider: 'meta',
       credentialType: 'access_token',
-      credentialRevision: credential!.credential_revision,
+      encryptionContext: credential!.encryption_context,
     })).resolves.toBe(META_TOKEN)
   })
 
@@ -382,9 +392,8 @@ function factStatement(id: string, externalEventId: string, dedupeKey: string) {
   return db.prepare(`
     INSERT INTO attribution_conversion_facts (
       id, canonical_event, fact_origin, external_event_id, attribution_provider,
-      attribution_source, occurred_at, dedupe_key, consent_snapshot_json,
-      analytics_dimensions_json
-    ) VALUES (?, 'Contact', 'live', ?, 'meta', 'context', datetime('now'), ?, '{}', '{}')
+      attribution_source, occurred_at, dedupe_key, analytics_dimensions_json
+    ) VALUES (?, 'Contact', 'live', ?, 'meta', 'click_id', datetime('now'), ?, '{}')
   `).bind(id, externalEventId, dedupeKey)
 }
 

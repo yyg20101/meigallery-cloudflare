@@ -7,6 +7,7 @@ import { decryptAttributionValue, loadAttributionCryptoKeys } from '../utils/att
 
 const MASTER_KEY = Buffer.alloc(32).toString('base64')
 const MIGRATION = readFileSync(new URL('../../migrations/0051_unified_attribution_expand.sql', import.meta.url), 'utf8')
+const CLEANUP_MIGRATION = readFileSync(new URL('../../migrations/0061_attribution_source_router_cleanup.sql', import.meta.url), 'utf8')
 const FBP_PRIVATE = 'fb.1.1700000000000.fbp_private'
 const FBC_PRIVATE = 'fb.1.1700000000000.fbc_private'
 const SENSITIVE_VALUES = ['fbclid_private', 'ttclid_private', 'gclid_private', 'gbraid_private', 'wbraid_private', FBP_PRIVATE, FBC_PRIVATE, 'ttp_private', '203.0.113.42', 'Private Browser/1.0', 'a'.repeat(64)]
@@ -17,6 +18,8 @@ beforeAll(async () => {
   miniflare = new Miniflare({ modules: true, script: 'export default { fetch() { return new Response("ok") } }', compatibilityDate: '2026-05-26', d1Databases: { DB: 'test' } })
   db = (await miniflare.getBindings<{ DB: D1Database }>()).DB
   await db.exec(MIGRATION.replace(/\s*\r?\n\s*/g, ' '))
+  await db.exec('CREATE TABLE site_settings (key TEXT PRIMARY KEY);')
+  await db.exec(CLEANUP_MIGRATION.replace(/\s*\r?\n\s*/g, ' '))
 })
 
 beforeEach(async () => {
@@ -75,13 +78,6 @@ describe('统一事实 D1 原子写入', () => {
       matchSignals: expectedMatchSignals,
       ...expectedNetworkContext,
       hashedEmail: 'a'.repeat(64),
-      consent: {
-        consentVersion: 1,
-        marketingAllowed: true,
-        adUserDataAllowed: true,
-        adPersonalizationAllowed: true,
-        decidedAt: '2026-07-15T00:00:00.000Z',
-      },
     })
     expect(typeof payload.eventTime).toBe('number')
     expect(Object.keys(payload.matchSignals).sort()).toEqual(Object.keys(expectedMatchSignals).sort())
@@ -125,7 +121,6 @@ function env() { return { DB: db, SITE_URL: 'https://gallery.example.test', AD_P
 function registrationInput(provider: 'meta' | 'tiktok' | 'google'): RecordRegistrationInput {
   return {
     userId: 42, visitorId: 'visitor_42', sessionId: 'session_42', occurredAt: '2026-07-15T00:00:00.000Z', path: '/register',
-    consentSnapshot: { consentVersion: 1, marketingAllowed: true, adUserDataAllowed: true, adPersonalizationAllowed: true, decidedAt: '2026-07-15T00:00:00.000Z' },
     attributionSource: 'context', hashedEmail: 'a'.repeat(64),
     attributionContext: { version: 1, provider, contextId: 'ctx_0123456789abcdef0123456789abcdef', source: 'click_id', identifiers: { fbclid: 'fbclid_private', ttclid: 'ttclid_private', gclid: 'gclid_private', gbraid: 'gbraid_private', wbraid: 'wbraid_private' }, issuedAt: 1_784_534_400, expiresAt: 1_787_126_400 },
     adPlatformUserData: { fbp: FBP_PRIVATE, fbc: FBC_PRIVATE, ttclid: 'ttclid_private', ttp: 'ttp_private', clientIpAddress: '203.0.113.42', clientUserAgent: 'Private Browser/1.0' },
@@ -139,16 +134,16 @@ async function seed(provider: 'meta' | 'tiktok' | 'google') {
       : '{"tagId":"AW-12345","customerId":"1","cloudProjectId":"project"}'
   const credentialType = provider === 'google' ? 'service_account_json' : 'access_token'
   await db.batch([
-    db.prepare(`INSERT INTO attribution_platform_connections VALUES (?, ?, 1, 'production', 1, 1, ?, 30, 100, 100, 'revision_1', 'credential_1', '', '')`).bind(`conn_${provider}`, provider, config),
-    db.prepare(`INSERT INTO attribution_event_bindings VALUES (?, ?, ?, 'Contact', 1, 'contact', 'contact', 'revision_1', '{}', '', '')`).bind(`bind_contact_${provider}`, `conn_${provider}`, provider),
-    db.prepare(`INSERT INTO attribution_event_bindings VALUES (?, ?, ?, 'CompleteRegistration', 1, 'registration', 'registration', 'revision_1', '{}', '', '')`).bind(`bind_registration_${provider}`, `conn_${provider}`, provider),
-    db.prepare(`INSERT INTO attribution_credentials VALUES (?, ?, ?, ?, 1, '0123456789abcdef', 'iv', 'cipher', 'tag', 'fingerprint', 'credential_1', NULL, '', '')`).bind(`cred_${provider}`, `conn_${provider}`, provider, credentialType),
+    db.prepare(`INSERT INTO attribution_platform_connections (id, provider, enabled, browser_enabled, server_enabled, public_config_json, outbox_scope) VALUES (?, ?, 1, 1, 1, ?, 'outbox_scope_1')`).bind(`conn_${provider}`, provider, config),
+    db.prepare(`INSERT INTO attribution_event_bindings (id, connection_id, canonical_event, enabled, browser_destination, server_destination) VALUES (?, ?, 'Contact', 1, 'contact', 'contact')`).bind(`bind_contact_${provider}`, `conn_${provider}`),
+    db.prepare(`INSERT INTO attribution_event_bindings (id, connection_id, canonical_event, enabled, browser_destination, server_destination) VALUES (?, ?, 'CompleteRegistration', 1, 'registration', 'registration')`).bind(`bind_registration_${provider}`, `conn_${provider}`),
+    db.prepare(`INSERT INTO attribution_credentials (id, connection_id, credential_type, schema_version, key_id, iv, ciphertext, tag, fingerprint, encryption_context) VALUES (?, ?, ?, 1, '0123456789abcdef', 'iv', 'cipher', 'tag', 'fingerprint', 'credential_context_1')`).bind(`cred_${provider}`, `conn_${provider}`, credentialType),
   ])
 }
 async function decryptPayload(provider: 'meta' | 'tiktok' | 'google', factId: string, outbox: { key_id: string; iv: string; ciphertext: string; tag: string }) {
   return JSON.parse(await decryptAttributionValue({
     keys: await loadAttributionCryptoKeys({ AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT: MASTER_KEY }),
-    aad: { purpose: 'outbox', provider, subjectId: factId, revision: 'revision_1' },
+    aad: { purpose: 'outbox', provider, subjectId: factId, scope: 'outbox_scope_1' },
     envelope: { schemaVersion: 1, keyId: outbox.key_id, iv: outbox.iv, ciphertext: outbox.ciphertext, tag: outbox.tag },
-  })) as { eventTime: unknown; matchSignals: Record<string, string>; consent: Record<string, unknown>; clientIpAddress?: string; clientUserAgent?: string }
+  })) as { eventTime: unknown; matchSignals: Record<string, string>; clientIpAddress?: string; clientUserAgent?: string }
 }

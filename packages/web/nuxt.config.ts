@@ -48,8 +48,6 @@ export default defineNuxtConfig({
       appEnv: 'development',
       turnstileSiteKey: '',
       siteUrl: 'http://localhost:3000',
-      facebookPixelAllowDev: 'false',
-      facebookPixelDevId: '',
       devAdminDataWarning: 'false',
     },
   },

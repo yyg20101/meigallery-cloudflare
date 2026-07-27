@@ -4,6 +4,7 @@ import { Miniflare } from 'miniflare'
 import { recoverAttributionOutbox } from './recovery'
 
 const MIGRATION = readFileSync(new URL('../../../migrations/0051_unified_attribution_expand.sql', import.meta.url), 'utf8')
+const CLEANUP_MIGRATION = readFileSync(new URL('../../../migrations/0061_attribution_source_router_cleanup.sql', import.meta.url), 'utf8')
 let miniflare: Miniflare
 let db: D1Database
 
@@ -11,12 +12,14 @@ beforeAll(async () => {
   miniflare = new Miniflare({ modules: true, script: 'export default { fetch() { return new Response("ok") } }', compatibilityDate: '2026-05-26', d1Databases: { DB: 'recovery' } })
   db = (await miniflare.getBindings<{ DB: D1Database }>()).DB
   await db.exec(MIGRATION.replace(/\s*\r?\n\s*/g, ' '))
+  await db.exec('CREATE TABLE site_settings (key TEXT PRIMARY KEY);')
+  await db.exec(CLEANUP_MIGRATION.replace(/\s*\r?\n\s*/g, ' '))
 })
 afterAll(async () => { await miniflare.dispose() })
 beforeEach(async () => { await db.exec('DELETE FROM attribution_outbox; DELETE FROM attribution_deliveries; DELETE FROM attribution_conversion_facts; DELETE FROM attribution_platform_connections;') })
 
 describe('归因 Outbox 恢复', () => {
-  it('重新入队 planned 与超时 queued/retrying，跳过新鲜 lease', async () => {
+  it('重新入队 planned 与长时间未完成的 queued/retrying，跳过新鲜状态', async () => {
     await seed('planned', 'planned')
     await seed('queued', 'queued_stale', "datetime('now', '-6 minutes')")
     await seed('retrying', 'retrying_stale', "datetime('now', '-6 minutes')")
@@ -68,8 +71,8 @@ async function seed(status: 'planned' | 'queued' | 'retrying', suffix: string, u
   const factId = `fact_${suffix}`
   const deliveryId = `delivery_${suffix}`
   await db.batch([
-    db.prepare("INSERT OR IGNORE INTO attribution_platform_connections (id, provider, public_config_json, connection_revision, credential_revision) VALUES (?, 'meta', '{}', 'revision_1', 'credential_1')").bind(connectionId),
-    db.prepare("INSERT INTO attribution_conversion_facts (id, canonical_event, fact_origin, external_event_id, attribution_provider, attribution_source, occurred_at, dedupe_key, consent_snapshot_json, analytics_dimensions_json) VALUES (?, 'Contact', 'live', ?, 'meta', 'context', '2026-07-15T00:00:00.000Z', ?, '{}', '{}')").bind(factId, `mg3_${suffix}`, `dedupe_${suffix}`),
+    db.prepare("INSERT OR IGNORE INTO attribution_platform_connections (id, provider, public_config_json, outbox_scope) VALUES (?, 'meta', '{}', 'outbox_scope_1')").bind(connectionId),
+    db.prepare("INSERT INTO attribution_conversion_facts (id, canonical_event, fact_origin, external_event_id, attribution_provider, attribution_source, occurred_at, dedupe_key, analytics_dimensions_json) VALUES (?, 'Contact', 'live', ?, 'meta', 'click_id', '2026-07-15T00:00:00.000Z', ?, '{}')").bind(factId, `mg3_${suffix}`, `dedupe_${suffix}`),
     db.prepare(`INSERT INTO attribution_deliveries (id, fact_id, connection_id, provider, transport, status, updated_at) VALUES (?, ?, ?, 'meta', 'server', ?, ${updatedAt})`).bind(deliveryId, factId, connectionId, status),
     db.prepare(`INSERT INTO attribution_outbox (delivery_id, provider, schema_version, key_id, iv, ciphertext, tag, expires_at) VALUES (?, 'meta', 1, '0123456789abcdef', 'AQIDBAUGBwgJCgsM', 'cipher', 'AQIDBAUGBwgJCgsMDQ4PEA', ${expiresAt})`).bind(deliveryId),
   ])

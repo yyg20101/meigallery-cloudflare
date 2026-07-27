@@ -14,7 +14,7 @@ const AAD: AttributionAad = {
   purpose: 'credential',
   provider: 'meta',
   subjectId: 'connection-001',
-  revision: 'credential-revision-001',
+  scope: 'credential-context-001',
 }
 
 describe('归因通用加密域', () => {
@@ -49,7 +49,7 @@ describe('归因通用加密域', () => {
   it.each([
     ['provider', { ...AAD, provider: 'tiktok' }],
     ['subject ID', { ...AAD, subjectId: 'connection-002' }],
-    ['revision', { ...AAD, revision: 'credential-revision-002' }],
+    ['scope', { ...AAD, scope: 'credential-context-002' }],
   ])('AAD 的%s变化后拒绝解密', async (_label, changedAad) => {
     const keys = await loadAttributionCryptoKeys({
       AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT: CURRENT_KEY,

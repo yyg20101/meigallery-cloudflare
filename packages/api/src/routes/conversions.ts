@@ -5,12 +5,10 @@ import { recordContact } from '../services/conversions'
 import { errorJson } from '../utils/api-error'
 import { safeContactLinkUrl } from '../utils/contact-link-url'
 import { generateContactLink } from '@meigallery/shared/constants'
-import { resolveRequestMarketingConsent } from '../utils/marketing-consent-request'
 import { AD_ATTRIBUTION_CONTEXT_COOKIE } from './ad-attribution'
 import { loadAttributionCryptoKeys } from '../utils/attribution-crypto'
 import { resolveTrustedAdAttributionContext } from '../utils/ad-attribution-context'
 import { buildAdPlatformUserData, readAdPlatformBrowserIdentifiersFromRequest } from '../utils/ad-platform-identifiers'
-import { recordBrowserAttemptReceipt } from '../services/ad-platform/browser-attempt-receipt'
 
 const CONVERSION_ID_RE = /^[A-Za-z0-9_-]{8,120}$/
 
@@ -41,9 +39,8 @@ conversionRoutes.post('/events', async (c) => {
   if (!contact || !contact.platform.trim() || !targetUrl) {
     return errorJson(c, 400, '公开转化动作无效', { code: 'PUBLIC_CONVERSION_ACTION_INVALID' })
   }
-  const { consent: consentSnapshot } = await resolveRequestMarketingConsent(c, body.consentState)
-  const attributionContext = consentSnapshot.marketingAllowed ? await trustedAttributionContext(c) : null
-  const adPlatformUserData = consentSnapshot.marketingAllowed
+  const attributionContext = await trustedAttributionContext(c)
+  const adPlatformUserData = attributionContext
     ? buildAdPlatformUserData(c.req.raw, readAdPlatformBrowserIdentifiersFromRequest(c.req.raw))
     : undefined
   const result = await recordContact(c.env, {
@@ -51,40 +48,11 @@ conversionRoutes.post('/events', async (c) => {
     routeName: text(body.routeName, 120), path: text(body.path, 240), sourceChannel: text(body.sourceChannel, 40) || 'unknown',
     sourceName: text(body.sourceName, 120), trackingSourceSlug: text(body.trackingSourceSlug, 120),
     utmSource: text(body.utmSource, 120), utmMedium: text(body.utmMedium, 120), utmCampaign: text(body.utmCampaign, 120), utmContent: text(body.utmContent, 120),
-    consentSnapshot, attributionContext, attributionSource: attributionContext ? 'context' : 'none', adPlatformUserData,
+    attributionContext, attributionSource: attributionContext ? 'context' : 'none', adPlatformUserData,
     contactMethodId: contact.id, contactPlatform: contact.platform, actionType: 'open_link',
     metadata: isPlainRecord(body.metadata) ? body.metadata : {},
   })
   return c.json({ data: result }, result.created ? 201 : 200)
-})
-
-conversionRoutes.post('/browser-attempt', async (c) => {
-  let body: Record<string, unknown>
-  try { body = await c.req.json<Record<string, unknown>>() }
-  catch { return errorJson(c, 400, 'Browser 回执必须是有效 JSON', { code: 'BROWSER_ATTEMPT_RECEIPT_INVALID' }) }
-  const deliveryId = conversionId(body.deliveryId)
-  const provider = attributionProvider(body.provider)
-  const receiptToken = typeof body.receiptToken === 'string' ? body.receiptToken : ''
-  if (!deliveryId || !provider || receiptToken.length < 20 || receiptToken.length > 160) {
-    return errorJson(c, 400, 'Browser 回执无效', { code: 'BROWSER_ATTEMPT_RECEIPT_INVALID' })
-  }
-  let result: Awaited<ReturnType<typeof recordBrowserAttemptReceipt>>
-  try {
-    result = await recordBrowserAttemptReceipt({
-      db: c.env.DB,
-      keys: await loadAttributionCryptoKeys(c.env),
-      deliveryId,
-      provider,
-      receiptToken,
-    })
-  }
-  catch {
-    return errorJson(c, 400, 'Browser 回执无效', { code: 'BROWSER_ATTEMPT_RECEIPT_INVALID' })
-  }
-  if (!result.accepted) {
-    return errorJson(c, 400, 'Browser 回执无效', { code: 'BROWSER_ATTEMPT_RECEIPT_INVALID' })
-  }
-  return c.json({ data: { accepted: true } })
 })
 
 async function trustedAttributionContext(c: Parameters<typeof getCookie>[0]) {
@@ -98,4 +66,3 @@ async function trustedAttributionContext(c: Parameters<typeof getCookie>[0]) {
 function conversionId(value: unknown) { const normalized = typeof value === 'string' ? value.trim() : ''; return CONVERSION_ID_RE.test(normalized) ? normalized : '' }
 function text(value: unknown, maximum: number) { return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, maximum) }
 function isPlainRecord(value: unknown): value is Record<string, unknown> { return Boolean(value && typeof value === 'object' && !Array.isArray(value)) }
-function attributionProvider(value: unknown) { return value === 'meta' || value === 'tiktok' || value === 'google' ? value : null }

@@ -11,6 +11,7 @@ import {
 } from './attribution-dashboard'
 
 const MIGRATION = readFileSync(new URL('../../migrations/0051_unified_attribution_expand.sql', import.meta.url), 'utf8')
+const CLEANUP_MIGRATION = readFileSync(new URL('../../migrations/0061_attribution_source_router_cleanup.sql', import.meta.url), 'utf8')
 let miniflare: Miniflare
 let db: D1Database
 
@@ -23,6 +24,8 @@ beforeAll(async () => {
   })
   db = (await miniflare.getBindings<{ DB: D1Database }>()).DB
   await db.exec(MIGRATION.replace(/\s*\r?\n\s*/g, ' '))
+  await db.exec('CREATE TABLE site_settings (key TEXT PRIMARY KEY);')
+  await db.exec(CLEANUP_MIGRATION.replace(/\s*\r?\n\s*/g, ' '))
 })
 
 beforeEach(async () => {
@@ -52,7 +55,7 @@ describe('统一归因看板最终事实口径', () => {
         byProvider: { meta: 2, tiktok: 1, google: 2 },
       },
       delivery: {
-        browserAttempted: 1,
+        browserPlanned: 2,
         server: {
           planned: 0,
           queued: 1,
@@ -78,7 +81,7 @@ describe('统一归因看板最终事实口径', () => {
     expect(summary.data).toMatchObject({
       business: { contactCount: 1, completeRegistrationCount: 1, factCount: 2 },
       delivery: {
-        browserAttempted: 1,
+        browserPlanned: 2,
         server: { processed: 1, deadLetter: 1 },
         queueRetryCount: 2,
       },
@@ -99,19 +102,19 @@ describe('统一归因看板最终事实口径', () => {
     ])
   })
 
-  it('Browser attempted 只统计签名回执，并计算配对与匹配信号覆盖', async () => {
+  it('Browser 计划直接读取 Delivery，并计算计划配对与匹配信号覆盖', async () => {
     const [meta, google] = await Promise.all([
       queryAttributionQuality(db, dayRange(), 'meta'),
       queryAttributionQuality(db, dayRange(), 'google'),
     ])
 
-    expect(meta.data.pairing.summary).toEqual(metric(1, 2))
+    expect(meta.data.pairing.summary).toEqual(metric(2, 2))
     expect(meta.data.match.summary).toEqual(metric(1, 2))
     expect(meta.data.match.signals).toEqual([
       { key: 'fbc', ...metric(1, 2) },
       { key: 'fbp', ...metric(1, 2) },
     ])
-    expect(google.data.pairing.summary).toEqual(metric(1, 2))
+    expect(google.data.pairing.summary).toEqual(metric(2, 2))
     expect(google.data.match.summary).toEqual(metric(1, 2))
     expect(google.data.match.signals).toEqual([
       { key: 'gclid', ...metric(1, 2) },
@@ -126,12 +129,12 @@ describe('统一归因看板最终事实口径', () => {
     expect(result.data.inputs).toMatchObject({
       factCount: 7,
       deliveryCount: 9,
-      browserAttemptCount: 2,
+      browserDeliveryCount: 4,
       serverDeliveryCount: 5,
       adapterAttemptCount: 6,
       queueAttemptCount: 5,
       terminalServerDeliveryCount: 4,
-      providerReceiptCount: 6,
+      providerReceiptCount: 4,
       workflowStepCount: 0,
     })
     expect(result.data.note).toContain('项目内部估算')
@@ -139,7 +142,7 @@ describe('统一归因看板最终事实口径', () => {
 
   it('容量估算将 UTC 16:00 后的数据计入北京时间次日', async () => {
     await db.batch([
-      fact('fact_bj_midnight', 'Contact', 'meta', 'context', 'beijing-next-day'),
+      fact('fact_bj_midnight', 'Contact', 'meta', 'click_id', 'beijing-next-day'),
       delivery('delivery_bj_midnight', 'fact_bj_midnight', 'meta', 'server', 'processed', 1, 1, ['fbc']),
       receipt('receipt_bj_midnight', 'delivery_bj_midnight', 'meta', 'server_delivery', 'accepted'),
     ])
@@ -167,7 +170,7 @@ describe('统一归因看板最终事实口径', () => {
     expect(previousDay.data.inputs).toMatchObject({
       factCount: 7,
       deliveryCount: 9,
-      providerReceiptCount: 6,
+      providerReceiptCount: 4,
     })
     expect(nextDay.data.inputs).toMatchObject({
       factCount: 1,
@@ -177,7 +180,7 @@ describe('统一归因看板最终事实口径', () => {
     })
   })
 
-  it('转化明细按来源过滤，并保留最终 Delivery 与 Browser 回执', async () => {
+  it('转化明细按来源过滤，并保留最终 Delivery 与 Browser 计划', async () => {
     const [all, filtered, missing] = await Promise.all([
       queryAttributionConversions(db, dayRange(), 'google'),
       queryAttributionConversions(db, dayRange(), 'google', 'google'),
@@ -186,8 +189,8 @@ describe('统一归因看板最终事实口径', () => {
 
     expect(all.data.byEvent).toHaveLength(2)
     expect(filtered.data.samples).toEqual(expect.arrayContaining([
-      expect.objectContaining({ canonical_event: 'Contact', browser_attempted: 1, server_status: 'processed' }),
-      expect.objectContaining({ canonical_event: 'CompleteRegistration', server_status: 'dead_letter', retry_count: 2 }),
+      expect.objectContaining({ canonical_event: 'Contact', browser_planned: 1, server_status: 'processed' }),
+      expect.objectContaining({ canonical_event: 'CompleteRegistration', browser_planned: 1, server_status: 'dead_letter', retry_count: 2 }),
     ]))
     expect(missing.data).toMatchObject({ byEvent: [], bySource: [], samples: [] })
   })
@@ -282,11 +285,11 @@ async function seedDashboardFacts() {
     connection('meta'),
     connection('tiktok'),
     connection('google'),
-    fact('fact_meta_contact', 'Contact', 'meta', 'context', 'meta-campaign'),
-    fact('fact_meta_registration', 'CompleteRegistration', 'meta', 'context', 'meta-campaign'),
-    fact('fact_tiktok_contact', 'Contact', 'tiktok', 'context', 'tiktok-campaign'),
-    fact('fact_google_contact', 'Contact', 'google', 'context', 'google-campaign'),
-    fact('fact_google_registration', 'CompleteRegistration', 'google', 'context', 'google-campaign'),
+    fact('fact_meta_contact', 'Contact', 'meta', 'click_id', 'meta-campaign'),
+    fact('fact_meta_registration', 'CompleteRegistration', 'meta', 'click_id', 'meta-campaign'),
+    fact('fact_tiktok_contact', 'Contact', 'tiktok', 'click_id', 'tiktok-campaign'),
+    fact('fact_google_contact', 'Contact', 'google', 'click_id', 'google-campaign'),
+    fact('fact_google_registration', 'CompleteRegistration', 'google', 'click_id', 'google-campaign'),
     fact('fact_unattributed', 'Contact', null, 'none', 'organic'),
     fact('fact_conflict', 'CompleteRegistration', null, 'conflict', 'conflict'),
     delivery('delivery_meta_browser', 'fact_meta_contact', 'meta', 'browser', 'planned', 0, 0, []),
@@ -298,10 +301,8 @@ async function seedDashboardFacts() {
     delivery('delivery_google_server', 'fact_google_contact', 'google', 'server', 'processed', 1, 1, ['gclid']),
     delivery('delivery_google_registration_browser', 'fact_google_registration', 'google', 'browser', 'planned', 0, 0, []),
     delivery('delivery_google_registration_server', 'fact_google_registration', 'google', 'server', 'dead_letter', 3, 1, []),
-    receipt('receipt_meta_browser', 'delivery_meta_browser', 'meta', 'browser_attempt', 'attempted'),
     receipt('receipt_meta_server', 'delivery_meta_server', 'meta', 'server_delivery', 'accepted'),
     receipt('receipt_tiktok_server', 'delivery_tiktok_server', 'tiktok', 'server_delivery', 'rejected'),
-    receipt('receipt_google_browser', 'delivery_google_browser', 'google', 'browser_attempt', 'attempted'),
     receipt('receipt_google_server', 'delivery_google_server', 'google', 'server_delivery', 'processed'),
     receipt('receipt_google_dlq', 'delivery_google_registration_server', 'google', 'server_delivery', 'dead_letter'),
   ])
@@ -310,10 +311,9 @@ async function seedDashboardFacts() {
 function connection(provider: 'meta' | 'tiktok' | 'google') {
   return db.prepare(`
     INSERT INTO attribution_platform_connections (
-      id, provider, enabled, mode, browser_enabled, server_enabled,
-      public_config_json, rollout_target_percentage, rollout_effective_percentage,
-      connection_revision, credential_revision
-    ) VALUES (?, ?, 1, 'production', 1, 1, '{}', 100, 100, 'revision_1', 'credential_1')
+      id, provider, enabled, browser_enabled, server_enabled,
+      public_config_json, outbox_scope
+    ) VALUES (?, ?, 1, 1, 1, '{}', 'outbox_scope_1')
   `).bind(`conn_${provider}`, provider)
 }
 
@@ -321,15 +321,14 @@ function fact(
   id: string,
   canonicalEvent: 'Contact' | 'CompleteRegistration',
   provider: 'meta' | 'tiktok' | 'google' | null,
-  source: 'context' | 'none' | 'conflict',
+  source: 'click_id' | 'none' | 'conflict',
   campaign: string,
 ) {
   return db.prepare(`
     INSERT INTO attribution_conversion_facts (
       id, canonical_event, fact_origin, external_event_id, attribution_provider,
-      attribution_source, occurred_at, dedupe_key, consent_snapshot_json,
-      analytics_dimensions_json
-    ) VALUES (?, ?, 'live', ?, ?, ?, '2026-07-15T04:00:00.000Z', ?, '{}', ?)
+      attribution_source, occurred_at, dedupe_key, analytics_dimensions_json
+    ) VALUES (?, ?, 'live', ?, ?, ?, '2026-07-15T04:00:00.000Z', ?, ?)
   `).bind(
     id,
     canonicalEvent,

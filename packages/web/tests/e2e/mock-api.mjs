@@ -159,12 +159,10 @@ const mutablePublicSettings = { ...defaultPublicSettings }
 const analyticsBatches = []
 const sessionEndBatches = []
 const registrations = []
-const receiptProtectedRequests = []
+const contextProtectedRequests = []
 const conversionRequests = []
-const browserAttemptReceipts = []
 let authenticated = true
 let sessionCookieRequired = false
-let marketingConsentState = 'granted'
 let currentAttributionProvider = null
 let currentAttributionResolution = 'none'
 let adminAnalyticsEmpty = false
@@ -179,12 +177,10 @@ function resetPublicSettings() {
   analyticsBatches.length = 0
   sessionEndBatches.length = 0
   registrations.length = 0
-  receiptProtectedRequests.length = 0
+  contextProtectedRequests.length = 0
   conversionRequests.length = 0
-  browserAttemptReceipts.length = 0
   authenticated = true
   sessionCookieRequired = false
-  marketingConsentState = 'granted'
   currentAttributionProvider = null
   currentAttributionResolution = 'none'
   adminAnalyticsEmpty = false
@@ -231,11 +227,9 @@ function attributionBrowserInstruction(provider, canonicalEvent) {
     ? `AW-123456789/${eventSlug}`
     : `${provider}_pixel`
   return {
-    deliveryId: `delivery_${provider}_${eventSlug}`,
     provider,
     canonicalEvent,
     externalEventId: `e2e_${provider}_${eventSlug}`,
-    receiptToken: `v1.${'a'.repeat(16)}.${'b'.repeat(43)}`,
     descriptor: {
       provider,
       canonicalEvent,
@@ -248,11 +242,9 @@ function attributionBrowserInstruction(provider, canonicalEvent) {
 }
 
 function resolvedTrackingInstructions(canonicalEvent, attribution) {
-  if (marketingConsentState !== 'granted'
-    || currentAttributionResolution !== 'matched'
+  if ((currentAttributionResolution !== 'matched' && currentAttributionResolution !== 'inherited')
     || !currentAttributionProvider
-    || attribution?.consentState !== 'granted'
-    || attribution?.adAttributionState !== 'resolved') return []
+    || !attribution) return []
   return [attributionBrowserInstruction(currentAttributionProvider, canonicalEvent)]
 }
 
@@ -560,7 +552,7 @@ function adminAttributionResponse(pathname, searchParams) {
 
   const dates = range.days === 1 ? [range.from] : ['2026-07-08', '2026-07-09', '2026-07-10']
   const deliveryMetrics = (index = 0) => ({
-    browserAttempted: index + 3,
+    browserPlanned: index + 3,
     server: {
       planned: 0,
       queued: index === 2 ? 1 : 0,
@@ -588,7 +580,7 @@ function adminAttributionResponse(pathname, searchParams) {
         provider,
         business: { contactCount: 6, completeRegistrationCount: 3, factCount: 9 },
         delivery: {
-          browserAttempted: 12,
+          browserPlanned: 12,
           server: { planned: 0, queued: 1, accepted: 6, processed: 3, retrying: 0, rejected: 1, deadLetter: 0, cancelled: 0 },
           queueRetryCount: 2,
           queueEnqueueCount: 10,
@@ -876,7 +868,7 @@ function handleApi(req, res) {
       batches: analyticsBatches,
       sessionEnds: sessionEndBatches,
       registrations,
-      receiptProtectedRequests,
+      contextProtectedRequests,
       events: analyticsBatches.flatMap(batch => Array.isArray(batch.events) ? batch.events : []),
     })
   }
@@ -885,12 +877,11 @@ function handleApi(req, res) {
       provider: currentAttributionProvider,
       resolution: currentAttributionResolution,
       conversions: conversionRequests,
-      browserAttempts: browserAttemptReceipts,
       registrations,
     })
   }
-  if (url.pathname === '/api/test/receipt-protected-requests/clear' && req.method === 'POST') {
-    receiptProtectedRequests.length = 0
+  if (url.pathname === '/api/test/context-protected-requests/clear' && req.method === 'POST') {
+    contextProtectedRequests.length = 0
     return json(res, { ok: true })
   }
   if (url.pathname === '/api/test/binary-upload' && req.method === 'POST') {
@@ -911,15 +902,6 @@ function handleApi(req, res) {
       .catch(() => json(res, { statusCode: 400, message: '认证状态请求无效' }, 400))
     return
   }
-  if (url.pathname === '/api/test/marketing-consent-state' && req.method === 'PATCH') {
-    readJsonBody(req)
-      .then((body) => {
-        marketingConsentState = body.state === 'granted' || body.state === 'denied' ? body.state : 'limited'
-        json(res, { state: marketingConsentState })
-      })
-      .catch(() => json(res, { statusCode: 400, message: '营销授权测试状态无效' }, 400))
-    return
-  }
   if (url.pathname === '/api/settings/public') return json(res, publicSettings())
   if (url.pathname === '/api/ad-attribution' && req.method === 'PUT') {
     readJsonBody(req)
@@ -929,14 +911,25 @@ function handleApi(req, res) {
           Boolean(String(body.ttclid || '').trim()) && 'tiktok',
           Boolean(String(body.gclid || body.gbraid || body.wbraid || '').trim()) && 'google',
         ].filter(Boolean)
-        const provider = providers.length === 1 ? providers[0] : null
-        currentAttributionProvider = provider
-        currentAttributionResolution = providers.length > 1 ? 'conflict' : provider ? 'matched' : 'none'
+        if (providers.length > 1) {
+          currentAttributionProvider = null
+          currentAttributionResolution = 'conflict'
+        }
+        else if (providers.length === 1) {
+          currentAttributionProvider = providers[0]
+          currentAttributionResolution = 'matched'
+        }
+        else {
+          currentAttributionResolution = currentAttributionProvider ? 'inherited' : 'none'
+        }
+        const contextCookie = currentAttributionProvider
+          ? `mei_ad_attribution=mock-${currentAttributionProvider}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 24 * 60 * 60}`
+          : 'mei_ad_attribution=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0'
         json(res, {
-          provider,
+          provider: currentAttributionProvider,
           resolution: currentAttributionResolution,
-          expiresInSeconds: 1_800,
-        })
+          expiresInSeconds: 30 * 24 * 60 * 60,
+        }, 200, { 'Set-Cookie': contextCookie })
       })
       .catch(() => json(res, { statusCode: 400, message: '广告来源请求无效' }, 400))
     return
@@ -948,29 +941,11 @@ function handleApi(req, res) {
   if (url.pathname === '/api/ad-attribution' && req.method === 'DELETE') {
     currentAttributionProvider = null
     currentAttributionResolution = 'none'
-    return json(res, { provider: null, resolution: 'none', expiresInSeconds: 1_800 })
-  }
-  if (url.pathname === '/api/marketing-consent' && req.method === 'GET') {
-    return json(res, marketingConsentResponse())
-  }
-  if (url.pathname === '/api/marketing-consent' && req.method === 'PUT') {
-    readJsonBody(req)
-      .then((body) => {
-        if (body.state !== 'granted' && body.state !== 'denied') {
-          json(res, { code: 'MARKETING_CONSENT_INVALID', message: '营销授权状态无效' }, 400)
-          return
-        }
-        marketingConsentState = body.state
-        json(res, marketingConsentResponse(), 200, {
-          'Set-Cookie': `mei_marketing_consent_receipt=mock-${marketingConsentState}; Path=/; HttpOnly; SameSite=Lax`,
-        })
-      })
-      .catch(() => json(res, { code: 'MARKETING_CONSENT_INVALID', message: '营销授权请求无效' }, 400))
-    return
+    return json(res, { provider: null, resolution: 'none', expiresInSeconds: 30 * 24 * 60 * 60 })
   }
   if (url.pathname === '/api/me') {
     const cookie = String(req.headers.cookie || '')
-    receiptProtectedRequests.push({ endpoint: '/api/me', cookie })
+    contextProtectedRequests.push({ endpoint: '/api/me', cookie })
     const hasRequiredSession = !sessionCookieRequired
       || cookie.includes('mei_session=mock-session')
       || cookie.includes('mei_session=renewed-session')
@@ -1018,7 +993,7 @@ function handleApi(req, res) {
   if (url.pathname === '/api/auth/register' && req.method === 'POST') {
     readJsonBody(req)
       .then((body) => {
-        receiptProtectedRequests.push({ endpoint: '/api/auth/register', cookie: req.headers.cookie || '' })
+        contextProtectedRequests.push({ endpoint: '/api/auth/register', cookie: req.headers.cookie || '' })
         registrations.push(body)
         authenticated = true
         sessionCookieRequired = true
@@ -1039,7 +1014,7 @@ function handleApi(req, res) {
     return
   }
   if (url.pathname === '/api/conversions/events' && req.method === 'POST') {
-    receiptProtectedRequests.push({ endpoint: '/api/conversions/events', cookie: req.headers.cookie || '' })
+    contextProtectedRequests.push({ endpoint: '/api/conversions/events', cookie: req.headers.cookie || '' })
     readJsonBody(req)
       .then((body) => {
         conversionRequests.push(body)
@@ -1052,15 +1027,6 @@ function handleApi(req, res) {
         })
       })
       .catch(() => json(res, { statusCode: 400, message: '转化事件请求无效' }, 400))
-    return
-  }
-  if (url.pathname === '/api/conversions/browser-attempt' && req.method === 'POST') {
-    readJsonBody(req)
-      .then((body) => {
-        browserAttemptReceipts.push(body)
-        json(res, { accepted: true })
-      })
-      .catch(() => json(res, { statusCode: 400, message: '浏览器投递回执无效' }, 400))
     return
   }
   if (url.pathname === '/api/cases') return json(res, { data: cases, total: cases.length })
@@ -1199,17 +1165,6 @@ function handleApi(req, res) {
   }
 
   notFound(res)
-}
-
-function marketingConsentResponse() {
-  const requiresChoice = marketingConsentState === 'limited'
-  return {
-    state: marketingConsentState,
-    policyMode: requiresChoice ? 'prior_consent' : 'notice_opt_out',
-    decisionSource: requiresChoice ? 'choice_required' : 'explicit',
-    requiresChoice,
-    policyVersion: 1,
-  }
 }
 
 const server = createServer(handleApi)

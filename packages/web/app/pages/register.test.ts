@@ -19,11 +19,9 @@ describe('register page', () => {
     register.mockResolvedValue({
       id: 1,
       trackingInstructions: [{
-        deliveryId: 'delivery_meta_registration',
         provider: 'meta',
         canonicalEvent: 'CompleteRegistration',
         externalEventId: 'mg3_registration_1',
-        receiptToken: `v1.${'a'.repeat(16)}.${'b'.repeat(43)}`,
         descriptor: {
           provider: 'meta',
           canonicalEvent: 'CompleteRegistration',
@@ -58,7 +56,6 @@ describe('register page', () => {
       utmMedium: 'paid_social',
       utmCampaign: 'summer',
       utmContent: 'hero',
-      consentState: 'granted',
       browserIdentifiers: { fbp: 'fb.1.1700000000000.123456789' },
     })
 
@@ -88,10 +85,6 @@ describe('register page', () => {
       }),
     }))
     vi.stubGlobal('useTracking', () => ({ executeBrowserInstructions, buildRegistrationAttributionContext }))
-    vi.stubGlobal('useMarketingConsent', () => ({
-      state: ref('granted'),
-      canTrackMarketing: ref(true),
-    }))
     vi.stubGlobal('useSiteSettings', () => ({ siteName: ref('MeiGallery') }))
     vi.stubGlobal('useTurnstile', () => ({
       turnstileToken: ref(''),
@@ -143,7 +136,6 @@ describe('register page', () => {
         utmMedium: 'paid_social',
         utmCampaign: 'summer',
         utmContent: 'hero',
-        consentState: 'granted',
         browserIdentifiers: { fbp: 'fb.1.1700000000000.123456789' },
       },
     }))
