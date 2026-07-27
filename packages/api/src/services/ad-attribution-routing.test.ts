@@ -45,7 +45,7 @@ describe('广告来源路由', () => {
   it('数据库验证通过的受管链接选择绑定平台', async () => {
     await expect(resolveAdAttributionRouting(
       sourceDb({ 'summer-tiktok': 'tiktok' }),
-      managedSignals('summer-tiktok'),
+      { trackingSourceSlug: 'summer-tiktok' },
       null,
     )).resolves.toEqual({
       provider: 'tiktok',
@@ -56,10 +56,9 @@ describe('广告来源路由', () => {
   })
 
   it.each([
-    { trackingSourceSlug: 'summer-meta' },
-    { managedLinkProof: SOURCE_PROOFS['summer-meta'] },
-    { trackingSourceSlug: 'summer-meta', managedLinkProof: 'f'.repeat(64) },
-  ])('不完整或伪造的管理链接按冲突失败关闭', async (signals) => {
+    { trackingSourceSlug: 'unknown-source' },
+    { trackingSourceSlug: 'invalid source' },
+  ])('未知或非法的管理来源按冲突失败关闭', async (signals) => {
     await expect(resolveAdAttributionRouting(
       sourceDb({ 'summer-meta': 'meta' }),
       signals,
@@ -83,7 +82,7 @@ describe('广告来源路由', () => {
   it('Click ID 与不同平台的受管链接冲突', async () => {
     await expect(resolveAdAttributionRouting(
       sourceDb({ 'summer-tiktok': 'tiktok' }),
-      { ...managedSignals('summer-tiktok'), fbclid: 'meta-click' },
+      { trackingSourceSlug: 'summer-tiktok', fbclid: 'meta-click' },
       'google',
     )).resolves.toMatchObject({ provider: null, resolution: 'conflict' })
   })
@@ -91,7 +90,7 @@ describe('广告来源路由', () => {
   it('同平台 Click ID 优先于受管链接并保留匹配参数', async () => {
     await expect(resolveAdAttributionRouting(
       sourceDb({ 'summer-meta': 'meta' }),
-      { ...managedSignals('summer-meta'), fbclid: 'meta-click' },
+      { trackingSourceSlug: 'summer-meta', fbclid: 'meta-click' },
       'tiktok',
     )).resolves.toEqual({
       provider: 'meta',
@@ -144,7 +143,7 @@ describe('广告来源路由', () => {
     { fbclid: 'x'.repeat(129) },
     { ttclid: 'x'.repeat(1_001) },
     { gclid: { invalid: true } },
-    { managedLinkProof: 'invalid-proof', trackingSourceSlug: 'summer-meta' },
+    { trackingSourceSlug: 'invalid source' },
   ])('非法强信号失败关闭，不继承旧平台', async (signals) => {
     await expect(resolveAdAttributionRouting(emptyDb(), signals, 'meta')).resolves.toEqual({
       provider: null,
@@ -154,18 +153,6 @@ describe('广告来源路由', () => {
     })
   })
 })
-
-const SOURCE_PROOFS: Record<string, string> = {
-  'summer-meta': 'a'.repeat(64),
-  'summer-tiktok': 'b'.repeat(64),
-}
-
-function managedSignals(slug: string) {
-  return {
-    trackingSourceSlug: slug,
-    managedLinkProof: SOURCE_PROOFS[slug] ?? 'c'.repeat(64),
-  }
-}
 
 function emptyDb() {
   return sourceDb({})
@@ -179,9 +166,7 @@ function sourceDb(sources: Record<string, 'meta' | 'tiktok' | 'google'>) {
           return {
             async all<T>() {
               const slug = values[0] || ''
-              const provider = SOURCE_PROOFS[slug] === values[1]
-                ? sources[slug]
-                : undefined
+              const provider = sources[slug]
               return {
                 results: provider ? [{ ad_provider: provider }] as T[] : [],
               }
