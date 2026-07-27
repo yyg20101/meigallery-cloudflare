@@ -73,6 +73,20 @@ describe('ContactPanel', () => {
     expect(wrapper.text()).toContain('Telegram · 1 种方式 · 站长在线回复')
   })
 
+  it('移动端收起态使用紧凑入口，展开时才恢复面板宽度', async () => {
+    const { wrapper } = await mountPanel()
+    const panel = wrapper.get('div.fixed')
+    const contactButton = wrapper.get('button[aria-label="打开联系方式"]')
+
+    expect(panel.classes()).toContain('w-auto')
+    expect(contactButton.classes()).toContain('h-12')
+    expect(contactButton.classes()).toContain('w-12')
+
+    await contactButton.trigger('click')
+
+    expect(panel.classes()).toContain('w-[min(calc(100vw-1.5rem),24rem)]')
+  })
+
   it('打开联系面板只记录面板分析，不创建 Contact', async () => {
     const { wrapper, trackContact, trackAnalytics } = await mountPanel()
 

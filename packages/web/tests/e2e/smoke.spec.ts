@@ -262,6 +262,33 @@ test.describe('核心页面 smoke', () => {
     expect(overflow).toBe(false)
   })
 
+  test('联系方式入口不遮挡登录按钮 @responsive', async ({ request, page }) => {
+    await request.patch(`${apiURL}/api/test/auth`, { data: { authenticated: false } })
+    await page.goto('/login')
+
+    const loginButton = page.getByRole('button', { name: '登录', exact: true })
+    const contactButton = page.getByRole('button', { name: '打开联系方式' })
+    await expect(loginButton).toBeVisible()
+    await expect(contactButton).toBeVisible()
+
+    const loginBox = await loginButton.boundingBox()
+    const contactBox = await contactButton.boundingBox()
+    expect(loginBox).not.toBeNull()
+    expect(contactBox).not.toBeNull()
+
+    const overlaps = Boolean(loginBox && contactBox
+      && loginBox.x < contactBox.x + contactBox.width
+      && loginBox.x + loginBox.width > contactBox.x
+      && loginBox.y < contactBox.y + contactBox.height
+      && loginBox.y + loginBox.height > contactBox.y)
+    expect(overlaps).toBe(false)
+
+    if ((page.viewportSize()?.width ?? 0) < 1024) {
+      expect(contactBox?.width).toBeLessThanOrEqual(48)
+      expect(contactBox?.height).toBeLessThanOrEqual(48)
+    }
+  })
+
   test('首页广告默认站内链接可以真实跳转', async ({ page }) => {
     await page.goto('/')
     const homeAd = page.getByRole('region', { name: '首页广告推荐' })
