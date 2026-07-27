@@ -102,7 +102,11 @@ function trackRulesPageClick() {
 </script>
 
 <template>
-  <div v-if="mounted && (hasContactMethods || rulesEntryEnabled)" class="fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom))] right-4 z-50 flex w-[min(calc(100vw-2rem),24rem)] flex-col items-end lg:bottom-6 lg:right-6">
+  <div
+    v-if="mounted && (hasContactMethods || rulesEntryEnabled)"
+    class="fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom))] right-3 z-50 flex flex-col items-end lg:bottom-6 lg:right-6 lg:w-[min(calc(100vw-2rem),24rem)]"
+    :class="contactOpen || rulesOpen ? 'w-[min(calc(100vw-1.5rem),24rem)]' : 'w-auto'"
+  >
     <Transition
       enter-active-class="transition duration-200 ease-out"
       enter-from-class="translate-y-3 opacity-0 scale-95"
@@ -196,28 +200,43 @@ function trackRulesPageClick() {
           />
         </div>
 
+        <button
+          v-if="rulesEntryEnabled"
+          type="button"
+          class="mx-3 mb-3 flex min-h-12 w-[calc(100%-1.5rem)] items-center justify-between gap-3 rounded-xl border border-[#e8dcc7] bg-[#fff9ef] px-4 py-3 text-left text-gray-950 transition-colors hover:border-[#d6c39a] hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#d6c39a] focus:ring-offset-2 lg:hidden"
+          aria-label="查看服务流程"
+          @click="toggleRules"
+        >
+          <span>
+            <span class="block text-sm font-semibold">服务流程</span>
+            <span class="mt-0.5 block text-xs text-gray-500">查看规则与开通说明</span>
+          </span>
+          <span class="text-lg leading-none text-[#bfa46a]" aria-hidden="true">→</span>
+        </button>
+
         <div class="border-t border-[#f0e5d6] bg-[#fffdf9] px-5 py-3 text-xs leading-5 text-gray-500">
           支持官方跳转的平台会直接打开；无法生成跳转时，点击会复制联系值。
         </div>
       </div>
     </Transition>
 
-    <div class="w-full overflow-hidden rounded-2xl border border-white/75 bg-white/92 p-2 shadow-[0_22px_70px_rgba(17,24,39,0.24)] ring-1 ring-[#eadfd2]/80 backdrop-blur-xl">
+    <div class="flex items-center gap-2 rounded-full border border-white/75 bg-white/92 p-1.5 shadow-[0_14px_36px_rgba(17,24,39,0.2)] ring-1 ring-[#eadfd2]/80 backdrop-blur-xl lg:block lg:w-full lg:rounded-2xl lg:p-2 lg:shadow-[0_22px_70px_rgba(17,24,39,0.24)]">
       <button
         v-if="rulesEntryEnabled"
         type="button"
-        class="group flex w-full items-center gap-3 rounded-xl border border-[#e8dcc7] bg-[#fff9ef] px-3 py-3 text-left transition-all hover:-translate-y-0.5 hover:border-[#d6c39a] hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#d6c39a] focus:ring-offset-2"
+        class="group h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[#e8dcc7] bg-[#fff9ef] text-left transition-all hover:-translate-y-0.5 hover:border-[#d6c39a] hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#d6c39a] focus:ring-offset-2 lg:h-auto lg:w-full lg:justify-start lg:gap-3 lg:rounded-xl lg:px-3 lg:py-3"
+        :class="hasContactMethods ? 'hidden lg:flex' : 'flex'"
         :aria-expanded="rulesOpen"
         aria-label="打开服务流程"
         @click="toggleRules"
       >
-        <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#151515] text-[#d6c39a] shadow-sm">
+        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#151515] text-[#d6c39a] shadow-sm lg:h-11 lg:w-11 lg:rounded-xl">
           <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M7 3h8l4 4v14H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" />
             <path stroke-linecap="round" stroke-linejoin="round" d="M14 3v5h5M9 13h6M9 17h4" />
           </svg>
         </span>
-        <span class="min-w-0 flex-1">
+        <span class="hidden min-w-0 flex-1 lg:block">
           <span class="block text-base font-semibold leading-5 text-gray-950">服务流程</span>
           <span class="mt-1 flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] font-medium leading-5 text-gray-500">
             <span>看规则</span>
@@ -227,7 +246,7 @@ function trackRulesPageClick() {
             <span>开通访问</span>
           </span>
         </span>
-        <svg class="h-4 w-4 shrink-0 text-gray-400 transition-transform group-hover:translate-x-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg class="hidden h-4 w-4 shrink-0 text-gray-400 transition-transform group-hover:translate-x-0.5 lg:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="m9 18 6-6-6-6" />
         </svg>
       </button>
@@ -235,25 +254,25 @@ function trackRulesPageClick() {
       <button
         v-if="hasContactMethods"
         type="button"
-        class="group relative mt-2 flex w-full items-center gap-3 overflow-hidden rounded-xl border border-[#151515] bg-[#151515] px-3 py-3.5 text-left text-white shadow-[0_16px_38px_rgba(17,24,39,0.24)] transition-all hover:-translate-y-1 hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-[#d6c39a] focus:ring-offset-2"
+        class="group relative flex h-12 w-12 shrink-0 items-center justify-center overflow-visible rounded-full border border-[#151515] bg-[#151515] text-left text-white shadow-[0_10px_24px_rgba(17,24,39,0.2)] transition-all hover:-translate-y-1 hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-[#d6c39a] focus:ring-offset-2 lg:mt-2 lg:h-auto lg:w-full lg:justify-start lg:gap-3 lg:overflow-hidden lg:rounded-xl lg:px-3 lg:py-3.5 lg:shadow-[0_16px_38px_rgba(17,24,39,0.24)]"
         :aria-expanded="contactOpen"
         aria-label="打开联系方式"
         @click="toggleOpen"
       >
-        <span class="absolute right-3 top-3 flex h-3 w-3">
+        <span class="absolute right-0 top-0 flex h-3 w-3 lg:right-3 lg:top-3">
           <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-70" />
           <span class="relative inline-flex h-3 w-3 rounded-full bg-red-500 ring-2 ring-[#151515]" />
         </span>
-        <span class="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-gray-950 ring-1 ring-white/25 transition-transform group-hover:scale-105">
+        <span class="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-gray-950 ring-1 ring-white/25 transition-transform group-hover:scale-105 lg:h-11 lg:w-11 lg:rounded-xl">
           <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v8Z" />
           </svg>
         </span>
-        <span class="relative min-w-0 flex-1 leading-tight">
+        <span class="relative hidden min-w-0 flex-1 leading-tight lg:block">
           <span class="block text-base font-semibold">有新消息</span>
           <span class="mt-1 block truncate text-xs font-normal text-white/62">{{ primaryContact }} · {{ contactCount }} 种方式 · 站长在线回复</span>
         </span>
-        <svg class="relative h-4 w-4 shrink-0 text-white/60 transition-transform group-hover:translate-x-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg class="relative hidden h-4 w-4 shrink-0 text-white/60 transition-transform group-hover:translate-x-0.5 lg:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="m9 18 6-6-6-6" />
         </svg>
       </button>

@@ -262,6 +262,48 @@ test.describe('核心页面 smoke', () => {
     expect(overflow).toBe(false)
   })
 
+  test('联系方式入口不遮挡登录按钮 @responsive', async ({ request, page }) => {
+    await request.patch(`${apiURL}/api/test/auth`, { data: { authenticated: false } })
+    await request.patch(`${apiURL}/api/admin/settings`, {
+      data: {
+        rules_entry_enabled: 'true',
+        rules_entry_title: '服务规则',
+        rules_entry_summary: '查看规则与开通说明',
+        rules_modal_content: '## 服务流程',
+      },
+    })
+    await page.goto('/login')
+
+    const loginButton = page.getByRole('button', { name: '登录', exact: true })
+    const contactButton = page.getByRole('button', { name: '打开联系方式' })
+    const rulesButton = page.getByRole('button', { name: '打开服务流程' })
+    await expect(loginButton).toBeVisible()
+    await expect(contactButton).toBeVisible()
+
+    const loginBox = await loginButton.boundingBox()
+    const contactBox = await contactButton.boundingBox()
+    expect(loginBox).not.toBeNull()
+    expect(contactBox).not.toBeNull()
+
+    const overlaps = Boolean(loginBox && contactBox
+      && loginBox.x < contactBox.x + contactBox.width
+      && loginBox.x + loginBox.width > contactBox.x
+      && loginBox.y < contactBox.y + contactBox.height
+      && loginBox.y + loginBox.height > contactBox.y)
+    expect(overlaps).toBe(false)
+
+    if ((page.viewportSize()?.width ?? 0) < 1024) {
+      expect(contactBox?.width).toBeLessThanOrEqual(48)
+      expect(contactBox?.height).toBeLessThanOrEqual(48)
+      await expect(rulesButton).toBeHidden()
+      await contactButton.click()
+      await expect(page.getByRole('button', { name: '查看服务流程' })).toBeVisible()
+    }
+    else {
+      await expect(rulesButton).toBeVisible()
+    }
+  })
+
   test('首页广告默认站内链接可以真实跳转', async ({ page }) => {
     await page.goto('/')
     const homeAd = page.getByRole('region', { name: '首页广告推荐' })
