@@ -10,6 +10,7 @@ import {
 const healthyState = {
   attributionCoreTableCount: 9,
   obsoleteAttributionTableCount: 0,
+  trackingSourceProofColumnCount: 0,
   invalidConnectionCount: 0,
   openCriticalIncidentCount: 0,
   expiredOutboxCount: 0,
@@ -54,6 +55,10 @@ describe('生产快速验证', () => {
       ...healthyState,
       obsoleteAttributionTableCount: 1,
     }), /obsoleteAttributionTableCount/)
+    assert.throws(() => assertAttributionStructure({
+      ...healthyState,
+      trackingSourceProofColumnCount: 1,
+    }), /trackingSourceProofColumnCount/)
     assert.doesNotThrow(() => assertAttributionStructure({
       ...healthyState,
       invalidConnectionCount: 1,
@@ -77,6 +82,7 @@ describe('生产快速验证', () => {
     assert.deepEqual(state, healthyState)
     assert.match(query, /attribution_platform_connections/)
     assert.match(query, /obsolete_attribution_table_count/)
+    assert.match(query, /tracking_source_proof_column_count/)
     assert.doesNotMatch(query, /d1_migrations/)
     assert.doesNotMatch(query, /credential_revision|connection_revision|binding\.provider/)
   })

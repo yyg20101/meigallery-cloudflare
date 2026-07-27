@@ -36,6 +36,7 @@ export function assertAttributionStructure(state) {
   const blockers = [
     ['attributionCoreTableCount', state.attributionCoreTableCount !== 9],
     ['obsoleteAttributionTableCount', state.obsoleteAttributionTableCount !== 0],
+    ['trackingSourceProofColumnCount', state.trackingSourceProofColumnCount !== 0],
   ].filter(([, blocked]) => blocked).map(([name]) => name)
   if (blockers.length > 0) {
     throw new Error(`PRODUCTION_ATTRIBUTION_STRUCTURE_INVALID:${blockers.join(',')}`)
@@ -80,6 +81,9 @@ export async function queryAttributionState(options = {}) {
               'attribution_business_outbox'
             )
           )) AS obsolete_attribution_table_count,
+      (SELECT COUNT(*)
+        FROM pragma_table_info('analytics_tracking_sources')
+        WHERE name = 'link_proof') AS tracking_source_proof_column_count,
       (SELECT COUNT(*)
         FROM attribution_platform_connections AS connection
         WHERE connection.enabled = 1
