@@ -12,7 +12,7 @@
 Meta、TikTok、Google 共用来源路由、事实和投递模型；平台脚本、凭证、Queue、事件目标与外部请求完全隔离。
 
 ```text
-click ID / 后台签名投放链接
+click ID / 后台受管投放链接
               |
               v
        唯一来源路由器
@@ -37,7 +37,7 @@ Browser adapter / 加密 Outbox -> provider Queue -> Server adapter
 1. `fbclid` 选择 Meta。
 2. `ttclid` 选择 TikTok。
 3. `gclid`、`gbraid`、`wbraid` 选择 Google。
-4. 数据库校验通过的 `mg_source + mg_proof` 选择后台绑定平台。
+4. 数据库校验通过的受管 `mg_source` 选择后台绑定平台。
 5. 没有新信号时继承 30 天内最近一次有效广告来源。
 
 约束：

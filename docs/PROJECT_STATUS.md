@@ -26,7 +26,7 @@
 - 唯一业务事实：`Contact`、`CompleteRegistration`。
 - 唯一事实表：`attribution_conversion_facts`。
 - 一条事实最多属于 Meta、TikTok、Google 中的一个 provider。
-- `fbclid`、`ttclid`、Google click ID 或后台签名投放链接决定唯一平台；普通 UTM 不决定平台。
+- `fbclid`、`ttclid`、Google click ID 或后台受管投放链接决定唯一平台；普通 UTM 不决定平台。
 - 没有新来源时继承 30 天内最近一次有效广告来源；自然流量没有历史来源时不加载 Pixel。
 - 跨平台信号冲突或来源不可信时只记录站内事实，不向任何广告平台发送。
 - Browser 与 Server 共用 external event ID，支持同平台去重。

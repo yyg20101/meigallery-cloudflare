@@ -8,7 +8,8 @@ import {
 } from './verify-production.mjs'
 
 const healthyState = {
-  sourceRouterCleanupMigrationCount: 1,
+  attributionCoreTableCount: 9,
+  obsoleteAttributionTableCount: 0,
   invalidConnectionCount: 0,
   openCriticalIncidentCount: 0,
   expiredOutboxCount: 0,
@@ -44,11 +45,15 @@ describe('生产快速验证', () => {
     assert.equal(queries, 1)
   })
 
-  it('migration 缺失阻断，配置和运行异常只警告且不妨碍修复发布', () => {
+  it('最终表结构缺失或旧控制面残留时阻断，运行异常只警告', () => {
     assert.throws(() => assertAttributionStructure({
       ...healthyState,
-      sourceRouterCleanupMigrationCount: 0,
-    }), /sourceRouterCleanupMigrationCount/)
+      attributionCoreTableCount: 8,
+    }), /attributionCoreTableCount/)
+    assert.throws(() => assertAttributionStructure({
+      ...healthyState,
+      obsoleteAttributionTableCount: 1,
+    }), /obsoleteAttributionTableCount/)
     assert.doesNotThrow(() => assertAttributionStructure({
       ...healthyState,
       invalidConnectionCount: 1,
@@ -70,8 +75,10 @@ describe('生产快速验证', () => {
       },
     })
     assert.deepEqual(state, healthyState)
-    assert.match(query, /0061_attribution_source_router_cleanup\.sql/)
-    assert.doesNotMatch(query, /attribution_privacy_policy|credential_revision|connection_revision|binding\.provider/)
+    assert.match(query, /attribution_platform_connections/)
+    assert.match(query, /obsolete_attribution_table_count/)
+    assert.doesNotMatch(query, /d1_migrations/)
+    assert.doesNotMatch(query, /credential_revision|connection_revision|binding\.provider/)
   })
 })
 
