@@ -66,9 +66,6 @@ export type AnalyticsEntityType =
   | 'page'
   | 'system'
 
-/** 站内一方分析采集状态，与广告平台 Pixel 来源路由无关。 */
-export type AnalyticsConsentState = 'granted' | 'limited' | 'denied'
-
 import type {
   AdAttributionProvider as SharedAdAttributionProvider,
   CanonicalConversionEvent,
@@ -283,7 +280,6 @@ export interface AnalyticsEventPayload {
   sourceChannel?: AnalyticsSourceChannel
   deviceType?: AnalyticsDeviceType
   viewportWidth?: number
-  consentState?: AnalyticsConsentState
   entityType?: AnalyticsEntityType
   entityId?: string
   props?: Record<string, AnalyticsPropValue>

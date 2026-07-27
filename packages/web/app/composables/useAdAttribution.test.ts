@@ -40,8 +40,10 @@ describe('useAdAttribution', () => {
     await attribution.resolve({ path: '/gallery/source', query: provider === 'meta' ? { fbclid: 'click' } : {} })
 
     await expect(attribution.bootstrap()).resolves.toEqual(publicConfig)
+    await expect(attribution.bootstrap()).resolves.toEqual(publicConfig)
 
     expect(api).toHaveBeenLastCalledWith('/api/ad-attribution/bootstrap')
+    expect(api).toHaveBeenCalledTimes(2)
     expect(attribution.publicConfig.value).toEqual(publicConfig)
   })
 
@@ -129,10 +131,8 @@ describe('useAdAttribution', () => {
     })
   })
 
-  it('冲突结果不选择平台，重复解析也不保留来源信号', async () => {
-    api
-      .mockResolvedValueOnce({ provider: null, resolution: 'conflict', expiresInSeconds: null })
-      .mockResolvedValueOnce({ provider: null, resolution: 'conflict', expiresInSeconds: null })
+  it('冲突结果不选择平台，同一路由只解析一次', async () => {
+    api.mockResolvedValueOnce({ provider: null, resolution: 'conflict', expiresInSeconds: null })
     const attribution = useAdAttribution()
     const route = {
       path: '/conflict-source',
@@ -142,8 +142,42 @@ describe('useAdAttribution', () => {
     await expect(attribution.resolve(route)).resolves.toBeNull()
     await expect(attribution.resolve(route)).resolves.toBeNull()
 
-    expect(api).toHaveBeenCalledTimes(2)
+    expect(api).toHaveBeenCalledTimes(1)
     expect(attribution.resolution.value).toBe('conflict')
+  })
+
+  it('同一路由的并发调用共用一次来源解析', async () => {
+    let release!: (value: { provider: 'meta'; resolution: 'matched'; expiresInSeconds: 1800 }) => void
+    api.mockReturnValueOnce(new Promise(resolve => {
+      release = resolve
+    }))
+    const attribution = useAdAttribution()
+    const route = { path: '/meta-source', query: { fbclid: 'meta-click' } }
+
+    const first = attribution.resolve(route)
+    const second = attribution.resolve(route)
+    await Promise.resolve()
+
+    expect(api).toHaveBeenCalledTimes(1)
+    release({ provider: 'meta', resolution: 'matched', expiresInSeconds: 1_800 })
+    await expect(first).resolves.toBe('meta')
+    await expect(second).resolves.toBe('meta')
+  })
+
+  it('自然路由变化重新校验来源，但复用同平台公开配置', async () => {
+    api
+      .mockResolvedValueOnce({ provider: 'meta', resolution: 'matched', expiresInSeconds: 1_800 })
+      .mockResolvedValueOnce({ provider: 'meta', publicConfig: { provider: 'meta', pixelId: '123456789' } })
+      .mockResolvedValueOnce({ provider: 'meta', resolution: 'inherited', expiresInSeconds: 1_800 })
+    const attribution = useAdAttribution()
+
+    await attribution.resolve({ path: '/landing', query: { fbclid: 'meta-click' } })
+    await attribution.bootstrap()
+    await attribution.resolve({ path: '/gallery/demo', query: {} })
+    await attribution.bootstrap()
+
+    expect(api.mock.calls.filter(call => call[0] === '/api/ad-attribution')).toHaveLength(2)
+    expect(api.mock.calls.filter(call => call[0] === '/api/ad-attribution/bootstrap')).toHaveLength(1)
   })
 
   it('来源验证失败时本地降级并请求服务端清除旧上下文', async () => {
@@ -198,6 +232,29 @@ describe('useAdAttribution', () => {
     await expect(tiktok).resolves.toBe('tiktok')
     expect(api).toHaveBeenCalledTimes(2)
     expect(attribution.provider.value).toBe('tiktok')
+  })
+
+  it('同一路由等待者在快速切换平台时复用取消结果', async () => {
+    let releaseMeta!: (value: { provider: 'meta'; resolution: 'matched'; expiresInSeconds: 1800 }) => void
+    const metaResponse = new Promise<{ provider: 'meta'; resolution: 'matched'; expiresInSeconds: 1800 }>(resolve => {
+      releaseMeta = resolve
+    })
+    api.mockImplementation((_path, options?: { body?: Record<string, string> }) => (
+      options?.body?.fbclid
+        ? metaResponse
+        : Promise.resolve({ provider: 'tiktok', resolution: 'matched', expiresInSeconds: 1_800 })
+    ))
+    const attribution = useAdAttribution()
+    const metaRoute = { path: '/fast-meta', query: { fbclid: 'meta-click' } }
+
+    const firstMeta = attribution.resolve(metaRoute)
+    const secondMeta = attribution.resolve(metaRoute)
+    const tiktok = attribution.resolve({ path: '/fast-tiktok', query: { ttclid: 'tiktok-click' } })
+    releaseMeta({ provider: 'meta', resolution: 'matched', expiresInSeconds: 1_800 })
+
+    await expect(firstMeta).resolves.toBeNull()
+    await expect(secondMeta).resolves.toBeNull()
+    await expect(tiktok).resolves.toBe('tiktok')
   })
 
   it('clear 排在进行中的来源校验之后，旧响应不能恢复已清除来源', async () => {

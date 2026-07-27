@@ -142,7 +142,6 @@ const defaultPublicSettings = {
   ad_platform_browser_connections: [],
   analytics_enabled: 'true',
   analytics_sample_rate: '0',
-  analytics_consent_mode: 'granted',
   home_hero_title: '精选写真，按地区发现',
   home_hero_subtitle: '测试环境中的授权内容展示。',
   home_ad_enabled: 'true',

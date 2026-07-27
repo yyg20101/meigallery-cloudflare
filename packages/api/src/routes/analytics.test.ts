@@ -20,7 +20,6 @@ function createDb(enabled = true) {
               results: [
                 { key: 'analytics_enabled', value: JSON.stringify(enabled) },
                 { key: 'analytics_sample_rate', value: JSON.stringify(0) },
-                { key: 'analytics_consent_mode', value: JSON.stringify('limited') },
               ] as T[],
             }
           }

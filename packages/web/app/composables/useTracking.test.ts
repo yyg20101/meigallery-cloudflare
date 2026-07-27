@@ -210,6 +210,18 @@ describe('useTracking', () => {
     expect(adapter.signal).toHaveBeenCalledWith('meta', 'PageView', {})
   })
 
+  it('同一路由并发初始化时只发送一次 PageView', async () => {
+    const tracking = useTracking()
+
+    await Promise.all([
+      tracking.trackPageView(),
+      tracking.trackPageView(),
+    ])
+
+    expect(adapter.signal).toHaveBeenCalledTimes(1)
+    expect(adapter.signal).toHaveBeenCalledWith('meta', 'PageView', {})
+  })
+
   it('来源切换后只初始化新的 Google provider', async () => {
     await useTracking().trackPageView()
     adapter.initialize.mockClear()

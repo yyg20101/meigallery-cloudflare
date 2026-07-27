@@ -73,7 +73,6 @@ describe('register page', () => {
       getContext: () => ({
         visitorId: 'visitor_1',
         sessionId: 'session_1',
-        consentState: 'limited',
         sourceChannel: 'ad',
         sourceContext: {
           sourceName: 'meta',

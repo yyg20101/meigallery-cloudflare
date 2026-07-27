@@ -312,9 +312,9 @@ async function ensureAnalyticsVisitorAndSession(
   await db.prepare(`
     INSERT INTO analytics_visitors (
       id, first_seen_at, last_seen_at, first_source_channel, first_source_name,
-      first_landing_path, first_invite_code_id, user_id, consent_state, updated_at
+      first_landing_path, first_invite_code_id, user_id, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'limited', datetime('now'))
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(id) DO UPDATE SET
       last_seen_at = excluded.last_seen_at,
       user_id = COALESCE(excluded.user_id, analytics_visitors.user_id),

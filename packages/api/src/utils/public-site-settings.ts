@@ -1,5 +1,5 @@
 import { normalizeBooleanSetting } from './setting-normalization'
-import { normalizeAnalyticsConsentMode, safeAnalyticsSampleRate } from './analytics-settings'
+import { safeAnalyticsSampleRate } from './analytics-settings'
 import { isHomeAdActive, normalizeHomeAdScheduleValue } from './home-ad-schedule'
 import { normalizeHomeAdUrl, safeHomeAdText } from './home-ad-settings'
 import { safeInternalPathSetting, safePublicImageSettingUrl } from './public-setting-url'
@@ -51,7 +51,6 @@ export function sanitizePublicSiteSetting(key: string, value: unknown) {
   }
 
   if (key === 'analytics_sample_rate') return safeAnalyticsSampleRate(value)
-  if (key === 'analytics_consent_mode') return normalizeAnalyticsConsentMode(value)
   if (key === 'home_ad_enabled' || key === 'analytics_enabled') {
     return normalizeBooleanSetting(value)
   }

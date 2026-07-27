@@ -1,4 +1,4 @@
-import type { AnalyticsConsentState, AnalyticsDeviceType, AnalyticsPropValue, AnalyticsSourceChannel } from '@meigallery/shared'
+import type { AnalyticsDeviceType, AnalyticsPropValue, AnalyticsSourceChannel } from '@meigallery/shared'
 import { hasSensitiveAnalyticsUrl } from './trackingSanitizer'
 
 const SAFE_QUERY_KEYS = new Set([
@@ -30,7 +30,6 @@ const BLOCKED_PATH_PREFIXES = [
 
 const RESOURCE_EXT_RE = /\.(?:avif|css|csv|gif|ico|jpeg|jpg|js|json|map|mp4|png|svg|webm|webp|woff2?)$/i
 const SOURCE_CHANNELS = new Set<AnalyticsSourceChannel>(['direct', 'search', 'social', 'referral', 'invite', 'ad', 'internal', 'unknown'])
-const CONSENT_STATES = new Set<AnalyticsConsentState>(['granted', 'limited', 'denied'])
 
 export function sanitizeAnalyticsPath(input: unknown): string | null {
   const raw = String(input ?? '').trim()
@@ -101,11 +100,6 @@ export function sanitizeAnalyticsProps(props: unknown): Record<string, Analytics
 export function normalizeAnalyticsSourceChannel(input: unknown): AnalyticsSourceChannel {
   const value = String(input ?? 'unknown').trim().toLowerCase() as AnalyticsSourceChannel
   return SOURCE_CHANNELS.has(value) ? value : 'unknown'
-}
-
-export function normalizeAnalyticsConsentState(input: unknown): AnalyticsConsentState {
-  const value = String(input ?? 'limited').trim().toLowerCase() as AnalyticsConsentState
-  return CONSENT_STATES.has(value) ? value : 'limited'
 }
 
 export function detectAnalyticsDeviceType(width: number | undefined = getViewportWidth()): AnalyticsDeviceType {

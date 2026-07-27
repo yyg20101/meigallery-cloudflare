@@ -35,6 +35,11 @@ type BrowserPayload = Record<string, string | number | boolean>
 type AnalyticsContext = ReturnType<ReturnType<typeof useAnalytics>['getContext']> & { sourceChannel?: string }
 
 let lastTrackedPageKey = ''
+let pendingPageView: {
+  key: string
+  task: Promise<void>
+} | null = null
+let pageViewGeneration = 0
 
 export function useTracking() {
   const { api } = useApi()
@@ -105,7 +110,17 @@ export function useTracking() {
     }
     const pageKey = `${configKey(active.config)}|${route.fullPath}`
     if (lastTrackedPageKey === pageKey) return
-    if (await trackAdBrowserSignal(active.provider, 'PageView', {})) lastTrackedPageKey = pageKey
+    if (pendingPageView?.key === pageKey) return pendingPageView.task
+
+    const generation = pageViewGeneration
+    const signalTask = trackAdBrowserSignal(active.provider, 'PageView', {}).then((tracked) => {
+      if (tracked && generation === pageViewGeneration) lastTrackedPageKey = pageKey
+    })
+    const task = signalTask.finally(() => {
+      if (pendingPageView?.task === task) pendingPageView = null
+    })
+    pendingPageView = { key: pageKey, task }
+    return task
   }
 
   async function trackViewContent(payload: BrowserPayload) {
@@ -146,7 +161,9 @@ export function useTracking() {
   }
 
   async function teardownAdBrowserTracking() {
+    pageViewGeneration += 1
     lastTrackedPageKey = ''
+    pendingPageView = null
     await teardownAllAdBrowserProviders()
   }
 

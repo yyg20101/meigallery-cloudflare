@@ -44,7 +44,7 @@ describe('useAnalytics', () => {
 
   it('开启后生成 visitor/session，并能 flush 批量事件', async () => {
     const analytics = useAnalytics()
-    analytics.initialize({ enabled: true, consentState: 'granted', route })
+    analytics.initialize({ enabled: true, route })
     analytics.trackPageView(route)
 
     expect(analytics.getContext().visitorId).toMatch(/^visitor_/)
@@ -70,7 +70,6 @@ describe('useAnalytics', () => {
     const analytics = useAnalytics()
     analytics.initialize({
       enabled: true,
-      consentState: 'granted',
       sourceChannel: 'social',
       sourceContext: {
         referrer: 'https://t.me/channel',
@@ -115,7 +114,6 @@ describe('useAnalytics', () => {
       const analytics = useAnalytics()
       analytics.initialize({
         enabled: true,
-        consentState: 'granted',
         sourceChannel: 'ad',
         sourceContext: { utmContent },
         route,
@@ -134,7 +132,7 @@ describe('useAnalytics', () => {
 
   it('允许外部传入 eventId 并随 flush 上报', async () => {
     const analytics = useAnalytics()
-    analytics.initialize({ enabled: true, consentState: 'granted', route })
+    analytics.initialize({ enabled: true, route })
     analytics.track('contact_method_click', {
       eventId: 'conv_event_1',
       entityType: 'contact',
@@ -155,9 +153,9 @@ describe('useAnalytics', () => {
     ]))
   })
 
-  it('limited consent 会跳过非必要点击和曝光事件', () => {
+  it('开启后不再按自建 consent 状态丢弃站内分析事件', () => {
     const analytics = useAnalytics()
-    analytics.initialize({ enabled: true, consentState: 'limited', route })
+    analytics.initialize({ enabled: true, route })
     analytics.track('home_ad_click', { props: { ad_id: 'ad_1' } })
     analytics.track('contact_qr_expand', {
       entityType: 'contact',
@@ -165,14 +163,14 @@ describe('useAnalytics', () => {
     })
     analytics.track('register_submit', { props: { email_verification_enabled: false } })
 
-    expect(analytics.state.value.queue.some(event => event.eventName === 'home_ad_click')).toBe(false)
-    expect(analytics.state.value.queue.some(event => event.eventName === 'contact_qr_expand')).toBe(false)
+    expect(analytics.state.value.queue.some(event => event.eventName === 'home_ad_click')).toBe(true)
+    expect(analytics.state.value.queue.some(event => event.eventName === 'contact_qr_expand')).toBe(true)
     expect(analytics.state.value.queue.some(event => event.eventName === 'register_submit')).toBe(true)
   })
 
   it('15 秒心跳只累计有效浏览时长，不发网络请求', async () => {
     const analytics = useAnalytics()
-    analytics.initialize({ enabled: true, consentState: 'granted', route })
+    analytics.initialize({ enabled: true, route })
     analytics.trackPageView(route)
     await analytics.flush()
     apiMock.mockClear()
@@ -187,7 +185,7 @@ describe('useAnalytics', () => {
     const sendBeacon = vi.fn().mockReturnValue(true)
     Object.defineProperty(navigator, 'sendBeacon', { value: sendBeacon, configurable: true })
     const analytics = useAnalytics()
-    analytics.initialize({ enabled: true, consentState: 'granted', route })
+    analytics.initialize({ enabled: true, route })
     analytics.trackPageView(route)
     analytics.state.value.currentPageStartedAt = Date.now() - 20_000
     analytics.trackPageLeave(route)
@@ -202,7 +200,7 @@ describe('useAnalytics', () => {
   it('flush 失败会把事件放回队列并持久化到 localStorage', async () => {
     apiMock.mockRejectedValueOnce(new Error('network'))
     const analytics = useAnalytics()
-    analytics.initialize({ enabled: true, consentState: 'granted', route })
+    analytics.initialize({ enabled: true, route })
     analytics.track('login_submit', { props: { identifier_type: 'email' } })
 
     await analytics.flush()
