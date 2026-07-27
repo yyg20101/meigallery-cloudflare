@@ -15,7 +15,6 @@ const LINK_SCHEMA = `
     name TEXT NOT NULL,
     channel TEXT NOT NULL,
     slug TEXT NOT NULL UNIQUE,
-    link_proof TEXT NOT NULL,
     target_path TEXT NOT NULL,
     utm_source TEXT NOT NULL,
     utm_medium TEXT NOT NULL,
@@ -148,7 +147,7 @@ describe('统一归因后台 API', () => {
         pageViewCount: 7,
         contactCount: 1,
         completeRegistrationCount: 1,
-        trackingPath: expect.stringMatching(/[?&]mg_proof=[0-9a-f]{64}(?:&|$)/),
+        trackingPath: expect.not.stringContaining('mg_proof'),
       }),
     ])
   })
@@ -260,11 +259,11 @@ async function seed() {
 
 function trackingSource(id: string, name: string, slug: string, provider: 'meta' | 'google') {
   return db.prepare(`INSERT INTO analytics_tracking_sources (
-    id, name, channel, slug, link_proof, target_path, utm_source, utm_medium, utm_campaign,
+    id, name, channel, slug, target_path, utm_source, utm_medium, utm_campaign,
     utm_content, ad_provider, status, note, created_by, created_at, updated_at
-  ) VALUES (?, ?, 'ad', ?, ?, '/', ?, 'paid_social', ?, 'creative-a', ?, 'active', '', 1,
+  ) VALUES (?, ?, 'ad', ?, '/', ?, 'paid_social', ?, 'creative-a', ?, 'active', '', 1,
     '2026-07-15T00:00:00.000Z', '2026-07-15T00:00:00.000Z'
-  )`).bind(id, name, slug, provider === 'meta' ? 'a'.repeat(64) : 'b'.repeat(64), slug, `${slug}-campaign`, provider)
+  )`).bind(id, name, slug, slug, `${slug}-campaign`, provider)
 }
 
 function connection(provider: 'meta' | 'google') {

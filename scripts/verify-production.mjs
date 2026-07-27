@@ -34,7 +34,8 @@ export async function verifyProduction(scope = 'all', options = {}) {
 
 export function assertAttributionStructure(state) {
   const blockers = [
-    ['sourceRouterCleanupMigrationCount', state.sourceRouterCleanupMigrationCount !== 1],
+    ['attributionCoreTableCount', state.attributionCoreTableCount !== 9],
+    ['obsoleteAttributionTableCount', state.obsoleteAttributionTableCount !== 0],
   ].filter(([, blocked]) => blocked).map(([name]) => name)
   if (blockers.length > 0) {
     throw new Error(`PRODUCTION_ATTRIBUTION_STRUCTURE_INVALID:${blockers.join(',')}`)
@@ -54,9 +55,31 @@ export function attributionWarnings(state) {
 export async function queryAttributionState(options = {}) {
   const sql = `
     SELECT
-      (SELECT COUNT(*) FROM d1_migrations
-        WHERE name = '0061_attribution_source_router_cleanup.sql')
-        AS source_router_cleanup_migration_count,
+      (SELECT COUNT(*) FROM sqlite_master
+        WHERE type = 'table'
+          AND name IN (
+            'attribution_platform_connections',
+            'attribution_event_bindings',
+            'attribution_credentials',
+            'attribution_conversion_facts',
+            'attribution_deliveries',
+            'attribution_outbox',
+            'attribution_provider_receipts',
+            'attribution_incidents',
+            'attribution_quality_snapshots'
+          )) AS attribution_core_table_count,
+      (SELECT COUNT(*) FROM sqlite_master
+        WHERE type = 'table'
+          AND (
+            name LIKE 'meta_%'
+            OR name LIKE 'tiktok_%'
+            OR name LIKE 'attribution_runtime_%'
+            OR name IN (
+              'attribution_privacy_policy',
+              'attribution_verifications',
+              'attribution_business_outbox'
+            )
+          )) AS obsolete_attribution_table_count,
       (SELECT COUNT(*)
         FROM attribution_platform_connections AS connection
         WHERE connection.enabled = 1

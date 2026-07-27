@@ -112,21 +112,19 @@ describe('useAdAttribution', () => {
       .not.toContain('sensitive-google-click')
   })
 
-  it('后台投放链接同时提交来源 code 与不可伪造的校验参数', async () => {
+  it('后台投放链接只提交数据库受管来源 code', async () => {
     api.mockResolvedValueOnce({ provider: 'meta', resolution: 'matched', expiresInSeconds: 2_592_000 })
     const attribution = useAdAttribution()
-    const proof = 'a'.repeat(64)
 
     await attribution.resolve({
       path: '/',
-      query: { mg_source: 'ad-meta-a', mg_proof: proof, utm_source: 'ad-meta-a' },
+      query: { mg_source: 'ad-meta-a', utm_source: 'ad-meta-a' },
     })
 
     expect(api).toHaveBeenCalledWith('/api/ad-attribution', {
       method: 'PUT',
       body: expect.objectContaining({
         trackingSourceSlug: 'ad-meta-a',
-        managedLinkProof: proof,
       }),
     })
   })

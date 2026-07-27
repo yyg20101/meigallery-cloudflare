@@ -44,16 +44,16 @@ Web 和 API 都部署为 Cloudflare Workers，不使用 Cloudflare Pages。
 
 - 当前分支是干净的 `main`。
 - Wrangler 已登录。
-- API 部署通过 TypeScript；只有 `0061_attribution_source_router_cleanup.sql` 待执行时才运行对应 migration 测试。
+- API 部署通过 TypeScript；migration 测试统一在 CI 执行，production 发现任意待执行 migration 时先导出 D1 备份。
 - Web 部署通过 Nuxt build。
 - 只在部署 API 时检查和应用 D1 migration。
 - 只在高风险 migration 待执行时导出 production D1 备份。
-- API 与 Web 都先上传不接流量的 Worker Version，再执行 migration；成功后连续激活两个已就绪 Version，避免迁移后才上传 Web 造成新旧归因协议并存。上传本身完成 Worker 构建校验，migration 失败时线上继续使用旧 Version。
+- API 与 Web 都先上传不接流量的 Worker Version，再执行向后兼容的 migration；成功后连续激活两个已就绪 Version。删除列或表的 contract migration 必须等兼容代码先完成独立生产发布后，再在下一次发布执行。
 - 部署后仅验证受影响服务。
 
 生产验证不要求 API 和 Web 的 Git commit 相同。commit 仍写入 Worker 供观察和排障，但不参与运行时或发布放行。
 
-运行期 dead letter、过期 Outbox、critical incident 或连接配置异常会输出警告，不能阻止修复版本发布。服务不可用或本版本要求的 `0061_attribution_source_router_cleanup.sql` 未应用才视为阻断。
+运行期 dead letter、过期 Outbox、critical incident 或连接配置异常会输出警告，不能阻止修复版本发布。服务不可用、最终归因核心表缺失或旧控制面表重新出现才视为阻断。
 
 ## Dev 部署
 
@@ -92,7 +92,7 @@ node scripts/verify-production.mjs all
 API 验证：
 
 - `/api/health` 可用且环境为 production。
-- `0061_attribution_source_router_cleanup.sql` 已应用。
+- 最终归因核心表完整且旧控制面表不存在。
 - 启用的平台连接具有有效通道、一份当前凭证和两个标准事件绑定。
 
 Web 验证：

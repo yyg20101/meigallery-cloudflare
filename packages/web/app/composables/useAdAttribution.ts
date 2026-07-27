@@ -31,7 +31,6 @@ export function useAdAttribution() {
             gbraid: queryValue(route.query.gbraid),
             wbraid: queryValue(route.query.wbraid),
             trackingSourceSlug: queryValue(route.query.mg_source),
-            managedLinkProof: queryValue(route.query.mg_proof),
           },
         })
         const normalized = normalizeServerResolution(response)
