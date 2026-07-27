@@ -69,15 +69,21 @@ describe('公开设置广告配置隔离', () => {
     expect(publicSettingsRoute).not.toContain('browserConnections')
   })
 
-  it('归因解析和 bootstrap 都纳入公开 API 统一限流', () => {
+  it('归因解析和 bootstrap 使用独立限流桶', () => {
     const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8')
+    const attributionRateLimit = source.slice(
+      source.indexOf('// 广告来源解析独立计数'),
+      source.indexOf('// 公开 API 速率限制兜底'),
+    )
     const publicRateLimit = source.slice(
       source.indexOf('// 公开 API 速率限制兜底'),
       source.indexOf('// 外部导入接口速率限制兜底'),
     )
 
-    expect(publicRateLimit).toContain("'/api/ad-attribution'")
-    expect(publicRateLimit).toContain("'/api/ad-attribution/*'")
+    expect(attributionRateLimit).toContain("'/api/ad-attribution'")
+    expect(attributionRateLimit).toContain("'/api/ad-attribution/*'")
+    expect(attributionRateLimit).toContain("name: 'ad-attribution'")
+    expect(publicRateLimit).not.toContain("'/api/ad-attribution'")
   })
 })
 

@@ -259,11 +259,6 @@ export function normalizeAnalyticsSampleRate(value: unknown) {
   return Math.min(rate, 0.05)
 }
 
-export function normalizeAnalyticsConsentMode(value: unknown) {
-  const mode = String(value ?? 'limited').trim()
-  return mode === 'granted' || mode === 'limited' || mode === 'denied' ? mode : 'limited'
-}
-
 export function normalizeSiteSettingDateTime(value: unknown) {
   if (typeof value !== 'string') return ''
   const trimmed = value.trim()

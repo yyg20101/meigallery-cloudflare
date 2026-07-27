@@ -1,7 +1,6 @@
 import type {
   AnalyticsBatchRequest,
   AnalyticsBatchResponse,
-  AnalyticsConsentState,
   AnalyticsEntityType,
   AnalyticsEventName,
   AnalyticsEventPayload,
@@ -14,7 +13,6 @@ import { normalizeAnalyticsRoute, type AnalyticsRouteLike } from '~/utils/analyt
 import {
   detectAnalyticsDeviceType,
   getViewportBucket,
-  normalizeAnalyticsConsentState,
   normalizeAnalyticsSourceChannel,
   sanitizeAnalyticsProps,
   sanitizeAnalyticsTitle,
@@ -28,7 +26,6 @@ interface AnalyticsState {
   visitorId: string
   sessionId: string
   userId: number | null
-  consentState: AnalyticsConsentState
   sourceChannel: AnalyticsSourceChannel
   sourceContext: AnalyticsSourceContext
   queue: AnalyticsEventPayload[]
@@ -42,7 +39,6 @@ interface AnalyticsState {
 
 interface AnalyticsInitOptions {
   enabled: boolean
-  consentState?: AnalyticsConsentState | string
   sourceChannel?: AnalyticsSourceChannel | string
   sourceContext?: Partial<AnalyticsSourceContext>
   api?: AnalyticsApi
@@ -81,22 +77,6 @@ const SESSION_KEY = 'mg_analytics_session'
 const FAILED_QUEUE_KEY = 'mg_analytics_failed_queue'
 const VISITOR_TTL_MS = ANALYTICS_RETENTION.VISITOR_TTL_DAYS * 24 * 60 * 60 * 1000
 const SESSION_IDLE_MS = ANALYTICS_RETENTION.SESSION_IDLE_MINUTES * 60 * 1000
-const NON_ESSENTIAL_LIMITED_EVENTS = new Set<AnalyticsEventName>([
-  'gallery_card_impression',
-  'gallery_card_click',
-  'home_ad_impression',
-  'home_ad_click',
-  'media_thumbnail_impression',
-  'media_viewer_open',
-  'scroll_depth',
-  'engagement_ping',
-  'filter_selected',
-  'filter_removed',
-  'sort_changed',
-  'load_more',
-  'contact_qr_expand',
-])
-
 let analyticsApi: AnalyticsApi | null = null
 let analyticsBaseURL = ''
 let flushTimer: ReturnType<typeof setInterval> | null = null
@@ -125,7 +105,6 @@ export function useAnalytics() {
       initialized: true,
       visitorId,
       sessionId: session || createAnalyticsId('session'),
-      consentState: normalizeAnalyticsConsentState(options.consentState),
       sourceChannel: normalizeAnalyticsSourceChannel(options.sourceChannel),
       sourceContext: normalizeSourceContext(options.sourceContext),
       lastActivityAt: now,
@@ -142,9 +121,6 @@ export function useAnalytics() {
 
   function track(eventName: AnalyticsEventName, options: TrackOptions = {}) {
     if (!isBrowser() || !state.value.enabled || !state.value.initialized) return
-    if (state.value.consentState === 'denied') return
-    if (state.value.consentState === 'limited' && NON_ESSENTIAL_LIMITED_EVENTS.has(eventName)) return
-
     const normalizedRoute = normalizeAnalyticsRoute(options.route || currentRouteLike())
     if (normalizedRoute.skip) return
 
@@ -165,7 +141,6 @@ export function useAnalytics() {
       sourceChannel: normalizeAnalyticsSourceChannel(options.sourceChannel ?? state.value.sourceChannel),
       deviceType: detectAnalyticsDeviceType(),
       viewportWidth: getViewportBucket(),
-      consentState: state.value.consentState,
       entityType: options.entityType ?? normalizedRoute.entityType,
       entityId: options.entityId ?? normalizedRoute.entityId,
       props: sanitizeAnalyticsProps({
@@ -283,15 +258,10 @@ export function useAnalytics() {
     state.value.userId = userId
   }
 
-  function setConsentState(consentState: AnalyticsConsentState | string) {
-    state.value.consentState = normalizeAnalyticsConsentState(consentState)
-  }
-
   function getContext() {
     return {
       visitorId: state.value.visitorId,
       sessionId: state.value.sessionId,
-      consentState: state.value.consentState,
       sourceChannel: state.value.sourceChannel,
       sourceContext: state.value.sourceContext,
     }
@@ -312,7 +282,6 @@ export function useAnalytics() {
     flush,
     sendSessionEnd,
     identifyUser,
-    setConsentState,
     getContext,
     updateScrollDepth,
   }
@@ -334,7 +303,6 @@ function createInitialAnalyticsState(): AnalyticsState {
     visitorId: '',
     sessionId: '',
     userId: null,
-    consentState: 'limited',
     sourceChannel: 'unknown',
     sourceContext: normalizeSourceContext(),
     queue: [],

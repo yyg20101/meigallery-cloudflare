@@ -9,6 +9,10 @@ type AttributionRoute = {
 
 let operationQueue: Promise<void> = Promise.resolve()
 let operationVersion = 0
+let pendingResolution: {
+  routeKey: string
+  task: Promise<AdAttributionProvider | null>
+} | null = null
 const SERVER_CONTEXT_TTL_SECONDS = 30 * 24 * 60 * 60
 
 export function useAdAttribution() {
@@ -16,11 +20,19 @@ export function useAdAttribution() {
   const provider = useState<AdAttributionProvider | null>('ad-attribution-provider', () => null)
   const resolution = useState<AdAttributionResolution>('ad-attribution-resolution', () => 'unresolved')
   const publicConfig = useState<AdBrowserPublicConfig | null>('ad-attribution-public-config', () => null)
+  const resolvedRouteKey = useState<string>('ad-attribution-route-key', () => '')
 
   async function resolve(route: AttributionRoute): Promise<AdAttributionProvider | null> {
     if (import.meta.server) return null
+    const routeKey = attributionRouteKey(route)
+    if (resolvedRouteKey.value === routeKey) {
+      return pendingResolution?.routeKey === routeKey
+        ? pendingResolution.task
+        : provider.value
+    }
+    resolvedRouteKey.value = routeKey
     const version = ++operationVersion
-    const task = operationQueue.then(async () => {
+    const queuedTask = operationQueue.then(async () => {
       try {
         const response = await api<{ provider?: unknown; resolution?: unknown; expiresInSeconds?: unknown }>('/api/ad-attribution', {
           method: 'PUT',
@@ -38,16 +50,21 @@ export function useAdAttribution() {
         if (version !== operationVersion) return null
         if (requiresFullReload(provider.value, normalized.provider)) {
           resetLocalState(provider, resolution, publicConfig)
+          resolvedRouteKey.value = ''
           window.location.reload()
           return null
         }
+        const providerChanged = provider.value !== normalized.provider
         provider.value = normalized.provider
         resolution.value = normalized.resolution
-        publicConfig.value = null
+        if (providerChanged) publicConfig.value = null
         return normalized.provider
       }
       catch {
-        if (version === operationVersion) resetLocalState(provider, resolution, publicConfig)
+        if (version === operationVersion) {
+          resetLocalState(provider, resolution, publicConfig)
+          resolvedRouteKey.value = ''
+        }
         try {
           await api('/api/ad-attribution', { method: 'DELETE' })
         }
@@ -57,6 +74,10 @@ export function useAdAttribution() {
         return null
       }
     })
+    const task = queuedTask.finally(() => {
+      if (pendingResolution?.task === task) pendingResolution = null
+    })
+    pendingResolution = { routeKey, task }
     operationQueue = task.then(() => undefined, () => undefined)
     return task
   }
@@ -66,6 +87,7 @@ export function useAdAttribution() {
     const expectedProvider = provider.value
     const version = operationVersion
     const task = operationQueue.then(async () => {
+      if (publicConfig.value?.provider === expectedProvider) return publicConfig.value
       try {
         const response = await api<{ provider?: unknown; publicConfig?: unknown }>('/api/ad-attribution/bootstrap')
         const config = normalizePublicConfig(response.publicConfig)
@@ -85,6 +107,7 @@ export function useAdAttribution() {
   async function clear() {
     const version = ++operationVersion
     resetLocalState(provider, resolution, publicConfig)
+    resolvedRouteKey.value = ''
     if (import.meta.server) return
     const task = operationQueue.then(async () => {
       try {
@@ -124,6 +147,28 @@ function queryValue(value: unknown) {
   if (typeof raw !== 'string') return ''
   const normalized = raw.trim()
   return normalized.length > 1_000 ? normalized.slice(0, 1_001) : normalized
+}
+
+function attributionRouteKey(route: AttributionRoute) {
+  const value = [
+    route.path,
+    queryValue(route.query.fbclid),
+    queryValue(route.query.ttclid),
+    queryValue(route.query.gclid),
+    queryValue(route.query.gbraid),
+    queryValue(route.query.wbraid),
+    queryValue(route.query.mg_source),
+  ].join('\u001f')
+  return stableHash(value)
+}
+
+function stableHash(value: string) {
+  let hash = 0xcbf29ce484222325n
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= BigInt(value.charCodeAt(index))
+    hash = BigInt.asUintN(64, hash * 0x100000001b3n)
+  }
+  return hash.toString(16).padStart(16, '0')
 }
 
 function normalizeProvider(value: unknown): AdAttributionProvider | null {

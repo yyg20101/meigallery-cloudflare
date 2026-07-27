@@ -686,11 +686,11 @@ INSERT INTO site_settings (key, value) VALUES
 - Cron 每天按运营自然日重建昨天和当天的来源、页面、事件、路径、邀请和点击聚合；聚合任务使用删除指定日期旧数据再插入的幂等口径。
 - 公开采集接口单批最多 20 个事件，payload 上限 16KB，并叠加 IP、visitor、session 三维应用内兜底限流。
 - Web SDK 队列最多保留 50 条事件，达到 20 条、10 秒定时、路由切换、`visibilitychange=hidden` 或 `pagehide` 时 flush；`pagehide` 优先使用 `sendBeacon`，失败事件保存在 localStorage 下次重试。
-- Web SDK 的 15 秒 heartbeat 只累计有效浏览时长，不单独发网络请求；`consent_state=limited` 时跳过非必要点击和曝光明细，保留注册、登录、邀请等关键转化事件。
+- Web SDK 的 15 秒 heartbeat 只累计有效浏览时长，不单独发网络请求；站内分析只受统一 `analytics_enabled` 开关和原始事件采样率控制，不包含自建 consent 状态。
 - `analytics_events` 只保留事件名、session 和实体三类必要组合索引：`(event_name, occurred_at)`、`(session_id, occurred_at)`、`(entity_type, entity_id, occurred_at)`。
 - 日报聚合表均以 `date` 加主要维度建立唯一索引，供 Cron 聚合任务幂等 upsert。
 - 不给 `event_props` 任意 JSON 字段建索引，避免高基数属性导致写放大和存储成本失控。
-- `site_settings` 已新增 `analytics_enabled=false`、`analytics_sample_rate=0.01`、`analytics_consent_mode=limited`，因此前端 SDK 默认保持关闭态，需由 Owner 按上线顺序显式开启。
+- `site_settings` 保留 `analytics_enabled=false`、`analytics_sample_rate=0.01`；前端 SDK 默认保持关闭态，需由 Owner 按上线顺序显式开启。
 - 回滚优先关闭 `analytics_enabled`：新页面不会初始化 SDK，API 接收旧页面缓存事件时返回 disabled 且不写 D1；如果需要回滚 Web Worker，API 仍保留采集接口兼容旧缓存页面发送的批量事件和 session end 简写 payload。
 
 ### home_ads

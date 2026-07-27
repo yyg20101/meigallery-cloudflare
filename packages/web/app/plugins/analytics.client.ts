@@ -31,7 +31,6 @@ export default defineNuxtPlugin(async () => {
   const {
     fetchSettings,
     analyticsEnabled,
-    analyticsConsentMode,
   } = useSiteSettings()
   const analytics = useAnalytics()
 
@@ -41,7 +40,6 @@ export default defineNuxtPlugin(async () => {
   const initialSource = deriveInitialSource(route)
   analytics.initialize({
     enabled: analyticsEnabled.value,
-    consentState: analyticsConsentMode.value,
     sourceChannel: initialSource.channel,
     sourceContext: initialSource.context,
     route,

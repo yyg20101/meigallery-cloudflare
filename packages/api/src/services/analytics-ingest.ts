@@ -1,6 +1,5 @@
 import type {
   AnalyticsBatchResponse,
-  AnalyticsConsentState,
   AnalyticsDeviceType,
   AnalyticsEntityType,
   AnalyticsEventName,
@@ -18,7 +17,7 @@ import {
   truncateAnalyticsString,
 } from '../utils/analytics-events'
 import { mergeD1Usage, readD1UsageMeta, type D1Usage } from '../utils/analytics-cost'
-import { normalizeAnalyticsConsentMode, safeAnalyticsSampleRate } from '../utils/analytics-settings'
+import { safeAnalyticsSampleRate } from '../utils/analytics-settings'
 import { clampActiveSeconds, toOperationDateShanghai } from '../utils/analytics-time'
 import { deriveSourceAttribution, sanitizeAnalyticsPath, sanitizeReferrer } from '../utils/analytics-url'
 import { normalizeBooleanSetting } from '../utils/setting-normalization'
@@ -39,7 +38,6 @@ export interface AnalyticsIngestContext {
 interface AnalyticsSettings {
   enabled: boolean
   sampleRate: number
-  consentMode: AnalyticsConsentState
 }
 
 interface NormalizedAnalyticsBatch {
@@ -65,7 +63,6 @@ interface NormalizedAnalyticsEvent {
   sourceChannel: AnalyticsSourceChannel
   sourceName: string
   deviceType: AnalyticsDeviceType
-  consentState: AnalyticsConsentState
   entityType: AnalyticsEntityType
   entityId: string
   props: Record<string, AnalyticsPropValue>
@@ -95,7 +92,7 @@ export class AnalyticsIngestError extends Error {
   }
 }
 
-const ANALYTICS_SETTING_KEYS = ['analytics_enabled', 'analytics_sample_rate', 'analytics_consent_mode'] as const
+const ANALYTICS_SETTING_KEYS = ['analytics_enabled', 'analytics_sample_rate'] as const
 
 const EVENT_ID_RE = /^[A-Za-z0-9:_-]{8,140}$/
 const VISITOR_SESSION_ID_RE = /^[A-Za-z0-9_-]{8,120}$/
@@ -140,7 +137,7 @@ export async function ingestAnalyticsBatch(
     return { accepted: 0, rejected: 0, duplicate: 0, disabled: true, usage: emptyUsage() }
   }
 
-  const batch = normalizeAnalyticsBatch(context.body, settings, context)
+  const batch = normalizeAnalyticsBatch(context.body)
   const response: AnalyticsBatchResponse & { usage: D1Usage } = {
     accepted: 0,
     rejected: 0,
@@ -153,7 +150,7 @@ export async function ingestAnalyticsBatch(
 
   for (const rawEvent of batch.events) {
     try {
-      const event = normalizeAnalyticsEvent(rawEvent, batch, settings, context)
+      const event = normalizeAnalyticsEvent(rawEvent, batch, context)
       const storedRaw = shouldStoreRawEvent(event.eventName, event.eventId, settings.sampleRate)
       event.sampled = storedRaw && !CRITICAL_RAW_EVENTS.has(event.eventName)
 
@@ -284,19 +281,13 @@ async function readAnalyticsSettings(db: AnalyticsDb): Promise<AnalyticsSettings
     .all<{ key: string; value: string }>()
 
   const values = new Map(result.results.map(row => [row.key, parseStoredSettingValue(row.value)]))
-  const consentMode = normalizeAnalyticsConsentMode(values.get('analytics_consent_mode')) as AnalyticsConsentState
   return {
     enabled: normalizeBooleanSetting(values.get('analytics_enabled')),
     sampleRate: safeAnalyticsSampleRate(values.get('analytics_sample_rate')),
-    consentMode,
   }
 }
 
-function normalizeAnalyticsBatch(
-  body: unknown,
-  _settings: AnalyticsSettings,
-  _context: AnalyticsIngestContext,
-): NormalizedAnalyticsBatch {
+function normalizeAnalyticsBatch(body: unknown): NormalizedAnalyticsBatch {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     throw new AnalyticsIngestError(400, 'ANALYTICS_BODY_INVALID', '分析上报内容必须是 JSON 对象')
   }
@@ -330,7 +321,6 @@ function normalizeAnalyticsBatch(
 function normalizeAnalyticsEvent(
   raw: Record<string, unknown>,
   batch: NormalizedAnalyticsBatch,
-  settings: AnalyticsSettings,
   context: AnalyticsIngestContext,
 ): NormalizedAnalyticsEvent {
   const eventId = normalizeEventId(readRequiredString(raw, 'eventId', 'event_id'))
@@ -368,8 +358,6 @@ function normalizeAnalyticsEvent(
   const sourceChannel = isAnalyticsSourceChannel(sourceFromPayload) ? sourceFromPayload : derivedSource.channel
   const deviceTypeValue = readOptionalString(raw, 'deviceType', 'device_type')
   const deviceType = normalizeDeviceType(deviceTypeValue)
-  const consentValue = readOptionalString(raw, 'consentState', 'consent_state')
-  const consentState = normalizeConsentState(consentValue, settings.consentMode)
   const entityTypeValue = readOptionalString(raw, 'entityType', 'entity_type')
   const entityType = isAnalyticsEntityType(entityTypeValue) ? entityTypeValue : defaultEntityType(eventNameValue)
   const value = normalizeOptionalFiniteNumber(raw.value)
@@ -393,7 +381,6 @@ function normalizeAnalyticsEvent(
     sourceChannel,
     sourceName: truncateAnalyticsString(sourceNameFromProps || derivedSource.name, 120),
     deviceType,
-    consentState,
     entityType,
     entityId: truncateAnalyticsString(readOptionalString(raw, 'entityId', 'entity_id') || '', 120),
     props,
@@ -404,119 +391,6 @@ function normalizeAnalyticsEvent(
     isEntry: props.is_landing === true,
     dedupeKey: truncateAnalyticsString(readOptionalString(raw, 'dedupeKey', 'dedupe_key') || '', 160),
     sampled: false,
-  }
-}
-
-async function _persistAcceptedEvent(
-  db: AnalyticsDb,
-  batch: NormalizedAnalyticsBatch,
-  event: NormalizedAnalyticsEvent,
-  context: AnalyticsIngestContext,
-  storedRaw: boolean,
-  response: AnalyticsBatchResponse & { usage: D1Usage },
-) {
-  await runAndTrack(db, response, `
-    INSERT INTO analytics_visitors (
-      id, first_seen_at, last_seen_at, first_source_channel, first_source_name,
-      first_landing_path, first_invite_code_id, user_id, consent_state, updated_at
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-    ON CONFLICT(id) DO UPDATE SET
-      last_seen_at = excluded.last_seen_at,
-      user_id = COALESCE(excluded.user_id, analytics_visitors.user_id),
-      consent_state = excluded.consent_state,
-      updated_at = datetime('now')
-  `, [
-    batch.visitorId,
-    event.occurredAt,
-    event.occurredAt,
-    event.sourceChannel,
-    event.sourceName,
-    event.path,
-    stringProp(event.props.invite_code_id),
-    context.userId,
-    event.consentState,
-  ])
-
-  const isSessionEnd = event.eventName === 'session_end' || event.eventName === 'page_leave'
-  await runAndTrack(db, response, `
-    INSERT INTO analytics_sessions (
-      id, visitor_id, user_id, started_at, ended_at, entry_path, exit_path,
-      source_channel, source_name, referrer_host, utm_source, utm_medium,
-      utm_campaign, invite_code_id, device_type, country, active_seconds,
-      page_view_count, event_count, updated_at
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'))
-    ON CONFLICT(id) DO UPDATE SET
-      user_id = COALESCE(excluded.user_id, analytics_sessions.user_id),
-      ended_at = COALESCE(excluded.ended_at, analytics_sessions.ended_at),
-      exit_path = CASE WHEN excluded.exit_path != '' THEN excluded.exit_path ELSE analytics_sessions.exit_path END,
-      active_seconds = analytics_sessions.active_seconds + excluded.active_seconds,
-      page_view_count = analytics_sessions.page_view_count + excluded.page_view_count,
-      event_count = analytics_sessions.event_count + 1,
-      updated_at = datetime('now')
-  `, [
-    batch.sessionId,
-    batch.visitorId,
-    context.userId,
-    event.occurredAt,
-    isSessionEnd ? event.occurredAt : null,
-    event.path,
-    isSessionEnd ? event.path : '',
-    event.sourceChannel,
-    event.sourceName,
-    event.referrerHost,
-    event.utmSource,
-    event.utmMedium,
-    event.utmCampaign,
-    stringProp(event.props.invite_code_id),
-    event.deviceType,
-    context.country || '',
-    event.activeSeconds,
-    event.eventName === 'page_view' ? 1 : 0,
-  ])
-
-  await writeSessionSummary(db, batch, event, context, response)
-  if (event.eventName === 'page_view' || event.eventName === 'page_leave' || event.eventName === 'scroll_depth') {
-    await writePageSummary(db, batch, event, context, response)
-  }
-  await writeDailyAggregates(db, event, response)
-  await writeSourcePageDailyBatch(db, [event], response)
-  await writeSourceClickDailyBatch(db, [event], response)
-
-  if (storedRaw) {
-    const result = await runAndTrack(db, response, `
-      INSERT OR IGNORE INTO analytics_events (
-        id, event_name, occurred_at, received_at, visitor_id, session_id, user_id,
-        route_name, path, page_title, referrer_host, source_channel, device_type,
-        country, app_env, consent_state, entity_type, entity_id, event_props,
-        value, dedupe_key, sampled
-      )
-      VALUES (?, ?, ?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      event.eventId,
-      event.eventName,
-      event.occurredAt,
-      batch.visitorId,
-      batch.sessionId,
-      context.userId,
-      event.routeName,
-      event.path,
-      event.pageTitle,
-      event.referrerHost,
-      event.sourceChannel,
-      event.deviceType,
-      context.country || '',
-      context.appEnv || 'production',
-      event.consentState,
-      event.entityType,
-      event.entityId,
-      JSON.stringify(event.props),
-      event.value,
-      event.dedupeKey,
-      event.sampled ? 1 : 0,
-    ])
-    if ((result.meta?.changes ?? 1) === 0) response.duplicate += 1
   }
 }
 
@@ -535,13 +409,12 @@ async function persistAcceptedEvents(
   await runAndTrack(db, response, `
     INSERT INTO analytics_visitors (
       id, first_seen_at, last_seen_at, first_source_channel, first_source_name,
-      first_landing_path, first_invite_code_id, user_id, consent_state, updated_at
+      first_landing_path, first_invite_code_id, user_id, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(id) DO UPDATE SET
       last_seen_at = excluded.last_seen_at,
       user_id = COALESCE(excluded.user_id, analytics_visitors.user_id),
-      consent_state = excluded.consent_state,
       updated_at = datetime('now')
   `, [
     batch.visitorId,
@@ -552,7 +425,6 @@ async function persistAcceptedEvents(
     first.path,
     stringProp(first.props.invite_code_id),
     context.userId,
-    last.consentState,
   ])
 
   const endedAt = lastSessionEndedAt(events)
@@ -1067,7 +939,7 @@ async function writeRawEventsBatch(
       INSERT OR IGNORE INTO analytics_events (
         id, event_name, occurred_at, received_at, visitor_id, session_id, user_id,
         route_name, path, page_title, referrer_host, source_channel, device_type,
-        country, app_env, consent_state, entity_type, entity_id, event_props,
+        country, app_env, entity_type, entity_id, event_props,
         value, dedupe_key, sampled
       )
       VALUES (?, ?, ?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -1086,7 +958,6 @@ async function writeRawEventsBatch(
       event.deviceType,
       context.country || '',
       context.appEnv || 'production',
-      event.consentState,
       event.entityType,
       event.entityId,
       JSON.stringify(event.props),
@@ -1125,180 +996,6 @@ function maxBy(events: NormalizedAnalyticsEvent[], mapper: (event: NormalizedAna
 
 function hasSourceDimensionAttribution(event: NormalizedAnalyticsEvent, inviteCodeId: string) {
   return event.sourceChannel !== 'direct' || Boolean(inviteCodeId || (event.sourceName && event.sourceName !== 'direct'))
-}
-
-async function writeSessionSummary(
-  db: AnalyticsDb,
-  batch: NormalizedAnalyticsBatch,
-  event: NormalizedAnalyticsEvent,
-  context: AnalyticsIngestContext,
-  response: AnalyticsBatchResponse & { usage: D1Usage },
-) {
-  await runAndTrack(db, response, `
-    INSERT INTO analytics_session_summaries (
-      session_id, date, visitor_id, user_id, started_at, ended_at, source_channel,
-      source_name, invite_code_id, device_type, country, entry_path, exit_path,
-      page_view_count, active_seconds, click_count, contact_click_count,
-      register_success_count, membership_grant_count, is_bounce, updated_at
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-    ON CONFLICT(session_id) DO UPDATE SET
-      user_id = COALESCE(excluded.user_id, analytics_session_summaries.user_id),
-      ended_at = COALESCE(excluded.ended_at, analytics_session_summaries.ended_at),
-      exit_path = CASE WHEN excluded.exit_path != '' THEN excluded.exit_path ELSE analytics_session_summaries.exit_path END,
-      page_view_count = analytics_session_summaries.page_view_count + excluded.page_view_count,
-      active_seconds = analytics_session_summaries.active_seconds + excluded.active_seconds,
-      click_count = analytics_session_summaries.click_count + excluded.click_count,
-      contact_click_count = analytics_session_summaries.contact_click_count + excluded.contact_click_count,
-      register_success_count = analytics_session_summaries.register_success_count + excluded.register_success_count,
-      membership_grant_count = analytics_session_summaries.membership_grant_count + excluded.membership_grant_count,
-      is_bounce = MAX(analytics_session_summaries.is_bounce, excluded.is_bounce),
-      updated_at = datetime('now')
-  `, [
-    batch.sessionId,
-    event.date,
-    batch.visitorId,
-    context.userId,
-    event.occurredAt,
-    event.eventName === 'session_end' || event.eventName === 'page_leave' ? event.occurredAt : null,
-    event.sourceChannel,
-    event.sourceName,
-    stringProp(event.props.invite_code_id) || '',
-    event.deviceType,
-    context.country || '',
-    event.path,
-    event.eventName === 'session_end' || event.eventName === 'page_leave' ? event.path : '',
-    event.eventName === 'page_view' ? 1 : 0,
-    event.activeSeconds,
-    CLICK_EVENTS.has(event.eventName) ? 1 : 0,
-    EFFECTIVE_CONTACT_EVENTS.has(event.eventName) ? 1 : 0,
-    event.eventName === 'register_success' ? 1 : 0,
-    event.eventName === 'membership_granted_conversion' ? 1 : 0,
-    event.isBounce ? 1 : 0,
-  ])
-}
-
-async function writePageSummary(
-  db: AnalyticsDb,
-  batch: NormalizedAnalyticsBatch,
-  event: NormalizedAnalyticsEvent,
-  context: AnalyticsIngestContext,
-  response: AnalyticsBatchResponse & { usage: D1Usage },
-) {
-  await runAndTrack(db, response, `
-    INSERT INTO analytics_page_summaries (
-      id, date, visitor_id, session_id, user_id, route_name, path, page_title,
-      entity_type, entity_id, first_viewed_at, last_left_at, page_view_count,
-      active_seconds, max_scroll_depth, is_entry, is_exit, is_bounce, updated_at
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-    ON CONFLICT(session_id, route_name, path, entity_type, entity_id) DO UPDATE SET
-      user_id = COALESCE(excluded.user_id, analytics_page_summaries.user_id),
-      page_title = CASE WHEN excluded.page_title != '' THEN excluded.page_title ELSE analytics_page_summaries.page_title END,
-      last_left_at = COALESCE(excluded.last_left_at, analytics_page_summaries.last_left_at),
-      page_view_count = analytics_page_summaries.page_view_count + excluded.page_view_count,
-      active_seconds = analytics_page_summaries.active_seconds + excluded.active_seconds,
-      max_scroll_depth = MAX(analytics_page_summaries.max_scroll_depth, excluded.max_scroll_depth),
-      is_entry = MAX(analytics_page_summaries.is_entry, excluded.is_entry),
-      is_exit = MAX(analytics_page_summaries.is_exit, excluded.is_exit),
-      is_bounce = MAX(analytics_page_summaries.is_bounce, excluded.is_bounce),
-      updated_at = datetime('now')
-  `, [
-    `aps_${simpleHash(`${batch.sessionId}:${event.routeName}:${event.path}:${event.entityType}:${event.entityId}`)}`,
-    event.date,
-    batch.visitorId,
-    batch.sessionId,
-    context.userId,
-    event.routeName,
-    event.path,
-    event.pageTitle,
-    event.entityType,
-    event.entityId,
-    event.occurredAt,
-    event.eventName === 'page_leave' ? event.occurredAt : null,
-    event.eventName === 'page_view' ? 1 : 0,
-    event.activeSeconds,
-    event.maxScrollDepth,
-    event.isEntry ? 1 : 0,
-    event.eventName === 'page_leave' ? 1 : 0,
-    event.isBounce ? 1 : 0,
-  ])
-}
-
-async function writeDailyAggregates(
-  db: AnalyticsDb,
-  event: NormalizedAnalyticsEvent,
-  response: AnalyticsBatchResponse & { usage: D1Usage },
-) {
-  await runAndTrack(db, response, `
-    INSERT INTO analytics_daily_events (
-      date, event_name, entity_type, entity_id, event_count, visitor_count,
-      session_count, user_count, value_total, updated_at
-    )
-    VALUES (?, ?, ?, ?, 1, 1, 1, 0, ?, datetime('now'))
-    ON CONFLICT(date, event_name, entity_type, entity_id) DO UPDATE SET
-      event_count = analytics_daily_events.event_count + 1,
-      value_total = analytics_daily_events.value_total + excluded.value_total,
-      updated_at = datetime('now')
-  `, [event.date, event.eventName, event.entityType, event.entityId, event.value ?? 0])
-
-  await runAndTrack(db, response, `
-    INSERT INTO analytics_daily_sources (
-      date, source_channel, source_name, invite_code_id, visitor_count, session_count,
-      page_view_count, gallery_detail_count, contact_click_count, register_count,
-      invite_register_count, membership_grant_count, active_seconds_total, updated_at
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-    ON CONFLICT(date, source_channel, source_name, invite_code_id) DO UPDATE SET
-      visitor_count = analytics_daily_sources.visitor_count + excluded.visitor_count,
-      session_count = analytics_daily_sources.session_count + excluded.session_count,
-      page_view_count = analytics_daily_sources.page_view_count + excluded.page_view_count,
-      gallery_detail_count = analytics_daily_sources.gallery_detail_count + excluded.gallery_detail_count,
-      contact_click_count = analytics_daily_sources.contact_click_count + excluded.contact_click_count,
-      register_count = analytics_daily_sources.register_count + excluded.register_count,
-      invite_register_count = analytics_daily_sources.invite_register_count + excluded.invite_register_count,
-      membership_grant_count = analytics_daily_sources.membership_grant_count + excluded.membership_grant_count,
-      active_seconds_total = analytics_daily_sources.active_seconds_total + excluded.active_seconds_total,
-      updated_at = datetime('now')
-  `, [
-    event.date,
-    event.sourceChannel,
-    event.sourceName,
-    stringProp(event.props.invite_code_id) || '',
-    event.eventName === 'session_start' ? 1 : 0,
-    event.eventName === 'session_start' ? 1 : 0,
-    event.eventName === 'page_view' ? 1 : 0,
-    event.eventName === 'gallery_detail_view' ? 1 : 0,
-    EFFECTIVE_CONTACT_EVENTS.has(event.eventName) ? 1 : 0,
-    event.eventName === 'register_success' ? 1 : 0,
-    event.eventName === 'register_success' && stringProp(event.props.invite_code_id) ? 1 : 0,
-    event.eventName === 'membership_granted_conversion' ? 1 : 0,
-    event.activeSeconds,
-  ])
-
-  if (CLICK_EVENTS.has(event.eventName)) {
-    await runAndTrack(db, response, `
-      INSERT INTO analytics_click_daily (
-        date, element_id, element_type, location, target_type, target_id,
-        raw_click_count, effective_click_count, duplicate_click_count,
-        visitor_count, session_count, user_count, updated_at
-      )
-      VALUES (?, ?, ?, ?, ?, ?, 1, 1, 0, 1, 1, 0, datetime('now'))
-      ON CONFLICT(date, element_id, location, target_type, target_id) DO UPDATE SET
-        raw_click_count = analytics_click_daily.raw_click_count + 1,
-        effective_click_count = analytics_click_daily.effective_click_count + 1,
-        visitor_count = analytics_click_daily.visitor_count + 1,
-        session_count = analytics_click_daily.session_count + 1,
-        updated_at = datetime('now')
-    `, [
-      event.date,
-      stringProp(event.props.element_id) || event.eventName,
-      stringProp(event.props.element_type) || event.eventName,
-      stringProp(event.props.location) || event.routeName,
-      stringProp(event.props.target_type) || event.entityType,
-      stringProp(event.props.target_id) || event.entityId,
-    ])
-  }
 }
 
 async function writeIngestHealth(
@@ -1436,11 +1133,6 @@ function normalizeOccurredAt(value: string) {
 function normalizeDeviceType(value: string | null): AnalyticsDeviceType {
   if (value === 'desktop' || value === 'tablet' || value === 'mobile' || value === 'unknown') return value
   return 'unknown'
-}
-
-function normalizeConsentState(value: string | null, fallback: AnalyticsConsentState): AnalyticsConsentState {
-  if (value === 'granted' || value === 'limited' || value === 'denied') return value
-  return fallback
 }
 
 function defaultEntityType(eventName: AnalyticsEventName): AnalyticsEntityType {

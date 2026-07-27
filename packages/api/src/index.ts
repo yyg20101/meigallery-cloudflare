@@ -34,7 +34,6 @@ import {
 } from './services/analytics-aggregate'
 import { recoverAttributionOutbox } from './services/ad-platform/recovery'
 import { recoverRegistrationConversionFacts } from './services/registration-conversion-recovery'
-import { collectAttributionQuality } from './services/ad-platform/quality-collector'
 import { reconcileGoogleDeliveryDiagnostics } from './services/ad-platform/google-diagnostics-service'
 
 /** Hono 应用绑定类型 */
@@ -124,6 +123,16 @@ app.use('/api/auth/*', rateLimiter({
   windowMs: rateLimitWindowMs(authRateLimit.window),
 }))
 
+// 广告来源解析独立计数，避免图库、搜索等公开 API 消耗 Pixel 初始化预算。
+for (const path of ['/api/ad-attribution', '/api/ad-attribution/*']) {
+  app.use(path, rateLimiter({
+    name: 'ad-attribution',
+    keyBy: 'ip',
+    limit: publicApiRateLimit.requests,
+    windowMs: rateLimitWindowMs(publicApiRateLimit.window),
+  }))
+}
+
 // 公开 API 速率限制兜底：每 IP 每分钟 60 次
 for (const path of [
   '/api/galleries',
@@ -138,8 +147,6 @@ for (const path of [
   '/api/contact-methods/*',
   '/api/invites/*',
   '/api/settings/public',
-  '/api/ad-attribution',
-  '/api/ad-attribution/*',
 ]) {
   app.use(path, rateLimiter({
     name: 'public-api',
@@ -368,15 +375,6 @@ async function handleScheduled(event: ScheduledEvent, env: Bindings): Promise<vo
     console.error('[cron] 数据分析聚合任务失败:', e)
   }
 
-  // 4. 平台质量采集独立于投递，失败不阻断其他维护任务。
-  try {
-    const quality = await collectAttributionQuality(env, new Date(event.scheduledTime))
-    console.log('[cron] 广告平台质量采集完成:', quality)
-  } catch {
-    console.error('[cron] 广告平台质量采集失败:', {
-      errorCode: 'attribution_quality_collection_failed',
-    })
-  }
 }
 
 function shouldRunDailyMaintenance(event: ScheduledEvent) {

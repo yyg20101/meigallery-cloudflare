@@ -103,13 +103,6 @@ export const ANALYTICS_D1_BUDGET = {
   ADMIN_REPORT_P95_TRIGGER_MS: 2000,
 } as const
 
-/** 数据分析默认设置值 */
-export const ANALYTICS_DEFAULT_SETTINGS = {
-  ENABLED: false,
-  SAMPLE_RATE: ANALYTICS_RETENTION.DEFAULT_SAMPLE_RATE,
-  CONSENT_MODE: 'limited',
-} as const
-
 export const ACTIVE_CONVERSION_ACTIONS = ['contact', 'complete_registration'] as const
 export const CANONICAL_CONVERSION_EVENTS = ['Contact', 'CompleteRegistration'] as const
 export const ACTIVE_AD_PLATFORM_CONVERSION_EVENTS = CANONICAL_CONVERSION_EVENTS

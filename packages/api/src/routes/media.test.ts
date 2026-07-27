@@ -90,7 +90,6 @@ function createAccessEnv(options: {
               results: [
                 { key: 'analytics_enabled', value: JSON.stringify(true) },
                 { key: 'analytics_sample_rate', value: JSON.stringify(0) },
-                { key: 'analytics_consent_mode', value: JSON.stringify('limited') },
               ] as T[],
             }
           }
@@ -436,9 +435,9 @@ describe('受保护媒体访问', () => {
     expect(rawInsert?.params[3]).toBe('visitor_abcdef')
     expect(rawInsert?.params[4]).toBe('session_abcdef')
     expect(rawInsert?.params[5]).toBe(7)
-    expect(rawInsert?.params[15]).toBe('media')
-    expect(rawInsert?.params[16]).toBe('asset-1')
-    expect(JSON.parse(String(rawInsert?.params[17]))).toMatchObject({
+    expect(rawInsert?.params[14]).toBe('media')
+    expect(rawInsert?.params[15]).toBe('asset-1')
+    expect(JSON.parse(String(rawInsert?.params[16]))).toMatchObject({
       gallery_id: 'gallery-1',
       asset_id: 'asset-1',
       required_rank: 10,
@@ -466,7 +465,7 @@ describe('受保护媒体访问', () => {
     expect(r2Get).not.toHaveBeenCalled()
     const rawInsert = calls.find(call => call.sql.includes('INSERT OR IGNORE INTO analytics_events'))
     expect(rawInsert?.params[1]).toBe('media_access_denied')
-    const props = JSON.parse(String(rawInsert?.params[17]))
+    const props = JSON.parse(String(rawInsert?.params[16]))
     expect(props).toMatchObject({
       gallery_id: 'gallery-1',
       asset_id: 'asset-1',

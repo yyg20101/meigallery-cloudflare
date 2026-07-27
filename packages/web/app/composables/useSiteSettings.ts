@@ -3,7 +3,7 @@
  * 从 /api/settings/public 获取站点配置
  * 数据全局缓存，避免重复请求
  */
-import { isScheduledSiteFeatureActive, normalizeAnalyticsConsentMode, normalizeAnalyticsSampleRate, normalizeBooleanSetting, normalizeFeaturedRegionSlugs, normalizeHomeAdImageUrl, normalizeHomeAdUrl, normalizeHomeHotTagLimit, normalizeInternalPath, normalizePublicImageSettingUrl, normalizeSeoKeywords, normalizeSiteSettingDateTime, safeHomeAdText, safeRulesMarkdown, safeSiteText } from '~/utils/siteSettingsSecurity'
+import { isScheduledSiteFeatureActive, normalizeAnalyticsSampleRate, normalizeBooleanSetting, normalizeFeaturedRegionSlugs, normalizeHomeAdImageUrl, normalizeHomeAdUrl, normalizeHomeHotTagLimit, normalizeInternalPath, normalizePublicImageSettingUrl, normalizeSeoKeywords, normalizeSiteSettingDateTime, safeHomeAdText, safeRulesMarkdown, safeSiteText } from '~/utils/siteSettingsSecurity'
 
 const DEFAULT_SITE_NAME = '图库站'
 const LEGACY_DEFAULT_SITE_NAME = 'MeiGallery'
@@ -26,7 +26,6 @@ export function useSiteSettings() {
     video_enabled?: string | boolean
     analytics_enabled?: string | boolean
     analytics_sample_rate?: string | number
-    analytics_consent_mode?: string
     home_hero_title?: string
     home_hero_subtitle?: string
     home_featured_region_slugs?: string
@@ -157,9 +156,6 @@ export function useSiteSettings() {
   const analyticsSampleRate = computed(() => {
     return normalizeAnalyticsSampleRate(settings.value.analytics_sample_rate)
   })
-  const analyticsConsentMode = computed(() => {
-    return normalizeAnalyticsConsentMode(settings.value.analytics_consent_mode)
-  })
   const rulesEntryEnabled = computed(() => {
     return normalizeBooleanSetting(settings.value.rules_entry_enabled)
   })
@@ -203,7 +199,6 @@ export function useSiteSettings() {
     videoEnabled,
     analyticsEnabled,
     analyticsSampleRate,
-    analyticsConsentMode,
     rulesEntryEnabled,
     rulesEntryTitle,
     rulesEntrySummary,
