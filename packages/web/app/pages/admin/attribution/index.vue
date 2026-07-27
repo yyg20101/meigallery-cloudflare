@@ -64,7 +64,7 @@ const routing = computed(() => summary.data.value?.routing ?? {
   byProvider: { meta: 0, tiktok: 0, google: 0 },
 })
 const delivery = computed(() => summary.data.value?.delivery ?? {
-  browserAttempted: 0,
+  browserPlanned: 0,
   server: { planned: 0, queued: 0, accepted: 0, processed: 0, retrying: 0, rejected: 0, deadLetter: 0, cancelled: 0 },
   queueRetryCount: 0,
   queueEnqueueCount: 0,
@@ -108,19 +108,19 @@ const businessSeries = [
   { key: 'business.completeRegistrationCount', label: '完成注册', layer: 'business' as const, aggregation: { type: 'sum' as const } },
 ]
 const deliverySeries = [
-  { key: 'delivery.browserAttempted', label: 'Browser 已尝试', layer: 'browser' as const, aggregation: { type: 'sum' as const } },
+  { key: 'delivery.browserPlanned', label: 'Browser 指令', layer: 'browser' as const, aggregation: { type: 'sum' as const } },
   { key: 'delivery.server.accepted', label: 'Server 已接收', layer: 'server' as const, aggregation: { type: 'sum' as const } },
   { key: 'delivery.server.processed', label: 'Server 已处理', layer: 'server' as const, aggregation: { type: 'sum' as const } },
   { key: 'delivery.server.rejected', label: 'Server 已拒绝', layer: 'server' as const, aggregation: { type: 'sum' as const } },
   { key: 'delivery.server.deadLetter', label: '死信', layer: 'server' as const, aggregation: { type: 'sum' as const } },
 ]
 const qualitySeries = [
-  { key: 'pairing.rate', label: 'Browser/Server 配对率', layer: 'quality' as const, format: 'percent' as const, aggregation: { type: 'weightedRate' as const, numeratorKey: 'pairing.numerator', denominatorKey: 'pairing.denominator' } },
+  { key: 'pairing.rate', label: 'Browser/Server 计划配对率', layer: 'quality' as const, format: 'percent' as const, aggregation: { type: 'weightedRate' as const, numeratorKey: 'pairing.numerator', denominatorKey: 'pairing.denominator' } },
   { key: 'match.rate', label: '匹配信号覆盖率', layer: 'quality' as const, format: 'percent' as const, aggregation: { type: 'weightedRate' as const, numeratorKey: 'match.numerator', denominatorKey: 'match.denominator' } },
 ]
 const evidenceLayers = [
   { label: '站内事实', detail: '不可变业务事实', class: 'bg-emerald-50 text-emerald-800', dot: '#047857' },
-  { label: 'Browser 回执', detail: '脚本实际执行成功', class: 'bg-amber-50 text-amber-800', dot: '#d97706' },
+  { label: 'Browser 计划', detail: '同源 Pixel 指令已生成', class: 'bg-amber-50 text-amber-800', dot: '#d97706' },
   { label: 'Server 状态', detail: '规划至终态', class: 'bg-blue-50 text-blue-800', dot: '#2563eb' },
   { label: '质量证据', detail: '配对与匹配信号', class: 'bg-rose-50 text-rose-800', dot: '#be123c' },
 ]
@@ -205,8 +205,8 @@ function serverSuccess(row: BreakdownData['rows'][number]) {
 
         <div class="mt-5 overflow-x-auto">
           <table class="w-full min-w-[42rem] text-left text-sm">
-            <thead class="border-y border-gray-200 bg-gray-50 text-xs text-gray-500"><tr><th class="px-3 py-2 font-medium">Campaign</th><th class="px-3 py-2 font-medium">事实</th><th class="px-3 py-2 font-medium">有效联系</th><th class="px-3 py-2 font-medium">完成注册</th><th class="px-3 py-2 font-medium">Browser 已尝试</th><th class="px-3 py-2 font-medium">Server 已接收</th></tr></thead>
-            <tbody class="divide-y divide-gray-100"><tr v-for="row in breakdown.data.value?.rows || []" :key="row.value"><td class="px-3 py-2.5 font-medium text-gray-900">{{ row.value }}</td><td class="px-3 py-2.5 tabular-nums">{{ row.factCount }}</td><td class="px-3 py-2.5 tabular-nums">{{ row.contactCount }}</td><td class="px-3 py-2.5 tabular-nums">{{ row.completeRegistrationCount }}</td><td class="px-3 py-2.5 tabular-nums text-amber-700">{{ row.delivery.browserAttempted }}</td><td class="px-3 py-2.5 tabular-nums text-blue-700">{{ serverSuccess(row) }}</td></tr><tr v-if="!breakdown.data.value?.rows.length"><td colspan="6" class="px-3 py-6 text-center text-gray-500">当前范围没有 Campaign 转化</td></tr></tbody>
+            <thead class="border-y border-gray-200 bg-gray-50 text-xs text-gray-500"><tr><th class="px-3 py-2 font-medium">Campaign</th><th class="px-3 py-2 font-medium">事实</th><th class="px-3 py-2 font-medium">有效联系</th><th class="px-3 py-2 font-medium">完成注册</th><th class="px-3 py-2 font-medium">Browser 指令</th><th class="px-3 py-2 font-medium">Server 已接收</th></tr></thead>
+            <tbody class="divide-y divide-gray-100"><tr v-for="row in breakdown.data.value?.rows || []" :key="row.value"><td class="px-3 py-2.5 font-medium text-gray-900">{{ row.value }}</td><td class="px-3 py-2.5 tabular-nums">{{ row.factCount }}</td><td class="px-3 py-2.5 tabular-nums">{{ row.contactCount }}</td><td class="px-3 py-2.5 tabular-nums">{{ row.completeRegistrationCount }}</td><td class="px-3 py-2.5 tabular-nums text-amber-700">{{ row.delivery.browserPlanned }}</td><td class="px-3 py-2.5 tabular-nums text-blue-700">{{ serverSuccess(row) }}</td></tr><tr v-if="!breakdown.data.value?.rows.length"><td colspan="6" class="px-3 py-6 text-center text-gray-500">当前范围没有 Campaign 转化</td></tr></tbody>
           </table>
         </div>
       </section>
@@ -221,7 +221,7 @@ function serverSuccess(row: BreakdownData['rows'][number]) {
           :server-label="platform.serverLabel"
           :browser-enabled="selectedConnection?.browserEnabled"
           :server-enabled="selectedConnection?.serverEnabled"
-          :browser-attempted="delivery.browserAttempted"
+          :browser-planned="delivery.browserPlanned"
           :server-accepted="serverAccepted"
           :server-pending="serverPending"
           :server-failed="serverFailed"
@@ -239,7 +239,7 @@ function serverSuccess(row: BreakdownData['rows'][number]) {
         <p class="text-xs font-medium text-gray-400">03 · 投递质量</p>
         <h2 class="mt-1 text-base font-semibold text-gray-900">配对与匹配覆盖</h2>
         <dl class="my-4 grid grid-cols-2 border-y border-gray-200 md:grid-cols-3">
-          <div class="px-3 py-3"><dt class="text-xs text-gray-500">Browser/Server 配对率</dt><dd class="mt-1 text-lg font-semibold text-rose-700">{{ formatRate(pairing.rate) }}</dd><p class="mt-1 text-xs text-gray-400">{{ pairing.numerator }} / {{ pairing.denominator }}</p></div>
+          <div class="px-3 py-3"><dt class="text-xs text-gray-500">Browser/Server 计划配对率</dt><dd class="mt-1 text-lg font-semibold text-rose-700">{{ formatRate(pairing.rate) }}</dd><p class="mt-1 text-xs text-gray-400">{{ pairing.numerator }} / {{ pairing.denominator }}</p></div>
           <div class="px-3 py-3"><dt class="text-xs text-gray-500">匹配信号覆盖率</dt><dd class="mt-1 text-lg font-semibold text-rose-700">{{ formatRate(match.rate) }}</dd><p class="mt-1 text-xs text-gray-400">{{ match.numerator }} / {{ match.denominator }}</p></div>
           <div class="col-span-2 px-3 py-3 md:col-span-1"><dt class="text-xs text-gray-500">平台质量快照</dt><dd class="mt-1 text-sm font-semibold">{{ platformQualityStatus }}</dd></div>
         </dl>

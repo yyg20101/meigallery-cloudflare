@@ -22,7 +22,7 @@ describe('AttributionHealthStrip', () => {
         serverLabel: 'TikTok Events API',
         browserEnabled: true,
         serverEnabled: true,
-        browserAttempted: 12,
+        browserPlanned: 12,
         serverAccepted: 9,
         serverPending: 1,
         serverFailed: 2,
@@ -30,7 +30,7 @@ describe('AttributionHealthStrip', () => {
     })
 
     const labels = wrapper.findAll('[data-health-label]').map(item => item.text())
-    expect(labels).toEqual(['TikTok Pixel 状态', 'TikTok Events API 状态', 'Browser 已尝试', 'Server 已接收', 'Server 处理中', 'Server 失败'])
+    expect(labels).toEqual(['TikTok Pixel 状态', 'TikTok Events API 状态', 'Browser 指令', 'Server 已接收', 'Server 处理中', 'Server 失败'])
     expect(wrapper.text()).toContain('12')
     expect(wrapper.text()).toContain('9')
     expect(wrapper.text()).toContain('2')

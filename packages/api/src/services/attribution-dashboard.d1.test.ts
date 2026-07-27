@@ -55,7 +55,7 @@ describe('统一归因看板最终事实口径', () => {
         byProvider: { meta: 2, tiktok: 1, google: 2 },
       },
       delivery: {
-        browserAttempted: 1,
+        browserPlanned: 2,
         server: {
           planned: 0,
           queued: 1,
@@ -81,7 +81,7 @@ describe('统一归因看板最终事实口径', () => {
     expect(summary.data).toMatchObject({
       business: { contactCount: 1, completeRegistrationCount: 1, factCount: 2 },
       delivery: {
-        browserAttempted: 1,
+        browserPlanned: 2,
         server: { processed: 1, deadLetter: 1 },
         queueRetryCount: 2,
       },
@@ -102,19 +102,19 @@ describe('统一归因看板最终事实口径', () => {
     ])
   })
 
-  it('Browser attempted 只统计签名回执，并计算配对与匹配信号覆盖', async () => {
+  it('Browser 计划直接读取 Delivery，并计算计划配对与匹配信号覆盖', async () => {
     const [meta, google] = await Promise.all([
       queryAttributionQuality(db, dayRange(), 'meta'),
       queryAttributionQuality(db, dayRange(), 'google'),
     ])
 
-    expect(meta.data.pairing.summary).toEqual(metric(1, 2))
+    expect(meta.data.pairing.summary).toEqual(metric(2, 2))
     expect(meta.data.match.summary).toEqual(metric(1, 2))
     expect(meta.data.match.signals).toEqual([
       { key: 'fbc', ...metric(1, 2) },
       { key: 'fbp', ...metric(1, 2) },
     ])
-    expect(google.data.pairing.summary).toEqual(metric(1, 2))
+    expect(google.data.pairing.summary).toEqual(metric(2, 2))
     expect(google.data.match.summary).toEqual(metric(1, 2))
     expect(google.data.match.signals).toEqual([
       { key: 'gclid', ...metric(1, 2) },
@@ -129,12 +129,12 @@ describe('统一归因看板最终事实口径', () => {
     expect(result.data.inputs).toMatchObject({
       factCount: 7,
       deliveryCount: 9,
-      browserAttemptCount: 2,
+      browserDeliveryCount: 4,
       serverDeliveryCount: 5,
       adapterAttemptCount: 6,
       queueAttemptCount: 5,
       terminalServerDeliveryCount: 4,
-      providerReceiptCount: 6,
+      providerReceiptCount: 4,
       workflowStepCount: 0,
     })
     expect(result.data.note).toContain('项目内部估算')
@@ -170,7 +170,7 @@ describe('统一归因看板最终事实口径', () => {
     expect(previousDay.data.inputs).toMatchObject({
       factCount: 7,
       deliveryCount: 9,
-      providerReceiptCount: 6,
+      providerReceiptCount: 4,
     })
     expect(nextDay.data.inputs).toMatchObject({
       factCount: 1,
@@ -180,7 +180,7 @@ describe('统一归因看板最终事实口径', () => {
     })
   })
 
-  it('转化明细按来源过滤，并保留最终 Delivery 与 Browser 回执', async () => {
+  it('转化明细按来源过滤，并保留最终 Delivery 与 Browser 计划', async () => {
     const [all, filtered, missing] = await Promise.all([
       queryAttributionConversions(db, dayRange(), 'google'),
       queryAttributionConversions(db, dayRange(), 'google', 'google'),
@@ -189,8 +189,8 @@ describe('统一归因看板最终事实口径', () => {
 
     expect(all.data.byEvent).toHaveLength(2)
     expect(filtered.data.samples).toEqual(expect.arrayContaining([
-      expect.objectContaining({ canonical_event: 'Contact', browser_attempted: 1, server_status: 'processed' }),
-      expect.objectContaining({ canonical_event: 'CompleteRegistration', server_status: 'dead_letter', retry_count: 2 }),
+      expect.objectContaining({ canonical_event: 'Contact', browser_planned: 1, server_status: 'processed' }),
+      expect.objectContaining({ canonical_event: 'CompleteRegistration', browser_planned: 1, server_status: 'dead_letter', retry_count: 2 }),
     ]))
     expect(missing.data).toMatchObject({ byEvent: [], bySource: [], samples: [] })
   })
@@ -301,10 +301,8 @@ async function seedDashboardFacts() {
     delivery('delivery_google_server', 'fact_google_contact', 'google', 'server', 'processed', 1, 1, ['gclid']),
     delivery('delivery_google_registration_browser', 'fact_google_registration', 'google', 'browser', 'planned', 0, 0, []),
     delivery('delivery_google_registration_server', 'fact_google_registration', 'google', 'server', 'dead_letter', 3, 1, []),
-    receipt('receipt_meta_browser', 'delivery_meta_browser', 'meta', 'browser_attempt', 'attempted'),
     receipt('receipt_meta_server', 'delivery_meta_server', 'meta', 'server_delivery', 'accepted'),
     receipt('receipt_tiktok_server', 'delivery_tiktok_server', 'tiktok', 'server_delivery', 'rejected'),
-    receipt('receipt_google_browser', 'delivery_google_browser', 'google', 'browser_attempt', 'attempted'),
     receipt('receipt_google_server', 'delivery_google_server', 'google', 'server_delivery', 'processed'),
     receipt('receipt_google_dlq', 'delivery_google_registration_server', 'google', 'server_delivery', 'dead_letter'),
   ])

@@ -18,7 +18,7 @@ function mountPage(
   platformQualityLatest: Record<string, unknown> | null = null,
 ) {
   const server = { planned: 0, queued: 1, accepted: 3, processed: 1, retrying: 0, rejected: 1, deadLetter: 0, cancelled: 0 }
-  const delivery = { browserAttempted: 4, server, queueRetryCount: 1, queueEnqueueCount: 5 }
+  const delivery = { browserPlanned: 4, server, queueRetryCount: 1, queueEnqueueCount: 5 }
   const metric = { availability: 'available', numerator: 3, denominator: 4, rate: 0.75 }
   const states: Record<string, ReturnType<typeof state>> = {
     '/api/admin/attribution/summary': state({
@@ -77,7 +77,7 @@ describe('统一广告归因总览', () => {
       'business', 'delivery', 'quality', 'capacity',
     ])
     expect(wrapper.get('[data-evidence-rail]').text()).toContain('站内事实')
-    expect(wrapper.get('[data-evidence-rail]').text()).toContain('Browser 回执')
+    expect(wrapper.get('[data-evidence-rail]').text()).toContain('Browser 计划')
     expect(wrapper.get('[data-evidence-rail]').text()).toContain('Server 状态')
     expect(wrapper.get('[data-evidence-rail]').text()).toContain('质量证据')
     expect(wrapper.text()).toContain('Meta · 生产运行')
@@ -88,7 +88,7 @@ describe('统一广告归因总览', () => {
     const wrapper = mountPage('google')
     expect(wrapper.text()).toContain('Google Ads · 生产运行')
     expect(wrapper.text()).toContain('gclid')
-    expect(wrapper.text()).toContain('Browser/Server 配对率')
+    expect(wrapper.text()).toContain('Browser/Server 计划配对率')
     expect(wrapper.text()).toContain('等待 Data Manager 异步诊断')
     expect(wrapper.text()).not.toContain('CAPI 成功')
   })

@@ -199,6 +199,38 @@ describe('统一广告平台 Queue 运行时', () => {
     expect(await db.prepare('SELECT delivery_id FROM attribution_outbox').first()).toBeNull()
   })
 
+  it('同一 Queue attempt 的重复消息不会再次调用平台 Adapter', async () => {
+    await seed('queued')
+    const deliver = vi.fn().mockResolvedValue({ classification: 'retryable' })
+    const first = queueMessage(undefined, 1)
+    const duplicate = queueMessage(undefined, 1)
+
+    await handleAttributionQueueBatch(batch([first]), env(), { deliver, readCredential: async () => 'secret' })
+    await handleAttributionQueueBatch(batch([duplicate]), env(), { deliver, readCredential: async () => 'secret' })
+
+    expect(deliver).toHaveBeenCalledOnce()
+    expect(first.retry).toHaveBeenCalledOnce()
+    expect(duplicate.ack).toHaveBeenCalledOnce()
+    expect(duplicate.retry).not.toHaveBeenCalled()
+  })
+
+  it('同一 Queue attempt 仅在上次执行超时后允许恢复', async () => {
+    await seed('retrying')
+    await db.prepare(`
+      UPDATE attribution_deliveries
+      SET attempt_count = 1, updated_at = datetime('now', '-6 minutes')
+      WHERE id = 'delivery_meta'
+    `).run()
+    const deliver = vi.fn().mockResolvedValue({ classification: 'accepted', receipt: { status: 200 } })
+    const recovered = queueMessage(undefined, 1)
+
+    await handleAttributionQueueBatch(batch([recovered]), env(), { deliver, readCredential: async () => 'secret' })
+
+    expect(deliver).toHaveBeenCalledOnce()
+    expect(recovered.ack).toHaveBeenCalledOnce()
+    expect((await deliveryState('meta')).status).toBe('accepted')
+  })
+
   it.each(['rejected', 'credential_invalid', 'destination_invalid'] as const)('%s 直接拒绝、保留脱敏 receipt 并清理 Outbox', async classification => {
     await seed('queued')
     const message = queueMessage()
