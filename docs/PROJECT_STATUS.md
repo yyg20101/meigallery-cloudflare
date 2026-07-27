@@ -52,19 +52,16 @@
 - 连接内部 Outbox 作用域创建后保持稳定，保存配置不会使排队事件失效。
 - `0060_attribution_control_plane_cleanup.sql` 清理 production 中旧控制面表和写入冻结 trigger，同时保留事实、投递、加密 Outbox、回执、故障和质量数据。
 - `0061_attribution_source_router_cleanup.sql` 物理删除 consent、region、rollout、mode、revision 和冗余 provider 字段，并原值保留现有连接、最新加密凭证、事实、投递与 Outbox。
+- `0062_attribution_runtime_garbage_cleanup.sql` 删除旧连接配置产生的质量快照和无读取方的 usage 表，不触碰业务事实或有效平台配置。
 
 详细契约见 `docs/AD_PLATFORM_ARCHITECTURE.md`。
 
 ## 来源路由精简发布状态
 
-- 实现位于隔离分支，production 仍运行上一稳定版本；未部署关闭全部 Pixel 的中间状态。
-- API 全量回归：111 个测试文件、901 项测试通过。
-- Web 全量单测：56 个测试文件、286 项测试通过。
-- 发布脚本与完整 migration 链路：103 项测试通过。
-- Meta、TikTok、Google、UTM、自然流量、冲突来源和最近来源继承在桌面/360px 移动端共 14 项网络隔离 E2E 通过。
-- D1 迁移已验证保留有效连接、最新凭证、事实、delivery、Outbox 和平台隔离约束。
-- ESLint、API/Web 类型检查、API Worker dry-run 和 Web Worker production build 通过。
-- 待发布阶段一次完成 production D1 备份、migration、API/Web 部署和三平台真实测试链接核验。
+- 来源路由精简已发布到 production，不存在关闭全部 Pixel 的中间版本。
+- Meta、TikTok、Google、UTM、自然流量、冲突来源和最近来源继承均由同一来源路由器处理。
+- D1 migration 保留有效连接、最新凭证、业务事实、Delivery、Outbox 和平台隔离约束。
+- 发布验收以来源隔离、同事件 ID、类型检查、受影响 Worker 构建和 production smoke 为准，不在文档固化易过期的测试数量。
 
 ## 环境
 
