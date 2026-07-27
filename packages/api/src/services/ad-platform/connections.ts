@@ -22,7 +22,7 @@ export interface AttributionConnectionSnapshotReady {
   credential: {
     type: 'access_token' | 'service_account_json'
     schemaVersion: number
-    revision: string
+    encryptionContext: string
   }
 }
 
@@ -38,12 +38,11 @@ type ConnectionRow = {
   browser_enabled: number
   server_enabled: number
   public_config_json: string
-  connection_revision: string
+  outbox_scope: string
 }
 
 type BindingRow = {
   id: string
-  provider: string
   canonical_event: string
   enabled: number
   browser_destination: string
@@ -52,10 +51,9 @@ type BindingRow = {
 
 type CredentialRow = {
   id: string
-  provider: string
   credential_type: string
   schema_version: number
-  credential_revision: string
+  encryption_context: string
   key_id: string
 }
 
@@ -72,7 +70,7 @@ export async function readAttributionConnectionSnapshot(
 
   const connection = await db.prepare(`
     SELECT id, provider, enabled, browser_enabled, server_enabled,
-      public_config_json, connection_revision
+      public_config_json, outbox_scope
     FROM attribution_platform_connections
     WHERE provider = ?
     LIMIT 1
@@ -93,15 +91,15 @@ export async function readAttributionConnectionSnapshot(
 
   const [bindingResult, credentialResult] = await Promise.all([
     db.prepare(`
-      SELECT id, provider, canonical_event, enabled,
+      SELECT id, canonical_event, enabled,
         browser_destination, server_destination
       FROM attribution_event_bindings
       WHERE connection_id = ?
       ORDER BY canonical_event
     `).bind(connection.id).all<BindingRow>(),
     db.prepare(`
-      SELECT id, provider, credential_type, schema_version,
-        credential_revision, key_id
+      SELECT id, credential_type, schema_version,
+        encryption_context, key_id
       FROM attribution_credentials
       WHERE connection_id = ?
       ORDER BY updated_at DESC, id
@@ -113,7 +111,6 @@ export async function readAttributionConnectionSnapshot(
 
   const bindings = new Map<CanonicalConversionEvent, AttributionConnectionSnapshotReady['bindings'] extends Map<CanonicalConversionEvent, infer V> ? V : never>()
   for (const row of bindingResult.results) {
-    if (row.provider !== definition.provider) return invalid('provider_mismatch')
     if (!validBinding(row) || bindings.has(row.canonical_event as CanonicalConversionEvent)) {
       return invalid('schema_invalid')
     }
@@ -126,7 +123,6 @@ export async function readAttributionConnectionSnapshot(
   if (!CANONICAL_EVENTS.every(event => bindings.has(event))) return invalid('schema_invalid')
 
   const credential = credentialResult.results[0]!
-  if (credential.provider !== definition.provider) return invalid('provider_mismatch')
   if (!validCredential(credential)
     || credential.credential_type !== definition.credentialSchema.type
     || credential.schema_version !== definition.credentialSchema.version) {
@@ -142,13 +138,13 @@ export async function readAttributionConnectionSnapshot(
       browserEnabled: connection.browser_enabled === 1,
       serverEnabled: connection.server_enabled === 1,
       publicConfig: parsedConfig,
-      outboxScope: connection.connection_revision,
+      outboxScope: connection.outbox_scope,
     },
     bindings,
     credential: {
       type: definition.credentialSchema.type,
       schemaVersion: credential.schema_version,
-      revision: credential.credential_revision,
+      encryptionContext: credential.encryption_context,
     },
   }
 }
@@ -158,7 +154,7 @@ function validConnection(row: ConnectionRow) {
     && (row.enabled === 0 || row.enabled === 1)
     && (row.browser_enabled === 0 || row.browser_enabled === 1)
     && (row.server_enabled === 0 || row.server_enabled === 1)
-    && validId(row.connection_revision)
+    && validId(row.outbox_scope)
 }
 
 function validBinding(row: BindingRow) {
@@ -174,7 +170,7 @@ function validCredential(row: CredentialRow) {
     && validText(row.credential_type)
     && Number.isInteger(row.schema_version)
     && row.schema_version > 0
-    && validId(row.credential_revision)
+    && validId(row.encryption_context)
     && /^[0-9a-f]{16}$/.test(row.key_id)
 }
 

@@ -12,7 +12,7 @@ describe('归因连接快照', () => {
     expect(snapshot).toMatchObject({
       state: 'ready',
       connection: { provider: 'meta', id: 'conn_meta', outboxScope: 'connection_scope_1' },
-      credential: { type: 'access_token', revision: 'credential_revision_1' },
+      credential: { type: 'access_token', encryptionContext: 'credential_context_1' },
     })
     expect(snapshot.state === 'ready' && [...snapshot.bindings.keys()]).toEqual([
       'CompleteRegistration',
@@ -31,13 +31,11 @@ describe('归因连接快照', () => {
     ['额外 binding', (state: SnapshotState) => state.bindings.push({ ...state.bindings[0]!, id: 'binding_extra' })],
     ['重复 binding', (state: SnapshotState) => { state.bindings[1] = { ...state.bindings[0]!, id: 'binding_duplicate' } }],
     ['额外 credential', (state: SnapshotState) => state.credentials.push({ ...state.credentials[0]!, id: 'credential_extra' })],
-    ['binding provider 不匹配', (state: SnapshotState) => { state.bindings[0]!.provider = 'google' }],
-    ['credential provider 不匹配', (state: SnapshotState) => { state.credentials[0]!.provider = 'google' }],
     ['无效 public config', (state: SnapshotState) => { state.connection.public_config_json = '{invalid' }],
     ['额外 public config', (state: SnapshotState) => { state.connection.public_config_json = '{"pixelId":"123456789012345","unexpected":"x"}' }],
     ['credential type 不匹配', (state: SnapshotState) => { state.credentials[0]!.credential_type = 'service_account_json' }],
     ['credential schema 不匹配', (state: SnapshotState) => { state.credentials[0]!.schema_version = 2 }],
-    ['连接作用域无效', (state: SnapshotState) => { state.connection.connection_revision = '' }],
+    ['连接作用域无效', (state: SnapshotState) => { state.connection.outbox_scope = '' }],
   ])('%s 时 fail closed', async (_label, mutate) => {
     const state = validState()
     mutate(state)
@@ -75,12 +73,11 @@ function validState() {
       browser_enabled: 1,
       server_enabled: 1,
       public_config_json: '{"pixelId":"123456789012345"}',
-      connection_revision: 'connection_scope_1',
+      outbox_scope: 'connection_scope_1',
     },
     bindings: [
       {
         id: 'binding_registration',
-        provider: 'meta',
         canonical_event: 'CompleteRegistration',
         enabled: 1,
         browser_destination: 'meta_pixel',
@@ -88,7 +85,6 @@ function validState() {
       },
       {
         id: 'binding_contact',
-        provider: 'meta',
         canonical_event: 'Contact',
         enabled: 1,
         browser_destination: 'meta_pixel',
@@ -97,10 +93,9 @@ function validState() {
     ],
     credentials: [{
       id: 'credential_1',
-      provider: 'meta',
       credential_type: 'access_token',
       schema_version: 1,
-      credential_revision: 'credential_revision_1',
+      encryption_context: 'credential_context_1',
       key_id: '0123456789abcdef',
     }],
   }

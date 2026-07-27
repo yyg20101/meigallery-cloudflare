@@ -31,7 +31,7 @@ async function expectAdminContainersWithinViewport(page: import('@playwright/tes
         { selector: '[data-attribution-refresh]' },
         { selector: '[data-attribution-tabs]', allowHorizontalOverflow: true },
         { selector: '[data-attribution-tab-list]', allowHorizontalOverflow: true },
-        { selector: '[data-attribution-tab]', exactCount: 7, allowHorizontalOverflow: true },
+        { selector: '[data-attribution-tab]', exactCount: 6, allowHorizontalOverflow: true },
       )
       if (['/admin/attribution', '/admin/attribution/deliveries', '/admin/attribution/audit'].includes(location.pathname)) {
         requirements.push(
@@ -172,7 +172,6 @@ const smokePages = [
   { path: '/gallery/summer-portrait', heading: /夏日授权写真/, title: '夏日授权写真 - 测试图库站' },
   { path: '/login', heading: /登录 测试图库站/, title: '登录 - 测试图库站' },
   { path: '/user', heading: /会员权益/, title: '个人中心 - 测试图库站' },
-  { path: '/marketing-tracking', heading: /数据与隐私/, title: '数据与隐私 - 测试图库站' },
   { path: '/admin', heading: /数据概览/ },
 ]
 
@@ -236,7 +235,6 @@ test.describe('核心页面 smoke', () => {
         await expect(homeAd.locator('h2')).toBeVisible()
         await expect(homeAd.locator('h2')).toHaveCSS('overflow-wrap', 'break-word')
         await expect(homeAd.locator('p').first()).toHaveCSS('overflow-wrap', 'break-word')
-        await expect(page.getByRole('link', { name: '隐私', exact: true })).toHaveAttribute('href', '/marketing-tracking')
       }
       await expect(page.locator('body')).not.toContainText('originals/')
       await expect(page.locator('body')).not.toContainText('imports/')
@@ -520,30 +518,25 @@ test.describe('核心页面 smoke', () => {
     expect(serialized).not.toContain('imports/')
   })
 
-  test('marketing receipt 依赖请求通过 Web 同源代理并转发 HttpOnly cookie', async ({ request, page }) => {
+  test('签名广告来源上下文通过 Web 同源代理转发且不出现授权界面', async ({ request, page }) => {
     await request.patch(`${apiURL}/api/test/auth`, { data: { authenticated: false } })
-    await request.patch(`${apiURL}/api/test/marketing-consent-state`, { data: { state: 'limited' } })
     const protectedRequestUrls: string[] = []
     page.on('request', (browserRequest) => {
-      if (/\/api\/(marketing-consent|conversions\/events|auth\/register|me)$/.test(new URL(browserRequest.url()).pathname)) {
+      if (/\/api\/(ad-attribution|conversions\/events|auth\/register|me)$/.test(new URL(browserRequest.url()).pathname)) {
         protectedRequestUrls.push(browserRequest.url())
       }
     })
 
-    await page.goto('/register?invite=TESTCODE')
+    await page.goto('/register?invite=TESTCODE&fbclid=fb-proxy-test')
     await page.waitForLoadState('networkidle')
-    const [consentResponse] = await Promise.all([
-      page.waitForResponse(response => response.url().endsWith('/api/marketing-consent') && response.request().method() === 'PUT'),
-      page.getByRole('button', { name: '允许效果分析' }).click(),
-    ])
-    expect((await consentResponse.allHeaders())['set-cookie']).toContain('mei_marketing_consent_receipt=mock-granted')
+    await expect(page.getByText(/营销追踪|允许效果分析|拒绝营销分析/)).toHaveCount(0)
 
     await page.getByRole('button', { name: '打开联系方式' }).click()
     await page.route('https://t.me/**', route => route.abort())
     await page.getByRole('link', { name: /Telegram/ }).click({ noWaitAfter: true })
     await expect.poll(async () => {
       const body = await (await request.get(`${apiURL}/api/test/analytics-events`)).json()
-      return body.receiptProtectedRequests.some((item: { endpoint?: string }) => item.endpoint === '/api/conversions/events')
+      return body.contextProtectedRequests.some((item: { endpoint?: string }) => item.endpoint === '/api/conversions/events')
     }).toBe(true)
     await page.getByRole('button', { name: '关闭联系方式' }).click()
 
@@ -555,83 +548,66 @@ test.describe('核心页面 smoke', () => {
     await expect(page).toHaveURL('/')
 
     const registrationPayload = await (await request.get(`${apiURL}/api/test/analytics-events`)).json()
-    expect(registrationPayload.receiptProtectedRequests).toEqual(expect.arrayContaining([
-      expect.objectContaining({ endpoint: '/api/conversions/events', cookie: expect.stringContaining('mei_marketing_consent_receipt=mock-granted') }),
-      expect.objectContaining({ endpoint: '/api/auth/register', cookie: expect.stringContaining('mei_marketing_consent_receipt=mock-granted') }),
+    expect(registrationPayload.contextProtectedRequests).toEqual(expect.arrayContaining([
+      expect.objectContaining({ endpoint: '/api/conversions/events', cookie: expect.stringContaining('mei_ad_attribution=mock-meta') }),
+      expect.objectContaining({ endpoint: '/api/auth/register', cookie: expect.stringContaining('mei_ad_attribution=mock-meta') }),
     ]))
 
-    await request.post(`${apiURL}/api/test/receipt-protected-requests/clear`)
+    await request.post(`${apiURL}/api/test/context-protected-requests/clear`)
     await page.reload()
     await page.waitForLoadState('networkidle')
 
     const reloadPayload = await (await request.get(`${apiURL}/api/test/analytics-events`)).json()
-    const reloadSessionRequests = reloadPayload.receiptProtectedRequests.filter((item: { endpoint?: string }) => item.endpoint === '/api/me')
+    const reloadSessionRequests = reloadPayload.contextProtectedRequests.filter((item: { endpoint?: string }) => item.endpoint === '/api/me')
     expect(reloadSessionRequests.length).toBeGreaterThan(0)
     expect(reloadSessionRequests.every((item: { cookie?: string }) => /mei_session=(?:mock|renewed)-session/.test(item.cookie || ''))).toBe(true)
 
-    await request.post(`${apiURL}/api/test/receipt-protected-requests/clear`)
+    await request.post(`${apiURL}/api/test/context-protected-requests/clear`)
     await page.evaluate(() => fetch('/api/me', { credentials: 'include' }).then(response => response.json()))
     const renewedPayload = await (await request.get(`${apiURL}/api/test/analytics-events`)).json()
-    const renewedSessionRequests = renewedPayload.receiptProtectedRequests.filter((item: { endpoint?: string }) => item.endpoint === '/api/me')
+    const renewedSessionRequests = renewedPayload.contextProtectedRequests.filter((item: { endpoint?: string }) => item.endpoint === '/api/me')
     expect(renewedSessionRequests.length).toBeGreaterThan(0)
     expect(renewedSessionRequests.every((item: { cookie?: string }) => item.cookie?.includes('mei_session=renewed-session'))).toBe(true)
-    expect(protectedRequestUrls.length).toBeGreaterThanOrEqual(5)
+    expect(protectedRequestUrls.length).toBeGreaterThanOrEqual(4)
     expect(protectedRequestUrls.every(url => new URL(url).origin === new URL(page.url()).origin)).toBe(true)
     expect(protectedRequestUrls.some(url => url.includes('meigallery-api-dev.wajie.workers.dev'))).toBe(false)
   })
 
-  test('TikTok Pixel 仅在授权后的公开页面加载并发送首次 PageView', async ({ request, page }) => {
+  test('TikTok Pixel 仅在 TikTok 来源公开页面加载并发送首次 PageView', async ({ page }) => {
     const pixelId = 'C123456789ABCDEF'
     const scriptRequests: string[] = []
-    await request.patch(`${apiURL}/api/admin/settings`, {
-      data: {
-        ad_platform_browser_connections: [{
-          provider: 'tiktok',
-          destinationId: pixelId,
-          debugEnabled: false,
-          mode: 'test',
-        }],
-      },
-    })
-    await request.patch(`${apiURL}/api/test/marketing-consent-state`, { data: { state: 'granted' } })
     await page.route('https://analytics.tiktok.com/**', async (route) => {
       scriptRequests.push(route.request().url())
       await route.fulfill({ contentType: 'application/javascript', body: 'window.__tiktokSdkTestLoaded = true' })
     })
 
-    try {
-      await page.goto('/')
-      await expect.poll(() => scriptRequests.length).toBe(0)
+    await page.goto('/')
+    await expect.poll(() => scriptRequests.length).toBe(0)
 
-      await page.goto('/?ttclid=tiktok-click-test')
-      await expect.poll(() => scriptRequests.length).toBe(1)
-      expect(scriptRequests[0]).toContain(`sdkid=${pixelId}`)
-      expect(scriptRequests[0]).toContain('lib=ttq')
-      await expect.poll(() => page.evaluate(() => Boolean((window as Window & { __tiktokSdkTestLoaded?: boolean }).__tiktokSdkTestLoaded))).toBe(true)
+    await page.goto('/?ttclid=tiktok-click-test')
+    await expect.poll(() => scriptRequests.length).toBe(1)
+    expect(scriptRequests[0]).toContain(`sdkid=${pixelId}`)
+    expect(scriptRequests[0]).toContain('lib=ttq')
+    await expect.poll(() => page.evaluate(() => Boolean((window as Window & { __tiktokSdkTestLoaded?: boolean }).__tiktokSdkTestLoaded))).toBe(true)
 
-      const state = await page.evaluate(() => {
-        const script = document.head.querySelector<HTMLScriptElement>('script[src*="analytics.tiktok.com/i18n/pixel/events.js"]')
-        const queue = window.ttq as unknown as unknown[] | undefined
-        return {
-          inHead: Boolean(script),
-          async: script?.async,
-          referrerPolicy: script?.referrerPolicy,
-          queuedPageViews: queue?.filter(item => Array.isArray(item) && item[0] === 'page').length ?? 0,
-        }
-      })
-      expect(state).toEqual({ inHead: true, async: true, referrerPolicy: 'no-referrer', queuedPageViews: 1 })
+    const state = await page.evaluate(() => {
+      const script = document.head.querySelector<HTMLScriptElement>('script[src*="analytics.tiktok.com/i18n/pixel/events.js"]')
+      const queue = window.ttq as unknown as unknown[] | undefined
+      return {
+        inHead: Boolean(script),
+        async: script?.async,
+        referrerPolicy: script?.referrerPolicy,
+        queuedPageViews: queue?.filter(item => Array.isArray(item) && item[0] === 'page').length ?? 0,
+      }
+    })
+    expect(state).toEqual({ inHead: true, async: true, referrerPolicy: 'no-referrer', queuedPageViews: 1 })
 
-      await page.goto('/?fbclid=meta-click-test')
-      await expect.poll(() => scriptRequests.length).toBe(1)
+    await page.goto('/?fbclid=meta-click-test')
+    await expect.poll(() => scriptRequests.length).toBe(1)
 
-      await page.goto('/admin')
-      await expect.poll(() => scriptRequests.length).toBe(1)
-      await expect(page.locator('head script[src*="analytics.tiktok.com"]')).toHaveCount(0)
-    }
-    finally {
-      await request.patch(`${apiURL}/api/admin/settings`, { data: { ad_platform_browser_connections: [] } })
-      await request.patch(`${apiURL}/api/test/marketing-consent-state`, { data: { state: 'limited' } })
-    }
+    await page.goto('/admin')
+    await expect.poll(() => scriptRequests.length).toBe(1)
+    await expect(page.locator('head script[src*="analytics.tiktok.com"]')).toHaveCount(0)
   })
 
   test('Web 同源代理完整保留 multipart 二进制字节', async ({ page }) => {

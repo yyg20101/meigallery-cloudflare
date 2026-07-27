@@ -3,7 +3,6 @@ import type {
   AdBrowserPublicConfig,
   AdBrowserInstruction,
   AdBrowserSignal,
-  AdConsentSnapshot,
 } from '@meigallery/shared'
 import { googleAdsAdapter } from './googleAds.client'
 import { metaPixelAdapter } from './metaPixel.client'
@@ -12,7 +11,7 @@ import { tiktokPixelAdapter } from './tiktokPixel.client'
 type BrowserEventPayload = Record<string, string | number | boolean>
 
 export interface BrowserTrackingAdapter {
-  initialize(config: AdBrowserPublicConfig, consent: AdConsentSnapshot): Promise<boolean>
+  initialize(config: AdBrowserPublicConfig): Promise<boolean>
   track(instruction: AdBrowserInstruction): Promise<boolean>
   trackSignal(signal: AdBrowserSignal, payload: BrowserEventPayload): Promise<boolean>
   teardown(): Promise<void>
@@ -27,17 +26,13 @@ const adapters: ReadonlyMap<AdAttributionProvider, BrowserTrackingAdapter> = new
 let activeProvider: AdAttributionProvider | null = null
 let lifecycleQueue: Promise<void> = Promise.resolve()
 
-export async function initializeAdBrowserProvider(config: AdBrowserPublicConfig, consent: AdConsentSnapshot) {
+export async function initializeAdBrowserProvider(config: AdBrowserPublicConfig) {
   return serializeLifecycle(async () => {
-    if (!consent.marketingAllowed) {
-      await teardownActiveProvider()
-      return false
-    }
     const adapter = adapters.get(config.provider)
     if (!adapter) return false
     if (activeProvider && activeProvider !== config.provider) await teardownActiveProvider()
     try {
-      const initialized = await adapter.initialize(config, consent)
+      const initialized = await adapter.initialize(config)
       if (!initialized) {
         activeProvider = null
         await safeTeardown(adapter)

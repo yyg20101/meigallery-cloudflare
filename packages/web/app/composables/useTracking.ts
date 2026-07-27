@@ -3,7 +3,6 @@ import type {
   AdBrowserPublicConfig,
   AdBrowserInstruction,
   AdBrowserSignal,
-  AdConsentSnapshot,
 } from '@meigallery/shared'
 import { normalizeAnalyticsCampaignToken } from '@meigallery/shared/utils'
 import {
@@ -15,7 +14,6 @@ import {
 } from '~/adapters/adPlatformBrowser.client'
 import { sanitizeAnalyticsPath } from '~/utils/analyticsSanitizer'
 import {
-  clearProjectAdClickCookies,
   projectAdClickCookie,
   readAdPlatformBrowserIdentifiers,
 } from '~/utils/adPlatformBrowserIdentifiers'
@@ -33,7 +31,6 @@ export interface TrackSearchInput {
   resultCount: number
 }
 
-type MarketingConsentScope = 'granted' | 'limited' | 'denied'
 type BrowserPayload = Record<string, string | number | boolean>
 type AnalyticsContext = ReturnType<ReturnType<typeof useAnalytics>['getContext']> & { sourceChannel?: string }
 
@@ -43,17 +40,14 @@ export function useTracking() {
   const { api } = useApi()
   const route = useRoute()
   const analytics = useAnalytics()
-  const marketingConsent = useMarketingConsent()
   const adAttribution = useAdAttribution()
 
   async function trackContact(input: TrackContactInput) {
     if (input?.actionType !== 'open_link' || !safeIdentifier(input.contactMethodId)) return
     const routeAllowed = isMarketingRouteAllowed(route.fullPath)
-    const consentScope = currentMarketingConsentScope(marketingConsent)
-    if (routeAllowed && consentScope === 'granted') await adAttribution.resolve(route)
+    if (routeAllowed) await adAttribution.resolve(route)
     if (!routeAllowed) {
       await teardownAdBrowserTracking()
-      await adAttribution.clear()
     }
 
     const context = analytics.getContext() as AnalyticsContext
@@ -75,10 +69,6 @@ export function useTracking() {
       utmCampaign: normalizeText(sourceContext.utmCampaign, 120),
       utmContent: normalizeAnalyticsCampaignToken(sourceContext.utmContent || queryValue(route.query.utm_content)),
       methodType: normalizeText(input.methodType, 80),
-      consentState: consentScope,
-      adAttributionState: consentScope === 'granted' && routeAllowed
-        ? trustedAdAttributionState(adAttribution)
-        : 'suppress' as const,
       metadata: { action_type: 'open_link' },
     }
 
@@ -90,46 +80,21 @@ export function useTracking() {
     const instructions = trackingInstructionsFromResponse(response)
 
     trackContactAnalytics(analytics, input, firstInstructionExternalEventId(instructions))
-    await executeBrowserInstructionsWithinScope(instructions, consentScope)
+    await executeBrowserInstructions(instructions)
   }
 
-  async function executeBrowserInstructions(instructions: AdBrowserInstruction[]) {
-    await executeBrowserInstructionsWithinScope(instructions, 'granted')
-  }
-
-  async function executeBrowserInstructionsWithinScope(instructions: unknown[], maximumConsentScope: MarketingConsentScope) {
-    if (!isMarketingRouteAllowed(route.fullPath)
-      || scopedMarketingConsent(marketingConsent, maximumConsentScope) !== 'granted'
-      || !Array.isArray(instructions)) return
+  async function executeBrowserInstructions(instructions: unknown[]) {
+    if (!isMarketingRouteAllowed(route.fullPath) || !Array.isArray(instructions)) return
     for (const value of instructions) {
       const instruction = normalizeBrowserInstruction(value)
       if (!instruction || instruction.provider !== adAttribution.provider.value) continue
       if (!await activateCurrentAdBrowserProvider(instruction.provider)) continue
-      if (!await executeAdBrowserInstruction(instruction)) continue
-      try {
-        await api('/api/conversions/browser-attempt', {
-          method: 'POST',
-          body: {
-            deliveryId: instruction.deliveryId,
-            provider: instruction.provider,
-            receiptToken: instruction.receiptToken,
-          },
-        })
-      }
-      catch {
-        // 平台事件已执行，回执失败不阻断用户业务动作。
-      }
+      await executeAdBrowserInstruction(instruction)
     }
   }
 
   async function trackPageView() {
     if (!isMarketingRouteAllowed(route.fullPath)) {
-      await teardownAdBrowserTracking()
-      return
-    }
-    if (!canDeliverMarketing(marketingConsent)) {
-      clearPersistedAdClickIdentifiers()
-      await adAttribution.clear()
       await teardownAdBrowserTracking()
       return
     }
@@ -155,7 +120,7 @@ export function useTracking() {
   }
 
   async function trackSignalForAttributedProvider(signal: AdBrowserSignal, payload: BrowserPayload) {
-    if (!isMarketingRouteAllowed(route.fullPath) || !canDeliverMarketing(marketingConsent)) return
+    if (!isMarketingRouteAllowed(route.fullPath)) return
     const active = await resolveActiveBrowserProvider()
     if (!active) {
       await teardownAdBrowserTracking()
@@ -169,7 +134,7 @@ export function useTracking() {
     if (!provider || !isRegisteredAdBrowserProvider(provider)) return null
     const config = await adAttribution.bootstrap()
     if (!config || config.provider !== provider) return null
-    const initialized = await initializeAdBrowserProvider(config, currentAdConsentSnapshot(marketingConsent))
+    const initialized = await initializeAdBrowserProvider(config)
     return initialized ? { provider, config } : null
   }
 
@@ -177,7 +142,7 @@ export function useTracking() {
     if (!isRegisteredAdBrowserProvider(provider)) return false
     const config = await adAttribution.bootstrap()
     if (!config || config.provider !== provider) return false
-    return initializeAdBrowserProvider(config, currentAdConsentSnapshot(marketingConsent))
+    return initializeAdBrowserProvider(config)
   }
 
   async function teardownAdBrowserTracking() {
@@ -185,20 +150,12 @@ export function useTracking() {
     await teardownAllAdBrowserProviders()
   }
 
-  async function clearAdAttribution() {
-    clearPersistedAdClickIdentifiers()
-    await teardownAdBrowserTracking()
-    await adAttribution.clear()
-  }
-
   async function buildRegistrationAttributionContext() {
-    const consentScope = currentMarketingConsentScope(marketingConsent)
     const routeAllowed = isMarketingRouteAllowed(route.fullPath)
-    if (consentScope === 'granted' && routeAllowed) await adAttribution.resolve(route)
-    else if (!routeAllowed) await adAttribution.clear()
+    if (routeAllowed) await adAttribution.resolve(route)
+    else await teardownAdBrowserTracking()
     const context = analytics.getContext() as AnalyticsContext
     const sourceContext = context.sourceContext || {}
-    if (consentScope !== 'granted') clearPersistedAdClickIdentifiers()
     return {
       visitorId: normalizeText(context.visitorId, 120) || undefined,
       sessionId: normalizeText(context.sessionId, 120) || undefined,
@@ -212,11 +169,7 @@ export function useTracking() {
       utmMedium: normalizeText(sourceContext.utmMedium, 120),
       utmCampaign: normalizeText(sourceContext.utmCampaign, 120),
       utmContent: normalizeAnalyticsCampaignToken(sourceContext.utmContent || queryValue(route.query.utm_content)),
-      consentState: consentScope,
-      adAttributionState: consentScope === 'granted' && routeAllowed
-        ? trustedAdAttributionState(adAttribution)
-        : 'suppress' as const,
-      ...(consentScope === 'granted' && routeAllowed && adAttribution.provider.value && typeof document !== 'undefined'
+      ...(routeAllowed && adAttribution.provider.value && typeof document !== 'undefined'
         ? { browserIdentifiers: readBrowserIdentifiers(adAttribution.provider.value, route.query) }
         : {}),
     }
@@ -228,21 +181,9 @@ export function useTracking() {
     executeBrowserInstructions,
     trackPageView,
     teardownAdBrowserTracking,
-    clearAdAttribution,
     trackViewContent,
     trackSearch,
     buildRegistrationAttributionContext,
-  }
-}
-
-function currentAdConsentSnapshot(marketingConsent: ReturnType<typeof useMarketingConsent>): AdConsentSnapshot {
-  const allowed = currentMarketingConsentScope(marketingConsent) === 'granted'
-  return {
-    consentVersion: 1,
-    marketingAllowed: allowed,
-    adUserDataAllowed: allowed,
-    adPersonalizationAllowed: false,
-    decidedAt: new Date().toISOString(),
   }
 }
 
@@ -252,46 +193,14 @@ function readBrowserIdentifiers(provider: AdAttributionProvider, clickIds: Recor
   return readAdPlatformBrowserIdentifiers(provider, document.cookie, clickIds)
 }
 
-function clearPersistedAdClickIdentifiers() {
-  if (typeof document === 'undefined') return
-  for (const cookie of clearProjectAdClickCookies()) document.cookie = cookie
-}
-
-function canDeliverMarketing(marketingConsent: ReturnType<typeof useMarketingConsent>) {
-  return currentMarketingConsentScope(marketingConsent) === 'granted'
-}
-
-function trustedAdAttributionState(adAttribution: ReturnType<typeof useAdAttribution>) {
-  return adAttribution.provider.value
-    && (adAttribution.resolution.value === 'matched' || adAttribution.resolution.value === 'inherited')
-    ? 'resolved' as const
-    : 'suppress' as const
-}
-
-function currentMarketingConsentScope(marketingConsent: ReturnType<typeof useMarketingConsent>): MarketingConsentScope {
-  if (marketingConsent.state.value === 'denied') return 'denied'
-  return marketingConsent.state.value === 'granted' && marketingConsent.canTrackMarketing.value ? 'granted' : 'limited'
-}
-
-function scopedMarketingConsent(marketingConsent: ReturnType<typeof useMarketingConsent>, maximum: MarketingConsentScope) {
-  const current = currentMarketingConsentScope(marketingConsent)
-  const rank: Record<MarketingConsentScope, number> = { denied: 0, limited: 1, granted: 2 }
-  return rank[current] <= rank[maximum] ? current : maximum
-}
-
 function normalizeBrowserInstruction(value: unknown): AdBrowserInstruction | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const instruction = value as Record<string, unknown>
-  if (!exactKeys(instruction, ['deliveryId', 'provider', 'canonicalEvent', 'externalEventId', 'receiptToken', 'descriptor', 'payload'])
-    || typeof instruction.deliveryId !== 'string'
-    || !/^[A-Za-z0-9_-]{1,160}$/.test(instruction.deliveryId)
+  if (!exactKeys(instruction, ['provider', 'canonicalEvent', 'externalEventId', 'descriptor', 'payload'])
     || !isRegisteredAdBrowserProvider(instruction.provider)
     || (instruction.canonicalEvent !== 'Contact' && instruction.canonicalEvent !== 'CompleteRegistration')
     || typeof instruction.externalEventId !== 'string'
     || !/^[A-Za-z0-9_-]{1,64}$/.test(instruction.externalEventId)
-    || typeof instruction.receiptToken !== 'string'
-    || instruction.receiptToken.length < 20
-    || instruction.receiptToken.length > 160
     || !safeBrowserPayload(instruction.payload)) return null
   const descriptor = instruction.descriptor
   if (!descriptor || typeof descriptor !== 'object' || Array.isArray(descriptor)) return null

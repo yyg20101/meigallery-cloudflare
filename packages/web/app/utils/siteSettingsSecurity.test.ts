@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getHomeAdTextPreviewWarnings, isScheduledSiteFeatureActive, normalizeAnalyticsConsentMode, normalizeAnalyticsSampleRate, normalizeBooleanSetting, normalizeFeaturedRegionSlugs, normalizeHomeAdText, normalizeHomeAdUrl, normalizeHomeHotTagLimit, normalizeInternalPath, normalizePublicImageSettingUrl, normalizePublicSettingUrl, normalizeSeoKeywords, normalizeSiteSettingDateTime, normalizeSiteSettingPixelId, safeRulesMarkdown, safeSiteText } from './siteSettingsSecurity'
+import { getHomeAdTextPreviewWarnings, isScheduledSiteFeatureActive, normalizeAnalyticsConsentMode, normalizeAnalyticsSampleRate, normalizeBooleanSetting, normalizeFeaturedRegionSlugs, normalizeHomeAdText, normalizeHomeAdUrl, normalizeHomeHotTagLimit, normalizeInternalPath, normalizePublicImageSettingUrl, normalizePublicSettingUrl, normalizeSeoKeywords, normalizeSiteSettingDateTime, safeRulesMarkdown, safeSiteText } from './siteSettingsSecurity'
 
 describe('siteSettingsSecurity', () => {
   it('公开 URL 只允许站内路径和 https 链接', () => {
@@ -162,9 +162,7 @@ describe('siteSettingsSecurity', () => {
     expect(normalizeInternalPath('/rules%5Cnext')).toBe('')
   })
 
-  it('归一化公开 Pixel ID 和布尔设置', () => {
-    expect(normalizeSiteSettingPixelId(' 1234567890 ')).toBe('1234567890')
-    expect(normalizeSiteSettingPixelId('fbq("track")')).toBe('')
+  it('归一化布尔设置', () => {
     expect(normalizeBooleanSetting(true)).toBe(true)
     expect(normalizeBooleanSetting('true')).toBe(true)
     expect(normalizeBooleanSetting('TRUE')).toBe(false)

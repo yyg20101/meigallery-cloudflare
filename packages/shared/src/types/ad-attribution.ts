@@ -1,16 +1,29 @@
-export type AdAttributionProvider = 'meta' | 'tiktok' | 'google'
+export const AD_ATTRIBUTION_PROVIDERS = [
+  'meta',
+  'tiktok',
+  'google',
+] as const
+
+export type AdAttributionProvider = typeof AD_ATTRIBUTION_PROVIDERS[number]
+
+export const AD_ATTRIBUTION_IDENTIFIER_KEYS: Readonly<
+  Record<AdAttributionProvider, readonly string[]>
+> = {
+  meta: ['fbclid'],
+  tiktok: ['ttclid'],
+  google: ['gclid', 'gbraid', 'wbraid'],
+}
+
+export function isAdAttributionProvider(
+  value: unknown,
+): value is AdAttributionProvider {
+  return typeof value === 'string'
+    && AD_ATTRIBUTION_PROVIDERS.some(provider => provider === value)
+}
 
 export type CanonicalConversionEvent = 'Contact' | 'CompleteRegistration'
 
 export type AdBrowserSignal = 'PageView' | 'ViewContent' | 'Search'
-
-export interface AdConsentSnapshot {
-  consentVersion: number
-  marketingAllowed: boolean
-  adUserDataAllowed: boolean
-  adPersonalizationAllowed: boolean
-  decidedAt: string
-}
 
 export type PlatformPublicConfig =
   | { provider: 'meta'; pixelId: string }
@@ -37,11 +50,9 @@ export interface PlatformEventDescriptor {
 }
 
 export interface AdBrowserInstruction {
-  deliveryId: string
   provider: AdAttributionProvider
   canonicalEvent: CanonicalConversionEvent
   externalEventId: string
-  receiptToken: string
   descriptor: PlatformEventDescriptor
   payload: Record<string, string | number | boolean>
 }

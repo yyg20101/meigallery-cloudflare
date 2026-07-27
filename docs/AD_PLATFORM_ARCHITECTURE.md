@@ -2,72 +2,92 @@
 
 ## 目标
 
-归因系统只解决三件事：
+归因运行时只负责四件事：
 
-1. 记录一次可信业务事实。
-2. 判断该事实唯一属于哪个广告平台。
-3. 通过该平台的 Browser、Server 或两种通道投递。
+1. 识别一次访问的唯一付费广告来源。
+2. 记录 `Contact`、`CompleteRegistration` 业务事实。
+3. 为来源平台生成 Browser 与 Server 投递。
+4. 隔离平台故障，保证浏览、联系和注册不受影响。
 
-Meta、TikTok、Google 共用事实、隐私、投递和诊断模型，但凭证、事件目标、Queue 和平台请求完全隔离。
+Meta、TikTok、Google 共用来源路由、事实和投递模型；平台脚本、凭证、Queue、事件目标与外部请求完全隔离。
 
 ```text
+click ID / 后台签名投放链接
+              |
+              v
+       唯一来源路由器
+              |
+              v
+HttpOnly 加密来源上下文（30 天最后一次付费来源）
+              |
+              v
 Contact / CompleteRegistration
               |
               v
-attribution_conversion_facts
+attribution_conversion_facts（唯一 provider）
               |
               v
-唯一 provider: meta | tiktok | google | none
-              |
-              v
-connection + consent + event binding
-              |
-              v
-Browser delivery / 加密 Outbox -> provider Queue -> Server API
+Browser adapter / 加密 Outbox -> provider Queue -> Server adapter
 ```
 
-## 唯一运行时
+## 来源路由
 
-- `packages/api` 是唯一归因运行时。
-- 不存在独立 Attribution Worker、运行时 owner、epoch、bridge、shadow 或 cutover。
-- D1 是唯一事实和投递状态来源。
-- production 使用 Meta、TikTok、Google 三组独立 Queue/DLQ。
-- dev/local 不绑定真实广告 Queue，也不请求真实平台。
+来源判定只有 `packages/api/src/services/ad-attribution-routing.ts` 一处实现，固定优先级如下：
 
-`0060_attribution_control_plane_cleanup.sql` 删除旧 Worker 的业务 Outbox、owner/cutover、写入冻结 trigger 和验证工作流表。核心事实、投递、加密 Outbox、回执、故障和质量数据不受影响。
+1. `fbclid` 选择 Meta。
+2. `ttclid` 选择 TikTok。
+3. `gclid`、`gbraid`、`wbraid` 选择 Google。
+4. 数据库校验通过的 `mg_source + mg_proof` 选择后台绑定平台。
+5. 没有新信号时继承 30 天内最近一次有效广告来源。
 
-## 核心表
+约束：
 
-- `attribution_platform_connections`：平台开关和公开目标 ID。
-- `attribution_event_bindings`：`Contact`、`CompleteRegistration` 的平台目标。
-- `attribution_credentials`：加密凭证，每个平台连接只保留一份当前凭证。
-- `attribution_conversion_facts`：不可变业务事实。
-- `attribution_deliveries`：Browser/Server 投递账本。
-- `attribution_outbox`：Server 投递的加密敏感上下文。
-- `attribution_provider_receipts`：脱敏平台与 Browser 回执。
-- `attribution_incidents`：运行故障。
-- `attribution_quality_snapshots`：平台质量指标。
-- `attribution_usage_daily`：资源使用估算。
+- 新的明确来源覆盖旧来源。
+- 同时出现多个平台信号时返回 `conflict`，清除来源上下文，不加载任何 Pixel。
+- 普通 UTM、referrer 和前端 `provider` 声明不能决定平台。
+- 自然流量且没有历史来源时返回 `none`。
+- 来源上下文由 API 加密签名并写入 `HttpOnly` Cookie，Contact 和注册 API 只信任该上下文。
 
-历史 migration 必须保留连续编号，但历史表和历史流程不属于当前运行架构。
+## 浏览器投递
 
-## 业务事实
+- 浏览器 adapter registry 同一时刻只允许一个 active provider。
+- Meta 来源只加载 Meta Pixel；TikTok 来源只加载 TikTok Pixel；Google 来源只加载 Google Tag。
+- `PageView`、`ViewContent`、`Search` 只发往 active provider。
+- SPA 解析出的 provider 与当前 provider 不同时执行整页刷新；下一结果为冲突或空来源时同样刷新，避免旧脚本残留。
+- Pixel 初始化或事件调用失败只关闭本次平台投递，不阻断页面、联系或注册。
 
+## 服务端投递
+
+- `attribution_conversion_facts` 是唯一业务事实源。
 - 广告转化事实仅有 `Contact` 和 `CompleteRegistration`。
-- `Contact` 只在原生联系跳转或复制联系方式成功后由服务端创建。
-- `CompleteRegistration` 只在注册成功后由服务端创建。
-- 浏览、按钮展开和普通点击属于站内分析，不作为广告转化。
-- 事实即使不满足平台投递条件也必须保留，避免广告平台故障污染业务数据。
+- 一条事实最多属于 Meta、TikTok、Google 中的一个 provider。
+- Browser 与 Server delivery 共用同一 `external_event_id`，用于同平台去重。
+- Server Planner 只为事实所属 provider 建立 delivery，禁止 fan-out、广播或枚举所有已启用平台。
+- 每个平台仅有一个 Server adapter，并使用独立 Queue/DLQ。
+- Queue 消费使用 D1 状态 CAS；同一 delivery 只有一次有效执行，不使用额外 lease、revision 或发布状态。
+- Queue、Pixel 或外部平台失败只更新对应 delivery，不回滚业务事实。
 
-## 来源隔离
+## 核心存储
 
-- click ID 或签名投放链接是可信广告来源；普通 UTM 不能声明 provider。
-- 一条事实最多有一个 `attribution_provider`。
-- Meta 来源只规划 Meta delivery，TikTok 和 Google 同理。
-- 多平台信号冲突时保留站内事实，不向任何平台投递。
-- Browser 与 Server 使用同一 external event ID，供同平台去重。
+- `attribution_platform_connections`：平台、连接开关、公开目标和稳定 `outbox_scope`。
+- `attribution_event_bindings`：两个标准事件的 Browser/Server 目标。
+- `attribution_credentials`：每个连接一份当前加密凭证及 `encryption_context`。
+- `attribution_conversion_facts`：不可变业务事实和唯一来源平台。
+- `attribution_deliveries`：Browser/Server 投递状态。
+- `attribution_outbox`：Server 投递的 24 小时加密敏感上下文。
+- `attribution_provider_receipts`：平台响应和质量诊断证据。
+- `attribution_incidents`、`attribution_quality_snapshots`：故障与质量观察。
 
-## 连接模型
+`0061_attribution_source_router_cleanup.sql` 会：
+
+- 删除地区策略、授权快照、rollout、mode、revision 和冗余 provider 字段。
+- 保留现有连接、公开目标、最新加密凭证、事实、delivery、Outbox、平台回执、事故和质量数据。
+- 保留原有 `outbox_scope` 与凭证加密上下文，避免有效 Token 失效。
+- 重建数据库层的平台隔离和来源组合约束。
+
+历史 migration 保留连续编号，只用于升级路径；应用运行时不得访问被后续 migration 删除的字段和表。
+
+## 连接管理
 
 后台只管理：
 
@@ -75,46 +95,33 @@ Browser delivery / 加密 Outbox -> provider Queue -> Server API
 - 是否启用 Browser。
 - 是否启用 Server。
 - 平台公开目标 ID。
-- 两个标准事件的目标映射。
+- `Contact`、`CompleteRegistration` 目标映射。
 - 一份加密凭证。
 
-保存配置不会触发发布流程、不会改变投递比例、不会要求重新确认，也不会使已入队事件失效。连接创建时生成的内部 Outbox 作用域保持稳定；凭证只有在 Owner 显式提交新凭证时才轮换。
+保存配置不会触发发布流程、改变投递比例或取消已排队事件。只有 Owner 显式提交新 Token 时才轮换凭证。
 
-“测试连接”是同步、幂等的诊断操作：
+Test Event Code 只用于一次同步连接测试，不持久化、不写审计、不进入正式事件。连接测试幂等，不创建 Workflow 或发布门禁。
 
-- 读取当前连接和凭证。
-- 使用确定性测试事件 ID 请求平台测试接口。
-- 立即返回结果。
-- 不写验证状态、不创建 Workflow、不参与正式发布门禁。
-- Test Event Code 只存在于本次请求，不持久化，正式事件不携带测试码。
+## 合规边界
 
-## 故障边界
+当前归因运行时不包含地区判断、自建营销授权页、Banner、Consent Cookie 或地区策略表。若后续必须增加合规控制，只允许在来源路由完成后接入一个集中式 `allow/deny` 结果；不得在各平台 adapter 中复制地区代码或重新建立多套状态。
 
-- 平台请求失败只更新对应 delivery，不回滚业务事实。
-- retryable 失败由对应 Queue 重试，最终失败进入对应 DLQ。
-- Queue 消息必须同时匹配事实 provider、连接 provider 和 Queue provider。
-- 凭证、Outbox 和来源上下文使用独立加密用途，明文不写日志、审计或 API 响应。
-- 后台配置变化不能改变已创建事实的 provider。
+## 发布与回滚
 
-## 发布与修复
-
-- 完整 lint、单测、覆盖率、E2E、类型和构建验证由 PR CI 执行一次。
-- 正式部署只做受影响 Worker 的类型/构建检查、必要 migration、部署和生产烟测。
-- API 先上传不接流量的 Worker Version，再执行 migration 并激活，避免上传耗时扩大旧代码与新结构并存窗口。
-- `./scripts/deploy.sh production api` 只部署 API，不触碰 Web。
-- `./scripts/deploy.sh production web` 只部署 Web，不触碰 API、D1 或归因。
-- `./scripts/deploy.sh production all` 用于两端确实同时变化的发布。
-- 生产验证只检查服务可用性和结构完整性，不要求 API/Web commit 相同。
-- 连接配置、隐私策略、dead letter、过期 Outbox 等运行状态会产生警告，但不得阻止无关功能或修复版本发布。
+- 精简改造在隔离分支一次完成，不发布关闭全部 Pixel 的中间版本。
+- 发布前必须通过三平台来源隔离、同事件 ID、迁移保留、类型检查和 Web/API 构建。
+- production 发布前核对三平台连接目标与凭证指纹，不修改有效凭证。
+- 发布后分别访问 Meta、TikTok、Google 测试链接，网络面板只能出现来源平台。
+- 异常时恢复上一生产 Worker Version；不在新架构中加入临时兼容分支。
 
 ## 新平台接入
 
 新增平台只需：
 
 1. 在 shared type 和 registry 注册 provider。
-2. 实现 Browser 描述、Server adapter 和连接测试 adapter。
-3. 配置独立 Queue/DLQ 和凭证类型。
-4. 定义两个标准事件的目标映射。
-5. 增加来源解析、平台隔离和 adapter 测试。
+2. 增加该平台来源信号。
+3. 实现一个 Browser adapter、一个 Server adapter 和一个连接测试 adapter。
+4. 配置独立 Queue/DLQ、凭证类型和两个事件目标。
+5. 增加来源隔离、同 event ID 与失败不阻断测试。
 
-不得修改业务事实口径，不得创建第二套 Planner、Outbox、连接状态机或发布门禁。
+不得创建第二套事实、Planner、Outbox、连接状态机或发布门禁。

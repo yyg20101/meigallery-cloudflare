@@ -30,7 +30,6 @@ export function useAdAttribution() {
             gclid: queryValue(route.query.gclid),
             gbraid: queryValue(route.query.gbraid),
             wbraid: queryValue(route.query.wbraid),
-            utmSource: queryValue(route.query.utm_source),
             trackingSourceSlug: queryValue(route.query.mg_source),
             managedLinkProof: queryValue(route.query.mg_proof),
           },
@@ -38,6 +37,11 @@ export function useAdAttribution() {
         const normalized = normalizeServerResolution(response)
         if (!normalized) throw new Error('广告来源响应不一致')
         if (version !== operationVersion) return null
+        if (requiresFullReload(provider.value, normalized.provider)) {
+          resetLocalState(provider, resolution, publicConfig)
+          window.location.reload()
+          return null
+        }
         provider.value = normalized.provider
         resolution.value = normalized.resolution
         publicConfig.value = null
@@ -49,7 +53,7 @@ export function useAdAttribution() {
           await api('/api/ad-attribution', { method: 'DELETE' })
         }
         catch {
-          // 转化请求同时携带 suppress，只能关闭广告投递，不能凭客户端状态开启投递。
+          // 本地已关闭来源；后续服务端投递仍只接受加密来源上下文。
         }
         return null
       }
@@ -88,7 +92,7 @@ export function useAdAttribution() {
         await api('/api/ad-attribution', { method: 'DELETE' })
       }
       catch {
-        // 本地 Pixel 已关闭；后续转化请求还会携带 suppress，旧 receipt 不能重新开启投递。
+        // 本地 Pixel 已关闭；服务端不可用不能阻断页面操作。
       }
       if (version === operationVersion) resetLocalState(provider, resolution, publicConfig)
     })
@@ -97,6 +101,13 @@ export function useAdAttribution() {
   }
 
   return { provider, resolution, publicConfig, resolve, bootstrap, clear }
+}
+
+export function requiresFullReload(
+  currentProvider: AdAttributionProvider | null,
+  nextProvider: AdAttributionProvider | null,
+) {
+  return Boolean(currentProvider && currentProvider !== nextProvider)
 }
 
 function resetLocalState(

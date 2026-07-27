@@ -25,7 +25,7 @@ const AAD = {
   purpose: 'context' as const,
   provider: 'ad-attribution-context',
   subjectId: 'browser-cookie',
-  revision: '1',
+  scope: '1',
 }
 const PROVIDER_IDENTIFIERS: Record<AdAttributionProvider, ReadonlySet<string>> = {
   meta: new Set(['fbclid']),

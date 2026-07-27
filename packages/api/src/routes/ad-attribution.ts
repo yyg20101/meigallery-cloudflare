@@ -11,7 +11,6 @@ import {
   sealAdAttributionContext,
 } from '../utils/ad-attribution-context'
 import { loadAttributionCryptoKeys } from '../utils/attribution-crypto'
-import { resolveRequestMarketingConsent } from '../utils/marketing-consent-request'
 
 export const AD_ATTRIBUTION_CONTEXT_COOKIE = 'mei_ad_attribution'
 
@@ -24,9 +23,6 @@ adAttributionRoutes.use('*', async (c, next) => {
 
 adAttributionRoutes.get('/bootstrap', async (c) => {
   try {
-    const { state: consentState } = await resolveRequestMarketingConsent(c)
-    if (consentState !== 'granted') return c.json(emptyBootstrapResponse())
-
     const keys = await loadAttributionCryptoKeys(c.env)
     const context = await resolveTrustedAdAttributionContext(
       keys,
@@ -52,19 +48,6 @@ adAttributionRoutes.get('/bootstrap', async (c) => {
 })
 
 adAttributionRoutes.put('/', async (c) => {
-  let consentState
-  try {
-    consentState = (await resolveRequestMarketingConsent(c)).state
-  }
-  catch {
-    clearContextCookie(c)
-    return c.json(emptyResponse(), 503)
-  }
-  if (consentState !== 'granted') {
-    clearContextCookie(c)
-    return c.json(emptyResponse())
-  }
-
   let body: AdAttributionSignals
   try {
     body = await c.req.json<AdAttributionSignals>()

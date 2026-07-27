@@ -2,7 +2,6 @@ import type {
   AdBrowserPublicConfig,
   AdBrowserInstruction,
   AdBrowserSignal,
-  AdConsentSnapshot,
 } from '@meigallery/shared'
 import { createFacebookPixelScript, normalizePixelId } from '~/utils/trackingSanitizer'
 
@@ -37,8 +36,8 @@ export function createMetaPixelAdapter() {
     return true
   }
 
-  async function initialize(config: AdBrowserPublicConfig, consent: AdConsentSnapshot) {
-    if (!isClientRuntime() || config.provider !== 'meta' || !consent.marketingAllowed) return false
+  async function initialize(config: AdBrowserPublicConfig) {
+    if (!isClientRuntime() || config.provider !== 'meta') return false
     const pixelId = normalizePixelId(config.pixelId)
     if (!pixelId) return false
     if (initialized && activePixelId === pixelId && window.fbq) return true

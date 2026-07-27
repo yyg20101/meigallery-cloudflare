@@ -7,7 +7,6 @@ const input = {
   provider: 'google' as const, canonicalEvent: 'Contact' as const, externalEventId: EVENT_ID,
   eventTime: 1_784_256_123, pageUrl: 'https://meigallery.example/contact', destination: '123456789',
   matchSignals: { gclid: 'gclid-1', gbraid: 'gbraid-1', wbraid: 'wbraid-1' }, hashedEmail: 'c'.repeat(64), validateOnly: true,
-  consent: { consentVersion: 1, marketingAllowed: true, adUserDataAllowed: true, adPersonalizationAllowed: false, decidedAt: '2026-07-17T02:40:00.000Z' },
 }
 
 describe('Google Data Manager 服务端 Adapter', () => {
@@ -68,7 +67,6 @@ describe('Google Data Manager 服务端 Adapter', () => {
     [{ ...input, eventTime: -1 }, { customerId: '1112223333', cloudProjectId: 'project-1' }],
     [{ ...input, eventTime: 4_102_444_800 }, { customerId: '1112223333', cloudProjectId: 'project-1' }],
     [{ ...input, pageUrl: 'https://user:pass@meigallery.example/contact' }, { customerId: '1112223333', cloudProjectId: 'project-1' }],
-    [{ ...input, consent: { ...input.consent, adUserDataAllowed: false } }, { customerId: '1112223333', cloudProjectId: 'project-1' }],
     [input, { customerId: 'customer-1', cloudProjectId: 'Project_1' }],
   ] as const)('拒绝空匹配或 Google 配置边界，且不调用 fetch', async (invalidInput, config) => {
     const fetcher = vi.fn()

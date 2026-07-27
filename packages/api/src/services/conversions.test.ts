@@ -1,15 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { recordContact } from './conversions'
-import { createAdConsentSnapshot } from '../utils/marketing-consent-receipt'
 
 const MASTER_KEY = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
 
 describe('统一转换事实', () => {
-  it('拒绝同意时只批量写入不可变 Fact，不创建 Delivery', async () => {
+  it('没有广告来源时只写入不可变 Fact，不创建 Delivery', async () => {
     const db = createDb()
     const result = await recordContact({ DB: db as unknown as D1Database, AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT: MASTER_KEY }, {
       visitorId: 'visitor_123', sessionId: 'session_123', occurredAt: '2026-07-15T00:00:00.000Z',
-      consentSnapshot: createAdConsentSnapshot('denied'), attributionSource: 'none', contactMethodId: 'contact_123', contactPlatform: 'telegram',
+      attributionSource: 'none', contactMethodId: 'contact_123', contactPlatform: 'telegram',
       actionType: 'open_link', metadata: { source: 'unit' },
     })
 
@@ -25,7 +24,7 @@ describe('统一转换事实', () => {
     const db = createDb('fact_existing')
     const result = await recordContact({ DB: db as unknown as D1Database, AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT: MASTER_KEY }, {
       visitorId: 'visitor_123', sessionId: 'session_123', occurredAt: '2026-07-15T00:00:00.000Z',
-      consentSnapshot: createAdConsentSnapshot('denied'), contactMethodId: 'contact_123', contactPlatform: 'telegram', actionType: 'open_link',
+      contactMethodId: 'contact_123', contactPlatform: 'telegram', actionType: 'open_link',
     })
     expect(result).toMatchObject({ id: 'fact_existing', actionType: 'contact', created: false, duplicateOf: 'fact_existing' })
     expect(result.trackingInstructions).toMatchObject([{ externalEventId: 'mg3_existing', canonicalEvent: 'Contact' }])
@@ -36,7 +35,7 @@ describe('统一转换事实', () => {
     const db = createDb('fact_google', 'google')
     const result = await recordContact({ DB: db as unknown as D1Database, AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT: MASTER_KEY }, {
       visitorId: 'visitor_123', sessionId: 'session_123', occurredAt: '2026-07-15T00:00:00.000Z',
-      consentSnapshot: createAdConsentSnapshot('denied'), contactMethodId: 'contact_123', contactPlatform: 'telegram', actionType: 'open_link',
+      contactMethodId: 'contact_123', contactPlatform: 'telegram', actionType: 'open_link',
     })
 
     expect(result.trackingInstructions[0]).toMatchObject({

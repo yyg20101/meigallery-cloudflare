@@ -1,17 +1,3 @@
-interface PixelRuntimeConfig {
-  public: {
-    appEnv?: string
-    facebookPixelAllowDev?: string
-    facebookPixelDevId?: string
-  }
-}
-
-interface PixelSiteSettings {
-  enabled: boolean
-  pixelId: string
-  debugEnabled: boolean
-}
-
 export const FACEBOOK_PIXEL_SCRIPT_SRC = 'https://connect.facebook.net/en_US/fbevents.js'
 
 const BLOCKED_ANALYTICS_PARAM_NAMES = new Set([
@@ -93,27 +79,6 @@ export function createFacebookPixelScript(documentRef: Document = document) {
   script.referrerPolicy = 'no-referrer'
   script.src = FACEBOOK_PIXEL_SCRIPT_SRC
   return script
-}
-
-export function resolveFacebookPixelConfig(settings: PixelSiteSettings, runtimeConfig: PixelRuntimeConfig) {
-  const appEnv = runtimeConfig.public.appEnv || 'development'
-  const debugEnabled = settings.debugEnabled
-
-  if (appEnv === 'production') {
-    return {
-      enabled: settings.enabled && !!normalizePixelId(settings.pixelId),
-      pixelId: normalizePixelId(settings.pixelId),
-      debugEnabled,
-    }
-  }
-
-  const allowDev = runtimeConfig.public.facebookPixelAllowDev === 'true'
-  const devPixelId = normalizePixelId(runtimeConfig.public.facebookPixelDevId)
-  return {
-    enabled: allowDev && !!devPixelId,
-    pixelId: devPixelId,
-    debugEnabled,
-  }
 }
 
 function isBlockedAnalyticsParamName(name: string) {

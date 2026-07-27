@@ -26,6 +26,8 @@
 - 唯一业务事实：`Contact`、`CompleteRegistration`。
 - 唯一事实表：`attribution_conversion_facts`。
 - 一条事实最多属于 Meta、TikTok、Google 中的一个 provider。
+- `fbclid`、`ttclid`、Google click ID 或后台签名投放链接决定唯一平台；普通 UTM 不决定平台。
+- 没有新来源时继承 30 天内最近一次有效广告来源；自然流量没有历史来源时不加载 Pixel。
 - 跨平台信号冲突或来源不可信时只记录站内事实，不向任何广告平台发送。
 - Browser 与 Server 共用 external event ID，支持同平台去重。
 - Meta、TikTok、Google 使用独立凭证、目标映射、Queue 和 DLQ。
@@ -43,11 +45,26 @@
 - 删除按比例 rollout。
 - 删除 Git commit 与归因运行时绑定。
 - 删除后台 verification/revision/rollout 交互。
+- 删除地区判断、营销授权页、Banner、Consent Cookie、授权 API 和地区策略表。
+- 删除前端 `adAttributionState` 放行字段，服务端只信任加密签名来源上下文。
+- 浏览器由单一 adapter registry 保证同一时刻只激活一个平台；平台变化或变为空时整页刷新。
 - 连接读取改为 connection、bindings、credential 三张表直接查询。
 - 连接内部 Outbox 作用域创建后保持稳定，保存配置不会使排队事件失效。
 - `0060_attribution_control_plane_cleanup.sql` 清理 production 中旧控制面表和写入冻结 trigger，同时保留事实、投递、加密 Outbox、回执、故障和质量数据。
+- `0061_attribution_source_router_cleanup.sql` 物理删除 consent、region、rollout、mode、revision 和冗余 provider 字段，并原值保留现有连接、最新加密凭证、事实、投递与 Outbox。
 
 详细契约见 `docs/AD_PLATFORM_ARCHITECTURE.md`。
+
+## 来源路由精简发布状态
+
+- 实现位于隔离分支，production 仍运行上一稳定版本；未部署关闭全部 Pixel 的中间状态。
+- API 全量回归：111 个测试文件、901 项测试通过。
+- Web 全量单测：56 个测试文件、286 项测试通过。
+- 发布脚本与完整 migration 链路：103 项测试通过。
+- Meta、TikTok、Google、UTM、自然流量、冲突来源和最近来源继承在桌面/360px 移动端共 14 项网络隔离 E2E 通过。
+- D1 迁移已验证保留有效连接、最新凭证、事实、delivery、Outbox 和平台隔离约束。
+- ESLint、API/Web 类型检查、API Worker dry-run 和 Web Worker production build 通过。
+- 待发布阶段一次完成 production D1 备份、migration、API/Web 部署和三平台真实测试链接核验。
 
 ## 环境
 

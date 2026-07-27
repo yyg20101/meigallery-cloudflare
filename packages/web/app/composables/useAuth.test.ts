@@ -25,7 +25,7 @@ describe('useAuth 注册', () => {
       email: 'mei@example.com',
       password: 'password123',
       username: 'meiuser',
-      attribution: { consentState: 'granted' as const },
+      attribution: { visitorId: 'visitor_registration' },
     }
 
     await useAuth().register(params)

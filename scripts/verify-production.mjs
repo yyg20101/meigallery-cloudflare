@@ -34,7 +34,7 @@ export async function verifyProduction(scope = 'all', options = {}) {
 
 export function assertAttributionStructure(state) {
   const blockers = [
-    ['controlPlaneCleanupMigrationCount', state.controlPlaneCleanupMigrationCount !== 1],
+    ['sourceRouterCleanupMigrationCount', state.sourceRouterCleanupMigrationCount !== 1],
   ].filter(([, blocked]) => blocked).map(([name]) => name)
   if (blockers.length > 0) {
     throw new Error(`PRODUCTION_ATTRIBUTION_STRUCTURE_INVALID:${blockers.join(',')}`)
@@ -43,7 +43,6 @@ export function assertAttributionStructure(state) {
 
 export function attributionWarnings(state) {
   return [
-    ['privacyPolicyInvalid', state.privacyPolicyRowCount !== 1 ? 1 : 0],
     ['invalidConnectionCount', state.invalidConnectionCount],
     ['openCriticalIncidentCount', state.openCriticalIncidentCount],
     ['expiredOutboxCount', state.expiredOutboxCount],
@@ -56,10 +55,8 @@ export async function queryAttributionState(options = {}) {
   const sql = `
     SELECT
       (SELECT COUNT(*) FROM d1_migrations
-        WHERE name = '0060_attribution_control_plane_cleanup.sql')
-        AS control_plane_cleanup_migration_count,
-      (SELECT COUNT(*) FROM attribution_privacy_policy WHERE id = 'global')
-        AS privacy_policy_row_count,
+        WHERE name = '0061_attribution_source_router_cleanup.sql')
+        AS source_router_cleanup_migration_count,
       (SELECT COUNT(*)
         FROM attribution_platform_connections AS connection
         WHERE connection.enabled = 1
@@ -69,14 +66,11 @@ export async function queryAttributionState(options = {}) {
               SELECT COUNT(*)
               FROM attribution_credentials AS credential
               WHERE credential.connection_id = connection.id
-                AND credential.provider = connection.provider
-                AND credential.credential_revision = connection.credential_revision
             )
             OR 2 <> (
               SELECT COUNT(*)
               FROM attribution_event_bindings AS binding
               WHERE binding.connection_id = connection.id
-                AND binding.provider = connection.provider
                 AND binding.enabled = 1
                 AND binding.canonical_event IN ('Contact', 'CompleteRegistration')
             )
