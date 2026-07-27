@@ -420,7 +420,7 @@ test.describe('核心页面 smoke', () => {
     expect(await sections.evaluateAll(elements => elements.map(element => element.getAttribute('data-attribution-section')))).toEqual([
       'business', 'delivery', 'quality', 'capacity',
     ])
-    for (const label of ['站内事实', 'Browser 回执', 'Server 状态', '质量证据']) {
+    for (const label of ['站内事实', 'Browser 计划', 'Server 状态', '质量证据']) {
       await expect(page.locator('[data-evidence-rail]')).toContainText(label)
     }
 
@@ -430,7 +430,7 @@ test.describe('核心页面 smoke', () => {
     const deliverySection = page.locator('[data-attribution-section="delivery"]')
     await expect(deliverySection.getByRole('heading', { name: 'Meta Pixel 与 Conversions API' })).toBeVisible()
     const deliveryItems = deliverySection.locator('[data-health-item]')
-    await expect(deliveryItems.filter({ hasText: /^Browser 已尝试\s*12$/ })).toHaveCount(1)
+    await expect(deliveryItems.filter({ hasText: /^Browser 指令\s*12$/ })).toHaveCount(1)
     await expect(deliveryItems.filter({ hasText: /^Server 已接收\s*9$/ })).toHaveCount(1)
     await expect(page.locator('[data-attribution-section="quality"]').getByRole('heading', { name: '配对与匹配覆盖' })).toBeVisible()
     await expect(page.locator('[data-attribution-section="capacity"]').getByRole('heading', { name: 'UTC 配额日内部估算' })).toBeVisible()

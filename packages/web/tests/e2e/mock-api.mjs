@@ -552,7 +552,7 @@ function adminAttributionResponse(pathname, searchParams) {
 
   const dates = range.days === 1 ? [range.from] : ['2026-07-08', '2026-07-09', '2026-07-10']
   const deliveryMetrics = (index = 0) => ({
-    browserAttempted: index + 3,
+    browserPlanned: index + 3,
     server: {
       planned: 0,
       queued: index === 2 ? 1 : 0,
@@ -580,7 +580,7 @@ function adminAttributionResponse(pathname, searchParams) {
         provider,
         business: { contactCount: 6, completeRegistrationCount: 3, factCount: 9 },
         delivery: {
-          browserAttempted: 12,
+          browserPlanned: 12,
           server: { planned: 0, queued: 1, accepted: 6, processed: 3, retrying: 0, rejected: 1, deadLetter: 0, cancelled: 0 },
           queueRetryCount: 2,
           queueEnqueueCount: 10,
