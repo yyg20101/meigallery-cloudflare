@@ -205,7 +205,7 @@ test.describe('核心页面 smoke', () => {
   })
 
   for (const smokePage of smokePages) {
-    test(`${smokePage.path} 可渲染且无横向溢出`, async ({ page }) => {
+    test(`${smokePage.path} 可渲染且无横向溢出 @responsive`, async ({ page }) => {
       await page.goto(smokePage.path)
 
       await expect(page.getByRole('heading', { name: smokePage.heading }).first()).toBeVisible()
@@ -247,7 +247,7 @@ test.describe('核心页面 smoke', () => {
     })
   }
 
-  test('首页广告位在当前断点下不溢出', async ({ page }) => {
+  test('首页广告位在当前断点下不溢出 @responsive', async ({ page }) => {
     await page.goto('/')
     const homeAd = page.getByRole('region', { name: '首页广告推荐' })
 
@@ -378,7 +378,7 @@ test.describe('核心页面 smoke', () => {
     await expect(page).not.toHaveTitle('MeiGallery - 精选写真图库')
   })
 
-  test('后台数据分析空数据时保持大盘布局和健康详情', async ({ request, page }) => {
+  test('后台数据分析空数据时保持大盘布局和健康详情 @responsive', async ({ request, page }) => {
     await request.patch(`${apiURL}/api/test/admin-analytics-empty`, { data: { enabled: true } })
 
     await page.goto('/admin/analytics')
@@ -410,7 +410,7 @@ test.describe('核心页面 smoke', () => {
     expect(hasHorizontalOverflow).toBe(false)
   })
 
-  test('后台广告归因总览可查看四层证据、单日归因和平台连接', async ({ page }, testInfo) => {
+  test('后台广告归因总览可查看四层证据、单日归因和平台连接 @responsive', async ({ page }, testInfo) => {
     await page.goto('/admin/attribution')
     await expect(page.locator('main h1')).toHaveText('广告归因总览')
     await expect(page.getByText('统一核对 Meta、TikTok 与 Google 的业务事实、投递状态、质量和容量。')).toBeVisible()

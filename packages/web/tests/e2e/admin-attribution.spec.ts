@@ -58,7 +58,7 @@ test('连接测试同步完成，重复调用保持同一无状态入口', async
   ])
 })
 
-test('三平台后台在当前视口没有页面级横向溢出或交互控件重叠', async ({ page }) => {
+test('三平台后台在当前视口没有页面级横向溢出或交互控件重叠 @responsive', async ({ page }) => {
   await page.goto('/admin/attribution/platforms?provider=google')
   await expect(page.getByRole('heading', { name: 'Google Ads 连接' })).toBeVisible()
 

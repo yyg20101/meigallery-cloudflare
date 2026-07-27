@@ -51,10 +51,12 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
+      grepInvert: /@responsive/,
       use: { ...devices['Desktop Chrome'] },
     },
     {
       name: 'mobile-360',
+      grep: /@responsive/,
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 360, height: 740 },
@@ -64,20 +66,15 @@ export default defineConfig({
     },
     {
       name: 'tablet-768',
+      grep: /@responsive/,
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 768, height: 900 },
       },
     },
     {
-      name: 'desktop-1024',
-      use: {
-        ...devices['Desktop Chrome'],
-        viewport: { width: 1024, height: 900 },
-      },
-    },
-    {
       name: 'desktop-1440',
+      grep: /@responsive/,
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 1440, height: 1000 },
