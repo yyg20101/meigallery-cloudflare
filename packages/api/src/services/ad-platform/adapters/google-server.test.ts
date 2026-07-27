@@ -10,13 +10,14 @@ const input = {
 }
 
 describe('Google Data Manager 服务端 Adapter', () => {
-  it('构造最新 events:ingest 请求，不写顶层 requestId', () => {
-    expect(buildGoogleServerRequest(input, { customerId: '1112223333', loginCustomerId: '9998887777', cloudProjectId: 'project-1' })).toEqual({
+  it('构造最新 events:ingest 请求，不写 requestId 或伪报用户授权', () => {
+    const request = buildGoogleServerRequest(input, { customerId: '1112223333', loginCustomerId: '9998887777', cloudProjectId: 'project-1' })
+    expect(request).toEqual({
       validateOnly: true, encoding: 'HEX',
-      consent: { adUserData: 'CONSENT_GRANTED', adPersonalization: 'CONSENT_DENIED' },
       destinations: [{ operatingAccount: { accountType: 'GOOGLE_ADS', accountId: '1112223333' }, loginAccount: { accountType: 'GOOGLE_ADS', accountId: '9998887777' }, productDestinationId: '123456789' }],
       events: [{ eventTimestamp: '2026-07-17T02:42:03.000Z', transactionId: EVENT_ID, eventSource: 'WEB', adIdentifiers: { gclid: 'gclid-1', gbraid: 'gbraid-1', wbraid: 'wbraid-1' }, userData: { userIdentifiers: [{ emailAddress: 'c'.repeat(64) }] } }],
     })
+    expect(request).not.toHaveProperty('consent')
   })
 
   it('允许仅使用哈希邮箱作为有效匹配键', () => {

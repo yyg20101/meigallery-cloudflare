@@ -1,28 +1,35 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { after, before, describe, it } from 'node:test'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const tempDir = mkdtempSync(join(tmpdir(), 'meigallery-attribution-0061-'))
 const database = join(tempDir, 'source-router-cleanup.sqlite')
-const expandMigration = read('./0051_unified_attribution_expand.sql')
-const privacyMigration = read('./0053_attribution_privacy_policy.sql')
+const migrationDirectory = new URL('.', import.meta.url)
+const preCleanupMigrations = readdirSync(migrationDirectory)
+  .filter(file => /^\d{4}_.+\.sql$/.test(file) && file < '0061_')
+  .sort()
+  .map(file => read(`./${file}`))
+  .join('\n')
 const cleanupMigration = read('./0061_attribution_source_router_cleanup.sql')
 
 before(() => {
+  execute(`PRAGMA foreign_keys = ON; ${preCleanupMigrations}`)
   execute(`
     PRAGMA foreign_keys = ON;
-    ${expandMigration}
-    ${privacyMigration}
+    DELETE FROM attribution_outbox;
+    DELETE FROM attribution_provider_receipts;
+    DELETE FROM attribution_deliveries;
+    DELETE FROM attribution_event_bindings;
+    DELETE FROM attribution_credentials;
+    DELETE FROM attribution_incidents;
+    DELETE FROM attribution_quality_snapshots;
+    DELETE FROM attribution_conversion_facts;
+    DELETE FROM attribution_platform_connections;
 
-    CREATE TABLE site_settings (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL,
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-    INSERT INTO site_settings (key, value) VALUES
+    INSERT OR REPLACE INTO site_settings (key, value) VALUES
       ('facebook_pixel_enabled', 'true'),
       ('facebook_pixel_id', '"123456789"'),
       ('meta_capi_rollout_percentage', '10'),
@@ -104,7 +111,14 @@ describe('0061 来源路由归因瘦身 migration', () => {
       WHERE type = 'table' AND name = 'attribution_privacy_policy';
     `), [])
     assert.deepEqual(rows(`
-      SELECT key FROM site_settings ORDER BY key;
+      SELECT key FROM site_settings
+      WHERE key IN (
+        'facebook_pixel_enabled',
+        'facebook_pixel_id',
+        'meta_capi_rollout_percentage',
+        'site_name'
+      )
+      ORDER BY key;
     `), [{ key: 'site_name' }])
   })
 

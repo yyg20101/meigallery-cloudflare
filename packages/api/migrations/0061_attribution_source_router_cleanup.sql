@@ -161,8 +161,18 @@ CREATE TABLE attribution_deliveries_next (
   CHECK (queue_attempt_count >= 0)
 );
 
-INSERT INTO attribution_deliveries_next
-SELECT * FROM attribution_deliveries;
+INSERT INTO attribution_deliveries_next (
+  id, fact_id, connection_id, provider, transport, status,
+  destination, match_signals_json, attempt_count, queue_attempt_count,
+  last_error_code, last_error_message, queued_at, accepted_at,
+  processed_at, created_at, updated_at
+)
+SELECT
+  id, fact_id, connection_id, provider, transport, status,
+  destination, match_signals_json, attempt_count, queue_attempt_count,
+  last_error_code, last_error_message, queued_at, accepted_at,
+  processed_at, created_at, updated_at
+FROM attribution_deliveries;
 
 CREATE TABLE attribution_outbox_next (
   delivery_id TEXT PRIMARY KEY REFERENCES attribution_deliveries_next(id) ON DELETE CASCADE,
@@ -178,8 +188,14 @@ CREATE TABLE attribution_outbox_next (
   CHECK (provider IN ('meta', 'tiktok', 'google'))
 );
 
-INSERT INTO attribution_outbox_next
-SELECT * FROM attribution_outbox;
+INSERT INTO attribution_outbox_next (
+  delivery_id, provider, schema_version, key_id, iv,
+  ciphertext, tag, expires_at, created_at, updated_at
+)
+SELECT
+  delivery_id, provider, schema_version, key_id, iv,
+  ciphertext, tag, expires_at, created_at, updated_at
+FROM attribution_outbox;
 
 CREATE TABLE attribution_provider_receipts_next (
   id TEXT PRIMARY KEY,
@@ -193,8 +209,14 @@ CREATE TABLE attribution_provider_receipts_next (
   CHECK (provider IN ('meta', 'tiktok', 'google'))
 );
 
-INSERT INTO attribution_provider_receipts_next
-SELECT * FROM attribution_provider_receipts;
+INSERT INTO attribution_provider_receipts_next (
+  id, delivery_id, provider, receipt_type,
+  status, receipt_json, received_at, created_at
+)
+SELECT
+  id, delivery_id, provider, receipt_type,
+  status, receipt_json, received_at, created_at
+FROM attribution_provider_receipts;
 
 CREATE TABLE attribution_incidents_next (
   id TEXT PRIMARY KEY,
@@ -211,8 +233,14 @@ CREATE TABLE attribution_incidents_next (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-INSERT INTO attribution_incidents_next
-SELECT * FROM attribution_incidents;
+INSERT INTO attribution_incidents_next (
+  id, connection_id, provider, status, severity, trigger_code,
+  summary, evidence_json, opened_at, closed_at, created_at, updated_at
+)
+SELECT
+  id, connection_id, provider, status, severity, trigger_code,
+  summary, evidence_json, opened_at, closed_at, created_at, updated_at
+FROM attribution_incidents;
 
 CREATE TABLE attribution_quality_snapshots_next (
   id TEXT PRIMARY KEY,
@@ -227,8 +255,14 @@ CREATE TABLE attribution_quality_snapshots_next (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-INSERT INTO attribution_quality_snapshots_next
-SELECT * FROM attribution_quality_snapshots;
+INSERT INTO attribution_quality_snapshots_next (
+  id, connection_id, provider, canonical_event, metric_key,
+  metric_value, collection_status, error_category, collected_at, created_at
+)
+SELECT
+  id, connection_id, provider, canonical_event, metric_key,
+  metric_value, collection_status, error_category, collected_at, created_at
+FROM attribution_quality_snapshots;
 
 DROP TABLE attribution_outbox;
 DROP TABLE attribution_provider_receipts;

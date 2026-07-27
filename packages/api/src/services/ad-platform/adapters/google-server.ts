@@ -14,7 +14,6 @@ export interface GoogleServerConfig { customerId?: string; loginCustomerId?: str
 export interface GoogleServerRequest {
   validateOnly: boolean
   encoding?: 'HEX'
-  consent: { adUserData: 'CONSENT_GRANTED'; adPersonalization: 'CONSENT_GRANTED' | 'CONSENT_DENIED' }
   destinations: Array<{ operatingAccount: { accountType: 'GOOGLE_ADS'; accountId: string }; loginAccount?: { accountType: 'GOOGLE_ADS'; accountId: string }; productDestinationId: string }>
   events: Array<{ eventTimestamp: string; transactionId: string; eventSource: 'WEB'; adIdentifiers: Record<string, string>; userData?: { userIdentifiers: Array<{ emailAddress: string }> } }>
 }
@@ -28,10 +27,6 @@ export function buildGoogleServerRequest(input: GoogleServerDeliveryInput, confi
   }
   return {
     validateOnly: input.validateOnly, ...(input.hashedEmail ? { encoding: 'HEX' as const } : {}),
-    consent: {
-      adUserData: 'CONSENT_GRANTED',
-      adPersonalization: 'CONSENT_DENIED',
-    },
     destinations: [{ operatingAccount: { accountType: 'GOOGLE_ADS', accountId: config.customerId }, ...(config.loginCustomerId ? { loginAccount: { accountType: 'GOOGLE_ADS' as const, accountId: config.loginCustomerId } } : {}), productDestinationId: input.destination }],
     events: [event],
   }
