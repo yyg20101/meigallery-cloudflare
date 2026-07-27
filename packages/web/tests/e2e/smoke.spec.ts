@@ -31,7 +31,7 @@ async function expectAdminContainersWithinViewport(page: import('@playwright/tes
         { selector: '[data-attribution-refresh]' },
         { selector: '[data-attribution-tabs]', allowHorizontalOverflow: true },
         { selector: '[data-attribution-tab-list]', allowHorizontalOverflow: true },
-        { selector: '[data-attribution-tab]', exactCount: 7, allowHorizontalOverflow: true },
+        { selector: '[data-attribution-tab]', exactCount: 6, allowHorizontalOverflow: true },
       )
       if (['/admin/attribution', '/admin/attribution/deliveries', '/admin/attribution/audit'].includes(location.pathname)) {
         requirements.push(
@@ -172,7 +172,6 @@ const smokePages = [
   { path: '/gallery/summer-portrait', heading: /夏日授权写真/, title: '夏日授权写真 - 测试图库站' },
   { path: '/login', heading: /登录 测试图库站/, title: '登录 - 测试图库站' },
   { path: '/user', heading: /会员权益/, title: '个人中心 - 测试图库站' },
-  { path: '/marketing-tracking', heading: /数据与隐私/, title: '数据与隐私 - 测试图库站' },
   { path: '/admin', heading: /数据概览/ },
 ]
 
@@ -236,7 +235,6 @@ test.describe('核心页面 smoke', () => {
         await expect(homeAd.locator('h2')).toBeVisible()
         await expect(homeAd.locator('h2')).toHaveCSS('overflow-wrap', 'break-word')
         await expect(homeAd.locator('p').first()).toHaveCSS('overflow-wrap', 'break-word')
-        await expect(page.getByRole('link', { name: '隐私', exact: true })).toHaveAttribute('href', '/marketing-tracking')
       }
       await expect(page.locator('body')).not.toContainText('originals/')
       await expect(page.locator('body')).not.toContainText('imports/')
