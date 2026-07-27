@@ -10,7 +10,6 @@ export interface AdAttributionSignals {
   gbraid?: unknown
   wbraid?: unknown
   trackingSourceSlug?: unknown
-  managedLinkProof?: unknown
 }
 
 export interface AdAttributionRoutingResult {
@@ -78,17 +77,16 @@ async function resolveManagedLinkProvider(
   db: Pick<D1Database, 'prepare'>,
   signals: ReturnType<typeof normalizeSignals>,
 ) {
-  if (!signals.trackingSourceSlug || !signals.managedLinkProof) return null
+  if (!signals.trackingSourceSlug) return null
   const row = await db.prepare(`
     SELECT ad_provider
     FROM analytics_tracking_sources
     WHERE status = 'active'
       AND channel = 'ad'
       AND slug = ?
-      AND link_proof = ?
       AND ad_provider IN ('meta', 'tiktok', 'google')
     LIMIT 1
-  `).bind(signals.trackingSourceSlug, signals.managedLinkProof).all<TrackingSourceProviderRow>()
+  `).bind(signals.trackingSourceSlug).all<TrackingSourceProviderRow>()
   return normalizeProvider(row.results[0]?.ad_provider)
 }
 
@@ -99,11 +97,7 @@ function normalizeSignals(signals: AdAttributionSignals) {
   const gbraid = normalizeOptionalSignal(signals.gbraid, CLICK_ID_MAX_LENGTH)
   const wbraid = normalizeOptionalSignal(signals.wbraid, CLICK_ID_MAX_LENGTH)
   const trackingSource = normalizeOptionalSignal(signals.trackingSourceSlug, 120)
-  const managedProof = normalizeOptionalSignal(signals.managedLinkProof, 64)
   const trackingSourceSlug = trackingSource.provided ? normalizeSlug(trackingSource.value) : ''
-  const managedLinkProof = managedProof.provided && /^[0-9a-f]{64}$/.test(managedProof.value)
-    ? managedProof.value
-    : ''
   return {
     fbclid: fbclid.value,
     ttclid: ttclid.value,
@@ -111,13 +105,10 @@ function normalizeSignals(signals: AdAttributionSignals) {
     gbraid: gbraid.value,
     wbraid: wbraid.value,
     trackingSourceSlug,
-    managedLinkProof,
     invalid: [
-      fbclid, ttclid, gclid, gbraid, wbraid, trackingSource, managedProof,
+      fbclid, ttclid, gclid, gbraid, wbraid, trackingSource,
     ].some(item => item.invalid)
-      || (trackingSource.provided && !trackingSourceSlug)
-      || (managedProof.provided && !managedLinkProof)
-      || trackingSource.provided !== managedProof.provided,
+      || (trackingSource.provided && !trackingSourceSlug),
   }
 }
 
