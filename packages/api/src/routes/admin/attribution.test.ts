@@ -89,12 +89,12 @@ describe('统一归因后台 API', () => {
     expect((await summary.json()).data).toMatchObject({
       provider: 'google',
       business: { contactCount: 1, completeRegistrationCount: 1, factCount: 2 },
-      delivery: { browserAttempted: 1, server: { accepted: 1, deadLetter: 1 }, queueRetryCount: 2 },
+      delivery: { browserPlanned: 2, server: { accepted: 1, deadLetter: 1 }, queueRetryCount: 2 },
     })
     expect((await trends.json()).data.rows).toHaveLength(1)
     expect((await quality.json()).data).toMatchObject({
       provider: 'google',
-      pairing: { summary: { numerator: 1, denominator: 2, rate: 0.5 } },
+      pairing: { summary: { numerator: 2, denominator: 2, rate: 1 } },
       match: { summary: { numerator: 1, denominator: 2, rate: 0.5 } },
     })
     expect((await breakdown.json()).data.rows[0]).toMatchObject({
@@ -102,7 +102,7 @@ describe('统一归因后台 API', () => {
     })
   })
 
-  it('conversions 只返回最终 Fact、Delivery 和签名 Browser 回执口径', async () => {
+  it('conversions 只返回最终 Fact、Delivery 和 Browser 计划口径', async () => {
     const response = await request(`/conversions?${RANGE}&provider=google`)
     const body = await response.json() as {
       data: { byEvent: Array<Record<string, unknown>>; bySource: Array<Record<string, unknown>>; samples: Array<Record<string, unknown>> }
@@ -115,8 +115,8 @@ describe('统一归因后台 API', () => {
     ])
     expect(body.data.bySource[0]).toMatchObject({ source_name: 'google-source', fact_count: 2 })
     expect(body.data.samples).toEqual(expect.arrayContaining([
-      expect.objectContaining({ canonical_event: 'Contact', browser_attempted: 1, server_status: 'accepted' }),
-      expect.objectContaining({ canonical_event: 'CompleteRegistration', browser_attempted: 0, server_status: 'dead_letter', retry_count: 2 }),
+      expect.objectContaining({ canonical_event: 'Contact', browser_planned: 1, server_status: 'accepted' }),
+      expect.objectContaining({ canonical_event: 'CompleteRegistration', browser_planned: 1, server_status: 'dead_letter', retry_count: 2 }),
     ]))
   })
 
@@ -255,9 +255,6 @@ async function seed() {
     delivery('google_server_contact', 'fact_google_contact', 'google', 'server', 'accepted', 1, ['gclid']),
     delivery('google_browser_registration', 'fact_google_registration', 'google', 'browser', 'planned', 0, []),
     delivery('google_server_registration', 'fact_google_registration', 'google', 'server', 'dead_letter', 3, []),
-    db.prepare(`INSERT INTO attribution_provider_receipts (
-      id, delivery_id, provider, receipt_type, status, receipt_json, received_at
-    ) VALUES ('receipt_google_browser', 'google_browser_contact', 'google', 'browser_attempt', 'attempted', '{}', '2026-07-15T04:00:00.000Z')`),
   ])
 }
 

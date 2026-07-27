@@ -39,7 +39,7 @@ export interface AdPlatformDiagnosticData {
 }
 
 export interface AttributionDeliveryMetrics {
-  browserAttempted: number
+  browserPlanned: number
   server: {
     planned: number
     queued: number
@@ -132,7 +132,7 @@ export interface AttributionCapacityData {
   inputs: {
     factCount: number
     deliveryCount: number
-    browserAttemptCount: number
+    browserDeliveryCount: number
     serverDeliveryCount: number
     adapterAttemptCount: number
     queueAttemptCount: number

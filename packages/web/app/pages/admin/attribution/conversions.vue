@@ -43,7 +43,7 @@ const sourceRows = computed(() => (conversions.data.value?.bySource ?? []).map(r
 })))
 const sampleRows = computed(() => (conversions.data.value?.samples ?? []).map(row => ({
   ...row,
-  browser_attempted: Number(row.browser_attempted) === 1 ? '已尝试' : '无回执',
+  browser_planned: Number(row.browser_planned) === 1 ? '已生成' : '无指令',
   server_status: serverStatusLabel(String(row.server_status || '')),
 })))
 
@@ -133,7 +133,7 @@ function serverStatusLabel(status: string) {
             { key: 'utm_content', label: 'Content' },
             { key: 'method_type', label: '方式' },
             { key: 'path', label: '路径' },
-            { key: 'browser_attempted', label: 'Browser' },
+            { key: 'browser_planned', label: 'Browser 指令' },
             { key: 'server_status', label: 'Server' },
             { key: 'retry_count', label: '重试', type: 'number' },
             { key: 'external_event_id', label: '事件编号' },

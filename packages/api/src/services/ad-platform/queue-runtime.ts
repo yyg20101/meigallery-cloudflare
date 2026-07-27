@@ -6,6 +6,7 @@ import { getAdPlatformDefinition } from './registry'
 import { deleteAttributionOutbox } from './secure-outbox'
 import { deliverServerEvent, type ServerDeliveryInput, type ServerDeliveryResult } from './server-adapter'
 
+const ATTEMPT_STALE_MINUTES = 5
 const PERMANENT_CREDENTIAL_ERRORS = new Set([
   'ATTRIBUTION_CREDENTIAL_INPUT_INVALID',
   'ATTRIBUTION_CREDENTIAL_CONNECTION_NOT_FOUND',
@@ -28,7 +29,7 @@ type QueueEnv = {
   AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT?: string
   AD_PLATFORM_CREDENTIAL_MASTER_KEY_PREVIOUS?: string
 }
-type QueueMessage = { body: unknown; ack(): void; retry(): void }
+type QueueMessage = { body: unknown; attempts: number; ack(): void; retry(): void }
 export type AttributionDeliveryQueueRow = {
   delivery_id: string
   delivery_provider: string
@@ -110,7 +111,7 @@ export async function handleAttributionQueueBatch(batch: MessageBatch<AdPlatform
         continue
       }
 
-      const token = await beginDeliveryAttempt(env.DB, row)
+      const token = await beginDeliveryAttempt(env.DB, row, message.attempts)
       if (token === null) {
         safeAck(message)
         continue
@@ -183,8 +184,11 @@ function consistent(row: AttributionDeliveryQueueRow, provider: AdAttributionPro
     && (terminal(row.status) ? row.outbox_provider === null || row.outbox_provider === provider : row.outbox_provider === provider)
 }
 
-async function beginDeliveryAttempt(db: D1Database, row: AttributionDeliveryQueueRow) {
-  if (row.status !== 'queued' && row.status !== 'retrying') return null
+async function beginDeliveryAttempt(db: D1Database, row: AttributionDeliveryQueueRow, attempts: number) {
+  const queueAttempts = Number.isSafeInteger(attempts) && attempts > 0 ? attempts : 1
+  const retryEligible = row.status === 'retrying'
+    && (row.attempt_count < queueAttempts || attemptStale(row.updated_at))
+  if (row.status !== 'queued' && !retryEligible) return null
 
   const token = row.attempt_count + 1
   const result = await db.prepare(`
@@ -442,6 +446,12 @@ function parseExpiry(value: string | null) {
   if (typeof value !== 'string') return null
   const parsed = Date.parse(value)
   return Number.isFinite(parsed) ? parsed : null
+}
+
+function attemptStale(value: string) {
+  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value) ? `${value.replace(' ', 'T')}Z` : value
+  const parsed = Date.parse(normalized)
+  return Number.isFinite(parsed) && parsed <= Date.now() - ATTEMPT_STALE_MINUTES * 60_000
 }
 
 function terminal(status: string) {

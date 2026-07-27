@@ -18,7 +18,7 @@ export type AttributionBreakdownDimension = typeof ATTRIBUTION_BREAKDOWN_DIMENSI
 export type AttributionDashboardProvider = AdAttributionProvider
 
 type DeliveryMetrics = {
-  browserAttempted: number
+  browserPlanned: number
   server: {
     planned: number
     queued: number
@@ -165,12 +165,7 @@ export async function queryAttributionConversions(
         json_extract(fact.analytics_dimensions_json, '$.methodType') AS method_type,
         json_extract(fact.analytics_dimensions_json, '$.actionTarget') AS action_target,
         json_extract(fact.analytics_dimensions_json, '$.path') AS path,
-        MAX(CASE WHEN delivery.transport = 'browser' AND EXISTS (
-          SELECT 1 FROM attribution_provider_receipts AS receipt
-          WHERE receipt.delivery_id = delivery.id
-            AND receipt.receipt_type = 'browser_attempt'
-            AND receipt.status = 'attempted'
-        ) THEN 1 ELSE 0 END) AS browser_attempted,
+        MAX(CASE WHEN delivery.transport = 'browser' THEN 1 ELSE 0 END) AS browser_planned,
         MAX(CASE WHEN delivery.transport = 'server' THEN delivery.status ELSE '' END) AS server_status,
         SUM(CASE WHEN delivery.transport = 'server' THEN MAX(delivery.attempt_count - 1, 0) ELSE 0 END) AS retry_count
       FROM attribution_conversion_facts AS fact
@@ -360,12 +355,7 @@ export async function queryAttributionBreakdown(
     delivery_per_fact AS (
       SELECT
         delivery.fact_id,
-        MAX(CASE WHEN delivery.transport = 'browser' AND EXISTS (
-          SELECT 1 FROM attribution_provider_receipts AS receipt
-          WHERE receipt.delivery_id = delivery.id
-            AND receipt.receipt_type = 'browser_attempt'
-            AND receipt.status = 'attempted'
-        ) THEN 1 ELSE 0 END) AS browser_attempted_count,
+        MAX(CASE WHEN delivery.transport = 'browser' THEN 1 ELSE 0 END) AS browser_planned_count,
         SUM(CASE WHEN delivery.transport = 'server' THEN MAX(delivery.attempt_count - 1, 0) ELSE 0 END) AS queue_retry_count,
         ${serverStatusColumns('delivery')}
       FROM attribution_deliveries AS delivery
@@ -378,7 +368,7 @@ export async function queryAttributionBreakdown(
       COUNT(*) AS fact_count,
       SUM(CASE WHEN fact.canonical_event = 'Contact' THEN 1 ELSE 0 END) AS contact_count,
       SUM(CASE WHEN fact.canonical_event = 'CompleteRegistration' THEN 1 ELSE 0 END) AS complete_registration_count,
-      COALESCE(SUM(delivery.browser_attempted_count), 0) AS browser_attempted_count,
+      COALESCE(SUM(delivery.browser_planned_count), 0) AS browser_planned_count,
       COALESCE(SUM(delivery.queue_retry_count), 0) AS queue_retry_count,
       ${serverStatusSumColumns('delivery')}
     FROM selected_facts AS fact
@@ -415,6 +405,7 @@ export async function queryAttributionCapacity(db: D1Database, date: string) {
     queryFirst(db, `
       SELECT
         COUNT(*) AS delivery_count,
+        SUM(CASE WHEN transport = 'browser' THEN 1 ELSE 0 END) AS browser_delivery_count,
         SUM(CASE WHEN transport = 'server' THEN 1 ELSE 0 END) AS server_delivery_count,
         SUM(CASE WHEN transport = 'server' THEN attempt_count ELSE 0 END) AS adapter_attempt_count,
         SUM(CASE WHEN transport = 'server' THEN queue_attempt_count ELSE 0 END) AS queue_attempt_count,
@@ -424,8 +415,7 @@ export async function queryAttributionCapacity(db: D1Database, date: string) {
     `, [date]),
     queryFirst(db, `
       SELECT
-        COUNT(*) AS provider_receipt_count,
-        SUM(CASE WHEN receipt_type = 'browser_attempt' AND status = 'attempted' THEN 1 ELSE 0 END) AS browser_attempt_count
+        COUNT(*) AS provider_receipt_count
       FROM attribution_provider_receipts
       WHERE ${businessDateSql('received_at')} = ?
     `, [date]),
@@ -436,7 +426,7 @@ export async function queryAttributionCapacity(db: D1Database, date: string) {
   const inputs: AttributionUsageInputs = {
     factCount: count(factRow.fact_count),
     deliveryCount: count(deliveryRow.delivery_count),
-    browserAttemptCount: count(receiptRow.browser_attempt_count),
+    browserDeliveryCount: count(deliveryRow.browser_delivery_count),
     serverDeliveryCount: count(deliveryRow.server_delivery_count),
     adapterAttemptCount: count(deliveryRow.adapter_attempt_count),
     queueAttemptCount: count(deliveryRow.queue_attempt_count),
@@ -461,12 +451,7 @@ function deliveryAggregateSql() {
   return `
     SELECT
       ${businessDateSql('fact.occurred_at')} AS date,
-      COUNT(DISTINCT CASE WHEN delivery.transport = 'browser' AND EXISTS (
-        SELECT 1 FROM attribution_provider_receipts AS receipt
-        WHERE receipt.delivery_id = delivery.id
-          AND receipt.receipt_type = 'browser_attempt'
-          AND receipt.status = 'attempted'
-      ) THEN delivery.id END) AS browser_attempted_count,
+      COUNT(DISTINCT CASE WHEN delivery.transport = 'browser' THEN delivery.id END) AS browser_planned_count,
       SUM(CASE WHEN delivery.transport = 'server' THEN MAX(delivery.attempt_count - 1, 0) ELSE 0 END) AS queue_retry_count,
       SUM(CASE WHEN delivery.transport = 'server' THEN delivery.queue_attempt_count ELSE 0 END) AS queue_enqueue_count,
       ${serverStatusColumns('delivery')}
@@ -484,12 +469,9 @@ function pairingSql() {
       SUM(CASE WHEN EXISTS (
         SELECT 1
         FROM attribution_deliveries AS browser_delivery
-        JOIN attribution_provider_receipts AS receipt ON receipt.delivery_id = browser_delivery.id
         WHERE browser_delivery.fact_id = fact.id
           AND browser_delivery.provider = ?
           AND browser_delivery.transport = 'browser'
-          AND receipt.receipt_type = 'browser_attempt'
-          AND receipt.status = 'attempted'
       ) THEN 1 ELSE 0 END) AS numerator,
       COUNT(*) AS denominator
     FROM attribution_conversion_facts AS fact
@@ -599,7 +581,7 @@ function serializeDelivery(row: Row): DeliveryMetrics {
     count(row[`server_${status}_count`]),
   ])) as DeliveryMetrics['server']
   return {
-    browserAttempted: count(row.browser_attempted_count),
+    browserPlanned: count(row.browser_planned_count),
     server,
     queueRetryCount: count(row.queue_retry_count),
     queueEnqueueCount: count(row.queue_enqueue_count),
