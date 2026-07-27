@@ -200,6 +200,20 @@ function trackRulesPageClick() {
           />
         </div>
 
+        <button
+          v-if="rulesEntryEnabled"
+          type="button"
+          class="mx-3 mb-3 flex min-h-12 w-[calc(100%-1.5rem)] items-center justify-between gap-3 rounded-xl border border-[#e8dcc7] bg-[#fff9ef] px-4 py-3 text-left text-gray-950 transition-colors hover:border-[#d6c39a] hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#d6c39a] focus:ring-offset-2 lg:hidden"
+          aria-label="查看服务流程"
+          @click="toggleRules"
+        >
+          <span>
+            <span class="block text-sm font-semibold">服务流程</span>
+            <span class="mt-0.5 block text-xs text-gray-500">查看规则与开通说明</span>
+          </span>
+          <span class="text-lg leading-none text-[#bfa46a]" aria-hidden="true">→</span>
+        </button>
+
         <div class="border-t border-[#f0e5d6] bg-[#fffdf9] px-5 py-3 text-xs leading-5 text-gray-500">
           支持官方跳转的平台会直接打开；无法生成跳转时，点击会复制联系值。
         </div>
@@ -210,7 +224,8 @@ function trackRulesPageClick() {
       <button
         v-if="rulesEntryEnabled"
         type="button"
-        class="group flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[#e8dcc7] bg-[#fff9ef] text-left transition-all hover:-translate-y-0.5 hover:border-[#d6c39a] hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#d6c39a] focus:ring-offset-2 lg:h-auto lg:w-full lg:justify-start lg:gap-3 lg:rounded-xl lg:px-3 lg:py-3"
+        class="group h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[#e8dcc7] bg-[#fff9ef] text-left transition-all hover:-translate-y-0.5 hover:border-[#d6c39a] hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#d6c39a] focus:ring-offset-2 lg:h-auto lg:w-full lg:justify-start lg:gap-3 lg:rounded-xl lg:px-3 lg:py-3"
+        :class="hasContactMethods ? 'hidden lg:flex' : 'flex'"
         :aria-expanded="rulesOpen"
         aria-label="打开服务流程"
         @click="toggleRules"

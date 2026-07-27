@@ -77,14 +77,28 @@ describe('ContactPanel', () => {
     const { wrapper } = await mountPanel()
     const panel = wrapper.get('div.fixed')
     const contactButton = wrapper.get('button[aria-label="打开联系方式"]')
+    const rulesButton = wrapper.get('button[aria-label="打开服务流程"]')
 
     expect(panel.classes()).toContain('w-auto')
     expect(contactButton.classes()).toContain('h-12')
     expect(contactButton.classes()).toContain('w-12')
+    expect(rulesButton.classes()).toContain('hidden')
+    expect(rulesButton.classes()).toContain('lg:flex')
 
     await contactButton.trigger('click')
 
     expect(panel.classes()).toContain('w-[min(calc(100vw-1.5rem),24rem)]')
+    expect(wrapper.get('button[aria-label="查看服务流程"]').isVisible()).toBe(true)
+  })
+
+  it('移动端可从联系面板切换到服务流程', async () => {
+    const { wrapper } = await mountPanel()
+
+    await wrapper.get('button[aria-label="打开联系方式"]').trigger('click')
+    await wrapper.get('button[aria-label="查看服务流程"]').trigger('click')
+
+    expect(wrapper.find('button[aria-label="关闭联系方式"]').exists()).toBe(false)
+    expect(wrapper.get('button[aria-label="关闭规则说明"]').isVisible()).toBe(true)
   })
 
   it('打开联系面板只记录面板分析，不创建 Contact', async () => {
