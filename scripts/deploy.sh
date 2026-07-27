@@ -38,6 +38,7 @@ PNPM=(corepack pnpm)
 GIT_COMMIT="$(git rev-parse HEAD)"
 API_RELEASE_TAG=""
 WEB_RELEASE_TAG=""
+HAS_PENDING_MIGRATIONS=false
 
 echo "=== MeiGallery 部署 (环境: $ENV, 范围: $SCOPE) ==="
 
@@ -70,6 +71,9 @@ fi
 if [ "$RUN_API" = "true" ]; then
   echo "[API] 读取待执行 migration..."
   UNAPPLIED_MIGRATIONS="$("${PNPM[@]}" --filter @meigallery/api exec wrangler d1 migrations list "$D1_DB" "${ENV_ARGS[@]}" --remote 2>&1)"
+  if [[ "$UNAPPLIED_MIGRATIONS" == *".sql"* ]]; then
+    HAS_PENDING_MIGRATIONS=true
+  fi
 
   if [ -f "packages/api/migrations/0017_cases_cleanup.sql" ] && [ "${ALLOW_CASES_CLEANUP_MIGRATION:-}" != "true" ]; then
     if [[ "$UNAPPLIED_MIGRATIONS" == *"0017_cases_cleanup"* ]]; then
@@ -78,18 +82,10 @@ if [ "$RUN_API" = "true" ]; then
     fi
   fi
 
-  if [[ "$UNAPPLIED_MIGRATIONS" == *"0061_attribution_source_router_cleanup"* ]]; then
-    echo "[API] 验证待执行的广告来源路由清理 migration..."
-    node --test packages/api/migrations/0061_attribution_source_router_cleanup.test.mjs
+  if [ "$IS_PRODUCTION" = "true" ] && [ "$HAS_PENDING_MIGRATIONS" = "true" ]; then
+    echo "[API] production D1 存在待执行 migration，先导出备份..."
+    node scripts/export-production-d1-backup.mjs
   fi
-
-  if [ "$IS_PRODUCTION" = "true" ]; then
-    if [[ "$UNAPPLIED_MIGRATIONS" == *"0061_attribution_source_router_cleanup"* ]]; then
-      echo "[API] 广告来源路由清理 migration 待执行，导出 production D1 备份..."
-      node scripts/export-production-d1-backup.mjs
-    fi
-  fi
-
 fi
 
 if [ "$IS_PRODUCTION" = "true" ]; then
@@ -113,8 +109,12 @@ if [ "$IS_PRODUCTION" = "true" ]; then
 fi
 
 if [ "$RUN_API" = "true" ]; then
-  echo "[API] 应用 D1 migration..."
-  "${PNPM[@]}" --filter @meigallery/api exec wrangler d1 migrations apply "$D1_DB" "${ENV_ARGS[@]}" --remote
+  if [ "$HAS_PENDING_MIGRATIONS" = "true" ]; then
+    echo "[API] 应用 D1 migration..."
+    "${PNPM[@]}" --filter @meigallery/api exec wrangler d1 migrations apply "$D1_DB" "${ENV_ARGS[@]}" --remote
+  else
+    echo "[API] 无待执行 D1 migration，跳过。"
+  fi
 
   if [ "$IS_PRODUCTION" = "true" ]; then
     echo "[API] 激活已上传 Version..."

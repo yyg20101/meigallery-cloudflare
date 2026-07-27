@@ -289,7 +289,7 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/admin/tracking-sources` | 推广来源列表，返回可复制追踪链接 | admin+ |
 | POST | `/api/admin/tracking-sources` | 创建推广来源，写入审计日志 | admin+ |
 | PATCH | `/api/admin/tracking-sources/:id` | 修改或停用推广来源，写入审计日志 | admin+ |
-| PUT | `/api/ad-attribution` | 解析 click ID 或数据库校验通过的 `mg_source + mg_proof`，继承最近一次付费来源，并签发 30 天单一平台 HttpOnly 加密来源上下文；普通 UTM 不决定平台，冲突来源清除上下文 | public |
+| PUT | `/api/ad-attribution` | 解析 click ID 或数据库校验通过的受管 `mg_source`，继承最近一次付费来源，并签发 30 天单一平台 HttpOnly 加密来源上下文；普通 UTM 不决定平台，冲突来源清除上下文 | public |
 | GET | `/api/ad-attribution/bootstrap` | 读取签名来源上下文并仅返回该平台的 Browser 公开配置 | public |
 | DELETE | `/api/ad-attribution` | 清除当前广告来源上下文 | public |
 | GET | `/api/admin/analytics/overview` | 数据分析总览，读取聚合表和健康摘要 | admin+ |
@@ -643,7 +643,7 @@ INSERT INTO site_settings (key, value) VALUES
 实现约束：
 
 - `0051_unified_attribution_expand.sql` 建立统一归因表；`0052_unified_attribution_contract.sql` 迁移仍有价值的 Meta 质量历史；`0060_attribution_control_plane_cleanup.sql` 删除旧控制面；`0061_attribution_source_router_cleanup.sql` 物理删除 consent、region、rollout、mode、revision 和冗余 provider 字段；`0062_attribution_runtime_garbage_cleanup.sql` 删除旧连接质量快照和空的 usage 表，同时保留有效连接、最新加密凭证、事实、Delivery、Outbox、平台回执、事故与当前质量数据。
-- `0055_attribution_tracking_integrity.sql` 将管理广告链接历史来源统一修正为 `ad`、为每个管理来源生成唯一 `link_proof`、只以 `contact_method_click` 计有效联系、按事件发生的北京时间自然日重建来源/页面/邀请日报，并允许 tracking source 绑定 Google；只有数据库匹配的 `mg_source + mg_proof` 才能建立平台来源，普通 UTM 和自然流量不做推测性回填。
+- `0055_attribution_tracking_integrity.sql` 将管理广告链接历史来源统一修正为 `ad`、只以 `contact_method_click` 计有效联系、按事件发生的北京时间自然日重建来源/页面/邀请日报，并允许 tracking source 绑定 Google；当前运行时只接受数据库中启用且唯一的受管 `mg_source` 建立平台来源，普通 UTM 和自然流量不做推测性回填。
 - `0056_attribution_fact_source_integrity.sql` 从活跃事实源清除旧版仅凭 UTM 推测出的平台归因及其 Delivery/Receipt/Outbox，并在 D1 层强制事实来源组合：无平台事实只能使用 `none/conflict`，Meta/TikTok/Google 平台事实只能使用 `click_id/managed_link`。migration 前 production D1 备份与 Time Travel 保留原始审计证据。
 - `0057_contact_aggregate_integrity.sql` 只从强制完整保留的 `contact_method_click` 原始事实重建 `analytics_daily_events` 联系趋势与 `analytics_source_click_daily` 来源联系点击；使用北京时间业务日，并排除没有来源名或邀请码的纯 direct 流量。production 门禁对原始事实和两个联系日报做双向集合对账。
 - 历史 migration 只负责升级路径和空库顺序建库，应用运行时不得访问后续 migration 已删除的结构。
@@ -651,7 +651,7 @@ INSERT INTO site_settings (key, value) VALUES
 - TikTok Events API 使用官方 v1.3 Web Events endpoint、`Access-Token` header、`event_source=web`、Pixel ID、`event/event_time/event_id/user/page` 契约；生产 payload 不带 `test_event_code`。Browser Pixel 与 Events API 对同一业务事实使用相同 event name 与 event ID 进行去重。
 - Google Data Manager `events:ingest` 的 `events[].transactionId` 与 Browser `transaction_id` 共用同一外部事件编号。HTTP 2xx 必须返回安全 `requestId` 才进入 `accepted`；Cron 再通过 `requestStatus.retrieve` 收口为 `processed` 或 `rejected`。Google 请求体要求的 Consent 字段属于平台适配器协议，不是项目自建授权状态。
 - API 只返回 provider-aware `trackingInstructions`，前端通过广告平台 adapter registry 执行，不保留 `pixelEvents` 兼容响应。
-- 广告来源解析优先级固定为 `fbclid > ttclid > gclid/gbraid/wbraid > 后台签名投放链接 > 最近一次有效来源`。优先级只描述信号类别；同一次请求同时出现多个平台信号时直接 `conflict`。
+- 广告来源解析优先级固定为 `fbclid > ttclid > gclid/gbraid/wbraid > 后台受管投放链接 > 最近一次有效来源`。优先级只描述信号类别；同一次请求同时出现多个平台信号时直接 `conflict`。
 - `PUT /api/ad-attribution` 签发 30 天 `HttpOnly` 加密来源上下文。普通 UTM、referrer、前端 `provider` 或其他 body 字段不能决定平台；Contact 和注册 API 直接验证签名上下文，不接受额外前端放行状态。
 - 浏览器 adapter registry 同一时刻只允许一个 active provider。SPA 解析结果改变平台或变为空时整页刷新，避免旧平台脚本残留；自然流量且没有历史来源时不加载营销 Pixel。
 - 一个 `attribution_conversion_facts` 最多属于一个广告平台。每个平台只读取自身连接、凭证、Queue 和 receipt；空来源事实不进入任何广告平台。禁止 fan-out、广播或按启用平台枚举投递。
@@ -674,8 +674,8 @@ INSERT INTO site_settings (key, value) VALUES
 
 - CI 对完整代码执行一次测试、类型检查和构建。生产发布不重复全量 CI，只验证受影响 Worker、执行必要 migration、部署并做生产 smoke。
 - API 与 Web 可以独立发布，二者 commit 不要求相同；普通功能提交不会改变归因连接、凭证或事件映射。
-- migration `0061` 执行前必须创建 production D1 export 和 Time Travel bookmark；失败时 migration 整体回滚。
-- 精简功能必须一次发布，禁止先发布关闭所有 Pixel 的中间版本。生产 smoke 检查 `0061` 已应用、连接配置完整、三平台测试链接只请求来源平台；dead letter、过期 Outbox、质量告警和 incident 进入诊断告警，不阻止紧急修复发布。
+- production 存在待执行 migration 时必须先创建 D1 export；失败时 migration 整体回滚。删除列或表的 contract migration 必须在运行时代码停止依赖后使用独立发布执行。
+- 精简功能禁止发布关闭所有 Pixel 的中间版本。生产 smoke 检查最终归因表结构、连接配置完整、三平台测试链接只请求来源平台；dead letter、过期 Outbox、质量告警和 incident 进入诊断告警，不阻止紧急修复发布。
 - 连接测试只验证当前配置和平台响应，不修改通道开关，不创建长期状态，不与 Git commit 绑定。
 
 成本与索引口径：

@@ -63,7 +63,6 @@ function trackingSourceRow() {
     name: 'Telegram 六月互推',
     channel: 'social',
     slug: 'telegram-june',
-    link_proof: 'a'.repeat(64),
     target_path: '/',
     utm_source: 'telegram-june',
     utm_medium: 'social',
@@ -134,10 +133,10 @@ describe('后台推广来源 API', () => {
     expect(res.status).toBe(201)
     expect(body.data.utmContent).toBe('chat-a')
     expect(body.data.adProvider).toBe('meta')
-    expect(body.data.trackingPath).toMatch(/[?&]mg_proof=[0-9a-f]{64}(?:&|$)/)
+    expect(body.data.trackingPath).not.toContain('mg_proof')
     expect(body.data.trackingPath).toContain('utm_content=chat-a')
-    expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_tracking_sources') && call.params[9] === 'chat-a')).toBe(true)
-    expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_tracking_sources') && call.params[10] === 'meta')).toBe(true)
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_tracking_sources') && call.params[8] === 'chat-a')).toBe(true)
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_tracking_sources') && call.params[9] === 'meta')).toBe(true)
     expect(JSON.stringify(db.calls)).not.toContain('Meta 像素测试地址')
   })
 
@@ -160,7 +159,7 @@ describe('后台推广来源 API', () => {
     expect(body.data.adProvider).toBe('google')
     expect(db.calls.some(call => (
       call.sql.includes('INSERT INTO analytics_tracking_sources')
-      && call.params[10] === 'google'
+      && call.params[9] === 'google'
     ))).toBe(true)
   })
 

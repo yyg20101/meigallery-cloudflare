@@ -142,6 +142,7 @@ CI 配置位于 `.github/workflows/`：
 - `ci.yml`：PR 和 dev 推送触发，运行测试 + 类型检查 + 构建验证
 - 当前没有生产自动部署 workflow；GitHub Actions 不负责生产部署，避免合入 `main` 后自动影响线上用户。
 - API production 先上传不接流量的 Worker Version，再执行 D1 migration，成功后激活；Web 和 API 按实际影响范围独立部署。
+- 删除列或表的 contract migration 不得与停止依赖它的代码同次发布；必须先发布兼容代码并通过生产 smoke，再在独立发布中执行收缩。
 
 首次部署前需执行 `./scripts/setup.sh` 创建 Cloudflare 资源。
 

@@ -68,6 +68,22 @@ describe('通用广告归因架构边界', () => {
     expect(violations).toEqual([])
   })
 
+  it('运行时和当前架构文档不包含废弃的推广链接 proof', () => {
+    const currentFiles = trackedTextFiles().filter(filePath => (
+      (/^packages\/(?:api\/src|web\/app|shared\/src)\//.test(filePath)
+        && !/\.test\.[cm]?[jt]s$/.test(filePath))
+      || /^docs\/(?:AD_PLATFORM_ARCHITECTURE|TECHNICAL_SPEC)\.md$/.test(filePath)
+    ))
+    const violations = currentFiles.flatMap((filePath) => {
+      const source = readFileSync(resolve(repositoryRoot, filePath), 'utf8')
+      return ['link_proof', 'mg_proof', 'managedLinkProof']
+        .filter(value => source.includes(value))
+        .map(value => `${filePath}: ${value}`)
+    })
+
+    expect(violations).toEqual([])
+  })
+
   it('tracked 文件不包含已使用的生产测试码、真实私钥块或直接 secret 赋值', () => {
     const knownProductionCodes = ['16752', '17298', '25401'].map(value => `TEST${value}`)
     const violations: string[] = []
