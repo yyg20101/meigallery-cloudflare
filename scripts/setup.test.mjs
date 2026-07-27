@@ -6,11 +6,18 @@ import { fileURLToPath } from 'node:url'
 import { describe, it } from 'node:test'
 import { promisify } from 'node:util'
 import { execFile as execFileCallback } from 'node:child_process'
-import { REQUIRED_PRODUCTION_AD_QUEUES } from './verify-ad-platform-queues.mjs'
 
 const execFile = promisify(execFileCallback)
 const SETUP_SCRIPT = fileURLToPath(new URL('./setup.sh', import.meta.url))
 const FIXTURE_SECRET = 'setup-stub-secret-must-not-leak'
+const REQUIRED_PRODUCTION_AD_QUEUES = [
+  'meigallery-ad-meta',
+  'meigallery-ad-meta-dlq',
+  'meigallery-ad-tiktok',
+  'meigallery-ad-tiktok-dlq',
+  'meigallery-ad-google',
+  'meigallery-ad-google-dlq',
+]
 
 describe('Cloudflare setup Queue 初始化', () => {
   for (const [environment, expected] of [

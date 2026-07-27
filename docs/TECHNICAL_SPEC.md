@@ -639,11 +639,10 @@ INSERT INTO site_settings (key, value) VALUES
 | `attribution_provider_receipts` | `[当前实现]` | 平台响应和质量诊断证据，不保存明文凭证。 |
 | `attribution_incidents` | `[当前实现]` | 平台运行故障与降级记录。 |
 | `attribution_quality_snapshots` | `[当前实现]` | 匹配覆盖与平台质量指标。 |
-| `attribution_usage_daily` | `[当前实现]` | 平台调用量、预算和容量统计。 |
 
 实现约束：
 
-- `0051_unified_attribution_expand.sql` 建立统一归因表；`0052_unified_attribution_contract.sql` 迁移仍有价值的 Meta 质量历史；`0060_attribution_control_plane_cleanup.sql` 删除旧控制面；`0061_attribution_source_router_cleanup.sql` 物理删除 consent、region、rollout、mode、revision 和冗余 provider 字段，同时保留有效连接、最新加密凭证、事实、Delivery、Outbox、平台回执、事故与质量数据。
+- `0051_unified_attribution_expand.sql` 建立统一归因表；`0052_unified_attribution_contract.sql` 迁移仍有价值的 Meta 质量历史；`0060_attribution_control_plane_cleanup.sql` 删除旧控制面；`0061_attribution_source_router_cleanup.sql` 物理删除 consent、region、rollout、mode、revision 和冗余 provider 字段；`0062_attribution_runtime_garbage_cleanup.sql` 删除旧连接质量快照和空的 usage 表，同时保留有效连接、最新加密凭证、事实、Delivery、Outbox、平台回执、事故与当前质量数据。
 - `0055_attribution_tracking_integrity.sql` 将管理广告链接历史来源统一修正为 `ad`、为每个管理来源生成唯一 `link_proof`、只以 `contact_method_click` 计有效联系、按事件发生的北京时间自然日重建来源/页面/邀请日报，并允许 tracking source 绑定 Google；只有数据库匹配的 `mg_source + mg_proof` 才能建立平台来源，普通 UTM 和自然流量不做推测性回填。
 - `0056_attribution_fact_source_integrity.sql` 从活跃事实源清除旧版仅凭 UTM 推测出的平台归因及其 Delivery/Receipt/Outbox，并在 D1 层强制事实来源组合：无平台事实只能使用 `none/conflict`，Meta/TikTok/Google 平台事实只能使用 `click_id/managed_link`。migration 前 production D1 备份与 Time Travel 保留原始审计证据。
 - `0057_contact_aggregate_integrity.sql` 只从强制完整保留的 `contact_method_click` 原始事实重建 `analytics_daily_events` 联系趋势与 `analytics_source_click_daily` 来源联系点击；使用北京时间业务日，并排除没有来源名或邀请码的纯 direct 流量。production 门禁对原始事实和两个联系日报做双向集合对账。

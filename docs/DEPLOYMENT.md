@@ -115,6 +115,8 @@ node scripts/export-production-d1-backup.mjs
 
 备份写入仓库外的 `~/.meigallery/production-backups/d1`，包含 SQL、SHA-256、Git commit 和 Time Travel bookmark。不要把备份、凭证或 token 写入仓库。
 
+`0062_attribution_runtime_garbage_cleanup.sql` 只删除早于当前连接配置的质量快照和无读取方的空 usage 表。部署前后必须核对连接、凭证、事件映射和业务事实数量不变。
+
 `0017_cases_cleanup.sql` 仍需先完成 R2 Cases 专项核验，确认后显式设置：
 
 ```bash
