@@ -34,7 +34,6 @@ const EVENT_LABELS: Record<string, string> = {
   invite_code_checked: '邀请码校验',
   register_start: '开始注册',
   register_submit: '提交注册',
-  register_success: '注册成功',
   register_failed: '注册失败',
   membership_granted_conversion: '会员发放转化',
   gallery_card_impression: '图库卡片曝光',

@@ -42,9 +42,9 @@ const contactSummary = computed(() => {
   >
     <div class="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
       <div class="rounded-lg border border-amber-200 bg-white p-4 text-amber-700 shadow-sm">
-        <p class="text-xs font-medium text-gray-500">有效联系方式点击</p>
+        <p class="text-xs font-medium text-gray-500">去重联系方式点击</p>
         <p class="mt-2 text-2xl font-semibold leading-none">{{ formatAnalyticsNumber(contactSummary.effective) }}</p>
-        <p class="mt-2 truncate text-xs text-gray-400">站内一方口径</p>
+        <p class="mt-2 truncate text-xs text-gray-400">行为点击口径</p>
       </div>
       <div class="rounded-lg border border-gray-200 bg-white p-4 text-gray-950 shadow-sm">
         <p class="text-xs font-medium text-gray-500">Raw 联系点击</p>
@@ -74,7 +74,7 @@ const contactSummary = computed(() => {
         { key: 'location_label', label: '位置', sortable: true },
         { key: 'target_label', label: '目标' },
         { key: 'raw_click_count', label: 'Raw', type: 'number', sortable: true },
-        { key: 'effective_click_count', label: '有效', type: 'number', sortable: true },
+        { key: 'effective_click_count', label: '去重', type: 'number', sortable: true },
         { key: 'duplicate_click_count', label: '重复', type: 'number', sortable: true },
         { key: 'visitor_count', label: '访客', type: 'number', sortable: true },
         { key: 'session_count', label: 'Session', type: 'number', sortable: true },

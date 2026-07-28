@@ -590,7 +590,7 @@ INSERT INTO site_settings (key, value) VALUES
 
 ### 数据分析表 `[部分实现]`
 
-当前已通过 `0023_analytics_core.sql` 到 `0026_analytics_exports.sql` 建立数据分析 schema，并已接入 `/api/analytics/events`、`/api/analytics/session/end` 公开采集接口、邀请码转化闭环、Web 轻量 SDK、核心业务埋点、Cron 聚合任务、后台分析 API、后台分析页面、端到端 smoke、性能成本 fixtures、上线顺序和回滚文档。采集接口默认受 `analytics_enabled=false` 保护，关闭时返回 disabled 且不写 D1；Web SDK 同样读取公开设置，关闭时不初始化 visitor/session，不写本地存储。当前前台已覆盖首页广告、图库卡片、图库详情、图片查看器、会员 CTA、点赞成功、搜索、筛选、排序、加载更多、联系面板和规则入口事件；联系悬浮入口仅在客户端 mounted 后显示，避免 SSR 未绑定事件时丢失关键转化点击。媒体授权成功/拒绝由 API Worker 侧写入可信 `media_access_granted` / `media_access_denied`，不信任前端伪造授权结果。后台分析 API 默认读取聚合表和摘要表，并返回 D1 usage 供健康看板展示；单 session 明细和 CSV 导出为 owner-only 并写入审计日志。后台已新增 `/admin/analytics` 总览、来源、内容、链路、点击、时长、邀请、健康页面和 `/admin/invite-codes` 跳转入口；生产启用仍必须按部署文档的开关顺序由 Owner 显式打开。后台来源中的 `fb`、`facebook`、`meta` 表示站内 UTM、推广链接或 referrer 归因，不代表 Meta Pixel 回传；Meta Pixel 仅用于向 Meta 后台同步清洗后的转化事件。
+当前已通过 `0023_analytics_core.sql` 到 `0026_analytics_exports.sql` 建立数据分析 schema，并已接入 `/api/analytics/events`、`/api/analytics/session/end` 公开采集接口、邀请码转化闭环、Web 轻量 SDK、核心业务埋点、Cron 聚合任务、后台分析 API、后台分析页面、端到端 smoke、性能成本 fixtures、上线顺序和回滚文档。采集接口默认受 `analytics_enabled=false` 保护，关闭时返回 disabled 且不写 D1；Web SDK 同样读取公开设置，关闭时不初始化 visitor/session，不写本地存储。当前前台已覆盖首页广告、图库卡片、图库详情、图片查看器、会员 CTA、点赞成功、搜索、筛选、排序、加载更多、联系面板和规则入口事件；联系悬浮入口仅在客户端 mounted 后显示，避免 SSR 未绑定事件时丢失关键点击。媒体授权成功/拒绝由 API Worker 侧写入可信 `media_access_granted` / `media_access_denied`，不信任前端伪造授权结果。后台分析 API 的流量、页面和点击读取行为聚合表，`Contact / CompleteRegistration` 则统一从 `attribution_conversion_facts` 的只读指标服务获取，禁止把前端点击或 `register_success` 再累加为第二套业务转化；单 session 明细和 CSV 导出使用相同口径。后台已新增 `/admin/analytics` 总览、来源、内容、链路、点击、时长、邀请、健康页面和 `/admin/invite-codes` 跳转入口；生产启用仍必须按部署文档的开关顺序由 Owner 显式打开。后台来源中的 `fb`、`facebook`、`meta` 表示站内 UTM、推广链接或 referrer 归因，不代表 Meta Pixel 回传；Meta Pixel 仅用于向 Meta 后台同步清洗后的转化事件。
 
 核心表分层：
 
@@ -604,7 +604,7 @@ INSERT INTO site_settings (key, value) VALUES
 | `analytics_ingest_health_daily` | `[部分实现]` | 每日 accepted/rejected/duplicate/sensitive blocked、采样、丢弃和 D1 预算估算。 |
 | `invite_codes` | `[当前实现]` | 后台邀请码定义，保存 `code_hash` 和 `display_code`，创建响应返回明文 code，创建/修改/禁用写入审计日志。 |
 | `invite_registrations` | `[当前实现]` | 邀请注册事实，关联 visitor、session、注册用户和首次会员发放回填；重复绑定不会重复增加 `used_count`。 |
-| `analytics_daily_sources` | `[部分实现]` | 按日期、来源渠道、来源名称和邀请码聚合访问、注册、联系和会员发放。 |
+| `analytics_daily_sources` | `[部分实现]` | 按日期、来源渠道、来源名称和邀请码聚合访问与会员发放；后台注册和有效联系由转化事实读模型覆盖。 |
 | `analytics_daily_pages` | `[部分实现]` | 按日期、route、path 和业务实体聚合页面表现。 |
 | `analytics_daily_events` | `[部分实现]` | 按日期、事件名和实体聚合关键事件计数。 |
 | `analytics_path_edges` | `[部分实现]` | 按日期聚合 `from_route -> to_route` 路径边。 |
@@ -642,7 +642,7 @@ INSERT INTO site_settings (key, value) VALUES
 
 实现约束：
 
-- `0051_unified_attribution_expand.sql` 建立统一归因表；`0052_unified_attribution_contract.sql` 迁移仍有价值的 Meta 质量历史；`0060_attribution_control_plane_cleanup.sql` 删除旧控制面；`0061_attribution_source_router_cleanup.sql` 物理删除 consent、region、rollout、mode、revision 和冗余 provider 字段；`0062_attribution_runtime_garbage_cleanup.sql` 删除旧连接质量快照和空的 usage 表；`0063_attribution_tracking_source_contract.sql` 删除推广来源的旧 proof 列。最终结构保留有效连接、最新加密凭证、事实、Delivery、Outbox、平台回执、事故、当前质量数据和全部推广来源。
+- `0051_unified_attribution_expand.sql` 建立统一归因表；`0052_unified_attribution_contract.sql` 迁移仍有价值的 Meta 质量历史；`0060_attribution_control_plane_cleanup.sql` 删除旧控制面；`0061_attribution_source_router_cleanup.sql` 物理删除 consent、region、rollout、mode、revision 和冗余 provider 字段；`0062_attribution_runtime_garbage_cleanup.sql` 删除旧连接质量快照和空的 usage 表；`0063_attribution_tracking_source_contract.sql` 删除推广来源的旧 proof 列；`0065_analytics_conversion_truth.sql` 清除行为分析历史上重复累加的联系与注册计数。最终结构保留有效连接、最新加密凭证、事实、Delivery、Outbox、平台回执、事故、当前质量数据和全部推广来源。
 - `0055_attribution_tracking_integrity.sql` 将管理广告链接历史来源统一修正为 `ad`、只以 `contact_method_click` 计有效联系、按事件发生的北京时间自然日重建来源/页面/邀请日报，并允许 tracking source 绑定 Google；当前运行时只接受数据库中启用且唯一的受管 `mg_source` 建立平台来源，普通 UTM 和自然流量不做推测性回填。
 - `0056_attribution_fact_source_integrity.sql` 从活跃事实源清除旧版仅凭 UTM 推测出的平台归因及其 Delivery/Receipt/Outbox，并在 D1 层强制事实来源组合：无平台事实只能使用 `none/conflict`，Meta/TikTok/Google 平台事实只能使用 `click_id/managed_link`。migration 前 production D1 备份与 Time Travel 保留原始审计证据。
 - `0057_contact_aggregate_integrity.sql` 只从强制完整保留的 `contact_method_click` 原始事实重建 `analytics_daily_events` 联系趋势与 `analytics_source_click_daily` 来源联系点击；使用北京时间业务日，并排除没有来源名或邀请码的纯 direct 流量。production 门禁对原始事实和两个联系日报做双向集合对账。

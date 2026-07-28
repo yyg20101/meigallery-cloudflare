@@ -45,7 +45,7 @@ const activeSourceCode = computed(() => String(route.query.sourceCode || route.q
         { key: 'location_label', label: '位置', sortable: true },
         { key: 'target_label', label: '目标' },
         { key: 'raw_click_count', label: 'Raw', type: 'number', sortable: true },
-        { key: 'effective_click_count', label: '有效', type: 'number', sortable: true },
+        { key: 'effective_click_count', label: '去重', type: 'number', sortable: true },
         { key: 'duplicate_click_count', label: '重复', type: 'number', sortable: true },
         { key: 'visitor_count', label: '访客', type: 'number', sortable: true },
         { key: 'session_count', label: 'Session', type: 'number', sortable: true },

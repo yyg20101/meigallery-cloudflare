@@ -78,7 +78,6 @@ interface NormalizedAnalyticsEvent {
 interface AcceptedAnalyticsEvent {
   event: NormalizedAnalyticsEvent
   storedRaw: boolean
-  rawDuplicate?: boolean
 }
 
 export class AnalyticsIngestError extends Error {
@@ -109,12 +108,10 @@ const CLICK_EVENTS = new Set<AnalyticsEventName>([
   'rules_page_click',
   'membership_cta_click',
 ])
-const EFFECTIVE_CONTACT_EVENTS = new Set<AnalyticsEventName>(['contact_method_click'])
 const CRITICAL_RAW_EVENTS = new Set<AnalyticsEventName>([
   'invite_landed',
   'invite_code_checked',
   'register_submit',
-  'register_success',
   'register_failed',
   'membership_granted_conversion',
   'contact_method_click',
@@ -145,29 +142,24 @@ export async function ingestAnalyticsBatch(
     errors: [],
     usage: emptyUsage(),
   }
-  let sampledCount = 0
-  const acceptedEvents: AcceptedAnalyticsEvent[] = []
+  const candidates: AcceptedAnalyticsEvent[] = []
 
   for (const rawEvent of batch.events) {
     try {
       const event = normalizeAnalyticsEvent(rawEvent, batch, context)
       const storedRaw = shouldStoreRawEvent(event.eventName, event.eventId, settings.sampleRate)
       event.sampled = storedRaw && !CRITICAL_RAW_EVENTS.has(event.eventName)
-
-      if (storedRaw && await hasStoredEvent(env.DB, event.eventId, response)) {
-        response.duplicate += 1
-        continue
-      }
-
-      acceptedEvents.push({ event, storedRaw })
-      if (event.sampled) sampledCount += 1
-      response.accepted += 1
+      candidates.push({ event, storedRaw })
     } catch (error) {
       response.rejected += 1
       const normalized = normalizeEventError(error, readOptionalString(rawEvent, 'eventId', 'event_id'))
       response.errors?.push(normalized)
     }
   }
+
+  const acceptedEvents = await reserveStoredEvents(env.DB, batch, candidates, context, response)
+  const sampledCount = acceptedEvents.filter(item => item.event.sampled).length
+  response.accepted = acceptedEvents.length
 
   if (acceptedEvents.length > 0) {
     await persistAcceptedEvents(env.DB, batch, acceptedEvents, context, response)
@@ -478,7 +470,6 @@ async function persistAcceptedEvents(
   await writeClickDailyBatch(db, events, response)
   await writeSourcePageDailyBatch(db, events, response)
   await writeSourceClickDailyBatch(db, events, response)
-  await writeRawEventsBatch(db, batch, accepted, context, response)
 }
 
 async function writeSessionSummaryBatch(
@@ -497,10 +488,10 @@ async function writeSessionSummaryBatch(
     INSERT INTO analytics_session_summaries (
       session_id, date, visitor_id, user_id, started_at, ended_at, source_channel,
       source_name, invite_code_id, device_type, country, entry_path, exit_path,
-      page_view_count, active_seconds, click_count, contact_click_count,
-      register_success_count, membership_grant_count, is_bounce, updated_at
+      page_view_count, active_seconds, click_count, membership_grant_count,
+      is_bounce, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(session_id) DO UPDATE SET
       user_id = COALESCE(excluded.user_id, analytics_session_summaries.user_id),
       ended_at = COALESCE(excluded.ended_at, analytics_session_summaries.ended_at),
@@ -508,8 +499,6 @@ async function writeSessionSummaryBatch(
       page_view_count = analytics_session_summaries.page_view_count + excluded.page_view_count,
       active_seconds = analytics_session_summaries.active_seconds + excluded.active_seconds,
       click_count = analytics_session_summaries.click_count + excluded.click_count,
-      contact_click_count = analytics_session_summaries.contact_click_count + excluded.contact_click_count,
-      register_success_count = analytics_session_summaries.register_success_count + excluded.register_success_count,
       membership_grant_count = analytics_session_summaries.membership_grant_count + excluded.membership_grant_count,
       is_bounce = MAX(analytics_session_summaries.is_bounce, excluded.is_bounce),
       updated_at = datetime('now')
@@ -530,8 +519,6 @@ async function writeSessionSummaryBatch(
     events.filter(event => event.eventName === 'page_view').length,
     sumBy(events, event => event.activeSeconds),
     events.filter(event => CLICK_EVENTS.has(event.eventName)).length,
-    events.filter(event => EFFECTIVE_CONTACT_EVENTS.has(event.eventName)).length,
-    events.filter(event => event.eventName === 'register_success').length,
     events.filter(event => event.eventName === 'membership_granted_conversion').length,
     events.some(event => event.isBounce) ? 1 : 0,
   ])
@@ -645,24 +632,19 @@ async function writeDailySourcesBatch(
     const sessionStarts = groupEvents.filter(item => item.eventName === 'session_start').length
     const pageViews = groupEvents.filter(item => item.eventName === 'page_view').length
     const galleryDetails = groupEvents.filter(item => item.eventName === 'gallery_detail_view' || item.routeName === '/gallery/:slug').length
-    const contactClicks = groupEvents.filter(item => EFFECTIVE_CONTACT_EVENTS.has(item.eventName)).length
-    const registers = groupEvents.filter(item => item.eventName === 'register_success').length
     const memberships = groupEvents.filter(item => item.eventName === 'membership_granted_conversion').length
     await runAndTrack(db, response, `
       INSERT INTO analytics_daily_sources (
         date, source_channel, source_name, invite_code_id, visitor_count, session_count,
-        page_view_count, gallery_detail_count, contact_click_count, register_count,
-        invite_register_count, membership_grant_count, active_seconds_total, updated_at
+        page_view_count, gallery_detail_count, membership_grant_count,
+        active_seconds_total, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
       ON CONFLICT(date, source_channel, source_name, invite_code_id) DO UPDATE SET
         visitor_count = analytics_daily_sources.visitor_count + excluded.visitor_count,
         session_count = analytics_daily_sources.session_count + excluded.session_count,
         page_view_count = analytics_daily_sources.page_view_count + excluded.page_view_count,
         gallery_detail_count = analytics_daily_sources.gallery_detail_count + excluded.gallery_detail_count,
-        contact_click_count = analytics_daily_sources.contact_click_count + excluded.contact_click_count,
-        register_count = analytics_daily_sources.register_count + excluded.register_count,
-        invite_register_count = analytics_daily_sources.invite_register_count + excluded.invite_register_count,
         membership_grant_count = analytics_daily_sources.membership_grant_count + excluded.membership_grant_count,
         active_seconds_total = analytics_daily_sources.active_seconds_total + excluded.active_seconds_total,
         updated_at = datetime('now')
@@ -675,9 +657,6 @@ async function writeDailySourcesBatch(
       sessionStarts,
       pageViews,
       galleryDetails,
-      contactClicks,
-      registers,
-      registers > 0 && stringProp(event.props.invite_code_id) ? registers : 0,
       memberships,
       sumBy(groupEvents, item => item.activeSeconds),
     ])
@@ -705,10 +684,9 @@ async function writeDailyPagesBatch(
       INSERT INTO analytics_daily_pages (
         date, route_name, path, entity_type, entity_id, page_title, page_view_count,
         visitor_count, session_count, entry_count, exit_count, bounce_count,
-        active_seconds_total, max_scroll_depth, register_count, contact_click_count,
-        updated_at
+        active_seconds_total, max_scroll_depth, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
       ON CONFLICT(date, route_name, path, entity_type, entity_id) DO UPDATE SET
         page_title = CASE WHEN excluded.page_title != '' THEN excluded.page_title ELSE analytics_daily_pages.page_title END,
         page_view_count = analytics_daily_pages.page_view_count + excluded.page_view_count,
@@ -719,8 +697,6 @@ async function writeDailyPagesBatch(
         bounce_count = analytics_daily_pages.bounce_count + excluded.bounce_count,
         active_seconds_total = analytics_daily_pages.active_seconds_total + excluded.active_seconds_total,
         max_scroll_depth = MAX(analytics_daily_pages.max_scroll_depth, excluded.max_scroll_depth),
-        register_count = analytics_daily_pages.register_count + excluded.register_count,
-        contact_click_count = analytics_daily_pages.contact_click_count + excluded.contact_click_count,
         updated_at = datetime('now')
     `, [
       first.date,
@@ -737,8 +713,6 @@ async function writeDailyPagesBatch(
       group.some(event => event.isBounce) ? 1 : 0,
       sumBy(group, event => event.activeSeconds),
       maxBy(group, event => event.maxScrollDepth),
-      group.filter(event => event.eventName === 'register_success').length,
-      group.filter(event => EFFECTIVE_CONTACT_EVENTS.has(event.eventName)).length,
     ])
   }
 }
@@ -823,10 +797,9 @@ async function writeSourcePageDailyBatch(
         date, source_channel, source_name, invite_code_id,
         route_name, path, entity_type, entity_id, page_title,
         visitor_count, session_count, page_view_count, entry_count, exit_count,
-        bounce_count, active_seconds_total, max_scroll_depth, register_count,
-        contact_click_count, updated_at
+        bounce_count, active_seconds_total, max_scroll_depth, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
       ON CONFLICT(date, source_channel, source_name, invite_code_id, route_name, path, entity_type, entity_id) DO UPDATE SET
         page_title = CASE WHEN excluded.page_title != '' THEN excluded.page_title ELSE analytics_source_page_daily.page_title END,
         visitor_count = analytics_source_page_daily.visitor_count + excluded.visitor_count,
@@ -837,8 +810,6 @@ async function writeSourcePageDailyBatch(
         bounce_count = analytics_source_page_daily.bounce_count + excluded.bounce_count,
         active_seconds_total = analytics_source_page_daily.active_seconds_total + excluded.active_seconds_total,
         max_scroll_depth = MAX(analytics_source_page_daily.max_scroll_depth, excluded.max_scroll_depth),
-        register_count = analytics_source_page_daily.register_count + excluded.register_count,
-        contact_click_count = analytics_source_page_daily.contact_click_count + excluded.contact_click_count,
         updated_at = datetime('now')
     `, [
       first.date,
@@ -858,8 +829,6 @@ async function writeSourcePageDailyBatch(
       group.some(event => event.isBounce) ? 1 : 0,
       sumBy(group, event => event.activeSeconds),
       maxBy(group, event => event.maxScrollDepth),
-      group.filter(event => event.eventName === 'register_success').length,
-      group.filter(event => EFFECTIVE_CONTACT_EVENTS.has(event.eventName)).length,
     ])
   }
 }
@@ -925,16 +894,20 @@ async function writeSourceClickDailyBatch(
   }
 }
 
-async function writeRawEventsBatch(
+async function reserveStoredEvents(
   db: AnalyticsDb,
   batch: NormalizedAnalyticsBatch,
-  accepted: AcceptedAnalyticsEvent[],
+  candidates: AcceptedAnalyticsEvent[],
   context: AnalyticsIngestContext,
   response: AnalyticsBatchResponse & { usage: D1Usage },
 ) {
-  for (const item of accepted) {
+  const accepted: AcceptedAnalyticsEvent[] = []
+  for (const item of candidates) {
     const { event, storedRaw } = item
-    if (!storedRaw) continue
+    if (!storedRaw) {
+      accepted.push(item)
+      continue
+    }
     const result = await runAndTrack(db, response, `
       INSERT OR IGNORE INTO analytics_events (
         id, event_name, occurred_at, received_at, visitor_id, session_id, user_id,
@@ -966,12 +939,12 @@ async function writeRawEventsBatch(
       event.sampled ? 1 : 0,
     ])
     if ((result.meta?.changes ?? 1) === 0) {
-      item.rawDuplicate = true
       response.duplicate += 1
     } else {
-      item.rawDuplicate = false
+      accepted.push(item)
     }
   }
+  return accepted
 }
 
 function lastSessionEndedAt(events: NormalizedAnalyticsEvent[]) {
@@ -1044,17 +1017,6 @@ async function writeIngestHealth(
     input.usage.rowsWritten,
     input.maxDurationMs,
   ])
-}
-
-async function hasStoredEvent(
-  db: AnalyticsDb,
-  eventId: string,
-  response: AnalyticsBatchResponse & { usage: D1Usage },
-) {
-  const statement = db.prepare('SELECT id FROM analytics_events WHERE id = ?').bind(eventId)
-  const result = await statement.first<{ id: string }>()
-  response.usage = mergeD1Usage(response.usage, readD1UsageMeta(result))
-  return Boolean(result)
 }
 
 async function runAndTrack(

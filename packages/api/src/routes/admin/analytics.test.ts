@@ -29,6 +29,22 @@ function createDb() {
         },
         async all<T>() {
           calls.push(call)
+          if (sql.includes('FROM attribution_conversion_facts')) {
+            return {
+              results: [{
+                date: '2026-06-07',
+                source_channel: 'search',
+                source_name: 'google.com',
+                route_name: '/gallery/:slug',
+                path: '/gallery/demo',
+                session_id: 'session_abcdef',
+                invite_code_id: '',
+                contact_click_count: 1,
+                register_count: 1,
+              }] as T[],
+              meta: { rows_read: 1, rows_written: 0, duration: 1 },
+            }
+          }
           if (sql.includes('FROM analytics_tracking_sources')) {
             return {
               results: [{
@@ -264,10 +280,14 @@ function createDb() {
               page_view_count: 2,
               active_seconds: 60,
               click_count: 1,
-              contact_click_count: 0,
-              register_success_count: 0,
               membership_grant_count: 0,
               is_bounce: 0,
+            } as T
+          }
+          if (sql.includes('FROM attribution_conversion_facts')) {
+            return {
+              contact_click_count: 1,
+              register_count: 1,
             } as T
           }
           if (sql.includes('analytics_click_daily') && sql.includes('key_click_count')) {
@@ -325,9 +345,9 @@ function createDb() {
               session_count: 3,
               page_view_count: 9,
               gallery_detail_count: 4,
-              register_count: 1,
+              register_count: 22,
               invite_register_count: 1,
-              contact_click_count: 1,
+              contact_click_count: 22,
               membership_grant_count: 0,
               active_seconds_total: 90,
             } as T
@@ -426,7 +446,8 @@ describe('后台数据分析 API', () => {
     expect(body.range.days).toBe(7)
     expect(body.data.totals.average_active_seconds).toBe(30)
     expect(body.data.totals.gallery_detail_count).toBe(4)
-    expect(body.data.totals.effective_contact_click_count).toBe(2)
+    expect(body.data.totals.effective_contact_click_count).toBe(1)
+    expect(body.data.totals.register_count).toBe(1)
     expect(body.data.topSources[0].source_channel).toBe('invite')
     expect(body.data.topClicks).toHaveLength(1)
     expect(body.data.topClicks[0]).toMatchObject({

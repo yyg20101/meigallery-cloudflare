@@ -47,6 +47,8 @@
 - 平台凭证由 `AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT` 加密，管理端不回显明文。
 - Test Event Code 只用于单次同步连接测试，不持久化，也不进入正式事件。
 - 平台连接只保留连接、Browser、Server 三个开关，不存在 rollout、验证 Workflow 或发布门禁。
+- 后台分析、Session 明细和 CSV 中的有效联系与注册只读取 `attribution_conversion_facts`；点击表只表示行为点击，不再充当第二套转化事实。
+- `0065_analytics_conversion_truth.sql` 清除历史重复转化计数并补齐事实时间索引，不修改现有 Pixel、Token、Delivery 或平台回执。
 
 ## 归因瘦身
 

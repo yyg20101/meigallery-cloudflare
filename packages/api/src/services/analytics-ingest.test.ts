@@ -158,11 +158,10 @@ describe('analytics-ingest', () => {
     const db = createDb()
     await ingestAnalyticsBatch(envFor(db), {
       body: baseBatch({
-        eventId: 'event_register_1',
-        eventName: 'register_success',
+        eventId: 'event_login_success_1',
+        eventName: 'login_success',
         user_id: 999,
         entityType: 'auth',
-        props: { invite_code_id: 'inv_1' },
       }),
       bodySizeBytes: 512,
       userId: 42,
@@ -290,7 +289,7 @@ describe('analytics-ingest', () => {
     expect(db.calls.some(call => call.sql.includes('analytics_sessions'))).toBe(false)
   })
 
-  it('contact_method_click 更新 Analytics 联系统计但不写入转化账本', async () => {
+  it('contact_method_click 只更新点击行为统计，不写入第二套转化计数', async () => {
     const db = createDb()
     await ingestAnalyticsBatch(envFor(db), {
       body: baseBatch({
@@ -316,7 +315,8 @@ describe('analytics-ingest', () => {
     })
 
     const sourceAggregate = db.calls.find(call => call.sql.includes('INSERT INTO analytics_daily_sources'))
-    expect(sourceAggregate?.params[8]).toBe(1)
+    expect(sourceAggregate?.sql).not.toContain('contact_click_count')
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_click_daily'))).toBe(true)
     expect(db.calls.some(call => call.sql.includes('analytics_conversion_actions'))).toBe(false)
   })
 
@@ -348,9 +348,9 @@ describe('analytics-ingest', () => {
     expect(sent).toEqual([])
   })
 
-  it('register_success 更新 Analytics 注册统计但不写入转化账本', async () => {
+  it('拒绝旧 register_success 事件，避免形成第二套注册事实', async () => {
     const db = createDb()
-    await ingestAnalyticsBatch(envFor(db), {
+    const result = await ingestAnalyticsBatch(envFor(db), {
       body: baseBatch({
         eventId: 'event_register_2',
         eventName: 'register_success',
@@ -362,9 +362,29 @@ describe('analytics-ingest', () => {
       currentHost: '616618.xyz',
     })
 
-    const sourceAggregate = db.calls.find(call => call.sql.includes('INSERT INTO analytics_daily_sources'))
-    expect(sourceAggregate?.params[9]).toBe(1)
-    expect(db.calls.some(call => call.sql.includes('analytics_conversion_actions'))).toBe(false)
+    expect(result).toMatchObject({ accepted: 0, rejected: 1 })
+    expect(result.errors?.[0]).toMatchObject({ code: 'ANALYTICS_EVENT_NAME_INVALID' })
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_daily_sources'))).toBe(false)
+  })
+
+  it('关键事件先写唯一明细，再更新行为摘要', async () => {
+    const db = createDb()
+    await ingestAnalyticsBatch(envFor(db), {
+      body: baseBatch({
+        eventId: 'event_contact_order_1',
+        eventName: 'contact_method_click',
+        entityType: 'contact',
+        props: { method_type: 'telegram', location: 'floating_contact_panel' },
+      }),
+      bodySizeBytes: 512,
+      userId: null,
+      currentHost: '616618.xyz',
+    })
+
+    const rawIndex = db.calls.findIndex(call => call.sql.includes('INSERT OR IGNORE INTO analytics_events'))
+    const summaryIndex = db.calls.findIndex(call => call.sql.includes('INSERT INTO analytics_sessions'))
+    expect(rawIndex).toBeGreaterThanOrEqual(0)
+    expect(summaryIndex).toBeGreaterThan(rawIndex)
   })
 
   it('被拒绝事件和 raw duplicate 不写入转化账本', async () => {
