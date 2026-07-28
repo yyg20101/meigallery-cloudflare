@@ -140,6 +140,26 @@ describe('后台推广来源 API', () => {
     expect(JSON.stringify(db.calls)).not.toContain('Meta 像素测试地址')
   })
 
+  it('拒绝创建未绑定平台的广告投放链接', async () => {
+    const db = createDb()
+    const res = await createApp('admin').request('/api/admin/tracking-sources', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        sourceLabel: '未绑定平台的广告',
+        channel: 'ad',
+        targetPath: '/',
+        utmCampaign: 'invalid-ad',
+      }),
+    }, { DB: db } as unknown as Bindings)
+    const body = await res.json()
+
+    expect(res.status).toBe(400)
+    expect(body.message).toContain('广告渠道必须明确绑定')
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_tracking_sources'))).toBe(false)
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO admin_audit_logs'))).toBe(false)
+  })
+
   it('Google 广告来源使用与 Meta、TikTok 相同的统一连接模型', async () => {
     const db = createDb()
     const res = await createApp('admin').request('/api/admin/tracking-sources', {

@@ -71,14 +71,6 @@ function adProviderLabel(item: Pick<AttributionLink, 'channel' | 'adProvider'>) 
   return item.channel === 'ad' ? '未绑定（不投递）' : '非广告'
 }
 
-const previewPath = computed(() => buildTrackingPathPreview({
-  targetPath: form.targetPath,
-  sourceCode: normalizeUtmValue(form.sourceLabel || 'ad-test'),
-  utmMedium: form.utmMedium,
-  utmCampaign: normalizeUtmValue(form.utmCampaign),
-  utmContent: normalizeUtmValue(form.utmContent),
-}))
-
 async function createTrackingLink() {
   createError.value = ''
   if (!form.sourceLabel.trim()) {
@@ -122,58 +114,8 @@ async function copyTrackingLink(item: Pick<AttributionLink, 'trackingPath'>) {
   toast.add({ title: '追踪链接已复制', color: 'success' })
 }
 
-function buildTrackingPathPreview(input: {
-  targetPath: string
-  sourceCode: string
-  utmMedium: string
-  utmCampaign: string
-  utmContent: string
-}) {
-  try {
-    const url = new URL(input.targetPath || '/', 'https://site.local')
-    if (!url.pathname.startsWith('/') || url.pathname.startsWith('/admin') || url.pathname.startsWith('/api')) {
-      return fallbackTrackingPath(input.sourceCode, input.utmMedium, input.utmCampaign, input.utmContent)
-    }
-    url.searchParams.set('mg_source', input.sourceCode)
-    url.searchParams.set('utm_source', input.sourceCode)
-    url.searchParams.set('utm_medium', input.utmMedium)
-    if (input.utmCampaign) url.searchParams.set('utm_campaign', input.utmCampaign)
-    if (input.utmContent) url.searchParams.set('utm_content', input.utmContent)
-    return `${url.pathname}${url.search}`
-  } catch {
-    return fallbackTrackingPath(input.sourceCode, input.utmMedium, input.utmCampaign, input.utmContent)
-  }
-}
-
-function normalizeUtmValue(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9_.-]/g, '-')
-    .replace(/[-_.]{2,}/g, '-')
-    .replace(/^[-_.]+|[-_.]+$/g, '')
-    .slice(0, 80)
-}
-
 function defaultUtmMedium(provider: AdPlatformProvider) {
   return attributionPlatformDefinition(provider).tracking.defaultUtmMedium
-}
-
-function fallbackTrackingPath(
-  sourceCode: string,
-  utmMedium: string,
-  utmCampaign: string,
-  utmContent: string,
-) {
-  const params = new URLSearchParams({
-    mg_source: sourceCode || 'ad-test',
-    utm_source: sourceCode || 'ad-test',
-    utm_medium: utmMedium || 'ad',
-  })
-  if (utmCampaign) params.set('utm_campaign', utmCampaign)
-  if (utmContent) params.set('utm_content', utmContent)
-  return `/?${params.toString()}`
 }
 </script>
 
@@ -272,8 +214,10 @@ function fallbackTrackingPath(
               <textarea v-model="form.note" rows="3" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="内部备注" />
             </label>
             <div class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
-              <p class="text-xs font-medium text-gray-700">链接预览（创建后自动加入校验参数）</p>
-              <p class="mt-1 break-all font-mono text-xs leading-5 text-gray-600">{{ previewPath }}</p>
+              <p class="text-xs font-medium text-gray-700">来源标识</p>
+              <p class="mt-1 text-xs leading-5 text-gray-600">
+                mg_source 和 utm_source 由系统创建后自动生成唯一值，不需要手动填写。
+              </p>
             </div>
             <p v-if="createError" class="text-xs text-red-600">{{ createError }}</p>
             <button class="w-full rounded-lg bg-gray-950 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60" type="submit" :disabled="creating">
