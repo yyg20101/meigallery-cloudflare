@@ -1,4 +1,5 @@
 import type { AdAttributionProvider, AdBrowserPublicConfig } from '@meigallery/shared'
+import { readBrowserAdAttributionSignals } from '~/utils/adAttributionSignals'
 
 export type AdAttributionResolution = 'unresolved' | 'matched' | 'inherited' | 'none' | 'conflict'
 
@@ -34,16 +35,10 @@ export function useAdAttribution() {
     const version = ++operationVersion
     const queuedTask = operationQueue.then(async () => {
       try {
+        const signals = readBrowserAdAttributionSignals(route.query)
         const response = await api<{ provider?: unknown; resolution?: unknown; expiresInSeconds?: unknown }>('/api/ad-attribution', {
           method: 'PUT',
-          body: {
-            fbclid: queryValue(route.query.fbclid),
-            ttclid: queryValue(route.query.ttclid),
-            gclid: queryValue(route.query.gclid),
-            gbraid: queryValue(route.query.gbraid),
-            wbraid: queryValue(route.query.wbraid),
-            trackingSourceSlug: queryValue(route.query.mg_source),
-          },
+          body: signals,
         })
         const normalized = normalizeServerResolution(response)
         if (!normalized) throw new Error('广告来源响应不一致')
@@ -142,22 +137,16 @@ function resetLocalState(
   publicConfig.value = null
 }
 
-function queryValue(value: unknown) {
-  const raw = Array.isArray(value) ? value[0] : value
-  if (typeof raw !== 'string') return ''
-  const normalized = raw.trim()
-  return normalized.length > 1_000 ? normalized.slice(0, 1_001) : normalized
-}
-
 function attributionRouteKey(route: AttributionRoute) {
+  const signals = readBrowserAdAttributionSignals(route.query)
   const value = [
     route.path,
-    queryValue(route.query.fbclid),
-    queryValue(route.query.ttclid),
-    queryValue(route.query.gclid),
-    queryValue(route.query.gbraid),
-    queryValue(route.query.wbraid),
-    queryValue(route.query.mg_source),
+    signals.fbclid,
+    signals.ttclid,
+    signals.gclid,
+    signals.gbraid,
+    signals.wbraid,
+    signals.trackingSourceSlug,
   ].join('\u001f')
   return stableHash(value)
 }

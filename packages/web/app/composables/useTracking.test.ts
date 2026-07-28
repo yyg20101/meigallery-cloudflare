@@ -133,6 +133,30 @@ describe('useTracking', () => {
     expect(trackAnalytics).toHaveBeenCalledWith('contact_method_click', expect.objectContaining({ eventId: 'mg3_contact_123' }))
   })
 
+  it('Contact 向服务端携带原始来源信号但不声明 provider', async () => {
+    route.fullPath = '/gallery/summer?mg_source=ad-meta-team&fbclid=meta-click'
+    route.query = { mg_source: 'ad-meta-team', fbclid: 'meta-click' }
+
+    await useTracking().trackContact({
+      contactMethodId: 'contact_123',
+      methodType: 'telegram',
+      actionType: 'open_link',
+    })
+
+    const body = api.mock.calls.find(call => call[0] === '/api/conversions/events')?.[1]?.body
+    expect(body).toEqual(expect.objectContaining({
+      adAttributionSignals: {
+        fbclid: 'meta-click',
+        ttclid: '',
+        gclid: '',
+        gbraid: '',
+        wbraid: '',
+        trackingSourceSlug: 'ad-meta-team',
+      },
+    }))
+    expect(body).not.toHaveProperty('provider')
+  })
+
   it('Contact 遇到瞬时失败时使用同一 body 有界幂等重试', async () => {
     vi.useFakeTimers()
     api

@@ -19,6 +19,7 @@ import {
 } from '~/utils/adPlatformBrowserIdentifiers'
 import { resolveConversionIdentity } from '~/utils/conversionIdentity'
 import { hasSensitiveAnalyticsUrl, isAdminPath, sanitizeAnalyticsText } from '~/utils/trackingSanitizer'
+import { readBrowserAdAttributionSignals } from '~/utils/adAttributionSignals'
 
 export interface TrackContactInput {
   contactMethodId: string
@@ -74,6 +75,7 @@ export function useTracking() {
       utmCampaign: normalizeText(sourceContext.utmCampaign, 120),
       utmContent: normalizeAnalyticsCampaignToken(sourceContext.utmContent || queryValue(route.query.utm_content)),
       methodType: normalizeText(input.methodType, 80),
+      adAttributionSignals: readBrowserAdAttributionSignals(route.query),
       metadata: { action_type: 'open_link' },
     }
 
@@ -186,6 +188,7 @@ export function useTracking() {
       utmMedium: normalizeText(sourceContext.utmMedium, 120),
       utmCampaign: normalizeText(sourceContext.utmCampaign, 120),
       utmContent: normalizeAnalyticsCampaignToken(sourceContext.utmContent || queryValue(route.query.utm_content)),
+      adAttributionSignals: readBrowserAdAttributionSignals(route.query),
       ...(routeAllowed && adAttribution.provider.value && typeof document !== 'undefined'
         ? { browserIdentifiers: readBrowserIdentifiers(adAttribution.provider.value, route.query) }
         : {}),

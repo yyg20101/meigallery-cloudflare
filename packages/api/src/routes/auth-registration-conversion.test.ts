@@ -68,6 +68,24 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
     expect(input.hashedEmail).toBeUndefined()
   })
 
+  it('Cookie 缺失时由服务端从 active 受管广告链接恢复注册平台', async () => {
+    await register(createRegisterDb('meta'), attribution())
+
+    expect(recordRegistrationMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      attributionContext: expect.objectContaining({
+        provider: 'meta',
+        source: 'managed_link',
+        identifiers: {},
+      }),
+      attributionSource: 'context',
+      adPlatformUserData: {
+        clientIpAddress: '203.0.113.10',
+        clientUserAgent: 'unit-test-browser',
+      },
+      hashedEmail: expect.stringMatching(/^[0-9a-f]{64}$/),
+    }))
+  })
+
   it('忽略客户端伪造的 provider，只采用签名来源', async () => {
     await register(
       createRegisterDb(),
@@ -197,7 +215,7 @@ function registrationResult() {
   }
 }
 
-function createRegisterDb() {
+function createRegisterDb(managedProvider: 'meta' | 'tiktok' | 'google' | null = null) {
   const calls: PreparedCall[] = []
   return {
     calls,
@@ -211,6 +229,11 @@ function createRegisterDb() {
         },
         async first<T>() {
           return null as T | null
+        },
+        async all<T>() {
+          return {
+            results: managedProvider ? [{ ad_provider: managedProvider } as T] : [],
+          }
         },
         async run() {
           return sql.includes('INSERT INTO users')

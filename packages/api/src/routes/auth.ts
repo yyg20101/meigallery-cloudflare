@@ -17,8 +17,7 @@ import { consumeInviteCodeForRegistration } from '../services/invite-codes'
 import { recordRegistration } from '../services/conversions'
 import { getCookie } from 'hono/cookie'
 import { AD_ATTRIBUTION_CONTEXT_COOKIE } from './ad-attribution'
-import { loadAttributionCryptoKeys } from '../utils/attribution-crypto'
-import { resolveTrustedAdAttributionContext } from '../utils/ad-attribution-context'
+import { resolveRequestAdAttributionContext } from '../utils/request-ad-attribution-context'
 import { buildAdPlatformUserData, hashAdPlatformEmail, readAdPlatformBrowserIdentifiersFromRequest } from '../utils/ad-platform-identifiers'
 
 type RegistrationAttributionContext = {
@@ -34,6 +33,7 @@ type RegistrationAttributionContext = {
   utmMedium?: string
   utmCampaign?: string
   utmContent?: string
+  adAttributionSignals?: unknown
 }
 
 const CONVERSION_ID_RE = /^[A-Za-z0-9_-]{8,120}$/
@@ -246,7 +246,12 @@ authRoutes.post('/register', async (c) => {
     .run()
   const userId = insertResult.meta.last_row_id
   const attribution = normalizeRegistrationAttribution(body.attribution, userId)
-  const attributionContext = await trustedRegistrationAttributionContext(c)
+  const attributionContext = await resolveRequestAdAttributionContext(
+    c.env,
+    getCookie(c, AD_ATTRIBUTION_CONTEXT_COOKIE),
+    attribution.adAttributionSignals,
+    attribution.trackingSourceSlug,
+  )
   const hasAttribution = isPlainRecord(body.attribution)
 
   if (body.inviteCode) {
@@ -321,14 +326,6 @@ function generateConversionExternalId() {
   return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
 }
 
-async function trustedRegistrationAttributionContext(c: Parameters<typeof getCookie>[0]) {
-  try {
-    const keys = await loadAttributionCryptoKeys(c.env)
-    const context = await resolveTrustedAdAttributionContext(keys, getCookie(c, AD_ATTRIBUTION_CONTEXT_COOKIE))
-    return context
-  } catch { return null }
-}
-
 function normalizeRegistrationAttribution(value: unknown, userId: number) {
   const input = isPlainRecord(value) ? value : {}
   const fallbackId = `registration_user_${userId}`
@@ -345,6 +342,7 @@ function normalizeRegistrationAttribution(value: unknown, userId: number) {
     utmMedium: normalizeText(input.utmMedium, 120),
     utmCampaign: normalizeText(input.utmCampaign, 120),
     utmContent: normalizeText(input.utmContent, 120),
+    adAttributionSignals: isPlainRecord(input.adAttributionSignals) ? { ...input.adAttributionSignals } : {},
   }
 }
 

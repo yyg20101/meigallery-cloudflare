@@ -20,5 +20,7 @@ describe('来源分析页职责边界', () => {
     expect(source).toContain("channel: 'ad'")
     expect(source).toContain('adProvider: selectedProvider.value')
     expect(source).toContain('创建并复制链接')
+    expect(source).toContain('if (!createdLink) return')
+    expect(source).toContain('链接已保存，但自动复制失败')
   })
 })
