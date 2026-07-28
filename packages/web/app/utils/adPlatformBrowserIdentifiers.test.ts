@@ -18,6 +18,19 @@ describe('广告平台浏览器标识严格隔离', () => {
     })
   })
 
+  it('Meta 长点击标识生成完整 fbc', () => {
+    const fbclid = 'x'.repeat(512)
+
+    expect(readAdPlatformBrowserIdentifiers(
+      'meta',
+      '',
+      { fbclid },
+      1_700_000_000_000,
+    )).toEqual({
+      fbc: `fb.1.1700000000000.${fbclid}`,
+    })
+  })
+
   it('TikTok 只读取 TikTok 参数和 Cookie', () => {
     expect(readAdPlatformBrowserIdentifiers(
       'tiktok',

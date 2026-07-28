@@ -59,6 +59,17 @@ describe('公开广告来源 API', () => {
     expectClearsAttributionCookie(response)
   })
 
+  it('Meta 长点击标识仍签发来源上下文', async () => {
+    const response = await request({ fbclid: 'x'.repeat(512) })
+
+    expect(await response.json()).toEqual({
+      provider: 'meta',
+      resolution: 'matched',
+      expiresInSeconds: 2_592_000,
+    })
+    expect(response.headers.get('set-cookie')).toMatch(/^mei_ad_attribution=/)
+  })
+
   it('普通导航继承未过期上下文且不重复签发 Cookie', async () => {
     const initial = await request({ fbclid: 'same-meta-click' })
     const response = await requestWithContext({}, initial)
@@ -110,7 +121,7 @@ describe('公开广告来源 API', () => {
   it('非法强信号与非法 JSON 都清除旧来源', async () => {
     const initial = await request({ ttclid: 'old-tiktok-click' })
     const invalidSignal = await requestWithContext({
-      fbclid: 'x'.repeat(129),
+      fbclid: 'x'.repeat(1_001),
     }, initial)
     const invalidJson = await app().request(
       'https://api.616618.xyz/api/ad-attribution',

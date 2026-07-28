@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { createAdAttributionContext, sealAdAttributionContext } from './ad-attribution-context'
 import { loadAttributionCryptoKeys } from './attribution-crypto'
-import { resolveRequestAdAttributionContext } from './request-ad-attribution-context'
+import { resolveRequestAdAttribution } from './request-ad-attribution'
 
 const MASTER_KEY = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
 
 describe('请求广告归因上下文', () => {
-  it('优先采用现有加密上下文，不被受管链接覆盖', async () => {
+  it('当前明确受管来源覆盖历史 Cookie', async () => {
     const keys = await loadAttributionCryptoKeys(env(createDb('tiktok')))
     const cookie = await sealAdAttributionContext(keys, createAdAttributionContext({
       provider: 'meta',
@@ -14,44 +14,96 @@ describe('请求广告归因上下文', () => {
       identifiers: { fbclid: 'meta-click' },
     }))
 
-    const context = await resolveRequestAdAttributionContext(
+    const result = await resolveRequestAdAttribution(
       env(createDb('tiktok')),
       cookie,
       { trackingSourceSlug: 'ad-tiktok-team' },
     )
 
-    expect(context).toMatchObject({
+    expect(result).toMatchObject({
+      resolution: 'matched',
+      context: {
+        provider: 'tiktok',
+        source: 'managed_link',
+        identifiers: {},
+      },
+    })
+  })
+
+  it('当前请求没有新来源时继承可信 Cookie', async () => {
+    const keys = await loadAttributionCryptoKeys(env(createDb(null)))
+    const cookie = await sealAdAttributionContext(keys, createAdAttributionContext({
       provider: 'meta',
       source: 'click_id',
       identifiers: { fbclid: 'meta-click' },
+    }))
+
+    const result = await resolveRequestAdAttribution(
+      env(createDb(null)),
+      cookie,
+    )
+
+    expect(result).toMatchObject({
+      resolution: 'inherited',
+      context: {
+        provider: 'meta',
+        source: 'click_id',
+        identifiers: { fbclid: 'meta-click' },
+      },
     })
   })
 
   it('Cookie 缺失时只从 active 受管广告链接恢复唯一平台', async () => {
-    const context = await resolveRequestAdAttributionContext(
+    const result = await resolveRequestAdAttribution(
       env(createDb('meta')),
       undefined,
       { trackingSourceSlug: 'ad-meta-team' },
     )
 
-    expect(context).toMatchObject({
-      provider: 'meta',
-      source: 'managed_link',
-      identifiers: {},
+    expect(result).toMatchObject({
+      resolution: 'matched',
+      context: {
+        provider: 'meta',
+        source: 'managed_link',
+        identifiers: {},
+      },
     })
   })
 
   it('当前请求没有 mg_source 时回退站内已归一化的受管来源', async () => {
-    const context = await resolveRequestAdAttributionContext(
+    const result = await resolveRequestAdAttribution(
       env(createDb('meta')),
       undefined,
       {},
       'ad-meta-team',
     )
 
-    expect(context).toMatchObject({
-      provider: 'meta',
-      source: 'managed_link',
+    expect(result).toMatchObject({
+      resolution: 'matched',
+      context: {
+        provider: 'meta',
+        source: 'managed_link',
+      },
+    })
+  })
+
+  it('真实长度的 Meta click ID 与同平台受管来源共同恢复 Meta', async () => {
+    const result = await resolveRequestAdAttribution(
+      env(createDb('meta')),
+      undefined,
+      {
+        fbclid: 'x'.repeat(512),
+        trackingSourceSlug: 'ad-meta-team',
+      },
+    )
+
+    expect(result).toMatchObject({
+      resolution: 'matched',
+      context: {
+        provider: 'meta',
+        source: 'click_id',
+        identifiers: { fbclid: 'x'.repeat(512) },
+      },
     })
   })
 
@@ -60,17 +112,17 @@ describe('请求广告归因上下文', () => {
     ['无效受管链接', 'invalid source'],
     ['普通来源链接', 'referral-team'],
   ])('%s时不选择平台', async (_label, trackingSourceSlug) => {
-    const context = await resolveRequestAdAttributionContext(
+    const result = await resolveRequestAdAttribution(
       env(createDb(null)),
       undefined,
       { trackingSourceSlug },
     )
 
-    expect(context).toBeNull()
+    expect(result.context).toBeNull()
   })
 
   it('受管链接与另一平台 click ID 冲突时不恢复任何平台', async () => {
-    const context = await resolveRequestAdAttributionContext(
+    const result = await resolveRequestAdAttribution(
       env(createDb('meta')),
       undefined,
       {
@@ -79,17 +131,23 @@ describe('请求广告归因上下文', () => {
       },
     )
 
-    expect(context).toBeNull()
+    expect(result).toEqual({
+      context: null,
+      resolution: 'conflict',
+    })
   })
 
   it('忽略 fallback 中伪造的 provider', async () => {
-    const context = await resolveRequestAdAttributionContext(
+    const result = await resolveRequestAdAttribution(
       env(createDb(null)),
       undefined,
       { trackingSourceSlug: undefined, provider: 'meta' } as never,
     )
 
-    expect(context).toBeNull()
+    expect(result).toEqual({
+      context: null,
+      resolution: 'none',
+    })
   })
 })
 

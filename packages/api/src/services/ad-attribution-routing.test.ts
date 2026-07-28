@@ -100,6 +100,49 @@ describe('广告来源路由', () => {
     })
   })
 
+  it('Meta click ID 使用统一安全长度，不因超过旧版 128 字符而丢失来源', async () => {
+    const fbclid = 'x'.repeat(512)
+    await expect(resolveAdAttributionRouting(
+      sourceDb({ 'summer-meta': 'meta' }),
+      { trackingSourceSlug: 'summer-meta', fbclid },
+      null,
+    )).resolves.toEqual({
+      provider: 'meta',
+      resolution: 'matched',
+      source: 'click_id',
+      identifiers: { fbclid },
+    })
+  })
+
+  it('有效 click ID 优先于未知受管链接', async () => {
+    await expect(resolveAdAttributionRouting(
+      emptyDb(),
+      { trackingSourceSlug: 'unknown-source', fbclid: 'meta-click' },
+      null,
+    )).resolves.toEqual({
+      provider: 'meta',
+      resolution: 'matched',
+      source: 'click_id',
+      identifiers: { fbclid: 'meta-click' },
+    })
+  })
+
+  it('有效受管链接不被不可用的可选 click ID 关闭', async () => {
+    await expect(resolveAdAttributionRouting(
+      sourceDb({ 'summer-meta': 'meta' }),
+      {
+        trackingSourceSlug: 'summer-meta',
+        fbclid: 'x'.repeat(1_001),
+      },
+      null,
+    )).resolves.toEqual({
+      provider: 'meta',
+      resolution: 'matched',
+      source: 'managed_link',
+      identifiers: {},
+    })
+  })
+
   it('无新来源时继承最近一次有效广告来源', () => {
     expect(resolveAdAttributionSource({
       clickIdentifiers: {},
@@ -140,7 +183,7 @@ describe('广告来源路由', () => {
   })
 
   it.each([
-    { fbclid: 'x'.repeat(129) },
+    { fbclid: 'x'.repeat(1_001) },
     { ttclid: 'x'.repeat(1_001) },
     { gclid: { invalid: true } },
     { trackingSourceSlug: 'invalid source' },

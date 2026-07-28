@@ -17,7 +17,7 @@ import { consumeInviteCodeForRegistration } from '../services/invite-codes'
 import { recordRegistration } from '../services/conversions'
 import { getCookie } from 'hono/cookie'
 import { AD_ATTRIBUTION_CONTEXT_COOKIE } from './ad-attribution'
-import { resolveRequestAdAttributionContext } from '../utils/request-ad-attribution-context'
+import { resolveRequestAdAttribution } from '../utils/request-ad-attribution'
 import { buildAdPlatformUserData, hashAdPlatformEmail, readAdPlatformBrowserIdentifiersFromRequest } from '../utils/ad-platform-identifiers'
 
 type RegistrationAttributionContext = {
@@ -246,12 +246,13 @@ authRoutes.post('/register', async (c) => {
     .run()
   const userId = insertResult.meta.last_row_id
   const attribution = normalizeRegistrationAttribution(body.attribution, userId)
-  const attributionContext = await resolveRequestAdAttributionContext(
+  const requestAttribution = await resolveRequestAdAttribution(
     c.env,
     getCookie(c, AD_ATTRIBUTION_CONTEXT_COOKIE),
     attribution.adAttributionSignals,
     attribution.trackingSourceSlug,
   )
+  const attributionContext = requestAttribution.context
   const hasAttribution = isPlainRecord(body.attribution)
 
   if (body.inviteCode) {
@@ -295,7 +296,9 @@ authRoutes.post('/register', async (c) => {
       utmCampaign: attribution.utmCampaign,
       utmContent: attribution.utmContent,
       attributionContext,
-      attributionSource: attributionContext ? 'context' : 'none',
+      attributionSource: attributionContext
+        ? 'context'
+        : requestAttribution.resolution === 'conflict' ? 'conflict' : 'none',
       adPlatformUserData,
       hashedEmail: attributionContext ? await hashAdPlatformEmail(email) : undefined,
       metadata: { method: 'email' },

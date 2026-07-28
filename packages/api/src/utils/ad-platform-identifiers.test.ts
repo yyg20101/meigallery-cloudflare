@@ -22,6 +22,16 @@ describe('广告平台用户匹配标识', () => {
     })
   })
 
+  it('接受由真实长度 Meta click ID 构造的 fbc', () => {
+    const fbclid = 'x'.repeat(512)
+
+    expect(normalizeAdPlatformBrowserIdentifiers({
+      fbc: `fb.1.1700000000000.${fbclid}`,
+    })).toEqual({
+      fbc: `fb.1.1700000000000.${fbclid}`,
+    })
+  })
+
   it('拒绝控制字符、超长值和未知字段', () => {
     expect(normalizeAdPlatformBrowserIdentifiers({
       ttclid: `E.C.P.bad\nvalue`,
