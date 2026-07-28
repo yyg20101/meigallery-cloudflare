@@ -17,6 +17,7 @@ type RegistrationAttributionContext = {
   utmMedium?: string
   utmCampaign?: string
   utmContent?: string
+  adAttributionSignals?: unknown
   browserIdentifiers?: unknown
 }
 

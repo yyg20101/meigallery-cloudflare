@@ -78,6 +78,7 @@ async function createTrackingLink() {
     return
   }
   creating.value = true
+  let createdLink: AttributionLink | null = null
   try {
     const result = await api<{ data: AttributionLink }>('/api/admin/tracking-sources', {
       method: 'POST',
@@ -92,26 +93,40 @@ async function createTrackingLink() {
         note: form.note,
       },
     })
-    toast.add({ title: '投放追踪链接已创建', color: 'success' })
-    await copyTrackingLink(result.data)
-    form.sourceLabel = ''
-    form.targetPath = '/'
-    form.utmCampaign = ''
-    form.utmContent = ''
-    form.note = ''
-    await attribution.refresh()
+    createdLink = result.data
   } catch (error) {
     createError.value = resolveApiErrorMessage(error, '投放追踪链接创建失败')
   } finally {
     creating.value = false
   }
+  if (!createdLink) return
+
+  toast.add({ title: '投放追踪链接已创建', color: 'success' })
+  form.sourceLabel = ''
+  form.targetPath = '/'
+  form.utmCampaign = ''
+  form.utmContent = ''
+  form.note = ''
+  await copyTrackingLink(createdLink)
+  await attribution.refresh()
 }
 
 async function copyTrackingLink(item: Pick<AttributionLink, 'trackingPath'>) {
-  if (!import.meta.client) return
+  if (!import.meta.client) return false
   const link = `${window.location.origin}${item.trackingPath}`
-  await navigator.clipboard?.writeText(link)
-  toast.add({ title: '追踪链接已复制', color: 'success' })
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable')
+    await navigator.clipboard.writeText(link)
+    toast.add({ title: '追踪链接已复制', color: 'success' })
+    return true
+  } catch {
+    toast.add({
+      title: '链接已保存，但自动复制失败',
+      description: '请检查浏览器剪贴板权限后，点击“复制链接”重试。',
+      color: 'warning',
+    })
+    return false
+  }
 }
 
 function defaultUtmMedium(provider: AdPlatformProvider) {

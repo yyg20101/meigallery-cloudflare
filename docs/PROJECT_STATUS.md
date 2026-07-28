@@ -57,7 +57,7 @@
 - 删除 Git commit 与归因运行时绑定。
 - 删除后台 verification/revision/rollout 交互。
 - 删除地区判断、营销授权页、Banner、Consent Cookie、授权 API 和地区策略表。
-- 删除前端 `adAttributionState` 放行字段，服务端只信任加密签名来源上下文。
+- 删除前端 `adAttributionState` 放行字段；服务端优先信任加密来源上下文，Cookie 偶发缺失时只允许同一来源路由器根据当前官方 click ID 或 active 受管广告链接恢复平台，始终拒绝客户端直接声明 provider。
 - 浏览器由单一 adapter registry 保证同一时刻只激活一个平台；平台变化或变为空时整页刷新。
 - 连接读取改为 connection、bindings、credential 三张表直接查询。
 - 连接内部 Outbox 作用域创建后保持稳定，保存配置不会使排队事件失效。

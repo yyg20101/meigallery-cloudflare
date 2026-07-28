@@ -9,7 +9,7 @@
  * - 本地开发：回退到 HTTP 代理转发至 API 开发服务器
  *
  * 浏览器统一请求相对路径 '/api/...'，由此 handler 转发；SSR 则由 useApi() 直接使用
- * Service Binding。认证 session 与营销授权 receipt 因此始终归属于 Web host。
+ * Service Binding。认证 session 与广告来源上下文因此始终归属于 Web host。
  */
 
 import {

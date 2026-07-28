@@ -46,7 +46,7 @@ Browser adapter / 加密 Outbox -> provider Queue -> Server adapter
 - 同时出现多个平台信号时返回 `conflict`，清除来源上下文，不加载任何 Pixel。
 - 普通 UTM、referrer 和前端 `provider` 声明不能决定平台。
 - 自然流量且没有历史来源时返回 `none`。
-- 来源上下文由 API 加密签名并写入 `HttpOnly` Cookie，Contact 和注册 API 只信任该上下文。
+- 来源上下文由 API 加密签名并写入 `HttpOnly` Cookie；Contact 和注册 API 优先验证该上下文，Cookie 偶发缺失时只允许同一服务端路由器按当前官方 click ID 或 active 受管 `mg_source` 恢复唯一平台，不接受客户端 `provider`。
 
 ## 浏览器投递
 
